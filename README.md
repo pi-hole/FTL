@@ -1,6 +1,8 @@
 ## Pi-hole FTL
 (c) 2017 Pi-hole, LLC (https://pi-hole.net)
 
+![](https://i1.wp.com/pi-hole.net/wp-content/uploads/2017/01/dominik.gif?w=128&ssl=1)
+
 This project is copyright under the latest version of the EUPL.
 
 Please see `LICENSE` file for your rights under this license.
