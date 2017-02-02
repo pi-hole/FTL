@@ -13,19 +13,19 @@ script:
   - whoami
   - ls -lh
   - echo "Building linux 64bit"
-  - make clean; make test
-  - mv test test-linux-x86_64
-  - make clean; make test CC="arm-linux-gnueabihf-gcc"
-  - mv test test-arm-linux-gnueabihf
-  - make clean; make test CC="aarch64-linux-gnu-gcc"
-  - mv test test-aarch64-linux-gnu
+  - make clean; make pihole-FTL
+  - mv pihole-FTL pihole-FTL-linux-x86_64
+  - make clean; make pihole-FTL CC="arm-linux-gnueabihf-gcc"
+  - mv pihole-FTL pihole-FTL-arm-linux-gnueabihf
+  - make clean; make pihole-FTL CC="aarch64-linux-gnu-gcc"
+  - mv pihole-FTL pihole-FTL-aarch64-linux-gnu
   - sudo apt-get install --yes gcc-multilib # Will remove some of the previously installed packages, so ARM builds have to be finished here
   - echo "Building linux 32bit"
-  - make clean; make test CC="gcc -m32" LDIR="/usr/lib32/"
-  - mv test test-linux-x86_32
+  - make clean; make pihole-FTL CC="gcc -m32" LDIR="/usr/lib32/"
+  - mv pihole-FTL pihole-FTL-linux-x86_32
   - sudo apt-get install --yes gcc-multilib
-  - file test-* > file_versions
-  - sha1sum test-* > sha1sum
+  - file pihole-FTL-* > file_versions
+  - sha1sum pihole-FTL-* > sha1sum
   - cat sha1sum
   - cat file_versions
 
@@ -36,10 +36,10 @@ deploy:
     secure: bJy/qWAgm7+/HRCK6Ec+UNpIrlmS0KJuQltLHnAucS5720bW3m1vVt19RrTZKhgbs7rCxIMBxllSC5kWH7y0YCkLUuRR1MVv4P6ps2lHgo0PeTCy8aN8IxRxV67wWQu2ITZdD6LgLZ83/4FrjeznkkmGdIDy6VhcT9zfQ6DmJYPHrwVRyhc+NYSGiem7SWg/7f9XvmL+RZFR/0ThpezSJ9PHK2vP0AIX3GZO9RHExjCgcxG9DL+XBynpj4yAr+7z7Po4NkGP8jMHKNb8CuGe5FwfywLFpZmwLJWkpAO4qCUioNJJxkUCPTgT+xw2DjvIZOAxTLeU9cdkHhK4lYcgp9VofDfbyRFzfSDzVEz71VmegxsXloLvhuHotNLZ0XqTb6SV38Z/36Tkz9YLuzvKClrnq8W9c4W9h28SOHKcXLVI551r59/I48j9V83Kzxsvdvh2qVcZVh2BKUsr4X2WpDnqxUjkh0dhE1H22qrfOSy+KUSjOSA2Igmshnkbm/DTv/TfY8Bjys9/dLw+0bro/m+vS1T1lUVl2e71ffC/jAgrcRvTKorqL/rsEfdN8PmVnTJ5i5werYNzyOQykkw04MqeziKpayQu4+7Q38BlgzwHz6ozS72yKCgn89hUnRPuaUUxxBrIeJlwnJoYQHoBUzMkzCsetjLaKErhO87TuwE=
   file:
   - sha1sum
-  - test-linux-x86_64
-  - test-linux-x86_32
-  - test-arm-linux-gnueabihf
-  - test-aarch64-linux-gnu
+  - pihole-FTL-linux-x86_64
+  - pihole-FTL-linux-x86_32
+  - pihole-FTL-arm-linux-gnueabihf
+  - pihole-FTL-aarch64-linux-gnu
   on:
     repo: pi-hole/FTL
   on:
