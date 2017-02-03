@@ -389,11 +389,21 @@ void process_pihole_log(void)
 				// Save IP
 				forwarded[forwardID].ip = calloc(forwardlen+1,sizeof(char));
 				strcpy(forwarded[forwardID].ip,forward);
-				// Get and store client host name
+				// Get and store forward host name
 				struct hostent *he;
-				struct in_addr ipv4addr;
-				inet_pton(AF_INET, forwarded[forwardID].ip, &ipv4addr);
-				he = gethostbyaddr(&ipv4addr, sizeof ipv4addr, AF_INET);
+				if(strstr(forward,":") != NULL)
+				{
+					struct in6_addr ipaddr;
+					inet_pton(AF_INET6, forward, &ipaddr);
+					he = gethostbyaddr(&ipaddr, sizeof ipaddr, AF_INET6);
+				}
+				else
+				{
+					struct in_addr ipaddr;
+					inet_pton(AF_INET, forward, &ipaddr);
+					he = gethostbyaddr(&ipaddr, sizeof ipaddr, AF_INET);
+				}
+
 				if(he == NULL)
 				{
 					forwarded[forwardID].name = calloc(1,sizeof(char));
