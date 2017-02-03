@@ -96,7 +96,7 @@ float timer_elapsed_msec(void)
 void savepid(pid_t sid)
 {
 	FILE *f;
-	if((f = fopen("/etc/pihole/FTL.pid", "w+")) == NULL)
+	if((f = fopen(FTLfiles.pid, "w+")) == NULL)
 	{
 		logg("WARNING: Unable to write PID to file.");
 		logg("         Continuing anyway...");
