@@ -13,13 +13,9 @@
 void open_FTL_log(void)
 {
 	// Open a log file in write mode.
-	if((logfile = fopen("/etc/pihole/FTL.log", "a+")) == NULL) {;
-		printf("FATAL: Opening of /etc/pihole/FTL.log failed!\n");
+	if((logfile = fopen(FTLfiles.log, "a+")) == NULL) {;
+		printf("FATAL: Opening of FTL log (%s) failed!\n",FTLfiles.log);
 		printf("       Make sure it exists and is writable using\n");
-		printf("        sudo touch /etc/pihole/FTL.log\n");
-		printf("        sudo touch /etc/pihole/FTL.port\n");
-		printf("        sudo touch /etc/pihole/FTL.pid\n");
-		printf("        sudo chown user:user /etc/pihole/FTL.*\n");
 		// Return failure in exit status
 		exit(1);
 	}

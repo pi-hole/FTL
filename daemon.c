@@ -13,7 +13,7 @@
 bool test_singularity(void)
 {
 	FILE *f;
-	if((f = fopen("/etc/pihole/FTL.pid", "r")) == NULL)
+	if((f = fopen(FTLfiles.pid, "r")) == NULL)
 	{
 		logg("WARNING: Unable to read PID from file.");
 		logg("         Cannot test if another FTL process is running!");

@@ -154,7 +154,7 @@ void swrite(void)
 void saveport(int port)
 {
 	FILE *f;
-	if((f = fopen("/etc/pihole/FTL.port", "w+")) == NULL)
+	if((f = fopen(FTLfiles.port, "w+")) == NULL)
 	{
 		logg("WARNING: Unable to write used port to file.");
 		logg("         Continuing anyway (API might not find the port).");

@@ -49,6 +49,12 @@
 // Static structs
 typedef struct {
 	const char* log;
+	const char* pid;
+	const char* port;
+} FTLFileNamesStruct;
+
+typedef struct {
+	const char* log;
 	const char* gravity;
 	const char* whitelist;
 	const char* blacklist;
@@ -112,6 +118,7 @@ typedef struct {
 enum { QUERIES, FORWARDED, CLIENTS, DOMAINS };
 
 logFileNamesStruct files;
+FTLFileNamesStruct FTLfiles;
 countersStruct counters;
 
 queriesDataStruct *queries;
