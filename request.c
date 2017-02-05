@@ -376,19 +376,33 @@ void process_request(void)
 	}
 	else if(command(">recentBlocked"))
 	{
-		int i;
+		int i, num=1;
+		// Test for integer that specifies number of entries to be shown
+		if(sscanf(socketrecvbuffer, ">%*[^ ] %i)", &num) > 0)
+		{
+			// User wants a different number of requests
+			if(num >= counters.queries)
+				num = 0;
+#if defined(DEBUG)
+			logg_int("Showing several blocked domains ",num);
+#endif
+		}
 		// Find most recent query with either status 1 (blocked)
 		// or status 4 (wildcard blocked)
+		int found = 0;
 		for(i = counters.queries - 1; i > 0 ; i--)
 		{
 			if(queries[i].status == 1 || queries[i].status == 4)
 			{
+				found++;
+				sprintf(socketsendbuffer,"%s\n",domains[queries[i].domainID].domain);
+				swrite();
+			}
+			if(found >= num)
+			{
 				break;
 			}
-			printf("%i %i\n", i, queries[i].status);
 		}
-		sprintf(socketsendbuffer,"%s\n",domains[queries[i].domainID].domain);
-		swrite();
 	}
 	// Test only at the end if we want to quit or kill
 	// so things can be processed before
