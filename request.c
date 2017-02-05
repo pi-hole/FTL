@@ -261,6 +261,20 @@ void process_request(void)
 #endif
 		}
 
+		int ibeg = 0, num;
+		// Test for integer that specifies number of entries to be shown
+		if(sscanf(socketrecvbuffer, ">%*[^(](%i)", &num) > 0)
+		{
+			// User wants a different number of requests
+			// Don't allow a start index that is smaller than zero
+			ibeg = counters.queries-num;
+			if(ibeg < 0)
+				ibeg = 0;
+#if defined(DEBUG)
+			logg_int("Showing only limited amount of queries queries ",num);
+#endif
+		}
+
 		// Get potentially existing filtering flags
 		char * filter = read_setupVarsconf("API_QUERY_LOG_SHOW");
 		bool showpermitted = true, showblocked = true;
@@ -304,7 +318,7 @@ void process_request(void)
 #endif
 
 		int i;
-		for(i=0; i < counters.queries; i++)
+		for(i=ibeg; i < counters.queries; i++)
 		{
 			char type[5];
 			if(queries[i].type == 1)
