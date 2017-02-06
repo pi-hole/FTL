@@ -16,7 +16,7 @@ Please see `LICENSE` file for your rights under this license.
 
 ### Command line arguments
 
-- `debug` - Don't go to backup, more verbose logging to both the log file and the current terminal window
+- `debug` - Don't go into daemon mode (stay in foreground) + more verbose logging
 - `test` - Start `FTL` and process everything, but shut down immediately afterwards
 
 Command line arguments can be arbitrarily combined, e.g. `pihole-FTL debug test`
