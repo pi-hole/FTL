@@ -188,6 +188,7 @@ void process_pihole_log(void)
 						else if((strstr(readbuffer2,"cached ") != NULL) ||
 						        (strstr(readbuffer2,"local.list") != NULL) ||
 						        (strstr(readbuffer2,"hostname.list") != NULL) ||
+						        (strstr(readbuffer2,"DHCP ") != NULL) ||
 						        (strstr(readbuffer2,"/etc/hosts") != NULL))
 						{
 							status = 3;
