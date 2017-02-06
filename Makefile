@@ -34,13 +34,12 @@ $(ODIR)/%.o: %.c $(_DEPS)
 pihole-FTL: $(_OBJ)
 	$(CC) -o $@ $^ $(CFLAGS) $(LIBS)
 
-.PHONY: clean
+.PHONY: clean force install
 
 clean:
 	rm -f $(ODIR)/*.o pihole-FTL
 
 # recreate version.h when GIT_VERSION changes, uses temporary file version~
-.PHONY: force
 version~: force
 	@echo '$(GIT_BRANCH) $(GIT_VERSION) $(GIT_DATE)' | cmp -s - $@ || echo '$(GIT_BRANCH) $(GIT_VERSION) $(GIT_DATE)' > $@
 version.h: version~
@@ -48,3 +47,10 @@ version.h: version~
 	@echo '#define GIT_DATE "$(GIT_DATE)"' >> "$@"
 	@echo '#define GIT_BRANCH "$(GIT_BRANCH)"' >> "$@"
 	@echo "Making FTL version on branch $(GIT_BRANCH) - $(GIT_VERSION) ($(GIT_DATE))"
+
+prefix=/usr/local
+
+install: pihole-FTL
+	install -m 0755 pihole-FTL $(prefix)/bin
+	touch /var/log/pihole-FTL.log /var/run/pihole-FTL.pid /var/run/pihole-FTL.port
+	chmod 0666 /var/log/pihole-FTL.log /var/run/pihole-FTL.pid /var/run/pihole-FTL.port

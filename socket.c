@@ -127,9 +127,6 @@ void read_socket(void)
 	ssize_t n = recv(clientsocket,socketrecvbuffer,SOCKETBUFFERLEN-1, MSG_DONTWAIT);
 	if (n > 0)
 	{
-#if defined(DEBUG)
-//		logg_str("SOCK Recv:\n", socketrecvbuffer);
-#endif
 		process_request();
 	}
 }

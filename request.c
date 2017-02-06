@@ -202,11 +202,10 @@ void process_request(void)
 		// Sort temporary array
 		qsort(temparray, counters.forwarded, sizeof(int[2]), (__compar_fn_t)cmpdomains);
 
-		int j;
 		for(i=0; i < min(counters.forwarded, 10); i++)
 		{
 			// Get sorted indices
-			j = temparray[counters.forwarded-i-1][0];
+			int j = temparray[counters.forwarded-i-1][0];
 			sprintf(socketsendbuffer,"%i %i %s %s\n",i,forwarded[j].count,forwarded[j].ip,forwarded[j].name);
 			swrite();
 		}
