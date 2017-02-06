@@ -69,7 +69,7 @@ void process_pihole_log(void)
 	char readbuffer2[1024] = "";
 
 	// Read pihole log from current position until EOF line by line
-	while( fgets (readbuffer , sizeof(readbuffer) , dnsmasqlog) != NULL )
+	while( fgets (readbuffer , sizeof(readbuffer)-1 , dnsmasqlog) != NULL )
 	{
 		// Test if the read line is a query line
 		if(strstr(readbuffer,"]: query[A") != NULL)
