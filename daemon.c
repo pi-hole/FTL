@@ -24,6 +24,7 @@ bool test_singularity(void)
 	// process group ID even for processes that don't belong to us
 	int pid;
 	fscanf(f,"%d",&pid);
+	fclose(f);
 	if (getpgid(pid) >= 0) {
 		// Other process is running
 		printf("FATAL: Another FTL process is already running! Exiting...\n");
