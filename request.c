@@ -107,11 +107,11 @@ void process_request(void)
 			getSetupVarsArray(excludedomains);
 
 
-		int j, skip = 0;
+		int skip = 0;
 		for(i=0; i < min(counters.domains, count+skip); i++)
 		{
 			// Get sorted indices
-			j = temparray[counters.domains-i-1][0];
+			int j = temparray[counters.domains-i-1][0];
 
 			// Skip this domain if there is a filter on it
 			if(excludedomains != NULL)
@@ -164,11 +164,11 @@ void process_request(void)
 		if(excludeclients != NULL)
 			getSetupVarsArray(excludeclients);
 
-		int j, skip = 0;
+		int skip = 0;
 		for(i=0; i < min(counters.clients, count+skip); i++)
 		{
 			// Get sorted indices
-			j = temparray[counters.clients-i-1][0];
+			int j = temparray[counters.clients-i-1][0];
 
 			// Skip this client if there is a filter on it
 			if(excludeclients != NULL)
@@ -434,38 +434,38 @@ bool command(const char* cmd)
 		return false;
 }
 
-void formatNumber(bool raw, int n, char* buffer)
-{
-	if(raw)
-	{
-		// Don't change number, echo string
-		sprintf(buffer, "%d", n);
-	}
-	else
-	{
-		// Insert thousand separator
-		if(n < 0) {
-			sprintf(buffer, "-");
-			n = -n;
-		}
-		else
-		{
-			// Empty buffer
-			buffer[0] = '\0';
-		}
+// void formatNumber(bool raw, int n, char* buffer)
+// {
+// 	if(raw)
+// 	{
+// 		// Don't change number, echo string
+// 		sprintf(buffer, "%d", n);
+// 	}
+// 	else
+// 	{
+// 		// Insert thousand separator
+// 		if(n < 0) {
+// 			sprintf(buffer, "-");
+// 			n = -n;
+// 		}
+// 		else
+// 		{
+// 			// Empty buffer
+// 			buffer[0] = '\0';
+// 		}
 
-		int a[20] = { 0 };
-		int *pa = a;
-		while(n > 0) {
-			*++pa = n % 1000;
-			n /= 1000;
-		}
-		sprintf(buffer, "%s%d", buffer, *pa);
-		while(pa > a + 1) {
-			sprintf(buffer, "%s,%03d", buffer, *--pa);
-		}
-	}
-}
+// 		int a[20] = { 0 };
+// 		int *pa = a;
+// 		while(n > 0) {
+// 			*++pa = n % 1000;
+// 			n /= 1000;
+// 		}
+// 		sprintf(buffer, "%s%d", buffer, *pa);
+// 		while(pa > a + 1) {
+// 			sprintf(buffer, "%s,%03d", buffer, *--pa);
+// 		}
+// 	}
+// }
 
 /* qsort comparision function (count field) */
 int cmpdomains(int *elem1, int *elem2)
