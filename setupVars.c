@@ -71,11 +71,13 @@ char * read_setupVarsconf(const char * key)
 
 		// otherwise: key found
 		fclose(setupVarsfp);
+		free(keystr);
 		return (find_equals(linebuffer) + 1);
 	}
 
 	// Key not found -> return NULL
 	fclose(setupVarsfp);
+	free(keystr);
 	return NULL;
 }
 
