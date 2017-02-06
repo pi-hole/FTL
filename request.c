@@ -226,13 +226,16 @@ void process_request(void)
 	{
 		// Do we want a more specific version of this command (domain/client/time interval filtered)?
 		int from = 0, until = 0;
+		bool filtertime = false;
 		if(command(">getallqueries-time"))
 		{
 			// Get from to until boundaries
 			sscanf(socketrecvbuffer, ">getallqueries-time %i %i",&from, &until);
 #if defined(DEBUG)
 			logg_int("Showing only limited time interval starting at ",from);
+			logg_int("Showing only limited time interval ending at ",until);
 #endif
+			filtertime = true;
 		}
 
 		char *domainname;
@@ -244,8 +247,8 @@ void process_request(void)
 			sscanf(socketrecvbuffer, ">getallqueries-domain %127s", domainname);
 #if defined(DEBUG)
 			logg_str("Showing only queries with domain ", domainname);
-			filterdomainname = true;
 #endif
+			filterdomainname = true;
 		}
 
 		char *clientname;
@@ -257,8 +260,8 @@ void process_request(void)
 			sscanf(socketrecvbuffer, ">getallqueries-client %127s", clientname);
 #if defined(DEBUG)
 			logg_str("Showing only queries with client ", clientname);
-			filterclientname = true;
 #endif
+			filterclientname = true;
 		}
 
 		int ibeg = 0, num;
@@ -271,7 +274,7 @@ void process_request(void)
 			if(ibeg < 0)
 				ibeg = 0;
 #if defined(DEBUG)
-			logg_int("Showing only limited amount of queries queries ",num);
+			logg_int("Showing only limited amount of queries: ",num);
 #endif
 		}
 
@@ -335,7 +338,7 @@ void process_request(void)
 			if((queries[i].status == 2 || queries[i].status == 3) && !showpermitted)
 				continue;
 
-			if(from != 0 && until != 0)
+			if(filtertime)
 			{
 				// Skip those entries which so not meet the requested timeframe
 				if(from > queries[i].timestamp || queries[i].timestamp > until)
