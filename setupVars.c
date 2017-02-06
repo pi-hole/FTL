@@ -138,7 +138,10 @@ bool insetupVarsArray(char * str)
 			char * domain = calloc(strlen(setupVarsArray[i]),sizeof(char));
 			strncpy(domain,setupVarsArray[i]+1,strlen(setupVarsArray[i])-1);
 			if(strstr(str, domain) != NULL)
+			{
+				free(domain);
 				return true;
+			}
 		}
 		else
 		{
