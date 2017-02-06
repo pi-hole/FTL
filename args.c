@@ -17,6 +17,8 @@ void parse_args(int argc, char* argv[])
 	for(i=0; i < argc; i++) {
 		if(strcmp(argv[i], "debug") == 0)
 			debug = true;
+		if(strcmp(argv[i], "test") == 0)
+			killed = 1;
 		// Other arguments are ignored
 	}
 }
