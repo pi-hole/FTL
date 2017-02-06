@@ -39,14 +39,13 @@ int main () {
 	logg_int("Number of domains being blocked: ",counters.gravity);
 	check_setupVarsconf();
 
-	int newdata = 0;
 	bool clientconnected = false;
 	bool waiting = false;
 
 	while(!killed)
 	{
 		// Daemon loop
-		newdata = checkLogForChanges();
+		int newdata = checkLogForChanges();
 		if(newdata != 0 && !waiting)
 		{
 			waiting = true;
