@@ -30,9 +30,8 @@ void logg(const char* str)
 	int millisec = tv.tv_usec/1000;
 	fprintf(logfile, "[%d-%02d-%02d %02d:%02d:%02d.%03i] %s\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, millisec, str);
 	fflush(logfile);
-#if defined(DEBUG)
-	printf("[%d-%02d-%02d %02d:%02d:%02d.%03i] %s\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, millisec, str);
-#endif
+	if(debug)
+		printf("[%d-%02d-%02d %02d:%02d:%02d.%03i] %s\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, millisec, str);
 }
 
 void logg_int(const char* str, int i)
@@ -44,9 +43,8 @@ void logg_int(const char* str, int i)
 	int millisec = tv.tv_usec/1000;
 	fprintf(logfile, "[%d-%02d-%02d %02d:%02d:%02d.%03i] %s%i\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, millisec, str, i);
 	fflush(logfile);
-#if defined(DEBUG)
-	printf("[%d-%02d-%02d %02d:%02d:%02d.%03i] %s%i\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, millisec, str, i);
-#endif
+	if(debug)
+		printf("[%d-%02d-%02d %02d:%02d:%02d.%03i] %s%i\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, millisec, str, i);
 }
 
 void logg_str(const char* str, char* str2)
@@ -58,9 +56,8 @@ void logg_str(const char* str, char* str2)
 	int millisec = tv.tv_usec/1000;
 	fprintf(logfile, "[%d-%02d-%02d %02d:%02d:%02d.%03i] %s%s\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, millisec, str, str2);
 	fflush(logfile);
-#if defined(DEBUG)
-	printf("[%d-%02d-%02d %02d:%02d:%02d.%03i] %s%s\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, millisec, str, str2);
-#endif
+	if(debug)
+		printf("[%d-%02d-%02d %02d:%02d:%02d.%03i] %s%s\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, millisec, str, str2);
 }
 
 void logg_str_str(const char* str, char* str2, char* str3)
@@ -72,9 +69,8 @@ void logg_str_str(const char* str, char* str2, char* str3)
 	int millisec = tv.tv_usec/1000;
 	fprintf(logfile, "[%d-%02d-%02d %02d:%02d:%02d.%03i] %s%s (%s)\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, millisec, str, str2, str3);
 	fflush(logfile);
-#if defined(DEBUG)
-	printf("[%d-%02d-%02d %02d:%02d:%02d.%03i] %s%s (%s)\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, millisec, str, str2, str3);
-#endif
+	if(debug)
+		printf("[%d-%02d-%02d %02d:%02d:%02d.%03i] %s%s (%s)\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, millisec, str, str2, str3);
 }
 
 void logg_struct_resize(const char* str, int from, int to)
@@ -86,9 +82,8 @@ void logg_struct_resize(const char* str, int from, int to)
 	int millisec = tv.tv_usec/1000;
 	fprintf(logfile, "[%d-%02d-%02d %02d:%02d:%02d.%03i] Notice: Increasing %s struct size from %i to %i\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, millisec, str, from, to);
 	fflush(logfile);
-#if defined(DEBUG)
-	printf("[%d-%02d-%02d %02d:%02d:%02d.%03i] Notice: Increasing %s struct size from %i to %i\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, millisec, str, from, to);
-#endif
+	if(debug)
+		printf("[%d-%02d-%02d %02d:%02d:%02d.%03i] Notice: Increasing %s struct size from %i to %i\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, millisec, str, from, to);
 }
 
 void log_counter_info(void)

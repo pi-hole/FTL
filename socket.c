@@ -108,9 +108,9 @@ bool listen_socket(void)
 		// printf("ERROR on accept");
 	if (clientsocket > 0)
 	{
-#if defined(DEBUG)
-		logg_str("Client connected: ", inet_ntoa (cli_addr.sin_addr));
-#endif
+		if(debug)
+			logg_str("Client connected: ", inet_ntoa (cli_addr.sin_addr));
+
 		// const char * msg = "This is the Pi-hole FTL daemon, enter \"quit\" to quit\n\n";
 		// write(clientsocket, msg, strlen(msg));
 		return true;

@@ -31,9 +31,8 @@ void process_request(void)
 		}
 		sprintf(socketsendbuffer,"domains_being_blocked %i\ndns_queries_today %i\nads_blocked_today %i\nads_percentage_today %f\n",counters.gravity,counters.queries,counters.blocked,percentage);
 		swrite();
-#if defined(DEBUG)
-		logg("Sent stats data to client");
-#endif
+		if(debug)
+			logg("Sent stats data to client");
 	}
 	else if(command(">overTime"))
 	{
@@ -51,9 +50,8 @@ void process_request(void)
 				swrite();
 			}
 		}
-#if defined(DEBUG)
-		logg("Sent overTime data to client");
-#endif
+		if(debug)
+			logg("Sent overTime data to client");
 	}
 	else if(command(">top-domains") || command(">top-ads"))
 	{
@@ -136,9 +134,8 @@ void process_request(void)
 		}
 		if(excludedomains != NULL)
 			clearSetupVarsArray();
-#if defined(DEBUG)
-		logg("Sent top lists data to client");
-#endif
+		if(debug)
+			logg("Sent top lists data to client");
 	}
 	else if(command(">top-clients"))
 	{
@@ -186,9 +183,8 @@ void process_request(void)
 		}
 		if(excludeclients != NULL)
 			clearSetupVarsArray();
-#if defined(DEBUG)
-		logg("Sent top clients data to client");
-#endif
+		if(debug)
+			logg("Sent top clients data to client");
 	}
 	else if(command(">forward-dest"))
 	{
@@ -209,17 +205,15 @@ void process_request(void)
 			sprintf(socketsendbuffer,"%i %i %s %s\n",i,forwarded[j].count,forwarded[j].ip,forwarded[j].name);
 			swrite();
 		}
-#if defined(DEBUG)
-		logg("Sent forwarded destinations data to client");
-#endif
+		if(debug)
+			logg("Sent forwarded destinations data to client");
 	}
 	else if(command(">querytypes"))
 	{
 		sprintf(socketsendbuffer,"A (IPv4): %i\nAAAA (IPv6): %i\nPTR: %i\nSRV: %i\n",counters.IPv4,counters.IPv6,counters.PTR,counters.SRV);
 		swrite();
-#if defined(DEBUG)
-		logg("Sent query type data to client");
-#endif
+		if(debug)
+			logg("Sent query type data to client");
 	}
 	else if(command(">getallqueries"))
 	{
@@ -230,10 +224,11 @@ void process_request(void)
 		{
 			// Get from to until boundaries
 			sscanf(socketrecvbuffer, ">getallqueries-time %i %i",&from, &until);
-#if defined(DEBUG)
-			logg_int("Showing only limited time interval starting at ",from);
-			logg_int("Showing only limited time interval ending at ",until);
-#endif
+			if(debug)
+			{
+				logg_int("Showing only limited time interval starting at ",from);
+				logg_int("Showing only limited time interval ending at ",until);
+			}
 			filtertime = true;
 		}
 
@@ -244,9 +239,8 @@ void process_request(void)
 			domainname = calloc(128, sizeof(char));
 			// Get domain name we want to see only (limit length to 127 chars)
 			sscanf(socketrecvbuffer, ">getallqueries-domain %127s", domainname);
-#if defined(DEBUG)
-			logg_str("Showing only queries with domain ", domainname);
-#endif
+			if(debug)
+				logg_str("Showing only queries with domain ", domainname);
 			filterdomainname = true;
 		}
 
@@ -257,9 +251,8 @@ void process_request(void)
 			clientname = calloc(128, sizeof(char));
 			// Get client name we want to see only (limit length to 127 chars)
 			sscanf(socketrecvbuffer, ">getallqueries-client %127s", clientname);
-#if defined(DEBUG)
-			logg_str("Showing only queries with client ", clientname);
-#endif
+			if(debug)
+				logg_str("Showing only queries with client ", clientname);
 			filterclientname = true;
 		}
 
@@ -272,9 +265,8 @@ void process_request(void)
 			ibeg = counters.queries-num;
 			if(ibeg < 0)
 				ibeg = 0;
-#if defined(DEBUG)
-			logg_int("Showing only limited amount of queries: ",num);
-#endif
+			if(debug)
+				logg_int("Showing only limited amount of queries: ",num);
 		}
 
 		// Get potentially existing filtering flags
@@ -306,18 +298,21 @@ void process_request(void)
 				privacymode = true;
 		clearSetupVarsArray();
 
-#if defined(DEBUG)
-		if(showpermitted)
-			logg("Showing permitted queries");
-		else
-			logg("Hiding permitted queries");
-		if(showblocked)
-			logg("Showing blocked queries");
-		else
-			logg("Hiding blocked queries");
-		if(privacymode)
-			logg("Privacy mode enabled");
-#endif
+		if(debug)
+		{
+			if(showpermitted)
+				logg("Showing permitted queries");
+			else
+				logg("Hiding permitted queries");
+
+			if(showblocked)
+				logg("Showing blocked queries");
+			else
+				logg("Hiding blocked queries");
+
+			if(privacymode)
+				logg("Privacy mode enabled");
+		}
 
 		int i;
 		for(i=ibeg; i < counters.queries; i++)
@@ -372,9 +367,8 @@ void process_request(void)
 		if(filterdomainname)
 			free(domainname);
 
-#if defined(DEBUG)
-		logg("Sent all queries data to client");
-#endif
+		if(debug)
+			logg("Sent all queries data to client");
 	}
 	else if(command(">recentBlocked"))
 	{
@@ -385,9 +379,8 @@ void process_request(void)
 			// User wants a different number of requests
 			if(num >= counters.queries)
 				num = 0;
-#if defined(DEBUG)
-			logg_int("Showing several blocked domains ",num);
-#endif
+			if(debug)
+				logg_int("Showing several blocked domains ",num);
 		}
 		// Find most recent query with either status 1 (blocked)
 		// or status 4 (wildcard blocked)
@@ -412,9 +405,8 @@ void process_request(void)
 	{
 		close(clientsocket);
 		clientsocket = 0;
-#if defined(DEBUG)
-		logg("Clients wants to quit");
-#endif
+		if(debug)
+			logg("Clients wants to quit");
 	}
 	else if(command(">kill"))
 	{

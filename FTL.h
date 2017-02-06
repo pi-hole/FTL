@@ -141,3 +141,4 @@ char ** setupVarsArray;
 int setupVarsElements;
 
 bool initialscan;
+bool debug;
