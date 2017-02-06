@@ -7,27 +7,31 @@ This project is copyright under the latest version of the EUPL.
 
 Please see `LICENSE` file for your rights under this license.
 
-## How to test FTL?
+### How to test FTL?
 
 1. Clone the repo
 2. `make`
 3. `sudo make install`
 4. start `pihole-FTL`
 
-## Command line arguments
+### Command line arguments
 
 - `debug` - Don't go to backup, more verbose logging to both the log file and the current terminal window
 - `test` - Start `FTL` and process everything, but shut down immediately afterwards
 
 Command line arguments can be arbitrarily combined, e.g. `pihole-FTL debug test`
 
-## Socket connections
+### File locations
+- `/var/log/pihole-FTL.log` log file
+- `/var/run/pihole-FTL.pid` PID file
+- `/var/run/pihole-FTL.port` file containing port on which `FTL` is listening
+
+### Socket connections
 
 connect via e.g. `telnet 127.0.0.1 4711`
 port may be automatically incremented if `4711` isn't available
-The port that is used will be stored in `/etc/pihole/FTL.port`
 
-## Implemented keywords (starting with `>`, subject to change):
+### Implemented keywords (starting with `>`, subject to change):
 
 - `>quit`: Closes connection to client
 
