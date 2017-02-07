@@ -17,8 +17,8 @@ GIT_VERSION := $(shell git --no-pager describe --tags --always --dirty)
 GIT_DATE := $(shell git --no-pager show --date=short --format="%ai" --name-only | head -n 1)
 
 CC=gcc
-CFLAGS=-I$(IDIR) -Wall -g -static-libgcc
-LIBS=
+CFLAGS=-I$(IDIR) -Wall -g -fstack-protector -static
+LIBS=-rdynamic
 
 ODIR =obj
 IDIR =.
@@ -32,7 +32,7 @@ $(ODIR)/%.o: %.c $(_DEPS)
 	$(CC) -c -o $@ $< $(CFLAGS)
 
 pihole-FTL: $(_OBJ)
-	$(CC) -o $@ $^ $(CFLAGS) $(LIBS)
+	$(CC) $(CFLAGS) -o $@ $^ $(LIBS)
 
 .PHONY: clean force install
 
