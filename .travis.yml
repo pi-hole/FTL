@@ -41,6 +41,7 @@ deploy:
   - pihole-FTL-linux-x86_64
   - pihole-FTL-linux-x86_32
   - pihole-FTL-arm-linux-gnueabihf
+  - pihole-FTL-arm-linux-gnueabisf
   - pihole-FTL-aarch64-linux-gnu
   on:
     repo: pi-hole/FTL
