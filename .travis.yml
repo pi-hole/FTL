@@ -29,18 +29,18 @@ script:
   - cat sha1sum
   - cat file_versions
 
-#deploy:
-#  skip_cleanup: true
-#  provider: releases
-#  api_key:
-#    secure: kLStmUXL42p5XTDfNOFxFkP6V6wqTzhrv9BB1JwJZHCsTmdgUX5JVzCSqMC8nE4kWQqDPJox36LPbTtQ9T9cFEEZSy84e7cWlTvXfpPrVb9PmeIjUqI3OukSbuXocazCsPDEJ8DPOkqGU32cxqoufQWErAzweMLojIaZqE5qzrNDZ0G8U4OcnL8K62bYKesQ3Jl/aQnPGoD3N+HLeUOtjXGjNUr7pTM6WlmhAX2spMK4qYV/Thef70fMVc3wj6P0/bdTQiqT9dnLgc8TR2Z0qWoAaksmfC3sDGpTjTf99Gz1adUyKkOa4EvKE+XGlE8pIR5aPFJ3aL6U5xRUIpXcB/QGWYiHdd+lbWmMgZTSIJ3fknt+LKGEdsPvhHr93wsg3B3HG0h+XAwkYoX9tl0oQNgbL+eGgsPIdC1aR2kQdcsD0Ev4bGNcNOQTDNZKGdwojytCFvq/yVYhpLC58+vWuIoNhtqkUcZAWsZJ3wRHQIlC5+XjdV4nSfbZmR8efkOL/uYcLvmPgJrMf+XY0kvUB64qC7M9uihqu19TMkx5vqPuDrowaiWl5D9pZs6WtNxBWvIyHaqC3E5BOpgBT5U+THUDTQXR0pS7hantwgET37CNLDR+OxSrKoM5a2CRlH0C0/twk/fwdm6pMS7+siPCLrjc3QZc6XYIkpCd0BZHE8U=
-#  file:
-#  - sha1sum
-#  - pihole-FTL-linux-x86_64
-#  - pihole-FTL-linux-x86_32
-#  - pihole-FTL-arm-linux-gnueabihf
-#  - pihole-FTL-aarch64-linux-gnu
-#  on:
-#    repo: pi-hole/FTL
-#  on:
-#    tags: true
+deploy:
+  skip_cleanup: true
+  provider: releases
+  api_key:
+    secure: kLStmUXL42p5XTDfNOFxFkP6V6wqTzhrv9BB1JwJZHCsTmdgUX5JVzCSqMC8nE4kWQqDPJox36LPbTtQ9T9cFEEZSy84e7cWlTvXfpPrVb9PmeIjUqI3OukSbuXocazCsPDEJ8DPOkqGU32cxqoufQWErAzweMLojIaZqE5qzrNDZ0G8U4OcnL8K62bYKesQ3Jl/aQnPGoD3N+HLeUOtjXGjNUr7pTM6WlmhAX2spMK4qYV/Thef70fMVc3wj6P0/bdTQiqT9dnLgc8TR2Z0qWoAaksmfC3sDGpTjTf99Gz1adUyKkOa4EvKE+XGlE8pIR5aPFJ3aL6U5xRUIpXcB/QGWYiHdd+lbWmMgZTSIJ3fknt+LKGEdsPvhHr93wsg3B3HG0h+XAwkYoX9tl0oQNgbL+eGgsPIdC1aR2kQdcsD0Ev4bGNcNOQTDNZKGdwojytCFvq/yVYhpLC58+vWuIoNhtqkUcZAWsZJ3wRHQIlC5+XjdV4nSfbZmR8efkOL/uYcLvmPgJrMf+XY0kvUB64qC7M9uihqu19TMkx5vqPuDrowaiWl5D9pZs6WtNxBWvIyHaqC3E5BOpgBT5U+THUDTQXR0pS7hantwgET37CNLDR+OxSrKoM5a2CRlH0C0/twk/fwdm6pMS7+siPCLrjc3QZc6XYIkpCd0BZHE8U=
+  file:
+  - sha1sum
+  - pihole-FTL-linux-x86_64
+  - pihole-FTL-linux-x86_32
+  - pihole-FTL-arm-linux-gnueabihf
+  - pihole-FTL-aarch64-linux-gnu
+  on:
+    repo: pi-hole/FTL
+  on:
+    tags: true
