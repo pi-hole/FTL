@@ -16,8 +16,9 @@ GIT_BRANCH := $(shell git branch | sed -n 's/^\* //p')
 GIT_VERSION := $(shell git --no-pager describe --tags --always --dirty)
 GIT_DATE := $(shell git --no-pager show --date=short --format="%ai" --name-only | head -n 1)
 
+ARCH=
 CC=gcc
-CFLAGS=-I$(IDIR) -Wall -g -fstack-protector -static
+CFLAGS=-I$(IDIR) -Wall -g -fstack-protector -static $(ARCH)
 LIBS=-rdynamic
 
 ODIR =obj

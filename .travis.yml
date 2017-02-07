@@ -15,8 +15,10 @@ script:
   - echo "Building linux 64bit"
   - make clean; make pihole-FTL
   - mv pihole-FTL pihole-FTL-linux-x86_64
-  - make clean; make pihole-FTL CC="arm-linux-gnueabihf-gcc"
+  - make clean; make pihole-FTL CC="arm-linux-gnueabihf-gcc" ARCH="-marm"
   - mv pihole-FTL pihole-FTL-arm-linux-gnueabihf
+  - make clean; make pihole-FTL CC="arm-linux-gnueabihf-gcc" ARCH="-marm -mfloat-abi=soft"
+  - mv pihole-FTL pihole-FTL-arm-linux-gnueabisf
   - make clean; make pihole-FTL CC="aarch64-linux-gnu-gcc"
   - mv pihole-FTL pihole-FTL-aarch64-linux-gnu
   - sudo apt-get install --yes gcc-multilib # Will remove some of the previously installed packages, so ARM builds have to be finished here
