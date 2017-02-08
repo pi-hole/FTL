@@ -79,9 +79,9 @@ void go_daemon(void)
 	savepid(sid);
 
 	// Change the current working directory to root.
-	if(!chdir("/etc/pihole"))
+	if(chdir("/etc/pihole") != 0)
 	{
-		logg("FATAL: Cannot change directory to /etc/pihole");
+		logg_int("FATAL: Cannot change directory to /etc/pihole. Error code ",errno);
 		// Return failure
 		exit(1);
 	}
