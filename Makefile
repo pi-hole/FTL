@@ -16,14 +16,14 @@ GIT_BRANCH := $(shell git branch | sed -n 's/^\* //p')
 GIT_VERSION := $(shell git --no-pager describe --tags --always --dirty)
 GIT_DATE := $(shell git --no-pager show --date=short --format="%ai" --name-only | head -n 1)
 
-# -fstack-protector: The program will be resistant to having itsstack overflowed.
+# -fstack-protector: The program will be resistant to having its stack overflowed
 # -D_FORTIFY_SOURCE=2 and -O1 or higher: This causes certain unsafe glibc functions zo be replaced with their safer counterparts
 # -Wl,-z,relro: reduces the possible areas of memory in a program that can be used by an attacker that performs a successful memory corruption exploit
 # -Wl,-z,now: When combined with RELRO above, this further reduces the regions of memory available to memory corruption attacks
-# -ftrapv: Generates traps for signed overflow
+# -pie -fPIE: For ASLR
 CC=gcc
-HARDENING_FLAGS=-fstack-protector-all -Wstack-protector --param ssp-buffer-size=4 -D_FORTIFY_SOURCE=2 -O3 -Wl,-z,relro,-z,now -ftrapv
-CFLAGS=-I$(IDIR) -Wall -g $(HARDENING_FLAGS)
+HARDENING_FLAGS=-fstack-protector -D_FORTIFY_SOURCE=2 -O3 -Wl,-z,relro,-z,now -pie -fPIE
+CFLAGS=-I$(IDIR) -Wall -g2 $(HARDENING_FLAGS)
 LIBS=-rdynamic
 
 ODIR =obj

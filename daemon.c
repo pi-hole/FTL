@@ -27,6 +27,7 @@ bool test_singularity(void)
 	{
 		logg("WARNING: Unable to read PID from file (cannot read PID from file).");
 		logg("         Cannot test if another FTL process is running!");
+		fclose(f);
 		return true;
 	}
 	fclose(f);
