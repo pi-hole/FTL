@@ -20,8 +20,10 @@ GIT_DATE := $(shell git --no-pager show --date=short --format="%ai" --name-only 
 # -D_FORTIFY_SOURCE=2 and -O1 or higher: This causes certain unsafe glibc functions zo be replaced with their safer counterparts
 # -Wl,-z,relro: reduces the possible areas of memory in a program that can be used by an attacker that performs a successful memory corruption exploit
 # -Wl,-z,now: When combined with RELRO above, this further reduces the regions of memory available to memory corruption attacks
+# -ftrapv: Generates traps for signed overflow
 CC=gcc
-CFLAGS=-I$(IDIR) -Wall -g -fstack-protector -D_FORTIFY_SOURCE=2 -O3 -Wl,-z,relro -Wl,-z,now
+HARDENING_FLAGS=-fstack-protector-all -Wstack-protector --param ssp-buffer-size=4 -D_FORTIFY_SOURCE=2 -O3 -Wl,-z,relro,-z,now -ftrapv
+CFLAGS=-I$(IDIR) -Wall -g $(HARDENING_FLAGS)
 LIBS=-rdynamic
 
 ODIR =obj
