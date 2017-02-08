@@ -16,9 +16,12 @@ GIT_BRANCH := $(shell git branch | sed -n 's/^\* //p')
 GIT_VERSION := $(shell git --no-pager describe --tags --always --dirty)
 GIT_DATE := $(shell git --no-pager show --date=short --format="%ai" --name-only | head -n 1)
 
-ARCH=
+# -fstack-protector: The program will be resistant to having itsstack overflowed.
+# -D_FORTIFY_SOURCE=2 and -O1 or higher: This causes certain unsafe glibc functions zo be replaced with their safer counterparts
+# -Wl,-z,relro: reduces the possible areas of memory in a program that can be used by an attacker that performs a successful memory corruption exploit
+# -Wl,-z,now: When combined with RELRO above, this further reduces the regions of memory available to memory corruption attacks
 CC=gcc
-CFLAGS=-I$(IDIR) -Wall -g -fstack-protector $(ARCH)
+CFLAGS=-I$(IDIR) -Wall -g -fstack-protector -D_FORTIFY_SOURCE=2 -O3 -Wl,-z,relro -Wl,-z,now
 LIBS=-rdynamic
 
 ODIR =obj
