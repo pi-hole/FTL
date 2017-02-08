@@ -145,7 +145,8 @@ void seom(void)
 
 void swrite(void)
 {
-	write(clientsocket, socketsendbuffer, strlen(socketsendbuffer));
+	if(!write(clientsocket, socketsendbuffer, strlen(socketsendbuffer)))
+		logg_int("WARNING: Socket write returned error code ", errno);
 }
 
 void saveport(int port)

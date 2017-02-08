@@ -27,6 +27,7 @@
 #include <arpa/inet.h>
 // getnameinfo();
 #include <netdb.h>
+#include <errno.h>
 
 #include "routines.h"
 
