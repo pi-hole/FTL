@@ -6,7 +6,7 @@ git:
 
 before_install:
   - sudo apt-get -qq update
-  - sudo apt-get install --yes gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu libc6-dev-arm64-cross gcc-arm-linux-gnueabihf gcc-arm-linux-gnueabi binutils-arm-linux-gnueabi binutils-arm-linux-gnueabihf libc6-dev-armhf-cross binutils-mips-linux-gnu gcc-mips-linux-gnu binutils-mips64-linux-gnuabi64 gcc-mips64-linux-gnuabi64
+  - sudo apt-get install --yes gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu libc6-dev-arm64-cross gcc-arm-linux-gnueabihf gcc-arm-linux-gnueabi binutils-arm-linux-gnueabi binutils-arm-linux-gnueabihf libc6-dev-armhf-cross # binutils-mips-linux-gnu gcc-mips-linux-gnu binutils-mips64-linux-gnuabi64 gcc-mips64-linux-gnuabi64
 
 script:
   - whoami
@@ -20,10 +20,11 @@ script:
   - mv pihole-FTL pihole-FTL-arm-linux-gnueabi
   - make clean; make pihole-FTL CC="aarch64-linux-gnu-gcc"
   - mv pihole-FTL pihole-FTL-aarch64-linux-gnu
-  - make clean; make pihole-FTL CC="mips-linux-gnu-gcc"
-  - mv pihole-FTL pihole-FTL-mips-linux-gnu
-  - make clean; make pihole-FTL CC="mips64-linux-gnuabi64-gcc"
-  - mv pihole-FTL pihole-FTL-mips64-linux-gnuabi64
+# Compiling MIPS(64) is currently not supported on Travis
+#  - make clean; make pihole-FTL CC="mips-linux-gnu-gcc"
+#  - mv pihole-FTL pihole-FTL-mips-linux-gnu
+#  - make clean; make pihole-FTL CC="mips64-linux-gnuabi64-gcc"
+#  - mv pihole-FTL pihole-FTL-mips64-linux-gnuabi64
   - sudo apt-get install --yes gcc-multilib # Will remove some of the previously installed packages, so ARM builds have to be finished here
   - echo "Building linux 32bit"
   - make clean; make pihole-FTL CC="gcc -m32" LDIR="/usr/lib32/"
