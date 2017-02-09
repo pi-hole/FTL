@@ -6,7 +6,7 @@ git:
 
 before_install:
   - sudo apt-get -qq update
-  - sudo apt-get install --yes gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu libc6-dev-arm64-cross gcc-arm-linux-gnueabihf gcc-arm-linux-gnueabi binutils-arm-linux-gnueabi binutils-arm-linux-gnueabihf libc6-dev-armhf-cross # binutils-mips-linux-gnu gcc-mips-linux-gnu binutils-mips64-linux-gnuabi64 gcc-mips64-linux-gnuabi64
+  - sudo apt-get install --yes binutils-multiarch gcc-aarch64-linux-gnu gcc-arm-linux-gnueabihf gcc-arm-linux-gnueabi # gcc-mips-linux-gnu gcc-mips64-linux-gnuabi64
 
 script:
   - whoami
