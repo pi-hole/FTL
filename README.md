@@ -16,14 +16,14 @@ Please see `LICENSE` file for your rights under this license.
 
 | Board | Tested OS | CPU architecture | Suitable binaries | Tested by |
 |---|---|---|---|---|
-| VirtualBox | Ubuntu 16.10 | amd64 | `linux-x86_64` | DL6ER |
-| Raspberry Pi Zero | Raspbian Jessie | armv6 | `arm-linux-gnueabi` | DanSchaper |
-| Raspberry Pi 1 | Raspbian Jessie | armv6 | `arm-linux-gnueabi` | DL6ER |
+| VirtualBox | Ubuntu 16.10 | amd64 | `linux-x86_64` | [@DL6ER](https://github.com/dl6er) |
+| Raspberry Pi Zero | Raspbian Jessie | armv6 | `arm-linux-gnueabi` | [@DanSchaper](https://github.com/dschaper) |
+| Raspberry Pi 1 | Raspbian Jessie | armv6 | `arm-linux-gnueabi` | [@DL6ER](https://github.com/dl6er) |
 | Raspberry Pi 2 | Raspbian Jessie | ? | ? | ? |
-| Raspberry Pi 3 | Raspbian Jessie | armv7l | `arm-linux-gnuabi` and `arm-linux-gnueabihf` | DL6ER |
-| NanoPi NEO | armbian Ubuntu 16.04 | armv7l | `arm-linux-gnueabihf` | DL6ER |
-| Odroid-C2 | Ubuntu 16.04 | aarch64 | `aarch64-linux-gnu` | DanSchaper |
-| C.H.I.P | Debian | armv7l | `arm-linux-gnueabihf` | PromoFaux |
+| Raspberry Pi 3 | Raspbian Jessie | armv7l | `arm-linux-gnuabi` and `arm-linux-gnueabihf` | [@DL6ER](https://github.com/dl6er) |
+| NanoPi NEO | armbian Ubuntu 16.04 | armv7l | `arm-linux-gnueabihf` | [@DL6ER](https://github.com/dl6er) |
+| Odroid-C2 | Ubuntu 16.04 | aarch64 | `aarch64-linux-gnu` | [@DanSchaper](https://github.com/dschaper) |
+| C.H.I.P | Debian | armv7l | `arm-linux-gnueabihf` | [@Promofaux](https://github.com/promofaux) |
 | OrangePi Zero | armbian Ubuntu 16.04 | ? | ? | ? |
 |  |  |  |  |  |
 
