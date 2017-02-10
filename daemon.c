@@ -63,6 +63,7 @@ void go_daemon(void)
 	// PARENT PROCESS. Need to kill it.
 	if (process_id > 0)
 	{
+		printf("FTL started!\n");
 		// return success in exit status
 		exit(0);
 	}
@@ -79,7 +80,7 @@ void go_daemon(void)
 	}
 	savepid(sid);
 
-	// Change the current working directory to root.
+	// Change the current working directory
 	if(chdir("/etc/pihole") != 0)
 	{
 		logg_int("FATAL: Cannot change directory to /etc/pihole. Error code ",errno);
