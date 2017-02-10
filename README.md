@@ -7,6 +7,27 @@ This project is copyright under the latest version of the EUPL.
 
 Please see `LICENSE` file for your rights under this license.
 
+---
+
+### Compatibility list
+
+| Board | Tested OS | CPU architecture | Suitable binaries | Tested by |
+|---|---|---|---|---|
+| VirtualBox | Ubuntu 16.10 | amd64 | `linux-x86_64` | DL6ER |
+| Raspberry Pi Zero | Raspbian Jessie | armv6 | `arm-linux-gnueabi` | DanSchaper |
+| Raspberry Pi 1 | Raspbian Jessie | armv6 | `arm-linux-gnueabi` | DL6ER |
+| Raspberry Pi 2 | Raspbian Jessie | ? | ? | ? |
+| Raspberry Pi 3 | Raspbian Jessie | armv7l | `arm-linux-gnuabi` and `arm-linux-gnueabihf` | DL6ER |
+| NanoPi NEO | armbian Ubuntu 16.04 | armv7l | `arm-linux-gnueabihf` | DL6ER |
+| Odroid-C2 | Ubuntu 16.04 | aarch64 | `aarch64-linux-gnu` | DanSchaper |
+| C.H.I.P | ? | ? | ? | ? |
+| OrangePi Zero | armbian Ubuntu 16.04 | ? | ? | ? |
+|  |  |  |  |  |
+
+If you want to add a new device, open an issue or create a PR for the README. You can get your CPU architecture by running `lscpu`.
+
+---
+
 ### How to test FTL?
 
 1. Clone the repo
