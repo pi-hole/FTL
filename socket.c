@@ -108,9 +108,9 @@ bool listen_socket(void)
 		// printf("ERROR on accept");
 	if (clientsocket > 0)
 	{
-#if defined(DEBUG)
-		logg_str("Client connected: ", inet_ntoa (cli_addr.sin_addr));
-#endif
+		if(debug)
+			logg_str("Client connected: ", inet_ntoa (cli_addr.sin_addr));
+
 		// const char * msg = "This is the Pi-hole FTL daemon, enter \"quit\" to quit\n\n";
 		// write(clientsocket, msg, strlen(msg));
 		return true;
@@ -127,9 +127,6 @@ void read_socket(void)
 	ssize_t n = recv(clientsocket,socketrecvbuffer,SOCKETBUFFERLEN-1, MSG_DONTWAIT);
 	if (n > 0)
 	{
-#if defined(DEBUG)
-//		logg_str("SOCK Recv:\n", socketrecvbuffer);
-#endif
 		process_request();
 	}
 }
@@ -148,7 +145,8 @@ void seom(void)
 
 void swrite(void)
 {
-	write(clientsocket, socketsendbuffer, strlen(socketsendbuffer));
+	if(!write(clientsocket, socketsendbuffer, strlen(socketsendbuffer)))
+		logg_int("WARNING: Socket write returned error code ", errno);
 }
 
 void saveport(int port)

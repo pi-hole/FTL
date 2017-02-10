@@ -71,11 +71,13 @@ char * read_setupVarsconf(const char * key)
 
 		// otherwise: key found
 		fclose(setupVarsfp);
+		free(keystr);
 		return (find_equals(linebuffer) + 1);
 	}
 
 	// Key not found -> return NULL
 	fclose(setupVarsfp);
+	free(keystr);
 	return NULL;
 }
 
@@ -136,7 +138,10 @@ bool insetupVarsArray(char * str)
 			char * domain = calloc(strlen(setupVarsArray[i]),sizeof(char));
 			strncpy(domain,setupVarsArray[i]+1,strlen(setupVarsArray[i])-1);
 			if(strstr(str, domain) != NULL)
+			{
+				free(domain);
 				return true;
+			}
 		}
 		else
 		{

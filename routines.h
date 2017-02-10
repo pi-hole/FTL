@@ -51,3 +51,5 @@ void getSetupVarsArray(char * input);
 void clearSetupVarsArray(void);
 bool insetupVarsArray(char * str);
 bool getSetupVarsBool(char * input);
+
+void parse_args(int argc, char* argv[]);

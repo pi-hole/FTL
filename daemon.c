@@ -15,7 +15,7 @@ bool test_singularity(void)
 	FILE *f;
 	if((f = fopen(FTLfiles.pid, "r")) == NULL)
 	{
-		logg("WARNING: Unable to read PID from file.");
+		logg("WARNING: Unable to read PID from file (cannot open file).");
 		logg("         Cannot test if another FTL process is running!");
 		return true;
 	}
@@ -23,7 +23,14 @@ bool test_singularity(void)
 	// We use getpgid() since we are allowed to inspect the
 	// process group ID even for processes that don't belong to us
 	int pid;
-	fscanf(f,"%d",&pid);
+	if(fscanf(f,"%d",&pid) != 1)
+	{
+		logg("WARNING: Unable to read PID from file (cannot read PID from file).");
+		logg("         Cannot test if another FTL process is running!");
+		fclose(f);
+		return true;
+	}
+	fclose(f);
 	if (getpgid(pid) >= 0) {
 		// Other process is running
 		printf("FATAL: Another FTL process is already running! Exiting...\n");
@@ -73,7 +80,13 @@ void go_daemon(void)
 	savepid(sid);
 
 	// Change the current working directory to root.
-	chdir("/etc/pihole");
+	if(chdir("/etc/pihole") != 0)
+	{
+		logg_int("FATAL: Cannot change directory to /etc/pihole. Error code ",errno);
+		// Return failure
+		exit(1);
+	}
+
 	// Close stdin, stdout and stderr
 	close(STDIN_FILENO);
 	close(STDOUT_FILENO);

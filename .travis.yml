@@ -6,8 +6,7 @@ git:
 
 before_install:
   - sudo apt-get -qq update
-  - sudo apt-get install --yes gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu libc6-dev-arm64-cross
-  - sudo apt-get install --yes gcc-arm-linux-gnueabihf binutils-arm-linux-gnueabi libc6-dev-armhf-cross
+  - sudo apt-get install --yes binutils-multiarch gcc-aarch64-linux-gnu gcc-arm-linux-gnueabihf gcc-arm-linux-gnueabi # gcc-mips-linux-gnu gcc-mips64-linux-gnuabi64
 
 script:
   - whoami
@@ -17,8 +16,15 @@ script:
   - mv pihole-FTL pihole-FTL-linux-x86_64
   - make clean; make pihole-FTL CC="arm-linux-gnueabihf-gcc"
   - mv pihole-FTL pihole-FTL-arm-linux-gnueabihf
+  - make clean; make pihole-FTL CC="arm-linux-gnueabi-gcc"
+  - mv pihole-FTL pihole-FTL-arm-linux-gnueabi
   - make clean; make pihole-FTL CC="aarch64-linux-gnu-gcc"
   - mv pihole-FTL pihole-FTL-aarch64-linux-gnu
+# Compiling MIPS(64) is currently not supported on Travis
+#  - make clean; make pihole-FTL CC="mips-linux-gnu-gcc"
+#  - mv pihole-FTL pihole-FTL-mips-linux-gnu
+#  - make clean; make pihole-FTL CC="mips64-linux-gnuabi64-gcc"
+#  - mv pihole-FTL pihole-FTL-mips64-linux-gnuabi64
   - sudo apt-get install --yes gcc-multilib # Will remove some of the previously installed packages, so ARM builds have to be finished here
   - echo "Building linux 32bit"
   - make clean; make pihole-FTL CC="gcc -m32" LDIR="/usr/lib32/"
@@ -29,18 +35,21 @@ script:
   - cat sha1sum
   - cat file_versions
 
-#deploy:
-#  skip_cleanup: true
-#  provider: releases
-#  api_key:
-#    secure: kLStmUXL42p5XTDfNOFxFkP6V6wqTzhrv9BB1JwJZHCsTmdgUX5JVzCSqMC8nE4kWQqDPJox36LPbTtQ9T9cFEEZSy84e7cWlTvXfpPrVb9PmeIjUqI3OukSbuXocazCsPDEJ8DPOkqGU32cxqoufQWErAzweMLojIaZqE5qzrNDZ0G8U4OcnL8K62bYKesQ3Jl/aQnPGoD3N+HLeUOtjXGjNUr7pTM6WlmhAX2spMK4qYV/Thef70fMVc3wj6P0/bdTQiqT9dnLgc8TR2Z0qWoAaksmfC3sDGpTjTf99Gz1adUyKkOa4EvKE+XGlE8pIR5aPFJ3aL6U5xRUIpXcB/QGWYiHdd+lbWmMgZTSIJ3fknt+LKGEdsPvhHr93wsg3B3HG0h+XAwkYoX9tl0oQNgbL+eGgsPIdC1aR2kQdcsD0Ev4bGNcNOQTDNZKGdwojytCFvq/yVYhpLC58+vWuIoNhtqkUcZAWsZJ3wRHQIlC5+XjdV4nSfbZmR8efkOL/uYcLvmPgJrMf+XY0kvUB64qC7M9uihqu19TMkx5vqPuDrowaiWl5D9pZs6WtNxBWvIyHaqC3E5BOpgBT5U+THUDTQXR0pS7hantwgET37CNLDR+OxSrKoM5a2CRlH0C0/twk/fwdm6pMS7+siPCLrjc3QZc6XYIkpCd0BZHE8U=
-#  file:
-#  - sha1sum
-#  - pihole-FTL-linux-x86_64
-#  - pihole-FTL-linux-x86_32
-#  - pihole-FTL-arm-linux-gnueabihf
-#  - pihole-FTL-aarch64-linux-gnu
-#  on:
-#    repo: pi-hole/FTL
-#  on:
-#    tags: true
+deploy:
+  skip_cleanup: true
+  provider: releases
+  api_key:
+    secure: kLStmUXL42p5XTDfNOFxFkP6V6wqTzhrv9BB1JwJZHCsTmdgUX5JVzCSqMC8nE4kWQqDPJox36LPbTtQ9T9cFEEZSy84e7cWlTvXfpPrVb9PmeIjUqI3OukSbuXocazCsPDEJ8DPOkqGU32cxqoufQWErAzweMLojIaZqE5qzrNDZ0G8U4OcnL8K62bYKesQ3Jl/aQnPGoD3N+HLeUOtjXGjNUr7pTM6WlmhAX2spMK4qYV/Thef70fMVc3wj6P0/bdTQiqT9dnLgc8TR2Z0qWoAaksmfC3sDGpTjTf99Gz1adUyKkOa4EvKE+XGlE8pIR5aPFJ3aL6U5xRUIpXcB/QGWYiHdd+lbWmMgZTSIJ3fknt+LKGEdsPvhHr93wsg3B3HG0h+XAwkYoX9tl0oQNgbL+eGgsPIdC1aR2kQdcsD0Ev4bGNcNOQTDNZKGdwojytCFvq/yVYhpLC58+vWuIoNhtqkUcZAWsZJ3wRHQIlC5+XjdV4nSfbZmR8efkOL/uYcLvmPgJrMf+XY0kvUB64qC7M9uihqu19TMkx5vqPuDrowaiWl5D9pZs6WtNxBWvIyHaqC3E5BOpgBT5U+THUDTQXR0pS7hantwgET37CNLDR+OxSrKoM5a2CRlH0C0/twk/fwdm6pMS7+siPCLrjc3QZc6XYIkpCd0BZHE8U=
+  file:
+  - sha1sum
+  - pihole-FTL-linux-x86_64
+  - pihole-FTL-linux-x86_32
+  - pihole-FTL-arm-linux-gnueabihf
+  - pihole-FTL-arm-linux-gnueabi
+  - pihole-FTL-aarch64-linux-gnu
+  - pihole-FTL-mips-linux-gnu
+  - pihole-FTL-mips64-linux-gnuabi64
+  on:
+    repo: pi-hole/FTL
+  on:
+    tags: true

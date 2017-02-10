@@ -11,7 +11,10 @@
 #include "FTL.h"
 #include "version.h"
 
-int main () {
+int main (int argc, char* argv[]) {
+
+	if(argc > 1)
+		parse_args(argc, argv);
 
 	open_FTL_log();
 	open_pihole_log();
@@ -19,11 +22,12 @@ int main () {
 	logg_str("FTL branch: ",GIT_BRANCH);
 	logg_str("FTL hash: ",GIT_VERSION);
 	logg_str("FTL date: ",GIT_DATE);
-#if !defined(DEBUG)
-	go_daemon();
-#else
-	savepid(getpid());
-#endif
+
+	if(!debug)
+		go_daemon();
+	else
+		savepid(getpid());
+
 	handle_signals();
 
 	init_socket();
@@ -39,14 +43,13 @@ int main () {
 	logg_int("Number of domains being blocked: ",counters.gravity);
 	check_setupVarsconf();
 
-	int newdata = 0;
 	bool clientconnected = false;
 	bool waiting = false;
 
 	while(!killed)
 	{
 		// Daemon loop
-		newdata = checkLogForChanges();
+		int newdata = checkLogForChanges();
 		if(newdata != 0 && !waiting)
 		{
 			waiting = true;
@@ -63,9 +66,8 @@ int main () {
 		else if(clientconnected)
 		{
 			clientconnected = false;
-#if defined(DEBUG)
-			logg("Client disconnected");
-#endif
+			if(debug)
+				logg("Client disconnected");
 		}
 		else
 		{

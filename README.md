@@ -10,17 +10,52 @@ This project is copyright under the latest version of the EUPL.
 
 Please see `LICENSE` file for your rights under this license.
 
-## How to test FTL?
+---
+
+### Compatibility list
+
+| Board | Tested OS | CPU architecture | Suitable binaries | Tested by |
+|---|---|---|---|---|
+| VirtualBox | Ubuntu 16.10 | amd64 | `linux-x86_64` | DL6ER |
+| Raspberry Pi Zero | Raspbian Jessie | armv6 | `arm-linux-gnueabi` | DanSchaper |
+| Raspberry Pi 1 | Raspbian Jessie | armv6 | `arm-linux-gnueabi` | DL6ER |
+| Raspberry Pi 2 | Raspbian Jessie | ? | ? | ? |
+| Raspberry Pi 3 | Raspbian Jessie | armv7l | `arm-linux-gnuabi` and `arm-linux-gnueabihf` | DL6ER |
+| NanoPi NEO | armbian Ubuntu 16.04 | armv7l | `arm-linux-gnueabihf` | DL6ER |
+| Odroid-C2 | Ubuntu 16.04 | aarch64 | `aarch64-linux-gnu` | DanSchaper |
+| C.H.I.P | ? | ? | ? | ? |
+| OrangePi Zero | armbian Ubuntu 16.04 | ? | ? | ? |
+|  |  |  |  |  |
+
+If you want to add a new device, open an issue or create a PR for the README. You can get your CPU architecture by running `lscpu`.
+
+---
+
+### How to test FTL?
 
 1. Clone the repo
 2. `make`
-3. start `./pihole-FTL`
+3. `sudo make install`
+4. start `pihole-FTL`
+
+### Command line arguments
+
+- `debug` - Don't go into daemon mode (stay in foreground) + more verbose logging
+- `test` - Start `FTL` and process everything, but shut down immediately afterwards
+
+Command line arguments can be arbitrarily combined, e.g. `pihole-FTL debug test`
+
+### File locations
+- `/var/log/pihole-FTL.log` log file
+- `/var/run/pihole-FTL.pid` PID file
+- `/var/run/pihole-FTL.port` file containing port on which `FTL` is listening
+
+### Socket connections
 
 connect via e.g. `telnet 127.0.0.1 4711`
 port may be automatically incremented if `4711` isn't available
-The port that is used will be stored in `/etc/pihole/FTL.port`
 
-## Implemented keywords (starting with `>`, subject to change):
+### Implemented keywords (starting with `>`, subject to change):
 
 - `>quit`: Closes connection to client
 
