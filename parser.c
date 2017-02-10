@@ -10,6 +10,8 @@
 
 #include "FTL.h"
 
+char *resolveHostname(char *addr);
+
 int dnsmasqlogpos = 0;
 int checkLogForChanges(void)
 {
@@ -280,31 +282,11 @@ void process_pihole_log(void)
 				// Store client IP
 				clients[clientID].ip = calloc(strlen(client)+1,sizeof(char));
 				strcpy(clients[clientID].ip, client);
-				// Get and store client host name
-				struct hostent *he;
-				if(strstr(client,":") != NULL)
-				{
-					struct in6_addr ipaddr;
-					inet_pton(AF_INET6, client, &ipaddr);
-					he = gethostbyaddr(&ipaddr, sizeof ipaddr, AF_INET6);
-				}
-				else
-				{
-					struct in_addr ipaddr;
-					inet_pton(AF_INET, client, &ipaddr);
-					he = gethostbyaddr(&ipaddr, sizeof ipaddr, AF_INET);
-				}
-
-				if(he == NULL)
-				{
-					clients[clientID].name = calloc(1,sizeof(char));
-					strcpy(clients[clientID].name, "");
-				}
-				else
-				{
-					clients[clientID].name = calloc(strlen(he->h_name)+1,sizeof(char));
-					strcpy(clients[clientID].name, he->h_name);
-				}
+				//Get client host name
+				char *hostname = resolveHostname(client);
+				clients[clientID].name = calloc(strlen(hostname)+1,sizeof(char));
+				strcpy(clients[clientID].name,hostname);
+				free(hostname);
 				// Increase counter by one
 				counters.clients++;
 				if(strlen(clients[clientID].name) > 0)
@@ -390,31 +372,11 @@ void process_pihole_log(void)
 				// Save IP
 				forwarded[forwardID].ip = calloc(forwardlen+1,sizeof(char));
 				strcpy(forwarded[forwardID].ip,forward);
-				// Get and store forward host name
-				struct hostent *he;
-				if(strstr(forward,":") != NULL)
-				{
-					struct in6_addr ipaddr;
-					inet_pton(AF_INET6, forward, &ipaddr);
-					he = gethostbyaddr(&ipaddr, sizeof ipaddr, AF_INET6);
-				}
-				else
-				{
-					struct in_addr ipaddr;
-					inet_pton(AF_INET, forward, &ipaddr);
-					he = gethostbyaddr(&ipaddr, sizeof ipaddr, AF_INET);
-				}
-
-				if(he == NULL)
-				{
-					forwarded[forwardID].name = calloc(1,sizeof(char));
-					strcpy(forwarded[forwardID].name, "");
-				}
-				else
-				{
-					forwarded[forwardID].name = calloc(strlen(he->h_name)+1,sizeof(char));
-					strcpy(forwarded[forwardID].name, he->h_name);
-				}
+				//Get forward destination host name
+				char *hostname = resolveHostname(forward);
+				forwarded[forwardID].name = calloc(strlen(hostname)+1,sizeof(char));
+				strcpy(forwarded[forwardID].name,hostname);
+				free(hostname);
 				// Increase counter by one
 				counters.forwarded++;
 				if(strlen(forwarded[forwardID].name) > 0)
@@ -445,4 +407,35 @@ void process_pihole_log(void)
 		// Update file pointer position
 		dnsmasqlogpos = ftell(dnsmasqlog);
 	}
+}
+
+char *resolveHostname(char *addr)
+{
+	// Get host name
+	struct hostent *he;
+	char *hostname;
+	if(strstr(addr,":") != NULL)
+	{
+		struct in6_addr ipaddr;
+		inet_pton(AF_INET6, addr, &ipaddr);
+		he = gethostbyaddr(&ipaddr, sizeof ipaddr, AF_INET6);
+	}
+	else
+	{
+		struct in_addr ipaddr;
+		inet_pton(AF_INET, addr, &ipaddr);
+		he = gethostbyaddr(&ipaddr, sizeof ipaddr, AF_INET);
+	}
+
+	if(he == NULL)
+	{
+		hostname = calloc(1,sizeof(char));
+	}
+	else
+	{
+		hostname = calloc(strlen(he->h_name)+1,sizeof(char));
+		strcpy(hostname, he->h_name);
+	}
+
+	return hostname;
 }
