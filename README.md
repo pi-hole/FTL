@@ -1,7 +1,5 @@
 ## Pi-hole FTL
 
-[![Codacy Badge](https://api.codacy.com/project/badge/Grade/4ed93e1a06fe4600ba991ef33078973c)](https://www.codacy.com/app/Pi-hole/FTL?utm_source=github.com&utm_medium=referral&utm_content=pi-hole/FTL&utm_campaign=badger)
-
 (c) 2017 Pi-hole, LLC (https://pi-hole.net)
 
 ![](https://i1.wp.com/pi-hole.net/wp-content/uploads/2017/01/dominik.gif?w=128&ssl=1)
@@ -9,6 +7,8 @@
 This project is copyright under the latest version of the EUPL.
 
 Please see `LICENSE` file for your rights under this license.
+
+[![Codacy Badge](https://api.codacy.com/project/badge/Grade/4ed93e1a06fe4600ba991ef33078973c)](https://www.codacy.com/app/Pi-hole/FTL?utm_source=github.com&utm_medium=referral&utm_content=pi-hole/FTL&utm_campaign=badger)
 
 ---
 
