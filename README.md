@@ -19,7 +19,7 @@ Please see `LICENSE` file for your rights under this license.
 | VirtualBox | Ubuntu 16.10 | amd64 | `linux-x86_64` | [@DL6ER](https://github.com/dl6er) |
 | Raspberry Pi Zero | Raspbian Jessie | armv6 | `arm-linux-gnueabi` | [@DanSchaper](https://github.com/dschaper) |
 | Raspberry Pi 1 | Raspbian Jessie | armv6 | `arm-linux-gnueabi` | [@DL6ER](https://github.com/dl6er) |
-| Raspberry Pi 2 | Raspbian Jessie | ? | ? | ? |
+| Raspberry Pi 2 | Raspbian Jessie | armv7l | `arm-linux-gnueabihf` | [@TechnicalPyro](https://github.com/technicalpyro) |
 | Raspberry Pi 3 | Raspbian Jessie | armv7l | `arm-linux-gnuabi` and `arm-linux-gnueabihf` | [@DL6ER](https://github.com/dl6er) |
 | NanoPi NEO | armbian Ubuntu 16.04 | armv7l | `arm-linux-gnueabihf` | [@DL6ER](https://github.com/dl6er) |
 | Odroid-C2 | Ubuntu 16.04 | aarch64 | `aarch64-linux-gnu` | [@DanSchaper](https://github.com/dschaper) |
