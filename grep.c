@@ -26,8 +26,12 @@ void read_gravity_files(void)
 	if(blacklist > 0)
 	{
 		gravity += blacklist;
+		logg_int("Blacklist entries: ", blacklist);
 	}
-	logg_int("Blacklist entries: ", blacklist);
+	else
+	{
+		logg("No blacklist present");
+	}
 
 	counters.gravity = gravity;
 }
