@@ -1,55 +1,68 @@
 language: c
-sudo: required
+sudo: false
 dist: trusty
 git:
   depth: 1
-
-before_install:
-  - sudo apt-get -qq update
-  - sudo apt-get install --yes binutils-multiarch gcc-aarch64-linux-gnu gcc-arm-linux-gnueabihf gcc-arm-linux-gnueabi # gcc-mips-linux-gnu gcc-mips64-linux-gnuabi64
-
+env:
+  global:
+  - DEST_DIR="${HOME}/FTL"
+matrix:
+  include:
+  - env:
+    - BUILD_CC="cc"
+    - BIN_NAME="pihole-FTL-linux-x86_64"
+  - env:
+    - BUILD_CC="arm-linux-gnueabihf-gcc"
+    - BIN_NAME="pihole-FTL-arm-linux-gnueabihf"
+    addons:
+      apt:
+        packages:
+        - gcc-arm-linux-gnueabihf
+        - binutils-arm-linux-gnueabihf
+        - libc6-dev-armhf-cross
+  - env:
+    - BUILD_CC="arm-linux-gnueabi-gcc"
+    - BIN_NAME="pihole-FTL-arm-linux-gnueabi"
+    addons:
+      apt:
+        packages:
+        - gcc-arm-linux-gnueabi
+        - binutils-arm-linux-gnueabi
+        - libc6-dev-armel-cross
+  - env:
+    - BUILD_CC="aarch64-linux-gnu-gcc"
+    - BIN_NAME="pihole-FTL-aarch64-linux-gnu"
+    addons:
+      apt:
+        packages:
+        - gcc-aarch64-linux-gnu
+        - binutils-aarch64-linux-gnu
+        - libc6-dev-arm64-cross
+  - env:
+    - BUILD_CC="cc"
+    - CFLAGS="-m32"
+    - BIN_NAME="pihole-FTL-linux-x86_32"
+    addons:
+      apt:
+        packages:
+        - gcc-multilib
+before_script:
+- mkdir -p "${DEST_DIR}"
+- make clean
 script:
-  - whoami
-  - ls -lh
-  - echo "Building linux 64bit"
-  - make clean; make pihole-FTL
-  - mv pihole-FTL pihole-FTL-linux-x86_64
-  - make clean; make pihole-FTL CC="arm-linux-gnueabihf-gcc"
-  - mv pihole-FTL pihole-FTL-arm-linux-gnueabihf
-  - make clean; make pihole-FTL CC="arm-linux-gnueabi-gcc"
-  - mv pihole-FTL pihole-FTL-arm-linux-gnueabi
-  - make clean; make pihole-FTL CC="aarch64-linux-gnu-gcc"
-  - mv pihole-FTL pihole-FTL-aarch64-linux-gnu
-# Compiling MIPS(64) is currently not supported on Travis
-#  - make clean; make pihole-FTL CC="mips-linux-gnu-gcc"
-#  - mv pihole-FTL pihole-FTL-mips-linux-gnu
-#  - make clean; make pihole-FTL CC="mips64-linux-gnuabi64-gcc"
-#  - mv pihole-FTL pihole-FTL-mips64-linux-gnuabi64
-  - sudo apt-get install --yes gcc-multilib # Will remove some of the previously installed packages, so ARM builds have to be finished here
-  - echo "Building linux 32bit"
-  - make clean; make pihole-FTL CC="gcc -m32" LDIR="/usr/lib32/"
-  - mv pihole-FTL pihole-FTL-linux-x86_32
-  - sudo apt-get install --yes gcc-multilib
-  - file pihole-FTL-* > file_versions
-  - sha1sum pihole-FTL-* > sha1sum
-  - cat sha1sum
-  - cat file_versions
-
+- make pihole-FTL CC="${BUILD_CC}" CFLAGS="${CFLAGS}"
+- file pihole-FTL
+- mv pihole-FTL "${DEST_DIR}/${BIN_NAME}"
+- cd "${DEST_DIR}"
+- sha1sum pihole-FTL-* > ${BIN_NAME}.sha1
+- ls -lah "${DEST_DIR}"
 deploy:
   skip_cleanup: true
   provider: releases
   api_key:
-    secure: kLStmUXL42p5XTDfNOFxFkP6V6wqTzhrv9BB1JwJZHCsTmdgUX5JVzCSqMC8nE4kWQqDPJox36LPbTtQ9T9cFEEZSy84e7cWlTvXfpPrVb9PmeIjUqI3OukSbuXocazCsPDEJ8DPOkqGU32cxqoufQWErAzweMLojIaZqE5qzrNDZ0G8U4OcnL8K62bYKesQ3Jl/aQnPGoD3N+HLeUOtjXGjNUr7pTM6WlmhAX2spMK4qYV/Thef70fMVc3wj6P0/bdTQiqT9dnLgc8TR2Z0qWoAaksmfC3sDGpTjTf99Gz1adUyKkOa4EvKE+XGlE8pIR5aPFJ3aL6U5xRUIpXcB/QGWYiHdd+lbWmMgZTSIJ3fknt+LKGEdsPvhHr93wsg3B3HG0h+XAwkYoX9tl0oQNgbL+eGgsPIdC1aR2kQdcsD0Ev4bGNcNOQTDNZKGdwojytCFvq/yVYhpLC58+vWuIoNhtqkUcZAWsZJ3wRHQIlC5+XjdV4nSfbZmR8efkOL/uYcLvmPgJrMf+XY0kvUB64qC7M9uihqu19TMkx5vqPuDrowaiWl5D9pZs6WtNxBWvIyHaqC3E5BOpgBT5U+THUDTQXR0pS7hantwgET37CNLDR+OxSrKoM5a2CRlH0C0/twk/fwdm6pMS7+siPCLrjc3QZc6XYIkpCd0BZHE8U=
-  file:
-  - sha1sum
-  - pihole-FTL-linux-x86_64
-  - pihole-FTL-linux-x86_32
-  - pihole-FTL-arm-linux-gnueabihf
-  - pihole-FTL-arm-linux-gnueabi
-  - pihole-FTL-aarch64-linux-gnu
-  - pihole-FTL-mips-linux-gnu
-  - pihole-FTL-mips64-linux-gnuabi64
+    secure: bfCffM3mjXQVjFW8e4qQeaidliDwkjpAEYEqPrU58Y1qpU4M0w5xqjI0mLPquUxzhP5RUTdiuM6UI7jtpNtz3k4L9XNXk7fJADaS+CgWcl1wagNeuHD8VZOZMG0vhzYNOKpLVXHXq+viKGemK20PIooIwpdZdyODhYE7enDJM2h43CHP5hQdBPN63Hx4mfo+d/HLx0OP4i01CdQhXGWA0krTbPOlYSx6hW0D1usEv+tBNCZhb4JhxfiAIjY7r07YokKxtRaJZunufCKBWIp5OUX5WOhbd3UQavB0+5knM4WafkzVmmjHTn/2TYymxID0wyQInf6gIgUNBBke5IeA3/cPVrSwy4vOzB7+2CoPGLBSG8NuQTMa8jfmeo3bz2QvXYwOxY3OrZoPVeo1tU+q441dIIdmeqP0fbW0sU8OLjkOq9ISSDmdhWwUTUeL6puoM4npZprLra284pzSNu4aC90oDN4YREF1UqOxdG3jb4suj9tXX8eQyLkyMvJ0SYVhqT7w+CmQWYlZ5rKV6FLv2PK5cWtVSDctTV9v9+8pwj+JkPe0Q1C1OtWTysVJP+QwI620E8fQG9Jve3hx0sedPg/2VrjG1Ketq3Dnpx5Q5gbnCEqcRkW/yDv1IxTBCjXHo9J0MGY29t5+b+nr8jAVqEPvgT7MyFEiixImtPX54u0=
+  file: "${DEST_DIR}/*"
+  file_glob: true
   on:
     repo: pi-hole/FTL
-  on:
     tags: true
