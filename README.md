@@ -27,11 +27,17 @@ Please see `LICENSE` file for your rights under this license.
 | OrangePi Zero | armbian Ubuntu 16.04 | ? | ? | ? |
 |  |  |  |  |  |
 
-If you want to add a new device, open an issue or create a PR for the README. You can get your CPU architecture by running `lscpu`.
+If your device is not listed you can get your CPU architecture by running `lscpu`. Download some binaries and try which one work. If you want to add a new device, open an issue or create a PR for the README.
 
 ---
 
 ### How to test FTL?
+
+1. Download the suitable binary (look at the table above
+2. Make it executable (`chmod u+x phole-FTL*`)
+3. Run it (`./pihole-FTL*`)
+
+### How to compile FTL from source?
 
 1. Clone the repo
 2. `make`

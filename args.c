@@ -9,6 +9,7 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
+#include "version.h"
 
 bool debug = false;
 void parse_args(int argc, char* argv[])
@@ -19,6 +20,11 @@ void parse_args(int argc, char* argv[])
 			debug = true;
 		if(strcmp(argv[i], "test") == 0)
 			killed = 1;
+		if(strcmp(argv[i], "version") == 0)
+		{
+			printf("%s\n",GIT_VERSION);
+			exit(0);
+		}
 		// Other arguments are ignored
 	}
 }

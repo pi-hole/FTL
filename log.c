@@ -15,7 +15,7 @@ void open_FTL_log(void)
 	// Open a log file in write mode.
 	if((logfile = fopen(FTLfiles.log, "a+")) == NULL) {;
 		printf("FATAL: Opening of FTL log (%s) failed!\n",FTLfiles.log);
-		printf("       Make sure it exists and is writable using\n");
+		printf("       Make sure it exists\n");
 		// Return failure in exit status
 		exit(1);
 	}
