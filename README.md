@@ -131,7 +131,7 @@ PTR: 12
 SRV: 0
 ```
 
-- `>getallqueries` : get all queries that FTL has in its database
+- `>getallqueries X` : get all queries that FTL has in its database if used with X being the number of queries you would like to limit to ie: `getallqueries 10` will show the last 10 logged queries
  ```
 1483964292 IPv4 apis.google.com 1.2.3.4 3
 1483964293 IPv4 clients5.google.com 1.2.3.4 2
@@ -166,7 +166,7 @@ SRV: 0
 1483964333 IPv4 www.linguee.de 2.3.4.5 2
 ```
 
-- `>recentBlocked` : get most recently pi-holed domain name
+- `>recentBlocked (X)` : get most recently pi-holed domain name when used with X returns the number of blocked queries specified by X
  ```
 www.googleadservices.com
 ```
