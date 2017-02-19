@@ -99,6 +99,7 @@ ads_percentage_today 1.396606
 5 96 plus.google.com
 [...]
 ```
+ Variant: `>top-domains (15)` to show (up to) 15 entries
 
 - `>top-ads` : get top ad domains
  ```
@@ -110,6 +111,7 @@ ads_percentage_today 1.396606
 5 1 s.zkcdn.net
 [...]
 ```
+ Variant: `>top-ads (14)` to show (up to) 14 entries
 
 - `top-clients` : get top clients (IP addresses + host names (if available))
  ```
@@ -117,6 +119,7 @@ ads_percentage_today 1.396606
 1 484 192.168.2.2 work-machine
 2 8 127.0.0.1 localhost
 ```
+ Variant: `>top-clients (9)` to show (up to) 9 client entries
 
 - `>forward-dest` : get forward destinations (IP addresses + host names (if available))
  ```
@@ -124,7 +127,7 @@ ads_percentage_today 1.396606
 1 629 5.6.7.8 some.other.dns.com
 ```
 
-- `>querytypes` : get query types
+- `>querytypes` : get collected query types
  ```
 A (IPv4): 7729
 AAAA (IPv6): 5880
@@ -144,6 +147,8 @@ SRV: 0
 1483964312 IPv4 www.gstatic.com 2.3.4.5 2
 1483964333 IPv4 www.linguee.de 2.3.4.5 2
 ```
+ Variant: `>getallqueries (37)` show (up to) 37 latest entries
+
 
 - `>getallqueries-time 1483964295 1483964312` : get all queries that FTL has in its database in a limited time interval
  ```
@@ -153,11 +158,13 @@ SRV: 0
 1483964302 IPv4 www.googleadservices.com 2.3.4.5 1
 1483964312 IPv4 www.gstatic.com 2.3.4.5 2
 ```
+ Variant: `>getallqueries-time 1483964295 1483964312 (17)` show matches in the (up to) 17 latest entries. Note that this does not necessarily mean that 15 entries will be returned
 
 - `>getallqueries-domain www.google.com` : get all queries that FTL has in its database for a specific domain name
  ```
 1483964299 IPv4 www.google.com 2.3.4.5 2
 ```
+ Variant: `>getallqueries-domain www.google.com (15)` (see notes above)
 
 - `>getallqueries-client 2.3.4.5` : get all queries that FTL has in its database for a specific client name *or* IP
  ```
@@ -166,8 +173,10 @@ SRV: 0
 1483964312 IPv4 www.gstatic.com 2.3.4.5 2
 1483964333 IPv4 www.linguee.de 2.3.4.5 2
 ```
+ Variant: `>getallqueries-client 2.3.4.5 (12)` (see notes above)
 
 - `>recentBlocked` : get most recently pi-holed domain name
  ```
 www.googleadservices.com
 ```
+ Variant: `>recentBlocked (4)` show the four most recent vlocked domains
