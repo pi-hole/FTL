@@ -21,6 +21,7 @@ Please see `LICENSE` file for your rights under this license.
 | Raspberry Pi 1 | Raspbian Jessie | armv6 | `arm-linux-gnueabi` | [@DL6ER](https://github.com/dl6er) |
 | Raspberry Pi 2 | Raspbian Jessie | armv7l | `arm-linux-gnueabihf` and `arm-linux-gnuabi` | [@TechnicalPyro](https://github.com/technicalpyro) |
 | Raspberry Pi 3 | Raspbian Jessie | armv7l | `arm-linux-gnuabi` and `arm-linux-gnueabihf` | [@DL6ER](https://github.com/dl6er) |
+| Raspberry Pi 3 | openSUSE | aarch64 | `aarch64-linux-gnu` | [@DL6ER](https://github.com/dl6er) |
 | NanoPi NEO | armbian Ubuntu 16.04 | armv7l | `arm-linux-gnueabihf` | [@DL6ER](https://github.com/dl6er) |
 | Odroid-C2 | Ubuntu 16.04 | aarch64 | `aarch64-linux-gnu` | [@DanSchaper](https://github.com/dschaper) |
 | C.H.I.P | Debian | armv7l | `arm-linux-gnueabihf` | [@Promofaux](https://github.com/promofaux) |
