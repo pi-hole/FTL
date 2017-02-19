@@ -59,7 +59,7 @@ void process_request(void)
 		bool blocked = command(">top-ads");
 
 		// Match both top-domains and top-ads
-		if(sscanf(socketrecvbuffer, ">top-%*[^ ] %i", &num) > 0)
+		if(sscanf(socketrecvbuffer, ">%*[^(](%i)", &num) > 0)
 		{
 			// User wants a different number of requests
 			count = num;
@@ -141,7 +141,7 @@ void process_request(void)
 	{
 		int i, temparray[counters.clients][2], count=10, num;
 
-		if(sscanf(socketrecvbuffer, ">top-clients %i", &num) > 0)
+		if(sscanf(socketrecvbuffer, ">%*[^(](%i)", &num) > 0)
 		{
 			// User wants a different number of requests
 			count = num;
@@ -374,7 +374,7 @@ void process_request(void)
 	{
 		int i, num=1;
 		// Test for integer that specifies number of entries to be shown
-		if(sscanf(socketrecvbuffer, ">%*[^ ] %i)", &num) > 0)
+		if(sscanf(socketrecvbuffer, ">%*[^(](%i)", &num) > 0)
 		{
 			// User wants a different number of requests
 			if(num >= counters.queries)
