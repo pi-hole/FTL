@@ -23,7 +23,7 @@ GIT_DATE := $(shell git --no-pager show --date=short --format="%ai" --name-only 
 # -pie -fPIE: For ASLR
 CC=gcc
 HARDENING_FLAGS=-fstack-protector -D_FORTIFY_SOURCE=2 -O3 -Wl,-z,relro,-z,now -pie -fPIE
-CFLAGS=-I$(IDIR) -Wall -g2 $(HARDENING_FLAGS)
+CCFLAGS=-I$(IDIR) -Wall -g2 $(HARDENING_FLAGS) $(CFLAGS)
 LIBS=-rdynamic
 
 ODIR =obj
@@ -35,10 +35,10 @@ _DEPS = $(patsubst %,$(IDIR)/%,$(DEPS))
 _OBJ = $(patsubst %,$(ODIR)/%,$(OBJ))
 
 $(ODIR)/%.o: %.c $(_DEPS)
-	$(CC) -c -o $@ $< $(CFLAGS)
+	$(CC) -c -o $@ $< $(CCFLAGS)
 
 pihole-FTL: $(_OBJ)
-	$(CC) -v $(CFLAGS) -o $@ $^ $(LIBS)
+	$(CC) -v $(CCFLAGS) -o $@ $^ $(LIBS)
 
 .PHONY: clean force install
 
