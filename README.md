@@ -17,7 +17,7 @@ Please see `LICENSE` file for your rights under this license.
 | Board | Tested OS | CPU architecture | Suitable binaries | Tested by |
 |---|---|---|---|---|
 | VirtualBox | Ubuntu 16.10 | amd64 | `linux-x86_64` | [@DL6ER](https://github.com/dl6er) |
-| Raspberry Pi Zero | Raspbian Jessie | armv6 | `arm-linux-gnueabi` | [@DanSchaper](https://github.com/dschaper) |
+| Raspberry Pi Zero | Raspbian Jessie | armv6l | `arm-linux-gnueabi` | [@DanSchaper](https://github.com/dschaper) |
 | Raspberry Pi 1 | Raspbian Jessie | armv6 | `arm-linux-gnueabi` | [@DL6ER](https://github.com/dl6er) |
 | Raspberry Pi 2 | Raspbian Jessie | armv7l | `arm-linux-gnueabihf` and `arm-linux-gnuabi` | [@TechnicalPyro](https://github.com/technicalpyro) |
 | Raspberry Pi 3 | Raspbian Jessie | armv7l | `arm-linux-gnuabi` and `arm-linux-gnueabihf` | [@DL6ER](https://github.com/dl6er) |
