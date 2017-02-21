@@ -74,6 +74,8 @@ int main (int argc, char* argv[]) {
 			listen_socket();
 		}
 
+		// sleepms(50);
+
 		// Read new data not earlier than 50 msec
 		// after they have been discovered
 		if(timer_elapsed_msec() > 50)

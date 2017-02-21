@@ -109,10 +109,10 @@ float timer_elapsed_msec(void)
 
 void sleepms(int milliseconds)
 {
-	struct timespec ts;
-	ts.tv_sec = milliseconds / 1000;
-	ts.tv_nsec = (milliseconds % 1000) * 1000000;
-	nanosleep(&ts, NULL);
+	struct timeval tv;
+	tv.tv_sec = milliseconds / 1000;
+	tv.tv_usec = (milliseconds % 1000) * 1000;
+	select(0, NULL, NULL, NULL, &tv);
 }
 
 void savepid(pid_t sid)
