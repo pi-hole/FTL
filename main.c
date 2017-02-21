@@ -62,6 +62,7 @@ int main (int argc, char* argv[]) {
 		{
 			clientconnected = true;
 			read_socket();
+			sleepms(5);
 		}
 		else if(clientconnected)
 		{
@@ -73,8 +74,6 @@ int main (int argc, char* argv[]) {
 		{
 			listen_socket();
 		}
-
-		// sleepms(50);
 
 		// Read new data not earlier than 50 msec
 		// after they have been discovered
