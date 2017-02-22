@@ -25,6 +25,11 @@ void parse_args(int argc, char* argv[])
 			printf("%s\n",GIT_VERSION);
 			exit(0);
 		}
+		if(strcmp(argv[i], "tag") == 0)
+		{
+			printf("%s\n",GIT_TAG);
+			exit(0);
+		}
 		// Other arguments are ignored
 	}
 }

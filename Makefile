@@ -15,6 +15,7 @@ OBJ = main.o structs.o log.o daemon.o parser.o signals.o socket.o request.o grep
 GIT_BRANCH := $(shell git branch | sed -n 's/^\* //p')
 GIT_VERSION := $(shell git --no-pager describe --tags --always --dirty)
 GIT_DATE := $(shell git --no-pager show --date=short --format="%ai" --name-only | head -n 1)
+GIT_TAG := $(shell git describe --tags --abbrev=0)
 
 # -fstack-protector: The program will be resistant to having its stack overflowed
 # -D_FORTIFY_SOURCE=2 and -O1 or higher: This causes certain unsafe glibc functions zo be replaced with their safer counterparts
@@ -47,11 +48,12 @@ clean:
 
 # recreate version.h when GIT_VERSION changes, uses temporary file version~
 version~: force
-	@echo '$(GIT_BRANCH) $(GIT_VERSION) $(GIT_DATE)' | cmp -s - $@ || echo '$(GIT_BRANCH) $(GIT_VERSION) $(GIT_DATE)' > $@
+	@echo '$(GIT_BRANCH) $(GIT_VERSION) $(GIT_DATE) $(GIT_TAG)' | cmp -s - $@ || echo '$(GIT_BRANCH) $(GIT_VERSION) $(GIT_DATE) $(GIT_TAG)' > $@
 version.h: version~
 	@echo '#define GIT_VERSION "$(GIT_VERSION)"' > "$@"
 	@echo '#define GIT_DATE "$(GIT_DATE)"' >> "$@"
 	@echo '#define GIT_BRANCH "$(GIT_BRANCH)"' >> "$@"
+	@echo '#define GIT_TAG "$(GIT_TAG)"' >> "$@"
 	@echo "Making FTL version on branch $(GIT_BRANCH) - $(GIT_VERSION) ($(GIT_DATE))"
 
 prefix=/usr/local
