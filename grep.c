@@ -10,6 +10,10 @@
 
 #include "FTL.h"
 
+void readWildcardsList();
+
+char ** wildcarddomains = NULL;
+
 void read_gravity_files(void)
 {
 	// Get number of domains being blocked
@@ -34,6 +38,17 @@ void read_gravity_files(void)
 	}
 
 	counters.gravity = gravity;
+
+	// Read array of wildcards
+	readWildcardsList();
+	if(counters.wildcards > 0)
+	{
+		logg_int("Wildcard blocking list entries: ", counters.wildcards);
+	}
+	else
+	{
+		logg("No wildcard blocking list present");
+	}
 }
 
 int countlines(const char* fname)
@@ -54,6 +69,71 @@ int countlines(const char* fname)
 	fclose(fp);
 
 	return lines;
+}
+
+void readWildcardsList()
+{
+	FILE *fp;
+	char *buffer, *domain;
+	char linebuffer[512];
+	int addrbuffer, i;
+	bool known;
+
+	if((fp = fopen(files.wildcards, "r")) == NULL) {
+		counters.wildcards = -1;
+		return;
+	}
+
+	// Search through file
+	while(fgets(linebuffer, 511, fp))
+	{
+		buffer = calloc(512,sizeof(char*));
+		addrbuffer = 0;
+		known = false;
+		// Try to read up to 511 characters
+		if(sscanf(linebuffer, "address=/%511[^/]/%*[^\n]\n", buffer) > 0)
+		{
+			// Skip leading '.' by incrementing memory location step by step until the first
+			// character is not a '.' anymore
+			while(*(buffer+addrbuffer) == '.' && addrbuffer < strlen(buffer)) addrbuffer++;
+			if(strlen(buffer+addrbuffer) == 0)
+			{
+				logg_str("WARNING: Invalid wildcard list entry found: ",buffer);
+			}
+			else
+			{
+				// Get pointer to string with stripped leading '.'
+				domain = buffer+addrbuffer;
+				for(i=0; i < counters.wildcards; i++)
+				{
+					if(strcmp(wildcarddomains[i], domain) == 0)
+					{
+						// We know this domain already, let's skip it
+						known = true;
+						break;
+					}
+				}
+				if(known) continue;
+				// Add wildcard entry
+				// Enlarge wildcarddomains pointer array
+				wildcarddomains = realloc(wildcarddomains, (counters.wildcards+1)*sizeof(*wildcarddomains));
+				// Allocate space for new domain entry and save domain
+				wildcarddomains[counters.wildcards] = calloc(strlen(domain)+1,sizeof(char));
+				strcpy(wildcarddomains[counters.wildcards], domain);
+
+				// Increase number of stored wildcards by one
+				counters.wildcards++;
+			}
+		}
+		free(buffer);
+		buffer = NULL;
+	}
+
+	// Close the file
+	if(fp) {
+		fclose(fp);
+	}
+
 }
 
 // int countlineswith(const char* str, const char* fname)

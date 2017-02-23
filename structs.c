@@ -21,7 +21,8 @@ logFileNamesStruct files = {
 	"/etc/pihole/list.preEventHorizon",
 	"/etc/pihole/whitelist.txt",
 	"/etc/pihole/blacklist.txt",
-	"/etc/pihole/setupVars.conf"
+	"/etc/pihole/setupVars.conf",
+	"/etc/dnsmasq.d/03-pihole-wildcard.conf"
 };
 
 countersStruct counters = { 0 };

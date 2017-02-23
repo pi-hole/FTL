@@ -51,6 +51,8 @@ void pihole_log_flushed(void)
 	clients = NULL;
 	free(domains);
 	domains = NULL;
+	free(wildcarddomains);
+	wildcarddomains = NULL;
 
 	// Reset all counters to zero
 	memset(&counters, 0, sizeof(countersStruct));
@@ -199,7 +201,7 @@ void process_pihole_log(void)
 						// wildcard blocking?
 						else if((strstr(readbuffer2,"config ") != NULL))
 						{
-							status = 4;
+							status = detectStatus(domain);
 							break;
 						}
 					}
@@ -438,4 +440,10 @@ char *resolveHostname(char *addr)
 	}
 
 	return hostname;
+}
+
+int detectStatus(char *domain)
+{
+	// Try to find
+	return 4;
 }

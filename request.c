@@ -355,13 +355,16 @@ void process_request(void)
 			}
 
 			if(!privacymode)
+			{
 				if(strlen(clients[queries[i].clientID].name) > 0)
 					sprintf(socketsendbuffer,"%i %s %s %s %i\n",queries[i].timestamp,type,domains[queries[i].domainID].domain,clients[queries[i].clientID].name,queries[i].status);
 				else
 					sprintf(socketsendbuffer,"%i %s %s %s %i\n",queries[i].timestamp,type,domains[queries[i].domainID].domain,clients[queries[i].clientID].ip,queries[i].status);
-
+			}
 			else
+			{
 				sprintf(socketsendbuffer,"%i %s %s hidden %i\n",queries[i].timestamp,type,domains[queries[i].domainID].domain,queries[i].status);
+			}
 			swrite();
 		}
 

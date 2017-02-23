@@ -60,6 +60,7 @@ typedef struct {
 	const char* whitelist;
 	const char* blacklist;
 	const char* setupVars;
+	const char* wildcards;
 } logFileNamesStruct;
 
 typedef struct {
@@ -81,6 +82,7 @@ typedef struct {
 	int IPv6;
 	int PTR;
 	int SRV;
+	int wildcards;
 } countersStruct;
 
 // Dynamic structs
@@ -143,3 +145,5 @@ int setupVarsElements;
 
 bool initialscan;
 bool debug;
+
+char ** wildcarddomains;
