@@ -32,15 +32,15 @@ int main (int argc, char* argv[]) {
 
 	init_socket();
 
+	read_gravity_files();
+	// logg_int("Number of domains being blocked: ",counters.gravity);
+
 	logg("Starting initial log file scan");
 	initialscan = true;
 	process_pihole_log();
 	initialscan = false;
 	logg("Finished initial log file scan:");
 	log_counter_info();
-
-	read_gravity_files();
-	logg_int("Number of domains being blocked: ",counters.gravity);
 	check_setupVarsconf();
 
 	bool clientconnected = false;

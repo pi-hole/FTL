@@ -244,7 +244,7 @@ void process_pihole_log(void)
 						i = 0;
 						fseek(dnsmasqlog, fpos, SEEK_SET);
 						firsttime = false;
-						nanosleep((const struct timespec[]){{0, 100000000L}}, NULL);
+						sleepms(100);
 					}
 					else
 					{
@@ -473,6 +473,37 @@ char *resolveHostname(char *addr)
 
 int detectStatus(char *domain)
 {
-	// Try to find
-	return 4;
+	// Try to find the domain in the array of wildcard blocked domains
+	int i;
+	char part[strlen(domain)],partbuffer[strlen(domain)];
+	for(i=0; i < counters.wildcarddomains; i++)
+	{
+		if(strcmp(wildcarddomains[i], domain) == 0)
+		{
+			// Exact match with wildcard domain
+			// if(debug)
+			// 	printf("%s / %s (exact wildcard match)\n",wildcarddomains[i], domain);
+			return 4;
+		}
+		// Create copy of domain under investigation
+		strcpy(part,domain);
+		while(sscanf(part,"%*[^.].%s",partbuffer) > 0)
+		{
+			if(strcmp(wildcarddomains[i], partbuffer) == 0)
+			{
+				// Return match with wildcard domain
+				// if(debug)
+				// 	printf("%s / %s (wildcard match)\n",wildcarddomains[i], partbuffer);
+				return 4;
+			}
+			if(strlen(partbuffer) > 0)
+				strcpy(part, partbuffer);
+		}
+	}
+
+	// If not found -> this answer is not from
+	// wildcard blocking, but from e.g. an
+	// address=// configuration
+	// Answer as "cached"
+	return 3;
 }
