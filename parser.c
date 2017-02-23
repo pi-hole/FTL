@@ -42,15 +42,44 @@ void pihole_log_flushed(void)
 	logg("NOTICE: pihole.log has been flushed");
 	logg("  Resetting internal data structure");
 
+	int i;
+
 	// Free memory on allocated data structure
+	// queries struct: No allocated entries
 	free(queries);
 	queries = NULL;
+
+	// forwarded struct: Free allocated substructure
+	for(i=0;i<counters.forwarded;i++)
+	{
+		free(forwarded[i].ip);
+		free(forwarded[i].name);
+	}
 	free(forwarded);
 	forwarded = NULL;
+
+	// clients struct: Free allocated substructure
+	for(i=0;i<counters.clients;i++)
+	{
+		free(clients[i].ip);
+		free(clients[i].name);
+	}
 	free(clients);
 	clients = NULL;
+
+	// domains struct: Free allocated substructure
+	for(i=0;i<counters.domains;i++)
+	{
+		free(domains[i].domain);
+	}
 	free(domains);
 	domains = NULL;
+
+	// wildcarddomains struct: Free allocated substructure
+	for(i=0;i<counters.wildcarddomains;i++)
+	{
+		free(wildcarddomains[i]);
+	}
 	free(wildcarddomains);
 	wildcarddomains = NULL;
 

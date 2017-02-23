@@ -82,7 +82,7 @@ typedef struct {
 	int IPv6;
 	int PTR;
 	int SRV;
-	int wildcards;
+	int wildcarddomains;
 } countersStruct;
 
 // Dynamic structs

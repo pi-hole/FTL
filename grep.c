@@ -41,9 +41,9 @@ void read_gravity_files(void)
 
 	// Read array of wildcards
 	readWildcardsList();
-	if(counters.wildcards > 0)
+	if(counters.wildcarddomains > 0)
 	{
-		logg_int("Wildcard blocking list entries: ", counters.wildcards);
+		logg_int("Wildcard blocking list entries: ", counters.wildcarddomains);
 	}
 	else
 	{
@@ -80,7 +80,7 @@ void readWildcardsList()
 	bool known;
 
 	if((fp = fopen(files.wildcards, "r")) == NULL) {
-		counters.wildcards = -1;
+		counters.wildcarddomains = -1;
 		return;
 	}
 
@@ -104,7 +104,7 @@ void readWildcardsList()
 			{
 				// Get pointer to string with stripped leading '.'
 				domain = buffer+addrbuffer;
-				for(i=0; i < counters.wildcards; i++)
+				for(i=0; i < counters.wildcarddomains; i++)
 				{
 					if(strcmp(wildcarddomains[i], domain) == 0)
 					{
@@ -116,13 +116,13 @@ void readWildcardsList()
 				if(known) continue;
 				// Add wildcard entry
 				// Enlarge wildcarddomains pointer array
-				wildcarddomains = realloc(wildcarddomains, (counters.wildcards+1)*sizeof(*wildcarddomains));
+				wildcarddomains = realloc(wildcarddomains, (counters.wildcarddomains+1)*sizeof(*wildcarddomains));
 				// Allocate space for new domain entry and save domain
-				wildcarddomains[counters.wildcards] = calloc(strlen(domain)+1,sizeof(char));
-				strcpy(wildcarddomains[counters.wildcards], domain);
+				wildcarddomains[counters.wildcarddomains] = calloc(strlen(domain)+1,sizeof(char));
+				strcpy(wildcarddomains[counters.wildcarddomains], domain);
 
 				// Increase number of stored wildcards by one
-				counters.wildcards++;
+				counters.wildcarddomains++;
 			}
 		}
 		free(buffer);
