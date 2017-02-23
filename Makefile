@@ -56,7 +56,7 @@ version.h: version~
 	@echo '#define GIT_TAG "$(GIT_TAG)"' >> "$@"
 	@echo "Making FTL version on branch $(GIT_BRANCH) - $(GIT_VERSION) ($(GIT_DATE))"
 
-prefix=/usr/local
+prefix=/usr
 
 install: pihole-FTL
 	install -m 0755 pihole-FTL $(prefix)/bin

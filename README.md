@@ -34,9 +34,21 @@ If your device is not listed you can get your CPU architecture by running `lscpu
 
 ### How to test FTL?
 
-1. Download the suitable binary (look at the table above
-2. Make it executable (`chmod u+x pihole-FTL*`)
-3. Run it (`./pihole-FTL*`)
+1. Download the suitable binary (look at the table above)
+2. Make FTL executable
+3. Rename the executable
+4. Install FTL
+5. Ensure proper permissions are set
+
+Steps 2-5:
+
+```
+chmod u+x pihole-FTL*
+mv pihole-FTL* pihole-FTL
+sudo install -m 0755 pihole-FTL /usr/bin
+sudo touch /var/log/pihole-FTL.log /var/run/pihole-FTL.pid /var/run/pihole-FTL.port
+sudo chmod 0666 /var/log/pihole-FTL.log /var/run/pihole-FTL.pid /var/run/pihole-FTL.port
+```
 
 ### How to compile FTL from source?
 
