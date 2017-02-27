@@ -76,8 +76,7 @@ void readWildcardsList()
 	FILE *fp;
 	char *buffer, *domain;
 	char linebuffer[512];
-	int addrbuffer, i;
-	bool known;
+	int i;
 
 	if((fp = fopen(files.wildcards, "r")) == NULL) {
 		counters.wildcarddomains = -1;
@@ -87,9 +86,9 @@ void readWildcardsList()
 	// Search through file
 	while(fgets(linebuffer, 511, fp))
 	{
-		buffer = calloc(512,sizeof(char*));
-		addrbuffer = 0;
-		known = false;
+		buffer = calloc(512,sizeof(char));
+		int addrbuffer = 0;
+		bool known = false;
 		// Try to read up to 511 characters
 		if(sscanf(linebuffer, "address=/%511[^/]/%*[^\n]\n", buffer) > 0)
 		{
@@ -130,9 +129,7 @@ void readWildcardsList()
 	}
 
 	// Close the file
-	if(fp) {
-		fclose(fp);
-	}
+	fclose(fp);
 
 }
 
