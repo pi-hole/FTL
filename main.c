@@ -33,7 +33,6 @@ int main (int argc, char* argv[]) {
 	init_socket();
 
 	read_gravity_files();
-	// logg_int("Number of domains being blocked: ",counters.gravity);
 
 	logg("Starting initial log file scan");
 	initialscan = true;

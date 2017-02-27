@@ -38,7 +38,7 @@ void process_request(void)
 	{
 		int i;
 		bool sendit = false;
-		for(i=0; i < counters.overtime; i++)
+		for(i=0; i < counters.overTime; i++)
 		{
 			if((overTime[i].total > 0 || overTime[i].blocked > 0) && !sendit)
 			{
@@ -46,7 +46,7 @@ void process_request(void)
 			}
 			if(sendit)
 			{
-				sprintf(socketsendbuffer,"%i %i %i\n",i,overTime[i].total,overTime[i].blocked);
+				sprintf(socketsendbuffer,"%i %i %i\n",overTime[i].timestamp,overTime[i].total,overTime[i].blocked);
 				swrite();
 			}
 		}

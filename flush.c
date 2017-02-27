@@ -56,10 +56,13 @@ void pihole_log_flushed(void)
 	free(wildcarddomains);
 	wildcarddomains = NULL;
 
+	// Free memory on allocated data structure
+	// overTime struct: No allocated entries
+	free(overTime);
+	overTime = NULL;
+
 	// Reset all counters to zero
 	memset(&counters, 0, sizeof(countersStruct));
-	// Reset over Time data
-	memset(&overTime, 0, 600*sizeof(overTimeDataStruct));
 
 	// Update file pointer position
 	dnsmasqlogpos = ftell(dnsmasqlog);

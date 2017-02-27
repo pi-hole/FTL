@@ -62,7 +62,7 @@ void process_pihole_log(void)
 			time(&rawtime);
 			timeinfo = localtime (&rawtime);
 			// Interpret dnsmasq timestamp
-			struct tm querytime;
+			struct tm querytime = { 0 }, overTimeTM = { 0 };
 			// Expected format: Mmm dd hh:mm:ss
 			// %b = Abbreviated month name
 			// %e = Day of the month, space-padded ( 1-31)
@@ -73,11 +73,31 @@ void process_pihole_log(void)
 			// Year is missing in dnsmasq's output - add the current year
 			querytime.tm_year = (*timeinfo).tm_year;
 
-			// Prepare index for ater overTime counting
-			int timeidx = (querytime.tm_min - querytime.tm_min%10)/10 + 6*querytime.tm_hour;
-			if(timeidx > counters.overtime)
+			// Prepare overTime data
+			overTimeTM = querytime;
+			overTimeTM.tm_min = querytime.tm_min - (querytime.tm_min%10);
+			overTimeTM.tm_sec = 0;
+
+			int timeidx;
+			int overTimeUNIXstamp = (int)mktime(&overTimeTM);
+			bool found = false;
+			for(i=0; i < counters.overTime; i++)
 			{
-				counters.overtime = timeidx;
+				if(overTime[i].timestamp == overTimeUNIXstamp)
+				{
+					found = true;
+					timeidx = i;
+					break;
+				}
+			}
+			if(!found)
+			{
+				memory_check(OVERTIME);
+				timeidx = counters.overTime;
+				overTime[counters.overTime].timestamp = overTimeUNIXstamp;
+				overTime[counters.overTime].total = 0;
+				overTime[counters.overTime].blocked = 0;
+				counters.overTime++;
 			}
 
 			// Get domain

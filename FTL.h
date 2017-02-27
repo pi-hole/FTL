@@ -44,6 +44,7 @@
 #define FORWARDEDALLOCSTEP 4
 #define CLIENTSALLOCSTEP 20
 #define DOMAINSALLOCSTEP 1000
+#define OVERTIMEALLOCSTEP 100
 
 #define SOCKETBUFFERLEN 1024
 
@@ -76,8 +77,9 @@ typedef struct {
 	int forwarded_MAX;
 	int clients_MAX;
 	int domains_MAX;
+	int overTime_MAX;
 	int gravity;
-	int overtime;
+	int overTime;
 	int IPv4;
 	int IPv6;
 	int PTR;
@@ -114,11 +116,12 @@ typedef struct {
 } domainsDataStruct;
 
 typedef struct {
+	int timestamp;
 	int total;
 	int blocked;
 } overTimeDataStruct;
 
-enum { QUERIES, FORWARDED, CLIENTS, DOMAINS };
+enum { QUERIES, FORWARDED, CLIENTS, DOMAINS, OVERTIME };
 
 logFileNamesStruct files;
 FTLFileNamesStruct FTLfiles;
@@ -128,8 +131,7 @@ queriesDataStruct *queries;
 forwardedDataStruct *forwarded;
 clientsDataStruct *clients;
 domainsDataStruct *domains;
-
-overTimeDataStruct overTime[600];
+overTimeDataStruct *overTime;
 
 FILE *logfile;
 FILE *dnsmasqlog;

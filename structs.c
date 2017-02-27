@@ -27,8 +27,6 @@ logFileNamesStruct files = {
 
 countersStruct counters = { 0 };
 
-overTimeDataStruct overTime[600] = {{ 0, 0 }};
-
 void memory_check(int which)
 {
 	switch(which)
@@ -89,6 +87,21 @@ void memory_check(int which)
 				{
 					logg("FATAL: Memory allocation failed! Exiting");
 					free(domains);
+					exit(EXIT_FAILURE);
+				}
+			}
+		break;
+		case OVERTIME:
+			if(counters.overTime >= counters.overTime_MAX)
+			{
+				// Have to reallocate memory
+				logg_struct_resize("overTime",counters.overTime_MAX,counters.overTime_MAX+OVERTIMEALLOCSTEP);
+				counters.overTime_MAX += OVERTIMEALLOCSTEP;
+				overTime = realloc(overTime, counters.overTime_MAX*sizeof(*overTime));
+				if(overTime == NULL)
+				{
+					logg("FATAL: Memory allocation failed! Exiting");
+					free(overTime);
 					exit(EXIT_FAILURE);
 				}
 			}
