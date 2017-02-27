@@ -62,7 +62,7 @@ void process_pihole_log(void)
 			time(&rawtime);
 			timeinfo = localtime (&rawtime);
 			// Interpret dnsmasq timestamp
-			struct tm querytime = { 0 }, overTimeTM = { 0 };
+			struct tm querytime = { 0 };
 			// Expected format: Mmm dd hh:mm:ss
 			// %b = Abbreviated month name
 			// %e = Day of the month, space-padded ( 1-31)
@@ -72,14 +72,15 @@ void process_pihole_log(void)
 			strptime(timestamp, "%b %e %H:%M:%S", &querytime);
 			// Year is missing in dnsmasq's output - add the current year
 			querytime.tm_year = (*timeinfo).tm_year;
+			int querytimestamp = (int)mktime(&querytime);
 
-			// Prepare overTime data
-			overTimeTM = querytime;
-			overTimeTM.tm_min = querytime.tm_min - (querytime.tm_min%10);
-			overTimeTM.tm_sec = 0;
+			// Now, we modify the minutes (and seconds), but that is fine, since
+			// we don't need the querytime anymore (querytimestamp is already set)
+			querytime.tm_min = querytime.tm_min - (querytime.tm_min%10) + 5;
+			querytime.tm_sec = 0;
 
 			int timeidx;
-			int overTimeUNIXstamp = (int)mktime(&overTimeTM);
+			int overTimeUNIXstamp = (int)mktime(&querytime);
 			bool found = false;
 			for(i=0; i < counters.overTime; i++)
 			{
@@ -289,7 +290,7 @@ void process_pihole_log(void)
 			}
 
 			// Save everything
-			queries[counters.queries].timestamp = (int)mktime(&querytime);
+			queries[counters.queries].timestamp = querytimestamp;
 			queries[counters.queries].type = type;
 			queries[counters.queries].status = status;
 			queries[counters.queries].domainID = domainID;
