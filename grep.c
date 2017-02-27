@@ -87,11 +87,10 @@ void readWildcardsList()
 	while(fgets(linebuffer, 511, fp))
 	{
 		buffer = calloc(512,sizeof(char));
-		int addrbuffer = 0;
-		bool known = false;
 		// Try to read up to 511 characters
 		if(sscanf(linebuffer, "address=/%511[^/]/%*[^\n]\n", buffer) > 0)
 		{
+			int addrbuffer = 0;
 			// Skip leading '.' by incrementing memory location step by step until the first
 			// character is not a '.' anymore
 			while(*(buffer+addrbuffer) == '.' && addrbuffer < strlen(buffer)) addrbuffer++;
@@ -101,6 +100,7 @@ void readWildcardsList()
 			}
 			else
 			{
+				bool known = false;
 				// Get pointer to string with stripped leading '.'
 				domain = buffer+addrbuffer;
 				for(i=0; i < counters.wildcarddomains; i++)
