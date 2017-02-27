@@ -9,7 +9,7 @@
 # Please see LICENSE file for your rights under this license.
 
 DEPS = FTL.h routines.h version.h
-OBJ = main.o structs.o log.o daemon.o parser.o signals.o socket.o request.o grep.o setupVars.o args.o
+OBJ = main.o structs.o log.o daemon.o parser.o signals.o socket.o request.o grep.o setupVars.o args.o flush.o
 
 # Get git commit version and date
 GIT_BRANCH := $(shell git branch | sed -n 's/^\* //p')
