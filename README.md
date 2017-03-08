@@ -34,11 +34,12 @@ If your device is not listed you can get your CPU architecture by running `lscpu
 
 ### How to test FTL?
 
-1. Download the suitable binary (look at the table above)
-2. Make FTL executable
-3. Rename the executable
-4. Install FTL
-5. Ensure proper permissions are set
+`FTL` is now part of the Pi-hole `development` branches.
+If you want to test it, check out the branches
+- `devel` in `/var/www/html/admin/`, and
+- `development` in `/etc/.pihole/`
+
+Don't forget to run `pihole -r` afterwards.
 
 Steps 2-5:
 
