@@ -12,12 +12,18 @@
 #include "version.h"
 
 bool debug = false;
+bool threaddebug = false;
 void parse_args(int argc, char* argv[])
 {
 	int i;
 	for(i=0; i < argc; i++) {
 		if(strcmp(argv[i], "debug") == 0)
 			debug = true;
+		if(strcmp(argv[i], "threaddebug") == 0)
+		{
+			debug = true;
+			threaddebug = true;
+		}
 		if(strcmp(argv[i], "test") == 0)
 			killed = 1;
 		if(strcmp(argv[i], "version") == 0)

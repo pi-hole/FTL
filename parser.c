@@ -43,16 +43,27 @@ void *pihole_log_thread(void *val)
 	{
 		int newdata = checkLogForChanges();
 
-		// Process new data if found
-		if(newdata > 0)
+		if(newdata != 0)
 		{
-			process_pihole_log();
-		}
-
-		// Process flushed log
-		else if(newdata < 0)
-		{
-			pihole_log_flushed();
+			// Lock FTL data structure, since it is likely that it will be changed here
+			// Requests should not be processed/answered when data is about to change
+			while(threadlock) sleepms(1);
+			if(debugthreads)
+				logg("Thread lock enabled  (pihole_log_thread)");
+			threadlock = true;
+			// Process new data if found
+			if(newdata > 0)
+			{
+				process_pihole_log();
+			}
+			// Process flushed log
+			else if(newdata < 0)
+			{
+				pihole_log_flushed();
+			}
+			threadlock = false;
+			if(debugthreads)
+				logg("Thread lock disabled (pihole_log_thread)");
 		}
 
 		sleepms(50);

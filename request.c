@@ -140,7 +140,12 @@ void process_request(char *client_message, int *sock)
 		if(excludedomains != NULL)
 			clearSetupVarsArray();
 		if(debug)
-			logg_int("Sent top lists data to client, ID: ", *sock);
+		{
+			if(blocked)
+				logg_int("Sent top ads list data to client, ID: ", *sock);
+			else
+				logg_int("Sent top domains list data to client, ID: ", *sock);
+		}
 	}
 	else if(command(client_message, ">top-clients"))
 	{
