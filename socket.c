@@ -123,19 +123,30 @@ int listen_socket(void)
 void *listenting_thread(void *args)
 {
 	int *newsock;
+	// We will use the attributes object later to start all threads in detached mode
+	pthread_attr_t attr;
+	// Initialize thread attributes object with default attribute values
+	pthread_attr_init(&attr);
+	// When a detached thread terminates, its resources are automatically released back to
+	// the system without the need for another thread to join with the terminated thread
+	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+
+	// Listen as long as FTL is not killed
 	while(!killed)
 	{
+		// Look for new clients that want to connect
 		int csck = listen_socket();
 
-		//
+		// Allocate memory used to transport client socket ID to client listening thread
 		newsock = calloc(1,sizeof(int));
 		*newsock = csck;
 
 		pthread_t connection_thread;
-		if(pthread_create( &connection_thread, NULL, connection_handler_thread, (void*) newsock ) != 0)
+		// Create a new thread
+		if(pthread_create( &connection_thread, &attr, connection_handler_thread, (void*) newsock ) != 0)
 		{
-			logg("Unable to open Pi-hole log processing thread. Exiting...");
-			killed = 1;
+			// Log the error code description
+			logg_str("WARNING: Unable to open clients processing thread, error: ", strerror(errno));
 		}
 	}
 	return 0;
