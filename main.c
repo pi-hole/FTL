@@ -43,18 +43,18 @@ int main (int argc, char* argv[]) {
 	check_setupVarsconf();
 
 	bool clientconnected = false;
-	bool waiting = false;
+
+	pthread_t piholelogthread;
+
+	if(pthread_create( &piholelogthread, NULL, &pihole_log_thread, NULL ) != 0)
+	{
+		logg("Unable to open Pi-hole log processing thread. Exiting...");
+		killed = 1;
+	}
 
 	while(!killed)
 	{
 		// Daemon loop
-		int newdata = checkLogForChanges();
-		if(newdata != 0 && !waiting)
-		{
-			waiting = true;
-			timer_start();
-		}
-
 		check_socket();
 
 		if (clientsocket > 0)
@@ -72,24 +72,6 @@ int main (int argc, char* argv[]) {
 		else
 		{
 			listen_socket();
-		}
-
-		// Read new data not earlier than 50 msec
-		// after they have been discovered
-		if(timer_elapsed_msec() > 50)
-		{
-			waiting = false;
-			// Process new data
-			if(newdata > 0)
-			{
-				process_pihole_log();
-			}
-
-			// Process flushed log
-			if(newdata < 0)
-			{
-				pihole_log_flushed();
-			}
 		}
 	}
 

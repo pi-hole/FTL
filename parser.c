@@ -37,6 +37,29 @@ void open_pihole_log(void)
 	}
 }
 
+void *pihole_log_thread(void *val)
+{
+	while(!killed)
+	{
+		int newdata = checkLogForChanges();
+
+		// Process new data if found
+		if(newdata > 0)
+		{
+			process_pihole_log();
+		}
+
+		// Process flushed log
+		else if(newdata < 0)
+		{
+			pihole_log_flushed();
+		}
+
+		sleepms(50);
+	}
+	return NULL;
+}
+
 void process_pihole_log(void)
 {
 	int i;

@@ -28,6 +28,7 @@
 // getnameinfo();
 #include <netdb.h>
 #include <errno.h>
+#include <pthread.h>
 
 #include "routines.h"
 
@@ -113,6 +114,7 @@ typedef struct {
 	int count;
 	int blockedcount;
 	char *domain;
+	bool wildcard;
 } domainsDataStruct;
 
 typedef struct {
