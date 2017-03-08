@@ -266,6 +266,8 @@ void process_pihole_log(void)
 				domains[domainID].count = 1;
 				// Set blocked counter to zero
 				domains[domainID].blockedcount = 0;
+				// Initialize wildcard blocking flag with false
+				domains[domainID].wildcard = false;
 				// Store domain name
 				domains[domainID].domain = calloc(strlen(domain)+1,sizeof(char));
 				strcpy(domains[domainID].domain, domain);
@@ -332,7 +334,7 @@ void process_pihole_log(void)
 				case 1: counters.blocked++; overTime[timeidx].blocked++; domains[domainID].blockedcount++; break;
 				case 2: break;
 				case 3: counters.cached++; break;
-				case 4: counters.wildcardblocked++; overTime[timeidx].blocked++; break;
+				case 4: counters.wildcardblocked++; overTime[timeidx].blocked++; domains[domainID].wildcard = true; break;
 				default: /* That cannot happen */ break;
 			}
 
