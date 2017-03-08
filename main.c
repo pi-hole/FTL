@@ -68,5 +68,5 @@ int main (int argc, char* argv[]) {
 //	close_sockets();
 	logg("########## FTL terminated! ##########");
 	fclose(logfile);
-	return 0;
+	return 1;
 }
