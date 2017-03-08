@@ -42,41 +42,30 @@ int main (int argc, char* argv[]) {
 	log_counter_info();
 	check_setupVarsconf();
 
-	bool clientconnected = false;
-
 	pthread_t piholelogthread;
-
-	if(pthread_create( &piholelogthread, NULL, &pihole_log_thread, NULL ) != 0)
+	if(pthread_create( &piholelogthread, NULL, pihole_log_thread, NULL ) != 0)
 	{
 		logg("Unable to open Pi-hole log processing thread. Exiting...");
 		killed = 1;
 	}
 
-	while(!killed)
+	pthread_t listenthread;
+	if(pthread_create( &listenthread, NULL, listenting_thread, NULL ) != 0)
 	{
-		// Daemon loop
-		check_socket();
-
-		if (clientsocket > 0)
-		{
-			clientconnected = true;
-			read_socket();
-			sleepms(5);
-		}
-		else if(clientconnected)
-		{
-			clientconnected = false;
-			if(debug)
-				logg("Client disconnected");
-		}
-		else
-		{
-			listen_socket();
-		}
+		logg("Unable to open Socket listening thread. Exiting...");
+		killed = 1;
 	}
 
+	while(!killed)
+	{
+		sleepms(100);
+	}
+
+
 	logg("Shutting down...");
-	close_sockets();
+	pthread_cancel(piholelogthread);
+	pthread_cancel(listenthread);
+//	close_sockets();
 	logg("########## FTL terminated! ##########");
 	fclose(logfile);
 	return 0;

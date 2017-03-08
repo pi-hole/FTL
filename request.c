@@ -16,26 +16,30 @@ int cmpdomains(int *elem1, int *elem2);
 #define min(a,b) ({ __typeof__ (a) _a = (a); __typeof__ (b) _b = (b); _a < _b ? _a : _b; })
 #define max(a,b) ({ __typeof__ (a) _a = (a); __typeof__ (b) _b = (b); _a > _b ? _a : _b; })
 
-void process_request(void)
+void process_request(char *client_message, int *sock)
 {
 	char EOT[2];
 	EOT[0] = 0x04;
 	EOT[1] = 0x00;
-	if(command(">stats"))
+	char server_message[SOCKETBUFFERLEN];
+	bool processed = false;
+	if(command(client_message, ">stats"))
 	{
+		processed = true;
 		float percentage = 0.0;
 		// Avoid 1/0 condition
 		if(counters.queries > 0)
 		{
 			percentage = 1e2*counters.blocked/counters.queries;
 		}
-		sprintf(socketsendbuffer,"domains_being_blocked %i\ndns_queries_today %i\nads_blocked_today %i\nads_percentage_today %f\n",counters.gravity,counters.queries,counters.blocked,percentage);
-		swrite();
+		sprintf(server_message,"domains_being_blocked %i\ndns_queries_today %i\nads_blocked_today %i\nads_percentage_today %f\n",counters.gravity,counters.queries,counters.blocked,percentage);
+		swrite(server_message, *sock);
 		if(debug)
-			logg("Sent stats data to client");
+			logg_int("Sent stats data to client, ID: ", *sock);
 	}
-	else if(command(">overTime"))
+	else if(command(client_message, ">overTime"))
 	{
+		processed = true;
 		int i;
 		bool sendit = false;
 		for(i=0; i < counters.overTime; i++)
@@ -46,20 +50,21 @@ void process_request(void)
 			}
 			if(sendit)
 			{
-				sprintf(socketsendbuffer,"%i %i %i\n",overTime[i].timestamp,overTime[i].total,overTime[i].blocked);
-				swrite();
+				sprintf(server_message,"%i %i %i\n",overTime[i].timestamp,overTime[i].total,overTime[i].blocked);
+				swrite(server_message, *sock);
 			}
 		}
 		if(debug)
-			logg("Sent overTime data to client");
+			logg_int("Sent overTime data to client, ID: ", *sock);
 	}
-	else if(command(">top-domains") || command(">top-ads"))
+	else if(command(client_message, ">top-domains") || command(client_message, ">top-ads"))
 	{
+		processed = true;
 		int i, temparray[counters.domains][2], count=10, num;
-		bool blocked = command(">top-ads");
+		bool blocked = command(client_message, ">top-ads");
 
 		// Match both top-domains and top-ads
-		if(sscanf(socketrecvbuffer, ">%*[^(](%i)", &num) > 0)
+		if(sscanf(client_message, ">%*[^(](%i)", &num) > 0)
 		{
 			// User wants a different number of requests
 			count = num;
@@ -123,25 +128,26 @@ void process_request(void)
 
 			if(blocked && showblocked && domains[j].blockedcount > 0)
 			{
-				sprintf(socketsendbuffer,"%i %i %s\n",i,domains[j].blockedcount,domains[j].domain);
-				swrite();
+				sprintf(server_message,"%i %i %s\n",i,domains[j].blockedcount,domains[j].domain);
+				swrite(server_message, *sock);
 			}
 			else if(!blocked && showpermitted && (domains[j].count - domains[j].blockedcount) > 0)
 			{
-				sprintf(socketsendbuffer,"%i %i %s\n",i,(domains[j].count - domains[j].blockedcount),domains[j].domain);
-				swrite();
+				sprintf(server_message,"%i %i %s\n",i,(domains[j].count - domains[j].blockedcount),domains[j].domain);
+				swrite(server_message, *sock);
 			}
 		}
 		if(excludedomains != NULL)
 			clearSetupVarsArray();
 		if(debug)
-			logg("Sent top lists data to client");
+			logg_int("Sent top lists data to client, ID: ", *sock);
 	}
-	else if(command(">top-clients"))
+	else if(command(client_message, ">top-clients"))
 	{
+		processed = true;
 		int i, temparray[counters.clients][2], count=10, num;
 
-		if(sscanf(socketrecvbuffer, ">%*[^(](%i)", &num) > 0)
+		if(sscanf(client_message, ">%*[^(](%i)", &num) > 0)
 		{
 			// User wants a different number of requests
 			count = num;
@@ -178,16 +184,17 @@ void process_request(void)
 				}
 			}
 
-			sprintf(socketsendbuffer,"%i %i %s %s\n",i,clients[j].count,clients[j].ip,clients[j].name);
-			swrite();
+			sprintf(server_message,"%i %i %s %s\n",i,clients[j].count,clients[j].ip,clients[j].name);
+			swrite(server_message, *sock);
 		}
 		if(excludeclients != NULL)
 			clearSetupVarsArray();
 		if(debug)
-			logg("Sent top clients data to client");
+			logg_int("Sent top clients data to client, ID: ", *sock);
 	}
-	else if(command(">forward-dest"))
+	else if(command(client_message, ">forward-dest"))
 	{
+		processed = true;
 		int i, temparray[counters.forwarded][2];
 		for(i=0; i < counters.forwarded; i++)
 		{
@@ -202,28 +209,30 @@ void process_request(void)
 		{
 			// Get sorted indices
 			int j = temparray[counters.forwarded-i-1][0];
-			sprintf(socketsendbuffer,"%i %i %s %s\n",i,forwarded[j].count,forwarded[j].ip,forwarded[j].name);
-			swrite();
+			sprintf(server_message,"%i %i %s %s\n",i,forwarded[j].count,forwarded[j].ip,forwarded[j].name);
+			swrite(server_message, *sock);
 		}
 		if(debug)
-			logg("Sent forwarded destinations data to client");
+			logg_int("Sent forwarded destinations data to client, ID: ", *sock);
 	}
-	else if(command(">querytypes"))
+	else if(command(client_message, ">querytypes"))
 	{
-		sprintf(socketsendbuffer,"A (IPv4): %i\nAAAA (IPv6): %i\nPTR: %i\nSRV: %i\n",counters.IPv4,counters.IPv6,counters.PTR,counters.SRV);
-		swrite();
+		processed = true;
+		sprintf(server_message,"A (IPv4): %i\nAAAA (IPv6): %i\nPTR: %i\nSRV: %i\n",counters.IPv4,counters.IPv6,counters.PTR,counters.SRV);
+		swrite(server_message, *sock);
 		if(debug)
-			logg("Sent query type data to client");
+			logg_int("Sent query type data to client, ID: ", *sock);
 	}
-	else if(command(">getallqueries"))
+	else if(command(client_message, ">getallqueries"))
 	{
+		processed = true;
 		// Do we want a more specific version of this command (domain/client/time interval filtered)?
 		int from = 0, until = 0;
 		bool filtertime = false;
-		if(command(">getallqueries-time"))
+		if(command(client_message, ">getallqueries-time"))
 		{
 			// Get from to until boundaries
-			sscanf(socketrecvbuffer, ">getallqueries-time %i %i",&from, &until);
+			sscanf(client_message, ">getallqueries-time %i %i",&from, &until);
 			if(debug)
 			{
 				logg_int("Showing only limited time interval starting at ",from);
@@ -234,11 +243,11 @@ void process_request(void)
 
 		char *domainname;
 		bool filterdomainname = false;
-		if(command(">getallqueries-domain"))
+		if(command(client_message, ">getallqueries-domain"))
 		{
 			domainname = calloc(128, sizeof(char));
 			// Get domain name we want to see only (limit length to 127 chars)
-			sscanf(socketrecvbuffer, ">getallqueries-domain %127s", domainname);
+			sscanf(client_message, ">getallqueries-domain %127s", domainname);
 			if(debug)
 				logg_str("Showing only queries with domain ", domainname);
 			filterdomainname = true;
@@ -246,11 +255,11 @@ void process_request(void)
 
 		char *clientname;
 		bool filterclientname = false;
-		if(command(">getallqueries-client"))
+		if(command(client_message, ">getallqueries-client"))
 		{
 			clientname = calloc(128, sizeof(char));
 			// Get client name we want to see only (limit length to 127 chars)
-			sscanf(socketrecvbuffer, ">getallqueries-client %127s", clientname);
+			sscanf(client_message, ">getallqueries-client %127s", clientname);
 			if(debug)
 				logg_str("Showing only queries with client ", clientname);
 			filterclientname = true;
@@ -258,7 +267,7 @@ void process_request(void)
 
 		int ibeg = 0, num;
 		// Test for integer that specifies number of entries to be shown
-		if(sscanf(socketrecvbuffer, ">%*[^(](%i)", &num) > 0)
+		if(sscanf(client_message, ">%*[^(](%i)", &num) > 0)
 		{
 			// User wants a different number of requests
 			// Don't allow a start index that is smaller than zero
@@ -357,15 +366,15 @@ void process_request(void)
 			if(!privacymode)
 			{
 				if(strlen(clients[queries[i].clientID].name) > 0)
-					sprintf(socketsendbuffer,"%i %s %s %s %i\n",queries[i].timestamp,type,domains[queries[i].domainID].domain,clients[queries[i].clientID].name,queries[i].status);
+					sprintf(server_message,"%i %s %s %s %i\n",queries[i].timestamp,type,domains[queries[i].domainID].domain,clients[queries[i].clientID].name,queries[i].status);
 				else
-					sprintf(socketsendbuffer,"%i %s %s %s %i\n",queries[i].timestamp,type,domains[queries[i].domainID].domain,clients[queries[i].clientID].ip,queries[i].status);
+					sprintf(server_message,"%i %s %s %s %i\n",queries[i].timestamp,type,domains[queries[i].domainID].domain,clients[queries[i].clientID].ip,queries[i].status);
 			}
 			else
 			{
-				sprintf(socketsendbuffer,"%i %s %s hidden %i\n",queries[i].timestamp,type,domains[queries[i].domainID].domain,queries[i].status);
+				sprintf(server_message,"%i %s %s hidden %i\n",queries[i].timestamp,type,domains[queries[i].domainID].domain,queries[i].status);
 			}
-			swrite();
+			swrite(server_message, *sock);
 		}
 
 		// Free allocated memory
@@ -375,13 +384,14 @@ void process_request(void)
 			free(domainname);
 
 		if(debug)
-			logg("Sent all queries data to client");
+			logg_int("Sent all queries data to client, ID: ", *sock);
 	}
-	else if(command(">recentBlocked"))
+	else if(command(client_message, ">recentBlocked"))
 	{
+		processed = true;
 		int i, num=1;
 		// Test for integer that specifies number of entries to be shown
-		if(sscanf(socketrecvbuffer, ">%*[^(](%i)", &num) > 0)
+		if(sscanf(client_message, ">%*[^(](%i)", &num) > 0)
 		{
 			// User wants a different number of requests
 			if(num >= counters.queries)
@@ -397,8 +407,8 @@ void process_request(void)
 			if(queries[i].status == 1 || queries[i].status == 4)
 			{
 				found++;
-				sprintf(socketsendbuffer,"%s\n",domains[queries[i].domainID].domain);
-				swrite();
+				sprintf(server_message,"%s\n",domains[queries[i].domainID].domain);
+				swrite(server_message, *sock);
 			}
 			if(found >= num)
 			{
@@ -406,27 +416,34 @@ void process_request(void)
 			}
 		}
 	}
+	// End of queryable commands
+	if(processed)
+	{
+		// Send EOM
+		seom(server_message, *sock);
+	}
+	else
+	{
+		sprintf(server_message,"unknown command: %s\n",client_message);
+		swrite(server_message, *sock);
+	}
+
 	// Test only at the end if we want to quit or kill
 	// so things can be processed before
-	else if(command(">quit") || command(EOT))
+	if(command(client_message, ">quit") || command(client_message, EOT))
 	{
-		close(clientsocket);
-		clientsocket = 0;
-		if(debug)
-			logg("Clients wants to quit");
+		close(*sock);
+		*sock = 0;
 	}
-	else if(command(">kill"))
+	else if(command(client_message, ">kill"))
 	{
 		killed = 1;
 	}
-	// Send EOM
-	if(clientsocket)
-		seom();
 }
 
-bool command(const char* cmd)
+bool command(char *client_message, const char* cmd)
 {
-	if(strstr(socketrecvbuffer,cmd) != NULL)
+	if(strstr(client_message,cmd) != NULL)
 		return true;
 	else
 		return false;

@@ -18,6 +18,7 @@ void open_FTL_log(void);
 void logg(const char* str);
 void logg_int(const char* star, int i);
 void logg_str(const char* str, char* str2);
+void logg_str_str_int(const char* str, char* str2, char* str3, int i);
 void logg_struct_resize(const char* str, int from, int to);
 void logg_str_str(const char* str, char* str2, char* str3);
 void log_counter_info(void);
@@ -32,15 +33,17 @@ void *pihole_log_thread(void *val);
 void memory_check(int which);
 
 void init_socket(void);
-bool listen_socket(void);
+int listen_socket(void);
 bool check_socket(void);
 void read_socket(void);
 void close_sockets(void);
-void seom(void);
-void swrite(void);
+void seom(char server_message[], int sock);
+void swrite(char server_message[], int sock);
+void *connection_handler_thread(void *socket_desc);
+void *listenting_thread(void *args);
 
-void process_request(void);
-bool command(const char* cmd);
+void process_request(char *client_message, int *sock);
+bool command(char *client_message, const char* cmd);
 void formatNumber(bool raw, int n, char* buffer);
 
 void read_gravity_files(void);

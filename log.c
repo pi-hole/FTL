@@ -73,6 +73,19 @@ void logg_str_str(const char* str, char* str2, char* str3)
 		printf("[%d-%02d-%02d %02d:%02d:%02d.%03i] %s%s (%s)\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, millisec, str, str2, str3);
 }
 
+void logg_str_str_int(const char* str, char* str2, char* str3, int i)
+{
+	time_t t = time(NULL);
+	struct tm tm = *localtime(&t);
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+	int millisec = tv.tv_usec/1000;
+	fprintf(logfile, "[%d-%02d-%02d %02d:%02d:%02d.%03i] %s%s%s%i\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, millisec, str, str2, str3, i);
+	fflush(logfile);
+	if(debug)
+		printf("[%d-%02d-%02d %02d:%02d:%02d.%03i] %s%s%s%i\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, millisec, str, str2, str3, i);
+}
+
 void logg_struct_resize(const char* str, int from, int to)
 {
 	time_t t = time(NULL);

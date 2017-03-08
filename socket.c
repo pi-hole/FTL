@@ -34,11 +34,6 @@ void init_socket(void)
 		exit(1);
 	}
 
-	struct timeval timeout;
-	timeout.tv_sec = 0;
-	timeout.tv_usec = 1000;
-	setsockopt (sockfd, SOL_SOCKET, SO_RCVTIMEO, (char *)&timeout, sizeof(timeout));
-
 	struct sockaddr_in serv_addr;
 	// The function bzero() sets all values in a buffer to zero.
 	bzero((char *) &serv_addr, sizeof(serv_addr));
@@ -82,73 +77,6 @@ void init_socket(void)
 	}
 }
 
-bool check_socket(void)
-{
-	char buffer[32];
-	if (recv(clientsocket, buffer, sizeof(buffer), MSG_PEEK | MSG_DONTWAIT) == 0)
-	{
-		close(clientsocket);
-		clientsocket = 0;
-		return false;
-	}
-	else
-	{
-		return true;
-	}
-}
-
-bool listen_socket(void)
-{
-	struct sockaddr_in cli_addr;
-	// The function bzero() sets all values in a buffer to zero.
-	bzero((char *) &cli_addr, sizeof(cli_addr));
-	socklen_t clilen = sizeof(cli_addr);
-	clientsocket = accept(sockfd, (struct sockaddr *) &cli_addr, &clilen);
-	// if (newsockfd < 0)
-		// printf("ERROR on accept");
-	if (clientsocket > 0)
-	{
-		if(debug)
-			logg_str("Client connected: ", inet_ntoa (cli_addr.sin_addr));
-
-		// const char * msg = "This is the Pi-hole FTL daemon, enter \"quit\" to quit\n\n";
-		// write(clientsocket, msg, strlen(msg));
-		return true;
-	}
-	else
-	{
-		return false;
-	}
-}
-
-void read_socket(void)
-{
-	bzero(socketrecvbuffer,SOCKETBUFFERLEN);
-	ssize_t n = recv(clientsocket,socketrecvbuffer,SOCKETBUFFERLEN-1, MSG_DONTWAIT);
-	if (n > 0)
-	{
-		process_request();
-	}
-}
-
-void close_sockets(void)
-{
-	close(clientsocket);
-	close(sockfd);
-}
-
-void seom(void)
-{
-	sprintf(socketsendbuffer,"---EOM---\n\n");
-	swrite();
-}
-
-void swrite(void)
-{
-	if(!write(clientsocket, socketsendbuffer, strlen(socketsendbuffer)))
-		logg_int("WARNING: Socket write returned error code ", errno);
-}
-
 void saveport(int port)
 {
 	FILE *f;
@@ -163,4 +91,93 @@ void saveport(int port)
 		fclose(f);
 	}
 	logg_int("Listening on port ", port);
+}
+
+void seom(char server_message[SOCKETBUFFERLEN], int sock)
+{
+	sprintf(server_message,"---EOM---\n\n");
+	swrite(server_message, sock);
+}
+
+void swrite(char server_message[SOCKETBUFFERLEN], int sock)
+{
+	if(!write(sock, server_message, strlen(server_message)))
+		logg_int("WARNING: Socket write returned error code ", errno);
+}
+
+int listen_socket(void)
+{
+	struct sockaddr_in cli_addr;
+	// The function bzero() sets all values in a buffer to zero.
+	bzero((char *) &cli_addr, sizeof(cli_addr));
+	socklen_t clilen = sizeof(cli_addr);
+	int clientsocket = accept(sockfd, (struct sockaddr *) &cli_addr, &clilen);
+	// if (newsockfd < 0)
+		// printf("ERROR on accept");
+	if(debug)
+		logg_str_str_int("Client connected: ", inet_ntoa (cli_addr.sin_addr), ", ID: ", clientsocket);
+
+	return clientsocket;
+}
+
+void *listenting_thread(void *args)
+{
+	int *newsock;
+	while(!killed)
+	{
+		int csck = listen_socket();
+
+		//
+		newsock = calloc(1,sizeof(int));
+		*newsock = csck;
+
+		pthread_t connection_thread;
+		if(pthread_create( &connection_thread, NULL, connection_handler_thread, (void*) newsock ) != 0)
+		{
+			logg("Unable to open Pi-hole log processing thread. Exiting...");
+			killed = 1;
+		}
+	}
+	return 0;
+}
+
+void *connection_handler_thread(void *socket_desc)
+{
+	//Get the socket descriptor
+	int sock = *(int*)socket_desc;
+	// Store copy only for displaying the debug messages
+	int sockID = sock;
+	char client_message[SOCKETBUFFERLEN] = "";
+
+	//Receive from client
+	ssize_t n;
+	while((n = recv(sock,client_message,SOCKETBUFFERLEN-1, 0)))
+	{
+		if (n > 0)
+		{
+			char *message = calloc(strlen(client_message)+1,sizeof(char));
+			strcpy(message, client_message);
+			process_request(message, &sock);
+			free(message);
+			if(sock == 0)
+			{
+				// Client disconnected by seding EOT or ">quit"
+				break;
+			}
+		}
+		else if(n == -1)
+		{
+			if(debug)
+				logg_int("Client connection interrupted, ID: ", sockID);
+		}
+	}
+	if(debug)
+		logg_int("Client disconnected, ID: ", sockID);
+
+	//Free the socket pointer
+	if(sock != 0)
+		close(sock);
+	free(socket_desc);
+
+	return 0;
 }

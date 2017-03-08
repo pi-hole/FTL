@@ -139,10 +139,6 @@ FILE *logfile;
 FILE *dnsmasqlog;
 int dnsmasqlogpos;
 volatile sig_atomic_t killed;
-int clientsocket;
-
-char socketrecvbuffer[SOCKETBUFFERLEN];
-char socketsendbuffer[SOCKETBUFFERLEN];
 
 char ** setupVarsArray;
 int setupVarsElements;
