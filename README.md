@@ -41,16 +41,6 @@ If you want to test it, check out the branches
 
 Don't forget to run `pihole -r` afterwards.
 
-Steps 2-5:
-
-```
-chmod u+x pihole-FTL*
-mv pihole-FTL* pihole-FTL
-sudo install -m 0755 pihole-FTL /usr/bin
-sudo touch /var/log/pihole-FTL.log /var/run/pihole-FTL.pid /var/run/pihole-FTL.port
-sudo chmod 0666 /var/log/pihole-FTL.log /var/run/pihole-FTL.pid /var/run/pihole-FTL.port
-```
-
 ### How to compile FTL from source?
 
 1. Clone the repo
