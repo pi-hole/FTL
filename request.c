@@ -34,7 +34,7 @@ void process_request(char *client_message, int *sock)
 		}
 		sprintf(server_message,"domains_being_blocked %i\ndns_queries_today %i\nads_blocked_today %i\nads_percentage_today %f\n",counters.gravity,counters.queries,counters.blocked,percentage);
 		swrite(server_message, *sock);
-		if(debug)
+		if(debugclients)
 			logg_int("Sent stats data to client, ID: ", *sock);
 	}
 	else if(command(client_message, ">overTime"))
@@ -54,7 +54,7 @@ void process_request(char *client_message, int *sock)
 				swrite(server_message, *sock);
 			}
 		}
-		if(debug)
+		if(debugclients)
 			logg_int("Sent overTime data to client, ID: ", *sock);
 	}
 	else if(command(client_message, ">top-domains") || command(client_message, ">top-ads"))
@@ -139,7 +139,7 @@ void process_request(char *client_message, int *sock)
 		}
 		if(excludedomains != NULL)
 			clearSetupVarsArray();
-		if(debug)
+		if(debugclients)
 		{
 			if(blocked)
 				logg_int("Sent top ads list data to client, ID: ", *sock);
@@ -189,12 +189,15 @@ void process_request(char *client_message, int *sock)
 				}
 			}
 
-			sprintf(server_message,"%i %i %s %s\n",i,clients[j].count,clients[j].ip,clients[j].name);
-			swrite(server_message, *sock);
+			if(clients[j].count > 0)
+			{
+				sprintf(server_message,"%i %i %s %s\n",i,clients[j].count,clients[j].ip,clients[j].name);
+				swrite(server_message, *sock);
+			}
 		}
 		if(excludeclients != NULL)
 			clearSetupVarsArray();
-		if(debug)
+		if(debugclients)
 			logg_int("Sent top clients data to client, ID: ", *sock);
 	}
 	else if(command(client_message, ">forward-dest"))
@@ -214,10 +217,13 @@ void process_request(char *client_message, int *sock)
 		{
 			// Get sorted indices
 			int j = temparray[counters.forwarded-i-1][0];
-			sprintf(server_message,"%i %i %s %s\n",i,forwarded[j].count,forwarded[j].ip,forwarded[j].name);
-			swrite(server_message, *sock);
+			if(forwarded[j].count > 0)
+			{
+				sprintf(server_message,"%i %i %s %s\n",i,forwarded[j].count,forwarded[j].ip,forwarded[j].name);
+				swrite(server_message, *sock);
+			}
 		}
-		if(debug)
+		if(debugclients)
 			logg_int("Sent forwarded destinations data to client, ID: ", *sock);
 	}
 	else if(command(client_message, ">querytypes"))
@@ -225,7 +231,7 @@ void process_request(char *client_message, int *sock)
 		processed = true;
 		sprintf(server_message,"A (IPv4): %i\nAAAA (IPv6): %i\nPTR: %i\nSRV: %i\n",counters.IPv4,counters.IPv6,counters.PTR,counters.SRV);
 		swrite(server_message, *sock);
-		if(debug)
+		if(debugclients)
 			logg_int("Sent query type data to client, ID: ", *sock);
 	}
 	else if(command(client_message, ">getallqueries"))
@@ -238,7 +244,7 @@ void process_request(char *client_message, int *sock)
 		{
 			// Get from to until boundaries
 			sscanf(client_message, ">getallqueries-time %i %i",&from, &until);
-			if(debug)
+			if(debugclients)
 			{
 				logg_int("Showing only limited time interval starting at ",from);
 				logg_int("Showing only limited time interval ending at ",until);
@@ -253,7 +259,7 @@ void process_request(char *client_message, int *sock)
 			domainname = calloc(128, sizeof(char));
 			// Get domain name we want to see only (limit length to 127 chars)
 			sscanf(client_message, ">getallqueries-domain %127s", domainname);
-			if(debug)
+			if(debugclients)
 				logg_str("Showing only queries with domain ", domainname);
 			filterdomainname = true;
 		}
@@ -265,7 +271,7 @@ void process_request(char *client_message, int *sock)
 			clientname = calloc(128, sizeof(char));
 			// Get client name we want to see only (limit length to 127 chars)
 			sscanf(client_message, ">getallqueries-client %127s", clientname);
-			if(debug)
+			if(debugclients)
 				logg_str("Showing only queries with client ", clientname);
 			filterclientname = true;
 		}
@@ -279,7 +285,7 @@ void process_request(char *client_message, int *sock)
 			ibeg = counters.queries-num;
 			if(ibeg < 0)
 				ibeg = 0;
-			if(debug)
+			if(debugclients)
 				logg_int("Showing only limited amount of queries: ",num);
 		}
 
@@ -312,7 +318,7 @@ void process_request(char *client_message, int *sock)
 				privacymode = true;
 		clearSetupVarsArray();
 
-		if(debug)
+		if(debugclients)
 		{
 			if(showpermitted)
 				logg("Showing permitted queries");
@@ -388,7 +394,7 @@ void process_request(char *client_message, int *sock)
 		if(filterdomainname)
 			free(domainname);
 
-		if(debug)
+		if(debugclients)
 			logg_int("Sent all queries data to client, ID: ", *sock);
 	}
 	else if(command(client_message, ">recentBlocked"))
@@ -401,7 +407,7 @@ void process_request(char *client_message, int *sock)
 			// User wants a different number of requests
 			if(num >= counters.queries)
 				num = 0;
-			if(debug)
+			if(debugclients)
 				logg_int("Showing several blocked domains ",num);
 		}
 		// Find most recent query with either status 1 (blocked)

@@ -156,6 +156,7 @@ int setupVarsElements;
 bool initialscan;
 bool debug;
 bool debugthreads;
+bool debugclients;
 bool threadlock;
 
 char ** wildcarddomains;

@@ -114,7 +114,7 @@ int listen_socket(void)
 	int clientsocket = accept(sockfd, (struct sockaddr *) &cli_addr, &clilen);
 	// if (newsockfd < 0)
 		// printf("ERROR on accept");
-	if(debug)
+	if(debugclients)
 		logg_str_str_int("Client connected: ", inet_ntoa (cli_addr.sin_addr), ", ID: ", clientsocket);
 
 	return clientsocket;
@@ -187,11 +187,11 @@ void *connection_handler_thread(void *socket_desc)
 		}
 		else if(n == -1)
 		{
-			if(debug)
+			if(debugclients)
 				logg_int("Client connection interrupted, ID: ", sockID);
 		}
 	}
-	if(debug)
+	if(debugclients)
 		logg_int("Client disconnected, ID: ", sockID);
 
 	//Free the socket pointer

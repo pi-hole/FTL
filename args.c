@@ -12,17 +12,23 @@
 #include "version.h"
 
 bool debug = false;
-bool threaddebug = false;
+bool debugthreads = false;
+bool debugclients = false;
 void parse_args(int argc, char* argv[])
 {
 	int i;
 	for(i=0; i < argc; i++) {
 		if(strcmp(argv[i], "debug") == 0)
 			debug = true;
-		if(strcmp(argv[i], "threaddebug") == 0)
+		if(strcmp(argv[i], "debugthreads") == 0)
 		{
 			debug = true;
-			threaddebug = true;
+			debugthreads = true;
+		}
+		if(strcmp(argv[i], "debugclients") == 0)
+		{
+			debug = true;
+			debugclients = true;
 		}
 		if(strcmp(argv[i], "test") == 0)
 			killed = 1;
