@@ -114,6 +114,11 @@ void process_pihole_log(int file)
 			return;
 		}
 	}
+	else
+	{
+		logg_int("Error: Passed unknwon file identifier ", file);
+		return;
+	}
 
 	// Read pihole log from current position until EOF line by line
 	while( fgets (readbuffer , sizeof(readbuffer)-1 , fp) != NULL )
@@ -475,10 +480,12 @@ void process_pihole_log(int file)
 			counters.SRV++;
 		}
 
-		// Update file pointer position
-		if(file == 0)
-			dnsmasqlogpos = ftell(dnsmasqlog);
 	}
+	// Update file pointer position
+	if(file == 0)
+		dnsmasqlogpos = ftell(dnsmasqlog);
+	else
+		fclose(fp);
 }
 
 char *resolveHostname(char *addr)
