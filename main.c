@@ -61,15 +61,15 @@ int main (int argc, char* argv[]) {
 	{
 		sleepms(100);
 
-		if(!(time(NULL)%reparsing_interval))
+		if(((time(NULL)-60)%reparsing_interval) == 0)
 		{
 			if(debug)
-				logg_int("Going to re-parse log files due to set interval of [s]: ",reparsing_interval);
+				logg_int("Re-parsing log files due to set update interval of [s]: ",reparsing_interval);
 			// Flush internal data structure
 			rescan_logfiles = true;
 			initialscan = true;
 			// Reparse logs
-			while(!(time(NULL)%reparsing_interval))
+			while(((time(NULL)-60)%reparsing_interval) == 0)
 				sleepms(100);
 		}
 	}
