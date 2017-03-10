@@ -10,10 +10,13 @@
 
 #include "FTL.h"
 
-void pihole_log_flushed(void)
+void pihole_log_flushed(bool message)
 {
-	logg("NOTICE: pihole.log has been flushed");
-	logg("  Resetting internal data structure");
+	if(message)
+	{
+		logg("NOTICE: pihole.log has been flushed");
+		logg("  Resetting internal data structure");
+	}
 
 	int i;
 
@@ -22,23 +25,17 @@ void pihole_log_flushed(void)
 	free(queries);
 	queries = NULL;
 
-	// forwarded struct: Free allocated substructure
+	// forwarded struct: Keep forward destinations, but reset their counters
 	for(i=0;i<counters.forwarded;i++)
 	{
-		free(forwarded[i].ip);
-		free(forwarded[i].name);
+		forwarded[i].count = 0;
 	}
-	free(forwarded);
-	forwarded = NULL;
 
-	// clients struct: Free allocated substructure
+	// clients struct: Keep clients, but reset their counters
 	for(i=0;i<counters.clients;i++)
 	{
-		free(clients[i].ip);
-		free(clients[i].name);
+		clients[i].count = 0;
 	}
-	free(clients);
-	clients = NULL;
 
 	// domains struct: Free allocated substructure
 	for(i=0;i<counters.domains;i++)
@@ -61,11 +58,16 @@ void pihole_log_flushed(void)
 	free(overTime);
 	overTime = NULL;
 
-	// Reset all counters to zero
+	// Reset all counters (except clients and forwards, because they need PTRs) to zero
+	int counters_bck  = counters.clients;
+	int forwarded_bck = counters.forwarded;
 	memset(&counters, 0, sizeof(countersStruct));
+	counters.clients = counters_bck;
+	counters.forwarded = forwarded_bck;
 
-	// Update file pointer position
-	dnsmasqlogpos = ftell(dnsmasqlog);
+	// Update file pointer position to beginning of file
+	dnsmasqlogpos = 0;
+	fseek(dnsmasqlog, dnsmasqlogpos, SEEK_SET);
 
 	// Recount entries in gravity files
 	read_gravity_files();

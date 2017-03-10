@@ -36,7 +36,8 @@ int main (int argc, char* argv[]) {
 
 	logg("Starting initial log file scan");
 	initialscan = true;
-	process_pihole_log();
+	process_pihole_log(1);
+	process_pihole_log(0);
 	initialscan = false;
 	logg("Finished initial log file scan:");
 	log_counter_info();
@@ -59,6 +60,18 @@ int main (int argc, char* argv[]) {
 	while(!killed)
 	{
 		sleepms(100);
+
+		if(!(time(NULL)%reparsing_interval))
+		{
+			if(debug)
+				logg_int("Going to re-parse log files due to set interval of [s]: ",reparsing_interval);
+			// Flush internal data structure
+			rescan_logfiles = true;
+			initialscan = true;
+			// Reparse logs
+			while(!(time(NULL)%reparsing_interval))
+				sleepms(100);
+		}
 	}
 
 

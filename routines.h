@@ -26,9 +26,10 @@ void log_counter_info(void);
 int checkLogForChanges(void);
 void open_pihole_log(void);
 void handle_signals(void);
-void pihole_log_flushed(void);
-void process_pihole_log(void);
+void process_pihole_log(int file);
 void *pihole_log_thread(void *val);
+
+void pihole_log_flushed(bool message);
 
 void memory_check(int which);
 

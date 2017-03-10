@@ -13,6 +13,8 @@
 char *resolveHostname(char *addr);
 
 int dnsmasqlogpos = 0;
+bool rescan_logfiles = false;
+
 int checkLogForChanges(void)
 {
 	// seek to the end of the file
@@ -41,44 +43,80 @@ void *pihole_log_thread(void *val)
 {
 	while(!killed)
 	{
-		int newdata = checkLogForChanges();
+		// Lock FTL data structure, since it is likely that it will be changed here
+		// Requests should not be processed/answered when data is about to change
+		while(threadlock) sleepms(1);
+		if(debugthreads)
+			logg("Thread lock enabled  (pihole_log_thread)");
+		threadlock = true;
 
-		if(newdata != 0)
+		// Shall we reprocess all log files?
+		if(rescan_logfiles)
 		{
-			// Lock FTL data structure, since it is likely that it will be changed here
-			// Requests should not be processed/answered when data is about to change
-			while(threadlock) sleepms(1);
-			if(debugthreads)
-				logg("Thread lock enabled  (pihole_log_thread)");
-			threadlock = true;
-			// Process new data if found
-			if(newdata > 0)
+			rescan_logfiles = false;
+			pihole_log_flushed(false);
+			initialscan = true;
+			process_pihole_log(1);
+			process_pihole_log(0);
+			initialscan = false;
+		}
+		else
+		{
+			int newdata = checkLogForChanges();
+
+			if(newdata != 0)
 			{
-				process_pihole_log();
+
+				if(newdata > 0)
+				{
+					// Process new data if found only in main log (file 0)
+					process_pihole_log(0);
+				}
+				else if(newdata < 0)
+				{
+					// Process flushed log
+					// Flush internal datastructure
+					pihole_log_flushed(true);
+					// Rescan files 0 (pihole.log) and 1 (pihole.log.1)
+					initialscan = true;
+					process_pihole_log(1);
+					process_pihole_log(0);
+					initialscan = false;
+				}
 			}
-			// Process flushed log
-			else if(newdata < 0)
-			{
-				pihole_log_flushed();
-			}
-			threadlock = false;
-			if(debugthreads)
-				logg("Thread lock disabled (pihole_log_thread)");
 		}
 
+		threadlock = false;
+		if(debugthreads)
+			logg("Thread lock disabled (pihole_log_thread)");
 		sleepms(50);
 	}
 	return NULL;
 }
 
-void process_pihole_log(void)
+void process_pihole_log(int file)
 {
 	int i;
 	char readbuffer[1024] = "";
 	char readbuffer2[1024] = "";
+	FILE *fp;
+
+	if(file == 0)
+	{
+		// Read from pihole.log
+		fp = dnsmasqlog;
+	}
+	else if(file == 1)
+	{
+		// Read from pihole.log.1
+		if((fp = fopen(files.log1,"r")) == NULL) {
+			logg("Warning: Reading of rotated log file failed");
+			return;
+		}
+	}
 
 	// Read pihole log from current position until EOF line by line
-	while( fgets (readbuffer , sizeof(readbuffer)-1 , dnsmasqlog) != NULL )
+	while( fgets (readbuffer , sizeof(readbuffer)-1 , fp) != NULL )
 	{
 		// Test if the read line is a query line
 		if(strstr(readbuffer,"]: query[A") != NULL)
@@ -107,6 +145,9 @@ void process_pihole_log(void)
 			// Year is missing in dnsmasq's output - add the current year
 			querytime.tm_year = (*timeinfo).tm_year;
 			int querytimestamp = (int)mktime(&querytime);
+
+			// Skip parsing of this log entry if too old
+			if((time(NULL) - querytimestamp) > MAXLOGAGE) continue;
 
 			// Now, we modify the minutes (and seconds), but that is fine, since
 			// we don't need the querytime anymore (querytimestamp is already set)
@@ -186,7 +227,7 @@ void process_pihole_log(void)
 			}
 
 			// Save current file pointer position
-			int fpos = ftell(dnsmasqlog);
+			int fpos = ftell(fp);
 			unsigned char status = 0;
 
 			// Try to find either a matching
@@ -197,7 +238,7 @@ void process_pihole_log(void)
 			bool firsttime = true;
 			for(i=0; i<200; i++)
 			{
-				if(fgets (readbuffer2 , sizeof(readbuffer2) , dnsmasqlog) != NULL)
+				if(fgets (readbuffer2 , sizeof(readbuffer2) , fp) != NULL)
 				{
 					// Process only matching lines
 					if(strstr(readbuffer2,domain) != NULL)
@@ -239,7 +280,7 @@ void process_pihole_log(void)
 						// Reached EOF without finding the action
 						// wait 100msec and try again to read dnsmasq's response
 						i = 0;
-						fseek(dnsmasqlog, fpos, SEEK_SET);
+						fseek(fp, fpos, SEEK_SET);
 						firsttime = false;
 						sleepms(100);
 					}
@@ -251,7 +292,7 @@ void process_pihole_log(void)
 				}
 			}
 			// Return to previous file pointer position
-			fseek(dnsmasqlog, fpos, SEEK_SET);
+			fseek(fp, fpos, SEEK_SET);
 
 			// Go through already knows domains and see if it is one of them
 			bool processed = false;
@@ -341,7 +382,7 @@ void process_pihole_log(void)
 			// Decide what to increment depending on status
 			switch(status)
 			{
-				case 0: counters.unknown++; logg_str("Unknown: ",strtok(readbuffer, "\n")); break;
+				case 0: counters.unknown++; /*logg_str("Unknown: ",strtok(readbuffer, "\n"));*/ break;
 				case 1: counters.blocked++; overTime[timeidx].blocked++; domains[domainID].blockedcount++; break;
 				case 2: break;
 				case 3: counters.cached++; break;
@@ -435,7 +476,8 @@ void process_pihole_log(void)
 		}
 
 		// Update file pointer position
-		dnsmasqlogpos = ftell(dnsmasqlog);
+		if(file == 0)
+			dnsmasqlogpos = ftell(dnsmasqlog);
 	}
 }
 

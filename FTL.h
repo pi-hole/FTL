@@ -49,6 +49,15 @@
 
 #define SOCKETBUFFERLEN 1024
 
+// Maximum time from now until we will parse logs that are in the past [seconds]
+// Default: 86400 (24 hours)
+#define MAXLOGAGE 86400
+
+// How often do we reparse logs (to ensure we only have data fitting to
+// the MAXLOGAGE defined above)? [seconds]
+// Default: 3600 (once per hour)
+#define reparsing_interval 3600
+
 // Static structs
 typedef struct {
 	const char* log;
@@ -58,6 +67,7 @@ typedef struct {
 
 typedef struct {
 	const char* log;
+	const char* log1;
 	const char* gravity;
 	const char* whitelist;
 	const char* blacklist;
@@ -149,3 +159,4 @@ bool debugthreads;
 bool threadlock;
 
 char ** wildcarddomains;
+bool rescan_logfiles;
