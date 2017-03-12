@@ -427,28 +427,36 @@ void process_request(char *client_message, int *sock)
 			}
 		}
 	}
+
 	// End of queryable commands
 	if(processed)
 	{
 		// Send EOM
 		seom(server_message, *sock);
 	}
-	else
-	{
-		sprintf(server_message,"unknown command: %s\n",client_message);
-		swrite(server_message, *sock);
-	}
 
 	// Test only at the end if we want to quit or kill
 	// so things can be processed before
 	if(command(client_message, ">quit") || command(client_message, EOT))
 	{
+		processed = true;
+		if(debugclients)
+			logg_int("Client wants to disconnect, ID: ",*sock);
+
 		close(*sock);
 		*sock = 0;
 	}
 	else if(command(client_message, ">kill"))
 	{
+		processed = true;
+		logg_int("FTL killed by client ID: ",*sock);
 		killed = 1;
+	}
+
+	if(!processed)
+	{
+		sprintf(server_message,"unknown command: %s\n",client_message);
+		swrite(server_message, *sock);
 	}
 }
 

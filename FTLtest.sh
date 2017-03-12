@@ -19,7 +19,11 @@ function GetFTLData {
        echo -e ">quit" >&3
 
        # Read all input
-       cat <&3 &> /dev/null
+       if [ "$1" == "stats" ]; then
+         cat <&3
+       else
+         cat <&3 &> /dev/null
+       fi
 
        # Close connection
        exec 3>&-
@@ -27,11 +31,11 @@ function GetFTLData {
    fi
 }
 
-echo "Getting statistics data"
+echo "Getting statistics data (output to stdout)"
 time GetFTLData "stats"
 
-echo "Getting over time data"
+echo "Getting over time data (output to /dev/null)"
 time GetFTLData "overTime"
 
-echo "Getting all queries (get all queries)"
+echo "Getting all queries (output to /dev/null)"
 time GetFTLData "getallqueries"
