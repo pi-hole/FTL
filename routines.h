@@ -22,6 +22,7 @@ void logg_str_str_int(const char* str, char* str2, char* str3, int i);
 void logg_struct_resize(const char* str, int from, int to);
 void logg_str_str(const char* str, char* str2, char* str3);
 void log_counter_info(void);
+void format_memory_size(char *prefix, int bytes, double *formated);
 
 int checkLogForChanges(void);
 void open_pihole_log(void);

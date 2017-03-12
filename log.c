@@ -86,17 +86,45 @@ void logg_str_str_int(const char* str, char* str2, char* str3, int i)
 		printf("[%d-%02d-%02d %02d:%02d:%02d.%03i] %s%s%s%i\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, millisec, str, str2, str3, i);
 }
 
-void logg_struct_resize(const char* str, int from, int to)
+void format_memory_size(char *prefix, int bytes, double *formated)
+{
+	const char* prefixes[7] = { "", "K", "M", "G", "T", "P", "E" };
+
+	int exponent = floor(log10(bytes)/3.);
+	if(exponent > 0 && exponent < 7)
+	{
+		strcpy(prefix, prefixes[exponent]);
+		*formated = (double)bytes/pow(10.0,exponent*3.0);
+	}
+	else
+	{
+		strcpy(prefix, "");
+		*formated = (double)bytes;
+	}
+}
+
+void logg_struct_resize(const char* str, int to, int step)
 {
 	time_t t = time(NULL);
 	struct tm tm = *localtime(&t);
 	struct timeval tv;
 	gettimeofday(&tv, NULL);
 	int millisec = tv.tv_usec/1000;
-	fprintf(logfile, "[%d-%02d-%02d %02d:%02d:%02d.%03i] Notice: Increasing %s struct size from %i to %i\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, millisec, str, from, to);
+
+	int structbytes = counters.queries_MAX*sizeof(*queries) + counters.forwarded_MAX*sizeof(*forwarded) + counters.clients_MAX*sizeof(*clients) + counters.domains_MAX*sizeof(*domains) + counters.overTime_MAX*sizeof(*overTime) + (counters.wildcarddomains)*sizeof(*wildcarddomains);
+	int dynamicbytes = memory.wildcarddomains + memory.domainnames + memory.clientips + memory.clientnames + memory.forwardedips + memory.forwardednames;
+
+	int bytes = structbytes + dynamicbytes;
+	char *prefix = calloc(2, sizeof(char));
+	double formated = 0.0;
+	format_memory_size(prefix, bytes, &formated);
+
+	fprintf(logfile, "[%d-%02d-%02d %02d:%02d:%02d.%03i] Notice: Increasing %s struct size from %i to %i (%.2f %sB)\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, millisec, str, (to-step), to, formated, prefix);
 	fflush(logfile);
 	if(debug)
-		printf("[%d-%02d-%02d %02d:%02d:%02d.%03i] Notice: Increasing %s struct size from %i to %i\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, millisec, str, from, to);
+		printf("[%d-%02d-%02d %02d:%02d:%02d.%03i] Notice: Increasing %s struct size from %i to %i (%.2f %sB)\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, millisec, str, (to-step), to, formated, prefix);
+
+	free(prefix);
 }
 
 void log_counter_info(void)

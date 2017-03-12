@@ -36,9 +36,9 @@ void memory_check(int which)
 			if(counters.queries >= counters.queries_MAX)
 			{
 				// Have to reallocate memory
-				if(debug)
-					logg_struct_resize("queries",counters.queries_MAX,counters.queries_MAX+QUERIESALLOCSTEP);
 				counters.queries_MAX += QUERIESALLOCSTEP;
+				if(debug)
+					logg_struct_resize("queries",counters.queries_MAX,QUERIESALLOCSTEP);
 				queries = realloc(queries, counters.queries_MAX*sizeof(*queries));
 				if(queries == NULL)
 				{
@@ -52,9 +52,9 @@ void memory_check(int which)
 			if(counters.forwarded >= counters.forwarded_MAX)
 			{
 				// Have to reallocate memory
-				if(debug)
-					logg_struct_resize("forwarded",counters.forwarded_MAX,counters.forwarded_MAX+FORWARDEDALLOCSTEP);
 				counters.forwarded_MAX += FORWARDEDALLOCSTEP;
+				if(debug)
+					logg_struct_resize("forwarded",counters.forwarded_MAX,FORWARDEDALLOCSTEP);
 				forwarded = realloc(forwarded, counters.forwarded_MAX*sizeof(*forwarded));
 				if(forwarded == NULL)
 				{
@@ -68,9 +68,9 @@ void memory_check(int which)
 			if(counters.clients >= counters.clients_MAX)
 			{
 				// Have to reallocate memory
-				if(debug)
-					logg_struct_resize("clients",counters.clients_MAX,counters.clients_MAX+CLIENTSALLOCSTEP);
 				counters.clients_MAX += CLIENTSALLOCSTEP;
+				if(debug)
+					logg_struct_resize("clients",counters.clients_MAX,CLIENTSALLOCSTEP);
 				clients = realloc(clients, counters.clients_MAX*sizeof(*clients));
 				if(clients == NULL)
 				{
@@ -84,9 +84,9 @@ void memory_check(int which)
 			if(counters.domains >= counters.domains_MAX)
 			{
 				// Have to reallocate memory
-				if(debug)
-					logg_struct_resize("domains",counters.domains_MAX,counters.domains_MAX+DOMAINSALLOCSTEP);
 				counters.domains_MAX += DOMAINSALLOCSTEP;
+				if(debug)
+					logg_struct_resize("domains",counters.domains_MAX,DOMAINSALLOCSTEP);
 				domains = realloc(domains, counters.domains_MAX*sizeof(*domains));
 				if(domains == NULL)
 				{
@@ -100,9 +100,9 @@ void memory_check(int which)
 			if(counters.overTime >= counters.overTime_MAX)
 			{
 				// Have to reallocate memory
-				if(debug)
-					logg_struct_resize("overTime",counters.overTime_MAX,counters.overTime_MAX+OVERTIMEALLOCSTEP);
 				counters.overTime_MAX += OVERTIMEALLOCSTEP;
+				if(debug)
+					logg_struct_resize("overTime",counters.overTime_MAX,OVERTIMEALLOCSTEP);
 				overTime = realloc(overTime, counters.overTime_MAX*sizeof(*overTime));
 				if(overTime == NULL)
 				{

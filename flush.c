@@ -44,6 +44,7 @@ void pihole_log_flushed(bool message)
 	}
 	free(domains);
 	domains = NULL;
+	memory.domainnames = 0;
 
 	// wildcarddomains struct: Free allocated substructure
 	for(i=0;i<counters.wildcarddomains;i++)
@@ -52,6 +53,7 @@ void pihole_log_flushed(bool message)
 	}
 	free(wildcarddomains);
 	wildcarddomains = NULL;
+	memory.wildcarddomains = 0;
 
 	// Free memory on allocated data structure
 	// overTime struct: No allocated entries

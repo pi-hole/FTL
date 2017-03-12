@@ -29,6 +29,7 @@
 #include <netdb.h>
 #include <errno.h>
 #include <pthread.h>
+#include <math.h>
 
 #include "routines.h"
 
@@ -137,6 +138,15 @@ typedef struct {
 	int blocked;
 } overTimeDataStruct;
 
+typedef struct {
+	int wildcarddomains;
+	int domainnames;
+	int clientips;
+	int clientnames;
+	int forwardedips;
+	int forwardednames;
+} memoryStruct;
+
 enum { QUERIES, FORWARDED, CLIENTS, DOMAINS, OVERTIME };
 
 logFileNamesStruct files;
@@ -165,3 +175,5 @@ bool threadlock;
 
 char ** wildcarddomains;
 bool rescan_logfiles;
+
+memoryStruct memory;

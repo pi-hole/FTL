@@ -118,6 +118,7 @@ void readWildcardsList()
 				wildcarddomains = realloc(wildcarddomains, (counters.wildcarddomains+1)*sizeof(*wildcarddomains));
 				// Allocate space for new domain entry and save domain
 				wildcarddomains[counters.wildcarddomains] = calloc(strlen(domain)+1,sizeof(char));
+				memory.wildcarddomains += (strlen(domain) + 1) * sizeof(char);
 				strcpy(wildcarddomains[counters.wildcarddomains], domain);
 
 				// Increase number of stored wildcards by one

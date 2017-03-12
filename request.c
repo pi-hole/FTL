@@ -427,6 +427,34 @@ void process_request(char *client_message, int *sock)
 			}
 		}
 	}
+	else if(command(client_message, ">memory"))
+	{
+		processed = true;
+		int structbytes = counters.queries_MAX*sizeof(*queries) + counters.forwarded_MAX*sizeof(*forwarded) + counters.clients_MAX*sizeof(*clients) + counters.domains_MAX*sizeof(*domains) + counters.overTime_MAX*sizeof(*overTime) + (counters.wildcarddomains)*sizeof(*wildcarddomains);
+		char *structprefix = calloc(2, sizeof(char));
+		double formated = 0.0;
+		format_memory_size(structprefix, structbytes, &formated);
+		sprintf(server_message,"memory allocated for internal data structure: %i bytes (%.2f %sB)\n",structbytes,formated,structprefix);
+		swrite(server_message, *sock);
+		free(structprefix);
+
+		int dynamicbytes = memory.wildcarddomains + memory.domainnames + memory.clientips + memory.clientnames + memory.forwardedips + memory.forwardednames;
+		char *dynamicprefix = calloc(2, sizeof(char));
+		format_memory_size(dynamicprefix, dynamicbytes, &formated);
+		sprintf(server_message,"dynamically allocated allocated memory used for strings: %i bytes (%.2f %sB)\n",dynamicbytes,formated,dynamicprefix);
+		swrite(server_message, *sock);
+		free(dynamicprefix);
+
+		int totalbytes = structbytes + dynamicbytes;
+		char *totalprefix = calloc(2, sizeof(char));
+		format_memory_size(totalprefix, totalbytes, &formated);
+		sprintf(server_message,"Sum: %i bytes (%.2f %sB)\n",totalbytes,formated,totalprefix);
+		swrite(server_message, *sock);
+		free(totalprefix);
+
+		if(debugclients)
+			logg_int("Sent memory data to client, ID: ", *sock);
+	}
 
 	// End of queryable commands
 	if(processed)

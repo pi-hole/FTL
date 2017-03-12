@@ -327,6 +327,7 @@ void process_pihole_log(int file)
 				domains[domainID].wildcard = false;
 				// Store domain name
 				domains[domainID].domain = calloc(strlen(domain)+1,sizeof(char));
+				memory.domainnames += (strlen(domain) + 1) * sizeof(char);
 				strcpy(domains[domainID].domain, domain);
 				// Increase counter by one
 				counters.domains++;
@@ -357,10 +358,12 @@ void process_pihole_log(int file)
 				clients[clientID].count = 1;
 				// Store client IP
 				clients[clientID].ip = calloc(strlen(client)+1,sizeof(char));
+				memory.clientips += (strlen(client) + 1) * sizeof(char);
 				strcpy(clients[clientID].ip, client);
 				//Get client host name
 				char *hostname = resolveHostname(client);
 				clients[clientID].name = calloc(strlen(hostname)+1,sizeof(char));
+				memory.clientnames += (strlen(hostname) + 1) * sizeof(char);
 				strcpy(clients[clientID].name,hostname);
 				free(hostname);
 				// Increase counter by one
@@ -447,10 +450,12 @@ void process_pihole_log(int file)
 				forwarded[forwardID].count = 1;
 				// Save IP
 				forwarded[forwardID].ip = calloc(forwardlen+1,sizeof(char));
+				memory.forwardedips += (forwardlen + 1) * sizeof(char);
 				strcpy(forwarded[forwardID].ip,forward);
 				//Get forward destination host name
 				char *hostname = resolveHostname(forward);
 				forwarded[forwardID].name = calloc(strlen(hostname)+1,sizeof(char));
+				memory.forwardednames += (strlen(hostname) + 1) * sizeof(char);
 				strcpy(forwarded[forwardID].name,hostname);
 				free(hostname);
 				// Increase counter by one
