@@ -455,6 +455,15 @@ void process_request(char *client_message, int *sock)
 		if(debugclients)
 			logg_int("Sent memory data to client, ID: ", *sock);
 	}
+	else if(command(client_message, ">clientID"))
+	{
+		processed = true;
+		sprintf(server_message,"%i\n", *sock);
+		swrite(server_message, *sock);
+
+		if(debugclients)
+			logg_int("Sent client ID to client, ID: ", *sock);
+	}
 
 	// End of queryable commands
 	if(processed)
