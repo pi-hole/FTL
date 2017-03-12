@@ -43,15 +43,23 @@ int main (int argc, char* argv[]) {
 	log_counter_info();
 	check_setupVarsconf();
 
+	// We will use the attributes object later to start all threads in detached mode
+	pthread_attr_t attr;
+	// Initialize thread attributes object with default attribute values
+	pthread_attr_init(&attr);
+	// When a detached thread terminates, its resources are automatically released back to
+	// the system without the need for another thread to join with the terminated thread
+	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+
 	pthread_t piholelogthread;
-	if(pthread_create( &piholelogthread, NULL, pihole_log_thread, NULL ) != 0)
+	if(pthread_create( &piholelogthread, &attr, pihole_log_thread, NULL ) != 0)
 	{
 		logg("Unable to open Pi-hole log processing thread. Exiting...");
 		killed = 1;
 	}
 
 	pthread_t listenthread;
-	if(pthread_create( &listenthread, NULL, listenting_thread, NULL ) != 0)
+	if(pthread_create( &listenthread, &attr, listenting_thread, NULL ) != 0)
 	{
 		logg("Unable to open Socket listening thread. Exiting...");
 		killed = 1;
@@ -61,17 +69,20 @@ int main (int argc, char* argv[]) {
 	{
 		sleepms(100);
 
-		// Reparse log in regular interval, but don't do it if the threadlock is set to
-		// prevent locking the whole engine in an endless loop
-		if(((time(NULL)-reparsing_delay)%reparsing_interval) == 0 && !threadlock)
+		// Garbadge collect in regular interval, but don't do it if the threadlock is set
+		if(((time(NULL) - GCdelay)%GCinterval) == 0 && !threadlock)
 		{
 			if(debug)
-				logg_int("Re-parsing log files due to set update interval of [s]: ",reparsing_interval);
-			// Flush internal data structure
-			rescan_logfiles = true;
-			initialscan = true;
-			// Reparse logs
-			while(((time(NULL)-reparsing_delay)%reparsing_interval) == 0)
+				logg_int("Running GC on data structure due to set interval of [s]: ", GCinterval);
+
+			pthread_t GCthread;
+			if(pthread_create( &GCthread, &attr, GC_thread, NULL ) != 0)
+			{
+				logg("Unable to open GC thread. Exiting...");
+				killed = 1;
+			}
+
+			while(((time(NULL) - GCdelay)%GCinterval) == 0)
 				sleepms(100);
 		}
 	}

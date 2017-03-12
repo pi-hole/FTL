@@ -14,34 +14,47 @@
 bool debug = false;
 bool debugthreads = false;
 bool debugclients = false;
+bool debugGC = false;
 void parse_args(int argc, char* argv[])
 {
 	int i;
 	for(i=0; i < argc; i++) {
 		if(strcmp(argv[i], "debug") == 0)
 			debug = true;
+
 		if(strcmp(argv[i], "debugthreads") == 0)
 		{
 			debug = true;
 			debugthreads = true;
 		}
+
 		if(strcmp(argv[i], "debugclients") == 0)
 		{
 			debug = true;
 			debugclients = true;
 		}
+
+		if(strcmp(argv[i], "debugGC") == 0)
+		{
+			debug = true;
+			debugGC = true;
+		}
+
 		if(strcmp(argv[i], "test") == 0)
 			killed = 1;
+
 		if(strcmp(argv[i], "version") == 0)
 		{
 			printf("%s\n",GIT_VERSION);
 			exit(0);
 		}
+
 		if(strcmp(argv[i], "tag") == 0)
 		{
 			printf("%s\n",GIT_TAG);
 			exit(0);
 		}
+
 		// Other arguments are ignored
 	}
 }

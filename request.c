@@ -32,7 +32,8 @@ void process_request(char *client_message, int *sock)
 		{
 			percentage = 1e2*counters.blocked/counters.queries;
 		}
-		sprintf(server_message,"domains_being_blocked %i\ndns_queries_today %i\nads_blocked_today %i\nads_percentage_today %f\n",counters.gravity,counters.queries,counters.blocked,percentage);
+		sprintf(server_message,"domains_being_blocked %i\ndns_queries_today %i\nads_blocked_today %i\nads_percentage_today %f\n", \
+		        counters.gravity,(counters.queries-counters.invalidqueries),counters.blocked,percentage);
 		swrite(server_message, *sock);
 		if(debugclients)
 			logg_int("Sent stats data to client, ID: ", *sock);
@@ -337,6 +338,8 @@ void process_request(char *client_message, int *sock)
 		int i;
 		for(i=ibeg; i < counters.queries; i++)
 		{
+			// Check if this query has been removed due to garbage collection
+			if(!queries[i].valid) continue;
 			char type[5];
 			if(queries[i].type == 1)
 			{
@@ -415,6 +418,8 @@ void process_request(char *client_message, int *sock)
 		int found = 0;
 		for(i = counters.queries - 1; i > 0 ; i--)
 		{
+			// Check if this query has been removed due to garbage collection
+			if(!queries[i].valid) continue;
 			if(queries[i].status == 1 || queries[i].status == 4)
 			{
 				found++;

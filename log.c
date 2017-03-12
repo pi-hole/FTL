@@ -60,6 +60,19 @@ void logg_str(const char* str, char* str2)
 		printf("[%d-%02d-%02d %02d:%02d:%02d.%03i] %s%s\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, millisec, str, str2);
 }
 
+void logg_const_str(const char* str, const char* str2)
+{
+	time_t t = time(NULL);
+	struct tm tm = *localtime(&t);
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+	int millisec = tv.tv_usec/1000;
+	fprintf(logfile, "[%d-%02d-%02d %02d:%02d:%02d.%03i] %s%s\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, millisec, str, str2);
+	fflush(logfile);
+	if(debug)
+		printf("[%d-%02d-%02d %02d:%02d:%02d.%03i] %s%s\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, millisec, str, str2);
+}
+
 void logg_str_str(const char* str, char* str2, char* str3)
 {
 	time_t t = time(NULL);

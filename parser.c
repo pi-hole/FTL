@@ -13,7 +13,6 @@
 char *resolveHostname(char *addr);
 
 int dnsmasqlogpos = 0;
-bool rescan_logfiles = false;
 
 int checkLogForChanges(void)
 {
@@ -44,52 +43,36 @@ void *pihole_log_thread(void *val)
 	prctl(PR_SET_NAME,"loganalyzer",0,0,0);
 	while(!killed)
 	{
-		// Lock FTL data structure, since it is likely that it will be changed here
-		// Requests should not be processed/answered when data is about to change
-		while(threadlock) sleepms(5);
-		if(debugthreads)
-			logg("Thread lock enabled  (pihole_log_thread)");
-		threadlock = true;
+		int newdata = checkLogForChanges();
 
-		// Shall we reprocess all log files?
-		if(rescan_logfiles)
+		if(newdata != 0)
 		{
-			rescan_logfiles = false;
-			pihole_log_flushed(false);
-			initialscan = true;
-			process_pihole_log(1);
-			process_pihole_log(0);
-			initialscan = false;
-		}
-		else
-		{
-			int newdata = checkLogForChanges();
+			// Lock FTL's data structure, since it is likely that it will be changed here
+			// Requests should not be processed/answered when data is about to change
+			enable_lock("pihole_log_thread");
 
-			if(newdata != 0)
+			if(newdata > 0)
 			{
-
-				if(newdata > 0)
-				{
-					// Process new data if found only in main log (file 0)
-					process_pihole_log(0);
-				}
-				else if(newdata < 0)
-				{
-					// Process flushed log
-					// Flush internal datastructure
-					pihole_log_flushed(true);
-					// Rescan files 0 (pihole.log) and 1 (pihole.log.1)
-					initialscan = true;
-					process_pihole_log(1);
-					process_pihole_log(0);
-					initialscan = false;
-				}
+				// Process new data if found only in main log (file 0)
+				process_pihole_log(0);
 			}
+			else if(newdata < 0)
+			{
+				// Process flushed log
+				// Flush internal datastructure
+				pihole_log_flushed(true);
+				// Rescan files 0 (pihole.log) and 1 (pihole.log.1)
+				initialscan = true;
+				process_pihole_log(1);
+				process_pihole_log(0);
+				initialscan = false;
+			}
+
+			// Release thread lock
+			disable_lock("pihole_log_thread");
 		}
 
-		threadlock = false;
-		if(debugthreads)
-			logg("Thread lock disabled (pihole_log_thread)");
+		// Wait some time before looking again at the log files
 		sleepms(50);
 	}
 	return NULL;
@@ -167,8 +150,8 @@ void process_pihole_log(int file)
 			querytime.tm_year = (*timeinfo).tm_year;
 			int querytimestamp = (int)mktime(&querytime);
 
-			// Skip parsing of this log entry if too old
-			if(((time(NULL) - reparsing_delay) - querytimestamp) > MAXLOGAGE) continue;
+			// Skip parsing of this log entry if it is too old
+			if(((time(NULL) - GCdelay) - querytimestamp) > MAXLOGAGE) continue;
 
 			// Now, we modify the minutes (and seconds), but that is fine, since
 			// we don't need the querytime anymore (querytimestamp is already set)
@@ -396,6 +379,8 @@ void process_pihole_log(int file)
 			queries[counters.queries].status = status;
 			queries[counters.queries].domainID = domainID;
 			queries[counters.queries].clientID = clientID;
+			queries[counters.queries].timeidx = timeidx;
+			queries[counters.queries].valid = true;
 
 			// Increase DNS queries counter
 			counters.queries++;

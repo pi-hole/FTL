@@ -18,6 +18,7 @@ void open_FTL_log(void);
 void logg(const char* str);
 void logg_int(const char* star, int i);
 void logg_str(const char* str, char* str2);
+void logg_const_str(const char* str, const char* str2);
 void logg_str_str_int(const char* str, char* str2, char* str3, int i);
 void logg_struct_resize(const char* str, int from, int to);
 void logg_str_str(const char* str, char* str2, char* str3);
@@ -62,3 +63,8 @@ bool getSetupVarsBool(char * input);
 void parse_args(int argc, char* argv[]);
 
 int detectStatus(char *domain);
+
+void *GC_thread(void *val);
+
+void enable_lock(const char *message);
+void disable_lock(const char *message);
