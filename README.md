@@ -190,6 +190,7 @@ memory allocated for internal data structure: 178688 bytes (178.69 KB)
 dynamically allocated allocated memory used for strings: 15084 bytes (15.08 KB)
 Sum: 193772 bytes (193.77 KB)
 ```
+
 - `>clientID` : Get ID of currently connected client
  ```
 6

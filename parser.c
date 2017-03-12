@@ -254,7 +254,7 @@ void process_pihole_log(int file)
 							break;
 						}
 						// Forwarded to upstream server?
-						else if(strstr(readbuffer2,"forwarded ") != NULL)
+						else if(strstr(readbuffer2,": forwarded ") != NULL)
 						{
 							status = 2;
 							break;
