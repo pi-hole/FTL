@@ -131,6 +131,9 @@ void *listenting_thread(void *args)
 	// the system without the need for another thread to join with the terminated thread
 	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
+	// Set thread name
+	prctl(PR_SET_NAME,"listener",0,0,0);
+
 	// Listen as long as FTL is not killed
 	while(!killed)
 	{
@@ -160,6 +163,10 @@ void *connection_handler_thread(void *socket_desc)
 	int sockID = sock;
 	char client_message[SOCKETBUFFERLEN] = "";
 
+	// Set thread name
+	char threadname[16];
+	sprintf(threadname,"client-%i",sockID);
+	prctl(PR_SET_NAME,threadname,0,0,0);
 	//Receive from client
 	ssize_t n;
 	while((n = recv(sock,client_message,SOCKETBUFFERLEN-1, 0)))

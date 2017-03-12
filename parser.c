@@ -41,6 +41,7 @@ void open_pihole_log(void)
 
 void *pihole_log_thread(void *val)
 {
+	prctl(PR_SET_NAME,"loganalyzer",0,0,0);
 	while(!killed)
 	{
 		// Lock FTL data structure, since it is likely that it will be changed here

@@ -88,11 +88,10 @@ void logg_str_str_int(const char* str, char* str2, char* str3, int i)
 
 void format_memory_size(char *prefix, int bytes, double *formated)
 {
-	const char* prefixes[7] = { "", "K", "M", "G", "T", "P", "E" };
-
 	int exponent = floor(log10(bytes)/3.);
 	if(exponent > 0 && exponent < 7)
 	{
+		const char* prefixes[7] = { "", "K", "M", "G", "T", "P", "E" };
 		strcpy(prefix, prefixes[exponent]);
 		*formated = (double)bytes/pow(10.0,exponent*3.0);
 	}
