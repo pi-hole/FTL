@@ -121,9 +121,24 @@ void process_pihole_log(int file)
 		return;
 	}
 
+	int fposbck = ftell(fp);
+
 	// Read pihole log from current position until EOF line by line
 	while( fgets (readbuffer , sizeof(readbuffer)-1 , fp) != NULL )
 	{
+		// Ensure that the line we read ended with a newline
+		// It can happen that we read too fast and dnsmasq didn't had the time
+		// to finish writing to the log. In this case, fgets() will not stop
+		// at a newline character, but at EOF. If we detect this scenario, we
+		// have to wait a little longer and re-try reading
+		if(feof(fp))
+		{
+			fseek(fp, fposbck, SEEK_SET);
+			sleepms(10);
+			if(fgets (readbuffer , sizeof(readbuffer)-1 , fp) == NULL)
+				break;
+		}
+
 		// Test if the read line is a query line
 		if(strstr(readbuffer,"]: query[A") != NULL)
 		{
@@ -486,10 +501,16 @@ void process_pihole_log(int file)
 			counters.SRV++;
 		}
 
+		// Save file pointer position, because we might have to repeat
+		// reading the next line if dnsmasq hasn't finished writing it
+		// (see beginning of this loop)
+		fposbck = ftell(fp);
 	}
+
 	// Update file pointer position
 	if(file == 0)
 		dnsmasqlogpos = ftell(dnsmasqlog);
+	// Close file if we are not reading the main log
 	else
 		fclose(fp);
 }
