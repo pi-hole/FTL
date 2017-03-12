@@ -183,3 +183,10 @@ SRV: 0
 www.googleadservices.com
 ```
  Variant: `>recentBlocked (4)` show the four most recent vlocked domains
+
+- `>memory` : get information about `FTL`'s memory usage due to its internal data structure
+ ```
+memory allocated for internal data structure: 178688 bytes (178.69 KB)
+dynamically allocated allocated memory used for strings: 15084 bytes (15.08 KB)
+Sum: 193772 bytes (193.77 KB)
+```
