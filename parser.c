@@ -152,7 +152,7 @@ void process_pihole_log(int file)
 			int querytimestamp = (int)mktime(&querytime);
 
 			// Skip parsing of this log entry if too old
-			if((time(NULL) - querytimestamp) > MAXLOGAGE) continue;
+			if(((time(NULL) - reparsing_delay) - querytimestamp) > MAXLOGAGE) continue;
 
 			// Now, we modify the minutes (and seconds), but that is fine, since
 			// we don't need the querytime anymore (querytimestamp is already set)

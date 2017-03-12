@@ -61,7 +61,7 @@ int main (int argc, char* argv[]) {
 	{
 		sleepms(100);
 
-		if(((time(NULL)+60)%reparsing_interval) == 0)
+		if(((time(NULL)-reparsing_delay)%reparsing_interval) == 0)
 		{
 			if(debug)
 				logg_int("Re-parsing log files due to set update interval of [s]: ",reparsing_interval);
@@ -69,7 +69,7 @@ int main (int argc, char* argv[]) {
 			rescan_logfiles = true;
 			initialscan = true;
 			// Reparse logs
-			while(((time(NULL)+60)%reparsing_interval) == 0)
+			while(((time(NULL)-reparsing_delay)%reparsing_interval) == 0)
 				sleepms(100);
 		}
 	}

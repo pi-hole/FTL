@@ -58,6 +58,10 @@
 // Default: 3600 (once per hour)
 #define reparsing_interval 3600
 
+// Delay applied to the reparsing of logs [seconds]
+// Can be used
+#define reparsing_delay (-60)
+
 // Static structs
 typedef struct {
 	const char* log;
