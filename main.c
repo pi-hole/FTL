@@ -61,7 +61,9 @@ int main (int argc, char* argv[]) {
 	{
 		sleepms(100);
 
-		if(((time(NULL)-reparsing_delay)%reparsing_interval) == 0)
+		// Reparse log in regular interval, but don't do it if the threadlock is set to
+		// prevent locking the whole engine in an endless loop
+		if(((time(NULL)-reparsing_delay)%reparsing_interval) == 0 && !threadlock)
 		{
 			if(debug)
 				logg_int("Re-parsing log files due to set update interval of [s]: ",reparsing_interval);

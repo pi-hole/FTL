@@ -177,7 +177,7 @@ void *connection_handler_thread(void *socket_desc)
 			strcpy(message, client_message);
 			// Lock FTL data structure, since it is likely that it will be changed here
 			// Requests should not be processed/answered when data is about to change
-			while(threadlock) sleepms(1);
+			while(threadlock) sleepms(5);
 			threadlock = true;
 			if(debugthreads)
 				logg("Thread lock enabled  (process_request)");
