@@ -13,7 +13,7 @@ function GetFTLData {
     exec 3<>/dev/tcp/localhost/"$(cat /var/run/pihole-FTL.port)"
 
     # Test if connection is open
-    if { >&3; } 2> /dev/null; then
+    if { true >&3; } 2> /dev/null; then
        # Send command to FTL
        echo -e ">$1" >&3
        echo -e ">quit" >&3
