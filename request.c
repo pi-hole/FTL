@@ -469,6 +469,41 @@ void process_request(char *client_message, int *sock)
 		if(debugclients)
 			logg_int("Sent client ID to client, ID: ", *sock);
 	}
+	else if(command(client_message, ">ForwardedoverTime"))
+	{
+		processed = true;
+		int i, j, k, sendit = -1;
+		for(i = 0; i < counters.overTime; i++)
+		{
+			if((overTime[i].total > 0 || overTime[i].blocked > 0))
+			{
+				sendit = i;
+				break;
+			}
+		}
+		if(sendit > -1)
+		{
+			for(i = sendit; i < counters.overTime; i++)
+			{
+				sprintf(server_message, "%i", overTime[i].timestamp);
+
+				for(j = 0; j < counters.forwarded; j++)
+				{
+					if(j < overTime[i].forwardnum)
+						k = overTime[i].forwarddata[j];
+					else
+						k = 0;
+
+					sprintf(server_message + strlen(server_message), " %i", k);
+				}
+
+				sprintf(server_message + strlen(server_message), "\n");
+				swrite(server_message, *sock);
+			}
+		}
+		if(debugclients)
+			logg_int("Sent overTime forwarded data to client, ID: ", *sock);
+	}
 
 	// End of queryable commands
 	if(processed)
