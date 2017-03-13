@@ -504,14 +504,6 @@ void process_pihole_log(int file)
 			logg("dnsmasq process restarted");
 			read_gravity_files();
 		}
-		else if(strstr(readbuffer,"query[PTR]"))
-		{
-			counters.PTR++;
-		}
-		else if(strstr(readbuffer,"query[SRV]"))
-		{
-			counters.SRV++;
-		}
 
 		// Save file pointer position, because we might have to repeat
 		// reading the next line if dnsmasq hasn't finished writing it

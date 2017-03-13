@@ -55,6 +55,21 @@ void *GC_thread(void *val)
 				default: /* That cannot happen */ break;
 			}
 
+			switch(queries[i].type)
+			{
+				case 1: counters.IPv4--; break;
+				case 2: counters.IPv6--; break;
+				default: logg("ERROR in GC"); break;
+			}
+
+			// Remove forwarded data from overTime and total forwarded count
+			int j;
+			for(j = 0; j < overTime[queries[i].timeidx].forwardnum; j++)
+			{
+				forwarded[j].count -= overTime[queries[i].timeidx].forwarddata[j];
+				overTime[queries[i].timeidx].forwarddata[j] = 0;
+			}
+
 			// Mark this query as garbage collected
 			queries[i].valid = false;
 

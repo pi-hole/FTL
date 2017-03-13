@@ -230,7 +230,7 @@ void process_request(char *client_message, int *sock)
 	else if(command(client_message, ">querytypes"))
 	{
 		processed = true;
-		sprintf(server_message,"A (IPv4): %i\nAAAA (IPv6): %i\nPTR: %i\nSRV: %i\n",counters.IPv4,counters.IPv6,counters.PTR,counters.SRV);
+		sprintf(server_message,"A (IPv4): %i\nAAAA (IPv6): %i\n",counters.IPv4,counters.IPv6);
 		swrite(server_message, *sock);
 		if(debugclients)
 			logg_int("Sent query type data to client, ID: ", *sock);
