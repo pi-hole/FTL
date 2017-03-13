@@ -62,7 +62,8 @@ void *GC_thread(void *val)
 				default: logg("ERROR in GC"); break;
 			}
 
-			// Remove forwarded data from overTime and total forwarded count
+			// Remove forwarded data from overTime (forwarded)
+			// and individual forwarded count
 			int j;
 			for(j = 0; j < overTime[queries[i].timeidx].forwardnum; j++)
 			{
