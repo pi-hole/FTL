@@ -55,10 +55,14 @@ void pihole_log_flushed(bool message)
 	wildcarddomains = NULL;
 	memory.wildcarddomains = 0;
 
-	// Free memory on allocated data structure
-	// overTime struct: No allocated entries
+	// overTime struct: Free allocated substructure
+	for(i=0;i<counters.overTime;i++)
+	{
+		free(overTime[i].forwarddata);
+	}
 	free(overTime);
 	overTime = NULL;
+	memory.forwarddata = 0;
 
 	// Reset all counters (except clients and forwards, because they need PTRs) to zero
 	int counters_bck  = counters.clients;

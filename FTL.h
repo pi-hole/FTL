@@ -140,6 +140,8 @@ typedef struct {
 	int timestamp;
 	int total;
 	int blocked;
+	int forwardnum;
+	int *forwarddata;
 } overTimeDataStruct;
 
 typedef struct {
@@ -149,6 +151,7 @@ typedef struct {
 	int clientnames;
 	int forwardedips;
 	int forwardednames;
+	int forwarddata;
 } memoryStruct;
 
 enum { QUERIES, FORWARDED, CLIENTS, DOMAINS, OVERTIME };

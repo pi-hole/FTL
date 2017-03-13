@@ -443,7 +443,7 @@ void process_request(char *client_message, int *sock)
 		swrite(server_message, *sock);
 		free(structprefix);
 
-		int dynamicbytes = memory.wildcarddomains + memory.domainnames + memory.clientips + memory.clientnames + memory.forwardedips + memory.forwardednames;
+		int dynamicbytes = memory.wildcarddomains + memory.domainnames + memory.clientips + memory.clientnames + memory.forwardedips + memory.forwardednames + memory.forwarddata;
 		char *dynamicprefix = calloc(2, sizeof(char));
 		format_memory_size(dynamicprefix, dynamicbytes, &formated);
 		sprintf(server_message,"dynamically allocated allocated memory used for strings: %i bytes (%.2f %sB)\n",dynamicbytes,formated,dynamicprefix);

@@ -11,6 +11,7 @@
 #include "FTL.h"
 
 char *resolveHostname(char *addr);
+void extracttimestamp(char *readbuffer, int *querytimestamp, int *overTimetimestamp);
 
 int dnsmasqlogpos = 0;
 int lastqueryID = 0;
@@ -130,41 +131,16 @@ void process_pihole_log(int file)
 			memory_check(QUERIES);
 
 			// Get timestamp
-			char timestamp[16] = "";
-			strncpy(timestamp,readbuffer,(size_t)15);
-			timestamp[15] = '\0';
-			// Get local time
-			time_t rawtime;
-			struct tm * timeinfo;
-			time(&rawtime);
-			timeinfo = localtime (&rawtime);
-			// Interpret dnsmasq timestamp
-			struct tm querytime = { 0 };
-			// Expected format: Mmm dd hh:mm:ss
-			// %b = Abbreviated month name
-			// %e = Day of the month, space-padded ( 1-31)
-			// %H = Hour in 24h format (00-23)
-			// %M = Minute (00-59)
-			// %S = Second (00-59)
-			strptime(timestamp, "%b %e %H:%M:%S", &querytime);
-			// Year is missing in dnsmasq's output - add the current year
-			querytime.tm_year = (*timeinfo).tm_year;
-			int querytimestamp = (int)mktime(&querytime);
-
+			int querytimestamp, overTimetimestamp;
+			extracttimestamp(readbuffer, &querytimestamp, &overTimetimestamp);
 			// Skip parsing of this log entry if it is too old
 			if(((time(NULL) - GCdelay) - querytimestamp) > MAXLOGAGE) continue;
 
-			// Now, we modify the minutes (and seconds), but that is fine, since
-			// we don't need the querytime anymore (querytimestamp is already set)
-			querytime.tm_min = querytime.tm_min - (querytime.tm_min%10) + 5;
-			querytime.tm_sec = 0;
-
 			int timeidx;
-			int overTimeUNIXstamp = (int)mktime(&querytime);
 			bool found = false;
 			for(i=0; i < counters.overTime; i++)
 			{
-				if(overTime[i].timestamp == overTimeUNIXstamp)
+				if(overTime[i].timestamp == overTimetimestamp)
 				{
 					found = true;
 					timeidx = i;
@@ -175,7 +151,7 @@ void process_pihole_log(int file)
 			{
 				memory_check(OVERTIME);
 				timeidx = counters.overTime;
-				overTime[counters.overTime].timestamp = overTimeUNIXstamp;
+				overTime[counters.overTime].timestamp = overTimetimestamp;
 				overTime[counters.overTime].total = 0;
 				overTime[counters.overTime].blocked = 0;
 				counters.overTime++;
@@ -409,6 +385,12 @@ void process_pihole_log(int file)
 		}
 		else if(strstr(readbuffer,": forwarded") != NULL)
 		{
+			// Get timestamp
+			int querytimestamp, overTimetimestamp;
+			extracttimestamp(readbuffer, &querytimestamp, &overTimetimestamp);
+			// Skip parsing of this log entry if it is too old
+			if(((time(NULL) - GCdelay) - querytimestamp) > MAXLOGAGE) continue;
+
 			// Get forward destination
 			// forwardstart = pointer to | in "forwarded domain.name| to www.xxx.yyy.zzz\n"
 			const char *forwardstart = strstr(readbuffer, " to ");
@@ -471,6 +453,46 @@ void process_pihole_log(int file)
 				else
 					logg_str("Added new forward server: ", forwarded[forwardID].ip);
 			}
+
+			// Determine time index for this forward request
+			int timeidx;
+			bool found = false;
+			for(i=0; i < counters.overTime; i++)
+			{
+				if(overTime[i].timestamp == overTimetimestamp)
+				{
+					found = true;
+					timeidx = i;
+					break;
+				}
+			}
+			if(!found)
+			{
+				memory_check(OVERTIME);
+				timeidx = counters.overTime;
+				overTime[counters.overTime].timestamp = overTimetimestamp;
+				overTime[counters.overTime].total = 0;
+				overTime[counters.overTime].blocked = 0;
+				counters.overTime++;
+			}
+			// Determine if there is enough space for saving the current
+			// forwardID in the overTime data structure -allocate space otherwise
+			if(overTime[timeidx].forwardnum <= forwardID)
+			{
+				// Reallocate more space for forwarddata
+				overTime[timeidx].forwarddata = realloc(overTime[timeidx].forwarddata, (forwardID+1)*sizeof(*overTime[timeidx].forwarddata));
+				// Initialize new data fields with zeroes
+				for(i = overTime[timeidx].forwardnum; i <= forwardID; i++)
+				{
+					overTime[timeidx].forwarddata[i] = 0;
+					memory.forwarddata++;
+				}
+				// Update counter
+				overTime[timeidx].forwardnum = forwardID + 1;
+			}
+
+			// Update overTime data structure with the new forwarder
+			overTime[timeidx].forwarddata[forwardID]++;
 		}
 		else if((strstr(readbuffer,"IPv6") != NULL) &&
 		        (strstr(readbuffer,"DBus") != NULL) &&
@@ -571,4 +593,33 @@ int detectStatus(char *domain)
 	// address=// configuration
 	// Answer as "cached"
 	return 3;
+}
+
+void extracttimestamp(char *readbuffer, int *querytimestamp, int *overTimetimestamp)
+{
+	// Get timestamp
+	char timestamp[16] = "";
+	strncpy(timestamp,readbuffer,(size_t)15);
+	timestamp[15] = '\0';
+	// Get local time
+	time_t rawtime;
+	struct tm * timeinfo;
+	time(&rawtime);
+	timeinfo = localtime (&rawtime);
+	// Interpret dnsmasq timestamp
+	struct tm querytime = { 0 };
+	// Expected format: Mmm dd hh:mm:ss
+	// %b = Abbreviated month name
+	// %e = Day of the month, space-padded ( 1-31)
+	// %H = Hour in 24h format (00-23)
+	// %M = Minute (00-59)
+	// %S = Second (00-59)
+	strptime(timestamp, "%b %e %H:%M:%S", &querytime);
+	// Year is missing in dnsmasq's output - add the current year
+	querytime.tm_year = (*timeinfo).tm_year;
+	*querytimestamp = (int)mktime(&querytime);
+
+	// Floor timestamp to the beginning of 10 minutes interval
+	// and add 5 minutes to center it in the interval
+	*overTimetimestamp = *querytimestamp-(*querytimestamp%600)+300;
 }

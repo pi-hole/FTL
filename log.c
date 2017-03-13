@@ -124,7 +124,7 @@ void logg_struct_resize(const char* str, int to, int step)
 	int millisec = tv.tv_usec/1000;
 
 	int structbytes = counters.queries_MAX*sizeof(*queries) + counters.forwarded_MAX*sizeof(*forwarded) + counters.clients_MAX*sizeof(*clients) + counters.domains_MAX*sizeof(*domains) + counters.overTime_MAX*sizeof(*overTime) + (counters.wildcarddomains)*sizeof(*wildcarddomains);
-	int dynamicbytes = memory.wildcarddomains + memory.domainnames + memory.clientips + memory.clientnames + memory.forwardedips + memory.forwardednames;
+	int dynamicbytes = memory.wildcarddomains + memory.domainnames + memory.clientips + memory.clientnames + memory.forwardedips + memory.forwardednames + memory.forwarddata;
 
 	int bytes = structbytes + dynamicbytes;
 	char *prefix = calloc(2, sizeof(char));
