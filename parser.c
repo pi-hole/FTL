@@ -13,6 +13,7 @@
 char *resolveHostname(char *addr);
 
 int dnsmasqlogpos = 0;
+int lastqueryID = 0;
 
 int checkLogForChanges(void)
 {
@@ -201,7 +202,9 @@ void process_pihole_log(int file)
 			}
 			size_t domainlen = domainend-(domainstart+2);
 			char *domain = calloc(domainlen+1,sizeof(char));
+			char *domainwithspaces = calloc(domainlen+3,sizeof(char));
 			strncpy(domain,domainstart+2,domainlen);
+			sprintf(domainwithspaces," %s ",domain);
 
 			// Get client
 			// domainend+6 = pointer to | in "query[AAAA] host.name from |ww.xx.yy.zz\n"
@@ -245,7 +248,7 @@ void process_pihole_log(int file)
 				if(fgets (readbuffer2 , sizeof(readbuffer2) , fp) != NULL)
 				{
 					// Process only matching lines
-					if(strstr(readbuffer2,domain) != NULL)
+					if(strstr(readbuffer2, domainwithspaces) != NULL)
 					{
 						// Blocked by gravity.list ?
 						if(strstr(readbuffer2,"gravity.list ") != NULL)
@@ -303,7 +306,7 @@ void process_pihole_log(int file)
 			int domainID;
 			for(i=0; i < counters.domains; i++)
 			{
-				if(strcmp(domains[i].domain,domain) == 0)
+				if(strcmp(domains[i].domain, domain) == 0)
 				{
 					domains[i].count++;
 					processed = true;
@@ -338,7 +341,7 @@ void process_pihole_log(int file)
 			int clientID;
 			for(i=0; i < counters.clients; i++)
 			{
-				if(strcmp(clients[i].ip,client) == 0)
+				if(strcmp(clients[i].ip, client) == 0)
 				{
 					clients[i].count++;
 					processed = true;
@@ -430,12 +433,14 @@ void process_pihole_log(int file)
 			strncpy(forward,forwardstart+4,forwardlen);
 
 			bool processed = false;
+			int forwardID;
 			// Go through already knows forward servers and see if we used one of those
 			for(i=0; i < counters.forwarded; i++)
 			{
 				if(strcmp(forwarded[i].ip,forward) == 0)
 				{
-					forwarded[i].count++;
+					forwardID = i;
+					forwarded[forwardID].count++;
 					processed = true;
 					break;
 				}
@@ -446,7 +451,7 @@ void process_pihole_log(int file)
 				// Check struct size
 				memory_check(FORWARDED);
 				// Store ID
-				int forwardID = counters.forwarded;
+				forwardID = counters.forwarded;
 				// Set its counter to 1
 				forwarded[forwardID].count = 1;
 				// Save IP
