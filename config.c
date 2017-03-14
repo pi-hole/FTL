@@ -29,6 +29,7 @@ void read_FTLconf(void)
 	}
 
 	// Parse lines in the config file
+	logg("Starting config file parsing");
 
 	// SOCKET_LISTENING
 	// defaults to: listen only local
@@ -36,10 +37,10 @@ void read_FTLconf(void)
 	buffer = parse_FTLconf(fp, "SOCKET_LISTENING");
 	if(buffer != NULL)
 	{
-		logg_str("SOCKET_LISTENING: ", buffer);
 		if(strcmp(buffer, "all") == 0)
 			config.socket_listenlocal = false;
 	}
+	logg_bool("   SOCKET_LISTENING", buffer);
 
 	// INCLUDE_YESTERDAY
 	// defaults to: no
@@ -47,11 +48,12 @@ void read_FTLconf(void)
 	buffer = parse_FTLconf(fp, "INCLUDE_YESTERDAY");
 	if(buffer != NULL)
 	{
-		logg_str("INCLUDE_YESTERDAY: ", buffer);
 		if((strcmp(buffer, "true") == 0) || (strcmp(buffer, "yes") == 0))
 			config.include_yesterday = true;
 	}
+	logg_bool("   INCLUDE_YESTERDAY", buffer);
 
+	logg("Finished config file parsing");
 	free(conflinebuffer);
 	conflinebuffer = NULL;
 	fclose(fp);

@@ -21,82 +21,76 @@ void open_FTL_log(void)
 	}
 }
 
-void logg(const char* str)
+char timestring[32];
+void get_timestr(void)
 {
 	time_t t = time(NULL);
 	struct tm tm = *localtime(&t);
 	struct timeval tv;
 	gettimeofday(&tv, NULL);
 	int millisec = tv.tv_usec/1000;
-	fprintf(logfile, "[%d-%02d-%02d %02d:%02d:%02d.%03i] %s\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, millisec, str);
+
+	sprintf(timestring,"%d-%02d-%02d %02d:%02d:%02d.%03i", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, millisec);
+}
+
+void logg(const char* str)
+{
+	get_timestr();
+
+	fprintf(logfile, "[%s] %s\n", timestring, str);
 	fflush(logfile);
 	if(debug)
-		printf("[%d-%02d-%02d %02d:%02d:%02d.%03i] %s\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, millisec, str);
+		printf("[%s] %s\n", timestring, str);
 }
 
 void logg_int(const char* str, int i)
 {
-	time_t t = time(NULL);
-	struct tm tm = *localtime(&t);
-	struct timeval tv;
-	gettimeofday(&tv, NULL);
-	int millisec = tv.tv_usec/1000;
-	fprintf(logfile, "[%d-%02d-%02d %02d:%02d:%02d.%03i] %s%i\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, millisec, str, i);
+	get_timestr();
+
+	fprintf(logfile, "[%s] %s%i\n", timestring, str, i);
 	fflush(logfile);
 	if(debug)
-		printf("[%d-%02d-%02d %02d:%02d:%02d.%03i] %s%i\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, millisec, str, i);
+		printf("[%s] %s%i\n", timestring, str, i);
 }
 
 void logg_str(const char* str, char* str2)
 {
-	time_t t = time(NULL);
-	struct tm tm = *localtime(&t);
-	struct timeval tv;
-	gettimeofday(&tv, NULL);
-	int millisec = tv.tv_usec/1000;
-	fprintf(logfile, "[%d-%02d-%02d %02d:%02d:%02d.%03i] %s%s\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, millisec, str, str2);
+	get_timestr();
+
+	fprintf(logfile, "[%s] %s%s\n", timestring, str, str2);
 	fflush(logfile);
 	if(debug)
-		printf("[%d-%02d-%02d %02d:%02d:%02d.%03i] %s%s\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, millisec, str, str2);
+		printf("[%s] %s%s\n", timestring, str, str2);
 }
 
 void logg_const_str(const char* str, const char* str2)
 {
-	time_t t = time(NULL);
-	struct tm tm = *localtime(&t);
-	struct timeval tv;
-	gettimeofday(&tv, NULL);
-	int millisec = tv.tv_usec/1000;
-	fprintf(logfile, "[%d-%02d-%02d %02d:%02d:%02d.%03i] %s%s\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, millisec, str, str2);
+	get_timestr();
+
+	fprintf(logfile, "[%s] %s%s\n", timestring, str, str2);
 	fflush(logfile);
 	if(debug)
-		printf("[%d-%02d-%02d %02d:%02d:%02d.%03i] %s%s\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, millisec, str, str2);
+		printf("[%s] %s%s\n", timestring, str, str2);
 }
 
 void logg_str_str(const char* str, char* str2, char* str3)
 {
-	time_t t = time(NULL);
-	struct tm tm = *localtime(&t);
-	struct timeval tv;
-	gettimeofday(&tv, NULL);
-	int millisec = tv.tv_usec/1000;
-	fprintf(logfile, "[%d-%02d-%02d %02d:%02d:%02d.%03i] %s%s (%s)\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, millisec, str, str2, str3);
+	get_timestr();
+
+	fprintf(logfile, "[%s] %s%s (%s)\n", timestring, str, str2, str3);
 	fflush(logfile);
 	if(debug)
-		printf("[%d-%02d-%02d %02d:%02d:%02d.%03i] %s%s (%s)\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, millisec, str, str2, str3);
+		printf("[%s] %s%s (%s)\n", timestring, str, str2, str3);
 }
 
 void logg_str_str_int(const char* str, char* str2, char* str3, int i)
 {
-	time_t t = time(NULL);
-	struct tm tm = *localtime(&t);
-	struct timeval tv;
-	gettimeofday(&tv, NULL);
-	int millisec = tv.tv_usec/1000;
-	fprintf(logfile, "[%d-%02d-%02d %02d:%02d:%02d.%03i] %s%s%s%i\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, millisec, str, str2, str3, i);
+	get_timestr();
+
+	fprintf(logfile, "[%s] %s%s%s%i\n", timestring, str, str2, str3, i);
 	fflush(logfile);
 	if(debug)
-		printf("[%d-%02d-%02d %02d:%02d:%02d.%03i] %s%s%s%i\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, millisec, str, str2, str3, i);
+		printf("[%s] %s%s%s%i\n", timestring, str, str2, str3, i);
 }
 
 void format_memory_size(char *prefix, int bytes, double *formated)
@@ -117,11 +111,7 @@ void format_memory_size(char *prefix, int bytes, double *formated)
 
 void logg_struct_resize(const char* str, int to, int step)
 {
-	time_t t = time(NULL);
-	struct tm tm = *localtime(&t);
-	struct timeval tv;
-	gettimeofday(&tv, NULL);
-	int millisec = tv.tv_usec/1000;
+	get_timestr();
 
 	int structbytes = counters.queries_MAX*sizeof(*queries) + counters.forwarded_MAX*sizeof(*forwarded) + counters.clients_MAX*sizeof(*clients) + counters.domains_MAX*sizeof(*domains) + counters.overTime_MAX*sizeof(*overTime) + (counters.wildcarddomains)*sizeof(*wildcarddomains);
 	int dynamicbytes = memory.wildcarddomains + memory.domainnames + memory.clientips + memory.clientnames + memory.forwardedips + memory.forwardednames + memory.forwarddata;
@@ -131,10 +121,10 @@ void logg_struct_resize(const char* str, int to, int step)
 	double formated = 0.0;
 	format_memory_size(prefix, bytes, &formated);
 
-	fprintf(logfile, "[%d-%02d-%02d %02d:%02d:%02d.%03i] Notice: Increasing %s struct size from %i to %i (%.2f %sB)\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, millisec, str, (to-step), to, formated, prefix);
+	fprintf(logfile, "[%s] Notice: Increasing %s struct size from %i to %i (%.2f %sB)\n", timestring, str, (to-step), to, formated, prefix);
 	fflush(logfile);
 	if(debug)
-		printf("[%d-%02d-%02d %02d:%02d:%02d.%03i] Notice: Increasing %s struct size from %i to %i (%.2f %sB)\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, millisec, str, (to-step), to, formated, prefix);
+		printf("[%s] Notice: Increasing %s struct size from %i to %i (%.2f %sB)\n", timestring, str, (to-step), to, formated, prefix);
 
 	free(prefix);
 }
@@ -147,4 +137,13 @@ void log_counter_info(void)
 	logg_int(" -> Unknown DNS queries: ", counters.unknown);
 	logg_int(" -> Unique domains: ", counters.domains);
 	logg_int(" -> Unique clients: ", counters.clients);
+}
+
+void logg_bool(const char* str, bool b)
+{
+	get_timestr();
+	fprintf(logfile, "[%s] %s: %s\n", timestring, str, b ? "true" : "false");
+	fflush(logfile);
+	if(debug)
+		printf("[%s] %s: %s\n", timestring, str, b ? "true" : "false");
 }
