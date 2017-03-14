@@ -68,23 +68,6 @@ int main (int argc, char* argv[]) {
 	while(!killed)
 	{
 		sleepms(100);
-
-		// Garbadge collect in regular interval, but don't do it if the threadlock is set
-		if(((time(NULL) - GCdelay)%GCinterval) == 0 && !threadlock)
-		{
-			if(debug)
-				logg_int("Running GC on data structure due to set interval of [s]: ", GCinterval);
-
-			pthread_t GCthread;
-			if(pthread_create( &GCthread, &attr, GC_thread, NULL ) != 0)
-			{
-				logg("Unable to open GC thread. Exiting...");
-				killed = 1;
-			}
-
-			while(((time(NULL) - GCdelay)%GCinterval) == 0)
-				sleepms(100);
-		}
 	}
 
 

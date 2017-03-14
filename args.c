@@ -14,7 +14,6 @@
 bool debug = false;
 bool debugthreads = false;
 bool debugclients = false;
-bool debugGC = false;
 void parse_args(int argc, char* argv[])
 {
 	int i;
@@ -32,12 +31,6 @@ void parse_args(int argc, char* argv[])
 		{
 			debug = true;
 			debugclients = true;
-		}
-
-		if(strcmp(argv[i], "debugGC") == 0)
-		{
-			debug = true;
-			debugGC = true;
 		}
 
 		if(strcmp(argv[i], "test") == 0)

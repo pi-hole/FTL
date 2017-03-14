@@ -225,7 +225,23 @@ void process_request(char *client_message, int *sock)
 			}
 		}
 		if(debugclients)
-			logg_int("Sent forwarded destinations data to client, ID: ", *sock);
+			logg_int("Sent forward destination data to client, ID: ", *sock);
+	}
+	else if(command(client_message, ">forward-names"))
+	{
+		processed = true;
+		int i;
+		for(i=0; i < counters.forwarded; i++)
+		{
+			// Get sorted indices
+			if(forwarded[i].count > 0)
+			{
+				sprintf(server_message,"%i %i %s %s\n",i,forwarded[i].count,forwarded[i].ip,forwarded[i].name);
+				swrite(server_message, *sock);
+			}
+		}
+		if(debugclients)
+			logg_int("Sent forward destination names to client, ID: ", *sock);
 	}
 	else if(command(client_message, ">querytypes"))
 	{
@@ -338,8 +354,6 @@ void process_request(char *client_message, int *sock)
 		int i;
 		for(i=ibeg; i < counters.queries; i++)
 		{
-			// Check if this query has been removed due to garbage collection
-			if(!queries[i].valid) continue;
 			char type[5];
 			if(queries[i].type == 1)
 			{
@@ -418,8 +432,6 @@ void process_request(char *client_message, int *sock)
 		int found = 0;
 		for(i = counters.queries - 1; i > 0 ; i--)
 		{
-			// Check if this query has been removed due to garbage collection
-			if(!queries[i].valid) continue;
 			if(queries[i].status == 1 || queries[i].status == 4)
 			{
 				found++;
@@ -472,7 +484,7 @@ void process_request(char *client_message, int *sock)
 	else if(command(client_message, ">ForwardedoverTime"))
 	{
 		processed = true;
-		int i, j, k, sendit = -1;
+		int i, sendit = -1;
 		for(i = 0; i < counters.overTime; i++)
 		{
 			if((overTime[i].total > 0 || overTime[i].blocked > 0))
@@ -487,8 +499,10 @@ void process_request(char *client_message, int *sock)
 			{
 				sprintf(server_message, "%i", overTime[i].timestamp);
 
+				int j;
 				for(j = 0; j < counters.forwarded; j++)
 				{
+					int k;
 					if(j < overTime[i].forwardnum)
 						k = overTime[i].forwarddata[j];
 					else

@@ -51,18 +51,6 @@
 
 #define SOCKETBUFFERLEN 1024
 
-// Maximum time from now until we will parse logs that are in the past [seconds]
-// Default: 86400 (24 hours)
-#define MAXLOGAGE 86400
-
-// How often do we garbage collect (to ensure we only have data fitting to the MAXLOGAGE defined above)? [seconds]
-// Default: 3600 (once per hour)
-#define GCinterval 3600
-
-// Delay applied to the garbage collecting [seconds]
-// Default -60 (one minute before a full hour)
-#define GCdelay (-60)
-
 // Static structs
 typedef struct {
 	const char* log;
@@ -113,8 +101,6 @@ typedef struct {
 	// 0 = unknown, 1 = gravity.list (blocked), 2 = reply from upstream, 3 = cache, 4 = wildcard blocked
 	int domainID;
 	int clientID;
-	int forwardID;
-	bool valid;
 } queriesDataStruct;
 
 typedef struct {
@@ -178,7 +164,6 @@ bool initialscan;
 bool debug;
 bool debugthreads;
 bool debugclients;
-bool debugGC;
 bool threadlock;
 
 char ** wildcarddomains;

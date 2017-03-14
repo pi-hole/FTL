@@ -130,33 +130,6 @@ void process_pihole_log(int file)
 			// Ensure we have enough space in the queries struct
 			memory_check(QUERIES);
 
-			// Get timestamp
-			int querytimestamp, overTimetimestamp;
-			extracttimestamp(readbuffer, &querytimestamp, &overTimetimestamp);
-			// Skip parsing of this log entry if it is too old
-			if(((time(NULL) - GCdelay) - querytimestamp) > MAXLOGAGE) continue;
-
-			int timeidx;
-			bool found = false;
-			for(i=0; i < counters.overTime; i++)
-			{
-				if(overTime[i].timestamp == overTimetimestamp)
-				{
-					found = true;
-					timeidx = i;
-					break;
-				}
-			}
-			if(!found)
-			{
-				memory_check(OVERTIME);
-				timeidx = counters.overTime;
-				overTime[counters.overTime].timestamp = overTimetimestamp;
-				overTime[counters.overTime].total = 0;
-				overTime[counters.overTime].blocked = 0;
-				counters.overTime++;
-			}
-
 			// Get domain
 			// domainstart = pointer to | in "query[AAAA] |host.name from ww.xx.yy.zz\n"
 			const char *domainstart = strstr(readbuffer, "] ");
@@ -195,6 +168,31 @@ void process_pihole_log(int file)
 			size_t clientlen = (clientend-domainend)-6;
 			char *client = calloc(clientlen+1,sizeof(char));
 			strncpy(client,domainend+6,clientlen);
+
+			// Get timestamp
+			int querytimestamp, overTimetimestamp;
+			extracttimestamp(readbuffer, &querytimestamp, &overTimetimestamp);
+
+			int timeidx;
+			bool found = false;
+			for(i=0; i < counters.overTime; i++)
+			{
+				if(overTime[i].timestamp == overTimetimestamp)
+				{
+					found = true;
+					timeidx = i;
+					break;
+				}
+			}
+			if(!found)
+			{
+				memory_check(OVERTIME);
+				timeidx = counters.overTime;
+				overTime[counters.overTime].timestamp = overTimetimestamp;
+				overTime[counters.overTime].total = 0;
+				overTime[counters.overTime].blocked = 0;
+				counters.overTime++;
+			}
 
 			// Get type
 			unsigned char type = 0;
@@ -359,7 +357,6 @@ void process_pihole_log(int file)
 			queries[counters.queries].domainID = domainID;
 			queries[counters.queries].clientID = clientID;
 			queries[counters.queries].timeidx = timeidx;
-			queries[counters.queries].valid = true;
 
 			// Increase DNS queries counter
 			counters.queries++;
@@ -385,11 +382,6 @@ void process_pihole_log(int file)
 		}
 		else if(strstr(readbuffer,": forwarded") != NULL)
 		{
-			// Get timestamp
-			int querytimestamp, overTimetimestamp;
-			extracttimestamp(readbuffer, &querytimestamp, &overTimetimestamp);
-			// Skip parsing of this log entry if it is too old
-			if(((time(NULL) - GCdelay) - querytimestamp) > MAXLOGAGE) continue;
 
 			// Get forward destination
 			// forwardstart = pointer to | in "forwarded domain.name| to www.xxx.yyy.zzz\n"
@@ -455,6 +447,9 @@ void process_pihole_log(int file)
 			}
 
 			// Determine time index for this forward request
+			// Get timestamp
+			int querytimestamp, overTimetimestamp;
+			extracttimestamp(readbuffer, &querytimestamp, &overTimetimestamp);
 			int timeidx;
 			bool found = false;
 			for(i=0; i < counters.overTime; i++)
