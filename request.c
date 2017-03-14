@@ -354,6 +354,9 @@ void process_request(char *client_message, int *sock)
 		int i;
 		for(i=ibeg; i < counters.queries; i++)
 		{
+			// Check if this query has been removed due to garbage collection
+			if(!queries[i].valid) continue;
+
 			char type[5];
 			if(queries[i].type == 1)
 			{
@@ -424,6 +427,7 @@ void process_request(char *client_message, int *sock)
 			// User wants a different number of requests
 			if(num >= counters.queries)
 				num = 0;
+
 			if(debugclients)
 				logg_int("Showing several blocked domains ",num);
 		}
@@ -432,12 +436,16 @@ void process_request(char *client_message, int *sock)
 		int found = 0;
 		for(i = counters.queries - 1; i > 0 ; i--)
 		{
+			// Check if this query has been removed due to garbage collection
+			if(!queries[i].valid) continue;
+
 			if(queries[i].status == 1 || queries[i].status == 4)
 			{
 				found++;
 				sprintf(server_message,"%s\n",domains[queries[i].domainID].domain);
 				swrite(server_message, *sock);
 			}
+
 			if(found >= num)
 			{
 				break;

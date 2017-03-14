@@ -72,3 +72,5 @@ void enable_lock(const char *message);
 void disable_lock(const char *message);
 
 void read_FTLconf(void);
+
+void *GC_thread(void *val);
