@@ -53,6 +53,7 @@
 
 // Static structs
 typedef struct {
+	const char* conf;
 	const char* log;
 	const char* pid;
 	const char* port;
@@ -91,6 +92,11 @@ typedef struct {
 	int SRV;
 	int wildcarddomains;
 } countersStruct;
+
+typedef struct {
+	bool socket_listenlocal;
+	bool include_yesterday;
+} ConfigStruct;
 
 // Dynamic structs
 typedef struct {
@@ -145,6 +151,7 @@ enum { QUERIES, FORWARDED, CLIENTS, DOMAINS, OVERTIME };
 logFileNamesStruct files;
 FTLFileNamesStruct FTLfiles;
 countersStruct counters;
+ConfigStruct config;
 
 queriesDataStruct *queries;
 forwardedDataStruct *forwarded;

@@ -11,6 +11,7 @@
 #include "FTL.h"
 
 FTLFileNamesStruct FTLfiles = {
+	"/etc/pihole/pihole-FTL.conf",
 	"/var/log/pihole-FTL.log",
 	"/var/run/pihole-FTL.pid",
 	"/var/run/pihole-FTL.port"

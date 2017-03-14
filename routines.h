@@ -25,6 +25,7 @@ void logg_str_str(const char* str, char* str2, char* str3);
 void log_counter_info(void);
 void format_memory_size(char *prefix, int bytes, double *formated);
 
+void initial_log_parsing(void);
 int checkLogForChanges(void);
 void open_pihole_log(void);
 void handle_signals(void);
@@ -64,7 +65,9 @@ void parse_args(int argc, char* argv[]);
 
 int detectStatus(char *domain);
 
-void *GC_thread(void *val);
+char* find_equals(const char* s);
 
 void enable_lock(const char *message);
 void disable_lock(const char *message);
+
+void read_FTLconf(void);

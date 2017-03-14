@@ -23,6 +23,8 @@ int main (int argc, char* argv[]) {
 	logg_str("FTL hash: ",GIT_VERSION);
 	logg_str("FTL date: ",GIT_DATE);
 
+	read_FTLconf();
+
 	if(!debug)
 		go_daemon();
 	else
@@ -34,12 +36,9 @@ int main (int argc, char* argv[]) {
 
 	read_gravity_files();
 
-	logg("Starting initial log file scan");
-	initialscan = true;
-	process_pihole_log(1);
-	process_pihole_log(0);
-	initialscan = false;
-	logg("Finished initial log file scan:");
+	logg("Starting initial log file parsing");
+	initial_log_parsing();
+	logg("Finished initial log file parsing");
 	log_counter_info();
 	check_setupVarsconf();
 

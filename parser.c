@@ -16,6 +16,15 @@ void extracttimestamp(char *readbuffer, int *querytimestamp, int *overTimetimest
 int dnsmasqlogpos = 0;
 int lastqueryID = 0;
 
+void initial_log_parsing(void)
+{
+	initialscan = true;
+	if(config.include_yesterday)
+		process_pihole_log(1);
+	process_pihole_log(0);
+	initialscan = false;
+}
+
 int checkLogForChanges(void)
 {
 	// seek to the end of the file
@@ -65,7 +74,8 @@ void *pihole_log_thread(void *val)
 				pihole_log_flushed(true);
 				// Rescan files 0 (pihole.log) and 1 (pihole.log.1)
 				initialscan = true;
-				process_pihole_log(1);
+				if(config.include_yesterday)
+					process_pihole_log(1);
 				process_pihole_log(0);
 				initialscan = false;
 			}
@@ -188,9 +198,11 @@ void process_pihole_log(int file)
 			{
 				memory_check(OVERTIME);
 				timeidx = counters.overTime;
-				overTime[counters.overTime].timestamp = overTimetimestamp;
-				overTime[counters.overTime].total = 0;
-				overTime[counters.overTime].blocked = 0;
+				overTime[timeidx].timestamp = overTimetimestamp;
+				overTime[timeidx].total = 0;
+				overTime[timeidx].blocked = 0;
+				overTime[timeidx].forwardnum = 0;
+				overTime[timeidx].forwarddata = NULL;
 				counters.overTime++;
 			}
 
@@ -448,9 +460,8 @@ void process_pihole_log(int file)
 
 			// Determine time index for this forward request
 			// Get timestamp
-			int querytimestamp, overTimetimestamp;
+			int querytimestamp, overTimetimestamp, timeidx;
 			extracttimestamp(readbuffer, &querytimestamp, &overTimetimestamp);
-			int timeidx;
 			bool found = false;
 			for(i=0; i < counters.overTime; i++)
 			{
@@ -465,9 +476,11 @@ void process_pihole_log(int file)
 			{
 				memory_check(OVERTIME);
 				timeidx = counters.overTime;
-				overTime[counters.overTime].timestamp = overTimetimestamp;
-				overTime[counters.overTime].total = 0;
-				overTime[counters.overTime].blocked = 0;
+				overTime[timeidx].timestamp = overTimetimestamp;
+				overTime[timeidx].total = 0;
+				overTime[timeidx].blocked = 0;
+				overTime[timeidx].forwardnum = 0;
+				overTime[timeidx].forwarddata = NULL;
 				counters.overTime++;
 			}
 			// Determine if there is enough space for saving the current

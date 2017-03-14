@@ -56,7 +56,7 @@ char * read_setupVarsconf(const char * key)
 
 	sprintf(keystr, "%s=", key);
 
-	while(fgets(linebuffer, 1024, setupVarsfp) != NULL)
+	while(fgets(linebuffer, 1023, setupVarsfp) != NULL)
 	{
 		// Strip newline from fgets output
 		linebuffer[strlen(linebuffer) - 1] = '\0';

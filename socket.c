@@ -38,11 +38,12 @@ void init_socket(void)
 	// The function bzero() sets all values in a buffer to zero.
 	bzero((char *) &serv_addr, sizeof(serv_addr));
 	serv_addr.sin_family = AF_INET;
-#if defined(LISTENLOCALHOST)
-	serv_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-#else
-	serv_addr.sin_addr.s_addr = INADDR_ANY;
-#endif
+
+	if(config.socket_listenlocal)
+		serv_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+	else
+		serv_addr.sin_addr.s_addr = INADDR_ANY;
+
 	// The bind() system call binds a socket to an address,
 	// in this case the address of the current host and
 	// port number on which the server will run.
