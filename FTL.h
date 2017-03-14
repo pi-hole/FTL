@@ -34,12 +34,6 @@
 
 #include "routines.h"
 
-// Be more verbose, don't go into background
-// #define DEBUG
-
-// Listen only locally
-#define LISTENLOCALHOST
-
 // Next we define the step size in which the struct arrays are reallocated if they
 // grow too large. This number should be large enough so that reallocation does not
 // have to run very often, but should be as small as possible to avoid wasting memory
@@ -96,6 +90,7 @@ typedef struct {
 typedef struct {
 	bool socket_listenlocal;
 	bool include_yesterday;
+	bool rolling_24h;
 } ConfigStruct;
 
 // Dynamic structs

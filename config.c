@@ -40,18 +40,36 @@ void read_FTLconf(void)
 		if(strcmp(buffer, "all") == 0)
 			config.socket_listenlocal = false;
 	}
-	logg_bool("   SOCKET_LISTENING", buffer);
+	if(config.socket_listenlocal)
+		logg("   SOCKET_LISTENING: only local");
+	else
+		logg("   SOCKET_LISTENING: all destinations");
 
-	// INCLUDE_YESTERDAY
-	// defaults to: no
-	config.include_yesterday = false;
-	buffer = parse_FTLconf(fp, "INCLUDE_YESTERDAY");
+	// TIMEFRAME
+	// defaults to: ROLLING
+	config.rolling_24h = true;
+	config.include_yesterday = true;
+	bool msg = false;
+	buffer = parse_FTLconf(fp, "TIMEFRAME");
 	if(buffer != NULL)
 	{
-		if((strcmp(buffer, "true") == 0) || (strcmp(buffer, "yes") == 0))
+		if(strcmp(buffer, "YESTERDAY") == 0)
+		{
 			config.include_yesterday = true;
+			config.rolling_24h = false;
+			msg = true;
+			logg("   TIMEFRAME: Yesterday + Today");
+		}
+		else if(strcmp(buffer, "TODAY") == 0)
+		{
+			config.include_yesterday = true;
+			config.rolling_24h = false;
+			msg = true;
+			logg("   TIMEFRAME: Today");
+		}
 	}
-	logg_bool("   INCLUDE_YESTERDAY", buffer);
+	if(!msg)
+		logg("   TIMEFRAME: Rolling 24h");
 
 	logg("Finished config file parsing");
 	free(conflinebuffer);
