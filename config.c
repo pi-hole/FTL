@@ -25,7 +25,6 @@ void read_FTLconf(void)
 	{
 		logg("Notice: Opening of pihole-FTL.conf failed!");
 		logg("        Falling back to default settings");
-		return;
 	}
 
 	// Parse lines in the config file
@@ -62,7 +61,7 @@ void read_FTLconf(void)
 		}
 		else if(strcmp(buffer, "TODAY") == 0)
 		{
-			config.include_yesterday = true;
+			config.include_yesterday = false;
 			config.rolling_24h = false;
 			msg = true;
 			logg("   TIMEFRAME: Today");
@@ -74,11 +73,15 @@ void read_FTLconf(void)
 	logg("Finished config file parsing");
 	free(conflinebuffer);
 	conflinebuffer = NULL;
-	fclose(fp);
+	if(fp != NULL)
+		fclose(fp);
 }
 
 char *parse_FTLconf(FILE *fp, const char * key)
 {
+	// Return NULL if fp is an invalid file pointer
+	if(fp == NULL)
+		return NULL;
 
 	char * keystr = calloc(strlen(key)+2,sizeof(char));
 	conflinebuffer = calloc(1024,sizeof(char));

@@ -391,7 +391,6 @@ void process_pihole_log(int file)
 			// Free allocated memory
 			free(client);
 			free(domain);
-
 		}
 		else if(strstr(readbuffer,": forwarded") != NULL)
 		{
@@ -500,6 +499,9 @@ void process_pihole_log(int file)
 
 			// Update overTime data structure with the new forwarder
 			overTime[timeidx].forwarddata[forwardID]++;
+
+			// Release allocated memory
+			free(forward);
 		}
 		else if((strstr(readbuffer,"IPv6") != NULL) &&
 		        (strstr(readbuffer,"DBus") != NULL) &&
