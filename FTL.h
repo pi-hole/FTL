@@ -181,7 +181,8 @@ bool debug;
 bool debugthreads;
 bool debugclients;
 bool debugGC;
-bool threadlock;
+bool threadwritelock;
+bool threadreadlock;
 
 char ** wildcarddomains;
 

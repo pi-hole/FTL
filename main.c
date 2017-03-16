@@ -78,8 +78,8 @@ int main (int argc, char* argv[]) {
 	{
 		sleepms(100);
 
-		// Garbadge collect in regular interval, but don't do it if the threadlock is set
-		if(config.rolling_24h && ((time(NULL) - GCdelay)%GCinterval) == 0 && !threadlock)
+		// Garbadge collect in regular interval, but don't do it if the threadlocks is set
+		if(config.rolling_24h && ((time(NULL) - GCdelay)%GCinterval) == 0 && !(threadwritelock || threadreadlock))
 		{
 			if(debug)
 				logg_int("Running GC on data structure due to set interval of [s]: ", GCinterval);

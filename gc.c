@@ -17,7 +17,7 @@ void *GC_thread(void *val)
 
 	// Lock FTL's data structure, since it is likely that it will be changed here
 	// Requests should not be processed/answered when data is about to change
-	enable_lock("GC_thread");
+	enable_read_write_lock("GC_thread");
 
 	// Get minimum time stamp to keep
 	int mintime = time(NULL) - GCdelay - MAXLOGAGE;
@@ -87,7 +87,7 @@ void *GC_thread(void *val)
 	}
 
 	// Release thread lock
-	disable_lock("GC_thread");
+	disable_thread_locks("GC_thread");
 
 
 	return NULL;

@@ -178,13 +178,13 @@ void *connection_handler_thread(void *socket_desc)
 			strcpy(message, client_message);
 			// Lock FTL data structure, since it is likely that it will be changed here
 			// Requests should not be processed/answered when data is about to change
-			enable_lock("connection_handler_thread");
+			enable_read_lock(threadname);
 
 			process_request(message, &sock);
 			free(message);
 
 			// Release thread lock
-			disable_lock("connection_handler_thread");
+			disable_thread_locks("connection_handler_thread");
 
 			if(sock == 0)
 			{

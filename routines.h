@@ -68,8 +68,9 @@ int detectStatus(char *domain);
 
 char* find_equals(const char* s);
 
-void enable_lock(const char *message);
-void disable_lock(const char *message);
+void enable_read_lock(const char *message);
+void enable_read_write_lock(const char *message);
+void disable_thread_locks(const char *message);
 
 void read_FTLconf(void);
 
