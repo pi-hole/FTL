@@ -170,7 +170,7 @@ overTimeDataStruct *overTime;
 
 FILE *logfile;
 FILE *dnsmasqlog;
-int dnsmasqlogpos;
+unsigned long int dnsmasqlogpos;
 volatile sig_atomic_t killed;
 
 char ** setupVarsArray;

@@ -13,7 +13,7 @@
 char *resolveHostname(char *addr);
 void extracttimestamp(char *readbuffer, int *querytimestamp, int *overTimetimestamp);
 
-int dnsmasqlogpos = 0;
+unsigned long int dnsmasqlogpos = 0;
 int lastqueryID = 0;
 
 void initial_log_parsing(void)
@@ -30,7 +30,7 @@ int checkLogForChanges(void)
 	// seek to the end of the file
 	fseek(dnsmasqlog, 0L, SEEK_END);
 	// ask for the position
-	int pos = ftell(dnsmasqlog);
+	unsigned long int pos = ftell(dnsmasqlog);
 	if(pos > dnsmasqlogpos)
 	{
 		// Go back to to previous position
@@ -116,7 +116,7 @@ void process_pihole_log(int file)
 		return;
 	}
 
-	int fposbck = ftell(fp);
+	unsigned long int fposbck = ftell(fp);
 
 	// Read pihole log from current position until EOF line by line
 	while( fgets (readbuffer , sizeof(readbuffer)-1 , fp) != NULL )
@@ -220,7 +220,7 @@ void process_pihole_log(int file)
 			}
 
 			// Save current file pointer position
-			int fpos = ftell(fp);
+			unsigned long int fpos = ftell(fp);
 			unsigned char status = 0;
 
 			// Try to find either a matching
