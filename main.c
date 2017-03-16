@@ -19,9 +19,9 @@ int main (int argc, char* argv[]) {
 	open_FTL_log();
 	open_pihole_log();
 	logg("########## FTL started! ##########");
-	logg_str("FTL branch: ",GIT_BRANCH);
-	logg_str("FTL hash: ",GIT_VERSION);
-	logg_str("FTL date: ",GIT_DATE);
+	logg_const_str("FTL branch: ", GIT_BRANCH);
+	logg_const_str("FTL hash: ", GIT_VERSION);
+	logg_const_str("FTL date: ", GIT_DATE);
 
 	read_FTLconf();
 

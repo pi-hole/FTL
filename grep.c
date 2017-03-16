@@ -22,7 +22,7 @@ void read_gravity_files(void)
 
 	if(gravity < 0)
 	{
-		logg_str("Error: failed to read ", (char*)files.gravity);
+		logg_const_str("Error: failed to read ", files.gravity);
 	}
 	logg_int("Gravity list entries: ",gravity);
 
