@@ -97,6 +97,7 @@ typedef struct {
 	int PTR;
 	int SRV;
 	int wildcarddomains;
+	int forwardedqueries;
 } countersStruct;
 
 typedef struct {

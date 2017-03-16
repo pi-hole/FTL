@@ -35,6 +35,9 @@ void process_request(char *client_message, int *sock)
 		sprintf(server_message,"domains_being_blocked %i\ndns_queries_today %i\nads_blocked_today %i\nads_percentage_today %f\n", \
 		        counters.gravity,(counters.queries-counters.invalidqueries),counters.blocked,percentage);
 		swrite(server_message, *sock);
+		sprintf(server_message,"unique_domains %i\nqueries_forwarded %i\nqueries_cached %i", \
+		        counters.domains,counters.forwardedqueries,counters.cached);
+		swrite(server_message, *sock);
 		if(debugclients)
 			logg_int("Sent stats data to client, ID: ", *sock);
 	}

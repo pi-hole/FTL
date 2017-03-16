@@ -382,7 +382,7 @@ void process_pihole_log(int file)
 			{
 				case 0: counters.unknown++; /*logg_str("Unknown: ",strtok(readbuffer, "\n"));*/ break;
 				case 1: counters.blocked++; overTime[timeidx].blocked++; domains[domainID].blockedcount++; break;
-				case 2: break;
+				case 2: counters.forwardedqueries++; break;
 				case 3: counters.cached++; break;
 				case 4: counters.wildcardblocked++; overTime[timeidx].blocked++; domains[domainID].wildcard = true; break;
 				default: /* That cannot happen */ break;

@@ -49,7 +49,7 @@ void *GC_thread(void *val)
 			{
 				case 0: counters.unknown--; break;
 				case 1: counters.blocked--; overTime[queries[i].timeidx].blocked--; domains[queries[i].domainID].blockedcount--; break;
-				case 2: break;
+				case 2: counters.forwardedqueries--; break;
 				case 3: counters.cached--; break;
 				case 4: counters.wildcardblocked--; overTime[queries[i].timeidx].blocked--; break;
 				default: /* That cannot happen */ break;
