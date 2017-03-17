@@ -391,6 +391,7 @@ void process_pihole_log(int file)
 			// Free allocated memory
 			free(client);
 			free(domain);
+			free(domainwithspaces);
 		}
 		else if(strstr(readbuffer,": forwarded") != NULL)
 		{
