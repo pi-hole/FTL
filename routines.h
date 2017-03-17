@@ -24,7 +24,7 @@ void logg_struct_resize(const char* str, int from, int to);
 void logg_str_str(const char* str, char* str2, char* str3);
 void logg_bool(const char* str, bool b);
 void log_counter_info(void);
-void format_memory_size(char *prefix, int bytes, double *formated);
+void format_memory_size(char *prefix, unsigned long int bytes, double *formated);
 
 void initial_log_parsing(void);
 int checkLogForChanges(void);

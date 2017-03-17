@@ -33,9 +33,9 @@ void process_request(char *client_message, int *sock)
 			percentage = 1e2*counters.blocked/counters.queries;
 		}
 		sprintf(server_message,"domains_being_blocked %i\ndns_queries_today %i\nads_blocked_today %i\nads_percentage_today %f\n", \
-		        counters.gravity,(counters.queries-counters.invalidqueries),counters.blocked,percentage);
+		        counters.gravity,(counters.queries-counters.invalidqueries),counters.blocked+counters.wildcardblocked,percentage);
 		swrite(server_message, *sock);
-		sprintf(server_message,"unique_domains %i\nqueries_forwarded %i\nqueries_cached %i", \
+		sprintf(server_message,"unique_domains %i\nqueries_forwarded %i\nqueries_cached %i\n", \
 		        counters.domains,counters.forwardedqueries,counters.cached);
 		swrite(server_message, *sock);
 		if(debugclients)
@@ -458,18 +458,18 @@ void process_request(char *client_message, int *sock)
 	else if(command(client_message, ">memory"))
 	{
 		processed = true;
-		int structbytes = counters.queries_MAX*sizeof(*queries) + counters.forwarded_MAX*sizeof(*forwarded) + counters.clients_MAX*sizeof(*clients) + counters.domains_MAX*sizeof(*domains) + counters.overTime_MAX*sizeof(*overTime) + (counters.wildcarddomains)*sizeof(*wildcarddomains);
+		unsigned long int structbytes = counters.queries_MAX*sizeof(queries) + counters.forwarded_MAX*sizeof(forwarded) + counters.clients_MAX*sizeof(clients) + counters.domains_MAX*sizeof(domains) + counters.overTime_MAX*sizeof(overTime) + (counters.wildcarddomains)*sizeof(wildcarddomains);
 		char *structprefix = calloc(2, sizeof(char));
 		double formated = 0.0;
 		format_memory_size(structprefix, structbytes, &formated);
-		sprintf(server_message,"memory allocated for internal data structure: %i bytes (%.2f %sB)\n",structbytes,formated,structprefix);
+		sprintf(server_message,"memory allocated for internal data structure: %li bytes (%.2f %sB)\n",structbytes,formated,structprefix);
 		swrite(server_message, *sock);
 		free(structprefix);
 
-		int dynamicbytes = memory.wildcarddomains + memory.domainnames + memory.clientips + memory.clientnames + memory.forwardedips + memory.forwardednames + memory.forwarddata;
+		unsigned long int dynamicbytes = memory.wildcarddomains + memory.domainnames + memory.clientips + memory.clientnames + memory.forwardedips + memory.forwardednames + memory.forwarddata;
 		char *dynamicprefix = calloc(2, sizeof(char));
 		format_memory_size(dynamicprefix, dynamicbytes, &formated);
-		sprintf(server_message,"dynamically allocated allocated memory used for strings: %i bytes (%.2f %sB)\n",dynamicbytes,formated,dynamicprefix);
+		sprintf(server_message,"dynamically allocated allocated memory used for strings: %li bytes (%.2f %sB)\n",dynamicbytes,formated,dynamicprefix);
 		swrite(server_message, *sock);
 		free(dynamicprefix);
 
