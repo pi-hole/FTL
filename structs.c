@@ -40,7 +40,7 @@ void memory_check(int which)
 				counters.queries_MAX += QUERIESALLOCSTEP;
 				if(debug)
 					logg_struct_resize("queries",counters.queries_MAX,QUERIESALLOCSTEP);
-				queries = realloc(queries, counters.queries_MAX*sizeof(queries));
+				queries = realloc(queries, counters.queries_MAX*sizeof(queriesDataStruct));
 				if(queries == NULL)
 				{
 					logg("FATAL: Memory allocation failed! Exiting");
@@ -56,7 +56,7 @@ void memory_check(int which)
 				counters.forwarded_MAX += FORWARDEDALLOCSTEP;
 				if(debug)
 					logg_struct_resize("forwarded",counters.forwarded_MAX,FORWARDEDALLOCSTEP);
-				forwarded = realloc(forwarded, counters.forwarded_MAX*sizeof(forwarded));
+				forwarded = realloc(forwarded, counters.forwarded_MAX*sizeof(forwardedDataStruct));
 				if(forwarded == NULL)
 				{
 					logg("FATAL: Memory allocation failed! Exiting");
@@ -72,7 +72,7 @@ void memory_check(int which)
 				counters.clients_MAX += CLIENTSALLOCSTEP;
 				if(debug)
 					logg_struct_resize("clients",counters.clients_MAX,CLIENTSALLOCSTEP);
-				clients = realloc(clients, counters.clients_MAX*sizeof(clients));
+				clients = realloc(clients, counters.clients_MAX*sizeof(clientsDataStruct));
 				if(clients == NULL)
 				{
 					logg("FATAL: Memory allocation failed! Exiting");
@@ -88,7 +88,7 @@ void memory_check(int which)
 				counters.domains_MAX += DOMAINSALLOCSTEP;
 				if(debug)
 					logg_struct_resize("domains",counters.domains_MAX,DOMAINSALLOCSTEP);
-				domains = realloc(domains, counters.domains_MAX*sizeof(domains));
+				domains = realloc(domains, counters.domains_MAX*sizeof(domainsDataStruct));
 				if(domains == NULL)
 				{
 					logg("FATAL: Memory allocation failed! Exiting");
@@ -104,7 +104,7 @@ void memory_check(int which)
 				counters.overTime_MAX += OVERTIMEALLOCSTEP;
 				if(debug)
 					logg_struct_resize("overTime",counters.overTime_MAX,OVERTIMEALLOCSTEP);
-				overTime = realloc(overTime, counters.overTime_MAX*sizeof(overTime));
+				overTime = realloc(overTime, counters.overTime_MAX*sizeof(overTimeDataStruct));
 				if(overTime == NULL)
 				{
 					logg("FATAL: Memory allocation failed! Exiting");

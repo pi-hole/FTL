@@ -458,7 +458,7 @@ void process_request(char *client_message, int *sock)
 	else if(command(client_message, ">memory"))
 	{
 		processed = true;
-		unsigned long int structbytes = counters.queries_MAX*sizeof(queries) + counters.forwarded_MAX*sizeof(forwarded) + counters.clients_MAX*sizeof(clients) + counters.domains_MAX*sizeof(domains) + counters.overTime_MAX*sizeof(overTime) + (counters.wildcarddomains)*sizeof(wildcarddomains);
+		unsigned long int structbytes = sizeof(countersStruct) + sizeof(ConfigStruct) + counters.queries_MAX*sizeof(queriesDataStruct) + counters.forwarded_MAX*sizeof(forwardedDataStruct) + counters.clients_MAX*sizeof(clientsDataStruct) + counters.domains_MAX*sizeof(domainsDataStruct) + counters.overTime_MAX*sizeof(overTimeDataStruct) + (counters.wildcarddomains)*sizeof(*wildcarddomains);
 		char *structprefix = calloc(2, sizeof(char));
 		double formated = 0.0;
 		format_memory_size(structprefix, structbytes, &formated);
