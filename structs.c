@@ -44,7 +44,6 @@ void memory_check(int which)
 				if(queries == NULL)
 				{
 					logg("FATAL: Memory allocation failed! Exiting");
-					free(queries);
 					exit(EXIT_FAILURE);
 				}
 			}
@@ -60,7 +59,6 @@ void memory_check(int which)
 				if(forwarded == NULL)
 				{
 					logg("FATAL: Memory allocation failed! Exiting");
-					free(forwarded);
 					exit(EXIT_FAILURE);
 				}
 			}
@@ -76,7 +74,6 @@ void memory_check(int which)
 				if(clients == NULL)
 				{
 					logg("FATAL: Memory allocation failed! Exiting");
-					free(clients);
 					exit(EXIT_FAILURE);
 				}
 			}
@@ -92,7 +89,6 @@ void memory_check(int which)
 				if(domains == NULL)
 				{
 					logg("FATAL: Memory allocation failed! Exiting");
-					free(domains);
 					exit(EXIT_FAILURE);
 				}
 			}
@@ -108,7 +104,6 @@ void memory_check(int which)
 				if(overTime == NULL)
 				{
 					logg("FATAL: Memory allocation failed! Exiting");
-					free(overTime);
 					exit(EXIT_FAILURE);
 				}
 			}
