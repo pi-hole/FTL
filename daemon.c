@@ -15,9 +15,17 @@ bool test_singularity(void)
 	FILE *f;
 	if((f = fopen(FTLfiles.pid, "r")) == NULL)
 	{
-		logg("WARNING: Unable to read PID from file (cannot open file).");
-		logg("         Cannot test if another FTL process is running!");
-		return true;
+		if(!runtest)
+		{
+			logg("WARNING: Unable to read PID from file (cannot open file).");
+			logg("         Cannot test if another FTL process is running!");
+			return true;
+		}
+		else
+		{
+			printf("Unknown: Unable to open PID file\n");
+			exit(1);
+		}
 	}
 	// Test if any process has the given PID
 	// We use getpgid() since we are allowed to inspect the
@@ -25,20 +33,45 @@ bool test_singularity(void)
 	int pid;
 	if(fscanf(f,"%d",&pid) != 1)
 	{
-		logg("WARNING: Unable to read PID from file (cannot read PID from file).");
-		logg("         Cannot test if another FTL process is running!");
-		fclose(f);
-		return true;
+		if(!runtest)
+		{
+			logg("WARNING: Unable to read PID from file (cannot read PID from file).");
+			logg("         Cannot test if another FTL process is running!");
+			fclose(f);
+			return true;
+		}
+		else
+		{
+			printf("Unknown: Unable to read PID from file\n");
+			exit(1);
+		}
 	}
 	fclose(f);
+
+	// Test if another process is running
 	if (getpgid(pid) >= 0) {
-		// Other process is running
-		printf("FATAL: Another FTL process is already running! Exiting...\n");
-		logg("FATAL: Another FTL process is already running! Exiting...");
-		return false;
+		if(!runtest)
+		{
+			printf("FATAL: Another FTL process is already running! Exiting...\n");
+			logg("FATAL: Another FTL process is already running! Exiting...");
+			return false;
+		}
+		else
+		{
+			printf("Yes: Found a running FTL process\n");
+			exit(1);
+		}
 	}
 	// No other process found
-	return true;
+	if(!runtest)
+	{
+		return true;
+	}
+	else
+	{
+		printf("No: Did not find a running FTL process\n");
+		exit(0);
+	}
 }
 
 void go_daemon(void)

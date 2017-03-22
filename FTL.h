@@ -188,3 +188,4 @@ bool threadreadlock;
 char ** wildcarddomains;
 
 memoryStruct memory;
+bool runtest;

@@ -15,6 +15,7 @@ bool debug = false;
 bool debugthreads = false;
 bool debugclients = false;
 bool debugGC = false;
+bool runtest = false;
 void parse_args(int argc, char* argv[])
 {
 	int i;
@@ -53,6 +54,14 @@ void parse_args(int argc, char* argv[])
 		{
 			printf("%s\n",GIT_TAG);
 			exit(0);
+		}
+
+		// pihole-FTL running
+		// will test if another pihole-FTL process is running
+		// and exits even if not (instead of starting a new one)
+		if(strcmp(argv[i], "running") == 0)
+		{
+			runtest = true;
 		}
 
 		// Other arguments are ignored
