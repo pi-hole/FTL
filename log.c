@@ -93,7 +93,7 @@ void logg_str_str_int(const char* str, char* str2, char* str3, int i)
 		printf("[%s] %s%s%s%i\n", timestring, str, str2, str3, i);
 }
 
-void format_memory_size(char *prefix, int bytes, double *formated)
+void format_memory_size(char *prefix, unsigned long int bytes, double *formated)
 {
 	int exponent = floor(log10(bytes)/3.);
 	if(exponent > 0 && exponent < 7)
@@ -113,10 +113,10 @@ void logg_struct_resize(const char* str, int to, int step)
 {
 	get_timestr();
 
-	int structbytes = counters.queries_MAX*sizeof(*queries) + counters.forwarded_MAX*sizeof(*forwarded) + counters.clients_MAX*sizeof(*clients) + counters.domains_MAX*sizeof(*domains) + counters.overTime_MAX*sizeof(*overTime) + (counters.wildcarddomains)*sizeof(*wildcarddomains);
-	int dynamicbytes = memory.wildcarddomains + memory.domainnames + memory.clientips + memory.clientnames + memory.forwardedips + memory.forwardednames + memory.forwarddata;
+	unsigned long int structbytes = sizeof(countersStruct) + sizeof(ConfigStruct) + counters.queries_MAX*sizeof(queriesDataStruct) + counters.forwarded_MAX*sizeof(forwardedDataStruct) + counters.clients_MAX*sizeof(clientsDataStruct) + counters.domains_MAX*sizeof(domainsDataStruct) + counters.overTime_MAX*sizeof(overTimeDataStruct) + (counters.wildcarddomains)*sizeof(*wildcarddomains);
+	unsigned long int dynamicbytes = memory.wildcarddomains + memory.domainnames + memory.clientips + memory.clientnames + memory.forwardedips + memory.forwardednames + memory.forwarddata;
 
-	int bytes = structbytes + dynamicbytes;
+	unsigned long int bytes = structbytes + dynamicbytes;
 	char *prefix = calloc(2, sizeof(char));
 	double formated = 0.0;
 	format_memory_size(prefix, bytes, &formated);
