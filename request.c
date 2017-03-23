@@ -237,11 +237,8 @@ void process_request(char *client_message, int *sock)
 		for(i=0; i < counters.forwarded; i++)
 		{
 			// Get sorted indices
-			if(forwarded[i].count > 0)
-			{
-				sprintf(server_message,"%i %i %s %s\n",i,forwarded[i].count,forwarded[i].ip,forwarded[i].name);
-				swrite(server_message, *sock);
-			}
+			sprintf(server_message,"%i %i %s %s\n",i,forwarded[i].count,forwarded[i].ip,forwarded[i].name);
+			swrite(server_message, *sock);
 		}
 		if(debugclients)
 			logg_int("Sent forward destination names to client, ID: ", *sock);
