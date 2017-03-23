@@ -12,6 +12,7 @@
 
 char *resolveHostname(char *addr);
 void extracttimestamp(char *readbuffer, int *querytimestamp, int *overTimetimestamp);
+int getforwardID(char * str);
 
 unsigned long int dnsmasqlogpos = 0;
 int lastqueryID = 0;
@@ -229,6 +230,7 @@ void process_pihole_log(int file)
 			// - "cached" + domain
 			// in the following up to 200 lines
 			bool firsttime = true;
+			int forwardID = -1;
 			for(i=0; i<200; i++)
 			{
 				if(fgets (readbuffer2 , sizeof(readbuffer2) , fp) != NULL)
@@ -246,6 +248,11 @@ void process_pihole_log(int file)
 						else if(strstr(readbuffer2,": forwarded ") != NULL)
 						{
 							status = 2;
+							// Get ID of forward destination, create new forward destination record
+							// if not found in current data structure
+							forwardID = getforwardID(readbuffer2);
+							if(forwardID == -2)
+								continue;
 							break;
 						}
 						// Answered by local cache?
@@ -369,6 +376,7 @@ void process_pihole_log(int file)
 			queries[counters.queries].domainID = domainID;
 			queries[counters.queries].clientID = clientID;
 			queries[counters.queries].timeidx = timeidx;
+			queries[counters.queries].forwardID = forwardID;
 			queries[counters.queries].valid = true;
 
 			// Increase DNS queries counter
@@ -395,68 +403,11 @@ void process_pihole_log(int file)
 		}
 		else if(strstr(readbuffer,": forwarded") != NULL)
 		{
-			// Get forward destination
-			// forwardstart = pointer to | in "forwarded domain.name| to www.xxx.yyy.zzz\n"
-			const char *forwardstart = strstr(readbuffer, " to ");
-			// Check if buffer pointer is valid
-			if(forwardstart == NULL)
-			{
-				logg_str("Notice: Skipping malformated log line (forward start missing): ",strtok(readbuffer,"\n"));
-				// Skip this line
+			// Get ID of forward destination, create new forward destination record
+			// if not found in current data structure
+			int forwardID = getforwardID(readbuffer);
+			if(forwardID == -2)
 				continue;
-			}
-			// forwardend = pointer to | in "forwarded domain.name to www.xxx.yyy.zzz|\n"
-			const char *forwardend = strstr(forwardstart+4, "\n");
-			// Check if buffer pointer is valid
-			if(forwardend == NULL)
-			{
-				logg_str("Notice: Skipping malformated log line (forward end missing): ",strtok(readbuffer,"\n"));
-				// Skip this line
-				continue;
-			}
-			size_t forwardlen = forwardend-(forwardstart+4);
-			char *forward = calloc(forwardlen+1,sizeof(char));
-			strncpy(forward,forwardstart+4,forwardlen);
-
-			bool processed = false;
-			int forwardID;
-			// Go through already knows forward servers and see if we used one of those
-			for(i=0; i < counters.forwarded; i++)
-			{
-				if(strcmp(forwarded[i].ip,forward) == 0)
-				{
-					forwardID = i;
-					forwarded[forwardID].count++;
-					processed = true;
-					break;
-				}
-			}
-			if(!processed)
-			{
-				// This forward server is not known
-				// Check struct size
-				memory_check(FORWARDED);
-				// Store ID
-				forwardID = counters.forwarded;
-				// Set its counter to 1
-				forwarded[forwardID].count = 1;
-				// Save IP
-				forwarded[forwardID].ip = calloc(forwardlen+1,sizeof(char));
-				memory.forwardedips += (forwardlen + 1) * sizeof(char);
-				strcpy(forwarded[forwardID].ip,forward);
-				//Get forward destination host name
-				char *hostname = resolveHostname(forward);
-				forwarded[forwardID].name = calloc(strlen(hostname)+1,sizeof(char));
-				memory.forwardednames += (strlen(hostname) + 1) * sizeof(char);
-				strcpy(forwarded[forwardID].name,hostname);
-				free(hostname);
-				// Increase counter by one
-				counters.forwarded++;
-				if(strlen(forwarded[forwardID].name) > 0)
-					logg_str_str("Added new forward server: ", forwarded[forwardID].ip, forwarded[forwardID].name);
-				else
-					logg_str("Added new forward server: ", forwarded[forwardID].ip);
-			}
 
 			// Get timestamp
 			int querytimestamp, overTimetimestamp, timeidx;
@@ -500,9 +451,6 @@ void process_pihole_log(int file)
 
 			// Update overTime data structure with the new forwarder
 			overTime[timeidx].forwarddata[forwardID]++;
-
-			// Release allocated memory
-			free(forward);
 		}
 		else if((strstr(readbuffer,"IPv6") != NULL) &&
 		        (strstr(readbuffer,"DBus") != NULL) &&
@@ -624,4 +572,75 @@ void extracttimestamp(char *readbuffer, int *querytimestamp, int *overTimetimest
 	// Floor timestamp to the beginning of 10 minutes interval
 	// and add 5 minutes to center it in the interval
 	*overTimetimestamp = *querytimestamp-(*querytimestamp%600)+300;
+}
+
+int getforwardID(char * str)
+{
+	// Get forward destination
+	// forwardstart = pointer to | in "forwarded domain.name| to www.xxx.yyy.zzz\n"
+	const char *forwardstart = strstr(str, " to ");
+	// Check if buffer pointer is valid
+	if(forwardstart == NULL)
+	{
+		logg_str("Notice: Skipping malformated log line (forward start missing): ",strtok(str,"\n"));
+		// Skip this line
+		return -2;
+	}
+	// forwardend = pointer to | in "forwarded domain.name to www.xxx.yyy.zzz|\n"
+	const char *forwardend = strstr(forwardstart+4, "\n");
+	// Check if buffer pointer is valid
+	if(forwardend == NULL)
+	{
+		logg_str("Notice: Skipping malformated log line (forward end missing): ",strtok(str,"\n"));
+		// Skip this line
+		return -2;
+	}
+	size_t forwardlen = forwardend-(forwardstart+4);
+	char *forward = calloc(forwardlen+1,sizeof(char));
+	strncpy(forward,forwardstart+4,forwardlen);
+
+	bool processed = false;
+	int i, forwardID = -1;
+	// Go through already knows forward servers and see if we used one of those
+	for(i=0; i < counters.forwarded; i++)
+	{
+		if(strcmp(forwarded[i].ip, forward) == 0)
+		{
+			forwardID = i;
+			forwarded[forwardID].count++;
+			processed = true;
+			break;
+		}
+	}
+	if(!processed)
+	{
+		// This forward server is not known
+		// Check struct size
+		memory_check(FORWARDED);
+		// Store ID
+		forwardID = counters.forwarded;
+		// Set its counter to 1
+		forwarded[forwardID].count = 1;
+		// Save IP
+		forwarded[forwardID].ip = calloc(forwardlen+1,sizeof(char));
+		memory.forwardedips += (forwardlen + 1) * sizeof(char);
+		strcpy(forwarded[forwardID].ip,forward);
+		//Get forward destination host name
+		char *hostname = resolveHostname(forward);
+		forwarded[forwardID].name = calloc(strlen(hostname)+1,sizeof(char));
+		memory.forwardednames += (strlen(hostname) + 1) * sizeof(char);
+		strcpy(forwarded[forwardID].name,hostname);
+		free(hostname);
+		// Increase counter by one
+		counters.forwarded++;
+		if(strlen(forwarded[forwardID].name) > 0)
+			logg_str_str("Added new forward server: ", forwarded[forwardID].ip, forwarded[forwardID].name);
+		else
+			logg_str("Added new forward server: ", forwarded[forwardID].ip);
+	}
+
+	// Release allocated memory
+	free(forward);
+
+	return forwardID;
 }
