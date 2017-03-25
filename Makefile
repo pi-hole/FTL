@@ -22,9 +22,10 @@ GIT_TAG := $(shell git describe --tags --abbrev=0)
 # -Wl,-z,relro: reduces the possible areas of memory in a program that can be used by an attacker that performs a successful memory corruption exploit
 # -Wl,-z,now: When combined with RELRO above, this further reduces the regions of memory available to memory corruption attacks
 # -pie -fPIE: For ASLR
+# -g3: More debugging information
 CC=gcc
 HARDENING_FLAGS=-fstack-protector -D_FORTIFY_SOURCE=2 -O3 -Wl,-z,relro,-z,now -pie -fPIE
-CCFLAGS=-I$(IDIR) -Wall -g2 $(HARDENING_FLAGS) $(CFLAGS)
+CCFLAGS=-I$(IDIR) -Wall -g3 $(HARDENING_FLAGS) $(CFLAGS)
 LIBS=-rdynamic -pthread -lm
 
 ODIR =obj
