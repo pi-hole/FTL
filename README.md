@@ -46,7 +46,7 @@ If you want to test it, use `pihole checkout dev`
 
 ### Simplified debugging instructions
 
-`FTL` has been designed such that a debugger can be attached to an already running process to ease debugging. Use `sudo gdb -p $(cat /var/run/pihole-FTL.pid)` to attach to the already running `pihole-FTL` process. You can leave off `sudo` if you are running `pihole-FTL` with the current user. Once loading of the symbols had finished (the `(gdb)` input prompt is shown), run `continue` to continue operation of `pihole-FTL` inside the debugger. All debugger features are now available.
+`FTL` has been designed such that a debugger can be attached to an already running process to ease debugging. Use `sudo gdb -p $(cat /var/run/pihole-FTL.pid)` to attach to the already running `pihole-FTL` process. You can leave off `sudo` if you are running `pihole-FTL` with the current user. Once loading of the symbols has finished (the `(gdb)` input prompt is shown), run `continue` to continue operation of `pihole-FTL` inside the debugger. All debugger features are now available.
 
 When you want to detach the debugger from `FTL` without terminating the process, you can hit `Ctrl+C` and enter `detach` followed by `quit`.
 
