@@ -9,6 +9,7 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
+#include "version.h"
 
 // Private
 // int cmpdomains(const void *a, const void *b);
@@ -525,6 +526,15 @@ void process_request(char *client_message, int *sock)
 		}
 		if(debugclients)
 			logg_int("Sent overTime forwarded data to client, ID: ", *sock);
+	}
+	else if(command(client_message, ">version"))
+	{
+		processed = true;
+		sprintf(server_message,"version %s\ntag %s\nbranch %s\ndate %s\n", GIT_VERSION, GIT_TAG, GIT_BRANCH, GIT_DATE);
+		swrite(server_message, *sock);
+
+		if(debugclients)
+			logg_int("Sent version info to client, ID: ", *sock);
 	}
 
 	// End of queryable commands
