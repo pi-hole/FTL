@@ -35,23 +35,26 @@ If your device is not listed you can get your CPU architecture by running `lscpu
 ### How to test FTL?
 
 `FTL` is now part of the Pi-hole `development` branches.
-If you want to test it, check out the branches
-- `devel` in `/var/www/html/admin/`, and
-- `development` in `/etc/.pihole/`
-
-Don't forget to run `pihole -r` afterwards.
+If you want to test it, use `pihole checkout dev`
 
 ### How to compile FTL from source?
 
 1. Clone the repo
 2. `make`
 3. `sudo make install`
-4. start `pihole-FTL`
+4. `sudo service pihole-FTL start`
+
+### Simplified debugging instructions
+
+`FTL` has been designed such that a debugger can be attached to an already running process to ease debugging. Use `sudo gdb -p $(cat /var/run/pihole-FTL.pid)` to attach to the already running `pihole-FTL` process. You can leave off `sudo` if you are running `pihole-FTL` with the current user. Once loading of the symbols had finished (the `(gdb)` input prompt is shown), run `continue` to continue operation of `pihole-FTL` inside the debugger. All debugger features are now available.
+
+When you want to detach the debugger from `FTL` without terminating the process, you can hit `Ctrl+C` and enter `detach` followed by `quit`.
 
 ### Command line arguments
 
 - `debug` - Don't go into daemon mode (stay in foreground) + more verbose logging
 - `test` - Start `FTL` and process everything, but shut down immediately afterwards
+- `version` - Don't start `FTL`, show only version
 
 Command line arguments can be arbitrarily combined, e.g. `pihole-FTL debug test`
 
