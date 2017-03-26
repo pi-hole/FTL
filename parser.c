@@ -567,6 +567,14 @@ void extracttimestamp(char *readbuffer, int *querytimestamp, int *overTimetimest
 	strptime(timestamp, "%b %e %H:%M:%S", &querytime);
 	// Year is missing in dnsmasq's output - add the current year
 	querytime.tm_year = (*timeinfo).tm_year;
+
+	// DST - according to ISO/IEC 9899:TC3
+	// > A negative value causes mktime to attempt to determine whether
+	// > Daylight Saving Time is in effect for the specified time
+	// We have to dynamically do this here, since we might be reading in
+	// data that extends into a different DST region
+	querytime.tm_isdst = -1;
+
 	*querytimestamp = (int)mktime(&querytime);
 
 	// Floor timestamp to the beginning of 10 minutes interval
