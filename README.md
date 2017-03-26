@@ -195,3 +195,11 @@ Sum: 193772 bytes (193.77 KB)
  ```
 6
 ```
+
+- `>version` : Get version information of the currently running FTL instance
+ ```
+ version v1.6-3-g106498d-dirty
+tag v1.6
+branch master
+date 2017-03-26 13:10:43 +0200
+```
