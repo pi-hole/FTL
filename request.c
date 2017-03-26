@@ -460,14 +460,14 @@ void process_request(char *client_message, int *sock)
 		char *structprefix = calloc(2, sizeof(char));
 		double formated = 0.0;
 		format_memory_size(structprefix, structbytes, &formated);
-		sprintf(server_message,"memory allocated for internal data structure: %li bytes (%.2f %sB)\n",structbytes,formated,structprefix);
+		sprintf(server_message,"memory allocated for internal data structure: %lu bytes (%.2f %sB)\n",structbytes,formated,structprefix);
 		swrite(server_message, *sock);
 		free(structprefix);
 
 		unsigned long int dynamicbytes = memory.wildcarddomains + memory.domainnames + memory.clientips + memory.clientnames + memory.forwardedips + memory.forwardednames + memory.forwarddata;
 		char *dynamicprefix = calloc(2, sizeof(char));
 		format_memory_size(dynamicprefix, dynamicbytes, &formated);
-		sprintf(server_message,"dynamically allocated allocated memory used for strings: %li bytes (%.2f %sB)\n",dynamicbytes,formated,dynamicprefix);
+		sprintf(server_message,"dynamically allocated allocated memory used for strings: %lu bytes (%.2f %sB)\n",dynamicbytes,formated,dynamicprefix);
 		swrite(server_message, *sock);
 		free(dynamicprefix);
 
