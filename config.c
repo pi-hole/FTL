@@ -23,8 +23,8 @@ void read_FTLconf(void)
 
 	if((fp = fopen(FTLfiles.conf, "r")) == NULL)
 	{
-		logg("Notice: Opening of pihole-FTL.conf failed!");
-		logg("        Falling back to default settings");
+		logg("Notice: Found no readable FTL config file");
+		logg("        Using default settings");
 	}
 
 	// Parse lines in the config file
