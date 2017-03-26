@@ -471,10 +471,10 @@ void process_request(char *client_message, int *sock)
 		swrite(server_message, *sock);
 		free(dynamicprefix);
 
-		int totalbytes = structbytes + dynamicbytes;
+		unsigned long int totalbytes = structbytes + dynamicbytes;
 		char *totalprefix = calloc(2, sizeof(char));
 		format_memory_size(totalprefix, totalbytes, &formated);
-		sprintf(server_message,"Sum: %i bytes (%.2f %sB)\n",totalbytes,formated,totalprefix);
+		sprintf(server_message,"Sum: %lu bytes (%.2f %sB)\n",totalbytes,formated,totalprefix);
 		swrite(server_message, *sock);
 		free(totalprefix);
 
