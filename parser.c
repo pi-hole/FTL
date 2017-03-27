@@ -467,6 +467,13 @@ void process_pihole_log(int file)
 		// reading the next line if dnsmasq hasn't finished writing it
 		// (see beginning of this loop)
 		fposbck = ftell(fp);
+
+		// Return early if data structure is flushed
+		if(dnsmasqlogpos > ftell(dnsmasqlog))
+		{
+			logg("Notice: Returning early from log parsing");
+			return;
+		}
 	}
 
 	// Update file pointer position
