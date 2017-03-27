@@ -10,15 +10,16 @@
 
 #include "FTL.h"
 
-FILE *setupVarsfp;
 char ** setupVarsArray = NULL;
 
 void check_setupVarsconf(void)
 {
+	FILE *setupVarsfp;
 	if((setupVarsfp = fopen(files.setupVars, "r")) == NULL)
 	{
 		logg("WARN: Opening of setupVars.conf failed!");
 		logg("      Make sure it exists and is readable");
+		logg_str("      Message: ", strerror(errno));
 	}
 	else
 	{
@@ -45,9 +46,10 @@ char * linebuffer = NULL;
 
 char * read_setupVarsconf(const char * key)
 {
+	FILE *setupVarsfp;
 	if((setupVarsfp = fopen(files.setupVars, "r")) == NULL)
 	{
-		logg("WARN: Reading setupVars.conf failed!");
+		logg_str("WARN: Reading setupVars.conf failed: ", strerror(errno));
 		return NULL;
 	}
 

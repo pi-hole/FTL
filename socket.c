@@ -176,6 +176,10 @@ void *connection_handler_thread(void *socket_desc)
 		{
 			char *message = calloc(strlen(client_message)+1,sizeof(char));
 			strcpy(message, client_message);
+
+			// Clear client message receive buffer
+			memset(client_message, 0, sizeof client_message);
+
 			// Lock FTL data structure, since it is likely that it will be changed here
 			// Requests should not be processed/answered when data is about to change
 			enable_read_lock(threadname);
