@@ -32,8 +32,6 @@ int main (int argc, char* argv[]) {
 
 	handle_signals();
 
-	init_socket();
-
 	read_gravity_files();
 
 	logg("Starting initial log file parsing");
@@ -56,6 +54,9 @@ int main (int argc, char* argv[]) {
 		logg("Unable to open Pi-hole log processing thread. Exiting...");
 		killed = 1;
 	}
+
+	// Initialize sockets only after initial log parsing
+	init_socket();
 
 	pthread_t listenthread;
 	if(pthread_create( &listenthread, &attr, listenting_thread, NULL ) != 0)
