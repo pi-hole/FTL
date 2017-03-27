@@ -58,7 +58,7 @@ void *GC_thread(void *val)
 			{
 				case 1: counters.IPv4--; break;
 				case 2: counters.IPv6--; break;
-				default: logg_int("ERROR in GC, found type ",queries[i].type); break;
+				default: /* some other query, but neither A nor AAAA */ break;
 			}
 
 			// Remove forwarded data from overTime and total forwarded count

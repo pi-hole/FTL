@@ -37,7 +37,7 @@ char* find_equals(const char* s)
 }
 
 // This will hold the read string
-// in memory and will serves the space
+// in memory and will serve the space
 // we will point to in the rest of the
 // process (e.g. setupVarsArray will
 // actually point to memory addresses
