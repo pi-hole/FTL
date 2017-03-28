@@ -475,9 +475,9 @@ void process_pihole_log(int file)
 		fposbck = ftell(fp);
 
 		// Return early if data structure is flushed
-		if(dnsmasqlogpos > ftell(dnsmasqlog))
+		if(checkLogForChanges() < 0)
 		{
-			logg("Notice: Returning early from log parsing");
+			logg("Notice: Returning early from log parsing for flushing");
 			return;
 		}
 	}
