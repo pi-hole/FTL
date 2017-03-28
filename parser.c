@@ -28,15 +28,18 @@ void initial_log_parsing(void)
 
 int checkLogForChanges(void)
 {
-	// seek to the end of the file
+	// Ask for the current position
+	unsigned long int curpos = ftell(dnsmasqlog);
+
+	// Seek to the end of the file
 	fseek(dnsmasqlog, 0L, SEEK_END);
-	// ask for the position
+
+	// Ask for the end position
 	unsigned long int pos = ftell(dnsmasqlog);
-	if(pos > dnsmasqlogpos)
-	{
-		// Go back to to previous position
-		fseek(dnsmasqlog, dnsmasqlogpos, SEEK_SET);
-	}
+
+	// Go back to to previous position
+	fseek(dnsmasqlog, curpos, SEEK_SET);
+
 	return (pos-dnsmasqlogpos);
 }
 
@@ -475,10 +478,13 @@ void process_pihole_log(int file)
 		fposbck = ftell(fp);
 
 		// Return early if data structure is flushed
-		if(checkLogForChanges() < 0)
+		if(file == 0)
 		{
-			logg("Notice: Returning early from log parsing for flushing");
-			return;
+			if(checkLogForChanges() < 0)
+			{
+				logg("Notice: Returning early from log parsing for flushing");
+				return;
+			}
 		}
 	}
 
