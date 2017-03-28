@@ -527,6 +527,29 @@ void process_request(char *client_message, int *sock)
 		if(debugclients)
 			logg_int("Sent overTime forwarded data to client, ID: ", *sock);
 	}
+	else if(command(client_message, ">QueryTypesoverTime"))
+	{
+		processed = true;
+		int i, sendit = -1;
+		for(i = 0; i < counters.overTime; i++)
+		{
+			if((overTime[i].total > 0 || overTime[i].blocked > 0))
+			{
+				sendit = i;
+				break;
+			}
+		}
+		if(sendit > -1)
+		{
+			for(i = sendit; i < counters.overTime; i++)
+			{
+				sprintf(server_message, "%i %i %i\n", overTime[i].timestamp,overTime[i].querytypedata[0],overTime[i].querytypedata[1]);
+				swrite(server_message, *sock);
+			}
+		}
+		if(debugclients)
+			logg_int("Sent overTime query types data to client, ID: ", *sock);
+	}
 	else if(command(client_message, ">version"))
 	{
 		processed = true;

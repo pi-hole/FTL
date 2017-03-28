@@ -144,6 +144,7 @@ typedef struct {
 	int blocked;
 	int forwardnum;
 	int *forwarddata;
+	int *querytypedata;
 } overTimeDataStruct;
 
 typedef struct {
@@ -154,6 +155,7 @@ typedef struct {
 	int forwardedips;
 	int forwardednames;
 	int forwarddata;
+	int querytypedata;
 } memoryStruct;
 
 enum { QUERIES, FORWARDED, CLIENTS, DOMAINS, OVERTIME };

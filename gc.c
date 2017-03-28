@@ -56,8 +56,8 @@ void *GC_thread(void *val)
 
 			switch(queries[i].type)
 			{
-				case 1: counters.IPv4--; break;
-				case 2: counters.IPv6--; break;
+				case 1: counters.IPv4--; overTime[queries[i].timeidx].querytypedata[0]--; break;
+				case 2: counters.IPv6--; overTime[queries[i].timeidx].querytypedata[1]--; break;
 				default: /* some other query, but neither A nor AAAA */ break;
 			}
 

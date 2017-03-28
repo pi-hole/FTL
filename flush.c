@@ -60,10 +60,12 @@ void pihole_log_flushed(bool message)
 	for(i=0;i<counters.overTime;i++)
 	{
 		free(overTime[i].forwarddata);
+		free(overTime[i].querytypedata);
 	}
 	free(overTime);
 	overTime = NULL;
 	memory.forwarddata = 0;
+	memory.querytypedata = 0;
 
 	// Reset all counters (except clients and forwards, because they need PTRs) to zero
 	int counters_bck  = counters.clients;

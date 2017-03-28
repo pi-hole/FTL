@@ -165,6 +165,8 @@ void process_pihole_log(int file)
 				overTime[timeidx].blocked = 0;
 				overTime[timeidx].forwardnum = 0;
 				overTime[timeidx].forwarddata = NULL;
+				overTime[timeidx].querytypedata = calloc(2, sizeof(int));
+				memory.querytypedata += 2*sizeof(int);
 				counters.overTime++;
 			}
 
@@ -213,11 +215,13 @@ void process_pihole_log(int file)
 			{
 				type = 1;
 				counters.IPv4++;
+				overTime[timeidx].querytypedata[0]++;
 			}
 			else if(strstr(readbuffer,"query[AAAA]") != NULL)
 			{
 				type = 2;
 				counters.IPv6++;
+				overTime[timeidx].querytypedata[1]++;
 			}
 
 			// Save current file pointer position
@@ -431,6 +435,8 @@ void process_pihole_log(int file)
 				overTime[timeidx].blocked = 0;
 				overTime[timeidx].forwardnum = 0;
 				overTime[timeidx].forwarddata = NULL;
+				overTime[timeidx].querytypedata = calloc(2, sizeof(int));
+				memory.querytypedata += 2*sizeof(int);
 				counters.overTime++;
 			}
 			// Determine if there is enough space for saving the current
