@@ -28,7 +28,7 @@ void log_counter_info(void);
 void format_memory_size(char *prefix, unsigned long int bytes, double *formated);
 
 void initial_log_parsing(void);
-int checkLogForChanges(void);
+long int checkLogForChanges(void);
 void open_pihole_log(void);
 void handle_signals(void);
 void process_pihole_log(int file);

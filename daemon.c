@@ -10,7 +10,7 @@
 
 #include "FTL.h"
 
-bool test_singularity(void)
+void test_singularity(void)
 {
 	FILE *f;
 	if((f = fopen(FTLfiles.pid, "r")) == NULL)
@@ -19,7 +19,7 @@ bool test_singularity(void)
 		{
 			logg("WARNING: Unable to read PID from file (cannot open file).");
 			logg("         Cannot test if another FTL process is running!");
-			return true;
+			return;
 		}
 		else
 		{
@@ -38,7 +38,7 @@ bool test_singularity(void)
 			logg("WARNING: Unable to read PID from file (cannot read PID from file).");
 			logg("         Cannot test if another FTL process is running!");
 			fclose(f);
-			return true;
+			exit(EXIT_FAILURE);
 		}
 		else
 		{
@@ -54,7 +54,7 @@ bool test_singularity(void)
 		{
 			printf("FATAL: Another FTL process is already running! Exiting...\n");
 			logg("FATAL: Another FTL process is already running! Exiting...");
-			return false;
+			exit(EXIT_FAILURE);
 		}
 		else
 		{
@@ -65,7 +65,7 @@ bool test_singularity(void)
 	// No other process found
 	if(!runtest)
 	{
-		return true;
+		return;
 	}
 	else
 	{
@@ -79,8 +79,7 @@ void go_daemon(void)
 	pid_t process_id = 0;
 	pid_t sid = 0;
 
-	if(!test_singularity())
-		exit(EXIT_FAILURE);
+	test_singularity();
 
 	// Create child process
 	process_id = fork();

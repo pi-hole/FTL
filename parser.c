@@ -26,7 +26,7 @@ void initial_log_parsing(void)
 	initialscan = false;
 }
 
-int checkLogForChanges(void)
+long int checkLogForChanges(void)
 {
 	// Ask for the current position
 	unsigned long int curpos = ftell(dnsmasqlog);
@@ -58,7 +58,7 @@ void *pihole_log_thread(void *val)
 	prctl(PR_SET_NAME,"loganalyzer",0,0,0);
 	while(!killed)
 	{
-		int newdata = checkLogForChanges();
+		long int newdata = checkLogForChanges();
 
 		if(newdata != 0)
 		{
