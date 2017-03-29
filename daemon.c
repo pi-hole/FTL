@@ -163,3 +163,24 @@ void savepid(pid_t sid)
 	}
 	logg_int("PID of FTL process: ", (int)sid);
 }
+
+char *getUserName(void)
+{
+	char * username;
+	// the getpwuid() function shall search the user database for an entry with a matching uid
+	// the geteuid() function shall return the effective user ID of the calling process - this is used as the search criteria for the getpwuid() function
+	uid_t euid = geteuid();
+	struct passwd *pw = getpwuid(euid);
+	if(pw)
+	{
+		username = calloc(strlen(pw->pw_name)+1, sizeof(char));
+		strcpy(username, pw->pw_name);
+	}
+	else
+	{
+		username = calloc(12, sizeof(char));
+		sprintf(username, "%i", euid);
+	}
+
+	return username;
+}

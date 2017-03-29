@@ -13,6 +13,7 @@ void timer_start(void);
 float timer_elapsed_msec(void);
 void sleepms(int milliseconds);
 void savepid(pid_t sid);
+char * getUserName(void);
 
 void open_FTL_log(void);
 void logg(const char* str);

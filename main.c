@@ -11,7 +11,10 @@
 #include "FTL.h"
 #include "version.h"
 
+char * username;
+
 int main (int argc, char* argv[]) {
+	username = getUserName();
 
 	if(argc > 1)
 		parse_args(argc, argv);
@@ -22,6 +25,7 @@ int main (int argc, char* argv[]) {
 	logg_const_str("FTL branch: ", GIT_BRANCH);
 	logg_const_str("FTL hash: ", GIT_VERSION);
 	logg_const_str("FTL date: ", GIT_DATE);
+	logg_str("FTL user: ", username);
 
 	read_FTLconf();
 

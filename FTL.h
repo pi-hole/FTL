@@ -31,6 +31,7 @@
 #include <pthread.h>
 #include <sys/prctl.h>
 #include <math.h>
+#include <pwd.h>
 
 #include "routines.h"
 
