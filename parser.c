@@ -49,7 +49,7 @@ void open_pihole_log(void)
 		logg("FATAL: Opening of pihole.log failed!");
 		logg_str("       Make sure it exists and is readable by user ", username);
 		// Return failure in exit status
-		exit(1);
+		exit(EXIT_FAILURE);
 	}
 }
 

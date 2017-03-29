@@ -31,7 +31,7 @@ void init_socket(void)
 	if(sockfd < 0)
 	{
 		logg("Error opening socket");
-		exit(1);
+		exit(EXIT_FAILURE);
 	}
 
 	struct sockaddr_in serv_addr;
@@ -66,7 +66,7 @@ void init_socket(void)
 	if(port == PORT+20)
 	{
 		logg("Error listening on any port");
-		exit(1);
+		exit(EXIT_FAILURE);
 	}
 	saveport(port);
 
@@ -74,7 +74,7 @@ void init_socket(void)
 	if(listen(sockfd,BACKLOG) == -1)
 	{
 		logg("Error on listening");
-		exit(1);
+		exit(EXIT_FAILURE);
 	}
 }
 

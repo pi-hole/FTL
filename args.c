@@ -47,13 +47,13 @@ void parse_args(int argc, char* argv[])
 		if(strcmp(argv[i], "version") == 0)
 		{
 			printf("%s\n",GIT_VERSION);
-			exit(0);
+			exit(EXIT_SUCCESS);
 		}
 
 		if(strcmp(argv[i], "tag") == 0)
 		{
 			printf("%s\n",GIT_TAG);
-			exit(0);
+			exit(EXIT_SUCCESS);
 		}
 
 		// pihole-FTL running

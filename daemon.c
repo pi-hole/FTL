@@ -24,7 +24,7 @@ bool test_singularity(void)
 		else
 		{
 			printf("Unknown: Unable to open PID file\n");
-			exit(1);
+			exit(EXIT_FAILURE);
 		}
 	}
 	// Test if any process has the given PID
@@ -43,7 +43,7 @@ bool test_singularity(void)
 		else
 		{
 			printf("Unknown: Unable to read PID from file\n");
-			exit(1);
+			exit(EXIT_FAILURE);
 		}
 	}
 	fclose(f);
@@ -59,7 +59,7 @@ bool test_singularity(void)
 		else
 		{
 			printf("Yes: Found a running FTL process\n");
-			exit(1);
+			exit(EXIT_FAILURE);
 		}
 	}
 	// No other process found
@@ -70,7 +70,7 @@ bool test_singularity(void)
 	else
 	{
 		printf("No: Did not find a running FTL process\n");
-		exit(0);
+		exit(EXIT_SUCCESS);
 	}
 }
 
@@ -80,7 +80,7 @@ void go_daemon(void)
 	pid_t sid = 0;
 
 	if(!test_singularity())
-		exit(1);
+		exit(EXIT_FAILURE);
 
 	// Create child process
 	process_id = fork();
@@ -90,7 +90,7 @@ void go_daemon(void)
 	{
 		printf("fork failed!\n");
 		// Return failure in exit status
-		exit(1);
+		exit(EXIT_FAILURE);
 	}
 
 	// PARENT PROCESS. Need to kill it.
@@ -98,7 +98,7 @@ void go_daemon(void)
 	{
 		printf("FTL started!\n");
 		// return success in exit status
-		exit(0);
+		exit(EXIT_SUCCESS);
 	}
 
 	//unmask the file mode
@@ -109,7 +109,7 @@ void go_daemon(void)
 	if(sid < 0)
 	{
 		// Return failure
-		exit(1);
+		exit(EXIT_FAILURE);
 	}
 	savepid(sid);
 
@@ -118,7 +118,7 @@ void go_daemon(void)
 	{
 		logg_int("FATAL: Cannot change directory to /etc/pihole. Error code ",errno);
 		// Return failure
-		exit(1);
+		exit(EXIT_FAILURE);
 	}
 
 	// Close stdin, stdout and stderr
