@@ -47,7 +47,7 @@ void open_pihole_log(void)
 {
 	if((dnsmasqlog = fopen(files.log, "r")) == NULL) {
 		logg("FATAL: Opening of pihole.log failed!");
-		logg("       Make sure it exists and is readable");
+		logg_str("       Make sure it exists and is readable by user ", username);
 		// Return failure in exit status
 		exit(1);
 	}
@@ -116,7 +116,7 @@ void process_pihole_log(int file)
 	}
 	else
 	{
-		logg_int("Error: Passed unknwon file identifier ", file);
+		logg_int("Error: Passed unknown file identifier ", file);
 		return;
 	}
 
