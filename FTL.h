@@ -192,3 +192,5 @@ char ** wildcarddomains;
 
 memoryStruct memory;
 bool runtest;
+
+char * username;
