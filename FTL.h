@@ -32,6 +32,8 @@
 #include <sys/prctl.h>
 #include <math.h>
 #include <pwd.h>
+// backtrace
+#include <execinfo.h>
 
 #include "routines.h"
 

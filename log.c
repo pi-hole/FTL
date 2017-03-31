@@ -147,3 +147,13 @@ void logg_bool(const char* str, bool b)
 	if(debug)
 		printf("[%s] %s: %s\n", timestring, str, b ? "true" : "false");
 }
+
+void logg_ulong(const char* str, unsigned long int i)
+{
+	get_timestr();
+
+	fprintf(logfile, "[%s] %s%lu\n", timestring, str, i);
+	fflush(logfile);
+	if(debug)
+		printf("[%s] %s%lu\n", timestring, str, i);
+}

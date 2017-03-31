@@ -26,6 +26,7 @@ void logg_str_str(const char* str, char* str2, char* str3);
 void logg_bool(const char* str, bool b);
 void log_counter_info(void);
 void format_memory_size(char *prefix, unsigned long int bytes, double *formated);
+void logg_ulong(const char* str, unsigned long int i);
 
 void initial_log_parsing(void);
 long int checkLogForChanges(void);

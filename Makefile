@@ -23,10 +23,12 @@ GIT_TAG := $(shell git describe --tags --abbrev=0)
 # -Wl,-z,now: When combined with RELRO above, this further reduces the regions of memory available to memory corruption attacks
 # -pie -fPIE: For ASLR
 # -g3: More debugging information
+# -funwind-tables -mapcs-frame: Allow generating a backtrace also on ARM platforms
 CC=gcc
 HARDENING_FLAGS=-fstack-protector -D_FORTIFY_SOURCE=2 -O3 -Wl,-z,relro,-z,now -pie -fPIE
-CCFLAGS=-I$(IDIR) -Wall -g3 $(HARDENING_FLAGS) $(CFLAGS)
-LIBS=-rdynamic -pthread -lm
+DEBUG_FLAGS=-g3 -funwind-tables -mapcs-frame -rdynamic
+CCFLAGS=-I$(IDIR) -Wall $(HARDENING_FLAGS) $(DEBUG_FLAGS) $(CFLAGS)
+LIBS=-pthread -lm
 
 ODIR =obj
 IDIR =.
