@@ -17,6 +17,13 @@ static void SIGTERM_handler(int signum)
 	killed = 1;
 }
 
+static void SIGINT_handler(int signum)
+{
+	// Should probably not use printf in signal handler, but this will anyhow exit immediately
+	printf("\nFATAL: FTL received SIGINT (Ctrl + C), exiting immediately!\n");
+	exit(EXIT_FAILURE);
+}
+
 static void SIGSEGV_handler(int sig, siginfo_t *si, void *unused)
 {
 	logg("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
@@ -69,6 +76,13 @@ void handle_signals(void)
 	sigemptyset(&TERMaction.sa_mask);
 	TERMaction.sa_handler = &SIGTERM_handler;
 	sigaction(SIGTERM, &TERMaction, NULL);
+
+	// Catch SIGINT
+	struct sigaction INTaction;
+	memset(&INTaction, 0, sizeof(struct sigaction));
+	sigemptyset(&INTaction.sa_mask);
+	INTaction.sa_handler = &SIGINT_handler;
+	sigaction(SIGINT, &INTaction, NULL);
 
 	// Ignore SIGPIPE
 	signal(SIGPIPE, SIG_IGN);
