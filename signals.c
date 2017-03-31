@@ -21,7 +21,7 @@ static void SIGINT_handler(int signum)
 {
 	// Should probably not use printf in signal handler, but this will anyhow exit immediately
 	printf("\nFATAL: FTL received SIGINT (Ctrl + C), exiting immediately!\n");
-	abort();
+	exit(EXIT_FAILURE);
 }
 
 static void SIGSEGV_handler(int sig, siginfo_t *si, void *unused)
