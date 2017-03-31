@@ -71,27 +71,40 @@ static void SIGSEGV_handler(int sig, siginfo_t *si, void *unused)
 void handle_signals(void)
 {
 	// Catch SIGTERM
-	struct sigaction TERMaction;
-	memset(&TERMaction, 0, sizeof(struct sigaction));
-	sigemptyset(&TERMaction.sa_mask);
-	TERMaction.sa_handler = &SIGTERM_handler;
-	sigaction(SIGTERM, &TERMaction, NULL);
+	struct sigaction old_action;
+	sigaction (SIGTERM, NULL, &old_action);
+	if(old_action.sa_handler != SIG_IGN)
+	{
+		struct sigaction TERMaction;
+		memset(&TERMaction, 0, sizeof(struct sigaction));
+		sigemptyset(&TERMaction.sa_mask);
+		TERMaction.sa_handler = &SIGTERM_handler;
+		sigaction(SIGTERM, &TERMaction, NULL);
+	}
 
 	// Catch SIGINT
-	struct sigaction INTaction;
-	memset(&INTaction, 0, sizeof(struct sigaction));
-	sigemptyset(&INTaction.sa_mask);
-	INTaction.sa_handler = &SIGINT_handler;
-	sigaction(SIGINT, &INTaction, NULL);
+	sigaction (SIGTERM, NULL, &old_action);
+	if(old_action.sa_handler != SIG_IGN)
+	{
+		struct sigaction INTaction;
+		memset(&INTaction, 0, sizeof(struct sigaction));
+		sigemptyset(&INTaction.sa_mask);
+		INTaction.sa_handler = &SIGINT_handler;
+		sigaction(SIGINT, &INTaction, NULL);
+	}
 
 	// Ignore SIGPIPE
 	signal(SIGPIPE, SIG_IGN);
 
 	// Catch SIGSEGV
-	struct sigaction SEGVaction;
-	memset(&SEGVaction, 0, sizeof(struct sigaction));
-	SEGVaction.sa_flags = SA_SIGINFO;
-	sigemptyset(&SEGVaction.sa_mask);
-	SEGVaction.sa_sigaction = &SIGSEGV_handler;
-	sigaction(SIGSEGV, &SEGVaction, NULL);
+	sigaction (SIGSEGV, NULL, &old_action);
+	if(old_action.sa_handler != SIG_IGN)
+	{
+		struct sigaction SEGVaction;
+		memset(&SEGVaction, 0, sizeof(struct sigaction));
+		SEGVaction.sa_flags = SA_SIGINFO;
+		sigemptyset(&SEGVaction.sa_mask);
+		SEGVaction.sa_sigaction = &SIGSEGV_handler;
+		sigaction(SIGSEGV, &SEGVaction, NULL);
+	}
 }
