@@ -21,7 +21,7 @@ static void SIGINT_handler(int signum)
 {
 	// Should probably not use printf in signal handler, but this will anyhow exit immediately
 	printf("\nFATAL: FTL received SIGINT (Ctrl + C), exiting immediately!\n");
-	exit(EXIT_FAILURE);
+	abort();
 }
 
 static void SIGSEGV_handler(int sig, siginfo_t *si, void *unused)
@@ -65,7 +65,7 @@ static void SIGSEGV_handler(int sig, siginfo_t *si, void *unused)
 
 	// Print message and return
 	logg("FTL terminated!");
-	exit(EXIT_FAILURE);
+	abort();
 }
 
 void handle_signals(void)
