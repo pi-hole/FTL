@@ -193,7 +193,7 @@ void process_pihole_log(int file)
 				continue;
 			}
 			size_t domainlen = domainend-(domainstart+2);
-			char *domain = calloc(domainlen+1,sizeof(char));
+			char *domain = NULL;//calloc(domainlen+1,sizeof(char));
 			char *domainwithspaces = calloc(domainlen+3,sizeof(char));
 			strncpy(domain,domainstart+2,domainlen);
 			sprintf(domainwithspaces," %s ",domain);

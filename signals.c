@@ -18,15 +18,12 @@ void term(int signum)
 }
 
 void SIGSEGV_handler(int sig) {
-	void *buffer[100] = { NULL };
-	int nptrs;
-	char **strings;
 
 	logg("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
 	logg("---------------------------->  FTL crashed!  <----------------------------");
 	logg("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
 	logg("> Please report a bug at https://github.com/pi-hole/FTL/issues");
-	logg("> Please include in your report the following details:");
+	logg("> and include in your report already the following details:");
 	logg(">");
 	logg_str("> Error signal: ", strsignal(sig));
 
@@ -37,29 +34,8 @@ void SIGSEGV_handler(int sig) {
 	logg_ulong("> Memory usage (dynamic): ", dynamicbytes);
 	logg(">");
 
-	// get void*'s for all entries on the stack
-	nptrs = backtrace(buffer, 100);
-	logg_int("> Number of obtained backtrace addresses: ", nptrs);
-
-	// Get backtrace symbols
-	strings = backtrace_symbols(buffer, nptrs);
-	if (strings == NULL) {
-		logg("> Backtrace failed!");
-		exit(EXIT_FAILURE);
-	}
-
-	int j;
-	for (j = 0; j < nptrs; j++)
-		logg_str(">   BT ", strings[j]);
-	free(strings);
-
-	logg(">");
-	logg("> Additionally, in order to make the above backtrace useful,");
-	logg("> please also run the following command to generate a disassembly of your binary:");
-	logg(">    objdump -d $(which pihole-FTL) > pihole-FTL.objdump");
-	logg("> and then attach the file pihole-FTL.objdump to your bug report.");
-	logg("> We can provide support for attaching large files through our Tricorder system.");
-	logg(">");
+	// Getting backtrace symbols is meaningless here since if we would now start a backtrace
+	// then the addresses would only point to this signal handler
 	logg("> Thank you for helping us to improve our FTL engine!");
 
 	if(debug)
