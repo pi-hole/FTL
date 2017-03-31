@@ -12,20 +12,30 @@
 
 volatile sig_atomic_t killed = 0;
 
-void term(int signum)
+static void SIGTERM_handler(int signum)
 {
 	killed = 1;
 }
 
-void SIGSEGV_handler(int sig) {
-
+static void SIGSEGV_handler(int sig, siginfo_t *si, void *unused)
+{
 	logg("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
 	logg("---------------------------->  FTL crashed!  <----------------------------");
 	logg("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
 	logg("> Please report a bug at https://github.com/pi-hole/FTL/issues");
 	logg("> and include in your report already the following details:");
 	logg(">");
-	logg_str("> Error signal: ", strsignal(sig));
+	logg_str  ("> Received signal: ", strsignal(sig));
+	logg_ulong("       at address: ", (unsigned long) si->si_addr);
+	switch (si->si_code)
+	{
+		case SEGV_MAPERR: logg("        with code: SEGV_MAPERR (Address not mapped to object)"); break;
+		case SEGV_ACCERR: logg("        with code: SEGV_ACCERR (Invalid permissions for mapped object)"); break;
+#if defined(SEGV_BNDERR)
+		case SEGV_BNDERR: logg("        with code: SEGV_BNDERR (Failed address bound checks)"); break;
+#endif
+		default: logg_int("        with code: Unknown, ",si->si_code); break;
+	}
 
 	// Print memory usage
 	unsigned long int structbytes = sizeof(countersStruct) + sizeof(ConfigStruct) + counters.queries_MAX*sizeof(queriesDataStruct) + counters.forwarded_MAX*sizeof(forwardedDataStruct) + counters.clients_MAX*sizeof(clientsDataStruct) + counters.domains_MAX*sizeof(domainsDataStruct) + counters.overTime_MAX*sizeof(overTimeDataStruct) + (counters.wildcarddomains)*sizeof(*wildcarddomains);
@@ -53,16 +63,21 @@ void SIGSEGV_handler(int sig) {
 
 void handle_signals(void)
 {
+	// Catch SIGTERM
 	struct sigaction TERMaction;
 	memset(&TERMaction, 0, sizeof(struct sigaction));
-	TERMaction.sa_handler = term;
+	sigemptyset(&TERMaction.sa_mask);
+	TERMaction.sa_handler = &SIGTERM_handler;
 	sigaction(SIGTERM, &TERMaction, NULL);
 
 	// Ignore SIGPIPE
 	signal(SIGPIPE, SIG_IGN);
 
+	// Catch SIGSEGV
 	struct sigaction SEGVaction;
 	memset(&SEGVaction, 0, sizeof(struct sigaction));
-	SEGVaction.sa_handler = SIGSEGV_handler;
+	SEGVaction.sa_flags = SA_SIGINFO;
+	sigemptyset(&SEGVaction.sa_mask);
+	SEGVaction.sa_sigaction = &SIGSEGV_handler;
 	sigaction(SIGSEGV, &SEGVaction, NULL);
 }
