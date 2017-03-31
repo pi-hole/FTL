@@ -55,15 +55,7 @@ static void SIGSEGV_handler(int sig, siginfo_t *si, void *unused)
 	// then the addresses would only point to this signal handler
 	logg("> Thank you for helping us to improve our FTL engine!");
 
-	if(debug)
-	{
-		logg("> Debug mode detected - trying to automatically attach gdb...");
-		char cmd[256];
-		sprintf(cmd, "gdb \"pihole-FTL\" %d", getpid());
-		logg_int("gdb call returned: ",system(cmd));
-	}
-
-	// Print message and return
+	// Print message and abort
 	logg("FTL terminated!");
 	abort();
 }
