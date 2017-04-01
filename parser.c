@@ -16,6 +16,7 @@ int getforwardID(char * str);
 
 unsigned long int dnsmasqlogpos = 0;
 int lastqueryID = 0;
+bool flush = false;
 
 void initial_log_parsing(void)
 {
@@ -29,13 +30,13 @@ void initial_log_parsing(void)
 long int checkLogForChanges(void)
 {
 	// Ask for the current position
-	unsigned long int curpos = ftell(dnsmasqlog);
+	long int curpos = ftell(dnsmasqlog);
 
 	// Seek to the end of the file
 	fseek(dnsmasqlog, 0L, SEEK_END);
 
 	// Ask for the end position
-	unsigned long int pos = ftell(dnsmasqlog);
+	long int pos = ftell(dnsmasqlog);
 
 	// Go back to to previous position
 	fseek(dnsmasqlog, curpos, SEEK_SET);
@@ -60,19 +61,20 @@ void *pihole_log_thread(void *val)
 	{
 		long int newdata = checkLogForChanges();
 
-		if(newdata != 0)
+		if(newdata != 0 || flush)
 		{
 			// Lock FTL's data structure, since it is likely that it will be changed here
 			// Requests should not be processed/answered when data is about to change
 			enable_read_write_lock("pihole_log_thread");
 
-			if(newdata > 0)
+			if(newdata > 0 && !flush)
 			{
 				// Process new data if found only in main log (file 0)
 				process_pihole_log(0);
 			}
-			else if(newdata < 0)
+			else
 			{
+				flush = false;
 				// Process flushed log
 				// Flush internal datastructure
 				pihole_log_flushed(true);
@@ -120,7 +122,7 @@ void process_pihole_log(int file)
 		return;
 	}
 
-	unsigned long int fposbck = ftell(fp);
+	long int fposbck = ftell(fp);
 
 	// Read pihole log from current position until EOF line by line
 	while( fgets (readbuffer , sizeof(readbuffer)-1 , fp) != NULL )
@@ -228,7 +230,7 @@ void process_pihole_log(int file)
 			}
 
 			// Save current file pointer position
-			unsigned long int fpos = ftell(fp);
+			long int fpos = ftell(fp);
 			unsigned char status = 0;
 
 			// Try to find either a matching
@@ -483,6 +485,7 @@ void process_pihole_log(int file)
 			if(checkLogForChanges() < 0)
 			{
 				logg("Notice: Returning early from log parsing for flushing");
+				flush = true;
 				return;
 			}
 		}
