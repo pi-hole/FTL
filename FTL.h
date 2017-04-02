@@ -194,3 +194,4 @@ memoryStruct memory;
 bool runtest;
 
 char * username;
+char timestamp[16];

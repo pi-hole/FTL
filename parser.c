@@ -17,6 +17,7 @@ int getforwardID(char * str);
 unsigned long int dnsmasqlogpos = 0;
 int lastqueryID = 0;
 bool flush = false;
+char timestamp[16] = "";
 
 void initial_log_parsing(void)
 {
@@ -570,7 +571,8 @@ int detectStatus(char *domain)
 void extracttimestamp(char *readbuffer, int *querytimestamp, int *overTimetimestamp)
 {
 	// Get timestamp
-	char timestamp[16] = "";
+	// char timestamp[16]; <- declared in FTL.h
+	bzero(timestamp, 15);
 	strncpy(timestamp,readbuffer,(size_t)15);
 	timestamp[15] = '\0';
 	// Get local time

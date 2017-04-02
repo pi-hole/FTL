@@ -124,7 +124,10 @@ void logg_struct_resize(const char* str, int to, int step)
 	fprintf(logfile, "[%s] Notice: Increasing %s struct size from %i to %i (%.2f %sB)\n", timestring, str, (to-step), to, formated, prefix);
 	fflush(logfile);
 	if(debug)
+	{
 		printf("[%s] Notice: Increasing %s struct size from %i to %i (%.2f %sB)\n", timestring, str, (to-step), to, formated, prefix);
+		printf("[%s]         at time: %s\n", timestring, timestamp);
+	}
 
 	free(prefix);
 }
