@@ -195,3 +195,6 @@ bool runtest;
 
 char * username;
 char timestamp[16];
+bool flush;
+bool needGC;
+

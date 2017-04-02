@@ -84,6 +84,7 @@ void *pihole_log_thread(void *val)
 				if(config.include_yesterday)
 					process_pihole_log(1);
 				process_pihole_log(0);
+				needGC = true;
 				initialscan = false;
 			}
 
@@ -108,6 +109,8 @@ void process_pihole_log(int file)
 	{
 		// Read from pihole.log
 		fp = dnsmasqlog;
+                if(debug && initialscan)
+                        logg("Reading from pihole.log");
 	}
 	else if(file == 1)
 	{
@@ -116,6 +119,8 @@ void process_pihole_log(int file)
 			logg("Warning: Reading of rotated log file failed");
 			return;
 		}
+		if(debug && initialscan)
+			logg("Reading from pihole.log.1");
 	}
 	else
 	{

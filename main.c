@@ -12,6 +12,7 @@
 #include "version.h"
 
 char * username;
+bool needGC = false;
 
 int main (int argc, char* argv[]) {
 	username = getUserName();
@@ -84,8 +85,9 @@ int main (int argc, char* argv[]) {
 		sleepms(100);
 
 		// Garbadge collect in regular interval, but don't do it if the threadlocks is set
-		if(config.rolling_24h && ((time(NULL) - GCdelay)%GCinterval) == 0 && !(threadwritelock || threadreadlock))
+		if(config.rolling_24h && ((((time(NULL) - GCdelay)%GCinterval) == 0 && !(threadwritelock || threadreadlock)) || needGC))
 		{
+			needGC = false;
 			if(debug)
 				logg_int("Running GC on data structure due to set interval of [s]: ", GCinterval);
 

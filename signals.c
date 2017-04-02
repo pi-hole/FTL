@@ -60,6 +60,12 @@ static void SIGSEGV_handler(int sig, siginfo_t *si, void *unused)
 	abort();
 }
 
+static void SIGUSR1_handler(int signum)
+{
+	logg("NOTICE: Received signal SIGUSR1");
+	flush = true;
+}
+
 void handle_signals(void)
 {
 	// Catch SIGTERM
@@ -98,5 +104,16 @@ void handle_signals(void)
 		sigemptyset(&SEGVaction.sa_mask);
 		SEGVaction.sa_sigaction = &SIGSEGV_handler;
 		sigaction(SIGSEGV, &SEGVaction, NULL);
+	}
+
+	// Catch SIGUSR1
+	sigaction (SIGUSR1, NULL, &old_action);
+	if(old_action.sa_handler != SIG_IGN)
+	{
+		struct sigaction USR1action;
+		memset(&USR1action, 0, sizeof(struct sigaction));
+		sigemptyset(&USR1action.sa_mask);
+		USR1action.sa_handler = &SIGUSR1_handler;
+		sigaction(SIGUSR1, &USR1action, NULL);
 	}
 }
