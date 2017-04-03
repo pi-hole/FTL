@@ -24,8 +24,7 @@ int main (int argc, char* argv[]) {
 	// still allow this if "debug" flag is set
 	if(strcmp(username,"pihole") != 0 && !debug)
 	{
-		printf("\n!!! WARNING !!!\nStaring pihole-FTL directly is not recommended.\nInstead, use\n              sudo service pihole-FTL restart\n\n");
-		exit(EXIT_FAILURE);
+		printf("\n!!! WARNING !!!\nStaring pihole-FTL directly is not recommended.\nInstead, use system commands for starting pihole-FTL as service (systemctl / service).\n\n");
 	}
 
 	open_FTL_log();
