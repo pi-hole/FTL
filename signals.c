@@ -14,13 +14,14 @@ volatile sig_atomic_t killed = 0;
 
 static void SIGTERM_handler(int signum)
 {
+	logg("\nFATAL: FTL received SIGTERM, sheduled to exit gracefully\n");
 	killed = 1;
 }
 
 static void SIGINT_handler(int signum)
 {
 	// Should probably not use printf in signal handler, but this will anyhow exit immediately
-	printf("\nFATAL: FTL received SIGINT (Ctrl + C), exiting immediately!\n");
+	logg("\nFATAL: FTL received SIGINT (Ctrl + C), exiting immediately!\n");
 	exit(EXIT_FAILURE);
 }
 

@@ -37,8 +37,6 @@ void test_singularity(void)
 		{
 			logg("WARNING: Unable to read PID from file (cannot read PID from file).");
 			logg("         Cannot test if another FTL process is running!");
-			fclose(f);
-			exit(EXIT_FAILURE);
 		}
 		else
 		{
@@ -87,7 +85,7 @@ void go_daemon(void)
 	// Indication of fork() failure
 	if (process_id < 0)
 	{
-		printf("fork failed!\n");
+		logg("fork failed!\n");
 		// Return failure in exit status
 		exit(EXIT_FAILURE);
 	}
@@ -104,10 +102,12 @@ void go_daemon(void)
 	umask(0);
 
 	//set new session
+	// creates a session and sets the process group ID
 	sid = setsid();
 	if(sid < 0)
 	{
 		// Return failure
+		logg("setsid failed!\n");
 		exit(EXIT_FAILURE);
 	}
 	savepid(sid);
