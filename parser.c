@@ -109,7 +109,7 @@ void process_pihole_log(int file)
 	{
 		// Read from pihole.log
 		fp = dnsmasqlog;
-                if(debug && initialscan)
+                if(initialscan)
                         logg("Reading from pihole.log");
 	}
 	else if(file == 1)
@@ -119,7 +119,7 @@ void process_pihole_log(int file)
 			logg("Warning: Reading of rotated log file failed");
 			return;
 		}
-		if(debug && initialscan)
+		if(initialscan)
 			logg("Reading from pihole.log.1");
 	}
 	else
