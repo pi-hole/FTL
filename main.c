@@ -20,6 +20,14 @@ int main (int argc, char* argv[]) {
 	if(argc > 1)
 		parse_args(argc, argv);
 
+	// pihole-FTL should really be run as user "pihole" to not mess up with the file permissions
+	// still allow this if "debug" flag is set
+	if(strcmp(username,"pihole") != 0 && !debug)
+	{
+		printf("\n!!! WARNING !!!\nStaring pihole-FTL directly is not recommended.\nInstead, use\n              sudo service pihole-FTL restart\n\n");
+		exit(EXIT_FAILURE);
+	}
+
 	open_FTL_log();
 	open_pihole_log();
 	logg("########## FTL started! ##########");
