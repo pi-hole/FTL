@@ -20,13 +20,6 @@ int main (int argc, char* argv[]) {
 	if(argc > 1)
 		parse_args(argc, argv);
 
-	// pihole-FTL should really be run as user "pihole" to not mess up with the file permissions
-	// still allow this if "debug" flag is set
-	if(strcmp(username,"pihole") != 0 && !debug)
-	{
-		printf("\n!!! WARNING !!!\nStaring pihole-FTL directly is not recommended.\nInstead, use system commands for starting pihole-FTL as service (systemctl / service).\n\n");
-	}
-
 	open_FTL_log();
 	open_pihole_log();
 	logg("########## FTL started! ##########");
@@ -34,6 +27,14 @@ int main (int argc, char* argv[]) {
 	logg_const_str("FTL hash: ", GIT_VERSION);
 	logg_const_str("FTL date: ", GIT_DATE);
 	logg_str("FTL user: ", username);
+
+	// pihole-FTL should really be run as user "pihole" to not mess up with the file permissions
+	// still allow this if "debug" flag is set
+	if(strcmp(username,"pihole") != 0 && !debug)
+	{
+		logg("Warning: Starting pihole-FTL directly is not recommended.");
+		logg("         Instead, use system commands for starting pihole-FTL as service (systemctl / service).");
+	}
 
 	read_FTLconf();
 
