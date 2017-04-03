@@ -37,6 +37,8 @@ void test_singularity(void)
 		{
 			logg("WARNING: Unable to read PID from file (cannot read PID from file).");
 			logg("         Cannot test if another FTL process is running!");
+			fclose(f);
+			return;
 		}
 		else
 		{
@@ -50,8 +52,8 @@ void test_singularity(void)
 	if (getpgid(pid) >= 0) {
 		if(!runtest)
 		{
-			printf("FATAL: Another FTL process is already running! Exiting...\n");
-			logg("FATAL: Another FTL process is already running! Exiting...");
+			printf("FATAL: Another FTL process is already running (PID %i)! Exiting...\n",pid);
+			logg_int("FATAL: Another FTL process is already running: ",pid);
 			exit(EXIT_FAILURE);
 		}
 		else
