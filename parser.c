@@ -13,6 +13,7 @@
 char *resolveHostname(char *addr);
 void extracttimestamp(char *readbuffer, int *querytimestamp, int *overTimetimestamp);
 int getforwardID(char * str);
+int findDomain(char *domain);
 
 unsigned long int dnsmasqlogpos = 0;
 int lastqueryID = 0;
@@ -310,19 +311,8 @@ void process_pihole_log(int file)
 			fseek(fp, fpos, SEEK_SET);
 
 			// Go through already knows domains and see if it is one of them
-			bool processed = false;
-			int domainID;
-			for(i=0; i < counters.domains; i++)
-			{
-				if(strcmp(domains[i].domain, domain) == 0)
-				{
-					domains[i].count++;
-					processed = true;
-					domainID = i;
-					break;
-				}
-			}
-			if(!processed)
+			int domainID = findDomain(domain);
+			if(domainID >= 0)
 			{
 				// This domain is not known
 				// Check struct size
@@ -345,7 +335,7 @@ void process_pihole_log(int file)
 			}
 
 			// Go through already knows clients and see if it is one of them
-			processed = false;
+			bool processed = false;
 			int clientID;
 			for(i=0; i < counters.clients; i++)
 			{
@@ -680,4 +670,19 @@ int getforwardID(char * str)
 	free(forward);
 
 	return forwardID;
+}
+
+int findDomain(char *domain)
+{
+	int i;
+	for(i=0; i < counters.domains; i++)
+	{
+		if(strcmp(domains[i].domain, domain) == 0)
+		{
+			domains[i].count++;
+			return i;
+		}
+	}
+	// Return -1 if not found
+	return -1;
 }
