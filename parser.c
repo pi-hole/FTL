@@ -313,7 +313,7 @@ void process_pihole_log(int file)
 
 			// Go through already knows domains and see if it is one of them
 			int domainID = findDomain(domain);
-			if(domainID >= 0)
+			if(domainID < 0)
 			{
 				// This domain is not known
 				// Check struct size
@@ -337,7 +337,7 @@ void process_pihole_log(int file)
 
 			// Go through already knows clients and see if it is one of them
 			int clientID = findClient(client);
-			if(clientID >= 0)
+			if(clientID < 0)
 			{
 				// This client is not known
 				// Check struct size
@@ -667,6 +667,11 @@ int findDomain(char *domain)
 	int i;
 	for(i=0; i < counters.domains; i++)
 	{
+		// Quick test: Does the domain start with the same character?
+		if(domains[i].domain[0] != domain[0])
+			continue;
+
+		// If so, compare the full domain using strcmp
 		if(strcmp(domains[i].domain, domain) == 0)
 		{
 			domains[i].count++;
@@ -682,6 +687,11 @@ int findClient(char *client)
 	int i;
 	for(i=0; i < counters.clients; i++)
 	{
+		// Quick test: Does the clients IP start with the same character?
+		if(clients[i].ip[0] != client[0])
+			continue;
+
+		// If so, compare the full domain using strcmp
 		if(strcmp(clients[i].ip, client) == 0)
 		{
 			clients[i].count++;
