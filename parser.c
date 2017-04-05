@@ -685,10 +685,12 @@ int findDomain(char *domain)
 int findClient(char *client)
 {
 	int i;
+	int client_last_pos = strlen(client) - 1;
 	for(i=0; i < counters.clients; i++)
 	{
-		// Quick test: Does the clients IP start with the same character?
-		if(clients[i].ip[0] != client[0])
+		int clients_last_pos = strlen(clients[i].ip) - 1;
+		// Quick test: Does the clients IP end with the same character?
+		if(clients[i].ip[clients_last_pos] != client[client_last_pos])
 			continue;
 
 		// If so, compare the full domain using strcmp
