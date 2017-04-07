@@ -241,6 +241,10 @@ void getTopDomains(char *client_message, int *sock)
 	int i, temparray[counters.domains][2], count=10, num;
 	bool blocked = command(client_message, ">top-ads");
 
+	// Exit before processing any data if requested via config setting
+	if(!config.query_display)
+		return;
+
 	// Match both top-domains and top-ads
 	if(sscanf(client_message, ">%*[^(](%i)", &num) > 0)
 	{
@@ -413,6 +417,7 @@ void getForwardNames(int *sock)
 {
 	char server_message[SOCKETBUFFERLEN];
 	int i;
+
 	for(i=0; i < counters.forwarded; i++)
 	{
 		// Get sorted indices
@@ -438,6 +443,11 @@ void getQueryTypes(int *sock)
 void getAllQueries(char *client_message, int *sock)
 {
 	char server_message[SOCKETBUFFERLEN];
+
+	// Exit before processing any data if requested via config setting
+	if(!config.query_display)
+		return;
+
 	// Do we want a more specific version of this command (domain/client/time interval filtered)?
 	int from = 0, until = 0;
 	bool filtertime = false;
@@ -606,6 +616,11 @@ void getRecentBlocked(char *client_message, int *sock)
 {
 	char server_message[SOCKETBUFFERLEN];
 	int i, num=1;
+
+	// Exit before processing any data if requested via config setting
+	if(!config.query_display)
+		return;
+
 	// Test for integer that specifies number of entries to be shown
 	if(sscanf(client_message, ">%*[^(](%i)", &num) > 0)
 	{

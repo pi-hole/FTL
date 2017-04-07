@@ -105,6 +105,7 @@ typedef struct {
 	bool socket_listenlocal;
 	bool include_yesterday;
 	bool rolling_24h;
+	bool query_display;
 } ConfigStruct;
 
 // Dynamic structs
