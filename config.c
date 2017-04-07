@@ -48,7 +48,6 @@ void read_FTLconf(void)
 	// defaults to: ROLLING
 	config.rolling_24h = true;
 	config.include_yesterday = true;
-	bool msg = false;
 	buffer = parse_FTLconf(fp, "TIMEFRAME");
 	if(buffer != NULL)
 	{
@@ -56,18 +55,16 @@ void read_FTLconf(void)
 		{
 			config.include_yesterday = true;
 			config.rolling_24h = false;
-			msg = true;
 			logg("   TIMEFRAME: Yesterday + Today");
 		}
 		else if(strcmp(buffer, "today") == 0)
 		{
 			config.include_yesterday = false;
 			config.rolling_24h = false;
-			msg = true;
 			logg("   TIMEFRAME: Today");
 		}
 	}
-	if(!msg)
+	if(config.rolling_24h)
 		logg("   TIMEFRAME: Rolling 24h");
 
 	// QUERY_DISPLAY
