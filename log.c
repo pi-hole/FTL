@@ -12,7 +12,8 @@
 
 void close_FTL_log(void)
 {
-	fclose(logfile);
+	if(logfile != NULL)
+		fclose(logfile);
 }
 
 void open_FTL_log(bool test)
@@ -21,8 +22,9 @@ void open_FTL_log(bool test)
 	if((logfile = fopen(FTLfiles.log, "a+")) == NULL) {;
 		printf("FATAL: Opening of FTL log (%s) failed!\n",FTLfiles.log);
 		printf("       Make sure it exists and is writeable by user %s\n", username);
-		// Return failure in exit status
-		exit(EXIT_FAILURE);
+		if(test)
+			// Return failure
+			exit(EXIT_FAILURE);
 	}
 
 	if(test)
@@ -59,7 +61,10 @@ void logg(const char *format, ...)
 	// Open log file
 	open_FTL_log(false);
 	// Write to log file
-	fprintf(logfile, "[%s] %s\n", timestring, writebuffer);
+	if(logfile != NULL)
+		fprintf(logfile, "[%s] %s\n", timestring, writebuffer);
+	else if(debug)
+		printf("WARNING: Cannot write this to FTL\'s logfile %s",FTLfiles.log);
 	// Close log file
 	close_FTL_log();
 }
