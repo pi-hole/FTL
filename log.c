@@ -31,8 +31,7 @@ void open_FTL_log(bool test)
 		close_FTL_log();
 }
 
-char timestring[32];
-void get_timestr(void)
+void get_timestr(char *timestring)
 {
 	time_t t = time(NULL);
 	struct tm tm = *localtime(&t);
@@ -45,26 +44,38 @@ void get_timestr(void)
 
 void logg(const char *format, ...)
 {
-	char writebuffer[1024] = "";
+	char timestring[32] = "";
 	va_list args;
 
-	va_start(args, format);
-	vsprintf(writebuffer, format, args);
-	va_end(args);
-
-	get_timestr();
+	get_timestr(timestring);
 
 	// Print to stdout before writing to file
 	if(debug)
-		printf("[%s] %s\n", timestring, writebuffer);
+	{
+		printf("[%s] ", timestring);
+		va_start(args, format);
+		vprintf(format, args);
+		va_end(args);
+		printf("\n");
+	}
 
 	// Open log file
 	open_FTL_log(false);
+
 	// Write to log file
 	if(logfile != NULL)
-		fprintf(logfile, "[%s] %s\n", timestring, writebuffer);
+	{
+		fprintf(logfile, "[%s] ", timestring);
+		va_start(args, format);
+		vfprintf(logfile, format, args);
+		va_end(args);
+		fputc('\n',logfile);
+	}
 	else if(debug)
-		printf("WARNING: Cannot write this to FTL\'s logfile %s",FTLfiles.log);
+	{
+		printf("WARNING: Cannot write this to FTL\'s logfile %s", FTLfiles.log);
+	}
+
 	// Close log file
 	close_FTL_log();
 }
