@@ -52,6 +52,7 @@ void open_pihole_log(void)
 	if((dnsmasqlog = fopen(files.log, "r")) == NULL) {
 		logg("FATAL: Opening of pihole.log failed!");
 		logg("       Make sure it exists and is readable by user %s", username);
+		syslog(LOG_ERR, "Opening of pihole.log failed!");
 		// Return failure in exit status
 		exit(EXIT_FAILURE);
 	}

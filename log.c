@@ -9,7 +9,6 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
-#include <syslog.h>
 
 void close_FTL_log(void)
 {
@@ -22,6 +21,7 @@ void open_FTL_log(bool test)
 	// Open a log file in append/create mode
 	logfile = fopen(FTLfiles.log, "a+");
 	if((logfile == NULL) && test){
+		syslog(LOG_ERR, "Opening of FTL\'s log file failed!");
 		printf("FATAL: Opening of FTL log (%s) failed!\n",FTLfiles.log);
 		printf("       Make sure it exists and is writeable by user %s\n", username);
 		// Return failure
@@ -75,7 +75,7 @@ void logg(const char *format, ...)
 	else if(debug)
 	{
 		printf("!!! WARNING: Writing to FTL\'s log file failed!\n");
-		syslog(LOG_ERR, "WARNING: Writing to FTL\'s log file failed!");
+		syslog(LOG_ERR, "Writing to FTL\'s log file failed!");
 	}
 
 	// Close log file
