@@ -23,9 +23,9 @@ int main (int argc, char* argv[]) {
 	open_FTL_log();
 	open_pihole_log();
 	logg("########## FTL started! ##########");
-	logg_const_str("FTL branch: ", GIT_BRANCH);
-	logg_const_str("FTL hash: ", GIT_VERSION);
-	logg_const_str("FTL date: ", GIT_DATE);
+	logg("FTL branch: %s", GIT_BRANCH);
+	logg("FTL hash: %s", GIT_VERSION);
+	logg("FTL date: %s", GIT_DATE);
 	logg("FTL user: %s", username);
 
 	// pihole-FTL should really be run as user "pihole" to not mess up with the file permissions

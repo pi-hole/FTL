@@ -54,21 +54,11 @@ void logg(const char *format, ...)
 		printf("[%s] %s\n", timestring, writebuffer);
 
 	// Open log file
-	open_FTL_log();
+	//open_FTL_log();
 	// Write to log file
 	fprintf(logfile, "[%s] %s\n", timestring, writebuffer);
 	// Close log file
-	close_FTL_log();
-}
-
-void logg_const_str(const char* str, const char* str2)
-{
-	get_timestr();
-
-	fprintf(logfile, "[%s] %s%s\n", timestring, str, str2);
-	fflush(logfile);
-	if(debug)
-		printf("[%s] %s%s\n", timestring, str, str2);
+	//close_FTL_log();
 }
 
 void logg_str_str(const char* str, char* str2, char* str3)

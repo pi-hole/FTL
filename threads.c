@@ -27,7 +27,7 @@ void enable_read_lock(const char *message)
 	while(threadwritelock) sleepms(5);
 
 	if(debugthreads)
-		logg_const_str("Thread lock enabled (R ): ", message);
+		logg("Thread lock enabled (R ): %s", message);
 
 	// Set threadwritelock
 	threadwritelock = false;
@@ -40,7 +40,7 @@ void enable_read_write_lock(const char *message)
 	while(threadwritelock || threadreadlock) sleepms(5);
 
 	if(debugthreads)
-		logg_const_str("Thread lock enabled (RW): ", message);
+		logg("Thread lock enabled (RW): %s", message);
 
 	// Set threadwritelock
 	threadwritelock = true;
@@ -51,5 +51,5 @@ void disable_thread_locks(const char *message)
 	threadwritelock = false;
 	threadreadlock = false;
 	if(debugthreads)
-		logg_const_str("Thread lock disabled: ", message);
+		logg("Thread lock disabled: %s", message);
 }
