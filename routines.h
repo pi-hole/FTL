@@ -19,7 +19,6 @@ void open_FTL_log(void);
 void logg(const char* str, ...);
 void logg_str_str_int(const char* str, char* str2, char* str3, int i);
 void logg_struct_resize(const char* str, int from, int to);
-void logg_str_str(const char* str, char* str2, char* str3);
 void logg_bool(const char* str, bool b);
 void log_counter_info(void);
 void format_memory_size(char *prefix, unsigned long int bytes, double *formated);

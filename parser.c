@@ -358,7 +358,7 @@ void process_pihole_log(int file)
 				// Increase counter by one
 				counters.clients++;
 				if(strlen(clients[clientID].name) > 0)
-					logg_str_str("Added new client: ", client, clients[clientID].name);
+					logg("Added new client: %s (%s)", client, clients[clientID].name);
 				else
 					logg("Added new client: %s", client);
 			}
@@ -650,7 +650,7 @@ int getforwardID(char * str)
 		// Increase counter by one
 		counters.forwarded++;
 		if(strlen(forwarded[forwardID].name) > 0)
-			logg_str_str("Added new forward server: ", forwarded[forwardID].ip, forwarded[forwardID].name);
+			logg("Added new forward server: %s (%s)", forwarded[forwardID].ip, forwarded[forwardID].name);
 		else
 			logg("Added new forward server: %s", forwarded[forwardID].ip);
 	}
