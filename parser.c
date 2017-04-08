@@ -50,7 +50,7 @@ long int checkLogForChanges(void)
 void open_pihole_log(void)
 {
 	if((dnsmasqlog = fopen(files.log, "r")) == NULL) {
-		logg("FATAL: Opening of pihole.log failed!");
+		logg("FATAL: Opening of %s failed!", files.log);
 		logg("       Make sure it exists and is readable by user %s", username);
 		syslog(LOG_ERR, "Opening of pihole.log failed!");
 		// Return failure in exit status
@@ -112,8 +112,8 @@ void process_pihole_log(int file)
 	{
 		// Read from pihole.log
 		fp = dnsmasqlog;
-                if(initialscan)
-                        logg("Reading from pihole.log");
+		if(initialscan)
+			logg("Reading from %s", files.log);
 	}
 	else if(file == 1)
 	{
@@ -123,11 +123,11 @@ void process_pihole_log(int file)
 			return;
 		}
 		if(initialscan)
-			logg("Reading from pihole.log.1");
+			logg("Reading from %s", files.log1);
 	}
 	else
 	{
-		logg("Error: Passed unknown file identifier %i", file);
+		logg("Error: Passed unknown file identifier (%i)", file);
 		return;
 	}
 
