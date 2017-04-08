@@ -21,6 +21,11 @@ void open_FTL_log(void)
 	}
 }
 
+void close_FTL_log(void)
+{
+	fclose(logfile);
+}
+
 char timestring[32];
 void get_timestr(void)
 {
@@ -33,15 +38,38 @@ void get_timestr(void)
 	sprintf(timestring,"%d-%02d-%02d %02d:%02d:%02d.%03i", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, millisec);
 }
 
-void logg(const char* str)
+void logg(const char *format, ...)
 {
+	char writebuffer[1024] = "";
+	va_list args;
+
+	va_start(args, format);
+	vsprintf(writebuffer, format, args);
+	va_end(args);
+
 	get_timestr();
 
-	fprintf(logfile, "[%s] %s\n", timestring, str);
-	fflush(logfile);
+	// Print to stdout before writing to file
 	if(debug)
-		printf("[%s] %s\n", timestring, str);
+		printf("[%s] %s\n", timestring, writebuffer);
+
+	// Open log file
+	open_FTL_log();
+	// Write to log file
+	fprintf(logfile, "[%s] %s\n", timestring, writebuffer);
+	// Close log file
+	close_FTL_log();
 }
+
+// void logg(const char* str)
+// {
+// 	get_timestr();
+
+// 	fprintf(logfile, "[%s] %s\n", timestring, str);
+// 	fflush(logfile);
+// 	if(debug)
+// 		printf("[%s] %s\n", timestring, str);
+// }
 
 void logg_int(const char* str, int i)
 {

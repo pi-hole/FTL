@@ -9,6 +9,8 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include <stdio.h>
+// variable argument lists
+#include <stdarg.h>
 #include <stdlib.h>
 #include <signal.h>
 #include <stdbool.h>

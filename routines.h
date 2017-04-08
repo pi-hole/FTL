@@ -16,7 +16,7 @@ void savepid(pid_t sid);
 char * getUserName(void);
 
 void open_FTL_log(void);
-void logg(const char* str);
+void logg(const char* str, ...);
 void logg_int(const char* star, int i);
 void logg_str(const char* str, char* str2);
 void logg_const_str(const char* str, const char* str2);
