@@ -61,16 +61,6 @@ void logg(const char *format, ...)
 	close_FTL_log();
 }
 
-void logg_str(const char* str, char* str2)
-{
-	get_timestr();
-
-	fprintf(logfile, "[%s] %s%s\n", timestring, str, str2);
-	fflush(logfile);
-	if(debug)
-		printf("[%s] %s%s\n", timestring, str, str2);
-}
-
 void logg_const_str(const char* str, const char* str2)
 {
 	get_timestr();

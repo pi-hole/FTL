@@ -26,7 +26,7 @@ int main (int argc, char* argv[]) {
 	logg_const_str("FTL branch: ", GIT_BRANCH);
 	logg_const_str("FTL hash: ", GIT_VERSION);
 	logg_const_str("FTL date: ", GIT_DATE);
-	logg_str("FTL user: ", username);
+	logg("FTL user: %s", username);
 
 	// pihole-FTL should really be run as user "pihole" to not mess up with the file permissions
 	// still allow this if "debug" flag is set

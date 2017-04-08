@@ -96,7 +96,7 @@ void readWildcardsList()
 			while(*(buffer+addrbuffer) == '.' && addrbuffer < strlen(buffer)) addrbuffer++;
 			if(strlen(buffer+addrbuffer) == 0)
 			{
-				logg_str("WARNING: Invalid wildcard list entry found: ",buffer);
+				logg("WARNING: Invalid wildcard list entry found: %s", buffer);
 			}
 			else
 			{

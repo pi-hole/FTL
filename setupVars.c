@@ -19,7 +19,7 @@ void check_setupVarsconf(void)
 	{
 		logg("WARN: Opening of setupVars.conf failed!");
 		logg("      Make sure it exists and is readable");
-		logg_str("      Message: ", strerror(errno));
+		logg("      Message: %s", strerror(errno));
 	}
 	else
 	{
@@ -49,7 +49,7 @@ char * read_setupVarsconf(const char * key)
 	FILE *setupVarsfp;
 	if((setupVarsfp = fopen(files.setupVars, "r")) == NULL)
 	{
-		logg_str("WARN: Reading setupVars.conf failed: ", strerror(errno));
+		logg("WARN: Reading setupVars.conf failed: %s", strerror(errno));
 		return NULL;
 	}
 

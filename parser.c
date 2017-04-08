@@ -51,7 +51,7 @@ void open_pihole_log(void)
 {
 	if((dnsmasqlog = fopen(files.log, "r")) == NULL) {
 		logg("FATAL: Opening of pihole.log failed!");
-		logg_str("       Make sure it exists and is readable by user ", username);
+		logg("       Make sure it exists and is readable by user %s", username);
 		// Return failure in exit status
 		exit(EXIT_FAILURE);
 	}
@@ -189,7 +189,7 @@ void process_pihole_log(int file)
 			// Check if buffer pointer is valid
 			if(domainstart == NULL)
 			{
-				logg_str("Notice: Skipping malformated log line (domain start missing): ",strtok(readbuffer,"\n"));
+				logg("Notice: Skipping malformated log line (domain start missing): %s", strtok(readbuffer,"\n"));
 				// Skip this line
 				continue;
 			}
@@ -198,7 +198,7 @@ void process_pihole_log(int file)
 			// Check if buffer pointer is valid
 			if(domainend == NULL)
 			{
-				logg_str("Notice: Skipping malformated log line (domain end missing): ",strtok(readbuffer,"\n"));
+				logg("Notice: Skipping malformated log line (domain end missing): %s", strtok(readbuffer,"\n"));
 				// Skip this line
 				continue;
 			}
@@ -214,7 +214,7 @@ void process_pihole_log(int file)
 			// Check if buffer pointer is valid
 			if(clientend == NULL)
 			{
-				logg_str("Notice: Skipping malformated log line (client end missing): ",strtok(readbuffer,"\n"));
+				logg("Notice: Skipping malformated log line (client end missing): %s", strtok(readbuffer,"\n"));
 				// Skip this line
 				continue;
 			}
@@ -332,7 +332,6 @@ void process_pihole_log(int file)
 				strcpy(domains[domainID].domain, domain);
 				// Increase counter by one
 				counters.domains++;
-//				logg_str("Added one new domain: ", domain);
 			}
 
 			// Go through already knows clients and see if it is one of them
@@ -361,7 +360,7 @@ void process_pihole_log(int file)
 				if(strlen(clients[clientID].name) > 0)
 					logg_str_str("Added new client: ", client, clients[clientID].name);
 				else
-					logg_str("Added new client: ", client);
+					logg("Added new client: %s", client);
 			}
 
 			// Save everything
@@ -383,7 +382,7 @@ void process_pihole_log(int file)
 			// Decide what to increment depending on status
 			switch(status)
 			{
-				case 0: counters.unknown++; /*logg_str("Unknown: ",strtok(readbuffer, "\n"));*/ break;
+				case 0: counters.unknown++; break;
 				case 1: counters.blocked++; overTime[timeidx].blocked++; domains[domainID].blockedcount++; break;
 				case 2: counters.forwardedqueries++; break;
 				case 3: counters.cached++; break;
@@ -599,7 +598,7 @@ int getforwardID(char * str)
 	// Check if buffer pointer is valid
 	if(forwardstart == NULL)
 	{
-		logg_str("Notice: Skipping malformated log line (forward start missing): ",strtok(str,"\n"));
+		logg("Notice: Skipping malformated log line (forward start missing): %s", strtok(str,"\n"));
 		// Skip this line
 		return -2;
 	}
@@ -608,7 +607,7 @@ int getforwardID(char * str)
 	// Check if buffer pointer is valid
 	if(forwardend == NULL)
 	{
-		logg_str("Notice: Skipping malformated log line (forward end missing): ",strtok(str,"\n"));
+		logg("Notice: Skipping malformated log line (forward end missing): %s", strtok(str,"\n"));
 		// Skip this line
 		return -2;
 	}
@@ -653,7 +652,7 @@ int getforwardID(char * str)
 		if(strlen(forwarded[forwardID].name) > 0)
 			logg_str_str("Added new forward server: ", forwarded[forwardID].ip, forwarded[forwardID].name);
 		else
-			logg_str("Added new forward server: ", forwarded[forwardID].ip);
+			logg("Added new forward server: %s", forwarded[forwardID].ip);
 	}
 
 	// Release allocated memory

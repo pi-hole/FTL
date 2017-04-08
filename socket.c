@@ -150,7 +150,7 @@ void *listenting_thread(void *args)
 		if(pthread_create( &connection_thread, &attr, connection_handler_thread, (void*) newsock ) != 0)
 		{
 			// Log the error code description
-			logg_str("WARNING: Unable to open clients processing thread, error: ", strerror(errno));
+			logg("WARNING: Unable to open clients processing thread, error: %s", strerror(errno));
 		}
 	}
 	return 0;

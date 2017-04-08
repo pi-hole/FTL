@@ -471,7 +471,7 @@ void getAllQueries(char *client_message, int *sock)
 		// Get domain name we want to see only (limit length to 127 chars)
 		sscanf(client_message, ">getallqueries-domain %127s", domainname);
 		if(debugclients)
-			logg_str("Showing only queries with domain ", domainname);
+			logg("Showing only queries with domain %s", domainname);
 		filterdomainname = true;
 	}
 
@@ -483,7 +483,7 @@ void getAllQueries(char *client_message, int *sock)
 		// Get client name we want to see only (limit length to 127 chars)
 		sscanf(client_message, ">getallqueries-client %127s", clientname);
 		if(debugclients)
-			logg_str("Showing only queries with client ", clientname);
+			logg("Showing only queries with client %s", clientname);
 		filterclientname = true;
 	}
 
