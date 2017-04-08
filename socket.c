@@ -45,8 +45,8 @@ void init_socket(void)
 	setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int));
 
 	struct sockaddr_in serv_addr;
-	// The function bzero() sets all values in a buffer to zero.
-	bzero((char *) &serv_addr, sizeof(serv_addr));
+	// set all values in the buffer to zero
+	memset(&serv_addr, 0, sizeof(serv_addr));
 	serv_addr.sin_family = AF_INET;
 
 	if(config.socket_listenlocal)
@@ -130,8 +130,8 @@ void swrite(char server_message[SOCKETBUFFERLEN], int sock)
 int listen_socket(void)
 {
 	struct sockaddr_in cli_addr;
-	// The function bzero() sets all values in a buffer to zero.
-	bzero((char *) &cli_addr, sizeof(cli_addr));
+	// set all values in the buffer to zero
+	memset(&cli_addr, 0, sizeof(cli_addr));
 	socklen_t clilen = sizeof(cli_addr);
 	int clientsocket = accept(sockfd, (struct sockaddr *) &cli_addr, &clilen);
 	// if (newsockfd < 0)

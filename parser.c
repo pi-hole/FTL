@@ -557,7 +557,7 @@ void extracttimestamp(char *readbuffer, int *querytimestamp, int *overTimetimest
 {
 	// Get timestamp
 	// char timestamp[16]; <- declared in FTL.h
-	bzero(timestamp, 15);
+	memset(&timestamp, 0, sizeof(timestamp));
 	strncpy(timestamp,readbuffer,(size_t)15);
 	timestamp[15] = '\0';
 	// Get local time
