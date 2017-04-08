@@ -61,16 +61,6 @@ void logg(const char *format, ...)
 	close_FTL_log();
 }
 
-void logg_str_str_int(const char* str, char* str2, char* str3, int i)
-{
-	get_timestr();
-
-	fprintf(logfile, "[%s] %s%s%s%i\n", timestring, str, str2, str3, i);
-	fflush(logfile);
-	if(debug)
-		printf("[%s] %s%s%s%i\n", timestring, str, str2, str3, i);
-}
-
 void format_memory_size(char *prefix, unsigned long int bytes, double *formated)
 {
 	int exponent = floor(log10(bytes)/3.);

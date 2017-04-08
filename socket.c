@@ -116,7 +116,7 @@ int listen_socket(void)
 	// if (newsockfd < 0)
 		// printf("ERROR on accept");
 	if(debugclients)
-		logg_str_str_int("Client connected: ", inet_ntoa (cli_addr.sin_addr), ", ID: ", clientsocket);
+		logg("Client connected: %s, ID: %i", inet_ntoa (cli_addr.sin_addr), clientsocket);
 
 	return clientsocket;
 }
