@@ -18,7 +18,6 @@ char * getUserName(void);
 void open_FTL_log(void);
 void logg(const char* str, ...);
 void logg_struct_resize(const char* str, int from, int to);
-void logg_bool(const char* str, bool b);
 void log_counter_info(void);
 void format_memory_size(char *prefix, unsigned long int bytes, double *formated);
 void logg_ulong(const char* str, unsigned long int i);
