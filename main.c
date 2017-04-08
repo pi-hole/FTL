@@ -75,7 +75,7 @@ int main (int argc, char* argv[]) {
 	pthread_t listenthread;
 	if(pthread_create( &listenthread, &attr, listenting_thread, NULL ) != 0)
 	{
-		logg("Unable to open Socket listening thread. Exiting...");
+		logg("Unable to open socket listening thread. Exiting...");
 		killed = 1;
 	}
 
@@ -116,8 +116,7 @@ int main (int argc, char* argv[]) {
 	logg("Shutting down...");
 	pthread_cancel(piholelogthread);
 	pthread_cancel(listenthread);
-//	close_sockets();
+	close_socket();
 	logg("########## FTL terminated! ##########");
-	fclose(logfile);
 	return 1;
 }
