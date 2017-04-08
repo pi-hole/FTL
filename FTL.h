@@ -36,6 +36,8 @@
 #include <pwd.h>
 // syslog
 #include <syslog.h>
+// bzero
+#include <strings.h>
 
 #include "routines.h"
 
