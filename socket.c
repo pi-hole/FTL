@@ -104,6 +104,17 @@ void saveport(int port)
 	logg("Listening on port %i", port);
 }
 
+void removeport(void)
+{
+	FILE *f;
+	if((f = fopen(FTLfiles.port, "w+")) == NULL)
+	{
+		logg("WARNING: Unable to empty port file");
+		return;
+	}
+	fclose(f);
+}
+
 void seom(char server_message[SOCKETBUFFERLEN], int sock)
 {
 	sprintf(server_message,"---EOM---\n\n");

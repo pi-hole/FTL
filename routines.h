@@ -14,6 +14,7 @@ float timer_elapsed_msec(void);
 void sleepms(int milliseconds);
 void savepid(pid_t sid);
 char * getUserName(void);
+void removepid(void);
 
 void open_FTL_log(bool test);
 void logg(const char* str, ...);
@@ -37,6 +38,7 @@ int listen_socket(void);
 bool check_socket(void);
 void read_socket(void);
 void close_socket(void);
+void removeport(void);
 void seom(char server_message[], int sock);
 void swrite(char server_message[], int sock);
 void *connection_handler_thread(void *socket_desc);

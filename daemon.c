@@ -165,6 +165,17 @@ void savepid(pid_t sid)
 	logg("PID of FTL process: %i", (int)sid);
 }
 
+void removepid(void)
+{
+	FILE *f;
+	if((f = fopen(FTLfiles.pid, "w+")) == NULL)
+	{
+		logg("WARNING: Unable to empty PID file");
+		return;
+	}
+	fclose(f);
+}
+
 char *getUserName(void)
 {
 	char * username;

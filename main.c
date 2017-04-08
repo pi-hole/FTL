@@ -117,6 +117,8 @@ int main (int argc, char* argv[]) {
 	pthread_cancel(piholelogthread);
 	pthread_cancel(listenthread);
 	close_socket();
+	removeport();
+	removepid();
 	logg("########## FTL terminated! ##########");
 	return 1;
 }
