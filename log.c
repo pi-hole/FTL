@@ -10,7 +10,12 @@
 
 #include "FTL.h"
 
-void open_FTL_log(void)
+void close_FTL_log(void)
+{
+	fclose(logfile);
+}
+
+void open_FTL_log(bool test)
 {
 	// Open a log file in write mode.
 	if((logfile = fopen(FTLfiles.log, "a+")) == NULL) {;
@@ -19,11 +24,9 @@ void open_FTL_log(void)
 		// Return failure in exit status
 		exit(EXIT_FAILURE);
 	}
-}
 
-void close_FTL_log(void)
-{
-	fclose(logfile);
+	if(test)
+		close_FTL_log();
 }
 
 char timestring[32];
@@ -54,7 +57,7 @@ void logg(const char *format, ...)
 		printf("[%s] %s\n", timestring, writebuffer);
 
 	// Open log file
-	open_FTL_log();
+	open_FTL_log(false);
 	// Write to log file
 	fprintf(logfile, "[%s] %s\n", timestring, writebuffer);
 	// Close log file
@@ -103,23 +106,4 @@ void log_counter_info(void)
 	logg(" -> Unknown DNS queries: %i", counters.unknown);
 	logg(" -> Unique domains: %i", counters.domains);
 	logg(" -> Unique clients: %i", counters.clients);
-}
-
-void logg_bool(const char* str, bool b)
-{
-	get_timestr();
-	fprintf(logfile, "[%s] %s: %s\n", timestring, str, b ? "true" : "false");
-	fflush(logfile);
-	if(debug)
-		printf("[%s] %s: %s\n", timestring, str, b ? "true" : "false");
-}
-
-void logg_ulong(const char* str, unsigned long int i)
-{
-	get_timestr();
-
-	fprintf(logfile, "[%s] %s%lu\n", timestring, str, i);
-	fflush(logfile);
-	if(debug)
-		printf("[%s] %s%lu\n", timestring, str, i);
 }

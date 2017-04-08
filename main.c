@@ -20,7 +20,8 @@ int main (int argc, char* argv[]) {
 	if(argc > 1)
 		parse_args(argc, argv);
 
-	open_FTL_log();
+	// Try to open FTL log
+	open_FTL_log(true);
 	open_pihole_log();
 	logg("########## FTL started! ##########");
 	logg("FTL branch: %s", GIT_BRANCH);
