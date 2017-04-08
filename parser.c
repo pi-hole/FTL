@@ -126,7 +126,7 @@ void process_pihole_log(int file)
 	}
 	else
 	{
-		logg_int("Error: Passed unknown file identifier ", file);
+		logg("Error: Passed unknown file identifier %i", file);
 		return;
 	}
 

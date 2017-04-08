@@ -56,7 +56,7 @@ void init_socket(void)
 		serv_addr.sin_port = htons(port);
 		if(bind(sockfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0)
 		{
-			logg_int("Error on binding on port ", port);
+			logg("Error on binding on port %i", port);
 		}
 		else
 		{
@@ -91,7 +91,7 @@ void saveport(int port)
 		fprintf(f, "%i", port);
 		fclose(f);
 	}
-	logg_int("Listening on port ", port);
+	logg("Listening on port %i", port);
 }
 
 void seom(char server_message[SOCKETBUFFERLEN], int sock)
@@ -103,7 +103,7 @@ void seom(char server_message[SOCKETBUFFERLEN], int sock)
 void swrite(char server_message[SOCKETBUFFERLEN], int sock)
 {
 	if(!write(sock, server_message, strlen(server_message)))
-		logg_int("WARNING: Socket write returned error code ", errno);
+		logg("WARNING: Socket write returned error code %i", errno);
 }
 
 int listen_socket(void)
@@ -199,11 +199,11 @@ void *connection_handler_thread(void *socket_desc)
 		else if(n == -1)
 		{
 			if(debugclients)
-				logg_int("Client connection interrupted, ID: ", sockID);
+				logg("Client connection interrupted, ID: %i", sockID);
 		}
 	}
 	if(debugclients)
-		logg_int("Client disconnected, ID: ", sockID);
+		logg("Client disconnected, ID: %i", sockID);
 
 	//Free the socket pointer
 	if(sock != 0)

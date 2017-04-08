@@ -61,26 +61,6 @@ void logg(const char *format, ...)
 	close_FTL_log();
 }
 
-// void logg(const char* str)
-// {
-// 	get_timestr();
-
-// 	fprintf(logfile, "[%s] %s\n", timestring, str);
-// 	fflush(logfile);
-// 	if(debug)
-// 		printf("[%s] %s\n", timestring, str);
-// }
-
-void logg_int(const char* str, int i)
-{
-	get_timestr();
-
-	fprintf(logfile, "[%s] %s%i\n", timestring, str, i);
-	fflush(logfile);
-	if(debug)
-		printf("[%s] %s%i\n", timestring, str, i);
-}
-
 void logg_str(const char* str, char* str2)
 {
 	get_timestr();
@@ -162,12 +142,12 @@ void logg_struct_resize(const char* str, int to, int step)
 
 void log_counter_info(void)
 {
-	logg_int(" -> Total DNS queries: ", counters.queries);
-	logg_int(" -> Cached DNS queries: ", counters.cached);
-	logg_int(" -> Blocked DNS queries: ", counters.blocked);
-	logg_int(" -> Unknown DNS queries: ", counters.unknown);
-	logg_int(" -> Unique domains: ", counters.domains);
-	logg_int(" -> Unique clients: ", counters.clients);
+	logg(" -> Total DNS queries: %i", counters.queries);
+	logg(" -> Cached DNS queries: %i", counters.cached);
+	logg(" -> Blocked DNS queries: %i", counters.blocked);
+	logg(" -> Unknown DNS queries: %i", counters.unknown);
+	logg(" -> Unique domains: %i", counters.domains);
+	logg(" -> Unique clients: %i", counters.clients);
 }
 
 void logg_bool(const char* str, bool b)

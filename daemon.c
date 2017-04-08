@@ -53,7 +53,7 @@ void test_singularity(void)
 		if(!runtest)
 		{
 			printf("FATAL: Another FTL process is already running (PID %i)! Exiting...\n",pid);
-			logg_int("FATAL: Another FTL process is already running: ",pid);
+			logg("FATAL: Another FTL process is already running: %i",pid);
 			exit(EXIT_FAILURE);
 		}
 		else
@@ -117,7 +117,7 @@ void go_daemon(void)
 	// Change the current working directory
 	if(chdir("/etc/pihole") != 0)
 	{
-		logg_int("FATAL: Cannot change directory to /etc/pihole. Error code ",errno);
+		logg("FATAL: Cannot change directory to /etc/pihole. Error code: %i",errno);
 		// Return failure
 		exit(EXIT_FAILURE);
 	}
@@ -162,7 +162,7 @@ void savepid(pid_t sid)
 		fprintf(f, "%i", (int)sid);
 		fclose(f);
 	}
-	logg_int("PID of FTL process: ", (int)sid);
+	logg("PID of FTL process: %i", (int)sid);
 }
 
 char *getUserName(void)

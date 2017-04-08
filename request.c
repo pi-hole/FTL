@@ -124,7 +124,7 @@ void process_request(char *client_message, int *sock)
 	{
 		processed = true;
 		if(debugclients)
-			logg_int("Client wants to disconnect, ID: ",*sock);
+			logg("Client wants to disconnect, ID: %i",*sock);
 
 		close(*sock);
 		*sock = 0;
@@ -132,7 +132,7 @@ void process_request(char *client_message, int *sock)
 	else if(command(client_message, ">kill"))
 	{
 		processed = true;
-		logg_int("FTL killed by client ID: ",*sock);
+		logg("FTL killed by client ID: %i",*sock);
 		killed = 1;
 	}
 
@@ -211,7 +211,7 @@ void getStats(int *sock)
 	        counters.domains,counters.forwardedqueries,counters.cached);
 	swrite(server_message, *sock);
 	if(debugclients)
-		logg_int("Sent stats data to client, ID: ", *sock);
+		logg("Sent stats data to client, ID: %i", *sock);
 }
 
 void getOverTime(int *sock)
@@ -232,7 +232,7 @@ void getOverTime(int *sock)
 		}
 	}
 	if(debugclients)
-		logg_int("Sent overTime data to client, ID: ", *sock);
+		logg("Sent overTime data to client, ID: %i", *sock);
 }
 
 void getTopDomains(char *client_message, int *sock)
@@ -324,9 +324,9 @@ void getTopDomains(char *client_message, int *sock)
 	if(debugclients)
 	{
 		if(blocked)
-			logg_int("Sent top ads list data to client, ID: ", *sock);
+			logg("Sent top ads list data to client, ID: %i", *sock);
 		else
-			logg_int("Sent top domains list data to client, ID: ", *sock);
+			logg("Sent top domains list data to client, ID: %i", *sock);
 	}
 }
 
@@ -381,7 +381,7 @@ void getTopClients(char *client_message, int *sock)
 	if(excludeclients != NULL)
 		clearSetupVarsArray();
 	if(debugclients)
-		logg_int("Sent top clients data to client, ID: ", *sock);
+		logg("Sent top clients data to client, ID: %i", *sock);
 }
 
 
@@ -409,7 +409,7 @@ void getForwardDestinations(int *sock)
 		}
 	}
 	if(debugclients)
-		logg_int("Sent forward destination data to client, ID: ", *sock);
+		logg("Sent forward destination data to client, ID: %i", *sock);
 }
 
 
@@ -425,7 +425,7 @@ void getForwardNames(int *sock)
 		swrite(server_message, *sock);
 	}
 	if(debugclients)
-		logg_int("Sent forward destination names to client, ID: ", *sock);
+		logg("Sent forward destination names to client, ID: %i", *sock);
 }
 
 
@@ -436,7 +436,7 @@ void getQueryTypes(int *sock)
 	sprintf(server_message,"A (IPv4): %i\nAAAA (IPv6): %i\n",counters.IPv4,counters.IPv6);
 	swrite(server_message, *sock);
 	if(debugclients)
-		logg_int("Sent query type data to client, ID: ", *sock);
+		logg("Sent query type data to client, ID: %i", *sock);
 }
 
 
@@ -457,8 +457,8 @@ void getAllQueries(char *client_message, int *sock)
 		sscanf(client_message, ">getallqueries-time %i %i",&from, &until);
 		if(debugclients)
 		{
-			logg_int("Showing only limited time interval starting at ",from);
-			logg_int("Showing only limited time interval ending at ",until);
+			logg("Showing only limited time interval starting at ",from);
+			logg("Showing only limited time interval ending at ",until);
 		}
 		filtertime = true;
 	}
@@ -497,7 +497,7 @@ void getAllQueries(char *client_message, int *sock)
 		if(ibeg < 0)
 			ibeg = 0;
 		if(debugclients)
-			logg_int("Showing only limited amount of queries: ",num);
+			logg("Showing only limited amount of queries: ",num);
 	}
 
 	// Get potentially existing filtering flags
@@ -609,7 +609,7 @@ void getAllQueries(char *client_message, int *sock)
 		free(domainname);
 
 	if(debugclients)
-		logg_int("Sent all queries data to client, ID: ", *sock);
+		logg("Sent all queries data to client, ID: %i", *sock);
 }
 
 void getRecentBlocked(char *client_message, int *sock)
@@ -629,7 +629,7 @@ void getRecentBlocked(char *client_message, int *sock)
 			num = 0;
 
 		if(debugclients)
-			logg_int("Showing several blocked domains ",num);
+			logg("Showing several blocked domains ",num);
 	}
 	// Find most recent query with either status 1 (blocked)
 	// or status 4 (wildcard blocked)
@@ -679,7 +679,7 @@ void getMemoryUsage(int *sock)
 	free(totalprefix);
 
 	if(debugclients)
-		logg_int("Sent memory data to client, ID: ", *sock);
+		logg("Sent memory data to client, ID: %i", *sock);
 }
 
 void getForwardDestinationsOverTime(int *sock)
@@ -717,7 +717,7 @@ void getForwardDestinationsOverTime(int *sock)
 		}
 	}
 	if(debugclients)
-		logg_int("Sent overTime forwarded data to client, ID: ", *sock);
+		logg("Sent overTime forwarded data to client, ID: %i", *sock);
 }
 
 void getClientID(int *sock)
@@ -728,7 +728,7 @@ void getClientID(int *sock)
 	swrite(server_message, *sock);
 
 	if(debugclients)
-		logg_int("Sent client ID to client, ID: ", *sock);
+		logg("Sent client ID to client, ID: %i", *sock);
 }
 
 void getQueryTypesOverTime(int *sock)
@@ -752,7 +752,7 @@ void getQueryTypesOverTime(int *sock)
 		}
 	}
 	if(debugclients)
-		logg_int("Sent overTime query types data to client, ID: ", *sock);
+		logg("Sent overTime query types data to client, ID: %i", *sock);
 }
 
 void getVersion(int *sock)
@@ -762,5 +762,5 @@ void getVersion(int *sock)
 	swrite(server_message, *sock);
 
 	if(debugclients)
-		logg_int("Sent version info to client, ID: ", *sock);
+		logg("Sent version info to client, ID: %i", *sock);
 }

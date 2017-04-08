@@ -97,7 +97,7 @@ int main (int argc, char* argv[]) {
 		{
 			needGC = false;
 			if(debug)
-				logg_int("Running GC on data structure due to set interval of [s]: ", GCinterval);
+				logg("Running GC on data structure due to set interval of %i seconds", GCinterval);
 
 			pthread_t GCthread;
 			if(pthread_create( &GCthread, &attr, GC_thread, NULL ) != 0)

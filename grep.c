@@ -24,13 +24,13 @@ void read_gravity_files(void)
 	{
 		logg_const_str("Error: failed to read ", files.gravity);
 	}
-	logg_int("Gravity list entries: ",gravity);
+	logg("Gravity list entries: %i", gravity);
 
 	// Test if blacklist exists and has entries in it
 	if(blacklist > 0)
 	{
 		gravity += blacklist;
-		logg_int("Blacklist entries: ", blacklist);
+		logg("Blacklist entries: %i", blacklist);
 	}
 	else
 	{
@@ -43,7 +43,7 @@ void read_gravity_files(void)
 	readWildcardsList();
 	if(counters.wildcarddomains > 0)
 	{
-		logg_int("Wildcard blocking list entries: ", counters.wildcarddomains);
+		logg("Wildcard blocking list entries: %i", counters.wildcarddomains);
 	}
 	else
 	{

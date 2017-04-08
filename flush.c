@@ -16,7 +16,7 @@ void pihole_log_flushed(bool message)
 	{
 		logg("NOTICE: pihole.log has been flushed");
 		logg("  Resetting internal data structure");
-		logg_int("  Queries in memory before flushing: ",counters.queries);
+		logg("  Queries in memory before flushing: %i",counters.queries);
 	}
 
 	int i;

@@ -42,7 +42,7 @@ static void SIGSEGV_handler(int sig, siginfo_t *si, void *unused)
 #if defined(SEGV_BNDERR)
 		case SEGV_BNDERR: logg("        with code: SEGV_BNDERR (Failed address bound checks)"); break;
 #endif
-		default: logg_int("        with code: Unknown, ",si->si_code); break;
+		default: logg("        with code: Unknown (%i), ",si->si_code); break;
 	}
 
 	// Print memory usage

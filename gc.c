@@ -88,7 +88,7 @@ void *GC_thread(void *val)
 
 	if(debugGC)
 	{
-		logg_int("GC queries: ", counters.invalidqueries);
+		logg("GC queries: %i", counters.invalidqueries);
 	}
 
 	// Release thread lock

@@ -17,7 +17,6 @@ char * getUserName(void);
 
 void open_FTL_log(void);
 void logg(const char* str, ...);
-void logg_int(const char* star, int i);
 void logg_str(const char* str, char* str2);
 void logg_const_str(const char* str, const char* str2);
 void logg_str_str_int(const char* str, char* str2, char* str3, int i);
