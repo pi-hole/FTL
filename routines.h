@@ -36,7 +36,7 @@ void init_socket(void);
 int listen_socket(void);
 bool check_socket(void);
 void read_socket(void);
-void close_sockets(void);
+void close_socket(void);
 void seom(char server_message[], int sock);
 void swrite(char server_message[], int sock);
 void *connection_handler_thread(void *socket_desc);

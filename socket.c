@@ -28,11 +28,21 @@ void saveport(int port);
 void init_socket(void)
 {
 	sockfd = socket(AF_INET, SOCK_STREAM, 0);
+
 	if(sockfd < 0)
 	{
 		logg("Error opening socket");
 		exit(EXIT_FAILURE);
 	}
+
+	// Set SO_REUSEADDR to allow re-binding to the port that has been used
+	// previously by FTL. A common pattern is that you change FTL's
+	// configuration file and need to restart that server to make it reload
+	// its configuration. Without SO_REUSEADDR, the bind() call in the restarted
+	// new instance will fail if there were connections open to the previous
+	// instance when you killed it. Those connections will hold the TCP port in
+	// the TIME_WAIT state for 30-120 seconds, so you fall into case 1 above.
+	setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int));
 
 	struct sockaddr_in serv_addr;
 	// The function bzero() sets all values in a buffer to zero.
@@ -119,6 +129,11 @@ int listen_socket(void)
 		logg("Client connected: %s, ID: %i", inet_ntoa (cli_addr.sin_addr), clientsocket);
 
 	return clientsocket;
+}
+
+void close_socket(void)
+{
+	close(sockfd);
 }
 
 void *listenting_thread(void *args)
