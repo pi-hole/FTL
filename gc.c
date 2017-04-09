@@ -28,7 +28,7 @@ void *GC_thread(void *val)
 	}
 
 	// Process all queries
-	unsigned long int i;
+	long int i;
 	for(i=0; i < counters.queries; i++)
 	{
 		if(queries[i].timestamp < mintime && queries[i].valid)
