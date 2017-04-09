@@ -60,6 +60,30 @@ void open_pihole_log(void)
 	fclose(fp);
 }
 
+void get_file_permissions(const char *path)
+{
+	char permissions[10];
+	struct stat st;
+	if(stat(path, &st) != 0)
+	{
+		// stat() failed (maybe the file does not exist?)
+		logg("Warning: stat() failed for %s", files.log);
+		return;
+	}
+	permissions[0] = (st.st_mode & S_IRUSR) ? 'r' : '-';
+	permissions[1] = (st.st_mode & S_IWUSR) ? 'w' : '-';
+	permissions[2] = (st.st_mode & S_IXUSR) ? 'x' : '-';
+	permissions[3] = (st.st_mode & S_IRGRP) ? 'r' : '-';
+	permissions[4] = (st.st_mode & S_IWGRP) ? 'w' : '-';
+	permissions[5] = (st.st_mode & S_IXGRP) ? 'x' : '-';
+	permissions[6] = (st.st_mode & S_IROTH) ? 'r' : '-';
+	permissions[7] = (st.st_mode & S_IWOTH) ? 'w' : '-';
+	permissions[8] = (st.st_mode & S_IXOTH) ? 'x' : '-';
+	permissions[9] = '\0';
+
+	logg("Reading from %s (%s)", path, permissions);
+}
+
 void *pihole_log_thread(void *val)
 {
 	prctl(PR_SET_NAME,"loganalyzer",0,0,0);
@@ -123,7 +147,7 @@ void process_pihole_log(int file)
 		// Skip to last read position
 		fseek(fp, lastpos, SEEK_SET);
 		if(initialscan)
-			logg("Reading from %s", files.log);
+			get_file_permissions(files.log);
 	}
 	else if(file == 1)
 	{
@@ -133,7 +157,7 @@ void process_pihole_log(int file)
 			return;
 		}
 		if(initialscan)
-			logg("Reading from %s", files.log1);
+			get_file_permissions(files.log1);
 	}
 	else
 	{
