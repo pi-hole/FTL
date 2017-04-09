@@ -16,7 +16,8 @@ int getforwardID(char * str);
 int findDomain(char *domain);
 int findClient(char *client);
 
-unsigned long int dnsmasqlogpos = 0;
+long int oldfilesize = 0;
+long int lastpos = 0;
 int lastqueryID = 0;
 bool flush = false;
 char timestamp[16] = "";
@@ -32,30 +33,31 @@ void initial_log_parsing(void)
 
 long int checkLogForChanges(void)
 {
-	// Ask for the current position
-	long int curpos = ftell(dnsmasqlog);
+	// Get file details
+	struct stat st;
+	if(stat(files.log, &st) != 0)
+	{
+		// stat() failed (maybe the file does not exist?)
+		return 0;
+	}
+	long int newfilesize = st.st_size;
+	long int difference = newfilesize - oldfilesize;
+	oldfilesize = newfilesize;
 
-	// Seek to the end of the file
-	fseek(dnsmasqlog, 0L, SEEK_END);
-
-	// Ask for the end position
-	long int pos = ftell(dnsmasqlog);
-
-	// Go back to to previous position
-	fseek(dnsmasqlog, curpos, SEEK_SET);
-
-	return (pos-dnsmasqlogpos);
+	return difference;
 }
 
 void open_pihole_log(void)
 {
-	if((dnsmasqlog = fopen(files.log, "r")) == NULL) {
+	FILE * fp;
+	if((fp = fopen(files.log, "r")) == NULL) {
 		logg("FATAL: Opening of %s failed!", files.log);
 		logg("       Make sure it exists and is readable by user %s", username);
 		syslog(LOG_ERR, "Opening of pihole.log failed!");
 		// Return failure in exit status
 		exit(EXIT_FAILURE);
 	}
+	fclose(fp);
 }
 
 void *pihole_log_thread(void *val)
@@ -82,6 +84,9 @@ void *pihole_log_thread(void *val)
 				// Process flushed log
 				// Flush internal datastructure
 				pihole_log_flushed(true);
+				// Reset file size and position
+				oldfilesize = 0;
+				lastpos = 0;
 				// Rescan files 0 (pihole.log) and 1 (pihole.log.1)
 				initialscan = true;
 				if(config.include_yesterday)
@@ -111,14 +116,19 @@ void process_pihole_log(int file)
 	if(file == 0)
 	{
 		// Read from pihole.log
-		fp = dnsmasqlog;
+		if((fp = fopen(files.log, "r")) == NULL) {
+			logg("Warning: Reading of rotated log file failed");
+			return;
+		}
+		// Skip to last read position
+		fseek(fp, lastpos, SEEK_SET);
 		if(initialscan)
 			logg("Reading from %s", files.log);
 	}
 	else if(file == 1)
 	{
 		// Read from pihole.log.1
-		if((fp = fopen(files.log1,"r")) == NULL) {
+		if((fp = fopen(files.log1, "r")) == NULL) {
 			logg("Warning: Reading of rotated log file failed");
 			return;
 		}
@@ -477,12 +487,15 @@ void process_pihole_log(int file)
 		}
 	}
 
-	// Update file pointer position
+	// IF we are reading the main log, we want to store the last read
+	// position so that we can jump to this position in the next round
 	if(file == 0)
-		dnsmasqlogpos = ftell(dnsmasqlog);
-	// Close file if we are not reading the main log
-	else
-		fclose(fp);
+	{
+		lastpos = ftell(fp);
+	}
+
+	// Close file when parsing is finished
+	fclose(fp);
 }
 
 char *resolveHostname(char *addr)

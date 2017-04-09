@@ -23,10 +23,11 @@ GIT_TAG := $(shell git describe --tags --abbrev=0)
 # -Wl,-z,now: When combined with RELRO above, this further reduces the regions of memory available to memory corruption attacks
 # -pie -fPIE: For ASLR
 # -g3: More debugging information
+# _FILE_OFFSET_BITS=64: used by stat(). Avoids problems with files > 2 GB on 32bit machines
 CC=gcc
 HARDENING_FLAGS=-fstack-protector -D_FORTIFY_SOURCE=2 -O3 -Wl,-z,relro,-z,now -pie -fPIE
 DEBUG_FLAGS=-g3 -rdynamic
-CCFLAGS=-I$(IDIR) -Wall $(HARDENING_FLAGS) $(DEBUG_FLAGS) $(CFLAGS)
+CCFLAGS=-I$(IDIR) -Wall -D_FILE_OFFSET_BITS=64 $(HARDENING_FLAGS) $(DEBUG_FLAGS) $(CFLAGS)
 LIBS=-pthread -lm
 
 ODIR =obj

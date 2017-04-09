@@ -74,10 +74,6 @@ void pihole_log_flushed(bool message)
 	counters.clients = counters_bck;
 	counters.forwarded = forwarded_bck;
 
-	// Update file pointer position to beginning of file
-	dnsmasqlogpos = 0;
-	fseek(dnsmasqlog, dnsmasqlogpos, SEEK_SET);
-
 	// Recount entries in gravity files
 	read_gravity_files();
 }
