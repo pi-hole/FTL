@@ -101,7 +101,7 @@ void *pihole_log_thread(void *val)
 		}
 
 		// Wait some time before looking again at the log files
-		sleepms(50);
+		sleepms(200);
 	}
 	return NULL;
 }
