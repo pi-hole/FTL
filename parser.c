@@ -117,7 +117,7 @@ void process_pihole_log(int file)
 	{
 		// Read from pihole.log
 		if((fp = fopen(files.log, "r")) == NULL) {
-			logg("Warning: Reading of rotated log file failed");
+			logg("Warning: Reading of log file %s failed", files.log);
 			return;
 		}
 		// Skip to last read position
@@ -129,7 +129,7 @@ void process_pihole_log(int file)
 	{
 		// Read from pihole.log.1
 		if((fp = fopen(files.log1, "r")) == NULL) {
-			logg("Warning: Reading of rotated log file failed");
+			logg("Warning: Reading of rotated log file %s failed", files.log1);
 			return;
 		}
 		if(initialscan)
@@ -481,6 +481,7 @@ void process_pihole_log(int file)
 			if(checkLogForChanges() < 0)
 			{
 				logg("Notice: Returning early from log parsing for flushing");
+				fclose(fp);
 				flush = true;
 				return;
 			}
