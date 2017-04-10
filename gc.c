@@ -76,7 +76,7 @@ void *GC_thread(void *val)
 			{
 				time_t timestamp = queries[i].timestamp;
 				logg("GC query with time: %s", strtok(ctime(&timestamp),"\n"));
-				printf("queries[i = %lu] = {timestamp = %i, timeidx = %i, type = %i, status = %i, domainID = %i, clientID = %i, forwardID = %i, valid = false}\n", i, queries[i].timestamp, queries[i].timeidx, queries[i].type, queries[i].status, queries[i].domainID, queries[i].clientID, queries[i].forwardID);
+				printf("queries[i = %li] = {timestamp = %i, timeidx = %i, type = %i, status = %i, domainID = %i, clientID = %i, forwardID = %i, valid = false}\n", i, queries[i].timestamp, queries[i].timeidx, queries[i].type, queries[i].status, queries[i].domainID, queries[i].clientID, queries[i].forwardID);
 				printf("domains[j = %i] = {count = %i, blockedcount = %i, domain = \"%s\", wildcard = %i}\n", queries[i].domainID, domains[queries[i].domainID].count, domains[queries[i].domainID].blockedcount, domains[queries[i].domainID].domain, domains[queries[i].domainID].wildcard);
 				printf("clients[k = %i] = {count = %i, ip = \"%s\", name = \"%s\"}\n", queries[i].clientID, clients[queries[i].clientID].count, clients[queries[i].clientID].ip, clients[queries[i].clientID].name);
 				if(queries[i].forwardID > -1)

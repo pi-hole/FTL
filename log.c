@@ -84,16 +84,16 @@ void logg(const char *format, ...)
 
 void format_memory_size(char *prefix, unsigned long int bytes, double *formated)
 {
-	int exponent = floor(log10(bytes)/3.);
-	if(exponent > 0 && exponent < 7)
+	if(bytes > 0)
 	{
+		int exponent = floor(log10(bytes)/3.);
 		const char* prefixes[7] = { "", "K", "M", "G", "T", "P", "E" };
 		strcpy(prefix, prefixes[exponent]);
 		*formated = (double)bytes/pow(10.0,exponent*3.0);
 	}
 	else
 	{
-		strcpy(prefix, "");
+		strcpy(prefix, "\'");
 		*formated = (double)bytes;
 	}
 }
