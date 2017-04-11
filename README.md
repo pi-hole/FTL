@@ -46,15 +46,7 @@ If you want to test it, use `pihole checkout dev`
 
 ### Debugging `pihole-FTL`
 
-#### Simplified debugging instructions (when `FTL` is running)
-
-`FTL` has been designed such that a debugger can be attached to an already running process to ease debugging. Use `sudo gdb -p $(cat /var/run/pihole-FTL.pid)` to attach to the already running `pihole-FTL` process. You can leave off `sudo` if you are running `pihole-FTL` with the current user. Once loading of the symbols has finished (the `(gdb)` input prompt is shown), run `continue` to continue operation of `pihole-FTL` inside the debugger. All debugger features are now available.
-
-If `pihole-FTL` has crashed, copy&paste the terminal output into a (new) issue. Also type `backtrace` and include its output. We might ask for additional information in order to isolate your particular issue.
-
-When you want to detach the debugger from `FTL` without terminating the process, you can hit `Ctrl+C` and enter `detach` followed by `quit`.
-
-#### Not so simplified debugging instructions (when `FTL` is not starting reliably)
+#### Debugging instructions (when `FTL` is not starting reliably)
 
 Once you are used to it, you can skip most of the steps and debugging is actually quite easy and gives you insights into how software (not limited to `pihole-FTL`) works.
 
@@ -73,6 +65,14 @@ Once you are used to it, you can skip most of the steps and debugging is actuall
 9. If it has crashed, copy&paste the terminal output, and
 10. type also `backtrace` and post the output in a (new) issue
 11. We might ask for additional information in order to isolate your particular issue
+
+#### Simplified debugging instructions (when `FTL` is running)
+
+`FTL` has been designed such that a debugger can be attached to an already running process to ease debugging. Use `sudo gdb -p $(cat /var/run/pihole-FTL.pid)` to attach to the already running `pihole-FTL` process. You can leave off `sudo` if you are running `pihole-FTL` with the current user. Once loading of the symbols has finished (the `(gdb)` input prompt is shown), run `continue` to continue operation of `pihole-FTL` inside the debugger. All debugger features are now available.
+
+If `pihole-FTL` has crashed, copy&paste the terminal output into a (new) issue. Also type `backtrace` and include its output. We might ask for additional information in order to isolate your particular issue.
+
+When you want to detach the debugger from `FTL` without terminating the process, you can hit `Ctrl+C` and enter `detach` followed by `quit`.
 
 ### Command line arguments
 
