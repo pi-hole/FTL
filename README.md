@@ -44,11 +44,35 @@ If you want to test it, use `pihole checkout dev`
 3. `sudo make install`
 4. `sudo service pihole-FTL start`
 
-### Simplified debugging instructions
+### Debugging `pihole-FTL`
+
+#### Simplified debugging instructions (when `FTL` is running)
 
 `FTL` has been designed such that a debugger can be attached to an already running process to ease debugging. Use `sudo gdb -p $(cat /var/run/pihole-FTL.pid)` to attach to the already running `pihole-FTL` process. You can leave off `sudo` if you are running `pihole-FTL` with the current user. Once loading of the symbols has finished (the `(gdb)` input prompt is shown), run `continue` to continue operation of `pihole-FTL` inside the debugger. All debugger features are now available.
 
+If `pihole-FTL` has crashed, copy&paste the terminal output into a (new) issue. Also type `backtrace` and include its output. We might ask for additional information in order to isolate your particular issue.
+
 When you want to detach the debugger from `FTL` without terminating the process, you can hit `Ctrl+C` and enter `detach` followed by `quit`.
+
+#### Not so simplified debugging instructions (when `FTL` is not starting reliably)
+
+Once you are used to it, you can skip most of the steps and debugging is actually quite easy and gives you insights into how software (not limited to `pihole-FTL`) works.
+
+1. Install `screen` and `gdb` (probably `sudo apt-get install screen gdb`)
+2. Start a screen session (it will allow you to come back even if the SSH connection died)
+  * If you don't know about `screen`, then read about it (you *will* love it!)
+3. Start a screen session using `screen`
+4. Ensure that `pihole-FTL` is terminated (e.g. `sudo killall pihole-FTL`)
+5. Arrange file permissions to be able to start `FTL` as your current user (the following assumes you are logged in as user `pi`).
+  * `sudo touch /var/log/pihole-FTL.log /run/pihole-FTL.pid /run/pihole-FTL.port`
+  * `sudo chown pi:pi /var/log/pihole-FTL.log /run/pihole-FTL.pid /run/pihole-FTL.port`
+  * `sudo chmod 0644 /var/log/pihole-FTL.log /run/pihole-FTL.pid /run/pihole-FTL.port`
+6. Start `pihole-FTL` in the debugger: `gdb pihole-FTL`
+7. Type `run debug` to start `FTL` (you should see some lines of text and `FTL` should start successfully).
+8. You can now close the terminal (Ctrl+A and then D to detach) and come back later using (`screen -r`) when it has crashed
+9. If it has crashed, copy&paste the terminal output, and
+10. type also `backtrace` and post the output in a (new) issue
+11. We might ask for additional information in order to isolate your particular issue
 
 ### Command line arguments
 
