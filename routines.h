@@ -18,7 +18,7 @@ void removepid(void);
 
 void open_FTL_log(bool test);
 void logg(const char* str, ...);
-void logg_struct_resize(const char* str, int from, int to);
+void logg_struct_resize(const char* str, int to, int step);
 void log_counter_info(void);
 void format_memory_size(char *prefix, unsigned long int bytes, double *formated);
 
