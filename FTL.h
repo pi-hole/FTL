@@ -164,7 +164,7 @@ typedef struct {
 	int querytypedata;
 } memoryStruct;
 
-enum { QUERIES, FORWARDED, CLIENTS, DOMAINS, OVERTIME };
+enum { QUERIES, FORWARDED, CLIENTS, DOMAINS, OVERTIME, WILDCARD };
 
 logFileNamesStruct files;
 FTLFileNamesStruct FTLfiles;

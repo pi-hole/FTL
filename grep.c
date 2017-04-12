@@ -113,9 +113,10 @@ void readWildcardsList()
 					}
 				}
 				if(known) continue;
+
 				// Add wildcard entry
 				// Enlarge wildcarddomains pointer array
-				wildcarddomains = realloc(wildcarddomains, (counters.wildcarddomains+1)*sizeof(*wildcarddomains));
+				memory_check(WILDCARD);
 				// Allocate space for new domain entry and save domain
 				wildcarddomains[counters.wildcarddomains] = calloc(strlen(domain)+1,sizeof(char));
 				memory.wildcarddomains += (strlen(domain) + 1) * sizeof(char);

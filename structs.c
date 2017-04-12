@@ -103,6 +103,17 @@ void memory_check(int which)
 				}
 			}
 		break;
+		case WILDCARD:
+			// Definitely enlarge wildcard entry
+			// Enlarge wildcarddomains pointer array
+			logg_struct_resize("wildcards", (counters.wildcarddomains+1), 1);
+			wildcarddomains = realloc(wildcarddomains, (counters.wildcarddomains+1)*sizeof(*wildcarddomains));
+			if(wildcarddomains == NULL)
+			{
+				logg("FATAL: Memory allocation failed! Exiting");
+				exit(EXIT_FAILURE);
+			}
+		break;
 		default:
 			/* That cannot happen */
 		break;
