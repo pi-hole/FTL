@@ -90,7 +90,7 @@ void readWildcardsList()
 		// Try to read up to 511 characters
 		if(sscanf(linebuffer, "address=/%511[^/]/%*[^\n]\n", buffer) > 0)
 		{
-			unsigned int addrbuffer = 0;
+			unsigned long int addrbuffer = 0;
 			// Skip leading '.' by incrementing memory location step by step until the first
 			// character is not a '.' anymore
 			while(*(buffer+addrbuffer) == '.' && addrbuffer < strlen(buffer)) addrbuffer++;
