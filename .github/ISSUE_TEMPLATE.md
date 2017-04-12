@@ -3,7 +3,7 @@
 
 - [] I have read and understood the [contributors guide](https://github.com/pi-hole/pi-hole/blob/master/CONTRIBUTING.md).
 - [] The issue I am reporting can be *replicated*
-- [] The issue I'm reporting isn't a duplicate 
+- [] The issue I am reporting isn't a duplicate 
 
 **How familiar are you with the codebase?:**
 
@@ -30,7 +30,7 @@ _{replace this text with a number from 1 to 10, with 1 being not familiar, and 1
 
 **Device specifics**
 
-Hardware: rPi, VPS, etc
+Hardware Type: rPi, VPS, etc
 OS:
 
 
