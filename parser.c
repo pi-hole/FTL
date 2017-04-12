@@ -186,12 +186,12 @@ void process_pihole_log(int file)
 		// Test if the read line is a query line
 		if(strstr(readbuffer,"]: query[A") != NULL)
 		{
-			// Ensure we have enough space in the queries struct
-			memory_check(QUERIES);
-
 			// Get timestamp
 			int querytimestamp, overTimetimestamp;
 			extracttimestamp(readbuffer, &querytimestamp, &overTimetimestamp);
+
+			// Ensure we have enough space in the queries struct
+			memory_check(QUERIES);
 
 			int timeidx;
 			bool found = false;
@@ -441,6 +441,7 @@ void process_pihole_log(int file)
 			// Get timestamp
 			int querytimestamp, overTimetimestamp, timeidx;
 			extracttimestamp(readbuffer, &querytimestamp, &overTimetimestamp);
+
 			bool found = false;
 			for(i=0; i < counters.overTime; i++)
 			{
