@@ -26,17 +26,23 @@ void pihole_log_flushed(bool message)
 	free(queries);
 	queries = NULL;
 
-	// forwarded struct: Keep forward destinations, but reset their counters
+	// forwarded struct: Free allocated substructure
 	for(i=0;i<counters.forwarded;i++)
 	{
-		forwarded[i].count = 0;
+		free(forwarded[i].name);
+		free(forwarded[i].ip);
 	}
+	free(forwarded);
+	forwarded = NULL;
 
-	// clients struct: Keep clients, but reset their counters
+	// clients struct: Free allocated substructure
 	for(i=0;i<counters.clients;i++)
 	{
-		clients[i].count = 0;
+		free(clients[i].name);
+		free(clients[i].ip);
 	}
+	free(clients);
+	clients = NULL;
 
 	// domains struct: Free allocated substructure
 	for(i=0;i<counters.domains;i++)
@@ -67,12 +73,8 @@ void pihole_log_flushed(bool message)
 	memory.forwarddata = 0;
 	memory.querytypedata = 0;
 
-	// Reset all counters (except clients and forwards, because they need PTRs) to zero
-	int counters_bck  = counters.clients;
-	int forwarded_bck = counters.forwarded;
+	// Reset all counters to zero
 	memset(&counters, 0, sizeof(countersStruct));
-	counters.clients = counters_bck;
-	counters.forwarded = forwarded_bck;
 
 	// Recount entries in gravity files
 	read_gravity_files();
