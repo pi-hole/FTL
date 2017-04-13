@@ -114,6 +114,7 @@ typedef struct {
 
 // Dynamic structs
 typedef struct {
+	unsigned char magic;
 	int timestamp;
 	int timeidx;
 	unsigned char type;
@@ -126,12 +127,14 @@ typedef struct {
 } queriesDataStruct;
 
 typedef struct {
+	unsigned char magic;
 	int count;
 	char *ip;
 	char *name;
 } forwardedDataStruct;
 
 typedef struct {
+	unsigned char magic;
 	int count;
 	char *ip;
 	char *name;
@@ -145,6 +148,7 @@ typedef struct {
 } domainsDataStruct;
 
 typedef struct {
+	unsigned char magic;
 	int timestamp;
 	int total;
 	int blocked;
