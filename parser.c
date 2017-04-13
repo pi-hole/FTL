@@ -461,6 +461,7 @@ void process_pihole_log(int file)
 					validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 					overTime[timeidx].blocked++;
 					validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
+					domains[domainID].blockedcount++;
 					domains[domainID].wildcard = true;
 					break;
 				default:
