@@ -221,7 +221,7 @@ void getOverTime(int *sock)
 	bool sendit = false;
 	for(i=0; i < counters.overTime; i++)
 	{
-		validate_access("overTime", i, __LINE__, __FUNCTION__, __FILE__);
+		validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
 		if((overTime[i].total > 0 || overTime[i].blocked > 0) && !sendit)
 		{
 			sendit = true;
@@ -255,7 +255,7 @@ void getTopDomains(char *client_message, int *sock)
 
 	for(i=0; i < counters.domains; i++)
 	{
-		validate_access("domains", i, __LINE__, __FUNCTION__, __FILE__);
+		validate_access("domains", i, true, __LINE__, __FUNCTION__, __FILE__);
 		temparray[i][0] = i;
 		if(blocked)
 			temparray[i][1] = domains[i].blockedcount;
@@ -299,7 +299,7 @@ void getTopDomains(char *client_message, int *sock)
 	{
 		// Get sorted indices
 		int j = temparray[counters.domains-i-1][0];
-		validate_access("domains", j, __LINE__, __FUNCTION__, __FILE__);
+		validate_access("domains", j, true, __LINE__, __FUNCTION__, __FILE__);
 
 		// Skip this domain if there is a filter on it
 		if(excludedomains != NULL)
@@ -346,7 +346,7 @@ void getTopClients(char *client_message, int *sock)
 
 	for(i=0; i < counters.clients; i++)
 	{
-		validate_access("clients", i, __LINE__, __FUNCTION__, __FILE__);
+		validate_access("clients", i, true, __LINE__, __FUNCTION__, __FILE__);
 		temparray[i][0] = i;
 		temparray[i][1] = clients[i].count;
 	}
@@ -364,7 +364,7 @@ void getTopClients(char *client_message, int *sock)
 	{
 		// Get sorted indices
 		int j = temparray[counters.clients-i-1][0];
-		validate_access("clients", j, __LINE__, __FUNCTION__, __FILE__);
+		validate_access("clients", j, true, __LINE__, __FUNCTION__, __FILE__);
 
 		// Skip this client if there is a filter on it
 		if(excludeclients != NULL)
@@ -396,7 +396,7 @@ void getForwardDestinations(int *sock)
 	int i, temparray[counters.forwarded][2];
 	for(i=0; i < counters.forwarded; i++)
 	{
-		validate_access("forwarded", i, __LINE__, __FUNCTION__, __FILE__);
+		validate_access("forwarded", i, true, __LINE__, __FUNCTION__, __FILE__);
 		temparray[i][0] = i;
 		temparray[i][1] = forwarded[i].count;
 	}
@@ -408,7 +408,7 @@ void getForwardDestinations(int *sock)
 	{
 		// Get sorted indices
 		int j = temparray[counters.forwarded-i-1][0];
-		validate_access("forwarded", j, __LINE__, __FUNCTION__, __FILE__);
+		validate_access("forwarded", j, true, __LINE__, __FUNCTION__, __FILE__);
 		if(forwarded[j].count > 0)
 		{
 			sprintf(server_message,"%i %i %s %s\n",i,forwarded[j].count,forwarded[j].ip,forwarded[j].name);
@@ -427,7 +427,7 @@ void getForwardNames(int *sock)
 
 	for(i=0; i < counters.forwarded; i++)
 	{
-		validate_access("forwarded", i, __LINE__, __FUNCTION__, __FILE__);
+		validate_access("forwarded", i, true, __LINE__, __FUNCTION__, __FILE__);
 		// Get sorted indices
 		sprintf(server_message,"%i %i %s %s\n",i,forwarded[i].count,forwarded[i].ip,forwarded[i].name);
 		swrite(server_message, *sock);
@@ -556,12 +556,12 @@ void getAllQueries(char *client_message, int *sock)
 	int i;
 	for(i=ibeg; i < counters.queries; i++)
 	{
-		validate_access("queries", i, __LINE__, __FUNCTION__, __FILE__);
+		validate_access("queries", i, true, __LINE__, __FUNCTION__, __FILE__);
 		// Check if this query has been removed due to garbage collection
 		if(!queries[i].valid) continue;
 
-		validate_access("domains", queries[i].domainID, __LINE__, __FUNCTION__, __FILE__);
-		validate_access("clients", queries[i].clientID, __LINE__, __FUNCTION__, __FILE__);
+		validate_access("domains", queries[i].domainID, true, __LINE__, __FUNCTION__, __FILE__);
+		validate_access("clients", queries[i].clientID, true, __LINE__, __FUNCTION__, __FILE__);
 
 		char type[5];
 		if(queries[i].type == 1)
@@ -648,7 +648,7 @@ void getRecentBlocked(char *client_message, int *sock)
 	int found = 0;
 	for(i = counters.queries - 1; i > 0 ; i--)
 	{
-		validate_access("queries", i, __LINE__, __FUNCTION__, __FILE__);
+		validate_access("queries", i, true, __LINE__, __FUNCTION__, __FILE__);
 		// Check if this query has been removed due to garbage collection
 		if(!queries[i].valid) continue;
 
@@ -701,7 +701,7 @@ void getForwardDestinationsOverTime(int *sock)
 	int i, sendit = -1;
 	for(i = 0; i < counters.overTime; i++)
 	{
-		validate_access("overTime", i, __LINE__, __FUNCTION__, __FILE__);
+		validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
 		if((overTime[i].total > 0 || overTime[i].blocked > 0))
 		{
 			sendit = i;
@@ -712,7 +712,7 @@ void getForwardDestinationsOverTime(int *sock)
 	{
 		for(i = sendit; i < counters.overTime; i++)
 		{
-			validate_access("overTime", i, __LINE__, __FUNCTION__, __FILE__);
+			validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
 			sprintf(server_message, "%i", overTime[i].timestamp);
 
 			int j;
@@ -752,7 +752,7 @@ void getQueryTypesOverTime(int *sock)
 	int i, sendit = -1;
 	for(i = 0; i < counters.overTime; i++)
 	{
-		validate_access("overTime", i, __LINE__, __FUNCTION__, __FILE__);
+		validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
 		if((overTime[i].total > 0 || overTime[i].blocked > 0))
 		{
 			sendit = i;
@@ -763,7 +763,7 @@ void getQueryTypesOverTime(int *sock)
 	{
 		for(i = sendit; i < counters.overTime; i++)
 		{
-			validate_access("overTime", i, __LINE__, __FUNCTION__, __FILE__);
+			validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
 			sprintf(server_message, "%i %i %i\n", overTime[i].timestamp,overTime[i].querytypedata[0],overTime[i].querytypedata[1]);
 			swrite(server_message, *sock);
 		}

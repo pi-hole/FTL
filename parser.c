@@ -9,6 +9,7 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
+#define MAGICBYTE 0x57
 
 char *resolveHostname(char *addr);
 void extracttimestamp(char *readbuffer, int *querytimestamp, int *overTimetimestamp);
@@ -198,7 +199,7 @@ void process_pihole_log(int file)
 			bool found = false;
 			for(i=0; i < counters.overTime; i++)
 			{
-				validate_access("overTime", i, __LINE__, __FUNCTION__, __FILE__);
+				validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
 				if(overTime[i].timestamp == overTimetimestamp)
 				{
 					found = true;
@@ -210,7 +211,9 @@ void process_pihole_log(int file)
 			{
 				memory_check(OVERTIME);
 				timeidx = counters.overTime;
-				validate_access("overTime", timeidx, __LINE__, __FUNCTION__, __FILE__);
+				validate_access("overTime", timeidx, false, __LINE__, __FUNCTION__, __FILE__);
+				// Set magic byte
+				overTime[timeidx].magic = MAGICBYTE;
 				overTime[timeidx].timestamp = overTimetimestamp;
 				overTime[timeidx].total = 0;
 				overTime[timeidx].blocked = 0;
@@ -266,14 +269,14 @@ void process_pihole_log(int file)
 			{
 				type = 1;
 				counters.IPv4++;
-				validate_access("overTime", timeidx, __LINE__, __FUNCTION__, __FILE__);
+				validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 				overTime[timeidx].querytypedata[0]++;
 			}
 			else if(strstr(readbuffer,"query[AAAA]") != NULL)
 			{
 				type = 2;
 				counters.IPv6++;
-				validate_access("overTime", timeidx, __LINE__, __FUNCTION__, __FILE__);
+				validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 				overTime[timeidx].querytypedata[1]++;
 			}
 
@@ -363,7 +366,9 @@ void process_pihole_log(int file)
 				// // Debug output
 				if(debug)
 					logg("New domain: %s (%i/%i)", domain, domainID, counters.domains_MAX);
-				validate_access("domains", domainID, __LINE__, __FUNCTION__, __FILE__);
+				validate_access("domains", domainID, false, __LINE__, __FUNCTION__, __FILE__);
+				// Set magic byte
+				domains[domainID].magic = MAGICBYTE;
 				// Set its counter to 1
 				domains[domainID].count = 1;
 				// Set blocked counter to zero
@@ -395,7 +400,9 @@ void process_pihole_log(int file)
 				else
 					logg("New client: %s (%i/%i)", client, clientID, counters.clients_MAX);
 
-				validate_access("clients", clientID, __LINE__, __FUNCTION__, __FILE__);
+				validate_access("clients", clientID, false, __LINE__, __FUNCTION__, __FILE__);
+				// Set magic byte
+				clients[clientID].magic = MAGICBYTE;
 				// Set its counter to 1
 				clients[clientID].count = 1;
 				// Store client IP
@@ -412,7 +419,8 @@ void process_pihole_log(int file)
 			}
 
 			// Save everything
-			validate_access("queries", queryID, __LINE__, __FUNCTION__, __FILE__);
+			validate_access("queries", queryID, false, __LINE__, __FUNCTION__, __FILE__);
+			queries[queryID].magic = MAGICBYTE;
 			queries[queryID].timestamp = querytimestamp;
 			queries[queryID].type = type;
 			queries[queryID].status = status;
@@ -426,7 +434,7 @@ void process_pihole_log(int file)
 			counters.queries++;
 
 			// Update overTime data
-			validate_access("overTime", timeidx, __LINE__, __FUNCTION__, __FILE__);
+			validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 			overTime[timeidx].total++;
 
 			// Decide what to increment depending on status
@@ -437,9 +445,9 @@ void process_pihole_log(int file)
 					break;
 				case 1:
 					counters.blocked++;
-					validate_access("overTime", timeidx, __LINE__, __FUNCTION__, __FILE__);
+					validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 					overTime[timeidx].blocked++;
-					validate_access("domains", domainID, __LINE__, __FUNCTION__, __FILE__);
+					validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
 					domains[domainID].blockedcount++;
 					break;
 				case 2:
@@ -450,9 +458,9 @@ void process_pihole_log(int file)
 					break;
 				case 4:
 					counters.wildcardblocked++;
-					validate_access("overTime", timeidx, __LINE__, __FUNCTION__, __FILE__);
+					validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 					overTime[timeidx].blocked++;
-					validate_access("domains", domainID, __LINE__, __FUNCTION__, __FILE__);
+					validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
 					domains[domainID].wildcard = true;
 					break;
 				default:
@@ -480,7 +488,7 @@ void process_pihole_log(int file)
 			bool found = false;
 			for(i=0; i < counters.overTime; i++)
 			{
-				validate_access("overTime", i, __LINE__, __FUNCTION__, __FILE__);
+				validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
 				if(overTime[i].timestamp == overTimetimestamp)
 				{
 					found = true;
@@ -492,7 +500,8 @@ void process_pihole_log(int file)
 			{
 				memory_check(OVERTIME);
 				timeidx = counters.overTime;
-				validate_access("overTime", timeidx, __LINE__, __FUNCTION__, __FILE__);
+				validate_access("overTime", timeidx, false, __LINE__, __FUNCTION__, __FILE__);
+				overTime[timeidx].magic = MAGICBYTE;
 				overTime[timeidx].timestamp = overTimetimestamp;
 				overTime[timeidx].total = 0;
 				overTime[timeidx].blocked = 0;
@@ -504,7 +513,7 @@ void process_pihole_log(int file)
 			}
 			// Determine if there is enough space for saving the current
 			// forwardID in the overTime data structure -allocate space otherwise
-			validate_access("overTime", timeidx, __LINE__, __FUNCTION__, __FILE__);
+			validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 			if(overTime[timeidx].forwardnum <= forwardID)
 			{
 				// Reallocate more space for forwarddata
@@ -601,7 +610,7 @@ int detectStatus(char *domain)
 	char part[strlen(domain)],partbuffer[strlen(domain)];
 	for(i=0; i < counters.wildcarddomains; i++)
 	{
-		validate_access("wildcarddomains", i, __LINE__, __FUNCTION__, __FILE__);
+		validate_access("wildcarddomains", i, false, __LINE__, __FUNCTION__, __FILE__);
 		if(strcmp(wildcarddomains[i], domain) == 0)
 		{
 			// Exact match with wildcard domain
@@ -700,7 +709,7 @@ int getforwardID(char * str)
 	// Go through already knows forward servers and see if we used one of those
 	for(i=0; i < counters.forwarded; i++)
 	{
-		validate_access("forwarded", i, __LINE__, __FUNCTION__, __FILE__);
+		validate_access("forwarded", i, true, __LINE__, __FUNCTION__, __FILE__);
 		if(strcmp(forwarded[i].ip, forward) == 0)
 		{
 			forwardID = i;
@@ -723,7 +732,9 @@ int getforwardID(char * str)
 		else
 			logg("New forward server: %s (%i/%u)", forward, forwardID, counters.forwarded_MAX);
 
-		validate_access("forwarded", forwardID, __LINE__, __FUNCTION__, __FILE__);
+		validate_access("forwarded", forwardID, false, __LINE__, __FUNCTION__, __FILE__);
+		// Set magic byte
+		forwarded[forwardID].magic = MAGICBYTE;
 		// Set its counter to 1
 		forwarded[forwardID].count = 1;
 		// Save IP
@@ -750,7 +761,7 @@ int findDomain(char *domain)
 	int i;
 	for(i=0; i < counters.domains; i++)
 	{
-		validate_access("domains", i, __LINE__, __FUNCTION__, __FILE__);
+		validate_access("domains", i, true, __LINE__, __FUNCTION__, __FILE__);
 		// Quick test: Does the domain start with the same character?
 		if(domains[i].domain[0] != domain[0])
 			continue;
@@ -771,7 +782,7 @@ int findClient(char *client)
 	int i;
 	for(i=0; i < counters.clients; i++)
 	{
-		validate_access("clients", i, __LINE__, __FUNCTION__, __FILE__);
+		validate_access("clients", i, true, __LINE__, __FUNCTION__, __FILE__);
 		// Quick test: Does the clients IP start with the same character?
 		if(clients[i].ip[0] != client[0])
 			continue;
@@ -787,7 +798,7 @@ int findClient(char *client)
 	return -1;
 }
 
-void validate_access(const char * name, int pos, int line, const char * function, const char * file)
+void validate_access(const char * name, int pos, bool testmagic, int line, const char * function, const char * file)
 {
 	int limit = 0;
 	if(name[0] == 'c') limit = counters.clients_MAX;
@@ -796,10 +807,26 @@ void validate_access(const char * name, int pos, int line, const char * function
 	else if(name[0] == 'o') limit = counters.overTime_MAX;
 	else if(name[0] == 'f') limit = counters.forwarded_MAX;
 	else if(name[0] == 'w') limit = counters.wildcarddomains;
+	else { logg("Validator error"); killed = 1; }
 	if(pos >= limit || pos < 0)
 	{
 		logg("FATAL ERROR: Trying to access %s[%i], but maximum is %i", name, pos, limit);
 		logg("             found in %s() (line %i) in %s", function, line, file);
+	}
+	if(testmagic)
+	{
+		unsigned char magic = 0x00;
+		if(name[0] == 'c') magic = clients[pos].magic;
+		else if(name[0] == 'd') magic = domains[pos].magic;
+		else if(name[0] == 'q') magic = queries[pos].magic;
+		else if(name[0] == 'o') magic = overTime[pos].magic;
+		else if(name[0] == 'f') magic = forwarded[pos].magic;
+		else { logg("Validator error"); killed = 1; }
+		if(magic != MAGICBYTE)
+		{
+			logg("FATAL ERROR: Trying to access %s[%i], but magic byte is %x", name, pos, magic);
+			logg("             found in %s() (line %i) in %s", function, line, file);
+		}
 	}
 }
 

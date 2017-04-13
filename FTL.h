@@ -141,6 +141,7 @@ typedef struct {
 } clientsDataStruct;
 
 typedef struct {
+	unsigned char magic;
 	int count;
 	int blockedcount;
 	char *domain;
