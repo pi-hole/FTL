@@ -44,7 +44,7 @@
 // have to run very often, but should be as small as possible to avoid wasting memory
 #define QUERIESALLOCSTEP 10000
 #define FORWARDEDALLOCSTEP 4
-#define CLIENTSALLOCSTEP 20
+#define CLIENTSALLOCSTEP 10
 #define DOMAINSALLOCSTEP 1000
 #define OVERTIMEALLOCSTEP 100
 

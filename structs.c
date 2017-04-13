@@ -34,7 +34,7 @@ void memory_check(int which)
 	switch(which)
 	{
 		case QUERIES:
-			if(counters.queries >= counters.queries_MAX-1)
+			if(counters.queries >= counters.queries_MAX)
 			{
 				// Have to reallocate memory
 				counters.queries_MAX += QUERIESALLOCSTEP;
@@ -48,7 +48,7 @@ void memory_check(int which)
 			}
 		break;
 		case FORWARDED:
-			if(counters.forwarded >= counters.forwarded_MAX-1)
+			if(counters.forwarded >= counters.forwarded_MAX)
 			{
 				// Have to reallocate memory
 				counters.forwarded_MAX += FORWARDEDALLOCSTEP;
@@ -62,7 +62,7 @@ void memory_check(int which)
 			}
 		break;
 		case CLIENTS:
-			if(counters.clients >= counters.clients_MAX-1)
+			if(counters.clients >= counters.clients_MAX)
 			{
 				// Have to reallocate memory
 				counters.clients_MAX += CLIENTSALLOCSTEP;
@@ -76,7 +76,7 @@ void memory_check(int which)
 			}
 		break;
 		case DOMAINS:
-			if(counters.domains >= counters.domains_MAX-1)
+			if(counters.domains >= counters.domains_MAX)
 			{
 				// Have to reallocate memory
 				counters.domains_MAX += DOMAINSALLOCSTEP;
@@ -90,7 +90,7 @@ void memory_check(int which)
 			}
 		break;
 		case OVERTIME:
-			if(counters.overTime >= counters.overTime_MAX-1)
+			if(counters.overTime >= counters.overTime_MAX)
 			{
 				// Have to reallocate memory
 				counters.overTime_MAX += OVERTIMEALLOCSTEP;

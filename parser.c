@@ -192,11 +192,13 @@ void process_pihole_log(int file)
 
 			// Ensure we have enough space in the queries struct
 			memory_check(QUERIES);
+			int queryID = counters.queries;
 
-			int timeidx;
+			int timeidx = -1;
 			bool found = false;
 			for(i=0; i < counters.overTime; i++)
 			{
+				validate_access("overTime", i, __LINE__, __FUNCTION__, __FILE__);
 				if(overTime[i].timestamp == overTimetimestamp)
 				{
 					found = true;
@@ -208,6 +210,7 @@ void process_pihole_log(int file)
 			{
 				memory_check(OVERTIME);
 				timeidx = counters.overTime;
+				validate_access("overTime", timeidx, __LINE__, __FUNCTION__, __FILE__);
 				overTime[timeidx].timestamp = overTimetimestamp;
 				overTime[timeidx].total = 0;
 				overTime[timeidx].blocked = 0;
@@ -263,12 +266,14 @@ void process_pihole_log(int file)
 			{
 				type = 1;
 				counters.IPv4++;
+				validate_access("overTime", timeidx, __LINE__, __FUNCTION__, __FILE__);
 				overTime[timeidx].querytypedata[0]++;
 			}
 			else if(strstr(readbuffer,"query[AAAA]") != NULL)
 			{
 				type = 2;
 				counters.IPv6++;
+				validate_access("overTime", timeidx, __LINE__, __FUNCTION__, __FILE__);
 				overTime[timeidx].querytypedata[1]++;
 			}
 
@@ -355,6 +360,10 @@ void process_pihole_log(int file)
 				memory_check(DOMAINS);
 				// Store ID
 				domainID = counters.domains;
+				// // Debug output
+				if(debug)
+					logg("New domain: %s (%i/%i)", domain, domainID, counters.domains_MAX);
+				validate_access("domains", domainID, __LINE__, __FUNCTION__, __FILE__);
 				// Set its counter to 1
 				domains[domainID].count = 1;
 				// Set blocked counter to zero
@@ -378,51 +387,77 @@ void process_pihole_log(int file)
 				memory_check(CLIENTS);
 				// Store ID
 				clientID = counters.clients;
+				//Get client host name
+				char *hostname = resolveHostname(client);
+				// Debug output
+				if(strlen(hostname) > 0)
+					logg("New client: %s %s (%i/%i)", client, hostname, clientID, counters.clients_MAX);
+				else
+					logg("New client: %s (%i/%i)", client, clientID, counters.clients_MAX);
+
+				validate_access("clients", clientID, __LINE__, __FUNCTION__, __FILE__);
 				// Set its counter to 1
 				clients[clientID].count = 1;
 				// Store client IP
 				clients[clientID].ip = calloc(strlen(client)+1,sizeof(char));
 				memory.clientips += (strlen(client) + 1) * sizeof(char);
 				strcpy(clients[clientID].ip, client);
-				//Get client host name
-				char *hostname = resolveHostname(client);
+				// Store client hostname
 				clients[clientID].name = calloc(strlen(hostname)+1,sizeof(char));
 				memory.clientnames += (strlen(hostname) + 1) * sizeof(char);
 				strcpy(clients[clientID].name,hostname);
 				free(hostname);
 				// Increase counter by one
 				counters.clients++;
-				if(strlen(clients[clientID].name) > 0)
-					logg("Added new client: %s (%s)", client, clients[clientID].name);
-				else
-					logg("Added new client: %s", client);
 			}
 
 			// Save everything
-			queries[counters.queries].timestamp = querytimestamp;
-			queries[counters.queries].type = type;
-			queries[counters.queries].status = status;
-			queries[counters.queries].domainID = domainID;
-			queries[counters.queries].clientID = clientID;
-			queries[counters.queries].timeidx = timeidx;
-			queries[counters.queries].forwardID = forwardID;
-			queries[counters.queries].valid = true;
+			validate_access("queries", queryID, __LINE__, __FUNCTION__, __FILE__);
+			queries[queryID].timestamp = querytimestamp;
+			queries[queryID].type = type;
+			queries[queryID].status = status;
+			queries[queryID].domainID = domainID;
+			queries[queryID].clientID = clientID;
+			queries[queryID].timeidx = timeidx;
+			queries[queryID].forwardID = forwardID;
+			queries[queryID].valid = true;
 
 			// Increase DNS queries counter
 			counters.queries++;
 
 			// Update overTime data
+			validate_access("overTime", timeidx, __LINE__, __FUNCTION__, __FILE__);
 			overTime[timeidx].total++;
 
 			// Decide what to increment depending on status
 			switch(status)
 			{
-				case 0: counters.unknown++; break;
-				case 1: counters.blocked++; overTime[timeidx].blocked++; domains[domainID].blockedcount++; break;
-				case 2: counters.forwardedqueries++; break;
-				case 3: counters.cached++; break;
-				case 4: counters.wildcardblocked++; overTime[timeidx].blocked++; domains[domainID].wildcard = true; break;
-				default: /* That cannot happen */ break;
+				case 0:
+					counters.unknown++;
+					break;
+				case 1:
+					counters.blocked++;
+					validate_access("overTime", timeidx, __LINE__, __FUNCTION__, __FILE__);
+					overTime[timeidx].blocked++;
+					validate_access("domains", domainID, __LINE__, __FUNCTION__, __FILE__);
+					domains[domainID].blockedcount++;
+					break;
+				case 2:
+					counters.forwardedqueries++;
+					break;
+				case 3:
+					counters.cached++;
+					break;
+				case 4:
+					counters.wildcardblocked++;
+					validate_access("overTime", timeidx, __LINE__, __FUNCTION__, __FILE__);
+					overTime[timeidx].blocked++;
+					validate_access("domains", domainID, __LINE__, __FUNCTION__, __FILE__);
+					domains[domainID].wildcard = true;
+					break;
+				default:
+					/* That cannot happen */
+					break;
 			}
 
 			// Free allocated memory
@@ -439,12 +474,13 @@ void process_pihole_log(int file)
 				continue;
 
 			// Get timestamp
-			int querytimestamp, overTimetimestamp, timeidx;
+			int querytimestamp, overTimetimestamp, timeidx = -1, i;
 			extracttimestamp(readbuffer, &querytimestamp, &overTimetimestamp);
 
 			bool found = false;
 			for(i=0; i < counters.overTime; i++)
 			{
+				validate_access("overTime", i, __LINE__, __FUNCTION__, __FILE__);
 				if(overTime[i].timestamp == overTimetimestamp)
 				{
 					found = true;
@@ -456,6 +492,7 @@ void process_pihole_log(int file)
 			{
 				memory_check(OVERTIME);
 				timeidx = counters.overTime;
+				validate_access("overTime", timeidx, __LINE__, __FUNCTION__, __FILE__);
 				overTime[timeidx].timestamp = overTimetimestamp;
 				overTime[timeidx].total = 0;
 				overTime[timeidx].blocked = 0;
@@ -467,6 +504,7 @@ void process_pihole_log(int file)
 			}
 			// Determine if there is enough space for saving the current
 			// forwardID in the overTime data structure -allocate space otherwise
+			validate_access("overTime", timeidx, __LINE__, __FUNCTION__, __FILE__);
 			if(overTime[timeidx].forwardnum <= forwardID)
 			{
 				// Reallocate more space for forwarddata
@@ -482,6 +520,7 @@ void process_pihole_log(int file)
 			}
 
 			// Update overTime data structure with the new forwarder
+			validate_access_oTfd(timeidx, forwardID, __LINE__, __FUNCTION__, __FILE__);
 			overTime[timeidx].forwarddata[forwardID]++;
 		}
 		else if((strstr(readbuffer,"IPv6") != NULL) &&
@@ -562,6 +601,7 @@ int detectStatus(char *domain)
 	char part[strlen(domain)],partbuffer[strlen(domain)];
 	for(i=0; i < counters.wildcarddomains; i++)
 	{
+		validate_access("wildcarddomains", i, __LINE__, __FUNCTION__, __FILE__);
 		if(strcmp(wildcarddomains[i], domain) == 0)
 		{
 			// Exact match with wildcard domain
@@ -660,6 +700,7 @@ int getforwardID(char * str)
 	// Go through already knows forward servers and see if we used one of those
 	for(i=0; i < counters.forwarded; i++)
 	{
+		validate_access("forwarded", i, __LINE__, __FUNCTION__, __FILE__);
 		if(strcmp(forwarded[i].ip, forward) == 0)
 		{
 			forwardID = i;
@@ -675,24 +716,27 @@ int getforwardID(char * str)
 		memory_check(FORWARDED);
 		// Store ID
 		forwardID = counters.forwarded;
+		// Get forward destination host name
+		char *hostname = resolveHostname(forward);
+		if(strlen(hostname) > 0)
+			logg("New forward server: %s %s (%i/%i)", forward, hostname, forwardID, counters.forwarded_MAX);
+		else
+			logg("New forward server: %s (%i/%u)", forward, forwardID, counters.forwarded_MAX);
+
+		validate_access("forwarded", forwardID, __LINE__, __FUNCTION__, __FILE__);
 		// Set its counter to 1
 		forwarded[forwardID].count = 1;
 		// Save IP
 		forwarded[forwardID].ip = calloc(forwardlen+1,sizeof(char));
 		memory.forwardedips += (forwardlen + 1) * sizeof(char);
 		strcpy(forwarded[forwardID].ip,forward);
-		//Get forward destination host name
-		char *hostname = resolveHostname(forward);
+		// Save forward destination host name
 		forwarded[forwardID].name = calloc(strlen(hostname)+1,sizeof(char));
 		memory.forwardednames += (strlen(hostname) + 1) * sizeof(char);
 		strcpy(forwarded[forwardID].name,hostname);
 		free(hostname);
 		// Increase counter by one
 		counters.forwarded++;
-		if(strlen(forwarded[forwardID].name) > 0)
-			logg("Added new forward server: %s (%s)", forwarded[forwardID].ip, forwarded[forwardID].name);
-		else
-			logg("Added new forward server: %s", forwarded[forwardID].ip);
 	}
 
 	// Release allocated memory
@@ -706,6 +750,7 @@ int findDomain(char *domain)
 	int i;
 	for(i=0; i < counters.domains; i++)
 	{
+		validate_access("domains", i, __LINE__, __FUNCTION__, __FILE__);
 		// Quick test: Does the domain start with the same character?
 		if(domains[i].domain[0] != domain[0])
 			continue;
@@ -726,6 +771,7 @@ int findClient(char *client)
 	int i;
 	for(i=0; i < counters.clients; i++)
 	{
+		validate_access("clients", i, __LINE__, __FUNCTION__, __FILE__);
 		// Quick test: Does the clients IP start with the same character?
 		if(clients[i].ip[0] != client[0])
 			continue;
@@ -739,4 +785,31 @@ int findClient(char *client)
 	}
 	// Return -1 if not found
 	return -1;
+}
+
+void validate_access(const char * name, int pos, int line, const char * function, const char * file)
+{
+	int limit = 0;
+	if(name[0] == 'c') limit = counters.clients_MAX;
+	else if(name[0] == 'd') limit = counters.domains_MAX;
+	else if(name[0] == 'q') limit = counters.queries_MAX;
+	else if(name[0] == 'o') limit = counters.overTime_MAX;
+	else if(name[0] == 'f') limit = counters.forwarded_MAX;
+	else if(name[0] == 'w') limit = counters.wildcarddomains;
+	if(pos >= limit || pos < 0)
+	{
+		logg("FATAL ERROR: Trying to access %s[%i], but maximum is %i", name, pos, limit);
+		logg("             found in %s() (line %i) in %s", function, line, file);
+	}
+}
+
+void validate_access_oTfd(int timeidx, int pos, int line, const char * function, const char * file)
+{
+	int limit = overTime[timeidx].forwardnum;
+	if(pos >= limit || pos < 0)
+	{
+		logg("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+		logg("FATAL ERROR: Trying to access overTime.forwardata[%i], but maximum is %i", pos, limit);
+		logg("             found in %s() (line %i) in %s", function, line, file);
+	}
 }
