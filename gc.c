@@ -29,48 +29,88 @@ void *GC_thread(void *val)
 
 	// Process all queries
 	long int i;
+	int invalidated = 0;
 	for(i=0; i < counters.queries; i++)
 	{
+		validate_access("queries", i, __LINE__, __FUNCTION__, __FILE__);
 		if(queries[i].timestamp < mintime && queries[i].valid)
 		{
 			// Adjust total counters and total over time data
 			// We cannot edit counters.queries directly as it is used
 			// as max ID for the queries[] struct
 			counters.invalidqueries++;
+			validate_access("overTime", queries[i].timeidx, __LINE__, __FUNCTION__, __FILE__);
 			overTime[queries[i].timeidx].total--;
 
 			// Adjust client and domain counters
+			validate_access("clients", queries[i].clientID, __LINE__, __FUNCTION__, __FILE__);
 			clients[queries[i].clientID].count--;
+			validate_access("domains", queries[i].domainID, __LINE__, __FUNCTION__, __FILE__);
 			domains[queries[i].domainID].count--;
 
 			// Change other counters according to status of this query
 			switch(queries[i].status)
 			{
-				case 0: counters.unknown--; break;
-				case 1: counters.blocked--; overTime[queries[i].timeidx].blocked--; domains[queries[i].domainID].blockedcount--; break;
-				case 2: counters.forwardedqueries--; forwarded[queries[i].forwardID].count--; break;
-				case 3: counters.cached--; break;
-				case 4: counters.wildcardblocked--; overTime[queries[i].timeidx].blocked--; break;
-				default: /* That cannot happen */ break;
+				case 0:
+					counters.unknown--;
+					break;
+				case 1:
+					counters.blocked--;
+					validate_access("overTime", queries[i].timeidx, __LINE__, __FUNCTION__, __FILE__);
+					overTime[queries[i].timeidx].blocked--;
+					validate_access("domains", queries[i].domainID, __LINE__, __FUNCTION__, __FILE__);
+					domains[queries[i].domainID].blockedcount--;
+					break;
+				case 2:
+					counters.forwardedqueries--;
+					validate_access("forwarded", queries[i].forwardID, __LINE__, __FUNCTION__, __FILE__);
+					forwarded[queries[i].forwardID].count--;
+					break;
+				case 3:
+					counters.cached--;
+					break;
+				case 4:
+					counters.wildcardblocked--;
+					validate_access("overTime", queries[i].timeidx, __LINE__, __FUNCTION__, __FILE__);
+					overTime[queries[i].timeidx].blocked--;
+					break;
+				default:
+					/* That cannot happen */
+					break;
 			}
 
 			switch(queries[i].type)
 			{
-				case 1: counters.IPv4--; overTime[queries[i].timeidx].querytypedata[0]--; break;
-				case 2: counters.IPv6--; overTime[queries[i].timeidx].querytypedata[1]--; break;
-				default: /* some other query, but neither A nor AAAA */ break;
+				case 1:
+					counters.IPv4--;
+					validate_access("overTime", queries[i].timeidx, __LINE__, __FUNCTION__, __FILE__);
+					overTime[queries[i].timeidx].querytypedata[0]--;
+					break;
+				case 2:
+					counters.IPv6--;
+					validate_access("overTime", queries[i].timeidx, __LINE__, __FUNCTION__, __FILE__);
+					overTime[queries[i].timeidx].querytypedata[1]--;
+					break;
+				default:
+					/* some other query, but neither A nor AAAA */
+					break;
 			}
 
 			// Remove forwarded data from overTime and total forwarded count
 			int j;
 			for(j = 0; j < overTime[queries[i].timeidx].forwardnum; j++)
 			{
+				validate_access("forwarded", j, __LINE__, __FUNCTION__, __FILE__);
+				validate_access("overTime", queries[i].timeidx, __LINE__, __FUNCTION__, __FILE__);
 				forwarded[j].count -= overTime[queries[i].timeidx].forwarddata[j];
+
+				validate_access_oTfd(queries[i].timeidx, j, __LINE__, __FUNCTION__, __FILE__);
 				overTime[queries[i].timeidx].forwarddata[j] = 0;
 			}
 
 			// Mark this query as garbage collected
 			queries[i].valid = false;
+			invalidated++;
 
 			if(debugGC)
 			{
@@ -86,9 +126,9 @@ void *GC_thread(void *val)
 		}
 	}
 
-	if(debugGC)
+	if(debug)
 	{
-		logg("GC queries: %i", counters.invalidqueries);
+		logg("Notice: GC removed %i queries", invalidated);
 	}
 
 	// Release thread lock
