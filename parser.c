@@ -197,6 +197,8 @@ void process_pihole_log(int file)
 
 			int timeidx = -1;
 			bool found = false;
+			// Check struct size
+			memory_check(OVERTIME);
 			for(i=0; i < counters.overTime; i++)
 			{
 				validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
@@ -209,7 +211,6 @@ void process_pihole_log(int file)
 			}
 			if(!found)
 			{
-				memory_check(OVERTIME);
 				timeidx = counters.overTime;
 				validate_access("overTime", timeidx, false, __LINE__, __FUNCTION__, __FILE__);
 				// Set magic byte
@@ -355,12 +356,12 @@ void process_pihole_log(int file)
 			fseek(fp, fpos, SEEK_SET);
 
 			// Go through already knows domains and see if it is one of them
+			// Check struct size
+			memory_check(DOMAINS);
 			int domainID = findDomain(domain);
 			if(domainID < 0)
 			{
 				// This domain is not known
-				// Check struct size
-				memory_check(DOMAINS);
 				// Store ID
 				domainID = counters.domains;
 				// // Debug output
@@ -384,12 +385,12 @@ void process_pihole_log(int file)
 			}
 
 			// Go through already knows clients and see if it is one of them
+			// Check struct size
+			memory_check(CLIENTS);
 			int clientID = findClient(client);
 			if(clientID < 0)
 			{
 				// This client is not known
-				// Check struct size
-				memory_check(CLIENTS);
 				// Store ID
 				clientID = counters.clients;
 				//Get client host name
@@ -487,6 +488,8 @@ void process_pihole_log(int file)
 			extracttimestamp(readbuffer, &querytimestamp, &overTimetimestamp);
 
 			bool found = false;
+			// Check struct size
+			memory_check(OVERTIME);
 			for(i=0; i < counters.overTime; i++)
 			{
 				validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
@@ -499,7 +502,6 @@ void process_pihole_log(int file)
 			}
 			if(!found)
 			{
-				memory_check(OVERTIME);
 				timeidx = counters.overTime;
 				validate_access("overTime", timeidx, false, __LINE__, __FUNCTION__, __FILE__);
 				overTime[timeidx].magic = MAGICBYTE;
@@ -708,6 +710,8 @@ int getforwardID(char * str)
 	bool processed = false;
 	int i, forwardID = -1;
 	// Go through already knows forward servers and see if we used one of those
+	// Check struct size
+	memory_check(FORWARDED);
 	for(i=0; i < counters.forwarded; i++)
 	{
 		validate_access("forwarded", i, true, __LINE__, __FUNCTION__, __FILE__);
@@ -722,8 +726,6 @@ int getforwardID(char * str)
 	if(!processed)
 	{
 		// This forward server is not known
-		// Check struct size
-		memory_check(FORWARDED);
 		// Store ID
 		forwardID = counters.forwarded;
 		// Get forward destination host name
