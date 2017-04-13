@@ -12,16 +12,16 @@
 
 volatile sig_atomic_t killed = 0;
 
-static void SIGTERM_handler(int signum)
+static void SIGTERM_handler(int sig, siginfo_t *si, void *unused)
 {
-	logg("\nFATAL: FTL received SIGTERM, sheduled to exit gracefully\n");
+	logg("FATAL: FTL received SIGTERM from PID/UID %i/%i, scheduled to exit gracefully", (int)si->si_pid, (int)si->si_uid);
 	killed = 1;
 }
 
-static void SIGINT_handler(int signum)
+static void SIGINT_handler(int sig, siginfo_t *si, void *unused)
 {
 	// Should probably not use printf in signal handler, but this will anyhow exit immediately
-	logg("\nFATAL: FTL received SIGINT (Ctrl + C), exiting immediately!\n");
+	logg("FATAL: FTL received SIGINT (Ctrl + C, PID/UID %i/%i), exiting immediately!", (int)si->si_pid, (int)si->si_uid);
 	exit(EXIT_FAILURE);
 }
 
@@ -76,8 +76,9 @@ void handle_signals(void)
 	{
 		struct sigaction TERMaction;
 		memset(&TERMaction, 0, sizeof(struct sigaction));
+		TERMaction.sa_flags = SA_SIGINFO;
 		sigemptyset(&TERMaction.sa_mask);
-		TERMaction.sa_handler = &SIGTERM_handler;
+		TERMaction.sa_sigaction = &SIGTERM_handler;
 		sigaction(SIGTERM, &TERMaction, NULL);
 	}
 
@@ -87,8 +88,9 @@ void handle_signals(void)
 	{
 		struct sigaction INTaction;
 		memset(&INTaction, 0, sizeof(struct sigaction));
+		INTaction.sa_flags = SA_SIGINFO;
 		sigemptyset(&INTaction.sa_mask);
-		INTaction.sa_handler = &SIGINT_handler;
+		INTaction.sa_sigaction = &SIGINT_handler;
 		sigaction(SIGINT, &INTaction, NULL);
 	}
 
