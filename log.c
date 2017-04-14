@@ -85,19 +85,17 @@ void logg(const char *format, ...)
 void format_memory_size(char *prefix, unsigned long int bytes, double *formated)
 {
 	int i;
-	double bytess = bytes;
+	*formated = bytes;
 	// Determine exponent for human-readable display
 	for(i=0; i < 7; i++)
 	{
-		if(bytess <= 1e3)
+		if(*formated <= 1e3)
 			break;
-		bytess /= 1e3;
+		*formated /= 1e3;
 	}
 	const char* prefixes[8] = { "", "K", "M", "G", "T", "P", "E", "?" };
 	// Chose matching SI prefix
 	strcpy(prefix, prefixes[i]);
-	// Format displayed number according to the selected prefix
-	*formated = (double)bytes/pow(1e3,i);
 }
 
 void logg_struct_resize(const char* str, int to, int step)

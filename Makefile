@@ -30,7 +30,7 @@ CC=gcc
 HARDENING_FLAGS=-fstack-protector -D_FORTIFY_SOURCE=2 -O3 -Wl,-z,relro,-z,now -pie -fPIE
 DEBUG_FLAGS=-g3 -rdynamic -fno-omit-frame-pointer #-fsanitize=address
 CCFLAGS=-I$(IDIR) -Wall -Wextra -Wno-unused-parameter -D_FILE_OFFSET_BITS=64 $(HARDENING_FLAGS) $(DEBUG_FLAGS) $(CFLAGS)
-LIBS=-pthread -lm
+LIBS=-pthread
 
 ODIR =obj
 IDIR =.
