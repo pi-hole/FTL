@@ -42,7 +42,7 @@ int main (int argc, char* argv[]) {
 	if(!debug)
 		go_daemon();
 	else
-		savepid(getpid());
+		savepid();
 
 	handle_signals();
 

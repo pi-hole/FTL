@@ -89,7 +89,7 @@ void format_memory_size(char *prefix, unsigned long int bytes, double *formated)
 	// Determine exponent for human-readable display
 	for(i=0; i < 7; i++)
 	{
-		if(bytess <= 1000.0)
+		if(bytess <= 1e3)
 			break;
 		bytess /= 1e3;
 	}
@@ -97,7 +97,7 @@ void format_memory_size(char *prefix, unsigned long int bytes, double *formated)
 	// Chose matching SI prefix
 	strcpy(prefix, prefixes[i]);
 	// Format displayed number according to the selected prefix
-	*formated = (double)bytes/pow(1000.0,i);
+	*formated = (double)bytes/pow(1e3,i);
 }
 
 void logg_struct_resize(const char* str, int to, int step)

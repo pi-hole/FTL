@@ -124,7 +124,7 @@ void go_daemon(void)
 		logg("setsid failed!\n");
 		exit(EXIT_FAILURE);
 	}
-	savepid(sid);
+	savepid();
 
 	// Change the current working directory
 	if(chdir("/etc/pihole") != 0)
@@ -161,7 +161,7 @@ void sleepms(int milliseconds)
 	select(0, NULL, NULL, NULL, &tv);
 }
 
-void savepid(pid_t sid)
+void savepid(void)
 {
 	FILE *f;
 	if((f = fopen(FTLfiles.pid, "w+")) == NULL)
@@ -171,10 +171,10 @@ void savepid(pid_t sid)
 	}
 	else
 	{
-		fprintf(f, "%i", (int)sid);
+		fprintf(f, "%i", (int)getpid());
 		fclose(f);
 	}
-	logg("PID of FTL process: %i", (int)sid);
+	logg("PID of FTL process: %i", (int)getpid());
 }
 
 void removepid(void)

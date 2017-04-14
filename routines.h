@@ -12,7 +12,7 @@ void go_daemon(void);
 void timer_start(void);
 float timer_elapsed_msec(void);
 void sleepms(int milliseconds);
-void savepid(pid_t sid);
+void savepid(void);
 char * getUserName(void);
 void removepid(void);
 
