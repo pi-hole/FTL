@@ -361,7 +361,11 @@ void getTopClients(char *client_message, int *sock)
 	// Get domains which the user doesn't want to see
 	char * excludeclients = read_setupVarsconf("API_EXCLUDE_CLIENTS");
 	if(excludeclients != NULL)
+	{
 		getSetupVarsArray(excludeclients);
+		if(debugclients)
+			logg("Excluding %i clients from being displayed", setupVarsElements);
+	}
 
 	int skip = 0;
 	for(i=0; i < min(counters.clients, count+skip); i++)
