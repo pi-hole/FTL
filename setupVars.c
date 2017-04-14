@@ -9,6 +9,7 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
+#define SETUPVARSLINELENGTH 100000
 
 char ** setupVarsArray = NULL;
 
@@ -53,12 +54,12 @@ char * read_setupVarsconf(const char * key)
 		return NULL;
 	}
 
-	char * keystr = calloc(strlen(key)+2,sizeof(char));
-	linebuffer = calloc(1024,sizeof(char));
+	char * keystr = calloc(strlen(key)+2, sizeof(char));
+	linebuffer = calloc(SETUPVARSLINELENGTH, sizeof(char));
 
 	sprintf(keystr, "%s=", key);
 
-	while(fgets(linebuffer, 1023, setupVarsfp) != NULL)
+	while(fgets(linebuffer, SETUPVARSLINELENGTH, setupVarsfp) != NULL)
 	{
 		// Strip newline from fgets output
 		linebuffer[strlen(linebuffer) - 1] = '\0';
