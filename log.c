@@ -84,18 +84,17 @@ void logg(const char *format, ...)
 
 void format_memory_size(char *prefix, unsigned long int bytes, double *formated)
 {
-	if(bytes > 0)
+	int i;
+	double bytess = bytes;
+	for(i=0; i < 8; i++)
 	{
-		int exponent = floor(log10(bytes)/3.);
-		const char* prefixes[7] = { "", "K", "M", "G", "T", "P", "E" };
-		strcpy(prefix, prefixes[exponent]);
-		*formated = (double)bytes/pow(10.0,exponent*3.0);
+		if(bytess <= 1000.0)
+			break;
+		bytess /= 1e3;
 	}
-	else
-	{
-		strcpy(prefix, "\'");
-		*formated = (double)bytes;
-	}
+	const char* prefixes[8] = { "", "K", "M", "G", "T", "P", "E", "?" };
+	strcpy(prefix, prefixes[i]);
+	*formated = (double)bytes/pow(1000.0,i);
 }
 
 void logg_struct_resize(const char* str, int to, int step)
