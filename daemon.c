@@ -191,6 +191,7 @@ void sleepms(int milliseconds)
 void savepid(void)
 {
 	FILE *f;
+	pid_t pid = getpid();
 	if((f = fopen(FTLfiles.pid, "w+")) == NULL)
 	{
 		logg("WARNING: Unable to write PID to file.");
@@ -198,10 +199,10 @@ void savepid(void)
 	}
 	else
 	{
-		fprintf(f, "%i", (int)getpid());
+		fprintf(f, "%i", (int)pid);
 		fclose(f);
 	}
-	logg("PID of FTL process: %i", (int)getpid());
+	logg("PID of FTL process: %i", (int)pid);
 }
 
 void removepid(void)
