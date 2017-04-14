@@ -86,14 +86,17 @@ void format_memory_size(char *prefix, unsigned long int bytes, double *formated)
 {
 	int i;
 	double bytess = bytes;
-	for(i=0; i < 8; i++)
+	// Determine exponent for human-readable display
+	for(i=0; i < 7; i++)
 	{
 		if(bytess <= 1000.0)
 			break;
 		bytess /= 1e3;
 	}
 	const char* prefixes[8] = { "", "K", "M", "G", "T", "P", "E", "?" };
+	// Chose matching SI prefix
 	strcpy(prefix, prefixes[i]);
+	// Format displayed number according to the selected prefix
 	*formated = (double)bytes/pow(1000.0,i);
 }
 
