@@ -198,14 +198,17 @@ int cmpdomains(int *elem1, int *elem2)
 void getStats(int *sock)
 {
 	char server_message[SOCKETBUFFERLEN];
+
+	int blocked = counters.blocked + counters.wildcardblocked;
+	int total = counters.queries - counters.invalidqueries;
 	float percentage = 0.0;
 	// Avoid 1/0 condition
-	if(counters.queries > 0)
+	if(total > 0)
 	{
-		percentage = 1e2*counters.blocked/counters.queries;
+		percentage = 1e2*blocked/total;
 	}
 	sprintf(server_message,"domains_being_blocked %i\ndns_queries_today %i\nads_blocked_today %i\nads_percentage_today %f\n", \
-	        counters.gravity,(counters.queries-counters.invalidqueries),counters.blocked+counters.wildcardblocked,percentage);
+	        counters.gravity,total,blocked,percentage);
 	swrite(server_message, *sock);
 	sprintf(server_message,"unique_domains %i\nqueries_forwarded %i\nqueries_cached %i\n", \
 	        counters.domains,counters.forwardedqueries,counters.cached);
