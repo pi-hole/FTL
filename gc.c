@@ -20,7 +20,8 @@ void *GC_thread(void *val)
 	enable_read_write_lock("GC_thread");
 
 	// Get minimum time stamp to keep
-	int mintime = time(NULL) - GCdelay - MAXLOGAGE;
+	int differencetofullhour = time(NULL) % GCinterval;
+	int mintime = (time(NULL) - GCdelay - differencetofullhour) - MAXLOGAGE;
 	if(debugGC)
 	{
 		time_t timestamp = mintime;
