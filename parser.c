@@ -218,6 +218,7 @@ void process_pihole_log(int file)
 				overTime[timeidx].timestamp = overTimetimestamp;
 				overTime[timeidx].total = 0;
 				overTime[timeidx].blocked = 0;
+				overTime[timeidx].cached = 0;
 				overTime[timeidx].forwardnum = 0;
 				overTime[timeidx].forwarddata = NULL;
 				overTime[timeidx].querytypedata = calloc(2, sizeof(int));
@@ -442,9 +443,11 @@ void process_pihole_log(int file)
 			switch(status)
 			{
 				case 0:
+					// Unknown (?)
 					counters.unknown++;
 					break;
 				case 1:
+					// Blocked by Pi-hole's blocking lists
 					counters.blocked++;
 					validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 					overTime[timeidx].blocked++;
@@ -452,12 +455,17 @@ void process_pihole_log(int file)
 					domains[domainID].blockedcount++;
 					break;
 				case 2:
+					// Forwarded to an upstream DNS server
 					counters.forwardedqueries++;
 					break;
 				case 3:
+					// Answered from local cache _or_ local config
 					counters.cached++;
+					validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
+					overTime[timeidx].cached++;
 					break;
 				case 4:
+					// Blocked due to a matching wildcard rule
 					counters.wildcardblocked++;
 					validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 					overTime[timeidx].blocked++;

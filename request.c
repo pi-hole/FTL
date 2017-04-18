@@ -184,12 +184,23 @@ bool command(char *client_message, const char* cmd)
 // 	}
 // }
 
-/* qsort comparision function (count field) */
+/* qsort comparision function (count field), sort ASC */
 int cmpdomains(int *elem1, int *elem2)
 {
 	if (elem1[1] < elem2[1])
 		return -1;
 	else if (elem1[1] > elem2[1])
+		return 1;
+	else
+		return 0;
+}
+
+// qsort subroutine, sort DESC
+int cmpforwards(int *elem1, int *elem2)
+{
+	if (elem1[1] > elem2[1])
+		return -1;
+	else if (elem1[1] < elem2[1])
 		return 1;
 	else
 		return 0;
@@ -404,7 +415,7 @@ void getTopClients(char *client_message, int *sock)
 void getForwardDestinations(int *sock)
 {
 	char server_message[SOCKETBUFFERLEN];
-	int i, temparray[counters.forwarded][2];
+	int i, temparray[counters.forwarded+1][2];
 	for(i=0; i < counters.forwarded; i++)
 	{
 		validate_access("forwarded", i, true, __LINE__, __FUNCTION__, __FILE__);
@@ -412,18 +423,51 @@ void getForwardDestinations(int *sock)
 		temparray[i][1] = forwarded[i].count;
 	}
 
-	// Sort temporary array
-	qsort(temparray, counters.forwarded, sizeof(int[2]), (__compar_fn_t)cmpdomains);
+	// Add "local " forward destination
+	temparray[counters.forwarded][0] = counters.forwarded;
+	temparray[counters.forwarded][1] = counters.cached + counters.blocked;
 
-	for(i=0; i < min(counters.forwarded, 10); i++)
+	// Sort temporary array in descending order
+	qsort(temparray, counters.forwarded+1, sizeof(int[2]), (__compar_fn_t)cmpforwards);
+
+	// Loop over available forward destinations
+	for(i=0; i < min(counters.forwarded+1, 10); i++)
 	{
+		char *name, *ip;
+		int count;
+
 		// Get sorted indices
-		int j = temparray[counters.forwarded-i-1][0];
-		validate_access("forwarded", j, true, __LINE__, __FUNCTION__, __FILE__);
-		if(forwarded[j].count > 0)
+		int j = temparray[i][0];
+
+		// Is this the "local" forward destination?
+		if(j == counters.forwarded)
 		{
-			sprintf(server_message,"%i %i %s %s\n",i,forwarded[j].count,forwarded[j].ip,forwarded[j].name);
+			ip = calloc(4,1);
+			strcpy(ip, "::1");
+			name = calloc(6,1);
+			strcpy(name, "local");
+			count = counters.cached + counters.blocked;
+		}
+		else
+		{
+			validate_access("forwarded", j, true, __LINE__, __FUNCTION__, __FILE__);
+			ip = forwarded[j].ip;
+			name = forwarded[j].name;
+			count = forwarded[j].count;
+		}
+
+		// Send data if count > 0
+		if(count > 0)
+		{
+			sprintf(server_message,"%i %i %s %s\n",i,count,ip,name);
 			swrite(server_message, *sock);
+		}
+
+		// Free previously allocated memory only if we allocated it
+		if(i == counters.forwarded)
+		{
+			free(ip);
+			free(name);
 		}
 	}
 	if(debugclients)
@@ -443,6 +487,11 @@ void getForwardNames(int *sock)
 		sprintf(server_message,"%i %i %s %s\n",i,forwarded[i].count,forwarded[i].ip,forwarded[i].name);
 		swrite(server_message, *sock);
 	}
+
+	// Add "local" forward destination
+	sprintf(server_message,"%i %i ::1 local\n",counters.forwarded,counters.cached);
+	swrite(server_message, *sock);
+
 	if(debugclients)
 		logg("Sent forward destination names to client, ID: %i", *sock);
 }
@@ -727,6 +776,7 @@ void getForwardDestinationsOverTime(int *sock)
 			sprintf(server_message, "%i", overTime[i].timestamp);
 
 			int j;
+
 			for(j = 0; j < counters.forwarded; j++)
 			{
 				int k;
@@ -738,7 +788,7 @@ void getForwardDestinationsOverTime(int *sock)
 				sprintf(server_message + strlen(server_message), " %i", k);
 			}
 
-			sprintf(server_message + strlen(server_message), "\n");
+			sprintf(server_message + strlen(server_message), " %i\n", overTime[i].cached + overTime[i].blocked);
 			swrite(server_message, *sock);
 		}
 	}

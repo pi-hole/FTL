@@ -153,6 +153,7 @@ typedef struct {
 	int timestamp;
 	int total;
 	int blocked;
+	int cached;
 	int forwardnum;
 	int *forwarddata;
 	int *querytypedata;
