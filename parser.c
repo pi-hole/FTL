@@ -819,13 +819,15 @@ void validate_access(const char * name, int pos, bool testmagic, int line, const
 	else if(name[0] == 'o') limit = counters.overTime_MAX;
 	else if(name[0] == 'f') limit = counters.forwarded_MAX;
 	else if(name[0] == 'w') limit = counters.wildcarddomains;
-	else { logg("Validator error"); killed = 1; }
+	else { logg("Validator error (range)"); killed = 1; }
+
 	if(pos >= limit || pos < 0)
 	{
 		logg("FATAL ERROR: Trying to access %s[%i], but maximum is %i", name, pos, limit);
 		logg("             found in %s() (line %i) in %s", function, line, file);
 	}
-	if(testmagic)
+	// Don't test magic byte if detected potential out-of-bounds error
+	else if(testmagic)
 	{
 		unsigned char magic = 0x00;
 		if(name[0] == 'c') magic = clients[pos].magic;
@@ -833,7 +835,7 @@ void validate_access(const char * name, int pos, bool testmagic, int line, const
 		else if(name[0] == 'q') magic = queries[pos].magic;
 		else if(name[0] == 'o') magic = overTime[pos].magic;
 		else if(name[0] == 'f') magic = forwarded[pos].magic;
-		else { logg("Validator error"); killed = 1; }
+		else { logg("Validator error (magic byte)"); killed = 1; }
 		if(magic != MAGICBYTE)
 		{
 			logg("FATAL ERROR: Trying to access %s[%i], but magic byte is %x", name, pos, magic);
