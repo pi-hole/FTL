@@ -516,6 +516,7 @@ void process_pihole_log(int file)
 				overTime[timeidx].timestamp = overTimetimestamp;
 				overTime[timeidx].total = 0;
 				overTime[timeidx].blocked = 0;
+				overTime[timeidx].cached = 0;
 				overTime[timeidx].forwardnum = 0;
 				overTime[timeidx].forwarddata = NULL;
 				overTime[timeidx].querytypedata = calloc(2, sizeof(int));
