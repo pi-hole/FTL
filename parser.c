@@ -191,6 +191,12 @@ void process_pihole_log(int file)
 			int querytimestamp, overTimetimestamp;
 			extracttimestamp(readbuffer, &querytimestamp, &overTimetimestamp);
 
+			// Get minimum time stamp to analyze
+			int differencetofullhour = time(NULL) % GCinterval;
+			int mintime = (time(NULL) - GCdelay - differencetofullhour) - MAXLOGAGE;
+			// Skip parsing of log entries that are too old altogether if 24h window is requested
+			if(config.rolling_24h && querytimestamp < mintime) continue;
+
 			// Ensure we have enough space in the queries struct
 			memory_check(QUERIES);
 			int queryID = counters.queries;

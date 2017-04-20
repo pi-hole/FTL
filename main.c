@@ -79,16 +79,6 @@ int main (int argc, char* argv[]) {
 		killed = 1;
 	}
 
-	if(config.rolling_24h)
-	{
-		pthread_t GCthread;
-		if(pthread_create( &GCthread, &attr, GC_thread, NULL ) != 0)
-		{
-			logg("Unable to start initial GC thread. Exiting...");
-			killed = 1;
-		}
-	}
-
 	while(!killed)
 	{
 		sleepms(100);
