@@ -53,9 +53,11 @@ void *GC_thread(void *val)
 			switch(queries[i].status)
 			{
 				case 0:
+					// Unknown (?)
 					counters.unknown--;
 					break;
 				case 1:
+					// Blocked by Pi-hole's blocking lists
 					counters.blocked--;
 					validate_access("overTime", queries[i].timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 					overTime[queries[i].timeidx].blocked--;
@@ -63,17 +65,23 @@ void *GC_thread(void *val)
 					domains[queries[i].domainID].blockedcount--;
 					break;
 				case 2:
+					// Forwarded to an upstream DNS server
 					counters.forwardedqueries--;
 					validate_access("forwarded", queries[i].forwardID, true, __LINE__, __FUNCTION__, __FILE__);
 					forwarded[queries[i].forwardID].count--;
 					break;
 				case 3:
+					// Answered from local cache _or_ local config
 					counters.cached--;
+					validate_access("overTime", queries[i].timeidx, true, __LINE__, __FUNCTION__, __FILE__);
+					overTime[queries[i].timeidx].cached--;
 					break;
 				case 4:
 					counters.wildcardblocked--;
 					validate_access("overTime", queries[i].timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 					overTime[queries[i].timeidx].blocked--;
+					validate_access("domains", queries[i].domainID, true, __LINE__, __FUNCTION__, __FILE__);
+					domains[queries[i].domainID].blockedcount--;
 					break;
 				default:
 					/* That cannot happen */
