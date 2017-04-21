@@ -135,26 +135,26 @@ void readWildcardsList()
 
 }
 
-// int countlineswith(const char* str, const char* fname)
-// {
-// 	FILE *fp;
-// 	int found = 0;
-// 	char buffer[512];
+int countlineswith(const char* str, const char* fname)
+{
+	FILE *fp;
+	int found = 0;
+	char buffer[512];
 
-// 	if((fp = fopen(fname, "r")) == NULL) {
-// 		return -1;
-// 	}
+	if((fp = fopen(fname, "r")) == NULL) {
+		return -1;
+	}
 
-// 	// Search through file
-// 	// fgets reads a string from the specified file up to either a newline character or EOF
-// 	while(fgets(buffer, sizeof(buffer), fp) != NULL)
-// 		if((strstr(buffer, str)) != NULL)
-// 			found++;
+	// Search through file
+	// fgets reads a string from the specified file up to either a newline character or EOF
+	while(fgets(buffer, sizeof(buffer), fp) != NULL)
+		if((strstr(buffer, str)) != NULL)
+			found++;
 
-// 	// Close the file
-// 	if(fp) {
-// 		fclose(fp);
-// 	}
+	// Close the file
+	if(fp) {
+		fclose(fp);
+	}
 
-// 	return found;
-// }
+	return found;
+}

@@ -78,6 +78,7 @@ typedef struct {
 	const char* blacklist;
 	const char* setupVars;
 	const char* wildcards;
+	const char* auditlist;
 } logFileNamesStruct;
 
 typedef struct {

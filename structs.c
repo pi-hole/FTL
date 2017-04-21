@@ -24,7 +24,8 @@ logFileNamesStruct files = {
 	"/etc/pihole/whitelist.txt",
 	"/etc/pihole/blacklist.txt",
 	"/etc/pihole/setupVars.conf",
-	"/etc/dnsmasq.d/03-pihole-wildcard.conf"
+	"/etc/dnsmasq.d/03-pihole-wildcard.conf",
+	"/etc/pihole/auditlog.list"
 };
 
 countersStruct counters = { 0 };

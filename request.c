@@ -254,7 +254,7 @@ void getTopDomains(char *client_message, int *sock)
 {
 	char server_message[SOCKETBUFFERLEN];
 	int i, temparray[counters.domains][2], count=10, num;
-	bool blocked = command(client_message, ">top-ads");
+	bool blocked = command(client_message, ">top-ads"), audit = false;
 
 	// Exit before processing any data if requested via config setting
 	if(!config.query_display)
@@ -265,6 +265,12 @@ void getTopDomains(char *client_message, int *sock)
 	{
 		// User wants a different number of requests
 		count = num;
+	}
+
+	// Apply Audit Log filtering?
+	if(command(client_message, " for audit"))
+	{
+		audit = true;
 	}
 
 	for(i=0; i < counters.domains; i++)
@@ -303,14 +309,17 @@ void getTopDomains(char *client_message, int *sock)
 	clearSetupVarsArray();
 
 	// Get domains which the user doesn't want to see
-	char * excludedomains = read_setupVarsconf("API_EXCLUDE_DOMAINS");
-	if(excludedomains != NULL)
+	char * excludedomains = NULL;
+	if(!audit)
 	{
-		getSetupVarsArray(excludedomains);
-		if(debugclients)
-			logg("Excluding %i domains from being displayed", setupVarsElements);
+		excludedomains = read_setupVarsconf("API_EXCLUDE_DOMAINS");
+		if(excludedomains != NULL)
+		{
+			getSetupVarsArray(excludedomains);
+			if(debugclients)
+				logg("Excluding %i domains from being displayed", setupVarsElements);
+		}
 	}
-
 
 	int skip = 0;
 	for(i=0; i < min(counters.domains, count+skip); i++)
@@ -327,6 +336,13 @@ void getTopDomains(char *client_message, int *sock)
 				skip++;
 				continue;
 			}
+		}
+
+		// Skip this domain if already included in audit
+		if(countlineswith(domains[j].domain, files.auditlist) > 0)
+		{
+			skip++;
+			continue;
 		}
 
 		if(blocked && showblocked && domains[j].blockedcount > 0)
