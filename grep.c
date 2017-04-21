@@ -152,9 +152,7 @@ int countlineswith(const char* str, const char* fname)
 			found++;
 
 	// Close the file
-	if(fp) {
-		fclose(fp);
-	}
+	fclose(fp);
 
 	return found;
 }
