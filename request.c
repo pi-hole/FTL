@@ -12,8 +12,6 @@
 #include "version.h"
 
 // Private
-// int cmpdomains(const void *a, const void *b);
-int cmpdomains(int *elem1, int *elem2);
 #define min(a,b) ({ __typeof__ (a) _a = (a); __typeof__ (b) _b = (b); _a < _b ? _a : _b; })
 #define max(a,b) ({ __typeof__ (a) _a = (a); __typeof__ (b) _b = (b); _a > _b ? _a : _b; })
 
@@ -185,7 +183,7 @@ bool command(char *client_message, const char* cmd)
 // }
 
 /* qsort comparision function (count field), sort ASC */
-int cmpdomains(int *elem1, int *elem2)
+int cmpasc(int *elem1, int *elem2)
 {
 	if (elem1[1] < elem2[1])
 		return -1;
@@ -196,7 +194,7 @@ int cmpdomains(int *elem1, int *elem2)
 }
 
 // qsort subroutine, sort DESC
-int cmpforwards(int *elem1, int *elem2)
+int cmpdesc(int *elem1, int *elem2)
 {
 	if (elem1[1] > elem2[1])
 		return -1;
@@ -254,7 +252,7 @@ void getTopDomains(char *client_message, int *sock)
 {
 	char server_message[SOCKETBUFFERLEN];
 	int i, temparray[counters.domains][2], count=10, num;
-	bool blocked = command(client_message, ">top-ads"), audit = false;
+	bool blocked = command(client_message, ">top-ads"), audit = false, desc = false;
 
 	// Exit before processing any data if requested via config setting
 	if(!config.query_display)
@@ -273,6 +271,12 @@ void getTopDomains(char *client_message, int *sock)
 		audit = true;
 	}
 
+	// Sort in descending order?
+	if(command(client_message, " desc"))
+	{
+		desc = true;
+	}
+
 	for(i=0; i < counters.domains; i++)
 	{
 		validate_access("domains", i, true, __LINE__, __FUNCTION__, __FILE__);
@@ -285,7 +289,11 @@ void getTopDomains(char *client_message, int *sock)
 	}
 
 	// Sort temporary array
-	qsort(temparray, counters.domains, sizeof(int[2]), (__compar_fn_t)cmpdomains);
+	if(desc)
+		qsort(temparray, counters.domains, sizeof(int[2]), (__compar_fn_t)cmpdesc);
+	else
+		qsort(temparray, counters.domains, sizeof(int[2]), (__compar_fn_t)cmpasc);
+
 
 	// Get filter
 	char * filter = read_setupVarsconf("API_QUERY_LOG_SHOW");
@@ -386,7 +394,7 @@ void getTopClients(char *client_message, int *sock)
 	}
 
 	// Sort temporary array
-	qsort(temparray, counters.clients, sizeof(int[2]), (__compar_fn_t)cmpdomains);
+	qsort(temparray, counters.clients, sizeof(int[2]), (__compar_fn_t)cmpasc);
 
 	// Get domains which the user doesn't want to see
 	char * excludeclients = read_setupVarsconf("API_EXCLUDE_CLIENTS");
@@ -444,7 +452,7 @@ void getForwardDestinations(int *sock)
 	temparray[counters.forwarded][1] = counters.cached + counters.blocked;
 
 	// Sort temporary array in descending order
-	qsort(temparray, counters.forwarded+1, sizeof(int[2]), (__compar_fn_t)cmpforwards);
+	qsort(temparray, counters.forwarded+1, sizeof(int[2]), (__compar_fn_t)cmpdesc);
 
 	// Loop over available forward destinations
 	for(i=0; i < min(counters.forwarded+1, 10); i++)
