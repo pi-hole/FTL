@@ -355,7 +355,10 @@ void getTopDomains(char *client_message, int *sock)
 
 		if(blocked && showblocked && domains[j].blockedcount > 0)
 		{
-			sprintf(server_message,"%i %i %s\n",i,domains[j].blockedcount,domains[j].domain);
+			if(audit && domains[j].wildcard)
+				sprintf(server_message,"%i %i %s wildcard\n",i,domains[j].blockedcount,domains[j].domain);
+			else
+				sprintf(server_message,"%i %i %s\n",i,domains[j].blockedcount,domains[j].domain);
 			swrite(server_message, *sock);
 		}
 		else if(!blocked && showpermitted && (domains[j].count - domains[j].blockedcount) > 0)
