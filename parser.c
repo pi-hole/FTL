@@ -187,6 +187,14 @@ void process_pihole_log(int file)
 		// Test if the read line is a query line
 		if(strstr(readbuffer,"]: query[A") != NULL)
 		{
+			// Check if this domain names contains only printable characters
+			// if not: skip analysis of this log line
+			if(strstr(readbuffer,"<name unprintable>") != NULL)
+			{
+				if(debug) logg("Ignoring <name unprintable> domain (query)");
+				continue;
+			}
+
 			// Get timestamp
 			int querytimestamp, overTimetimestamp;
 			extracttimestamp(readbuffer, &querytimestamp, &overTimetimestamp);
@@ -491,6 +499,14 @@ void process_pihole_log(int file)
 		}
 		else if(strstr(readbuffer,": forwarded") != NULL)
 		{
+			// Check if this domain names contains only printable characters
+			// if not: skip analysis of this log line
+			if(strstr(readbuffer,"<name unprintable>") != NULL)
+			{
+				if(debug) logg("Ignoring <name unprintable> domain (forwarded)");
+				continue;
+			}
+
 			// Get ID of forward destination, create new forward destination record
 			// if not found in current data structure
 			int forwardID = getforwardID(readbuffer);
