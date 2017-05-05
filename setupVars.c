@@ -80,8 +80,13 @@ char * read_setupVarsconf(const char * key)
 
 	// Key not found -> return NULL
 	fclose(setupVarsfp);
+
+	// setting unused pointers to NULL
+	// protecting against dangling pointer bugs
 	free(keystr);
+	keystr = NULL;
 	free(linebuffer);
+	linebuffer = NULL;
 	return NULL;
 }
 
@@ -112,12 +117,19 @@ void getSetupVarsArray(char * input)
 void clearSetupVarsArray(void)
 {
 	setupVarsElements = 0;
-	free(setupVarsArray);
-	free(linebuffer);
 	// setting unused pointers to NULL
 	// protecting against dangling pointer bugs
-	setupVarsArray = NULL;
-	linebuffer = NULL;
+	// free only if not already NULL
+	if(setupVarsArray != NULL)
+	{
+		free(setupVarsArray);
+		setupVarsArray = NULL;
+	}
+	if(linebuffer != NULL)
+	{
+		free(linebuffer);
+		linebuffer = NULL;
+	}
 }
 
 /* Example
