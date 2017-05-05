@@ -81,6 +81,7 @@ char * read_setupVarsconf(const char * key)
 	// Key not found -> return NULL
 	fclose(setupVarsfp);
 	free(keystr);
+	free(linebuffer);
 	return NULL;
 }
 
