@@ -158,6 +158,11 @@ bool insetupVarsArray(char * str)
 				free(domain);
 				return true;
 			}
+			else
+			{
+				free(domain);
+				return false;
+			}
 		}
 		else
 		{
