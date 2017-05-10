@@ -12,6 +12,7 @@
 #include "version.h"
 
 bool debug = false;
+bool daemonmode = true;
 bool debugthreads = false;
 bool debugclients = false;
 bool debugGC = false;
@@ -62,6 +63,11 @@ void parse_args(int argc, char* argv[])
 		if(strcmp(argv[i], "running") == 0)
 		{
 			runtest = true;
+		}
+
+		if(strcmp(argv[i], "no-daemon") == 0 || strcmp(argv[i], "-f") == 0)
+		{
+			daemonmode = false;
 		}
 
 		// Other arguments are ignored

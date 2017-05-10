@@ -39,7 +39,7 @@ int main (int argc, char* argv[]) {
 
 	read_FTLconf();
 
-	if(!debug)
+	if(!debug && daemonmode)
 		go_daemon();
 	else
 		savepid();
