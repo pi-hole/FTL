@@ -9,7 +9,6 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
-#define SETUPVARSLINELENGTH 100000
 
 char ** setupVarsArray = NULL;
 
@@ -54,15 +53,22 @@ char * read_setupVarsconf(const char * key)
 		return NULL;
 	}
 
+	// Allocate keystr
 	char * keystr = calloc(strlen(key)+2, sizeof(char));
-	linebuffer = calloc(SETUPVARSLINELENGTH, sizeof(char));
-
+	if(keystr == NULL)
+	{
+		logg("WARN: read_setupVarsconf failed: could not allocate memory for keystr");
+		fclose(setupVarsfp);
+		return NULL;
+	}
 	sprintf(keystr, "%s=", key);
 
-	while(fgets(linebuffer, SETUPVARSLINELENGTH, setupVarsfp) != NULL)
+	size_t size;
+	errno = 0;
+	while(getline(&linebuffer, &size, setupVarsfp) != -1)
 	{
-		// Strip newline from fgets output
-		linebuffer[strlen(linebuffer) - 1] = '\0';
+		// Strip (possible) newline
+		linebuffer[strcspn(linebuffer, "\n")] = '\0';
 
 		// Skip comment lines
 		if(linebuffer[0] == '#' || linebuffer[0] == ';')
@@ -78,15 +84,22 @@ char * read_setupVarsconf(const char * key)
 		return (find_equals(linebuffer) + 1);
 	}
 
+	if(errno == ENOMEM)
+		logg("WARN: read_setupVarsconf failed: could not allocate memory for getline");
+
 	// Key not found -> return NULL
 	fclose(setupVarsfp);
 
-	// setting unused pointers to NULL
-	// protecting against dangling pointer bugs
+	// Freeing keystr, not setting to NULL, since not used outside of this routine
 	free(keystr);
-	keystr = NULL;
-	free(linebuffer);
-	linebuffer = NULL;
+
+	// Freeing and setting to NULL to prevent a dangling pointer
+	if(linebuffer != NULL)
+	{
+		free(linebuffer);
+		linebuffer = NULL;
+	}
+
 	return NULL;
 }
 

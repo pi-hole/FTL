@@ -134,8 +134,9 @@ void *pihole_log_thread(void *val)
 void process_pihole_log(int file)
 {
 	int i;
-	char readbuffer[1024] = "";
-	char readbuffer2[1024] = "";
+	char *readbuffer = NULL;
+	char *readbuffer2 = NULL;
+	size_t size1 = 0, size2 = 0;
 	FILE *fp;
 
 	if(file == 0)
@@ -169,18 +170,19 @@ void process_pihole_log(int file)
 	long int fposbck = ftell(fp);
 
 	// Read pihole log from current position until EOF line by line
-	while( fgets (readbuffer , sizeof(readbuffer)-1 , fp) != NULL )
+	errno = 0;
+	while(getline(&readbuffer, &size1, fp) != -1)
 	{
 		// Ensure that the line we read ended with a newline
 		// It can happen that we read too fast and dnsmasq didn't had the time
-		// to finish writing to the log. In this case, fgets() will not stop
+		// to finish writing to the log. In this case, getline() will not stop
 		// at a newline character, but at EOF. If we detect this scenario, we
 		// have to wait a little longer and re-try reading
 		if(feof(fp))
 		{
 			fseek(fp, fposbck, SEEK_SET);
 			sleepms(10);
-			if(fgets (readbuffer , sizeof(readbuffer)-1 , fp) == NULL)
+			if(getline(&readbuffer, &size1, fp) == -1)
 				break;
 		}
 
@@ -309,7 +311,7 @@ void process_pihole_log(int file)
 			int forwardID = -1;
 			for(i=0; i<200; i++)
 			{
-				if(fgets (readbuffer2 , sizeof(readbuffer2) , fp) != NULL)
+				if(getline(&readbuffer2, &size2, fp) != -1)
 				{
 					// Process only matching lines
 					if(strstr(readbuffer2, domainwithspaces) != NULL)
@@ -367,8 +369,16 @@ void process_pihole_log(int file)
 					}
 				}
 			}
+
 			// Return to previous file pointer position
 			fseek(fp, fpos, SEEK_SET);
+
+			// Free memory allocated by readline
+			if(readbuffer2 != NULL)
+			{
+				free(readbuffer2);
+				readbuffer2 = NULL;
+			}
 
 			// Go through already knows domains and see if it is one of them
 			// Check struct size
@@ -594,6 +604,13 @@ void process_pihole_log(int file)
 			}
 		}
 	}
+
+	if(errno == ENOMEM)
+		logg("WARN: process_pihole_log failed: could not allocate memory for getline");
+
+	// Free memory allocated by readline
+	if(readbuffer != NULL)
+		free(readbuffer);
 
 	// IF we are reading the main log, we want to store the last read
 	// position so that we can jump to this position in the next round
