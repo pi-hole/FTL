@@ -82,8 +82,13 @@ void read_FTLconf(void)
 		logg("   QUERY_DISPLAY: Hide queries");
 
 	logg("Finished config file parsing");
-	free(conflinebuffer);
-	conflinebuffer = NULL;
+
+	if(conflinebuffer != NULL)
+	{
+		free(conflinebuffer);
+		conflinebuffer = NULL;
+	}
+
 	if(fp != NULL)
 		fclose(fp);
 }
@@ -95,17 +100,22 @@ char *parse_FTLconf(FILE *fp, const char * key)
 		return NULL;
 
 	char * keystr = calloc(strlen(key)+2,sizeof(char));
-	conflinebuffer = calloc(1024,sizeof(char));
-
+	if(keystr == NULL)
+	{
+		logg("WARN: parse_FTLconf failed: could not allocate memory for keystr");
+		return NULL;
+	}
 	sprintf(keystr, "%s=", key);
 
 	// Go to beginning of file
 	fseek(fp, 0L, SEEK_SET);
 
-	while(fgets(conflinebuffer, 1023, fp) != NULL)
+	size_t size;
+	errno = 0;
+	while(getline(&conflinebuffer, &size, fp) != -1)
 	{
-		// Strip newline from fgets output
-		conflinebuffer[strlen(conflinebuffer) - 1] = '\0';
+		// Strip (possible) newline
+		conflinebuffer[strcspn(conflinebuffer, "\n")] = '\0';
 
 		// Skip comment lines
 		if(conflinebuffer[0] == '#' || conflinebuffer[0] == ';')
@@ -120,7 +130,11 @@ char *parse_FTLconf(FILE *fp, const char * key)
 		return (find_equals(conflinebuffer) + 1);
 	}
 
+	if(errno == ENOMEM)
+		logg("WARN: parse_FTLconf failed: could not allocate memory for getline");
+
 	// Key not found -> return NULL
 	free(keystr);
+
 	return NULL;
 }

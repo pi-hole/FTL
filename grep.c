@@ -74,8 +74,8 @@ int countlines(const char* fname)
 void readWildcardsList()
 {
 	FILE *fp;
-	char *buffer, *domain;
-	char linebuffer[512];
+	char *domain = NULL, *buffer = NULL, *linebuffer = NULL;
+	size_t size = 0;
 	int i;
 
 	if((fp = fopen(files.wildcards, "r")) == NULL) {
@@ -84,9 +84,23 @@ void readWildcardsList()
 	}
 
 	// Search through file
-	while(fgets(linebuffer, 511, fp))
+	errno = 0;
+	while(getline(&linebuffer, &size, fp) != -1)
 	{
-		buffer = calloc(512,sizeof(char));
+		// the read line has always to be larger than what we want to extract, so
+		// we can use the length as an upper limit for allocating memory for the buffer
+
+		buffer = calloc(size, 1);
+		if(buffer == NULL)
+		{
+			logg("WARN: readWildcardsList failed to allocate memory");
+			fclose(fp);
+
+			// Free allocated memory
+			free(linebuffer);
+
+			return;
+		}
 		// Try to read up to 511 characters
 		if(sscanf(linebuffer, "address=/%511[^/]/%*[^\n]\n", buffer) > 0)
 		{
@@ -112,7 +126,13 @@ void readWildcardsList()
 						break;
 					}
 				}
-				if(known) continue;
+				if(known)
+				{
+					// Free allocated memory
+					free(buffer);
+					buffer = NULL;
+					continue;
+				}
 
 				// Add wildcard entry
 				// Enlarge wildcarddomains pointer array
@@ -126,8 +146,20 @@ void readWildcardsList()
 				counters.wildcarddomains++;
 			}
 		}
+
+		// Free allocated memory
 		free(buffer);
 		buffer = NULL;
+	}
+
+	if(errno == ENOMEM)
+		logg("WARN: readWildcardsList failed: could not allocate memory for getline");
+
+	// Free allocated memory
+	if(linebuffer != NULL)
+	{
+		free(linebuffer);
+		linebuffer = NULL;
 	}
 
 	// Close the file
@@ -139,17 +171,25 @@ int countlineswith(const char* str, const char* fname)
 {
 	FILE *fp;
 	int found = 0;
-	char buffer[512];
+	char *buffer = NULL;
+	size_t size = 0;
 
 	if((fp = fopen(fname, "r")) == NULL) {
 		return -1;
 	}
 
 	// Search through file
-	// fgets reads a string from the specified file up to either a newline character or EOF
-	while(fgets(buffer, sizeof(buffer), fp) != NULL)
+	// getline reads a string from the specified file up to either a newline character or EOF
+	while(getline(&buffer, &size, fp) != -1)
 		if((strstr(buffer, str)) != NULL)
 			found++;
+
+	// Free allocated memory
+	if(buffer != NULL)
+	{
+		free(buffer);
+		buffer = NULL;
+	}
 
 	// Close the file
 	fclose(fp);

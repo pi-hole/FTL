@@ -37,14 +37,27 @@ int detect_FTL_process(void)
 				FILE* fp;
 				if((fp = fopen(buffer, "r")) != NULL)
 				{
-					if (fgets(buffer, sizeof(buffer), fp) != NULL)
+					char *linebuffer = NULL;
+					size_t size = 0;
+
+					errno = 0;
+					if (getline(&linebuffer, &size, fp) != -1)
 					{
-						if (strstr(buffer, "pihole-FTL") != 0)
+						if (strstr(linebuffer, "pihole-FTL") != 0)
 						{
 							fclose(fp);
-							logg("%i - %s", pid, buffer);
+							logg("%i - %s", pid, linebuffer);
 							return pid;
 						}
+					}
+
+					if(errno == ENOMEM)
+						logg("WARN: process_pihole_log failed: could not allocate memory for getline");
+
+					if(linebuffer != NULL)
+					{
+						free(linebuffer);
+						linebuffer = NULL;
 					}
 					fclose(fp);
 				}
