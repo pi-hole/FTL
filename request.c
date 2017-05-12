@@ -353,7 +353,7 @@ void getTopDomains(char *client_message, int *sock)
 		}
 
 		// Skip this domain if already included in audit
-		if(countlineswith(domains[j].domain, files.auditlist) > 0)
+		if(audit && countlineswith(domains[j].domain, files.auditlist) > 0)
 		{
 			skip++;
 			continue;
