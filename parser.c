@@ -261,7 +261,15 @@ void process_pihole_log(int file)
 				// Skip this line
 				continue;
 			}
+
 			size_t domainlen = domainend-(domainstart+2);
+			if(domainlen < 1)
+			{
+				logg("Notice: Skipping malformated log line (domain length < 1): %s", strtok(readbuffer,"\n"));
+				// Skip this line
+				continue;
+			}
+
 			char *domain = calloc(domainlen+1,sizeof(char));
 			char *domainwithspaces = calloc(domainlen+3,sizeof(char));
 			strncpy(domain,domainstart+2,domainlen);
@@ -277,7 +285,15 @@ void process_pihole_log(int file)
 				// Skip this line
 				continue;
 			}
+
 			size_t clientlen = (clientend-domainend)-6;
+			if(clientlen < 1)
+			{
+				logg("Notice: Skipping malformated log line (client length < 1): %s", strtok(readbuffer,"\n"));
+				// Skip this line
+				continue;
+			}
+
 			char *client = calloc(clientlen+1,sizeof(char));
 			strncpy(client,domainend+6,clientlen);
 
@@ -402,9 +418,8 @@ void process_pihole_log(int file)
 				// Initialize wildcard blocking flag with false
 				domains[domainID].wildcard = false;
 				// Store domain name
-				domains[domainID].domain = calloc(strlen(domain)+1,sizeof(char));
+				domains[domainID].domain = strdup(domain);
 				memory.domainnames += (strlen(domain) + 1) * sizeof(char);
-				strcpy(domains[domainID].domain, domain);
 				// Increase counter by one
 				counters.domains++;
 			}
@@ -432,13 +447,11 @@ void process_pihole_log(int file)
 				// Set its counter to 1
 				clients[clientID].count = 1;
 				// Store client IP
-				clients[clientID].ip = calloc(strlen(client)+1,sizeof(char));
+				clients[clientID].ip = strdup(client);
 				memory.clientips += (strlen(client) + 1) * sizeof(char);
-				strcpy(clients[clientID].ip, client);
 				// Store client hostname
-				clients[clientID].name = calloc(strlen(hostname)+1,sizeof(char));
+				clients[clientID].name = strdup(hostname);
 				memory.clientnames += (strlen(hostname) + 1) * sizeof(char);
-				strcpy(clients[clientID].name,hostname);
 				free(hostname);
 				// Increase counter by one
 				counters.clients++;
@@ -644,11 +657,11 @@ char *resolveHostname(char *addr)
 	if(he == NULL)
 	{
 		hostname = calloc(1,sizeof(char));
+		hostname[0] = '\0';
 	}
 	else
 	{
-		hostname = calloc(strlen(he->h_name)+1,sizeof(char));
-		strcpy(hostname, he->h_name);
+		hostname = strdup(he->h_name);
 	}
 
 	return hostname;
@@ -751,7 +764,15 @@ int getforwardID(char * str)
 		// Skip this line
 		return -2;
 	}
+
 	size_t forwardlen = forwardend-(forwardstart+4);
+	if(forwardlen < 1)
+	{
+		logg("Notice: Skipping malformated log line (forward length < 1): %s", strtok(str,"\n"));
+		// Skip this line
+		return -2;
+	}
+
 	char *forward = calloc(forwardlen+1,sizeof(char));
 	strncpy(forward,forwardstart+4,forwardlen);
 
@@ -789,13 +810,11 @@ int getforwardID(char * str)
 		// Set its counter to 1
 		forwarded[forwardID].count = 1;
 		// Save IP
-		forwarded[forwardID].ip = calloc(forwardlen+1,sizeof(char));
+		forwarded[forwardID].ip = strdup(forward);
 		memory.forwardedips += (forwardlen + 1) * sizeof(char);
-		strcpy(forwarded[forwardID].ip,forward);
 		// Save forward destination host name
-		forwarded[forwardID].name = calloc(strlen(hostname)+1,sizeof(char));
+		forwarded[forwardID].name = strdup(hostname);
 		memory.forwardednames += (strlen(hostname) + 1) * sizeof(char);
-		strcpy(forwarded[forwardID].name,hostname);
 		free(hostname);
 		// Increase counter by one
 		counters.forwarded++;
