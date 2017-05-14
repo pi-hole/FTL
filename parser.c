@@ -277,7 +277,14 @@ void process_pihole_log(int file)
 				// Skip this line
 				continue;
 			}
+
 			size_t clientlen = (clientend-domainend)-6;
+			if(clientlen < 1)
+			{
+				logg("Notice: Skipping malformated log line (client length < 1): %s", strtok(readbuffer,"\n"));
+				// Skip this line
+				continue;
+			}
 			char *client = calloc(clientlen+1,sizeof(char));
 			strncpy(client,domainend+6,clientlen);
 
