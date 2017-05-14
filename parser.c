@@ -768,7 +768,12 @@ int getforwardID(char * str)
 		return -2;
 	}
 	size_t forwardlen = forwardend-(forwardstart+4);
-
+	if(forwardlen < 1)
+	{
+		logg("Notice: Skipping malformated log line (forward length < 1): %s", strtok(readbuffer,"\n"));
+		// Skip this line
+		continue;
+	}
 	char *forward = calloc(forwardlen+1,sizeof(char));
 	strncpy(forward,forwardstart+4,forwardlen);
 
