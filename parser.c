@@ -418,9 +418,8 @@ void process_pihole_log(int file)
 				// Initialize wildcard blocking flag with false
 				domains[domainID].wildcard = false;
 				// Store domain name
-				domains[domainID].domain = calloc(strlen(domain)+1,sizeof(char));
+				domains[domainID].domain = strdup(domain);
 				memory.domainnames += (strlen(domain) + 1) * sizeof(char);
-				strcpy(domains[domainID].domain, domain);
 				// Increase counter by one
 				counters.domains++;
 			}
@@ -448,13 +447,11 @@ void process_pihole_log(int file)
 				// Set its counter to 1
 				clients[clientID].count = 1;
 				// Store client IP
-				clients[clientID].ip = calloc(strlen(client)+1,sizeof(char));
+				clients[clientID].ip = strdup(client)
 				memory.clientips += (strlen(client) + 1) * sizeof(char);
-				strcpy(clients[clientID].ip, client);
 				// Store client hostname
-				clients[clientID].name = calloc(strlen(hostname)+1,sizeof(char));
+				clients[clientID].name = strdup(hostname);
 				memory.clientnames += (strlen(hostname) + 1) * sizeof(char);
-				strcpy(clients[clientID].name,hostname);
 				free(hostname);
 				// Increase counter by one
 				counters.clients++;
@@ -767,6 +764,7 @@ int getforwardID(char * str)
 		// Skip this line
 		return -2;
 	}
+
 	size_t forwardlen = forwardend-(forwardstart+4);
 	if(forwardlen < 1)
 	{
@@ -774,6 +772,7 @@ int getforwardID(char * str)
 		// Skip this line
 		continue;
 	}
+
 	char *forward = calloc(forwardlen+1,sizeof(char));
 	strncpy(forward,forwardstart+4,forwardlen);
 
@@ -811,13 +810,11 @@ int getforwardID(char * str)
 		// Set its counter to 1
 		forwarded[forwardID].count = 1;
 		// Save IP
-		forwarded[forwardID].ip = calloc(forwardlen+1,sizeof(char));
+		forwarded[forwardID].ip = strdup(forward);
 		memory.forwardedips += (forwardlen + 1) * sizeof(char);
-		strcpy(forwarded[forwardID].ip,forward);
 		// Save forward destination host name
-		forwarded[forwardID].name = calloc(strlen(hostname)+1,sizeof(char));
+		forwarded[forwardID].name = strdup(hostname);
 		memory.forwardednames += (strlen(hostname) + 1) * sizeof(char);
-		strcpy(forwarded[forwardID].name,hostname);
 		free(hostname);
 		// Increase counter by one
 		counters.forwarded++;
