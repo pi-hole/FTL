@@ -447,7 +447,7 @@ void process_pihole_log(int file)
 				// Set its counter to 1
 				clients[clientID].count = 1;
 				// Store client IP
-				clients[clientID].ip = strdup(client)
+				clients[clientID].ip = strdup(client);
 				memory.clientips += (strlen(client) + 1) * sizeof(char);
 				// Store client hostname
 				clients[clientID].name = strdup(hostname);
@@ -768,9 +768,9 @@ int getforwardID(char * str)
 	size_t forwardlen = forwardend-(forwardstart+4);
 	if(forwardlen < 1)
 	{
-		logg("Notice: Skipping malformated log line (forward length < 1): %s", strtok(readbuffer,"\n"));
+		logg("Notice: Skipping malformated log line (forward length < 1): %s", strtok(str,"\n"));
 		// Skip this line
-		continue;
+		return -2;
 	}
 
 	char *forward = calloc(forwardlen+1,sizeof(char));
