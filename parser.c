@@ -261,7 +261,15 @@ void process_pihole_log(int file)
 				// Skip this line
 				continue;
 			}
+
 			size_t domainlen = domainend-(domainstart+2);
+			if(domainlen < 1)
+			{
+				logg("Notice: Skipping malformated log line (domain length < 1): %s", strtok(readbuffer,"\n"));
+				// Skip this line
+				continue;
+			}
+
 			char *domain = calloc(domainlen+1,sizeof(char));
 			char *domainwithspaces = calloc(domainlen+3,sizeof(char));
 			strncpy(domain,domainstart+2,domainlen);
@@ -285,6 +293,7 @@ void process_pihole_log(int file)
 				// Skip this line
 				continue;
 			}
+
 			char *client = calloc(clientlen+1,sizeof(char));
 			strncpy(client,domainend+6,clientlen);
 
@@ -759,6 +768,7 @@ int getforwardID(char * str)
 		return -2;
 	}
 	size_t forwardlen = forwardend-(forwardstart+4);
+
 	char *forward = calloc(forwardlen+1,sizeof(char));
 	strncpy(forward,forwardstart+4,forwardlen);
 
