@@ -644,11 +644,11 @@ char *resolveHostname(char *addr)
 	if(he == NULL)
 	{
 		hostname = calloc(1,sizeof(char));
+		hostname[0] = '\0';
 	}
 	else
 	{
-		hostname = calloc(strlen(he->h_name)+1,sizeof(char));
-		strcpy(hostname, he->h_name);
+		hostname = strdup(he->h_name);
 	}
 
 	return hostname;
