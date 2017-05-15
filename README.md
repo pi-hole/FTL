@@ -93,6 +93,16 @@ Command line arguments can be arbitrarily combined, e.g. `pihole-FTL debug test`
 connect via e.g. `telnet 127.0.0.1 4711`
 port may be automatically incremented if `4711` isn't available
 
+### FTL's config file
+
+You can create a file `/etc/pihole/pihole-FTL.conf` that will be read by `FTL` on startup.
+
+Possible settings (the first one is the default setting):
+
+- `SOCKET_LISTENING=localonly|all` (listen only for local connections or permit all connections)
+- `TIMEFRAME=rolling24h|yesterday|today` (rolling data window, up to 48h (today + yesterday), or up to 24h (only today, as in Pi-hole `v2.x` ))
+- `QUERY_DISPLAY=yes|no` (hide queries altogether)
+
 ### Implemented keywords (starting with `>`, subject to change):
 
 - `>quit`: Closes connection to client
