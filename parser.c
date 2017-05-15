@@ -272,7 +272,8 @@ void process_pihole_log(int file)
 
 			char *domain = calloc(domainlen+1,sizeof(char));
 			char *domainwithspaces = calloc(domainlen+3,sizeof(char));
-			strncpy(domain,domainstart+2,domainlen);
+			// strncat() NULL-terminates the copied string (strncpy() doesn't!)
+			strncat(domain,domainstart+2,domainlen);
 			sprintf(domainwithspaces," %s ",domain);
 
 			// Get client
@@ -295,7 +296,8 @@ void process_pihole_log(int file)
 			}
 
 			char *client = calloc(clientlen+1,sizeof(char));
-			strncpy(client,domainend+6,clientlen);
+			// strncat() NULL-terminates the copied string (strncpy() doesn't!)
+			strncat(client,domainend+6,clientlen);
 
 			// Get type
 			unsigned char type = 0;
@@ -710,8 +712,9 @@ void extracttimestamp(char *readbuffer, int *querytimestamp, int *overTimetimest
 	// Get timestamp
 	// char timestamp[16]; <- declared in FTL.h
 	memset(&timestamp, 0, sizeof(timestamp));
-	strncpy(timestamp,readbuffer,(size_t)15);
-	timestamp[15] = '\0';
+	// strncat() NULL-terminates the copied string (strncpy() doesn't!)
+	strncat(timestamp,readbuffer,(size_t)15);
+
 	// Get local time
 	time_t rawtime;
 	struct tm * timeinfo;
@@ -774,7 +777,8 @@ int getforwardID(char * str)
 	}
 
 	char *forward = calloc(forwardlen+1,sizeof(char));
-	strncpy(forward,forwardstart+4,forwardlen);
+	// strncat() NULL-terminates the copied string (strncpy() doesn't!)
+	strncat(forward,forwardstart+4,forwardlen);
 
 	bool processed = false;
 	int i, forwardID = -1;
