@@ -674,7 +674,6 @@ int detectStatus(const char *domain)
 {
 	// Try to find the domain in the array of wildcard blocked domains
 	int i;
-	char part[strlen(domain)],partbuffer[strlen(domain)];
 	for(i=0; i < counters.wildcarddomains; i++)
 	{
 		validate_access("wildcarddomains", i, false, __LINE__, __FUNCTION__, __FILE__);
@@ -686,19 +685,45 @@ int detectStatus(const char *domain)
 			return 4;
 		}
 		// Create copy of domain under investigation
-		strcpy(part,domain);
-		while(sscanf(part,"%*[^.].%s",partbuffer) > 0)
+		char * part = strdup(domain);
+		if(part == NULL)
 		{
+			// String duplication / memory allocation failed
+			logg("Notice: Memory allocation for part in detectStatus failed, domain: \"%s\"", domain);
+		}
+		char * partbuffer = calloc(strlen(part)+1, sizeof(char));
+		if(part == NULL)
+		{
+			// Memory allocation failed
+			logg("Notice: Memory allocation for partbuffer in detectStatus failed, domain: \"%s\"", domain);
+		}
+
+		// Strip subdomains one after another and
+		// compare to existing wildcard entries
+		while(sscanf(part,"%*[^.].%s", partbuffer) > 0)
+		{
+			// Test for a match
 			if(strcmp(wildcarddomains[i], partbuffer) == 0)
 			{
+				// Free allocated memory before return'ing
+				free(part);
+				free(partbuffer);
 				// Return match with wildcard domain
 				// if(debug)
 				// 	printf("%s / %s (wildcard match)\n",wildcarddomains[i], partbuffer);
 				return 4;
 			}
 			if(strlen(partbuffer) > 0)
-				strcpy(part, partbuffer);
+			{
+				// Empty part
+				*part = '\0';
+				// Replace with partbuffer
+				strcat(part, partbuffer);
+			}
 		}
+		// Free allocated memory
+		free(part);
+		free(partbuffer);
 	}
 
 	// If not found -> this answer is not from
