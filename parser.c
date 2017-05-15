@@ -11,11 +11,12 @@
 #include "FTL.h"
 #define MAGICBYTE 0x57
 
-char *resolveHostname(char *addr);
-void extracttimestamp(char *readbuffer, int *querytimestamp, int *overTimetimestamp);
-int getforwardID(char * str);
-int findDomain(char *domain);
-int findClient(char *client);
+char *resolveHostname(const char *addr);
+void extracttimestamp(const char *readbuffer, int *querytimestamp, int *overTimetimestamp);
+int getforwardID(const char * str);
+int findDomain(const char *domain);
+int findClient(const char *client);
+int detectStatus(const char *domain);
 
 long int oldfilesize = 0;
 long int lastpos = 0;
@@ -248,7 +249,7 @@ void process_pihole_log(int file)
 			// Check if buffer pointer is valid
 			if(domainstart == NULL)
 			{
-				logg("Notice: Skipping malformated log line (domain start missing): %s", strtok(readbuffer,"\n"));
+				logg("Notice: Skipping malformated log line (domain start missing): %s", readbuffer);
 				// Skip this line
 				continue;
 			}
@@ -257,7 +258,7 @@ void process_pihole_log(int file)
 			// Check if buffer pointer is valid
 			if(domainend == NULL)
 			{
-				logg("Notice: Skipping malformated log line (domain end missing): %s", strtok(readbuffer,"\n"));
+				logg("Notice: Skipping malformated log line (domain end missing): %s", readbuffer);
 				// Skip this line
 				continue;
 			}
@@ -265,7 +266,7 @@ void process_pihole_log(int file)
 			size_t domainlen = domainend-(domainstart+2);
 			if(domainlen < 1)
 			{
-				logg("Notice: Skipping malformated log line (domain length < 1): %s", strtok(readbuffer,"\n"));
+				logg("Notice: Skipping malformated log line (domain length < 1): %s", readbuffer);
 				// Skip this line
 				continue;
 			}
@@ -282,7 +283,7 @@ void process_pihole_log(int file)
 			// Check if buffer pointer is valid
 			if(clientend == NULL)
 			{
-				logg("Notice: Skipping malformated log line (client end missing): %s", strtok(readbuffer,"\n"));
+				logg("Notice: Skipping malformated log line (client end missing): %s", readbuffer);
 				// Skip this line
 				continue;
 			}
@@ -290,7 +291,7 @@ void process_pihole_log(int file)
 			size_t clientlen = (clientend-domainend)-6;
 			if(clientlen < 1)
 			{
-				logg("Notice: Skipping malformated log line (client length < 1): %s", strtok(readbuffer,"\n"));
+				logg("Notice: Skipping malformated log line (client length < 1): %s", readbuffer);
 				// Skip this line
 				continue;
 			}
@@ -638,7 +639,7 @@ void process_pihole_log(int file)
 	fclose(fp);
 }
 
-char *resolveHostname(char *addr)
+char *resolveHostname(const char *addr)
 {
 	// Get host name
 	struct hostent *he;
@@ -669,7 +670,7 @@ char *resolveHostname(char *addr)
 	return hostname;
 }
 
-int detectStatus(char *domain)
+int detectStatus(const char *domain)
 {
 	// Try to find the domain in the array of wildcard blocked domains
 	int i;
@@ -707,7 +708,7 @@ int detectStatus(char *domain)
 	return 3;
 }
 
-void extracttimestamp(char *readbuffer, int *querytimestamp, int *overTimetimestamp)
+void extracttimestamp(const char *readbuffer, int *querytimestamp, int *overTimetimestamp)
 {
 	// Get timestamp
 	// char timestamp[16]; <- declared in FTL.h
@@ -746,7 +747,7 @@ void extracttimestamp(char *readbuffer, int *querytimestamp, int *overTimetimest
 	*overTimetimestamp = *querytimestamp-(*querytimestamp%600)+300;
 }
 
-int getforwardID(char * str)
+int getforwardID(const char * str)
 {
 	// Get forward destination
 	// forwardstart = pointer to | in "forwarded domain.name| to www.xxx.yyy.zzz\n"
@@ -754,7 +755,7 @@ int getforwardID(char * str)
 	// Check if buffer pointer is valid
 	if(forwardstart == NULL)
 	{
-		logg("Notice: Skipping malformated log line (forward start missing): %s", strtok(str,"\n"));
+		logg("Notice: Skipping malformated log line (forward start missing): %s", str);
 		// Skip this line
 		return -2;
 	}
@@ -763,7 +764,7 @@ int getforwardID(char * str)
 	// Check if buffer pointer is valid
 	if(forwardend == NULL)
 	{
-		logg("Notice: Skipping malformated log line (forward end missing): %s", strtok(str,"\n"));
+		logg("Notice: Skipping malformated log line (forward end missing): %s", str);
 		// Skip this line
 		return -2;
 	}
@@ -771,7 +772,7 @@ int getforwardID(char * str)
 	size_t forwardlen = forwardend-(forwardstart+4);
 	if(forwardlen < 1)
 	{
-		logg("Notice: Skipping malformated log line (forward length < 1): %s", strtok(str,"\n"));
+		logg("Notice: Skipping malformated log line (forward length < 1): %s", str);
 		// Skip this line
 		return -2;
 	}
@@ -830,7 +831,7 @@ int getforwardID(char * str)
 	return forwardID;
 }
 
-int findDomain(char *domain)
+int findDomain(const char *domain)
 {
 	int i;
 	for(i=0; i < counters.domains; i++)
@@ -851,7 +852,7 @@ int findDomain(char *domain)
 	return -1;
 }
 
-int findClient(char *client)
+int findClient(const char *client)
 {
 	int i;
 	for(i=0; i < counters.clients; i++)

@@ -63,8 +63,6 @@ bool getSetupVarsBool(char * input);
 
 void parse_args(int argc, char* argv[]);
 
-int detectStatus(char *domain);
-
 char* find_equals(const char* s);
 
 void enable_read_lock(const char *message);
