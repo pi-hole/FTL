@@ -410,7 +410,7 @@ void process_pihole_log(int file)
 				domainID = counters.domains;
 				// // Debug output
 				if(debug)
-					logg("New domain: %s (%i/%i)", domain, domainID, counters.domains_MAX);
+					logg("New domain: %s (%i - %i/%i)", domain, status, domainID, counters.domains_MAX);
 				validate_access("domains", domainID, false, __LINE__, __FUNCTION__, __FILE__);
 				// Set magic byte
 				domains[domainID].magic = MAGICBYTE;
@@ -692,7 +692,7 @@ int detectStatus(const char *domain)
 			logg("Notice: Memory allocation for part in detectStatus failed, domain: \"%s\"", domain);
 		}
 		char * partbuffer = calloc(strlen(part)+1, sizeof(char));
-		if(part == NULL)
+		if(partbuffer == NULL)
 		{
 			// Memory allocation failed
 			logg("Notice: Memory allocation for partbuffer in detectStatus failed, domain: \"%s\"", domain);
