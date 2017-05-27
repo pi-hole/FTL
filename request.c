@@ -497,7 +497,7 @@ void getForwardDestinations(int *sock)
 		}
 
 		// Free previously allocated memory only if we allocated it
-		if(i == counters.forwarded)
+		if(j == counters.forwarded)
 		{
 			free(ip);
 			free(name);
