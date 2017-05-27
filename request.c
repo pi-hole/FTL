@@ -448,6 +448,7 @@ void getTopClients(char *client_message, int *sock)
 void getForwardDestinations(int *sock)
 {
 	char server_message[SOCKETBUFFERLEN];
+	bool allocated = false;
 	int i, temparray[counters.forwarded+1][2];
 	for(i=0; i < counters.forwarded; i++)
 	{
@@ -480,6 +481,7 @@ void getForwardDestinations(int *sock)
 			name = calloc(6,1);
 			strcpy(name, "local");
 			count = counters.cached + counters.blocked;
+			allocated = true;
 		}
 		else
 		{
@@ -487,6 +489,7 @@ void getForwardDestinations(int *sock)
 			ip = forwarded[j].ip;
 			name = forwarded[j].name;
 			count = forwarded[j].count;
+			allocated = false;
 		}
 
 		// Send data if count > 0
@@ -497,7 +500,7 @@ void getForwardDestinations(int *sock)
 		}
 
 		// Free previously allocated memory only if we allocated it
-		if(j == counters.forwarded)
+		if(allocated)
 		{
 			free(ip);
 			free(name);
