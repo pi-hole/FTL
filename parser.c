@@ -198,6 +198,12 @@ void process_pihole_log(int file)
 				continue;
 			}
 
+			if(!config.analyze_AAAA && strstr(readbuffer,"]: query[AAAA]") != NULL)
+			{
+				if(debug) logg("Not analyzing AAAA query");
+				continue;
+			}
+
 			// Get timestamp
 			int querytimestamp, overTimetimestamp;
 			extracttimestamp(readbuffer, &querytimestamp, &overTimetimestamp);
