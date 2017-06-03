@@ -43,6 +43,7 @@ char* find_equals(const char* s)
 // actually point to memory addresses
 // which we allocate for this buffer.
 char * linebuffer = NULL;
+size_t linebuffersize = 0;
 
 char * read_setupVarsconf(const char * key)
 {
@@ -63,9 +64,8 @@ char * read_setupVarsconf(const char * key)
 	}
 	sprintf(keystr, "%s=", key);
 
-	size_t size;
 	errno = 0;
-	while(getline(&linebuffer, &size, setupVarsfp) != -1)
+	while(getline(&linebuffer, &linebuffersize, setupVarsfp) != -1)
 	{
 		// Strip (possible) newline
 		linebuffer[strcspn(linebuffer, "\n")] = '\0';
@@ -97,6 +97,7 @@ char * read_setupVarsconf(const char * key)
 	if(linebuffer != NULL)
 	{
 		free(linebuffer);
+		linebuffersize = 0;
 		linebuffer = NULL;
 	}
 
@@ -141,6 +142,7 @@ void clearSetupVarsArray(void)
 	if(linebuffer != NULL)
 	{
 		free(linebuffer);
+		linebuffersize = 0;
 		linebuffer = NULL;
 	}
 }
