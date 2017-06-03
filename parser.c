@@ -97,7 +97,7 @@ void *pihole_log_thread(void *val)
 		{
 			// Lock FTL's data structure, since it is likely that it will be changed here
 			// Requests should not be processed/answered when data is about to change
-			enable_read_write_lock("pihole_log_thread");
+			enable_thread_lock("pihole_log_thread");
 
 			if(newdata > 0 && !flush)
 			{
@@ -123,7 +123,7 @@ void *pihole_log_thread(void *val)
 			}
 
 			// Release thread lock
-			disable_thread_locks("pihole_log_thread");
+			disable_thread_lock("pihole_log_thread");
 		}
 
 		// Wait some time before looking again at the log files
@@ -195,6 +195,12 @@ void process_pihole_log(int file)
 			if(strstr(readbuffer,"<name unprintable>") != NULL)
 			{
 				if(debug) logg("Ignoring <name unprintable> domain (query)");
+				continue;
+			}
+
+			if(!config.analyze_AAAA && strstr(readbuffer,"]: query[AAAA]") != NULL)
+			{
+				if(debug) logg("Not analyzing AAAA query");
 				continue;
 			}
 

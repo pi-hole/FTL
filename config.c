@@ -81,6 +81,20 @@ void read_FTLconf(void)
 	else
 		logg("   QUERY_DISPLAY: Hide queries");
 
+	// AAAA_QUERY_ANALYSIS
+	// defaults to: Yes
+	config.analyze_AAAA = true;
+	buffer = parse_FTLconf(fp, "AAAA_QUERY_ANALYSIS");
+	if(buffer != NULL)
+	{
+		if(strcmp(buffer, "no") == 0)
+			config.analyze_AAAA = false;
+	}
+	if(config.analyze_AAAA)
+		logg("   AAAA_QUERY_ANALYSIS: Show AAAA queries");
+	else
+		logg("   AAAA_QUERY_ANALYSIS: Hide AAAA queries");
+
 	logg("Finished config file parsing");
 
 	if(conflinebuffer != NULL)

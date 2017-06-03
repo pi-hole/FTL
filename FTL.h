@@ -111,6 +111,7 @@ typedef struct {
 	bool include_yesterday;
 	bool rolling_24h;
 	bool query_display;
+	bool analyze_AAAA;
 } ConfigStruct;
 
 // Dynamic structs
