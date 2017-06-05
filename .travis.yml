@@ -59,6 +59,7 @@ before_script:
 script:
 - make pihole-FTL CC="${BUILD_CC}" CFLAGS="${CFLAGS}"
 - file pihole-FTL
+- if [[ "${BIN_NAME}" == "pihole-FTL-linux-x86_64" ]]; then test/run.sh; fi
 - mv pihole-FTL "${DEST_DIR}/${BIN_NAME}"
 - cd "${DEST_DIR}"
 - sha1sum pihole-FTL-* > ${BIN_NAME}.sha1
