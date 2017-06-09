@@ -94,9 +94,9 @@ int main (int argc, char* argv[]) {
 
 		if(database)
 		{
-			// DBGC_time == 0 at 03:05 every day
-			int DBGC_time = time(NULL) % 86400;
-			if(DBGC_time == 11100 || needDBGC)
+			// DBGC_time == 0 at five minutes after each full even hour
+			int DBGC_time = time(NULL) % 7200;
+			if(DBGC_time == 300 || needDBGC)
 			{
 				needDBGC = false;
 				runDBGCthread = true;

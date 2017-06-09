@@ -347,10 +347,9 @@ void *DB_GC_thread(void *val)
 		return NULL;
 	}
 
-	unsigned int max_filesize = 1; // in units of MB
-	while(get_db_filesize() > max_filesize)
+	while(get_db_filesize() > config.maxDBfilesize)
 	{
-		logg("Notice: DB filesize is %.2f MB, limit is %u.00 MB", get_db_filesize(), max_filesize);
+		logg("Notice: DB filesize is %.2f MB, limit is %i.00 MB", get_db_filesize(), config.maxDBfilesize);
 
 		if(!dbquery("DELETE FROM queries ORDER BY timestamp ASC LIMIT 1000"))
 		{
@@ -372,7 +371,7 @@ void *DB_GC_thread(void *val)
 		dbquery("VACUUM");
 	}
 	// Print final message
-	logg("Notice: DB filesize is %.2f MB, limit is %u.00 MB", get_db_filesize(), max_filesize);
+	logg("Notice: DB filesize is %.2f MB, limit is %i.00 MB", get_db_filesize(), config.maxDBfilesize);
 
 	// Close database
 	dbclose();
