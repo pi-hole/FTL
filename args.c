@@ -17,6 +17,7 @@ bool debugthreads = false;
 bool debugclients = false;
 bool debugGC = false;
 bool runtest = false;
+bool debugDB = false;
 bool travis = false;
 void parse_args(int argc, char* argv[])
 {
@@ -41,6 +42,12 @@ void parse_args(int argc, char* argv[])
 		{
 			debug = true;
 			debugGC = true;
+		}
+
+		if(strcmp(argv[i], "debugDB") == 0)
+		{
+			debug = true;
+			debugDB = true;
 		}
 
 		if(strcmp(argv[i], "test") == 0)

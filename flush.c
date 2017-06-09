@@ -73,6 +73,9 @@ void pihole_log_flushed(bool message)
 	memory.forwarddata = 0;
 	memory.querytypedata = 0;
 
+	// Reset DB index counter so that new queries will be stored in the DB
+	lastdbindex = 0;
+
 	// Reset all counters to zero
 	memset(&counters, 0, sizeof(countersStruct));
 
