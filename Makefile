@@ -9,7 +9,7 @@
 # Please see LICENSE file for your rights under this license.
 
 DEPS = FTL.h routines.h version.h
-OBJ = main.o structs.o log.o daemon.o parser.o signals.o socket.o request.o grep.o setupVars.o args.o flush.o threads.o gc.o config.o database.o sqlite3.o
+OBJ = main.o structs.o log.o daemon.o parser.o signals.o socket.o request.o grep.o setupVars.o args.o flush.o threads.o gc.o config.o database.o
 
 # Get git commit version and date
 GIT_BRANCH := $(shell git branch | sed -n 's/^\* //p')
@@ -28,7 +28,7 @@ GIT_TAG := $(shell git describe --tags --abbrev=0)
 # -fno-omit-frame-pointer: get nicer stacktraces
 CC=gcc
 HARDENING_FLAGS=-fstack-protector -D_FORTIFY_SOURCE=2 -O3 -Wl,-z,relro,-z,now -pie -fPIE
-DEBUG_FLAGS=-g3 -rdynamic -fno-omit-frame-pointer #-fsanitize=address
+DEBUG_FLAGS=-rdynamic -fno-omit-frame-pointer #-fsanitize=address
 CCFLAGS=-I$(IDIR) -Wall -Wextra -Wno-unused-parameter -D_FILE_OFFSET_BITS=64 $(HARDENING_FLAGS) $(DEBUG_FLAGS) $(CFLAGS)
 LIBS=-pthread -ldl
 
@@ -41,10 +41,11 @@ _DEPS = $(patsubst %,$(IDIR)/%,$(DEPS))
 _OBJ = $(patsubst %,$(ODIR)/%,$(OBJ))
 
 $(ODIR)/%.o: %.c $(_DEPS)
-	$(CC) -c -o $@ $< $(CCFLAGS)
+	$(CC) -c -o $@ $< -g3 $(CCFLAGS)
 
 pihole-FTL: $(_OBJ)
-	$(CC) -v $(CCFLAGS) -o $@ $^ $(LIBS)
+	$(CC) -c -o sqlite3.o sqlite3.c $(CCFLAGS)
+	$(CC) -v $(CCFLAGS) -o $@ $^ sqlite3.o $(LIBS)
 
 .PHONY: clean force install
 
