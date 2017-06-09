@@ -40,12 +40,14 @@ _DEPS = $(patsubst %,$(IDIR)/%,$(DEPS))
 
 _OBJ = $(patsubst %,$(ODIR)/%,$(OBJ))
 
+pihole-FTL: $(_OBJ) $(ODIR)/sqlite3.o
+	$(CC) -v $(CCFLAGS) -o $@ $^ $(LIBS)
+
 $(ODIR)/%.o: %.c $(_DEPS)
 	$(CC) -c -o $@ $< -g3 $(CCFLAGS)
 
-pihole-FTL: $(_OBJ)
-	$(CC) -c -o sqlite3.o sqlite3.c $(CCFLAGS)
-	$(CC) -v $(CCFLAGS) -o $@ $^ sqlite3.o $(LIBS)
+$(ODIR)/sqlite3.o: sqlite3.c
+	$(CC) -c -o $@ $< $(CCFLAGS)
 
 .PHONY: clean force install
 
