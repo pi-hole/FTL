@@ -60,6 +60,7 @@ bool dbquery(const char *format, ...)
 	if(query == NULL)
 	{
 		logg("Memory allocation failed in dbquery()");
+		va_end(args);
 		return false;
 	}
 
