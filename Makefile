@@ -18,7 +18,7 @@ GIT_DATE := $(shell git --no-pager show --date=short --format="%ai" --name-only 
 GIT_TAG := $(shell git describe --tags --abbrev=0)
 
 # -fstack-protector: The program will be resistant to having its stack overflowed
-# -D_FORTIFY_SOURCE=2 and -O1 or higher: This causes certain unsafe glibc functions zo be replaced with their safer counterparts
+# -D_FORTIFY_SOURCE=2 and -O1 or higher: This causes certain unsafe glibc functions to be replaced with their safer counterparts
 # -Wl,-z,relro: reduces the possible areas of memory in a program that can be used by an attacker that performs a successful memory corruption exploit
 # -Wl,-z,now: When combined with RELRO above, this further reduces the regions of memory available to memory corruption attacks
 # -pie -fPIE: For ASLR
@@ -40,8 +40,13 @@ _DEPS = $(patsubst %,$(IDIR)/%,$(DEPS))
 
 _OBJ = $(patsubst %,$(ODIR)/%,$(OBJ))
 
-$(ODIR)/%.o: %.c $(_DEPS)
+all: pihole-FTL
+
+$(ODIR)/%.o: %.c $(_DEPS) | $(ODIR)
 	$(CC) -c -o $@ $< $(CCFLAGS)
+
+$(ODIR):
+	mkdir -p $(ODIR)
 
 pihole-FTL: $(_OBJ)
 	$(CC) -v $(CCFLAGS) -o $@ $^ $(LIBS)
