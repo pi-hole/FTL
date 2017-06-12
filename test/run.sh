@@ -6,7 +6,7 @@ dnsmasq_pre() {
 }
 
 # Prepare FTL's files
-ts=$(dnsmasq_pre)
+ts="$(dnsmasq_pre)"
 cat <<EOT >> pihole.log
 ${ts} query[AAAA] raspberrypi from 127.0.0.1
 ${ts} /etc/pihole/local.list raspberrypi is fda2:2001:5647:0:ba27:ebff:fe37:4205
@@ -54,6 +54,9 @@ until [ $n -ge 45 ]; do
   n=$[$n+1]
   sleep 1
 done
+
+# Print content of pihole-FTL.log
+cat pihole-FTL.log
 
 # Run tests
 test/libs/bats/bin/bats "test/test_suite.sh"

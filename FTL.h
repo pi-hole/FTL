@@ -36,6 +36,8 @@
 #include <pwd.h>
 // syslog
 #include <syslog.h>
+// SQLite
+#include "sqlite3.h"
 
 #include "routines.h"
 
@@ -62,12 +64,17 @@
 // Default -60 (one minute before a full hour)
 #define GCdelay (-60)
 
+// How often do we dump into FTL's database?
+// Default: 60 (once per minute)
+#define DBinterval 60
+
 // Static structs
 typedef struct {
 	const char* conf;
 	const char* log;
 	const char* pid;
 	const char* port;
+	const char* db;
 } FTLFileNamesStruct;
 
 typedef struct {
@@ -112,6 +119,7 @@ typedef struct {
 	bool rolling_24h;
 	bool query_display;
 	bool analyze_AAAA;
+	int maxDBfilesize;
 } ConfigStruct;
 
 // Dynamic structs
@@ -126,6 +134,7 @@ typedef struct {
 	int clientID;
 	int forwardID;
 	bool valid;
+	bool db;
 } queriesDataStruct;
 
 typedef struct {
@@ -197,6 +206,7 @@ bool debug;
 bool debugthreads;
 bool debugclients;
 bool debugGC;
+bool debugDB;
 bool threadwritelock;
 bool threadreadlock;
 
@@ -210,4 +220,7 @@ char timestamp[16];
 bool flush;
 bool needGC;
 bool daemonmode;
+bool database;
+long int lastdbindex;
 bool travis;
+bool needDBGC;

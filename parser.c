@@ -477,6 +477,7 @@ void process_pihole_log(int file)
 			queries[queryID].timeidx = timeidx;
 			queries[queryID].forwardID = forwardID;
 			queries[queryID].valid = true;
+			queries[queryID].db = false;
 
 			// Increase DNS queries counter
 			counters.queries++;
