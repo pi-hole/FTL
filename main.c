@@ -69,11 +69,8 @@ int main (int argc, char* argv[]) {
 		killed = 1;
 	}
 
-	// Initialize sockets only after initial log parsing
-	init_socket();
-
-	pthread_t listenthread;
-	if(pthread_create( &listenthread, &attr, listenting_thread, NULL ) != 0)
+	pthread_t socket_listenthread;
+	if(pthread_create( &socket_listenthread, &attr, socket_listenting_thread, NULL ) != 0)
 	{
 		logg("Unable to open socket listening thread. Exiting...");
 		killed = 1;
@@ -105,9 +102,8 @@ int main (int argc, char* argv[]) {
 
 	logg("Shutting down...");
 	pthread_cancel(piholelogthread);
-	pthread_cancel(listenthread);
-	close_socket();
-	removeport();
+	pthread_cancel(socket_listenthread);
+	close_socket(SOCKET);
 	removepid();
 	logg("########## FTL terminated! ##########");
 	return 1;
