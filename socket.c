@@ -230,7 +230,7 @@ void *socket_connection_handler_thread(void *socket_desc)
 			// Requests should not be processed/answered when data is about to change
 			enable_thread_lock(threadname);
 
-			process_request(message, &sock);
+			process_socket_request(message, &sock);
 			free(message);
 
 			// Release thread lock
@@ -344,7 +344,7 @@ void *api_connection_handler_thread(void *socket_desc)
 					if(strstr(message, "GET /favicon.ico") != NULL)
 						ssend(sock, "HTTP/1.0 404 Not Found\nServer: FTL\n\n");
 					else
-						ssend(sock, "HTTP/1.0 200 OK\nServer: FTL\nContent-Type: application/json\n\n");
+						ssend(sock, "HTTP/1.0 200 OK\nServer: FTL\nCache-Control: no-cache\nContent-Type: application/json\n\n");
 				}
 
 				// Now we have to transmit the response

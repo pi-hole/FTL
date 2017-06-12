@@ -32,7 +32,7 @@ void getQueryTypesOverTime(int *sock);
 void getVersion(int *sock);
 void getDBstats(int *sock);
 
-void process_request(char *client_message, int *sock)
+void process_socket_request(char *client_message, int *sock)
 {
 	char EOT[2];
 	EOT[0] = 0x04;
