@@ -83,6 +83,7 @@ void parse_args(int argc, char* argv[])
 		{
 			travis = true;
 			FTLfiles.log = "pihole-FTL.log";
+			FTLfiles.db = "pihole-FTL.db";
 			files.log = "pihole.log";
 		}
 
