@@ -36,8 +36,8 @@ void pihole_log_flushed(bool message);
 void memory_check(int which);
 
 void close_socket(char type);
-void seom(char server_message[], int sock);
-void swrite(char server_message[], int sock);
+void seom(int sock);
+void ssend(int sock, const char *format, ...);
 void *socket_listening_thread(void *args);
 void *api_listening_thread(void *args);
 

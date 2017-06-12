@@ -145,16 +145,9 @@ void removeport(void)
 	fclose(f);
 }
 
-void seom(char server_message[SOCKETBUFFERLEN], int sock)
+void seom(int sock)
 {
-	sprintf(server_message,"---EOM---\n\n");
-	swrite(server_message, sock);
-}
-
-void swrite(char server_message[SOCKETBUFFERLEN], int sock)
-{
-	if(!write(sock, server_message, strlen(server_message)))
-		logg("WARNING: Socket write returned error code %i", errno);
+	ssend(sock, "---EOM---\n\n");
 }
 
 void ssend(int sock, const char *format, ...)
