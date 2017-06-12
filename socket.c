@@ -120,7 +120,7 @@ void bind_to_port(char type, int *socketdescriptor)
 	logg("Listening on port %i for incoming connections", port);
 }
 
-// Called from main() at gracefull shutdown
+// Called from main() at graceful shutdown
 void removeport(void)
 {
 	FILE *f;
