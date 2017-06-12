@@ -11,6 +11,10 @@ matrix:
   - env:
     - BUILD_CC="cc"
     - BIN_NAME="pihole-FTL-linux-x86_64"
+    addons:
+      apt:
+        packages:
+        - sqlite3
   - env:
     - BUILD_CC="arm-linux-gnueabihf-gcc"
     - BIN_NAME="pihole-FTL-arm-linux-gnueabihf"

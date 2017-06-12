@@ -154,3 +154,11 @@ load 'libs/bats-support/load'
   [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
   [[ ${lines[1]} == "---EOM---" ]]
 }
+
+@test "Recent blocked" {
+  run bash -c 'sqlite3 pihole-FTL.db .dump'
+  echo "output: ${lines[@]}"
+  [[ "${lines[@]}" == *"CREATE TABLE QUERIES ( ID INTEGER PRIMARY KEY AUTOINCREMENT, TIMESTAMP INT NOT NULL, TYPE INT NOT NULL, STATUS INT NOT NULL, DOMAIN TEXT NOT NULL, CLIENT TEXT NOT NULL, FORWARD TEXT );"* ]]
+  [[ "${lines[@]}" == *"CREATE TABLE FTL ( ID INT PRIMARY KEY NOT NULL, VALUE BLOB NOT NULL );"* ]]
+  [[ "${lines[@]}" == *"INSERT INTO \"FTL\" VALUES(0,1);"* ]]
+}
