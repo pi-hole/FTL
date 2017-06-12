@@ -97,13 +97,13 @@ bool db_create(void)
 		return false;
 	}
 	// Create Queries table in the database
-	ret = dbquery("CREATE TABLE queries ( id INT PRIMARY KEY AUTOINCREMENT, timestamp INT NOT NULL, type INT NOT NULL, status INT NOT NULL, domain TEXT NOT NULL, client TEXT NOT NULL, forward TEXT );");
+	ret = dbquery("CREATE TABLE queries ( id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL, type INTEGER NOT NULL, status INTEGER NOT NULL, domain TEXT NOT NULL, client TEXT NOT NULL, forward TEXT );");
 	if(!ret){ dbclose(); return false; }
 	// Add an index on the timestamps (not a unique index!)
 	ret = dbquery("CREATE INDEX idx_queries_timestamps ON queries (timestamp)");
 	if(!ret){ dbclose(); return false; }
 	// Create FTL table in the database (holds properties like database version, etc.)
-	ret = dbquery("CREATE TABLE ftl ( id INT PRIMARY KEY NOT NULL, value BLOB NOT NULL );");
+	ret = dbquery("CREATE TABLE ftl ( id INTEGER PRIMARY KEY NOT NULL, value BLOB NOT NULL );");
 	if(!ret){ dbclose(); return false; }
 
 	// DB version 1
