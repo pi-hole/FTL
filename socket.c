@@ -21,7 +21,7 @@
 #define BACKLOG 5
 
 // File descriptors
-int socketfd;
+int socketfd, apifd;
 
 void saveport(int port)
 {
@@ -80,6 +80,9 @@ void bind_to_port(char type, int *socketdescriptor)
 		case SOCKET:
 			port_init = 4711;
 			break;
+		case API:
+			port_init = 4747;
+			break;
 		default:
 			logg("Incompatible socket type %i", (int)type);
 			exit(EXIT_FAILURE);
@@ -116,8 +119,18 @@ void bind_to_port(char type, int *socketdescriptor)
 		logg("Error on listening");
 		exit(EXIT_FAILURE);
 	}
-
-	logg("Listening on port %i for incoming connections", port);
+	switch(type)
+	{
+		case SOCKET:
+			logg("Listening on port %i for incoming socket connections", port);
+			break;
+		case API:
+			logg("Listening on port %i for incoming API connections", port);
+			break;
+		default:
+			/* That cannot happen */
+			break;
+	}
 }
 
 // Called from main() at graceful shutdown
@@ -144,6 +157,18 @@ void swrite(char server_message[SOCKETBUFFERLEN], int sock)
 		logg("WARNING: Socket write returned error code %i", errno);
 }
 
+void ssend(int sock, const char *format, ...)
+{
+	char *buffer;
+	va_list args;
+	va_start(args, format);
+	int ret = vasprintf(&buffer, format, args);
+	va_end(args);
+	if(ret > 0)
+		if(!write(sock, buffer, strlen(buffer)))
+			logg("WARNING: Socket write returned error code %i", errno);
+}
+
 int listener(int sockfd)
 {
 	struct sockaddr_in cli_addr;
@@ -167,6 +192,9 @@ void close_socket(char type)
 			// Using global variable here
 			close(socketfd);
 			break;
+		case API:
+			close(apifd);
+			break;
 		default:
 			logg("Incompatible socket type %i, cannot close",(int)type);
 			exit(EXIT_FAILURE);
@@ -184,7 +212,7 @@ void *socket_connection_handler_thread(void *socket_desc)
 
 	// Set thread name
 	char threadname[16];
-	sprintf(threadname,"client-%i",sockID);
+	sprintf(threadname,"socket-%i",sockID);
 	prctl(PR_SET_NAME,threadname,0,0,0);
 	//Receive from client
 	ssize_t n;
@@ -210,7 +238,7 @@ void *socket_connection_handler_thread(void *socket_desc)
 
 			if(sock == 0)
 			{
-				// Client disconnected by seding EOT or ">quit"
+				// Client disconnected by sending EOT or ">quit"
 				break;
 			}
 		}
@@ -231,7 +259,7 @@ void *socket_connection_handler_thread(void *socket_desc)
 	return 0;
 }
 
-void *socket_listenting_thread(void *args)
+void *socket_listening_thread(void *args)
 {
 	int *newsock;
 	// We will use the attributes object later to start all threads in detached mode
@@ -245,7 +273,7 @@ void *socket_listenting_thread(void *args)
 	// Set thread name
 	prctl(PR_SET_NAME,"socket listener",0,0,0);
 
-	// Initialize sockets only after initial log parsing in listenting_thread
+	// Initialize sockets only after initial log parsing in listening_thread
 	bind_to_port(SOCKET, &socketfd);
 
 	// Listen as long as FTL is not killed
@@ -263,7 +291,118 @@ void *socket_listenting_thread(void *args)
 		if(pthread_create( &socket_connection_thread, &attr, socket_connection_handler_thread, (void*) newsock ) != 0)
 		{
 			// Log the error code description
-			logg("WARNING: Unable to open clients processing thread, error: %s", strerror(errno));
+			logg("WARNING: Unable to open client socket thread, error: %s", strerror(errno));
+		}
+	}
+	return 0;
+}
+
+void *api_connection_handler_thread(void *socket_desc)
+{
+	//Get the socket descriptor
+	int sock = *(int*)socket_desc;
+	// Store copy only for displaying the debug messages
+	int sockID = sock;
+	char client_message[SOCKETBUFFERLEN] = "";
+
+	// Set thread name
+	char threadname[16];
+	sprintf(threadname,"api-%i",sockID);
+	prctl(PR_SET_NAME,threadname,0,0,0);
+	//Receive from client
+	ssize_t n;
+	while((n = recv(sock,client_message,SOCKETBUFFERLEN-1, 0)))
+	{
+		if (n > 0)
+		{
+			char *message = calloc(strlen(client_message)+1,sizeof(char));
+			strcpy(message, client_message);
+
+			// Clear client message receive buffer
+			memset(client_message, 0, sizeof client_message);
+
+			if(strncmp(message, "GET ", 4) == 0)
+			{
+				logg("GET request received");
+				// HTTP requests can be simple or full.
+				// A simple request contains one line only, and looks like this:
+				//   GET /
+				// A full request can contain more than one line and may look like this:
+				//   GET / HTTP/1.1
+				//   User-Agent: Wget/1.16 (linux-gnueabihf)
+				//   Accept: */*
+				//   Host: 127.0.0.1:4747
+				//   Connection: Keep-Alive
+				if(strstr(message, "HTTP/"))
+				{
+					// Output HTTP response headers only if we have a full request
+					ssend(sock, "HTTP/1.0 200 OK\nServer: FTL\nContent-Type: application/json\n\n");
+				}
+
+				// Now we have to transmit the response
+
+				// ...
+
+				// Close connection to show that we reached the end of the transmission
+				close(sock);
+				sock = 0;
+			}
+			else
+			{
+				logg("API received something different");
+			}
+
+			free(message);
+
+			if(sock == 0)
+			{
+				// Client disconnected
+				break;
+			}
+		}
+	}
+
+	//Free the socket pointer
+	if(sock != 0)
+		close(sock);
+	free(socket_desc);
+
+	return 0;
+}
+
+void *api_listening_thread(void *args)
+{
+	int *newsock;
+	// We will use the attributes object later to start all threads in detached mode
+	pthread_attr_t attr;
+	// Initialize thread attributes object with default attribute values
+	pthread_attr_init(&attr);
+	// When a detached thread terminates, its resources are automatically released back to
+	// the system without the need for another thread to join with the terminated thread
+	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+
+	// Set thread name
+	prctl(PR_SET_NAME,"API listener",0,0,0);
+
+	// Initialize sockets only after initial log parsing in listening_thread
+	bind_to_port(API, &apifd);
+
+	// Listen as long as FTL is not killed
+	while(!killed)
+	{
+		// Look for new clients that want to connect
+		int csck = listener(apifd);
+
+		// Allocate memory used to transport client socket ID to client listening thread
+		newsock = calloc(1,sizeof(int));
+		*newsock = csck;
+
+		pthread_t api_connection_thread;
+		// Create a new thread
+		if(pthread_create( &api_connection_thread, &attr, api_connection_handler_thread, (void*) newsock ) != 0)
+		{
+			// Log the error code description
+			logg("WARNING: Unable to open client API thread, error: %s", strerror(errno));
 		}
 	}
 	return 0;

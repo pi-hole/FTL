@@ -62,6 +62,7 @@ int main (int argc, char* argv[]) {
 	// the system without the need for another thread to join with the terminated thread
 	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
+	// Start log analyzing thread
 	pthread_t piholelogthread;
 	if(pthread_create( &piholelogthread, &attr, pihole_log_thread, NULL ) != 0)
 	{
@@ -69,10 +70,19 @@ int main (int argc, char* argv[]) {
 		killed = 1;
 	}
 
+	// Start SOCKET thread
 	pthread_t socket_listenthread;
-	if(pthread_create( &socket_listenthread, &attr, socket_listenting_thread, NULL ) != 0)
+	if(pthread_create( &socket_listenthread, &attr, socket_listening_thread, NULL ) != 0)
 	{
 		logg("Unable to open socket listening thread. Exiting...");
+		killed = 1;
+	}
+
+	// Start API thread
+	pthread_t api_listenthread;
+	if(pthread_create( &api_listenthread, &attr, api_listening_thread, NULL ) != 0)
+	{
+		logg("Unable to open API listening thread. Exiting...");
 		killed = 1;
 	}
 

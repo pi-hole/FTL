@@ -8,6 +8,8 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
+#define __USE_XOPEN
+#define _GNU_SOURCE
 #include <stdio.h>
 // variable argument lists
 #include <stdarg.h>
@@ -18,8 +20,6 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <string.h>
-#define __USE_XOPEN
-#define _GNU_SOURCE
 #include <time.h>
 #include <sys/time.h>
 #include <sys/socket.h>
@@ -173,7 +173,7 @@ typedef struct {
 } memoryStruct;
 
 enum { QUERIES, FORWARDED, CLIENTS, DOMAINS, OVERTIME, WILDCARD };
-enum { SOCKET };
+enum { SOCKET, API };
 
 logFileNamesStruct files;
 FTLFileNamesStruct FTLfiles;
