@@ -197,16 +197,21 @@ void removeport(void)
 	fclose(f);
 }
 
-void seom(char server_message[SOCKETBUFFERLEN], int sock)
+void seom(int sock)
 {
-	sprintf(server_message,"---EOM---\n\n");
-	swrite(server_message, sock);
+	ssend(sock, "---EOM---\n\n");
 }
 
-void swrite(char server_message[SOCKETBUFFERLEN], int sock)
+void ssend(int sock, const char *format, ...)
 {
-	if(!write(sock, server_message, strlen(server_message)))
-		logg("WARNING: Socket write returned error code %i", errno);
+	char *buffer;
+	va_list args;
+	va_start(args, format);
+	int ret = vasprintf(&buffer, format, args);
+	va_end(args);
+	if(ret > 0)
+		if(!write(sock, buffer, strlen(buffer)))
+			logg("WARNING: Socket write returned error %s (%i)", strerror(errno), errno);
 }
 
 int listener(int sockfd, char type)
