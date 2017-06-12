@@ -16,21 +16,21 @@
 #define max(a,b) ({ __typeof__ (a) _a = (a); __typeof__ (b) _b = (b); _a > _b ? _a : _b; })
 
 // Local prototypes
-void getStats(int *sock);
-void getOverTime(int *sock);
-void getTopDomains (char *client_message, int *sock);
-void getTopClients(char *client_message, int *sock);
-void getForwardDestinations(int *sock);
-void getForwardNames(int *sock);
-void getQueryTypes(int *sock);
-void getAllQueries(char *client_message, int *sock);
-void getRecentBlocked(char *client_message, int *sock);
-void getMemoryUsage(int *sock);
-void getForwardDestinationsOverTime(int *sock);
-void getClientID(int *sock);
-void getQueryTypesOverTime(int *sock);
-void getVersion(int *sock);
-void getDBstats(int *sock);
+void getStats(int *sock, char type);
+void getOverTime(int *sock, char type);
+void getTopDomains (char *client_message, int *sock, char type);
+void getTopClients(char *client_message, int *sock, char type);
+void getForwardDestinations(int *sock, char type);
+void getForwardNames(int *sock, char type);
+void getQueryTypes(int *sock, char type);
+void getAllQueries(char *client_message, int *sock, char type);
+void getRecentBlocked(char *client_message, int *sock, char type);
+void getMemoryUsage(int *sock, char type);
+void getForwardDestinationsOverTime(int *sock, char type);
+void getClientID(int *sock, char type);
+void getQueryTypesOverTime(int *sock, char type);
+void getVersion(int *sock, char type);
+void getDBstats(int *sock, char type);
 
 void process_socket_request(char *client_message, int *sock)
 {
@@ -38,80 +38,82 @@ void process_socket_request(char *client_message, int *sock)
 	EOT[0] = 0x04;
 	EOT[1] = 0x00;
 	bool processed = false;
+	char type = SOCKET;
+
 	if(command(client_message, ">stats"))
 	{
 		processed = true;
-		getStats(sock);
+		getStats(sock, type);
 	}
 	else if(command(client_message, ">overTime"))
 	{
 		processed = true;
-		getOverTime(sock);
+		getOverTime(sock, type);
 	}
 	else if(command(client_message, ">top-domains") || command(client_message, ">top-ads"))
 	{
 		processed = true;
-		getTopDomains(client_message, sock);
+		getTopDomains(client_message, sock, type);
 	}
 	else if(command(client_message, ">top-clients"))
 	{
 		processed = true;
-		getTopClients(client_message, sock);
+		getTopClients(client_message, sock, type);
 	}
 	else if(command(client_message, ">forward-dest"))
 	{
 		processed = true;
-		getForwardDestinations(sock);
+		getForwardDestinations(sock, type);
 	}
 	else if(command(client_message, ">forward-names"))
 	{
 		processed = true;
-		getForwardNames(sock);
+		getForwardNames(sock, type);
 	}
 	else if(command(client_message, ">querytypes"))
 	{
 		processed = true;
-		getQueryTypes(sock);
+		getQueryTypes(sock, type);
 	}
 	else if(command(client_message, ">getallqueries"))
 	{
 		processed = true;
-		getAllQueries(client_message, sock);
+		getAllQueries(client_message, sock, type);
 	}
 	else if(command(client_message, ">recentBlocked"))
 	{
 		processed = true;
-		getRecentBlocked(client_message, sock);
+		getRecentBlocked(client_message, sock, type);
 	}
 	else if(command(client_message, ">memory"))
 	{
 		processed = true;
-		getMemoryUsage(sock);
+		getMemoryUsage(sock, type);
 	}
 	else if(command(client_message, ">clientID"))
 	{
 		processed = true;
-		getClientID(sock);
+		getClientID(sock, type);
 	}
 	else if(command(client_message, ">ForwardedoverTime"))
 	{
 		processed = true;
-		getForwardDestinationsOverTime(sock);
+		getForwardDestinationsOverTime(sock, type);
 	}
 	else if(command(client_message, ">QueryTypesoverTime"))
 	{
 		processed = true;
-		getQueryTypesOverTime(sock);
+		getQueryTypesOverTime(sock, type);
 	}
 	else if(command(client_message, ">version"))
 	{
 		processed = true;
-		getVersion(sock);
+		getVersion(sock, type);
 	}
 	else if(command(client_message, ">dbstats"))
 	{
 		processed = true;
-		getDBstats(sock);
+		getDBstats(sock, type);
 	}
 
 	// End of queryable commands
@@ -214,7 +216,7 @@ int cmpdesc(const void *a, const void *b)
 		return 0;
 }
 
-void getStats(int *sock)
+void getStats(int *sock, char type)
 {
 	int blocked = counters.blocked + counters.wildcardblocked;
 	int total = counters.queries - counters.invalidqueries;
@@ -232,7 +234,7 @@ void getStats(int *sock)
 		logg("Sent stats data to client, ID: %i", *sock);
 }
 
-void getOverTime(int *sock)
+void getOverTime(int *sock, char type)
 {
 	int i;
 	bool sendit = false;
@@ -252,7 +254,7 @@ void getOverTime(int *sock)
 		logg("Sent overTime data to client, ID: %i", *sock);
 }
 
-void getTopDomains(char *client_message, int *sock)
+void getTopDomains(char *client_message, int *sock, char type)
 {
 	int i, temparray[counters.domains][2], count=10, num;
 	bool blocked = command(client_message, ">top-ads"), audit = false, desc = false;
@@ -379,7 +381,7 @@ void getTopDomains(char *client_message, int *sock)
 	}
 }
 
-void getTopClients(char *client_message, int *sock)
+void getTopClients(char *client_message, int *sock, char type)
 {
 	int i, temparray[counters.clients][2], count=10, num;
 
@@ -438,7 +440,7 @@ void getTopClients(char *client_message, int *sock)
 }
 
 
-void getForwardDestinations(int *sock)
+void getForwardDestinations(int *sock, char type)
 {
 	bool allocated = false;
 	int i, temparray[counters.forwarded+1][2];
@@ -502,7 +504,7 @@ void getForwardDestinations(int *sock)
 }
 
 
-void getForwardNames(int *sock)
+void getForwardNames(int *sock, char type)
 {
 	int i;
 
@@ -521,7 +523,7 @@ void getForwardNames(int *sock)
 }
 
 
-void getQueryTypes(int *sock)
+void getQueryTypes(int *sock, char type)
 {
 
 	ssend(*sock,"A (IPv4): %i\nAAAA (IPv6): %i\n",counters.IPv4,counters.IPv6);
@@ -530,7 +532,7 @@ void getQueryTypes(int *sock)
 }
 
 
-void getAllQueries(char *client_message, int *sock)
+void getAllQueries(char *client_message, int *sock, char type)
 {
 
 	// Exit before processing any data if requested via config setting
@@ -704,7 +706,7 @@ void getAllQueries(char *client_message, int *sock)
 		logg("Sent all queries data to client, ID: %i", *sock);
 }
 
-void getRecentBlocked(char *client_message, int *sock)
+void getRecentBlocked(char *client_message, int *sock, char type)
 {
 	int i, num=1;
 
@@ -744,7 +746,7 @@ void getRecentBlocked(char *client_message, int *sock)
 	}
 }
 
-void getMemoryUsage(int *sock)
+void getMemoryUsage(int *sock, char type)
 {
 	unsigned long int structbytes = sizeof(countersStruct) + sizeof(ConfigStruct) + counters.queries_MAX*sizeof(queriesDataStruct) + counters.forwarded_MAX*sizeof(forwardedDataStruct) + counters.clients_MAX*sizeof(clientsDataStruct) + counters.domains_MAX*sizeof(domainsDataStruct) + counters.overTime_MAX*sizeof(overTimeDataStruct) + (counters.wildcarddomains)*sizeof(*wildcarddomains);
 	char *structprefix = calloc(2, sizeof(char));
@@ -769,7 +771,7 @@ void getMemoryUsage(int *sock)
 		logg("Sent memory data to client, ID: %i", *sock);
 }
 
-void getForwardDestinationsOverTime(int *sock)
+void getForwardDestinationsOverTime(int *sock, char type)
 {
 	int i, sendit = -1;
 	for(i = 0; i < counters.overTime; i++)
@@ -808,7 +810,7 @@ void getForwardDestinationsOverTime(int *sock)
 		logg("Sent overTime forwarded data to client, ID: %i", *sock);
 }
 
-void getClientID(int *sock)
+void getClientID(int *sock, char type)
 {
 
 	ssend(*sock,"%i\n", *sock);
@@ -817,7 +819,7 @@ void getClientID(int *sock)
 		logg("Sent client ID to client, ID: %i", *sock);
 }
 
-void getQueryTypesOverTime(int *sock)
+void getQueryTypesOverTime(int *sock, char type)
 {
 	int i, sendit = -1;
 	for(i = 0; i < counters.overTime; i++)
@@ -841,7 +843,7 @@ void getQueryTypesOverTime(int *sock)
 		logg("Sent overTime query types data to client, ID: %i", *sock);
 }
 
-void getVersion(int *sock)
+void getVersion(int *sock, char type)
 {
 	ssend(*sock,"version %s\ntag %s\nbranch %s\ndate %s\n", GIT_VERSION, GIT_TAG, GIT_BRANCH, GIT_DATE);
 
@@ -849,7 +851,7 @@ void getVersion(int *sock)
 		logg("Sent version info to client, ID: %i", *sock);
 }
 
-void getDBstats(int *sock)
+void getDBstats(int *sock, char type)
 {
 	// Get file details
 	struct stat st;
