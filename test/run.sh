@@ -55,6 +55,9 @@ until [ $n -ge 45 ]; do
   sleep 1
 done
 
+# Print content of pihole.log
+cat pihole.log
+
 # Run tests
 test/libs/bats/bin/bats "test/test_suite.sh"
 exit $?
