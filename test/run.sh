@@ -52,6 +52,9 @@ n=0
 until [ $n -ge 45 ]; do
   nc -vv -z -w 30 127.0.0.1 4711 && break
   n=$[$n+1]
+  echo "..."
+  tail -n2 pihole-FTL.log
+  echo "..."
   sleep 1
 done
 
