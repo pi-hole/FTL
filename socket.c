@@ -326,7 +326,7 @@ void *api_connection_handler_thread(void *socket_desc)
 			if(strncmp(message, "GET ", 4) == 0)
 			{
 				if(debug)
-					logg("API request received");
+					logg("API GET request received");
 				// HTTP requests can be simple or full.
 				// A simple request contains one line only, and looks like this:
 				//   GET /index.html
@@ -350,6 +350,18 @@ void *api_connection_handler_thread(void *socket_desc)
 				// Now we have to transmit the response
 
 				// ...
+
+				// Close connection to show that we reached the end of the transmission
+				close(sock);
+				sock = 0;
+			}
+			else if(strncmp(message, "HEAD ", 5) == 0)
+			{
+				// HEAD request: We do not send any content at all
+				if(debug)
+					logg("API HEAD request received");
+
+				ssend(sock, "HTTP/1.0 200 OK\nServer: FTL\n\n");
 
 				// Close connection to show that we reached the end of the transmission
 				close(sock);
