@@ -321,22 +321,30 @@ void *api_connection_handler_thread(void *socket_desc)
 			// Clear client message receive buffer
 			memset(client_message, 0, sizeof client_message);
 
+			logg("%s",message);
+
 			if(strncmp(message, "GET ", 4) == 0)
 			{
-				logg("GET request received");
+				if(debug)
+					logg("API request received");
 				// HTTP requests can be simple or full.
 				// A simple request contains one line only, and looks like this:
-				//   GET /
+				//   GET /index.html
 				// A full request can contain more than one line and may look like this:
-				//   GET / HTTP/1.1
+				//   GET /index.html HTTP/1.1
 				//   User-Agent: Wget/1.16 (linux-gnueabihf)
 				//   Accept: */*
 				//   Host: 127.0.0.1:4747
 				//   Connection: Keep-Alive
-				if(strstr(message, "HTTP/"))
+				if(strstr(message, "HTTP/") != NULL)
 				{
 					// Output HTTP response headers only if we have a full request
-					ssend(sock, "HTTP/1.0 200 OK\nServer: FTL\nContent-Type: application/json\n\n");
+
+					// Are we asked for a favicon?
+					if(strstr(message, "GET /favicon.ico") != NULL)
+						ssend(sock, "HTTP/1.0 404 Not Found\nServer: FTL\n\n");
+					else
+						ssend(sock, "HTTP/1.0 200 OK\nServer: FTL\nContent-Type: application/json\n\n");
 				}
 
 				// Now we have to transmit the response
@@ -349,16 +357,14 @@ void *api_connection_handler_thread(void *socket_desc)
 			}
 			else
 			{
-				logg("API received something different");
+				if(debug)
+					logg("API received something strange");
 			}
 
 			free(message);
 
-			if(sock == 0)
-			{
-				// Client disconnected
-				break;
-			}
+			// Disconnect client
+			break;
 		}
 	}
 
