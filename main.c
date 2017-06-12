@@ -73,6 +73,7 @@ int main (int argc, char* argv[]) {
 		logg("Unable to open Pi-hole log processing thread. Exiting...");
 		killed = 1;
 	}
+	sleepms(100);
 
 	// Start SOCKET thread
 	pthread_t socket_listenthread;
@@ -81,6 +82,7 @@ int main (int argc, char* argv[]) {
 		logg("Unable to open socket listening thread. Exiting...");
 		killed = 1;
 	}
+	sleepms(100);
 
 	// Start API thread
 	pthread_t api_listenthread;

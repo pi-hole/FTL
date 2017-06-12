@@ -170,6 +170,7 @@ load 'libs/bats-support/load'
   [[ ${lines[0]} == "HTTP/1.0 200 OK" ]]
   [[ ${lines[1]} == "Server: FTL" ]]
   [[ ${lines[2]} == "" ]]
+  [[ "${status}" -eq 0 ]]
 }
 
 @test "HTTP server: FTL responding correctly to GET request" {
