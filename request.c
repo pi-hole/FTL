@@ -30,6 +30,7 @@ void getForwardDestinationsOverTime(int *sock);
 void getClientID(int *sock);
 void getQueryTypesOverTime(int *sock);
 void getVersion(int *sock);
+void getDBstats(int *sock);
 
 void process_request(char *client_message, int *sock)
 {
@@ -107,6 +108,11 @@ void process_request(char *client_message, int *sock)
 	{
 		processed = true;
 		getVersion(sock);
+	}
+	else if(command(client_message, ">dbstats"))
+	{
+		processed = true;
+		getDBstats(sock);
 	}
 
 	// End of queryable commands
@@ -877,4 +883,27 @@ void getVersion(int *sock)
 
 	if(debugclients)
 		logg("Sent version info to client, ID: %i", *sock);
+}
+
+void getDBstats(int *sock)
+{
+	// Get file details
+	struct stat st;
+	long int filesize = 0;
+	if(stat(FTLfiles.db, &st) != 0)
+		// stat() failed (maybe the file does not exist?)
+		filesize = -1;
+	else
+		filesize = st.st_size;
+
+	char *prefix = calloc(2, sizeof(char));
+	double formated = 0.0;
+	format_memory_size(prefix, filesize, &formated);
+
+	char server_message[SOCKETBUFFERLEN];
+	sprintf(server_message,"queries in database: %i\ndatabase filesize: %.2f %sB\nSQLite version: %s\n", get_number_of_queries_in_DB(), formated, prefix, sqlite3_libversion());
+	swrite(server_message, *sock);
+
+	if(debugclients)
+		logg("Sent DB info to client, ID: %i", *sock);
 }

@@ -9,7 +9,7 @@
 # Please see LICENSE file for your rights under this license.
 
 DEPS = FTL.h routines.h version.h
-OBJ = main.o structs.o log.o daemon.o parser.o signals.o socket.o request.o grep.o setupVars.o args.o flush.o threads.o gc.o config.o
+OBJ = main.o structs.o log.o daemon.o parser.o signals.o socket.o request.o grep.o setupVars.o args.o flush.o threads.o gc.o config.o database.o
 
 # Get git commit version and date
 GIT_BRANCH := $(shell git branch | sed -n 's/^\* //p')
@@ -28,8 +28,14 @@ GIT_TAG := $(shell git describe --tags --abbrev=0)
 # -fno-omit-frame-pointer: get nicer stacktraces
 CC=gcc
 HARDENING_FLAGS=-fstack-protector -D_FORTIFY_SOURCE=2 -O3 -Wl,-z,relro,-z,now -pie -fPIE
-DEBUG_FLAGS=-g3 -rdynamic -fno-omit-frame-pointer #-fsanitize=address
-CCFLAGS=-I$(IDIR) -Wall -Wextra -Wno-unused-parameter -D_FILE_OFFSET_BITS=64 $(HARDENING_FLAGS) $(DEBUG_FLAGS) $(CFLAGS)
+DEBUG_FLAGS=-rdynamic -fno-omit-frame-pointer #-fsanitize=address
+# -DSQLITE_OMIT_LOAD_EXTENSION: This option omits the entire extension loading mechanism from SQLite, including sqlite3_enable_load_extension() and sqlite3_load_extension() interfaces. (needs -ldl linking option, otherwise)
+# -DSQLITE_THREADSAFE=0: causes all of the mutex and thread-safety logic in SQLite to be omitted. This is the single compile-time option that makes the most difference in optimizing the performance of SQLite.
+# -DSQLITE_DEFAULT_MEMSTATUS=0: This setting causes the sqlite3_status() interfaces that track memory usage to be disabled. This helps the sqlite3_malloc() routines run much faster, and since SQLite uses sqlite3_malloc() internally, this helps to make the entire library faster.
+# -DSQLITE_OMIT_DEPRECATED: Omitting deprecated interfaces and features will not help SQLite to run any faster. It will reduce the library footprint, however. And it is the right thing to do.
+# -DSQLITE_OMIT_PROGRESS_CALLBACK: The progress handler callback counter must be checked in the inner loop of the bytecode engine. By omitting this interface, a single conditional is removed from the inner loop of the bytecode engine, helping SQL statements to run slightly faster.
+SQLITEFLAGS=-DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_THREADSAFE=0 -DSQLITE_DEFAULT_MEMSTATUS=0 -DSQLITE_OMIT_DEPRECATED -DSQLITE_OMIT_PROGRESS_CALLBACK -DSQLITE_OMIT_MEMORYDB
+CCFLAGS=-I$(IDIR) -Wall -Wextra -Wno-unused-parameter -D_FILE_OFFSET_BITS=64 $(HARDENING_FLAGS) $(DEBUG_FLAGS) $(CFLAGS) $(SQLITEFLAGS)
 LIBS=-pthread
 
 ODIR =obj
@@ -43,12 +49,15 @@ _OBJ = $(patsubst %,$(ODIR)/%,$(OBJ))
 all: pihole-FTL
 
 $(ODIR)/%.o: %.c $(_DEPS) | $(ODIR)
-	$(CC) -c -o $@ $< $(CCFLAGS)
+	$(CC) -c -o $@ $< -g3 $(CCFLAGS)
 
 $(ODIR):
 	mkdir -p $(ODIR)
 
-pihole-FTL: $(_OBJ)
+$(ODIR)/sqlite3.o: sqlite3.c
+	$(CC) -c -o $@ $< $(CCFLAGS)
+
+pihole-FTL: $(_OBJ) $(ODIR)/sqlite3.o
 	$(CC) -v $(CCFLAGS) -o $@ $^ $(LIBS)
 
 .PHONY: clean force install
