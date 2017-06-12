@@ -155,7 +155,7 @@ load 'libs/bats-support/load'
   [[ ${lines[1]} == "---EOM---" ]]
 }
 
-@test "Recent blocked" {
+@test "DB test: Tables created and populated?" {
   run bash -c 'sqlite3 pihole-FTL.db .dump'
   echo "output: ${lines[@]}"
   [[ "${lines[@]}" == *"CREATE TABLE QUERIES ( ID INTEGER PRIMARY KEY AUTOINCREMENT, TIMESTAMP INT NOT NULL, TYPE INT NOT NULL, STATUS INT NOT NULL, DOMAIN TEXT NOT NULL, CLIENT TEXT NOT NULL, FORWARD TEXT );"* ]]

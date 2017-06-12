@@ -1,5 +1,13 @@
-# Generated binary file
+# Generated binary files
+/obj/
 pihole-FTL
 
 # Versioning files
 version*
+
+# CMake files
+/CMakeLists.txt
+/cmake-build-debug/
+
+# IDE files
+.idea/
