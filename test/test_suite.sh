@@ -164,7 +164,7 @@ load 'libs/bats-support/load'
 }
 
 @test "HTTP server: FTL responding correctly to HEAD request" {
-  run bash -c "curl --head 127.0.0.1:4747"
+  run bash -c "curl --head -s 127.0.0.1:4747"
   echo "output: ${lines[@]}"
   echo "curl exit code: ${status}"
   [[ ${lines[0]} == "HTTP/1.0 200 OK" ]]
@@ -173,7 +173,7 @@ load 'libs/bats-support/load'
 }
 
 @test "HTTP server: FTL responding correctly to GET request" {
-  run bash -c "curl 127.0.0.1:4747"
+  run bash -c "curl -s 127.0.0.1:4747"
   echo "output: ${lines[@]}"
   echo "curl exit code: ${status}"
   [[ "${status}" -eq 0 ]]
