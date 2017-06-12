@@ -162,3 +162,19 @@ load 'libs/bats-support/load'
   [[ "${lines[@]}" == *"CREATE TABLE ftl ( id INTEGER PRIMARY KEY NOT NULL, value BLOB NOT NULL );"* ]]
   [[ "${lines[@]}" == *"INSERT INTO \"ftl\" VALUES(0,1);"* ]]
 }
+
+@test "HTTP server: FTL responding correctly to HEAD request" {
+  run bash -c "curl --head 127.0.0.1:4747"
+  echo "output: ${lines[@]}"
+  echo "curl exit code: ${status}"
+  [[ ${lines[0]} == "HTTP/1.0 200 OK" ]]
+  [[ ${lines[1]} == "Server: FTL" ]]
+  [[ ${lines[2]} == "" ]]
+}
+
+@test "HTTP server: FTL responding correctly to GET request" {
+  run bash -c "curl 127.0.0.1:4747"
+  echo "output: ${lines[@]}"
+  echo "curl exit code: ${status}"
+  [[ "${status}" -eq 0 ]]
+}
