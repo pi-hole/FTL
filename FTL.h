@@ -173,6 +173,7 @@ typedef struct {
 } memoryStruct;
 
 enum { QUERIES, FORWARDED, CLIENTS, DOMAINS, OVERTIME, WILDCARD };
+enum { SOCKET };
 
 logFileNamesStruct files;
 FTLFileNamesStruct FTLfiles;
