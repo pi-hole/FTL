@@ -223,7 +223,7 @@ void *socket_connection_handler_thread(void *socket_desc)
 			// Requests should not be processed/answered when data is about to change
 			enable_thread_lock(threadname);
 
-			process_socket_request(message, &sock, SOCKET);
+			process_socket_request(message, &sock);
 			free(message);
 
 			// Release thread lock
@@ -330,22 +330,18 @@ void *api_connection_handler_thread(void *socket_desc)
 				//   Accept: */*
 				//   Host: 127.0.0.1:4747
 				//   Connection: Keep-Alive
+				bool header = false;
 				if(strstr(message, "HTTP/") != NULL)
 				{
 					// Output HTTP response headers only if we have a full request
-
-					// Are we asked for a favicon?
-					if(strstr(message, "GET /favicon.ico") != NULL)
-						ssend(sock, "HTTP/1.0 404 Not Found\nServer: FTL\n\n");
-					else if(strstr(message, "GET /stats/summary") != NULL)
-						process_socket_request(">stats", &sock, API);
-					else
-						ssend(
-								sock,
-								"HTTP/1.0 404 Not Found\nServer: FTL\nCache-Control: no-cache\n"
-										"Content-Type: application/json\nContent-Length: 21\n\n{status: \"not_found\"}"
-						);
+					header = true;
 				}
+
+				// Are we asked for a favicon?
+				if(strstr(message, "GET /favicon.ico") != NULL)
+					ssend(sock, "HTTP/1.0 404 Not Found\nServer: FTL\n\n");
+				else
+					process_api_request(message, &sock, header);
 
 				// Close connection to show that we reached the end of the transmission
 				close(sock);

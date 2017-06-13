@@ -33,12 +33,13 @@ void getQueryTypesOverTime(int *sock, char type);
 void getVersion(int *sock, char type);
 void getDBstats(int *sock, char type);
 
-void process_socket_request(char *client_message, int *sock, char type)
+void process_socket_request(char *client_message, int *sock)
 {
 	char EOT[2];
 	EOT[0] = 0x04;
 	EOT[1] = 0x00;
 	bool processed = false;
+	char type = SOCKET;
 
 	if(command(client_message, ">stats"))
 	{
@@ -147,6 +148,28 @@ void process_socket_request(char *client_message, int *sock, char type)
 	}
 }
 
+void process_api_request(char *client_message, int *sock, bool header)
+{
+	bool processed = false;
+	char type;
+	if(header)
+		type = APIH;
+	else
+		type = API;
+
+	if(command(client_message, "GET /stats/summary"))
+	{
+		processed = true;
+		getStats(sock, type);
+	}
+	if(!processed && header)
+	{
+		ssend(*sock,
+		      "HTTP/1.0 404 Not Found\nServer: FTL\nCache-Control: no-cache\n"
+		      "Content-Type: application/json\nContent-Length: 21\n\n{status: \"not_found\"}");
+	}
+}
+
 bool command(char *client_message, const char* cmd)
 {
 	if(strstr(client_message,cmd) != NULL)
@@ -155,14 +178,21 @@ bool command(char *client_message, const char* cmd)
 		return false;
 }
 
-void sendAPIResponse(int sock, char *content) {
-	ssend(
-			sock,
-			"HTTP/1.0 200 OK\nServer: FTL\nCache-Control: no-cache\n"
-			"Content-Type: application/json\nContent-Length: %i\n\n%s",
-			strlen(content),
-			content
-	);
+void sendAPIResponse(int sock, char *content, char type) {
+	if(type == APIH)
+	{
+		// Send header and payload
+		ssend(sock,
+		      "HTTP/1.0 200 OK\nServer: FTL\nCache-Control: no-cache\n"
+		      "Content-Type: application/json\nContent-Length: %i\n\n%s",
+		      strlen(content),
+		      content);
+	}
+	else
+	{
+		// Simple request: Don't send header, only payload
+		ssend(sock,"%s",content);
+	}
 }
 
 // void formatNumber(bool raw, int n, char* buffer)
@@ -243,7 +273,7 @@ void getStats(int *sock, char type)
 		ssend(*sock, "unique_domains %i\nqueries_forwarded %i\nqueries_cached %i\n", \
             counters.domains, counters.forwardedqueries, counters.cached);
 	}
-	else if(type == API) {
+	else if(type == API || type == APIH) {
 		// cJSON *response = cJSON_CreateObject();
 
 		// cJSON_AddNumberToObject(response, "domains_being_blocked", counters.gravity);
@@ -256,9 +286,9 @@ void getStats(int *sock, char type)
 
 		// sendAPIResponse(*sock, cJSON_Print(response));
 		char *sendbuffer;
-		int ret = asprintf(&sendbuffer,"{\"domains_being_blocked\":%i,\"dns_queries_today\":%i,\"ads_blocked_today\":%i,\"ads_percentage_today\":%.4f,\"unique_domains\":%i,\"queries_forwarded\":%i,\"queries_cached\":%i}",counters.gravity,total, blocked, percentage,counters.domains,counters.forwardedqueries,counters.cached);
+		int ret = asprintf(&sendbuffer, "{\"domains_being_blocked\":%i,\"dns_queries_today\":%i,\"ads_blocked_today\":%i,\"ads_percentage_today\":%.4f,\"unique_domains\":%i,\"queries_forwarded\":%i,\"queries_cached\":%i}",counters.gravity,total, blocked, percentage,counters.domains,counters.forwardedqueries,counters.cached);
 		if(ret > 0)
-			sendAPIResponse(*sock,sendbuffer);
+			sendAPIResponse(*sock, sendbuffer, type);
 		else
 			logg("Error allocating memory for API response");
 		free(sendbuffer);
