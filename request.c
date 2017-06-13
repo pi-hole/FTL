@@ -150,7 +150,6 @@ void process_socket_request(char *client_message, int *sock)
 
 void process_api_request(char *client_message, int *sock, bool header)
 {
-	bool processed = false;
 	char type;
 	if(header)
 		type = APIH;
@@ -159,10 +158,13 @@ void process_api_request(char *client_message, int *sock, bool header)
 
 	if(command(client_message, "GET /stats/summary"))
 	{
-		processed = true;
 		getStats(sock, type);
 	}
-	if(!processed && header)
+	else if(command(client_message, "GET /stats/overTime"))
+	{
+		getOverTime(sock, type);
+	}
+	else if(header)
 	{
 		ssend(*sock,
 		      "HTTP/1.0 404 Not Found\nServer: FTL\nCache-Control: no-cache\n"
@@ -179,7 +181,7 @@ bool command(char *client_message, const char* cmd)
 }
 
 void sendAPIResponse(int sock, char *content, char type) {
-	if(type == APIH)
+	if(type == APIH && strlen(content) > 0)
 	{
 		// Send header and payload
 		ssend(sock,
@@ -187,6 +189,13 @@ void sendAPIResponse(int sock, char *content, char type) {
 		      "Content-Type: application/json\nContent-Length: %i\n\n%s",
 		      strlen(content),
 		      content);
+	}
+	else if(type == APIH)
+	{
+		// Send only header (length of content is not yet known and will be sent out in smaller packets)
+		ssend(sock,
+		      "HTTP/1.0 200 OK\nServer: FTL\nCache-Control: no-cache\n"
+		      "Content-Type: application/json\n\n");
 	}
 	else
 	{
@@ -273,7 +282,8 @@ void getStats(int *sock, char type)
 		ssend(*sock, "unique_domains %i\nqueries_forwarded %i\nqueries_cached %i\n", \
             counters.domains, counters.forwardedqueries, counters.cached);
 	}
-	else if(type == API || type == APIH) {
+	else
+	{
 		// cJSON *response = cJSON_CreateObject();
 
 		// cJSON_AddNumberToObject(response, "domains_being_blocked", counters.gravity);
@@ -290,7 +300,7 @@ void getStats(int *sock, char type)
 		if(ret > 0)
 			sendAPIResponse(*sock, sendbuffer, type);
 		else
-			logg("Error allocating memory for API response");
+			logg("Error allocating memory for API response (getStats)");
 		free(sendbuffer);
 	}
 
@@ -300,20 +310,46 @@ void getStats(int *sock, char type)
 
 void getOverTime(int *sock, char type)
 {
-	int i;
-	bool sendit = false;
+	int i, j = 9999999;
+
 	for(i=0; i < counters.overTime; i++)
 	{
 		validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
-		if((overTime[i].total > 0 || overTime[i].blocked > 0) && !sendit)
+		if(overTime[i].total > 0 || overTime[i].blocked > 0)
 		{
-			sendit = true;
+			j = i;
+			break;
 		}
-		if(sendit)
+	}
+
+	if(type == SOCKET)
+	{
+		for(i = j; i < counters.overTime; i++)
 		{
 			ssend(*sock,"%i %i %i\n",overTime[i].timestamp,overTime[i].total,overTime[i].blocked);
 		}
 	}
+	else
+	{
+		// First send header outside of the for-loop
+		sendAPIResponse(*sock, "", type);
+		ssend(*sock,"{\"domains_over_time\":{");
+
+		for(i = j; i < counters.overTime; i++)
+		{
+			if(i != j) ssend(*sock, ",");
+			ssend(*sock,"\"%i\":%i",overTime[i].timestamp,overTime[i].total);
+		}
+		ssend(*sock,"},\"ads_over_time\":{");
+
+		for(i = j; i < counters.overTime; i++)
+		{
+			if(i != j) ssend(*sock, ",");
+			ssend(*sock,"\"%i\":%i",overTime[i].timestamp,overTime[i].blocked);
+		}
+		ssend(*sock,"}}");
+	}
+
 	if(debugclients)
 		logg("Sent overTime data to client, ID: %i", *sock);
 }
