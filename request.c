@@ -10,7 +10,6 @@
 
 #include "FTL.h"
 #include "version.h"
-#include "cJSON.h"
 
 // Private
 #define min(a,b) ({ __typeof__ (a) _a = (a); __typeof__ (b) _b = (b); _a < _b ? _a : _b; })
@@ -282,23 +281,12 @@ void getStats(int *sock, char type)
 
 	if(type == SOCKET) {
 		ssend(*sock, "domains_being_blocked %i\ndns_queries_today %i\nads_blocked_today %i\nads_percentage_today %f\n", \
-            counters.gravity, total, blocked, percentage);
+		    counters.gravity, total, blocked, percentage);
 		ssend(*sock, "unique_domains %i\nqueries_forwarded %i\nqueries_cached %i\n", \
-            counters.domains, counters.forwardedqueries, counters.cached);
+		    counters.domains, counters.forwardedqueries, counters.cached);
 	}
 	else
 	{
-		// cJSON *response = cJSON_CreateObject();
-
-		// cJSON_AddNumberToObject(response, "domains_being_blocked", counters.gravity);
-		// cJSON_AddNumberToObject(response, "dns_queries_today", total);
-		// cJSON_AddNumberToObject(response, "ads_blocked_today", blocked);
-		// cJSON_AddNumberToObject(response, "ads_percentage_today", percentage);
-		// cJSON_AddNumberToObject(response, "unique_domains", counters.domains);
-		// cJSON_AddNumberToObject(response, "queries_forwarded", counters.forwardedqueries);
-		// cJSON_AddNumberToObject(response, "queries_cached", counters.cached);
-
-		// sendAPIResponse(*sock, cJSON_Print(response));
 		char *sendbuffer;
 		int ret = asprintf(&sendbuffer, "{\"domains_being_blocked\":%i,\"dns_queries_today\":%i,\"ads_blocked_today\":%i,\"ads_percentage_today\":%.4f,\"unique_domains\":%i,\"queries_forwarded\":%i,\"queries_cached\":%i}",counters.gravity,total, blocked, percentage,counters.domains,counters.forwardedqueries,counters.cached);
 		if(ret > 0)

@@ -57,10 +57,7 @@ $(ODIR):
 $(ODIR)/sqlite3.o: sqlite3.c
 	$(CC) -c -o $@ $< $(CCFLAGS)
 
-$(ODIR)/cJSON.o: cJSON.c
-	$(CC) -c -o $@ $< $(CCFLAGS)
-
-pihole-FTL: $(_OBJ) $(ODIR)/sqlite3.o $(ODIR)/cJSON.o
+pihole-FTL: $(_OBJ) $(ODIR)/sqlite3.o
 	$(CC) -v $(CCFLAGS) -o $@ $^ $(LIBS)
 
 .PHONY: clean force install
