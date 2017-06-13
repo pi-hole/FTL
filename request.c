@@ -164,6 +164,10 @@ void process_api_request(char *client_message, int *sock, bool header)
 	{
 		getOverTime(sock, type);
 	}
+	else if(command(client_message, "GET /stats/top_domains") || command(client_message, "GET /stats/top_ads"))
+	{
+		getTopDomains(client_message, sock, type);
+	}
 	else if(header)
 	{
 		ssend(*sock,
@@ -361,29 +365,48 @@ void getOverTime(int *sock, char type)
 void getTopDomains(char *client_message, int *sock, char type)
 {
 	int i, temparray[counters.domains][2], count=10, num;
-	bool blocked = command(client_message, ">top-ads"), audit = false, desc = false;
+	bool blocked, audit = false, desc = false;
+
+	if(type == SOCKET)
+		blocked = command(client_message, ">top-ads");
+	else
+		blocked = command(client_message, "/top_ads");
 
 	// Exit before processing any data if requested via config setting
 	if(!config.query_display)
 		return;
 
 	// Match both top-domains and top-ads
-	if(sscanf(client_message, ">%*[^(](%i)", &num) > 0)
+	// SOCKET: >top-domains (15)
+	// API:    /top/domains?limit=15
+	if(sscanf(client_message, "%*[^0123456789H\n]%i", &num) > 0)
 	{
 		// User wants a different number of requests
 		count = num;
 	}
 
 	// Apply Audit Log filtering?
-	if(command(client_message, " for audit"))
+	// SOCKET: >top-domains for audit
+	// API:    /top/domains?audit
+	if(type == SOCKET && command(client_message, " for audit"))
+	{
+		audit = true;
+	}
+	else if(type != SOCKET && command(client_message, "audit"))
 	{
 		audit = true;
 	}
 
 	// Sort in descending order?
-	if(command(client_message, " desc"))
+	// SOCKET: >top-domains desc
+	// API:    /top/domains?order=desc
+	if(type == SOCKET && command(client_message, " desc"))
 	{
 		desc = true;
+	}
+	else if(type != SOCKET && command(client_message, "desc"))
+	{
+		audit = true;
 	}
 
 	for(i=0; i < counters.domains; i++)
@@ -438,7 +461,16 @@ void getTopDomains(char *client_message, int *sock, char type)
 		}
 	}
 
-	int skip = 0;
+	if(type != SOCKET)
+	{// First send header with unspecified content-length outside of the for-loop
+		sendAPIResponse(*sock, "", type);
+		if(blocked)
+			ssend(*sock, "{\"top_ads\":{");
+		else
+			ssend(*sock, "{\"top_queries\":{");
+	}
+
+	int skip = 0; bool first = true;
 	for(i=0; i < min(counters.domains, count+skip); i++)
 	{
 		// Get sorted indices
@@ -464,16 +496,38 @@ void getTopDomains(char *client_message, int *sock, char type)
 
 		if(blocked && showblocked && domains[j].blockedcount > 0)
 		{
-			if(audit && domains[j].wildcard)
-				ssend(*sock,"%i %i %s wildcard\n",i,domains[j].blockedcount,domains[j].domain);
+			if(type == SOCKET)
+			{
+				if(audit && domains[j].wildcard)
+					ssend(*sock,"%i %i %s wildcard\n",i,domains[j].blockedcount,domains[j].domain);
+				else
+					ssend(*sock,"%i %i %s\n",i,domains[j].blockedcount,domains[j].domain);
+			}
 			else
-				ssend(*sock,"%i %i %s\n",i,domains[j].blockedcount,domains[j].domain);
+			{
+				if(!first) ssend(*sock,",");
+				first = false;
+				ssend(*sock,"\"%s\":%i", domains[j].domain, domains[j].blockedcount);
+			}
 		}
 		else if(!blocked && showpermitted && (domains[j].count - domains[j].blockedcount) > 0)
 		{
-			ssend(*sock,"%i %i %s\n",i,(domains[j].count - domains[j].blockedcount),domains[j].domain);
+			if(type == SOCKET)
+			{
+				ssend(*sock,"%i %i %s\n",i,(domains[j].count - domains[j].blockedcount),domains[j].domain);
+			}
+			else
+			{
+				if(!first) ssend(*sock,",");
+				first = false;
+				ssend(*sock,"\"%s\":%i", domains[j].domain, (domains[j].count - domains[j].blockedcount));
+			}
 		}
 	}
+
+	if(type != SOCKET)
+		ssend(*sock,"}}");
+
 	if(excludedomains != NULL)
 		clearSetupVarsArray();
 	if(debugclients)
