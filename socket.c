@@ -343,13 +343,9 @@ void *api_connection_handler_thread(void *socket_desc)
 						ssend(
 								sock,
 								"HTTP/1.0 404 Not Found\nServer: FTL\nCache-Control: no-cache\n"
-										"Content-Type: application/json\n\n{status: \"not_found\"}"
+										"Content-Type: application/json\nContent-Length: 21\n\n{status: \"not_found\"}"
 						);
 				}
-
-				// Now we have to transmit the response
-
-				// ...
 
 				// Close connection to show that we reached the end of the transmission
 				close(sock);
