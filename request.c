@@ -312,6 +312,7 @@ void getOverTime(int *sock, char type)
 {
 	int i, j = 9999999;
 
+	// Get first time slot with total or blocked greater than zero (the array will go down over time due to the rolling window)
 	for(i=0; i < counters.overTime; i++)
 	{
 		validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
@@ -322,6 +323,7 @@ void getOverTime(int *sock, char type)
 		}
 	}
 
+	// Send data in socket format if requested
 	if(type == SOCKET)
 	{
 		for(i = j; i < counters.overTime; i++)
@@ -331,10 +333,11 @@ void getOverTime(int *sock, char type)
 	}
 	else
 	{
-		// First send header outside of the for-loop
+		// First send header with unspecified content-length outside of the for-loop
 		sendAPIResponse(*sock, "", type);
 		ssend(*sock,"{\"domains_over_time\":{");
 
+		// Send "domains_over_time" data
 		for(i = j; i < counters.overTime; i++)
 		{
 			if(i != j) ssend(*sock, ",");
@@ -342,6 +345,7 @@ void getOverTime(int *sock, char type)
 		}
 		ssend(*sock,"},\"ads_over_time\":{");
 
+		// Send "ads_over_time" data
 		for(i = j; i < counters.overTime; i++)
 		{
 			if(i != j) ssend(*sock, ",");
