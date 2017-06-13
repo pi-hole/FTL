@@ -244,17 +244,24 @@ void getStats(int *sock, char type)
             counters.domains, counters.forwardedqueries, counters.cached);
 	}
 	else if(type == API) {
-		cJSON *response = cJSON_CreateObject();
+		// cJSON *response = cJSON_CreateObject();
 
-		cJSON_AddNumberToObject(response, "domains_being_blocked", counters.gravity);
-		cJSON_AddNumberToObject(response, "dns_queries_today", total);
-		cJSON_AddNumberToObject(response, "ads_blocked_today", blocked);
-		cJSON_AddNumberToObject(response, "ads_percentage_today", percentage);
-		cJSON_AddNumberToObject(response, "unique_domains", counters.domains);
-		cJSON_AddNumberToObject(response, "queries_forwarded", counters.forwardedqueries);
-		cJSON_AddNumberToObject(response, "queries_cached", counters.cached);
+		// cJSON_AddNumberToObject(response, "domains_being_blocked", counters.gravity);
+		// cJSON_AddNumberToObject(response, "dns_queries_today", total);
+		// cJSON_AddNumberToObject(response, "ads_blocked_today", blocked);
+		// cJSON_AddNumberToObject(response, "ads_percentage_today", percentage);
+		// cJSON_AddNumberToObject(response, "unique_domains", counters.domains);
+		// cJSON_AddNumberToObject(response, "queries_forwarded", counters.forwardedqueries);
+		// cJSON_AddNumberToObject(response, "queries_cached", counters.cached);
 
-		sendAPIResponse(*sock, cJSON_Print(response));
+		// sendAPIResponse(*sock, cJSON_Print(response));
+		char *sendbuffer;
+		int ret = asprintf(&sendbuffer,"{\"domains_being_blocked\":%i,\"dns_queries_today\":%i,\"ads_blocked_today\":%i,\"ads_percentage_today\":%.4f,\"unique_domains\":%i,\"queries_forwarded\":%i,\"queries_cached\":%i}",counters.gravity,total, blocked, percentage,counters.domains,counters.forwardedqueries,counters.cached);
+		if(ret > 0)
+			sendAPIResponse(*sock,sendbuffer);
+		else
+			logg("Error allocating memory for API response");
+		free(sendbuffer);
 	}
 
 	if(debugclients)
