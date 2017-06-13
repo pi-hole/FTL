@@ -167,6 +167,10 @@ void process_api_request(char *client_message, int *sock, bool header)
 	{
 		getTopDomains(client_message, sock, type);
 	}
+	else if(command(client_message, "GET /stats/top_clients"))
+	{
+		getTopClients(client_message, sock, type);
+	}
 	else if(header)
 	{
 		ssend(*sock,
@@ -366,7 +370,7 @@ void getTopDomains(char *client_message, int *sock, char type)
 
 	// Match both top-domains and top-ads
 	// SOCKET: >top-domains (15)
-	// API:    /top/domains?limit=15
+	// API:    /stats/top_domains?limit=15
 	if(sscanf(client_message, "%*[^0123456789H\n]%i", &num) > 0)
 	{
 		// User wants a different number of requests
@@ -375,7 +379,7 @@ void getTopDomains(char *client_message, int *sock, char type)
 
 	// Apply Audit Log filtering?
 	// SOCKET: >top-domains for audit
-	// API:    /top/domains?audit
+	// API:    /stats/top_domains?audit
 	if(type == SOCKET && command(client_message, " for audit"))
 	{
 		audit = true;
@@ -387,7 +391,7 @@ void getTopDomains(char *client_message, int *sock, char type)
 
 	// Sort in descending order?
 	// SOCKET: >top-domains desc
-	// API:    /top/domains?order=desc
+	// API:    /stats/top_domains?order=desc
 	if(type == SOCKET && command(client_message, " desc"))
 	{
 		desc = true;
@@ -518,6 +522,7 @@ void getTopDomains(char *client_message, int *sock, char type)
 
 	if(excludedomains != NULL)
 		clearSetupVarsArray();
+
 	if(debugclients)
 	{
 		if(blocked)
@@ -531,7 +536,10 @@ void getTopClients(char *client_message, int *sock, char type)
 {
 	int i, temparray[counters.clients][2], count=10, num;
 
-	if(sscanf(client_message, ">%*[^(](%i)", &num) > 0)
+	// Match both top-domains and top-ads
+	// SOCKET: >top-clients (15)
+	// API:    /stats/top_clients?limit=15
+	if(sscanf(client_message, "%*[^0123456789H\n]%i", &num) > 0)
 	{
 		// User wants a different number of requests
 		count = num;
@@ -556,7 +564,13 @@ void getTopClients(char *client_message, int *sock, char type)
 			logg("Excluding %i clients from being displayed", setupVarsElements);
 	}
 
-	int skip = 0;
+	if(type != SOCKET)
+	{// First send header with unspecified content-length outside of the for-loop
+		sendAPIResponse(*sock, "", type);
+		ssend(*sock, "{\"top_clients\":{");
+	}
+
+	int skip = 0; bool first = true;
 	for(i=0; i < min(counters.clients, count+skip); i++)
 	{
 		// Get sorted indices
@@ -576,11 +590,28 @@ void getTopClients(char *client_message, int *sock, char type)
 
 		if(clients[j].count > 0)
 		{
-			ssend(*sock,"%i %i %s %s\n",i,clients[j].count,clients[j].ip,clients[j].name);
+			if(type == SOCKET)
+			{
+				ssend(*sock,"%i %i %s %s\n",i,clients[j].count,clients[j].ip,clients[j].name);
+			}
+			else
+			{
+				if(!first) ssend(*sock,",");
+				first = false;
+				if(strlen(clients[j].name) > 0)
+					ssend(*sock,"\"%s|%s\":%i", clients[j].name, clients[j].ip, clients[j].count);
+				else
+					ssend(*sock,"\"%s\":%i", clients[j].ip, clients[j].count);
+			}
 		}
 	}
+
+	if(type != SOCKET)
+		ssend(*sock,"}}");
+
 	if(excludeclients != NULL)
 		clearSetupVarsArray();
+
 	if(debugclients)
 		logg("Sent top clients data to client, ID: %i", *sock);
 }
