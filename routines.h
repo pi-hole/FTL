@@ -41,7 +41,7 @@ void ssend(int sock, const char *format, ...);
 void *socket_listening_thread(void *args);
 void *api_listening_thread(void *args);
 
-void process_socket_request(char *client_message, int *sock);
+void process_socket_request(char *client_message, int *sock, char type);
 bool command(char *client_message, const char* cmd);
 void formatNumber(bool raw, int n, char* buffer);
 

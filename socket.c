@@ -223,7 +223,7 @@ void *socket_connection_handler_thread(void *socket_desc)
 			// Requests should not be processed/answered when data is about to change
 			enable_thread_lock(threadname);
 
-			process_socket_request(message, &sock);
+			process_socket_request(message, &sock, SOCKET);
 			free(message);
 
 			// Release thread lock
@@ -336,8 +336,14 @@ void *api_connection_handler_thread(void *socket_desc)
 					// Are we asked for a favicon?
 					if(strstr(message, "GET /favicon.ico") != NULL)
 						ssend(sock, "HTTP/1.0 404 Not Found\nServer: FTL\n\n");
+					else if(strstr(message, "GET /stats/summary") != NULL)
+						process_socket_request(">stats", &sock, API);
 					else
-						ssend(sock, "HTTP/1.0 200 OK\nServer: FTL\nCache-Control: no-cache\nContent-Type: application/json\n\n");
+						ssend(
+								sock,
+								"HTTP/1.0 404 Not Found\nServer: FTL\nCache-Control: no-cache\n"
+										"Content-Type: application/json\n\n{status: \"not_found\"}"
+						);
 				}
 
 				// Now we have to transmit the response

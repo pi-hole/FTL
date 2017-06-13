@@ -10,6 +10,7 @@
 
 #include "FTL.h"
 #include "version.h"
+#include "cJSON.h"
 
 // Private
 #define min(a,b) ({ __typeof__ (a) _a = (a); __typeof__ (b) _b = (b); _a < _b ? _a : _b; })
@@ -32,13 +33,12 @@ void getQueryTypesOverTime(int *sock, char type);
 void getVersion(int *sock, char type);
 void getDBstats(int *sock, char type);
 
-void process_socket_request(char *client_message, int *sock)
+void process_socket_request(char *client_message, int *sock, char type)
 {
 	char EOT[2];
 	EOT[0] = 0x04;
 	EOT[1] = 0x00;
 	bool processed = false;
-	char type = SOCKET;
 
 	if(command(client_message, ">stats"))
 	{
@@ -155,6 +155,16 @@ bool command(char *client_message, const char* cmd)
 		return false;
 }
 
+void sendAPIResponse(int sock, char *content) {
+	ssend(
+			sock,
+			"HTTP/1.0 200 OK\nServer: FTL\nCache-Control: no-cache\n"
+			"Content-Type: application/json\nContent-Length: %i\n\n%s",
+			strlen(content),
+			content
+	);
+}
+
 // void formatNumber(bool raw, int n, char* buffer)
 // {
 // 	if(raw)
@@ -226,10 +236,27 @@ void getStats(int *sock, char type)
 	{
 		percentage = 1e2*blocked/total;
 	}
-	ssend(*sock,"domains_being_blocked %i\ndns_queries_today %i\nads_blocked_today %i\nads_percentage_today %f\n", \
-	        counters.gravity,total,blocked,percentage);
-	ssend(*sock,"unique_domains %i\nqueries_forwarded %i\nqueries_cached %i\n", \
-	        counters.domains,counters.forwardedqueries,counters.cached);
+
+	if(type == SOCKET) {
+		ssend(*sock, "domains_being_blocked %i\ndns_queries_today %i\nads_blocked_today %i\nads_percentage_today %f\n", \
+            counters.gravity, total, blocked, percentage);
+		ssend(*sock, "unique_domains %i\nqueries_forwarded %i\nqueries_cached %i\n", \
+            counters.domains, counters.forwardedqueries, counters.cached);
+	}
+	else if(type == API) {
+		cJSON *response = cJSON_CreateObject();
+
+		cJSON_AddNumberToObject(response, "domains_being_blocked", counters.gravity);
+		cJSON_AddNumberToObject(response, "dns_queries_today", total);
+		cJSON_AddNumberToObject(response, "ads_blocked_today", blocked);
+		cJSON_AddNumberToObject(response, "ads_percentage_today", percentage);
+		cJSON_AddNumberToObject(response, "unique_domains", counters.domains);
+		cJSON_AddNumberToObject(response, "queries_forwarded", counters.forwardedqueries);
+		cJSON_AddNumberToObject(response, "queries_cached", counters.cached);
+
+		sendAPIResponse(*sock, cJSON_Print(response));
+	}
+
 	if(debugclients)
 		logg("Sent stats data to client, ID: %i", *sock);
 }
