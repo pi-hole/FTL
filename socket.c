@@ -314,7 +314,8 @@ void *api_connection_handler_thread(void *socket_desc)
 			// Clear client message receive buffer
 			memset(client_message, 0, sizeof client_message);
 
-			logg("%s",message);
+			if(debug)
+				logg("%s", message);
 
 			if(strncmp(message, "GET ", 4) == 0)
 			{
