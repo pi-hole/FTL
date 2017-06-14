@@ -191,6 +191,10 @@ void process_api_request(char *client_message, int *sock, bool header)
 	{
 		getForwardDestinationsOverTime(sock, type);
 	}
+	else if(command(client_message, "GET /overTime/query_types"))
+	{
+		getQueryTypesOverTime(sock, type);
+	}
 	else if(header)
 	{
 		ssend(*sock,
@@ -1174,8 +1178,8 @@ void getForwardDestinationsOverTime(int *sock, char type)
 			else
 			{
 				if(!first) ssend(*sock, ",");
-				ssend(*sock, "\"%i\":[", overTime[i].timestamp);
 				first = false;
+				ssend(*sock, "\"%i\":[", overTime[i].timestamp);
 			}
 
 			int j;
@@ -1234,12 +1238,32 @@ void getQueryTypesOverTime(int *sock, char type)
 	}
 	if(sendit > -1)
 	{
+		if(type != SOCKET)
+		{
+			sendAPIResponse(*sock, type);
+			ssend(*sock,"\"query_types\":{");
+		}
+
+		bool first = true;
 		for(i = sendit; i < counters.overTime; i++)
 		{
 			validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
-			ssend(*sock, "%i %i %i\n", overTime[i].timestamp,overTime[i].querytypedata[0],overTime[i].querytypedata[1]);
+			if(type == SOCKET)
+			{
+				ssend(*sock, "%i %i %i\n", overTime[i].timestamp,overTime[i].querytypedata[0],overTime[i].querytypedata[1]);
+			}
+			else
+			{
+				if(!first) ssend(*sock, ",");
+				first = false;
+				ssend(*sock, "\"%i\":[%i,%i]", overTime[i].timestamp,overTime[i].querytypedata[0],overTime[i].querytypedata[1]);
+			}
 		}
 	}
+
+	if(type != SOCKET)
+		ssend(*sock,"}");
+
 	if(debugclients)
 		logg("Sent overTime query types data to client, ID: %i", *sock);
 }
