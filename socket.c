@@ -302,74 +302,94 @@ void *api_connection_handler_thread(void *socket_desc)
 	char threadname[16];
 	sprintf(threadname,"api-%i",sockID);
 	prctl(PR_SET_NAME,threadname,0,0,0);
+
 	//Receive from client
-	ssize_t n;
-	while((n = recv(sock,client_message,SOCKETBUFFERLEN-1, 0)))
+	if(recv(sock, client_message, SOCKETBUFFERLEN-1, 0) > 0)
 	{
-		if (n > 0)
+		char *message = calloc(strlen(client_message)+1,sizeof(char));
+		strcpy(message, client_message);
+
+		// Clear client message receive buffer
+		memset(client_message, 0, sizeof client_message);
+
+		if(debug)
+			logg("%s", message);
+
+		if(strncmp(message, "GET ", 4) == 0)
 		{
-			char *message = calloc(strlen(client_message)+1,sizeof(char));
-			strcpy(message, client_message);
-
-			// Clear client message receive buffer
-			memset(client_message, 0, sizeof client_message);
-
 			if(debug)
-				logg("%s", message);
+				logg("API GET request received");
+			// HTTP requests can be simple or full.
+			// A simple request contains one line only, and looks like this:
+			//   GET /index.html
+			// A full request can contain more than one line and may look like this:
+			//   GET /index.html HTTP/1.1
+			//   User-Agent: Wget/1.16 (linux-gnueabihf)
+			//   Accept: */*
+			//   Host: 127.0.0.1:4747
+			//   Connection: Keep-Alive
+			bool header = false;
 
-			if(strncmp(message, "GET ", 4) == 0)
+			// Extract requested URL including arguments
+			const char *p2;
+			if(strstr(message, "HTTP/") != NULL)
 			{
-				if(debug)
-					logg("API GET request received");
-				// HTTP requests can be simple or full.
-				// A simple request contains one line only, and looks like this:
-				//   GET /index.html
-				// A full request can contain more than one line and may look like this:
-				//   GET /index.html HTTP/1.1
-				//   User-Agent: Wget/1.16 (linux-gnueabihf)
-				//   Accept: */*
-				//   Host: 127.0.0.1:4747
-				//   Connection: Keep-Alive
-				bool header = false;
-				if(strstr(message, "HTTP/") != NULL)
-				{
-					// Output HTTP response headers only if we have a full request
-					header = true;
-				}
-
-				// Are we asked for a favicon?
-				if(strstr(message, "GET /favicon.ico") != NULL)
-					ssend(sock, "HTTP/1.0 404 Not Found\nServer: FTL\n\n");
-				else
-					process_api_request(message, &sock, header);
-
-				// Close connection to show that we reached the end of the transmission
-				close(sock);
-				sock = 0;
-			}
-			else if(strncmp(message, "HEAD ", 5) == 0)
-			{
-				// HEAD request: We do not send any content at all
-				if(debug)
-					logg("API HEAD request received");
-
-				ssend(sock, "HTTP/1.0 200 OK\nServer: FTL\n\n");
-
-				// Close connection to show that we reached the end of the transmission
-				close(sock);
-				sock = 0;
+				// Output HTTP response headers only if we have a full request
+				header = true;
+				// End of request = "HTTP/"
+				p2 = strstr(message, " HTTP/");
 			}
 			else
 			{
-				if(debug)
-					logg("API received something strange");
+				// End of requst = end of first line
+				p2 = strstr(message, "\n");
+			}
+			if(p2 != NULL)
+			{
+				size_t len = p2 - message;
+				char *request = calloc(len+1, sizeof(char));
+				strncpy(request, message, len);
+				request[len] = '\0';
+				logg("request: \"%s\" (%i)", request, (int)len);
+
+				// Are we asked for a favicon?
+				if(strstr(request, "/favicon.ico") != NULL)
+					ssend(sock, "HTTP/1.0 404 Not Found\nServer: FTL\n\n");
+				else
+					process_api_request(request, &sock, header);
+
+				// Free allocated memory
+				free(request);
+			}
+			else
+			{
+				logg("API received malformated request: \"%s\"", message);
 			}
 
-			free(message);
-
-			// Disconnect client
-			break;
+			// Close connection to show that we reached the end of the transmission
+			close(sock);
+			sock = 0;
 		}
+		else if(strncmp(message, "HEAD ", 5) == 0)
+		{
+			// HEAD request: We do not send any content at all
+			if(debug)
+				logg("API HEAD request received");
+
+			ssend(sock, "HTTP/1.0 200 OK\nServer: FTL\n\n");
+
+			// Close connection to show that we reached the end of the transmission
+			close(sock);
+			sock = 0;
+		}
+		else
+		{
+			if(debug)
+				logg("API received something strange");
+		}
+
+		// Free allocated memory
+		free(message);
 	}
 
 	//Free the socket pointer

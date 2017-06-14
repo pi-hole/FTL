@@ -379,10 +379,25 @@ void getTopDomains(char *client_message, int *sock, char type)
 	// Match both top-domains and top-ads
 	// SOCKET: >top-domains (15)
 	// API:    /stats/top_domains?limit=15
-	if(sscanf(client_message, "%*[^0123456789H\n]%i", &num) > 0)
+	if(type == SOCKET)
 	{
-		// User wants a different number of requests
-		count = num;
+		if(sscanf(client_message, "%*[^(](%i)", &num) > 0)
+		{
+			// User wants a different number of requests
+			count = num;
+		}
+	}
+	else
+	{
+		const char * limit = strstr(client_message, "limit=");
+		if(limit != NULL)
+		{
+			if(sscanf(limit, "limit=%i", &num) > 0)
+			{
+				// User wants a different number of requests
+				count = num;
+			}
+		}
 	}
 
 	// Apply Audit Log filtering?
@@ -404,9 +419,9 @@ void getTopDomains(char *client_message, int *sock, char type)
 	{
 		desc = true;
 	}
-	else if(type != SOCKET && command(client_message, "desc"))
+	else if(type != SOCKET && command(client_message, "order=desc"))
 	{
-		audit = true;
+		desc = true;
 	}
 
 	for(i=0; i < counters.domains; i++)
@@ -547,10 +562,25 @@ void getTopClients(char *client_message, int *sock, char type)
 	// Match both top-domains and top-ads
 	// SOCKET: >top-clients (15)
 	// API:    /stats/top_clients?limit=15
-	if(sscanf(client_message, "%*[^0123456789H\n]%i", &num) > 0)
+	if(type == SOCKET)
 	{
-		// User wants a different number of requests
-		count = num;
+		if(sscanf(client_message, "%*[^(](%i)", &num) > 0)
+		{
+			// User wants a different number of requests
+			count = num;
+		}
+	}
+	else
+	{
+		const char * limit = strstr(client_message, "limit=");
+		if(limit != NULL)
+		{
+			if(sscanf(limit, "limit=%i", &num) > 0)
+			{
+				// User wants a different number of requests
+				count = num;
+			}
+		}
 	}
 
 	for(i=0; i < counters.clients; i++)
