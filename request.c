@@ -739,20 +739,20 @@ void getQueryTypes(int *sock, char type)
 	else
 	{
 		char * response;
-		if(0 > asprintf(
+		int ret = asprintf(
 				&response,
 				"{\"query_types\":{\"A (IPv4)\":%i,\"AAAA (IPv6)\":%i,\"PTR\":%i,\"SRV\":%i}}",
 				counters.IPv4,
 				counters.IPv6,
 				counters.PTR,
 				counters.SRV
-		))
-		{
-			logg("FATAL: Unable to allocate memory for /stats/query_types");
-			exit(EXIT_FAILURE);
-		}
+		);
 
-		sendAPIResponse(*sock, response, type);
+		if(ret > 0)
+			sendAPIResponse(*sock, response, type);
+		else
+			logg("Error allocating memory for API response (getQueryTypes)");
+
 		free(response);
 	}
 
