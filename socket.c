@@ -314,8 +314,6 @@ void *api_connection_handler_thread(void *socket_desc)
 
 		if(strncmp(message, "GET ", 4) == 0)
 		{
-			if(debug)
-				logg("API GET request received");
 			// HTTP requests can be simple or full.
 			// A simple request contains one line only, and looks like this:
 			//   GET /index.html
@@ -347,7 +345,6 @@ void *api_connection_handler_thread(void *socket_desc)
 				char *request = calloc(len+1, sizeof(char));
 				strncpy(request, message, len);
 				request[len] = '\0';
-				logg("request: \"%s\" (%i)", request, (int)len);
 
 				// Are we asked for a favicon?
 				if(strstr(request, "/favicon.ico") != NULL)
@@ -374,8 +371,6 @@ void *api_connection_handler_thread(void *socket_desc)
 		else if(strncmp(message, "HEAD ", 5) == 0)
 		{
 			// HEAD request: We do not send any content at all
-			if(debug)
-				logg("API HEAD request received");
 
 			ssend(sock, "HTTP/1.0 200 OK\nServer: FTL\n\n");
 
