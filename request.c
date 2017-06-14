@@ -171,6 +171,10 @@ void process_api_request(char *client_message, int *sock, bool header)
 	{
 		getTopClients(client_message, sock, type);
 	}
+	else if(command(client_message, "GET /stats/forward_dest"))
+	{
+		getForwardDestinations(sock, type);
+	}
 	else if(header)
 	{
 		ssend(*sock,
@@ -619,7 +623,7 @@ void getTopClients(char *client_message, int *sock, char type)
 
 void getForwardDestinations(int *sock, char type)
 {
-	bool allocated = false;
+	bool allocated = false, first = true;
 	int i, temparray[counters.forwarded+1][2];
 	for(i=0; i < counters.forwarded; i++)
 	{
@@ -634,6 +638,13 @@ void getForwardDestinations(int *sock, char type)
 
 	// Sort temporary array in descending order
 	qsort(temparray, counters.forwarded+1, sizeof(int[2]), cmpdesc);
+
+	// Send HTTP headers with unknown content length
+	sendAPIResponse(*sock, "", type);
+
+	// Send initial JSON output
+	if(type != SOCKET)
+		ssend(*sock, "{\"forward_destinations\":{");
 
 	// Loop over available forward destinations
 	for(i=0; i < min(counters.forwarded+1, 10); i++)
@@ -666,7 +677,20 @@ void getForwardDestinations(int *sock, char type)
 		// Send data if count > 0
 		if(count > 0)
 		{
-			ssend(*sock,"%i %i %s %s\n",i,count,ip,name);
+			if(type == SOCKET)
+			{
+				ssend(*sock,"%i %i %s %s\n",i,count,ip,name);
+			}
+			else
+			{
+				if(!first) ssend(*sock, ",");
+				first = false;
+
+				if(strlen(name) > 0)
+					ssend(*sock, "\"%s|%s\":%i", name, ip, count);
+				else
+					ssend(*sock, "\"%s\":%i", ip, count);
+			}
 		}
 
 		// Free previously allocated memory only if we allocated it
@@ -676,6 +700,10 @@ void getForwardDestinations(int *sock, char type)
 			free(name);
 		}
 	}
+
+	if(type != SOCKET)
+		ssend(*sock, "}}");
+
 	if(debugclients)
 		logg("Sent forward destination data to client, ID: %i", *sock);
 }
