@@ -159,7 +159,7 @@ void process_api_request(char *client_message, int *sock, bool header)
 	{
 		getStats(sock, type);
 	}
-	else if(command(client_message, "GET /stats/overTime"))
+	else if(command(client_message, "GET /overTime/graphs"))
 	{
 		getOverTime(sock, type);
 	}
@@ -187,12 +187,18 @@ void process_api_request(char *client_message, int *sock, bool header)
 	{
 		getRecentBlocked(client_message, sock, type);
 	}
+	else if(command(client_message, "GET /overTime/forward_dest"))
+	{
+		getForwardDestinationsOverTime(sock, type);
+	}
 	else if(header)
 	{
 		ssend(*sock,
 		      "HTTP/1.0 404 Not Found\nServer: FTL\nCache-Control: no-cache\nAccess-Control-Allow-Origin: *\n"
-		      "Content-Type: application/json\nContent-Length: 21\n\n{status: \"not_found\"}");
+		      "Content-Type: application/json\nContent-Length: 21\n\n{status: \"not_found\"");
 	}
+
+	ssend(*sock, "}");
 }
 
 bool command(char *client_message, const char* cmd)
@@ -209,7 +215,7 @@ void sendAPIResponse(int sock, char type) {
 		// Send header only for full HTTP requests
 		ssend(sock,
 		      "HTTP/1.0 200 OK\nServer: FTL\nCache-Control: no-cache\nAccess-Control-Allow-Origin: *\n"
-		      "Content-Type: application/json\n\n");
+		      "Content-Type: application/json\n\n{");
 	}
 }
 
@@ -294,7 +300,7 @@ void getStats(int *sock, char type)
 	else
 	{
 		sendAPIResponse(*sock, type);
-		ssend(*sock,"{\"domains_being_blocked\":%i,\"dns_queries_today\":%i,\"ads_blocked_today\":%i,\"ads_percentage_today\":%.4f,\"unique_domains\":%i,\"queries_forwarded\":%i,\"queries_cached\":%i}",counters.gravity,total, blocked, percentage,counters.domains,counters.forwardedqueries,counters.cached);
+		ssend(*sock,"\"domains_being_blocked\":%i,\"dns_queries_today\":%i,\"ads_blocked_today\":%i,\"ads_percentage_today\":%.4f,\"unique_domains\":%i,\"queries_forwarded\":%i,\"queries_cached\":%i",counters.gravity,total, blocked, percentage,counters.domains,counters.forwardedqueries,counters.cached);
 	}
 
 	if(debugclients)
@@ -328,7 +334,7 @@ void getOverTime(int *sock, char type)
 	{
 		// First send header with unspecified content-length outside of the for-loop
 		sendAPIResponse(*sock, type);
-		ssend(*sock,"{\"domains_over_time\":{");
+		ssend(*sock,"\"domains_over_time\":{");
 
 		// Send "domains_over_time" data
 		for(i = j; i < counters.overTime; i++)
@@ -344,7 +350,7 @@ void getOverTime(int *sock, char type)
 			if(i != j) ssend(*sock, ",");
 			ssend(*sock,"\"%i\":%i",overTime[i].timestamp,overTime[i].blocked);
 		}
-		ssend(*sock,"}}");
+		ssend(*sock,"}");
 	}
 
 	if(debugclients)
@@ -469,9 +475,9 @@ void getTopDomains(char *client_message, int *sock, char type)
 	{// First send header with unspecified content-length outside of the for-loop
 		sendAPIResponse(*sock, type);
 		if(blocked)
-			ssend(*sock, "{\"top_ads\":{");
+			ssend(*sock, "\"top_ads\":{");
 		else
-			ssend(*sock, "{\"top_queries\":{");
+			ssend(*sock, "\"top_queries\":{");
 	}
 
 	int skip = 0; bool first = true;
@@ -530,7 +536,7 @@ void getTopDomains(char *client_message, int *sock, char type)
 	}
 
 	if(type != SOCKET)
-		ssend(*sock,"}}");
+		ssend(*sock,"}");
 
 	if(excludedomains != NULL)
 		clearSetupVarsArray();
@@ -594,7 +600,7 @@ void getTopClients(char *client_message, int *sock, char type)
 	if(type != SOCKET)
 	{// First send header with unspecified content-length outside of the for-loop
 		sendAPIResponse(*sock, type);
-		ssend(*sock, "{\"top_clients\":{");
+		ssend(*sock, "\"top_clients\":{");
 	}
 
 	int skip = 0; bool first = true;
@@ -634,7 +640,7 @@ void getTopClients(char *client_message, int *sock, char type)
 	}
 
 	if(type != SOCKET)
-		ssend(*sock,"}}");
+		ssend(*sock,"}");
 
 	if(excludeclients != NULL)
 		clearSetupVarsArray();
@@ -667,7 +673,7 @@ void getForwardDestinations(int *sock, char type)
 
 	// Send initial JSON output
 	if(type != SOCKET)
-		ssend(*sock, "{\"forward_destinations\":{");
+		ssend(*sock, "\"forward_destinations\":{");
 
 	// Loop over available forward destinations
 	for(i=0; i < min(counters.forwarded+1, 10); i++)
@@ -725,7 +731,7 @@ void getForwardDestinations(int *sock, char type)
 	}
 
 	if(type != SOCKET)
-		ssend(*sock, "}}");
+		ssend(*sock, "}");
 
 	if(debugclients)
 		logg("Sent forward destination data to client, ID: %i", *sock);
@@ -736,15 +742,35 @@ void getForwardNames(int *sock, char type)
 {
 	int i;
 
+	if(type != SOCKET)
+	{
+		sendAPIResponse(*sock, type);
+		ssend(*sock,"\"forward_destinations\":{");
+	}
+
 	for(i=0; i < counters.forwarded; i++)
 	{
 		validate_access("forwarded", i, true, __LINE__, __FUNCTION__, __FILE__);
-		// Get sorted indices
-		ssend(*sock,"%i %i %s %s\n",i,forwarded[i].count,forwarded[i].ip,forwarded[i].name);
+		if(type == SOCKET)
+		{
+			ssend(*sock, "%i %i %s %s\n", i, forwarded[i].count, forwarded[i].ip, forwarded[i].name);
+		}
+		else
+		{
+			if(strlen(forwarded[i].name) > 0)
+				ssend(*sock, "\"%s|%s\":%i,", forwarded[i].name, forwarded[i].ip, forwarded[i].count);
+			else
+				ssend(*sock, "\"%s\":%i,", forwarded[i].ip, forwarded[i].count);
+		}
+		//{"2001:1608:10:25::9249:d69b":2799,"2001:1608:10:25::1c04:b12f":6382,"resolver2.ipv6-sandbox.opendns.com|2620:0:ccd::2":2478,"resolver1.ipv6-sandbox.opendns.com|2620:0:ccc::2":2219,"local|::1":2755}}
+
 	}
 
 	// Add "local" forward destination
-	ssend(*sock,"%i %i ::1 local\n",counters.forwarded,counters.cached);
+	if(type == SOCKET)
+		ssend(*sock,"%i %i ::1 local\n",counters.forwarded,counters.cached);
+	else
+		ssend(*sock, "\"local|::1\":%i}", counters.cached);
 
 	if(debugclients)
 		logg("Sent forward destination names to client, ID: %i", *sock);
@@ -758,7 +784,7 @@ void getQueryTypes(int *sock, char type)
 	else
 	{
 		sendAPIResponse(*sock, type);
-		ssend(*sock,"{\"query_types\":{\"A (IPv4)\":%i,\"AAAA (IPv6)\":%i,\"PTR\":%i,\"SRV\":%i}}",
+		ssend(*sock,"\"query_types\":{\"A (IPv4)\":%i,\"AAAA (IPv6)\":%i,\"PTR\":%i,\"SRV\":%i}",
 				counters.IPv4,
 				counters.IPv6,
 				counters.PTR,
@@ -924,7 +950,7 @@ void getAllQueries(char *client_message, int *sock, char type)
 	if(type != SOCKET)
 	{
 		sendAPIResponse(*sock, type);
-		ssend(*sock, "{\"history\":[");
+		ssend(*sock, "\"history\":[");
 	}
 
 	int i; bool first = true;
@@ -1006,7 +1032,7 @@ void getAllQueries(char *client_message, int *sock, char type)
 	}
 
 	if(type != SOCKET)
-		ssend(*sock, "]}");
+		ssend(*sock, "]");
 
 	// Free allocated memory
 	if(filterclientname)
@@ -1054,7 +1080,7 @@ void getRecentBlocked(char *client_message, int *sock, char type)
 	if(type != SOCKET)
 	{
 		sendAPIResponse(*sock, type);
-		ssend(*sock, "{\"recent_blocked\":[");
+		ssend(*sock, "\"recent_blocked\":[");
 	}
 
 	// Find most recent query with either status 1 (blocked)
@@ -1088,9 +1114,10 @@ void getRecentBlocked(char *client_message, int *sock, char type)
 	}
 
 	if(type != SOCKET)
-		ssend(*sock, "]}");
+		ssend(*sock, "]");
 }
 
+// only available via SOCKET
 void getMemoryUsage(int *sock, char type)
 {
 	unsigned long int structbytes = sizeof(countersStruct) + sizeof(ConfigStruct) + counters.queries_MAX*sizeof(queriesDataStruct) + counters.forwarded_MAX*sizeof(forwardedDataStruct) + counters.clients_MAX*sizeof(clientsDataStruct) + counters.domains_MAX*sizeof(domainsDataStruct) + counters.overTime_MAX*sizeof(overTimeDataStruct) + (counters.wildcarddomains)*sizeof(*wildcarddomains);
@@ -1130,10 +1157,26 @@ void getForwardDestinationsOverTime(int *sock, char type)
 	}
 	if(sendit > -1)
 	{
+		if(type != SOCKET)
+		{
+			sendAPIResponse(*sock, type);
+			ssend(*sock,"\"forward_dest\":{");
+		}
+
+		bool first = true;
 		for(i = sendit; i < counters.overTime; i++)
 		{
 			validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
-			ssend(*sock, "%i", overTime[i].timestamp);
+			if(type == SOCKET)
+			{
+				ssend(*sock, "%i", overTime[i].timestamp);
+			}
+			else
+			{
+				if(!first) ssend(*sock, ",");
+				ssend(*sock, "\"%i\":[", overTime[i].timestamp);
+				first = false;
+			}
 
 			int j;
 
@@ -1144,13 +1187,26 @@ void getForwardDestinationsOverTime(int *sock, char type)
 					k = overTime[i].forwarddata[j];
 				else
 					k = 0;
-
-				ssend(*sock, " %i", k);
+				if(type == SOCKET)
+					ssend(*sock, " %i", k);
+				else
+					ssend(*sock, "%i,", k);
 			}
 
-			ssend(*sock, " %i\n", overTime[i].cached + overTime[i].blocked);
+			if(type == SOCKET)
+				ssend(*sock, " %i\n", overTime[i].cached + overTime[i].blocked);
+			else
+				ssend(*sock, "%i]", overTime[i].cached + overTime[i].blocked);
 		}
 	}
+
+	if(type != SOCKET)
+	{
+		ssend(*sock,"},");
+		// Manually set API -> Don't send header a second time
+		getForwardNames(sock, API);
+	}
+
 	if(debugclients)
 		logg("Sent overTime forwarded data to client, ID: %i", *sock);
 }
