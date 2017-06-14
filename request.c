@@ -159,7 +159,7 @@ void process_api_request(char *client_message, int *sock, bool header)
 	{
 		getStats(sock, type);
 	}
-	else if(command(client_message, "GET /overTime/graphs"))
+	else if(command(client_message, "GET /stats/overTime/graphs"))
 	{
 		getOverTime(sock, type);
 	}
@@ -187,11 +187,11 @@ void process_api_request(char *client_message, int *sock, bool header)
 	{
 		getRecentBlocked(client_message, sock, type);
 	}
-	else if(command(client_message, "GET /overTime/forward_dest"))
+	else if(command(client_message, "GET /stats/overTime/forward_dest"))
 	{
 		getForwardDestinationsOverTime(sock, type);
 	}
-	else if(command(client_message, "GET /overTime/query_types"))
+	else if(command(client_message, "GET /stats/overTime/query_types"))
 	{
 		getQueryTypesOverTime(sock, type);
 	}
