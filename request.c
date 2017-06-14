@@ -171,7 +171,7 @@ void process_api_request(char *client_message, int *sock, bool header)
 	{
 		getTopClients(client_message, sock, type);
 	}
-	else if(command(client_message, "GET /stats/forward_dest"))
+	else if(command(client_message, "GET /stats/forward_dest") || command(client_message, "GET /stats/forward_destinations"))
 	{
 		getForwardDestinations(sock, type);
 	}
@@ -741,7 +741,7 @@ void getQueryTypes(int *sock, char type)
 		char * response;
 		if(0 > asprintf(
 				&response,
-				"{\"querytypes\":{\"A (IPv4)\":%i,\"AAAA (IPv6)\":%i,\"PTR\":%i,\"SRV\":%i}}",
+				"{\"query_types\":{\"A (IPv4)\":%i,\"AAAA (IPv6)\":%i,\"PTR\":%i,\"SRV\":%i}}",
 				counters.IPv4,
 				counters.IPv6,
 				counters.PTR,
