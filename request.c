@@ -179,10 +179,14 @@ void process_api_request(char *client_message, int *sock, bool header)
 	{
 		getQueryTypes(sock, type);
 	}
+	else if(command(client_message, "GET /history"))
+	{
+		getAllQueries(client_message, sock, type);
+	}
 	else if(header)
 	{
 		ssend(*sock,
-		      "HTTP/1.0 404 Not Found\nServer: FTL\nCache-Control: no-cache\n"
+		      "HTTP/1.0 404 Not Found\nServer: FTL\nCache-Control: no-cache\nAccess-Control-Allow-Origin: *\n"
 		      "Content-Type: application/json\nContent-Length: 21\n\n{status: \"not_found\"}");
 	}
 }
@@ -200,7 +204,7 @@ void sendAPIResponse(int sock, char type) {
 	{
 		// Send header only for full HTTP requests
 		ssend(sock,
-		      "HTTP/1.0 200 OK\nServer: FTL\nCache-Control: no-cache\n"
+		      "HTTP/1.0 200 OK\nServer: FTL\nCache-Control: no-cache\nAccess-Control-Allow-Origin: *\n"
 		      "Content-Type: application/json\n\n");
 	}
 }
@@ -772,53 +776,102 @@ void getAllQueries(char *client_message, int *sock, char type)
 	// Do we want a more specific version of this command (domain/client/time interval filtered)?
 	int from = 0, until = 0;
 	bool filtertime = false;
-	if(command(client_message, ">getallqueries-time"))
-	{
-		// Get from to until boundaries
-		sscanf(client_message, ">getallqueries-time %i %i",&from, &until);
-		if(debugclients)
-		{
-			logg("Showing only limited time interval starting at ",from);
-			logg("Showing only limited time interval ending at ",until);
-		}
-		filtertime = true;
-	}
 
-	char *domainname;
+	char *domainname = NULL;
 	bool filterdomainname = false;
-	if(command(client_message, ">getallqueries-domain"))
-	{
-		domainname = calloc(128, sizeof(char));
-		// Get domain name we want to see only (limit length to 127 chars)
-		sscanf(client_message, ">getallqueries-domain %127s", domainname);
-		if(debugclients)
-			logg("Showing only queries with domain %s", domainname);
-		filterdomainname = true;
-	}
 
-	char *clientname;
+	char *clientname = NULL;
 	bool filterclientname = false;
-	if(command(client_message, ">getallqueries-client"))
+
+	if(type == SOCKET)
 	{
-		clientname = calloc(128, sizeof(char));
-		// Get client name we want to see only (limit length to 127 chars)
-		sscanf(client_message, ">getallqueries-client %127s", clientname);
-		if(debugclients)
-			logg("Showing only queries with client %s", clientname);
-		filterclientname = true;
+		// Time filtering?
+		if(command(client_message, ">getallqueries-time"))
+		{
+			sscanf(client_message, ">getallqueries-time %i %i",&from, &until);
+			filtertime = true;
+		}
+		// Domain filtering?
+		if(command(client_message, ">getallqueries-domain"))
+		{
+			sscanf(client_message, ">getallqueries-domain %ms", &domainname);
+			filterdomainname = true;
+		}
+		// Client filtering?
+		if(command(client_message, ">getallqueries-client"))
+		{
+			sscanf(client_message, ">getallqueries-client %ms", &clientname);
+			filterclientname = true;
+		}
+	}
+	else
+	{
+		// Time filtering?
+		const char * temp = strstr(client_message, "from=");
+		if(temp != NULL)
+		{
+			int num;
+			if(sscanf(temp, "from=%i", &num) > 0)
+			{
+				// User wants a different number of requests
+				from = num;
+			}
+		}
+		temp = strstr(client_message, "until=");
+		if(temp != NULL)
+		{
+			int num;
+			if(sscanf(temp, "until=%i", &num) > 0)
+			{
+				// User wants a different number of requests
+				until = num;
+			}
+		}
+
+		// Domain filtering?
+		temp = strstr(client_message, "domain=");
+		if(temp != NULL)
+		{
+			sscanf(temp, "domain=%ms", &domainname);
+			filterdomainname = true;
+		}
+		temp = strstr(client_message, "client=");
+
+		// Client filtering?
+		if(temp != NULL)
+		{
+			sscanf(temp, "client=%ms", &clientname);
+			filterclientname = true;
+		}
 	}
 
 	int ibeg = 0, num;
 	// Test for integer that specifies number of entries to be shown
-	if(sscanf(client_message, ">%*[^(](%i)", &num) > 0)
+	if(type == SOCKET)
 	{
-		// User wants a different number of requests
-		// Don't allow a start index that is smaller than zero
-		ibeg = counters.queries-num;
-		if(ibeg < 0)
-			ibeg = 0;
-		if(debugclients)
-			logg("Showing only limited amount of queries: ",num);
+		if(sscanf(client_message, "%*[^(](%i)", &num) > 0)
+		{
+			// User wants a different number of requests
+			// Don't allow a start index that is smaller than zero
+			ibeg = counters.queries-num;
+			if(ibeg < 0)
+				ibeg = 0;
+		}
+	}
+	else
+	{
+		const char * limit = strstr(client_message, "limit=");
+		if(limit != NULL)
+		{
+			if(sscanf(limit, "limit=%i", &num) > 0)
+			{
+				// User wants a different number of requests
+				// Don't allow a start index that is smaller than zero
+				ibeg = counters.queries-num;
+				if(ibeg < 0)
+					ibeg = 0;
+			}
+		}
 	}
 
 	// Get potentially existing filtering flags
@@ -866,7 +919,13 @@ void getAllQueries(char *client_message, int *sock, char type)
 			logg("Privacy mode enabled");
 	}
 
-	int i;
+	if(type != SOCKET)
+	{
+		sendAPIResponse(*sock, type);
+		ssend(*sock, "{\"history\":[");
+	}
+
+	int i; bool first = true;
 	for(i=ibeg; i < counters.queries; i++)
 	{
 		validate_access("queries", i, true, __LINE__, __FUNCTION__, __FILE__);
@@ -913,22 +972,47 @@ void getAllQueries(char *client_message, int *sock, char type)
 				continue;
 		}
 
-		if(!privacymode)
+		if(type == SOCKET)
 		{
-			if(strlen(clients[queries[i].clientID].name) > 0)
-				ssend(*sock,"%i %s %s %s %i\n",queries[i].timestamp,type,domains[queries[i].domainID].domain,clients[queries[i].clientID].name,queries[i].status);
+			if(!privacymode)
+			{
+				if(strlen(clients[queries[i].clientID].name) > 0)
+					ssend(*sock,"%i %s %s %s %i\n",queries[i].timestamp,type,domains[queries[i].domainID].domain,clients[queries[i].clientID].name,queries[i].status);
+				else
+					ssend(*sock,"%i %s %s %s %i\n",queries[i].timestamp,type,domains[queries[i].domainID].domain,clients[queries[i].clientID].ip,queries[i].status);
+			}
 			else
-				ssend(*sock,"%i %s %s %s %i\n",queries[i].timestamp,type,domains[queries[i].domainID].domain,clients[queries[i].clientID].ip,queries[i].status);
+			{
+				ssend(*sock,"%i %s %s hidden %i\n",queries[i].timestamp,type,domains[queries[i].domainID].domain,queries[i].status);
+			}
 		}
 		else
 		{
-			ssend(*sock,"%i %s %s hidden %i\n",queries[i].timestamp,type,domains[queries[i].domainID].domain,queries[i].status);
+			// {"data":[["1497351662","IPv4","clients4.google.com","10.8.0.2","2"],
+			if(!first) ssend(*sock, ",");
+			first = false;
+
+			if(!privacymode)
+			{
+				if(strlen(clients[queries[i].clientID].name) > 0)
+					ssend(*sock,"[%i,\"%s\",\"%s\",\"%s\",%i]",queries[i].timestamp,type,domains[queries[i].domainID].domain,clients[queries[i].clientID].name,queries[i].status);
+				else
+					ssend(*sock,"[%i,\"%s\",\"%s\",\"%s\",%i]",queries[i].timestamp,type,domains[queries[i].domainID].domain,clients[queries[i].clientID].ip,queries[i].status);
+			}
+			else
+			{
+					ssend(*sock,"[%i,\"%s\",\"%s\",\"hidden\",%i]",queries[i].timestamp,type,domains[queries[i].domainID].domain,queries[i].status);
+			}
 		}
 	}
+
+	if(type != SOCKET)
+		ssend(*sock, "]}");
 
 	// Free allocated memory
 	if(filterclientname)
 		free(clientname);
+
 	if(filterdomainname)
 		free(domainname);
 
