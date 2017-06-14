@@ -481,7 +481,7 @@ void getTopDomains(char *client_message, int *sock, char type)
 		if(blocked)
 			ssend(*sock, "\"top_ads\":{");
 		else
-			ssend(*sock, "\"top_queries\":{");
+			ssend(*sock, "\"top_domains\":{");
 	}
 
 	int skip = 0; bool first = true;
