@@ -175,6 +175,10 @@ void process_api_request(char *client_message, int *sock, bool header)
 	{
 		getForwardDestinations(sock, type);
 	}
+	else if(command(client_message, "GET /stats/query_types"))
+	{
+		getQueryTypes(sock, type);
+	}
 	else if(header)
 	{
 		ssend(*sock,
@@ -730,8 +734,28 @@ void getForwardNames(int *sock, char type)
 
 void getQueryTypes(int *sock, char type)
 {
+	if(type == SOCKET)
+		ssend(*sock,"A (IPv4): %i\nAAAA (IPv6): %i\n",counters.IPv4,counters.IPv6);
+	else
+	{
+		char * response;
+		if(0 > asprintf(
+				&response,
+				"{\"querytypes\":{\"A (IPv4)\":%i,\"AAAA (IPv6)\":%i,\"PTR\":%i,\"SRV\":%i}}",
+				counters.IPv4,
+				counters.IPv6,
+				counters.PTR,
+				counters.SRV
+		))
+		{
+			logg("FATAL: Unable to allocate memory for /stats/query_types");
+			exit(EXIT_FAILURE);
+		}
 
-	ssend(*sock,"A (IPv4): %i\nAAAA (IPv6): %i\n",counters.IPv4,counters.IPv6);
+		sendAPIResponse(*sock, response, type);
+		free(response);
+	}
+
 	if(debugclients)
 		logg("Sent query type data to client, ID: %i", *sock);
 }
