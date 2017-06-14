@@ -775,7 +775,6 @@ void getAllQueries(char *client_message, int *sock, char type)
 
 	// Do we want a more specific version of this command (domain/client/time interval filtered)?
 	int from = 0, until = 0;
-	bool filtertime = false;
 
 	char *domainname = NULL;
 	bool filterdomainname = false;
@@ -789,7 +788,6 @@ void getAllQueries(char *client_message, int *sock, char type)
 		if(command(client_message, ">getallqueries-time"))
 		{
 			sscanf(client_message, ">getallqueries-time %i %i",&from, &until);
-			filtertime = true;
 		}
 		// Domain filtering?
 		if(command(client_message, ">getallqueries-domain"))
@@ -935,14 +933,14 @@ void getAllQueries(char *client_message, int *sock, char type)
 		validate_access("domains", queries[i].domainID, true, __LINE__, __FUNCTION__, __FILE__);
 		validate_access("clients", queries[i].clientID, true, __LINE__, __FUNCTION__, __FILE__);
 
-		char type[5];
+		char qtype[5];
 		if(queries[i].type == 1)
 		{
-			strcpy(type,"IPv4");
+			strcpy(qtype,"IPv4");
 		}
 		else
 		{
-			strcpy(type,"IPv6");
+			strcpy(qtype,"IPv6");
 		}
 
 		if((queries[i].status == 1 || queries[i].status == 4) && !showblocked)
@@ -950,12 +948,9 @@ void getAllQueries(char *client_message, int *sock, char type)
 		if((queries[i].status == 2 || queries[i].status == 3) && !showpermitted)
 			continue;
 
-		if(filtertime)
-		{
 			// Skip those entries which so not meet the requested timeframe
-			if(from > queries[i].timestamp || queries[i].timestamp > until)
+		if((from > queries[i].timestamp && from != 0) || (queries[i].timestamp > until && until != 0))
 				continue;
-		}
 
 		if(filterdomainname)
 		{
@@ -977,13 +972,13 @@ void getAllQueries(char *client_message, int *sock, char type)
 			if(!privacymode)
 			{
 				if(strlen(clients[queries[i].clientID].name) > 0)
-					ssend(*sock,"%i %s %s %s %i\n",queries[i].timestamp,type,domains[queries[i].domainID].domain,clients[queries[i].clientID].name,queries[i].status);
+					ssend(*sock,"%i %s %s %s %i\n",queries[i].timestamp,qtype,domains[queries[i].domainID].domain,clients[queries[i].clientID].name,queries[i].status);
 				else
-					ssend(*sock,"%i %s %s %s %i\n",queries[i].timestamp,type,domains[queries[i].domainID].domain,clients[queries[i].clientID].ip,queries[i].status);
+					ssend(*sock,"%i %s %s %s %i\n",queries[i].timestamp,qtype,domains[queries[i].domainID].domain,clients[queries[i].clientID].ip,queries[i].status);
 			}
 			else
 			{
-				ssend(*sock,"%i %s %s hidden %i\n",queries[i].timestamp,type,domains[queries[i].domainID].domain,queries[i].status);
+				ssend(*sock,"%i %s %s hidden %i\n",queries[i].timestamp,qtype,domains[queries[i].domainID].domain,queries[i].status);
 			}
 		}
 		else
@@ -995,13 +990,13 @@ void getAllQueries(char *client_message, int *sock, char type)
 			if(!privacymode)
 			{
 				if(strlen(clients[queries[i].clientID].name) > 0)
-					ssend(*sock,"[%i,\"%s\",\"%s\",\"%s\",%i]",queries[i].timestamp,type,domains[queries[i].domainID].domain,clients[queries[i].clientID].name,queries[i].status);
+					ssend(*sock,"[\"%i\",\"%s\",\"%s\",\"%s\",\"%i\"]",queries[i].timestamp,qtype,domains[queries[i].domainID].domain,clients[queries[i].clientID].name,queries[i].status);
 				else
-					ssend(*sock,"[%i,\"%s\",\"%s\",\"%s\",%i]",queries[i].timestamp,type,domains[queries[i].domainID].domain,clients[queries[i].clientID].ip,queries[i].status);
+					ssend(*sock,"[\"%i\",\"%s\",\"%s\",\"%s\",\"%i\"]",queries[i].timestamp,qtype,domains[queries[i].domainID].domain,clients[queries[i].clientID].ip,queries[i].status);
 			}
 			else
 			{
-					ssend(*sock,"[%i,\"%s\",\"%s\",\"hidden\",%i]",queries[i].timestamp,type,domains[queries[i].domainID].domain,queries[i].status);
+					ssend(*sock,"[\"%i\",\"%s\",\"%s\",\"hidden\",\"%i\"]",queries[i].timestamp,qtype,domains[queries[i].domainID].domain,queries[i].status);
 			}
 		}
 	}
