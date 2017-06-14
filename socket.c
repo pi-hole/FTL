@@ -353,7 +353,11 @@ void *api_connection_handler_thread(void *socket_desc)
 				if(strstr(request, "/favicon.ico") != NULL)
 					ssend(sock, "HTTP/1.0 404 Not Found\nServer: FTL\n\n");
 				else
+				{
+					enable_thread_lock(threadname);
 					process_api_request(request, &sock, header);
+					disable_thread_lock(threadname);
+				}
 
 				// Free allocated memory
 				free(request);
