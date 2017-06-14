@@ -183,6 +183,10 @@ void process_api_request(char *client_message, int *sock, bool header)
 	{
 		getAllQueries(client_message, sock, type);
 	}
+	else if(command(client_message, "GET /dns/recent_blocked"))
+	{
+		getRecentBlocked(client_message, sock, type);
+	}
 	else if(header)
 	{
 		ssend(*sock,
@@ -1024,18 +1028,38 @@ void getRecentBlocked(char *client_message, int *sock, char type)
 		return;
 
 	// Test for integer that specifies number of entries to be shown
-	if(sscanf(client_message, ">%*[^(](%i)", &num) > 0)
+	if(type == SOCKET)
 	{
-		// User wants a different number of requests
-		if(num >= counters.queries)
-			num = 0;
-
-		if(debugclients)
-			logg("Showing several blocked domains ",num);
+		if(sscanf(client_message, "%*[^(](%i)", &num) > 0)
+		{
+			// User wants a different number of requests
+			if(num >= counters.queries)
+				num = 0;
+		}
 	}
+	else
+	{
+		const char * limit = strstr(client_message, "limit=");
+		if(limit != NULL)
+		{
+			if(sscanf(limit, "limit=%i", &num) > 0)
+			{
+				// User wants a different number of requests
+				if(num >= counters.queries)
+					num = 0;
+			}
+		}
+	}
+
+	if(type != SOCKET)
+	{
+		sendAPIResponse(*sock, type);
+		ssend(*sock, "{\"recent_blocked\":[");
+	}
+
 	// Find most recent query with either status 1 (blocked)
 	// or status 4 (wildcard blocked)
-	int found = 0;
+	int found = 0; bool first = true;
 	for(i = counters.queries - 1; i > 0 ; i--)
 	{
 		validate_access("queries", i, true, __LINE__, __FUNCTION__, __FILE__);
@@ -1045,7 +1069,16 @@ void getRecentBlocked(char *client_message, int *sock, char type)
 		if(queries[i].status == 1 || queries[i].status == 4)
 		{
 			found++;
-			ssend(*sock,"%s\n",domains[queries[i].domainID].domain);
+			if(type == SOCKET)
+			{
+				ssend(*sock,"%s\n", domains[queries[i].domainID].domain);
+			}
+			else
+			{
+				if(!first) ssend(*sock, ",");
+				first = false;
+				ssend(*sock, "\"%s\"", domains[queries[i].domainID].domain);
+			}
 		}
 
 		if(found >= num)
@@ -1053,6 +1086,9 @@ void getRecentBlocked(char *client_message, int *sock, char type)
 			break;
 		}
 	}
+
+	if(type != SOCKET)
+		ssend(*sock, "]}");
 }
 
 void getMemoryUsage(int *sock, char type)
