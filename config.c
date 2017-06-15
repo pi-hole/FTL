@@ -3,7 +3,7 @@
 *  Network-wide ad blocking via your own hardware.
 *
 *  FTL Engine
-*  Log parsing routine
+*  Config routines
 *
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
@@ -94,6 +94,22 @@ void read_FTLconf(void)
 		logg("   AAAA_QUERY_ANALYSIS: Show AAAA queries");
 	else
 		logg("   AAAA_QUERY_ANALYSIS: Hide AAAA queries");
+
+	// MAXDBFILESIZE
+	// defaults to: 100 MB
+	config.maxDBfilesize = 100;
+	buffer = parse_FTLconf(fp, "MAXDBFILESIZE");
+	if(buffer != NULL)
+	{
+		int value = 0;
+		if(sscanf(buffer, "%i", &value))
+			if(value >= 0)
+				config.maxDBfilesize = value;
+	}
+	if(config.maxDBfilesize == 0)
+		logg("   MAXDBFILESIZE: --- (DB disabled)", config.maxDBfilesize);
+	else
+		logg("   MAXDBFILESIZE: %i MB", config.maxDBfilesize);
 
 	logg("Finished config file parsing");
 

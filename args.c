@@ -17,6 +17,8 @@ bool debugthreads = false;
 bool debugclients = false;
 bool debugGC = false;
 bool runtest = false;
+bool debugDB = false;
+bool travis = false;
 void parse_args(int argc, char* argv[])
 {
 	int i;
@@ -40,6 +42,12 @@ void parse_args(int argc, char* argv[])
 		{
 			debug = true;
 			debugGC = true;
+		}
+
+		if(strcmp(argv[i], "debugDB") == 0)
+		{
+			debug = true;
+			debugDB = true;
 		}
 
 		if(strcmp(argv[i], "test") == 0)
@@ -68,6 +76,15 @@ void parse_args(int argc, char* argv[])
 		if(strcmp(argv[i], "no-daemon") == 0 || strcmp(argv[i], "-f") == 0)
 		{
 			daemonmode = false;
+		}
+
+		// Use files in local places for Travis-CI tests
+		if(strcmp(argv[i], "travis-ci") == 0)
+		{
+			travis = true;
+			FTLfiles.log = "pihole-FTL.log";
+			FTLfiles.db = "pihole-FTL.db";
+			files.log = "pihole.log";
 		}
 
 		// Other arguments are ignored

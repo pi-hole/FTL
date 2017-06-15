@@ -97,12 +97,13 @@ port may be automatically incremented if `4711` isn't available
 
 You can create a file `/etc/pihole/pihole-FTL.conf` that will be read by `FTL` on startup.
 
-Possible settings (the first one is the default setting):
+Possible settings (**the option shown first is the default**):
 
-- `SOCKET_LISTENING=localonly|all` (listen only for local connections or permit all connections)
-- `TIMEFRAME=rolling24h|yesterday|today` (rolling data window, up to 48h (today + yesterday), or up to 24h (only today, as in Pi-hole `v2.x` ))
-- `QUERY_DISPLAY=yes|no` (Display all queries? Set to `no` to hide query display. Default: `yes`)
-- `AAAA_QUERY_ANALYSIS=yes|no` (Allow `FTL` to analyze AAAA queries from pihole.log? Default: `yes`)
+- `SOCKET_LISTENING=localonly|all` (Listen only for local socket connections or permit all connections)
+- `TIMEFRAME=rolling24h|yesterday|today` (Rolling data window, up to 48h (today + yesterday), or up to 24h (only today, as in Pi-hole `v2.x` ))
+- `QUERY_DISPLAY=yes|no` (Display all queries? Set to `no` to hide query display)
+- `AAAA_QUERY_ANALYSIS=yes|no` (Allow `FTL` to analyze AAAA queries from pihole.log?)
+- `MAXDBFILESIZE=100` (How large do we want the FTL database to grow at max (given in MB), setting this to `0` disables the database altogether)
 
 ### Implemented keywords (starting with `>`, subject to change):
 
@@ -241,4 +242,10 @@ Sum: 193772 bytes (193.77 KB)
 tag v1.6
 branch master
 date 2017-03-26 13:10:43 +0200
+```
+
+- `>dbstats` : Get some statistics about the FTL long-term storage database
+ ```
+ queries in database: 88387
+SQLite version: 3.19.3
 ```

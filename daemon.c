@@ -167,11 +167,14 @@ void go_daemon(void)
 	savepid();
 
 	// Change the current working directory
-	if(chdir("/etc/pihole") != 0)
+	if(!travis)
 	{
-		logg("FATAL: Cannot change directory to /etc/pihole. Error code: %i",errno);
-		// Return failure
-		exit(EXIT_FAILURE);
+		if(chdir("/etc/pihole") != 0)
+		{
+			logg("FATAL: Cannot change directory to /etc/pihole. Error code: %i",errno);
+			// Return failure
+			exit(EXIT_FAILURE);
+		}
 	}
 
 	// Close stdin, stdout and stderr

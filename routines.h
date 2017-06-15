@@ -35,16 +35,10 @@ void pihole_log_flushed(bool message);
 
 void memory_check(int which);
 
-void init_socket(void);
-int listen_socket(void);
-bool check_socket(void);
-void read_socket(void);
-void close_socket(void);
-void removeport(void);
+void close_socket(char type);
 void seom(char server_message[], int sock);
 void swrite(char server_message[], int sock);
-void *connection_handler_thread(void *socket_desc);
-void *listenting_thread(void *args);
+void *socket_listenting_thread(void *args);
 
 void process_request(char *client_message, int *sock);
 bool command(char *client_message, const char* cmd);
@@ -71,3 +65,9 @@ void disable_thread_lock(const char *message);
 void read_FTLconf(void);
 
 void *GC_thread(void *val);
+
+// database.c
+void db_init(void);
+void *DB_thread(void *val);
+int get_number_of_queries_in_DB(void);
+void *DB_GC_thread(void *val);

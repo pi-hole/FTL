@@ -3,7 +3,7 @@
 *  Network-wide ad blocking via your own hardware.
 *
 *  FTL Engine
-*  Logflush handling routines
+*  Log flush handling routines
 *
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
@@ -72,6 +72,9 @@ void pihole_log_flushed(bool message)
 	overTime = NULL;
 	memory.forwarddata = 0;
 	memory.querytypedata = 0;
+
+	// Reset DB index counter so that new queries will be stored in the DB
+	lastdbindex = 0;
 
 	// Reset all counters to zero
 	memset(&counters, 0, sizeof(countersStruct));
