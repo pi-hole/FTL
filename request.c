@@ -31,6 +31,7 @@ void getClientID(int *sock, char type);
 void getQueryTypesOverTime(int *sock, char type);
 void getVersion(int *sock, char type);
 void getDBstats(int *sock, char type);
+void getList(int *sock, char type, char list_type);
 
 void process_socket_request(char *client_message, int *sock)
 {
@@ -194,6 +195,14 @@ void process_api_request(char *client_message, int *sock, bool header)
 	else if(command(client_message, "GET /stats/overTime/query_types"))
 	{
 		getQueryTypesOverTime(sock, type);
+	}
+	else if(command(client_message, "GET /dns/whitelist"))
+	{
+		getList(sock, type, WHITELIST);
+	}
+	else if(command(client_message, "GET /dns/blacklist"))
+	{
+		getList(sock, type, BLACKLIST);
 	}
 	else if(header)
 	{
@@ -1271,4 +1280,39 @@ void getDBstats(int *sock, char type)
 
 	if(debugclients)
 		logg("Sent DB info to client, ID: %i", *sock);
+}
+
+void getList(int *sock, char type, char list_type)
+{
+	FILE *fp;
+	char line[255];
+
+	if((fp = fopen(list_type == WHITELIST ? "/etc/pihole/whitelist.txt" : "/etc/pihole/blacklist.txt", "r")) != NULL)
+	{
+		bool first = true;
+		sendAPIResponse(*sock, type);
+		ssend(*sock, "\"data\":[");
+
+		while(fgets(line, sizeof(line), fp)) {
+			// Skip empty lines
+			if(line[0] == '\n')
+				continue;
+
+			if(!first) ssend(*sock, ",");
+			first = false;
+
+			// Trim off the newline, if it exists
+			size_t len = strlen(line);
+			if(len > 0 && line[len-1] == '\n')
+				line[len-1] = 0;
+
+			ssend(*sock, "\"%s\"", line);
+		}
+
+		ssend(*sock, "]");
+
+		fclose(fp);
+	}
+	else
+		logg("ERROR: Unable to read %s");
 }

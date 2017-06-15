@@ -183,6 +183,7 @@ typedef struct {
 
 enum { QUERIES, FORWARDED, CLIENTS, DOMAINS, OVERTIME, WILDCARD };
 enum { SOCKET, API, APIH };
+enum { WHITELIST, BLACKLIST };
 
 logFileNamesStruct files;
 FTLFileNamesStruct FTLfiles;
