@@ -1303,9 +1303,7 @@ void getList(int *sock, char type, char list_type)
 			first = false;
 
 			// Trim off the newline, if it exists
-			size_t len = strlen(line);
-			if(len > 0 && line[len-1] == '\n')
-				line[len-1] = 0;
+			line[strcspn(line, "\r\n")] = 0;
 
 			ssend(*sock, "\"%s\"", line);
 		}
