@@ -861,7 +861,10 @@ void getAllQueries(char *client_message, int *sock, char type)
 		temp = strstr(client_message, "domain=");
 		if(temp != NULL)
 		{
-			sscanf(temp, "domain=%ms", &domainname);
+			char *temp2 = strdup(temp);
+			temp2[strcspn(temp2, "&")] = 0;
+			sscanf(temp2, "domain=%ms", &domainname);
+			free(temp2);
 			filterdomainname = true;
 		}
 		temp = strstr(client_message, "client=");
@@ -869,7 +872,10 @@ void getAllQueries(char *client_message, int *sock, char type)
 		// Client filtering?
 		if(temp != NULL)
 		{
-			sscanf(temp, "client=%ms", &clientname);
+			char *temp2 = strdup(temp);
+			temp2[strcspn(temp2, "&")] = 0;
+			sscanf(temp2, "client=%ms", &clientname);
+			free(temp2);
 			filterclientname = true;
 		}
 	}
