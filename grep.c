@@ -85,7 +85,7 @@ void readWildcardsList()
 	else
 	{
 		// Opening of the wildcards file succeeded - reset wildcard counter
-		if(counters.wildcarddomains < 0) counters.wildcarddomains = -0;
+		if(counters.wildcarddomains < 0) counters.wildcarddomains = 0;
 	}
 
 	// Search through file
