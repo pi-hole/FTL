@@ -84,6 +84,7 @@ typedef struct {
 	const char* whitelist;
 	const char* blacklist;
 	const char* setupVars;
+	const char* dnsmasqconf;
 	const char* wildcards;
 	const char* auditlist;
 } logFileNamesStruct;

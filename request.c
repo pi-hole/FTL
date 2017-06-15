@@ -32,6 +32,7 @@ void getQueryTypesOverTime(int *sock, char type);
 void getVersion(int *sock, char type);
 void getDBstats(int *sock, char type);
 void getList(int *sock, char type, char list_type);
+void getPiholeStatus(int *sock, char type);
 
 void process_socket_request(char *client_message, int *sock)
 {
@@ -203,6 +204,10 @@ void process_api_request(char *client_message, int *sock, bool header)
 	else if(command(client_message, "GET /dns/blacklist"))
 	{
 		getList(sock, type, BLACKLIST);
+	}
+	else if(command(client_message, "GET /dns/status"))
+	{
+		getPiholeStatus(sock, type);
 	}
 	else if(header)
 	{
@@ -1328,4 +1333,11 @@ void getList(int *sock, char type, char list_type)
 	{
 		ssend(*sock, "\"%s\":[]", list_type == WHITELIST ? "whitelist" : "blacklist");
 	}
+}
+
+void getPiholeStatus(int *sock, char type)
+{
+	int status = countlineswith("#addn-hosts=/etc/pihole/gravity.list", files.dnsmasqconf);
+	sendAPIResponse(*sock, type);
+	ssend(*sock, "\"status\":%i", status == 1 ? 0 : 1);
 }
