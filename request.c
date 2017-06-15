@@ -1314,5 +1314,7 @@ void getList(int *sock, char type, char list_type)
 		fclose(fp);
 	}
 	else
-		logg("ERROR: Unable to read %s");
+	{
+		ssend(*sock, "\"data\":[]");
+	}
 }
