@@ -207,10 +207,7 @@ void process_api_request(char *client_message, int *sock, bool header)
 
 bool command(char *client_message, const char* cmd)
 {
-	if(strstr(client_message,cmd) != NULL)
-		return true;
-	else
-		return false;
+	return strstr(client_message,cmd) != NULL;
 }
 
 void sendAPIResponse(int sock, char type) {
@@ -291,9 +288,7 @@ void getStats(int *sock, char type)
 	float percentage = 0.0;
 	// Avoid 1/0 condition
 	if(total > 0)
-	{
 		percentage = 1e2*blocked/total;
-	}
 
 	if(type == SOCKET) {
 		ssend(*sock, "domains_being_blocked %i\ndns_queries_today %i\nads_blocked_today %i\nads_percentage_today %f\n", \
@@ -403,25 +398,17 @@ void getTopDomains(char *client_message, int *sock, char type)
 	// SOCKET: >top-domains for audit
 	// API:    /stats/top_domains?audit
 	if(type == SOCKET && command(client_message, " for audit"))
-	{
 		audit = true;
-	}
 	else if(type != SOCKET && command(client_message, "audit"))
-	{
 		audit = true;
-	}
 
 	// Sort in descending order?
 	// SOCKET: >top-domains desc
 	// API:    /stats/top_domains?order=desc
 	if(type == SOCKET && command(client_message, " desc"))
-	{
 		desc = true;
-	}
 	else if(type != SOCKET && command(client_message, "order=desc"))
-	{
 		desc = true;
-	}
 
 	for(i=0; i < counters.domains; i++)
 	{
@@ -447,13 +434,9 @@ void getTopDomains(char *client_message, int *sock, char type)
 	if(filter != NULL)
 	{
 		if((strcmp(filter, "permittedonly")) == 0)
-		{
 			showblocked = false;
-		}
 		else if((strcmp(filter, "blockedonly")) == 0)
-		{
 			showpermitted = false;
-		}
 		else if((strcmp(filter, "nothing")) == 0)
 		{
 			showpermitted = false;
@@ -470,14 +453,17 @@ void getTopDomains(char *client_message, int *sock, char type)
 		if(excludedomains != NULL)
 		{
 			getSetupVarsArray(excludedomains);
+
 			if(debugclients)
 				logg("Excluding %i domains from being displayed", setupVarsElements);
 		}
 	}
 
 	if(type != SOCKET)
-	{// First send header with unspecified content-length outside of the for-loop
+	{
+		// First send header with unspecified content-length outside of the for-loop
 		sendAPIResponse(*sock, type);
+
 		if(blocked)
 			ssend(*sock, "\"top_ads\":{");
 		else
@@ -597,12 +583,14 @@ void getTopClients(char *client_message, int *sock, char type)
 	if(excludeclients != NULL)
 	{
 		getSetupVarsArray(excludeclients);
+
 		if(debugclients)
 			logg("Excluding %i clients from being displayed", setupVarsElements);
 	}
 
 	if(type != SOCKET)
-	{// First send header with unspecified content-length outside of the for-loop
+	{
+		// First send header with unspecified content-length outside of the for-loop
 		sendAPIResponse(*sock, type);
 		ssend(*sock, "\"top_clients\":{");
 	}
@@ -788,7 +776,7 @@ void getQueryTypes(int *sock, char type)
 	else
 	{
 		sendAPIResponse(*sock, type);
-		ssend(*sock,"\"query_types\":{\"A (IPv4)\":%i,\"AAAA (IPv6)\":%i,\"PTR\":%i,\"SRV\":%i}",
+		ssend(*sock, "\"query_types\":{\"A (IPv4)\":%i,\"AAAA (IPv6)\":%i,\"PTR\":%i,\"SRV\":%i}",
 				counters.IPv4,
 				counters.IPv6,
 				counters.PTR,
@@ -912,13 +900,9 @@ void getAllQueries(char *client_message, int *sock, char type)
 	if(filter != NULL)
 	{
 		if((strcmp(filter, "permittedonly")) == 0)
-		{
 			showblocked = false;
-		}
 		else if((strcmp(filter, "blockedonly")) == 0)
-		{
 			showpermitted = false;
-		}
 		else if((strcmp(filter, "nothing")) == 0)
 		{
 			showpermitted = false;
@@ -930,9 +914,11 @@ void getAllQueries(char *client_message, int *sock, char type)
 	// Get privacy mode flag
 	char * privacy = read_setupVarsconf("API_PRIVACY_MODE");
 	bool privacymode = false;
+
 	if(privacy != NULL)
 		if(getSetupVarsBool(privacy))
 			privacymode = true;
+
 	clearSetupVarsArray();
 
 	if(debugclients)
@@ -969,13 +955,9 @@ void getAllQueries(char *client_message, int *sock, char type)
 
 		char qtype[5];
 		if(queries[i].type == 1)
-		{
 			strcpy(qtype,"IPv4");
-		}
 		else
-		{
 			strcpy(qtype,"IPv6");
-		}
 
 		if((queries[i].status == 1 || queries[i].status == 4) && !showblocked)
 			continue;
@@ -1011,9 +993,7 @@ void getAllQueries(char *client_message, int *sock, char type)
 					ssend(*sock,"%i %s %s %s %i\n",queries[i].timestamp,qtype,domains[queries[i].domainID].domain,clients[queries[i].clientID].ip,queries[i].status);
 			}
 			else
-			{
 				ssend(*sock,"%i %s %s hidden %i\n",queries[i].timestamp,qtype,domains[queries[i].domainID].domain,queries[i].status);
-			}
 		}
 		else
 		{
@@ -1029,9 +1009,7 @@ void getAllQueries(char *client_message, int *sock, char type)
 					ssend(*sock,"[%i,\"%s\",\"%s\",\"%s\",%i]",queries[i].timestamp,qtype,domains[queries[i].domainID].domain,clients[queries[i].clientID].ip,queries[i].status);
 			}
 			else
-			{
-					ssend(*sock,"[%i,\"%s\",\"%s\",\"hidden\",%i]",queries[i].timestamp,qtype,domains[queries[i].domainID].domain,queries[i].status);
-			}
+				ssend(*sock,"[%i,\"%s\",\"%s\",\"hidden\",%i]",queries[i].timestamp,qtype,domains[queries[i].domainID].domain,queries[i].status);
 		}
 	}
 
@@ -1112,9 +1090,7 @@ void getRecentBlocked(char *client_message, int *sock, char type)
 		}
 
 		if(found >= num)
-		{
 			break;
-		}
 	}
 
 	if(type != SOCKET)
