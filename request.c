@@ -1287,11 +1287,11 @@ void getList(int *sock, char type, char list_type)
 	FILE *fp;
 	char line[255];
 
-	if((fp = fopen(list_type == WHITELIST ? "/etc/pihole/whitelist.txt" : "/etc/pihole/blacklist.txt", "r")) != NULL)
+	if((fp = fopen(list_type == WHITELIST ? files.whitelist : files.blacklist, "r")) != NULL)
 	{
 		bool first = true;
 		sendAPIResponse(*sock, type);
-		ssend(*sock, "\"data\":[");
+		ssend(*sock, "\"%s\":[", list_type == WHITELIST ? "whitelist" : "blacklist");
 
 		while(fgets(line, sizeof(line), fp)) {
 			// Skip empty lines
@@ -1315,6 +1315,6 @@ void getList(int *sock, char type, char list_type)
 	}
 	else
 	{
-		ssend(*sock, "\"data\":[]");
+		ssend(*sock, "\"%s\":[]", list_type == WHITELIST ? "whitelist" : "blacklist");
 	}
 }
