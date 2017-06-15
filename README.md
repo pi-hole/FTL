@@ -97,13 +97,13 @@ port may be automatically incremented if `4711` isn't available
 
 You can create a file `/etc/pihole/pihole-FTL.conf` that will be read by `FTL` on startup.
 
-Possible settings (the first one is the default setting):
+Possible settings (**the option shown first is the default**):
 
-- `SOCKET_LISTENING=localonly|all` (listen only for local connections or permit all connections)
-- `TIMEFRAME=rolling24h|yesterday|today` (rolling data window, up to 48h (today + yesterday), or up to 24h (only today, as in Pi-hole `v2.x` ))
-- `QUERY_DISPLAY=yes|no` (hide queries altogether)
-- `analyze_AAAA=yes|no` (do we want `FTL` to analyze AAAA queries from pihole.log?)
-- `MAXDBFILESIZE=100` (how large do we want the FTL database to grow at max (given in MB), setting this to zero disables the database altogether)
+- `SOCKET_LISTENING=localonly|all` (Listen only for local socket connections or permit all connections)
+- `TIMEFRAME=rolling24h|yesterday|today` (Rolling data window, up to 48h (today + yesterday), or up to 24h (only today, as in Pi-hole `v2.x` ))
+- `QUERY_DISPLAY=yes|no` (Display all queries? Set to `no` to hide query display)
+- `AAAA_QUERY_ANALYSIS=yes|no` (Allow `FTL` to analyze AAAA queries from pihole.log?)
+- `MAXDBFILESIZE=100` (How large do we want the FTL database to grow at max (given in MB), setting this to `0` disables the database altogether)
 
 ### Implemented keywords (starting with `>`, subject to change):
 

@@ -82,6 +82,11 @@ void readWildcardsList()
 		counters.wildcarddomains = -1;
 		return;
 	}
+	else
+	{
+		// Opening of the wildcards file succeeded - reset wildcard counter
+		if(counters.wildcarddomains < 0) counters.wildcarddomains = -0;
+	}
 
 	// Search through file
 	errno = 0;
