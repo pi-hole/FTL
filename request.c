@@ -1285,7 +1285,8 @@ void getDBstats(int *sock, char type)
 void getList(int *sock, char type, char list_type)
 {
 	FILE *fp;
-	char line[255];
+	char *line = NULL;
+	size_t size = 0;
 
 	if((fp = fopen(list_type == WHITELIST ? files.whitelist : files.blacklist, "r")) != NULL)
 	{
@@ -1293,7 +1294,7 @@ void getList(int *sock, char type, char list_type)
 		sendAPIResponse(*sock, type);
 		ssend(*sock, "\"%s\":[", list_type == WHITELIST ? "whitelist" : "blacklist");
 
-		while(fgets(line, sizeof(line), fp)) {
+		while(getline(&line, &size, fp) != -1) {
 			// Skip empty lines
 			if(line[0] == '\n')
 				continue;
@@ -1307,6 +1308,12 @@ void getList(int *sock, char type, char list_type)
 				line[len-1] = 0;
 
 			ssend(*sock, "\"%s\"", line);
+		}
+		// Free allocated memory
+		if(line != NULL)
+		{
+			free(line);
+			line = NULL;
 		}
 
 		ssend(*sock, "]");
