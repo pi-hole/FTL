@@ -102,7 +102,7 @@ Possible settings (the first one is the default setting):
 - `SOCKET_LISTENING=localonly|all` (listen only for local connections or permit all connections)
 - `TIMEFRAME=rolling24h|yesterday|today` (rolling data window, up to 48h (today + yesterday), or up to 24h (only today, as in Pi-hole `v2.x` ))
 - `QUERY_DISPLAY=yes|no` (hide queries altogether)
-- `AAAA_QUERY_ANALYSIS=yes|no` (do we want `FTL` to analyze AAAA queries from pihole.log?)
+- `analyze_AAAA=yes|no` (do we want `FTL` to analyze AAAA queries from pihole.log?)
 
 ### Implemented keywords (starting with `>`, subject to change):
 
