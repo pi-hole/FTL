@@ -1301,11 +1301,12 @@ void getList(int *sock, char type, char list_type)
 	char *line = NULL;
 	size_t size = 0;
 
+	sendAPIResponse(*sock, type);
+	ssend(*sock, "\"%s\":[", list_type == WHITELIST ? "whitelist" : "blacklist");
+
 	if((fp = fopen(list_type == WHITELIST ? files.whitelist : files.blacklist, "r")) != NULL)
 	{
 		bool first = true;
-		sendAPIResponse(*sock, type);
-		ssend(*sock, "\"%s\":[", list_type == WHITELIST ? "whitelist" : "blacklist");
 
 		while(getline(&line, &size, fp) != -1) {
 			// Skip empty lines
@@ -1327,14 +1328,10 @@ void getList(int *sock, char type, char list_type)
 			line = NULL;
 		}
 
-		ssend(*sock, "]");
-
 		fclose(fp);
 	}
-	else
-	{
-		ssend(*sock, "\"%s\":[]", list_type == WHITELIST ? "whitelist" : "blacklist");
-	}
+
+	ssend(*sock, "]");
 }
 
 void getPiholeStatus(int *sock, char type)
