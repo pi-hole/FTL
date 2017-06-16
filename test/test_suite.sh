@@ -179,3 +179,19 @@ load 'libs/bats-support/load'
   echo "curl exit code: ${status}"
   [[ "${status}" -eq 0 ]]
 }
+
+
+@test "API: Correct answer to summary request (including header check)" {
+  run bash -c "curl -i 127.0.0.1:4747/stats/summary"
+  echo "output: ${lines[@]}"
+  echo "curl exit code: ${status}"
+  [[ ${lines[0]} == "HTTP/1.0 200 OK" ]]
+  [[ ${lines[1]} == "Server: FTL" ]]
+  [[ ${lines[2]} == "Cache-Control: no-cache" ]]
+  [[ ${lines[3]} == "Server: FTL" ]]
+  [[ ${lines[4]} == "Access-Control-Allow-Origin: *" ]]
+  [[ ${lines[5]} == "Content-Type: application/json" ]]
+  [[ ${lines[6]} == "" ]]
+  [[ ${lines[7]} == "{\"domains_being_blocked\":-1,\"dns_queries_today\":5,\"ads_blocked_today\":0,\"ads_percentage_today\":0.0000,\"unique_domains\":4,\"queries_forwarded\":3,\"queries_cached\":2}" ]]
+  [[ "${status}" -eq 0 ]]
+}
