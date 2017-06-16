@@ -1155,14 +1155,15 @@ void getForwardDestinationsOverTime(int *sock, char type)
 			break;
 		}
 	}
+
+	if(type != SOCKET)
+	{
+		sendAPIResponse(*sock, type);
+		ssend(*sock,"\"forward_dest\":{");
+	}
+
 	if(sendit > -1)
 	{
-		if(type != SOCKET)
-		{
-			sendAPIResponse(*sock, type);
-			ssend(*sock,"\"forward_dest\":{");
-		}
-
 		bool first = true;
 		for(i = sendit; i < counters.overTime; i++)
 		{
@@ -1232,14 +1233,15 @@ void getQueryTypesOverTime(int *sock, char type)
 			break;
 		}
 	}
+
+	if(type != SOCKET)
+	{
+		sendAPIResponse(*sock, type);
+		ssend(*sock,"\"query_types\":{");
+	}
+
 	if(sendit > -1)
 	{
-		if(type != SOCKET)
-		{
-			sendAPIResponse(*sock, type);
-			ssend(*sock,"\"query_types\":{");
-		}
-
 		bool first = true;
 		for(i = sendit; i < counters.overTime; i++)
 		{
