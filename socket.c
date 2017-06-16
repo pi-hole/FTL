@@ -12,81 +12,16 @@
 
 // The backlog argument defines the maximum length
 // to which the queue of pending connections for
-// sockfd may grow. If a connection request arrives
+// socketfd may grow. If a connection request arrives
 // when the queue is full, the client may receive an
 // error with an indication of ECONNREFUSED or, if
 // the underlying protocol supports retransmission,
 // the request may be ignored so that a later
 // reattempt at connection succeeds.
 #define BACKLOG 5
-#define PORT 4711
 
-int sockfd;
-// Private prototype
-void saveport(int port);
-
-void init_socket(void)
-{
-	sockfd = socket(AF_INET, SOCK_STREAM, 0);
-
-	if(sockfd < 0)
-	{
-		logg("Error opening socket");
-		exit(EXIT_FAILURE);
-	}
-
-	// Set SO_REUSEADDR to allow re-binding to the port that has been used
-	// previously by FTL. A common pattern is that you change FTL's
-	// configuration file and need to restart that server to make it reload
-	// its configuration. Without SO_REUSEADDR, the bind() call in the restarted
-	// new instance will fail if there were connections open to the previous
-	// instance when you killed it. Those connections will hold the TCP port in
-	// the TIME_WAIT state for 30-120 seconds, so you fall into case 1 above.
-	setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int));
-
-	struct sockaddr_in serv_addr;
-	// set all values in the buffer to zero
-	memset(&serv_addr, 0, sizeof(serv_addr));
-	serv_addr.sin_family = AF_INET;
-
-	if(config.socket_listenlocal)
-		serv_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-	else
-		serv_addr.sin_addr.s_addr = INADDR_ANY;
-
-	// The bind() system call binds a socket to an address,
-	// in this case the address of the current host and
-	// port number on which the server will run.
-	// convert this to network byte order using the function htons()
-	// which converts a port number in host byte order to a port number
-	// in network byte order
-	int port;
-	for(port=PORT; port <= PORT+20; port++)
-	{
-		serv_addr.sin_port = htons(port);
-		if(bind(sockfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0)
-		{
-			logg("Error on binding on port %i", port);
-		}
-		else
-		{
-			break;
-		}
-	}
-	if(port == PORT+20)
-	{
-		logg("Error listening on any port");
-		exit(EXIT_FAILURE);
-	}
-	saveport(port);
-
-	// The listen system call allows the process to listen on the socket for connections
-	if(listen(sockfd,BACKLOG) == -1)
-	{
-		logg("Error on listening");
-		exit(EXIT_FAILURE);
-	}
-}
+// File descriptors
+int socketfd;
 
 void saveport(int port)
 {
@@ -101,9 +36,91 @@ void saveport(int port)
 		fprintf(f, "%i", port);
 		fclose(f);
 	}
-	logg("Listening on port %i", port);
 }
 
+void bind_to_port(char type, int *socketdescriptor)
+{
+	*socketdescriptor = socket(AF_INET, SOCK_STREAM, 0);
+
+	if(*socketdescriptor < 0)
+	{
+		logg("Error opening socket");
+		exit(EXIT_FAILURE);
+	}
+
+	// Set SO_REUSEADDR to allow re-binding to the port that has been used
+	// previously by FTL. A common pattern is that you change FTL's
+	// configuration file and need to restart that server to make it reload
+	// its configuration. Without SO_REUSEADDR, the bind() call in the restarted
+	// new instance will fail if there were connections open to the previous
+	// instance when you killed it. Those connections will hold the TCP port in
+	// the TIME_WAIT state for 30-120 seconds, so you fall into case 1 above.
+	setsockopt(*socketdescriptor, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int));
+
+	struct sockaddr_in serv_addr;
+	// set all values in the buffer to zero
+	memset(&serv_addr, 0, sizeof(serv_addr));
+	serv_addr.sin_family = AF_INET;
+
+	if(config.socket_listenlocal && type == SOCKET)
+		serv_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+	else
+		serv_addr.sin_addr.s_addr = INADDR_ANY;
+
+	// The bind() system call binds a socket to an address,
+	// in this case the address of the current host and
+	// port number on which the server will run.
+	// convert this to network byte order using the function htons()
+	// which converts a port number in host byte order to a port number
+	// in network byte order
+	int port, port_init;
+
+	switch(type)
+	{
+		case SOCKET:
+			port_init = 4711;
+			break;
+		default:
+			logg("Incompatible socket type %i", (int)type);
+			exit(EXIT_FAILURE);
+			break;
+	}
+
+	bool bound = false;
+	for(port = port_init; port <= (port_init + 20); port++)
+	{
+		serv_addr.sin_port = htons(port);
+		if(bind(*socketdescriptor, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0)
+		{
+			logg("Error on binding on port %i", port);
+		}
+		else
+		{
+			bound = true;
+			break;
+		}
+	}
+
+	if(!bound)
+	{
+		logg("Error listening on any port");
+		exit(EXIT_FAILURE);
+	}
+
+	if(type == SOCKET)
+		saveport(port);
+
+	// The listen system call allows the process to listen on the socket for connections
+	if(listen(*socketdescriptor, BACKLOG) == -1)
+	{
+		logg("Error on listening");
+		exit(EXIT_FAILURE);
+	}
+
+	logg("Listening on port %i for incoming connections", port);
+}
+
+// Called from main() at graceful shutdown
 void removeport(void)
 {
 	FILE *f;
@@ -127,62 +144,37 @@ void swrite(char server_message[SOCKETBUFFERLEN], int sock)
 		logg("WARNING: Socket write returned error code %i", errno);
 }
 
-int listen_socket(void)
+int listener(int sockfd)
 {
 	struct sockaddr_in cli_addr;
 	// set all values in the buffer to zero
 	memset(&cli_addr, 0, sizeof(cli_addr));
 	socklen_t clilen = sizeof(cli_addr);
 	int clientsocket = accept(sockfd, (struct sockaddr *) &cli_addr, &clilen);
-	// if (newsockfd < 0)
-		// printf("ERROR on accept");
+
 	if(debugclients)
 		logg("Client connected: %s, ID: %i", inet_ntoa (cli_addr.sin_addr), clientsocket);
 
 	return clientsocket;
 }
 
-void close_socket(void)
+void close_socket(char type)
 {
-	close(sockfd);
-}
-
-void *listenting_thread(void *args)
-{
-	int *newsock;
-	// We will use the attributes object later to start all threads in detached mode
-	pthread_attr_t attr;
-	// Initialize thread attributes object with default attribute values
-	pthread_attr_init(&attr);
-	// When a detached thread terminates, its resources are automatically released back to
-	// the system without the need for another thread to join with the terminated thread
-	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-
-	// Set thread name
-	prctl(PR_SET_NAME,"listener",0,0,0);
-
-	// Listen as long as FTL is not killed
-	while(!killed)
+	switch(type)
 	{
-		// Look for new clients that want to connect
-		int csck = listen_socket();
-
-		// Allocate memory used to transport client socket ID to client listening thread
-		newsock = calloc(1,sizeof(int));
-		*newsock = csck;
-
-		pthread_t connection_thread;
-		// Create a new thread
-		if(pthread_create( &connection_thread, &attr, connection_handler_thread, (void*) newsock ) != 0)
-		{
-			// Log the error code description
-			logg("WARNING: Unable to open clients processing thread, error: %s", strerror(errno));
-		}
+		case SOCKET:
+			removeport();
+			// Using global variable here
+			close(socketfd);
+			break;
+		default:
+			logg("Incompatible socket type %i, cannot close",(int)type);
+			exit(EXIT_FAILURE);
+			break;
 	}
-	return 0;
 }
 
-void *connection_handler_thread(void *socket_desc)
+void *socket_connection_handler_thread(void *socket_desc)
 {
 	//Get the socket descriptor
 	int sock = *(int*)socket_desc;
@@ -236,5 +228,43 @@ void *connection_handler_thread(void *socket_desc)
 		close(sock);
 	free(socket_desc);
 
+	return 0;
+}
+
+void *socket_listenting_thread(void *args)
+{
+	int *newsock;
+	// We will use the attributes object later to start all threads in detached mode
+	pthread_attr_t attr;
+	// Initialize thread attributes object with default attribute values
+	pthread_attr_init(&attr);
+	// When a detached thread terminates, its resources are automatically released back to
+	// the system without the need for another thread to join with the terminated thread
+	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+
+	// Set thread name
+	prctl(PR_SET_NAME,"socket listener",0,0,0);
+
+	// Initialize sockets only after initial log parsing in listenting_thread
+	bind_to_port(SOCKET, &socketfd);
+
+	// Listen as long as FTL is not killed
+	while(!killed)
+	{
+		// Look for new clients that want to connect
+		int csck = listener(socketfd);
+
+		// Allocate memory used to transport client socket ID to client listening thread
+		newsock = calloc(1,sizeof(int));
+		*newsock = csck;
+
+		pthread_t socket_connection_thread;
+		// Create a new thread
+		if(pthread_create( &socket_connection_thread, &attr, socket_connection_handler_thread, (void*) newsock ) != 0)
+		{
+			// Log the error code description
+			logg("WARNING: Unable to open clients processing thread, error: %s", strerror(errno));
+		}
+	}
 	return 0;
 }

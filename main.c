@@ -13,6 +13,7 @@
 
 char * username;
 bool needGC = false;
+bool needDBGC = false;
 
 int main (int argc, char* argv[]) {
 	username = getUserName();
@@ -48,6 +49,9 @@ int main (int argc, char* argv[]) {
 
 	read_gravity_files();
 
+	if(config.maxDBfilesize != 0)
+		db_init();
+
 	logg("Starting initial log file parsing");
 	initial_log_parsing();
 	logg("Finished initial log file parsing");
@@ -69,11 +73,8 @@ int main (int argc, char* argv[]) {
 		killed = 1;
 	}
 
-	// Initialize sockets only after initial log parsing
-	init_socket();
-
-	pthread_t listenthread;
-	if(pthread_create( &listenthread, &attr, listenting_thread, NULL ) != 0)
+	pthread_t socket_listenthread;
+	if(pthread_create( &socket_listenthread, &attr, socket_listenting_thread, NULL ) != 0)
 	{
 		logg("Unable to open socket listening thread. Exiting...");
 		killed = 1;
@@ -83,12 +84,34 @@ int main (int argc, char* argv[]) {
 	{
 		sleepms(100);
 
-		// Garbadge collect in regular interval, but don't do it if the threadlocks is set
-		if(config.rolling_24h && ((((time(NULL) - GCdelay)%GCinterval) == 0 && !(threadwritelock || threadreadlock)) || needGC))
+		bool runGCthread = false, runDBthread = false, runDBGCthread = false;
+
+		if(((time(NULL) - GCdelay)%GCinterval) == 0)
+			runGCthread = true;
+
+		if(database)
 		{
+			// DBGC_time == 0 at five minutes after each full even hour
+			int DBGC_time = time(NULL) % 7200;
+			if(DBGC_time == 300 || needDBGC)
+			{
+				needDBGC = false;
+				runDBGCthread = true;
+			}
+
+			else if(((time(NULL)%DBinterval) == 0) && !runDBGCthread)
+				runDBthread = true;
+		}
+
+		// Garbadge collect in regular interval, but don't do it if the threadlocks is set
+		if(config.rolling_24h && (runGCthread || needGC))
+		{
+			// Wait until we are allowed to work on the data
+			while(threadwritelock || threadreadlock)
+				sleepms(100);
+
 			needGC = false;
-			if(debug)
-				logg("Running GC on data structure");
+			runGCthread = false;
 
 			pthread_t GCthread;
 			if(pthread_create( &GCthread, &attr, GC_thread, NULL ) != 0)
@@ -97,17 +120,55 @@ int main (int argc, char* argv[]) {
 				killed = 1;
 			}
 
+			// Avoid immediate re-run of GC thread
 			while(((time(NULL) - GCdelay)%GCinterval) == 0)
 				sleepms(100);
+		}
+
+		// Dump to database in regular interval
+		if(runDBthread)
+		{
+			// Wait until we are allowed to work on the data
+			while(threadwritelock || threadreadlock)
+				sleepms(100);
+
+			runDBthread = false;
+
+			pthread_t DBthread;
+			if(pthread_create( &DBthread, &attr, DB_thread, NULL ) != 0)
+			{
+				logg("WARN: Unable to open DB thread.");
+			}
+
+			// Avoid immediate re-run of DB thread
+			while(((time(NULL)%DBinterval) == 0))
+				sleepms(100);
+		}
+
+		// Clean database in regular interval
+		if(runDBGCthread)
+		{
+			runDBGCthread = false;
+
+			// Avoid any further DB activities outside of the DB_GC thread
+			database = false;
+
+			if(debug)
+				logg("Launching DB GC...");
+
+			pthread_t DBGCthread;
+			if(pthread_create( &DBGCthread, &attr, DB_GC_thread, NULL ) != 0)
+			{
+				logg("WARN: Unable to open DB GC thread.");
+			}
 		}
 	}
 
 
 	logg("Shutting down...");
 	pthread_cancel(piholelogthread);
-	pthread_cancel(listenthread);
-	close_socket();
-	removeport();
+	pthread_cancel(socket_listenthread);
+	close_socket(SOCKET);
 	removepid();
 	logg("########## FTL terminated! ##########");
 	return 1;
