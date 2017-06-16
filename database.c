@@ -73,7 +73,7 @@ bool dbquery(const char *format, ...)
 	va_end(args);
 
 	if( rc != SQLITE_OK ){
-		logg("SQL error: %s", zErrMsg);
+		logg("SQL error (%i): %s", rc, zErrMsg);
 		sqlite3_free(zErrMsg);
 		return false;
 	}
@@ -186,16 +186,10 @@ bool db_set_FTL_property(unsigned int ID, int value)
 	return dbquery("INSERT OR REPLACE INTO ftl (id, value) VALUES ( %u, %i );", ID, value);
 }
 
-int get_number_of_queries_in_DB(void)
+int number_of_queries_in_DB(void)
 {
 	sqlite3_stmt* stmt;
 	int result = -1;
-
-	if(!dbopen())
-	{
-		logg("Failed to open DB in get_number_of_queries_in_DB()");
-		return -2;
-	}
 
 	// Count number of rows using the index timestamp is faster than select(*)
 	sqlite3_prepare_v2(db, "SELECT COUNT(timestamp) FROM queries", -1, &stmt, NULL);
@@ -206,6 +200,21 @@ int get_number_of_queries_in_DB(void)
 		logg("get_number_of_queries_in_DB() - SQL error: %s", sqlite3_errmsg(db));
 
 	sqlite3_finalize(stmt);
+
+	return result;
+}
+
+int get_number_of_queries_in_DB(void)
+{
+	int result = -1;
+
+	if(!dbopen())
+	{
+		logg("Failed to open DB in get_number_of_queries_in_DB()");
+		return -2;
+	}
+
+	result = number_of_queries_in_DB();
 
 	// Close database
 	dbclose();
@@ -348,11 +357,15 @@ void *DB_GC_thread(void *val)
 		return NULL;
 	}
 
-	while(get_db_filesize() > config.maxDBfilesize)
+	float factor = 1.0;
+	while(get_db_filesize() > factor*config.maxDBfilesize)
 	{
-		logg("Notice: DB filesize is %.2f MB, limit is %i.00 MB", get_db_filesize(), config.maxDBfilesize);
+		// If we run the database size reduction, make sure we remove a sufficient number
+		// of queries to go below 90% of the set maximum database file size
+		factor = 0.9;
+		logg("Notice: DB filesize is %.2f MB (%i rows), limit is %i.00 MB", get_db_filesize(), number_of_queries_in_DB(), config.maxDBfilesize);
 
-		if(!dbquery("DELETE FROM queries ORDER BY timestamp ASC LIMIT 1000"))
+		if(!dbquery("DELETE FROM queries WHERE id in ( SELECT id FROM queries ORDER BY timestamp ASC LIMIT 10000);"))
 		{
 			dbclose();
 			logg("ERROR: Deleting queries due to exceeded filesize of database failed!");
@@ -372,7 +385,7 @@ void *DB_GC_thread(void *val)
 		dbquery("VACUUM");
 	}
 	// Print final message
-	logg("Notice: DB filesize is %.2f MB, limit is %i.00 MB", get_db_filesize(), config.maxDBfilesize);
+	logg("Notice: DB filesize is %.2f MB (%i rows), limit is %i.00 MB", get_db_filesize(), number_of_queries_in_DB(), config.maxDBfilesize);
 
 	// Close database
 	dbclose();

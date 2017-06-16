@@ -35,7 +35,7 @@ DEBUG_FLAGS=-rdynamic -fno-omit-frame-pointer #-fsanitize=address
 # -DSQLITE_OMIT_DEPRECATED: Omitting deprecated interfaces and features will not help SQLite to run any faster. It will reduce the library footprint, however. And it is the right thing to do.
 # -DSQLITE_OMIT_PROGRESS_CALLBACK: The progress handler callback counter must be checked in the inner loop of the bytecode engine. By omitting this interface, a single conditional is removed from the inner loop of the bytecode engine, helping SQL statements to run slightly faster.
 SQLITEFLAGS=-DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_THREADSAFE=0 -DSQLITE_DEFAULT_MEMSTATUS=0 -DSQLITE_OMIT_DEPRECATED -DSQLITE_OMIT_PROGRESS_CALLBACK -DSQLITE_OMIT_MEMORYDB
-CCFLAGS=-I$(IDIR) -Wall -Wextra -Wno-unused-parameter -D_FILE_OFFSET_BITS=64 $(HARDENING_FLAGS) $(DEBUG_FLAGS) $(CFLAGS) $(SQLITEFLAGS)
+CCFLAGS=-I$(IDIR) -Wno-unused-parameter -D_FILE_OFFSET_BITS=64 $(HARDENING_FLAGS) $(DEBUG_FLAGS) $(CFLAGS) $(SQLITEFLAGS)
 LIBS=-pthread
 
 ODIR =obj
@@ -49,7 +49,7 @@ _OBJ = $(patsubst %,$(ODIR)/%,$(OBJ))
 all: pihole-FTL
 
 $(ODIR)/%.o: %.c $(_DEPS) | $(ODIR)
-	$(CC) -c -o $@ $< -g3 $(CCFLAGS)
+	$(CC) -c -o $@ $< -g3 -Wall -Wextra $(CCFLAGS)
 
 $(ODIR):
 	mkdir -p $(ODIR)
