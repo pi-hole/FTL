@@ -182,7 +182,7 @@ load 'libs/bats-support/load'
 
 
 @test "API: Correct answer to summary request (including header check)" {
-  run bash -c "curl -i 127.0.0.1:4747/stats/summary"
+  run bash -c "curl -si 127.0.0.1:4747/stats/summary"
   echo "output: ${lines[@]}"
   echo "curl exit code: ${status}"
   [[ ${lines[0]} == "HTTP/1.0 200 OK" ]]
