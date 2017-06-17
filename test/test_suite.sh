@@ -180,7 +180,6 @@ load 'libs/bats-support/load'
   [[ "${status}" -eq 0 ]]
 }
 
-
 @test "API: Correct answer to summary request (including header check)" {
   run bash -c "curl -si 127.0.0.1:4747/stats/summary"
   echo "output: ${lines[@]}"
@@ -188,10 +187,25 @@ load 'libs/bats-support/load'
   [[ ${lines[0]} == "HTTP/1.0 200 OK" ]]
   [[ ${lines[1]} == "Server: FTL" ]]
   [[ ${lines[2]} == "Cache-Control: no-cache" ]]
-  [[ ${lines[3]} == "Server: FTL" ]]
-  [[ ${lines[4]} == "Access-Control-Allow-Origin: *" ]]
-  [[ ${lines[5]} == "Content-Type: application/json" ]]
-  [[ ${lines[6]} == "" ]]
-  [[ ${lines[7]} == "{\"domains_being_blocked\":-1,\"dns_queries_today\":5,\"ads_blocked_today\":0,\"ads_percentage_today\":0.0000,\"unique_domains\":4,\"queries_forwarded\":3,\"queries_cached\":2}" ]]
+  [[ ${lines[3]} == "Access-Control-Allow-Origin: *" ]]
+  [[ ${lines[4]} == "Content-Type: application/json" ]]
+  [[ ${lines[5]} == "" ]]
+  [[ ${lines[6]} == "{\"domains_being_blocked\":-1,\"dns_queries_today\":5,\"ads_blocked_today\":0,\"ads_percentage_today\":0.0000,\"unique_domains\":4,\"queries_forwarded\":3,\"queries_cached\":2}" ]]
+  [[ "${status}" -eq 0 ]]
+}
+
+@test "API: Correct answer to top_domains request" {
+  run bash -c "curl -s 127.0.0.1:4747/stats/top_domains"
+  echo "output: ${lines[@]}"
+  echo "curl exit code: ${status}"
+  [[ ${lines[0]} == "" ]]
+  [[ "${status}" -eq 0 ]]
+}
+
+@test "API: Correct answer to top_ads request" {
+  run bash -c "curl -s 127.0.0.1:4747/stats/top_ads"
+  echo "output: ${lines[@]}"
+  echo "curl exit code: ${status}"
+  [[ ${lines[0]} == "" ]]
   [[ "${status}" -eq 0 ]]
 }
