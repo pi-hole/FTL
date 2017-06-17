@@ -19,10 +19,10 @@ load 'libs/bats-support/load'
   echo "output: ${lines[@]}"
   [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
   [[ ${lines[1]} =~ "domains_being_blocked -1" ]]
-  [[ ${lines[2]} =~ "dns_queries_today 5" ]]
-  [[ ${lines[3]} =~ "ads_blocked_today 0" ]]
+  [[ ${lines[2]} =~ "dns_queries_today 7" ]]
+  [[ ${lines[3]} =~ "ads_blocked_today 2" ]]
   [[ ${lines[4]} =~ "ads_percentage_today 0.000000" ]]
-  [[ ${lines[5]} =~ "unique_domains 4" ]]
+  [[ ${lines[5]} =~ "unique_domains 6" ]]
   [[ ${lines[6]} =~ "queries_forwarded 3" ]]
   [[ ${lines[7]} =~ "queries_cached 2" ]]
   [[ ${lines[8]} == "---EOM---" ]]
@@ -32,7 +32,7 @@ load 'libs/bats-support/load'
   run bash -c 'echo ">top-clients" | nc -v 127.0.0.1 4711'
   echo "output: ${lines[@]}"
   [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
-  [[ ${lines[1]} =~ "0 2 192.168.2.208" ]]
+  [[ ${lines[1]} =~ "0 4 192.168.2.208" ]]
   [[ ${lines[2]} == "1 2 127.0.0.1 localhost" ]]
   [[ ${lines[3]} =~ "2 1 10.8.0.2" ]]
   [[ ${lines[4]} == "---EOM---" ]]
@@ -46,7 +46,9 @@ load 'libs/bats-support/load'
   [[ ${lines[2]} == "1 1 pi.hole" ]]
   [[ ${lines[3]} == "2 1 checkip.dyndns.org" ]]
   [[ ${lines[4]} == "3 1 raspberrypi" ]]
-  [[ ${lines[5]} == "---EOM---" ]]
+  [[ ${lines[5]} == "4 1 blacklisted.com" ]]
+  [[ ${lines[6]} == "5 1 addomain.com" ]]
+  [[ ${lines[7]} == "---EOM---" ]]
 }
 
 @test "Top Ads" {
@@ -80,7 +82,7 @@ load 'libs/bats-support/load'
   run bash -c 'echo ">querytypes" | nc -v 127.0.0.1 4711'
   echo "output: ${lines[@]}"
   [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
-  [[ ${lines[1]} == "A (IPv4): 3" ]]
+  [[ ${lines[1]} == "A (IPv4): 5" ]]
   [[ ${lines[2]} == "AAAA (IPv6): 2" ]]
   [[ ${lines[3]} == "---EOM---" ]]
 }
@@ -94,7 +96,9 @@ load 'libs/bats-support/load'
   [[ ${lines[3]} =~ "IPv4 pi.hole" ]]
   [[ ${lines[4]} =~ "IPv4 play.google.com" ]]
   [[ ${lines[5]} =~ "IPv6 play.google.com" ]]
-  [[ ${lines[6]} == "---EOM---" ]]
+  [[ ${lines[6]} =~ "IPv4 blacklisted.com" ]]
+  [[ ${lines[7]} =~ "IPv4 addomain.com" ]]
+  [[ ${lines[8]} == "---EOM---" ]]
 }
 
 @test "Get all queries (domain filtered)" {
