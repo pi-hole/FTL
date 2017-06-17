@@ -331,6 +331,7 @@ void process_pihole_log(int file)
 			// - "gravity.list" + domain
 			// - "forwarded" + domain
 			// - "cached" + domain
+			// - "black.list" + domain
 			// in the following up to 200 lines
 			bool firsttime = true;
 			int forwardID = -1;
@@ -372,6 +373,12 @@ void process_pihole_log(int file)
 						else if((strstr(readbuffer2,"config ") != NULL))
 						{
 							status = detectStatus(domain);
+							break;
+						}
+						// Blocked by black.list ?
+						else if(strstr(readbuffer2,"black.list ") != NULL)
+						{
+							status = 5;
 							break;
 						}
 					}
@@ -520,8 +527,17 @@ void process_pihole_log(int file)
 					domains[domainID].blockedcount++;
 					domains[domainID].wildcard = true;
 					break;
+				case 5:
+					// Blocked by user's black list
+					counters.blocked++;
+					validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
+					overTime[timeidx].blocked++;
+					validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
+					domains[domainID].blockedcount++;
+					break;
 				default:
 					/* That cannot happen */
+					logg("Found unexpected status %i",status);
 					break;
 			}
 
