@@ -189,8 +189,7 @@ load 'libs/bats-support/load'
   [[ ${lines[2]} == "Cache-Control: no-cache" ]]
   [[ ${lines[3]} == "Access-Control-Allow-Origin: *" ]]
   [[ ${lines[4]} == "Content-Type: application/json" ]]
-  [[ ${lines[5]} == "" ]]
-  [[ ${lines[6]} == "{\"domains_being_blocked\":-1,\"dns_queries_today\":5,\"ads_blocked_today\":0,\"ads_percentage_today\":0.0000,\"unique_domains\":4,\"queries_forwarded\":3,\"queries_cached\":2}" ]]
+  [[ ${lines[5]} == "{\"domains_being_blocked\":-1,\"dns_queries_today\":5,\"ads_blocked_today\":0,\"ads_percentage_today\":0.0000,\"unique_domains\":4,\"queries_forwarded\":3,\"queries_cached\":2}" ]]
   [[ "${status}" -eq 0 ]]
 }
 
@@ -198,7 +197,7 @@ load 'libs/bats-support/load'
   run bash -c "curl -s 127.0.0.1:4747/stats/top_domains"
   echo "output: ${lines[@]}"
   echo "curl exit code: ${status}"
-  [[ ${lines[0]} == "" ]]
+  [[ ${lines[0]} == "{\"top_domains\":{\"play.google.com\":2,\"pi.hole\":1,\"checkip.dyndns.org\":1,\"raspberrypi\":1},\"dns_queries_today\":5,\"ads_blocked_today\":0}" ]]
   [[ "${status}" -eq 0 ]]
 }
 
@@ -206,6 +205,6 @@ load 'libs/bats-support/load'
   run bash -c "curl -s 127.0.0.1:4747/stats/top_ads"
   echo "output: ${lines[@]}"
   echo "curl exit code: ${status}"
-  [[ ${lines[0]} == "" ]]
+  [[ ${lines[0]} == "{\"top_ads\":{},\"dns_queries_today\":5,\"ads_blocked_today\":0}" ]]
   [[ "${status}" -eq 0 ]]
 }
