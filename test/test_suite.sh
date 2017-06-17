@@ -62,7 +62,7 @@ load 'libs/bats-support/load'
   run bash -c 'echo ">overTime" | nc -v 127.0.0.1 4711'
   echo "output: ${lines[@]}"
   [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
-  [[ ${lines[1]} =~ "5 2" ]]
+  [[ ${lines[1]} =~ "7 2" ]]
   [[ ${lines[2]} == "---EOM---" ]]
 }
 
