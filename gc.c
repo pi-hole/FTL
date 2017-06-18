@@ -83,6 +83,14 @@ void *GC_thread(void *val)
 					validate_access("domains", queries[i].domainID, true, __LINE__, __FUNCTION__, __FILE__);
 					domains[queries[i].domainID].blockedcount--;
 					break;
+				case 5:
+					// Blocked by user's black list
+					counters.blocked--;
+					validate_access("overTime", queries[i].timeidx, true, __LINE__, __FUNCTION__, __FILE__);
+					overTime[queries[i].timeidx].blocked--;
+					validate_access("domains", queries[i].domainID, true, __LINE__, __FUNCTION__, __FILE__);
+					domains[queries[i].domainID].blockedcount--;
+					break;
 				default:
 					/* That cannot happen */
 					break;
