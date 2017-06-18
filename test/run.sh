@@ -35,6 +35,10 @@ ${ts} reply play.google.com is <CNAME>
 ${ts} query[AAAA] play.google.com from 192.168.2.208
 ${ts} forwarded play.google.com to 2620:0:ccd::2
 ${ts} reply play.l.google.com is 2a00:1450:4017:802::200e
+${ts} query[A] blacklisted.com from 192.168.2.208
+${ts} /etc/pihole/black.list blacklisted.com is 1.2.3.4
+${ts} query[A] addomain.com from 192.168.2.208
+${ts} /etc/pihole/gravity.list addomain.com is 1.2.3.4
 EOT
 touch "pihole-FTL.log"
 
