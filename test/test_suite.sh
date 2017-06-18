@@ -19,10 +19,10 @@ load 'libs/bats-support/load'
   echo "output: ${lines[@]}"
   [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
   [[ ${lines[1]} =~ "domains_being_blocked -1" ]]
-  [[ ${lines[2]} =~ "dns_queries_today 5" ]]
-  [[ ${lines[3]} =~ "ads_blocked_today 0" ]]
-  [[ ${lines[4]} =~ "ads_percentage_today 0.000000" ]]
-  [[ ${lines[5]} =~ "unique_domains 4" ]]
+  [[ ${lines[2]} =~ "dns_queries_today 7" ]]
+  [[ ${lines[3]} =~ "ads_blocked_today 2" ]]
+  [[ ${lines[4]} =~ "ads_percentage_today 28.571428" ]]
+  [[ ${lines[5]} =~ "unique_domains 6" ]]
   [[ ${lines[6]} =~ "queries_forwarded 3" ]]
   [[ ${lines[7]} =~ "queries_cached 2" ]]
   [[ ${lines[8]} == "---EOM---" ]]
@@ -32,7 +32,7 @@ load 'libs/bats-support/load'
   run bash -c 'echo ">top-clients" | nc -v 127.0.0.1 4711'
   echo "output: ${lines[@]}"
   [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
-  [[ ${lines[1]} =~ "0 2 192.168.2.208" ]]
+  [[ ${lines[1]} =~ "0 4 192.168.2.208" ]]
   [[ ${lines[2]} == "1 2 127.0.0.1 localhost" ]]
   [[ ${lines[3]} =~ "2 1 10.8.0.2" ]]
   [[ ${lines[4]} == "---EOM---" ]]
@@ -53,14 +53,16 @@ load 'libs/bats-support/load'
   run bash -c 'echo ">top-ads" | nc -v 127.0.0.1 4711'
   echo "output: ${lines[@]}"
   [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
-  [[ ${lines[1]} == "---EOM---" ]]
+  [[ ${lines[1]} == "0 1 addomain.com" ]]
+  [[ ${lines[2]} == "1 1 blacklisted.com" ]]
+  [[ ${lines[3]} == "---EOM---" ]]
 }
 
 @test "Over Time" {
   run bash -c 'echo ">overTime" | nc -v 127.0.0.1 4711'
   echo "output: ${lines[@]}"
   [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
-  [[ ${lines[1]} =~ "5 0" ]]
+  [[ ${lines[1]} =~ "7 2" ]]
   [[ ${lines[2]} == "---EOM---" ]]
 }
 
@@ -70,9 +72,9 @@ load 'libs/bats-support/load'
   [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
   [[ ${lines[1]} =~ "0 4 2001:1608:10:25::9249:d69b" ]]
   [[ ${lines[2]} =~ "1 4 2620:0:ccd::2 resolver2.ipv6-sandbox.opendns.com" ]]
-  [[ ${lines[3]} =~ "2 2 2001:1608:10:25::1c04:b12f" ]]
-  [[ ${lines[4]} =~ "3 2 2620:0:ccc::2 resolver1.ipv6-sandbox.opendns.com" ]]
-  [[ ${lines[5]} =~ "4 2 ::1 local" ]]
+  [[ ${lines[3]} =~ "2 4 ::1 local" ]]
+  [[ ${lines[4]} =~ "3 2 2001:1608:10:25::1c04:b12f" ]]
+  [[ ${lines[5]} =~ "4 2 2620:0:ccc::2 resolver1.ipv6-sandbox.opendns.com" ]]
   [[ ${lines[6]} == "---EOM---" ]]
 }
 
@@ -80,7 +82,7 @@ load 'libs/bats-support/load'
   run bash -c 'echo ">querytypes" | nc -v 127.0.0.1 4711'
   echo "output: ${lines[@]}"
   [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
-  [[ ${lines[1]} == "A (IPv4): 3" ]]
+  [[ ${lines[1]} == "A (IPv4): 5" ]]
   [[ ${lines[2]} == "AAAA (IPv6): 2" ]]
   [[ ${lines[3]} == "---EOM---" ]]
 }
@@ -94,7 +96,9 @@ load 'libs/bats-support/load'
   [[ ${lines[3]} =~ "IPv4 pi.hole" ]]
   [[ ${lines[4]} =~ "IPv4 play.google.com" ]]
   [[ ${lines[5]} =~ "IPv6 play.google.com" ]]
-  [[ ${lines[6]} == "---EOM---" ]]
+  [[ ${lines[6]} =~ "IPv4 blacklisted.com" ]]
+  [[ ${lines[7]} =~ "IPv4 addomain.com" ]]
+  [[ ${lines[8]} == "---EOM---" ]]
 }
 
 @test "Get all queries (domain filtered)" {
@@ -107,7 +111,7 @@ load 'libs/bats-support/load'
 }
 
 @test "Get all queries (domain + number filtered)" {
-  run bash -c 'echo ">getallqueries-domain play.google.com (1)" | nc -v 127.0.0.1 4711'
+  run bash -c 'echo ">getallqueries-domain play.google.com (3)" | nc -v 127.0.0.1 4711'
   echo "output: ${lines[@]}"
   [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
   [[ ${lines[1]} =~ "IPv6 play.google.com" ]]
@@ -124,7 +128,7 @@ load 'libs/bats-support/load'
 }
 
 @test "Get all queries (client + number filtered)" {
-  run bash -c 'echo ">getallqueries-client localhost (4)" | nc -v 127.0.0.1 4711'
+  run bash -c 'echo ">getallqueries-client localhost (6)" | nc -v 127.0.0.1 4711'
   echo "output: ${lines[@]}"
   [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
   [[ ${lines[1]} =~ "IPv4 checkip.dyndns.org localhost 2" ]]
@@ -152,7 +156,8 @@ load 'libs/bats-support/load'
   run bash -c 'echo ">recentBlocked" | nc -v 127.0.0.1 4711'
   echo "output: ${lines[@]}"
   [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
-  [[ ${lines[1]} == "---EOM---" ]]
+  [[ ${lines[1]} == "addomain.com" ]]
+  [[ ${lines[2]} == "---EOM---" ]]
 }
 
 @test "DB test: Tables created and populated?" {
