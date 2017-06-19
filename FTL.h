@@ -119,7 +119,7 @@ typedef struct {
 	bool rolling_24h;
 	bool query_display;
 	bool analyze_AAAA;
-	int maxDBfilesize;
+	int maxDBdays;
 } ConfigStruct;
 
 // Dynamic structs

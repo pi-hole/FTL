@@ -95,21 +95,21 @@ void read_FTLconf(void)
 	else
 		logg("   AAAA_QUERY_ANALYSIS: Hide AAAA queries");
 
-	// MAXDBFILESIZE
-	// defaults to: 100 MB
-	config.maxDBfilesize = 100;
-	buffer = parse_FTLconf(fp, "MAXDBFILESIZE");
+	// MAXDBDAYS
+	// defaults to: 365 days
+	config.maxDBdays = 365;
+	buffer = parse_FTLconf(fp, "MAXDBDAYS");
 	if(buffer != NULL)
 	{
 		int value = 0;
 		if(sscanf(buffer, "%i", &value))
 			if(value >= 0)
-				config.maxDBfilesize = value;
+				config.maxDBdays = value;
 	}
-	if(config.maxDBfilesize == 0)
-		logg("   MAXDBFILESIZE: --- (DB disabled)", config.maxDBfilesize);
+	if(config.maxDBdays == 0)
+		logg("   MAXDBDAYS: --- (DB disabled)", config.maxDBdays);
 	else
-		logg("   MAXDBFILESIZE: %i MB", config.maxDBfilesize);
+		logg("   MAXDBDAYS: max age for stored queries is %i days", config.maxDBdays);
 
 	logg("Finished config file parsing");
 
