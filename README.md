@@ -103,7 +103,7 @@ Possible settings (**the option shown first is the default**):
 - `TIMEFRAME=rolling24h|yesterday|today` (Rolling data window, up to 48h (today + yesterday), or up to 24h (only today, as in Pi-hole `v2.x` ))
 - `QUERY_DISPLAY=yes|no` (Display all queries? Set to `no` to hide query display)
 - `AAAA_QUERY_ANALYSIS=yes|no` (Allow `FTL` to analyze AAAA queries from pihole.log?)
-- `MAXDBFILESIZE=100` (How large do we want the FTL database to grow at max (given in MB), setting this to `0` disables the database altogether)
+- `MAXDBDAYS=365` (How long should queries be stored in the database? Setting this to `0` disables the database altogether)
 
 ### Implemented keywords (starting with `>`, subject to change):
 

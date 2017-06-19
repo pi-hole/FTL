@@ -13,7 +13,6 @@
 
 char * username;
 bool needGC = false;
-bool needDBGC = false;
 
 int main (int argc, char* argv[]) {
 	username = getUserName();
@@ -49,7 +48,7 @@ int main (int argc, char* argv[]) {
 
 	read_gravity_files();
 
-	if(config.maxDBfilesize != 0)
+	if(config.maxDBdays != 0)
 		db_init();
 
 	logg("Starting initial log file parsing");
@@ -84,27 +83,16 @@ int main (int argc, char* argv[]) {
 	{
 		sleepms(100);
 
-		bool runGCthread = false, runDBthread = false, runDBGCthread = false;
+		bool runGCthread = false, runDBthread = false;
 
 		if(((time(NULL) - GCdelay)%GCinterval) == 0)
 			runGCthread = true;
 
-		if(database)
-		{
-			// DBGC_time == 0 at five minutes after each full even hour
-			int DBGC_time = time(NULL) % 7200;
-			if(DBGC_time == 300 || needDBGC)
-			{
-				needDBGC = false;
-				runDBGCthread = true;
-			}
-
-			else if(((time(NULL)%DBinterval) == 0) && !runDBGCthread)
-				runDBthread = true;
-		}
+		if(database && ((time(NULL)%DBinterval) == 0))
+			runDBthread = true;
 
 		// Garbadge collect in regular interval, but don't do it if the threadlocks is set
-		if(config.rolling_24h && (runGCthread || needGC))
+		if(runGCthread || needGC)
 		{
 			// Wait until we are allowed to work on the data
 			while(threadwritelock || threadreadlock)
@@ -113,11 +101,30 @@ int main (int argc, char* argv[]) {
 			needGC = false;
 			runGCthread = false;
 
-			pthread_t GCthread;
-			if(pthread_create( &GCthread, &attr, GC_thread, NULL ) != 0)
+			if(config.rolling_24h)
 			{
-				logg("Unable to open GC thread. Exiting...");
-				killed = 1;
+				pthread_t GCthread;
+				if(pthread_create( &GCthread, &attr, GC_thread, NULL ) != 0)
+				{
+					logg("Unable to open GC thread. Exiting...");
+					killed = 1;
+				}
+			}
+
+			if(database)
+			{
+				// Disable any other DB accesses while doing this and wait one second
+				// so that currently running transactions can still finish
+				database = false;
+				sleepms(1000);
+
+				// Launch DB GC thread
+				pthread_t DBGCthread;
+				if(pthread_create( &DBGCthread, &attr, DB_GC_thread, NULL ) != 0)
+				{
+					logg("Unable to open DB GC thread. Exiting...");
+					killed = 1;
+				}
 			}
 
 			// Avoid immediate re-run of GC thread
@@ -143,24 +150,6 @@ int main (int argc, char* argv[]) {
 			// Avoid immediate re-run of DB thread
 			while(((time(NULL)%DBinterval) == 0))
 				sleepms(100);
-		}
-
-		// Clean database in regular interval
-		if(runDBGCthread)
-		{
-			runDBGCthread = false;
-
-			// Avoid any further DB activities outside of the DB_GC thread
-			database = false;
-
-			if(debug)
-				logg("Launching DB GC...");
-
-			pthread_t DBGCthread;
-			if(pthread_create( &DBGCthread, &attr, DB_GC_thread, NULL ) != 0)
-			{
-				logg("WARN: Unable to open DB GC thread.");
-			}
 		}
 	}
 
