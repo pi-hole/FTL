@@ -239,6 +239,9 @@ void getStats(int *sock)
 	sprintf(server_message,"unique_domains %i\nqueries_forwarded %i\nqueries_cached %i\n", \
 	        counters.domains,counters.forwardedqueries,counters.cached);
 	swrite(server_message, *sock);
+	sprintf(server_message,"unique_clients %i\n", \
+	        counters.clients);
+	swrite(server_message, *sock);
 	if(debugclients)
 		logg("Sent stats data to client, ID: %i", *sock);
 }
