@@ -347,9 +347,6 @@ void *DB_GC_thread(void *val)
 	// Need no lock on FTL's data structure, so this can work
 	// in parallel w/o affecting FTL's core responsibilities
 
-	// Disable any other DB accesses while doing this
-	database = false;
-
 	if(!dbopen())
 	{
 		logg("Failed to open DB in GC thread");
@@ -357,41 +354,25 @@ void *DB_GC_thread(void *val)
 		return NULL;
 	}
 
-	float factor = 1.0;
-	while(get_db_filesize() > factor*config.maxDBfilesize)
+	int timestamp = time(NULL) - config.maxDBdays * 86400;
+
+	if(!dbquery("DELETE FROM queries WHERE timestamp <= %i", timestamp))
 	{
-		// If we run the database size reduction, make sure we remove a sufficient number
-		// of queries to go below 90% of the set maximum database file size
-		factor = 0.9;
-		logg("Notice: DB filesize is %.2f MB (%i rows), limit is %i.00 MB", get_db_filesize(), number_of_queries_in_DB(), config.maxDBfilesize);
-
-		if(!dbquery("DELETE FROM queries WHERE id in ( SELECT id FROM queries ORDER BY timestamp ASC LIMIT 10000);"))
-		{
-			dbclose();
-			logg("ERROR: Deleting queries due to exceeded filesize of database failed!");
-			database = true;
-			return NULL;
-		}
-
-		// When a large amount of data is deleted from the database file
-		// it leaves behind empty space, or "free" database pages. This
-		// means the database file might be larger than strictly necessary.
-		// Running VACUUM to rebuild the database reclaims this space and
-		// reduces the size of the database file.
-		// Furthermore, running VACUUM ensures that each table and index is
-		// largely stored contiguously within the database file. In some
-		// cases, VACUUM may also reduce the number of partially filled pages
-		// in the database, reducing the size of the database file further.
-		dbquery("VACUUM");
+		dbclose();
+		logg("DB-GC error: Deleting queries due to age of entries failed!");
+		database = true;
+		return NULL;
 	}
-	// Print final message
-	logg("Notice: DB filesize is %.2f MB (%i rows), limit is %i.00 MB", get_db_filesize(), number_of_queries_in_DB(), config.maxDBfilesize);
+
+	// Get how many rows have been affected (deleted)
+	int affected = sqlite3_changes(db);
+
+	// Print final message only if there is a difference
+	if(debug || affected)
+		logg("Notice: Database size is %.2f MB, deleted %i rows", get_db_filesize(), affected);
 
 	// Close database
 	dbclose();
-
-	// Sleep one second so that we don't immediately re-launch the DB GC thread
-	sleepms(1000);
 
 	// Re-enable database actions
 	database = true;
