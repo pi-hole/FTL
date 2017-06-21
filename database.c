@@ -364,13 +364,6 @@ void *DB_GC_thread(void *val)
 		return NULL;
 	}
 
-	// Get how many rows have been affected (deleted)
-	int affected = sqlite3_changes(db);
-
-	// Print final message only if there is a difference
-	if(debug || affected)
-		logg("Notice: Database size is %.2f MB, deleted %i rows", get_db_filesize(), affected);
-
 	// Close database
 	dbclose();
 
