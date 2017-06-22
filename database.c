@@ -35,12 +35,17 @@ static int callback(void *NotUsed, int argc, char **argv, char **azColName){
 	return 0;
 }
 
+void dbclose(void)
+{
+	sqlite3_close(db);
+}
+
 bool dbopen(void)
 {
 	int rc = sqlite3_open_v2(FTLfiles.db, &db, SQLITE_OPEN_READWRITE, NULL);
 	if( rc ){
 		logg("Cannot open database: %s", sqlite3_errmsg(db));
-		sqlite3_close(db);
+		dbclose();
 		return false;
 	}
 
@@ -82,18 +87,13 @@ bool dbquery(const char *format, ...)
 
 }
 
-void dbclose(void)
-{
-	sqlite3_close(db);
-}
-
 bool db_create(void)
 {
 	bool ret;
 	int rc = sqlite3_open_v2(FTLfiles.db, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL);
 	if( rc ){
 		logg("Can't create database: %s", sqlite3_errmsg(db));
-		sqlite3_close(db);
+		dbclose();
 		return false;
 	}
 	// Create Queries table in the database
@@ -128,7 +128,7 @@ void db_init(void)
 	int rc = sqlite3_open_v2(FTLfiles.db, &db, SQLITE_OPEN_READWRITE, NULL);
 	if( rc ){
 		logg("Cannot open database: %s", sqlite3_errmsg(db));
-		sqlite3_close(db);
+		dbclose();
 
 		logg("Creating new (empty) database");
 		if (!db_create())
@@ -161,7 +161,7 @@ int db_get_FTL_property(unsigned int ID)
 	rc = sqlite3_prepare(db, querystring, -1, &dbstmt, NULL);
 	if( rc ){
 		printf("Cannot read from database: %s", sqlite3_errmsg(db));
-		sqlite3_close(db);
+		dbclose();
 		return -1;
 	}
 	free(querystring);
@@ -170,7 +170,7 @@ int db_get_FTL_property(unsigned int ID)
 	sqlite3_step(dbstmt);
 	if( rc ){
 		printf("Cannot evaluate in database: %s", sqlite3_errmsg(db));
-		sqlite3_close(db);
+		dbclose();
 		return -1;
 	}
 
