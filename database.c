@@ -12,9 +12,18 @@
 
 sqlite3 *db;
 bool database = false;
+bool DBdeleteoldqueries = false;
 long int lastdbindex = 0;
 
+pthread_mutex_t dblock;
+
 enum { DB_VERSION, DB_LASTTIMESTAMP };
+
+void dbclose(void)
+{
+	sqlite3_close(db);
+	pthread_mutex_unlock(&dblock);
+}
 
 float get_db_filesize(void)
 {
@@ -37,10 +46,11 @@ static int callback(void *NotUsed, int argc, char **argv, char **azColName){
 
 bool dbopen(void)
 {
+	pthread_mutex_lock(&dblock);
 	int rc = sqlite3_open_v2(FTLfiles.db, &db, SQLITE_OPEN_READWRITE, NULL);
 	if( rc ){
 		logg("Cannot open database: %s", sqlite3_errmsg(db));
-		sqlite3_close(db);
+		dbclose();
 		return false;
 	}
 
@@ -82,18 +92,13 @@ bool dbquery(const char *format, ...)
 
 }
 
-void dbclose(void)
-{
-	sqlite3_close(db);
-}
-
 bool db_create(void)
 {
 	bool ret;
 	int rc = sqlite3_open_v2(FTLfiles.db, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL);
 	if( rc ){
 		logg("Can't create database: %s", sqlite3_errmsg(db));
-		sqlite3_close(db);
+		dbclose();
 		return false;
 	}
 	// Create Queries table in the database
@@ -128,15 +133,22 @@ void db_init(void)
 	int rc = sqlite3_open_v2(FTLfiles.db, &db, SQLITE_OPEN_READWRITE, NULL);
 	if( rc ){
 		logg("Cannot open database: %s", sqlite3_errmsg(db));
-		sqlite3_close(db);
+		dbclose();
 
 		logg("Creating new (empty) database");
 		if (!db_create())
 		{
-			logg("Database not available ");
+			logg("Database not available");
 			database = false;
 			return;
 		}
+	}
+
+	if (pthread_mutex_init(&dblock, NULL) != 0)
+	{
+		printf("FATAL: DB mutex init failed\n");
+		// Return failure
+		exit(EXIT_FAILURE);
 	}
 
 	logg("Database initialized");
@@ -161,7 +173,7 @@ int db_get_FTL_property(unsigned int ID)
 	rc = sqlite3_prepare(db, querystring, -1, &dbstmt, NULL);
 	if( rc ){
 		printf("Cannot read from database: %s", sqlite3_errmsg(db));
-		sqlite3_close(db);
+		dbclose();
 		return -1;
 	}
 	free(querystring);
@@ -170,7 +182,7 @@ int db_get_FTL_property(unsigned int ID)
 	sqlite3_step(dbstmt);
 	if( rc ){
 		printf("Cannot evaluate in database: %s", sqlite3_errmsg(db));
-		sqlite3_close(db);
+		dbclose();
 		return -1;
 	}
 
@@ -222,18 +234,13 @@ int get_number_of_queries_in_DB(void)
 	return result;
 }
 
-void *DB_thread(void *val)
+void save_to_DB(void)
 {
-	// Set thread name
-	prctl(PR_SET_NAME,"DB",0,0,0);
-
-	// Lock FTL's data structure, since it is likely that it will be changed here
-	enable_thread_lock("DB_thread");
-
+	// Open database
 	if(!dbopen())
 	{
-		logg("Failed to open DB in thread");
-		return NULL;
+		logg("Failed to open DB in save_to_DB()");
+		return;
 	}
 
 	int lasttimestamp = db_get_FTL_property(DB_LASTTIMESTAMP);
@@ -296,7 +303,7 @@ void *DB_thread(void *val)
 		sqlite3_reset(stmt);
 
 		if( rc != SQLITE_DONE ){
-			logg("DB thread - SQL error: %s", sqlite3_errmsg(db));
+			logg("save_to_DB() - SQL error: %s", sqlite3_errmsg(db));
 			saved_error++;
 			continue;
 		}
@@ -332,26 +339,15 @@ void *DB_thread(void *val)
 		if(saved_error > 0)
 			logg("        Queries NOT stored in DB: %u (due to an error)", saved_error);
 	}
-
-	// Release thread lock
-	disable_thread_lock("DB_thread");
-
-	return NULL;
 }
 
-void *DB_GC_thread(void *val)
+void delete_old_queries_in_DB(void)
 {
-	// Set thread name
-	prctl(PR_SET_NAME,"DB-GC",0,0,0);
-
-	// Need no lock on FTL's data structure, so this can work
-	// in parallel w/o affecting FTL's core responsibilities
-
+	// Open database
 	if(!dbopen())
 	{
-		logg("Failed to open DB in GC thread");
-		database = true;
-		return NULL;
+		logg("Failed to open DB in delete_old_queries_in_DB()");
+		return;
 	}
 
 	int timestamp = time(NULL) - config.maxDBdays * 86400;
@@ -359,9 +355,9 @@ void *DB_GC_thread(void *val)
 	if(!dbquery("DELETE FROM queries WHERE timestamp <= %i", timestamp))
 	{
 		dbclose();
-		logg("DB-GC error: Deleting queries due to age of entries failed!");
+		logg("delete_old_queries_in_DB(): Deleting queries due to age of entries failed!");
 		database = true;
-		return NULL;
+		return;
 	}
 
 	// Close database
@@ -369,5 +365,30 @@ void *DB_GC_thread(void *val)
 
 	// Re-enable database actions
 	database = true;
+}
+
+void *DB_thread(void *val)
+{
+	// Set thread name
+	prctl(PR_SET_NAME,"DB",0,0,0);
+
+	if(!DBdeleteoldqueries)
+	{
+		// Lock FTL's data structure, since it is likely that it will be changed here
+		enable_thread_lock("DB_thread");
+
+		// Save data to database
+		save_to_DB();
+
+		// Release thread lock
+		disable_thread_lock("DB_thread");
+	}
+	else
+	{
+		// No thread locks needed
+		delete_old_queries_in_DB();
+		DBdeleteoldqueries = false;
+	}
+
 	return NULL;
 }

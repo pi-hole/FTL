@@ -223,4 +223,4 @@ bool daemonmode;
 bool database;
 long int lastdbindex;
 bool travis;
-bool needDBGC;
+bool DBdeleteoldqueries;

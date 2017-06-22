@@ -13,6 +13,7 @@
 
 char * username;
 bool needGC = false;
+bool needDBGC = false;
 
 int main (int argc, char* argv[]) {
 	username = getUserName();
@@ -112,20 +113,7 @@ int main (int argc, char* argv[]) {
 			}
 
 			if(database)
-			{
-				// Disable any other DB accesses while doing this and wait one second
-				// so that currently running transactions can still finish
-				database = false;
-				sleepms(1000);
-
-				// Launch DB GC thread
-				pthread_t DBGCthread;
-				if(pthread_create( &DBGCthread, &attr, DB_GC_thread, NULL ) != 0)
-				{
-					logg("Unable to open DB GC thread. Exiting...");
-					killed = 1;
-				}
-			}
+				DBdeleteoldqueries = true;
 
 			// Avoid immediate re-run of GC thread
 			while(((time(NULL) - GCdelay)%GCinterval) == 0)
