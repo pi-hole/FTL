@@ -114,11 +114,6 @@ void process_request(char *client_message, int *sock)
 		processed = true;
 		getDBstats(sock);
 	}
-	else if(command(client_message, ">dbclean"))
-	{
-		processed = true;
-		needDBGC = true;
-	}
 
 	// End of queryable commands
 	if(processed)
