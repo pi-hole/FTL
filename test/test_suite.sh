@@ -195,7 +195,7 @@ load 'libs/bats-support/load'
   [[ ${lines[2]} == "Cache-Control: no-cache" ]]
   [[ ${lines[3]} == "Access-Control-Allow-Origin: *" ]]
   [[ ${lines[4]} == "Content-Type: application/json" ]]
-  [[ ${lines[5]} == "{\"domains_being_blocked\":-1,\"dns_queries_today\":7,\"ads_blocked_today\":2,\"ads_percentage_today\":28.5714,\"unique_domains\":6,\"queries_forwarded\":3,\"queries_cached\":2,\"unique_clients\":3}" ]]
+  [[ ${lines[5]} == "{\"domains_being_blocked\":-1,\"dns_queries_today\":7,\"ads_blocked_today\":2,\"ads_percentage_today\":28.5714,\"unique_domains\":6,\"queries_forwarded\":3,\"queries_cached\":2,\"unique_clients\":3 }" ]]
   [[ "${status}" -eq 0 ]]
 }
 
