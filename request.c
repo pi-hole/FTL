@@ -1164,7 +1164,7 @@ void getForwardDestinationsOverTime(int *sock, char type)
 	if(type != SOCKET)
 	{
 		sendAPIResponse(*sock, type);
-		ssend(*sock,"\"forward_dest\":{");
+		ssend(*sock,"\"over_time\":{");
 	}
 
 	if(sendit > -1)
