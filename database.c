@@ -146,7 +146,7 @@ void db_init(void)
 
 	if (pthread_mutex_init(&dblock, NULL) != 0)
 	{
-		printf("FATAL: DB mutex init failed\n");
+		logg("FATAL: DB mutex init failed\n");
 		// Return failure
 		exit(EXIT_FAILURE);
 	}
@@ -172,7 +172,7 @@ int db_get_FTL_property(unsigned int ID)
 
 	rc = sqlite3_prepare(db, querystring, -1, &dbstmt, NULL);
 	if( rc ){
-		printf("Cannot read from database: %s", sqlite3_errmsg(db));
+		logg("Cannot read from database: %s", sqlite3_errmsg(db));
 		dbclose();
 		return -1;
 	}
@@ -181,7 +181,7 @@ int db_get_FTL_property(unsigned int ID)
 	// Evaluate SQL statement
 	sqlite3_step(dbstmt);
 	if( rc ){
-		printf("Cannot evaluate in database: %s", sqlite3_errmsg(db));
+		logg("Cannot evaluate in database: %s", sqlite3_errmsg(db));
 		dbclose();
 		return -1;
 	}
