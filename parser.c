@@ -713,12 +713,14 @@ int detectStatus(const char *domain)
 		{
 			// String duplication / memory allocation failed
 			logg("Notice: Memory allocation for part in detectStatus failed, domain: \"%s\"", domain);
+			continue;
 		}
 		char * partbuffer = calloc(strlen(part)+1, sizeof(char));
 		if(partbuffer == NULL)
 		{
 			// Memory allocation failed
 			logg("Notice: Memory allocation for partbuffer in detectStatus failed, domain: \"%s\"", domain);
+			continue;
 		}
 
 		// Strip subdomains one after another and

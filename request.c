@@ -117,11 +117,6 @@ void process_socket_request(char *client_message, int *sock)
 		processed = true;
 		getDBstats(sock, type);
 	}
-	else if(command(client_message, ">dbclean"))
-	{
-		processed = true;
-		needDBGC = true;
-	}
 
 	// End of queryable commands
 	if(processed)
@@ -314,11 +309,12 @@ void getStats(int *sock, char type)
 		    counters.gravity, total, blocked, percentage);
 		ssend(*sock, "unique_domains %i\nqueries_forwarded %i\nqueries_cached %i\n", \
 		    counters.domains, counters.forwardedqueries, counters.cached);
+		ssend(*sock, "unique_clients %i\n", counters.clients);
 	}
 	else
 	{
 		sendAPIResponse(*sock, type);
-		ssend(*sock,"\"domains_being_blocked\":%i,\"dns_queries_today\":%i,\"ads_blocked_today\":%i,\"ads_percentage_today\":%.4f,\"unique_domains\":%i,\"queries_forwarded\":%i,\"queries_cached\":%i",counters.gravity,total, blocked, percentage,counters.domains,counters.forwardedqueries,counters.cached);
+		ssend(*sock,"\"domains_being_blocked\":%i,\"dns_queries_today\":%i,\"ads_blocked_today\":%i,\"ads_percentage_today\":%.4f,\"unique_domains\":%i,\"queries_forwarded\":%i,\"queries_cached\":%i,\"unique_clients\":%i\n",counters.gravity,total, blocked, percentage,counters.domains,counters.forwardedqueries,counters.cached,counters.clients);
 	}
 
 	if(debugclients)

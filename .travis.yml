@@ -43,6 +43,15 @@ matrix:
         - binutils-aarch64-linux-gnu
         - libc6-dev-arm64-cross
   - env:
+    - BUILD_CC="powerpc-linux-gnu-gcc"
+    - BIN_NAME="pihole-FTL-powerpc-linux-gnu"
+    addons:
+      apt:
+        packages:
+        - gcc-powerpc-linux-gnu
+        - binutils-powerpc-linux-gnu
+        - libc6-dev-powerpc-cross
+  - env:
     - BUILD_CC="cc"
     - CFLAGS="-m32"
     - BIN_NAME="pihole-FTL-linux-x86_32"
