@@ -545,7 +545,12 @@ void getTopDomains(char *client_message, int *sock, char type)
 	}
 
 	if(type != SOCKET)
-		ssend(*sock,"},\"dns_queries_today\":%i,\"ads_blocked_today\":%i", (counters.queries - counters.invalidqueries), counters.blocked);
+	{
+		if(blocked)
+			ssend(*sock,"},\"ads_blocked_today\":%i", counters.blocked);
+		else
+			ssend(*sock,"},\"dns_queries_today\":%i", (counters.queries - counters.invalidqueries));
+	}
 
 	if(excludedomains != NULL)
 		clearSetupVarsArray();
