@@ -314,7 +314,7 @@ void getStats(int *sock, char type)
 	else
 	{
 		sendAPIResponse(*sock, type);
-		ssend(*sock,"\"domains_being_blocked\":%i,\"dns_queries_today\":%i,\"ads_blocked_today\":%i,\"ads_percentage_today\":%.4f,\"unique_domains\":%i,\"queries_forwarded\":%i,\"queries_cached\":%i,\"unique_clients\":%i\n",counters.gravity,total, blocked, percentage,counters.domains,counters.forwardedqueries,counters.cached,counters.clients);
+		ssend(*sock,"\"domains_being_blocked\":%i,\"dns_queries_today\":%i,\"ads_blocked_today\":%i,\"ads_percentage_today\":%.4f,\"unique_domains\":%i,\"queries_forwarded\":%i,\"queries_cached\":%i,\"unique_clients\":%i",counters.gravity,total, blocked, percentage,counters.domains,counters.forwardedqueries,counters.cached,counters.clients);
 	}
 
 	if(debugclients)
