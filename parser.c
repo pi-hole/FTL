@@ -53,11 +53,16 @@ void open_pihole_log(void)
 {
 	FILE * fp;
 	if((fp = fopen(files.log, "r")) == NULL) {
-		logg("FATAL: Opening of %s failed!", files.log);
-		logg("       Make sure it exists and is readable by user %s", username);
-		syslog(LOG_ERR, "Opening of pihole.log failed!");
-		// Return failure in exit status
-		exit(EXIT_FAILURE);
+		logg("WARN:  Opening of %s failed!", files.log);
+		logg("       Make sure it exists and is readable by user %s\n       Will try again in 15 seconds.", username);
+
+		sleepms(15000);
+		if((fp = fopen(files.log, "r")) == NULL) {
+			logg("FATAL: Opening of %s failed permanently!", files.log);
+			syslog(LOG_ERR, "Opening of pihole.log failed!");
+			// Return failure in exit status
+			exit(EXIT_FAILURE);
+		}
 	}
 	fclose(fp);
 }
