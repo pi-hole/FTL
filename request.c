@@ -185,7 +185,7 @@ void process_api_request(char *client_message, int *sock, bool header)
 	{
 		getAllQueries(client_message, sock, type);
 	}
-	else if(command(client_message, "GET /dns/recent_blocked"))
+	else if(command(client_message, "GET /stats/recent_blocked"))
 	{
 		getRecentBlocked(client_message, sock, type);
 	}
