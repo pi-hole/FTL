@@ -181,7 +181,7 @@ void process_api_request(char *client_message, int *sock, bool header)
 	{
 		getQueryTypes(sock, type);
 	}
-	else if(command(client_message, "GET /history"))
+	else if(command(client_message, "GET /stats/history"))
 	{
 		getAllQueries(client_message, sock, type);
 	}
