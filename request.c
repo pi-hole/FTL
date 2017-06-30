@@ -161,7 +161,7 @@ void process_api_request(char *client_message, int *sock, bool header)
 	{
 		getStats(sock, type);
 	}
-	else if(command(client_message, "GET /stats/overTime/graphs"))
+	else if(command(client_message, "GET /stats/overTime/graph"))
 	{
 		getOverTime(sock, type);
 	}
