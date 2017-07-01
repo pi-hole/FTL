@@ -61,6 +61,7 @@ char* find_equals(const char* s);
 
 void enable_thread_lock(const char *message);
 void disable_thread_lock(const char *message);
+void init_thread_lock(void);
 
 void read_FTLconf(void);
 
