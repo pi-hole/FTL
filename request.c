@@ -180,9 +180,14 @@ void process_api_request(char *client_message, int *sock, bool header)
 	else if(command(client_message, "GET /stats/dashboard"))
 	{
 		getStats(sock, type);
+		type = API;
+		ssend(*sock, ",");
 		getOverTime(sock, type);
+		ssend(*sock, ",");
 		getTopDomains(client_message, sock, type);
+		ssend(*sock, ",");
 		getTopClients(client_message, sock, type);
+		ssend(*sock, ",");
 		getForwardDestinations(sock, type);
 	}
 	else if(command(client_message, "GET /stats/query_types"))
