@@ -177,6 +177,14 @@ void process_api_request(char *client_message, int *sock, bool header)
 	{
 		getForwardDestinations(sock, type);
 	}
+	else if(command(client_message, "GET /stats/dashboard"))
+	{
+		getStats(sock, type);
+		getOverTime(sock, type);
+		getTopDomains(client_message, sock, type);
+		getTopClients(client_message, sock, type);
+		getForwardDestinations(sock, type);
+	}
 	else if(command(client_message, "GET /stats/query_types"))
 	{
 		getQueryTypes(sock, type);
