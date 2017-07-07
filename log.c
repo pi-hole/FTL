@@ -9,6 +9,7 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
+#include "version.h"
 
 pthread_mutex_t lock;
 
@@ -138,4 +139,12 @@ void log_counter_info(void)
 	logg(" -> Unknown DNS queries: %i", counters.unknown);
 	logg(" -> Unique domains: %i", counters.domains);
 	logg(" -> Unique clients: %i", counters.clients);
+}
+
+void log_FTL_version(void)
+{
+	logg("FTL branch: %s", GIT_BRANCH);
+	logg("FTL hash: %s", GIT_VERSION);
+	logg("FTL date: %s", GIT_DATE);
+	logg("FTL user: %s", username);
 }
