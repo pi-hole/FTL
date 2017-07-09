@@ -922,11 +922,16 @@ void getGeoIP(int *sock)
 	char server_message[SOCKETBUFFERLEN];
 
 	int i;
+	unsigned int maxval = 0;
 	for(i=1; i<MAXGEOIPDATA; i++)
 	{
 		if(geoIPdata[i].country[0] == '\0')
 			break;
-		sprintf(server_message,"%s %i\n", geoIPdata[i].country, geoIPdata[i].count);
+		sprintf(server_message,"%s %u\n", geoIPdata[i].country, geoIPdata[i].count);
+		if(geoIPdata[i].count > maxval)
+			maxval = geoIPdata[i].count;
 		swrite(server_message, *sock);
 	}
+	sprintf(server_message,"max %u\n", maxval);
+	swrite(server_message, *sock);
 }
