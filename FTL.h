@@ -184,10 +184,9 @@ typedef struct {
 } memoryStruct;
 
 typedef struct {
-	unsigned char ID;
-	unsigned int count;
 	char country[3];
-} GeoIDstruct;
+	unsigned int count;
+} GeoIPDataStruct;
 
 enum { QUERIES, FORWARDED, CLIENTS, DOMAINS, OVERTIME, WILDCARD };
 enum { SOCKET };
@@ -202,6 +201,7 @@ forwardedDataStruct *forwarded;
 clientsDataStruct *clients;
 domainsDataStruct *domains;
 overTimeDataStruct *overTime;
+GeoIPDataStruct *geoIPdata;
 
 FILE *logfile;
 volatile sig_atomic_t killed;
@@ -232,4 +232,4 @@ bool database;
 long int lastdbindex;
 bool travis;
 bool DBdeleteoldqueries;
-bool geoIDdatabase;
+bool geoIPdatabase;
