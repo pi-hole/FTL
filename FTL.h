@@ -201,6 +201,7 @@ forwardedDataStruct *forwarded;
 clientsDataStruct *clients;
 domainsDataStruct *domains;
 overTimeDataStruct *overTime;
+#define MAXGEOIPDATA 256
 GeoIPDataStruct *geoIPdata;
 
 FILE *logfile;

@@ -31,6 +31,7 @@ void getClientID(int *sock);
 void getQueryTypesOverTime(int *sock);
 void getVersion(int *sock);
 void getDBstats(int *sock);
+void getGeoIP(int *sock);
 
 void process_request(char *client_message, int *sock)
 {
@@ -113,6 +114,11 @@ void process_request(char *client_message, int *sock)
 	{
 		processed = true;
 		getDBstats(sock);
+	}
+	else if(command(client_message, ">geoIP"))
+	{
+		processed = true;
+		getGeoIP(sock);
 	}
 
 	// End of queryable commands
@@ -909,4 +915,18 @@ void getDBstats(int *sock)
 
 	if(debugclients)
 		logg("Sent DB info to client, ID: %i", *sock);
+}
+
+void getGeoIP(int *sock)
+{
+	char server_message[SOCKETBUFFERLEN];
+
+	int i;
+	for(i=1; i<MAXGEOIPDATA; i++)
+	{
+		if(geoIPdata[i].country[0] == '\0')
+			break;
+		sprintf(server_message,"%s %i\n", geoIPdata[i].country, geoIPdata[i].count);
+		swrite(server_message, *sock);
+	}
 }

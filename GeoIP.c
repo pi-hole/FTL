@@ -9,7 +9,6 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
-#define MAXGEOIPDATA 256
 
 sqlite3 *geodb;
 pthread_mutex_t geodblock;
