@@ -49,6 +49,8 @@ int main (int argc, char* argv[]) {
 	if(config.maxDBdays != 0)
 		db_init();
 
+	geodb_init();
+
 	logg("Starting initial log file parsing");
 	initial_log_parsing();
 	logg("Finished initial log file parsing");

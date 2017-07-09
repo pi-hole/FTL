@@ -75,6 +75,7 @@ typedef struct {
 	const char* pid;
 	const char* port;
 	const char* db;
+	const char* geodb;
 } FTLFileNamesStruct;
 
 typedef struct {
@@ -135,6 +136,7 @@ typedef struct {
 	int forwardID;
 	bool valid;
 	bool db;
+	unsigned char geoIP;
 } queriesDataStruct;
 
 typedef struct {
@@ -224,3 +226,4 @@ bool database;
 long int lastdbindex;
 bool travis;
 bool DBdeleteoldqueries;
+bool geoIPdatabase;

@@ -15,7 +15,8 @@ FTLFileNamesStruct FTLfiles = {
 	"/var/log/pihole-FTL.log",
 	"/var/run/pihole-FTL.pid",
 	"/var/run/pihole-FTL.port",
-	"/etc/pihole/pihole-FTL.db"
+	"/etc/pihole/pihole-FTL.db",
+	"/etc/pihole/GeoIP.db"
 };
 
 logFileNamesStruct files = {
