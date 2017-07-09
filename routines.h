@@ -74,4 +74,4 @@ void *DB_thread(void *val);
 int get_number_of_queries_in_DB(void);
 
 void geodb_init(void);
-unsigned int getGeoIDfromIP(char *IP);
+unsigned int getGeoIDfromIP(const char *IP);

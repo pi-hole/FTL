@@ -118,15 +118,18 @@ unsigned char getGeoID(uint32_t IP)
 	return (unsigned char)result;
 }
 
-unsigned int getGeoIDfromIP(char *IP)
+unsigned int getGeoIDfromIP(const char *IP)
 {
 	struct in_addr addr;
 
 	if(inet_aton(IP, &addr) == 0)
 	{
-		logg("Invalid address\n");
-		exit(EXIT_FAILURE);
+		// if(debug)
+		// 	logg("getGeoIDfromIP(): Invalid address \"%s\"\n", IP);
+		return 0;
 	}
-
-	return getGeoID(addr.s_addr);
+	else
+	{
+		return getGeoID(addr.s_addr);
+	}
 }

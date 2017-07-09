@@ -136,7 +136,7 @@ typedef struct {
 	int forwardID;
 	bool valid;
 	bool db;
-	unsigned char geoIP;
+	unsigned char geoID;
 } queriesDataStruct;
 
 typedef struct {

@@ -137,6 +137,114 @@ void *pihole_log_thread(void *val)
 	return NULL;
 }
 
+// void search_reply(char status, char *readbuffer2, FILE *fp, char *domainwithspaces)
+// {
+// 	const char *is = strstr(readbuffer2, " is ");
+// 	char *readbuffer3 = NULL;
+// 	size_t size3;
+// 	bool found = false;
+// 	// Check if buffer pointer is valid
+// 	if(debug && is == NULL)
+// 	{
+// 		logg("Notice: Skipping malformated cached answer (1): %s", readbuffer2);
+// 	}
+// 	else
+// 	{
+// 		if(strstr(readbuffer2, "<CNAME>") != NULL)
+// 		{
+// 			logg("This is a <CNAME> reply, advancing to the next line");
+// 			int i;
+// 			for(i=0; i<200; i++)
+// 			{
+// 				if(getline(&readbuffer3, &size3, fp) != -1)
+// 				{
+// 					// Process only matching lines
+// 					if(strstr(readbuffer3, domainwithspaces) != NULL)
+// 					{
+// 						// Check if buffer pointer is valid
+// 						if((is = strstr(readbuffer3, " is ")) != NULL)
+// 						{
+// 							logg("Found: %s",is+4);
+// 							if(strstr(readbuffer3, "is <CNAME>") == NULL)
+// 							{
+// 								found = true;
+// 								break;
+// 							}
+// 						}
+// 						else
+// 						{
+// 							logg("Notice: Skipping malformated cached answer (2): %s", readbuffer3);
+// 						}
+// 					}
+// 				}
+// 			}
+// 		}
+// 		else
+// 		{
+// 			found = true;
+// 		}
+
+// 		if(found)
+// 		{
+// 			logg("%s",is+4);
+// 			logg("GeoIP data: %u",getGeoIDfromIP(is+4));
+// 		}
+
+// 		if(readbuffer3 != NULL)
+// 		{
+// 			free(readbuffer3);
+// 			readbuffer3 = NULL;
+// 		}
+// 	}
+// }
+unsigned char search_reply(char status, char *readbuffer2, FILE *fp, char *domainwithspaces)
+{
+	const char *is;
+	char *readbuffer3 = NULL;
+	size_t size3;
+	bool found = false;
+	int i;
+
+	for(i=0; i<200; i++)
+	{
+		if(getline(&readbuffer3, &size3, fp) != -1)
+		{
+			// Process only matching lines
+			if(strstr(readbuffer3, domainwithspaces) != NULL)
+			{
+				if(strstr(readbuffer3, "reply ") != NULL && strstr(readbuffer3, " is <CNAME>") == NULL)
+				{
+					is = strstr(readbuffer3, " is ");
+					if(is != NULL)
+					{
+						// logg("Found: %s",is+4);
+						found = true;
+						break;
+					}
+				}
+				// else
+				// {
+				// 	logg("Notice: Skipping malformated answer: %s", readbuffer3);
+				// }
+			}
+		}
+	}
+
+	unsigned char geoID = 0;
+	if(found)
+	{
+		geoID = getGeoIDfromIP(is+4);
+	}
+
+	if(readbuffer3 != NULL)
+	{
+		free(readbuffer3);
+		readbuffer3 = NULL;
+	}
+
+	return geoID;
+}
+
 void process_pihole_log(int file)
 {
 	int i;
@@ -407,6 +515,13 @@ void process_pihole_log(int file)
 				}
 			}
 
+			// Forwarded? Try to determine GeoIP details
+			unsigned char geoID = 0;
+			if(status == 2)
+			{
+				geoID = search_reply(status, readbuffer2, fp, domainwithspaces);
+			}
+
 			// Return to previous file pointer position
 			fseek(fp, fpos, SEEK_SET);
 
@@ -490,6 +605,7 @@ void process_pihole_log(int file)
 			queries[queryID].forwardID = forwardID;
 			queries[queryID].valid = true;
 			queries[queryID].db = false;
+			queries[queryID].geoID = geoID;
 
 			// Increase DNS queries counter
 			counters.queries++;
