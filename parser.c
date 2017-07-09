@@ -517,7 +517,7 @@ void process_pihole_log(int file)
 
 			// Forwarded? Try to determine GeoIP details
 			unsigned char geoID = 0;
-			if(status == 2)
+			if(status == 2 && geoIDdatabase)
 			{
 				geoID = search_reply(status, readbuffer2, fp, domainwithspaces);
 			}

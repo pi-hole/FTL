@@ -12,7 +12,7 @@
 
 sqlite3 *geodb;
 pthread_mutex_t geodblock;
-bool geoIPdatabase = false;
+bool geoIDdatabase = false;
 
 void geodbclose(void)
 {
@@ -77,7 +77,7 @@ void geodb_init(void)
 		exit(EXIT_FAILURE);
 	}
 
-	geoIPdatabase = true;
+	geoIDdatabase = true;
 	logg("GeoIP database initialized");
 }
 

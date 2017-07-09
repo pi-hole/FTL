@@ -183,6 +183,12 @@ typedef struct {
 	int querytypedata;
 } memoryStruct;
 
+typedef struct {
+	unsigned char ID;
+	unsigned int count;
+	char country[3];
+} GeoIDstruct;
+
 enum { QUERIES, FORWARDED, CLIENTS, DOMAINS, OVERTIME, WILDCARD };
 enum { SOCKET };
 
@@ -226,4 +232,4 @@ bool database;
 long int lastdbindex;
 bool travis;
 bool DBdeleteoldqueries;
-bool geoIPdatabase;
+bool geoIDdatabase;
