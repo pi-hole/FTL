@@ -249,7 +249,7 @@ void save_to_DB(void)
 	long int i;
 	sqlite3_stmt* stmt;
 
-	dbquery("BEGIN TRANSACTION");
+	bool ret = dbquery("BEGIN TRANSACTION");
 	if(!ret){ dbclose(); return; }
 	sqlite3_prepare_v2(db, "INSERT INTO queries VALUES (NULL,?,?,?,?,?,?)", -1, &stmt, NULL);
 
@@ -318,7 +318,7 @@ void save_to_DB(void)
 	}
 
 	// Finish prepared statement
-	dbquery("END TRANSACTION");
+	ret = dbquery("END TRANSACTION");
 	if(!ret){ dbclose(); return; }
 	sqlite3_finalize(stmt);
 
