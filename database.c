@@ -64,8 +64,8 @@ bool dbquery(const char *format, ...)
 	int rc;
 
 	va_start(args, format);
-
 	char *query = sqlite3_vmprintf(format, args);
+	va_end(args);
 
 	if(query == NULL)
 	{
@@ -79,14 +79,13 @@ bool dbquery(const char *format, ...)
 	else
 		rc = sqlite3_exec(db, query, NULL, NULL, &zErrMsg);
 
-	sqlite3_free(query);
-	va_end(args);
-
 	if( rc != SQLITE_OK ){
-		logg("SQL error (%i): %s", rc, zErrMsg);
+		logg("dbquery(%s) - SQL error (%i): %s", query, rc, zErrMsg);
 		sqlite3_free(zErrMsg);
 		return false;
 	}
+
+	sqlite3_free(query);
 
 	return true;
 
@@ -250,8 +249,9 @@ void save_to_DB(void)
 	long int i;
 	sqlite3_stmt* stmt;
 
-	sqlite3_prepare_v2(db, "INSERT INTO queries VALUES (NULL,?,?,?,?,?,?)", -1, &stmt, NULL);
 	dbquery("BEGIN TRANSACTION");
+	if(!ret){ dbclose(); return; }
+	sqlite3_prepare_v2(db, "INSERT INTO queries VALUES (NULL,?,?,?,?,?,?)", -1, &stmt, NULL);
 
 	for(i = lastdbindex; i < counters.queries; i++)
 	{
@@ -319,6 +319,7 @@ void save_to_DB(void)
 
 	// Finish prepared statement
 	dbquery("END TRANSACTION");
+	if(!ret){ dbclose(); return; }
 	sqlite3_finalize(stmt);
 
 	// Store index for next loop interation round and update last time stamp
