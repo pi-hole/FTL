@@ -168,3 +168,9 @@ load 'libs/bats-support/load'
   [[ "${lines[@]}" == *"CREATE TABLE ftl ( id INTEGER PRIMARY KEY NOT NULL, value BLOB NOT NULL );"* ]]
   [[ "${lines[@]}" == *"INSERT INTO \"ftl\" VALUES(0,1);"* ]]
 }
+
+@test "Final part of the tests: Killing pihole-FTL process" {
+  run bash -c 'echo ">kill" | nc -v 127.0.0.1 4711'
+  echo "output: ${lines[@]}"
+  [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
+}
