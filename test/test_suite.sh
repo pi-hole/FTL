@@ -79,6 +79,18 @@ load 'libs/bats-support/load'
   [[ ${lines[6]} == "---EOM---" ]]
 }
 
+@test "Forward Destinations (unsorted)" {
+  run bash -c 'echo ">forward-dest unsorted" | nc -v 127.0.0.1 4711'
+  echo "output: ${lines[@]}"
+  [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
+  [[ ${lines[1]} =~ "0 4 2001:1608:10:25::9249:d69b" ]]
+  [[ ${lines[2]} =~ "1 2 2001:1608:10:25::1c04:b12f" ]]
+  [[ ${lines[3]} =~ "2 4 2620:0:ccd::2 resolver2.ipv6-sandbox.opendns.com" ]]
+  [[ ${lines[4]} =~ "3 2 2620:0:ccc::2 resolver1.ipv6-sandbox.opendns.com" ]]
+  [[ ${lines[5]} =~ "4 4 ::1 local" ]]
+  [[ ${lines[6]} == "---EOM---" ]]
+}
+
 @test "Query Types" {
   run bash -c 'echo ">querytypes" | nc -v 127.0.0.1 4711'
   echo "output: ${lines[@]}"
@@ -167,4 +179,10 @@ load 'libs/bats-support/load'
   [[ "${lines[@]}" == *"CREATE TABLE queries ( id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL, type INTEGER NOT NULL, status INTEGER NOT NULL, domain TEXT NOT NULL, client TEXT NOT NULL, forward TEXT );"* ]]
   [[ "${lines[@]}" == *"CREATE TABLE ftl ( id INTEGER PRIMARY KEY NOT NULL, value BLOB NOT NULL );"* ]]
   [[ "${lines[@]}" == *"INSERT INTO \"ftl\" VALUES(0,1);"* ]]
+}
+
+@test "Final part of the tests: Killing pihole-FTL process" {
+  run bash -c 'echo ">kill" | nc -v 127.0.0.1 4711'
+  echo "output: ${lines[@]}"
+  [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
 }
