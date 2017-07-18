@@ -20,7 +20,7 @@ void getStats(int *sock, char type);
 void getOverTime(int *sock, char type);
 void getTopDomains (char *client_message, int *sock, char type);
 void getTopClients(char *client_message, int *sock, char type);
-void getForwardDestinations(int *sock, char type);
+void getForwardDestinations(char *client_message, int *sock, char type);
 void getForwardNames(int *sock, char type);
 void getQueryTypes(int *sock, char type);
 void getAllQueries(char *client_message, int *sock, char type);
@@ -65,7 +65,7 @@ void process_socket_request(char *client_message, int *sock)
 	else if(command(client_message, ">forward-dest"))
 	{
 		processed = true;
-		getForwardDestinations(sock, type);
+		getForwardDestinations(client_message, sock, type);
 	}
 	else if(command(client_message, ">forward-names"))
 	{
@@ -175,7 +175,7 @@ void process_api_request(char *client_message, int *sock, bool header)
 	}
 	else if(command(client_message, "GET /stats/forward_dest") || command(client_message, "GET /stats/forward_destinations"))
 	{
-		getForwardDestinations(sock, type);
+		getForwardDestinations(client_message, sock, type);
 	}
 	else if(command(client_message, "GET /stats/dashboard"))
 	{
@@ -188,7 +188,7 @@ void process_api_request(char *client_message, int *sock, bool header)
 		ssend(*sock, ",");
 		getTopClients(client_message, sock, type);
 		ssend(*sock, ",");
-		getForwardDestinations(sock, type);
+		getForwardDestinations(client_message, sock, type);
 	}
 	else if(command(client_message, "GET /stats/query_types"))
 	{
@@ -675,23 +675,32 @@ void getTopClients(char *client_message, int *sock, char type)
 }
 
 
-void getForwardDestinations(int *sock, char type)
+void getForwardDestinations(char *client_message, int *sock, char type)
 {
-	bool allocated = false, first = true;
+	bool allocated = false, first = true, sort = true;
 	int i, temparray[counters.forwarded+1][2];
-	for(i=0; i < counters.forwarded; i++)
+
+	if(type == SOCKET && command(client_message, "unsorted"))
+		sort = false;
+	else if(strstr(client_message, "unsorted"))
+		sort = false;
+
+	if(sort)
 	{
-		validate_access("forwarded", i, true, __LINE__, __FUNCTION__, __FILE__);
-		temparray[i][0] = i;
-		temparray[i][1] = forwarded[i].count;
+		for(i=0; i < counters.forwarded; i++)
+		{
+			validate_access("forwarded", i, true, __LINE__, __FUNCTION__, __FILE__);
+			temparray[i][0] = i;
+			temparray[i][1] = forwarded[i].count;
+		}
+
+		// Add "local " forward destination
+		temparray[counters.forwarded][0] = counters.forwarded;
+		temparray[counters.forwarded][1] = counters.cached + counters.blocked;
+
+		// Sort temporary array in descending order
+		qsort(temparray, counters.forwarded+1, sizeof(int[2]), cmpdesc);
 	}
-
-	// Add "local " forward destination
-	temparray[counters.forwarded][0] = counters.forwarded;
-	temparray[counters.forwarded][1] = counters.cached + counters.blocked;
-
-	// Sort temporary array in descending order
-	qsort(temparray, counters.forwarded+1, sizeof(int[2]), cmpdesc);
 
 	// Send HTTP headers with unknown content length
 	sendAPIResponse(*sock, type);
@@ -707,7 +716,11 @@ void getForwardDestinations(int *sock, char type)
 		int count;
 
 		// Get sorted indices
-		int j = temparray[i][0];
+		int j;
+		if(sort)
+			j = temparray[i][0];
+		else
+			j = i;
 
 		// Is this the "local" forward destination?
 		if(j == counters.forwarded)
