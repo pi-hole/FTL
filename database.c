@@ -49,7 +49,7 @@ bool dbopen(void)
 	pthread_mutex_lock(&dblock);
 	int rc = sqlite3_open_v2(FTLfiles.db, &db, SQLITE_OPEN_READWRITE, NULL);
 	if( rc ){
-		logg("Cannot open database: %s", sqlite3_errmsg(db));
+		logg("dbopen() - SQL error (%i): %s", rc, sqlite3_errmsg(db));
 		dbclose();
 		return false;
 	}
@@ -70,7 +70,6 @@ bool dbquery(const char *format, ...)
 	if(query == NULL)
 	{
 		logg("Memory allocation failed in dbquery()");
-		va_end(args);
 		return false;
 	}
 
@@ -96,7 +95,7 @@ bool db_create(void)
 	bool ret;
 	int rc = sqlite3_open_v2(FTLfiles.db, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL);
 	if( rc ){
-		logg("Can't create database: %s", sqlite3_errmsg(db));
+		logg("db_create() - SQL error (%i): %s", rc, sqlite3_errmsg(db));
 		dbclose();
 		return false;
 	}
@@ -131,7 +130,7 @@ void db_init(void)
 {
 	int rc = sqlite3_open_v2(FTLfiles.db, &db, SQLITE_OPEN_READWRITE, NULL);
 	if( rc ){
-		logg("Cannot open database: %s", sqlite3_errmsg(db));
+		logg("db_init() - Cannot open database (%i): %s", rc, sqlite3_errmsg(db));
 		dbclose();
 
 		logg("Creating new (empty) database");
@@ -171,16 +170,16 @@ int db_get_FTL_property(unsigned int ID)
 
 	rc = sqlite3_prepare(db, querystring, -1, &dbstmt, NULL);
 	if( rc ){
-		logg("Cannot read from database: %s", sqlite3_errmsg(db));
+		logg("db_get_FTL_property() - SQL error prepare (%i): %s", rc, sqlite3_errmsg(db));
 		dbclose();
 		return -1;
 	}
 	free(querystring);
 
 	// Evaluate SQL statement
-	sqlite3_step(dbstmt);
-	if( rc ){
-		logg("Cannot evaluate in database: %s", sqlite3_errmsg(db));
+	rc = sqlite3_step(dbstmt);
+	if( rc != SQLITE_ROW ){
+		logg("db_get_FTL_property() - SQL error step (%i): %s", rc, sqlite3_errmsg(db));
 		dbclose();
 		return -1;
 	}
@@ -200,15 +199,23 @@ bool db_set_FTL_property(unsigned int ID, int value)
 int number_of_queries_in_DB(void)
 {
 	sqlite3_stmt* stmt;
-	int result = -1;
 
 	// Count number of rows using the index timestamp is faster than select(*)
-	sqlite3_prepare_v2(db, "SELECT COUNT(timestamp) FROM queries", -1, &stmt, NULL);
-	int rc = sqlite3_step(stmt);
-	if (rc == SQLITE_ROW)
-		result = sqlite3_column_int(stmt, 0);
-	else
-		logg("get_number_of_queries_in_DB() - SQL error: %s", sqlite3_errmsg(db));
+	int rc = sqlite3_prepare_v2(db, "SELECT COUNT(timestamp) FROM queries", -1, &stmt, NULL);
+	if( rc ){
+		logg("number_of_queries_in_DB() - SQL error prepare (%i): %s", rc, sqlite3_errmsg(db));
+		dbclose();
+		return -1;
+	}
+
+	rc = sqlite3_step(stmt);
+	if( rc != SQLITE_ROW ){
+		logg("number_of_queries_in_DB() - SQL error step (%i): %s", rc, sqlite3_errmsg(db));
+		dbclose();
+		return -1;
+	}
+
+	int result = sqlite3_column_int(stmt, 0);
 
 	sqlite3_finalize(stmt);
 
@@ -238,11 +245,16 @@ void save_to_DB(void)
 	// Open database
 	if(!dbopen())
 	{
-		logg("Failed to open DB in save_to_DB()");
+		logg("save_to_DB() - failed to open DB");
 		return;
 	}
 
 	int lasttimestamp = db_get_FTL_property(DB_LASTTIMESTAMP);
+	if(lasttimestamp < 0)
+	{
+		logg("save_to_DB() - error in trying to get last time stamp from database");
+		return;
+	}
 	int newlasttimestamp = lasttimestamp;
 
 	unsigned int saved = 0, saved_error = 0;
@@ -250,8 +262,20 @@ void save_to_DB(void)
 	sqlite3_stmt* stmt;
 
 	bool ret = dbquery("BEGIN TRANSACTION");
-	if(!ret){ dbclose(); return; }
-	sqlite3_prepare_v2(db, "INSERT INTO queries VALUES (NULL,?,?,?,?,?,?)", -1, &stmt, NULL);
+	if(!ret)
+	{
+		logg("save_to_DB() - unable to begin transaction (%i): %s", ret, sqlite3_errmsg(db));
+		dbclose();
+		return;
+	}
+
+	int rc = sqlite3_prepare_v2(db, "INSERT INTO queries VALUES (NULL,?,?,?,?,?,?)", -1, &stmt, NULL);
+	if( rc )
+	{
+		logg("save_to_DB() - error in preparing SQL statement (%i): %s", ret, sqlite3_errmsg(db));
+		dbclose();
+		return;
+	}
 
 	for(i = lastdbindex; i < counters.queries; i++)
 	{
@@ -298,12 +322,12 @@ void save_to_DB(void)
 		}
 
 		// Step and check if successful
-		int rc = sqlite3_step(stmt);
+		rc = sqlite3_step(stmt);
 		sqlite3_clear_bindings(stmt);
 		sqlite3_reset(stmt);
 
 		if( rc != SQLITE_DONE ){
-			logg("save_to_DB() - SQL error: %s", sqlite3_errmsg(db));
+			logg("save_to_DB() - SQL error (%i): %s", rc, sqlite3_errmsg(db));
 			saved_error++;
 			continue;
 		}
