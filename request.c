@@ -308,54 +308,6 @@ int cmpdesc(const void *a, const void *b)
 		return 0;
 }
 
-// Current supports sanitizing " and \ from the input
-void formatJSON(char *input, char *buffer, size_t buffer_size)
-{
-	size_t output_size = strlen(input);
-	int output_index = 0;
-
-	if(output_size > buffer_size) {
-		logg("Unable to sanitize domain for JSON, input size > buffer size");
-		exit(EXIT_FAILURE);
-	}
-
-	// Do a straight copy if there's nothing to sanitize
-	if(strstr(input, "\"") == NULL && strstr(input, "\\") == NULL) {
-		strcpy(buffer, input);
-		return;
-	}
-
-	for(size_t i = 0; i < strlen(input); i++) {
-		switch(input[i]) {
-			case '"':
-			case '\\':
-				// We're adding an extra character
-				output_size += 1;
-
-				if(output_size > buffer_size) {
-					logg("Unable to sanitize domain for JSON, output size > buffer size");
-					exit(EXIT_FAILURE);
-				}
-
-				buffer[output_index] = '\\';
-				buffer[output_index+1] = input[i];
-				output_index += 2;
-				break;
-			default:
-				buffer[output_index] = input[i];
-				output_index++;
-				break;
-		}
-	}
-
-	if(output_size+1 > buffer_size) {
-		logg("Unable to sanitize domain for JSON, output size > buffer size (when adding null terminator)");
-		exit(EXIT_FAILURE);
-	}
-
-	buffer[output_index] = 0;
-}
-
 void getStats(int *sock, char type)
 {
 	int blocked = counters.blocked + counters.wildcardblocked;
@@ -1088,70 +1040,28 @@ void getAllQueries(char *client_message, int *sock, char type)
 			if(!privacymode)
 			{
 				if(strlen(clients[queries[i].clientID].name) > 0)
-					ssend(
-							*sock, "%i %s %s %s %i\n",
-							queries[i].timestamp,
-							qtype,
-							domains[queries[i].domainID].domain,
-							clients[queries[i].clientID].name,
-							queries[i].status
-					);
+					ssend(*sock,"%i %s %s %s %i\n",queries[i].timestamp,qtype,domains[queries[i].domainID].domain,clients[queries[i].clientID].name,queries[i].status);
 				else
-					ssend(
-							*sock, "%i %s %s %s %i\n",
-							queries[i].timestamp,
-							qtype,
-							domains[queries[i].domainID].domain,
-							clients[queries[i].clientID].ip,
-							queries[i].status
-					);
+					ssend(*sock,"%i %s %s %s %i\n",queries[i].timestamp,qtype,domains[queries[i].domainID].domain,clients[queries[i].clientID].ip,queries[i].status);
 			}
 			else
-				ssend(
-						*sock, "%i %s %s hidden %i\n",
-						queries[i].timestamp,
-						qtype,
-						domains[queries[i].domainID].domain,
-						queries[i].status
-				);
+				ssend(*sock,"%i %s %s hidden %i\n",queries[i].timestamp,qtype,domains[queries[i].domainID].domain,queries[i].status);
 		}
 		else
 		{
 			// {"data":[["1497351662","IPv4","clients4.google.com","10.8.0.2","2"],
 			if(!first) ssend(*sock, ",");
 			first = false;
-			char domain[4096];
-			formatJSON(domains[queries[i].domainID].domain, domain, 4096);
 
 			if(!privacymode)
 			{
 				if(strlen(clients[queries[i].clientID].name) > 0)
-					ssend(
-							*sock, "[%i,\"%s\",\"%s\",\"%s\",%i]",
-							queries[i].timestamp,
-							qtype,
-							domain,
-							clients[queries[i].clientID].name,
-							queries[i].status
-					);
+					ssend(*sock,"[%i,\"%s\",\"%s\",\"%s\",%i]",queries[i].timestamp,qtype,domains[queries[i].domainID].domain,clients[queries[i].clientID].name,queries[i].status);
 				else
-					ssend(
-							*sock, "[%i,\"%s\",\"%s\",\"%s\",%i]",
-							queries[i].timestamp,
-							qtype,
-							domain,
-							clients[queries[i].clientID].ip,
-							queries[i].status
-					);
+					ssend(*sock,"[%i,\"%s\",\"%s\",\"%s\",%i]",queries[i].timestamp,qtype,domains[queries[i].domainID].domain,clients[queries[i].clientID].ip,queries[i].status);
 			}
 			else
-				ssend(
-						*sock, "[%i,\"%s\",\"%s\",\"hidden\",%i]",
-						queries[i].timestamp,
-						qtype,
-						domain,
-						queries[i].status
-				);
+				ssend(*sock,"[%i,\"%s\",\"%s\",\"hidden\",%i]",queries[i].timestamp,qtype,domains[queries[i].domainID].domain,queries[i].status);
 		}
 	}
 
