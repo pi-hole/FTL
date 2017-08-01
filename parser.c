@@ -294,6 +294,15 @@ void process_pihole_log(int file)
 			strncat(domain,domainstart+2,domainlen);
 			sprintf(domainwithspaces," %s ",domain);
 
+			if(strcmp(domain, "pi.hole") == 0)
+			{
+				// domain is "pi.hole", skip this query
+				// free memory already allocated here
+				free(domain);
+				free(domainwithspaces);
+				continue;
+			}
+
 			// Get client
 			// domainend+6 = pointer to | in "query[AAAA] host.name from |ww.xx.yy.zz\n"
 			const char *clientend = strstr(domainend+6, "\n");
@@ -301,7 +310,9 @@ void process_pihole_log(int file)
 			if(clientend == NULL)
 			{
 				logg("Notice: Skipping malformated log line (client end missing): %s", readbuffer);
-				// Skip this line
+				// Skip this line, free memory already allocated here
+				free(domain);
+				free(domainwithspaces);
 				continue;
 			}
 
@@ -309,7 +320,9 @@ void process_pihole_log(int file)
 			if(clientlen < 1)
 			{
 				logg("Notice: Skipping malformated log line (client length < 1): %s", readbuffer);
-				// Skip this line
+				// Skip this line, free memory already allocated here
+				free(domain);
+				free(domainwithspaces);
 				continue;
 			}
 
