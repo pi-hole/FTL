@@ -203,6 +203,12 @@ void process_pihole_log(int file)
 				continue;
 			}
 
+			if(strstr(readbuffer, "\"") != NULL)
+			{
+				if(debug) logg("Ignoring \" domain (query)");
+				continue;
+			}
+
 			if(!config.analyze_AAAA && strstr(readbuffer,"]: query[AAAA]") != NULL)
 			{
 				if(debug) logg("Not analyzing AAAA query");
