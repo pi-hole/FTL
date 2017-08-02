@@ -369,7 +369,7 @@ void save_to_DB(void)
 	{
 		logg("Notice: Queries stored in DB: %u", saved);
 		if(saved_error > 0)
-			logg("        There are queries that have not been saved", saved_error);
+			logg("        There are queries that have not been saved");
 	}
 }
 
