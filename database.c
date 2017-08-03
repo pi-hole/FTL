@@ -329,7 +329,15 @@ void save_to_DB(void)
 		if( rc != SQLITE_DONE ){
 			logg("save_to_DB() - SQL error (%i): %s", rc, sqlite3_errmsg(db));
 			saved_error++;
-			continue;
+			if(saved_error < 3)
+			{
+				continue;
+			}
+			else
+			{
+				logg("save_to_DB() - exiting due to too many errors");
+				break;
+			}
 		}
 
 		saved++;
@@ -359,10 +367,9 @@ void save_to_DB(void)
 
 	if(debug)
 	{
-		if(saved > 0)
-			logg("Notice: Queries stored in DB: %u", saved);
+		logg("Notice: Queries stored in DB: %u", saved);
 		if(saved_error > 0)
-			logg("        Queries NOT stored in DB: %u (due to an error)", saved_error);
+			logg("        There are queries that have not been saved");
 	}
 }
 
