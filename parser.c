@@ -53,11 +53,16 @@ void open_pihole_log(void)
 {
 	FILE * fp;
 	if((fp = fopen(files.log, "r")) == NULL) {
-		logg("FATAL: Opening of %s failed!", files.log);
-		logg("       Make sure it exists and is readable by user %s", username);
-		syslog(LOG_ERR, "Opening of pihole.log failed!");
-		// Return failure in exit status
-		exit(EXIT_FAILURE);
+		logg("WARN:  Opening of %s failed!", files.log);
+		logg("       Make sure it exists and is readable by user %s\n       Will try again in 15 seconds.", username);
+
+		sleepms(15000);
+		if((fp = fopen(files.log, "r")) == NULL) {
+			logg("FATAL: Opening of %s failed permanently!", files.log);
+			syslog(LOG_ERR, "Opening of pihole.log failed!");
+			// Return failure in exit status
+			exit(EXIT_FAILURE);
+		}
 	}
 	fclose(fp);
 }
@@ -198,6 +203,12 @@ void process_pihole_log(int file)
 				continue;
 			}
 
+			if(strstr(readbuffer, "\"") != NULL)
+			{
+				if(debug) logg("Ignoring \" domain (query)");
+				continue;
+			}
+
 			if(!config.analyze_AAAA && strstr(readbuffer,"]: query[AAAA]") != NULL)
 			{
 				if(debug) logg("Not analyzing AAAA query");
@@ -283,6 +294,15 @@ void process_pihole_log(int file)
 			strncat(domain,domainstart+2,domainlen);
 			sprintf(domainwithspaces," %s ",domain);
 
+			if(strcmp(domain, "pi.hole") == 0)
+			{
+				// domain is "pi.hole", skip this query
+				// free memory already allocated here
+				free(domain);
+				free(domainwithspaces);
+				continue;
+			}
+
 			// Get client
 			// domainend+6 = pointer to | in "query[AAAA] host.name from |ww.xx.yy.zz\n"
 			const char *clientend = strstr(domainend+6, "\n");
@@ -290,7 +310,9 @@ void process_pihole_log(int file)
 			if(clientend == NULL)
 			{
 				logg("Notice: Skipping malformated log line (client end missing): %s", readbuffer);
-				// Skip this line
+				// Skip this line, free memory already allocated here
+				free(domain);
+				free(domainwithspaces);
 				continue;
 			}
 
@@ -298,7 +320,9 @@ void process_pihole_log(int file)
 			if(clientlen < 1)
 			{
 				logg("Notice: Skipping malformated log line (client length < 1): %s", readbuffer);
-				// Skip this line
+				// Skip this line, free memory already allocated here
+				free(domain);
+				free(domainwithspaces);
 				continue;
 			}
 

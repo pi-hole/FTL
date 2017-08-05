@@ -14,23 +14,36 @@
 // Any of the various threads (logparser, GC, client threads) is accessing FTL's data structure. Hence, they should
 // never run at the same time since the data can change half-way through, leading to unspecified behavior.
 // threadlock:  The threadlock ensures that only one thread can be active at any given time
-bool threadlock = false;
+pthread_mutex_t threadlock;
 
 void enable_thread_lock(const char *message)
 {
-	while(threadlock) sleepms(5);
+	int ret = pthread_mutex_lock(&threadlock);
+
+	if(ret != 0)
+		logg("Thread lock error: %i",ret);
 
 	if(debugthreads)
-		logg("Thread lock enabled: %s", message);
-
-	// Set threadlock
-	threadlock = true;
+		logg("Thread locked: %s", message);
 }
 
 void disable_thread_lock(const char *message)
 {
-	threadlock = false;
+	int ret = pthread_mutex_unlock(&threadlock);
+
+	if(ret != 0)
+		logg("Thread unlock error: %i",ret);
 
 	if(debugthreads)
-		logg("Thread lock disabled: %s", message);
+		logg("Thread unlocked: %s", message);
+}
+
+void init_thread_lock(void)
+{
+	if (pthread_mutex_init(&threadlock, NULL) != 0)
+	{
+		logg("FATAL: Thread mutex init failed\n");
+		// Return failure
+		exit(EXIT_FAILURE);
+	}
 }

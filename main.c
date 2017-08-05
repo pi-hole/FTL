@@ -9,7 +9,6 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
-#include "version.h"
 
 char * username;
 bool needGC = false;
@@ -25,10 +24,8 @@ int main (int argc, char* argv[]) {
 	open_FTL_log(true);
 	open_pihole_log();
 	logg("########## FTL started! ##########");
-	logg("FTL branch: %s", GIT_BRANCH);
-	logg("FTL hash: %s", GIT_VERSION);
-	logg("FTL date: %s", GIT_DATE);
-	logg("FTL user: %s", username);
+	log_FTL_version();
+	init_thread_lock();
 
 	// pihole-FTL should really be run as user "pihole" to not mess up with the file permissions
 	// still allow this if "debug" flag is set

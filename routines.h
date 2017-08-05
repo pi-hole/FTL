@@ -21,6 +21,7 @@ void logg(const char* str, ...);
 void logg_struct_resize(const char* str, int to, int step);
 void log_counter_info(void);
 void format_memory_size(char *prefix, unsigned long int bytes, double *formated);
+void log_FTL_version(void);
 
 void initial_log_parsing(void);
 long int checkLogForChanges(void);
@@ -61,6 +62,7 @@ char* find_equals(const char* s);
 
 void enable_thread_lock(const char *message);
 void disable_thread_lock(const char *message);
+void init_thread_lock(void);
 
 void read_FTLconf(void);
 
