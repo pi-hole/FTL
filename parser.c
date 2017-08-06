@@ -246,15 +246,31 @@ void process_pihole_log(int file)
 			if(!found)
 			{
 				// We loop over this to fill potential data holes with zeros
-				while(overTimetimestamp > overTime[counters.overTime-1].timestamp)
+				int nexttimestamp = 0;
+				if(counters.overTime != 0)
 				{
+					validate_access("overTime", counters.overTime-1, false, __LINE__, __FUNCTION__, __FILE__);
+					nexttimestamp = overTime[counters.overTime-1].timestamp + 600;
+				}
+				else
+				{
+					nexttimestamp = overTimetimestamp;
+				}
+
+				while(overTimetimestamp > nexttimestamp-1)
+				{
+					if(counters.overTime != 0)
+					{
+						validate_access("overTime", counters.overTime-1, false, __LINE__, __FUNCTION__, __FILE__);
+						nexttimestamp = overTime[counters.overTime-1].timestamp + 600;
+					}
 					// Check struct size
 					memory_check(OVERTIME);
 					timeidx = counters.overTime;
 					validate_access("overTime", timeidx, false, __LINE__, __FUNCTION__, __FILE__);
 					// Set magic byte
 					overTime[timeidx].magic = MAGICBYTE;
-					overTime[timeidx].timestamp = overTime[counters.overTime-1].timestamp + 600;
+					overTime[timeidx].timestamp = nexttimestamp;
 					overTime[timeidx].total = 0;
 					overTime[timeidx].blocked = 0;
 					overTime[timeidx].cached = 0;
