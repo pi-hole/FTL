@@ -257,13 +257,8 @@ void process_pihole_log(int file)
 					nexttimestamp = overTimetimestamp;
 				}
 
-				while(overTimetimestamp > nexttimestamp-1)
+				while(overTimetimestamp >= nexttimestamp)
 				{
-					if(counters.overTime != 0)
-					{
-						validate_access("overTime", counters.overTime-1, false, __LINE__, __FUNCTION__, __FILE__);
-						nexttimestamp = overTime[counters.overTime-1].timestamp + 600;
-					}
 					// Check struct size
 					memory_check(OVERTIME);
 					timeidx = counters.overTime;
@@ -279,6 +274,13 @@ void process_pihole_log(int file)
 					overTime[timeidx].querytypedata = calloc(2, sizeof(int));
 					memory.querytypedata += 2*sizeof(int);
 					counters.overTime++;
+
+					// Update time stamp for next loop interation
+					if(counters.overTime != 0)
+					{
+						validate_access("overTime", counters.overTime-1, false, __LINE__, __FUNCTION__, __FILE__);
+						nexttimestamp = overTime[counters.overTime-1].timestamp + 600;
+					}
 				}
 			}
 
