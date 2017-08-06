@@ -245,19 +245,25 @@ void process_pihole_log(int file)
 			}
 			if(!found)
 			{
-				timeidx = counters.overTime;
-				validate_access("overTime", timeidx, false, __LINE__, __FUNCTION__, __FILE__);
-				// Set magic byte
-				overTime[timeidx].magic = MAGICBYTE;
-				overTime[timeidx].timestamp = overTimetimestamp;
-				overTime[timeidx].total = 0;
-				overTime[timeidx].blocked = 0;
-				overTime[timeidx].cached = 0;
-				overTime[timeidx].forwardnum = 0;
-				overTime[timeidx].forwarddata = NULL;
-				overTime[timeidx].querytypedata = calloc(2, sizeof(int));
-				memory.querytypedata += 2*sizeof(int);
-				counters.overTime++;
+				// We loop over this to fill potential data holes with zeros
+				while(overTimetimestamp > overTime[counters.overTime-1].timestamp)
+				{
+					// Check struct size
+					memory_check(OVERTIME);
+					timeidx = counters.overTime;
+					validate_access("overTime", timeidx, false, __LINE__, __FUNCTION__, __FILE__);
+					// Set magic byte
+					overTime[timeidx].magic = MAGICBYTE;
+					overTime[timeidx].timestamp = overTime[counters.overTime-1].timestamp + 600;
+					overTime[timeidx].total = 0;
+					overTime[timeidx].blocked = 0;
+					overTime[timeidx].cached = 0;
+					overTime[timeidx].forwardnum = 0;
+					overTime[timeidx].forwarddata = NULL;
+					overTime[timeidx].querytypedata = calloc(2, sizeof(int));
+					memory.querytypedata += 2*sizeof(int);
+					counters.overTime++;
+				}
 			}
 
 			// Get domain
