@@ -215,7 +215,7 @@ load 'libs/bats-support/load'
   run bash -c "curl -s 127.0.0.1:4747/stats/top_domains"
   echo "output: ${lines[@]}"
   echo "curl exit code: ${status}"
-  [[ ${lines[0]} == "{\"top_domains\":{\"play.google.com\":2,\"pi.hole\":1,\"checkip.dyndns.org\":1,\"raspberrypi\":1},\"dns_queries_today\":7}" ]]
+  [[ ${lines[0]} == "{\"top_domains\":{\"play.google.com\":2,\"example.com\":1,\"checkip.dyndns.org\":1,\"raspberrypi\":1},\"dns_queries_today\":7}" ]]
   [[ "${status}" -eq 0 ]]
 }
 
