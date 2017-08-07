@@ -22,6 +22,8 @@ ${ts} reply checkip.dyndns.com is 91.198.22.70
 ${ts} reply checkip.dyndns.com is 216.146.43.70
 ${ts} query[A] pi.hole from 10.8.0.2
 ${ts} /etc/pihole/local.list pi.hole is 192.168.2.10
+${ts} query[A] example.com from 10.8.0.2
+${ts} /etc/pihole/local.list example.com is 192.168.2.10
 ${ts} query[A] play.google.com from 192.168.2.208
 ${ts} forwarded play.google.com to 2001:1608:10:25::9249:d69b
 ${ts} forwarded play.google.com to 2001:1608:10:25::1c04:b12f

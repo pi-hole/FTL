@@ -44,7 +44,7 @@ load 'libs/bats-support/load'
   echo "output: ${lines[@]}"
   [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
   [[ ${lines[1]} == "0 2 play.google.com" ]]
-  [[ ${lines[2]} == "1 1 pi.hole" ]]
+  [[ ${lines[2]} == "1 1 example.com" ]]
   [[ ${lines[3]} == "2 1 checkip.dyndns.org" ]]
   [[ ${lines[4]} == "3 1 raspberrypi" ]]
   [[ ${lines[5]} == "---EOM---" ]]
@@ -106,7 +106,7 @@ load 'libs/bats-support/load'
   [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
   [[ ${lines[1]} =~ "IPv6 raspberrypi localhost 3" ]]
   [[ ${lines[2]} =~ "IPv4 checkip.dyndns.org localhost 2" ]]
-  [[ ${lines[3]} =~ "IPv4 pi.hole" ]]
+  [[ ${lines[3]} =~ "IPv4 example.com" ]]
   [[ ${lines[4]} =~ "IPv4 play.google.com" ]]
   [[ ${lines[5]} =~ "IPv6 play.google.com" ]]
   [[ ${lines[6]} =~ "IPv4 blacklisted.com" ]]
