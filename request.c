@@ -235,7 +235,7 @@ void process_api_request(char *client_message, char *full_message, int *sock, bo
 	{
 		ssend(*sock,
 		      "HTTP/1.0 404 Not Found\nServer: FTL\nCache-Control: no-cache\nAccess-Control-Allow-Origin: *\n"
-		      "Content-Type: application/json\nContent-Length: 21\n\n{status: \"not_found\"");
+		      "Content-Type: application/json\nContent-Length: 23\n\n{\"status\": \"not_found\"");
 	}
 
 	ssend(*sock, "}");
