@@ -126,13 +126,37 @@ void process_socket_request(char *client_message, int *sock)
 	}
 }
 
-void process_api_request(char *client_message, int *sock, bool header)
+char* getPayload(char *http_message)
+{
+	char *data_start;
+	char *unix_newline = strstr(http_message, "\n\n");
+	char *win_newline = strstr(http_message, "\r\n\r\n");
+
+	if(unix_newline != NULL)
+		data_start = unix_newline + 2;
+	else if(win_newline != NULL)
+		data_start = win_newline + 4;
+	else
+		return NULL;
+
+	if(strlen(data_start) == 0)
+		return NULL;
+
+	return data_start;
+}
+
+void process_api_request(char *client_message, char *full_message, int *sock, bool header)
 {
 	char type;
 	if(header)
 		type = APIH;
 	else
 		type = API;
+
+	if(debug)
+		logg("Received API request: %s", full_message);
+
+	char *data = getPayload(full_message);
 
 	if(command(client_message, "GET /stats/summary"))
 	{
@@ -191,9 +215,17 @@ void process_api_request(char *client_message, int *sock, bool header)
 	{
 		getList(sock, type, WHITELIST);
 	}
+	else if(command(client_message, "POST /dns/whitelist"))
+	{
+		addList(sock, type, WHITELIST, data);
+	}
 	else if(command(client_message, "GET /dns/blacklist"))
 	{
 		getList(sock, type, BLACKLIST);
+	}
+	else if(command(client_message, "POST /dns/blacklist"))
+	{
+		addList(sock, type, BLACKLIST, data);
 	}
 	else if(command(client_message, "GET /dns/status"))
 	{

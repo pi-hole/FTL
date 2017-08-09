@@ -43,9 +43,8 @@ void *socket_listening_thread(void *args);
 void *api_listening_thread(void *args);
 
 void process_socket_request(char *client_message, int *sock);
-void process_api_request(char *client_message, int *sock, bool header);
+void process_api_request(char *client_message, char *full_message, int *sock, bool header);
 bool command(char *client_message, const char* cmd);
-void formatNumber(bool raw, int n, char* buffer);
 
 void read_gravity_files(void);
 int countlines(const char* fname);

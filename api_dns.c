@@ -56,3 +56,9 @@ void getPiholeStatus(int *sock, char type)
 	sendAPIResponse(*sock, type);
 	ssend(*sock, "\"status\":%i", status == 1 ? 0 : 1);
 }
+
+void addList(int *sock, char type, char list_type, char *data)
+{
+	sendAPIResponse(*sock, type);
+	ssend(*sock, "\"status\": \"success\"");
+}
