@@ -68,11 +68,19 @@ void addList(int *sock, char type, char list_type, char *data)
 	if(cJSON_IsString(domain_json)) {
 		domain = domain_json->valuestring;
 
-		// Valid domain
-		sendAPIResponseOK(*sock, type);
-		ssend(*sock, "\"status\":\"success\",\"domain\":\"%s\"", domain);
+		if(isValidDomain(domain)) {
+			// Valid domain
+			sendAPIResponseOK(*sock, type);
+			ssend(*sock, "\"status\":\"success\"");
+		}
+		else {
+			// Invalid domain
+			sendAPIResponseBadRequest(*sock, type);
+			ssend(*sock, "\"status\":\"invalid_domain\"");
+		}
 	}
 	else {
+		// No domain
 		sendAPIResponseBadRequest(*sock, type);
 		ssend(*sock, "\"status\":\"no_domain\"");
 	}
