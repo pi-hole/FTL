@@ -29,6 +29,10 @@ void sendAPIResponseBadRequest(int sock, char type) {
 	sendAPIResponse(sock, type, "400 Bad Request");
 }
 
+void sendAPIResponseInternalServerError(int sock, char type) {
+	sendAPIResponse(sock, type, "500 Internal Server Error");
+}
+
 bool matchesRegex(char *regex_expression, char *input) {
 	regex_t regex;
 	int result;

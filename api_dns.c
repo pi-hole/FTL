@@ -70,8 +70,32 @@ void addList(int *sock, char type, char list_type, char *data)
 
 		if(isValidDomain(domain)) {
 			// Valid domain
-			sendAPIResponseOK(*sock, type);
-			ssend(*sock, "\"status\":\"success\"");
+			char *partial_command;
+
+			if(list_type == WHITELIST)
+				partial_command = "sudo pihole -w -q %s";
+			else if(list_type == BLACKLIST)
+				partial_command = "sudo pihole -b -q %s";
+			else {
+				logg("Invalid list type in addList");
+				exit(EXIT_FAILURE);
+			}
+
+			char *command = malloc((strlen(domain) + strlen(partial_command)) * sizeof(char));
+			sprintf(command, partial_command, domain);
+			int return_code = system(command);
+			free(command);
+
+			if(return_code == 0) {
+				// Successfully added to list
+				sendAPIResponseOK(*sock, type);
+				ssend(*sock, "\"status\":\"success\"");
+			}
+			else {
+				// Failed to add to list
+				sendAPIResponseInternalServerError(*sock, type);
+				ssend(*sock, "\"status\":\"unknown_error\"");
+			}
 		}
 		else {
 			// Invalid domain
