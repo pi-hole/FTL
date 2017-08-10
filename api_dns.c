@@ -10,6 +10,7 @@
 
 #include "FTL.h"
 #include "api.h"
+#include "cJSON.h"
 
 void getList(int *sock, char type, char list_type)
 {
@@ -17,7 +18,7 @@ void getList(int *sock, char type, char list_type)
 	char *line = NULL;
 	size_t size = 0;
 
-	sendAPIResponse(*sock, type);
+	sendAPIResponseOK(*sock, type);
 	ssend(*sock, "\"%s\":[", list_type == WHITELIST ? "whitelist" : "blacklist");
 
 	if((fp = fopen(list_type == WHITELIST ? files.whitelist : files.blacklist, "r")) != NULL)
@@ -53,12 +54,28 @@ void getList(int *sock, char type, char list_type)
 void getPiholeStatus(int *sock, char type)
 {
 	int status = countlineswith("#addn-hosts=/etc/pihole/gravity.list", files.dnsmasqconf);
-	sendAPIResponse(*sock, type);
+	sendAPIResponseOK(*sock, type);
 	ssend(*sock, "\"status\":%i", status == 1 ? 0 : 1);
 }
 
 void addList(int *sock, char type, char list_type, char *data)
 {
-	sendAPIResponse(*sock, type);
-	ssend(*sock, "\"status\": \"success\"");
+	cJSON *input_root = cJSON_Parse(data);
+	cJSON *domain_json = cJSON_GetObjectItemCaseSensitive(input_root, "domain");
+	char *domain;
+
+	// Validate domain
+	if(cJSON_IsString(domain_json)) {
+		domain = domain_json->valuestring;
+
+		// Valid domain
+		sendAPIResponseOK(*sock, type);
+		ssend(*sock, "\"status\":\"success\",\"domain\":\"%s\"", domain);
+	}
+	else {
+		sendAPIResponseBadRequest(*sock, type);
+		ssend(*sock, "\"status\":\"no_domain\"");
+	}
+
+	cJSON_Delete(input_root);
 }

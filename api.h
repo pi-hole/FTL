@@ -31,4 +31,6 @@ void addList(int *sock, char type, char list_type, char *data);
 void getPiholeStatus(int *sock, char type);
 
 // General API commands
-void sendAPIResponse(int sock, char type);
+void sendAPIResponse(int sock, char type, char *http_status);
+void sendAPIResponseOK(int sock, char type);
+void sendAPIResponseBadRequest(int sock, char type);

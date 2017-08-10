@@ -11,12 +11,20 @@
 #include "FTL.h"
 #include "api.h"
 
-void sendAPIResponse(int sock, char type) {
+void sendAPIResponse(int sock, char type, char *http_status) {
 	if(type == APIH)
 	{
 		// Send header only for full HTTP requests
 		ssend(sock,
-		      "HTTP/1.0 200 OK\nServer: FTL\nCache-Control: no-cache\nAccess-Control-Allow-Origin: *\n"
-				      "Content-Type: application/json\n\n{");
+		      "HTTP/1.0 %s\nServer: FTL\nCache-Control: no-cache\nAccess-Control-Allow-Origin: *\n"
+				      "Content-Type: application/json\n\n{", http_status);
 	}
+}
+
+void sendAPIResponseOK(int sock, char type) {
+	sendAPIResponse(sock, type, "200 OK");
+}
+
+void sendAPIResponseBadRequest(int sock, char type) {
+	sendAPIResponse(sock, type, "400 Bad Request");
 }
