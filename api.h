@@ -30,10 +30,10 @@ void getList(int *sock, char type, char list_type);
 void addList(int *sock, char type, char list_type, char *data);
 void getPiholeStatus(int *sock, char type);
 
+// HTTP Response Codes
+enum { OK, BAD_REQUEST, INTERNAL_ERROR, NOT_FOUND };
+
 // General API commands
-void sendAPIResponse(int sock, char type, char *http_status);
-void sendAPIResponseOK(int sock, char type);
-void sendAPIResponseBadRequest(int sock, char type);
-void sendAPIResponseInternalServerError(int sock, char type);
+void sendAPIResponse(int sock, char type, char http_code);
 bool matchesRegex(char *regex_expression, char *input);
 bool isValidDomain(char *domain);

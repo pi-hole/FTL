@@ -11,7 +11,25 @@
 #include "FTL.h"
 #include "api.h"
 
-void sendAPIResponse(int sock, char type, char *http_status) {
+void sendAPIResponse(int sock, char type, char http_code) {
+	char *http_status;
+
+	switch(http_code) {
+		default:
+		case OK:
+			http_status = "200 OK";
+			break;
+		case BAD_REQUEST:
+			http_status = "400 Bad Request";
+			break;
+		case INTERNAL_ERROR:
+			http_status = "500 Internal Server Error";
+			break;
+		case NOT_FOUND:
+			http_status = "404 Not Found";
+			break;
+	}
+
 	if(type == APIH)
 	{
 		// Send header only for full HTTP requests
@@ -19,18 +37,6 @@ void sendAPIResponse(int sock, char type, char *http_status) {
 		      "HTTP/1.0 %s\nServer: FTL\nCache-Control: no-cache\nAccess-Control-Allow-Origin: *\n"
 				      "Content-Type: application/json\n\n{", http_status);
 	}
-}
-
-void sendAPIResponseOK(int sock, char type) {
-	sendAPIResponse(sock, type, "200 OK");
-}
-
-void sendAPIResponseBadRequest(int sock, char type) {
-	sendAPIResponse(sock, type, "400 Bad Request");
-}
-
-void sendAPIResponseInternalServerError(int sock, char type) {
-	sendAPIResponse(sock, type, "500 Internal Server Error");
 }
 
 bool matchesRegex(char *regex_expression, char *input) {

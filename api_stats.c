@@ -60,7 +60,7 @@ void getStats(int *sock, char type)
 	}
 	else
 	{
-		sendAPIResponseOK(*sock, type);
+		sendAPIResponse(*sock, type, OK);
 		ssend(*sock,"\"domains_being_blocked\":%i,\"dns_queries_today\":%i,\"ads_blocked_today\":%i,\"ads_percentage_today\":%.4f,\"unique_domains\":%i,\"queries_forwarded\":%i,\"queries_cached\":%i,\"unique_clients\":%i",counters.gravity,total, blocked, percentage,counters.domains,counters.forwardedqueries,counters.cached,counters.clients);
 	}
 
@@ -94,7 +94,7 @@ void getOverTime(int *sock, char type)
 	else
 	{
 		// First send header with unspecified content-length outside of the for-loop
-		sendAPIResponseOK(*sock, type);
+		sendAPIResponse(*sock, type, OK);
 		ssend(*sock,"\"domains_over_time\":{");
 
 		// Send "domains_over_time" data
@@ -224,7 +224,7 @@ void getTopDomains(char *client_message, int *sock, char type)
 	if(type != SOCKET)
 	{
 		// First send header with unspecified content-length outside of the for-loop
-		sendAPIResponseOK(*sock, type);
+		sendAPIResponse(*sock, type, OK);
 
 		if(blocked)
 			ssend(*sock, "\"top_ads\":{");
@@ -358,7 +358,7 @@ void getTopClients(char *client_message, int *sock, char type)
 	if(type != SOCKET)
 	{
 		// First send header with unspecified content-length outside of the for-loop
-		sendAPIResponseOK(*sock, type);
+		sendAPIResponse(*sock, type, OK);
 		ssend(*sock, "\"top_clients\":{");
 	}
 
@@ -437,7 +437,7 @@ void getForwardDestinations(char *client_message, int *sock, char type)
 	}
 
 	// Send HTTP headers with unknown content length
-	sendAPIResponseOK(*sock, type);
+	sendAPIResponse(*sock, type, OK);
 
 	// Send initial JSON output
 	if(type != SOCKET)
@@ -516,7 +516,7 @@ void getForwardNames(int *sock, char type)
 
 	if(type != SOCKET)
 	{
-		sendAPIResponseOK(*sock, type);
+		sendAPIResponse(*sock, type, OK);
 		ssend(*sock,"\"forward_destinations\":{");
 	}
 
@@ -555,7 +555,7 @@ void getQueryTypes(int *sock, char type)
 		ssend(*sock,"A (IPv4): %i\nAAAA (IPv6): %i\n",counters.IPv4,counters.IPv6);
 	else
 	{
-		sendAPIResponseOK(*sock, type);
+		sendAPIResponse(*sock, type, OK);
 		ssend(*sock, "\"query_types\":{\"A (IPv4)\":%i,\"AAAA (IPv6)\":%i,\"PTR\":%i,\"SRV\":%i}",
 		      counters.IPv4,
 		      counters.IPv6,
@@ -725,7 +725,7 @@ void getAllQueries(char *client_message, int *sock, char type)
 
 	if(type != SOCKET)
 	{
-		sendAPIResponseOK(*sock, type);
+		sendAPIResponse(*sock, type, OK);
 		ssend(*sock, "\"history\":[");
 	}
 
@@ -847,7 +847,7 @@ void getRecentBlocked(char *client_message, int *sock, char type)
 
 	if(type != SOCKET)
 	{
-		sendAPIResponseOK(*sock, type);
+		sendAPIResponse(*sock, type, OK);
 		ssend(*sock, "\"recent_blocked\":[");
 	}
 
@@ -924,7 +924,7 @@ void getForwardDestinationsOverTime(int *sock, char type)
 
 	if(type != SOCKET)
 	{
-		sendAPIResponseOK(*sock, type);
+		sendAPIResponse(*sock, type, OK);
 		ssend(*sock,"\"over_time\":{");
 	}
 
@@ -1002,7 +1002,7 @@ void getQueryTypesOverTime(int *sock, char type)
 
 	if(type != SOCKET)
 	{
-		sendAPIResponseOK(*sock, type);
+		sendAPIResponse(*sock, type, OK);
 		ssend(*sock,"\"query_types\":{");
 	}
 
