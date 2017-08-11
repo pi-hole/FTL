@@ -219,6 +219,10 @@ void process_api_request(char *client_message, char *full_message, int *sock, bo
 	{
 		addList(sock, type, WHITELIST, data);
 	}
+	else if(command(client_message, "DELETE /dns/whitelist/"))
+	{
+		removeList(sock, type, WHITELIST, client_message);
+	}
 	else if(command(client_message, "GET /dns/blacklist"))
 	{
 		getList(sock, type, BLACKLIST);
@@ -227,15 +231,18 @@ void process_api_request(char *client_message, char *full_message, int *sock, bo
 	{
 		addList(sock, type, BLACKLIST, data);
 	}
+	else if(command(client_message, "DELETE /dns/blacklist/"))
+	{
+		removeList(sock, type, BLACKLIST, client_message);
+	}
 	else if(command(client_message, "GET /dns/status"))
 	{
 		getPiholeStatus(sock, type);
 	}
 	else if(header)
 	{
-		ssend(*sock,
-		      "HTTP/1.0 404 Not Found\nServer: FTL\nCache-Control: no-cache\nAccess-Control-Allow-Origin: *\n"
-		      "Content-Type: application/json\nContent-Length: 23\n\n{\"status\": \"not_found\"");
+		sendAPIResponse(*sock, type, NOT_FOUND);
+		ssend(*sock, "\"status\":\"not_found\"");
 	}
 
 	ssend(*sock, "}");
