@@ -78,7 +78,7 @@ void addList(int *sock, char type, char list_type, char *data) {
 				exit(EXIT_FAILURE);
 			}
 
-			char *command = malloc((strlen(domain) + strlen(partial_command)) * sizeof(char));
+			char *command = malloc((strlen(domain) + strlen(partial_command) + 1) * sizeof(char));
 			sprintf(command, partial_command, domain);
 			int return_code = system(command);
 			free(command);
