@@ -366,26 +366,28 @@ void *api_connection_handler_thread(void *socket_desc)
 			{
 				logg("API received malformated request: \"%s\"", message);
 			}
-
-			// Close connection to show that we reached the end of the transmission
-			close(sock);
-			sock = 0;
+		}
+		else if(strncmp(message, "OPTIONS ", 8) == 0)
+		{
+			// OPTIONS request: CORS preflight
+			ssend(sock, "HTTP/1.0 200 OK\nServer: FTL\nAccess-Control-Allow-Origin: *\n"
+					"Access-Control-Allow-Methods: GET, POST, DELETE, OPTIONS\n"
+					"Access-Control-Allow-Headers: Content-Type\n\n");
 		}
 		else if(strncmp(message, "HEAD ", 5) == 0)
 		{
 			// HEAD request: We do not send any content at all
-
 			ssend(sock, "HTTP/1.0 200 OK\nServer: FTL\n\n");
-
-			// Close connection to show that we reached the end of the transmission
-			close(sock);
-			sock = 0;
 		}
 		else
 		{
 			if(debug)
 				logg("API received something strange");
 		}
+
+		// Close connection to show that we reached the end of the transmission
+		close(sock);
+		sock = 0;
 
 		// Free allocated memory
 		free(message);
