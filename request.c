@@ -153,9 +153,6 @@ void process_api_request(char *client_message, char *full_message, int *sock, bo
 	else
 		type = API;
 
-	if(debug)
-		logg("Received API request: %s", full_message);
-
 	char *data = getPayload(full_message);
 
 	if(command(client_message, "GET /stats/summary"))

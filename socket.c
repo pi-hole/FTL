@@ -312,6 +312,9 @@ void *api_connection_handler_thread(void *socket_desc)
 		// Clear client message receive buffer
 		memset(client_message, 0, sizeof client_message);
 
+		if(debug)
+			logg("Received API request: \n%s", message);
+
 		if(strncmp(message, "GET ", 4) == 0 || strncmp(message, "POST ", 5) == 0 || strncmp(message, "DELETE ", 7) == 0)
 		{
 			// HTTP requests can be simple or full.
