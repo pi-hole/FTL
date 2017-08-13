@@ -404,6 +404,13 @@ void getTopClients(char *client_message, int *sock)
 		count = num;
 	}
 
+	// Apply Audit Log filtering?
+	bool includezeroclients = false;
+	if(command(client_message, " withzero"))
+	{
+		includezeroclients = true;
+	}
+
 	for(i=0; i < counters.clients; i++)
 	{
 		validate_access("clients", i, true, __LINE__, __FUNCTION__, __FILE__);
@@ -441,7 +448,7 @@ void getTopClients(char *client_message, int *sock)
 			}
 		}
 
-		if(clients[j].count > 0)
+		if(includezeroclients || clients[j].count > 0)
 		{
 			sprintf(server_message,"%i %i %s %s\n",i,clients[j].count,clients[j].ip,clients[j].name);
 			swrite(server_message, *sock);
