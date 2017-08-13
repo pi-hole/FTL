@@ -117,6 +117,11 @@ domains_being_blocked 19977
 dns_queries_today 104749
 ads_blocked_today 279
 ads_percentage_today 1.396606
+unique_domains 6
+queries_forwarded 3
+queries_cached 2
+clients_ever_seen 3
+unique_clients 3
 ```
 
 - `>overTime` : over time data (10 min intervals)
@@ -156,13 +161,15 @@ ads_percentage_today 1.396606
 ```
  Variant: `>top-ads (14)` to show (up to) 14 entries
 
-- `top-clients` : get top clients (IP addresses + host names (if available))
+- `top-clients` : get recently active top clients (IP addresses + host names (if available))
  ```
 0 9373 192.168.2.1 router
 1 484 192.168.2.2 work-machine
 2 8 127.0.0.1 localhost
 ```
  Variant: `>top-clients (9)` to show (up to) 9 client entries
+
+ Variant: `>top-clients withzero (15)` to show (up to) 15 clients even if they have not been active recently (see PR #124 for further details)
 
 - `>forward-dest` : get forward destinations (IP addresses + host names (if available))
  ```

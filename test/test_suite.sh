@@ -25,8 +25,9 @@ load 'libs/bats-support/load'
   [[ ${lines[5]} =~ "unique_domains 6" ]]
   [[ ${lines[6]} =~ "queries_forwarded 3" ]]
   [[ ${lines[7]} =~ "queries_cached 2" ]]
-  [[ ${lines[8]} == "unique_clients 3" ]]
-  [[ ${lines[9]} == "---EOM---" ]]
+  [[ ${lines[8]} == "clients_ever_seen 3" ]]
+  [[ ${lines[9]} == "unique_clients 3" ]]
+  [[ ${lines[10]} == "---EOM---" ]]
 }
 
 @test "Top Clients" {

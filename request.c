@@ -234,9 +234,24 @@ void getStats(int *sock)
 	sprintf(server_message,"unique_domains %i\nqueries_forwarded %i\nqueries_cached %i\n", \
 	        counters.domains,counters.forwardedqueries,counters.cached);
 	swrite(server_message, *sock);
-	sprintf(server_message,"unique_clients %i\n", \
+
+	// clients_ever_seen: all clients ever seen by FTL
+	sprintf(server_message,"clients_ever_seen %i\n", \
 	        counters.clients);
 	swrite(server_message, *sock);
+
+	// unique_clients: count only clients that have been active within the most recent 24 hours
+	int i, activeclients = 0;
+	for(i=0; i < counters.clients; i++)
+	{
+		validate_access("clients", i, true, __LINE__, __FUNCTION__, __FILE__);
+		if(clients[i].count > 0)
+			activeclients++;
+	}
+	sprintf(server_message,"unique_clients %i\n", \
+	        activeclients);
+	swrite(server_message, *sock);
+
 	if(debugclients)
 		logg("Sent stats data to client, ID: %i", *sock);
 }
@@ -404,6 +419,15 @@ void getTopClients(char *client_message, int *sock)
 		count = num;
 	}
 
+	// Show also clients which have not been active recently?
+	// This option can be combined with existing options,
+	// i.e. both >top-clients withzero" and ">top-clients withzero (123)" are valid
+	bool includezeroclients = false;
+	if(command(client_message, " withzero"))
+	{
+		includezeroclients = true;
+	}
+
 	for(i=0; i < counters.clients; i++)
 	{
 		validate_access("clients", i, true, __LINE__, __FUNCTION__, __FILE__);
@@ -440,8 +464,10 @@ void getTopClients(char *client_message, int *sock)
 				continue;
 			}
 		}
-
-		if(clients[j].count > 0)
+		// Return this client if either
+		// - "withzero" option is set, and/or
+		// - the client made at least one query within the most recent 24 hours
+		if(includezeroclients || clients[j].count > 0)
 		{
 			sprintf(server_message,"%i %i %s %s\n",i,clients[j].count,clients[j].ip,clients[j].name);
 			swrite(server_message, *sock);
