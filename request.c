@@ -234,9 +234,21 @@ void getStats(int *sock)
 	sprintf(server_message,"unique_domains %i\nqueries_forwarded %i\nqueries_cached %i\n", \
 	        counters.domains,counters.forwardedqueries,counters.cached);
 	swrite(server_message, *sock);
-	sprintf(server_message,"unique_clients %i\n", \
+	sprintf(server_message,"clients_ever_seen %i\n", \
 	        counters.clients);
 	swrite(server_message, *sock);
+
+	int i, activeclients = 0;
+	for(i=0; i < counters.clients; i++)
+	{
+		validate_access("clients", i, true, __LINE__, __FUNCTION__, __FILE__);
+		if(clients[i].count > 0)
+			activeclients++;
+	}
+	sprintf(server_message,"unique_clients %i\n", \
+	        activeclients);
+	swrite(server_message, *sock);
+
 	if(debugclients)
 		logg("Sent stats data to client, ID: %i", *sock);
 }
