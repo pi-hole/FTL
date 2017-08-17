@@ -155,27 +155,27 @@ void process_api_request(char *client_message, char *full_message, int *sock, bo
 
 	char *data = getPayload(full_message);
 
-	if(command(client_message, "GET /stats/summary"))
+	if(matchesEndpoint(client_message, "GET /stats/summary"))
 	{
 		getStats(sock, type);
 	}
-	else if(command(client_message, "GET /stats/overTime/graph"))
+	else if(matchesEndpoint(client_message, "GET /stats/overTime/graph"))
 	{
 		getOverTime(sock, type);
 	}
-	else if(command(client_message, "GET /stats/top_domains") || command(client_message, "GET /stats/top_ads"))
+	else if(matchesEndpoint(client_message, "GET /stats/top_domains") || matchesEndpoint(client_message, "GET /stats/top_ads"))
 	{
 		getTopDomains(client_message, sock, type);
 	}
-	else if(command(client_message, "GET /stats/top_clients"))
+	else if(matchesEndpoint(client_message, "GET /stats/top_clients"))
 	{
 		getTopClients(client_message, sock, type);
 	}
-	else if(command(client_message, "GET /stats/forward_dest") || command(client_message, "GET /stats/forward_destinations"))
+	else if(matchesEndpoint(client_message, "GET /stats/forward_dest") || matchesEndpoint(client_message, "GET /stats/forward_destinations"))
 	{
 		getForwardDestinations(client_message, sock, type);
 	}
-	else if(command(client_message, "GET /stats/dashboard"))
+	else if(matchesEndpoint(client_message, "GET /stats/dashboard"))
 	{
 		getStats(sock, type);
 		type = API;
@@ -188,51 +188,51 @@ void process_api_request(char *client_message, char *full_message, int *sock, bo
 		ssend(*sock, ",");
 		getForwardDestinations(client_message, sock, type);
 	}
-	else if(command(client_message, "GET /stats/query_types"))
+	else if(matchesEndpoint(client_message, "GET /stats/query_types"))
 	{
 		getQueryTypes(sock, type);
 	}
-	else if(command(client_message, "GET /stats/history"))
+	else if(matchesEndpoint(client_message, "GET /stats/history"))
 	{
 		getAllQueries(client_message, sock, type);
 	}
-	else if(command(client_message, "GET /stats/recent_blocked"))
+	else if(matchesEndpoint(client_message, "GET /stats/recent_blocked"))
 	{
 		getRecentBlocked(client_message, sock, type);
 	}
-	else if(command(client_message, "GET /stats/overTime/forward_dest"))
+	else if(matchesEndpoint(client_message, "GET /stats/overTime/forward_dest"))
 	{
 		getForwardDestinationsOverTime(sock, type);
 	}
-	else if(command(client_message, "GET /stats/overTime/query_types"))
+	else if(matchesEndpoint(client_message, "GET /stats/overTime/query_types"))
 	{
 		getQueryTypesOverTime(sock, type);
 	}
-	else if(command(client_message, "GET /dns/whitelist"))
+	else if(matchesEndpoint(client_message, "GET /dns/whitelist"))
 	{
 		getList(sock, type, WHITELIST);
 	}
-	else if(command(client_message, "POST /dns/whitelist"))
+	else if(matchesEndpoint(client_message, "POST /dns/whitelist"))
 	{
 		addList(sock, type, WHITELIST, data);
 	}
-	else if(command(client_message, "DELETE /dns/whitelist/"))
+	else if(matchesRegex("DELETE \\/dns\\/whitelist\\/[^\\/]*$", client_message))
 	{
 		removeList(sock, type, WHITELIST, client_message);
 	}
-	else if(command(client_message, "GET /dns/blacklist"))
+	else if(matchesEndpoint(client_message, "GET /dns/blacklist"))
 	{
 		getList(sock, type, BLACKLIST);
 	}
-	else if(command(client_message, "POST /dns/blacklist"))
+	else if(matchesEndpoint(client_message, "POST /dns/blacklist"))
 	{
 		addList(sock, type, BLACKLIST, data);
 	}
-	else if(command(client_message, "DELETE /dns/blacklist/"))
+	else if(matchesRegex("DELETE \\/dns\\/blacklist\\/[^\\/]*$", client_message))
 	{
 		removeList(sock, type, BLACKLIST, client_message);
 	}
-	else if(command(client_message, "GET /dns/status"))
+	else if(matchesEndpoint(client_message, "GET /dns/status"))
 	{
 		getPiholeStatus(sock, type);
 	}
@@ -245,7 +245,31 @@ void process_api_request(char *client_message, char *full_message, int *sock, bo
 	ssend(*sock, "}");
 }
 
-bool command(char *client_message, const char* cmd)
-{
-	return strstr(client_message,cmd) != NULL;
+bool command(char *client_message, const char* cmd) {
+	return strstr(client_message, cmd) != NULL;
+}
+
+bool matchesEndpoint(char *client_message, const char *cmd) {
+	char *get_params_start = strstr(client_message, "?");
+	bool result;
+
+	// Check if there are GET parameters to ignore
+	if(get_params_start != NULL) {
+		char without_get_params[256];
+
+		// Check to make sure we don't overflow the buffer
+		if(strlen(cmd)+1 > sizeof(without_get_params) / sizeof(char))
+			return false;
+
+		size_t msg_len = get_params_start - client_message;
+
+		strncpy(without_get_params, client_message, msg_len);
+		without_get_params[msg_len] = 0;
+
+		result = strcmp(without_get_params, cmd) == 0;
+	}
+	else
+		result = strcmp(client_message, cmd) == 0;
+
+	return result;
 }
