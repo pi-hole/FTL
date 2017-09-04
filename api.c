@@ -57,7 +57,7 @@ bool matchesRegex(char *regex_expression, char *input) {
 }
 
 bool isValidDomain(char *domain) {
-	char *valid_chars_regex = "^((-|_)*[a-z\\d]((-|_)*[a-z\\d])*(-|_)*)(\\.(-|_)*([a-z\\d]((-|_)*[a-z\\d])*))*$";
+	char *valid_chars_regex = "^((-|_)*[a-z0-9]((-|_)*[a-z0-9])*(-|_)*)(\\.(-|_)*([a-z0-9]((-|_)*[a-z0-9])*))*$";
 	char *total_length_regex = "^.{1,253}$";
 	char *label_length_regex = "^[^\\.]{1,63}(\\.[^\\.]{1,63})*$";
 
