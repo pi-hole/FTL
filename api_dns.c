@@ -16,18 +16,55 @@ void getList(int *sock, char type, char list_type) {
 	FILE *fp;
 	char *line = NULL;
 	size_t size = 0;
+	const char *file;
+	const char *name;
+
+	if(list_type == WHITELIST) {
+		file = files.whitelist;
+		name = "whitelist";
+	}
+	else if(list_type == BLACKLIST) {
+		file = files.blacklist;
+		name = "blacklist";
+	}
+	else {
+		file = files.wildcards;
+		name = "wildlist";
+	}
 
 	sendAPIResponse(*sock, type, OK);
-	ssend(*sock, "\"%s\":[", list_type == WHITELIST ? "whitelist" : "blacklist");
+	ssend(*sock, "\"%s\":[", name);
 
-	if((fp = fopen(list_type == WHITELIST ? files.whitelist : files.blacklist, "r")) != NULL)
+	if((fp = fopen(file, "r")) != NULL)
 	{
 		bool first = true;
+		bool skipEveryOther = false;
+		bool skip = true;
+		char *parsedLine;
+
+		// Check if both IPv4 and IPv6 are used. If so, skip every other line in if we're getting wildcard domains
+		if(list_type == WILDLIST) {
+			char *ipv4 = read_setupVarsconf("IPV4_ADDRESS");
+			size_t ipv4_len = strlen(ipv4);
+			char *ipv6 = read_setupVarsconf("IPV6_ADDRESS");
+			size_t ipv6_len = strlen(ipv6);
+
+			if(ipv4_len > 0 && ipv6_len > 0)
+				skipEveryOther = true;
+		}
 
 		while(getline(&line, &size, fp) != -1) {
 			// Skip empty lines
 			if(line[0] == '\n')
 				continue;
+
+			// If applicable, skip every other line
+			if(skipEveryOther) {
+				skip = !skip;
+
+				if(skip)
+					continue;
+			}
 
 			if(!first) ssend(*sock, ",");
 			first = false;
@@ -35,7 +72,29 @@ void getList(int *sock, char type, char list_type) {
 			// Trim off the newline, if it exists
 			line[strcspn(line, "\r\n")] = 0;
 
-			ssend(*sock, "\"%s\"", line);
+			// Do more parsing if it's the wildcard list
+			if(list_type == WILDLIST) {
+				char *firstSlash = strstr(line, "/");
+
+				if(firstSlash == NULL) {
+					logg("Failed to parse wildcard line: %s", line);
+					continue;
+				}
+
+				char *secondSlash = strstr(firstSlash+1, "/");
+
+				if(secondSlash == NULL) {
+					logg("Failed to parse wildcard line: %s", line);
+					continue;
+				}
+
+				secondSlash[0] = 0;
+				parsedLine = firstSlash+1;
+			}
+			else
+				parsedLine = line;
+
+			ssend(*sock, "\"%s\"", parsedLine);
 		}
 		// Free allocated memory
 		if(line != NULL)
@@ -85,6 +144,8 @@ void addList(int *sock, char type, char list_type, char *data) {
 		partial_command = "sudo pihole -w -q ";
 	else if(list_type == BLACKLIST)
 		partial_command = "sudo pihole -b -q ";
+	else if(list_type == WILDLIST)
+		partial_command = "sudo pihole -wild -q ";
 	else {
 		logg("Invalid list type in addList");
 		exit(EXIT_FAILURE);
@@ -125,6 +186,8 @@ void removeList(int *sock, char type, char list_type, char *client_message) {
 		expected_route_start = "/dns/whitelist/";
 	else if(list_type == BLACKLIST)
 		expected_route_start = "/dns/blacklist/";
+	else if(list_type == WILDLIST)
+		expected_route_start = "/dns/wildlist/";
 	else {
 		logg("Invalid list type in removeList");
 		exit(EXIT_FAILURE);
@@ -165,8 +228,10 @@ void removeList(int *sock, char type, char list_type, char *client_message) {
 
 	if(list_type == WHITELIST)
 		partial_command = "sudo pihole -w -q -d ";
-	else
+	else if(list_type == BLACKLIST)
 		partial_command = "sudo pihole -b -q -d ";
+	else
+		partial_command = "sudo pihole -wild -q -d ";
 
 	// Run command
 	char *command = malloc((strlen(domain) + strlen(partial_command) + 1) * sizeof(char));

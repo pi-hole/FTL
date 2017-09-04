@@ -232,6 +232,18 @@ void process_api_request(char *client_message, char *full_message, int *sock, bo
 	{
 		removeList(sock, type, BLACKLIST, client_message);
 	}
+	else if(matchesEndpoint(client_message, "GET /dns/wildlist"))
+	{
+		getList(sock, type, WILDLIST);
+	}
+	else if(matchesEndpoint(client_message, "POST /dns/wildlist"))
+	{
+		addList(sock, type, WILDLIST, data);
+	}
+	else if(matchesRegex("DELETE \\/dns\\/wildlist\\/[^\\/]*$", client_message))
+	{
+		removeList(sock, type, WILDLIST, client_message);
+	}
 	else if(matchesEndpoint(client_message, "GET /dns/status"))
 	{
 		getPiholeStatus(sock, type);
