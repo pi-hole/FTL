@@ -1032,6 +1032,7 @@ void reresolveHostnames(void)
 			// Delete possibly already existing hostname pointer before storing new data
 			if(clients[clientID].name != NULL)
 			{
+				memory.clientnames -= (strlen(clients[clientID].name) + 1) * sizeof(char);
 				free(clients[clientID].name);
 				clients[clientID].name = NULL;
 			}
