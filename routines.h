@@ -31,6 +31,7 @@ void process_pihole_log(int file);
 void *pihole_log_thread(void *val);
 void validate_access(const char * name, int pos, bool testmagic, int line, const char * function, const char * file);
 void validate_access_oTfd(int timeidx, int pos, int line, const char * function, const char * file);
+void reresolveHostnames(void);
 
 void pihole_log_flushed(bool message);
 

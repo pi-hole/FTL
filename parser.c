@@ -1015,3 +1015,35 @@ void validate_access_oTfd(int timeidx, int pos, int line, const char * function,
 		logg("             found in %s() (line %i) in %s", function, line, file);
 	}
 }
+
+void reresolveHostnames(void)
+{
+	int clientID;
+	for(clientID = 0; clientID < counters.clients; clientID++)
+	{
+		// Memory validation
+		validate_access("clients", clientID, true, __LINE__, __FUNCTION__, __FILE__);
+
+		// Process this client only if it has at least one active query in the log
+		if(clients[clientID].count < 1)
+			continue;
+
+		// Get client hostname
+		char *hostname = resolveHostname(clients[clientID].ip);
+		if(strlen(hostname) > 0)
+		{
+			// Delete possibly already existing hostname pointer before storing new data
+			if(clients[clientID].name != NULL)
+			{
+				memory.clientnames -= (strlen(clients[clientID].name) + 1) * sizeof(char);
+				free(clients[clientID].name);
+				clients[clientID].name = NULL;
+			}
+
+			// Store client hostname
+			clients[clientID].name = strdup(hostname);
+			memory.clientnames += (strlen(hostname) + 1) * sizeof(char);
+		}
+		free(hostname);
+	}
+}
