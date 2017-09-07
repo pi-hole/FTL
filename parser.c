@@ -1019,8 +1019,11 @@ void validate_access_oTfd(int timeidx, int pos, int line, const char * function,
 void reresolveHostnames(void)
 {
 	int clientID;
-	for(clientID = 0; clientID < counters.clients_MAX; clientID++)
+	for(clientID = 0; clientID < counters.clients; clientID++)
 	{
+		// Memory validation
+		validate_access("clients", clientID, true, __LINE__, __FUNCTION__, __FILE__);
+
 		// Process this client only if it has at least one active query in the log
 		if(clients[clientID].count < 1)
 			continue;
