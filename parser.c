@@ -607,10 +607,7 @@ void process_pihole_log(int file)
 			// Check if this is a PTR query
 			// if so: skip analysis of this log line
 			if(strstr(readbuffer,"in-addr.arpa") != NULL)
-			{
-				if(debug) logg("Ignoring in-addr.arpa domain (forwarded)");
 				continue;
-			}
 
 			// Get ID of forward destination, create new forward destination record
 			// if not found in current data structure
