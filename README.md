@@ -180,12 +180,10 @@ unique_clients 3
  Variant: `>forward-dest unsorted` to show forward destinations in unsorted order (equivalent to using `>forward-names`)
 ```
 
-- `>querytypes` : get collected query types
+- `>querytypes` : get collected query types share
  ```
-A (IPv4): 7729
-AAAA (IPv6): 5880
-PTR: 12
-SRV: 0
+A (IPv4): 60.5
+AAAA (IPv6): 39.5
 ```
 
 - `>getallqueries` : get all queries that FTL has in its database

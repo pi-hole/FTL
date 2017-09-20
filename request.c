@@ -585,8 +585,17 @@ void getForwardDestinations(char *client_message, int *sock)
 void getQueryTypes(int *sock)
 {
 	char server_message[SOCKETBUFFERLEN];
+	int total = counters.IPv4 + counters.IPv6;
+	double percentageIPv4 = 0.0, percentageIPv6 = 0.0;
 
-	sprintf(server_message,"A (IPv4): %i\nAAAA (IPv6): %i\n",counters.IPv4,counters.IPv6);
+	// Prevent floating point exceptions by checking if the divisor is != 0
+	if(total > 0)
+	{
+		percentageIPv4 = 1e2*counters.IPv4/total;
+		percentageIPv6 = 1e2*counters.IPv6/total;
+	}
+
+	sprintf(server_message,"A (IPv4): %.2f\nAAAA (IPv6): %.2f\n", percentageIPv4, percentageIPv6);
 	swrite(server_message, *sock);
 	if(debugclients)
 		logg("Sent query type data to client, ID: %i", *sock);
