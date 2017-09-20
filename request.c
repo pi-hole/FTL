@@ -930,7 +930,7 @@ void getForwardDestinationsOverTime(int *sock)
 
 			// Avoid floating point exceptions
 			if(overTime[i].total > 0)
-				// Forward count for destinatio "local" is cached + blocked normalized by total:
+				// Forward count for destination "local" is cached + blocked normalized by total:
 				percentage = 1e2 * (overTime[i].cached + overTime[i].blocked) / overTime[i].total;
 			else
 				percentage = 0.0;
