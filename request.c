@@ -535,7 +535,10 @@ void getForwardDestinations(char *client_message, int *sock)
 			strcpy(ip, "::1");
 			name = calloc(6,1);
 			strcpy(name, "local");
-			percentage = 1e2*(counters.cached + counters.blocked)/counters.queries;
+			if(counters.queries > 0)
+				percentage = 1e2*(counters.cached + counters.blocked)/counters.queries;
+			else
+				percentage = 0.0;
 			allocated = true;
 		}
 		else
@@ -557,7 +560,7 @@ void getForwardDestinations(char *client_message, int *sock)
 			//
 			// To get the total percentage of a specific query on the total number of queries,
 			// we simply have to scale b by a which is what we do in the following.
-			if(forwardedsum > 0)
+			if(forwardedsum > 0 && counters.queries > 0)
 				percentage = 1e2*forwarded[j].count/forwardedsum*counters.forwardedqueries/counters.queries;
 			else
 				percentage = 0.0;
