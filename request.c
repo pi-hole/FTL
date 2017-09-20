@@ -856,7 +856,6 @@ void getForwardDestinationsOverTime(int *sock)
 {
 	char server_message[SOCKETBUFFERLEN];
 	int i, sendit = -1;
-	double percentage;
 
 	for(i = 0; i < counters.overTime; i++)
 	{
@@ -871,6 +870,8 @@ void getForwardDestinationsOverTime(int *sock)
 	{
 		for(i = sendit; i < counters.overTime; i++)
 		{
+			double percentage;
+
 			validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
 			sprintf(server_message, "%i", overTime[i].timestamp);
 
@@ -885,7 +886,7 @@ void getForwardDestinationsOverTime(int *sock)
 			// Loop over forward destinations to generate output to be sent to the client
 			for(j = 0; j < counters.forwarded; j++)
 			{
-				int k, forwarded;
+				int k;
 
 				if(j < overTime[i].forwardnum)
 				{
@@ -903,8 +904,7 @@ void getForwardDestinationsOverTime(int *sock)
 				// Avoid floating point exceptions
 				if(forwardedsum > 0 && overTime[i].total > 0)
 				{
-					forwarded = overTime[i].total - (overTime[i].cached + overTime[i].blocked);
-					percentage = 1e2*k/forwardedsum*forwarded/overTime[i].total;
+					percentage = 1e2*k/forwardedsum*(overTime[i].total - (overTime[i].cached + overTime[i].blocked))/overTime[i].total;
 				}
 				else
 				{
