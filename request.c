@@ -488,31 +488,29 @@ void getForwardDestinations(char *client_message, int *sock)
 	if(command(client_message, "unsorted"))
 		sort = false;
 
-	if(sort)
+	for(i=0; i < counters.forwarded; i++)
 	{
-		for(i=0; i < counters.forwarded; i++)
+		validate_access("forwarded", i, true, __LINE__, __FUNCTION__, __FILE__);
+		// Compute forwardedsum
+		forwardedsum += forwarded[i].count;
+
+		// If we want to print a sorted output, we fill the temporary array with
+		// the values we will use for sorting afterwards
+		if(sort)
 		{
-			validate_access("forwarded", i, true, __LINE__, __FUNCTION__, __FILE__);
 			temparray[i][0] = i;
 			temparray[i][1] = forwarded[i].count;
-			forwardedsum += forwarded[i].count;
 		}
+	}
 
+	if(sort)
+	{
 		// Add "local " forward destination
 		temparray[counters.forwarded][0] = counters.forwarded;
 		temparray[counters.forwarded][1] = counters.cached + counters.blocked;
 
 		// Sort temporary array in descending order
 		qsort(temparray, counters.forwarded+1, sizeof(int[2]), cmpdesc);
-	}
-	else
-	{
-		// Don't sort but still compute forwardedsum
-		for(i=0; i < counters.forwarded; i++)
-		{
-			validate_access("forwarded", i, true, __LINE__, __FUNCTION__, __FILE__);
-			forwardedsum += forwarded[i].count;
-		}
 	}
 
 	// Loop over available forward destinations
@@ -536,7 +534,7 @@ void getForwardDestinations(char *client_message, int *sock)
 			name = calloc(6,1);
 			strcpy(name, "local");
 			if(counters.queries > 0)
-				percentage = 1e2*(counters.cached + counters.blocked)/counters.queries;
+				percentage = 1e2 * (counters.cached + counters.blocked) / counters.queries;
 			else
 				percentage = 0.0;
 			allocated = true;
@@ -561,7 +559,7 @@ void getForwardDestinations(char *client_message, int *sock)
 			// To get the total percentage of a specific query on the total number of queries,
 			// we simply have to scale b by a which is what we do in the following.
 			if(forwardedsum > 0 && counters.queries > 0)
-				percentage = 1e2*forwarded[j].count/forwardedsum*counters.forwardedqueries/counters.queries;
+				percentage = 1e2 * forwarded[j].count / forwardedsum * counters.forwardedqueries / counters.queries;
 			else
 				percentage = 0.0;
 			allocated = false;
@@ -886,25 +884,41 @@ void getForwardDestinationsOverTime(int *sock)
 			// Loop over forward destinations to generate output to be sent to the client
 			for(j = 0; j < counters.forwarded; j++)
 			{
-				int k;
+				int thisforward = 0;
 
 				if(j < overTime[i].forwardnum)
 				{
 					// This forward destination does already exist at this timestamp
 					// -> use counter of requests sent to this destination
-					k = overTime[i].forwarddata[j];
+					thisforward = overTime[i].forwarddata[j];
 				}
-				else
-				{
+				// else
+				// {
 					// This forward destination does not yet exist at this timestamp
 					// -> use zero as number of requests sent to this destination
-					k = 0;
-				}
+				// 	thisforward = 0;
+				// }
 
 				// Avoid floating point exceptions
-				if(forwardedsum > 0 && overTime[i].total > 0)
+				if(forwardedsum > 0 && overTime[i].total > 0 && thisforward > 0)
 				{
-					percentage = 1e2*k/forwardedsum*(overTime[i].total - (overTime[i].cached + overTime[i].blocked))/overTime[i].total;
+					// A single query may result in requests being forwarded to multiple destinations
+					// Hence, in order to be able to give percentages here, we have to normalize the
+					// number of forwards to each specific destination by the total number of forward
+					// events. This is done by
+					//   a = thisforward / forwardedsum
+					// The fraction a describes how much share an individual forward destination
+					// has on the total sum of sent requests.
+					//
+					// We also know the share of forwarded queries on the total number of queries
+					//   b = forwardedqueries/overTime[i].total
+					// where the number of forwarded queries in this time interval is given by
+					//   forwardedqueries = overTime[i].total - (overTime[i].cached
+					//                                           + overTime[i].blocked)
+					//
+					// To get the total percentage of a specific forward destination on the total
+					// number of queries, we simply have to multiply a and b as done below:
+					percentage = 1e2 * thisforward / forwardedsum * (overTime[i].total - (overTime[i].cached + overTime[i].blocked)) / overTime[i].total;
 				}
 				else
 				{
@@ -916,7 +930,8 @@ void getForwardDestinationsOverTime(int *sock)
 
 			// Avoid floating point exceptions
 			if(overTime[i].total > 0)
-				percentage = 1e2*(overTime[i].cached + overTime[i].blocked)/overTime[i].total;
+				// Forward count for destinatio "local" is cached + blocked normalized by total:
+				percentage = 1e2 * (overTime[i].cached + overTime[i].blocked) / overTime[i].total;
 			else
 				percentage = 0.0;
 

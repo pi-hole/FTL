@@ -180,7 +180,7 @@ unique_clients 3
  Variant: `>forward-dest unsorted` to show forward destinations in unsorted order (equivalent to using `>forward-names`)
 ```
 
-- `>querytypes` : get collected query types share
+- `>querytypes` : get collected query types percentage
  ```
 A (IPv4): 60.5
 AAAA (IPv6): 39.5
