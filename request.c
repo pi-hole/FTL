@@ -21,7 +21,6 @@ void getOverTime(int *sock);
 void getTopDomains (char *client_message, int *sock);
 void getTopClients(char *client_message, int *sock);
 void getForwardDestinations(char *client_message, int *sock);
-void getForwardNames(int *sock);
 void getQueryTypes(int *sock);
 void getAllQueries(char *client_message, int *sock);
 void getRecentBlocked(char *client_message, int *sock);
@@ -67,7 +66,7 @@ void process_request(char *client_message, int *sock)
 	else if(command(client_message, ">forward-names"))
 	{
 		processed = true;
-		getForwardNames(sock);
+		getForwardDestinations(">forward-dest unsorted", sock);
 	}
 	else if(command(client_message, ">querytypes"))
 	{
@@ -520,7 +519,7 @@ void getForwardDestinations(char *client_message, int *sock)
 	for(i=0; i < min(counters.forwarded+1, 10); i++)
 	{
 		char *name, *ip;
-		double count;
+		double percentage;
 
 		// Get sorted indices
 		int j;
@@ -536,7 +535,7 @@ void getForwardDestinations(char *client_message, int *sock)
 			strcpy(ip, "::1");
 			name = calloc(6,1);
 			strcpy(name, "local");
-			count = 1e2*(counters.cached + counters.blocked)/counters.queries;
+			percentage = 1e2*(counters.cached + counters.blocked)/counters.queries;
 			allocated = true;
 		}
 		else
@@ -559,16 +558,16 @@ void getForwardDestinations(char *client_message, int *sock)
 			// To get the total percentage of a specific query on the total number of queries,
 			// we simply have to scale b by a which is what we do in the following.
 			if(forwardedsum > 0)
-				count = 1e2*forwarded[j].count/forwardedsum*counters.forwardedqueries/counters.queries;
+				percentage = 1e2*forwarded[j].count/forwardedsum*counters.forwardedqueries/counters.queries;
 			else
-				count = 0.0;
+				percentage = 0.0;
 			allocated = false;
 		}
 
 		// Send data if count > 0
-		if(count > 0)
+		if(percentage > 0.0)
 		{
-			sprintf(server_message,"%i %.2f %s %s\n",i,count,ip,name);
+			sprintf(server_message,"%i %.2f %s %s\n",i,percentage,ip,name);
 			swrite(server_message, *sock);
 		}
 
@@ -582,29 +581,6 @@ void getForwardDestinations(char *client_message, int *sock)
 	if(debugclients)
 		logg("Sent forward destination data to client, ID: %i", *sock);
 }
-
-
-void getForwardNames(int *sock)
-{
-	char server_message[SOCKETBUFFERLEN];
-	int i;
-
-	for(i=0; i < counters.forwarded; i++)
-	{
-		validate_access("forwarded", i, true, __LINE__, __FUNCTION__, __FILE__);
-		// Get sorted indices
-		sprintf(server_message,"%i %i %s %s\n",i,forwarded[i].count,forwarded[i].ip,forwarded[i].name);
-		swrite(server_message, *sock);
-	}
-
-	// Add "local" forward destination
-	sprintf(server_message,"%i %i ::1 local\n",counters.forwarded,counters.cached);
-	swrite(server_message, *sock);
-
-	if(debugclients)
-		logg("Sent forward destination names to client, ID: %i", *sock);
-}
-
 
 void getQueryTypes(int *sock)
 {
