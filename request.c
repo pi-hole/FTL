@@ -559,7 +559,7 @@ void getForwardDestinations(char *client_message, int *sock)
 			// To get the total percentage of a specific query on the total number of queries,
 			// we simply have to scale b by a which is what we do in the following.
 			if(forwardedsum > 0 && counters.queries > 0)
-				percentage = 1e2 * (forwarded[j].count / forwardedsum) * (counters.forwardedqueries / counters.queries);
+				percentage = 1e2 * forwarded[j].count / forwardedsum * counters.forwardedqueries / counters.queries;
 			else
 				percentage = 0.0;
 			allocated = false;
@@ -918,7 +918,7 @@ void getForwardDestinationsOverTime(int *sock)
 					//
 					// To get the total percentage of a specific forward destination on the total
 					// number of queries, we simply have to multiply a and b as done below:
-					percentage = 1e2 * (thisforward / forwardedsum) * (overTime[i].total - (overTime[i].cached + overTime[i].blocked)) / overTime[i].total;
+					percentage = 1e2 * thisforward / forwardedsum * (overTime[i].total - (overTime[i].cached + overTime[i].blocked)) / overTime[i].total;
 				}
 				else
 				{
@@ -930,7 +930,7 @@ void getForwardDestinationsOverTime(int *sock)
 
 			// Avoid floating point exceptions
 			if(overTime[i].total > 0)
-				// Forward count for destination "local" is cached + blocked normalized by total:
+				// Forward count for destinatio "local" is cached + blocked normalized by total:
 				percentage = 1e2 * (overTime[i].cached + overTime[i].blocked) / overTime[i].total;
 			else
 				percentage = 0.0;
