@@ -954,7 +954,14 @@ void getQueryTypesOverTime(int *sock)
 		for(i = sendit; i < counters.overTime; i++)
 		{
 			validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
-			sprintf(server_message, "%i %i %i\n", overTime[i].timestamp,overTime[i].querytypedata[0],overTime[i].querytypedata[1]);
+			double percentageIPv4 = 0.0, percentageIPv6 = 0.0;
+			int sum = overTime[i].querytypedata[0] + overTime[i].querytypedata[1];
+			if(sum > 0)
+			{
+				percentageIPv4 = 1e2*overTime[i].querytypedata[0] / sum;
+				percentageIPv6 = 1e2*overTime[i].querytypedata[1] / sum;
+			}
+			sprintf(server_message, "%i %.2f %.2f\n", overTime[i].timestamp, percentageIPv4, percentageIPv6);
 			swrite(server_message, *sock);
 		}
 	}
