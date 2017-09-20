@@ -171,10 +171,11 @@ unique_clients 3
 
  Variant: `>top-clients withzero (15)` to show (up to) 15 clients even if they have not been active recently (see PR #124 for further details)
 
-- `>forward-dest` : get forward destinations (IP addresses + host names (if available))
+- `>forward-dest` : get forward destinations (IP addresses + host names (if available)) along with the percentage
  ```
-0 12940 1.2.3.4 some.dns.de
-1 629 5.6.7.8 some.other.dns.com
+0 80.0 ::1 local
+1 10.0 1.2.3.4 some.dns.de
+2 10.0 5.6.7.8 some.other.dns.com
 ```
 
 - `>querytypes` : get collected query types

@@ -484,7 +484,7 @@ void getForwardDestinations(char *client_message, int *sock)
 {
 	char server_message[SOCKETBUFFERLEN];
 	bool allocated = false, sort = true;
-	int i, temparray[counters.forwarded+1][2];
+	int i, temparray[counters.forwarded+1][2], forwardedsum = 0;
 
 	if(command(client_message, "unsorted"))
 		sort = false;
@@ -496,6 +496,7 @@ void getForwardDestinations(char *client_message, int *sock)
 			validate_access("forwarded", i, true, __LINE__, __FUNCTION__, __FILE__);
 			temparray[i][0] = i;
 			temparray[i][1] = forwarded[i].count;
+			forwardedsum += forwarded[i].count;
 		}
 
 		// Add "local " forward destination
@@ -505,12 +506,21 @@ void getForwardDestinations(char *client_message, int *sock)
 		// Sort temporary array in descending order
 		qsort(temparray, counters.forwarded+1, sizeof(int[2]), cmpdesc);
 	}
+	else
+	{
+		// Don't sort but still compute forwardedsum
+		for(i=0; i < counters.forwarded; i++)
+		{
+			validate_access("forwarded", i, true, __LINE__, __FUNCTION__, __FILE__);
+			forwardedsum += forwarded[i].count;
+		}
+	}
 
 	// Loop over available forward destinations
 	for(i=0; i < min(counters.forwarded+1, 10); i++)
 	{
 		char *name, *ip;
-		int count;
+		double count;
 
 		// Get sorted indices
 		int j;
@@ -526,7 +536,7 @@ void getForwardDestinations(char *client_message, int *sock)
 			strcpy(ip, "::1");
 			name = calloc(6,1);
 			strcpy(name, "local");
-			count = counters.cached + counters.blocked;
+			count = 1e2*(counters.cached + counters.blocked)/counters.queries;
 			allocated = true;
 		}
 		else
@@ -534,14 +544,31 @@ void getForwardDestinations(char *client_message, int *sock)
 			validate_access("forwarded", j, true, __LINE__, __FUNCTION__, __FILE__);
 			ip = forwarded[j].ip;
 			name = forwarded[j].name;
-			count = forwarded[j].count;
+			// Math explanation:
+			// A single query may result in requests being forwarded to multiple destinations
+			// Hence, in order to be able to give percentages here, we have to normalize the
+			// number of forwards to each specific destination by the total number of forward
+			// events. This term is done by
+			//   a = forwarded[j].count/forwardedsum
+			//
+			// The fraction a describes now how much share an individual forward destination
+			// has on the total sum of sent requests.
+			// We also know the share of forwarded queries on the total number of queries
+			//   b = counters.forwardedqueries/counters.queries
+			//
+			// To get the total percentage of a specific query on the total number of queries,
+			// we simply have to scale b by a which is what we do in the following.
+			if(forwardedsum > 0)
+				count = 1e2*forwarded[j].count/forwardedsum*counters.forwardedqueries/counters.queries;
+			else
+				count = 0.0;
 			allocated = false;
 		}
 
 		// Send data if count > 0
 		if(count > 0)
 		{
-			sprintf(server_message,"%i %i %s %s\n",i,count,ip,name);
+			sprintf(server_message,"%i %.2f %s %s\n",i,count,ip,name);
 			swrite(server_message, *sock);
 		}
 
