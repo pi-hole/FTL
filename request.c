@@ -853,6 +853,8 @@ void getForwardDestinationsOverTime(int *sock)
 {
 	char server_message[SOCKETBUFFERLEN];
 	int i, sendit = -1;
+	double percentage;
+
 	for(i = 0; i < counters.overTime; i++)
 	{
 		validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
@@ -869,20 +871,53 @@ void getForwardDestinationsOverTime(int *sock)
 			validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
 			sprintf(server_message, "%i", overTime[i].timestamp);
 
-			int j;
+			int j, forwardedsum = 0;
 
-			for(j = 0; j < counters.forwarded; j++)
+			// Compute forwardedsum used for later normalization
+			for(j = 0; j < overTime[i].forwardnum; j++)
 			{
-				int k;
-				if(j < overTime[i].forwardnum)
-					k = overTime[i].forwarddata[j];
-				else
-					k = 0;
-
-				sprintf(server_message + strlen(server_message), " %i", k);
+				forwardedsum += overTime[i].forwarddata[j];
 			}
 
-			sprintf(server_message + strlen(server_message), " %i\n", overTime[i].cached + overTime[i].blocked);
+			// Loop over forward destinations to generate output to be sent to the client
+			for(j = 0; j < counters.forwarded; j++)
+			{
+				int k, forwarded;
+
+				if(j < overTime[i].forwardnum)
+				{
+					// This forward destination does already exist at this timestamp
+					// -> use counter of requests sent to this destination
+					k = overTime[i].forwarddata[j];
+				}
+				else
+				{
+					// This forward destination does not yet exist at this timestamp
+					// -> use zero as number of requests sent to this destination
+					k = 0;
+				}
+
+				// Avoid floating point exceptions
+				if(forwardedsum > 0 && overTime[i].total > 0)
+				{
+					forwarded = overTime[i].total - (overTime[i].cached + overTime[i].blocked);
+					percentage = 1e2*k/forwardedsum*forwarded/overTime[i].total;
+				}
+				else
+				{
+					percentage = 0.0;
+				}
+
+				sprintf(server_message + strlen(server_message), " %.2f", percentage);
+			}
+
+			// Avoid floating point exceptions
+			if(overTime[i].total > 0)
+				percentage = 1e2*(overTime[i].cached + overTime[i].blocked)/overTime[i].total;
+			else
+				percentage = 0.0;
+
+			sprintf(server_message + strlen(server_message), " %.2f\n", percentage);
 			swrite(server_message, *sock);
 		}
 	}
