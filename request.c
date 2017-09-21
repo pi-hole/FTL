@@ -21,7 +21,6 @@ void getOverTime(int *sock);
 void getTopDomains (char *client_message, int *sock);
 void getTopClients(char *client_message, int *sock);
 void getForwardDestinations(char *client_message, int *sock);
-void getForwardNames(int *sock);
 void getQueryTypes(int *sock);
 void getAllQueries(char *client_message, int *sock);
 void getRecentBlocked(char *client_message, int *sock);
@@ -67,7 +66,7 @@ void process_request(char *client_message, int *sock)
 	else if(command(client_message, ">forward-names"))
 	{
 		processed = true;
-		getForwardNames(sock);
+		getForwardDestinations(">forward-dest unsorted", sock);
 	}
 	else if(command(client_message, ">querytypes"))
 	{
@@ -484,20 +483,28 @@ void getForwardDestinations(char *client_message, int *sock)
 {
 	char server_message[SOCKETBUFFERLEN];
 	bool allocated = false, sort = true;
-	int i, temparray[counters.forwarded+1][2];
+	int i, temparray[counters.forwarded+1][2], forwardedsum = 0;
 
 	if(command(client_message, "unsorted"))
 		sort = false;
 
-	if(sort)
+	for(i=0; i < counters.forwarded; i++)
 	{
-		for(i=0; i < counters.forwarded; i++)
+		validate_access("forwarded", i, true, __LINE__, __FUNCTION__, __FILE__);
+		// Compute forwardedsum
+		forwardedsum += forwarded[i].count;
+
+		// If we want to print a sorted output, we fill the temporary array with
+		// the values we will use for sorting afterwards
+		if(sort)
 		{
-			validate_access("forwarded", i, true, __LINE__, __FUNCTION__, __FILE__);
 			temparray[i][0] = i;
 			temparray[i][1] = forwarded[i].count;
 		}
+	}
 
+	if(sort)
+	{
 		// Add "local " forward destination
 		temparray[counters.forwarded][0] = counters.forwarded;
 		temparray[counters.forwarded][1] = counters.cached + counters.blocked;
@@ -510,7 +517,7 @@ void getForwardDestinations(char *client_message, int *sock)
 	for(i=0; i < min(counters.forwarded+1, 10); i++)
 	{
 		char *name, *ip;
-		int count;
+		double percentage;
 
 		// Get sorted indices
 		int j;
@@ -526,7 +533,10 @@ void getForwardDestinations(char *client_message, int *sock)
 			strcpy(ip, "::1");
 			name = calloc(6,1);
 			strcpy(name, "local");
-			count = counters.cached + counters.blocked;
+			if(counters.queries > 0)
+				percentage = 1e2 * (counters.cached + counters.blocked) / counters.queries;
+			else
+				percentage = 0.0;
 			allocated = true;
 		}
 		else
@@ -534,14 +544,31 @@ void getForwardDestinations(char *client_message, int *sock)
 			validate_access("forwarded", j, true, __LINE__, __FUNCTION__, __FILE__);
 			ip = forwarded[j].ip;
 			name = forwarded[j].name;
-			count = forwarded[j].count;
+			// Math explanation:
+			// A single query may result in requests being forwarded to multiple destinations
+			// Hence, in order to be able to give percentages here, we have to normalize the
+			// number of forwards to each specific destination by the total number of forward
+			// events. This term is done by
+			//   a = forwarded[j].count/forwardedsum
+			//
+			// The fraction a describes now how much share an individual forward destination
+			// has on the total sum of sent requests.
+			// We also know the share of forwarded queries on the total number of queries
+			//   b = counters.forwardedqueries/counters.queries
+			//
+			// To get the total percentage of a specific query on the total number of queries,
+			// we simply have to scale b by a which is what we do in the following.
+			if(forwardedsum > 0 && counters.queries > 0)
+				percentage = 1e2 * forwarded[j].count / forwardedsum * counters.forwardedqueries / counters.queries;
+			else
+				percentage = 0.0;
 			allocated = false;
 		}
 
 		// Send data if count > 0
-		if(count > 0)
+		if(percentage > 0.0)
 		{
-			sprintf(server_message,"%i %i %s %s\n",i,count,ip,name);
+			sprintf(server_message,"%i %.2f %s %s\n",i,percentage,ip,name);
 			swrite(server_message, *sock);
 		}
 
@@ -556,34 +583,20 @@ void getForwardDestinations(char *client_message, int *sock)
 		logg("Sent forward destination data to client, ID: %i", *sock);
 }
 
-
-void getForwardNames(int *sock)
-{
-	char server_message[SOCKETBUFFERLEN];
-	int i;
-
-	for(i=0; i < counters.forwarded; i++)
-	{
-		validate_access("forwarded", i, true, __LINE__, __FUNCTION__, __FILE__);
-		// Get sorted indices
-		sprintf(server_message,"%i %i %s %s\n",i,forwarded[i].count,forwarded[i].ip,forwarded[i].name);
-		swrite(server_message, *sock);
-	}
-
-	// Add "local" forward destination
-	sprintf(server_message,"%i %i ::1 local\n",counters.forwarded,counters.cached);
-	swrite(server_message, *sock);
-
-	if(debugclients)
-		logg("Sent forward destination names to client, ID: %i", *sock);
-}
-
-
 void getQueryTypes(int *sock)
 {
 	char server_message[SOCKETBUFFERLEN];
+	int total = counters.IPv4 + counters.IPv6;
+	double percentageIPv4 = 0.0, percentageIPv6 = 0.0;
 
-	sprintf(server_message,"A (IPv4): %i\nAAAA (IPv6): %i\n",counters.IPv4,counters.IPv6);
+	// Prevent floating point exceptions by checking if the divisor is != 0
+	if(total > 0)
+	{
+		percentageIPv4 = 1e2*counters.IPv4/total;
+		percentageIPv6 = 1e2*counters.IPv6/total;
+	}
+
+	sprintf(server_message,"A (IPv4): %.2f\nAAAA (IPv6): %.2f\n", percentageIPv4, percentageIPv6);
 	swrite(server_message, *sock);
 	if(debugclients)
 		logg("Sent query type data to client, ID: %i", *sock);
@@ -841,6 +854,7 @@ void getForwardDestinationsOverTime(int *sock)
 {
 	char server_message[SOCKETBUFFERLEN];
 	int i, sendit = -1;
+
 	for(i = 0; i < counters.overTime; i++)
 	{
 		validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
@@ -854,23 +868,74 @@ void getForwardDestinationsOverTime(int *sock)
 	{
 		for(i = sendit; i < counters.overTime; i++)
 		{
+			double percentage;
+
 			validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
 			sprintf(server_message, "%i", overTime[i].timestamp);
 
-			int j;
+			int j, forwardedsum = 0;
 
-			for(j = 0; j < counters.forwarded; j++)
+			// Compute forwardedsum used for later normalization
+			for(j = 0; j < overTime[i].forwardnum; j++)
 			{
-				int k;
-				if(j < overTime[i].forwardnum)
-					k = overTime[i].forwarddata[j];
-				else
-					k = 0;
-
-				sprintf(server_message + strlen(server_message), " %i", k);
+				forwardedsum += overTime[i].forwarddata[j];
 			}
 
-			sprintf(server_message + strlen(server_message), " %i\n", overTime[i].cached + overTime[i].blocked);
+			// Loop over forward destinations to generate output to be sent to the client
+			for(j = 0; j < counters.forwarded; j++)
+			{
+				int thisforward = 0;
+
+				if(j < overTime[i].forwardnum)
+				{
+					// This forward destination does already exist at this timestamp
+					// -> use counter of requests sent to this destination
+					thisforward = overTime[i].forwarddata[j];
+				}
+				// else
+				// {
+					// This forward destination does not yet exist at this timestamp
+					// -> use zero as number of requests sent to this destination
+				// 	thisforward = 0;
+				// }
+
+				// Avoid floating point exceptions
+				if(forwardedsum > 0 && overTime[i].total > 0 && thisforward > 0)
+				{
+					// A single query may result in requests being forwarded to multiple destinations
+					// Hence, in order to be able to give percentages here, we have to normalize the
+					// number of forwards to each specific destination by the total number of forward
+					// events. This is done by
+					//   a = thisforward / forwardedsum
+					// The fraction a describes how much share an individual forward destination
+					// has on the total sum of sent requests.
+					//
+					// We also know the share of forwarded queries on the total number of queries
+					//   b = forwardedqueries/overTime[i].total
+					// where the number of forwarded queries in this time interval is given by
+					//   forwardedqueries = overTime[i].total - (overTime[i].cached
+					//                                           + overTime[i].blocked)
+					//
+					// To get the total percentage of a specific forward destination on the total
+					// number of queries, we simply have to multiply a and b as done below:
+					percentage = 1e2 * thisforward / forwardedsum * (overTime[i].total - (overTime[i].cached + overTime[i].blocked)) / overTime[i].total;
+				}
+				else
+				{
+					percentage = 0.0;
+				}
+
+				sprintf(server_message + strlen(server_message), " %.2f", percentage);
+			}
+
+			// Avoid floating point exceptions
+			if(overTime[i].total > 0)
+				// Forward count for destination "local" is cached + blocked normalized by total:
+				percentage = 1e2 * (overTime[i].cached + overTime[i].blocked) / overTime[i].total;
+			else
+				percentage = 0.0;
+
+			sprintf(server_message + strlen(server_message), " %.2f\n", percentage);
 			swrite(server_message, *sock);
 		}
 	}
@@ -907,7 +972,14 @@ void getQueryTypesOverTime(int *sock)
 		for(i = sendit; i < counters.overTime; i++)
 		{
 			validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
-			sprintf(server_message, "%i %i %i\n", overTime[i].timestamp,overTime[i].querytypedata[0],overTime[i].querytypedata[1]);
+			double percentageIPv4 = 0.0, percentageIPv6 = 0.0;
+			int sum = overTime[i].querytypedata[0] + overTime[i].querytypedata[1];
+			if(sum > 0)
+			{
+				percentageIPv4 = 1e2*overTime[i].querytypedata[0] / sum;
+				percentageIPv6 = 1e2*overTime[i].querytypedata[1] / sum;
+			}
+			sprintf(server_message, "%i %.2f %.2f\n", overTime[i].timestamp, percentageIPv4, percentageIPv6);
 			swrite(server_message, *sock);
 		}
 	}

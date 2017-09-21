@@ -72,11 +72,11 @@ load 'libs/bats-support/load'
   run bash -c 'echo ">forward-dest" | nc -v 127.0.0.1 4711'
   echo "output: ${lines[@]}"
   [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
-  [[ ${lines[1]} =~ "0 4 ::1 local" ]]
-  [[ ${lines[2]} =~ "1 3 2620:0:ccd::2 resolver2.ipv6-sandbox.opendns.com" ]]
-  [[ ${lines[3]} =~ "2 2 2001:1608:10:25::9249:d69b" ]]
-  [[ ${lines[4]} =~ "3 2 2001:1608:10:25::1c04:b12f" ]]
-  [[ ${lines[5]} =~ "4 2 2620:0:ccc::2 resolver1.ipv6-sandbox.opendns.com" ]]
+  [[ ${lines[1]} =~ "0 57.14 ::1 local" ]]
+  [[ ${lines[2]} =~ "1 14.29 2620:0:ccd::2 resolver2.ipv6-sandbox.opendns.com" ]]
+  [[ ${lines[3]} =~ "2 9.52 2001:1608:10:25::9249:d69b" ]]
+  [[ ${lines[4]} =~ "3 9.52 2001:1608:10:25::1c04:b12f" ]]
+  [[ ${lines[5]} =~ "4 9.52 2620:0:ccc::2 resolver1.ipv6-sandbox.opendns.com" ]]
   [[ ${lines[6]} == "---EOM---" ]]
 }
 
@@ -84,11 +84,11 @@ load 'libs/bats-support/load'
   run bash -c 'echo ">forward-dest unsorted" | nc -v 127.0.0.1 4711'
   echo "output: ${lines[@]}"
   [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
-  [[ ${lines[1]} =~ "0 2 2001:1608:10:25::9249:d69b" ]]
-  [[ ${lines[2]} =~ "1 2 2001:1608:10:25::1c04:b12f" ]]
-  [[ ${lines[3]} =~ "2 3 2620:0:ccd::2 resolver2.ipv6-sandbox.opendns.com" ]]
-  [[ ${lines[4]} =~ "3 2 2620:0:ccc::2 resolver1.ipv6-sandbox.opendns.com" ]]
-  [[ ${lines[5]} =~ "4 4 ::1 local" ]]
+  [[ ${lines[1]} =~ "0 9.52 2001:1608:10:25::9249:d69b" ]]
+  [[ ${lines[2]} =~ "1 9.52 2001:1608:10:25::1c04:b12f" ]]
+  [[ ${lines[3]} =~ "2 14.29 2620:0:ccd::2 resolver2.ipv6-sandbox.opendns.com" ]]
+  [[ ${lines[4]} =~ "3 9.52 2620:0:ccc::2 resolver1.ipv6-sandbox.opendns.com" ]]
+  [[ ${lines[5]} =~ "4 57.14 ::1 local" ]]
   [[ ${lines[6]} == "---EOM---" ]]
 }
 
@@ -96,8 +96,8 @@ load 'libs/bats-support/load'
   run bash -c 'echo ">querytypes" | nc -v 127.0.0.1 4711'
   echo "output: ${lines[@]}"
   [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
-  [[ ${lines[1]} == "A (IPv4): 5" ]]
-  [[ ${lines[2]} == "AAAA (IPv6): 2" ]]
+  [[ ${lines[1]} == "A (IPv4): 71.43" ]]
+  [[ ${lines[2]} == "AAAA (IPv6): 28.57" ]]
   [[ ${lines[3]} == "---EOM---" ]]
 }
 
