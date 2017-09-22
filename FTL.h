@@ -168,6 +168,8 @@ typedef struct {
 	int forwardnum;
 	int *forwarddata;
 	int *querytypedata;
+	int clientnum;
+	int *clientdata;
 } overTimeDataStruct;
 
 typedef struct {
@@ -178,6 +180,7 @@ typedef struct {
 	int forwardedips;
 	int forwardednames;
 	int forwarddata;
+	int clientdata;
 	int querytypedata;
 } memoryStruct;
 

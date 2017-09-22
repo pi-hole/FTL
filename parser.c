@@ -272,6 +272,8 @@ void process_pihole_log(int file)
 					overTime[timeidx].forwardnum = 0;
 					overTime[timeidx].forwarddata = NULL;
 					overTime[timeidx].querytypedata = calloc(2, sizeof(int));
+					overTime[timeidx].clientnum = 0;
+					overTime[timeidx].clientdata = NULL;
 					memory.querytypedata += 2*sizeof(int);
 					counters.overTime++;
 
@@ -589,6 +591,27 @@ void process_pihole_log(int file)
 					break;
 			}
 
+			// Determine if there is enough space for saving the current
+			// clientID in the overTime data structure, allocate space otherwise
+			validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
+			if(overTime[timeidx].clientnum <= clientID)
+			{
+				// Reallocate more space for clientdata
+				overTime[timeidx].clientdata = realloc(overTime[timeidx].clientdata, (clientID+1)*sizeof(*overTime[timeidx].clientdata));
+				// Initialize new data fields with zeroes
+				for(i = overTime[timeidx].clientnum; i <= clientID; i++)
+				{
+					overTime[timeidx].clientdata[i] = 0;
+					memory.clientdata++;
+				}
+				// Update counter
+				overTime[timeidx].clientnum = clientID + 1;
+			}
+
+			// Update overTime data structure with the new client
+			validate_access_oTcl(timeidx, clientID, __LINE__, __FUNCTION__, __FILE__);
+			overTime[timeidx].clientdata[clientID]++;
+
 			// Free allocated memory
 			free(client);
 			free(domain);
@@ -644,11 +667,13 @@ void process_pihole_log(int file)
 				overTime[timeidx].forwardnum = 0;
 				overTime[timeidx].forwarddata = NULL;
 				overTime[timeidx].querytypedata = calloc(2, sizeof(int));
+				overTime[timeidx].clientnum = 0;
+				overTime[timeidx].clientdata = NULL;
 				memory.querytypedata += 2*sizeof(int);
 				counters.overTime++;
 			}
 			// Determine if there is enough space for saving the current
-			// forwardID in the overTime data structure -allocate space otherwise
+			// forwardID in the overTime data structure, allocate space otherwise
 			validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 			if(overTime[timeidx].forwardnum <= forwardID)
 			{
@@ -1020,7 +1045,18 @@ void validate_access_oTfd(int timeidx, int pos, int line, const char * function,
 	if(pos >= limit || pos < 0)
 	{
 		logg("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-		logg("FATAL ERROR: Trying to access overTime.forwardata[%i], but maximum is %i", pos, limit);
+		logg("FATAL ERROR: Trying to access overTime.forwarddata[%i], but maximum is %i", pos, limit);
+		logg("             found in %s() (line %i) in %s", function, line, file);
+	}
+}
+
+void validate_access_oTcl(int timeidx, int pos, int line, const char * function, const char * file)
+{
+	int limit = overTime[timeidx].clientnum;
+	if(pos >= limit || pos < 0)
+	{
+		logg("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+		logg("FATAL ERROR: Trying to access overTime.clientdata[%i], but maximum is %i", pos, limit);
 		logg("             found in %s() (line %i) in %s", function, line, file);
 	}
 }
