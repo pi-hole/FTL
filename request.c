@@ -483,7 +483,7 @@ void getForwardDestinations(char *client_message, int *sock)
 {
 	char server_message[SOCKETBUFFERLEN];
 	bool allocated = false, sort = true;
-	int i, temparray[counters.forwarded+1][2], forwardedsum = 0;
+	int i, temparray[counters.forwarded+1][2], forwardedsum = 0, totalqueries = 0;
 
 	if(command(client_message, "unsorted"))
 		sort = false;
@@ -513,6 +513,8 @@ void getForwardDestinations(char *client_message, int *sock)
 		qsort(temparray, counters.forwarded+1, sizeof(int[2]), cmpdesc);
 	}
 
+	totalqueries = counters.forwardedqueries + counters.cached + counters.blocked;
+
 	// Loop over available forward destinations
 	for(i=0; i < min(counters.forwarded+1, 10); i++)
 	{
@@ -533,8 +535,9 @@ void getForwardDestinations(char *client_message, int *sock)
 			strcpy(ip, "::1");
 			name = calloc(6,1);
 			strcpy(name, "local");
-			if(counters.queries > 0)
-				percentage = 1e2 * (counters.cached + counters.blocked) / counters.queries;
+			if(totalqueries > 0)
+				// Whats the percentage of (cached + blocked) queries on the total amount of queries?
+				percentage = 1e2 * (counters.cached + counters.blocked) / totalqueries;
 			else
 				percentage = 0.0;
 			allocated = true;
@@ -549,17 +552,19 @@ void getForwardDestinations(char *client_message, int *sock)
 			// Hence, in order to be able to give percentages here, we have to normalize the
 			// number of forwards to each specific destination by the total number of forward
 			// events. This term is done by
-			//   a = forwarded[j].count/forwardedsum
+			//   a = forwarded[j].count / forwardedsum
 			//
 			// The fraction a describes now how much share an individual forward destination
 			// has on the total sum of sent requests.
 			// We also know the share of forwarded queries on the total number of queries
-			//   b = counters.forwardedqueries/counters.queries
+			//   b = counters.forwardedqueries / c
+			// where c is the number of valid queries,
+			//   c = counters.forwardedqueries + counters.cached + counters.blocked
 			//
 			// To get the total percentage of a specific query on the total number of queries,
 			// we simply have to scale b by a which is what we do in the following.
-			if(forwardedsum > 0 && counters.queries > 0)
-				percentage = 1e2 * forwarded[j].count / forwardedsum * counters.forwardedqueries / counters.queries;
+			if(forwardedsum > 0 && totalqueries > 0)
+				percentage = 1e2 * forwarded[j].count / forwardedsum * counters.forwardedqueries / totalqueries;
 			else
 				percentage = 0.0;
 			allocated = false;
