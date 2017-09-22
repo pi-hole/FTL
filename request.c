@@ -30,6 +30,7 @@ void getClientID(int *sock);
 void getQueryTypesOverTime(int *sock);
 void getVersion(int *sock);
 void getDBstats(int *sock);
+void getClientsOverTime(int *sock);
 
 void process_request(char *client_message, int *sock)
 {
@@ -112,6 +113,11 @@ void process_request(char *client_message, int *sock)
 	{
 		processed = true;
 		getDBstats(sock);
+	}
+	else if(command(client_message, ">ClientsoverTime"))
+	{
+		processed = true;
+		getClientsOverTime(sock);
 	}
 
 	// End of queryable commands
@@ -1023,4 +1029,66 @@ void getDBstats(int *sock)
 
 	if(debugclients)
 		logg("Sent DB info to client, ID: %i", *sock);
+}
+
+void getClientsOverTime(int *sock)
+{
+	char server_message[SOCKETBUFFERLEN];
+	int i, sendit = -1;
+
+	for(i = 0; i < counters.overTime; i++)
+	{
+		validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
+		if((overTime[i].total > 0 || overTime[i].blocked > 0))
+		{
+			sendit = i;
+			break;
+		}
+	}
+	if(sendit < 0)
+		return;
+
+	for(i = sendit; i < counters.overTime; i++)
+	{
+		double percentage;
+
+		validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
+		sprintf(server_message, "%i", overTime[i].timestamp);
+
+		int j, allclients = 0;
+
+		// Compute forwardedsum used for later normalization
+		for(j = 0; j < overTime[i].clientnum; j++)
+		{
+			allclients += overTime[i].clientdata[j];
+		}
+
+		// Loop over forward destinations to generate output to be sent to the client
+		for(j = 0; j < counters.clients; j++)
+		{
+			int thisclient = 0;
+
+			if(j < overTime[i].clientnum)
+			{
+				// This client entry does already exist at this timestamp
+				// -> use counter of requests sent to this destination
+				thisclient = overTime[i].clientdata[j];
+			}
+
+			// Avoid floating point exceptions
+			if(allclients > 0 && overTime[i].total > 0 && thisclient > 0)
+			{
+				percentage = 1e2 * thisclient / allclients;
+			}
+			else
+			{
+				percentage = 0.0;
+			}
+
+			sprintf(server_message + strlen(server_message), " %.2f", percentage);
+		}
+
+		sprintf(server_message + strlen(server_message), " %.2f\n", percentage);
+		swrite(server_message, *sock);
+	}
 }
