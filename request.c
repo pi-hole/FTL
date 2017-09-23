@@ -31,6 +31,7 @@ void getQueryTypesOverTime(int *sock);
 void getVersion(int *sock);
 void getDBstats(int *sock);
 void getClientsOverTime(int *sock);
+void getClientNames(int *sock);
 
 void process_request(char *client_message, int *sock)
 {
@@ -118,6 +119,11 @@ void process_request(char *client_message, int *sock)
 	{
 		processed = true;
 		getClientsOverTime(sock);
+	}
+	else if(command(client_message, ">client-names"))
+	{
+		processed = true;
+		getClientNames(sock);
 	}
 
 	// End of queryable commands
@@ -1050,20 +1056,11 @@ void getClientsOverTime(int *sock)
 
 	for(i = sendit; i < counters.overTime; i++)
 	{
-		double percentage;
-
 		validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
 		sprintf(server_message, "%i", overTime[i].timestamp);
 
-		int j, allclients = 0;
-
-		// Compute forwardedsum used for later normalization
-		for(j = 0; j < overTime[i].clientnum; j++)
-		{
-			allclients += overTime[i].clientdata[j];
-		}
-
 		// Loop over forward destinations to generate output to be sent to the client
+		int j;
 		for(j = 0; j < counters.clients; j++)
 		{
 			int thisclient = 0;
@@ -1075,20 +1072,24 @@ void getClientsOverTime(int *sock)
 				thisclient = overTime[i].clientdata[j];
 			}
 
-			// Avoid floating point exceptions
-			if(allclients > 0 && overTime[i].total > 0 && thisclient > 0)
-			{
-				percentage = 1e2 * thisclient / allclients;
-			}
-			else
-			{
-				percentage = 0.0;
-			}
-
-			sprintf(server_message + strlen(server_message), " %.2f", percentage);
+			sprintf(server_message + strlen(server_message), " %i", thisclient);
 		}
 
-		sprintf(server_message + strlen(server_message), " %.2f\n", percentage);
+		sprintf(server_message + strlen(server_message), "\n");
+		swrite(server_message, *sock);
+	}
+}
+
+void getClientNames(int *sock)
+{
+	char server_message[SOCKETBUFFERLEN];
+	int i;
+
+	// Loop over clients to generate output to be sent to the client
+	for(i = 0; i < counters.clients; i++)
+	{
+		validate_access("clients", i, true, __LINE__, __FUNCTION__, __FILE__);
+		sprintf(server_message,"%i %s %s\n", i, clients[i].ip, clients[i].name);
 		swrite(server_message, *sock);
 	}
 }
