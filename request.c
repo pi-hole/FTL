@@ -134,7 +134,7 @@ void process_request(char *client_message, int *sock)
 
 	if(!processed)
 	{
-		sprintf(server_message,"unknown command: %s\n",client_message);
+		sprintf(server_message,"unknown command: %s",client_message);
 		swrite(server_message, *sock);
 	}
 
