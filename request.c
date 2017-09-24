@@ -114,13 +114,6 @@ void process_request(char *client_message, int *sock)
 		getDBstats(sock);
 	}
 
-	// End of queryable commands
-	if(processed)
-	{
-		// Send EOM
-		seom(server_message, *sock);
-	}
-
 	// Test only at the end if we want to quit or kill
 	// so things can be processed before
 	if(command(client_message, ">quit") || command(client_message, EOT))
@@ -143,6 +136,13 @@ void process_request(char *client_message, int *sock)
 	{
 		sprintf(server_message,"unknown command: %s\n",client_message);
 		swrite(server_message, *sock);
+	}
+
+	// End of queryable commands
+	if(*sock != 0)
+	{
+		// Send EOM
+		seom(server_message, *sock);
 	}
 }
 
