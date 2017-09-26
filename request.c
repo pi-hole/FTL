@@ -47,7 +47,7 @@ void process_socket_request(char *client_message, int *sock)
 	else if(command(client_message, ">forward-names"))
 	{
 		processed = true;
-		getForwardNames(sock, type);
+		getForwardDestinations(">forward-dest unsorted", sock, type);
 	}
 	else if(command(client_message, ">querytypes"))
 	{
@@ -95,13 +95,6 @@ void process_socket_request(char *client_message, int *sock)
 		getDBstats(sock, type);
 	}
 
-	// End of queryable commands
-	if(processed)
-	{
-		// Send EOM
-		seom(*sock);
-	}
-
 	// Test only at the end if we want to quit or kill
 	// so things can be processed before
 	if(command(client_message, ">quit") || command(client_message, EOT))
@@ -122,7 +115,14 @@ void process_socket_request(char *client_message, int *sock)
 
 	if(!processed)
 	{
-		ssend(*sock,"unknown command: %s\n",client_message);
+		ssend(*sock,"unknown command: %s",client_message);
+	}
+
+	// End of queryable commands
+	if(*sock != 0)
+	{
+		// Send EOM
+		seom(*sock);
 	}
 }
 

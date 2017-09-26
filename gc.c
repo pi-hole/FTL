@@ -148,6 +148,10 @@ void *GC_thread(void *val)
 		logg("Notice: GC removed %i queries", invalidated);
 	}
 
+	// Run reresolveHostnames at the end of GC to account for
+	// formally unknown and/or changed host names on the network
+	reresolveHostnames();
+
 	// Release thread lock
 	disable_thread_lock("GC_thread");
 

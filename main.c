@@ -102,6 +102,7 @@ int main (int argc, char* argv[]) {
 			runDBthread = true;
 
 		// Garbadge collect in regular interval, but don't do it if the threadlocks is set
+		// This will also run reresolveHostnames()
 		if(runGCthread || needGC)
 		{
 			// Wait until we are allowed to work on the data

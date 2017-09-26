@@ -47,21 +47,52 @@ void getStats(int *sock, char type)
 	int blocked = counters.blocked + counters.wildcardblocked;
 	int total = counters.queries - counters.invalidqueries;
 	float percentage = 0.0;
+
 	// Avoid 1/0 condition
 	if(total > 0)
 		percentage = 1e2*blocked/total;
 
+
+	// unique_clients: count only clients that have been active within the most recent 24 hours
+	int i, activeclients = 0;
+	for(i=0; i < counters.clients; i++)
+	{
+		validate_access("clients", i, true, __LINE__, __FUNCTION__, __FILE__);
+		if(clients[i].count > 0)
+			activeclients++;
+	}
+
 	if(type == SOCKET) {
-		ssend(*sock, "domains_being_blocked %i\ndns_queries_today %i\nads_blocked_today %i\nads_percentage_today %f\n", \
-		    counters.gravity, total, blocked, percentage);
-		ssend(*sock, "unique_domains %i\nqueries_forwarded %i\nqueries_cached %i\n", \
-		    counters.domains, counters.forwardedqueries, counters.cached);
-		ssend(*sock, "unique_clients %i\n", counters.clients);
+		ssend(*sock, "domains_being_blocked %i\ndns_queries_today %i\nads_blocked_today %i\nads_percentage_today %f\n",
+		      counters.gravity, total, blocked, percentage);
+		ssend(*sock, "unique_domains %i\nqueries_forwarded %i\nqueries_cached %i\n",
+		      counters.domains, counters.forwardedqueries, counters.cached);
+		ssend(*sock, "clients_ever_seen %i\n", counters.clients);
+		ssend(*sock, "unique_clients %i\n", activeclients);
 	}
 	else
 	{
 		sendAPIResponse(*sock, type, OK);
-		ssend(*sock,"\"domains_being_blocked\":%i,\"dns_queries_today\":%i,\"ads_blocked_today\":%i,\"ads_percentage_today\":%.4f,\"unique_domains\":%i,\"queries_forwarded\":%i,\"queries_cached\":%i,\"unique_clients\":%i",counters.gravity,total, blocked, percentage,counters.domains,counters.forwardedqueries,counters.cached,counters.clients);
+		ssend(
+				*sock,
+				"\"domains_being_blocked\":%i,"
+				"\"dns_queries_today\":%i,"
+				"\"ads_blocked_today\":%i,"
+				"\"ads_percentage_today\":%.4f,"
+				"\"unique_domains\":%i,"
+				"\"queries_forwarded\":%i,"
+				"\"queries_cached\":%i,"
+				"\"clients_ever_seen\":%i,"
+				"\"unique_clients\":%i",
+				counters.gravity,total,
+				blocked,
+				percentage,
+				counters.domains,
+				counters.forwardedqueries,
+				counters.cached,
+				counters.clients,
+				activeclients
+		);
 	}
 
 	if(debugclients)
@@ -335,6 +366,18 @@ void getTopClients(char *client_message, int *sock, char type)
 		}
 	}
 
+	// Show also clients which have not been active recently?
+	// This option can be combined with existing options,
+	// i.e. both >top-clients withzero" and ">top-clients withzero (123)" are valid
+	bool includezeroclients = false;
+	if(type == SOCKET) {
+		if(command(client_message, " withzero")) {
+			includezeroclients = true;
+		}
+	}
+	else
+		includezeroclients = strstr(client_message, "withzero") != NULL;
+
 	for(i=0; i < counters.clients; i++)
 	{
 		validate_access("clients", i, true, __LINE__, __FUNCTION__, __FILE__);
@@ -380,8 +423,10 @@ void getTopClients(char *client_message, int *sock, char type)
 			}
 		}
 
-		if(clients[j].count > 0)
-		{
+		// Return this client if either
+		// - "withzero" option is set, and/or
+		// - the client made at least one query within the most recent 24 hours
+		if(includezeroclients || clients[j].count > 0)		{
 			if(type == SOCKET)
 			{
 				ssend(*sock,"%i %i %s %s\n",i,clients[j].count,clients[j].ip,clients[j].name);
@@ -412,22 +457,27 @@ void getTopClients(char *client_message, int *sock, char type)
 void getForwardDestinations(char *client_message, int *sock, char type)
 {
 	bool allocated = false, first = true, sort = true;
-	int i, temparray[counters.forwarded+1][2];
+	int i, temparray[counters.forwarded+1][2], forwardedsum = 0, totalqueries = 0;
 
 	if(type == SOCKET && command(client_message, "unsorted"))
 		sort = false;
 	else if(strstr(client_message, "unsorted"))
 		sort = false;
 
-	if(sort)
-	{
-		for(i=0; i < counters.forwarded; i++)
-		{
-			validate_access("forwarded", i, true, __LINE__, __FUNCTION__, __FILE__);
+	for(i=0; i < counters.forwarded; i++) {
+		validate_access("forwarded", i, true, __LINE__, __FUNCTION__, __FILE__);
+		// Compute forwardedsum
+		forwardedsum += forwarded[i].count;
+
+		// If we want to print a sorted output, we fill the temporary array with
+		// the values we will use for sorting afterwards
+		if(sort) {
 			temparray[i][0] = i;
 			temparray[i][1] = forwarded[i].count;
 		}
+	}
 
+	if(sort) {
 		// Add "local " forward destination
 		temparray[counters.forwarded][0] = counters.forwarded;
 		temparray[counters.forwarded][1] = counters.cached + counters.blocked;
@@ -435,6 +485,8 @@ void getForwardDestinations(char *client_message, int *sock, char type)
 		// Sort temporary array in descending order
 		qsort(temparray, counters.forwarded+1, sizeof(int[2]), cmpdesc);
 	}
+
+	totalqueries = counters.forwardedqueries + counters.cached + counters.blocked;
 
 	// Send HTTP headers with unknown content length
 	sendAPIResponse(*sock, type, OK);
@@ -447,7 +499,7 @@ void getForwardDestinations(char *client_message, int *sock, char type)
 	for(i=0; i < min(counters.forwarded+1, 10); i++)
 	{
 		char *name, *ip;
-		int count;
+		double percentage;
 
 		// Get sorted indices
 		int j;
@@ -463,7 +515,13 @@ void getForwardDestinations(char *client_message, int *sock, char type)
 			strcpy(ip, "::1");
 			name = calloc(6,1);
 			strcpy(name, "local");
-			count = counters.cached + counters.blocked;
+
+			if(totalqueries > 0)
+				// Whats the percentage of (cached + blocked) queries on the total amount of queries?
+				percentage = 1e2 * (counters.cached + counters.blocked) / totalqueries;
+			else
+				percentage = 0.0;
+
 			allocated = true;
 		}
 		else
@@ -471,16 +529,37 @@ void getForwardDestinations(char *client_message, int *sock, char type)
 			validate_access("forwarded", j, true, __LINE__, __FUNCTION__, __FILE__);
 			ip = forwarded[j].ip;
 			name = forwarded[j].name;
-			count = forwarded[j].count;
+
+			// Math explanation:
+			// A single query may result in requests being forwarded to multiple destinations
+			// Hence, in order to be able to give percentages here, we have to normalize the
+			// number of forwards to each specific destination by the total number of forward
+			// events. This term is done by
+			//   a = forwarded[j].count / forwardedsum
+			//
+			// The fraction a describes now how much share an individual forward destination
+			// has on the total sum of sent requests.
+			// We also know the share of forwarded queries on the total number of queries
+			//   b = counters.forwardedqueries / c
+			// where c is the number of valid queries,
+			//   c = counters.forwardedqueries + counters.cached + counters.blocked
+			//
+			// To get the total percentage of a specific query on the total number of queries,
+			// we simply have to scale b by a which is what we do in the following.
+			if(forwardedsum > 0 && totalqueries > 0)
+				percentage = 1e2 * forwarded[j].count / forwardedsum * counters.forwardedqueries / totalqueries;
+			else
+				percentage = 0.0;
+
 			allocated = false;
 		}
 
 		// Send data if count > 0
-		if(count > 0)
+		if(percentage > 0.0)
 		{
 			if(type == SOCKET)
 			{
-				ssend(*sock,"%i %i %s %s\n",i,count,ip,name);
+				ssend(*sock, "%i %.2f %s %s\n", i, percentage, ip, name);
 			}
 			else
 			{
@@ -488,9 +567,9 @@ void getForwardDestinations(char *client_message, int *sock, char type)
 				first = false;
 
 				if(strlen(name) > 0)
-					ssend(*sock, "\"%s|%s\":%i", name, ip, count);
+					ssend(*sock, "\"%s|%s\":%.2f", name, ip, percentage);
 				else
-					ssend(*sock, "\"%s\":%i", ip, count);
+					ssend(*sock, "\"%s\":%.2f", ip, percentage);
 			}
 		}
 
@@ -510,57 +589,22 @@ void getForwardDestinations(char *client_message, int *sock, char type)
 }
 
 
-void getForwardNames(int *sock, char type)
-{
-	int i;
-
-	if(type != SOCKET)
-	{
-		sendAPIResponse(*sock, type, OK);
-		ssend(*sock,"\"forward_destinations\":{");
-	}
-
-	for(i=0; i < counters.forwarded; i++)
-	{
-		validate_access("forwarded", i, true, __LINE__, __FUNCTION__, __FILE__);
-		if(type == SOCKET)
-		{
-			ssend(*sock, "%i %i %s %s\n", i, forwarded[i].count, forwarded[i].ip, forwarded[i].name);
-		}
-		else
-		{
-			if(strlen(forwarded[i].name) > 0)
-				ssend(*sock, "\"%s|%s\":%i,", forwarded[i].name, forwarded[i].ip, forwarded[i].count);
-			else
-				ssend(*sock, "\"%s\":%i,", forwarded[i].ip, forwarded[i].count);
-		}
-		//{"2001:1608:10:25::9249:d69b":2799,"2001:1608:10:25::1c04:b12f":6382,"resolver2.ipv6-sandbox.opendns.com|2620:0:ccd::2":2478,"resolver1.ipv6-sandbox.opendns.com|2620:0:ccc::2":2219,"local|::1":2755}}
-
-	}
-
-	// Add "local" forward destination
-	if(type == SOCKET)
-		ssend(*sock,"%i %i ::1 local\n",counters.forwarded,counters.cached);
-	else
-		ssend(*sock, "\"local|::1\":%i}", counters.cached);
-
-	if(debugclients)
-		logg("Sent forward destination names to client, ID: %i", *sock);
-}
-
-
 void getQueryTypes(int *sock, char type)
 {
+	int total = counters.IPv4 + counters.IPv6;
+	double percentageIPv4 = 0.0, percentageIPv6 = 0.0;
+
+	// Prevent floating point exceptions by checking if the divisor is != 0
+	if(total > 0) {
+		percentageIPv4 = 1e2*counters.IPv4/total;
+		percentageIPv6 = 1e2*counters.IPv6/total;
+	}
+
 	if(type == SOCKET)
-		ssend(*sock,"A (IPv4): %i\nAAAA (IPv6): %i\n",counters.IPv4,counters.IPv6);
-	else
-	{
+		ssend(*sock,"A (IPv4): %.2f\nAAAA (IPv6): %.2f\n", percentageIPv4, percentageIPv6);
+	else {
 		sendAPIResponse(*sock, type, OK);
-		ssend(*sock, "\"query_types\":{\"A (IPv4)\":%i,\"AAAA (IPv6)\":%i,\"PTR\":%i,\"SRV\":%i}",
-		      counters.IPv4,
-		      counters.IPv6,
-		      counters.PTR,
-		      counters.SRV);
+		ssend(*sock, "\"query_types\":{\"A (IPv4)\":%.2f,\"AAAA (IPv6)\":%.2f}", percentageIPv4, percentageIPv6);
 	}
 
 	if(debugclients)
@@ -912,6 +956,7 @@ void getMemoryUsage(int *sock, char type)
 void getForwardDestinationsOverTime(int *sock, char type)
 {
 	int i, sendit = -1;
+
 	for(i = 0; i < counters.overTime; i++)
 	{
 		validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
@@ -933,6 +978,8 @@ void getForwardDestinationsOverTime(int *sock, char type)
 		bool first = true;
 		for(i = sendit; i < counters.overTime; i++)
 		{
+			double percentage;
+
 			validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
 			if(type == SOCKET)
 			{
@@ -945,25 +992,71 @@ void getForwardDestinationsOverTime(int *sock, char type)
 				ssend(*sock, "\"%i\":[", overTime[i].timestamp);
 			}
 
-			int j;
+			int j, forwardedsum = 0;
 
-			for(j = 0; j < counters.forwarded; j++)
+			// Compute forwardedsum used for later normalization
+			for(j = 0; j < overTime[i].forwardnum; j++)
 			{
-				int k;
-				if(j < overTime[i].forwardnum)
-					k = overTime[i].forwarddata[j];
-				else
-					k = 0;
-				if(type == SOCKET)
-					ssend(*sock, " %i", k);
-				else
-					ssend(*sock, "%i,", k);
+				forwardedsum += overTime[i].forwarddata[j];
 			}
 
-			if(type == SOCKET)
-				ssend(*sock, " %i\n", overTime[i].cached + overTime[i].blocked);
+			// Loop over forward destinations to generate output to be sent to the client
+			for(j = 0; j < counters.forwarded; j++)
+			{
+				int thisforward = 0;
+
+				if(j < overTime[i].forwardnum) {
+					// This forward destination does already exist at this timestamp
+					// -> use counter of requests sent to this destination
+					thisforward = overTime[i].forwarddata[j];
+				}
+				// else
+				// {
+					// This forward destination does not yet exist at this timestamp
+					// -> use zero as number of requests sent to this destination
+				// 	thisforward = 0;
+				// }
+
+				// Avoid floating point exceptions
+				if(forwardedsum > 0 && overTime[i].total > 0 && thisforward > 0) {
+					// A single query may result in requests being forwarded to multiple destinations
+					// Hence, in order to be able to give percentages here, we have to normalize the
+					// number of forwards to each specific destination by the total number of forward
+					// events. This is done by
+					//   a = thisforward / forwardedsum
+					// The fraction a describes how much share an individual forward destination
+					// has on the total sum of sent requests.
+					//
+					// We also know the share of forwarded queries on the total number of queries
+					//   b = forwardedqueries/overTime[i].total
+					// where the number of forwarded queries in this time interval is given by
+					//   forwardedqueries = overTime[i].total - (overTime[i].cached
+					//                                           + overTime[i].blocked)
+					//
+					// To get the total percentage of a specific forward destination on the total
+					// number of queries, we simply have to multiply a and b as done below:
+					percentage = 1e2 * thisforward / forwardedsum * (overTime[i].total - (overTime[i].cached + overTime[i].blocked)) / overTime[i].total;
+				}
+				else
+					percentage = 0.0;
+
+				if(type == SOCKET)
+					ssend(*sock, " %.2f", percentage);
+				else
+					ssend(*sock, "%.2f,", percentage);
+			}
+
+			// Avoid floating point exceptions
+			if(overTime[i].total > 0)
+				// Forward count for destination "local" is cached + blocked normalized by total:
+				percentage = 1e2 * (overTime[i].cached + overTime[i].blocked) / overTime[i].total;
 			else
-				ssend(*sock, "%i]", overTime[i].cached + overTime[i].blocked);
+				percentage = 0.0;
+
+			if(type == SOCKET)
+				ssend(*sock, " %.2f\n", percentage);
+			else
+				ssend(*sock, "%.2f]", percentage);
 		}
 	}
 
@@ -971,7 +1064,7 @@ void getForwardDestinationsOverTime(int *sock, char type)
 	{
 		ssend(*sock,"},");
 		// Manually set API -> Don't send header a second time
-		getForwardNames(sock, API);
+		getForwardDestinations(">forward-dest unsorted", sock, API);
 	}
 
 	if(debugclients)
@@ -1012,15 +1105,21 @@ void getQueryTypesOverTime(int *sock, char type)
 		for(i = sendit; i < counters.overTime; i++)
 		{
 			validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
-			if(type == SOCKET)
-			{
-				ssend(*sock, "%i %i %i\n", overTime[i].timestamp,overTime[i].querytypedata[0],overTime[i].querytypedata[1]);
+
+			double percentageIPv4 = 0.0, percentageIPv6 = 0.0;
+			int sum = overTime[i].querytypedata[0] + overTime[i].querytypedata[1];
+
+			if(sum > 0) {
+				percentageIPv4 = 1e2*overTime[i].querytypedata[0] / sum;
+				percentageIPv6 = 1e2*overTime[i].querytypedata[1] / sum;
 			}
-			else
-			{
+
+			if(type == SOCKET)
+				ssend(*sock, "%i %.2f %.2f\n", overTime[i].timestamp, percentageIPv4, percentageIPv6);
+			else {
 				if(!first) ssend(*sock, ",");
 				first = false;
-				ssend(*sock, "\"%i\":[%i,%i]", overTime[i].timestamp,overTime[i].querytypedata[0],overTime[i].querytypedata[1]);
+				ssend(*sock, "\"%i\":[%.2f,%.2f]", overTime[i].timestamp, percentageIPv4, percentageIPv6);
 			}
 		}
 	}
