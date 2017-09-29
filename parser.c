@@ -13,7 +13,7 @@
 
 char *resolveHostname(const char *addr);
 void extracttimestamp(const char *readbuffer, int *querytimestamp, int *overTimetimestamp);
-int getforwardID(const char * str);
+int getforwardID(const char * str, bool count);
 int findDomain(const char *domain);
 int findClient(const char *client);
 int detectStatus(const char *domain);
@@ -402,7 +402,7 @@ void process_pihole_log(int file)
 							status = 2;
 							// Get ID of forward destination, create new forward destination record
 							// if not found in current data structure
-							forwardID = getforwardID(readbuffer2);
+							forwardID = getforwardID(readbuffer2, false);
 							if(forwardID == -2)
 								continue;
 							break;
@@ -604,9 +604,14 @@ void process_pihole_log(int file)
 				continue;
 			}
 
+			// Check if this is a PTR query
+			// if so: skip analysis of this log line
+			if(strstr(readbuffer,"in-addr.arpa") != NULL)
+				continue;
+
 			// Get ID of forward destination, create new forward destination record
 			// if not found in current data structure
-			int forwardID = getforwardID(readbuffer);
+			int forwardID = getforwardID(readbuffer, true);
 			if(forwardID == -2)
 				continue;
 
@@ -845,7 +850,7 @@ void extracttimestamp(const char *readbuffer, int *querytimestamp, int *overTime
 	*overTimetimestamp = *querytimestamp-(*querytimestamp%600)+300;
 }
 
-int getforwardID(const char * str)
+int getforwardID(const char * str, bool count)
 {
 	// Get forward destination
 	// forwardstart = pointer to | in "forwarded domain.name| to www.xxx.yyy.zzz\n"
@@ -890,7 +895,8 @@ int getforwardID(const char * str)
 		if(strcmp(forwarded[i].ip, forward) == 0)
 		{
 			forwardID = i;
-			forwarded[forwardID].count++;
+			if(count)
+				forwarded[forwardID].count++;
 			processed = true;
 			break;
 		}
@@ -910,8 +916,11 @@ int getforwardID(const char * str)
 		validate_access("forwarded", forwardID, false, __LINE__, __FUNCTION__, __FILE__);
 		// Set magic byte
 		forwarded[forwardID].magic = MAGICBYTE;
-		// Set its counter to 1
-		forwarded[forwardID].count = 1;
+		// Initialize its counter
+		if(count)
+			forwarded[forwardID].count = 1;
+		else
+			forwarded[forwardID].count = 0;
 		// Save IP
 		forwarded[forwardID].ip = strdup(forward);
 		memory.forwardedips += (forwardlen + 1) * sizeof(char);
@@ -1013,5 +1022,37 @@ void validate_access_oTfd(int timeidx, int pos, int line, const char * function,
 		logg("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
 		logg("FATAL ERROR: Trying to access overTime.forwardata[%i], but maximum is %i", pos, limit);
 		logg("             found in %s() (line %i) in %s", function, line, file);
+	}
+}
+
+void reresolveHostnames(void)
+{
+	int clientID;
+	for(clientID = 0; clientID < counters.clients; clientID++)
+	{
+		// Memory validation
+		validate_access("clients", clientID, true, __LINE__, __FUNCTION__, __FILE__);
+
+		// Process this client only if it has at least one active query in the log
+		if(clients[clientID].count < 1)
+			continue;
+
+		// Get client hostname
+		char *hostname = resolveHostname(clients[clientID].ip);
+		if(strlen(hostname) > 0)
+		{
+			// Delete possibly already existing hostname pointer before storing new data
+			if(clients[clientID].name != NULL)
+			{
+				memory.clientnames -= (strlen(clients[clientID].name) + 1) * sizeof(char);
+				free(clients[clientID].name);
+				clients[clientID].name = NULL;
+			}
+
+			// Store client hostname
+			clients[clientID].name = strdup(hostname);
+			memory.clientnames += (strlen(hostname) + 1) * sizeof(char);
+		}
+		free(hostname);
 	}
 }
