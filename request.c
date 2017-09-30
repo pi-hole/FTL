@@ -1142,7 +1142,7 @@ void getClientNames(int *sock)
 		if(insetupVarsArray(clients[i].ip) || insetupVarsArray(clients[i].name))
 			continue;
 
-		sprintf(server_message,"%i %s %s\n", i, clients[i].ip, clients[i].name);
+		sprintf(server_message,"%i %i %s %s\n", i, clients[i].count, clients[i].ip, clients[i].name);
 		swrite(server_message, *sock);
 	}
 
