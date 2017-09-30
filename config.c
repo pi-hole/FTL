@@ -111,6 +111,20 @@ void read_FTLconf(void)
 	else
 		logg("   MAXDBDAYS: max age for stored queries is %i days", config.maxDBdays);
 
+	// RESOLVEIPV6
+	// defaults to: Yes
+	config.resolveIPv6 = true;
+	buffer = parse_FTLconf(fp, "RESOLVEIPV6");
+	if(buffer != NULL)
+	{
+		if(strcmp(buffer, "no") == 0)
+			config.resolveIPv6 = false;
+	}
+	if(config.resolveIPv6)
+		logg("   RESOLVEIPV6: Resolve IPv6 addresses");
+	else
+		logg("   RESOLVEIPV6: Don\'t resolve IPv6 addresses");
+
 	logg("Finished config file parsing");
 
 	if(conflinebuffer != NULL)

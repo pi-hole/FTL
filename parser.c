@@ -718,15 +718,23 @@ void process_pihole_log(int file)
 char *resolveHostname(const char *addr)
 {
 	// Get host name
-	struct hostent *he;
+	struct hostent *he = NULL;
 	char *hostname;
+	bool IPv6 = false;
+
+	// Test if we want to resolve an IPv6 address
 	if(strstr(addr,":") != NULL)
+	{
+		IPv6 = true;
+	}
+
+	if(IPv6 && config.resolveIPv6) // Resolve IPv6 address only if requested
 	{
 		struct in6_addr ipaddr;
 		inet_pton(AF_INET6, addr, &ipaddr);
 		he = gethostbyaddr(&ipaddr, sizeof ipaddr, AF_INET6);
 	}
-	else
+	else if(!IPv6) // Always resolve IPv4 addresses
 	{
 		struct in_addr ipaddr;
 		inet_pton(AF_INET, addr, &ipaddr);
@@ -735,11 +743,13 @@ char *resolveHostname(const char *addr)
 
 	if(he == NULL)
 	{
+		// No hostname found
 		hostname = calloc(1,sizeof(char));
 		hostname[0] = '\0';
 	}
 	else
 	{
+		// Return hostname copied to new memory location
 		hostname = strdup(he->h_name);
 	}
 

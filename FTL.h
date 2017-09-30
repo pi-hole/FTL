@@ -120,6 +120,7 @@ typedef struct {
 	bool query_display;
 	bool analyze_AAAA;
 	int maxDBdays;
+	bool resolveIPv6;
 } ConfigStruct;
 
 // Dynamic structs
