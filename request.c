@@ -128,6 +128,8 @@ void process_request(char *client_message, int *sock)
 	else if(command(client_message, ">kill"))
 	{
 		processed = true;
+		sprintf(server_message,"killed\n");
+		swrite(server_message, *sock);
 		logg("FTL killed by client ID: %i",*sock);
 		killed = 1;
 	}
