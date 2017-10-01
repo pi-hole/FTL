@@ -104,7 +104,7 @@ Possible settings (**the option shown first is the default**):
 - `QUERY_DISPLAY=yes|no` (Display all queries? Set to `no` to hide query display)
 - `AAAA_QUERY_ANALYSIS=yes|no` (Allow `FTL` to analyze AAAA queries from pihole.log?)
 - `MAXDBDAYS=365` (How long should queries be stored in the database? Setting this to `0` disables the database altogether)
-- `RESOLVEIPV6=yes|no` (Should `FTL` try to resolve IPv6 addresses to host names?)
+- `RESOLVE_IPV6=yes|no` (Should `FTL` try to resolve IPv6 addresses to host names?)
 
 ### Implemented keywords (starting with `>`, subject to change):
 
