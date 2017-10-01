@@ -186,4 +186,6 @@ load 'libs/bats-support/load'
   run bash -c 'echo ">kill" | nc -v 127.0.0.1 4711'
   echo "output: ${lines[@]}"
   [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
+  [[ ${lines[1]} == "killed" ]]
+  [[ ${lines[2]} == "---EOM---" ]]
 }
