@@ -183,7 +183,16 @@ bool insetupVarsArray(char * str)
 		}
 		else
 		{
-			if(strcmp(setupVarsArray[i], str) == 0)
+			// Return true only when the ends of the two domains match
+			// This allows an exclusion of 'nflxso.net' to not display:
+			// occ-2-990-987.1.nflxso.net, occ-0-990-987.1.nflxso.net, etc.
+			size_t candidate = strlen(str);
+			size_t excluded = strlen(setupVarsArray[i]);
+			if (excluded > candidate)
+				continue;
+
+			size_t end_pos = candidate - excluded;
+			if(strcmp(str + end_pos, setupVarsArray[i]) == 0)
 				return true;
 		}
 
