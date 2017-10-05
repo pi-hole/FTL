@@ -27,7 +27,8 @@ load 'libs/bats-support/load'
   [[ ${lines[7]} =~ "queries_cached 2" ]]
   [[ ${lines[8]} == "clients_ever_seen 3" ]]
   [[ ${lines[9]} == "unique_clients 3" ]]
-  [[ ${lines[10]} == "---EOM---" ]]
+  [[ ${lines[10]} == "status unknown" ]]
+  [[ ${lines[11]} == "---EOM---" ]]
 }
 
 @test "Top Clients" {
