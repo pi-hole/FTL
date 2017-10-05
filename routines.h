@@ -49,6 +49,7 @@ void formatNumber(bool raw, int n, char* buffer);
 void read_gravity_files(void);
 int countlines(const char* fname);
 int countlineswith(const char* str, const char* fname);
+void check_blocking_status(void);
 
 void check_setupVarsconf(void);
 char * read_setupVarsconf(const char * key);

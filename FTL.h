@@ -86,6 +86,7 @@ typedef struct {
 	const char* setupVars;
 	const char* wildcards;
 	const char* auditlist;
+	const char* dnsmasqconfig;
 } logFileNamesStruct;
 
 typedef struct {
@@ -209,6 +210,7 @@ bool debugGC;
 bool debugDB;
 bool threadwritelock;
 bool threadreadlock;
+unsigned char blockingstatus;
 
 char ** wildcarddomains;
 

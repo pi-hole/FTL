@@ -229,8 +229,20 @@ void getStats(int *sock)
 	{
 		percentage = 1e2*blocked/total;
 	}
-	sprintf(server_message,"domains_being_blocked %i\ndns_queries_today %i\nads_blocked_today %i\nads_percentage_today %f\n", \
-	        counters.gravity,total,blocked,percentage);
+
+	switch(blockingstatus)
+	{
+		case 0: // Blocking disabled
+			sprintf(server_message,"domains_being_blocked N/A\n");
+			swrite(server_message, *sock);
+			break;
+		default: // Either unknown or enabled
+			sprintf(server_message,"domains_being_blocked %i\n",counters.gravity);
+			swrite(server_message, *sock);
+			break;
+	}
+	sprintf(server_message,"dns_queries_today %i\nads_blocked_today %i\nads_percentage_today %f\n", \
+	        total,blocked,percentage);
 	swrite(server_message, *sock);
 	sprintf(server_message,"unique_domains %i\nqueries_forwarded %i\nqueries_cached %i\n", \
 	        counters.domains,counters.forwardedqueries,counters.cached);
@@ -252,6 +264,22 @@ void getStats(int *sock)
 	sprintf(server_message,"unique_clients %i\n", \
 	        activeclients);
 	swrite(server_message, *sock);
+
+	switch(blockingstatus)
+	{
+		case 0: // Blocking disabled
+			sprintf(server_message,"status disabled\n");
+			swrite(server_message, *sock);
+			break;
+		case 1: // Blocking Enabled
+			sprintf(server_message,"status enabled\n");
+			swrite(server_message, *sock);
+			break;
+		default: // Unknown status
+			sprintf(server_message,"status unknown\n");
+			swrite(server_message, *sock);
+			break;
+	}
 
 	if(debugclients)
 		logg("Sent stats data to client, ID: %i", *sock);
