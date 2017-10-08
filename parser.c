@@ -284,6 +284,17 @@ void process_pihole_log(int file)
 				}
 			}
 
+			// Detect time travel events
+			if(timeidx < 0)
+			{
+				// This query is older than the first one in the log, hence the clock
+				// on this machine was at least slightly off for a while. We will skip
+				// this query as we cannot attribute it correctly to anything.
+				validate_access("overTime", 0, false, __LINE__, __FUNCTION__, __FILE__);
+				logg("Warning: Skipping log entry with incorrect timestamp (%i/%i)", overTimetimestamp, overTime[0].timestamp);
+				continue;
+			}
+
 			// Get domain
 			// domainstart = pointer to | in "query[AAAA] |host.name from ww.xx.yy.zz\n"
 			const char *domainstart = strstr(readbuffer, "] ");
