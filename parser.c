@@ -844,8 +844,21 @@ void extracttimestamp(const char *readbuffer, int *querytimestamp, int *overTime
 	// %M = Minute (00-59)
 	// %S = Second (00-59)
 	strptime(timestamp, "%b %e %H:%M:%S", &querytime);
-	// Year is missing in dnsmasq's output - add the current year
-	querytime.tm_year = (*timeinfo).tm_year;
+
+	// Year is missing in dnsmasq's output so we have to take care of it
+	if(querytime.tm_mon == 11 && (*timeinfo).tm_mon == 0)
+	{
+		// Special case: read timestamp in December (e.g. 2017), but current
+		// month is already January (e.g. 2018) -> use (year-1) for this timestamp
+		// Note that months are counted from January on, i.e.
+		// January == 0, December == 11
+		querytime.tm_year = (*timeinfo).tm_year - 1;
+	}
+	else
+	{
+		// In all other cases: Use current year
+		querytime.tm_year = (*timeinfo).tm_year;
+	}
 
 	// DST - according to ISO/IEC 9899:TC3
 	// > A negative value causes mktime to attempt to determine whether
