@@ -129,11 +129,8 @@ void read_FTLconf(void)
 	// defaults to: Yes
 	config.resolveIPv4 = true;
 	buffer = parse_FTLconf(fp, "RESOLVE_IPV4");
-	if(buffer != NULL)
-	{
-		if(strcmp(buffer, "no") == 0)
-			config.resolveIPv4 = false;
-	}
+	if(buffer != NULL && strcmp(buffer, "no") == 0)
+		config.resolveIPv4 = false;
 	if(config.resolveIPv4)
 		logg("   RESOLVE_IPV4: Resolve IPv4 addresses");
 	else
