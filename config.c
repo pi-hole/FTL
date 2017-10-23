@@ -119,6 +119,17 @@ void read_FTLconf(void)
 	else
 		logg("   RESOLVE_IPV6: Don\'t resolve IPv6 addresses");
 
+	// RESOLVE_IPV4
+	// defaults to: Yes
+	config.resolveIPv4 = true;
+	buffer = parse_FTLconf(fp, "RESOLVE_IPV4");
+	if(buffer != NULL && strcmp(buffer, "no") == 0)
+		config.resolveIPv4 = false;
+	if(config.resolveIPv4)
+		logg("   RESOLVE_IPV4: Resolve IPv4 addresses");
+	else
+		logg("   RESOLVE_IPV4: Don\'t resolve IPv4 addresses");
+
 	logg("Finished config file parsing");
 
 	if(conflinebuffer != NULL)

@@ -121,6 +121,7 @@ typedef struct {
 	bool analyze_AAAA;
 	int maxDBdays;
 	bool resolveIPv6;
+	bool resolveIPv4;
 } ConfigStruct;
 
 // Dynamic structs
