@@ -229,3 +229,4 @@ bool database;
 long int lastdbindex;
 bool travis;
 bool DBdeleteoldqueries;
+bool rereadgravity;

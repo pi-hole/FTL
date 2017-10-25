@@ -704,16 +704,6 @@ void process_pihole_log(int file)
 			validate_access_oTfd(timeidx, forwardID, __LINE__, __FUNCTION__, __FILE__);
 			overTime[timeidx].forwarddata[forwardID]++;
 		}
-		else if((strstr(readbuffer,"IPv6") != NULL) &&
-		        (strstr(readbuffer,"DBus") != NULL) &&
-		        (strstr(readbuffer,"i18n") != NULL) &&
-		        (strstr(readbuffer,"DHCP") != NULL) &&
-		         !initialscan)
-		{
-			// dnsmasq restartet
-			logg("dnsmasq process restarted");
-			read_gravity_files();
-		}
 
 		// Save file pointer position, because we might have to repeat
 		// reading the next line if dnsmasq hasn't finished writing it
