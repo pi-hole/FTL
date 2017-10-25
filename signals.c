@@ -32,7 +32,7 @@ static void SIGSEGV_handler(int sig, siginfo_t *si, void *unused)
 	logg("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
 	logg("---------------------------->  FTL crashed!  <----------------------------");
 	logg("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-	logg("Please report a bug at https://githuP.com/pi-hole/FTL/issues");
+	logg("Please report a bug at https://github.com/pi-hole/FTL/issues");
 	logg("and include in your report already the following details:\n");
 
 	if(FTLstarttime != 0)
