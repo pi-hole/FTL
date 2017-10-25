@@ -1,0 +1,6 @@
+FROM multiarch/debian-debootstrap:armhf-jessie-slim
+
+RUN apt-get update && \
+    apt-get install -y sqlite3 build-essential musl-tools git-core file
+
+WORKDIR /build
