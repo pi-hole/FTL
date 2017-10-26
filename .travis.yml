@@ -71,6 +71,7 @@ matrix:
   - env:
     - BUILD_CC="musl-gcc"
     - BIN_NAME="pihole-FTL-musl-armhf"
+    - DOCKER_INIT="docker run --rm --privileged multiarch/qemu-user-static:register --reset"
     - DOCKER="docker-compose run armhf"
     sudo: true
     install:
@@ -79,9 +80,9 @@ before_script:
 - mkdir -p "${DEST_DIR}"
 - make clean
 script:
+- $DOCKER_INIT
 - $DOCKER make pihole-FTL CC="${BUILD_CC}" CFLAGS="${CFLAGS}"
-- ls -lat
-- file pihole-FTL
+- $DOCKER file pihole-FTL
 - if [[ "${BIN_NAME}" == "pihole-FTL-linux-x86_64" ]]; then test/run.sh; fi
 - mv pihole-FTL "${DEST_DIR}/${BIN_NAME}"
 - cd "${DEST_DIR}"
