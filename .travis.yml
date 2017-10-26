@@ -72,8 +72,9 @@ matrix:
     - BUILD_CC="musl-gcc"
     - BIN_NAME="pihole-FTL-musl-armhf"
     - DOCKER="docker-compose run armhf"
+    sudo: true
     install:
-      - pip install docker-compose
+      - sudo pip install docker-compose
 before_script:
 - mkdir -p "${DEST_DIR}"
 - make clean
