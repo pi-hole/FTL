@@ -65,6 +65,12 @@ void parse_args(int argc, char* argv[])
 			exit(EXIT_SUCCESS);
 		}
 
+		if(strcmp(argv[i], "branch") == 0)
+		{
+			printf("%s\n",GIT_BRANCH);
+			exit(EXIT_SUCCESS);
+		}
+
 		// pihole-FTL running
 		// will test if another pihole-FTL process is running
 		// and exits even if not (instead of starting a new one)
