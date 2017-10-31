@@ -72,7 +72,7 @@ matrix:
     - BUILD_CC="musl-gcc"
     - BIN_NAME="pihole-FTL-musl-armhf"
     - DOCKER_INIT="docker run --rm --privileged multiarch/qemu-user-static:register --reset"
-    - DOCKER="docker run --rm -it -v \"$TRAVIS_BUILD_DIR:/build\" diginc/multiarch-deb-debootstrap:armhf-musl-jessie"
+    - DOCKER=docker run --rm -it -v "$TRAVIS_BUILD_DIR:/build" diginc/multiarch-deb-debootstrap:armhf-musl-jessie
     sudo: true
 before_script:
 - mkdir -p "${DEST_DIR}"
