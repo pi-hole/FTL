@@ -72,10 +72,8 @@ matrix:
     - BUILD_CC="musl-gcc"
     - BIN_NAME="pihole-FTL-musl-armhf"
     - DOCKER_INIT="docker run --rm --privileged multiarch/qemu-user-static:register --reset"
-    - DOCKER="docker-compose run armhf"
+    - DOCKER='docker run --rm -it -v "$(pwd):/build" diginc/multiarch-deb-debootstrap:armhf-musl-jessie'
     sudo: true
-    install:
-      - sudo pip install docker-compose
 before_script:
 - mkdir -p "${DEST_DIR}"
 - make clean
