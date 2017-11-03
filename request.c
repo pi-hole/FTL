@@ -1037,7 +1037,11 @@ void getQueryTypesOverTime(int *sock)
 void getVersion(int *sock)
 {
 	char server_message[SOCKETBUFFERLEN];
-	sprintf(server_message,"version %s\ntag %s\nbranch %s\ndate %s\n", GIT_VERSION, GIT_TAG, GIT_BRANCH, GIT_DATE);
+
+	if(strcmp(GIT_TAG, "master") == 0)
+		sprintf(server_message,"version %s\ntag %s\nbranch %s\ndate %s\n", GIT_VERSION, GIT_TAG, GIT_BRANCH, GIT_DATE);
+	else
+		sprintf(server_message,"version vDev-%s\ntag %s\nbranch %s\ndate %s\n", GIT_HASH, GIT_TAG, GIT_BRANCH, GIT_DATE);
 	swrite(server_message, *sock);
 
 	if(debugclients)
