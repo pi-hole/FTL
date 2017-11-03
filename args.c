@@ -55,7 +55,7 @@ void parse_args(int argc, char* argv[])
 
 		if(strcmp(argv[i], "version") == 0)
 		{
-			if(strcmp(GIT_TAG, "master") == 0)
+			if(strcmp(GIT_BRANCH, "master") == 0)
 				printf("%s\n",GIT_VERSION);
 			else
 				printf("vDev-%s\n",GIT_HASH);

@@ -1038,7 +1038,7 @@ void getVersion(int *sock)
 {
 	char server_message[SOCKETBUFFERLEN];
 
-	if(strcmp(GIT_TAG, "master") == 0)
+	if(strcmp(GIT_BRANCH, "master") == 0)
 		sprintf(server_message,"version %s\ntag %s\nbranch %s\ndate %s\n", GIT_VERSION, GIT_TAG, GIT_BRANCH, GIT_DATE);
 	else
 		sprintf(server_message,"version vDev-%s\ntag %s\nbranch %s\ndate %s\n", GIT_HASH, GIT_TAG, GIT_BRANCH, GIT_DATE);
