@@ -136,14 +136,14 @@ void parse_args(int argc, char* argv[])
 			printf("\t                  starting a new one)\n");
 			printf("\t-f, no-daemon     Don't go into daemon mode\n");
 			printf("\t-h, help          Display this help and exit\n");
-			printf("\n\nOnline help: https://github.com/pi-hole/FTL\n\n");
+			printf("\n\nOnline help: https://github.com/pi-hole/FTL\n");
 			exit(EXIT_SUCCESS);
 		}
 
 		// Complain if invalid options have been found
 		if(!ok)
 		{
-			printf("pihole-FTL: invalid option -- '%s'\nTry '%s --help' for more information\n\n", argv[i], argv[0]);
+			printf("pihole-FTL: invalid option -- '%s'\nTry '%s --help' for more information\n", argv[i], argv[0]);
 			exit(EXIT_FAILURE);
 		}
 	}
