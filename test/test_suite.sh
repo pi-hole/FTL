@@ -183,6 +183,19 @@ load 'libs/bats-support/load'
   [[ "${lines[@]}" == *"INSERT INTO \"ftl\" VALUES(0,1);"* ]]
 }
 
+@test "Arguments check: Invalid option" {
+  run bash -c './pihole-FTL abc'
+  echo "output: ${lines[@]}"
+  [[ ${lines[0]} == "pihole-FTL: invalid option -- 'abc'" ]]
+  [[ ${lines[1]} == "Try './pihole-FTL --help' for more information" ]]
+}
+
+@test "Help argument return help text" {
+  run bash -c './pihole-FTL help'
+  echo "output: ${lines[@]}"
+  [[ ${lines[0]} == "pihole-FTL - The Pi-hole FTL engine" ]]
+}
+
 @test "Final part of the tests: Killing pihole-FTL process" {
   run bash -c 'echo ">kill" | nc -v 127.0.0.1 4711'
   echo "output: ${lines[@]}"
