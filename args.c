@@ -62,7 +62,10 @@ void parse_args(int argc, char* argv[])
 		}
 
 		if(strcmp(argv[i], "test") == 0)
+		{
 			killed = 1;
+			ok = true;
+		}
 
 		if(strcmp(argv[i], "-v") == 0 ||
 		   strcmp(argv[i], "version") == 0)
