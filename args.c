@@ -126,7 +126,7 @@ void parse_args(int argc, char* argv[])
 			printf("Usage:    sudo service pihole-FTL <action>\n");
 			printf("where '<action>' is one of start / stop / restart\n\n");
 			printf("Available arguments:\n");
-			printf("\td,  debug         More verbose logging,\n");
+			printf("\t    debug         More verbose logging,\n");
 			printf("\t                  don't go into daemon mode\n");
 			printf("\t    test          Don't start pihole-FTL but\n");
 			printf("\t                  instead quit immediately\n");
