@@ -1,6 +1,8 @@
 language: c
 sudo: false
 dist: trusty
+services:
+  - docker
 git:
   depth: 1
 env:
@@ -66,12 +68,19 @@ matrix:
       apt:
         packages:
         - musl-tools
+  - env:
+    - BUILD_CC="musl-gcc"
+    - BIN_NAME="pihole-FTL-musl-armhf"
+    - DOCKER_INIT="docker run --rm --privileged multiarch/qemu-user-static:register --reset"
+    - DOCKER="docker run --rm -it -v ${TRAVIS_BUILD_DIR}:/build diginc/multiarch-deb-debootstrap:armhf-musl-jessie"
+    sudo: true
 before_script:
 - mkdir -p "${DEST_DIR}"
 - make clean
 script:
-- make pihole-FTL CC="${BUILD_CC}" CFLAGS="${CFLAGS}"
-- file pihole-FTL
+- $DOCKER_INIT
+- $DOCKER make pihole-FTL CC="${BUILD_CC}" CFLAGS="${CFLAGS}"
+- $DOCKER file pihole-FTL
 - if [[ "${BIN_NAME}" == "pihole-FTL-linux-x86_64" ]]; then test/run.sh; fi
 - mv pihole-FTL "${DEST_DIR}/${BIN_NAME}"
 - cd "${DEST_DIR}"
