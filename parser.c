@@ -817,7 +817,7 @@ int detectStatus(const char *domain)
 		while(sscanf(part,"%*[^.].%s", partbuffer) > 0)
 		{
 			// Test for a match
-			if(strcmp(wildcarddomains[i], partbuffer) == 0)
+			if(strcasecmp(wildcarddomains[i], partbuffer) == 0)
 			{
 				// Free allocated memory before return'ing
 				free(part);
