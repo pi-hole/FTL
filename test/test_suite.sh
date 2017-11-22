@@ -36,7 +36,7 @@ load 'libs/bats-support/load'
   echo "output: ${lines[@]}"
   [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
   [[ ${lines[1]} =~ "0 4 192.168.2.208" ]]
-  [[ ${lines[2]} =~ "1 2 127.0.0.1"]]
+  [[ ${lines[2]} =~ "1 2 127.0.0.1" ]]
   [[ ${lines[3]} =~ "2 1 10.8.0.2" ]]
   [[ ${lines[4]} == "---EOM---" ]]
 }
