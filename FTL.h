@@ -38,6 +38,8 @@
 #include <syslog.h>
 // SQLite
 #include "sqlite3.h"
+// tolower()
+#include <ctype.h>
 
 #include "routines.h"
 

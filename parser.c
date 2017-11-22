@@ -91,6 +91,13 @@ void get_file_permissions(const char *path)
 	logg("Reading from %s (%s)", path, permissions);
 }
 
+// converts upper to lower case, and leaves other characters unchanged
+void strtolower(char *str)
+{
+	int i = 0;
+	while(str[i]){ str[i] = tolower(str[i]); i++; }
+}
+
 void *pihole_log_thread(void *val)
 {
 	prctl(PR_SET_NAME,"loganalyzer",0,0,0);
@@ -329,6 +336,8 @@ void process_pihole_log(int file)
 			char *domainwithspaces = calloc(domainlen+3,sizeof(char));
 			// strncat() NULL-terminates the copied string (strncpy() doesn't!)
 			strncat(domain,domainstart+2,domainlen);
+			// Convert domain to lower case
+			strtolower(domain);
 			sprintf(domainwithspaces," %s ",domain);
 
 			if(strcmp(domain, "pi.hole") == 0)
@@ -366,6 +375,8 @@ void process_pihole_log(int file)
 			char *client = calloc(clientlen+1,sizeof(char));
 			// strncat() NULL-terminates the copied string (strncpy() doesn't!)
 			strncat(client,domainend+6,clientlen);
+			// Convert client to lower case
+			strtolower(client);
 
 			// Get type
 			unsigned char type = 0;
@@ -514,7 +525,11 @@ void process_pihole_log(int file)
 				char *hostname = resolveHostname(client);
 				// Debug output
 				if(strlen(hostname) > 0)
+				{
+					// Convert hostname to lower case
+					strtolower(hostname);
 					logg("New client: %s %s (%i/%i)", client, hostname, clientID, counters.clients_MAX);
+				}
 				else
 					logg("New client: %s (%i/%i)", client, clientID, counters.clients_MAX);
 
@@ -932,6 +947,8 @@ int getforwardID(const char * str, bool count)
 	char *forward = calloc(forwardlen+1,sizeof(char));
 	// strncat() NULL-terminates the copied string (strncpy() doesn't!)
 	strncat(forward,forwardstart+4,forwardlen);
+	// Convert forward to lower case
+	strtolower(forward);
 
 	bool processed = false;
 	int i, forwardID = -1;
@@ -958,7 +975,11 @@ int getforwardID(const char * str, bool count)
 		// Get forward destination host name
 		char *hostname = resolveHostname(forward);
 		if(strlen(hostname) > 0)
+		{
+			// Convert hostname to lower case
+			strtolower(hostname);
 			logg("New forward server: %s %s (%i/%i)", forward, hostname, forwardID, counters.forwarded_MAX);
+		}
 		else
 			logg("New forward server: %s (%i/%u)", forward, forwardID, counters.forwarded_MAX);
 
