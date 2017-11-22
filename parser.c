@@ -789,7 +789,7 @@ int detectStatus(const char *domain)
 	for(i=0; i < counters.wildcarddomains; i++)
 	{
 		validate_access("wildcarddomains", i, false, __LINE__, __FUNCTION__, __FILE__);
-		if(strcmp(wildcarddomains[i], domain) == 0)
+		if(strcasecmp(wildcarddomains[i], domain) == 0)
 		{
 			// Exact match with wildcard domain
 			// if(debug)
