@@ -12,6 +12,7 @@
 
 volatile sig_atomic_t killed = 0;
 int FTLstarttime = 0;
+bool rereadgravity = false;
 
 static void SIGTERM_handler(int sig, siginfo_t *si, void *unused)
 {
@@ -69,8 +70,14 @@ static void SIGSEGV_handler(int sig, siginfo_t *si, void *unused)
 
 static void SIGUSR1_handler(int signum)
 {
-	logg("NOTICE: Received signal SIGUSR1");
+	logg("NOTICE: Received signal SIGUSR1 - re-parsing log files");
 	flush = true;
+}
+
+static void SIGHUP_handler(int signum)
+{
+	logg("NOTICE: Received signal SIGHUP - re-reading gravity files");
+	rereadgravity = true;
 }
 
 void handle_signals(void)
@@ -124,6 +131,17 @@ void handle_signals(void)
 		sigemptyset(&USR1action.sa_mask);
 		USR1action.sa_handler = &SIGUSR1_handler;
 		sigaction(SIGUSR1, &USR1action, NULL);
+	}
+
+	// Catch SIGHUP
+	sigaction (SIGHUP, NULL, &old_action);
+	if(old_action.sa_handler != SIG_IGN)
+	{
+		struct sigaction HUPaction;
+		memset(&HUPaction, 0, sizeof(struct sigaction));
+		sigemptyset(&HUPaction.sa_mask);
+		HUPaction.sa_handler = &SIGHUP_handler;
+		sigaction(SIGHUP, &HUPaction, NULL);
 	}
 
 	// Log start time of FTL

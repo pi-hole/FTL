@@ -38,6 +38,8 @@
 #include <syslog.h>
 // SQLite
 #include "sqlite3.h"
+// tolower()
+#include <ctype.h>
 
 #include "routines.h"
 
@@ -86,6 +88,7 @@ typedef struct {
 	const char* setupVars;
 	const char* wildcards;
 	const char* auditlist;
+	const char* dnsmasqconfig;
 } logFileNamesStruct;
 
 typedef struct {
@@ -120,6 +123,8 @@ typedef struct {
 	bool query_display;
 	bool analyze_AAAA;
 	int maxDBdays;
+	bool resolveIPv6;
+	bool resolveIPv4;
 } ConfigStruct;
 
 // Dynamic structs
@@ -168,6 +173,8 @@ typedef struct {
 	int forwardnum;
 	int *forwarddata;
 	int *querytypedata;
+	int clientnum;
+	int *clientdata;
 } overTimeDataStruct;
 
 typedef struct {
@@ -178,6 +185,7 @@ typedef struct {
 	int forwardedips;
 	int forwardednames;
 	int forwarddata;
+	int clientdata;
 	int querytypedata;
 } memoryStruct;
 
@@ -209,6 +217,7 @@ bool debugGC;
 bool debugDB;
 bool threadwritelock;
 bool threadreadlock;
+unsigned char blockingstatus;
 
 char ** wildcarddomains;
 
@@ -224,3 +233,4 @@ bool database;
 long int lastdbindex;
 bool travis;
 bool DBdeleteoldqueries;
+bool rereadgravity;

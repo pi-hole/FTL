@@ -27,7 +27,8 @@ load 'libs/bats-support/load'
   [[ ${lines[7]} =~ "queries_cached 2" ]]
   [[ ${lines[8]} == "clients_ever_seen 3" ]]
   [[ ${lines[9]} == "unique_clients 3" ]]
-  [[ ${lines[10]} == "---EOM---" ]]
+  [[ ${lines[10]} == "status unknown" ]]
+  [[ ${lines[11]} == "---EOM---" ]]
 }
 
 @test "Top Clients" {
@@ -35,7 +36,7 @@ load 'libs/bats-support/load'
   echo "output: ${lines[@]}"
   [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
   [[ ${lines[1]} =~ "0 4 192.168.2.208" ]]
-  [[ ${lines[2]} == "1 2 127.0.0.1 localhost" ]]
+  [[ ${lines[2]} =~ "1 2 127.0.0.1" ]]
   [[ ${lines[3]} =~ "2 1 10.8.0.2" ]]
   [[ ${lines[4]} == "---EOM---" ]]
 }
@@ -105,8 +106,8 @@ load 'libs/bats-support/load'
   run bash -c 'echo ">getallqueries" | nc -v 127.0.0.1 4711'
   echo "output: ${lines[@]}"
   [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
-  [[ ${lines[1]} =~ "IPv6 raspberrypi localhost 3" ]]
-  [[ ${lines[2]} =~ "IPv4 checkip.dyndns.org localhost 2" ]]
+  [[ ${lines[1]} =~ "IPv6 raspberrypi" ]]
+  [[ ${lines[2]} =~ "IPv4 checkip.dyndns.org" ]]
   [[ ${lines[3]} =~ "IPv4 example.com" ]]
   [[ ${lines[4]} =~ "IPv4 play.google.com" ]]
   [[ ${lines[5]} =~ "IPv6 play.google.com" ]]
@@ -133,19 +134,19 @@ load 'libs/bats-support/load'
 }
 
 @test "Get all queries (client filtered)" {
-  run bash -c 'echo ">getallqueries-client localhost" | nc -v 127.0.0.1 4711'
+  run bash -c 'echo ">getallqueries-client 127.0.0.1" | nc -v 127.0.0.1 4711'
   echo "output: ${lines[@]}"
   [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
-  [[ ${lines[1]} =~ "IPv6 raspberrypi localhost 3" ]]
-  [[ ${lines[2]} =~ "IPv4 checkip.dyndns.org localhost 2" ]]
+  [[ ${lines[1]} =~ "IPv6 raspberrypi" ]]
+  [[ ${lines[2]} =~ "IPv4 checkip.dyndns.org" ]]
   [[ ${lines[3]} == "---EOM---" ]]
 }
 
 @test "Get all queries (client + number filtered)" {
-  run bash -c 'echo ">getallqueries-client localhost (6)" | nc -v 127.0.0.1 4711'
+  run bash -c 'echo ">getallqueries-client 127.0.0.1 (6)" | nc -v 127.0.0.1 4711'
   echo "output: ${lines[@]}"
   [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
-  [[ ${lines[1]} =~ "IPv4 checkip.dyndns.org localhost 2" ]]
+  [[ ${lines[1]} =~ "IPv4 checkip.dyndns.org" ]]
   [[ ${lines[2]} == "---EOM---" ]]
 }
 
@@ -180,6 +181,19 @@ load 'libs/bats-support/load'
   [[ "${lines[@]}" == *"CREATE TABLE queries ( id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL, type INTEGER NOT NULL, status INTEGER NOT NULL, domain TEXT NOT NULL, client TEXT NOT NULL, forward TEXT );"* ]]
   [[ "${lines[@]}" == *"CREATE TABLE ftl ( id INTEGER PRIMARY KEY NOT NULL, value BLOB NOT NULL );"* ]]
   [[ "${lines[@]}" == *"INSERT INTO \"ftl\" VALUES(0,1);"* ]]
+}
+
+@test "Arguments check: Invalid option" {
+  run bash -c './pihole-FTL abc'
+  echo "output: ${lines[@]}"
+  [[ ${lines[0]} == "pihole-FTL: invalid option -- 'abc'" ]]
+  [[ ${lines[1]} == "Try './pihole-FTL --help' for more information" ]]
+}
+
+@test "Help argument return help text" {
+  run bash -c './pihole-FTL help'
+  echo "output: ${lines[@]}"
+  [[ ${lines[0]} == "pihole-FTL - The Pi-hole FTL engine" ]]
 }
 
 @test "Final part of the tests: Killing pihole-FTL process" {

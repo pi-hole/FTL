@@ -91,6 +91,13 @@ void get_file_permissions(const char *path)
 	logg("Reading from %s (%s)", path, permissions);
 }
 
+// converts upper to lower case, and leaves other characters unchanged
+void strtolower(char *str)
+{
+	int i = 0;
+	while(str[i]){ str[i] = tolower(str[i]); i++; }
+}
+
 void *pihole_log_thread(void *val)
 {
 	prctl(PR_SET_NAME,"loganalyzer",0,0,0);
@@ -272,6 +279,8 @@ void process_pihole_log(int file)
 					overTime[timeidx].forwardnum = 0;
 					overTime[timeidx].forwarddata = NULL;
 					overTime[timeidx].querytypedata = calloc(2, sizeof(int));
+					overTime[timeidx].clientnum = 0;
+					overTime[timeidx].clientdata = NULL;
 					memory.querytypedata += 2*sizeof(int);
 					counters.overTime++;
 
@@ -327,6 +336,8 @@ void process_pihole_log(int file)
 			char *domainwithspaces = calloc(domainlen+3,sizeof(char));
 			// strncat() NULL-terminates the copied string (strncpy() doesn't!)
 			strncat(domain,domainstart+2,domainlen);
+			// Convert domain to lower case
+			strtolower(domain);
 			sprintf(domainwithspaces," %s ",domain);
 
 			if(strcmp(domain, "pi.hole") == 0)
@@ -364,6 +375,8 @@ void process_pihole_log(int file)
 			char *client = calloc(clientlen+1,sizeof(char));
 			// strncat() NULL-terminates the copied string (strncpy() doesn't!)
 			strncat(client,domainend+6,clientlen);
+			// Convert client to lower case
+			strtolower(client);
 
 			// Get type
 			unsigned char type = 0;
@@ -512,7 +525,11 @@ void process_pihole_log(int file)
 				char *hostname = resolveHostname(client);
 				// Debug output
 				if(strlen(hostname) > 0)
+				{
+					// Convert hostname to lower case
+					strtolower(hostname);
 					logg("New client: %s %s (%i/%i)", client, hostname, clientID, counters.clients_MAX);
+				}
 				else
 					logg("New client: %s (%i/%i)", client, clientID, counters.clients_MAX);
 
@@ -600,6 +617,27 @@ void process_pihole_log(int file)
 					break;
 			}
 
+			// Determine if there is enough space for saving the current
+			// clientID in the overTime data structure, allocate space otherwise
+			validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
+			if(overTime[timeidx].clientnum <= clientID)
+			{
+				// Reallocate more space for clientdata
+				overTime[timeidx].clientdata = realloc(overTime[timeidx].clientdata, (clientID+1)*sizeof(*overTime[timeidx].clientdata));
+				// Initialize new data fields with zeroes
+				for(i = overTime[timeidx].clientnum; i <= clientID; i++)
+				{
+					overTime[timeidx].clientdata[i] = 0;
+					memory.clientdata++;
+				}
+				// Update counter
+				overTime[timeidx].clientnum = clientID + 1;
+			}
+
+			// Update overTime data structure with the new client
+			validate_access_oTcl(timeidx, clientID, __LINE__, __FUNCTION__, __FILE__);
+			overTime[timeidx].clientdata[clientID]++;
+
 			// Free allocated memory
 			free(client);
 			free(domain);
@@ -655,11 +693,13 @@ void process_pihole_log(int file)
 				overTime[timeidx].forwardnum = 0;
 				overTime[timeidx].forwarddata = NULL;
 				overTime[timeidx].querytypedata = calloc(2, sizeof(int));
+				overTime[timeidx].clientnum = 0;
+				overTime[timeidx].clientdata = NULL;
 				memory.querytypedata += 2*sizeof(int);
 				counters.overTime++;
 			}
 			// Determine if there is enough space for saving the current
-			// forwardID in the overTime data structure -allocate space otherwise
+			// forwardID in the overTime data structure, allocate space otherwise
 			validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 			if(overTime[timeidx].forwardnum <= forwardID)
 			{
@@ -678,16 +718,6 @@ void process_pihole_log(int file)
 			// Update overTime data structure with the new forwarder
 			validate_access_oTfd(timeidx, forwardID, __LINE__, __FUNCTION__, __FILE__);
 			overTime[timeidx].forwarddata[forwardID]++;
-		}
-		else if((strstr(readbuffer,"IPv6") != NULL) &&
-		        (strstr(readbuffer,"DBus") != NULL) &&
-		        (strstr(readbuffer,"i18n") != NULL) &&
-		        (strstr(readbuffer,"DHCP") != NULL) &&
-		         !initialscan)
-		{
-			// dnsmasq restartet
-			logg("dnsmasq process restarted");
-			read_gravity_files();
 		}
 
 		// Save file pointer position, because we might have to repeat
@@ -729,15 +759,23 @@ void process_pihole_log(int file)
 char *resolveHostname(const char *addr)
 {
 	// Get host name
-	struct hostent *he;
+	struct hostent *he = NULL;
 	char *hostname;
+	bool IPv6 = false;
+
+	// Test if we want to resolve an IPv6 address
 	if(strstr(addr,":") != NULL)
+	{
+		IPv6 = true;
+	}
+
+	if(IPv6 && config.resolveIPv6) // Resolve IPv6 address only if requested
 	{
 		struct in6_addr ipaddr;
 		inet_pton(AF_INET6, addr, &ipaddr);
 		he = gethostbyaddr(&ipaddr, sizeof ipaddr, AF_INET6);
 	}
-	else
+	else if(!IPv6 && config.resolveIPv4) // Resolve IPv4 address only if requested
 	{
 		struct in_addr ipaddr;
 		inet_pton(AF_INET, addr, &ipaddr);
@@ -746,11 +784,13 @@ char *resolveHostname(const char *addr)
 
 	if(he == NULL)
 	{
+		// No hostname found
 		hostname = calloc(1,sizeof(char));
 		hostname[0] = '\0';
 	}
 	else
 	{
+		// Return hostname copied to new memory location
 		hostname = strdup(he->h_name);
 	}
 
@@ -764,7 +804,7 @@ int detectStatus(const char *domain)
 	for(i=0; i < counters.wildcarddomains; i++)
 	{
 		validate_access("wildcarddomains", i, false, __LINE__, __FUNCTION__, __FILE__);
-		if(strcmp(wildcarddomains[i], domain) == 0)
+		if(strcasecmp(wildcarddomains[i], domain) == 0)
 		{
 			// Exact match with wildcard domain
 			// if(debug)
@@ -792,7 +832,7 @@ int detectStatus(const char *domain)
 		while(sscanf(part,"%*[^.].%s", partbuffer) > 0)
 		{
 			// Test for a match
-			if(strcmp(wildcarddomains[i], partbuffer) == 0)
+			if(strcasecmp(wildcarddomains[i], partbuffer) == 0)
 			{
 				// Free allocated memory before return'ing
 				free(part);
@@ -844,8 +884,21 @@ void extracttimestamp(const char *readbuffer, int *querytimestamp, int *overTime
 	// %M = Minute (00-59)
 	// %S = Second (00-59)
 	strptime(timestamp, "%b %e %H:%M:%S", &querytime);
-	// Year is missing in dnsmasq's output - add the current year
-	querytime.tm_year = (*timeinfo).tm_year;
+
+	// Year is missing in dnsmasq's output so we have to take care of it
+	if(querytime.tm_mon == 11 && (*timeinfo).tm_mon == 0)
+	{
+		// Special case: read timestamp in December (e.g. 2017), but current
+		// month is already January (e.g. 2018) -> use (year-1) for this timestamp
+		// Note that months are counted from January on, i.e.
+		// January == 0, December == 11
+		querytime.tm_year = (*timeinfo).tm_year - 1;
+	}
+	else
+	{
+		// In all other cases: Use current year
+		querytime.tm_year = (*timeinfo).tm_year;
+	}
 
 	// DST - according to ISO/IEC 9899:TC3
 	// > A negative value causes mktime to attempt to determine whether
@@ -894,6 +947,8 @@ int getforwardID(const char * str, bool count)
 	char *forward = calloc(forwardlen+1,sizeof(char));
 	// strncat() NULL-terminates the copied string (strncpy() doesn't!)
 	strncat(forward,forwardstart+4,forwardlen);
+	// Convert forward to lower case
+	strtolower(forward);
 
 	bool processed = false;
 	int i, forwardID = -1;
@@ -920,7 +975,11 @@ int getforwardID(const char * str, bool count)
 		// Get forward destination host name
 		char *hostname = resolveHostname(forward);
 		if(strlen(hostname) > 0)
+		{
+			// Convert hostname to lower case
+			strtolower(hostname);
 			logg("New forward server: %s %s (%i/%i)", forward, hostname, forwardID, counters.forwarded_MAX);
+		}
 		else
 			logg("New forward server: %s (%i/%u)", forward, forwardID, counters.forwarded_MAX);
 
@@ -1031,7 +1090,18 @@ void validate_access_oTfd(int timeidx, int pos, int line, const char * function,
 	if(pos >= limit || pos < 0)
 	{
 		logg("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-		logg("FATAL ERROR: Trying to access overTime.forwardata[%i], but maximum is %i", pos, limit);
+		logg("FATAL ERROR: Trying to access overTime.forwarddata[%i], but maximum is %i", pos, limit);
+		logg("             found in %s() (line %i) in %s", function, line, file);
+	}
+}
+
+void validate_access_oTcl(int timeidx, int pos, int line, const char * function, const char * file)
+{
+	int limit = overTime[timeidx].clientnum;
+	if(pos >= limit || pos < 0)
+	{
+		logg("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+		logg("FATAL ERROR: Trying to access overTime.clientdata[%i], but maximum is %i", pos, limit);
 		logg("             found in %s() (line %i) in %s", function, line, file);
 	}
 }
