@@ -35,6 +35,7 @@ void getPiholeStatus(int *sock, char type);
 enum { OK, BAD_REQUEST, INTERNAL_ERROR, NOT_FOUND };
 
 // General API commands
+char* getPayload(char *http_message);
 void sendAPIResponse(int sock, char type, char http_code);
 bool matchesRegex(char *regex_expression, char *input);
 bool isValidDomain(char *domain);

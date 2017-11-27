@@ -39,6 +39,24 @@ void sendAPIResponse(int sock, char type, char http_code) {
 	}
 }
 
+char* getPayload(char *http_message) {
+	char *data_start;
+	char *unix_newline = strstr(http_message, "\n\n");
+	char *win_newline = strstr(http_message, "\r\n\r\n");
+
+	if(unix_newline != NULL)
+		data_start = unix_newline + 2;
+	else if(win_newline != NULL)
+		data_start = win_newline + 4;
+	else
+		return NULL;
+
+	if(strlen(data_start) == 0)
+		return NULL;
+
+	return data_start;
+}
+
 bool matchesRegex(char *regex_expression, char *input) {
 	regex_t regex;
 	int result;
