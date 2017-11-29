@@ -25,8 +25,13 @@ void check_database(int rc)
 	// However, we won't retry if any other error happened
 	// and - instead - disable the database functionality
 	// altogether in FTL (setting database to false)
-	if(rc != SQLITE_OK && rc != SQLITE_BUSY)
+	if(rc != SQLITE_OK &&
+	   rc != SQLITE_DONE &&
+	   rc != SQLITE_ROW &&
+	   rc != SQLITE_BUSY)
+	{
 		database = false;
+	}
 }
 
 void dbclose(void)
@@ -357,8 +362,9 @@ void save_to_DB(void)
 				logg("save_to_DB() - exiting due to too many errors");
 				break;
 			}
+			// Check this error message
+			check_database(rc);
 		}
-		check_database(rc);
 
 		saved++;
 		// Mark this query as saved in the database only if successful
