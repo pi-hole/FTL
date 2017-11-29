@@ -19,6 +19,16 @@ pthread_mutex_t dblock;
 
 enum { DB_VERSION, DB_LASTTIMESTAMP };
 
+void check_database(int rc)
+{
+	// We will retry if the database is busy at the moment
+	// However, we won't retry if any other error happened
+	// and - instead - disable the database functionality
+	// altogether in FTL (setting database to false)
+	if(rc != SQLITE_OK && rc != SQLITE_BUSY)
+		database = false;
+}
+
 void dbclose(void)
 {
 	sqlite3_close(db);
@@ -51,6 +61,7 @@ bool dbopen(void)
 	if( rc ){
 		logg("dbopen() - SQL error (%i): %s", rc, sqlite3_errmsg(db));
 		dbclose();
+		check_database(rc);
 		return false;
 	}
 
@@ -81,6 +92,7 @@ bool dbquery(const char *format, ...)
 	if( rc != SQLITE_OK ){
 		logg("dbquery(%s) - SQL error (%i): %s", query, rc, zErrMsg);
 		sqlite3_free(zErrMsg);
+		check_database(rc);
 		return false;
 	}
 
@@ -97,6 +109,7 @@ bool db_create(void)
 	if( rc ){
 		logg("db_create() - SQL error (%i): %s", rc, sqlite3_errmsg(db));
 		dbclose();
+		check_database(rc);
 		return false;
 	}
 	// Create Queries table in the database
@@ -132,6 +145,7 @@ void db_init(void)
 	if( rc ){
 		logg("db_init() - Cannot open database (%i): %s", rc, sqlite3_errmsg(db));
 		dbclose();
+		check_database(rc);
 
 		logg("Creating new (empty) database");
 		if (!db_create())
@@ -172,6 +186,7 @@ int db_get_FTL_property(unsigned int ID)
 	if( rc ){
 		logg("db_get_FTL_property() - SQL error prepare (%i): %s", rc, sqlite3_errmsg(db));
 		dbclose();
+		check_database(rc);
 		return -1;
 	}
 	free(querystring);
@@ -181,6 +196,7 @@ int db_get_FTL_property(unsigned int ID)
 	if( rc != SQLITE_ROW ){
 		logg("db_get_FTL_property() - SQL error step (%i): %s", rc, sqlite3_errmsg(db));
 		dbclose();
+		check_database(rc);
 		return -1;
 	}
 
@@ -205,6 +221,7 @@ int number_of_queries_in_DB(void)
 	if( rc ){
 		logg("number_of_queries_in_DB() - SQL error prepare (%i): %s", rc, sqlite3_errmsg(db));
 		dbclose();
+		check_database(rc);
 		return -1;
 	}
 
@@ -212,6 +229,7 @@ int number_of_queries_in_DB(void)
 	if( rc != SQLITE_ROW ){
 		logg("number_of_queries_in_DB() - SQL error step (%i): %s", rc, sqlite3_errmsg(db));
 		dbclose();
+		check_database(rc);
 		return -1;
 	}
 
@@ -274,6 +292,7 @@ void save_to_DB(void)
 	{
 		logg("save_to_DB() - error in preparing SQL statement (%i): %s", ret, sqlite3_errmsg(db));
 		dbclose();
+		check_database(rc);
 		return;
 	}
 
@@ -339,6 +358,7 @@ void save_to_DB(void)
 				break;
 			}
 		}
+		check_database(rc);
 
 		saved++;
 		// Mark this query as saved in the database only if successful
