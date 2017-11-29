@@ -130,8 +130,31 @@ void read_FTLconf(void)
 	else
 		logg("   RESOLVE_IPV4: Don\'t resolve IPv4 addresses");
 
+	// DBFILE
+	// defaults to: "/etc/pihole/pihole-FTL.db"
+	buffer = parse_FTLconf(fp, "DBFILE");
+
+	if(buffer != NULL && sscanf(buffer, "%127ms", &FTLfiles.db))
+	{
+		// Using custom path
+	}
+	else
+	{
+		FTLfiles.db = strdup("/etc/pihole/pihole-FTL.db");
+	}
+
+	// Test if memory allocation was successful
+	if(FTLfiles.db == NULL)
+	{
+		logg("FATAL: Allocating memory for FTLfiles.db failed (%i). Exiting.", errno);
+		exit(EXIT_FAILURE);
+	}
+
+	logg("   DBFILE: Using %s", FTLfiles.db);
+
 	logg("Finished config file parsing");
 
+	// Release memory
 	if(conflinebuffer != NULL)
 	{
 		free(conflinebuffer);
