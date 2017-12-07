@@ -28,7 +28,7 @@ void read_FTLconf(void)
 	}
 
 	// Parse lines in the config file
-	logg("Starting config file parsing");
+	logg("Starting config file parsing (%s)", FTLfiles.conf);
 
 	// SOCKET_LISTENING
 	// defaults to: listen only local
