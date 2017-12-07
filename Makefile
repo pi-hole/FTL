@@ -13,6 +13,7 @@ OBJ = main.o structs.o log.o daemon.o parser.o signals.o socket.o request.o grep
 
 # Get git commit version and date
 GIT_BRANCH := $(shell git branch | sed -n 's/^\* //p')
+GIT_HASH := $(shell git --no-pager describe --always --dirty)
 GIT_VERSION := $(shell git --no-pager describe --tags --always --dirty)
 GIT_DATE := $(shell git --no-pager show --date=short --format="%ai" --name-only | head -n 1)
 GIT_TAG := $(shell git describe --tags --abbrev=0)
@@ -72,6 +73,7 @@ version.h: version~
 	@echo '#define GIT_DATE "$(GIT_DATE)"' >> "$@"
 	@echo '#define GIT_BRANCH "$(GIT_BRANCH)"' >> "$@"
 	@echo '#define GIT_TAG "$(GIT_TAG)"' >> "$@"
+	@echo '#define GIT_HASH "$(GIT_HASH)"' >> "$@"
 	@echo "Making FTL version on branch $(GIT_BRANCH) - $(GIT_VERSION) ($(GIT_DATE))"
 
 prefix=/usr

@@ -31,6 +31,7 @@ void process_pihole_log(int file);
 void *pihole_log_thread(void *val);
 void validate_access(const char * name, int pos, bool testmagic, int line, const char * function, const char * file);
 void validate_access_oTfd(int timeidx, int pos, int line, const char * function, const char * file);
+void validate_access_oTcl(int timeidx, int pos, int line, const char * function, const char * file);
 void reresolveHostnames(void);
 
 void pihole_log_flushed(bool message);
@@ -49,6 +50,7 @@ void formatNumber(bool raw, int n, char* buffer);
 void read_gravity_files(void);
 int countlines(const char* fname);
 int countlineswith(const char* str, const char* fname);
+void check_blocking_status(void);
 
 void check_setupVarsconf(void);
 char * read_setupVarsconf(const char * key);

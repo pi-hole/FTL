@@ -30,6 +30,8 @@ void getClientID(int *sock);
 void getQueryTypesOverTime(int *sock);
 void getVersion(int *sock);
 void getDBstats(int *sock);
+void getClientsOverTime(int *sock);
+void getClientNames(int *sock);
 
 void process_request(char *client_message, int *sock)
 {
@@ -112,6 +114,16 @@ void process_request(char *client_message, int *sock)
 	{
 		processed = true;
 		getDBstats(sock);
+	}
+	else if(command(client_message, ">ClientsoverTime"))
+	{
+		processed = true;
+		getClientsOverTime(sock);
+	}
+	else if(command(client_message, ">client-names"))
+	{
+		processed = true;
+		getClientNames(sock);
 	}
 
 	// Test only at the end if we want to quit or kill
@@ -229,8 +241,20 @@ void getStats(int *sock)
 	{
 		percentage = 1e2*blocked/total;
 	}
-	sprintf(server_message,"domains_being_blocked %i\ndns_queries_today %i\nads_blocked_today %i\nads_percentage_today %f\n", \
-	        counters.gravity,total,blocked,percentage);
+
+	switch(blockingstatus)
+	{
+		case 0: // Blocking disabled
+			sprintf(server_message,"domains_being_blocked N/A\n");
+			swrite(server_message, *sock);
+			break;
+		default: // Either unknown or enabled
+			sprintf(server_message,"domains_being_blocked %i\n",counters.gravity);
+			swrite(server_message, *sock);
+			break;
+	}
+	sprintf(server_message,"dns_queries_today %i\nads_blocked_today %i\nads_percentage_today %f\n", \
+	        total,blocked,percentage);
 	swrite(server_message, *sock);
 	sprintf(server_message,"unique_domains %i\nqueries_forwarded %i\nqueries_cached %i\n", \
 	        counters.domains,counters.forwardedqueries,counters.cached);
@@ -252,6 +276,22 @@ void getStats(int *sock)
 	sprintf(server_message,"unique_clients %i\n", \
 	        activeclients);
 	swrite(server_message, *sock);
+
+	switch(blockingstatus)
+	{
+		case 0: // Blocking disabled
+			sprintf(server_message,"status disabled\n");
+			swrite(server_message, *sock);
+			break;
+		case 1: // Blocking Enabled
+			sprintf(server_message,"status enabled\n");
+			swrite(server_message, *sock);
+			break;
+		default: // Unknown status
+			sprintf(server_message,"status unknown\n");
+			swrite(server_message, *sock);
+			break;
+	}
 
 	if(debugclients)
 		logg("Sent stats data to client, ID: %i", *sock);
@@ -439,7 +479,7 @@ void getTopClients(char *client_message, int *sock)
 	// Sort temporary array
 	qsort(temparray, counters.clients, sizeof(int[2]), cmpasc);
 
-	// Get domains which the user doesn't want to see
+	// Get clients which the user doesn't want to see
 	char * excludeclients = read_setupVarsconf("API_EXCLUDE_CLIENTS");
 	if(excludeclients != NULL)
 	{
@@ -997,7 +1037,11 @@ void getQueryTypesOverTime(int *sock)
 void getVersion(int *sock)
 {
 	char server_message[SOCKETBUFFERLEN];
-	sprintf(server_message,"version %s\ntag %s\nbranch %s\ndate %s\n", GIT_VERSION, GIT_TAG, GIT_BRANCH, GIT_DATE);
+
+	if(strcmp(GIT_BRANCH, "master") == 0)
+		sprintf(server_message,"version %s\ntag %s\nbranch %s\ndate %s\n", GIT_VERSION, GIT_TAG, GIT_BRANCH, GIT_DATE);
+	else
+		sprintf(server_message,"version vDev-%s\ntag %s\nbranch %s\ndate %s\n", GIT_HASH, GIT_TAG, GIT_BRANCH, GIT_DATE);
 	swrite(server_message, *sock);
 
 	if(debugclients)
@@ -1025,4 +1069,117 @@ void getDBstats(int *sock)
 
 	if(debugclients)
 		logg("Sent DB info to client, ID: %i", *sock);
+}
+
+void getClientsOverTime(int *sock)
+{
+	char server_message[SOCKETBUFFERLEN];
+	int i, sendit = -1;
+
+	for(i = 0; i < counters.overTime; i++)
+	{
+		validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
+		if((overTime[i].total > 0 || overTime[i].blocked > 0))
+		{
+			sendit = i;
+			break;
+		}
+	}
+	if(sendit < 0)
+		return;
+
+	// Get clients which the user doesn't want to see
+	char * excludeclients = read_setupVarsconf("API_EXCLUDE_CLIENTS");
+	// Array of clients to be skipped in the output
+	// if skipclient[i] == true then this client should be hidden from
+	// returned data. We initialize it with false
+	bool skipclient[counters.clients];
+	memset(skipclient, false, counters.clients*sizeof(bool));
+
+	if(excludeclients != NULL)
+	{
+		getSetupVarsArray(excludeclients);
+
+		for(i=0; i < counters.clients; i++)
+		{
+			validate_access("clients", i, true, __LINE__, __FUNCTION__, __FILE__);
+			// Check if this client should be skipped
+			if(insetupVarsArray(clients[i].ip) || insetupVarsArray(clients[i].name))
+			{
+				skipclient[i] = true;
+			}
+		}
+	}
+
+	// Main return loop
+	for(i = sendit; i < counters.overTime; i++)
+	{
+		validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
+		sprintf(server_message, "%i", overTime[i].timestamp);
+
+		// Loop over forward destinations to generate output to be sent to the client
+		int j;
+		for(j = 0; j < counters.clients; j++)
+		{
+			int thisclient = 0;
+
+			if(skipclient[j])
+				continue;
+
+			if(j < overTime[i].clientnum)
+			{
+				// This client entry does already exist at this timestamp
+				// -> use counter of requests sent to this destination
+				thisclient = overTime[i].clientdata[j];
+			}
+
+			sprintf(server_message + strlen(server_message), " %i", thisclient);
+		}
+
+		sprintf(server_message + strlen(server_message), "\n");
+		swrite(server_message, *sock);
+	}
+
+	if(excludeclients != NULL)
+		clearSetupVarsArray();
+}
+
+void getClientNames(int *sock)
+{
+	char server_message[SOCKETBUFFERLEN];
+	int i;
+
+	// Get clients which the user doesn't want to see
+	char * excludeclients = read_setupVarsconf("API_EXCLUDE_CLIENTS");
+	// Array of clients to be skipped in the output
+	// if skipclient[i] == true then this client should be hidden from
+	// returned data. We initialize it with false
+	bool skipclient[counters.clients];
+	memset(skipclient, false, counters.clients*sizeof(bool));
+
+	if(excludeclients != NULL)
+	{
+		getSetupVarsArray(excludeclients);
+
+		for(i=0; i < counters.clients; i++)
+		{
+			validate_access("clients", i, true, __LINE__, __FUNCTION__, __FILE__);
+			// Check if this client should be skipped
+
+		}
+	}
+
+	// Loop over clients to generate output to be sent to the client
+	for(i = 0; i < counters.clients; i++)
+	{
+		validate_access("clients", i, true, __LINE__, __FUNCTION__, __FILE__);
+		if(insetupVarsArray(clients[i].ip) || insetupVarsArray(clients[i].name))
+			continue;
+
+		sprintf(server_message,"%i %i %s %s\n", i, clients[i].count, clients[i].ip, clients[i].name);
+		swrite(server_message, *sock);
+	}
+
+	if(excludeclients != NULL)
+		clearSetupVarsArray();
 }
