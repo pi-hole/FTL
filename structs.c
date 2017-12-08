@@ -12,7 +12,7 @@
 
 FTLFileNamesStruct FTLfiles = {
 	"/etc/pihole/pihole-FTL.conf",
-	"/var/log/pihole-FTL.log",
+	"/var/log/pihole/FTL.log",
 	"/var/run/pihole-FTL.pid",
 	"/var/run/pihole-FTL.port",
 	"/etc/pihole/pihole-FTL.db"
