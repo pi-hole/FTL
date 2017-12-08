@@ -70,10 +70,10 @@ void parse_args(int argc, char* argv[])
 		if(strcmp(argv[i], "-v") == 0 ||
 		   strcmp(argv[i], "version") == 0)
 		{
-			char version[] = GIT_BRANCH;
-			// Check if version is of format vX.YYY or vXX.YYY
+			char version[] = GIT_VERSION;
+			// Check if version is of format vX.YY
 			// '.' can never be part of a commit hash
-			if(version[2] == '.' || version[3] == '.')
+			if(strstr(version, ".") != NULL)
 				printf("%s\n",GIT_VERSION);
 			else
 				printf("vDev-%s\n",GIT_HASH);
