@@ -135,6 +135,7 @@ void read_FTLconf(void)
 	buffer = parse_FTLconf(fp, "DBFILE");
 
 	errno = 0;
+	// Use sscanf() to obtain filename from config file parameter only if buffer != NULL
 	if(!(buffer != NULL && sscanf(buffer, "%127ms", &FTLfiles.db)))
 	{
 		// Use standard path if no custom path was obtained from the config file
