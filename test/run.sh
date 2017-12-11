@@ -10,7 +10,7 @@ ts="$(dnsmasq_pre)"
 cat <<EOT >> pihole.log
 ${ts} query[AAAA] raspberrypi from 127.0.0.1
 ${ts} /etc/pihole/local.list raspberrypi is fda2:2001:5647:0:ba27:ebff:fe37:4205
-${ts} query[A] checkip.dyndns.org from 127.0.0.1
+${ts} query[A] ChEcKiP.DyNdNs.OrG from 127.0.0.1
 ${ts} forwarded checkip.dyndns.org to 2001:1608:10:25::9249:d69b
 ${ts} forwarded checkip.dyndns.org to 2001:1608:10:25::1c04:b12f
 ${ts} forwarded checkip.dyndns.org to 2620:0:ccd::2
