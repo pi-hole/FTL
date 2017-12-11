@@ -336,9 +336,10 @@ void process_pihole_log(int file)
 			char *domainwithspaces = calloc(domainlen+3,sizeof(char));
 			// strncat() NULL-terminates the copied string (strncpy() doesn't!)
 			strncat(domain,domainstart+2,domainlen);
+			// Copy string into buffer surrounded by spaces
+			sprintf(domainwithspaces," %s ",domain);
 			// Convert domain to lower case
 			strtolower(domain);
-			sprintf(domainwithspaces," %s ",domain);
 
 			if(strcmp(domain, "pi.hole") == 0)
 			{
