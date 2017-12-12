@@ -44,6 +44,10 @@ ${ts} /etc/pihole/gravity.list addomain.com is 1.2.3.4
 EOT
 touch "pihole-FTL.log"
 
+cat <<EOT >> pihole-FTL.conf
+DBFILE=pihole-FTL.db
+EOT
+
 # Start FTL
 ./pihole-FTL travis-ci
 
