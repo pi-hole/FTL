@@ -130,6 +130,26 @@ void read_FTLconf(void)
 	else
 		logg("   RESOLVE_IPV4: Don\'t resolve IPv4 addresses");
 
+	// DBINTERVAL
+	// How often do we store queries in FTL's database [minutes]?
+	// this value can be a floating point number, e.g. "DBINTERVAL=0.5"
+	// defaults to: 1 (once per minute)
+	config.DBinterval = 1;
+	buffer = parse_FTLconf(fp, "DBINTERVAL");
+
+	float fvalue = 0;
+	if(buffer != NULL && sscanf(buffer, "%f", &fvalue))
+		// check if the read value is
+		// - larger than 0.1min (6sec), and
+		// - smaller than 43200 (once a month)
+		if(fvalue >= 0.1 && fvalue <= 43200.0)
+			config.DBinterval = (int)(60.*fvalue);
+
+	if(config.DBinterval == 60)
+		logg("   DBINTERVAL: saving to DB file every minute");
+	else
+		logg("   DBINTERVAL: saving to DB file every %i seconds", config.DBinterval);
+
 	logg("Finished config file parsing");
 
 	if(conflinebuffer != NULL)

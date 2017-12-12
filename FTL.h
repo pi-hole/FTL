@@ -66,10 +66,6 @@
 // Default -60 (one minute before a full hour)
 #define GCdelay (-60)
 
-// How often do we dump into FTL's database?
-// Default: 60 (once per minute)
-#define DBinterval 60
-
 // Static structs
 typedef struct {
 	const char* conf;
@@ -125,6 +121,7 @@ typedef struct {
 	int maxDBdays;
 	bool resolveIPv6;
 	bool resolveIPv4;
+	int DBinterval;
 } ConfigStruct;
 
 // Dynamic structs
