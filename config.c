@@ -133,8 +133,8 @@ void read_FTLconf(void)
 	// DBINTERVAL
 	// How often do we store queries in FTL's database [minutes]?
 	// this value can be a floating point number, e.g. "DBINTERVAL=0.5"
-	// defaults to: 1 (once per minute)
-	config.DBinterval = 1;
+	// defaults to: once per minute
+	config.DBinterval = 60;
 	buffer = parse_FTLconf(fp, "DBINTERVAL");
 
 	float fvalue = 0;
