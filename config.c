@@ -28,7 +28,7 @@ void read_FTLconf(void)
 	}
 
 	// Parse lines in the config file
-	logg("Starting config file parsing");
+	logg("Starting config file parsing (%s)", FTLfiles.conf);
 
 	// SOCKET_LISTENING
 	// defaults to: listen only local
@@ -150,8 +150,33 @@ void read_FTLconf(void)
 	else
 		logg("   DBINTERVAL: saving to DB file every %i seconds", config.DBinterval);
 
+	// DBFILE
+	// defaults to: "/etc/pihole/pihole-FTL.db"
+	buffer = parse_FTLconf(fp, "DBFILE");
+
+	errno = 0;
+	// Use sscanf() to obtain filename from config file parameter only if buffer != NULL
+	if(!(buffer != NULL && sscanf(buffer, "%127ms", &FTLfiles.db)))
+	{
+		// Use standard path if no custom path was obtained from the config file
+		FTLfiles.db = strdup("/etc/pihole/pihole-FTL.db");
+	}
+
+	// Test if memory allocation was successful
+	if(FTLfiles.db == NULL && errno != 0)
+	{
+		logg("FATAL: Allocating memory for FTLfiles.db failed (%s, %i). Exiting.", strerror(errno), errno);
+		exit(EXIT_FAILURE);
+	}
+	else if(FTLfiles.db != NULL && strlen(FTLfiles.db) > 0)
+		logg("   DBFILE: Using %s", FTLfiles.db);
+	else
+		logg("   DBFILE: Not using database due to empty filename");
+
+
 	logg("Finished config file parsing");
 
+	// Release memory
 	if(conflinebuffer != NULL)
 	{
 		free(conflinebuffer);

@@ -146,6 +146,14 @@ bool db_create(void)
 
 void db_init(void)
 {
+	// First check if the user doesn't want to use the database and set an
+	// empty string as file name in FTL's config file
+	if(FTLfiles.db == NULL || strlen(FTLfiles.db) == 0)
+	{
+		database = false;
+		return;
+	}
+
 	int rc = sqlite3_open_v2(FTLfiles.db, &db, SQLITE_OPEN_READWRITE, NULL);
 	if( rc ){
 		logg("db_init() - Cannot open database (%i): %s", rc, sqlite3_errmsg(db));

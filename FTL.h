@@ -72,7 +72,7 @@ typedef struct {
 	const char* log;
 	const char* pid;
 	const char* port;
-	const char* db;
+	char* db;
 } FTLFileNamesStruct;
 
 typedef struct {
