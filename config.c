@@ -141,8 +141,8 @@ void read_FTLconf(void)
 	if(buffer != NULL && sscanf(buffer, "%f", &fvalue))
 		// check if the read value is
 		// - larger than 0.1min (6sec), and
-		// - smaller than 43200 (once a month)
-		if(fvalue >= 0.1 && fvalue <= 43200.0)
+		// - smaller than 1440.0min (once a day)
+		if(fvalue >= 0.1 && fvalue <= 1440.0)
 			config.DBinterval = (int)(60.*fvalue);
 
 	if(config.DBinterval == 60)
