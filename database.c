@@ -445,18 +445,17 @@ void *DB_thread(void *val)
 	// Set thread name
 	prctl(PR_SET_NAME,"DB",0,0,0);
 
-	if(!DBdeleteoldqueries)
-	{
-		// Lock FTL's data structure, since it is likely that it will be changed here
-		enable_thread_lock("DB_thread");
+	// Lock FTL's data structure, since it is likely that it will be changed here
+	enable_thread_lock("DB_thread");
 
-		// Save data to database
-		save_to_DB();
+	// Save data to database
+	save_to_DB();
 
-		// Release thread lock
-		disable_thread_lock("DB_thread");
-	}
-	else
+	// Release thread lock
+	disable_thread_lock("DB_thread");
+
+	// Check if GC should be done on the database
+	if(DBdeleteoldqueries)
 	{
 		// No thread locks needed
 		delete_old_queries_in_DB();
