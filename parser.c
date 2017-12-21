@@ -823,6 +823,60 @@ void process_pihole_log(int file)
 			}
 		}
 
+		// is this a "black.list" line?
+		else if(strstr(readbuffer,"/black.list ") != NULL && strstr(readbuffer," is ") != NULL)
+		{
+			// Check if this domain names contains only printable characters
+			// if not: skip analysis of this log line
+			if(strstr(readbuffer,"<name unprintable>") != NULL)
+			{
+				if(debug) logg("Ignoring <name unprintable> domain (cached)");
+				continue;
+			}
+
+			// Check if this is a PTR query
+			// if so: skip analysis of this log line
+			if(strstr(readbuffer,"in-addr.arpa") != NULL)
+				continue;
+
+			// Get dnsmasq's ID for this transaction
+			int dnsmasqID = getID(readbuffer);
+
+			// Save forwardID in corresponding query indentified by dnsmasq's ID
+			bool found = false;
+			for(i=0;i<counters.queries;i++)
+			{
+				if(queries[i].id == dnsmasqID)
+				{
+					queries[i].status = 5;
+					found = true;
+				}
+			}
+			if(!found)
+			{
+				// This may happen e.g. if the original query was a PTR query or "pi.hole"
+				// as we ignore them altogether
+				continue;
+			}
+
+			if(!queries[i].complete)
+			{
+				// This query is no longer unknown
+				counters.unknown--;
+				// ... but got blocked by user's black list
+				counters.blocked++;
+				// Hereby, this query is now fully determined
+				queries[i].complete = true;
+
+				// Get time index
+				int timeidx = getTimeIndex(readbuffer);
+				validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
+				overTime[timeidx].blocked++;
+				validate_access("domains", queries[i].domainID, true, __LINE__, __FUNCTION__, __FILE__);
+				domains[queries[i].domainID].blockedcount++;
+			}
+		}
+
 		// Save file pointer position, because we might have to repeat
 		// reading the next line if dnsmasq hasn't finished writing it
 		// (see beginning of this loop)
