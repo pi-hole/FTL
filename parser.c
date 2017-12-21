@@ -356,6 +356,9 @@ void process_pihole_log(int file)
 
 			// Get dnsmasq's ID for this transaction
 			int dnsmasqID = getID(readbuffer);
+			// Skip invalid lines
+			if(dnsmasqID < 0)
+				continue;
 
 			// Get domain
 			// domainstart = pointer to | in "query[AAAA] |host.name from ww.xx.yy.zz\n"
@@ -582,6 +585,9 @@ void process_pihole_log(int file)
 
 			// Get dnsmasq's ID for this transaction
 			int dnsmasqID = getID(readbuffer);
+			// Skip invalid lines
+			if(dnsmasqID < 0)
+				continue;
 
 			// Save forwardID in corresponding query indentified by dnsmasq's ID
 			bool found = false;
@@ -636,6 +642,9 @@ void process_pihole_log(int file)
 
 			// Get dnsmasq's ID for this transaction
 			int dnsmasqID = getID(readbuffer);
+			// Skip invalid lines
+			if(dnsmasqID < 0)
+				continue;
 
 			// Get ID of forward destination, create new forward destination record
 			// if not found in current data structure
@@ -723,6 +732,9 @@ void process_pihole_log(int file)
 
 			// Get dnsmasq's ID for this transaction
 			int dnsmasqID = getID(readbuffer);
+			// Skip invalid lines
+			if(dnsmasqID < 0)
+				continue;
 
 			// Save forwardID in corresponding query indentified by dnsmasq's ID
 			bool found = false;
@@ -775,6 +787,9 @@ void process_pihole_log(int file)
 
 			// Get dnsmasq's ID for this transaction
 			int dnsmasqID = getID(readbuffer);
+			// Skip invalid lines
+			if(dnsmasqID < 0)
+				continue;
 
 			// Save forwardID in corresponding query indentified by dnsmasq's ID
 			bool found = false;
@@ -845,6 +860,9 @@ void process_pihole_log(int file)
 
 			// Get dnsmasq's ID for this transaction
 			int dnsmasqID = getID(readbuffer);
+			// Skip invalid lines
+			if(dnsmasqID < 0)
+				continue;
 
 			// Save forwardID in corresponding query indentified by dnsmasq's ID
 			bool found = false;
