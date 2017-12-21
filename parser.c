@@ -752,7 +752,75 @@ void process_pihole_log(int file)
 				validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 				overTime[timeidx].cached++;
 			}
+		}
+		// is this a "wildcard" line?
+		else if(strstr(readbuffer," config ") != NULL && strstr(readbuffer," is ") != NULL)
+		{
+			// Check if this domain names contains only printable characters
+			// if not: skip analysis of this log line
+			if(strstr(readbuffer,"<name unprintable>") != NULL)
+			{
+				if(debug) logg("Ignoring <name unprintable> domain (cached)");
+				continue;
+			}
 
+			// Check if this is a PTR query
+			// if so: skip analysis of this log line
+			if(strstr(readbuffer,"in-addr.arpa") != NULL)
+				continue;
+
+			// Get dnsmasq's ID for this transaction
+			int dnsmasqID = getID(readbuffer);
+
+			// Save forwardID in corresponding query indentified by dnsmasq's ID
+			bool found = false;
+			for(i=0;i<counters.queries;i++)
+			{
+				if(queries[i].id == dnsmasqID)
+				{
+					queries[i].status = detectStatus(domains[queries[i].domainID].domain);
+					found = true;
+				}
+			}
+			if(!found)
+			{
+				// This may happen e.g. if the original query was a PTR query or "pi.hole"
+				// as we ignore them altogether
+				continue;
+			}
+
+			if(!queries[i].complete)
+			{
+				// This query is no longer unknown ...
+				counters.unknown--;
+				// Hereby, this query is now fully determined
+				queries[i].complete = true;
+
+				// Get time index
+				int timeidx = getTimeIndex(readbuffer);
+
+				// Decide what to do depening on the result of detectStatus()
+				if(queries[i].id == 4)
+				{
+					// Blocked due to a matching wildcard rule
+					counters.wildcardblocked++;
+					validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
+					overTime[timeidx].blocked++;
+					validate_access("domains", queries[i].domainID, true, __LINE__, __FUNCTION__, __FILE__);
+					domains[queries[i].domainID].blockedcount++;
+					domains[queries[i].domainID].wildcard = true;
+				}
+				else
+				{
+					// Answered from a custom (user provided) cache file
+					counters.cached++;
+
+					// Get time index
+					int timeidx = getTimeIndex(readbuffer);
+					validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
+					overTime[timeidx].cached++;
+				}
+			}
 		}
 
 		// Save file pointer position, because we might have to repeat
