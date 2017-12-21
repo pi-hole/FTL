@@ -800,7 +800,6 @@ void process_pihole_log(int file)
 				// Hereby, this query is now fully determined
 				queries[i].complete = true;
 
-
 				// Get time index
 				int timeidx = getTimeIndex(readbuffer);
 
