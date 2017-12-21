@@ -23,6 +23,7 @@ long int lastpos = 0;
 int lastqueryID = 0;
 bool flush = false;
 char timestamp[16] = "";
+int loggeneration = 0;
 
 void initial_log_parsing(void)
 {
@@ -530,6 +531,7 @@ void process_pihole_log(int file)
 			queries[queryID].db = false;
 			queries[queryID].id = dnsmasqID;
 			queries[queryID].complete = false;
+			queries[queryID].generation = loggeneration;
 
 			// Increase DNS queries counter
 			counters.queries++;
@@ -593,7 +595,8 @@ void process_pihole_log(int file)
 			bool found = false;
 			for(i=0; i<counters.queries; i++)
 			{
-				if(queries[i].id == dnsmasqID)
+				// Check both UUID and generation of this query
+				if(queries[i].id == dnsmasqID && queries[i].generation == loggeneration)
 				{
 					queries[i].status = 1;
 					found = true;
@@ -659,7 +662,8 @@ void process_pihole_log(int file)
 			bool found = false;
 			for(i=0; i<counters.queries; i++)
 			{
-				if(queries[i].id == dnsmasqID)
+				// Check both UUID and generation of this query
+				if(queries[i].id == dnsmasqID && queries[i].generation == loggeneration)
 				{
 					queries[i].status = 2;
 					queries[i].forwardID = forwardID;
@@ -740,7 +744,8 @@ void process_pihole_log(int file)
 			bool found = false;
 			for(i=0; i<counters.queries; i++)
 			{
-				if(queries[i].id == dnsmasqID)
+				// Check both UUID and generation of this query
+				if(queries[i].id == dnsmasqID && queries[i].generation == loggeneration)
 				{
 					queries[i].status = 3;
 					found = true;
@@ -795,7 +800,8 @@ void process_pihole_log(int file)
 			bool found = false;
 			for(i=0; i<counters.queries; i++)
 			{
-				if(queries[i].id == dnsmasqID)
+				// Check both UUID and generation of this query
+				if(queries[i].id == dnsmasqID && queries[i].generation == loggeneration)
 				{
 					queries[i].status = detectStatus(domains[queries[i].domainID].domain);
 					found = true;
@@ -868,7 +874,8 @@ void process_pihole_log(int file)
 			bool found = false;
 			for(i=0; i<counters.queries; i++)
 			{
-				if(queries[i].id == dnsmasqID)
+				// Check both UUID and generation of this query
+				if(queries[i].id == dnsmasqID && queries[i].generation == loggeneration)
 				{
 					queries[i].status = 5;
 					found = true;
@@ -898,6 +905,16 @@ void process_pihole_log(int file)
 				validate_access("domains", queries[i].domainID, true, __LINE__, __FUNCTION__, __FILE__);
 				domains[queries[i].domainID].blockedcount++;
 			}
+		}
+		// Is dnsmasq restarted? If yes, then we have to increment the log generation
+		// as the following UUIDs will again start at zero...
+		else if(strstr(readbuffer,"IPv6") != NULL &&
+		        strstr(readbuffer,"DBus") != NULL &&
+		        strstr(readbuffer,"i18n") != NULL &&
+		        strstr(readbuffer,"DHCP") != NULL)
+		{
+			loggeneration++;
+			if(debug) logg("Detected restart of dnsmasq, increasing loggeneration to %i", loggeneration);
 		}
 
 		// Save file pointer position, because we might have to repeat

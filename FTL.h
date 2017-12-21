@@ -140,6 +140,7 @@ typedef struct {
 	// the ID is a (signed) in dnsmasq, so no need for a long int here
 	int id;
 	bool complete;
+	int generation;
 } queriesDataStruct;
 
 typedef struct {
