@@ -138,7 +138,7 @@ typedef struct {
 	bool valid;
 	bool db;
 	// the ID is a (signed) in dnsmasq, so no need for a long int here
-	unsigned int id;
+	int id;
 	bool complete;
 } queriesDataStruct;
 

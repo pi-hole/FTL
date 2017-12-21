@@ -49,6 +49,45 @@ long int checkLogForChanges(void)
 	return difference;
 }
 
+int getTimeIndex(char * readbuffer)
+{
+	int querytimestamp, overTimetimestamp, timeidx = -1, i;
+	extracttimestamp(readbuffer, &querytimestamp, &overTimetimestamp);
+
+	bool found = false;
+	// Check struct size
+	memory_check(OVERTIME);
+	for(i=0; i < counters.overTime; i++)
+	{
+		validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
+		if(overTime[i].timestamp == overTimetimestamp)
+		{
+			found = true;
+			timeidx = i;
+			break;
+		}
+	}
+	if(!found)
+	{
+		timeidx = counters.overTime;
+		validate_access("overTime", timeidx, false, __LINE__, __FUNCTION__, __FILE__);
+		overTime[timeidx].magic = MAGICBYTE;
+		overTime[timeidx].timestamp = overTimetimestamp;
+		overTime[timeidx].total = 0;
+		overTime[timeidx].blocked = 0;
+		overTime[timeidx].cached = 0;
+		overTime[timeidx].forwardnum = 0;
+		overTime[timeidx].forwarddata = NULL;
+		overTime[timeidx].querytypedata = calloc(2, sizeof(int));
+		overTime[timeidx].clientnum = 0;
+		overTime[timeidx].clientdata = NULL;
+		memory.querytypedata += 2*sizeof(int);
+		counters.overTime++;
+	}
+
+	return timeidx;
+}
+
 void open_pihole_log(void)
 {
 	FILE * fp;
@@ -142,6 +181,18 @@ void *pihole_log_thread(void *val)
 		sleepms(200);
 	}
 	return NULL;
+}
+
+int getID(char * readbuffer)
+{
+	// Get query ID from a string like
+	// "Dec 20 21:16:22 dnsmasq[19372]: 4 10.8.0.2/34596 query[A] pi.hole from 10.8.0.2"
+	int dnsmasqID = -1;
+	if(!sscanf(readbuffer, "%*[^]]]: %i", &dnsmasqID))
+	{
+		if(debug) logg("Error getting ID for query \"%s\" %u", readbuffer, dnsmasqID);
+	}
+	return dnsmasqID;
 }
 
 void process_pihole_log(int file)
@@ -303,14 +354,8 @@ void process_pihole_log(int file)
 				continue;
 			}
 
-			// Get query ID from a string like
-			// "Dec 20 21:16:22 dnsmasq[19372]: 4 10.8.0.2/34596 query[A] pi.hole from 10.8.0.2"
-			unsigned int dnsmasqID = 0;
-			if(!sscanf(readbuffer, "%*[^]]]: %u", &dnsmasqID))
-			{
-				if(debug) logg("Error getting ID for query \"%s\" %u", readbuffer, dnsmasqID);
-				continue;
-			}
+			// Get dnsmasq's ID for this transaction
+			int dnsmasqID = getID(readbuffer);
 
 			// Get domain
 			// domainstart = pointer to | in "query[AAAA] |host.name from ww.xx.yy.zz\n"
@@ -517,7 +562,8 @@ void process_pihole_log(int file)
 			free(domain);
 			free(domainwithspaces);
 		}
-		else if(strstr(readbuffer,": forwarded") != NULL)
+		// is this a "forwarded" line?
+		else if(strstr(readbuffer," forwarded ") != NULL && strstr(readbuffer," to ") != NULL)
 		{
 			// Check if this domain names contains only printable characters
 			// if not: skip analysis of this log line
@@ -532,46 +578,38 @@ void process_pihole_log(int file)
 			if(strstr(readbuffer,"in-addr.arpa") != NULL)
 				continue;
 
+			// Get dnsmasq's ID for this transaction
+			int dnsmasqID = getID(readbuffer);
+
 			// Get ID of forward destination, create new forward destination record
 			// if not found in current data structure
 			int forwardID = getforwardID(readbuffer, true);
 			if(forwardID == -2)
-				continue;
-
-			// Get timestamp
-			int querytimestamp, overTimetimestamp, timeidx = -1, i;
-			extracttimestamp(readbuffer, &querytimestamp, &overTimetimestamp);
-
-			bool found = false;
-			// Check struct size
-			memory_check(OVERTIME);
-			for(i=0; i < counters.overTime; i++)
 			{
-				validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
-				if(overTime[i].timestamp == overTimetimestamp)
+				if(debug) logg("Skipping malformated forwarded line");
+				continue;
+			}
+
+			// Save forwardID in corresponding query indentified by dnsmasq's ID
+			bool found = false;
+			for(i=0;i<counters.queries;i++)
+			{
+				if(queries[i].id == dnsmasqID)
 				{
+					queries[i].forwardID = forwardID;
 					found = true;
-					timeidx = i;
-					break;
 				}
 			}
 			if(!found)
 			{
-				timeidx = counters.overTime;
-				validate_access("overTime", timeidx, false, __LINE__, __FUNCTION__, __FILE__);
-				overTime[timeidx].magic = MAGICBYTE;
-				overTime[timeidx].timestamp = overTimetimestamp;
-				overTime[timeidx].total = 0;
-				overTime[timeidx].blocked = 0;
-				overTime[timeidx].cached = 0;
-				overTime[timeidx].forwardnum = 0;
-				overTime[timeidx].forwarddata = NULL;
-				overTime[timeidx].querytypedata = calloc(2, sizeof(int));
-				overTime[timeidx].clientnum = 0;
-				overTime[timeidx].clientdata = NULL;
-				memory.querytypedata += 2*sizeof(int);
-				counters.overTime++;
+				// This may happen e.g. if the original query was a PTR query or "pi.hole"
+				// as we ignore them altogether
+				continue;
 			}
+
+			// Get time index
+			int timeidx = getTimeIndex(readbuffer);
+
 			// Determine if there is enough space for saving the current
 			// forwardID in the overTime data structure, allocate space otherwise
 			validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
@@ -592,6 +630,56 @@ void process_pihole_log(int file)
 			// Update overTime data structure with the new forwarder
 			validate_access_oTfd(timeidx, forwardID, __LINE__, __FUNCTION__, __FILE__);
 			overTime[timeidx].forwarddata[forwardID]++;
+		}
+		// is this a "cached" line?
+		else if((strstr(readbuffer," cached ") != NULL || \
+			     strstr(readbuffer," local.list ") != NULL || \
+			     strstr(readbuffer," hostname.list ") != NULL || \
+			     strstr(readbuffer," DHCP ") != NULL || \
+			     strstr(readbuffer," /etc/hosts ") != NULL) \
+			  && strstr(readbuffer," is ") != NULL)
+		{
+			// Check if this domain names contains only printable characters
+			// if not: skip analysis of this log line
+			if(strstr(readbuffer,"<name unprintable>") != NULL)
+			{
+				if(debug) logg("Ignoring <name unprintable> domain (cached)");
+				continue;
+			}
+
+			// Check if this is a PTR query
+			// if so: skip analysis of this log line
+			if(strstr(readbuffer,"in-addr.arpa") != NULL)
+				continue;
+
+			// Get dnsmasq's ID for this transaction
+			int dnsmasqID = getID(readbuffer);
+
+			// Save forwardID in corresponding query indentified by dnsmasq's ID
+			bool found = false;
+			for(i=0;i<counters.queries;i++)
+			{
+				if(queries[i].id == dnsmasqID)
+				{
+					queries[i].status = 3;
+					found = true;
+				}
+			}
+			if(!found)
+			{
+				// This may happen e.g. if the original query was a PTR query or "pi.hole"
+				// as we ignore them altogether
+				continue;
+			}
+			if(debug) logg("Cached: %i \"%s\"",dnsmasqID, readbuffer);
+
+			// Answered from local cache _or_ local config
+			counters.cached++;
+
+			// Get time index
+			int timeidx = getTimeIndex(readbuffer);
+			validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
+			overTime[timeidx].cached++;
 		}
 
 		// Save file pointer position, because we might have to repeat
