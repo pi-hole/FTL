@@ -148,8 +148,7 @@ void process_pihole_log(int file)
 {
 	int i;
 	char *readbuffer = NULL;
-	char *readbuffer2 = NULL;
-	size_t size1 = 0, size2 = 0;
+	size_t size1 = 0;
 	FILE *fp;
 
 	if(file == 0)
@@ -304,8 +303,8 @@ void process_pihole_log(int file)
 				continue;
 			}
 
-			// Get query ID
-			// "Dec 20 21:16:22 dnsmasq[19372]: 4 10.8.0.2/34596 query[A] pi.hole from 10.8.0.2
+			// Get query ID from a string like
+			// "Dec 20 21:16:22 dnsmasq[19372]: 4 10.8.0.2/34596 query[A] pi.hole from 10.8.0.2"
 			unsigned int dnsmasqID = 0;
 			if(!sscanf(readbuffer, "%*[^]]]: %u", &dnsmasqID))
 			{
@@ -405,95 +404,6 @@ void process_pihole_log(int file)
 				overTime[timeidx].querytypedata[1]++;
 			}
 
-			// Save current file pointer position
-			long int fpos = ftell(fp);
-			unsigned char status = 0;
-
-			// Try to find either a matching
-			// - "gravity.list" + domain
-			// - "forwarded" + domain
-			// - "cached" + domain
-			// - "black.list" + domain
-			// in the following up to 200 lines
-			bool firsttime = true;
-			int forwardID = -1;
-			for(i=0; i<200; i++)
-			{
-				if(getline(&readbuffer2, &size2, fp) != -1)
-				{
-					// Process only matching lines
-					if(strstr(readbuffer2, domainwithspaces) != NULL)
-					{
-						// Blocked by gravity.list ?
-						if(strstr(readbuffer2,"gravity.list ") != NULL)
-						{
-							status = 1;
-							break;
-						}
-						// Forwarded to upstream server?
-						else if(strstr(readbuffer2,": forwarded ") != NULL)
-						{
-							status = 2;
-							// Get ID of forward destination, create new forward destination record
-							// if not found in current data structure
-							forwardID = getforwardID(readbuffer2, false);
-							if(forwardID == -2)
-								continue;
-							break;
-						}
-						// Answered by local cache?
-						else if((strstr(readbuffer2,"cached ") != NULL) ||
-						        (strstr(readbuffer2,"local.list") != NULL) ||
-						        (strstr(readbuffer2,"hostname.list") != NULL) ||
-						        (strstr(readbuffer2,"DHCP ") != NULL) ||
-						        (strstr(readbuffer2,"/etc/hosts") != NULL))
-						{
-							status = 3;
-							break;
-						}
-						// wildcard blocking?
-						else if((strstr(readbuffer2,"config ") != NULL))
-						{
-							status = detectStatus(domain);
-							break;
-						}
-						// Blocked by black.list ?
-						else if(strstr(readbuffer2,"black.list ") != NULL)
-						{
-							status = 5;
-							break;
-						}
-					}
-				}
-				else
-				{
-					if(firsttime)
-					{
-						// Reached EOF without finding the action
-						// wait 100msec and try again to read dnsmasq's response
-						i = 0;
-						fseek(fp, fpos, SEEK_SET);
-						firsttime = false;
-						sleepms(100);
-					}
-					else
-					{
-						// Failed second time
-						break;
-					}
-				}
-			}
-
-			// Return to previous file pointer position
-			fseek(fp, fpos, SEEK_SET);
-
-			// Free memory allocated by readline
-			if(readbuffer2 != NULL)
-			{
-				free(readbuffer2);
-				readbuffer2 = NULL;
-			}
-
 			// Go through already knows domains and see if it is one of them
 			// Check struct size
 			memory_check(DOMAINS);
@@ -505,7 +415,7 @@ void process_pihole_log(int file)
 				domainID = counters.domains;
 				// // Debug output
 				if(debug)
-					logg("New domain: %s (%i - %i/%i)", domain, status, domainID, counters.domains_MAX);
+					logg("New domain: %s (%i: %i/%i)", domain, dnsmasqID, domainID, counters.domains_MAX);
 				validate_access("domains", domainID, false, __LINE__, __FUNCTION__, __FILE__);
 				// Set magic byte
 				domains[domainID].magic = MAGICBYTE;
@@ -538,10 +448,10 @@ void process_pihole_log(int file)
 				{
 					// Convert hostname to lower case
 					strtolower(hostname);
-					logg("New client: %s %s (%i/%i)", client, hostname, clientID, counters.clients_MAX);
+					logg("New client: %s %s (%i: %i/%i)", client, hostname, dnsmasqID, clientID, counters.clients_MAX);
 				}
 				else
-					logg("New client: %s (%i/%i)", client, clientID, counters.clients_MAX);
+					logg("New client: %s (%i: %i/%i)", client, dnsmasqID, clientID, counters.clients_MAX);
 
 				validate_access("clients", clientID, false, __LINE__, __FUNCTION__, __FILE__);
 				// Set magic byte
@@ -564,13 +474,15 @@ void process_pihole_log(int file)
 			queries[queryID].magic = MAGICBYTE;
 			queries[queryID].timestamp = querytimestamp;
 			queries[queryID].type = type;
-			queries[queryID].status = status;
+			// queries[queryID].status = status;
 			queries[queryID].domainID = domainID;
 			queries[queryID].clientID = clientID;
 			queries[queryID].timeidx = timeidx;
-			queries[queryID].forwardID = forwardID;
+			// queries[queryID].forwardID = forwardID;
 			queries[queryID].valid = true;
 			queries[queryID].db = false;
+			queries[queryID].id = dnsmasqID;
+			queries[queryID].complete = false;
 
 			// Increase DNS queries counter
 			counters.queries++;
@@ -578,54 +490,6 @@ void process_pihole_log(int file)
 			// Update overTime data
 			validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 			overTime[timeidx].total++;
-
-			// Decide what to increment depending on status
-			switch(status)
-			{
-				case 0:
-					// Unknown (?)
-					counters.unknown++;
-					break;
-				case 1:
-					// Blocked by Pi-hole's blocking lists
-					counters.blocked++;
-					validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
-					overTime[timeidx].blocked++;
-					validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
-					domains[domainID].blockedcount++;
-					break;
-				case 2:
-					// Forwarded to an upstream DNS server
-					counters.forwardedqueries++;
-					break;
-				case 3:
-					// Answered from local cache _or_ local config
-					counters.cached++;
-					validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
-					overTime[timeidx].cached++;
-					break;
-				case 4:
-					// Blocked due to a matching wildcard rule
-					counters.wildcardblocked++;
-					validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
-					overTime[timeidx].blocked++;
-					validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
-					domains[domainID].blockedcount++;
-					domains[domainID].wildcard = true;
-					break;
-				case 5:
-					// Blocked by user's black list
-					counters.blocked++;
-					validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
-					overTime[timeidx].blocked++;
-					validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
-					domains[domainID].blockedcount++;
-					break;
-				default:
-					/* That cannot happen */
-					logg("Found unexpected status %i",status);
-					break;
-			}
 
 			// Determine if there is enough space for saving the current
 			// clientID in the overTime data structure, allocate space otherwise
