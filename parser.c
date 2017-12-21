@@ -519,11 +519,10 @@ void process_pihole_log(int file)
 			queries[queryID].magic = MAGICBYTE;
 			queries[queryID].timestamp = querytimestamp;
 			queries[queryID].type = type;
-			// queries[queryID].status = status;
+			queries[queryID].status = 0;
 			queries[queryID].domainID = domainID;
 			queries[queryID].clientID = clientID;
 			queries[queryID].timeidx = timeidx;
-			// queries[queryID].forwardID = forwardID;
 			queries[queryID].valid = true;
 			queries[queryID].db = false;
 			queries[queryID].id = dnsmasqID;
