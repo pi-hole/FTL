@@ -200,7 +200,7 @@ void process_pihole_log(int file)
 		}
 
 		// Test if the read line is a query line
-		if(strstr(readbuffer,"]: query[A") != NULL)
+		if(strstr(readbuffer," query[A") != NULL)
 		{
 			// Check if this domain names contains only printable characters
 			// if not: skip analysis of this log line
@@ -216,7 +216,7 @@ void process_pihole_log(int file)
 				continue;
 			}
 
-			if(!config.analyze_AAAA && strstr(readbuffer,"]: query[AAAA]") != NULL)
+			if(!config.analyze_AAAA && strstr(readbuffer," query[AAAA]") != NULL)
 			{
 				if(debug) logg("Not analyzing AAAA query");
 				continue;
@@ -301,6 +301,15 @@ void process_pihole_log(int file)
 				// this query as we cannot attribute it correctly to anything.
 				validate_access("overTime", 0, false, __LINE__, __FUNCTION__, __FILE__);
 				logg("Warning: Skipping log entry with incorrect timestamp (%i/%i)", overTimetimestamp, overTime[0].timestamp);
+				continue;
+			}
+
+			// Get query ID
+			// "Dec 20 21:16:22 dnsmasq[19372]: 4 10.8.0.2/34596 query[A] pi.hole from 10.8.0.2
+			unsigned int dnsmasqID = 0;
+			if(!sscanf(readbuffer, "%*[^]]]: %u", &dnsmasqID))
+			{
+				if(debug) logg("Error getting ID for query \"%s\" %u", readbuffer, dnsmasqID);
 				continue;
 			}
 
