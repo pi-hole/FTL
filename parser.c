@@ -591,6 +591,7 @@ void process_pihole_log(int file)
 				{
 					queries[i].status = 1;
 					found = true;
+					break;
 				}
 			}
 			if(!found)
@@ -654,6 +655,7 @@ void process_pihole_log(int file)
 					queries[i].status = 2;
 					queries[i].forwardID = forwardID;
 					found = true;
+					break;
 				}
 			}
 			if(!found)
@@ -729,6 +731,7 @@ void process_pihole_log(int file)
 				{
 					queries[i].status = 3;
 					found = true;
+					break;
 				}
 			}
 			if(!found)
@@ -780,6 +783,7 @@ void process_pihole_log(int file)
 				{
 					queries[i].status = detectStatus(domains[queries[i].domainID].domain);
 					found = true;
+					break;
 				}
 			}
 			if(!found)
@@ -796,14 +800,16 @@ void process_pihole_log(int file)
 				// Hereby, this query is now fully determined
 				queries[i].complete = true;
 
+
 				// Get time index
 				int timeidx = getTimeIndex(readbuffer);
 
 				// Decide what to do depening on the result of detectStatus()
-				if(queries[i].id == 4)
+				if(queries[i].status == 4)
 				{
 					// Blocked due to a matching wildcard rule
 					counters.wildcardblocked++;
+
 					validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 					overTime[timeidx].blocked++;
 					validate_access("domains", queries[i].domainID, true, __LINE__, __FUNCTION__, __FILE__);
@@ -815,8 +821,6 @@ void process_pihole_log(int file)
 					// Answered from a custom (user provided) cache file
 					counters.cached++;
 
-					// Get time index
-					int timeidx = getTimeIndex(readbuffer);
 					validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 					overTime[timeidx].cached++;
 				}
@@ -850,6 +854,7 @@ void process_pihole_log(int file)
 				{
 					queries[i].status = 5;
 					found = true;
+					break;
 				}
 			}
 			if(!found)
