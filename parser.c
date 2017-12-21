@@ -585,7 +585,7 @@ void process_pihole_log(int file)
 
 			// Save forwardID in corresponding query indentified by dnsmasq's ID
 			bool found = false;
-			for(i=0;i<counters.queries;i++)
+			for(i=0; i<counters.queries; i++)
 			{
 				if(queries[i].id == dnsmasqID)
 				{
@@ -648,7 +648,7 @@ void process_pihole_log(int file)
 
 			// Save forwardID in corresponding query indentified by dnsmasq's ID
 			bool found = false;
-			for(i=0;i<counters.queries;i++)
+			for(i=0; i<counters.queries; i++)
 			{
 				if(queries[i].id == dnsmasqID)
 				{
@@ -725,7 +725,7 @@ void process_pihole_log(int file)
 
 			// Save forwardID in corresponding query indentified by dnsmasq's ID
 			bool found = false;
-			for(i=0;i<counters.queries;i++)
+			for(i=0; i<counters.queries; i++)
 			{
 				if(queries[i].id == dnsmasqID)
 				{
@@ -777,7 +777,7 @@ void process_pihole_log(int file)
 
 			// Save forwardID in corresponding query indentified by dnsmasq's ID
 			bool found = false;
-			for(i=0;i<counters.queries;i++)
+			for(i=0; i<counters.queries; i++)
 			{
 				if(queries[i].id == dnsmasqID)
 				{
@@ -795,7 +795,7 @@ void process_pihole_log(int file)
 
 			if(!queries[i].complete)
 			{
-				// This query is no longer unknown ...
+				// This query is no longer unknown
 				counters.unknown--;
 				// Hereby, this query is now fully determined
 				queries[i].complete = true;
@@ -847,7 +847,7 @@ void process_pihole_log(int file)
 
 			// Save forwardID in corresponding query indentified by dnsmasq's ID
 			bool found = false;
-			for(i=0;i<counters.queries;i++)
+			for(i=0; i<counters.queries; i++)
 			{
 				if(queries[i].id == dnsmasqID)
 				{

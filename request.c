@@ -1207,7 +1207,7 @@ void getUnknownQueries(int *sock)
 	{
 		validate_access("queries", i, true, __LINE__, __FUNCTION__, __FILE__);
 		// Check if this query has been removed due to garbage collection
-		if(queries[i].status != 0) continue;
+		if(queries[i].status != 0 && queries[i].complete) continue;
 
 		char type[5];
 		if(queries[i].type == 1)
@@ -1223,9 +1223,9 @@ void getUnknownQueries(int *sock)
 		validate_access("clients", queries[i].clientID, true, __LINE__, __FUNCTION__, __FILE__);
 
 		if(strlen(clients[queries[i].clientID].name) > 0)
-			sprintf(server_message,"%i %s %s %s %i\n",queries[i].timestamp,type,domains[queries[i].domainID].domain,clients[queries[i].clientID].name,queries[i].status);
+			sprintf(server_message,"%i %i %i %s %s %s %i %s\n",queries[i].timestamp,i,queries[i].id,type,domains[queries[i].domainID].domain,clients[queries[i].clientID].name,queries[i].status,queries[i].complete ?"true":"false");
 		else
-			sprintf(server_message,"%i %s %s %s %i\n",queries[i].timestamp,type,domains[queries[i].domainID].domain,clients[queries[i].clientID].ip,queries[i].status);
+			sprintf(server_message,"%i %i %i %s %s %s %i %s\n",queries[i].timestamp,i,queries[i].id,type,domains[queries[i].domainID].domain,clients[queries[i].clientID].ip,queries[i].status,queries[i].complete?"true":"false");
 		swrite(server_message, *sock);
 	}
 
