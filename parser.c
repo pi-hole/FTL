@@ -565,7 +565,7 @@ void process_pihole_log(int file)
 			free(domainwithspaces);
 		}
 		// is this a "gravity.list" line?
-		else if(strstr(readbuffer," gravity.list ") != NULL && strstr(readbuffer," is ") != NULL)
+		else if(strstr(readbuffer,"/gravity.list ") != NULL && strstr(readbuffer," is ") != NULL)
 		{
 			// Check if this domain names contains only printable characters
 			// if not: skip analysis of this log line
@@ -599,7 +599,6 @@ void process_pihole_log(int file)
 				// as we ignore them altogether
 				continue;
 			}
-			if(debug) logg("Gravity: %i \"%s\"",dnsmasqID, readbuffer);
 
 			if(!queries[i].complete)
 			{
@@ -700,8 +699,8 @@ void process_pihole_log(int file)
 		}
 		// is this a "cached" line?
 		else if((strstr(readbuffer," cached ") != NULL || \
-			     strstr(readbuffer," local.list ") != NULL || \
-			     strstr(readbuffer," hostname.list ") != NULL || \
+			     strstr(readbuffer,"/local.list ") != NULL || \
+			     strstr(readbuffer,"/hostname.list ") != NULL || \
 			     strstr(readbuffer," DHCP ") != NULL || \
 			     strstr(readbuffer," /etc/hosts ") != NULL) \
 			  && strstr(readbuffer," is ") != NULL)
@@ -738,7 +737,6 @@ void process_pihole_log(int file)
 				// as we ignore them altogether
 				continue;
 			}
-			if(debug) logg("Cached: %i \"%s\"",dnsmasqID, readbuffer);
 
 			if(!queries[i].complete)
 			{
