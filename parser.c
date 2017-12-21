@@ -676,9 +676,10 @@ void process_pihole_log(int file)
 				// Reallocate more space for forwarddata
 				overTime[timeidx].forwarddata = realloc(overTime[timeidx].forwarddata, (forwardID+1)*sizeof(*overTime[timeidx].forwarddata));
 				// Initialize new data fields with zeroes
-				for(i = overTime[timeidx].forwardnum; i <= forwardID; i++)
+				int j;
+				for(j = overTime[timeidx].forwardnum; j <= forwardID; j++)
 				{
-					overTime[timeidx].forwarddata[i] = 0;
+					overTime[timeidx].forwarddata[j] = 0;
 					memory.forwarddata++;
 				}
 				// Update counter
