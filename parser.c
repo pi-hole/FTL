@@ -530,6 +530,9 @@ void process_pihole_log(int file)
 
 			// Increase DNS queries counter
 			counters.queries++;
+			// Count this query as unknown as long as no reply has
+			// been found and analyzed
+			counters.unknown++;
 
 			// Update overTime data
 			validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
@@ -595,6 +598,7 @@ void process_pihole_log(int file)
 			{
 				if(queries[i].id == dnsmasqID)
 				{
+					queries[i].status = 2;
 					queries[i].forwardID = forwardID;
 					found = true;
 				}
@@ -629,6 +633,16 @@ void process_pihole_log(int file)
 			// Update overTime data structure with the new forwarder
 			validate_access_oTfd(timeidx, forwardID, __LINE__, __FUNCTION__, __FILE__);
 			overTime[timeidx].forwarddata[forwardID]++;
+
+			if(!queries[i].complete)
+			{
+				// This query is no longer unknown ...
+				counters.unknown--;
+				// ... but got forwarded
+				counters.forwardedqueries++;
+				// Hereby, this query is now fully determined
+				queries[i].complete = true;
+			}
 		}
 		// is this a "cached" line?
 		else if((strstr(readbuffer," cached ") != NULL || \
@@ -672,8 +686,15 @@ void process_pihole_log(int file)
 			}
 			if(debug) logg("Cached: %i \"%s\"",dnsmasqID, readbuffer);
 
-			// Answered from local cache _or_ local config
-			counters.cached++;
+			if(!queries[i].complete)
+			{
+				// This query is no longer unknown ...
+				counters.unknown--;
+				// ... but answered from local cache _or_ local config
+				counters.cached++;
+				// Hereby, this query is now fully determined
+				queries[i].complete = true;
+			}
 
 			// Get time index
 			int timeidx = getTimeIndex(readbuffer);
