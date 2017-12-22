@@ -187,7 +187,7 @@ unique_clients 3
 2 10.0 5.6.7.8 some.other.dns.com
 ```
  Variant: `>forward-dest unsorted` to show forward destinations in unsorted order (equivalent to using `>forward-names`)
-```
+
 
 - `>querytypes` : get collected query types percentage
  ```
