@@ -312,12 +312,9 @@ void save_to_DB(void)
 	for(i = lastdbindex; i < counters.queries; i++)
 	{
 		validate_access("queries", i, true, __LINE__, __FUNCTION__, __FILE__);
-		if(queries[i].timestamp <= lasttimestamp || queries[i].db == true)
-		{
-			// Already in database
-			// logg("Skipping %i",i);
+		if(queries[i].timestamp <= lasttimestamp || queries[i].db || !queries[i].complete)
+			// Already in database or not yet complete
 			continue;
-		}
 
 		// Memory checks
 		validate_access("queries", i, true, __LINE__, __FUNCTION__, __FILE__);

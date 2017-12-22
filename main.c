@@ -150,7 +150,6 @@ int main (int argc, char* argv[]) {
 		}
 	}
 
-
 	logg("Shutting down...");
 	pthread_cancel(piholelogthread);
 	pthread_cancel(socket_listenthread);
