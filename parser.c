@@ -196,6 +196,30 @@ int getID(char * readbuffer)
 	return dnsmasqID;
 }
 
+bool checkQuery(char * readbuffer, const char * type)
+{
+	// Check if this domain names contains only printable characters
+	// if not: skip analysis of this log line
+	if(strstr(readbuffer,"<name unprintable>") != NULL)
+	{
+		if(debug) logg("Ignoring <name unprintable> domain (%s)", type);
+		return false;
+	}
+
+	// Check if this domain name contains quotes
+	if(strstr(readbuffer, "\"") != NULL)
+	{
+		if(debug) logg("Ignoring \" domain (%s)", type);
+		return false;
+	}
+
+	// Check if this is a PTR query (we don't analyze them)
+	if(strstr(readbuffer,"in-addr.arpa") != NULL)
+		return false;
+
+	return true;
+}
+
 void process_pihole_log(int file)
 {
 	int i;
@@ -253,19 +277,8 @@ void process_pihole_log(int file)
 		// Test if the read line is a query line
 		if(strstr(readbuffer," query[A") != NULL)
 		{
-			// Check if this domain names contains only printable characters
-			// if not: skip analysis of this log line
-			if(strstr(readbuffer,"<name unprintable>") != NULL)
-			{
-				if(debug) logg("Ignoring <name unprintable> domain (query)");
+			if(!checkQuery(readbuffer, "query"))
 				continue;
-			}
-
-			if(strstr(readbuffer, "\"") != NULL)
-			{
-				if(debug) logg("Ignoring \" domain (query)");
-				continue;
-			}
 
 			if(!config.analyze_AAAA && strstr(readbuffer," query[AAAA]") != NULL)
 			{
@@ -390,11 +403,8 @@ void process_pihole_log(int file)
 			}
 
 			char *domain = calloc(domainlen+1,sizeof(char));
-			char *domainwithspaces = calloc(domainlen+3,sizeof(char));
 			// strncat() NULL-terminates the copied string (strncpy() doesn't!)
 			strncat(domain,domainstart+2,domainlen);
-			// Copy string into buffer surrounded by spaces
-			sprintf(domainwithspaces," %s ",domain);
 			// Convert domain to lower case
 			strtolower(domain);
 
@@ -403,7 +413,6 @@ void process_pihole_log(int file)
 				// domain is "pi.hole", skip this query
 				// free memory already allocated here
 				free(domain);
-				free(domainwithspaces);
 				continue;
 			}
 
@@ -416,7 +425,6 @@ void process_pihole_log(int file)
 				logg("Notice: Skipping malformated log line (client end missing): %s", readbuffer);
 				// Skip this line, free memory already allocated here
 				free(domain);
-				free(domainwithspaces);
 				continue;
 			}
 
@@ -426,7 +434,6 @@ void process_pihole_log(int file)
 				logg("Notice: Skipping malformated log line (client length < 1): %s", readbuffer);
 				// Skip this line, free memory already allocated here
 				free(domain);
-				free(domainwithspaces);
 				continue;
 			}
 
@@ -567,22 +574,12 @@ void process_pihole_log(int file)
 			// Free allocated memory
 			free(client);
 			free(domain);
-			free(domainwithspaces);
 		}
 		// is this a "gravity.list" line?
 		else if(strstr(readbuffer,"/gravity.list ") != NULL && strstr(readbuffer," is ") != NULL)
 		{
-			// Check if this domain names contains only printable characters
-			// if not: skip analysis of this log line
-			if(strstr(readbuffer,"<name unprintable>") != NULL)
-			{
-				if(debug) logg("Ignoring <name unprintable> domain (cached)");
-				continue;
-			}
-
-			// Check if this is a PTR query
-			// if so: skip analysis of this log line
-			if(strstr(readbuffer,"in-addr.arpa") != NULL)
+			// Check query for invalid characters
+			if(!checkQuery(readbuffer, "gravity.list"))
 				continue;
 
 			// Get dnsmasq's ID for this transaction
@@ -630,17 +627,8 @@ void process_pihole_log(int file)
 		// is this a "forwarded" line?
 		else if(strstr(readbuffer," forwarded ") != NULL && strstr(readbuffer," to ") != NULL)
 		{
-			// Check if this domain names contains only printable characters
-			// if not: skip analysis of this log line
-			if(strstr(readbuffer,"<name unprintable>") != NULL)
-			{
-				if(debug) logg("Ignoring <name unprintable> domain (forwarded)");
-				continue;
-			}
-
-			// Check if this is a PTR query
-			// if so: skip analysis of this log line
-			if(strstr(readbuffer,"in-addr.arpa") != NULL)
+			// Check query for invalid characters
+			if(!checkQuery(readbuffer, "forwarded"))
 				continue;
 
 			// Get dnsmasq's ID for this transaction
@@ -721,17 +709,8 @@ void process_pihole_log(int file)
 			     strstr(readbuffer," /etc/hosts ") != NULL) \
 			  && strstr(readbuffer," is ") != NULL)
 		{
-			// Check if this domain names contains only printable characters
-			// if not: skip analysis of this log line
-			if(strstr(readbuffer,"<name unprintable>") != NULL)
-			{
-				if(debug) logg("Ignoring <name unprintable> domain (cached)");
-				continue;
-			}
-
-			// Check if this is a PTR query
-			// if so: skip analysis of this log line
-			if(strstr(readbuffer,"in-addr.arpa") != NULL)
+			// Check query for invalid characters
+			if(!checkQuery(readbuffer, "cached"))
 				continue;
 
 			// Get dnsmasq's ID for this transaction
@@ -777,17 +756,8 @@ void process_pihole_log(int file)
 		// is this a "wildcard" line?
 		else if(strstr(readbuffer," config ") != NULL && strstr(readbuffer," is ") != NULL)
 		{
-			// Check if this domain names contains only printable characters
-			// if not: skip analysis of this log line
-			if(strstr(readbuffer,"<name unprintable>") != NULL)
-			{
-				if(debug) logg("Ignoring <name unprintable> domain (cached)");
-				continue;
-			}
-
-			// Check if this is a PTR query
-			// if so: skip analysis of this log line
-			if(strstr(readbuffer,"in-addr.arpa") != NULL)
+			// Check query for invalid characters
+			if(!checkQuery(readbuffer, "gravity.list"))
 				continue;
 
 			// Get dnsmasq's ID for this transaction
@@ -851,17 +821,8 @@ void process_pihole_log(int file)
 		// is this a "black.list" line?
 		else if(strstr(readbuffer,"/black.list ") != NULL && strstr(readbuffer," is ") != NULL)
 		{
-			// Check if this domain names contains only printable characters
-			// if not: skip analysis of this log line
-			if(strstr(readbuffer,"<name unprintable>") != NULL)
-			{
-				if(debug) logg("Ignoring <name unprintable> domain (cached)");
-				continue;
-			}
-
-			// Check if this is a PTR query
-			// if so: skip analysis of this log line
-			if(strstr(readbuffer,"in-addr.arpa") != NULL)
+			// Check query for invalid characters
+			if(!checkQuery(readbuffer, "black.list"))
 				continue;
 
 			// Get dnsmasq's ID for this transaction
