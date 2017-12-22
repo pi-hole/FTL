@@ -28,7 +28,7 @@ void read_FTLconf(void)
 	}
 
 	// Parse lines in the config file
-	logg("Starting config file parsing");
+	logg("Starting config file parsing (%s)", FTLfiles.conf);
 
 	// SOCKET_LISTENING
 	// defaults to: listen only local
@@ -130,8 +130,53 @@ void read_FTLconf(void)
 	else
 		logg("   RESOLVE_IPV4: Don\'t resolve IPv4 addresses");
 
+	// DBINTERVAL
+	// How often do we store queries in FTL's database [minutes]?
+	// this value can be a floating point number, e.g. "DBINTERVAL=0.5"
+	// defaults to: once per minute
+	config.DBinterval = 60;
+	buffer = parse_FTLconf(fp, "DBINTERVAL");
+
+	float fvalue = 0;
+	if(buffer != NULL && sscanf(buffer, "%f", &fvalue))
+		// check if the read value is
+		// - larger than 0.1min (6sec), and
+		// - smaller than 1440.0min (once a day)
+		if(fvalue >= 0.1 && fvalue <= 1440.0)
+			config.DBinterval = (int)(60.*fvalue);
+
+	if(config.DBinterval == 60)
+		logg("   DBINTERVAL: saving to DB file every minute");
+	else
+		logg("   DBINTERVAL: saving to DB file every %i seconds", config.DBinterval);
+
+	// DBFILE
+	// defaults to: "/etc/pihole/pihole-FTL.db"
+	buffer = parse_FTLconf(fp, "DBFILE");
+
+	errno = 0;
+	// Use sscanf() to obtain filename from config file parameter only if buffer != NULL
+	if(!(buffer != NULL && sscanf(buffer, "%127ms", &FTLfiles.db)))
+	{
+		// Use standard path if no custom path was obtained from the config file
+		FTLfiles.db = strdup("/etc/pihole/pihole-FTL.db");
+	}
+
+	// Test if memory allocation was successful
+	if(FTLfiles.db == NULL && errno != 0)
+	{
+		logg("FATAL: Allocating memory for FTLfiles.db failed (%s, %i). Exiting.", strerror(errno), errno);
+		exit(EXIT_FAILURE);
+	}
+	else if(FTLfiles.db != NULL && strlen(FTLfiles.db) > 0)
+		logg("   DBFILE: Using %s", FTLfiles.db);
+	else
+		logg("   DBFILE: Not using database due to empty filename");
+
+
 	logg("Finished config file parsing");
 
+	// Release memory
 	if(conflinebuffer != NULL)
 	{
 		free(conflinebuffer);

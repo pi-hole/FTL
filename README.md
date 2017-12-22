@@ -111,6 +111,8 @@ Possible settings (**the option shown first is the default**):
 - `MAXDBDAYS=365` (How long should queries be stored in the database? Setting this to `0` disables the database altogether)
 - `RESOLVE_IPV6=yes|no` (Should `FTL` try to resolve IPv6 addresses to host names?)
 - `RESOLVE_IPV4=yes|no` (Should `FTL` try to resolve IPv4 addresses to host names?)
+- `DBINTERVAL=1.0` (How often do we store queries in FTL's database [minutes]?)
+- `DBFILE=/etc/pihole/pihole-FTL.db` (Specify path and filename of FTL's SQLite long-term database. Setting this to `DBFILE=` disables the database altogether)
 
 ### Implemented keywords (starting with `>`, subject to change):
 
@@ -185,7 +187,7 @@ unique_clients 3
 2 10.0 5.6.7.8 some.other.dns.com
 ```
  Variant: `>forward-dest unsorted` to show forward destinations in unsorted order (equivalent to using `>forward-names`)
-```
+
 
 - `>querytypes` : get collected query types percentage
  ```

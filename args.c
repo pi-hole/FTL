@@ -70,7 +70,10 @@ void parse_args(int argc, char* argv[])
 		if(strcmp(argv[i], "-v") == 0 ||
 		   strcmp(argv[i], "version") == 0)
 		{
-			if(strcmp(GIT_BRANCH, "master") == 0)
+			char version[] = GIT_VERSION;
+			// Check if version is of format vX.YY
+			// '.' can never be part of a commit hash
+			if(strstr(version, ".") != NULL)
 				printf("%s\n",GIT_VERSION);
 			else
 				printf("vDev-%s\n",GIT_HASH);
@@ -113,7 +116,8 @@ void parse_args(int argc, char* argv[])
 		{
 			travis = true;
 			FTLfiles.log = "pihole-FTL.log";
-			FTLfiles.db = "pihole-FTL.db";
+			// FTLfiles.db will be set to "pihole-FTL.db" via config file on Travis
+			FTLfiles.conf = "pihole-FTL.conf";
 			files.log = "pihole.log";
 			ok = true;
 		}
