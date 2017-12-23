@@ -189,8 +189,23 @@ int countlineswith(const char* str, const char* fname)
 	// Search through file
 	// getline reads a string from the specified file up to either a newline character or EOF
 	while(getline(&buffer, &size, fp) != -1)
-		if((strstr(buffer, str)) != NULL)
+	{
+		// Strip potential newline character at the end of line we just read
+		if(buffer[strlen(buffer)-1] == '\n')
+			buffer[strlen(buffer)-1] = '\0';
+
+		printf("Searching \"%s\" in \"%s\"\n",buffer,str);
+		// Search for exact match
+		if(strcmp(buffer, str) == 0)
 			found++;
+
+		// If line starts with *, search for partial match
+		if(buffer[0] == '*')
+		{
+			if(strstr(str, buffer+1) != NULL)
+				found++;
+		}
+	}
 
 	// Free allocated memory
 	if(buffer != NULL)
