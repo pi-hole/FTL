@@ -59,7 +59,11 @@ void getStats(int *sock, char type)
 	switch(blockingstatus)
 	{
 		case 0: // Blocking disabled
-			strncpy(domains_blocked, "N/A", 4);
+			if(type == SOCKET)
+				strncpy(domains_blocked, "N/A", 4);
+			else
+				strncpy(domains_blocked, "\"N/A\"", 6);
+
 			strncpy(status, "disabled", 9);
 			break;
 		case 1: // Blocking Enabled
@@ -105,7 +109,8 @@ void getStats(int *sock, char type)
 				"\"clients_ever_seen\":%i,"
 				"\"unique_clients\":%i,"
 				"\"status\":\"%s\"",
-				domains_blocked,total,
+				domains_blocked,
+				total,
 				blocked,
 				percentage,
 				counters.domains,
