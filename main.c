@@ -98,7 +98,7 @@ int main (int argc, char* argv[]) {
 		if(((time(NULL) - GCdelay)%GCinterval) == 0)
 			runGCthread = true;
 
-		if(database && ((time(NULL)%DBinterval) == 0))
+		if(database && ((time(NULL)%config.DBinterval) == 0))
 			runDBthread = true;
 
 		// Garbadge collect in regular interval, but don't do it if the threadlocks is set
@@ -146,8 +146,18 @@ int main (int argc, char* argv[]) {
 			}
 
 			// Avoid immediate re-run of DB thread
-			while(((time(NULL)%DBinterval) == 0))
+			while(((time(NULL)%config.DBinterval) == 0))
 				sleepms(100);
+		}
+
+		// Handle SIGHUP
+		if(rereadgravity)
+		{
+			enable_thread_lock("pihole_main_thread");
+			// Have to re-read gravity files
+			rereadgravity = false;
+			read_gravity_files();
+			disable_thread_lock("pihole_main_thread");
 		}
 	}
 

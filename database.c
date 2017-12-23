@@ -19,6 +19,21 @@ pthread_mutex_t dblock;
 
 enum { DB_VERSION, DB_LASTTIMESTAMP };
 
+void check_database(int rc)
+{
+	// We will retry if the database is busy at the moment
+	// However, we won't retry if any other error happened
+	// and - instead - disable the database functionality
+	// altogether in FTL (setting database to false)
+	if(rc != SQLITE_OK &&
+	   rc != SQLITE_DONE &&
+	   rc != SQLITE_ROW &&
+	   rc != SQLITE_BUSY)
+	{
+		database = false;
+	}
+}
+
 void dbclose(void)
 {
 	sqlite3_close(db);
@@ -51,6 +66,7 @@ bool dbopen(void)
 	if( rc ){
 		logg("dbopen() - SQL error (%i): %s", rc, sqlite3_errmsg(db));
 		dbclose();
+		check_database(rc);
 		return false;
 	}
 
@@ -81,6 +97,7 @@ bool dbquery(const char *format, ...)
 	if( rc != SQLITE_OK ){
 		logg("dbquery(%s) - SQL error (%i): %s", query, rc, zErrMsg);
 		sqlite3_free(zErrMsg);
+		check_database(rc);
 		return false;
 	}
 
@@ -97,6 +114,7 @@ bool db_create(void)
 	if( rc ){
 		logg("db_create() - SQL error (%i): %s", rc, sqlite3_errmsg(db));
 		dbclose();
+		check_database(rc);
 		return false;
 	}
 	// Create Queries table in the database
@@ -128,10 +146,19 @@ bool db_create(void)
 
 void db_init(void)
 {
+	// First check if the user doesn't want to use the database and set an
+	// empty string as file name in FTL's config file
+	if(FTLfiles.db == NULL || strlen(FTLfiles.db) == 0)
+	{
+		database = false;
+		return;
+	}
+
 	int rc = sqlite3_open_v2(FTLfiles.db, &db, SQLITE_OPEN_READWRITE, NULL);
 	if( rc ){
 		logg("db_init() - Cannot open database (%i): %s", rc, sqlite3_errmsg(db));
 		dbclose();
+		check_database(rc);
 
 		logg("Creating new (empty) database");
 		if (!db_create())
@@ -172,6 +199,7 @@ int db_get_FTL_property(unsigned int ID)
 	if( rc ){
 		logg("db_get_FTL_property() - SQL error prepare (%i): %s", rc, sqlite3_errmsg(db));
 		dbclose();
+		check_database(rc);
 		return -1;
 	}
 	free(querystring);
@@ -181,6 +209,7 @@ int db_get_FTL_property(unsigned int ID)
 	if( rc != SQLITE_ROW ){
 		logg("db_get_FTL_property() - SQL error step (%i): %s", rc, sqlite3_errmsg(db));
 		dbclose();
+		check_database(rc);
 		return -1;
 	}
 
@@ -205,6 +234,7 @@ int number_of_queries_in_DB(void)
 	if( rc ){
 		logg("number_of_queries_in_DB() - SQL error prepare (%i): %s", rc, sqlite3_errmsg(db));
 		dbclose();
+		check_database(rc);
 		return -1;
 	}
 
@@ -212,6 +242,7 @@ int number_of_queries_in_DB(void)
 	if( rc != SQLITE_ROW ){
 		logg("number_of_queries_in_DB() - SQL error step (%i): %s", rc, sqlite3_errmsg(db));
 		dbclose();
+		check_database(rc);
 		return -1;
 	}
 
@@ -274,6 +305,7 @@ void save_to_DB(void)
 	{
 		logg("save_to_DB() - error in preparing SQL statement (%i): %s", ret, sqlite3_errmsg(db));
 		dbclose();
+		check_database(rc);
 		return;
 	}
 
@@ -338,6 +370,8 @@ void save_to_DB(void)
 				logg("save_to_DB() - exiting due to too many errors");
 				break;
 			}
+			// Check this error message
+			check_database(rc);
 		}
 
 		saved++;
@@ -411,18 +445,17 @@ void *DB_thread(void *val)
 	// Set thread name
 	prctl(PR_SET_NAME,"DB",0,0,0);
 
-	if(!DBdeleteoldqueries)
-	{
-		// Lock FTL's data structure, since it is likely that it will be changed here
-		enable_thread_lock("DB_thread");
+	// Lock FTL's data structure, since it is likely that it will be changed here
+	enable_thread_lock("DB_thread");
 
-		// Save data to database
-		save_to_DB();
+	// Save data to database
+	save_to_DB();
 
-		// Release thread lock
-		disable_thread_lock("DB_thread");
-	}
-	else
+	// Release thread lock
+	disable_thread_lock("DB_thread");
+
+	// Check if GC should be done on the database
+	if(DBdeleteoldqueries)
 	{
 		// No thread locks needed
 		delete_old_queries_in_DB();

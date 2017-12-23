@@ -49,6 +49,9 @@ void read_gravity_files(void)
 	{
 		logg("No wildcard blocking list present");
 	}
+
+	// Get blocking status
+	check_blocking_status();
 }
 
 int countlines(const char* fname)
@@ -204,4 +207,19 @@ int countlineswith(const char* str, const char* fname)
 	fclose(fp);
 
 	return found;
+}
+
+void check_blocking_status(void)
+{
+	int disabled = countlineswith("#addn-hosts=/etc/pihole/gravity.list",files.dnsmasqconfig);
+
+	if(disabled < 0)
+		// Failed to open file -> unknown status
+		blockingstatus = 2;
+	else if(disabled > 0)
+		// Disabled
+		blockingstatus = 0;
+	else
+		// Enabled
+		blockingstatus = 1;
 }

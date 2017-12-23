@@ -61,15 +61,16 @@ Once you are used to it, you can skip most of the steps and debugging is actuall
   * `sudo chown pi:pi /var/log/pihole-FTL.log /run/pihole-FTL.pid /run/pihole-FTL.port`
   * `sudo chmod 0644 /var/log/pihole-FTL.log /run/pihole-FTL.pid /run/pihole-FTL.port`
 6. Start `pihole-FTL` in the debugger: `gdb pihole-FTL`
-7. Type `run debug` to start `FTL` (you should see some lines of text and `FTL` should start successfully).
-8. You can now close the terminal (Ctrl+A and then D to detach) and come back later using (`screen -r`) when it has crashed
-9. If it has crashed, copy&paste the terminal output, and
-10. type also `backtrace` and post the output in a (new) issue
-11. We might ask for additional information in order to isolate your particular issue
+7. Type `handle SIGHUP nostop SIGPIPE nostop` to instruct the debugger to don't stop on expected signals
+8. Type `run debug` to start `FTL` (you should see some lines of text and `FTL` should start successfully)
+9. You can now close the terminal (Ctrl+A and then D to detach) and come back later using (`screen -r`) when it has crashed
+10. If it has crashed, copy&paste the terminal output, and
+11. type also `backtrace` and post the output in a (new) issue
+12. We might ask for additional information in order to isolate your particular issue
 
 #### Simplified debugging instructions (when `FTL` is running)
 
-`FTL` has been designed such that a debugger can be attached to an already running process to ease debugging. Use `sudo gdb -p $(pidof pihole-FTL)` to attach to an already running `pihole-FTL` process. You can leave off `sudo` if you are running `pihole-FTL` with the current user. Once loading of the symbols has finished (the `(gdb)` input prompt is shown), run `continue` to continue operation of `pihole-FTL` inside the debugger. All debugger features are now available.
+`FTL` has been designed such that a debugger can be attached to an already running process to ease debugging. Use `sudo gdb -p $(pidof pihole-FTL)` to attach to an already running `pihole-FTL` process. You can leave off `sudo` if you are running `pihole-FTL` with the current user. Once loading of the symbols has finished (the `(gdb)` input prompt is shown), run `handle SIGHUP nostop SIGPIPE nostop` followed by `continue` to continue operation of `pihole-FTL` inside the debugger. All debugger features are now available.
 
 If `pihole-FTL` has crashed, copy&paste the terminal output into a (new) issue. Also type `backtrace` and include its output. We might ask for additional information in order to isolate your particular issue.
 
@@ -80,6 +81,10 @@ When you want to detach the debugger from `FTL` without terminating the process,
 - `debug` - Don't go into daemon mode (stay in foreground) + more verbose logging
 - `test` - Start `FTL` and process everything, but shut down immediately afterwards
 - `version` - Don't start `FTL`, show only version
+- `tag` - Don't start `FTL`, show only git tag
+- `branch` - Don't start `FTL`, show only git branch `FTL` was compiled from
+- `no-daemon` or `-f` - Don't go into background (daemon mode)
+- `help` or `-h` - Don't start `FTL`, show help
 
 Command line arguments can be arbitrarily combined, e.g. `pihole-FTL debug test`
 
@@ -104,6 +109,10 @@ Possible settings (**the option shown first is the default**):
 - `QUERY_DISPLAY=yes|no` (Display all queries? Set to `no` to hide query display)
 - `AAAA_QUERY_ANALYSIS=yes|no` (Allow `FTL` to analyze AAAA queries from pihole.log?)
 - `MAXDBDAYS=365` (How long should queries be stored in the database? Setting this to `0` disables the database altogether)
+- `RESOLVE_IPV6=yes|no` (Should `FTL` try to resolve IPv6 addresses to host names?)
+- `RESOLVE_IPV4=yes|no` (Should `FTL` try to resolve IPv4 addresses to host names?)
+- `DBINTERVAL=1.0` (How often do we store queries in FTL's database [minutes]?)
+- `DBFILE=/etc/pihole/pihole-FTL.db` (Specify path and filename of FTL's SQLite long-term database. Setting this to `DBFILE=` disables the database altogether)
 
 ### Implemented keywords (starting with `>`, subject to change):
 

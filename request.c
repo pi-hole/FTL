@@ -94,6 +94,16 @@ void process_socket_request(char *client_message, int *sock)
 		processed = true;
 		getDBstats(sock, type);
 	}
+	else if(command(client_message, ">ClientsoverTime"))
+	{
+		processed = true;
+		getClientsOverTime(sock);
+	}
+	else if(command(client_message, ">client-names"))
+	{
+		processed = true;
+		getClientNames(sock);
+	}
 
 	// Test only at the end if we want to quit or kill
 	// so things can be processed before
@@ -109,6 +119,7 @@ void process_socket_request(char *client_message, int *sock)
 	else if(command(client_message, ">kill"))
 	{
 		processed = true;
+		ssend(*sock, "killed\n");
 		logg("FTL killed by client ID: %i",*sock);
 		killed = 1;
 	}

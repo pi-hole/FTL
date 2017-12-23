@@ -52,6 +52,25 @@ void getStats(int *sock, char type)
 	if(total > 0)
 		percentage = 1e2*blocked/total;
 
+	// MAX_INT is 10 digits, +1 for the null terminator
+	char domains_blocked[11];
+	char status[9];
+
+	switch(blockingstatus)
+	{
+		case 0: // Blocking disabled
+			strncpy(domains_blocked, "N/A", 4);
+			strncpy(status, "disabled", 9);
+			break;
+		case 1: // Blocking Enabled
+			snprintf(domains_blocked, 11, "%i", counters.gravity);
+			strncpy(status, "enabled", 8);
+			break;
+		default: // Unknown status
+			snprintf(domains_blocked, 11, "%i", counters.gravity);
+			strncpy(status, "unknown", 8);
+			break;
+	}
 
 	// unique_clients: count only clients that have been active within the most recent 24 hours
 	int i, activeclients = 0;
@@ -63,19 +82,20 @@ void getStats(int *sock, char type)
 	}
 
 	if(type == SOCKET) {
-		ssend(*sock, "domains_being_blocked %i\ndns_queries_today %i\nads_blocked_today %i\nads_percentage_today %f\n",
-		      counters.gravity, total, blocked, percentage);
+		ssend(*sock, "domains_being_blocked %s\ndns_queries_today %i\nads_blocked_today %i\nads_percentage_today %f\n",
+		      domains_blocked, total, blocked, percentage);
 		ssend(*sock, "unique_domains %i\nqueries_forwarded %i\nqueries_cached %i\n",
 		      counters.domains, counters.forwardedqueries, counters.cached);
 		ssend(*sock, "clients_ever_seen %i\n", counters.clients);
 		ssend(*sock, "unique_clients %i\n", activeclients);
+		ssend(*sock, "status %s\n", status);
 	}
 	else
 	{
 		sendAPIResponse(*sock, type, OK);
 		ssend(
 				*sock,
-				"\"domains_being_blocked\":%i,"
+				"\"domains_being_blocked\":%s,"
 				"\"dns_queries_today\":%i,"
 				"\"ads_blocked_today\":%i,"
 				"\"ads_percentage_today\":%.4f,"
@@ -83,15 +103,17 @@ void getStats(int *sock, char type)
 				"\"queries_forwarded\":%i,"
 				"\"queries_cached\":%i,"
 				"\"clients_ever_seen\":%i,"
-				"\"unique_clients\":%i",
-				counters.gravity,total,
+				"\"unique_clients\":%i,"
+				"\"status\":%s",
+				domains_blocked,total,
 				blocked,
 				percentage,
 				counters.domains,
 				counters.forwardedqueries,
 				counters.cached,
 				counters.clients,
-				activeclients
+				activeclients,
+				status
 		);
 	}
 
@@ -388,7 +410,7 @@ void getTopClients(char *client_message, int *sock, char type)
 	// Sort temporary array
 	qsort(temparray, counters.clients, sizeof(int[2]), cmpasc);
 
-	// Get domains which the user doesn't want to see
+	// Get clients which the user doesn't want to see
 	char * excludeclients = read_setupVarsconf("API_EXCLUDE_CLIENTS");
 	if(excludeclients != NULL)
 	{
@@ -1133,7 +1155,14 @@ void getQueryTypesOverTime(int *sock, char type)
 
 void getVersion(int *sock, char type)
 {
-	ssend(*sock,"version %s\ntag %s\nbranch %s\ndate %s\n", GIT_VERSION, GIT_TAG, GIT_BRANCH, GIT_DATE);
+	char server_message[SOCKETBUFFERLEN];
+
+	char version[] = GIT_VERSION;
+	if(strstr(version, ".") != NULL)
+		sprintf(server_message,"version %s\ntag %s\nbranch %s\ndate %s\n", GIT_VERSION, GIT_TAG, GIT_BRANCH, GIT_DATE);
+	else
+		sprintf(server_message,"version vDev-%s\ntag %s\nbranch %s\ndate %s\n", GIT_HASH, GIT_TAG, GIT_BRANCH, GIT_DATE);
+	swrite(server_message, *sock);
 
 	if(debugclients)
 		logg("Sent version info to client, ID: %i", *sock);
@@ -1158,4 +1187,117 @@ void getDBstats(int *sock, char type)
 
 	if(debugclients)
 		logg("Sent DB info to client, ID: %i", *sock);
+}
+
+void getClientsOverTime(int *sock)
+{
+	char server_message[SOCKETBUFFERLEN];
+	int i, sendit = -1;
+
+	for(i = 0; i < counters.overTime; i++)
+	{
+		validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
+		if((overTime[i].total > 0 || overTime[i].blocked > 0))
+		{
+			sendit = i;
+			break;
+		}
+	}
+	if(sendit < 0)
+		return;
+
+	// Get clients which the user doesn't want to see
+	char * excludeclients = read_setupVarsconf("API_EXCLUDE_CLIENTS");
+	// Array of clients to be skipped in the output
+	// if skipclient[i] == true then this client should be hidden from
+	// returned data. We initialize it with false
+	bool skipclient[counters.clients];
+	memset(skipclient, false, counters.clients*sizeof(bool));
+
+	if(excludeclients != NULL)
+	{
+		getSetupVarsArray(excludeclients);
+
+		for(i=0; i < counters.clients; i++)
+		{
+			validate_access("clients", i, true, __LINE__, __FUNCTION__, __FILE__);
+			// Check if this client should be skipped
+			if(insetupVarsArray(clients[i].ip) || insetupVarsArray(clients[i].name))
+			{
+				skipclient[i] = true;
+			}
+		}
+	}
+
+	// Main return loop
+	for(i = sendit; i < counters.overTime; i++)
+	{
+		validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
+		sprintf(server_message, "%i", overTime[i].timestamp);
+
+		// Loop over forward destinations to generate output to be sent to the client
+		int j;
+		for(j = 0; j < counters.clients; j++)
+		{
+			int thisclient = 0;
+
+			if(skipclient[j])
+				continue;
+
+			if(j < overTime[i].clientnum)
+			{
+				// This client entry does already exist at this timestamp
+				// -> use counter of requests sent to this destination
+				thisclient = overTime[i].clientdata[j];
+			}
+
+			sprintf(server_message + strlen(server_message), " %i", thisclient);
+		}
+
+		sprintf(server_message + strlen(server_message), "\n");
+		swrite(server_message, *sock);
+	}
+
+	if(excludeclients != NULL)
+		clearSetupVarsArray();
+}
+
+void getClientNames(int *sock)
+{
+	char server_message[SOCKETBUFFERLEN];
+	int i;
+
+	// Get clients which the user doesn't want to see
+	char * excludeclients = read_setupVarsconf("API_EXCLUDE_CLIENTS");
+	// Array of clients to be skipped in the output
+	// if skipclient[i] == true then this client should be hidden from
+	// returned data. We initialize it with false
+	bool skipclient[counters.clients];
+	memset(skipclient, false, counters.clients*sizeof(bool));
+
+	if(excludeclients != NULL)
+	{
+		getSetupVarsArray(excludeclients);
+
+		for(i=0; i < counters.clients; i++)
+		{
+			validate_access("clients", i, true, __LINE__, __FUNCTION__, __FILE__);
+			// Check if this client should be skipped
+
+		}
+	}
+
+	// Loop over clients to generate output to be sent to the client
+	for(i = 0; i < counters.clients; i++)
+	{
+		validate_access("clients", i, true, __LINE__, __FUNCTION__, __FILE__);
+		if(insetupVarsArray(clients[i].ip) || insetupVarsArray(clients[i].name))
+			continue;
+
+		sprintf(server_message,"%i %i %s %s\n", i, clients[i].count, clients[i].ip, clients[i].name);
+		swrite(server_message, *sock);
+	}
+
+	if(excludeclients != NULL)
+		clearSetupVarsArray();
 }

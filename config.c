@@ -28,17 +28,16 @@ void read_FTLconf(void)
 	}
 
 	// Parse lines in the config file
-	logg("Starting config file parsing");
+	logg("Starting config file parsing (%s)", FTLfiles.conf);
 
 	// SOCKET_LISTENING
 	// defaults to: listen only local
 	config.socket_listenlocal = true;
 	buffer = parse_FTLconf(fp, "SOCKET_LISTENING");
-	if(buffer != NULL)
-	{
-		if(strcmp(buffer, "all") == 0)
-			config.socket_listenlocal = false;
-	}
+
+	if(buffer != NULL && strcmp(buffer, "all") == 0)
+		config.socket_listenlocal = false;
+
 	if(config.socket_listenlocal)
 		logg("   SOCKET_LISTENING: only local");
 	else
@@ -49,21 +48,20 @@ void read_FTLconf(void)
 	config.rolling_24h = true;
 	config.include_yesterday = true;
 	buffer = parse_FTLconf(fp, "TIMEFRAME");
-	if(buffer != NULL)
+
+	if(buffer != NULL && strcmp(buffer, "yesterday") == 0)
 	{
-		if(strcmp(buffer, "yesterday") == 0)
-		{
-			config.include_yesterday = true;
-			config.rolling_24h = false;
-			logg("   TIMEFRAME: Yesterday + Today");
-		}
-		else if(strcmp(buffer, "today") == 0)
-		{
-			config.include_yesterday = false;
-			config.rolling_24h = false;
-			logg("   TIMEFRAME: Today");
-		}
+		config.include_yesterday = true;
+		config.rolling_24h = false;
+		logg("   TIMEFRAME: Yesterday + Today");
 	}
+	else if(buffer != NULL && strcmp(buffer, "today") == 0)
+	{
+		config.include_yesterday = false;
+		config.rolling_24h = false;
+		logg("   TIMEFRAME: Today");
+	}
+
 	if(config.rolling_24h)
 		logg("   TIMEFRAME: Rolling 24h");
 
@@ -71,11 +69,10 @@ void read_FTLconf(void)
 	// defaults to: Yes
 	config.query_display = true;
 	buffer = parse_FTLconf(fp, "QUERY_DISPLAY");
-	if(buffer != NULL)
-	{
-		if(strcmp(buffer, "no") == 0)
-			config.query_display = false;
-	}
+
+	if(buffer != NULL && strcmp(buffer, "no") == 0)
+		config.query_display = false;
+
 	if(config.query_display)
 		logg("   QUERY_DISPLAY: Show queries");
 	else
@@ -85,11 +82,10 @@ void read_FTLconf(void)
 	// defaults to: Yes
 	config.analyze_AAAA = true;
 	buffer = parse_FTLconf(fp, "AAAA_QUERY_ANALYSIS");
-	if(buffer != NULL)
-	{
-		if(strcmp(buffer, "no") == 0)
-			config.analyze_AAAA = false;
-	}
+
+	if(buffer != NULL && strcmp(buffer, "no") == 0)
+		config.analyze_AAAA = false;
+
 	if(config.analyze_AAAA)
 		logg("   AAAA_QUERY_ANALYSIS: Show AAAA queries");
 	else
@@ -99,20 +95,88 @@ void read_FTLconf(void)
 	// defaults to: 365 days
 	config.maxDBdays = 365;
 	buffer = parse_FTLconf(fp, "MAXDBDAYS");
-	if(buffer != NULL)
-	{
-		int value = 0;
-		if(sscanf(buffer, "%i", &value))
-			if(value >= 0)
-				config.maxDBdays = value;
-	}
+
+	int value = 0;
+	if(buffer != NULL && sscanf(buffer, "%i", &value))
+		if(value >= 0)
+			config.maxDBdays = value;
+
 	if(config.maxDBdays == 0)
 		logg("   MAXDBDAYS: --- (DB disabled)", config.maxDBdays);
 	else
 		logg("   MAXDBDAYS: max age for stored queries is %i days", config.maxDBdays);
 
+	// RESOLVE_IPV6
+	// defaults to: Yes
+	config.resolveIPv6 = true;
+	buffer = parse_FTLconf(fp, "RESOLVE_IPV6");
+
+	if(buffer != NULL && strcmp(buffer, "no") == 0)
+		config.resolveIPv6 = false;
+
+	if(config.resolveIPv6)
+		logg("   RESOLVE_IPV6: Resolve IPv6 addresses");
+	else
+		logg("   RESOLVE_IPV6: Don\'t resolve IPv6 addresses");
+
+	// RESOLVE_IPV4
+	// defaults to: Yes
+	config.resolveIPv4 = true;
+	buffer = parse_FTLconf(fp, "RESOLVE_IPV4");
+	if(buffer != NULL && strcmp(buffer, "no") == 0)
+		config.resolveIPv4 = false;
+	if(config.resolveIPv4)
+		logg("   RESOLVE_IPV4: Resolve IPv4 addresses");
+	else
+		logg("   RESOLVE_IPV4: Don\'t resolve IPv4 addresses");
+
+	// DBINTERVAL
+	// How often do we store queries in FTL's database [minutes]?
+	// this value can be a floating point number, e.g. "DBINTERVAL=0.5"
+	// defaults to: once per minute
+	config.DBinterval = 60;
+	buffer = parse_FTLconf(fp, "DBINTERVAL");
+
+	float fvalue = 0;
+	if(buffer != NULL && sscanf(buffer, "%f", &fvalue))
+		// check if the read value is
+		// - larger than 0.1min (6sec), and
+		// - smaller than 1440.0min (once a day)
+		if(fvalue >= 0.1 && fvalue <= 1440.0)
+			config.DBinterval = (int)(60.*fvalue);
+
+	if(config.DBinterval == 60)
+		logg("   DBINTERVAL: saving to DB file every minute");
+	else
+		logg("   DBINTERVAL: saving to DB file every %i seconds", config.DBinterval);
+
+	// DBFILE
+	// defaults to: "/etc/pihole/pihole-FTL.db"
+	buffer = parse_FTLconf(fp, "DBFILE");
+
+	errno = 0;
+	// Use sscanf() to obtain filename from config file parameter only if buffer != NULL
+	if(!(buffer != NULL && sscanf(buffer, "%127ms", &FTLfiles.db)))
+	{
+		// Use standard path if no custom path was obtained from the config file
+		FTLfiles.db = strdup("/etc/pihole/pihole-FTL.db");
+	}
+
+	// Test if memory allocation was successful
+	if(FTLfiles.db == NULL && errno != 0)
+	{
+		logg("FATAL: Allocating memory for FTLfiles.db failed (%s, %i). Exiting.", strerror(errno), errno);
+		exit(EXIT_FAILURE);
+	}
+	else if(FTLfiles.db != NULL && strlen(FTLfiles.db) > 0)
+		logg("   DBFILE: Using %s", FTLfiles.db);
+	else
+		logg("   DBFILE: Not using database due to empty filename");
+
+
 	logg("Finished config file parsing");
 
+	// Release memory
 	if(conflinebuffer != NULL)
 	{
 		free(conflinebuffer);

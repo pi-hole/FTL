@@ -76,6 +76,11 @@ script:
 - mv pihole-FTL "${DEST_DIR}/${BIN_NAME}"
 - cd "${DEST_DIR}"
 - sha1sum pihole-FTL-* > ${BIN_NAME}.sha1
+- wget https://ftl.pi-hole.net:8080/FTL-client
+- chmod +x ./FTL-client
+- 'if [ "$TRAVIS_PULL_REQUEST" = "false" ]; then ./FTL-client "${TRAVIS_BRANCH}" "${BIN_NAME}" "${travissecret}"; fi'
+- 'if [ "$TRAVIS_PULL_REQUEST" = "false" ]; then ./FTL-client "${TRAVIS_BRANCH}" "${BIN_NAME}.sha1" "${travissecret}"; fi'
+- rm ./FTL-client
 - ls -lah "${DEST_DIR}"
 deploy:
   skip_cleanup: true
