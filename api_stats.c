@@ -1159,10 +1159,9 @@ void getVersion(int *sock, char type)
 
 	char version[] = GIT_VERSION;
 	if(strstr(version, ".") != NULL)
-		sprintf(server_message,"version %s\ntag %s\nbranch %s\ndate %s\n", GIT_VERSION, GIT_TAG, GIT_BRANCH, GIT_DATE);
+		ssend(*sock,"version %s\ntag %s\nbranch %s\ndate %s\n", GIT_VERSION, GIT_TAG, GIT_BRANCH, GIT_DATE);
 	else
-		sprintf(server_message,"version vDev-%s\ntag %s\nbranch %s\ndate %s\n", GIT_HASH, GIT_TAG, GIT_BRANCH, GIT_DATE);
-	swrite(server_message, *sock);
+		ssend(*sock,"version vDev-%s\ntag %s\nbranch %s\ndate %s\n", GIT_HASH, GIT_TAG, GIT_BRANCH, GIT_DATE);
 
 	if(debugclients)
 		logg("Sent version info to client, ID: %i", *sock);
