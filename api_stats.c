@@ -1155,8 +1155,6 @@ void getQueryTypesOverTime(int *sock, char type)
 
 void getVersion(int *sock, char type)
 {
-	char server_message[SOCKETBUFFERLEN];
-
 	char version[] = GIT_VERSION;
 	if(strstr(version, ".") != NULL)
 		ssend(*sock,"version %s\ntag %s\nbranch %s\ndate %s\n", GIT_VERSION, GIT_TAG, GIT_BRANCH, GIT_DATE);
@@ -1254,7 +1252,7 @@ void getClientsOverTime(int *sock)
 		}
 
 		sprintf(server_message + strlen(server_message), "\n");
-		swrite(server_message, *sock);
+		ssend(*sock, server_message);
 	}
 
 	if(excludeclients != NULL)
@@ -1294,7 +1292,7 @@ void getClientNames(int *sock)
 			continue;
 
 		sprintf(server_message,"%i %i %s %s\n", i, clients[i].count, clients[i].ip, clients[i].name);
-		swrite(server_message, *sock);
+		ssend(*sock, server_message);
 	}
 
 	if(excludeclients != NULL)
