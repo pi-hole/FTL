@@ -104,7 +104,7 @@ void getStats(int *sock, char type)
 				"\"queries_cached\":%i,"
 				"\"clients_ever_seen\":%i,"
 				"\"unique_clients\":%i,"
-				"\"status\":%s",
+				"\"status\":\"%s\"",
 				domains_blocked,total,
 				blocked,
 				percentage,
