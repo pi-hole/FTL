@@ -199,12 +199,10 @@ int countlineswith(const char* str, const char* fname)
 		if(strcmp(buffer, str) == 0)
 			found++;
 
-		// If line starts with *, search for partial match
-		if(buffer[0] == '*')
-		{
-			if(strstr(str, buffer+1) != NULL)
+		// If line starts with *, search for partial match of
+		// needle "buffer+1" in haystack "str"
+		if(buffer[0] == '*' && strstr(str, buffer+1) != NULL)
 				found++;
-		}
 	}
 
 	// Free allocated memory
