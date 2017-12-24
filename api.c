@@ -75,7 +75,8 @@ enum Auth authenticate(char *with_headers, char *payload, long *session) {
 			return AUTH_UNAUTHORIZED;
 		}
 
-		for(int i = 0; i < authLength; i++) {
+		int i;
+		for(i = 0; i < authLength; i++) {
 			if(authData[i].valid && authData[i].session == *session) {
 				auth = &authData[i];
 				time_t currentTime = time(NULL);
@@ -118,7 +119,8 @@ enum Auth authenticate(char *with_headers, char *payload, long *session) {
 			auth->session = random();
 
 			bool unique = true;
-			for(int i = 0; i < authLength; i++) {
+			int i;
+			for(i = 0; i < authLength; i++) {
 				if(authData[i].session == auth->session) {
 					unique = false;
 					break;
@@ -134,7 +136,8 @@ enum Auth authenticate(char *with_headers, char *payload, long *session) {
 
 		// Add to auth storage
 		bool found = false;
-		for(int i = 0; i < authLength; i++) {
+		int i;
+		for(i = 0; i < authLength; i++) {
 			if(!authData[i].valid) {
 				// Found an invalid auth we can reuse
 				found = true;
