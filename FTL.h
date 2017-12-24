@@ -188,7 +188,7 @@ typedef struct {
 	int querytypedata;
 } memoryStruct;
 
-enum { QUERIES, FORWARDED, CLIENTS, DOMAINS, OVERTIME, WILDCARD };
+enum { QUERIES, FORWARDED, CLIENTS, DOMAINS, OVERTIME, WILDCARD, AUTHDATA };
 enum { SOCKET, API, APIH };
 enum { WHITELIST, BLACKLIST, WILDLIST };
 

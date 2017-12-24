@@ -3,7 +3,7 @@
 *  Network-wide ad blocking via your own hardware.
 *
 *  FTL Engine
-*  API commands
+*  API commands and structures
 *
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
@@ -34,10 +34,22 @@ void removeList(int *sock, char type, char list_type, char *client_message);
 void getPiholeStatus(int *sock, char type);
 
 // HTTP Response Codes
-enum { OK, BAD_REQUEST, INTERNAL_ERROR, NOT_FOUND };
+enum { OK, BAD_REQUEST, INTERNAL_ERROR, NOT_FOUND, UNAUTHORIZED };
+
+// Authentication
+typedef struct {
+	time_t lastQueryTime;
+	long session;
+	bool valid;
+} AuthData;
+AuthData *authData;
+int authLength;
+enum Auth { AUTH_UNAUTHORIZED, AUTH_PREVIOUS, AUTH_NEW };
 
 // General API commands
+enum Auth authenticate(char *with_headers, char *payload, long *session);
 char* getPayload(char *http_message);
 void sendAPIResponse(int sock, char type, char http_code);
+void sendAPIResponseWithCookie(int sock, char type, char http_code, const long *session);
 bool matchesRegex(char *regex_expression, char *input);
 bool isValidDomain(char *domain);
