@@ -172,7 +172,7 @@ int listener(int sockfd)
 
 	if(clientsocket < MAXCONNS)
 	{
-		clientip[clientsocket] = strdup(inet_ntoa (cli_addr.sin_addr));
+		clientip[clientsocket] = strdup(inet_ntoa(cli_addr.sin_addr));
 		if(debugclients)
 			logg("Client connected: %s, ID: %i", clientip[clientsocket], clientsocket);
 	}
@@ -437,6 +437,7 @@ void *api_listening_thread(void *args)
 	{
 		// Look for new clients that want to connect
 		int csck = listener(apifd);
+		if(csck < 0) continue;
 
 		// Allocate memory used to transport client socket ID to client listening thread
 		newsock = calloc(1,sizeof(int));
