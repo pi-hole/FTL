@@ -175,6 +175,14 @@ void addList(int *sock, char type, char list_type, char *data) {
 void removeList(int *sock, char type, char list_type, char *client_message) {
 	char *domain = strrchr(client_message, '/');
 
+	// Validate domain
+	if(domain == NULL) {
+		// No domain found
+		sendAPIResponse(*sock, type, NOT_FOUND);
+		ssend(*sock, "\"status\":\"not_found\"");
+		return;
+	}
+
 	// Remove leading '/'
 	domain++;
 
@@ -206,15 +214,6 @@ void removeList(int *sock, char type, char list_type, char *client_message) {
 	}
 
 	free(expected_route);
-
-	// Validate domain
-
-	if(domain == NULL) {
-		// No domain found
-		sendAPIResponse(*sock, type, NOT_FOUND);
-		ssend(*sock, "\"status\":\"not_found\"");
-		return;
-	}
 
 	if(!isValidDomain(domain)) {
 		// Invalid domain
