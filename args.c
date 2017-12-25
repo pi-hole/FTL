@@ -131,8 +131,7 @@ void parse_args(int argc, char* argv[])
 		}
 
 		// List of implemented arguments
-		if(strcmp(argv[i], "-h") == 0 ||
-		   strcmp(argv[i], "help") == 0)
+		if(strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "help") == 0 || strcmp(argv[i], "--help") == 0)
 		{
 			printf("pihole-FTL - The Pi-hole FTL engine\n\n");
 			printf("Usage:    sudo service pihole-FTL <action>\n");
