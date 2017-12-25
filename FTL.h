@@ -67,6 +67,9 @@
 // Default -60 (one minute before a full hour)
 #define GCdelay (-60)
 
+// How many client connection do we accept at once?
+#define MAXCONNS 20
+
 // Static structs
 typedef struct {
 	const char* conf;
@@ -234,3 +237,4 @@ long int lastdbindex;
 bool travis;
 bool DBdeleteoldqueries;
 bool rereadgravity;
+char * clientip[MAXCONNS];

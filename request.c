@@ -113,6 +113,13 @@ void process_socket_request(char *client_message, int *sock)
 		if(debugclients)
 			logg("Client wants to disconnect, ID: %i",*sock);
 
+		// Free memory containing IP address of this client
+		if(clientip[*sock] != NULL)
+		{
+			free(clientip[*sock]);
+			clientip[*sock] = NULL;
+		}
+
 		close(*sock);
 		*sock = 0;
 	}

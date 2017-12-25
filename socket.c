@@ -170,9 +170,16 @@ int listener(int sockfd)
 	socklen_t clilen = sizeof(cli_addr);
 	int clientsocket = accept(sockfd, (struct sockaddr *) &cli_addr, &clilen);
 
-	if(debugclients)
-		logg("Client connected: %s, ID: %i", inet_ntoa (cli_addr.sin_addr), clientsocket);
-
+	if(clientsocket < MAXCONNS)
+	{
+		clientip[clientsocket] = strdup(inet_ntoa (cli_addr.sin_addr));
+		if(debugclients)
+			logg("Client connected: %s, ID: %i", clientip[clientsocket], clientsocket);
+	}
+	else
+	{
+		return -1;
+	}
 	return clientsocket;
 }
 
@@ -249,6 +256,12 @@ void *socket_connection_handler_thread(void *socket_desc)
 		close(sock);
 	free(socket_desc);
 
+	if(clientip[sock] != NULL)
+	{
+		free(clientip[sock]);
+		clientip[sock] = NULL;
+	}
+
 	return 0;
 }
 
@@ -274,6 +287,7 @@ void *socket_listening_thread(void *args)
 	{
 		// Look for new clients that want to connect
 		int csck = listener(socketfd);
+		if(csck < 0) continue;
 
 		// Allocate memory used to transport client socket ID to client listening thread
 		newsock = calloc(1,sizeof(int));
