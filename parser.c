@@ -538,6 +538,7 @@ void process_pihole_log(int file)
 			queries[queryID].db = false;
 			queries[queryID].id = dnsmasqID;
 			queries[queryID].complete = false;
+			queries[queryID].reply = 0;
 			queries[queryID].generation = loggeneration;
 
 			// Increase DNS queries counter
@@ -876,6 +877,42 @@ void process_pihole_log(int file)
 		{
 			loggeneration++;
 			if(debug) logg("Detected restart of dnsmasq, increasing loggeneration to %i", loggeneration);
+		}
+
+		// is this a "reply" line?
+		else if(strstr(readbuffer," reply ") != NULL && strstr(readbuffer," is ") != NULL)
+		{
+			// Check query for invalid characters
+			if(!checkQuery(readbuffer, "reply"))
+				continue;
+
+			// Get dnsmasq's ID for this transaction
+			int dnsmasqID = getID(readbuffer);
+			// Skip invalid lines
+			if(dnsmasqID < 0)
+				continue;
+
+			// Search for corresponding query indentified by dnsmasq's ID
+			bool found = false;
+			for(i=0; i<counters.queries; i++)
+			{
+				// Check both UUID and generation of this query
+				if(queries[i].id == dnsmasqID && queries[i].generation == loggeneration)
+				{
+					found = true;
+					break;
+				}
+			}
+
+			if(!found)
+			{
+				// This may happen e.g. if the original query was a PTR query or "pi.hole"
+				// as we ignore them altogether
+				continue;
+			}
+
+			// Do something here
+
 		}
 
 		// Save file pointer position, because we might have to repeat

@@ -137,9 +137,10 @@ typedef struct {
 	int forwardID;
 	bool valid;
 	bool db;
-	// the ID is a (signed) in dnsmasq, so no need for a long int here
+	// the ID is a (signed) int in dnsmasq, so no need for a long int here
 	int id;
 	bool complete;
+	unsigned char reply;
 	int generation;
 } queriesDataStruct;
 
