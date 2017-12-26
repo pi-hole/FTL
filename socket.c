@@ -22,6 +22,7 @@
 
 // File descriptors
 int socketfd;
+bool dualstack = false;
 
 void saveport(int port)
 {
@@ -86,7 +87,7 @@ void bind_to_port(char type, int *socketdescriptor)
 			break;
 	}
 
-	bool bound = false, dualstack = false;
+	bool bound = false;
 	// Try dual-stack socket
 	for(port = port_init; port <= (port_init + 20); port++)
 	{
@@ -180,6 +181,7 @@ void swrite(char server_message[SOCKETBUFFERLEN], int sock)
 int listener(int sockfd)
 {
 	struct sockaddr_in6 cli_addr;
+	struct sockaddr_in cli_addr4;
 	// set all values in the buffer to zero
 	memset(&cli_addr, 0, sizeof(cli_addr));
 	socklen_t clilen = sizeof(cli_addr);
@@ -187,16 +189,29 @@ int listener(int sockfd)
 
 	if(clientsocket > 0)
 	{
-		// Determine the client address.  Note that if the client is
-		// an IPv4 client, the address will be shown as an IPv4 Mapped
-		// IPv6 address, like "::ffff:127.0.0.1"
-		getpeername(clientsocket, (struct sockaddr *)&cli_addr, &clilen);
 		char str[INET6_ADDRSTRLEN];
-		if(inet_ntop(AF_INET6, &cli_addr.sin6_addr, str, sizeof(str)))
+		if(dualstack)
 		{
-			int port = ntohs(cli_addr.sin6_port);
-			if(debugclients)
-				logg("Client connected: %s:%d, ID: %i", str, port, clientsocket);
+			// Determine the client address.  Note that if we bound to a dual-stack
+			// socket and the client is an IPv4 client, the address will be shown
+			// as an IPv4 Mapped IPv6 address, like "::ffff:127.0.0.1"
+			getpeername(clientsocket, (struct sockaddr *)&cli_addr, &clilen);
+			if(inet_ntop(AF_INET6, &cli_addr.sin6_addr, str, sizeof(str)))
+			{
+				int port = ntohs(cli_addr.sin6_port);
+				if(debugclients)
+					logg("Client connected: %s:%d, ID: %i", str, port, clientsocket);
+			}
+		}
+		else
+		{
+			getpeername(clientsocket, (struct sockaddr *)&cli_addr4, &clilen);
+			if(inet_ntop(AF_INET, &cli_addr4.sin_addr, str, sizeof(str)))
+			{
+				int port = ntohs(cli_addr4.sin_port);
+				if(debugclients)
+					logg("Client connected: %s:%d, ID: %i", str, port, clientsocket);
+			}
 		}
 	}
 	return clientsocket;
