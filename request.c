@@ -155,7 +155,7 @@ void process_api_request(char *client_message, char *full_message, int *sock, bo
 	char *data = getPayload(full_message);
 	long session;
 
-	char authResult = authenticate(full_message, data, &session);
+	char authResult = authenticate(full_message, data, &session, *sock);
 	if(authResult == AUTH_UNAUTHORIZED && !matchesEndpoint(client_message, "GET /stats/summary")
 	                                  && !matchesEndpoint(client_message, "GET /stats/overTime/graph")
 									  && !matchesEndpoint(client_message, "GET /dns/status")) {

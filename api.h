@@ -40,6 +40,7 @@ enum { OK, BAD_REQUEST, INTERNAL_ERROR, NOT_FOUND, UNAUTHORIZED };
 typedef struct {
 	time_t lastQueryTime;
 	long session;
+	char *ip;
 	bool valid;
 } AuthData;
 AuthData *authData;
@@ -47,7 +48,7 @@ int authLength;
 enum Auth { AUTH_UNAUTHORIZED, AUTH_PREVIOUS, AUTH_NEW };
 
 // General API commands
-enum Auth authenticate(char *with_headers, char *payload, long *session);
+enum Auth authenticate(char *with_headers, char *payload, long *session, int sock);
 char* getPayload(char *http_message);
 void sendAPIResponse(int sock, char type, char http_code);
 void sendAPIResponseWithCookie(int sock, char type, char http_code, const long *session);

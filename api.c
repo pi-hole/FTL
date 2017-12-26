@@ -57,7 +57,7 @@ void sendAPIResponseWithCookie(int sock, char type, char http_code, const long *
 }
 
 // session will have the client's valid session written to, if it's not unauthorized
-enum Auth authenticate(char *with_headers, char *payload, long *session) {
+enum Auth authenticate(char *with_headers, char *payload, long *session, int sock) {
 	// First figure out if the client has authenticated before.
 	char *sessionStr;
 	AuthData *auth = NULL;
@@ -77,7 +77,8 @@ enum Auth authenticate(char *with_headers, char *payload, long *session) {
 
 		int i;
 		for(i = 0; i < authLength; i++) {
-			if(authData[i].valid && authData[i].session == *session) {
+			// Check if the authentication is still valid, has the same session token, and is coming from the same IP
+			if(authData[i].valid && authData[i].session == *session && strcmp(clientip[sock], authData[i].ip) == 0) {
 				auth = &authData[i];
 				time_t currentTime = time(NULL);
 
@@ -113,6 +114,7 @@ enum Auth authenticate(char *with_headers, char *payload, long *session) {
 		auth = malloc(sizeof(AuthData));
 
 		auth->lastQueryTime = time(NULL);
+		auth->ip = strdup(clientip[sock]);
 
 		// Find a unique session number
 		while(true) {
@@ -141,6 +143,7 @@ enum Auth authenticate(char *with_headers, char *payload, long *session) {
 			if(!authData[i].valid) {
 				// Found an invalid auth we can reuse
 				found = true;
+				free(authData[i].ip);
 				authData[i] = *auth;
 				break;
 			}
