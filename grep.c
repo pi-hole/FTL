@@ -196,7 +196,10 @@ int countlineswith(const char* str, const char* fname)
 
 		// Search for exact match
 		if(strcmp(buffer, str) == 0)
+		{
 			found++;
+			continue;
+		}
 
 		// If line starts with *, search for partial match of
 		// needle "buffer+1" in haystack "str"
