@@ -203,8 +203,20 @@ int countlineswith(const char* str, const char* fname)
 
 		// If line starts with *, search for partial match of
 		// needle "buffer+1" in haystack "str"
-		if(buffer[0] == '*' && strstr(str, buffer+1) != NULL)
+		if(buffer[0] == '*')
+		{
+			char * buf = strstr(str, buffer+1);
+			// The  strstr() function finds the first occurrence of
+			// the substring buffer+1 in the string str.
+			// These functions return a pointer to the beginning of
+			// the located substring, or NULL if the substring is not
+			// found. Hence, we compare the length of the substring to
+			// the wildcard entry to determine if there is anything
+			// behind the wildcard. This avoids that given
+			// "*example.com" "example.com.xxxxx" would also match.
+			if(buf != NULL && strlen(buf) == strlen(str))
 				found++;
+		}
 	}
 
 	// Free allocated memory
