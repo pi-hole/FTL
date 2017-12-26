@@ -170,16 +170,24 @@ int listener(int sockfd)
 	socklen_t clilen = sizeof(cli_addr);
 	int clientsocket = accept(sockfd, (struct sockaddr *) &cli_addr, &clilen);
 
+	char *ipAddr = inet_ntoa(cli_addr.sin_addr);
+
 	if(clientsocket < MAXCONNS)
 	{
-		clientip[clientsocket] = strdup(inet_ntoa(cli_addr.sin_addr));
+		clientip[clientsocket] = strdup(ipAddr);
+
 		if(debugclients)
 			logg("Client connected: %s, ID: %i", clientip[clientsocket], clientsocket);
 	}
 	else
 	{
+		if(debugclients)
+			logg("Client denied (at max capacity): %s, ID: %i", ipAddr, clientsocket);
+
+		close(clientsocket);
 		return -1;
 	}
+
 	return clientsocket;
 }
 
@@ -256,8 +264,7 @@ void *socket_connection_handler_thread(void *socket_desc)
 		close(sock);
 	free(socket_desc);
 
-	if(clientip[sock] != NULL)
-	{
+	if(clientip[sock] != NULL) {
 		free(clientip[sock]);
 		clientip[sock] = NULL;
 	}
@@ -411,6 +418,11 @@ void *api_connection_handler_thread(void *socket_desc)
 	if(sock != 0)
 		close(sock);
 	free(socket_desc);
+
+	if(clientip[sock] != NULL) {
+		free(clientip[sock]);
+		clientip[sock] = NULL;
+	}
 
 	return 0;
 }
