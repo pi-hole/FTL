@@ -86,7 +86,8 @@ void bind_to_port(char type, int *socketdescriptor)
 			break;
 	}
 
-	bool bound = false;
+	bool bound = false, dualstack = false;
+	// Try dual-stack socket
 	for(port = port_init; port <= (port_init + 20); port++)
 	{
 		serv_addr.sin6_port = htons(port);
@@ -97,13 +98,45 @@ void bind_to_port(char type, int *socketdescriptor)
 		else
 		{
 			bound = true;
+			dualstack = true;
 			break;
+		}
+	}
+
+	// Try IPv4 only socket, much of the code seen above is duplicated here for IPv4,
+	// see the comments further up for details
+	if(!bound)
+	{
+		logg("Error listening on any IPv4 + IPv6 port, trying IPv4-only binding");
+		*socketdescriptor = socket(AF_INET, SOCK_STREAM, 0);
+
+		struct sockaddr_in serv_addr4;
+		memset(&serv_addr4, 0, sizeof(serv_addr4));
+		serv_addr4.sin_family = AF_INET;
+
+		if(config.socket_listenlocal && type == SOCKET)
+			serv_addr4.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+		else
+			serv_addr4.sin_addr.s_addr = INADDR_ANY;
+
+		for(port = port_init; port <= (port_init + 20); port++)
+		{
+			serv_addr4.sin_port = htons(port);
+			if(bind(*socketdescriptor, (struct sockaddr *) &serv_addr4, sizeof(serv_addr4)) < 0)
+			{
+				logg("Error on binding on IPv4 port %i", port);
+			}
+			else
+			{
+				bound = true;
+				break;
+			}
 		}
 	}
 
 	if(!bound)
 	{
-		logg("Error listening on any port");
+		logg("Error listening on any IPv4 port");
 		exit(EXIT_FAILURE);
 	}
 
@@ -117,7 +150,7 @@ void bind_to_port(char type, int *socketdescriptor)
 		exit(EXIT_FAILURE);
 	}
 
-	logg("Listening on port %i for incoming connections", port);
+	logg("Listening on port %i for incoming %s connections", port, dualstack == true ? "IPv4 + IPv6" : "IPv4");
 }
 
 // Called from main() at graceful shutdown
