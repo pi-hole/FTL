@@ -40,7 +40,7 @@ void saveport(int port)
 
 void bind_to_port(char type, int *socketdescriptor)
 {
-	*socketdescriptor = socket(AF_INET, SOCK_STREAM, 0);
+	*socketdescriptor = socket(AF_INET6, SOCK_STREAM, 0);
 
 	if(*socketdescriptor < 0)
 	{
@@ -57,15 +57,15 @@ void bind_to_port(char type, int *socketdescriptor)
 	// the TIME_WAIT state for 30-120 seconds, so you fall into case 1 above.
 	setsockopt(*socketdescriptor, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int));
 
-	struct sockaddr_in serv_addr;
+	struct sockaddr_in6 serv_addr;
 	// set all values in the buffer to zero
 	memset(&serv_addr, 0, sizeof(serv_addr));
-	serv_addr.sin_family = AF_INET;
+	serv_addr.sin6_family = AF_INET6;
 
 	if(config.socket_listenlocal && type == SOCKET)
-		serv_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+		serv_addr.sin6_addr = in6addr_loopback;
 	else
-		serv_addr.sin_addr.s_addr = INADDR_ANY;
+		serv_addr.sin6_addr = in6addr_any;
 
 	// The bind() system call binds a socket to an address,
 	// in this case the address of the current host and
@@ -89,7 +89,7 @@ void bind_to_port(char type, int *socketdescriptor)
 	bool bound = false;
 	for(port = port_init; port <= (port_init + 20); port++)
 	{
-		serv_addr.sin_port = htons(port);
+		serv_addr.sin6_port = htons(port);
 		if(bind(*socketdescriptor, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0)
 		{
 			logg("Error on binding on port %i", port);
