@@ -911,8 +911,32 @@ void process_pihole_log(int file)
 				continue;
 			}
 
-			// Do something here
-
+			// Iterate through possible values
+			if(strstr(readbuffer," is NODATA") != NULL)
+			{
+				// NODATA(-IPv6)
+				queries[i].reply = 1;
+			}
+			else if(strstr(readbuffer," is NXDOMAIN") != NULL)
+			{
+				// NXDOMAIN
+				queries[i].reply = 2;
+			}
+			else if(strstr(readbuffer," is <CNAME>") != NULL)
+			{
+				// <CNAME>
+				queries[i].reply = 3;
+			}
+			else
+			{
+				// Valid IP
+				queries[i].reply = 4;
+				// const char * dest = strstr(readbuffer," is ");
+				// char * result;
+				// sscanf(dest, " is %ms", &result);
+				// printf("reply is IP: %s\n",result);
+				// free(result);
+			}
 		}
 
 		// Save file pointer position, because we might have to repeat
