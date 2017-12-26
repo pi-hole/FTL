@@ -187,7 +187,8 @@ int countlineswith(const char* str, const char* fname)
 	}
 
 	// Search through file
-	// getline reads a string from the specified file up to either a newline character or EOF
+	// getline reads a string from the specified file up to either a
+	// newline character or EOF
 	while(getline(&buffer, &size, fp) != -1)
 	{
 		// Strip potential newline character at the end of line we just read
@@ -211,10 +212,10 @@ int countlineswith(const char* str, const char* fname)
 			// These functions return a pointer to the beginning of
 			// the located substring, or NULL if the substring is not
 			// found. Hence, we compare the length of the substring to
-			// the wildcard entry to determine if there is anything
-			// behind the wildcard. This avoids that given
+			// the wildcard entry to rule out the possiblity that
+			// there is anything behind the wildcard. This avoids that given
 			// "*example.com" "example.com.xxxxx" would also match.
-			if(buf != NULL && strlen(buf) == strlen(str))
+			if(buf != NULL && strlen(buf) == strlen(buffer+1))
 				found++;
 		}
 	}
