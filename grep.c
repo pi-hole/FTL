@@ -194,7 +194,6 @@ int countlineswith(const char* str, const char* fname)
 		if(buffer[strlen(buffer)-1] == '\n')
 			buffer[strlen(buffer)-1] = '\0';
 
-		printf("Searching \"%s\" in \"%s\"\n",buffer,str);
 		// Search for exact match
 		if(strcmp(buffer, str) == 0)
 			found++;
