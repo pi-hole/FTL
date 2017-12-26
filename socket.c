@@ -179,15 +179,26 @@ void swrite(char server_message[SOCKETBUFFERLEN], int sock)
 
 int listener(int sockfd)
 {
-	struct sockaddr_in cli_addr;
+	struct sockaddr_in6 cli_addr;
 	// set all values in the buffer to zero
 	memset(&cli_addr, 0, sizeof(cli_addr));
 	socklen_t clilen = sizeof(cli_addr);
 	int clientsocket = accept(sockfd, (struct sockaddr *) &cli_addr, &clilen);
 
-	if(debugclients)
-		logg("Client connected: %s, ID: %i", inet_ntoa (cli_addr.sin_addr), clientsocket);
-
+	if(clientsocket > 0)
+	{
+		// Determine the client address.  Note that if the client is
+		// an IPv4 client, the address will be shown as an IPv4 Mapped
+		// IPv6 address, like "::ffff:127.0.0.1"
+		getpeername(clientsocket, (struct sockaddr *)&cli_addr, &clilen);
+		char str[INET6_ADDRSTRLEN];
+		if(inet_ntop(AF_INET6, &cli_addr.sin6_addr, str, sizeof(str)))
+		{
+			int port = ntohs(cli_addr.sin6_port);
+			if(debugclients)
+				logg("Client connected: %s:%d, ID: %i", str, port, clientsocket);
+		}
+	}
 	return clientsocket;
 }
 
