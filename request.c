@@ -1038,11 +1038,19 @@ void getVersion(int *sock)
 {
 	char server_message[SOCKETBUFFERLEN];
 
-	char version[] = GIT_VERSION;
+	const char * version = GIT_VERSION;
+	const char * branch = GIT_BRANCH;
+	// Travis CI pulls on a tag basis, not by branch.
+	// Hence, it may happen that the master binary isn't aware of its branch.
+	// We check if this is the case and if there is a "vX.YY" like tag on the
+	// binary are print out branch "master" if we find that this is the case
+	if(strstr(branch, "(no branch)") != NULL && strstr(version, ".") != NULL)
+		branch = "master";
+
 	if(strstr(version, ".") != NULL)
-		sprintf(server_message,"version %s\ntag %s\nbranch %s\ndate %s\n", GIT_VERSION, GIT_TAG, GIT_BRANCH, GIT_DATE);
+		sprintf(server_message,"version %s\ntag %s\nbranch %s\ndate %s\n", version, GIT_TAG, branch, GIT_DATE);
 	else
-		sprintf(server_message,"version vDev-%s\ntag %s\nbranch %s\ndate %s\n", GIT_HASH, GIT_TAG, GIT_BRANCH, GIT_DATE);
+		sprintf(server_message,"version vDev-%s\ntag %s\nbranch %s\ndate %s\n", GIT_HASH, GIT_TAG, branch, GIT_DATE);
 	swrite(server_message, *sock);
 
 	if(debugclients)
