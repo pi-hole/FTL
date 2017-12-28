@@ -110,6 +110,10 @@ typedef struct {
 	int SRV;
 	int wildcarddomains;
 	int forwardedqueries;
+	int reply_NODATA;
+	int reply_NXDOMAIN;
+	int reply_CNAME;
+	int reply_IP;
 } countersStruct;
 
 typedef struct {

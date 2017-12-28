@@ -916,21 +916,25 @@ void process_pihole_log(int file)
 			{
 				// NODATA(-IPv6)
 				queries[i].reply = 1;
+				counters.reply_NODATA++;
 			}
 			else if(strstr(readbuffer," is NXDOMAIN") != NULL)
 			{
 				// NXDOMAIN
 				queries[i].reply = 2;
+				counters.reply_NXDOMAIN++;
 			}
 			else if(strstr(readbuffer," is <CNAME>") != NULL)
 			{
 				// <CNAME>
 				queries[i].reply = 3;
+				counters.reply_CNAME++;
 			}
 			else
 			{
 				// Valid IP
 				queries[i].reply = 4;
+				counters.reply_IP++;
 				// const char * dest = strstr(readbuffer," is ");
 				// char * result;
 				// sscanf(dest, " is %ms", &result);
