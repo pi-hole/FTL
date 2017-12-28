@@ -309,12 +309,20 @@ void save_to_DB(void)
 		return;
 	}
 
+	int currenttimestamp = time(NULL);
 	for(i = lastdbindex; i < counters.queries; i++)
 	{
 		validate_access("queries", i, true, __LINE__, __FUNCTION__, __FILE__);
-		if(queries[i].timestamp <= lasttimestamp || queries[i].db || !queries[i].complete)
+		if(queries[i].timestamp <= lasttimestamp || queries[i].db)
 			// Already in database or not yet complete
 			continue;
+
+		if(!queries[i].complete && queries[i].timestamp > currenttimestamp-2)
+		{
+			// Break if a brand new query (age < 2 seconds) is not yet completed
+			// giving it a chance to be stored next time
+			break;
+		}
 
 		// Memory checks
 		validate_access("queries", i, true, __LINE__, __FUNCTION__, __FILE__);
