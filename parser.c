@@ -589,7 +589,7 @@ void process_pihole_log(int file)
 			if(dnsmasqID < 0)
 				continue;
 
-			// Save forwardID in corresponding query indentified by dnsmasq's ID
+			// Save status in corresponding query indentified by dnsmasq's ID
 			bool found = false;
 			for(i=0; i<counters.queries; i++)
 			{
@@ -647,7 +647,7 @@ void process_pihole_log(int file)
 				continue;
 			}
 
-			// Save forwardID in corresponding query indentified by dnsmasq's ID
+			// Save status and forwardID in corresponding query indentified by dnsmasq's ID
 			bool found = false;
 			for(i=0; i<counters.queries; i++)
 			{
@@ -720,7 +720,7 @@ void process_pihole_log(int file)
 			if(dnsmasqID < 0)
 				continue;
 
-			// Save forwardID in corresponding query indentified by dnsmasq's ID
+			// Save status in corresponding query indentified by dnsmasq's ID
 			bool found = false;
 			for(i=0; i<counters.queries; i++)
 			{
@@ -758,7 +758,7 @@ void process_pihole_log(int file)
 		else if(strstr(readbuffer," config ") != NULL && strstr(readbuffer," is ") != NULL)
 		{
 			// Check query for invalid characters
-			if(!checkQuery(readbuffer, "gravity.list"))
+			if(!checkQuery(readbuffer, "config"))
 				continue;
 
 			// Get dnsmasq's ID for this transaction
@@ -767,7 +767,7 @@ void process_pihole_log(int file)
 			if(dnsmasqID < 0)
 				continue;
 
-			// Save forwardID in corresponding query indentified by dnsmasq's ID
+			// Save status in corresponding query indentified by dnsmasq's ID
 			bool found = false;
 			for(i=0; i<counters.queries; i++)
 			{
@@ -832,7 +832,7 @@ void process_pihole_log(int file)
 			if(dnsmasqID < 0)
 				continue;
 
-			// Save forwardID in corresponding query indentified by dnsmasq's ID
+			// Save status in corresponding query indentified by dnsmasq's ID
 			bool found = false;
 			for(i=0; i<counters.queries; i++)
 			{

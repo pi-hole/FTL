@@ -1195,13 +1195,6 @@ void getUnknownQueries(int *sock)
 {
 	char server_message[SOCKETBUFFERLEN];
 
-	if(!debug)
-	{
-		sprintf(server_message,"For safety reasons, the command is only available in debugging mode!\n");
-		swrite(server_message, *sock);
-		return;
-	}
-
 	int i;
 	for(i=0; i < counters.queries; i++)
 	{
