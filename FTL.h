@@ -110,6 +110,10 @@ typedef struct {
 	int SRV;
 	int wildcarddomains;
 	int forwardedqueries;
+	int reply_NODATA;
+	int reply_NXDOMAIN;
+	int reply_CNAME;
+	int reply_IP;
 } countersStruct;
 
 typedef struct {
@@ -137,6 +141,11 @@ typedef struct {
 	int forwardID;
 	bool valid;
 	bool db;
+	// the ID is a (signed) int in dnsmasq, so no need for a long int here
+	int id;
+	bool complete;
+	unsigned char reply;
+	int generation;
 } queriesDataStruct;
 
 typedef struct {
