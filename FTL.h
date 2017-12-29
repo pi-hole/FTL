@@ -106,8 +106,6 @@ typedef struct {
 	int overTime;
 	int IPv4;
 	int IPv6;
-	int PTR;
-	int SRV;
 	int wildcarddomains;
 	int forwardedqueries;
 	int reply_NODATA;

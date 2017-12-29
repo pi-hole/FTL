@@ -911,6 +911,12 @@ void process_pihole_log(int file)
 				continue;
 			}
 
+			if(queries[i].reply != 0)
+			{
+				// Skip this entry if we already found the first result for this query before
+				continue;
+			}
+
 			// Iterate through possible values
 			if(strstr(readbuffer," is NODATA") != NULL)
 			{
