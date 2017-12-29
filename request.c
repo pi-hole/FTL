@@ -32,6 +32,7 @@ void getVersion(int *sock);
 void getDBstats(int *sock);
 void getClientsOverTime(int *sock);
 void getClientNames(int *sock);
+void getUnknownQueries(int *sock);
 
 void process_request(char *client_message, int *sock)
 {
@@ -124,6 +125,11 @@ void process_request(char *client_message, int *sock)
 	{
 		processed = true;
 		getClientNames(sock);
+	}
+	else if(command(client_message, ">unknown"))
+	{
+		processed = true;
+		getUnknownQueries(sock);
 	}
 
 	// Test only at the end if we want to quit or kill
@@ -1191,4 +1197,39 @@ void getClientNames(int *sock)
 
 	if(excludeclients != NULL)
 		clearSetupVarsArray();
+}
+
+void getUnknownQueries(int *sock)
+{
+	char server_message[SOCKETBUFFERLEN];
+
+	int i;
+	for(i=0; i < counters.queries; i++)
+	{
+		validate_access("queries", i, true, __LINE__, __FUNCTION__, __FILE__);
+		// Check if this query has been removed due to garbage collection
+		if(queries[i].status != 0 && queries[i].complete) continue;
+
+		char type[5];
+		if(queries[i].type == 1)
+		{
+			strcpy(type,"IPv4");
+		}
+		else
+		{
+			strcpy(type,"IPv6");
+		}
+
+		validate_access("domains", queries[i].domainID, true, __LINE__, __FUNCTION__, __FILE__);
+		validate_access("clients", queries[i].clientID, true, __LINE__, __FUNCTION__, __FILE__);
+
+		if(strlen(clients[queries[i].clientID].name) > 0)
+			sprintf(server_message,"%i %i %i %s %s %s %i %s\n",queries[i].timestamp,i,queries[i].id,type,domains[queries[i].domainID].domain,clients[queries[i].clientID].name,queries[i].status,queries[i].complete ?"true":"false");
+		else
+			sprintf(server_message,"%i %i %i %s %s %s %i %s\n",queries[i].timestamp,i,queries[i].id,type,domains[queries[i].domainID].domain,clients[queries[i].clientID].ip,queries[i].status,queries[i].complete?"true":"false");
+		swrite(server_message, *sock);
+	}
+
+	if(debugclients)
+		logg("Sent unknown queries data to client, ID: %i", *sock);
 }

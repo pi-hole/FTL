@@ -145,10 +145,10 @@ int main (int argc, char* argv[]) {
 			// Have to re-read gravity files
 			rereadgravity = false;
 			read_gravity_files();
+			log_counter_info();
 			disable_thread_lock("pihole_main_thread");
 		}
 	}
-
 
 	logg("Shutting down...");
 	pthread_cancel(piholelogthread);
