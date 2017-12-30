@@ -169,6 +169,9 @@ void db_init(void)
 		}
 	}
 
+	// Close database to prevent having it opened all time
+	sqlite3_close(db);
+
 	if (pthread_mutex_init(&dblock, NULL) != 0)
 	{
 		logg("FATAL: DB mutex init failed\n");
