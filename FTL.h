@@ -166,6 +166,7 @@ typedef struct {
 	int blockedcount;
 	char *domain;
 	bool wildcard;
+	unsigned char dnssec;
 } domainsDataStruct;
 
 typedef struct {
@@ -195,6 +196,7 @@ typedef struct {
 
 enum { QUERIES, FORWARDED, CLIENTS, DOMAINS, OVERTIME, WILDCARD };
 enum { SOCKET };
+enum { DNSSEC_UNSPECIFIED, DNSSEC_SECURE, DNSSEC_INSECURE, DNSSEC_BOGUS, DNSSEC_ABANDONED, DNSSEC_UNKNOWN };
 
 logFileNamesStruct files;
 FTLFileNamesStruct FTLfiles;
