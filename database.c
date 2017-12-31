@@ -36,7 +36,12 @@ void check_database(int rc)
 
 void dbclose(void)
 {
-	sqlite3_close(db);
+	int rc = sqlite3_close(db);
+	// Report any error
+	if( rc )
+		logg("dbclose() - SQL error (%i): %s", rc, sqlite3_errmsg(db));
+
+	// Unlock mutex on the database
 	pthread_mutex_unlock(&dblock);
 }
 
@@ -388,8 +393,8 @@ void save_to_DB(void)
 
 	// Finish prepared statement
 	ret = dbquery("END TRANSACTION");
-	if(!ret){ dbclose(); return; }
-	sqlite3_finalize(stmt);
+	int ret2 = sqlite3_finalize(stmt);
+	if(!ret || ret2 != SQLITE_OK){ dbclose(); return; }
 
 	// Store index for next loop interation round and update last time stamp
 	// in the database only if all queries have been saved successfully
