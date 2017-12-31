@@ -397,9 +397,9 @@ void save_to_DB(void)
 	}
 
 	// Finish prepared statement
-	dbquery("END TRANSACTION");
-	ret = sqlite3_finalize(stmt);
-	if(ret != SQLITE_OK){ dbclose(); return; }
+	ret = dbquery("END TRANSACTION");
+	int ret2 = sqlite3_finalize(stmt);
+	if(!ret || ret2 != SQLITE_OK){ dbclose(); return; }
 
 	// Store index for next loop interation round and update last time stamp
 	// in the database only if all queries have been saved successfully
