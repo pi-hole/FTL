@@ -50,17 +50,21 @@ int main (int argc, char **argv) {
 
 	// Receive message
 	size = recv(socketfd, buffer, BUF-1, 0);
+	// Zero-terminate incoming message
+	if(size > 0)
+		buffer[size] = '\0';
 
-	while (strstr(buffer, "--EOM--") != 0)
+	while (strstr(buffer, "--EOM--") == NULL)
 	{
-		// Zero-terminate incoming message
-		if(size > 0)
-			buffer[size] = '\0';
 
 		printf("Message received: \"%s\"\n", buffer);
 
 		// Receive message
 		size = recv(socketfd, buffer, BUF-1, 0);
+
+		// Zero-terminate incoming message
+		if(size > 0)
+			buffer[size] = '\0';
 	}
 
 	printf("Message received: \"%s\"\n", buffer);
