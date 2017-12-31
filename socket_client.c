@@ -28,7 +28,7 @@ int main (int argc, char **argv) {
 	int size, ret;
 
 	socketfd = socket(PF_LOCAL, SOCK_STREAM, 0);
-	if(socket <= 0)
+	if(socketfd <= 0)
 	{
 		printf("Error creating socket!\n");
 		exit(EXIT_FAILURE);
