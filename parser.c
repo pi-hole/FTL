@@ -485,7 +485,7 @@ void process_pihole_log(int file)
 				domains[domainID].domain = strdup(domain);
 				memory.domainnames += (strlen(domain) + 1) * sizeof(char);
 				// Store DNSSEC result for this domain
-				domains[domainID].dnssec = 0;
+				domains[domainID].dnssec = DNSSEC_UNSPECIFIED;
 				// Increase counter by one
 				counters.domains++;
 			}
@@ -980,20 +980,20 @@ void process_pihole_log(int file)
 			// Iterate through possible values
 			if(strstr(readbuffer,"is SECURE") != NULL)
 			{
-				domains[queries[i].domainID].dnssec = 1;
+				domains[queries[i].domainID].dnssec = DNSSEC_SECURE;
 			}
 			else if(strstr(readbuffer,"is INSECURE") != NULL)
 			{
-				domains[queries[i].domainID].dnssec = 2;
+				domains[queries[i].domainID].dnssec = DNSSEC_INSECURE;
 			}
 			else if(strstr(readbuffer,"is BOGUS") != NULL)
 			{
-				domains[queries[i].domainID].dnssec = 3;
+				domains[queries[i].domainID].dnssec = DNSSEC_BOGUS;
 			}
 			else
 			{
 				// Unknown
-				domains[queries[i].domainID].dnssec = 4;
+				domains[queries[i].domainID].dnssec = DNSSEC_UNKNOWN;
 				if(debug) logg("Unknown DNSSEC reply: %i\n\"%s\"",dnsmasqID,readbuffer);
 			}
 		}
