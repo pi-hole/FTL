@@ -146,7 +146,6 @@ typedef struct {
 	bool complete;
 	unsigned char reply;
 	int generation;
-	unsigned char dnssec;
 } queriesDataStruct;
 
 typedef struct {
@@ -169,6 +168,7 @@ typedef struct {
 	int blockedcount;
 	char *domain;
 	bool wildcard;
+	unsigned char dnssec;
 } domainsDataStruct;
 
 typedef struct {
