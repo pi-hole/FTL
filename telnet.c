@@ -12,7 +12,7 @@
 
 // The backlog argument defines the maximum length
 // to which the queue of pending connections for
-// socketfd may grow. If a connection request arrives
+// telnetfd may grow. If a connection request arrives
 // when the queue is full, the client may receive an
 // error with an indication of ECONNREFUSED or, if
 // the underlying protocol supports retransmission,
@@ -21,7 +21,7 @@
 #define BACKLOG 5
 
 // File descriptors
-int socketfd;
+int telnetfd;
 
 void saveport(int port)
 {
@@ -38,7 +38,7 @@ void saveport(int port)
 	}
 }
 
-void bind_to_port(char type, int *socketdescriptor)
+void bind_to_telnet_port(char type, int *socketdescriptor)
 {
 	*socketdescriptor = socket(AF_INET, SOCK_STREAM, 0);
 
@@ -144,7 +144,7 @@ void swrite(char server_message[SOCKETBUFFERLEN], int sock)
 		logg("WARNING: Socket write returned error code %i", errno);
 }
 
-int listener(int sockfd)
+int telnet_listener(int sockfd)
 {
 	struct sockaddr_in cli_addr;
 	// set all values in the buffer to zero
@@ -158,14 +158,14 @@ int listener(int sockfd)
 	return clientsocket;
 }
 
-void close_socket(char type)
+void close_telnet_socket(char type)
 {
 	switch(type)
 	{
 		case SOCKET:
 			removeport();
 			// Using global variable here
-			close(socketfd);
+			close(telnetfd);
 			break;
 		default:
 			logg("Incompatible socket type %i, cannot close",(int)type);
@@ -174,7 +174,7 @@ void close_socket(char type)
 	}
 }
 
-void *socket_connection_handler_thread(void *socket_desc)
+void *telnet_connection_handler_thread(void *socket_desc)
 {
 	//Get the socket descriptor
 	int sock = *(int*)socket_desc;
@@ -231,7 +231,7 @@ void *socket_connection_handler_thread(void *socket_desc)
 	return 0;
 }
 
-void *socket_listenting_thread(void *args)
+void *telnet_listenting_thread(void *args)
 {
 	int *newsock;
 	// We will use the attributes object later to start all threads in detached mode
@@ -246,13 +246,13 @@ void *socket_listenting_thread(void *args)
 	prctl(PR_SET_NAME,"socket listener",0,0,0);
 
 	// Initialize sockets only after initial log parsing in listenting_thread
-	bind_to_port(SOCKET, &socketfd);
+	bind_to_telnet_port(SOCKET, &telnetfd);
 
 	// Listen as long as FTL is not killed
 	while(!killed)
 	{
 		// Look for new clients that want to connect
-		int csck = listener(socketfd);
+		int csck = telnet_listener(telnetfd);
 
 		// Allocate memory used to transport client socket ID to client listening thread
 		newsock = calloc(1,sizeof(int));
@@ -260,7 +260,7 @@ void *socket_listenting_thread(void *args)
 
 		pthread_t socket_connection_thread;
 		// Create a new thread
-		if(pthread_create( &socket_connection_thread, &attr, socket_connection_handler_thread, (void*) newsock ) != 0)
+		if(pthread_create( &socket_connection_thread, &attr, telnet_connection_handler_thread, (void*) newsock ) != 0)
 		{
 			// Log the error code description
 			logg("WARNING: Unable to open clients processing thread, error: %s", strerror(errno));

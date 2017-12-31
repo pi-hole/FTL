@@ -70,10 +70,10 @@ int main (int argc, char* argv[]) {
 		killed = 1;
 	}
 
-	pthread_t socket_listenthread;
-	if(pthread_create( &socket_listenthread, &attr, socket_listenting_thread, NULL ) != 0)
+	pthread_t telnet_listenthread;
+	if(pthread_create( &telnet_listenthread, &attr, telnet_listenting_thread, NULL ) != 0)
 	{
-		logg("Unable to open socket listening thread. Exiting...");
+		logg("Unable to open telnet listening thread. Exiting...");
 		killed = 1;
 	}
 
@@ -152,8 +152,8 @@ int main (int argc, char* argv[]) {
 
 	logg("Shutting down...");
 	pthread_cancel(piholelogthread);
-	pthread_cancel(socket_listenthread);
-	close_socket(SOCKET);
+	pthread_cancel(telnet_listenthread);
+	close_telnet_socket(SOCKET);
 	removepid();
 	logg("########## FTL terminated! ##########");
 	return 1;
