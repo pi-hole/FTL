@@ -326,7 +326,6 @@ void *socket_connection_handler_thread(void *socket_desc)
 
 void *telnet_listenting_thread(void *args)
 {
-	int *newsock;
 	// We will use the attributes object later to start all threads in detached mode
 	pthread_attr_t attr;
 	// Initialize thread attributes object with default attribute values
@@ -348,6 +347,7 @@ void *telnet_listenting_thread(void *args)
 		int csck = telnet_listener(telnetfd);
 
 		// Allocate memory used to transport client socket ID to client listening thread
+		int *newsock;
 		newsock = calloc(1,sizeof(int));
 		*newsock = csck;
 
@@ -364,7 +364,6 @@ void *telnet_listenting_thread(void *args)
 
 void *socket_listenting_thread(void *args)
 {
-	int *newsock;
 	// We will use the attributes object later to start all threads in detached mode
 	pthread_attr_t attr;
 	// Initialize thread attributes object with default attribute values
@@ -386,6 +385,7 @@ void *socket_listenting_thread(void *args)
 		int csck = telnet_listener(socketfd);
 
 		// Allocate memory used to transport client socket ID to client listening thread
+		int *newsock;
 		newsock = calloc(1,sizeof(int));
 		*newsock = csck;
 
