@@ -540,6 +540,7 @@ void process_pihole_log(int file)
 			queries[queryID].complete = false;
 			queries[queryID].reply = 0;
 			queries[queryID].generation = loggeneration;
+			queries[queryID].dnssec = 0;
 
 			// Increase DNS queries counter
 			counters.queries++;
@@ -942,6 +943,59 @@ void process_pihole_log(int file)
 				// free(result);
 			}
 		}
+		// is this a "validaton" line? -- DNSSEC
+		else if(strstr(readbuffer," validation ") != NULL && strstr(readbuffer," is ") != NULL)
+		{
+			// Check query for invalid characters
+			if(!checkQuery(readbuffer, "DNSSEC"))
+				continue;
+
+			// Get dnsmasq's ID for this transaction
+			int dnsmasqID = getID(readbuffer);
+			// Skip invalid lines
+			if(dnsmasqID < 0)
+				continue;
+
+			// Search for corresponding query indentified by dnsmasq's ID
+			bool found = false;
+			for(i=0; i<counters.queries; i++)
+			{
+				// Check both UUID and generation of this query
+				if(queries[i].id == dnsmasqID && queries[i].generation == loggeneration)
+				{
+					found = true;
+					break;
+				}
+			}
+
+			if(!found)
+			{
+				// This may happen e.g. if the original query was a PTR query or "pi.hole"
+				// as we ignore them altogether
+				continue;
+			}
+
+			// Iterate through possible values
+			if(strstr(readbuffer,"is SECURE") != NULL)
+			{
+				queries[i].dnssec = 1;
+			}
+			else if(strstr(readbuffer,"is INSECURE") != NULL)
+			{
+				queries[i].dnssec = 2;
+			}
+			else if(strstr(readbuffer,"is BOGUS") != NULL)
+			{
+				queries[i].dnssec = 3;
+			}
+			else
+			{
+				// Unknown
+				queries[i].dnssec = 4;
+				if(debug) logg("Unknown DNSSEC reply: %i\n\"%s\"",dnsmasqID,readbuffer);
+			}
+		}
+
 
 		// Save file pointer position, because we might have to repeat
 		// reading the next line if dnsmasq hasn't finished writing it

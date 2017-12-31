@@ -146,6 +146,7 @@ typedef struct {
 	bool complete;
 	unsigned char reply;
 	int generation;
+	unsigned char dnssec;
 } queriesDataStruct;
 
 typedef struct {
