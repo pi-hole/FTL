@@ -221,7 +221,7 @@ void *telnet_connection_handler_thread(void *socket_desc)
 
 	// Set thread name
 	char threadname[16];
-	sprintf(threadname,"client-%i",sockID);
+	sprintf(threadname,"telnet-%i",sockID);
 	prctl(PR_SET_NAME,threadname,0,0,0);
 	//Receive from client
 	ssize_t n;
@@ -254,11 +254,67 @@ void *telnet_connection_handler_thread(void *socket_desc)
 		else if(n == -1)
 		{
 			if(debugclients)
-				logg("Client connection interrupted, ID: %i", sockID);
+				logg("Telnet connection interrupted, ID: %i", sockID);
 		}
 	}
 	if(debugclients)
-		logg("Client disconnected, ID: %i", sockID);
+		logg("Telnet disconnected, ID: %i", sockID);
+
+	//Free the socket pointer
+	if(sock != 0)
+		close(sock);
+	free(socket_desc);
+
+	return 0;
+}
+
+
+void *socket_connection_handler_thread(void *socket_desc)
+{
+	//Get the socket descriptor
+	int sock = *(int*)socket_desc;
+	// Store copy only for displaying the debug messages
+	int sockID = sock;
+	char client_message[SOCKETBUFFERLEN] = "";
+
+	// Set thread name
+	char threadname[16];
+	sprintf(threadname,"socket-%i",sockID);
+	prctl(PR_SET_NAME,threadname,0,0,0);
+	//Receive from client
+	ssize_t n;
+	while((n = recv(sock,client_message,SOCKETBUFFERLEN-1, 0)))
+	{
+		if (n > 0)
+		{
+			char *message = calloc(strlen(client_message)+1,sizeof(char));
+			strcpy(message, client_message);
+
+			// Clear client message receive buffer
+			memset(client_message, 0, sizeof client_message);
+
+			// Lock FTL data structure, since it is likely that it will be changed here
+			// Requests should not be processed/answered when data is about to change
+			enable_thread_lock(threadname);
+
+			process_request(message, &sock);
+			free(message);
+
+			// Release thread lock
+			disable_thread_lock(threadname);
+
+			if(sock == 0)
+			{
+				// Socket connection interrupted by seding EOT or ">quit"
+				break;
+			}
+		}
+		else if(n == -1)
+		{
+			if(debug) logg("Socket connection interrupted, ID: %i", sockID);
+		}
+	}
+	if(debug) logg("Socket disconnected, ID: %i", sockID);
 
 	//Free the socket pointer
 	if(sock != 0)
@@ -295,12 +351,12 @@ void *telnet_listenting_thread(void *args)
 		newsock = calloc(1,sizeof(int));
 		*newsock = csck;
 
-		pthread_t socket_connection_thread;
+		pthread_t telnet_connection_thread;
 		// Create a new thread
-		if(pthread_create( &socket_connection_thread, &attr, telnet_connection_handler_thread, (void*) newsock ) != 0)
+		if(pthread_create( &telnet_connection_thread, &attr, telnet_connection_handler_thread, (void*) newsock ) != 0)
 		{
 			// Log the error code description
-			logg("WARNING: Unable to open clients processing thread, error: %s", strerror(errno));
+			logg("WARNING: Unable to open telnet processing thread, error: %s", strerror(errno));
 		}
 	}
 	return 0;
@@ -335,10 +391,10 @@ void *socket_listenting_thread(void *args)
 
 		pthread_t socket_connection_thread;
 		// Create a new thread
-		if(pthread_create( &socket_connection_thread, &attr, telnet_connection_handler_thread, (void*) newsock ) != 0)
+		if(pthread_create( &socket_connection_thread, &attr, socket_connection_handler_thread, (void*) newsock ) != 0)
 		{
 			// Log the error code description
-			logg("WARNING: Unable to open clients processing thread, error: %s", strerror(errno));
+			logg("WARNING: Unable to open socket processing thread, error: %s", strerror(errno));
 		}
 	}
 	return 0;
