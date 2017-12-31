@@ -811,13 +811,13 @@ void getAllQueries(char *client_message, int *sock)
 		if(!privacymode)
 		{
 			if(strlen(clients[queries[i].clientID].name) > 0)
-				sprintf(server_message,"%i %s %s %s %i\n",queries[i].timestamp,type,domains[queries[i].domainID].domain,clients[queries[i].clientID].name,queries[i].status);
+				sprintf(server_message,"%i %s %s %s %i %i\n",queries[i].timestamp,type,domains[queries[i].domainID].domain,clients[queries[i].clientID].name,queries[i].status,queries[i].dnssec);
 			else
-				sprintf(server_message,"%i %s %s %s %i\n",queries[i].timestamp,type,domains[queries[i].domainID].domain,clients[queries[i].clientID].ip,queries[i].status);
+				sprintf(server_message,"%i %s %s %s %i %i\n",queries[i].timestamp,type,domains[queries[i].domainID].domain,clients[queries[i].clientID].ip,queries[i].status,queries[i].dnssec);
 		}
 		else
 		{
-			sprintf(server_message,"%i %s %s hidden %i\n",queries[i].timestamp,type,domains[queries[i].domainID].domain,queries[i].status);
+			sprintf(server_message,"%i %s %s hidden %i %i\n",queries[i].timestamp,type,domains[queries[i].domainID].domain,queries[i].status,queries[i].dnssec);
 		}
 		swrite(server_message, *sock);
 	}
