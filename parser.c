@@ -990,6 +990,10 @@ void process_pihole_log(int file)
 			{
 				domains[queries[i].domainID].dnssec = DNSSEC_BOGUS;
 			}
+			else if(strstr(readbuffer,"is ABANDONED") != NULL)
+			{
+				domains[queries[i].domainID].dnssec = DNSSEC_ABANDONED;
+			}
 			else
 			{
 				// Unknown
