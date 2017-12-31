@@ -21,7 +21,7 @@
 #define BACKLOG 5
 
 // File descriptors
-int telnetfd;
+int telnetfd, socketfd;
 
 void saveport(int port)
 {
@@ -44,7 +44,7 @@ void bind_to_telnet_port(char type, int *socketdescriptor)
 
 	if(*socketdescriptor < 0)
 	{
-		logg("Error opening socket");
+		logg("Error opening telnet socket");
 		exit(EXIT_FAILURE);
 	}
 
@@ -119,6 +119,43 @@ void bind_to_telnet_port(char type, int *socketdescriptor)
 
 	logg("Listening on port %i for incoming connections", port);
 }
+
+
+void bind_to_unix_socket(int *socketdescriptor)
+{
+	*socketdescriptor = socket(AF_LOCAL, SOCK_STREAM, 0);
+
+	if(*socketdescriptor < 0)
+	{
+		logg("Error opening unix socket");
+		exit(EXIT_FAILURE);
+	}
+
+	// Make sure unix socket file handle does not exist, if it exists, remove it
+	unlink(FTLfiles.socketfile);
+
+	struct sockaddr_un address;
+	address.sun_family = AF_LOCAL;
+	strcpy(address.sun_path, FTLfiles.socketfile);
+
+	// Bild to Unix socket handle
+	errno = 0;
+	if(bind(*socketdescriptor, (struct sockaddr *) &address, sizeof (address)) != 0) {
+		logg("Error on binding on unix socket %s", FTLfiles.socketfile);
+		logg("Reason: %s (%i)", strerror(errno), errno);
+		exit(EXIT_FAILURE);
+	}
+
+	// The listen system call allows the process to listen on the Unix socket for connections
+	if(listen(*socketdescriptor, BACKLOG) == -1)
+	{
+		logg("Error on listening");
+		exit(EXIT_FAILURE);
+	}
+
+	logg("Listening on Unix socket");
+}
+
 
 // Called from main() at graceful shutdown
 void removeport(void)
@@ -243,7 +280,7 @@ void *telnet_listenting_thread(void *args)
 	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
 	// Set thread name
-	prctl(PR_SET_NAME,"socket listener",0,0,0);
+	prctl(PR_SET_NAME,"telnet listener",0,0,0);
 
 	// Initialize sockets only after initial log parsing in listenting_thread
 	bind_to_telnet_port(SOCKET, &telnetfd);
@@ -253,6 +290,44 @@ void *telnet_listenting_thread(void *args)
 	{
 		// Look for new clients that want to connect
 		int csck = telnet_listener(telnetfd);
+
+		// Allocate memory used to transport client socket ID to client listening thread
+		newsock = calloc(1,sizeof(int));
+		*newsock = csck;
+
+		pthread_t socket_connection_thread;
+		// Create a new thread
+		if(pthread_create( &socket_connection_thread, &attr, telnet_connection_handler_thread, (void*) newsock ) != 0)
+		{
+			// Log the error code description
+			logg("WARNING: Unable to open clients processing thread, error: %s", strerror(errno));
+		}
+	}
+	return 0;
+}
+
+void *socket_listenting_thread(void *args)
+{
+	int *newsock;
+	// We will use the attributes object later to start all threads in detached mode
+	pthread_attr_t attr;
+	// Initialize thread attributes object with default attribute values
+	pthread_attr_init(&attr);
+	// When a detached thread terminates, its resources are automatically released back to
+	// the system without the need for another thread to join with the terminated thread
+	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+
+	// Set thread name
+	prctl(PR_SET_NAME,"socket listener",0,0,0);
+
+	// Initialize sockets only after initial log parsing in listenting_thread
+	bind_to_unix_socket(&socketfd);
+
+	// Listen as long as FTL is not killed
+	while(!killed)
+	{
+		// Look for new clients that want to connect
+		int csck = telnet_listener(socketfd);
 
 		// Allocate memory used to transport client socket ID to client listening thread
 		newsock = calloc(1,sizeof(int));

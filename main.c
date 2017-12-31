@@ -77,6 +77,13 @@ int main (int argc, char* argv[]) {
 		killed = 1;
 	}
 
+	pthread_t socket_listenthread;
+	if(pthread_create( &socket_listenthread, &attr, socket_listenting_thread, NULL ) != 0)
+	{
+		logg("Unable to open Unix socket listening thread. Exiting...");
+		killed = 1;
+	}
+
 	while(!killed)
 	{
 		sleepms(100);

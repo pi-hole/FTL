@@ -42,6 +42,7 @@ void close_telnet_socket(char type);
 void seom(char server_message[], int sock);
 void swrite(char server_message[], int sock);
 void *telnet_listenting_thread(void *args);
+void *socket_listenting_thread(void *args);
 
 void process_request(char *client_message, int *sock);
 bool command(char *client_message, const char* cmd);

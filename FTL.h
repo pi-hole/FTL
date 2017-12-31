@@ -40,6 +40,9 @@
 #include "sqlite3.h"
 // tolower()
 #include <ctype.h>
+// Unix socket
+#include <sys/un.h>
+
 
 #include "routines.h"
 
@@ -73,6 +76,7 @@ typedef struct {
 	const char* pid;
 	const char* port;
 	char* db;
+	const char* socketfile;
 } FTLFileNamesStruct;
 
 typedef struct {
