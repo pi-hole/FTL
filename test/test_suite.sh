@@ -196,6 +196,12 @@ load 'libs/bats-support/load'
   [[ ${lines[0]} == "pihole-FTL - The Pi-hole FTL engine" ]]
 }
 
+@test "Unix socket returning data" {
+  run bash -c './pihole-FTL help'
+  echo "output: ${lines[@]}"
+  [[ ${lines[0]} == "pihole-FTL - The Pi-hole FTL engine" ]]
+}
+
 @test "Final part of the tests: Killing pihole-FTL process" {
   run bash -c 'echo ">kill" | nc -v 127.0.0.1 4711'
   echo "output: ${lines[@]}"

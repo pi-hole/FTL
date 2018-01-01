@@ -36,7 +36,10 @@ int main (int argc, char **argv) {
 	printf ("Socket created\n");
 
 	address.sun_family = AF_LOCAL;
-	strcpy(address.sun_path, UDS_FILE);
+	if(argc == 2 && strcmp(argv[1], "travis") == 0)
+		strcpy(address.sun_path,"pihole-FTL.sock");
+	else
+		strcpy(address.sun_path,"/var/run/pihole/FTL.sock");
 	ret = connect(socketfd, (struct sockaddr *) &address, sizeof (address));
 	if (ret != 0)
 	{
