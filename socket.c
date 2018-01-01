@@ -181,7 +181,7 @@ void swrite(char server_message[SOCKETBUFFERLEN], int sock)
 		logg("WARNING: Socket write returned error code %i", errno);
 }
 
-int telnet_listener(int sockfd)
+int listener(int sockfd)
 {
 	struct sockaddr_in cli_addr;
 	// set all values in the buffer to zero
@@ -246,7 +246,7 @@ void *telnet_connection_handler_thread(void *socket_desc)
 
 			if(sock == 0)
 			{
-				// Client disconnected by seding EOT or ">quit"
+				// Client disconnected by sending EOT or ">quit"
 				break;
 			}
 		}
@@ -304,7 +304,7 @@ void *socket_connection_handler_thread(void *socket_desc)
 
 			if(sock == 0)
 			{
-				// Socket connection interrupted by seding EOT or ">quit"
+				// Socket connection interrupted by sending EOT or ">quit"
 				break;
 			}
 		}
@@ -344,7 +344,7 @@ void *telnet_listening_thread(void *args)
 	while(!killed)
 	{
 		// Look for new clients that want to connect
-		int csck = telnet_listener(telnetfd);
+		int csck = listener(telnetfd);
 
 		// Allocate memory used to transport client socket ID to client listening thread
 		int *newsock;
@@ -382,7 +382,7 @@ void *socket_listening_thread(void *args)
 	while(!killed)
 	{
 		// Look for new clients that want to connect
-		int csck = telnet_listener(socketfd);
+		int csck = listener(socketfd);
 
 		// Allocate memory used to transport client socket ID to client listening thread
 		int *newsock;

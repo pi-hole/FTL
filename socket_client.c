@@ -1,5 +1,3 @@
-/* uds_client.c */
-#include <sys/types.h>
 /* Pi-hole: A black hole for Internet advertisements
 *  (c) 2017 Pi-hole, LLC (https://pi-hole.net)
 *  Network-wide ad blocking via your own hardware.
@@ -9,7 +7,7 @@
 *
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
-
+#include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <netinet/in.h>
@@ -57,31 +55,23 @@ int main (int argc, char **argv) {
 	sprintf(buffer, ">stats");
 	send(socketfd, buffer, strlen (buffer), 0);
 
-	// Receive message
-	size = recv(socketfd, buffer, BUF-1, 0);
-
-	// Zero-terminate incoming message
-	if(size > 0)
-		buffer[size] = '\0';
-
 	// Try to receive data until either recv() fails or we see "--EOM--"
-	while(size > -1 && strstr(buffer, "--EOM--") == NULL)
+	while((size = recv(socketfd, buffer, BUF-1, 0)) > -1)
 	{
-		// Print received data to stdout
-		printf("%s", buffer);
-
-		// Receive potential new message
-		size = recv(socketfd, buffer, BUF-1, 0);
-
 		// Zero-terminate incoming message
 		if(size > 0)
 			buffer[size] = '\0';
-	}
 
-	// Print received data to stdout
-	printf("%s", buffer);
+		// Print received data to stdout
+		printf("%s", buffer);
+
+		// Exit on End Of Message
+		if(strstr(buffer, "--EOM--") != NULL)
+			break;
+
+	}
 
 	// Close Unix socket connection
 	close(socketfd);
 	return EXIT_SUCCESS;
-	}
+}
