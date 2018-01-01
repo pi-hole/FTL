@@ -19,7 +19,6 @@
 #include <stdio.h>
 #include <string.h>
 #define BUF 1024
-#define UDS_FILE "/var/run/pihole/FTL.sock"
 
 int main (int argc, char **argv) {
 	int socketfd;
@@ -27,19 +26,25 @@ int main (int argc, char **argv) {
 	struct sockaddr_un address;
 	int size, ret;
 
+	// Create socket
 	socketfd = socket(PF_LOCAL, SOCK_STREAM, 0);
 	if(socketfd <= 0)
 	{
 		printf("Error creating socket!\n");
 		exit(EXIT_FAILURE);
 	}
-	printf ("Socket created\n");
+	printf("Socket created\n");
 
+	// Set socket family to local socket (not an Internet socket)
 	address.sun_family = AF_LOCAL;
+
+	// Set socket file location (respect special location on the CI system Travis)
 	if(argc == 2 && strcmp(argv[1], "travis") == 0)
 		strcpy(address.sun_path,"pihole-FTL.sock");
 	else
 		strcpy(address.sun_path,"/var/run/pihole/FTL.sock");
+
+	// Connect to the socket provided by pihole-FTL
 	ret = connect(socketfd, (struct sockaddr *) &address, sizeof (address));
 	if (ret != 0)
 	{
@@ -48,21 +53,24 @@ int main (int argc, char **argv) {
 	}
 	printf("Connection established\n");
 
+	// As an example, we query the current statistics from FTL through the socket here
 	sprintf(buffer, ">stats");
 	send(socketfd, buffer, strlen (buffer), 0);
 
 	// Receive message
 	size = recv(socketfd, buffer, BUF-1, 0);
+
 	// Zero-terminate incoming message
 	if(size > 0)
 		buffer[size] = '\0';
 
-	while (strstr(buffer, "--EOM--") == NULL)
+	// Try to receive data until either recv() fails or we see "--EOM--"
+	while(size > -1 && strstr(buffer, "--EOM--") == NULL)
 	{
-
+		// Print received data to stdout
 		printf("%s", buffer);
 
-		// Receive message
+		// Receive potential new message
 		size = recv(socketfd, buffer, BUF-1, 0);
 
 		// Zero-terminate incoming message
@@ -70,8 +78,10 @@ int main (int argc, char **argv) {
 			buffer[size] = '\0';
 	}
 
+	// Print received data to stdout
 	printf("%s", buffer);
 
-	close (socketfd);
+	// Close Unix socket connection
+	close(socketfd);
 	return EXIT_SUCCESS;
 	}
