@@ -160,7 +160,9 @@ int main (int argc, char* argv[]) {
 	logg("Shutting down...");
 	pthread_cancel(piholelogthread);
 	pthread_cancel(telnet_listenthread);
-	close_telnet_socket(SOCKET);
+	pthread_cancel(socket_listenthread);
+	close_telnet_socket();
+	close_unix_socket();
 	removepid();
 	logg("########## FTL terminated! ##########");
 	return 1;

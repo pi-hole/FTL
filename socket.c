@@ -195,20 +195,20 @@ int telnet_listener(int sockfd)
 	return clientsocket;
 }
 
-void close_telnet_socket(char type)
+void close_telnet_socket(void)
 {
-	switch(type)
-	{
-		case SOCKET:
-			removeport();
-			// Using global variable here
-			close(telnetfd);
-			break;
-		default:
-			logg("Incompatible socket type %i, cannot close",(int)type);
-			exit(EXIT_FAILURE);
-			break;
-	}
+	removeport();
+	// Using global variable here
+	close(telnetfd);
+}
+
+void close_unix_socket(void)
+{
+	// According to "man unix" the process has to take care
+	// to unlink the socket file description on exit
+	unlink(FTLfiles.socketfile);
+	// Using global variable here
+	close(socketfd);
 }
 
 void *telnet_connection_handler_thread(void *socket_desc)
