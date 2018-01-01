@@ -60,7 +60,7 @@ int main (int argc, char **argv) {
 	while (strstr(buffer, "--EOM--") == NULL)
 	{
 
-		printf("Message received: \"%s\"\n", buffer);
+		printf("%s", buffer);
 
 		// Receive message
 		size = recv(socketfd, buffer, BUF-1, 0);
@@ -70,7 +70,7 @@ int main (int argc, char **argv) {
 			buffer[size] = '\0';
 	}
 
-	printf("Message received: \"%s\"\n", buffer);
+	printf("%s", buffer);
 
 	close (socketfd);
 	return EXIT_SUCCESS;

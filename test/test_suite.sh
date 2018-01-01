@@ -197,9 +197,11 @@ load 'libs/bats-support/load'
 }
 
 @test "Unix socket returning data" {
-  run bash -c './pihole-FTL help'
+  run bash -c './socket-test travis'
   echo "output: ${lines[@]}"
-  [[ ${lines[0]} == "pihole-FTL - The Pi-hole FTL engine" ]]
+  [[ ${lines[0]} == "Socket created" ]]
+  [[ ${lines[1]} == "Connection established" ]]
+  [[ ${lines[2]} ~= "domains_being_blocked -1" ]]
 }
 
 @test "Final part of the tests: Killing pihole-FTL process" {
