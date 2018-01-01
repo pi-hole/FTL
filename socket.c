@@ -253,8 +253,8 @@ void *telnet_connection_handler_thread(void *socket_desc)
 		}
 		else if(n == -1)
 		{
-			if(debugclients)
-				logg("Telnet connection interrupted, ID: %i", sockID);
+			if(debug) logg("Telnet connection interrupted (%s), ID: %i", strerror(errno), sockID);
+			break;
 		}
 	}
 	if(debugclients)
@@ -311,10 +311,11 @@ void *socket_connection_handler_thread(void *socket_desc)
 		}
 		else if(n == -1)
 		{
-			if(debug) logg("Socket connection interrupted, ID: %i", sockID);
+			if(debug) logg("Unix socket connection interrupted (%s), ID: %i", strerror(errno), sockID);
+			break;
 		}
 	}
-	if(debug) logg("Socket disconnected, ID: %i", sockID);
+	if(debugclients) logg("Socket disconnected, ID: %i", sockID);
 
 	//Free the socket pointer
 	if(sock != 0)
