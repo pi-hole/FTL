@@ -71,14 +71,14 @@ int main (int argc, char* argv[]) {
 	}
 
 	pthread_t telnet_listenthread;
-	if(pthread_create( &telnet_listenthread, &attr, telnet_listenting_thread, NULL ) != 0)
+	if(pthread_create( &telnet_listenthread, &attr, telnet_listening_thread, NULL ) != 0)
 	{
 		logg("Unable to open telnet listening thread. Exiting...");
 		killed = 1;
 	}
 
 	pthread_t socket_listenthread;
-	if(pthread_create( &socket_listenthread, &attr, socket_listenting_thread, NULL ) != 0)
+	if(pthread_create( &socket_listenthread, &attr, socket_listening_thread, NULL ) != 0)
 	{
 		logg("Unable to open Unix socket listening thread. Exiting...");
 		killed = 1;

@@ -324,7 +324,7 @@ void *socket_connection_handler_thread(void *socket_desc)
 	return 0;
 }
 
-void *telnet_listenting_thread(void *args)
+void *telnet_listening_thread(void *args)
 {
 	// We will use the attributes object later to start all threads in detached mode
 	pthread_attr_t attr;
@@ -362,7 +362,7 @@ void *telnet_listenting_thread(void *args)
 	return 0;
 }
 
-void *socket_listenting_thread(void *args)
+void *socket_listening_thread(void *args)
 {
 	// We will use the attributes object later to start all threads in detached mode
 	pthread_attr_t attr;
