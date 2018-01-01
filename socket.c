@@ -204,8 +204,7 @@ void close_telnet_socket(void)
 
 void close_unix_socket(void)
 {
-	// According to "man unix" the process has to take care
-	// to unlink the socket file description on exit
+	// The process has to take care of unlinking the socket file description on exit
 	unlink(FTLfiles.socketfile);
 	// Using global variable here
 	close(socketfd);
@@ -253,7 +252,7 @@ void *telnet_connection_handler_thread(void *socket_desc)
 		}
 		else if(n == -1)
 		{
-			if(debug) logg("Telnet connection interrupted (%s), ID: %i", strerror(errno), sockID);
+			if(debugclients) logg("Telnet connection interrupted (%s), ID: %i", strerror(errno), sockID);
 			break;
 		}
 	}
@@ -311,7 +310,7 @@ void *socket_connection_handler_thread(void *socket_desc)
 		}
 		else if(n == -1)
 		{
-			if(debug) logg("Unix socket connection interrupted (%s), ID: %i", strerror(errno), sockID);
+			if(debugclients) logg("Unix socket connection interrupted (%s), ID: %i", strerror(errno), sockID);
 			break;
 		}
 	}
