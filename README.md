@@ -1,18 +1,79 @@
-## Pi-hole FTL
+<p align="center">
+<a href="https://www.codacy.com/app/Pi-hole/FTL?utm_source=github.com&utm_medium=referral&utm_content=pi-hole/FTL&utm_campaign=badger"><img src="https://api.codacy.com/project/badge/Grade/4ed93e1a06fe4600ba991ef33078973c"/></a>
+</p>
 
-(c) 2017 Pi-hole, LLC (https://pi-hole.net)
+<p align="center">
+<a href=https://discourse.pi-hole.net><img src="https://assets.pi-hole.net/static/Vortex_with_text_and_TM.png" width=210></a><br/>
+<b>Network-wide ad blocking via your own Linux hardware</b>
+</p>
 
-![](https://i1.wp.com/pi-hole.net/wp-content/uploads/2017/01/dominik.gif?w=128&ssl=1)
+# The Faster-Than-Light Engine
+The FTL API can be accessed via the Web, Command Line and `telnet`.
 
-This project is copyright under the latest version of the EUPL.
+The Web (`admin/api.php`) and Command Line (`pihole -c -j`) will return `json` formatted output:
+``` 
+{
+   "domains_being_blocked":111175,
+   "dns_queries_today":15669,
+   "ads_blocked_today":1752,
+   "ads_percentage_today":11.181314,
+   "unique_domains":1178,
+   "queries_forwarded":9177,
+   "queries_cached":4740,
+   "unique_clients":18
+}
+```
 
-Please see `LICENSE` file for your rights under this license.
+More information on `telnet` can be found below.
 
-[![Codacy Badge](https://api.codacy.com/project/badge/Grade/4ed93e1a06fe4600ba991ef33078973c)](https://www.codacy.com/app/Pi-hole/FTL?utm_source=github.com&utm_medium=referral&utm_content=pi-hole/FTL&utm_campaign=badger)
+-----
 
----
+## Pi-hole is free, but powered by your support
+There are many reoccuring costs involved with maintaining free, open source and privacy respecting software; expenses which [our volunteers](https://github.com/orgs/pi-hole/people) pitch in to cover out-of-pocket. This is just one example of how strongly we feel about our software, as well as the importance of keeping it maintained.
 
-### Compatibility list
+Make no mistake: **your support is absolutely vital to help keep us innovating!**
+
+### Donations
+Sending a donation using our links below is **extremely helpful** in offset a portion of our monthly costs:
+
+- ![Paypal](https://assets.pi-hole.net/static/paypal.png) [Donate via PayPal](https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=3J2L3Z4DHW9UY)
+- ![Bitcoin](https://assets.pi-hole.net/static/Bitcoin.png) Bitcoin Address: 1GKnevUnVaQM2pQieMyeHkpr8DXfkpfAtL
+
+### Alternative support
+If you'd rather not donate (_which is okay!_), there are other ways you can help support us:
+
+- [Digital Ocean](http://www.digitalocean.com/?refcode=344d234950e1) affiliate link
+- [Vultr](http://www.vultr.com/?ref=7190426) affiliate link
+- [UNIXstickers.com](http://unixstickers.refr.cc/jacobs) affiliate link
+- [Pi-hole Swag Store](https://pi-hole.net/shop/)
+- Spreading the word about our software, and how you have benefited from it
+
+### Contributing via GitHub
+We welcome everyone to contribute to issue reports, suggest new features and create pull requests.
+
+If you have something to add - anything from a typo through to a whole new feature, we're happy to check it out! Just make sure to fill out our template when submitting your request; the questions that it asks will help the volunteers quickly understand what you're aiming to achieve.
+
+You'll find that our files have an abundance of comments, which will help you better understand how Pi-hole works. We encourage anyone who likes to tinker to read through it, and submit a pull request for us to review.
+
+### Presentations about Pi-hole
+Word-of-mouth continues to help our project grow immensely, and we'd like to help those who are going to be presenting Pi-hole at a conference, meetup or even a school project. If you'd like some free swag to hand out to your audience, [get in touch with us](https://pi-hole.net/2017/05/17/giving-a-presentation-on-pi-hole-contact-us-first-for-some-goodies-and-support/).
+
+-----
+
+## Getting in touch with us
+- [Users Forum](https://discourse.pi-hole.net/)
+- [Feature requests](https://discourse.pi-hole.net/c/feature-requests?order=votes)
+- [FAQs](https://discourse.pi-hole.net/c/faqs)
+- [Wiki](https://github.com/pi-hole/pi-hole/wiki)
+- [/r/pihole on Reddit](https://www.reddit.com/r/pihole/)
+- [@The_Pi_Hole on Twitter](https://twitter.com/The_Pi_Hole)
+- [Pi-hole on YouTube](https://www.youtube.com/channel/UCT5kq9w0wSjogzJb81C9U0w)
+- [ThePiHole on Facebook](https://www.facebook.com/ThePiHole/)
+- [Chat on Gitter](https://gitter.im/pi-hole/pi-hole?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+
+-----
+
+## Compatibility list
 
 | Board | Tested OS | CPU architecture | Suitable binaries | Tested by |
 |---|---|---|---|---|
@@ -26,12 +87,13 @@ Please see `LICENSE` file for your rights under this license.
 | Odroid-C2 | Ubuntu 16.04 | aarch64 | `aarch64-linux-gnu` | [@DanSchaper](https://github.com/dschaper) |
 | C.H.I.P | Debian | armv7l | `arm-linux-gnueabihf` | [@Promofaux](https://github.com/promofaux) |
 | OrangePi Zero | armbian Ubuntu 16.04 | armv7l | `arm-linux-gnueabihf` | [@DL6ER](https://github.com/dl6er) |
-| BeagleBone Black| Debian Jessie | armv7l | `arm-linux-gnueabihf` | [@frosty5689](https://github.com/frosty5689) |
+| BeagleBone Black | Debian Jessie | armv7l | `arm-linux-gnueabihf` | [@frosty5689](https://github.com/frosty5689) |
+| Rock64 | Debian Stretch | aarch64 | `aarch64-linux-gnu` | [@WaLLy3K](https://github.com/WaLLy3K) |
 |  |  |  |  |  |
 
 If your device is not listed you can get your CPU architecture by running `lscpu`. Download some binaries and try which one work. If you want to add a new device, open an issue or create a PR for the README.
 
----
+-----
 
 ### How to test FTL?
 
