@@ -213,21 +213,21 @@ load 'libs/bats-support/load'
   [[ "${status}" -eq 0 ]]
 }
 
-@test "API: Correct answer to top_domains request" {
-  run bash -c "curl -s 127.0.0.1:4747/stats/top_domains"
-  echo "output: ${lines[@]}"
-  echo "curl exit code: ${status}"
-  [[ ${lines[0]} == "{\"top_domains\":{\"play.google.com\":2,\"example.com\":1,\"checkip.dyndns.org\":1,\"raspberrypi\":1},\"dns_queries_today\":7}" ]]
-  [[ "${status}" -eq 0 ]]
-}
+#@test "API: Correct answer to top_domains request" {
+#  run bash -c "curl -s 127.0.0.1:4747/stats/top_domains"
+#  echo "output: ${lines[@]}"
+#  echo "curl exit code: ${status}"
+#  [[ ${lines[0]} == "{\"top_domains\":{\"play.google.com\":2,\"example.com\":1,\"checkip.dyndns.org\":1,\"raspberrypi\":1},\"dns_queries_today\":7}" ]]
+#  [[ "${status}" -eq 0 ]]
+#}
 
-@test "API: Correct answer to top_ads request" {
-  run bash -c "curl -s 127.0.0.1:4747/stats/top_ads"
-  echo "output: ${lines[@]}"
-  echo "curl exit code: ${status}"
-  [[ ${lines[0]} == "{\"top_ads\":{\"addomain.com\":1,\"blacklisted.com\":1},\"ads_blocked_today\":2}" ]]
-  [[ "${status}" -eq 0 ]]
-}
+#@test "API: Correct answer to top_ads request" {
+#  run bash -c "curl -s 127.0.0.1:4747/stats/top_ads"
+#  echo "output: ${lines[@]}"
+#  echo "curl exit code: ${status}"
+#  [[ ${lines[0]} == "{\"top_ads\":{\"addomain.com\":1,\"blacklisted.com\":1},\"ads_blocked_today\":2}" ]]
+#  [[ "${status}" -eq 0 ]]
+#}
 
 @test "Arguments check: Invalid option" {
   run bash -c './pihole-FTL abc'
