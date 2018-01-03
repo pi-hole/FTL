@@ -845,12 +845,12 @@ void getAllQueries(char *client_message, int *sock, char type)
 			if(!privacymode)
 			{
 				if(strlen(clients[queries[i].clientID].name) > 0)
-					ssend(*sock,"%i %s %s %s %i %i\n",queries[i].timestamp,type,domains[queries[i].domainID].domain,clients[queries[i].clientID].name,queries[i].status,domains[queries[i].domainID].dnssec);
+					ssend(*sock,"%i %s %s %s %i %i\n",queries[i].timestamp,qtype,domains[queries[i].domainID].domain,clients[queries[i].clientID].name,queries[i].status,domains[queries[i].domainID].dnssec);
 				else
-					ssend(*sock,"%i %s %s %s %i %i\n",queries[i].timestamp,type,domains[queries[i].domainID].domain,clients[queries[i].clientID].ip,queries[i].status,domains[queries[i].domainID].dnssec);
+					ssend(*sock,"%i %s %s %s %i %i\n",queries[i].timestamp,qtype,domains[queries[i].domainID].domain,clients[queries[i].clientID].ip,queries[i].status,domains[queries[i].domainID].dnssec);
 			}
 			else
-				ssend(*sock,"%i %s %s hidden %i %i\n",queries[i].timestamp,type,domains[queries[i].domainID].domain,queries[i].status,domains[queries[i].domainID].dnssec);
+				ssend(*sock,"%i %s %s hidden %i %i\n",queries[i].timestamp,qtype,domains[queries[i].domainID].domain,queries[i].status,domains[queries[i].domainID].dnssec);
 		}
 		else
 		{
