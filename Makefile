@@ -46,7 +46,7 @@ _DEPS = $(patsubst %,$(IDIR)/%,$(DEPS))
 
 _OBJ = $(patsubst %,$(ODIR)/%,$(OBJ))
 
-all: pihole-FTL
+all: pihole-FTL socket-test
 
 $(ODIR)/%.o: %.c $(_DEPS) | $(ODIR)
 	$(CC) -c -o $@ $< -g3 $(CCFLAGS)
@@ -59,6 +59,9 @@ $(ODIR)/sqlite3.o: sqlite3.c
 
 pihole-FTL: $(_OBJ) $(ODIR)/sqlite3.o
 	$(CC) -v $(CCFLAGS) -o $@ $^ $(LIBS)
+
+socket-test: socket_client.c
+	$(CC) -o $@ $< $(CCFLAGS)
 
 .PHONY: clean force install
 

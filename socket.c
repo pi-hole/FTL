@@ -12,7 +12,7 @@
 
 // The backlog argument defines the maximum length
 // to which the queue of pending connections for
-// socketfd may grow. If a connection request arrives
+// telnetfd may grow. If a connection request arrives
 // when the queue is full, the client may receive an
 // error with an indication of ECONNREFUSED or, if
 // the underlying protocol supports retransmission,
@@ -21,7 +21,7 @@
 #define BACKLOG 5
 
 // File descriptors
-int socketfd, apifd;
+int telnetfd, socketfd, apifd;
 
 void saveport(int port)
 {
@@ -38,13 +38,13 @@ void saveport(int port)
 	}
 }
 
-void bind_to_port(char type, int *socketdescriptor)
+void bind_to_telnet_port(char type, int *socketdescriptor)
 {
 	*socketdescriptor = socket(AF_INET, SOCK_STREAM, 0);
 
 	if(*socketdescriptor < 0)
 	{
-		logg("Error opening socket");
+		logg("Error opening telnet socket");
 		exit(EXIT_FAILURE);
 	}
 
@@ -133,6 +133,43 @@ void bind_to_port(char type, int *socketdescriptor)
 	}
 }
 
+
+void bind_to_unix_socket(int *socketdescriptor)
+{
+	*socketdescriptor = socket(AF_LOCAL, SOCK_STREAM, 0);
+
+	if(*socketdescriptor < 0)
+	{
+		logg("Error opening unix socket");
+		exit(EXIT_FAILURE);
+	}
+
+	// Make sure unix socket file handle does not exist, if it exists, remove it
+	unlink(FTLfiles.socketfile);
+
+	struct sockaddr_un address;
+	address.sun_family = AF_LOCAL;
+	strcpy(address.sun_path, FTLfiles.socketfile);
+
+	// Bild to Unix socket handle
+	errno = 0;
+	if(bind(*socketdescriptor, (struct sockaddr *) &address, sizeof (address)) != 0) {
+		logg("Error on binding on unix socket %s", FTLfiles.socketfile);
+		logg("Reason: %s (%i)", strerror(errno), errno);
+		exit(EXIT_FAILURE);
+	}
+
+	// The listen system call allows the process to listen on the Unix socket for connections
+	if(listen(*socketdescriptor, BACKLOG) == -1)
+	{
+		logg("Error on listening");
+		exit(EXIT_FAILURE);
+	}
+
+	logg("Listening on Unix socket");
+}
+
+
 // Called from main() at graceful shutdown
 void removeport(void)
 {
@@ -191,24 +228,83 @@ int listener(int sockfd)
 	return clientsocket;
 }
 
-void close_socket(char type)
+void close_telnet_socket(void)
 {
-	switch(type)
-	{
-		case SOCKET:
-			removeport();
-			// Using global variable here
-			close(socketfd);
-			break;
-		case API:
-			close(apifd);
-			break;
-		default:
-			logg("Incompatible socket type %i, cannot close",(int)type);
-			exit(EXIT_FAILURE);
-			break;
-	}
+	removeport();
+	// Using global variable here
+	close(telnetfd);
 }
+
+void close_unix_socket(void)
+{
+	// The process has to take care of unlinking the socket file description on exit
+	unlink(FTLfiles.socketfile);
+	// Using global variable here
+	close(socketfd);
+}
+
+void close_api_socket(void)
+{
+	close(apifd);
+}
+
+void *telnet_connection_handler_thread(void *socket_desc)
+{
+	//Get the socket descriptor
+	int sock = *(int*)socket_desc;
+	// Store copy only for displaying the debug messages
+	int sockID = sock;
+	char client_message[SOCKETBUFFERLEN] = "";
+
+	// Set thread name
+	char threadname[16];
+	sprintf(threadname,"telnet-%i",sockID);
+	prctl(PR_SET_NAME,threadname,0,0,0);
+	//Receive from client
+	ssize_t n;
+	while((n = recv(sock,client_message,SOCKETBUFFERLEN-1, 0)))
+	{
+		if (n > 0)
+		{
+			char *message = calloc(strlen(client_message)+1,sizeof(char));
+			strcpy(message, client_message);
+
+			// Clear client message receive buffer
+			memset(client_message, 0, sizeof client_message);
+
+			// Lock FTL data structure, since it is likely that it will be changed here
+			// Requests should not be processed/answered when data is about to change
+			enable_thread_lock(threadname);
+
+			process_socket_request(message, &sock);
+			free(message);
+
+			// Release thread lock
+			disable_thread_lock(threadname);
+
+			if(sock == 0)
+			{
+				// Client disconnected by sending EOT or ">quit"
+				break;
+			}
+		}
+		else if(n == -1)
+		{
+			if(debugclients) logg("Telnet connection interrupted (%s), ID: %i", strerror(errno), sockID);
+			break;
+		}
+	}
+	if(debugclients)
+		logg("Telnet disconnected, ID: %i", sockID);
+
+	//Free the socket pointer
+	if(sock != 0)
+		close(sock);
+	free(socket_desc);
+
+	return 0;
+}
+
 
 void *socket_connection_handler_thread(void *socket_desc)
 {
@@ -246,18 +342,17 @@ void *socket_connection_handler_thread(void *socket_desc)
 
 			if(sock == 0)
 			{
-				// Client disconnected by sending EOT or ">quit"
+				// Socket connection interrupted by sending EOT or ">quit"
 				break;
 			}
 		}
 		else if(n == -1)
 		{
-			if(debugclients)
-				logg("Client connection interrupted, ID: %i", sockID);
+			if(debugclients) logg("Unix socket connection interrupted (%s), ID: %i", strerror(errno), sockID);
+			break;
 		}
 	}
-	if(debugclients)
-		logg("Client disconnected, ID: %i", sockID);
+	if(debugclients) logg("Socket disconnected, ID: %i", sockID);
 
 	//Free the socket pointer
 	if(sock != 0)
@@ -272,9 +367,46 @@ void *socket_connection_handler_thread(void *socket_desc)
 	return 0;
 }
 
+void *telnet_listening_thread(void *args)
+{
+	// We will use the attributes object later to start all threads in detached mode
+	pthread_attr_t attr;
+	// Initialize thread attributes object with default attribute values
+	pthread_attr_init(&attr);
+	// When a detached thread terminates, its resources are automatically released back to
+	// the system without the need for another thread to join with the terminated thread
+	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+
+	// Set thread name
+	prctl(PR_SET_NAME,"telnet listener",0,0,0);
+
+	// Initialize sockets only after initial log parsing in listenting_thread
+	bind_to_telnet_port(SOCKET, &telnetfd);
+
+	// Listen as long as FTL is not killed
+	while(!killed)
+	{
+		// Look for new clients that want to connect
+		int csck = listener(telnetfd);
+
+		// Allocate memory used to transport client socket ID to client listening thread
+		int *newsock;
+		newsock = calloc(1,sizeof(int));
+		*newsock = csck;
+
+		pthread_t telnet_connection_thread;
+		// Create a new thread
+		if(pthread_create( &telnet_connection_thread, &attr, telnet_connection_handler_thread, (void*) newsock ) != 0)
+		{
+			// Log the error code description
+			logg("WARNING: Unable to open telnet processing thread, error: %s", strerror(errno));
+		}
+	}
+	return 0;
+}
+
 void *socket_listening_thread(void *args)
 {
-	int *newsock;
 	// We will use the attributes object later to start all threads in detached mode
 	pthread_attr_t attr;
 	// Initialize thread attributes object with default attribute values
@@ -287,7 +419,7 @@ void *socket_listening_thread(void *args)
 	prctl(PR_SET_NAME,"socket listener",0,0,0);
 
 	// Initialize sockets only after initial log parsing in listening_thread
-	bind_to_port(SOCKET, &socketfd);
+	bind_to_unix_socket(&socketfd);
 
 	// Listen as long as FTL is not killed
 	while(!killed)
@@ -297,6 +429,7 @@ void *socket_listening_thread(void *args)
 		if(csck < 0) continue;
 
 		// Allocate memory used to transport client socket ID to client listening thread
+		int *newsock;
 		newsock = calloc(1,sizeof(int));
 		*newsock = csck;
 
@@ -305,11 +438,12 @@ void *socket_listening_thread(void *args)
 		if(pthread_create( &socket_connection_thread, &attr, socket_connection_handler_thread, (void*) newsock ) != 0)
 		{
 			// Log the error code description
-			logg("WARNING: Unable to open client socket thread, error: %s", strerror(errno));
+			logg("WARNING: Unable to open socket processing thread, error: %s", strerror(errno));
 		}
 	}
 	return 0;
 }
+
 
 void *api_connection_handler_thread(void *socket_desc)
 {
@@ -442,7 +576,7 @@ void *api_listening_thread(void *args)
 	prctl(PR_SET_NAME,"API listener",0,0,0);
 
 	// Initialize sockets only after initial log parsing in listening_thread
-	bind_to_port(API, &apifd);
+	bind_to_telnet_port(API, &apifd);
 
 	// Listen as long as FTL is not killed
 	while(!killed)

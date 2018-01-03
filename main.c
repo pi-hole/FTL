@@ -72,11 +72,19 @@ int main (int argc, char* argv[]) {
 	}
 	sleepms(100);
 
+	// Start TELNET thread
+	pthread_t telnet_listenthread;
+	if(pthread_create( &telnet_listenthread, &attr, telnet_listening_thread, NULL ) != 0)
+	{
+		logg("Unable to open telnet listening thread. Exiting...");
+		killed = 1;
+	}
+
 	// Start SOCKET thread
 	pthread_t socket_listenthread;
 	if(pthread_create( &socket_listenthread, &attr, socket_listening_thread, NULL ) != 0)
 	{
-		logg("Unable to open socket listening thread. Exiting...");
+		logg("Unable to open Unix socket listening thread. Exiting...");
 		killed = 1;
 	}
 	sleepms(100);
@@ -157,15 +165,18 @@ int main (int argc, char* argv[]) {
 			// Have to re-read gravity files
 			rereadgravity = false;
 			read_gravity_files();
+			log_counter_info();
 			disable_thread_lock("pihole_main_thread");
 		}
 	}
 
-
 	logg("Shutting down...");
 	pthread_cancel(piholelogthread);
+	pthread_cancel(telnet_listenthread);
 	pthread_cancel(socket_listenthread);
-	close_socket(SOCKET);
+	close_telnet_socket();
+	close_unix_socket();
+	close_api_socket();
 	removepid();
 	logg("########## FTL terminated! ##########");
 	return 1;

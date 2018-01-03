@@ -845,28 +845,28 @@ void getAllQueries(char *client_message, int *sock, char type)
 			if(!privacymode)
 			{
 				if(strlen(clients[queries[i].clientID].name) > 0)
-					ssend(*sock,"%i %s %s %s %i\n",queries[i].timestamp,qtype,domains[queries[i].domainID].domain,clients[queries[i].clientID].name,queries[i].status);
+					ssend(*sock,"%i %s %s %s %i %i\n",queries[i].timestamp,type,domains[queries[i].domainID].domain,clients[queries[i].clientID].name,queries[i].status,domains[queries[i].domainID].dnssec);
 				else
-					ssend(*sock,"%i %s %s %s %i\n",queries[i].timestamp,qtype,domains[queries[i].domainID].domain,clients[queries[i].clientID].ip,queries[i].status);
+					ssend(*sock,"%i %s %s %s %i %i\n",queries[i].timestamp,type,domains[queries[i].domainID].domain,clients[queries[i].clientID].ip,queries[i].status,domains[queries[i].domainID].dnssec);
 			}
 			else
-				ssend(*sock,"%i %s %s hidden %i\n",queries[i].timestamp,qtype,domains[queries[i].domainID].domain,queries[i].status);
+				ssend(*sock,"%i %s %s hidden %i %i\n",queries[i].timestamp,type,domains[queries[i].domainID].domain,queries[i].status,domains[queries[i].domainID].dnssec);
 		}
 		else
 		{
-			// {"data":[["1497351662","IPv4","clients4.google.com","10.8.0.2","2"],
+			// {"data":[["1497351662","IPv4","clients4.google.com","10.8.0.2",2,1],
 			if(!first) ssend(*sock, ",");
 			first = false;
 
 			if(!privacymode)
 			{
 				if(strlen(clients[queries[i].clientID].name) > 0)
-					ssend(*sock,"[%i,\"%s\",\"%s\",\"%s\",%i]",queries[i].timestamp,qtype,domains[queries[i].domainID].domain,clients[queries[i].clientID].name,queries[i].status);
+					ssend(*sock,"[%i,\"%s\",\"%s\",\"%s\",%i,%i]",queries[i].timestamp,qtype,domains[queries[i].domainID].domain,clients[queries[i].clientID].name,queries[i].status,domains[queries[i].domainID].dnssec);
 				else
-					ssend(*sock,"[%i,\"%s\",\"%s\",\"%s\",%i]",queries[i].timestamp,qtype,domains[queries[i].domainID].domain,clients[queries[i].clientID].ip,queries[i].status);
+					ssend(*sock,"[%i,\"%s\",\"%s\",\"%s\",%i,%i]",queries[i].timestamp,qtype,domains[queries[i].domainID].domain,clients[queries[i].clientID].ip,queries[i].status,domains[queries[i].domainID].dnssec);
 			}
 			else
-				ssend(*sock,"[%i,\"%s\",\"%s\",\"hidden\",%i]",queries[i].timestamp,qtype,domains[queries[i].domainID].domain,queries[i].status);
+				ssend(*sock,"[%i,\"%s\",\"%s\",\"hidden\",%i,%i]",queries[i].timestamp,qtype,domains[queries[i].domainID].domain,queries[i].status,domains[queries[i].domainID].dnssec);
 		}
 	}
 
@@ -1160,11 +1160,19 @@ void getQueryTypesOverTime(int *sock, char type)
 
 void getVersion(int *sock, char type)
 {
-	char version[] = GIT_VERSION;
+	const char * version = GIT_VERSION;
+	const char * branch = GIT_BRANCH;
+	// Travis CI pulls on a tag basis, not by branch.
+	// Hence, it may happen that the master binary isn't aware of its branch.
+	// We check if this is the case and if there is a "vX.YY" like tag on the
+	// binary are print out branch "master" if we find that this is the case
+	if(strstr(branch, "(no branch)") != NULL && strstr(version, ".") != NULL)
+		branch = "master";
+
 	if(strstr(version, ".") != NULL)
-		ssend(*sock,"version %s\ntag %s\nbranch %s\ndate %s\n", GIT_VERSION, GIT_TAG, GIT_BRANCH, GIT_DATE);
+		ssend(*sock,"version %s\ntag %s\nbranch %s\ndate %s\n", version, GIT_TAG, branch, GIT_DATE);
 	else
-		ssend(*sock,"version vDev-%s\ntag %s\nbranch %s\ndate %s\n", GIT_HASH, GIT_TAG, GIT_BRANCH, GIT_DATE);
+		ssend(*sock,"version vDev-%s\ntag %s\nbranch %s\ndate %s\n", GIT_HASH, GIT_TAG, branch, GIT_DATE);
 
 	if(debugclients)
 		logg("Sent version info to client, ID: %i", *sock);
@@ -1302,4 +1310,36 @@ void getClientNames(int *sock)
 
 	if(excludeclients != NULL)
 		clearSetupVarsArray();
+}
+
+void getUnknownQueries(int *sock)
+{
+	int i;
+	for(i=0; i < counters.queries; i++)
+	{
+		validate_access("queries", i, true, __LINE__, __FUNCTION__, __FILE__);
+		// Check if this query has been removed due to garbage collection
+		if(queries[i].status != 0 && queries[i].complete) continue;
+
+		char type[5];
+		if(queries[i].type == 1)
+		{
+			strcpy(type,"IPv4");
+		}
+		else
+		{
+			strcpy(type,"IPv6");
+		}
+
+		validate_access("domains", queries[i].domainID, true, __LINE__, __FUNCTION__, __FILE__);
+		validate_access("clients", queries[i].clientID, true, __LINE__, __FUNCTION__, __FILE__);
+
+		if(strlen(clients[queries[i].clientID].name) > 0)
+			ssend(*sock,"%i %i %i %s %s %s %i %s\n",queries[i].timestamp,i,queries[i].id,type,domains[queries[i].domainID].domain,clients[queries[i].clientID].name,queries[i].status,queries[i].complete ?"true":"false");
+		else
+			ssend(*sock,"%i %i %i %s %s %s %i %s\n",queries[i].timestamp,i,queries[i].id,type,domains[queries[i].domainID].domain,clients[queries[i].clientID].ip,queries[i].status,queries[i].complete?"true":"false");
+	}
+
+	if(debugclients)
+		logg("Sent unknown queries data to client, ID: %i", *sock);
 }

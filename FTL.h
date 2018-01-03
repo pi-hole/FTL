@@ -41,6 +41,9 @@
 #include "sqlite3.h"
 // tolower()
 #include <ctype.h>
+// Unix socket
+#include <sys/un.h>
+
 
 #include "routines.h"
 
@@ -77,6 +80,7 @@ typedef struct {
 	const char* pid;
 	const char* port;
 	char* db;
+	const char* socketfile;
 } FTLFileNamesStruct;
 
 typedef struct {
@@ -111,10 +115,12 @@ typedef struct {
 	int overTime;
 	int IPv4;
 	int IPv6;
-	int PTR;
-	int SRV;
 	int wildcarddomains;
 	int forwardedqueries;
+	int reply_NODATA;
+	int reply_NXDOMAIN;
+	int reply_CNAME;
+	int reply_IP;
 } countersStruct;
 
 typedef struct {
@@ -142,6 +148,11 @@ typedef struct {
 	int forwardID;
 	bool valid;
 	bool db;
+	// the ID is a (signed) int in dnsmasq, so no need for a long int here
+	int id;
+	bool complete;
+	unsigned char reply;
+	int generation;
 } queriesDataStruct;
 
 typedef struct {
@@ -164,6 +175,7 @@ typedef struct {
 	int blockedcount;
 	char *domain;
 	bool wildcard;
+	unsigned char dnssec;
 } domainsDataStruct;
 
 typedef struct {
@@ -194,6 +206,7 @@ typedef struct {
 enum { QUERIES, FORWARDED, CLIENTS, DOMAINS, OVERTIME, WILDCARD, AUTHDATA };
 enum { SOCKET, API, APIH };
 enum { WHITELIST, BLACKLIST, WILDLIST };
+enum { DNSSEC_UNSPECIFIED, DNSSEC_SECURE, DNSSEC_INSECURE, DNSSEC_BOGUS, DNSSEC_ABANDONED, DNSSEC_UNKNOWN };
 
 logFileNamesStruct files;
 FTLFileNamesStruct FTLfiles;

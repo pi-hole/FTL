@@ -69,6 +69,28 @@ void *GC_thread(void *val)
 					counters.forwardedqueries--;
 					validate_access("forwarded", queries[i].forwardID, true, __LINE__, __FUNCTION__, __FILE__);
 					forwarded[queries[i].forwardID].count--;
+					// Maybe we have to adjust total counters depending on the reply type
+					switch(queries[i].reply)
+					{
+						case 1: // NODATA(-IPv6)
+						counters.reply_NODATA--;
+						break;
+
+						case 2: // NXDOMAIN
+						counters.reply_NXDOMAIN--;
+						break;
+
+						case 3: // <CNAME>
+						counters.reply_CNAME--;
+						break;
+
+						case 4: // valid IP
+						counters.reply_IP--;
+						break;
+
+						default: // Incomplete query, do nothing
+						break;
+					}
 					break;
 				case 3:
 					// Answered from local cache _or_ local config

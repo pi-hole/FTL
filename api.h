@@ -26,6 +26,7 @@ void getVersion(int *sock, char type);
 void getDBstats(int *sock, char type);
 void getClientsOverTime(int *sock);
 void getClientNames(int *sock);
+void getUnknownQueries(int *sock);
 
 // Endpoints under /dns/
 void getList(int *sock, char type, char list_type);

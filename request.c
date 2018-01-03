@@ -104,6 +104,11 @@ void process_socket_request(char *client_message, int *sock)
 		processed = true;
 		getClientNames(sock);
 	}
+	else if(command(client_message, ">unknown"))
+	{
+		processed = true;
+		getUnknownQueries(sock);
+	}
 
 	// Test only at the end if we want to quit or kill
 	// so things can be processed before

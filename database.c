@@ -36,7 +36,12 @@ void check_database(int rc)
 
 void dbclose(void)
 {
-	sqlite3_close(db);
+	int rc = sqlite3_close(db);
+	// Report any error
+	if( rc )
+		logg("dbclose() - SQL error (%i): %s", rc, sqlite3_errmsg(db));
+
+	// Unlock mutex on the database
 	pthread_mutex_unlock(&dblock);
 }
 
@@ -168,6 +173,9 @@ void db_init(void)
 			return;
 		}
 	}
+
+	// Close database to prevent having it opened all time
+	sqlite3_close(db);
 
 	if (pthread_mutex_init(&dblock, NULL) != 0)
 	{
@@ -309,14 +317,19 @@ void save_to_DB(void)
 		return;
 	}
 
+	int currenttimestamp = time(NULL);
 	for(i = lastdbindex; i < counters.queries; i++)
 	{
 		validate_access("queries", i, true, __LINE__, __FUNCTION__, __FILE__);
-		if(queries[i].timestamp <= lasttimestamp || queries[i].db == true)
-		{
-			// Already in database
-			// logg("Skipping %i",i);
+		if(queries[i].timestamp <= lasttimestamp || queries[i].db)
+			// Already in database or not yet complete
 			continue;
+
+		if(!queries[i].complete && queries[i].timestamp > currenttimestamp-2)
+		{
+			// Break if a brand new query (age < 2 seconds) is not yet completed
+			// giving it a chance to be stored next time
+			break;
 		}
 
 		// Memory checks
@@ -385,8 +398,8 @@ void save_to_DB(void)
 
 	// Finish prepared statement
 	ret = dbquery("END TRANSACTION");
-	if(!ret){ dbclose(); return; }
-	sqlite3_finalize(stmt);
+	int ret2 = sqlite3_finalize(stmt);
+	if(!ret || ret2 != SQLITE_OK){ dbclose(); return; }
 
 	// Store index for next loop interation round and update last time stamp
 	// in the database only if all queries have been saved successfully
