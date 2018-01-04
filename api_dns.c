@@ -110,7 +110,7 @@ void getList(int *sock, char type, char list_type) {
 }
 
 void getPiholeStatus(int *sock, char type) {
-	int status = countlineswith("#addn-hosts=/etc/pihole/gravity.list", files.dnsmasqconf);
+	int status = countlineswith("#addn-hosts=/etc/pihole/gravity.list", files.dnsmasqconfig);
 //	sendAPIResponse(*sock, type, OK);
 	ssend(*sock, "\"status\":%i", status == 1 ? 0 : 1);
 }
