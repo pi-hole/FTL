@@ -32,7 +32,7 @@ void getList(int *sock, char type, char list_type) {
 		name = "wildlist";
 	}
 
-	sendAPIResponse(*sock, type, OK);
+//	sendAPIResponse(*sock, type, OK);
 	ssend(*sock, "\"%s\":[", name);
 
 	if((fp = fopen(file, "r")) != NULL)
@@ -111,28 +111,28 @@ void getList(int *sock, char type, char list_type) {
 
 void getPiholeStatus(int *sock, char type) {
 	int status = countlineswith("#addn-hosts=/etc/pihole/gravity.list", files.dnsmasqconf);
-	sendAPIResponse(*sock, type, OK);
+//	sendAPIResponse(*sock, type, OK);
 	ssend(*sock, "\"status\":%i", status == 1 ? 0 : 1);
 }
 
 void addList(int *sock, char type, char list_type, char *data) {
-	cJSON *input_root = cJSON_Parse(data);
-	cJSON *domain_json = cJSON_GetObjectItemCaseSensitive(input_root, "domain");
+//	cJSON *input_root = cJSON_Parse(data);
+//	cJSON *domain_json = cJSON_GetObjectItemCaseSensitive(input_root, "domain");
 	char *domain;
 
 	// Validate domain
-	if(!cJSON_IsString(domain_json)) {
-		// No domain found
-		sendAPIResponse(*sock, type, BAD_REQUEST);
-		ssend(*sock, "\"status\":\"no_domain\"");
-		return;
-	}
+//	if(!cJSON_IsString(domain_json)) {
+//		// No domain found
+//		sendAPIResponse(*sock, type, BAD_REQUEST);
+//		ssend(*sock, "\"status\":\"no_domain\"");
+//		return;
+//	}
 
-	domain = domain_json->valuestring;
+//	domain = domain_json->valuestring;
 
 	if(!isValidDomain(domain)) {
 		// Invalid domain
-		sendAPIResponse(*sock, type, BAD_REQUEST);
+//		sendAPIResponse(*sock, type, BAD_REQUEST);
 		ssend(*sock, "\"status\":\"invalid_domain\"");
 		return;
 	}
@@ -160,16 +160,16 @@ void addList(int *sock, char type, char list_type, char *data) {
 
 	if(return_code == 0) {
 		// Successfully added to list
-		sendAPIResponse(*sock, type, OK);
+//		sendAPIResponse(*sock, type, OK);
 		ssend(*sock, "\"status\":\"success\"");
 	}
 	else {
 		// Failed to add to list
-		sendAPIResponse(*sock, type, INTERNAL_ERROR);
+//		sendAPIResponse(*sock, type, INTERNAL_ERROR);
 		ssend(*sock, "\"status\":\"unknown_error\"");
 	}
 
-	cJSON_Delete(input_root);
+//	cJSON_Delete(input_root);
 }
 
 void removeList(int *sock, char type, char list_type, char *client_message) {
@@ -178,7 +178,7 @@ void removeList(int *sock, char type, char list_type, char *client_message) {
 	// Validate domain
 	if(domain == NULL) {
 		// No domain found
-		sendAPIResponse(*sock, type, NOT_FOUND);
+//		sendAPIResponse(*sock, type, NOT_FOUND);
 		ssend(*sock, "\"status\":\"not_found\"");
 		return;
 	}
@@ -208,7 +208,7 @@ void removeList(int *sock, char type, char list_type, char *client_message) {
 	if(!strstr(client_message, expected_route)) {
 		// Invalid route
 		free(expected_route);
-		sendAPIResponse(*sock, type, NOT_FOUND);
+//		sendAPIResponse(*sock, type, NOT_FOUND);
 		ssend(*sock, "\"status\":\"not_found\"");
 		return;
 	}
@@ -217,7 +217,7 @@ void removeList(int *sock, char type, char list_type, char *client_message) {
 
 	if(!isValidDomain(domain)) {
 		// Invalid domain
-		sendAPIResponse(*sock, type, BAD_REQUEST);
+//		sendAPIResponse(*sock, type, BAD_REQUEST);
 		ssend(*sock, "\"status\":\"invalid_domain\"");
 		return;
 	}
@@ -241,12 +241,12 @@ void removeList(int *sock, char type, char list_type, char *client_message) {
 
 	if(return_code == 0) {
 		// Successfully removed from list
-		sendAPIResponse(*sock, type, OK);
+//		sendAPIResponse(*sock, type, OK);
 		ssend(*sock, "\"status\":\"success\"");
 	}
 	else {
 		// Failed to remove from list
-		sendAPIResponse(*sock, type, INTERNAL_ERROR);
+//		sendAPIResponse(*sock, type, INTERNAL_ERROR);
 		ssend(*sock, "\"status\":\"unknown_error\"");
 	}
 }

@@ -60,7 +60,7 @@ git submodule add https://github.com/ztombol/bats-support test/libs/bats-support
 # Block until FTL is ready, retry once per second for 45 seconds
 n=0
 until [ $n -ge 45 ]; do
-  (nc -vv -z -w 30 127.0.0.1 4711 && nc -vv -z -w 30 127.0.0.1 4747) && break
+  nc -vv -z -w 30 127.0.0.1 4711 && break
   n=$[$n+1]
   echo "..."
   tail -n2 pihole-FTL.log

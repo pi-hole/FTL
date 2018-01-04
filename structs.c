@@ -9,7 +9,6 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
-#include "api.h"
 
 FTLFileNamesStruct FTLfiles = {
 	"/etc/pihole/pihole-FTL.conf",
@@ -120,15 +119,6 @@ void memory_check(int which)
 				exit(EXIT_FAILURE);
 			}
 		break;
-		case AUTHDATA:
-			// Always called when we need one more entry, like wildcard
-			logg_struct_resize("authdata", authLength+1, 1);
-			authData = realloc(authData, (authLength+1) * sizeof(AuthData));
-
-			if(authData == NULL) {
-				logg("FATAL: Memory allocation failed! Exiting");
-				exit(EXIT_FAILURE);
-			}
 		default:
 			/* That cannot happen */
 		break;

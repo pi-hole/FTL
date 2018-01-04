@@ -59,7 +59,7 @@ void getStats(int *sock, char type)
 	switch(blockingstatus)
 	{
 		case 0: // Blocking disabled
-			if(type == SOCKET)
+			if(type == TELNET)
 				strncpy(domains_blocked, "N/A", 4);
 			else
 				strncpy(domains_blocked, "\"N/A\"", 6);
@@ -85,7 +85,7 @@ void getStats(int *sock, char type)
 			activeclients++;
 	}
 
-	if(type == SOCKET) {
+	if(type == TELNET) {
 		ssend(*sock, "domains_being_blocked %s\ndns_queries_today %i\nads_blocked_today %i\nads_percentage_today %f\n",
 		      domains_blocked, total, blocked, percentage);
 		ssend(*sock, "unique_domains %i\nqueries_forwarded %i\nqueries_cached %i\n",
@@ -96,30 +96,30 @@ void getStats(int *sock, char type)
 	}
 	else
 	{
-		sendAPIResponse(*sock, type, OK);
-		ssend(
-				*sock,
-				"\"domains_being_blocked\":%s,"
-				"\"dns_queries_today\":%i,"
-				"\"ads_blocked_today\":%i,"
-				"\"ads_percentage_today\":%.4f,"
-				"\"unique_domains\":%i,"
-				"\"queries_forwarded\":%i,"
-				"\"queries_cached\":%i,"
-				"\"clients_ever_seen\":%i,"
-				"\"unique_clients\":%i,"
-				"\"status\":\"%s\"",
-				domains_blocked,
-				total,
-				blocked,
-				percentage,
-				counters.domains,
-				counters.forwardedqueries,
-				counters.cached,
-				counters.clients,
-				activeclients,
-				status
-		);
+//		sendAPIResponse(*sock, type, OK);
+//		ssend(
+//				*sock,
+//				"\"domains_being_blocked\":%s,"
+//				"\"dns_queries_today\":%i,"
+//				"\"ads_blocked_today\":%i,"
+//				"\"ads_percentage_today\":%.4f,"
+//				"\"unique_domains\":%i,"
+//				"\"queries_forwarded\":%i,"
+//				"\"queries_cached\":%i,"
+//				"\"clients_ever_seen\":%i,"
+//				"\"unique_clients\":%i,"
+//				"\"status\":\"%s\"",
+//				domains_blocked,
+//				total,
+//				blocked,
+//				percentage,
+//				counters.domains,
+//				counters.forwardedqueries,
+//				counters.cached,
+//				counters.clients,
+//				activeclients,
+//				status
+//		);
 	}
 
 	if(debugclients)
@@ -142,7 +142,7 @@ void getOverTime(int *sock, char type)
 	}
 
 	// Send data in socket format if requested
-	if(type == SOCKET)
+	if(type == TELNET)
 	{
 		for(i = j; i < counters.overTime; i++)
 		{
@@ -151,25 +151,25 @@ void getOverTime(int *sock, char type)
 	}
 	else
 	{
-		// First send header with unspecified content-length outside of the for-loop
-		sendAPIResponse(*sock, type, OK);
-		ssend(*sock,"\"domains_over_time\":{");
-
-		// Send "domains_over_time" data
-		for(i = j; i < counters.overTime; i++)
-		{
-			if(i != j) ssend(*sock, ",");
-			ssend(*sock,"\"%i\":%i",overTime[i].timestamp,overTime[i].total);
-		}
-		ssend(*sock,"},\"ads_over_time\":{");
-
-		// Send "ads_over_time" data
-		for(i = j; i < counters.overTime; i++)
-		{
-			if(i != j) ssend(*sock, ",");
-			ssend(*sock,"\"%i\":%i",overTime[i].timestamp,overTime[i].blocked);
-		}
-		ssend(*sock,"}");
+//		// First send header with unspecified content-length outside of the for-loop
+//		sendAPIResponse(*sock, type, OK);
+//		ssend(*sock,"\"domains_over_time\":{");
+//
+//		// Send "domains_over_time" data
+//		for(i = j; i < counters.overTime; i++)
+//		{
+//			if(i != j) ssend(*sock, ",");
+//			ssend(*sock,"\"%i\":%i",overTime[i].timestamp,overTime[i].total);
+//		}
+//		ssend(*sock,"},\"ads_over_time\":{");
+//
+//		// Send "ads_over_time" data
+//		for(i = j; i < counters.overTime; i++)
+//		{
+//			if(i != j) ssend(*sock, ",");
+//			ssend(*sock,"\"%i\":%i",overTime[i].timestamp,overTime[i].blocked);
+//		}
+//		ssend(*sock,"}");
 	}
 
 	if(debugclients)
@@ -181,7 +181,7 @@ void getTopDomains(char *client_message, int *sock, char type)
 	int i, temparray[counters.domains][2], count=10, num;
 	bool blocked, audit = false, desc = false;
 
-	if(type == SOCKET)
+	if(type == TELNET)
 		blocked = command(client_message, ">top-ads");
 	else
 		blocked = command(client_message, "/top_ads");
@@ -191,9 +191,9 @@ void getTopDomains(char *client_message, int *sock, char type)
 		return;
 
 	// Match both top-domains and top-ads
-	// SOCKET: >top-domains (15)
+	// TELNET: >top-domains (15)
 	// API:    /stats/top_domains?limit=15
-	if(type == SOCKET)
+	if(type == TELNET)
 	{
 		if(sscanf(client_message, "%*[^(](%i)", &num) > 0)
 		{
@@ -215,19 +215,19 @@ void getTopDomains(char *client_message, int *sock, char type)
 	}
 
 	// Apply Audit Log filtering?
-	// SOCKET: >top-domains for audit
+	// TELNET: >top-domains for audit
 	// API:    /stats/top_domains?audit
-	if(type == SOCKET && command(client_message, " for audit"))
+	if(type == TELNET && command(client_message, " for audit"))
 		audit = true;
-	else if(type != SOCKET && command(client_message, "audit"))
+	else if(type != TELNET && command(client_message, "audit"))
 		audit = true;
 
 	// Sort in descending order?
-	// SOCKET: >top-domains desc
+	// TELNET: >top-domains desc
 	// API:    /stats/top_domains?order=desc
-	if(type == SOCKET && command(client_message, " desc"))
+	if(type == TELNET && command(client_message, " desc"))
 		desc = true;
-	else if(type != SOCKET && command(client_message, "order=desc"))
+	else if(type != TELNET && command(client_message, "order=desc"))
 		desc = true;
 
 	for(i=0; i < counters.domains; i++)
@@ -279,15 +279,15 @@ void getTopDomains(char *client_message, int *sock, char type)
 		}
 	}
 
-	if(type != SOCKET)
+	if(type != TELNET)
 	{
-		// First send header with unspecified content-length outside of the for-loop
-		sendAPIResponse(*sock, type, OK);
-
-		if(blocked)
-			ssend(*sock, "\"top_ads\":{");
-		else
-			ssend(*sock, "\"top_domains\":{");
+//		// First send header with unspecified content-length outside of the for-loop
+//		sendAPIResponse(*sock, type, OK);
+//
+//		if(blocked)
+//			ssend(*sock, "\"top_ads\":{");
+//		else
+//			ssend(*sock, "\"top_domains\":{");
 	}
 
 	int skip = 0; bool first = true;
@@ -316,7 +316,7 @@ void getTopDomains(char *client_message, int *sock, char type)
 
 		if(blocked && showblocked && domains[j].blockedcount > 0)
 		{
-			if(type == SOCKET)
+			if(type == TELNET)
 			{
 				if(audit && domains[j].wildcard)
 					ssend(*sock,"%i %i %s wildcard\n",i,domains[j].blockedcount,domains[j].domain);
@@ -325,32 +325,32 @@ void getTopDomains(char *client_message, int *sock, char type)
 			}
 			else
 			{
-				if(!first) ssend(*sock,",");
-				first = false;
-				ssend(*sock,"\"%s\":%i", domains[j].domain, domains[j].blockedcount);
+//				if(!first) ssend(*sock,",");
+//				first = false;
+//				ssend(*sock,"\"%s\":%i", domains[j].domain, domains[j].blockedcount);
 			}
 		}
 		else if(!blocked && showpermitted && (domains[j].count - domains[j].blockedcount) > 0)
 		{
-			if(type == SOCKET)
+			if(type == TELNET)
 			{
 				ssend(*sock,"%i %i %s\n",i,(domains[j].count - domains[j].blockedcount),domains[j].domain);
 			}
 			else
 			{
-				if(!first) ssend(*sock,",");
-				first = false;
-				ssend(*sock,"\"%s\":%i", domains[j].domain, (domains[j].count - domains[j].blockedcount));
+//				if(!first) ssend(*sock,",");
+//				first = false;
+//				ssend(*sock,"\"%s\":%i", domains[j].domain, (domains[j].count - domains[j].blockedcount));
 			}
 		}
 	}
 
-	if(type != SOCKET)
+	if(type != TELNET)
 	{
-		if(blocked)
-			ssend(*sock,"},\"ads_blocked_today\":%i", counters.blocked);
-		else
-			ssend(*sock,"},\"dns_queries_today\":%i", (counters.queries - counters.invalidqueries));
+//		if(blocked)
+//			ssend(*sock,"},\"ads_blocked_today\":%i", counters.blocked);
+//		else
+//			ssend(*sock,"},\"dns_queries_today\":%i", (counters.queries - counters.invalidqueries));
 	}
 
 	if(excludedomains != NULL)
@@ -370,9 +370,9 @@ void getTopClients(char *client_message, int *sock, char type)
 	int i, temparray[counters.clients][2], count=10, num;
 
 	// Match both top-domains and top-ads
-	// SOCKET: >top-clients (15)
+	// TELNET: >top-clients (15)
 	// API:    /stats/top_clients?limit=15
-	if(type == SOCKET)
+	if(type == TELNET)
 	{
 		if(sscanf(client_message, "%*[^(](%i)", &num) > 0)
 		{
@@ -397,7 +397,7 @@ void getTopClients(char *client_message, int *sock, char type)
 	// This option can be combined with existing options,
 	// i.e. both >top-clients withzero" and ">top-clients withzero (123)" are valid
 	bool includezeroclients = false;
-	if(type == SOCKET) {
+	if(type == TELNET) {
 		if(command(client_message, " withzero")) {
 			includezeroclients = true;
 		}
@@ -425,11 +425,11 @@ void getTopClients(char *client_message, int *sock, char type)
 			logg("Excluding %i clients from being displayed", setupVarsElements);
 	}
 
-	if(type != SOCKET)
+	if(type != TELNET)
 	{
-		// First send header with unspecified content-length outside of the for-loop
-		sendAPIResponse(*sock, type, OK);
-		ssend(*sock, "\"top_clients\":{");
+//		// First send header with unspecified content-length outside of the for-loop
+//		sendAPIResponse(*sock, type, OK);
+//		ssend(*sock, "\"top_clients\":{");
 	}
 
 	int skip = 0; bool first = true;
@@ -454,24 +454,24 @@ void getTopClients(char *client_message, int *sock, char type)
 		// - "withzero" option is set, and/or
 		// - the client made at least one query within the most recent 24 hours
 		if(includezeroclients || clients[j].count > 0)		{
-			if(type == SOCKET)
+			if(type == TELNET)
 			{
 				ssend(*sock,"%i %i %s %s\n",i,clients[j].count,clients[j].ip,clients[j].name);
 			}
 			else
 			{
-				if(!first) ssend(*sock,",");
-				first = false;
-				if(strlen(clients[j].name) > 0)
-					ssend(*sock,"\"%s|%s\":%i", clients[j].name, clients[j].ip, clients[j].count);
-				else
-					ssend(*sock,"\"%s\":%i", clients[j].ip, clients[j].count);
+//				if(!first) ssend(*sock,",");
+//				first = false;
+//				if(strlen(clients[j].name) > 0)
+//					ssend(*sock,"\"%s|%s\":%i", clients[j].name, clients[j].ip, clients[j].count);
+//				else
+//					ssend(*sock,"\"%s\":%i", clients[j].ip, clients[j].count);
 			}
 		}
 	}
 
-	if(type != SOCKET)
-		ssend(*sock,"},\"dns_queries_today\":%i", (counters.queries - counters.invalidqueries));
+//	if(type != TELNET)
+//		ssend(*sock,"},\"dns_queries_today\":%i", (counters.queries - counters.invalidqueries));
 
 	if(excludeclients != NULL)
 		clearSetupVarsArray();
@@ -486,7 +486,7 @@ void getForwardDestinations(char *client_message, int *sock, char type)
 	bool allocated = false, first = true, sort = true;
 	int i, temparray[counters.forwarded+1][2], forwardedsum = 0, totalqueries = 0;
 
-	if(type == SOCKET && command(client_message, "unsorted"))
+	if(type == TELNET && command(client_message, "unsorted"))
 		sort = false;
 	else if(strstr(client_message, "unsorted"))
 		sort = false;
@@ -516,11 +516,11 @@ void getForwardDestinations(char *client_message, int *sock, char type)
 	totalqueries = counters.forwardedqueries + counters.cached + counters.blocked;
 
 	// Send HTTP headers with unknown content length
-	sendAPIResponse(*sock, type, OK);
+//	sendAPIResponse(*sock, type, OK);
 
 	// Send initial JSON output
-	if(type != SOCKET)
-		ssend(*sock, "\"forward_destinations\":{");
+//	if(type != TELNET)
+//		ssend(*sock, "\"forward_destinations\":{");
 
 	// Loop over available forward destinations
 	for(i=0; i < min(counters.forwarded+1, 10); i++)
@@ -584,19 +584,19 @@ void getForwardDestinations(char *client_message, int *sock, char type)
 		// Send data if count > 0
 		if(percentage > 0.0)
 		{
-			if(type == SOCKET)
+			if(type == TELNET)
 			{
 				ssend(*sock, "%i %.2f %s %s\n", i, percentage, ip, name);
 			}
 			else
 			{
-				if(!first) ssend(*sock, ",");
-				first = false;
-
-				if(strlen(name) > 0)
-					ssend(*sock, "\"%s|%s\":%.2f", name, ip, percentage);
-				else
-					ssend(*sock, "\"%s\":%.2f", ip, percentage);
+//				if(!first) ssend(*sock, ",");
+//				first = false;
+//
+//				if(strlen(name) > 0)
+//					ssend(*sock, "\"%s|%s\":%.2f", name, ip, percentage);
+//				else
+//					ssend(*sock, "\"%s\":%.2f", ip, percentage);
 			}
 		}
 
@@ -608,8 +608,8 @@ void getForwardDestinations(char *client_message, int *sock, char type)
 		}
 	}
 
-	if(type != SOCKET)
-		ssend(*sock, "}");
+//	if(type != TELNET)
+//		ssend(*sock, "}");
 
 	if(debugclients)
 		logg("Sent forward destination data to client, ID: %i", *sock);
@@ -627,11 +627,11 @@ void getQueryTypes(int *sock, char type)
 		percentageIPv6 = 1e2*counters.IPv6/total;
 	}
 
-	if(type == SOCKET)
+	if(type == TELNET)
 		ssend(*sock,"A (IPv4): %.2f\nAAAA (IPv6): %.2f\n", percentageIPv4, percentageIPv6);
 	else {
-		sendAPIResponse(*sock, type, OK);
-		ssend(*sock, "\"query_types\":{\"A (IPv4)\":%.2f,\"AAAA (IPv6)\":%.2f}", percentageIPv4, percentageIPv6);
+//		sendAPIResponse(*sock, type, OK);
+//		ssend(*sock, "\"query_types\":{\"A (IPv4)\":%.2f,\"AAAA (IPv6)\":%.2f}", percentageIPv4, percentageIPv6);
 	}
 
 	if(debugclients)
@@ -655,7 +655,7 @@ void getAllQueries(char *client_message, int *sock, char type)
 	char *clientname = NULL;
 	bool filterclientname = false;
 
-	if(type == SOCKET)
+	if(type == TELNET)
 	{
 		// Time filtering?
 		if(command(client_message, ">getallqueries-time"))
@@ -724,7 +724,7 @@ void getAllQueries(char *client_message, int *sock, char type)
 
 	int ibeg = 0, num;
 	// Test for integer that specifies number of entries to be shown
-	if(type == SOCKET)
+	if(type == TELNET)
 	{
 		if(sscanf(client_message, "%*[^(](%i)", &num) > 0)
 		{
@@ -794,11 +794,11 @@ void getAllQueries(char *client_message, int *sock, char type)
 			logg("Privacy mode enabled");
 	}
 
-	if(type != SOCKET)
-	{
-		sendAPIResponse(*sock, type, OK);
-		ssend(*sock, "\"history\":[");
-	}
+//	if(type != TELNET)
+//	{
+//		sendAPIResponse(*sock, type, OK);
+//		ssend(*sock, "\"history\":[");
+//	}
 
 	int i; bool first = true;
 	for(i=ibeg; i < counters.queries; i++)
@@ -840,7 +840,7 @@ void getAllQueries(char *client_message, int *sock, char type)
 				continue;
 		}
 
-		if(type == SOCKET)
+		if(type == TELNET)
 		{
 			if(!privacymode)
 			{
@@ -854,24 +854,24 @@ void getAllQueries(char *client_message, int *sock, char type)
 		}
 		else
 		{
-			// {"data":[["1497351662","IPv4","clients4.google.com","10.8.0.2",2,1],
-			if(!first) ssend(*sock, ",");
-			first = false;
-
-			if(!privacymode)
-			{
-				if(strlen(clients[queries[i].clientID].name) > 0)
-					ssend(*sock,"[%i,\"%s\",\"%s\",\"%s\",%i,%i]",queries[i].timestamp,qtype,domains[queries[i].domainID].domain,clients[queries[i].clientID].name,queries[i].status,domains[queries[i].domainID].dnssec);
-				else
-					ssend(*sock,"[%i,\"%s\",\"%s\",\"%s\",%i,%i]",queries[i].timestamp,qtype,domains[queries[i].domainID].domain,clients[queries[i].clientID].ip,queries[i].status,domains[queries[i].domainID].dnssec);
-			}
-			else
-				ssend(*sock,"[%i,\"%s\",\"%s\",\"hidden\",%i,%i]",queries[i].timestamp,qtype,domains[queries[i].domainID].domain,queries[i].status,domains[queries[i].domainID].dnssec);
+//			// {"data":[["1497351662","IPv4","clients4.google.com","10.8.0.2",2,1],
+//			if(!first) ssend(*sock, ",");
+//			first = false;
+//
+//			if(!privacymode)
+//			{
+//				if(strlen(clients[queries[i].clientID].name) > 0)
+//					ssend(*sock,"[%i,\"%s\",\"%s\",\"%s\",%i,%i]",queries[i].timestamp,qtype,domains[queries[i].domainID].domain,clients[queries[i].clientID].name,queries[i].status,domains[queries[i].domainID].dnssec);
+//				else
+//					ssend(*sock,"[%i,\"%s\",\"%s\",\"%s\",%i,%i]",queries[i].timestamp,qtype,domains[queries[i].domainID].domain,clients[queries[i].clientID].ip,queries[i].status,domains[queries[i].domainID].dnssec);
+//			}
+//			else
+//				ssend(*sock,"[%i,\"%s\",\"%s\",\"hidden\",%i,%i]",queries[i].timestamp,qtype,domains[queries[i].domainID].domain,queries[i].status,domains[queries[i].domainID].dnssec);
 		}
 	}
 
-	if(type != SOCKET)
-		ssend(*sock, "]");
+//	if(type != TELNET)
+//		ssend(*sock, "]");
 
 	// Free allocated memory
 	if(filterclientname)
@@ -893,7 +893,7 @@ void getRecentBlocked(char *client_message, int *sock, char type)
 		return;
 
 	// Test for integer that specifies number of entries to be shown
-	if(type == SOCKET)
+	if(type == TELNET)
 	{
 		if(sscanf(client_message, "%*[^(](%i)", &num) > 0)
 		{
@@ -916,11 +916,11 @@ void getRecentBlocked(char *client_message, int *sock, char type)
 		}
 	}
 
-	if(type != SOCKET)
-	{
-		sendAPIResponse(*sock, type, OK);
-		ssend(*sock, "\"recent_blocked\":[");
-	}
+//	if(type != TELNET)
+//	{
+//		sendAPIResponse(*sock, type, OK);
+//		ssend(*sock, "\"recent_blocked\":[");
+//	}
 
 	// Find most recent query with either status 1 (blocked)
 	// or status 4 (wildcard blocked)
@@ -934,15 +934,15 @@ void getRecentBlocked(char *client_message, int *sock, char type)
 		if(queries[i].status == 1 || queries[i].status == 4)
 		{
 			found++;
-			if(type == SOCKET)
+			if(type == TELNET)
 			{
 				ssend(*sock,"%s\n", domains[queries[i].domainID].domain);
 			}
 			else
 			{
-				if(!first) ssend(*sock, ",");
-				first = false;
-				ssend(*sock, "\"%s\"", domains[queries[i].domainID].domain);
+//				if(!first) ssend(*sock, ",");
+//				first = false;
+//				ssend(*sock, "\"%s\"", domains[queries[i].domainID].domain);
 			}
 		}
 
@@ -950,11 +950,11 @@ void getRecentBlocked(char *client_message, int *sock, char type)
 			break;
 	}
 
-	if(type != SOCKET)
-		ssend(*sock, "]");
+//	if(type != TELNET)
+//		ssend(*sock, "]");
 }
 
-// only available via SOCKET
+// only available via TELNET
 void getMemoryUsage(int *sock, char type)
 {
 	unsigned long int structbytes = sizeof(countersStruct) + sizeof(ConfigStruct) + counters.queries_MAX*sizeof(queriesDataStruct) + counters.forwarded_MAX*sizeof(forwardedDataStruct) + counters.clients_MAX*sizeof(clientsDataStruct) + counters.domains_MAX*sizeof(domainsDataStruct) + counters.overTime_MAX*sizeof(overTimeDataStruct) + (counters.wildcarddomains)*sizeof(*wildcarddomains);
@@ -994,11 +994,11 @@ void getForwardDestinationsOverTime(int *sock, char type)
 		}
 	}
 
-	if(type != SOCKET)
-	{
-		sendAPIResponse(*sock, type, OK);
-		ssend(*sock,"\"over_time\":{");
-	}
+//	if(type != TELNET)
+//	{
+//		sendAPIResponse(*sock, type, OK);
+//		ssend(*sock,"\"over_time\":{");
+//	}
 
 	if(sendit > -1)
 	{
@@ -1008,15 +1008,15 @@ void getForwardDestinationsOverTime(int *sock, char type)
 			double percentage;
 
 			validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
-			if(type == SOCKET)
+			if(type == TELNET)
 			{
 				ssend(*sock, "%i", overTime[i].timestamp);
 			}
 			else
 			{
-				if(!first) ssend(*sock, ",");
-				first = false;
-				ssend(*sock, "\"%i\":[", overTime[i].timestamp);
+//				if(!first) ssend(*sock, ",");
+//				first = false;
+//				ssend(*sock, "\"%i\":[", overTime[i].timestamp);
 			}
 
 			int j, forwardedsum = 0;
@@ -1067,7 +1067,7 @@ void getForwardDestinationsOverTime(int *sock, char type)
 				else
 					percentage = 0.0;
 
-				if(type == SOCKET)
+				if(type == TELNET)
 					ssend(*sock, " %.2f", percentage);
 				else
 					ssend(*sock, "%.2f,", percentage);
@@ -1080,19 +1080,19 @@ void getForwardDestinationsOverTime(int *sock, char type)
 			else
 				percentage = 0.0;
 
-			if(type == SOCKET)
+			if(type == TELNET)
 				ssend(*sock, " %.2f\n", percentage);
 			else
 				ssend(*sock, "%.2f]", percentage);
 		}
 	}
 
-	if(type != SOCKET)
-	{
-		ssend(*sock,"},");
-		// Manually set API -> Don't send header a second time
-		getForwardDestinations(">forward-dest unsorted", sock, API);
-	}
+//	if(type != TELNET)
+//	{
+//		ssend(*sock,"},");
+//		// Manually set API -> Don't send header a second time
+//		getForwardDestinations(">forward-dest unsorted", sock, SOCKET);
+//	}
 
 	if(debugclients)
 		logg("Sent overTime forwarded data to client, ID: %i", *sock);
@@ -1120,11 +1120,11 @@ void getQueryTypesOverTime(int *sock, char type)
 		}
 	}
 
-	if(type != SOCKET)
-	{
-		sendAPIResponse(*sock, type, OK);
-		ssend(*sock,"\"query_types\":{");
-	}
+//	if(type != TELNET)
+//	{
+//		sendAPIResponse(*sock, type, OK);
+//		ssend(*sock,"\"query_types\":{");
+//	}
 
 	if(sendit > -1)
 	{
@@ -1141,18 +1141,18 @@ void getQueryTypesOverTime(int *sock, char type)
 				percentageIPv6 = 1e2*overTime[i].querytypedata[1] / sum;
 			}
 
-			if(type == SOCKET)
+			if(type == TELNET)
 				ssend(*sock, "%i %.2f %.2f\n", overTime[i].timestamp, percentageIPv4, percentageIPv6);
 			else {
-				if(!first) ssend(*sock, ",");
-				first = false;
-				ssend(*sock, "\"%i\":[%.2f,%.2f]", overTime[i].timestamp, percentageIPv4, percentageIPv6);
+//				if(!first) ssend(*sock, ",");
+//				first = false;
+//				ssend(*sock, "\"%i\":[%.2f,%.2f]", overTime[i].timestamp, percentageIPv4, percentageIPv6);
 			}
 		}
 	}
 
-	if(type != SOCKET)
-		ssend(*sock,"}");
+//	if(type != TELNET)
+//		ssend(*sock,"}");
 
 	if(debugclients)
 		logg("Sent overTime query types data to client, ID: %i", *sock);

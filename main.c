@@ -89,14 +89,6 @@ int main (int argc, char* argv[]) {
 	}
 	sleepms(100);
 
-	// Start API thread
-	pthread_t api_listenthread;
-	if(pthread_create( &api_listenthread, &attr, api_listening_thread, NULL ) != 0)
-	{
-		logg("Unable to open API listening thread. Exiting...");
-		killed = 1;
-	}
-
 	while(!killed)
 	{
 		sleepms(100);
@@ -176,7 +168,6 @@ int main (int argc, char* argv[]) {
 	pthread_cancel(socket_listenthread);
 	close_telnet_socket();
 	close_unix_socket();
-	close_api_socket();
 	removepid();
 	logg("########## FTL terminated! ##########");
 	return 1;

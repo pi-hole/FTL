@@ -21,7 +21,7 @@
 #define BACKLOG 5
 
 // File descriptors
-int telnetfd, socketfd, apifd;
+int telnetfd, socketfd;
 
 void saveport(int port)
 {
@@ -62,7 +62,7 @@ void bind_to_telnet_port(char type, int *socketdescriptor)
 	memset(&serv_addr, 0, sizeof(serv_addr));
 	serv_addr.sin_family = AF_INET;
 
-	if(config.socket_listenlocal && type == SOCKET)
+	if(config.socket_listenlocal)
 		serv_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 	else
 		serv_addr.sin_addr.s_addr = INADDR_ANY;
@@ -77,11 +77,8 @@ void bind_to_telnet_port(char type, int *socketdescriptor)
 
 	switch(type)
 	{
-		case SOCKET:
+		case TELNET:
 			port_init = 4711;
-			break;
-		case API:
-			port_init = 4747;
 			break;
 		default:
 			logg("Incompatible socket type %i", (int)type);
@@ -110,7 +107,7 @@ void bind_to_telnet_port(char type, int *socketdescriptor)
 		exit(EXIT_FAILURE);
 	}
 
-	if(type == SOCKET)
+	if(type == TELNET)
 		saveport(port);
 
 	// The listen system call allows the process to listen on the socket for connections
@@ -119,18 +116,8 @@ void bind_to_telnet_port(char type, int *socketdescriptor)
 		logg("Error on listening");
 		exit(EXIT_FAILURE);
 	}
-	switch(type)
-	{
-		case SOCKET:
-			logg("Listening on port %i for incoming socket connections", port);
-			break;
-		case API:
-			logg("Listening on port %i for incoming API connections", port);
-			break;
-		default:
-			/* That cannot happen */
-			break;
-	}
+
+	logg("Listening on port %i for incoming telnet connections", port);
 }
 
 
@@ -243,11 +230,6 @@ void close_unix_socket(void)
 	close(socketfd);
 }
 
-void close_api_socket(void)
-{
-	close(apifd);
-}
-
 void *telnet_connection_handler_thread(void *socket_desc)
 {
 	//Get the socket descriptor
@@ -276,7 +258,7 @@ void *telnet_connection_handler_thread(void *socket_desc)
 			// Requests should not be processed/answered when data is about to change
 			enable_thread_lock(threadname);
 
-			process_socket_request(message, &sock);
+			process_request(message, &sock, TELNET);
 			free(message);
 
 			// Release thread lock
@@ -334,7 +316,7 @@ void *socket_connection_handler_thread(void *socket_desc)
 			// Requests should not be processed/answered when data is about to change
 			enable_thread_lock(threadname);
 
-			process_socket_request(message, &sock);
+			process_request(message, &sock, SOCKET);
 			free(message);
 
 			// Release thread lock
@@ -381,7 +363,7 @@ void *telnet_listening_thread(void *args)
 	prctl(PR_SET_NAME,"telnet listener",0,0,0);
 
 	// Initialize sockets only after initial log parsing in listenting_thread
-	bind_to_telnet_port(SOCKET, &telnetfd);
+	bind_to_telnet_port(TELNET, &telnetfd);
 
 	// Listen as long as FTL is not killed
 	while(!killed)
@@ -439,162 +421,6 @@ void *socket_listening_thread(void *args)
 		{
 			// Log the error code description
 			logg("WARNING: Unable to open socket processing thread, error: %s", strerror(errno));
-		}
-	}
-	return 0;
-}
-
-
-void *api_connection_handler_thread(void *socket_desc)
-{
-	//Get the socket descriptor
-	int sock = *(int*)socket_desc;
-	// Store copy only for displaying the debug messages
-	int sockID = sock;
-	char client_message[SOCKETBUFFERLEN] = "";
-
-	// Set thread name
-	char threadname[16];
-	sprintf(threadname,"api-%i",sockID);
-	prctl(PR_SET_NAME,threadname,0,0,0);
-
-	//Receive from client
-	if(recv(sock, client_message, SOCKETBUFFERLEN-1, 0) > 0)
-	{
-		char *message = calloc(strlen(client_message)+1,sizeof(char));
-		strcpy(message, client_message);
-
-		// Clear client message receive buffer
-		memset(client_message, 0, sizeof client_message);
-
-		if(debug)
-			logg("Received API request: \n%s", message);
-
-		if(strncmp(message, "GET ", 4) == 0 || strncmp(message, "POST ", 5) == 0 || strncmp(message, "DELETE ", 7) == 0)
-		{
-			// HTTP requests can be simple or full.
-			// A simple request contains one line only, and looks like this:
-			//   GET /index.html
-			// A full request can contain more than one line and may look like this:
-			//   GET /index.html HTTP/1.1
-			//   User-Agent: Wget/1.16 (linux-gnueabihf)
-			//   Accept: */*
-			//   Host: 127.0.0.1:4747
-			//   Connection: Keep-Alive
-			bool header = false;
-
-			// Extract requested URL including arguments
-			const char *p2;
-			if(strstr(message, "HTTP/") != NULL)
-			{
-				// Output HTTP response headers only if we have a full request
-				header = true;
-				// End of request = "HTTP/"
-				p2 = strstr(message, " HTTP/");
-			}
-			else
-			{
-				// End of requst = end of first line
-				p2 = strstr(message, "\n");
-			}
-			if(p2 != NULL)
-			{
-				size_t len = p2 - message;
-				char *request = calloc(len+1, sizeof(char));
-				strncpy(request, message, len);
-				request[len] = '\0';
-
-				// Are we asked for a favicon?
-				if(strstr(request, "/favicon.ico") != NULL)
-					ssend(sock, "HTTP/1.0 404 Not Found\nServer: FTL\n\n");
-				else
-				{
-					enable_thread_lock(threadname);
-					process_api_request(request, message, &sock, header);
-					disable_thread_lock(threadname);
-				}
-
-				// Free allocated memory
-				free(request);
-			}
-			else
-			{
-				logg("API received malformated request: \"%s\"", message);
-			}
-		}
-		else if(strncmp(message, "OPTIONS ", 8) == 0)
-		{
-			// OPTIONS request: CORS preflight
-			ssend(sock, "HTTP/1.0 200 OK\nServer: FTL\nAccess-Control-Allow-Origin: *\n"
-					"Access-Control-Allow-Methods: GET, POST, DELETE, OPTIONS\n"
-					"Access-Control-Allow-Headers: Content-Type\n\n");
-		}
-		else if(strncmp(message, "HEAD ", 5) == 0)
-		{
-			// HEAD request: We do not send any content at all
-			ssend(sock, "HTTP/1.0 200 OK\nServer: FTL\n\n");
-		}
-		else
-		{
-			if(debug)
-				logg("API received something strange");
-		}
-
-		// Close connection to show that we reached the end of the transmission
-		close(sock);
-		sock = 0;
-
-		// Free allocated memory
-		free(message);
-	}
-
-	//Free the socket pointer
-	if(sock != 0)
-		close(sock);
-	free(socket_desc);
-
-	if(clientip[sock] != NULL) {
-		free(clientip[sock]);
-		clientip[sock] = NULL;
-	}
-
-	return 0;
-}
-
-void *api_listening_thread(void *args)
-{
-	int *newsock;
-	// We will use the attributes object later to start all threads in detached mode
-	pthread_attr_t attr;
-	// Initialize thread attributes object with default attribute values
-	pthread_attr_init(&attr);
-	// When a detached thread terminates, its resources are automatically released back to
-	// the system without the need for another thread to join with the terminated thread
-	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-
-	// Set thread name
-	prctl(PR_SET_NAME,"API listener",0,0,0);
-
-	// Initialize sockets only after initial log parsing in listening_thread
-	bind_to_telnet_port(API, &apifd);
-
-	// Listen as long as FTL is not killed
-	while(!killed)
-	{
-		// Look for new clients that want to connect
-		int csck = listener(apifd);
-		if(csck < 0) continue;
-
-		// Allocate memory used to transport client socket ID to client listening thread
-		newsock = calloc(1,sizeof(int));
-		*newsock = csck;
-
-		pthread_t api_connection_thread;
-		// Create a new thread
-		if(pthread_create( &api_connection_thread, &attr, api_connection_handler_thread, (void*) newsock ) != 0)
-		{
-			// Log the error code description
-			logg("WARNING: Unable to open client API thread, error: %s", strerror(errno));
 		}
 	}
 	return 0;
