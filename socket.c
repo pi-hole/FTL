@@ -23,6 +23,7 @@
 
 // File descriptors
 int telnetfd, socketfd;
+bool istelnet[MAXCONNS];
 
 void saveport(int port)
 {
@@ -232,6 +233,9 @@ void *telnet_connection_handler_thread(void *socket_desc)
 {
 	//Get the socket descriptor
 	int sock = *(int*)socket_desc;
+	// Set connection type to telnet
+	istelnet[sock] = true;
+
 	// Store copy only for displaying the debug messages
 	int sockID = sock;
 	char client_message[SOCKETBUFFERLEN] = "";
@@ -290,6 +294,8 @@ void *socket_connection_handler_thread(void *socket_desc)
 {
 	//Get the socket descriptor
 	int sock = *(int*)socket_desc;
+	// Set connection type to not telnet
+	istelnet[sock] = false;
 	// Store copy only for displaying the debug messages
 	int sockID = sock;
 	char client_message[SOCKETBUFFERLEN] = "";
