@@ -179,6 +179,11 @@ void ssend(int sock, const char *format, ...)
 			logg("WARNING: Socket write returned error code %i", errno);
 }
 
+void swrite(int sock, void *value, size_t size) {
+	if(!write(sock, value, size))
+		logg("WARNING: Socket write returned error code %i", errno);
+}
+
 int listener(int sockfd)
 {
 	struct sockaddr_in cli_addr;

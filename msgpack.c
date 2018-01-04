@@ -14,12 +14,12 @@
 void pack_eom(int sock) {
 	// This byte is explicitly never used in the MessagePack spec, so it is perfect to use as an EOM for this API.
 	unsigned char eom = 0xc1;
-	write(sock, &eom, sizeof(eom));
+	swrite(sock, &eom, sizeof(eom));
 }
 
 void pack_number(int sock, unsigned char format, void *value, size_t size) {
-	write(sock, &format, sizeof(format));
-	write(sock, value, size);
+	swrite(sock, &format, sizeof(format));
+	swrite(sock, value, size);
 }
 
 void pack_int(int sock, int value) {
