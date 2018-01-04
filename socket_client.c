@@ -60,7 +60,8 @@ int main (int argc, char **argv) {
 	while((size = recv(socketfd, buffer, BUF-1, 0)) > -1)
 	{
 		// Print received data to stdout
-		for(int i = 0; i < size; ++i) {
+		int i;
+		for(i = 0; i < size; ++i) {
 			printf("%02x ", (unsigned char) buffer[i]);
 		}
 
