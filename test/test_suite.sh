@@ -201,7 +201,7 @@ load 'libs/bats-support/load'
   echo "output: ${lines[@]}"
   [[ ${lines[0]} == "Socket created" ]]
   [[ ${lines[1]} == "Connection established" ]]
-  [[ ${lines[2]} == "d2 ff ff ff ff d2 00 00 00 07 d2 00 00 00 02 ca 41 e4 92 49 d2 00 00 00 06 d2 00 00 00 03 d2 00 00 00 02 d2 00 00 00 03 d2 00 00 00 03 cc 02 c1" ]]
+  [[ ${lines[2]} == "d2 ff ff ff ff d2 00 00 00 07 d2 00 00 00 02 ca 41 e4 92 49 d2 00 00 00 06 d2 00 00 00 03 d2 00 00 00 02 d2 00 00 00 03 d2 00 00 00 03 cc 02 c1 " ]]
 }
 
 @test "Final part of the tests: Killing pihole-FTL process" {
