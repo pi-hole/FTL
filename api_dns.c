@@ -10,7 +10,6 @@
 
 #include "FTL.h"
 #include "api.h"
-#include "cJSON.h"
 
 void getList(int *sock, char type, char list_type) {
 	FILE *fp;
