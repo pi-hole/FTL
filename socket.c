@@ -38,7 +38,7 @@ void saveport(int port)
 	}
 }
 
-void bind_to_telnet_port(char type, int *socketdescriptor)
+void bind_to_telnet_port(int *socketdescriptor)
 {
 	*socketdescriptor = socket(AF_INET, SOCK_STREAM, 0);
 
@@ -73,18 +73,8 @@ void bind_to_telnet_port(char type, int *socketdescriptor)
 	// convert this to network byte order using the function htons()
 	// which converts a port number in host byte order to a port number
 	// in network byte order
-	int port, port_init;
-
-	switch(type)
-	{
-		case TELNET:
-			port_init = 4711;
-			break;
-		default:
-			logg("Incompatible socket type %i", (int)type);
-			exit(EXIT_FAILURE);
-			break;
-	}
+	int port;
+	int port_init = 4711;
 
 	bool bound = false;
 	for(port = port_init; port <= (port_init + 20); port++)
@@ -107,8 +97,7 @@ void bind_to_telnet_port(char type, int *socketdescriptor)
 		exit(EXIT_FAILURE);
 	}
 
-	if(type == TELNET)
-		saveport(port);
+	saveport(port);
 
 	// The listen system call allows the process to listen on the socket for connections
 	if(listen(*socketdescriptor, BACKLOG) == -1)
@@ -363,7 +352,7 @@ void *telnet_listening_thread(void *args)
 	prctl(PR_SET_NAME,"telnet listener",0,0,0);
 
 	// Initialize sockets only after initial log parsing in listenting_thread
-	bind_to_telnet_port(TELNET, &telnetfd);
+	bind_to_telnet_port(&telnetfd);
 
 	// Listen as long as FTL is not killed
 	while(!killed)
