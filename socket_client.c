@@ -22,7 +22,8 @@ int main (int argc, char **argv) {
 	int socketfd;
 	char *buffer = malloc (BUF);
 	struct sockaddr_un address;
-	int size, ret;
+	ssize_t size;
+	int ret;
 
 	// Create socket
 	socketfd = socket(PF_LOCAL, SOCK_STREAM, 0);
@@ -58,18 +59,17 @@ int main (int argc, char **argv) {
 	// Try to receive data until either recv() fails or we see "--EOM--"
 	while((size = recv(socketfd, buffer, BUF-1, 0)) > -1)
 	{
-		// Zero-terminate incoming message
-		if(size > 0)
-			buffer[size] = '\0';
-
 		// Print received data to stdout
-		printf("%s", buffer);
+		for(int i = 0; i < size; ++i) {
+			printf("%02x ", (unsigned char) buffer[i]);
+		}
 
 		// Exit on End Of Message
-		if(strstr(buffer, "--EOM--") != NULL)
+		if((unsigned char) buffer[size-1] == 0xc1)
 			break;
-
 	}
+
+	printf("\n");
 
 	// Close Unix socket connection
 	close(socketfd);

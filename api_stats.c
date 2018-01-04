@@ -96,30 +96,16 @@ void getStats(int *sock, char type)
 	}
 	else
 	{
-//		sendAPIResponse(*sock, type, OK);
-//		ssend(
-//				*sock,
-//				"\"domains_being_blocked\":%s,"
-//				"\"dns_queries_today\":%i,"
-//				"\"ads_blocked_today\":%i,"
-//				"\"ads_percentage_today\":%.4f,"
-//				"\"unique_domains\":%i,"
-//				"\"queries_forwarded\":%i,"
-//				"\"queries_cached\":%i,"
-//				"\"clients_ever_seen\":%i,"
-//				"\"unique_clients\":%i,"
-//				"\"status\":\"%s\"",
-//				domains_blocked,
-//				total,
-//				blocked,
-//				percentage,
-//				counters.domains,
-//				counters.forwardedqueries,
-//				counters.cached,
-//				counters.clients,
-//				activeclients,
-//				status
-//		);
+		pack_int(*sock, counters.gravity);
+		pack_int(*sock, total);
+		pack_int(*sock, blocked);
+		pack_float(*sock, percentage);
+		pack_int(*sock, counters.domains);
+		pack_int(*sock, counters.forwardedqueries);
+		pack_int(*sock, counters.cached);
+		pack_int(*sock, counters.clients);
+		pack_int(*sock, activeclients);
+		pack_unsigned_char(*sock, blockingstatus);
 	}
 
 	if(debugclients)

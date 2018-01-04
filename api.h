@@ -38,3 +38,9 @@ void getPiholeStatus(int *sock, char type);
 // General API commands
 bool matchesRegex(char *regex_expression, char *input);
 bool isValidDomain(char *domain);
+
+// MessagePack serialization helpers
+void pack_eom(int sock);
+void pack_int(int sock, int value);
+void pack_float(int sock, float value);
+void pack_unsigned_char(int sock, unsigned char value);

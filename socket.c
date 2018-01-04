@@ -9,6 +9,7 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
+#include "api.h"
 
 // The backlog argument defines the maximum length
 // to which the queue of pending connections for
@@ -158,9 +159,12 @@ void removeport(void)
 	fclose(f);
 }
 
-void seom(int sock)
+void seom(int sock, char type)
 {
-	ssend(sock, "---EOM---\n\n");
+	if(type == TELNET)
+		ssend(sock, "---EOM---\n\n");
+	else
+		pack_eom(sock);
 }
 
 void ssend(int sock, const char *format, ...)

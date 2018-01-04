@@ -144,7 +144,7 @@ void process_request(char *client_message, int *sock, char type)
 	if(*sock != 0)
 	{
 		// Send EOM
-		seom(*sock);
+		seom(*sock, type);
 	}
 }
 
