@@ -21,7 +21,7 @@ void process_request(char *client_message, int *sock, char type)
 	if(command(client_message, ">stats"))
 	{
 		processed = true;
-		getStats(sock, type);
+		getStats(sock);
 	}
 	else if(command(client_message, ">overTime"))
 	{

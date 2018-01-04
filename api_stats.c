@@ -42,7 +42,7 @@ int cmpdesc(const void *a, const void *b)
 		return 0;
 }
 
-void getStats(int *sock, char type)
+void getStats(int *sock)
 {
 	int blocked = counters.blocked + counters.wildcardblocked;
 	int total = counters.queries - counters.invalidqueries;
@@ -59,7 +59,7 @@ void getStats(int *sock, char type)
 	switch(blockingstatus)
 	{
 		case 0: // Blocking disabled
-			if(type == TELNET)
+			if(istelnet[*sock])
 				strncpy(domains_blocked, "N/A", 4);
 			else
 				strncpy(domains_blocked, "\"N/A\"", 6);
@@ -85,7 +85,7 @@ void getStats(int *sock, char type)
 			activeclients++;
 	}
 
-	if(type == TELNET) {
+	if(istelnet[*sock]) {
 		ssend(*sock, "domains_being_blocked %s\ndns_queries_today %i\nads_blocked_today %i\nads_percentage_today %f\n",
 		      domains_blocked, total, blocked, percentage);
 		ssend(*sock, "unique_domains %i\nqueries_forwarded %i\nqueries_cached %i\n",

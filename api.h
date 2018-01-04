@@ -9,7 +9,7 @@
 *  Please see LICENSE file for your rights under this license. */
 
 // Statistic methods
-void getStats(int *sock, char type);
+void getStats(int *sock);
 void getOverTime(int *sock, char type);
 void getTopDomains (char *client_message, int *sock, char type);
 void getTopClients(char *client_message, int *sock, char type);
