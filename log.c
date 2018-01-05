@@ -147,8 +147,8 @@ void log_counter_info(void)
 void log_FTL_version(void)
 {
 	logg("FTL branch: %s", GIT_BRANCH);
-	logg("FTL version: %s", GIT_VERSION);
-	logg("FTL tag: %s", GIT_TAG);
+	logg("FTL version: %s", GIT_TAG);
+	logg("FTL commit: %s", GIT_HASH);
 	logg("FTL date: %s", GIT_DATE);
 	logg("FTL user: %s", username);
 }
