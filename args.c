@@ -78,9 +78,9 @@ void parse_args(int argc, char* argv[])
 			}
 			else
 			{
-				char hash[7];
-				// Extract first 6 characters of the hash
-				strncpy(hash, commit, 6); hash[6] = 0;
+				char hash[8];
+				// Extract first 7 characters of the hash
+				strncpy(hash, commit, 7); hash[7] = 0;
 				printf("vDev-%s\n", hash);
 			}
 			exit(EXIT_SUCCESS);

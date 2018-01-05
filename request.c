@@ -1054,9 +1054,9 @@ void getVersion(int *sock)
 	}
 	else
 	{
-		char hash[7];
-		// Extract first 6 characters of the hash
-		strncpy(hash, commit, 6); hash[6] = 0;
+		char hash[8];
+		// Extract first 7 characters of the hash
+		strncpy(hash, commit, 7); hash[7] = 0;
 		sprintf(server_message,"version vDev-%s\ntag %s\nbranch %s\ndate %s\n", hash, tag, branch, GIT_DATE);
 	}
 
