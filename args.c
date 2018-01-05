@@ -70,13 +70,19 @@ void parse_args(int argc, char* argv[])
 		if(strcmp(argv[i], "-v") == 0 ||
 		   strcmp(argv[i], "version") == 0)
 		{
-			const char * version = GIT_VERSION;
-			// Check if version is of format vX.YY
-			// '.' can never be part of a commit hash
-			if(strstr(version, ".") != NULL)
+			const char * commit = GIT_HASH;
+			const char * tag = GIT_TAG;
+			if(strlen(tag) > 1)
+			{
 				printf("%s\n",GIT_VERSION);
+			}
 			else
-				printf("vDev-%s\n",GIT_HASH);
+			{
+				char hash[7];
+				// Extract first 6 characters of the hash
+				strncpy(hash, commit, 6); hash[6] = 0;
+				printf("vDev-%s\n", hash);
+			}
 			exit(EXIT_SUCCESS);
 		}
 
@@ -91,13 +97,6 @@ void parse_args(int argc, char* argv[])
 		   strcmp(argv[i], "branch") == 0)
 		{
 			const char * branch = GIT_BRANCH;
-			const char * version = GIT_VERSION;
-			// Travis CI pulls on a tag basis, not by branch.
-			// Hence, it may happen that the master binary isn't aware of its branch.
-			// We check if this is the case and if there is a "vX.YY" like tag on the
-			// binary are print out branch "master" if we find that this is the case
-			if(strstr(branch, "(no branch)") != NULL && strstr(version, ".") != NULL)
-				branch = "master";
 			printf("%s\n",branch);
 			exit(EXIT_SUCCESS);
 		}

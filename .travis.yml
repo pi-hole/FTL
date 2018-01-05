@@ -70,7 +70,7 @@ before_script:
 - mkdir -p "${DEST_DIR}"
 - make clean
 script:
-- make CC="${BUILD_CC}" CFLAGS="${CFLAGS}"
+- make CC="${BUILD_CC}" CFLAGS="${CFLAGS}" GIT_BRANCH="${TRAVIS_BRANCH}" GIT_TAG="${TRAVIS_TAG}" GIT_HASH="${TRAVIS_COMMIT}"
 - file pihole-FTL
 - if [[ "${BIN_NAME}" == "pihole-FTL-linux-x86_64" ]]; then test/run.sh; fi
 - mv pihole-FTL "${DEST_DIR}/${BIN_NAME}"
