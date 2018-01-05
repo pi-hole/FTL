@@ -96,8 +96,7 @@ void parse_args(int argc, char* argv[])
 		if(strcmp(argv[i], "-b") == 0 ||
 		   strcmp(argv[i], "branch") == 0)
 		{
-			const char * branch = GIT_BRANCH;
-			printf("%s\n",branch);
+			printf("%s\n",GIT_BRANCH);
 			exit(EXIT_SUCCESS);
 		}
 

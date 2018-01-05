@@ -1044,20 +1044,18 @@ void getVersion(int *sock)
 {
 	char server_message[SOCKETBUFFERLEN];
 
-	const char * version = GIT_VERSION;
-	const char * branch = GIT_BRANCH;
 	const char * commit = GIT_HASH;
 	const char * tag = GIT_TAG;
 	if(strlen(tag) > 1)
 	{
-		sprintf(server_message,"version %s\ntag %s\nbranch %s\ndate %s\n", version, tag, branch, GIT_DATE);
+		sprintf(server_message,"version %s\ntag %s\nbranch %s\ndate %s\n", GIT_VERSION, tag, GIT_BRANCH, GIT_DATE);
 	}
 	else
 	{
 		char hash[8];
 		// Extract first 7 characters of the hash
 		strncpy(hash, commit, 7); hash[7] = 0;
-		sprintf(server_message,"version vDev-%s\ntag %s\nbranch %s\ndate %s\n", hash, tag, branch, GIT_DATE);
+		sprintf(server_message,"version vDev-%s\ntag %s\nbranch %s\ndate %s\n", hash, tag, GIT_BRANCH, GIT_DATE);
 	}
 
 	swrite(server_message, *sock);
