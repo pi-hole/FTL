@@ -625,100 +625,30 @@ void getAllQueries(char *client_message, int *sock) {
 	char *clientname = NULL;
 	bool filterclientname = false;
 
-	if(istelnet[*sock])
-	{
-		// Time filtering?
-		if(command(client_message, ">getallqueries-time"))
-		{
-			sscanf(client_message, ">getallqueries-time %i %i",&from, &until);
-		}
-		// Domain filtering?
-		if(command(client_message, ">getallqueries-domain"))
-		{
-			sscanf(client_message, ">getallqueries-domain %ms", &domainname);
-			filterdomainname = true;
-		}
-		// Client filtering?
-		if(command(client_message, ">getallqueries-client"))
-		{
-			sscanf(client_message, ">getallqueries-client %ms", &clientname);
-			filterclientname = true;
-		}
+	// Time filtering?
+	if(command(client_message, ">getallqueries-time")) {
+		sscanf(client_message, ">getallqueries-time %i %i",&from, &until);
 	}
-	else
-	{
-		// Time filtering?
-		const char * temp = strstr(client_message, "from=");
-		if(temp != NULL)
-		{
-			int num;
-			if(sscanf(temp, "from=%i", &num) > 0)
-			{
-				// User wants a different number of requests
-				from = num;
-			}
-		}
-		temp = strstr(client_message, "until=");
-		if(temp != NULL)
-		{
-			int num;
-			if(sscanf(temp, "until=%i", &num) > 0)
-			{
-				// User wants a different number of requests
-				until = num;
-			}
-		}
-
-		// Domain filtering?
-		temp = strstr(client_message, "domain=");
-		if(temp != NULL)
-		{
-			char *temp2 = strdup(temp);
-			temp2[strcspn(temp2, "&")] = 0;
-			sscanf(temp2, "domain=%ms", &domainname);
-			free(temp2);
-			filterdomainname = true;
-		}
-		temp = strstr(client_message, "client=");
-
-		// Client filtering?
-		if(temp != NULL)
-		{
-			char *temp2 = strdup(temp);
-			temp2[strcspn(temp2, "&")] = 0;
-			sscanf(temp2, "client=%ms", &clientname);
-			free(temp2);
-			filterclientname = true;
-		}
+	// Domain filtering?
+	if(command(client_message, ">getallqueries-domain")) {
+		sscanf(client_message, ">getallqueries-domain %ms", &domainname);
+		filterdomainname = true;
+	}
+	// Client filtering?
+	if(command(client_message, ">getallqueries-client")) {
+		sscanf(client_message, ">getallqueries-client %ms", &clientname);
+		filterclientname = true;
 	}
 
 	int ibeg = 0, num;
 	// Test for integer that specifies number of entries to be shown
-	if(istelnet[*sock])
+	if(sscanf(client_message, "%*[^(](%i)", &num) > 0)
 	{
-		if(sscanf(client_message, "%*[^(](%i)", &num) > 0)
-		{
-			// User wants a different number of requests
-			// Don't allow a start index that is smaller than zero
-			ibeg = counters.queries-num;
-			if(ibeg < 0)
-				ibeg = 0;
-		}
-	}
-	else
-	{
-		const char * limit = strstr(client_message, "limit=");
-		if(limit != NULL)
-		{
-			if(sscanf(limit, "limit=%i", &num) > 0)
-			{
-				// User wants a different number of requests
-				// Don't allow a start index that is smaller than zero
-				ibeg = counters.queries-num;
-				if(ibeg < 0)
-					ibeg = 0;
-			}
-		}
+		// User wants a different number of requests
+		// Don't allow a start index that is smaller than zero
+		ibeg = counters.queries-num;
+		if(ibeg < 0)
+			ibeg = 0;
 	}
 
 	// Get potentially existing filtering flags
