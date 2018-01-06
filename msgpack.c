@@ -22,6 +22,10 @@ void pack_number(int sock, unsigned char format, void *value, size_t size) {
 	swrite(sock, value, size);
 }
 
+void pack_uint8(int sock, uint8_t value) {
+	pack_number(sock, 0xcc, &value, sizeof(value));
+}
+
 void pack_int32(int sock, int32_t value) {
 	uint32_t bigEValue = htonl((uint32_t) value);
 	pack_number(sock, 0xd2, &bigEValue, sizeof(bigEValue));
@@ -33,10 +37,6 @@ void pack_float(int sock, float value) {
     memcpy(&bigEValue, &value, sizeof(bigEValue));
     bigEValue = htonl(bigEValue);
 	pack_number(sock, 0xca, &bigEValue, sizeof(bigEValue));
-}
-
-void pack_unsigned_char(int sock, unsigned char value) {
-	pack_number(sock, 0xcc, &value, sizeof(value));
 }
 
 void pack_map16_start(int sock, uint16_t length) {

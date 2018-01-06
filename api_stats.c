@@ -101,7 +101,7 @@ void getStats(int *sock) {
 		pack_int32(*sock, counters.cached);
 		pack_int32(*sock, counters.clients);
 		pack_int32(*sock, activeclients);
-		pack_unsigned_char(*sock, blockingstatus);
+		pack_uint8(*sock, blockingstatus);
 	}
 
 	if(debugclients)

@@ -43,5 +43,5 @@ bool isValidDomain(char *domain);
 void pack_eom(int sock);
 void pack_int32(int sock, int32_t value);
 void pack_float(int sock, float value);
-void pack_unsigned_char(int sock, unsigned char value);
+void pack_uint8(int sock, uint8_t value);
 void pack_map16_start(int sock, uint16_t length);
