@@ -17,18 +17,18 @@ void pack_eom(int sock) {
 	swrite(sock, &eom, sizeof(eom));
 }
 
-void pack_number(int sock, uint8_t format, void *value, size_t size) {
+void pack_basic(int sock, uint8_t format, void *value, size_t size) {
 	swrite(sock, &format, sizeof(format));
 	swrite(sock, value, size);
 }
 
 void pack_uint8(int sock, uint8_t value) {
-	pack_number(sock, 0xcc, &value, sizeof(value));
+	pack_basic(sock, 0xcc, &value, sizeof(value));
 }
 
 void pack_int32(int sock, int32_t value) {
 	uint32_t bigEValue = htonl((uint32_t) value);
-	pack_number(sock, 0xd2, &bigEValue, sizeof(bigEValue));
+	pack_basic(sock, 0xd2, &bigEValue, sizeof(bigEValue));
 }
 
 void pack_float(int sock, float value) {
@@ -36,7 +36,48 @@ void pack_float(int sock, float value) {
 	uint32_t bigEValue;
     memcpy(&bigEValue, &value, sizeof(bigEValue));
     bigEValue = htonl(bigEValue);
-	pack_number(sock, 0xca, &bigEValue, sizeof(bigEValue));
+	pack_basic(sock, 0xca, &bigEValue, sizeof(bigEValue));
+}
+
+void pack_fixstr(int sock, char *string) {
+	// Make sure that the length is less than 32
+	size_t length = strlen(string);
+
+	if(length >= 32) {
+		logg("Tried to send a fixstr longer than 31 bytes!");
+		exit(EXIT_FAILURE);
+	}
+
+	uint8_t format = (uint8_t) (0xA0 | length);
+	swrite(sock, &format, sizeof(format));
+	swrite(sock, string, length);
+}
+
+void pack_str32(int sock, char *string) {
+	// Make sure that the length is less than 4294967296
+	size_t length = strlen(string);
+
+	if(length >= 4294967296) {
+		logg("Tried to send a str32 longer than 4294967295 bytes!");
+		exit(EXIT_FAILURE);
+	}
+
+	uint8_t format = 0xdb;
+	swrite(sock, &format, sizeof(format));
+	uint32_t bigELength = htonl((uint32_t) length);
+	swrite(sock, &bigELength, sizeof(bigELength));
+	swrite(sock, string, length);
+}
+
+void pack_fixarray(int sock, uint8_t length) {
+	// Make sure that the length is less than 16
+	if(length >= 16) {
+		logg("Tried to send a fixarray longer than 15 elements!");
+		exit(EXIT_FAILURE);
+	}
+
+	uint8_t format = (uint8_t) (0x90 | length);
+	swrite(sock, &format, sizeof(format));
 }
 
 void pack_map16_start(int sock, uint16_t length) {

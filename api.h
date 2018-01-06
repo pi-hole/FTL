@@ -41,7 +41,10 @@ bool isValidDomain(char *domain);
 
 // MessagePack serialization helpers
 void pack_eom(int sock);
+void pack_uint8(int sock, uint8_t value);
 void pack_int32(int sock, int32_t value);
 void pack_float(int sock, float value);
-void pack_uint8(int sock, uint8_t value);
+void pack_fixstr(int sock, char *string);
+void pack_str32(int sock, char *string);
+void pack_fixarray(int sock, uint8_t length);
 void pack_map16_start(int sock, uint16_t length);

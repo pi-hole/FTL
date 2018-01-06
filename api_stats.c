@@ -694,12 +694,6 @@ void getAllQueries(char *client_message, int *sock) {
 			logg("Privacy mode enabled");
 	}
 
-//	if(type != TELNET)
-//	{
-//		sendAPIResponse(*sock, type, OK);
-//		ssend(*sock, "\"history\":[");
-//	}
-
 	int i; bool first = true;
 	for(i=ibeg; i < counters.queries; i++)
 	{
@@ -754,19 +748,31 @@ void getAllQueries(char *client_message, int *sock) {
 		}
 		else
 		{
-//			// {"data":[["1497351662","IPv4","clients4.google.com","10.8.0.2",2,1],
-//			if(!first) ssend(*sock, ",");
-//			first = false;
-//
-//			if(!privacymode)
-//			{
-//				if(strlen(clients[queries[i].clientID].name) > 0)
-//					ssend(*sock,"[%i,\"%s\",\"%s\",\"%s\",%i,%i]",queries[i].timestamp,qtype,domains[queries[i].domainID].domain,clients[queries[i].clientID].name,queries[i].status,domains[queries[i].domainID].dnssec);
-//				else
-//					ssend(*sock,"[%i,\"%s\",\"%s\",\"%s\",%i,%i]",queries[i].timestamp,qtype,domains[queries[i].domainID].domain,clients[queries[i].clientID].ip,queries[i].status,domains[queries[i].domainID].dnssec);
-//			}
-//			else
-//				ssend(*sock,"[%i,\"%s\",\"%s\",\"hidden\",%i,%i]",queries[i].timestamp,qtype,domains[queries[i].domainID].domain,queries[i].status,domains[queries[i].domainID].dnssec);
+			char *client;
+
+			if(!privacymode) {
+				if(strlen(clients[queries[i].clientID].name) > 0)
+					client = clients[queries[i].clientID].name;
+				else
+					client = clients[queries[i].clientID].ip;
+			}
+			else
+				client = "hidden";
+
+			// Use a fixarray because the length of the array will only be length 6 (max is 15 for fixarray)
+			pack_fixarray(*sock, 6);
+
+			pack_int32(*sock, queries[i].timestamp);
+
+			// Use a fixstr because the length of qtype is always 4 (max is 31 for fixstr)
+			pack_fixstr(*sock, qtype);
+
+			// Use str32 for domain and client because we have no idea how long they will be (max is 4294967295 for str32)
+			pack_str32(*sock, domains[queries[i].domainID].domain);
+			pack_str32(*sock, client);
+
+			pack_uint8(*sock, queries[i].status);
+			pack_uint8(*sock, domains[queries[i].domainID].dnssec);
 		}
 	}
 
