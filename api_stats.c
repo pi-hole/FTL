@@ -759,9 +759,6 @@ void getAllQueries(char *client_message, int *sock) {
 			else
 				client = "hidden";
 
-			// Use a fixarray because the length of the array will only be length 6 (max is 15 for fixarray)
-			pack_fixarray(*sock, 6);
-
 			pack_int32(*sock, queries[i].timestamp);
 
 			// Use a fixstr because the length of qtype is always 4 (max is 31 for fixstr)

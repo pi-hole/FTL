@@ -69,17 +69,6 @@ void pack_str32(int sock, char *string) {
 	swrite(sock, string, length);
 }
 
-void pack_fixarray(int sock, uint8_t length) {
-	// Make sure that the length is less than 16
-	if(length >= 16) {
-		logg("Tried to send a fixarray longer than 15 elements!");
-		exit(EXIT_FAILURE);
-	}
-
-	uint8_t format = (uint8_t) (0x90 | length);
-	swrite(sock, &format, sizeof(format));
-}
-
 void pack_map16_start(int sock, uint16_t length) {
 	uint8_t format = 0xde;
 	swrite(sock, &format, sizeof(format));
