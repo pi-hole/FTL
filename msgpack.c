@@ -13,11 +13,11 @@
 
 void pack_eom(int sock) {
 	// This byte is explicitly never used in the MessagePack spec, so it is perfect to use as an EOM for this API.
-	unsigned char eom = 0xc1;
+	uint8_t eom = 0xc1;
 	swrite(sock, &eom, sizeof(eom));
 }
 
-void pack_number(int sock, unsigned char format, void *value, size_t size) {
+void pack_number(int sock, uint8_t format, void *value, size_t size) {
 	swrite(sock, &format, sizeof(format));
 	swrite(sock, value, size);
 }
@@ -40,7 +40,7 @@ void pack_float(int sock, float value) {
 }
 
 void pack_map16_start(int sock, uint16_t length) {
-	unsigned char format = 0xde;
+	uint8_t format = 0xde;
 	swrite(sock, &format, sizeof(format));
 	uint16_t bigELength = htons(length);
 	swrite(sock, &bigELength, sizeof(bigELength));
