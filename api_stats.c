@@ -96,15 +96,15 @@ void getStats(int *sock)
 	}
 	else
 	{
-		pack_int(*sock, counters.gravity);
-		pack_int(*sock, total);
-		pack_int(*sock, blocked);
+		pack_int32(*sock, counters.gravity);
+		pack_int32(*sock, total);
+		pack_int32(*sock, blocked);
 		pack_float(*sock, percentage);
-		pack_int(*sock, counters.domains);
-		pack_int(*sock, counters.forwardedqueries);
-		pack_int(*sock, counters.cached);
-		pack_int(*sock, counters.clients);
-		pack_int(*sock, activeclients);
+		pack_int32(*sock, counters.domains);
+		pack_int32(*sock, counters.forwardedqueries);
+		pack_int32(*sock, counters.cached);
+		pack_int32(*sock, counters.clients);
+		pack_int32(*sock, activeclients);
 		pack_unsigned_char(*sock, blockingstatus);
 	}
 
@@ -117,45 +117,36 @@ void getOverTime(int *sock, char type)
 	int i, j = 9999999;
 
 	// Get first time slot with total or blocked greater than zero (the array will go down over time due to the rolling window)
-	for(i=0; i < counters.overTime; i++)
-	{
+	for(i=0; i < counters.overTime; i++) {
 		validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
-		if(overTime[i].total > 0 || overTime[i].blocked > 0)
-		{
+		if(overTime[i].total > 0 || overTime[i].blocked > 0) {
 			j = i;
 			break;
 		}
 	}
 
-	// Send data in socket format if requested
-	if(type == TELNET)
-	{
-		for(i = j; i < counters.overTime; i++)
-		{
+	if(type == TELNET) {
+		for(i = j; i < counters.overTime; i++) {
 			ssend(*sock,"%i %i %i\n",overTime[i].timestamp,overTime[i].total,overTime[i].blocked);
 		}
 	}
-	else
-	{
-//		// First send header with unspecified content-length outside of the for-loop
-//		sendAPIResponse(*sock, type, OK);
-//		ssend(*sock,"\"domains_over_time\":{");
-//
-//		// Send "domains_over_time" data
-//		for(i = j; i < counters.overTime; i++)
-//		{
-//			if(i != j) ssend(*sock, ",");
-//			ssend(*sock,"\"%i\":%i",overTime[i].timestamp,overTime[i].total);
-//		}
-//		ssend(*sock,"},\"ads_over_time\":{");
-//
-//		// Send "ads_over_time" data
-//		for(i = j; i < counters.overTime; i++)
-//		{
-//			if(i != j) ssend(*sock, ",");
-//			ssend(*sock,"\"%i\":%i",overTime[i].timestamp,overTime[i].blocked);
-//		}
-//		ssend(*sock,"}");
+	else {
+		// We can use the map16 type because there should only be about 288 time slots (TIMEFRAME set to "yesterday")
+		// and map16 can hold up to (2^16)-1 = 65535 pairs
+
+		// Send domains over time
+		pack_map16_start(*sock, (uint16_t) (counters.overTime - j));
+		for(i = j; i < counters.overTime; i++) {
+			pack_int32(*sock, overTime[i].timestamp);
+			pack_int32(*sock, overTime[i].total);
+		}
+
+		// Send ads over time
+		pack_map16_start(*sock, (uint16_t) (counters.overTime - j));
+		for(i = j; i < counters.overTime; i++) {
+			pack_int32(*sock, overTime[i].timestamp);
+			pack_int32(*sock, overTime[i].blocked);
+		}
 	}
 
 	if(debugclients)

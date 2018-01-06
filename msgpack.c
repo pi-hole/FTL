@@ -22,7 +22,7 @@ void pack_number(int sock, unsigned char format, void *value, size_t size) {
 	swrite(sock, value, size);
 }
 
-void pack_int(int sock, int value) {
+void pack_int32(int sock, int32_t value) {
 	uint32_t bigEValue = htonl((uint32_t) value);
 	pack_number(sock, 0xd2, &bigEValue, sizeof(bigEValue));
 }
@@ -37,4 +37,11 @@ void pack_float(int sock, float value) {
 
 void pack_unsigned_char(int sock, unsigned char value) {
 	pack_number(sock, 0xcc, &value, sizeof(value));
+}
+
+void pack_map16_start(int sock, uint16_t length) {
+	unsigned char format = 0xde;
+	swrite(sock, &format, sizeof(format));
+	uint16_t bigELength = htons(length);
+	swrite(sock, &bigELength, sizeof(bigELength));
 }
