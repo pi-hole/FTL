@@ -56,7 +56,7 @@ void process_request(char *client_message, int *sock, char type)
 	else if(command(client_message, ">getallqueries"))
 	{
 		processed = true;
-		getAllQueries(client_message, sock, type);
+		getAllQueries(client_message, sock);
 	}
 	else if(command(client_message, ">recentBlocked"))
 	{

@@ -42,8 +42,7 @@ int cmpdesc(const void *a, const void *b)
 		return 0;
 }
 
-void getStats(int *sock)
-{
+void getStats(int *sock) {
 	int blocked = counters.blocked + counters.wildcardblocked;
 	int total = counters.queries - counters.invalidqueries;
 	float percentage = 0.0;
@@ -56,8 +55,7 @@ void getStats(int *sock)
 	char domains_blocked[11];
 	char status[9];
 
-	switch(blockingstatus)
-	{
+	switch(blockingstatus) {
 		case 0: // Blocking disabled
 			if(istelnet[*sock])
 				strncpy(domains_blocked, "N/A", 4);
@@ -78,8 +76,7 @@ void getStats(int *sock)
 
 	// unique_clients: count only clients that have been active within the most recent 24 hours
 	int i, activeclients = 0;
-	for(i=0; i < counters.clients; i++)
-	{
+	for(i=0; i < counters.clients; i++) {
 		validate_access("clients", i, true, __LINE__, __FUNCTION__, __FILE__);
 		if(clients[i].count > 0)
 			activeclients++;
@@ -94,8 +91,7 @@ void getStats(int *sock)
 		ssend(*sock, "unique_clients %i\n", activeclients);
 		ssend(*sock, "status %s\n", status);
 	}
-	else
-	{
+	else {
 		pack_int32(*sock, counters.gravity);
 		pack_int32(*sock, total);
 		pack_int32(*sock, blocked);
@@ -112,8 +108,7 @@ void getStats(int *sock)
 		logg("Sent stats data to client, ID: %i", *sock);
 }
 
-void getOverTime(int *sock)
-{
+void getOverTime(int *sock) {
 	int i, j = 9999999;
 
 	// Get first time slot with total or blocked greater than zero (the array will go down over time due to the rolling window)
@@ -616,9 +611,7 @@ void getQueryTypes(int *sock, char type)
 }
 
 
-void getAllQueries(char *client_message, int *sock, char type)
-{
-
+void getAllQueries(char *client_message, int *sock) {
 	// Exit before processing any data if requested via config setting
 	if(!config.query_display)
 		return;
@@ -632,7 +625,7 @@ void getAllQueries(char *client_message, int *sock, char type)
 	char *clientname = NULL;
 	bool filterclientname = false;
 
-	if(type == TELNET)
+	if(istelnet[*sock])
 	{
 		// Time filtering?
 		if(command(client_message, ">getallqueries-time"))
@@ -701,7 +694,7 @@ void getAllQueries(char *client_message, int *sock, char type)
 
 	int ibeg = 0, num;
 	// Test for integer that specifies number of entries to be shown
-	if(type == TELNET)
+	if(istelnet[*sock])
 	{
 		if(sscanf(client_message, "%*[^(](%i)", &num) > 0)
 		{
@@ -817,7 +810,7 @@ void getAllQueries(char *client_message, int *sock, char type)
 				continue;
 		}
 
-		if(type == TELNET)
+		if(istelnet[*sock])
 		{
 			if(!privacymode)
 			{
