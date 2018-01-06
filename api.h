@@ -10,7 +10,7 @@
 
 // Statistic methods
 void getStats(int *sock);
-void getOverTime(int *sock, char type);
+void getOverTime(int *sock);
 void getTopDomains (char *client_message, int *sock, char type);
 void getTopClients(char *client_message, int *sock, char type);
 void getForwardDestinations(char *client_message, int *sock, char type);

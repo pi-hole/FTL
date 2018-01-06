@@ -112,7 +112,7 @@ void getStats(int *sock)
 		logg("Sent stats data to client, ID: %i", *sock);
 }
 
-void getOverTime(int *sock, char type)
+void getOverTime(int *sock)
 {
 	int i, j = 9999999;
 
@@ -125,7 +125,7 @@ void getOverTime(int *sock, char type)
 		}
 	}
 
-	if(type == TELNET) {
+	if(istelnet[*sock]) {
 		for(i = j; i < counters.overTime; i++) {
 			ssend(*sock,"%i %i %i\n",overTime[i].timestamp,overTime[i].total,overTime[i].blocked);
 		}
