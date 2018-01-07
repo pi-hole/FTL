@@ -42,7 +42,8 @@ int cmpdesc(const void *a, const void *b)
 		return 0;
 }
 
-void getStats(int *sock) {
+void getStats(int *sock)
+{
 	int blocked = counters.blocked + counters.wildcardblocked;
 	int total = counters.queries - counters.invalidqueries;
 	float percentage = 0.0;
@@ -55,7 +56,8 @@ void getStats(int *sock) {
 	char domains_blocked[11];
 	char status[9];
 
-	switch(blockingstatus) {
+	switch(blockingstatus)
+	{
 		case 0: // Blocking disabled
 			if(istelnet[*sock])
 				strncpy(domains_blocked, "N/A", 4);
@@ -76,7 +78,8 @@ void getStats(int *sock) {
 
 	// unique_clients: count only clients that have been active within the most recent 24 hours
 	int i, activeclients = 0;
-	for(i=0; i < counters.clients; i++) {
+	for(i=0; i < counters.clients; i++)
+	{
 		validate_access("clients", i, true, __LINE__, __FUNCTION__, __FILE__);
 		if(clients[i].count > 0)
 			activeclients++;
@@ -91,7 +94,8 @@ void getStats(int *sock) {
 		ssend(*sock, "unique_clients %i\n", activeclients);
 		ssend(*sock, "status %s\n", status);
 	}
-	else {
+	else
+	{
 		pack_int32(*sock, counters.gravity);
 		pack_int32(*sock, total);
 		pack_int32(*sock, blocked);
@@ -108,24 +112,30 @@ void getStats(int *sock) {
 		logg("Sent stats data to client, ID: %i", *sock);
 }
 
-void getOverTime(int *sock) {
+void getOverTime(int *sock)
+{
 	int i, j = 9999999;
 
 	// Get first time slot with total or blocked greater than zero (the array will go down over time due to the rolling window)
-	for(i=0; i < counters.overTime; i++) {
+	for(i=0; i < counters.overTime; i++)
+	{
 		validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
-		if(overTime[i].total > 0 || overTime[i].blocked > 0) {
+		if(overTime[i].total > 0 || overTime[i].blocked > 0)
+		{
 			j = i;
 			break;
 		}
 	}
 
-	if(istelnet[*sock]) {
-		for(i = j; i < counters.overTime; i++) {
+	if(istelnet[*sock])
+	{
+		for(i = j; i < counters.overTime; i++)
+		{
 			ssend(*sock,"%i %i %i\n",overTime[i].timestamp,overTime[i].total,overTime[i].blocked);
 		}
 	}
-	else {
+	else
+	{
 		// We can use the map16 type because there should only be about 288 time slots (TIMEFRAME set to "yesterday")
 		// and map16 can hold up to (2^16)-1 = 65535 pairs
 
@@ -148,7 +158,8 @@ void getOverTime(int *sock) {
 		logg("Sent overTime data to client, ID: %i", *sock);
 }
 
-void getTopDomains(char *client_message, int *sock) {
+void getTopDomains(char *client_message, int *sock)
+{
 	int i, temparray[counters.domains][2], count=10, num;
 	bool blocked, audit = false, desc = false;
 
@@ -175,7 +186,8 @@ void getTopDomains(char *client_message, int *sock) {
 	if(command(client_message, " desc"))
 		desc = true;
 
-	for(i=0; i < counters.domains; i++) {
+	for(i=0; i < counters.domains; i++)
+	{
 		validate_access("domains", i, true, __LINE__, __FUNCTION__, __FILE__);
 		temparray[i][0] = i;
 		if(blocked)
@@ -195,12 +207,14 @@ void getTopDomains(char *client_message, int *sock) {
 	// Get filter
 	char * filter = read_setupVarsconf("API_QUERY_LOG_SHOW");
 	bool showpermitted = true, showblocked = true;
-	if(filter != NULL) {
+	if(filter != NULL)
+	{
 		if((strcmp(filter, "permittedonly")) == 0)
 			showblocked = false;
 		else if((strcmp(filter, "blockedonly")) == 0)
 			showpermitted = false;
-		else if((strcmp(filter, "nothing")) == 0) {
+		else if((strcmp(filter, "nothing")) == 0)
+		{
 			showpermitted = false;
 			showblocked = false;
 		}
@@ -209,9 +223,11 @@ void getTopDomains(char *client_message, int *sock) {
 
 	// Get domains which the user doesn't want to see
 	char * excludedomains = NULL;
-	if(!audit) {
+	if(!audit)
+	{
 		excludedomains = read_setupVarsconf("API_EXCLUDE_DOMAINS");
-		if(excludedomains != NULL) {
+		if(excludedomains != NULL)
+		{
 			getSetupVarsArray(excludedomains);
 
 			if(debugclients)
@@ -219,7 +235,8 @@ void getTopDomains(char *client_message, int *sock) {
 		}
 	}
 
-	if(!istelnet[*sock]) {
+	if(!istelnet[*sock])
+	{
 		// Send the data required to get the percentage each domain has been blocked / queried
 		if(blocked)
 			pack_int32(*sock, counters.blocked);
@@ -228,33 +245,40 @@ void getTopDomains(char *client_message, int *sock) {
 	}
 
 	int skip = 0; bool first = true;
-	for(i=0; i < min(counters.domains, count+skip); i++) {
+	for(i=0; i < min(counters.domains, count+skip); i++)
+	{
 		// Get sorted indices
 		int j = temparray[counters.domains-i-1][0];
 		validate_access("domains", j, true, __LINE__, __FUNCTION__, __FILE__);
 
 		// Skip this domain if there is a filter on it
-		if(excludedomains != NULL) {
-			if(insetupVarsArray(domains[j].domain)) {
+		if(excludedomains != NULL)
+		{
+			if(insetupVarsArray(domains[j].domain))
+			{
 				skip++;
 				continue;
 			}
 		}
 
 		// Skip this domain if already included in audit
-		if(audit && countlineswith(domains[j].domain, files.auditlist) > 0) {
+		if(audit && countlineswith(domains[j].domain, files.auditlist) > 0)
+		{
 			skip++;
 			continue;
 		}
 
-		if(blocked && showblocked && domains[j].blockedcount > 0) {
-			if(istelnet[*sock]) {
+		if(blocked && showblocked && domains[j].blockedcount > 0)
+		{
+			if(istelnet[*sock])
+			{
 				if(audit && domains[j].wildcard)
 					ssend(*sock,"%i %i %s wildcard\n",i,domains[j].blockedcount,domains[j].domain);
 				else
 					ssend(*sock,"%i %i %s\n",i,domains[j].blockedcount,domains[j].domain);
 			}
-			else {
+			else
+			{
 				pack_str32(*sock, domains[j].domain);
 				pack_int32(*sock, domains[j].blockedcount);
 			}
@@ -263,7 +287,8 @@ void getTopDomains(char *client_message, int *sock) {
 		{
 			if(istelnet[*sock])
 				ssend(*sock,"%i %i %s\n",i,(domains[j].count - domains[j].blockedcount),domains[j].domain);
-			else {
+			else
+			{
 				pack_str32(*sock, domains[j].domain);
 				pack_int32(*sock, domains[j].count - domains[j].blockedcount);
 			}
@@ -273,7 +298,8 @@ void getTopDomains(char *client_message, int *sock) {
 	if(excludedomains != NULL)
 		clearSetupVarsArray();
 
-	if(debugclients) {
+	if(debugclients)
+	{
 		if(blocked)
 			logg("Sent top ads list data to client, ID: %i", *sock);
 		else
@@ -281,7 +307,8 @@ void getTopDomains(char *client_message, int *sock) {
 	}
 }
 
-void getTopClients(char *client_message, int *sock) {
+void getTopClients(char *client_message, int *sock)
+{
 	int i, temparray[counters.clients][2], count=10, num;
 
 	// Match both top-domains and top-ads
@@ -298,7 +325,8 @@ void getTopClients(char *client_message, int *sock) {
 	if(command(client_message, " withzero"))
 		includezeroclients = true;
 
-	for(i=0; i < counters.clients; i++) {
+	for(i=0; i < counters.clients; i++)
+	{
 		validate_access("clients", i, true, __LINE__, __FUNCTION__, __FILE__);
 		temparray[i][0] = i;
 		temparray[i][1] = clients[i].count;
@@ -309,28 +337,33 @@ void getTopClients(char *client_message, int *sock) {
 
 	// Get clients which the user doesn't want to see
 	char * excludeclients = read_setupVarsconf("API_EXCLUDE_CLIENTS");
-	if(excludeclients != NULL) {
+	if(excludeclients != NULL)
+	{
 		getSetupVarsArray(excludeclients);
 
 		if(debugclients)
 			logg("Excluding %i clients from being displayed", setupVarsElements);
 	}
 
-	if(!istelnet[*sock]) {
+	if(!istelnet[*sock])
+	{
 		// Send the total queries so they can make percentages from this data
 		pack_int32(*sock, counters.queries - counters.invalidqueries);
 	}
 
 	int skip = 0; bool first = true;
-	for(i=0; i < min(counters.clients, count+skip); i++) {
+	for(i=0; i < min(counters.clients, count+skip); i++)
+	{
 		// Get sorted indices
 		int j = temparray[counters.clients-i-1][0];
 		validate_access("clients", j, true, __LINE__, __FUNCTION__, __FILE__);
 
 		// Skip this client if there is a filter on it
-		if(excludeclients != NULL) {
+		if(excludeclients != NULL)
+		{
 			if(insetupVarsArray(clients[j].ip) ||
-			   insetupVarsArray(clients[j].name)) {
+			   insetupVarsArray(clients[j].name))
+			{
 				skip++;
 				continue;
 			}
@@ -339,10 +372,12 @@ void getTopClients(char *client_message, int *sock) {
 		// Return this client if either
 		// - "withzero" option is set, and/or
 		// - the client made at least one query within the most recent 24 hours
-		if(includezeroclients || clients[j].count > 0) {
+		if(includezeroclients || clients[j].count > 0)
+		{
 			if(istelnet[*sock])
 				ssend(*sock,"%i %i %s %s\n",i,clients[j].count,clients[j].ip,clients[j].name);
-			else {
+			else
+			{
 				pack_str32(*sock, clients[j].name);
 				pack_str32(*sock, clients[j].ip);
 				pack_int32(*sock, clients[j].count);
@@ -358,7 +393,8 @@ void getTopClients(char *client_message, int *sock) {
 }
 
 
-void getForwardDestinations(char *client_message, int *sock) {
+void getForwardDestinations(char *client_message, int *sock)
+{
 	bool allocated = false, first = true, sort = true;
 	int i, temparray[counters.forwarded+1][2], forwardedsum = 0, totalqueries = 0;
 
@@ -390,7 +426,8 @@ void getForwardDestinations(char *client_message, int *sock) {
 	totalqueries = counters.forwardedqueries + counters.cached + counters.blocked;
 
 	// Loop over available forward destinations
-	for(i=0; i < min(counters.forwarded+1, 10); i++) {
+	for(i=0; i < min(counters.forwarded+1, 10); i++)
+	{
 		char *name, *ip;
 		double percentage;
 
@@ -402,7 +439,8 @@ void getForwardDestinations(char *client_message, int *sock) {
 			j = i;
 
 		// Is this the "local" forward destination?
-		if(j == counters.forwarded) {
+		if(j == counters.forwarded)
+		{
 			ip = calloc(4,1);
 			strcpy(ip, "::1");
 			name = calloc(6,1);
@@ -416,7 +454,8 @@ void getForwardDestinations(char *client_message, int *sock) {
 
 			allocated = true;
 		}
-		else {
+		else
+		{
 			validate_access("forwarded", j, true, __LINE__, __FUNCTION__, __FILE__);
 			ip = forwarded[j].ip;
 			name = forwarded[j].name;
@@ -446,10 +485,12 @@ void getForwardDestinations(char *client_message, int *sock) {
 		}
 
 		// Send data if count > 0
-		if(percentage > 0.0) {
+		if(percentage > 0.0)
+		{
 			if(istelnet[*sock])
 				ssend(*sock, "%i %.2f %s %s\n", i, percentage, ip, name);
-			else {
+			else
+			{
 				pack_str32(*sock, name);
 				pack_str32(*sock, ip);
 				pack_float(*sock, (float) percentage);
@@ -457,7 +498,8 @@ void getForwardDestinations(char *client_message, int *sock) {
 		}
 
 		// Free previously allocated memory only if we allocated it
-		if(allocated) {
+		if(allocated)
+		{
 			free(ip);
 			free(name);
 		}
@@ -468,7 +510,8 @@ void getForwardDestinations(char *client_message, int *sock) {
 }
 
 
-void getQueryTypes(int *sock) {
+void getQueryTypes(int *sock)
+{
 	int total = counters.IPv4 + counters.IPv6;
 	double percentageIPv4 = 0.0, percentageIPv6 = 0.0;
 
@@ -490,7 +533,8 @@ void getQueryTypes(int *sock) {
 }
 
 
-void getAllQueries(char *client_message, int *sock) {
+void getAllQueries(char *client_message, int *sock)
+{
 	// Exit before processing any data if requested via config setting
 	if(!config.query_display)
 		return;
@@ -663,7 +707,8 @@ void getAllQueries(char *client_message, int *sock) {
 		logg("Sent all queries data to client, ID: %i", *sock);
 }
 
-void getRecentBlocked(char *client_message, int *sock) {
+void getRecentBlocked(char *client_message, int *sock)
+{
 	int i, num=1;
 
 	// Exit before processing any data if requested via config setting
@@ -680,12 +725,14 @@ void getRecentBlocked(char *client_message, int *sock) {
 	// Find most recent query with either status 1 (blocked)
 	// or status 4 (wildcard blocked)
 	int found = 0; bool first = true;
-	for(i = counters.queries - 1; i > 0 ; i--) {
+	for(i = counters.queries - 1; i > 0 ; i--)
+	{
 		validate_access("queries", i, true, __LINE__, __FUNCTION__, __FILE__);
 		// Check if this query has been removed due to garbage collection
 		if(!queries[i].valid) continue;
 
-		if(queries[i].status == 1 || queries[i].status == 4) {
+		if(queries[i].status == 1 || queries[i].status == 4)
+		{
 			found++;
 
 			if(istelnet[*sock])
