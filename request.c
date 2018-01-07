@@ -36,7 +36,7 @@ void process_request(char *client_message, int *sock, char type)
 	else if(command(client_message, ">top-clients"))
 	{
 		processed = true;
-		getTopClients(client_message, sock, type);
+		getTopClients(client_message, sock);
 	}
 	else if(command(client_message, ">forward-dest"))
 	{

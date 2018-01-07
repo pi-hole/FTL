@@ -282,48 +282,25 @@ void getTopDomains(char *client_message, int *sock)
 	}
 }
 
-void getTopClients(char *client_message, int *sock, char type)
+void getTopClients(char *client_message, int *sock)
 {
 	int i, temparray[counters.clients][2], count=10, num;
 
 	// Match both top-domains and top-ads
-	// TELNET: >top-clients (15)
-	// API:    /stats/top_clients?limit=15
-	if(type == TELNET)
-	{
-		if(sscanf(client_message, "%*[^(](%i)", &num) > 0)
-		{
-			// User wants a different number of requests
-			count = num;
-		}
-	}
-	else
-	{
-		const char * limit = strstr(client_message, "limit=");
-		if(limit != NULL)
-		{
-			if(sscanf(limit, "limit=%i", &num) > 0)
-			{
-				// User wants a different number of requests
-				count = num;
-			}
-		}
+	// example: >top-clients (15)
+	if(sscanf(client_message, "%*[^(](%i)", &num) > 0) {
+		// User wants a different number of requests
+		count = num;
 	}
 
 	// Show also clients which have not been active recently?
 	// This option can be combined with existing options,
 	// i.e. both >top-clients withzero" and ">top-clients withzero (123)" are valid
 	bool includezeroclients = false;
-	if(type == TELNET) {
-		if(command(client_message, " withzero")) {
-			includezeroclients = true;
-		}
-	}
-	else
-		includezeroclients = strstr(client_message, "withzero") != NULL;
+	if(command(client_message, " withzero"))
+		includezeroclients = true;
 
-	for(i=0; i < counters.clients; i++)
-	{
+	for(i=0; i < counters.clients; i++) {
 		validate_access("clients", i, true, __LINE__, __FUNCTION__, __FILE__);
 		temparray[i][0] = i;
 		temparray[i][1] = clients[i].count;
@@ -334,34 +311,28 @@ void getTopClients(char *client_message, int *sock, char type)
 
 	// Get clients which the user doesn't want to see
 	char * excludeclients = read_setupVarsconf("API_EXCLUDE_CLIENTS");
-	if(excludeclients != NULL)
-	{
+	if(excludeclients != NULL) {
 		getSetupVarsArray(excludeclients);
 
 		if(debugclients)
 			logg("Excluding %i clients from being displayed", setupVarsElements);
 	}
 
-	if(type != TELNET)
-	{
-//		// First send header with unspecified content-length outside of the for-loop
-//		sendAPIResponse(*sock, type, OK);
-//		ssend(*sock, "\"top_clients\":{");
+	if(!istelnet[*sock]) {
+		// Send the total queries so they can make percentages from this data
+		pack_int32(*sock, counters.queries - counters.invalidqueries);
 	}
 
 	int skip = 0; bool first = true;
-	for(i=0; i < min(counters.clients, count+skip); i++)
-	{
+	for(i=0; i < min(counters.clients, count+skip); i++) {
 		// Get sorted indices
 		int j = temparray[counters.clients-i-1][0];
 		validate_access("clients", j, true, __LINE__, __FUNCTION__, __FILE__);
 
 		// Skip this client if there is a filter on it
-		if(excludeclients != NULL)
-		{
+		if(excludeclients != NULL) {
 			if(insetupVarsArray(clients[j].ip) ||
-			   insetupVarsArray(clients[j].name))
-			{
+			   insetupVarsArray(clients[j].name)) {
 				skip++;
 				continue;
 			}
@@ -370,25 +341,16 @@ void getTopClients(char *client_message, int *sock, char type)
 		// Return this client if either
 		// - "withzero" option is set, and/or
 		// - the client made at least one query within the most recent 24 hours
-		if(includezeroclients || clients[j].count > 0)		{
-			if(type == TELNET)
-			{
+		if(includezeroclients || clients[j].count > 0) {
+			if(istelnet[*sock])
 				ssend(*sock,"%i %i %s %s\n",i,clients[j].count,clients[j].ip,clients[j].name);
-			}
-			else
-			{
-//				if(!first) ssend(*sock,",");
-//				first = false;
-//				if(strlen(clients[j].name) > 0)
-//					ssend(*sock,"\"%s|%s\":%i", clients[j].name, clients[j].ip, clients[j].count);
-//				else
-//					ssend(*sock,"\"%s\":%i", clients[j].ip, clients[j].count);
+			else {
+				pack_str32(*sock, clients[j].name);
+				pack_str32(*sock, clients[j].ip);
+				pack_int32(*sock, clients[j].count);
 			}
 		}
 	}
-
-//	if(type != TELNET)
-//		ssend(*sock,"},\"dns_queries_today\":%i", (counters.queries - counters.invalidqueries));
 
 	if(excludeclients != NULL)
 		clearSetupVarsArray();
