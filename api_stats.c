@@ -148,8 +148,7 @@ void getOverTime(int *sock) {
 		logg("Sent overTime data to client, ID: %i", *sock);
 }
 
-void getTopDomains(char *client_message, int *sock)
-{
+void getTopDomains(char *client_message, int *sock) {
 	int i, temparray[counters.domains][2], count=10, num;
 	bool blocked, audit = false, desc = false;
 
@@ -282,8 +281,7 @@ void getTopDomains(char *client_message, int *sock)
 	}
 }
 
-void getTopClients(char *client_message, int *sock)
-{
+void getTopClients(char *client_message, int *sock) {
 	int i, temparray[counters.clients][2], count=10, num;
 
 	// Match both top-domains and top-ads
@@ -360,8 +358,7 @@ void getTopClients(char *client_message, int *sock)
 }
 
 
-void getForwardDestinations(char *client_message, int *sock)
-{
+void getForwardDestinations(char *client_message, int *sock) {
 	bool allocated = false, first = true, sort = true;
 	int i, temparray[counters.forwarded+1][2], forwardedsum = 0, totalqueries = 0;
 
@@ -471,8 +468,7 @@ void getForwardDestinations(char *client_message, int *sock)
 }
 
 
-void getQueryTypes(int *sock)
-{
+void getQueryTypes(int *sock) {
 	int total = counters.IPv4 + counters.IPv6;
 	double percentageIPv4 = 0.0, percentageIPv6 = 0.0;
 
@@ -667,8 +663,7 @@ void getAllQueries(char *client_message, int *sock) {
 		logg("Sent all queries data to client, ID: %i", *sock);
 }
 
-void getRecentBlocked(char *client_message, int *sock, char type)
-{
+void getRecentBlocked(char *client_message, int *sock) {
 	int i, num=1;
 
 	// Exit before processing any data if requested via config setting
@@ -676,65 +671,32 @@ void getRecentBlocked(char *client_message, int *sock, char type)
 		return;
 
 	// Test for integer that specifies number of entries to be shown
-	if(type == TELNET)
-	{
-		if(sscanf(client_message, "%*[^(](%i)", &num) > 0)
-		{
-			// User wants a different number of requests
-			if(num >= counters.queries)
-				num = 0;
-		}
+	if(sscanf(client_message, "%*[^(](%i)", &num) > 0) {
+		// User wants a different number of requests
+		if(num >= counters.queries)
+			num = 0;
 	}
-	else
-	{
-		const char * limit = strstr(client_message, "limit=");
-		if(limit != NULL)
-		{
-			if(sscanf(limit, "limit=%i", &num) > 0)
-			{
-				// User wants a different number of requests
-				if(num >= counters.queries)
-					num = 0;
-			}
-		}
-	}
-
-//	if(type != TELNET)
-//	{
-//		sendAPIResponse(*sock, type, OK);
-//		ssend(*sock, "\"recent_blocked\":[");
-//	}
 
 	// Find most recent query with either status 1 (blocked)
 	// or status 4 (wildcard blocked)
 	int found = 0; bool first = true;
-	for(i = counters.queries - 1; i > 0 ; i--)
-	{
+	for(i = counters.queries - 1; i > 0 ; i--) {
 		validate_access("queries", i, true, __LINE__, __FUNCTION__, __FILE__);
 		// Check if this query has been removed due to garbage collection
 		if(!queries[i].valid) continue;
 
-		if(queries[i].status == 1 || queries[i].status == 4)
-		{
+		if(queries[i].status == 1 || queries[i].status == 4) {
 			found++;
-			if(type == TELNET)
-			{
+
+			if(istelnet[*sock])
 				ssend(*sock,"%s\n", domains[queries[i].domainID].domain);
-			}
 			else
-			{
-//				if(!first) ssend(*sock, ",");
-//				first = false;
-//				ssend(*sock, "\"%s\"", domains[queries[i].domainID].domain);
-			}
+				pack_str32(*sock, domains[queries[i].domainID].domain);
 		}
 
 		if(found >= num)
 			break;
 	}
-
-//	if(type != TELNET)
-//		ssend(*sock, "]");
 }
 
 // only available via TELNET

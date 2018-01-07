@@ -16,7 +16,7 @@ void getTopClients(char *client_message, int *sock);
 void getForwardDestinations(char *client_message, int *sock);
 void getQueryTypes(int *sock);
 void getAllQueries(char *client_message, int *sock);
-void getRecentBlocked(char *client_message, int *sock, char type);
+void getRecentBlocked(char *client_message, int *sock);
 void getForwardDestinationsOverTime(int *sock, char type);
 void getQueryTypesOverTime(int *sock, char type);
 void getClientsOverTime(int *sock);

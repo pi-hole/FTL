@@ -61,7 +61,7 @@ void process_request(char *client_message, int *sock, char type)
 	else if(command(client_message, ">recentBlocked"))
 	{
 		processed = true;
-		getRecentBlocked(client_message, sock, type);
+		getRecentBlocked(client_message, sock);
 	}
 	else if(command(client_message, ">memory"))
 	{
