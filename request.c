@@ -31,7 +31,7 @@ void process_request(char *client_message, int *sock, char type)
 	else if(command(client_message, ">top-domains") || command(client_message, ">top-ads"))
 	{
 		processed = true;
-		getTopDomains(client_message, sock, type);
+		getTopDomains(client_message, sock);
 	}
 	else if(command(client_message, ">top-clients"))
 	{

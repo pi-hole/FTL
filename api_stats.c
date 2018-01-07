@@ -148,62 +148,35 @@ void getOverTime(int *sock) {
 		logg("Sent overTime data to client, ID: %i", *sock);
 }
 
-void getTopDomains(char *client_message, int *sock, char type)
+void getTopDomains(char *client_message, int *sock)
 {
 	int i, temparray[counters.domains][2], count=10, num;
 	bool blocked, audit = false, desc = false;
 
-	if(type == TELNET)
-		blocked = command(client_message, ">top-ads");
-	else
-		blocked = command(client_message, "/top_ads");
+	blocked = command(client_message, ">top-ads");
 
 	// Exit before processing any data if requested via config setting
 	if(!config.query_display)
 		return;
 
 	// Match both top-domains and top-ads
-	// TELNET: >top-domains (15)
-	// API:    /stats/top_domains?limit=15
-	if(type == TELNET)
-	{
-		if(sscanf(client_message, "%*[^(](%i)", &num) > 0)
-		{
-			// User wants a different number of requests
-			count = num;
-		}
-	}
-	else
-	{
-		const char * limit = strstr(client_message, "limit=");
-		if(limit != NULL)
-		{
-			if(sscanf(limit, "limit=%i", &num) > 0)
-			{
-				// User wants a different number of requests
-				count = num;
-			}
-		}
+	// example: >top-domains (15)
+	if(sscanf(client_message, "%*[^(](%i)", &num) > 0) {
+		// User wants a different number of requests
+		count = num;
 	}
 
 	// Apply Audit Log filtering?
-	// TELNET: >top-domains for audit
-	// API:    /stats/top_domains?audit
-	if(type == TELNET && command(client_message, " for audit"))
-		audit = true;
-	else if(type != TELNET && command(client_message, "audit"))
+	// example: >top-domains for audit
+	if(command(client_message, " for audit"))
 		audit = true;
 
 	// Sort in descending order?
-	// TELNET: >top-domains desc
-	// API:    /stats/top_domains?order=desc
-	if(type == TELNET && command(client_message, " desc"))
-		desc = true;
-	else if(type != TELNET && command(client_message, "order=desc"))
+	// example: >top-domains desc
+	if(command(client_message, " desc"))
 		desc = true;
 
-	for(i=0; i < counters.domains; i++)
-	{
+	for(i=0; i < counters.domains; i++) {
 		validate_access("domains", i, true, __LINE__, __FUNCTION__, __FILE__);
 		temparray[i][0] = i;
 		if(blocked)
@@ -223,14 +196,12 @@ void getTopDomains(char *client_message, int *sock, char type)
 	// Get filter
 	char * filter = read_setupVarsconf("API_QUERY_LOG_SHOW");
 	bool showpermitted = true, showblocked = true;
-	if(filter != NULL)
-	{
+	if(filter != NULL) {
 		if((strcmp(filter, "permittedonly")) == 0)
 			showblocked = false;
 		else if((strcmp(filter, "blockedonly")) == 0)
 			showpermitted = false;
-		else if((strcmp(filter, "nothing")) == 0)
-		{
+		else if((strcmp(filter, "nothing")) == 0) {
 			showpermitted = false;
 			showblocked = false;
 		}
@@ -239,11 +210,9 @@ void getTopDomains(char *client_message, int *sock, char type)
 
 	// Get domains which the user doesn't want to see
 	char * excludedomains = NULL;
-	if(!audit)
-	{
+	if(!audit) {
 		excludedomains = read_setupVarsconf("API_EXCLUDE_DOMAINS");
-		if(excludedomains != NULL)
-		{
+		if(excludedomains != NULL) {
 			getSetupVarsArray(excludedomains);
 
 			if(debugclients)
@@ -251,85 +220,61 @@ void getTopDomains(char *client_message, int *sock, char type)
 		}
 	}
 
-	if(type != TELNET)
-	{
-//		// First send header with unspecified content-length outside of the for-loop
-//		sendAPIResponse(*sock, type, OK);
-//
-//		if(blocked)
-//			ssend(*sock, "\"top_ads\":{");
-//		else
-//			ssend(*sock, "\"top_domains\":{");
+	if(!istelnet[*sock]) {
+		// Send the data required to get the percentage each domain has been blocked / queried
+		if(blocked)
+			pack_int32(*sock, counters.blocked);
+		else
+			pack_int32(*sock, counters.queries - counters.invalidqueries);
 	}
 
 	int skip = 0; bool first = true;
-	for(i=0; i < min(counters.domains, count+skip); i++)
-	{
+	for(i=0; i < min(counters.domains, count+skip); i++) {
 		// Get sorted indices
 		int j = temparray[counters.domains-i-1][0];
 		validate_access("domains", j, true, __LINE__, __FUNCTION__, __FILE__);
 
 		// Skip this domain if there is a filter on it
-		if(excludedomains != NULL)
-		{
-			if(insetupVarsArray(domains[j].domain))
-			{
+		if(excludedomains != NULL) {
+			if(insetupVarsArray(domains[j].domain)) {
 				skip++;
 				continue;
 			}
 		}
 
 		// Skip this domain if already included in audit
-		if(audit && countlineswith(domains[j].domain, files.auditlist) > 0)
-		{
+		if(audit && countlineswith(domains[j].domain, files.auditlist) > 0) {
 			skip++;
 			continue;
 		}
 
-		if(blocked && showblocked && domains[j].blockedcount > 0)
-		{
-			if(type == TELNET)
-			{
+		if(blocked && showblocked && domains[j].blockedcount > 0) {
+			if(istelnet[*sock]) {
 				if(audit && domains[j].wildcard)
 					ssend(*sock,"%i %i %s wildcard\n",i,domains[j].blockedcount,domains[j].domain);
 				else
 					ssend(*sock,"%i %i %s\n",i,domains[j].blockedcount,domains[j].domain);
 			}
-			else
-			{
-//				if(!first) ssend(*sock,",");
-//				first = false;
-//				ssend(*sock,"\"%s\":%i", domains[j].domain, domains[j].blockedcount);
+			else {
+				pack_str32(*sock, domains[j].domain);
+				pack_int32(*sock, domains[j].blockedcount);
 			}
 		}
 		else if(!blocked && showpermitted && (domains[j].count - domains[j].blockedcount) > 0)
 		{
-			if(type == TELNET)
-			{
+			if(istelnet[*sock])
 				ssend(*sock,"%i %i %s\n",i,(domains[j].count - domains[j].blockedcount),domains[j].domain);
-			}
-			else
-			{
-//				if(!first) ssend(*sock,",");
-//				first = false;
-//				ssend(*sock,"\"%s\":%i", domains[j].domain, (domains[j].count - domains[j].blockedcount));
+			else {
+				pack_str32(*sock, domains[j].domain);
+				pack_int32(*sock, domains[j].count - domains[j].blockedcount);
 			}
 		}
-	}
-
-	if(type != TELNET)
-	{
-//		if(blocked)
-//			ssend(*sock,"},\"ads_blocked_today\":%i", counters.blocked);
-//		else
-//			ssend(*sock,"},\"dns_queries_today\":%i", (counters.queries - counters.invalidqueries));
 	}
 
 	if(excludedomains != NULL)
 		clearSetupVarsArray();
 
-	if(debugclients)
-	{
+	if(debugclients) {
 		if(blocked)
 			logg("Sent top ads list data to client, ID: %i", *sock);
 		else
