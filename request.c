@@ -41,12 +41,12 @@ void process_request(char *client_message, int *sock, char type)
 	else if(command(client_message, ">forward-dest"))
 	{
 		processed = true;
-		getForwardDestinations(client_message, sock, type);
+		getForwardDestinations(client_message, sock);
 	}
 	else if(command(client_message, ">forward-names"))
 	{
 		processed = true;
-		getForwardDestinations(">forward-dest unsorted", sock, type);
+		getForwardDestinations(">forward-dest unsorted", sock);
 	}
 	else if(command(client_message, ">querytypes"))
 	{

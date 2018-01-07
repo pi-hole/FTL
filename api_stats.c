@@ -360,14 +360,12 @@ void getTopClients(char *client_message, int *sock)
 }
 
 
-void getForwardDestinations(char *client_message, int *sock, char type)
+void getForwardDestinations(char *client_message, int *sock)
 {
 	bool allocated = false, first = true, sort = true;
 	int i, temparray[counters.forwarded+1][2], forwardedsum = 0, totalqueries = 0;
 
-	if(type == TELNET && command(client_message, "unsorted"))
-		sort = false;
-	else if(strstr(client_message, "unsorted"))
+	if(command(client_message, "unsorted"))
 		sort = false;
 
 	for(i=0; i < counters.forwarded; i++) {
@@ -394,16 +392,8 @@ void getForwardDestinations(char *client_message, int *sock, char type)
 
 	totalqueries = counters.forwardedqueries + counters.cached + counters.blocked;
 
-	// Send HTTP headers with unknown content length
-//	sendAPIResponse(*sock, type, OK);
-
-	// Send initial JSON output
-//	if(type != TELNET)
-//		ssend(*sock, "\"forward_destinations\":{");
-
 	// Loop over available forward destinations
-	for(i=0; i < min(counters.forwarded+1, 10); i++)
-	{
+	for(i=0; i < min(counters.forwarded+1, 10); i++) {
 		char *name, *ip;
 		double percentage;
 
@@ -415,8 +405,7 @@ void getForwardDestinations(char *client_message, int *sock, char type)
 			j = i;
 
 		// Is this the "local" forward destination?
-		if(j == counters.forwarded)
-		{
+		if(j == counters.forwarded) {
 			ip = calloc(4,1);
 			strcpy(ip, "::1");
 			name = calloc(6,1);
@@ -430,8 +419,7 @@ void getForwardDestinations(char *client_message, int *sock, char type)
 
 			allocated = true;
 		}
-		else
-		{
+		else {
 			validate_access("forwarded", j, true, __LINE__, __FUNCTION__, __FILE__);
 			ip = forwarded[j].ip;
 			name = forwarded[j].name;
@@ -461,34 +449,22 @@ void getForwardDestinations(char *client_message, int *sock, char type)
 		}
 
 		// Send data if count > 0
-		if(percentage > 0.0)
-		{
-			if(type == TELNET)
-			{
+		if(percentage > 0.0) {
+			if(istelnet[*sock])
 				ssend(*sock, "%i %.2f %s %s\n", i, percentage, ip, name);
-			}
-			else
-			{
-//				if(!first) ssend(*sock, ",");
-//				first = false;
-//
-//				if(strlen(name) > 0)
-//					ssend(*sock, "\"%s|%s\":%.2f", name, ip, percentage);
-//				else
-//					ssend(*sock, "\"%s\":%.2f", ip, percentage);
+			else {
+				pack_str32(*sock, name);
+				pack_str32(*sock, ip);
+				pack_float(*sock, (float) percentage);
 			}
 		}
 
 		// Free previously allocated memory only if we allocated it
-		if(allocated)
-		{
+		if(allocated) {
 			free(ip);
 			free(name);
 		}
 	}
-
-//	if(type != TELNET)
-//		ssend(*sock, "}");
 
 	if(debugclients)
 		logg("Sent forward destination data to client, ID: %i", *sock);
