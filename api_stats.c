@@ -471,7 +471,7 @@ void getForwardDestinations(char *client_message, int *sock)
 }
 
 
-void getQueryTypes(int *sock, char type)
+void getQueryTypes(int *sock)
 {
 	int total = counters.IPv4 + counters.IPv6;
 	double percentageIPv4 = 0.0, percentageIPv6 = 0.0;
@@ -482,11 +482,11 @@ void getQueryTypes(int *sock, char type)
 		percentageIPv6 = 1e2*counters.IPv6/total;
 	}
 
-	if(type == TELNET)
+	if(istelnet[*sock])
 		ssend(*sock,"A (IPv4): %.2f\nAAAA (IPv6): %.2f\n", percentageIPv4, percentageIPv6);
 	else {
-//		sendAPIResponse(*sock, type, OK);
-//		ssend(*sock, "\"query_types\":{\"A (IPv4)\":%.2f,\"AAAA (IPv6)\":%.2f}", percentageIPv4, percentageIPv6);
+		pack_float(*sock, (float) percentageIPv4);
+		pack_float(*sock, (float) percentageIPv6);
 	}
 
 	if(debugclients)

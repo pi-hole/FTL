@@ -51,7 +51,7 @@ void process_request(char *client_message, int *sock, char type)
 	else if(command(client_message, ">querytypes"))
 	{
 		processed = true;
-		getQueryTypes(sock, type);
+		getQueryTypes(sock);
 	}
 	else if(command(client_message, ">getallqueries"))
 	{
