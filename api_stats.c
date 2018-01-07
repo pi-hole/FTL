@@ -773,9 +773,6 @@ void getAllQueries(char *client_message, int *sock) {
 		}
 	}
 
-//	if(type != TELNET)
-//		ssend(*sock, "]");
-
 	// Free allocated memory
 	if(filterclientname)
 		free(clientname);
