@@ -93,6 +93,7 @@ Command line arguments can be arbitrarily combined, e.g. `pihole-FTL debug test`
 - `/var/log/pihole-FTL.log` log file
 - `/var/run/pihole-FTL.pid` PID file
 - `/var/run/pihole-FTL.port` file containing port on which `FTL` is listening
+- `/var/run/pihole/FTL.sock` Unix socket
 
 ### Socket connections
 
