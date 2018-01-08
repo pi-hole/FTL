@@ -24,7 +24,7 @@ void getClientNames(int *sock);
 
 // FTL methods
 void getMemoryUsage(int *sock);
-void getClientID(int *sock, char type);
+void getClientID(int *sock);
 void getVersion(int *sock, char type);
 void getDBstats(int *sock, char type);
 void getUnknownQueries(int *sock);

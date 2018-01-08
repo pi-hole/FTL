@@ -892,10 +892,12 @@ void getForwardDestinationsOverTime(int *sock)
 		logg("Sent overTime forwarded data to client, ID: %i", *sock);
 }
 
-void getClientID(int *sock, char type)
+void getClientID(int *sock)
 {
-
-	ssend(*sock,"%i\n", *sock);
+	if(istelnet[*sock])
+		ssend(*sock,"%i\n", *sock);
+	else
+		pack_int32(*sock, *sock);
 
 	if(debugclients)
 		logg("Sent client ID to client, ID: %i", *sock);
