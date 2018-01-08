@@ -86,8 +86,8 @@ load 'libs/bats-support/load'
   run bash -c 'echo ">top-ads asc" | nc -v 127.0.0.1 4711'
   echo "output: ${lines[@]}"
   [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
-  [[ ${lines[1]} == "0 1 addomain.com" ]]
-  [[ ${lines[2]} == "1 1 blacklisted.com" ]]
+  [[ ${lines[1]} == "0 1 blacklisted.com" ]]
+  [[ ${lines[2]} == "1 1 addomain.com" ]]
   [[ ${lines[3]} == "---EOM---" ]]
 }
 
