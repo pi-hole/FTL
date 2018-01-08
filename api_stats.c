@@ -1158,10 +1158,30 @@ void getUnknownQueries(int *sock)
 		validate_access("domains", queries[i].domainID, true, __LINE__, __FUNCTION__, __FILE__);
 		validate_access("clients", queries[i].clientID, true, __LINE__, __FUNCTION__, __FILE__);
 
+
+		char *client;
+
 		if(strlen(clients[queries[i].clientID].name) > 0)
-			ssend(*sock,"%i %i %i %s %s %s %i %s\n",queries[i].timestamp,i,queries[i].id,type,domains[queries[i].domainID].domain,clients[queries[i].clientID].name,queries[i].status,queries[i].complete ?"true":"false");
+			client = clients[queries[i].clientID].name;
 		else
-			ssend(*sock,"%i %i %i %s %s %s %i %s\n",queries[i].timestamp,i,queries[i].id,type,domains[queries[i].domainID].domain,clients[queries[i].clientID].ip,queries[i].status,queries[i].complete?"true":"false");
+			client = clients[queries[i].clientID].ip;
+
+		if(istelnet[*sock])
+			ssend(*sock, "%i %i %i %s %s %s %i %s\n", queries[i].timestamp, i, queries[i].id, type, domains[queries[i].domainID].domain, client, queries[i].status, queries[i].complete ? "true" : "false");
+		else {
+			pack_int32(*sock, queries[i].timestamp);
+			pack_int32(*sock, queries[i].id);
+
+			// Use a fixstr because the length of qtype is always 4 (max is 31 for fixstr)
+			pack_fixstr(*sock, type);
+
+			// Use str32 for domain and client because we have no idea how long they will be (max is 4294967295 for str32)
+			pack_str32(*sock, domains[queries[i].domainID].domain);
+			pack_str32(*sock, client);
+
+			pack_uint8(*sock, queries[i].status);
+			pack_bool(*sock, queries[i].complete);
+		}
 	}
 
 	if(debugclients)

@@ -38,6 +38,11 @@ uint64_t leToBe64(uint64_t value) {
 	return (uint64_t) part1 << 32 | part2;
 }
 
+void pack_bool(int sock, bool value) {
+	uint8_t packed = (uint8_t) (value ? 0xc3 : 0xc2);
+	swrite(sock, &packed, sizeof(packed));
+}
+
 void pack_uint8(int sock, uint8_t value) {
 	pack_basic(sock, 0xcc, &value, sizeof(value));
 }
