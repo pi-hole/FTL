@@ -903,7 +903,7 @@ void getClientID(int *sock)
 		logg("Sent client ID to client, ID: %i", *sock);
 }
 
-void getQueryTypesOverTime(int *sock, char type)
+void getQueryTypesOverTime(int *sock)
 {
 	int i, sendit = -1;
 	for(i = 0; i < counters.overTime; i++)
@@ -915,12 +915,6 @@ void getQueryTypesOverTime(int *sock, char type)
 			break;
 		}
 	}
-
-//	if(type != TELNET)
-//	{
-//		sendAPIResponse(*sock, type, OK);
-//		ssend(*sock,"\"query_types\":{");
-//	}
 
 	if(sendit > -1)
 	{
@@ -937,18 +931,15 @@ void getQueryTypesOverTime(int *sock, char type)
 				percentageIPv6 = 1e2*overTime[i].querytypedata[1] / sum;
 			}
 
-			if(type == TELNET)
+			if(istelnet[*sock])
 				ssend(*sock, "%i %.2f %.2f\n", overTime[i].timestamp, percentageIPv4, percentageIPv6);
 			else {
-//				if(!first) ssend(*sock, ",");
-//				first = false;
-//				ssend(*sock, "\"%i\":[%.2f,%.2f]", overTime[i].timestamp, percentageIPv4, percentageIPv6);
+				pack_int32(*sock, overTime[i].timestamp);
+				pack_float(*sock, (float) percentageIPv4);
+				pack_float(*sock, (float) percentageIPv6);
 			}
 		}
 	}
-
-//	if(type != TELNET)
-//		ssend(*sock,"}");
 
 	if(debugclients)
 		logg("Sent overTime query types data to client, ID: %i", *sock);
