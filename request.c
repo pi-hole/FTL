@@ -66,7 +66,7 @@ void process_request(char *client_message, int *sock, char type)
 	else if(command(client_message, ">memory"))
 	{
 		processed = true;
-		getMemoryUsage(sock, type);
+		getMemoryUsage(sock);
 	}
 	else if(command(client_message, ">clientID"))
 	{

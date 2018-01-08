@@ -23,7 +23,7 @@ void getClientsOverTime(int *sock);
 void getClientNames(int *sock);
 
 // FTL methods
-void getMemoryUsage(int *sock, char type);
+void getMemoryUsage(int *sock);
 void getClientID(int *sock, char type);
 void getVersion(int *sock, char type);
 void getDBstats(int *sock, char type);
@@ -42,6 +42,7 @@ bool isValidDomain(char *domain);
 // MessagePack serialization helpers
 void pack_eom(int sock);
 void pack_uint8(int sock, uint8_t value);
+void pack_uint64(int sock, uint64_t value);
 void pack_int32(int sock, int32_t value);
 void pack_float(int sock, float value);
 void pack_fixstr(int sock, char *string);

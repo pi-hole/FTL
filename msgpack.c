@@ -26,6 +26,10 @@ void pack_uint8(int sock, uint8_t value) {
 	pack_basic(sock, 0xcc, &value, sizeof(value));
 }
 
+void pack_uint64(int sock, uint64_t value) {
+	pack_basic(sock, 0xcf, &value, sizeof(value));
+}
+
 void pack_int32(int sock, int32_t value) {
 	uint32_t bigEValue = htonl((uint32_t) value);
 	pack_basic(sock, 0xd2, &bigEValue, sizeof(bigEValue));

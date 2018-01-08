@@ -746,26 +746,37 @@ void getRecentBlocked(char *client_message, int *sock)
 	}
 }
 
-// only available via TELNET
-void getMemoryUsage(int *sock, char type)
+void getMemoryUsage(int *sock)
 {
 	unsigned long int structbytes = sizeof(countersStruct) + sizeof(ConfigStruct) + counters.queries_MAX*sizeof(queriesDataStruct) + counters.forwarded_MAX*sizeof(forwardedDataStruct) + counters.clients_MAX*sizeof(clientsDataStruct) + counters.domains_MAX*sizeof(domainsDataStruct) + counters.overTime_MAX*sizeof(overTimeDataStruct) + (counters.wildcarddomains)*sizeof(*wildcarddomains);
 	char *structprefix = calloc(2, sizeof(char));
 	double formated = 0.0;
 	format_memory_size(structprefix, structbytes, &formated);
-	ssend(*sock,"memory allocated for internal data structure: %lu bytes (%.2f %sB)\n",structbytes,formated,structprefix);
+
+	if(istelnet[*sock])
+		ssend(*sock,"memory allocated for internal data structure: %lu bytes (%.2f %sB)\n",structbytes,formated,structprefix);
+	else
+		pack_uint64(*sock, structbytes);
 	free(structprefix);
 
 	unsigned long int dynamicbytes = memory.wildcarddomains + memory.domainnames + memory.clientips + memory.clientnames + memory.forwardedips + memory.forwardednames + memory.forwarddata;
 	char *dynamicprefix = calloc(2, sizeof(char));
 	format_memory_size(dynamicprefix, dynamicbytes, &formated);
-	ssend(*sock,"dynamically allocated allocated memory used for strings: %lu bytes (%.2f %sB)\n",dynamicbytes,formated,dynamicprefix);
+
+	if(istelnet[*sock])
+		ssend(*sock,"dynamically allocated allocated memory used for strings: %lu bytes (%.2f %sB)\n",dynamicbytes,formated,dynamicprefix);
+	else
+		pack_uint64(*sock, dynamicbytes);
 	free(dynamicprefix);
 
 	unsigned long int totalbytes = structbytes + dynamicbytes;
 	char *totalprefix = calloc(2, sizeof(char));
 	format_memory_size(totalprefix, totalbytes, &formated);
-	ssend(*sock,"Sum: %lu bytes (%.2f %sB)\n",totalbytes,formated,totalprefix);
+
+	if(istelnet[*sock])
+		ssend(*sock,"Sum: %lu bytes (%.2f %sB)\n",totalbytes,formated,totalprefix);
+	else
+		pack_uint64(*sock, totalbytes);
 	free(totalprefix);
 
 	if(debugclients)
