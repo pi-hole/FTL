@@ -86,7 +86,7 @@ void process_request(char *client_message, int *sock, char type)
 	else if(command(client_message, ">version"))
 	{
 		processed = true;
-		getVersion(sock, type);
+		getVersion(sock);
 	}
 	else if(command(client_message, ">dbstats"))
 	{

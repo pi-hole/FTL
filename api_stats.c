@@ -943,7 +943,7 @@ void getQueryTypesOverTime(int *sock)
 		logg("Sent overTime query types data to client, ID: %i", *sock);
 }
 
-void getVersion(int *sock, char type)
+void getVersion(int *sock)
 {
 	const char * version = GIT_VERSION;
 	const char * branch = GIT_BRANCH;
@@ -954,10 +954,31 @@ void getVersion(int *sock, char type)
 	if(strstr(branch, "(no branch)") != NULL && strstr(version, ".") != NULL)
 		branch = "master";
 
-	if(strstr(version, ".") != NULL)
-		ssend(*sock,"version %s\ntag %s\nbranch %s\ndate %s\n", version, GIT_TAG, branch, GIT_DATE);
-	else
-		ssend(*sock,"version vDev-%s\ntag %s\nbranch %s\ndate %s\n", GIT_HASH, GIT_TAG, branch, GIT_DATE);
+	if(strstr(version, ".") != NULL) {
+		if(istelnet[*sock])
+			ssend(*sock, "version %s\ntag %s\nbranch %s\ndate %s\n", version, GIT_TAG, branch, GIT_DATE);
+		else {
+			pack_str32(*sock, (char *) version);
+			pack_str32(*sock, GIT_TAG);
+			pack_str32(*sock, (char *) branch);
+			pack_str32(*sock, GIT_DATE);
+		}
+	}
+	else {
+		if(istelnet[*sock])
+			ssend(*sock, "version vDev-%s\ntag %s\nbranch %s\ndate %s\n", GIT_HASH, GIT_TAG, branch, GIT_DATE);
+		else {
+			char *hashVersion = calloc(5 + strlen(GIT_HASH), sizeof(char));
+			sprintf(hashVersion, "vDev-%s", GIT_HASH);
+
+			pack_str32(*sock, hashVersion);
+			pack_str32(*sock, GIT_TAG);
+			pack_str32(*sock, (char *) branch);
+			pack_str32(*sock, GIT_DATE);
+
+			free(hashVersion);
+		}
+	}
 
 	if(debugclients)
 		logg("Sent version info to client, ID: %i", *sock);
