@@ -783,7 +783,7 @@ void getMemoryUsage(int *sock)
 		logg("Sent memory data to client, ID: %i", *sock);
 }
 
-void getForwardDestinationsOverTime(int *sock, char type)
+void getForwardDestinationsOverTime(int *sock)
 {
 	int i, sendit = -1;
 
@@ -797,11 +797,11 @@ void getForwardDestinationsOverTime(int *sock, char type)
 		}
 	}
 
-//	if(type != TELNET)
-//	{
-//		sendAPIResponse(*sock, type, OK);
-//		ssend(*sock,"\"over_time\":{");
-//	}
+	// Send the number of forward destinations (number of items for each timestamp)
+	if(!istelnet[*sock]) {
+		// Add one to include the local forwarded category
+		pack_int32(*sock, counters.forwarded + 1);
+	}
 
 	if(sendit > -1)
 	{
@@ -811,15 +811,13 @@ void getForwardDestinationsOverTime(int *sock, char type)
 			double percentage;
 
 			validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
-			if(type == TELNET)
+			if(istelnet[*sock])
 			{
 				ssend(*sock, "%i", overTime[i].timestamp);
 			}
 			else
 			{
-//				if(!first) ssend(*sock, ",");
-//				first = false;
-//				ssend(*sock, "\"%i\":[", overTime[i].timestamp);
+				pack_int32(*sock, overTime[i].timestamp);
 			}
 
 			int j, forwardedsum = 0;
@@ -870,10 +868,10 @@ void getForwardDestinationsOverTime(int *sock, char type)
 				else
 					percentage = 0.0;
 
-				if(type == TELNET)
+				if(istelnet[*sock])
 					ssend(*sock, " %.2f", percentage);
 				else
-					ssend(*sock, "%.2f,", percentage);
+					pack_float(*sock, (float) percentage);
 			}
 
 			// Avoid floating point exceptions
@@ -883,19 +881,12 @@ void getForwardDestinationsOverTime(int *sock, char type)
 			else
 				percentage = 0.0;
 
-			if(type == TELNET)
+			if(istelnet[*sock])
 				ssend(*sock, " %.2f\n", percentage);
 			else
-				ssend(*sock, "%.2f]", percentage);
+				pack_float(*sock, (float) percentage);
 		}
 	}
-
-//	if(type != TELNET)
-//	{
-//		ssend(*sock,"},");
-//		// Manually set API -> Don't send header a second time
-//		getForwardDestinations(">forward-dest unsorted", sock, SOCKET);
-//	}
 
 	if(debugclients)
 		logg("Sent overTime forwarded data to client, ID: %i", *sock);
