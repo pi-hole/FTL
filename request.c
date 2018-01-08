@@ -207,8 +207,8 @@ bool command(char *client_message, const char* cmd)
 // 	}
 // }
 
-/* qsort comparision function (count field), sort ASC */
-int cmpasc(const void *a, const void *b)
+/* qsort comparision function (count field), sort DESC */
+int cmpdesc(const void *a, const void *b)
 {
 	int *elem1 = (int*)a;
 	int *elem2 = (int*)b;
@@ -221,8 +221,8 @@ int cmpasc(const void *a, const void *b)
 		return 0;
 }
 
-// qsort subroutine, sort DESC
-int cmpdesc(const void *a, const void *b)
+// qsort subroutine, sort ASC
+int cmpasc(const void *a, const void *b)
 {
 	int *elem1 = (int*)a;
 	int *elem2 = (int*)b;
@@ -329,11 +329,12 @@ void getTopDomains(char *client_message, int *sock)
 {
 	char server_message[SOCKETBUFFERLEN];
 	int i, temparray[counters.domains][2], count=10, num;
-	bool blocked = command(client_message, ">top-ads"), audit = false, desc = false;
+	bool blocked = command(client_message, ">top-ads"), audit = false, asc = false;
 
 	// Exit before processing any data if requested via config setting
 	if(!config.query_display)
 		return;
+
 
 	// Match both top-domains and top-ads
 	if(sscanf(client_message, ">%*[^(](%i)", &num) > 0)
@@ -349,9 +350,9 @@ void getTopDomains(char *client_message, int *sock)
 	}
 
 	// Sort in descending order?
-	if(command(client_message, " desc"))
+	if(command(client_message, " asc"))
 	{
-		desc = true;
+		asc = true;
 	}
 
 	for(i=0; i < counters.domains; i++)
@@ -366,10 +367,10 @@ void getTopDomains(char *client_message, int *sock)
 	}
 
 	// Sort temporary array
-	if(desc)
-		qsort(temparray, counters.domains, sizeof(int[2]), cmpdesc);
-	else
+	if(asc)
 		qsort(temparray, counters.domains, sizeof(int[2]), cmpasc);
+	else
+		qsort(temparray, counters.domains, sizeof(int[2]), cmpdesc);
 
 
 	// Get filter
@@ -479,18 +480,18 @@ void getTopClients(char *client_message, int *sock)
 		temparray[i][1] = clients[i].count;
 	}
 
-	// Sort in descending order?
-	bool desc = false;
-	if(command(client_message, " desc"))
+	// Sort in ascending order?
+	bool asc = false;
+	if(command(client_message, " asc"))
 	{
-		desc = true;
+		asc = true;
 	}
 
 	// Sort temporary array
-	if(desc)
-		qsort(temparray, counters.clients, sizeof(int[2]), cmpdesc);
-	else
+	if(asc)
 		qsort(temparray, counters.clients, sizeof(int[2]), cmpasc);
+	else
+		qsort(temparray, counters.clients, sizeof(int[2]), cmpdesc);
 
 	// Get clients which the user doesn't want to see
 	char * excludeclients = read_setupVarsconf("API_EXCLUDE_CLIENTS");
