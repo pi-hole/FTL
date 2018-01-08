@@ -27,7 +27,20 @@ void pack_uint8(int sock, uint8_t value) {
 }
 
 void pack_uint64(int sock, uint64_t value) {
-	pack_basic(sock, 0xcf, &value, sizeof(value));
+	char *ptr = (char *) &value;
+	uint32_t part1, part2;
+
+	// Copy the two halves of the 64 bit input into uint32_t's so we can use htonl
+	memcpy(&part1, ptr, 4);
+	memcpy(&part2, ptr + 4, 4);
+
+	// Flip each half around
+	part1 = htonl(part1);
+	part2 = htonl(part2);
+
+	// Arrange them to form the big-endian version of the original input
+	uint64_t bigEValue = (uint64_t) part1 << 32 | part2;
+	pack_basic(sock, 0xcf, &bigEValue, sizeof(bigEValue));
 }
 
 void pack_int32(int sock, int32_t value) {
