@@ -37,11 +37,22 @@ int main (int argc, char **argv) {
 	// Set socket family to local socket (not an Internet socket)
 	address.sun_family = AF_LOCAL;
 
-	// Set socket file location (respect special location on the CI system Travis)
-	if(argc == 2 && strcmp(argv[1], "travis") == 0)
-		strcpy(address.sun_path,"pihole-FTL.sock");
-	else
-		strcpy(address.sun_path,"/var/run/pihole/FTL.sock");
+	char *command = ">stats";
+
+	int i;
+	for(i = 1; i < argc; i++) {
+		// Get command
+		if(strstr(argv[i], ">") == argv[i]) {
+			command = argv[i];
+			continue;
+		}
+
+		// Set socket file location (respect special location on the CI system Travis)
+		if(strcmp(argv[i], "travis") == 0)
+			strcpy(address.sun_path,"pihole-FTL.sock");
+		else
+			strcpy(address.sun_path,"/var/run/pihole/FTL.sock");
+	}
 
 	// Connect to the socket provided by pihole-FTL
 	ret = connect(socketfd, (struct sockaddr *) &address, sizeof (address));
@@ -53,14 +64,13 @@ int main (int argc, char **argv) {
 	printf("Connection established\n");
 
 	// As an example, we query the current statistics from FTL through the socket here
-	sprintf(buffer, ">stats");
+	sprintf(buffer, command);
 	send(socketfd, buffer, strlen (buffer), 0);
 
 	// Try to receive data until either recv() fails or we see "--EOM--"
 	while((size = recv(socketfd, buffer, BUF-1, 0)) > -1)
 	{
 		// Print received data to stdout
-		int i;
 		for(i = 0; i < size; ++i) {
 			printf("%02x ", (unsigned char) buffer[i]);
 		}
