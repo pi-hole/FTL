@@ -207,8 +207,8 @@ bool command(char *client_message, const char* cmd)
 // 	}
 // }
 
-/* qsort comparision function (count field), sort DESC */
-int cmpdesc(const void *a, const void *b)
+/* qsort comparision function (count field), sort ASC */
+int cmpasc(const void *a, const void *b)
 {
 	int *elem1 = (int*)a;
 	int *elem2 = (int*)b;
@@ -221,8 +221,8 @@ int cmpdesc(const void *a, const void *b)
 		return 0;
 }
 
-// qsort subroutine, sort ASC
-int cmpasc(const void *a, const void *b)
+// qsort subroutine, sort DESC
+int cmpdesc(const void *a, const void *b)
 {
 	int *elem1 = (int*)a;
 	int *elem2 = (int*)b;
@@ -411,7 +411,7 @@ void getTopDomains(char *client_message, int *sock)
 	for(i=0; i < counters.domains; i++)
 	{
 		// Get sorted indices
-		int j = temparray[counters.domains-i-1][0];
+		int j = temparray[i][0];
 		validate_access("domains", j, true, __LINE__, __FUNCTION__, __FILE__);
 
 		// Skip this domain if there is a filter on it
@@ -506,7 +506,7 @@ void getTopClients(char *client_message, int *sock)
 	for(i=0; i < counters.clients; i++)
 	{
 		// Get sorted indices
-		int j = temparray[counters.clients-i-1][0];
+		int j = temparray[i][0];
 		validate_access("clients", j, true, __LINE__, __FUNCTION__, __FILE__);
 
 		// Skip this client if there is a filter on it
