@@ -1013,7 +1013,6 @@ void getDBstats(int *sock)
 
 void getClientsOverTime(int *sock)
 {
-	char server_message[SOCKETBUFFERLEN];
 	int i, sendit = -1;
 
 	for(i = 0; i < counters.overTime; i++)
@@ -1055,7 +1054,7 @@ void getClientsOverTime(int *sock)
 	for(i = sendit; i < counters.overTime; i++)
 	{
 		validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
-		sprintf(server_message, "%i", overTime[i].timestamp);
+		ssend(*sock, "%i", overTime[i].timestamp);
 
 		// Loop over forward destinations to generate output to be sent to the client
 		int j;
@@ -1073,11 +1072,10 @@ void getClientsOverTime(int *sock)
 				thisclient = overTime[i].clientdata[j];
 			}
 
-			sprintf(server_message + strlen(server_message), " %i", thisclient);
+			ssend(*sock, " %i", thisclient);
 		}
 
-		sprintf(server_message + strlen(server_message), "\n");
-		ssend(*sock, server_message);
+		ssend(*sock, "\n");
 	}
 
 	if(excludeclients != NULL)
