@@ -11,6 +11,7 @@ The results can be accessed via a standard Unix socket (`var/run/pihole/FTL.sock
 This project is copyright under the latest version of the EUPL.
 
 Please see `LICENSE` file for your rights under this license.
+
 ---
 
 ### Compatibility list
