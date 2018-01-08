@@ -406,29 +406,20 @@ void getTopDomains(char *client_message, int *sock)
 		}
 	}
 
-	int skip = 0;
-	for(i=0; i < min(counters.domains, count+skip); i++)
+	int n = 0;
+	for(i=0; i < counters.domains; i++)
 	{
 		// Get sorted indices
 		int j = temparray[counters.domains-i-1][0];
 		validate_access("domains", j, true, __LINE__, __FUNCTION__, __FILE__);
 
 		// Skip this domain if there is a filter on it
-		if(excludedomains != NULL)
-		{
-			if(insetupVarsArray(domains[j].domain))
-			{
-				skip++;
-				continue;
-			}
-		}
+		if(excludedomains != NULL && insetupVarsArray(domains[j].domain))
+			continue;
 
 		// Skip this domain if already included in audit
 		if(audit && countlineswith(domains[j].domain, files.auditlist) > 0)
-		{
-			skip++;
 			continue;
-		}
 
 		if(blocked && showblocked && domains[j].blockedcount > 0)
 		{
@@ -437,12 +428,18 @@ void getTopDomains(char *client_message, int *sock)
 			else
 				sprintf(server_message,"%i %i %s\n",i,domains[j].blockedcount,domains[j].domain);
 			swrite(server_message, *sock);
+			n++;
 		}
 		else if(!blocked && showpermitted && (domains[j].count - domains[j].blockedcount) > 0)
 		{
 			sprintf(server_message,"%i %i %s\n",i,(domains[j].count - domains[j].blockedcount),domains[j].domain);
 			swrite(server_message, *sock);
+			n++;
 		}
+
+		// Only count entries that are actually sent and return when we have send enough data
+		if(n > count)
+			break;
 	}
 	if(excludedomains != NULL)
 		clearSetupVarsArray();
