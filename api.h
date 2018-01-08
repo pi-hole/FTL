@@ -26,7 +26,7 @@ void getClientNames(int *sock);
 void getMemoryUsage(int *sock);
 void getClientID(int *sock);
 void getVersion(int *sock);
-void getDBstats(int *sock, char type);
+void getDBstats(int *sock);
 void getUnknownQueries(int *sock);
 
 // DNS methods
@@ -44,6 +44,7 @@ void pack_eom(int sock);
 void pack_uint8(int sock, uint8_t value);
 void pack_uint64(int sock, uint64_t value);
 void pack_int32(int sock, int32_t value);
+void pack_int64(int sock, int64_t value);
 void pack_float(int sock, float value);
 void pack_fixstr(int sock, char *string);
 void pack_str32(int sock, char *string);

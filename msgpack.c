@@ -22,11 +22,7 @@ void pack_basic(int sock, uint8_t format, void *value, size_t size) {
 	swrite(sock, value, size);
 }
 
-void pack_uint8(int sock, uint8_t value) {
-	pack_basic(sock, 0xcc, &value, sizeof(value));
-}
-
-void pack_uint64(int sock, uint64_t value) {
+uint64_t leToBe64(uint64_t value) {
 	char *ptr = (char *) &value;
 	uint32_t part1, part2;
 
@@ -39,13 +35,30 @@ void pack_uint64(int sock, uint64_t value) {
 	part2 = htonl(part2);
 
 	// Arrange them to form the big-endian version of the original input
-	uint64_t bigEValue = (uint64_t) part1 << 32 | part2;
+	return (uint64_t) part1 << 32 | part2;
+}
+
+void pack_uint8(int sock, uint8_t value) {
+	pack_basic(sock, 0xcc, &value, sizeof(value));
+}
+
+void pack_uint64(int sock, uint64_t value) {
+	uint64_t bigEValue = leToBe64(value);
 	pack_basic(sock, 0xcf, &bigEValue, sizeof(bigEValue));
 }
 
 void pack_int32(int sock, int32_t value) {
 	uint32_t bigEValue = htonl((uint32_t) value);
 	pack_basic(sock, 0xd2, &bigEValue, sizeof(bigEValue));
+}
+
+void pack_int64(int sock, int64_t value) {
+	// Need to use memcpy to do a direct copy without reinterpreting the bytes (making negatives into positives).
+	// It should get optimized away.
+	uint64_t bigEValue;
+	memcpy(&bigEValue, &value, sizeof(bigEValue));
+	bigEValue = leToBe64(bigEValue);
+	pack_basic(sock, 0xd3, &bigEValue, sizeof(bigEValue));
 }
 
 void pack_float(int sock, float value) {

@@ -984,7 +984,7 @@ void getVersion(int *sock)
 		logg("Sent version info to client, ID: %i", *sock);
 }
 
-void getDBstats(int *sock, char type)
+void getDBstats(int *sock)
 {
 	// Get file details
 	struct stat st;
@@ -999,7 +999,13 @@ void getDBstats(int *sock, char type)
 	double formated = 0.0;
 	format_memory_size(prefix, filesize, &formated);
 
-	ssend(*sock,"queries in database: %i\ndatabase filesize: %.2f %sB\nSQLite version: %s\n", get_number_of_queries_in_DB(), formated, prefix, sqlite3_libversion());
+	if(istelnet[*sock])
+		ssend(*sock,"queries in database: %i\ndatabase filesize: %.2f %sB\nSQLite version: %s\n", get_number_of_queries_in_DB(), formated, prefix, sqlite3_libversion());
+	else {
+		pack_int32(*sock, get_number_of_queries_in_DB());
+		pack_int64(*sock, filesize);
+		pack_str32(*sock, (char *) sqlite3_libversion());
+	}
 
 	if(debugclients)
 		logg("Sent DB info to client, ID: %i", *sock);
