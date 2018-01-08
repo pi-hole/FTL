@@ -244,7 +244,7 @@ void getTopDomains(char *client_message, int *sock)
 			pack_int32(*sock, counters.queries - counters.invalidqueries);
 	}
 
-	int skip = 0; bool first = true;
+	int skip = 0;
 	for(i=0; i < min(counters.domains, count+skip); i++)
 	{
 		// Get sorted indices
@@ -351,7 +351,7 @@ void getTopClients(char *client_message, int *sock)
 		pack_int32(*sock, counters.queries - counters.invalidqueries);
 	}
 
-	int skip = 0; bool first = true;
+	int skip = 0;
 	for(i=0; i < min(counters.clients, count+skip); i++)
 	{
 		// Get sorted indices
@@ -395,7 +395,7 @@ void getTopClients(char *client_message, int *sock)
 
 void getForwardDestinations(char *client_message, int *sock)
 {
-	bool allocated = false, first = true, sort = true;
+	bool allocated = false, sort = true;
 	int i, temparray[counters.forwarded+1][2], forwardedsum = 0, totalqueries = 0;
 
 	if(command(client_message, "unsorted"))
@@ -617,7 +617,7 @@ void getAllQueries(char *client_message, int *sock)
 			logg("Privacy mode enabled");
 	}
 
-	int i; bool first = true;
+	int i;
 	for(i=ibeg; i < counters.queries; i++)
 	{
 		validate_access("queries", i, true, __LINE__, __FUNCTION__, __FILE__);
@@ -724,7 +724,7 @@ void getRecentBlocked(char *client_message, int *sock)
 
 	// Find most recent query with either status 1 (blocked)
 	// or status 4 (wildcard blocked)
-	int found = 0; bool first = true;
+	int found = 0;
 	for(i = counters.queries - 1; i > 0 ; i--)
 	{
 		validate_access("queries", i, true, __LINE__, __FUNCTION__, __FILE__);
@@ -805,7 +805,6 @@ void getForwardDestinationsOverTime(int *sock)
 
 	if(sendit > -1)
 	{
-		bool first = true;
 		for(i = sendit; i < counters.overTime; i++)
 		{
 			double percentage;
@@ -918,7 +917,6 @@ void getQueryTypesOverTime(int *sock)
 
 	if(sendit > -1)
 	{
-		bool first = true;
 		for(i = sendit; i < counters.overTime; i++)
 		{
 			validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
