@@ -1054,7 +1054,11 @@ void getClientsOverTime(int *sock)
 	for(i = sendit; i < counters.overTime; i++)
 	{
 		validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
-		ssend(*sock, "%i", overTime[i].timestamp);
+
+		if(istelnet[*sock])
+			ssend(*sock, "%i", overTime[i].timestamp);
+		else
+			pack_int32(*sock, overTime[i].timestamp);
 
 		// Loop over forward destinations to generate output to be sent to the client
 		int j;
@@ -1072,10 +1076,16 @@ void getClientsOverTime(int *sock)
 				thisclient = overTime[i].clientdata[j];
 			}
 
-			ssend(*sock, " %i", thisclient);
+			if(istelnet[*sock])
+				ssend(*sock, " %i", thisclient);
+			else
+				pack_int32(*sock, thisclient);
 		}
 
-		ssend(*sock, "\n");
+		if(istelnet[*sock])
+			ssend(*sock, "\n");
+		else
+			pack_int32(*sock, -1);
 	}
 
 	if(excludeclients != NULL)
