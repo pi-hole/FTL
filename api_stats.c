@@ -1123,7 +1123,13 @@ void getClientNames(int *sock)
 		if(insetupVarsArray(clients[i].ip) || insetupVarsArray(clients[i].name))
 			continue;
 
-		ssend(*sock, "%i %i %s %s\n", i, clients[i].count, clients[i].ip, clients[i].name);
+		if(istelnet[*sock])
+			ssend(*sock, "%i %i %s %s\n", i, clients[i].count, clients[i].ip, clients[i].name);
+		else {
+			pack_str32(*sock, clients[i].name);
+			pack_str32(*sock, clients[i].ip);
+			pack_int32(*sock, clients[i].count);
+		}
 	}
 
 	if(excludeclients != NULL)
