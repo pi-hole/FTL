@@ -1094,7 +1094,6 @@ void getClientsOverTime(int *sock)
 
 void getClientNames(int *sock)
 {
-	char server_message[SOCKETBUFFERLEN];
 	int i;
 
 	// Get clients which the user doesn't want to see
@@ -1124,8 +1123,7 @@ void getClientNames(int *sock)
 		if(insetupVarsArray(clients[i].ip) || insetupVarsArray(clients[i].name))
 			continue;
 
-		sprintf(server_message,"%i %i %s %s\n", i, clients[i].count, clients[i].ip, clients[i].name);
-		ssend(*sock, server_message);
+		ssend(*sock, "%i %i %s %s\n", i, clients[i].count, clients[i].ip, clients[i].name);
 	}
 
 	if(excludeclients != NULL)
