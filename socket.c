@@ -181,7 +181,7 @@ void ssend(int sock, const char *format, ...)
 }
 
 void swrite(int sock, void *value, size_t size) {
-	if(!write(sock, value, size))
+	if(write(sock, value, size) == -1)
 		logg("WARNING: Socket write returned error code %i", errno);
 }
 
