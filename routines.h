@@ -38,10 +38,12 @@ void pihole_log_flushed(bool message);
 
 void memory_check(int which);
 
-void close_socket(char type);
+void close_telnet_socket(void);
+void close_unix_socket(void);
 void seom(char server_message[], int sock);
 void swrite(char server_message[], int sock);
-void *socket_listenting_thread(void *args);
+void *telnet_listening_thread(void *args);
+void *socket_listening_thread(void *args);
 
 void process_request(char *client_message, int *sock);
 bool command(char *client_message, const char* cmd);

@@ -40,6 +40,9 @@
 #include "sqlite3.h"
 // tolower()
 #include <ctype.h>
+// Unix socket
+#include <sys/un.h>
+
 
 #include "routines.h"
 
@@ -73,6 +76,7 @@ typedef struct {
 	const char* pid;
 	const char* port;
 	char* db;
+	const char* socketfile;
 } FTLFileNamesStruct;
 
 typedef struct {
@@ -106,8 +110,6 @@ typedef struct {
 	int overTime;
 	int IPv4;
 	int IPv6;
-	int PTR;
-	int SRV;
 	int wildcarddomains;
 	int forwardedqueries;
 	int reply_NODATA;
@@ -168,6 +170,7 @@ typedef struct {
 	int blockedcount;
 	char *domain;
 	bool wildcard;
+	unsigned char dnssec;
 } domainsDataStruct;
 
 typedef struct {
@@ -197,6 +200,7 @@ typedef struct {
 
 enum { QUERIES, FORWARDED, CLIENTS, DOMAINS, OVERTIME, WILDCARD };
 enum { SOCKET };
+enum { DNSSEC_UNSPECIFIED, DNSSEC_SECURE, DNSSEC_INSECURE, DNSSEC_BOGUS, DNSSEC_ABANDONED, DNSSEC_UNKNOWN };
 
 logFileNamesStruct files;
 FTLFileNamesStruct FTLfiles;

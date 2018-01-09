@@ -70,13 +70,19 @@ void parse_args(int argc, char* argv[])
 		if(strcmp(argv[i], "-v") == 0 ||
 		   strcmp(argv[i], "version") == 0)
 		{
-			const char * version = GIT_VERSION;
-			// Check if version is of format vX.YY
-			// '.' can never be part of a commit hash
-			if(strstr(version, ".") != NULL)
+			const char * commit = GIT_HASH;
+			const char * tag = GIT_TAG;
+			if(strlen(tag) > 1)
+			{
 				printf("%s\n",GIT_VERSION);
+			}
 			else
-				printf("vDev-%s\n",GIT_HASH);
+			{
+				char hash[8];
+				// Extract first 7 characters of the hash
+				strncpy(hash, commit, 7); hash[7] = 0;
+				printf("vDev-%s\n", hash);
+			}
 			exit(EXIT_SUCCESS);
 		}
 
@@ -90,15 +96,7 @@ void parse_args(int argc, char* argv[])
 		if(strcmp(argv[i], "-b") == 0 ||
 		   strcmp(argv[i], "branch") == 0)
 		{
-			const char * branch = GIT_BRANCH;
-			const char * version = GIT_VERSION;
-			// Travis CI pulls on a tag basis, not by branch.
-			// Hence, it may happen that the master binary isn't aware of its branch.
-			// We check if this is the case and if there is a "vX.YY" like tag on the
-			// binary are print out branch "master" if we find that this is the case
-			if(strstr(branch, "(no branch)") != NULL && strstr(version, ".") != NULL)
-				branch = "master";
-			printf("%s\n",branch);
+			printf("%s\n",GIT_BRANCH);
 			exit(EXIT_SUCCESS);
 		}
 
@@ -126,6 +124,7 @@ void parse_args(int argc, char* argv[])
 			FTLfiles.log = "pihole-FTL.log";
 			// FTLfiles.db will be set to "pihole-FTL.db" via config file on Travis
 			FTLfiles.conf = "pihole-FTL.conf";
+			FTLfiles.socketfile = "pihole-FTL.sock";
 			files.log = "pihole.log";
 			ok = true;
 		}

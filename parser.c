@@ -484,6 +484,8 @@ void process_pihole_log(int file)
 				// Store domain name
 				domains[domainID].domain = strdup(domain);
 				memory.domainnames += (strlen(domain) + 1) * sizeof(char);
+				// Store DNSSEC result for this domain
+				domains[domainID].dnssec = DNSSEC_UNSPECIFIED;
 				// Increase counter by one
 				counters.domains++;
 			}
@@ -502,8 +504,6 @@ void process_pihole_log(int file)
 				// Debug output
 				if(strlen(hostname) > 0)
 				{
-					// Convert hostname to lower case
-					strtolower(hostname);
 					logg("New client: %s %s (%i: %i/%i)", client, hostname, dnsmasqID, clientID, counters.clients_MAX);
 				}
 				else
@@ -911,6 +911,12 @@ void process_pihole_log(int file)
 				continue;
 			}
 
+			if(queries[i].reply != 0)
+			{
+				// Skip this entry if we already found the first result for this query before
+				continue;
+			}
+
 			// Iterate through possible values
 			if(strstr(readbuffer," is NODATA") != NULL)
 			{
@@ -942,6 +948,64 @@ void process_pihole_log(int file)
 				// free(result);
 			}
 		}
+		// is this a "validaton" line? -- DNSSEC
+		else if(strstr(readbuffer," validation ") != NULL && strstr(readbuffer," is ") != NULL)
+		{
+			// Check query for invalid characters
+			if(!checkQuery(readbuffer, "DNSSEC"))
+				continue;
+
+			// Get dnsmasq's ID for this transaction
+			int dnsmasqID = getID(readbuffer);
+			// Skip invalid lines
+			if(dnsmasqID < 0)
+				continue;
+
+			// Search for corresponding query indentified by dnsmasq's ID
+			bool found = false;
+			for(i=0; i<counters.queries; i++)
+			{
+				// Check both UUID and generation of this query
+				if(queries[i].id == dnsmasqID && queries[i].generation == loggeneration)
+				{
+					found = true;
+					break;
+				}
+			}
+
+			if(!found)
+			{
+				// This may happen e.g. if the original query was a PTR query or "pi.hole"
+				// as we ignore them altogether
+				continue;
+			}
+
+			validate_access("domains", queries[i].domainID, true, __LINE__, __FUNCTION__, __FILE__);
+			// Iterate through possible values
+			if(strstr(readbuffer,"is SECURE") != NULL)
+			{
+				domains[queries[i].domainID].dnssec = DNSSEC_SECURE;
+			}
+			else if(strstr(readbuffer,"is INSECURE") != NULL)
+			{
+				domains[queries[i].domainID].dnssec = DNSSEC_INSECURE;
+			}
+			else if(strstr(readbuffer,"is BOGUS") != NULL)
+			{
+				domains[queries[i].domainID].dnssec = DNSSEC_BOGUS;
+			}
+			else if(strstr(readbuffer,"is ABANDONED") != NULL)
+			{
+				domains[queries[i].domainID].dnssec = DNSSEC_ABANDONED;
+			}
+			else
+			{
+				// Unknown
+				domains[queries[i].domainID].dnssec = DNSSEC_UNKNOWN;
+				if(debug) logg("Unknown DNSSEC reply: %i\n\"%s\"",dnsmasqID,readbuffer);
+			}
+		}
+
 
 		// Save file pointer position, because we might have to repeat
 		// reading the next line if dnsmasq hasn't finished writing it
@@ -1015,6 +1079,8 @@ char *resolveHostname(const char *addr)
 	{
 		// Return hostname copied to new memory location
 		hostname = strdup(he->h_name);
+		// Convert hostname to lower case
+		strtolower(hostname);
 	}
 
 	return hostname;
