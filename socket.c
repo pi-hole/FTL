@@ -103,7 +103,6 @@ void bind_to_telnet_port(char type, int *socketdescriptor)
 	{
 		// Try IPv4 only socket
 		// see the comments further up for details
-		logg("Error listening on any IPv4 + IPv6 port, trying IPv4-only binding");
 		*socketdescriptor = socket(AF_INET, SOCK_STREAM, 0);
 
 		struct sockaddr_in serv_addr4;
@@ -471,9 +470,8 @@ bool ipv6_available(void)
 			{
 				iface[addr->sa_family == AF_INET6 ? 1 : 0]++;
 
-				// Debug statement that is only executed on TravisCI
-				if(travis)
-					logg("Interface %s is %s", interface->ifa_name, addr->sa_family == AF_INET6 ? "IPv6" : "IPv4");
+				// For now unused debug statement
+				// logg("Interface %s is %s", interface->ifa_name, addr->sa_family == AF_INET6 ? "IPv6" : "IPv4");
 			}
 		}
 		freeifaddrs(allInterfaces);
