@@ -151,7 +151,7 @@ void bind_to_telnet_port(char type, int *socketdescriptor)
 		exit(EXIT_FAILURE);
 	}
 
-	logg("Listening on port %i for incoming %s connections", port, dualstack == true ? "IPv4 + IPv6" : "IPv4");
+	logg("Listening on port %i for incoming %s connections", port, dualstack ? "IPv4 + IPv6" : "IPv4");
 }
 
 
