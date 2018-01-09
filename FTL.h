@@ -42,6 +42,9 @@
 #include <ctype.h>
 // Unix socket
 #include <sys/un.h>
+// Interfaces
+#include <ifaddrs.h>
+#include <net/if.h>
 
 
 #include "routines.h"

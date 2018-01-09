@@ -41,73 +41,68 @@ void saveport(int port)
 
 void bind_to_telnet_port(char type, int *socketdescriptor)
 {
-	*socketdescriptor = socket(AF_INET6, SOCK_STREAM, 0);
+	int port, port_init = 4711;
 
-	if(*socketdescriptor < 0)
+	if(ipv6_available())
 	{
-		logg("Error opening telnet socket");
-		exit(EXIT_FAILURE);
-	}
+		*socketdescriptor = socket(AF_INET6, SOCK_STREAM, 0);
 
-	// Set SO_REUSEADDR to allow re-binding to the port that has been used
-	// previously by FTL. A common pattern is that you change FTL's
-	// configuration file and need to restart that server to make it reload
-	// its configuration. Without SO_REUSEADDR, the bind() call in the restarted
-	// new instance will fail if there were connections open to the previous
-	// instance when you killed it. Those connections will hold the TCP port in
-	// the TIME_WAIT state for 30-120 seconds, so you fall into case 1 above.
-	setsockopt(*socketdescriptor, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int));
-
-	struct sockaddr_in6 serv_addr;
-	// set all values in the buffer to zero
-	memset(&serv_addr, 0, sizeof(serv_addr));
-	serv_addr.sin6_family = AF_INET6;
-
-	if(config.socket_listenlocal && type == SOCKET)
-		serv_addr.sin6_addr = in6addr_loopback;
-	else
-		serv_addr.sin6_addr = in6addr_any;
-
-	// The bind() system call binds a socket to an address,
-	// in this case the address of the current host and
-	// port number on which the server will run.
-	// convert this to network byte order using the function htons()
-	// which converts a port number in host byte order to a port number
-	// in network byte order
-	int port, port_init;
-
-	switch(type)
-	{
-		case SOCKET:
-			port_init = 4711;
-			break;
-		default:
-			logg("Incompatible socket type %i", (int)type);
+		if(*socketdescriptor < 0)
+		{
+			logg("Error opening telnet socket");
 			exit(EXIT_FAILURE);
-			break;
-	}
-
-	bool bound = false;
-	// Try dual-stack socket
-	for(port = port_init; port <= (port_init + 20); port++)
-	{
-		serv_addr.sin6_port = htons(port);
-		if(bind(*socketdescriptor, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0)
-		{
-			logg("Error on binding on port %i", port);
 		}
+
+		// Set SO_REUSEADDR to allow re-binding to the port that has been used
+		// previously by FTL. A common pattern is that you change FTL's
+		// configuration file and need to restart that server to make it reload
+		// its configuration. Without SO_REUSEADDR, the bind() call in the restarted
+		// new instance will fail if there were connections open to the previous
+		// instance when you killed it. Those connections will hold the TCP port in
+		// the TIME_WAIT state for 30-120 seconds, so you fall into case 1 above.
+		setsockopt(*socketdescriptor, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int));
+
+		struct sockaddr_in6 serv_addr;
+		// set all values in the buffer to zero
+		memset(&serv_addr, 0, sizeof(serv_addr));
+		serv_addr.sin6_family = AF_INET6;
+
+		if(config.socket_listenlocal && type == SOCKET)
+			serv_addr.sin6_addr = in6addr_loopback;
 		else
-		{
-			bound = true;
-			dualstack = true;
-			break;
-		}
-	}
+			serv_addr.sin6_addr = in6addr_any;
 
-	// Try IPv4 only socket, much of the code seen above is duplicated here for IPv4,
-	// see the comments further up for details
-	if(!bound)
+		// The bind() system call binds a socket to an address,
+		// in this case the address of the current host and
+		// port number on which the server will run.
+		// convert this to network byte order using the function htons()
+		// which converts a port number in host byte order to a port number
+		// in network byte order
+
+		bool bound = false;
+		// Bind to dual-stack socket
+		for(port = port_init; port <= (port_init + 20); port++)
+		{
+			serv_addr.sin6_port = htons(port);
+			if(bind(*socketdescriptor, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) >= 0)
+			{
+				bound = true;
+				dualstack = true;
+				break;
+			}
+		}
+
+		if(!bound)
+		{
+			logg("Error listening on any IPv4 + IPv6 port");
+			exit(EXIT_FAILURE);
+		}
+
+	}
+	else
 	{
+		// Try IPv4 only socket
+		// see the comments further up for details
 		logg("Error listening on any IPv4 + IPv6 port, trying IPv4-only binding");
 		*socketdescriptor = socket(AF_INET, SOCK_STREAM, 0);
 
@@ -120,29 +115,26 @@ void bind_to_telnet_port(char type, int *socketdescriptor)
 		else
 			serv_addr4.sin_addr.s_addr = INADDR_ANY;
 
+		bool bound = false;
+		// Bind to IPv4 port
 		for(port = port_init; port <= (port_init + 20); port++)
 		{
 			serv_addr4.sin_port = htons(port);
-			if(bind(*socketdescriptor, (struct sockaddr *) &serv_addr4, sizeof(serv_addr4)) < 0)
-			{
-				logg("Error on binding on IPv4 port %i", port);
-			}
-			else
+			if(bind(*socketdescriptor, (struct sockaddr *) &serv_addr4, sizeof(serv_addr4)) >= 0)
 			{
 				bound = true;
 				break;
 			}
 		}
+
+		if(!bound)
+		{
+			logg("Error listening on any IPv4 port");
+			exit(EXIT_FAILURE);
+		}
 	}
 
-	if(!bound)
-	{
-		logg("Error listening on any IPv4 port");
-		exit(EXIT_FAILURE);
-	}
-
-	if(type == SOCKET)
-		saveport(port);
+	saveport(port);
 
 	// The listen system call allows the process to listen on the socket for connections
 	if(listen(*socketdescriptor, BACKLOG) == -1)
@@ -457,4 +449,40 @@ void *socket_listening_thread(void *args)
 		}
 	}
 	return 0;
+}
+
+bool ipv6_available(void)
+{
+	struct ifaddrs *allInterfaces;
+	int iface[2] = { 0 };
+
+	// Get all interfaces
+	if (getifaddrs(&allInterfaces) == 0)
+	{
+		struct ifaddrs *interface;
+		// Loop over interfaces
+		for (interface = allInterfaces; interface != NULL; interface = interface->ifa_next)
+		{
+			unsigned int flags = interface->ifa_flags;
+			struct sockaddr *addr = interface->ifa_addr;
+
+			// Check only for up and running IPv4, IPv6 interfaces
+			if ((flags & (IFF_UP|IFF_RUNNING)) && addr != NULL)
+			{
+				iface[addr->sa_family == AF_INET6 ? 1 : 0]++;
+
+				// Debug statement that is only executed on TravisCI
+				if(travis)
+					logg("Interface %s is %s", interface->ifa_name, addr->sa_family == AF_INET6 ? "IPv6" : "IPv4");
+			}
+		}
+		freeifaddrs(allInterfaces);
+	}
+
+	if(debug)
+	{
+		logg("Found %i IPv4 and %i IPv6 capable interfaces", iface[0], iface[1]);
+	}
+
+	return (iface[1] > 0);
 }
