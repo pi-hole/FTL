@@ -797,10 +797,27 @@ void getForwardDestinationsOverTime(int *sock)
 		}
 	}
 
-	// Send the number of forward destinations (number of items for each timestamp)
+	// Send the number of forward destinations (number of items for each timestamp), names, and IPs
 	if(!istelnet[*sock]) {
 		// Add one to include the local forwarded category
 		pack_int32(*sock, counters.forwarded + 1);
+
+		for(i = 0; i < counters.forwarded + 1; i++) {
+			char *name, *ip;
+
+			if(i == counters.forwarded) {
+				name = "local";
+				ip = "::1";
+			}
+			else {
+				validate_access("forwarded", i, true, __LINE__, __FUNCTION__, __FILE__);
+				name = forwarded[i].name;
+				ip = forwarded[i].ip;
+			}
+
+			pack_str32(*sock, name);
+			pack_str32(*sock, ip);
+		}
 	}
 
 	if(sendit > -1)
