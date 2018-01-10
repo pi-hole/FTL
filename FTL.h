@@ -131,6 +131,7 @@ typedef struct {
 	bool resolveIPv6;
 	bool resolveIPv4;
 	int DBinterval;
+	int port;
 } ConfigStruct;
 
 // Dynamic structs

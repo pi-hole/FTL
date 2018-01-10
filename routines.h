@@ -42,7 +42,8 @@ void close_telnet_socket(void);
 void close_unix_socket(void);
 void seom(char server_message[], int sock);
 void swrite(char server_message[], int sock);
-void *telnet_listening_thread(void *args);
+void *telnet_listening_thread_IPv4(void *args);
+void *telnet_listening_thread_IPv6(void *args);
 void *socket_listening_thread(void *args);
 bool ipv6_available(void);
 
