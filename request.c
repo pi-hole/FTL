@@ -108,6 +108,21 @@ void process_request(char *client_message, int *sock, char type)
 		processed = true;
 		getUnknownQueries(sock);
 	}
+	else if(command(client_message, ">getWhitelist"))
+	{
+		processed = true;
+		getList(sock, WHITELIST);
+	}
+	else if(command(client_message, ">getBlacklist"))
+	{
+		processed = true;
+		getList(sock, BLACKLIST);
+	}
+	else if(command(client_message, ">getWildlist"))
+	{
+		processed = true;
+		getList(sock, WILDLIST);
+	}
 
 	// Test only at the end if we want to quit or kill
 	// so things can be processed before

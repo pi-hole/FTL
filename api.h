@@ -30,7 +30,7 @@ void getDBstats(int *sock);
 void getUnknownQueries(int *sock);
 
 // DNS methods
-void getList(int *sock, char type, char list_type);
+void getList(int *sock, char list_type);
 void addList(int *sock, char type, char list_type, char *data);
 void removeList(int *sock, char type, char list_type, char *client_message);
 void getPiholeStatus(int *sock, char type);
