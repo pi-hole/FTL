@@ -42,7 +42,6 @@ void saveport(void)
 char bind_to_telnet_port_IPv4(char type, int *socketdescriptor)
 {
 	// IPv4 socket
-	// see the comments further up for details
 	*socketdescriptor = socket(AF_INET, SOCK_STREAM, 0);
 
 	if(*socketdescriptor < 0)
