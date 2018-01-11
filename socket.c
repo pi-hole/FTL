@@ -41,7 +41,7 @@ void saveport(void)
 
 char bind_to_telnet_port_IPv4(char type, int *socketdescriptor)
 {
-	// Try IPv4 only socket
+	// IPv4 socket
 	// see the comments further up for details
 	*socketdescriptor = socket(AF_INET, SOCK_STREAM, 0);
 
@@ -91,7 +91,7 @@ char bind_to_telnet_port_IPv4(char type, int *socketdescriptor)
 
 char bind_to_telnet_port_IPv6(char type, int *socketdescriptor)
 {
-	// Try IPv6 only socket
+	// IPv6 socket
 	*socketdescriptor = socket(AF_INET6, SOCK_STREAM, 0);
 
 	if(*socketdescriptor < 0)
@@ -157,7 +157,7 @@ void bind_to_unix_socket(int *socketdescriptor)
 
 	if(*socketdescriptor < 0)
 	{
-		logg("Error opening unix socket");
+		logg("Error opening Unix socket");
 		exit(EXIT_FAILURE);
 	}
 
@@ -172,7 +172,7 @@ void bind_to_unix_socket(int *socketdescriptor)
 	errno = 0;
 	if(bind(*socketdescriptor, (struct sockaddr *) &address, sizeof (address)) != 0)
 	{
-		logg("Error on binding on unix socket %s: %s (%i)", FTLfiles.socketfile, strerror(errno), errno);
+		logg("Error on binding on Unix socket %s: %s (%i)", FTLfiles.socketfile, strerror(errno), errno);
 		exit(EXIT_FAILURE);
 	}
 
@@ -383,7 +383,7 @@ void *telnet_listening_thread_IPv4(void *args)
 	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
 	// Set thread name
-	prctl(PR_SET_NAME,"telnet-v4",0,0,0);
+	prctl(PR_SET_NAME,"telnet-IPv4",0,0,0);
 
 	// Initialize sockets only after initial log parsing in listenting_thread
 	bind_to_telnet_port_IPv4(SOCKET, &telnetfd4);
@@ -428,7 +428,7 @@ void *telnet_listening_thread_IPv6(void *args)
 	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
 	// Set thread name
-	prctl(PR_SET_NAME,"telnet-v6",0,0,0);
+	prctl(PR_SET_NAME,"telnet-IPv6",0,0,0);
 
 	// Initialize sockets only after initial log parsing in listenting_thread
 	if(ipv6_available())
