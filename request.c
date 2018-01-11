@@ -123,6 +123,11 @@ void process_request(char *client_message, int *sock, char type)
 		processed = true;
 		getList(sock, WILDLIST);
 	}
+	else if(command(client_message, ">status"))
+	{
+		processed = true;
+		getPiholeStatus(sock);
+	}
 
 	// Test only at the end if we want to quit or kill
 	// so things can be processed before

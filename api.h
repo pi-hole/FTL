@@ -33,7 +33,7 @@ void getUnknownQueries(int *sock);
 void getList(int *sock, char list_type);
 void addList(int *sock, char type, char list_type, char *data);
 void removeList(int *sock, char type, char list_type, char *client_message);
-void getPiholeStatus(int *sock, char type);
+void getPiholeStatus(int *sock);
 
 // General API commands
 bool matchesRegex(char *regex_expression, char *input);
