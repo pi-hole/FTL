@@ -14,8 +14,6 @@ version*
 .idea/
 
 # Test-generated files
-/test/libs/*
-/.gitmodules
 /pihole.log
 /pihole-FTL.conf
 /pihole-FTL.db
