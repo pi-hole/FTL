@@ -31,7 +31,7 @@ load 'libs/bats-support/load'
   [[ ${lines[11]} == "---EOM---" ]]
 }
 
-@test "Top Clients" {
+@test "Top Clients (descending, default)" {
   run bash -c 'echo ">top-clients" | nc -v 127.0.0.1 4711'
   echo "output: ${lines[@]}"
   [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
@@ -41,23 +41,53 @@ load 'libs/bats-support/load'
   [[ ${lines[4]} == "---EOM---" ]]
 }
 
-@test "Top Domains" {
+@test "Top Clients (ascending)" {
+  run bash -c 'echo ">top-clients asc" | nc -v 127.0.0.1 4711'
+  echo "output: ${lines[@]}"
+  [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
+  [[ ${lines[1]} =~ "0 1 10.8.0.2" ]]
+  [[ ${lines[2]} =~ "1 2 127.0.0.1" ]]
+  [[ ${lines[3]} =~ "2 4 192.168.2.208" ]]
+  [[ ${lines[4]} == "---EOM---" ]]
+}
+
+@test "Top Domains (descending, default)" {
   run bash -c 'echo ">top-domains" | nc -v 127.0.0.1 4711'
   echo "output: ${lines[@]}"
   [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
   [[ ${lines[1]} == "0 2 play.google.com" ]]
-  [[ ${lines[2]} == "1 1 example.com" ]]
+  [[ ${lines[2]} == "1 1 raspberrypi" ]]
   [[ ${lines[3]} == "2 1 checkip.dyndns.org" ]]
-  [[ ${lines[4]} == "3 1 raspberrypi" ]]
+  [[ ${lines[4]} == "3 1 example.com" ]]
   [[ ${lines[5]} == "---EOM---" ]]
 }
 
-@test "Top Ads" {
+@test "Top Domains (ascending)" {
+  run bash -c 'echo ">top-domains asc" | nc -v 127.0.0.1 4711'
+  echo "output: ${lines[@]}"
+  [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
+  [[ ${lines[1]} == "0 1 raspberrypi" ]]
+  [[ ${lines[2]} == "1 1 checkip.dyndns.org" ]]
+  [[ ${lines[3]} == "2 1 example.com" ]]
+  [[ ${lines[4]} == "3 2 play.google.com" ]]
+  [[ ${lines[5]} == "---EOM---" ]]
+}
+
+@test "Top Ads (descending, default)" {
   run bash -c 'echo ">top-ads" | nc -v 127.0.0.1 4711'
   echo "output: ${lines[@]}"
   [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
-  [[ ${lines[1]} == "0 1 addomain.com" ]]
-  [[ ${lines[2]} == "1 1 blacklisted.com" ]]
+  [[ ${lines[1]} == "0 1 blacklisted.com" ]]
+  [[ ${lines[2]} == "1 1 addomain.com" ]]
+  [[ ${lines[3]} == "---EOM---" ]]
+}
+
+@test "Top Ads (ascending)" {
+  run bash -c 'echo ">top-ads asc" | nc -v 127.0.0.1 4711'
+  echo "output: ${lines[@]}"
+  [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
+  [[ ${lines[1]} == "0 1 blacklisted.com" ]]
+  [[ ${lines[2]} == "1 1 addomain.com" ]]
   [[ ${lines[3]} == "---EOM---" ]]
 }
 

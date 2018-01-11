@@ -329,11 +329,12 @@ void getTopDomains(char *client_message, int *sock)
 {
 	char server_message[SOCKETBUFFERLEN];
 	int i, temparray[counters.domains][2], count=10, num;
-	bool blocked = command(client_message, ">top-ads"), audit = false, desc = false;
+	bool blocked = command(client_message, ">top-ads"), audit = false, asc = false;
 
 	// Exit before processing any data if requested via config setting
 	if(!config.query_display)
 		return;
+
 
 	// Match both top-domains and top-ads
 	if(sscanf(client_message, ">%*[^(](%i)", &num) > 0)
@@ -349,9 +350,9 @@ void getTopDomains(char *client_message, int *sock)
 	}
 
 	// Sort in descending order?
-	if(command(client_message, " desc"))
+	if(command(client_message, " asc"))
 	{
-		desc = true;
+		asc = true;
 	}
 
 	for(i=0; i < counters.domains; i++)
@@ -366,10 +367,10 @@ void getTopDomains(char *client_message, int *sock)
 	}
 
 	// Sort temporary array
-	if(desc)
-		qsort(temparray, counters.domains, sizeof(int[2]), cmpdesc);
-	else
+	if(asc)
 		qsort(temparray, counters.domains, sizeof(int[2]), cmpasc);
+	else
+		qsort(temparray, counters.domains, sizeof(int[2]), cmpdesc);
 
 
 	// Get filter
@@ -406,43 +407,40 @@ void getTopDomains(char *client_message, int *sock)
 		}
 	}
 
-	int skip = 0;
-	for(i=0; i < min(counters.domains, count+skip); i++)
+	int n = 0;
+	for(i=0; i < counters.domains; i++)
 	{
 		// Get sorted indices
-		int j = temparray[counters.domains-i-1][0];
+		int j = temparray[i][0];
 		validate_access("domains", j, true, __LINE__, __FUNCTION__, __FILE__);
 
 		// Skip this domain if there is a filter on it
-		if(excludedomains != NULL)
-		{
-			if(insetupVarsArray(domains[j].domain))
-			{
-				skip++;
-				continue;
-			}
-		}
+		if(excludedomains != NULL && insetupVarsArray(domains[j].domain))
+			continue;
 
 		// Skip this domain if already included in audit
 		if(audit && countlineswith(domains[j].domain, files.auditlist) > 0)
-		{
-			skip++;
 			continue;
-		}
 
 		if(blocked && showblocked && domains[j].blockedcount > 0)
 		{
 			if(audit && domains[j].wildcard)
-				sprintf(server_message,"%i %i %s wildcard\n",i,domains[j].blockedcount,domains[j].domain);
+				sprintf(server_message,"%i %i %s wildcard\n", n, domains[j].blockedcount, domains[j].domain);
 			else
-				sprintf(server_message,"%i %i %s\n",i,domains[j].blockedcount,domains[j].domain);
+				sprintf(server_message,"%i %i %s\n", n ,domains[j].blockedcount, domains[j].domain);
 			swrite(server_message, *sock);
+			n++;
 		}
 		else if(!blocked && showpermitted && (domains[j].count - domains[j].blockedcount) > 0)
 		{
-			sprintf(server_message,"%i %i %s\n",i,(domains[j].count - domains[j].blockedcount),domains[j].domain);
+			sprintf(server_message,"%i %i %s\n", n, (domains[j].count - domains[j].blockedcount), domains[j].domain);
 			swrite(server_message, *sock);
+			n++;
 		}
+
+		// Only count entries that are actually sent and return when we have send enough data
+		if(n > count)
+			break;
 	}
 	if(excludedomains != NULL)
 		clearSetupVarsArray();
@@ -482,8 +480,18 @@ void getTopClients(char *client_message, int *sock)
 		temparray[i][1] = clients[i].count;
 	}
 
+	// Sort in ascending order?
+	bool asc = false;
+	if(command(client_message, " asc"))
+	{
+		asc = true;
+	}
+
 	// Sort temporary array
-	qsort(temparray, counters.clients, sizeof(int[2]), cmpasc);
+	if(asc)
+		qsort(temparray, counters.clients, sizeof(int[2]), cmpasc);
+	else
+		qsort(temparray, counters.clients, sizeof(int[2]), cmpdesc);
 
 	// Get clients which the user doesn't want to see
 	char * excludeclients = read_setupVarsconf("API_EXCLUDE_CLIENTS");
@@ -494,31 +502,30 @@ void getTopClients(char *client_message, int *sock)
 			logg("Excluding %i clients from being displayed", setupVarsElements);
 	}
 
-	int skip = 0;
-	for(i=0; i < min(counters.clients, count+skip); i++)
+	int n = 0;
+	for(i=0; i < counters.clients; i++)
 	{
 		// Get sorted indices
-		int j = temparray[counters.clients-i-1][0];
+		int j = temparray[i][0];
 		validate_access("clients", j, true, __LINE__, __FUNCTION__, __FILE__);
 
 		// Skip this client if there is a filter on it
-		if(excludeclients != NULL)
-		{
-			if(insetupVarsArray(clients[j].ip) ||
-			   insetupVarsArray(clients[j].name))
-			{
-				skip++;
-				continue;
-			}
-		}
+		if(excludeclients != NULL && (insetupVarsArray(clients[j].ip) || insetupVarsArray(clients[j].name)))
+			continue;
+
 		// Return this client if either
 		// - "withzero" option is set, and/or
 		// - the client made at least one query within the most recent 24 hours
 		if(includezeroclients || clients[j].count > 0)
 		{
-			sprintf(server_message,"%i %i %s %s\n",i,clients[j].count,clients[j].ip,clients[j].name);
+			sprintf(server_message,"%i %i %s %s\n", n, clients[j].count, clients[j].ip, clients[j].name);
 			swrite(server_message, *sock);
+			n++;
 		}
+
+		// Only count entries that are actually sent and return when we have send enough data
+		if(n > count)
+			break;
 	}
 	if(excludeclients != NULL)
 		clearSetupVarsArray();
