@@ -419,7 +419,7 @@ void getTopDomains(char *client_message, int *sock)
 		}
 
 		// Only count entries that are actually sent and return when we have send enough data
-		if(n > count)
+		if(n == count)
 			break;
 	}
 	if(excludedomains != NULL)
@@ -502,7 +502,7 @@ void getTopClients(char *client_message, int *sock)
 		}
 
 		// Only count entries that are actually sent and return when we have send enough data
-		if(n > count)
+		if(n == count)
 			break;
 	}
 	if(excludeclients != NULL)
