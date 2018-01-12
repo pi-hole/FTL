@@ -161,7 +161,7 @@ void getOverTime(int *sock)
 void getTopDomains(char *client_message, int *sock)
 {
 	int i, temparray[counters.domains][2], count=10, num;
-	bool blocked, audit = false, desc = false;
+	bool blocked, audit = false, asc = false;
 
 	blocked = command(client_message, ">top-ads");
 
@@ -181,10 +181,10 @@ void getTopDomains(char *client_message, int *sock)
 	if(command(client_message, " for audit"))
 		audit = true;
 
-	// Sort in descending order?
-	// example: >top-domains desc
-	if(command(client_message, " desc"))
-		desc = true;
+	// Sort in ascending order?
+	// example: >top-domains asc
+	if(command(client_message, " asc"))
+		asc = true;
 
 	for(i=0; i < counters.domains; i++)
 	{
@@ -198,10 +198,10 @@ void getTopDomains(char *client_message, int *sock)
 	}
 
 	// Sort temporary array
-	if(desc)
-		qsort(temparray, counters.domains, sizeof(int[2]), cmpdesc);
-	else
+	if(asc)
 		qsort(temparray, counters.domains, sizeof(int[2]), cmpasc);
+	else
+		qsort(temparray, counters.domains, sizeof(int[2]), cmpdesc);
 
 
 	// Get filter
@@ -244,29 +244,20 @@ void getTopDomains(char *client_message, int *sock)
 			pack_int32(*sock, counters.queries - counters.invalidqueries);
 	}
 
-	int skip = 0;
-	for(i=0; i < min(counters.domains, count+skip); i++)
+	int n = 0;
+	for(i=0; i < counters.domains; i++)
 	{
 		// Get sorted indices
-		int j = temparray[counters.domains-i-1][0];
+		int j = temparray[i][0];
 		validate_access("domains", j, true, __LINE__, __FUNCTION__, __FILE__);
 
 		// Skip this domain if there is a filter on it
-		if(excludedomains != NULL)
-		{
-			if(insetupVarsArray(domains[j].domain))
-			{
-				skip++;
-				continue;
-			}
-		}
+		if(excludedomains != NULL && insetupVarsArray(domains[j].domain))
+			continue;
 
 		// Skip this domain if already included in audit
 		if(audit && countlineswith(domains[j].domain, files.auditlist) > 0)
-		{
-			skip++;
 			continue;
-		}
 
 		if(blocked && showblocked && domains[j].blockedcount > 0)
 		{
@@ -282,6 +273,7 @@ void getTopDomains(char *client_message, int *sock)
 				pack_str32(*sock, domains[j].domain);
 				pack_int32(*sock, domains[j].blockedcount);
 			}
+			n++;
 		}
 		else if(!blocked && showpermitted && (domains[j].count - domains[j].blockedcount) > 0)
 		{
@@ -292,7 +284,12 @@ void getTopDomains(char *client_message, int *sock)
 				pack_str32(*sock, domains[j].domain);
 				pack_int32(*sock, domains[j].count - domains[j].blockedcount);
 			}
+			n++;
 		}
+
+		// Only count entries that are actually sent and return when we have send enough data
+		if(n > count)
+			break;
 	}
 
 	if(excludedomains != NULL)
@@ -332,8 +329,17 @@ void getTopClients(char *client_message, int *sock)
 		temparray[i][1] = clients[i].count;
 	}
 
+	// Sort in ascending order?
+	// example: >top-clients asc
+	bool asc = false;
+	if(command(client_message, " asc"))
+		asc = true;
+
 	// Sort temporary array
-	qsort(temparray, counters.clients, sizeof(int[2]), cmpasc);
+	if(asc)
+		qsort(temparray, counters.clients, sizeof(int[2]), cmpasc);
+	else
+		qsort(temparray, counters.clients, sizeof(int[2]), cmpdesc);
 
 	// Get clients which the user doesn't want to see
 	char * excludeclients = read_setupVarsconf("API_EXCLUDE_CLIENTS");
@@ -351,23 +357,16 @@ void getTopClients(char *client_message, int *sock)
 		pack_int32(*sock, counters.queries - counters.invalidqueries);
 	}
 
-	int skip = 0;
-	for(i=0; i < min(counters.clients, count+skip); i++)
+	int n = 0;
+	for(i=0; i < counters.clients; i++)
 	{
 		// Get sorted indices
-		int j = temparray[counters.clients-i-1][0];
+		int j = temparray[i][0];
 		validate_access("clients", j, true, __LINE__, __FUNCTION__, __FILE__);
 
 		// Skip this client if there is a filter on it
-		if(excludeclients != NULL)
-		{
-			if(insetupVarsArray(clients[j].ip) ||
-			   insetupVarsArray(clients[j].name))
-			{
-				skip++;
-				continue;
-			}
-		}
+		if(excludeclients != NULL && (insetupVarsArray(clients[j].ip) || insetupVarsArray(clients[j].name)))
+			continue;
 
 		// Return this client if either
 		// - "withzero" option is set, and/or
@@ -382,7 +381,11 @@ void getTopClients(char *client_message, int *sock)
 				pack_str32(*sock, clients[j].ip);
 				pack_int32(*sock, clients[j].count);
 			}
+			n++;
 		}
+
+		if(n > count)
+			break;
 	}
 
 	if(excludeclients != NULL)
@@ -962,35 +965,33 @@ void getQueryTypesOverTime(int *sock)
 
 void getVersion(int *sock)
 {
-	const char * version = GIT_VERSION;
-	const char * branch = GIT_BRANCH;
-	// Travis CI pulls on a tag basis, not by branch.
-	// Hence, it may happen that the master binary isn't aware of its branch.
-	// We check if this is the case and if there is a "vX.YY" like tag on the
-	// binary are print out branch "master" if we find that this is the case
-	if(strstr(branch, "(no branch)") != NULL && strstr(version, ".") != NULL)
-		branch = "master";
+	const char * commit = GIT_HASH;
+	const char * tag = GIT_TAG;
 
-	if(strstr(version, ".") != NULL) {
+	if(strlen(tag) > 1) {
 		if(istelnet[*sock])
-			ssend(*sock, "version %s\ntag %s\nbranch %s\ndate %s\n", version, GIT_TAG, branch, GIT_DATE);
+			ssend(*sock, "version %s\ntag %s\nbranch %s\ndate %s\n", GIT_VERSION, tag, GIT_BRANCH, GIT_DATE);
 		else {
-			pack_str32(*sock, (char *) version);
-			pack_str32(*sock, GIT_TAG);
-			pack_str32(*sock, (char *) branch);
+			pack_str32(*sock, GIT_VERSION);
+			pack_str32(*sock, (char *) tag);
+			pack_str32(*sock, GIT_BRANCH);
 			pack_str32(*sock, GIT_DATE);
 		}
 	}
 	else {
+		char hash[8];
+		// Extract first 7 characters of the hash
+		strncpy(hash, commit, 7); hash[7] = 0;
+
 		if(istelnet[*sock])
-			ssend(*sock, "version vDev-%s\ntag %s\nbranch %s\ndate %s\n", GIT_HASH, GIT_TAG, branch, GIT_DATE);
+			ssend(*sock, "version vDev-%s\ntag %s\nbranch %s\ndate %s\n", hash, tag, GIT_BRANCH, GIT_DATE);
 		else {
-			char *hashVersion = calloc(5 + strlen(GIT_HASH), sizeof(char));
-			sprintf(hashVersion, "vDev-%s", GIT_HASH);
+			char *hashVersion = calloc(5 + strlen(hash), sizeof(char));
+			sprintf(hashVersion, "vDev-%s", hash);
 
 			pack_str32(*sock, hashVersion);
-			pack_str32(*sock, GIT_TAG);
-			pack_str32(*sock, (char *) branch);
+			pack_str32(*sock, (char *) tag);
+			pack_str32(*sock, GIT_BRANCH);
 			pack_str32(*sock, GIT_DATE);
 
 			free(hashVersion);

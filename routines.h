@@ -43,8 +43,10 @@ void close_unix_socket(void);
 void seom(int sock, char type);
 void ssend(int sock, const char *format, ...);
 void swrite(int sock, void *value, size_t size);
-void *telnet_listening_thread(void *args);
+void *telnet_listening_thread_IPv4(void *args);
+void *telnet_listening_thread_IPv6(void *args);
 void *socket_listening_thread(void *args);
+bool ipv6_available(void);
 
 void process_request(char *client_message, int *sock, char type);
 bool command(char *client_message, const char* cmd);

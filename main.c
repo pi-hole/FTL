@@ -72,11 +72,19 @@ int main (int argc, char* argv[]) {
 	}
 	sleepms(100);
 
-	// Start TELNET thread
-	pthread_t telnet_listenthread;
-	if(pthread_create( &telnet_listenthread, &attr, telnet_listening_thread, NULL ) != 0)
+	// Start TELNET IPv4 thread
+	pthread_t telnet_listenthreadv4;
+	if(pthread_create( &telnet_listenthreadv4, &attr, telnet_listening_thread_IPv4, NULL ) != 0)
 	{
-		logg("Unable to open telnet listening thread. Exiting...");
+		logg("Unable to open IPv4 telnet listening thread. Exiting...");
+		killed = 1;
+	}
+
+	// Start TELNET IPv6 thread
+	pthread_t telnet_listenthreadv6;
+	if(pthread_create( &telnet_listenthreadv6, &attr, telnet_listening_thread_IPv6, NULL ) != 0)
+	{
+		logg("Unable to open IPv6 telnet listening thread. Exiting...");
 		killed = 1;
 	}
 
@@ -164,7 +172,8 @@ int main (int argc, char* argv[]) {
 
 	logg("Shutting down...");
 	pthread_cancel(piholelogthread);
-	pthread_cancel(telnet_listenthread);
+	pthread_cancel(telnet_listenthreadv4);
+	pthread_cancel(telnet_listenthreadv6);
 	pthread_cancel(socket_listenthread);
 	close_telnet_socket();
 	close_unix_socket();

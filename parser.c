@@ -504,8 +504,6 @@ void process_pihole_log(int file)
 				// Debug output
 				if(strlen(hostname) > 0)
 				{
-					// Convert hostname to lower case
-					strtolower(hostname);
 					logg("New client: %s %s (%i: %i/%i)", client, hostname, dnsmasqID, clientID, counters.clients_MAX);
 				}
 				else
@@ -1081,6 +1079,8 @@ char *resolveHostname(const char *addr)
 	{
 		// Return hostname copied to new memory location
 		hostname = strdup(he->h_name);
+		// Convert hostname to lower case
+		strtolower(hostname);
 	}
 
 	return hostname;
