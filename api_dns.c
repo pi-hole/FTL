@@ -11,63 +11,6 @@
 #include "FTL.h"
 #include "api.h"
 
-void addList(int *sock, char type, char list_type, char *data) {
-//	cJSON *input_root = cJSON_Parse(data);
-//	cJSON *domain_json = cJSON_GetObjectItemCaseSensitive(input_root, "domain");
-	char *domain;
-
-	// Validate domain
-//	if(!cJSON_IsString(domain_json)) {
-//		// No domain found
-//		sendAPIResponse(*sock, type, BAD_REQUEST);
-//		ssend(*sock, "\"status\":\"no_domain\"");
-//		return;
-//	}
-
-//	domain = domain_json->valuestring;
-
-	if(!isValidDomain(domain)) {
-		// Invalid domain
-//		sendAPIResponse(*sock, type, BAD_REQUEST);
-		ssend(*sock, "\"status\":\"invalid_domain\"");
-		return;
-	}
-
-	// Get command
-	char *partial_command;
-
-	if(list_type == WHITELIST)
-		partial_command = "sudo pihole -w -q ";
-	else if(list_type == BLACKLIST)
-		partial_command = "sudo pihole -b -q ";
-	else if(list_type == WILDLIST)
-		partial_command = "sudo pihole -wild -q ";
-	else {
-		logg("Invalid list type in addList");
-		exit(EXIT_FAILURE);
-	}
-
-	// Run command
-	char *command = malloc((strlen(domain) + strlen(partial_command) + 1) * sizeof(char));
-	strcpy(command, partial_command);
-	strcat(command, domain);
-	int return_code = system(command);
-	free(command);
-
-	if(return_code == 0) {
-		// Successfully added to list
-//		sendAPIResponse(*sock, type, OK);
-		ssend(*sock, "\"status\":\"success\"");
-	}
-	else {
-		// Failed to add to list
-//		sendAPIResponse(*sock, type, INTERNAL_ERROR);
-		ssend(*sock, "\"status\":\"unknown_error\"");
-	}
-
-//	cJSON_Delete(input_root);
-}
-
 void removeList(int *sock, char type, char list_type, char *client_message) {
 	char *domain = strrchr(client_message, '/');
 

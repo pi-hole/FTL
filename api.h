@@ -30,7 +30,6 @@ void getDBstats(int *sock);
 void getUnknownQueries(int *sock);
 
 // DNS methods
-void addList(int *sock, char type, char list_type, char *data);
 void removeList(int *sock, char type, char list_type, char *client_message);
 
 // General API commands
