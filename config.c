@@ -173,6 +173,16 @@ void read_FTLconf(void)
 	else
 		logg("   DBFILE: Not using database due to empty filename");
 
+	// FTLPORT
+	// On which port should FTL be listening?
+	// defaults to: 4711
+	config.port = 4711;
+	buffer = parse_FTLconf(fp, "FTLPORT");
+
+	value = 0;
+	if(buffer != NULL && sscanf(buffer, "%i", &value))
+		if(value > 0 && value <= 65535)
+			config.port = value;
 
 	logg("Finished config file parsing");
 

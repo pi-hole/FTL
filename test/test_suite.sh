@@ -205,6 +205,14 @@ load 'libs/bats-support/load'
   [[ ${lines[2]} == "---EOM---" ]]
 }
 
+# @test "IPv6 socket connection" {
+#   run bash -c 'echo ">recentBlocked" | nc -v ::1 4711'
+#   echo "output: ${lines[@]}"
+#   [[ ${lines[0]} == "Connection to ::1 4711 port [tcp/*] succeeded!" ]]
+#   [[ ${lines[1]} == "addomain.com" ]]
+#   [[ ${lines[2]} == "---EOM---" ]]
+# }
+
 @test "DB test: Tables created and populated?" {
   run bash -c 'sqlite3 pihole-FTL.db .dump'
   echo "output: ${lines[@]}"
