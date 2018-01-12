@@ -29,13 +29,6 @@ void getVersion(int *sock);
 void getDBstats(int *sock);
 void getUnknownQueries(int *sock);
 
-// DNS methods
-void removeList(int *sock, char type, char list_type, char *client_message);
-
-// General API commands
-bool matchesRegex(char *regex_expression, char *input);
-bool isValidDomain(char *domain);
-
 // MessagePack serialization helpers
 void pack_eom(int sock);
 void pack_bool(int sock, bool value);
