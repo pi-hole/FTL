@@ -11,29 +11,6 @@
 #include "FTL.h"
 #include "api.h"
 
-void getPiholeStatus(int *sock) {
-	if(istelnet[*sock]) {
-		char *status;
-
-		switch(blockingstatus)
-		{
-			case 0: // Blocking disabled
-				status = "disabled";
-				break;
-			case 1: // Blocking Enabled
-				status = "enabled";
-				break;
-			default: // Unknown status
-				status = "unknown";
-				break;
-		}
-
-		ssend(*sock, "status: %s", status);
-	}
-	else
-		pack_uint8(*sock, blockingstatus);
-}
-
 void addList(int *sock, char type, char list_type, char *data) {
 //	cJSON *input_root = cJSON_Parse(data);
 //	cJSON *domain_json = cJSON_GetObjectItemCaseSensitive(input_root, "domain");

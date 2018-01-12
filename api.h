@@ -32,7 +32,6 @@ void getUnknownQueries(int *sock);
 // DNS methods
 void addList(int *sock, char type, char list_type, char *data);
 void removeList(int *sock, char type, char list_type, char *client_message);
-void getPiholeStatus(int *sock);
 
 // General API commands
 bool matchesRegex(char *regex_expression, char *input);
