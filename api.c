@@ -264,9 +264,9 @@ void getTopDomains(char *client_message, int *sock)
 			if(istelnet[*sock])
 			{
 				if(audit && domains[j].wildcard)
-					ssend(*sock,"%i %i %s wildcard\n",i,domains[j].blockedcount,domains[j].domain);
+					ssend(*sock,"%i %i %s wildcard\n",n,domains[j].blockedcount,domains[j].domain);
 				else
-					ssend(*sock,"%i %i %s\n",i,domains[j].blockedcount,domains[j].domain);
+					ssend(*sock,"%i %i %s\n",n,domains[j].blockedcount,domains[j].domain);
 			}
 			else
 			{
@@ -278,7 +278,7 @@ void getTopDomains(char *client_message, int *sock)
 		else if(!blocked && showpermitted && (domains[j].count - domains[j].blockedcount) > 0)
 		{
 			if(istelnet[*sock])
-				ssend(*sock,"%i %i %s\n",i,(domains[j].count - domains[j].blockedcount),domains[j].domain);
+				ssend(*sock,"%i %i %s\n",n,(domains[j].count - domains[j].blockedcount),domains[j].domain);
 			else
 			{
 				pack_str32(*sock, domains[j].domain);
@@ -374,7 +374,7 @@ void getTopClients(char *client_message, int *sock)
 		if(includezeroclients || clients[j].count > 0)
 		{
 			if(istelnet[*sock])
-				ssend(*sock,"%i %i %s %s\n",i,clients[j].count,clients[j].ip,clients[j].name);
+				ssend(*sock,"%i %i %s %s\n",n,clients[j].count,clients[j].ip,clients[j].name);
 			else
 			{
 				pack_str32(*sock, clients[j].name);
