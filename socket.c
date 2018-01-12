@@ -231,6 +231,7 @@ int checkClientLimit(int socket, char *ipAddr) {
 
 		if(debugclients)
 			logg("Client connected: %s, ID: %i", clientip[socket], socket);
+		return socket;
 	}
 	else
 	{
