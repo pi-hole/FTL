@@ -11,6 +11,10 @@
 #include "FTL.h"
 #include "api.h"
 
+bool command(char *client_message, const char* cmd) {
+	return strstr(client_message, cmd) != NULL;
+}
+
 void process_request(char *client_message, int *sock, char type)
 {
 	char EOT[2];
@@ -146,8 +150,4 @@ void process_request(char *client_message, int *sock, char type)
 		// Send EOM
 		seom(*sock, type);
 	}
-}
-
-bool command(char *client_message, const char* cmd) {
-	return strstr(client_message, cmd) != NULL;
 }
