@@ -48,6 +48,7 @@ void ssend(int sock, const char *format, ...);
 
 void *socket_listening_thread(void *args);
 bool ipv6_available(void);
+bool bind_sockets(void);
 
 void process_request(char *client_message, int *sock);
 bool command(char *client_message, const char* cmd);

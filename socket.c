@@ -376,6 +376,28 @@ void *socket_connection_handler_thread(void *socket_desc)
 	return 0;
 }
 
+bool bind_sockets(void)
+{
+	// Initialize IPv4 telnet socket
+	bind_to_telnet_port_IPv4(SOCKET, &telnetfd4);
+
+	// Initialize IPv6 telnet socket
+	// only if IPv6 interfaces are available
+	if(ipv6_available())
+		bind_to_telnet_port_IPv6(SOCKET, &telnetfd6);
+
+	saveport();
+
+	// Initialize Unix socket
+	bind_to_unix_socket(&socketfd);
+
+	// Return if we bound to an IPv6 interface or not
+	if(telnetfd6 != 0)
+		return true;
+	else
+		return false;
+}
+
 void *telnet_listening_thread_IPv4(void *args)
 {
 	// We will use the attributes object later to start all threads in detached mode
@@ -388,11 +410,6 @@ void *telnet_listening_thread_IPv4(void *args)
 
 	// Set thread name
 	prctl(PR_SET_NAME,"telnet-IPv4",0,0,0);
-
-	// Initialize sockets only after initial log parsing in listenting_thread
-	bind_to_telnet_port_IPv4(SOCKET, &telnetfd4);
-
-	saveport();
 
 	// Listen as long as FTL is not killed
 	while(!killed)
@@ -434,12 +451,6 @@ void *telnet_listening_thread_IPv6(void *args)
 	// Set thread name
 	prctl(PR_SET_NAME,"telnet-IPv6",0,0,0);
 
-	// Initialize sockets only after initial log parsing in listenting_thread
-	if(ipv6_available())
-		bind_to_telnet_port_IPv6(SOCKET, &telnetfd6);
-	else
-		return 0;
-
 	// Listen as long as FTL is not killed
 	while(!killed)
 	{
@@ -479,9 +490,6 @@ void *socket_listening_thread(void *args)
 
 	// Set thread name
 	prctl(PR_SET_NAME,"socket listener",0,0,0);
-
-	// Initialize sockets only after initial log parsing in listenting_thread
-	bind_to_unix_socket(&socketfd);
 
 	// Listen as long as FTL is not killed
 	while(!killed)
