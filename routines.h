@@ -46,6 +46,7 @@ void *telnet_listening_thread_IPv4(void *args);
 void *telnet_listening_thread_IPv6(void *args);
 void *socket_listening_thread(void *args);
 bool ipv6_available(void);
+bool bind_sockets(void);
 
 void process_request(char *client_message, int *sock);
 bool command(char *client_message, const char* cmd);
