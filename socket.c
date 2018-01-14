@@ -380,8 +380,6 @@ bool bind_sockets(void)
 	// only if IPv6 interfaces are available
 	if(ipv6_available())
 		bind_to_telnet_port_IPv6(SOCKET, &telnetfd6);
-	else
-		return 0;
 
 	saveport();
 
