@@ -141,7 +141,7 @@ void process_request(char *client_message, int *sock, char type)
 
 	if(!processed)
 	{
-		ssend(*sock,"unknown command: %s",client_message);
+		ssend(*sock,"unknown command: %s\n",client_message);
 	}
 
 	// End of queryable commands
