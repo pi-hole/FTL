@@ -261,17 +261,26 @@ void getTopDomains(char *client_message, int *sock)
 
 		if(blocked && showblocked && domains[j].blockedcount > 0)
 		{
-			if(istelnet[*sock])
+			if(audit && domains[j].wildcard)
 			{
-				if(audit && domains[j].wildcard)
-					ssend(*sock,"%i %i %s wildcard\n",n,domains[j].blockedcount,domains[j].domain);
-				else
-					ssend(*sock,"%i %i %s\n",n,domains[j].blockedcount,domains[j].domain);
+				if(istelnet[*sock])
+					ssend(*sock, "%i %i %s wildcard\n", n, domains[j].blockedcount, domains[j].domain);
+				else {
+					char *fancyWildcard = calloc(2 + strlen(domains[j].domain), sizeof(char));
+					sprintf(fancyWildcard, "*.%s", domains[j].domain);
+					pack_str32(*sock, fancyWildcard);
+					pack_int32(*sock, domains[j].blockedcount);
+					free(fancyWildcard);
+				}
 			}
 			else
 			{
-				pack_str32(*sock, domains[j].domain);
-				pack_int32(*sock, domains[j].blockedcount);
+				if(istelnet[*sock])
+					ssend(*sock, "%i %i %s\n", n, domains[j].blockedcount, domains[j].domain);
+				else {
+					pack_str32(*sock, domains[j].domain);
+					pack_int32(*sock, domains[j].blockedcount);
+				}
 			}
 			n++;
 		}
