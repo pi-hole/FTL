@@ -281,6 +281,9 @@ int get_number_of_queries_in_DB(void)
 
 void save_to_DB(void)
 {
+	// Start database timer
+	if(debug) timer_start(DATABASE_WRITE_TIMER);
+
 	// Open database
 	if(!dbopen())
 	{
@@ -414,7 +417,7 @@ void save_to_DB(void)
 
 	if(debug)
 	{
-		logg("Notice: Queries stored in DB: %u", saved);
+		logg("Notice: Queries stored in DB: %u (took %.1f ms)", saved, timer_elapsed_msec(DATABASE_WRITE_TIMER));
 		if(saved_error > 0)
 			logg("        There are queries that have not been saved");
 	}
