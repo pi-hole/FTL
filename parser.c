@@ -185,7 +185,7 @@ void *pihole_log_thread(void *val)
 	return NULL;
 }
 
-int getID(char * readbuffer)
+int getdnsmasqID(char * readbuffer)
 {
 	// Get query ID from a string like
 	// "Dec 20 21:16:22 dnsmasq[19372]: 4 10.8.0.2/34596 query[A] pi.hole from 10.8.0.2"
@@ -315,7 +315,7 @@ void process_pihole_log(int file)
 			}
 
 			// Get dnsmasq's ID for this transaction
-			int dnsmasqID = getID(readbuffer);
+			int dnsmasqID = getdnsmasqID(readbuffer);
 			// Skip invalid lines
 			if(dnsmasqID < 0)
 				continue;
@@ -475,7 +475,7 @@ void process_pihole_log(int file)
 				continue;
 
 			// Get dnsmasq's ID for this transaction
-			int dnsmasqID = getID(readbuffer);
+			int dnsmasqID = getdnsmasqID(readbuffer);
 			// Skip invalid lines
 			if(dnsmasqID < 0)
 				continue;
@@ -524,7 +524,7 @@ void process_pihole_log(int file)
 				continue;
 
 			// Get dnsmasq's ID for this transaction
-			int dnsmasqID = getID(readbuffer);
+			int dnsmasqID = getdnsmasqID(readbuffer);
 			// Skip invalid lines
 			if(dnsmasqID < 0)
 				continue;
@@ -635,7 +635,7 @@ void process_pihole_log(int file)
 				continue;
 
 			// Get dnsmasq's ID for this transaction
-			int dnsmasqID = getID(readbuffer);
+			int dnsmasqID = getdnsmasqID(readbuffer);
 			// Skip invalid lines
 			if(dnsmasqID < 0)
 				continue;
@@ -682,7 +682,7 @@ void process_pihole_log(int file)
 				continue;
 
 			// Get dnsmasq's ID for this transaction
-			int dnsmasqID = getID(readbuffer);
+			int dnsmasqID = getdnsmasqID(readbuffer);
 			// Skip invalid lines
 			if(dnsmasqID < 0)
 				continue;
@@ -747,7 +747,7 @@ void process_pihole_log(int file)
 				continue;
 
 			// Get dnsmasq's ID for this transaction
-			int dnsmasqID = getID(readbuffer);
+			int dnsmasqID = getdnsmasqID(readbuffer);
 			// Skip invalid lines
 			if(dnsmasqID < 0)
 				continue;
@@ -807,7 +807,7 @@ void process_pihole_log(int file)
 				continue;
 
 			// Get dnsmasq's ID for this transaction
-			int dnsmasqID = getID(readbuffer);
+			int dnsmasqID = getdnsmasqID(readbuffer);
 			// Skip invalid lines
 			if(dnsmasqID < 0)
 				continue;
@@ -876,7 +876,7 @@ void process_pihole_log(int file)
 				continue;
 
 			// Get dnsmasq's ID for this transaction
-			int dnsmasqID = getID(readbuffer);
+			int dnsmasqID = getdnsmasqID(readbuffer);
 			// Skip invalid lines
 			if(dnsmasqID < 0)
 				continue;
