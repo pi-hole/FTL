@@ -202,6 +202,10 @@ typedef struct {
 	int querytypedata;
 } memoryStruct;
 
+// Prepare timers, used mainly for debugging purposes
+#define NUMTIMERS 1
+enum { DATABASE_WRITE_TIMER };
+
 enum { QUERIES, FORWARDED, CLIENTS, DOMAINS, OVERTIME, WILDCARD };
 enum { SOCKET };
 enum { DNSSEC_UNSPECIFIED, DNSSEC_SECURE, DNSSEC_INSECURE, DNSSEC_BOGUS, DNSSEC_ABANDONED, DNSSEC_UNKNOWN };

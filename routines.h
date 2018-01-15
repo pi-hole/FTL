@@ -9,8 +9,8 @@
 *  Please see LICENSE file for your rights under this license. */
 
 void go_daemon(void);
-void timer_start(void);
-float timer_elapsed_msec(void);
+void timer_start(int i);
+double timer_elapsed_msec(int i);
 void sleepms(int milliseconds);
 void savepid(void);
 char * getUserName(void);
