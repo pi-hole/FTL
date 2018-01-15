@@ -168,12 +168,22 @@ int main (int argc, char* argv[]) {
 	}
 
 	logg("Shutting down...");
+
+	// Cancel active threads as we don't need them any more
 	pthread_cancel(piholelogthread);
 	pthread_cancel(telnet_listenthreadv4);
 	if(telnet_ipv6) pthread_cancel(telnet_listenthreadv6);
 	pthread_cancel(socket_listenthread);
+
+	// Save new queries to database
+	save_to_DB();
+	logg("Finished final database update");
+
+	// Close sockets
 	close_telnet_socket();
 	close_unix_socket();
+
+	//Remove PID file
 	removepid();
 	logg("########## FTL terminated! ##########");
 	return 1;

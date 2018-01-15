@@ -82,3 +82,4 @@ void *GC_thread(void *val);
 void db_init(void);
 void *DB_thread(void *val);
 int get_number_of_queries_in_DB(void);
+void save_to_DB(void);
