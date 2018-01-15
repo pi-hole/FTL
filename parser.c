@@ -464,66 +464,11 @@ void process_pihole_log(int file)
 			// Check struct size
 			memory_check(DOMAINS);
 			int domainID = findDomain(domain);
-			if(domainID < 0)
-			{
-				// This domain is not known
-				// Store ID
-				domainID = counters.domains;
-				// // Debug output
-				if(debug)
-					logg("New domain: %s (%i: %i/%i)", domain, dnsmasqID, domainID, counters.domains_MAX);
-				validate_access("domains", domainID, false, __LINE__, __FUNCTION__, __FILE__);
-				// Set magic byte
-				domains[domainID].magic = MAGICBYTE;
-				// Set its counter to 1
-				domains[domainID].count = 1;
-				// Set blocked counter to zero
-				domains[domainID].blockedcount = 0;
-				// Initialize wildcard blocking flag with false
-				domains[domainID].wildcard = false;
-				// Store domain name
-				domains[domainID].domain = strdup(domain);
-				memory.domainnames += (strlen(domain) + 1) * sizeof(char);
-				// Store DNSSEC result for this domain
-				domains[domainID].dnssec = DNSSEC_UNSPECIFIED;
-				// Increase counter by one
-				counters.domains++;
-			}
 
 			// Go through already knows clients and see if it is one of them
 			// Check struct size
 			memory_check(CLIENTS);
 			int clientID = findClient(client);
-			if(clientID < 0)
-			{
-				// This client is not known
-				// Store ID
-				clientID = counters.clients;
-				//Get client host name
-				char *hostname = resolveHostname(client);
-				// Debug output
-				if(strlen(hostname) > 0)
-				{
-					logg("New client: %s %s (%i: %i/%i)", client, hostname, dnsmasqID, clientID, counters.clients_MAX);
-				}
-				else
-					logg("New client: %s (%i: %i/%i)", client, dnsmasqID, clientID, counters.clients_MAX);
-
-				validate_access("clients", clientID, false, __LINE__, __FUNCTION__, __FILE__);
-				// Set magic byte
-				clients[clientID].magic = MAGICBYTE;
-				// Set its counter to 1
-				clients[clientID].count = 1;
-				// Store client IP
-				clients[clientID].ip = strdup(client);
-				memory.clientips += (strlen(client) + 1) * sizeof(char);
-				// Store client hostname
-				clients[clientID].name = strdup(hostname);
-				memory.clientnames += (strlen(hostname) + 1) * sizeof(char);
-				free(hostname);
-				// Increase counter by one
-				counters.clients++;
-			}
 
 			// Save everything
 			validate_access("queries", queryID, false, __LINE__, __FUNCTION__, __FILE__);
@@ -1314,8 +1259,30 @@ int findDomain(const char *domain)
 			return i;
 		}
 	}
-	// Return -1 if not found
-	return -1;
+
+	// If we did not return until here, then this domain is not known
+	// Store ID
+	int domainID = counters.domains;
+	// // Debug output
+	if(debug) logg("New domain: %s (%i/%i)", domain, domainID, counters.domains_MAX);
+	validate_access("domains", domainID, false, __LINE__, __FUNCTION__, __FILE__);
+	// Set magic byte
+	domains[domainID].magic = MAGICBYTE;
+	// Set its counter to 1
+	domains[domainID].count = 1;
+	// Set blocked counter to zero
+	domains[domainID].blockedcount = 0;
+	// Initialize wildcard blocking flag with false
+	domains[domainID].wildcard = false;
+	// Store domain name
+	domains[domainID].domain = strdup(domain);
+	memory.domainnames += (strlen(domain) + 1) * sizeof(char);
+	// Store DNSSEC result for this domain
+	domains[domainID].dnssec = DNSSEC_UNSPECIFIED;
+	// Increase counter by one
+	counters.domains++;
+
+	return domainID;
 }
 
 int findClient(const char *client)
@@ -1335,8 +1302,33 @@ int findClient(const char *client)
 			return i;
 		}
 	}
-	// Return -1 if not found
-	return -1;
+	// If we did not return until here, then this client is not known
+	// Store ID
+	int clientID = counters.clients;
+	//Get client host name
+	char *hostname = resolveHostname(client);
+	// Debug output
+	if(strlen(hostname) > 0)
+		logg("New client: %s %s (%i/%i)", client, hostname, clientID, counters.clients_MAX);
+	else
+		logg("New client: %s (%i/%i)", client, clientID, counters.clients_MAX);
+
+	validate_access("clients", clientID, false, __LINE__, __FUNCTION__, __FILE__);
+	// Set magic byte
+	clients[clientID].magic = MAGICBYTE;
+	// Set its counter to 1
+	clients[clientID].count = 1;
+	// Store client IP
+	clients[clientID].ip = strdup(client);
+	memory.clientips += (strlen(client) + 1) * sizeof(char);
+	// Store client hostname
+	clients[clientID].name = strdup(hostname);
+	memory.clientnames += (strlen(hostname) + 1) * sizeof(char);
+	free(hostname);
+	// Increase counter by one
+	counters.clients++;
+
+	return clientID;
 }
 
 void validate_access(const char * name, int pos, bool testmagic, int line, const char * function, const char * file)
