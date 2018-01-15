@@ -13,11 +13,11 @@
 
 char *resolveHostname(const char *addr);
 void extracttimestamp(const char *readbuffer, int *querytimestamp, int *overTimetimestamp);
-int getforwardID(const char * str, bool count);
-int findDomain(const char *domain);
-int findClient(const char *client);
-int detectStatus(const char *domain);
+int findForwardID(const char * str, bool count);
+int findDomainID(const char *domain);
+int findClientID(const char *client);
 int findOverTimeID(int overTimetimestamp);
+int detectStatus(const char *domain);
 
 long int oldfilesize = 0;
 long int lastpos = 0;
@@ -300,8 +300,8 @@ void process_pihole_log(int file)
 			// Ensure we have enough space in the queries struct
 			memory_check(QUERIES);
 			int queryID = counters.queries;
-
 			int timeidx = findOverTimeID(overTimetimestamp);
+
 
 			// Detect time travel events
 			if(timeidx < 0)
@@ -409,12 +409,12 @@ void process_pihole_log(int file)
 			// Go through already knows domains and see if it is one of them
 			// Check struct size
 			memory_check(DOMAINS);
-			int domainID = findDomain(domain);
+			int domainID = findDomainID(domain);
 
 			// Go through already knows clients and see if it is one of them
 			// Check struct size
 			memory_check(CLIENTS);
-			int clientID = findClient(client);
+			int clientID = findClientID(client);
 
 			// Save everything
 			validate_access("queries", queryID, false, __LINE__, __FUNCTION__, __FILE__);
@@ -531,7 +531,7 @@ void process_pihole_log(int file)
 
 			// Get ID of forward destination, create new forward destination record
 			// if not found in current data structure
-			int forwardID = getforwardID(readbuffer, true);
+			int forwardID = findForwardID(readbuffer, true);
 			if(forwardID == -2)
 			{
 				if(debug) logg("Skipping malformated forwarded line");
@@ -1094,7 +1094,7 @@ void extracttimestamp(const char *readbuffer, int *querytimestamp, int *overTime
 	*overTimetimestamp = *querytimestamp-(*querytimestamp%600)+300;
 }
 
-int getforwardID(const char * str, bool count)
+int findForwardID(const char * str, bool count)
 {
 	// Get forward destination
 	// forwardstart = pointer to | in "forwarded domain.name| to www.xxx.yyy.zzz\n"
@@ -1188,7 +1188,7 @@ int getforwardID(const char * str, bool count)
 	return forwardID;
 }
 
-int findDomain(const char *domain)
+int findDomainID(const char *domain)
 {
 	int i;
 	for(i=0; i < counters.domains; i++)
@@ -1231,7 +1231,7 @@ int findDomain(const char *domain)
 	return domainID;
 }
 
-int findClient(const char *client)
+int findClientID(const char *client)
 {
 	int i;
 	for(i=0; i < counters.clients; i++)
@@ -1364,8 +1364,8 @@ void reresolveHostnames(void)
 		free(hostname);
 	}
 }
-
 int findOverTimeID(int overTimetimestamp)
+
 {
 	int timeidx = -1, i;
 	// Check struct size
