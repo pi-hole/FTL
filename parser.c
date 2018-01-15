@@ -17,6 +17,7 @@ int getforwardID(const char * str, bool count);
 int findDomain(const char *domain);
 int findClient(const char *client);
 int detectStatus(const char *domain);
+int findOverTimeID(int overTimetimestamp);
 
 long int oldfilesize = 0;
 long int lastpos = 0;
@@ -300,62 +301,7 @@ void process_pihole_log(int file)
 			memory_check(QUERIES);
 			int queryID = counters.queries;
 
-			int timeidx = -1;
-			bool found = false;
-			// Check struct size
-			memory_check(OVERTIME);
-			for(i=0; i < counters.overTime; i++)
-			{
-				validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
-				if(overTime[i].timestamp == overTimetimestamp)
-				{
-					found = true;
-					timeidx = i;
-					break;
-				}
-			}
-			if(!found)
-			{
-				// We loop over this to fill potential data holes with zeros
-				int nexttimestamp = 0;
-				if(counters.overTime != 0)
-				{
-					validate_access("overTime", counters.overTime-1, false, __LINE__, __FUNCTION__, __FILE__);
-					nexttimestamp = overTime[counters.overTime-1].timestamp + 600;
-				}
-				else
-				{
-					nexttimestamp = overTimetimestamp;
-				}
-
-				while(overTimetimestamp >= nexttimestamp)
-				{
-					// Check struct size
-					memory_check(OVERTIME);
-					timeidx = counters.overTime;
-					validate_access("overTime", timeidx, false, __LINE__, __FUNCTION__, __FILE__);
-					// Set magic byte
-					overTime[timeidx].magic = MAGICBYTE;
-					overTime[timeidx].timestamp = nexttimestamp;
-					overTime[timeidx].total = 0;
-					overTime[timeidx].blocked = 0;
-					overTime[timeidx].cached = 0;
-					overTime[timeidx].forwardnum = 0;
-					overTime[timeidx].forwarddata = NULL;
-					overTime[timeidx].querytypedata = calloc(2, sizeof(int));
-					overTime[timeidx].clientnum = 0;
-					overTime[timeidx].clientdata = NULL;
-					memory.querytypedata += 2*sizeof(int);
-					counters.overTime++;
-
-					// Update time stamp for next loop interation
-					if(counters.overTime != 0)
-					{
-						validate_access("overTime", counters.overTime-1, false, __LINE__, __FUNCTION__, __FILE__);
-						nexttimestamp = overTime[counters.overTime-1].timestamp + 600;
-					}
-				}
-			}
+			int timeidx = findOverTimeID(overTimetimestamp);
 
 			// Detect time travel events
 			if(timeidx < 0)
@@ -1417,4 +1363,57 @@ void reresolveHostnames(void)
 		}
 		free(hostname);
 	}
+}
+
+int findOverTimeID(int overTimetimestamp)
+{
+	int timeidx = -1, i;
+	// Check struct size
+	memory_check(OVERTIME);
+	for(i=0; i < counters.overTime; i++)
+	{
+		validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
+		if(overTime[i].timestamp == overTimetimestamp)
+			return i;
+	}
+	// We loop over this to fill potential data holes with zeros
+	int nexttimestamp = 0;
+	if(counters.overTime != 0)
+	{
+		validate_access("overTime", counters.overTime-1, false, __LINE__, __FUNCTION__, __FILE__);
+		nexttimestamp = overTime[counters.overTime-1].timestamp + 600;
+	}
+	else
+	{
+		nexttimestamp = overTimetimestamp;
+	}
+
+	while(overTimetimestamp >= nexttimestamp)
+	{
+		// Check struct size
+		memory_check(OVERTIME);
+		timeidx = counters.overTime;
+		validate_access("overTime", timeidx, false, __LINE__, __FUNCTION__, __FILE__);
+		// Set magic byte
+		overTime[timeidx].magic = MAGICBYTE;
+		overTime[timeidx].timestamp = nexttimestamp;
+		overTime[timeidx].total = 0;
+		overTime[timeidx].blocked = 0;
+		overTime[timeidx].cached = 0;
+		overTime[timeidx].forwardnum = 0;
+		overTime[timeidx].forwarddata = NULL;
+		overTime[timeidx].querytypedata = calloc(2, sizeof(int));
+		overTime[timeidx].clientnum = 0;
+		overTime[timeidx].clientdata = NULL;
+		memory.querytypedata += 2*sizeof(int);
+		counters.overTime++;
+
+		// Update time stamp for next loop interation
+		if(counters.overTime != 0)
+		{
+			validate_access("overTime", counters.overTime-1, false, __LINE__, __FUNCTION__, __FILE__);
+			nexttimestamp = overTime[counters.overTime-1].timestamp + 600;
+		}
+	}
+	return timeidx;
 }
