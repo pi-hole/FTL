@@ -203,8 +203,8 @@ typedef struct {
 } memoryStruct;
 
 // Prepare timers, used mainly for debugging purposes
-#define NUMTIMERS 1
-enum { DATABASE_WRITE_TIMER };
+#define NUMTIMERS 2
+enum { DATABASE_WRITE_TIMER, EXIT_TIMER };
 
 enum { QUERIES, FORWARDED, CLIENTS, DOMAINS, OVERTIME, WILDCARD };
 enum { SOCKET };
