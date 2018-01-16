@@ -13,9 +13,10 @@
 
 char *resolveHostname(const char *addr);
 void extracttimestamp(const char *readbuffer, int *querytimestamp, int *overTimetimestamp);
-int getforwardID(const char * str, bool count);
-int findDomain(const char *domain);
-int findClient(const char *client);
+int findForwardID(const char *forward, bool count);
+int findDomainID(const char *domain);
+int findClientID(const char *client);
+int findOverTimeID(int overTimetimestamp);
 int detectStatus(const char *domain);
 
 long int oldfilesize = 0;
@@ -184,7 +185,7 @@ void *pihole_log_thread(void *val)
 	return NULL;
 }
 
-int getID(char * readbuffer)
+int getdnsmasqID(char * readbuffer)
 {
 	// Get query ID from a string like
 	// "Dec 20 21:16:22 dnsmasq[19372]: 4 10.8.0.2/34596 query[A] pi.hole from 10.8.0.2"
@@ -299,63 +300,8 @@ void process_pihole_log(int file)
 			// Ensure we have enough space in the queries struct
 			memory_check(QUERIES);
 			int queryID = counters.queries;
+			int timeidx = findOverTimeID(overTimetimestamp);
 
-			int timeidx = -1;
-			bool found = false;
-			// Check struct size
-			memory_check(OVERTIME);
-			for(i=0; i < counters.overTime; i++)
-			{
-				validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
-				if(overTime[i].timestamp == overTimetimestamp)
-				{
-					found = true;
-					timeidx = i;
-					break;
-				}
-			}
-			if(!found)
-			{
-				// We loop over this to fill potential data holes with zeros
-				int nexttimestamp = 0;
-				if(counters.overTime != 0)
-				{
-					validate_access("overTime", counters.overTime-1, false, __LINE__, __FUNCTION__, __FILE__);
-					nexttimestamp = overTime[counters.overTime-1].timestamp + 600;
-				}
-				else
-				{
-					nexttimestamp = overTimetimestamp;
-				}
-
-				while(overTimetimestamp >= nexttimestamp)
-				{
-					// Check struct size
-					memory_check(OVERTIME);
-					timeidx = counters.overTime;
-					validate_access("overTime", timeidx, false, __LINE__, __FUNCTION__, __FILE__);
-					// Set magic byte
-					overTime[timeidx].magic = MAGICBYTE;
-					overTime[timeidx].timestamp = nexttimestamp;
-					overTime[timeidx].total = 0;
-					overTime[timeidx].blocked = 0;
-					overTime[timeidx].cached = 0;
-					overTime[timeidx].forwardnum = 0;
-					overTime[timeidx].forwarddata = NULL;
-					overTime[timeidx].querytypedata = calloc(2, sizeof(int));
-					overTime[timeidx].clientnum = 0;
-					overTime[timeidx].clientdata = NULL;
-					memory.querytypedata += 2*sizeof(int);
-					counters.overTime++;
-
-					// Update time stamp for next loop interation
-					if(counters.overTime != 0)
-					{
-						validate_access("overTime", counters.overTime-1, false, __LINE__, __FUNCTION__, __FILE__);
-						nexttimestamp = overTime[counters.overTime-1].timestamp + 600;
-					}
-				}
-			}
 
 			// Detect time travel events
 			if(timeidx < 0)
@@ -369,7 +315,7 @@ void process_pihole_log(int file)
 			}
 
 			// Get dnsmasq's ID for this transaction
-			int dnsmasqID = getID(readbuffer);
+			int dnsmasqID = getdnsmasqID(readbuffer);
 			// Skip invalid lines
 			if(dnsmasqID < 0)
 				continue;
@@ -463,67 +409,12 @@ void process_pihole_log(int file)
 			// Go through already knows domains and see if it is one of them
 			// Check struct size
 			memory_check(DOMAINS);
-			int domainID = findDomain(domain);
-			if(domainID < 0)
-			{
-				// This domain is not known
-				// Store ID
-				domainID = counters.domains;
-				// // Debug output
-				if(debug)
-					logg("New domain: %s (%i: %i/%i)", domain, dnsmasqID, domainID, counters.domains_MAX);
-				validate_access("domains", domainID, false, __LINE__, __FUNCTION__, __FILE__);
-				// Set magic byte
-				domains[domainID].magic = MAGICBYTE;
-				// Set its counter to 1
-				domains[domainID].count = 1;
-				// Set blocked counter to zero
-				domains[domainID].blockedcount = 0;
-				// Initialize wildcard blocking flag with false
-				domains[domainID].wildcard = false;
-				// Store domain name
-				domains[domainID].domain = strdup(domain);
-				memory.domainnames += (strlen(domain) + 1) * sizeof(char);
-				// Store DNSSEC result for this domain
-				domains[domainID].dnssec = DNSSEC_UNSPECIFIED;
-				// Increase counter by one
-				counters.domains++;
-			}
+			int domainID = findDomainID(domain);
 
 			// Go through already knows clients and see if it is one of them
 			// Check struct size
 			memory_check(CLIENTS);
-			int clientID = findClient(client);
-			if(clientID < 0)
-			{
-				// This client is not known
-				// Store ID
-				clientID = counters.clients;
-				//Get client host name
-				char *hostname = resolveHostname(client);
-				// Debug output
-				if(strlen(hostname) > 0)
-				{
-					logg("New client: %s %s (%i: %i/%i)", client, hostname, dnsmasqID, clientID, counters.clients_MAX);
-				}
-				else
-					logg("New client: %s (%i: %i/%i)", client, dnsmasqID, clientID, counters.clients_MAX);
-
-				validate_access("clients", clientID, false, __LINE__, __FUNCTION__, __FILE__);
-				// Set magic byte
-				clients[clientID].magic = MAGICBYTE;
-				// Set its counter to 1
-				clients[clientID].count = 1;
-				// Store client IP
-				clients[clientID].ip = strdup(client);
-				memory.clientips += (strlen(client) + 1) * sizeof(char);
-				// Store client hostname
-				clients[clientID].name = strdup(hostname);
-				memory.clientnames += (strlen(hostname) + 1) * sizeof(char);
-				free(hostname);
-				// Increase counter by one
-				counters.clients++;
-			}
+			int clientID = findClientID(client);
 
 			// Save everything
 			validate_access("queries", queryID, false, __LINE__, __FUNCTION__, __FILE__);
@@ -584,7 +475,7 @@ void process_pihole_log(int file)
 				continue;
 
 			// Get dnsmasq's ID for this transaction
-			int dnsmasqID = getID(readbuffer);
+			int dnsmasqID = getdnsmasqID(readbuffer);
 			// Skip invalid lines
 			if(dnsmasqID < 0)
 				continue;
@@ -633,19 +524,48 @@ void process_pihole_log(int file)
 				continue;
 
 			// Get dnsmasq's ID for this transaction
-			int dnsmasqID = getID(readbuffer);
+			int dnsmasqID = getdnsmasqID(readbuffer);
 			// Skip invalid lines
 			if(dnsmasqID < 0)
 				continue;
 
-			// Get ID of forward destination, create new forward destination record
-			// if not found in current data structure
-			int forwardID = getforwardID(readbuffer, true);
-			if(forwardID == -2)
+			// Get forward destination
+			// forwardstart = pointer to | in "forwarded domain.name| to www.xxx.yyy.zzz\n"
+			const char *forwardstart = strstr(readbuffer, " to ");
+			// Check if buffer pointer is valid
+			if(forwardstart == NULL)
 			{
-				if(debug) logg("Skipping malformated forwarded line");
+				logg("Notice: Skipping malformated log line (forward start missing): %s", readbuffer);
 				continue;
 			}
+			// forwardend = pointer to | in "forwarded domain.name to www.xxx.yyy.zzz|\n"
+			const char *forwardend = strstr(forwardstart+4, "\n");
+			// Check if buffer pointer is valid
+			if(forwardend == NULL)
+			{
+				logg("Notice: Skipping malformated log line (forward end missing): %s", readbuffer);
+				continue;
+			}
+
+			size_t forwardlen = forwardend-(forwardstart+4);
+			if(forwardlen < 1)
+			{
+				logg("Notice: Skipping malformated log line (forward length < 1): %s", readbuffer);
+				continue;
+			}
+
+			char *forward = calloc(forwardlen+1,sizeof(char));
+			// strncat() NULL-terminates the copied string (strncpy() doesn't!)
+			strncat(forward,forwardstart+4,forwardlen);
+			// Convert forward to lower case
+			strtolower(forward);
+
+			// Get ID of forward destination, create new forward destination record
+			// if not found in current data structure
+			int forwardID = findForwardID(forward, true);
+
+			// Release allocated memory
+			free(forward);
 
 			// Save status and forwardID in corresponding query indentified by dnsmasq's ID
 			bool found = false;
@@ -715,7 +635,7 @@ void process_pihole_log(int file)
 				continue;
 
 			// Get dnsmasq's ID for this transaction
-			int dnsmasqID = getID(readbuffer);
+			int dnsmasqID = getdnsmasqID(readbuffer);
 			// Skip invalid lines
 			if(dnsmasqID < 0)
 				continue;
@@ -762,7 +682,7 @@ void process_pihole_log(int file)
 				continue;
 
 			// Get dnsmasq's ID for this transaction
-			int dnsmasqID = getID(readbuffer);
+			int dnsmasqID = getdnsmasqID(readbuffer);
 			// Skip invalid lines
 			if(dnsmasqID < 0)
 				continue;
@@ -827,7 +747,7 @@ void process_pihole_log(int file)
 				continue;
 
 			// Get dnsmasq's ID for this transaction
-			int dnsmasqID = getID(readbuffer);
+			int dnsmasqID = getdnsmasqID(readbuffer);
 			// Skip invalid lines
 			if(dnsmasqID < 0)
 				continue;
@@ -887,7 +807,7 @@ void process_pihole_log(int file)
 				continue;
 
 			// Get dnsmasq's ID for this transaction
-			int dnsmasqID = getID(readbuffer);
+			int dnsmasqID = getdnsmasqID(readbuffer);
 			// Skip invalid lines
 			if(dnsmasqID < 0)
 				continue;
@@ -956,7 +876,7 @@ void process_pihole_log(int file)
 				continue;
 
 			// Get dnsmasq's ID for this transaction
-			int dnsmasqID = getID(readbuffer);
+			int dnsmasqID = getdnsmasqID(readbuffer);
 			// Skip invalid lines
 			if(dnsmasqID < 0)
 				continue;
@@ -1203,43 +1123,8 @@ void extracttimestamp(const char *readbuffer, int *querytimestamp, int *overTime
 	*overTimetimestamp = *querytimestamp-(*querytimestamp%600)+300;
 }
 
-int getforwardID(const char * str, bool count)
+int findForwardID(const char * forward, bool count)
 {
-	// Get forward destination
-	// forwardstart = pointer to | in "forwarded domain.name| to www.xxx.yyy.zzz\n"
-	const char *forwardstart = strstr(str, " to ");
-	// Check if buffer pointer is valid
-	if(forwardstart == NULL)
-	{
-		logg("Notice: Skipping malformated log line (forward start missing): %s", str);
-		// Skip this line
-		return -2;
-	}
-	// forwardend = pointer to | in "forwarded domain.name to www.xxx.yyy.zzz|\n"
-	const char *forwardend = strstr(forwardstart+4, "\n");
-	// Check if buffer pointer is valid
-	if(forwardend == NULL)
-	{
-		logg("Notice: Skipping malformated log line (forward end missing): %s", str);
-		// Skip this line
-		return -2;
-	}
-
-	size_t forwardlen = forwardend-(forwardstart+4);
-	if(forwardlen < 1)
-	{
-		logg("Notice: Skipping malformated log line (forward length < 1): %s", str);
-		// Skip this line
-		return -2;
-	}
-
-	char *forward = calloc(forwardlen+1,sizeof(char));
-	// strncat() NULL-terminates the copied string (strncpy() doesn't!)
-	strncat(forward,forwardstart+4,forwardlen);
-	// Convert forward to lower case
-	strtolower(forward);
-
-	bool processed = false;
 	int i, forwardID = -1;
 	// Go through already knows forward servers and see if we used one of those
 	// Check struct size
@@ -1250,54 +1135,46 @@ int getforwardID(const char * str, bool count)
 		if(strcmp(forwarded[i].ip, forward) == 0)
 		{
 			forwardID = i;
-			if(count)
-				forwarded[forwardID].count++;
-			processed = true;
-			break;
+			if(count) forwarded[forwardID].count++;
+			return forwardID;
 		}
 	}
-	if(!processed)
+	// This forward server is not known
+	// Store ID
+	forwardID = counters.forwarded;
+	// Get forward destination host name
+	char *hostname = resolveHostname(forward);
+	if(strlen(hostname) > 0)
 	{
-		// This forward server is not known
-		// Store ID
-		forwardID = counters.forwarded;
-		// Get forward destination host name
-		char *hostname = resolveHostname(forward);
-		if(strlen(hostname) > 0)
-		{
-			// Convert hostname to lower case
-			strtolower(hostname);
-			logg("New forward server: %s %s (%i/%i)", forward, hostname, forwardID, counters.forwarded_MAX);
-		}
-		else
-			logg("New forward server: %s (%i/%u)", forward, forwardID, counters.forwarded_MAX);
-
-		validate_access("forwarded", forwardID, false, __LINE__, __FUNCTION__, __FILE__);
-		// Set magic byte
-		forwarded[forwardID].magic = MAGICBYTE;
-		// Initialize its counter
-		if(count)
-			forwarded[forwardID].count = 1;
-		else
-			forwarded[forwardID].count = 0;
-		// Save IP
-		forwarded[forwardID].ip = strdup(forward);
-		memory.forwardedips += (forwardlen + 1) * sizeof(char);
-		// Save forward destination host name
-		forwarded[forwardID].name = strdup(hostname);
-		memory.forwardednames += (strlen(hostname) + 1) * sizeof(char);
-		free(hostname);
-		// Increase counter by one
-		counters.forwarded++;
+		// Convert hostname to lower case
+		strtolower(hostname);
+		logg("New forward server: %s %s (%i/%i)", forward, hostname, forwardID, counters.forwarded_MAX);
 	}
+	else
+		logg("New forward server: %s (%i/%u)", forward, forwardID, counters.forwarded_MAX);
 
-	// Release allocated memory
-	free(forward);
+	validate_access("forwarded", forwardID, false, __LINE__, __FUNCTION__, __FILE__);
+	// Set magic byte
+	forwarded[forwardID].magic = MAGICBYTE;
+	// Initialize its counter
+	if(count)
+		forwarded[forwardID].count = 1;
+	else
+		forwarded[forwardID].count = 0;
+	// Save IP
+	forwarded[forwardID].ip = strdup(forward);
+	memory.forwardedips += (strlen(forward) + 1) * sizeof(char);
+	// Save forward destination host name
+	forwarded[forwardID].name = strdup(hostname);
+	memory.forwardednames += (strlen(hostname) + 1) * sizeof(char);
+	free(hostname);
+	// Increase counter by one
+	counters.forwarded++;
 
 	return forwardID;
 }
 
-int findDomain(const char *domain)
+int findDomainID(const char *domain)
 {
 	int i;
 	for(i=0; i < counters.domains; i++)
@@ -1314,11 +1191,33 @@ int findDomain(const char *domain)
 			return i;
 		}
 	}
-	// Return -1 if not found
-	return -1;
+
+	// If we did not return until here, then this domain is not known
+	// Store ID
+	int domainID = counters.domains;
+	// // Debug output
+	if(debug) logg("New domain: %s (%i/%i)", domain, domainID, counters.domains_MAX);
+	validate_access("domains", domainID, false, __LINE__, __FUNCTION__, __FILE__);
+	// Set magic byte
+	domains[domainID].magic = MAGICBYTE;
+	// Set its counter to 1
+	domains[domainID].count = 1;
+	// Set blocked counter to zero
+	domains[domainID].blockedcount = 0;
+	// Initialize wildcard blocking flag with false
+	domains[domainID].wildcard = false;
+	// Store domain name
+	domains[domainID].domain = strdup(domain);
+	memory.domainnames += (strlen(domain) + 1) * sizeof(char);
+	// Store DNSSEC result for this domain
+	domains[domainID].dnssec = DNSSEC_UNSPECIFIED;
+	// Increase counter by one
+	counters.domains++;
+
+	return domainID;
 }
 
-int findClient(const char *client)
+int findClientID(const char *client)
 {
 	int i;
 	for(i=0; i < counters.clients; i++)
@@ -1335,8 +1234,33 @@ int findClient(const char *client)
 			return i;
 		}
 	}
-	// Return -1 if not found
-	return -1;
+	// If we did not return until here, then this client is not known
+	// Store ID
+	int clientID = counters.clients;
+	//Get client host name
+	char *hostname = resolveHostname(client);
+	// Debug output
+	if(strlen(hostname) > 0)
+		logg("New client: %s %s (%i/%i)", client, hostname, clientID, counters.clients_MAX);
+	else
+		logg("New client: %s (%i/%i)", client, clientID, counters.clients_MAX);
+
+	validate_access("clients", clientID, false, __LINE__, __FUNCTION__, __FILE__);
+	// Set magic byte
+	clients[clientID].magic = MAGICBYTE;
+	// Set its counter to 1
+	clients[clientID].count = 1;
+	// Store client IP
+	clients[clientID].ip = strdup(client);
+	memory.clientips += (strlen(client) + 1) * sizeof(char);
+	// Store client hostname
+	clients[clientID].name = strdup(hostname);
+	memory.clientnames += (strlen(hostname) + 1) * sizeof(char);
+	free(hostname);
+	// Increase counter by one
+	counters.clients++;
+
+	return clientID;
 }
 
 void validate_access(const char * name, int pos, bool testmagic, int line, const char * function, const char * file)
@@ -1425,4 +1349,57 @@ void reresolveHostnames(void)
 		}
 		free(hostname);
 	}
+}
+int findOverTimeID(int overTimetimestamp)
+
+{
+	int timeidx = -1, i;
+	// Check struct size
+	memory_check(OVERTIME);
+	for(i=0; i < counters.overTime; i++)
+	{
+		validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
+		if(overTime[i].timestamp == overTimetimestamp)
+			return i;
+	}
+	// We loop over this to fill potential data holes with zeros
+	int nexttimestamp = 0;
+	if(counters.overTime != 0)
+	{
+		validate_access("overTime", counters.overTime-1, false, __LINE__, __FUNCTION__, __FILE__);
+		nexttimestamp = overTime[counters.overTime-1].timestamp + 600;
+	}
+	else
+	{
+		nexttimestamp = overTimetimestamp;
+	}
+
+	while(overTimetimestamp >= nexttimestamp)
+	{
+		// Check struct size
+		memory_check(OVERTIME);
+		timeidx = counters.overTime;
+		validate_access("overTime", timeidx, false, __LINE__, __FUNCTION__, __FILE__);
+		// Set magic byte
+		overTime[timeidx].magic = MAGICBYTE;
+		overTime[timeidx].timestamp = nexttimestamp;
+		overTime[timeidx].total = 0;
+		overTime[timeidx].blocked = 0;
+		overTime[timeidx].cached = 0;
+		overTime[timeidx].forwardnum = 0;
+		overTime[timeidx].forwarddata = NULL;
+		overTime[timeidx].querytypedata = calloc(2, sizeof(int));
+		overTime[timeidx].clientnum = 0;
+		overTime[timeidx].clientdata = NULL;
+		memory.querytypedata += 2*sizeof(int);
+		counters.overTime++;
+
+		// Update time stamp for next loop interation
+		if(counters.overTime != 0)
+		{
+			validate_access("overTime", counters.overTime-1, false, __LINE__, __FUNCTION__, __FILE__);
+			nexttimestamp = overTime[counters.overTime-1].timestamp + 600;
+		}
+	}
+	return timeidx;
 }
