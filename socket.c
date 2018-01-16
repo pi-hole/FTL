@@ -210,8 +210,11 @@ void ssend(int sock, const char *format, ...)
 	int ret = vasprintf(&buffer, format, args);
 	va_end(args);
 	if(ret > 0)
+	{
 		if(!write(sock, buffer, strlen(buffer)))
 			logg("WARNING: Socket write returned error %s (%i)", strerror(errno), errno);
+		free(buffer);
+	}
 }
 
 int listener(int sockfd, char type)
