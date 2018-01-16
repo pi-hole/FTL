@@ -176,9 +176,12 @@ int main (int argc, char* argv[]) {
 	pthread_cancel(socket_listenthread);
 
 	// Save new queries to database
-	save_to_DB();
-	logg("Finished final database update");
-
+	if(database)
+	{
+		save_to_DB();
+		logg("Finished final database update");
+	}
+	
 	// Close sockets
 	close_telnet_socket();
 	close_unix_socket();
