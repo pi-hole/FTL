@@ -16,7 +16,8 @@ bool rereadgravity = false;
 
 static void SIGTERM_handler(int sig, siginfo_t *si, void *unused)
 {
-	logg("FATAL: FTL received SIGTERM from PID/UID %i/%i, scheduled to exit gracefully", (int)si->si_pid, (int)si->si_uid);
+	logg("FATAL: FTL received SIGTERM from PID/UID %i/%i, exiting gracefully", (int)si->si_pid, (int)si->si_uid);
+	timer_start(EXIT_TIMER);
 	killed = 1;
 }
 
@@ -24,6 +25,7 @@ static void SIGINT_handler(int sig, siginfo_t *si, void *unused)
 {
 	// Should probably not use printf in signal handler, but this will anyhow exit immediately
 	logg("FATAL: FTL received SIGINT (Ctrl + C, PID/UID %i/%i), exiting immediately!", (int)si->si_pid, (int)si->si_uid);
+	logg("       There may be queries that have not been saved in the long-term data base");
 	exit(EXIT_FAILURE);
 }
 
