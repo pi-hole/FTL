@@ -1,6 +1,7 @@
 # Generated binary files
 /obj/
 pihole-FTL
+socket-test
 
 # Versioning files
 version*
@@ -11,3 +12,9 @@ version*
 
 # IDE files
 .idea/
+
+# Test-generated files
+/pihole.log
+/pihole-FTL.conf
+/pihole-FTL.db
+/pihole-FTL.log
