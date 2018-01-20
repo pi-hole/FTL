@@ -216,7 +216,7 @@ void ssend(int sock, const char *format, ...)
 	va_end(args);
 	if(ret > 0)
 		if(!write(sock, buffer, strlen(buffer)))
-			logg("WARNING: Socket write returned error code %i", errno);
+			logg("WARNING: Socket write returned error %s (%i)", strerror(errno), errno);
 }
 
 void swrite(int sock, void *value, size_t size) {
