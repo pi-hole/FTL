@@ -70,7 +70,6 @@ int main (int argc, char* argv[]) {
 		logg("Unable to open Pi-hole log processing thread. Exiting...");
 		killed = 1;
 	}
-	sleepms(100);
 
 	// Bind to sockets after initial log parsing
 	bool telnet_ipv6 = bind_sockets();
@@ -98,7 +97,6 @@ int main (int argc, char* argv[]) {
 		logg("Unable to open Unix socket listening thread. Exiting...");
 		killed = 1;
 	}
-	sleepms(100);
 
 	while(!killed)
 	{
@@ -187,7 +185,7 @@ int main (int argc, char* argv[]) {
 		save_to_DB();
 		logg("Finished final database update");
 	}
-	
+
 	// Close sockets
 	close_telnet_socket();
 	close_unix_socket();
