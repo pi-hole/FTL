@@ -588,7 +588,6 @@ void read_data_from_DB(void)
 			case 1: // Blocked by gravity.list
 				counters.blocked++;
 				overTime[timeidx].blocked++;
-				validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
 				domains[domainID].blockedcount++;
 				break;
 
@@ -610,7 +609,6 @@ void read_data_from_DB(void)
 
 				// Update overTime data structure
 				overTime[timeidx].blocked++;
-				validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
 				domains[domainID].blockedcount++;
 				domains[domainID].wildcard = true;
 				break;
@@ -620,7 +618,6 @@ void read_data_from_DB(void)
 
 				// Update overTime data structure
 				overTime[timeidx].blocked++;
-				validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
 				domains[domainID].blockedcount++;
 				break;
 
