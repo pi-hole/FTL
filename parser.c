@@ -274,6 +274,13 @@ void process_pihole_log(int file)
 				break;
 		}
 
+		// Get timestamp
+		int querytimestamp, overTimetimestamp;
+		extracttimestamp(readbuffer, &querytimestamp, &overTimetimestamp);
+
+		// Check if this query has already been imported from the database
+		if(querytimestamp < lastDBimportedtimestamp) continue;
+
 		// Test if the read line is a query line
 		if(strstr(readbuffer," query[A") != NULL)
 		{
@@ -285,10 +292,6 @@ void process_pihole_log(int file)
 				if(debug) logg("Not analyzing AAAA query");
 				continue;
 			}
-
-			// Get timestamp
-			int querytimestamp, overTimetimestamp;
-			extracttimestamp(readbuffer, &querytimestamp, &overTimetimestamp);
 
 			// Get minimum time stamp to analyze
 			int differencetofullhour = time(NULL) % GCinterval;
@@ -459,11 +462,6 @@ void process_pihole_log(int file)
 			if(!checkQuery(readbuffer, "gravity.list"))
 				continue;
 
-			// Check if this query has already been imported from the database
-			int querytimestamp, overTimetimestamp;
-			extracttimestamp(readbuffer, &querytimestamp, &overTimetimestamp);
-			if(querytimestamp < lastDBimportedtimestamp) continue;
-
 			// Get dnsmasq's ID for this transaction
 			int dnsmasqID = getdnsmasqID(readbuffer);
 			// Skip invalid lines
@@ -512,11 +510,6 @@ void process_pihole_log(int file)
 			// Check query for invalid characters
 			if(!checkQuery(readbuffer, "forwarded"))
 				continue;
-
-			// Check if this query has already been imported from the database
-			int querytimestamp, overTimetimestamp;
-			extracttimestamp(readbuffer, &querytimestamp, &overTimetimestamp);
-			if(querytimestamp < lastDBimportedtimestamp) continue;
 
 			// Get dnsmasq's ID for this transaction
 			int dnsmasqID = getdnsmasqID(readbuffer);
@@ -569,6 +562,15 @@ void process_pihole_log(int file)
 				// Check both UUID and generation of this query
 				if(queries[i].id == dnsmasqID && queries[i].generation == loggeneration)
 				{
+					// Detect if we cached the <CNAME> but need to ask the upstream
+					// servers for the actual IPs now
+					if(queries[i].status == 2)
+					{
+						// Fix counters
+						counters.cached--;
+						validate_access("overTime", queries[i].timeidx, true, __LINE__, __FUNCTION__, __FILE__);
+						overTime[queries[i].timeidx].cached--;
+					}
 					queries[i].status = 2;
 					queries[i].forwardID = forwardID;
 					found = true;
@@ -610,11 +612,6 @@ void process_pihole_log(int file)
 			// Check query for invalid characters
 			if(!checkQuery(readbuffer, "cached"))
 				continue;
-
-			// Check if this query has already been imported from the database
-			int querytimestamp, overTimetimestamp;
-			extracttimestamp(readbuffer, &querytimestamp, &overTimetimestamp);
-			if(querytimestamp < lastDBimportedtimestamp) continue;
 
 			// Get dnsmasq's ID for this transaction
 			int dnsmasqID = getdnsmasqID(readbuffer);
@@ -662,11 +659,6 @@ void process_pihole_log(int file)
 			// Check query for invalid characters
 			if(!checkQuery(readbuffer, "config"))
 				continue;
-
-			// Check if this query has already been imported from the database
-			int querytimestamp, overTimetimestamp;
-			extracttimestamp(readbuffer, &querytimestamp, &overTimetimestamp);
-			if(querytimestamp < lastDBimportedtimestamp) continue;
 
 			// Get dnsmasq's ID for this transaction
 			int dnsmasqID = getdnsmasqID(readbuffer);
@@ -732,11 +724,6 @@ void process_pihole_log(int file)
 			// Check query for invalid characters
 			if(!checkQuery(readbuffer, "black.list"))
 				continue;
-
-			// Check if this query has already been imported from the database
-			int querytimestamp, overTimetimestamp;
-			extracttimestamp(readbuffer, &querytimestamp, &overTimetimestamp);
-			if(querytimestamp < lastDBimportedtimestamp) continue;
 
 			// Get dnsmasq's ID for this transaction
 			int dnsmasqID = getdnsmasqID(readbuffer);
