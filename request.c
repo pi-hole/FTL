@@ -15,7 +15,7 @@ bool command(char *client_message, const char* cmd) {
 	return strstr(client_message, cmd) != NULL;
 }
 
-void process_request(char *client_message, int *sock, char type)
+void process_request(char *client_message, int *sock)
 {
 	char EOT[2];
 	EOT[0] = 0x04;
@@ -148,6 +148,6 @@ void process_request(char *client_message, int *sock, char type)
 	if(*sock != 0)
 	{
 		// Send EOM
-		seom(*sock, type);
+		seom(*sock);
 	}
 }

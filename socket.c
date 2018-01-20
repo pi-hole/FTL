@@ -41,7 +41,7 @@ void saveport(void)
 	}
 }
 
-char bind_to_telnet_port_IPv4(char type, int *socketdescriptor)
+char bind_to_telnet_port_IPv4(int *socketdescriptor)
 {
 	// IPv4 socket
 	*socketdescriptor = socket(AF_INET, SOCK_STREAM, 0);
@@ -66,7 +66,7 @@ char bind_to_telnet_port_IPv4(char type, int *socketdescriptor)
 	memset(&serv_addr4, 0, sizeof(serv_addr4));
 	serv_addr4.sin_family = AF_INET;
 
-	if(config.socket_listenlocal && type == SOCKET)
+	if(config.socket_listenlocal)
 		serv_addr4.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 	else
 		serv_addr4.sin_addr.s_addr = INADDR_ANY;
@@ -90,7 +90,7 @@ char bind_to_telnet_port_IPv4(char type, int *socketdescriptor)
 	return 1;
 }
 
-char bind_to_telnet_port_IPv6(char type, int *socketdescriptor)
+char bind_to_telnet_port_IPv6(int *socketdescriptor)
 {
 	// IPv6 socket
 	*socketdescriptor = socket(AF_INET6, SOCK_STREAM, 0);
@@ -121,7 +121,7 @@ char bind_to_telnet_port_IPv6(char type, int *socketdescriptor)
 	memset(&serv_addr, 0, sizeof(serv_addr));
 	serv_addr.sin6_family = AF_INET6;
 
-	if(config.socket_listenlocal && type == SOCKET)
+	if(config.socket_listenlocal)
 		serv_addr.sin6_addr = in6addr_loopback;
 	else
 		serv_addr.sin6_addr = in6addr_any;
@@ -199,9 +199,9 @@ void removeport(void)
 	fclose(f);
 }
 
-void seom(int sock, char type)
+void seom(int sock)
 {
-	if(type == TELNET)
+	if(istelnet[sock])
 		ssend(sock, "---EOM---\n\n");
 	else
 		pack_eom(sock);
@@ -330,7 +330,7 @@ void *telnet_connection_handler_thread(void *socket_desc)
 			// Requests should not be processed/answered when data is about to change
 			enable_thread_lock(threadname);
 
-			process_request(message, &sock, TELNET);
+			process_request(message, &sock);
 			free(message);
 
 			// Release thread lock
@@ -395,7 +395,7 @@ void *socket_connection_handler_thread(void *socket_desc)
 			// Requests should not be processed/answered when data is about to change
 			enable_thread_lock(threadname);
 
-			process_request(message, &sock, SOCKET);
+			process_request(message, &sock);
 			free(message);
 
 			// Release thread lock
@@ -431,12 +431,12 @@ void *socket_connection_handler_thread(void *socket_desc)
 bool bind_sockets(void)
 {
 	// Initialize IPv4 telnet socket
-	bind_to_telnet_port_IPv4(SOCKET, &telnetfd4);
+	bind_to_telnet_port_IPv4(&telnetfd4);
 
 	// Initialize IPv6 telnet socket
 	// only if IPv6 interfaces are available
 	if(ipv6_available())
-		bind_to_telnet_port_IPv6(SOCKET, &telnetfd6);
+		bind_to_telnet_port_IPv6(&telnetfd6);
 
 	saveport();
 

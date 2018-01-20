@@ -23,7 +23,6 @@
 #include <time.h>
 #include <sys/time.h>
 #include <sys/socket.h>
-#include <regex.h>
 // struct sockaddr_in
 #include <netinet/in.h>
 // char* inet_ntoa(struct in_addr in)
@@ -211,8 +210,6 @@ typedef struct {
 enum { DATABASE_WRITE_TIMER, EXIT_TIMER };
 
 enum { QUERIES, FORWARDED, CLIENTS, DOMAINS, OVERTIME, WILDCARD };
-enum { TELNET, SOCKET };
-enum { WHITELIST, BLACKLIST, WILDLIST };
 enum { DNSSEC_UNSPECIFIED, DNSSEC_SECURE, DNSSEC_INSECURE, DNSSEC_BOGUS, DNSSEC_ABANDONED, DNSSEC_UNKNOWN };
 
 logFileNamesStruct files;
