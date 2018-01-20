@@ -299,14 +299,10 @@ void process_pihole_log(int file)
 			// Skip parsing of log entries that are too old altogether if 24h window is requested
 			if(config.rolling_24h && querytimestamp < mintime) continue;
 
-			// Check if this query has already been imported from the database
-			if(querytimestamp < lastDBimportedtimestamp) continue;
-
 			// Ensure we have enough space in the queries struct
 			memory_check(QUERIES);
 			int queryID = counters.queries;
 			int timeidx = findOverTimeID(overTimetimestamp);
-
 
 			// Detect time travel events
 			if(timeidx < 0)
@@ -575,12 +571,16 @@ void process_pihole_log(int file)
 			{
 				// This may happen e.g. if the original query was a PTR query or "pi.hole"
 				// as we ignore them altogether
+				free(forward);
 				continue;
 			}
 
 			// Count only if current query has not been counted so far
 			if(queries[i].complete)
+			{
+				free(forward);
 				continue;
+			}
 
 			// Get ID of forward destination, create new forward destination record
 			// if not found in current data structure
@@ -791,11 +791,6 @@ void process_pihole_log(int file)
 			if(!checkQuery(readbuffer, "reply"))
 				continue;
 
-			// Check if this query has already been imported from the database
-			int querytimestamp, overTimetimestamp;
-			extracttimestamp(readbuffer, &querytimestamp, &overTimetimestamp);
-			if(querytimestamp < lastDBimportedtimestamp) continue;
-
 			// Get dnsmasq's ID for this transaction
 			int dnsmasqID = getdnsmasqID(readbuffer);
 			// Skip invalid lines
@@ -864,11 +859,6 @@ void process_pihole_log(int file)
 			// Check query for invalid characters
 			if(!checkQuery(readbuffer, "DNSSEC"))
 				continue;
-
-			// Check if this query has already been imported from the database
-			int querytimestamp, overTimetimestamp;
-			extracttimestamp(readbuffer, &querytimestamp, &overTimetimestamp);
-			if(querytimestamp < lastDBimportedtimestamp) continue;
 
 			// Get dnsmasq's ID for this transaction
 			int dnsmasqID = getdnsmasqID(readbuffer);
