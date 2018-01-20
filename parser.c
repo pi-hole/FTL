@@ -548,13 +548,6 @@ void process_pihole_log(int file)
 			// Convert forward to lower case
 			strtolower(forward);
 
-			// Get ID of forward destination, create new forward destination record
-			// if not found in current data structure
-			int forwardID = findForwardID(forward, true);
-
-			// Release allocated memory
-			free(forward);
-
 			// Save status and forwardID in corresponding query indentified by dnsmasq's ID
 			bool found = false;
 			for(i=0; i<counters.queries; i++)
@@ -564,15 +557,16 @@ void process_pihole_log(int file)
 				{
 					// Detect if we cached the <CNAME> but need to ask the upstream
 					// servers for the actual IPs now
-					if(queries[i].status == 2)
+					if(queries[i].status == 3)
 					{
 						// Fix counters
 						counters.cached--;
 						validate_access("overTime", queries[i].timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 						overTime[queries[i].timeidx].cached--;
+
+						queries[i].complete = false;
 					}
 					queries[i].status = 2;
-					queries[i].forwardID = forwardID;
 					found = true;
 					break;
 				}
@@ -583,6 +577,18 @@ void process_pihole_log(int file)
 				// as we ignore them altogether
 				continue;
 			}
+
+			// Count only if current query has not been counted so far
+			if(queries[i].complete)
+				continue;
+
+			// Get ID of forward destination, create new forward destination record
+			// if not found in current data structure
+			int forwardID = findForwardID(forward, true);
+			queries[i].forwardID = forwardID;
+
+			// Release allocated memory
+			free(forward);
 
 			// Get time index
 			int timeidx = getTimeIndex(readbuffer);
