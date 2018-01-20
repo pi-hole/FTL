@@ -104,23 +104,19 @@ load 'libs/bats-support/load'
   echo "output: ${lines[@]}"
   [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
   [[ ${lines[1]} =~ "0 57.14 ::1 local" ]]
-  [[ ${lines[2]} =~ "1 14.29 2620:0:ccd::2 resolver2.ipv6-sandbox.opendns.com" ]]
-  [[ ${lines[3]} =~ "2 9.52 2001:1608:10:25::9249:d69b" ]]
-  [[ ${lines[4]} =~ "3 9.52 2001:1608:10:25::1c04:b12f" ]]
-  [[ ${lines[5]} =~ "4 9.52 2620:0:ccc::2 resolver1.ipv6-sandbox.opendns.com" ]]
-  [[ ${lines[6]} == "---EOM---" ]]
+  [[ ${lines[2]} =~ "1 28.57 2001:1608:10:25::9249:d69b" ]]
+  [[ ${lines[3]} =~ "2 14.29 2620:0:ccd::2 resolver2.ipv6-sandbox.opendns.com" ]]
+  [[ ${lines[4]} == "---EOM---" ]]
 }
 
 @test "Forward Destinations (unsorted)" {
   run bash -c 'echo ">forward-dest unsorted" | nc -v 127.0.0.1 4711'
   echo "output: ${lines[@]}"
   [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
-  [[ ${lines[1]} =~ "0 9.52 2001:1608:10:25::9249:d69b" ]]
-  [[ ${lines[2]} =~ "1 9.52 2001:1608:10:25::1c04:b12f" ]]
-  [[ ${lines[3]} =~ "2 14.29 2620:0:ccd::2 resolver2.ipv6-sandbox.opendns.com" ]]
-  [[ ${lines[4]} =~ "3 9.52 2620:0:ccc::2 resolver1.ipv6-sandbox.opendns.com" ]]
-  [[ ${lines[5]} =~ "4 57.14 ::1 local" ]]
-  [[ ${lines[6]} == "---EOM---" ]]
+  [[ ${lines[1]} =~ "0 28.57 2001:1608:10:25::9249:d69b" ]]
+  [[ ${lines[2]} =~ "1 14.29 2620:0:ccd::2 resolver2.ipv6-sandbox.opendns.com" ]]
+  [[ ${lines[3]} =~ "2 57.14 ::1 local" ]]
+  [[ ${lines[4]} == "---EOM---" ]]
 }
 
 @test "Query Types" {
