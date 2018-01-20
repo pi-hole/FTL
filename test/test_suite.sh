@@ -104,7 +104,7 @@ load 'libs/bats-support/load'
   echo "output: ${lines[@]}"
   [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
   [[ ${lines[1]} =~ "0 57.14 ::1 local" ]]
-  [[ ${lines[2]} =~ "1 14.29 2620:0:ccd::2 resolver2.ipv6-sandbox.opendns.com" ]]
+  [[ ${lines[2]} =~ "1 28.57 2001:1608:10:25::9249:d69b" ]]
   [[ ${lines[3]} =~ "2 14.29 2620:0:ccd::2 resolver2.ipv6-sandbox.opendns.com" ]]
   [[ ${lines[4]} == "---EOM---" ]]
 }
