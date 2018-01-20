@@ -120,6 +120,8 @@ void memory_check(int which)
 		break;
 		default:
 			/* That cannot happen */
+			logg("Fatal error in memory_check(%i)", which);
+			exit(EXIT_FAILURE);
 		break;
 	}
 }

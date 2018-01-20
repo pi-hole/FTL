@@ -49,6 +49,10 @@ int main (int argc, char* argv[]) {
 	if(config.maxDBdays != 0)
 		db_init();
 
+	// Try to import queries from long-term database if available
+	if(database)
+		read_data_from_DB();
+
 	logg("Starting initial log file parsing");
 	initial_log_parsing();
 	logg("Finished initial log file parsing");
@@ -181,7 +185,7 @@ int main (int argc, char* argv[]) {
 		save_to_DB();
 		logg("Finished final database update");
 	}
-	
+
 	// Close sockets
 	close_telnet_socket();
 	close_unix_socket();

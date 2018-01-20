@@ -30,9 +30,13 @@ void handle_signals(void);
 void process_pihole_log(int file);
 void *pihole_log_thread(void *val);
 void validate_access(const char * name, int pos, bool testmagic, int line, const char * function, const char * file);
-void validate_access_oTfd(int timeidx, int pos, int line, const char * function, const char * file);
-void validate_access_oTcl(int timeidx, int pos, int line, const char * function, const char * file);
+void validate_access_oTfd(int timeidx, int forwardID, int line, const char * function, const char * file);
+void validate_access_oTcl(int timeidx, int clientID, int line, const char * function, const char * file);
 void reresolveHostnames(void);
+int findClientID(const char *client);
+int findDomainID(const char *domain);
+int findForwardID(const char * forward, bool count);
+int findOverTimeID(int overTimetimestamp);
 
 void pihole_log_flushed(bool message);
 
@@ -83,3 +87,4 @@ void db_init(void);
 void *DB_thread(void *val);
 int get_number_of_queries_in_DB(void);
 void save_to_DB(void);
+void read_data_from_DB(void);

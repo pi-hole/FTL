@@ -255,3 +255,4 @@ long int lastdbindex;
 bool travis;
 bool DBdeleteoldqueries;
 bool rereadgravity;
+long int lastDBimportedtimestamp;

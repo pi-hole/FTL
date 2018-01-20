@@ -296,6 +296,9 @@ void process_pihole_log(int file)
 			// Skip parsing of log entries that are too old altogether if 24h window is requested
 			if(config.rolling_24h && querytimestamp < mintime) continue;
 
+			// Check if this query has already been imported from the database
+			if(querytimestamp < lastDBimportedtimestamp) continue;
+
 			// Ensure we have enough space in the queries struct
 			memory_check(QUERIES);
 			int queryID = counters.queries;
@@ -441,23 +444,6 @@ void process_pihole_log(int file)
 			validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 			overTime[timeidx].total++;
 
-			// Determine if there is enough space for saving the current
-			// clientID in the overTime data structure, allocate space otherwise
-			validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
-			if(overTime[timeidx].clientnum <= clientID)
-			{
-				// Reallocate more space for clientdata
-				overTime[timeidx].clientdata = realloc(overTime[timeidx].clientdata, (clientID+1)*sizeof(*overTime[timeidx].clientdata));
-				// Initialize new data fields with zeroes
-				for(i = overTime[timeidx].clientnum; i <= clientID; i++)
-				{
-					overTime[timeidx].clientdata[i] = 0;
-					memory.clientdata++;
-				}
-				// Update counter
-				overTime[timeidx].clientnum = clientID + 1;
-			}
-
 			// Update overTime data structure with the new client
 			validate_access_oTcl(timeidx, clientID, __LINE__, __FUNCTION__, __FILE__);
 			overTime[timeidx].clientdata[clientID]++;
@@ -472,6 +458,11 @@ void process_pihole_log(int file)
 			// Check query for invalid characters
 			if(!checkQuery(readbuffer, "gravity.list"))
 				continue;
+
+			// Check if this query has already been imported from the database
+			int querytimestamp, overTimetimestamp;
+			extracttimestamp(readbuffer, &querytimestamp, &overTimetimestamp);
+			if(querytimestamp < lastDBimportedtimestamp) continue;
 
 			// Get dnsmasq's ID for this transaction
 			int dnsmasqID = getdnsmasqID(readbuffer);
@@ -521,6 +512,11 @@ void process_pihole_log(int file)
 			// Check query for invalid characters
 			if(!checkQuery(readbuffer, "forwarded"))
 				continue;
+
+			// Check if this query has already been imported from the database
+			int querytimestamp, overTimetimestamp;
+			extracttimestamp(readbuffer, &querytimestamp, &overTimetimestamp);
+			if(querytimestamp < lastDBimportedtimestamp) continue;
 
 			// Get dnsmasq's ID for this transaction
 			int dnsmasqID = getdnsmasqID(readbuffer);
@@ -589,24 +585,6 @@ void process_pihole_log(int file)
 			// Get time index
 			int timeidx = getTimeIndex(readbuffer);
 
-			// Determine if there is enough space for saving the current
-			// forwardID in the overTime data structure, allocate space otherwise
-			validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
-			if(overTime[timeidx].forwardnum <= forwardID)
-			{
-				// Reallocate more space for forwarddata
-				overTime[timeidx].forwarddata = realloc(overTime[timeidx].forwarddata, (forwardID+1)*sizeof(*overTime[timeidx].forwarddata));
-				// Initialize new data fields with zeroes
-				int j;
-				for(j = overTime[timeidx].forwardnum; j <= forwardID; j++)
-				{
-					overTime[timeidx].forwarddata[j] = 0;
-					memory.forwarddata++;
-				}
-				// Update counter
-				overTime[timeidx].forwardnum = forwardID + 1;
-			}
-
 			// Update overTime data structure with the new forwarder
 			validate_access_oTfd(timeidx, forwardID, __LINE__, __FUNCTION__, __FILE__);
 			overTime[timeidx].forwarddata[forwardID]++;
@@ -632,6 +610,11 @@ void process_pihole_log(int file)
 			// Check query for invalid characters
 			if(!checkQuery(readbuffer, "cached"))
 				continue;
+
+			// Check if this query has already been imported from the database
+			int querytimestamp, overTimetimestamp;
+			extracttimestamp(readbuffer, &querytimestamp, &overTimetimestamp);
+			if(querytimestamp < lastDBimportedtimestamp) continue;
 
 			// Get dnsmasq's ID for this transaction
 			int dnsmasqID = getdnsmasqID(readbuffer);
@@ -680,6 +663,11 @@ void process_pihole_log(int file)
 			if(!checkQuery(readbuffer, "config"))
 				continue;
 
+			// Check if this query has already been imported from the database
+			int querytimestamp, overTimetimestamp;
+			extracttimestamp(readbuffer, &querytimestamp, &overTimetimestamp);
+			if(querytimestamp < lastDBimportedtimestamp) continue;
+
 			// Get dnsmasq's ID for this transaction
 			int dnsmasqID = getdnsmasqID(readbuffer);
 			// Skip invalid lines
@@ -727,7 +715,7 @@ void process_pihole_log(int file)
 					domains[queries[i].domainID].blockedcount++;
 					domains[queries[i].domainID].wildcard = true;
 				}
-				else
+				else if(queries[i].status == 3)
 				{
 					// Answered from a custom (user provided) cache file
 					counters.cached++;
@@ -744,6 +732,11 @@ void process_pihole_log(int file)
 			// Check query for invalid characters
 			if(!checkQuery(readbuffer, "black.list"))
 				continue;
+
+			// Check if this query has already been imported from the database
+			int querytimestamp, overTimetimestamp;
+			extracttimestamp(readbuffer, &querytimestamp, &overTimetimestamp);
+			if(querytimestamp < lastDBimportedtimestamp) continue;
 
 			// Get dnsmasq's ID for this transaction
 			int dnsmasqID = getdnsmasqID(readbuffer);
@@ -804,6 +797,11 @@ void process_pihole_log(int file)
 			// Check query for invalid characters
 			if(!checkQuery(readbuffer, "reply"))
 				continue;
+
+			// Check if this query has already been imported from the database
+			int querytimestamp, overTimetimestamp;
+			extracttimestamp(readbuffer, &querytimestamp, &overTimetimestamp);
+			if(querytimestamp < lastDBimportedtimestamp) continue;
 
 			// Get dnsmasq's ID for this transaction
 			int dnsmasqID = getdnsmasqID(readbuffer);
@@ -873,6 +871,11 @@ void process_pihole_log(int file)
 			// Check query for invalid characters
 			if(!checkQuery(readbuffer, "DNSSEC"))
 				continue;
+
+			// Check if this query has already been imported from the database
+			int querytimestamp, overTimetimestamp;
+			extracttimestamp(readbuffer, &querytimestamp, &overTimetimestamp);
+			if(querytimestamp < lastDBimportedtimestamp) continue;
 
 			// Get dnsmasq's ID for this transaction
 			int dnsmasqID = getdnsmasqID(readbuffer);
@@ -1296,24 +1299,58 @@ void validate_access(const char * name, int pos, bool testmagic, int line, const
 	}
 }
 
-void validate_access_oTfd(int timeidx, int pos, int line, const char * function, const char * file)
+void validate_access_oTfd(int timeidx, int forwardID, int line, const char * function, const char * file)
 {
+	// Determine if there is enough space for saving the current
+	// forwardID in the overTime data structure, allocate space otherwise
+	validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
+	if(overTime[timeidx].forwardnum <= forwardID)
+	{
+		// Reallocate more space for forwarddata
+		overTime[timeidx].forwarddata = realloc(overTime[timeidx].forwarddata, (forwardID+1)*sizeof(*overTime[timeidx].forwarddata));
+		// Initialize new data fields with zeroes
+		int j;
+		for(j = overTime[timeidx].forwardnum; j <= forwardID; j++)
+		{
+			overTime[timeidx].forwarddata[j] = 0;
+			memory.forwarddata++;
+		}
+		// Update counter
+		overTime[timeidx].forwardnum = forwardID + 1;
+	}
+
 	int limit = overTime[timeidx].forwardnum;
-	if(pos >= limit || pos < 0)
+	if(forwardID >= limit || forwardID < 0)
 	{
 		logg("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-		logg("FATAL ERROR: Trying to access overTime.forwarddata[%i], but maximum is %i", pos, limit);
+		logg("FATAL ERROR: Trying to access overTime.forwarddata[%i], but maximum is %i", forwardID, limit);
 		logg("             found in %s() (line %i) in %s", function, line, file);
 	}
 }
 
-void validate_access_oTcl(int timeidx, int pos, int line, const char * function, const char * file)
+void validate_access_oTcl(int timeidx, int clientID, int line, const char * function, const char * file)
 {
+	// Determine if there is enough space for saving the current
+	// clientID in the overTime data structure, allocate space otherwise
+	if(overTime[timeidx].clientnum <= clientID)
+	{
+		// Reallocate more space for clientdata
+		overTime[timeidx].clientdata = realloc(overTime[timeidx].clientdata, (clientID+1)*sizeof(*overTime[timeidx].clientdata));
+		// Initialize new data fields with zeroes
+		int i;
+		for(i = overTime[timeidx].clientnum; i <= clientID; i++)
+		{
+			overTime[timeidx].clientdata[i] = 0;
+			memory.clientdata++;
+		}
+		// Update counter
+		overTime[timeidx].clientnum = clientID + 1;
+	}
 	int limit = overTime[timeidx].clientnum;
-	if(pos >= limit || pos < 0)
+	if(clientID >= limit || clientID < 0)
 	{
 		logg("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-		logg("FATAL ERROR: Trying to access overTime.clientdata[%i], but maximum is %i", pos, limit);
+		logg("FATAL ERROR: Trying to access overTime.clientdata[%i], but maximum is %i", clientID, limit);
 		logg("             found in %s() (line %i) in %s", function, line, file);
 	}
 }
@@ -1349,8 +1386,8 @@ void reresolveHostnames(void)
 		free(hostname);
 	}
 }
-int findOverTimeID(int overTimetimestamp)
 
+int findOverTimeID(int overTimetimestamp)
 {
 	int timeidx = -1, i;
 	// Check struct size
