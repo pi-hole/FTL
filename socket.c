@@ -227,19 +227,17 @@ void swrite(int sock, void *value, size_t size) {
 		logg("WARNING: Socket write returned error code %i", errno);
 }
 
-int checkClientLimit(int socket, char *ipAddr) {
+int checkClientLimit(int socket) {
 	if(socket < MAXCONNS)
 	{
-		clientip[socket] = strdup(ipAddr);
-
 		if(debugclients)
-			logg("Client connected: %s, ID: %i", clientip[socket], socket);
+			logg("Client connected: %i", socket);
 		return socket;
 	}
 	else
 	{
 		if(debugclients)
-			logg("Client denied (at max capacity): %s, ID: %i", ipAddr, socket);
+			logg("Client denied (at max capacity of %i): %i", MAXCONNS, socket);
 
 		close(socket);
 		return -1;
@@ -265,15 +263,13 @@ int listener(int sockfd, char type)
 			memset(&in4_addr, 0, sizeof(in4_addr));
 			socklen = sizeof(un_addr);
 			socket = accept(sockfd, (struct sockaddr *) &in4_addr, &socklen);
-			return checkClientLimit(socket, inet_ntoa(in4_addr.sin_addr));
+			return checkClientLimit(socket);
 
 		case 6: // Internet socket (IPv6)
 			memset(&in6_addr, 0, sizeof(in6_addr));
 			socklen = sizeof(un_addr);
-			char str[INET6_ADDRSTRLEN];
 			socket = accept(sockfd, (struct sockaddr *) &in6_addr, &socklen);
-			inet_ntop(AF_INET6, &in6_addr.sin6_addr, str, INET6_ADDRSTRLEN);
-			return checkClientLimit(socket, str);
+			return checkClientLimit(socket);
 
 		default: // Should not happen
 			logg("Cannot listen on type %i connection, code error!", type);
@@ -356,11 +352,6 @@ void *telnet_connection_handler_thread(void *socket_desc)
 		close(sock);
 	free(socket_desc);
 
-	if(clientip[sock] != NULL) {
-		free(clientip[sock]);
-		clientip[sock] = NULL;
-	}
-
 	return 0;
 }
 
@@ -419,11 +410,6 @@ void *socket_connection_handler_thread(void *socket_desc)
 	if(sock != 0)
 		close(sock);
 	free(socket_desc);
-
-	if(clientip[sock] != NULL) {
-		free(clientip[sock]);
-		clientip[sock] = NULL;
-	}
 
 	return 0;
 }

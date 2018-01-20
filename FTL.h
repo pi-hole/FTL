@@ -254,5 +254,4 @@ long int lastdbindex;
 bool travis;
 bool DBdeleteoldqueries;
 bool rereadgravity;
-char * clientip[MAXCONNS];
 bool istelnet[MAXCONNS];
