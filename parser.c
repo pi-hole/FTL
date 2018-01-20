@@ -9,7 +9,6 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
-#define MAGICBYTE 0x57
 
 char *resolveHostname(const char *addr);
 void extracttimestamp(const char *readbuffer, int *querytimestamp, int *overTimetimestamp);

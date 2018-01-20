@@ -210,6 +210,9 @@ enum { QUERIES, FORWARDED, CLIENTS, DOMAINS, OVERTIME, WILDCARD };
 enum { SOCKET };
 enum { DNSSEC_UNSPECIFIED, DNSSEC_SECURE, DNSSEC_INSECURE, DNSSEC_BOGUS, DNSSEC_ABANDONED, DNSSEC_UNKNOWN };
 
+// Used to check memory integrity in various structs
+#define MAGICBYTE 0x57
+
 logFileNamesStruct files;
 FTLFileNamesStruct FTLfiles;
 countersStruct counters;
