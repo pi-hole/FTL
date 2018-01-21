@@ -121,7 +121,7 @@ void getOverTime(int *sock)
 {
 	int i, j = 9999999;
 
-	// Get first time slot with total or blocked greater than zero (the array will go down over time due to the rolling window)
+	// Start with the first non-empty overTime slot
 	for(i=0; i < counters.overTime; i++)
 	{
 		validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
