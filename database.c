@@ -528,13 +528,54 @@ void read_data_from_DB(void)
 		int queryID = counters.queries;
 
 		int queryTimeStamp = sqlite3_column_int(stmt, 1);
+		// 1483228800 = 01/01/2017 @ 12:00am (UTC)
+		if(queryTimeStamp < 1483228800)
+		{
+			logg("DB warn: TIMESTAMP should be larger than 01/01/2017 but it %i", queryTimeStamp);
+			continue;
+		}
 		int type = sqlite3_column_int(stmt, 2);
+		if(type != 1 && type != 2)
+		{
+			logg("DB warn: TYPE should be either 1 or 2 but not %i", type);
+			continue;
+		}
 		int status = sqlite3_column_int(stmt, 3);
-		int domainID = findDomainID((const char *)sqlite3_column_text(stmt, 4));
-		int clientID = findClientID((const char *)sqlite3_column_text(stmt, 5));
+		if(status < 0 || status > 5)
+		{
+			logg("DB warn: STATUS should be within [0,5] but is %i", status);
+			continue;
+		}
 
-		const char *forward_data = (const char *)sqlite3_column_text(stmt, 6);
-		int forwardID = forward_data != NULL ? findForwardID(forward_data, true) : -1;
+		const char * domain = (const char *)sqlite3_column_text(stmt, 4);
+		if(domain == NULL)
+		{
+			logg("DB warn: DOMAIN should never be NULL, %i", queryTimeStamp);
+			continue;
+		}
+		int domainID = findDomainID(domain);
+
+		const char * client = (const char *)sqlite3_column_text(stmt, 5);
+		if(client == NULL)
+		{
+			logg("DB warn: CLIENT should never be NULL, %i", queryTimeStamp);
+			continue;
+		}
+		int clientID = findClientID(client);
+
+		const char *forwarddest = (const char *)sqlite3_column_text(stmt, 6);
+		int forwardID = 0;
+		// Determine forwardID only when status == 2 (forwarded) as the
+		// field need not to be filled for other query status types
+		if(status == 2)
+		{
+			if(forwarddest == NULL)
+			{
+				logg("DB warn: FORWARD should not be NULL with status 2, %i", queryTimeStamp);
+				continue;
+			}
+			findForwardID(forwarddest, true);
+		}
 
 		int overTimeTimeStamp = queryTimeStamp - (queryTimeStamp % 600 + 300);
 		int timeidx = findOverTimeID(overTimeTimeStamp);
