@@ -92,8 +92,8 @@ void pack_str32(int sock, char *string) {
 	// Make sure that the length is less than 4294967296
 	size_t length = strlen(string);
 
-	if(length >= 4294967296) {
-		logg("Tried to send a str32 longer than 4294967295 bytes!");
+	if(length >= 2147483648) {
+		logg("Tried to send a str32 longer than 2147483647 bytes!");
 		exit(EXIT_FAILURE);
 	}
 
