@@ -75,17 +75,17 @@ int main (int argc, char* argv[]) {
 	}
 
 	// Bind to sockets after initial log parsing
-	bool telnet_ipv6 = bind_sockets();
+	bind_sockets();
 
 	pthread_t telnet_listenthreadv4;
-	if(pthread_create( &telnet_listenthreadv4, &attr, telnet_listening_thread_IPv4, NULL ) != 0)
+	if(ipv4telnet && pthread_create( &telnet_listenthreadv4, &attr, telnet_listening_thread_IPv4, NULL ) != 0)
 	{
 		logg("Unable to open IPv4 telnet listening thread. Exiting...");
 		killed = 1;
 	}
 
 	pthread_t telnet_listenthreadv6;
-	if(telnet_ipv6 && pthread_create( &telnet_listenthreadv6, &attr, telnet_listening_thread_IPv6, NULL ) != 0)
+	if(ipv6telnet &&  pthread_create( &telnet_listenthreadv6, &attr, telnet_listening_thread_IPv6, NULL ) != 0)
 	{
 		logg("Unable to open IPv6 telnet listening thread. Exiting...");
 		killed = 1;
@@ -175,8 +175,8 @@ int main (int argc, char* argv[]) {
 
 	// Cancel active threads as we don't need them any more
 	pthread_cancel(piholelogthread);
-	pthread_cancel(telnet_listenthreadv4);
-	if(telnet_ipv6) pthread_cancel(telnet_listenthreadv6);
+	if(ipv4telnet) pthread_cancel(telnet_listenthreadv4);
+	if(ipv6telnet) pthread_cancel(telnet_listenthreadv6);
 	pthread_cancel(socket_listenthread);
 
 	// Save new queries to database
