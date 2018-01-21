@@ -24,6 +24,7 @@
 // File descriptors
 int socketfd, telnetfd4 = 0, telnetfd6 = 0;
 bool dualstack = false;
+bool ipv4telnet = false, ipv6telnet = false;
 bool istelnet[MAXCONNS];
 
 void saveport(void)
@@ -41,7 +42,7 @@ void saveport(void)
 	}
 }
 
-char bind_to_telnet_port_IPv4(int *socketdescriptor)
+bool bind_to_telnet_port_IPv4(int *socketdescriptor)
 {
 	// IPv4 socket
 	*socketdescriptor = socket(AF_INET, SOCK_STREAM, 0);
@@ -76,21 +77,21 @@ char bind_to_telnet_port_IPv4(int *socketdescriptor)
 	if(bind(*socketdescriptor, (struct sockaddr *) &serv_addr4, sizeof(serv_addr4)) < 0)
 	{
 		logg("Error listening on IPv4 port %i: %s (%i)", config.port, strerror(errno), errno);
-		return 0;
+		return false;
 	}
 
 	// The listen system call allows the process to listen on the socket for connections
 	if(listen(*socketdescriptor, BACKLOG) == -1)
 	{
 		logg("Error listening on IPv4 socket: %s (%i)", strerror(errno), errno);
-		return 0;
+		return false;
 	}
 
 	logg("Listening on port %i for incoming IPv4 telnet connections", config.port);
-	return 1;
+	return true;
 }
 
-char bind_to_telnet_port_IPv6(int *socketdescriptor)
+bool bind_to_telnet_port_IPv6(int *socketdescriptor)
 {
 	// IPv6 socket
 	*socketdescriptor = socket(AF_INET6, SOCK_STREAM, 0);
@@ -138,18 +139,18 @@ char bind_to_telnet_port_IPv6(int *socketdescriptor)
 	if(bind(*socketdescriptor, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0)
 	{
 		logg("Error listening on IPv6 port %i: %s (%i)", config.port, strerror(errno), errno);
-		return 0;
+		return false;
 	}
 
 	// The listen system call allows the process to listen on the socket for connections
 	if(listen(*socketdescriptor, BACKLOG) == -1)
 	{
 		logg("Error listening on IPv6 socket: %s (%i)", strerror(errno), errno);
-		return 0;
+		return false;
 	}
 
 	logg("Listening on port %i for incoming IPv6 telnet connections", config.port);
-	return 1;
+	return true;
 }
 
 void bind_to_unix_socket(int *socketdescriptor)
@@ -352,7 +353,7 @@ void *telnet_connection_handler_thread(void *socket_desc)
 		close(sock);
 	free(socket_desc);
 
-	return 0;
+	return false;
 }
 
 
@@ -411,29 +412,25 @@ void *socket_connection_handler_thread(void *socket_desc)
 		close(sock);
 	free(socket_desc);
 
-	return 0;
+	return false;
 }
 
-bool bind_sockets(void)
+void bind_sockets(void)
 {
 	// Initialize IPv4 telnet socket
-	bind_to_telnet_port_IPv4(&telnetfd4);
+	if(bind_to_telnet_port_IPv4(&telnetfd4))
+		ipv4telnet = true;
 
 	// Initialize IPv6 telnet socket
 	// only if IPv6 interfaces are available
 	if(ipv6_available())
-		bind_to_telnet_port_IPv6(&telnetfd6);
+		if(bind_to_telnet_port_IPv6(&telnetfd6))
+			ipv6telnet = true;
 
 	saveport();
 
 	// Initialize Unix socket
 	bind_to_unix_socket(&socketfd);
-
-	// Return if we bound to an IPv6 interface or not
-	if(telnetfd6 != 0)
-		return true;
-	else
-		return false;
 }
 
 void *telnet_listening_thread_IPv4(void *args)
@@ -473,7 +470,7 @@ void *telnet_listening_thread_IPv4(void *args)
 			logg("WARNING: Unable to open telnet processing thread, error: %s", strerror(errno));
 		}
 	}
-	return 0;
+	return false;
 }
 
 void *telnet_listening_thread_IPv6(void *args)
@@ -513,7 +510,7 @@ void *telnet_listening_thread_IPv6(void *args)
 			logg("WARNING: Unable to open telnet processing thread, error: %s", strerror(errno));
 		}
 	}
-	return 0;
+	return false;
 }
 
 void *socket_listening_thread(void *args)
@@ -549,7 +546,7 @@ void *socket_listening_thread(void *args)
 			logg("WARNING: Unable to open socket processing thread, error: %s", strerror(errno));
 		}
 	}
-	return 0;
+	return false;
 }
 
 bool ipv6_available(void)
