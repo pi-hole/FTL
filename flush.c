@@ -81,4 +81,8 @@ void pihole_log_flushed(bool message)
 
 	// Recount entries in gravity files
 	read_gravity_files();
+
+	// Try to import queries from long-term database if available
+	if(database)
+		read_data_from_DB();
 }
