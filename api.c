@@ -100,13 +100,13 @@ void getStats(int *sock)
 	if(istelnet[*sock]) {
 		switch(blockingstatus) {
 			case 0: // Blocking disabled
-				ssend(*sock, "status: disabled\n");
+				ssend(*sock, "status disabled\n");
 				break;
 			case 1: // Blocking enabled
-				ssend(*sock, "status: enabled\n");
+				ssend(*sock, "status enabled\n");
 				break;
 			default: // Unknown status
-				ssend(*sock, "status: unknown\n");
+				ssend(*sock, "status unknown\n");
 				break;
 		}
 	}
