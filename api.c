@@ -52,29 +52,20 @@ void getStats(int *sock)
 	if(total > 0)
 		percentage = 1e2*blocked/total;
 
-	// MAX_INT is 10 digits, +1 for the null terminator
-	char domains_blocked[11];
-	char status[9];
+	// Send domains being blocked
+	if(istelnet[*sock]) {
+		switch(blockingstatus) {
+			case 0: // Blocking disabled
+				ssend(*sock, "domains_being_blocked N/A\n");
+				break;
+			default: // Blocking enabled or unknown
+				ssend(*sock, "domains_being_blocked %i\n", counters.gravity);
+				break;
+		}
 
-	switch(blockingstatus)
-	{
-		case 0: // Blocking disabled
-			if(istelnet[*sock])
-				strncpy(domains_blocked, "N/A", 4);
-			else
-				strncpy(domains_blocked, "\"N/A\"", 6);
-
-			strncpy(status, "disabled", 9);
-			break;
-		case 1: // Blocking Enabled
-			snprintf(domains_blocked, 11, "%i", counters.gravity);
-			strncpy(status, "enabled", 8);
-			break;
-		default: // Unknown status
-			snprintf(domains_blocked, 11, "%i", counters.gravity);
-			strncpy(status, "unknown", 8);
-			break;
 	}
+	else
+		pack_int32(*sock, counters.gravity);
 
 	// unique_clients: count only clients that have been active within the most recent 24 hours
 	int i, activeclients = 0;
@@ -86,17 +77,15 @@ void getStats(int *sock)
 	}
 
 	if(istelnet[*sock]) {
-		ssend(*sock, "domains_being_blocked %s\ndns_queries_today %i\nads_blocked_today %i\nads_percentage_today %f\n",
-		      domains_blocked, total, blocked, percentage);
+		ssend(*sock, "dns_queries_today %i\nads_blocked_today %i\nads_percentage_today %f\n",
+		      total, blocked, percentage);
 		ssend(*sock, "unique_domains %i\nqueries_forwarded %i\nqueries_cached %i\n",
 		      counters.domains, counters.forwardedqueries, counters.cached);
 		ssend(*sock, "clients_ever_seen %i\n", counters.clients);
 		ssend(*sock, "unique_clients %i\n", activeclients);
-		ssend(*sock, "status %s\n", status);
 	}
 	else
 	{
-		pack_int32(*sock, counters.gravity);
 		pack_int32(*sock, total);
 		pack_int32(*sock, blocked);
 		pack_float(*sock, percentage);
@@ -105,8 +94,24 @@ void getStats(int *sock)
 		pack_int32(*sock, counters.cached);
 		pack_int32(*sock, counters.clients);
 		pack_int32(*sock, activeclients);
-		pack_uint8(*sock, blockingstatus);
 	}
+
+	// Send status
+	if(istelnet[*sock]) {
+		switch(blockingstatus) {
+			case 0: // Blocking disabled
+				ssend(*sock, "status: disabled\n");
+				break;
+			case 1: // Blocking enabled
+				ssend(*sock, "status: enabled\n");
+				break;
+			default: // Unknown status
+				ssend(*sock, "status: unknown\n");
+				break;
+		}
+	}
+	else
+		pack_uint8(*sock, blockingstatus);
 
 	if(debugclients)
 		logg("Sent stats data to client, ID: %i", *sock);
