@@ -256,3 +256,4 @@ bool travis;
 bool DBdeleteoldqueries;
 bool rereadgravity;
 long int lastDBimportedtimestamp;
+bool ipv4telnet, ipv6telnet;
