@@ -532,7 +532,9 @@ void read_data_from_DB(void)
 		int status = sqlite3_column_int(stmt, 3);
 		int domainID = findDomainID((const char *)sqlite3_column_text(stmt, 4));
 		int clientID = findClientID((const char *)sqlite3_column_text(stmt, 5));
-		int forwardID = findForwardID((const char *)sqlite3_column_text(stmt, 6), true);
+
+		const char *forward_data = (const char *)sqlite3_column_text(stmt, 6);
+		int forwardID = forward_data != NULL ? findForwardID(forward_data, true) : -1;
 
 		int overTimeTimeStamp = queryTimeStamp - (queryTimeStamp % 600 + 300);
 		int timeidx = findOverTimeID(overTimeTimeStamp);
