@@ -84,7 +84,6 @@ typedef struct {
 
 typedef struct {
 	const char* log;
-	const char* log1;
 	const char* gravity;
 	const char* whitelist;
 	const char* blacklist;
