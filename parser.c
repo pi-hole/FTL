@@ -390,7 +390,7 @@ void process_pihole_log(int file)
 			// Convert client to lower case
 			strtolower(client);
 
-			// Get type
+			// Get type (A / AAAA)
 			unsigned char type = 0;
 			if(strstr(readbuffer,"query[A]") != NULL)
 			{
@@ -405,6 +405,14 @@ void process_pihole_log(int file)
 				counters.IPv6++;
 				validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 				overTime[timeidx].querytypedata[1]++;
+			}
+			else
+			{
+				// Might be ANY
+				if(debug) logg("Notice: Skipping possible ANY log line, ID: %i", dnsmasqID);
+				free(domain);
+				free(client);
+				continue;
 			}
 
 			// Go through already knows domains and see if it is one of them
