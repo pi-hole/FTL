@@ -841,7 +841,7 @@ void getForwardDestinationsOverTime(int *sock)
 	{
 		for(i = sendit; i < counters.overTime; i++)
 		{
-			double percentage;
+			float percentage;
 
 			validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
 			if(istelnet[*sock])
@@ -896,7 +896,7 @@ void getForwardDestinationsOverTime(int *sock)
 					//
 					// To get the total percentage of a specific forward destination on the total
 					// number of queries, we simply have to multiply a and b as done below:
-					percentage = 1e2 * thisforward / forwardedsum * (overTime[i].total - (overTime[i].cached + overTime[i].blocked)) / overTime[i].total;
+					percentage = (float) (1e2 * thisforward / forwardedsum * (overTime[i].total - (overTime[i].cached + overTime[i].blocked)) / overTime[i].total);
 				}
 				else
 					percentage = 0.0;
@@ -910,14 +910,14 @@ void getForwardDestinationsOverTime(int *sock)
 			// Avoid floating point exceptions
 			if(overTime[i].total > 0)
 				// Forward count for destination "local" is cached + blocked normalized by total:
-				percentage = 1e2 * (overTime[i].cached + overTime[i].blocked) / overTime[i].total;
+				percentage = (float) (1e2 * (overTime[i].cached + overTime[i].blocked) / overTime[i].total);
 			else
 				percentage = 0.0;
 
 			if(istelnet[*sock])
 				ssend(*sock, " %.2f\n", percentage);
 			else
-				pack_float(*sock, (float) percentage);
+				pack_float(*sock, percentage);
 		}
 	}
 
