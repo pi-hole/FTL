@@ -69,8 +69,8 @@ void pack_int64(int sock, int64_t value) {
 void pack_float(int sock, float value) {
 	// Need to use memcpy to do a direct copy without reinterpreting the bytes. It should get optimized away.
 	uint32_t bigEValue;
-    memcpy(&bigEValue, &value, sizeof(bigEValue));
-    bigEValue = htonl(bigEValue);
+	memcpy(&bigEValue, &value, sizeof(bigEValue));
+	bigEValue = htonl(bigEValue);
 	pack_basic(sock, 0xca, &bigEValue, sizeof(bigEValue));
 }
 
