@@ -67,6 +67,7 @@ int main (int argc, char* argv[]) {
 	// the system without the need for another thread to join with the terminated thread
 	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
+	// Start log analyzing thread
 	pthread_t piholelogthread;
 	if(pthread_create( &piholelogthread, &attr, pihole_log_thread, NULL ) != 0)
 	{
@@ -77,6 +78,7 @@ int main (int argc, char* argv[]) {
 	// Bind to sockets after initial log parsing
 	bind_sockets();
 
+	// Start TELNET IPv4 thread
 	pthread_t telnet_listenthreadv4;
 	if(ipv4telnet && pthread_create( &telnet_listenthreadv4, &attr, telnet_listening_thread_IPv4, NULL ) != 0)
 	{
@@ -84,6 +86,7 @@ int main (int argc, char* argv[]) {
 		killed = 1;
 	}
 
+	// Start TELNET IPv6 thread
 	pthread_t telnet_listenthreadv6;
 	if(ipv6telnet &&  pthread_create( &telnet_listenthreadv6, &attr, telnet_listening_thread_IPv6, NULL ) != 0)
 	{
@@ -91,6 +94,7 @@ int main (int argc, char* argv[]) {
 		killed = 1;
 	}
 
+	// Start SOCKET thread
 	pthread_t socket_listenthread;
 	if(pthread_create( &socket_listenthread, &attr, socket_listening_thread, NULL ) != 0)
 	{
@@ -121,14 +125,11 @@ int main (int argc, char* argv[]) {
 			needGC = false;
 			runGCthread = false;
 
-			if(config.rolling_24h)
+			pthread_t GCthread;
+			if(pthread_create( &GCthread, &attr, GC_thread, NULL ) != 0)
 			{
-				pthread_t GCthread;
-				if(pthread_create( &GCthread, &attr, GC_thread, NULL ) != 0)
-				{
-					logg("Unable to open GC thread. Exiting...");
-					killed = 1;
-				}
+				logg("Unable to open GC thread. Exiting...");
+				killed = 1;
 			}
 
 			if(database)

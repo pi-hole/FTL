@@ -9,6 +9,7 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
+#include "api.h"
 
 // The backlog argument defines the maximum length
 // to which the queue of pending connections for
@@ -24,6 +25,7 @@
 int socketfd, telnetfd4 = 0, telnetfd6 = 0;
 bool dualstack = false;
 bool ipv4telnet = false, ipv6telnet = false;
+bool istelnet[MAXCONNS];
 
 void saveport(void)
 {
@@ -40,7 +42,7 @@ void saveport(void)
 	}
 }
 
-bool bind_to_telnet_port_IPv4(char type, int *socketdescriptor)
+bool bind_to_telnet_port_IPv4(int *socketdescriptor)
 {
 	// IPv4 socket
 	*socketdescriptor = socket(AF_INET, SOCK_STREAM, 0);
@@ -65,7 +67,7 @@ bool bind_to_telnet_port_IPv4(char type, int *socketdescriptor)
 	memset(&serv_addr4, 0, sizeof(serv_addr4));
 	serv_addr4.sin_family = AF_INET;
 
-	if(config.socket_listenlocal && type == SOCKET)
+	if(config.socket_listenlocal)
 		serv_addr4.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 	else
 		serv_addr4.sin_addr.s_addr = INADDR_ANY;
@@ -85,11 +87,11 @@ bool bind_to_telnet_port_IPv4(char type, int *socketdescriptor)
 		return false;
 	}
 
-	logg("Listening on port %i for incoming IPv4 connections", config.port);
+	logg("Listening on port %i for incoming IPv4 telnet connections", config.port);
 	return true;
 }
 
-bool bind_to_telnet_port_IPv6(char type, int *socketdescriptor)
+bool bind_to_telnet_port_IPv6(int *socketdescriptor)
 {
 	// IPv6 socket
 	*socketdescriptor = socket(AF_INET6, SOCK_STREAM, 0);
@@ -120,7 +122,7 @@ bool bind_to_telnet_port_IPv6(char type, int *socketdescriptor)
 	memset(&serv_addr, 0, sizeof(serv_addr));
 	serv_addr.sin6_family = AF_INET6;
 
-	if(config.socket_listenlocal && type == SOCKET)
+	if(config.socket_listenlocal)
 		serv_addr.sin6_addr = in6addr_loopback;
 	else
 		serv_addr.sin6_addr = in6addr_any;
@@ -147,7 +149,7 @@ bool bind_to_telnet_port_IPv6(char type, int *socketdescriptor)
 		return false;
 	}
 
-	logg("Listening on port %i for incoming IPv6 connections", config.port);
+	logg("Listening on port %i for incoming IPv6 telnet connections", config.port);
 	return true;
 }
 
@@ -200,7 +202,10 @@ void removeport(void)
 
 void seom(int sock)
 {
-	ssend(sock, "---EOM---\n\n");
+	if(istelnet[sock])
+		ssend(sock, "---EOM---\n\n");
+	else
+		pack_eom(sock);
 }
 
 void ssend(int sock, const char *format, ...)
@@ -218,33 +223,58 @@ void ssend(int sock, const char *format, ...)
 	}
 }
 
+void swrite(int sock, void *value, size_t size) {
+	if(write(sock, value, size) == -1)
+		logg("WARNING: Socket write returned error code %i", errno);
+}
+
+int checkClientLimit(int socket) {
+	if(socket < MAXCONNS)
+	{
+		if(debugclients)
+			logg("Client connected: %i", socket);
+		return socket;
+	}
+	else
+	{
+		if(debugclients)
+			logg("Client denied (at max capacity of %i): %i", MAXCONNS, socket);
+
+		close(socket);
+		return -1;
+	}
+}
+
 int listener(int sockfd, char type)
 {
 	struct sockaddr_un un_addr;
 	struct sockaddr_in in4_addr;
 	struct sockaddr_in6 in6_addr;
 	socklen_t socklen = 0;
+	int socket;
 
 	switch(type)
 	{
 		case 0: // Unix socket
-		memset(&un_addr, 0, sizeof(un_addr));
-		socklen = sizeof(un_addr);
-		return accept(sockfd, (struct sockaddr *) &un_addr, &socklen);
+			memset(&un_addr, 0, sizeof(un_addr));
+			socklen = sizeof(un_addr);
+			return accept(sockfd, (struct sockaddr *) &un_addr, &socklen);
 
 		case 4: // Internet socket (IPv4)
-		memset(&in4_addr, 0, sizeof(in4_addr));
-		socklen = sizeof(un_addr);
-		return accept(sockfd, (struct sockaddr *) &in4_addr, &socklen);
+			memset(&in4_addr, 0, sizeof(in4_addr));
+			socklen = sizeof(un_addr);
+			socket = accept(sockfd, (struct sockaddr *) &in4_addr, &socklen);
+			return checkClientLimit(socket);
 
 		case 6: // Internet socket (IPv6)
-		memset(&in6_addr, 0, sizeof(in6_addr));
-		socklen = sizeof(un_addr);
-		return accept(sockfd, (struct sockaddr *) &in6_addr, &socklen);
+			memset(&in6_addr, 0, sizeof(in6_addr));
+			socklen = sizeof(un_addr);
+			socket = accept(sockfd, (struct sockaddr *) &in6_addr, &socklen);
+			return checkClientLimit(socket);
 
 		default: // Should not happen
-		logg("Cannot listen on type %i connection, code error!", type);
-		exit(EXIT_FAILURE);
+			logg("Cannot listen on type %i connection, code error!", type);
+			exit(EXIT_FAILURE);
 	}
 }
 
@@ -270,6 +300,9 @@ void *telnet_connection_handler_thread(void *socket_desc)
 {
 	//Get the socket descriptor
 	int sock = *(int*)socket_desc;
+	// Set connection type to telnet
+	istelnet[sock] = true;
+
 	// Store copy only for displaying the debug messages
 	int sockID = sock;
 	char client_message[SOCKETBUFFERLEN] = "";
@@ -328,6 +361,8 @@ void *socket_connection_handler_thread(void *socket_desc)
 {
 	//Get the socket descriptor
 	int sock = *(int*)socket_desc;
+	// Set connection type to not telnet
+	istelnet[sock] = false;
 	// Store copy only for displaying the debug messages
 	int sockID = sock;
 	char client_message[SOCKETBUFFERLEN] = "";
@@ -383,13 +418,13 @@ void *socket_connection_handler_thread(void *socket_desc)
 void bind_sockets(void)
 {
 	// Initialize IPv4 telnet socket
-	if(bind_to_telnet_port_IPv4(SOCKET, &telnetfd4))
+	if(bind_to_telnet_port_IPv4(&telnetfd4))
 		ipv4telnet = true;
 
 	// Initialize IPv6 telnet socket
 	// only if IPv6 interfaces are available
 	if(ipv6_available())
-		if(bind_to_telnet_port_IPv6(SOCKET, &telnetfd6))
+		if(bind_to_telnet_port_IPv6(&telnetfd6))
 			ipv6telnet = true;
 
 	saveport();
@@ -496,6 +531,7 @@ void *socket_listening_thread(void *args)
 	{
 		// Look for new clients that want to connect
 		int csck = listener(socketfd, 0);
+		if(csck < 0) continue;
 
 		// Allocate memory used to transport client socket ID to client listening thread
 		int *newsock;

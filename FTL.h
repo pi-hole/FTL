@@ -68,6 +68,9 @@
 // Default -60 (one minute before a full hour)
 #define GCdelay (-60)
 
+// How many client connection do we accept at once?
+#define MAXCONNS 20
+
 // Static structs
 typedef struct {
 	const char* conf;
@@ -80,7 +83,6 @@ typedef struct {
 
 typedef struct {
 	const char* log;
-	const char* log1;
 	const char* gravity;
 	const char* whitelist;
 	const char* blacklist;
@@ -119,8 +121,6 @@ typedef struct {
 
 typedef struct {
 	bool socket_listenlocal;
-	bool include_yesterday;
-	bool rolling_24h;
 	bool query_display;
 	bool analyze_AAAA;
 	int maxDBdays;
@@ -204,7 +204,6 @@ typedef struct {
 enum { DATABASE_WRITE_TIMER, EXIT_TIMER };
 
 enum { QUERIES, FORWARDED, CLIENTS, DOMAINS, OVERTIME, WILDCARD };
-enum { SOCKET };
 enum { DNSSEC_UNSPECIFIED, DNSSEC_SECURE, DNSSEC_INSECURE, DNSSEC_BOGUS, DNSSEC_ABANDONED, DNSSEC_UNKNOWN };
 
 // Used to check memory integrity in various structs
@@ -254,3 +253,4 @@ bool DBdeleteoldqueries;
 bool rereadgravity;
 long int lastDBimportedtimestamp;
 bool ipv4telnet, ipv6telnet;
+bool istelnet[MAXCONNS];

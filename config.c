@@ -43,28 +43,6 @@ void read_FTLconf(void)
 	else
 		logg("   SOCKET_LISTENING: all destinations");
 
-	// TIMEFRAME
-	// defaults to: ROLLING
-	config.rolling_24h = true;
-	config.include_yesterday = true;
-	buffer = parse_FTLconf(fp, "TIMEFRAME");
-
-	if(buffer != NULL && strcmp(buffer, "yesterday") == 0)
-	{
-		config.include_yesterday = true;
-		config.rolling_24h = false;
-		logg("   TIMEFRAME: Yesterday + Today");
-	}
-	else if(buffer != NULL && strcmp(buffer, "today") == 0)
-	{
-		config.include_yesterday = false;
-		config.rolling_24h = false;
-		logg("   TIMEFRAME: Today");
-	}
-
-	if(config.rolling_24h)
-		logg("   TIMEFRAME: Rolling 24h");
-
 	// QUERY_DISPLAY
 	// defaults to: Yes
 	config.query_display = true;
