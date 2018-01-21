@@ -271,7 +271,7 @@ void getTopDomains(char *client_message, int *sock)
 				if(istelnet[*sock])
 					ssend(*sock, "%i %i %s wildcard\n", n, domains[j].blockedcount, domains[j].domain);
 				else {
-					char *fancyWildcard = calloc(2 + strlen(domains[j].domain), sizeof(char));
+					char *fancyWildcard = calloc(3 + strlen(domains[j].domain), sizeof(char));
 					sprintf(fancyWildcard, "*.%s", domains[j].domain);
 					pack_str32(*sock, fancyWildcard);
 					pack_int32(*sock, domains[j].blockedcount);
