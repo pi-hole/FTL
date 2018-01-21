@@ -531,7 +531,7 @@ void read_data_from_DB(void)
 		// 1483228800 = 01/01/2017 @ 12:00am (UTC)
 		if(queryTimeStamp < 1483228800)
 		{
-			logg("DB warn: TIMESTAMP should be larger than 01/01/2017 but it %i", queryTimeStamp);
+			logg("DB warn: TIMESTAMP should be larger than 01/01/2017 but is %i", queryTimeStamp);
 			continue;
 		}
 		int type = sqlite3_column_int(stmt, 2);
