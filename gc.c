@@ -21,7 +21,7 @@ void *GC_thread(void *val)
 
 	// Get minimum time stamp to keep
 	int differencetofullhour = time(NULL) % GCinterval;
-	int mintime = (time(NULL) - GCdelay - differencetofullhour) - MAXLOGAGE;
+	int mintime = (time(NULL) - GCdelay - differencetofullhour) - config.maxlogage;
 	if(debugGC)
 	{
 		time_t timestamp = mintime;

@@ -496,7 +496,7 @@ void read_data_from_DB(void)
 	char *rstr = NULL;
 	// Get time stamp 24 hours in the past
 	int differencetofullhour = time(NULL) % GCinterval;
-	long int mintime = ((long)time(NULL) - GCdelay - differencetofullhour) - MAXLOGAGE;
+	long int mintime = ((long)time(NULL) - GCdelay - differencetofullhour) - config.maxlogage;
 	int rc = asprintf(&rstr, "SELECT * FROM queries WHERE timestamp >= %li", mintime);
 	if(rc < 1)
 	{

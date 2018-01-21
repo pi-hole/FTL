@@ -295,7 +295,7 @@ void process_pihole_log(int file)
 
 			// Get minimum time stamp to analyze
 			int differencetofullhour = time(NULL) % GCinterval;
-			int mintime = (time(NULL) - GCdelay - differencetofullhour) - MAXLOGAGE;
+			int mintime = (time(NULL) - GCdelay - differencetofullhour) - config.maxlogage;
 			// Skip parsing of log entries that are too old altogether if 24h window is requested
 			if(config.rolling_24h && querytimestamp < mintime) continue;
 
