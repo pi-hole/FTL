@@ -571,12 +571,20 @@ void getAllQueries(char *client_message, int *sock)
 	}
 	// Domain filtering?
 	if(command(client_message, ">getallqueries-domain")) {
-		sscanf(client_message, ">getallqueries-domain %ms", &domainname);
+		// Get domain name we want to see only (limit length to 255 chars)
+		domainname = calloc(256, sizeof(char));
+		sscanf(client_message, ">getallqueries-domain %255s", domainname);
+		if(debugclients)
+			logg("Showing only queries with domain %s", domainname);
 		filterdomainname = true;
 	}
 	// Client filtering?
 	if(command(client_message, ">getallqueries-client")) {
-		sscanf(client_message, ">getallqueries-client %ms", &clientname);
+		clientname = calloc(256, sizeof(char));
+		// Get client name we want to see only (limit length to 255 chars)
+		sscanf(client_message, ">getallqueries-client %255s", clientname);
+		if(debugclients)
+			logg("Showing only queries with client %s", clientname);
 		filterclientname = true;
 	}
 
