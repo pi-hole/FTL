@@ -1000,7 +1000,7 @@ void getVersion(int *sock)
 		if(istelnet[*sock])
 			ssend(*sock, "version vDev-%s\ntag %s\nbranch %s\ndate %s\n", hash, tag, GIT_BRANCH, GIT_DATE);
 		else {
-			char *hashVersion = calloc(5 + strlen(hash), sizeof(char));
+			char *hashVersion = calloc(6 + strlen(hash), sizeof(char));
 			sprintf(hashVersion, "vDev-%s", hash);
 
 			pack_str32(*sock, hashVersion);
