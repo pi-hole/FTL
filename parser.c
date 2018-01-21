@@ -259,6 +259,12 @@ void process_pihole_log(void)
 		// Check if this query has already been imported from the database
 		if(querytimestamp < lastDBimportedtimestamp) continue;
 
+		// Skip parsing of log entries that are too old
+		// Get minimum time stamp to analyze
+		int differencetofullhour = time(NULL) % GCinterval;
+		int mintime = (time(NULL) - GCdelay - differencetofullhour) - MAXLOGAGE;
+		if(querytimestamp < mintime) continue;
+
 		// Test if the read line is a query line
 		if(strstr(readbuffer," query[A") != NULL)
 		{
@@ -270,12 +276,6 @@ void process_pihole_log(void)
 				if(debug) logg("Not analyzing AAAA query");
 				continue;
 			}
-
-			// Get minimum time stamp to analyze
-			int differencetofullhour = time(NULL) % GCinterval;
-			int mintime = (time(NULL) - GCdelay - differencetofullhour) - MAXLOGAGE;
-			// Skip parsing of log entries that are too old altogether if 24h window is requested
-			if(config.rolling_24h && querytimestamp < mintime) continue;
 
 			// Ensure we have enough space in the queries struct
 			memory_check(QUERIES);
