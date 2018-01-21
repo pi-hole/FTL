@@ -273,7 +273,10 @@ void getTopDomains(char *client_message, int *sock)
 				else {
 					char *fancyWildcard = calloc(3 + strlen(domains[j].domain), sizeof(char));
 					sprintf(fancyWildcard, "*.%s", domains[j].domain);
-					pack_str32(*sock, fancyWildcard);
+
+					if(!pack_str32(*sock, fancyWildcard))
+						return;
+
 					pack_int32(*sock, domains[j].blockedcount);
 					free(fancyWildcard);
 				}
@@ -283,7 +286,9 @@ void getTopDomains(char *client_message, int *sock)
 				if(istelnet[*sock])
 					ssend(*sock, "%i %i %s\n", n, domains[j].blockedcount, domains[j].domain);
 				else {
-					pack_str32(*sock, domains[j].domain);
+					if(!pack_str32(*sock, domains[j].domain))
+						return;
+
 					pack_int32(*sock, domains[j].blockedcount);
 				}
 			}
@@ -295,7 +300,9 @@ void getTopDomains(char *client_message, int *sock)
 				ssend(*sock,"%i %i %s\n",n,(domains[j].count - domains[j].blockedcount),domains[j].domain);
 			else
 			{
-				pack_str32(*sock, domains[j].domain);
+				if(!pack_str32(*sock, domains[j].domain))
+					return;
+
 				pack_int32(*sock, domains[j].count - domains[j].blockedcount);
 			}
 			n++;
@@ -391,8 +398,9 @@ void getTopClients(char *client_message, int *sock)
 				ssend(*sock,"%i %i %s %s\n",n,clients[j].count,clients[j].ip,clients[j].name);
 			else
 			{
-				pack_str32(*sock, clients[j].name);
-				pack_str32(*sock, clients[j].ip);
+				if(!pack_str32(*sock, clients[j].name) || !pack_str32(*sock, clients[j].ip))
+					return;
+
 				pack_int32(*sock, clients[j].count);
 			}
 			n++;
@@ -508,8 +516,9 @@ void getForwardDestinations(char *client_message, int *sock)
 				ssend(*sock, "%i %.2f %s %s\n", i, percentage, ip, name);
 			else
 			{
-				pack_str32(*sock, name);
-				pack_str32(*sock, ip);
+				if(!pack_str32(*sock, name) || !pack_str32(*sock, ip))
+					return;
+
 				pack_float(*sock, (float) percentage);
 			}
 		}
@@ -710,11 +719,12 @@ void getAllQueries(char *client_message, int *sock)
 			pack_int32(*sock, queries[i].timestamp);
 
 			// Use a fixstr because the length of qtype is always 4 (max is 31 for fixstr)
-			pack_fixstr(*sock, qtype);
+			if(!pack_fixstr(*sock, qtype))
+				return;
 
 			// Use str32 for domain and client because we have no idea how long they will be (max is 4294967295 for str32)
-			pack_str32(*sock, domains[queries[i].domainID].domain);
-			pack_str32(*sock, client);
+			if(!pack_str32(*sock, domains[queries[i].domainID].domain) || !pack_str32(*sock, client))
+				return;
 
 			pack_uint8(*sock, queries[i].status);
 			pack_uint8(*sock, domains[queries[i].domainID].dnssec);
@@ -762,8 +772,8 @@ void getRecentBlocked(char *client_message, int *sock)
 
 			if(istelnet[*sock])
 				ssend(*sock,"%s\n", domains[queries[i].domainID].domain);
-			else
-				pack_str32(*sock, domains[queries[i].domainID].domain);
+			else if(!pack_str32(*sock, domains[queries[i].domainID].domain))
+				return;
 		}
 
 		if(found >= num)
@@ -840,8 +850,8 @@ void getForwardDestinationsOverTime(int *sock)
 				ip = forwarded[i].ip;
 			}
 
-			pack_str32(*sock, name);
-			pack_str32(*sock, ip);
+			if(!pack_str32(*sock, name) || !pack_str32(*sock, ip))
+				return;
 		}
 	}
 
@@ -994,10 +1004,11 @@ void getVersion(int *sock)
 		if(istelnet[*sock])
 			ssend(*sock, "version %s\ntag %s\nbranch %s\ndate %s\n", GIT_VERSION, tag, GIT_BRANCH, GIT_DATE);
 		else {
-			pack_str32(*sock, GIT_VERSION);
-			pack_str32(*sock, (char *) tag);
-			pack_str32(*sock, GIT_BRANCH);
-			pack_str32(*sock, GIT_DATE);
+			if(!pack_str32(*sock, GIT_VERSION) ||
+					!pack_str32(*sock, (char *) tag) ||
+					!pack_str32(*sock, GIT_BRANCH) ||
+					!pack_str32(*sock, GIT_DATE))
+				return;
 		}
 	}
 	else {
@@ -1011,10 +1022,11 @@ void getVersion(int *sock)
 			char *hashVersion = calloc(6 + strlen(hash), sizeof(char));
 			sprintf(hashVersion, "vDev-%s", hash);
 
-			pack_str32(*sock, hashVersion);
-			pack_str32(*sock, (char *) tag);
-			pack_str32(*sock, GIT_BRANCH);
-			pack_str32(*sock, GIT_DATE);
+			if(!pack_str32(*sock, hashVersion) ||
+					!pack_str32(*sock, (char *) tag) ||
+					!pack_str32(*sock, GIT_BRANCH) ||
+					!pack_str32(*sock, GIT_DATE))
+				return;
 
 			free(hashVersion);
 		}
@@ -1044,7 +1056,9 @@ void getDBstats(int *sock)
 	else {
 		pack_int32(*sock, get_number_of_queries_in_DB());
 		pack_int64(*sock, filesize);
-		pack_str32(*sock, (char *) sqlite3_libversion());
+
+		if(!pack_str32(*sock, (char *) sqlite3_libversion()))
+			return;
 	}
 
 	if(debugclients)
@@ -1166,8 +1180,9 @@ void getClientNames(int *sock)
 		if(istelnet[*sock])
 			ssend(*sock, "%i %i %s %s\n", i, clients[i].count, clients[i].ip, clients[i].name);
 		else {
-			pack_str32(*sock, clients[i].name);
-			pack_str32(*sock, clients[i].ip);
+			if(!pack_str32(*sock, clients[i].name) || !pack_str32(*sock, clients[i].ip))
+				return;
+
 			pack_int32(*sock, clients[i].count);
 		}
 	}
@@ -1213,11 +1228,12 @@ void getUnknownQueries(int *sock)
 			pack_int32(*sock, queries[i].id);
 
 			// Use a fixstr because the length of qtype is always 4 (max is 31 for fixstr)
-			pack_fixstr(*sock, type);
+			if(!pack_fixstr(*sock, type))
+				return;
 
 			// Use str32 for domain and client because we have no idea how long they will be (max is 4294967295 for str32)
-			pack_str32(*sock, domains[queries[i].domainID].domain);
-			pack_str32(*sock, client);
+			if(!pack_str32(*sock, domains[queries[i].domainID].domain) || !pack_str32(*sock, client))
+				return;
 
 			pack_uint8(*sock, queries[i].status);
 			pack_bool(*sock, queries[i].complete);

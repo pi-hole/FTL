@@ -37,6 +37,6 @@ void pack_uint64(int sock, uint64_t value);
 void pack_int32(int sock, int32_t value);
 void pack_int64(int sock, int64_t value);
 void pack_float(int sock, float value);
-void pack_fixstr(int sock, char *string);
-void pack_str32(int sock, char *string);
+bool pack_fixstr(int sock, char *string);
+bool pack_str32(int sock, char *string);
 void pack_map16_start(int sock, uint16_t length);

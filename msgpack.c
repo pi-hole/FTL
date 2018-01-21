@@ -74,27 +74,31 @@ void pack_float(int sock, float value) {
 	pack_basic(sock, 0xca, &bigEValue, sizeof(bigEValue));
 }
 
-void pack_fixstr(int sock, char *string) {
+// Return true if successful
+bool pack_fixstr(int sock, char *string) {
 	// Make sure that the length is less than 32
 	size_t length = strlen(string);
 
 	if(length >= 32) {
 		logg("Tried to send a fixstr longer than 31 bytes!");
-		exit(EXIT_FAILURE);
+		return false;
 	}
 
 	uint8_t format = (uint8_t) (0xA0 | length);
 	swrite(sock, &format, sizeof(format));
 	swrite(sock, string, length);
+
+	return true;
 }
 
-void pack_str32(int sock, char *string) {
+// Return true if successful
+bool pack_str32(int sock, char *string) {
 	// Make sure that the length is less than 4294967296
 	size_t length = strlen(string);
 
 	if(length >= 2147483648) {
 		logg("Tried to send a str32 longer than 2147483647 bytes!");
-		exit(EXIT_FAILURE);
+		return false;
 	}
 
 	uint8_t format = 0xdb;
@@ -102,6 +106,8 @@ void pack_str32(int sock, char *string) {
 	uint32_t bigELength = htonl((uint32_t) length);
 	swrite(sock, &bigELength, sizeof(bigELength));
 	swrite(sock, string, length);
+
+	return true;
 }
 
 void pack_map16_start(int sock, uint16_t length) {

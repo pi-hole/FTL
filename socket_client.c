@@ -16,6 +16,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <errno.h>
+
 #define BUF 1024
 
 int main (int argc, char **argv) {
@@ -38,6 +40,7 @@ int main (int argc, char **argv) {
 	address.sun_family = AF_LOCAL;
 
 	char *command = ">stats";
+	strcpy(address.sun_path,"/var/run/pihole/FTL.sock");
 
 	int i;
 	for(i = 1; i < argc; i++) {
@@ -50,15 +53,13 @@ int main (int argc, char **argv) {
 		// Set socket file location (respect special location on the CI system Travis)
 		if(strcmp(argv[i], "travis") == 0)
 			strcpy(address.sun_path,"pihole-FTL.sock");
-		else
-			strcpy(address.sun_path,"/var/run/pihole/FTL.sock");
 	}
 
 	// Connect to the socket provided by pihole-FTL
 	ret = connect(socketfd, (struct sockaddr *) &address, sizeof (address));
 	if (ret != 0)
 	{
-		printf("Error establishing connection!\n");
+		printf("Error establishing connection! %s\n", strerror(errno));
 		exit(EXIT_FAILURE);
 	}
 	printf("Connection established\n");
