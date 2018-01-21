@@ -44,11 +44,11 @@ void memory_check(int which);
 
 void close_telnet_socket(void);
 void close_unix_socket(void);
-void swrite(char server_message[], int sock);
-void *telnet_listening_thread_IPv4(void *args);
-void *telnet_listening_thread_IPv6(void *args);
 void seom(int sock);
 void ssend(int sock, const char *format, ...);
+void swrite(int sock, void *value, size_t size);
+void *telnet_listening_thread_IPv4(void *args);
+void *telnet_listening_thread_IPv6(void *args);
 
 void *socket_listening_thread(void *args);
 bool ipv6_available(void);
@@ -56,7 +56,7 @@ void bind_sockets(void);
 
 void process_request(char *client_message, int *sock);
 bool command(char *client_message, const char* cmd);
-void formatNumber(bool raw, int n, char* buffer);
+bool matchesEndpoint(char *client_message, const char *cmd);
 
 void read_gravity_files(void);
 int countlines(const char* fname);

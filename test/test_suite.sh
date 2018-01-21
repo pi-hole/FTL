@@ -235,17 +235,7 @@ load 'libs/bats-support/load'
   echo "output: ${lines[@]}"
   [[ ${lines[0]} == "Socket created" ]]
   [[ ${lines[1]} == "Connection established" ]]
-  [[ ${lines[2]} == "domains_being_blocked -1" ]]
-  [[ ${lines[3]} == "dns_queries_today 7" ]]
-  [[ ${lines[4]} == "ads_blocked_today 2" ]]
-  [[ ${lines[5]} == "ads_percentage_today 28.571428" ]]
-  [[ ${lines[6]} == "unique_domains 6" ]]
-  [[ ${lines[7]} == "queries_forwarded 3" ]]
-  [[ ${lines[8]} == "queries_cached 2" ]]
-  [[ ${lines[9]} == "clients_ever_seen 3" ]]
-  [[ ${lines[10]} == "unique_clients 3" ]]
-  [[ ${lines[11]} == "status unknown" ]]
-  [[ ${lines[12]} == "---EOM---" ]]
+  [[ ${lines[2]} == "d2 ff ff ff ff d2 00 00 00 07 d2 00 00 00 02 ca 41 e4 92 49 d2 00 00 00 06 d2 00 00 00 03 d2 00 00 00 02 d2 00 00 00 03 d2 00 00 00 03 cc 02 c1 " ]]
 }
 
 @test "Final part of the tests: Killing pihole-FTL process" {
