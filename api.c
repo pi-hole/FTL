@@ -955,20 +955,20 @@ void getQueryTypesOverTime(int *sock)
 		{
 			validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
 
-			double percentageIPv4 = 0.0, percentageIPv6 = 0.0;
+			float percentageIPv4 = 0.0, percentageIPv6 = 0.0;
 			int sum = overTime[i].querytypedata[0] + overTime[i].querytypedata[1];
 
 			if(sum > 0) {
-				percentageIPv4 = 1e2*overTime[i].querytypedata[0] / sum;
-				percentageIPv6 = 1e2*overTime[i].querytypedata[1] / sum;
+				percentageIPv4 = (float) (1e2 * overTime[i].querytypedata[0] / sum);
+				percentageIPv6 = (float) (1e2 * overTime[i].querytypedata[1] / sum);
 			}
 
 			if(istelnet[*sock])
 				ssend(*sock, "%i %.2f %.2f\n", overTime[i].timestamp, percentageIPv4, percentageIPv6);
 			else {
 				pack_int32(*sock, overTime[i].timestamp);
-				pack_float(*sock, (float) percentageIPv4);
-				pack_float(*sock, (float) percentageIPv6);
+				pack_float(*sock, percentageIPv4);
+				pack_float(*sock, percentageIPv6);
 			}
 		}
 	}
