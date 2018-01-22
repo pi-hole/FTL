@@ -28,9 +28,7 @@ int loggeneration = 0;
 void initial_log_parsing(void)
 {
 	initialscan = true;
-	if(config.include_yesterday)
-		process_pihole_log(1);
-	process_pihole_log(0);
+	process_pihole_log();
 	initialscan = false;
 }
 
@@ -154,7 +152,7 @@ void *pihole_log_thread(void *val)
 			if(newdata > 0 && !flush)
 			{
 				// Process new data if found only in main log (file 0)
-				process_pihole_log(0);
+				process_pihole_log();
 			}
 			else
 			{
@@ -165,11 +163,9 @@ void *pihole_log_thread(void *val)
 				// Reset file size and position
 				oldfilesize = 0;
 				lastpos = 0;
-				// Rescan files 0 (pihole.log) and 1 (pihole.log.1)
+				// Rescan pihole.log
 				initialscan = true;
-				if(config.include_yesterday)
-					process_pihole_log(1);
-				process_pihole_log(0);
+				process_pihole_log();
 				needGC = true;
 				initialscan = false;
 			}
@@ -220,40 +216,22 @@ bool checkQuery(char * readbuffer, const char * type)
 	return true;
 }
 
-void process_pihole_log(int file)
+void process_pihole_log(void)
 {
 	int i;
 	char *readbuffer = NULL;
 	size_t size1 = 0;
 	FILE *fp;
 
-	if(file == 0)
-	{
-		// Read from pihole.log
-		if((fp = fopen(files.log, "r")) == NULL) {
-			logg("Warning: Reading of log file %s failed", files.log);
-			return;
-		}
-		// Skip to last read position
-		fseek(fp, lastpos, SEEK_SET);
-		if(initialscan)
-			get_file_permissions(files.log);
-	}
-	else if(file == 1)
-	{
-		// Read from pihole.log.1
-		if((fp = fopen(files.log1, "r")) == NULL) {
-			logg("Warning: Reading of rotated log file %s failed", files.log1);
-			return;
-		}
-		if(initialscan)
-			get_file_permissions(files.log1);
-	}
-	else
-	{
-		logg("Error: Passed unknown file identifier (%i)", file);
+	// Read from pihole.log
+	if((fp = fopen(files.log, "r")) == NULL) {
+		logg("Warning: Reading of log file %s failed", files.log);
 		return;
 	}
+	// Skip to last read position
+	fseek(fp, lastpos, SEEK_SET);
+	if(initialscan)
+		get_file_permissions(files.log);
 
 	long int fposbck = ftell(fp);
 
@@ -281,6 +259,12 @@ void process_pihole_log(int file)
 		// Check if this query has already been imported from the database
 		if(querytimestamp < lastDBimportedtimestamp) continue;
 
+		// Skip parsing of log entries that are too old
+		// Get minimum time stamp to analyze
+		int differencetofullhour = time(NULL) % GCinterval;
+		int mintime = (time(NULL) - GCdelay - differencetofullhour) - MAXLOGAGE;
+		if(querytimestamp < mintime) continue;
+
 		// Test if the read line is a query line
 		if(strstr(readbuffer," query[A") != NULL)
 		{
@@ -292,12 +276,6 @@ void process_pihole_log(int file)
 				if(debug) logg("Not analyzing AAAA query");
 				continue;
 			}
-
-			// Get minimum time stamp to analyze
-			int differencetofullhour = time(NULL) % GCinterval;
-			int mintime = (time(NULL) - GCdelay - differencetofullhour) - MAXLOGAGE;
-			// Skip parsing of log entries that are too old altogether if 24h window is requested
-			if(config.rolling_24h && querytimestamp < mintime) continue;
 
 			// Ensure we have enough space in the queries struct
 			memory_check(QUERIES);
@@ -926,15 +904,12 @@ void process_pihole_log(int file)
 		fposbck = ftell(fp);
 
 		// Return early if data structure is flushed
-		if(file == 0)
+		if(checkLogForChanges() < 0)
 		{
-			if(checkLogForChanges() < 0)
-			{
-				logg("Notice: Returning early from log parsing for flushing");
-				fclose(fp);
-				flush = true;
-				return;
-			}
+			logg("Notice: Returning early from log parsing for flushing");
+			fclose(fp);
+			flush = true;
+			return;
 		}
 	}
 
@@ -945,12 +920,8 @@ void process_pihole_log(int file)
 	if(readbuffer != NULL)
 		free(readbuffer);
 
-	// IF we are reading the main log, we want to store the last read
-	// position so that we can jump to this position in the next round
-	if(file == 0)
-	{
-		lastpos = ftell(fp);
-	}
+	// We want to store the last read position so that we can jump to this position in the next round
+	lastpos = ftell(fp);
 
 	// Close file when parsing is finished
 	fclose(fp);

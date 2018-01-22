@@ -87,7 +87,6 @@ typedef struct {
 
 typedef struct {
 	const char* log;
-	const char* log1;
 	const char* gravity;
 	const char* whitelist;
 	const char* blacklist;
@@ -126,8 +125,6 @@ typedef struct {
 
 typedef struct {
 	bool socket_listenlocal;
-	bool include_yesterday;
-	bool rolling_24h;
 	bool query_display;
 	bool analyze_AAAA;
 	int maxDBdays;

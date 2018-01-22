@@ -27,7 +27,7 @@ void initial_log_parsing(void);
 long int checkLogForChanges(void);
 void open_pihole_log(void);
 void handle_signals(void);
-void process_pihole_log(int file);
+void process_pihole_log(void);
 void *pihole_log_thread(void *val);
 void validate_access(const char * name, int pos, bool testmagic, int line, const char * function, const char * file);
 void validate_access_oTfd(int timeidx, int forwardID, int line, const char * function, const char * file);
