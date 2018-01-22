@@ -115,6 +115,7 @@ Possible settings (**the option shown first is the default**):
 - `RESOLVE_IPV4=yes|no` (Should `FTL` try to resolve IPv4 addresses to host names?)
 - `DBINTERVAL=1.0` (How often do we store queries in FTL's database [minutes]?)
 - `DBFILE=/etc/pihole/pihole-FTL.db` (Specify path and filename of FTL's SQLite long-term database. Setting this to `DBFILE=` disables the database altogether)
+- `MAXLOGAGE=24.0` (Up to how many hours of queries should be imported from the database and logs? Maximum is 744 (31 days))
 
 ### Implemented keywords (starting with `>`, subject to change):
 

@@ -60,10 +60,6 @@
 
 #define SOCKETBUFFERLEN 1024
 
-// Maximum time from now until we will parse logs that are in the past [seconds]
-// Default: 86400 (24 hours)
-#define MAXLOGAGE 86400
-
 // How often do we garbage collect (to ensure we only have data fitting to the MAXLOGAGE defined above)? [seconds]
 // Default: 3600 (once per hour)
 #define GCinterval 3600
@@ -132,6 +128,7 @@ typedef struct {
 	bool resolveIPv4;
 	int DBinterval;
 	int port;
+	int maxlogage;
 } ConfigStruct;
 
 // Dynamic structs
