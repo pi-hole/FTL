@@ -546,6 +546,8 @@ void process_pihole_log(void)
 						validate_access("overTime", queries[i].timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 						overTime[queries[i].timeidx].cached--;
 
+						// Mark this query again as (temporarily) unknown
+						counters.unknown++;
 						queries[i].complete = false;
 					}
 					queries[i].status = 2;
