@@ -1223,7 +1223,7 @@ int findClientID(const char *client)
 	{
 		hostname = resolveHostname(client);
 
-		// Compare again with resolved host name if resoltuino succeeded
+		// Compare again with resolved host name if resolution succeeded
 		if(hostname[0] != '\0')
 		{
 			for(i=0; i < counters.clients; i++)
