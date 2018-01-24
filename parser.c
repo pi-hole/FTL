@@ -929,6 +929,18 @@ void process_pihole_log(void)
 	fclose(fp);
 }
 
+bool isValidIPv4(const char *addr)
+{
+	struct sockaddr_in sa;
+	return inet_pton(AF_INET, addr, &(sa.sin_addr)) != 0;
+}
+
+bool isValidIPv6(const char *addr)
+{
+	struct sockaddr_in6 sa;
+	return inet_pton(AF_INET6, addr, &(sa.sin6_addr)) != 0;
+}
+
 char *resolveHostname(const char *addr)
 {
 	// Get host name
@@ -1186,6 +1198,7 @@ int findDomainID(const char *domain)
 int findClientID(const char *client)
 {
 	int i;
+	// Compare content of client against known client IP addresses
 	for(i=0; i < counters.clients; i++)
 	{
 		validate_access("clients", i, true, __LINE__, __FUNCTION__, __FILE__);
@@ -1193,18 +1206,55 @@ int findClientID(const char *client)
 		if(clients[i].ip[0] != client[0])
 			continue;
 
-		// If so, compare the full domain using strcmp
+		// If so, compare the full IP using strcmp
 		if(strcmp(clients[i].ip, client) == 0)
 		{
 			clients[i].count++;
 			return i;
 		}
 	}
-	// If we did not return until here, then this client is not known
+	// If we did not return until here, then this client is either
+	// a) new or
+	// b) only known by its hostname (after importing from the database)
+
+	// First try to resolve the IP to a hostname to compare again
+	char *hostname = NULL;
+	if(isValidIPv4(client) || isValidIPv6(client))
+	{
+		hostname = resolveHostname(client);
+
+		// Compare again with resolved host name if resolution succeeded
+		if(hostname[0] != '\0')
+		{
+			for(i=0; i < counters.clients; i++)
+			{
+				validate_access("clients", i, true, __LINE__, __FUNCTION__, __FILE__);
+				// Quick test: Does the clients host name start with the same character?
+				if(clients[i].name[0] != hostname[0])
+					continue;
+
+				// If so, compare the full host name using strcmp
+				if(strcmp(clients[i].name, hostname) == 0)
+				{
+					// Store IP address
+					free(clients[i].ip);
+					clients[i].ip = strdup(client);
+
+					clients[i].count++;
+					return i;
+				}
+			}
+		}
+	}
+	else
+	{
+		hostname = strdup(client);
+	}
+
+	// If we did not return until here, then this client is definitely new
 	// Store ID
 	int clientID = counters.clients;
-	//Get client host name
-	char *hostname = resolveHostname(client);
+
 	// Debug output
 	if(strlen(hostname) > 0)
 		logg("New client: %s %s (%i/%i)", client, hostname, clientID, counters.clients_MAX);
