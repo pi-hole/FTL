@@ -360,7 +360,7 @@ void save_to_DB(void)
 			sqlite3_bind_text(stmt, 5, clients[queries[i].clientID].ip, -1, SQLITE_TRANSIENT);
 
 		// FORWARD
-		if(queries[i].forwardID > -1)
+		if(queries[i].status == 2 && queries[i].forwardID > -1)
 		{
 			validate_access("forwarded", queries[i].forwardID, true, __LINE__, __FUNCTION__, __FILE__);
 			sqlite3_bind_text(stmt, 6, forwarded[queries[i].forwardID].ip, -1, SQLITE_TRANSIENT);
@@ -574,7 +574,7 @@ void read_data_from_DB(void)
 				logg("DB warn: FORWARD should not be NULL with status 2, %i", queryTimeStamp);
 				continue;
 			}
-			findForwardID(forwarddest, true);
+			forwardID = findForwardID(forwarddest, true);
 		}
 
 		int overTimeTimeStamp = queryTimeStamp - (queryTimeStamp % 600 + 300);

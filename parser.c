@@ -945,7 +945,7 @@ char *resolveHostname(const char *addr)
 {
 	// Get host name
 	struct hostent *he = NULL;
-	char *hostname;
+	char *hostname = NULL;;
 	bool IPv6 = false;
 
 	// Test if we want to resolve an IPv6 address
@@ -1241,6 +1241,9 @@ int findClientID(const char *client)
 					clients[i].ip = strdup(client);
 
 					clients[i].count++;
+
+					// Free allocated memory before returning
+					free(hostname);
 					return i;
 				}
 			}
