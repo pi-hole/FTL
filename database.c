@@ -354,10 +354,7 @@ void save_to_DB(void)
 		sqlite3_bind_text(stmt, 4, domains[queries[i].domainID].domain, -1, SQLITE_TRANSIENT);
 
 		// CLIENT
-		if(strlen(clients[queries[i].clientID].name) > 0)
-			sqlite3_bind_text(stmt, 5, clients[queries[i].clientID].name, -1, SQLITE_TRANSIENT);
-		else
-			sqlite3_bind_text(stmt, 5, clients[queries[i].clientID].ip, -1, SQLITE_TRANSIENT);
+		sqlite3_bind_text(stmt, 5, clients[queries[i].clientID].ip, -1, SQLITE_TRANSIENT);
 
 		// FORWARD
 		if(queries[i].status == 2 && queries[i].forwardID > -1)
