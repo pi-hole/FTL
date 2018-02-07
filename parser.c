@@ -328,6 +328,7 @@ void process_pihole_log(void)
 			}
 
 			char *domain = calloc(domainlen+1,sizeof(char));
+			if(domain == NULL) continue;
 			// strncat() NULL-terminates the copied string (strncpy() doesn't!)
 			strncat(domain,domainstart+2,domainlen);
 			// Convert domain to lower case
@@ -363,6 +364,7 @@ void process_pihole_log(void)
 			}
 
 			char *client = calloc(clientlen+1,sizeof(char));
+			if(client == NULL){ free(domain); continue; }
 			// strncat() NULL-terminates the copied string (strncpy() doesn't!)
 			strncat(client,domainend+6,clientlen);
 			// Convert client to lower case
@@ -525,6 +527,7 @@ void process_pihole_log(void)
 			}
 
 			char *forward = calloc(forwardlen+1,sizeof(char));
+			if(forward == NULL) continue;
 			// strncat() NULL-terminates the copied string (strncpy() doesn't!)
 			strncat(forward,forwardstart+4,forwardlen);
 			// Convert forward to lower case
@@ -970,13 +973,14 @@ char *resolveHostname(const char *addr)
 	if(he == NULL)
 	{
 		// No hostname found
-		hostname = calloc(1,sizeof(char));
-		hostname[0] = '\0';
+		hostname = strdup("");
+		if(hostname == NULL) return NULL;
 	}
 	else
 	{
 		// Return hostname copied to new memory location
 		hostname = strdup(he->h_name);
+		if(hostname == NULL) return NULL;
 		// Convert hostname to lower case
 		strtolower(hostname);
 	}
@@ -1184,7 +1188,7 @@ int findDomainID(const char *domain)
 	domains[domainID].blockedcount = 0;
 	// Initialize wildcard blocking flag with false
 	domains[domainID].wildcard = false;
-	// Store domain name
+	// Store domain name - no need to check for NULL here as it doesn't harm
 	domains[domainID].domain = strdup(domain);
 	memory.domainnames += (strlen(domain) + 1) * sizeof(char);
 	// Store DNSSEC result for this domain
@@ -1269,10 +1273,10 @@ int findClientID(const char *client)
 	clients[clientID].magic = MAGICBYTE;
 	// Set its counter to 1
 	clients[clientID].count = 1;
-	// Store client IP
+	// Store client IP - no need to check for NULL here as it doesn't harm
 	clients[clientID].ip = strdup(client);
 	memory.clientips += (strlen(client) + 1) * sizeof(char);
-	// Store client hostname
+	// Store client hostname - no need to check for NULL here as it doesn't harm
 	clients[clientID].name = strdup(hostname);
 	memory.clientnames += (strlen(hostname) + 1) * sizeof(char);
 	free(hostname);

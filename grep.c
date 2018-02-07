@@ -151,6 +151,7 @@ void readWildcardsList()
 				memory_check(WILDCARD);
 				// Allocate space for new domain entry and save domain
 				wildcarddomains[counters.wildcarddomains] = calloc(strlen(domain)+1,sizeof(char));
+				if(wildcarddomains[counters.wildcarddomains] == NULL) return;
 				memory.wildcarddomains += (strlen(domain) + 1) * sizeof(char);
 				strcpy(wildcarddomains[counters.wildcarddomains], domain);
 

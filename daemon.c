@@ -252,13 +252,12 @@ char *getUserName(void)
 	struct passwd *pw = getpwuid(euid);
 	if(pw)
 	{
-		username = calloc(strlen(pw->pw_name)+1, sizeof(char));
-		strcpy(username, pw->pw_name);
+		username = strdup(pw->pw_name);
 	}
 	else
 	{
-		username = calloc(12, sizeof(char));
-		sprintf(username, "%i", euid);
+		if(asprintf(&username, "%i", euid) < 0)
+			return NULL;
 	}
 
 	return username;
