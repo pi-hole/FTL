@@ -120,6 +120,7 @@ void logg_struct_resize(const char* str, int to, int step)
 
 	unsigned long int bytes = structbytes + dynamicbytes;
 	char *prefix = calloc(2, sizeof(char));
+	if(prefix == NULL) return;
 	double formated = 0.0;
 	format_memory_size(prefix, bytes, &formated);
 

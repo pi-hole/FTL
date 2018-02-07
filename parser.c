@@ -328,6 +328,7 @@ void process_pihole_log(void)
 			}
 
 			char *domain = calloc(domainlen+1,sizeof(char));
+			if(domain == NULL) continue;
 			// strncat() NULL-terminates the copied string (strncpy() doesn't!)
 			strncat(domain,domainstart+2,domainlen);
 			// Convert domain to lower case
@@ -363,6 +364,7 @@ void process_pihole_log(void)
 			}
 
 			char *client = calloc(clientlen+1,sizeof(char));
+			if(client == NULL){ free(domain); continue; }
 			// strncat() NULL-terminates the copied string (strncpy() doesn't!)
 			strncat(client,domainend+6,clientlen);
 			// Convert client to lower case
@@ -525,6 +527,7 @@ void process_pihole_log(void)
 			}
 
 			char *forward = calloc(forwardlen+1,sizeof(char));
+			if(forward == NULL) continue;
 			// strncat() NULL-terminates the copied string (strncpy() doesn't!)
 			strncat(forward,forwardstart+4,forwardlen);
 			// Convert forward to lower case
@@ -970,13 +973,14 @@ char *resolveHostname(const char *addr)
 	if(he == NULL)
 	{
 		// No hostname found
-		hostname = calloc(1,sizeof(char));
-		hostname[0] = '\0';
+		hostname = strdup("");
+		if(hostname == NULL) return NULL;
 	}
 	else
 	{
 		// Return hostname copied to new memory location
 		hostname = strdup(he->h_name);
+		if(hostname == NULL) return NULL;
 		// Convert hostname to lower case
 		strtolower(hostname);
 	}
@@ -1184,7 +1188,7 @@ int findDomainID(const char *domain)
 	domains[domainID].blockedcount = 0;
 	// Initialize wildcard blocking flag with false
 	domains[domainID].wildcard = false;
-	// Store domain name
+	// Store domain name - no need to check for NULL here as it doesn't harm
 	domains[domainID].domain = strdup(domain);
 	memory.domainnames += (strlen(domain) + 1) * sizeof(char);
 	// Store DNSSEC result for this domain
@@ -1269,10 +1273,10 @@ int findClientID(const char *client)
 	clients[clientID].magic = MAGICBYTE;
 	// Set its counter to 1
 	clients[clientID].count = 1;
-	// Store client IP
+	// Store client IP - no need to check for NULL here as it doesn't harm
 	clients[clientID].ip = strdup(client);
 	memory.clientips += (strlen(client) + 1) * sizeof(char);
-	// Store client hostname
+	// Store client hostname - no need to check for NULL here as it doesn't harm
 	clients[clientID].name = strdup(hostname);
 	memory.clientnames += (strlen(hostname) + 1) * sizeof(char);
 	free(hostname);
@@ -1280,96 +1284,6 @@ int findClientID(const char *client)
 	counters.clients++;
 
 	return clientID;
-}
-
-void validate_access(const char * name, int pos, bool testmagic, int line, const char * function, const char * file)
-{
-	int limit = 0;
-	if(name[0] == 'c') limit = counters.clients_MAX;
-	else if(name[0] == 'd') limit = counters.domains_MAX;
-	else if(name[0] == 'q') limit = counters.queries_MAX;
-	else if(name[0] == 'o') limit = counters.overTime_MAX;
-	else if(name[0] == 'f') limit = counters.forwarded_MAX;
-	else if(name[0] == 'w') limit = counters.wildcarddomains;
-	else { logg("Validator error (range)"); killed = 1; }
-
-	if(pos >= limit || pos < 0)
-	{
-		logg("FATAL ERROR: Trying to access %s[%i], but maximum is %i", name, pos, limit);
-		logg("             found in %s() (line %i) in %s", function, line, file);
-	}
-	// Don't test magic byte if detected potential out-of-bounds error
-	else if(testmagic)
-	{
-		unsigned char magic = 0x00;
-		if(name[0] == 'c') magic = clients[pos].magic;
-		else if(name[0] == 'd') magic = domains[pos].magic;
-		else if(name[0] == 'q') magic = queries[pos].magic;
-		else if(name[0] == 'o') magic = overTime[pos].magic;
-		else if(name[0] == 'f') magic = forwarded[pos].magic;
-		else { logg("Validator error (magic byte)"); killed = 1; }
-		if(magic != MAGICBYTE)
-		{
-			logg("FATAL ERROR: Trying to access %s[%i], but magic byte is %x", name, pos, magic);
-			logg("             found in %s() (line %i) in %s", function, line, file);
-		}
-	}
-}
-
-void validate_access_oTfd(int timeidx, int forwardID, int line, const char * function, const char * file)
-{
-	// Determine if there is enough space for saving the current
-	// forwardID in the overTime data structure, allocate space otherwise
-	validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
-	if(overTime[timeidx].forwardnum <= forwardID)
-	{
-		// Reallocate more space for forwarddata
-		overTime[timeidx].forwarddata = realloc(overTime[timeidx].forwarddata, (forwardID+1)*sizeof(*overTime[timeidx].forwarddata));
-		// Initialize new data fields with zeroes
-		int j;
-		for(j = overTime[timeidx].forwardnum; j <= forwardID; j++)
-		{
-			overTime[timeidx].forwarddata[j] = 0;
-			memory.forwarddata++;
-		}
-		// Update counter
-		overTime[timeidx].forwardnum = forwardID + 1;
-	}
-
-	int limit = overTime[timeidx].forwardnum;
-	if(forwardID >= limit || forwardID < 0)
-	{
-		logg("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-		logg("FATAL ERROR: Trying to access overTime.forwarddata[%i], but maximum is %i", forwardID, limit);
-		logg("             found in %s() (line %i) in %s", function, line, file);
-	}
-}
-
-void validate_access_oTcl(int timeidx, int clientID, int line, const char * function, const char * file)
-{
-	// Determine if there is enough space for saving the current
-	// clientID in the overTime data structure, allocate space otherwise
-	if(overTime[timeidx].clientnum <= clientID)
-	{
-		// Reallocate more space for clientdata
-		overTime[timeidx].clientdata = realloc(overTime[timeidx].clientdata, (clientID+1)*sizeof(*overTime[timeidx].clientdata));
-		// Initialize new data fields with zeroes
-		int i;
-		for(i = overTime[timeidx].clientnum; i <= clientID; i++)
-		{
-			overTime[timeidx].clientdata[i] = 0;
-			memory.clientdata++;
-		}
-		// Update counter
-		overTime[timeidx].clientnum = clientID + 1;
-	}
-	int limit = overTime[timeidx].clientnum;
-	if(clientID >= limit || clientID < 0)
-	{
-		logg("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-		logg("FATAL ERROR: Trying to access overTime.clientdata[%i], but maximum is %i", clientID, limit);
-		logg("             found in %s() (line %i) in %s", function, line, file);
-	}
 }
 
 void reresolveHostnames(void)
