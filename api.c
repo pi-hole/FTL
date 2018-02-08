@@ -667,8 +667,10 @@ void getAllQueries(char *client_message, int *sock)
 		else
 			strcpy(qtype,"IPv6");
 
-		if((queries[i].status == 1 || queries[i].status == 4) && !showblocked)
+		// 1 = gravity.list, 4 = wildcard, 5 = black.list
+		if((queries[i].status == 1 || queries[i].status == 4 || queries[i].status == 5) && !showblocked)
 			continue;
+		// 2 = forwarded, 3 = cached
 		if((queries[i].status == 2 || queries[i].status == 3) && !showpermitted)
 			continue;
 
