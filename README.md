@@ -91,7 +91,7 @@ When you want to detach the debugger from `FTL` without terminating the process,
 Command line arguments can be arbitrarily combined, e.g. `pihole-FTL debug test`
 
 ### File locations
-- `/var/log/pihole-FTL.log` log file
+- `/var/log/pihole/FTL.log` log file
 - `/var/run/pihole-FTL.pid` PID file
 - `/var/run/pihole-FTL.port` file containing port on which `FTL` is listening
 - `/var/run/pihole/FTL.sock` Unix socket
