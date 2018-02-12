@@ -65,7 +65,8 @@ void pihole_log_flushed(bool message)
 	// overTime struct: Free allocated substructure
 	for(i=0;i<counters.overTime;i++)
 	{
-		free(overTime[i].forwarddata);
+		if(overTime[i].forwarddata != NULL )
+			free(overTime[i].forwarddata);
 		free(overTime[i].querytypedata);
 	}
 	free(overTime);
