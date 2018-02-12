@@ -225,15 +225,22 @@ char *FTLstrdup(const char *src, const char * file, const char * function, int l
 {
 	// The FTLstrdup() function returns a pointer to a new string which is a
 	// duplicate of the string s. Memory for the new string is obtained with
-	// malloc(3), and can be freed with free(3).
+	// calloc(3), and can be freed with free(3).
 	if(src == NULL)
 	{
 		logg("WARN: Trying to copy a NULL string in %s() (%s:%i)", function, file, line);
 		return NULL;
 	}
-	char *dest = __strdup(src);
+	size_t len = strlen(src);
+	char *dest = calloc(len+1, sizeof(char));
 	if(dest == NULL)
+	{
 		logg("FATAL: Memory allocation failed in %s() (%s:%i)", function, file, line);
+		return NULL;
+	}
+	// Use memcpy as memory areas cannot overlap
+	memcpy(dest, src, len);
+	dest[len] = '\0';
 
 	return dest;
 }
