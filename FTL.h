@@ -40,6 +40,12 @@
 #include "sqlite3.h"
 // tolower()
 #include <ctype.h>
+// Unix socket
+#include <sys/un.h>
+// Interfaces
+#include <ifaddrs.h>
+#include <net/if.h>
+
 
 #include "routines.h"
 
@@ -54,10 +60,6 @@
 
 #define SOCKETBUFFERLEN 1024
 
-// Maximum time from now until we will parse logs that are in the past [seconds]
-// Default: 86400 (24 hours)
-#define MAXLOGAGE 86400
-
 // How often do we garbage collect (to ensure we only have data fitting to the MAXLOGAGE defined above)? [seconds]
 // Default: 3600 (once per hour)
 #define GCinterval 3600
@@ -66,6 +68,9 @@
 // Default -60 (one minute before a full hour)
 #define GCdelay (-60)
 
+// How many client connection do we accept at once?
+#define MAXCONNS 20
+
 // Static structs
 typedef struct {
 	const char* conf;
@@ -73,11 +78,11 @@ typedef struct {
 	const char* pid;
 	const char* port;
 	char* db;
+	const char* socketfile;
 } FTLFileNamesStruct;
 
 typedef struct {
 	const char* log;
-	const char* log1;
 	const char* gravity;
 	const char* whitelist;
 	const char* blacklist;
@@ -106,22 +111,24 @@ typedef struct {
 	int overTime;
 	int IPv4;
 	int IPv6;
-	int PTR;
-	int SRV;
 	int wildcarddomains;
 	int forwardedqueries;
+	int reply_NODATA;
+	int reply_NXDOMAIN;
+	int reply_CNAME;
+	int reply_IP;
 } countersStruct;
 
 typedef struct {
 	bool socket_listenlocal;
-	bool include_yesterday;
-	bool rolling_24h;
 	bool query_display;
 	bool analyze_AAAA;
 	int maxDBdays;
 	bool resolveIPv6;
 	bool resolveIPv4;
 	int DBinterval;
+	int port;
+	int maxlogage;
 } ConfigStruct;
 
 // Dynamic structs
@@ -137,6 +144,11 @@ typedef struct {
 	int forwardID;
 	bool valid;
 	bool db;
+	// the ID is a (signed) int in dnsmasq, so no need for a long int here
+	int id;
+	bool complete;
+	unsigned char reply;
+	int generation;
 } queriesDataStruct;
 
 typedef struct {
@@ -159,6 +171,7 @@ typedef struct {
 	int blockedcount;
 	char *domain;
 	bool wildcard;
+	unsigned char dnssec;
 } domainsDataStruct;
 
 typedef struct {
@@ -186,8 +199,15 @@ typedef struct {
 	int querytypedata;
 } memoryStruct;
 
+// Prepare timers, used mainly for debugging purposes
+#define NUMTIMERS 2
+enum { DATABASE_WRITE_TIMER, EXIT_TIMER };
+
 enum { QUERIES, FORWARDED, CLIENTS, DOMAINS, OVERTIME, WILDCARD };
-enum { SOCKET };
+enum { DNSSEC_UNSPECIFIED, DNSSEC_SECURE, DNSSEC_INSECURE, DNSSEC_BOGUS, DNSSEC_ABANDONED, DNSSEC_UNKNOWN };
+
+// Used to check memory integrity in various structs
+#define MAGICBYTE 0x57
 
 logFileNamesStruct files;
 FTLFileNamesStruct FTLfiles;
@@ -231,3 +251,17 @@ long int lastdbindex;
 bool travis;
 bool DBdeleteoldqueries;
 bool rereadgravity;
+long int lastDBimportedtimestamp;
+bool ipv4telnet, ipv6telnet;
+bool istelnet[MAXCONNS];
+
+// Use out own memory handling functions that will detect possible errors
+// and report accordingly in the log. This will make debugging FTL crashs
+// caused by insufficient memory or by code bugs (not properly dealing
+// with NULL pointers) much easier.
+#define free(param) FTLfree(param, __FILE__,  __FUNCTION__,  __LINE__)
+#define lib_strdup() strdup()
+#undef strdup
+#define strdup(param) FTLstrdup(param, __FILE__,  __FUNCTION__,  __LINE__)
+#define calloc(p1,p2) FTLcalloc(p1,p2, __FILE__,  __FUNCTION__,  __LINE__)
+#define realloc(p1,p2) FTLrealloc(p1,p2, __FILE__,  __FUNCTION__,  __LINE__)

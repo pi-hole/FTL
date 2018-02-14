@@ -9,8 +9,8 @@
 *  Please see LICENSE file for your rights under this license. */
 
 void go_daemon(void);
-void timer_start(void);
-float timer_elapsed_msec(void);
+void timer_start(int i);
+double timer_elapsed_msec(int i);
 void sleepms(int milliseconds);
 void savepid(void);
 char * getUserName(void);
@@ -27,25 +27,33 @@ void initial_log_parsing(void);
 long int checkLogForChanges(void);
 void open_pihole_log(void);
 void handle_signals(void);
-void process_pihole_log(int file);
+void process_pihole_log(void);
 void *pihole_log_thread(void *val);
-void validate_access(const char * name, int pos, bool testmagic, int line, const char * function, const char * file);
-void validate_access_oTfd(int timeidx, int pos, int line, const char * function, const char * file);
-void validate_access_oTcl(int timeidx, int pos, int line, const char * function, const char * file);
 void reresolveHostnames(void);
+int findClientID(const char *client);
+int findDomainID(const char *domain);
+int findForwardID(const char * forward, bool count);
+int findOverTimeID(int overTimetimestamp);
 
 void pihole_log_flushed(bool message);
 
 void memory_check(int which);
 
-void close_socket(char type);
-void seom(char server_message[], int sock);
-void swrite(char server_message[], int sock);
-void *socket_listenting_thread(void *args);
+void close_telnet_socket(void);
+void close_unix_socket(void);
+void seom(int sock);
+void ssend(int sock, const char *format, ...);
+void swrite(int sock, void *value, size_t size);
+void *telnet_listening_thread_IPv4(void *args);
+void *telnet_listening_thread_IPv6(void *args);
+
+void *socket_listening_thread(void *args);
+bool ipv6_available(void);
+void bind_sockets(void);
 
 void process_request(char *client_message, int *sock);
 bool command(char *client_message, const char* cmd);
-void formatNumber(bool raw, int n, char* buffer);
+bool matchesEndpoint(char *client_message, const char *cmd);
 
 void read_gravity_files(void);
 int countlines(const char* fname);
@@ -75,3 +83,14 @@ void *GC_thread(void *val);
 void db_init(void);
 void *DB_thread(void *val);
 int get_number_of_queries_in_DB(void);
+void save_to_DB(void);
+void read_data_from_DB(void);
+
+// memory.c
+char *FTLstrdup(const char *src, const char *file, const char *function, int line);
+void *FTLcalloc(size_t nmemb, size_t size, const char *file, const char *function, int line);
+void *FTLrealloc(void *ptr_in, size_t size, const char *file, const char *function, int line);
+void FTLfree(void *ptr, const char* file, const char *function, int line);
+void validate_access(const char * name, int pos, bool testmagic, int line, const char * function, const char * file);
+void validate_access_oTfd(int timeidx, int forwardID, int line, const char * function, const char * file);
+void validate_access_oTcl(int timeidx, int clientID, int line, const char * function, const char * file);

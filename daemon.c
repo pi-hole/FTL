@@ -11,6 +11,8 @@
 #include "FTL.h"
 #include <dirent.h>
 
+struct timeval t0[NUMTIMERS];
+
 int detect_FTL_process(void)
 {
 	DIR* dir = opendir("/proc");
@@ -183,17 +185,26 @@ void go_daemon(void)
 	close(STDERR_FILENO);
 }
 
-struct timeval t0, t1;
-
-void timer_start(void)
+void timer_start(int i)
 {
-	gettimeofday(&t0, 0);
+	if(i >= NUMTIMERS)
+	{
+		logg("Code error: Timer %i not defined in timer_start().", i);
+		exit(EXIT_FAILURE);
+	}
+	gettimeofday(&t0[i], 0);
 }
 
-float timer_elapsed_msec(void)
+double timer_elapsed_msec(int i)
 {
+	if(i >= NUMTIMERS)
+	{
+		logg("Code error: Timer %i not defined in timer_elapsed_msec().", i);
+		exit(EXIT_FAILURE);
+	}
+	struct timeval t1;
 	gettimeofday(&t1, 0);
-	return (t1.tv_sec - t0.tv_sec) * 1000.0f + (t1.tv_usec - t0.tv_usec) / 1000.0f;
+	return (t1.tv_sec - t0[i].tv_sec) * 1000.0f + (t1.tv_usec - t0[i].tv_usec) / 1000.0f;
 }
 
 void sleepms(int milliseconds)
@@ -241,13 +252,12 @@ char *getUserName(void)
 	struct passwd *pw = getpwuid(euid);
 	if(pw)
 	{
-		username = calloc(strlen(pw->pw_name)+1, sizeof(char));
-		strcpy(username, pw->pw_name);
+		username = strdup(pw->pw_name);
 	}
 	else
 	{
-		username = calloc(12, sizeof(char));
-		sprintf(username, "%i", euid);
+		if(asprintf(&username, "%i", euid) < 0)
+			return NULL;
 	}
 
 	return username;

@@ -120,6 +120,7 @@ void logg_struct_resize(const char* str, int to, int step)
 
 	unsigned long int bytes = structbytes + dynamicbytes;
 	char *prefix = calloc(2, sizeof(char));
+	if(prefix == NULL) return;
 	double formated = 0.0;
 	format_memory_size(prefix, bytes, &formated);
 
@@ -135,10 +136,13 @@ void log_counter_info(void)
 {
 	logg(" -> Total DNS queries: %i", counters.queries);
 	logg(" -> Cached DNS queries: %i", counters.cached);
-	logg(" -> Blocked DNS queries: %i", counters.blocked);
+	logg(" -> Forwarded DNS queries: %i", counters.forwardedqueries);
+	logg(" -> Exactly blocked DNS queries: %i", counters.blocked);
+	logg(" -> Wildcard blocked DNS queries: %i", counters.wildcardblocked);
 	logg(" -> Unknown DNS queries: %i", counters.unknown);
 	logg(" -> Unique domains: %i", counters.domains);
 	logg(" -> Unique clients: %i", counters.clients);
+	logg(" -> Known forward destinations: %i", counters.forwarded);
 }
 
 void log_FTL_version(void)

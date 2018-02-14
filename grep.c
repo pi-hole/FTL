@@ -109,8 +109,12 @@ void readWildcardsList()
 
 			return;
 		}
+
+		// Trim off the newline (could even be CR-LF)
+		linebuffer[strcspn(linebuffer, "\r\n")] = 0;
+
 		// Try to read up to 511 characters
-		if(sscanf(linebuffer, "address=/%511[^/]/%*[^\n]\n", buffer) > 0)
+		if(sscanf(linebuffer, "address=/%511[^/]/", buffer) > 0)
 		{
 			unsigned long int addrbuffer = 0;
 			// Skip leading '.' by incrementing memory location step by step until the first
@@ -147,6 +151,7 @@ void readWildcardsList()
 				memory_check(WILDCARD);
 				// Allocate space for new domain entry and save domain
 				wildcarddomains[counters.wildcarddomains] = calloc(strlen(domain)+1,sizeof(char));
+				if(wildcarddomains[counters.wildcarddomains] == NULL) return;
 				memory.wildcarddomains += (strlen(domain) + 1) * sizeof(char);
 				strcpy(wildcarddomains[counters.wildcarddomains], domain);
 

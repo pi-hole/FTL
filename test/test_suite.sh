@@ -31,7 +31,7 @@ load 'libs/bats-support/load'
   [[ ${lines[11]} == "---EOM---" ]]
 }
 
-@test "Top Clients" {
+@test "Top Clients (descending, default)" {
   run bash -c 'echo ">top-clients" | nc -v 127.0.0.1 4711'
   echo "output: ${lines[@]}"
   [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
@@ -41,23 +41,53 @@ load 'libs/bats-support/load'
   [[ ${lines[4]} == "---EOM---" ]]
 }
 
-@test "Top Domains" {
+@test "Top Clients (ascending)" {
+  run bash -c 'echo ">top-clients asc" | nc -v 127.0.0.1 4711'
+  echo "output: ${lines[@]}"
+  [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
+  [[ ${lines[1]} =~ "0 1 10.8.0.2" ]]
+  [[ ${lines[2]} =~ "1 2 127.0.0.1" ]]
+  [[ ${lines[3]} =~ "2 4 192.168.2.208" ]]
+  [[ ${lines[4]} == "---EOM---" ]]
+}
+
+@test "Top Domains (descending, default)" {
   run bash -c 'echo ">top-domains" | nc -v 127.0.0.1 4711'
   echo "output: ${lines[@]}"
   [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
   [[ ${lines[1]} == "0 2 play.google.com" ]]
-  [[ ${lines[2]} == "1 1 example.com" ]]
+  [[ ${lines[2]} == "1 1 raspberrypi" ]]
   [[ ${lines[3]} == "2 1 checkip.dyndns.org" ]]
-  [[ ${lines[4]} == "3 1 raspberrypi" ]]
+  [[ ${lines[4]} == "3 1 example.com" ]]
   [[ ${lines[5]} == "---EOM---" ]]
 }
 
-@test "Top Ads" {
+@test "Top Domains (ascending)" {
+  run bash -c 'echo ">top-domains asc" | nc -v 127.0.0.1 4711'
+  echo "output: ${lines[@]}"
+  [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
+  [[ ${lines[1]} == "0 1 raspberrypi" ]]
+  [[ ${lines[2]} == "1 1 checkip.dyndns.org" ]]
+  [[ ${lines[3]} == "2 1 example.com" ]]
+  [[ ${lines[4]} == "3 2 play.google.com" ]]
+  [[ ${lines[5]} == "---EOM---" ]]
+}
+
+@test "Top Ads (descending, default)" {
   run bash -c 'echo ">top-ads" | nc -v 127.0.0.1 4711'
   echo "output: ${lines[@]}"
   [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
-  [[ ${lines[1]} == "0 1 addomain.com" ]]
-  [[ ${lines[2]} == "1 1 blacklisted.com" ]]
+  [[ ${lines[1]} == "0 1 blacklisted.com" ]]
+  [[ ${lines[2]} == "1 1 addomain.com" ]]
+  [[ ${lines[3]} == "---EOM---" ]]
+}
+
+@test "Top Ads (ascending)" {
+  run bash -c 'echo ">top-ads asc" | nc -v 127.0.0.1 4711'
+  echo "output: ${lines[@]}"
+  [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
+  [[ ${lines[1]} == "0 1 blacklisted.com" ]]
+  [[ ${lines[2]} == "1 1 addomain.com" ]]
   [[ ${lines[3]} == "---EOM---" ]]
 }
 
@@ -74,23 +104,19 @@ load 'libs/bats-support/load'
   echo "output: ${lines[@]}"
   [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
   [[ ${lines[1]} =~ "0 57.14 ::1 local" ]]
-  [[ ${lines[2]} =~ "1 14.29 2620:0:ccd::2 resolver2.ipv6-sandbox.opendns.com" ]]
-  [[ ${lines[3]} =~ "2 9.52 2001:1608:10:25::9249:d69b" ]]
-  [[ ${lines[4]} =~ "3 9.52 2001:1608:10:25::1c04:b12f" ]]
-  [[ ${lines[5]} =~ "4 9.52 2620:0:ccc::2 resolver1.ipv6-sandbox.opendns.com" ]]
-  [[ ${lines[6]} == "---EOM---" ]]
+  [[ ${lines[2]} =~ "1 28.57 2001:1608:10:25::9249:d69b" ]]
+  [[ ${lines[3]} =~ "2 14.29 2620:0:ccd::2 resolver2.ipv6-sandbox.opendns.com" ]]
+  [[ ${lines[4]} == "---EOM---" ]]
 }
 
 @test "Forward Destinations (unsorted)" {
   run bash -c 'echo ">forward-dest unsorted" | nc -v 127.0.0.1 4711'
   echo "output: ${lines[@]}"
   [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
-  [[ ${lines[1]} =~ "0 9.52 2001:1608:10:25::9249:d69b" ]]
-  [[ ${lines[2]} =~ "1 9.52 2001:1608:10:25::1c04:b12f" ]]
-  [[ ${lines[3]} =~ "2 14.29 2620:0:ccd::2 resolver2.ipv6-sandbox.opendns.com" ]]
-  [[ ${lines[4]} =~ "3 9.52 2620:0:ccc::2 resolver1.ipv6-sandbox.opendns.com" ]]
-  [[ ${lines[5]} =~ "4 57.14 ::1 local" ]]
-  [[ ${lines[6]} == "---EOM---" ]]
+  [[ ${lines[1]} =~ "0 28.57 2001:1608:10:25::9249:d69b" ]]
+  [[ ${lines[2]} =~ "1 14.29 2620:0:ccd::2 resolver2.ipv6-sandbox.opendns.com" ]]
+  [[ ${lines[3]} =~ "2 57.14 ::1 local" ]]
+  [[ ${lines[4]} == "---EOM---" ]]
 }
 
 @test "Query Types" {
@@ -175,6 +201,14 @@ load 'libs/bats-support/load'
   [[ ${lines[2]} == "---EOM---" ]]
 }
 
+# @test "IPv6 socket connection" {
+#   run bash -c 'echo ">recentBlocked" | nc -v ::1 4711'
+#   echo "output: ${lines[@]}"
+#   [[ ${lines[0]} == "Connection to ::1 4711 port [tcp/*] succeeded!" ]]
+#   [[ ${lines[1]} == "addomain.com" ]]
+#   [[ ${lines[2]} == "---EOM---" ]]
+# }
+
 @test "DB test: Tables created and populated?" {
   run bash -c 'sqlite3 pihole-FTL.db .dump'
   echo "output: ${lines[@]}"
@@ -194,6 +228,14 @@ load 'libs/bats-support/load'
   run bash -c './pihole-FTL help'
   echo "output: ${lines[@]}"
   [[ ${lines[0]} == "pihole-FTL - The Pi-hole FTL engine" ]]
+}
+
+@test "Unix socket returning data" {
+  run bash -c './socket-test travis'
+  echo "output: ${lines[@]}"
+  [[ ${lines[0]} == "Socket created" ]]
+  [[ ${lines[1]} == "Connection established" ]]
+  [[ ${lines[2]} == "d2 ff ff ff ff d2 00 00 00 07 d2 00 00 00 02 ca 41 e4 92 49 d2 00 00 00 06 d2 00 00 00 03 d2 00 00 00 02 d2 00 00 00 03 d2 00 00 00 03 cc 02 c1 " ]]
 }
 
 @test "Final part of the tests: Killing pihole-FTL process" {

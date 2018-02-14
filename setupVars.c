@@ -119,12 +119,14 @@ void getSetupVarsArray(char * input)
 
 	while (p) {
 		setupVarsArray = realloc(setupVarsArray, sizeof(char*) * ++setupVarsElements);
+		if(setupVarsArray == NULL) return;
 		setupVarsArray[setupVarsElements-1] = p;
 		p = strtok(NULL, ",");
 	}
 
 	/* realloc one extra element for the last NULL */
 	setupVarsArray = realloc(setupVarsArray, sizeof(char*) * (setupVarsElements+1));
+	if(setupVarsArray == NULL) return;
 	setupVarsArray[setupVarsElements] = NULL;
 }
 
@@ -168,6 +170,7 @@ bool insetupVarsArray(char * str)
 			// Copying strlen-1 chars into buffer of size strlen: OK
 			size_t lenght = strlen(setupVarsArray[i]);
 			char * domain = calloc(lenght, sizeof(char));
+			if(domain == NULL) return false;
 			// strncat() NULL-terminates the copied string (strncpy() doesn't!)
 			strncat(domain, setupVarsArray[i]+1, lenght-1);
 

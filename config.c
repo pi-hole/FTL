@@ -43,28 +43,6 @@ void read_FTLconf(void)
 	else
 		logg("   SOCKET_LISTENING: all destinations");
 
-	// TIMEFRAME
-	// defaults to: ROLLING
-	config.rolling_24h = true;
-	config.include_yesterday = true;
-	buffer = parse_FTLconf(fp, "TIMEFRAME");
-
-	if(buffer != NULL && strcmp(buffer, "yesterday") == 0)
-	{
-		config.include_yesterday = true;
-		config.rolling_24h = false;
-		logg("   TIMEFRAME: Yesterday + Today");
-	}
-	else if(buffer != NULL && strcmp(buffer, "today") == 0)
-	{
-		config.include_yesterday = false;
-		config.rolling_24h = false;
-		logg("   TIMEFRAME: Today");
-	}
-
-	if(config.rolling_24h)
-		logg("   TIMEFRAME: Rolling 24h");
-
 	// QUERY_DISPLAY
 	// defaults to: Yes
 	config.query_display = true;
@@ -173,6 +151,28 @@ void read_FTLconf(void)
 	else
 		logg("   DBFILE: Not using database due to empty filename");
 
+	// FTLPORT
+	// On which port should FTL be listening?
+	// defaults to: 4711
+	config.port = 4711;
+	buffer = parse_FTLconf(fp, "FTLPORT");
+
+	value = 0;
+	if(buffer != NULL && sscanf(buffer, "%i", &value))
+		if(value > 0 && value <= 65535)
+			config.port = value;
+
+	// MAXLOGAGE
+	// Up to how many hours in the past should queries be imported from the database?
+	// defaults to: 24.0
+	config.maxlogage = 24*3600;
+	buffer = parse_FTLconf(fp, "MAXLOGAGE");
+
+	fvalue = 0;
+	if(buffer != NULL && sscanf(buffer, "%f", &fvalue))
+		if(fvalue >= 0.0 && value <= 24.0*31.0)
+			config.maxlogage = (int)(fvalue * 3600);
+	logg("   MAXLOGAGE: Importing up to %.1f hours of log data", (float)config.maxlogage/3600.0);
 
 	logg("Finished config file parsing");
 

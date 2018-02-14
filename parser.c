@@ -9,13 +9,13 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
-#define MAGICBYTE 0x57
 
 char *resolveHostname(const char *addr);
 void extracttimestamp(const char *readbuffer, int *querytimestamp, int *overTimetimestamp);
-int getforwardID(const char * str, bool count);
-int findDomain(const char *domain);
-int findClient(const char *client);
+int findForwardID(const char *forward, bool count);
+int findDomainID(const char *domain);
+int findClientID(const char *client);
+int findOverTimeID(int overTimetimestamp);
 int detectStatus(const char *domain);
 
 long int oldfilesize = 0;
@@ -23,13 +23,12 @@ long int lastpos = 0;
 int lastqueryID = 0;
 bool flush = false;
 char timestamp[16] = "";
+int loggeneration = 0;
 
 void initial_log_parsing(void)
 {
 	initialscan = true;
-	if(config.include_yesterday)
-		process_pihole_log(1);
-	process_pihole_log(0);
+	process_pihole_log();
 	initialscan = false;
 }
 
@@ -47,6 +46,45 @@ long int checkLogForChanges(void)
 	oldfilesize = newfilesize;
 
 	return difference;
+}
+
+int getTimeIndex(char * readbuffer)
+{
+	int querytimestamp, overTimetimestamp, timeidx = -1, i;
+	extracttimestamp(readbuffer, &querytimestamp, &overTimetimestamp);
+
+	bool found = false;
+	// Check struct size
+	memory_check(OVERTIME);
+	for(i=0; i < counters.overTime; i++)
+	{
+		validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
+		if(overTime[i].timestamp == overTimetimestamp)
+		{
+			found = true;
+			timeidx = i;
+			break;
+		}
+	}
+	if(!found)
+	{
+		timeidx = counters.overTime;
+		validate_access("overTime", timeidx, false, __LINE__, __FUNCTION__, __FILE__);
+		overTime[timeidx].magic = MAGICBYTE;
+		overTime[timeidx].timestamp = overTimetimestamp;
+		overTime[timeidx].total = 0;
+		overTime[timeidx].blocked = 0;
+		overTime[timeidx].cached = 0;
+		overTime[timeidx].forwardnum = 0;
+		overTime[timeidx].forwarddata = NULL;
+		overTime[timeidx].querytypedata = calloc(2, sizeof(int));
+		overTime[timeidx].clientnum = 0;
+		overTime[timeidx].clientdata = NULL;
+		memory.querytypedata += 2*sizeof(int);
+		counters.overTime++;
+	}
+
+	return timeidx;
 }
 
 void open_pihole_log(void)
@@ -114,7 +152,7 @@ void *pihole_log_thread(void *val)
 			if(newdata > 0 && !flush)
 			{
 				// Process new data if found only in main log (file 0)
-				process_pihole_log(0);
+				process_pihole_log();
 			}
 			else
 			{
@@ -125,11 +163,9 @@ void *pihole_log_thread(void *val)
 				// Reset file size and position
 				oldfilesize = 0;
 				lastpos = 0;
-				// Rescan files 0 (pihole.log) and 1 (pihole.log.1)
+				// Rescan pihole.log
 				initialscan = true;
-				if(config.include_yesterday)
-					process_pihole_log(1);
-				process_pihole_log(0);
+				process_pihole_log();
 				needGC = true;
 				initialscan = false;
 			}
@@ -144,41 +180,58 @@ void *pihole_log_thread(void *val)
 	return NULL;
 }
 
-void process_pihole_log(int file)
+int getdnsmasqID(char * readbuffer)
+{
+	// Get query ID from a string like
+	// "Dec 20 21:16:22 dnsmasq[19372]: 4 10.8.0.2/34596 query[A] pi.hole from 10.8.0.2"
+	int dnsmasqID = -1;
+	if(!sscanf(readbuffer, "%*[^]]]: %i", &dnsmasqID))
+	{
+		if(debug) logg("Error getting ID for query \"%s\" %u", readbuffer, dnsmasqID);
+	}
+	return dnsmasqID;
+}
+
+bool checkQuery(char * readbuffer, const char * type)
+{
+	// Check if this domain names contains only printable characters
+	// if not: skip analysis of this log line
+	if(strstr(readbuffer,"<name unprintable>") != NULL)
+	{
+		if(debug) logg("Ignoring <name unprintable> domain (%s)", type);
+		return false;
+	}
+
+	// Check if this domain name contains quotes
+	if(strstr(readbuffer, "\"") != NULL)
+	{
+		if(debug) logg("Ignoring \" domain (%s)", type);
+		return false;
+	}
+
+	// Check if this is a PTR query (we don't analyze them)
+	if(strstr(readbuffer,"in-addr.arpa") != NULL)
+		return false;
+
+	return true;
+}
+
+void process_pihole_log(void)
 {
 	int i;
 	char *readbuffer = NULL;
-	char *readbuffer2 = NULL;
-	size_t size1 = 0, size2 = 0;
+	size_t size1 = 0;
 	FILE *fp;
 
-	if(file == 0)
-	{
-		// Read from pihole.log
-		if((fp = fopen(files.log, "r")) == NULL) {
-			logg("Warning: Reading of log file %s failed", files.log);
-			return;
-		}
-		// Skip to last read position
-		fseek(fp, lastpos, SEEK_SET);
-		if(initialscan)
-			get_file_permissions(files.log);
-	}
-	else if(file == 1)
-	{
-		// Read from pihole.log.1
-		if((fp = fopen(files.log1, "r")) == NULL) {
-			logg("Warning: Reading of rotated log file %s failed", files.log1);
-			return;
-		}
-		if(initialscan)
-			get_file_permissions(files.log1);
-	}
-	else
-	{
-		logg("Error: Passed unknown file identifier (%i)", file);
+	// Read from pihole.log
+	if((fp = fopen(files.log, "r")) == NULL) {
+		logg("Warning: Reading of log file %s failed", files.log);
 		return;
 	}
+	// Skip to last read position
+	fseek(fp, lastpos, SEEK_SET);
+	if(initialscan)
+		get_file_permissions(files.log);
 
 	long int fposbck = ftell(fp);
 
@@ -199,99 +252,35 @@ void process_pihole_log(int file)
 				break;
 		}
 
+		// Get timestamp
+		int querytimestamp, overTimetimestamp;
+		extracttimestamp(readbuffer, &querytimestamp, &overTimetimestamp);
+
+		// Check if this query has already been imported from the database
+		if(querytimestamp < lastDBimportedtimestamp) continue;
+
+		// Skip parsing of log entries that are too old
+		// Get minimum time stamp to analyze
+		int differencetofullhour = time(NULL) % GCinterval;
+		int mintime = (time(NULL) - GCdelay - differencetofullhour) - config.maxlogage;
+		if(querytimestamp < mintime) continue;
+
 		// Test if the read line is a query line
-		if(strstr(readbuffer,"]: query[A") != NULL)
+		if(strstr(readbuffer," query[A") != NULL)
 		{
-			// Check if this domain names contains only printable characters
-			// if not: skip analysis of this log line
-			if(strstr(readbuffer,"<name unprintable>") != NULL)
-			{
-				if(debug) logg("Ignoring <name unprintable> domain (query)");
+			if(!checkQuery(readbuffer, "query"))
 				continue;
-			}
 
-			if(strstr(readbuffer, "\"") != NULL)
-			{
-				if(debug) logg("Ignoring \" domain (query)");
-				continue;
-			}
-
-			if(!config.analyze_AAAA && strstr(readbuffer,"]: query[AAAA]") != NULL)
+			if(!config.analyze_AAAA && strstr(readbuffer," query[AAAA]") != NULL)
 			{
 				if(debug) logg("Not analyzing AAAA query");
 				continue;
 			}
 
-			// Get timestamp
-			int querytimestamp, overTimetimestamp;
-			extracttimestamp(readbuffer, &querytimestamp, &overTimetimestamp);
-
-			// Get minimum time stamp to analyze
-			int differencetofullhour = time(NULL) % GCinterval;
-			int mintime = (time(NULL) - GCdelay - differencetofullhour) - MAXLOGAGE;
-			// Skip parsing of log entries that are too old altogether if 24h window is requested
-			if(config.rolling_24h && querytimestamp < mintime) continue;
-
 			// Ensure we have enough space in the queries struct
 			memory_check(QUERIES);
 			int queryID = counters.queries;
-
-			int timeidx = -1;
-			bool found = false;
-			// Check struct size
-			memory_check(OVERTIME);
-			for(i=0; i < counters.overTime; i++)
-			{
-				validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
-				if(overTime[i].timestamp == overTimetimestamp)
-				{
-					found = true;
-					timeidx = i;
-					break;
-				}
-			}
-			if(!found)
-			{
-				// We loop over this to fill potential data holes with zeros
-				int nexttimestamp = 0;
-				if(counters.overTime != 0)
-				{
-					validate_access("overTime", counters.overTime-1, false, __LINE__, __FUNCTION__, __FILE__);
-					nexttimestamp = overTime[counters.overTime-1].timestamp + 600;
-				}
-				else
-				{
-					nexttimestamp = overTimetimestamp;
-				}
-
-				while(overTimetimestamp >= nexttimestamp)
-				{
-					// Check struct size
-					memory_check(OVERTIME);
-					timeidx = counters.overTime;
-					validate_access("overTime", timeidx, false, __LINE__, __FUNCTION__, __FILE__);
-					// Set magic byte
-					overTime[timeidx].magic = MAGICBYTE;
-					overTime[timeidx].timestamp = nexttimestamp;
-					overTime[timeidx].total = 0;
-					overTime[timeidx].blocked = 0;
-					overTime[timeidx].cached = 0;
-					overTime[timeidx].forwardnum = 0;
-					overTime[timeidx].forwarddata = NULL;
-					overTime[timeidx].querytypedata = calloc(2, sizeof(int));
-					overTime[timeidx].clientnum = 0;
-					overTime[timeidx].clientdata = NULL;
-					memory.querytypedata += 2*sizeof(int);
-					counters.overTime++;
-
-					// Update time stamp for next loop interation
-					if(counters.overTime != 0)
-					{
-						validate_access("overTime", counters.overTime-1, false, __LINE__, __FUNCTION__, __FILE__);
-						nexttimestamp = overTime[counters.overTime-1].timestamp + 600;
-					}
-				}
-			}
+			int timeidx = findOverTimeID(overTimetimestamp);
 
 			// Detect time travel events
 			if(timeidx < 0)
@@ -303,6 +292,12 @@ void process_pihole_log(int file)
 				logg("Warning: Skipping log entry with incorrect timestamp (%i/%i)", overTimetimestamp, overTime[0].timestamp);
 				continue;
 			}
+
+			// Get dnsmasq's ID for this transaction
+			int dnsmasqID = getdnsmasqID(readbuffer);
+			// Skip invalid lines
+			if(dnsmasqID < 0)
+				continue;
 
 			// Get domain
 			// domainstart = pointer to | in "query[AAAA] |host.name from ww.xx.yy.zz\n"
@@ -333,11 +328,9 @@ void process_pihole_log(int file)
 			}
 
 			char *domain = calloc(domainlen+1,sizeof(char));
-			char *domainwithspaces = calloc(domainlen+3,sizeof(char));
+			if(domain == NULL) continue;
 			// strncat() NULL-terminates the copied string (strncpy() doesn't!)
 			strncat(domain,domainstart+2,domainlen);
-			// Copy string into buffer surrounded by spaces
-			sprintf(domainwithspaces," %s ",domain);
 			// Convert domain to lower case
 			strtolower(domain);
 
@@ -346,7 +339,6 @@ void process_pihole_log(int file)
 				// domain is "pi.hole", skip this query
 				// free memory already allocated here
 				free(domain);
-				free(domainwithspaces);
 				continue;
 			}
 
@@ -359,7 +351,6 @@ void process_pihole_log(int file)
 				logg("Notice: Skipping malformated log line (client end missing): %s", readbuffer);
 				// Skip this line, free memory already allocated here
 				free(domain);
-				free(domainwithspaces);
 				continue;
 			}
 
@@ -369,17 +360,17 @@ void process_pihole_log(int file)
 				logg("Notice: Skipping malformated log line (client length < 1): %s", readbuffer);
 				// Skip this line, free memory already allocated here
 				free(domain);
-				free(domainwithspaces);
 				continue;
 			}
 
 			char *client = calloc(clientlen+1,sizeof(char));
+			if(client == NULL){ free(domain); continue; }
 			// strncat() NULL-terminates the copied string (strncpy() doesn't!)
 			strncat(client,domainend+6,clientlen);
 			// Convert client to lower case
 			strtolower(client);
 
-			// Get type
+			// Get type (A / AAAA)
 			unsigned char type = 0;
 			if(strstr(readbuffer,"query[A]") != NULL)
 			{
@@ -395,243 +386,50 @@ void process_pihole_log(int file)
 				validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 				overTime[timeidx].querytypedata[1]++;
 			}
-
-			// Save current file pointer position
-			long int fpos = ftell(fp);
-			unsigned char status = 0;
-
-			// Try to find either a matching
-			// - "gravity.list" + domain
-			// - "forwarded" + domain
-			// - "cached" + domain
-			// - "black.list" + domain
-			// in the following up to 200 lines
-			bool firsttime = true;
-			int forwardID = -1;
-			for(i=0; i<200; i++)
+			else
 			{
-				if(getline(&readbuffer2, &size2, fp) != -1)
-				{
-					// Process only matching lines
-					if(strstr(readbuffer2, domainwithspaces) != NULL)
-					{
-						// Blocked by gravity.list ?
-						if(strstr(readbuffer2,"gravity.list ") != NULL)
-						{
-							status = 1;
-							break;
-						}
-						// Forwarded to upstream server?
-						else if(strstr(readbuffer2,": forwarded ") != NULL)
-						{
-							status = 2;
-							// Get ID of forward destination, create new forward destination record
-							// if not found in current data structure
-							forwardID = getforwardID(readbuffer2, false);
-							if(forwardID == -2)
-								continue;
-							break;
-						}
-						// Answered by local cache?
-						else if((strstr(readbuffer2,"cached ") != NULL) ||
-						        (strstr(readbuffer2,"local.list") != NULL) ||
-						        (strstr(readbuffer2,"hostname.list") != NULL) ||
-						        (strstr(readbuffer2,"DHCP ") != NULL) ||
-						        (strstr(readbuffer2,"/etc/hosts") != NULL))
-						{
-							status = 3;
-							break;
-						}
-						// wildcard blocking?
-						else if((strstr(readbuffer2,"config ") != NULL))
-						{
-							status = detectStatus(domain);
-							break;
-						}
-						// Blocked by black.list ?
-						else if(strstr(readbuffer2,"black.list ") != NULL)
-						{
-							status = 5;
-							break;
-						}
-					}
-				}
-				else
-				{
-					if(firsttime)
-					{
-						// Reached EOF without finding the action
-						// wait 100msec and try again to read dnsmasq's response
-						i = 0;
-						fseek(fp, fpos, SEEK_SET);
-						firsttime = false;
-						sleepms(100);
-					}
-					else
-					{
-						// Failed second time
-						break;
-					}
-				}
-			}
-
-			// Return to previous file pointer position
-			fseek(fp, fpos, SEEK_SET);
-
-			// Free memory allocated by readline
-			if(readbuffer2 != NULL)
-			{
-				free(readbuffer2);
-				readbuffer2 = NULL;
+				// Might be ANY
+				if(debug) logg("Notice: Skipping possible ANY log line, ID: %i", dnsmasqID);
+				free(domain);
+				free(client);
+				continue;
 			}
 
 			// Go through already knows domains and see if it is one of them
 			// Check struct size
 			memory_check(DOMAINS);
-			int domainID = findDomain(domain);
-			if(domainID < 0)
-			{
-				// This domain is not known
-				// Store ID
-				domainID = counters.domains;
-				// // Debug output
-				if(debug)
-					logg("New domain: %s (%i - %i/%i)", domain, status, domainID, counters.domains_MAX);
-				validate_access("domains", domainID, false, __LINE__, __FUNCTION__, __FILE__);
-				// Set magic byte
-				domains[domainID].magic = MAGICBYTE;
-				// Set its counter to 1
-				domains[domainID].count = 1;
-				// Set blocked counter to zero
-				domains[domainID].blockedcount = 0;
-				// Initialize wildcard blocking flag with false
-				domains[domainID].wildcard = false;
-				// Store domain name
-				domains[domainID].domain = strdup(domain);
-				memory.domainnames += (strlen(domain) + 1) * sizeof(char);
-				// Increase counter by one
-				counters.domains++;
-			}
+			int domainID = findDomainID(domain);
 
 			// Go through already knows clients and see if it is one of them
 			// Check struct size
 			memory_check(CLIENTS);
-			int clientID = findClient(client);
-			if(clientID < 0)
-			{
-				// This client is not known
-				// Store ID
-				clientID = counters.clients;
-				//Get client host name
-				char *hostname = resolveHostname(client);
-				// Debug output
-				if(strlen(hostname) > 0)
-				{
-					logg("New client: %s %s (%i/%i)", client, hostname, clientID, counters.clients_MAX);
-				}
-				else
-					logg("New client: %s (%i/%i)", client, clientID, counters.clients_MAX);
-
-				validate_access("clients", clientID, false, __LINE__, __FUNCTION__, __FILE__);
-				// Set magic byte
-				clients[clientID].magic = MAGICBYTE;
-				// Set its counter to 1
-				clients[clientID].count = 1;
-				// Store client IP
-				clients[clientID].ip = strdup(client);
-				memory.clientips += (strlen(client) + 1) * sizeof(char);
-				// Store client hostname
-				clients[clientID].name = strdup(hostname);
-				memory.clientnames += (strlen(hostname) + 1) * sizeof(char);
-				free(hostname);
-				// Increase counter by one
-				counters.clients++;
-			}
+			int clientID = findClientID(client);
 
 			// Save everything
 			validate_access("queries", queryID, false, __LINE__, __FUNCTION__, __FILE__);
 			queries[queryID].magic = MAGICBYTE;
 			queries[queryID].timestamp = querytimestamp;
 			queries[queryID].type = type;
-			queries[queryID].status = status;
+			queries[queryID].status = 0;
 			queries[queryID].domainID = domainID;
 			queries[queryID].clientID = clientID;
 			queries[queryID].timeidx = timeidx;
-			queries[queryID].forwardID = forwardID;
 			queries[queryID].valid = true;
 			queries[queryID].db = false;
+			queries[queryID].id = dnsmasqID;
+			queries[queryID].complete = false;
+			queries[queryID].reply = 0;
+			queries[queryID].generation = loggeneration;
 
 			// Increase DNS queries counter
 			counters.queries++;
+			// Count this query as unknown as long as no reply has
+			// been found and analyzed
+			counters.unknown++;
 
 			// Update overTime data
 			validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 			overTime[timeidx].total++;
-
-			// Decide what to increment depending on status
-			switch(status)
-			{
-				case 0:
-					// Unknown (?)
-					counters.unknown++;
-					break;
-				case 1:
-					// Blocked by Pi-hole's blocking lists
-					counters.blocked++;
-					validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
-					overTime[timeidx].blocked++;
-					validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
-					domains[domainID].blockedcount++;
-					break;
-				case 2:
-					// Forwarded to an upstream DNS server
-					counters.forwardedqueries++;
-					break;
-				case 3:
-					// Answered from local cache _or_ local config
-					counters.cached++;
-					validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
-					overTime[timeidx].cached++;
-					break;
-				case 4:
-					// Blocked due to a matching wildcard rule
-					counters.wildcardblocked++;
-					validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
-					overTime[timeidx].blocked++;
-					validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
-					domains[domainID].blockedcount++;
-					domains[domainID].wildcard = true;
-					break;
-				case 5:
-					// Blocked by user's black list
-					counters.blocked++;
-					validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
-					overTime[timeidx].blocked++;
-					validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
-					domains[domainID].blockedcount++;
-					break;
-				default:
-					/* That cannot happen */
-					logg("Found unexpected status %i",status);
-					break;
-			}
-
-			// Determine if there is enough space for saving the current
-			// clientID in the overTime data structure, allocate space otherwise
-			validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
-			if(overTime[timeidx].clientnum <= clientID)
-			{
-				// Reallocate more space for clientdata
-				overTime[timeidx].clientdata = realloc(overTime[timeidx].clientdata, (clientID+1)*sizeof(*overTime[timeidx].clientdata));
-				// Initialize new data fields with zeroes
-				for(i = overTime[timeidx].clientnum; i <= clientID; i++)
-				{
-					overTime[timeidx].clientdata[i] = 0;
-					memory.clientdata++;
-				}
-				// Update counter
-				overTime[timeidx].clientnum = clientID + 1;
-			}
 
 			// Update overTime data structure with the new client
 			validate_access_oTcl(timeidx, clientID, __LINE__, __FUNCTION__, __FILE__);
@@ -640,84 +438,470 @@ void process_pihole_log(int file)
 			// Free allocated memory
 			free(client);
 			free(domain);
-			free(domainwithspaces);
 		}
-		else if(strstr(readbuffer,": forwarded") != NULL)
+		// is this a "gravity.list" line?
+		else if(strstr(readbuffer,"/gravity.list ") != NULL && strstr(readbuffer," is ") != NULL)
 		{
-			// Check if this domain names contains only printable characters
-			// if not: skip analysis of this log line
-			if(strstr(readbuffer,"<name unprintable>") != NULL)
-			{
-				if(debug) logg("Ignoring <name unprintable> domain (forwarded)");
-				continue;
-			}
-
-			// Check if this is a PTR query
-			// if so: skip analysis of this log line
-			if(strstr(readbuffer,"in-addr.arpa") != NULL)
+			// Check query for invalid characters
+			if(!checkQuery(readbuffer, "gravity.list"))
 				continue;
 
-			// Get ID of forward destination, create new forward destination record
-			// if not found in current data structure
-			int forwardID = getforwardID(readbuffer, true);
-			if(forwardID == -2)
+			// Get dnsmasq's ID for this transaction
+			int dnsmasqID = getdnsmasqID(readbuffer);
+			// Skip invalid lines
+			if(dnsmasqID < 0)
 				continue;
 
-			// Get timestamp
-			int querytimestamp, overTimetimestamp, timeidx = -1, i;
-			extracttimestamp(readbuffer, &querytimestamp, &overTimetimestamp);
-
+			// Save status in corresponding query indentified by dnsmasq's ID
 			bool found = false;
-			// Check struct size
-			memory_check(OVERTIME);
-			for(i=0; i < counters.overTime; i++)
+			for(i=0; i<counters.queries; i++)
 			{
-				validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
-				if(overTime[i].timestamp == overTimetimestamp)
+				// Check both UUID and generation of this query
+				if(queries[i].id == dnsmasqID && queries[i].generation == loggeneration)
 				{
+					queries[i].status = 1;
 					found = true;
-					timeidx = i;
 					break;
 				}
 			}
 			if(!found)
 			{
-				timeidx = counters.overTime;
-				validate_access("overTime", timeidx, false, __LINE__, __FUNCTION__, __FILE__);
-				overTime[timeidx].magic = MAGICBYTE;
-				overTime[timeidx].timestamp = overTimetimestamp;
-				overTime[timeidx].total = 0;
-				overTime[timeidx].blocked = 0;
-				overTime[timeidx].cached = 0;
-				overTime[timeidx].forwardnum = 0;
-				overTime[timeidx].forwarddata = NULL;
-				overTime[timeidx].querytypedata = calloc(2, sizeof(int));
-				overTime[timeidx].clientnum = 0;
-				overTime[timeidx].clientdata = NULL;
-				memory.querytypedata += 2*sizeof(int);
-				counters.overTime++;
+				// This may happen e.g. if the original query was a PTR query or "pi.hole"
+				// as we ignore them altogether
+				continue;
 			}
-			// Determine if there is enough space for saving the current
-			// forwardID in the overTime data structure, allocate space otherwise
-			validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
-			if(overTime[timeidx].forwardnum <= forwardID)
+
+			if(!queries[i].complete)
 			{
-				// Reallocate more space for forwarddata
-				overTime[timeidx].forwarddata = realloc(overTime[timeidx].forwarddata, (forwardID+1)*sizeof(*overTime[timeidx].forwarddata));
-				// Initialize new data fields with zeroes
-				for(i = overTime[timeidx].forwardnum; i <= forwardID; i++)
-				{
-					overTime[timeidx].forwarddata[i] = 0;
-					memory.forwarddata++;
-				}
-				// Update counter
-				overTime[timeidx].forwardnum = forwardID + 1;
+				// This query is no longer unknown
+				counters.unknown--;
+				// ... but got blocked
+				counters.blocked++;
+				// Hereby, this query is now fully determined
+				queries[i].complete = true;
+
+				// Get time index
+				int timeidx = getTimeIndex(readbuffer);
+				validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
+				overTime[timeidx].blocked++;
+				validate_access("domains", queries[i].domainID, true, __LINE__, __FUNCTION__, __FILE__);
+				domains[queries[i].domainID].blockedcount++;
 			}
+		}
+		// is this a "forwarded" line?
+		else if(strstr(readbuffer," forwarded ") != NULL && strstr(readbuffer," to ") != NULL)
+		{
+			// Check query for invalid characters
+			if(!checkQuery(readbuffer, "forwarded"))
+				continue;
+
+			// Get dnsmasq's ID for this transaction
+			int dnsmasqID = getdnsmasqID(readbuffer);
+			// Skip invalid lines
+			if(dnsmasqID < 0)
+				continue;
+
+			// Get forward destination
+			// forwardstart = pointer to | in "forwarded domain.name| to www.xxx.yyy.zzz\n"
+			const char *forwardstart = strstr(readbuffer, " to ");
+			// Check if buffer pointer is valid
+			if(forwardstart == NULL)
+			{
+				logg("Notice: Skipping malformated log line (forward start missing): %s", readbuffer);
+				continue;
+			}
+			// forwardend = pointer to | in "forwarded domain.name to www.xxx.yyy.zzz|\n"
+			const char *forwardend = strstr(forwardstart+4, "\n");
+			// Check if buffer pointer is valid
+			if(forwardend == NULL)
+			{
+				logg("Notice: Skipping malformated log line (forward end missing): %s", readbuffer);
+				continue;
+			}
+
+			size_t forwardlen = forwardend-(forwardstart+4);
+			if(forwardlen < 1)
+			{
+				logg("Notice: Skipping malformated log line (forward length < 1): %s", readbuffer);
+				continue;
+			}
+
+			char *forward = calloc(forwardlen+1,sizeof(char));
+			if(forward == NULL) continue;
+			// strncat() NULL-terminates the copied string (strncpy() doesn't!)
+			strncat(forward,forwardstart+4,forwardlen);
+			// Convert forward to lower case
+			strtolower(forward);
+
+			// Save status and forwardID in corresponding query indentified by dnsmasq's ID
+			bool found = false;
+			for(i=0; i<counters.queries; i++)
+			{
+				// Check both UUID and generation of this query
+				if(queries[i].id == dnsmasqID && queries[i].generation == loggeneration)
+				{
+					// Detect if we cached the <CNAME> but need to ask the upstream
+					// servers for the actual IPs now
+					if(queries[i].status == 3)
+					{
+						// Fix counters
+						counters.cached--;
+						validate_access("overTime", queries[i].timeidx, true, __LINE__, __FUNCTION__, __FILE__);
+						overTime[queries[i].timeidx].cached--;
+
+						// Mark this query again as (temporarily) unknown
+						counters.unknown++;
+						queries[i].complete = false;
+					}
+					queries[i].status = 2;
+					found = true;
+					break;
+				}
+			}
+			if(!found)
+			{
+				// This may happen e.g. if the original query was a PTR query or "pi.hole"
+				// as we ignore them altogether
+				free(forward);
+				continue;
+			}
+
+			// Count only if current query has not been counted so far
+			if(queries[i].complete)
+			{
+				free(forward);
+				continue;
+			}
+
+			// Get ID of forward destination, create new forward destination record
+			// if not found in current data structure
+			int forwardID = findForwardID(forward, true);
+			queries[i].forwardID = forwardID;
+
+			// Release allocated memory
+			free(forward);
+
+			// Get time index
+			int timeidx = getTimeIndex(readbuffer);
 
 			// Update overTime data structure with the new forwarder
 			validate_access_oTfd(timeidx, forwardID, __LINE__, __FUNCTION__, __FILE__);
 			overTime[timeidx].forwarddata[forwardID]++;
+
+			if(!queries[i].complete)
+			{
+				// This query is no longer unknown ...
+				counters.unknown--;
+				// ... but got forwarded
+				counters.forwardedqueries++;
+				// Hereby, this query is now fully determined
+				queries[i].complete = true;
+			}
 		}
+		// is this a "cached" line?
+		else if((strstr(readbuffer," cached ") != NULL || \
+			     strstr(readbuffer,"/local.list ") != NULL || \
+			     strstr(readbuffer,"/hostname.list ") != NULL || \
+			     strstr(readbuffer," DHCP ") != NULL || \
+			     strstr(readbuffer," /etc/hosts ") != NULL) \
+			  && strstr(readbuffer," is ") != NULL)
+		{
+			// Check query for invalid characters
+			if(!checkQuery(readbuffer, "cached"))
+				continue;
+
+			// Get dnsmasq's ID for this transaction
+			int dnsmasqID = getdnsmasqID(readbuffer);
+			// Skip invalid lines
+			if(dnsmasqID < 0)
+				continue;
+
+			// Save status in corresponding query indentified by dnsmasq's ID
+			bool found = false;
+			for(i=0; i<counters.queries; i++)
+			{
+				// Check both UUID and generation of this query
+				if(queries[i].id == dnsmasqID && queries[i].generation == loggeneration)
+				{
+					queries[i].status = 3;
+					found = true;
+					break;
+				}
+			}
+			if(!found)
+			{
+				// This may happen e.g. if the original query was a PTR query or "pi.hole"
+				// as we ignore them altogether
+				continue;
+			}
+
+			if(!queries[i].complete)
+			{
+				// This query is no longer unknown ...
+				counters.unknown--;
+				// ... but answered from local cache _or_ local config
+				counters.cached++;
+				// Hereby, this query is now fully determined
+				queries[i].complete = true;
+
+				// Get time index
+				int timeidx = getTimeIndex(readbuffer);
+				validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
+				overTime[timeidx].cached++;
+			}
+		}
+		// is this a "wildcard" line?
+		else if(strstr(readbuffer," config ") != NULL && strstr(readbuffer," is ") != NULL)
+		{
+			// Check query for invalid characters
+			if(!checkQuery(readbuffer, "config"))
+				continue;
+
+			// Get dnsmasq's ID for this transaction
+			int dnsmasqID = getdnsmasqID(readbuffer);
+			// Skip invalid lines
+			if(dnsmasqID < 0)
+				continue;
+
+			// Save status in corresponding query indentified by dnsmasq's ID
+			bool found = false;
+			for(i=0; i<counters.queries; i++)
+			{
+				// Check both UUID and generation of this query
+				if(queries[i].id == dnsmasqID && queries[i].generation == loggeneration)
+				{
+					queries[i].status = detectStatus(domains[queries[i].domainID].domain);
+					found = true;
+					break;
+				}
+			}
+			if(!found)
+			{
+				// This may happen e.g. if the original query was a PTR query or "pi.hole"
+				// as we ignore them altogether
+				continue;
+			}
+
+			if(!queries[i].complete)
+			{
+				// This query is no longer unknown
+				counters.unknown--;
+				// Hereby, this query is now fully determined
+				queries[i].complete = true;
+
+				// Get time index
+				int timeidx = getTimeIndex(readbuffer);
+
+				// Decide what to do depening on the result of detectStatus()
+				if(queries[i].status == 4)
+				{
+					// Blocked due to a matching wildcard rule
+					counters.wildcardblocked++;
+
+					validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
+					overTime[timeidx].blocked++;
+					validate_access("domains", queries[i].domainID, true, __LINE__, __FUNCTION__, __FILE__);
+					domains[queries[i].domainID].blockedcount++;
+					domains[queries[i].domainID].wildcard = true;
+				}
+				else if(queries[i].status == 3)
+				{
+					// Answered from a custom (user provided) cache file
+					counters.cached++;
+
+					validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
+					overTime[timeidx].cached++;
+				}
+			}
+		}
+
+		// is this a "black.list" line?
+		else if(strstr(readbuffer,"/black.list ") != NULL && strstr(readbuffer," is ") != NULL)
+		{
+			// Check query for invalid characters
+			if(!checkQuery(readbuffer, "black.list"))
+				continue;
+
+			// Get dnsmasq's ID for this transaction
+			int dnsmasqID = getdnsmasqID(readbuffer);
+			// Skip invalid lines
+			if(dnsmasqID < 0)
+				continue;
+
+			// Save status in corresponding query indentified by dnsmasq's ID
+			bool found = false;
+			for(i=0; i<counters.queries; i++)
+			{
+				// Check both UUID and generation of this query
+				if(queries[i].id == dnsmasqID && queries[i].generation == loggeneration)
+				{
+					queries[i].status = 5;
+					found = true;
+					break;
+				}
+			}
+			if(!found)
+			{
+				// This may happen e.g. if the original query was a PTR query or "pi.hole"
+				// as we ignore them altogether
+				continue;
+			}
+
+			if(!queries[i].complete)
+			{
+				// This query is no longer unknown
+				counters.unknown--;
+				// ... but got blocked by user's black list
+				counters.blocked++;
+				// Hereby, this query is now fully determined
+				queries[i].complete = true;
+
+				// Get time index
+				int timeidx = getTimeIndex(readbuffer);
+				validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
+				overTime[timeidx].blocked++;
+				validate_access("domains", queries[i].domainID, true, __LINE__, __FUNCTION__, __FILE__);
+				domains[queries[i].domainID].blockedcount++;
+			}
+		}
+		// Is dnsmasq restarted? If yes, then we have to increment the log generation
+		// as the following UUIDs will again start at zero...
+		else if(strstr(readbuffer,"IPv6") != NULL &&
+		        strstr(readbuffer,"DBus") != NULL &&
+		        strstr(readbuffer,"i18n") != NULL &&
+		        strstr(readbuffer,"DHCP") != NULL)
+		{
+			loggeneration++;
+			if(debug) logg("Detected restart of dnsmasq, increasing loggeneration to %i", loggeneration);
+		}
+
+		// is this a "reply" line?
+		else if(strstr(readbuffer," reply ") != NULL && strstr(readbuffer," is ") != NULL)
+		{
+			// Check query for invalid characters
+			if(!checkQuery(readbuffer, "reply"))
+				continue;
+
+			// Get dnsmasq's ID for this transaction
+			int dnsmasqID = getdnsmasqID(readbuffer);
+			// Skip invalid lines
+			if(dnsmasqID < 0)
+				continue;
+
+			// Search for corresponding query indentified by dnsmasq's ID
+			bool found = false;
+			for(i=0; i<counters.queries; i++)
+			{
+				// Check both UUID and generation of this query
+				if(queries[i].id == dnsmasqID && queries[i].generation == loggeneration)
+				{
+					found = true;
+					break;
+				}
+			}
+
+			if(!found)
+			{
+				// This may happen e.g. if the original query was a PTR query or "pi.hole"
+				// as we ignore them altogether
+				continue;
+			}
+
+			if(queries[i].reply != 0)
+			{
+				// Skip this entry if we already found the first result for this query before
+				continue;
+			}
+
+			// Iterate through possible values
+			if(strstr(readbuffer," is NODATA") != NULL)
+			{
+				// NODATA(-IPv6)
+				queries[i].reply = 1;
+				counters.reply_NODATA++;
+			}
+			else if(strstr(readbuffer," is NXDOMAIN") != NULL)
+			{
+				// NXDOMAIN
+				queries[i].reply = 2;
+				counters.reply_NXDOMAIN++;
+			}
+			else if(strstr(readbuffer," is <CNAME>") != NULL)
+			{
+				// <CNAME>
+				queries[i].reply = 3;
+				counters.reply_CNAME++;
+			}
+			else
+			{
+				// Valid IP
+				queries[i].reply = 4;
+				counters.reply_IP++;
+				// const char * dest = strstr(readbuffer," is ");
+				// char * result;
+				// sscanf(dest, " is %ms", &result);
+				// printf("reply is IP: %s\n",result);
+				// free(result);
+			}
+		}
+		// is this a "validaton" line? -- DNSSEC
+		else if(strstr(readbuffer," validation ") != NULL && strstr(readbuffer," is ") != NULL)
+		{
+			// Check query for invalid characters
+			if(!checkQuery(readbuffer, "DNSSEC"))
+				continue;
+
+			// Get dnsmasq's ID for this transaction
+			int dnsmasqID = getdnsmasqID(readbuffer);
+			// Skip invalid lines
+			if(dnsmasqID < 0)
+				continue;
+
+			// Search for corresponding query indentified by dnsmasq's ID
+			bool found = false;
+			for(i=0; i<counters.queries; i++)
+			{
+				// Check both UUID and generation of this query
+				if(queries[i].id == dnsmasqID && queries[i].generation == loggeneration)
+				{
+					found = true;
+					break;
+				}
+			}
+
+			if(!found)
+			{
+				// This may happen e.g. if the original query was a PTR query or "pi.hole"
+				// as we ignore them altogether
+				continue;
+			}
+
+			validate_access("domains", queries[i].domainID, true, __LINE__, __FUNCTION__, __FILE__);
+			// Iterate through possible values
+			if(strstr(readbuffer,"is SECURE") != NULL)
+			{
+				domains[queries[i].domainID].dnssec = DNSSEC_SECURE;
+			}
+			else if(strstr(readbuffer,"is INSECURE") != NULL)
+			{
+				domains[queries[i].domainID].dnssec = DNSSEC_INSECURE;
+			}
+			else if(strstr(readbuffer,"is BOGUS") != NULL)
+			{
+				domains[queries[i].domainID].dnssec = DNSSEC_BOGUS;
+			}
+			else if(strstr(readbuffer,"is ABANDONED") != NULL)
+			{
+				domains[queries[i].domainID].dnssec = DNSSEC_ABANDONED;
+			}
+			else
+			{
+				// Unknown
+				domains[queries[i].domainID].dnssec = DNSSEC_UNKNOWN;
+				if(debug) logg("Unknown DNSSEC reply: %i\n\"%s\"",dnsmasqID,readbuffer);
+			}
+		}
+
 
 		// Save file pointer position, because we might have to repeat
 		// reading the next line if dnsmasq hasn't finished writing it
@@ -725,15 +909,12 @@ void process_pihole_log(int file)
 		fposbck = ftell(fp);
 
 		// Return early if data structure is flushed
-		if(file == 0)
+		if(checkLogForChanges() < 0)
 		{
-			if(checkLogForChanges() < 0)
-			{
-				logg("Notice: Returning early from log parsing for flushing");
-				fclose(fp);
-				flush = true;
-				return;
-			}
+			logg("Notice: Returning early from log parsing for flushing");
+			fclose(fp);
+			flush = true;
+			return;
 		}
 	}
 
@@ -744,22 +925,30 @@ void process_pihole_log(int file)
 	if(readbuffer != NULL)
 		free(readbuffer);
 
-	// IF we are reading the main log, we want to store the last read
-	// position so that we can jump to this position in the next round
-	if(file == 0)
-	{
-		lastpos = ftell(fp);
-	}
+	// We want to store the last read position so that we can jump to this position in the next round
+	lastpos = ftell(fp);
 
 	// Close file when parsing is finished
 	fclose(fp);
+}
+
+bool isValidIPv4(const char *addr)
+{
+	struct sockaddr_in sa;
+	return inet_pton(AF_INET, addr, &(sa.sin_addr)) != 0;
+}
+
+bool isValidIPv6(const char *addr)
+{
+	struct sockaddr_in6 sa;
+	return inet_pton(AF_INET6, addr, &(sa.sin6_addr)) != 0;
 }
 
 char *resolveHostname(const char *addr)
 {
 	// Get host name
 	struct hostent *he = NULL;
-	char *hostname;
+	char *hostname = NULL;;
 	bool IPv6 = false;
 
 	// Test if we want to resolve an IPv6 address
@@ -784,13 +973,14 @@ char *resolveHostname(const char *addr)
 	if(he == NULL)
 	{
 		// No hostname found
-		hostname = calloc(1,sizeof(char));
-		hostname[0] = '\0';
+		hostname = strdup("");
+		if(hostname == NULL) return NULL;
 	}
 	else
 	{
 		// Return hostname copied to new memory location
 		hostname = strdup(he->h_name);
+		if(hostname == NULL) return NULL;
 		// Convert hostname to lower case
 		strtolower(hostname);
 	}
@@ -915,43 +1105,8 @@ void extracttimestamp(const char *readbuffer, int *querytimestamp, int *overTime
 	*overTimetimestamp = *querytimestamp-(*querytimestamp%600)+300;
 }
 
-int getforwardID(const char * str, bool count)
+int findForwardID(const char * forward, bool count)
 {
-	// Get forward destination
-	// forwardstart = pointer to | in "forwarded domain.name| to www.xxx.yyy.zzz\n"
-	const char *forwardstart = strstr(str, " to ");
-	// Check if buffer pointer is valid
-	if(forwardstart == NULL)
-	{
-		logg("Notice: Skipping malformated log line (forward start missing): %s", str);
-		// Skip this line
-		return -2;
-	}
-	// forwardend = pointer to | in "forwarded domain.name to www.xxx.yyy.zzz|\n"
-	const char *forwardend = strstr(forwardstart+4, "\n");
-	// Check if buffer pointer is valid
-	if(forwardend == NULL)
-	{
-		logg("Notice: Skipping malformated log line (forward end missing): %s", str);
-		// Skip this line
-		return -2;
-	}
-
-	size_t forwardlen = forwardend-(forwardstart+4);
-	if(forwardlen < 1)
-	{
-		logg("Notice: Skipping malformated log line (forward length < 1): %s", str);
-		// Skip this line
-		return -2;
-	}
-
-	char *forward = calloc(forwardlen+1,sizeof(char));
-	// strncat() NULL-terminates the copied string (strncpy() doesn't!)
-	strncat(forward,forwardstart+4,forwardlen);
-	// Convert forward to lower case
-	strtolower(forward);
-
-	bool processed = false;
 	int i, forwardID = -1;
 	// Go through already knows forward servers and see if we used one of those
 	// Check struct size
@@ -962,54 +1117,46 @@ int getforwardID(const char * str, bool count)
 		if(strcmp(forwarded[i].ip, forward) == 0)
 		{
 			forwardID = i;
-			if(count)
-				forwarded[forwardID].count++;
-			processed = true;
-			break;
+			if(count) forwarded[forwardID].count++;
+			return forwardID;
 		}
 	}
-	if(!processed)
+	// This forward server is not known
+	// Store ID
+	forwardID = counters.forwarded;
+	// Get forward destination host name
+	char *hostname = resolveHostname(forward);
+	if(strlen(hostname) > 0)
 	{
-		// This forward server is not known
-		// Store ID
-		forwardID = counters.forwarded;
-		// Get forward destination host name
-		char *hostname = resolveHostname(forward);
-		if(strlen(hostname) > 0)
-		{
-			// Convert hostname to lower case
-			strtolower(hostname);
-			logg("New forward server: %s %s (%i/%i)", forward, hostname, forwardID, counters.forwarded_MAX);
-		}
-		else
-			logg("New forward server: %s (%i/%u)", forward, forwardID, counters.forwarded_MAX);
-
-		validate_access("forwarded", forwardID, false, __LINE__, __FUNCTION__, __FILE__);
-		// Set magic byte
-		forwarded[forwardID].magic = MAGICBYTE;
-		// Initialize its counter
-		if(count)
-			forwarded[forwardID].count = 1;
-		else
-			forwarded[forwardID].count = 0;
-		// Save IP
-		forwarded[forwardID].ip = strdup(forward);
-		memory.forwardedips += (forwardlen + 1) * sizeof(char);
-		// Save forward destination host name
-		forwarded[forwardID].name = strdup(hostname);
-		memory.forwardednames += (strlen(hostname) + 1) * sizeof(char);
-		free(hostname);
-		// Increase counter by one
-		counters.forwarded++;
+		// Convert hostname to lower case
+		strtolower(hostname);
+		logg("New forward server: %s %s (%i/%i)", forward, hostname, forwardID, counters.forwarded_MAX);
 	}
+	else
+		logg("New forward server: %s (%i/%u)", forward, forwardID, counters.forwarded_MAX);
 
-	// Release allocated memory
-	free(forward);
+	validate_access("forwarded", forwardID, false, __LINE__, __FUNCTION__, __FILE__);
+	// Set magic byte
+	forwarded[forwardID].magic = MAGICBYTE;
+	// Initialize its counter
+	if(count)
+		forwarded[forwardID].count = 1;
+	else
+		forwarded[forwardID].count = 0;
+	// Save IP
+	forwarded[forwardID].ip = strdup(forward);
+	memory.forwardedips += (strlen(forward) + 1) * sizeof(char);
+	// Save forward destination host name
+	forwarded[forwardID].name = strdup(hostname);
+	memory.forwardednames += (strlen(hostname) + 1) * sizeof(char);
+	free(hostname);
+	// Increase counter by one
+	counters.forwarded++;
 
 	return forwardID;
 }
 
-int findDomain(const char *domain)
+int findDomainID(const char *domain)
 {
 	int i;
 	for(i=0; i < counters.domains; i++)
@@ -1026,13 +1173,36 @@ int findDomain(const char *domain)
 			return i;
 		}
 	}
-	// Return -1 if not found
-	return -1;
+
+	// If we did not return until here, then this domain is not known
+	// Store ID
+	int domainID = counters.domains;
+	// // Debug output
+	if(debug) logg("New domain: %s (%i/%i)", domain, domainID, counters.domains_MAX);
+	validate_access("domains", domainID, false, __LINE__, __FUNCTION__, __FILE__);
+	// Set magic byte
+	domains[domainID].magic = MAGICBYTE;
+	// Set its counter to 1
+	domains[domainID].count = 1;
+	// Set blocked counter to zero
+	domains[domainID].blockedcount = 0;
+	// Initialize wildcard blocking flag with false
+	domains[domainID].wildcard = false;
+	// Store domain name - no need to check for NULL here as it doesn't harm
+	domains[domainID].domain = strdup(domain);
+	memory.domainnames += (strlen(domain) + 1) * sizeof(char);
+	// Store DNSSEC result for this domain
+	domains[domainID].dnssec = DNSSEC_UNSPECIFIED;
+	// Increase counter by one
+	counters.domains++;
+
+	return domainID;
 }
 
-int findClient(const char *client)
+int findClientID(const char *client)
 {
 	int i;
+	// Compare content of client against known client IP addresses
 	for(i=0; i < counters.clients; i++)
 	{
 		validate_access("clients", i, true, __LINE__, __FUNCTION__, __FILE__);
@@ -1040,71 +1210,80 @@ int findClient(const char *client)
 		if(clients[i].ip[0] != client[0])
 			continue;
 
-		// If so, compare the full domain using strcmp
+		// If so, compare the full IP using strcmp
 		if(strcmp(clients[i].ip, client) == 0)
 		{
 			clients[i].count++;
 			return i;
 		}
 	}
-	// Return -1 if not found
-	return -1;
-}
+	// If we did not return until here, then this client is either
+	// a) new or
+	// b) only known by its hostname (after importing from the database)
 
-void validate_access(const char * name, int pos, bool testmagic, int line, const char * function, const char * file)
-{
-	int limit = 0;
-	if(name[0] == 'c') limit = counters.clients_MAX;
-	else if(name[0] == 'd') limit = counters.domains_MAX;
-	else if(name[0] == 'q') limit = counters.queries_MAX;
-	else if(name[0] == 'o') limit = counters.overTime_MAX;
-	else if(name[0] == 'f') limit = counters.forwarded_MAX;
-	else if(name[0] == 'w') limit = counters.wildcarddomains;
-	else { logg("Validator error (range)"); killed = 1; }
+	// First try to resolve the IP to a hostname to compare again
+	char *hostname = NULL;
+	if(isValidIPv4(client) || isValidIPv6(client))
+	{
+		hostname = resolveHostname(client);
 
-	if(pos >= limit || pos < 0)
-	{
-		logg("FATAL ERROR: Trying to access %s[%i], but maximum is %i", name, pos, limit);
-		logg("             found in %s() (line %i) in %s", function, line, file);
-	}
-	// Don't test magic byte if detected potential out-of-bounds error
-	else if(testmagic)
-	{
-		unsigned char magic = 0x00;
-		if(name[0] == 'c') magic = clients[pos].magic;
-		else if(name[0] == 'd') magic = domains[pos].magic;
-		else if(name[0] == 'q') magic = queries[pos].magic;
-		else if(name[0] == 'o') magic = overTime[pos].magic;
-		else if(name[0] == 'f') magic = forwarded[pos].magic;
-		else { logg("Validator error (magic byte)"); killed = 1; }
-		if(magic != MAGICBYTE)
+		// Compare again with resolved host name if resolution succeeded
+		if(hostname[0] != '\0')
 		{
-			logg("FATAL ERROR: Trying to access %s[%i], but magic byte is %x", name, pos, magic);
-			logg("             found in %s() (line %i) in %s", function, line, file);
+			for(i=0; i < counters.clients; i++)
+			{
+				validate_access("clients", i, true, __LINE__, __FUNCTION__, __FILE__);
+				// Quick test: Does the clients host name start with the same character?
+				if(clients[i].name[0] != hostname[0])
+					continue;
+
+				// If so, compare the full host name using strcmp
+				if(strcmp(clients[i].name, hostname) == 0)
+				{
+					// Store IP address
+					free(clients[i].ip);
+					clients[i].ip = strdup(client);
+
+					clients[i].count++;
+
+					// Free allocated memory before returning
+					free(hostname);
+					return i;
+				}
+			}
 		}
 	}
-}
-
-void validate_access_oTfd(int timeidx, int pos, int line, const char * function, const char * file)
-{
-	int limit = overTime[timeidx].forwardnum;
-	if(pos >= limit || pos < 0)
+	else
 	{
-		logg("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-		logg("FATAL ERROR: Trying to access overTime.forwarddata[%i], but maximum is %i", pos, limit);
-		logg("             found in %s() (line %i) in %s", function, line, file);
+		hostname = strdup(client);
 	}
-}
 
-void validate_access_oTcl(int timeidx, int pos, int line, const char * function, const char * file)
-{
-	int limit = overTime[timeidx].clientnum;
-	if(pos >= limit || pos < 0)
-	{
-		logg("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-		logg("FATAL ERROR: Trying to access overTime.clientdata[%i], but maximum is %i", pos, limit);
-		logg("             found in %s() (line %i) in %s", function, line, file);
-	}
+	// If we did not return until here, then this client is definitely new
+	// Store ID
+	int clientID = counters.clients;
+
+	// Debug output
+	if(strlen(hostname) > 0)
+		logg("New client: %s %s (%i/%i)", client, hostname, clientID, counters.clients_MAX);
+	else
+		logg("New client: %s (%i/%i)", client, clientID, counters.clients_MAX);
+
+	validate_access("clients", clientID, false, __LINE__, __FUNCTION__, __FILE__);
+	// Set magic byte
+	clients[clientID].magic = MAGICBYTE;
+	// Set its counter to 1
+	clients[clientID].count = 1;
+	// Store client IP - no need to check for NULL here as it doesn't harm
+	clients[clientID].ip = strdup(client);
+	memory.clientips += (strlen(client) + 1) * sizeof(char);
+	// Store client hostname - no need to check for NULL here as it doesn't harm
+	clients[clientID].name = strdup(hostname);
+	memory.clientnames += (strlen(hostname) + 1) * sizeof(char);
+	free(hostname);
+	// Increase counter by one
+	counters.clients++;
+
+	return clientID;
 }
 
 void reresolveHostnames(void)
@@ -1137,4 +1316,57 @@ void reresolveHostnames(void)
 		}
 		free(hostname);
 	}
+}
+
+int findOverTimeID(int overTimetimestamp)
+{
+	int timeidx = -1, i;
+	// Check struct size
+	memory_check(OVERTIME);
+	for(i=0; i < counters.overTime; i++)
+	{
+		validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
+		if(overTime[i].timestamp == overTimetimestamp)
+			return i;
+	}
+	// We loop over this to fill potential data holes with zeros
+	int nexttimestamp = 0;
+	if(counters.overTime != 0)
+	{
+		validate_access("overTime", counters.overTime-1, false, __LINE__, __FUNCTION__, __FILE__);
+		nexttimestamp = overTime[counters.overTime-1].timestamp + 600;
+	}
+	else
+	{
+		nexttimestamp = overTimetimestamp;
+	}
+
+	while(overTimetimestamp >= nexttimestamp)
+	{
+		// Check struct size
+		memory_check(OVERTIME);
+		timeidx = counters.overTime;
+		validate_access("overTime", timeidx, false, __LINE__, __FUNCTION__, __FILE__);
+		// Set magic byte
+		overTime[timeidx].magic = MAGICBYTE;
+		overTime[timeidx].timestamp = nexttimestamp;
+		overTime[timeidx].total = 0;
+		overTime[timeidx].blocked = 0;
+		overTime[timeidx].cached = 0;
+		overTime[timeidx].forwardnum = 0;
+		overTime[timeidx].forwarddata = NULL;
+		overTime[timeidx].querytypedata = calloc(2, sizeof(int));
+		overTime[timeidx].clientnum = 0;
+		overTime[timeidx].clientdata = NULL;
+		memory.querytypedata += 2*sizeof(int);
+		counters.overTime++;
+
+		// Update time stamp for next loop interation
+		if(counters.overTime != 0)
+		{
+			validate_access("overTime", counters.overTime-1, false, __LINE__, __FUNCTION__, __FILE__);
+			nexttimestamp = overTime[counters.overTime-1].timestamp + 600;
+		}
+	}
+	return timeidx;
 }

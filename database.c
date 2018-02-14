@@ -14,6 +14,7 @@ sqlite3 *db;
 bool database = false;
 bool DBdeleteoldqueries = false;
 long int lastdbindex = 0;
+long int lastDBimportedtimestamp = 0;
 
 pthread_mutex_t dblock;
 
@@ -281,6 +282,9 @@ int get_number_of_queries_in_DB(void)
 
 void save_to_DB(void)
 {
+	// Start database timer
+	if(debug) timer_start(DATABASE_WRITE_TIMER);
+
 	// Open database
 	if(!dbopen())
 	{
@@ -317,14 +321,19 @@ void save_to_DB(void)
 		return;
 	}
 
+	int currenttimestamp = time(NULL);
 	for(i = lastdbindex; i < counters.queries; i++)
 	{
 		validate_access("queries", i, true, __LINE__, __FUNCTION__, __FILE__);
-		if(queries[i].timestamp <= lasttimestamp || queries[i].db == true)
-		{
-			// Already in database
-			// logg("Skipping %i",i);
+		if(queries[i].timestamp <= lasttimestamp || queries[i].db)
+			// Already in database or not yet complete
 			continue;
+
+		if(!queries[i].complete && queries[i].timestamp > currenttimestamp-2)
+		{
+			// Break if a brand new query (age < 2 seconds) is not yet completed
+			// giving it a chance to be stored next time
+			break;
 		}
 
 		// Memory checks
@@ -345,13 +354,10 @@ void save_to_DB(void)
 		sqlite3_bind_text(stmt, 4, domains[queries[i].domainID].domain, -1, SQLITE_TRANSIENT);
 
 		// CLIENT
-		if(strlen(clients[queries[i].clientID].name) > 0)
-			sqlite3_bind_text(stmt, 5, clients[queries[i].clientID].name, -1, SQLITE_TRANSIENT);
-		else
-			sqlite3_bind_text(stmt, 5, clients[queries[i].clientID].ip, -1, SQLITE_TRANSIENT);
+		sqlite3_bind_text(stmt, 5, clients[queries[i].clientID].ip, -1, SQLITE_TRANSIENT);
 
 		// FORWARD
-		if(queries[i].forwardID > -1)
+		if(queries[i].status == 2 && queries[i].forwardID > -1)
 		{
 			validate_access("forwarded", queries[i].forwardID, true, __LINE__, __FUNCTION__, __FILE__);
 			sqlite3_bind_text(stmt, 6, forwarded[queries[i].forwardID].ip, -1, SQLITE_TRANSIENT);
@@ -409,7 +415,7 @@ void save_to_DB(void)
 
 	if(debug)
 	{
-		logg("Notice: Queries stored in DB: %u", saved);
+		logg("Notice: Queries stored in DB: %u (took %.1f ms)", saved, timer_elapsed_msec(DATABASE_WRITE_TIMER));
 		if(saved_error > 0)
 			logg("        There are queries that have not been saved");
 	}
@@ -471,4 +477,208 @@ void *DB_thread(void *val)
 	}
 
 	return NULL;
+}
+
+// Get most recent 24 hours data from long-term database
+void read_data_from_DB(void)
+{
+	// Open database file
+	if(!dbopen())
+	{
+		logg("read_data_from_DB() - Failed to open DB");
+		return;
+	}
+
+	// Prepare request
+	char *rstr = NULL;
+	// Get time stamp 24 hours in the past
+	int differencetofullhour = time(NULL) % GCinterval;
+	long int mintime = ((long)time(NULL) - GCdelay - differencetofullhour) - config.maxlogage;
+	int rc = asprintf(&rstr, "SELECT * FROM queries WHERE timestamp >= %li", mintime);
+	if(rc < 1)
+	{
+		logg("read_data_from_DB() - Allocation error (%i): %s", rc, sqlite3_errmsg(db));
+		return;
+	}
+	// Log DB query string in debug mode
+	if(debug) logg(rstr);
+
+	// Prepare SQLite3 statement
+	sqlite3_stmt* stmt;
+	rc = sqlite3_prepare_v2(db, rstr, -1, &stmt, NULL);
+	if( rc ){
+		logg("read_data_from_DB() - SQL error prepare (%i): %s", rc, sqlite3_errmsg(db));
+		dbclose();
+		check_database(rc);
+		return;
+	}
+
+	// Loop through returned database rows
+	while((rc = sqlite3_step(stmt)) == SQLITE_ROW)
+	{
+		// Ensure we have enough space in the queries struct
+		memory_check(QUERIES);
+		memory_check(DOMAINS);
+		memory_check(CLIENTS);
+
+		// Set ID for this query
+		int queryID = counters.queries;
+
+		int queryTimeStamp = sqlite3_column_int(stmt, 1);
+		// 1483228800 = 01/01/2017 @ 12:00am (UTC)
+		if(queryTimeStamp < 1483228800)
+		{
+			logg("DB warn: TIMESTAMP should be larger than 01/01/2017 but is %i", queryTimeStamp);
+			continue;
+		}
+		int type = sqlite3_column_int(stmt, 2);
+		if(type != 1 && type != 2)
+		{
+			logg("DB warn: TYPE should be either 1 or 2 but not %i", type);
+			continue;
+		}
+		int status = sqlite3_column_int(stmt, 3);
+		if(status < 0 || status > 5)
+		{
+			logg("DB warn: STATUS should be within [0,5] but is %i", status);
+			continue;
+		}
+
+		const char * domain = (const char *)sqlite3_column_text(stmt, 4);
+		if(domain == NULL)
+		{
+			logg("DB warn: DOMAIN should never be NULL, %i", queryTimeStamp);
+			continue;
+		}
+		int domainID = findDomainID(domain);
+
+		const char * client = (const char *)sqlite3_column_text(stmt, 5);
+		if(client == NULL)
+		{
+			logg("DB warn: CLIENT should never be NULL, %i", queryTimeStamp);
+			continue;
+		}
+		int clientID = findClientID(client);
+
+		const char *forwarddest = (const char *)sqlite3_column_text(stmt, 6);
+		int forwardID = 0;
+		// Determine forwardID only when status == 2 (forwarded) as the
+		// field need not to be filled for other query status types
+		if(status == 2)
+		{
+			if(forwarddest == NULL)
+			{
+				logg("DB warn: FORWARD should not be NULL with status 2, %i", queryTimeStamp);
+				continue;
+			}
+			forwardID = findForwardID(forwarddest, true);
+		}
+
+		int overTimeTimeStamp = queryTimeStamp - (queryTimeStamp % 600 + 300);
+		int timeidx = findOverTimeID(overTimeTimeStamp);
+		validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
+
+		// Store this query in memory
+		validate_access("queries", queryID, false, __LINE__, __FUNCTION__, __FILE__);
+		queries[queryID].magic = MAGICBYTE;
+		queries[queryID].timestamp = queryTimeStamp;
+		queries[queryID].type = type;
+		queries[queryID].status = status;
+		queries[queryID].domainID = domainID;
+		queries[queryID].clientID = clientID;
+		queries[queryID].forwardID = forwardID;
+		queries[queryID].timeidx = timeidx;
+		queries[queryID].valid = true; // Mark this as a valid query (false = it has been garbage collected and should be skipped)
+		queries[queryID].db = true; // Mark this as already present in the database
+		queries[queryID].id = 0; // This is dnsmasq's internal ID. We don't store it in the database
+		queries[queryID].complete = true; // Mark as all information is avaiable
+		queries[queryID].reply = 0; // Reply type is not stored in database
+		queries[queryID].generation = 0; // Log generation is neither available nor important if reading from the database
+		lastDBimportedtimestamp = queryTimeStamp;
+
+		// Handle type counters
+		if(type == 1)
+		{
+			counters.IPv4++;
+			overTime[timeidx].querytypedata[0]++;
+		}
+		else if(type == 2)
+		{
+			counters.IPv6++;
+			overTime[timeidx].querytypedata[1]++;
+		}
+
+		// Update overTime data
+		overTime[timeidx].total++;
+
+		// Update overTime data structure with the new client
+		validate_access_oTcl(timeidx, clientID, __LINE__, __FUNCTION__, __FILE__);
+		overTime[timeidx].clientdata[clientID]++;
+
+		// Increase DNS queries counter
+		counters.queries++;
+
+		// Increment status counters
+		switch(status)
+		{
+			case 0: // Unknown
+				counters.unknown++;
+				break;
+
+			case 1: // Blocked by gravity.list
+				counters.blocked++;
+				overTime[timeidx].blocked++;
+				domains[domainID].blockedcount++;
+				break;
+
+			case 2: // Forwarded
+				counters.forwardedqueries++;
+				// Update overTime data structure
+				validate_access_oTfd(timeidx, forwardID, __LINE__, __FUNCTION__, __FILE__);
+				overTime[timeidx].forwarddata[forwardID]++;
+				break;
+
+			case 3: // Cached or local config
+				counters.cached++;
+				// Update overTime data structure
+				overTime[timeidx].cached++;
+				break;
+
+			case 4: // Wildcard blocked
+				counters.wildcardblocked++;
+
+				// Update overTime data structure
+				overTime[timeidx].blocked++;
+				domains[domainID].blockedcount++;
+				domains[domainID].wildcard = true;
+				break;
+
+			case 5: // black.list
+				counters.blocked++;
+
+				// Update overTime data structure
+				overTime[timeidx].blocked++;
+				domains[domainID].blockedcount++;
+				break;
+
+			default:
+				logg("Error: Found unknown status %i in long term database!", status);
+				logg("       Timestamp: %i", queryTimeStamp);
+				logg("       Continuing anyway...");
+				break;
+		}
+	}
+	logg("Imported %i queries from the long-term database", counters.queries);
+
+	if( rc != SQLITE_DONE ){
+		logg("read_data_from_DB() - SQL error step (%i): %s", rc, sqlite3_errmsg(db));
+		dbclose();
+		check_database(rc);
+		return;
+	}
+
+	// Finalize SQLite3 statement
+	sqlite3_finalize(stmt);
+	dbclose();
+	free(rstr);
 }

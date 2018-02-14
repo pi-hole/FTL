@@ -49,6 +49,10 @@ int main (int argc, char* argv[]) {
 	if(config.maxDBdays != 0)
 		db_init();
 
+	// Try to import queries from long-term database if available
+	if(database)
+		read_data_from_DB();
+
 	logg("Starting initial log file parsing");
 	initial_log_parsing();
 	logg("Finished initial log file parsing");
@@ -63,6 +67,7 @@ int main (int argc, char* argv[]) {
 	// the system without the need for another thread to join with the terminated thread
 	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
+	// Start log analyzing thread
 	pthread_t piholelogthread;
 	if(pthread_create( &piholelogthread, &attr, pihole_log_thread, NULL ) != 0)
 	{
@@ -70,10 +75,30 @@ int main (int argc, char* argv[]) {
 		killed = 1;
 	}
 
-	pthread_t socket_listenthread;
-	if(pthread_create( &socket_listenthread, &attr, socket_listenting_thread, NULL ) != 0)
+	// Bind to sockets after initial log parsing
+	bind_sockets();
+
+	// Start TELNET IPv4 thread
+	pthread_t telnet_listenthreadv4;
+	if(ipv4telnet && pthread_create( &telnet_listenthreadv4, &attr, telnet_listening_thread_IPv4, NULL ) != 0)
 	{
-		logg("Unable to open socket listening thread. Exiting...");
+		logg("Unable to open IPv4 telnet listening thread. Exiting...");
+		killed = 1;
+	}
+
+	// Start TELNET IPv6 thread
+	pthread_t telnet_listenthreadv6;
+	if(ipv6telnet &&  pthread_create( &telnet_listenthreadv6, &attr, telnet_listening_thread_IPv6, NULL ) != 0)
+	{
+		logg("Unable to open IPv6 telnet listening thread. Exiting...");
+		killed = 1;
+	}
+
+	// Start SOCKET thread
+	pthread_t socket_listenthread;
+	if(pthread_create( &socket_listenthread, &attr, socket_listening_thread, NULL ) != 0)
+	{
+		logg("Unable to open Unix socket listening thread. Exiting...");
 		killed = 1;
 	}
 
@@ -100,14 +125,11 @@ int main (int argc, char* argv[]) {
 			needGC = false;
 			runGCthread = false;
 
-			if(config.rolling_24h)
+			pthread_t GCthread;
+			if(pthread_create( &GCthread, &attr, GC_thread, NULL ) != 0)
 			{
-				pthread_t GCthread;
-				if(pthread_create( &GCthread, &attr, GC_thread, NULL ) != 0)
-				{
-					logg("Unable to open GC thread. Exiting...");
-					killed = 1;
-				}
+				logg("Unable to open GC thread. Exiting...");
+				killed = 1;
 			}
 
 			if(database)
@@ -145,16 +167,32 @@ int main (int argc, char* argv[]) {
 			// Have to re-read gravity files
 			rereadgravity = false;
 			read_gravity_files();
+			log_counter_info();
 			disable_thread_lock("pihole_main_thread");
 		}
 	}
 
-
 	logg("Shutting down...");
+
+	// Cancel active threads as we don't need them any more
 	pthread_cancel(piholelogthread);
+	if(ipv4telnet) pthread_cancel(telnet_listenthreadv4);
+	if(ipv6telnet) pthread_cancel(telnet_listenthreadv6);
 	pthread_cancel(socket_listenthread);
-	close_socket(SOCKET);
+
+	// Save new queries to database
+	if(database)
+	{
+		save_to_DB();
+		logg("Finished final database update");
+	}
+
+	// Close sockets
+	close_telnet_socket();
+	close_unix_socket();
+
+	//Remove PID file
 	removepid();
-	logg("########## FTL terminated! ##########");
+	logg("########## FTL terminated after %.1f ms! ##########", timer_elapsed_msec(EXIT_TIMER));
 	return 1;
 }

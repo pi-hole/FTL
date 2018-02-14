@@ -4,11 +4,13 @@
 
 ![](https://i1.wp.com/pi-hole.net/wp-content/uploads/2017/01/dominik.gif?w=128&ssl=1)
 
+The Faster-Than-Light (FTL) Engine is a lightweight, purpose-built daemon used to provide statistics needed for the Web Interface, and its API can be easily integrated into your own projects. Although it is an optional component of the Pi-hole ecosystem, it will be installed by default to provide statistics. As the name implies, FTL does its work *very quickly*!
+
+The results can be accessed via a standard Unix socket (`var/run/pihole/FTL.sock`), a `telnet`-like connection (TCP socket on port 4711) as well as indirectly via the Web API (`admin/api.php`) and Command Line (`pihole -c -j`). You can out find more details below.
+
 This project is copyright under the latest version of the EUPL.
 
 Please see `LICENSE` file for your rights under this license.
-
-[![Codacy Badge](https://api.codacy.com/project/badge/Grade/4ed93e1a06fe4600ba991ef33078973c)](https://www.codacy.com/app/Pi-hole/FTL?utm_source=github.com&utm_medium=referral&utm_content=pi-hole/FTL&utm_campaign=badger)
 
 ---
 
@@ -92,6 +94,7 @@ Command line arguments can be arbitrarily combined, e.g. `pihole-FTL debug test`
 - `/var/log/pihole-FTL.log` log file
 - `/var/run/pihole-FTL.pid` PID file
 - `/var/run/pihole-FTL.port` file containing port on which `FTL` is listening
+- `/var/run/pihole/FTL.sock` Unix socket
 
 ### Socket connections
 
@@ -105,7 +108,6 @@ You can create a file `/etc/pihole/pihole-FTL.conf` that will be read by `FTL` o
 Possible settings (**the option shown first is the default**):
 
 - `SOCKET_LISTENING=localonly|all` (Listen only for local socket connections or permit all connections)
-- `TIMEFRAME=rolling24h|yesterday|today` (Rolling data window, up to 48h (today + yesterday), or up to 24h (only today, as in Pi-hole `v2.x` ))
 - `QUERY_DISPLAY=yes|no` (Display all queries? Set to `no` to hide query display)
 - `AAAA_QUERY_ANALYSIS=yes|no` (Allow `FTL` to analyze AAAA queries from pihole.log?)
 - `MAXDBDAYS=365` (How long should queries be stored in the database? Setting this to `0` disables the database altogether)
@@ -113,6 +115,7 @@ Possible settings (**the option shown first is the default**):
 - `RESOLVE_IPV4=yes|no` (Should `FTL` try to resolve IPv4 addresses to host names?)
 - `DBINTERVAL=1.0` (How often do we store queries in FTL's database [minutes]?)
 - `DBFILE=/etc/pihole/pihole-FTL.db` (Specify path and filename of FTL's SQLite long-term database. Setting this to `DBFILE=` disables the database altogether)
+- `MAXLOGAGE=24.0` (Up to how many hours of queries should be imported from the database and logs? Maximum is 744 (31 days))
 
 ### Implemented keywords (starting with `>`, subject to change):
 
