@@ -254,3 +254,14 @@ bool rereadgravity;
 long int lastDBimportedtimestamp;
 bool ipv4telnet, ipv6telnet;
 bool istelnet[MAXCONNS];
+
+// Use out own memory handling functions that will detect possible errors
+// and report accordingly in the log. This will make debugging FTL crashs
+// caused by insufficient memory or by code bugs (not properly dealing
+// with NULL pointers) much easier.
+#define free(param) FTLfree(param, __FILE__,  __FUNCTION__,  __LINE__)
+#define lib_strdup() strdup()
+#undef strdup
+#define strdup(param) FTLstrdup(param, __FILE__,  __FUNCTION__,  __LINE__)
+#define calloc(p1,p2) FTLcalloc(p1,p2, __FILE__,  __FUNCTION__,  __LINE__)
+#define realloc(p1,p2) FTLrealloc(p1,p2, __FILE__,  __FUNCTION__,  __LINE__)

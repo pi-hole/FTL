@@ -272,6 +272,7 @@ void getTopDomains(char *client_message, int *sock)
 					ssend(*sock, "%i %i %s wildcard\n", n, domains[j].blockedcount, domains[j].domain);
 				else {
 					char *fancyWildcard = calloc(3 + strlen(domains[j].domain), sizeof(char));
+					if(fancyWildcard == NULL) return;
 					sprintf(fancyWildcard, "*.%s", domains[j].domain);
 
 					if(!pack_str32(*sock, fancyWildcard))
@@ -466,10 +467,8 @@ void getForwardDestinations(char *client_message, int *sock)
 		// Is this the "local" forward destination?
 		if(j == counters.forwarded)
 		{
-			ip = calloc(4,1);
-			strcpy(ip, "::1");
-			name = calloc(6,1);
-			strcpy(name, "local");
+			ip = strdup("::1");
+			name = strdup("local");
 
 			if(totalqueries > 0)
 				// Whats the percentage of (cached + blocked) queries on the total amount of queries?
@@ -582,6 +581,7 @@ void getAllQueries(char *client_message, int *sock)
 	if(command(client_message, ">getallqueries-domain")) {
 		// Get domain name we want to see only (limit length to 255 chars)
 		domainname = calloc(256, sizeof(char));
+		if(domainname == NULL) return;
 		sscanf(client_message, ">getallqueries-domain %255s", domainname);
 		if(debugclients)
 			logg("Showing only queries with domain %s", domainname);
@@ -589,8 +589,9 @@ void getAllQueries(char *client_message, int *sock)
 	}
 	// Client filtering?
 	if(command(client_message, ">getallqueries-client")) {
-		clientname = calloc(256, sizeof(char));
 		// Get client name we want to see only (limit length to 255 chars)
+		clientname = calloc(256, sizeof(char));
+		if(clientname == NULL) return;
 		sscanf(client_message, ">getallqueries-client %255s", clientname);
 		if(debugclients)
 			logg("Showing only queries with client %s", clientname);
@@ -667,8 +668,10 @@ void getAllQueries(char *client_message, int *sock)
 		else
 			strcpy(qtype,"IPv6");
 
-		if((queries[i].status == 1 || queries[i].status == 4) && !showblocked)
+		// 1 = gravity.list, 4 = wildcard, 5 = black.list
+		if((queries[i].status == 1 || queries[i].status == 4 || queries[i].status == 5) && !showblocked)
 			continue;
+		// 2 = forwarded, 3 = cached
 		if((queries[i].status == 2 || queries[i].status == 3) && !showpermitted)
 			continue;
 
@@ -785,6 +788,7 @@ void getMemoryUsage(int *sock)
 {
 	unsigned long int structbytes = sizeof(countersStruct) + sizeof(ConfigStruct) + counters.queries_MAX*sizeof(queriesDataStruct) + counters.forwarded_MAX*sizeof(forwardedDataStruct) + counters.clients_MAX*sizeof(clientsDataStruct) + counters.domains_MAX*sizeof(domainsDataStruct) + counters.overTime_MAX*sizeof(overTimeDataStruct) + (counters.wildcarddomains)*sizeof(*wildcarddomains);
 	char *structprefix = calloc(2, sizeof(char));
+	if(structprefix == NULL) return;
 	double formated = 0.0;
 	format_memory_size(structprefix, structbytes, &formated);
 
@@ -796,6 +800,7 @@ void getMemoryUsage(int *sock)
 
 	unsigned long int dynamicbytes = memory.wildcarddomains + memory.domainnames + memory.clientips + memory.clientnames + memory.forwardedips + memory.forwardednames + memory.forwarddata;
 	char *dynamicprefix = calloc(2, sizeof(char));
+	if(dynamicprefix == NULL) return;
 	format_memory_size(dynamicprefix, dynamicbytes, &formated);
 
 	if(istelnet[*sock])
@@ -806,6 +811,7 @@ void getMemoryUsage(int *sock)
 
 	unsigned long int totalbytes = structbytes + dynamicbytes;
 	char *totalprefix = calloc(2, sizeof(char));
+	if(totalprefix == NULL) return;
 	format_memory_size(totalprefix, totalbytes, &formated);
 
 	if(istelnet[*sock])
@@ -1020,6 +1026,7 @@ void getVersion(int *sock)
 			ssend(*sock, "version vDev-%s\ntag %s\nbranch %s\ndate %s\n", hash, tag, GIT_BRANCH, GIT_DATE);
 		else {
 			char *hashVersion = calloc(6 + strlen(hash), sizeof(char));
+			if(hashVersion == NULL) return;
 			sprintf(hashVersion, "vDev-%s", hash);
 
 			if(!pack_str32(*sock, hashVersion) ||
@@ -1048,6 +1055,7 @@ void getDBstats(int *sock)
 		filesize = st.st_size;
 
 	char *prefix = calloc(2, sizeof(char));
+	if(prefix == NULL) return;
 	double formated = 0.0;
 	format_memory_size(prefix, filesize, &formated);
 

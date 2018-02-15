@@ -317,8 +317,8 @@ void *telnet_connection_handler_thread(void *socket_desc)
 	{
 		if (n > 0)
 		{
-			char *message = calloc(strlen(client_message)+1,sizeof(char));
-			strcpy(message, client_message);
+			char *message = strdup(client_message);
+			if(message == NULL) break;
 
 			// Clear client message receive buffer
 			memset(client_message, 0, sizeof client_message);
@@ -377,8 +377,8 @@ void *socket_connection_handler_thread(void *socket_desc)
 	{
 		if (n > 0)
 		{
-			char *message = calloc(strlen(client_message)+1,sizeof(char));
-			strcpy(message, client_message);
+			char *message = strdup(client_message);
+			if(message == NULL) break;
 
 			// Clear client message receive buffer
 			memset(client_message, 0, sizeof client_message);
@@ -460,6 +460,7 @@ void *telnet_listening_thread_IPv4(void *args)
 		// Allocate memory used to transport client socket ID to client listening thread
 		int *newsock;
 		newsock = calloc(1,sizeof(int));
+		if(newsock == NULL) break;
 		*newsock = csck;
 
 		pthread_t telnet_connection_thread;
@@ -500,6 +501,7 @@ void *telnet_listening_thread_IPv6(void *args)
 		// Allocate memory used to transport client socket ID to client listening thread
 		int *newsock;
 		newsock = calloc(1,sizeof(int));
+		if(newsock == NULL) break;
 		*newsock = csck;
 
 		pthread_t telnet_connection_thread;
@@ -536,6 +538,7 @@ void *socket_listening_thread(void *args)
 		// Allocate memory used to transport client socket ID to client listening thread
 		int *newsock;
 		newsock = calloc(1,sizeof(int));
+		if(newsock == NULL) break;
 		*newsock = csck;
 
 		pthread_t socket_connection_thread;

@@ -29,9 +29,6 @@ void open_pihole_log(void);
 void handle_signals(void);
 void process_pihole_log(void);
 void *pihole_log_thread(void *val);
-void validate_access(const char * name, int pos, bool testmagic, int line, const char * function, const char * file);
-void validate_access_oTfd(int timeidx, int forwardID, int line, const char * function, const char * file);
-void validate_access_oTcl(int timeidx, int clientID, int line, const char * function, const char * file);
 void reresolveHostnames(void);
 int findClientID(const char *client);
 int findDomainID(const char *domain);
@@ -88,3 +85,12 @@ void *DB_thread(void *val);
 int get_number_of_queries_in_DB(void);
 void save_to_DB(void);
 void read_data_from_DB(void);
+
+// memory.c
+char *FTLstrdup(const char *src, const char *file, const char *function, int line);
+void *FTLcalloc(size_t nmemb, size_t size, const char *file, const char *function, int line);
+void *FTLrealloc(void *ptr_in, size_t size, const char *file, const char *function, int line);
+void FTLfree(void *ptr, const char* file, const char *function, int line);
+void validate_access(const char * name, int pos, bool testmagic, int line, const char * function, const char * file);
+void validate_access_oTfd(int timeidx, int forwardID, int line, const char * function, const char * file);
+void validate_access_oTcl(int timeidx, int clientID, int line, const char * function, const char * file);
