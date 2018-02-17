@@ -54,13 +54,17 @@ void pihole_log_flushed(bool message)
 	memory.domainnames = 0;
 
 	// wildcarddomains struct: Free allocated substructure
-	for(i=0;i<counters.wildcarddomains;i++)
+	// Do this only when we actually imported wildcards
+	if(wildcarddomains != NULL)
 	{
-		free(wildcarddomains[i]);
+		for(i=0;i<counters.wildcarddomains;i++)
+		{
+			free(wildcarddomains[i]);
+		}
+		free(wildcarddomains);
+		wildcarddomains = NULL;
+		memory.wildcarddomains = 0;
 	}
-	free(wildcarddomains);
-	wildcarddomains = NULL;
-	memory.wildcarddomains = 0;
 
 	// overTime struct: Free allocated substructure
 	for(i=0;i<counters.overTime;i++)

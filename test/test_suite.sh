@@ -238,6 +238,12 @@ load 'libs/bats-support/load'
   [[ ${lines[2]} == "d2 ff ff ff ff d2 00 00 00 07 d2 00 00 00 02 ca 41 e4 92 49 d2 00 00 00 06 d2 00 00 00 03 d2 00 00 00 02 d2 00 00 00 03 d2 00 00 00 03 cc 02 c1 " ]]
 }
 
+@test "Verify no FATAL warnings are present in the generated log" {
+  run bash -c 'grep -c "FATAL" pihole-FTL.log'
+  echo "output: ${lines[@]}"
+  [[ ${lines[0]} == "0" ]]
+}
+
 @test "Final part of the tests: Killing pihole-FTL process" {
   run bash -c 'echo ">kill" | nc -v 127.0.0.1 4711'
   echo "output: ${lines[@]}"
