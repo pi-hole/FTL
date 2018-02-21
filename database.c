@@ -243,6 +243,7 @@ int db_get_FTL_property(unsigned int ID)
 	rc = sqlite3_prepare(db, querystring, -1, &dbstmt, NULL);
 	if( rc ){
 		logg("db_get_FTL_property() - SQL error prepare (%i): %s", rc, sqlite3_errmsg(db));
+		logg("Query: \"%s\"", querystring);
 		dbclose();
 		check_database(rc);
 		return -1;
