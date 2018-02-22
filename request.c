@@ -77,11 +77,6 @@ void process_request(char *client_message, int *sock)
 		processed = true;
 		getClientID(sock);
 	}
-	else if(command(client_message, ">ForwardedoverTime"))
-	{
-		processed = true;
-		getForwardDestinationsOverTime(sock);
-	}
 	else if(command(client_message, ">QueryTypesoverTime"))
 	{
 		processed = true;
@@ -111,6 +106,11 @@ void process_request(char *client_message, int *sock)
 	{
 		processed = true;
 		getUnknownQueries(sock);
+	}
+	else if(command(client_message, ">domain"))
+	{
+		processed = true;
+		getDomainDetails(client_message, sock);
 	}
 
 	// Test only at the end if we want to quit or kill

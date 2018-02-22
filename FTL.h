@@ -57,6 +57,7 @@
 #define CLIENTSALLOCSTEP 10
 #define DOMAINSALLOCSTEP 1000
 #define OVERTIMEALLOCSTEP 100
+#define WILDCARDALLOCSTEP 100
 
 #define SOCKETBUFFERLEN 1024
 
@@ -69,7 +70,7 @@
 #define GCdelay (-60)
 
 // How many client connection do we accept at once?
-#define MAXCONNS 20
+#define MAXCONNS 40
 
 // Static structs
 typedef struct {
@@ -94,7 +95,6 @@ typedef struct {
 
 typedef struct {
 	int queries;
-	int invalidqueries;
 	int blocked;
 	int wildcardblocked;
 	int cached;
@@ -107,10 +107,10 @@ typedef struct {
 	int clients_MAX;
 	int domains_MAX;
 	int overTime_MAX;
+	int wildcarddomains_MAX;
 	int gravity;
 	int overTime;
-	int IPv4;
-	int IPv6;
+	int querytype[7];
 	int wildcarddomains;
 	int forwardedqueries;
 	int reply_NODATA;
@@ -121,7 +121,6 @@ typedef struct {
 
 typedef struct {
 	bool socket_listenlocal;
-	bool query_display;
 	bool analyze_AAAA;
 	int maxDBdays;
 	bool resolveIPv6;
@@ -129,12 +128,13 @@ typedef struct {
 	int DBinterval;
 	int port;
 	int maxlogage;
+	int privacylevel;
 } ConfigStruct;
 
 // Dynamic structs
 typedef struct {
 	unsigned char magic;
-	int timestamp;
+	time_t timestamp;
 	int timeidx;
 	unsigned char type;
 	unsigned char status;
@@ -142,27 +142,24 @@ typedef struct {
 	int domainID;
 	int clientID;
 	int forwardID;
-	bool valid;
 	bool db;
 	// the ID is a (signed) int in dnsmasq, so no need for a long int here
 	int id;
 	bool complete;
-	unsigned char reply;
-	int generation;
+	bool private;
+	unsigned long ttl;
 } queriesDataStruct;
 
 typedef struct {
 	unsigned char magic;
 	int count;
 	char *ip;
-	char *name;
 } forwardedDataStruct;
 
 typedef struct {
 	unsigned char magic;
 	int count;
 	char *ip;
-	char *name;
 } clientsDataStruct;
 
 typedef struct {
@@ -172,39 +169,42 @@ typedef struct {
 	char *domain;
 	bool wildcard;
 	unsigned char dnssec;
+	char *IPv4;
+	char *IPv6;
+	unsigned char reply[2];
 } domainsDataStruct;
 
 typedef struct {
 	unsigned char magic;
-	int timestamp;
+	time_t timestamp;
 	int total;
 	int blocked;
 	int cached;
-	int forwardnum;
-	int *forwarddata;
-	int *querytypedata;
 	int clientnum;
 	int *clientdata;
+	int querytypedata[7];
 } overTimeDataStruct;
 
 typedef struct {
 	int wildcarddomains;
 	int domainnames;
 	int clientips;
-	int clientnames;
 	int forwardedips;
-	int forwardednames;
 	int forwarddata;
 	int clientdata;
 	int querytypedata;
 } memoryStruct;
 
 // Prepare timers, used mainly for debugging purposes
-#define NUMTIMERS 2
-enum { DATABASE_WRITE_TIMER, EXIT_TIMER };
+#define NUMTIMERS 3
+enum { DATABASE_WRITE_TIMER, EXIT_TIMER, GC_TIMER };
 
 enum { QUERIES, FORWARDED, CLIENTS, DOMAINS, OVERTIME, WILDCARD };
 enum { DNSSEC_UNSPECIFIED, DNSSEC_SECURE, DNSSEC_INSECURE, DNSSEC_BOGUS, DNSSEC_ABANDONED, DNSSEC_UNKNOWN };
+enum { QUERY_UNKNOWN, QUERY_GRAVITY, QUERY_FORWARDED, QUERY_CACHE, QUERY_WILDCARD, QUERY_BLACKLIST };
+enum { TYPE_A = 1, TYPE_AAAA, TYPE_ANY, TYPE_SRV, TYPE_SOA, TYPE_PTR, TYPE_TXT, TYPE_MAX };
+enum { REPLY_UNKNOWN, REPLY_NODATA, REPLY_NXDOMAIN, REPLY_CNAME, REPLY_IP };
+enum { PRIVACY_SHOW_ALL = 0, PRIVACY_HIDE_DOMAINS, PRIVACY_HIDE_DOMAINS_CLIENTS, PRIVACY_MAXIMUM };
 
 // Used to check memory integrity in various structs
 #define MAGICBYTE 0x57
@@ -265,3 +265,6 @@ bool istelnet[MAXCONNS];
 #define strdup(param) FTLstrdup(param, __FILE__,  __FUNCTION__,  __LINE__)
 #define calloc(p1,p2) FTLcalloc(p1,p2, __FILE__,  __FUNCTION__,  __LINE__)
 #define realloc(p1,p2) FTLrealloc(p1,p2, __FILE__,  __FUNCTION__,  __LINE__)
+
+int argc_dnsmasq;
+char **argv_dnsmasq;

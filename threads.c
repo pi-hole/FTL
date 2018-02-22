@@ -16,26 +16,23 @@
 // threadlock:  The threadlock ensures that only one thread can be active at any given time
 pthread_mutex_t threadlock;
 
-void enable_thread_lock(const char *message)
+void enable_thread_lock(void)
 {
+	// logg("At thread lock: waiting");
 	int ret = pthread_mutex_lock(&threadlock);
+	// logg("At thread lock: passed");
 
 	if(ret != 0)
 		logg("Thread lock error: %i",ret);
-
-	if(debugthreads)
-		logg("Thread locked: %s", message);
 }
 
-void disable_thread_lock(const char *message)
+void disable_thread_lock(void)
 {
 	int ret = pthread_mutex_unlock(&threadlock);
+	// logg("At thread lock: unlocked");
 
 	if(ret != 0)
 		logg("Thread unlock error: %i",ret);
-
-	if(debugthreads)
-		logg("Thread unlocked: %s", message);
 }
 
 void init_thread_lock(void)

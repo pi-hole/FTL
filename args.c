@@ -19,6 +19,9 @@ bool debugGC = false;
 bool runtest = false;
 bool debugDB = false;
 bool travis = false;
+int argc_dnsmasq = 0;
+char **argv_dnsmasq = NULL;
+
 void parse_args(int argc, char* argv[])
 {
 	int i;
@@ -31,6 +34,10 @@ void parse_args(int argc, char* argv[])
 		{
 			debug = true;
 			ok = true;
+			argc_dnsmasq = 2;
+			argv_dnsmasq = calloc(argc_dnsmasq, sizeof(char*));
+			argv_dnsmasq[0] = "";
+			argv_dnsmasq[1] = "-d";
 		}
 
 		if(strcmp(argv[i], "debugthreads") == 0)
@@ -129,6 +136,35 @@ void parse_args(int argc, char* argv[])
 			ok = true;
 		}
 
+		// Implement dnsmasq's test function
+		if(strcmp(argv[i], "dnsmasq-test") == 0)
+		{
+			char *arg[2];
+			arg[0] = "";
+			arg[1] = "--test";
+			main_dnsmasq(2,arg);
+			ok = true;
+		}
+
+		// If we find "--" we collect everything behind that for dnsmasq
+		if(strcmp(argv[i], "--") == 0)
+		{
+			int j;
+			argc_dnsmasq = argc - i + 1;
+			if(argv_dnsmasq != NULL) free(argv_dnsmasq);
+			argv_dnsmasq = calloc(argc_dnsmasq + 2,sizeof(char*));
+			argv_dnsmasq[0] = "";
+			if(debug) argv_dnsmasq[1] = "-d";
+			else      argv_dnsmasq[1] = "";
+
+			for(j=2; j < argc_dnsmasq; j++)
+			{
+				argv_dnsmasq[j] = strdup(argv[i+j-1]);
+				if(debug) logg("dnsmasq options: [%i]: %s",j,argv_dnsmasq[j]);
+			}
+			return;
+		}
+
 		// List of implemented arguments
 		if(strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "help") == 0 || strcmp(argv[i], "--help") == 0)
 		{
@@ -149,6 +185,8 @@ void parse_args(int argc, char* argv[])
 			printf("\t                  starting a new one)\n");
 			printf("\t-f, no-daemon     Don't go into daemon mode\n");
 			printf("\t-h, help          Display this help and exit\n");
+			printf("\tdnsmasq-test      Test syntax of dnsmasq's\n");
+			printf("\t                  config files and exit\n");
 			printf("\n\nOnline help: https://github.com/pi-hole/FTL\n");
 			exit(EXIT_SUCCESS);
 		}

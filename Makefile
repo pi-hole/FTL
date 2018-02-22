@@ -1,15 +1,23 @@
 # Pi-hole: A black hole for Internet advertisements
-# (c) 2017 Pi-hole, LLC (https://pi-hole.net)
+# (c) 2018 Pi-hole, LLC (https://pi-hole.net)
 # Network-wide ad blocking via your own hardware.
 #
-# FTL Engine
+# FTL-Engine
 # Makefile
 #
 # This file is copyright under the latest version of the EUPL.
 # Please see LICENSE file for your rights under this license.
 
-DEPS = FTL.h routines.h api.h version.h
-OBJ = main.o memory.o log.o daemon.o parser.o signals.o socket.o request.o grep.o setupVars.o args.o flush.o threads.o gc.o config.o database.o api.o msgpack.o
+DNSMASQVERSION = "pi-hole-2.78"
+DNSMASQOPTS = -DHAVE_DNSSEC -DHAVE_DNSSEC_STATIC -DNO_FORK
+# Flags for compiling with libidn : -DHAVE_IDN
+# Flags for compiling with libidn2: -DHAVE_LIBIDN2 -DIDN2_VERSION_NUMBER=0x02000003
+
+FTLDEPS = FTL.h routines.h version.h api.h
+FTLOBJ = main.o memory.o log.o daemon.o datastructure.o signals.o socket.o request.o grep.o setupVars.o args.o threads.o gc.o config.o database.o msgpack.o api.o dnsmasq_interface.o
+
+DNSMASQDEPS = config.h dhcp-protocol.h dns-protocol.h radv-protocol.h dhcp6-protocol.h dnsmasq.h ip6addr.h
+DNSMASQOBJ = arp.o dbus.o domain.o lease.o outpacket.o rrfilter.o auth.o dhcp6.o edns0.o log.o poll.o slaac.o blockdata.o dhcp.o forward.o loop.o radv.o tables.o bpf.o dhcp-common.o helper.o netlink.o rfc1035.o tftp.o cache.o dnsmasq.o inotify.o network.o rfc2131.o util.o conntrack.o dnssec.o ipset.o option.o rfc3315.o
 
 # Get git commit version and date
 GIT_BRANCH := $(shell git branch | sed -n 's/^\* //p')
@@ -36,39 +44,58 @@ DEBUG_FLAGS=-rdynamic -fno-omit-frame-pointer #-fsanitize=address
 # -DSQLITE_OMIT_PROGRESS_CALLBACK: The progress handler callback counter must be checked in the inner loop of the bytecode engine. By omitting this interface, a single conditional is removed from the inner loop of the bytecode engine, helping SQL statements to run slightly faster.
 SQLITEFLAGS=-DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_DEFAULT_MEMSTATUS=0 -DSQLITE_OMIT_DEPRECATED -DSQLITE_OMIT_PROGRESS_CALLBACK -DSQLITE_OMIT_MEMORYDB
 CCFLAGS=-I$(IDIR) -Wall -Wextra -Wno-unused-parameter -D_FILE_OFFSET_BITS=64 $(HARDENING_FLAGS) $(DEBUG_FLAGS) $(CFLAGS) $(SQLITEFLAGS)
-LIBS=-pthread
 
-ODIR =obj
-IDIR =.
-LDIR =lib
+# for FTL we need the pthread library
+# for dnsmasq we need the nettle crypto library and the gmp maths library
+# We like these two libraries statically. Althougth this increases the binary file size by about 1 MB, it saves about 5 MB of shared libraries and makes deployment easier
+LIBS=-pthread -lnettle -lgmp -lhogweed
+# Flags for compiling with libidn : -lidn
+# Flags for compiling with libidn2: -lidn2
 
-_DEPS = $(patsubst %,$(IDIR)/%,$(DEPS))
+IDIR = .
+ODIR = obj
+DNSMASQDIR = dnsmasq
+DNSMASQODIR = $(DNSMASQDIR)/obj
 
-_OBJ = $(patsubst %,$(ODIR)/%,$(OBJ))
+_FTLDEPS = $(patsubst %,$(IDIR)/%,$(FTLDEPS))
+_FTLOBJ = $(patsubst %,$(ODIR)/%,$(FTLOBJ))
 
-all: pihole-FTL socket-test
+_DNSMASQDEPS = $(patsubst %,$(DNSMASQDIR)/%,$(DNSMASQDEPS))
+_DNSMASQOBJ = $(patsubst %,$(DNSMASQODIR)/%,$(DNSMASQOBJ))
 
-$(ODIR)/%.o: %.c $(_DEPS) | $(ODIR)
-	$(CC) -c -o $@ $< -g3 $(CCFLAGS)
+all: pihole-FTL
+
+# Extra warning flags we apply only to the FTL part of the code
+# -Werror: Halt on any warnings, useful for enforcing clean code without any warnings (we use it only for our code part)
+# -Waddress: Warn about suspicious uses of memory addresses
+# -Wlogical-op: Warn about suspicious uses of logical operators in expressions
+# -Wmissing-field-initializers: Warn if a structure's initializer has some fields missing
+# -Woverlength-strings: Warn about string constants that are longer than the "minimum maximum length specified in the C standard
+EXTRAWARN=-Werror -Waddress -Wlogical-op -Wmissing-field-initializers -Woverlength-strings
+$(ODIR)/%.o: %.c $(_FTLDEPS) | $(ODIR)
+	$(CC) -c -o $@ $< -g3 $(CCFLAGS) $(EXTRAWARN)
+
+$(DNSMASQODIR)/%.o: $(DNSMASQDIR)/%.c $(_DNSMASQDEPS) | $(DNSMASQODIR)
+	$(CC) -c -o $@ $< -g3 $(CCFLAGS) -DVERSION=\"$(DNSMASQVERSION)\" $(DNSMASQOPTS)
 
 $(ODIR):
 	mkdir -p $(ODIR)
 
-$(ODIR)/sqlite3.o: sqlite3.c
+$(DNSMASQODIR):
+	mkdir -p $(DNSMASQODIR)
+
+$(ODIR)/sqlite3.o: $(IDIR)/sqlite3.c | $(ODIR)
 	$(CC) -c -o $@ $< $(CCFLAGS)
 
-pihole-FTL: $(_OBJ) $(ODIR)/sqlite3.o
-	$(CC) -v $(CCFLAGS) -o $@ $^ $(LIBS)
-
-socket-test: socket_client.c
-	$(CC) -o $@ $< $(CCFLAGS)
+pihole-FTL: $(_FTLOBJ) $(_DNSMASQOBJ) $(ODIR)/sqlite3.o
+	$(CC) $(CCFLAGS) -o $@ $^ $(LIBS)
 
 .PHONY: clean force install
 
 clean:
-	rm -f $(ODIR)/*.o pihole-FTL
+	rm -f $(ODIR)/*.o $(DNSMASQODIR)/*.o pihole-FTL
 
-# recreate version.h when GIT_VERSION changes, uses temporary file version~
+# # recreate version.h when GIT_VERSION changes, uses temporary file version~
 version~: force
 	@echo '$(GIT_BRANCH) $(GIT_VERSION) $(GIT_DATE) $(GIT_TAG)' | cmp -s - $@ || echo '$(GIT_BRANCH) $(GIT_VERSION) $(GIT_DATE) $(GIT_TAG)' > $@
 version.h: version~
@@ -79,10 +106,10 @@ version.h: version~
 	@echo '#define GIT_HASH "$(GIT_HASH)"' >> "$@"
 	@echo "Making FTL version on branch $(GIT_BRANCH) - $(GIT_VERSION) ($(GIT_DATE))"
 
-prefix=/usr
+# prefix=/usr
 
-install: pihole-FTL
-	install -m 0755 pihole-FTL $(prefix)/bin
-	touch /var/log/pihole-FTL.log /var/run/pihole-FTL.pid /var/run/pihole-FTL.port
-	chown pihole:pihole /var/log/pihole-FTL.log /run/pihole-FTL.pid /run/pihole-FTL.port
-	chmod 0644 /var/log/pihole-FTL.log /var/run/pihole-FTL.pid /var/run/pihole-FTL.port
+# install: pihole-FTL
+# 	install -m 0755 pihole-FTL $(prefix)/bin
+# 	touch /var/log/pihole-FTL.log /var/run/pihole-FTL.pid /var/run/pihole-FTL.port
+# 	chown pihole:pihole /var/log/pihole-FTL.log /run/pihole-FTL.pid /run/pihole-FTL.port
+# 	chmod 0644 /var/log/pihole-FTL.log /var/run/pihole-FTL.pid /var/run/pihole-FTL.port
