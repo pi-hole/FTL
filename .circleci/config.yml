@@ -1,0 +1,89 @@
+version: 2
+
+.job_template: &job_template
+  docker:
+    - image: "thepihole/ftl-build:$TARGET"
+      environment:
+        - DEST_DIR: "FTL"
+  steps:
+    - checkout
+    - run:
+        name: "Setup"
+        command: |
+          mkdir -p "${DEST_DIR}"
+          make clean
+    - run:
+        name: "Build"
+        command: |
+          make CC="${BUILD_CC}" CFLAGS="${CFLAGS}" GIT_BRANCH="${CIRCLE_BRANCH}" GIT_TAG="${CIRCLE_TAG}"
+          file pihole-FTL
+#    - run:
+#        name: "Test"
+#        command: |
+#          if [[ "${BIN_NAME}" == "pihole-FTL-linux-x86_64" ]]; then test/run.sh; fi
+#    - run:
+#        name: "Upload"
+#        command: |
+#          mv pihole-FTL "${DEST_DIR}/${BIN_NAME}"
+#          cd "${DEST_DIR}"
+#          sha1sum pihole-FTL-* > ${BIN_NAME}.sha1
+#          wget https://ftl.pi-hole.net:8080/FTL-client
+#          chmod +x ./FTL-client
+#          [[ "$CIRCLE_PR_NUMBER" == "" ]] && ./FTL-client "${CIRCLE_BRANCH}" "${BIN_NAME}" "${FTL_SECRET}"
+#          [[ "$CIRCLE_PR_NUMBER" == "" ]] && ./FTL-client "${CIRCLE_BRANCH}" "${BIN_NAME}.sha1" "${FTL_SECRET}"
+#          rm ./FTL-client
+#          ls -lah .
+jobs:
+  arm:
+    <<: *job_template
+    environment:
+      BIN_NAME: "pihole-FTL-arm-linux-gnueabi"
+      TARGET: "armel"
+      BUILD_CC: "arm-linux-gnueabi-gcc"
+
+  armhf:
+    <<: *job_template
+    environment:
+      BIN_NAME: "pihole-FTL-arm-linux-gnueabihf"
+      TARGET: "armhf"
+      BUILD_CC: "arm-linux-gnueabihf-gcc"
+
+  aarch64:
+    <<: *job_template
+    environment:
+      BIN_NAME: "pihole-FTL-aarch64-linux-gnu"
+      TARGET: "aarch64"
+      BUILD_CC: "aarch64-linux-gnu-gcc"
+
+  x86_64:
+    <<: *job_template
+    environment:
+      BIN_NAME: "pihole-FTL-linux-x86_64"
+      TARGET: "x86_64"
+      BUILD_CC: "cc"
+
+  x86_64-musl:
+    <<: *job_template
+    environment:
+      BIN_NAME: "pihole-FTL-musl-linux-x86_64"
+      TARGET: "x86_64-musl"
+      BUILD_CC: "musl-gcc"
+
+  x86_32:
+    <<: *job_template
+    environment:
+      BIN_NAME: "pihole-FTL-linux-x86_32"
+      TARGET: "i686"
+      BUILD_CC: "cc"
+      CFLAGS: "-m32"
+
+workflows:
+  version: 2
+  build:
+    jobs:
+      - arm
+      - armhf
+#      - aarch64
+#      - x86_64
+#      - x86_64-musl
+#      - x86_32
