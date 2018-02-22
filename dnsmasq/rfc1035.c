@@ -1894,8 +1894,10 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 	    {
 	      ans = 1;
 	      if (!dryrun)
+	      {
 		log_query(F_CONFIG | F_NEG, name, &addr, NULL);
 		FTL_cache(F_CONFIG | F_NEG, name, NULL, NULL, 0, daemon->log_display_id);
+	      }
 	    }
 	}
 
