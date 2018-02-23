@@ -62,7 +62,7 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	}
 
 	char dest[ADDRSTRLEN];
-	inet_ntop(flags & F_IPV4 ? AF_INET : AF_INET6, addr, dest, ADDRSTRLEN);
+	inet_ntop((flags & F_IPV4) ? AF_INET : AF_INET6, addr, dest, ADDRSTRLEN);
 	char *client = strdup(dest);
 	strtolower(client);
 
