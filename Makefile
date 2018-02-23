@@ -35,7 +35,6 @@ GIT_TAG := $(shell git describe --tags --abbrev=0)
 # _FILE_OFFSET_BITS=64: used by stat(). Avoids problems with files > 2 GB on 32bit machines
 # -fsanitize=address: AddressSanitizer
 # -fno-omit-frame-pointer: get nicer stacktraces
-CC=gcc
 HARDENING_FLAGS=-fstack-protector -D_FORTIFY_SOURCE=2 -O3 -Wl,-z,relro,-z,now -pie -fPIE
 DEBUG_FLAGS=-rdynamic -fno-omit-frame-pointer #-fsanitize=address
 # -DSQLITE_OMIT_LOAD_EXTENSION: This option omits the entire extension loading mechanism from SQLite, including sqlite3_enable_load_extension() and sqlite3_load_extension() interfaces. (needs -ldl linking option, otherwise)
