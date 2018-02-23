@@ -1043,7 +1043,7 @@ void getClientNames(int *sock)
 	for(i = 0; i < counters.clients; i++)
 	{
 		validate_access("clients", i, true, __LINE__, __FUNCTION__, __FILE__);
-		if(insetupVarsArray(clients[i].ip))
+		if(skipclient[i])
 			continue;
 
 		if(istelnet[*sock])
