@@ -17,7 +17,7 @@ version: 2
     - run:
         name: "Upload"
         command: |
-          BIN_NAME="${TARGET}"
+          BIN_NAME="pihole-FTL-${TARGET}"
           mv pihole-FTL "${BIN_NAME}"
           sha1sum pihole-FTL-* > ${BIN_NAME}.sha1
           wget https://ftl.pi-hole.net:8080/FTL-client
