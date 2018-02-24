@@ -268,3 +268,9 @@ bool istelnet[MAXCONNS];
 
 int argc_dnsmasq;
 char **argv_dnsmasq;
+
+pthread_t telnet_listenthreadv4;
+pthread_t telnet_listenthreadv6;
+pthread_t socket_listenthread;
+pthread_t DBthread;
+pthread_t GCthread;

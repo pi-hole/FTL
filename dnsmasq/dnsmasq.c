@@ -502,6 +502,7 @@ int main_dnsmasq (int argc, char **argv)
 	    _exit(0);
 	}
 #endif
+      FTL_fork();
 
       /* write pidfile _after_ forking ! */
       if (daemon->runfile)

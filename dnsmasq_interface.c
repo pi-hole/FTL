@@ -674,3 +674,63 @@ void save_reply_type(unsigned int flags, int queryID)
 		counters.reply_IP++;
 	}
 }
+
+pthread_t telnet_listenthreadv4;
+pthread_t telnet_listenthreadv6;
+pthread_t socket_listenthread;
+pthread_t DBthread;
+pthread_t GCthread;
+
+void FTL_fork(void)
+{
+	if(!debug && daemonmode)
+		go_daemon();
+	else
+		savepid();
+
+	// We will use the attributes object later to start all threads in detached mode
+	pthread_attr_t attr;
+	// Initialize thread attributes object with default attribute values
+	pthread_attr_init(&attr);
+	// When a detached thread terminates, its resources are automatically released back to
+	// the system without the need for another thread to join with the terminated thread
+	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+
+	// Bind to sockets
+	bind_sockets();
+
+	// Start TELNET IPv4 thread
+	if(ipv4telnet && pthread_create( &telnet_listenthreadv4, &attr, telnet_listening_thread_IPv4, NULL ) != 0)
+	{
+		logg("Unable to open IPv4 telnet listening thread. Exiting...");
+		exit(EXIT_FAILURE);
+	}
+
+	// Start TELNET IPv6 thread
+	if(ipv6telnet &&  pthread_create( &telnet_listenthreadv6, &attr, telnet_listening_thread_IPv6, NULL ) != 0)
+	{
+		logg("Unable to open IPv6 telnet listening thread. Exiting...");
+		exit(EXIT_FAILURE);
+	}
+
+	// Start SOCKET thread
+	if(pthread_create( &socket_listenthread, &attr, socket_listening_thread, NULL ) != 0)
+	{
+		logg("Unable to open Unix socket listening thread. Exiting...");
+		exit(EXIT_FAILURE);
+	}
+
+	// Start database thread if database is used
+	if(database && pthread_create( &DBthread, &attr, DB_thread, NULL ) != 0)
+	{
+		logg("Unable to open database thread. Exiting...");
+		exit(EXIT_FAILURE);
+	}
+
+	// Start thread that will stay in the background until garbage collection needs to be done
+	if(pthread_create( &GCthread, &attr, GC_thread, NULL ) != 0)
+	{
+		logg("Unable to open GC thread. Exiting...");
+		exit(EXIT_FAILURE);
+	}
+}

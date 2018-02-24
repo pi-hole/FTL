@@ -31,19 +31,15 @@ int main (int argc, char* argv[])
 	init_thread_lock();
 
 	// pihole-FTL should really be run as user "pihole" to not mess up with the file permissions
-	// still allow this if "debug" flag is set
-	if(strcmp(username,"pihole") != 0 && !debug)
+	if(strcmp(username, "pihole") != 0)
 	{
-		logg("Warning: Starting pihole-FTL directly is not recommended.");
-		logg("         Instead, use system commands for starting pihole-FTL as service (systemctl / service).");
+		logg("FATAL: Starting pihole-FTL directly is not recommended.");
+		logg("       Instead, use system commands for starting pihole-FTL as service (systemctl / service)");
+		logg("       or use: sudo -u \"pihole-FTL\"");
+		exit(EXIT_FAILURE);
 	}
 
 	read_FTLconf();
-
-	if(!debug && daemonmode)
-		go_daemon();
-	else
-		savepid();
 
 	// Catch signals like SIGHUP, SIGUSR1, etc.
 	// TODO: Maybe we should have this handled by the dnsmasq part
@@ -59,57 +55,6 @@ int main (int argc, char* argv[])
 
 	log_counter_info();
 	check_setupVarsconf();
-
-	// We will use the attributes object later to start all threads in detached mode
-	pthread_attr_t attr;
-	// Initialize thread attributes object with default attribute values
-	pthread_attr_init(&attr);
-	// When a detached thread terminates, its resources are automatically released back to
-	// the system without the need for another thread to join with the terminated thread
-	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-
-	// Bind to sockets
-	bind_sockets();
-
-	// Start TELNET IPv4 thread
-	pthread_t telnet_listenthreadv4;
-	if(ipv4telnet && pthread_create( &telnet_listenthreadv4, &attr, telnet_listening_thread_IPv4, NULL ) != 0)
-	{
-		logg("Unable to open IPv4 telnet listening thread. Exiting...");
-		return EXIT_FAILURE;
-	}
-
-	// Start TELNET IPv6 thread
-	pthread_t telnet_listenthreadv6;
-	if(ipv6telnet &&  pthread_create( &telnet_listenthreadv6, &attr, telnet_listening_thread_IPv6, NULL ) != 0)
-	{
-		logg("Unable to open IPv6 telnet listening thread. Exiting...");
-		return EXIT_FAILURE;
-	}
-
-	// Start SOCKET thread
-	pthread_t socket_listenthread;
-	if(pthread_create( &socket_listenthread, &attr, socket_listening_thread, NULL ) != 0)
-	{
-		logg("Unable to open Unix socket listening thread. Exiting...");
-		return EXIT_FAILURE;
-	}
-
-	// Start database thread if database is used
-	pthread_t DBthread;
-	if(database && pthread_create( &DBthread, &attr, DB_thread, NULL ) != 0)
-	{
-		logg("Unable to open database thread. Exiting...");
-		return EXIT_FAILURE;
-	}
-
-	// Start thread that will stay in the background until garbage collection needs to be done
-	pthread_t GCthread;
-	if(pthread_create( &GCthread, &attr, GC_thread, NULL ) != 0)
-	{
-		logg("Unable to open GC thread. Exiting...");
-		return EXIT_FAILURE;
-	}
 
 	// Actually start the resolver in here
 	main_dnsmasq(argc_dnsmasq, argv_dnsmasq);
