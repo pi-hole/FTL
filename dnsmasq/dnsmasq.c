@@ -139,8 +139,7 @@ int main_dnsmasq (int argc, char **argv)
      but it's not guaranteed. By opening /dev/null three times, we
      ensure that we're not using those fds for real stuff. */
   for (i = 0; i < max_fd; i++)
-    if (i != STDOUT_FILENO && i != STDERR_FILENO && i != STDIN_FILENO
-    	&& i != telnetfd4 && i != telnetfd6 && i != socketfd)
+    if (i != STDOUT_FILENO && i != STDERR_FILENO && i != STDIN_FILENO)
       close(i);
     else
       open("/dev/null", O_RDWR);
