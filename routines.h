@@ -97,3 +97,6 @@ void validate_access(const char * name, int pos, bool testmagic, int line, const
 void validate_access_oTcl(int timeidx, int clientID, int line, const char * function, const char * file);
 
 int main_dnsmasq(int argc, char **argv);
+
+// signals.c
+void handle_signals(void);

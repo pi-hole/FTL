@@ -41,9 +41,9 @@ int main (int argc, char* argv[])
 
 	read_FTLconf();
 
-	// Catch signals like SIGHUP, SIGUSR1, etc.
-	// TODO: Maybe we should have this handled by the dnsmasq part
-	//handle_signals();
+	// Catch signals like SIGTERM and SIGINT
+	// Other signals like SIGHUP, SIGUSR1 are handled by the resolver part
+	handle_signals();
 
 	// Initialize database
 	if(config.maxDBdays != 0)
