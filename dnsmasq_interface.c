@@ -166,7 +166,7 @@ void FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id
 	// Save that this query got forwarded to an updtream server
 	enable_thread_lock();
 	char dest[ADDRSTRLEN];
-	inet_ntop(flags & F_IPV4 ? AF_INET : AF_INET6, addr, dest, ADDRSTRLEN);
+	inet_ntop((flags & F_IPV4) ? AF_INET : AF_INET6, addr, dest, ADDRSTRLEN);
 
 	if(debug) logg("**** forwarded %s to %s (ID %i)", name, dest, id);
 
@@ -267,7 +267,7 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, unsigned
 	char dest[ADDRSTRLEN]; dest[0] = '\0';
 	if(addr)
 	{
-		inet_ntop(flags & F_IPV4 ? AF_INET : AF_INET6, addr, dest, ADDRSTRLEN);
+		inet_ntop((flags & F_IPV4) ? AF_INET : AF_INET6, addr, dest, ADDRSTRLEN);
 	}
 
 	if(debug)
@@ -275,7 +275,7 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, unsigned
 		char *answer = dest;
 		if(flags & F_CNAME)
 			answer = "(CNAME)";
-		else if(flags & F_NEG && flags & F_NXDOMAIN)
+		else if((flags & F_NEG) && (flags & F_NXDOMAIN))
 			answer = "(NXDOMAIN)";
 		else if(flags & F_NEG)
 			answer = "(NODATA)";
@@ -427,7 +427,7 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 	char dest[ADDRSTRLEN]; dest[0] = '\0';
 	if(addr)
 	{
-		inet_ntop(flags & F_IPV4 ? AF_INET : AF_INET6, addr, dest, ADDRSTRLEN);
+		inet_ntop((flags & F_IPV4) ? AF_INET : AF_INET6, addr, dest, ADDRSTRLEN);
 	}
 
 	// Convert domain to lower case
