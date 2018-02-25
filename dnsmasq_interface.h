@@ -16,4 +16,4 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, unsigned
 void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char * arg, unsigned long ttl, int id);
 void FTL_dnssec(int status, int id);
 void FTL_dnsmasq_reload(void);
-void FTL_fork(void);
+void FTL_fork_and_bind_sockets(void);

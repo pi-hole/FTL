@@ -17,6 +17,11 @@ bool needDBGC = false;
 // Prototype
 int main_dnsmasq(int argc, char **argv);
 
+void log_exit(void)
+{
+	logg("FATAL: Code called exit()");
+}
+
 int main (int argc, char* argv[])
 {
 	username = getUserName();
@@ -27,11 +32,14 @@ int main (int argc, char* argv[])
 	// Try to open FTL log
 	open_FTL_log(true);
 	logg("########## FTL started! ##########");
+	atexit(log_exit);
 	log_FTL_version();
 	init_thread_lock();
 
 	// pihole-FTL should really be run as user "pihole" to not mess up with the file permissions
-	if(strcmp(username, "pihole") != 0)
+	// Exception: allow to be run under user "root" in debug mode to allow binding to port 53
+	//            inside the debugger
+	if(strcmp(username, "pihole") != 0 && !debug)
 	{
 		logg("FATAL: Starting pihole-FTL directly is not recommended.");
 		logg("       Instead, use system commands for starting pihole-FTL as service (systemctl / service)");

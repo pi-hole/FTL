@@ -681,7 +681,7 @@ pthread_t socket_listenthread;
 pthread_t DBthread;
 pthread_t GCthread;
 
-void FTL_fork(void)
+void FTL_fork_and_bind_sockets(void)
 {
 	if(!debug && daemonmode)
 		go_daemon();

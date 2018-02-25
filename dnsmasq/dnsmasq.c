@@ -501,7 +501,6 @@ int main_dnsmasq (int argc, char **argv)
 	    _exit(0);
 	}
 #endif
-      FTL_fork();
 
       /* write pidfile _after_ forking ! */
       if (daemon->runfile)
@@ -556,6 +555,8 @@ int main_dnsmasq (int argc, char **argv)
 	    }
 	}
     }
+
+    FTL_fork_and_bind_sockets();
 
    log_err = log_start(ent_pw, err_pipe[1]);
 
