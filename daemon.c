@@ -168,21 +168,7 @@ void go_daemon(void)
 
 	savepid();
 
-	// Change the current working directory
-	if(!travis)
-	{
-		if(chdir("/etc/pihole") != 0)
-		{
-			logg("FATAL: Cannot change directory to /etc/pihole. Error code: %i",errno);
-			// Return failure
-			exit(EXIT_FAILURE);
-		}
-	}
-
-	// Close stdin, stdout and stderr
-	close(STDIN_FILENO);
-	close(STDOUT_FILENO);
-	close(STDERR_FILENO);
+	// Closing stdin, stdout and stderr is handled by dnsmasq
 }
 
 void timer_start(int i)
