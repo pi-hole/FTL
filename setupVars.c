@@ -10,6 +10,8 @@
 
 #include "FTL.h"
 
+
+int setupVarsElements = 0;
 char ** setupVarsArray = NULL;
 
 void check_setupVarsconf(void)

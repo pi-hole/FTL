@@ -112,6 +112,11 @@ void process_request(char *client_message, int *sock)
 		processed = true;
 		getDomainDetails(client_message, sock);
 	}
+	else if(command(client_message, ">cacheinfo"))
+	{
+		processed = true;
+		getCacheInformation(sock);
+	}
 
 	// Test only at the end if we want to quit or kill
 	// so things can be processed before

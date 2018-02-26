@@ -12,6 +12,7 @@
 #include "version.h"
 
 pthread_mutex_t lock;
+FILE *logfile = NULL;
 
 void close_FTL_log(void)
 {

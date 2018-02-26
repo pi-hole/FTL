@@ -30,7 +30,17 @@ logFileNamesStruct files = {
 	"/etc/dnsmasq.d/01-pihole.conf"
 };
 
+// Fixed size structs
 countersStruct counters = { 0 };
+ConfigStruct config;
+memoryStruct memory;
+
+// Variable size array structs
+queriesDataStruct *queries;
+forwardedDataStruct *forwarded;
+clientsDataStruct *clients;
+domainsDataStruct *domains;
+overTimeDataStruct *overTime;
 
 void memory_check(int which)
 {

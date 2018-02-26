@@ -153,6 +153,7 @@ typedef struct {
 typedef struct {
 	unsigned char magic;
 	int count;
+	int failed;
 	char *ip;
 } forwardedDataStruct;
 
@@ -209,51 +210,51 @@ enum { PRIVACY_SHOW_ALL = 0, PRIVACY_HIDE_DOMAINS, PRIVACY_HIDE_DOMAINS_CLIENTS,
 // Used to check memory integrity in various structs
 #define MAGICBYTE 0x57
 
-logFileNamesStruct files;
-FTLFileNamesStruct FTLfiles;
-countersStruct counters;
-ConfigStruct config;
+extern logFileNamesStruct files;
+extern FTLFileNamesStruct FTLfiles;
+extern countersStruct counters;
+extern ConfigStruct config;
 
-queriesDataStruct *queries;
-forwardedDataStruct *forwarded;
-clientsDataStruct *clients;
-domainsDataStruct *domains;
-overTimeDataStruct *overTime;
+extern queriesDataStruct *queries;
+extern forwardedDataStruct *forwarded;
+extern clientsDataStruct *clients;
+extern domainsDataStruct *domains;
+extern overTimeDataStruct *overTime;
 
-FILE *logfile;
-volatile sig_atomic_t killed;
+extern FILE *logfile;
+extern volatile sig_atomic_t killed;
 
-char ** setupVarsArray;
-int setupVarsElements;
+extern char ** setupVarsArray;
+extern int setupVarsElements;
 
-bool initialscan;
-bool debug;
-bool debugthreads;
-bool debugclients;
-bool debugGC;
-bool debugDB;
-bool threadwritelock;
-bool threadreadlock;
-unsigned char blockingstatus;
+extern bool initialscan;
+extern bool debug;
+extern bool debugthreads;
+extern bool debugclients;
+extern bool debugGC;
+extern bool debugDB;
+extern bool threadwritelock;
+extern bool threadreadlock;
+extern unsigned char blockingstatus;
 
-char ** wildcarddomains;
+extern char ** wildcarddomains;
 
-memoryStruct memory;
-bool runtest;
+extern memoryStruct memory;
+extern bool runtest;
 
-char * username;
-char timestamp[16];
-bool flush;
-bool needGC;
-bool daemonmode;
-bool database;
-long int lastdbindex;
-bool travis;
-bool DBdeleteoldqueries;
-bool rereadgravity;
-long int lastDBimportedtimestamp;
-bool ipv4telnet, ipv6telnet;
-bool istelnet[MAXCONNS];
+extern char * username;
+extern char timestamp[16];
+extern bool flush;
+extern bool needGC;
+extern bool daemonmode;
+extern bool database;
+extern long int lastdbindex;
+extern bool travis;
+extern bool DBdeleteoldqueries;
+extern bool rereadgravity;
+extern long int lastDBimportedtimestamp;
+extern bool ipv4telnet, ipv6telnet;
+extern bool istelnet[MAXCONNS];
 
 // Use out own memory handling functions that will detect possible errors
 // and report accordingly in the log. This will make debugging FTL crashs
@@ -266,11 +267,11 @@ bool istelnet[MAXCONNS];
 #define calloc(p1,p2) FTLcalloc(p1,p2, __FILE__,  __FUNCTION__,  __LINE__)
 #define realloc(p1,p2) FTLrealloc(p1,p2, __FILE__,  __FUNCTION__,  __LINE__)
 
-int argc_dnsmasq;
-char **argv_dnsmasq;
+extern int argc_dnsmasq;
+extern char **argv_dnsmasq;
 
-pthread_t telnet_listenthreadv4;
-pthread_t telnet_listenthreadv6;
-pthread_t socket_listenthread;
-pthread_t DBthread;
-pthread_t GCthread;
+extern pthread_t telnet_listenthreadv4;
+extern pthread_t telnet_listenthreadv6;
+extern pthread_t socket_listenthread;
+extern pthread_t DBthread;
+extern pthread_t GCthread;

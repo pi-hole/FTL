@@ -22,7 +22,7 @@ static struct crec *cache_head = NULL, *cache_tail = NULL, **hash_table = NULL;
 static struct crec *dhcp_spare = NULL;
 #endif
 static struct crec *new_chain = NULL;
-static int cache_inserted = 0, cache_live_freed = 0, insert_error;
+/*static*/ int cache_inserted = 0, cache_live_freed = 0, insert_error;
 static union bigname *big_free = NULL;
 static int bignames_left, hash_size;
 

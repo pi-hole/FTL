@@ -11,6 +11,7 @@
 #include "FTL.h"
 
 char ** wildcarddomains = NULL;
+unsigned char blockingstatus = 2;
 
 int countlines(const char* fname)
 {

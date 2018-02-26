@@ -29,6 +29,9 @@ void getVersion(int *sock);
 void getDBstats(int *sock);
 void getUnknownQueries(int *sock);
 
+// DNS resolver methods (dnsmasq_interface.c)
+void getCacheInformation(int *sock);
+
 // MessagePack serialization helpers
 void pack_eom(int sock);
 void pack_bool(int sock, bool value);

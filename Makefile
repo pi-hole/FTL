@@ -13,7 +13,7 @@ DNSMASQOPTS = -DHAVE_DNSSEC -DHAVE_DNSSEC_STATIC -DNO_FORK
 # Flags for compiling with libidn : -DHAVE_IDN
 # Flags for compiling with libidn2: -DHAVE_LIBIDN2 -DIDN2_VERSION_NUMBER=0x02000003
 
-FTLDEPS = FTL.h routines.h version.h api.h
+FTLDEPS = FTL.h routines.h version.h api.h dnsmasq_interface.h
 FTLOBJ = main.o memory.o log.o daemon.o datastructure.o signals.o socket.o request.o grep.o setupVars.o args.o threads.o gc.o config.o database.o msgpack.o api.o dnsmasq_interface.o
 
 DNSMASQDEPS = config.h dhcp-protocol.h dns-protocol.h radv-protocol.h dhcp6-protocol.h dnsmasq.h ip6addr.h

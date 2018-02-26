@@ -311,6 +311,7 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
       /* retry on existing query, send to all available servers  */
       domain = forward->sentto->domain;
       forward->sentto->failed_queries++;
+      FTL_forwarding_failed(forward->sentto);
       if (!option_bool(OPT_ORDER))
 	{
 	  forward->forwardall = 1;

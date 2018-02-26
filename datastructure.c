@@ -110,6 +110,7 @@ int findForwardID(const char * forward, bool count)
 	// Save forward destination IP address
 	forwarded[forwardID].ip = strdup(forward);
 	memory.forwardedips += (strlen(forward) + 1) * sizeof(char);
+	forwarded[forwardID].failed = 0;
 	// Increase counter by one
 	counters.forwarded++;
 

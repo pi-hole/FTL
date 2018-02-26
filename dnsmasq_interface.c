@@ -734,3 +734,43 @@ void FTL_fork_and_bind_sockets(void)
 		exit(EXIT_FAILURE);
 	}
 }
+
+// defined in dnsmasq/cache.c
+extern int cache_inserted, cache_live_freed;
+void getCacheInformation(int *sock)
+{
+	ssend(*sock,"cache-size: %i\ncache-live-freed: %i\ncache-inserted: %i\n",
+	            daemon->cachesize, cache_live_freed, cache_inserted);
+	// cache-size is obvious
+	// It means the resolver handled <cache-inserted> names lookups that needed to be sent to
+	// upstream severes and that <cache-live-freed> was thrown out of the cache
+	// before reaching the end of its time-to-live, to make room for a newer name.
+	// For <cache-live-freed>, smaller is better.
+	// New queries are always cached. If the cache is full with entries
+	// which haven't reached the end of their time-to-live, then the entry
+	// which hasn't been looked up for the longest time is evicted.
+}
+
+void FTL_forwarding_failed(struct server *server)
+{
+	// Save that this query got forwarded to an updtream server
+	enable_thread_lock();
+	char dest[ADDRSTRLEN];
+	if(server->addr.sa.sa_family == AF_INET)
+		inet_ntop(AF_INET, &server->addr.in.sin_addr, dest, ADDRSTRLEN);
+	else
+		inet_ntop(AF_INET6, &server->addr.in6.sin6_addr, dest, ADDRSTRLEN);
+
+	// Convert forward to lower case
+	char *forward = strdup(dest);
+	strtolower(forward);
+	int forwardID = findForwardID(forward, false);
+
+	if(debug) logg("**** forwarding to %s (ID %i) failed", dest, forwardID);
+
+	forwarded[forwardID].failed++;
+
+	free(forward);
+	disable_thread_lock();
+	return;
+}
