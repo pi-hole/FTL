@@ -302,6 +302,11 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, unsigned
 			}
 		}
 
+		// Determine if this is a cached reply and NXDOMAIN
+		// if so -> blocked via server=/.../ rule
+		if(queries[i].status == QUERY_CACHE && (flags & F_NEG) && (flags & F_NXDOMAIN))
+			queries[i].status = QUERY_GRAVITY;
+
 		if(!found)
 		{
 			// This may happen e.g. if the original query was a PTR query or "pi.hole"
@@ -331,8 +336,8 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, unsigned
 
 				validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 				overTime[timeidx].blocked++;
-				domains[queries[i].domainID].blockedcount++;
-				domains[queries[i].domainID].wildcard = true;
+				domains[domainID].blockedcount++;
+				domains[domainID].wildcard = true;
 			}
 			else if(queries[i].status == QUERY_CACHE)
 			{
@@ -341,6 +346,15 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, unsigned
 
 				validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 				overTime[timeidx].cached++;
+			}
+			else if(queries[i].status == QUERY_GRAVITY)
+			{
+				// Blocked using server=/.../ rule
+				counters.blocked++;
+
+				validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
+				overTime[timeidx].blocked++;
+				domains[domainID].blockedcount++;
 			}
 
 			// Save reply type and update individual reply counters
