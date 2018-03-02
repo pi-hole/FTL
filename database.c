@@ -178,8 +178,6 @@ bool db_create(void)
 	if(!create_counter_table())
 		return false;
 
-	dbclose();
-
 	return true;
 }
 
@@ -208,10 +206,28 @@ void db_init(void)
 		}
 	}
 
-	if(db_get_FTL_property(DB_VERSION) < 2)
-		create_counter_table();
+	// Test DB version and see if we need to upgrade the database file
+	int dbversion = db_get_FTL_property(DB_VERSION);
+	if(dbversion < 1)
+	{
+		logg("Database version incorrect, database not available");
+		database = false;
+		return;
+	}
+	else if(dbversion < 2)
+	{
+		// Database is still in version 1
+		// Update to version 2 and create counters table
+		if (!create_counter_table())
+		{
+			logg("Counter table not initialized, database not available");
+			database = false;
+			return;
+		}
+	}
 
 	// Close database to prevent having it opened all time
+	// we already closed the database when we returned earlier
 	sqlite3_close(db);
 
 	if (pthread_mutex_init(&dblock, NULL) != 0)
@@ -221,7 +237,7 @@ void db_init(void)
 		exit(EXIT_FAILURE);
 	}
 
-	logg("Database initialized");
+	logg("Database successfully initialized");
 	database = true;
 }
 
@@ -243,6 +259,7 @@ int db_get_FTL_property(unsigned int ID)
 	rc = sqlite3_prepare(db, querystring, -1, &dbstmt, NULL);
 	if( rc ){
 		logg("db_get_FTL_property() - SQL error prepare (%i): %s", rc, sqlite3_errmsg(db));
+		logg("Query: \"%s\"", querystring);
 		dbclose();
 		check_database(rc);
 		return -1;

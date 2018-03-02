@@ -214,7 +214,11 @@ load 'libs/bats-support/load'
   echo "output: ${lines[@]}"
   [[ "${lines[@]}" == *"CREATE TABLE queries ( id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL, type INTEGER NOT NULL, status INTEGER NOT NULL, domain TEXT NOT NULL, client TEXT NOT NULL, forward TEXT );"* ]]
   [[ "${lines[@]}" == *"CREATE TABLE ftl ( id INTEGER PRIMARY KEY NOT NULL, value BLOB NOT NULL );"* ]]
-  [[ "${lines[@]}" == *"INSERT INTO \"ftl\" VALUES(0,1);"* ]]
+  [[ "${lines[@]}" == *"CREATE TABLE counters ( id INTEGER PRIMARY KEY NOT NULL, value INTEGER NOT NULL );"* ]]
+  [[ "${lines[@]}" == *"INSERT INTO \"counters\" VALUES(0,0);"* ]]
+  [[ "${lines[@]}" == *"INSERT INTO \"counters\" VALUES(1,0);"* ]]
+  [[ "${lines[@]}" == *"INSERT INTO \"ftl\" VALUES(0,2);"* ]]
+  [[ "${lines[@]}" == *"CREATE INDEX idx_queries_timestamps ON queries (timestamp);"* ]]
 }
 
 @test "Arguments check: Invalid option" {
