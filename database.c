@@ -18,7 +18,14 @@ long int lastDBimportedtimestamp = 0;
 
 pthread_mutex_t dblock;
 
-enum { DB_VERSION, DB_LASTTIMESTAMP };
+// TABLE ftl
+enum { DB_VERSION, DB_LASTTIMESTAMP, DB_FIRSTCOUNTERTIMESTAMP };
+// TABLE counters
+enum { DB_TOTALQUERIES, DB_BLOCKEDQUERIES };
+
+bool db_set_counter(unsigned int ID, int value);
+bool db_set_FTL_property(unsigned int ID, int value);
+int db_get_FTL_property(unsigned int ID);
 
 void check_database(int rc)
 {
@@ -113,6 +120,32 @@ bool dbquery(const char *format, ...)
 
 }
 
+bool create_counter_table(void)
+{
+	bool ret;
+	// Create FTL table in the database (holds properties like database version, etc.)
+	ret = dbquery("CREATE TABLE counters ( id INTEGER PRIMARY KEY NOT NULL, value INTEGER NOT NULL );");
+	if(!ret){ dbclose(); return false; }
+
+	// ID 0 = total queries
+	ret = db_set_counter(DB_TOTALQUERIES, 0);
+	if(!ret){ dbclose(); return false; }
+
+	// ID 1 = total blocked queries
+	ret = db_set_counter(DB_BLOCKEDQUERIES, 0);
+	if(!ret){ dbclose(); return false; }
+
+	// Time stamp of creation of the counters database
+	ret = db_set_FTL_property(DB_FIRSTCOUNTERTIMESTAMP, time(NULL));
+	if(!ret){ dbclose(); return false; }
+
+	// Update database version to 2
+	ret = db_set_FTL_property(DB_VERSION, 2);
+	if(!ret){ dbclose(); return false; }
+
+	return true;
+}
+
 bool db_create(void)
 {
 	bool ret;
@@ -133,19 +166,17 @@ bool db_create(void)
 	ret = dbquery("CREATE TABLE ftl ( id INTEGER PRIMARY KEY NOT NULL, value BLOB NOT NULL );");
 	if(!ret){ dbclose(); return false; }
 
-	// DB version 1
-	ret = dbquery("INSERT INTO ftl (ID,VALUE) VALUES(0,1);");
+	// DB version 2
+	ret = dbquery("INSERT INTO ftl (ID,VALUE) VALUES(%i,2);", DB_VERSION);
 	if(!ret){ dbclose(); return false; }
 
 	// Most recent timestamp initialized to 00:00 1 Jan 1970
-	ret = dbquery("INSERT INTO ftl (ID,VALUE) VALUES(1,0);");
+	ret = dbquery("INSERT INTO ftl (ID,VALUE) VALUES(%i,0);", DB_LASTTIMESTAMP);
 	if(!ret){ dbclose(); return false; }
 
-	// Time stamp of last DB garbage collection
-	ret = dbquery("INSERT INTO ftl (ID,VALUE) VALUES(2,%i);",time(NULL));
-	if(!ret){ dbclose(); return false; }
-
-	dbclose();
+	// Create counter table
+	if(!create_counter_table())
+		return false;
 
 	return true;
 }
@@ -175,7 +206,28 @@ void db_init(void)
 		}
 	}
 
+	// Test DB version and see if we need to upgrade the database file
+	int dbversion = db_get_FTL_property(DB_VERSION);
+	if(dbversion < 1)
+	{
+		logg("Database version incorrect, database not available");
+		database = false;
+		return;
+	}
+	else if(dbversion < 2)
+	{
+		// Database is still in version 1
+		// Update to version 2 and create counters table
+		if (!create_counter_table())
+		{
+			logg("Counter table not initialized, database not available");
+			database = false;
+			return;
+		}
+	}
+
 	// Close database to prevent having it opened all time
+	// we already closed the database when we returned earlier
 	sqlite3_close(db);
 
 	if (pthread_mutex_init(&dblock, NULL) != 0)
@@ -185,7 +237,7 @@ void db_init(void)
 		exit(EXIT_FAILURE);
 	}
 
-	logg("Database initialized");
+	logg("Database successfully initialized");
 	database = true;
 }
 
@@ -207,6 +259,7 @@ int db_get_FTL_property(unsigned int ID)
 	rc = sqlite3_prepare(db, querystring, -1, &dbstmt, NULL);
 	if( rc ){
 		logg("db_get_FTL_property() - SQL error prepare (%i): %s", rc, sqlite3_errmsg(db));
+		logg("Query: \"%s\"", querystring);
 		dbclose();
 		check_database(rc);
 		return -1;
@@ -232,6 +285,20 @@ int db_get_FTL_property(unsigned int ID)
 bool db_set_FTL_property(unsigned int ID, int value)
 {
 	return dbquery("INSERT OR REPLACE INTO ftl (id, value) VALUES ( %u, %i );", ID, value);
+}
+
+bool db_set_counter(unsigned int ID, int value)
+{
+	return dbquery("INSERT OR REPLACE INTO counters (id, value) VALUES ( %u, %i );", ID, value);
+}
+
+bool db_update_counters(int total, int blocked)
+{
+	if(!dbquery("UPDATE counters SET value = value + %i WHERE id = %i;", total, DB_TOTALQUERIES))
+		return false;
+	if(!dbquery("UPDATE counters SET value = value + %i WHERE id = %i;", blocked, DB_BLOCKEDQUERIES))
+		return false;
+	return true;
 }
 
 int number_of_queries_in_DB(void)
@@ -321,6 +388,7 @@ void save_to_DB(void)
 		return;
 	}
 
+	int total = 0, blocked = 0;
 	int currenttimestamp = time(NULL);
 	for(i = lastdbindex; i < counters.queries; i++)
 	{
@@ -392,6 +460,13 @@ void save_to_DB(void)
 		// Mark this query as saved in the database only if successful
 		queries[i].db = true;
 
+		// Total counter information (delta computation)
+		total++;
+		if(queries[i].status == 1 ||
+		   queries[i].status == 4 ||
+		   queries[i].status == 5)
+			blocked++;
+
 		// Update lasttimestamp variable with timestamp of the latest stored query
 		if(queries[i].timestamp > lasttimestamp)
 			newlasttimestamp = queries[i].timestamp;
@@ -408,6 +483,13 @@ void save_to_DB(void)
 	{
 		lastdbindex = i;
 		db_set_FTL_property(DB_LASTTIMESTAMP, newlasttimestamp);
+	}
+
+	// Update total counters in DB
+	if(!db_update_counters(total, blocked))
+	{
+		dbclose();
+		return;
 	}
 
 	// Close database
