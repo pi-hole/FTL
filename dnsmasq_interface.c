@@ -259,6 +259,17 @@ void FTL_read_hosts(char * filename, int addr_count)
 	disable_thread_lock();
 }
 
+void FTL_read_config(int flags)
+{
+	// Interpret blocking configuration that have been read by dnsmasq
+	enable_thread_lock();
+	if((flags & SERV_HAS_DOMAIN) && (flags & SERV_NO_ADDR))
+		counters.gravity++; // Blacklist
+	else if((flags & SERV_USE_RESOLV) && counters.gravity > 0)
+		counters.gravity--; // Whitelist
+	disable_thread_lock();
+}
+
 void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, unsigned long ttl, int id)
 {
 	// Interpret hosts files that have been read by dnsmasq

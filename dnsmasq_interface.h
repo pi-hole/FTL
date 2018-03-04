@@ -10,6 +10,7 @@
 extern int socketfd, telnetfd4, telnetfd6;
 
 void FTL_read_hosts(char * filename, int addr_count);
+void FTL_read_config(int flags);
 void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *types, int id);
 void FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id);
 void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, unsigned long ttl, int id);
