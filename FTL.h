@@ -109,6 +109,7 @@ typedef struct {
 	int overTime_MAX;
 	int wildcarddomains_MAX;
 	int gravity;
+	int gravity_conf;
 	int overTime;
 	int querytype[7];
 	int wildcarddomains;
