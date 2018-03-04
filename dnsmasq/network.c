@@ -1538,6 +1538,7 @@ void check_servers(void)
 
       if (!(serv->flags & SERV_NO_REBIND) && !(serv->flags & SERV_LITERAL_ADDRESS))
 	{
+	  FTL_read_config(serv->flags);
 	  if (++count > SERVERS_LOGGED)
 	    continue;
 
@@ -1553,17 +1554,19 @@ void check_servers(void)
 	      else if (strlen(serv->domain) == 0)
 		s1 = _("default"), s2 = "";
 	      else
-		s1 = _("domain"), s2 = serv->domain;
+		//s1 = _("domain"), s2 = serv->domain;
+		continue;
 
 	      if (serv->flags & SERV_NO_ADDR)
 		{
 		  count--;
-		  if (++locals <= LOCALS_LOGGED && !(serv->flags & SERV_HAS_DOMAIN))
+		  if (++locals <= LOCALS_LOGGED)
 			my_syslog(LOG_INFO, _("using local addresses only for %s %s"), s1, s2);
 	        }
-	      else if (!(serv->flags & SERV_USE_RESOLV))
+	      else if (serv->flags & SERV_USE_RESOLV)
+		my_syslog(LOG_INFO, _("using standard nameservers for %s %s"), s1, s2);
+	      else
 		my_syslog(LOG_INFO, _("using nameserver %s#%d for %s %s %s"), daemon->namebuff, port, s1, s2, s3);
-	      FTL_read_config(serv->flags);
 	    }
 #ifdef HAVE_LOOP
 	  else if (serv->flags & SERV_LOOP)
@@ -1578,8 +1581,8 @@ void check_servers(void)
 
   // if (locals > LOCALS_LOGGED)
   //   my_syslog(LOG_INFO, _("using %d more local addresses"), locals - LOCALS_LOGGED);
-  if (count - 1 > SERVERS_LOGGED)
-    my_syslog(LOG_INFO, _("using %d more nameservers"), count - SERVERS_LOGGED - 1);
+  // if (count - 1 > SERVERS_LOGGED)
+  //   my_syslog(LOG_INFO, _("using %d more nameservers"), count - SERVERS_LOGGED - 1);
 
   /* Remove unused sfds */
   for (sfd = daemon->sfds, up = &daemon->sfds; sfd; sfd = tmp)
