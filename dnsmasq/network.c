@@ -1576,8 +1576,8 @@ void check_servers(void)
 	}
     }
 
-  if (locals > LOCALS_LOGGED)
-    my_syslog(LOG_INFO, _("using %d more local addresses"), locals - LOCALS_LOGGED);
+  // if (locals > LOCALS_LOGGED)
+  //   my_syslog(LOG_INFO, _("using %d more local addresses"), locals - LOCALS_LOGGED);
   if (count - 1 > SERVERS_LOGGED)
     my_syslog(LOG_INFO, _("using %d more nameservers"), count - SERVERS_LOGGED - 1);
 
