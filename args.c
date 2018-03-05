@@ -191,6 +191,13 @@ void parse_args(int argc, char* argv[])
 			exit(EXIT_SUCCESS);
 		}
 
+		// Return success error code on this undocumented flag
+		if(strcmp(argv[i], "--resolver") == 0)
+		{
+			printf("True\n");
+			exit(EXIT_SUCCESS);
+		}
+
 		// Complain if invalid options have been found
 		if(!ok)
 		{
