@@ -592,7 +592,8 @@ void read_data_from_DB(void)
 	// Prepare request
 	char *rstr = NULL;
 	// Get time stamp 24 hours in the past
-	time_t mintime = time(NULL) - config.maxlogage;
+	time_t now = time(NULL);
+	time_t mintime = now - config.maxlogage;
 	int rc = asprintf(&rstr, "SELECT * FROM queries WHERE timestamp >= %li", mintime);
 	if(rc < 1)
 	{
@@ -630,6 +631,12 @@ void read_data_from_DB(void)
 			logg("DB warn: TIMESTAMP should be larger than 01/01/2017 but is %i", queryTimeStamp);
 			continue;
 		}
+		if(queryTimeStamp > now)
+		{
+			if(debug) logg("DB warn: Skipping query logged in the future (%i)", queryTimeStamp);
+			continue;
+		}
+
 		int type = sqlite3_column_int(stmt, 2);
 		if(type != TYPE_A && type != TYPE_AAAA)
 		{
