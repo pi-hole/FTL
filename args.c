@@ -75,7 +75,8 @@ void parse_args(int argc, char* argv[])
 		}
 
 		if(strcmp(argv[i], "-v") == 0 ||
-		   strcmp(argv[i], "version") == 0)
+		   strcmp(argv[i], "version") == 0 ||
+		   strcmp(argv[i], "--version") == 0)
 		{
 			const char * commit = GIT_HASH;
 			const char * tag = GIT_TAG;

@@ -1,10 +1,10 @@
-## Pi-hole FTL
+## Pi-hole *FTL*DNS
 
 (c) 2017 Pi-hole, LLC (https://pi-hole.net)
 
 ![](https://i1.wp.com/pi-hole.net/wp-content/uploads/2017/01/dominik.gif?w=128&ssl=1)
 
-The Faster-Than-Light (FTL) Engine is a lightweight, purpose-built daemon used to provide statistics needed for the Web Interface, and its API can be easily integrated into your own projects. Although it is an optional component of the Pi-hole ecosystem, it will be installed by default to provide statistics. As the name implies, FTL does its work *very quickly*!
+The Faster-Than-Light (FTL) Engine is a lightweight DNS/DHCP server that also provides statistics needed for the Web Interface. Its DNS/DHCP services are based on the well-known resolver `dnsmasq`. It  FTL's API can be easily integrated into your own projects. It is an essential component of the Pi-hole ecosystem and provides both DNS/DHCP services as also Pi-hole related statistics. As the name implies, FTL does its work *very quickly*!
 
 The results can be accessed via a standard Unix socket (`var/run/pihole/FTL.sock`), a `telnet`-like connection (TCP socket on port 4711) as well as indirectly via the Web API (`admin/api.php`) and Command Line (`pihole -c -j`). You can out find more details below.
 
@@ -33,17 +33,10 @@ Please see `LICENSE` file for your rights under this license.
 
 If your device is not listed you can get your CPU architecture by running `lscpu`. Download some binaries and try which one work. If you want to add a new device, open an issue or create a PR for the README.
 
----
-
-### How to test FTL?
-
-`FTL` is now part of the Pi-hole `development` branches.
-If you want to test it, use `pihole checkout dev`
-
 ### How to compile FTL from source?
 
 1. Clone the repo
-2. `make`
+2. `make` (you may need to install building dependencies)
 3. `sudo make install`
 4. `sudo service pihole-FTL start`
 
@@ -87,6 +80,8 @@ When you want to detach the debugger from `FTL` without terminating the process,
 - `branch` - Don't start `FTL`, show only git branch `FTL` was compiled from
 - `no-daemon` or `-f` - Don't go into background (daemon mode)
 - `help` or `-h` - Don't start `FTL`, show help
+- `dnsmasq-test` - Test resolver config file syntax
+- `--` everything behind `--` will be passed as options to the internal resolver
 
 Command line arguments can be arbitrarily combined, e.g. `pihole-FTL debug test`
 
@@ -96,7 +91,7 @@ Command line arguments can be arbitrarily combined, e.g. `pihole-FTL debug test`
 - `/var/run/pihole-FTL.port` file containing port on which `FTL` is listening
 - `/var/run/pihole/FTL.sock` Unix socket
 
-### Socket connections
+### Telnet-like socket connections
 
 connect via e.g. `telnet 127.0.0.1 4711`
 port may be automatically incremented if `4711` isn't available
@@ -116,6 +111,15 @@ Possible settings (**the option shown first is the default**):
 - `DBINTERVAL=1.0` (How often do we store queries in FTL's database [minutes]?)
 - `DBFILE=/etc/pihole/pihole-FTL.db` (Specify path and filename of FTL's SQLite long-term database. Setting this to `DBFILE=` disables the database altogether)
 - `MAXLOGAGE=24.0` (Up to how many hours of queries should be imported from the database and logs? Maximum is 744 (31 days))
+- `FTLPORT=4711` (On which port should FTL be listening?)
+- `PRIVACYLEVEL=0` (Which privacy level is used? Can be 0 (permissive) to 3 (very restrictive), see below)
+
+### Privacy levels
+Specifies if we want to anonymize the DNS queries somehow, available options are:
+- 0 = Don't hide anything
+- 1 = Show and store all domains as "hidden", return nothing for Top Domains + Top Ads
+- 2 = As 1 plus show all domains as "hidden" and all clients as "127.0.0.1" (or "::1"), return nothing for any Top Lists
+- 3 = Disabled basically everything except the anonymous stastics, there will be no entries added to the database, no entries visible in the Query Log and no Top Item Lists
 
 ### Implemented keywords (starting with `>`, subject to change):
 
