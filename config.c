@@ -254,7 +254,7 @@ void get_privacy_level(FILE *fp)
 		   value >= PRIVACY_SHOW_ALL &&
 		   value <= PRIVACY_MAXIMUM)
 		{
-			logg("Changing privacy level from %i to %i", value, config.privacylevel);
+			logg("Notice: Changing privacy level from %i to %i", config.privacylevel, value);
 			config.privacylevel = value;
 		}
 
