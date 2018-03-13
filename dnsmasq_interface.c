@@ -438,11 +438,16 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, unsigned
 			queries[i].ttl = ttl;
 		}
 	}
-	else
+	else if((flags & F_REVERSE) && debug)
+	{
+		logg("Skipping result of PTR query");
+	}
+	else if(debug)
 	{
 		logg("*************************** unknown REPLY ***************************");
 		print_flags(flags);
 	}
+
 	disable_thread_lock();
 }
 
@@ -495,7 +500,7 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 			requesttype = QUERY_CACHE;
 		else if(flags & F_FORWARD) // cached answer to previously forwarded request
 			requesttype = QUERY_CACHE;
-		else
+		else if(debug)
 		{
 			logg("*************************** unknown CACHE reply (1) ***************************");
 			print_flags(flags);
@@ -570,7 +575,7 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 			queries[i].complete = true;
 		}
 	}
-	else
+	else if(debug)
 	{
 		logg("*************************** unknown CACHE reply (2) ***************************");
 		print_flags(flags);
