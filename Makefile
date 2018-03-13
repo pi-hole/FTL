@@ -106,10 +106,10 @@ version.h: version~
 	@echo '#define GIT_HASH "$(GIT_HASH)"' >> "$@"
 	@echo "Making FTL version on branch $(GIT_BRANCH) - $(GIT_VERSION) ($(GIT_DATE))"
 
-# prefix=/usr
+prefix=/usr
 
-# install: pihole-FTL
-# 	install -m 0755 pihole-FTL $(prefix)/bin
-# 	touch /var/log/pihole-FTL.log /var/run/pihole-FTL.pid /var/run/pihole-FTL.port
-# 	chown pihole:pihole /var/log/pihole-FTL.log /run/pihole-FTL.pid /run/pihole-FTL.port
-# 	chmod 0644 /var/log/pihole-FTL.log /var/run/pihole-FTL.pid /var/run/pihole-FTL.port
+# install target just installs the executable
+# other requirements (correct ownership of files, etc.) is managed by
+# the service script on sudo service pihole-FTL (re)start
+install: pihole-FTL
+	install -m 0755 pihole-FTL $(prefix)/bin
