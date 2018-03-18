@@ -13,13 +13,6 @@
 volatile sig_atomic_t killed = 0;
 int FTLstarttime = 0;
 
-static void SIGINT_handler(int sig, siginfo_t *si, void *unused)
-{
-	logg("FATAL: FTL received SIGINT (Ctrl + C, PID/UID %i/%i), exiting immediately!", (int)si->si_pid, (int)si->si_uid);
-	logg("       There may be queries that have not been saved in the long-term data base");
-	exit(EXIT_FAILURE);
-}
-
 static void SIGSEGV_handler(int sig, siginfo_t *si, void *unused)
 {
 	logg("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
@@ -64,17 +57,7 @@ static void SIGSEGV_handler(int sig, siginfo_t *si, void *unused)
 void handle_signals(void)
 {
 	struct sigaction old_action;
-	// Catch SIGINT
-	sigaction (SIGTERM, NULL, &old_action);
-	if(old_action.sa_handler != SIG_IGN)
-	{
-		struct sigaction INTaction;
-		memset(&INTaction, 0, sizeof(struct sigaction));
-		INTaction.sa_flags = SA_SIGINFO;
-		sigemptyset(&INTaction.sa_mask);
-		INTaction.sa_sigaction = &SIGINT_handler;
-		sigaction(SIGINT, &INTaction, NULL);
-	}
+
 	// Catch SIGSEGV
 	sigaction (SIGSEGV, NULL, &old_action);
 	if(old_action.sa_handler != SIG_IGN)
