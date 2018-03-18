@@ -1,4 +1,4 @@
-/* dnsmasq is Copyright (c) 2000-2017 Simon Kelley
+/* dnsmasq is Copyright (c) 2000-2018 Simon Kelley
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -14,7 +14,7 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#define COPYRIGHT "Copyright (c) 2000-2017 Simon Kelley"
+#define COPYRIGHT "Copyright (c) 2000-2018 Simon Kelley"
 
 /* We do defines that influence behavior of stdio.h, so complain
    if included too early. */
@@ -142,6 +142,10 @@ extern int capget(cap_user_header_t header, cap_user_data_t data);
 #include <priv.h>
 #endif
 
+#ifdef HAVE_DNSSEC
+#  include <nettle/nettle-meta.h>
+#endif
+
 /* daemon is function in the C library.... */
 #define daemon dnsmasq_daemon
 
@@ -175,6 +179,7 @@ struct event_desc {
 #define EVENT_NEWROUTE   23
 #define EVENT_TIME_ERR   24
 #define EVENT_SCRIPT_LOG 25
+#define EVENT_TIME       26
 
 /* Exit codes. */
 #define EC_GOOD        0
@@ -452,6 +457,7 @@ struct crec {
 #define F_NO_RR     (1u<<25)
 #define F_IPSET     (1u<<26)
 #define F_NOEXTRA   (1u<<27)
+#define F_SERVFAIL  (1u<<28)
 
 /* Values of uid in crecs with F_CONFIG bit set. */
 #define SRC_INTERFACE 0
@@ -514,6 +520,7 @@ struct server {
   struct serverfd *sfd;
   char *domain; /* set if this server only handles a domain. */
   int flags, tcpfd, edns_pktsz;
+  time_t pktsz_reduced;
   unsigned int queries, failed_queries;
 #ifdef HAVE_LOOP
   u32 uid;
@@ -832,7 +839,7 @@ struct cond_domain {
 #ifdef HAVE_IPV6
   struct in6_addr start6, end6;
 #endif
-  int is6;
+  int is6, indexed;
   struct cond_domain *next;
 };
 
@@ -1025,6 +1032,8 @@ extern struct daemon {
 #ifdef HAVE_DNSSEC
   char *keyname; /* MAXDNAME size buffer */
   char *workspacename; /* ditto */
+  char *rr_status; /* flags for individual RRs */
+  int rr_status_sz;
 #endif
   unsigned int local_answer, queries_forwarded, auth_answer;
   struct frec *frec_list;
@@ -1178,6 +1187,15 @@ size_t filter_rrsigs(struct dns_header *header, size_t plen);
 unsigned char* hash_questions(struct dns_header *header, size_t plen, char *name);
 int setup_timestamp(void);
 
+/* crypto.c */
+const struct nettle_hash *hash_find(char *name);
+int hash_init(const struct nettle_hash *hash, void **ctxp, unsigned char **digestp);
+int verify(struct blockdata *key_data, unsigned int key_len, unsigned char *sig, size_t sig_len,
+	   unsigned char *digest, size_t digest_len, int algo);
+char *ds_digest_name(int digest);
+char *algo_digest_name(int algo);
+char *nsec3_digest_name(int digest);
+
 /* util.c */
 void rand_init(void);
 unsigned short rand16(void);
@@ -1254,7 +1272,7 @@ void free_rfd(struct randfd *rfd);
 
 /* network.c */
 int indextoname(int fd, int index, char *name);
-int local_bind(int fd, union mysockaddr *addr, char *intname, int is_tcp);
+int local_bind(int fd, union mysockaddr *addr, char *intname, unsigned int ifindex, int is_tcp);
 int random_sock(int family);
 void pre_allocate_sfds(void);
 int reload_servers(char *fname);
