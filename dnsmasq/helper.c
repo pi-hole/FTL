@@ -1,4 +1,4 @@
-/* dnsmasq is Copyright (c) 2000-2017 Simon Kelley
+/* dnsmasq is Copyright (c) 2000-2018 Simon Kelley
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -97,13 +97,14 @@ int create_helper(int event_fd, int err_fd, uid_t uid, gid_t gid, long max_fd)
       return pipefd[1];
     }
 
-  /* ignore SIGTERM, so that we can clean up when the main process gets hit
+  /* ignore SIGTERM and SIGINT, so that we can clean up when the main process gets hit
      and SIGALRM so that we can use sleep() */
   sigact.sa_handler = SIG_IGN;
   sigact.sa_flags = 0;
   sigemptyset(&sigact.sa_mask);
   sigaction(SIGTERM, &sigact, NULL);
   sigaction(SIGALRM, &sigact, NULL);
+  sigaction(SIGINT, &sigact, NULL);
 
   if (!option_bool(OPT_DEBUG) && uid != 0)
     {

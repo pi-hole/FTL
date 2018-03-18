@@ -8,7 +8,7 @@
 # This file is copyright under the latest version of the EUPL.
 # Please see LICENSE file for your rights under this license.
 
-DNSMASQVERSION = "pi-hole-2.78"
+DNSMASQVERSION = "pi-hole-2.79"
 DNSMASQOPTS = -DHAVE_DNSSEC -DHAVE_DNSSEC_STATIC -DNO_FORK
 # Flags for compiling with libidn : -DHAVE_IDN
 # Flags for compiling with libidn2: -DHAVE_LIBIDN2 -DIDN2_VERSION_NUMBER=0x02000003
@@ -17,7 +17,7 @@ FTLDEPS = FTL.h routines.h version.h api.h dnsmasq_interface.h
 FTLOBJ = main.o memory.o log.o daemon.o datastructure.o signals.o socket.o request.o grep.o setupVars.o args.o threads.o gc.o config.o database.o msgpack.o api.o dnsmasq_interface.o
 
 DNSMASQDEPS = config.h dhcp-protocol.h dns-protocol.h radv-protocol.h dhcp6-protocol.h dnsmasq.h ip6addr.h
-DNSMASQOBJ = arp.o dbus.o domain.o lease.o outpacket.o rrfilter.o auth.o dhcp6.o edns0.o log.o poll.o slaac.o blockdata.o dhcp.o forward.o loop.o radv.o tables.o bpf.o dhcp-common.o helper.o netlink.o rfc1035.o tftp.o cache.o dnsmasq.o inotify.o network.o rfc2131.o util.o conntrack.o dnssec.o ipset.o option.o rfc3315.o
+DNSMASQOBJ = arp.o dbus.o domain.o lease.o outpacket.o rrfilter.o auth.o dhcp6.o edns0.o log.o poll.o slaac.o blockdata.o dhcp.o forward.o loop.o radv.o tables.o bpf.o dhcp-common.o helper.o netlink.o rfc1035.o tftp.o cache.o dnsmasq.o inotify.o network.o rfc2131.o util.o conntrack.o dnssec.o ipset.o option.o rfc3315.o crypto.o
 
 # Get git commit version and date
 GIT_BRANCH := $(shell git branch | sed -n 's/^\* //p')
@@ -48,7 +48,7 @@ CCFLAGS=-I$(IDIR) -Wall -Wextra -Wno-unused-parameter -D_FILE_OFFSET_BITS=64 $(H
 # for dnsmasq we need the nettle crypto library and the gmp maths library
 # We link the two libraries statically. Althougth this increases the binary file size by about 1 MB, it saves about 5 MB of shared libraries and makes deployment easier
 #LIBS=-pthread -lnettle -lgmp -lhogweed
-LIBS=-pthread -Wl,-Bstatic -lhogweed -lgmp -lnettle  -Wl,-Bdynamic
+LIBS=-pthread -Wl,-Bstatic -lhogweed -lgmp -L/usr/local/lib -lnettle  -Wl,-Bdynamic
 # Flags for compiling with libidn : -lidn
 # Flags for compiling with libidn2: -lidn2
 

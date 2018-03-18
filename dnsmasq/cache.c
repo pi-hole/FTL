@@ -1,4 +1,4 @@
-/* dnsmasq is Copyright (c) 2000-2017 Simon Kelley
+/* dnsmasq is Copyright (c) 2000-2018 Simon Kelley
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -46,6 +46,7 @@ static const struct {
   { 24,  "SIG" },
   { 25,  "KEY" },
   { 28,  "AAAA" },
+  { 29,  "LOC" },
   { 33,  "SRV" },
   { 35,  "NAPTR" },
   { 36,  "KX" },
@@ -58,6 +59,10 @@ static const struct {
   { 47,  "NSEC" },
   { 48,  "DNSKEY" },
   { 50,  "NSEC3" },
+  { 51,  "NSEC3PARAM" },
+  { 52,  "TLSA" },
+  { 53,  "SMIMEA" },
+  { 55,  "HIP" },
   { 249, "TKEY" },
   { 250, "TSIG" },
   { 251, "IXFR" },

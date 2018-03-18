@@ -1,4 +1,4 @@
-/* dnsmasq is Copyright (c) 2000-2017 Simon Kelley
+/* dnsmasq is Copyright (c) 2000-2018 Simon Kelley
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -1163,7 +1163,7 @@ static int parse_dhcp_opt(char *errstr, char *arg, int flags)
 	    case 'd':
 	    case 'D':
 	      fac *= 24;
-	      /* fall though */
+	      /* fall through */
 	    case 'h':
 	    case 'H':
 	      fac *= 60;
@@ -2069,8 +2069,9 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 		{
 		  struct cond_domain *new = opt_malloc(sizeof(struct cond_domain));
 		  char *netpart;
-		  
+
 		  new->prefix = NULL;
+		  new->indexed = 0;
 
 		  unhide_metas(comma);
 		  if ((netpart = split_chr(comma, '/')))
@@ -2208,8 +2209,14 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 		    }
 		  else
 		    {
+		      char *star;
 		      new->next = daemon->synth_domains;
 		      daemon->synth_domains = new;
+		      if ((star = strrchr(new->prefix, '*')) && *(star+1) == 0)
+			{
+			  *star = 0;
+			  new->indexed = 1;
+			}
 		    }
 		}
 	      else if (option == 's')
@@ -2730,17 +2737,26 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
         ret_err(gen_err);
       break;
 #endif
-	      
+
     case LOPT_BRIDGE:   /* --bridge-interface */
       {
-	struct dhcp_bridge *new = opt_malloc(sizeof(struct dhcp_bridge));
+	struct dhcp_bridge *new;
+
 	if (!(comma = split(arg)) || strlen(arg) > IF_NAMESIZE - 1 )
 	  ret_err(_("bad bridge-interface"));
-	
-	strcpy(new->iface, arg);
-	new->alias = NULL;
-	new->next = daemon->bridges;
-	daemon->bridges = new;
+
+	for (new = daemon->bridges; new; new = new->next)
+	  if (strcmp(new->iface, arg) == 0)
+	    break;
+
+	if (!new)
+	  {
+	     new = opt_malloc(sizeof(struct dhcp_bridge));
+	     strcpy(new->iface, arg);
+	     new->alias = NULL;
+	     new->next = daemon->bridges;
+	     daemon->bridges = new;
+	  }
 
 	do {
 	  arg = comma;
@@ -2961,7 +2977,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 		      case 'd':
 		      case 'D':
 			fac *= 24;
-			/* fall though */
+			/* fall through */
 		      case 'h':
 		      case 'H':
 			fac *= 60;
@@ -3847,6 +3863,7 @@ err:
 
 	while (arg != last)
 	  {
+	    int arglen = strlen(arg);
 	    alias = canonicalise_opt(arg);
 
 	    if (!alias || !target)
@@ -3862,9 +3879,9 @@ err:
 	    new->target = target;
 	    new->ttl = ttl;
 
-	    arg += strlen(arg)+1;
+	    for (arg += arglen+1; *arg && isspace(*arg); arg++);
 	  }
-      
+
 	break;
       }
 
@@ -4318,7 +4335,7 @@ static void read_file(char *file, FILE *f, int hard_opt)
   fclose(f);
 }
 
-#ifdef HAVE_DHCP
+#if defined(HAVE_DHCP) && defined(HAVE_INOTIFY)
 int option_read_dynfile(char *file, int flags)
 {
   my_syslog(MS_DHCP | LOG_INFO, _("read %s"), file);
@@ -4516,89 +4533,102 @@ void read_servers_file(void)
   
   read_file(daemon->servers_file, f, LOPT_REV_SERV);
 }
- 
+
 
 #ifdef HAVE_DHCP
+static void clear_dynamic_conf(void)
+{
+  struct dhcp_config *configs, *cp, **up;
+
+  /* remove existing... */
+  for (up = &daemon->dhcp_conf, configs = daemon->dhcp_conf; configs; configs = cp)
+    {
+      cp = configs->next;
+
+      if (configs->flags & CONFIG_BANK)
+	{
+	  struct hwaddr_config *mac, *tmp;
+	  struct dhcp_netid_list *list, *tmplist;
+
+	  for (mac = configs->hwaddr; mac; mac = tmp)
+	    {
+	      tmp = mac->next;
+	      free(mac);
+	    }
+
+	  if (configs->flags & CONFIG_CLID)
+	    free(configs->clid);
+
+	  for (list = configs->netid; list; list = tmplist)
+	    {
+	      free(list->list);
+	      tmplist = list->next;
+	      free(list);
+	    }
+
+	  if (configs->flags & CONFIG_NAME)
+	    free(configs->hostname);
+
+	  *up = configs->next;
+	  free(configs);
+	}
+      else
+	up = &configs->next;
+    }
+}
+
+static void clear_dynamic_opt(void)
+{
+  struct dhcp_opt *opts, *cp, **up;
+  struct dhcp_netid *id, *next;
+
+  for (up = &daemon->dhcp_opts, opts = daemon->dhcp_opts; opts; opts = cp)
+    {
+      cp = opts->next;
+
+      if (opts->flags & DHOPT_BANK)
+	{
+	  if ((opts->flags & DHOPT_VENDOR))
+	    free(opts->u.vendor_class);
+	  free(opts->val);
+	  for (id = opts->netid; id; id = next)
+	    {
+	      next = id->next;
+	      free(id->net);
+	      free(id);
+	    }
+	  *up = opts->next;
+	  free(opts);
+	}
+      else
+	up = &opts->next;
+    }
+}
+
 void reread_dhcp(void)
 {
-  struct hostsfile *hf;
+   struct hostsfile *hf;
 
-  if (daemon->dhcp_hosts_file)
+   /* Do these even if there is no daemon->dhcp_hosts_file or
+      daemon->dhcp_opts_file since entries may have been created by the
+      inotify dynamic file reading system. */
+
+   clear_dynamic_conf();
+   clear_dynamic_opt();
+
+   if (daemon->dhcp_hosts_file)
     {
-      struct dhcp_config *configs, *cp, **up;
-  
-      /* remove existing... */
-      for (up = &daemon->dhcp_conf, configs = daemon->dhcp_conf; configs; configs = cp)
-	{
-	  cp = configs->next;
-	  
-	  if (configs->flags & CONFIG_BANK)
-	    {
-	      struct hwaddr_config *mac, *tmp;
-	      struct dhcp_netid_list *list, *tmplist;
-	      
-	      for (mac = configs->hwaddr; mac; mac = tmp)
-		{
-		  tmp = mac->next;
-		  free(mac);
-		}
-
-	      if (configs->flags & CONFIG_CLID)
-		free(configs->clid);
-
-	      for (list = configs->netid; list; list = tmplist)
-		{
-		  free(list->list);
-		  tmplist = list->next;
-		  free(list);
-		}
-	      
-	      if (configs->flags & CONFIG_NAME)
-		free(configs->hostname);
-	      
-	      *up = configs->next;
-	      free(configs);
-	    }
-	  else
-	    up = &configs->next;
-	}
-      
       daemon->dhcp_hosts_file = expand_filelist(daemon->dhcp_hosts_file);
       for (hf = daemon->dhcp_hosts_file; hf; hf = hf->next)
-	 if (!(hf->flags & AH_INACTIVE))
-	   {
-	     if (one_file(hf->fname, LOPT_BANK))  
-	       my_syslog(MS_DHCP | LOG_INFO, _("read %s"), hf->fname);
-	   }
+	if (!(hf->flags & AH_INACTIVE))
+	  {
+	    if (one_file(hf->fname, LOPT_BANK))
+	      my_syslog(MS_DHCP | LOG_INFO, _("read %s"), hf->fname);
+	  }
     }
 
   if (daemon->dhcp_opts_file)
     {
-      struct dhcp_opt *opts, *cp, **up;
-      struct dhcp_netid *id, *next;
-
-      for (up = &daemon->dhcp_opts, opts = daemon->dhcp_opts; opts; opts = cp)
-	{
-	  cp = opts->next;
-	  
-	  if (opts->flags & DHOPT_BANK)
-	    {
-	      if ((opts->flags & DHOPT_VENDOR))
-		free(opts->u.vendor_class);
-	      free(opts->val);
-	      for (id = opts->netid; id; id = next)
-		{
-		  next = id->next;
-		  free(id->net);
-		  free(id);
-		}
-	      *up = opts->next;
-	      free(opts);
-	    }
-	  else
-	    up = &opts->next;
-	}
-      
       daemon->dhcp_opts_file = expand_filelist(daemon->dhcp_opts_file);
       for (hf = daemon->dhcp_opts_file; hf; hf = hf->next)
 	if (!(hf->flags & AH_INACTIVE))
@@ -4607,11 +4637,18 @@ void reread_dhcp(void)
 	      my_syslog(MS_DHCP | LOG_INFO, _("read %s"), hf->fname);
 	  }
     }
+
+#  ifdef HAVE_INOTIFY
+  /* Setup notify and read pre-existing files. */
+  set_dynamic_inotify(AH_DHCP_HST | AH_DHCP_OPT, 0, NULL, 0);
+#  endif
 }
 #endif
-    
+
 void read_opts(int argc, char **argv, char *compile_opts)
 {
+  size_t argbuf_size = MAXDNAME;
+  char *argbuf = opt_malloc(argbuf_size);
   char *buff = opt_malloc(MAXDNAME);
   int option, conffile_opt = '7', testmode = 0;
   char *arg, *conffile = CONFFILE;
@@ -4642,6 +4679,7 @@ void read_opts(int argc, char **argv, char *compile_opts)
   daemon->soa_retry = SOA_RETRY;
   daemon->soa_expiry = SOA_EXPIRY;
   daemon->max_port = MAX_PORT;
+  daemon->min_port = MIN_PORT;
 
 #ifndef NO_ID
   add_txt("version.bind", "dnsmasq-" VERSION, 0 );
@@ -4681,9 +4719,15 @@ void read_opts(int argc, char **argv, char *compile_opts)
       /* Copy optarg so that argv doesn't get changed */
       if (optarg)
 	{
-	  strncpy(buff, optarg, MAXDNAME);
-	  buff[MAXDNAME-1] = 0;
-	  arg = buff;
+	  if (strlen(optarg) >= argbuf_size)
+	    {
+	      free(argbuf);
+	      argbuf_size = strlen(optarg) + 1;
+	      argbuf = opt_malloc(argbuf_size);
+	    }
+	  strncpy(argbuf, optarg, argbuf_size);
+	  argbuf[argbuf_size-1] = 0;
+	  arg = argbuf;
 	}
       else
 	arg = NULL;
@@ -4730,6 +4774,8 @@ void read_opts(int argc, char **argv, char *compile_opts)
 	    die(_("bad command line options: %s"), daemon->namebuff, EC_BADCONF);
 	}
     }
+
+  free(argbuf);
 
   if (conffile)
     {

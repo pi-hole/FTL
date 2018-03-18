@@ -1,4 +1,4 @@
-/* dnsmasq is Copyright (c) 2000-2017 Simon Kelley
+/* dnsmasq is Copyright (c) 2000-2018 Simon Kelley
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -1150,10 +1150,7 @@ int random_sock(int family)
       if (fix_fd(fd))
 	while(tries--)
 	  {
-	    unsigned short port = rand16();
-
-            if (daemon->min_port != 0 || daemon->max_port != MAX_PORT)
-              port = htons(daemon->min_port + (port % ((unsigned short)ports_avail)));
+	    unsigned short port = htons(daemon->min_port + (rand16() % ((unsigned short)ports_avail)));
 
 	    if (family == AF_INET)
 	      {
@@ -1188,7 +1185,7 @@ int random_sock(int family)
 }
 
 
-int local_bind(int fd, union mysockaddr *addr, char *intname, int is_tcp)
+int local_bind(int fd, union mysockaddr *addr, char *intname, unsigned int ifindex, int is_tcp)
 {
   union mysockaddr addr_copy = *addr;
 
@@ -1205,6 +1202,24 @@ int local_bind(int fd, union mysockaddr *addr, char *intname, int is_tcp)
 
   if (bind(fd, (struct sockaddr *)&addr_copy, sa_len(&addr_copy)) == -1)
     return 0;
+
+  if (!is_tcp && ifindex > 0)
+    {
+#if defined(IP_UNICAST_IF)
+      if (addr_copy.sa.sa_family == AF_INET)
+        {
+          uint32_t ifindex_opt = htonl(ifindex);
+          return setsockopt(fd, IPPROTO_IP, IP_UNICAST_IF, &ifindex_opt, sizeof(ifindex_opt)) == 0;
+        }
+#endif
+#if defined(HAVE_IPV6) && defined (IPV6_UNICAST_IF)
+      if (addr_copy.sa.sa_family == AF_INET6)
+        {
+          uint32_t ifindex_opt = htonl(ifindex);
+          return setsockopt(fd, IPPROTO_IPV6, IPV6_UNICAST_IF, &ifindex_opt, sizeof(ifindex_opt)) == 0;
+        }
+#endif
+    }
 
 #if defined(SO_BINDTODEVICE)
   if (intname[0] != 0 &&
@@ -1261,7 +1276,7 @@ static struct serverfd *allocate_sfd(union mysockaddr *addr, char *intname)
       return NULL;
     }
 
-  if (!local_bind(sfd->fd, addr, intname, 0) || !fix_fd(sfd->fd))
+  if (!local_bind(sfd->fd, addr, intname, ifindex, 0) || !fix_fd(sfd->fd))
     {
       errsave = errno; /* save error from bind. */
       close(sfd->fd);
@@ -1461,13 +1476,6 @@ void check_servers(void)
   for (sfd = daemon->sfds; sfd; sfd = sfd->next)
     sfd->used = 0;
 
-#ifdef HAVE_DNSSEC
- /* Disable DNSSEC validation when using server=/domain/.... servers
-    unless there's a configured trust anchor. */
-  for (serv = daemon->servers; serv; serv = serv->next)
-    serv->flags |= SERV_DO_DNSSEC;
-#endif
-
   for (count = 0, serv = daemon->servers; serv; serv = serv->next)
     {
       if (!(serv->flags & (SERV_LITERAL_ADDRESS | SERV_NO_ADDR | SERV_USE_RESOLV | SERV_NO_REBIND)))
@@ -1479,6 +1487,11 @@ void check_servers(void)
 #ifdef HAVE_DNSSEC
 	  if (option_bool(OPT_DNSSEC_VALID))
 	    {
+	      if (!(serv->flags & SERV_FOR_NODOTS))
+		serv->flags |= SERV_DO_DNSSEC;
+
+	      /* Disable DNSSEC validation when using server=/domain/.... servers
+		 unless there's a configured trust anchor. */
 	      if (serv->flags & SERV_HAS_DOMAIN)
 		{
 		  struct ds_config *ds;
@@ -1495,8 +1508,6 @@ void check_servers(void)
 		  if (!ds)
 		    serv->flags &= ~SERV_DO_DNSSEC;
 		}
-	      else if (serv->flags & SERV_FOR_NODOTS)
-		serv->flags &= ~SERV_DO_DNSSEC;
 	    }
 #endif
 
