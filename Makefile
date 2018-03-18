@@ -8,7 +8,7 @@
 # This file is copyright under the latest version of the EUPL.
 # Please see LICENSE file for your rights under this license.
 
-DNSMASQVERSION = "pi-hole-2.78"
+DNSMASQVERSION = "pi-hole-2.79"
 DNSMASQOPTS = -DHAVE_DNSSEC -DHAVE_DNSSEC_STATIC -DNO_FORK
 # Flags for compiling with libidn : -DHAVE_IDN
 # Flags for compiling with libidn2: -DHAVE_LIBIDN2 -DIDN2_VERSION_NUMBER=0x02000003
@@ -48,7 +48,7 @@ CCFLAGS=-I$(IDIR) -Wall -Wextra -Wno-unused-parameter -D_FILE_OFFSET_BITS=64 $(H
 # for dnsmasq we need the nettle crypto library and the gmp maths library
 # We link the two libraries statically. Althougth this increases the binary file size by about 1 MB, it saves about 5 MB of shared libraries and makes deployment easier
 #LIBS=-pthread -lnettle -lgmp -lhogweed
-LIBS=-pthread -Wl,-Bstatic -lhogweed -lgmp -lnettle  -Wl,-Bdynamic
+LIBS=-pthread -Wl,-Bstatic -lhogweed -lgmp -L/usr/local/lib -lnettle  -Wl,-Bdynamic
 # Flags for compiling with libidn : -lidn
 # Flags for compiling with libidn2: -lidn2
 
