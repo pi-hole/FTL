@@ -17,11 +17,6 @@ bool needDBGC = false;
 // Prototype
 int main_dnsmasq(int argc, char **argv);
 
-void log_exit(void)
-{
-	logg("FATAL: Code called exit()");
-}
-
 int main (int argc, char* argv[])
 {
 	username = getUserName();
@@ -32,7 +27,6 @@ int main (int argc, char* argv[])
 	// Try to open FTL log
 	open_FTL_log(true);
 	logg("########## FTL started! ##########");
-	atexit(log_exit);
 	log_FTL_version();
 	init_thread_lock();
 
