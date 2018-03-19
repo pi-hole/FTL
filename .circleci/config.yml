@@ -2,7 +2,7 @@ version: 2
 
 .job_template: &job_template
   docker:
-    - image: "thepihole/ftl-build:$TARGET"
+    - image: thepihole/ftl-build:$CIRCLE_JOB
   steps:
     - checkout
     - run:
@@ -31,37 +31,31 @@ jobs:
     <<: *job_template
     environment:
       BIN_NAME: "pihole-FTL-arm-linux-gnueabi"
-      TARGET: "arm"
 
   armhf:
     <<: *job_template
     environment:
       BIN_NAME: "pihole-FTL-arm-linux-gnueabihf"
-      TARGET: "armhf"
 
   aarch64:
     <<: *job_template
     environment:
       BIN_NAME: "pihole-FTL-aarch64-linux-gnu"
-      TARGET: "aarch64"
 
   x86_64:
     <<: *job_template
     environment:
       BIN_NAME: "pihole-FTL-linux-x86_64"
-      TARGET: "x86_64"
 
   x86_64-musl:
     <<: *job_template
     environment:
       BIN_NAME: "pihole-FTL-musl-linux-x86_64"
-      TARGET: "x86_64-musl"
 
   x86_32:
     <<: *job_template
     environment:
       BIN_NAME: "pihole-FTL-linux-x86_32"
-      TARGET: "x86_32"
       CFLAGS: "-m32"
 
 workflows:
