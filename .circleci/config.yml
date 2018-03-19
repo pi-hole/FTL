@@ -31,7 +31,7 @@ jobs:
     <<: *job_template
     environment:
       BIN_NAME: "pihole-FTL-arm-linux-gnueabi"
-      TARGET: "armel"
+      TARGET: "arm"
 
   armhf:
     <<: *job_template
@@ -64,12 +64,6 @@ jobs:
       TARGET: "x86_32"
       CFLAGS: "-m32"
 
-  ppc64le:
-    <<: *job_template
-    environment:
-      BIN_NAME: "pihole-FTL-powerpc64le-linux-gnu"
-      TARGET: "ppc64le"
-
 workflows:
   version: 2
   build:
@@ -80,4 +74,3 @@ workflows:
       - x86_64
 #      - x86_64-musl
       - x86_32
-      - ppc64le
