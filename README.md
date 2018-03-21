@@ -35,10 +35,12 @@ If your device is not listed you can get your CPU architecture by running `lscpu
 
 ### How to compile FTL from source?
 
-1. Clone the repo
-2. `make` (you may need to install building dependencies)
-3. `sudo make install`
-4. `sudo service pihole-FTL start`
+1. Install building dependencies (e.g. `libgmp-dev m4`)
+3. Compile and install a recent version of `nettle` (see [here](https://www.lysator.liu.se/~nisse/nettle/))
+3. Clone the repo
+3. `make`
+4. `sudo make install`
+5. `sudo service pihole-FTL start`
 
 ### Debugging `pihole-FTL`
 
