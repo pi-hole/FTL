@@ -654,7 +654,7 @@ void getAllQueries(char *client_message, int *sock)
 		validate_access("domains", queries[i].domainID, true, __LINE__, __FUNCTION__, __FILE__);
 		validate_access("clients", queries[i].clientID, true, __LINE__, __FUNCTION__, __FILE__);
 
-		char *qtype = (queries[i].type == TYPE_A)? "IPv4" : "IPv6";
+		char *qtype = (queries[i].type == TYPE_A)? "A" : "AAAA";
 
 		// 1 = gravity.list, 4 = wildcard, 5 = black.list
 		if((queries[i].status == QUERY_GRAVITY ||
