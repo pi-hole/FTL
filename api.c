@@ -107,7 +107,8 @@ void getOverTime(int *sock)
 	for(i=0; i < counters.overTime; i++)
 	{
 		validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
-		if(overTime[i].total > 0 || overTime[i].blocked > 0)
+		if((overTime[i].total > 0 || overTime[i].blocked > 0) &&
+		   overTime[i].timestamp)
 		{
 			j = i;
 			break;
@@ -937,7 +938,8 @@ void getClientsOverTime(int *sock)
 	for(i = 0; i < counters.overTime; i++)
 	{
 		validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
-		if((overTime[i].total > 0 || overTime[i].blocked > 0))
+		if((overTime[i].total > 0 || overTime[i].blocked > 0) &&
+		   overTime[i].timestamp >= time(NULL) - config.maxlogage)
 		{
 			sendit = i;
 			break;
