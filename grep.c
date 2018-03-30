@@ -36,29 +36,42 @@ int countlines(const char* fname)
 	return lines;
 }
 
+int readnumberfromfile(const char* fname)
+{
+	FILE *fp;
+	int num;
+
+	if((fp = fopen(fname, "r")) == NULL)
+	{
+		return -1;
+	}
+
+	if(fscanf(fp,"%i",&num) != 1)
+		return -1;
+	else
+		return num;
+
+	fclose(fp);
+}
+
 void readGravityFiles(void)
 {
 	// Get number of domains being blocked
-	int gravity = countlines(files.preEventHorizon);
-	int blacklist = countlines(files.blacklist);
+	int gravity = readnumberfromfile(files.numBlocked);
 
 	if(gravity < 0)
 	{
-		logg("Error: failed to read %s", files.preEventHorizon);
+		logg("WARN: failed to read %s", files.numBlocked);
+		// Fallback method is counting number of lines in preEventHorizon
+		gravity = countlines(files.preEventHorizon);
+		if(gravity < 0)
+		{
+			logg("Error: failed to read %s", files.preEventHorizon);
+			gravity = 0;
+		}
 	}
+
 	logg("Gravity list entries: %i", gravity);
-
-	// Test if blacklist exists and has entries in it
-	if(blacklist > 0)
-	{
-		gravity += blacklist;
-		logg("Blacklist entries: %i", blacklist);
-	}
-	else
-	{
-		logg("No blacklist present");
-	}
-
 	counters.gravity = gravity;
 
 	readWildcardsList();
