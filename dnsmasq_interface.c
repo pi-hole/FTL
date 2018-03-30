@@ -243,32 +243,7 @@ void FTL_dnsmasq_reload(void)
 	// Called when dnsmasq re-reads its config and hosts files
 	// Reset number of blocked domains and re-read list of wildcard domains
 	counters.gravity = 0;
-	readWildcardsList();
-}
-
-void FTL_read_hosts(char * filename, int addr_count)
-{
-	// Interpret hosts files that have been read by dnsmasq
-	// We ignore other read lists like /etc/hosts
-	if(counters.gravity == 0 && counters.gravity_conf > 0)
-		counters.gravity += counters.gravity_conf;
-
-	if(filename != NULL && (strstr(filename, "/gravity.list") != NULL ||
-	                        strstr(filename, "/black.list") != NULL))
-	{
-		counters.gravity += addr_count;
-	}
-}
-
-void FTL_read_config(int flags)
-{
-	// Interpret blocking configuration that have been read by dnsmasq
-	// No need for thread locks here as this happens while the resolver
-	// is not yet ready
-	if((flags & SERV_HAS_DOMAIN) && (flags & SERV_NO_ADDR))
-		counters.gravity_conf++; // Blacklist
-	else if((flags & SERV_USE_RESOLV) && counters.gravity_conf > 0)
-		counters.gravity_conf--; // Whitelist
+	readGravityFiles();
 }
 
 void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, unsigned long ttl, int id)

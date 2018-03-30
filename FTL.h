@@ -84,7 +84,7 @@ typedef struct {
 
 typedef struct {
 	const char* log;
-	const char* gravity;
+	const char* preEventHorizon;
 	const char* whitelist;
 	const char* blacklist;
 	const char* setupVars;

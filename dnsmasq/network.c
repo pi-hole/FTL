@@ -1549,7 +1549,6 @@ void check_servers(void)
 
       if (!(serv->flags & SERV_NO_REBIND) && !(serv->flags & SERV_LITERAL_ADDRESS))
 	{
-	  FTL_read_config(serv->flags);
 	  if (++count > SERVERS_LOGGED)
 	    continue;
 

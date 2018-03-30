@@ -13,6 +13,9 @@
 char ** wildcarddomains = NULL;
 unsigned char blockingstatus = 2;
 
+// Private prototype
+void readWildcardsList(void);
+
 int countlines(const char* fname)
 {
 	FILE *fp;
@@ -31,6 +34,45 @@ int countlines(const char* fname)
 	fclose(fp);
 
 	return lines;
+}
+
+void readGravityFiles(void)
+{
+	// Get number of domains being blocked
+	int gravity = countlines(files.preEventHorizon);
+	int blacklist = countlines(files.blacklist);
+
+	if(gravity < 0)
+	{
+		logg("Error: failed to read %s", files.preEventHorizon);
+	}
+	logg("Gravity list entries: %i", gravity);
+
+	// Test if blacklist exists and has entries in it
+	if(blacklist > 0)
+	{
+		gravity += blacklist;
+		logg("Blacklist entries: %i", blacklist);
+	}
+	else
+	{
+		logg("No blacklist present");
+	}
+
+	counters.gravity = gravity;
+
+	readWildcardsList();
+	if(counters.wildcarddomains > 0)
+	{
+		logg("Wildcard blocking list entries: %i", counters.wildcarddomains);
+	}
+	else
+	{
+		logg("No wildcard blocking list present");
+	}
+
+	// Get blocking status
+	check_blocking_status();
 }
 
 void readWildcardsList(void)

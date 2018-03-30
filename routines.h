@@ -51,7 +51,7 @@ bool command(char *client_message, const char* cmd);
 bool matchesEndpoint(char *client_message, const char *cmd);
 
 // grep.c
-void readWildcardsList(void);
+void readGravityFiles(void);
 void freeWildcards(void);
 int countlines(const char* fname);
 int countlineswith(const char* str, const char* fname);

@@ -1016,7 +1016,6 @@ int read_hostsfile(char *filename, unsigned int index, int cache_size, struct cr
     rehash(name_count);
 
   my_syslog(LOG_INFO, _("read %s - %d addresses"), filename, addr_count);
-  FTL_read_hosts(filename, addr_count);
 
   return name_count;
 }
