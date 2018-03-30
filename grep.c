@@ -47,11 +47,12 @@ int readnumberfromfile(const char* fname)
 	}
 
 	if(fscanf(fp,"%i",&num) != 1)
-		return -1;
-	else
-		return num;
+	{
+		num = -1;
+	}
 
 	fclose(fp);
+	return num;
 }
 
 void readGravityFiles(void)
