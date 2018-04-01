@@ -690,9 +690,14 @@ void getAllQueries(char *client_message, int *sock)
 
 		unsigned char reply = domains[queries[i].domainID].reply[queries[i].type == TYPE_A ? 0 : 1];
 
+		unsigned long delay = queries[i].response;
+		// Check if received (delay should be smaller than 30min)
+		if(delay > 1.8e7)
+			delay = 0;
+
 		if(istelnet[*sock])
 		{
-			ssend(*sock,"%i %s %s %s %i %i %i %lu\n",queries[i].timestamp,qtype,domain,client,queries[i].status,domains[queries[i].domainID].dnssec,reply,queries[i].ttl);
+			ssend(*sock,"%i %s %s %s %i %i %i %lu\n",queries[i].timestamp,qtype,domain,client,queries[i].status,domains[queries[i].domainID].dnssec,reply,delay);
 		}
 		else
 		{
