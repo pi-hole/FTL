@@ -27,6 +27,10 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	int querytimestamp, overTimetimestamp;
 	gettimestamp(&querytimestamp, &overTimetimestamp);
 
+	// Save request time
+	struct timeval request;
+	gettimeofday(&request, 0);
+
 	if(!config.analyze_AAAA && strcmp(types," query[AAAA]") == 0)
 	{
 		if(debug) logg("Not analyzing AAAA query");
@@ -140,6 +144,7 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	queries[queryID].complete = false;
 	queries[queryID].private = (config.privacylevel == PRIVACY_MAXIMUM);
 	queries[queryID].ttl = 0;
+	queries[queryID].response = request.tv_sec*10000 + request.tv_usec/100;
 
 	// Increase DNS queries counter
 	counters.queries++;
@@ -271,6 +276,10 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, unsigned
 		print_flags(flags);
 	}
 
+	// Get response time
+	struct timeval response;
+	gettimeofday(&response, 0);
+
 	if(flags & F_CONFIG)
 	{
 		// Answered from local configuration, might be a wildcard or user-provided
@@ -362,6 +371,9 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, unsigned
 
 			// Hereby, this query is now fully determined
 			queries[i].complete = true;
+
+			// Save response time (relative time)
+			queries[i].response = response.tv_sec*10000 + response.tv_usec/100 - queries[i].response;
 		}
 
 		// We are done here
@@ -411,6 +423,9 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, unsigned
 
 			// Store TTL
 			queries[i].ttl = ttl;
+
+			// Save response time (relative time)
+			queries[i].response = response.tv_sec*10000 + response.tv_usec/100 - queries[i].response;
 		}
 	}
 	else if((flags & F_REVERSE) && debug)
@@ -451,6 +466,10 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 
 	if(debug) logg("**** got cache answer for %s / %s / %s (TTL %lu, ID %i)", name, dest, arg, ttl, id);
 	if(debug) print_flags(flags);
+
+	// Get response time
+	struct timeval response;
+	gettimeofday(&response, 0);
 
 	if(((flags & F_HOSTS) && (flags & F_IMMORTAL)) || ((flags & F_NAMEP) && (flags & F_DHCP)) || (flags & F_FORWARD))
 	{
@@ -548,6 +567,9 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 
 			// Hereby, this query is now fully determined
 			queries[i].complete = true;
+
+			// Save response time (relative time)
+			queries[i].response = response.tv_sec*10000 + response.tv_usec/100 - queries[i].response;
 		}
 	}
 	else if(debug)

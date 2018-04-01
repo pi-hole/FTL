@@ -150,6 +150,7 @@ typedef struct {
 	bool complete;
 	bool private;
 	unsigned long ttl;
+	unsigned long response; // saved in units of 1/10 milliseconds (1 = 0.1ms, 2 = 0.2ms, 2500 = 250.0ms, etc.)
 } queriesDataStruct;
 
 typedef struct {
