@@ -142,7 +142,6 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	queries[queryID].id = id;
 	queries[queryID].complete = false;
 	queries[queryID].private = (config.privacylevel == PRIVACY_MAXIMUM);
-	queries[queryID].ttl = 0;
 	queries[queryID].response = request.tv_sec*10000 + request.tv_usec/100;
 	// Initialize reply type
 	queries[queryID].reply = REPLY_UNKNOWN;
@@ -241,7 +240,7 @@ void FTL_dnsmasq_reload(void)
 	readGravityFiles();
 }
 
-void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, unsigned long ttl, int id)
+void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 {
 	// Interpret hosts files that have been read by dnsmasq
 	enable_thread_lock();
@@ -262,7 +261,7 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, unsigned
 		else if(flags & F_NEG)
 			answer = "(NODATA)";
 
-		logg("**** got reply %s is %s (TTL %lu, ID %i)", name, answer, ttl, id);
+		logg("**** got reply %s is %s (ID %i)", name, answer, id);
 		print_flags(flags);
 	}
 
@@ -346,9 +345,6 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, unsigned
 			// Save reply type and update individual reply counters
 			save_reply_type(flags, i, response);
 
-			// Store TTL
-			queries[i].ttl = ttl;
-
 			// Hereby, this query is now fully determined
 			queries[i].complete = true;
 		}
@@ -388,9 +384,6 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, unsigned
 
 			// Save reply type and update individual reply counters
 			save_reply_type(flags, i, response);
-
-			// Store TTL
-			queries[i].ttl = ttl;
 		}
 	}
 	else if((flags & F_REVERSE) && debug)
@@ -406,7 +399,7 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, unsigned
 	disable_thread_lock();
 }
 
-void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg, unsigned long ttl, int id)
+void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg, int id)
 {
 	// Save that this query got answered from cache
 	enable_thread_lock();
@@ -429,7 +422,7 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 	}
 	free(domain);
 
-	if(debug) logg("**** got cache answer for %s / %s / %s (TTL %lu, ID %i)", name, dest, arg, ttl, id);
+	if(debug) logg("**** got cache answer for %s / %s / %s (ID %i)", name, dest, arg, id);
 	if(debug) print_flags(flags);
 
 	// Get response time
@@ -516,9 +509,6 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 
 			// Save reply type and update individual reply counters
 			save_reply_type(flags, i, response);
-
-			// Store TTL
-			queries[i].ttl = ttl;
 
 			// Hereby, this query is now fully determined
 			queries[i].complete = true;

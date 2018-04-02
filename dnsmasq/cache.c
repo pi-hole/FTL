@@ -462,7 +462,7 @@ struct crec *cache_insert(char *name, struct all_addr *addr,
 	ttl = daemon->max_cache_ttl;
       if (daemon->min_cache_ttl != 0 && daemon->min_cache_ttl > ttl)
 	ttl = daemon->min_cache_ttl;
-      FTL_reply(flags, name, addr, ttl, daemon->log_display_id);
+      FTL_reply(flags, name, addr, daemon->log_display_id);
     }
 
   /* if previous insertion failed give up now. */

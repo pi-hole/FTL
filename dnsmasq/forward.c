@@ -220,7 +220,7 @@ static unsigned int search_servers(time_t now, struct all_addr **addrpp, unsigne
       if (flags == F_NXDOMAIN || flags == F_NOERR)
 	logflags = F_NEG | qtype;
       log_query(logflags | flags | F_CONFIG | F_FORWARD, qdomain, *addrpp, NULL);
-      FTL_reply(logflags | flags | F_CONFIG | F_FORWARD, qdomain, *addrpp, 0, daemon->log_display_id);
+      FTL_reply(logflags | flags | F_CONFIG | F_FORWARD, qdomain, *addrpp, daemon->log_display_id);
     }
   else if ((*type) & SERV_USE_RESOLV)
     {

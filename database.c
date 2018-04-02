@@ -704,7 +704,7 @@ void read_data_from_DB(void)
 		queries[queryID].db = true; // Mark this as already present in the database
 		queries[queryID].id = 0; // This is dnsmasq's internal ID. We don't store it in the database
 		queries[queryID].complete = true; // Mark as all information is avaiable
-		queries[queryID].ttl = 0;
+		queries[queryID].response = 0;
 		lastDBimportedtimestamp = queryTimeStamp;
 
 		// Handle type counters
