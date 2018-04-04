@@ -70,7 +70,7 @@
 #define GCdelay (-60)
 
 // How many client connection do we accept at once?
-#define MAXCONNS 40
+#define MAXCONNS 255
 
 // Static structs
 typedef struct {
