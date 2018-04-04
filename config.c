@@ -249,7 +249,7 @@ void get_privacy_level(FILE *fp)
 	int value = 0;
 	char *buffer = parse_FTLconf(fp, "PRIVACYLEVEL");
 	if(buffer != NULL && sscanf(buffer, "%i", &value) == 1)
-		// Check for change and validity of privacy level
+		// Check for change and validity of privacy level (set in FTL.h)
 		if(value != config.privacylevel &&
 		   value >= PRIVACY_SHOW_ALL &&
 		   value <= PRIVACY_MAXIMUM)
