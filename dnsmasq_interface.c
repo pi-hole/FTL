@@ -31,7 +31,7 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	struct timeval request;
 	gettimeofday(&request, 0);
 
-	if(!config.analyze_AAAA && strcmp(types," query[AAAA]") == 0)
+	if(!config.analyze_AAAA && strcmp(types,"query[AAAA]") == 0)
 	{
 		if(debug) logg("Not analyzing AAAA query");
 		disable_thread_lock();
