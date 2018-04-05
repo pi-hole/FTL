@@ -643,6 +643,13 @@ void read_data_from_DB(void)
 			logg("DB warn: TYPE should be either 1 or 2 but not %i", type);
 			continue;
 		}
+		// Don't import AAAA queries from database if the user set
+		// AAAA_QUERY_ANALYSIS=no in pihole-FTL.conf
+		if(type == TYPE_AAAA && !config.analyze_AAAA)
+		{
+			continue;
+		}
+
 		int status = sqlite3_column_int(stmt, 3);
 		if(status < QUERY_UNKNOWN || status > QUERY_BLACKLIST)
 		{
