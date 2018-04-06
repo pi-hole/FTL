@@ -310,7 +310,6 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
       /* retry on existing query, send to all available servers  */
       domain = forward->sentto->domain;
       forward->sentto->failed_queries++;
-      FTL_forwarding_failed(forward->sentto);
       if (!option_bool(OPT_ORDER))
 	{
 	  forward->forwardall = 1;
@@ -324,6 +323,8 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
       if (!(start = forward->sentto->next))
 	start = daemon->servers; /* at end of list, recycle */
       header->id = htons(forward->new_id);
+
+      FTL_forwarding_failed(forward->sentto);
     }
   else
     {
