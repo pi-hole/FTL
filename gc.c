@@ -115,29 +115,27 @@ void *GC_thread(void *val)
 				}
 
 				// Update reply counters
-				int j;
-				for(j = 0; j < 2; j++) // 0 = IPv4, 1 = IPv6
-					switch(domains[queries[i].domainID].reply[j])
-					{
-						case REPLY_NODATA: // NODATA(-IPv6)
-						counters.reply_NODATA--;
-						break;
+				switch(queries[i].reply)
+				{
+					case REPLY_NODATA: // NODATA(-IPv6)
+					counters.reply_NODATA--;
+					break;
 
-						case REPLY_NXDOMAIN: // NXDOMAIN
-						counters.reply_NXDOMAIN--;
-						break;
+					case REPLY_NXDOMAIN: // NXDOMAIN
+					counters.reply_NXDOMAIN--;
+					break;
 
-						case REPLY_CNAME: // <CNAME>
-						counters.reply_CNAME--;
-						break;
+					case REPLY_CNAME: // <CNAME>
+					counters.reply_CNAME--;
+					break;
 
-						case REPLY_IP: // valid IP
-						counters.reply_IP--;
-						break;
+					case REPLY_IP: // valid IP
+					counters.reply_IP--;
+					break;
 
-						default: // Incomplete query, do nothing
-						break;
-					}
+					default: // Incomplete query, do nothing
+					break;
+				}
 
 				// Update type counters
 				if(queries[i].type >= TYPE_A && queries[i].type < TYPE_MAX)

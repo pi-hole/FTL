@@ -688,8 +688,6 @@ void getAllQueries(char *client_message, int *sock)
 		char *domain = domains[queries[i].domainID].domain;
 		char *client = clients[queries[i].clientID].ip;
 
-		unsigned char reply = domains[queries[i].domainID].reply[queries[i].type == TYPE_A ? 0 : 1];
-
 		unsigned long delay = queries[i].response;
 		// Check if received (delay should be smaller than 30min)
 		if(delay > 1.8e7)
@@ -697,7 +695,7 @@ void getAllQueries(char *client_message, int *sock)
 
 		if(istelnet[*sock])
 		{
-			ssend(*sock,"%i %s %s %s %i %i %i %lu\n",queries[i].timestamp,qtype,domain,client,queries[i].status,domains[queries[i].domainID].dnssec,reply,delay);
+			ssend(*sock,"%i %s %s %s %i %i %i %lu\n",queries[i].timestamp,qtype,domain,client,queries[i].status,queries[i].dnssec,queries[i].reply,delay);
 		}
 		else
 		{
@@ -712,7 +710,7 @@ void getAllQueries(char *client_message, int *sock)
 				return;
 
 			pack_uint8(*sock, queries[i].status);
-			pack_uint8(*sock, domains[queries[i].domainID].dnssec);
+			pack_uint8(*sock, queries[i].dnssec);
 		}
 	}
 
@@ -1139,30 +1137,6 @@ void getDomainDetails(char *client_message, int *sock)
 			ssend(*sock,"Total: %i\n", domains[i].count);
 			ssend(*sock,"Blocked: %i\n", domains[i].blockedcount);
 			ssend(*sock,"Wildcard blocked: %s\n", domains[i].wildcard ? "true" : "false");
-			ssend(*sock,"DNSSEC status: %u\n", domains[i].dnssec);
-			int j;
-			for(j = 0; j < 2; j++) // 0 = IPv4, 1 = IPv6
-			{
-				ssend(*sock, "IPv%i reply: ", j == 0 ? 4 : 6);
-				switch(domains[i].reply[j])
-				{
-					case REPLY_UNKNOWN:
-						ssend(*sock, "Unknown\n");
-						break;
-					case REPLY_NODATA:
-						ssend(*sock, "NODATA\n");
-						break;
-					case REPLY_NXDOMAIN:
-						ssend(*sock, "NXDOMAIN\n");
-						break;
-					case REPLY_CNAME:
-						ssend(*sock, "CNAME\n");
-						break;
-					case REPLY_IP:
-						ssend(*sock, "%s\n", domains[i].IPv4 == NULL ? "N/A" : domains[i].IPv4);
-						break;
-				}
-			}
 			return;
 		}
 	}

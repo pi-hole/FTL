@@ -152,14 +152,6 @@ int findDomainID(const char *domain)
 	// Store domain name - no need to check for NULL here as it doesn't harm
 	domains[domainID].domain = strdup(domain);
 	memory.domainnames += (strlen(domain) + 1) * sizeof(char);
-	// Store DNSSEC result for this domain
-	domains[domainID].dnssec = DNSSEC_UNSPECIFIED;
-	// Set reply points to uninitialized
-	domains[domainID].IPv4 = NULL;
-	domains[domainID].IPv6 = NULL;
-	// Initialize reply type
-	domains[domainID].reply[0] = REPLY_UNKNOWN;
-	domains[domainID].reply[1] = REPLY_UNKNOWN;
 	// Increase counter by one
 	counters.domains++;
 
