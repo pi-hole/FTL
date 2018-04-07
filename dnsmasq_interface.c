@@ -15,6 +15,7 @@
 
 void print_flags(unsigned int flags);
 void save_reply_type(unsigned int flags, int queryID, struct timeval response);
+unsigned long converttimeval(struct timeval time);
 
 char flagnames[28][12] = {"F_IMMORTAL ", "F_NAMEP ", "F_REVERSE ", "F_FORWARD ", "F_DHCP ", "F_NEG ", "F_HOSTS ", "F_IPV4 ", "F_IPV6 ", "F_BIGNAME ", "F_NXDOMAIN ", "F_CNAME ", "F_DNSKEY ", "F_CONFIG ", "F_DS ", "F_DNSSECOK ", "F_UPSTREAM ", "F_RRNAME ", "F_SERVER ", "F_QUERY ", "F_NOERR ", "F_AUTH ", "F_DNSSEC ", "F_KEYTAG ", "F_SECSTAT ", "F_NO_RR ", "F_IPSET ", "F_NOEXTRA "};
 
@@ -142,7 +143,7 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	queries[queryID].id = id;
 	queries[queryID].complete = false;
 	queries[queryID].private = (config.privacylevel == PRIVACY_MAXIMUM);
-	queries[queryID].response = request.tv_sec*10000 + request.tv_usec/100;
+	queries[queryID].response = converttimeval(request);
 	// Initialize reply type
 	queries[queryID].reply = REPLY_UNKNOWN;
 	// Store DNSSEC result for this domain
@@ -603,8 +604,7 @@ void save_reply_type(unsigned int flags, int queryID, struct timeval response)
 	}
 
 	// Save response time (relative time)
-	queries[queryID].response = response.tv_sec*10000 +
-	                            response.tv_usec/100  -
+	queries[queryID].response = converttimeval(response) -
 	                            queries[queryID].response;
 }
 
@@ -668,7 +668,7 @@ void FTL_fork_and_bind_sockets(void)
 	}
 }
 
-// defined in dnsmasq/cache.c
+// int cache_inserted, cache_live_freed are defined in dnsmasq/cache.c
 extern int cache_inserted, cache_live_freed;
 void getCacheInformation(int *sock)
 {
@@ -686,7 +686,7 @@ void getCacheInformation(int *sock)
 
 void FTL_forwarding_failed(struct server *server)
 {
-	// Save that this query got forwarded to an updtream server
+	// Save that this query got forwarded to an upstream server
 	enable_thread_lock();
 	char dest[ADDRSTRLEN];
 	if(server->addr.sa.sa_family == AF_INET)
@@ -706,4 +706,11 @@ void FTL_forwarding_failed(struct server *server)
 	free(forward);
 	disable_thread_lock();
 	return;
+}
+
+unsigned long converttimeval(struct timeval time)
+{
+	// Convert time from struct timeval into units
+	// of 10*milliseconds
+	return time.tv_sec*10000 + time.tv_usec/100;
 }
