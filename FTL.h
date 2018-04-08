@@ -181,6 +181,7 @@ typedef struct {
 	int total;
 	int blocked;
 	int cached;
+	int forwarded;
 	int clientnum;
 	int *clientdata;
 	int querytypedata[7];
