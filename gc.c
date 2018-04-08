@@ -66,6 +66,12 @@ void *GC_thread(void *val)
 				validate_access("domains", queries[i].domainID, true, __LINE__, __FUNCTION__, __FILE__);
 				domains[queries[i].domainID].count--;
 
+				// Get indices and validate memory access
+				int timeidx = queries[i].timeidx;
+				validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
+				int domainID = queries[i].domainID;
+				validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
+
 				// Change other counters according to status of this query
 				switch(queries[i].status)
 				{
@@ -76,38 +82,31 @@ void *GC_thread(void *val)
 					case QUERY_GRAVITY:
 						// Blocked by Pi-hole's blocking lists
 						counters.blocked--;
-						validate_access("overTime", queries[i].timeidx, true, __LINE__, __FUNCTION__, __FILE__);
-						overTime[queries[i].timeidx].blocked--;
-						validate_access("domains", queries[i].domainID, true, __LINE__, __FUNCTION__, __FILE__);
-						domains[queries[i].domainID].blockedcount--;
+						overTime[timeidx].blocked--;
+						domains[domainID].blockedcount--;
 						break;
 					case QUERY_FORWARDED:
 						// Forwarded to an upstream DNS server
 						counters.forwardedqueries--;
+						overTime[timeidx].forwarded--;
 						validate_access("forwarded", queries[i].forwardID, true, __LINE__, __FUNCTION__, __FILE__);
 						forwarded[queries[i].forwardID].count--;
-						// Maybe we have to adjust total counters depending on the reply type
 						break;
 					case QUERY_CACHE:
 						// Answered from local cache _or_ local config
 						counters.cached--;
-						validate_access("overTime", queries[i].timeidx, true, __LINE__, __FUNCTION__, __FILE__);
-						overTime[queries[i].timeidx].cached--;
+						overTime[timeidx].cached--;
 						break;
 					case QUERY_WILDCARD:
 						counters.wildcardblocked--;
-						validate_access("overTime", queries[i].timeidx, true, __LINE__, __FUNCTION__, __FILE__);
-						overTime[queries[i].timeidx].blocked--;
-						validate_access("domains", queries[i].domainID, true, __LINE__, __FUNCTION__, __FILE__);
-						domains[queries[i].domainID].blockedcount--;
+						overTime[timeidx].blocked--;
+						domains[domainID].blockedcount--;
 						break;
 					case QUERY_BLACKLIST:
 						// Blocked by user's black list
 						counters.blocked--;
-						validate_access("overTime", queries[i].timeidx, true, __LINE__, __FUNCTION__, __FILE__);
-						overTime[queries[i].timeidx].blocked--;
-						validate_access("domains", queries[i].domainID, true, __LINE__, __FUNCTION__, __FILE__);
-						domains[queries[i].domainID].blockedcount--;
+						overTime[timeidx].blocked--;
+						domains[domainID].blockedcount--;
 						break;
 					default:
 						/* That cannot happen */
@@ -115,29 +114,27 @@ void *GC_thread(void *val)
 				}
 
 				// Update reply counters
-				int j;
-				for(j = 0; j < 2; j++) // 0 = IPv4, 1 = IPv6
-					switch(domains[queries[i].domainID].reply[j])
-					{
-						case REPLY_NODATA: // NODATA(-IPv6)
-						counters.reply_NODATA--;
-						break;
+				switch(queries[i].reply)
+				{
+					case REPLY_NODATA: // NODATA(-IPv6)
+					counters.reply_NODATA--;
+					break;
 
-						case REPLY_NXDOMAIN: // NXDOMAIN
-						counters.reply_NXDOMAIN--;
-						break;
+					case REPLY_NXDOMAIN: // NXDOMAIN
+					counters.reply_NXDOMAIN--;
+					break;
 
-						case REPLY_CNAME: // <CNAME>
-						counters.reply_CNAME--;
-						break;
+					case REPLY_CNAME: // <CNAME>
+					counters.reply_CNAME--;
+					break;
 
-						case REPLY_IP: // valid IP
-						counters.reply_IP--;
-						break;
+					case REPLY_IP: // valid IP
+					counters.reply_IP--;
+					break;
 
-						default: // Incomplete query, do nothing
-						break;
-					}
+					default: // Incomplete query, do nothing
+					break;
+				}
 
 				// Update type counters
 				if(queries[i].type >= TYPE_A && queries[i].type < TYPE_MAX)

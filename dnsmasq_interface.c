@@ -14,8 +14,8 @@
 #include "dnsmasq_interface.h"
 
 void print_flags(unsigned int flags);
-void storeIP(int i, char *ip);
-void save_reply_type(unsigned int flags, int queryID);
+void save_reply_type(unsigned int flags, int queryID, struct timeval response);
+unsigned long converttimeval(struct timeval time);
 
 char flagnames[28][12] = {"F_IMMORTAL ", "F_NAMEP ", "F_REVERSE ", "F_FORWARD ", "F_DHCP ", "F_NEG ", "F_HOSTS ", "F_IPV4 ", "F_IPV6 ", "F_BIGNAME ", "F_NXDOMAIN ", "F_CNAME ", "F_DNSKEY ", "F_CONFIG ", "F_DS ", "F_DNSSECOK ", "F_UPSTREAM ", "F_RRNAME ", "F_SERVER ", "F_QUERY ", "F_NOERR ", "F_AUTH ", "F_DNSSEC ", "F_KEYTAG ", "F_SECSTAT ", "F_NO_RR ", "F_IPSET ", "F_NOEXTRA "};
 
@@ -143,8 +143,11 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	queries[queryID].id = id;
 	queries[queryID].complete = false;
 	queries[queryID].private = (config.privacylevel == PRIVACY_MAXIMUM);
-	queries[queryID].ttl = 0;
-	queries[queryID].response = request.tv_sec*10000 + request.tv_usec/100;
+	queries[queryID].response = converttimeval(request);
+	// Initialize reply type
+	queries[queryID].reply = REPLY_UNKNOWN;
+	// Store DNSSEC result for this domain
+	queries[queryID].dnssec = DNSSEC_UNSPECIFIED;
 
 	// Increase DNS queries counter
 	counters.queries++;
@@ -188,19 +191,6 @@ void FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id
 		// Check UUID of this query
 		if(queries[i].id == id)
 		{
-			// Detect if we cached the <CNAME> but need to ask the upstream
-			// servers for the actual IPs now
-			if(queries[i].status == QUERY_CACHE)
-			{
-				// Fix counters
-				counters.cached--;
-				validate_access("overTime", queries[i].timeidx, true, __LINE__, __FUNCTION__, __FILE__);
-				overTime[queries[i].timeidx].cached--;
-
-				// Mark this query again as (temporarily) unknown
-				counters.unknown++;
-				queries[i].complete = false;
-			}
 			queries[i].status = QUERY_FORWARDED;
 			found = true;
 			break;
@@ -215,8 +205,13 @@ void FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id
 		return;
 	}
 
-	// Count only if current query has not been counted so far
-	if(queries[i].complete)
+	// Proceed only if
+	// - current query has not been marked as replied to so far
+	//   (it could be that answers from multiple forward
+	//    destionations are coimg in for the same query)
+	// - the query was formally known as cached but had to be forwarded
+	//   (this is a special case further described below)
+	if(queries[i].complete && queries[i].status != QUERY_CACHE)
 	{
 		free(forward);
 		disable_thread_lock();
@@ -230,12 +225,51 @@ void FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id
 
 	if(!queries[i].complete)
 	{
-		// This query is no longer unknown ...
-		counters.unknown--;
-		// ... but got forwarded
+		int j = queries[i].timeidx;
+		validate_access("overTime", j, true, __LINE__, __FUNCTION__, __FILE__);
+
+		if(queries[i].status == QUERY_CACHE)
+		{
+			// Detect if we cached the <CNAME> but need to ask the upstream
+			// servers for the actual IPs now, we remove this query from the
+			// counters for cache replied queries as we had to forward a
+			// request for it. Example:
+			// Assume a domain a.com is a CNAME which is cached and has a very
+			// long TTL. It point to another domain server.a.com which has an
+			// A record but this has a much lower TTL.
+			// If you now query a.com and then again after some time, you end
+			// up in a situation where dnsmasq can answer the first level of
+			// the DNS result (the CNAME) from cache, hence the status of this
+			// query is marked as "answered from cache" in FTLDNS. However, for
+			// server.a.com wit the much shorter TTL, we still have to forward
+			// something and ask the upstream server for the final IP address.
+			// This code section acknowledges this by removing one entry from
+			// the cached counters as we will re-brand this query as having been
+			// forwarded in the following.
+			counters.cached--;
+			// Also correct overTime data
+			overTime[j].cached--;
+
+			// Correct reply timer
+			struct timeval response;
+			gettimeofday(&response, 0);
+			// Reset timer, shift slightly into the past to acknowledge the time
+			// FTLDNS needed to look up the CNAME in its cache
+			queries[i].response = converttimeval(response) - queries[i].response;
+		}
+		else
+		{
+			// Normal cache reply
+			// Query is no longer unknown
+			counters.unknown--;
+			// Hereby, this query is now fully determined
+			queries[i].complete = true;
+		}
+		// Update overTime data
+		overTime[j].forwarded++;
+
+		// Update couter for forwarded queries
 		counters.forwardedqueries++;
-		// Hereby, this query is now fully determined
-		queries[i].complete = true;
 	}
 
 	// Release allocated memory
@@ -251,7 +285,7 @@ void FTL_dnsmasq_reload(void)
 	readGravityFiles();
 }
 
-void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, unsigned long ttl, int id)
+void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 {
 	// Interpret hosts files that have been read by dnsmasq
 	enable_thread_lock();
@@ -272,7 +306,7 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, unsigned
 		else if(flags & F_NEG)
 			answer = "(NODATA)";
 
-		logg("**** got reply %s is %s (TTL %lu, ID %i)", name, answer, ttl, id);
+		logg("**** got reply %s is %s (ID %i)", name, answer, id);
 		print_flags(flags);
 	}
 
@@ -354,26 +388,10 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, unsigned
 			}
 
 			// Save reply type and update individual reply counters
-			save_reply_type(flags, i);
-
-			// Save returned IP
-			// but only if we have an exact match (there will be no exact match for a CNAME)
-			// on this else-branch this is not a negative match (NXDOMAIN, NODATA)
-			if(!(flags & F_NEG) && !(flags & F_CNAME) &&
-			   strlen(dest) > 2 &&
-			   strcmp(domains[domainID].domain, name) == 0)
-			{
-				storeIP(i, dest);
-			}
-
-			// Store TTL
-			queries[i].ttl = ttl;
+			save_reply_type(flags, i, response);
 
 			// Hereby, this query is now fully determined
 			queries[i].complete = true;
-
-			// Save response time (relative time)
-			queries[i].response = response.tv_sec*10000 + response.tv_usec/100 - queries[i].response;
 		}
 
 		// We are done here
@@ -410,29 +428,14 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, unsigned
 		{
 
 			// Save reply type and update individual reply counters
-			save_reply_type(flags, i);
-
-			// Save returned IP
-			// but only if we have an exact match (there will be no exact match for a CNAME)
-			// on this else-branch this is not a negative match (NXDOMAIN, NODATA)
-			if(!(flags & F_NEG) && !(flags & F_CNAME) &&
-			   strlen(dest) > 2)
-			{
-				storeIP(i, dest);
-			}
-
-			// Store TTL
-			queries[i].ttl = ttl;
-
-			// Save response time (relative time)
-			queries[i].response = response.tv_sec*10000 + response.tv_usec/100 - queries[i].response;
+			save_reply_type(flags, i, response);
 		}
 	}
 	else if((flags & F_REVERSE) && debug)
 	{
 		logg("Skipping result of PTR query");
 	}
-	else if(debug)
+	else
 	{
 		logg("*************************** unknown REPLY ***************************");
 		print_flags(flags);
@@ -441,7 +444,7 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, unsigned
 	disable_thread_lock();
 }
 
-void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg, unsigned long ttl, int id)
+void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg, int id)
 {
 	// Save that this query got answered from cache
 	enable_thread_lock();
@@ -464,7 +467,7 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 	}
 	free(domain);
 
-	if(debug) logg("**** got cache answer for %s / %s / %s (TTL %lu, ID %i)", name, dest, arg, ttl, id);
+	if(debug) logg("**** got cache answer for %s / %s / %s (ID %i)", name, dest, arg, id);
 	if(debug) print_flags(flags);
 
 	// Get response time
@@ -494,7 +497,7 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 			requesttype = QUERY_CACHE;
 		else if(flags & F_FORWARD) // cached answer to previously forwarded request
 			requesttype = QUERY_CACHE;
-		else if(debug)
+		else
 		{
 			logg("*************************** unknown CACHE reply (1) ***************************");
 			print_flags(flags);
@@ -550,73 +553,18 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 			}
 
 			// Save reply type and update individual reply counters
-			save_reply_type(flags, i);
-
-			// Save returned IP
-			// but only if we have an exact match (there will be no exact match for a CNAME)
-			// on this else-branch this is not a negative match (NXDOMAIN, NODATA)
-			if(!(flags & F_NEG) && !(flags & F_CNAME) &&
-			   strlen(dest) > 2 &&
-			   strcmp(domains[domainID].domain, name) == 0)
-			{
-				storeIP(i, dest);
-			}
-
-			// Store TTL
-			queries[i].ttl = ttl;
+			save_reply_type(flags, i, response);
 
 			// Hereby, this query is now fully determined
 			queries[i].complete = true;
-
-			// Save response time (relative time)
-			queries[i].response = response.tv_sec*10000 + response.tv_usec/100 - queries[i].response;
 		}
 	}
-	else if(debug)
+	else
 	{
 		logg("*************************** unknown CACHE reply (2) ***************************");
 		print_flags(flags);
 	}
 	disable_thread_lock();
-}
-
-void storeIP(int i, char *ip)
-{
-	validate_access("queries", i, true, __LINE__, __FUNCTION__, __FILE__);
-	int domainID = queries[i].domainID;
-	validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
-	if(queries[i].type == TYPE_A) // IPv4 query
-	{
-		// First check if entry is already set
-		if(domains[domainID].IPv4 != NULL)
-		{
-			if(strcmp(domains[domainID].IPv4, ip) != 0)
-			{
-				free(domains[domainID].IPv4);
-				domains[domainID].IPv4 = strdup(ip);
-			}
-		}
-		else
-		{
-			domains[domainID].IPv4 = strdup(ip);
-		}
-	}
-	else if(queries[i].type == TYPE_AAAA) // IPv6 query
-	{
-		// First check if entry is already set
-		if(domains[domainID].IPv6 != NULL)
-		{
-			if(strcmp(domains[domainID].IPv6, ip) != 0)
-			{
-				free(domains[domainID].IPv6);
-				domains[domainID].IPv6 = strdup(ip);
-			}
-		}
-		else
-		{
-			domains[domainID].IPv6 = strdup(ip);
-		}
-	}
 }
 
 void FTL_dnssec(int status, int id)
@@ -647,11 +595,11 @@ void FTL_dnssec(int status, int id)
 
 	// Iterate through possible values
 	if(status == STAT_SECURE)
-		domains[queries[i].domainID].dnssec = DNSSEC_SECURE;
+		queries[i].dnssec = DNSSEC_SECURE;
 	else if(status == STAT_INSECURE)
-		domains[queries[i].domainID].dnssec = DNSSEC_INSECURE;
+		queries[i].dnssec = DNSSEC_INSECURE;
 	else
-		domains[queries[i].domainID].dnssec = DNSSEC_BOGUS;
+		queries[i].dnssec = DNSSEC_BOGUS;
 
 	disable_thread_lock();
 }
@@ -667,40 +615,41 @@ void print_flags(unsigned int flags)
 	free(flagstr);
 }
 
-void save_reply_type(unsigned int flags, int queryID)
+void save_reply_type(unsigned int flags, int queryID, struct timeval response)
 {
 	// Iterate through possible values
 	validate_access("queries", queryID, false, __LINE__, __FUNCTION__, __FILE__);
-	int domainID = queries[queryID].domainID;
-	validate_access("domains", domainID, false, __LINE__, __FUNCTION__, __FILE__);
-	int replyID = queries[queryID].type == TYPE_A ? 0 : 1;
 	if(flags & F_NEG)
 	{
 		if(flags & F_NXDOMAIN)
 		{
 			// NXDOMAIN
-			domains[domainID].reply[replyID] = REPLY_NXDOMAIN;
+			queries[queryID].reply = REPLY_NXDOMAIN;
 			counters.reply_NXDOMAIN++;
 		}
 		else
 		{
 			// NODATA(-IPv6)
-			domains[domainID].reply[replyID] = REPLY_NODATA;
+			queries[queryID].reply = REPLY_NODATA;
 			counters.reply_NODATA++;
 		}
 	}
 	else if(flags & F_CNAME)
 	{
 		// <CNAME>
-		domains[domainID].reply[replyID] = REPLY_CNAME;
+		queries[queryID].reply = REPLY_CNAME;
 		counters.reply_CNAME++;
 	}
 	else
 	{
 		// Valid IP
-		domains[domainID].reply[replyID] = REPLY_IP;
+		queries[queryID].reply = REPLY_IP;
 		counters.reply_IP++;
 	}
+
+	// Save response time (relative time)
+	queries[queryID].response = converttimeval(response) -
+	                            queries[queryID].response;
 }
 
 pthread_t telnet_listenthreadv4;
@@ -763,7 +712,7 @@ void FTL_fork_and_bind_sockets(void)
 	}
 }
 
-// defined in dnsmasq/cache.c
+// int cache_inserted, cache_live_freed are defined in dnsmasq/cache.c
 extern int cache_inserted, cache_live_freed;
 void getCacheInformation(int *sock)
 {
@@ -781,7 +730,7 @@ void getCacheInformation(int *sock)
 
 void FTL_forwarding_failed(struct server *server)
 {
-	// Save that this query got forwarded to an updtream server
+	// Save that this query got forwarded to an upstream server
 	enable_thread_lock();
 	char dest[ADDRSTRLEN];
 	if(server->addr.sa.sa_family == AF_INET)
@@ -801,4 +750,11 @@ void FTL_forwarding_failed(struct server *server)
 	free(forward);
 	disable_thread_lock();
 	return;
+}
+
+unsigned long converttimeval(struct timeval time)
+{
+	// Convert time from struct timeval into units
+	// of 10*milliseconds
+	return time.tv_sec*10000 + time.tv_usec/100;
 }

@@ -1696,7 +1696,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 			    if (!dryrun)
 			    {
 			      log_query(crecp->flags, name, NULL, NULL);
-			      FTL_cache(crecp->flags, name, NULL, NULL, 0, daemon->log_display_id);
+			      FTL_cache(crecp->flags, name, NULL, NULL, daemon->log_display_id);
 			    }
 			  }
 			else
@@ -1717,7 +1717,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 				log_query(crecp->flags & ~F_REVERSE, name, &crecp->addr.addr,
 					  record_source(crecp->uid));
 				FTL_cache(crecp->flags & ~F_REVERSE, name, &crecp->addr.addr,
-				                     record_source(crecp->uid), crec_ttl(crecp, now),
+				                     record_source(crecp->uid),
 				                     daemon->log_display_id);
 
 				if (add_resource_record(header, limit, &trunc, nameoffset, &ansp,
@@ -1734,7 +1734,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		  if (!dryrun)
 		    {
 		      log_query(F_FORWARD | F_CONFIG | flag, name, &addr, NULL);
-		      FTL_cache(F_FORWARD | F_CONFIG | flag, name, &addr, NULL, daemon->local_ttl, daemon->log_display_id);
+		      FTL_cache(F_FORWARD | F_CONFIG | flag, name, &addr, NULL, daemon->log_display_id);
 		      if (add_resource_record(header, limit, &trunc, nameoffset, &ansp,
 					      daemon->local_ttl, NULL, type, C_IN, type == T_A ? "4" : "6", &addr))
 			anscount++;
@@ -1756,7 +1756,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		    {
 		      log_query(crecp->flags, name, NULL, record_source(crecp->uid));
 		      FTL_cache(crecp->flags, name, NULL, record_source(crecp->uid),
-		                crec_ttl(crecp, now), daemon->log_display_id);
+		                daemon->log_display_id);
 		      if (add_resource_record(header, limit, &trunc, nameoffset, &ansp,
 					      crec_ttl(crecp, now), &nameoffset,
 					      T_CNAME, C_IN, "d", cache_get_cname_target(crecp)))
@@ -1776,7 +1776,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		    {
 		      int offset;
 		      log_query(F_CONFIG | F_RRNAME, name, NULL, "<MX>");
-		      FTL_cache(F_CONFIG | F_RRNAME, name, NULL, "<MX>", daemon->local_ttl, daemon->log_display_id);
+		      FTL_cache(F_CONFIG | F_RRNAME, name, NULL, "<MX>", daemon->log_display_id);
 		      if (add_resource_record(header, limit, &trunc, nameoffset, &ansp, daemon->local_ttl,
 					      &offset, T_MX, C_IN, "sd", rec->weight, rec->target))
 			{
@@ -1794,7 +1794,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		  if (!dryrun)
 		    {
 		      log_query(F_CONFIG | F_RRNAME, name, NULL, "<MX>");
-		      FTL_cache(F_CONFIG | F_RRNAME, name, NULL, "<MX>", daemon->local_ttl, daemon->log_display_id);
+		      FTL_cache(F_CONFIG | F_RRNAME, name, NULL, "<MX>", daemon->log_display_id);
 		      if (add_resource_record(header, limit, &trunc, nameoffset, &ansp, daemon->local_ttl, NULL,
 					      T_MX, C_IN, "sd", 1,
 					      option_bool(OPT_SELFMX) ? name : daemon->mxtarget))
@@ -1816,7 +1816,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		      {
 			int offset;
 			log_query(F_CONFIG | F_RRNAME, name, NULL, "<SRV>");
-			FTL_cache(F_CONFIG | F_RRNAME, name, NULL, "<SRV>", daemon->local_ttl, daemon->log_display_id);
+			FTL_cache(F_CONFIG | F_RRNAME, name, NULL, "<SRV>", daemon->log_display_id);
 			if (add_resource_record(header, limit, &trunc, nameoffset, &ansp, daemon->local_ttl,
 						&offset, T_SRV, C_IN, "sssd",
 						rec->priority, rec->weight, rec->srvport, rec->target))
@@ -1852,7 +1852,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		  if (!dryrun)
 		  {
 		    log_query(F_CONFIG | F_NEG, name, NULL, NULL);
-		    FTL_cache(F_CONFIG | F_NEG, name, NULL, NULL, 0, daemon->log_display_id);
+		    FTL_cache(F_CONFIG | F_NEG, name, NULL, NULL, daemon->log_display_id);
 		  }
 		}
 	    }
@@ -1867,7 +1867,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		    if (!dryrun)
 		      {
 			log_query(F_CONFIG | F_RRNAME, name, NULL, "<NAPTR>");
-			FTL_cache(F_CONFIG | F_NEG, name, NULL, "<NAPTR>", daemon->local_ttl, daemon->log_display_id);
+			FTL_cache(F_CONFIG | F_NEG, name, NULL, "<NAPTR>", daemon->log_display_id);
 			if (add_resource_record(header, limit, &trunc, nameoffset, &ansp, daemon->local_ttl,
 						NULL, T_NAPTR, C_IN, "sszzzd",
 						na->order, na->pref, na->flags, na->services, na->regexp, na->replace))
@@ -1885,7 +1885,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 	      if (!dryrun)
 	      {
 		log_query(F_CONFIG | F_NEG, name, &addr, NULL);
-		FTL_cache(F_CONFIG | F_NEG, name, NULL, NULL, 0, daemon->log_display_id);
+		FTL_cache(F_CONFIG | F_NEG, name, NULL, NULL, daemon->log_display_id);
 	      }
 	    }
 	}

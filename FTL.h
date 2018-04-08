@@ -149,8 +149,9 @@ typedef struct {
 	int id;
 	bool complete;
 	bool private;
-	unsigned long ttl;
 	unsigned long response; // saved in units of 1/10 milliseconds (1 = 0.1ms, 2 = 0.2ms, 2500 = 250.0ms, etc.)
+	unsigned char reply;
+	unsigned char dnssec;
 } queriesDataStruct;
 
 typedef struct {
@@ -172,10 +173,6 @@ typedef struct {
 	int blockedcount;
 	char *domain;
 	bool wildcard;
-	unsigned char dnssec;
-	char *IPv4;
-	char *IPv6;
-	unsigned char reply[2];
 } domainsDataStruct;
 
 typedef struct {
@@ -184,6 +181,7 @@ typedef struct {
 	int total;
 	int blocked;
 	int cached;
+	int forwarded;
 	int clientnum;
 	int *clientdata;
 	int querytypedata[7];

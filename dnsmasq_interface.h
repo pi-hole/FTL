@@ -11,8 +11,8 @@ extern int socketfd, telnetfd4, telnetfd6;
 
 void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *types, int id);
 void FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id);
-void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, unsigned long ttl, int id);
-void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char * arg, unsigned long ttl, int id);
+void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id);
+void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char * arg, int id);
 void FTL_dnssec(int status, int id);
 void FTL_dnsmasq_reload(void);
 void FTL_fork_and_bind_sockets(void);
