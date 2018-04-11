@@ -115,6 +115,7 @@ Possible settings (**the option shown first is the default**):
 - `MAXLOGAGE=24.0` (Up to how many hours of queries should be imported from the database and logs? Maximum is 744 (31 days))
 - `FTLPORT=4711` (On which port should FTL be listening?)
 - `PRIVACYLEVEL=0` (Which privacy level is used? Can be 0 (permissive) to 3 (very restrictive), see below)
+- `IGNORE_LOCALHOST=no|yes` (Should `FTL` ignore queries coming from the local machine?)
 
 ### Privacy levels
 Specifies if we want to anonymize the DNS queries somehow, available options are:
