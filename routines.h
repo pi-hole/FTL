@@ -100,3 +100,7 @@ int main_dnsmasq(int argc, char **argv);
 
 // signals.c
 void handle_signals(void);
+
+// resolve.c
+void resolveNewClients(void);
+void reresolveHostnames(void);

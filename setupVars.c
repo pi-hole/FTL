@@ -165,6 +165,11 @@ void clearSetupVarsArray(void)
 bool insetupVarsArray(char * str)
 {
 	int i;
+	// Check for possible NULL pointer
+	// (this is valid input, e.g. if clients[i].name is unspecified)
+	if(str == NULL)
+		return false;
+
 	// Loop over all entries in setupVarsArray
 	for (i = 0; i < setupVarsElements; ++i)
 		if(setupVarsArray[i][0] == '*')

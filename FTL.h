@@ -159,12 +159,16 @@ typedef struct {
 	int count;
 	int failed;
 	char *ip;
+	char *name;
+	bool new;
 } forwardedDataStruct;
 
 typedef struct {
 	unsigned char magic;
 	int count;
 	char *ip;
+	char *name;
+	bool new;
 } clientsDataStruct;
 
 typedef struct {

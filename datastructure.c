@@ -111,6 +111,12 @@ int findForwardID(const char * forward, bool count)
 	forwarded[forwardID].ip = strdup(forward);
 	memory.forwardedips += (strlen(forward) + 1) * sizeof(char);
 	forwarded[forwardID].failed = 0;
+	// Initialize forward hostname
+	// Due to the nature of us being the resolver,
+	// the actual resolving of the host name has
+	// to be done separately to be non-blocking
+	forwarded[forwardID].new = true;
+	forwarded[forwardID].name = NULL;
 	// Increase counter by one
 	counters.forwarded++;
 
@@ -191,6 +197,12 @@ int findClientID(const char *client)
 	// Store client IP - no need to check for NULL here as it doesn't harm
 	clients[clientID].ip = strdup(client);
 	memory.clientips += (strlen(client) + 1) * sizeof(char);
+	// Initialize client hostname
+	// Due to the nature of us being the resolver,
+	// the actual resolving of the host name has
+	// to be done separately to be non-blocking
+	clients[clientID].new = true;
+	clients[clientID].name = NULL;
 	// Increase counter by one
 	counters.clients++;
 
