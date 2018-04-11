@@ -388,13 +388,20 @@ void getTopClients(char *client_message, int *sock)
 		if(strcmp(clients[j].ip, "0.0.0.0") == 0)
 			continue;
 
+		// Only return name if available
+		char *name;
+		if(clients[j].name != NULL)
+			name = clients[j].name;
+		else
+			name = "";
+
 		// Return this client if either
 		// - "withzero" option is set, and/or
 		// - the client made at least one query within the most recent 24 hours
 		if(includezeroclients || clients[j].count > 0)
 		{
 			if(istelnet[*sock])
-				ssend(*sock,"%i %i %s %s\n",n,clients[j].count,clients[j].ip,clients[j].name);
+				ssend(*sock,"%i %i %s %s\n",n,clients[j].count,clients[j].ip,name);
 			else
 			{
 				if(!pack_str32(*sock, "") || !pack_str32(*sock, clients[j].ip))
@@ -479,7 +486,12 @@ void getForwardDestinations(char *client_message, int *sock)
 		{
 			validate_access("forwarded", j, true, __LINE__, __FUNCTION__, __FILE__);
 			ip = forwarded[j].ip;
-			name = forwarded[j].name;
+
+			// Only return name if available
+			if(forwarded[j].name != NULL)
+				name = forwarded[j].name;
+			else
+				name = "";
 
 			// Math explanation:
 			// A single query may result in requests being forwarded to multiple destinations
