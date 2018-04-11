@@ -22,7 +22,8 @@ char *resolveHostname(const char *addr)
 	if(strcmp(addr, "0.0.0.0") == 0)
 	{
 		hostname = strdup("hidden");
-		if(hostname == NULL) return NULL;
+		//if(hostname == NULL) return NULL;
+		return hostname;
 	}
 
 	// Test if we want to resolve an IPv6 address
@@ -48,7 +49,7 @@ char *resolveHostname(const char *addr)
 	{
 		// No hostname found
 		hostname = strdup("");
-		if(hostname == NULL) return NULL;
+		//if(hostname == NULL) return NULL;
 	}
 	else
 	{
