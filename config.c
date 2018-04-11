@@ -35,7 +35,7 @@ void read_FTLconf(void)
 	config.socket_listenlocal = true;
 	buffer = parse_FTLconf(fp, "SOCKET_LISTENING");
 
-	if(buffer != NULL && strcmp(buffer, "all") == 0)
+	if(buffer != NULL && strcasecmp(buffer, "all") == 0)
 		config.socket_listenlocal = false;
 
 	if(config.socket_listenlocal)
@@ -48,7 +48,7 @@ void read_FTLconf(void)
 	config.analyze_AAAA = true;
 	buffer = parse_FTLconf(fp, "AAAA_QUERY_ANALYSIS");
 
-	if(buffer != NULL && strcmp(buffer, "no") == 0)
+	if(buffer != NULL && strcasecmp(buffer, "no") == 0)
 		config.analyze_AAAA = false;
 
 	if(config.analyze_AAAA)
@@ -76,7 +76,7 @@ void read_FTLconf(void)
 	config.resolveIPv6 = true;
 	buffer = parse_FTLconf(fp, "RESOLVE_IPV6");
 
-	if(buffer != NULL && strcmp(buffer, "no") == 0)
+	if(buffer != NULL && strcasecmp(buffer, "no") == 0)
 		config.resolveIPv6 = false;
 
 	if(config.resolveIPv6)
@@ -88,7 +88,7 @@ void read_FTLconf(void)
 	// defaults to: Yes
 	config.resolveIPv4 = true;
 	buffer = parse_FTLconf(fp, "RESOLVE_IPV4");
-	if(buffer != NULL && strcmp(buffer, "no") == 0)
+	if(buffer != NULL && strcasecmp(buffer, "no") == 0)
 		config.resolveIPv4 = false;
 	if(config.resolveIPv4)
 		logg("   RESOLVE_IPV4: Resolve IPv4 addresses");
@@ -179,7 +179,7 @@ void read_FTLconf(void)
 	config.ignore_localhost = false;
 	buffer = parse_FTLconf(fp, "IGNORE_LOCALHOST");
 
-	if(buffer != NULL && strcmp(buffer, "yes") == 0)
+	if(buffer != NULL && strcasecmp(buffer, "yes") == 0)
 		config.ignore_localhost = true;
 
 	if(config.ignore_localhost)
