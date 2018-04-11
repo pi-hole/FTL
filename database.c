@@ -663,7 +663,6 @@ void read_data_from_DB(void)
 			logg("DB warn: DOMAIN should never be NULL, %i", queryTimeStamp);
 			continue;
 		}
-		int domainID = findDomainID(domain);
 
 		const char * client = (const char *)sqlite3_column_text(stmt, 5);
 		if(client == NULL)
@@ -671,6 +670,16 @@ void read_data_from_DB(void)
 			logg("DB warn: CLIENT should never be NULL, %i", queryTimeStamp);
 			continue;
 		}
+
+		// Check if user wants to skip queries coming from localhost
+		if(config.ignore_localhost &&
+		   (strcmp(client, "127.0.0.1") == 0 || strcmp(client, "::1") == 0))
+		{
+			continue;
+		}
+
+		// Obtain IDs only after filtering which queries we want to keep
+		int domainID = findDomainID(domain);
 		int clientID = findClientID(client);
 
 		const char *forwarddest = (const char *)sqlite3_column_text(stmt, 6);

@@ -174,6 +174,19 @@ void read_FTLconf(void)
 	get_privacy_level(fp);
 	logg("   PRIVACYLEVEL: Set to %i", config.privacylevel);
 
+	// IGNORE_LOCALHOST
+	// defaults to: No
+	config.ignore_localhost = false;
+	buffer = parse_FTLconf(fp, "IGNORE_LOCALHOST");
+
+	if(buffer != NULL && strcmp(buffer, "yes") == 0)
+		config.ignore_localhost = true;
+
+	if(config.ignore_localhost)
+		logg("   IGNORE_LOCALHOST: Hide queries from localhost");
+	else
+		logg("   IGNORE_LOCALHOST: Show queries from localhost");
+
 	logg("Finished config file parsing");
 
 	// Release memory
