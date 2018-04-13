@@ -555,6 +555,10 @@ void *DB_thread(void *val)
 			// Update lastDBsave timer
 			lastDBsave = time(NULL) - time(NULL)%config.DBinterval;
 
+			// This has to be run outside of the thread locks
+			// to prevent locking the resolver
+			resolveNewClients();
+
 			// Lock FTL's data structure, since it is
 			// likely that it will be changed here
 			enable_thread_lock();

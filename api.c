@@ -380,12 +380,20 @@ void getTopClients(char *client_message, int *sock)
 		validate_access("clients", j, true, __LINE__, __FUNCTION__, __FILE__);
 
 		// Skip this client if there is a filter on it
-		if(excludeclients != NULL && insetupVarsArray(clients[j].ip))
+		if(excludeclients != NULL &&
+			(insetupVarsArray(clients[j].ip) || insetupVarsArray(clients[j].name)))
 			continue;
 
-		// Hidden domain, probably due to privacy level. Skip this in the top lists
+		// Hidden client, probably due to privacy level. Skip this in the top lists
 		if(strcmp(clients[j].ip, "0.0.0.0") == 0)
 			continue;
+
+		// Only return name if available
+		char *name;
+		if(clients[j].name != NULL)
+			name = clients[j].name;
+		else
+			name = "";
 
 		// Return this client if either
 		// - "withzero" option is set, and/or
@@ -393,7 +401,7 @@ void getTopClients(char *client_message, int *sock)
 		if(includezeroclients || clients[j].count > 0)
 		{
 			if(istelnet[*sock])
-				ssend(*sock,"%i %i %s\n",n,clients[j].count,clients[j].ip);
+				ssend(*sock,"%i %i %s %s\n",n,clients[j].count,clients[j].ip,name);
 			else
 			{
 				if(!pack_str32(*sock, "") || !pack_str32(*sock, clients[j].ip))
@@ -437,7 +445,8 @@ void getForwardDestinations(char *client_message, int *sock)
 		}
 	}
 
-	if(sort) {
+	if(sort)
+	{
 		// Add "local " forward destination
 		temparray[counters.forwarded][0] = counters.forwarded;
 		temparray[counters.forwarded][1] = counters.cached + counters.blocked;
@@ -451,7 +460,7 @@ void getForwardDestinations(char *client_message, int *sock)
 	// Loop over available forward destinations
 	for(i=0; i < min(counters.forwarded+1, 10); i++)
 	{
-		char *ip;
+		char *ip, *name;
 		float percentage = 0.0f;
 
 		// Get sorted indices
@@ -465,6 +474,7 @@ void getForwardDestinations(char *client_message, int *sock)
 		if(j == counters.forwarded)
 		{
 			ip = strdup("local");
+			name = ip;
 
 			if(totalqueries > 0)
 				// Whats the percentage of (cached + blocked) queries on the total amount of queries?
@@ -476,6 +486,12 @@ void getForwardDestinations(char *client_message, int *sock)
 		{
 			validate_access("forwarded", j, true, __LINE__, __FUNCTION__, __FILE__);
 			ip = forwarded[j].ip;
+
+			// Only return name if available
+			if(forwarded[j].name != NULL)
+				name = forwarded[j].name;
+			else
+				name = "";
 
 			// Math explanation:
 			// A single query may result in requests being forwarded to multiple destinations
@@ -503,7 +519,7 @@ void getForwardDestinations(char *client_message, int *sock)
 		if(percentage > 0.0f)
 		{
 			if(istelnet[*sock])
-				ssend(*sock, "%i %.2f %s\n", i, percentage, ip);
+				ssend(*sock, "%i %.2f %s %s\n", i, percentage, ip, name);
 			else
 			{
 				if(!pack_str32(*sock, "") || !pack_str32(*sock, ip))
@@ -515,7 +531,10 @@ void getForwardDestinations(char *client_message, int *sock)
 
 		// Free previously allocated memory only if we allocated it
 		if(allocated)
+		{
 			free(ip);
+			//free(name); // This is just the same as ip
+		}
 	}
 
 	if(debugclients)
@@ -681,12 +700,18 @@ void getAllQueries(char *client_message, int *sock)
 		if(filterclientname)
 		{
 			// Skip if client name and IP are not identical with what the user wants to see
-			if(strcmp(clients[queries[i].clientID].ip, clientname) != 0)
+			if(strcmp(clients[queries[i].clientID].ip,   clientname) != 0 &&
+			   strcmp(clients[queries[i].clientID].name, clientname) != 0)
 				continue;
 		}
 
 		char *domain = domains[queries[i].domainID].domain;
-		char *client = clients[queries[i].clientID].ip;
+		char *client;
+		if(clients[queries[i].clientID].name != NULL &&
+		   strlen(clients[queries[i].clientID].name) > 0)
+			client = clients[queries[i].clientID].name;
+		else
+			client = clients[queries[i].clientID].ip;
 
 		unsigned long delay = queries[i].response;
 		// Check if received (delay should be smaller than 30min)
@@ -967,7 +992,8 @@ void getClientsOverTime(int *sock)
 		{
 			validate_access("clients", i, true, __LINE__, __FUNCTION__, __FILE__);
 			// Check if this client should be skipped
-			if(insetupVarsArray(clients[i].ip))
+			if(insetupVarsArray(clients[i].ip) ||
+			   insetupVarsArray(clients[i].name))
 				skipclient[i] = true;
 		}
 	}
@@ -1039,7 +1065,8 @@ void getClientNames(int *sock)
 		{
 			validate_access("clients", i, true, __LINE__, __FUNCTION__, __FILE__);
 			// Check if this client should be skipped
-			if(insetupVarsArray(clients[i].ip))
+			if(insetupVarsArray(clients[i].ip) ||
+			   insetupVarsArray(clients[i].name))
 				skipclient[i] = true;
 		}
 	}
@@ -1051,8 +1078,14 @@ void getClientNames(int *sock)
 		if(skipclient[i])
 			continue;
 
+		char *client;
+		if(clients[i].name != NULL && strlen(clients[i].name) > 0)
+			client = clients[i].name;
+		else
+			client = clients[i].ip;
+
 		if(istelnet[*sock])
-			ssend(*sock, "%i %i %s\n", i, clients[i].count, clients[i].ip);
+			ssend(*sock, "%i %i %s\n", i, clients[i].count, client);
 		else {
 			if(!pack_str32(*sock, "") || !pack_str32(*sock, clients[i].ip))
 				return;

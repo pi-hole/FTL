@@ -166,6 +166,11 @@ void *GC_thread(void *val)
 
 			// Release thread lock
 			disable_thread_lock();
+
+			// Reresolve client hostnames to account for changes
+			// Have to this outside of the thread lock
+			// to prevent locking of the resolver
+			reresolveHostnames();
 		}
 		sleepms(100);
 	}
