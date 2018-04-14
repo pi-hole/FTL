@@ -426,7 +426,7 @@ void getTopClients(char *client_message, int *sock)
 
 void getForwardDestinations(char *client_message, int *sock)
 {
-	bool allocated = false, sort = true;
+	bool sort = true;
 	int i, temparray[counters.forwarded+1][2], forwardedsum = 0, totalqueries = 0;
 
 	if(command(client_message, "unsorted"))
@@ -473,14 +473,12 @@ void getForwardDestinations(char *client_message, int *sock)
 		// Is this the "local" forward destination?
 		if(j == counters.forwarded)
 		{
-			ip = strdup("local");
+			ip = "local";
 			name = ip;
 
 			if(totalqueries > 0)
 				// Whats the percentage of (cached + blocked) queries on the total amount of queries?
 				percentage = 1e2f * (counters.cached + counters.blocked) / totalqueries;
-
-			allocated = true;
 		}
 		else
 		{
@@ -511,8 +509,6 @@ void getForwardDestinations(char *client_message, int *sock)
 			// we simply have to scale b by a which is what we do in the following.
 			if(forwardedsum > 0 && totalqueries > 0)
 				percentage = 1e2f * forwarded[j].count / forwardedsum * counters.forwardedqueries / totalqueries;
-
-			allocated = false;
 		}
 
 		// Send data if count > 0
@@ -527,13 +523,6 @@ void getForwardDestinations(char *client_message, int *sock)
 
 				pack_float(*sock, (float) percentage);
 			}
-		}
-
-		// Free previously allocated memory only if we allocated it
-		if(allocated)
-		{
-			free(ip);
-			//free(name); // This is just the same as ip
 		}
 	}
 
