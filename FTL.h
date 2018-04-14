@@ -131,6 +131,7 @@ typedef struct {
 	int port;
 	int maxlogage;
 	int privacylevel;
+	bool ignore_localhost;
 } ConfigStruct;
 
 // Dynamic structs

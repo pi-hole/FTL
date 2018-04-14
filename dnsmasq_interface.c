@@ -70,6 +70,16 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	char *client = strdup(dest);
 	strtolower(client);
 
+	// Check if user wants to skip queries coming from localhost
+	if(config.ignore_localhost &&
+	   (strcmp(client, "127.0.0.1") == 0 || strcmp(client, "::1") == 0))
+	{
+		free(domain);
+		free(client);
+		disable_thread_lock();
+		return;
+	}
+
 	// Check and apply possible privacy level rules
 	// We do this immediately on the raw data to avoid any possible leaking
 	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS_CLIENTS)
