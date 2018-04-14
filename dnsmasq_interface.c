@@ -441,9 +441,9 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 			save_reply_type(flags, i, response);
 		}
 	}
-	else if((flags & F_REVERSE) && debug)
+	else if(flags & F_REVERSE)
 	{
-		logg("Skipping result of PTR query");
+		if(debug) logg("Skipping result of PTR query");
 	}
 	else
 	{
