@@ -116,3 +116,4 @@ prefix=/usr
 # the service script on sudo service pihole-FTL (re)start
 install: pihole-FTL
 	install -m 0755 pihole-FTL $(prefix)/bin
+	/sbin/setcap CAP_NET_BIND_SERVICE,CAP_NET_RAW,CAP_NET_ADMIN+eip $(prefix)/bin/pihole-FTL
