@@ -1,39 +1,54 @@
 ## Pi-hole *FTL*DNS
+=======
+<p align="center">
+<a href="https://pi-hole.net"><img src="https://pi-hole.github.io/graphics/Vortex/Vortex_with_text.png" width="150" height="255" alt="Pi-hole"></a>
+<br/><br/>
+<b>Network-wide ad blocking via your own Linux hardware</b><br/>
+<a href="https://pi-hole.net"><img src="https://pi-hole.net/wp-content/uploads/2018/03/ftldns-logo.png" alt="FTLDNS"></a><br/>
+</p>
 
-(c) 2017 Pi-hole, LLC (https://pi-hole.net)
 
-![](https://i1.wp.com/pi-hole.net/wp-content/uploads/2017/01/dominik.gif?w=128&ssl=1)
+FTLDNS[™](https://pi-hole.net/trademark-rules-and-brand-guidelines/) (`pihole-FTL`) provides an interactive API and also generates statistics for Pi-hole[®](https://pi-hole.net/trademark-rules-and-brand-guidelines/)'s Web interface.
 
-The Faster-Than-Light (FTL) Engine is a lightweight DNS/DHCP server that also provides statistics needed for the Web Interface. Its DNS/DHCP services are based on the well-known resolver `dnsmasq`. It  FTL's API can be easily integrated into your own projects. It is an essential component of the Pi-hole ecosystem and provides both DNS/DHCP services as also Pi-hole related statistics. As the name implies, FTL does its work *very quickly*!
+- **Fast**: stats are read directly from memory by coupling our codebase closely with `dnsmasq`
+- **Versatile**: upstream changes to `dnsmasq` can quickly be merged in without much conflict
+- **Lightweight**: runs smoothly with [minimal hardware and software requirements](https://discourse.pi-hole.net/t/hardware-software-requirements/273) such as Raspberry Pi Zero
+- **Interactive**: our API can be used to interface with your projects
+- **Insightful**: stats normally reserved inside of `dnsmasq` are made available so you can see what's really happening on your network
 
-The results can be accessed via a standard Unix socket (`var/run/pihole/FTL.sock`), a `telnet`-like connection (TCP socket on port 4711) as well as indirectly via the Web API (`admin/api.php`) and Command Line (`pihole -c -j`). You can out find more details below.
+---
+<a class="badge-align" href="https://www.codacy.com/app/Pi-hole/FTL?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=pi-hole/FTL&amp;utm_campaign=Badge_Grade"><img src="https://api.codacy.com/project/badge/Grade/2f36cd6b04694b42893335a6a656969b"/></a>
 
-This project is copyright under the latest version of the EUPL.
+# Compatibility list
 
-Please see `LICENSE` file for your rights under this license.
+| Board | Tested OS | CPU architecture | Suitable binaries
+|---|---|---|---
+| VirtualBox | Ubuntu 16.10 | amd64 | `linux-x86_64`
+| Raspberry Pi Zero | Raspbian Jessie, Stretch | armv6l | `arm-linux-gnueabi`
+| Raspberry Pi 1 | Raspbian Jessie, Stretch | armv6 | `arm-linux-gnueabi`
+| Raspberry Pi 2 | Raspbian Jessie, Stretch | armv7l | `arm-linux-gnueabihf` and `arm-linux-gnuabi`
+| Raspberry Pi 3 | Raspbian Jessie, Stretch | armv7l | `arm-linux-gnuabi` and `arm-linux-gnueabihf`
+| Raspberry Pi 3 | openSUSE | aarch64 | `aarch64-linux-gnu`
+| NanoPi NEO | armbian Ubuntu 16.04 | armv7l | `arm-linux-gnueabihf`
+| Odroid-C2 | Ubuntu 16.04 | aarch64 | `aarch64-linux-gnu`
+| C.H.I.P | Debian | armv7l | `arm-linux-gnueabihf`
+| OrangePi Zero | armbian Ubuntu 16.04 | armv7l | `arm-linux-gnueabihf`
+| BeagleBone Black| Debian Jessie, Stretch | armv7l | `arm-linux-gnueabihf`
+|  |  |  |  |  |
+
+>If your device is not listed you can get your CPU architecture by running `lscpu`. Download some binaries and try which one work. If you want to add a new device, open an issue or create a PR for the README.
 
 ---
 
-### Compatibility list
+# Installation
 
-| Board | Tested OS | CPU architecture | Suitable binaries | Tested by |
-|---|---|---|---|---|
-| VirtualBox | Ubuntu 16.10 | amd64 | `linux-x86_64` | [@DL6ER](https://github.com/dl6er) |
-| Raspberry Pi Zero | Raspbian Jessie | armv6l | `arm-linux-gnueabi` | [@DanSchaper](https://github.com/dschaper) |
-| Raspberry Pi 1 | Raspbian Jessie | armv6 | `arm-linux-gnueabi` | [@DL6ER](https://github.com/dl6er) |
-| Raspberry Pi 2 | Raspbian Jessie | armv7l | `arm-linux-gnueabihf` and `arm-linux-gnuabi` | [@TechnicalPyro](https://github.com/technicalpyro) |
-| Raspberry Pi 3 | Raspbian Jessie | armv7l | `arm-linux-gnuabi` and `arm-linux-gnueabihf` | [@DL6ER](https://github.com/dl6er) |
-| Raspberry Pi 3 | openSUSE | aarch64 | `aarch64-linux-gnu` | [@DL6ER](https://github.com/dl6er) |
-| NanoPi NEO | armbian Ubuntu 16.04 | armv7l | `arm-linux-gnueabihf` | [@DL6ER](https://github.com/dl6er) |
-| Odroid-C2 | Ubuntu 16.04 | aarch64 | `aarch64-linux-gnu` | [@DanSchaper](https://github.com/dschaper) |
-| C.H.I.P | Debian | armv7l | `arm-linux-gnueabihf` | [@Promofaux](https://github.com/promofaux) |
-| OrangePi Zero | armbian Ubuntu 16.04 | armv7l | `arm-linux-gnueabihf` | [@DL6ER](https://github.com/dl6er) |
-| BeagleBone Black| Debian Jessie | armv7l | `arm-linux-gnueabihf` | [@frosty5689](https://github.com/frosty5689) |
-|  |  |  |  |  |
+FTLDNS (`pihole-FTL`) is installed by default when you choose to enable the Web interface when installing Pi-hole.
 
-If your device is not listed you can get your CPU architecture by running `lscpu`. Download some binaries and try which one work. If you want to add a new device, open an issue or create a PR for the README.
+> IMPORTANT!
 
-### How to compile FTL from source?
+>FTLDNS will _disable_ any existing installations of `dnsmasq`.  This is because FTLDNS _is_ `dnsmasq` + Pi-hole's code, so both cannot run simultaneously.
+
+## Compiling FTL from source
 
 1. Install building dependencies (e.g. `libgmp-dev m4`)
 3. Compile and install a recent version of `nettle` (see [here](https://www.lysator.liu.se/~nisse/nettle/))
@@ -42,36 +57,76 @@ If your device is not listed you can get your CPU architecture by running `lscpu
 4. `sudo make install`
 5. `sudo service pihole-FTL start`
 
-### Debugging `pihole-FTL`
+## Post-install: Gain insight into your network's activity
 
-#### Debugging instructions (when `FTL` is not starting reliably)
+As mentioned earlier, FTLDNS will be enabled by default when you install Pi-hole.  To access the Web interface, navigate to `http://pi.hole/admin` or `http://<IP OF YOUR PIHOLE>/admin`.
 
-Once you are used to it, you can skip most of the steps and debugging is actually quite easy and gives you insights into how software (not limited to `pihole-FTL`) works.
+Once logged in, (or authenticated to the API) you can view your network stats to see things like:
 
-1. Install `screen` and `gdb` (probably `sudo apt-get install screen gdb`)
-2. Start a screen session (it will allow you to come back even if the SSH connection died)
-  * If you don't know about `screen`, then read about it (you *will* love it!)
-3. Start a screen session using `screen`
-4. Ensure that `pihole-FTL` is terminated (e.g. `sudo killall pihole-FTL`)
-5. Arrange file permissions to be able to start `FTL` as your current user (the following assumes you are logged in as user `pi`).
-  * `sudo touch /var/log/pihole-FTL.log /run/pihole-FTL.pid /run/pihole-FTL.port`
-  * `sudo chown pi:pi /var/log/pihole-FTL.log /run/pihole-FTL.pid /run/pihole-FTL.port`
-  * `sudo chmod 0644 /var/log/pihole-FTL.log /run/pihole-FTL.pid /run/pihole-FTL.port`
-6. Start `pihole-FTL` in the debugger: `gdb pihole-FTL`
-7. Type `handle SIGHUP nostop SIGPIPE nostop` to instruct the debugger to don't stop on expected signals
-8. Type `run debug` to start `FTL` (you should see some lines of text and `FTL` should start successfully)
-9. You can now close the terminal (Ctrl+A and then D to detach) and come back later using (`screen -r`) when it has crashed
-10. If it has crashed, copy&paste the terminal output, and
-11. type also `backtrace` and post the output in a (new) issue
-12. We might ask for additional information in order to isolate your particular issue
+- the domains being queried on your network
+- the time the queries were initiated
+- the amount of domains that were blocked
+- the upstream server queries were sent to
+- the type of queries (`A`, `AAAA`, `CNAME`, `SRV`, `TXT`, etc.)
+---
 
-#### Simplified debugging instructions (when `FTL` is running)
+## Pi-hole is free, but powered by your support
+There are many reoccurring costs involved with maintaining free, open source, and privacy respecting software; expenses which [our volunteer developers](https://github.com/orgs/pi-hole/people) pitch in to cover out-of-pocket. This is just one example of how strongly we feel about our software, as well as the importance of keeping it maintained.
 
-`FTL` has been designed such that a debugger can be attached to an already running process to ease debugging. Use `sudo gdb -p $(pidof pihole-FTL)` to attach to an already running `pihole-FTL` process. You can leave off `sudo` if you are running `pihole-FTL` with the current user. Once loading of the symbols has finished (the `(gdb)` input prompt is shown), run `handle SIGHUP nostop SIGPIPE nostop` followed by `continue` to continue operation of `pihole-FTL` inside the debugger. All debugger features are now available.
+Make no mistake: **your support is absolutely vital to help keep us innovating!**
 
-If `pihole-FTL` has crashed, copy&paste the terminal output into a (new) issue. Also type `backtrace` and include its output. We might ask for additional information in order to isolate your particular issue.
+### Donations
+Sending a donation using our links below is **extremely helpful** in offsetting a portion of our monthly expenses:
 
-When you want to detach the debugger from `FTL` without terminating the process, you can hit `Ctrl+C` and enter `detach` followed by `quit`.
+- <img src="https://pi-hole.github.io/graphics/Badges/paypal-badge-black.svg" width="24" height="24" alt="PP"/> <a href="https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=3J2L3Z4DHW9UY">Donate via PayPal</a><br/>
+- <img src="https://pi-hole.github.io/graphics/Badges/bitcoin-badge-black.svg" width="24" height="24" alt="BTC"/> [Bitcoin](https://commerce.coinbase.com/checkout/fb7facaf-bebd-46be-bb77-b358f4546763): <code>1GKnevUnVaQM2pQieMyeHkpr8DXfkpfAtL</code></br>
+- <img src="https://pi-hole.github.io/graphics/Badges/bitcoin-badge-black.svg" width="24" height="24" alt="BTC"/> [Bitcoin Cash](https://commerce.coinbase.com/checkout/fb7facaf-bebd-46be-bb77-b358f4546763): <code>qqh25hlmqaj99xraw00e47xmf8sysnyxhyww2d7dnh</code></br>
+- <img src="https://pi-hole.github.io/graphics/Badges/ethereum-badge-black.svg" width="24" height="24" alt="BTC"/> [Ethereum](https://commerce.coinbase.com/checkout/fb7facaf-bebd-46be-bb77-b358f4546763): <code>0xF00aF43d2431BAD585056492b310e48eC40D87e8</code>
+
+### Alternative support
+If you'd rather not [donate](https://pi-hole.net/donate/) (_which is okay!_), there are other ways you can help support us:
+
+- [Digital Ocean](http://www.digitalocean.com/?refcode=344d234950e1) _affiliate link_
+- [UNIXstickers.com](http://unixstickers.refr.cc/jacobs) _save $5 when you spend $9 using our affiliate link_
+- [Pi-hole Swag Store](https://pi-hole.net/shop/) _affiliate link_
+- [Amazon](http://www.amazon.com/exec/obidos/redirect-home/pihole09-20) _affiliate link_
+- [Ho-ost](https://clients.ho-ost.com/aff.php?aff=19) _save 50% with our affiliate link_
+- [DNS Made Easy](https://cp.dnsmadeeasy.com/u/133706) _affiliate link_
+- [Vultr](http://www.vultr.com/?ref=7190426) _affiliate link_
+- Spreading the word about our software, and how you have benefited from it
+
+### Contributing via GitHub
+We welcome _everyone_ to contribute to issue reports, suggest new features, and create pull requests.
+
+If you have something to add - anything from a typo through to a whole new feature, we're happy to check it out! Just make sure to fill out our template when submitting your request; the questions that it asks will help the volunteers quickly understand what you're aiming to achieve.
+
+### Presentations about Pi-hole
+Word-of-mouth continues to help our project grow immensely, and so we are helping make this easier for people.
+
+If you are going to be presenting Pi-hole at a conference, meetup or even a school project, [get in touch with us](https://pi-hole.net/2017/05/17/giving-a-presentation-on-pi-hole-contact-us-first-for-some-goodies-and-support/) so we can hook you up with free swag to hand out to your audience!
+
+-----
+
+## Getting in touch with us
+While we are primarily reachable on our <a href="https://discourse.pi-hole.net/">Discourse User Forum</a>, we can also be found on a variety of social media outlets. **Please be sure to check the FAQ's** before starting a new discussion, as we do not have the spare time to reply to every request for assistance.
+
+<ul>
+  <li><b><a href="https://discourse.pi-hole.net/c/faqs">Frequently Asked Questions</a></b></li>
+  <li><b><a href="https://github.com/pi-hole/pi-hole/wiki">Pi-hole Wiki</a></b></li>
+  <li><b><a href="https://discourse.pi-hole.net/c/feature-requests?order=votes">Feature Requests</a></b></li>
+  <li><a href="https://discourse.pi-hole.net/">Discourse User Forum</a></li>
+  <li><a href="https://www.reddit.com/r/pihole/">Reddit</a></li>
+  <li><a href="https://twitter.com/The_Pi_Hole">Twitter</a></li>
+  <li><a href="https://www.facebook.com/ThePiHole/">Facebook</a></li>
+  <li><a href="https://gitter.im/pi-hole/pi-hole">Gitter</a> (Real-time chat)</li>
+  <li><a href="https://www.youtube.com/channel/UCT5kq9w0wSjogzJb81C9U0w">YouTube</a></li>
+</ul>
+
+-----
+
+# Config and Features
+
+Pi-hole stats can be accessed via a standard Unix socket (`var/run/pihole/FTL.sock`), a telnet-like connection (TCP socket on port `4711`) as well as indirectly via the Web API (`admin/api.php`), and Command Line (`pihole -c -j`). You can out find more details below.
 
 ### Command line arguments
 
@@ -276,3 +331,34 @@ date 2017-03-26 13:10:43 +0200
  queries in database: 88387
 SQLite version: 3.19.3
 ```
+
+### Debugging `pihole-FTL`
+
+#### Debugging instructions (when `FTL` is not starting reliably)
+
+Once you are used to it, you can skip most of the steps and debugging is actually quite easy and gives you insights into how software (not limited to `pihole-FTL`) works.
+
+1. Install `screen` and `gdb` (probably `sudo apt-get install screen gdb`)
+2. Start a screen session (it will allow you to come back even if the SSH connection died)
+  * If you don't know about `screen`, then read about it (you *will* love it!)
+3. Start a screen session using `screen`
+4. Ensure that `pihole-FTL` is terminated (e.g. `sudo killall pihole-FTL`)
+5. Arrange file permissions to be able to start `FTL` as your current user (the following assumes you are logged in as user `pi`).
+  * `sudo touch /var/log/pihole-FTL.log /run/pihole-FTL.pid /run/pihole-FTL.port`
+  * `sudo chown pi:pi /var/log/pihole-FTL.log /run/pihole-FTL.pid /run/pihole-FTL.port`
+  * `sudo chmod 0644 /var/log/pihole-FTL.log /run/pihole-FTL.pid /run/pihole-FTL.port`
+6. Start `pihole-FTL` in the debugger: `gdb pihole-FTL`
+7. Type `handle SIGHUP nostop SIGPIPE nostop` to instruct the debugger to don't stop on expected signals
+8. Type `run debug` to start `FTL` (you should see some lines of text and `FTL` should start successfully)
+9. You can now close the terminal (Ctrl+A and then D to detach) and come back later using (`screen -r`) when it has crashed
+10. If it has crashed, copy&paste the terminal output, and
+11. type also `backtrace` and post the output in a (new) issue
+12. We might ask for additional information in order to isolate your particular issue
+
+#### Simplified debugging instructions (when `FTL` is running)
+
+`FTL` has been designed such that a debugger can be attached to an already running process to ease debugging. Use `sudo gdb -p $(pidof pihole-FTL)` to attach to an already running `pihole-FTL` process. You can leave off `sudo` if you are running `pihole-FTL` with the current user. Once loading of the symbols has finished (the `(gdb)` input prompt is shown), run `handle SIGHUP nostop SIGPIPE nostop` followed by `continue` to continue operation of `pihole-FTL` inside the debugger. All debugger features are now available.
+
+If `pihole-FTL` has crashed, copy&paste the terminal output into a (new) issue. Also type `backtrace` and include its output. We might ask for additional information in order to isolate your particular issue.
+
+When you want to detach the debugger from `FTL` without terminating the process, you can hit `Ctrl+C` and enter `detach` followed by `quit`.
