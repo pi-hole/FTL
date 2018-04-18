@@ -45,24 +45,16 @@ int cmpdesc(const void *a, const void *b)
 void getStats(int *sock)
 {
 	int blocked = counters.blocked + counters.wildcardblocked;
-	int total = counters.queries - counters.invalidqueries;
-	float percentage = 0.0;
+	int total = counters.queries;
+	float percentage = 0.0f;
 
 	// Avoid 1/0 condition
 	if(total > 0)
-		percentage = 1e2*blocked/total;
+		percentage = 1e2f*blocked/total;
 
 	// Send domains being blocked
 	if(istelnet[*sock]) {
-		switch(blockingstatus) {
-			case 0: // Blocking disabled
-				ssend(*sock, "domains_being_blocked N/A\n");
-				break;
-			default: // Blocking enabled or unknown
-				ssend(*sock, "domains_being_blocked %i\n", counters.gravity);
-				break;
-		}
-
+		ssend(*sock, "domains_being_blocked %i\n", counters.gravity);
 	}
 	else
 		pack_int32(*sock, counters.gravity);
@@ -98,17 +90,7 @@ void getStats(int *sock)
 
 	// Send status
 	if(istelnet[*sock]) {
-		switch(blockingstatus) {
-			case 0: // Blocking disabled
-				ssend(*sock, "status disabled\n");
-				break;
-			case 1: // Blocking enabled
-				ssend(*sock, "status enabled\n");
-				break;
-			default: // Unknown status
-				ssend(*sock, "status unknown\n");
-				break;
-		}
+		ssend(*sock, "status %s\n", counters.gravity > 0 ? "enabled" : "disabled");
 	}
 	else
 		pack_uint8(*sock, blockingstatus);
@@ -125,7 +107,8 @@ void getOverTime(int *sock)
 	for(i=0; i < counters.overTime; i++)
 	{
 		validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
-		if(overTime[i].total > 0 || overTime[i].blocked > 0)
+		if((overTime[i].total > 0 || overTime[i].blocked > 0) &&
+		   overTime[i].timestamp)
 		{
 			j = i;
 			break;
@@ -171,7 +154,8 @@ void getTopDomains(char *client_message, int *sock)
 	blocked = command(client_message, ">top-ads");
 
 	// Exit before processing any data if requested via config setting
-	if(!config.query_display)
+	get_privacy_level(NULL);
+	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS)
 		return;
 
 	// Match both top-domains and top-ads
@@ -246,7 +230,7 @@ void getTopDomains(char *client_message, int *sock)
 		if(blocked)
 			pack_int32(*sock, counters.blocked);
 		else
-			pack_int32(*sock, counters.queries - counters.invalidqueries);
+			pack_int32(*sock, counters.queries);
 	}
 
 	int n = 0;
@@ -262,6 +246,10 @@ void getTopDomains(char *client_message, int *sock)
 
 		// Skip this domain if already included in audit
 		if(audit && countlineswith(domains[j].domain, files.auditlist) > 0)
+			continue;
+
+		// Hidden domain, probably due to privacy level. Skip this in the top lists
+		if(strcmp(domains[j].domain, "hidden") == 0)
 			continue;
 
 		if(blocked && showblocked && domains[j].blockedcount > 0)
@@ -330,6 +318,11 @@ void getTopClients(char *client_message, int *sock)
 {
 	int i, temparray[counters.clients][2], count=10, num;
 
+	// Exit before processing any data if requested via config setting
+	get_privacy_level(NULL);
+	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS_CLIENTS)
+		return;
+
 	// Match both top-domains and top-ads
 	// example: >top-clients (15)
 	if(sscanf(client_message, "%*[^(](%i)", &num) > 0) {
@@ -376,7 +369,7 @@ void getTopClients(char *client_message, int *sock)
 	if(!istelnet[*sock])
 	{
 		// Send the total queries so they can make percentages from this data
-		pack_int32(*sock, counters.queries - counters.invalidqueries);
+		pack_int32(*sock, counters.queries);
 	}
 
 	int n = 0;
@@ -387,8 +380,20 @@ void getTopClients(char *client_message, int *sock)
 		validate_access("clients", j, true, __LINE__, __FUNCTION__, __FILE__);
 
 		// Skip this client if there is a filter on it
-		if(excludeclients != NULL && (insetupVarsArray(clients[j].ip) || insetupVarsArray(clients[j].name)))
+		if(excludeclients != NULL &&
+			(insetupVarsArray(clients[j].ip) || insetupVarsArray(clients[j].name)))
 			continue;
+
+		// Hidden client, probably due to privacy level. Skip this in the top lists
+		if(strcmp(clients[j].ip, "0.0.0.0") == 0)
+			continue;
+
+		// Only return name if available
+		char *name;
+		if(clients[j].name != NULL)
+			name = clients[j].name;
+		else
+			name = "";
 
 		// Return this client if either
 		// - "withzero" option is set, and/or
@@ -396,10 +401,10 @@ void getTopClients(char *client_message, int *sock)
 		if(includezeroclients || clients[j].count > 0)
 		{
 			if(istelnet[*sock])
-				ssend(*sock,"%i %i %s %s\n",n,clients[j].count,clients[j].ip,clients[j].name);
+				ssend(*sock,"%i %i %s %s\n",n,clients[j].count,clients[j].ip,name);
 			else
 			{
-				if(!pack_str32(*sock, clients[j].name) || !pack_str32(*sock, clients[j].ip))
+				if(!pack_str32(*sock, "") || !pack_str32(*sock, clients[j].ip))
 					return;
 
 				pack_int32(*sock, clients[j].count);
@@ -421,7 +426,7 @@ void getTopClients(char *client_message, int *sock)
 
 void getForwardDestinations(char *client_message, int *sock)
 {
-	bool allocated = false, sort = true;
+	bool sort = true;
 	int i, temparray[counters.forwarded+1][2], forwardedsum = 0, totalqueries = 0;
 
 	if(command(client_message, "unsorted"))
@@ -440,7 +445,8 @@ void getForwardDestinations(char *client_message, int *sock)
 		}
 	}
 
-	if(sort) {
+	if(sort)
+	{
 		// Add "local " forward destination
 		temparray[counters.forwarded][0] = counters.forwarded;
 		temparray[counters.forwarded][1] = counters.cached + counters.blocked;
@@ -454,8 +460,8 @@ void getForwardDestinations(char *client_message, int *sock)
 	// Loop over available forward destinations
 	for(i=0; i < min(counters.forwarded+1, 10); i++)
 	{
-		char *name, *ip;
-		double percentage;
+		char *ip, *name;
+		float percentage = 0.0f;
 
 		// Get sorted indices
 		int j;
@@ -467,22 +473,23 @@ void getForwardDestinations(char *client_message, int *sock)
 		// Is this the "local" forward destination?
 		if(j == counters.forwarded)
 		{
-			ip = strdup("::1");
-			name = strdup("local");
+			ip = "local";
+			name = ip;
 
 			if(totalqueries > 0)
 				// Whats the percentage of (cached + blocked) queries on the total amount of queries?
-				percentage = 1e2 * (counters.cached + counters.blocked) / totalqueries;
-			else
-				percentage = 0.0;
-
-			allocated = true;
+				percentage = 1e2f * (counters.cached + counters.blocked) / totalqueries;
 		}
 		else
 		{
 			validate_access("forwarded", j, true, __LINE__, __FUNCTION__, __FILE__);
 			ip = forwarded[j].ip;
-			name = forwarded[j].name;
+
+			// Only return name if available
+			if(forwarded[j].name != NULL)
+				name = forwarded[j].name;
+			else
+				name = "";
 
 			// Math explanation:
 			// A single query may result in requests being forwarded to multiple destinations
@@ -501,32 +508,21 @@ void getForwardDestinations(char *client_message, int *sock)
 			// To get the total percentage of a specific query on the total number of queries,
 			// we simply have to scale b by a which is what we do in the following.
 			if(forwardedsum > 0 && totalqueries > 0)
-				percentage = 1e2 * forwarded[j].count / forwardedsum * counters.forwardedqueries / totalqueries;
-			else
-				percentage = 0.0;
-
-			allocated = false;
+				percentage = 1e2f * forwarded[j].count / forwardedsum * counters.forwardedqueries / totalqueries;
 		}
 
 		// Send data if count > 0
-		if(percentage > 0.0)
+		if(percentage > 0.0f)
 		{
 			if(istelnet[*sock])
 				ssend(*sock, "%i %.2f %s %s\n", i, percentage, ip, name);
 			else
 			{
-				if(!pack_str32(*sock, name) || !pack_str32(*sock, ip))
+				if(!pack_str32(*sock, "") || !pack_str32(*sock, ip))
 					return;
 
 				pack_float(*sock, (float) percentage);
 			}
-		}
-
-		// Free previously allocated memory only if we allocated it
-		if(allocated)
-		{
-			free(ip);
-			free(name);
 		}
 	}
 
@@ -537,20 +533,24 @@ void getForwardDestinations(char *client_message, int *sock)
 
 void getQueryTypes(int *sock)
 {
-	int total = counters.IPv4 + counters.IPv6;
-	double percentageIPv4 = 0.0, percentageIPv6 = 0.0;
+	int i,total = 0;
+	for(i=0; i < TYPE_MAX-1; i++)
+		total += counters.querytype[i];
+
+	float percentage[TYPE_MAX-1] = { 0.0 };
 
 	// Prevent floating point exceptions by checking if the divisor is != 0
-	if(total > 0) {
-		percentageIPv4 = 1e2*counters.IPv4/total;
-		percentageIPv6 = 1e2*counters.IPv6/total;
-	}
+	if(total > 0)
+		for(i=0; i < TYPE_MAX-1; i++)
+			percentage[i] = 1e2f*counters.querytype[i]/total;
 
 	if(istelnet[*sock])
-		ssend(*sock,"A (IPv4): %.2f\nAAAA (IPv6): %.2f\n", percentageIPv4, percentageIPv6);
+		ssend(*sock,"A (IPv4): %.2f\nAAAA (IPv6): %.2f\nANY: %.2f\nSRV: %.2f\nSOA: %.2f\nPTR: %.2f\nTXT: %.2f\n",
+		      percentage[0], percentage[1], percentage[2], percentage[3],
+		      percentage[4], percentage[5], percentage[6]);
 	else {
-		pack_float(*sock, (float) percentageIPv4);
-		pack_float(*sock, (float) percentageIPv6);
+		pack_float(*sock, percentage[0]);
+		pack_float(*sock, percentage[1]);
 	}
 
 	if(debugclients)
@@ -561,7 +561,8 @@ void getQueryTypes(int *sock)
 void getAllQueries(char *client_message, int *sock)
 {
 	// Exit before processing any data if requested via config setting
-	if(!config.query_display)
+	get_privacy_level(NULL);
+	if(config.privacylevel >= PRIVACY_MAXIMUM)
 		return;
 
 	// Do we want a more specific version of this command (domain/client/time interval filtered)?
@@ -656,23 +657,22 @@ void getAllQueries(char *client_message, int *sock)
 	for(i=ibeg; i < counters.queries; i++)
 	{
 		validate_access("queries", i, true, __LINE__, __FUNCTION__, __FILE__);
-		// Check if this query has been removed due to garbage collection
-		if(!queries[i].valid) continue;
+		// Check if this query has been create while in maximum privacy mode
+		if(queries[i].private) continue;
 
 		validate_access("domains", queries[i].domainID, true, __LINE__, __FUNCTION__, __FILE__);
 		validate_access("clients", queries[i].clientID, true, __LINE__, __FUNCTION__, __FILE__);
 
-		char qtype[5];
-		if(queries[i].type == 1)
-			strcpy(qtype,"IPv4");
-		else
-			strcpy(qtype,"IPv6");
+		char *qtype = (queries[i].type == TYPE_A)? "A" : "AAAA";
 
 		// 1 = gravity.list, 4 = wildcard, 5 = black.list
-		if((queries[i].status == 1 || queries[i].status == 4 || queries[i].status == 5) && !showblocked)
+		if((queries[i].status == QUERY_GRAVITY ||
+		    queries[i].status == QUERY_WILDCARD ||
+		    queries[i].status == QUERY_BLACKLIST) && !showblocked)
 			continue;
 		// 2 = forwarded, 3 = cached
-		if((queries[i].status == 2 || queries[i].status == 3) && !showpermitted)
+		if((queries[i].status == QUERY_FORWARDED ||
+		    queries[i].status == QUERY_CACHE) && !showpermitted)
 			continue;
 
 		// Skip those entries which so not meet the requested timeframe
@@ -689,36 +689,30 @@ void getAllQueries(char *client_message, int *sock)
 		if(filterclientname)
 		{
 			// Skip if client name and IP are not identical with what the user wants to see
-			if((strcmp(clients[queries[i].clientID].ip, clientname) != 0) &&
-			   (strcmp(clients[queries[i].clientID].name, clientname) != 0))
+			if(strcmp(clients[queries[i].clientID].ip,   clientname) != 0 &&
+			   strcmp(clients[queries[i].clientID].name, clientname) != 0)
 				continue;
 		}
 
+		char *domain = domains[queries[i].domainID].domain;
+		char *client;
+		if(clients[queries[i].clientID].name != NULL &&
+		   strlen(clients[queries[i].clientID].name) > 0)
+			client = clients[queries[i].clientID].name;
+		else
+			client = clients[queries[i].clientID].ip;
+
+		unsigned long delay = queries[i].response;
+		// Check if received (delay should be smaller than 30min)
+		if(delay > 1.8e7)
+			delay = 0;
+
 		if(istelnet[*sock])
 		{
-			if(!privacymode)
-			{
-				if(strlen(clients[queries[i].clientID].name) > 0)
-					ssend(*sock,"%i %s %s %s %i %i\n",queries[i].timestamp,qtype,domains[queries[i].domainID].domain,clients[queries[i].clientID].name,queries[i].status,domains[queries[i].domainID].dnssec);
-				else
-					ssend(*sock,"%i %s %s %s %i %i\n",queries[i].timestamp,qtype,domains[queries[i].domainID].domain,clients[queries[i].clientID].ip,queries[i].status,domains[queries[i].domainID].dnssec);
-			}
-			else
-				ssend(*sock,"%i %s %s hidden %i %i\n",queries[i].timestamp,qtype,domains[queries[i].domainID].domain,queries[i].status,domains[queries[i].domainID].dnssec);
+			ssend(*sock,"%i %s %s %s %i %i %i %lu\n",queries[i].timestamp,qtype,domain,client,queries[i].status,queries[i].dnssec,queries[i].reply,delay);
 		}
 		else
 		{
-			char *client;
-
-			if(!privacymode) {
-				if(strlen(clients[queries[i].clientID].name) > 0)
-					client = clients[queries[i].clientID].name;
-				else
-					client = clients[queries[i].clientID].ip;
-			}
-			else
-				client = "hidden";
-
 			pack_int32(*sock, queries[i].timestamp);
 
 			// Use a fixstr because the length of qtype is always 4 (max is 31 for fixstr)
@@ -726,11 +720,11 @@ void getAllQueries(char *client_message, int *sock)
 				return;
 
 			// Use str32 for domain and client because we have no idea how long they will be (max is 4294967295 for str32)
-			if(!pack_str32(*sock, domains[queries[i].domainID].domain) || !pack_str32(*sock, client))
+			if(!pack_str32(*sock, domain) || !pack_str32(*sock, client))
 				return;
 
 			pack_uint8(*sock, queries[i].status);
-			pack_uint8(*sock, domains[queries[i].domainID].dnssec);
+			pack_uint8(*sock, queries[i].dnssec);
 		}
 	}
 
@@ -750,7 +744,8 @@ void getRecentBlocked(char *client_message, int *sock)
 	int i, num=1;
 
 	// Exit before processing any data if requested via config setting
-	if(!config.query_display)
+	get_privacy_level(NULL);
+	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS)
 		return;
 
 	// Test for integer that specifies number of entries to be shown
@@ -766,10 +761,10 @@ void getRecentBlocked(char *client_message, int *sock)
 	for(i = counters.queries - 1; i > 0 ; i--)
 	{
 		validate_access("queries", i, true, __LINE__, __FUNCTION__, __FILE__);
-		// Check if this query has been removed due to garbage collection
-		if(!queries[i].valid) continue;
 
-		if(queries[i].status == 1 || queries[i].status == 4)
+		if(queries[i].status == QUERY_GRAVITY ||
+		   queries[i].status == QUERY_WILDCARD ||
+		   queries[i].status == QUERY_BLACKLIST)
 		{
 			found++;
 
@@ -798,7 +793,7 @@ void getMemoryUsage(int *sock)
 		pack_uint64(*sock, structbytes);
 	free(structprefix);
 
-	unsigned long int dynamicbytes = memory.wildcarddomains + memory.domainnames + memory.clientips + memory.clientnames + memory.forwardedips + memory.forwardednames + memory.forwarddata;
+	unsigned long int dynamicbytes = memory.wildcarddomains + memory.domainnames + memory.clientips + memory.forwardedips + memory.forwarddata;
 	char *dynamicprefix = calloc(2, sizeof(char));
 	if(dynamicprefix == NULL) return;
 	format_memory_size(dynamicprefix, dynamicbytes, &formated);
@@ -822,131 +817,6 @@ void getMemoryUsage(int *sock)
 
 	if(debugclients)
 		logg("Sent memory data to client, ID: %i", *sock);
-}
-
-void getForwardDestinationsOverTime(int *sock)
-{
-	int i, sendit = -1;
-
-	for(i = 0; i < counters.overTime; i++)
-	{
-		validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
-		if((overTime[i].total > 0 || overTime[i].blocked > 0))
-		{
-			sendit = i;
-			break;
-		}
-	}
-
-	// Send the number of forward destinations (number of items for each timestamp), names, and IPs
-	if(!istelnet[*sock]) {
-		// Add one to include the local forwarded category
-		pack_int32(*sock, counters.forwarded + 1);
-
-		for(i = 0; i < counters.forwarded + 1; i++) {
-			char *name, *ip;
-
-			if(i == counters.forwarded) {
-				name = "local";
-				ip = "::1";
-			}
-			else {
-				validate_access("forwarded", i, true, __LINE__, __FUNCTION__, __FILE__);
-				name = forwarded[i].name;
-				ip = forwarded[i].ip;
-			}
-
-			if(!pack_str32(*sock, name) || !pack_str32(*sock, ip))
-				return;
-		}
-	}
-
-	if(sendit > -1)
-	{
-		for(i = sendit; i < counters.overTime; i++)
-		{
-			float percentage;
-
-			validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
-			if(istelnet[*sock])
-			{
-				ssend(*sock, "%i", overTime[i].timestamp);
-			}
-			else
-			{
-				pack_int32(*sock, overTime[i].timestamp);
-			}
-
-			int j, forwardedsum = 0;
-
-			// Compute forwardedsum used for later normalization
-			for(j = 0; j < overTime[i].forwardnum; j++)
-			{
-				forwardedsum += overTime[i].forwarddata[j];
-			}
-
-			// Loop over forward destinations to generate output to be sent to the client
-			for(j = 0; j < counters.forwarded; j++)
-			{
-				int thisforward = 0;
-
-				if(j < overTime[i].forwardnum) {
-					// This forward destination does already exist at this timestamp
-					// -> use counter of requests sent to this destination
-					thisforward = overTime[i].forwarddata[j];
-				}
-				// else
-				// {
-					// This forward destination does not yet exist at this timestamp
-					// -> use zero as number of requests sent to this destination
-				// 	thisforward = 0;
-				// }
-
-				// Avoid floating point exceptions
-				if(forwardedsum > 0 && overTime[i].total > 0 && thisforward > 0) {
-					// A single query may result in requests being forwarded to multiple destinations
-					// Hence, in order to be able to give percentages here, we have to normalize the
-					// number of forwards to each specific destination by the total number of forward
-					// events. This is done by
-					//   a = thisforward / forwardedsum
-					// The fraction a describes how much share an individual forward destination
-					// has on the total sum of sent requests.
-					//
-					// We also know the share of forwarded queries on the total number of queries
-					//   b = forwardedqueries/overTime[i].total
-					// where the number of forwarded queries in this time interval is given by
-					//   forwardedqueries = overTime[i].total - (overTime[i].cached
-					//                                           + overTime[i].blocked)
-					//
-					// To get the total percentage of a specific forward destination on the total
-					// number of queries, we simply have to multiply a and b as done below:
-					percentage = (float) (1e2 * thisforward / forwardedsum * (overTime[i].total - (overTime[i].cached + overTime[i].blocked)) / overTime[i].total);
-				}
-				else
-					percentage = 0.0;
-
-				if(istelnet[*sock])
-					ssend(*sock, " %.2f", percentage);
-				else
-					pack_float(*sock, (float) percentage);
-			}
-
-			// Avoid floating point exceptions
-			if(overTime[i].total > 0)
-				// Forward count for destination "local" is cached + blocked normalized by total:
-				percentage = (float) (1e2 * (overTime[i].cached + overTime[i].blocked) / overTime[i].total);
-			else
-				percentage = 0.0;
-
-			if(istelnet[*sock])
-				ssend(*sock, " %.2f\n", percentage);
-			else
-				pack_float(*sock, percentage);
-		}
-	}
-
-	if(debugclients)
-		logg("Sent overTime forwarded data to client, ID: %i", *sock);
 }
 
 void getClientID(int *sock)
@@ -1077,10 +947,16 @@ void getClientsOverTime(int *sock)
 {
 	int i, sendit = -1;
 
+	// Exit before processing any data if requested via config setting
+	get_privacy_level(NULL);
+	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS_CLIENTS)
+		return;
+
 	for(i = 0; i < counters.overTime; i++)
 	{
 		validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
-		if((overTime[i].total > 0 || overTime[i].blocked > 0))
+		if((overTime[i].total > 0 || overTime[i].blocked > 0) &&
+		   overTime[i].timestamp >= time(NULL) - config.maxlogage)
 		{
 			sendit = i;
 			break;
@@ -1105,10 +981,9 @@ void getClientsOverTime(int *sock)
 		{
 			validate_access("clients", i, true, __LINE__, __FUNCTION__, __FILE__);
 			// Check if this client should be skipped
-			if(insetupVarsArray(clients[i].ip) || insetupVarsArray(clients[i].name))
-			{
+			if(insetupVarsArray(clients[i].ip) ||
+			   insetupVarsArray(clients[i].name))
 				skipclient[i] = true;
-			}
 		}
 	}
 
@@ -1158,6 +1033,11 @@ void getClientNames(int *sock)
 {
 	int i;
 
+	// Exit before processing any data if requested via config setting
+	get_privacy_level(NULL);
+	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS_CLIENTS)
+		return;
+
 	// Get clients which the user doesn't want to see
 	char * excludeclients = read_setupVarsconf("API_EXCLUDE_CLIENTS");
 	// Array of clients to be skipped in the output
@@ -1174,7 +1054,9 @@ void getClientNames(int *sock)
 		{
 			validate_access("clients", i, true, __LINE__, __FUNCTION__, __FILE__);
 			// Check if this client should be skipped
-
+			if(insetupVarsArray(clients[i].ip) ||
+			   insetupVarsArray(clients[i].name))
+				skipclient[i] = true;
 		}
 	}
 
@@ -1182,13 +1064,19 @@ void getClientNames(int *sock)
 	for(i = 0; i < counters.clients; i++)
 	{
 		validate_access("clients", i, true, __LINE__, __FUNCTION__, __FILE__);
-		if(insetupVarsArray(clients[i].ip) || insetupVarsArray(clients[i].name))
+		if(skipclient[i])
 			continue;
 
+		char *client;
+		if(clients[i].name != NULL && strlen(clients[i].name) > 0)
+			client = clients[i].name;
+		else
+			client = clients[i].ip;
+
 		if(istelnet[*sock])
-			ssend(*sock, "%i %i %s %s\n", i, clients[i].count, clients[i].ip, clients[i].name);
+			ssend(*sock, "%i %i %s\n", i, clients[i].count, client);
 		else {
-			if(!pack_str32(*sock, clients[i].name) || !pack_str32(*sock, clients[i].ip))
+			if(!pack_str32(*sock, "") || !pack_str32(*sock, clients[i].ip))
 				return;
 
 			pack_int32(*sock, clients[i].count);
@@ -1201,15 +1089,19 @@ void getClientNames(int *sock)
 
 void getUnknownQueries(int *sock)
 {
+	// Exit before processing any data if requested via config setting
+	get_privacy_level(NULL);
+	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS)
+		return;
+
 	int i;
 	for(i=0; i < counters.queries; i++)
 	{
 		validate_access("queries", i, true, __LINE__, __FUNCTION__, __FILE__);
-		// Check if this query has been removed due to garbage collection
-		if(queries[i].status != 0 && queries[i].complete) continue;
+		if(queries[i].status != QUERY_UNKNOWN && queries[i].complete) continue;
 
 		char type[5];
-		if(queries[i].type == 1)
+		if(queries[i].type == TYPE_A)
 		{
 			strcpy(type,"IPv4");
 		}
@@ -1222,12 +1114,7 @@ void getUnknownQueries(int *sock)
 		validate_access("clients", queries[i].clientID, true, __LINE__, __FUNCTION__, __FILE__);
 
 
-		char *client;
-
-		if(strlen(clients[queries[i].clientID].name) > 0)
-			client = clients[queries[i].clientID].name;
-		else
-			client = clients[queries[i].clientID].ip;
+		char *client = clients[queries[i].clientID].ip;
 
 		if(istelnet[*sock])
 			ssend(*sock, "%i %i %i %s %s %s %i %s\n", queries[i].timestamp, i, queries[i].id, type, domains[queries[i].domainID].domain, client, queries[i].status, queries[i].complete ? "true" : "false");
@@ -1250,4 +1137,32 @@ void getUnknownQueries(int *sock)
 
 	if(debugclients)
 		logg("Sent unknown queries data to client, ID: %i", *sock);
+}
+
+void getDomainDetails(char *client_message, int *sock)
+{
+	// Get domain name
+	char domain[128];
+	if(sscanf(client_message, "%*[^ ] %127s", domain) < 1)
+	{
+		ssend(*sock, "Need domain for this request\n");
+		return;
+	}
+
+	int i;
+	for(i = 0; i < counters.domains; i++)
+	{
+		validate_access("domains", i, true, __LINE__, __FUNCTION__, __FILE__);
+		if(strcmp(domains[i].domain, domain) == 0)
+		{
+			ssend(*sock,"Domain \"%s\", ID: %i\n", domain, i);
+			ssend(*sock,"Total: %i\n", domains[i].count);
+			ssend(*sock,"Blocked: %i\n", domains[i].blockedcount);
+			ssend(*sock,"Wildcard blocked: %s\n", domains[i].wildcard ? "true" : "false");
+			return;
+		}
+	}
+
+	// for loop finished without an exact match
+	ssend(*sock,"Domain \"%s\" is unknown\n", domain);
 }

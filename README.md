@@ -35,6 +35,8 @@ FTLDNS[™](https://pi-hole.net/trademark-rules-and-brand-guidelines/) (`pihole-
 
 >If your device is not listed you can get your CPU architecture by running `lscpu`. Download some binaries and try which one work. If you want to add a new device, open an issue or create a PR for the README.
 
+---
+
 # Installation
 
 FTLDNS (`pihole-FTL`) is installed by default when you choose to enable the Web interface when installing Pi-hole.
@@ -45,10 +47,12 @@ FTLDNS (`pihole-FTL`) is installed by default when you choose to enable the Web 
 
 ## Compiling FTL from source
 
-1. Clone the repo
-2. `make`
-3. `sudo make install`
-4. `sudo service pihole-FTL start`
+1. Install building dependencies (e.g. `libgmp-dev m4`)
+3. Compile and install a recent version of `nettle` (see [here](https://www.lysator.liu.se/~nisse/nettle/))
+3. Clone the repo
+3. `make`
+4. `sudo make install`
+5. `sudo service pihole-FTL start`
 
 ## Post-install: Gain insight into your network's activity
 
@@ -130,6 +134,8 @@ Pi-hole stats can be accessed via a standard Unix socket (`var/run/pihole/FTL.so
 - `branch` - Don't start `FTL`, show only git branch `FTL` was compiled from
 - `no-daemon` or `-f` - Don't go into background (daemon mode)
 - `help` or `-h` - Don't start `FTL`, show help
+- `dnsmasq-test` - Test resolver config file syntax
+- `--` everything behind `--` will be passed as options to the internal resolver
 
 Command line arguments can be arbitrarily combined, e.g. `pihole-FTL debug test`
 
@@ -139,7 +145,7 @@ Command line arguments can be arbitrarily combined, e.g. `pihole-FTL debug test`
 - `/var/run/pihole-FTL.port` file containing port on which `FTL` is listening
 - `/var/run/pihole/FTL.sock` Unix socket
 
-### Socket connections
+### Telnet-like socket connections
 
 connect via e.g. `telnet 127.0.0.1 4711`
 port may be automatically incremented if `4711` isn't available
@@ -159,6 +165,16 @@ Possible settings (**the option shown first is the default**):
 - `DBINTERVAL=1.0` (How often do we store queries in FTL's database [minutes]?)
 - `DBFILE=/etc/pihole/pihole-FTL.db` (Specify path and filename of FTL's SQLite long-term database. Setting this to `DBFILE=` disables the database altogether)
 - `MAXLOGAGE=24.0` (Up to how many hours of queries should be imported from the database and logs? Maximum is 744 (31 days))
+- `FTLPORT=4711` (On which port should FTL be listening?)
+- `PRIVACYLEVEL=0` (Which privacy level is used? Can be 0 (permissive) to 3 (very restrictive), see below)
+- `IGNORE_LOCALHOST=no|yes` (Should `FTL` ignore queries coming from the local machine?)
+
+### Privacy levels
+Specifies if we want to anonymize the DNS queries somehow, available options are:
+- 0 = Don't hide anything
+- 1 = Show and store all domains as "hidden", return nothing for Top Domains + Top Ads
+- 2 = As 1 plus show all domains as "hidden" and all clients as "127.0.0.1" (or "::1"), return nothing for any Top Lists
+- 3 = Disabled basically everything except the anonymous stastics, there will be no entries added to the database, no entries visible in the Query Log and no Top Item Lists
 
 ### Implemented keywords (starting with `>`, subject to change):
 

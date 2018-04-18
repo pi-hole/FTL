@@ -10,49 +10,11 @@
 
 #include "FTL.h"
 
-void readWildcardsList();
-
 char ** wildcarddomains = NULL;
+unsigned char blockingstatus = 2;
 
-void read_gravity_files(void)
-{
-	// Get number of domains being blocked
-	int gravity = countlines(files.gravity);
-	int blacklist = countlines(files.blacklist);
-
-	if(gravity < 0)
-	{
-		logg("Error: failed to read %s", files.gravity);
-	}
-	logg("Gravity list entries: %i", gravity);
-
-	// Test if blacklist exists and has entries in it
-	if(blacklist > 0)
-	{
-		gravity += blacklist;
-		logg("Blacklist entries: %i", blacklist);
-	}
-	else
-	{
-		logg("No blacklist present");
-	}
-
-	counters.gravity = gravity;
-
-	// Read array of wildcards
-	readWildcardsList();
-	if(counters.wildcarddomains > 0)
-	{
-		logg("Wildcard blocking list entries: %i", counters.wildcarddomains);
-	}
-	else
-	{
-		logg("No wildcard blocking list present");
-	}
-
-	// Get blocking status
-	check_blocking_status();
-}
+// Private prototype
+void readWildcardsList(void);
 
 int countlines(const char* fname)
 {
@@ -74,12 +36,68 @@ int countlines(const char* fname)
 	return lines;
 }
 
-void readWildcardsList()
+int readnumberfromfile(const char* fname)
+{
+	FILE *fp;
+	int num;
+
+	if((fp = fopen(fname, "r")) == NULL)
+	{
+		return -1;
+	}
+
+	if(fscanf(fp,"%i",&num) != 1)
+	{
+		num = -1;
+	}
+
+	fclose(fp);
+	return num;
+}
+
+void readGravityFiles(void)
+{
+	// Get number of domains being blocked
+	int gravity = readnumberfromfile(files.numBlocked);
+
+	if(gravity < 0)
+	{
+		logg("WARN: failed to read %s", files.numBlocked);
+		// Fallback method is counting number of lines in preEventHorizon
+		gravity = countlines(files.preEventHorizon);
+		if(gravity < 0)
+		{
+			logg("Error: failed to read %s", files.preEventHorizon);
+			gravity = 0;
+		}
+	}
+
+	logg("Gravity list entries: %i", gravity);
+	counters.gravity = gravity;
+
+	readWildcardsList();
+	if(counters.wildcarddomains > 0)
+	{
+		logg("Wildcard blocking list entries: %i", counters.wildcarddomains);
+	}
+	else
+	{
+		logg("No wildcard blocking list present");
+	}
+
+	// Get blocking status
+	check_blocking_status();
+}
+
+void readWildcardsList(void)
 {
 	FILE *fp;
 	char *domain = NULL, *buffer = NULL, *linebuffer = NULL;
 	size_t size = 0;
 	int i;
+
+	// Free maybe already allocated wildcard domains
+	if(counters.wildcarddomains > 0) freeWildcards();
 
 	if((fp = fopen(files.wildcards, "r")) == NULL) {
 		counters.wildcarddomains = -1;
@@ -177,7 +195,21 @@ void readWildcardsList()
 
 	// Close the file
 	fclose(fp);
+}
 
+void freeWildcards(void)
+{
+	// wildcarddomains struct: Free allocated substructure
+	int i;
+	for(i=0;i<counters.wildcarddomains;i++)
+	{
+		free(wildcarddomains[i]);
+	}
+	free(wildcarddomains);
+	wildcarddomains = NULL;
+	memory.wildcarddomains = 0;
+	counters.wildcarddomains = 0;
+	counters.wildcarddomains_MAX = 0;
 }
 
 int countlineswith(const char* str, const char* fname)

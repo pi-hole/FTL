@@ -35,7 +35,7 @@ void read_FTLconf(void)
 	config.socket_listenlocal = true;
 	buffer = parse_FTLconf(fp, "SOCKET_LISTENING");
 
-	if(buffer != NULL && strcmp(buffer, "all") == 0)
+	if(buffer != NULL && strcasecmp(buffer, "all") == 0)
 		config.socket_listenlocal = false;
 
 	if(config.socket_listenlocal)
@@ -43,25 +43,12 @@ void read_FTLconf(void)
 	else
 		logg("   SOCKET_LISTENING: all destinations");
 
-	// QUERY_DISPLAY
-	// defaults to: Yes
-	config.query_display = true;
-	buffer = parse_FTLconf(fp, "QUERY_DISPLAY");
-
-	if(buffer != NULL && strcmp(buffer, "no") == 0)
-		config.query_display = false;
-
-	if(config.query_display)
-		logg("   QUERY_DISPLAY: Show queries");
-	else
-		logg("   QUERY_DISPLAY: Hide queries");
-
 	// AAAA_QUERY_ANALYSIS
 	// defaults to: Yes
 	config.analyze_AAAA = true;
 	buffer = parse_FTLconf(fp, "AAAA_QUERY_ANALYSIS");
 
-	if(buffer != NULL && strcmp(buffer, "no") == 0)
+	if(buffer != NULL && strcasecmp(buffer, "no") == 0)
 		config.analyze_AAAA = false;
 
 	if(config.analyze_AAAA)
@@ -89,7 +76,7 @@ void read_FTLconf(void)
 	config.resolveIPv6 = true;
 	buffer = parse_FTLconf(fp, "RESOLVE_IPV6");
 
-	if(buffer != NULL && strcmp(buffer, "no") == 0)
+	if(buffer != NULL && strcasecmp(buffer, "no") == 0)
 		config.resolveIPv6 = false;
 
 	if(config.resolveIPv6)
@@ -101,7 +88,7 @@ void read_FTLconf(void)
 	// defaults to: Yes
 	config.resolveIPv4 = true;
 	buffer = parse_FTLconf(fp, "RESOLVE_IPV4");
-	if(buffer != NULL && strcmp(buffer, "no") == 0)
+	if(buffer != NULL && strcasecmp(buffer, "no") == 0)
 		config.resolveIPv4 = false;
 	if(config.resolveIPv4)
 		logg("   RESOLVE_IPV4: Resolve IPv4 addresses");
@@ -120,8 +107,8 @@ void read_FTLconf(void)
 		// check if the read value is
 		// - larger than 0.1min (6sec), and
 		// - smaller than 1440.0min (once a day)
-		if(fvalue >= 0.1 && fvalue <= 1440.0)
-			config.DBinterval = (int)(60.*fvalue);
+		if(fvalue >= 0.1f && fvalue <= 1440.0f)
+			config.DBinterval = (int)(fvalue * 60);
 
 	if(config.DBinterval == 60)
 		logg("   DBINTERVAL: saving to DB file every minute");
@@ -170,9 +157,35 @@ void read_FTLconf(void)
 
 	fvalue = 0;
 	if(buffer != NULL && sscanf(buffer, "%f", &fvalue))
-		if(fvalue >= 0.0 && value <= 24.0*31.0)
+		if(fvalue >= 0.0f && value <= 744.0f)
 			config.maxlogage = (int)(fvalue * 3600);
-	logg("   MAXLOGAGE: Importing up to %.1f hours of log data", (float)config.maxlogage/3600.0);
+	logg("   MAXLOGAGE: Importing up to %.1f hours of log data", (float)config.maxlogage/3600.0f);
+
+	// PRIVACYLEVEL
+	// Specify if we want to anonymize the DNS queries somehow, available options are:
+	// PRIVACY_SHOW_ALL (0) = don't hide anything
+	// PRIVACY_HIDE_DOMAINS (1) = show and store all domains as "hidden", return nothing for Top Domains + Top Ads
+	// PRIVACY_HIDE_DOMAINS_CLIENTS (2) = as above, show all domains as "hidden" and all clients as "127.0.0.1"
+	//                                    (or "::1"), return nothing for any Top Lists
+	// PRIVACY_MAXIMUM (3) = Disabled basically everything except the anonymous stastics, there will be no entries
+	//                       added to the database, no entries visible in the query log and no Top Item Lists
+	// defaults to: PRIVACY_SHOW_ALL
+	config.privacylevel = PRIVACY_SHOW_ALL;
+	get_privacy_level(fp);
+	logg("   PRIVACYLEVEL: Set to %i", config.privacylevel);
+
+	// IGNORE_LOCALHOST
+	// defaults to: No
+	config.ignore_localhost = false;
+	buffer = parse_FTLconf(fp, "IGNORE_LOCALHOST");
+
+	if(buffer != NULL && strcasecmp(buffer, "yes") == 0)
+		config.ignore_localhost = true;
+
+	if(config.ignore_localhost)
+		logg("   IGNORE_LOCALHOST: Hide queries from localhost");
+	else
+		logg("   IGNORE_LOCALHOST: Show queries from localhost");
 
 	logg("Finished config file parsing");
 
@@ -231,4 +244,34 @@ char *parse_FTLconf(FILE *fp, const char * key)
 	free(keystr);
 
 	return NULL;
+}
+
+void get_privacy_level(FILE *fp)
+{
+	// See if we got a file handle, if not we have to open
+	// the config file ourselves
+	bool opened = false;
+	if(fp == NULL)
+	{
+		if((fp = fopen(FTLfiles.conf, "r")) == NULL)
+			// Return silently if there is no config file available
+			return;
+		opened = true;
+	}
+
+	int value = 0;
+	char *buffer = parse_FTLconf(fp, "PRIVACYLEVEL");
+	if(buffer != NULL && sscanf(buffer, "%i", &value) == 1)
+		// Check for change and validity of privacy level (set in FTL.h)
+		if(value != config.privacylevel &&
+		   value >= PRIVACY_SHOW_ALL &&
+		   value <= PRIVACY_MAXIMUM)
+		{
+			logg("Notice: Changing privacy level from %i to %i", config.privacylevel, value);
+			config.privacylevel = value;
+		}
+
+	// Have to close the config file if we opened it
+	if(opened)
+		fclose(fp);
 }

@@ -22,6 +22,7 @@ FTLFileNamesStruct FTLfiles = {
 logFileNamesStruct files = {
 	"/var/log/pihole.log",
 	"/etc/pihole/list.preEventHorizon",
+	"/etc/pihole/numBlocked",
 	"/etc/pihole/whitelist.txt",
 	"/etc/pihole/blacklist.txt",
 	"/etc/pihole/setupVars.conf",
@@ -30,7 +31,17 @@ logFileNamesStruct files = {
 	"/etc/dnsmasq.d/01-pihole.conf"
 };
 
+// Fixed size structs
 countersStruct counters = { 0 };
+ConfigStruct config;
+memoryStruct memory;
+
+// Variable size array structs
+queriesDataStruct *queries;
+forwardedDataStruct *forwarded;
+clientsDataStruct *clients;
+domainsDataStruct *domains;
+overTimeDataStruct *overTime;
 
 void memory_check(int which)
 {
@@ -107,14 +118,17 @@ void memory_check(int which)
 			}
 		break;
 		case WILDCARD:
-			// Definitely enlarge wildcard entry
-			// Enlarge wildcarddomains pointer array
-			logg_struct_resize("wildcards", (counters.wildcarddomains+1), 1);
-			wildcarddomains = realloc(wildcarddomains, (counters.wildcarddomains+1)*sizeof(*wildcarddomains));
-			if(wildcarddomains == NULL)
+			if(counters.wildcarddomains >= counters.wildcarddomains_MAX)
 			{
-				logg("FATAL: Memory allocation failed! Exiting");
-				exit(EXIT_FAILURE);
+				// Enlarge wildcarddomains pointer array
+				counters.wildcarddomains_MAX += WILDCARDALLOCSTEP;
+				logg_struct_resize("wildcards", counters.wildcarddomains_MAX, WILDCARDALLOCSTEP);
+				wildcarddomains = realloc(wildcarddomains, counters.wildcarddomains_MAX*sizeof(*wildcarddomains));
+				if(wildcarddomains == NULL)
+				{
+					logg("FATAL: Memory allocation failed! Exiting");
+					exit(EXIT_FAILURE);
+				}
 			}
 		break;
 		default:
@@ -159,37 +173,14 @@ void validate_access(const char * name, int pos, bool testmagic, int line, const
 	}
 }
 
-void validate_access_oTfd(int timeidx, int forwardID, int line, const char * function, const char * file)
-{
-	// Determine if there is enough space for saving the current
-	// forwardID in the overTime data structure, allocate space otherwise
-	validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
-	if(overTime[timeidx].forwardnum <= forwardID)
-	{
-		// Reallocate more space for forwarddata
-		overTime[timeidx].forwarddata = realloc(overTime[timeidx].forwarddata, (forwardID+1)*sizeof(*overTime[timeidx].forwarddata));
-		// Initialize new data fields with zeroes
-		int j;
-		for(j = overTime[timeidx].forwardnum; j <= forwardID; j++)
-		{
-			overTime[timeidx].forwarddata[j] = 0;
-			memory.forwarddata++;
-		}
-		// Update counter
-		overTime[timeidx].forwardnum = forwardID + 1;
-	}
-
-	int limit = overTime[timeidx].forwardnum;
-	if(forwardID >= limit || forwardID < 0)
-	{
-		logg("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-		logg("FATAL ERROR: Trying to access overTime.forwarddata[%i], but maximum is %i", forwardID, limit);
-		logg("             found in %s() (%s:%i)", function, file, line);
-	}
-}
-
 void validate_access_oTcl(int timeidx, int clientID, int line, const char * function, const char * file)
 {
+	if(clientID < 0)
+	{
+		logg("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+		logg("FATAL ERROR: Trying to access overTime.clientdata[%i]", clientID);
+		logg("             found in %s() (%s:%i)", function, file, line);
+	}
 	// Determine if there is enough space for saving the current
 	// clientID in the overTime data structure, allocate space otherwise
 	if(overTime[timeidx].clientnum <= clientID)
@@ -207,7 +198,7 @@ void validate_access_oTcl(int timeidx, int clientID, int line, const char * func
 		overTime[timeidx].clientnum = clientID + 1;
 	}
 	int limit = overTime[timeidx].clientnum;
-	if(clientID >= limit || clientID < 0)
+	if(clientID >= limit)
 	{
 		logg("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
 		logg("FATAL ERROR: Trying to access overTime.clientdata[%i], but maximum is %i", clientID, limit);
