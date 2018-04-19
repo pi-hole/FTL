@@ -1692,7 +1692,7 @@ static void check_dns_listeners(time_t now)
 	      shutdown(confd, SHUT_RDWR);
 	      while (retry_send(close(confd)));
 	    }
-//#ifndef NO_FORK
+#ifndef NO_FORK
 	  else if (!option_bool(OPT_DEBUG) && (p = fork()) != 0)
 	    {
 	      if (p != -1)
@@ -1710,7 +1710,7 @@ static void check_dns_listeners(time_t now)
 	      /* The child can use up to TCP_MAX_QUERIES ids, so skip that many. */
 	      daemon->log_id += TCP_MAX_QUERIES;
 	    }
-//#endif
+#endif
 	  else
 	    {
 	      unsigned char *buff;
@@ -1730,12 +1730,12 @@ static void check_dns_listeners(time_t now)
 		  auth_dns = 0;
 		}
 
-//#ifndef NO_FORK
+#ifndef NO_FORK
 	      /* Arrange for SIGALRM after CHILD_LIFETIME seconds to
 		 terminate the process. */
 	      if (!option_bool(OPT_DEBUG))
 		alarm(CHILD_LIFETIME);
-//#endif
+#endif
 
 	      /* start with no upstream connections. */
 	      for (s = daemon->servers; s; s = s->next)
@@ -1761,13 +1761,13 @@ static void check_dns_listeners(time_t now)
 		    shutdown(s->tcpfd, SHUT_RDWR);
 		    while (retry_send(close(s->tcpfd)));
 		  }
-//#ifndef NO_FORK
+#ifndef NO_FORK
 	      if (!option_bool(OPT_DEBUG))
 		{
 		  flush_log();
 		  _exit(0);
 		}
-//#endif
+#endif
 	    }
 	}
     }
