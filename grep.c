@@ -300,6 +300,8 @@ void parse_NXDOMAIN_file(void)
 		return;
 	}
 
+	timer_start(NXDOMAIN_TIMER);
+
 	// Walk file
 	while(getline(&buffer, &size, fp) != -1)
 	{
@@ -332,7 +334,7 @@ void parse_NXDOMAIN_file(void)
 		buffer = NULL;
 	}
 
-	logg("Parsed %i NXDOMAIN domains\n", added);
+	logg("Parsed %i NXDOMAIN domains (took %.1f ms)\n", added, timer_elapsed_msec(NXDOMAIN_TIMER));
 
 	// Close the file
 	fclose(fp);
