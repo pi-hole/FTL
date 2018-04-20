@@ -899,6 +899,8 @@ int main_dnsmasq (int argc, char **argv)
   if (daemon->port != 0)
     check_servers();
 
+  FTL_resolver_started();
+
   pid = getpid();
 
 #ifdef HAVE_INOTIFY

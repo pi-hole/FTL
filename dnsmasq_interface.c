@@ -768,3 +768,21 @@ unsigned long converttimeval(struct timeval time)
 	// of 10*milliseconds
 	return time.tv_sec*10000 + time.tv_usec/100;
 }
+
+void FTL_addNXDOMAIN(char *domain)
+{
+	struct server *serv = NULL;
+
+	serv = malloc(sizeof(struct server));
+	memset(serv, 0, sizeof(struct server));
+	serv->domain = strdup(domain);
+	serv->flags = SERV_HAS_DOMAIN + SERV_NO_ADDR;
+	serv->next = daemon->servers;
+	daemon->servers = serv;
+}
+
+void FTL_resolver_started(void)
+{
+	// Defined in grep.c
+	parse_NXDOMAIN_file();
+}

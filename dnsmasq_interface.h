@@ -18,3 +18,4 @@ void FTL_dnsmasq_reload(void);
 void FTL_fork_and_bind_sockets(void);
 
 void FTL_forwarding_failed(struct server *server);
+void FTL_resolver_started(void);

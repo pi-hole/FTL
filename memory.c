@@ -16,7 +16,8 @@ FTLFileNamesStruct FTLfiles = {
 	"/var/run/pihole-FTL.pid",
 	"/var/run/pihole-FTL.port",
 	NULL,
-	"/var/run/pihole/FTL.sock"
+	"/var/run/pihole/FTL.sock",
+	"/etc/pihole/blocked.domains"
 };
 
 logFileNamesStruct files = {

@@ -284,3 +284,56 @@ void check_blocking_status(void)
 		// Enabled
 		blockingstatus = 1;
 }
+
+void parse_NXDOMAIN_file(void)
+{
+	FILE *fp;
+	char *buffer = NULL;
+	size_t size = 0;
+	int added = 0;
+
+	// Try to open file
+	if((fp = fopen(FTLfiles.blockeddomains, "r")) == NULL)
+	{
+		// This is an optional file, so it may not be there. Inform only in debug mode
+		if(debug) printf("Opening \"%s\" failed!\n\n", FTLfiles.blockeddomains);
+		return;
+	}
+
+	// Walk file
+	while(getline(&buffer, &size, fp) != -1)
+	{
+		char *domain = buffer;
+		// Skip hashed out lines
+		while (*domain == '#')
+			continue;
+
+		// Filter leading dots or spaces
+		while (*domain == '.' || *domain == ' ') domain++;
+
+		// Skip possible empty lines
+		if(strlen(domain) == 0)
+			continue;
+
+		// Strip potential newline character at the end of line we just read
+		if(domain[strlen(domain)-1] == '\n')
+			domain[strlen(domain)-1] = '\0';
+
+		// Add server
+		FTL_addNXDOMAIN(domain);
+
+		added++;
+	}
+
+	// Free allocated memory
+	if(buffer != NULL)
+	{
+		free(buffer);
+		buffer = NULL;
+	}
+
+	logg("Parsed %i NXDOMAIN domains\n", added);
+
+	// Close the file
+	fclose(fp);
+}

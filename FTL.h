@@ -80,6 +80,7 @@ typedef struct {
 	const char* port;
 	char* db;
 	const char* socketfile;
+	const char* blockeddomains;
 } FTLFileNamesStruct;
 
 typedef struct {
