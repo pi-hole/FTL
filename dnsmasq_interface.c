@@ -768,3 +768,107 @@ unsigned long converttimeval(struct timeval time)
 	// of 10*milliseconds
 	return time.tv_sec*10000 + time.tv_usec/100;
 }
+
+// Routine that handles simple lists format for both gravity.list and black.list
+void add_hosts_entry(struct crec *cache, struct all_addr *addr, int addrlen, unsigned int index, struct crec **rhash, int hashsz);
+void rehash(int size);
+int FTL_listsfile(char* filename, unsigned int index, FILE *f, int cache_size, struct crec **rhash, int hashsz)
+{
+	int name_count = cache_size;
+	int added = 0;
+	size_t size = 0;
+	char *buffer = NULL, *a = NULL;
+	struct all_addr addr4, addr6;
+
+	// Handle only gravity.list and black.list
+	// Skip all other files (they are interpreted in the usual format)
+	if(strcmp(filename, files.gravity) != 0 &&
+	   strcmp(filename, files.blacklist) != 0)
+		return cache_size;
+
+	// Start timer for list analysis
+	timer_start(LISTS_TIMER);
+
+	// Read IPv4 address for host entries from setupVars.conf
+	char *IPv4addr = read_setupVarsconf("IPV4_ADDRESS");
+	// Black magic code to strip of possible CDN
+	a=IPv4addr; for(;*a;a++) if(*a == '/') *a = 0;
+	// Prepare IPv4 address for records
+	if(inet_pton(AF_INET, IPv4addr, &addr4) < 1)
+	{
+		logg("Error in preparing IPv4 struct for host entries list");
+		return cache_size;
+	}
+	clearSetupVarsArray(); // will free/invalidate IPv4addr
+
+	// Read IPv6 address for host entries from setupVars.conf
+	char *IPv6addr = read_setupVarsconf("IPV6_ADDRESS");
+	// Black magic code to strip of possible CDN
+	a=IPv6addr; for(;*a;a++) if(*a == '/') *a = 0;
+	// Prepare IPv6 address for records
+	if(inet_pton(AF_INET6, IPv6addr, &addr6) < 1)
+	{
+		logg("Error in preparing IPv6 struct for host entries list");
+		return cache_size;
+	}
+	clearSetupVarsArray(); // will free/invalidate IPv6addr
+
+	// Walk file
+	while(getline(&buffer, &size, f) != -1)
+	{
+		char *domain = buffer;
+		// Skip hashed out lines
+		while (*domain == '#')
+			continue;
+
+		// Filter leading dots or spaces
+		while (*domain == '.' || *domain == ' ') domain++;
+
+		// Skip empty lines
+		if(strlen(domain) == 0)
+			continue;
+
+		// Strip newline character at the end of line we just read
+		if(domain[strlen(domain)-1] == '\n')
+			domain[strlen(domain)-1] = '\0';
+
+		// As of here we assume the entry to be valid
+		// Rehash every 1000 valid names
+		if (rhash && ((name_count - cache_size) > 1000))
+		{
+			rehash(name_count);
+			cache_size = name_count;
+		}
+
+		struct crec *cache4,*cache6;
+		// Add IPv4 record
+		if ((cache4 = malloc(sizeof(struct crec) + strlen(domain)+1-SMALLDNAME)))
+		{
+			strcpy(cache4->name.sname, domain);
+			cache4->flags = F_HOSTS | F_IMMORTAL | F_FORWARD | F_REVERSE | F_IPV4;
+			cache4->ttd = daemon->local_ttl;
+			add_hosts_entry(cache4, &addr4, INADDRSZ, index, rhash, hashsz);
+		}
+		// Add IPv6 record
+		if ((cache6 = malloc(sizeof(struct crec) + strlen(domain)+1-SMALLDNAME)))
+		{
+			strcpy(cache6->name.sname, domain);
+			cache6->flags = F_HOSTS | F_IMMORTAL | F_FORWARD | F_REVERSE | F_IPV6;
+			cache6->ttd = daemon->local_ttl;
+			add_hosts_entry(cache6, &addr6, IN6ADDRSZ, index, rhash, hashsz);
+		}
+
+		added++;
+		name_count++;
+	}
+
+	// Free allocated memory
+	if(buffer != NULL)
+	{
+		free(buffer);
+		buffer = NULL;
+	}
+
+	logg("Parsed %i domains (took %.1f ms)\n", added, timer_elapsed_msec(LISTS_TIMER));
+	return name_count;
+}

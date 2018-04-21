@@ -88,6 +88,7 @@ typedef struct {
 	const char* numBlocked;
 	const char* whitelist;
 	const char* blacklist;
+	const char* gravity;
 	const char* setupVars;
 	const char* wildcards;
 	const char* auditlist;
@@ -203,8 +204,8 @@ typedef struct {
 } memoryStruct;
 
 // Prepare timers, used mainly for debugging purposes
-#define NUMTIMERS 3
-enum { DATABASE_WRITE_TIMER, EXIT_TIMER, GC_TIMER };
+#define NUMTIMERS 4
+enum { DATABASE_WRITE_TIMER, EXIT_TIMER, GC_TIMER, LISTS_TIMER };
 
 enum { QUERIES, FORWARDED, CLIENTS, DOMAINS, OVERTIME, WILDCARD };
 enum { DNSSEC_UNSPECIFIED, DNSSEC_SECURE, DNSSEC_INSECURE, DNSSEC_BOGUS, DNSSEC_ABANDONED, DNSSEC_UNKNOWN };
