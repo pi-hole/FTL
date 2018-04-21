@@ -198,9 +198,9 @@ void read_FTLconf(void)
 		config.serve_nxdomain = true;
 
 	if(config.serve_nxdomain)
-		logg("   SERVE_NXDOMAIN: Hide queries from localhost");
+		logg("   SERVE_NXDOMAIN: Serving NXDOMAIN for blocked domains");
 	else
-		logg("   SERVE_NXDOMAIN: Show queries from localhost");
+		logg("   SERVE_NXDOMAIN: Serving IP for blocked domains");
 
 	logg("Finished config file parsing");
 
