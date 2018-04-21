@@ -791,7 +791,7 @@ int FTL_listsfile(char* filename, unsigned int index, FILE *f, int cache_size, s
 
 	// Read IPv4 address for host entries from setupVars.conf
 	char *IPv4addr = read_setupVarsconf("IPV4_ADDRESS");
-	// Black magic code to strip of possible CDN
+	// Strip off everything at the end of the IP (CIDR might be there)
 	a=IPv4addr; for(;*a;a++) if(*a == '/') *a = 0;
 	// Prepare IPv4 address for records
 	if(inet_pton(AF_INET, IPv4addr, &addr4) < 1)
@@ -803,7 +803,7 @@ int FTL_listsfile(char* filename, unsigned int index, FILE *f, int cache_size, s
 
 	// Read IPv6 address for host entries from setupVars.conf
 	char *IPv6addr = read_setupVarsconf("IPV6_ADDRESS");
-	// Black magic code to strip of possible CDN
+	// Strip off everything at the end of the IP (CIDR might be there)
 	a=IPv6addr; for(;*a;a++) if(*a == '/') *a = 0;
 	// Prepare IPv6 address for records
 	if(inet_pton(AF_INET6, IPv6addr, &addr6) < 1)
@@ -813,7 +813,7 @@ int FTL_listsfile(char* filename, unsigned int index, FILE *f, int cache_size, s
 	}
 	clearSetupVarsArray(); // will free/invalidate IPv6addr
 
-	// Walk file
+	// Walk file line by line
 	while(getline(&buffer, &size, f) != -1)
 	{
 		char *domain = buffer;
@@ -869,6 +869,6 @@ int FTL_listsfile(char* filename, unsigned int index, FILE *f, int cache_size, s
 		buffer = NULL;
 	}
 
-	logg("Parsed %i domains (took %.1f ms)\n", added, timer_elapsed_msec(LISTS_TIMER));
+	logg("%s: parsed %i domains (took %.1f ms)", filename, added, timer_elapsed_msec(LISTS_TIMER));
 	return name_count;
 }
