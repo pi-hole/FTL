@@ -870,5 +870,6 @@ int FTL_listsfile(char* filename, unsigned int index, FILE *f, int cache_size, s
 	}
 
 	logg("%s: parsed %i domains (took %.1f ms)", filename, added, timer_elapsed_msec(LISTS_TIMER));
+	counters.gravity += added;
 	return name_count;
 }
