@@ -16,8 +16,7 @@ FTLFileNamesStruct FTLfiles = {
 	"/var/run/pihole-FTL.pid",
 	"/var/run/pihole-FTL.port",
 	NULL,
-	"/var/run/pihole/FTL.sock",
-	"/etc/pihole/nxdomains.list"
+	"/var/run/pihole/FTL.sock"
 };
 
 logFileNamesStruct files = {
@@ -26,6 +25,7 @@ logFileNamesStruct files = {
 	"/etc/pihole/numBlocked",
 	"/etc/pihole/whitelist.txt",
 	"/etc/pihole/blacklist.txt",
+	"/etc/pihole/gravity.list",
 	"/etc/pihole/setupVars.conf",
 	"/etc/dnsmasq.d/03-pihole-wildcard.conf",
 	"/etc/pihole/auditlog.list",

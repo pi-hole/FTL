@@ -981,6 +981,8 @@ int read_hostsfile(char *filename, unsigned int index, int cache_size, struct cr
 
 	  if ((canon = canonicalise(token, &nomem)))
 	    {
+
+	      FTL_hostsfile(&flags, filename);
 	      /* If set, add a version of the name with a default domain appended */
 	      if (option_bool(OPT_EXPAND) && domain_suffix && !fqdn &&
 		  (cache = whine_malloc(sizeof(struct crec) +

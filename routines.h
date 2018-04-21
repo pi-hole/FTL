@@ -105,6 +105,3 @@ void handle_signals(void);
 // resolve.c
 void resolveNewClients(void);
 void reresolveHostnames(void);
-
-// dnsmasq_interface.c
-void FTL_addNXDOMAIN(char *domain);

@@ -80,7 +80,6 @@ typedef struct {
 	const char* port;
 	char* db;
 	const char* socketfile;
-	const char* blockeddomains;
 } FTLFileNamesStruct;
 
 typedef struct {
@@ -89,6 +88,7 @@ typedef struct {
 	const char* numBlocked;
 	const char* whitelist;
 	const char* blacklist;
+	const char* gravity;
 	const char* setupVars;
 	const char* wildcards;
 	const char* auditlist;
@@ -133,6 +133,7 @@ typedef struct {
 	int maxlogage;
 	int privacylevel;
 	bool ignore_localhost;
+	bool serve_nxdomain;
 } ConfigStruct;
 
 // Dynamic structs

@@ -769,20 +769,12 @@ unsigned long converttimeval(struct timeval time)
 	return time.tv_sec*10000 + time.tv_usec/100;
 }
 
-void FTL_addNXDOMAIN(char *domain)
+void FTL_hostsfile(unsigned short *flags, char *filename)
 {
-	struct server *serv = NULL;
+	if(!config.serve_nxdomain)
+		return;
 
-	serv = malloc(sizeof(struct server));
-	memset(serv, 0, sizeof(struct server));
-	serv->domain = strdup(domain);
-	serv->flags = SERV_HAS_DOMAIN + SERV_NO_ADDR;
-	serv->next = daemon->servers;
-	daemon->servers = serv;
-}
-
-void FTL_resolver_started(void)
-{
-	// Defined in grep.c
-	parse_NXDOMAIN_file();
+	if(strcmp(filename,files.gravity) == 0 ||
+	   strcmp(filename,files.blacklist) == 0)
+		*flags |= F_NEG | F_NXDOMAIN;
 }
