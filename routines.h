@@ -56,7 +56,6 @@ void freeWildcards(void);
 int countlines(const char* fname);
 int countlineswith(const char* str, const char* fname);
 void check_blocking_status(void);
-void parse_NXDOMAIN_file(void);
 
 void check_setupVarsconf(void);
 char * read_setupVarsconf(const char * key);
