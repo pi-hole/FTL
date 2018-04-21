@@ -768,3 +768,13 @@ unsigned long converttimeval(struct timeval time)
 	// of 10*milliseconds
 	return time.tv_sec*10000 + time.tv_usec/100;
 }
+
+void FTL_hostsfile(unsigned short *flags, char *filename)
+{
+	if(!config.serve_nxdomain)
+		return;
+
+	if(strcmp(filename,files.gravity) == 0 ||
+	   strcmp(filename,files.blacklist) == 0)
+		*flags |= F_NEG | F_NXDOMAIN;
+}

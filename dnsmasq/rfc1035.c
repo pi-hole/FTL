@@ -1619,6 +1619,8 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 				{
 				  gotit = 1;
 				  log_query(F_FORWARD | F_CONFIG | flag, name, &addrlist->addr, NULL);
+				  FTL_cache(F_FORWARD | F_CONFIG | flag, name, &addrlist->addr, NULL,
+				            daemon->log_display_id);
 				  if (add_resource_record(header, limit, &trunc, nameoffset, &ansp,
 							  daemon->local_ttl, NULL, type, C_IN,
 							  type == T_A ? "4" : "6", &addrlist->addr))
@@ -1628,7 +1630,11 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		      }
 
 		  if (!dryrun && !gotit)
+		  {
 		    log_query(F_FORWARD | F_CONFIG | flag | F_NEG, name, NULL, NULL);
+		    FTL_cache(F_FORWARD | F_CONFIG | flag | F_NEG, name, NULL, NULL,
+		              daemon->log_display_id);
+		  }
 
 		  continue;
 		}
@@ -1673,6 +1679,8 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 			    if (!dryrun)
 			      {
 				log_query(crecp->flags, name, NULL, record_source(crecp->uid));
+				FTL_cache(crecp->flags, name, NULL, record_source(crecp->uid),
+				          daemon->log_display_id);
 				if (add_resource_record(header, limit, &trunc, nameoffset, &ansp,
 							crec_ttl(crecp, now), &nameoffset,
 							T_CNAME, C_IN, "d", cname_target))

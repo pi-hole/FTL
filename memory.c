@@ -25,6 +25,7 @@ logFileNamesStruct files = {
 	"/etc/pihole/numBlocked",
 	"/etc/pihole/whitelist.txt",
 	"/etc/pihole/blacklist.txt",
+	"/etc/pihole/gravity.list",
 	"/etc/pihole/setupVars.conf",
 	"/etc/dnsmasq.d/03-pihole-wildcard.conf",
 	"/etc/pihole/auditlog.list",

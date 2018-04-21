@@ -187,6 +187,21 @@ void read_FTLconf(void)
 	else
 		logg("   IGNORE_LOCALHOST: Show queries from localhost");
 
+	// SERVE_NXDOMAIN
+	// Do we hand out NXDOMAIN replies for domains read from
+	// gravity.list and black.list ?
+	// defaults to: No
+	config.serve_nxdomain = false;
+	buffer = parse_FTLconf(fp, "SERVE_NXDOMAIN");
+
+	if(buffer != NULL && strcasecmp(buffer, "yes") == 0)
+		config.serve_nxdomain = true;
+
+	if(config.serve_nxdomain)
+		logg("   SERVE_NXDOMAIN: Serving NXDOMAIN for blocked domains");
+	else
+		logg("   SERVE_NXDOMAIN: Serving IP for blocked domains");
+
 	logg("Finished config file parsing");
 
 	// Release memory
