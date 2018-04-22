@@ -816,6 +816,7 @@ int FTL_listsfile(char* filename, unsigned int index, FILE *f, int cache_size, s
 	clearSetupVarsArray(); // will free/invalidate IPv6addr
 
 	// Walk file line by line
+	bool firstline = true;
 	while(getline(&buffer, &size, f) != -1)
 	{
 		char *domain = buffer;
@@ -825,6 +826,19 @@ int FTL_listsfile(char* filename, unsigned int index, FILE *f, int cache_size, s
 
 		// Filter leading dots or spaces
 		while (*domain == '.' || *domain == ' ') domain++;
+
+		// Check for spaces or tabs
+		// If found, then this list is still in HOSTS format and we
+		// don't analyze it here.
+		if(firstline &&
+		   (strstr(domain, " ") != NULL || strstr(domain, "\t") != NULL))
+		{
+			// Reset file pointer back to beginning of the list
+			rewind(f);
+			logg("File %s is in HOSTS format, please run pihole -g!", filename);
+			return name_count;
+		}
+		firstline = false;
 
 		// Skip empty lines
 		if(strlen(domain) == 0)
