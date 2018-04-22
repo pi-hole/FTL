@@ -781,6 +781,7 @@ int FTL_listsfile(char* filename, unsigned int index, FILE *f, int cache_size, s
 	size_t size = 0;
 	char *buffer = NULL, *a = NULL;
 	struct all_addr addr4, addr6;
+	bool has_IPv4 = false, has_IPv6 = false;
 
 	// Handle only gravity.list and black.list
 	// Skip all other files (they are interpreted in the usual format)
@@ -793,27 +794,42 @@ int FTL_listsfile(char* filename, unsigned int index, FILE *f, int cache_size, s
 
 	// Read IPv4 address for host entries from setupVars.conf
 	char *IPv4addr = read_setupVarsconf("IPV4_ADDRESS");
-	// Strip off everything at the end of the IP (CIDR might be there)
-	a=IPv4addr; for(;*a;a++) if(*a == '/') *a = 0;
-	// Prepare IPv4 address for records
-	if(inet_pton(AF_INET, IPv4addr, &addr4) < 1)
+	if(IPv4addr != NULL)
 	{
-		logg("Error in preparing IPv4 struct for host entries list");
-		return cache_size;
+		// Strip off everything at the end of the IP (CIDR might be there)
+		a=IPv4addr; for(;*a;a++) if(*a == '/') *a = 0;
+		// Prepare IPv4 address for records
+		if(inet_pton(AF_INET, IPv4addr, &addr4) > 0)
+			has_IPv4 = true;
 	}
 	clearSetupVarsArray(); // will free/invalidate IPv4addr
 
 	// Read IPv6 address for host entries from setupVars.conf
 	char *IPv6addr = read_setupVarsconf("IPV6_ADDRESS");
-	// Strip off everything at the end of the IP (CIDR might be there)
-	a=IPv6addr; for(;*a;a++) if(*a == '/') *a = 0;
-	// Prepare IPv6 address for records
-	if(inet_pton(AF_INET6, IPv6addr, &addr6) < 1)
+	if(IPv6addr != NULL)
 	{
-		logg("Error in preparing IPv6 struct for host entries list");
-		return cache_size;
+		// Strip off everything at the end of the IP (CIDR might be there)
+		a=IPv6addr; for(;*a;a++) if(*a == '/') *a = 0;
+		// Prepare IPv6 address for records
+		if(inet_pton(AF_INET6, IPv6addr, &addr6) > 1)
+			has_IPv6 = true;
 	}
 	clearSetupVarsArray(); // will free/invalidate IPv6addr
+
+	// If no IPv4 address was found but user wants us to server NXDOMAIN
+	// we have to mock an IP record (which won't do anything in the end)
+	if(!has_IPv4 && config.blockingmode == MODE_NX)
+	{
+		if(inet_pton(AF_INET, "127.0.0.1", &addr4) > 0)
+			has_IPv4 = true;
+	}
+
+	// If we have neither a valid IPv4 nor a valid IPv6, then we cannot add any entries here
+	if(!has_IPv4 && !has_IPv6)
+	{
+		logg("ERROR: found neither a valid IPV4_ADDRESS nor IPV6_ADDRESS in setupVars.conf");
+		return cache_size;
+	}
 
 	// Walk file line by line
 	bool firstline = true;
@@ -850,7 +866,7 @@ int FTL_listsfile(char* filename, unsigned int index, FILE *f, int cache_size, s
 
 		// As of here we assume the entry to be valid
 		// Rehash every 1000 valid names
-		if (rhash && ((name_count - cache_size) > 1000))
+		if(rhash && ((name_count - cache_size) > 1000))
 		{
 			rehash(name_count);
 			cache_size = name_count;
@@ -858,7 +874,8 @@ int FTL_listsfile(char* filename, unsigned int index, FILE *f, int cache_size, s
 
 		struct crec *cache4,*cache6;
 		// Add IPv4 record
-		if ((cache4 = malloc(sizeof(struct crec) + strlen(domain)+1-SMALLDNAME)))
+		if(has_IPv4 &&
+		   (cache4 = malloc(sizeof(struct crec) + strlen(domain)+1-SMALLDNAME)))
 		{
 			strcpy(cache4->name.sname, domain);
 			cache4->flags = F_HOSTS | F_IMMORTAL | F_FORWARD | F_REVERSE | F_IPV4;
@@ -868,7 +885,8 @@ int FTL_listsfile(char* filename, unsigned int index, FILE *f, int cache_size, s
 			name_count++;
 		}
 		// Add IPv6 record only if we respond with an IP address to blocked domains
-		if (config.blockingmode == MODE_IP && (cache6 = malloc(sizeof(struct crec) + strlen(domain)+1-SMALLDNAME)))
+		if(has_IPv6 && config.blockingmode == MODE_IP &&
+		   (cache6 = malloc(sizeof(struct crec) + strlen(domain)+1-SMALLDNAME)))
 		{
 			strcpy(cache6->name.sname, domain);
 			cache6->flags = F_HOSTS | F_IMMORTAL | F_FORWARD | F_REVERSE | F_IPV6;
@@ -876,7 +894,7 @@ int FTL_listsfile(char* filename, unsigned int index, FILE *f, int cache_size, s
 			add_hosts_entry(cache6, &addr6, IN6ADDRSZ, index, rhash, hashsz);
 			name_count++;
 		}
-
+		// Count added domain
 		added++;
 	}
 
