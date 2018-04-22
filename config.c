@@ -187,6 +187,27 @@ void read_FTLconf(void)
 	else
 		logg("   IGNORE_LOCALHOST: Show queries from localhost");
 
+	// BLOCKINGMODE
+	// defaults to: MODE_IP
+	config.blockingmode = MODE_IP;
+	buffer = parse_FTLconf(fp, "BLOCKINGMODE");
+
+	if(buffer != NULL)
+	{
+		if(strcasecmp(buffer, "NXDOMAIN") == 0)
+			config.blockingmode = MODE_NX;
+	}
+
+	switch(config.blockingmode)
+	{
+		case MODE_NX:
+			logg("   BLOCKINGMODE: NXDOMAIN for blocked domains");
+			break;
+		default:
+			logg("   BLOCKINGMODE: Pi-hole's IP for blocked domains");
+			break;
+	}
+
 	logg("Finished config file parsing");
 
 	// Release memory

@@ -500,6 +500,8 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 				requesttype = QUERY_GRAVITY;
 			else if(arg != NULL && strstr(arg, "/black.list") != NULL)
 				requesttype = QUERY_BLACKLIST;
+			else if(flags & F_NXDOMAIN)
+				requesttype = QUERY_GRAVITY;
 			else // local.list, hostname.list, /etc/hosts and others
 				requesttype = QUERY_CACHE;
 		}
@@ -846,20 +848,22 @@ int FTL_listsfile(char* filename, unsigned int index, FILE *f, int cache_size, s
 		{
 			strcpy(cache4->name.sname, domain);
 			cache4->flags = F_HOSTS | F_IMMORTAL | F_FORWARD | F_REVERSE | F_IPV4;
+			if(config.blockingmode == MODE_NX) cache4->flags |= F_NEG | F_NXDOMAIN;
 			cache4->ttd = daemon->local_ttl;
 			add_hosts_entry(cache4, &addr4, INADDRSZ, index, rhash, hashsz);
+			name_count++;
 		}
-		// Add IPv6 record
-		if ((cache6 = malloc(sizeof(struct crec) + strlen(domain)+1-SMALLDNAME)))
+		// Add IPv6 record only if we respond with an IP address to blocked domains
+		if (config.blockingmode == MODE_IP && (cache6 = malloc(sizeof(struct crec) + strlen(domain)+1-SMALLDNAME)))
 		{
 			strcpy(cache6->name.sname, domain);
 			cache6->flags = F_HOSTS | F_IMMORTAL | F_FORWARD | F_REVERSE | F_IPV6;
 			cache6->ttd = daemon->local_ttl;
 			add_hosts_entry(cache6, &addr6, IN6ADDRSZ, index, rhash, hashsz);
+			name_count++;
 		}
 
 		added++;
-		name_count++;
 	}
 
 	// Free allocated memory
