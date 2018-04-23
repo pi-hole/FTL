@@ -500,6 +500,8 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 				requesttype = QUERY_GRAVITY;
 			else if(arg != NULL && strstr(arg, "/black.list") != NULL)
 				requesttype = QUERY_BLACKLIST;
+			else if(flags & F_NXDOMAIN)
+				requesttype = QUERY_GRAVITY;
 			else // local.list, hostname.list, /etc/hosts and others
 				requesttype = QUERY_CACHE;
 		}
@@ -767,4 +769,143 @@ unsigned long converttimeval(struct timeval time)
 	// Convert time from struct timeval into units
 	// of 10*milliseconds
 	return time.tv_sec*10000 + time.tv_usec/100;
+}
+
+// Routine that handles simple lists format for both gravity.list and black.list
+void add_hosts_entry(struct crec *cache, struct all_addr *addr, int addrlen, unsigned int index, struct crec **rhash, int hashsz);
+void rehash(int size);
+int FTL_listsfile(char* filename, unsigned int index, FILE *f, int cache_size, struct crec **rhash, int hashsz)
+{
+	int name_count = cache_size;
+	int added = 0;
+	size_t size = 0;
+	char *buffer = NULL, *a = NULL;
+	struct all_addr addr4, addr6;
+	bool has_IPv4 = false, has_IPv6 = false;
+
+	// Handle only gravity.list and black.list
+	// Skip all other files (they are interpreted in the usual format)
+	if(strcmp(filename, files.gravity) != 0 &&
+	   strcmp(filename, files.blacklist) != 0)
+		return cache_size;
+
+	// Start timer for list analysis
+	timer_start(LISTS_TIMER);
+
+	// Read IPv4 address for host entries from setupVars.conf
+	char *IPv4addr = read_setupVarsconf("IPV4_ADDRESS");
+	if(IPv4addr != NULL)
+	{
+		// Strip off everything at the end of the IP (CIDR might be there)
+		a=IPv4addr; for(;*a;a++) if(*a == '/') *a = 0;
+		// Prepare IPv4 address for records
+		if(inet_pton(AF_INET, IPv4addr, &addr4) > 0)
+			has_IPv4 = true;
+	}
+	clearSetupVarsArray(); // will free/invalidate IPv4addr
+
+	// Read IPv6 address for host entries from setupVars.conf
+	char *IPv6addr = read_setupVarsconf("IPV6_ADDRESS");
+	if(IPv6addr != NULL)
+	{
+		// Strip off everything at the end of the IP (CIDR might be there)
+		a=IPv6addr; for(;*a;a++) if(*a == '/') *a = 0;
+		// Prepare IPv6 address for records
+		if(inet_pton(AF_INET6, IPv6addr, &addr6) > 1)
+			has_IPv6 = true;
+	}
+	clearSetupVarsArray(); // will free/invalidate IPv6addr
+
+	// If no IPv4 address was found but user wants us to server NXDOMAIN
+	// we have to mock an IP record (which won't do anything in the end)
+	if(!has_IPv4 && config.blockingmode == MODE_NX)
+	{
+		if(inet_pton(AF_INET, "127.0.0.1", &addr4) > 0)
+			has_IPv4 = true;
+	}
+
+	// If we have neither a valid IPv4 nor a valid IPv6, then we cannot add any entries here
+	if(!has_IPv4 && !has_IPv6)
+	{
+		logg("ERROR: found neither a valid IPV4_ADDRESS nor IPV6_ADDRESS in setupVars.conf");
+		return cache_size;
+	}
+
+	// Walk file line by line
+	bool firstline = true;
+	while(getline(&buffer, &size, f) != -1)
+	{
+		char *domain = buffer;
+		// Skip hashed out lines
+		while (*domain == '#')
+			continue;
+
+		// Filter leading dots or spaces
+		while (*domain == '.' || *domain == ' ') domain++;
+
+		// Check for spaces or tabs
+		// If found, then this list is still in HOSTS format and we
+		// don't analyze it here.
+		if(firstline &&
+		   (strstr(domain, " ") != NULL || strstr(domain, "\t") != NULL))
+		{
+			// Reset file pointer back to beginning of the list
+			rewind(f);
+			logg("File %s is in HOSTS format, please run pihole -g!", filename);
+			return name_count;
+		}
+		firstline = false;
+
+		// Skip empty lines
+		if(strlen(domain) == 0)
+			continue;
+
+		// Strip newline character at the end of line we just read
+		if(domain[strlen(domain)-1] == '\n')
+			domain[strlen(domain)-1] = '\0';
+
+		// As of here we assume the entry to be valid
+		// Rehash every 1000 valid names
+		if(rhash && ((name_count - cache_size) > 1000))
+		{
+			rehash(name_count);
+			cache_size = name_count;
+		}
+
+		struct crec *cache4,*cache6;
+		// Add IPv4 record
+		if(has_IPv4 &&
+		   (cache4 = malloc(sizeof(struct crec) + strlen(domain)+1-SMALLDNAME)))
+		{
+			strcpy(cache4->name.sname, domain);
+			cache4->flags = F_HOSTS | F_IMMORTAL | F_FORWARD | F_REVERSE | F_IPV4;
+			if(config.blockingmode == MODE_NX) cache4->flags |= F_NEG | F_NXDOMAIN;
+			cache4->ttd = daemon->local_ttl;
+			add_hosts_entry(cache4, &addr4, INADDRSZ, index, rhash, hashsz);
+			name_count++;
+		}
+		// Add IPv6 record only if we respond with an IP address to blocked domains
+		if(has_IPv6 && config.blockingmode == MODE_IP &&
+		   (cache6 = malloc(sizeof(struct crec) + strlen(domain)+1-SMALLDNAME)))
+		{
+			strcpy(cache6->name.sname, domain);
+			cache6->flags = F_HOSTS | F_IMMORTAL | F_FORWARD | F_REVERSE | F_IPV6;
+			cache6->ttd = daemon->local_ttl;
+			add_hosts_entry(cache6, &addr6, IN6ADDRSZ, index, rhash, hashsz);
+			name_count++;
+		}
+		// Count added domain
+		added++;
+	}
+
+	// Free allocated memory
+	if(buffer != NULL)
+	{
+		free(buffer);
+		buffer = NULL;
+	}
+
+	logg("%s: parsed %i domains (took %.1f ms)", filename, added, timer_elapsed_msec(LISTS_TIMER));
+	counters.gravity += added;
+	return name_count;
 }

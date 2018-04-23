@@ -85,9 +85,9 @@ typedef struct {
 typedef struct {
 	const char* log;
 	const char* preEventHorizon;
-	const char* numBlocked;
 	const char* whitelist;
 	const char* blacklist;
+	const char* gravity;
 	const char* setupVars;
 	const char* wildcards;
 	const char* auditlist;
@@ -132,6 +132,7 @@ typedef struct {
 	int maxlogage;
 	int privacylevel;
 	bool ignore_localhost;
+	unsigned char blockingmode;
 } ConfigStruct;
 
 // Dynamic structs
@@ -203,8 +204,8 @@ typedef struct {
 } memoryStruct;
 
 // Prepare timers, used mainly for debugging purposes
-#define NUMTIMERS 3
-enum { DATABASE_WRITE_TIMER, EXIT_TIMER, GC_TIMER };
+#define NUMTIMERS 4
+enum { DATABASE_WRITE_TIMER, EXIT_TIMER, GC_TIMER, LISTS_TIMER };
 
 enum { QUERIES, FORWARDED, CLIENTS, DOMAINS, OVERTIME, WILDCARD };
 enum { DNSSEC_UNSPECIFIED, DNSSEC_SECURE, DNSSEC_INSECURE, DNSSEC_BOGUS, DNSSEC_ABANDONED, DNSSEC_UNKNOWN };
@@ -212,6 +213,7 @@ enum { QUERY_UNKNOWN, QUERY_GRAVITY, QUERY_FORWARDED, QUERY_CACHE, QUERY_WILDCAR
 enum { TYPE_A = 1, TYPE_AAAA, TYPE_ANY, TYPE_SRV, TYPE_SOA, TYPE_PTR, TYPE_TXT, TYPE_MAX };
 enum { REPLY_UNKNOWN, REPLY_NODATA, REPLY_NXDOMAIN, REPLY_CNAME, REPLY_IP };
 enum { PRIVACY_SHOW_ALL = 0, PRIVACY_HIDE_DOMAINS, PRIVACY_HIDE_DOMAINS_CLIENTS, PRIVACY_MAXIMUM };
+enum { MODE_IP, MODE_NX };
 
 // Used to check memory integrity in various structs
 #define MAGICBYTE 0x57

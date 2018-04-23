@@ -57,24 +57,7 @@ int readnumberfromfile(const char* fname)
 
 void readGravityFiles(void)
 {
-	// Get number of domains being blocked
-	int gravity = readnumberfromfile(files.numBlocked);
-
-	if(gravity < 0)
-	{
-		logg("WARN: failed to read %s", files.numBlocked);
-		// Fallback method is counting number of lines in preEventHorizon
-		gravity = countlines(files.preEventHorizon);
-		if(gravity < 0)
-		{
-			logg("Error: failed to read %s", files.preEventHorizon);
-			gravity = 0;
-		}
-	}
-
-	logg("Gravity list entries: %i", gravity);
-	counters.gravity = gravity;
-
+	// Get number of domains being blocked by wildcards
 	readWildcardsList();
 	if(counters.wildcarddomains > 0)
 	{

@@ -75,7 +75,7 @@ static const struct {
 static void cache_free(struct crec *crecp);
 static void cache_unlink(struct crec *crecp);
 static void cache_link(struct crec *crecp);
-static void rehash(int size);
+void rehash(int size);
 static void cache_hash(struct crec *crecp);
 
 static unsigned int next_uid(void)
@@ -118,7 +118,7 @@ void cache_init(void)
    but if the hosts file(s) are big (some people have 50000 ad-block entries), the table
    will be much too small, so the hosts reading code calls rehash every 1000 addresses, to
    expand the table. */
-static void rehash(int size)
+void rehash(int size)
 {
   struct crec **new, **old, *p, *tmp;
   int i, new_size, old_size;
@@ -796,8 +796,8 @@ static void add_hosts_cname(struct crec *target)
       }
 }
 
-static void add_hosts_entry(struct crec *cache, struct all_addr *addr, int addrlen,
-			    unsigned int index, struct crec **rhash, int hashsz)
+void add_hosts_entry(struct crec *cache, struct all_addr *addr, int addrlen,
+		     unsigned int index, struct crec **rhash, int hashsz)
 {
   struct crec *lookup = cache_find_by_name(NULL, cache_get_name(cache), 0, cache->flags & (F_IPV4 | F_IPV6));
   int i, nameexists = 0;
@@ -932,6 +932,9 @@ int read_hostsfile(char *filename, unsigned int index, int cache_size, struct cr
     }
 
   eatspace(f);
+
+  name_count = FTL_listsfile(filename, index, f, cache_size, rhash, hashsz);
+  addr_count = cache_size - name_count;
 
   while ((atnl = gettok(f, token)) != EOF)
     {
