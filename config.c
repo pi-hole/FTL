@@ -211,16 +211,13 @@ void read_FTLconf(void)
 	// defaults to: (not set)
 	buffer = parse_FTLconf(fp, "BLOCKINGREGEX");
 	config.blockingregex = false;
-	if(buffer != NULL)
-	{
-		if(init_regex(buffer))
-			config.blockingregex = true;
-	}
+	if(buffer != NULL && strlen(buffer) > 0 && init_regex(buffer))
+		config.blockingregex = true;
 
 	if(config.blockingregex)
-		logg("BLOCKINGREGEX: Using configured regex");
+		logg("   BLOCKINGREGEX: Using configured regex");
 	else
-		logg("BLOCKINGREGEX: Not set");
+		logg("   BLOCKINGREGEX: Not set");
 
 	logg("Finished config file parsing");
 
