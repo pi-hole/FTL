@@ -211,7 +211,7 @@ void read_FTLconf(void)
 	// defaults to: (not set)
 	buffer = parse_FTLconf(fp, "BLOCKINGREGEX");
 	config.blockingregex = false;
-	if(buffer != NULL && strlen(buffer) > 0 && init_regex(buffer))
+	if(buffer != NULL && strlen(buffer) > 0 && init_regex(buffer,0))
 		config.blockingregex = true;
 
 	if(config.blockingregex)

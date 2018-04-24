@@ -10,57 +10,74 @@
 
 #include "FTL.h"
 #include <regex.h>
-static regex_t regex;
 
-static void log_regex_error(char *where, int errcode)
+#define NUM_REGEX 1
+static regex_t regex[NUM_REGEX];
+
+static void log_regex_error(char *where, int errcode, int index)
 {
 	// Regex failed for some reason (probably user syntax error)
 	// Get error string and log it
-	size_t length = regerror(errcode, &regex, NULL, 0);
+	size_t length = regerror(errcode, &regex[index], NULL, 0);
 	char *buffer = calloc(length,sizeof(char));
-	(void) regerror (errcode, &regex, buffer, length);
-	logg("Error when %s blocking RegEx: %s (%i)", where, buffer, errcode);
+	(void) regerror (errcode, &regex[index], buffer, length);
+	logg("ERROR %s regex %i: %s (%i)", index, where, buffer, errcode);
 	free(buffer);
 	free_regex();
 }
 
-bool init_regex(char *regexin)
+bool init_regex(char *regexin, int index)
 {
-	// compile a regular expression into a data structure that
+	// compile regular expressions into data structures that
 	// can be used with regexec to match against a string
-	int errcode = regcomp(&regex, regexin, REG_EXTENDED);
-	if(errcode == 0)
+	if(index > NUM_REGEX)
 	{
-		return true;
+		logg("ERROR: Increase NUM_REGEX");
+		return false;
 	}
-
-	// else: failed
-	log_regex_error("compiling", errcode);
-	return false;
+	int errcode = regcomp(&regex[index], regexin, REG_EXTENDED);
+	if(errcode != 0)
+	{
+		log_regex_error("compiling", errcode, index);
+		return false;
+	}
+	// If we reach this point, then no regex compilation failed
+	return true;
 }
 
 bool match_regex(char *input)
 {
 	// Try to match the compiled regular expression against input
-	int errcode = regexec(&regex, input, 0, NULL, 0);
-	if (errcode == 0)
-	{
-		// Match, return true
-		return true;
-	}
-	else if (errcode != REG_NOMATCH)
-	{
-		// Error, return false afterwards
-		log_regex_error("matching", errcode);
-	}
+	int index;
+	bool matched = false;
 
+	timer_start(REGEX_TIMER);
+	for(index = 0; index < NUM_REGEX; index++)
+	{
+		int errcode = regexec(&regex[index], input, 0, NULL, 0);
+		if (errcode == 0)
+		{
+			// Match, return true
+			matched = true;
+			break;
+		}
+		else if (errcode != REG_NOMATCH)
+		{
+			// Error, return false afterwards
+			log_regex_error("matching", errcode, index);
+			break;
+		}
+	}
+	logg("Regex evaluation took %.3f msec", timer_elapsed_msec(REGEX_TIMER));
 	// No match, no error, return false
-	return false;
+	return matched;
 }
 
 void free_regex(void)
 {
 	// Disable blocking regex checking
 	config.blockingregex = false;
-	regfree(&regex);
+	int index;
+	for(index = 0; index < NUM_REGEX; index++)
+		regfree(&regex[index]);
 }
