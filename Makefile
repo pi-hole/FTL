@@ -9,7 +9,7 @@
 # Please see LICENSE file for your rights under this license.
 
 DNSMASQVERSION = "pi-hole-2.79"
-DNSMASQOPTS = -DHAVE_DNSSEC -DHAVE_DNSSEC_STATIC -DNO_FORK
+DNSMASQOPTS = -DHAVE_DNSSEC -DHAVE_DNSSEC_STATIC
 # Flags for compiling with libidn : -DHAVE_IDN
 # Flags for compiling with libidn2: -DHAVE_LIBIDN2 -DIDN2_VERSION_NUMBER=0x02000003
 

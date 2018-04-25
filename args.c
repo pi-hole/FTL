@@ -25,6 +25,13 @@ char **argv_dnsmasq = NULL;
 void parse_args(int argc, char* argv[])
 {
 	int i;
+
+	// Regardless of any arguments, we always pass "-k" (nofork) to dnsmasq
+	argc_dnsmasq = 2;
+	argv_dnsmasq = calloc(argc_dnsmasq, sizeof(char*));
+	argv_dnsmasq[0] = "";
+	argv_dnsmasq[1] = "-k";
+
 	// start from 1, as argv[0] is the executable name "pihole-FTL"
 	for(i=1; i < argc; i++)
 	{
@@ -34,9 +41,8 @@ void parse_args(int argc, char* argv[])
 		{
 			debug = true;
 			ok = true;
-			argc_dnsmasq = 2;
-			argv_dnsmasq = calloc(argc_dnsmasq, sizeof(char*));
-			argv_dnsmasq[0] = "";
+
+			// Replace "-k" by "-d" (debug mode implies nofork)
 			argv_dnsmasq[1] = "-d";
 		}
 
@@ -156,7 +162,7 @@ void parse_args(int argc, char* argv[])
 			argv_dnsmasq = calloc(argc_dnsmasq + 2,sizeof(char*));
 			argv_dnsmasq[0] = "";
 			if(debug) argv_dnsmasq[1] = "-d";
-			else      argv_dnsmasq[1] = "";
+			else      argv_dnsmasq[1] = "-k";
 
 			for(j=2; j < argc_dnsmasq; j++)
 			{
