@@ -13,6 +13,7 @@
 
 #define NUM_REGEX 1
 static regex_t regex[NUM_REGEX];
+static bool regexconfigured[NUM_REGEX] = { false };
 
 static void log_regex_error(char *where, int errcode, int index)
 {
@@ -42,18 +43,23 @@ bool init_regex(char *regexin, int index)
 		return false;
 	}
 	// If we reach this point, then no regex compilation failed
+	regexconfigured[index] = true;
 	return true;
 }
 
 bool match_regex(char *input)
 {
-	// Try to match the compiled regular expression against input
 	int index;
 	bool matched = false;
 
 	timer_start(REGEX_TIMER);
 	for(index = 0; index < NUM_REGEX; index++)
 	{
+		// Only check regex which have been compiled
+		if(!regexconfigured[index])
+			continue;
+
+		// Try to match the compiled regular expression against input
 		int errcode = regexec(&regex[index], input, 0, NULL, 0);
 		if (errcode == 0)
 		{
@@ -79,5 +85,6 @@ void free_regex(void)
 	config.blockingregex = false;
 	int index;
 	for(index = 0; index < NUM_REGEX; index++)
-		regfree(&regex[index]);
+		if(regexconfigured[index])
+			regfree(&regex[index]);
 }
