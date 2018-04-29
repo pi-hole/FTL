@@ -427,7 +427,7 @@ void getTopClients(char *client_message, int *sock)
 void getForwardDestinations(char *client_message, int *sock)
 {
 	bool sort = true;
-	int i, temparray[counters.forwarded+1][2], forwardedsum = 0, totalqueries = 0;
+	int i, temparray[counters.forwarded][2], forwardedsum = 0, totalqueries = 0;
 
 	if(command(client_message, "unsorted"))
 		sort = false;
@@ -447,41 +447,47 @@ void getForwardDestinations(char *client_message, int *sock)
 
 	if(sort)
 	{
-		// Add "local " forward destination
-		temparray[counters.forwarded][0] = counters.forwarded;
-		temparray[counters.forwarded][1] = counters.cached + counters.blocked;
-
 		// Sort temporary array in descending order
-		qsort(temparray, counters.forwarded+1, sizeof(int[2]), cmpdesc);
+		qsort(temparray, counters.forwarded, sizeof(int[2]), cmpdesc);
 	}
 
 	totalqueries = counters.forwardedqueries + counters.cached + counters.blocked;
 
 	// Loop over available forward destinations
-	for(i=0; i < min(counters.forwarded+1, 10); i++)
+	for(i=-2; i < min(counters.forwarded, 8); i++)
 	{
 		char *ip, *name;
 		float percentage = 0.0f;
 
-		// Get sorted indices
-		int j;
-		if(sort)
-			j = temparray[i][0];
-		else
-			j = i;
-
-		// Is this the "local" forward destination?
-		if(j == counters.forwarded)
+		if(i == -2)
 		{
-			ip = "local";
+			// Blocked queries (local lists)
+			ip = "blocked";
 			name = ip;
 
 			if(totalqueries > 0)
-				// Whats the percentage of (cached + blocked) queries on the total amount of queries?
-				percentage = 1e2f * (counters.cached + counters.blocked) / totalqueries;
+				// Whats the percentage of locked queries on the total amount of queries?
+				percentage = 1e2f * counters.blocked / totalqueries;
+		}
+		else if(i == -1)
+		{
+			// Local cache
+			ip = "cache";
+			name = ip;
+
+			if(totalqueries > 0)
+				// Whats the percentage of cached queries on the total amount of queries?
+				percentage = 1e2f * counters.cached / totalqueries;
 		}
 		else
 		{
+			// Regular forward destionation
+			// Get sorted indices
+			int j;
+			if(sort)
+				j = temparray[i][0];
+			else
+				j = i;
 			validate_access("forwarded", j, true, __LINE__, __FUNCTION__, __FILE__);
 			ip = forwarded[j].ip;
 
