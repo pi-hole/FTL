@@ -31,6 +31,7 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	struct timeval request;
 	gettimeofday(&request, 0);
 
+	// Skip AAAA queries if user doesn't want to have them analyzed
 	if(!config.analyze_AAAA && strcmp(types,"query[AAAA]") == 0)
 	{
 		if(debug) logg("Not analyzing AAAA query");
@@ -41,15 +42,14 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	// Ensure we have enough space in the queries struct
 	memory_check(QUERIES);
 	int queryID = counters.queries;
-	int timeidx = findOverTimeID(overTimetimestamp);
 
 	// Convert domain to lower case
 	char *domain = strdup(name);
 	strtolower(domain);
 
+	// If domain is "pi.hole" we skip this query
 	if(strcmp(domain, "pi.hole") == 0)
 	{
-		// domain is "pi.hole", skip this query
 		// free memory already allocated here
 		free(domain);
 		disable_thread_lock();
@@ -65,6 +65,7 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 		domain = strdup("hidden");
 	}
 
+	// Get client IP address
 	char dest[ADDRSTRLEN];
 	inet_ntop((flags & F_IPV4) ? AF_INET : AF_INET6, addr, dest, ADDRSTRLEN);
 	char *client = strdup(dest);
@@ -88,10 +89,11 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 		client = strdup("0.0.0.0");
 	}
 
+	// Log new query if in debug mode
 	if(debug) logg("**** new query %s %s %s (ID %i)", types, domain, client, id);
 
+	// Determine query type
 	unsigned char querytype = 0;
-	validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 	if(strcmp(types,"query[A]") == 0)
 		querytype = TYPE_A;
 	else if(strcmp(types,"query[AAAA]") == 0)
@@ -117,9 +119,12 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	}
 
 	// Update counters
+	int timeidx = findOverTimeID(overTimetimestamp);
+	validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 	overTime[timeidx].querytypedata[querytype-1]++;
 	counters.querytype[querytype-1]++;
 
+	// Skip rest of the analyis if this query is not of type A or AAAA
 	if(querytype != TYPE_A && querytype != TYPE_AAAA)
 	{
 		// Don't process this query further here, we already counted it
@@ -131,13 +136,9 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	}
 
 	// Go through already knows domains and see if it is one of them
-	// Check struct size
-	memory_check(DOMAINS);
 	int domainID = findDomainID(domain);
 
 	// Go through already knows clients and see if it is one of them
-	// Check struct size
-	memory_check(CLIENTS);
 	int clientID = findClientID(client);
 
 	// Save everything
@@ -176,28 +177,44 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	// Free allocated memory
 	free(client);
 	free(domain);
+
+	// Release thread lock
 	disable_thread_lock();
 }
 
 void FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id)
 {
-	// Save that this query got forwarded to an updtream server
+	// Save that this query got forwarded to an upstream server
 	enable_thread_lock();
+
+	// Get forward destination IP address
 	char dest[ADDRSTRLEN];
 	inet_ntop((flags & F_IPV4) ? AF_INET : AF_INET6, addr, dest, ADDRSTRLEN);
-
-	if(debug) logg("**** forwarded %s to %s (ID %i)", name, dest, id);
-
 	// Convert forward to lower case
 	char *forward = strdup(dest);
 	strtolower(forward);
 
-	// Save status and forwardID in corresponding query indentified by dnsmasq's ID
+	// Debug logging
+	if(debug) logg("**** forwarded %s to %s (ID %i)", name, forward, id);
+
+	// Save status and forwardID in corresponding query identified by dnsmasq's ID
 	bool found = false;
 	int i;
+	// Loop through all queries - this is an expensive loop, however, there is no
+	// good alternative as we will loose the relation between dnsmasq's id and our
+	// id due to garbage collection, hence, it may be that a query that with an ID
+	// of dnsmasq of 123.456 is our query with ID 567 when the other queries have
+	// already been removed due to their age. This is the price ofour very memory
+	// efficient datastructure which, however, allows us to have FTL run non-stop.
+	// Previously, FTL had to flush its internal data structure at midnight and re-
+	// parse the history from the pihole.log.1 file. Something like this is not
+	// needed anymore. We only have to get historic information from the database
+	// once on startup but then never again.
+
+	// Validate access only once for the maximum index (all lower will work)
+	validate_access("queries", counters.queries-1, false, __LINE__, __FUNCTION__, __FILE__);
 	for(i=0; i<counters.queries; i++)
 	{
-		validate_access("queries", i, false, __LINE__, __FUNCTION__, __FILE__);
 		// Check UUID of this query
 		if(queries[i].id == id)
 		{
@@ -330,9 +347,12 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 		// Save status in corresponding query indentified by dnsmasq's ID
 		bool found = false;
 		int i;
+
+		// Validate access only once for the maximum index (all lower will work)
+		// See comments in FTL_forwarded() for further details on computational costs
+		validate_access("queries", counters.queries-1, false, __LINE__, __FUNCTION__, __FILE__);
 		for(i=0; i<counters.queries; i++)
 		{
-			validate_access("queries", i, false, __LINE__, __FUNCTION__, __FILE__);
 			// Check UUID of this query
 			if(queries[i].id == id)
 			{
@@ -364,6 +384,7 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 			int querytimestamp, overTimetimestamp;
 			gettimestamp(&querytimestamp, &overTimetimestamp);
 			int timeidx = findOverTimeID(overTimetimestamp);
+			validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 
 			int domainID = queries[i].domainID;
 			validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
@@ -373,8 +394,6 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 			{
 				// Blocked due to a matching wildcard rule
 				counters.wildcardblocked++;
-
-				validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 				overTime[timeidx].blocked++;
 				domains[domainID].blockedcount++;
 				domains[domainID].wildcard = true;
@@ -383,16 +402,12 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 			{
 				// Answered from a custom (user provided) cache file
 				counters.cached++;
-
-				validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 				overTime[timeidx].cached++;
 			}
 			else if(queries[i].status == QUERY_GRAVITY)
 			{
 				// Blocked using server=/.../ rule
 				counters.blocked++;
-
-				validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 				overTime[timeidx].blocked++;
 				domains[domainID].blockedcount++;
 			}
@@ -413,9 +428,12 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 		// Search for corresponding query indentified by dnsmasq's ID
 		bool found = false;
 		int i;
+
+		// Validate access only once for the maximum index (all lower will work)
+		// See comments in FTL_forwarded() for further details on computational costs
+		validate_access("queries", counters.queries-1, false, __LINE__, __FUNCTION__, __FILE__);
 		for(i=0; i<counters.queries; i++)
 		{
-			validate_access("queries", i, false, __LINE__, __FUNCTION__, __FILE__);
 			// Check UUID of this query
 			if(queries[i].id == id)
 			{
@@ -436,7 +454,6 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 		validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
 		if(strcmp(domains[domainID].domain, name) == 0)
 		{
-
 			// Save reply type and update individual reply counters
 			save_reply_type(flags, i, response);
 		}
@@ -467,9 +484,10 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 	// Convert domain to lower case
 	char *domain = strdup(name);
 	strtolower(domain);
+
+	// If domain is "pi.hole", we skip this query
 	if(strcmp(domain, "pi.hole") == 0)
 	{
-		// domain is "pi.hole", skip this query
 		// free memory already allocated here
 		free(domain);
 		disable_thread_lock();
@@ -477,6 +495,7 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 	}
 	free(domain);
 
+	// Debug logging
 	if(debug) logg("**** got cache answer for %s / %s / %s (ID %i)", name, dest, arg, id);
 	if(debug) print_flags(flags);
 
@@ -517,9 +536,11 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 
 		bool found = false;
 		int i;
+		// Validate access only once for the maximum index (all lower will work)
+		// See comments in FTL_forwarded() for further details on computational costs
+		validate_access("queries", counters.queries-1, false, __LINE__, __FUNCTION__, __FILE__);
 		for(i=0; i<counters.queries; i++)
 		{
-			validate_access("queries", i, false, __LINE__, __FUNCTION__, __FILE__);
 			// Check UUID of this query
 			if(queries[i].id == id)
 			{
@@ -586,6 +607,9 @@ void FTL_dnssec(int status, int id)
 	// Search for corresponding query indentified by ID
 	bool found = false;
 	int i;
+	// Validate access only once for the maximum index (all lower will work)
+	// See comments in FTL_forwarded() for further details on computational costs
+	validate_access("queries", counters.queries-1, false, __LINE__, __FUNCTION__, __FILE__);
 	for(i=0; i<counters.queries; i++)
 	{
 		// Check both UUID and generation of this query
@@ -602,8 +626,14 @@ void FTL_dnssec(int status, int id)
 		disable_thread_lock();
 		return;
 	}
-	validate_access("domains", queries[i].domainID, true, __LINE__, __FUNCTION__, __FILE__);
-	if(debug) logg("**** got DNSSEC details for %s: %i (ID %i)", domains[queries[i].domainID].domain, status, id);
+
+	// Debug logging
+	if(debug)
+	{
+		int domainID = queries[i].domainID;
+		validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
+		logg("**** got DNSSEC details for %s: %i (ID %i)", domains[domainID].domain, status, id);
+	}
 
 	// Iterate through possible values
 	if(status == STAT_SECURE)
@@ -618,6 +648,8 @@ void FTL_dnssec(int status, int id)
 
 void print_flags(unsigned int flags)
 {
+	// Debug function, listing resolver flags in clear text
+	// e.g. "Flags: F_FORWARD F_NEG F_IPV6"
 	unsigned int i;
 	char *flagstr = calloc(256,sizeof(char));
 	for(i = 0; i < sizeof(flags)*8; i++)

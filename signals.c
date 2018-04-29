@@ -11,7 +11,7 @@
 #include "FTL.h"
 
 volatile sig_atomic_t killed = 0;
-int FTLstarttime = 0;
+time_t FTLstarttime = 0;
 
 static void SIGSEGV_handler(int sig, siginfo_t *si, void *unused)
 {
