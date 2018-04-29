@@ -462,7 +462,7 @@ void getForwardDestinations(char *client_message, int *sock)
 		if(i == -2)
 		{
 			// Blocked queries (local lists)
-			ip = "blocked";
+			ip = "blocklist";
 			name = ip;
 
 			if(totalqueries > 0)
