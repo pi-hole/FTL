@@ -347,9 +347,12 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 		// Save status in corresponding query indentified by dnsmasq's ID
 		bool found = false;
 		int i;
+
+		// Validate access only once for the maximum index (all lower will work)
+		// See comments in FTL_forwarded() for further details on computational costs
+		validate_access("queries", counters.queries-1, false, __LINE__, __FUNCTION__, __FILE__);
 		for(i=0; i<counters.queries; i++)
 		{
-			validate_access("queries", i, false, __LINE__, __FUNCTION__, __FILE__);
 			// Check UUID of this query
 			if(queries[i].id == id)
 			{
@@ -381,6 +384,7 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 			int querytimestamp, overTimetimestamp;
 			gettimestamp(&querytimestamp, &overTimetimestamp);
 			int timeidx = findOverTimeID(overTimetimestamp);
+			validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 
 			int domainID = queries[i].domainID;
 			validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
@@ -390,8 +394,6 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 			{
 				// Blocked due to a matching wildcard rule
 				counters.wildcardblocked++;
-
-				validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 				overTime[timeidx].blocked++;
 				domains[domainID].blockedcount++;
 				domains[domainID].wildcard = true;
@@ -400,16 +402,12 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 			{
 				// Answered from a custom (user provided) cache file
 				counters.cached++;
-
-				validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 				overTime[timeidx].cached++;
 			}
 			else if(queries[i].status == QUERY_GRAVITY)
 			{
 				// Blocked using server=/.../ rule
 				counters.blocked++;
-
-				validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 				overTime[timeidx].blocked++;
 				domains[domainID].blockedcount++;
 			}
@@ -430,9 +428,12 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 		// Search for corresponding query indentified by dnsmasq's ID
 		bool found = false;
 		int i;
+
+		// Validate access only once for the maximum index (all lower will work)
+		// See comments in FTL_forwarded() for further details on computational costs
+		validate_access("queries", counters.queries-1, false, __LINE__, __FUNCTION__, __FILE__);
 		for(i=0; i<counters.queries; i++)
 		{
-			validate_access("queries", i, false, __LINE__, __FUNCTION__, __FILE__);
 			// Check UUID of this query
 			if(queries[i].id == id)
 			{
@@ -453,7 +454,6 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 		validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
 		if(strcmp(domains[domainID].domain, name) == 0)
 		{
-
 			// Save reply type and update individual reply counters
 			save_reply_type(flags, i, response);
 		}
