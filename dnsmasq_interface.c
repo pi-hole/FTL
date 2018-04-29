@@ -607,6 +607,9 @@ void FTL_dnssec(int status, int id)
 	// Search for corresponding query indentified by ID
 	bool found = false;
 	int i;
+	// Validate access only once for the maximum index (all lower will work)
+	// See comments in FTL_forwarded() for further details on computational costs
+	validate_access("queries", counters.queries-1, false, __LINE__, __FUNCTION__, __FILE__);
 	for(i=0; i<counters.queries; i++)
 	{
 		// Check both UUID and generation of this query
@@ -623,8 +626,14 @@ void FTL_dnssec(int status, int id)
 		disable_thread_lock();
 		return;
 	}
-	validate_access("domains", queries[i].domainID, true, __LINE__, __FUNCTION__, __FILE__);
-	if(debug) logg("**** got DNSSEC details for %s: %i (ID %i)", domains[queries[i].domainID].domain, status, id);
+
+	// Debug logging
+	if(debug)
+	{
+		int domainID = queries[i].domainID;
+		validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
+		logg("**** got DNSSEC details for %s: %i (ID %i)", domains[domainID].domain, status, id);
+	}
 
 	// Iterate through possible values
 	if(status == STAT_SECURE)
@@ -639,6 +648,8 @@ void FTL_dnssec(int status, int id)
 
 void print_flags(unsigned int flags)
 {
+	// Debug function, listing resolver flags in clear text
+	// e.g. "Flags: F_FORWARD F_NEG F_IPV6"
 	unsigned int i;
 	char *flagstr = calloc(256,sizeof(char));
 	for(i = 0; i < sizeof(flags)*8; i++)
