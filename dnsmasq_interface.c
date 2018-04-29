@@ -184,23 +184,37 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 
 void FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id)
 {
-	// Save that this query got forwarded to an updtream server
+	// Save that this query got forwarded to an upstream server
 	enable_thread_lock();
+
+	// Get forward destination IP address
 	char dest[ADDRSTRLEN];
 	inet_ntop((flags & F_IPV4) ? AF_INET : AF_INET6, addr, dest, ADDRSTRLEN);
-
-	if(debug) logg("**** forwarded %s to %s (ID %i)", name, dest, id);
-
 	// Convert forward to lower case
 	char *forward = strdup(dest);
 	strtolower(forward);
 
-	// Save status and forwardID in corresponding query indentified by dnsmasq's ID
+	// Debug logging
+	if(debug) logg("**** forwarded %s to %s (ID %i)", name, forward, id);
+
+	// Save status and forwardID in corresponding query identified by dnsmasq's ID
 	bool found = false;
 	int i;
+	// Loop through all queries - this is an expensive loop, however, there is no
+	// good alternative as we will loose the relation between dnsmasq's id and our
+	// id due to garbage collection, hence, it may be that a query that with an ID
+	// of dnsmasq of 123.456 is our query with ID 567 when the other queries have
+	// already been removed due to their age. This is the price ofour very memory
+	// efficient datastructure which, however, allows us to have FTL run non-stop.
+	// Previously, FTL had to flush its internal data structure at midnight and re-
+	// parse the history from the pihole.log.1 file. Something like this is not
+	// needed anymore. We only have to get historic information from the database
+	// once on startup but then never again.
+
+	// Validate access only once for the maximum index (all lower will work)
+	validate_access("queries", counters.queries-1, false, __LINE__, __FUNCTION__, __FILE__);
 	for(i=0; i<counters.queries; i++)
 	{
-		validate_access("queries", i, false, __LINE__, __FUNCTION__, __FILE__);
 		// Check UUID of this query
 		if(queries[i].id == id)
 		{
