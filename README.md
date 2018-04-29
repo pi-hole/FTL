@@ -169,6 +169,7 @@ Possible settings (**the option shown first is the default**):
 - `PRIVACYLEVEL=0` (Which privacy level is used? Can be 0 (permissive) to 3 (very restrictive), see below)
 - `IGNORE_LOCALHOST=no|yes` (Should `FTL` ignore queries coming from the local machine?)
 - `BLOCKINGMODE=IP|NXDOMAIN` (Should `FTL` reply queries to blocked domains with IPs or NXDOMAIN?)
+- `BLOCKINGREGEX=...` (If defined, `FTL` will block all incoming queries which match this regex)
 
 ### Privacy levels
 Specifies if we want to anonymize the DNS queries somehow, available options are:

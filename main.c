@@ -81,6 +81,9 @@ int main (int argc, char* argv[])
 	close_telnet_socket();
 	close_unix_socket();
 
+	if(config.blockingregex)
+		free_regex();
+
 	//Remove PID file
 	removepid();
 	logg("########## FTL terminated after %.1f ms! ##########", timer_elapsed_msec(EXIT_TIMER));

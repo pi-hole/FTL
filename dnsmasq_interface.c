@@ -16,6 +16,7 @@
 void print_flags(unsigned int flags);
 void save_reply_type(unsigned int flags, int queryID, struct timeval response);
 unsigned long converttimeval(struct timeval time);
+static void block_single_domain(char *domain);
 
 char flagnames[28][12] = {"F_IMMORTAL ", "F_NAMEP ", "F_REVERSE ", "F_FORWARD ", "F_DHCP ", "F_NEG ", "F_HOSTS ", "F_IPV4 ", "F_IPV6 ", "F_BIGNAME ", "F_NXDOMAIN ", "F_CNAME ", "F_DNSKEY ", "F_CONFIG ", "F_DS ", "F_DNSSECOK ", "F_UPSTREAM ", "F_RRNAME ", "F_SERVER ", "F_QUERY ", "F_NOERR ", "F_AUTH ", "F_DNSSEC ", "F_KEYTAG ", "F_SECSTAT ", "F_NO_RR ", "F_IPSET ", "F_NOEXTRA "};
 
@@ -173,6 +174,29 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	// Update overTime data structure with the new client
 	validate_access_oTcl(timeidx, clientID, __LINE__, __FUNCTION__, __FILE__);
 	overTime[timeidx].clientdata[clientID]++;
+
+	// Try blocking regex if configured
+	validate_access("domains", domainID, false, __LINE__, __FUNCTION__, __FILE__);
+	if(config.blockingregex && domains[domainID].regexmatch == REGEX_UNKNOWN)
+	{
+		// For minimal performance impact, we test the regex only when
+		// - regex checking is enabled, and
+		// - this domain has not already been validated against the regex.
+		// This effectively prevents multiple evaluations of the same domain
+		if(match_regex(domain))
+		{
+			// We have to block this domain if not already done
+			if(debug) logg("Blocking %s due to RegEx match", domain);
+			block_single_domain(domain);
+			domains[domainID].regexmatch = REGEX_BLOCKED;
+		}
+		else
+		{
+			// Explicitly mark as not blocked to skip regex test
+			// next time we see this domain
+			domains[domainID].regexmatch = REGEX_NOTBLOCKED;
+		}
+	}
 
 	// Free allocated memory
 	free(client);
@@ -940,4 +964,28 @@ int FTL_listsfile(char* filename, unsigned int index, FILE *f, int cache_size, s
 	logg("%s: parsed %i domains (took %.1f ms)", filename, added, timer_elapsed_msec(LISTS_TIMER));
 	counters.gravity += added;
 	return name_count;
+}
+
+static void block_single_domain(char *domain)
+{
+	struct all_addr addr4;
+	if(inet_pton(AF_INET, "127.0.0.1", &addr4) <= 0)
+	{
+		logg("inet_pton failed in block_single_domain(%s)!",domain);
+		return;
+	}
+
+	struct crec *cache4;
+	if((cache4 = malloc(sizeof(struct crec) + strlen(domain)+1-SMALLDNAME)))
+	{
+		strcpy(cache4->name.sname, domain);
+		cache4->flags = F_HOSTS | F_IMMORTAL | F_FORWARD | F_REVERSE | F_IPV4 | F_NEG | F_NXDOMAIN;
+		cache4->ttd = daemon->local_ttl;
+		add_hosts_entry(cache4, &addr4, INADDRSZ, 0, NULL, 0);
+	}
+	else
+	{
+		logg("malloc failed in block_single_domain(%s)!",domain);
+		return;
+	}
 }

@@ -17,7 +17,6 @@ char *conflinebuffer = NULL;
 
 void read_FTLconf(void)
 {
-
 	FILE *fp;
 	char * buffer;
 
@@ -207,6 +206,18 @@ void read_FTLconf(void)
 			logg("   BLOCKINGMODE: Pi-hole's IP for blocked domains");
 			break;
 	}
+
+	// BLOCKINGREGEX
+	// defaults to: (not set)
+	buffer = parse_FTLconf(fp, "BLOCKINGREGEX");
+	config.blockingregex = false;
+	if(buffer != NULL && strlen(buffer) > 0 && init_regex(buffer,0))
+		config.blockingregex = true;
+
+	if(config.blockingregex)
+		logg("   BLOCKINGREGEX: Using configured regex");
+	else
+		logg("   BLOCKINGREGEX: Not set");
 
 	logg("Finished config file parsing");
 

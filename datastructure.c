@@ -163,6 +163,8 @@ int findDomainID(const char *domain)
 	// Store domain name - no need to check for NULL here as it doesn't harm
 	domains[domainID].domain = strdup(domain);
 	memory.domainnames += (strlen(domain) + 1) * sizeof(char);
+	// RegEx needs to be evaluated for this new domain
+	domains[domainID].regexmatch = REGEX_UNKNOWN;
 	// Increase counter by one
 	counters.domains++;
 

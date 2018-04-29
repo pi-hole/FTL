@@ -133,6 +133,7 @@ typedef struct {
 	int privacylevel;
 	bool ignore_localhost;
 	unsigned char blockingmode;
+	bool blockingregex;
 } ConfigStruct;
 
 // Dynamic structs
@@ -179,6 +180,7 @@ typedef struct {
 	int blockedcount;
 	char *domain;
 	bool wildcard;
+	unsigned char regexmatch;
 } domainsDataStruct;
 
 typedef struct {
@@ -204,8 +206,8 @@ typedef struct {
 } memoryStruct;
 
 // Prepare timers, used mainly for debugging purposes
-#define NUMTIMERS 4
-enum { DATABASE_WRITE_TIMER, EXIT_TIMER, GC_TIMER, LISTS_TIMER };
+#define NUMTIMERS 5
+enum { DATABASE_WRITE_TIMER, EXIT_TIMER, GC_TIMER, LISTS_TIMER, REGEX_TIMER };
 
 enum { QUERIES, FORWARDED, CLIENTS, DOMAINS, OVERTIME, WILDCARD };
 enum { DNSSEC_UNSPECIFIED, DNSSEC_SECURE, DNSSEC_INSECURE, DNSSEC_BOGUS, DNSSEC_ABANDONED, DNSSEC_UNKNOWN };
@@ -214,6 +216,7 @@ enum { TYPE_A = 1, TYPE_AAAA, TYPE_ANY, TYPE_SRV, TYPE_SOA, TYPE_PTR, TYPE_TXT, 
 enum { REPLY_UNKNOWN, REPLY_NODATA, REPLY_NXDOMAIN, REPLY_CNAME, REPLY_IP };
 enum { PRIVACY_SHOW_ALL = 0, PRIVACY_HIDE_DOMAINS, PRIVACY_HIDE_DOMAINS_CLIENTS, PRIVACY_MAXIMUM };
 enum { MODE_IP, MODE_NX };
+enum { REGEX_UNKNOWN, REGEX_BLOCKED, REGEX_NOTBLOCKED };
 
 // Used to check memory integrity in various structs
 #define MAGICBYTE 0x57
