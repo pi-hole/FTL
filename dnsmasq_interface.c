@@ -31,6 +31,7 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	struct timeval request;
 	gettimeofday(&request, 0);
 
+	// Skip AAAA queries if user doesn't want to have them analyzed
 	if(!config.analyze_AAAA && strcmp(types,"query[AAAA]") == 0)
 	{
 		if(debug) logg("Not analyzing AAAA query");
@@ -41,15 +42,14 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	// Ensure we have enough space in the queries struct
 	memory_check(QUERIES);
 	int queryID = counters.queries;
-	int timeidx = findOverTimeID(overTimetimestamp);
 
 	// Convert domain to lower case
 	char *domain = strdup(name);
 	strtolower(domain);
 
+	// If domain is "pi.hole" we skip this query
 	if(strcmp(domain, "pi.hole") == 0)
 	{
-		// domain is "pi.hole", skip this query
 		// free memory already allocated here
 		free(domain);
 		disable_thread_lock();
@@ -65,6 +65,7 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 		domain = strdup("hidden");
 	}
 
+	// Get client IP address
 	char dest[ADDRSTRLEN];
 	inet_ntop((flags & F_IPV4) ? AF_INET : AF_INET6, addr, dest, ADDRSTRLEN);
 	char *client = strdup(dest);
@@ -88,10 +89,11 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 		client = strdup("0.0.0.0");
 	}
 
+	// Log new query if in debug mode
 	if(debug) logg("**** new query %s %s %s (ID %i)", types, domain, client, id);
 
+	// Determine query type
 	unsigned char querytype = 0;
-	validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 	if(strcmp(types,"query[A]") == 0)
 		querytype = TYPE_A;
 	else if(strcmp(types,"query[AAAA]") == 0)
@@ -117,9 +119,12 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	}
 
 	// Update counters
+	int timeidx = findOverTimeID(overTimetimestamp);
+	validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 	overTime[timeidx].querytypedata[querytype-1]++;
 	counters.querytype[querytype-1]++;
 
+	// Skip rest of the analyis if this query is not of type A or AAAA
 	if(querytype != TYPE_A && querytype != TYPE_AAAA)
 	{
 		// Don't process this query further here, we already counted it
@@ -172,6 +177,8 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	// Free allocated memory
 	free(client);
 	free(domain);
+
+	// Release thread lock
 	disable_thread_lock();
 }
 
