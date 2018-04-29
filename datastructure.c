@@ -32,9 +32,9 @@ int findOverTimeID(int overTimetimestamp)
 	int timeidx = -1, i;
 	// Check struct size
 	memory_check(OVERTIME);
+	validate_access("overTime", counters.overTime-1, true, __LINE__, __FUNCTION__, __FILE__);
 	for(i=0; i < counters.overTime; i++)
 	{
-		validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
 		if(overTime[i].timestamp == overTimetimestamp)
 			return i;
 	}
@@ -50,6 +50,8 @@ int findOverTimeID(int overTimetimestamp)
 		nexttimestamp = overTimetimestamp;
 	}
 
+	// Fill potential holes in the overTime struct (may happen
+	// if there haven't been any queries within a time interval)
 	while(overTimetimestamp >= nexttimestamp)
 	{
 		// Check struct size
@@ -81,12 +83,10 @@ int findOverTimeID(int overTimetimestamp)
 int findForwardID(const char * forward, bool count)
 {
 	int i, forwardID = -1;
+	validate_access("forwarded", counters.forwarded-1, true, __LINE__, __FUNCTION__, __FILE__);
 	// Go through already knows forward servers and see if we used one of those
-	// Check struct size
-	memory_check(FORWARDED);
 	for(i=0; i < counters.forwarded; i++)
 	{
-		validate_access("forwarded", i, true, __LINE__, __FUNCTION__, __FILE__);
 		if(strcmp(forwarded[i].ip, forward) == 0)
 		{
 			forwardID = i;
@@ -98,6 +98,9 @@ int findForwardID(const char * forward, bool count)
 	// Store ID
 	forwardID = counters.forwarded;
 	logg("New forward server: %s (%i/%u)", forward, forwardID, counters.forwarded_MAX);
+
+	// Check struct size
+	memory_check(FORWARDED);
 
 	validate_access("forwarded", forwardID, false, __LINE__, __FUNCTION__, __FILE__);
 	// Set magic byte
@@ -126,9 +129,9 @@ int findForwardID(const char * forward, bool count)
 int findDomainID(const char *domain)
 {
 	int i;
+	validate_access("domains", counters.domains-1, true, __LINE__, __FUNCTION__, __FILE__);
 	for(i=0; i < counters.domains; i++)
 	{
-		validate_access("domains", i, true, __LINE__, __FUNCTION__, __FILE__);
 		// Quick test: Does the domain start with the same character?
 		if(domains[i].domain[0] != domain[0])
 			continue;
@@ -170,9 +173,9 @@ int findClientID(const char *client)
 {
 	int i;
 	// Compare content of client against known client IP addresses
+	validate_access("clients", counters.clients-1, true, __LINE__, __FUNCTION__, __FILE__);
 	for(i=0; i < counters.clients; i++)
 	{
-		validate_access("clients", i, true, __LINE__, __FUNCTION__, __FILE__);
 		// Quick test: Does the clients IP start with the same character?
 		if(clients[i].ip[0] != client[0])
 			continue;
@@ -184,6 +187,7 @@ int findClientID(const char *client)
 			return i;
 		}
 	}
+
 	// If we did not return until here, then this client is definitely new
 	// Store ID
 	int clientID = counters.clients;
@@ -226,10 +230,12 @@ bool isValidIPv6(const char *addr)
 int detectStatus(const char *domain)
 {
 	// Try to find the domain in the array of wildcard blocked domains
+	// Note that this is a really expensive subroutine and trying to match
+	// blocked domains against all configured wildcards will take some time
 	int i;
+	validate_access("wildcarddomains", counters.wildcarddomains-1, false, __LINE__, __FUNCTION__, __FILE__);
 	for(i=0; i < counters.wildcarddomains; i++)
 	{
-		validate_access("wildcarddomains", i, false, __LINE__, __FUNCTION__, __FILE__);
 		if(strcasecmp(wildcarddomains[i], domain) == 0)
 		{
 			// Exact match with wildcard domain
