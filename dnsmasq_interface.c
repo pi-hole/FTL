@@ -131,13 +131,9 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	}
 
 	// Go through already knows domains and see if it is one of them
-	// Check struct size
-	memory_check(DOMAINS);
 	int domainID = findDomainID(domain);
 
 	// Go through already knows clients and see if it is one of them
-	// Check struct size
-	memory_check(CLIENTS);
 	int clientID = findClientID(client);
 
 	// Save everything

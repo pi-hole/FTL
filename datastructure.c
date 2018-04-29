@@ -144,8 +144,10 @@ int findDomainID(const char *domain)
 	// If we did not return until here, then this domain is not known
 	// Store ID
 	int domainID = counters.domains;
-	// // Debug output
-	// if(debug) logg("New domain: %s (%i/%i)", domain, domainID, counters.domains_MAX);
+
+	// Check struct size
+	memory_check(DOMAINS);
+
 	validate_access("domains", domainID, false, __LINE__, __FUNCTION__, __FILE__);
 	// Set magic byte
 	domains[domainID].magic = MAGICBYTE;
@@ -186,8 +188,8 @@ int findClientID(const char *client)
 	// Store ID
 	int clientID = counters.clients;
 
-	// Debug output
-	// if(debug) logg("New client: %s (%i/%i)", client, clientID, counters.clients_MAX);
+	// Check struct size
+	memory_check(CLIENTS);
 
 	validate_access("clients", clientID, false, __LINE__, __FUNCTION__, __FILE__);
 	// Set magic byte

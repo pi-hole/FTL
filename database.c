@@ -622,8 +622,6 @@ void read_data_from_DB(void)
 	{
 		// Ensure we have enough space in the queries struct
 		memory_check(QUERIES);
-		memory_check(DOMAINS);
-		memory_check(CLIENTS);
 
 		// Set ID for this query
 		int queryID = counters.queries;
