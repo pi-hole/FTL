@@ -484,9 +484,10 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 	// Convert domain to lower case
 	char *domain = strdup(name);
 	strtolower(domain);
+
+	// If domain is "pi.hole", we skip this query
 	if(strcmp(domain, "pi.hole") == 0)
 	{
-		// domain is "pi.hole", skip this query
 		// free memory already allocated here
 		free(domain);
 		disable_thread_lock();
@@ -494,6 +495,7 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 	}
 	free(domain);
 
+	// Debug logging
 	if(debug) logg("**** got cache answer for %s / %s / %s (ID %i)", name, dest, arg, id);
 	if(debug) print_flags(flags);
 
@@ -534,9 +536,11 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 
 		bool found = false;
 		int i;
+		// Validate access only once for the maximum index (all lower will work)
+		// See comments in FTL_forwarded() for further details on computational costs
+		validate_access("queries", counters.queries-1, false, __LINE__, __FUNCTION__, __FILE__);
 		for(i=0; i<counters.queries; i++)
 		{
-			validate_access("queries", i, false, __LINE__, __FUNCTION__, __FILE__);
 			// Check UUID of this query
 			if(queries[i].id == id)
 			{
