@@ -32,7 +32,8 @@ int findOverTimeID(int overTimetimestamp)
 	int timeidx = -1, i;
 	// Check struct size
 	memory_check(OVERTIME);
-	validate_access("overTime", counters.overTime-1, true, __LINE__, __FUNCTION__, __FILE__);
+	if(counters.overTime > 0)
+		validate_access("overTime", counters.overTime-1, true, __LINE__, __FUNCTION__, __FILE__);
 	for(i=0; i < counters.overTime; i++)
 	{
 		if(overTime[i].timestamp == overTimetimestamp)
@@ -83,7 +84,8 @@ int findOverTimeID(int overTimetimestamp)
 int findForwardID(const char * forward, bool count)
 {
 	int i, forwardID = -1;
-	validate_access("forwarded", counters.forwarded-1, true, __LINE__, __FUNCTION__, __FILE__);
+	if(counters.forwarded > 0)
+		validate_access("forwarded", counters.forwarded-1, true, __LINE__, __FUNCTION__, __FILE__);
 	// Go through already knows forward servers and see if we used one of those
 	for(i=0; i < counters.forwarded; i++)
 	{
@@ -129,7 +131,8 @@ int findForwardID(const char * forward, bool count)
 int findDomainID(const char *domain)
 {
 	int i;
-	validate_access("domains", counters.domains-1, true, __LINE__, __FUNCTION__, __FILE__);
+	if(counters.domains > 0)
+		validate_access("domains", counters.domains-1, true, __LINE__, __FUNCTION__, __FILE__);
 	for(i=0; i < counters.domains; i++)
 	{
 		// Quick test: Does the domain start with the same character?
@@ -175,7 +178,8 @@ int findClientID(const char *client)
 {
 	int i;
 	// Compare content of client against known client IP addresses
-	validate_access("clients", counters.clients-1, true, __LINE__, __FUNCTION__, __FILE__);
+	if(counters.clients > 0)
+		validate_access("clients", counters.clients-1, true, __LINE__, __FUNCTION__, __FILE__);
 	for(i=0; i < counters.clients; i++)
 	{
 		// Quick test: Does the clients IP start with the same character?
