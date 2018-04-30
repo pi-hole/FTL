@@ -529,7 +529,7 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 
 	if(((flags & F_HOSTS) && (flags & F_IMMORTAL)) || ((flags & F_NAMEP) && (flags & F_DHCP)) || (flags & F_FORWARD))
 	{
-		// Hosts data: /etc/pihole/gravity.list, /etc/pihole/black.list, /etc/pihole/local.list, etc.
+		// List data: /etc/pihole/gravity.list, /etc/pihole/black.list, /etc/pihole/local.list, etc.
 		// or
 		// DHCP server reply
 		// or
@@ -543,8 +543,6 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 				requesttype = QUERY_GRAVITY;
 			else if(arg != NULL && strstr(arg, "/black.list") != NULL)
 				requesttype = QUERY_BLACKLIST;
-			else if(flags & F_NXDOMAIN)
-				requesttype = QUERY_GRAVITY;
 			else // local.list, hostname.list, /etc/hosts and others
 				requesttype = QUERY_CACHE;
 		}
@@ -867,7 +865,8 @@ int FTL_listsfile(char* filename, unsigned int index, FILE *f, int cache_size, s
 		// Strip off everything at the end of the IP (CIDR might be there)
 		a=IPv6addr; for(;*a;a++) if(*a == '/') *a = 0;
 		// Prepare IPv6 address for records
-		if(inet_pton(AF_INET6, IPv6addr, &addr6) > 1)
+		logg("IPv6: \"%s\" \"%s\"",IPv6addr,a);
+		if(inet_pton(AF_INET6, IPv6addr, &addr6) > 0)
 			has_IPv6 = true;
 	}
 	clearSetupVarsArray(); // will free/invalidate IPv6addr
@@ -935,7 +934,9 @@ int FTL_listsfile(char* filename, unsigned int index, FILE *f, int cache_size, s
 		{
 			strcpy(cache4->name.sname, domain);
 			cache4->flags = F_HOSTS | F_IMMORTAL | F_FORWARD | F_REVERSE | F_IPV4;
-			if(config.blockingmode == MODE_NX) cache4->flags |= F_NEG | F_NXDOMAIN;
+			// If we block in NXDOMAIN mode, we add the NXDOMAIN flag and make this host record
+			// also valid for AAAA requests
+			if(config.blockingmode == MODE_NX) cache4->flags |= F_IPV6 | F_NEG | F_NXDOMAIN;
 			cache4->ttd = daemon->local_ttl;
 			add_hosts_entry(cache4, &addr4, INADDRSZ, index, rhash, hashsz);
 			name_count++;

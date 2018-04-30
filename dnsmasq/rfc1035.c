@@ -1696,7 +1696,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 			    if (!dryrun)
 			    {
 			      log_query(crecp->flags, name, NULL, record_source(crecp->uid));
-			      FTL_cache(crecp->flags, name, NULL, NULL, daemon->log_display_id);
+			      FTL_cache(crecp->flags, name, NULL, record_source(crecp->uid), daemon->log_display_id);
 			    }
 			  }
 			else
