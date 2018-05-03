@@ -19,6 +19,10 @@ int main_dnsmasq(int argc, char **argv);
 
 int main (int argc, char* argv[])
 {
+	// Get user pihole-FTL is running as
+	// We store this in a global variable
+	// such that the log routine can access
+	// it if needed
 	username = getUserName();
 
 	// Parse arguments
@@ -32,17 +36,12 @@ int main (int argc, char* argv[])
 	log_FTL_version();
 	init_thread_lock();
 
-	// pihole-FTL should really be run as user "pihole" to not mess up with the file permissions
-	// Exception: allow to be run under user "root" in debug mode to allow binding to port 53
-	//            inside the debugger
-	if(strcmp(username, "pihole") != 0 && !debug)
-	{
-		logg("FATAL: Starting pihole-FTL directly is not recommended.");
-		logg("       Instead, use system commands for starting pihole-FTL as service (systemctl / service)");
-		logg("       or use: sudo -u pihole pihole-FTL");
-		exit(EXIT_FAILURE);
-	}
+	// pihole-FTL should really be run as user "pihole" to not mess up with file permissions
+	// print warning otherwise
+	if(strcmp(username, "pihole") != 0)
+		logg("WARNING: Starting pihole-FTL as user %s is not recommended", username);
 
+	// Process pihole-FTL.conf
 	read_FTLconf();
 
 	// Catch signals like SIGTERM and SIGINT
