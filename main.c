@@ -38,7 +38,7 @@ int main (int argc, char* argv[])
 
 	// pihole-FTL should really be run as user "pihole" to not mess up with file permissions
 	// print warning otherwise
-	if(strcmp(username, "pihole"))
+	if(strcmp(username, "pihole") != 0)
 		logg("WARNING: Starting pihole-FTL as user %s is not recommended", username);
 
 	// Process pihole-FTL.conf
