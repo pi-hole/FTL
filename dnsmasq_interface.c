@@ -20,7 +20,7 @@ static void block_single_domain(char *domain);
 
 char flagnames[28][12] = {"F_IMMORTAL ", "F_NAMEP ", "F_REVERSE ", "F_FORWARD ", "F_DHCP ", "F_NEG ", "F_HOSTS ", "F_IPV4 ", "F_IPV6 ", "F_BIGNAME ", "F_NXDOMAIN ", "F_CNAME ", "F_DNSKEY ", "F_CONFIG ", "F_DS ", "F_DNSSECOK ", "F_UPSTREAM ", "F_RRNAME ", "F_SERVER ", "F_QUERY ", "F_NOERR ", "F_AUTH ", "F_DNSSEC ", "F_KEYTAG ", "F_SECSTAT ", "F_NO_RR ", "F_IPSET ", "F_NOEXTRA "};
 
-void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *types, int id)
+void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *types, int id, char type)
 {
 	// Create new query in data structure
 	enable_thread_lock();
@@ -91,7 +91,8 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	}
 
 	// Log new query if in debug mode
-	if(debug) logg("**** new query %s %s %s (ID %i)", types, domain, client, id);
+	char *proto = (type == UDP) ? "UDP" : "TCP";
+	if(debug) logg("**** new %s %s \"%s\" from %s (ID %i)", proto, types, domain, client, id);
 
 	// Determine query type
 	unsigned char querytype = 0;
