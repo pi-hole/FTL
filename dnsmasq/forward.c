@@ -1406,7 +1406,7 @@ void receive_query(struct listener *listen, time_t now)
 	log_query(F_QUERY | F_IPV4 | F_FORWARD, daemon->namebuff,
 		  (struct all_addr *)&source_addr.in.sin_addr, types);
 	FTL_new_query(F_QUERY | F_IPV4 | F_FORWARD, daemon->namebuff,
-	              (struct all_addr *)&source_addr.in.sin_addr, types, daemon->log_display_id);
+	              (struct all_addr *)&source_addr.in.sin_addr, types, daemon->log_display_id, UDP);
       }
 #ifdef HAVE_IPV6
       else
@@ -1414,7 +1414,7 @@ void receive_query(struct listener *listen, time_t now)
 	log_query(F_QUERY | F_IPV6 | F_FORWARD, daemon->namebuff,
 		  (struct all_addr *)&source_addr.in6.sin6_addr, types);
 	FTL_new_query(F_QUERY | F_IPV6 | F_FORWARD, daemon->namebuff,
-	              (struct all_addr *)&source_addr.in6.sin6_addr, types, daemon->log_display_id);
+	              (struct all_addr *)&source_addr.in6.sin6_addr, types, daemon->log_display_id, UDP);
       }
 #endif
 
@@ -1761,12 +1761,20 @@ unsigned char *tcp_request(int confd, time_t now,
 	  char *types = querystr(auth_dns ? "auth" : "query", qtype);
 
 	  if (peer_addr.sa.sa_family == AF_INET)
+	  {
 	    log_query(F_QUERY | F_IPV4 | F_FORWARD, daemon->namebuff,
 		      (struct all_addr *)&peer_addr.in.sin_addr, types);
+	    FTL_new_query(F_QUERY | F_IPV4 | F_FORWARD, daemon->namebuff,
+	              (struct all_addr *)&peer_addr.in.sin_addr, types, daemon->log_display_id, TCP);
+	  }
 #ifdef HAVE_IPV6
 	  else
+	  {
 	    log_query(F_QUERY | F_IPV6 | F_FORWARD, daemon->namebuff,
 		      (struct all_addr *)&peer_addr.in6.sin6_addr, types);
+	    FTL_new_query(F_QUERY | F_IPV6 | F_FORWARD, daemon->namebuff,
+	              (struct all_addr *)&peer_addr.in6.sin6_addr, types, daemon->log_display_id, TCP);
+	  }
 #endif
 
 #ifdef HAVE_AUTH
@@ -1941,12 +1949,20 @@ unsigned char *tcp_request(int confd, time_t now,
 		      m = (c1 << 8) | c2;
 
 		      if (last_server->addr.sa.sa_family == AF_INET)
+		      {
 			log_query(F_SERVER | F_IPV4 | F_FORWARD, daemon->namebuff,
 				  (struct all_addr *)&last_server->addr.in.sin_addr, NULL);
+			FTL_forwarded(F_SERVER | F_IPV4 | F_FORWARD, daemon->namebuff,
+				  (struct all_addr *)&last_server->addr.in.sin_addr, daemon->log_display_id);
+		      }
 #ifdef HAVE_IPV6
 		      else
+		      {
 			log_query(F_SERVER | F_IPV6 | F_FORWARD, daemon->namebuff,
 				  (struct all_addr *)&last_server->addr.in6.sin6_addr, NULL);
+			FTL_forwarded(F_SERVER | F_IPV6 | F_FORWARD, daemon->namebuff,
+				  (struct all_addr *)&last_server->addr.in6.sin6_addr, daemon->log_display_id);
+		      }
 #endif
 
 #ifdef HAVE_DNSSEC

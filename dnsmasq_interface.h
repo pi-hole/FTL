@@ -8,8 +8,9 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 extern int socketfd, telnetfd4, telnetfd6;
+enum { TCP, UDP };
 
-void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *types, int id);
+void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *types, int id, char type);
 void FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id);
 void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id);
 void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char * arg, int id);
