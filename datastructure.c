@@ -206,6 +206,8 @@ int findClientID(const char *client)
 	clients[clientID].magic = MAGICBYTE;
 	// Set its counter to 1
 	clients[clientID].count = 1;
+	// Initialize blocked count to zero
+	clients[clientID].blockedcount = 0;
 	// Store client IP - no need to check for NULL here as it doesn't harm
 	clients[clientID].ip = strdup(client);
 	memory.clientips += (strlen(client) + 1) * sizeof(char);

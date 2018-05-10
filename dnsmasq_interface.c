@@ -414,6 +414,9 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 			int domainID = queries[i].domainID;
 			validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
 
+			int clientID = queries[i].clientID;
+			validate_access("clients", clientID, true, __LINE__, __FUNCTION__, __FILE__);
+
 			// Decide what to do depening on the result of detectStatus()
 			if(queries[i].status == QUERY_WILDCARD)
 			{
@@ -422,6 +425,7 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 				overTime[timeidx].blocked++;
 				domains[domainID].blockedcount++;
 				domains[domainID].wildcard = true;
+				clients[clientID].blockedcount++;
 			}
 			else if(queries[i].status == QUERY_CACHE)
 			{
@@ -435,6 +439,7 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 				counters.blocked++;
 				overTime[timeidx].blocked++;
 				domains[domainID].blockedcount++;
+				clients[clientID].blockedcount++;
 			}
 
 			// Save reply type and update individual reply counters
@@ -580,8 +585,6 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 			return;
 		}
 
-		int domainID = queries[i].domainID;
-		validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
 		if(!queries[i].complete)
 		{
 			// This query is no longer unknown
@@ -593,6 +596,12 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 			int timeidx = findOverTimeID(overTimetimestamp);
 			validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 
+			int domainID = queries[i].domainID;
+			validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
+
+			int clientID = queries[i].clientID;
+			validate_access("clients", clientID, true, __LINE__, __FUNCTION__, __FILE__);
+
 			// Handle counters accordingly
 			switch(requesttype)
 			{
@@ -601,6 +610,7 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 					counters.blocked++;
 					overTime[timeidx].blocked++;
 					domains[domainID].blockedcount++;
+					clients[clientID].blockedcount++;
 					break;
 				case QUERY_CACHE: // cached from one of the lists
 					counters.cached++;
