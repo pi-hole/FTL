@@ -300,7 +300,6 @@ void *telnet_connection_handler_thread(void *socket_desc)
 	// Set connection type to telnet
 	istelnet[sock] = true;
 
-	// Store copy only for displaying the debug messages
 	int sockID = sock;
 	char client_message[SOCKETBUFFERLEN] = "";
 
@@ -338,12 +337,9 @@ void *telnet_connection_handler_thread(void *socket_desc)
 		}
 		else if(n == -1)
 		{
-			if(debugclients) logg("Telnet connection interrupted (%s), ID: %i", strerror(errno), sockID);
 			break;
 		}
 	}
-	if(debugclients)
-		logg("Telnet disconnected, ID: %i", sockID);
 
 	//Free the socket pointer
 	if(sock != 0)
@@ -360,7 +356,7 @@ void *socket_connection_handler_thread(void *socket_desc)
 	int sock = *(int*)socket_desc;
 	// Set connection type to not telnet
 	istelnet[sock] = false;
-	// Store copy only for displaying the debug messages
+
 	int sockID = sock;
 	char client_message[SOCKETBUFFERLEN] = "";
 
@@ -398,11 +394,9 @@ void *socket_connection_handler_thread(void *socket_desc)
 		}
 		else if(n == -1)
 		{
-			if(debugclients) logg("Unix socket connection interrupted (%s), ID: %i", strerror(errno), sockID);
 			break;
 		}
 	}
-	if(debugclients) logg("Socket disconnected, ID: %i", sockID);
 
 	//Free the socket pointer
 	if(sock != 0)

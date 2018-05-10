@@ -94,9 +94,6 @@ void getStats(int *sock)
 	}
 	else
 		pack_uint8(*sock, blockingstatus);
-
-	if(debugclients)
-		logg("Sent stats data to client, ID: %i", *sock);
 }
 
 void getOverTime(int *sock)
@@ -141,9 +138,6 @@ void getOverTime(int *sock)
 			pack_int32(*sock, overTime[i].blocked);
 		}
 	}
-
-	if(debugclients)
-		logg("Sent overTime data to client, ID: %i", *sock);
 }
 
 void getTopDomains(char *client_message, int *sock)
@@ -218,9 +212,6 @@ void getTopDomains(char *client_message, int *sock)
 		if(excludedomains != NULL)
 		{
 			getSetupVarsArray(excludedomains);
-
-			if(debugclients)
-				logg("Excluding %i domains from being displayed", setupVarsElements);
 		}
 	}
 
@@ -304,14 +295,6 @@ void getTopDomains(char *client_message, int *sock)
 
 	if(excludedomains != NULL)
 		clearSetupVarsArray();
-
-	if(debugclients)
-	{
-		if(blocked)
-			logg("Sent top ads list data to client, ID: %i", *sock);
-		else
-			logg("Sent top domains list data to client, ID: %i", *sock);
-	}
 }
 
 void getTopClients(char *client_message, int *sock)
@@ -361,9 +344,6 @@ void getTopClients(char *client_message, int *sock)
 	if(excludeclients != NULL)
 	{
 		getSetupVarsArray(excludeclients);
-
-		if(debugclients)
-			logg("Excluding %i clients from being displayed", setupVarsElements);
 	}
 
 	if(!istelnet[*sock])
@@ -418,9 +398,6 @@ void getTopClients(char *client_message, int *sock)
 
 	if(excludeclients != NULL)
 		clearSetupVarsArray();
-
-	if(debugclients)
-		logg("Sent top clients data to client, ID: %i", *sock);
 }
 
 
@@ -531,9 +508,6 @@ void getForwardDestinations(char *client_message, int *sock)
 			}
 		}
 	}
-
-	if(debugclients)
-		logg("Sent forward destination data to client, ID: %i", *sock);
 }
 
 
@@ -558,9 +532,6 @@ void getQueryTypes(int *sock)
 		pack_float(*sock, percentage[0]);
 		pack_float(*sock, percentage[1]);
 	}
-
-	if(debugclients)
-		logg("Sent query type data to client, ID: %i", *sock);
 }
 
 
@@ -590,8 +561,6 @@ void getAllQueries(char *client_message, int *sock)
 		domainname = calloc(256, sizeof(char));
 		if(domainname == NULL) return;
 		sscanf(client_message, ">getallqueries-domain %255s", domainname);
-		if(debugclients)
-			logg("Showing only queries with domain %s", domainname);
 		filterdomainname = true;
 	}
 	// Client filtering?
@@ -600,8 +569,6 @@ void getAllQueries(char *client_message, int *sock)
 		clientname = calloc(256, sizeof(char));
 		if(clientname == NULL) return;
 		sscanf(client_message, ">getallqueries-client %255s", clientname);
-		if(debugclients)
-			logg("Showing only queries with client %s", clientname);
 		filterclientname = true;
 	}
 
@@ -632,32 +599,6 @@ void getAllQueries(char *client_message, int *sock)
 		}
 	}
 	clearSetupVarsArray();
-
-	// Get privacy mode flag
-	char * privacy = read_setupVarsconf("API_PRIVACY_MODE");
-	bool privacymode = false;
-
-	if(privacy != NULL)
-		if(getSetupVarsBool(privacy))
-			privacymode = true;
-
-	clearSetupVarsArray();
-
-	if(debugclients)
-	{
-		if(showpermitted)
-			logg("Showing permitted queries");
-		else
-			logg("Hiding permitted queries");
-
-		if(showblocked)
-			logg("Showing blocked queries");
-		else
-			logg("Hiding blocked queries");
-
-		if(privacymode)
-			logg("Privacy mode enabled");
-	}
 
 	int i;
 	for(i=ibeg; i < counters.queries; i++)
@@ -740,9 +681,6 @@ void getAllQueries(char *client_message, int *sock)
 
 	if(filterdomainname)
 		free(domainname);
-
-	if(debugclients)
-		logg("Sent all queries data to client, ID: %i", *sock);
 }
 
 void getRecentBlocked(char *client_message, int *sock)
@@ -820,9 +758,6 @@ void getMemoryUsage(int *sock)
 	else
 		pack_uint64(*sock, totalbytes);
 	free(totalprefix);
-
-	if(debugclients)
-		logg("Sent memory data to client, ID: %i", *sock);
 }
 
 void getClientID(int *sock)
@@ -831,9 +766,6 @@ void getClientID(int *sock)
 		ssend(*sock,"%i\n", *sock);
 	else
 		pack_int32(*sock, *sock);
-
-	if(debugclients)
-		logg("Sent client ID to client, ID: %i", *sock);
 }
 
 void getQueryTypesOverTime(int *sock)
@@ -872,9 +804,6 @@ void getQueryTypesOverTime(int *sock)
 			}
 		}
 	}
-
-	if(debugclients)
-		logg("Sent overTime query types data to client, ID: %i", *sock);
 }
 
 void getVersion(int *sock)
@@ -914,9 +843,6 @@ void getVersion(int *sock)
 			free(hashVersion);
 		}
 	}
-
-	if(debugclients)
-		logg("Sent version info to client, ID: %i", *sock);
 }
 
 void getDBstats(int *sock)
@@ -944,9 +870,6 @@ void getDBstats(int *sock)
 		if(!pack_str32(*sock, (char *) sqlite3_libversion()))
 			return;
 	}
-
-	if(debugclients)
-		logg("Sent DB info to client, ID: %i", *sock);
 }
 
 void getClientsOverTime(int *sock)
@@ -1140,9 +1063,6 @@ void getUnknownQueries(int *sock)
 			pack_bool(*sock, queries[i].complete);
 		}
 	}
-
-	if(debugclients)
-		logg("Sent unknown queries data to client, ID: %i", *sock);
 }
 
 void getDomainDetails(char *client_message, int *sock)

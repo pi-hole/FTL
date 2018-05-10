@@ -63,7 +63,7 @@ double get_db_filesize(void)
 	}
 	return 1e-6*st.st_size;
 }
-
+/*
 static int callback(void *NotUsed, int argc, char **argv, char **azColName){
 	int i;
 	for(i=0; i<argc; i++){
@@ -71,7 +71,7 @@ static int callback(void *NotUsed, int argc, char **argv, char **azColName){
 	}
 	return 0;
 }
-
+*/
 bool dbopen(void)
 {
 	pthread_mutex_lock(&dblock);
@@ -102,10 +102,9 @@ bool dbquery(const char *format, ...)
 		return false;
 	}
 
-	if(debugDB)
-		rc = sqlite3_exec(db, query, callback, NULL, &zErrMsg);
-	else
-		rc = sqlite3_exec(db, query, NULL, NULL, &zErrMsg);
+//	Use callback when debugging
+//	rc = sqlite3_exec(db, query, callback, NULL, &zErrMsg);
+	rc = sqlite3_exec(db, query, NULL, NULL, &zErrMsg);
 
 	if( rc != SQLITE_OK ){
 		logg("dbquery(%s) - SQL error (%i): %s", query, rc, zErrMsg);
