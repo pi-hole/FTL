@@ -876,7 +876,6 @@ int FTL_listsfile(char* filename, unsigned int index, FILE *f, int cache_size, s
 		// Strip off everything at the end of the IP (CIDR might be there)
 		a=IPv6addr; for(;*a;a++) if(*a == '/') *a = 0;
 		// Prepare IPv6 address for records
-		logg("IPv6: \"%s\" \"%s\"",IPv6addr,a);
 		if(inet_pton(AF_INET6, IPv6addr, &addr6) > 0)
 			has_IPv6 = true;
 	}
