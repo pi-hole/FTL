@@ -28,16 +28,16 @@ static void SIGSEGV_handler(int sig, siginfo_t *si, void *unused)
 	}
 	log_FTL_version();
 
-	logg("\nReceived signal: %s", strsignal(sig));
+	logg("Received signal: %s", strsignal(sig));
 	logg("     at address: %lu", (unsigned long) si->si_addr);
 	switch (si->si_code)
 	{
-		case SEGV_MAPERR: logg("      with code: SEGV_MAPERR (Address not mapped to object)"); break;
-		case SEGV_ACCERR: logg("      with code: SEGV_ACCERR (Invalid permissions for mapped object)"); break;
+		case SEGV_MAPERR: logg("     with code: SEGV_MAPERR (Address not mapped to object)"); break;
+		case SEGV_ACCERR: logg("     with code: SEGV_ACCERR (Invalid permissions for mapped object)"); break;
 #if defined(SEGV_BNDERR)
-		case SEGV_BNDERR: logg("      with code: SEGV_BNDERR (Failed address bound checks)"); break;
+		case SEGV_BNDERR: logg("     with code: SEGV_BNDERR (Failed address bound checks)"); break;
 #endif
-		default: logg("      with code: Unknown (%i), ",si->si_code); break;
+		default: logg("     with code: Unknown (%i), ",si->si_code); break;
 	}
 
 	// Try to obtain backtrace. This may not always be helpful, but it is better than nothing
