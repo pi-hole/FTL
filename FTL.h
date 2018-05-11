@@ -169,6 +169,7 @@ typedef struct {
 typedef struct {
 	unsigned char magic;
 	int count;
+	int blockedcount;
 	char *ip;
 	char *name;
 	bool new;

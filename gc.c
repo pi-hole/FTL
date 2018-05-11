@@ -53,24 +53,23 @@ void *GC_thread(void *val)
 				// Adjust total counters and total over time data
 				// We cannot edit counters.queries directly as it is used
 				// as max ID for the queries[] struct
-				validate_access("overTime", queries[i].timeidx, true, __LINE__, __FUNCTION__, __FILE__);
-				overTime[queries[i].timeidx].total--;
-
-				// Adjust client and corresponding overTime counters
-				validate_access("clients", queries[i].clientID, true, __LINE__, __FUNCTION__, __FILE__);
-				clients[queries[i].clientID].count--;
-				validate_access_oTcl(queries[i].timeidx, queries[i].clientID, __LINE__, __FUNCTION__, __FILE__);
-				overTime[queries[i].timeidx].clientdata[queries[i].clientID]--;
-
-				// Adjust domain counter (no overTime information)
-				validate_access("domains", queries[i].domainID, true, __LINE__, __FUNCTION__, __FILE__);
-				domains[queries[i].domainID].count--;
-
-				// Get indices and validate memory access
 				int timeidx = queries[i].timeidx;
 				validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
+				overTime[timeidx].total--;
+
+				// Adjust client counter
+				int clientID = queries[i].clientID;
+				validate_access("clients", clientID, true, __LINE__, __FUNCTION__, __FILE__);
+				clients[clientID].count--;
+
+				// Adjust corresponding overTime counters
+				validate_access_oTcl(timeidx, clientID, __LINE__, __FUNCTION__, __FILE__);
+				overTime[timeidx].clientdata[clientID]--;
+
+				// Adjust domain counter (no overTime information)
 				int domainID = queries[i].domainID;
 				validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
+				domains[domainID].count--;
 
 				// Change other counters according to status of this query
 				switch(queries[i].status)
@@ -84,6 +83,7 @@ void *GC_thread(void *val)
 						counters.blocked--;
 						overTime[timeidx].blocked--;
 						domains[domainID].blockedcount--;
+						clients[clientID].blockedcount--;
 						break;
 					case QUERY_FORWARDED:
 						// Forwarded to an upstream DNS server
@@ -101,12 +101,14 @@ void *GC_thread(void *val)
 						counters.wildcardblocked--;
 						overTime[timeidx].blocked--;
 						domains[domainID].blockedcount--;
+						clients[clientID].blockedcount--;
 						break;
 					case QUERY_BLACKLIST:
 						// Blocked by user's black list
 						counters.blocked--;
 						overTime[timeidx].blocked--;
 						domains[domainID].blockedcount--;
+						clients[clientID].blockedcount--;
 						break;
 					default:
 						/* That cannot happen */
