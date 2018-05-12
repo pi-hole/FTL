@@ -169,6 +169,7 @@ typedef struct {
 typedef struct {
 	unsigned char magic;
 	int count;
+	int blockedcount;
 	char *ip;
 	char *name;
 	bool new;
@@ -253,7 +254,6 @@ extern char * username;
 extern char timestamp[16];
 extern bool flush;
 extern bool needGC;
-extern bool daemonmode;
 extern bool database;
 extern long int lastdbindex;
 extern bool travis;

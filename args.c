@@ -12,7 +12,6 @@
 #include "version.h"
 
 bool debug = false;
-bool daemonmode = true;
 bool runtest = false;
 bool travis = false;
 int argc_dnsmasq = 0;
@@ -82,20 +81,12 @@ void parse_args(int argc, char* argv[])
 			exit(EXIT_SUCCESS);
 		}
 
-		// pihole-FTL running
-		// will test if another pihole-FTL process is running
-		// and exits even if not (instead of starting a new one)
-		if(strcmp(argv[i], "running") == 0)
-		{
-			runtest = true;
-			ok = true;
-		}
-
 		// Don't go into background
+		// This is a no-op but we still support it
+		// for backwards compatibility
 		if(strcmp(argv[i], "-f") == 0 ||
 		   strcmp(argv[i], "no-daemon") == 0)
 		{
-			daemonmode = false;
 			ok = true;
 		}
 
@@ -154,12 +145,9 @@ void parse_args(int argc, char* argv[])
 			printf("\t-v, version       Return version\n");
 			printf("\t-t, tag           Return git tag\n");
 			printf("\t-b, branch        Return git branch\n");
-			printf("\t    running       Test if another pihole-FTL\n");
 			printf("\t                  process is running and exit\n");
 			printf("\t                  even if not (instead of\n");
 			printf("\t                  starting a new one)\n");
-			printf("\t-f, no-daemon     Don't go into daemon mode\n");
-			printf("\t-h, help          Display this help and exit\n");
 			printf("\tdnsmasq-test      Test syntax of dnsmasq's\n");
 			printf("\t                  config files and exit\n");
 			printf("\n\nOnline help: https://github.com/pi-hole/FTL\n");

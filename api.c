@@ -320,11 +320,19 @@ void getTopClients(char *client_message, int *sock)
 	if(command(client_message, " withzero"))
 		includezeroclients = true;
 
+	// Show number of blocked queries instead of total number?
+	// This option can be combined with existing options,
+	// i.e. ">top-clients withzero blocked (123)" would be valid
+	bool blockedonly = false;
+	if(command(client_message, " blocked"))
+		blockedonly = true;
+
 	for(i=0; i < counters.clients; i++)
 	{
 		validate_access("clients", i, true, __LINE__, __FUNCTION__, __FILE__);
 		temparray[i][0] = i;
-		temparray[i][1] = clients[i].count;
+		// Use either blocked or total count based on request string
+		temparray[i][1] = blockedonly ? clients[i].blockedcount : clients[i].count;
 	}
 
 	// Sort in ascending order?
@@ -355,8 +363,9 @@ void getTopClients(char *client_message, int *sock)
 	int n = 0;
 	for(i=0; i < counters.clients; i++)
 	{
-		// Get sorted indices
+		// Get sorted indices and counter values (may be either total or blocked count)
 		int j = temparray[i][0];
+		int ccount = temparray[i][1];
 		validate_access("clients", j, true, __LINE__, __FUNCTION__, __FILE__);
 
 		// Skip this client if there is a filter on it
@@ -378,16 +387,16 @@ void getTopClients(char *client_message, int *sock)
 		// Return this client if either
 		// - "withzero" option is set, and/or
 		// - the client made at least one query within the most recent 24 hours
-		if(includezeroclients || clients[j].count > 0)
+		if(includezeroclients || ccount > 0)
 		{
 			if(istelnet[*sock])
-				ssend(*sock,"%i %i %s %s\n",n,clients[j].count,clients[j].ip,name);
+				ssend(*sock,"%i %i %s %s\n", n, ccount, clients[j].ip, name);
 			else
 			{
 				if(!pack_str32(*sock, "") || !pack_str32(*sock, clients[j].ip))
 					return;
 
-				pack_int32(*sock, clients[j].count);
+				pack_int32(*sock, ccount);
 			}
 			n++;
 		}

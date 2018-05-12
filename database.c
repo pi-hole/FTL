@@ -734,6 +734,7 @@ void read_data_from_DB(void)
 				counters.blocked++;
 				overTime[timeidx].blocked++;
 				domains[domainID].blockedcount++;
+				clients[clientID].blockedcount++;
 				break;
 
 			case QUERY_FORWARDED: // Forwarded
@@ -754,6 +755,7 @@ void read_data_from_DB(void)
 				overTime[timeidx].blocked++;
 				domains[domainID].blockedcount++;
 				domains[domainID].wildcard = true;
+				clients[clientID].blockedcount++;
 				break;
 
 			case QUERY_BLACKLIST: // black.list
@@ -762,6 +764,7 @@ void read_data_from_DB(void)
 				// Update overTime data structure
 				overTime[timeidx].blocked++;
 				domains[domainID].blockedcount++;
+				clients[clientID].blockedcount++;
 				break;
 
 			default:
