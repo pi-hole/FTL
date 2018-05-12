@@ -13,10 +13,6 @@
 
 bool debug = false;
 bool daemonmode = true;
-bool debugthreads = false;
-bool debugclients = false;
-bool debugGC = false;
-bool debugDB = false;
 bool travis = false;
 int argc_dnsmasq = 0;
 char **argv_dnsmasq = NULL;
@@ -43,34 +39,6 @@ void parse_args(int argc, char* argv[])
 
 			// Replace "-k" by "-d" (debug mode implies nofork)
 			argv_dnsmasq[1] = "-d";
-		}
-
-		if(strcmp(argv[i], "debugthreads") == 0)
-		{
-			debug = true;
-			debugthreads = true;
-			ok = true;
-		}
-
-		if(strcmp(argv[i], "debugclients") == 0)
-		{
-			debug = true;
-			debugclients = true;
-			ok = true;
-		}
-
-		if(strcmp(argv[i], "debugGC") == 0)
-		{
-			debug = true;
-			debugGC = true;
-			ok = true;
-		}
-
-		if(strcmp(argv[i], "debugDB") == 0)
-		{
-			debug = true;
-			debugDB = true;
-			ok = true;
 		}
 
 		if(strcmp(argv[i], "test") == 0)

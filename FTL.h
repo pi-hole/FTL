@@ -241,10 +241,6 @@ extern int setupVarsElements;
 
 extern bool initialscan;
 extern bool debug;
-extern bool debugthreads;
-extern bool debugclients;
-extern bool debugGC;
-extern bool debugDB;
 extern bool threadwritelock;
 extern bool threadreadlock;
 extern unsigned char blockingstatus;

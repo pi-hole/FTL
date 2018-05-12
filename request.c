@@ -123,9 +123,6 @@ void process_request(char *client_message, int *sock)
 	if(command(client_message, ">quit") || command(client_message, EOT))
 	{
 		processed = true;
-		if(debugclients)
-			logg("Client wants to disconnect, ID: %i",*sock);
-
 		close(*sock);
 		*sock = 0;
 	}
