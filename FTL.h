@@ -252,7 +252,6 @@ extern unsigned char blockingstatus;
 extern char ** wildcarddomains;
 
 extern memoryStruct memory;
-extern bool runtest;
 
 extern char * username;
 extern char timestamp[16];

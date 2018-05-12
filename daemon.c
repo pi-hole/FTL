@@ -9,104 +9,13 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
-#include <dirent.h>
 
 struct timeval t0[NUMTIMERS];
-
-int detect_FTL_process(void)
-{
-	DIR* dir = opendir("/proc");
-
-	if(dir)
-	{
-		struct dirent* de = 0;
-		while((de = readdir(dir)) != 0)
-		{
-			// Skip "." and ".."
-			if(strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0)
-				continue;
-
-			int pid = -1;
-			if(sscanf(de->d_name, "%d", &pid) == 1)
-			{
-				// Test if that is our own process
-				if(pid == getpid())
-					continue;
-
-				char buffer[512] = { 0 };
-				sprintf(buffer, "/proc/%d/cmdline", pid);
-
-				FILE* fp;
-				if((fp = fopen(buffer, "r")) != NULL)
-				{
-					char *linebuffer = NULL;
-					size_t size = 0;
-
-					errno = 0;
-					if (getline(&linebuffer, &size, fp) != -1)
-					{
-						if (strstr(linebuffer, "pihole-FTL") != 0)
-						{
-							fclose(fp);
-							logg("%i - %s", pid, linebuffer);
-							return pid;
-						}
-					}
-
-					if(errno == ENOMEM)
-						logg("WARN: process_pihole_log failed: could not allocate memory for getline");
-
-					if(linebuffer != NULL)
-					{
-						free(linebuffer);
-						linebuffer = NULL;
-					}
-					fclose(fp);
-				}
-			}
-		}
-		closedir(dir);
-	}
-	return -1;
-}
-
-void test_singularity(void)
-{
-	if(runtest)
-	{
-		if(detect_FTL_process() > -1)
-		{
-			printf("Yes: Found a running FTL process\n");
-			exit(EXIT_FAILURE);
-		}
-		else
-		{
-			printf("No: Did not find a running FTL process\n");
-			exit(EXIT_SUCCESS);
-		}
-	}
-
-	int pid;
-	while((pid = detect_FTL_process()) > -1)
-	{
-		printf("Found pihole-FTL process with PID %i (my PID %i) - killing it ...\n", pid, getpid());
-		logg("Found pihole-FTL process with PID %i (my PID %i) - killing it ...", pid, getpid());
-		if(kill(pid, SIGTERM) != 0)
-		{
-			printf("Killing failed (%s) ... Exiting now ...\n", strerror(errno));
-			logg("Killing failed (%s) ... Exiting now ...", strerror(errno));
-			exit(EXIT_FAILURE);
-		}
-	}
-	logg("Found no other running pihole-FTL process");
-}
 
 void go_daemon(void)
 {
 	pid_t process_id = 0;
 	pid_t sid = 0;
-
-	test_singularity();
 
 	// Create child process
 	process_id = fork();
