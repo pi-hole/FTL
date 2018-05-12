@@ -570,7 +570,7 @@ int main_dnsmasq (int argc, char **argv)
 	}
     }
 
-    FTL_start_threads();
+    FTL_fork_and_bind_sockets();
 
    log_err = log_start(ent_pw, err_pipe[1]);
 
