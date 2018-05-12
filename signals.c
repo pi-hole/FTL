@@ -9,6 +9,7 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
+#include <execinfo.h>
 
 volatile sig_atomic_t killed = 0;
 time_t FTLstarttime = 0;
@@ -27,17 +28,36 @@ static void SIGSEGV_handler(int sig, siginfo_t *si, void *unused)
 	}
 	log_FTL_version();
 
-	logg("\nReceived signal: %s", strsignal(sig));
+	logg("Received signal: %s", strsignal(sig));
 	logg("     at address: %lu", (unsigned long) si->si_addr);
 	switch (si->si_code)
 	{
-		case SEGV_MAPERR: logg("      with code: SEGV_MAPERR (Address not mapped to object)"); break;
-		case SEGV_ACCERR: logg("      with code: SEGV_ACCERR (Invalid permissions for mapped object)"); break;
+		case SEGV_MAPERR: logg("     with code: SEGV_MAPERR (Address not mapped to object)"); break;
+		case SEGV_ACCERR: logg("     with code: SEGV_ACCERR (Invalid permissions for mapped object)"); break;
 #if defined(SEGV_BNDERR)
-		case SEGV_BNDERR: logg("      with code: SEGV_BNDERR (Failed address bound checks)"); break;
+		case SEGV_BNDERR: logg("     with code: SEGV_BNDERR (Failed address bound checks)"); break;
 #endif
-		default: logg("      with code: Unknown (%i), ",si->si_code); break;
+		default: logg("     with code: Unknown (%i), ",si->si_code); break;
 	}
+
+	// Try to obtain backtrace. This may not always be helpful, but it is better than nothing
+	void *buffer[255];
+	const int calls = backtrace(buffer, sizeof(buffer)/sizeof(void *));
+	char ** bcktrace = backtrace_symbols(buffer, calls);
+	if(bcktrace == NULL)
+	{
+		logg("Unable to obtain backtrace (%i)!",calls);
+	}
+	else
+	{
+		logg("Backtrace:");
+		int j;
+		for (j = 0; j < calls; j++)
+		{
+			logg("B[%04i]: %s",j,bcktrace[j]);
+		}
+	}
+	free(bcktrace);
 
 	// Print memory usage
 	unsigned long int structbytes = sizeof(countersStruct) + sizeof(ConfigStruct) + counters.queries_MAX*sizeof(queriesDataStruct) + counters.forwarded_MAX*sizeof(forwardedDataStruct) + counters.clients_MAX*sizeof(clientsDataStruct) + counters.domains_MAX*sizeof(domainsDataStruct) + counters.overTime_MAX*sizeof(overTimeDataStruct) + (counters.wildcarddomains)*sizeof(*wildcarddomains);
@@ -45,8 +65,6 @@ static void SIGSEGV_handler(int sig, siginfo_t *si, void *unused)
 	logg("Memory usage (structs): %lu", structbytes);
 	logg("Memory usage (dynamic): %lu\n", dynamicbytes);
 
-	// Getting backtrace symbols is meaningless here since if we would now start a backtrace
-	// then the addresses would only point to this signal handler
 	logg("Thank you for helping us to improve our FTL engine!");
 
 	// Print message and abort
