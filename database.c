@@ -63,15 +63,7 @@ double get_db_filesize(void)
 	}
 	return 1e-6*st.st_size;
 }
-/*
-static int callback(void *NotUsed, int argc, char **argv, char **azColName){
-	int i;
-	for(i=0; i<argc; i++){
-		logg("%s = %s", azColName[i], argv[i] ? argv[i] : "NULL");
-	}
-	return 0;
-}
-*/
+
 bool dbopen(void)
 {
 	pthread_mutex_lock(&dblock);
@@ -90,7 +82,6 @@ bool dbquery(const char *format, ...)
 {
 	char *zErrMsg = NULL;
 	va_list args;
-	int rc;
 
 	va_start(args, format);
 	char *query = sqlite3_vmprintf(format, args);
@@ -102,9 +93,7 @@ bool dbquery(const char *format, ...)
 		return false;
 	}
 
-//	Use callback when debugging
-//	rc = sqlite3_exec(db, query, callback, NULL, &zErrMsg);
-	rc = sqlite3_exec(db, query, NULL, NULL, &zErrMsg);
+	int rc = sqlite3_exec(db, query, NULL, NULL, &zErrMsg);
 
 	if( rc != SQLITE_OK ){
 		logg("dbquery(%s) - SQL error (%i): %s", query, rc, zErrMsg);
