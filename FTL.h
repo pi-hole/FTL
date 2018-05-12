@@ -248,12 +248,12 @@ extern unsigned char blockingstatus;
 extern char ** wildcarddomains;
 
 extern memoryStruct memory;
-extern bool runtest;
 
 extern char * username;
 extern char timestamp[16];
 extern bool flush;
 extern bool needGC;
+extern bool daemonmode;
 extern bool database;
 extern long int lastdbindex;
 extern bool travis;
