@@ -735,12 +735,10 @@ pthread_t socket_listenthread;
 pthread_t DBthread;
 pthread_t GCthread;
 
-void FTL_fork_and_bind_sockets(void)
+void FTL_start_threads(void)
 {
-	if(!debug && daemonmode)
-		go_daemon();
-	else
-		savepid();
+	// Save PID
+	savepid();
 
 	// We will use the attributes object later to start all threads in detached mode
 	pthread_attr_t attr;
