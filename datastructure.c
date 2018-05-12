@@ -241,15 +241,18 @@ int detectStatus(const char *domain)
 	// Note that this is a really expensive subroutine and trying to match
 	// blocked domains against all configured wildcards will take some time
 	int i;
+
+	// Return early if no wildcard domains are defined
+	if(counters.wildcarddomains < 1)
+		return QUERY_CACHE;
+
 	validate_access("wildcarddomains", counters.wildcarddomains-1, false, __LINE__, __FUNCTION__, __FILE__);
 	for(i=0; i < counters.wildcarddomains; i++)
 	{
 		if(strcasecmp(wildcarddomains[i], domain) == 0)
 		{
 			// Exact match with wildcard domain
-			// if(debug)
-			// 	printf("%s / %s (exact wildcard match)\n",wildcarddomains[i], domain);
-			return 4;
+			return QUERY_WILDCARD;
 		}
 		// Create copy of domain under investigation
 		char * part = strdup(domain);
@@ -274,13 +277,11 @@ int detectStatus(const char *domain)
 			// Test for a match
 			if(strcasecmp(wildcarddomains[i], partbuffer) == 0)
 			{
-				// Free allocated memory before return'ing
+				// Free allocated memory before returning
 				free(part);
 				free(partbuffer);
 				// Return match with wildcard domain
-				// if(debug)
-				// 	printf("%s / %s (wildcard match)\n",wildcarddomains[i], partbuffer);
-				return 4;
+				return QUERY_WILDCARD;
 			}
 			if(strlen(partbuffer) > 0)
 			{
@@ -299,5 +300,5 @@ int detectStatus(const char *domain)
 	// wildcard blocking, but from e.g. an
 	// address=// configuration
 	// Answer as "cached"
-	return 3;
+	return QUERY_CACHE;
 }
