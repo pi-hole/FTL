@@ -357,12 +357,12 @@ void *socket_connection_handler_thread(void *socket_desc)
 	// Set connection type to not telnet
 	istelnet[sock] = false;
 
-	int sockID = sock;
+	// Define buffer for client's message
 	char client_message[SOCKETBUFFERLEN] = "";
 
 	// Set thread name
 	char threadname[16];
-	sprintf(threadname,"socket-%i",sockID);
+	sprintf(threadname,"socket-%i",sock);
 	prctl(PR_SET_NAME,threadname,0,0,0);
 	//Receive from client
 	ssize_t n;
