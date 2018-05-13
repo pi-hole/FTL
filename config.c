@@ -11,7 +11,7 @@
 #include "FTL.h"
 
 ConfigStruct config;
-char *parse_FTLconf(FILE *fp, const char * key);
+static char *parse_FTLconf(FILE *fp, const char * key);
 static void release_config_memory(void);
 
 char *conflinebuffer = NULL;
@@ -221,7 +221,7 @@ void read_FTLconf(void)
 		fclose(fp);
 }
 
-char *parse_FTLconf(FILE *fp, const char * key)
+static char *parse_FTLconf(FILE *fp, const char * key)
 {
 	// Return NULL if fp is an invalid file pointer
 	if(fp == NULL)
