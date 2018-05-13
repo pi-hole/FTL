@@ -331,10 +331,20 @@ void FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id
 
 void FTL_dnsmasq_reload(void)
 {
+	// This funtion is called by the dnsmasq code on receive of SIGHUP
+	// *before* clearing the cache and rereading the lists
+
 	// Called when dnsmasq re-reads its config and hosts files
 	// Reset number of blocked domains and re-read list of wildcard domains
 	counters.gravity = 0;
 	readGravityFiles();
+
+	// Reread pihole-FTL.conf to see which blocking mode the user wants to use
+	// It is possible to change the blocking mode here as we anyhow clear the
+	// cahce and reread all blocking lists
+	// Passing NULL to this function means it has to open the config file on
+	// its own behalf (on initial reading, the confg file is already opened)
+	get_blocking_mode(NULL);
 }
 
 void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
