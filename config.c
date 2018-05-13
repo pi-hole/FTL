@@ -195,8 +195,11 @@ void read_FTLconf(void)
 		case MODE_NX:
 			logg("   BLOCKINGMODE: NXDOMAIN for blocked domains");
 			break;
+		case MODE_NULL:
+			logg("   BLOCKINGMODE: Null IPs for blocked domains");
+			break;
 		default:
-			logg("   BLOCKINGMODE: Pi-hole's IP for blocked domains");
+			logg("   BLOCKINGMODE: Pi-hole's IPs for blocked domains");
 			break;
 	}
 
@@ -331,10 +334,10 @@ void get_blocking_mode(FILE *fp)
 	char *buffer = parse_FTLconf(fp, "BLOCKINGMODE");
 	if(buffer != NULL)
 	{
-		// Set to NXDOMAIN blocking if requested,
-		// leave IP blocking mode if not
 		if(strcasecmp(buffer, "NXDOMAIN") == 0)
 			config.blockingmode = MODE_NX;
+		else if(strcasecmp(buffer, "NULL") == 0)
+			config.blockingmode = MODE_NULL;
 	}
 
 	// Release memory
