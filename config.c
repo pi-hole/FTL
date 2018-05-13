@@ -12,6 +12,7 @@
 
 ConfigStruct config;
 char *parse_FTLconf(FILE *fp, const char * key);
+static void release_config_memory(void);
 
 char *conflinebuffer = NULL;
 
@@ -188,15 +189,7 @@ void read_FTLconf(void)
 
 	// BLOCKINGMODE
 	// defaults to: MODE_IP
-	config.blockingmode = MODE_IP;
-	buffer = parse_FTLconf(fp, "BLOCKINGMODE");
-
-	if(buffer != NULL)
-	{
-		if(strcasecmp(buffer, "NXDOMAIN") == 0)
-			config.blockingmode = MODE_NX;
-	}
-
+	get_blocking_mode(fp);
 	switch(config.blockingmode)
 	{
 		case MODE_NX:
@@ -222,11 +215,7 @@ void read_FTLconf(void)
 	logg("Finished config file parsing");
 
 	// Release memory
-	if(conflinebuffer != NULL)
-	{
-		free(conflinebuffer);
-		conflinebuffer = NULL;
-	}
+	release_config_memory();
 
 	if(fp != NULL)
 		fclose(fp);
@@ -278,6 +267,15 @@ char *parse_FTLconf(FILE *fp, const char * key)
 	return NULL;
 }
 
+void release_config_memory(void)
+{
+	if(conflinebuffer != NULL)
+	{
+		free(conflinebuffer);
+		conflinebuffer = NULL;
+	}
+}
+
 void get_privacy_level(FILE *fp)
 {
 	// See if we got a file handle, if not we have to open
@@ -294,6 +292,7 @@ void get_privacy_level(FILE *fp)
 	int value = 0;
 	char *buffer = parse_FTLconf(fp, "PRIVACYLEVEL");
 	if(buffer != NULL && sscanf(buffer, "%i", &value) == 1)
+	{
 		// Check for change and validity of privacy level (set in FTL.h)
 		if(value != config.privacylevel &&
 		   value >= PRIVACY_SHOW_ALL &&
@@ -302,6 +301,44 @@ void get_privacy_level(FILE *fp)
 			logg("Notice: Changing privacy level from %i to %i", config.privacylevel, value);
 			config.privacylevel = value;
 		}
+	}
+
+	// Release memory
+	release_config_memory();
+
+	// Have to close the config file if we opened it
+	if(opened)
+		fclose(fp);
+}
+
+void get_blocking_mode(FILE *fp)
+{
+	// Set default value
+	config.blockingmode = MODE_IP;
+
+	// See if we got a file handle, if not we have to open
+	// the config file ourselves
+	bool opened = false;
+	if(fp == NULL)
+	{
+		if((fp = fopen(FTLfiles.conf, "r")) == NULL)
+			// Return silently if there is no config file available
+			return;
+		opened = true;
+	}
+
+	// Get config string (if present)
+	char *buffer = parse_FTLconf(fp, "BLOCKINGMODE");
+	if(buffer != NULL)
+	{
+		// Set to NXDOMAIN blocking if requested,
+		// leave IP blocking mode if not
+		if(strcasecmp(buffer, "NXDOMAIN") == 0)
+			config.blockingmode = MODE_NX;
+	}
+
+	// Release memory
+	release_config_memory();
 
 	// Have to close the config file if we opened it
 	if(opened)
