@@ -934,7 +934,7 @@ int read_hostsfile(char *filename, unsigned int index, int cache_size, struct cr
   eatspace(f);
 
   name_count = FTL_listsfile(filename, index, f, cache_size, rhash, hashsz);
-  addr_count = cache_size - name_count;
+  addr_count = name_count - cache_size;
 
   while ((atnl = gettok(f, token)) != EOF)
     {
