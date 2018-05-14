@@ -331,10 +331,20 @@ void FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id
 
 void FTL_dnsmasq_reload(void)
 {
+	// This funtion is called by the dnsmasq code on receive of SIGHUP
+	// *before* clearing the cache and rereading the lists
+
 	// Called when dnsmasq re-reads its config and hosts files
 	// Reset number of blocked domains and re-read list of wildcard domains
 	counters.gravity = 0;
 	readGravityFiles();
+
+	// Reread pihole-FTL.conf to see which blocking mode the user wants to use
+	// It is possible to change the blocking mode here as we anyhow clear the
+	// cahce and reread all blocking lists
+	// Passing NULL to this function means it has to open the config file on
+	// its own behalf (on initial reading, the confg file is already opened)
+	get_blocking_mode(NULL);
 }
 
 void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
@@ -857,8 +867,17 @@ int FTL_listsfile(char* filename, unsigned int index, FILE *f, int cache_size, s
 	// Start timer for list analysis
 	timer_start(LISTS_TIMER);
 
-	// Read IPv4 address for host entries from setupVars.conf
-	char *IPv4addr = read_setupVarsconf("IPV4_ADDRESS");
+	// Prepare IPv4 entry
+	char *IPv4addr;
+	if(config.blockingmode == MODE_IP)
+	{
+		// Read IPv4 address for host entries from setupVars.conf
+		IPv4addr = read_setupVarsconf("IPV4_ADDRESS");
+	}
+	else
+	{
+		IPv4addr = "0.0.0.0";
+	}
 	if(IPv4addr != NULL)
 	{
 		// Strip off everything at the end of the IP (CIDR might be there)
@@ -869,8 +888,17 @@ int FTL_listsfile(char* filename, unsigned int index, FILE *f, int cache_size, s
 	}
 	clearSetupVarsArray(); // will free/invalidate IPv4addr
 
-	// Read IPv6 address for host entries from setupVars.conf
-	char *IPv6addr = read_setupVarsconf("IPV6_ADDRESS");
+	// Prepare IPv6 entry
+	char *IPv6addr;
+	if(config.blockingmode == MODE_IP)
+	{
+		// Read IPv6 address for host entries from setupVars.conf
+		IPv6addr = read_setupVarsconf("IPV6_ADDRESS");
+	}
+	else
+	{
+		IPv6addr = "::";
+	}
 	if(IPv6addr != NULL)
 	{
 		// Strip off everything at the end of the IP (CIDR might be there)
@@ -880,14 +908,6 @@ int FTL_listsfile(char* filename, unsigned int index, FILE *f, int cache_size, s
 			has_IPv6 = true;
 	}
 	clearSetupVarsArray(); // will free/invalidate IPv6addr
-
-	// If no IPv4 address was found but user wants us to server NXDOMAIN
-	// we have to mock an IP record (which won't do anything in the end)
-	if(!has_IPv4 && config.blockingmode == MODE_NX)
-	{
-		if(inet_pton(AF_INET, "127.0.0.1", &addr4) > 0)
-			has_IPv4 = true;
-	}
 
 	// If we have neither a valid IPv4 nor a valid IPv6, then we cannot add any entries here
 	if(!has_IPv4 && !has_IPv6)
@@ -952,7 +972,7 @@ int FTL_listsfile(char* filename, unsigned int index, FILE *f, int cache_size, s
 			name_count++;
 		}
 		// Add IPv6 record only if we respond with an IP address to blocked domains
-		if(has_IPv6 && config.blockingmode == MODE_IP &&
+		if(has_IPv6 && config.blockingmode != MODE_NX &&
 		   (cache6 = malloc(sizeof(struct crec) + strlen(domain)+1-SMALLDNAME)))
 		{
 			strcpy(cache6->name.sname, domain);
