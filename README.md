@@ -29,7 +29,8 @@ Please see `LICENSE` file for your rights under this license.
 | C.H.I.P | Debian | armv7l | `arm-linux-gnueabihf` | [@Promofaux](https://github.com/promofaux) |
 | OrangePi Zero | armbian Ubuntu 16.04 | armv7l | `arm-linux-gnueabihf` | [@DL6ER](https://github.com/dl6er) |
 | BeagleBone Black| Debian Jessie | armv7l | `arm-linux-gnueabihf` | [@frosty5689](https://github.com/frosty5689) |
-|  |  |  |  |  |
+| CI20 creator | Debian Jessie | mips | `mipsel-linux-gnu` | |
+|  |  |  |  |
 
 If your device is not listed you can get your CPU architecture by running `lscpu`. Download some binaries and try which one work. If you want to add a new device, open an issue or create a PR for the README.
 
