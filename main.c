@@ -83,8 +83,8 @@ int main (int argc, char* argv[])
 	close_telnet_socket();
 	close_unix_socket();
 
-	if(config.blockingregex)
-		free_regex();
+	// Invalidate blocking regex if compiled
+	free_regex();
 
 	//Remove PID file
 	removepid();

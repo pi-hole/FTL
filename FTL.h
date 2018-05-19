@@ -116,7 +116,6 @@ typedef struct {
 	int reply_NXDOMAIN;
 	int reply_CNAME;
 	int reply_IP;
-	int regex;
 } countersStruct;
 
 typedef struct {
@@ -131,7 +130,6 @@ typedef struct {
 	int privacylevel;
 	bool ignore_localhost;
 	unsigned char blockingmode;
-	bool blockingregex;
 } ConfigStruct;
 
 // Dynamic structs

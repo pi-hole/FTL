@@ -76,7 +76,6 @@ bool match_regex(char *input)
 void free_regex(void)
 {
 	// Disable blocking regex checking
-	config.blockingregex = false;
 	int index;
 	for(index = 0; index < num_regex; index++)
 		if(regexconfigured[index])

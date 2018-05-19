@@ -135,7 +135,6 @@ void log_counter_info(void)
 	logg(" -> Cached DNS queries: %i", counters.cached);
 	logg(" -> Forwarded DNS queries: %i", counters.forwardedqueries);
 	logg(" -> Exactly blocked DNS queries: %i", counters.blocked);
-	logg(" -> Regex blocked DNS queries: %i", counters.regex);
 	logg(" -> Unknown DNS queries: %i", counters.unknown);
 	logg(" -> Unique domains: %i", counters.domains);
 	logg(" -> Unique clients: %i", counters.clients);
