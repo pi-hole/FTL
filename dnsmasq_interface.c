@@ -583,7 +583,7 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 
 			// Mark this query as blocked if domain was matched by a regex
 			if(domains[domainID].regexmatch == REGEX_BLOCKED)
-				requesttype = QUERY_GRAVITY;
+				requesttype = QUERY_WILDCARD;
 
 			queries[i].status = requesttype;
 
@@ -592,6 +592,7 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 			{
 				case QUERY_GRAVITY: // gravity.list
 				case QUERY_BLACKLIST: // black.list
+				case QUERY_WILDCARD: // regex blocked
 					counters.blocked++;
 					overTime[timeidx].blocked++;
 					domains[domainID].blockedcount++;

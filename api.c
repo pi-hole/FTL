@@ -623,6 +623,7 @@ void getAllQueries(char *client_message, int *sock)
 
 		// 1 = gravity.list, 5 = black.list
 		if((queries[i].status == QUERY_GRAVITY ||
+		    queries[i].status == QUERY_WILDCARD ||
 		    queries[i].status == QUERY_BLACKLIST) && !showblocked)
 			continue;
 		// 2 = forwarded, 3 = cached

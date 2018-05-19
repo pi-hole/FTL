@@ -692,10 +692,7 @@ void read_data_from_DB(void)
 
 		// Handle wildcard blocked entries read from database
 		if(status == QUERY_WILDCARD)
-		{
-			status = QUERY_GRAVITY;
 			domains[domainID].regexmatch = REGEX_BLOCKED;
-		}
 
 		// Store this query in memory
 		validate_access("queries", queryID, false, __LINE__, __FUNCTION__, __FILE__);
