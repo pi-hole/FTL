@@ -88,8 +88,8 @@ typedef struct {
 	const char* whitelist;
 	const char* blacklist;
 	const char* gravity;
+	const char* regexlist;
 	const char* setupVars;
-	const char* wildcards;
 	const char* auditlist;
 	const char* dnsmasqconfig;
 } logFileNamesStruct;
@@ -97,7 +97,6 @@ typedef struct {
 typedef struct {
 	int queries;
 	int blocked;
-	int wildcardblocked;
 	int cached;
 	int unknown;
 	int forwarded;
@@ -108,12 +107,10 @@ typedef struct {
 	int clients_MAX;
 	int domains_MAX;
 	int overTime_MAX;
-	int wildcarddomains_MAX;
 	int gravity;
 	int gravity_conf;
 	int overTime;
 	int querytype[7];
-	int wildcarddomains;
 	int forwardedqueries;
 	int reply_NODATA;
 	int reply_NXDOMAIN;
@@ -143,13 +140,11 @@ typedef struct {
 	int timeidx;
 	unsigned char type;
 	unsigned char status;
-	// 0 = unknown, 1 = gravity.list (blocked), 2 = reply from upstream, 3 = cache, 4 = wildcard blocked
 	int domainID;
 	int clientID;
 	int forwardID;
 	bool db;
-	// the ID is a (signed) int in dnsmasq, so no need for a long int here
-	int id;
+	int id; // the ID is a (signed) int in dnsmasq, so no need for a long int here
 	bool complete;
 	bool private;
 	unsigned long response; // saved in units of 1/10 milliseconds (1 = 0.1ms, 2 = 0.2ms, 2500 = 250.0ms, etc.)
@@ -180,7 +175,6 @@ typedef struct {
 	int count;
 	int blockedcount;
 	char *domain;
-	bool wildcard;
 	unsigned char regexmatch;
 } domainsDataStruct;
 
@@ -197,7 +191,6 @@ typedef struct {
 } overTimeDataStruct;
 
 typedef struct {
-	int wildcarddomains;
 	int domainnames;
 	int clientips;
 	int forwardedips;
@@ -244,8 +237,6 @@ extern bool debug;
 extern bool threadwritelock;
 extern bool threadreadlock;
 extern unsigned char blockingstatus;
-
-extern char ** wildcarddomains;
 
 extern memoryStruct memory;
 

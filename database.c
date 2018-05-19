@@ -690,6 +690,13 @@ void read_data_from_DB(void)
 		int timeidx = findOverTimeID(overTimeTimeStamp);
 		validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 
+		// Handle wildcard blocked entries read from database
+		if(status == QUERY_WILDCARD)
+		{
+			status = QUERY_GRAVITY;
+			domains[domainID].regexmatch = REGEX_BLOCKED;
+		}
+
 		// Store this query in memory
 		validate_access("queries", queryID, false, __LINE__, __FUNCTION__, __FILE__);
 		queries[queryID].magic = MAGICBYTE;
@@ -731,6 +738,7 @@ void read_data_from_DB(void)
 				break;
 
 			case QUERY_GRAVITY: // Blocked by gravity.list
+			case QUERY_BLACKLIST: // black.list
 				counters.blocked++;
 				overTime[timeidx].blocked++;
 				domains[domainID].blockedcount++;
@@ -746,25 +754,6 @@ void read_data_from_DB(void)
 				counters.cached++;
 				// Update overTime data structure
 				overTime[timeidx].cached++;
-				break;
-
-			case QUERY_WILDCARD: // Wildcard blocked
-				counters.wildcardblocked++;
-
-				// Update overTime data structure
-				overTime[timeidx].blocked++;
-				domains[domainID].blockedcount++;
-				domains[domainID].wildcard = true;
-				clients[clientID].blockedcount++;
-				break;
-
-			case QUERY_BLACKLIST: // black.list
-				counters.blocked++;
-
-				// Update overTime data structure
-				overTime[timeidx].blocked++;
-				domains[domainID].blockedcount++;
-				clients[clientID].blockedcount++;
 				break;
 
 			default:

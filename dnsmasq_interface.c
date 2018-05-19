@@ -391,16 +391,11 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 			// Check UUID of this query
 			if(queries[i].id == id)
 			{
-				queries[i].status = detectStatus(domains[queries[i].domainID].domain);
+				queries[i].status = QUERY_CACHE;
 				found = true;
 				break;
 			}
 		}
-
-		// Determine if this is a cached reply and NXDOMAIN
-		// if so -> blocked via server=/.../ rule
-		if(queries[i].status == QUERY_CACHE && (flags & F_NEG) && (flags & F_NXDOMAIN))
-			queries[i].status = QUERY_GRAVITY;
 
 		if(!found)
 		{
@@ -427,17 +422,8 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 			int clientID = queries[i].clientID;
 			validate_access("clients", clientID, true, __LINE__, __FUNCTION__, __FILE__);
 
-			// Decide what to do depening on the result of detectStatus()
-			if(queries[i].status == QUERY_WILDCARD)
-			{
-				// Blocked due to a matching wildcard rule
-				counters.wildcardblocked++;
-				overTime[timeidx].blocked++;
-				domains[domainID].blockedcount++;
-				domains[domainID].wildcard = true;
-				clients[clientID].blockedcount++;
-			}
-			else if(queries[i].status == QUERY_CACHE)
+			// Decide what to do depending on the status of this query (blocked yes/no)
+			if(queries[i].status == QUERY_CACHE)
 			{
 				// Answered from a custom (user provided) cache file
 				counters.cached++;
