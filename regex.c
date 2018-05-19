@@ -120,7 +120,6 @@ void read_regex_from_file(void)
 			buffer[strlen(buffer)-1] = '\0';
 
 		// Compile this regex
-		logg("Adding \"%s\" to regex",buffer);
 		regexconfigured[i] = init_regex(buffer, i);
 		if(!regexconfigured[i]) errors++;
 		i++;
