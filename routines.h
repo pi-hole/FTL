@@ -105,6 +105,6 @@ void resolveNewClients(void);
 void reresolveHostnames(void);
 
 // regex.c
-bool init_regex(char *regexin, int index);
 bool match_regex(char *input);
 void free_regex(void);
+void read_regex_from_file(void);

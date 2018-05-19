@@ -735,7 +735,8 @@ void read_data_from_DB(void)
 				break;
 
 			case QUERY_GRAVITY: // Blocked by gravity.list
-			case QUERY_BLACKLIST: // black.list
+			case QUERY_WILDCARD: // Blocked by regex filter
+			case QUERY_BLACKLIST: // Blocked by black.list
 				counters.blocked++;
 				overTime[timeidx].blocked++;
 				domains[domainID].blockedcount++;
