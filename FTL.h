@@ -116,6 +116,7 @@ typedef struct {
 	int reply_NXDOMAIN;
 	int reply_CNAME;
 	int reply_IP;
+	int regex;
 } countersStruct;
 
 typedef struct {

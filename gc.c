@@ -97,12 +97,6 @@ void *GC_thread(void *val)
 						counters.cached--;
 						overTime[timeidx].cached--;
 						break;
-					case QUERY_WILDCARD:
-						counters.wildcardblocked--;
-						overTime[timeidx].blocked--;
-						domains[domainID].blockedcount--;
-						clients[clientID].blockedcount--;
-						break;
 					case QUERY_BLACKLIST:
 						// Blocked by user's black list
 						counters.blocked--;

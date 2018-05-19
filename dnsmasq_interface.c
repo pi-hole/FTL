@@ -391,7 +391,6 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 			// Check UUID of this query
 			if(queries[i].id == id)
 			{
-				queries[i].status = QUERY_CACHE;
 				found = true;
 				break;
 			}
@@ -409,6 +408,9 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 		{
 			// This query is no longer unknown
 			counters.unknown--;
+			// Answered from a custom (user provided) cache file
+			counters.cached++;
+			queries[i].status = QUERY_CACHE;
 
 			// Get time index
 			int querytimestamp, overTimetimestamp;
@@ -416,27 +418,7 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 			int timeidx = findOverTimeID(overTimetimestamp);
 			validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 
-			int domainID = queries[i].domainID;
-			validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
-
-			int clientID = queries[i].clientID;
-			validate_access("clients", clientID, true, __LINE__, __FUNCTION__, __FILE__);
-
-			// Decide what to do depending on the status of this query (blocked yes/no)
-			if(queries[i].status == QUERY_CACHE)
-			{
-				// Answered from a custom (user provided) cache file
-				counters.cached++;
-				overTime[timeidx].cached++;
-			}
-			else if(queries[i].status == QUERY_GRAVITY)
-			{
-				// Blocked using server=/.../ rule
-				counters.blocked++;
-				overTime[timeidx].blocked++;
-				domains[domainID].blockedcount++;
-				clients[clientID].blockedcount++;
-			}
+			overTime[timeidx].cached++;
 
 			// Save reply type and update individual reply counters
 			save_reply_type(flags, i, response);
@@ -451,7 +433,7 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 	}
 	else if(flags & F_FORWARD)
 	{
-		// Search for corresponding query indentified by dnsmasq's ID
+		// Search for corresponding query identified by dnsmasq's ID
 		bool found = false;
 		int i;
 
@@ -535,6 +517,8 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 		// or
 		// DHCP server reply
 		// or
+		// regex blocked query
+		// or
 		// cached answer to previously forwarded request
 
 		// Determine requesttype
@@ -568,7 +552,6 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 			// Check UUID of this query
 			if(queries[i].id == id)
 			{
-				queries[i].status = requesttype;
 				found = true;
 				break;
 			}
@@ -597,6 +580,12 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 
 			int clientID = queries[i].clientID;
 			validate_access("clients", clientID, true, __LINE__, __FUNCTION__, __FILE__);
+
+			// Mark this query as blocked if domain was matched by a regex
+			if(domains[domainID].regexmatch == REGEX_BLOCKED)
+				requesttype = QUERY_GRAVITY;
+
+			queries[i].status = requesttype;
 
 			// Handle counters accordingly
 			switch(requesttype)
@@ -996,7 +985,8 @@ static void block_single_domain(char *domain)
 	if((cache4 = malloc(sizeof(struct crec) + strlen(domain)+1-SMALLDNAME)))
 	{
 		strcpy(cache4->name.sname, domain);
-		cache4->flags = F_HOSTS | F_IMMORTAL | F_FORWARD | F_REVERSE | F_IPV4 | F_NEG | F_NXDOMAIN;
+		// Serve NXDOMAIN both for IPv4 and IPv6 requests of this domain
+		cache4->flags = F_HOSTS | F_IMMORTAL | F_FORWARD | F_REVERSE | F_IPV4 | F_IPV6 | F_NEG | F_NXDOMAIN;
 		cache4->ttd = daemon->local_ttl;
 		add_hosts_entry(cache4, &addr4, INADDRSZ, 0, NULL, 0);
 	}
