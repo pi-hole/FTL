@@ -690,10 +690,6 @@ void read_data_from_DB(void)
 		int timeidx = findOverTimeID(overTimeTimeStamp);
 		validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 
-		// Handle wildcard blocked entries read from database
-		if(status == QUERY_WILDCARD)
-			domains[domainID].regexmatch = REGEX_BLOCKED;
-
 		// Store this query in memory
 		validate_access("queries", queryID, false, __LINE__, __FUNCTION__, __FILE__);
 		queries[queryID].magic = MAGICBYTE;

@@ -621,7 +621,7 @@ void getAllQueries(char *client_message, int *sock)
 
 		char *qtype = (queries[i].type == TYPE_A)? "A" : "AAAA";
 
-		// 1 = gravity.list, 5 = black.list
+		// 1 = gravity.list, 4 = wildcard, 5 = black.list
 		if((queries[i].status == QUERY_GRAVITY ||
 		    queries[i].status == QUERY_WILDCARD ||
 		    queries[i].status == QUERY_BLACKLIST) && !showblocked)
@@ -708,13 +708,14 @@ void getRecentBlocked(char *client_message, int *sock)
 			num = 0;
 	}
 
-	// Find most recent query with either status blocked
+	// Find most recently blocked query
 	int found = 0;
 	for(i = counters.queries - 1; i > 0 ; i--)
 	{
 		validate_access("queries", i, true, __LINE__, __FUNCTION__, __FILE__);
 
 		if(queries[i].status == QUERY_GRAVITY ||
+		   queries[i].status == QUERY_WILDCARD ||
 		   queries[i].status == QUERY_BLACKLIST)
 		{
 			found++;
