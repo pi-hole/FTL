@@ -75,6 +75,14 @@ void getStats(int *sock)
 		      counters.domains, counters.forwardedqueries, counters.cached);
 		ssend(*sock, "clients_ever_seen %i\n", counters.clients);
 		ssend(*sock, "unique_clients %i\n", activeclients);
+
+		// Sum up all query types (A, AAAA, ANY, SRV, SOA, ...)
+		int sumalltypes = 0;
+		for(i=0; i < TYPE_MAX-1; i++)
+		{
+			sumalltypes += counters.querytype[i];
+		}
+		ssend(*sock, "dns_queries_all_types %i\n", sumalltypes);
 	}
 	else
 	{
