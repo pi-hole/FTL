@@ -87,7 +87,7 @@ void read_regex_from_file(void)
 	FILE *fp;
 	char *buffer = NULL;
 	size_t size = 0;
-	int i = 0, errors = 0;
+	int errors = 0;
 
 	// Start timer for regex compilation analysis
 	timer_start(REGEX_TIMER);
@@ -113,7 +113,7 @@ void read_regex_from_file(void)
 	// Search through file
 	// getline reads a string from the specified file up to either a
 	// newline character or EOF
-	while(getline(&buffer, &size, fp) != -1)
+	for(int i=0; getline(&buffer, &size, fp) != -1; i++)
 	{
 		// Strip potential newline character at the end of line we just read
 		if(buffer[strlen(buffer)-1] == '\n')
@@ -122,7 +122,6 @@ void read_regex_from_file(void)
 		// Compile this regex
 		regexconfigured[i] = init_regex(buffer, i);
 		if(!regexconfigured[i]) errors++;
-		i++;
 	}
 
 	// Free allocated memory
