@@ -335,9 +335,12 @@ void FTL_dnsmasq_reload(void)
 	// *before* clearing the cache and rereading the lists
 
 	// Called when dnsmasq re-reads its config and hosts files
-	// Reset number of blocked domains and re-read list of wildcard domains
+	// Reset number of blocked domains
 	counters.gravity = 0;
-	readGravityFiles();
+
+	// Inspect 01-pihole.conf to see if Pi-hole blocking is enabled,
+	// i.e. if /etc/pihole/gravity.list is sourced as addn-hosts file
+	check_blocking_status();
 
 	// Reread pihole-FTL.conf to see which blocking mode the user wants to use
 	// It is possible to change the blocking mode here as we anyhow clear the
@@ -940,7 +943,7 @@ int FTL_listsfile(char* filename, unsigned int index, FILE *f, int cache_size, s
 	// Start timer for list analysis
 	timer_start(LISTS_TIMER);
 
-	// Get IPv4/v6 addresses for blocking depending on user configures blocking mode
+	// Get IPv4/v6 addresses for blocking depending on user configured blocking mode
 	prepare_blocking_mode(&addr4, &addr6, &has_IPv4, &has_IPv6);
 
 	// If we have neither a valid IPv4 nor a valid IPv6, then we cannot add any entries here

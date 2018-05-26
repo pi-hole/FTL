@@ -52,15 +52,6 @@ int readnumberfromfile(const char* fname)
 	return num;
 }
 
-void readGravityFiles(void)
-{
-	// Counting of other blocking domains is done
-	// while these lists are read
-
-	// Get blocking status
-	check_blocking_status();
-}
-
 int countlineswith(const char* str, const char* fname)
 {
 	FILE *fp;

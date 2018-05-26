@@ -50,7 +50,6 @@ bool command(char *client_message, const char* cmd);
 bool matchesEndpoint(char *client_message, const char *cmd);
 
 // grep.c
-void readGravityFiles(void);
 int countlines(const char* fname);
 int countlineswith(const char* str, const char* fname);
 void check_blocking_status(void);
