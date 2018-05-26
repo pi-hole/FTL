@@ -956,7 +956,7 @@ int FTL_listsfile(char* filename, unsigned int index, FILE *f, int cache_size, s
 	{
 		char *domain = buffer;
 		// Skip hashed out lines
-		while (*domain == '#')
+		if(*domain == '#')
 			continue;
 
 		// Filter leading dots or spaces
