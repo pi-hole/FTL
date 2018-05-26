@@ -38,7 +38,7 @@ GIT_TAG := $(shell git describe --tags --abbrev=0)
 # -Wl,-z,defs: Detect and reject underlinking (phenomenon caused by missing shared library arguments when invoking the linked editor to produce another shared library)
 # -Wl,-z,now: Disable lazy binding
 # -Wl,-z,relro: Read-only segments after relocation
-HARDENING_FLAGS=-fstack-protector -D_FORTIFY_SOURCE=2 -O3 -Wl,-z,relro,-z,now -Wl,-pie -fPIE -fexceptions -fasynchronous-unwind-tables -Wl,-z,defs -Wl,-z,now -Wl,-z,relro
+HARDENING_FLAGS=-fstack-protector -D_FORTIFY_SOURCE=2 -O3 -Wl,-z,relro,-z,now -pie -fPIE -fexceptions -fasynchronous-unwind-tables -Wl,-z,defs -Wl,-z,now -Wl,-z,relro
 DEBUG_FLAGS=-rdynamic -fno-omit-frame-pointer
 # -DSQLITE_OMIT_LOAD_EXTENSION: This option omits the entire extension loading mechanism from SQLite, including sqlite3_enable_load_extension() and sqlite3_load_extension() interfaces. (needs -ldl linking option, otherwise)
 # -DSQLITE_DEFAULT_MEMSTATUS=0: This setting causes the sqlite3_status() interfaces that track memory usage to be disabled. This helps the sqlite3_malloc() routines run much faster, and since SQLite uses sqlite3_malloc() internally, this helps to make the entire library faster.
