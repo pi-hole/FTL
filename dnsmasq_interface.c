@@ -876,7 +876,7 @@ void rehash(int size);
 // This routine adds one domain to the resolver's cache. Depending on the configured blocking mode it may create
 // a single entry valid for IPv4 & IPv6 (containing only NXDOMAIN) or two entries one for IPv4 and one for IPv6
 // When IPv6 is not available on the machine, we do not add IPv6 cache entries (likewise for IPv4)
-static int add_blocked_domain_cache(struct all_addr *addr4, struct all_addr *addr6, bool *has_IPv4, bool *has_IPv6,
+static int add_blocked_domain_cache(struct all_addr *addr4, struct all_addr *addr6, bool has_IPv4, bool has_IPv6,
                                     char *domain, struct crec **rhash, int hashsz, unsigned int index)
 {
 	int name_count = 0;
@@ -915,7 +915,7 @@ static void block_single_domain(char *domain)
 
 	// Get IPv4/v6 addresses for blocking depending on user configures blocking mode
 	prepare_blocking_mode(&addr4, &addr6, &has_IPv4, &has_IPv6);
-	add_blocked_domain_cache(&addr4, &addr6, &has_IPv4, &has_IPv6, domain, NULL, 0, 0);
+	add_blocked_domain_cache(&addr4, &addr6, has_IPv4, has_IPv6, domain, NULL, 0, 0);
 
 	if(debug) logg("Added %s to cache", domain);
 
@@ -991,7 +991,7 @@ int FTL_listsfile(char* filename, unsigned int index, FILE *f, int cache_size, s
 			cache_size = name_count;
 		}
 
-		name_count += add_blocked_domain_cache(&addr4, &addr6, &has_IPv4, &has_IPv6, domain, rhash, hashsz, index);
+		name_count += add_blocked_domain_cache(&addr4, &addr6, has_IPv4, has_IPv6, domain, rhash, hashsz, index);
 		// Count added domain
 		added++;
 	}
