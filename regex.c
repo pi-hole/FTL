@@ -11,9 +11,9 @@
 #include "FTL.h"
 #include <regex.h>
 
-#define NUM_REGEX 1
-static regex_t regex[NUM_REGEX];
-static bool regexconfigured[NUM_REGEX] = { false };
+static int num_regex;
+static regex_t *regex;
+static bool *regexconfigured;
 
 static void log_regex_error(char *where, int errcode, int index)
 {
@@ -27,23 +27,16 @@ static void log_regex_error(char *where, int errcode, int index)
 	free_regex();
 }
 
-bool init_regex(char *regexin, int index)
+static bool init_regex(char *regexin, int index)
 {
 	// compile regular expressions into data structures that
 	// can be used with regexec to match against a string
-	if(index > NUM_REGEX)
-	{
-		logg("ERROR: Increase NUM_REGEX");
-		return false;
-	}
 	int errcode = regcomp(&regex[index], regexin, REG_EXTENDED);
 	if(errcode != 0)
 	{
 		log_regex_error("compiling", errcode, index);
 		return false;
 	}
-	// If we reach this point, then no regex compilation failed
-	regexconfigured[index] = true;
 	return true;
 }
 
@@ -52,10 +45,11 @@ bool match_regex(char *input)
 	int index;
 	bool matched = false;
 
+	// Start matching timer
 	timer_start(REGEX_TIMER);
-	for(index = 0; index < NUM_REGEX; index++)
+	for(index = 0; index < num_regex; index++)
 	{
-		// Only check regex which have been compiled
+		// Only check regex which have been successfully compiled
 		if(!regexconfigured[index])
 			continue;
 
@@ -81,10 +75,85 @@ bool match_regex(char *input)
 
 void free_regex(void)
 {
-	// Disable blocking regex checking
-	config.blockingregex = false;
-	int index;
-	for(index = 0; index < NUM_REGEX; index++)
+	// Return early if we don't use any regex
+	if(regex == NULL)
+		return;
+
+	// Disable blocking regex checking and free regex datastructure
+	for(int index = 0; index < num_regex; index++)
 		if(regexconfigured[index])
 			regfree(&regex[index]);
+
+	// Free array with regex datastructure
+	free(regex);
+	regex = NULL;
+	free(regexconfigured);
+	regexconfigured = NULL;
+
+	// Reset counter for number of regex
+	num_regex = 0;
+
+	// Must reevaluate regex filters after having reread the regex filter
+	// We reset all regex status to unknown to have them being reevaluated
+	if(counters.domains > 0)
+		validate_access("domains", counters.domains-1, false, __LINE__, __FUNCTION__, __FILE__);
+	for(int i=0; i < counters.domains; i++)
+	{
+		domains[i].regexmatch = REGEX_UNKNOWN;
+	}
+}
+
+void read_regex_from_file(void)
+{
+	FILE *fp;
+	char *buffer = NULL;
+	size_t size = 0;
+	int errors = 0;
+
+	// Start timer for regex compilation analysis
+	timer_start(REGEX_TIMER);
+
+	// Get number of lines in the regex file
+	num_regex = countlines(files.regexlist);
+
+	if(num_regex < 0)
+	{
+		logg("INFO: No Regex file found");
+		return;
+	}
+
+	if((fp = fopen(files.regexlist, "r")) == NULL) {
+		logg("WARN: Cannot access Regex file");
+		return;
+	}
+
+	// Allocate memory for regex
+	regex = calloc(num_regex, sizeof(regex_t));
+	regexconfigured = calloc(num_regex, sizeof(bool));
+
+	// Search through file
+	// getline reads a string from the specified file up to either a
+	// newline character or EOF
+	for(int i=0; getline(&buffer, &size, fp) != -1; i++)
+	{
+		// Strip potential newline character at the end of line we just read
+		if(buffer[strlen(buffer)-1] == '\n')
+			buffer[strlen(buffer)-1] = '\0';
+
+		// Compile this regex
+		regexconfigured[i] = init_regex(buffer, i);
+		if(!regexconfigured[i]) errors++;
+	}
+
+	// Free allocated memory
+	if(buffer != NULL)
+	{
+		free(buffer);
+		buffer = NULL;
+	}
+
+	// Close the file
+	fclose(fp);
+
+	logg("Compiled %i Regex filters in %.1f msec (%i errors)", num_regex, timer_elapsed_msec(REGEX_TIMER), errors);
 }

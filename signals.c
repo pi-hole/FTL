@@ -59,12 +59,6 @@ static void SIGSEGV_handler(int sig, siginfo_t *si, void *unused)
 	}
 	free(bcktrace);
 
-	// Print memory usage
-	unsigned long int structbytes = sizeof(countersStruct) + sizeof(ConfigStruct) + counters.queries_MAX*sizeof(queriesDataStruct) + counters.forwarded_MAX*sizeof(forwardedDataStruct) + counters.clients_MAX*sizeof(clientsDataStruct) + counters.domains_MAX*sizeof(domainsDataStruct) + counters.overTime_MAX*sizeof(overTimeDataStruct) + (counters.wildcarddomains)*sizeof(*wildcarddomains);
-	unsigned long int dynamicbytes = memory.wildcarddomains + memory.domainnames + memory.clientips + memory.forwardedips + memory.forwarddata + memory.querytypedata;
-	logg("Memory usage (structs): %lu", structbytes);
-	logg("Memory usage (dynamic): %lu\n", dynamicbytes);
-
 	logg("Thank you for helping us to improve our FTL engine!");
 
 	// Print message and abort

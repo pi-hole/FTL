@@ -32,7 +32,6 @@ int findDomainID(const char *domain);
 int findClientID(const char *client);
 bool isValidIPv4(const char *addr);
 bool isValidIPv6(const char *addr);
-int detectStatus(const char *domain);
 
 void close_telnet_socket(void);
 void close_unix_socket(void);
@@ -51,8 +50,6 @@ bool command(char *client_message, const char* cmd);
 bool matchesEndpoint(char *client_message, const char *cmd);
 
 // grep.c
-void readGravityFiles(void);
-void freeWildcards(void);
 int countlines(const char* fname);
 int countlineswith(const char* str, const char* fname);
 void check_blocking_status(void);
@@ -107,6 +104,6 @@ void resolveNewClients(void);
 void reresolveHostnames(void);
 
 // regex.c
-bool init_regex(char *regexin, int index);
 bool match_regex(char *input);
 void free_regex(void);
+void read_regex_from_file(void);

@@ -44,7 +44,7 @@ int cmpdesc(const void *a, const void *b)
 
 void getStats(int *sock)
 {
-	int blocked = counters.blocked + counters.wildcardblocked;
+	int blocked = counters.blocked;
 	int total = counters.queries;
 	float percentage = 0.0f;
 
@@ -253,7 +253,7 @@ void getTopDomains(char *client_message, int *sock)
 
 		if(blocked && showblocked && domains[j].blockedcount > 0)
 		{
-			if(audit && domains[j].wildcard)
+			if(audit && domains[j].regexmatch == REGEX_BLOCKED)
 			{
 				if(istelnet[*sock])
 					ssend(*sock, "%i %i %s wildcard\n", n, domains[j].blockedcount, domains[j].domain);
@@ -716,8 +716,7 @@ void getRecentBlocked(char *client_message, int *sock)
 			num = 0;
 	}
 
-	// Find most recent query with either status 1 (blocked)
-	// or status 4 (wildcard blocked)
+	// Find most recently blocked query
 	int found = 0;
 	for(i = counters.queries - 1; i > 0 ; i--)
 	{
@@ -742,7 +741,7 @@ void getRecentBlocked(char *client_message, int *sock)
 
 void getMemoryUsage(int *sock)
 {
-	unsigned long int structbytes = sizeof(countersStruct) + sizeof(ConfigStruct) + counters.queries_MAX*sizeof(queriesDataStruct) + counters.forwarded_MAX*sizeof(forwardedDataStruct) + counters.clients_MAX*sizeof(clientsDataStruct) + counters.domains_MAX*sizeof(domainsDataStruct) + counters.overTime_MAX*sizeof(overTimeDataStruct) + (counters.wildcarddomains)*sizeof(*wildcarddomains);
+	unsigned long int structbytes = sizeof(countersStruct) + sizeof(ConfigStruct) + counters.queries_MAX*sizeof(queriesDataStruct) + counters.forwarded_MAX*sizeof(forwardedDataStruct) + counters.clients_MAX*sizeof(clientsDataStruct) + counters.domains_MAX*sizeof(domainsDataStruct) + counters.overTime_MAX*sizeof(overTimeDataStruct);
 	char *structprefix = calloc(2, sizeof(char));
 	if(structprefix == NULL) return;
 	double formated = 0.0;
@@ -754,7 +753,7 @@ void getMemoryUsage(int *sock)
 		pack_uint64(*sock, structbytes);
 	free(structprefix);
 
-	unsigned long int dynamicbytes = memory.wildcarddomains + memory.domainnames + memory.clientips + memory.forwardedips + memory.forwarddata;
+	unsigned long int dynamicbytes = memory.domainnames + memory.clientips + memory.forwardedips + memory.forwarddata;
 	char *dynamicprefix = calloc(2, sizeof(char));
 	if(dynamicprefix == NULL) return;
 	format_memory_size(dynamicprefix, dynamicbytes, &formated);
@@ -1101,7 +1100,14 @@ void getDomainDetails(char *client_message, int *sock)
 			ssend(*sock,"Domain \"%s\", ID: %i\n", domain, i);
 			ssend(*sock,"Total: %i\n", domains[i].count);
 			ssend(*sock,"Blocked: %i\n", domains[i].blockedcount);
-			ssend(*sock,"Wildcard blocked: %s\n", domains[i].wildcard ? "true" : "false");
+			char *regexstatus;
+			if(domains[i].regexmatch == REGEX_BLOCKED)
+				regexstatus = "blocked";
+			if(domains[i].regexmatch == REGEX_NOTBLOCKED)
+				regexstatus = "not blocked";
+			else
+				regexstatus = "unknown";
+			ssend(*sock,"Regex status: %s\n", regexstatus);
 			return;
 		}
 	}

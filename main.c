@@ -44,6 +44,9 @@ int main (int argc, char* argv[])
 	// Process pihole-FTL.conf
 	read_FTLconf();
 
+	// Read and compile possible regex filters
+	read_regex_from_file();
+
 	// Catch signals like SIGTERM and SIGINT
 	// Other signals like SIGHUP, SIGUSR1 are handled by the resolver part
 	handle_signals();
@@ -80,8 +83,8 @@ int main (int argc, char* argv[])
 	close_telnet_socket();
 	close_unix_socket();
 
-	if(config.blockingregex)
-		free_regex();
+	// Invalidate blocking regex if compiled
+	free_regex();
 
 	//Remove PID file
 	removepid();

@@ -731,6 +731,8 @@ void read_data_from_DB(void)
 				break;
 
 			case QUERY_GRAVITY: // Blocked by gravity.list
+			case QUERY_WILDCARD: // Blocked by regex filter
+			case QUERY_BLACKLIST: // Blocked by black.list
 				counters.blocked++;
 				overTime[timeidx].blocked++;
 				domains[domainID].blockedcount++;
@@ -746,25 +748,6 @@ void read_data_from_DB(void)
 				counters.cached++;
 				// Update overTime data structure
 				overTime[timeidx].cached++;
-				break;
-
-			case QUERY_WILDCARD: // Wildcard blocked
-				counters.wildcardblocked++;
-
-				// Update overTime data structure
-				overTime[timeidx].blocked++;
-				domains[domainID].blockedcount++;
-				domains[domainID].wildcard = true;
-				clients[clientID].blockedcount++;
-				break;
-
-			case QUERY_BLACKLIST: // black.list
-				counters.blocked++;
-
-				// Update overTime data structure
-				overTime[timeidx].blocked++;
-				domains[domainID].blockedcount++;
-				clients[clientID].blockedcount++;
 				break;
 
 			default:
