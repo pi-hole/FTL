@@ -348,6 +348,10 @@ void FTL_dnsmasq_reload(void)
 	// Passing NULL to this function means it has to open the config file on
 	// its own behalf (on initial reading, the confg file is already opened)
 	get_blocking_mode(NULL);
+
+	// Reread regex.list
+	free_regex();
+	read_regex_from_file();
 }
 
 void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
