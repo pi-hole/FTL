@@ -80,14 +80,18 @@ void free_regex(void)
 		return;
 
 	// Disable blocking regex checking and free regex datastructure
-	int index;
-	for(index = 0; index < num_regex; index++)
+	for(int index = 0; index < num_regex; index++)
 		if(regexconfigured[index])
 			regfree(&regex[index]);
 
 	// Free array with regex datastructure
 	free(regex);
+	regex = NULL;
 	free(regexconfigured);
+	regexconfigured = NULL;
+
+	// Reset counter for number of regex
+	num_regex = 0;
 
 	// Must reevaluate regex filters after having reread the regex filter
 	// We reset all regex status to unknown to have them being reevaluated
