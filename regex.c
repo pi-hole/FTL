@@ -75,11 +75,32 @@ bool match_regex(char *input)
 
 void free_regex(void)
 {
-	// Disable blocking regex checking
-	int index;
-	for(index = 0; index < num_regex; index++)
+	// Return early if we don't use any regex
+	if(regex == NULL)
+		return;
+
+	// Disable blocking regex checking and free regex datastructure
+	for(int index = 0; index < num_regex; index++)
 		if(regexconfigured[index])
 			regfree(&regex[index]);
+
+	// Free array with regex datastructure
+	free(regex);
+	regex = NULL;
+	free(regexconfigured);
+	regexconfigured = NULL;
+
+	// Reset counter for number of regex
+	num_regex = 0;
+
+	// Must reevaluate regex filters after having reread the regex filter
+	// We reset all regex status to unknown to have them being reevaluated
+	if(counters.domains > 0)
+		validate_access("domains", counters.domains-1, false, __LINE__, __FUNCTION__, __FILE__);
+	for(int i=0; i < counters.domains; i++)
+	{
+		domains[i].regexmatch = REGEX_UNKNOWN;
+	}
 }
 
 void read_regex_from_file(void)

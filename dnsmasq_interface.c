@@ -335,9 +335,12 @@ void FTL_dnsmasq_reload(void)
 	// *before* clearing the cache and rereading the lists
 
 	// Called when dnsmasq re-reads its config and hosts files
-	// Reset number of blocked domains and re-read list of wildcard domains
+	// Reset number of blocked domains
 	counters.gravity = 0;
-	readGravityFiles();
+
+	// Inspect 01-pihole.conf to see if Pi-hole blocking is enabled,
+	// i.e. if /etc/pihole/gravity.list is sourced as addn-hosts file
+	check_blocking_status();
 
 	// Reread pihole-FTL.conf to see which blocking mode the user wants to use
 	// It is possible to change the blocking mode here as we anyhow clear the
@@ -345,6 +348,10 @@ void FTL_dnsmasq_reload(void)
 	// Passing NULL to this function means it has to open the config file on
 	// its own behalf (on initial reading, the confg file is already opened)
 	get_blocking_mode(NULL);
+
+	// Reread regex.list
+	free_regex();
+	read_regex_from_file();
 }
 
 void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
@@ -876,7 +883,7 @@ void rehash(int size);
 // This routine adds one domain to the resolver's cache. Depending on the configured blocking mode it may create
 // a single entry valid for IPv4 & IPv6 (containing only NXDOMAIN) or two entries one for IPv4 and one for IPv6
 // When IPv6 is not available on the machine, we do not add IPv6 cache entries (likewise for IPv4)
-static int add_blocked_domain_cache(struct all_addr *addr4, struct all_addr *addr6, bool *has_IPv4, bool *has_IPv6,
+static int add_blocked_domain_cache(struct all_addr *addr4, struct all_addr *addr6, bool has_IPv4, bool has_IPv6,
                                     char *domain, struct crec **rhash, int hashsz, unsigned int index)
 {
 	int name_count = 0;
@@ -916,7 +923,7 @@ static void block_single_domain(char *domain)
 
 	// Get IPv4/v6 addresses for blocking depending on user configures blocking mode
 	prepare_blocking_mode(&addr4, &addr6, &has_IPv4, &has_IPv6);
-	add_blocked_domain_cache(&addr4, &addr6, &has_IPv4, &has_IPv6, domain, NULL, 0, 0);
+	add_blocked_domain_cache(&addr4, &addr6, has_IPv4, has_IPv6, domain, NULL, 0, 0);
 
 	if(debug) logg("Added %s to cache", domain);
 
@@ -941,7 +948,7 @@ int FTL_listsfile(char* filename, unsigned int index, FILE *f, int cache_size, s
 	// Start timer for list analysis
 	timer_start(LISTS_TIMER);
 
-	// Get IPv4/v6 addresses for blocking depending on user configures blocking mode
+	// Get IPv4/v6 addresses for blocking depending on user configured blocking mode
 	prepare_blocking_mode(&addr4, &addr6, &has_IPv4, &has_IPv6);
 
 	// If we have neither a valid IPv4 nor a valid IPv6, then we cannot add any entries here
@@ -957,7 +964,7 @@ int FTL_listsfile(char* filename, unsigned int index, FILE *f, int cache_size, s
 	{
 		char *domain = buffer;
 		// Skip hashed out lines
-		while (*domain == '#')
+		if(*domain == '#')
 			continue;
 
 		// Filter leading dots or spaces
@@ -992,7 +999,7 @@ int FTL_listsfile(char* filename, unsigned int index, FILE *f, int cache_size, s
 			cache_size = name_count;
 		}
 
-		name_count += add_blocked_domain_cache(&addr4, &addr6, &has_IPv4, &has_IPv6, domain, rhash, hashsz, index);
+		name_count += add_blocked_domain_cache(&addr4, &addr6, has_IPv4, has_IPv6, domain, rhash, hashsz, index);
 		// Count added domain
 		added++;
 	}
