@@ -117,6 +117,17 @@ void process_request(char *client_message, int *sock)
 		processed = true;
 		getCacheInformation(sock);
 	}
+	else if(command(client_message, ">reresolve"))
+	{
+		processed = true;
+		logg("Received API request for re-resolving host names");
+		// Need to release the thread lock already here to allow
+		// the resolver to process the incoming PTR requests
+		disable_thread_lock();
+		reresolveHostnames();
+		logg("Done re-resolving host names");
+		ssend(*sock, "done\n");
+	}
 
 	// Test only at the end if we want to quit or kill
 	// so things can be processed before
