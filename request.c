@@ -120,13 +120,19 @@ void process_request(char *client_message, int *sock)
 	else if(command(client_message, ">reresolve"))
 	{
 		processed = true;
-		logg("Received API request for re-resolving host names");
+		logg("Received API request to re-resolve host names");
 		// Need to release the thread lock already here to allow
 		// the resolver to process the incoming PTR requests
 		disable_thread_lock();
 		reresolveHostnames();
 		logg("Done re-resolving host names");
-		ssend(*sock, "done\n");
+	}
+	else if(command(client_message, ">recompile-regex"))
+	{
+		processed = true;
+		logg("Received API request to recompile regex");
+		free_regex();
+		read_regex_from_file();
 	}
 
 	// Test only at the end if we want to quit or kill
