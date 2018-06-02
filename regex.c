@@ -68,7 +68,13 @@ bool match_regex(char *input)
 			break;
 		}
 	}
-	logg("Regex evaluation took %.3f msec", timer_elapsed_msec(REGEX_TIMER));
+
+	double elapsed = timer_elapsed_msec(REGEX_TIMER);
+
+	// Only log evaluation times if they are longer than normal
+	if(elapsed > 100.0)
+		logg("WARN: Regex evaluation took %.3f msec", elapsed);
+
 	// No match, no error, return false
 	return matched;
 }
