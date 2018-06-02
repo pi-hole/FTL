@@ -72,7 +72,7 @@ bool match_regex(char *input)
 	double elapsed = timer_elapsed_msec(REGEX_TIMER);
 
 	// Only log evaluation times if they are longer than normal
-	if(elapsed > 10.0)
+	if(elapsed > 10.0 || debug)
 		logg("WARN: Regex evaluation took %.3f msec", elapsed);
 
 	// No match, no error, return false
