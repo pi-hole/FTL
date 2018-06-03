@@ -20,7 +20,7 @@ FTLDNS[™](https://pi-hole.net/trademark-rules-and-brand-guidelines/) (`pihole-
 
 # Official documentation
 
-The official *FTL*DNS documentation can be found [here](https://docs.pi-hole.io/ftldns/).
+The official *FTL*DNS documentation can be found [here](https://docs.pi-hole.net/ftldns/).
 
 # Installation
 
