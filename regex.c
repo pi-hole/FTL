@@ -104,7 +104,12 @@ bool match_regex(char *input)
 	if(matched)
 		matched = !in_whitelist(input);
 
-	logg("Regex evaluation took %.3f msec", timer_elapsed_msec(REGEX_TIMER));
+	double elapsed = timer_elapsed_msec(REGEX_TIMER);
+
+	// Only log evaluation times if they are longer than normal
+	if(elapsed > 10.0 || debug)
+		logg("Regex evaluation took %.3f msec", elapsed);
+
 	// No match, no error, return false
 	return matched;
 }
