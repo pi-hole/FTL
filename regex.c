@@ -60,7 +60,11 @@ static void free_whitelist_domains(void)
 {
 	for(int i=0; i < whitelist.count; i++)
 		free(whitelist.domains[i]);
+
 	whitelist.count = 0;
+
+	free(whitelist.domains);
+	whitelist.domains = NULL;
 }
 
 bool match_regex(char *input)
@@ -94,7 +98,7 @@ bool match_regex(char *input)
 
 	// If a regex filter matched, we additionally compare the domain
 	// against all known whitelisted domains to possibly prevent blocking
-	// of a specific domain. The login herein is:
+	// of a specific domain. The logic herein is:
 	// If matched, then compare against whitelist
 	// If in whitelist, negate matched so this function returns: not-to-be-blocked
 	if(matched)
@@ -144,9 +148,6 @@ static void read_whitelist_from_file(void)
 	char *buffer = NULL;
 	size_t size = 0;
 
-	// Start timer for regex compilation analysis
-	timer_start(REGEX_TIMER);
-
 	// Get number of lines in the regex file
 	whitelist.count = countlines(files.whitelist);
 
@@ -169,6 +170,11 @@ static void read_whitelist_from_file(void)
 	// newline character or EOF
 	for(int i=0; getline(&buffer, &size, fp) != -1; i++)
 	{
+		// Test if file has changed since we counted the lines therein (unlikely
+		// but not impossible). If so, read only as far as we have reserved memory
+		if(i >= whitelist.count)
+			break;
+
 		// Strip potential newline character at the end of line we just read
 		if(buffer[strlen(buffer)-1] == '\n')
 			buffer[strlen(buffer)-1] = '\0';
@@ -221,11 +227,6 @@ void read_regex_from_file(void)
 	// newline character or EOF
 	for(int i=0; getline(&buffer, &size, fp) != -1; i++)
 	{
-		// Test if file has changed since we counted the lines therein (unlikely
-		// but not impossible). If so, read only as far as we have reserved memory
-		if(i >= whitelist.count)
-			break;
-
 		// Strip potential newline character at the end of line we just read
 		if(buffer[strlen(buffer)-1] == '\n')
 			buffer[strlen(buffer)-1] = '\0';
