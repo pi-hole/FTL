@@ -209,6 +209,11 @@ typedef struct {
 	int querytypedata;
 } memoryStruct;
 
+typedef struct {
+	int count;
+	char **domains;
+} whitelistStruct;
+
 // Prepare timers, used mainly for debugging purposes
 #define NUMTIMERS 5
 

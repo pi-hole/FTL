@@ -14,6 +14,7 @@
 static int num_regex;
 static regex_t *regex;
 static bool *regexconfigured;
+static whitelistStruct whitelist = { 0, NULL };
 
 static void log_regex_error(char *where, int errcode, int index)
 {
@@ -38,6 +39,28 @@ static bool init_regex(char *regexin, int index)
 		return false;
 	}
 	return true;
+}
+
+static bool in_whitelist(char *domain)
+{
+	bool found = false;
+	for(int i=0; i < whitelist.count; i++)
+	{
+		// strcasecmp() compares two strings ignoring case
+		if(strcasecmp(whitelist.domains[i], domain) == 0)
+		{
+			found = true;
+			break;
+		}
+	}
+	return found;
+}
+
+static void free_whitelist_domains(void)
+{
+	for(int i=0; i < whitelist.count; i++)
+		free(whitelist.domains[i]);
+	whitelist.count = 0;
 }
 
 bool match_regex(char *input)
@@ -68,6 +91,15 @@ bool match_regex(char *input)
 			break;
 		}
 	}
+
+	// If a regex filter matched, we additionally compare the domain
+	// against all known whitelisted domains to possibly prevent blocking
+	// of a specific domain. The login herein is:
+	// If matched, then compare against whitelist
+	// If in whitelist, negate matched so this function returns: not-to-be-blocked
+	if(matched)
+		matched = !in_whitelist(input);
+
 	logg("Regex evaluation took %.3f msec", timer_elapsed_msec(REGEX_TIMER));
 	// No match, no error, return false
 	return matched;
@@ -101,6 +133,59 @@ void free_regex(void)
 	{
 		domains[i].regexmatch = REGEX_UNKNOWN;
 	}
+
+	// Also free array of whitelisted domains
+	free_whitelist_domains();
+}
+
+static void read_whitelist_from_file(void)
+{
+	FILE *fp;
+	char *buffer = NULL;
+	size_t size = 0;
+
+	// Start timer for regex compilation analysis
+	timer_start(REGEX_TIMER);
+
+	// Get number of lines in the regex file
+	whitelist.count = countlines(files.whitelist);
+
+	if(whitelist.count < 0)
+	{
+		logg("INFO: No whitelist file found");
+		return;
+	}
+
+	if((fp = fopen(files.whitelist, "r")) == NULL) {
+		logg("WARN: Cannot access whitelist (%s)",files.whitelist);
+		return;
+	}
+
+	// Allocate memory for regex
+	whitelist.domains = calloc(whitelist.count, sizeof(char*));
+
+	// Search through file
+	// getline reads a string from the specified file up to either a
+	// newline character or EOF
+	for(int i=0; getline(&buffer, &size, fp) != -1; i++)
+	{
+		// Strip potential newline character at the end of line we just read
+		if(buffer[strlen(buffer)-1] == '\n')
+			buffer[strlen(buffer)-1] = '\0';
+
+		// Copy this whitelist domain into memory
+		whitelist.domains[i] = strdup(buffer);
+	}
+
+	// Free allocated memory
+	if(buffer != NULL)
+	{
+		free(buffer);
+		buffer = NULL;
+	}
+
+	// Close the file
+	fclose(fp);
 }
 
 void read_regex_from_file(void)
@@ -155,5 +240,8 @@ void read_regex_from_file(void)
 	// Close the file
 	fclose(fp);
 
-	logg("Compiled %i Regex filters in %.1f msec (%i errors)", num_regex, timer_elapsed_msec(REGEX_TIMER), errors);
+	// Read whitelisted domains from file
+	read_whitelist_from_file();
+
+	logg("Compiled %i Regex filters and %i whitelisted domains in %.1f msec (%i errors)", num_regex, whitelist.count, timer_elapsed_msec(REGEX_TIMER), errors);
 }
