@@ -108,7 +108,7 @@ bool match_regex(char *input)
 
 	// Only log evaluation times if they are longer than normal
 	if(elapsed > 10.0 || debug)
-		logg("Regex evaluation took %.3f msec", elapsed);
+		logg("WARN: Regex evaluation took %.3f msec", elapsed);
 
 	// No match, no error, return false
 	return matched;
