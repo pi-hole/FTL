@@ -221,6 +221,11 @@ void read_regex_from_file(void)
 	// newline character or EOF
 	for(int i=0; getline(&buffer, &size, fp) != -1; i++)
 	{
+		// Test if file has changed since we counted the lines therein (unlikely
+		// but not impossible). If so, read only as far as we have reserved memory
+		if(i >= whitelist.count)
+			break;
+
 		// Strip potential newline character at the end of line we just read
 		if(buffer[strlen(buffer)-1] == '\n')
 			buffer[strlen(buffer)-1] = '\0';
