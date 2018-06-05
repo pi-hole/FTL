@@ -41,7 +41,7 @@ static bool init_regex(char *regexin, int index)
 	return true;
 }
 
-static bool in_whitelist(char *domain)
+bool in_whitelist(char *domain)
 {
 	bool found = false;
 	for(int i=0; i < whitelist.count; i++)
@@ -96,14 +96,6 @@ bool match_regex(char *input)
 		}
 	}
 
-	// If a regex filter matched, we additionally compare the domain
-	// against all known whitelisted domains to possibly prevent blocking
-	// of a specific domain. The logic herein is:
-	// If matched, then compare against whitelist
-	// If in whitelist, negate matched so this function returns: not-to-be-blocked
-	if(matched)
-		matched = !in_whitelist(input);
-
 	double elapsed = timer_elapsed_msec(REGEX_TIMER);
 
 	// Only log evaluation times if they are longer than normal
@@ -153,7 +145,7 @@ static void read_whitelist_from_file(void)
 	char *buffer = NULL;
 	size_t size = 0;
 
-	// Get number of lines in the regex file
+	// Get number of lines in the whitelist file
 	whitelist.count = countlines(files.whitelist);
 
 	if(whitelist.count < 0)
@@ -167,7 +159,7 @@ static void read_whitelist_from_file(void)
 		return;
 	}
 
-	// Allocate memory for regex
+	// Allocate memory for array of whitelisted domains
 	whitelist.domains = calloc(whitelist.count, sizeof(char*));
 
 	// Search through file
@@ -184,7 +176,7 @@ static void read_whitelist_from_file(void)
 		if(buffer[strlen(buffer)-1] == '\n')
 			buffer[strlen(buffer)-1] = '\0';
 
-		// Copy this whitelist domain into memory
+		// Copy this whitelisted domain into memory
 		whitelist.domains[i] = strdup(buffer);
 	}
 
