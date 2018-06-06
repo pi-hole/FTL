@@ -107,3 +107,4 @@ void reresolveHostnames(void);
 bool match_regex(char *input);
 void free_regex(void);
 void read_regex_from_file(void);
+bool in_whitelist(char *domain);

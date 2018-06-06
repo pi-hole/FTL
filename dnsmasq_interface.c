@@ -184,7 +184,13 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 		// - regex checking is enabled, and
 		// - this domain has not already been validated against the regex.
 		// This effectively prevents multiple evaluations of the same domain
-		if(match_regex(domain))
+		//
+		// If a regex filter matched, we additionally compare the domain
+		// against all known whitelisted domains to possibly prevent blocking
+		// of a specific domain. The logic herein is:
+		// If matched, then compare against whitelist
+		// If in whitelist, negate matched so this function returns: not-to-be-blocked
+		if(match_regex(domain) && !in_whitelist(domain))
 		{
 			// We have to block this domain if not already done
 			if(debug) logg("Blocking %s due to RegEx match", domain);
