@@ -1012,20 +1012,12 @@ void getClientNames(int *sock)
 		if(skipclient[i])
 			continue;
 
-		char *client;
-		if(clients[i].name != NULL && strlen(clients[i].name) > 0)
-			client = clients[i].name;
-		else
-			client = clients[i].ip;
+		char *client_name = clients[i].name != NULL ? clients[i].name : "";
 
 		if(istelnet[*sock])
-			ssend(*sock, "%s\n", client);
+			ssend(*sock, "%s %s\n", client_name, clients[i].ip);
 		else {
-			if(clients[i].name != NULL)
-				pack_str32(*sock, clients[i].name);
-			else
-				pack_str32(*sock, "");
-
+			pack_str32(*sock, client_name);
 			pack_str32(*sock, clients[i].ip);
 		}
 	}
