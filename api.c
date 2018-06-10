@@ -1150,7 +1150,7 @@ void getSystemStats(char *client_message, int *sock)
         }
 
         // Get temperature (if possible). Two common locations available
-        char temperatureRaw[6];
+        char temperatureRaw[6] = "";
         double temperature;
         double temperatureK;
         double temperatureF;
