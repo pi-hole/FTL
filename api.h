@@ -32,6 +32,11 @@ void getUnknownQueries(int *sock);
 // DNS resolver methods (dnsmasq_interface.c)
 void getCacheInformation(int *sock);
 
+// Host native methods to provide feature parity.
+// (Previously generated for web interface using php)
+void getHostName(char *client_message, int *sock);
+void getSystemStats(char *client_message, int *sock);
+
 // MessagePack serialization helpers
 void pack_eom(int sock);
 void pack_bool(int sock, bool value);

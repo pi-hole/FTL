@@ -134,7 +134,17 @@ void process_request(char *client_message, int *sock)
 		free_regex();
 		read_regex_from_file();
 	}
-
+	else if(command(client_message, ">hostname"))
+	{
+		processed = true;
+		getHostName(client_message, sock);
+	}
+        else if(command(client_message, ">systemstats"))
+        {
+		processed = true;
+                getSystemStats(client_message, sock);
+        }
+	
 	// Test only at the end if we want to quit or kill
 	// so things can be processed before
 	if(command(client_message, ">quit") || command(client_message, EOT))
