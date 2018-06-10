@@ -11,6 +11,7 @@
 #include "FTL.h"
 #include "api.h"
 #include "version.h"
+#include <sys/sysinfo.h>
 
 #define min(a,b) ({ __typeof__ (a) _a = (a); __typeof__ (b) _b = (b); _a < _b ? _a : _b; })
 
@@ -1108,4 +1109,105 @@ void getDomainDetails(char *client_message, int *sock)
 
 	// for loop finished without an exact match
 	ssend(*sock,"Domain \"%s\" is unknown\n", domain);
+}
+
+void getHostName(char *client_message, int *sock)
+{
+	// Get host name, linux max length = 64 bytes, nul terminator
+	char hostname[64];
+        hostname[63] = '\0';
+        if(gethostname(hostname, 63) != 0)
+        {
+                if(istelnet[*sock])
+                         ssend(*sock, "hostname: unknown");
+	        else
+			 pack_int32(*sock, -1);
+                return;
+        }
+        else
+        {
+                if(istelnet[*sock])
+                        ssend(*sock,"hostname: \%s\n", hostname);
+                else
+                        pack_str32(*sock, hostname);
+                return;
+        }
+}
+
+void getSystemStats(char *client_message, int *sock)
+{
+        // Get number of CPU cores
+        int corecount;
+        corecount = get_nprocs();
+
+	// Get load average
+        double loadavg[3];
+        if (getloadavg(loadavg, 3) == -1) 
+        {
+              int i;
+              for ( i = 0; i < 3; i++)
+                      loadavg[i] = -1;
+        }
+
+        // Get temperature (if possible). Two common locations available
+        char temperatureRaw[6];
+        double temperature;
+        double temperatureK;
+        double temperatureF;
+        FILE * temperatureFile;
+        temperatureFile = fopen("/sys/class/thermal/thermal_zone0/temp", "r");
+        if (temperatureFile)
+        {
+                if (! fgets(temperatureRaw, 6, temperatureFile))
+                        temperature = -1;
+                fclose(temperatureFile);
+        }
+        else 
+        {
+                temperatureFile = fopen("/sys/class/hwmon/hwmon_zone0/temp1_input", "r");
+                if (temperatureFile)
+                {
+                        if (! fgets(temperatureRaw, 6, temperatureFile))
+                                temperature = -1;
+                        fclose(temperatureFile);
+		}
+        }
+
+        // Temperature formats differ, 2-3 or 4-5 digits are seen. 
+        // Catch any unknown format
+        if ((strlen(temperatureRaw) <= 1) || (strlen(temperatureRaw) >= 6 ))
+        {
+                temperature = -1; temperatureK = -1; temperatureF = -1;
+        }
+        else 
+        {
+                temperature = atof(temperatureRaw);
+                // if 4-5 digits, divide by 1000
+                if (temperature >= 1000)
+                        temperature /= 1000;
+                // Conversions
+                temperatureK = temperature + 273;
+                temperatureF = temperature * 1.8;
+                temperatureF += 32;
+        }
+
+        // Send it
+        if (istelnet[*sock])
+        {
+              ssend(*sock, "number of cores : \%i\n", corecount);
+              ssend(*sock, "load average : \%.2f, \%.2f, \%.2f\n", loadavg[0], loadavg[1], loadavg[2]);
+              ssend(*sock, "temperature : \%.0f°C \%.0fK \%.0f°F\n", temperature, temperatureK, temperatureF);
+              return;
+        }
+        else
+        {
+              pack_int32(*sock, corecount);
+              int i;
+              for ( i = 0; i < 3; i++)
+                      pack_float(*sock, loadavg[i]);
+              pack_float(*sock, temperature);
+              pack_float(*sock, temperatureK);
+              pack_float(*sock, temperatureF);
+              return;
+        }
 }
