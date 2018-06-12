@@ -298,6 +298,9 @@ void FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id
 		return;
 	}
 
+	// Save fate of this query (it got forwarded)
+	queries[queryID].status = QUERY_FORWARDED;
+
 	// Get ID of forward destination, create new forward destination record
 	// if not found in current data structure
 	int forwardID = findForwardID(forward, true);
