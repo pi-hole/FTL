@@ -827,24 +827,33 @@ void getVersion(int *sock)
 	const char * commit = GIT_HASH;
 	const char * tag = GIT_TAG;
 
+	// Extract first 7 characters of the hash
+	char hash[8];
+	strncpy(hash, commit, 7); hash[7] = 0;
+
 	if(strlen(tag) > 1) {
 		if(istelnet[*sock])
-			ssend(*sock, "version %s\ntag %s\nbranch %s\ndate %s\n", GIT_VERSION, tag, GIT_BRANCH, GIT_DATE);
+			ssend(
+					*sock,
+					"version %s\ntag %s\nbranch %s\nhash %s\ndate %s\n",
+					GIT_VERSION, tag, GIT_BRANCH, hash, GIT_DATE
+			);
 		else {
 			if(!pack_str32(*sock, GIT_VERSION) ||
 					!pack_str32(*sock, (char *) tag) ||
 					!pack_str32(*sock, GIT_BRANCH) ||
+					!pack_str32(*sock, hash) ||
 					!pack_str32(*sock, GIT_DATE))
 				return;
 		}
 	}
 	else {
-		char hash[8];
-		// Extract first 7 characters of the hash
-		strncpy(hash, commit, 7); hash[7] = 0;
-
 		if(istelnet[*sock])
-			ssend(*sock, "version vDev-%s\ntag %s\nbranch %s\ndate %s\n", hash, tag, GIT_BRANCH, GIT_DATE);
+			ssend(
+					*sock,
+					"version vDev-%s\ntag %s\nbranch %s\nhash %s\ndate %s\n",
+					hash, tag, GIT_BRANCH, hash, GIT_DATE
+			);
 		else {
 			char *hashVersion = calloc(6 + strlen(hash), sizeof(char));
 			if(hashVersion == NULL) return;
@@ -853,6 +862,7 @@ void getVersion(int *sock)
 			if(!pack_str32(*sock, hashVersion) ||
 					!pack_str32(*sock, (char *) tag) ||
 					!pack_str32(*sock, GIT_BRANCH) ||
+					!pack_str32(*sock, hash) ||
 					!pack_str32(*sock, GIT_DATE))
 				return;
 
