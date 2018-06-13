@@ -15,30 +15,30 @@
 
 void print_flags(unsigned int flags);
 void save_reply_type(unsigned int flags, int queryID, struct timeval response);
-unsigned long converttimeval(struct timeval time);
+static inline unsigned long converttimeval(struct timeval time);
 static void block_single_domain(char *domain);
 
 int queryIDoffset = 0;
 
 char flagnames[28][12] = {"F_IMMORTAL ", "F_NAMEP ", "F_REVERSE ", "F_FORWARD ", "F_DHCP ", "F_NEG ", "F_HOSTS ", "F_IPV4 ", "F_IPV6 ", "F_BIGNAME ", "F_NXDOMAIN ", "F_CNAME ", "F_DNSKEY ", "F_CONFIG ", "F_DS ", "F_DNSSECOK ", "F_UPSTREAM ", "F_RRNAME ", "F_SERVER ", "F_QUERY ", "F_NOERR ", "F_AUTH ", "F_DNSSEC ", "F_KEYTAG ", "F_SECSTAT ", "F_NO_RR ", "F_IPSET ", "F_NOEXTRA "};
 
-static inline int getQueryID(int id)
+static inline int getQueryID(int dnsmasqid)
 {
 	// queryIDoffset is our internal offset from FTL's IDs to dnsmasq's
 	// IDs. There are two reasons why we need this:
 	// 1. We load historic information from the database. Hence, we may
-	//    already know about a few hundreds or thousands of queries while
+	//    already know about a few hundred or thousand queries while
 	//    dnsmasq's ID always starts from 1 after restart
 	// 2. As we keep all data in memory, we have to run garbage collection.
 	//    Herein, we remove queries from memory and rearrange memory content
 	//    to fit into the smallest possible memory footprint (modulo some
 	//    optimizations that prevent allocation of memory too often). When
-	//    no queries have been make within the most recent 24 hours, FTL's
+	//    no queries have been made within the most recent 24 hours, FTL's
 	//    internal ID will again be zero while dnsmasq's ID is a more simple
 	//    ever increasing counter.
 	// The -1 term acknowledges that dnsmasq's query IDs start from 1 whereas
 	// FTL counts from 0 on.
-	return queryIDoffset + id - 1;
+	return queryIDoffset + dnsmasqid - 1;
 }
 
 void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *types, int id, char type)
@@ -163,7 +163,7 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	overTime[timeidx].querytypedata[querytype-1]++;
 	counters.querytype[querytype-1]++;
 
-	// Skip rest of the analyis if this query is not of type A or AAAA
+	// Skip rest of the analysis if this query is not of type A or AAAA
 	if(querytype != TYPE_A && querytype != TYPE_AAAA)
 	{
 		// Don't process this query further here, we already counted it
@@ -288,10 +288,11 @@ void FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id
 	// Proceed only if
 	// - current query has not been marked as replied to so far
 	//   (it could be that answers from multiple forward
-	//    destination are coming in for the same query)
+	//    destinations are coming in for the same query)
 	// - the query was formally known as cached but had to be forwarded
 	//   (this is a special case further described below)
-	if(queries[queryID].complete && queries[queryID].status != QUERY_CACHE)
+	bool cached = (queries[queryID].status == QUERY_CACHE);
+	if(queries[queryID].complete && !cached)
 	{
 		free(forward);
 		disable_thread_lock();
@@ -311,7 +312,7 @@ void FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id
 		int j = queries[queryID].timeidx;
 		validate_access("overTime", j, true, __LINE__, __FUNCTION__, __FILE__);
 
-		if(queries[queryID].status == QUERY_CACHE)
+		if(cached)
 		{
 			// Detect if we cached the <CNAME> but need to ask the upstream
 			// servers for the actual IPs now, we remove this query from the
@@ -790,7 +791,7 @@ void getCacheInformation(int *sock)
 	            daemon->cachesize, cache_live_freed, cache_inserted);
 	// cache-size is obvious
 	// It means the resolver handled <cache-inserted> names lookups that needed to be sent to
-	// upstream severes and that <cache-live-freed> was thrown out of the cache
+	// upstream servers and that <cache-live-freed> was thrown out of the cache
 	// before reaching the end of its time-to-live, to make room for a newer name.
 	// For <cache-live-freed>, smaller is better.
 	// New queries are always cached. If the cache is full with entries
@@ -822,10 +823,9 @@ void FTL_forwarding_failed(struct server *server)
 	return;
 }
 
-unsigned long converttimeval(struct timeval time)
+static inline unsigned long converttimeval(struct timeval time)
 {
-	// Convert time from struct timeval into units
-	// of 10*milliseconds
+	// Convert time from struct timeval into units of 10*milliseconds
 	return time.tv_sec*10000 + time.tv_usec/100;
 }
 
