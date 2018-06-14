@@ -107,18 +107,25 @@ void getStats(int *sock)
 void getOverTime(int *sock)
 {
 	int i, j = 9999999;
+	bool found = false;
+	time_t mintime = time(NULL) - config.maxlogage;
 
 	// Start with the first non-empty overTime slot
 	for(i=0; i < counters.overTime; i++)
 	{
 		validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
 		if((overTime[i].total > 0 || overTime[i].blocked > 0) &&
-		   overTime[i].timestamp)
+		   overTime[i].timestamp >= mintime)
 		{
 			j = i;
+			found = true;
 			break;
 		}
 	}
+
+	// Check if there is any data to be sent
+	if(!found)
+		return;
 
 	if(istelnet[*sock])
 	{
@@ -787,10 +794,11 @@ void getClientID(int *sock)
 void getQueryTypesOverTime(int *sock)
 {
 	int i, sendit = -1;
+	time_t mintime = time(NULL) - config.maxlogage;
 	for(i = 0; i < counters.overTime; i++)
 	{
 		validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
-		if((overTime[i].total > 0 || overTime[i].blocked > 0))
+		if((overTime[i].total > 0 || overTime[i].blocked > 0) && overTime[i].timestamp >= mintime)
 		{
 			sendit = i;
 			break;
