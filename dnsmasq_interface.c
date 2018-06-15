@@ -841,7 +841,7 @@ static void prepare_blocking_mode(struct all_addr *addr4, struct all_addr *addr6
 	char *a=NULL;
 	// Prepare IPv4 entry
 	char *IPv4addr;
-	if(config.blockingmode == MODE_IP || config.blockingmode == MODE_IP_AAAA_NODATA)
+	if(config.blockingmode == MODE_IP || config.blockingmode == MODE_IP_NODATA_AAAA)
 	{
 		// Read IPv4 address for host entries from setupVars.conf
 		IPv4addr = read_setupVarsconf("IPV4_ADDRESS");
@@ -913,7 +913,7 @@ static int add_blocked_domain_cache(struct all_addr *addr4, struct all_addr *add
 	{
 		strcpy(cache6->name.sname, domain);
 		cache6->flags = F_HOSTS | F_IMMORTAL | F_FORWARD | F_REVERSE | F_IPV6;
-		if(config.blockingmode == MODE_IP_AAAA_NODATA) cache6->flags |= F_NEG;
+		if(config.blockingmode == MODE_IP_NODATA_AAAA) cache6->flags |= F_NEG;
 		cache6->ttd = daemon->local_ttl;
 		add_hosts_entry(cache6, addr6, IN6ADDRSZ, index, rhash, hashsz);
 		name_count++;

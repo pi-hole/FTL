@@ -198,7 +198,7 @@ void read_FTLconf(void)
 		case MODE_NULL:
 			logg("   BLOCKINGMODE: Null IPs for blocked domains");
 			break;
-		case MODE_IP_AAAA_NODATA:
+		case MODE_IP_NODATA_AAAA:
 			logg("   BLOCKINGMODE: Pi-hole's IP + NODATA-IPv6 for blocked domains");
 			break;
 		default:
@@ -308,7 +308,7 @@ void get_privacy_level(FILE *fp)
 void get_blocking_mode(FILE *fp)
 {
 	// Set default value
-	config.blockingmode = MODE_IP_AAAA_NODATA;
+	config.blockingmode = MODE_IP_NODATA_AAAA;
 
 	// See if we got a file handle, if not we have to open
 	// the config file ourselves
@@ -330,7 +330,7 @@ void get_blocking_mode(FILE *fp)
 		else if(strcasecmp(buffer, "NULL") == 0)
 			config.blockingmode = MODE_NULL;
 		else if(strcasecmp(buffer, "IP-NODATA-AAAA") == 0)
-			config.blockingmode = MODE_IP_AAAA_NODATA;
+			config.blockingmode = MODE_IP_NODATA_AAAA;
 	}
 
 	// Release memory
