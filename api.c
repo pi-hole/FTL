@@ -164,8 +164,13 @@ void getTopDomains(char *client_message, int *sock)
 
 	// Exit before processing any data if requested via config setting
 	get_privacy_level(NULL);
-	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS)
+	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS) {
+		// Always send the total number of domains, but pretend it's 0
+		if(!istelnet[*sock])
+			pack_int32(*sock, 0);
+
 		return;
+	}
 
 	// Match both top-domains and top-ads
 	// example: >top-domains (15)
@@ -318,8 +323,13 @@ void getTopClients(char *client_message, int *sock)
 
 	// Exit before processing any data if requested via config setting
 	get_privacy_level(NULL);
-	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS_CLIENTS)
+	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS_CLIENTS) {
+		// Always send the total number of clients, but pretend it's 0
+		if(!istelnet[*sock])
+			pack_int32(*sock, 0);
+
 		return;
+	}
 
 	// Match both top-domains and top-ads
 	// example: >top-clients (15)
