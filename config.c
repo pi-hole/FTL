@@ -201,7 +201,7 @@ void read_FTLconf(void)
 		case MODE_IP_NODATA_AAAA:
 			logg("   BLOCKINGMODE: Pi-hole's IP + NODATA-IPv6 for blocked domains");
 			break;
-		default:
+		case MODE_IP:
 			logg("   BLOCKINGMODE: Pi-hole's IPs for blocked domains");
 			break;
 	}
@@ -331,6 +331,8 @@ void get_blocking_mode(FILE *fp)
 			config.blockingmode = MODE_NULL;
 		else if(strcasecmp(buffer, "IP-NODATA-AAAA") == 0)
 			config.blockingmode = MODE_IP_NODATA_AAAA;
+		else if(strcasecmp(buffer, "IP") == 0)
+			config.blockingmode = MODE_IP;
 	}
 
 	// Release memory
