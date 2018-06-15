@@ -83,6 +83,10 @@ void getStats(int *sock)
 			sumalltypes += counters.querytype[i];
 		}
 		ssend(*sock, "dns_queries_all_types %i\n", sumalltypes);
+
+		// Send individual reply type counters
+		ssend(*sock, "reply_NODATA %i\nreply_NXDOMAIN %i\nreply_CNAME %i\nreply_IP %i\n",
+		      counters.reply_NODATA, counters.reply_NXDOMAIN, counters.reply_CNAME, counters.reply_IP);
 	}
 	else
 	{
