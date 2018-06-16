@@ -308,7 +308,7 @@ void get_privacy_level(FILE *fp)
 void get_blocking_mode(FILE *fp)
 {
 	// Set default value
-	config.blockingmode = MODE_IP_NODATA_AAAA;
+	config.blockingmode = MODE_NULL;
 
 	// See if we got a file handle, if not we have to open
 	// the config file ourselves
