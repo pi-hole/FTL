@@ -562,13 +562,26 @@ void getQueryTypes(int *sock)
 		for(i=0; i < TYPE_MAX-1; i++)
 			percentage[i] = 1e2f*counters.querytype[i]/total;
 
-	if(istelnet[*sock])
-		ssend(*sock,"A (IPv4): %.2f\nAAAA (IPv6): %.2f\nANY: %.2f\nSRV: %.2f\nSOA: %.2f\nPTR: %.2f\nTXT: %.2f\n",
+	if(istelnet[*sock]) {
+		ssend(*sock, "A (IPv4): %.2f\nAAAA (IPv6): %.2f\nANY: %.2f\nSRV: %.2f\nSOA: %.2f\nPTR: %.2f\nTXT: %.2f\n",
 		      percentage[0], percentage[1], percentage[2], percentage[3],
 		      percentage[4], percentage[5], percentage[6]);
+	}
 	else {
+		pack_str32(*sock, "A (IPv4)");
 		pack_float(*sock, percentage[0]);
+		pack_str32(*sock, "AAAA (IPv6)");
 		pack_float(*sock, percentage[1]);
+		pack_str32(*sock, "ANY");
+		pack_float(*sock, percentage[2]);
+		pack_str32(*sock, "SRV");
+		pack_float(*sock, percentage[3]);
+		pack_str32(*sock, "SOA");
+		pack_float(*sock, percentage[4]);
+		pack_str32(*sock, "PTR");
+		pack_float(*sock, percentage[5]);
+		pack_str32(*sock, "TXT");
+		pack_float(*sock, percentage[6]);
 	}
 }
 
