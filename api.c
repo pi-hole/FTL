@@ -539,10 +539,10 @@ void getForwardDestinations(char *client_message, int *sock)
 				ssend(*sock, "%i %.2f %s %s\n", i, percentage, ip, name);
 			else
 			{
-				if(!pack_str32(*sock, "") || !pack_str32(*sock, ip))
+				if(!pack_str32(*sock, name) || !pack_str32(*sock, ip))
 					return;
 
-				pack_float(*sock, (float) percentage);
+				pack_float(*sock, percentage);
 			}
 		}
 	}
