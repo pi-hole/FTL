@@ -244,13 +244,14 @@ void FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id
 
 	// Validate access only once for the maximum index (all lower will work)
 	validate_access("queries", counters.queries-1, false, __LINE__, __FUNCTION__, __FILE__);
-	for(i=0; i<counters.queries; i++)
+	for(i = counters.queries-1; i > 0; i--)
 	{
 		// Check UUID of this query
 		if(queries[i].id == id)
 		{
 			queries[i].status = QUERY_FORWARDED;
 			found = true;
+			if(debug) logg("Found query after %i iterations", counters.queries-1-i);
 			break;
 		}
 	}
@@ -399,12 +400,13 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 		// Validate access only once for the maximum index (all lower will work)
 		// See comments in FTL_forwarded() for further details on computational costs
 		validate_access("queries", counters.queries-1, false, __LINE__, __FUNCTION__, __FILE__);
-		for(i=0; i<counters.queries; i++)
+		for(i = counters.queries-1; i > 0; i--)
 		{
 			// Check UUID of this query
 			if(queries[i].id == id)
 			{
 				found = true;
+				if(debug) logg("Found query after %i iterations", counters.queries-1-i);
 				break;
 			}
 		}
@@ -453,12 +455,13 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 		// Validate access only once for the maximum index (all lower will work)
 		// See comments in FTL_forwarded() for further details on computational costs
 		validate_access("queries", counters.queries-1, false, __LINE__, __FUNCTION__, __FILE__);
-		for(i=0; i<counters.queries; i++)
+		for(i = counters.queries-1; i > 0; i--)
 		{
 			// Check UUID of this query
 			if(queries[i].id == id)
 			{
 				found = true;
+				if(debug) logg("Found query after %i iterations", counters.queries-1-i);
 				break;
 			}
 		}
@@ -560,12 +563,13 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 		// Validate access only once for the maximum index (all lower will work)
 		// See comments in FTL_forwarded() for further details on computational costs
 		validate_access("queries", counters.queries-1, false, __LINE__, __FUNCTION__, __FILE__);
-		for(i=0; i<counters.queries; i++)
+		for(i = counters.queries-1; i > 0; i--)
 		{
 			// Check UUID of this query
 			if(queries[i].id == id)
 			{
 				found = true;
+				if(debug) logg("Found query after %i iterations", counters.queries-1-i);
 				break;
 			}
 		}
@@ -642,12 +646,13 @@ void FTL_dnssec(int status, int id)
 	// Validate access only once for the maximum index (all lower will work)
 	// See comments in FTL_forwarded() for further details on computational costs
 	validate_access("queries", counters.queries-1, false, __LINE__, __FUNCTION__, __FILE__);
-	for(i=0; i<counters.queries; i++)
+	for(i = counters.queries-1; i > 0; i--)
 	{
 		// Check both UUID and generation of this query
 		if(queries[i].id == id)
 		{
 			found = true;
+			if(debug) logg("Found query after %i iterations", counters.queries-1-i);
 			break;
 		}
 	}
