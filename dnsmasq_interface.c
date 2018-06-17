@@ -231,20 +231,19 @@ void FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id
 	// Save status and forwardID in corresponding query identified by dnsmasq's ID
 	bool found = false;
 	int i;
-	// Loop through all queries - this is an expensive loop, however, there is no
-	// good alternative as we will loose the relation between dnsmasq's id and our
-	// id due to garbage collection, hence, it may be that a query that with an ID
-	// of dnsmasq of 123.456 is our query with ID 567 when the other queries have
-	// already been removed due to their age. This is the price ofour very memory
-	// efficient datastructure which, however, allows us to have FTL run non-stop.
-	// Previously, FTL had to flush its internal data structure at midnight and re-
-	// parse the history from the pihole.log.1 file. Something like this is not
-	// needed anymore. We only have to get historic information from the database
-	// once on startup but then never again.
+	// Loop over all queries - we loop in reverse order (start from the most recent query and
+	// continuously walk older queries while trying to find a match. Ideally, we should always
+	// find the correct query with zero iterations, but it may happen that queries are processed
+	// asynchronously, e.g. for slow upstream relies to a huge amount of requests.
+	// We iterate from the most recent query down to at most MAXITER queries in the past to avoid
+	// iterating through the entire array of queries when queries that have not been recorded
+	// (like PTR queries, etc.) are processed.
+	// MAX(0, a) is used to return 0 in case a is negative (negative array indices are harmful)
 
 	// Validate access only once for the maximum index (all lower will work)
 	validate_access("queries", counters.queries-1, false, __LINE__, __FUNCTION__, __FILE__);
-	for(i=0; i<counters.queries; i++)
+	int until = MAX(0, counters.queries-MAXITER);
+	for(i = counters.queries-1; i >= until; i--)
 	{
 		// Check UUID of this query
 		if(queries[i].id == id)
@@ -392,14 +391,15 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 	if(flags & F_CONFIG)
 	{
 		// Answered from local configuration, might be a wildcard or user-provided
-		// Save status in corresponding query indentified by dnsmasq's ID
+		// Save status in corresponding query identified by dnsmasq's ID
 		bool found = false;
 		int i;
 
-		// Validate access only once for the maximum index (all lower will work)
-		// See comments in FTL_forwarded() for further details on computational costs
+		// Search match in known queries
+		// See comments in FTL_forwarded() for further details about this loop
 		validate_access("queries", counters.queries-1, false, __LINE__, __FUNCTION__, __FILE__);
-		for(i=0; i<counters.queries; i++)
+		int until = MAX(0, counters.queries-MAXITER);
+		for(i = counters.queries-1; i >= until; i--)
 		{
 			// Check UUID of this query
 			if(queries[i].id == id)
@@ -450,10 +450,11 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 		bool found = false;
 		int i;
 
-		// Validate access only once for the maximum index (all lower will work)
-		// See comments in FTL_forwarded() for further details on computational costs
+		// Search match in known queries
+		// See comments in FTL_forwarded() for further details about this loop
 		validate_access("queries", counters.queries-1, false, __LINE__, __FUNCTION__, __FILE__);
-		for(i=0; i<counters.queries; i++)
+		int until = MAX(0, counters.queries-MAXITER);
+		for(i = counters.queries-1; i >= until; i--)
 		{
 			// Check UUID of this query
 			if(queries[i].id == id)
@@ -557,10 +558,11 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 
 		bool found = false;
 		int i;
-		// Validate access only once for the maximum index (all lower will work)
-		// See comments in FTL_forwarded() for further details on computational costs
+		// Search match in known queries
+		// See comments in FTL_forwarded() for further details about this loop
 		validate_access("queries", counters.queries-1, false, __LINE__, __FUNCTION__, __FILE__);
-		for(i=0; i<counters.queries; i++)
+		int until = MAX(0, counters.queries-MAXITER);
+		for(i = counters.queries-1; i >= until; i--)
 		{
 			// Check UUID of this query
 			if(queries[i].id == id)
@@ -639,10 +641,11 @@ void FTL_dnssec(int status, int id)
 	// Search for corresponding query indentified by ID
 	bool found = false;
 	int i;
-	// Validate access only once for the maximum index (all lower will work)
-	// See comments in FTL_forwarded() for further details on computational costs
+	// Search match in known queries
+	// See comments in FTL_forwarded() for further details about this loop
 	validate_access("queries", counters.queries-1, false, __LINE__, __FUNCTION__, __FILE__);
-	for(i=0; i<counters.queries; i++)
+	int until = MAX(0, counters.queries-MAXITER);
+	for(i = counters.queries-1; i >= until; i--)
 	{
 		// Check both UUID and generation of this query
 		if(queries[i].id == id)

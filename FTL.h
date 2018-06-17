@@ -46,6 +46,9 @@
 #include <ifaddrs.h>
 #include <net/if.h>
 
+// Define MIN and MAX macros, use them only when x and y are of the same type
+#define MAX(x,y) (((x) > (y)) ? (x) : (y))
+// MIN(x,y) is already defined in dnsmasq.h
 
 #include "routines.h"
 
@@ -71,6 +74,9 @@
 
 // How many client connection do we accept at once?
 #define MAXCONNS 255
+
+// Over how many queries do we iterate at most when trying to find a match?
+#define MAXITER 1000
 
 // FTLDNS enums
 enum { DATABASE_WRITE_TIMER, EXIT_TIMER, GC_TIMER, LISTS_TIMER, REGEX_TIMER };
