@@ -243,7 +243,7 @@ void FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id
 	// Validate access only once for the maximum index (all lower will work)
 	validate_access("queries", counters.queries-1, false, __LINE__, __FUNCTION__, __FILE__);
 	int until = MAX(0, counters.queries-MAXITER);
-	for(i = counters.queries-1; i > until; i--)
+	for(i = counters.queries-1; i >= until; i--)
 	{
 		// Check UUID of this query
 		if(queries[i].id == id)
@@ -399,7 +399,7 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 		// See comments in FTL_forwarded() for further details about this loop
 		validate_access("queries", counters.queries-1, false, __LINE__, __FUNCTION__, __FILE__);
 		int until = MAX(0, counters.queries-MAXITER);
-		for(i = counters.queries-1; i > until; i--)
+		for(i = counters.queries-1; i >= until; i--)
 		{
 			// Check UUID of this query
 			if(queries[i].id == id)
@@ -454,7 +454,7 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 		// See comments in FTL_forwarded() for further details about this loop
 		validate_access("queries", counters.queries-1, false, __LINE__, __FUNCTION__, __FILE__);
 		int until = MAX(0, counters.queries-MAXITER);
-		for(i = counters.queries-1; i > until; i--)
+		for(i = counters.queries-1; i >= until; i--)
 		{
 			// Check UUID of this query
 			if(queries[i].id == id)
@@ -562,7 +562,7 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 		// See comments in FTL_forwarded() for further details about this loop
 		validate_access("queries", counters.queries-1, false, __LINE__, __FUNCTION__, __FILE__);
 		int until = MAX(0, counters.queries-MAXITER);
-		for(i = counters.queries-1; i > until; i--)
+		for(i = counters.queries-1; i >= until; i--)
 		{
 			// Check UUID of this query
 			if(queries[i].id == id)
@@ -645,7 +645,7 @@ void FTL_dnssec(int status, int id)
 	// See comments in FTL_forwarded() for further details about this loop
 	validate_access("queries", counters.queries-1, false, __LINE__, __FUNCTION__, __FILE__);
 	int until = MAX(0, counters.queries-MAXITER);
-	for(i = counters.queries-1; i > until; i--)
+	for(i = counters.queries-1; i >= until; i--)
 	{
 		// Check both UUID and generation of this query
 		if(queries[i].id == id)
