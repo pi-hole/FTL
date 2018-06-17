@@ -259,6 +259,8 @@ extern long int lastDBimportedtimestamp;
 extern bool ipv4telnet, ipv6telnet;
 extern bool istelnet[MAXCONNS];
 
+extern int queryIDoffset;
+
 // Use out own memory handling functions that will detect possible errors
 // and report accordingly in the log. This will make debugging FTL crashs
 // caused by insufficient memory or by code bugs (not properly dealing

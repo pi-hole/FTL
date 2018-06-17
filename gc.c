@@ -160,6 +160,9 @@ void *GC_thread(void *val)
 
 			if(debug) logg("Notice: GC removed %i queries (took %.2f ms)", removed, timer_elapsed_msec(GC_TIMER));
 
+			// Update queryID offset
+			queryIDoffset -= removed;
+
 			// Release thread lock
 			disable_thread_lock();
 

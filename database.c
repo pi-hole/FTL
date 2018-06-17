@@ -759,6 +759,10 @@ void read_data_from_DB(void)
 	}
 	logg("Imported %i queries from the long-term database", counters.queries);
 
+	// Initialize query ID offset counter
+	// dnsmasq's ID 1 query will be our X+1 query after having read X entries from the DB
+	queryIDoffset = counters.queries;
+
 	if( rc != SQLITE_DONE ){
 		logg("read_data_from_DB() - SQL error step (%i): %s", rc, sqlite3_errmsg(db));
 		dbclose();
