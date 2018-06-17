@@ -256,7 +256,6 @@ void FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id
 		{
 			queries[i].status = QUERY_FORWARDED;
 			found = true;
-			if(debug) logg("Found query after %i iterations", counters.queries-1-i);
 			break;
 		}
 	}
@@ -412,7 +411,6 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 			if(queries[i].id == id)
 			{
 				found = true;
-				if(debug) logg("Found query after %i iterations", counters.queries-1-i);
 				break;
 			}
 		}
@@ -468,7 +466,6 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 			if(queries[i].id == id)
 			{
 				found = true;
-				if(debug) logg("Found query after %i iterations", counters.queries-1-i);
 				break;
 			}
 		}
@@ -577,7 +574,6 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 			if(queries[i].id == id)
 			{
 				found = true;
-				if(debug) logg("Found query after %i iterations", counters.queries-1-i);
 				break;
 			}
 		}
@@ -661,7 +657,6 @@ void FTL_dnssec(int status, int id)
 		if(queries[i].id == id)
 		{
 			found = true;
-			if(debug) logg("Found query after %i iterations", counters.queries-1-i);
 			break;
 		}
 	}
