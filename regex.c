@@ -28,7 +28,7 @@ static void log_regex_error(char *where, int errcode, int index)
 	free_regex();
 }
 
-static bool init_regex(char *regexin, int index)
+static bool init_regex(const char *regexin, int index)
 {
 	// compile regular expressions into data structures that
 	// can be used with regexec to match against a string
@@ -224,6 +224,11 @@ void read_regex_from_file(void)
 	// newline character or EOF
 	for(int i=0; getline(&buffer, &size, fp) != -1; i++)
 	{
+		// Test if file has changed since we counted the lines therein (unlikely
+		// but not impossible). If so, read only as far as we have reserved memory
+		if(i >= num_regex)
+			break;
+
 		// Strip potential newline character at the end of line we just read
 		if(buffer[strlen(buffer)-1] == '\n')
 			buffer[strlen(buffer)-1] = '\0';
