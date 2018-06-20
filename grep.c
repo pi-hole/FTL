@@ -16,16 +16,28 @@ unsigned char blockingstatus = 2;
 int countlines(const char* fname)
 {
 	FILE *fp;
-	int ch = 0;
-	int lines = 0;
+	int ch = 0, lines = 0, chars = 0;
 
 	if((fp = fopen(fname, "r")) == NULL) {
 		return -1;
 	}
 
 	while ((ch = fgetc(fp)) != EOF)
+	{
+		chars++;
 		if (ch=='\n')
+		{
+			// Add one to the lines counter
 			++lines;
+			// Reset chars counter
+			chars = 0;
+		}
+	}
+
+	// Add one more line if there were characters at the
+	// last line of the file even without a final "\n"
+	if(chars > 0)
+		++lines;
 
 	// Close the file
 	fclose(fp);
