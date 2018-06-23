@@ -67,11 +67,6 @@ void process_request(char *client_message, int *sock)
 		processed = true;
 		getRecentBlocked(client_message, sock);
 	}
-	else if(command(client_message, ">memory"))
-	{
-		processed = true;
-		getMemoryUsage(sock);
-	}
 	else if(command(client_message, ">clientID"))
 	{
 		processed = true;

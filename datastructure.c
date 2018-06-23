@@ -68,7 +68,6 @@ int findOverTimeID(int overTimetimestamp)
 		// overTime[timeidx].querytypedata is static
 		overTime[timeidx].clientnum = 0;
 		overTime[timeidx].clientdata = NULL;
-		memory.querytypedata += (TYPE_MAX-1)*sizeof(int);
 		counters.overTime++;
 
 		// Update time stamp for next loop interation
@@ -114,7 +113,6 @@ int findForwardID(const char * forward, bool count)
 		forwarded[forwardID].count = 0;
 	// Save forward destination IP address
 	forwarded[forwardID].ip = strdup(forward);
-	memory.forwardedips += (strlen(forward) + 1) * sizeof(char);
 	forwarded[forwardID].failed = 0;
 	// Initialize forward hostname
 	// Due to the nature of us being the resolver,
@@ -163,7 +161,6 @@ int findDomainID(const char *domain)
 	domains[domainID].blockedcount = 0;
 	// Store domain name - no need to check for NULL here as it doesn't harm
 	domains[domainID].domain = strdup(domain);
-	memory.domainnames += (strlen(domain) + 1) * sizeof(char);
 	// RegEx needs to be evaluated for this new domain
 	domains[domainID].regexmatch = REGEX_UNKNOWN;
 	// Increase counter by one
@@ -208,7 +205,6 @@ int findClientID(const char *client)
 	clients[clientID].blockedcount = 0;
 	// Store client IP - no need to check for NULL here as it doesn't harm
 	clients[clientID].ip = strdup(client);
-	memory.clientips += (strlen(client) + 1) * sizeof(char);
 	// Initialize client hostname
 	// Due to the nature of us being the resolver,
 	// the actual resolving of the host name has
