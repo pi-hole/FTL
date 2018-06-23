@@ -793,7 +793,7 @@ void getMemoryUsage(int *sock)
 	format_memory_size(dynamicprefix, dynamicbytes, &formated);
 
 	if(istelnet[*sock])
-		ssend(*sock,"dynamically allocated allocated memory used for strings: %lu bytes (%.2f %sB)\n",dynamicbytes,formated,dynamicprefix);
+		ssend(*sock,"dynamically allocated memory used for strings: %lu bytes (%.2f %sB)\n",dynamicbytes,formated,dynamicprefix);
 	else
 		pack_uint64(*sock, dynamicbytes);
 	free(dynamicprefix);
