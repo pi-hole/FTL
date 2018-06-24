@@ -116,17 +116,7 @@ void format_memory_size(char *prefix, unsigned long int bytes, double *formated)
 
 void logg_struct_resize(const char* str, int to, int step)
 {
-	unsigned long int structbytes = sizeof(countersStruct) + sizeof(ConfigStruct) + counters.queries_MAX*sizeof(queriesDataStruct) + counters.forwarded_MAX*sizeof(forwardedDataStruct) + counters.clients_MAX*sizeof(clientsDataStruct) + counters.domains_MAX*sizeof(domainsDataStruct) + counters.overTime_MAX*sizeof(overTimeDataStruct);
-	unsigned long int dynamicbytes = memory.domainnames + memory.clientips + memory.forwardedips + memory.forwarddata + memory.querytypedata;
-
-	unsigned long int bytes = structbytes + dynamicbytes;
-	char *prefix = calloc(2, sizeof(char));
-	if(prefix == NULL) return;
-	double formated = 0.0;
-	format_memory_size(prefix, bytes, &formated);
-
-	logg("Notice: Increasing %s struct size from %i to %i (%.2f %sB)", str, (to-step), to, formated, prefix);
-	free(prefix);
+	logg("Notice: Increasing %s struct size from %i to %i", str, (to-step), to);
 }
 
 void log_counter_info(void)

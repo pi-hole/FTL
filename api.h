@@ -23,7 +23,6 @@ void getClientNames(int *sock);
 void getDomainDetails(char *client_message, int *sock);
 
 // FTL methods
-void getMemoryUsage(int *sock);
 void getClientID(int *sock);
 void getVersion(int *sock);
 void getDBstats(int *sock);

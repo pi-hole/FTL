@@ -207,15 +207,6 @@ typedef struct {
 } overTimeDataStruct;
 
 typedef struct {
-	int domainnames;
-	int clientips;
-	int forwardedips;
-	int forwarddata;
-	int clientdata;
-	int querytypedata;
-} memoryStruct;
-
-typedef struct {
 	int count;
 	char **domains;
 } whitelistStruct;
@@ -248,8 +239,6 @@ extern bool debug;
 extern bool threadwritelock;
 extern bool threadreadlock;
 extern unsigned char blockingstatus;
-
-extern memoryStruct memory;
 
 extern char * username;
 extern char timestamp[16];

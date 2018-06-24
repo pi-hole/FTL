@@ -34,7 +34,6 @@ logFileNamesStruct files = {
 // Fixed size structs
 countersStruct counters = { 0 };
 ConfigStruct config;
-memoryStruct memory;
 
 // Variable size array structs
 queriesDataStruct *queries;
@@ -177,7 +176,6 @@ void validate_access_oTcl(int timeidx, int clientID, int line, const char * func
 		for(i = overTime[timeidx].clientnum; i <= clientID; i++)
 		{
 			overTime[timeidx].clientdata[i] = 0;
-			memory.clientdata++;
 		}
 		// Update counter
 		overTime[timeidx].clientnum = clientID + 1;

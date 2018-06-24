@@ -773,43 +773,6 @@ void getRecentBlocked(char *client_message, int *sock)
 	}
 }
 
-void getMemoryUsage(int *sock)
-{
-	unsigned long int structbytes = sizeof(countersStruct) + sizeof(ConfigStruct) + counters.queries_MAX*sizeof(queriesDataStruct) + counters.forwarded_MAX*sizeof(forwardedDataStruct) + counters.clients_MAX*sizeof(clientsDataStruct) + counters.domains_MAX*sizeof(domainsDataStruct) + counters.overTime_MAX*sizeof(overTimeDataStruct);
-	char *structprefix = calloc(2, sizeof(char));
-	if(structprefix == NULL) return;
-	double formated = 0.0;
-	format_memory_size(structprefix, structbytes, &formated);
-
-	if(istelnet[*sock])
-		ssend(*sock,"memory allocated for internal data structure: %lu bytes (%.2f %sB)\n",structbytes,formated,structprefix);
-	else
-		pack_uint64(*sock, structbytes);
-	free(structprefix);
-
-	unsigned long int dynamicbytes = memory.domainnames + memory.clientips + memory.forwardedips + memory.forwarddata;
-	char *dynamicprefix = calloc(2, sizeof(char));
-	if(dynamicprefix == NULL) return;
-	format_memory_size(dynamicprefix, dynamicbytes, &formated);
-
-	if(istelnet[*sock])
-		ssend(*sock,"dynamically allocated memory used for strings: %lu bytes (%.2f %sB)\n",dynamicbytes,formated,dynamicprefix);
-	else
-		pack_uint64(*sock, dynamicbytes);
-	free(dynamicprefix);
-
-	unsigned long int totalbytes = structbytes + dynamicbytes;
-	char *totalprefix = calloc(2, sizeof(char));
-	if(totalprefix == NULL) return;
-	format_memory_size(totalprefix, totalbytes, &formated);
-
-	if(istelnet[*sock])
-		ssend(*sock,"Sum: %lu bytes (%.2f %sB)\n",totalbytes,formated,totalprefix);
-	else
-		pack_uint64(*sock, totalbytes);
-	free(totalprefix);
-}
-
 void getClientID(int *sock)
 {
 	if(istelnet[*sock])
