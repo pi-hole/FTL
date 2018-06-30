@@ -196,7 +196,7 @@ void read_regex_from_file(void)
 	FILE *fp;
 	char *buffer = NULL;
 	size_t size = 0;
-	int errors = 0;
+	int errors = 0, skipped = 0;
 
 	// Start timer for regex compilation analysis
 	timer_start(REGEX_TIMER);
@@ -240,7 +240,9 @@ void read_regex_from_file(void)
 		// effect
 		if(strlen(buffer) < 1)
 		{
+			regexconfigured[i] = false;
 			logg("Skipping empty regex filter in line %i", i);
+			skipped++;
 			continue;
 		}
 
@@ -262,5 +264,5 @@ void read_regex_from_file(void)
 	// Read whitelisted domains from file
 	read_whitelist_from_file();
 
-	logg("Compiled %i Regex filters and %i whitelisted domains in %.1f msec (%i errors)", num_regex, whitelist.count, timer_elapsed_msec(REGEX_TIMER), errors);
+	logg("Compiled %i Regex filters and %i whitelisted domains in %.1f msec (%i errors)", (num_regex-skipped), whitelist.count, timer_elapsed_msec(REGEX_TIMER), errors);
 }
