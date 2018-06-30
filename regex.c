@@ -233,6 +233,14 @@ void read_regex_from_file(void)
 		if(buffer[strlen(buffer)-1] == '\n')
 			buffer[strlen(buffer)-1] = '\0';
 
+		// Skip this entry is empty; an empty regex filter "" would match
+		// anything anywhere and hence block all incoming queries (unless
+		// explicitly whitelisted). A user can still do this with ".*", however
+		// empty lines in regex.list are probably not expected to have such an
+		// effect
+		if(strlen(buffer) < 1)
+			continue;
+
 		// Compile this regex
 		regexconfigured[i] = init_regex(buffer, i);
 		if(!regexconfigured[i]) errors++;
