@@ -233,11 +233,11 @@ void read_regex_from_file(void)
 		if(buffer[strlen(buffer)-1] == '\n')
 			buffer[strlen(buffer)-1] = '\0';
 
-		// Skip this entry is empty; an empty regex filter "" would match
-		// anything anywhere and hence block all incoming queries (unless
-		// explicitly whitelisted). A user can still do this with ".*", however
+		// Skip this entry if empty: an empty regex filter would match
+		// anything anywhere and hence match (and block) all incoming domains.
+		// A user can still achieve this with a filter such as ".*", however
 		// empty lines in regex.list are probably not expected to have such an
-		// effect
+		// effect and would immediately lead to "blocking the entire Internet"
 		if(strlen(buffer) < 1)
 		{
 			regexconfigured[i] = false;
