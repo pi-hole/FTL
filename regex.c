@@ -239,7 +239,10 @@ void read_regex_from_file(void)
 		// empty lines in regex.list are probably not expected to have such an
 		// effect
 		if(strlen(buffer) < 1)
+		{
+			logg("Skipping empty regex filter in line %i", i);
 			continue;
+		}
 
 		// Compile this regex
 		regexconfigured[i] = init_regex(buffer, i);
