@@ -241,7 +241,7 @@ void read_regex_from_file(void)
 		if(strlen(buffer) < 1)
 		{
 			regexconfigured[i] = false;
-			logg("Skipping empty regex filter in line %i", i);
+			logg("Skipping empty regex filter on line %i", i+1);
 			skipped++;
 			continue;
 		}
