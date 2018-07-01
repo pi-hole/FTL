@@ -196,7 +196,7 @@ void read_regex_from_file(void)
 	FILE *fp;
 	char *buffer = NULL;
 	size_t size = 0;
-	int errors = 0;
+	int errors = 0, skipped = 0;
 
 	// Start timer for regex compilation analysis
 	timer_start(REGEX_TIMER);
@@ -233,6 +233,19 @@ void read_regex_from_file(void)
 		if(buffer[strlen(buffer)-1] == '\n')
 			buffer[strlen(buffer)-1] = '\0';
 
+		// Skip this entry if empty: an empty regex filter would match
+		// anything anywhere and hence match (and block) all incoming domains.
+		// A user can still achieve this with a filter such as ".*", however
+		// empty lines in regex.list are probably not expected to have such an
+		// effect and would immediately lead to "blocking the entire Internet"
+		if(strlen(buffer) < 1)
+		{
+			regexconfigured[i] = false;
+			logg("Skipping empty regex filter on line %i", i+1);
+			skipped++;
+			continue;
+		}
+
 		// Compile this regex
 		regexconfigured[i] = init_regex(buffer, i);
 		if(!regexconfigured[i]) errors++;
@@ -251,5 +264,5 @@ void read_regex_from_file(void)
 	// Read whitelisted domains from file
 	read_whitelist_from_file();
 
-	logg("Compiled %i Regex filters and %i whitelisted domains in %.1f msec (%i errors)", num_regex, whitelist.count, timer_elapsed_msec(REGEX_TIMER), errors);
+	logg("Compiled %i Regex filters and %i whitelisted domains in %.1f msec (%i errors)", (num_regex-skipped), whitelist.count, timer_elapsed_msec(REGEX_TIMER), errors);
 }
