@@ -257,7 +257,11 @@ void read_regex_from_file(void)
 
 		// Compile this regex
 		regexconfigured[i] = init_regex(buffer, i);
-		if(!regexconfigured[i]) errors++;
+		if(!regexconfigured[i])
+		{
+			logg("Error compiling regex on line %i", i+1);
+			errors++;
+		}
 	}
 
 	// Free allocated memory
