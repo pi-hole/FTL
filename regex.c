@@ -246,6 +246,15 @@ void read_regex_from_file(void)
 			continue;
 		}
 
+		// Skip this entry if it is commented out
+		if(buffer[0] == '#')
+		{
+			regexconfigured[i] = false;
+			logg("Skipping commented out regex filter on line %i", i+1);
+			skipped++;
+			continue;
+		}
+
 		// Compile this regex
 		regexconfigured[i] = init_regex(buffer, i);
 		if(!regexconfigured[i]) errors++;
