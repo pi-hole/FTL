@@ -86,7 +86,7 @@ bool match_regex(char *input)
 		{
 			// Match, return true
 			matched = true;
-			if(config.regex_debugmode) logg("Regex in line %i matched domain \"%s\"", index, input);
+			if(config.regex_debugmode) logg("Regex in line %i matched domain \"%s\"", index+1, input);
 			break;
 		}
 		else if (errcode != REG_NOMATCH)
