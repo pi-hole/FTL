@@ -206,6 +206,19 @@ void read_FTLconf(void)
 			break;
 	}
 
+	// REGEX_DEBUGMODE
+	// defaults to: No
+	config.regex_debugmode = false;
+	buffer = parse_FTLconf(fp, "REGEX_DEBUGMODE");
+
+	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
+		config.regex_debugmode = true;
+
+	if(config.regex_debugmode)
+		logg("   REGEX_DEBUGMODE: RegEx debugging mode. May increase log file size!");
+	else
+		logg("   REGEX_DEBUGMODE: Normal RegEx mode");
+
 	logg("Finished config file parsing");
 
 	// Release memory
