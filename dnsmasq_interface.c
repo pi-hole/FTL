@@ -183,8 +183,8 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 		// For minimal performance impact, we test the regex only when
 		// - regex checking is enabled, and
 		// - this domain has not already been validated against the regex.
-		//
 		// This effectively prevents multiple evaluations of the same domain
+		//
 		// If a regex filter matched, we additionally compare the domain
 		// against all known whitelisted domains to possibly prevent blocking
 		// of a specific domain. The logic herein is:
