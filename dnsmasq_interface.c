@@ -178,13 +178,13 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 
 	// Try blocking regex if configured
 	validate_access("domains", domainID, false, __LINE__, __FUNCTION__, __FILE__);
-	if(domains[domainID].regexmatch == REGEX_UNKNOWN)
+	if(domains[domainID].regexmatch == REGEX_UNKNOWN && blockingstatus != BLOCKING_DISABLED)
 	{
 		// For minimal performance impact, we test the regex only when
 		// - regex checking is enabled, and
 		// - this domain has not already been validated against the regex.
-		// This effectively prevents multiple evaluations of the same domain
 		//
+		// This effectively prevents multiple evaluations of the same domain
 		// If a regex filter matched, we additionally compare the domain
 		// against all known whitelisted domains to possibly prevent blocking
 		// of a specific domain. The logic herein is:
