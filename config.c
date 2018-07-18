@@ -215,9 +215,9 @@ void read_FTLconf(void)
 		config.regex_debugmode = true;
 
 	if(config.regex_debugmode)
-		logg("   REGEX_DEBUGMODE: RegEx debugging mode. May increase log file size!");
+		logg("   REGEX_DEBUGMODE: Active. May increase log file size!");
 	else
-		logg("   REGEX_DEBUGMODE: Normal RegEx mode");
+		logg("   REGEX_DEBUGMODE: Inactive");
 
 	logg("Finished config file parsing");
 

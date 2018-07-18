@@ -44,8 +44,6 @@ static bool init_regex(const char *regexin, int index)
 	if(config.regex_debugmode)
 	{
 		regexbuffer[index] = strdup(regexin);
-		if(regexbuffer[index] == NULL)
-			logg("WARN: init_regex() failed to allocate memory for regexbuffer[index]");
 	}
 	return true;
 }
@@ -98,7 +96,7 @@ bool match_regex(char *input)
 
 			// Print match message when in regex debug mode
 			if(config.regex_debugmode)
-				logg("DEBUG: Regex in line %i (\"%s\") matches \"%s\"", index+1, regexbuffer[index], input);
+				logg("DEBUG: Regex in line %i \"%s\" matches \"%s\"", index+1, regexbuffer[index], input);
 			break;
 		}
 		else if (errcode != REG_NOMATCH)
@@ -136,16 +134,13 @@ void free_regex(void)
 			if(config.regex_debugmode)
 			{
 				free(regexbuffer[index]);
-				regexbuffer[index] = NULL;
 			}
 		}
 	}
 
 	// Free array with regex datastructure
 	free(regex);
-	regex = NULL;
 	free(regexconfigured);
-	regexconfigured = NULL;
 
 	// Reset counter for number of regex
 	num_regex = 0;
@@ -185,8 +180,6 @@ static void read_whitelist_from_file(void)
 
 	// Allocate memory for array of whitelisted domains
 	whitelist.domains = calloc(whitelist.count, sizeof(char*));
-	if(whitelist.domains == NULL)
-		logg("WARN: Failed to allocate memory in read_whitelist_from_file(), %i", whitelist.count);
 
 	// Search through file
 	// getline reads a string from the specified file up to either a
@@ -210,7 +203,6 @@ static void read_whitelist_from_file(void)
 	if(buffer != NULL)
 	{
 		free(buffer);
-		buffer = NULL;
 	}
 
 	// Close the file
@@ -244,16 +236,10 @@ void read_regex_from_file(void)
 	// Allocate memory for regex
 	regex = calloc(num_regex, sizeof(regex_t));
 	regexconfigured = calloc(num_regex, sizeof(bool));
-	if(regex == NULL || regexconfigured == NULL)
-		logg("WARN: Failed to allocate memory in read_regex_from_file(), 1, %i", num_regex);
 
 	// Buffer strings if in regex debug mode
 	if(config.regex_debugmode)
-	{
 		regexbuffer = calloc(num_regex, sizeof(char*));
-		if(regexbuffer == NULL)
-			logg("WARN: Failed to allocate memory in read_regex_from_file(), 2, %i", num_regex);
-	}
 
 	// Search through file
 	// getline reads a string from the specified file up to either a
