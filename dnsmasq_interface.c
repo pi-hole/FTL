@@ -192,8 +192,7 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 		// If in whitelist, negate matched so this function returns: not-to-be-blocked
 		if(match_regex(domain) && !in_whitelist(domain))
 		{
-			// We have to block this domain if not already done
-			if(debug) logg("Blocking %s due to Regex match", domain);
+			// We have to block this domain
 			block_single_domain(domain);
 			domains[domainID].regexmatch = REGEX_BLOCKED;
 		}

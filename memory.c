@@ -268,15 +268,4 @@ void FTLfree(void *ptr, const char * file, const char * function, int line)
 
 	// We intentionally run free() nevertheless to see the crash in the debugger
 	free(ptr);
-
-	// Set freed pointer explicitly to NULL to avoid carrying around a dangling pointer
-	// Dangling pointers are pointers that do not point to a valid object of the
-	// appropriate type. They represent a special case of memory safety violation.
-	// Dangling pointers arise during object destruction, when an object is deallocated,
-	// without modifying the value of the pointer, so that the pointer still points to
-	// the memory location of the deallocated memory.
-	// If the program writes to memory referenced by a dangling pointer, a silent
-	// corruption of unrelated data may result, leading to subtle bugs that can be
-	// extremely difficult to find.
-	ptr = NULL;
 }

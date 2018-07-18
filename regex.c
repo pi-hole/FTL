@@ -110,7 +110,7 @@ bool match_regex(char *input)
 	double elapsed = timer_elapsed_msec(REGEX_TIMER);
 
 	// Only log evaluation times if they are longer than normal
-	if(elapsed > 10.0 || debug)
+	if(elapsed > 10.0)
 		logg("WARN: Regex evaluation took %.3f msec", elapsed);
 
 	// No match, no error, return false
@@ -134,13 +134,16 @@ void free_regex(void)
 			if(config.regex_debugmode)
 			{
 				free(regexbuffer[index]);
+				regexbuffer[index] = NULL;
 			}
 		}
 	}
 
 	// Free array with regex datastructure
 	free(regex);
+	regex = NULL;
 	free(regexconfigured);
+	regexconfigured = NULL;
 
 	// Reset counter for number of regex
 	num_regex = 0;
@@ -203,6 +206,7 @@ static void read_whitelist_from_file(void)
 	if(buffer != NULL)
 	{
 		free(buffer);
+		buffer = NULL;
 	}
 
 	// Close the file
