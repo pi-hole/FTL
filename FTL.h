@@ -148,6 +148,7 @@ typedef struct {
 	int privacylevel;
 	bool ignore_localhost;
 	unsigned char blockingmode;
+	bool regex_debugmode;
 } ConfigStruct;
 
 // Dynamic structs

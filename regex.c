@@ -12,8 +12,9 @@
 #include <regex.h>
 
 static int num_regex;
-static regex_t *regex;
-static bool *regexconfigured;
+static regex_t *regex = NULL;
+static bool *regexconfigured = NULL;
+static char **regexbuffer = NULL;
 static whitelistStruct whitelist = { 0, NULL };
 
 static void log_regex_error(char *where, int errcode, int index)
@@ -37,6 +38,12 @@ static bool init_regex(const char *regexin, int index)
 	{
 		log_regex_error("compiling", errcode, index);
 		return false;
+	}
+
+	// Store compiled regex string in buffer if in regex debug mode
+	if(config.regex_debugmode)
+	{
+		regexbuffer[index] = strdup(regexin);
 	}
 	return true;
 }
@@ -86,6 +93,10 @@ bool match_regex(char *input)
 		{
 			// Match, return true
 			matched = true;
+
+			// Print match message when in regex debug mode
+			if(config.regex_debugmode)
+				logg("DEBUG: Regex in line %i \"%s\" matches \"%s\"", index+1, regexbuffer[index], input);
 			break;
 		}
 		else if (errcode != REG_NOMATCH)
@@ -99,7 +110,7 @@ bool match_regex(char *input)
 	double elapsed = timer_elapsed_msec(REGEX_TIMER);
 
 	// Only log evaluation times if they are longer than normal
-	if(elapsed > 10.0 || debug)
+	if(elapsed > 10.0)
 		logg("WARN: Regex evaluation took %.3f msec", elapsed);
 
 	// No match, no error, return false
@@ -114,8 +125,19 @@ void free_regex(void)
 
 	// Disable blocking regex checking and free regex datastructure
 	for(int index = 0; index < num_regex; index++)
+	{
 		if(regexconfigured[index])
+		{
 			regfree(&regex[index]);
+
+			// Also free buffered regex strings if in regex debug mode
+			if(config.regex_debugmode)
+			{
+				free(regexbuffer[index]);
+				regexbuffer[index] = NULL;
+			}
+		}
+	}
 
 	// Free array with regex datastructure
 	free(regex);
@@ -218,6 +240,10 @@ void read_regex_from_file(void)
 	// Allocate memory for regex
 	regex = calloc(num_regex, sizeof(regex_t));
 	regexconfigured = calloc(num_regex, sizeof(bool));
+
+	// Buffer strings if in regex debug mode
+	if(config.regex_debugmode)
+		regexbuffer = calloc(num_regex, sizeof(char*));
 
 	// Search through file
 	// getline reads a string from the specified file up to either a
