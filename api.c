@@ -687,8 +687,9 @@ void getAllQueries(char *client_message, int *sock)
 		if(filterclientname)
 		{
 			// Skip if client name and IP are not identical with what the user wants to see
-			if(strcmp(clients[queries[i].clientID].ip,   clientname) != 0 &&
-			   strcmp(clients[queries[i].clientID].name, clientname) != 0)
+			if(strcmp(clients[queries[i].clientID].ip, clientname) != 0 &&
+			   (clients[queries[i].clientID].name != NULL &&
+			    strcmp(clients[queries[i].clientID].name, clientname) != 0))
 				continue;
 		}
 
