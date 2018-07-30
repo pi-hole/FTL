@@ -77,7 +77,8 @@ void reresolveHostnames(void)
 			continue;
 
 		// Get client hostname
-		char *hostname = resolveHostname(clients[clientID].ip);
+		char *clientip = getClientIP(clientID);
+		char *hostname = resolveHostname(clientip);
 		if(strlen(hostname) > 0)
 		{
 			// Delete possibly already existing hostname pointer before storing new data
@@ -90,6 +91,7 @@ void reresolveHostnames(void)
 			// Store client hostname
 			clients[clientID].name = strdup(hostname);
 		}
+		free(clientip);
 		free(hostname);
 	}
 }
@@ -109,7 +111,9 @@ void resolveNewClients(void)
 		// want to try to resolve them every minute in this case.
 		if(clients[i].new)
 		{
-			clients[i].name = resolveHostname(clients[i].ip);
+			char* clientip = getClientIP(i);
+			clients[i].name = resolveHostname(clientip);
+			free(clientip);
 			clients[i].new = false;
 		}
 	}
@@ -121,7 +125,9 @@ void resolveNewClients(void)
 		// Only try to resolve new forward destinations
 		if(forwarded[i].new)
 		{
-			forwarded[i].name = resolveHostname(forwarded[i].ip);
+			char* forwardip = getForwardIP(i);
+			forwarded[i].name = resolveHostname(forwardip);
+			free(forwardip);
 			forwarded[i].new = false;
 		}
 	}

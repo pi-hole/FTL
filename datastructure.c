@@ -10,6 +10,15 @@
 
 #include "FTL.h"
 
+// Macro comparing the first 4 bytes (the first byte is assumed to have already been checked)
+#define COMP4(a,b) (a[1] == b[1] && a[2] == b[2] && a[3] == b[3])
+// Macro comparing 16 bytes (for IPv6 addresses)
+#define COMP16(a,b) (a[1] == b[1] && a[2] == b[2] && a[3] == b[3] && \
+                     a[4] == b[4] && a[5] == b[5] && a[6] == b[6] && \
+                     a[7] == b[7] && a[8] == b[8] && a[9] == b[9] && \
+                     a[10] == b[10] && a[11] == b[11] && a[12] == b[12] && \
+                     a[13] == b[13] && a[14] == b[14] && a[15] == b[15])
+
 // converts upper to lower case, and leaves other characters unchanged
 void strtolower(char *str)
 {
@@ -83,16 +92,31 @@ int findOverTimeID(int overTimetimestamp)
 int findForwardID(const char * forward, bool count)
 {
 	int i, forwardID = -1;
+	int ret, proto = (strstr(forward,":") == NULL) ? AF_INET : AF_INET6;
+	char addrbuf[16];
+	if((ret = inet_pton(proto, forward, addrbuf)) != 1)
+		logg("ERROR: inet_pton(%i, \"%s\", %p) failed with code %i (findForwardID)", proto, forward, addrbuf, ret);
 	if(counters.forwarded > 0)
 		validate_access("forwarded", counters.forwarded-1, true, __LINE__, __FUNCTION__, __FILE__);
 	// Go through already knows forward servers and see if we used one of those
 	for(i=0; i < counters.forwarded; i++)
 	{
-		if(strcmp(forwarded[i].ip, forward) == 0)
+		// Quick test: Does the forwarded IP start with octet?
+		if(forwarded[i].addr[0] != addrbuf[0])
+			continue;
+
+		// If so, compare the rest of the address
+		if(proto == AF_INET && COMP4(forwarded[i].addr, addrbuf))
 		{
-			forwardID = i;
-			if(count) forwarded[forwardID].count++;
-			return forwardID;
+			forwarded[i].count++;
+			return i;
+		}
+
+		// If so, compare the rest of the address
+		if(proto == AF_INET6 && COMP16(forwarded[i].addr, addrbuf))
+		{
+			forwarded[i].count++;
+			return i;
 		}
 	}
 	// This forward server is not known
@@ -112,7 +136,7 @@ int findForwardID(const char * forward, bool count)
 	else
 		forwarded[forwardID].count = 0;
 	// Save forward destination IP address
-	forwarded[forwardID].ip = strdup(forward);
+	saveForwardIP(i, forward);
 	forwarded[forwardID].failed = 0;
 	// Initialize forward hostname
 	// Due to the nature of us being the resolver,
@@ -172,17 +196,29 @@ int findDomainID(const char *domain)
 int findClientID(const char *client)
 {
 	int i;
+	int ret, proto = (strstr(client,":") == NULL) ? AF_INET : AF_INET6;
+	char addrbuf[16];
+	if((ret = inet_pton(proto, client, addrbuf)) != 1)
+		logg("ERROR: inet_pton(%i, \"%s\", %p) failed with code %i (findClientID)", proto, client, addrbuf, ret);
+
 	// Compare content of client against known client IP addresses
 	if(counters.clients > 0)
 		validate_access("clients", counters.clients-1, true, __LINE__, __FUNCTION__, __FILE__);
 	for(i=0; i < counters.clients; i++)
 	{
-		// Quick test: Does the clients IP start with the same character?
-		if(clients[i].ip[0] != client[0])
+		// Quick test: Does the clients IP start with octet?
+		if(clients[i].addr[0] != addrbuf[0])
 			continue;
 
-		// If so, compare the full IP using strcmp
-		if(strcmp(clients[i].ip, client) == 0)
+		// If so, compare the rest of the address
+		if(proto == AF_INET && COMP4(clients[i].addr, addrbuf))
+		{
+			clients[i].count++;
+			return i;
+		}
+
+		// If so, compare the rest of the address
+		if(proto == AF_INET6 && COMP16(clients[i].addr, addrbuf))
 		{
 			clients[i].count++;
 			return i;
@@ -203,8 +239,8 @@ int findClientID(const char *client)
 	clients[clientID].count = 1;
 	// Initialize blocked count to zero
 	clients[clientID].blockedcount = 0;
-	// Store client IP - no need to check for NULL here as it doesn't harm
-	clients[clientID].ip = strdup(client);
+	// Store client IP
+	saveClientIP(i, client);
 	// Initialize client hostname
 	// Due to the nature of us being the resolver,
 	// the actual resolving of the host name has
@@ -217,14 +253,36 @@ int findClientID(const char *client)
 	return clientID;
 }
 
-bool isValidIPv4(const char *addr)
+void saveClientIP(int i, const char *ipaddr)
 {
-	struct sockaddr_in sa;
-	return inet_pton(AF_INET, addr, &(sa.sin_addr)) != 0;
+	clients[i].IPv4 = (strstr(ipaddr,":") == NULL);
+	int ret, proto = clients[i].IPv4 ? AF_INET : AF_INET6;
+	if((ret = inet_pton(proto, ipaddr, clients[i].addr)) != 1)
+		logg("ERROR: inet_pton(%i, %s, %p) failed with %i", proto, ipaddr, clients[i].addr, ret);
 }
 
-bool isValidIPv6(const char *addr)
+char* getClientIP(int i)
 {
-	struct sockaddr_in6 sa;
-	return inet_pton(AF_INET6, addr, &(sa.sin6_addr)) != 0;
+	int proto = clients[i].IPv4 ? AF_INET : AF_INET6;
+	size_t size = clients[i].IPv4 ? INET_ADDRSTRLEN : INET6_ADDRSTRLEN;
+	char *buffer = calloc(size, sizeof(char));
+	inet_ntop(proto, clients[i].addr, buffer, size);
+	return buffer;
+}
+
+void saveForwardIP(int i, const char *ipaddr)
+{
+	forwarded[i].IPv4 = (strstr(ipaddr,":") == NULL);
+	int ret, proto = forwarded[i].IPv4 ? AF_INET : AF_INET6;
+	if((ret = inet_pton(proto, ipaddr, forwarded[i].addr)) != 1)
+		logg("ERROR: inet_pton(%i, %s, %p) failed with %i", proto, ipaddr, forwarded[i].addr, ret);
+}
+
+char* getForwardIP(int i)
+{
+	int proto = forwarded[i].IPv4 ? AF_INET : AF_INET6;
+	size_t size = clients[i].IPv4 ? INET_ADDRSTRLEN : INET6_ADDRSTRLEN;
+	char *buffer = calloc(size, sizeof(char));
+	inet_ntop(proto, forwarded[i].addr, buffer, size);
+	return buffer;
 }
