@@ -87,7 +87,7 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS_CLIENTS)
 	{
 		free(client);
-		client = strdup("0.0.0.0");
+		client = strdup("::");
 	}
 
 	// Log new query if in debug mode
