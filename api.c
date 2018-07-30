@@ -397,13 +397,15 @@ void getTopClients(char *client_message, int *sock)
 		int ccount = temparray[i][1];
 		validate_access("clients", j, true, __LINE__, __FUNCTION__, __FILE__);
 
+		char* ip = getClientIP(j);
+
 		// Skip this client if there is a filter on it
 		if(excludeclients != NULL &&
-			(insetupVarsArray(clients[j].ip) || insetupVarsArray(clients[j].name)))
+			(insetupVarsArray(ip) || insetupVarsArray(clients[j].name)))
 			continue;
 
 		// Hidden client, probably due to privacy level. Skip this in the top lists
-		if(strcmp(clients[j].ip, "0.0.0.0") == 0)
+		if(strcmp(ip, "0.0.0.0") == 0)
 			continue;
 
 		// Only return name if available
@@ -419,16 +421,18 @@ void getTopClients(char *client_message, int *sock)
 		if(includezeroclients || ccount > 0)
 		{
 			if(istelnet[*sock])
-				ssend(*sock,"%i %i %s %s\n", n, ccount, clients[j].ip, name);
+				ssend(*sock,"%i %i %s %s\n", n, ccount, ip, name);
 			else
 			{
-				if(!pack_str32(*sock, "") || !pack_str32(*sock, clients[j].ip))
+				if(!pack_str32(*sock, "") || !pack_str32(*sock, ip))
 					return;
 
 				pack_int32(*sock, ccount);
 			}
 			n++;
 		}
+
+		free(ip);
 
 		if(n == count)
 			break;
@@ -684,10 +688,12 @@ void getAllQueries(char *client_message, int *sock)
 				continue;
 		}
 
+		char *clientip = getClientIP(queries[i].clientID);
+
 		if(filterclientname)
 		{
 			// Skip if client name and IP are not identical with what the user wants to see
-			if(strcmp(clients[queries[i].clientID].ip, clientname) != 0 &&
+			if(strcmp(clientip, clientname) != 0 &&
 			   (clients[queries[i].clientID].name != NULL &&
 			    strcmp(clients[queries[i].clientID].name, clientname) != 0))
 				continue;
@@ -699,7 +705,7 @@ void getAllQueries(char *client_message, int *sock)
 		   strlen(clients[queries[i].clientID].name) > 0)
 			client = clients[queries[i].clientID].name;
 		else
-			client = clients[queries[i].clientID].ip;
+			client = clientip;
 
 		unsigned long delay = queries[i].response;
 		// Check if received (delay should be smaller than 30min)
@@ -725,6 +731,8 @@ void getAllQueries(char *client_message, int *sock)
 			pack_uint8(*sock, queries[i].status);
 			pack_uint8(*sock, queries[i].dnssec);
 		}
+
+		free(clientip);
 	}
 
 	// Free allocated memory
@@ -935,9 +943,11 @@ void getClientsOverTime(int *sock)
 		{
 			validate_access("clients", i, true, __LINE__, __FUNCTION__, __FILE__);
 			// Check if this client should be skipped
-			if(insetupVarsArray(clients[i].ip) ||
+			char *clientip = getClientIP(i);
+			if(insetupVarsArray(clientip) ||
 			   insetupVarsArray(clients[i].name))
 				skipclient[i] = true;
+			free(clientip);
 		}
 	}
 
@@ -1008,9 +1018,11 @@ void getClientNames(int *sock)
 		{
 			validate_access("clients", i, true, __LINE__, __FUNCTION__, __FILE__);
 			// Check if this client should be skipped
-			if(insetupVarsArray(clients[i].ip) ||
+			char *clientip = getClientIP(i);
+			if(insetupVarsArray(clientip) ||
 			   insetupVarsArray(clients[i].name))
 				skipclient[i] = true;
+			free(clientip);
 		}
 	}
 
@@ -1021,14 +1033,17 @@ void getClientNames(int *sock)
 		if(skipclient[i])
 			continue;
 
+		char *client_ip = getClientIP(i);
 		char *client_name = clients[i].name != NULL ? clients[i].name : "";
 
 		if(istelnet[*sock])
-			ssend(*sock, "%s %s\n", client_name, clients[i].ip);
-		else {
+			ssend(*sock, "%s %s\n", client_name, client_ip);
+		else
+		{
 			pack_str32(*sock, client_name);
-			pack_str32(*sock, clients[i].ip);
+			pack_str32(*sock, client_ip);
 		}
+		free(client_ip);
 	}
 
 	if(excludeclients != NULL)
@@ -1062,11 +1077,12 @@ void getUnknownQueries(int *sock)
 		validate_access("clients", queries[i].clientID, true, __LINE__, __FUNCTION__, __FILE__);
 
 
-		char *client = clients[queries[i].clientID].ip;
+		char *client = getClientIP(i);
 
 		if(istelnet[*sock])
 			ssend(*sock, "%i %i %i %s %s %s %i %s\n", queries[i].timestamp, i, queries[i].id, type, domains[queries[i].domainID].domain, client, queries[i].status, queries[i].complete ? "true" : "false");
-		else {
+		else
+		{
 			pack_int32(*sock, queries[i].timestamp);
 			pack_int32(*sock, queries[i].id);
 
@@ -1081,6 +1097,7 @@ void getUnknownQueries(int *sock)
 			pack_uint8(*sock, queries[i].status);
 			pack_bool(*sock, queries[i].complete);
 		}
+		free(client);
 	}
 }
 

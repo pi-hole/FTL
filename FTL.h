@@ -183,9 +183,11 @@ typedef struct {
 	unsigned char magic;
 	int count;
 	int blockedcount;
-	char *ip;
 	char *name;
 	bool new;
+	// Define 128 bit (16 bytes) long variable that can hold IPv4 and IPv6 addresses
+	unsigned char addr[16];
+	bool IPv4;
 } clientsDataStruct;
 
 typedef struct {
