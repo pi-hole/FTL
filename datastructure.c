@@ -136,7 +136,6 @@ int findForwardID(const char * forward, bool count)
 	else
 		forwarded[forwardID].count = 0;
 	// Save forward destination IP address
-	// Store client IP
 	saveForwardIP(i, forward);
 	forwarded[forwardID].failed = 0;
 	// Initialize forward hostname
@@ -264,9 +263,10 @@ void saveClientIP(int i, const char *ipaddr)
 
 char* getClientIP(int i)
 {
-	char *buffer = calloc(INET6_ADDRSTRLEN, sizeof(char));
 	int proto = clients[i].IPv4 ? AF_INET : AF_INET6;
-	inet_ntop(proto, clients[i].addr, buffer, INET6_ADDRSTRLEN);
+	size_t size = clients[i].IPv4 ? INET_ADDRSTRLEN : INET6_ADDRSTRLEN;
+	char *buffer = calloc(size, sizeof(char));
+	inet_ntop(proto, clients[i].addr, buffer, size);
 	return buffer;
 }
 
@@ -280,8 +280,9 @@ void saveForwardIP(int i, const char *ipaddr)
 
 char* getForwardIP(int i)
 {
-	char *buffer = calloc(INET6_ADDRSTRLEN, sizeof(char));
 	int proto = forwarded[i].IPv4 ? AF_INET : AF_INET6;
-	inet_ntop(proto, forwarded[i].addr, buffer, INET6_ADDRSTRLEN);
+	size_t size = clients[i].IPv4 ? INET_ADDRSTRLEN : INET6_ADDRSTRLEN;
+	char *buffer = calloc(size, sizeof(char));
+	inet_ntop(proto, forwarded[i].addr, buffer, size);
 	return buffer;
 }
