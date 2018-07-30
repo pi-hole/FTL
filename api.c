@@ -476,6 +476,7 @@ void getForwardDestinations(char *client_message, int *sock)
 	for(i=-2; i < min(counters.forwarded, 8); i++)
 	{
 		char *ip, *name;
+		bool ipalloc = false;
 		float percentage = 0.0f;
 
 		if(i == -2)
@@ -508,7 +509,8 @@ void getForwardDestinations(char *client_message, int *sock)
 			else
 				j = i;
 			validate_access("forwarded", j, true, __LINE__, __FUNCTION__, __FILE__);
-			ip = forwarded[j].ip;
+			ip = getForwardIP(j);
+			ipalloc = true;
 
 			// Only return name if available
 			if(forwarded[j].name != NULL)
@@ -548,6 +550,13 @@ void getForwardDestinations(char *client_message, int *sock)
 
 				pack_float(*sock, percentage);
 			}
+		}
+
+		// Free array only if allocated
+		if(ipalloc)
+		{
+			free(ip);
+			ipalloc = false;
 		}
 	}
 }

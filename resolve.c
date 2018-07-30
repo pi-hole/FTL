@@ -109,13 +109,13 @@ void resolveNewClients(void)
 		// Only try to resolve new clients
 		// Note that it can happen that we are not able to find hostnames but we don't
 		// want to try to resolve them every minute in this case.
-		char* clientip = getClientIP(i);
 		if(clients[i].new)
 		{
+			char* clientip = getClientIP(i);
 			clients[i].name = resolveHostname(clientip);
+			free(clientip);
 			clients[i].new = false;
 		}
-		free(clientip);
 	}
 	for(i = 0; i < counters.forwarded; i++)
 	{
@@ -125,7 +125,9 @@ void resolveNewClients(void)
 		// Only try to resolve new forward destinations
 		if(forwarded[i].new)
 		{
-			forwarded[i].name = resolveHostname(forwarded[i].ip);
+			char* forwardip = getForwardIP(i);
+			forwarded[i].name = resolveHostname(forwardip);
+			free(forwardip);
 			forwarded[i].new = false;
 		}
 	}

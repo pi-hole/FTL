@@ -32,6 +32,8 @@ int findDomainID(const char *domain);
 int findClientID(const char *client);
 void saveClientIP(int i, const char *ipaddr);
 char* getClientIP(int i);
+void saveForwardIP(int i, const char *ipaddr);
+char* getForwardIP(int i);
 
 void close_telnet_socket(void);
 void close_unix_socket(void);
