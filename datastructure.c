@@ -92,7 +92,7 @@ int findOverTimeID(int overTimetimestamp)
 int findForwardID(const char * forward, bool count)
 {
 	int i, forwardID = -1;
-	int ret, proto = (strstr(forward,":") != NULL) ? AF_INET6 : AF_INET;
+	int ret, proto = !(strstr(forward,":") != NULL) ? AF_INET : AF_INET6;
 	char addrbuf[16];
 	if((ret = inet_pton(proto, forward, addrbuf)) != 1)
 		logg("ERROR: inet_pton(%i, \"%s\", %p) failed with code %i (findForwardID)", proto, forward, addrbuf, ret);
@@ -197,7 +197,7 @@ int findDomainID(const char *domain)
 int findClientID(const char *client)
 {
 	int i;
-	int ret, proto = (strstr(client,":") != NULL) ? AF_INET6 : AF_INET;
+	int ret, proto = !(strstr(client,":") != NULL) ? AF_INET : AF_INET6;
 	char addrbuf[16];
 	if((ret = inet_pton(proto, client, addrbuf)) != 1)
 		logg("ERROR: inet_pton(%i, \"%s\", %p) failed with code %i (findClientID)", proto, client, addrbuf, ret);
