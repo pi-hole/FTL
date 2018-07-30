@@ -92,7 +92,7 @@ int findOverTimeID(int overTimetimestamp)
 int findForwardID(const char * forward, bool count)
 {
 	int i, forwardID = -1;
-	int ret, proto = !(strstr(forward,":") != NULL) ? AF_INET : AF_INET6;
+	int ret, proto = (strstr(forward,":") == NULL) ? AF_INET : AF_INET6;
 	char addrbuf[16];
 	if((ret = inet_pton(proto, forward, addrbuf)) != 1)
 		logg("ERROR: inet_pton(%i, \"%s\", %p) failed with code %i (findForwardID)", proto, forward, addrbuf, ret);
@@ -197,7 +197,7 @@ int findDomainID(const char *domain)
 int findClientID(const char *client)
 {
 	int i;
-	int ret, proto = !(strstr(client,":") != NULL) ? AF_INET : AF_INET6;
+	int ret, proto = (strstr(client,":") == NULL) ? AF_INET : AF_INET6;
 	char addrbuf[16];
 	if((ret = inet_pton(proto, client, addrbuf)) != 1)
 		logg("ERROR: inet_pton(%i, \"%s\", %p) failed with code %i (findClientID)", proto, client, addrbuf, ret);
@@ -256,7 +256,7 @@ int findClientID(const char *client)
 
 void saveClientIP(int i, const char *ipaddr)
 {
-	clients[i].IPv4 = !(strstr(ipaddr,":") != NULL);
+	clients[i].IPv4 = (strstr(ipaddr,":") == NULL);
 	int ret, proto = clients[i].IPv4 ? AF_INET : AF_INET6;
 	if((ret = inet_pton(proto, ipaddr, clients[i].addr)) != 1)
 		logg("ERROR: inet_pton(%i, %s, %p) failed with %i", proto, ipaddr, clients[i].addr, ret);
@@ -272,7 +272,7 @@ char* getClientIP(int i)
 
 void saveForwardIP(int i, const char *ipaddr)
 {
-	forwarded[i].IPv4 = !(strstr(ipaddr,":") != NULL);
+	forwarded[i].IPv4 = (strstr(ipaddr,":") == NULL);
 	int ret, proto = forwarded[i].IPv4 ? AF_INET : AF_INET6;
 	if((ret = inet_pton(proto, ipaddr, forwarded[i].addr)) != 1)
 		logg("ERROR: inet_pton(%i, %s, %p) failed with %i", proto, ipaddr, forwarded[i].addr, ret);
