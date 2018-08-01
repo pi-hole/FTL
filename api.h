@@ -25,8 +25,11 @@ void getDomainDetails(char *client_message, int *sock);
 // FTL methods
 void getClientID(int *sock);
 void getVersion(int *sock);
-void getDBstats(int *sock);
 void getUnknownQueries(int *sock);
+
+// Database methods
+void getDBstats(int *sock);
+void syncDBnow(int *sock);
 
 // DNS resolver methods (dnsmasq_interface.c)
 void getCacheInformation(int *sock);
