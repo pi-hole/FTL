@@ -129,6 +129,11 @@ void process_request(char *client_message, int *sock)
 		free_regex();
 		read_regex_from_file();
 	}
+	else if(command(client_message, ">syncDB"))
+	{
+		processed = true;
+		syncDBnow(sock);
+	}
 
 	// Test only at the end if we want to quit or kill
 	// so things can be processed before

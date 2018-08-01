@@ -1118,3 +1118,11 @@ void getDomainDetails(char *client_message, int *sock)
 	// for loop finished without an exact match
 	ssend(*sock,"Domain \"%s\" is unknown\n", domain);
 }
+
+void syncDBnow(int *sock)
+{
+	ssend(*sock,"Sync...");
+	// Save data to database
+	save_to_DB();
+	ssend(*sock,"done\n");
+}
