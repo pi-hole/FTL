@@ -256,15 +256,15 @@ void getTopDomains(char *client_message, int *sock)
 		validate_access("domains", j, true, __LINE__, __FUNCTION__, __FILE__);
 
 		// Skip this domain if there is a filter on it
-		if(excludedomains != NULL && insetupVarsArray(domains[j].domain))
+		if(excludedomains != NULL && insetupVarsArray(getstr(domains[j].domainpos)))
 			continue;
 
 		// Skip this domain if already included in audit
-		if(audit && countlineswith(domains[j].domain, files.auditlist) > 0)
+		if(audit && countlineswith(getstr(domains[j].domainpos), files.auditlist) > 0)
 			continue;
 
 		// Hidden domain, probably due to privacy level. Skip this in the top lists
-		if(strcmp(domains[j].domain, "hidden") == 0)
+		if(strcmp(getstr(domains[j].domainpos), "hidden") == 0)
 			continue;
 
 		if(blocked && showblocked && domains[j].blockedcount > 0)
@@ -272,11 +272,11 @@ void getTopDomains(char *client_message, int *sock)
 			if(audit && domains[j].regexmatch == REGEX_BLOCKED)
 			{
 				if(istelnet[*sock])
-					ssend(*sock, "%i %i %s wildcard\n", n, domains[j].blockedcount, domains[j].domain);
+					ssend(*sock, "%i %i %s wildcard\n", n, domains[j].blockedcount, getstr(domains[j].domainpos));
 				else {
-					char *fancyWildcard = calloc(3 + strlen(domains[j].domain), sizeof(char));
+					char *fancyWildcard = calloc(3 + strlen(getstr(domains[j].domainpos)), sizeof(char));
 					if(fancyWildcard == NULL) return;
-					sprintf(fancyWildcard, "*.%s", domains[j].domain);
+					sprintf(fancyWildcard, "*.%s", getstr(domains[j].domainpos));
 
 					if(!pack_str32(*sock, fancyWildcard))
 						return;
@@ -288,9 +288,9 @@ void getTopDomains(char *client_message, int *sock)
 			else
 			{
 				if(istelnet[*sock])
-					ssend(*sock, "%i %i %s\n", n, domains[j].blockedcount, domains[j].domain);
+					ssend(*sock, "%i %i %s\n", n, domains[j].blockedcount, getstr(domains[j].domainpos));
 				else {
-					if(!pack_str32(*sock, domains[j].domain))
+					if(!pack_str32(*sock, getstr(domains[j].domainpos)))
 						return;
 
 					pack_int32(*sock, domains[j].blockedcount);
@@ -301,10 +301,10 @@ void getTopDomains(char *client_message, int *sock)
 		else if(!blocked && showpermitted && (domains[j].count - domains[j].blockedcount) > 0)
 		{
 			if(istelnet[*sock])
-				ssend(*sock,"%i %i %s\n",n,(domains[j].count - domains[j].blockedcount),domains[j].domain);
+				ssend(*sock,"%i %i %s\n",n,(domains[j].count - domains[j].blockedcount),getstr(domains[j].domainpos));
 			else
 			{
-				if(!pack_str32(*sock, domains[j].domain))
+				if(!pack_str32(*sock, getstr(domains[j].domainpos)))
 					return;
 
 				pack_int32(*sock, domains[j].count - domains[j].blockedcount);
@@ -504,7 +504,6 @@ void getForwardDestinations(char *client_message, int *sock)
 			// Get IP and host name of forward destination if available
 			ip = getstr(forwarded[j].ippos);
 			name = getstr(forwarded[j].namepos);
-			logg("\"%s\" -> \"%s\"",ip,name);
 
 			// Math explanation:
 			// A single query may result in requests being forwarded to multiple destinations
@@ -674,7 +673,7 @@ void getAllQueries(char *client_message, int *sock)
 		if(filterdomainname)
 		{
 			// Skip if domain name is not identical with what the user wants to see
-			if(strcmp(domains[queries[i].domainID].domain, domainname) != 0)
+			if(strcmp(getstr(domains[queries[i].domainID].domainpos), domainname) != 0)
 				continue;
 		}
 
@@ -686,7 +685,7 @@ void getAllQueries(char *client_message, int *sock)
 				continue;
 		}
 
-		char *domain = domains[queries[i].domainID].domain;
+		char *domain = getstr(domains[queries[i].domainID].domainpos);
 		char *client;
 		if(strlen(getstr(clients[queries[i].clientID].namepos)) > 0)
 			client = getstr(clients[queries[i].clientID].namepos);
@@ -756,8 +755,8 @@ void getRecentBlocked(char *client_message, int *sock)
 			found++;
 
 			if(istelnet[*sock])
-				ssend(*sock,"%s\n", domains[queries[i].domainID].domain);
-			else if(!pack_str32(*sock, domains[queries[i].domainID].domain))
+				ssend(*sock,"%s\n", getstr(domains[queries[i].domainID].domainpos));
+			else if(!pack_str32(*sock, getstr(domains[queries[i].domainID].domainpos)))
 				return;
 		}
 
@@ -1058,7 +1057,7 @@ void getUnknownQueries(int *sock)
 		char *client = getstr(clients[queries[i].clientID].ippos);
 
 		if(istelnet[*sock])
-			ssend(*sock, "%i %i %i %s %s %s %i %s\n", queries[i].timestamp, i, queries[i].id, type, domains[queries[i].domainID].domain, client, queries[i].status, queries[i].complete ? "true" : "false");
+			ssend(*sock, "%i %i %i %s %s %s %i %s\n", queries[i].timestamp, i, queries[i].id, type, getstr(domains[queries[i].domainID].domainpos), client, queries[i].status, queries[i].complete ? "true" : "false");
 		else {
 			pack_int32(*sock, queries[i].timestamp);
 			pack_int32(*sock, queries[i].id);
@@ -1068,7 +1067,7 @@ void getUnknownQueries(int *sock)
 				return;
 
 			// Use str32 for domain and client because we have no idea how long they will be (max is 4294967295 for str32)
-			if(!pack_str32(*sock, domains[queries[i].domainID].domain) || !pack_str32(*sock, client))
+			if(!pack_str32(*sock, getstr(domains[queries[i].domainID].domainpos)) || !pack_str32(*sock, client))
 				return;
 
 			pack_uint8(*sock, queries[i].status);
@@ -1091,7 +1090,7 @@ void getDomainDetails(char *client_message, int *sock)
 	for(i = 0; i < counters.domains; i++)
 	{
 		validate_access("domains", i, true, __LINE__, __FUNCTION__, __FILE__);
-		if(strcmp(domains[i].domain, domain) == 0)
+		if(strcmp(getstr(domains[i].domainpos), domain) == 0)
 		{
 			ssend(*sock,"Domain \"%s\", ID: %i\n", domain, i);
 			ssend(*sock,"Total: %i\n", domains[i].count);

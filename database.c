@@ -409,7 +409,7 @@ void save_to_DB(void)
 		sqlite3_bind_int(stmt, 3, queries[i].status);
 
 		// DOMAIN
-		sqlite3_bind_text(stmt, 4, domains[queries[i].domainID].domain, -1, SQLITE_TRANSIENT);
+		sqlite3_bind_text(stmt, 4, getstr(domains[queries[i].domainID].domainpos), -1, SQLITE_TRANSIENT);
 
 		// CLIENT
 		sqlite3_bind_text(stmt, 5, getstr(clients[queries[i].clientID].ippos), -1, SQLITE_TRANSIENT);

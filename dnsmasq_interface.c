@@ -473,7 +473,7 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 
 		int domainID = queries[i].domainID;
 		validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
-		if(strcmp(domains[domainID].domain, name) == 0)
+		if(strcmp(getstr(domains[domainID].domainpos), name) == 0)
 		{
 			// Save reply type and update individual reply counters
 			save_reply_type(flags, i, response);
@@ -666,7 +666,7 @@ void FTL_dnssec(int status, int id)
 	{
 		int domainID = queries[i].domainID;
 		validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
-		logg("**** got DNSSEC details for %s: %i (ID %i)", domains[domainID].domain, status, id);
+		logg("**** got DNSSEC details for %s: %i (ID %i)", getstr(domains[domainID].domainpos), status, id);
 	}
 
 	// Iterate through possible values

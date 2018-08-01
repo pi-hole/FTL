@@ -134,11 +134,11 @@ int findDomainID(const char *domain)
 	for(i=0; i < counters.domains; i++)
 	{
 		// Quick test: Does the domain start with the same character?
-		if(domains[i].domain[0] != domain[0])
+		if(getstr(domains[i].domainpos)[0] != domain[0])
 			continue;
 
 		// If so, compare the full domain using strcmp
-		if(strcmp(domains[i].domain, domain) == 0)
+		if(strcmp(getstr(domains[i].domainpos), domain) == 0)
 		{
 			domains[i].count++;
 			return i;
@@ -160,7 +160,7 @@ int findDomainID(const char *domain)
 	// Set blocked counter to zero
 	domains[domainID].blockedcount = 0;
 	// Store domain name - no need to check for NULL here as it doesn't harm
-	domains[domainID].domain = strdup(domain);
+	domains[domainID].domainpos = addstr(domain);
 	// RegEx needs to be evaluated for this new domain
 	domains[domainID].regexmatch = REGEX_UNKNOWN;
 	// Increase counter by one

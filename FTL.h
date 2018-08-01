@@ -192,7 +192,7 @@ typedef struct {
 	unsigned char magic;
 	int count;
 	int blockedcount;
-	char *domain;
+	unsigned int domainpos;
 	unsigned char regexmatch;
 } domainsDataStruct;
 
