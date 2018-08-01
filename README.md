@@ -6,7 +6,7 @@
 
 The Faster-Than-Light (FTL) Engine is a lightweight, purpose-built daemon used to provide statistics needed for the Web Interface, and its API can be easily integrated into your own projects. Although it is an optional component of the Pi-hole ecosystem, it will be installed by default to provide statistics. As the name implies, FTL does its work *very quickly*!
 
-The results can be accessed via a standard Unix socket (`var/run/pihole/FTL.sock`), a `telnet`-like connection (TCP socket on port 4711) as well as indirectly via the Web API (`admin/api.php`) and Command Line (`pihole -c -j`). You can out find more details below.
+The results can be accessed via a standard Unix socket (`var/run/pihole/FTL.sock`), a `telnet`-like connection (TCP socket on port 4711) as well as indirectly via the Web API (`admin/api.php`) and Command Line (`pihole -c -j`). You can find out more details below.
 
 This project is copyright under the latest version of the EUPL.
 
