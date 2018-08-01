@@ -167,6 +167,12 @@ void *GC_thread(void *val)
 			// Have to this outside of the thread lock
 			// to prevent locking of the resolver
 			reresolveHostnames();
+
+			// After storing data in the database for the next time,
+			// we should scan for old entries, which will then be deleted
+			// to free up pages in the database and prevent it from growing
+			// ever larger and larger
+			DBdeleteoldqueries = true;
 		}
 		sleepms(100);
 	}
