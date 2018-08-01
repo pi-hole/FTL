@@ -189,6 +189,50 @@ void validate_access_oTcl(int timeidx, int clientID, int line, const char * func
 	}
 }
 
+static unsigned int last_pos = 0;
+static char* strbuffer = NULL;
+
+void initstrbuffer(void)
+{
+	strbuffer = calloc(1, 1);
+	strbuffer[0] = '\0';
+	last_pos = 1;
+}
+
+unsigned int addstr(const char *str)
+{
+	if(str == NULL)
+	{
+		logg("WARN: Called addstr() with NULL pointer");
+		return 0;
+	}
+
+	// Get string length
+	int len = strlen(str);
+
+	// Reserve memory (will later be replaced for shmem)
+	strbuffer = realloc(strbuffer, last_pos + len + 1);
+
+	// Copies the C string pointed by str into the array
+	// pointed by &strbuffer[last_pos], including the
+	// terminating null character (and stopping at that point)
+	strncpy(&strbuffer[last_pos], str, len);
+	strbuffer[last_pos+len+1] = '\0';
+
+	if(debug) logg("Added string \"%s\" at pos [%u,%u]", str, last_pos, last_pos+len+1);
+
+	// Increment string length counter
+	last_pos += len+2;
+
+	// Return start of stored string
+	return (last_pos - (len+2));
+}
+
+char *getstr(unsigned int pos)
+{
+	return &strbuffer[pos];
+}
+
 // The special memory handling routines have to be the last ones in this source file
 // as we restore the original definition of the strdup, free, calloc, and realloc
 // functions in here, i.e. if anything extra would come below these lines, it would

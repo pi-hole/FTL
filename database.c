@@ -418,7 +418,7 @@ void save_to_DB(void)
 		if(queries[i].status == QUERY_FORWARDED && queries[i].forwardID > -1)
 		{
 			validate_access("forwarded", queries[i].forwardID, true, __LINE__, __FUNCTION__, __FILE__);
-			sqlite3_bind_text(stmt, 6, forwarded[queries[i].forwardID].ip, -1, SQLITE_TRANSIENT);
+			sqlite3_bind_text(stmt, 6, getstr(forwarded[queries[i].forwardID].ippos), -1, SQLITE_TRANSIENT);
 		}
 		else
 		{

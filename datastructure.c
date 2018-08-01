@@ -88,7 +88,7 @@ int findForwardID(const char * forward, bool count)
 	// Go through already knows forward servers and see if we used one of those
 	for(i=0; i < counters.forwarded; i++)
 	{
-		if(strcmp(forwarded[i].ip, forward) == 0)
+		if(strcmp(getstr(forwarded[i].ippos), forward) == 0)
 		{
 			forwardID = i;
 			if(count) forwarded[forwardID].count++;
@@ -112,14 +112,14 @@ int findForwardID(const char * forward, bool count)
 	else
 		forwarded[forwardID].count = 0;
 	// Save forward destination IP address
-	forwarded[forwardID].ip = strdup(forward);
+	forwarded[forwardID].ippos = addstr(forward);
 	forwarded[forwardID].failed = 0;
 	// Initialize forward hostname
 	// Due to the nature of us being the resolver,
 	// the actual resolving of the host name has
 	// to be done separately to be non-blocking
 	forwarded[forwardID].new = true;
-	forwarded[forwardID].name = NULL;
+	forwarded[forwardID].namepos = 0; // 0 -> string with length zero
 	// Increase counter by one
 	counters.forwarded++;
 

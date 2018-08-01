@@ -35,6 +35,7 @@ int main (int argc, char* argv[])
 	logg("########## FTL started! ##########");
 	log_FTL_version();
 	init_thread_lock();
+	initstrbuffer();
 
 	// pihole-FTL should really be run as user "pihole" to not mess up with file permissions
 	// print warning otherwise

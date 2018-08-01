@@ -174,8 +174,8 @@ typedef struct {
 	unsigned char magic;
 	int count;
 	int failed;
-	char *ip;
-	char *name;
+	unsigned int ippos;
+	unsigned int namepos;
 	bool new;
 } forwardedDataStruct;
 

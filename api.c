@@ -504,13 +504,11 @@ void getForwardDestinations(char *client_message, int *sock)
 			else
 				j = i;
 			validate_access("forwarded", j, true, __LINE__, __FUNCTION__, __FILE__);
-			ip = forwarded[j].ip;
 
-			// Only return name if available
-			if(forwarded[j].name != NULL)
-				name = forwarded[j].name;
-			else
-				name = "";
+			// Get IP and host name of forward destination if available
+			ip = getstr(forwarded[j].ippos);
+			name = getstr(forwarded[j].namepos);
+			logg("\"%s\" -> \"%s\"",ip,name);
 
 			// Math explanation:
 			// A single query may result in requests being forwarded to multiple destinations

@@ -121,7 +121,10 @@ void resolveNewClients(void)
 		// Only try to resolve new forward destinations
 		if(forwarded[i].new)
 		{
-			forwarded[i].name = resolveHostname(forwarded[i].ip);
+			char *ipaddr = getstr(forwarded[i].ippos);
+			char *hostname = resolveHostname(ipaddr);
+			forwarded[i].namepos = addstr(hostname);
+			free(hostname);
 			forwarded[i].new = false;
 		}
 	}
