@@ -178,11 +178,11 @@ int findClientID(const char *client)
 	for(i=0; i < counters.clients; i++)
 	{
 		// Quick test: Does the clients IP start with the same character?
-		if(clients[i].ip[0] != client[0])
+		if(getstr(clients[i].ippos)[0] != client[0])
 			continue;
 
 		// If so, compare the full IP using strcmp
-		if(strcmp(clients[i].ip, client) == 0)
+		if(strcmp(getstr(clients[i].ippos), client) == 0)
 		{
 			clients[i].count++;
 			return i;
@@ -204,13 +204,13 @@ int findClientID(const char *client)
 	// Initialize blocked count to zero
 	clients[clientID].blockedcount = 0;
 	// Store client IP - no need to check for NULL here as it doesn't harm
-	clients[clientID].ip = strdup(client);
+	clients[clientID].ippos = addstr(client);
 	// Initialize client hostname
 	// Due to the nature of us being the resolver,
 	// the actual resolving of the host name has
 	// to be done separately to be non-blocking
 	clients[clientID].new = true;
-	clients[clientID].name = NULL;
+	clients[clientID].namepos = 0;
 	// Increase counter by one
 	counters.clients++;
 

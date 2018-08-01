@@ -77,20 +77,14 @@ void reresolveHostnames(void)
 			continue;
 
 		// Get client hostname
-		char *hostname = resolveHostname(clients[clientID].ip);
-		if(strlen(hostname) > 0)
+		char *oldhostname = getstr(clients[clientID].namepos);
+		char *newhostname = resolveHostname(getstr(clients[clientID].ippos));
+		if(strlen(newhostname) > 0 && strcmp(newhostname,oldhostname) != 0)
 		{
-			// Delete possibly already existing hostname pointer before storing new data
-			if(clients[clientID].name != NULL)
-			{
-				free(clients[clientID].name);
-				clients[clientID].name = NULL;
-			}
-
 			// Store client hostname
-			clients[clientID].name = strdup(hostname);
+			clients[clientID].namepos = addstr(newhostname);
 		}
-		free(hostname);
+		free(newhostname);
 	}
 }
 
@@ -109,7 +103,7 @@ void resolveNewClients(void)
 		// want to try to resolve them every minute in this case.
 		if(clients[i].new)
 		{
-			clients[i].name = resolveHostname(clients[i].ip);
+			clients[i].namepos = addstr(resolveHostname(getstr(clients[i].ippos)));
 			clients[i].new = false;
 		}
 	}

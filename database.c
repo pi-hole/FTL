@@ -412,7 +412,7 @@ void save_to_DB(void)
 		sqlite3_bind_text(stmt, 4, domains[queries[i].domainID].domain, -1, SQLITE_TRANSIENT);
 
 		// CLIENT
-		sqlite3_bind_text(stmt, 5, clients[queries[i].clientID].ip, -1, SQLITE_TRANSIENT);
+		sqlite3_bind_text(stmt, 5, getstr(clients[queries[i].clientID].ippos), -1, SQLITE_TRANSIENT);
 
 		// FORWARD
 		if(queries[i].status == QUERY_FORWARDED && queries[i].forwardID > -1)

@@ -217,9 +217,7 @@ unsigned int addstr(const char *str)
 	// pointed by &strbuffer[last_pos], including the
 	// terminating null character (and stopping at that point)
 	strncpy(&strbuffer[last_pos], str, len);
-	strbuffer[last_pos+len+1] = '\0';
-
-	if(debug) logg("Added string \"%s\" at pos [%u,%u]", str, last_pos, last_pos+len+1);
+	strbuffer[last_pos+len] = '\0';
 
 	// Increment string length counter
 	last_pos += len+2;

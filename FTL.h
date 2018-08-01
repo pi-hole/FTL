@@ -183,8 +183,8 @@ typedef struct {
 	unsigned char magic;
 	int count;
 	int blockedcount;
-	char *ip;
-	char *name;
+	unsigned int ippos;
+	unsigned int namepos;
 	bool new;
 } clientsDataStruct;
 

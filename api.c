@@ -399,19 +399,15 @@ void getTopClients(char *client_message, int *sock)
 
 		// Skip this client if there is a filter on it
 		if(excludeclients != NULL &&
-			(insetupVarsArray(clients[j].ip) || insetupVarsArray(clients[j].name)))
+			(insetupVarsArray(getstr(clients[j].ippos)) || insetupVarsArray(getstr(clients[j].namepos))))
 			continue;
 
 		// Hidden client, probably due to privacy level. Skip this in the top lists
-		if(strcmp(clients[j].ip, "0.0.0.0") == 0)
+		if(strcmp(getstr(clients[j].ippos), "0.0.0.0") == 0)
 			continue;
 
-		// Only return name if available
-		char *name;
-		if(clients[j].name != NULL)
-			name = clients[j].name;
-		else
-			name = "";
+		char *client_ip = getstr(clients[j].ippos);
+		char *client_name = getstr(clients[j].namepos);
 
 		// Return this client if either
 		// - "withzero" option is set, and/or
@@ -419,10 +415,10 @@ void getTopClients(char *client_message, int *sock)
 		if(includezeroclients || ccount > 0)
 		{
 			if(istelnet[*sock])
-				ssend(*sock,"%i %i %s %s\n", n, ccount, clients[j].ip, name);
+				ssend(*sock,"%i %i %s %s\n", n, ccount, client_ip, client_name);
 			else
 			{
-				if(!pack_str32(*sock, "") || !pack_str32(*sock, clients[j].ip))
+				if(!pack_str32(*sock, "") || !pack_str32(*sock, client_ip))
 					return;
 
 				pack_int32(*sock, ccount);
@@ -685,19 +681,17 @@ void getAllQueries(char *client_message, int *sock)
 		if(filterclientname)
 		{
 			// Skip if client name and IP are not identical with what the user wants to see
-			if(strcmp(clients[queries[i].clientID].ip, clientname) != 0 &&
-			   (clients[queries[i].clientID].name != NULL &&
-			    strcmp(clients[queries[i].clientID].name, clientname) != 0))
+			if(strcmp(getstr(clients[queries[i].clientID].ippos), clientname) != 0 &&
+			  (strcmp(getstr(clients[queries[i].clientID].namepos), clientname) != 0))
 				continue;
 		}
 
 		char *domain = domains[queries[i].domainID].domain;
 		char *client;
-		if(clients[queries[i].clientID].name != NULL &&
-		   strlen(clients[queries[i].clientID].name) > 0)
-			client = clients[queries[i].clientID].name;
+		if(strlen(getstr(clients[queries[i].clientID].namepos)) > 0)
+			client = getstr(clients[queries[i].clientID].namepos);
 		else
-			client = clients[queries[i].clientID].ip;
+			client = getstr(clients[queries[i].clientID].ippos);
 
 		unsigned long delay = queries[i].response;
 		// Check if received (delay should be smaller than 30min)
@@ -933,8 +927,8 @@ void getClientsOverTime(int *sock)
 		{
 			validate_access("clients", i, true, __LINE__, __FUNCTION__, __FILE__);
 			// Check if this client should be skipped
-			if(insetupVarsArray(clients[i].ip) ||
-			   insetupVarsArray(clients[i].name))
+			if(insetupVarsArray(getstr(clients[i].ippos)) ||
+			   insetupVarsArray(getstr(clients[i].namepos)))
 				skipclient[i] = true;
 		}
 	}
@@ -1006,8 +1000,8 @@ void getClientNames(int *sock)
 		{
 			validate_access("clients", i, true, __LINE__, __FUNCTION__, __FILE__);
 			// Check if this client should be skipped
-			if(insetupVarsArray(clients[i].ip) ||
-			   insetupVarsArray(clients[i].name))
+			if(insetupVarsArray(getstr(clients[i].ippos)) ||
+			   insetupVarsArray(getstr(clients[i].namepos)))
 				skipclient[i] = true;
 		}
 	}
@@ -1019,13 +1013,14 @@ void getClientNames(int *sock)
 		if(skipclient[i])
 			continue;
 
-		char *client_name = clients[i].name != NULL ? clients[i].name : "";
+		char *client_ip = getstr(clients[i].ippos);
+		char *client_name = getstr(clients[i].namepos);
 
 		if(istelnet[*sock])
-			ssend(*sock, "%s %s\n", client_name, clients[i].ip);
+			ssend(*sock, "%s %s\n", client_name, client_ip);
 		else {
 			pack_str32(*sock, client_name);
-			pack_str32(*sock, clients[i].ip);
+			pack_str32(*sock, client_ip);
 		}
 	}
 
@@ -1060,7 +1055,7 @@ void getUnknownQueries(int *sock)
 		validate_access("clients", queries[i].clientID, true, __LINE__, __FUNCTION__, __FILE__);
 
 
-		char *client = clients[queries[i].clientID].ip;
+		char *client = getstr(clients[queries[i].clientID].ippos);
 
 		if(istelnet[*sock])
 			ssend(*sock, "%i %i %i %s %s %s %i %s\n", queries[i].timestamp, i, queries[i].id, type, domains[queries[i].domainID].domain, client, queries[i].status, queries[i].complete ? "true" : "false");
