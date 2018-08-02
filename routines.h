@@ -93,9 +93,6 @@ void *FTLrealloc(void *ptr_in, size_t size, const char *file, const char *functi
 void FTLfree(void *ptr, const char* file, const char *function, int line);
 void validate_access(const char * name, int pos, bool testmagic, int line, const char * function, const char * file);
 void validate_access_oTcl(int timeidx, int clientID, int line, const char * function, const char * file);
-void initstrbuffer(void);
-unsigned int addstr(const char *str);
-char *getstr(unsigned int pos);
 
 int main_dnsmasq(int argc, char **argv);
 
@@ -111,3 +108,8 @@ bool match_regex(char *input);
 void free_regex(void);
 void read_regex_from_file(void);
 bool in_whitelist(char *domain);
+
+// shmem.c
+bool init_shmem(void);
+unsigned int addstr(const char *str);
+char *getstr(unsigned int pos);
