@@ -189,14 +189,18 @@ void validate_access_oTcl(int timeidx, int clientID, int line, const char * func
 	}
 }
 
-static unsigned int last_pos = 0;
-static char* strbuffer = NULL;
+static struct {
+	unsigned int size;
+	char* buffer;
+} strbuffer;
+static unsigned int next_pos = 0;
 
 void initstrbuffer(void)
 {
-	strbuffer = calloc(1, 1);
-	strbuffer[0] = '\0';
-	last_pos = 1;
+	strbuffer.buffer = calloc(1, 1);
+	strbuffer.size = 1;
+	strbuffer.buffer[0] = '\0';
+	next_pos = 1;
 }
 
 unsigned int addstr(const char *str)
@@ -211,24 +215,24 @@ unsigned int addstr(const char *str)
 	int len = strlen(str);
 
 	// Reserve memory (will later be replaced for shmem)
-	strbuffer = realloc(strbuffer, last_pos + len + 1);
+	strbuffer.buffer = realloc(strbuffer.buffer, next_pos + len + 1);
 
 	// Copies the C string pointed by str into the array
 	// pointed by &strbuffer[last_pos], including the
 	// terminating null character (and stopping at that point)
-	strncpy(&strbuffer[last_pos], str, len);
-	strbuffer[last_pos+len] = '\0';
+	strncpy(&strbuffer.buffer[next_pos], str, len);
+	strbuffer.buffer[next_pos+len] = '\0';
 
 	// Increment string length counter
-	last_pos += len+2;
+	next_pos += len+2;
 
 	// Return start of stored string
-	return (last_pos - (len+2));
+	return (next_pos - (len+2));
 }
 
 char *getstr(unsigned int pos)
 {
-	return &strbuffer[pos];
+	return &strbuffer.buffer[pos];
 }
 
 // The special memory handling routines have to be the last ones in this source file
