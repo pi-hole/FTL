@@ -50,10 +50,8 @@ void memory_check(int which)
 		case QUERIES:
 			if(counters.queries >= counters.queries_MAX)
 			{
-				// Have to reallocate memory
-				counters.queries_MAX += QUERIESALLOCSTEP;
-				logg_struct_resize("queries",counters.queries_MAX,QUERIESALLOCSTEP);
-				queries = realloc(queries, counters.queries_MAX*sizeof(queriesDataStruct));
+				// Have to reallocate shared memory
+				queries = enlarge_shmem_struct('q');
 				if(queries == NULL)
 				{
 					logg("FATAL: Memory allocation failed! Exiting");

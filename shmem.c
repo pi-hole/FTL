@@ -15,12 +15,14 @@
 #define SHARED_STRINGS_NAME "FTL-strings"
 #define SHARED_DOMAINS_NAME "FTL-domains"
 #define SHARED_CLIENTS_NAME "FTL-clients"
+#define SHARED_QUERIES_NAME "FTL-queries"
 #define SHARED_FORWARDED_NAME "FTL-forwarded"
 
 /// The pointer in shared memory to the shared string buffer
 static SharedMemory shm_strings = { 0 };
 static SharedMemory shm_domains = { 0 };
 static SharedMemory shm_clients = { 0 };
+static SharedMemory shm_queries = { 0 };
 static SharedMemory shm_forwarded = { 0 };
 
 static int pagesize;
@@ -107,6 +109,15 @@ bool init_shmem(void)
 	forwarded = (forwardedDataStruct*)shm_forwarded.ptr;
 	counters.forwarded_MAX = pagesize;
 
+	/****************************** shared queries struct ******************************/
+	shm_unlink(SHARED_QUERIES_NAME);
+	// Try to create shared memory object
+	shm_queries = create_shm(SHARED_QUERIES_NAME, pagesize*sizeof(queriesDataStruct));
+	if(shm_queries.ptr == NULL)
+		return false;
+	queries = (queriesDataStruct*)shm_queries.ptr;
+	counters.queries_MAX = pagesize;
+
 	return true;
 }
 
@@ -115,6 +126,8 @@ void destroy_shmem(void)
 	delete_shm(&shm_strings);
 	delete_shm(&shm_domains);
 	delete_shm(&shm_clients);
+	delete_shm(&shm_queries);
+	delete_shm(&shm_forwarded);
 }
 
 SharedMemory create_shm(char *name, size_t size)
@@ -173,6 +186,12 @@ void *enlarge_shmem_struct(char type)
 	char *typ;
 	switch(type)
 	{
+		case 'q':
+			typ = "queries";
+			sharedMemory = shm_queries;
+			sizeofobj = sizeof(queriesDataStruct);
+			counter = &counters.queries_MAX;
+			break;
 		case 'c':
 			typ = "clients";
 			sharedMemory = shm_clients;
