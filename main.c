@@ -93,6 +93,9 @@ int main (int argc, char* argv[])
 	// Invalidate blocking regex if compiled
 	free_regex();
 
+	// Remove shared memory objects
+	destroy_shmem();
+
 	//Remove PID file
 	removepid();
 	logg("########## FTL terminated after %.1f ms! ##########", timer_elapsed_msec(EXIT_TIMER));

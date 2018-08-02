@@ -81,11 +81,17 @@ bool init_shmem(void)
 	shm_unlink(SHARED_DOMAINS_NAME);
 
 	// Try to create shared memory object
-	shm_domains = create_shm(SHARED_DOMAINS_NAME, 1);
+	shm_domains = create_shm(SHARED_DOMAINS_NAME, pagesize*sizeof(domainsDataStruct));
 	if(shm_domains.ptr == NULL)
 		return false;
 
 	return true;
+}
+
+void destroy_shmem(void)
+{
+	delete_shm(&shm_strings);
+	delete_shm(&shm_domains);
 }
 
 SharedMemory create_shm(char *name, size_t size)
@@ -134,6 +140,42 @@ SharedMemory create_shm(char *name, size_t size)
 
 	sharedMemory.ptr = shm;
 	return sharedMemory;
+}
+
+void *enlarge_shmem_struct(char type)
+{
+	SharedMemory sharedMemory;
+	size_t sizeofobj;
+	int *counter;
+	switch(type)
+	{
+/*		case 'c':
+			sharedMemory = shm_clients;
+			sizeofobj = sizeof(clientsDataStruct);
+			counter = &counters.clients_MAX;
+			break;*/
+		case 'd':
+			sharedMemory = shm_domains;
+			sizeofobj = sizeof(domainsDataStruct);
+			counter = &counters.domains_MAX;
+			break;
+/*		case 'f':
+			sharedMemory = shm_forwarded;
+			sizeofobj = sizeof(forwardedDataStruct);
+			counter = &counters.forwarded_MAX;
+			break;*/
+		default:
+			logg("Invalid argument in enlarge_shmem_struct(): %c (%i)", type, type);
+			return 0;
+	}
+
+	// Reallocate enough space for 4096 instances of requested object
+	realloc_shm(&sharedMemory, sharedMemory.size + pagesize*sizeofobj);
+
+	// Add allocated memory to corresponding counter
+	*counter += pagesize;
+
+	return sharedMemory.ptr;
 }
 
 bool realloc_shm(SharedMemory *sharedMemory, size_t size) {

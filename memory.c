@@ -92,11 +92,12 @@ void memory_check(int which)
 		case DOMAINS:
 			if(counters.domains >= counters.domains_MAX)
 			{
-				// Have to reallocate memory
-				counters.domains_MAX += DOMAINSALLOCSTEP;
-				logg_struct_resize("domains",counters.domains_MAX,DOMAINSALLOCSTEP);
-				//realloc_shm();
-				domains = realloc(domains, counters.domains_MAX*sizeof(domainsDataStruct));
+				// Have to reallocate shared memory
+				domains = enlarge_shmem_struct('d');
+				// logg_struct_resize("domains",counters.domains_MAX,DOMAINSALLOCSTEP);
+				// //realloc_shm();
+				// domains = realloc(domains, counters.domains_MAX*sizeof(domainsDataStruct));
+
 				if(domains == NULL)
 				{
 					logg("FATAL: Memory allocation failed! Exiting");
