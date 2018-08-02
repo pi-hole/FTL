@@ -14,10 +14,12 @@
 /// The name of the shared memory. Use this when connecting to the shared memory.
 #define SHARED_STRINGS_NAME "FTL-strings"
 #define SHARED_DOMAINS_NAME "FTL-domains"
+#define SHARED_CLIENTS_NAME "FTL-clients"
 
 /// The pointer in shared memory to the shared string buffer
 static SharedMemory shm_strings = { 0 };
 static SharedMemory shm_domains = { 0 };
+static SharedMemory shm_clients = { 0 };
 
 static int pagesize;
 static unsigned int next_pos = 0;
@@ -84,6 +86,18 @@ bool init_shmem(void)
 	shm_domains = create_shm(SHARED_DOMAINS_NAME, pagesize*sizeof(domainsDataStruct));
 	if(shm_domains.ptr == NULL)
 		return false;
+	domains = (domainsDataStruct*)shm_domains.ptr;
+	counters.domains_MAX = pagesize;
+
+	/****************************** shared clients struct ******************************/
+	shm_unlink(SHARED_CLIENTS_NAME);
+
+	// Try to create shared memory object
+	shm_clients = create_shm(SHARED_CLIENTS_NAME, pagesize*sizeof(clientsDataStruct));
+	if(shm_clients.ptr == NULL)
+		return false;
+	clients = (clientsDataStruct*)shm_clients.ptr;
+	counters.clients_MAX = pagesize;
 
 	return true;
 }
@@ -92,6 +106,7 @@ void destroy_shmem(void)
 {
 	delete_shm(&shm_strings);
 	delete_shm(&shm_domains);
+	delete_shm(&shm_clients);
 }
 
 SharedMemory create_shm(char *name, size_t size)
@@ -149,11 +164,11 @@ void *enlarge_shmem_struct(char type)
 	int *counter;
 	switch(type)
 	{
-/*		case 'c':
+		case 'c':
 			sharedMemory = shm_clients;
 			sizeofobj = sizeof(clientsDataStruct);
 			counter = &counters.clients_MAX;
-			break;*/
+			break;
 		case 'd':
 			sharedMemory = shm_domains;
 			sizeofobj = sizeof(domainsDataStruct);

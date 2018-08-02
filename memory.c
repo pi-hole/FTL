@@ -78,10 +78,9 @@ void memory_check(int which)
 		case CLIENTS:
 			if(counters.clients >= counters.clients_MAX)
 			{
-				// Have to reallocate memory
-				counters.clients_MAX += CLIENTSALLOCSTEP;
-				logg_struct_resize("clients",counters.clients_MAX,CLIENTSALLOCSTEP);
-				clients = realloc(clients, counters.clients_MAX*sizeof(clientsDataStruct));
+				// Have to reallocate shared memory
+				clients = enlarge_shmem_struct('c');
+				logg_struct_resize("clients", counters.clients_MAX, CLIENTSALLOCSTEP);
 				if(clients == NULL)
 				{
 					logg("FATAL: Memory allocation failed! Exiting");
@@ -94,9 +93,7 @@ void memory_check(int which)
 			{
 				// Have to reallocate shared memory
 				domains = enlarge_shmem_struct('d');
-				// logg_struct_resize("domains",counters.domains_MAX,DOMAINSALLOCSTEP);
-				// //realloc_shm();
-				// domains = realloc(domains, counters.domains_MAX*sizeof(domainsDataStruct));
+				logg_struct_resize("clients", counters.domains_MAX, DOMAINSALLOCSTEP);
 
 				if(domains == NULL)
 				{
