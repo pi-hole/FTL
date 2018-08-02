@@ -216,6 +216,7 @@ unsigned int addstr(const char *str)
 
 	// Reserve memory (will later be replaced for shmem)
 	strbuffer.buffer = realloc(strbuffer.buffer, next_pos + len + 1);
+	strbuffer.size = next_pos + len + 1;
 
 	// Copies the C string pointed by str into the array
 	// pointed by &strbuffer[last_pos], including the
