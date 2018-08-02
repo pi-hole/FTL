@@ -9,6 +9,7 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
+#include "shmem.h"
 
 FTLFileNamesStruct FTLfiles = {
 	"/etc/pihole/pihole-FTL.conf",
@@ -94,6 +95,7 @@ void memory_check(int which)
 				// Have to reallocate memory
 				counters.domains_MAX += DOMAINSALLOCSTEP;
 				logg_struct_resize("domains",counters.domains_MAX,DOMAINSALLOCSTEP);
+				//realloc_shm();
 				domains = realloc(domains, counters.domains_MAX*sizeof(domainsDataStruct));
 				if(domains == NULL)
 				{
