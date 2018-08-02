@@ -64,8 +64,6 @@ bool init_shmem(void)
 	if(strBuffer.ptr == NULL)
 		return false;
 
-	logg("Created shared memory with name \"%s\" (%i)", strBuffer.name, strBuffer.fd);
-
 	// Initialize shared string object with an empty string at position zero
 	char *buffer = strBuffer.ptr;
 	buffer[0] = '\0';
@@ -91,7 +89,8 @@ SharedMemory create_shm(char *name, size_t size)
 	// Check for `shm_open` error
 	if(sharedMemory.fd == -1)
 	{
-		if(debug) logg("Failed to create_shm shared memory: %s", strerror(errno));
+		logg("create_shm(): Failed to create_shm shared memory object \"%s\": %s",
+		     name, strerror(errno));
 		return sharedMemory;
 	}
 
@@ -101,7 +100,8 @@ SharedMemory create_shm(char *name, size_t size)
 	// Check for `ftruncate` error
 	if(result == -1)
 	{
-		if(debug) logg("Failed to resize shared memory: %s", strerror(errno));
+		logg("create_shm(): ftruncate(%i, %zu): Failed to resize shared memory object \"%s\": %s",
+		     sharedMemory.fd, size, sharedMemory.name, strerror(errno));
 		return sharedMemory;
 	}
 
@@ -111,7 +111,8 @@ SharedMemory create_shm(char *name, size_t size)
 	// Check for `mmap` error
 	if(shm == MAP_FAILED)
 	{
-		if(debug) logg("Failed to map shared memory: %s", strerror(errno));
+		logg("create_shm(): Failed to map shared memory object \"%s\" (%i): %s",
+		     sharedMemory.name, sharedMemory.fd, strerror(errno));
 		return sharedMemory;
 	}
 
@@ -125,7 +126,8 @@ bool realloc_shm(SharedMemory *sharedMemory, size_t size) {
 	int result = ftruncate(sharedMemory->fd, size);
 
 	if(result == -1) {
-		if(debug) logg("Failed to resize \"%s\" (%i): %s", sharedMemory->name, sharedMemory->fd, strerror(errno));
+		logg("realloc_shm(%i, %zu): ftruncate(%i, %zu): Failed to resize \"%s\": %s",
+		     sharedMemory->fd, size, sharedMemory->name, strerror(errno));
 		return false;
 	}
 
@@ -133,7 +135,9 @@ bool realloc_shm(SharedMemory *sharedMemory, size_t size) {
 
 	if(new_ptr == MAP_FAILED)
 	{
-		if(debug) logg("Failed to reallocate \"%s\" (%i): %s", sharedMemory->name, sharedMemory->fd, strerror(errno));
+		logg("realloc_shm(): mremap(%p, %zu, %zu, MREMAP_MAYMOVE): Failed to reallocate \"%s\" (%i): %s",
+		     sharedMemory->ptr, sharedMemory->size, size, sharedMemory->name, sharedMemory->fd,
+		     strerror(errno));
 		return false;
 	}
 
@@ -146,9 +150,14 @@ bool realloc_shm(SharedMemory *sharedMemory, size_t size) {
 void delete_shm(SharedMemory *sharedMemory)
 {
 	// Unmap shared memory
-	munmap(sharedMemory->ptr, sharedMemory->size);
+	int ret;
+	ret = munmap(sharedMemory->ptr, sharedMemory->size);
+	if(ret != 0)
+		logg("delete_shm(): munmap(%p, %zu) failed: %s", sharedMemory->ptr, sharedMemory->size, strerror(errno));
 
 	// Now you can no longer `shm_open` the memory,
 	// and once all others unlink, it will be destroyed.
-	shm_unlink(sharedMemory->name);
+	ret = shm_unlink(sharedMemory->name);
+	if(ret != 0)
+		logg("delete_shm(): munmap(%s) failed: %s", sharedMemory->name, strerror(errno));
 }
