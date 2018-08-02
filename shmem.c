@@ -15,11 +15,13 @@
 #define SHARED_STRINGS_NAME "FTL-strings"
 #define SHARED_DOMAINS_NAME "FTL-domains"
 #define SHARED_CLIENTS_NAME "FTL-clients"
+#define SHARED_FORWARDED_NAME "FTL-forwarded"
 
 /// The pointer in shared memory to the shared string buffer
 static SharedMemory shm_strings = { 0 };
 static SharedMemory shm_domains = { 0 };
 static SharedMemory shm_clients = { 0 };
+static SharedMemory shm_forwarded = { 0 };
 
 static int pagesize;
 static unsigned int next_pos = 0;
@@ -69,7 +71,6 @@ bool init_shmem(void)
 	// If the object is still existing, e.g., due to a past unclean exit
 	// of FTL, shm_open() would fail with error "File exists"
 	shm_unlink(SHARED_STRINGS_NAME);
-
 	// Try to create shared memory object
 	shm_strings = create_shm(SHARED_STRINGS_NAME, pagesize);
 	if(shm_strings.ptr == NULL)
@@ -81,7 +82,6 @@ bool init_shmem(void)
 
 	/****************************** shared domains struct ******************************/
 	shm_unlink(SHARED_DOMAINS_NAME);
-
 	// Try to create shared memory object
 	shm_domains = create_shm(SHARED_DOMAINS_NAME, pagesize*sizeof(domainsDataStruct));
 	if(shm_domains.ptr == NULL)
@@ -91,13 +91,21 @@ bool init_shmem(void)
 
 	/****************************** shared clients struct ******************************/
 	shm_unlink(SHARED_CLIENTS_NAME);
-
 	// Try to create shared memory object
 	shm_clients = create_shm(SHARED_CLIENTS_NAME, pagesize*sizeof(clientsDataStruct));
 	if(shm_clients.ptr == NULL)
 		return false;
 	clients = (clientsDataStruct*)shm_clients.ptr;
 	counters.clients_MAX = pagesize;
+
+	/****************************** shared forwarded struct ******************************/
+	shm_unlink(SHARED_FORWARDED_NAME);
+	// Try to create shared memory object
+	shm_forwarded = create_shm(SHARED_FORWARDED_NAME, pagesize*sizeof(forwardedDataStruct));
+	if(shm_forwarded.ptr == NULL)
+		return false;
+	forwarded = (forwardedDataStruct*)shm_forwarded.ptr;
+	counters.forwarded_MAX = pagesize;
 
 	return true;
 }
@@ -162,27 +170,33 @@ void *enlarge_shmem_struct(char type)
 	SharedMemory sharedMemory;
 	size_t sizeofobj;
 	int *counter;
+	char *typ;
 	switch(type)
 	{
 		case 'c':
+			typ = "clients";
 			sharedMemory = shm_clients;
 			sizeofobj = sizeof(clientsDataStruct);
 			counter = &counters.clients_MAX;
 			break;
 		case 'd':
+			typ = "domains";
 			sharedMemory = shm_domains;
 			sizeofobj = sizeof(domainsDataStruct);
 			counter = &counters.domains_MAX;
 			break;
-/*		case 'f':
+		case 'f':
+			typ = "forwarded";
 			sharedMemory = shm_forwarded;
 			sizeofobj = sizeof(forwardedDataStruct);
 			counter = &counters.forwarded_MAX;
-			break;*/
+			break;
 		default:
 			logg("Invalid argument in enlarge_shmem_struct(): %c (%i)", type, type);
 			return 0;
 	}
+
+	logg("Reallocating %s struct (increasing %zu by %zu)", typ, sharedMemory.size, pagesize*sizeofobj);
 
 	// Reallocate enough space for 4096 instances of requested object
 	realloc_shm(&sharedMemory, sharedMemory.size + pagesize*sizeofobj);

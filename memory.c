@@ -64,10 +64,8 @@ void memory_check(int which)
 		case FORWARDED:
 			if(counters.forwarded >= counters.forwarded_MAX)
 			{
-				// Have to reallocate memory
-				counters.forwarded_MAX += FORWARDEDALLOCSTEP;
-				logg_struct_resize("forwarded",counters.forwarded_MAX,FORWARDEDALLOCSTEP);
-				forwarded = realloc(forwarded, counters.forwarded_MAX*sizeof(forwardedDataStruct));
+				// Have to reallocate shared memory
+				clients = enlarge_shmem_struct('f');
 				if(forwarded == NULL)
 				{
 					logg("FATAL: Memory allocation failed! Exiting");
@@ -80,7 +78,6 @@ void memory_check(int which)
 			{
 				// Have to reallocate shared memory
 				clients = enlarge_shmem_struct('c');
-				logg_struct_resize("clients", counters.clients_MAX, CLIENTSALLOCSTEP);
 				if(clients == NULL)
 				{
 					logg("FATAL: Memory allocation failed! Exiting");
@@ -93,8 +90,6 @@ void memory_check(int which)
 			{
 				// Have to reallocate shared memory
 				domains = enlarge_shmem_struct('d');
-				logg_struct_resize("clients", counters.domains_MAX, DOMAINSALLOCSTEP);
-
 				if(domains == NULL)
 				{
 					logg("FATAL: Memory allocation failed! Exiting");
