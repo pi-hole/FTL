@@ -63,7 +63,7 @@ void memory_check(int which)
 			if(counters.forwarded >= counters.forwarded_MAX)
 			{
 				// Have to reallocate shared memory
-				clients = enlarge_shmem_struct('f');
+				forwarded = enlarge_shmem_struct('f');
 				if(forwarded == NULL)
 				{
 					logg("FATAL: Memory allocation failed! Exiting");
