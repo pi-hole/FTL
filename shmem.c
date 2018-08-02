@@ -35,14 +35,11 @@ unsigned int addstr(const char *str)
 
 	if(debug) logg("Adding \"%s\" (len %i) to buffer. next_pos is %i", str, len, next_pos);
 
-	// Reserve memory
-	size_t newsize = next_pos + len + 1;
-	if((long long)newsize-(long long)shm_strings.size > pagesize)
-	{
-		if(!realloc_shm(&shm_strings, shm_strings.size + pagesize))
-			return 0;
-		shm_strings.size += pagesize;
-	}
+	// Reserve additional memory if necessary
+	size_t required_size = next_pos + len + 1;
+	// Need to cast to long long because size_t calculations cannot be negative
+	if((long long)required_size-(long long)shm_strings.size > 0 && !realloc_shm(&shm_strings, shm_strings.size + pagesize))
+		return 0;
 
 	// Copy the C string pointed by str into the shared string buffer
 	strncpy(&shm_strings.ptr[next_pos], str, len);
@@ -71,9 +68,8 @@ bool init_shmem(void)
 	// of FTL, shm_open() would fail with error "File exists"
 	shm_unlink(SHARED_STRINGS_NAME);
 
-
 	// Try to create shared memory object
-	shm_strings = create_shm(SHARED_STRINGS_NAME, 1);
+	shm_strings = create_shm(SHARED_STRINGS_NAME, pagesize);
 	if(shm_strings.ptr == NULL)
 		return false;
 
