@@ -136,17 +136,16 @@ SharedMemory create_shm(char *name, size_t size)
 	if(debug) logg("Creating shared memory with name \"%s\" and size %zu", name, size);
 
 	SharedMemory sharedMemory = {
-		.fd = 0,
 		.name = name,
 		.size = size,
 		.ptr = NULL
 	};
 
 	// Create the shared memory file in read/write mode with 600 permissions
-	sharedMemory.fd = shm_open(name, O_CREAT | O_EXCL | O_TRUNC | O_RDWR, S_IRUSR | S_IWUSR);
+	int fd = shm_open(sharedMemory.name, O_CREAT | O_EXCL | O_TRUNC | O_RDWR, S_IRUSR | S_IWUSR);
 
 	// Check for `shm_open` error
-	if(sharedMemory.fd == -1)
+	if(fd == -1)
 	{
 		logg("create_shm(): Failed to create_shm shared memory object \"%s\": %s",
 		     name, strerror(errno));
@@ -154,26 +153,30 @@ SharedMemory create_shm(char *name, size_t size)
 	}
 
 	// Resize shared memory file
-	int result = ftruncate(sharedMemory.fd, size);
+	int result = ftruncate(fd, size);
 
 	// Check for `ftruncate` error
 	if(result == -1)
 	{
 		logg("create_shm(): ftruncate(%i, %zu): Failed to resize shared memory object \"%s\": %s",
-		     sharedMemory.fd, size, sharedMemory.name, strerror(errno));
+		     fd, size, sharedMemory.name, strerror(errno));
 		return sharedMemory;
 	}
 
 	// Create shared memory mapping
-	void *shm = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, sharedMemory.fd, 0);
+	void *shm = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
 
 	// Check for `mmap` error
 	if(shm == MAP_FAILED)
 	{
 		logg("create_shm(): Failed to map shared memory object \"%s\" (%i): %s",
-		     sharedMemory.name, sharedMemory.fd, strerror(errno));
+		     sharedMemory.name, fd, strerror(errno));
 		return sharedMemory;
 	}
+
+	// Close shared memory object file descriptor as it is no longer
+	// needed after having called mmap()
+	close(fd);
 
 	sharedMemory.ptr = shm;
 	return sharedMemory;
@@ -229,22 +232,36 @@ bool realloc_shm(SharedMemory *sharedMemory, size_t size) {
 	if(result != 0)
 		logg("realloc_shm(): munmap(%p, %zu) failed: %s", sharedMemory->ptr, sharedMemory->size, strerror(errno));
 
-	result = ftruncate(sharedMemory->fd, size);
+	// Open shared memory object
+	int fd = shm_open(sharedMemory->name, O_RDWR, S_IRUSR | S_IWUSR);
+	if(fd == -1)
+	{
+		logg("realloc_shm(): Failed to open shared memory object \"%s\": %s",
+		     sharedMemory->name, strerror(errno));
+		return false;
+	}
+
+	// Resize shard memory object to requested size
+	result = ftruncate(fd, size);
 	if(result == -1) {
 		logg("realloc_shm(): ftruncate(%i,%zu): Failed to resize \"%s\": %s",
-		     sharedMemory->fd, size, sharedMemory->name, strerror(errno));
+		     fd, size, sharedMemory->name, strerror(errno));
 		return false;
 	}
 
 //	void *new_ptr = mremap(sharedMemory->ptr, sharedMemory->size, size, MREMAP_MAYMOVE);
-	void *new_ptr = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, sharedMemory->fd, 0);
+	void *new_ptr = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
 	if(new_ptr == MAP_FAILED)
 	{
 		logg("realloc_shm(): mremap(%p, %zu, %zu, MREMAP_MAYMOVE): Failed to reallocate \"%s\" (%i): %s",
-		     sharedMemory->ptr, sharedMemory->size, size, sharedMemory->name, sharedMemory->fd,
+		     sharedMemory->ptr, sharedMemory->size, size, sharedMemory->name, fd,
 		     strerror(errno));
 		return false;
 	}
+
+	// Close shared memory object file descriptor as it is no longer
+	// needed after having called mmap()
+	close(fd);
 
 	sharedMemory->ptr = new_ptr;
 	sharedMemory->size = size;

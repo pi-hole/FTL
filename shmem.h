@@ -15,7 +15,6 @@
 #include <fcntl.h>           /* For O_* constants */
 
 typedef struct {
-    int fd;
     char *name;
     size_t size;
     void *ptr;
