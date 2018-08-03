@@ -44,7 +44,8 @@ unsigned int addstr(const char *str)
 	// Reserve additional memory if necessary
 	size_t required_size = next_pos + len + 1;
 	// Need to cast to long long because size_t calculations cannot be negative
-	if((long long)required_size-(long long)shm_strings.size > 0 && !realloc_shm(&shm_strings, shm_strings.size + pagesize))
+	if((long long)required_size-(long long)shm_strings.size > 0 &&
+	   !realloc_shm(&shm_strings, shm_strings.size + pagesize))
 		return 0;
 
 	// Copy the C string pointed by str into the shared string buffer
@@ -231,7 +232,7 @@ bool realloc_shm(SharedMemory *sharedMemory, size_t size) {
 		return false;
 	}
 
-#if 1
+#if 0
 	void *new_ptr = mremap(sharedMemory->ptr, sharedMemory->size, size, MREMAP_MAYMOVE);
 #else
 	result = munmap(sharedMemory->ptr, sharedMemory->size);
