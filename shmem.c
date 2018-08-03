@@ -48,8 +48,8 @@ unsigned int addstr(const char *str)
 		return 0;
 
 	// Copy the C string pointed by str into the shared string buffer
-	strncpy(&shm_strings.ptr[next_pos], str, len);
-	shm_strings.ptr[next_pos + len] = '\0';
+	strncpy(&((char*)shm_strings.ptr)[next_pos], str, len);
+	((char*)shm_strings.ptr)[next_pos + len] = '\0';
 
 	// Increment string length counter
 	next_pos += len+2;
@@ -79,7 +79,7 @@ bool init_shmem(void)
 		return false;
 
 	// Initialize shared string object with an empty string at position zero
-	shm_strings.ptr[0] = '\0';
+	((char*)shm_strings.ptr)[0] = '\0';
 	next_pos = 1;
 
 	/****************************** shared domains struct ******************************/
@@ -183,29 +183,26 @@ void *enlarge_shmem_struct(char type)
 	SharedMemory sharedMemory;
 	size_t sizeofobj;
 	int *counter;
-	char *typ;
+
+	// Select type of struct that should be enlarged
 	switch(type)
 	{
 		case 'q':
-			typ = "queries";
 			sharedMemory = shm_queries;
 			sizeofobj = sizeof(queriesDataStruct);
 			counter = &counters.queries_MAX;
 			break;
 		case 'c':
-			typ = "clients";
 			sharedMemory = shm_clients;
 			sizeofobj = sizeof(clientsDataStruct);
 			counter = &counters.clients_MAX;
 			break;
 		case 'd':
-			typ = "domains";
 			sharedMemory = shm_domains;
 			sizeofobj = sizeof(domainsDataStruct);
 			counter = &counters.domains_MAX;
 			break;
 		case 'f':
-			typ = "forwarded";
 			sharedMemory = shm_forwarded;
 			sizeofobj = sizeof(forwardedDataStruct);
 			counter = &counters.forwarded_MAX;
@@ -214,8 +211,6 @@ void *enlarge_shmem_struct(char type)
 			logg("Invalid argument in enlarge_shmem_struct(): %c (%i)", type, type);
 			return 0;
 	}
-
-	logg("Reallocating %s struct (increasing %zu by %zu)", typ, sharedMemory.size, pagesize*sizeofobj);
 
 	// Reallocate enough space for 4096 instances of requested object
 	realloc_shm(&sharedMemory, sharedMemory.size + pagesize*sizeofobj);
@@ -227,11 +222,11 @@ void *enlarge_shmem_struct(char type)
 }
 
 bool realloc_shm(SharedMemory *sharedMemory, size_t size) {
-	if(debug) logg("Resizing \"%s\" from %zu to %zu", sharedMemory->name, sharedMemory->size, size);
+	logg("Resizing \"%s\" from %zu to %zu", sharedMemory->name, sharedMemory->size, size);
 
 	int result = ftruncate(sharedMemory->fd, size);
 	if(result == -1) {
-		logg("realloc_shm(%i, %zu): ftruncate(%i, %zu): Failed to resize \"%s\": %s",
+		logg("realloc_shm(): ftruncate(%i,%zu): Failed to resize \"%s\": %s",
 		     sharedMemory->fd, size, sharedMemory->name, strerror(errno));
 		return false;
 	}

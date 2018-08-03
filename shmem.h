@@ -18,7 +18,7 @@ typedef struct {
     int fd;
     char *name;
     size_t size;
-    char *ptr;
+    void *ptr;
 } SharedMemory;
 
 /// Create shared memory
