@@ -12,11 +12,11 @@
 #include "shmem.h"
 
 /// The name of the shared memory. Use this when connecting to the shared memory.
-#define SHARED_STRINGS_NAME "FTL-strings"
-#define SHARED_DOMAINS_NAME "FTL-domains"
-#define SHARED_CLIENTS_NAME "FTL-clients"
-#define SHARED_QUERIES_NAME "FTL-queries"
-#define SHARED_FORWARDED_NAME "FTL-forwarded"
+#define SHARED_STRINGS_NAME "/FTL-strings"
+#define SHARED_DOMAINS_NAME "/FTL-domains"
+#define SHARED_CLIENTS_NAME "/FTL-clients"
+#define SHARED_QUERIES_NAME "/FTL-queries"
+#define SHARED_FORWARDED_NAME "/FTL-forwarded"
 
 /// The pointer in shared memory to the shared string buffer
 static SharedMemory shm_strings = { 0 };
