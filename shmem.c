@@ -225,22 +225,19 @@ void *enlarge_shmem_struct(char type)
 bool realloc_shm(SharedMemory *sharedMemory, size_t size) {
 	logg("Resizing \"%s\" from %zu to %zu", sharedMemory->name, sharedMemory->size, size);
 
-	int result = ftruncate(sharedMemory->fd, size);
+	int result = munmap(sharedMemory->ptr, sharedMemory->size);
+	if(result != 0)
+		logg("realloc_shm(): munmap(%p, %zu) failed: %s", sharedMemory->ptr, sharedMemory->size, strerror(errno));
+
+	result = ftruncate(sharedMemory->fd, size);
 	if(result == -1) {
 		logg("realloc_shm(): ftruncate(%i,%zu): Failed to resize \"%s\": %s",
 		     sharedMemory->fd, size, sharedMemory->name, strerror(errno));
 		return false;
 	}
 
-#if 0
-	void *new_ptr = mremap(sharedMemory->ptr, sharedMemory->size, size, MREMAP_MAYMOVE);
-#else
-	result = munmap(sharedMemory->ptr, sharedMemory->size);
-	if(result != 0)
-		logg("realloc_shm(): munmap(%p, %zu) failed: %s", sharedMemory->ptr, sharedMemory->size, strerror(errno));
-
+//	void *new_ptr = mremap(sharedMemory->ptr, sharedMemory->size, size, MREMAP_MAYMOVE);
 	void *new_ptr = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, sharedMemory->fd, 0);
-#endif
 	if(new_ptr == MAP_FAILED)
 	{
 		logg("realloc_shm(): mremap(%p, %zu, %zu, MREMAP_MAYMOVE): Failed to reallocate \"%s\" (%i): %s",
