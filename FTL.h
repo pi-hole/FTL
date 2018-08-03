@@ -55,10 +55,6 @@
 // Next we define the step size in which the struct arrays are reallocated if they
 // grow too large. This number should be large enough so that reallocation does not
 // have to run very often, but should be as small as possible to avoid wasting memory
-#define QUERIESALLOCSTEP 10000
-#define FORWARDEDALLOCSTEP 4
-#define CLIENTSALLOCSTEP 10
-#define DOMAINSALLOCSTEP 1000
 #define OVERTIMEALLOCSTEP 100
 #define WILDCARDALLOCSTEP 100
 

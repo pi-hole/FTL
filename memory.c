@@ -37,11 +37,11 @@ countersStruct counters = { 0 };
 ConfigStruct config;
 
 // Variable size array structs
-queriesDataStruct *queries;
-forwardedDataStruct *forwarded;
-clientsDataStruct *clients;
-domainsDataStruct *domains;
-overTimeDataStruct *overTime;
+queriesDataStruct *queries = NULL;
+forwardedDataStruct *forwarded = NULL;
+clientsDataStruct *clients = NULL;
+domainsDataStruct *domains = NULL;
+overTimeDataStruct *overTime = NULL;
 
 void memory_check(int which)
 {
