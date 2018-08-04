@@ -48,7 +48,7 @@ void memory_check(int which)
 	switch(which)
 	{
 		case QUERIES:
-			if(counters.queries >= counters.queries_MAX)
+			if(counters.queries >= counters.queries_MAX-1)
 			{
 				// Have to reallocate shared memory
 				queries = enlarge_shmem_struct('q');
@@ -60,7 +60,7 @@ void memory_check(int which)
 			}
 		break;
 		case FORWARDED:
-			if(counters.forwarded >= counters.forwarded_MAX)
+			if(counters.forwarded >= counters.forwarded_MAX-1)
 			{
 				// Have to reallocate shared memory
 				forwarded = enlarge_shmem_struct('f');
@@ -72,7 +72,7 @@ void memory_check(int which)
 			}
 		break;
 		case CLIENTS:
-			if(counters.clients >= counters.clients_MAX)
+			if(counters.clients >= counters.clients_MAX-1)
 			{
 				// Have to reallocate shared memory
 				clients = enlarge_shmem_struct('c');
@@ -84,7 +84,7 @@ void memory_check(int which)
 			}
 		break;
 		case DOMAINS:
-			if(counters.domains >= counters.domains_MAX)
+			if(counters.domains >= counters.domains_MAX-1)
 			{
 				// Have to reallocate shared memory
 				domains = enlarge_shmem_struct('d');
@@ -96,7 +96,7 @@ void memory_check(int which)
 			}
 		break;
 		case OVERTIME:
-			if(counters.overTime >= counters.overTime_MAX)
+			if(counters.overTime >= counters.overTime_MAX-1)
 			{
 				// Have to reallocate memory
 				counters.overTime_MAX += OVERTIMEALLOCSTEP;

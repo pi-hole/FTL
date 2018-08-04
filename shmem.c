@@ -244,7 +244,7 @@ bool realloc_shm(SharedMemory *sharedMemory, size_t size) {
 	// Resize shard memory object to requested size
 	result = ftruncate(fd, size);
 	if(result == -1) {
-		logg("realloc_shm(): ftruncate(%i,%zu): Failed to resize \"%s\": %s",
+		logg("realloc_shm(): ftruncate(%i, %zu): Failed to resize \"%s\": %s",
 		     fd, size, sharedMemory->name, strerror(errno));
 		return false;
 	}
