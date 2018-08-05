@@ -24,7 +24,7 @@ static void log_regex_error(char *where, int errcode, int index)
 	size_t length = regerror(errcode, &regex[index], NULL, 0);
 	char *buffer = calloc(length,sizeof(char));
 	(void) regerror (errcode, &regex[index], buffer, length);
-	logg("ERROR %s regex in line %i: %s (%i)", where, index+1, buffer, errcode);
+	logg("ERROR %s regex on line %i: %s (%i)", where, index+1, buffer, errcode);
 	free(buffer);
 }
 
@@ -282,11 +282,6 @@ void read_regex_from_file(void)
 
 		// Compile this regex
 		regexconfigured[i] = init_regex(buffer, i);
-		if(!regexconfigured[i])
-		{
-			logg("Error compiling regex on line %i", i+1);
-			errors++;
-		}
 	}
 
 	// Free allocated memory
