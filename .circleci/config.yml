@@ -61,6 +61,9 @@ jobs:
 workflows:
   version: 2
   build:
+    filters:
+      tags:
+        only: /^v.*/
     jobs:
       - arm
       - armhf
