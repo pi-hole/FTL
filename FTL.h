@@ -46,6 +46,9 @@
 #include <ifaddrs.h>
 #include <net/if.h>
 
+// Define MIN and MAX macros, use them only when x and y are of the same type
+#define MAX(x,y) (((x) > (y)) ? (x) : (y))
+// MIN(x,y) is already defined in dnsmasq.h
 
 #include "routines.h"
 
@@ -57,6 +60,7 @@
 #define CLIENTSALLOCSTEP 10
 #define DOMAINSALLOCSTEP 1000
 #define OVERTIMEALLOCSTEP 100
+#define WILDCARDALLOCSTEP 100
 
 #define SOCKETBUFFERLEN 1024
 
@@ -69,7 +73,22 @@
 #define GCdelay (-60)
 
 // How many client connection do we accept at once?
-#define MAXCONNS 20
+#define MAXCONNS 255
+
+// Over how many queries do we iterate at most when trying to find a match?
+#define MAXITER 1000
+
+// FTLDNS enums
+enum { DATABASE_WRITE_TIMER, EXIT_TIMER, GC_TIMER, LISTS_TIMER, REGEX_TIMER };
+enum { QUERIES, FORWARDED, CLIENTS, DOMAINS, OVERTIME, WILDCARD };
+enum { DNSSEC_UNSPECIFIED, DNSSEC_SECURE, DNSSEC_INSECURE, DNSSEC_BOGUS, DNSSEC_ABANDONED, DNSSEC_UNKNOWN };
+enum { QUERY_UNKNOWN, QUERY_GRAVITY, QUERY_FORWARDED, QUERY_CACHE, QUERY_WILDCARD, QUERY_BLACKLIST };
+enum { TYPE_A = 1, TYPE_AAAA, TYPE_ANY, TYPE_SRV, TYPE_SOA, TYPE_PTR, TYPE_TXT, TYPE_MAX };
+enum { REPLY_UNKNOWN, REPLY_NODATA, REPLY_NXDOMAIN, REPLY_CNAME, REPLY_IP };
+enum { PRIVACY_SHOW_ALL = 0, PRIVACY_HIDE_DOMAINS, PRIVACY_HIDE_DOMAINS_CLIENTS, PRIVACY_MAXIMUM };
+enum { MODE_IP, MODE_NX, MODE_NULL, MODE_IP_NODATA_AAAA };
+enum { REGEX_UNKNOWN, REGEX_BLOCKED, REGEX_NOTBLOCKED };
+enum { BLOCKING_DISABLED, BLOCKING_ENABLED, BLOCKING_UNKNOWN };
 
 // Static structs
 typedef struct {
@@ -83,20 +102,19 @@ typedef struct {
 
 typedef struct {
 	const char* log;
-	const char* gravity;
+	const char* preEventHorizon;
 	const char* whitelist;
 	const char* blacklist;
+	const char* gravity;
+	const char* regexlist;
 	const char* setupVars;
-	const char* wildcards;
 	const char* auditlist;
 	const char* dnsmasqconfig;
 } logFileNamesStruct;
 
 typedef struct {
 	int queries;
-	int invalidqueries;
 	int blocked;
-	int wildcardblocked;
 	int cached;
 	int unknown;
 	int forwarded;
@@ -108,10 +126,9 @@ typedef struct {
 	int domains_MAX;
 	int overTime_MAX;
 	int gravity;
+	int gravity_conf;
 	int overTime;
-	int IPv4;
-	int IPv6;
-	int wildcarddomains;
+	int querytype[TYPE_MAX-1];
 	int forwardedqueries;
 	int reply_NODATA;
 	int reply_NXDOMAIN;
@@ -121,7 +138,6 @@ typedef struct {
 
 typedef struct {
 	bool socket_listenlocal;
-	bool query_display;
 	bool analyze_AAAA;
 	int maxDBdays;
 	bool resolveIPv6;
@@ -129,40 +145,47 @@ typedef struct {
 	int DBinterval;
 	int port;
 	int maxlogage;
+	int privacylevel;
+	bool ignore_localhost;
+	unsigned char blockingmode;
+	bool regex_debugmode;
 } ConfigStruct;
 
 // Dynamic structs
 typedef struct {
 	unsigned char magic;
-	int timestamp;
+	time_t timestamp;
 	int timeidx;
 	unsigned char type;
 	unsigned char status;
-	// 0 = unknown, 1 = gravity.list (blocked), 2 = reply from upstream, 3 = cache, 4 = wildcard blocked
 	int domainID;
 	int clientID;
 	int forwardID;
-	bool valid;
 	bool db;
-	// the ID is a (signed) int in dnsmasq, so no need for a long int here
-	int id;
+	int id; // the ID is a (signed) int in dnsmasq, so no need for a long int here
 	bool complete;
+	bool private;
+	unsigned long response; // saved in units of 1/10 milliseconds (1 = 0.1ms, 2 = 0.2ms, 2500 = 250.0ms, etc.)
 	unsigned char reply;
-	int generation;
+	unsigned char dnssec;
 } queriesDataStruct;
 
 typedef struct {
 	unsigned char magic;
 	int count;
+	int failed;
 	char *ip;
 	char *name;
+	bool new;
 } forwardedDataStruct;
 
 typedef struct {
 	unsigned char magic;
 	int count;
+	int blockedcount;
 	char *ip;
 	char *name;
+	bool new;
 } clientsDataStruct;
 
 typedef struct {
@@ -170,90 +193,68 @@ typedef struct {
 	int count;
 	int blockedcount;
 	char *domain;
-	bool wildcard;
-	unsigned char dnssec;
+	unsigned char regexmatch;
 } domainsDataStruct;
 
 typedef struct {
 	unsigned char magic;
-	int timestamp;
+	time_t timestamp;
 	int total;
 	int blocked;
 	int cached;
-	int forwardnum;
-	int *forwarddata;
-	int *querytypedata;
+	int forwarded;
 	int clientnum;
 	int *clientdata;
+	int querytypedata[7];
 } overTimeDataStruct;
 
 typedef struct {
-	int wildcarddomains;
-	int domainnames;
-	int clientips;
-	int clientnames;
-	int forwardedips;
-	int forwardednames;
-	int forwarddata;
-	int clientdata;
-	int querytypedata;
-} memoryStruct;
+	int count;
+	char **domains;
+} whitelistStruct;
 
 // Prepare timers, used mainly for debugging purposes
-#define NUMTIMERS 2
-enum { DATABASE_WRITE_TIMER, EXIT_TIMER };
-
-enum { QUERIES, FORWARDED, CLIENTS, DOMAINS, OVERTIME, WILDCARD };
-enum { DNSSEC_UNSPECIFIED, DNSSEC_SECURE, DNSSEC_INSECURE, DNSSEC_BOGUS, DNSSEC_ABANDONED, DNSSEC_UNKNOWN };
+#define NUMTIMERS 5
 
 // Used to check memory integrity in various structs
 #define MAGICBYTE 0x57
 
-logFileNamesStruct files;
-FTLFileNamesStruct FTLfiles;
-countersStruct counters;
-ConfigStruct config;
+extern logFileNamesStruct files;
+extern FTLFileNamesStruct FTLfiles;
+extern countersStruct counters;
+extern ConfigStruct config;
 
-queriesDataStruct *queries;
-forwardedDataStruct *forwarded;
-clientsDataStruct *clients;
-domainsDataStruct *domains;
-overTimeDataStruct *overTime;
+extern queriesDataStruct *queries;
+extern forwardedDataStruct *forwarded;
+extern clientsDataStruct *clients;
+extern domainsDataStruct *domains;
+extern overTimeDataStruct *overTime;
 
-FILE *logfile;
-volatile sig_atomic_t killed;
+extern FILE *logfile;
+extern volatile sig_atomic_t killed;
 
-char ** setupVarsArray;
-int setupVarsElements;
+extern char ** setupVarsArray;
+extern int setupVarsElements;
 
-bool initialscan;
-bool debug;
-bool debugthreads;
-bool debugclients;
-bool debugGC;
-bool debugDB;
-bool threadwritelock;
-bool threadreadlock;
-unsigned char blockingstatus;
+extern bool initialscan;
+extern bool debug;
+extern bool threadwritelock;
+extern bool threadreadlock;
+extern unsigned char blockingstatus;
 
-char ** wildcarddomains;
-
-memoryStruct memory;
-bool runtest;
-
-char * username;
-char timestamp[16];
-bool flush;
-bool needGC;
-bool daemonmode;
-bool database;
-long int lastdbindex;
-bool travis;
-bool DBdeleteoldqueries;
-bool rereadgravity;
-long int lastDBimportedtimestamp;
-bool ipv4telnet, ipv6telnet;
-bool istelnet[MAXCONNS];
+extern char * username;
+extern char timestamp[16];
+extern bool flush;
+extern bool needGC;
+extern bool daemonmode;
+extern bool database;
+extern long int lastdbindex;
+extern bool travis;
+extern bool DBdeleteoldqueries;
+extern bool rereadgravity;
+extern long int lastDBimportedtimestamp;
+extern bool ipv4telnet, ipv6telnet;
+extern bool istelnet[MAXCONNS];
 
 // Use out own memory handling functions that will detect possible errors
 // and report accordingly in the log. This will make debugging FTL crashs
@@ -265,3 +266,12 @@ bool istelnet[MAXCONNS];
 #define strdup(param) FTLstrdup(param, __FILE__,  __FUNCTION__,  __LINE__)
 #define calloc(p1,p2) FTLcalloc(p1,p2, __FILE__,  __FUNCTION__,  __LINE__)
 #define realloc(p1,p2) FTLrealloc(p1,p2, __FILE__,  __FUNCTION__,  __LINE__)
+
+extern int argc_dnsmasq;
+extern char **argv_dnsmasq;
+
+extern pthread_t telnet_listenthreadv4;
+extern pthread_t telnet_listenthreadv6;
+extern pthread_t socket_listenthread;
+extern pthread_t DBthread;
+extern pthread_t GCthread;

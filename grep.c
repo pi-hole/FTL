@@ -10,63 +10,34 @@
 
 #include "FTL.h"
 
-void readWildcardsList();
-
 char ** wildcarddomains = NULL;
-
-void read_gravity_files(void)
-{
-	// Get number of domains being blocked
-	int gravity = countlines(files.gravity);
-	int blacklist = countlines(files.blacklist);
-
-	if(gravity < 0)
-	{
-		logg("Error: failed to read %s", files.gravity);
-	}
-	logg("Gravity list entries: %i", gravity);
-
-	// Test if blacklist exists and has entries in it
-	if(blacklist > 0)
-	{
-		gravity += blacklist;
-		logg("Blacklist entries: %i", blacklist);
-	}
-	else
-	{
-		logg("No blacklist present");
-	}
-
-	counters.gravity = gravity;
-
-	// Read array of wildcards
-	readWildcardsList();
-	if(counters.wildcarddomains > 0)
-	{
-		logg("Wildcard blocking list entries: %i", counters.wildcarddomains);
-	}
-	else
-	{
-		logg("No wildcard blocking list present");
-	}
-
-	// Get blocking status
-	check_blocking_status();
-}
+unsigned char blockingstatus = 2;
 
 int countlines(const char* fname)
 {
 	FILE *fp;
-	int ch = 0;
-	int lines = 0;
+	int ch = 0, lines = 0, chars = 0;
 
 	if((fp = fopen(fname, "r")) == NULL) {
 		return -1;
 	}
 
 	while ((ch = fgetc(fp)) != EOF)
+	{
+		chars++;
 		if (ch=='\n')
+		{
+			// Add one to the lines counter
 			++lines;
+			// Reset chars counter
+			chars = 0;
+		}
+	}
+
+	// Add one more line if there were characters at the
+	// last line of the file even without a final "\n"
+	if(chars > 0)
+		++lines;
 
 	// Close the file
 	fclose(fp);
@@ -74,110 +45,23 @@ int countlines(const char* fname)
 	return lines;
 }
 
-void readWildcardsList()
+int readnumberfromfile(const char* fname)
 {
 	FILE *fp;
-	char *domain = NULL, *buffer = NULL, *linebuffer = NULL;
-	size_t size = 0;
-	int i;
+	int num;
 
-	if((fp = fopen(files.wildcards, "r")) == NULL) {
-		counters.wildcarddomains = -1;
-		return;
-	}
-	else
+	if((fp = fopen(fname, "r")) == NULL)
 	{
-		// Opening of the wildcards file succeeded - reset wildcard counter
-		if(counters.wildcarddomains < 0) counters.wildcarddomains = 0;
+		return -1;
 	}
 
-	// Search through file
-	errno = 0;
-	while(getline(&linebuffer, &size, fp) != -1)
+	if(fscanf(fp,"%i",&num) != 1)
 	{
-		// the read line has always to be larger than what we want to extract, so
-		// we can use the length as an upper limit for allocating memory for the buffer
-
-		buffer = calloc(size, 1);
-		if(buffer == NULL)
-		{
-			logg("WARN: readWildcardsList failed to allocate memory");
-			fclose(fp);
-
-			// Free allocated memory
-			free(linebuffer);
-
-			return;
-		}
-
-		// Trim off the newline (could even be CR-LF)
-		linebuffer[strcspn(linebuffer, "\r\n")] = 0;
-
-		// Try to read up to 511 characters
-		if(sscanf(linebuffer, "address=/%511[^/]/", buffer) > 0)
-		{
-			unsigned long int addrbuffer = 0;
-			// Skip leading '.' by incrementing memory location step by step until the first
-			// character is not a '.' anymore
-			while(*(buffer+addrbuffer) == '.' && addrbuffer < strlen(buffer)) addrbuffer++;
-			if(strlen(buffer+addrbuffer) == 0)
-			{
-				logg("WARNING: Invalid wildcard list entry found: %s", buffer);
-			}
-			else
-			{
-				bool known = false;
-				// Get pointer to string with stripped leading '.'
-				domain = buffer+addrbuffer;
-				for(i=0; i < counters.wildcarddomains; i++)
-				{
-					if(strcmp(wildcarddomains[i], domain) == 0)
-					{
-						// We know this domain already, let's skip it
-						known = true;
-						break;
-					}
-				}
-				if(known)
-				{
-					// Free allocated memory
-					free(buffer);
-					buffer = NULL;
-					continue;
-				}
-
-				// Add wildcard entry
-				// Enlarge wildcarddomains pointer array
-				memory_check(WILDCARD);
-				// Allocate space for new domain entry and save domain
-				wildcarddomains[counters.wildcarddomains] = calloc(strlen(domain)+1,sizeof(char));
-				if(wildcarddomains[counters.wildcarddomains] == NULL) return;
-				memory.wildcarddomains += (strlen(domain) + 1) * sizeof(char);
-				strcpy(wildcarddomains[counters.wildcarddomains], domain);
-
-				// Increase number of stored wildcards by one
-				counters.wildcarddomains++;
-			}
-		}
-
-		// Free allocated memory
-		free(buffer);
-		buffer = NULL;
+		num = -1;
 	}
 
-	if(errno == ENOMEM)
-		logg("WARN: readWildcardsList failed: could not allocate memory for getline");
-
-	// Free allocated memory
-	if(linebuffer != NULL)
-	{
-		free(linebuffer);
-		linebuffer = NULL;
-	}
-
-	// Close the file
 	fclose(fp);
-
+	return num;
 }
 
 int countlineswith(const char* str, const char* fname)
@@ -240,15 +124,27 @@ int countlineswith(const char* str, const char* fname)
 
 void check_blocking_status(void)
 {
-	int disabled = countlineswith("#addn-hosts=/etc/pihole/gravity.list",files.dnsmasqconfig);
+	int disabled = countlineswith("#addn-hosts=/etc/pihole/gravity.list", files.dnsmasqconfig);
+	char *message = "";
 
 	if(disabled < 0)
+	{
 		// Failed to open file -> unknown status
-		blockingstatus = 2;
+		blockingstatus = BLOCKING_UNKNOWN;
+		message = "unknown";
+	}
 	else if(disabled > 0)
+	{
 		// Disabled
-		blockingstatus = 0;
+		blockingstatus = BLOCKING_DISABLED;
+		message = "disabled";
+	}
 	else
+	{
 		// Enabled
-		blockingstatus = 1;
+		blockingstatus = BLOCKING_ENABLED;
+		message = "enabled";
+	}
+
+	if(debug) logg("Blocking status is %s", message);
 }

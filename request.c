@@ -67,20 +67,10 @@ void process_request(char *client_message, int *sock)
 		processed = true;
 		getRecentBlocked(client_message, sock);
 	}
-	else if(command(client_message, ">memory"))
-	{
-		processed = true;
-		getMemoryUsage(sock);
-	}
 	else if(command(client_message, ">clientID"))
 	{
 		processed = true;
 		getClientID(sock);
-	}
-	else if(command(client_message, ">ForwardedoverTime"))
-	{
-		processed = true;
-		getForwardDestinationsOverTime(sock);
 	}
 	else if(command(client_message, ">QueryTypesoverTime"))
 	{
@@ -112,15 +102,39 @@ void process_request(char *client_message, int *sock)
 		processed = true;
 		getUnknownQueries(sock);
 	}
+	else if(command(client_message, ">domain"))
+	{
+		processed = true;
+		getDomainDetails(client_message, sock);
+	}
+	else if(command(client_message, ">cacheinfo"))
+	{
+		processed = true;
+		getCacheInformation(sock);
+	}
+	else if(command(client_message, ">reresolve"))
+	{
+		processed = true;
+		logg("Received API request to re-resolve host names");
+		// Need to release the thread lock already here to allow
+		// the resolver to process the incoming PTR requests
+		disable_thread_lock();
+		reresolveHostnames();
+		logg("Done re-resolving host names");
+	}
+	else if(command(client_message, ">recompile-regex"))
+	{
+		processed = true;
+		logg("Received API request to recompile regex");
+		free_regex();
+		read_regex_from_file();
+	}
 
 	// Test only at the end if we want to quit or kill
 	// so things can be processed before
 	if(command(client_message, ">quit") || command(client_message, EOT))
 	{
 		processed = true;
-		if(debugclients)
-			logg("Client wants to disconnect, ID: %i",*sock);
-
 		close(*sock);
 		*sock = 0;
 	}

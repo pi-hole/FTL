@@ -12,6 +12,7 @@
 #include "version.h"
 
 pthread_mutex_t lock;
+FILE *logfile = NULL;
 
 void close_FTL_log(void)
 {
@@ -115,21 +116,7 @@ void format_memory_size(char *prefix, unsigned long int bytes, double *formated)
 
 void logg_struct_resize(const char* str, int to, int step)
 {
-	unsigned long int structbytes = sizeof(countersStruct) + sizeof(ConfigStruct) + counters.queries_MAX*sizeof(queriesDataStruct) + counters.forwarded_MAX*sizeof(forwardedDataStruct) + counters.clients_MAX*sizeof(clientsDataStruct) + counters.domains_MAX*sizeof(domainsDataStruct) + counters.overTime_MAX*sizeof(overTimeDataStruct) + (counters.wildcarddomains)*sizeof(*wildcarddomains);
-	unsigned long int dynamicbytes = memory.wildcarddomains + memory.domainnames + memory.clientips + memory.clientnames + memory.forwardedips + memory.forwardednames + memory.forwarddata + memory.querytypedata;
-
-	unsigned long int bytes = structbytes + dynamicbytes;
-	char *prefix = calloc(2, sizeof(char));
-	if(prefix == NULL) return;
-	double formated = 0.0;
-	format_memory_size(prefix, bytes, &formated);
-
-	logg("Notice: Increasing %s struct size from %i to %i (%.2f %sB)", str, (to-step), to, formated, prefix);
-	if(debug)
-	{
-		logg("        at query time: %s", timestamp);
-	}
-	free(prefix);
+	logg("Notice: Increasing %s struct size from %i to %i", str, (to-step), to);
 }
 
 void log_counter_info(void)
@@ -138,7 +125,6 @@ void log_counter_info(void)
 	logg(" -> Cached DNS queries: %i", counters.cached);
 	logg(" -> Forwarded DNS queries: %i", counters.forwardedqueries);
 	logg(" -> Exactly blocked DNS queries: %i", counters.blocked);
-	logg(" -> Wildcard blocked DNS queries: %i", counters.wildcardblocked);
 	logg(" -> Unknown DNS queries: %i", counters.unknown);
 	logg(" -> Unique domains: %i", counters.domains);
 	logg(" -> Unique clients: %i", counters.clients);

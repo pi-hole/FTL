@@ -23,14 +23,24 @@ logFileNamesStruct files = {
 	"/var/log/pihole.log",
 	"/etc/pihole/list.preEventHorizon",
 	"/etc/pihole/whitelist.txt",
-	"/etc/pihole/blacklist.txt",
+	"/etc/pihole/black.list",
+	"/etc/pihole/gravity.list",
+	"/etc/pihole/regex.list",
 	"/etc/pihole/setupVars.conf",
-	"/etc/dnsmasq.d/03-pihole-wildcard.conf",
 	"/etc/pihole/auditlog.list",
-	"/etc/dnsmasq.d/01-pihole.conf"
+	"/etc/dnsmasq.d/01-pihole.conf",
 };
 
+// Fixed size structs
 countersStruct counters = { 0 };
+ConfigStruct config;
+
+// Variable size array structs
+queriesDataStruct *queries;
+forwardedDataStruct *forwarded;
+clientsDataStruct *clients;
+domainsDataStruct *domains;
+overTimeDataStruct *overTime;
 
 void memory_check(int which)
 {
@@ -106,17 +116,6 @@ void memory_check(int which)
 				}
 			}
 		break;
-		case WILDCARD:
-			// Definitely enlarge wildcard entry
-			// Enlarge wildcarddomains pointer array
-			logg_struct_resize("wildcards", (counters.wildcarddomains+1), 1);
-			wildcarddomains = realloc(wildcarddomains, (counters.wildcarddomains+1)*sizeof(*wildcarddomains));
-			if(wildcarddomains == NULL)
-			{
-				logg("FATAL: Memory allocation failed! Exiting");
-				exit(EXIT_FAILURE);
-			}
-		break;
 		default:
 			/* That cannot happen */
 			logg("Fatal error in memory_check(%i)", which);
@@ -133,7 +132,6 @@ void validate_access(const char * name, int pos, bool testmagic, int line, const
 	else if(name[0] == 'q') limit = counters.queries_MAX;
 	else if(name[0] == 'o') limit = counters.overTime_MAX;
 	else if(name[0] == 'f') limit = counters.forwarded_MAX;
-	else if(name[0] == 'w') limit = counters.wildcarddomains;
 	else { logg("Validator error (range)"); killed = 1; }
 
 	if(pos >= limit || pos < 0)
@@ -159,37 +157,14 @@ void validate_access(const char * name, int pos, bool testmagic, int line, const
 	}
 }
 
-void validate_access_oTfd(int timeidx, int forwardID, int line, const char * function, const char * file)
-{
-	// Determine if there is enough space for saving the current
-	// forwardID in the overTime data structure, allocate space otherwise
-	validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
-	if(overTime[timeidx].forwardnum <= forwardID)
-	{
-		// Reallocate more space for forwarddata
-		overTime[timeidx].forwarddata = realloc(overTime[timeidx].forwarddata, (forwardID+1)*sizeof(*overTime[timeidx].forwarddata));
-		// Initialize new data fields with zeroes
-		int j;
-		for(j = overTime[timeidx].forwardnum; j <= forwardID; j++)
-		{
-			overTime[timeidx].forwarddata[j] = 0;
-			memory.forwarddata++;
-		}
-		// Update counter
-		overTime[timeidx].forwardnum = forwardID + 1;
-	}
-
-	int limit = overTime[timeidx].forwardnum;
-	if(forwardID >= limit || forwardID < 0)
-	{
-		logg("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-		logg("FATAL ERROR: Trying to access overTime.forwarddata[%i], but maximum is %i", forwardID, limit);
-		logg("             found in %s() (%s:%i)", function, file, line);
-	}
-}
-
 void validate_access_oTcl(int timeidx, int clientID, int line, const char * function, const char * file)
 {
+	if(clientID < 0)
+	{
+		logg("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+		logg("FATAL ERROR: Trying to access overTime.clientdata[%i]", clientID);
+		logg("             found in %s() (%s:%i)", function, file, line);
+	}
 	// Determine if there is enough space for saving the current
 	// clientID in the overTime data structure, allocate space otherwise
 	if(overTime[timeidx].clientnum <= clientID)
@@ -201,13 +176,12 @@ void validate_access_oTcl(int timeidx, int clientID, int line, const char * func
 		for(i = overTime[timeidx].clientnum; i <= clientID; i++)
 		{
 			overTime[timeidx].clientdata[i] = 0;
-			memory.clientdata++;
 		}
 		// Update counter
 		overTime[timeidx].clientnum = clientID + 1;
 	}
 	int limit = overTime[timeidx].clientnum;
-	if(clientID >= limit || clientID < 0)
+	if(clientID >= limit)
 	{
 		logg("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
 		logg("FATAL ERROR: Trying to access overTime.clientdata[%i], but maximum is %i", clientID, limit);

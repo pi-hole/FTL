@@ -13,15 +13,20 @@
 
 bool debug = false;
 bool daemonmode = true;
-bool debugthreads = false;
-bool debugclients = false;
-bool debugGC = false;
-bool runtest = false;
-bool debugDB = false;
 bool travis = false;
+int argc_dnsmasq = 0;
+char **argv_dnsmasq = NULL;
+
 void parse_args(int argc, char* argv[])
 {
 	int i;
+
+	// Regardless of any arguments, we always pass "-k" (nofork) to dnsmasq
+	argc_dnsmasq = 2;
+	argv_dnsmasq = calloc(argc_dnsmasq, sizeof(char*));
+	argv_dnsmasq[0] = "";
+	argv_dnsmasq[1] = "-k";
+
 	// start from 1, as argv[0] is the executable name "pihole-FTL"
 	for(i=1; i < argc; i++)
 	{
@@ -31,34 +36,9 @@ void parse_args(int argc, char* argv[])
 		{
 			debug = true;
 			ok = true;
-		}
 
-		if(strcmp(argv[i], "debugthreads") == 0)
-		{
-			debug = true;
-			debugthreads = true;
-			ok = true;
-		}
-
-		if(strcmp(argv[i], "debugclients") == 0)
-		{
-			debug = true;
-			debugclients = true;
-			ok = true;
-		}
-
-		if(strcmp(argv[i], "debugGC") == 0)
-		{
-			debug = true;
-			debugGC = true;
-			ok = true;
-		}
-
-		if(strcmp(argv[i], "debugDB") == 0)
-		{
-			debug = true;
-			debugDB = true;
-			ok = true;
+			// Replace "-k" by "-d" (debug mode implies nofork)
+			argv_dnsmasq[1] = "-d";
 		}
 
 		if(strcmp(argv[i], "test") == 0)
@@ -68,7 +48,8 @@ void parse_args(int argc, char* argv[])
 		}
 
 		if(strcmp(argv[i], "-v") == 0 ||
-		   strcmp(argv[i], "version") == 0)
+		   strcmp(argv[i], "version") == 0 ||
+		   strcmp(argv[i], "--version") == 0)
 		{
 			const char * commit = GIT_HASH;
 			const char * tag = GIT_TAG;
@@ -100,15 +81,6 @@ void parse_args(int argc, char* argv[])
 			exit(EXIT_SUCCESS);
 		}
 
-		// pihole-FTL running
-		// will test if another pihole-FTL process is running
-		// and exits even if not (instead of starting a new one)
-		if(strcmp(argv[i], "running") == 0)
-		{
-			runtest = true;
-			ok = true;
-		}
-
 		// Don't go into background
 		if(strcmp(argv[i], "-f") == 0 ||
 		   strcmp(argv[i], "no-daemon") == 0)
@@ -129,6 +101,35 @@ void parse_args(int argc, char* argv[])
 			ok = true;
 		}
 
+		// Implement dnsmasq's test function
+		if(strcmp(argv[i], "dnsmasq-test") == 0)
+		{
+			char *arg[2];
+			arg[0] = "";
+			arg[1] = "--test";
+			main_dnsmasq(2,arg);
+			ok = true;
+		}
+
+		// If we find "--" we collect everything behind that for dnsmasq
+		if(strcmp(argv[i], "--") == 0)
+		{
+			int j;
+			argc_dnsmasq = argc - i + 1;
+			if(argv_dnsmasq != NULL) free(argv_dnsmasq);
+			argv_dnsmasq = calloc(argc_dnsmasq + 2,sizeof(char*));
+			argv_dnsmasq[0] = "";
+			if(debug) argv_dnsmasq[1] = "-d";
+			else      argv_dnsmasq[1] = "-k";
+
+			for(j=2; j < argc_dnsmasq; j++)
+			{
+				argv_dnsmasq[j] = strdup(argv[i+j-1]);
+				if(debug) logg("dnsmasq options: [%i]: %s",j,argv_dnsmasq[j]);
+			}
+			return;
+		}
+
 		// List of implemented arguments
 		if(strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "help") == 0 || strcmp(argv[i], "--help") == 0)
 		{
@@ -143,13 +144,18 @@ void parse_args(int argc, char* argv[])
 			printf("\t-v, version       Return version\n");
 			printf("\t-t, tag           Return git tag\n");
 			printf("\t-b, branch        Return git branch\n");
-			printf("\t    running       Test if another pihole-FTL\n");
-			printf("\t                  process is running and exit\n");
-			printf("\t                  even if not (instead of\n");
-			printf("\t                  starting a new one)\n");
 			printf("\t-f, no-daemon     Don't go into daemon mode\n");
 			printf("\t-h, help          Display this help and exit\n");
+			printf("\tdnsmasq-test      Test syntax of dnsmasq's\n");
+			printf("\t                  config files and exit\n");
 			printf("\n\nOnline help: https://github.com/pi-hole/FTL\n");
+			exit(EXIT_SUCCESS);
+		}
+
+		// Return success error code on this undocumented flag
+		if(strcmp(argv[i], "--resolver") == 0)
+		{
+			printf("True\n");
 			exit(EXIT_SUCCESS);
 		}
 

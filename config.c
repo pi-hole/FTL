@@ -11,13 +11,13 @@
 #include "FTL.h"
 
 ConfigStruct config;
-char *parse_FTLconf(FILE *fp, const char * key);
+static char *parse_FTLconf(FILE *fp, const char * key);
+static void release_config_memory(void);
 
 char *conflinebuffer = NULL;
 
 void read_FTLconf(void)
 {
-
 	FILE *fp;
 	char * buffer;
 
@@ -35,7 +35,7 @@ void read_FTLconf(void)
 	config.socket_listenlocal = true;
 	buffer = parse_FTLconf(fp, "SOCKET_LISTENING");
 
-	if(buffer != NULL && strcmp(buffer, "all") == 0)
+	if(buffer != NULL && strcasecmp(buffer, "all") == 0)
 		config.socket_listenlocal = false;
 
 	if(config.socket_listenlocal)
@@ -43,25 +43,12 @@ void read_FTLconf(void)
 	else
 		logg("   SOCKET_LISTENING: all destinations");
 
-	// QUERY_DISPLAY
-	// defaults to: Yes
-	config.query_display = true;
-	buffer = parse_FTLconf(fp, "QUERY_DISPLAY");
-
-	if(buffer != NULL && strcmp(buffer, "no") == 0)
-		config.query_display = false;
-
-	if(config.query_display)
-		logg("   QUERY_DISPLAY: Show queries");
-	else
-		logg("   QUERY_DISPLAY: Hide queries");
-
 	// AAAA_QUERY_ANALYSIS
 	// defaults to: Yes
 	config.analyze_AAAA = true;
 	buffer = parse_FTLconf(fp, "AAAA_QUERY_ANALYSIS");
 
-	if(buffer != NULL && strcmp(buffer, "no") == 0)
+	if(buffer != NULL && strcasecmp(buffer, "no") == 0)
 		config.analyze_AAAA = false;
 
 	if(config.analyze_AAAA)
@@ -89,7 +76,7 @@ void read_FTLconf(void)
 	config.resolveIPv6 = true;
 	buffer = parse_FTLconf(fp, "RESOLVE_IPV6");
 
-	if(buffer != NULL && strcmp(buffer, "no") == 0)
+	if(buffer != NULL && strcasecmp(buffer, "no") == 0)
 		config.resolveIPv6 = false;
 
 	if(config.resolveIPv6)
@@ -101,7 +88,7 @@ void read_FTLconf(void)
 	// defaults to: Yes
 	config.resolveIPv4 = true;
 	buffer = parse_FTLconf(fp, "RESOLVE_IPV4");
-	if(buffer != NULL && strcmp(buffer, "no") == 0)
+	if(buffer != NULL && strcasecmp(buffer, "no") == 0)
 		config.resolveIPv4 = false;
 	if(config.resolveIPv4)
 		logg("   RESOLVE_IPV4: Resolve IPv4 addresses");
@@ -120,8 +107,8 @@ void read_FTLconf(void)
 		// check if the read value is
 		// - larger than 0.1min (6sec), and
 		// - smaller than 1440.0min (once a day)
-		if(fvalue >= 0.1 && fvalue <= 1440.0)
-			config.DBinterval = (int)(60.*fvalue);
+		if(fvalue >= 0.1f && fvalue <= 1440.0f)
+			config.DBinterval = (int)(fvalue * 60);
 
 	if(config.DBinterval == 60)
 		logg("   DBINTERVAL: saving to DB file every minute");
@@ -170,24 +157,78 @@ void read_FTLconf(void)
 
 	fvalue = 0;
 	if(buffer != NULL && sscanf(buffer, "%f", &fvalue))
-		if(fvalue >= 0.0 && value <= 24.0*31.0)
+		if(fvalue >= 0.0f && value <= 744.0f)
 			config.maxlogage = (int)(fvalue * 3600);
-	logg("   MAXLOGAGE: Importing up to %.1f hours of log data", (float)config.maxlogage/3600.0);
+	logg("   MAXLOGAGE: Importing up to %.1f hours of log data", (float)config.maxlogage/3600.0f);
+
+	// PRIVACYLEVEL
+	// Specify if we want to anonymize the DNS queries somehow, available options are:
+	// PRIVACY_SHOW_ALL (0) = don't hide anything
+	// PRIVACY_HIDE_DOMAINS (1) = show and store all domains as "hidden", return nothing for Top Domains + Top Ads
+	// PRIVACY_HIDE_DOMAINS_CLIENTS (2) = as above, show all domains as "hidden" and all clients as "127.0.0.1"
+	//                                    (or "::1"), return nothing for any Top Lists
+	// PRIVACY_MAXIMUM (3) = Disabled basically everything except the anonymous stastics, there will be no entries
+	//                       added to the database, no entries visible in the query log and no Top Item Lists
+	// defaults to: PRIVACY_SHOW_ALL
+	config.privacylevel = PRIVACY_SHOW_ALL;
+	get_privacy_level(fp);
+	logg("   PRIVACYLEVEL: Set to %i", config.privacylevel);
+
+	// IGNORE_LOCALHOST
+	// defaults to: No
+	config.ignore_localhost = false;
+	buffer = parse_FTLconf(fp, "IGNORE_LOCALHOST");
+
+	if(buffer != NULL && strcasecmp(buffer, "yes") == 0)
+		config.ignore_localhost = true;
+
+	if(config.ignore_localhost)
+		logg("   IGNORE_LOCALHOST: Hide queries from localhost");
+	else
+		logg("   IGNORE_LOCALHOST: Show queries from localhost");
+
+	// BLOCKINGMODE
+	// defaults to: MODE_IP
+	get_blocking_mode(fp);
+	switch(config.blockingmode)
+	{
+		case MODE_NX:
+			logg("   BLOCKINGMODE: NXDOMAIN for blocked domains");
+			break;
+		case MODE_NULL:
+			logg("   BLOCKINGMODE: Null IPs for blocked domains");
+			break;
+		case MODE_IP_NODATA_AAAA:
+			logg("   BLOCKINGMODE: Pi-hole's IP + NODATA-IPv6 for blocked domains");
+			break;
+		case MODE_IP:
+			logg("   BLOCKINGMODE: Pi-hole's IPs for blocked domains");
+			break;
+	}
+
+	// REGEX_DEBUGMODE
+	// defaults to: No
+	config.regex_debugmode = false;
+	buffer = parse_FTLconf(fp, "REGEX_DEBUGMODE");
+
+	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
+		config.regex_debugmode = true;
+
+	if(config.regex_debugmode)
+		logg("   REGEX_DEBUGMODE: Active. May increase log file size!");
+	else
+		logg("   REGEX_DEBUGMODE: Inactive");
 
 	logg("Finished config file parsing");
 
 	// Release memory
-	if(conflinebuffer != NULL)
-	{
-		free(conflinebuffer);
-		conflinebuffer = NULL;
-	}
+	release_config_memory();
 
 	if(fp != NULL)
 		fclose(fp);
 }
 
-char *parse_FTLconf(FILE *fp, const char * key)
+static char *parse_FTLconf(FILE *fp, const char * key)
 {
 	// Return NULL if fp is an invalid file pointer
 	if(fp == NULL)
@@ -231,4 +272,86 @@ char *parse_FTLconf(FILE *fp, const char * key)
 	free(keystr);
 
 	return NULL;
+}
+
+void release_config_memory(void)
+{
+	if(conflinebuffer != NULL)
+	{
+		free(conflinebuffer);
+		conflinebuffer = NULL;
+	}
+}
+
+void get_privacy_level(FILE *fp)
+{
+	// See if we got a file handle, if not we have to open
+	// the config file ourselves
+	bool opened = false;
+	if(fp == NULL)
+	{
+		if((fp = fopen(FTLfiles.conf, "r")) == NULL)
+			// Return silently if there is no config file available
+			return;
+		opened = true;
+	}
+
+	int value = 0;
+	char *buffer = parse_FTLconf(fp, "PRIVACYLEVEL");
+	if(buffer != NULL && sscanf(buffer, "%i", &value) == 1)
+	{
+		// Check for change and validity of privacy level (set in FTL.h)
+		if(value != config.privacylevel &&
+		   value >= PRIVACY_SHOW_ALL &&
+		   value <= PRIVACY_MAXIMUM)
+		{
+			logg("Notice: Changing privacy level from %i to %i", config.privacylevel, value);
+			config.privacylevel = value;
+		}
+	}
+
+	// Release memory
+	release_config_memory();
+
+	// Have to close the config file if we opened it
+	if(opened)
+		fclose(fp);
+}
+
+void get_blocking_mode(FILE *fp)
+{
+	// Set default value
+	config.blockingmode = MODE_NULL;
+
+	// See if we got a file handle, if not we have to open
+	// the config file ourselves
+	bool opened = false;
+	if(fp == NULL)
+	{
+		if((fp = fopen(FTLfiles.conf, "r")) == NULL)
+			// Return silently if there is no config file available
+			return;
+		opened = true;
+	}
+
+	// Get config string (if present)
+	char *buffer = parse_FTLconf(fp, "BLOCKINGMODE");
+	if(buffer != NULL)
+	{
+		if(strcasecmp(buffer, "NXDOMAIN") == 0)
+			config.blockingmode = MODE_NX;
+		else if(strcasecmp(buffer, "NULL") == 0)
+			config.blockingmode = MODE_NULL;
+		else if(strcasecmp(buffer, "IP-NODATA-AAAA") == 0)
+			config.blockingmode = MODE_IP_NODATA_AAAA;
+		else if(strcasecmp(buffer, "IP") == 0)
+			config.blockingmode = MODE_IP;
+	}
+
+	// Release memory
+	release_config_memory();
+
+	// Have to close the config file if we opened it
+	if(opened)
+		fclose(fp);
 }

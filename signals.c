@@ -9,25 +9,10 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
+#include <execinfo.h>
 
 volatile sig_atomic_t killed = 0;
-int FTLstarttime = 0;
-bool rereadgravity = false;
-
-static void SIGTERM_handler(int sig, siginfo_t *si, void *unused)
-{
-	logg("FATAL: FTL received SIGTERM from PID/UID %i/%i, exiting gracefully", (int)si->si_pid, (int)si->si_uid);
-	timer_start(EXIT_TIMER);
-	killed = 1;
-}
-
-static void SIGINT_handler(int sig, siginfo_t *si, void *unused)
-{
-	// Should probably not use printf in signal handler, but this will anyhow exit immediately
-	logg("FATAL: FTL received SIGINT (Ctrl + C, PID/UID %i/%i), exiting immediately!", (int)si->si_pid, (int)si->si_uid);
-	logg("       There may be queries that have not been saved in the long-term data base");
-	exit(EXIT_FAILURE);
-}
+time_t FTLstarttime = 0;
 
 static void SIGSEGV_handler(int sig, siginfo_t *si, void *unused)
 {
@@ -43,26 +28,37 @@ static void SIGSEGV_handler(int sig, siginfo_t *si, void *unused)
 	}
 	log_FTL_version();
 
-	logg("\nReceived signal: %s", strsignal(sig));
+	logg("Received signal: %s", strsignal(sig));
 	logg("     at address: %lu", (unsigned long) si->si_addr);
 	switch (si->si_code)
 	{
-		case SEGV_MAPERR: logg("      with code: SEGV_MAPERR (Address not mapped to object)"); break;
-		case SEGV_ACCERR: logg("      with code: SEGV_ACCERR (Invalid permissions for mapped object)"); break;
+		case SEGV_MAPERR: logg("     with code: SEGV_MAPERR (Address not mapped to object)"); break;
+		case SEGV_ACCERR: logg("     with code: SEGV_ACCERR (Invalid permissions for mapped object)"); break;
 #if defined(SEGV_BNDERR)
-		case SEGV_BNDERR: logg("      with code: SEGV_BNDERR (Failed address bound checks)"); break;
+		case SEGV_BNDERR: logg("     with code: SEGV_BNDERR (Failed address bound checks)"); break;
 #endif
-		default: logg("      with code: Unknown (%i), ",si->si_code); break;
+		default: logg("     with code: Unknown (%i), ",si->si_code); break;
 	}
 
-	// Print memory usage
-	unsigned long int structbytes = sizeof(countersStruct) + sizeof(ConfigStruct) + counters.queries_MAX*sizeof(queriesDataStruct) + counters.forwarded_MAX*sizeof(forwardedDataStruct) + counters.clients_MAX*sizeof(clientsDataStruct) + counters.domains_MAX*sizeof(domainsDataStruct) + counters.overTime_MAX*sizeof(overTimeDataStruct) + (counters.wildcarddomains)*sizeof(*wildcarddomains);
-	unsigned long int dynamicbytes = memory.wildcarddomains + memory.domainnames + memory.clientips + memory.clientnames + memory.forwardedips + memory.forwardednames + memory.forwarddata + memory.querytypedata;
-	logg("Memory usage (structs): %lu", structbytes);
-	logg("Memory usage (dynamic): %lu\n", dynamicbytes);
+	// Try to obtain backtrace. This may not always be helpful, but it is better than nothing
+	void *buffer[255];
+	const int calls = backtrace(buffer, sizeof(buffer)/sizeof(void *));
+	char ** bcktrace = backtrace_symbols(buffer, calls);
+	if(bcktrace == NULL)
+	{
+		logg("Unable to obtain backtrace (%i)!",calls);
+	}
+	else
+	{
+		logg("Backtrace:");
+		int j;
+		for (j = 0; j < calls; j++)
+		{
+			logg("B[%04i]: %s",j,bcktrace[j]);
+		}
+	}
+	free(bcktrace);
 
-	// Getting backtrace symbols is meaningless here since if we would now start a backtrace
-	// then the addresses would only point to this signal handler
 	logg("Thank you for helping us to improve our FTL engine!");
 
 	// Print message and abort
@@ -70,47 +66,9 @@ static void SIGSEGV_handler(int sig, siginfo_t *si, void *unused)
 	abort();
 }
 
-static void SIGUSR1_handler(int signum)
-{
-	logg("NOTICE: Received signal SIGUSR1 - re-parsing log files");
-	flush = true;
-}
-
-static void SIGHUP_handler(int signum)
-{
-	logg("NOTICE: Received signal SIGHUP - re-reading gravity files");
-	rereadgravity = true;
-}
-
 void handle_signals(void)
 {
-	// Catch SIGTERM
 	struct sigaction old_action;
-	sigaction (SIGTERM, NULL, &old_action);
-	if(old_action.sa_handler != SIG_IGN)
-	{
-		struct sigaction TERMaction;
-		memset(&TERMaction, 0, sizeof(struct sigaction));
-		TERMaction.sa_flags = SA_SIGINFO;
-		sigemptyset(&TERMaction.sa_mask);
-		TERMaction.sa_sigaction = &SIGTERM_handler;
-		sigaction(SIGTERM, &TERMaction, NULL);
-	}
-
-	// Catch SIGINT
-	sigaction (SIGTERM, NULL, &old_action);
-	if(old_action.sa_handler != SIG_IGN)
-	{
-		struct sigaction INTaction;
-		memset(&INTaction, 0, sizeof(struct sigaction));
-		INTaction.sa_flags = SA_SIGINFO;
-		sigemptyset(&INTaction.sa_mask);
-		INTaction.sa_sigaction = &SIGINT_handler;
-		sigaction(SIGINT, &INTaction, NULL);
-	}
-
-	// Ignore SIGPIPE
-	signal(SIGPIPE, SIG_IGN);
 
 	// Catch SIGSEGV
 	sigaction (SIGSEGV, NULL, &old_action);
@@ -122,28 +80,6 @@ void handle_signals(void)
 		sigemptyset(&SEGVaction.sa_mask);
 		SEGVaction.sa_sigaction = &SIGSEGV_handler;
 		sigaction(SIGSEGV, &SEGVaction, NULL);
-	}
-
-	// Catch SIGUSR1
-	sigaction (SIGUSR1, NULL, &old_action);
-	if(old_action.sa_handler != SIG_IGN)
-	{
-		struct sigaction USR1action;
-		memset(&USR1action, 0, sizeof(struct sigaction));
-		sigemptyset(&USR1action.sa_mask);
-		USR1action.sa_handler = &SIGUSR1_handler;
-		sigaction(SIGUSR1, &USR1action, NULL);
-	}
-
-	// Catch SIGHUP
-	sigaction (SIGHUP, NULL, &old_action);
-	if(old_action.sa_handler != SIG_IGN)
-	{
-		struct sigaction HUPaction;
-		memset(&HUPaction, 0, sizeof(struct sigaction));
-		sigemptyset(&HUPaction.sa_mask);
-		HUPaction.sa_handler = &SIGHUP_handler;
-		sigaction(SIGHUP, &HUPaction, NULL);
 	}
 
 	// Log start time of FTL

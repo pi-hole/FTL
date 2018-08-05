@@ -214,7 +214,11 @@ load 'libs/bats-support/load'
   echo "output: ${lines[@]}"
   [[ "${lines[@]}" == *"CREATE TABLE queries ( id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL, type INTEGER NOT NULL, status INTEGER NOT NULL, domain TEXT NOT NULL, client TEXT NOT NULL, forward TEXT );"* ]]
   [[ "${lines[@]}" == *"CREATE TABLE ftl ( id INTEGER PRIMARY KEY NOT NULL, value BLOB NOT NULL );"* ]]
-  [[ "${lines[@]}" == *"INSERT INTO \"ftl\" VALUES(0,1);"* ]]
+  [[ "${lines[@]}" == *"CREATE TABLE counters ( id INTEGER PRIMARY KEY NOT NULL, value INTEGER NOT NULL );"* ]]
+  [[ "${lines[@]}" == *"INSERT INTO \"counters\" VALUES(0,0);"* ]]
+  [[ "${lines[@]}" == *"INSERT INTO \"counters\" VALUES(1,0);"* ]]
+  [[ "${lines[@]}" == *"INSERT INTO \"ftl\" VALUES(0,2);"* ]]
+  [[ "${lines[@]}" == *"CREATE INDEX idx_queries_timestamps ON queries (timestamp);"* ]]
 }
 
 @test "Arguments check: Invalid option" {
@@ -236,6 +240,12 @@ load 'libs/bats-support/load'
   [[ ${lines[0]} == "Socket created" ]]
   [[ ${lines[1]} == "Connection established" ]]
   [[ ${lines[2]} == "d2 ff ff ff ff d2 00 00 00 07 d2 00 00 00 02 ca 41 e4 92 49 d2 00 00 00 06 d2 00 00 00 03 d2 00 00 00 02 d2 00 00 00 03 d2 00 00 00 03 cc 02 c1 " ]]
+}
+
+@test "Verify no FATAL warnings are present in the generated log" {
+  run bash -c 'grep -c "FATAL" pihole-FTL.log'
+  echo "output: ${lines[@]}"
+  [[ ${lines[0]} == "0" ]]
 }
 
 @test "Final part of the tests: Killing pihole-FTL process" {

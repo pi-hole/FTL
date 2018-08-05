@@ -23,21 +23,15 @@ void log_counter_info(void);
 void format_memory_size(char *prefix, unsigned long int bytes, double *formated);
 void log_FTL_version(void);
 
-void initial_log_parsing(void);
-long int checkLogForChanges(void);
-void open_pihole_log(void);
-void handle_signals(void);
-void process_pihole_log(void);
-void *pihole_log_thread(void *val);
-void reresolveHostnames(void);
-int findClientID(const char *client);
-int findDomainID(const char *domain);
-int findForwardID(const char * forward, bool count);
+// datastructure.c
+void gettimestamp(int *querytimestamp, int *overTimetimestamp);
+void strtolower(char *str);
 int findOverTimeID(int overTimetimestamp);
-
-void pihole_log_flushed(bool message);
-
-void memory_check(int which);
+int findForwardID(const char * forward, bool count);
+int findDomainID(const char *domain);
+int findClientID(const char *client);
+bool isValidIPv4(const char *addr);
+bool isValidIPv6(const char *addr);
 
 void close_telnet_socket(void);
 void close_unix_socket(void);
@@ -55,7 +49,7 @@ void process_request(char *client_message, int *sock);
 bool command(char *client_message, const char* cmd);
 bool matchesEndpoint(char *client_message, const char *cmd);
 
-void read_gravity_files(void);
+// grep.c
 int countlines(const char* fname);
 int countlineswith(const char* str, const char* fname);
 void check_blocking_status(void);
@@ -71,12 +65,17 @@ void parse_args(int argc, char* argv[]);
 
 char* find_equals(const char* s);
 
-void enable_thread_lock(const char *message);
-void disable_thread_lock(const char *message);
+// threads.c
+void enable_thread_lock(void);
+void disable_thread_lock(void);
 void init_thread_lock(void);
 
+// config.c
 void read_FTLconf(void);
+void get_privacy_level(FILE *fp);
+void get_blocking_mode(FILE *fp);
 
+// gc.c
 void *GC_thread(void *val);
 
 // database.c
@@ -87,10 +86,25 @@ void save_to_DB(void);
 void read_data_from_DB(void);
 
 // memory.c
+void memory_check(int which);
 char *FTLstrdup(const char *src, const char *file, const char *function, int line);
 void *FTLcalloc(size_t nmemb, size_t size, const char *file, const char *function, int line);
 void *FTLrealloc(void *ptr_in, size_t size, const char *file, const char *function, int line);
 void FTLfree(void *ptr, const char* file, const char *function, int line);
 void validate_access(const char * name, int pos, bool testmagic, int line, const char * function, const char * file);
-void validate_access_oTfd(int timeidx, int forwardID, int line, const char * function, const char * file);
 void validate_access_oTcl(int timeidx, int clientID, int line, const char * function, const char * file);
+
+int main_dnsmasq(int argc, char **argv);
+
+// signals.c
+void handle_signals(void);
+
+// resolve.c
+void resolveNewClients(void);
+void reresolveHostnames(void);
+
+// regex.c
+bool match_regex(char *input);
+void free_regex(void);
+void read_regex_from_file(void);
+bool in_whitelist(char *domain);

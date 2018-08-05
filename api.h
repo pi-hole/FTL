@@ -17,17 +17,19 @@ void getForwardDestinations(char *client_message, int *sock);
 void getQueryTypes(int *sock);
 void getAllQueries(char *client_message, int *sock);
 void getRecentBlocked(char *client_message, int *sock);
-void getForwardDestinationsOverTime(int *sock);
 void getQueryTypesOverTime(int *sock);
 void getClientsOverTime(int *sock);
 void getClientNames(int *sock);
+void getDomainDetails(char *client_message, int *sock);
 
 // FTL methods
-void getMemoryUsage(int *sock);
 void getClientID(int *sock);
 void getVersion(int *sock);
 void getDBstats(int *sock);
 void getUnknownQueries(int *sock);
+
+// DNS resolver methods (dnsmasq_interface.c)
+void getCacheInformation(int *sock);
 
 // MessagePack serialization helpers
 void pack_eom(int sock);

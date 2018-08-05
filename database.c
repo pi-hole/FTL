@@ -18,7 +18,14 @@ long int lastDBimportedtimestamp = 0;
 
 pthread_mutex_t dblock;
 
-enum { DB_VERSION, DB_LASTTIMESTAMP };
+// TABLE ftl
+enum { DB_VERSION, DB_LASTTIMESTAMP, DB_FIRSTCOUNTERTIMESTAMP };
+// TABLE counters
+enum { DB_TOTALQUERIES, DB_BLOCKEDQUERIES };
+
+bool db_set_counter(unsigned int ID, int value);
+bool db_set_FTL_property(unsigned int ID, int value);
+int db_get_FTL_property(unsigned int ID);
 
 void check_database(int rc)
 {
@@ -46,7 +53,7 @@ void dbclose(void)
 	pthread_mutex_unlock(&dblock);
 }
 
-float get_db_filesize(void)
+double get_db_filesize(void)
 {
 	struct stat st;
 	if(stat(FTLfiles.db, &st) != 0)
@@ -55,14 +62,6 @@ float get_db_filesize(void)
 		return 0;
 	}
 	return 1e-6*st.st_size;
-}
-
-static int callback(void *NotUsed, int argc, char **argv, char **azColName){
-	int i;
-	for(i=0; i<argc; i++){
-		logg("%s = %s", azColName[i], argv[i] ? argv[i] : "NULL");
-	}
-	return 0;
 }
 
 bool dbopen(void)
@@ -83,7 +82,6 @@ bool dbquery(const char *format, ...)
 {
 	char *zErrMsg = NULL;
 	va_list args;
-	int rc;
 
 	va_start(args, format);
 	char *query = sqlite3_vmprintf(format, args);
@@ -95,10 +93,7 @@ bool dbquery(const char *format, ...)
 		return false;
 	}
 
-	if(debugDB)
-		rc = sqlite3_exec(db, query, callback, NULL, &zErrMsg);
-	else
-		rc = sqlite3_exec(db, query, NULL, NULL, &zErrMsg);
+	int rc = sqlite3_exec(db, query, NULL, NULL, &zErrMsg);
 
 	if( rc != SQLITE_OK ){
 		logg("dbquery(%s) - SQL error (%i): %s", query, rc, zErrMsg);
@@ -111,6 +106,32 @@ bool dbquery(const char *format, ...)
 
 	return true;
 
+}
+
+bool create_counter_table(void)
+{
+	bool ret;
+	// Create FTL table in the database (holds properties like database version, etc.)
+	ret = dbquery("CREATE TABLE counters ( id INTEGER PRIMARY KEY NOT NULL, value INTEGER NOT NULL );");
+	if(!ret){ dbclose(); return false; }
+
+	// ID 0 = total queries
+	ret = db_set_counter(DB_TOTALQUERIES, 0);
+	if(!ret){ dbclose(); return false; }
+
+	// ID 1 = total blocked queries
+	ret = db_set_counter(DB_BLOCKEDQUERIES, 0);
+	if(!ret){ dbclose(); return false; }
+
+	// Time stamp of creation of the counters database
+	ret = db_set_FTL_property(DB_FIRSTCOUNTERTIMESTAMP, time(NULL));
+	if(!ret){ dbclose(); return false; }
+
+	// Update database version to 2
+	ret = db_set_FTL_property(DB_VERSION, 2);
+	if(!ret){ dbclose(); return false; }
+
+	return true;
 }
 
 bool db_create(void)
@@ -127,25 +148,23 @@ bool db_create(void)
 	ret = dbquery("CREATE TABLE queries ( id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL, type INTEGER NOT NULL, status INTEGER NOT NULL, domain TEXT NOT NULL, client TEXT NOT NULL, forward TEXT );");
 	if(!ret){ dbclose(); return false; }
 	// Add an index on the timestamps (not a unique index!)
-	ret = dbquery("CREATE INDEX idx_queries_timestamps ON queries (timestamp)");
+	ret = dbquery("CREATE INDEX idx_queries_timestamps ON queries (timestamp);");
 	if(!ret){ dbclose(); return false; }
 	// Create FTL table in the database (holds properties like database version, etc.)
 	ret = dbquery("CREATE TABLE ftl ( id INTEGER PRIMARY KEY NOT NULL, value BLOB NOT NULL );");
 	if(!ret){ dbclose(); return false; }
 
-	// DB version 1
-	ret = dbquery("INSERT INTO ftl (ID,VALUE) VALUES(0,1);");
+	// DB version 2
+	ret = dbquery("INSERT INTO ftl (ID,VALUE) VALUES(%i,2);", DB_VERSION);
 	if(!ret){ dbclose(); return false; }
 
 	// Most recent timestamp initialized to 00:00 1 Jan 1970
-	ret = dbquery("INSERT INTO ftl (ID,VALUE) VALUES(1,0);");
+	ret = dbquery("INSERT INTO ftl (ID,VALUE) VALUES(%i,0);", DB_LASTTIMESTAMP);
 	if(!ret){ dbclose(); return false; }
 
-	// Time stamp of last DB garbage collection
-	ret = dbquery("INSERT INTO ftl (ID,VALUE) VALUES(2,%i);",time(NULL));
-	if(!ret){ dbclose(); return false; }
-
-	dbclose();
+	// Create counter table
+	if(!create_counter_table())
+		return false;
 
 	return true;
 }
@@ -175,7 +194,28 @@ void db_init(void)
 		}
 	}
 
+	// Test DB version and see if we need to upgrade the database file
+	int dbversion = db_get_FTL_property(DB_VERSION);
+	if(dbversion < 1)
+	{
+		logg("Database version incorrect, database not available");
+		database = false;
+		return;
+	}
+	else if(dbversion < 2)
+	{
+		// Database is still in version 1
+		// Update to version 2 and create counters table
+		if (!create_counter_table())
+		{
+			logg("Counter table not initialized, database not available");
+			database = false;
+			return;
+		}
+	}
+
 	// Close database to prevent having it opened all time
+	// we already closed the database when we returned earlier
 	sqlite3_close(db);
 
 	if (pthread_mutex_init(&dblock, NULL) != 0)
@@ -185,7 +225,7 @@ void db_init(void)
 		exit(EXIT_FAILURE);
 	}
 
-	logg("Database initialized");
+	logg("Database successfully initialized");
 	database = true;
 }
 
@@ -207,6 +247,7 @@ int db_get_FTL_property(unsigned int ID)
 	rc = sqlite3_prepare(db, querystring, -1, &dbstmt, NULL);
 	if( rc ){
 		logg("db_get_FTL_property() - SQL error prepare (%i): %s", rc, sqlite3_errmsg(db));
+		logg("Query: \"%s\"", querystring);
 		dbclose();
 		check_database(rc);
 		return -1;
@@ -232,6 +273,20 @@ int db_get_FTL_property(unsigned int ID)
 bool db_set_FTL_property(unsigned int ID, int value)
 {
 	return dbquery("INSERT OR REPLACE INTO ftl (id, value) VALUES ( %u, %i );", ID, value);
+}
+
+bool db_set_counter(unsigned int ID, int value)
+{
+	return dbquery("INSERT OR REPLACE INTO counters (id, value) VALUES ( %u, %i );", ID, value);
+}
+
+bool db_update_counters(int total, int blocked)
+{
+	if(!dbquery("UPDATE counters SET value = value + %i WHERE id = %i;", total, DB_TOTALQUERIES))
+		return false;
+	if(!dbquery("UPDATE counters SET value = value + %i WHERE id = %i;", blocked, DB_BLOCKEDQUERIES))
+		return false;
+	return true;
 }
 
 int number_of_queries_in_DB(void)
@@ -292,14 +347,6 @@ void save_to_DB(void)
 		return;
 	}
 
-	int lasttimestamp = db_get_FTL_property(DB_LASTTIMESTAMP);
-	if(lasttimestamp < 0)
-	{
-		logg("save_to_DB() - error in trying to get last time stamp from database");
-		return;
-	}
-	int newlasttimestamp = lasttimestamp;
-
 	unsigned int saved = 0, saved_error = 0;
 	long int i;
 	sqlite3_stmt* stmt;
@@ -321,13 +368,17 @@ void save_to_DB(void)
 		return;
 	}
 
-	int currenttimestamp = time(NULL);
-	for(i = lastdbindex; i < counters.queries; i++)
+	int total = 0, blocked = 0;
+	time_t currenttimestamp = time(NULL);
+	time_t newlasttimestamp = 0;
+	for(i = 0; i < counters.queries; i++)
 	{
 		validate_access("queries", i, true, __LINE__, __FUNCTION__, __FILE__);
-		if(queries[i].timestamp <= lasttimestamp || queries[i].db)
-			// Already in database or not yet complete
+		if(queries[i].db)
+		{
+			// Skip, already saved in database
 			continue;
+		}
 
 		if(!queries[i].complete && queries[i].timestamp > currenttimestamp-2)
 		{
@@ -340,6 +391,13 @@ void save_to_DB(void)
 		validate_access("queries", i, true, __LINE__, __FUNCTION__, __FILE__);
 		validate_access("domains", queries[i].domainID, true, __LINE__, __FUNCTION__, __FILE__);
 		validate_access("clients", queries[i].clientID, true, __LINE__, __FUNCTION__, __FILE__);
+
+		if(queries[i].private)
+		{
+			// Skip, we never store nor count queries recorded
+			// while have been in maximum privacy mode in the database
+			continue;
+		}
 
 		// TIMESTAMP
 		sqlite3_bind_int(stmt, 1, queries[i].timestamp);
@@ -357,7 +415,7 @@ void save_to_DB(void)
 		sqlite3_bind_text(stmt, 5, clients[queries[i].clientID].ip, -1, SQLITE_TRANSIENT);
 
 		// FORWARD
-		if(queries[i].status == 2 && queries[i].forwardID > -1)
+		if(queries[i].status == QUERY_FORWARDED && queries[i].forwardID > -1)
 		{
 			validate_access("forwarded", queries[i].forwardID, true, __LINE__, __FUNCTION__, __FILE__);
 			sqlite3_bind_text(stmt, 6, forwarded[queries[i].forwardID].ip, -1, SQLITE_TRANSIENT);
@@ -392,8 +450,15 @@ void save_to_DB(void)
 		// Mark this query as saved in the database only if successful
 		queries[i].db = true;
 
+		// Total counter information (delta computation)
+		total++;
+		if(queries[i].status == 1 ||
+		   queries[i].status == 4 ||
+		   queries[i].status == 5)
+			blocked++;
+
 		// Update lasttimestamp variable with timestamp of the latest stored query
-		if(queries[i].timestamp > lasttimestamp)
+		if(queries[i].timestamp > newlasttimestamp)
 			newlasttimestamp = queries[i].timestamp;
 	}
 
@@ -408,6 +473,13 @@ void save_to_DB(void)
 	{
 		lastdbindex = i;
 		db_set_FTL_property(DB_LASTTIMESTAMP, newlasttimestamp);
+	}
+
+	// Update total counters in DB
+	if(!db_update_counters(total, blocked))
+	{
+		dbclose();
+		return;
 	}
 
 	// Close database
@@ -454,26 +526,46 @@ void delete_old_queries_in_DB(void)
 	database = true;
 }
 
+int lastDBsave = 0;
 void *DB_thread(void *val)
 {
 	// Set thread name
-	prctl(PR_SET_NAME,"DB",0,0,0);
+	prctl(PR_SET_NAME,"database",0,0,0);
 
-	// Lock FTL's data structure, since it is likely that it will be changed here
-	enable_thread_lock("DB_thread");
+	// Save timestamp as we do not want to store immediately
+	// to the database
+	lastDBsave = time(NULL) - time(NULL)%config.DBinterval;
 
-	// Save data to database
-	save_to_DB();
-
-	// Release thread lock
-	disable_thread_lock("DB_thread");
-
-	// Check if GC should be done on the database
-	if(DBdeleteoldqueries)
+	while(!killed && database)
 	{
-		// No thread locks needed
-		delete_old_queries_in_DB();
-		DBdeleteoldqueries = false;
+		if(time(NULL) - lastDBsave >= config.DBinterval)
+		{
+			// Update lastDBsave timer
+			lastDBsave = time(NULL) - time(NULL)%config.DBinterval;
+
+			// This has to be run outside of the thread locks
+			// to prevent locking the resolver
+			resolveNewClients();
+
+			// Lock FTL's data structure, since it is
+			// likely that it will be changed here
+			enable_thread_lock();
+
+			// Save data to database
+			save_to_DB();
+
+			// Release thread lock
+			disable_thread_lock();
+
+			// Check if GC should be done on the database
+			if(DBdeleteoldqueries)
+			{
+				// No thread locks needed
+				delete_old_queries_in_DB();
+				DBdeleteoldqueries = false;
+			}
+		}
+		sleepms(100);
 	}
 
 	return NULL;
@@ -492,8 +584,8 @@ void read_data_from_DB(void)
 	// Prepare request
 	char *rstr = NULL;
 	// Get time stamp 24 hours in the past
-	int differencetofullhour = time(NULL) % GCinterval;
-	long int mintime = ((long)time(NULL) - GCdelay - differencetofullhour) - config.maxlogage;
+	time_t now = time(NULL);
+	time_t mintime = now - config.maxlogage;
 	int rc = asprintf(&rstr, "SELECT * FROM queries WHERE timestamp >= %li", mintime);
 	if(rc < 1)
 	{
@@ -518,8 +610,6 @@ void read_data_from_DB(void)
 	{
 		// Ensure we have enough space in the queries struct
 		memory_check(QUERIES);
-		memory_check(DOMAINS);
-		memory_check(CLIENTS);
 
 		// Set ID for this query
 		int queryID = counters.queries;
@@ -531,14 +621,27 @@ void read_data_from_DB(void)
 			logg("DB warn: TIMESTAMP should be larger than 01/01/2017 but is %i", queryTimeStamp);
 			continue;
 		}
+		if(queryTimeStamp > now)
+		{
+			if(debug) logg("DB warn: Skipping query logged in the future (%i)", queryTimeStamp);
+			continue;
+		}
+
 		int type = sqlite3_column_int(stmt, 2);
-		if(type != 1 && type != 2)
+		if(type != TYPE_A && type != TYPE_AAAA)
 		{
 			logg("DB warn: TYPE should be either 1 or 2 but not %i", type);
 			continue;
 		}
+		// Don't import AAAA queries from database if the user set
+		// AAAA_QUERY_ANALYSIS=no in pihole-FTL.conf
+		if(type == TYPE_AAAA && !config.analyze_AAAA)
+		{
+			continue;
+		}
+
 		int status = sqlite3_column_int(stmt, 3);
-		if(status < 0 || status > 5)
+		if(status < QUERY_UNKNOWN || status > QUERY_BLACKLIST)
 		{
 			logg("DB warn: STATUS should be within [0,5] but is %i", status);
 			continue;
@@ -550,7 +653,6 @@ void read_data_from_DB(void)
 			logg("DB warn: DOMAIN should never be NULL, %i", queryTimeStamp);
 			continue;
 		}
-		int domainID = findDomainID(domain);
 
 		const char * client = (const char *)sqlite3_column_text(stmt, 5);
 		if(client == NULL)
@@ -558,23 +660,33 @@ void read_data_from_DB(void)
 			logg("DB warn: CLIENT should never be NULL, %i", queryTimeStamp);
 			continue;
 		}
+
+		// Check if user wants to skip queries coming from localhost
+		if(config.ignore_localhost &&
+		   (strcmp(client, "127.0.0.1") == 0 || strcmp(client, "::1") == 0))
+		{
+			continue;
+		}
+
+		// Obtain IDs only after filtering which queries we want to keep
+		int domainID = findDomainID(domain);
 		int clientID = findClientID(client);
 
 		const char *forwarddest = (const char *)sqlite3_column_text(stmt, 6);
 		int forwardID = 0;
 		// Determine forwardID only when status == 2 (forwarded) as the
 		// field need not to be filled for other query status types
-		if(status == 2)
+		if(status == QUERY_FORWARDED)
 		{
 			if(forwarddest == NULL)
 			{
-				logg("DB warn: FORWARD should not be NULL with status 2, %i", queryTimeStamp);
+				logg("DB warn: FORWARD should not be NULL with status QUERY_FORWARDED, %i", queryTimeStamp);
 				continue;
 			}
 			forwardID = findForwardID(forwarddest, true);
 		}
 
-		int overTimeTimeStamp = queryTimeStamp - (queryTimeStamp % 600 + 300);
+		int overTimeTimeStamp = queryTimeStamp - (queryTimeStamp % 600) + 300;
 		int timeidx = findOverTimeID(overTimeTimeStamp);
 		validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 
@@ -588,24 +700,17 @@ void read_data_from_DB(void)
 		queries[queryID].clientID = clientID;
 		queries[queryID].forwardID = forwardID;
 		queries[queryID].timeidx = timeidx;
-		queries[queryID].valid = true; // Mark this as a valid query (false = it has been garbage collected and should be skipped)
 		queries[queryID].db = true; // Mark this as already present in the database
 		queries[queryID].id = 0; // This is dnsmasq's internal ID. We don't store it in the database
 		queries[queryID].complete = true; // Mark as all information is avaiable
-		queries[queryID].reply = 0; // Reply type is not stored in database
-		queries[queryID].generation = 0; // Log generation is neither available nor important if reading from the database
+		queries[queryID].response = 0;
 		lastDBimportedtimestamp = queryTimeStamp;
 
 		// Handle type counters
-		if(type == 1)
+		if(type >= TYPE_A && type < TYPE_MAX)
 		{
-			counters.IPv4++;
-			overTime[timeidx].querytypedata[0]++;
-		}
-		else if(type == 2)
-		{
-			counters.IPv6++;
-			overTime[timeidx].querytypedata[1]++;
+			counters.querytype[type-1]++;
+			overTime[timeidx].querytypedata[type-1]++;
 		}
 
 		// Update overTime data
@@ -621,44 +726,28 @@ void read_data_from_DB(void)
 		// Increment status counters
 		switch(status)
 		{
-			case 0: // Unknown
+			case QUERY_UNKNOWN: // Unknown
 				counters.unknown++;
 				break;
 
-			case 1: // Blocked by gravity.list
+			case QUERY_GRAVITY: // Blocked by gravity.list
+			case QUERY_WILDCARD: // Blocked by regex filter
+			case QUERY_BLACKLIST: // Blocked by black.list
 				counters.blocked++;
 				overTime[timeidx].blocked++;
 				domains[domainID].blockedcount++;
+				clients[clientID].blockedcount++;
 				break;
 
-			case 2: // Forwarded
+			case QUERY_FORWARDED: // Forwarded
 				counters.forwardedqueries++;
 				// Update overTime data structure
-				validate_access_oTfd(timeidx, forwardID, __LINE__, __FUNCTION__, __FILE__);
-				overTime[timeidx].forwarddata[forwardID]++;
 				break;
 
-			case 3: // Cached or local config
+			case QUERY_CACHE: // Cached or local config
 				counters.cached++;
 				// Update overTime data structure
 				overTime[timeidx].cached++;
-				break;
-
-			case 4: // Wildcard blocked
-				counters.wildcardblocked++;
-
-				// Update overTime data structure
-				overTime[timeidx].blocked++;
-				domains[domainID].blockedcount++;
-				domains[domainID].wildcard = true;
-				break;
-
-			case 5: // black.list
-				counters.blocked++;
-
-				// Update overTime data structure
-				overTime[timeidx].blocked++;
-				domains[domainID].blockedcount++;
 				break;
 
 			default:
