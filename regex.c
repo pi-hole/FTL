@@ -24,9 +24,8 @@ static void log_regex_error(char *where, int errcode, int index)
 	size_t length = regerror(errcode, &regex[index], NULL, 0);
 	char *buffer = calloc(length,sizeof(char));
 	(void) regerror (errcode, &regex[index], buffer, length);
-	logg("ERROR %s regex %i: %s (%i)", index, where, buffer, errcode);
+	logg("ERROR %s regex %i: %s (%i)", where, index+1, buffer, errcode);
 	free(buffer);
-	free_regex();
 }
 
 static bool init_regex(const char *regexin, int index)
