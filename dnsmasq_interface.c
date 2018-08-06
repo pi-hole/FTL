@@ -57,6 +57,9 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 		return;
 	}
 
+	// Store plain text domain in buffer for regex validation
+	char *domainbuffer = strdup(domain);
+
 	// Check and apply possible privacy level rules
 	// We do this immediately on the raw data to avoid any possible leaking
 	get_privacy_level(NULL);
@@ -77,6 +80,7 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	   (strcmp(client, "127.0.0.1") == 0 || strcmp(client, "::1") == 0))
 	{
 		free(domain);
+		free(domainbuffer);
 		free(client);
 		disable_thread_lock();
 		return;
@@ -115,6 +119,7 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 		// Return early to avoid accessing querytypedata out of bounds
 		if(debug) logg("Notice: Skipping unknown query type: %s (%i)", types, id);
 		free(domain);
+		free(domainbuffer);
 		free(client);
 		disable_thread_lock();
 		return;
@@ -126,12 +131,13 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	overTime[timeidx].querytypedata[querytype-1]++;
 	counters.querytype[querytype-1]++;
 
-	// Skip rest of the analyis if this query is not of type A or AAAA
+	// Skip rest of the analysis if this query is not of type A or AAAA
 	if(querytype != TYPE_A && querytype != TYPE_AAAA)
 	{
 		// Don't process this query further here, we already counted it
 		if(debug) logg("Notice: Skipping new query: %s (%i)", types, id);
 		free(domain);
+		free(domainbuffer);
 		free(client);
 		disable_thread_lock();
 		return;
@@ -190,10 +196,10 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 		// of a specific domain. The logic herein is:
 		// If matched, then compare against whitelist
 		// If in whitelist, negate matched so this function returns: not-to-be-blocked
-		if(match_regex(domain) && !in_whitelist(domain))
+		if(match_regex(domainbuffer) && !in_whitelist(domainbuffer))
 		{
 			// We have to block this domain
-			block_single_domain(domain);
+			block_single_domain(domainbuffer);
 			domains[domainID].regexmatch = REGEX_BLOCKED;
 		}
 		else
@@ -207,6 +213,7 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	// Free allocated memory
 	free(client);
 	free(domain);
+	free(domainbuffer);
 
 	// Release thread lock
 	disable_thread_lock();
