@@ -62,9 +62,25 @@ workflows:
   version: 2
   build:
     jobs:
-      - arm
-      - armhf
-      - aarch64
-      - x86_64
+      - arm:
+          filters:
+            tags:
+              only: /^v.*/
+      - armhf:
+          filters:
+            tags:
+              only: /^v.*/
+      - aarch64:
+          filters:
+            tags:
+              only: /^v.*/
+      - x86_64:
+          filters:
+            tags:
+              only: /^v.*/
 #      - x86_64-musl
-      - x86_32
+      - x86_32:
+          filters:
+            tags:
+              only: /^v.*/
+
