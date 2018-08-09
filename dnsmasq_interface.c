@@ -32,8 +32,32 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	struct timeval request;
 	gettimeofday(&request, 0);
 
+	// Determine query type
+	unsigned char querytype = 0;
+	if(strcmp(types,"query[A]") == 0)
+		querytype = TYPE_A;
+	else if(strcmp(types,"query[AAAA]") == 0)
+		querytype = TYPE_AAAA;
+	else if(strcmp(types,"query[ANY]") == 0)
+		querytype = TYPE_ANY;
+	else if(strcmp(types,"query[SRV]") == 0)
+		querytype = TYPE_SRV;
+	else if(strcmp(types,"query[SOA]") == 0)
+		querytype = TYPE_SOA;
+	else if(strcmp(types,"query[PTR]") == 0)
+		querytype = TYPE_PTR;
+	else if(strcmp(types,"query[TXT]") == 0)
+		querytype = TYPE_TXT;
+	else
+	{
+		// Return early to avoid accessing querytypedata out of bounds
+		if(debug) logg("Notice: Skipping unknown query type: %s (%i)", types, id);
+		disable_thread_lock();
+		return;
+	}
+
 	// Skip AAAA queries if user doesn't want to have them analyzed
-	if(!config.analyze_AAAA && strcmp(types,"query[AAAA]") == 0)
+	if(!config.analyze_AAAA && querytype == TYPE_AAAA)
 	{
 		if(debug) logg("Not analyzing AAAA query");
 		disable_thread_lock();
@@ -97,33 +121,6 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	// Log new query if in debug mode
 	char *proto = (type == UDP) ? "UDP" : "TCP";
 	if(debug) logg("**** new %s %s \"%s\" from %s (ID %i)", proto, types, domain, client, id);
-
-	// Determine query type
-	unsigned char querytype = 0;
-	if(strcmp(types,"query[A]") == 0)
-		querytype = TYPE_A;
-	else if(strcmp(types,"query[AAAA]") == 0)
-		querytype = TYPE_AAAA;
-	else if(strcmp(types,"query[ANY]") == 0)
-		querytype = TYPE_ANY;
-	else if(strcmp(types,"query[SRV]") == 0)
-		querytype = TYPE_SRV;
-	else if(strcmp(types,"query[SOA]") == 0)
-		querytype = TYPE_SOA;
-	else if(strcmp(types,"query[PTR]") == 0)
-		querytype = TYPE_PTR;
-	else if(strcmp(types,"query[TXT]") == 0)
-		querytype = TYPE_TXT;
-	else
-	{
-		// Return early to avoid accessing querytypedata out of bounds
-		if(debug) logg("Notice: Skipping unknown query type: %s (%i)", types, id);
-		free(domain);
-		free(domainbuffer);
-		free(client);
-		disable_thread_lock();
-		return;
-	}
 
 	// Update counters
 	int timeidx = findOverTimeID(overTimetimestamp);
