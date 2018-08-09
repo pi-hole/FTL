@@ -376,16 +376,18 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 		inet_ntop((flags & F_IPV4) ? AF_INET : AF_INET6, addr, dest, ADDRSTRLEN);
 	}
 
+	// Extract answer (used e.g. for detecting if a local config is a user-defined
+	// wildcard blocking entry in form "server=/tobeblocked.com/")
+	char *answer = dest;
+	if(flags & F_CNAME)
+		answer = "(CNAME)";
+	else if((flags & F_NEG) && (flags & F_NXDOMAIN))
+		answer = "(NXDOMAIN)";
+	else if(flags & F_NEG)
+		answer = "(NODATA)";
+
 	if(debug)
 	{
-		char *answer = dest;
-		if(flags & F_CNAME)
-			answer = "(CNAME)";
-		else if((flags & F_NEG) && (flags & F_NXDOMAIN))
-			answer = "(NXDOMAIN)";
-		else if(flags & F_NEG)
-			answer = "(NODATA)";
-
 		logg("**** got reply %s is %s (ID %i)", name, answer, id);
 		print_flags(flags);
 	}
@@ -429,7 +431,13 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 			counters.unknown--;
 			// Answered from a custom (user provided) cache file
 			counters.cached++;
-			queries[i].status = QUERY_CACHE;
+
+			if(strcmp(answer, "(NXDOMAIN)") == 0 ||
+			   strcmp(answer, "0.0.0.0") == 0 ||
+			   strcmp(answer, "::") == 0)
+				queries[i].status = QUERY_WILDCARD;
+			else
+				queries[i].status = QUERY_CACHE;
 
 			// Get time index
 			int querytimestamp, overTimetimestamp;
