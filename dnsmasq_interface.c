@@ -227,8 +227,7 @@ void FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id
 	// find the correct query with zero iterations, but it may happen that queries are processed
 	// asynchronously, e.g. for slow upstream relies to a huge amount of requests.
 	// We iterate from the most recent query down to at most MAXITER queries in the past to avoid
-	// iterating through the entire array of queries when queries that have not been recorded
-	// (like PTR queries, etc.) are processed.
+	// iterating through the entire array of queries
 	// MAX(0, a) is used to return 0 in case a is negative (negative array indices are harmful)
 
 	// Validate access only once for the maximum index (all lower will work)
@@ -629,7 +628,7 @@ void FTL_dnssec(int status, int id)
 {
 	// Process DNSSEC result for a domain
 	enable_thread_lock();
-	// Search for corresponding query indentified by ID
+	// Search for corresponding query identified by ID
 	bool found = false;
 	int i;
 	// Search match in known queries
