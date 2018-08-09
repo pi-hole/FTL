@@ -378,90 +378,65 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 	struct timeval response;
 	gettimeofday(&response, 0);
 
-	if(flags & F_CONFIG)
+	// Save status in corresponding query identified by dnsmasq's ID
+	bool found = false;
+	int i;
+
+	// Search match in known queries
+	// See comments in FTL_forwarded() for further details about this loop
+	validate_access("queries", counters.queries-1, false, __LINE__, __FUNCTION__, __FILE__);
+	int until = MAX(0, counters.queries-MAXITER);
+	for(i = counters.queries-1; i >= until; i--)
 	{
-		// Answered from local configuration, might be a wildcard or user-provided
-		// Save status in corresponding query identified by dnsmasq's ID
-		bool found = false;
-		int i;
-
-		// Search match in known queries
-		// See comments in FTL_forwarded() for further details about this loop
-		validate_access("queries", counters.queries-1, false, __LINE__, __FUNCTION__, __FILE__);
-		int until = MAX(0, counters.queries-MAXITER);
-		for(i = counters.queries-1; i >= until; i--)
+		// Check UUID of this query
+		if(queries[i].id == id)
 		{
-			// Check UUID of this query
-			if(queries[i].id == id)
-			{
-				found = true;
-				break;
-			}
+			found = true;
+			break;
 		}
+	}
 
-		if(!found)
-		{
-			// This may happen e.g. if the original query was a PTR query or "pi.hole"
-			// as we ignore them altogether
-			disable_thread_lock();
-			return;
-		}
-
-		if(!queries[i].complete)
-		{
-			// This query is no longer unknown
-			counters.unknown--;
-			// Answered from a custom (user provided) cache file
-			counters.cached++;
-			queries[i].status = QUERY_CACHE;
-
-			// Get time index
-			int querytimestamp, overTimetimestamp;
-			gettimestamp(&querytimestamp, &overTimetimestamp);
-			int timeidx = findOverTimeID(overTimetimestamp);
-			validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
-
-			overTime[timeidx].cached++;
-
-			// Save reply type and update individual reply counters
-			save_reply_type(flags, i, response);
-
-			// Hereby, this query is now fully determined
-			queries[i].complete = true;
-		}
-
-		// We are done here
+	if(!found)
+	{
+		// This may happen e.g. if the original query was a PTR query or "pi.hole"
+		// as we ignore them altogether
+		if(debug) logg("FTL_reply(): Query %i has not been found", id);
 		disable_thread_lock();
 		return;
 	}
-	else if((flags & F_FORWARD) || (flags & F_REVERSE))
+
+	if(queries[i].reply != REPLY_UNKNOWN)
 	{
-		// Search for corresponding query identified by dnsmasq's ID
-		bool found = false;
-		int i;
+		// Nothing to be done here
+		disable_thread_lock();
+		return;
+	}
 
-		// Search match in known queries
-		// See comments in FTL_forwarded() for further details about this loop
-		validate_access("queries", counters.queries-1, false, __LINE__, __FUNCTION__, __FILE__);
-		int until = MAX(0, counters.queries-MAXITER);
-		for(i = counters.queries-1; i >= until; i--)
-		{
-			// Check UUID of this query
-			if(queries[i].id == id)
-			{
-				found = true;
-				break;
-			}
-		}
+	if(flags & F_CONFIG)
+	{
+		// Answered from local configuration, might be a wildcard or user-provided
+		// This query is no longer unknown
+		counters.unknown--;
+		// Answered from a custom (user provided) cache file
+		counters.cached++;
+		queries[i].status = QUERY_CACHE;
 
-		if(!found)
-		{
-			// This may happen e.g. if the original query was a PTR query or "pi.hole"
-			// as we ignore them altogether
-			disable_thread_lock();
-			return;
-		}
+		// Get time index
+		int querytimestamp, overTimetimestamp;
+		gettimestamp(&querytimestamp, &overTimetimestamp);
+		int timeidx = findOverTimeID(overTimetimestamp);
+		validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 
+		overTime[timeidx].cached++;
+
+		// Save reply type and update individual reply counters
+		save_reply_type(flags, i, response);
+
+		// Hereby, this query is now fully determined
+		queries[i].complete = true;
+	}
+	else if(flags & F_FORWARD)
+	{
 		int domainID = queries[i].domainID;
 		validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
 		if(strcmp(domains[domainID].domain, name) == 0)
@@ -469,6 +444,11 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 			// Save reply type and update individual reply counters
 			save_reply_type(flags, i, response);
 		}
+	}
+	else if(flags & F_REVERSE)
+	{
+		// Save reply type and update individual reply counters
+		save_reply_type(flags, i, response);
 	}
 	else
 	{
