@@ -128,18 +128,6 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	overTime[timeidx].querytypedata[querytype-1]++;
 	counters.querytype[querytype-1]++;
 
-	// Skip rest of the analysis if this query is not of type A or AAAA
-	if(querytype != TYPE_A && querytype != TYPE_AAAA)
-	{
-		// Don't process this query further here, we already counted it
-		if(debug) logg("Notice: Skipping new query: %s (%i)", types, id);
-		free(domain);
-		free(domainbuffer);
-		free(client);
-		disable_thread_lock();
-		return;
-	}
-
 	// Go through already knows domains and see if it is one of them
 	int domainID = findDomainID(domain);
 
