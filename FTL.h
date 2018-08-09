@@ -150,6 +150,7 @@ typedef struct {
 	bool ignore_localhost;
 	unsigned char blockingmode;
 	bool regex_debugmode;
+	bool analyze_only_A_AAAA;
 } ConfigStruct;
 
 // Dynamic structs

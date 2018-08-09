@@ -219,6 +219,19 @@ void read_FTLconf(void)
 	else
 		logg("   REGEX_DEBUGMODE: Inactive");
 
+	// ANALYZE_ONLY_A_AND_AAAA
+	// defaults to: No
+	config.analyze_only_A_AAAA = false;
+	buffer = parse_FTLconf(fp, "ANALYZE_ONLY_A_AND_AAAA");
+
+	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
+		config.analyze_only_A_AAAA = true;
+
+	if(config.analyze_only_A_AAAA)
+		logg("   ANALYZE_ONLY_A_AND_AAAA: Enabled. Analyzing only A and AAAA queries");
+	else
+		logg("   ANALYZE_ONLY_A_AND_AAAA: Disabled. Analyzing all queries");
+
 	logg("Finished config file parsing");
 
 	// Release memory
