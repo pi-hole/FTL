@@ -97,8 +97,8 @@ void *GC_thread(void *val)
 						counters.cached--;
 						overTime[timeidx].cached--;
 						break;
-					case QUERY_BLACKLIST:
-						// Blocked by user's black list
+					case QUERY_BLACKLIST: // exact blocked
+					case QUERY_WILDCARD: // regex blocked (fall through)
 						counters.blocked--;
 						overTime[timeidx].blocked--;
 						domains[domainID].blockedcount--;
