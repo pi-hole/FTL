@@ -628,9 +628,9 @@ void read_data_from_DB(void)
 		}
 
 		int type = sqlite3_column_int(stmt, 2);
-		if(type != TYPE_A && type != TYPE_AAAA)
+		if(type < TYPE_A || type >= TYPE_MAX)
 		{
-			logg("DB warn: TYPE should be either 1 or 2 but not %i", type);
+			logg("DB warn: TYPE should not be %i", type);
 			continue;
 		}
 		// Don't import AAAA queries from database if the user set
