@@ -710,6 +710,12 @@ void save_reply_type(unsigned int flags, int queryID, struct timeval response)
 		queries[queryID].reply = REPLY_CNAME;
 		counters.reply_CNAME++;
 	}
+	else if(flags & F_REVERSE)
+	{
+		// reserve lookup
+		queries[queryID].reply = REPLY_DOMAIN;
+		counters.reply_domain++;
+	}
 	else
 	{
 		// Valid IP

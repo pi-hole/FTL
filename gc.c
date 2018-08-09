@@ -128,6 +128,10 @@ void *GC_thread(void *val)
 					counters.reply_IP--;
 					break;
 
+					case REPLY_DOMAIN: // reverse lookup
+					counters.reply_domain--;
+					break;
+
 					default: // Incomplete query, do nothing
 					break;
 				}
