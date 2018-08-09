@@ -494,7 +494,8 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 	if(((flags & F_HOSTS) && (flags & F_IMMORTAL)) ||
 	   ((flags & F_NAMEP) && (flags & F_DHCP)) ||
 	   (flags & F_FORWARD) ||
-	   (flags & F_REVERSE))
+	   (flags & F_REVERSE) ||
+	   (flags & F_RRNAME))
 	{
 		// List data: /etc/pihole/gravity.list, /etc/pihole/black.list, /etc/pihole/local.list, etc.
 		// or
@@ -520,6 +521,8 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 		else if(flags & F_FORWARD) // cached answer to previously forwarded request
 			requesttype = QUERY_CACHE;
 		else if(flags & F_REVERSE) // cached answer to reverse request (PTR)
+			requesttype = QUERY_CACHE;
+		else if(flags & F_RRNAME) // cached answer to TXT query
 			requesttype = QUERY_CACHE;
 		else
 		{
@@ -695,6 +698,11 @@ void save_reply_type(unsigned int flags, int queryID, struct timeval response)
 		// reserve lookup
 		queries[queryID].reply = REPLY_DOMAIN;
 		counters.reply_domain++;
+	}
+	else if(flags & F_RRNAME)
+	{
+		// TXT query
+		queries[queryID].reply = REPLY_RRNAME;
 	}
 	else
 	{

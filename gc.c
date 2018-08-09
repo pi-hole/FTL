@@ -132,7 +132,7 @@ void *GC_thread(void *val)
 					counters.reply_domain--;
 					break;
 
-					default: // Incomplete query, do nothing
+					default: // Incomplete query or TXT, do nothing
 					break;
 				}
 
