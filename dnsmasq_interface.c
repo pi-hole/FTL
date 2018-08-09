@@ -434,7 +434,7 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 		disable_thread_lock();
 		return;
 	}
-	else if(flags & F_FORWARD)
+	else if((flags & F_FORWARD) || (flags & F_REVERSE))
 	{
 		// Search for corresponding query identified by dnsmasq's ID
 		bool found = false;
@@ -469,10 +469,6 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 			// Save reply type and update individual reply counters
 			save_reply_type(flags, i, response);
 		}
-	}
-	else if(flags & F_REVERSE)
-	{
-		if(debug) logg("Skipping result of PTR query");
 	}
 	else
 	{
@@ -515,7 +511,10 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 	struct timeval response;
 	gettimeofday(&response, 0);
 
-	if(((flags & F_HOSTS) && (flags & F_IMMORTAL)) || ((flags & F_NAMEP) && (flags & F_DHCP)) || (flags & F_FORWARD))
+	if(((flags & F_HOSTS) && (flags & F_IMMORTAL)) ||
+	   ((flags & F_NAMEP) && (flags & F_DHCP)) ||
+	   (flags & F_FORWARD) ||
+	   (flags & F_REVERSE))
 	{
 		// List data: /etc/pihole/gravity.list, /etc/pihole/black.list, /etc/pihole/local.list, etc.
 		// or
@@ -539,6 +538,8 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 		else if((flags & F_NAMEP) && (flags & F_DHCP)) // DHCP server reply
 			requesttype = QUERY_CACHE;
 		else if(flags & F_FORWARD) // cached answer to previously forwarded request
+			requesttype = QUERY_CACHE;
+		else if(flags & F_REVERSE) // cached answer to reverse request (PTR)
 			requesttype = QUERY_CACHE;
 		else
 		{
