@@ -129,7 +129,7 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	counters.querytype[querytype-1]++;
 
 	// Skip rest of the analysis if this query is not of type A or AAAA
-	// but user wants to see only A and AAAA queried (pre-v4.1 behavior)
+	// but user wants to see only A and AAAA queries (pre-v4.1 behavior)
 	if(config.analyze_only_A_AAAA && querytype != TYPE_A && querytype != TYPE_AAAA)
 	{
 		// Don't process this query further here, we already counted it
@@ -413,8 +413,7 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 
 	if(!found)
 	{
-		// This may happen e.g. if the original query was a PTR query or "pi.hole"
-		// as we ignore them altogether
+		// This may happen e.g. if the original query was "pi.hole"
 		if(debug) logg("FTL_reply(): Query %i has not been found", id);
 		disable_thread_lock();
 		return;
@@ -435,7 +434,7 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 		// Answered from a custom (user provided) cache file
 		counters.cached++;
 
-		// Detect user-defined blocking rules in .conf files
+		// Detect user-defined blocking rules
 		if(strcmp(answer, "(NXDOMAIN)") == 0 ||
 		   strcmp(answer, "0.0.0.0") == 0 ||
 		   strcmp(answer, "::") == 0)
