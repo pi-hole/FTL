@@ -1534,6 +1534,10 @@ char *record_source(unsigned int index)
     return "config";
   else if (index == SRC_HOSTS)
     return HOSTSFILE;
+  /*----- Pi-hole modification -----*/
+  else if (index == SRC_REGEX)
+    return (char*)regexlistname;
+  /*--------------------------------*/
 
   for (ah = daemon->addn_hosts; ah; ah = ah->next)
     if (ah->index == index)

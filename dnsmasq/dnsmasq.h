@@ -464,7 +464,10 @@ struct crec {
 #define SRC_CONFIG    1
 #define SRC_HOSTS     2
 #define SRC_AH        3
-
+/*----- Pi-hole modification -----*/
+#define SRC_REGEX     4
+const char *regexlistname;
+/*--------------------------------*/
 
 /* struct sockaddr is not large enough to hold any address,
    and specifically not big enough to hold an IPv6 address.
