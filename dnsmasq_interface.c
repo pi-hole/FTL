@@ -939,7 +939,8 @@ static void block_single_domain(char *domain)
 
 	// Get IPv4/v6 addresses for blocking depending on user configures blocking mode
 	prepare_blocking_mode(&addr4, &addr6, &has_IPv4, &has_IPv6);
-	add_blocked_domain_cache(&addr4, &addr6, has_IPv4, has_IPv6, domain, NULL, 0, 0);
+	regexlistname = files.regexlist;
+	add_blocked_domain_cache(&addr4, &addr6, has_IPv4, has_IPv6, domain, NULL, 0, SRC_REGEX);
 
 	if(debug) logg("Added %s to cache", domain);
 
