@@ -132,7 +132,7 @@ void check_blocking_status(void)
 		// Parameter either not present in setupVars.conf
 		// or explicitly set to true
 		blockingstatus = BLOCKING_ENABLED;
-		message = "enable";
+		message = "enabled";
 		clearSetupVarsArray();
 	}
 	else
