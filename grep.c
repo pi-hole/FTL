@@ -124,26 +124,22 @@ int countlineswith(const char* str, const char* fname)
 
 void check_blocking_status(void)
 {
-	int disabled = countlineswith("#addn-hosts=/etc/pihole/gravity.list", files.dnsmasqconfig);
-	char *message = "";
+	char* blocking = read_setupVarsconf("BLOCKING");
+	char* message;
 
-	if(disabled < 0)
+	if(blocking == NULL || getSetupVarsBool(blocking))
 	{
-		// Failed to open file -> unknown status
-		blockingstatus = BLOCKING_UNKNOWN;
-		message = "unknown";
+		// Parameter either not present in setupVars.conf
+		// or explicitly set to true
+		blockingstatus = BLOCKING_ENABLED;
+		message = "enable";
+		clearSetupVarsArray();
 	}
-	else if(disabled > 0)
+	else
 	{
 		// Disabled
 		blockingstatus = BLOCKING_DISABLED;
 		message = "disabled";
-	}
-	else
-	{
-		// Enabled
-		blockingstatus = BLOCKING_ENABLED;
-		message = "enabled";
 	}
 
 	if(debug) logg("Blocking status is %s", message);
