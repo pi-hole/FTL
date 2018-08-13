@@ -32,8 +32,32 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	struct timeval request;
 	gettimeofday(&request, 0);
 
+	// Determine query type
+	unsigned char querytype = 0;
+	if(strcmp(types,"query[A]") == 0)
+		querytype = TYPE_A;
+	else if(strcmp(types,"query[AAAA]") == 0)
+		querytype = TYPE_AAAA;
+	else if(strcmp(types,"query[ANY]") == 0)
+		querytype = TYPE_ANY;
+	else if(strcmp(types,"query[SRV]") == 0)
+		querytype = TYPE_SRV;
+	else if(strcmp(types,"query[SOA]") == 0)
+		querytype = TYPE_SOA;
+	else if(strcmp(types,"query[PTR]") == 0)
+		querytype = TYPE_PTR;
+	else if(strcmp(types,"query[TXT]") == 0)
+		querytype = TYPE_TXT;
+	else
+	{
+		// Return early to avoid accessing querytypedata out of bounds
+		if(debug) logg("Notice: Skipping unknown query type: %s (%i)", types, id);
+		disable_thread_lock();
+		return;
+	}
+
 	// Skip AAAA queries if user doesn't want to have them analyzed
-	if(!config.analyze_AAAA && strcmp(types,"query[AAAA]") == 0)
+	if(!config.analyze_AAAA && querytype == TYPE_AAAA)
 	{
 		if(debug) logg("Not analyzing AAAA query");
 		disable_thread_lock();
@@ -98,33 +122,6 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	char *proto = (type == UDP) ? "UDP" : "TCP";
 	if(debug) logg("**** new %s %s \"%s\" from %s (ID %i)", proto, types, domain, client, id);
 
-	// Determine query type
-	unsigned char querytype = 0;
-	if(strcmp(types,"query[A]") == 0)
-		querytype = TYPE_A;
-	else if(strcmp(types,"query[AAAA]") == 0)
-		querytype = TYPE_AAAA;
-	else if(strcmp(types,"query[ANY]") == 0)
-		querytype = TYPE_ANY;
-	else if(strcmp(types,"query[SRV]") == 0)
-		querytype = TYPE_SRV;
-	else if(strcmp(types,"query[SOA]") == 0)
-		querytype = TYPE_SOA;
-	else if(strcmp(types,"query[PTR]") == 0)
-		querytype = TYPE_PTR;
-	else if(strcmp(types,"query[TXT]") == 0)
-		querytype = TYPE_TXT;
-	else
-	{
-		// Return early to avoid accessing querytypedata out of bounds
-		if(debug) logg("Notice: Skipping unknown query type: %s (%i)", types, id);
-		free(domain);
-		free(domainbuffer);
-		free(client);
-		disable_thread_lock();
-		return;
-	}
-
 	// Update counters
 	int timeidx = findOverTimeID(overTimetimestamp);
 	validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
@@ -132,7 +129,8 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	counters.querytype[querytype-1]++;
 
 	// Skip rest of the analysis if this query is not of type A or AAAA
-	if(querytype != TYPE_A && querytype != TYPE_AAAA)
+	// but user wants to see only A and AAAA queries (pre-v4.1 behavior)
+	if(config.analyze_only_A_AAAA && querytype != TYPE_A && querytype != TYPE_AAAA)
 	{
 		// Don't process this query further here, we already counted it
 		if(debug) logg("Notice: Skipping new query: %s (%i)", types, id);
@@ -242,8 +240,7 @@ void FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id
 	// find the correct query with zero iterations, but it may happen that queries are processed
 	// asynchronously, e.g. for slow upstream relies to a huge amount of requests.
 	// We iterate from the most recent query down to at most MAXITER queries in the past to avoid
-	// iterating through the entire array of queries when queries that have not been recorded
-	// (like PTR queries, etc.) are processed.
+	// iterating through the entire array of queries
 	// MAX(0, a) is used to return 0 in case a is negative (negative array indices are harmful)
 
 	// Validate access only once for the maximum index (all lower will work)
@@ -396,96 +393,71 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 	struct timeval response;
 	gettimeofday(&response, 0);
 
-	if(flags & F_CONFIG)
+	// Save status in corresponding query identified by dnsmasq's ID
+	bool found = false;
+	int i;
+
+	// Search match in known queries
+	// See comments in FTL_forwarded() for further details about this loop
+	validate_access("queries", counters.queries-1, false, __LINE__, __FUNCTION__, __FILE__);
+	int until = MAX(0, counters.queries-MAXITER);
+	for(i = counters.queries-1; i >= until; i--)
 	{
-		// Answered from local configuration, might be a wildcard or user-provided
-		// Save status in corresponding query identified by dnsmasq's ID
-		bool found = false;
-		int i;
-
-		// Search match in known queries
-		// See comments in FTL_forwarded() for further details about this loop
-		validate_access("queries", counters.queries-1, false, __LINE__, __FUNCTION__, __FILE__);
-		int until = MAX(0, counters.queries-MAXITER);
-		for(i = counters.queries-1; i >= until; i--)
+		// Check UUID of this query
+		if(queries[i].id == id)
 		{
-			// Check UUID of this query
-			if(queries[i].id == id)
-			{
-				found = true;
-				break;
-			}
+			found = true;
+			break;
 		}
+	}
 
-		if(!found)
-		{
-			// This may happen e.g. if the original query was a PTR query or "pi.hole"
-			// as we ignore them altogether
-			disable_thread_lock();
-			return;
-		}
-
-		if(!queries[i].complete)
-		{
-			// This query is no longer unknown
-			counters.unknown--;
-			// Answered from a custom (user provided) cache file
-			counters.cached++;
-
-			if(strcmp(answer, "(NXDOMAIN)") == 0 ||
-			   strcmp(answer, "0.0.0.0") == 0 ||
-			   strcmp(answer, "::") == 0)
-				queries[i].status = QUERY_WILDCARD;
-			else
-				queries[i].status = QUERY_CACHE;
-
-			// Get time index
-			int querytimestamp, overTimetimestamp;
-			gettimestamp(&querytimestamp, &overTimetimestamp);
-			int timeidx = findOverTimeID(overTimetimestamp);
-			validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
-
-			overTime[timeidx].cached++;
-
-			// Save reply type and update individual reply counters
-			save_reply_type(flags, i, response);
-
-			// Hereby, this query is now fully determined
-			queries[i].complete = true;
-		}
-
-		// We are done here
+	if(!found)
+	{
+		// This may happen e.g. if the original query was "pi.hole"
+		if(debug) logg("FTL_reply(): Query %i has not been found", id);
 		disable_thread_lock();
 		return;
 	}
+
+	if(queries[i].reply != REPLY_UNKNOWN)
+	{
+		// Nothing to be done here
+		disable_thread_lock();
+		return;
+	}
+
+	if(flags & F_CONFIG)
+	{
+		// Answered from local configuration, might be a wildcard or user-provided
+		// This query is no longer unknown
+		counters.unknown--;
+		// Answered from a custom (user provided) cache file
+		counters.cached++;
+
+		// Detect user-defined blocking rules
+		if(strcmp(answer, "(NXDOMAIN)") == 0 ||
+		   strcmp(answer, "0.0.0.0") == 0 ||
+		   strcmp(answer, "::") == 0)
+			queries[i].status = QUERY_WILDCARD;
+		else
+			queries[i].status = QUERY_CACHE;
+
+		// Get time index
+		int querytimestamp, overTimetimestamp;
+		gettimestamp(&querytimestamp, &overTimetimestamp);
+		int timeidx = findOverTimeID(overTimetimestamp);
+		validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
+
+		overTime[timeidx].cached++;
+
+		// Save reply type and update individual reply counters
+		save_reply_type(flags, i, response);
+
+		// Hereby, this query is now fully determined
+		queries[i].complete = true;
+	}
 	else if(flags & F_FORWARD)
 	{
-		// Search for corresponding query identified by dnsmasq's ID
-		bool found = false;
-		int i;
-
-		// Search match in known queries
-		// See comments in FTL_forwarded() for further details about this loop
-		validate_access("queries", counters.queries-1, false, __LINE__, __FUNCTION__, __FILE__);
-		int until = MAX(0, counters.queries-MAXITER);
-		for(i = counters.queries-1; i >= until; i--)
-		{
-			// Check UUID of this query
-			if(queries[i].id == id)
-			{
-				found = true;
-				break;
-			}
-		}
-
-		if(!found)
-		{
-			// This may happen e.g. if the original query was a PTR query or "pi.hole"
-			// as we ignore them altogether
-			disable_thread_lock();
-			return;
-		}
-
 		int domainID = queries[i].domainID;
 		validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
 		if(strcmp(domains[domainID].domain, name) == 0)
@@ -496,7 +468,8 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 	}
 	else if(flags & F_REVERSE)
 	{
-		if(debug) logg("Skipping result of PTR query");
+		// Save reply type and update individual reply counters
+		save_reply_type(flags, i, response);
 	}
 	else
 	{
@@ -539,7 +512,11 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 	struct timeval response;
 	gettimeofday(&response, 0);
 
-	if(((flags & F_HOSTS) && (flags & F_IMMORTAL)) || ((flags & F_NAMEP) && (flags & F_DHCP)) || (flags & F_FORWARD))
+	if(((flags & F_HOSTS) && (flags & F_IMMORTAL)) ||
+	   ((flags & F_NAMEP) && (flags & F_DHCP)) ||
+	   (flags & F_FORWARD) ||
+	   (flags & F_REVERSE) ||
+	   (flags & F_RRNAME))
 	{
 		// List data: /etc/pihole/gravity.list, /etc/pihole/black.list, /etc/pihole/local.list, etc.
 		// or
@@ -563,6 +540,10 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 		else if((flags & F_NAMEP) && (flags & F_DHCP)) // DHCP server reply
 			requesttype = QUERY_CACHE;
 		else if(flags & F_FORWARD) // cached answer to previously forwarded request
+			requesttype = QUERY_CACHE;
+		else if(flags & F_REVERSE) // cached answer to reverse request (PTR)
+			requesttype = QUERY_CACHE;
+		else if(flags & F_RRNAME) // cached answer to TXT query
 			requesttype = QUERY_CACHE;
 		else
 		{
@@ -652,7 +633,7 @@ void FTL_dnssec(int status, int id)
 {
 	// Process DNSSEC result for a domain
 	enable_thread_lock();
-	// Search for corresponding query indentified by ID
+	// Search for corresponding query identified by ID
 	bool found = false;
 	int i;
 	// Search match in known queries
@@ -732,6 +713,17 @@ void save_reply_type(unsigned int flags, int queryID, struct timeval response)
 		// <CNAME>
 		queries[queryID].reply = REPLY_CNAME;
 		counters.reply_CNAME++;
+	}
+	else if(flags & F_REVERSE)
+	{
+		// reserve lookup
+		queries[queryID].reply = REPLY_DOMAIN;
+		counters.reply_domain++;
+	}
+	else if(flags & F_RRNAME)
+	{
+		// TXT query
+		queries[queryID].reply = REPLY_RRNAME;
 	}
 	else
 	{

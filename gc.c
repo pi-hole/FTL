@@ -97,8 +97,8 @@ void *GC_thread(void *val)
 						counters.cached--;
 						overTime[timeidx].cached--;
 						break;
-					case QUERY_BLACKLIST:
-						// Blocked by user's black list
+					case QUERY_BLACKLIST: // exact blocked
+					case QUERY_WILDCARD: // regex blocked (fall through)
 						counters.blocked--;
 						overTime[timeidx].blocked--;
 						domains[domainID].blockedcount--;
@@ -128,7 +128,11 @@ void *GC_thread(void *val)
 					counters.reply_IP--;
 					break;
 
-					default: // Incomplete query, do nothing
+					case REPLY_DOMAIN: // reverse lookup
+					counters.reply_domain--;
+					break;
+
+					default: // Incomplete query or TXT, do nothing
 					break;
 				}
 
