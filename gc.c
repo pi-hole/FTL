@@ -99,6 +99,7 @@ void *GC_thread(void *val)
 						break;
 					case QUERY_BLACKLIST: // exact blocked
 					case QUERY_WILDCARD: // regex blocked (fall through)
+					case QUERY_EXTERNAL_BLOCKED: // blocked by upstream provider (fall through)
 						counters.blocked--;
 						overTime[timeidx].blocked--;
 						domains[domainID].blockedcount--;

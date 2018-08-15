@@ -452,9 +452,10 @@ void save_to_DB(void)
 
 		// Total counter information (delta computation)
 		total++;
-		if(queries[i].status == 1 ||
-		   queries[i].status == 4 ||
-		   queries[i].status == 5)
+		if(queries[i].status == QUERY_GRAVITY ||
+		   queries[i].status == QUERY_BLACKLIST ||
+		   queries[i].status == QUERY_WILDCARD ||
+		   queries[i].status == QUERY_EXTERNAL_BLOCKED)
 			blocked++;
 
 		// Update lasttimestamp variable with timestamp of the latest stored query
@@ -641,9 +642,9 @@ void read_data_from_DB(void)
 		}
 
 		int status = sqlite3_column_int(stmt, 3);
-		if(status < QUERY_UNKNOWN || status > QUERY_BLACKLIST)
+		if(status < QUERY_UNKNOWN || status > QUERY_EXTERNAL_BLOCKED)
 		{
-			logg("DB warn: STATUS should be within [0,5] but is %i", status);
+			logg("DB warn: STATUS should be within [%i,%i] but is %i", QUERY_UNKNOWN, QUERY_EXTERNAL_BLOCKED, status);
 			continue;
 		}
 
@@ -704,6 +705,7 @@ void read_data_from_DB(void)
 		queries[queryID].id = 0; // This is dnsmasq's internal ID. We don't store it in the database
 		queries[queryID].complete = true; // Mark as all information is avaiable
 		queries[queryID].response = 0;
+		queries[queryID].AD = false;
 		lastDBimportedtimestamp = queryTimeStamp;
 
 		// Handle type counters
@@ -733,6 +735,7 @@ void read_data_from_DB(void)
 			case QUERY_GRAVITY: // Blocked by gravity.list
 			case QUERY_WILDCARD: // Blocked by regex filter
 			case QUERY_BLACKLIST: // Blocked by black.list
+			case QUERY_EXTERNAL_BLOCKED: // Blocked by external provider
 				counters.blocked++;
 				overTime[timeidx].blocked++;
 				domains[domainID].blockedcount++;
