@@ -603,6 +603,8 @@ void getAllQueries(char *client_message, int *sock)
 	char *clientname = NULL;
 	bool filterclientname = false;
 
+	int querytype = 0;
+
 	// Time filtering?
 	if(command(client_message, ">getallqueries-time")) {
 		sscanf(client_message, ">getallqueries-time %i %i",&from, &until);
@@ -622,6 +624,17 @@ void getAllQueries(char *client_message, int *sock)
 		if(clientname == NULL) return;
 		sscanf(client_message, ">getallqueries-client %255s", clientname);
 		filterclientname = true;
+	}
+	// Query type filtering?
+	if(command(client_message, ">getallqueries-qtype")) {
+		// Get query type we want to see only
+		sscanf(client_message, ">getallqueries-qtype %i", &querytype);
+		if(querytype < 1 || querytype >= TYPE_MAX)
+		{
+			// Invalid query type requested
+			querytype = 0;
+		}
+		logg("Requesting query type %i", querytype);
 	}
 
 	int ibeg = 0, num;
@@ -693,6 +706,9 @@ void getAllQueries(char *client_message, int *sock)
 			    strcmp(clients[queries[i].clientID].name, clientname) != 0))
 				continue;
 		}
+
+		if(querytype != 0 && querytype != queries[i].type)
+			continue;
 
 		char *domain = domains[queries[i].domainID].domain;
 		char *client;
