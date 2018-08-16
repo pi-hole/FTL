@@ -762,7 +762,7 @@ void getAllQueries(char *client_message, int *sock)
 			                       && queries[i].status != QUERY_WILDCARD
 			                       && queries[i].status != QUERY_BLACKLIST)
 				continue;
-			// Does the use want to see queries answered from local cache?
+			// Does the user want to see queries answered from local cache?
 			else if(forwarddestid == -1 && queries[i].status != QUERY_CACHE)
 				continue;
 			// Does the user want to see queries answered by an upstream server?
