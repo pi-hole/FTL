@@ -614,6 +614,17 @@ void getAllQueries(char *client_message, int *sock)
 		sscanf(client_message, ">getallqueries-time %i %i",&from, &until);
 	}
 
+	// Query type filtering?
+	if(command(client_message, ">getallqueries-qtype")) {
+		// Get query type we want to see only
+		sscanf(client_message, ">getallqueries-qtype %i", &querytype);
+		if(querytype < 1 || querytype >= TYPE_MAX)
+		{
+			// Invalid query type requested
+			return;
+		}
+	}
+
 	// Forward destination filtering?
 	if(command(client_message, ">getallqueries-forward")) {
 		// Get forward destination name we want to see only (limit length to 255 chars)
@@ -669,17 +680,6 @@ void getAllQueries(char *client_message, int *sock)
 		if(clientname == NULL) return;
 		sscanf(client_message, ">getallqueries-client %255s", clientname);
 		filterclientname = true;
-	}
-
-	// Query type filtering?
-	if(command(client_message, ">getallqueries-qtype")) {
-		// Get query type we want to see only
-		sscanf(client_message, ">getallqueries-qtype %i", &querytype);
-		if(querytype < 1 || querytype >= TYPE_MAX)
-		{
-			// Invalid query type requested
-			querytype = 0;
-		}
 	}
 
 	int ibeg = 0, num;
