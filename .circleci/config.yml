@@ -12,7 +12,10 @@ version: 2
     - run:
         name: "Build"
         command: |
-          make CFLAGS="${CFLAGS}" GIT_BRANCH="${CIRCLE_BRANCH}" GIT_TAG="${CIRCLE_TAG}"
+          BRANCH=$([ -z "$CIRCLE_TAG" ] && echo "$CIRCLE_BRANCH" || echo "master")
+          echo "export BRANCH=$BRANCH" >> $BASH_ENV
+
+          make CFLAGS="${CFLAGS}" GIT_BRANCH="${BRANCH}" GIT_TAG="${CIRCLE_TAG}"
           file pihole-FTL
     - run:
         name: "Upload"
@@ -21,8 +24,8 @@ version: 2
           sha1sum pihole-FTL-* > ${BIN_NAME}.sha1
           wget https://ftl.pi-hole.net:8080/FTL-client
           chmod +x ./FTL-client
-          [[ "$CIRCLE_PR_NUMBER" == "" ]] && ./FTL-client "${CIRCLE_BRANCH}" "${BIN_NAME}" "${FTL_SECRET}"
-          [[ "$CIRCLE_PR_NUMBER" == "" ]] && ./FTL-client "${CIRCLE_BRANCH}" "${BIN_NAME}.sha1" "${FTL_SECRET}"
+          [[ "$CIRCLE_PR_NUMBER" == "" ]] && ./FTL-client "${BRANCH}" "${BIN_NAME}" "${FTL_SECRET}"
+          [[ "$CIRCLE_PR_NUMBER" == "" ]] && ./FTL-client "${BRANCH}" "${BIN_NAME}.sha1" "${FTL_SECRET}"
           rm ./FTL-client
           ls -lah .
 
