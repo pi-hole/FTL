@@ -603,10 +603,67 @@ void getAllQueries(char *client_message, int *sock)
 	char *clientname = NULL;
 	bool filterclientname = false;
 
+	int querytype = 0;
+
+	char *forwarddest = NULL;
+	bool filterforwarddest = false;
+	int forwarddestid = 0;
+
 	// Time filtering?
 	if(command(client_message, ">getallqueries-time")) {
 		sscanf(client_message, ">getallqueries-time %i %i",&from, &until);
 	}
+
+	// Query type filtering?
+	if(command(client_message, ">getallqueries-qtype")) {
+		// Get query type we want to see only
+		sscanf(client_message, ">getallqueries-qtype %i", &querytype);
+		if(querytype < 1 || querytype >= TYPE_MAX)
+		{
+			// Invalid query type requested
+			return;
+		}
+	}
+
+	// Forward destination filtering?
+	if(command(client_message, ">getallqueries-forward")) {
+		// Get forward destination name we want to see only (limit length to 255 chars)
+		forwarddest = calloc(256, sizeof(char));
+		if(forwarddest == NULL) return;
+		sscanf(client_message, ">getallqueries-forward %255s", forwarddest);
+		filterforwarddest = true;
+
+		if(strcmp(forwarddest, "cache") == 0)
+			forwarddestid = -1;
+		else if(strcmp(forwarddest, "blocklist") == 0)
+			forwarddestid = -2;
+		else
+		{
+			// Iterate through all known forward destinations
+			int i;
+			forwarddestid = -3;
+			for(i = 0; i < counters.forwarded; i++)
+			{
+				// Try to match the requested string against their IP addresses and
+				// (if available) their host names
+				if(strcmp(forwarded[i].ip, forwarddest) == 0 ||
+				   (forwarded[i].name != NULL &&
+				    strcmp(forwarded[i].name, forwarddest) == 0))
+				{
+					forwarddestid = i;
+					break;
+				}
+			}
+			if(forwarddestid < 0)
+			{
+				// Requested forward destination has not been found, we directly
+				// exit here as there is no data to be returned
+				free(forwarddest);
+				return;
+			}
+		}
+	}
+
 	// Domain filtering?
 	if(command(client_message, ">getallqueries-domain")) {
 		// Get domain name we want to see only (limit length to 255 chars)
@@ -615,6 +672,7 @@ void getAllQueries(char *client_message, int *sock)
 		sscanf(client_message, ">getallqueries-domain %255s", domainname);
 		filterdomainname = true;
 	}
+
 	// Client filtering?
 	if(command(client_message, ">getallqueries-client")) {
 		// Get client name we want to see only (limit length to 255 chars)
@@ -694,6 +752,24 @@ void getAllQueries(char *client_message, int *sock)
 				continue;
 		}
 
+		if(querytype != 0 && querytype != queries[i].type)
+			continue;
+
+		if(filterforwarddest)
+		{
+			// Does the user want to see queries answered from blocking lists?
+			if(forwarddestid == -2 && queries[i].status != QUERY_GRAVITY
+			                       && queries[i].status != QUERY_WILDCARD
+			                       && queries[i].status != QUERY_BLACKLIST)
+				continue;
+			// Does the user want to see queries answered from local cache?
+			else if(forwarddestid == -1 && queries[i].status != QUERY_CACHE)
+				continue;
+			// Does the user want to see queries answered by an upstream server?
+			else if(forwarddestid >= 0 && forwarddestid != queries[i].forwardID)
+				continue;
+		}
+
 		char *domain = domains[queries[i].domainID].domain;
 		char *client;
 		if(clients[queries[i].clientID].name != NULL &&
@@ -734,6 +810,9 @@ void getAllQueries(char *client_message, int *sock)
 
 	if(filterdomainname)
 		free(domainname);
+
+	if(filterforwarddest)
+		free(forwarddest);
 }
 
 void getRecentBlocked(char *client_message, int *sock)
