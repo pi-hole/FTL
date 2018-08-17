@@ -17,6 +17,7 @@ void print_flags(unsigned int flags);
 void save_reply_type(unsigned int flags, int queryID, struct timeval response);
 unsigned long converttimeval(struct timeval time);
 static void block_single_domain(char *domain);
+static void query_externally_blocked(int i);
 
 char flagnames[28][12] = {"F_IMMORTAL ", "F_NAMEP ", "F_REVERSE ", "F_FORWARD ", "F_DHCP ", "F_NEG ", "F_HOSTS ", "F_IPV4 ", "F_IPV6 ", "F_BIGNAME ", "F_NXDOMAIN ", "F_CNAME ", "F_DNSKEY ", "F_CONFIG ", "F_DS ", "F_DNSSECOK ", "F_UPSTREAM ", "F_RRNAME ", "F_SERVER ", "F_QUERY ", "F_NOERR ", "F_AUTH ", "F_DNSSEC ", "F_KEYTAG ", "F_SECSTAT ", "F_NO_RR ", "F_IPSET ", "F_NOEXTRA "};
 
@@ -470,23 +471,7 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 
 			// If received NXDOMAIN and AD bit is set, Quad9 may have blocked this query
 			if(flags & F_NXDOMAIN && queries[i].AD)
-			{
-				// Correct counters as we won't count this as forwarded ...
-				counters.forwarded--;
-				overTime[queries[i].timeidx].forwarded--;
-				validate_access("forwarded", queries[i].forwardID, true, __LINE__, __FUNCTION__, __FILE__);
-				forwarded[queries[i].forwardID].count--;
-
-				// ... but as blocked
-				counters.blocked++;
-				overTime[queries[i].timeidx].blocked++;
-				validate_access("domains", queries[i].domainID, true, __LINE__, __FUNCTION__, __FILE__);
-				domains[queries[i].domainID].blockedcount++;
-				validate_access("clients", queries[i].clientID, true, __LINE__, __FUNCTION__, __FILE__);
-				clients[queries[i].clientID].blockedcount++;
-
-				queries[i].status = QUERY_EXTERNAL_BLOCKED;
-			}
+				query_externally_blocked(i);
 		}
 	}
 	else if(flags & F_REVERSE)
@@ -501,6 +486,25 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 	}
 
 	disable_thread_lock();
+}
+
+static void query_externally_blocked(int i)
+{
+	// Correct counters as we won't count this as forwarded ...
+	counters.forwarded--;
+	overTime[queries[i].timeidx].forwarded--;
+	validate_access("forwarded", queries[i].forwardID, true, __LINE__, __FUNCTION__, __FILE__);
+	forwarded[queries[i].forwardID].count--;
+
+	// ... but as blocked
+	counters.blocked++;
+	overTime[queries[i].timeidx].blocked++;
+	validate_access("domains", queries[i].domainID, true, __LINE__, __FUNCTION__, __FILE__);
+	domains[queries[i].domainID].blockedcount++;
+	validate_access("clients", queries[i].clientID, true, __LINE__, __FUNCTION__, __FILE__);
+	clients[queries[i].clientID].blockedcount++;
+
+	queries[i].status = QUERY_EXTERNAL_BLOCKED;
 }
 
 void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg, int id)
