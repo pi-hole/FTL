@@ -471,7 +471,37 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 
 			// If received NXDOMAIN and AD bit is set, Quad9 may have blocked this query
 			if(flags & F_NXDOMAIN && queries[i].AD)
+			{
 				query_externally_blocked(i);
+			}
+
+			// If received one of the following IPs as reply, OpenDNS
+			// (Cisco Umbrella) blocked this query
+			// See https://support.opendns.com/hc/en-us/articles/227986927-What-are-the-Cisco-Umbrella-Block-Page-IP-Addresses-
+			// for a full list of these IP addresses
+			else if(flags & F_IPV4 &&
+				(strcmp("146.112.61.104", answer) == 0 ||
+				 strcmp("146.112.61.105", answer) == 0 ||
+				 strcmp("146.112.61.106", answer) == 0 ||
+				 strcmp("146.112.61.107", answer) == 0 ||
+				 strcmp("146.112.61.108", answer) == 0 ||
+				 strcmp("146.112.61.109", answer) == 0 ||
+				 strcmp("146.112.61.110", answer) == 0))
+			{
+					query_externally_blocked(i);
+			}
+
+			else if(flags & F_IPV6 &&
+				(strcmp("::ffff:146.112.61.104", answer) == 0 ||
+				 strcmp("::ffff:146.112.61.105", answer) == 0 ||
+				 strcmp("::ffff:146.112.61.106", answer) == 0 ||
+				 strcmp("::ffff:146.112.61.107", answer) == 0 ||
+				 strcmp("::ffff:146.112.61.108", answer) == 0 ||
+				 strcmp("::ffff:146.112.61.109", answer) == 0 ||
+				 strcmp("::ffff:146.112.61.110", answer) == 0))
+			{
+					query_externally_blocked(i);
+			}
 		}
 	}
 	else if(flags & F_REVERSE)
