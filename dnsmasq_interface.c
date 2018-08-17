@@ -165,6 +165,8 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	queries[queryID].reply = REPLY_UNKNOWN;
 	// Store DNSSEC result for this domain
 	queries[queryID].dnssec = DNSSEC_UNSPECIFIED;
+	// AD has not yet been received for this query
+	queries[queryID].AD = false;
 
 	// Increase DNS queries counter
 	counters.queries++;
@@ -460,10 +462,31 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 	{
 		int domainID = queries[i].domainID;
 		validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
+
 		if(strcmp(domains[domainID].domain, name) == 0)
 		{
 			// Save reply type and update individual reply counters
 			save_reply_type(flags, i, response);
+
+			// If received NXDOMAIN and AD bit is set, Quad9 may have blocked this query
+			if(flags & F_NXDOMAIN && queries[i].AD)
+			{
+				// Correct counters as we won't count this as forwarded ...
+				counters.forwarded--;
+				overTime[queries[i].timeidx].forwarded--;
+				validate_access("forwarded", queries[i].forwardID, true, __LINE__, __FUNCTION__, __FILE__);
+				forwarded[queries[i].forwardID].count--;
+
+				// ... but as blocked
+				counters.blocked++;
+				overTime[queries[i].timeidx].blocked++;
+				validate_access("domains", queries[i].domainID, true, __LINE__, __FUNCTION__, __FILE__);
+				domains[queries[i].domainID].blockedcount++;
+				validate_access("clients", queries[i].clientID, true, __LINE__, __FUNCTION__, __FILE__);
+				clients[queries[i].clientID].blockedcount++;
+
+				queries[i].status = QUERY_EXTERNAL_BLOCKED;
+			}
 		}
 	}
 	else if(flags & F_REVERSE)
@@ -672,6 +695,47 @@ void FTL_dnssec(int status, int id)
 		queries[i].dnssec = DNSSEC_INSECURE;
 	else
 		queries[i].dnssec = DNSSEC_BOGUS;
+
+	disable_thread_lock();
+}
+
+void FTL_header_ADbit(unsigned char header4, int id)
+{
+	enable_thread_lock();
+	// Check if AD bit is set in DNS header
+	if(!(header4 & 0x20))
+	{
+		// AD bit not set
+		disable_thread_lock();
+		return;
+	}
+
+	// Search for corresponding query identified by ID
+	bool found = false;
+	int i;
+	// Search match in known queries
+	// See comments in FTL_forwarded() for further details about this loop
+	validate_access("queries", counters.queries-1, false, __LINE__, __FUNCTION__, __FILE__);
+	int until = MAX(0, counters.queries-MAXITER);
+	for(i = counters.queries-1; i >= until; i--)
+	{
+		// Check both UUID and generation of this query
+		if(queries[i].id == id)
+		{
+			found = true;
+			break;
+		}
+	}
+
+	if(!found)
+	{
+		// This may happen e.g. if the original query was an unhandled query type
+		disable_thread_lock();
+		return;
+	}
+
+	// Store AD bit in query data
+	queries[i].AD = true;
 
 	disable_thread_lock();
 }
