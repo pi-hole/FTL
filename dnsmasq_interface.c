@@ -479,26 +479,26 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 			// (Cisco Umbrella) blocked this query
 			// See https://support.opendns.com/hc/en-us/articles/227986927-What-are-the-Cisco-Umbrella-Block-Page-IP-Addresses-
 			// for a full list of these IP addresses
-			else if(flags & F_IPV4 &&
+			else if(flags & F_IPV4 && answer != NULL &&
 				(strcmp("146.112.61.104", answer) == 0 ||
 				 strcmp("146.112.61.105", answer) == 0 ||
 				 strcmp("146.112.61.106", answer) == 0 ||
 				 strcmp("146.112.61.107", answer) == 0 ||
 				 strcmp("146.112.61.108", answer) == 0 ||
 				 strcmp("146.112.61.109", answer) == 0 ||
-				 strcmp("146.112.61.110", answer) == 0))
+				 strcmp("146.112.61.110", answer) == 0 ))
 			{
 					query_externally_blocked(i);
 			}
 
-			else if(flags & F_IPV6 &&
+			else if(flags & F_IPV6 && answer != NULL &&
 				(strcmp("::ffff:146.112.61.104", answer) == 0 ||
 				 strcmp("::ffff:146.112.61.105", answer) == 0 ||
 				 strcmp("::ffff:146.112.61.106", answer) == 0 ||
 				 strcmp("::ffff:146.112.61.107", answer) == 0 ||
 				 strcmp("::ffff:146.112.61.108", answer) == 0 ||
 				 strcmp("::ffff:146.112.61.109", answer) == 0 ||
-				 strcmp("::ffff:146.112.61.110", answer) == 0))
+				 strcmp("::ffff:146.112.61.110", answer) == 0 ))
 			{
 					query_externally_blocked(i);
 			}
