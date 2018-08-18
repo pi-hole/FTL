@@ -2,7 +2,7 @@ version: 2
 
 .job_template: &job_template
   docker:
-    - image: thepihole/ftl-build:$CIRCLE_JOB
+    - image: pihole/ftl-build:$CIRCLE_JOB
   steps:
     - checkout
     - run:
