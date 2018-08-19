@@ -23,8 +23,13 @@ char flagnames[28][12] = {"F_IMMORTAL ", "F_NAMEP ", "F_REVERSE ", "F_FORWARD ",
 
 void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *types, int id, char type)
 {
+	// Don't analyze anything if in PRIVACY_NOSTATS mode
+	if(config.privacylevel >= PRIVACY_NOSTATS)
+		return;
+
 	// Create new query in data structure
 	enable_thread_lock();
+
 	// Get timestamp
 	int querytimestamp, overTimetimestamp;
 	gettimestamp(&querytimestamp, &overTimetimestamp);
@@ -222,6 +227,10 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 
 void FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id)
 {
+	// Don't analyze anything if in PRIVACY_NOSTATS mode
+	if(config.privacylevel >= PRIVACY_NOSTATS)
+		return;
+
 	// Save that this query got forwarded to an upstream server
 	enable_thread_lock();
 
@@ -344,6 +353,7 @@ void FTL_dnsmasq_reload(void)
 {
 	// This funtion is called by the dnsmasq code on receive of SIGHUP
 	// *before* clearing the cache and rereading the lists
+	// This is the only hook that is not skipped in PRIVACY_NOSTATS mode
 
 	// Called when dnsmasq re-reads its config and hosts files
 	// Reset number of blocked domains
@@ -367,6 +377,10 @@ void FTL_dnsmasq_reload(void)
 
 void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 {
+	// Don't analyze anything if in PRIVACY_NOSTATS mode
+	if(config.privacylevel >= PRIVACY_NOSTATS)
+		return;
+
 	// Interpret hosts files that have been read by dnsmasq
 	enable_thread_lock();
 	// Determine returned result if available
@@ -539,6 +553,10 @@ static void query_externally_blocked(int i)
 
 void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg, int id)
 {
+	// Don't analyze anything if in PRIVACY_NOSTATS mode
+	if(config.privacylevel >= PRIVACY_NOSTATS)
+		return;
+
 	// Save that this query got answered from cache
 	enable_thread_lock();
 	char dest[ADDRSTRLEN]; dest[0] = '\0';
@@ -688,6 +706,10 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 
 void FTL_dnssec(int status, int id)
 {
+	// Don't analyze anything if in PRIVACY_NOSTATS mode
+	if(config.privacylevel >= PRIVACY_NOSTATS)
+		return;
+
 	// Process DNSSEC result for a domain
 	enable_thread_lock();
 	// Search for corresponding query identified by ID
@@ -735,6 +757,10 @@ void FTL_dnssec(int status, int id)
 
 void FTL_header_ADbit(unsigned char header4, int id)
 {
+	// Don't analyze anything if in PRIVACY_NOSTATS mode
+	if(config.privacylevel >= PRIVACY_NOSTATS)
+		return;
+
 	enable_thread_lock();
 	// Check if AD bit is set in DNS header
 	if(!(header4 & 0x20))
@@ -913,6 +939,10 @@ void getCacheInformation(int *sock)
 
 void FTL_forwarding_failed(struct server *server)
 {
+	// Don't analyze anything if in PRIVACY_NOSTATS mode
+	if(config.privacylevel >= PRIVACY_NOSTATS)
+		return;
+
 	// Save that this query got forwarded to an upstream server
 	enable_thread_lock();
 	char dest[ADDRSTRLEN];

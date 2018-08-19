@@ -337,6 +337,10 @@ int get_number_of_queries_in_DB(void)
 
 void save_to_DB(void)
 {
+	// Don't save anything to the database if in PRIVACY_NOSTATS mode
+	if(config.privacylevel >= PRIVACY_NOSTATS)
+		return;
+
 	// Start database timer
 	if(debug) timer_start(DATABASE_WRITE_TIMER);
 
@@ -575,6 +579,10 @@ void *DB_thread(void *val)
 // Get most recent 24 hours data from long-term database
 void read_data_from_DB(void)
 {
+	// Don't try to load anything to the database if in PRIVACY_NOSTATS mode
+	if(config.privacylevel >= PRIVACY_NOSTATS)
+		return;
+
 	// Open database file
 	if(!dbopen())
 	{
