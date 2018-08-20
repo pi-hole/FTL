@@ -643,6 +643,7 @@ void getAllQueries(char *client_message, int *sock)
 		{
 			// Iterate through all known forward destinations
 			int i;
+			validate_access("forwards", counters.forwarded, true, __LINE__, __FUNCTION__, __FILE__);
 			forwarddestid = -3;
 			for(i = 0; i < counters.forwarded; i++)
 			{
@@ -675,6 +676,7 @@ void getAllQueries(char *client_message, int *sock)
 		filterdomainname = true;
 		// Iterate through all known domains
 		int i;
+		validate_access("domains", counters.domains, true, __LINE__, __FUNCTION__, __FILE__);
 		for(i = 0; i < counters.domains; i++)
 		{
 			// Try to match the requested string
@@ -700,7 +702,9 @@ void getAllQueries(char *client_message, int *sock)
 		if(clientname == NULL) return;
 		sscanf(client_message, ">getallqueries-client %255s", clientname);
 		filterclientname = true;
+		// Iterate through all known clients
 		int i;
+		validate_access("clients", counters.clients, true, __LINE__, __FUNCTION__, __FILE__);
 		for(i = 0; i < counters.clients; i++)
 		{
 			// Try to match the requested string
