@@ -233,6 +233,17 @@ void read_FTLconf(void)
 	else
 		logg("   ANALYZE_ONLY_A_AND_AAAA: Disabled. Analyzing all queries");
 
+	// DBIMPORT
+	// defaults to: Yes
+	config.DBimport = true;
+	buffer = parse_FTLconf(fp, "DBIMPORT");
+	if(buffer != NULL && strcasecmp(buffer, "no") == 0)
+		config.DBimport = false;
+	if(config.DBimport)
+		logg("   DBIMPORT: Importing history from database");
+	else
+		logg("   DBIMPORT: Not importing history from database");
+
 	logg("Finished config file parsing");
 
 	// Release memory

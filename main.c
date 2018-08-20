@@ -56,7 +56,7 @@ int main (int argc, char* argv[])
 		db_init();
 
 	// Try to import queries from long-term database if available
-	if(database)
+	if(database && config.DBimport)
 		read_data_from_DB();
 
 	log_counter_info();
