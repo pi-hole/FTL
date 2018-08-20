@@ -603,6 +603,7 @@ void getAllQueries(char *client_message, int *sock)
 
 	char *clientname = NULL;
 	bool filterclientname = false;
+	int clientid = -1;
 
 	int querytype = 0;
 
@@ -699,6 +700,25 @@ void getAllQueries(char *client_message, int *sock)
 		if(clientname == NULL) return;
 		sscanf(client_message, ">getallqueries-client %255s", clientname);
 		filterclientname = true;
+		int i;
+		for(i = 0; i < counters.clients; i++)
+		{
+			// Try to match the requested string
+			if(strcmp(clients[i].ip, clientname) == 0 ||
+			   (clients[i].name != NULL &&
+			    strcmp(clients[i].name, clientname) == 0))
+			{
+				clientid = i;
+				break;
+			}
+		}
+		if(clientid < 0)
+		{
+			// Requested client has not been found, we directly
+			// exit here as there is no data to be returned
+			free(clientname);
+			return;
+		}
 	}
 
 	int ibeg = 0, num;
@@ -755,22 +775,15 @@ void getAllQueries(char *client_message, int *sock)
 		if((from > queries[i].timestamp && from != 0) || (queries[i].timestamp > until && until != 0))
 			continue;
 
-		if(filterdomainname)
-		{
-			// Skip if domain is not identical with what the user wants to see
-			if(domainid >= 0 && queries[i].domainID != domainid)
+		// Skip if domain is not identical with what the user wants to see
+		if(filterdomainname && queries[i].domainID != domainid)
 				continue;
-		}
 
-		if(filterclientname)
-		{
-			// Skip if client name and IP are not identical with what the user wants to see
-			if(strcmp(clients[queries[i].clientID].ip, clientname) != 0 &&
-			   (clients[queries[i].clientID].name != NULL &&
-			    strcmp(clients[queries[i].clientID].name, clientname) != 0))
+		// Skip if client name and IP are not identical with what the user wants to see
+		if(filterclientname && queries[i].domainID != domainid)
 				continue;
-		}
 
+		// Skip if query type is not identical with what the user wants to see
 		if(querytype != 0 && querytype != queries[i].type)
 			continue;
 
