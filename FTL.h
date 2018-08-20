@@ -151,6 +151,7 @@ typedef struct {
 	unsigned char blockingmode;
 	bool regex_debugmode;
 	bool analyze_only_A_AAAA;
+	bool DBimport;
 } ConfigStruct;
 
 // Dynamic structs
