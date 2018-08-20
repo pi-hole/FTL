@@ -643,7 +643,7 @@ void getAllQueries(char *client_message, int *sock)
 		{
 			// Iterate through all known forward destinations
 			int i;
-			validate_access("forwards", counters.forwarded, true, __LINE__, __FUNCTION__, __FILE__);
+			validate_access("forwards", MAX(0,counters.forwarded-1), true, __LINE__, __FUNCTION__, __FILE__);
 			forwarddestid = -3;
 			for(i = 0; i < counters.forwarded; i++)
 			{
@@ -676,7 +676,7 @@ void getAllQueries(char *client_message, int *sock)
 		filterdomainname = true;
 		// Iterate through all known domains
 		int i;
-		validate_access("domains", counters.domains, true, __LINE__, __FUNCTION__, __FILE__);
+		validate_access("domains", MAX(0,counters.domains-1), true, __LINE__, __FUNCTION__, __FILE__);
 		for(i = 0; i < counters.domains; i++)
 		{
 			// Try to match the requested string
@@ -704,7 +704,7 @@ void getAllQueries(char *client_message, int *sock)
 		filterclientname = true;
 		// Iterate through all known clients
 		int i;
-		validate_access("clients", counters.clients, true, __LINE__, __FUNCTION__, __FILE__);
+		validate_access("clients", MAX(0,counters.clients-1), true, __LINE__, __FUNCTION__, __FILE__);
 		for(i = 0; i < counters.clients; i++)
 		{
 			// Try to match the requested string
@@ -784,7 +784,7 @@ void getAllQueries(char *client_message, int *sock)
 				continue;
 
 		// Skip if client name and IP are not identical with what the user wants to see
-		if(filterclientname && queries[i].domainID != domainid)
+		if(filterclientname && queries[i].clientID != clientid)
 				continue;
 
 		// Skip if query type is not identical with what the user wants to see
