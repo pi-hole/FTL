@@ -599,6 +599,7 @@ void getAllQueries(char *client_message, int *sock)
 
 	char *domainname = NULL;
 	bool filterdomainname = false;
+	int domainid = -1;
 
 	char *clientname = NULL;
 	bool filterclientname = false;
@@ -671,6 +672,24 @@ void getAllQueries(char *client_message, int *sock)
 		if(domainname == NULL) return;
 		sscanf(client_message, ">getallqueries-domain %255s", domainname);
 		filterdomainname = true;
+		// Iterate through all known domains
+		int i;
+		for(i = 0; i < counters.domains; i++)
+		{
+			// Try to match the requested string
+			if(strcmp(domains[i].domain, domainname) == 0)
+			{
+				domainid = i;
+				break;
+			}
+		}
+		if(domainid < 0)
+		{
+			// Requested domain has not been found, we directly
+			// exit here as there is no data to be returned
+			free(domainname);
+			return;
+		}
 	}
 
 	// Client filtering?
@@ -738,8 +757,8 @@ void getAllQueries(char *client_message, int *sock)
 
 		if(filterdomainname)
 		{
-			// Skip if domain name is not identical with what the user wants to see
-			if(strcmp(domains[queries[i].domainID].domain, domainname) != 0)
+			// Skip if domain is not identical with what the user wants to see
+			if(domainid >= 0 && queries[i].domainID != domainid)
 				continue;
 		}
 
