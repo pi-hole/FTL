@@ -152,6 +152,7 @@ typedef struct {
 	bool regex_debugmode;
 	bool analyze_only_A_AAAA;
 	bool DBimport;
+	char *externalblockfile;
 } ConfigStruct;
 
 // Dynamic structs
