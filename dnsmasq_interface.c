@@ -18,6 +18,7 @@ void save_reply_type(unsigned int flags, int queryID, struct timeval response);
 unsigned long converttimeval(struct timeval time);
 static void block_single_domain(char *domain);
 static void query_externally_blocked(int i);
+static int findQueryID(int id);
 
 char flagnames[28][12] = {"F_IMMORTAL ", "F_NAMEP ", "F_REVERSE ", "F_FORWARD ", "F_DHCP ", "F_NEG ", "F_HOSTS ", "F_IPV4 ", "F_IPV6 ", "F_BIGNAME ", "F_NXDOMAIN ", "F_CNAME ", "F_DNSKEY ", "F_CONFIG ", "F_DS ", "F_DNSSECOK ", "F_UPSTREAM ", "F_RRNAME ", "F_SERVER ", "F_QUERY ", "F_NOERR ", "F_AUTH ", "F_DNSSEC ", "F_KEYTAG ", "F_SECSTAT ", "F_NO_RR ", "F_IPSET ", "F_NOEXTRA "};
 
@@ -225,6 +226,29 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	disable_thread_lock();
 }
 
+static int findQueryID(int id)
+{
+	// Loop over all queries - we loop in reverse order (start from the most recent query and
+	// continuously walk older queries while trying to find a match. Ideally, we should always
+	// find the correct query with zero iterations, but it may happen that queries are processed
+	// asynchronously, e.g. for slow upstream relies to a huge amount of requests.
+	// We iterate from the most recent query down to at most MAXITER queries in the past to avoid
+	// iterating through the entire array of queries
+	// MAX(0, a) is used to return 0 in case a is negative (negative array indices are harmful)
+
+	// Validate access only once for the maximum index (all lower will work)
+	validate_access("queries", counters.queries-1, false, __LINE__, __FUNCTION__, __FILE__);
+	int until = MAX(0, counters.queries-MAXITER);
+	int i;
+	// Check UUIDs of queries
+	for(i = counters.queries-1; i >= until; i--)
+		if(queries[i].id == id)
+			return i;
+
+	// If not found
+	return -1;
+}
+
 void FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id)
 {
 	// Don't analyze anything if in PRIVACY_NOSTATS mode
@@ -245,30 +269,8 @@ void FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id
 	if(debug) logg("**** forwarded %s to %s (ID %i)", name, forward, id);
 
 	// Save status and forwardID in corresponding query identified by dnsmasq's ID
-	bool found = false;
-	int i;
-	// Loop over all queries - we loop in reverse order (start from the most recent query and
-	// continuously walk older queries while trying to find a match. Ideally, we should always
-	// find the correct query with zero iterations, but it may happen that queries are processed
-	// asynchronously, e.g. for slow upstream relies to a huge amount of requests.
-	// We iterate from the most recent query down to at most MAXITER queries in the past to avoid
-	// iterating through the entire array of queries
-	// MAX(0, a) is used to return 0 in case a is negative (negative array indices are harmful)
-
-	// Validate access only once for the maximum index (all lower will work)
-	validate_access("queries", counters.queries-1, false, __LINE__, __FUNCTION__, __FILE__);
-	int until = MAX(0, counters.queries-MAXITER);
-	for(i = counters.queries-1; i >= until; i--)
-	{
-		// Check UUID of this query
-		if(queries[i].id == id)
-		{
-			queries[i].status = QUERY_FORWARDED;
-			found = true;
-			break;
-		}
-	}
-	if(!found)
+	int i = findQueryID(id);
+	if(i < 0)
 	{
 		// This may happen e.g. if the original query was a PTR query or "pi.hole"
 		// as we ignore them altogether
@@ -276,6 +278,9 @@ void FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id
 		disable_thread_lock();
 		return;
 	}
+
+	// Set query status
+	queries[i].status = QUERY_FORWARDED;
 
 	// Proceed only if
 	// - current query has not been marked as replied to so far
@@ -411,24 +416,8 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 	gettimeofday(&response, 0);
 
 	// Save status in corresponding query identified by dnsmasq's ID
-	bool found = false;
-	int i;
-
-	// Search match in known queries
-	// See comments in FTL_forwarded() for further details about this loop
-	validate_access("queries", counters.queries-1, false, __LINE__, __FUNCTION__, __FILE__);
-	int until = MAX(0, counters.queries-MAXITER);
-	for(i = counters.queries-1; i >= until; i--)
-	{
-		// Check UUID of this query
-		if(queries[i].id == id)
-		{
-			found = true;
-			break;
-		}
-	}
-
-	if(!found)
+	int i = findQueryID(id);
+	if(i < 0)
 	{
 		// This may happen e.g. if the original query was "pi.hole"
 		if(debug) logg("FTL_reply(): Query %i has not been found", id);
@@ -626,22 +615,8 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 			print_flags(flags);
 		}
 
-		bool found = false;
-		int i;
-		// Search match in known queries
-		// See comments in FTL_forwarded() for further details about this loop
-		validate_access("queries", counters.queries-1, false, __LINE__, __FUNCTION__, __FILE__);
-		int until = MAX(0, counters.queries-MAXITER);
-		for(i = counters.queries-1; i >= until; i--)
-		{
-			// Check UUID of this query
-			if(queries[i].id == id)
-			{
-				found = true;
-				break;
-			}
-		}
-		if(!found)
+		int i = findQueryID(id);
+		if(i < 0)
 		{
 			// This may happen e.g. if the original query was a PTR query or "pi.hole"
 			// as we ignore them altogether
@@ -713,23 +688,8 @@ void FTL_dnssec(int status, int id)
 	// Process DNSSEC result for a domain
 	enable_thread_lock();
 	// Search for corresponding query identified by ID
-	bool found = false;
-	int i;
-	// Search match in known queries
-	// See comments in FTL_forwarded() for further details about this loop
-	validate_access("queries", counters.queries-1, false, __LINE__, __FUNCTION__, __FILE__);
-	int until = MAX(0, counters.queries-MAXITER);
-	for(i = counters.queries-1; i >= until; i--)
-	{
-		// Check both UUID and generation of this query
-		if(queries[i].id == id)
-		{
-			found = true;
-			break;
-		}
-	}
-
-	if(!found)
+	int i = findQueryID(id);
+	if(i < 0)
 	{
 		// This may happen e.g. if the original query was an unhandled query type
 		disable_thread_lock();
@@ -771,23 +731,8 @@ void FTL_header_ADbit(unsigned char header4, int id)
 	}
 
 	// Search for corresponding query identified by ID
-	bool found = false;
-	int i;
-	// Search match in known queries
-	// See comments in FTL_forwarded() for further details about this loop
-	validate_access("queries", counters.queries-1, false, __LINE__, __FUNCTION__, __FILE__);
-	int until = MAX(0, counters.queries-MAXITER);
-	for(i = counters.queries-1; i >= until; i--)
-	{
-		// Check both UUID and generation of this query
-		if(queries[i].id == id)
-		{
-			found = true;
-			break;
-		}
-	}
-
-	if(!found)
+	int i = findQueryID(id);
+	if(i < 0)
 	{
 		// This may happen e.g. if the original query was an unhandled query type
 		disable_thread_lock();
