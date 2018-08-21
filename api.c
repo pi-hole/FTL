@@ -781,11 +781,11 @@ void getAllQueries(char *client_message, int *sock)
 
 		// Skip if domain is not identical with what the user wants to see
 		if(filterdomainname && queries[i].domainID != domainid)
-				continue;
+			continue;
 
 		// Skip if client name and IP are not identical with what the user wants to see
 		if(filterclientname && queries[i].clientID != clientid)
-				continue;
+			continue;
 
 		// Skip if query type is not identical with what the user wants to see
 		if(querytype != 0 && querytype != queries[i].type)
