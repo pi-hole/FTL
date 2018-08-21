@@ -599,9 +599,11 @@ void getAllQueries(char *client_message, int *sock)
 
 	char *domainname = NULL;
 	bool filterdomainname = false;
+	int domainid = -1;
 
 	char *clientname = NULL;
 	bool filterclientname = false;
+	int clientid = -1;
 
 	int querytype = 0;
 
@@ -641,6 +643,7 @@ void getAllQueries(char *client_message, int *sock)
 		{
 			// Iterate through all known forward destinations
 			int i;
+			validate_access("forwards", MAX(0,counters.forwarded-1), true, __LINE__, __FUNCTION__, __FILE__);
 			forwarddestid = -3;
 			for(i = 0; i < counters.forwarded; i++)
 			{
@@ -671,6 +674,25 @@ void getAllQueries(char *client_message, int *sock)
 		if(domainname == NULL) return;
 		sscanf(client_message, ">getallqueries-domain %255s", domainname);
 		filterdomainname = true;
+		// Iterate through all known domains
+		int i;
+		validate_access("domains", MAX(0,counters.domains-1), true, __LINE__, __FUNCTION__, __FILE__);
+		for(i = 0; i < counters.domains; i++)
+		{
+			// Try to match the requested string
+			if(strcmp(domains[i].domain, domainname) == 0)
+			{
+				domainid = i;
+				break;
+			}
+		}
+		if(domainid < 0)
+		{
+			// Requested domain has not been found, we directly
+			// exit here as there is no data to be returned
+			free(domainname);
+			return;
+		}
 	}
 
 	// Client filtering?
@@ -680,6 +702,27 @@ void getAllQueries(char *client_message, int *sock)
 		if(clientname == NULL) return;
 		sscanf(client_message, ">getallqueries-client %255s", clientname);
 		filterclientname = true;
+		// Iterate through all known clients
+		int i;
+		validate_access("clients", MAX(0,counters.clients-1), true, __LINE__, __FUNCTION__, __FILE__);
+		for(i = 0; i < counters.clients; i++)
+		{
+			// Try to match the requested string
+			if(strcmp(clients[i].ip, clientname) == 0 ||
+			   (clients[i].name != NULL &&
+			    strcmp(clients[i].name, clientname) == 0))
+			{
+				clientid = i;
+				break;
+			}
+		}
+		if(clientid < 0)
+		{
+			// Requested client has not been found, we directly
+			// exit here as there is no data to be returned
+			free(clientname);
+			return;
+		}
 	}
 
 	int ibeg = 0, num;
@@ -736,22 +779,15 @@ void getAllQueries(char *client_message, int *sock)
 		if((from > queries[i].timestamp && from != 0) || (queries[i].timestamp > until && until != 0))
 			continue;
 
-		if(filterdomainname)
-		{
-			// Skip if domain name is not identical with what the user wants to see
-			if(strcmp(domains[queries[i].domainID].domain, domainname) != 0)
-				continue;
-		}
+		// Skip if domain is not identical with what the user wants to see
+		if(filterdomainname && queries[i].domainID != domainid)
+			continue;
 
-		if(filterclientname)
-		{
-			// Skip if client name and IP are not identical with what the user wants to see
-			if(strcmp(clients[queries[i].clientID].ip, clientname) != 0 &&
-			   (clients[queries[i].clientID].name != NULL &&
-			    strcmp(clients[queries[i].clientID].name, clientname) != 0))
-				continue;
-		}
+		// Skip if client name and IP are not identical with what the user wants to see
+		if(filterclientname && queries[i].clientID != clientid)
+			continue;
 
+		// Skip if query type is not identical with what the user wants to see
 		if(querytype != 0 && querytype != queries[i].type)
 			continue;
 
