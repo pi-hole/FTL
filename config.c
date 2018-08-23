@@ -244,6 +244,46 @@ void read_FTLconf(void)
 	else
 		logg("   DBIMPORT: Not importing history from database");
 
+	// EXTERNALBLOCKFILE
+	// defaults to: (not set)
+	config.externalblockfile = NULL;
+	buffer = parse_FTLconf(fp, "EXTERNALBLOCKFILE");
+
+	errno = 0;
+	// Use sscanf() to obtain filename from config file parameter only if buffer != NULL
+	if(buffer != NULL)
+	{
+		// Read and allocate memory for file path
+		sscanf(buffer, "%127ms", &config.externalblockfile);
+	}
+
+	// Test if memory allocation was successful
+	if(config.externalblockfile == NULL && errno != 0)
+	{
+		logg("FATAL: Allocating memory for config.externalblockfile failed (%s, %i). Exiting.", strerror(errno), errno);
+		exit(EXIT_FAILURE);
+	}
+	// Test to open file
+	if(config.externalblockfile != NULL)
+	{
+		FILE *file = fopen(config.externalblockfile, "a");
+		if(file == NULL)
+		{
+			logg("WARN: Opening %s failed (%s, %i), not using file", config.externalblockfile, strerror(errno), errno);
+			free(config.externalblockfile);
+			config.externalblockfile = NULL;
+		}
+		else
+		{
+			fclose(file);
+		}
+	}
+
+	if(config.externalblockfile != NULL && strlen(config.externalblockfile) > 0)
+		logg("   EXTERNALBLOCKFILE: Using %s", config.externalblockfile);
+	else
+		logg("   EXTERNALBLOCKFILE: Not using file for storing externally blocked domains");
+
 	logg("Finished config file parsing");
 
 	// Release memory

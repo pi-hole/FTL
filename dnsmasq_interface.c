@@ -285,7 +285,7 @@ void FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id
 	// Proceed only if
 	// - current query has not been marked as replied to so far
 	//   (it could be that answers from multiple forward
-	//    destionations are coimg in for the same query)
+	//    destinations are coming in for the same query)
 	// - the query was formally known as cached but had to be forwarded
 	//   (this is a special case further described below)
 	if(queries[i].complete && queries[i].status != QUERY_CACHE)
@@ -538,6 +538,34 @@ static void query_externally_blocked(int i)
 	clients[queries[i].clientID].blockedcount++;
 
 	queries[i].status = QUERY_EXTERNAL_BLOCKED;
+
+	// Store externally blocked domain in local file (if configured)
+	if(config.externalblockfile != NULL)
+	{
+		// Search for an exact match in this file
+		int res = countlineswith(domains[queries[i].domainID].domain, config.externalblockfile);
+
+		if(res < 0)
+		{
+			logg("WARN: Opening %s failed", config.externalblockfile, strerror(errno));
+			return;
+		}
+		else if(res > 0)
+		{
+			// Domain already present, nothing to do here
+			return;
+		}
+
+		// else: Not present, append domain to file
+		FILE *file = fopen(config.externalblockfile, "a");
+		if(file == NULL)
+		{
+			logg("WARN: Appending to %s failed", config.externalblockfile, strerror(errno));
+			return;
+		}
+		fprintf(file, "%s\n", domains[queries[i].domainID].domain);
+		fclose(file);
+	}
 }
 
 void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg, int id)
