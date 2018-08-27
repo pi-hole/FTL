@@ -867,7 +867,7 @@ pthread_t socket_listenthread;
 pthread_t DBthread;
 pthread_t GCthread;
 
-void FTL_fork_and_bind_sockets(void)
+void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 {
 	if(!debug && daemonmode)
 		go_daemon();
@@ -918,6 +918,19 @@ void FTL_fork_and_bind_sockets(void)
 	{
 		logg("Unable to open GC thread. Exiting...");
 		exit(EXIT_FAILURE);
+	}
+
+	// Chown files if FTL started as user root but a dnsmasq config option
+	// states to run as a different user/group (e.g. "nobody")
+	if(ent_pw != NULL && getuid() == 0)
+	{
+		if(chown(FTLfiles.log, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
+			logg("Setting ownership (%i:%i) of %s failed: %s (%i)", ent_pw->pw_uid, ent_pw->pw_gid, FTLfiles.log, errno, strerror(errno));
+		if(database)
+		{
+			if(chown(FTLfiles.db, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
+				logg("Setting ownership (%i:%i) of %s failed: %s (%i)", ent_pw->pw_uid, ent_pw->pw_gid, FTLfiles.db, errno, strerror(errno));
+		}
 	}
 }
 
