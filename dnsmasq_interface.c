@@ -356,7 +356,7 @@ void FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id
 
 void FTL_dnsmasq_reload(void)
 {
-	// This funtion is called by the dnsmasq code on receive of SIGHUP
+	// This function is called by the dnsmasq code on receive of SIGHUP
 	// *before* clearing the cache and rereading the lists
 	// This is the only hook that is not skipped in PRIVACY_NOSTATS mode
 
@@ -370,9 +370,9 @@ void FTL_dnsmasq_reload(void)
 
 	// Reread pihole-FTL.conf to see which blocking mode the user wants to use
 	// It is possible to change the blocking mode here as we anyhow clear the
-	// cahce and reread all blocking lists
+	// cache and reread all blocking lists
 	// Passing NULL to this function means it has to open the config file on
-	// its own behalf (on initial reading, the confg file is already opened)
+	// its own behalf (on initial reading, the config file is already opened)
 	get_blocking_mode(NULL);
 
 	// Reread regex.list
@@ -524,7 +524,7 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 static void query_externally_blocked(int i)
 {
 	// Correct counters as we won't count this as forwarded ...
-	counters.forwarded--;
+	counters.forwardedqueries--;
 	overTime[queries[i].timeidx].forwarded--;
 	validate_access("forwarded", queries[i].forwardID, true, __LINE__, __FUNCTION__, __FILE__);
 	forwarded[queries[i].forwardID].count--;
