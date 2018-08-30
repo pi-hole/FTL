@@ -17,6 +17,8 @@ static bool *regexconfigured = NULL;
 static char **regexbuffer = NULL;
 static whitelistStruct whitelist = { 0, NULL };
 
+static FILE *checklist = NULL;
+
 static void log_regex_error(char *where, int errcode, int index)
 {
 	// Regex failed for some reason (probably user syntax error)
@@ -25,6 +27,8 @@ static void log_regex_error(char *where, int errcode, int index)
 	char *buffer = calloc(length,sizeof(char));
 	(void) regerror (errcode, &regex[index], buffer, length);
 	logg("ERROR %s regex on line %i: %s (%i)", where, index+1, buffer, errcode);
+	if(checklist)
+		fprintf(checklist, "%s\n", buffer);
 	free(buffer);
 }
 
@@ -44,6 +48,8 @@ static bool init_regex(const char *regexin, int index)
 	{
 		regexbuffer[index] = strdup(regexin);
 	}
+
+	fprintf(checklist, "OK\n");
 	return true;
 }
 
@@ -236,6 +242,10 @@ void read_regex_from_file(void)
 		return;
 	}
 
+	if((checklist = fopen(files.regexchecklist, "w")) == NULL) {
+		logg("WARN: Cannot access Regex checklist");
+	}
+
 	// Allocate memory for regex
 	regex = calloc(num_regex, sizeof(regex_t));
 	regexconfigured = calloc(num_regex, sizeof(bool));
@@ -293,6 +303,8 @@ void read_regex_from_file(void)
 
 	// Close the file
 	fclose(fp);
+	if(checklist)
+		fclose(checklist);
 
 	// Read whitelisted domains from file
 	read_whitelist_from_file();

@@ -107,6 +107,7 @@ typedef struct {
 	const char* blacklist;
 	const char* gravity;
 	const char* regexlist;
+	const char* regexchecklist;
 	const char* setupVars;
 	const char* auditlist;
 	const char* dnsmasqconfig;
