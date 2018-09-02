@@ -184,7 +184,7 @@ SharedMemory create_shm(char *name, size_t size)
 
 void *enlarge_shmem_struct(char type)
 {
-	SharedMemory sharedMemory;
+	SharedMemory *sharedMemory;
 	size_t sizeofobj;
 	int *counter;
 
@@ -192,22 +192,22 @@ void *enlarge_shmem_struct(char type)
 	switch(type)
 	{
 		case 'q':
-			sharedMemory = shm_queries;
+			sharedMemory = &shm_queries;
 			sizeofobj = sizeof(queriesDataStruct);
 			counter = &counters.queries_MAX;
 			break;
 		case 'c':
-			sharedMemory = shm_clients;
+			sharedMemory = &shm_clients;
 			sizeofobj = sizeof(clientsDataStruct);
 			counter = &counters.clients_MAX;
 			break;
 		case 'd':
-			sharedMemory = shm_domains;
+			sharedMemory = &shm_domains;
 			sizeofobj = sizeof(domainsDataStruct);
 			counter = &counters.domains_MAX;
 			break;
 		case 'f':
-			sharedMemory = shm_forwarded;
+			sharedMemory = &shm_forwarded;
 			sizeofobj = sizeof(forwardedDataStruct);
 			counter = &counters.forwarded_MAX;
 			break;
@@ -217,12 +217,12 @@ void *enlarge_shmem_struct(char type)
 	}
 
 	// Reallocate enough space for 4096 instances of requested object
-	realloc_shm(&sharedMemory, sharedMemory.size + pagesize*sizeofobj);
+	realloc_shm(sharedMemory, sharedMemory->size + pagesize*sizeofobj);
 
 	// Add allocated memory to corresponding counter
 	*counter += pagesize;
 
-	return sharedMemory.ptr;
+	return sharedMemory->ptr;
 }
 
 bool realloc_shm(SharedMemory *sharedMemory, size_t size) {
