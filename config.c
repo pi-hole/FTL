@@ -167,8 +167,9 @@ void read_FTLconf(void)
 	// PRIVACY_HIDE_DOMAINS (1) = show and store all domains as "hidden", return nothing for Top Domains + Top Ads
 	// PRIVACY_HIDE_DOMAINS_CLIENTS (2) = as above, show all domains as "hidden" and all clients as "127.0.0.1"
 	//                                    (or "::1"), return nothing for any Top Lists
-	// PRIVACY_MAXIMUM (3) = Disabled basically everything except the anonymous stastics, there will be no entries
+	// PRIVACY_MAXIMUM (3) = Disabled basically everything except the anonymous statistics, there will be no entries
 	//                       added to the database, no entries visible in the query log and no Top Item Lists
+	// PRIVACY_NOSTATS (4) = Disable any analysis on queries. No counters are available in this mode.
 	// defaults to: PRIVACY_SHOW_ALL
 	config.privacylevel = PRIVACY_SHOW_ALL;
 	get_privacy_level(fp);
@@ -218,6 +219,30 @@ void read_FTLconf(void)
 		logg("   REGEX_DEBUGMODE: Active. May increase log file size!");
 	else
 		logg("   REGEX_DEBUGMODE: Inactive");
+
+	// ANALYZE_ONLY_A_AND_AAAA
+	// defaults to: No
+	config.analyze_only_A_AAAA = false;
+	buffer = parse_FTLconf(fp, "ANALYZE_ONLY_A_AND_AAAA");
+
+	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
+		config.analyze_only_A_AAAA = true;
+
+	if(config.analyze_only_A_AAAA)
+		logg("   ANALYZE_ONLY_A_AND_AAAA: Enabled. Analyzing only A and AAAA queries");
+	else
+		logg("   ANALYZE_ONLY_A_AND_AAAA: Disabled. Analyzing all queries");
+
+	// DBIMPORT
+	// defaults to: Yes
+	config.DBimport = true;
+	buffer = parse_FTLconf(fp, "DBIMPORT");
+	if(buffer != NULL && strcasecmp(buffer, "no") == 0)
+		config.DBimport = false;
+	if(config.DBimport)
+		logg("   DBIMPORT: Importing history from database");
+	else
+		logg("   DBIMPORT: Not importing history from database");
 
 	logg("Finished config file parsing");
 
@@ -303,7 +328,7 @@ void get_privacy_level(FILE *fp)
 		// Check for change and validity of privacy level (set in FTL.h)
 		if(value != config.privacylevel &&
 		   value >= PRIVACY_SHOW_ALL &&
-		   value <= PRIVACY_MAXIMUM)
+		   value <= PRIVACY_NOSTATS)
 		{
 			logg("Notice: Changing privacy level from %i to %i", config.privacylevel, value);
 			config.privacylevel = value;
