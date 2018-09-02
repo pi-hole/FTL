@@ -17,6 +17,7 @@ void print_flags(unsigned int flags);
 void save_reply_type(unsigned int flags, int queryID, struct timeval response);
 unsigned long converttimeval(struct timeval time);
 static void block_single_domain(char *domain);
+static void detect_blocked_IP(unsigned short flags, char* answer, int queryID);
 static void query_externally_blocked(int i);
 static int findQueryID(int id);
 
@@ -478,33 +479,8 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 				query_externally_blocked(i);
 			}
 
-			// If received one of the following IPs as reply, OpenDNS
-			// (Cisco Umbrella) blocked this query
-			// See https://support.opendns.com/hc/en-us/articles/227986927-What-are-the-Cisco-Umbrella-Block-Page-IP-Addresses-
-			// for a full list of these IP addresses
-			else if(flags & F_IPV4 && answer != NULL &&
-				(strcmp("146.112.61.104", answer) == 0 ||
-				 strcmp("146.112.61.105", answer) == 0 ||
-				 strcmp("146.112.61.106", answer) == 0 ||
-				 strcmp("146.112.61.107", answer) == 0 ||
-				 strcmp("146.112.61.108", answer) == 0 ||
-				 strcmp("146.112.61.109", answer) == 0 ||
-				 strcmp("146.112.61.110", answer) == 0 ))
-			{
-					query_externally_blocked(i);
-			}
-
-			else if(flags & F_IPV6 && answer != NULL &&
-				(strcmp("::ffff:146.112.61.104", answer) == 0 ||
-				 strcmp("::ffff:146.112.61.105", answer) == 0 ||
-				 strcmp("::ffff:146.112.61.106", answer) == 0 ||
-				 strcmp("::ffff:146.112.61.107", answer) == 0 ||
-				 strcmp("::ffff:146.112.61.108", answer) == 0 ||
-				 strcmp("::ffff:146.112.61.109", answer) == 0 ||
-				 strcmp("::ffff:146.112.61.110", answer) == 0 ))
-			{
-					query_externally_blocked(i);
-			}
+			// Detect if returned IP indicates that this query was blocked
+			detect_blocked_IP(flags, answer, i);
 		}
 	}
 	else if(flags & F_REVERSE)
@@ -521,13 +497,62 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 	disable_thread_lock();
 }
 
+static void detect_blocked_IP(unsigned short flags, char* answer, int queryID)
+{
+	// If received one of the following IPs as reply, OpenDNS
+	// (Cisco Umbrella) blocked this query
+	// See https://support.opendns.com/hc/en-us/articles/227986927-What-are-the-Cisco-Umbrella-Block-Page-IP-Addresses-
+	// for a full list of these IP addresses
+	if(flags & F_IPV4 && answer != NULL &&
+		(strcmp("146.112.61.104", answer) == 0 ||
+		 strcmp("146.112.61.105", answer) == 0 ||
+		 strcmp("146.112.61.106", answer) == 0 ||
+		 strcmp("146.112.61.107", answer) == 0 ||
+		 strcmp("146.112.61.108", answer) == 0 ||
+		 strcmp("146.112.61.109", answer) == 0 ||
+		 strcmp("146.112.61.110", answer) == 0 ))
+	{
+			query_externally_blocked(queryID);
+	}
+
+	else if(flags & F_IPV6 && answer != NULL &&
+		(strcmp("::ffff:146.112.61.104", answer) == 0 ||
+		 strcmp("::ffff:146.112.61.105", answer) == 0 ||
+		 strcmp("::ffff:146.112.61.106", answer) == 0 ||
+		 strcmp("::ffff:146.112.61.107", answer) == 0 ||
+		 strcmp("::ffff:146.112.61.108", answer) == 0 ||
+		 strcmp("::ffff:146.112.61.109", answer) == 0 ||
+		 strcmp("::ffff:146.112.61.110", answer) == 0 ))
+	{
+			query_externally_blocked(queryID);
+	}
+
+	// If upstream replied with 0.0.0.0 or ::,
+	// we assume that it filtered the reply as
+	// nothing is reachable under these addresses
+	else if(flags & F_IPV4 && answer != NULL &&
+		strcmp("0.0.0.0", answer) == 0)
+	{
+			query_externally_blocked(queryID);
+	}
+
+	else if(flags & F_IPV6 && answer != NULL &&
+		strcmp("::", answer) == 0)
+	{
+			query_externally_blocked(queryID);
+	}
+}
+
 static void query_externally_blocked(int i)
 {
-	// Correct counters as we won't count this as forwarded ...
-	counters.forwardedqueries--;
-	overTime[queries[i].timeidx].forwarded--;
-	validate_access("forwarded", queries[i].forwardID, true, __LINE__, __FUNCTION__, __FILE__);
-	forwarded[queries[i].forwardID].count--;
+	// Correct counters if necessary ...
+	if(queries[i].status == QUERY_FORWARDED)
+	{
+		counters.forwardedqueries--;
+		overTime[queries[i].timeidx].forwarded--;
+		validate_access("forwarded", queries[i].forwardID, true, __LINE__, __FUNCTION__, __FILE__);
+		forwarded[queries[i].forwardID].count--;
+	}
 
 	// ... but as blocked
 	counters.blocked++;
@@ -647,6 +672,12 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 
 			queries[i].status = requesttype;
 
+			// Detect if returned IP indicates that this query was blocked
+			detect_blocked_IP(flags, dest, i);
+
+			// Re-read requesttype as detect_blocked_IP() might have changed it
+			requesttype = queries[i].status;
+
 			// Handle counters accordingly
 			switch(requesttype)
 			{
@@ -661,6 +692,10 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 				case QUERY_CACHE: // cached from one of the lists
 					counters.cached++;
 					overTime[timeidx].cached++;
+					break;
+				case QUERY_EXTERNAL_BLOCKED:
+					// everything has already done
+					// in query_externally_blocked()
 					break;
 			}
 
