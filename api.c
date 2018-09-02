@@ -642,9 +642,9 @@ void getAllQueries(char *client_message, int *sock)
 			{
 				// Try to match the requested string against their IP addresses and
 				// (if available) their host names
-				if(strcmp(forwarded[i].ip, forwarddest) == 0 ||
-				   (forwarded[i].name != NULL &&
-				    strcmp(forwarded[i].name, forwarddest) == 0))
+				if(strcmp(getstr(forwarded[i].ippos), forwarddest) == 0 ||
+				   (forwarded[i].namepos != 0 &&
+				    strcmp(getstr(forwarded[i].namepos), forwarddest) == 0))
 				{
 					forwarddestid = i;
 					break;
@@ -673,7 +673,7 @@ void getAllQueries(char *client_message, int *sock)
 		for(i = 0; i < counters.domains; i++)
 		{
 			// Try to match the requested string
-			if(strcmp(domains[i].domain, domainname) == 0)
+			if(strcmp(getstr(domains[i].domainpos), domainname) == 0)
 			{
 				domainid = i;
 				break;
@@ -701,9 +701,9 @@ void getAllQueries(char *client_message, int *sock)
 		for(i = 0; i < counters.clients; i++)
 		{
 			// Try to match the requested string
-			if(strcmp(clients[i].ip, clientname) == 0 ||
-			   (clients[i].name != NULL &&
-			    strcmp(clients[i].name, clientname) == 0))
+			if(strcmp(getstr(clients[i].ippos), clientname) == 0 ||
+			   (clients[i].namepos != 0 &&
+			    strcmp(getstr(clients[i].namepos), clientname) == 0))
 			{
 				clientid = i;
 				break;
