@@ -42,7 +42,7 @@ unsigned long long addstr(const char *str)
 	if(debug) logg("Adding \"%s\" (len %i) to buffer. next_pos is %i", str, len, next_pos);
 
 	// Reserve additional memory if necessary
-	size_t required_size = next_pos + len + 2;
+	size_t required_size = next_pos + len + 1;
 	// Need to cast to long long because size_t calculations cannot be negative
 	if((long long)required_size-(long long)shm_strings.size > 0 &&
 	   !realloc_shm(&shm_strings, shm_strings.size + pagesize))
@@ -53,10 +53,10 @@ unsigned long long addstr(const char *str)
 	((char*)shm_strings.ptr)[next_pos + len] = '\0';
 
 	// Increment string length counter
-	next_pos += len+2;
+	next_pos += len+1;
 
 	// Return start of stored string
-	return (next_pos - (len + 2));
+	return (next_pos - (len + 1));
 }
 
 char *getstr(unsigned long long pos)
