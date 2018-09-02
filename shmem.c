@@ -59,7 +59,7 @@ unsigned int addstr(const char *str)
 	return (next_pos - (len+2));
 }
 
-char *getstr(unsigned int pos)
+char *getstr(long long pos)
 {
 	return &((char*)shm_strings.ptr)[pos];
 }

@@ -113,5 +113,5 @@ bool in_whitelist(char *domain);
 bool init_shmem(void);
 void destroy_shmem(void);
 unsigned int addstr(const char *str);
-char *getstr(unsigned int pos);
+char *getstr(long long pos);
 void *enlarge_shmem_struct(char type);
