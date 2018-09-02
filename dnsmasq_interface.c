@@ -693,6 +693,10 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 					counters.cached++;
 					overTime[timeidx].cached++;
 					break;
+				case QUERY_EXTERNAL_BLOCKED:
+					// everything has already done
+					// in query_externally_blocked()
+					break;
 			}
 
 			// Save reply type and update individual reply counters
