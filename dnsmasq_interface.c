@@ -505,6 +505,21 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 			{
 					query_externally_blocked(i);
 			}
+
+			// If upstream replied with 0.0.0.0 or ::,
+			// we assume that it filtered the reply as
+			// nothing is reachable under these addresses
+			else if(flags & F_IPV4 && answer != NULL &&
+				strcmp("0.0.0.0", answer) == 0)
+			{
+					query_externally_blocked(i);
+			}
+
+			else if(flags & F_IPV6 && answer != NULL &&
+				strcmp("::", answer) == 0)
+			{
+					query_externally_blocked(i);
+			}
 		}
 	}
 	else if(flags & F_REVERSE)
