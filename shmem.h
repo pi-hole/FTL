@@ -13,6 +13,7 @@
 #include <sys/mman.h>        /* For shm_* functions */
 #include <sys/stat.h>        /* For mode constants */
 #include <fcntl.h>           /* For O_* constants */
+#include <stdbool.h>
 
 typedef struct {
     char *name;
