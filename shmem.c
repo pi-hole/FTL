@@ -28,7 +28,7 @@ static SharedMemory shm_forwarded = { 0 };
 static int pagesize;
 static unsigned int next_pos = 0;
 
-unsigned int addstr(const char *str)
+unsigned long long addstr(const char *str)
 {
 	if(str == NULL)
 	{
@@ -37,7 +37,7 @@ unsigned int addstr(const char *str)
 	}
 
 	// Get string length
-	int len = strlen(str);
+	size_t len = strlen(str);
 
 	if(debug) logg("Adding \"%s\" (len %i) to buffer. next_pos is %i", str, len, next_pos);
 
@@ -56,10 +56,10 @@ unsigned int addstr(const char *str)
 	next_pos += len+2;
 
 	// Return start of stored string
-	return (next_pos - (len+2));
+	return (next_pos - (len + 2));
 }
 
-char *getstr(long long pos)
+char *getstr(unsigned long long pos)
 {
 	return &((char*)shm_strings.ptr)[pos];
 }

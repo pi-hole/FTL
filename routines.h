@@ -112,6 +112,6 @@ bool in_whitelist(char *domain);
 // shmem.c
 bool init_shmem(void);
 void destroy_shmem(void);
-unsigned int addstr(const char *str);
-char *getstr(long long pos);
+unsigned long long addstr(const char *str);
+char *getstr(unsigned long long pos);
 void *enlarge_shmem_struct(char type);

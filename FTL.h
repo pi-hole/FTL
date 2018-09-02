@@ -174,8 +174,8 @@ typedef struct {
 	unsigned char magic;
 	int count;
 	int failed;
-	long long ippos;
-	long long namepos;
+	unsigned long long ippos;
+	unsigned long long namepos;
 	bool new;
 } forwardedDataStruct;
 
@@ -183,8 +183,8 @@ typedef struct {
 	unsigned char magic;
 	int count;
 	int blockedcount;
-	long long ippos;
-	long long namepos;
+	unsigned long long ippos;
+	unsigned long long namepos;
 	bool new;
 } clientsDataStruct;
 
@@ -192,7 +192,7 @@ typedef struct {
 	unsigned char magic;
 	int count;
 	int blockedcount;
-	long long domainpos;
+	unsigned long long domainpos;
 	unsigned char regexmatch;
 } domainsDataStruct;
 
