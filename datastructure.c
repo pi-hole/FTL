@@ -32,19 +32,19 @@ int findOverTimeID(int overTimetimestamp)
 	int timeidx = -1, i;
 	// Check struct size
 	memory_check(OVERTIME);
-	if(counters.overTime > 0)
-		validate_access("overTime", counters.overTime-1, true, __LINE__, __FUNCTION__, __FILE__);
-	for(i=0; i < counters.overTime; i++)
+	if(counters->overTime > 0)
+		validate_access("overTime", counters->overTime-1, true, __LINE__, __FUNCTION__, __FILE__);
+	for(i=0; i < counters->overTime; i++)
 	{
 		if(overTime[i].timestamp == overTimetimestamp)
 			return i;
 	}
 	// We loop over this to fill potential data holes with zeros
 	int nexttimestamp = 0;
-	if(counters.overTime != 0)
+	if(counters->overTime != 0)
 	{
-		validate_access("overTime", counters.overTime-1, false, __LINE__, __FUNCTION__, __FILE__);
-		nexttimestamp = overTime[counters.overTime-1].timestamp + 600;
+		validate_access("overTime", counters->overTime-1, false, __LINE__, __FUNCTION__, __FILE__);
+		nexttimestamp = overTime[counters->overTime-1].timestamp + 600;
 	}
 	else
 	{
@@ -57,7 +57,7 @@ int findOverTimeID(int overTimetimestamp)
 	{
 		// Check struct size
 		memory_check(OVERTIME);
-		timeidx = counters.overTime;
+		timeidx = counters->overTime;
 		validate_access("overTime", timeidx, false, __LINE__, __FUNCTION__, __FILE__);
 		// Set magic byte
 		overTime[timeidx].magic = MAGICBYTE;
@@ -68,13 +68,13 @@ int findOverTimeID(int overTimetimestamp)
 		// overTime[timeidx].querytypedata is static
 		overTime[timeidx].clientnum = 0;
 		overTime[timeidx].clientdata = NULL;
-		counters.overTime++;
+		counters->overTime++;
 
 		// Update time stamp for next loop interation
-		if(counters.overTime != 0)
+		if(counters->overTime != 0)
 		{
-			validate_access("overTime", counters.overTime-1, false, __LINE__, __FUNCTION__, __FILE__);
-			nexttimestamp = overTime[counters.overTime-1].timestamp + 600;
+			validate_access("overTime", counters->overTime-1, false, __LINE__, __FUNCTION__, __FILE__);
+			nexttimestamp = overTime[counters->overTime-1].timestamp + 600;
 		}
 	}
 	return timeidx;
@@ -83,10 +83,10 @@ int findOverTimeID(int overTimetimestamp)
 int findForwardID(const char * forward, bool count)
 {
 	int i, forwardID = -1;
-	if(counters.forwarded > 0)
-		validate_access("forwarded", counters.forwarded-1, true, __LINE__, __FUNCTION__, __FILE__);
+	if(counters->forwarded > 0)
+		validate_access("forwarded", counters->forwarded-1, true, __LINE__, __FUNCTION__, __FILE__);
 	// Go through already knows forward servers and see if we used one of those
-	for(i=0; i < counters.forwarded; i++)
+	for(i=0; i < counters->forwarded; i++)
 	{
 		if(strcmp(getstr(forwarded[i].ippos), forward) == 0)
 		{
@@ -97,8 +97,8 @@ int findForwardID(const char * forward, bool count)
 	}
 	// This forward server is not known
 	// Store ID
-	forwardID = counters.forwarded;
-	logg("New forward server: %s (%i/%u)", forward, forwardID, counters.forwarded_MAX);
+	forwardID = counters->forwarded;
+	logg("New forward server: %s (%i/%u)", forward, forwardID, counters->forwarded_MAX);
 
 	// Check struct size
 	memory_check(FORWARDED);
@@ -121,7 +121,7 @@ int findForwardID(const char * forward, bool count)
 	forwarded[forwardID].new = true;
 	forwarded[forwardID].namepos = 0; // 0 -> string with length zero
 	// Increase counter by one
-	counters.forwarded++;
+	counters->forwarded++;
 
 	return forwardID;
 }
@@ -129,9 +129,9 @@ int findForwardID(const char * forward, bool count)
 int findDomainID(const char *domain)
 {
 	int i;
-	if(counters.domains > 0)
-		validate_access("domains", counters.domains-1, true, __LINE__, __FUNCTION__, __FILE__);
-	for(i=0; i < counters.domains; i++)
+	if(counters->domains > 0)
+		validate_access("domains", counters->domains-1, true, __LINE__, __FUNCTION__, __FILE__);
+	for(i=0; i < counters->domains; i++)
 	{
 		// Quick test: Does the domain start with the same character?
 		if(getstr(domains[i].domainpos)[0] != domain[0])
@@ -147,7 +147,7 @@ int findDomainID(const char *domain)
 
 	// If we did not return until here, then this domain is not known
 	// Store ID
-	int domainID = counters.domains;
+	int domainID = counters->domains;
 
 	// Check struct size
 	memory_check(DOMAINS);
@@ -164,7 +164,7 @@ int findDomainID(const char *domain)
 	// RegEx needs to be evaluated for this new domain
 	domains[domainID].regexmatch = REGEX_UNKNOWN;
 	// Increase counter by one
-	counters.domains++;
+	counters->domains++;
 
 	return domainID;
 }
@@ -173,9 +173,9 @@ int findClientID(const char *client)
 {
 	int i;
 	// Compare content of client against known client IP addresses
-	if(counters.clients > 0)
-		validate_access("clients", counters.clients-1, true, __LINE__, __FUNCTION__, __FILE__);
-	for(i=0; i < counters.clients; i++)
+	if(counters->clients > 0)
+		validate_access("clients", counters->clients-1, true, __LINE__, __FUNCTION__, __FILE__);
+	for(i=0; i < counters->clients; i++)
 	{
 		// Quick test: Does the clients IP start with the same character?
 		if(getstr(clients[i].ippos)[0] != client[0])
@@ -191,7 +191,7 @@ int findClientID(const char *client)
 
 	// If we did not return until here, then this client is definitely new
 	// Store ID
-	int clientID = counters.clients;
+	int clientID = counters->clients;
 
 	// Check struct size
 	memory_check(CLIENTS);
@@ -212,7 +212,7 @@ int findClientID(const char *client)
 	clients[clientID].new = true;
 	clients[clientID].namepos = 0;
 	// Increase counter by one
-	counters.clients++;
+	counters->clients++;
 
 	return clientID;
 }

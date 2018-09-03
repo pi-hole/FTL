@@ -375,7 +375,7 @@ void save_to_DB(void)
 	int total = 0, blocked = 0;
 	time_t currenttimestamp = time(NULL);
 	time_t newlasttimestamp = 0;
-	for(i = 0; i < counters.queries; i++)
+	for(i = 0; i < counters->queries; i++)
 	{
 		validate_access("queries", i, true, __LINE__, __FUNCTION__, __FILE__);
 		if(queries[i].db)
@@ -621,7 +621,7 @@ void read_data_from_DB(void)
 		memory_check(QUERIES);
 
 		// Set ID for this query
-		int queryID = counters.queries;
+		int queryID = counters->queries;
 
 		int queryTimeStamp = sqlite3_column_int(stmt, 1);
 		// 1483228800 = 01/01/2017 @ 12:00am (UTC)
@@ -719,7 +719,7 @@ void read_data_from_DB(void)
 		// Handle type counters
 		if(type >= TYPE_A && type < TYPE_MAX)
 		{
-			counters.querytype[type-1]++;
+			counters->querytype[type-1]++;
 			overTime[timeidx].querytypedata[type-1]++;
 		}
 
@@ -731,32 +731,32 @@ void read_data_from_DB(void)
 		overTime[timeidx].clientdata[clientID]++;
 
 		// Increase DNS queries counter
-		counters.queries++;
+		counters->queries++;
 
 		// Increment status counters
 		switch(status)
 		{
 			case QUERY_UNKNOWN: // Unknown
-				counters.unknown++;
+				counters->unknown++;
 				break;
 
 			case QUERY_GRAVITY: // Blocked by gravity.list
 			case QUERY_WILDCARD: // Blocked by regex filter
 			case QUERY_BLACKLIST: // Blocked by black.list
 			case QUERY_EXTERNAL_BLOCKED: // Blocked by external provider
-				counters.blocked++;
+				counters->blocked++;
 				overTime[timeidx].blocked++;
 				domains[domainID].blockedcount++;
 				clients[clientID].blockedcount++;
 				break;
 
 			case QUERY_FORWARDED: // Forwarded
-				counters.forwardedqueries++;
+				counters->forwardedqueries++;
 				// Update overTime data structure
 				break;
 
 			case QUERY_CACHE: // Cached or local config
-				counters.cached++;
+				counters->cached++;
 				// Update overTime data structure
 				overTime[timeidx].cached++;
 				break;
@@ -768,7 +768,7 @@ void read_data_from_DB(void)
 				break;
 		}
 	}
-	logg("Imported %i queries from the long-term database", counters.queries);
+	logg("Imported %i queries from the long-term database", counters->queries);
 
 	if( rc != SQLITE_DONE ){
 		logg("read_data_from_DB() - SQL error step (%i): %s", rc, sqlite3_errmsg(db));

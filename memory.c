@@ -33,7 +33,7 @@ logFileNamesStruct files = {
 };
 
 // Fixed size structs
-countersStruct counters = { 0 };
+countersStruct *counters = NULL;
 ConfigStruct config;
 
 // Variable size array structs
@@ -48,7 +48,7 @@ void memory_check(int which)
 	switch(which)
 	{
 		case QUERIES:
-			if(counters.queries >= counters.queries_MAX-1)
+			if(counters->queries >= counters->queries_MAX-1)
 			{
 				// Have to reallocate shared memory
 				queries = enlarge_shmem_struct('q');
@@ -60,7 +60,7 @@ void memory_check(int which)
 			}
 		break;
 		case FORWARDED:
-			if(counters.forwarded >= counters.forwarded_MAX-1)
+			if(counters->forwarded >= counters->forwarded_MAX-1)
 			{
 				// Have to reallocate shared memory
 				forwarded = enlarge_shmem_struct('f');
@@ -72,7 +72,7 @@ void memory_check(int which)
 			}
 		break;
 		case CLIENTS:
-			if(counters.clients >= counters.clients_MAX-1)
+			if(counters->clients >= counters->clients_MAX-1)
 			{
 				// Have to reallocate shared memory
 				clients = enlarge_shmem_struct('c');
@@ -84,7 +84,7 @@ void memory_check(int which)
 			}
 		break;
 		case DOMAINS:
-			if(counters.domains >= counters.domains_MAX-1)
+			if(counters->domains >= counters->domains_MAX-1)
 			{
 				// Have to reallocate shared memory
 				domains = enlarge_shmem_struct('d');
@@ -96,12 +96,12 @@ void memory_check(int which)
 			}
 		break;
 		case OVERTIME:
-			if(counters.overTime >= counters.overTime_MAX-1)
+			if(counters->overTime >= counters->overTime_MAX-1)
 			{
 				// Have to reallocate memory
-				counters.overTime_MAX += OVERTIMEALLOCSTEP;
-				logg_struct_resize("overTime",counters.overTime_MAX,OVERTIMEALLOCSTEP);
-				overTime = realloc(overTime, counters.overTime_MAX*sizeof(overTimeDataStruct));
+				counters->overTime_MAX += OVERTIMEALLOCSTEP;
+				logg_struct_resize("overTime",counters->overTime_MAX,OVERTIMEALLOCSTEP);
+				overTime = realloc(overTime, counters->overTime_MAX*sizeof(overTimeDataStruct));
 				if(overTime == NULL)
 				{
 					logg("FATAL: Memory allocation failed! Exiting");
@@ -120,11 +120,11 @@ void memory_check(int which)
 void validate_access(const char * name, int pos, bool testmagic, int line, const char * function, const char * file)
 {
 	int limit = 0;
-	if(name[0] == 'c') limit = counters.clients_MAX;
-	else if(name[0] == 'd') limit = counters.domains_MAX;
-	else if(name[0] == 'q') limit = counters.queries_MAX;
-	else if(name[0] == 'o') limit = counters.overTime_MAX;
-	else if(name[0] == 'f') limit = counters.forwarded_MAX;
+	if(name[0] == 'c') limit = counters->clients_MAX;
+	else if(name[0] == 'd') limit = counters->domains_MAX;
+	else if(name[0] == 'q') limit = counters->queries_MAX;
+	else if(name[0] == 'o') limit = counters->overTime_MAX;
+	else if(name[0] == 'f') limit = counters->forwarded_MAX;
 	else { logg("Validator error (range)"); killed = 1; }
 
 	if(pos >= limit || pos < 0)

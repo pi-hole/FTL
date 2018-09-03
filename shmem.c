@@ -13,6 +13,7 @@
 
 /// The name of the shared memory. Use this when connecting to the shared memory.
 #define SHARED_STRINGS_NAME "/FTL-strings"
+#define SHARED_COUNTERS_NAME "/FTL-counters"
 #define SHARED_DOMAINS_NAME "/FTL-domains"
 #define SHARED_CLIENTS_NAME "/FTL-clients"
 #define SHARED_QUERIES_NAME "/FTL-queries"
@@ -20,6 +21,7 @@
 
 /// The pointer in shared memory to the shared string buffer
 static SharedMemory shm_strings = { 0 };
+static SharedMemory shm_counters = { 0 };
 static SharedMemory shm_domains = { 0 };
 static SharedMemory shm_clients = { 0 };
 static SharedMemory shm_queries = { 0 };
@@ -83,6 +85,14 @@ bool init_shmem(void)
 	((char*)shm_strings.ptr)[0] = '\0';
 	next_pos = 1;
 
+	/****************************** shared counters struct ******************************/
+	shm_unlink(SHARED_COUNTERS_NAME);
+	// Try to create shared memory object
+	shm_counters = create_shm(SHARED_COUNTERS_NAME, sizeof(countersStruct));
+	if(shm_counters.ptr == NULL)
+		return false;
+	counters = (countersStruct*)shm_counters.ptr;
+
 	/****************************** shared domains struct ******************************/
 	shm_unlink(SHARED_DOMAINS_NAME);
 	// Try to create shared memory object
@@ -90,7 +100,7 @@ bool init_shmem(void)
 	if(shm_domains.ptr == NULL)
 		return false;
 	domains = (domainsDataStruct*)shm_domains.ptr;
-	counters.domains_MAX = pagesize;
+	counters->domains_MAX = pagesize;
 
 	/****************************** shared clients struct ******************************/
 	shm_unlink(SHARED_CLIENTS_NAME);
@@ -99,7 +109,7 @@ bool init_shmem(void)
 	if(shm_clients.ptr == NULL)
 		return false;
 	clients = (clientsDataStruct*)shm_clients.ptr;
-	counters.clients_MAX = pagesize;
+	counters->clients_MAX = pagesize;
 
 	/****************************** shared forwarded struct ******************************/
 	shm_unlink(SHARED_FORWARDED_NAME);
@@ -108,7 +118,7 @@ bool init_shmem(void)
 	if(shm_forwarded.ptr == NULL)
 		return false;
 	forwarded = (forwardedDataStruct*)shm_forwarded.ptr;
-	counters.forwarded_MAX = pagesize;
+	counters->forwarded_MAX = pagesize;
 
 	/****************************** shared queries struct ******************************/
 	shm_unlink(SHARED_QUERIES_NAME);
@@ -117,7 +127,7 @@ bool init_shmem(void)
 	if(shm_queries.ptr == NULL)
 		return false;
 	queries = (queriesDataStruct*)shm_queries.ptr;
-	counters.queries_MAX = pagesize;
+	counters->queries_MAX = pagesize;
 
 	return true;
 }
@@ -125,6 +135,7 @@ bool init_shmem(void)
 void destroy_shmem(void)
 {
 	delete_shm(&shm_strings);
+	delete_shm(&shm_counters);
 	delete_shm(&shm_domains);
 	delete_shm(&shm_clients);
 	delete_shm(&shm_queries);
@@ -194,22 +205,22 @@ void *enlarge_shmem_struct(char type)
 		case 'q':
 			sharedMemory = &shm_queries;
 			sizeofobj = sizeof(queriesDataStruct);
-			counter = &counters.queries_MAX;
+			counter = &counters->queries_MAX;
 			break;
 		case 'c':
 			sharedMemory = &shm_clients;
 			sizeofobj = sizeof(clientsDataStruct);
-			counter = &counters.clients_MAX;
+			counter = &counters->clients_MAX;
 			break;
 		case 'd':
 			sharedMemory = &shm_domains;
 			sizeofobj = sizeof(domainsDataStruct);
-			counter = &counters.domains_MAX;
+			counter = &counters->domains_MAX;
 			break;
 		case 'f':
 			sharedMemory = &shm_forwarded;
 			sizeofobj = sizeof(forwardedDataStruct);
-			counter = &counters.forwarded_MAX;
+			counter = &counters->forwarded_MAX;
 			break;
 		default:
 			logg("Invalid argument in enlarge_shmem_struct(): %c (%i)", type, type);

@@ -73,7 +73,7 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 
 	// Ensure we have enough space in the queries struct
 	memory_check(QUERIES);
-	int queryID = counters.queries;
+	int queryID = counters->queries;
 
 	// Convert domain to lower case
 	char *domain = strdup(name);
@@ -133,7 +133,7 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	int timeidx = findOverTimeID(overTimetimestamp);
 	validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 	overTime[timeidx].querytypedata[querytype-1]++;
-	counters.querytype[querytype-1]++;
+	counters->querytype[querytype-1]++;
 
 	// Skip rest of the analysis if this query is not of type A or AAAA
 	// but user wants to see only A and AAAA queries (pre-v4.1 behavior)
@@ -176,10 +176,10 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	queries[queryID].AD = false;
 
 	// Increase DNS queries counter
-	counters.queries++;
+	counters->queries++;
 	// Count this query as unknown as long as no reply has
 	// been found and analyzed
-	counters.unknown++;
+	counters->unknown++;
 
 	// Update overTime data
 	validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
@@ -237,11 +237,11 @@ static int findQueryID(int id)
 	// MAX(0, a) is used to return 0 in case a is negative (negative array indices are harmful)
 
 	// Validate access only once for the maximum index (all lower will work)
-	validate_access("queries", counters.queries-1, false, __LINE__, __FUNCTION__, __FILE__);
-	int until = MAX(0, counters.queries-MAXITER);
+	validate_access("queries", counters->queries-1, false, __LINE__, __FUNCTION__, __FILE__);
+	int until = MAX(0, counters->queries-MAXITER);
 	int i;
 	// Check UUIDs of queries
-	for(i = counters.queries-1; i >= until; i--)
+	for(i = counters->queries-1; i >= until; i--)
 		if(queries[i].id == id)
 			return i;
 
@@ -323,7 +323,7 @@ void FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id
 			// This code section acknowledges this by removing one entry from
 			// the cached counters as we will re-brand this query as having been
 			// forwarded in the following.
-			counters.cached--;
+			counters->cached--;
 			// Also correct overTime data
 			overTime[j].cached--;
 
@@ -338,7 +338,7 @@ void FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id
 		{
 			// Normal cache reply
 			// Query is no longer unknown
-			counters.unknown--;
+			counters->unknown--;
 			// Hereby, this query is now fully determined
 			queries[i].complete = true;
 		}
@@ -346,7 +346,7 @@ void FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id
 		overTime[j].forwarded++;
 
 		// Update couter for forwarded queries
-		counters.forwardedqueries++;
+		counters->forwardedqueries++;
 	}
 
 	// Release allocated memory
@@ -362,7 +362,7 @@ void FTL_dnsmasq_reload(void)
 
 	// Called when dnsmasq re-reads its config and hosts files
 	// Reset number of blocked domains
-	counters.gravity = 0;
+	counters->gravity = 0;
 
 	// Inspect 01-pihole.conf to see if Pi-hole blocking is enabled,
 	// i.e. if /etc/pihole/gravity.list is sourced as addn-hosts file
@@ -436,9 +436,9 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 	{
 		// Answered from local configuration, might be a wildcard or user-provided
 		// This query is no longer unknown
-		counters.unknown--;
+		counters->unknown--;
 		// Answered from a custom (user provided) cache file
-		counters.cached++;
+		counters->cached++;
 
 		// Detect user-defined blocking rules
 		if(strcmp(answer, "(NXDOMAIN)") == 0 ||
@@ -524,13 +524,13 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 static void query_externally_blocked(int i)
 {
 	// Correct counters as we won't count this as forwarded ...
-	counters.forwardedqueries--;
+	counters->forwardedqueries--;
 	overTime[queries[i].timeidx].forwarded--;
 	validate_access("forwarded", queries[i].forwardID, true, __LINE__, __FUNCTION__, __FILE__);
 	forwarded[queries[i].forwardID].count--;
 
 	// ... but as blocked
-	counters.blocked++;
+	counters->blocked++;
 	overTime[queries[i].timeidx].blocked++;
 	validate_access("domains", queries[i].domainID, true, __LINE__, __FUNCTION__, __FILE__);
 	domains[queries[i].domainID].blockedcount++;
@@ -627,7 +627,7 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 		if(!queries[i].complete)
 		{
 			// This query is no longer unknown
-			counters.unknown--;
+			counters->unknown--;
 
 			// Get time index
 			int querytimestamp, overTimetimestamp;
@@ -653,13 +653,13 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 				case QUERY_GRAVITY: // gravity.list
 				case QUERY_BLACKLIST: // black.list
 				case QUERY_WILDCARD: // regex blocked
-					counters.blocked++;
+					counters->blocked++;
 					overTime[timeidx].blocked++;
 					domains[domainID].blockedcount++;
 					clients[clientID].blockedcount++;
 					break;
 				case QUERY_CACHE: // cached from one of the lists
-					counters.cached++;
+					counters->cached++;
 					overTime[timeidx].cached++;
 					break;
 			}
@@ -768,26 +768,26 @@ void save_reply_type(unsigned int flags, int queryID, struct timeval response)
 		{
 			// NXDOMAIN
 			queries[queryID].reply = REPLY_NXDOMAIN;
-			counters.reply_NXDOMAIN++;
+			counters->reply_NXDOMAIN++;
 		}
 		else
 		{
 			// NODATA(-IPv6)
 			queries[queryID].reply = REPLY_NODATA;
-			counters.reply_NODATA++;
+			counters->reply_NODATA++;
 		}
 	}
 	else if(flags & F_CNAME)
 	{
 		// <CNAME>
 		queries[queryID].reply = REPLY_CNAME;
-		counters.reply_CNAME++;
+		counters->reply_CNAME++;
 	}
 	else if(flags & F_REVERSE)
 	{
 		// reserve lookup
 		queries[queryID].reply = REPLY_DOMAIN;
-		counters.reply_domain++;
+		counters->reply_domain++;
 	}
 	else if(flags & F_RRNAME)
 	{
@@ -798,7 +798,7 @@ void save_reply_type(unsigned int flags, int queryID, struct timeval response)
 	{
 		// Valid IP
 		queries[queryID].reply = REPLY_IP;
-		counters.reply_IP++;
+		counters->reply_IP++;
 	}
 
 	// Save response time (relative time)
@@ -1111,6 +1111,6 @@ int FTL_listsfile(char* filename, unsigned int index, FILE *f, int cache_size, s
 	}
 
 	logg("%s: parsed %i domains (took %.1f ms)", filename, added, timer_elapsed_msec(LISTS_TIMER));
-	counters.gravity += added;
+	counters->gravity += added;
 	return name_count;
 }

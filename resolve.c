@@ -67,7 +67,7 @@ char *resolveHostname(const char *addr)
 void reresolveHostnames(void)
 {
 	int clientID;
-	for(clientID = 0; clientID < counters.clients; clientID++)
+	for(clientID = 0; clientID < counters->clients; clientID++)
 	{
 		// Memory validation
 		validate_access("clients", clientID, true, __LINE__, __FUNCTION__, __FILE__);
@@ -93,7 +93,7 @@ void reresolveHostnames(void)
 void resolveNewClients(void)
 {
 	int i;
-	for(i = 0; i < counters.clients; i++)
+	for(i = 0; i < counters->clients; i++)
 	{
 		// Memory validation
 		validate_access("clients", i, true, __LINE__, __FUNCTION__, __FILE__);
@@ -107,7 +107,7 @@ void resolveNewClients(void)
 			clients[i].new = false;
 		}
 	}
-	for(i = 0; i < counters.forwarded; i++)
+	for(i = 0; i < counters->forwarded; i++)
 	{
 		// Memory validation
 		validate_access("forwarded", i, true, __LINE__, __FUNCTION__, __FILE__);

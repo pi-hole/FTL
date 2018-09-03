@@ -221,7 +221,7 @@ typedef struct {
 
 extern logFileNamesStruct files;
 extern FTLFileNamesStruct FTLfiles;
-extern countersStruct counters;
+extern countersStruct *counters;
 extern ConfigStruct config;
 
 extern queriesDataStruct *queries;
