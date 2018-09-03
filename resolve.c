@@ -89,6 +89,7 @@ void reresolveHostnames(void)
 
 			// Store client hostname
 			clients[clientID].name = strdup(hostname);
+			clients[clientID].new = false;
 		}
 		free(hostname);
 	}
