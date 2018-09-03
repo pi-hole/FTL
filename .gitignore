@@ -1,5 +1,6 @@
 # Generated binary files
 /obj/
+/dnsmasq/obj
 pihole-FTL
 socket-test
 
