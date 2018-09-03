@@ -499,6 +499,13 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 
 static void detect_blocked_IP(unsigned short flags, char* answer, int queryID)
 {
+	// Skip replies which originated locally. Otherwise, we would count
+	// gravity.list blocked queries as externally blocked.
+	if(flags & F_HOSTS)
+	{
+		return;
+	}
+
 	// If received one of the following IPs as reply, OpenDNS
 	// (Cisco Umbrella) blocked this query
 	// See https://support.opendns.com/hc/en-us/articles/227986927-What-are-the-Cisco-Umbrella-Block-Page-IP-Addresses-
