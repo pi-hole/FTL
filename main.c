@@ -32,6 +32,7 @@ int main (int argc, char* argv[])
 
 	// Try to open FTL log
 	open_FTL_log(true);
+	timer_start(EXIT_TIMER);
 	logg("########## FTL started! ##########");
 	log_FTL_version();
 	init_thread_lock();
