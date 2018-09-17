@@ -1482,8 +1482,10 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 			      if (crecp->flags & F_NXDOMAIN)
 				nxdomain = 1;
 			      if (!dryrun)
+			      {
 				log_query(crecp->flags & ~F_FORWARD, name, &addr, NULL);
 				FTL_cache(crecp->flags & ~F_FORWARD, name, &addr, NULL, daemon->log_display_id);
+			      }
 			    }
 			  else
 			    {

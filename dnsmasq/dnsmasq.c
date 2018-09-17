@@ -24,6 +24,7 @@ struct daemon *daemon;
 
 static volatile pid_t pid = 0;
 static volatile int pipewrite;
+static char terminate = 0;
 
 static int set_dns_listeners(time_t now);
 static void check_dns_listeners(time_t now);
@@ -906,7 +907,7 @@ int main_dnsmasq (int argc, char **argv)
   poll_resolv(1, 0, now);
 #endif
 
-  while (1)
+  while (!terminate)
     {
       int t, timeout = -1;
 
@@ -1091,6 +1092,7 @@ int main_dnsmasq (int argc, char **argv)
 #endif
 
     }
+    return 0;
 }
 
 static void sig_handler(int sig)
@@ -1427,7 +1429,8 @@ static void async_event(int pipe, time_t now)
 
 	my_syslog(LOG_INFO, _("exiting on receipt of SIGTERM"));
 	flush_log();
-	exit(EC_GOOD);
+//	exit(EC_GOOD);
+	terminate = 1;
       }
 }
 

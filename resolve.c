@@ -83,6 +83,7 @@ void reresolveHostnames(void)
 		{
 			// Store client hostname
 			clients[clientID].namepos = addstr(newhostname);
+			clients[clientID].new = false;
 		}
 		free(newhostname);
 	}
