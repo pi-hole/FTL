@@ -42,6 +42,7 @@ forwardedDataStruct *forwarded = NULL;
 clientsDataStruct *clients = NULL;
 domainsDataStruct *domains = NULL;
 overTimeDataStruct *overTime = NULL;
+int **overTimeClientData = NULL;
 
 void memory_check(int which)
 {
@@ -51,7 +52,7 @@ void memory_check(int which)
 			if(counters->queries >= counters->queries_MAX-1)
 			{
 				// Have to reallocate shared memory
-				queries = enlarge_shmem_struct('q');
+				queries = enlarge_shmem_struct(QUERIES);
 				if(queries == NULL)
 				{
 					logg("FATAL: Memory allocation failed! Exiting");
@@ -63,7 +64,7 @@ void memory_check(int which)
 			if(counters->forwarded >= counters->forwarded_MAX-1)
 			{
 				// Have to reallocate shared memory
-				forwarded = enlarge_shmem_struct('f');
+				forwarded = enlarge_shmem_struct(FORWARDED);
 				if(forwarded == NULL)
 				{
 					logg("FATAL: Memory allocation failed! Exiting");
@@ -75,7 +76,7 @@ void memory_check(int which)
 			if(counters->clients >= counters->clients_MAX-1)
 			{
 				// Have to reallocate shared memory
-				clients = enlarge_shmem_struct('c');
+				clients = enlarge_shmem_struct(CLIENTS);
 				if(clients == NULL)
 				{
 					logg("FATAL: Memory allocation failed! Exiting");
@@ -87,7 +88,7 @@ void memory_check(int which)
 			if(counters->domains >= counters->domains_MAX-1)
 			{
 				// Have to reallocate shared memory
-				domains = enlarge_shmem_struct('d');
+				domains = enlarge_shmem_struct(DOMAINS);
 				if(domains == NULL)
 				{
 					logg("FATAL: Memory allocation failed! Exiting");
@@ -98,10 +99,8 @@ void memory_check(int which)
 		case OVERTIME:
 			if(counters->overTime >= counters->overTime_MAX-1)
 			{
-				// Have to reallocate memory
-				counters->overTime_MAX += OVERTIMEALLOCSTEP;
-				logg_struct_resize("overTime",counters->overTime_MAX,OVERTIMEALLOCSTEP);
-				overTime = realloc(overTime, counters->overTime_MAX*sizeof(overTimeDataStruct));
+				// Have to reallocate shared memory
+				overTime = enlarge_shmem_struct(OVERTIME);
 				if(overTime == NULL)
 				{
 					logg("FATAL: Memory allocation failed! Exiting");
@@ -147,38 +146,6 @@ void validate_access(const char * name, int pos, bool testmagic, int line, const
 			logg("FATAL ERROR: Trying to access %s[%i], but magic byte is %x", name, pos, magic);
 			logg("             found in %s() (%s:%i)", function, file, line);
 		}
-	}
-}
-
-void validate_access_oTcl(int timeidx, int clientID, int line, const char * function, const char * file)
-{
-	if(clientID < 0)
-	{
-		logg("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-		logg("FATAL ERROR: Trying to access overTime.clientdata[%i]", clientID);
-		logg("             found in %s() (%s:%i)", function, file, line);
-	}
-	// Determine if there is enough space for saving the current
-	// clientID in the overTime data structure, allocate space otherwise
-	if(overTime[timeidx].clientnum <= clientID)
-	{
-		// Reallocate more space for clientdata
-		overTime[timeidx].clientdata = realloc(overTime[timeidx].clientdata, (clientID+1)*sizeof(*overTime[timeidx].clientdata));
-		// Initialize new data fields with zeroes
-		int i;
-		for(i = overTime[timeidx].clientnum; i <= clientID; i++)
-		{
-			overTime[timeidx].clientdata[i] = 0;
-		}
-		// Update counter
-		overTime[timeidx].clientnum = clientID + 1;
-	}
-	int limit = overTime[timeidx].clientnum;
-	if(clientID >= limit)
-	{
-		logg("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-		logg("FATAL ERROR: Trying to access overTime.clientdata[%i], but maximum is %i", clientID, limit);
-		logg("             found in %s() (%s:%i)", function, file, line);
 	}
 }
 

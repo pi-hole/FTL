@@ -66,11 +66,12 @@ int findOverTimeID(int overTimetimestamp)
 		overTime[timeidx].blocked = 0;
 		overTime[timeidx].cached = 0;
 		// overTime[timeidx].querytypedata is static
-		overTime[timeidx].clientnum = 0;
-		overTime[timeidx].clientdata = NULL;
 		counters->overTime++;
 
-		// Update time stamp for next loop interation
+		// Create new overTime slot in client shared memory
+		addOverTimeClientSlot();
+
+		// Update time stamp for next loop interaction
 		if(counters->overTime != 0)
 		{
 			validate_access("overTime", counters->overTime-1, false, __LINE__, __FUNCTION__, __FILE__);
@@ -213,6 +214,9 @@ int findClientID(const char *client)
 	clients[clientID].namepos = 0;
 	// Increase counter by one
 	counters->clients++;
+
+	// Create new overTime client data
+	newOverTimeClient();
 
 	return clientID;
 }

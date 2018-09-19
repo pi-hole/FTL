@@ -18,6 +18,8 @@
 #define SHARED_CLIENTS_NAME "/FTL-clients"
 #define SHARED_QUERIES_NAME "/FTL-queries"
 #define SHARED_FORWARDED_NAME "/FTL-forwarded"
+#define SHARED_OVERTIME_NAME "/FTL-overTime"
+#define SHARED_OVERTIMECLIENT_PREFIX "/FTL-client-"
 
 /// The pointer in shared memory to the shared string buffer
 static SharedMemory shm_strings = { 0 };
@@ -26,6 +28,10 @@ static SharedMemory shm_domains = { 0 };
 static SharedMemory shm_clients = { 0 };
 static SharedMemory shm_queries = { 0 };
 static SharedMemory shm_forwarded = { 0 };
+static SharedMemory shm_overTime = { 0 };
+
+static SharedMemory *shm_overTimeClients = NULL;
+static int overTimeClientCount = 0;
 
 static int pagesize;
 static unsigned int next_pos = 0;
@@ -64,6 +70,54 @@ unsigned long long addstr(const char *str)
 char *getstr(unsigned long long pos)
 {
 	return &((char*)shm_strings.ptr)[pos];
+}
+
+static char *clientShmName(int id) {
+	int name_len = 1 + snprintf(NULL, 0, "%s%d", SHARED_OVERTIMECLIENT_PREFIX, id);
+	char *name = malloc(sizeof(char) * name_len);
+	snprintf(name, (size_t) name_len, "%s%d", SHARED_OVERTIMECLIENT_PREFIX, id);
+
+	return name;
+}
+
+void newOverTimeClient() {
+	// Get the name of the new shared memory.
+	// This will be used in the struct, so it should not be immediately freed.
+	char *name = clientShmName(overTimeClientCount);
+
+	// Create the shared memory with enough space for the current overTime slots
+	shm_unlink(name);
+	SharedMemory shm = create_shm(name, sizeof(int) * counters->overTime);
+	if(shm.ptr == NULL) {
+		free(shm.name);
+		logg("Failed to initialize new overTime client %d", overTimeClientCount);
+		return;
+	}
+
+	// Make space for the new shared memory
+	shm_overTimeClients = realloc(shm_overTimeClients, sizeof(SharedMemory) * (overTimeClientCount + 1));
+	overTimeClientCount++;
+	shm_overTimeClients[overTimeClientCount-1] = shm;
+
+	// Add to overTimeClientData
+	overTimeClientData = realloc(overTimeClientData, sizeof(int*) * (overTimeClientCount));
+	overTimeClientData[overTimeClientCount-1] = shm.ptr;
+}
+
+void addOverTimeClientSlot() {
+	// For each client slot, add an overTime slot
+	for(int i = 0; i < overTimeClientCount; i++) {
+		// Get the name of the shared memory
+		char *name = clientShmName(i);
+
+		// Reallocate with one more slot
+		realloc_shm(&shm_overTimeClients[i], shm_overTimeClients[i].size + sizeof(int));
+
+		// Update overTimeClientData
+		overTimeClientData[i] = shm_overTimeClients[i].ptr;
+
+		free(name);
+	}
 }
 
 bool init_shmem(void)
@@ -129,6 +183,15 @@ bool init_shmem(void)
 	queries = (queriesDataStruct*)shm_queries.ptr;
 	counters->queries_MAX = pagesize;
 
+	/****************************** shared overTime struct ******************************/
+	shm_unlink(SHARED_OVERTIME_NAME);
+	// Try to create shared memory object
+	shm_overTime = create_shm(SHARED_OVERTIME_NAME, pagesize*sizeof(overTimeDataStruct));
+	if(shm_overTime.ptr == NULL)
+		return false;
+	overTime = (overTimeDataStruct*)shm_overTime.ptr;
+	counters->overTime_MAX = pagesize;
+
 	return true;
 }
 
@@ -140,6 +203,12 @@ void destroy_shmem(void)
 	delete_shm(&shm_clients);
 	delete_shm(&shm_queries);
 	delete_shm(&shm_forwarded);
+	delete_shm(&shm_overTime);
+
+	for(int i = 0; i < overTimeClientCount; i++) {
+		free(shm_overTimeClients[i].name);
+		delete_shm(&shm_overTimeClients[i]);
+	}
 }
 
 SharedMemory create_shm(char *name, size_t size)
@@ -202,28 +271,33 @@ void *enlarge_shmem_struct(char type)
 	// Select type of struct that should be enlarged
 	switch(type)
 	{
-		case 'q':
+		case QUERIES:
 			sharedMemory = &shm_queries;
 			sizeofobj = sizeof(queriesDataStruct);
 			counter = &counters->queries_MAX;
 			break;
-		case 'c':
+		case CLIENTS:
 			sharedMemory = &shm_clients;
 			sizeofobj = sizeof(clientsDataStruct);
 			counter = &counters->clients_MAX;
 			break;
-		case 'd':
+		case DOMAINS:
 			sharedMemory = &shm_domains;
 			sizeofobj = sizeof(domainsDataStruct);
 			counter = &counters->domains_MAX;
 			break;
-		case 'f':
+		case FORWARDED:
 			sharedMemory = &shm_forwarded;
 			sizeofobj = sizeof(forwardedDataStruct);
 			counter = &counters->forwarded_MAX;
 			break;
+		case OVERTIME:
+			sharedMemory = &shm_overTime;
+			sizeofobj = sizeof(overTimeDataStruct);
+			counter = &counters->overTime_MAX;
+			break;
 		default:
-			logg("Invalid argument in enlarge_shmem_struct(): %c (%i)", type, type);
+			logg("Invalid argument in enlarge_shmem_struct(): %i", type);
 			return 0;
 	}
 

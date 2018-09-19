@@ -187,8 +187,7 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	overTime[timeidx].total++;
 
 	// Update overTime data structure with the new client
-	validate_access_oTcl(timeidx, clientID, __LINE__, __FUNCTION__, __FILE__);
-	overTime[timeidx].clientdata[clientID]++;
+	overTimeClientData[clientID][timeidx]++;
 
 	// Try blocking regex if configured
 	validate_access("domains", domainID, false, __LINE__, __FUNCTION__, __FILE__);

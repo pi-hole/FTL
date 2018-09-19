@@ -63,8 +63,7 @@ void *GC_thread(void *val)
 				clients[clientID].count--;
 
 				// Adjust corresponding overTime counters
-				validate_access_oTcl(timeidx, clientID, __LINE__, __FUNCTION__, __FILE__);
-				overTime[timeidx].clientdata[clientID]--;
+				overTimeClientData[timeidx][clientID]--;
 
 				// Adjust domain counter (no overTime information)
 				int domainID = queries[i].domainID;
