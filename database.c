@@ -617,12 +617,6 @@ void read_data_from_DB(void)
 	// Loop through returned database rows
 	while((rc = sqlite3_step(stmt)) == SQLITE_ROW)
 	{
-		// Ensure we have enough space in the queries struct
-		memory_check(QUERIES);
-
-		// Set ID for this query
-		int queryID = counters->queries;
-
 		int queryTimeStamp = sqlite3_column_int(stmt, 1);
 		// 1483228800 = 01/01/2017 @ 12:00am (UTC)
 		if(queryTimeStamp < 1483228800)
@@ -699,21 +693,31 @@ void read_data_from_DB(void)
 		int timeidx = findOverTimeID(overTimeTimeStamp);
 		validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 
+		// Ensure we have enough space in the queries struct
+		memory_check(QUERIES);
+
+		// Set index for this query
+		int queryIndex = counters->queries;
+
+		// Set the ID for this query. Queries loaded from the database use negative IDs.
+		// 1 is added to the counter before flipping the sign so the IDs start at -1 instead of 0.
+		int queryID = -1 * (counters->queries + 1);
+
 		// Store this query in memory
-		validate_access("queries", queryID, false, __LINE__, __FUNCTION__, __FILE__);
-		queries[queryID].magic = MAGICBYTE;
-		queries[queryID].timestamp = queryTimeStamp;
-		queries[queryID].type = type;
-		queries[queryID].status = status;
-		queries[queryID].domainID = domainID;
-		queries[queryID].clientID = clientID;
-		queries[queryID].forwardID = forwardID;
-		queries[queryID].timeidx = timeidx;
-		queries[queryID].db = true; // Mark this as already present in the database
-		queries[queryID].id = 0; // This is dnsmasq's internal ID. We don't store it in the database
-		queries[queryID].complete = true; // Mark as all information is avaiable
-		queries[queryID].response = 0;
-		queries[queryID].AD = false;
+		validate_access("queries", queryIndex, false, __LINE__, __FUNCTION__, __FILE__);
+		queries[queryIndex].magic = MAGICBYTE;
+		queries[queryIndex].timestamp = queryTimeStamp;
+		queries[queryIndex].type = type;
+		queries[queryIndex].status = status;
+		queries[queryIndex].domainID = domainID;
+		queries[queryIndex].clientID = clientID;
+		queries[queryIndex].forwardID = forwardID;
+		queries[queryIndex].timeidx = timeidx;
+		queries[queryIndex].db = true; // Mark this as already present in the database
+		queries[queryIndex].id = queryID;
+		queries[queryIndex].complete = true; // Mark as all information is avaiable
+		queries[queryIndex].response = 0;
+		queries[queryIndex].AD = false;
 		lastDBimportedtimestamp = queryTimeStamp;
 
 		// Handle type counters
