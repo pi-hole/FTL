@@ -1063,17 +1063,10 @@ void getClientsOverTime(int *sock)
 		int j;
 		for(j = 0; j < counters->clients; j++)
 		{
-			int thisclient = 0;
-
 			if(skipclient[j])
 				continue;
 
-			if(j < overTime[i].clientnum)
-			{
-				// This client entry does already exist at this timestamp
-				// -> use counter of requests sent to this destination
-				thisclient = overTime[i].clientdata[j];
-			}
+			int thisclient = overTimeClientData[j][i];
 
 			if(istelnet[*sock])
 				ssend(*sock, " %i", thisclient);

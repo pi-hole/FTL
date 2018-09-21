@@ -671,10 +671,6 @@ void read_data_from_DB(void)
 			continue;
 		}
 
-		// Obtain IDs only after filtering which queries we want to keep
-		int domainID = findDomainID(domain);
-		int clientID = findClientID(client);
-
 		const char *forwarddest = (const char *)sqlite3_column_text(stmt, 6);
 		int forwardID = 0;
 		// Determine forwardID only when status == 2 (forwarded) as the
@@ -689,9 +685,11 @@ void read_data_from_DB(void)
 			forwardID = findForwardID(forwarddest, true);
 		}
 
+		// Obtain IDs only after filtering which queries we want to keep
 		int overTimeTimeStamp = queryTimeStamp - (queryTimeStamp % 600) + 300;
 		int timeidx = findOverTimeID(overTimeTimeStamp);
-		validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
+		int domainID = findDomainID(domain);
+		int clientID = findClientID(client);
 
 		// Ensure we have enough space in the queries struct
 		memory_check(QUERIES);
@@ -704,6 +702,7 @@ void read_data_from_DB(void)
 		int queryID = -1 * (counters->queries + 1);
 
 		// Store this query in memory
+		validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 		validate_access("queries", queryIndex, false, __LINE__, __FUNCTION__, __FILE__);
 		queries[queryIndex].magic = MAGICBYTE;
 		queries[queryIndex].timestamp = queryTimeStamp;
@@ -731,8 +730,7 @@ void read_data_from_DB(void)
 		overTime[timeidx].total++;
 
 		// Update overTime data structure with the new client
-		validate_access_oTcl(timeidx, clientID, __LINE__, __FUNCTION__, __FILE__);
-		overTime[timeidx].clientdata[clientID]++;
+		overTimeClientData[clientID][timeidx]++;
 
 		// Increase DNS queries counter
 		counters->queries++;

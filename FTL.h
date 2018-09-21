@@ -203,9 +203,7 @@ typedef struct {
 	int blocked;
 	int cached;
 	int forwarded;
-	int clientnum;
-	int *clientdata;
-	int querytypedata[7];
+	int querytypedata[TYPE_MAX-1];
 } overTimeDataStruct;
 
 typedef struct {
@@ -229,6 +227,10 @@ extern forwardedDataStruct *forwarded;
 extern clientsDataStruct *clients;
 extern domainsDataStruct *domains;
 extern overTimeDataStruct *overTime;
+
+/// Indexed by client ID, then time index (like `overTime`).
+/// This gets automatically updated whenever a new client or overTime slot is added.
+extern int **overTimeClientData;
 
 extern FILE *logfile;
 extern volatile sig_atomic_t killed;

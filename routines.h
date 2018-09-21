@@ -92,7 +92,6 @@ void *FTLcalloc(size_t nmemb, size_t size, const char *file, const char *functio
 void *FTLrealloc(void *ptr_in, size_t size, const char *file, const char *function, int line);
 void FTLfree(void *ptr, const char* file, const char *function, int line);
 void validate_access(const char * name, int pos, bool testmagic, int line, const char * function, const char * file);
-void validate_access_oTcl(int timeidx, int clientID, int line, const char * function, const char * file);
 
 int main_dnsmasq(int argc, char **argv);
 
@@ -115,3 +114,15 @@ void destroy_shmem(void);
 unsigned long long addstr(const char *str);
 char *getstr(unsigned long long pos);
 void *enlarge_shmem_struct(char type);
+
+/**
+ * Create a new overTime client shared memory block.
+ * This also updates `overTimeClientData`.
+ */
+void newOverTimeClient();
+
+/**
+ * Add a new overTime slot to each overTime client shared memory block.
+ * This also updates `overTimeClientData`.
+ */
+void addOverTimeClientSlot();
