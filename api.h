@@ -9,17 +9,6 @@
 *  Please see LICENSE file for your rights under this license. */
 
 // Statistic methods
-void getStats(int *sock);
-void getOverTime(int *sock);
-void getTopDomains(char *client_message, int *sock);
-void getTopClients(char *client_message, int *sock);
-void getForwardDestinations(char *client_message, int *sock);
-void getQueryTypes(int *sock);
-void getAllQueries(char *client_message, int *sock);
-void getRecentBlocked(char *client_message, int *sock);
-void getQueryTypesOverTime(int *sock);
-void getClientsOverTime(int *sock);
-void getClientNames(int *sock);
 void getDomainDetails(char *client_message, int *sock);
 
 // FTL methods
