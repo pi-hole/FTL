@@ -63,7 +63,7 @@ void *GC_thread(void *val)
 				clients[clientID].count--;
 
 				// Adjust corresponding overTime counters
-				overTimeClientData[timeidx][clientID]--;
+				overTimeClientData[clientID][timeidx]--;
 
 				// Adjust domain counter (no overTime information)
 				int domainID = queries[i].domainID;
