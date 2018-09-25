@@ -206,8 +206,8 @@ void destroy_shmem(void)
 	delete_shm(&shm_overTime);
 
 	for(int i = 0; i < overTimeClientCount; i++) {
-		free(shm_overTimeClients[i].name);
 		delete_shm(&shm_overTimeClients[i]);
+		free(shm_overTimeClients[i].name);
 	}
 }
 
