@@ -532,8 +532,10 @@ void getForwardDestinations(char *client_message, int *sock)
 				percentage = 1e2f * forwarded[j].count / forwardedsum * counters.forwardedqueries / totalqueries;
 		}
 
-		// Send data if count > 0
-		if(percentage > 0.0f)
+		// Send data:
+		// - always if i < 0 (special upstreams: blocklist and cache)
+		// - only if percentage > 0.0 for all others (i > 0)
+		if(percentage > 0.0f || i < 0)
 		{
 			if(istelnet[*sock])
 				ssend(*sock, "%i %.2f %s %s\n", i, percentage, ip, name);
