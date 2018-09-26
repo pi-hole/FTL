@@ -69,8 +69,12 @@ static void free_whitelist_domains(void)
 
 	whitelist.count = 0;
 
-	free(whitelist.domains);
-	whitelist.domains = NULL;
+	// Free whitelist domains array only allocated
+	if(whitelist.domains != NULL)
+	{
+		free(whitelist.domains);
+		whitelist.domains = NULL;
+	}
 }
 
 bool match_regex(char *input)
@@ -297,5 +301,5 @@ void read_regex_from_file(void)
 	// Read whitelisted domains from file
 	read_whitelist_from_file();
 
-	logg("Compiled %i Regex filters and %i whitelisted domains in %.1f msec (%i errors)", (num_regex-skipped), whitelist.count, timer_elapsed_msec(REGEX_TIMER), errors);
+	logg("Compiled %i Regex filters and %i whitelisted domains in %.1f msec (%i errors)", (num_regex-skipped), whitelist.count > 0 ? whitelist.count : 0, timer_elapsed_msec(REGEX_TIMER), errors);
 }
