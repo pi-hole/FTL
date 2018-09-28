@@ -8,6 +8,7 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 extern int socketfd, telnetfd4, telnetfd6;
+extern volatile sig_atomic_t killed;
 enum { TCP, UDP };
 
 void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *types, int id, char type);
