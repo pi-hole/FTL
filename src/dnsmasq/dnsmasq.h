@@ -273,7 +273,8 @@ struct event_desc {
 #define OPT_IGNORE_CLID    59
 #define OPT_SINGLE_PORT    60
 #define OPT_LEASE_RENEW    61
-#define OPT_LAST           62
+#define OPT_UMBRELLA_IP    62
+#define OPT_LAST           63
 
 #define OPTION_BITS (sizeof(unsigned int)*8)
 #define OPTION_SIZE ( (OPT_LAST/OPTION_BITS)+((OPT_LAST%OPTION_BITS)!=0) )

@@ -427,6 +427,47 @@ int check_source(struct dns_header *header, size_t plen, unsigned char *pseudohe
    return 1;
 }
 
+struct umbrella_opt {
+  u8 magic[4];
+  u8 version;
+  u8 flags;
+  u8 family;
+#ifdef HAVE_IPV6
+  u8 addr[IN6ADDRSZ];
+#else
+  u8 addr[INADDRSZ];
+#endif
+};
+
+static size_t add_umbrella_opt(struct dns_header *header, size_t plen, unsigned char *limit, union mysockaddr *source)
+{
+  /* https://docs.umbrella.com/umbrella-api/docs/identifying-dns-traffic2 */
+
+  int len;
+  struct umbrella_opt opt = {{"ODNS"}, 0, 0, 0, {}};
+
+  void *addrp = NULL;
+
+  len = opt.version = opt.flags = 0;
+
+#ifdef HAVE_IPV6
+  if (source->sa.sa_family == AF_INET6) {
+    addrp = &source->in6.sin6_addr;
+    len = IN6ADDRSZ;
+    opt.family = 0x20;
+  }
+#endif
+  if (source->sa.sa_family == AF_INET) {
+    addrp = &source->in.sin_addr;
+    len = INADDRSZ;
+    opt.family = 0x10;
+  }
+  memcpy(opt.addr, addrp, len);
+
+  len += 7; // for the header
+  return add_pseudoheader(header, plen, (unsigned char *)limit, PACKETSZ, EDNS0_OPTION_UMBRELLA_IP, (unsigned char *)&opt, len, 0, 1);
+}
+
 /* Set *check_subnet if we add a client subnet option, which needs to checked 
    in the reply. Set *cacheable to zero if we add an option which the answer
    may depend on. */
@@ -446,6 +487,9 @@ size_t add_edns0_config(struct dns_header *header, size_t plen, unsigned char *l
     plen = add_pseudoheader(header, plen, limit, PACKETSZ, EDNS0_OPTION_NOMCPEID, 
 			    (unsigned char *)daemon->dns_client_id, strlen(daemon->dns_client_id), 0, 1);
   
+  if (option_bool(OPT_UMBRELLA_IP))
+    plen = add_umbrella_opt(header, plen, limit, source);
+
   if (option_bool(OPT_CLIENT_SUBNET))
     {
       plen = add_source_addr(header, plen, limit, source, cacheable); 

@@ -172,6 +172,7 @@ struct myoption {
 #define LOPT_SINGLE_PORT   359
 #define LOPT_SCRIPT_TIME   360
 #define LOPT_PXE_VENDOR    361
+#define LOPT_UMBRELLA_IP   362
  
 #ifdef HAVE_GETOPT_LONG
 static const struct option opts[] =  
@@ -345,6 +346,7 @@ static const struct myoption opts[] =
     { "dumpfile", 1, 0, LOPT_DUMPFILE },
     { "dumpmask", 1, 0, LOPT_DUMPMASK },
     { "dhcp-ignore-clid", 0, 0,  LOPT_IGNORE_CLID },
+    { "umbrella-remote-ip", 0, 0, LOPT_UMBRELLA_IP },
     { NULL, 0, 0, 0 }
   };
 
@@ -525,6 +527,8 @@ static struct {
   { LOPT_DUMPFILE, ARG_ONE, "<path>", gettext_noop("Path to debug packet dump file"), NULL },
   { LOPT_DUMPMASK, ARG_ONE, "<hex>", gettext_noop("Mask which packets to dump"), NULL },
   { LOPT_SCRIPT_TIME, OPT_LEASE_RENEW, NULL, gettext_noop("Call dhcp-script when lease expiry changes."), NULL },
+  { LOPT_UMBRELLA_IP, OPT_UMBRELLA_IP, NULL, gettext_noop("Send remote IP information upstream"), NULL },
+
   { 0, 0, NULL, NULL, NULL }
 }; 
 
