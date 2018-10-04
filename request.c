@@ -138,13 +138,6 @@ void process_request(char *client_message, int *sock)
 		close(*sock);
 		*sock = 0;
 	}
-	else if(command(client_message, ">kill"))
-	{
-		processed = true;
-		ssend(*sock, "killed\n");
-		logg("FTL killed by client ID: %i",*sock);
-		killed = 1;
-	}
 
 	if(!processed)
 	{
