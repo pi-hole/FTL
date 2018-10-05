@@ -35,7 +35,6 @@ int main (int argc, char* argv[])
 	timer_start(EXIT_TIMER);
 	logg("########## FTL started! ##########");
 	log_FTL_version();
-	init_thread_lock();
 
 	// Initialize shared memory
 	if(!init_shmem())

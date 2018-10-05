@@ -65,11 +65,6 @@ void parse_args(int argc, char* argv[]);
 
 char* find_equals(const char* s);
 
-// threads.c
-void enable_thread_lock(void);
-void disable_thread_lock(void);
-void init_thread_lock(void);
-
 // config.c
 void read_FTLconf(void);
 void get_privacy_level(FILE *fp);

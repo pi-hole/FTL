@@ -10,6 +10,7 @@
 
 #include "FTL.h"
 #include "api.h"
+#include "shmem.h"
 
 bool command(char *client_message, const char* cmd) {
 	return strstr(client_message, cmd) != NULL;
@@ -118,7 +119,7 @@ void process_request(char *client_message, int *sock)
 		logg("Received API request to re-resolve host names");
 		// Need to release the thread lock already here to allow
 		// the resolver to process the incoming PTR requests
-		disable_thread_lock();
+		shm_unlock_lock();
 		reresolveHostnames();
 		logg("Done re-resolving host names");
 	}

@@ -12,6 +12,7 @@
 #include "shmem.h"
 
 /// The name of the shared memory. Use this when connecting to the shared memory.
+#define SHARED_LOCK_NAME "/FTL-lock"
 #define SHARED_STRINGS_NAME "/FTL-strings"
 #define SHARED_COUNTERS_NAME "/FTL-counters"
 #define SHARED_DOMAINS_NAME "/FTL-domains"
@@ -22,6 +23,7 @@
 #define SHARED_OVERTIMECLIENT_PREFIX "/FTL-client-"
 
 /// The pointer in shared memory to the shared string buffer
+static SharedMemory shm_lock = { 0 };
 static SharedMemory shm_strings = { 0 };
 static SharedMemory shm_counters = { 0 };
 static SharedMemory shm_domains = { 0 };
@@ -32,6 +34,7 @@ static SharedMemory shm_overTime = { 0 };
 
 static SharedMemory *shm_overTimeClients = NULL;
 static int overTimeClientCount = 0;
+static pthread_rwlock_t *sharedMemoryLock = NULL;
 
 static int pagesize;
 static unsigned int next_pos = 0;
@@ -120,10 +123,57 @@ void addOverTimeClientSlot() {
 	}
 }
 
+/// Create a read/write lock
+pthread_rwlock_t create_rwlock() {
+	pthread_rwlockattr_t lock_attr = { 0 };
+	pthread_rwlock_t lock = { 0 };
+
+	// Initialize the lock attributes
+	pthread_rwlockattr_init(&lock_attr);
+
+	// Allow the lock to be used by other processes
+	pthread_rwlockattr_setpshared(&lock_attr, PTHREAD_PROCESS_SHARED);
+
+	// Initialize the lock
+	pthread_rwlock_init(&lock, &lock_attr);
+
+	return lock;
+}
+
+void shm_read_lock() {
+	int result = pthread_rwlock_rdlock(sharedMemoryLock);
+
+	if(result != 0)
+		logg("Failed to obtain SHM read lock: %s", strerror(result));
+}
+
+void shm_write_lock() {
+	int result = pthread_rwlock_wrlock(sharedMemoryLock);
+
+	if(result != 0)
+		logg("Failed to obtain SHM write lock: %s", strerror(result));
+}
+
+void shm_unlock_lock() {
+	int result = pthread_rwlock_unlock(sharedMemoryLock);
+
+	if(result != 0)
+		logg("Failed to unlock SHM lock: %s", strerror(result));
+}
+
 bool init_shmem(void)
 {
 	// Get kernel's page size
 	pagesize = getpagesize();
+
+	/****************************** shared memory lock ******************************/
+	shm_unlink(SHARED_LOCK_NAME);
+	// Try to create shared memory object
+	shm_lock = create_shm(SHARED_LOCK_NAME, sizeof(pthread_rwlock_t));
+	if(shm_lock.ptr == NULL)
+		return false;
+	*((pthread_rwlock_t*)shm_lock.ptr) = create_rwlock();
+	sharedMemoryLock = shm_lock.ptr;
 
 	/****************************** shared strings buffer ******************************/
 	// Try unlinking the shared memory object before creating a new one
@@ -197,6 +247,9 @@ bool init_shmem(void)
 
 void destroy_shmem(void)
 {
+	pthread_rwlock_destroy(sharedMemoryLock);
+
+	delete_shm(&shm_lock);
 	delete_shm(&shm_strings);
 	delete_shm(&shm_counters);
 	delete_shm(&shm_domains);
