@@ -427,18 +427,6 @@ int check_source(struct dns_header *header, size_t plen, unsigned char *pseudohe
    return 1;
 }
 
-struct umbrella_opt {
-  u8 magic[4];
-  u8 version;
-  u8 flags;
-  u8 family;
-#ifdef HAVE_IPV6
-  u8 addr[IN6ADDRSZ];
-#else
-  u8 addr[INADDRSZ];
-#endif
-};
-
 #define UMBRELLA_ASSET  0x04
 #define UMBRELLA_ORG    0x08
 #define UMBRELLA_IPV4   0x10
