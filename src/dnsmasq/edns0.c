@@ -485,7 +485,7 @@ static size_t add_umbrella_opt(struct dns_header *header, size_t plen, unsigned 
     u += sizeof(int);
   }
 
-  len = u - &umbrella_data[0]; // for the header
+  len = u - umbrella_data; // for the header
   return add_pseudoheader(header, plen, (unsigned char *)limit, PACKETSZ, EDNS0_OPTION_UMBRELLA_IP, (unsigned char *)&umbrella_data, len, 0, 1);
 }
 
