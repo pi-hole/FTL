@@ -439,33 +439,54 @@ struct umbrella_opt {
 #endif
 };
 
+#define UMBRELLA_ASSET  0x04
+#define UMBRELLA_ORG    0x08
+#define UMBRELLA_IPV4   0x10
+#define UMBRELLA_IPV6   0x20
+#define UMBRELLA_DEVICE 0x40
+#define UMBRELLA_DEVICESZ  8
+
 static size_t add_umbrella_opt(struct dns_header *header, size_t plen, unsigned char *limit, union mysockaddr *source)
 {
   /* https://docs.umbrella.com/umbrella-api/docs/identifying-dns-traffic2 */
-
   int len;
-  struct umbrella_opt opt = {{"ODNS"}, 0, 0, 0, {}};
+  unsigned char umbrella_data[512] = "ODNS";
+  unsigned char *u = &umbrella_data[4];
+  *u++ = 0; // version
+  *u++ = 0; // flags
 
-  void *addrp = NULL;
-
-  len = opt.version = opt.flags = 0;
-
-#ifdef HAVE_IPV6
-  if (source->sa.sa_family == AF_INET6) {
-    addrp = &source->in6.sin6_addr;
-    len = IN6ADDRSZ;
-    opt.family = 0x20;
+  if (daemon->umbrella_org) {
+      *u++ = UMBRELLA_ORG;
+      int org = htonl(daemon->umbrella_org);
+      memcpy(u, (char *)&org, sizeof(int));
+      u += sizeof(int);
   }
-#endif
-  if (source->sa.sa_family == AF_INET) {
-    addrp = &source->in.sin_addr;
-    len = INADDRSZ;
-    opt.family = 0x10;
-  }
-  memcpy(opt.addr, addrp, len);
 
-  len += 7; // for the header
-  return add_pseudoheader(header, plen, (unsigned char *)limit, PACKETSZ, EDNS0_OPTION_UMBRELLA_IP, (unsigned char *)&opt, len, 0, 1);
+  int family = source->sa.sa_family;
+  int size = family == AF_INET ? INADDRSZ : IN6ADDRSZ;
+
+  *u++ = family == AF_INET ? UMBRELLA_IPV4 : UMBRELLA_IPV6;
+  memcpy(u, get_addrp(source, family), size);
+  u += size;
+
+  if (daemon->umbrella_device) {
+      *u++ = UMBRELLA_DEVICE;
+      char word[3];
+      for (int i = 0; i < UMBRELLA_DEVICESZ; i++) {
+          memcpy(word, &(daemon->umbrella_device[i * 2]), 2);
+          *u++ = strtoul(word, NULL, 16);
+      }
+  }
+
+  if (daemon->umbrella_asset) {
+    *u++ = UMBRELLA_ASSET;
+    int assest = htonl(daemon->umbrella_asset);
+    memcpy(u, (char *)&assest, sizeof(int));
+    u += sizeof(int);
+  }
+
+  len = u - &umbrella_data[0]; // for the header
+  return add_pseudoheader(header, plen, (unsigned char *)limit, PACKETSZ, EDNS0_OPTION_UMBRELLA_IP, (unsigned char *)&umbrella_data, len, 0, 1);
 }
 
 /* Set *check_subnet if we add a client subnet option, which needs to checked 
@@ -486,8 +507,8 @@ size_t add_edns0_config(struct dns_header *header, size_t plen, unsigned char *l
   if (daemon->dns_client_id)
     plen = add_pseudoheader(header, plen, limit, PACKETSZ, EDNS0_OPTION_NOMCPEID, 
 			    (unsigned char *)daemon->dns_client_id, strlen(daemon->dns_client_id), 0, 1);
-  
-  if (option_bool(OPT_UMBRELLA_IP))
+
+  if (option_bool(OPT_UMBRELLA))
     plen = add_umbrella_opt(header, plen, limit, source);
 
   if (option_bool(OPT_CLIENT_SUBNET))
