@@ -125,8 +125,8 @@ void addOverTimeClientSlot() {
 
 /// Create a read/write lock
 pthread_rwlock_t create_rwlock() {
-	pthread_rwlockattr_t lock_attr = { 0 };
-	pthread_rwlock_t lock = { 0 };
+	pthread_rwlockattr_t lock_attr = {};
+	pthread_rwlock_t lock = {};
 
 	// Initialize the lock attributes
 	pthread_rwlockattr_init(&lock_attr);
