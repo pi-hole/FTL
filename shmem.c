@@ -108,12 +108,16 @@ void addOverTimeClientSlot() {
 	// For each client slot, add pagesize overTime slots
 	for(int i = 0; i < overTimeClientCount; i++)
 	{
-		// Only increase size of the shm object is needed
-		if(shm_overTimeClients[i].size > (size_t)counters->overTime)
+		// Only increase the size of the shm object if needed
+		// shm_overTimeClients[i].size stores the size of the memory in bytes whereas
+		// counters->overTime (effectively) stores the number of slots each overTime
+		// client should have. Hence, counters->overTime needs to be multiplied by
+		// sizeof(int) to get the actual requested memory size
+		if(shm_overTimeClients[i].size > (size_t)counters->overTime*sizeof(int))
 			continue;
 
 		// Reallocate with one more slot
-		realloc_shm(&shm_overTimeClients[i], (counters->overTime/pagesize + 1)*pagesize*sizeof(int));
+		realloc_shm(&shm_overTimeClients[i], (counters->overTime + pagesize)*sizeof(int));
 
 		// Update overTimeClientData
 		overTimeClientData[i] = shm_overTimeClients[i].ptr;
