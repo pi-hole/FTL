@@ -317,6 +317,33 @@ int number_of_queries_in_DB(void)
 	return result;
 }
 
+static sqlite3_int64 last_ID_in_DB(void)
+{
+	sqlite3_stmt* stmt;
+
+	int rc = sqlite3_prepare_v2(db, "SELECT MAX(ID) FROM queries", -1, &stmt, NULL);
+	if( rc ){
+		logg("last_ID_in_DB() - SQL error prepare (%i): %s", rc, sqlite3_errmsg(db));
+		dbclose();
+		check_database(rc);
+		return -1;
+	}
+
+	rc = sqlite3_step(stmt);
+	if( rc != SQLITE_ROW ){
+		logg("last_ID_in_DB() - SQL error step (%i): %s", rc, sqlite3_errmsg(db));
+		dbclose();
+		check_database(rc);
+		return -1;
+	}
+
+	sqlite3_int64 result = sqlite3_column_int64(stmt, 0);
+
+	sqlite3_finalize(stmt);
+
+	return result;
+}
+
 int get_number_of_queries_in_DB(void)
 {
 	int result = -1;
@@ -378,7 +405,7 @@ void save_to_DB(void)
 	for(i = 0; i < counters->queries; i++)
 	{
 		validate_access("queries", i, true, __LINE__, __FUNCTION__, __FILE__);
-		if(queries[i].db)
+		if(queries[i].db != 0)
 		{
 			// Skip, already saved in database
 			continue;
@@ -451,8 +478,9 @@ void save_to_DB(void)
 		}
 
 		saved++;
-		// Mark this query as saved in the database only if successful
-		queries[i].db = true;
+		// Mark this query as saved in the database by setting to a non-zero
+		// value. The correct ID will be inserted later
+		queries[i].db = 1;
 
 		// Total counter information (delta computation)
 		total++;
@@ -487,12 +515,21 @@ void save_to_DB(void)
 		return;
 	}
 
+	// Update individual queryIDs in the queries struct
+	sqlite3_int64 lastID = last_ID_in_DB();
+	for(i=0; i < total; i++)
+	{
+		// Subtract i from coutners-queries-1 as the database
+		// loop goes only until i < counters->queries
+		queries[(counters->queries-1)-i].db = lastID-i;
+	}
+
 	// Close database
 	dbclose();
 
 	if(debug)
 	{
-		logg("Notice: Queries stored in DB: %u (took %.1f ms)", saved, timer_elapsed_msec(DATABASE_WRITE_TIMER));
+		logg("Notice: Queries stored in DB: %u (took %.1f ms, last SQLite ID %llu)", saved, timer_elapsed_msec(DATABASE_WRITE_TIMER), lastID);
 		if(saved_error > 0)
 			logg("        There are queries that have not been saved");
 	}
@@ -617,6 +654,7 @@ void read_data_from_DB(void)
 	// Loop through returned database rows
 	while((rc = sqlite3_step(stmt)) == SQLITE_ROW)
 	{
+		sqlite3_int64 dbid = sqlite3_column_int64(stmt, 0);
 		int queryTimeStamp = sqlite3_column_int(stmt, 1);
 		// 1483228800 = 01/01/2017 @ 12:00am (UTC)
 		if(queryTimeStamp < 1483228800)
@@ -712,7 +750,7 @@ void read_data_from_DB(void)
 		queries[queryIndex].clientID = clientID;
 		queries[queryIndex].forwardID = forwardID;
 		queries[queryIndex].timeidx = timeidx;
-		queries[queryIndex].db = true; // Mark this as already present in the database
+		queries[queryIndex].db = dbid;
 		queries[queryIndex].id = queryID;
 		queries[queryIndex].complete = true; // Mark as all information is avaiable
 		queries[queryIndex].response = 0;

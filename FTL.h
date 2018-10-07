@@ -160,7 +160,7 @@ typedef struct {
 	int domainID;
 	int clientID;
 	int forwardID;
-	bool db;
+	sqlite3_int64 db;
 	int id; // the ID is a (signed) int in dnsmasq, so no need for a long int here
 	bool complete;
 	bool private;
