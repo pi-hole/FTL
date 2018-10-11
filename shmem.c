@@ -34,7 +34,7 @@ static SharedMemory shm_overTime = { 0 };
 
 static SharedMemory *shm_overTimeClients = NULL;
 static int overTimeClientCount = 0;
-static pthread_rwlock_t *sharedMemoryLock = NULL;
+static pthread_mutex_t *sharedMemoryLock = NULL;
 
 static int pagesize;
 static unsigned int next_pos = 0;
@@ -123,32 +123,44 @@ void addOverTimeClientSlot() {
 	}
 }
 
-/// Create a read/write lock
-pthread_rwlock_t create_rwlock() {
-	pthread_rwlockattr_t lock_attr = {};
-	pthread_rwlock_t lock = {};
+/// Create a mutex for shared memory
+pthread_mutex_t create_rwlock() {
+	pthread_mutexattr_t lock_attr = {};
+	pthread_mutex_t lock = {};
 
 	// Initialize the lock attributes
-	pthread_rwlockattr_init(&lock_attr);
+	pthread_mutexattr_init(&lock_attr);
 
 	// Allow the lock to be used by other processes
-	pthread_rwlockattr_setpshared(&lock_attr, PTHREAD_PROCESS_SHARED);
+	pthread_mutexattr_setpshared(&lock_attr, PTHREAD_PROCESS_SHARED);
+
+	// Make the lock robust against process death
+	pthread_mutexattr_setrobust(&lock_attr, PTHREAD_MUTEX_ROBUST);
 
 	// Initialize the lock
-	pthread_rwlock_init(&lock, &lock_attr);
+	pthread_mutex_init(&lock, &lock_attr);
+
+	// Destroy the lock attribute since we're done with it
+	pthread_mutexattr_destroy(&lock_attr);
 
 	return lock;
 }
 
 void lock_shm() {
-	int result = pthread_rwlock_wrlock(sharedMemoryLock);
+	int result = pthread_mutex_lock(sharedMemoryLock);
+
+	if(result == EOWNERDEAD) {
+		// Try to make the lock consistent if the other process died while
+		// holding the lock
+		result = pthread_mutex_consistent(sharedMemoryLock);
+	}
 
 	if(result != 0)
-		logg("Failed to obtain SHM write lock: %s", strerror(result));
+		logg("Failed to obtain SHM lock: %s", strerror(result));
 }
 
 void unlock_shm() {
-	int result = pthread_rwlock_unlock(sharedMemoryLock);
+	int result = pthread_mutex_unlock(sharedMemoryLock);
 
 	if(result != 0)
 		logg("Failed to unlock SHM lock: %s", strerror(result));
@@ -162,10 +174,10 @@ bool init_shmem(void)
 	/****************************** shared memory lock ******************************/
 	shm_unlink(SHARED_LOCK_NAME);
 	// Try to create shared memory object
-	shm_lock = create_shm(SHARED_LOCK_NAME, sizeof(pthread_rwlock_t));
+	shm_lock = create_shm(SHARED_LOCK_NAME, sizeof(pthread_mutex_t));
 	if(shm_lock.ptr == NULL)
 		return false;
-	*((pthread_rwlock_t*)shm_lock.ptr) = create_rwlock();
+	*((pthread_mutex_t*)shm_lock.ptr) = create_rwlock();
 	sharedMemoryLock = shm_lock.ptr;
 
 	/****************************** shared strings buffer ******************************/
@@ -240,7 +252,7 @@ bool init_shmem(void)
 
 void destroy_shmem(void)
 {
-	pthread_rwlock_destroy(sharedMemoryLock);
+	pthread_mutex_destroy(sharedMemoryLock);
 
 	delete_shm(&shm_lock);
 	delete_shm(&shm_strings);

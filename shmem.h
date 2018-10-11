@@ -40,7 +40,7 @@ bool realloc_shm(SharedMemory *sharedMemory, size_t size);
 /// \param sharedMemory the shared memory struct
 void delete_shm(SharedMemory *sharedMemory);
 
-/// Block until a write lock can be obtained
+/// Block until a lock can be obtained
 void lock_shm();
 
 /// Unlock the lock. Only call this if there is an active lock.
