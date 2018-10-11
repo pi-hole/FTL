@@ -119,7 +119,7 @@ void process_request(char *client_message, int *sock)
 		logg("Received API request to re-resolve host names");
 		// Need to release the thread lock already here to allow
 		// the resolver to process the incoming PTR requests
-		shm_unlock_lock();
+		unlock_shm();
 		reresolveHostnames();
 		logg("Done re-resolving host names");
 	}

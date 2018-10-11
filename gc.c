@@ -32,7 +32,7 @@ void *GC_thread(void *val)
 
 			// Lock FTL's data structure, since it is likely that it will be changed here
 			// Requests should not be processed/answered when data is about to change
-			shm_write_lock();
+			lock_shm();
 
 			// Get minimum time stamp to keep
 			time_t mintime = time(NULL) - config.maxlogage;
@@ -167,7 +167,7 @@ void *GC_thread(void *val)
 			if(debug) logg("Notice: GC removed %i queries (took %.2f ms)", removed, timer_elapsed_msec(GC_TIMER));
 
 			// Release thread lock
-			shm_unlock_lock();
+			unlock_shm();
 
 			// Reresolve client hostnames to account for changes
 			// Have to this outside of the thread lock

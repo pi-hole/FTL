@@ -322,13 +322,13 @@ void *telnet_connection_handler_thread(void *socket_desc)
 
 			// Lock FTL data structure, since it is likely that it will be changed here
 			// Requests should not be processed/answered when data is about to change
-			shm_write_lock();
+			lock_shm();
 
 			process_request(message, &sock);
 			free(message);
 
 			// Release thread lock
-			shm_unlock_lock();
+			unlock_shm();
 
 			if(sock == 0)
 			{
@@ -379,13 +379,13 @@ void *socket_connection_handler_thread(void *socket_desc)
 
 			// Lock FTL data structure, since it is likely that it will be changed here
 			// Requests should not be processed/answered when data is about to change
-			shm_write_lock();
+			lock_shm();
 
 			process_request(message, &sock);
 			free(message);
 
 			// Release thread lock
-			shm_unlock_lock();
+			unlock_shm();
 
 			if(sock == 0)
 			{

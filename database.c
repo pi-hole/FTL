@@ -555,13 +555,13 @@ void *DB_thread(void *val)
 
 			// Lock FTL's data structures, since it is
 			// likely that they will be changed here
-			shm_write_lock();
+			lock_shm();
 
 			// Save data to database
 			save_to_DB();
 
 			// Release data lock
-			shm_unlock_lock();
+			unlock_shm();
 
 			// Check if GC should be done on the database
 			if(DBdeleteoldqueries)

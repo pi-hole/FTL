@@ -140,21 +140,14 @@ pthread_rwlock_t create_rwlock() {
 	return lock;
 }
 
-void shm_read_lock() {
-	int result = pthread_rwlock_rdlock(sharedMemoryLock);
-
-	if(result != 0)
-		logg("Failed to obtain SHM read lock: %s", strerror(result));
-}
-
-void shm_write_lock() {
+void lock_shm() {
 	int result = pthread_rwlock_wrlock(sharedMemoryLock);
 
 	if(result != 0)
 		logg("Failed to obtain SHM write lock: %s", strerror(result));
 }
 
-void shm_unlock_lock() {
+void unlock_shm() {
 	int result = pthread_rwlock_unlock(sharedMemoryLock);
 
 	if(result != 0)
