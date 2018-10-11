@@ -382,6 +382,9 @@ void save_to_DB(void)
 	long int i;
 	sqlite3_stmt* stmt;
 
+	// Get last ID stored in the database
+	sqlite3_int64 lastID = last_ID_in_DB();
+
 	bool ret = dbquery("BEGIN TRANSACTION");
 	if(!ret)
 	{
@@ -478,9 +481,8 @@ void save_to_DB(void)
 		}
 
 		saved++;
-		// Mark this query as saved in the database by setting to a non-zero
-		// value. The correct ID will be inserted later
-		queries[i].db = 1;
+		// Mark this query as saved in the database by setting the corresponding ID
+		queries[i].db = ++lastID;
 
 		// Total counter information (delta computation)
 		total++;
@@ -513,15 +515,6 @@ void save_to_DB(void)
 	{
 		dbclose();
 		return;
-	}
-
-	// Update individual queryIDs in the queries struct
-	sqlite3_int64 lastID = last_ID_in_DB();
-	for(i=0; i < total; i++)
-	{
-		// Subtract i from coutners-queries-1 as the database
-		// loop goes only until i < counters->queries
-		queries[(counters->queries-1)-i].db = lastID-i;
 	}
 
 	// Close database
