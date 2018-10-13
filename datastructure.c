@@ -77,6 +77,12 @@ int findOverTimeID(int overTimetimestamp)
 			nexttimestamp = overTime[counters.overTime-1].timestamp + 600;
 		}
 	}
+
+	// Ensure that we don't return negative time indices. This may happen
+	// when the system time is getting corrected backwards since FTL started
+	if(timeidx < 0)
+		timeidx = 0;
+
 	return timeidx;
 }
 
