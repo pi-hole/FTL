@@ -34,7 +34,13 @@ static SharedMemory shm_overTime = { 0 };
 
 static SharedMemory *shm_overTimeClients = NULL;
 static int overTimeClientCount = 0;
-static pthread_mutex_t *sharedMemoryLock = NULL;
+
+typedef struct {
+	pthread_mutex_t lock;
+	pthread_cond_t condVar;
+	bool waitingForLock;
+} ShmLock;
+static ShmLock *shmLockStruct = NULL;
 
 static int pagesize;
 static unsigned int next_pos = 0;
@@ -124,7 +130,7 @@ void addOverTimeClientSlot() {
 }
 
 /// Create a mutex for shared memory
-pthread_mutex_t create_rwlock() {
+pthread_mutex_t create_mutex() {
 	pthread_mutexattr_t lock_attr = {};
 	pthread_mutex_t lock = {};
 
@@ -140,19 +146,47 @@ pthread_mutex_t create_rwlock() {
 	// Initialize the lock
 	pthread_mutex_init(&lock, &lock_attr);
 
-	// Destroy the lock attribute since we're done with it
+	// Destroy the lock attributes since we're done with it
 	pthread_mutexattr_destroy(&lock_attr);
 
 	return lock;
 }
 
+/// Create a conditional variable for shared memory
+pthread_cond_t create_cond_var() {
+	pthread_condattr_t cond_attr;
+	pthread_cond_t cond_var;
+
+	// Initialize the condition variable attributes
+	pthread_condattr_init(&cond_attr);
+
+	// Allow the condition variable to be used by other processes
+	pthread_condattr_setpshared(&cond_attr, PTHREAD_PROCESS_SHARED);
+
+	// Initialize the condition variable
+	pthread_cond_init(&cond_var, &cond_attr);
+
+	// Destroy the condition variable attributes since we're done with it
+	pthread_condattr_destroy(&cond_attr);
+
+	return cond_var;
+}
+
 void lock_shm() {
-	int result = pthread_mutex_lock(sharedMemoryLock);
+	// Signal that FTL is waiting for a lock
+	shmLockStruct->waitingForLock = true;
+
+	int result = pthread_mutex_lock(&shmLockStruct->lock);
+
+	// Turn off waiting for the lock signal and notify everyone who was
+	// deferring to FTL that they can jump in the lock queue.
+	shmLockStruct->waitingForLock = false;
+	pthread_cond_broadcast(&shmLockStruct->condVar);
 
 	if(result == EOWNERDEAD) {
 		// Try to make the lock consistent if the other process died while
 		// holding the lock
-		result = pthread_mutex_consistent(sharedMemoryLock);
+		result = pthread_mutex_consistent(&shmLockStruct->lock);
 	}
 
 	if(result != 0)
@@ -160,7 +194,7 @@ void lock_shm() {
 }
 
 void unlock_shm() {
-	int result = pthread_mutex_unlock(sharedMemoryLock);
+	int result = pthread_mutex_unlock(&shmLockStruct->lock);
 
 	if(result != 0)
 		logg("Failed to unlock SHM lock: %s", strerror(result));
@@ -174,11 +208,13 @@ bool init_shmem(void)
 	/****************************** shared memory lock ******************************/
 	shm_unlink(SHARED_LOCK_NAME);
 	// Try to create shared memory object
-	shm_lock = create_shm(SHARED_LOCK_NAME, sizeof(pthread_mutex_t));
+	shm_lock = create_shm(SHARED_LOCK_NAME, sizeof(ShmLock));
 	if(shm_lock.ptr == NULL)
 		return false;
-	*((pthread_mutex_t*)shm_lock.ptr) = create_rwlock();
-	sharedMemoryLock = shm_lock.ptr;
+	shmLockStruct = (ShmLock*) shm_lock.ptr;
+	shmLockStruct->lock = create_mutex();
+	shmLockStruct->condVar = create_cond_var();
+	shmLockStruct->waitingForLock = false;
 
 	/****************************** shared strings buffer ******************************/
 	// Try unlinking the shared memory object before creating a new one
@@ -252,7 +288,9 @@ bool init_shmem(void)
 
 void destroy_shmem(void)
 {
-	pthread_mutex_destroy(sharedMemoryLock);
+	pthread_mutex_destroy(&shmLockStruct->lock);
+	pthread_cond_destroy(&shmLockStruct->condVar);
+	shmLockStruct = NULL;
 
 	delete_shm(&shm_lock);
 	delete_shm(&shm_strings);
