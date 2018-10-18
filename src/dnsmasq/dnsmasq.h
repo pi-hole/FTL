@@ -1108,6 +1108,8 @@ extern struct daemon {
   size_t packet_len;       /*      "        "        */
   struct randfd *rfd_save; /*      "        "        */
   pid_t tcp_pids[MAX_PROCS];
+  int tcp_pipes[MAX_PROCS];
+  int pipe_to_parent;
   struct randfd randomsocks[RANDOM_SOCKS];
   int v6pktinfo; 
   struct addrlist *interface_addrs; /* list of all addresses/prefix lengths associated with all local interfaces */
@@ -1169,6 +1171,7 @@ struct crec *cache_find_by_name(struct crec *crecp,
 				char *name, time_t now, unsigned int prot);
 void cache_end_insert(void);
 void cache_start_insert(void);
+int cache_recv_insert(time_t now, int fd);
 struct crec *cache_insert(char *name, struct all_addr *addr,
 			  time_t now, unsigned long ttl, unsigned short flags);
 void cache_reload(void);
@@ -1191,6 +1194,8 @@ void blockdata_init(void);
 void blockdata_report(void);
 struct blockdata *blockdata_alloc(char *data, size_t len);
 void *blockdata_retrieve(struct blockdata *block, size_t len, void *data);
+struct blockdata *blockdata_read(int fd, size_t len);
+void blockdata_write(struct blockdata *block, size_t len, int fd);
 void blockdata_free(struct blockdata *blocks);
 #endif
 
