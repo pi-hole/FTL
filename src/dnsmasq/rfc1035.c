@@ -939,9 +939,9 @@ size_t setup_reply(struct dns_header *header, size_t qlen,
     return 0;
   
   /* clear authoritative and truncated flags, set QR flag */
-  header->hb3 = (header->hb3 & ~(HB3_AA | HB3_TC)) | HB3_QR;
-  /* set RA flag */
-  header->hb4 |= HB4_RA;
+  header->hb3 = (header->hb3 & ~(HB3_AA | HB3_TC )) | HB3_QR;
+  /* clear AD flag, set RA flag */
+  header->hb4 = (header->hb4 & ~HB4_AD) | HB4_RA;
 
   header->nscount = htons(0);
   header->arcount = htons(0);
