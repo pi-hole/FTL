@@ -261,7 +261,8 @@ void FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id
 
 	// Get forward destination IP address
 	char dest[ADDRSTRLEN];
-	inet_ntop((flags & F_IPV4) ? AF_INET : AF_INET6, addr, dest, ADDRSTRLEN);
+	if(addr != NULL)
+		inet_ntop((flags & F_IPV4) ? AF_INET : AF_INET6, addr, dest, ADDRSTRLEN);
 	// Convert forward to lower case
 	char *forward = strdup(dest);
 	strtolower(forward);
@@ -919,11 +920,12 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 }
 
 // int cache_inserted, cache_live_freed are defined in dnsmasq/cache.c
-extern int cache_inserted, cache_live_freed;
 void getCacheInformation(int *sock)
 {
 	ssend(*sock,"cache-size: %i\ncache-live-freed: %i\ncache-inserted: %i\n",
-	            daemon->cachesize, cache_live_freed, cache_inserted);
+	            daemon->cachesize,
+	            daemon->metrics[METRIC_DNS_CACHE_LIVE_FREED],
+	            daemon->metrics[METRIC_DNS_CACHE_INSERTED]);
 	// cache-size is obvious
 	// It means the resolver handled <cache-inserted> names lookups that needed to be sent to
 	// upstream severes and that <cache-live-freed> was thrown out of the cache
