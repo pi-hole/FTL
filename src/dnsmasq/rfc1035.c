@@ -1331,7 +1331,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 	    {
 	      if (t->class == qclass && hostname_isequal(name, t->name))
 		{
-		  ans = 1;
+		  ans = 1, sec_data = 0;
 		  if (!dryrun)
 		    {
 		      unsigned long ttl = daemon->local_ttl;
@@ -1373,7 +1373,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		       log_query(F_CONFIG | F_RCODE, name, &addr, NULL);
 		       FTL_cache(F_CONFIG | F_RCODE, name, &addr, NULL, daemon->log_display_id);
 		    }
-		  ans = 1;
+		  ans = 1, sec_data = 0;
 		}
 	    }
 	}
@@ -1754,7 +1754,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		}
 	      else if (is_name_synthetic(flag, name, &addr))
 		{
-		  ans = 1;
+		  ans = 1, sec_data = 0;
 		  if (!dryrun)
 		    {
 		      log_query(F_FORWARD | F_CONFIG | flag, name, &addr, NULL);
@@ -1795,26 +1795,28 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 	      for (rec = daemon->mxnames; rec; rec = rec->next)
 		if (!rec->issrv && hostname_isequal(name, rec->name))
 		  {
-		  ans = found = 1;
-		  if (!dryrun)
-		    {
-		      int offset;
-		      log_query(F_CONFIG | F_RRNAME, name, NULL, "<MX>");
-		      FTL_cache(F_CONFIG | F_RRNAME, name, NULL, "<MX>", daemon->log_display_id);
-		      if (add_resource_record(header, limit, &trunc, nameoffset, &ansp, daemon->local_ttl,
-					      &offset, T_MX, C_IN, "sd", rec->weight, rec->target))
-			{
-			  anscount++;
-			  if (rec->target)
-			    rec->offset = offset;
-			}
-		    }
+		    ans = found = 1;
+		    sec_data = 0;
+		    if (!dryrun)
+		      {
+			int offset;
+			log_query(F_CONFIG | F_RRNAME, name, NULL, "<MX>");
+			FTL_cache(F_CONFIG | F_RRNAME, name, NULL, "<MX>", daemon->log_display_id);
+			if (add_resource_record(header, limit, &trunc, nameoffset, &ansp, daemon->local_ttl,
+						&offset, T_MX, C_IN, "sd", rec->weight, rec->target))
+			  {
+			    anscount++;
+			    if (rec->target)
+			      rec->offset = offset;
+			  }
+		      }
 		  }
 	      
 	      if (!found && (option_bool(OPT_SELFMX) || option_bool(OPT_LOCALMX)) && 
 		  cache_find_by_name(NULL, name, now, F_HOSTS | F_DHCP | F_NO_RR))
 		{ 
 		  ans = 1;
+		  sec_data = 0;
 		  if (!dryrun)
 		    {
 		      log_query(F_CONFIG | F_RRNAME, name, NULL, "<MX>");
@@ -1836,6 +1838,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		if (rec->issrv && hostname_isequal(name, rec->name))
 		  {
 		    found = ans = 1;
+		    sec_data = 0;
 		    if (!dryrun)
 		      {
 			int offset;
@@ -1873,6 +1876,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 	      if (!found && option_bool(OPT_FILTER) && (qtype == T_SRV || (qtype == T_ANY && strchr(name, '_'))))
 		{
 		  ans = 1;
+		  sec_data = 0;
 		  if (!dryrun)
 		  {
 		    log_query(F_CONFIG | F_NEG, name, NULL, NULL);
@@ -1888,6 +1892,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		if (hostname_isequal(name, na->name))
 		  {
 		    ans = 1;
+		    sec_data = 0;
 		    if (!dryrun)
 		      {
 			log_query(F_CONFIG | F_RRNAME, name, NULL, "<NAPTR>");
@@ -1901,11 +1906,12 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 	    }
 	  
 	  if (qtype == T_MAILB)
-	    ans = 1, nxdomain = 1;
+	    ans = 1, nxdomain = 1, sec_data = 0;
 
 	  if (qtype == T_SOA && option_bool(OPT_FILTER))
 	    {
-	      ans = 1; 
+	      ans = 1;
+	      sec_data = 0;
 	      if (!dryrun)
 	      {
 		log_query(F_CONFIG | F_NEG, name, &addr, NULL);
