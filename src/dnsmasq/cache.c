@@ -411,11 +411,8 @@ static struct crec *cache_scan_free(char *name, struct all_addr *addr, time_t no
   else
     {
       int i;
-#ifdef HAVE_IPV6
       int addrlen = (flags & F_IPV6) ? IN6ADDRSZ : INADDRSZ;
-#else
-      int addrlen = INADDRSZ;
-#endif 
+
       for (i = 0; i < hash_size; i++)
 	for (crecp = hash_table[i], up = &hash_table[i]; 
 	     crecp && ((crecp->flags & F_REVERSE) || !(crecp->flags & F_IMMORTAL));
@@ -514,11 +511,9 @@ static struct crec *really_insert(char *name, struct all_addr *addr,
 	  if ((flags & F_IPV4) && (new->flags & F_IPV4) &&
 	      new->addr.addr.addr.addr4.s_addr == addr->addr.addr4.s_addr)
 	    return new;
-#ifdef HAVE_IPV6
 	  else if ((flags & F_IPV6) && (new->flags & F_IPV6) &&
 		   IN6_ARE_ADDR_EQUAL(&new->addr.addr.addr.addr6, &addr->addr.addr6))
 	    return new;
-#endif
 	}
       
       insert_error = 1;
@@ -940,11 +935,7 @@ struct crec *cache_find_by_addr(struct crec *crecp, struct all_addr *addr,
 				time_t now, unsigned int prot)
 {
   struct crec *ans;
-#ifdef HAVE_IPV6
   int addrlen = (prot == F_IPV6) ? IN6ADDRSZ : INADDRSZ;
-#else
-  int addrlen = INADDRSZ;
-#endif
   
   if (crecp) /* iterating */
     ans = crecp->next;
@@ -1173,14 +1164,12 @@ int read_hostsfile(char *filename, unsigned int index, int cache_size, struct cr
 	  addrlen = INADDRSZ;
 	  domain_suffix = get_domain(addr.addr.addr4);
 	}
-#ifdef HAVE_IPV6
       else if (inet_pton(AF_INET6, token, &addr) > 0)
 	{
 	  flags = F_HOSTS | F_IMMORTAL | F_FORWARD | F_REVERSE | F_IPV6;
 	  addrlen = IN6ADDRSZ;
 	  domain_suffix = get_domain6(&addr.addr.addr6);
 	}
-#endif
       else
 	{
 	  my_syslog(LOG_ERR, _("bad address at %s line %d"), filename, lineno); 
@@ -1345,7 +1334,7 @@ void cache_reload(void)
 	    cache->flags = F_HOSTS | F_IMMORTAL | F_FORWARD | F_REVERSE | F_IPV4 | F_NAMEP | F_CONFIG;
 	    add_hosts_entry(cache, (struct all_addr *)&hr->addr, INADDRSZ, SRC_CONFIG, (struct crec **)daemon->packet, revhashsz);
 	  }
-#ifdef HAVE_IPV6
+
 	if (!IN6_IS_ADDR_UNSPECIFIED(&hr->addr6) &&
 	    (cache = whine_malloc(SIZEOF_POINTER_CREC)))
 	  {
@@ -1354,7 +1343,6 @@ void cache_reload(void)
 	    cache->flags = F_HOSTS | F_IMMORTAL | F_FORWARD | F_REVERSE | F_IPV6 | F_NAMEP | F_CONFIG;
 	    add_hosts_entry(cache, (struct all_addr *)&hr->addr6, IN6ADDRSZ, SRC_CONFIG, (struct crec **)daemon->packet, revhashsz);
 	  }
-#endif
       }
 	
   if (option_bool(OPT_NO_HOSTS) && !daemon->addn_hosts)
@@ -1457,13 +1445,11 @@ void cache_add_dhcp_entry(char *host_name, int prot,
   int in_hosts = 0;
   size_t addrlen = sizeof(struct in_addr);
 
-#ifdef HAVE_IPV6
   if (prot == AF_INET6)
     {
       flags = F_IPV6;
       addrlen = sizeof(struct in6_addr);
     }
-#endif
   
   inet_ntop(prot, host_address, daemon->addrbuff, ADDRSTRLEN);
   
@@ -1822,10 +1808,8 @@ void dump_cache(time_t now)
 		a = daemon->addrbuff;
 		if (cache->flags & F_IPV4)
 		  inet_ntop(AF_INET, &cache->addr.addr, a, ADDRSTRLEN);
-#ifdef HAVE_IPV6
 		else if (cache->flags & F_IPV6)
 		  inet_ntop(AF_INET6, &cache->addr.addr, a, ADDRSTRLEN);
-#endif
 	      }
 
 	    if (cache->flags & F_IPV4)
@@ -1974,14 +1958,9 @@ void log_query(unsigned int flags, char *name, struct all_addr *addr, char *arg)
 	     sprintf(daemon->addrbuff, "%u", rcode);
 	}
       else
-	{
-#ifdef HAVE_IPV6
-	  inet_ntop(flags & F_IPV4 ? AF_INET : AF_INET6,
-		    addr, daemon->addrbuff, ADDRSTRLEN);
-#else
-	  strncpy(daemon->addrbuff, inet_ntoa(addr->addr.addr4), ADDRSTRLEN);  
-#endif
-	}
+	inet_ntop(flags & F_IPV4 ? AF_INET : AF_INET6,
+		  addr, daemon->addrbuff, ADDRSTRLEN);
+      
     }
   else
     dest = arg;

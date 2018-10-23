@@ -1738,11 +1738,11 @@ static void check_dns_listeners(time_t now)
 		  indextoname(listener->tcpfd, if_index, intr_name))
 		{
 		  struct all_addr addr;
-		  addr.addr.addr4 = tcp_addr.in.sin_addr;
-#ifdef HAVE_IPV6
+		  
 		  if (tcp_addr.sa.sa_family == AF_INET6)
 		    addr.addr.addr6 = tcp_addr.in6.sin6_addr;
-#endif
+		  else
+		    addr.addr.addr4 = tcp_addr.in.sin_addr;
 		  
 		  for (iface = daemon->interfaces; iface; iface = iface->next)
 		    if (iface->index == if_index)

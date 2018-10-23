@@ -768,10 +768,8 @@ static char *parse_mysockaddr(char *arg, union mysockaddr *addr)
 {
   if (inet_pton(AF_INET, arg, &addr->in.sin_addr) > 0)
     addr->sa.sa_family = AF_INET;
-#ifdef HAVE_IPV6
   else if (inet_pton(AF_INET6, arg, &addr->in6.sin6_addr) > 0)
     addr->sa.sa_family = AF_INET6;
-#endif
   else
     return _("bad address");
    
@@ -783,10 +781,8 @@ char *parse_server(char *arg, union mysockaddr *addr, union mysockaddr *source_a
   int source_port = 0, serv_port = NAMESERVER_PORT;
   char *portno, *source;
   char *interface_opt = NULL;
-#ifdef HAVE_IPV6
   int scope_index = 0;
   char *scope_id;
-#endif
   
   if (!arg || strlen(arg) == 0)
     {
@@ -804,9 +800,7 @@ char *parse_server(char *arg, union mysockaddr *addr, union mysockaddr *source_a
       !atoi_check16(portno, &serv_port))
     return _("bad port");
   
-#ifdef HAVE_IPV6
   scope_id = split_chr(arg, '%');
-#endif
   
   if (source) {
     interface_opt = split_chr(source, '@');
@@ -850,7 +844,6 @@ char *parse_server(char *arg, union mysockaddr *addr, union mysockaddr *source_a
 	    }
 	}
     }
-#ifdef HAVE_IPV6
   else if (inet_pton(AF_INET6, arg, &addr->in6.sin6_addr) > 0)
     {
       if (scope_id && (scope_index = if_nametoindex(scope_id)) == 0)
@@ -885,7 +878,6 @@ char *parse_server(char *arg, union mysockaddr *addr, union mysockaddr *source_a
 	    }
 	}
     }
-#endif
   else
     return _("bad address");
 
@@ -1918,10 +1910,8 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	  unhide_metas(arg);
 	  if (inet_pton(AF_INET, arg, &new->addr.in.sin_addr) > 0)
 	    new->addr.sa.sa_family = AF_INET;
-#ifdef HAVE_IPV6
 	  else if (inet_pton(AF_INET6, arg, &new->addr.in6.sin6_addr) > 0)
 	    new->addr.sa.sa_family = AF_INET6;
-#endif
 	  else
 	    {
 	      char *fam = split_chr(arg, '/');
@@ -1931,10 +1921,8 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 		{
 		  if (strcmp(fam, "4") == 0)
 		    new->addr.sa.sa_family = AF_INET;
-#ifdef HAVE_IPV6
 		  else if (strcmp(fam, "6") == 0)
 		    new->addr.sa.sa_family = AF_INET6;
-#endif
 		  else
 		    ret_err(gen_err);
 		} 
@@ -2000,14 +1988,12 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 		subnet->prefixlen = (prefixlen == 0) ? 24 : prefixlen;
 		subnet->flags = ADDRLIST_LITERAL;
 	      }
-#ifdef HAVE_IPV6
 	    else if (inet_pton(AF_INET6, arg, &addr.addr.addr6))
 	      {
 		subnet = opt_malloc(sizeof(struct addrlist));
 		subnet->prefixlen = (prefixlen == 0) ? 64 : prefixlen;
 		subnet->flags = ADDRLIST_LITERAL | ADDRLIST_IPV6;
 	      }
-#endif
 	    else 
 	      {
 		struct auth_name_list *name =  opt_malloc(sizeof(struct auth_name_list));
@@ -2019,10 +2005,8 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 		  {
 		    if (prefixlen == 4)
 		      name->flags &= ~AUTH6;
-#ifdef HAVE_IPV6
 		    else if (prefixlen == 6)
 		      name->flags &= ~AUTH4;
-#endif
 		    else
 		      ret_err(gen_err);
 		  }
@@ -2143,7 +2127,6 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 				}
 			    }
 			}
-#ifdef HAVE_IPV6
 		      else if (inet_pton(AF_INET6, comma, &new->start6))
 			{
 			  u64 mask = (1LLU << (128 - msize)) - 1LLU;
@@ -2187,7 +2170,6 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 				}
 			    }
 			}
-#endif
 		      else
 			ret_err(gen_err);
 		    }
@@ -2205,7 +2187,6 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 			  else if (!inet_pton(AF_INET, arg, &new->end))
 			    ret_err(gen_err);
 			}
-#ifdef HAVE_IPV6
 		      else if (inet_pton(AF_INET6, comma, &new->start6))
 			{
 			  new->is6 = 1;
@@ -2214,7 +2195,6 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 			  else if (!inet_pton(AF_INET6, arg, &new->end6))
 			    ret_err(gen_err);
 			}
-#endif
 		      else 
 			ret_err(gen_err);
 
@@ -2373,7 +2353,6 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	    new->addr.in.sin_len = sizeof(new->addr.in);
 #endif
 	  }
-#ifdef HAVE_IPV6
 	else if (arg && inet_pton(AF_INET6, arg, &new->addr.in6.sin6_addr) > 0)
 	  {
 	    new->addr.sa.sa_family = AF_INET6;
@@ -2384,7 +2363,6 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	    new->addr.in6.sin6_len = sizeof(new->addr.in6);
 #endif
 	  }
-#endif
 	else
 	  ret_err(gen_err);
 
@@ -2497,9 +2475,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	int size;
 	struct server *serv;
 	struct in_addr addr4;
-#ifdef HAVE_IPV6
 	struct in6_addr addr6;
-#endif
  
 	unhide_metas(arg);
 	if (!arg || !(comma=split(arg)) || !(string = split_chr(arg, '/')) || !atoi_check(string, &size))
@@ -2511,10 +2487,8 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	    if (!serv)
 	      ret_err(_("bad prefix"));
 	  }
-#ifdef HAVE_IPV6
 	else if (inet_pton(AF_INET6, arg, &addr6))
 	  serv = add_rev6(&addr6, size);
-#endif
 	else
 	  ret_err(gen_err);
  
@@ -3867,10 +3841,8 @@ err:
 	  {
 	    if (strcmp(arg, "4") == 0)
 	      new->family = AF_INET;
-#ifdef HAVE_IPV6
 	    else if (strcmp(arg, "6") == 0)
 	      new->family = AF_INET6;
-#endif
 	    else
 	      ret_err(gen_err);
 	  } 
@@ -4160,10 +4132,8 @@ err:
 	      new->ttl = atoi(arg);
 	    else if (inet_pton(AF_INET, arg, &addr))
 	      new->addr = addr.addr.addr4;
-#ifdef HAVE_IPV6
 	    else if (inet_pton(AF_INET6, arg, &addr))
 	      new->addr6 = addr.addr.addr6;
-#endif
 	    else
 	      {
 		int nomem;
@@ -4876,10 +4846,8 @@ void read_opts(int argc, char **argv, char *compile_opts)
 	  {
 	    if (tmp->source_addr.sa.sa_family == AF_INET)
 	      tmp->source_addr.in.sin_port = htons(daemon->query_port);
-#ifdef HAVE_IPV6
 	    else if (tmp->source_addr.sa.sa_family == AF_INET6)
 	      tmp->source_addr.in6.sin6_port = htons(daemon->query_port);
-#endif 
 	  }
     } 
   
@@ -4940,10 +4908,8 @@ void read_opts(int argc, char **argv, char *compile_opts)
       for(tmp = daemon->if_addrs; tmp; tmp = tmp->next)
 	if (tmp->addr.sa.sa_family == AF_INET)
 	  tmp->addr.in.sin_port = htons(daemon->port);
-#ifdef HAVE_IPV6
 	else if (tmp->addr.sa.sa_family == AF_INET6)
 	  tmp->addr.in6.sin6_port = htons(daemon->port);
-#endif /* IPv6 */
     }
 	
   /* create default, if not specified */

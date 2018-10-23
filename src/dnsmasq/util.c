@@ -320,13 +320,12 @@ int sockaddr_isequal(union mysockaddr *s1, union mysockaddr *s2)
 	  s1->in.sin_port == s2->in.sin_port &&
 	  s1->in.sin_addr.s_addr == s2->in.sin_addr.s_addr)
 	return 1;
-#ifdef HAVE_IPV6      
+      
       if (s1->sa.sa_family == AF_INET6 &&
 	  s1->in6.sin6_port == s2->in6.sin6_port &&
 	  s1->in6.sin6_scope_id == s2->in6.sin6_scope_id &&
 	  IN6_ARE_ADDR_EQUAL(&s1->in6.sin6_addr, &s2->in6.sin6_addr))
 	return 1;
-#endif
     }
   return 0;
 }
@@ -336,11 +335,9 @@ int sa_len(union mysockaddr *addr)
 #ifdef HAVE_SOCKADDR_SA_LEN
   return addr->sa.sa_len;
 #else
-#ifdef HAVE_IPV6
   if (addr->sa.sa_family == AF_INET6)
     return sizeof(addr->in6);
   else
-#endif
     return sizeof(addr->in); 
 #endif
 }
@@ -437,7 +434,6 @@ int is_same_net(struct in_addr a, struct in_addr b, struct in_addr mask)
   return (a.s_addr & mask.s_addr) == (b.s_addr & mask.s_addr);
 } 
 
-#ifdef HAVE_IPV6
 int is_same_net6(struct in6_addr *a, struct in6_addr *b, int prefixlen)
 {
   int pfbytes = prefixlen >> 3;
@@ -476,15 +472,12 @@ void setaddr6part(struct in6_addr *addr, u64 host)
     }
 }
 
-#endif
- 
 
 /* returns port number from address */
 int prettyprint_addr(union mysockaddr *addr, char *buf)
 {
   int port = 0;
   
-#ifdef HAVE_IPV6
   if (addr->sa.sa_family == AF_INET)
     {
       inet_ntop(AF_INET, &addr->in.sin_addr, buf, ADDRSTRLEN);
@@ -503,10 +496,6 @@ int prettyprint_addr(union mysockaddr *addr, char *buf)
 	}
       port = ntohs(addr->in6.sin6_port);
     }
-#else
-  strcpy(buf, inet_ntoa(addr->in.sin_addr));
-  port = ntohs(addr->in.sin_port); 
-#endif
   
   return port;
 }
