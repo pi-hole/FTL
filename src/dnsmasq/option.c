@@ -1494,18 +1494,12 @@ static int parse_dhcp_opt(char *errstr, char *arg, int flags)
 
 void set_option_bool(unsigned int opt)
 {
-  if (opt < 32)
-    daemon->options |= 1u << opt;
-  else
-    daemon->options2 |= 1u << (opt - 32);
+  option_var(opt) |= option_val(opt);
 }
 
 void reset_option_bool(unsigned int opt)
 {
-  if (opt < 32)
-    daemon->options &= ~(1u << opt);
-  else
-    daemon->options2 &= ~(1u << (opt - 32));
+  option_var(opt) &= ~(option_val(opt));
 }
 
 static int one_opt(int option, char *arg, char *errstr, char *gen_err, int command_line, int servers_only)

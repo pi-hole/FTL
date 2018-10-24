@@ -204,9 +204,6 @@ struct event_desc {
 #define EC_MISC        5
 #define EC_INIT_OFFSET 10
 
-/* Trust the compiler dead-code eliminator.... */
-#define option_bool(x) (((x) < 32) ? daemon->options & (1u << (x)) : daemon->options2 & (1u << ((x) - 32)))
-
 #define OPT_BOGUSPRIV      0
 #define OPT_FILTER         1
 #define OPT_LOG            2
@@ -267,6 +264,12 @@ struct event_desc {
 #define OPT_RAPID_COMMIT   57
 #define OPT_UBUS           58
 #define OPT_LAST           59
+
+#define OPTION_BITS (sizeof(unsigned int)*8)
+#define OPTION_SIZE ( (OPT_LAST/OPTION_BITS)+((OPT_LAST%OPTION_BITS)!=0) )
+#define option_var(x) (daemon->options[(x) / OPTION_BITS])
+#define option_val(x) ((1u) << ((x) % OPTION_BITS))
+#define option_bool(x) (option_var(x) & option_val(x))
 
 /* extra flags for my_syslog, we use a couple of facilities since they are known 
    not to occupy the same bits as priorities, no matter how syslog.h is set up. */
@@ -996,7 +999,7 @@ extern struct daemon {
      config file arguments. All set (including defaults)
      in option.c */
 
-  unsigned int options, options2;
+  unsigned int options[OPTION_SIZE];
   struct resolvc default_resolv, *resolv_files;
   time_t last_resolv;
   char *servers_file;
