@@ -921,7 +921,7 @@ static int dhcp6_no_relay(struct state *state, int msg_type, void *inbuff, size_
 
 	    for (; ia_option; ia_option = opt6_find(opt6_next(ia_option, ia_end), ia_end, OPTION6_IAADDR, 24))
 	      {
-		struct in6_addr *req_addr;
+		struct in6_addr req_addr;
 		struct dhcp_context *dynamic, *c;
 		unsigned int lease_time;
 		struct in6_addr addr;
@@ -1028,7 +1028,7 @@ static int dhcp6_no_relay(struct state *state, int msg_type, void *inbuff, size_
 	    for (; ia_option; ia_option = opt6_find(opt6_next(ia_option, ia_end), ia_end, OPTION6_IAADDR, 24))
 	      {
 		struct dhcp_lease *lease = NULL;
-		struct in6_addr *req_addr;
+		struct in6_addr req_addr;
 		unsigned int preferred_time =  opt6_uint(ia_option, 16, 4);
 		unsigned int valid_time =  opt6_uint(ia_option, 20, 4);
 		char *message = NULL;
@@ -1102,7 +1102,7 @@ static int dhcp6_no_relay(struct state *state, int msg_type, void *inbuff, size_
 		  log6_quiet(state, "DHCPREPLY", &req_addr, message);
 
 		o1 =  new_opt6(OPTION6_IAADDR);
-		put_opt6(&req_addr, sizeof(*req_addr));
+		put_opt6(&req_addr, sizeof(req_addr));
 		put_opt6_long(preferred_time);
 		put_opt6_long(valid_time);
 		end_opt6(o1);
@@ -1134,7 +1134,7 @@ static int dhcp6_no_relay(struct state *state, int msg_type, void *inbuff, size_
 		 ia_option;
 		 ia_option = opt6_find(opt6_next(ia_option, ia_end), ia_end, OPTION6_IAADDR, 24))
 	      {
-		struct in6_addr *req_addr;
+		struct in6_addr req_addr;
 
 		/* alignment */
 		memcpy(&req_addr, opt6_ptr(ia_option, 0), IN6ADDRSZ);
