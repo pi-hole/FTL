@@ -73,8 +73,6 @@ char *resolveHostname(const char *addr)
 // Resolve client host names
 void resolveClients(bool onlynew)
 {
-	if(debug) logg("resolveClients(%s)", onlynew ? "true":"false");
-
 	int i;
 	for(i = 0; i < counters.clients; i++)
 	{
@@ -103,8 +101,6 @@ void resolveClients(bool onlynew)
 // Resolve upstream destination host names
 static void resolveForwardDestinations(bool onlynew)
 {
-	if(debug) logg("resolveForwardDestinations(%s)", onlynew ? "true":"false");
-
 	int i;
 	for(i = 0; i < counters.forwarded; i++)
 	{
