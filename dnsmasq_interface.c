@@ -164,7 +164,8 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	queries[queryID].domainID = domainID;
 	queries[queryID].clientID = clientID;
 	queries[queryID].timeidx = timeidx;
-	queries[queryID].db = false;
+	// Initialize database rowID with zero, will be set when the query is stored in the long-term DB
+	queries[queryID].db = 0;
 	queries[queryID].id = id;
 	queries[queryID].complete = false;
 	queries[queryID].private = (config.privacylevel == PRIVACY_MAXIMUM);
