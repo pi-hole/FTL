@@ -744,7 +744,7 @@ void read_data_from_DB(void)
 		queries[queryIndex].forwardID = forwardID;
 		queries[queryIndex].timeidx = timeidx;
 		queries[queryIndex].db = dbid;
-		queries[queryIndex].id = queryID;
+		queries[queryIndex].id = 0;
 		queries[queryIndex].complete = true; // Mark as all information is avaiable
 		queries[queryIndex].response = 0;
 		queries[queryIndex].AD = false;
