@@ -119,7 +119,7 @@ void process_request(char *client_message, int *sock)
 		// Need to release the thread lock already here to allow
 		// the resolver to process the incoming PTR requests
 		disable_thread_lock();
-		reresolveHostnames();
+		resolveClients(false); // onlynew=false -> reresolve all client names
 		logg("Done re-resolving host names");
 	}
 	else if(command(client_message, ">recompile-regex"))

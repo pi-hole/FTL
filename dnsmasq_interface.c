@@ -907,6 +907,13 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 		exit(EXIT_FAILURE);
 	}
 
+	// Start thread that will stay in the background until host names needs to be resolved
+	if(pthread_create( &resolverthread, &attr, resolver_thread, NULL ) != 0)
+	{
+		logg("Unable to open resolver thread. Exiting...");
+		exit(EXIT_FAILURE);
+	}
+
 	// Chown files if FTL started as user root but a dnsmasq config option
 	// states to run as a different user/group (e.g. "nobody")
 	if(ent_pw != NULL && getuid() == 0)

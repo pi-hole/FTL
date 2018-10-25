@@ -279,3 +279,4 @@ extern pthread_t telnet_listenthreadv6;
 extern pthread_t socket_listenthread;
 extern pthread_t DBthread;
 extern pthread_t GCthread;
+extern pthread_t resolverthread;
