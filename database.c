@@ -728,10 +728,6 @@ void read_data_from_DB(void)
 		// Set index for this query
 		int queryIndex = counters->queries;
 
-		// Set the ID for this query. Queries loaded from the database use negative IDs.
-		// 1 is added to the counter before flipping the sign so the IDs start at -1 instead of 0.
-		int queryID = -1 * (counters->queries + 1);
-
 		// Store this query in memory
 		validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 		validate_access("queries", queryIndex, false, __LINE__, __FUNCTION__, __FILE__);
