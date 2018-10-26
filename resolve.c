@@ -99,7 +99,7 @@ void resolveClients(bool onlynew)
 }
 
 // Resolve upstream destination host names
-static void resolveForwardDestinations(bool onlynew)
+void resolveForwardDestinations(bool onlynew)
 {
 	int i;
 	for(i = 0; i < counters.forwarded; i++)

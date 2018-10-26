@@ -102,6 +102,7 @@ void handle_signals(void);
 // resolve.c
 void *resolver_thread(void *val);
 void resolveClients(bool onlynew);
+void resolveForwardDestinations(bool onlynew);
 
 // regex.c
 bool match_regex(char *input);
