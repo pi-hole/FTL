@@ -149,6 +149,8 @@ void *DNSclient_thread(void *val)
 		{
 			// Try to resolve all client host names (onlynew=false)
 			resolveClients(false);
+			// Try to resolve all upstream destination host names (onlynew=false)
+			resolveForwardDestinations(false);
 			// Prevent immediate re-run of this routine
 			sleepms(500);
 		}
