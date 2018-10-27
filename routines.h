@@ -100,8 +100,9 @@ int main_dnsmasq(int argc, char **argv);
 void handle_signals(void);
 
 // resolve.c
-void resolveNewClients(void);
-void reresolveHostnames(void);
+void *DNSclient_thread(void *val);
+void resolveClients(bool onlynew);
+void resolveForwardDestinations(bool onlynew);
 
 // regex.c
 bool match_regex(char *input);
