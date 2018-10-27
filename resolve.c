@@ -81,20 +81,20 @@ void resolveClients(bool onlynew)
 
 		// If onlynew flag is set, we will only resolve new clients
 		// If not, we will try to re-resolve all known clients
-		if(onlynew && clients[i].new)
-		{
-			char *hostname = resolveHostname(clients[i].ip);
+		if(onlynew && !clients[i].new)
+			continue;
 
-			enable_thread_lock();
+		char *hostname = resolveHostname(clients[i].ip);
 
-			if(clients[i].name != NULL)
-				free(clients[i].name);
+		enable_thread_lock();
 
-			clients[i].name = hostname;
-			clients[i].new = false;
+		if(clients[i].name != NULL)
+			free(clients[i].name);
 
-			disable_thread_lock();
-		}
+		clients[i].name = hostname;
+		clients[i].new = false;
+
+		disable_thread_lock();
 	}
 }
 
@@ -109,20 +109,20 @@ void resolveForwardDestinations(bool onlynew)
 
 		// If onlynew flag is set, we will only resolve new upstream destinations
 		// If not, we will try to re-resolve all known upstream destinations
-		if(onlynew && forwarded[i].new)
-		{
-			char *hostname = resolveHostname(forwarded[i].ip);
+		if(onlynew && !forwarded[i].new)
+			continue;
 
-			enable_thread_lock();
+		char *hostname = resolveHostname(forwarded[i].ip);
 
-			if(forwarded[i].name != NULL)
-				free(forwarded[i].name);
+		enable_thread_lock();
 
-			forwarded[i].name = hostname;
-			forwarded[i].new = false;
+		if(forwarded[i].name != NULL)
+			free(forwarded[i].name);
 
-			disable_thread_lock();
-		}
+		forwarded[i].name = hostname;
+		forwarded[i].new = false;
+
+		disable_thread_lock();
 	}
 }
 
