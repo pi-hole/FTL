@@ -794,7 +794,7 @@ void print_flags(unsigned int flags)
 	unsigned int i;
 	char *flagstr = calloc(256,sizeof(char));
 	for(i = 0; i < sizeof(flags)*8; i++)
-		if(flags & (1 << i))
+		if(flags & (1u << i))
 			strcat(flagstr, flagnames[i]);
 	logg("     Flags: %s", flagstr);
 	free(flagstr);
