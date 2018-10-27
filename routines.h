@@ -100,7 +100,7 @@ int main_dnsmasq(int argc, char **argv);
 void handle_signals(void);
 
 // resolve.c
-void *resolver_thread(void *val);
+void *DNSclient_thread(void *val);
 void resolveClients(bool onlynew);
 void resolveForwardDestinations(bool onlynew);
 

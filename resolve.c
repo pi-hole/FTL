@@ -126,8 +126,7 @@ void resolveForwardDestinations(bool onlynew)
 	}
 }
 
-pthread_t resolverthread;
-void *resolver_thread(void *val)
+void *DNSclient_thread(void *val)
 {
 	// Set thread name
 	prctl(PR_SET_NAME, "DNS client", 0, 0, 0);

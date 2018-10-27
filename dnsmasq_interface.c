@@ -853,6 +853,7 @@ pthread_t telnet_listenthreadv6;
 pthread_t socket_listenthread;
 pthread_t DBthread;
 pthread_t GCthread;
+pthread_t DNSclientthread;
 
 void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 {
@@ -908,9 +909,9 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 	}
 
 	// Start thread that will stay in the background until host names needs to be resolved
-	if(pthread_create( &resolverthread, &attr, resolver_thread, NULL ) != 0)
+	if(pthread_create( &DNSclientthread, &attr, DNSclient_thread, NULL ) != 0)
 	{
-		logg("Unable to open resolver thread. Exiting...");
+		logg("Unable to open DNS client thread. Exiting...");
 		exit(EXIT_FAILURE);
 	}
 
