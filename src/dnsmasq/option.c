@@ -1832,9 +1832,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
       /* Sorry about the gross pre-processor abuse */
     case '6':             /* --dhcp-script */
     case LOPT_LUASCRIPT:  /* --dhcp-luascript */
-#  if defined(NO_FORK)
-      ret_err(_("cannot run scripts under uClinux"));
-#  elif !defined(HAVE_SCRIPT)
+#  if !defined(HAVE_SCRIPT)
       ret_err(_("recompile with HAVE_SCRIPT defined to enable lease-change scripts"));
 #  else
       if (option == LOPT_LUASCRIPT)
