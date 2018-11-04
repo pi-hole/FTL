@@ -10,6 +10,14 @@
 
 #include "FTL.h"
 
+// Resolve new client and upstream server host names
+// once every minute
+#define RESOLVE_INTERVAL 60
+
+// Re-resolve client names
+// once every hour
+#define RERESOLVE_INTERVAL 3600
+
 char *resolveHostname(const char *addr)
 {
 	// Get host name
@@ -62,42 +70,8 @@ char *resolveHostname(const char *addr)
 	return hostname;
 }
 
-// This routine is run *after* garbage cleaning (default interval is once per hour)
-// to account for possibly updated hostnames
-void reresolveHostnames(void)
-{
-	int clientID;
-	for(clientID = 0; clientID < counters.clients; clientID++)
-	{
-		// Memory validation
-		validate_access("clients", clientID, true, __LINE__, __FUNCTION__, __FILE__);
-
-		// Process this client only if it has at least one active query in the log
-		if(clients[clientID].count < 1)
-			continue;
-
-		// Get client hostname
-		char *hostname = resolveHostname(clients[clientID].ip);
-		if(strlen(hostname) > 0)
-		{
-			// Delete possibly already existing hostname pointer before storing new data
-			if(clients[clientID].name != NULL)
-			{
-				free(clients[clientID].name);
-				clients[clientID].name = NULL;
-			}
-
-			// Store client hostname
-			clients[clientID].name = strdup(hostname);
-			clients[clientID].new = false;
-		}
-		free(hostname);
-	}
-}
-
-// This routine is run *before* saving to the database (default interval is once per minute)
-// to account for new clients (and forward destinations)
-void resolveNewClients(void)
+// Resolve client host names
+void resolveClients(bool onlynew)
 {
 	int i;
 	for(i = 0; i < counters.clients; i++)
@@ -105,25 +79,85 @@ void resolveNewClients(void)
 		// Memory validation
 		validate_access("clients", i, true, __LINE__, __FUNCTION__, __FILE__);
 
-		// Only try to resolve new clients
-		// Note that it can happen that we are not able to find hostnames but we don't
-		// want to try to resolve them every minute in this case.
-		if(clients[i].new)
-		{
-			clients[i].name = resolveHostname(clients[i].ip);
-			clients[i].new = false;
-		}
+		// If onlynew flag is set, we will only resolve new clients
+		// If not, we will try to re-resolve all known clients
+		if(onlynew && !clients[i].new)
+			continue;
+
+		char *hostname = resolveHostname(clients[i].ip);
+
+		enable_thread_lock();
+
+		if(clients[i].name != NULL)
+			free(clients[i].name);
+
+		clients[i].name = hostname;
+		clients[i].new = false;
+
+		disable_thread_lock();
 	}
+}
+
+// Resolve upstream destination host names
+void resolveForwardDestinations(bool onlynew)
+{
+	int i;
 	for(i = 0; i < counters.forwarded; i++)
 	{
 		// Memory validation
 		validate_access("forwarded", i, true, __LINE__, __FUNCTION__, __FILE__);
 
-		// Only try to resolve new forward destinations
-		if(forwarded[i].new)
-		{
-			forwarded[i].name = resolveHostname(forwarded[i].ip);
-			forwarded[i].new = false;
-		}
+		// If onlynew flag is set, we will only resolve new upstream destinations
+		// If not, we will try to re-resolve all known upstream destinations
+		if(onlynew && !forwarded[i].new)
+			continue;
+
+		char *hostname = resolveHostname(forwarded[i].ip);
+
+		enable_thread_lock();
+
+		if(forwarded[i].name != NULL)
+			free(forwarded[i].name);
+
+		forwarded[i].name = hostname;
+		forwarded[i].new = false;
+
+		disable_thread_lock();
 	}
+}
+
+void *DNSclient_thread(void *val)
+{
+	// Set thread name
+	prctl(PR_SET_NAME, "DNS client", 0, 0, 0);
+
+	while(!killed)
+	{
+		// Run every minute to resolve only new clients and upstream servers
+		if(time(NULL) % RESOLVE_INTERVAL == 0)
+		{
+			// Try to resolve new client host names (onlynew=true)
+			resolveClients(true);
+			// Try to resolve new upstream destination host names (onlynew=true)
+			resolveForwardDestinations(true);
+			// Prevent immediate re-run of this routine
+			sleepms(500);
+		}
+
+		// Run every hour to update possibly changed client host names
+		if(time(NULL) % RERESOLVE_INTERVAL == 0)
+		{
+			// Try to resolve all client host names (onlynew=false)
+			resolveClients(false);
+			// Try to resolve all upstream destination host names (onlynew=false)
+			resolveForwardDestinations(false);
+			// Prevent immediate re-run of this routine
+			sleepms(500);
+		}
+
+		// Idle for 0.5 sec before checking again the time criteria
+		sleepms(500);
+	}
+
+	return NULL;
 }

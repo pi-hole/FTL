@@ -795,7 +795,7 @@ void print_flags(unsigned int flags)
 	unsigned int i;
 	char *flagstr = calloc(256,sizeof(char));
 	for(i = 0; i < sizeof(flags)*8; i++)
-		if(flags & (1 << i))
+		if(flags & (1u << i))
 			strcat(flagstr, flagnames[i]);
 	logg("     Flags: %s", flagstr);
 	free(flagstr);
@@ -854,6 +854,7 @@ pthread_t telnet_listenthreadv6;
 pthread_t socket_listenthread;
 pthread_t DBthread;
 pthread_t GCthread;
+pthread_t DNSclientthread;
 
 void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 {
@@ -905,6 +906,13 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 	if(pthread_create( &GCthread, &attr, GC_thread, NULL ) != 0)
 	{
 		logg("Unable to open GC thread. Exiting...");
+		exit(EXIT_FAILURE);
+	}
+
+	// Start thread that will stay in the background until host names needs to be resolved
+	if(pthread_create( &DNSclientthread, &attr, DNSclient_thread, NULL ) != 0)
+	{
+		logg("Unable to open DNS client thread. Exiting...");
 		exit(EXIT_FAILURE);
 	}
 
