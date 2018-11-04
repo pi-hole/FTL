@@ -702,7 +702,7 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 					overTime[timeidx].cached++;
 					break;
 				case QUERY_EXTERNAL_BLOCKED:
-					// everything has already done
+					// everything has already been done
 					// in query_externally_blocked()
 					break;
 			}
