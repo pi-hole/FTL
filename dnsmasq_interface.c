@@ -475,13 +475,15 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 			save_reply_type(flags, i, response);
 
 			// If received NXDOMAIN and AD bit is set, Quad9 may have blocked this query
-			if(flags & F_NXDOMAIN && queries[i].AD)
+			if((flags & F_NXDOMAIN) && queries[i].AD)
 			{
 				query_externally_blocked(i);
 			}
-
-			// Detect if returned IP indicates that this query was blocked
-			detect_blocked_IP(flags, answer, i);
+			else
+			{
+				// Detect if returned IP indicates that this query was blocked
+				detect_blocked_IP(flags, answer, i);
+			}
 		}
 	}
 	else if(flags & F_REVERSE)
