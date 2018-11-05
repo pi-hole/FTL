@@ -439,16 +439,6 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 		// Answered from local configuration, might be a wildcard or user-provided
 		// This query is no longer unknown
 		counters.unknown--;
-		// Answered from a custom (user provided) cache file
-		counters.cached++;
-
-		// Detect user-defined blocking rules
-		if(strcmp(answer, "(NXDOMAIN)") == 0 ||
-		   strcmp(answer, "0.0.0.0") == 0 ||
-		   strcmp(answer, "::") == 0)
-			queries[i].status = QUERY_WILDCARD;
-		else
-			queries[i].status = QUERY_CACHE;
 
 		// Get time index
 		int querytimestamp, overTimetimestamp;
@@ -456,7 +446,30 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 		int timeidx = findOverTimeID(overTimetimestamp);
 		validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 
-		overTime[timeidx].cached++;
+		if(strcmp(answer, "(NXDOMAIN)") == 0 ||
+		   strcmp(answer, "0.0.0.0") == 0 ||
+		   strcmp(answer, "::") == 0)
+		{
+			// Answered from user-defined blocking rules (dnsmasq config files)
+			counters.blocked++;
+			overTime[timeidx].blocked++;
+
+			validate_access("domains", queries[i].domainID, true, __LINE__, __FUNCTION__, __FILE__);
+			domains[queries[i].domainID].blockedcount++;
+
+			validate_access("clients", queries[i].clientID, true, __LINE__, __FUNCTION__, __FILE__);
+			clients[queries[i].clientID].blockedcount++;
+
+			queries[i].status = QUERY_WILDCARD;
+		}
+		else
+		{
+			// Answered from a custom (user provided) cache file
+			counters.cached++;
+			overTime[timeidx].cached++;
+
+			queries[i].status = QUERY_CACHE;
+		}
 
 		// Save reply type and update individual reply counters
 		save_reply_type(flags, i, response);
