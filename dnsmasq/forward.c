@@ -241,13 +241,13 @@ static unsigned int search_servers(time_t now, struct all_addr **addrpp, unsigne
 	   if (flags & F_IPV4)
 	   {
 	     log_query((flags | F_CONFIG | F_FORWARD) & ~F_IPV6, qdomain, *addrpp, NULL);
-	     FTL_forwarded((flags | F_CONFIG | F_FORWARD) & ~F_IPV6, qdomain, *addrpp, daemon->log_display_id);
+	     FTL_reply((flags | F_CONFIG | F_FORWARD) & ~F_IPV6, qdomain, *addrpp, daemon->log_display_id);
 	   }
 #ifdef HAVE_IPV6
 	   if (flags & F_IPV6)
 	   {
 	     log_query((flags | F_CONFIG | F_FORWARD) & ~F_IPV4, qdomain, *addrpp, NULL);
-	     FTL_forwarded((flags | F_CONFIG | F_FORWARD) & ~F_IPV4, qdomain, *addrpp, daemon->log_display_id);
+	     FTL_reply((flags | F_CONFIG | F_FORWARD) & ~F_IPV4, qdomain, *addrpp, daemon->log_display_id);
 	    }
 #endif
 	 }
