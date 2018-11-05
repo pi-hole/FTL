@@ -463,9 +463,11 @@ struct crec {
 #define SRC_INTERFACE 0
 #define SRC_CONFIG    1
 #define SRC_HOSTS     2
-#define SRC_AH        3
 /*----- Pi-hole modification -----*/
-#define SRC_REGEX     4
+// ID 3 will be used for the regex list file name
+// ID 4 will be used as starting index for any Additional Hosts (AH) files
+#define SRC_REGEX     3
+#define SRC_AH        4
 const char *regexlistname;
 /*--------------------------------*/
 
