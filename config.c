@@ -39,7 +39,7 @@ void getLogFilePath(void)
 	if(!(buffer != NULL && sscanf(buffer, "%127ms", &FTLfiles.log)))
 	{
 		// Use standard path if no custom path was obtained from the config file
-		FTLfiles.log = strdup("/etc/pihole/pihole-FTL.log");
+		FTLfiles.log = strdup("/var/log/pihole-FTL.log");
 	}
 
 	// Test if memory allocation was successful
