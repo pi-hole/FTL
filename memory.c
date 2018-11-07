@@ -26,7 +26,7 @@ logFileNamesStruct files = {
 	NULL,
 	NULL,
 	NULL,
-	"/etc/pihole/regex.list",
+	NULL,
 	"/etc/pihole/setupVars.conf",
 	"/etc/pihole/auditlog.list"
 };

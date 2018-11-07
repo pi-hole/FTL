@@ -307,6 +307,9 @@ void read_FTLconf(void)
 	// GRAVITYFILE
 	getpath(fp, "GRAVITYFILE", "/etc/pihole/gravity.list", &files.gravity);
 
+	// REGEXLISTFILE
+	getpath(fp, "REGEXLISTFILE", "/etc/pihole/regex.list", &files.regexlist);
+
 	logg("Finished config file parsing");
 
 	// Release memory
