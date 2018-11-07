@@ -23,8 +23,12 @@ void getLogFilePath(void)
 	char * buffer;
 
 	// Try to open default config file. Use fallback if not found
-	if((fp = fopen(FTLfiles.conf, "r")) == NULL)
-		fp = fopen(FTLfiles.conf2, "r");
+	if( ((fp = fopen(FTLfiles.conf, "r")) == NULL) &&
+	    ((fp = fopen(FTLfiles.conf2, "r")) == NULL) &&
+	    ((fp = fopen("pihole-FTL.conf", "r")) == NULL))
+	{
+		printf("Notice: Found no readable FTL config file");
+	}
 
 	// Read LOGFILE value if available
 	// defaults to: "/var/log/pihole-FTL.log"
@@ -60,9 +64,9 @@ void read_FTLconf(void)
 	char * buffer;
 
 	// Try to open default config file. Use fallback if not found
-	if((fp = fopen(FTLfiles.conf, "r")) == NULL)
-		fp = fopen(FTLfiles.conf2, "r");
-	if(fp == NULL)
+	if( ((fp = fopen(FTLfiles.conf, "r")) == NULL) &&
+	    ((fp = fopen(FTLfiles.conf2, "r")) == NULL) &&
+	    ((fp = fopen("pihole-FTL.conf", "r")) == NULL))
 	{
 		logg("Notice: Found no readable FTL config file");
 		logg("        Using default settings");
