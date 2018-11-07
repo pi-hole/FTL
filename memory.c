@@ -23,14 +23,12 @@ FTLFileNamesStruct FTLfiles = {
 };
 
 logFileNamesStruct files = {
-	"/etc/pihole/list.preEventHorizon",
 	"/etc/pihole/whitelist.txt",
 	"/etc/pihole/black.list",
 	"/etc/pihole/gravity.list",
 	"/etc/pihole/regex.list",
 	"/etc/pihole/setupVars.conf",
-	"/etc/pihole/auditlog.list",
-	"/etc/dnsmasq.d/01-pihole.conf",
+	"/etc/pihole/auditlog.list"
 };
 
 // Fixed size structs

@@ -102,14 +102,12 @@ typedef struct {
 } FTLFileNamesStruct;
 
 typedef struct {
-	const char* preEventHorizon;
 	const char* whitelist;
 	const char* blacklist;
 	const char* gravity;
 	const char* regexlist;
 	const char* setupVars;
 	const char* auditlist;
-	const char* dnsmasqconfig;
 } logFileNamesStruct;
 
 typedef struct {
