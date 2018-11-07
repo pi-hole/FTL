@@ -43,13 +43,13 @@ void getLogFilePath(void)
 	}
 
 	// Test if memory allocation was successful
-	if(FTLfiles.log == NULL && errno != 0)
+	if(FTLfiles.log == NULL)
 	{
 		printf("FATAL: Allocating memory for FTLfiles.log failed (%s, %i). Exiting.",
 		       strerror(errno), errno);
 		exit(EXIT_FAILURE);
 	}
-	else if(FTLfiles.log != NULL && strlen(FTLfiles.log) == 0)
+	else if(strlen(FTLfiles.log) == 0)
 	{
 		printf("Fatal: Log file location cannot be empty");
 		exit(EXIT_FAILURE);
