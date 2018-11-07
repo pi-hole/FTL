@@ -16,13 +16,52 @@ static void release_config_memory(void);
 
 char *conflinebuffer = NULL;
 
+void getLogFilePath(void)
+{
+	FILE *fp;
+	char * buffer;
+
+	// Try to open default config file. Use fallback if not found
+	if((fp = fopen(FTLfiles.conf, "r")) == NULL)
+		fp = fopen(FTLfiles.conf2, "r");
+
+	// Read LOGFILE value if available
+	// defaults to: "/var/log/pihole-FTL.log"
+	buffer = parse_FTLconf(fp, "LOGFILE");
+
+	errno = 0;
+	// Use sscanf() to obtain filename from config file parameter only if buffer != NULL
+	if(!(buffer != NULL && sscanf(buffer, "%127ms", &FTLfiles.log)))
+	{
+		// Use standard path if no custom path was obtained from the config file
+		FTLfiles.log = strdup("/etc/pihole/pihole-FTL.log");
+	}
+
+	// Test if memory allocation was successful
+	if(FTLfiles.log == NULL && errno != 0)
+	{
+		printf("FATAL: Allocating memory for FTLfiles.log failed (%s, %i). Exiting.",
+		       strerror(errno), errno);
+		exit(EXIT_FAILURE);
+	}
+	else if(FTLfiles.log != NULL && strlen(FTLfiles.log) == 0)
+	{
+		printf("Fatal: Log file location cannot be empty");
+		exit(EXIT_FAILURE);
+	}
+	else
+		logg("Using log file %s", FTLfiles.log);
+}
+
 void read_FTLconf(void)
 {
 	FILE *fp;
 	char * buffer;
 
-	if(((fp = fopen(FTLfiles.conf, "r")) == NULL) &&
-	   ((fp = fopen(FTLfiles.conf2, "r")) == NULL))
+	// Try to open default config file. Use fallback if not found
+	if((fp = fopen(FTLfiles.conf, "r")) == NULL)
+		fp = fopen(FTLfiles.conf2, "r");
+	if(fp == NULL)
 	{
 		logg("Notice: Found no readable FTL config file");
 		logg("        Using default settings");

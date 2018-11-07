@@ -94,7 +94,7 @@ enum { BLOCKING_DISABLED, BLOCKING_ENABLED, BLOCKING_UNKNOWN };
 typedef struct {
 	const char* conf;
 	const char* conf2;
-	const char* log;
+	char* log;
 	const char* pid;
 	const char* port;
 	char* db;
