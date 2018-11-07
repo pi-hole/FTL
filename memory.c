@@ -24,8 +24,8 @@ FTLFileNamesStruct FTLfiles = {
 
 logFileNamesStruct files = {
 	NULL,
-	"/etc/pihole/black.list",
-	"/etc/pihole/gravity.list",
+	NULL,
+	NULL,
 	"/etc/pihole/regex.list",
 	"/etc/pihole/setupVars.conf",
 	"/etc/pihole/auditlog.list"

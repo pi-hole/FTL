@@ -304,6 +304,9 @@ void read_FTLconf(void)
 	// BLACKLISTFILE
 	getpath(fp, "BLACKLISTFILE", "/etc/pihole/blacklist.txt", &files.blacklist);
 
+	// GRAVITYFILE
+	getpath(fp, "GRAVITYFILE", "/etc/pihole/gravity.list", &files.gravity);
+
 	logg("Finished config file parsing");
 
 	// Release memory
