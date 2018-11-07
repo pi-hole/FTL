@@ -298,6 +298,9 @@ void read_FTLconf(void)
 	// SOCKETFILE
 	getpath(fp, "SOCKETFILE", "/var/run/pihole/FTL.sock", &FTLfiles.socketfile);
 
+	// WHITELISTFILE
+	getpath(fp, "WHITELISTFILE", "/etc/pihole/whitelist.txt", &files.whitelist);
+
 	logg("Finished config file parsing");
 
 	// Release memory

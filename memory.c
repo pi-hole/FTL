@@ -23,7 +23,7 @@ FTLFileNamesStruct FTLfiles = {
 };
 
 logFileNamesStruct files = {
-	"/etc/pihole/whitelist.txt",
+	NULL,
 	"/etc/pihole/black.list",
 	"/etc/pihole/gravity.list",
 	"/etc/pihole/regex.list",

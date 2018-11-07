@@ -102,7 +102,7 @@ typedef struct {
 } FTLFileNamesStruct;
 
 typedef struct {
-	const char* whitelist;
+	char* whitelist;
 	const char* blacklist;
 	const char* gravity;
 	const char* regexlist;
