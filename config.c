@@ -13,6 +13,7 @@
 ConfigStruct config;
 static char *parse_FTLconf(FILE *fp, const char * key);
 static void release_config_memory(void);
+void getpath(FILE* fp, const char *option, const char *defaultloc, char **pointer);
 
 char *conflinebuffer = NULL;
 
@@ -285,32 +286,7 @@ void read_FTLconf(void)
 		logg("   DBIMPORT: Not importing history from database");
 
 	// PIDFILE
-	// defaults to: "/var/run/pihole-FTL.pid"
-	buffer = parse_FTLconf(fp, "PIDFILE");
-
-	errno = 0;
-	// Use sscanf() to obtain filename from config file parameter only if buffer != NULL
-	if(!(buffer != NULL && sscanf(buffer, "%127ms", &FTLfiles.pid)))
-	{
-		// Use standard path if no custom path was obtained from the config file
-		FTLfiles.pid = strdup("/var/run/pihole-FTL.pid");
-	}
-
-	// Test if memory allocation was successful
-	if(FTLfiles.pid == NULL)
-	{
-		logg("FATAL: Allocating memory for FTLfiles.pid failed (%s, %i). Exiting.", strerror(errno), errno);
-		exit(EXIT_FAILURE);
-	}
-	else if(strlen(FTLfiles.pid) == 0)
-	{
-		logg("   PIDFILE: Empty file name is not possible!");
-		exit(EXIT_FAILURE);
-	}
-	else
-	{
-		logg("   PIDFILE: Using %s", FTLfiles.log);
-	}
+	getpath(fp, "PIDFILE", "/var/run/pihole-FTL.pid", &FTLfiles.pid);
 
 	logg("Finished config file parsing");
 
@@ -319,6 +295,35 @@ void read_FTLconf(void)
 
 	if(fp != NULL)
 		fclose(fp);
+}
+
+void getpath(FILE* fp, const char *option, const char *defaultloc, char **pointer)
+{
+	char *buffer = parse_FTLconf(fp, "PIDFILE");
+
+	errno = 0;
+	// Use sscanf() to obtain filename from config file parameter only if buffer != NULL
+	if(!(buffer != NULL && sscanf(buffer, "%127ms", pointer)))
+	{
+		// Use standard path if no custom path was obtained from the config file
+		*pointer = strdup(defaultloc);
+	}
+
+	// Test if memory allocation was successful
+	if(*pointer == NULL)
+	{
+		logg("FATAL: Allocating memory for %s failed (%s, %i). Exiting.", option, strerror(errno), errno);
+		exit(EXIT_FAILURE);
+	}
+	else if(strlen(*pointer) == 0)
+	{
+		logg("   %s: Empty file name is not possible!", option);
+		exit(EXIT_FAILURE);
+	}
+	else
+	{
+		logg("   %s: Using %s", option, *pointer);
+	}
 }
 
 static char *parse_FTLconf(FILE *fp, const char * key)
