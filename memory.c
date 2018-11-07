@@ -23,7 +23,6 @@ FTLFileNamesStruct FTLfiles = {
 };
 
 logFileNamesStruct files = {
-	"/var/log/pihole.log",
 	"/etc/pihole/list.preEventHorizon",
 	"/etc/pihole/whitelist.txt",
 	"/etc/pihole/black.list",

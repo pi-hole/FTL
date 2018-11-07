@@ -102,7 +102,6 @@ typedef struct {
 } FTLFileNamesStruct;
 
 typedef struct {
-	const char* log;
 	const char* preEventHorizon;
 	const char* whitelist;
 	const char* blacklist;

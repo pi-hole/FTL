@@ -97,7 +97,6 @@ void parse_args(int argc, char* argv[])
 			// FTLfiles.db will be set to "pihole-FTL.db" via config file on Travis
 			FTLfiles.conf = "pihole-FTL.conf";
 			FTLfiles.socketfile = "pihole-FTL.sock";
-			files.log = "pihole.log";
 			ok = true;
 		}
 
