@@ -284,6 +284,34 @@ void read_FTLconf(void)
 	else
 		logg("   DBIMPORT: Not importing history from database");
 
+	// PIDFILE
+	// defaults to: "/var/run/pihole-FTL.pid"
+	buffer = parse_FTLconf(fp, "PIDFILE");
+
+	errno = 0;
+	// Use sscanf() to obtain filename from config file parameter only if buffer != NULL
+	if(!(buffer != NULL && sscanf(buffer, "%127ms", &FTLfiles.pid)))
+	{
+		// Use standard path if no custom path was obtained from the config file
+		FTLfiles.pid = strdup("/var/run/pihole-FTL.pid");
+	}
+
+	// Test if memory allocation was successful
+	if(FTLfiles.pid == NULL)
+	{
+		logg("FATAL: Allocating memory for FTLfiles.pid failed (%s, %i). Exiting.", strerror(errno), errno);
+		exit(EXIT_FAILURE);
+	}
+	else if(strlen(FTLfiles.pid) == 0)
+	{
+		logg("   PIDFILE: Empty file name is not possible!");
+		exit(EXIT_FAILURE);
+	}
+	else
+	{
+		logg("   PIDFILE: Using %s", FTLfiles.log);
+	}
+
 	logg("Finished config file parsing");
 
 	// Release memory

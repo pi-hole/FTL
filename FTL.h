@@ -95,7 +95,7 @@ typedef struct {
 	const char* conf;
 	const char* conf2;
 	char* log;
-	const char* pid;
+	char* pid;
 	const char* port;
 	char* db;
 	const char* socketfile;
