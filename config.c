@@ -313,6 +313,9 @@ void read_FTLconf(void)
 	// SETUPVARSFILE
 	getpath(fp, "SETUPVARSFILE", "/etc/pihole/setupVars.conf", &files.setupVars);
 
+	// AUDITLISTFILE
+	getpath(fp, "AUDITLISTFILE", "/etc/pihole/auditlog.list", &files.auditlist);
+
 	logg("Finished config file parsing");
 
 	// Release memory

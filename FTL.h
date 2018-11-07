@@ -107,7 +107,7 @@ typedef struct {
 	char* gravity;
 	char* regexlist;
 	char* setupVars;
-	const char* auditlist;
+	char* auditlist;
 } logFileNamesStruct;
 
 typedef struct {

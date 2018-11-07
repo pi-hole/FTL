@@ -28,7 +28,7 @@ logFileNamesStruct files = {
 	NULL,
 	NULL,
 	NULL,
-	"/etc/pihole/auditlog.list"
+	NULL
 };
 
 // Fixed size structs
