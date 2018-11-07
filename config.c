@@ -21,7 +21,8 @@ void read_FTLconf(void)
 	FILE *fp;
 	char * buffer;
 
-	if((fp = fopen(FTLfiles.conf, "r")) == NULL)
+	if(((fp = fopen(FTLfiles.conf, "r")) == NULL) &&
+	   ((fp = fopen(FTLfiles.conf2, "r")) == NULL))
 	{
 		logg("Notice: Found no readable FTL config file");
 		logg("        Using default settings");

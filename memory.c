@@ -11,7 +11,10 @@
 #include "FTL.h"
 
 FTLFileNamesStruct FTLfiles = {
+	// Default path for config file (regular installations)
 	"/etc/pihole/pihole-FTL.conf",
+	// Alternative path for config file (snap installations)
+	"/var/snap/pihole/common/etc/pihole/pihole-FTL.conf",
 	"/var/log/pihole-FTL.log",
 	"/var/run/pihole-FTL.pid",
 	"/var/run/pihole-FTL.port",
