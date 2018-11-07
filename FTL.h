@@ -103,7 +103,7 @@ typedef struct {
 
 typedef struct {
 	char* whitelist;
-	const char* blacklist;
+	char* blacklist;
 	const char* gravity;
 	const char* regexlist;
 	const char* setupVars;

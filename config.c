@@ -301,6 +301,9 @@ void read_FTLconf(void)
 	// WHITELISTFILE
 	getpath(fp, "WHITELISTFILE", "/etc/pihole/whitelist.txt", &files.whitelist);
 
+	// BLACKLISTFILE
+	getpath(fp, "BLACKLISTFILE", "/etc/pihole/blacklist.txt", &files.blacklist);
+
 	logg("Finished config file parsing");
 
 	// Release memory
