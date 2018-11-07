@@ -27,7 +27,7 @@ logFileNamesStruct files = {
 	NULL,
 	NULL,
 	NULL,
-	"/etc/pihole/setupVars.conf",
+	NULL,
 	"/etc/pihole/auditlog.list"
 };
 

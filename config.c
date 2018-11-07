@@ -310,6 +310,9 @@ void read_FTLconf(void)
 	// REGEXLISTFILE
 	getpath(fp, "REGEXLISTFILE", "/etc/pihole/regex.list", &files.regexlist);
 
+	// SETUPVARSFILE
+	getpath(fp, "SETUPVARSFILE", "/etc/pihole/setupVars.conf", &files.setupVars);
+
 	logg("Finished config file parsing");
 
 	// Release memory

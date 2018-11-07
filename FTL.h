@@ -106,7 +106,7 @@ typedef struct {
 	char* blacklist;
 	char* gravity;
 	char* regexlist;
-	const char* setupVars;
+	char* setupVars;
 	const char* auditlist;
 } logFileNamesStruct;
 
