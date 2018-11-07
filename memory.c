@@ -19,7 +19,7 @@ FTLFileNamesStruct FTLfiles = {
 	NULL,
 	NULL,
 	NULL,
-	"/var/run/pihole/FTL.sock"
+	NULL
 };
 
 logFileNamesStruct files = {

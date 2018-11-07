@@ -291,6 +291,9 @@ void read_FTLconf(void)
 	// PORTFILE
 	getpath(fp, "PORTFILE", "/var/run/pihole-FTL.port", &FTLfiles.port);
 
+	// SOCKETFILE
+	getpath(fp, "SOCKETFILE", "/var/run/pihole/FTL.sock", &FTLfiles.socketfile);
+
 	logg("Finished config file parsing");
 
 	// Release memory

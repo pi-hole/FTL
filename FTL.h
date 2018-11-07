@@ -98,7 +98,7 @@ typedef struct {
 	char* pid;
 	char* port;
 	char* db;
-	const char* socketfile;
+	char* socketfile;
 } FTLFileNamesStruct;
 
 typedef struct {
