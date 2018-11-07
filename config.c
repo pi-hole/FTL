@@ -288,6 +288,9 @@ void read_FTLconf(void)
 	// PIDFILE
 	getpath(fp, "PIDFILE", "/var/run/pihole-FTL.pid", &FTLfiles.pid);
 
+	// PORTFILE
+	getpath(fp, "PORTFILE", "/var/run/pihole-FTL.port", &FTLfiles.port);
+
 	logg("Finished config file parsing");
 
 	// Release memory

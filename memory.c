@@ -17,7 +17,7 @@ FTLFileNamesStruct FTLfiles = {
 	"/var/snap/pihole/common/etc/pihole/pihole-FTL.conf",
 	NULL,
 	NULL,
-	"/var/run/pihole-FTL.port",
+	NULL,
 	NULL,
 	"/var/run/pihole/FTL.sock"
 };
