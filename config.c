@@ -326,12 +326,18 @@ void get_privacy_level(FILE *fp)
 	if(buffer != NULL && sscanf(buffer, "%i", &value) == 1)
 	{
 		// Check for change and validity of privacy level (set in FTL.h)
-		if(value != config.privacylevel &&
-		   value >= PRIVACY_SHOW_ALL &&
+		if(value >= PRIVACY_SHOW_ALL &&
 		   value <= PRIVACY_NOSTATS)
 		{
-			logg("Notice: Changing privacy level from %i to %i", config.privacylevel, value);
-			config.privacylevel = value;
+			if(value > config.privacylevel)
+			{
+				logg("Notice: Increasing privacy level from %i to %i", config.privacylevel, value);
+				config.privacylevel = value;
+			}
+			else if(value < config.privacylevel)
+			{
+				logg("WARN: Restart pihole-FTL to use a privacy level lower than %i", config.privacylevel);
+			}
 		}
 	}
 
