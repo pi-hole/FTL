@@ -32,6 +32,8 @@ int findDomainID(const char *domain);
 int findClientID(const char *client);
 bool isValidIPv4(const char *addr);
 bool isValidIPv6(const char *addr);
+char *getDomainString(int queryID);
+char *getClientString(int queryID);
 
 void close_telnet_socket(void);
 void close_unix_socket(void);

@@ -87,6 +87,7 @@ void getStats(int *sock)
 		// Send individual reply type counters
 		ssend(*sock, "reply_NODATA %i\nreply_NXDOMAIN %i\nreply_CNAME %i\nreply_IP %i\n",
 		      counters.reply_NODATA, counters.reply_NXDOMAIN, counters.reply_CNAME, counters.reply_IP);
+		ssend(*sock, "privacy_level %i\n", config.privacylevel);
 	}
 	else
 	{
@@ -400,10 +401,6 @@ void getTopClients(char *client_message, int *sock)
 		// Skip this client if there is a filter on it
 		if(excludeclients != NULL &&
 			(insetupVarsArray(clients[j].ip) || insetupVarsArray(clients[j].name)))
-			continue;
-
-		// Hidden client, probably due to privacy level. Skip this in the top lists
-		if(strcmp(clients[j].ip, "0.0.0.0") == 0)
 			continue;
 
 		// Only return name if available
@@ -760,7 +757,7 @@ void getAllQueries(char *client_message, int *sock)
 	{
 		validate_access("queries", i, true, __LINE__, __FUNCTION__, __FILE__);
 		// Check if this query has been create while in maximum privacy mode
-		if(queries[i].private) continue;
+		if(queries[i].privacylevel >= PRIVACY_MAXIMUM) continue;
 
 		validate_access("domains", queries[i].domainID, true, __LINE__, __FUNCTION__, __FILE__);
 		validate_access("clients", queries[i].clientID, true, __LINE__, __FUNCTION__, __FILE__);
@@ -808,13 +805,17 @@ void getAllQueries(char *client_message, int *sock)
 				continue;
 		}
 
-		char *domain = domains[queries[i].domainID].domain;
+		// Ask subroutine for domain. It may return "hidden" depending on
+		// the privacy settings at the time the query was made
+		char *domain = getDomainString(i);
+		// Similarly for the client
 		char *client;
 		if(clients[queries[i].clientID].name != NULL &&
-		   strlen(clients[queries[i].clientID].name) > 0)
+		   strlen(clients[queries[i].clientID].name) > 0 &&
+		   queries[i].privacylevel < PRIVACY_HIDE_DOMAINS_CLIENTS)
 			client = clients[queries[i].clientID].name;
 		else
-			client = clients[queries[i].clientID].ip;
+			client = getClientString(i);
 
 		unsigned long delay = queries[i].response;
 		// Check if received (delay should be smaller than 30min)
@@ -857,11 +858,6 @@ void getRecentBlocked(char *client_message, int *sock)
 {
 	int i, num=1;
 
-	// Exit before processing any data if requested via config setting
-	get_privacy_level(NULL);
-	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS)
-		return;
-
 	// Test for integer that specifies number of entries to be shown
 	if(sscanf(client_message, "%*[^(](%i)", &num) > 0) {
 		// User wants a different number of requests
@@ -881,9 +877,13 @@ void getRecentBlocked(char *client_message, int *sock)
 		{
 			found++;
 
+			// Ask subroutine for domain. It may return "hidden" depending on
+			// the privacy settings at the time the query was made
+			char *domain = getDomainString(i);
+
 			if(istelnet[*sock])
-				ssend(*sock,"%s\n", domains[queries[i].domainID].domain);
-			else if(!pack_str32(*sock, domains[queries[i].domainID].domain))
+				ssend(*sock,"%s\n", domain);
+			else if(!pack_str32(*sock, domain))
 				return;
 		}
 
