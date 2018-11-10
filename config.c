@@ -327,6 +327,11 @@ void read_FTLconf(void)
 
 void getpath(FILE* fp, const char *option, const char *defaultloc, char **pointer)
 {
+	// This subroutine is used to read paths from pihole-FTL.conf
+	// fp:         File pointer to opened and readable config file
+	// option:     Option string ("key") to try to read
+	// defaultloc: Value used if key is not found in file
+	// pointer:    Location where read (or default) parameter is stored
 	char *buffer = parse_FTLconf(fp, "PIDFILE");
 
 	errno = 0;
