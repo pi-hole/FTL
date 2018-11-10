@@ -21,6 +21,7 @@ static void detect_blocked_IP(unsigned short flags, char* answer, int queryID);
 static void query_externally_blocked(int i);
 static int findQueryID(int id);
 
+unsigned char* pihole_privacylevel = &config.privacylevel;
 char flagnames[28][12] = {"F_IMMORTAL ", "F_NAMEP ", "F_REVERSE ", "F_FORWARD ", "F_DHCP ", "F_NEG ", "F_HOSTS ", "F_IPV4 ", "F_IPV6 ", "F_BIGNAME ", "F_NXDOMAIN ", "F_CNAME ", "F_DNSKEY ", "F_CONFIG ", "F_DS ", "F_DNSSECOK ", "F_UPSTREAM ", "F_RRNAME ", "F_SERVER ", "F_QUERY ", "F_NOERR ", "F_AUTH ", "F_DNSSEC ", "F_KEYTAG ", "F_SECSTAT ", "F_NO_RR ", "F_IPSET ", "F_NOEXTRA "};
 
 void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *types, int id, char type)
@@ -92,15 +93,6 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	// Store plain text domain in buffer for regex validation
 	char *domainbuffer = strdup(domain);
 
-	// Check and apply possible privacy level rules
-	// We do this immediately on the raw data to avoid any possible leaking
-	get_privacy_level(NULL);
-	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS)
-	{
-		free(domain);
-		domain = strdup("hidden");
-	}
-
 	// Get client IP address
 	char dest[ADDRSTRLEN];
 	inet_ntop((flags & F_IPV4) ? AF_INET : AF_INET6, addr, dest, ADDRSTRLEN);
@@ -112,18 +104,9 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	   (strcmp(client, "127.0.0.1") == 0 || strcmp(client, "::1") == 0))
 	{
 		free(domain);
-		free(domainbuffer);
 		free(client);
 		disable_thread_lock();
 		return;
-	}
-
-	// Check and apply possible privacy level rules
-	// We do this immediately on the raw data to avoid any possible leaking
-	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS_CLIENTS)
-	{
-		free(client);
-		client = strdup("0.0.0.0");
 	}
 
 	// Log new query if in debug mode
@@ -167,7 +150,6 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	queries[queryID].db = false;
 	queries[queryID].id = id;
 	queries[queryID].complete = false;
-	queries[queryID].private = (config.privacylevel == PRIVACY_MAXIMUM);
 	queries[queryID].response = converttimeval(request);
 	// Initialize reply type
 	queries[queryID].reply = REPLY_UNKNOWN;
@@ -175,6 +157,12 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	queries[queryID].dnssec = DNSSEC_UNSPECIFIED;
 	// AD has not yet been received for this query
 	queries[queryID].AD = false;
+
+	// Check and apply possible privacy level rules
+	// The currently set privacy level (at the time the query is
+	// generated) is stored in the queries structure
+	get_privacy_level(NULL);
+	queries[queryID].privacylevel = config.privacylevel;
 
 	// Increase DNS queries counter
 	counters.queries++;

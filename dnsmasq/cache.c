@@ -1491,6 +1491,12 @@ int cache_make_stat(struct txt_record *t)
       break;
 #endif
 
+    /* Pi-hole modification */
+    case TXT_PRIVACYLEVEL:
+      sprintf(buff+1, "%d", *pihole_privacylevel);
+      break;
+    /* -------------------- */
+
     case TXT_STAT_SERVERS:
       /* sum counts from different records for same server */
       for (serv = daemon->servers; serv; serv = serv->next)

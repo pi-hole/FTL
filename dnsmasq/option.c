@@ -4768,6 +4768,9 @@ void read_opts(int argc, char **argv, char *compile_opts)
   add_txt("auth.bind", NULL, TXT_STAT_AUTH);
 #endif
   add_txt("servers.bind", NULL, TXT_STAT_SERVERS);
+  /* Pi-hole modification */
+  add_txt("privacylevel.pihole", NULL, TXT_PRIVACYLEVEL);
+  /************************/
 #endif
 
   while (1)

@@ -323,6 +323,9 @@ struct naptr {
 #define TXT_STAT_HITS          5
 #define TXT_STAT_AUTH          6
 #define TXT_STAT_SERVERS       7
+/* Pi-hole modification */
+#define TXT_PRIVACYLEVEL       123
+/************************/
 #endif
 
 struct txt_record {

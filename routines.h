@@ -32,6 +32,8 @@ int findDomainID(const char *domain);
 int findClientID(const char *client);
 bool isValidIPv4(const char *addr);
 bool isValidIPv6(const char *addr);
+char *getDomainString(int queryID);
+char *getClientIPString(int queryID);
 
 void close_telnet_socket(void);
 void close_unix_socket(void);
@@ -71,6 +73,7 @@ void disable_thread_lock(void);
 void init_thread_lock(void);
 
 // config.c
+void getLogFilePath(void);
 void read_FTLconf(void);
 void get_privacy_level(FILE *fp);
 void get_blocking_mode(FILE *fp);
