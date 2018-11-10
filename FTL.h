@@ -97,23 +97,21 @@ enum { BLOCKING_DISABLED, BLOCKING_ENABLED, BLOCKING_UNKNOWN };
 // Static structs
 typedef struct {
 	const char* conf;
-	const char* log;
-	const char* pid;
-	const char* port;
+	const char* snapConf;
+	char* log;
+	char* pid;
+	char* port;
 	char* db;
-	const char* socketfile;
+	char* socketfile;
 } FTLFileNamesStruct;
 
 typedef struct {
-	const char* log;
-	const char* preEventHorizon;
-	const char* whitelist;
-	const char* blacklist;
-	const char* gravity;
-	const char* regexlist;
-	const char* setupVars;
-	const char* auditlist;
-	const char* dnsmasqconfig;
+	char* whitelist;
+	char* blacklist;
+	char* gravity;
+	char* regexlist;
+	char* setupVars;
+	char* auditlist;
 } logFileNamesStruct;
 
 typedef struct {

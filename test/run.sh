@@ -46,6 +46,8 @@ touch "pihole-FTL.log"
 
 cat <<EOT >> pihole-FTL.conf
 DBFILE=pihole-FTL.db
+LOGFILE=pihole-FTL.log
+SOCKETFILE=pihole-FTL.sock
 EOT
 
 # Start FTL
