@@ -36,7 +36,7 @@ void getLogFilePath(void)
 
 	errno = 0;
 	// Use sscanf() to obtain filename from config file parameter only if buffer != NULL
-	if(!(buffer != NULL && sscanf(buffer, "%127ms", &FTLfiles.log)))
+	if(buffer == NULL || sscanf(buffer, "%127ms", &FTLfiles.log) == 0)
 	{
 		// Use standard path if no custom path was obtained from the config file
 		FTLfiles.log = strdup("/var/log/pihole-FTL.log");
@@ -331,7 +331,7 @@ void getpath(FILE* fp, const char *option, const char *defaultloc, char **pointe
 
 	errno = 0;
 	// Use sscanf() to obtain filename from config file parameter only if buffer != NULL
-	if(!(buffer != NULL && sscanf(buffer, "%127ms", pointer)))
+	if(buffer == NULL || sscanf(buffer, "%127ms", pointer) == 0)
 	{
 		// Use standard path if no custom path was obtained from the config file
 		*pointer = strdup(defaultloc);
