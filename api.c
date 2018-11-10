@@ -265,7 +265,7 @@ void getTopDomains(char *client_message, int *sock)
 			continue;
 
 		// Hidden domain, probably due to privacy level. Skip this in the top lists
-		if(strcmp(domains[j].domain, "hidden") == 0)
+		if(strcmp(domains[j].domain, HIDDEN_DOMAIN) == 0)
 			continue;
 
 		if(blocked && showblocked && domains[j].blockedcount > 0)
@@ -401,6 +401,10 @@ void getTopClients(char *client_message, int *sock)
 		// Skip this client if there is a filter on it
 		if(excludeclients != NULL &&
 			(insetupVarsArray(clients[j].ip) || insetupVarsArray(clients[j].name)))
+			continue;
+
+		// Hidden client, probably due to privacy level. Skip this in the top lists
+		if(strcmp(clients[j].ip, HIDDEN_CLIENT) == 0)
 			continue;
 
 		// Only return name if available
