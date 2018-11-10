@@ -415,7 +415,7 @@ void save_to_DB(void)
 		sqlite3_bind_text(stmt, 4, domain, -1, SQLITE_TRANSIENT);
 
 		// CLIENT
-		char *client = getClientString(i);
+		char *client = getClientIPString(i);
 		sqlite3_bind_text(stmt, 5, client, -1, SQLITE_TRANSIENT);
 
 		// FORWARD

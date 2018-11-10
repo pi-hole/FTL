@@ -815,7 +815,7 @@ void getAllQueries(char *client_message, int *sock)
 		   queries[i].privacylevel < PRIVACY_HIDE_DOMAINS_CLIENTS)
 			client = clients[queries[i].clientID].name;
 		else
-			client = getClientString(i);
+			client = getClientIPString(i);
 
 		unsigned long delay = queries[i].response;
 		// Check if received (delay should be smaller than 30min)

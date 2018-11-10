@@ -235,6 +235,8 @@ bool isValidIPv6(const char *addr)
 	return inet_pton(AF_INET6, addr, &(sa.sin6_addr)) != 0;
 }
 
+// Privacy-level sensitive subroutine that returns the domain name
+// only when appropriate for the requested query
 char *getDomainString(int queryID)
 {
 	if(queries[queryID].privacylevel < PRIVACY_HIDE_DOMAINS)
@@ -246,7 +248,9 @@ char *getDomainString(int queryID)
 		return HIDDEN_DOMAIN;
 }
 
-char *getClientString(int queryID)
+// Privacy-level sensitive subroutine that returns the client IP
+// only when appropriate for the requested query
+char *getClientIPString(int queryID)
 {
 	if(queries[queryID].privacylevel < PRIVACY_HIDE_DOMAINS_CLIENTS)
 	{

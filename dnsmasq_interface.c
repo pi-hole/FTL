@@ -150,12 +150,6 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	queries[queryID].db = false;
 	queries[queryID].id = id;
 	queries[queryID].complete = false;
-
-	// Check and apply possible privacy level rules
-	// We do this immediately on the raw data to avoid any possible leaking
-	get_privacy_level(NULL);
-
-	queries[queryID].privacylevel = config.privacylevel;
 	queries[queryID].response = converttimeval(request);
 	// Initialize reply type
 	queries[queryID].reply = REPLY_UNKNOWN;
@@ -163,6 +157,12 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	queries[queryID].dnssec = DNSSEC_UNSPECIFIED;
 	// AD has not yet been received for this query
 	queries[queryID].AD = false;
+
+	// Check and apply possible privacy level rules
+	// The currently set privacy level (at the time the query is
+	// generated) is stored in the queries structure
+	get_privacy_level(NULL);
+	queries[queryID].privacylevel = config.privacylevel;
 
 	// Increase DNS queries counter
 	counters.queries++;
