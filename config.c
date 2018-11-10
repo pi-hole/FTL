@@ -326,11 +326,11 @@ void get_privacy_level(FILE *fp)
 	if(buffer != NULL && sscanf(buffer, "%i", &value) == 1)
 	{
 		// Check for change and validity of privacy level (set in FTL.h)
-		if(value != config.privacylevel &&
-		   value >= PRIVACY_SHOW_ALL &&
-		   value <= PRIVACY_NOSTATS)
+		if(value >= PRIVACY_SHOW_ALL &&
+		   value <= PRIVACY_NOSTATS &&
+		   value > config.privacylevel)
 		{
-			logg("Notice: Changing privacy level from %i to %i", config.privacylevel, value);
+			logg("Notice: Increasing privacy level from %i to %i", config.privacylevel, value);
 			config.privacylevel = value;
 		}
 	}

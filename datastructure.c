@@ -234,3 +234,29 @@ bool isValidIPv6(const char *addr)
 	struct sockaddr_in6 sa;
 	return inet_pton(AF_INET6, addr, &(sa.sin6_addr)) != 0;
 }
+
+// Privacy-level sensitive subroutine that returns the domain name
+// only when appropriate for the requested query
+char *getDomainString(int queryID)
+{
+	if(queries[queryID].privacylevel < PRIVACY_HIDE_DOMAINS)
+	{
+		validate_access("domains", queries[queryID].domainID, true, __LINE__, __FUNCTION__, __FILE__);
+		return domains[queries[queryID].domainID].domain;
+	}
+	else
+		return HIDDEN_DOMAIN;
+}
+
+// Privacy-level sensitive subroutine that returns the client IP
+// only when appropriate for the requested query
+char *getClientIPString(int queryID)
+{
+	if(queries[queryID].privacylevel < PRIVACY_HIDE_DOMAINS_CLIENTS)
+	{
+		validate_access("clients", queries[queryID].clientID, true, __LINE__, __FUNCTION__, __FILE__);
+		return clients[queries[queryID].clientID].ip;
+	}
+	else
+		return HIDDEN_CLIENT;
+}

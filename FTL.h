@@ -90,6 +90,10 @@ enum { MODE_IP, MODE_NX, MODE_NULL, MODE_IP_NODATA_AAAA };
 enum { REGEX_UNKNOWN, REGEX_BLOCKED, REGEX_NOTBLOCKED };
 enum { BLOCKING_DISABLED, BLOCKING_ENABLED, BLOCKING_UNKNOWN };
 
+// Privacy mode constants
+#define HIDDEN_DOMAIN "hidden"
+#define HIDDEN_CLIENT "0.0.0.0"
+
 // Static structs
 typedef struct {
 	const char* conf;
@@ -146,7 +150,7 @@ typedef struct {
 	int DBinterval;
 	int port;
 	int maxlogage;
-	int privacylevel;
+	unsigned char privacylevel;
 	bool ignore_localhost;
 	unsigned char blockingmode;
 	bool regex_debugmode;
@@ -167,7 +171,7 @@ typedef struct {
 	bool db;
 	int id; // the ID is a (signed) int in dnsmasq, so no need for a long int here
 	bool complete;
-	bool private;
+	unsigned char privacylevel;
 	unsigned long response; // saved in units of 1/10 milliseconds (1 = 0.1ms, 2 = 0.2ms, 2500 = 250.0ms, etc.)
 	unsigned char reply;
 	unsigned char dnssec;
