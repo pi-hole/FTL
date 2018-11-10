@@ -93,7 +93,7 @@ enum { BLOCKING_DISABLED, BLOCKING_ENABLED, BLOCKING_UNKNOWN };
 // Static structs
 typedef struct {
 	const char* conf;
-	const char* conf2;
+	const char* snapConf;
 	char* log;
 	char* pid;
 	char* port;
