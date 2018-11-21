@@ -318,6 +318,33 @@ int number_of_queries_in_DB(void)
 	return result;
 }
 
+static sqlite3_int64 last_ID_in_DB(void)
+{
+	sqlite3_stmt* stmt;
+
+	int rc = sqlite3_prepare_v2(db, "SELECT MAX(ID) FROM queries", -1, &stmt, NULL);
+	if( rc ){
+		logg("last_ID_in_DB() - SQL error prepare (%i): %s", rc, sqlite3_errmsg(db));
+		dbclose();
+		check_database(rc);
+		return -1;
+	}
+
+	rc = sqlite3_step(stmt);
+	if( rc != SQLITE_ROW ){
+		logg("last_ID_in_DB() - SQL error step (%i): %s", rc, sqlite3_errmsg(db));
+		dbclose();
+		check_database(rc);
+		return -1;
+	}
+
+	sqlite3_int64 result = sqlite3_column_int64(stmt, 0);
+
+	sqlite3_finalize(stmt);
+
+	return result;
+}
+
 int get_number_of_queries_in_DB(void)
 {
 	int result = -1;
@@ -356,6 +383,9 @@ void save_to_DB(void)
 	long int i;
 	sqlite3_stmt* stmt;
 
+	// Get last ID stored in the database
+	sqlite3_int64 lastID = last_ID_in_DB();
+
 	bool ret = dbquery("BEGIN TRANSACTION");
 	if(!ret)
 	{
@@ -379,7 +409,7 @@ void save_to_DB(void)
 	for(i = 0; i < counters->queries; i++)
 	{
 		validate_access("queries", i, true, __LINE__, __FUNCTION__, __FILE__);
-		if(queries[i].db)
+		if(queries[i].db != 0)
 		{
 			// Skip, already saved in database
 			continue;
@@ -394,10 +424,8 @@ void save_to_DB(void)
 
 		// Memory checks
 		validate_access("queries", i, true, __LINE__, __FUNCTION__, __FILE__);
-		validate_access("domains", queries[i].domainID, true, __LINE__, __FUNCTION__, __FILE__);
-		validate_access("clients", queries[i].clientID, true, __LINE__, __FUNCTION__, __FILE__);
 
-		if(queries[i].private)
+		if(queries[i].privacylevel >= PRIVACY_MAXIMUM)
 		{
 			// Skip, we never store nor count queries recorded
 			// while have been in maximum privacy mode in the database
@@ -414,10 +442,12 @@ void save_to_DB(void)
 		sqlite3_bind_int(stmt, 3, queries[i].status);
 
 		// DOMAIN
-		sqlite3_bind_text(stmt, 4, getstr(domains[queries[i].domainID].domainpos), -1, SQLITE_TRANSIENT);
+		char *domain = getDomainString(i);
+		sqlite3_bind_text(stmt, 4, domain, -1, SQLITE_TRANSIENT);
 
 		// CLIENT
-		sqlite3_bind_text(stmt, 5, getstr(clients[queries[i].clientID].ippos), -1, SQLITE_TRANSIENT);
+		char *client = getClientIPString(i);
+		sqlite3_bind_text(stmt, 5, client, -1, SQLITE_TRANSIENT);
 
 		// FORWARD
 		if(queries[i].status == QUERY_FORWARDED && queries[i].forwardID > -1)
@@ -452,8 +482,8 @@ void save_to_DB(void)
 		}
 
 		saved++;
-		// Mark this query as saved in the database only if successful
-		queries[i].db = true;
+		// Mark this query as saved in the database by setting the corresponding ID
+		queries[i].db = ++lastID;
 
 		// Total counter information (delta computation)
 		total++;
@@ -493,7 +523,7 @@ void save_to_DB(void)
 
 	if(debug)
 	{
-		logg("Notice: Queries stored in DB: %u (took %.1f ms)", saved, timer_elapsed_msec(DATABASE_WRITE_TIMER));
+		logg("Notice: Queries stored in DB: %u (took %.1f ms, last SQLite ID %llu)", saved, timer_elapsed_msec(DATABASE_WRITE_TIMER), lastID);
 		if(saved_error > 0)
 			logg("        There are queries that have not been saved");
 	}
@@ -548,10 +578,6 @@ void *DB_thread(void *val)
 		{
 			// Update lastDBsave timer
 			lastDBsave = time(NULL) - time(NULL)%config.DBinterval;
-
-			// This has to be run outside of the thread locks
-			// to prevent locking the resolver
-			resolveNewClients();
 
 			// Lock FTL's data structures, since it is
 			// likely that they will be changed here
@@ -618,6 +644,7 @@ void read_data_from_DB(void)
 	// Loop through returned database rows
 	while((rc = sqlite3_step(stmt)) == SQLITE_ROW)
 	{
+		sqlite3_int64 dbid = sqlite3_column_int64(stmt, 0);
 		int queryTimeStamp = sqlite3_column_int(stmt, 1);
 		// 1483228800 = 01/01/2017 @ 12:00am (UTC)
 		if(queryTimeStamp < 1483228800)
@@ -698,10 +725,6 @@ void read_data_from_DB(void)
 		// Set index for this query
 		int queryIndex = counters->queries;
 
-		// Set the ID for this query. Queries loaded from the database use negative IDs.
-		// 1 is added to the counter before flipping the sign so the IDs start at -1 instead of 0.
-		int queryID = -1 * (counters->queries + 1);
-
 		// Store this query in memory
 		validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 		validate_access("queries", queryIndex, false, __LINE__, __FUNCTION__, __FILE__);
@@ -713,8 +736,8 @@ void read_data_from_DB(void)
 		queries[queryIndex].clientID = clientID;
 		queries[queryIndex].forwardID = forwardID;
 		queries[queryIndex].timeidx = timeidx;
-		queries[queryIndex].db = true; // Mark this as already present in the database
-		queries[queryIndex].id = queryID;
+		queries[queryIndex].db = dbid;
+		queries[queryIndex].id = 0;
 		queries[queryIndex].complete = true; // Mark as all information is avaiable
 		queries[queryIndex].response = 0;
 		queries[queryIndex].AD = false;

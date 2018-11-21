@@ -485,8 +485,11 @@ char *whichdevice(void)
 
 void  bindtodevice(char *device, int fd)
 {
+  size_t len = strlen(device)+1;
+  if (len > IFNAMSIZ)
+    len = IFNAMSIZ;
   /* only allowed by root. */
-  if (setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, device, IFNAMSIZ) == -1 &&
+  if (setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, device, len) == -1 &&
       errno != EPERM)
     die(_("failed to set SO_BINDTODEVICE on DHCP socket: %s"), NULL, EC_BADNET);
 }
@@ -556,6 +559,7 @@ static const struct opttab_t {
   { "nntp-server", 71, OT_ADDR_LIST }, 
   { "irc-server", 74, OT_ADDR_LIST }, 
   { "user-class", 77, 0 },
+  { "rapid-commit", 80, 0 },
   { "FQDN", 81, OT_INTERNAL },
   { "agent-id", 82, OT_INTERNAL },
   { "client-arch", 93, 2 | OT_DEC },

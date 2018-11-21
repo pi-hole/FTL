@@ -12,24 +12,24 @@
 #include "shmem.h"
 
 FTLFileNamesStruct FTLfiles = {
+	// Default path for config file (regular installations)
 	"/etc/pihole/pihole-FTL.conf",
-	"/var/log/pihole-FTL.log",
-	"/var/run/pihole-FTL.pid",
-	"/var/run/pihole-FTL.port",
+	// Alternative path for config file (snap installations)
+	"/var/snap/pihole/common/etc/pihole/pihole-FTL.conf",
 	NULL,
-	"/var/run/pihole/FTL.sock"
+	NULL,
+	NULL,
+	NULL,
+	NULL
 };
 
 logFileNamesStruct files = {
-	"/var/log/pihole.log",
-	"/etc/pihole/list.preEventHorizon",
-	"/etc/pihole/whitelist.txt",
-	"/etc/pihole/black.list",
-	"/etc/pihole/gravity.list",
-	"/etc/pihole/regex.list",
-	"/etc/pihole/setupVars.conf",
-	"/etc/pihole/auditlog.list",
-	"/etc/dnsmasq.d/01-pihole.conf",
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL
 };
 
 // Fixed size structs

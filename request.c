@@ -120,7 +120,9 @@ void process_request(char *client_message, int *sock)
 		// Need to release the thread lock already here to allow
 		// the resolver to process the incoming PTR requests
 		unlock_shm();
-		reresolveHostnames();
+		// onlynew=false -> reresolve all host names
+		resolveClients(false);
+		resolveForwardDestinations(false);
 		logg("Done re-resolving host names");
 	}
 	else if(command(client_message, ">recompile-regex"))
@@ -138,13 +140,6 @@ void process_request(char *client_message, int *sock)
 		processed = true;
 		close(*sock);
 		*sock = 0;
-	}
-	else if(command(client_message, ">kill"))
-	{
-		processed = true;
-		ssend(*sock, "killed\n");
-		logg("FTL killed by client ID: %i",*sock);
-		killed = 1;
 	}
 
 	if(!processed)
