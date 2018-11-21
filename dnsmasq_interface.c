@@ -21,6 +21,7 @@ static void detect_blocked_IP(unsigned short flags, char* answer, int queryID);
 static void query_externally_blocked(int i);
 static int findQueryID(int id);
 
+unsigned char* pihole_privacylevel = &config.privacylevel;
 char flagnames[28][12] = {"F_IMMORTAL ", "F_NAMEP ", "F_REVERSE ", "F_FORWARD ", "F_DHCP ", "F_NEG ", "F_HOSTS ", "F_IPV4 ", "F_IPV6 ", "F_BIGNAME ", "F_NXDOMAIN ", "F_CNAME ", "F_DNSKEY ", "F_CONFIG ", "F_DS ", "F_DNSSECOK ", "F_UPSTREAM ", "F_RRNAME ", "F_SERVER ", "F_QUERY ", "F_NOERR ", "F_AUTH ", "F_DNSSEC ", "F_KEYTAG ", "F_SECSTAT ", "F_NO_RR ", "F_IPSET ", "F_NOEXTRA "};
 
 void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *types, int id, char type)
@@ -92,15 +93,6 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	// Store plain text domain in buffer for regex validation
 	char *domainbuffer = strdup(domain);
 
-	// Check and apply possible privacy level rules
-	// We do this immediately on the raw data to avoid any possible leaking
-	get_privacy_level(NULL);
-	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS)
-	{
-		free(domain);
-		domain = strdup("hidden");
-	}
-
 	// Get client IP address
 	char dest[ADDRSTRLEN];
 	inet_ntop((flags & F_IPV4) ? AF_INET : AF_INET6, addr, dest, ADDRSTRLEN);
@@ -112,18 +104,9 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	   (strcmp(client, "127.0.0.1") == 0 || strcmp(client, "::1") == 0))
 	{
 		free(domain);
-		free(domainbuffer);
 		free(client);
 		disable_thread_lock();
 		return;
-	}
-
-	// Check and apply possible privacy level rules
-	// We do this immediately on the raw data to avoid any possible leaking
-	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS_CLIENTS)
-	{
-		free(client);
-		client = strdup("0.0.0.0");
 	}
 
 	// Log new query if in debug mode
@@ -167,7 +150,6 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	queries[queryID].db = false;
 	queries[queryID].id = id;
 	queries[queryID].complete = false;
-	queries[queryID].private = (config.privacylevel == PRIVACY_MAXIMUM);
 	queries[queryID].response = converttimeval(request);
 	// Initialize reply type
 	queries[queryID].reply = REPLY_UNKNOWN;
@@ -175,6 +157,12 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	queries[queryID].dnssec = DNSSEC_UNSPECIFIED;
 	// AD has not yet been received for this query
 	queries[queryID].AD = false;
+
+	// Check and apply possible privacy level rules
+	// The currently set privacy level (at the time the query is
+	// generated) is stored in the queries structure
+	get_privacy_level(NULL);
+	queries[queryID].privacylevel = config.privacylevel;
 
 	// Increase DNS queries counter
 	counters.queries++;
@@ -261,7 +249,8 @@ void FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id
 
 	// Get forward destination IP address
 	char dest[ADDRSTRLEN];
-	inet_ntop((flags & F_IPV4) ? AF_INET : AF_INET6, addr, dest, ADDRSTRLEN);
+	if(addr != NULL)
+		inet_ntop((flags & F_IPV4) ? AF_INET : AF_INET6, addr, dest, ADDRSTRLEN);
 	// Convert forward to lower case
 	char *forward = strdup(dest);
 	strtolower(forward);
@@ -438,16 +427,6 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 		// Answered from local configuration, might be a wildcard or user-provided
 		// This query is no longer unknown
 		counters.unknown--;
-		// Answered from a custom (user provided) cache file
-		counters.cached++;
-
-		// Detect user-defined blocking rules
-		if(strcmp(answer, "(NXDOMAIN)") == 0 ||
-		   strcmp(answer, "0.0.0.0") == 0 ||
-		   strcmp(answer, "::") == 0)
-			queries[i].status = QUERY_WILDCARD;
-		else
-			queries[i].status = QUERY_CACHE;
 
 		// Get time index
 		int querytimestamp, overTimetimestamp;
@@ -455,7 +434,30 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 		int timeidx = findOverTimeID(overTimetimestamp);
 		validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 
-		overTime[timeidx].cached++;
+		if(strcmp(answer, "(NXDOMAIN)") == 0 ||
+		   strcmp(answer, "0.0.0.0") == 0 ||
+		   strcmp(answer, "::") == 0)
+		{
+			// Answered from user-defined blocking rules (dnsmasq config files)
+			counters.blocked++;
+			overTime[timeidx].blocked++;
+
+			validate_access("domains", queries[i].domainID, true, __LINE__, __FUNCTION__, __FILE__);
+			domains[queries[i].domainID].blockedcount++;
+
+			validate_access("clients", queries[i].clientID, true, __LINE__, __FUNCTION__, __FILE__);
+			clients[queries[i].clientID].blockedcount++;
+
+			queries[i].status = QUERY_WILDCARD;
+		}
+		else
+		{
+			// Answered from a custom (user provided) cache file
+			counters.cached++;
+			overTime[timeidx].cached++;
+
+			queries[i].status = QUERY_CACHE;
+		}
 
 		// Save reply type and update individual reply counters
 		save_reply_type(flags, i, response);
@@ -474,13 +476,15 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 			save_reply_type(flags, i, response);
 
 			// If received NXDOMAIN and AD bit is set, Quad9 may have blocked this query
-			if(flags & F_NXDOMAIN && queries[i].AD)
+			if((flags & F_NXDOMAIN) && queries[i].AD)
 			{
 				query_externally_blocked(i);
 			}
-
-			// Detect if returned IP indicates that this query was blocked
-			detect_blocked_IP(flags, answer, i);
+			else
+			{
+				// Detect if returned IP indicates that this query was blocked
+				detect_blocked_IP(flags, answer, i);
+			}
 		}
 	}
 	else if(flags & F_REVERSE)
@@ -701,7 +705,7 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 					overTime[timeidx].cached++;
 					break;
 				case QUERY_EXTERNAL_BLOCKED:
-					// everything has already done
+					// everything has already been done
 					// in query_externally_blocked()
 					break;
 			}
@@ -927,11 +931,12 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 }
 
 // int cache_inserted, cache_live_freed are defined in dnsmasq/cache.c
-extern int cache_inserted, cache_live_freed;
 void getCacheInformation(int *sock)
 {
 	ssend(*sock,"cache-size: %i\ncache-live-freed: %i\ncache-inserted: %i\n",
-	            daemon->cachesize, cache_live_freed, cache_inserted);
+	            daemon->cachesize,
+	            daemon->metrics[METRIC_DNS_CACHE_LIVE_FREED],
+	            daemon->metrics[METRIC_DNS_CACHE_INSERTED]);
 	// cache-size is obvious
 	// It means the resolver handled <cache-inserted> names lookups that needed to be sent to
 	// upstream severes and that <cache-live-freed> was thrown out of the cache
