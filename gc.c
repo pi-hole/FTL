@@ -77,13 +77,6 @@ void *GC_thread(void *val)
 						// Unknown (?)
 						counters->unknown--;
 						break;
-					case QUERY_GRAVITY:
-						// Blocked by Pi-hole's blocking lists
-						counters->blocked--;
-						overTime[timeidx].blocked--;
-						domains[domainID].blockedcount--;
-						clients[clientID].blockedcount--;
-						break;
 					case QUERY_FORWARDED:
 						// Forwarded to an upstream DNS server
 						counters->forwardedqueries--;
@@ -96,9 +89,10 @@ void *GC_thread(void *val)
 						counters->cached--;
 						overTime[timeidx].cached--;
 						break;
-					case QUERY_BLACKLIST: // exact blocked
-					case QUERY_WILDCARD: // regex blocked (fall through)
-					case QUERY_EXTERNAL_BLOCKED: // blocked by upstream provider (fall through)
+					case QUERY_GRAVITY: // Blocked by Pi-hole's blocking lists (fall through)
+					case QUERY_BLACKLIST: // Exact blocked (fall through)
+					case QUERY_WILDCARD: // Regex blocked (fall through)
+					case QUERY_EXTERNAL_BLOCKED: // Blocked by upstream provider (fall through)
 						counters->blocked--;
 						overTime[timeidx].blocked--;
 						domains[domainID].blockedcount--;
@@ -166,11 +160,6 @@ void *GC_thread(void *val)
 
 			// Release thread lock
 			disable_thread_lock();
-
-			// Reresolve client hostnames to account for changes
-			// Have to this outside of the thread lock
-			// to prevent locking of the resolver
-			reresolveHostnames();
 
 			// After storing data in the database for the next time,
 			// we should scan for old entries, which will then be deleted

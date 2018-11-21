@@ -249,9 +249,5 @@ load 'libs/bats-support/load'
 }
 
 @test "Final part of the tests: Killing pihole-FTL process" {
-  run bash -c 'echo ">kill" | nc -v 127.0.0.1 4711'
-  echo "output: ${lines[@]}"
-  [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
-  [[ ${lines[1]} == "killed" ]]
-  [[ ${lines[2]} == "---EOM---" ]]
+  run bash -c 'kill $(pidof pihole-FTL)'
 }

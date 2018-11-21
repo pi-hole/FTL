@@ -423,10 +423,8 @@ void save_to_DB(void)
 
 		// Memory checks
 		validate_access("queries", i, true, __LINE__, __FUNCTION__, __FILE__);
-		validate_access("domains", queries[i].domainID, true, __LINE__, __FUNCTION__, __FILE__);
-		validate_access("clients", queries[i].clientID, true, __LINE__, __FUNCTION__, __FILE__);
 
-		if(queries[i].private)
+		if(queries[i].privacylevel >= PRIVACY_MAXIMUM)
 		{
 			// Skip, we never store nor count queries recorded
 			// while have been in maximum privacy mode in the database
@@ -443,10 +441,12 @@ void save_to_DB(void)
 		sqlite3_bind_int(stmt, 3, queries[i].status);
 
 		// DOMAIN
-		sqlite3_bind_text(stmt, 4, getstr(domains[queries[i].domainID].domainpos), -1, SQLITE_TRANSIENT);
+		char *domain = getDomainString(i);
+		sqlite3_bind_text(stmt, 4, domain, -1, SQLITE_TRANSIENT);
 
 		// CLIENT
-		sqlite3_bind_text(stmt, 5, getstr(clients[queries[i].clientID].ippos), -1, SQLITE_TRANSIENT);
+		char *client = getClientIPString(i);
+		sqlite3_bind_text(stmt, 5, client, -1, SQLITE_TRANSIENT);
 
 		// FORWARD
 		if(queries[i].status == QUERY_FORWARDED && queries[i].forwardID > -1)
@@ -577,10 +577,6 @@ void *DB_thread(void *val)
 		{
 			// Update lastDBsave timer
 			lastDBsave = time(NULL) - time(NULL)%config.DBinterval;
-
-			// This has to be run outside of the thread locks
-			// to prevent locking the resolver
-			resolveNewClients();
 
 			// Lock FTL's data structure, since it is
 			// likely that it will be changed here

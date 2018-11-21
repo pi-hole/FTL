@@ -22,7 +22,13 @@ void close_FTL_log(void)
 
 void open_FTL_log(bool test)
 {
-	// Open a log file in append/create mode
+	if(test)
+	{
+		// Obtain log file location
+		getLogFilePath();
+	}
+
+	// Open the log file in append/create mode
 	logfile = fopen(FTLfiles.log, "a+");
 	if((logfile == NULL) && test){
 		syslog(LOG_ERR, "Opening of FTL\'s log file failed!");
