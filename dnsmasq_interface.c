@@ -321,7 +321,7 @@ void FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id
 	}
 	else
 	{
-		// Normal cache reply
+		// Normal forwarded query (status is set below)
 		// Query is no longer unknown
 		counters.unknown--;
 		// Hereby, this query is now fully determined
