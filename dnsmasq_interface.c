@@ -269,9 +269,6 @@ void FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id
 		return;
 	}
 
-	// Set query status
-	queries[i].status = QUERY_FORWARDED;
-
 	// Proceed only if
 	// - current query has not been marked as replied to so far
 	//   (it could be that answers from multiple forward
@@ -332,6 +329,13 @@ void FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id
 			// Hereby, this query is now fully determined
 			queries[i].complete = true;
 		}
+
+		// Set query status to forwarded only after the
+		// if(queries[i].status == QUERY_CACHE) { ... }
+		// from above as otherwise this check will always
+		// be negative
+		queries[i].status = QUERY_FORWARDED;
+
 		// Update overTime data
 		overTime[j].forwarded++;
 
