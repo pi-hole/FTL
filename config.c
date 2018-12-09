@@ -13,15 +13,60 @@
 ConfigStruct config;
 static char *parse_FTLconf(FILE *fp, const char * key);
 static void release_config_memory(void);
+void getpath(FILE* fp, const char *option, const char *defaultloc, char **pointer);
 
 char *conflinebuffer = NULL;
+
+void getLogFilePath(void)
+{
+	FILE *fp;
+	char * buffer;
+
+	// Try to open default config file. Use fallback if not found
+	if( ((fp = fopen(FTLfiles.conf, "r")) == NULL) &&
+	    ((fp = fopen(FTLfiles.snapConf, "r")) == NULL) &&
+	    ((fp = fopen("pihole-FTL.conf", "r")) == NULL))
+	{
+		printf("Notice: Found no readable FTL config file");
+	}
+
+	// Read LOGFILE value if available
+	// defaults to: "/var/log/pihole-FTL.log"
+	buffer = parse_FTLconf(fp, "LOGFILE");
+
+	errno = 0;
+	// Use sscanf() to obtain filename from config file parameter only if buffer != NULL
+	if(buffer == NULL || sscanf(buffer, "%127ms", &FTLfiles.log) != 1)
+	{
+		// Use standard path if no custom path was obtained from the config file
+		FTLfiles.log = strdup("/var/log/pihole-FTL.log");
+	}
+
+	// Test if memory allocation was successful
+	if(FTLfiles.log == NULL)
+	{
+		printf("FATAL: Allocating memory for FTLfiles.log failed (%s, %i). Exiting.",
+		       strerror(errno), errno);
+		exit(EXIT_FAILURE);
+	}
+	else if(strlen(FTLfiles.log) == 0)
+	{
+		printf("Fatal: Log file location cannot be empty");
+		exit(EXIT_FAILURE);
+	}
+	else
+		logg("Using log file %s", FTLfiles.log);
+}
 
 void read_FTLconf(void)
 {
 	FILE *fp;
 	char * buffer;
 
-	if((fp = fopen(FTLfiles.conf, "r")) == NULL)
+	// Try to open default config file. Use fallback if not found
+	if( ((fp = fopen(FTLfiles.conf, "r")) == NULL) &&
+	    ((fp = fopen(FTLfiles.snapConf, "r")) == NULL) &&
+	    ((fp = fopen("pihole-FTL.conf", "r")) == NULL))
 	{
 		logg("Notice: Found no readable FTL config file");
 		logg("        Using default settings");
@@ -167,8 +212,9 @@ void read_FTLconf(void)
 	// PRIVACY_HIDE_DOMAINS (1) = show and store all domains as "hidden", return nothing for Top Domains + Top Ads
 	// PRIVACY_HIDE_DOMAINS_CLIENTS (2) = as above, show all domains as "hidden" and all clients as "127.0.0.1"
 	//                                    (or "::1"), return nothing for any Top Lists
-	// PRIVACY_MAXIMUM (3) = Disabled basically everything except the anonymous stastics, there will be no entries
+	// PRIVACY_MAXIMUM (3) = Disabled basically everything except the anonymous statistics, there will be no entries
 	//                       added to the database, no entries visible in the query log and no Top Item Lists
+	// PRIVACY_NOSTATS (4) = Disable any analysis on queries. No counters are available in this mode.
 	// defaults to: PRIVACY_SHOW_ALL
 	config.privacylevel = PRIVACY_SHOW_ALL;
 	get_privacy_level(fp);
@@ -219,6 +265,57 @@ void read_FTLconf(void)
 	else
 		logg("   REGEX_DEBUGMODE: Inactive");
 
+	// ANALYZE_ONLY_A_AND_AAAA
+	// defaults to: No
+	config.analyze_only_A_AAAA = false;
+	buffer = parse_FTLconf(fp, "ANALYZE_ONLY_A_AND_AAAA");
+
+	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
+		config.analyze_only_A_AAAA = true;
+
+	if(config.analyze_only_A_AAAA)
+		logg("   ANALYZE_ONLY_A_AND_AAAA: Enabled. Analyzing only A and AAAA queries");
+	else
+		logg("   ANALYZE_ONLY_A_AND_AAAA: Disabled. Analyzing all queries");
+
+	// DBIMPORT
+	// defaults to: Yes
+	config.DBimport = true;
+	buffer = parse_FTLconf(fp, "DBIMPORT");
+	if(buffer != NULL && strcasecmp(buffer, "no") == 0)
+		config.DBimport = false;
+	if(config.DBimport)
+		logg("   DBIMPORT: Importing history from database");
+	else
+		logg("   DBIMPORT: Not importing history from database");
+
+	// PIDFILE
+	getpath(fp, "PIDFILE", "/var/run/pihole-FTL.pid", &FTLfiles.pid);
+
+	// PORTFILE
+	getpath(fp, "PORTFILE", "/var/run/pihole-FTL.port", &FTLfiles.port);
+
+	// SOCKETFILE
+	getpath(fp, "SOCKETFILE", "/var/run/pihole/FTL.sock", &FTLfiles.socketfile);
+
+	// WHITELISTFILE
+	getpath(fp, "WHITELISTFILE", "/etc/pihole/whitelist.txt", &files.whitelist);
+
+	// BLACKLISTFILE
+	getpath(fp, "BLACKLISTFILE", "/etc/pihole/black.list", &files.blacklist);
+
+	// GRAVITYFILE
+	getpath(fp, "GRAVITYFILE", "/etc/pihole/gravity.list", &files.gravity);
+
+	// REGEXLISTFILE
+	getpath(fp, "REGEXLISTFILE", "/etc/pihole/regex.list", &files.regexlist);
+
+	// SETUPVARSFILE
+	getpath(fp, "SETUPVARSFILE", "/etc/pihole/setupVars.conf", &files.setupVars);
+
+	// AUDITLISTFILE
+	getpath(fp, "AUDITLISTFILE", "/etc/pihole/auditlog.list", &files.auditlist);
+
 	logg("Finished config file parsing");
 
 	// Release memory
@@ -226,6 +323,40 @@ void read_FTLconf(void)
 
 	if(fp != NULL)
 		fclose(fp);
+}
+
+void getpath(FILE* fp, const char *option, const char *defaultloc, char **pointer)
+{
+	// This subroutine is used to read paths from pihole-FTL.conf
+	// fp:         File pointer to opened and readable config file
+	// option:     Option string ("key") to try to read
+	// defaultloc: Value used if key is not found in file
+	// pointer:    Location where read (or default) parameter is stored
+	char *buffer = parse_FTLconf(fp, "PIDFILE");
+
+	errno = 0;
+	// Use sscanf() to obtain filename from config file parameter only if buffer != NULL
+	if(buffer == NULL || sscanf(buffer, "%127ms", pointer) != 1)
+	{
+		// Use standard path if no custom path was obtained from the config file
+		*pointer = strdup(defaultloc);
+	}
+
+	// Test if memory allocation was successful
+	if(*pointer == NULL)
+	{
+		logg("FATAL: Allocating memory for %s failed (%s, %i). Exiting.", option, strerror(errno), errno);
+		exit(EXIT_FAILURE);
+	}
+	else if(strlen(*pointer) == 0)
+	{
+		logg("   %s: Empty file name is not possible!", option);
+		exit(EXIT_FAILURE);
+	}
+	else
+	{
+		logg("   %s: Using %s", option, *pointer);
+	}
 }
 
 static char *parse_FTLconf(FILE *fp, const char * key)
@@ -301,11 +432,11 @@ void get_privacy_level(FILE *fp)
 	if(buffer != NULL && sscanf(buffer, "%i", &value) == 1)
 	{
 		// Check for change and validity of privacy level (set in FTL.h)
-		if(value != config.privacylevel &&
-		   value >= PRIVACY_SHOW_ALL &&
-		   value <= PRIVACY_MAXIMUM)
+		if(value >= PRIVACY_SHOW_ALL &&
+		   value <= PRIVACY_NOSTATS &&
+		   value > config.privacylevel)
 		{
-			logg("Notice: Changing privacy level from %i to %i", config.privacylevel, value);
+			logg("Notice: Increasing privacy level from %i to %i", config.privacylevel, value);
 			config.privacylevel = value;
 		}
 	}

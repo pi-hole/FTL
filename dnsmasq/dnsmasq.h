@@ -307,6 +307,9 @@ struct naptr {
 #define TXT_STAT_HITS          5
 #define TXT_STAT_AUTH          6
 #define TXT_STAT_SERVERS       7
+/* Pi-hole modification */
+#define TXT_PRIVACYLEVEL       123
+/************************/
 #endif
 
 struct txt_record {
@@ -463,8 +466,13 @@ struct crec {
 #define SRC_INTERFACE 0
 #define SRC_CONFIG    1
 #define SRC_HOSTS     2
-#define SRC_AH        3
-
+/*----- Pi-hole modification -----*/
+// ID 3 will be used for the regex list file name
+// ID 4 will be used as starting index for any Additional Hosts (AH) files
+#define SRC_REGEX     3
+#define SRC_AH        4
+const char *regexlistname;
+/*--------------------------------*/
 
 /* struct sockaddr is not large enough to hold any address,
    and specifically not big enough to hold an IPv6 address.

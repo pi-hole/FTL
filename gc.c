@@ -97,8 +97,9 @@ void *GC_thread(void *val)
 						counters.cached--;
 						overTime[timeidx].cached--;
 						break;
-					case QUERY_BLACKLIST:
-						// Blocked by user's black list
+					case QUERY_BLACKLIST: // exact blocked
+					case QUERY_WILDCARD: // regex blocked (fall through)
+					case QUERY_EXTERNAL_BLOCKED: // blocked by upstream provider (fall through)
 						counters.blocked--;
 						overTime[timeidx].blocked--;
 						domains[domainID].blockedcount--;
@@ -128,7 +129,11 @@ void *GC_thread(void *val)
 					counters.reply_IP--;
 					break;
 
-					default: // Incomplete query, do nothing
+					case REPLY_DOMAIN: // reverse lookup
+					counters.reply_domain--;
+					break;
+
+					default: // Incomplete query or TXT, do nothing
 					break;
 				}
 
@@ -162,11 +167,6 @@ void *GC_thread(void *val)
 
 			// Release thread lock
 			disable_thread_lock();
-
-			// Reresolve client hostnames to account for changes
-			// Have to this outside of the thread lock
-			// to prevent locking of the resolver
-			reresolveHostnames();
 
 			// After storing data in the database for the next time,
 			// we should scan for old entries, which will then be deleted

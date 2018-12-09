@@ -1345,6 +1345,12 @@ int cache_make_stat(struct txt_record *t)
       break;
 #endif
 
+    /* Pi-hole modification */
+    case TXT_PRIVACYLEVEL:
+      sprintf(buff+1, "%d", *pihole_privacylevel);
+      break;
+    /* -------------------- */
+
     case TXT_STAT_SERVERS:
       /* sum counts from different records for same server */
       for (serv = daemon->servers; serv; serv = serv->next)
@@ -1534,6 +1540,10 @@ char *record_source(unsigned int index)
     return "config";
   else if (index == SRC_HOSTS)
     return HOSTSFILE;
+  /*----- Pi-hole modification -----*/
+  else if (index == SRC_REGEX)
+    return (char*)regexlistname;
+  /*--------------------------------*/
 
   for (ah = daemon->addn_hosts; ah; ah = ah->next)
     if (ah->index == index)
