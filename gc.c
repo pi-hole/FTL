@@ -13,7 +13,7 @@
 
 bool doGC = false;
 
-int lastGCrun = 0;
+time_t lastGCrun = 0;
 void *GC_thread(void *val)
 {
 	// Set thread name
