@@ -9,6 +9,8 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
+#include "shmem.h"
+
 bool doGC = false;
 
 int lastGCrun = 0;
@@ -30,7 +32,7 @@ void *GC_thread(void *val)
 
 			// Lock FTL's data structure, since it is likely that it will be changed here
 			// Requests should not be processed/answered when data is about to change
-			enable_thread_lock();
+			lock_shm();
 
 			// Get minimum time stamp to keep
 			time_t mintime = time(NULL) - config.maxlogage;
@@ -159,7 +161,7 @@ void *GC_thread(void *val)
 			if(debug) logg("Notice: GC removed %i queries (took %.2f ms)", removed, timer_elapsed_msec(GC_TIMER));
 
 			// Release thread lock
-			disable_thread_lock();
+			unlock_shm();
 
 			// After storing data in the database for the next time,
 			// we should scan for old entries, which will then be deleted

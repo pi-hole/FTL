@@ -9,6 +9,7 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
+#include "shmem.h"
 
 // Resolve new client and upstream server host names
 // once every minute
@@ -84,12 +85,12 @@ void resolveClients(bool onlynew)
 		if(onlynew && !clients[clientID].new)
 			continue;
 
-		enable_thread_lock();
+		lock_shm();
 
 		clients[clientID].namepos = addstr(resolveHostname(getstr(clients[clientID].ippos)));
 		clients[clientID].new = false;
 
-		disable_thread_lock();
+		unlock_shm();
 	}
 }
 
@@ -107,12 +108,12 @@ void resolveForwardDestinations(bool onlynew)
 		if(onlynew && !forwarded[forwardID].new)
 			continue;
 
-		enable_thread_lock();
+		lock_shm();
 
 		forwarded[forwardID].namepos = addstr(resolveHostname(getstr(forwarded[forwardID].ippos)));
 		forwarded[forwardID].new = false;
 
-		disable_thread_lock();
+		unlock_shm();
 	}
 }
 

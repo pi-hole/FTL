@@ -12,6 +12,7 @@
 #include "shmem.h"
 
 /// The name of the shared memory. Use this when connecting to the shared memory.
+#define SHARED_LOCK_NAME "/FTL-lock"
 #define SHARED_STRINGS_NAME "/FTL-strings"
 #define SHARED_COUNTERS_NAME "/FTL-counters"
 #define SHARED_DOMAINS_NAME "/FTL-domains"
@@ -22,6 +23,7 @@
 #define SHARED_OVERTIMECLIENT_PREFIX "/FTL-client-"
 
 /// The pointer in shared memory to the shared string buffer
+static SharedMemory shm_lock = { 0 };
 static SharedMemory shm_strings = { 0 };
 static SharedMemory shm_counters = { 0 };
 static SharedMemory shm_domains = { 0 };
@@ -32,6 +34,12 @@ static SharedMemory shm_overTime = { 0 };
 
 static SharedMemory *shm_overTimeClients = NULL;
 static int overTimeClientCount = 0;
+
+typedef struct {
+	pthread_mutex_t lock;
+	bool waitingForLock;
+} ShmLock;
+static ShmLock *shmLock = NULL;
 
 static int pagesize;
 static unsigned int next_pos = 0;
@@ -124,10 +132,70 @@ void addOverTimeClientSlot() {
 	}
 }
 
+/// Create a mutex for shared memory
+pthread_mutex_t create_mutex() {
+	pthread_mutexattr_t lock_attr = {};
+	pthread_mutex_t lock = {};
+
+	// Initialize the lock attributes
+	pthread_mutexattr_init(&lock_attr);
+
+	// Allow the lock to be used by other processes
+	pthread_mutexattr_setpshared(&lock_attr, PTHREAD_PROCESS_SHARED);
+
+	// Make the lock robust against process death
+	pthread_mutexattr_setrobust(&lock_attr, PTHREAD_MUTEX_ROBUST);
+
+	// Initialize the lock
+	pthread_mutex_init(&lock, &lock_attr);
+
+	// Destroy the lock attributes since we're done with it
+	pthread_mutexattr_destroy(&lock_attr);
+
+	return lock;
+}
+
+void lock_shm() {
+	// Signal that FTL is waiting for a lock
+	shmLock->waitingForLock = true;
+
+	int result = pthread_mutex_lock(&shmLock->lock);
+
+	// Turn off the waiting for lock signal to notify everyone who was
+	// deferring to FTL that they can jump in the lock queue.
+	shmLock->waitingForLock = false;
+
+	if(result == EOWNERDEAD) {
+		// Try to make the lock consistent if the other process died while
+		// holding the lock
+		result = pthread_mutex_consistent(&shmLock->lock);
+	}
+
+	if(result != 0)
+		logg("Failed to obtain SHM lock: %s", strerror(result));
+}
+
+void unlock_shm() {
+	int result = pthread_mutex_unlock(&shmLock->lock);
+
+	if(result != 0)
+		logg("Failed to unlock SHM lock: %s", strerror(result));
+}
+
 bool init_shmem(void)
 {
 	// Get kernel's page size
 	pagesize = getpagesize();
+
+	/****************************** shared memory lock ******************************/
+	shm_unlink(SHARED_LOCK_NAME);
+	// Try to create shared memory object
+	shm_lock = create_shm(SHARED_LOCK_NAME, sizeof(ShmLock));
+	if(shm_lock.ptr == NULL)
+		return false;
+	shmLock = (ShmLock*) shm_lock.ptr;
+	shmLock->lock = create_mutex();
+	shmLock->waitingForLock = false;
 
 	/****************************** shared strings buffer ******************************/
 	// Try unlinking the shared memory object before creating a new one
@@ -201,6 +269,10 @@ bool init_shmem(void)
 
 void destroy_shmem(void)
 {
+	pthread_mutex_destroy(&shmLock->lock);
+	shmLock = NULL;
+
+	delete_shm(&shm_lock);
 	delete_shm(&shm_strings);
 	delete_shm(&shm_counters);
 	delete_shm(&shm_domains);

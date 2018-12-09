@@ -68,11 +68,6 @@ void parse_args(int argc, char* argv[]);
 
 char* find_equals(const char* s);
 
-// threads.c
-void enable_thread_lock(void);
-void disable_thread_lock(void);
-void init_thread_lock(void);
-
 // config.c
 void getLogFilePath(void);
 void read_FTLconf(void);

@@ -9,6 +9,7 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
+#include "shmem.h"
 
 sqlite3 *db;
 bool database = false;
@@ -578,15 +579,15 @@ void *DB_thread(void *val)
 			// Update lastDBsave timer
 			lastDBsave = time(NULL) - time(NULL)%config.DBinterval;
 
-			// Lock FTL's data structure, since it is
-			// likely that it will be changed here
-			enable_thread_lock();
+			// Lock FTL's data structures, since it is
+			// likely that they will be changed here
+			lock_shm();
 
 			// Save data to database
 			save_to_DB();
 
-			// Release thread lock
-			disable_thread_lock();
+			// Release data lock
+			unlock_shm();
 
 			// Check if GC should be done on the database
 			if(DBdeleteoldqueries)

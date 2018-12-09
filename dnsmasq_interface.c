@@ -12,6 +12,7 @@
 #undef __USE_XOPEN
 #include "FTL.h"
 #include "dnsmasq_interface.h"
+#include "shmem.h"
 
 void print_flags(unsigned int flags);
 void save_reply_type(unsigned int flags, int queryID, struct timeval response);
@@ -31,7 +32,7 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 		return;
 
 	// Create new query in data structure
-	enable_thread_lock();
+	lock_shm();
 
 	// Get timestamp
 	int querytimestamp, overTimetimestamp;
@@ -61,7 +62,7 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	{
 		// Return early to avoid accessing querytypedata out of bounds
 		if(debug) logg("Notice: Skipping unknown query type: %s (%i)", types, id);
-		disable_thread_lock();
+		unlock_shm();
 		return;
 	}
 
@@ -69,7 +70,7 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	if(!config.analyze_AAAA && querytype == TYPE_AAAA)
 	{
 		if(debug) logg("Not analyzing AAAA query");
-		disable_thread_lock();
+		unlock_shm();
 		return;
 	}
 
@@ -86,7 +87,7 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	{
 		// free memory already allocated here
 		free(domain);
-		disable_thread_lock();
+		unlock_shm();
 		return;
 	}
 
@@ -105,7 +106,7 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	{
 		free(domain);
 		free(client);
-		disable_thread_lock();
+		unlock_shm();
 		return;
 	}
 
@@ -128,7 +129,7 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 		free(domain);
 		free(domainbuffer);
 		free(client);
-		disable_thread_lock();
+		unlock_shm();
 		return;
 	}
 
@@ -212,7 +213,7 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	free(domainbuffer);
 
 	// Release thread lock
-	disable_thread_lock();
+	unlock_shm();
 }
 
 static int findQueryID(int id)
@@ -245,7 +246,7 @@ void FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id
 		return;
 
 	// Save that this query got forwarded to an upstream server
-	enable_thread_lock();
+	lock_shm();
 
 	// Get forward destination IP address
 	char dest[ADDRSTRLEN];
@@ -265,7 +266,7 @@ void FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id
 		// This may happen e.g. if the original query was a PTR query or "pi.hole"
 		// as we ignore them altogether
 		free(forward);
-		disable_thread_lock();
+		unlock_shm();
 		return;
 	}
 
@@ -281,7 +282,7 @@ void FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id
 	if(queries[i].complete && queries[i].status != QUERY_CACHE)
 	{
 		free(forward);
-		disable_thread_lock();
+		unlock_shm();
 		return;
 	}
 
@@ -341,7 +342,7 @@ void FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id
 
 	// Release allocated memory
 	free(forward);
-	disable_thread_lock();
+	unlock_shm();
 }
 
 void FTL_dnsmasq_reload(void)
@@ -377,7 +378,7 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 		return;
 
 	// Interpret hosts files that have been read by dnsmasq
-	enable_thread_lock();
+	lock_shm();
 	// Determine returned result if available
 	char dest[ADDRSTRLEN]; dest[0] = '\0';
 	if(addr)
@@ -411,14 +412,14 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 	{
 		// This may happen e.g. if the original query was "pi.hole"
 		if(debug) logg("FTL_reply(): Query %i has not been found", id);
-		disable_thread_lock();
+		unlock_shm();
 		return;
 	}
 
 	if(queries[i].reply != REPLY_UNKNOWN)
 	{
 		// Nothing to be done here
-		disable_thread_lock();
+		unlock_shm();
 		return;
 	}
 
@@ -498,7 +499,7 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 		print_flags(flags);
 	}
 
-	disable_thread_lock();
+	unlock_shm();
 }
 
 static void detect_blocked_IP(unsigned short flags, char* answer, int queryID)
@@ -583,7 +584,7 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 		return;
 
 	// Save that this query got answered from cache
-	enable_thread_lock();
+	lock_shm();
 	char dest[ADDRSTRLEN]; dest[0] = '\0';
 	if(addr)
 	{
@@ -599,7 +600,7 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 	{
 		// free memory already allocated here
 		free(domain);
-		disable_thread_lock();
+		unlock_shm();
 		return;
 	}
 	free(domain);
@@ -656,7 +657,7 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 		{
 			// This may happen e.g. if the original query was a PTR query or "pi.hole"
 			// as we ignore them altogether
-			disable_thread_lock();
+			unlock_shm();
 			return;
 		}
 
@@ -722,7 +723,7 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 		logg("*************************** unknown CACHE reply (2) ***************************");
 		print_flags(flags);
 	}
-	disable_thread_lock();
+	unlock_shm();
 }
 
 void FTL_dnssec(int status, int id)
@@ -732,13 +733,13 @@ void FTL_dnssec(int status, int id)
 		return;
 
 	// Process DNSSEC result for a domain
-	enable_thread_lock();
+	lock_shm();
 	// Search for corresponding query identified by ID
 	int i = findQueryID(id);
 	if(i < 0)
 	{
 		// This may happen e.g. if the original query was an unhandled query type
-		disable_thread_lock();
+		unlock_shm();
 		return;
 	}
 
@@ -758,7 +759,7 @@ void FTL_dnssec(int status, int id)
 	else
 		queries[i].dnssec = DNSSEC_BOGUS;
 
-	disable_thread_lock();
+	unlock_shm();
 }
 
 void FTL_header_ADbit(unsigned char header4, int id)
@@ -767,12 +768,12 @@ void FTL_header_ADbit(unsigned char header4, int id)
 	if(config.privacylevel >= PRIVACY_NOSTATS)
 		return;
 
-	enable_thread_lock();
+	lock_shm();
 	// Check if AD bit is set in DNS header
 	if(!(header4 & 0x20))
 	{
 		// AD bit not set
-		disable_thread_lock();
+		unlock_shm();
 		return;
 	}
 
@@ -781,14 +782,14 @@ void FTL_header_ADbit(unsigned char header4, int id)
 	if(i < 0)
 	{
 		// This may happen e.g. if the original query was an unhandled query type
-		disable_thread_lock();
+		unlock_shm();
 		return;
 	}
 
 	// Store AD bit in query data
 	queries[i].AD = true;
 
-	disable_thread_lock();
+	unlock_shm();
 }
 
 void print_flags(unsigned int flags)
@@ -954,7 +955,7 @@ void FTL_forwarding_failed(struct server *server)
 		return;
 
 	// Save that this query got forwarded to an upstream server
-	enable_thread_lock();
+	lock_shm();
 	char dest[ADDRSTRLEN];
 	if(server->addr.sa.sa_family == AF_INET)
 		inet_ntop(AF_INET, &server->addr.in.sin_addr, dest, ADDRSTRLEN);
@@ -971,7 +972,7 @@ void FTL_forwarding_failed(struct server *server)
 	forwarded[forwardID].failed++;
 
 	free(forward);
-	disable_thread_lock();
+	unlock_shm();
 	return;
 }
 
