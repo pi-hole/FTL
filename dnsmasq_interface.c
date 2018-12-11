@@ -1035,7 +1035,7 @@ void add_hosts_entry(struct crec *cache, struct all_addr *addr, int addrlen, uns
 void rehash(int size);
 
 // This routine adds one domain to the resolver's cache. Depending on the configured blocking mode it may create
-// a single entry valid for IPv4 & IPv6 (containing only NXDOMAIN) or two entries one for IPv4 and one for IPv6
+// a single entry valid for IPv4 & IPv6 or two entries one for IPv4 and one for IPv6.
 // When IPv6 is not available on the machine, we do not add IPv6 cache entries (likewise for IPv4)
 static int add_blocked_domain_cache(struct all_addr *addr4, struct all_addr *addr6, bool has_IPv4, bool has_IPv6,
                                     char *domain, struct crec **rhash, int hashsz, unsigned int index)
