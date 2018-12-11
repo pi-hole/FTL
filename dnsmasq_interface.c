@@ -269,13 +269,10 @@ void FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id
 		return;
 	}
 
-	// Set query status
-	queries[i].status = QUERY_FORWARDED;
-
 	// Proceed only if
 	// - current query has not been marked as replied to so far
 	//   (it could be that answers from multiple forward
-	//    destionations are coimg in for the same query)
+	//    destinations are coming in for the same query)
 	// - the query was formally known as cached but had to be forwarded
 	//   (this is a special case further described below)
 	if(queries[i].complete && queries[i].status != QUERY_CACHE)
@@ -290,54 +287,58 @@ void FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id
 	int forwardID = findForwardID(forward, true);
 	queries[i].forwardID = forwardID;
 
-	if(!queries[i].complete)
+	int j = queries[i].timeidx;
+	validate_access("overTime", j, true, __LINE__, __FUNCTION__, __FILE__);
+
+	if(queries[i].status == QUERY_CACHE)
 	{
-		int j = queries[i].timeidx;
-		validate_access("overTime", j, true, __LINE__, __FUNCTION__, __FILE__);
+		// Detect if we cached the <CNAME> but need to ask the upstream
+		// servers for the actual IPs now, we remove this query from the
+		// counters for cache replied queries as we had to forward a
+		// request for it. Example:
+		// Assume a domain a.com is a CNAME which is cached and has a very
+		// long TTL. It point to another domain server.a.com which has an
+		// A record but this has a much lower TTL.
+		// If you now query a.com and then again after some time, you end
+		// up in a situation where dnsmasq can answer the first level of
+		// the DNS result (the CNAME) from cache, hence the status of this
+		// query is marked as "answered from cache" in FTLDNS. However, for
+		// server.a.com wit the much shorter TTL, we still have to forward
+		// something and ask the upstream server for the final IP address.
+		// This code section acknowledges this by removing one entry from
+		// the cached counters as we will re-brand this query as having been
+		// forwarded in the following.
+		counters.cached--;
+		// Also correct overTime data
+		overTime[j].cached--;
 
-		if(queries[i].status == QUERY_CACHE)
-		{
-			// Detect if we cached the <CNAME> but need to ask the upstream
-			// servers for the actual IPs now, we remove this query from the
-			// counters for cache replied queries as we had to forward a
-			// request for it. Example:
-			// Assume a domain a.com is a CNAME which is cached and has a very
-			// long TTL. It point to another domain server.a.com which has an
-			// A record but this has a much lower TTL.
-			// If you now query a.com and then again after some time, you end
-			// up in a situation where dnsmasq can answer the first level of
-			// the DNS result (the CNAME) from cache, hence the status of this
-			// query is marked as "answered from cache" in FTLDNS. However, for
-			// server.a.com wit the much shorter TTL, we still have to forward
-			// something and ask the upstream server for the final IP address.
-			// This code section acknowledges this by removing one entry from
-			// the cached counters as we will re-brand this query as having been
-			// forwarded in the following.
-			counters.cached--;
-			// Also correct overTime data
-			overTime[j].cached--;
-
-			// Correct reply timer
-			struct timeval response;
-			gettimeofday(&response, 0);
-			// Reset timer, shift slightly into the past to acknowledge the time
-			// FTLDNS needed to look up the CNAME in its cache
-			queries[i].response = converttimeval(response) - queries[i].response;
-		}
-		else
-		{
-			// Normal cache reply
-			// Query is no longer unknown
-			counters.unknown--;
-			// Hereby, this query is now fully determined
-			queries[i].complete = true;
-		}
-		// Update overTime data
-		overTime[j].forwarded++;
-
-		// Update couter for forwarded queries
-		counters.forwardedqueries++;
+		// Correct reply timer
+		struct timeval response;
+		gettimeofday(&response, 0);
+		// Reset timer, shift slightly into the past to acknowledge the time
+		// FTLDNS needed to look up the CNAME in its cache
+		queries[i].response = converttimeval(response) - queries[i].response;
 	}
+	else
+	{
+		// Normal forwarded query (status is set below)
+		// Query is no longer unknown
+		counters.unknown--;
+		// Hereby, this query is now fully determined
+		queries[i].complete = true;
+	}
+
+	// Set query status to forwarded only after the
+	// if(queries[i].status == QUERY_CACHE) { ... }
+	// from above as otherwise this check will always
+	// be negative
+	queries[i].status = QUERY_FORWARDED;
+
+	// Update overTime data
+	overTime[j].forwarded++;
+
+	// Update counter for forwarded queries
+	counters.forwardedqueries++;
 
 	// Release allocated memory
 	free(forward);

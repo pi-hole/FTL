@@ -443,16 +443,13 @@ void getTopClients(char *client_message, int *sock)
 void getForwardDestinations(char *client_message, int *sock)
 {
 	bool sort = true;
-	int i, temparray[counters.forwarded][2], forwardedsum = 0, totalqueries = 0;
+	int i, temparray[counters.forwarded][2], totalqueries = 0;
 
 	if(command(client_message, "unsorted"))
 		sort = false;
 
 	for(i=0; i < counters.forwarded; i++) {
 		validate_access("forwarded", i, true, __LINE__, __FUNCTION__, __FILE__);
-		// Compute forwardedsum
-		forwardedsum += forwarded[i].count;
-
 		// If we want to print a sorted output, we fill the temporary array with
 		// the values we will use for sorting afterwards
 		if(sort) {
@@ -513,24 +510,9 @@ void getForwardDestinations(char *client_message, int *sock)
 			else
 				name = "";
 
-			// Math explanation:
-			// A single query may result in requests being forwarded to multiple destinations
-			// Hence, in order to be able to give percentages here, we have to normalize the
-			// number of forwards to each specific destination by the total number of forward
-			// events. This term is done by
-			//   a = forwarded[j].count / forwardedsum
-			//
-			// The fraction a describes now how much share an individual forward destination
-			// has on the total sum of sent requests.
-			// We also know the share of forwarded queries on the total number of queries
-			//   b = counters.forwardedqueries / c
-			// where c is the number of valid queries,
-			//   c = counters.forwardedqueries + counters.cached + counters.blocked
-			//
-			// To get the total percentage of a specific query on the total number of queries,
-			// we simply have to scale b by a which is what we do in the following.
-			if(forwardedsum > 0 && totalqueries > 0)
-				percentage = 1e2f * forwarded[j].count / forwardedsum * counters.forwardedqueries / totalqueries;
+			// Get percentage
+			if(totalqueries > 0)
+				percentage = 1e2f * forwarded[j].count / totalqueries;
 		}
 
 		// Send data:
