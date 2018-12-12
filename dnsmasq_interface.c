@@ -858,7 +858,7 @@ pthread_t DNSclientthread;
 
 void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 {
-	if(!debug && daemonmode)
+	if(daemonmode)
 		go_daemon();
 	else
 		savepid();

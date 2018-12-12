@@ -35,6 +35,7 @@ void parse_args(int argc, char* argv[])
 		   strcmp(argv[i], "debug") == 0)
 		{
 			debug = true;
+			daemonmode = false;
 			ok = true;
 
 			// Replace "-k" by "-d" (debug mode implies nofork)
