@@ -32,19 +32,19 @@ int findOverTimeID(int overTimetimestamp)
 	int timeidx = -1, i;
 	// Check struct size
 	memory_check(OVERTIME);
-	if(counters.overTime > 0)
-		validate_access("overTime", counters.overTime-1, true, __LINE__, __FUNCTION__, __FILE__);
-	for(i=0; i < counters.overTime; i++)
+	if(counters->overTime > 0)
+		validate_access("overTime", counters->overTime-1, true, __LINE__, __FUNCTION__, __FILE__);
+	for(i=0; i < counters->overTime; i++)
 	{
 		if(overTime[i].timestamp == overTimetimestamp)
 			return i;
 	}
 	// We loop over this to fill potential data holes with zeros
 	int nexttimestamp = 0;
-	if(counters.overTime != 0)
+	if(counters->overTime != 0)
 	{
-		validate_access("overTime", counters.overTime-1, false, __LINE__, __FUNCTION__, __FILE__);
-		nexttimestamp = overTime[counters.overTime-1].timestamp + 600;
+		validate_access("overTime", counters->overTime-1, false, __LINE__, __FUNCTION__, __FILE__);
+		nexttimestamp = overTime[counters->overTime-1].timestamp + 600;
 	}
 	else
 	{
@@ -57,7 +57,7 @@ int findOverTimeID(int overTimetimestamp)
 	{
 		// Check struct size
 		memory_check(OVERTIME);
-		timeidx = counters.overTime;
+		timeidx = counters->overTime;
 		validate_access("overTime", timeidx, false, __LINE__, __FUNCTION__, __FILE__);
 		// Set magic byte
 		overTime[timeidx].magic = MAGICBYTE;
@@ -66,15 +66,16 @@ int findOverTimeID(int overTimetimestamp)
 		overTime[timeidx].blocked = 0;
 		overTime[timeidx].cached = 0;
 		// overTime[timeidx].querytypedata is static
-		overTime[timeidx].clientnum = 0;
-		overTime[timeidx].clientdata = NULL;
-		counters.overTime++;
+		counters->overTime++;
 
-		// Update time stamp for next loop interation
-		if(counters.overTime != 0)
+		// Create new overTime slot in client shared memory
+		addOverTimeClientSlot();
+
+		// Update time stamp for next loop interaction
+		if(counters->overTime != 0)
 		{
-			validate_access("overTime", counters.overTime-1, false, __LINE__, __FUNCTION__, __FILE__);
-			nexttimestamp = overTime[counters.overTime-1].timestamp + 600;
+			validate_access("overTime", counters->overTime-1, false, __LINE__, __FUNCTION__, __FILE__);
+			nexttimestamp = overTime[counters->overTime-1].timestamp + 600;
 		}
 	}
 
@@ -89,12 +90,12 @@ int findOverTimeID(int overTimetimestamp)
 int findForwardID(const char * forward, bool count)
 {
 	int i, forwardID = -1;
-	if(counters.forwarded > 0)
-		validate_access("forwarded", counters.forwarded-1, true, __LINE__, __FUNCTION__, __FILE__);
+	if(counters->forwarded > 0)
+		validate_access("forwarded", counters->forwarded-1, true, __LINE__, __FUNCTION__, __FILE__);
 	// Go through already knows forward servers and see if we used one of those
-	for(i=0; i < counters.forwarded; i++)
+	for(i=0; i < counters->forwarded; i++)
 	{
-		if(strcmp(forwarded[i].ip, forward) == 0)
+		if(strcmp(getstr(forwarded[i].ippos), forward) == 0)
 		{
 			forwardID = i;
 			if(count) forwarded[forwardID].count++;
@@ -103,8 +104,8 @@ int findForwardID(const char * forward, bool count)
 	}
 	// This forward server is not known
 	// Store ID
-	forwardID = counters.forwarded;
-	logg("New forward server: %s (%i/%u)", forward, forwardID, counters.forwarded_MAX);
+	forwardID = counters->forwarded;
+	logg("New forward server: %s (%i/%u)", forward, forwardID, counters->forwarded_MAX);
 
 	// Check struct size
 	memory_check(FORWARDED);
@@ -118,16 +119,16 @@ int findForwardID(const char * forward, bool count)
 	else
 		forwarded[forwardID].count = 0;
 	// Save forward destination IP address
-	forwarded[forwardID].ip = strdup(forward);
+	forwarded[forwardID].ippos = addstr(forward);
 	forwarded[forwardID].failed = 0;
 	// Initialize forward hostname
 	// Due to the nature of us being the resolver,
 	// the actual resolving of the host name has
 	// to be done separately to be non-blocking
 	forwarded[forwardID].new = true;
-	forwarded[forwardID].name = NULL;
+	forwarded[forwardID].namepos = 0; // 0 -> string with length zero
 	// Increase counter by one
-	counters.forwarded++;
+	counters->forwarded++;
 
 	return forwardID;
 }
@@ -135,16 +136,16 @@ int findForwardID(const char * forward, bool count)
 int findDomainID(const char *domain)
 {
 	int i;
-	if(counters.domains > 0)
-		validate_access("domains", counters.domains-1, true, __LINE__, __FUNCTION__, __FILE__);
-	for(i=0; i < counters.domains; i++)
+	if(counters->domains > 0)
+		validate_access("domains", counters->domains-1, true, __LINE__, __FUNCTION__, __FILE__);
+	for(i=0; i < counters->domains; i++)
 	{
 		// Quick test: Does the domain start with the same character?
-		if(domains[i].domain[0] != domain[0])
+		if(getstr(domains[i].domainpos)[0] != domain[0])
 			continue;
 
 		// If so, compare the full domain using strcmp
-		if(strcmp(domains[i].domain, domain) == 0)
+		if(strcmp(getstr(domains[i].domainpos), domain) == 0)
 		{
 			domains[i].count++;
 			return i;
@@ -153,7 +154,7 @@ int findDomainID(const char *domain)
 
 	// If we did not return until here, then this domain is not known
 	// Store ID
-	int domainID = counters.domains;
+	int domainID = counters->domains;
 
 	// Check struct size
 	memory_check(DOMAINS);
@@ -166,11 +167,11 @@ int findDomainID(const char *domain)
 	// Set blocked counter to zero
 	domains[domainID].blockedcount = 0;
 	// Store domain name - no need to check for NULL here as it doesn't harm
-	domains[domainID].domain = strdup(domain);
+	domains[domainID].domainpos = addstr(domain);
 	// RegEx needs to be evaluated for this new domain
 	domains[domainID].regexmatch = REGEX_UNKNOWN;
 	// Increase counter by one
-	counters.domains++;
+	counters->domains++;
 
 	return domainID;
 }
@@ -179,16 +180,16 @@ int findClientID(const char *client)
 {
 	int i;
 	// Compare content of client against known client IP addresses
-	if(counters.clients > 0)
-		validate_access("clients", counters.clients-1, true, __LINE__, __FUNCTION__, __FILE__);
-	for(i=0; i < counters.clients; i++)
+	if(counters->clients > 0)
+		validate_access("clients", counters->clients-1, true, __LINE__, __FUNCTION__, __FILE__);
+	for(i=0; i < counters->clients; i++)
 	{
 		// Quick test: Does the clients IP start with the same character?
-		if(clients[i].ip[0] != client[0])
+		if(getstr(clients[i].ippos)[0] != client[0])
 			continue;
 
 		// If so, compare the full IP using strcmp
-		if(strcmp(clients[i].ip, client) == 0)
+		if(strcmp(getstr(clients[i].ippos), client) == 0)
 		{
 			clients[i].count++;
 			return i;
@@ -197,7 +198,7 @@ int findClientID(const char *client)
 
 	// If we did not return until here, then this client is definitely new
 	// Store ID
-	int clientID = counters.clients;
+	int clientID = counters->clients;
 
 	// Check struct size
 	memory_check(CLIENTS);
@@ -210,15 +211,18 @@ int findClientID(const char *client)
 	// Initialize blocked count to zero
 	clients[clientID].blockedcount = 0;
 	// Store client IP - no need to check for NULL here as it doesn't harm
-	clients[clientID].ip = strdup(client);
+	clients[clientID].ippos = addstr(client);
 	// Initialize client hostname
 	// Due to the nature of us being the resolver,
 	// the actual resolving of the host name has
 	// to be done separately to be non-blocking
 	clients[clientID].new = true;
-	clients[clientID].name = NULL;
+	clients[clientID].namepos = 0;
 	// Increase counter by one
-	counters.clients++;
+	counters->clients++;
+
+	// Create new overTime client data
+	newOverTimeClient();
 
 	return clientID;
 }
@@ -242,7 +246,7 @@ char *getDomainString(int queryID)
 	if(queries[queryID].privacylevel < PRIVACY_HIDE_DOMAINS)
 	{
 		validate_access("domains", queries[queryID].domainID, true, __LINE__, __FUNCTION__, __FILE__);
-		return domains[queries[queryID].domainID].domain;
+		return getstr(domains[queries[queryID].domainID].domainpos);
 	}
 	else
 		return HIDDEN_DOMAIN;
@@ -255,7 +259,20 @@ char *getClientIPString(int queryID)
 	if(queries[queryID].privacylevel < PRIVACY_HIDE_DOMAINS_CLIENTS)
 	{
 		validate_access("clients", queries[queryID].clientID, true, __LINE__, __FUNCTION__, __FILE__);
-		return clients[queries[queryID].clientID].ip;
+		return getstr(clients[queries[queryID].clientID].ippos);
+	}
+	else
+		return HIDDEN_CLIENT;
+}
+
+// Privacy-level sensitive subroutine that returns the client host name
+// only when appropriate for the requested query
+char *getClientNameString(int queryID)
+{
+	if(queries[queryID].privacylevel < PRIVACY_HIDE_DOMAINS_CLIENTS)
+	{
+		validate_access("clients", queries[queryID].clientID, true, __LINE__, __FUNCTION__, __FILE__);
+		return getstr(clients[queries[queryID].clientID].namepos);
 	}
 	else
 		return HIDDEN_CLIENT;

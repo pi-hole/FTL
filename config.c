@@ -305,7 +305,7 @@ void read_FTLconf(void)
 	getpath(fp, "WHITELISTFILE", "/etc/pihole/whitelist.txt", &files.whitelist);
 
 	// BLACKLISTFILE
-	getpath(fp, "BLACKLISTFILE", "/etc/pihole/blacklist.txt", &files.blacklist);
+	getpath(fp, "BLACKLISTFILE", "/etc/pihole/black.list", &files.blacklist);
 
 	// GRAVITYFILE
 	getpath(fp, "GRAVITYFILE", "/etc/pihole/gravity.list", &files.gravity);
