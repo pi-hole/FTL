@@ -10,6 +10,7 @@
 
 #include "FTL.h"
 #include "api.h"
+#include "shmem.h"
 
 // The backlog argument defines the maximum length
 // to which the queue of pending connections for
@@ -321,13 +322,13 @@ void *telnet_connection_handler_thread(void *socket_desc)
 
 			// Lock FTL data structure, since it is likely that it will be changed here
 			// Requests should not be processed/answered when data is about to change
-			enable_thread_lock();
+			lock_shm();
 
 			process_request(message, &sock);
 			free(message);
 
 			// Release thread lock
-			disable_thread_lock();
+			unlock_shm();
 
 			if(sock == 0)
 			{
@@ -378,13 +379,13 @@ void *socket_connection_handler_thread(void *socket_desc)
 
 			// Lock FTL data structure, since it is likely that it will be changed here
 			// Requests should not be processed/answered when data is about to change
-			enable_thread_lock();
+			lock_shm();
 
 			process_request(message, &sock);
 			free(message);
 
 			// Release thread lock
-			disable_thread_lock();
+			unlock_shm();
 
 			if(sock == 0)
 			{

@@ -35,7 +35,13 @@ int main (int argc, char* argv[])
 	timer_start(EXIT_TIMER);
 	logg("########## FTL started! ##########");
 	log_FTL_version();
-	init_thread_lock();
+
+	// Initialize shared memory
+	if(!init_shmem())
+	{
+		logg("Initialization of shared memory failed.");
+		return EXIT_FAILURE;
+	}
 
 	// pihole-FTL should really be run as user "pihole" to not mess up with file permissions
 	// print warning otherwise
@@ -86,6 +92,9 @@ int main (int argc, char* argv[])
 
 	// Invalidate blocking regex if compiled
 	free_regex();
+
+	// Remove shared memory objects
+	destroy_shmem();
 
 	//Remove PID file
 	removepid();

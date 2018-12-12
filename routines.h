@@ -34,6 +34,7 @@ bool isValidIPv4(const char *addr);
 bool isValidIPv6(const char *addr);
 char *getDomainString(int queryID);
 char *getClientIPString(int queryID);
+char *getClientNameString(int queryID);
 
 void close_telnet_socket(void);
 void close_unix_socket(void);
@@ -67,11 +68,6 @@ void parse_args(int argc, char* argv[]);
 
 char* find_equals(const char* s);
 
-// threads.c
-void enable_thread_lock(void);
-void disable_thread_lock(void);
-void init_thread_lock(void);
-
 // config.c
 void getLogFilePath(void);
 void read_FTLconf(void);
@@ -95,7 +91,6 @@ void *FTLcalloc(size_t nmemb, size_t size, const char *file, const char *functio
 void *FTLrealloc(void *ptr_in, size_t size, const char *file, const char *function, int line);
 void FTLfree(void *ptr, const char* file, const char *function, int line);
 void validate_access(const char * name, int pos, bool testmagic, int line, const char * function, const char * file);
-void validate_access_oTcl(int timeidx, int clientID, int line, const char * function, const char * file);
 
 int main_dnsmasq(int argc, char **argv);
 
@@ -112,3 +107,22 @@ bool match_regex(char *input);
 void free_regex(void);
 void read_regex_from_file(void);
 bool in_whitelist(char *domain);
+
+// shmem.c
+bool init_shmem(void);
+void destroy_shmem(void);
+unsigned long long addstr(const char *str);
+char *getstr(unsigned long long pos);
+void *enlarge_shmem_struct(char type);
+
+/**
+ * Create a new overTime client shared memory block.
+ * This also updates `overTimeClientData`.
+ */
+void newOverTimeClient();
+
+/**
+ * Add a new overTime slot to each overTime client shared memory block.
+ * This also updates `overTimeClientData`.
+ */
+void addOverTimeClientSlot();

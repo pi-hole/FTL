@@ -52,16 +52,6 @@
 
 #include "routines.h"
 
-// Next we define the step size in which the struct arrays are reallocated if they
-// grow too large. This number should be large enough so that reallocation does not
-// have to run very often, but should be as small as possible to avoid wasting memory
-#define QUERIESALLOCSTEP 10000
-#define FORWARDEDALLOCSTEP 4
-#define CLIENTSALLOCSTEP 10
-#define DOMAINSALLOCSTEP 1000
-#define OVERTIMEALLOCSTEP 100
-#define WILDCARDALLOCSTEP 100
-
 #define SOCKETBUFFERLEN 1024
 
 // How often do we garbage collect (to ensure we only have data fitting to the MAXLOGAGE defined above)? [seconds]
@@ -166,7 +156,7 @@ typedef struct {
 	int domainID;
 	int clientID;
 	int forwardID;
-	bool db;
+	sqlite3_int64 db;
 	int id; // the ID is a (signed) int in dnsmasq, so no need for a long int here
 	bool complete;
 	unsigned char privacylevel;
@@ -180,8 +170,8 @@ typedef struct {
 	unsigned char magic;
 	int count;
 	int failed;
-	char *ip;
-	char *name;
+	unsigned long long ippos;
+	unsigned long long namepos;
 	bool new;
 } forwardedDataStruct;
 
@@ -189,8 +179,8 @@ typedef struct {
 	unsigned char magic;
 	int count;
 	int blockedcount;
-	char *ip;
-	char *name;
+	unsigned long long ippos;
+	unsigned long long namepos;
 	bool new;
 } clientsDataStruct;
 
@@ -198,7 +188,7 @@ typedef struct {
 	unsigned char magic;
 	int count;
 	int blockedcount;
-	char *domain;
+	unsigned long long domainpos;
 	unsigned char regexmatch;
 } domainsDataStruct;
 
@@ -209,9 +199,7 @@ typedef struct {
 	int blocked;
 	int cached;
 	int forwarded;
-	int clientnum;
-	int *clientdata;
-	int querytypedata[7];
+	int querytypedata[TYPE_MAX-1];
 } overTimeDataStruct;
 
 typedef struct {
@@ -227,7 +215,7 @@ typedef struct {
 
 extern logFileNamesStruct files;
 extern FTLFileNamesStruct FTLfiles;
-extern countersStruct counters;
+extern countersStruct *counters;
 extern ConfigStruct config;
 
 extern queriesDataStruct *queries;
@@ -235,6 +223,10 @@ extern forwardedDataStruct *forwarded;
 extern clientsDataStruct *clients;
 extern domainsDataStruct *domains;
 extern overTimeDataStruct *overTime;
+
+/// Indexed by client ID, then time index (like `overTime`).
+/// This gets automatically updated whenever a new client or overTime slot is added.
+extern int **overTimeClientData;
 
 extern FILE *logfile;
 extern volatile sig_atomic_t killed;

@@ -12,6 +12,7 @@
 #undef __USE_XOPEN
 #include "FTL.h"
 #include "dnsmasq_interface.h"
+#include "shmem.h"
 
 void print_flags(unsigned int flags);
 void save_reply_type(unsigned int flags, int queryID, struct timeval response);
@@ -31,7 +32,7 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 		return;
 
 	// Create new query in data structure
-	enable_thread_lock();
+	lock_shm();
 
 	// Get timestamp
 	int querytimestamp, overTimetimestamp;
@@ -61,7 +62,7 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	{
 		// Return early to avoid accessing querytypedata out of bounds
 		if(debug) logg("Notice: Skipping unknown query type: %s (%i)", types, id);
-		disable_thread_lock();
+		unlock_shm();
 		return;
 	}
 
@@ -69,13 +70,13 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	if(!config.analyze_AAAA && querytype == TYPE_AAAA)
 	{
 		if(debug) logg("Not analyzing AAAA query");
-		disable_thread_lock();
+		unlock_shm();
 		return;
 	}
 
 	// Ensure we have enough space in the queries struct
 	memory_check(QUERIES);
-	int queryID = counters.queries;
+	int queryID = counters->queries;
 
 	// Convert domain to lower case
 	char *domain = strdup(name);
@@ -86,7 +87,7 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	{
 		// free memory already allocated here
 		free(domain);
-		disable_thread_lock();
+		unlock_shm();
 		return;
 	}
 
@@ -105,7 +106,7 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	{
 		free(domain);
 		free(client);
-		disable_thread_lock();
+		unlock_shm();
 		return;
 	}
 
@@ -117,7 +118,7 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	int timeidx = findOverTimeID(overTimetimestamp);
 	validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 	overTime[timeidx].querytypedata[querytype-1]++;
-	counters.querytype[querytype-1]++;
+	counters->querytype[querytype-1]++;
 
 	// Skip rest of the analysis if this query is not of type A or AAAA
 	// but user wants to see only A and AAAA queries (pre-v4.1 behavior)
@@ -128,7 +129,7 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 		free(domain);
 		free(domainbuffer);
 		free(client);
-		disable_thread_lock();
+		unlock_shm();
 		return;
 	}
 
@@ -147,7 +148,8 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	queries[queryID].domainID = domainID;
 	queries[queryID].clientID = clientID;
 	queries[queryID].timeidx = timeidx;
-	queries[queryID].db = false;
+	// Initialize database rowID with zero, will be set when the query is stored in the long-term DB
+	queries[queryID].db = 0;
 	queries[queryID].id = id;
 	queries[queryID].complete = false;
 	queries[queryID].response = converttimeval(request);
@@ -165,18 +167,17 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	queries[queryID].privacylevel = config.privacylevel;
 
 	// Increase DNS queries counter
-	counters.queries++;
+	counters->queries++;
 	// Count this query as unknown as long as no reply has
 	// been found and analyzed
-	counters.unknown++;
+	counters->unknown++;
 
 	// Update overTime data
 	validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 	overTime[timeidx].total++;
 
 	// Update overTime data structure with the new client
-	validate_access_oTcl(timeidx, clientID, __LINE__, __FUNCTION__, __FILE__);
-	overTime[timeidx].clientdata[clientID]++;
+	overTimeClientData[clientID][timeidx]++;
 
 	// Try blocking regex if configured
 	validate_access("domains", domainID, false, __LINE__, __FUNCTION__, __FILE__);
@@ -212,7 +213,7 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	free(domainbuffer);
 
 	// Release thread lock
-	disable_thread_lock();
+	unlock_shm();
 }
 
 static int findQueryID(int id)
@@ -226,11 +227,11 @@ static int findQueryID(int id)
 	// MAX(0, a) is used to return 0 in case a is negative (negative array indices are harmful)
 
 	// Validate access only once for the maximum index (all lower will work)
-	validate_access("queries", counters.queries-1, false, __LINE__, __FUNCTION__, __FILE__);
-	int until = MAX(0, counters.queries-MAXITER);
+	validate_access("queries", counters->queries-1, false, __LINE__, __FUNCTION__, __FILE__);
+	int until = MAX(0, counters->queries-MAXITER);
 	int i;
 	// Check UUIDs of queries
-	for(i = counters.queries-1; i >= until; i--)
+	for(i = counters->queries-1; i >= until; i--)
 		if(queries[i].id == id)
 			return i;
 
@@ -245,7 +246,7 @@ void FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id
 		return;
 
 	// Save that this query got forwarded to an upstream server
-	enable_thread_lock();
+	lock_shm();
 
 	// Get forward destination IP address
 	char dest[ADDRSTRLEN];
@@ -265,7 +266,7 @@ void FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id
 		// This may happen e.g. if the original query was a PTR query or "pi.hole"
 		// as we ignore them altogether
 		free(forward);
-		disable_thread_lock();
+		unlock_shm();
 		return;
 	}
 
@@ -278,7 +279,7 @@ void FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id
 	if(queries[i].complete && queries[i].status != QUERY_CACHE)
 	{
 		free(forward);
-		disable_thread_lock();
+		unlock_shm();
 		return;
 	}
 
@@ -308,7 +309,7 @@ void FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id
 		// This code section acknowledges this by removing one entry from
 		// the cached counters as we will re-brand this query as having been
 		// forwarded in the following.
-		counters.cached--;
+		counters->cached--;
 		// Also correct overTime data
 		overTime[j].cached--;
 
@@ -323,7 +324,7 @@ void FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id
 	{
 		// Normal forwarded query (status is set below)
 		// Query is no longer unknown
-		counters.unknown--;
+		counters->unknown--;
 		// Hereby, this query is now fully determined
 		queries[i].complete = true;
 	}
@@ -338,11 +339,11 @@ void FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id
 	overTime[j].forwarded++;
 
 	// Update counter for forwarded queries
-	counters.forwardedqueries++;
+	counters->forwardedqueries++;
 
 	// Release allocated memory
 	free(forward);
-	disable_thread_lock();
+	unlock_shm();
 }
 
 void FTL_dnsmasq_reload(void)
@@ -353,7 +354,7 @@ void FTL_dnsmasq_reload(void)
 
 	// Called when dnsmasq re-reads its config and hosts files
 	// Reset number of blocked domains
-	counters.gravity = 0;
+	counters->gravity = 0;
 
 	// Inspect 01-pihole.conf to see if Pi-hole blocking is enabled,
 	// i.e. if /etc/pihole/gravity.list is sourced as addn-hosts file
@@ -378,7 +379,7 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 		return;
 
 	// Interpret hosts files that have been read by dnsmasq
-	enable_thread_lock();
+	lock_shm();
 	// Determine returned result if available
 	char dest[ADDRSTRLEN]; dest[0] = '\0';
 	if(addr)
@@ -412,14 +413,14 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 	{
 		// This may happen e.g. if the original query was "pi.hole"
 		if(debug) logg("FTL_reply(): Query %i has not been found", id);
-		disable_thread_lock();
+		unlock_shm();
 		return;
 	}
 
 	if(queries[i].reply != REPLY_UNKNOWN)
 	{
 		// Nothing to be done here
-		disable_thread_lock();
+		unlock_shm();
 		return;
 	}
 
@@ -427,7 +428,7 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 	{
 		// Answered from local configuration, might be a wildcard or user-provided
 		// This query is no longer unknown
-		counters.unknown--;
+		counters->unknown--;
 
 		// Get time index
 		int querytimestamp, overTimetimestamp;
@@ -440,7 +441,7 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 		   strcmp(answer, "::") == 0)
 		{
 			// Answered from user-defined blocking rules (dnsmasq config files)
-			counters.blocked++;
+			counters->blocked++;
 			overTime[timeidx].blocked++;
 
 			validate_access("domains", queries[i].domainID, true, __LINE__, __FUNCTION__, __FILE__);
@@ -454,7 +455,7 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 		else
 		{
 			// Answered from a custom (user provided) cache file
-			counters.cached++;
+			counters->cached++;
 			overTime[timeidx].cached++;
 
 			queries[i].status = QUERY_CACHE;
@@ -471,7 +472,7 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 		int domainID = queries[i].domainID;
 		validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
 
-		if(strcmp(domains[domainID].domain, name) == 0)
+		if(strcmp(getstr(domains[domainID].domainpos), name) == 0)
 		{
 			// Save reply type and update individual reply counters
 			save_reply_type(flags, i, response);
@@ -499,7 +500,7 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 		print_flags(flags);
 	}
 
-	disable_thread_lock();
+	unlock_shm();
 }
 
 static void detect_blocked_IP(unsigned short flags, char* answer, int queryID)
@@ -560,14 +561,14 @@ static void query_externally_blocked(int i)
 	// Correct counters if necessary ...
 	if(queries[i].status == QUERY_FORWARDED)
 	{
-		counters.forwardedqueries--;
+		counters->forwardedqueries--;
 		overTime[queries[i].timeidx].forwarded--;
 		validate_access("forwarded", queries[i].forwardID, true, __LINE__, __FUNCTION__, __FILE__);
 		forwarded[queries[i].forwardID].count--;
 	}
 
 	// ... but as blocked
-	counters.blocked++;
+	counters->blocked++;
 	overTime[queries[i].timeidx].blocked++;
 	validate_access("domains", queries[i].domainID, true, __LINE__, __FUNCTION__, __FILE__);
 	domains[queries[i].domainID].blockedcount++;
@@ -584,7 +585,7 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 		return;
 
 	// Save that this query got answered from cache
-	enable_thread_lock();
+	lock_shm();
 	char dest[ADDRSTRLEN]; dest[0] = '\0';
 	if(addr)
 	{
@@ -600,7 +601,7 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 	{
 		// free memory already allocated here
 		free(domain);
-		disable_thread_lock();
+		unlock_shm();
 		return;
 	}
 	free(domain);
@@ -657,14 +658,14 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 		{
 			// This may happen e.g. if the original query was a PTR query or "pi.hole"
 			// as we ignore them altogether
-			disable_thread_lock();
+			unlock_shm();
 			return;
 		}
 
 		if(!queries[i].complete)
 		{
 			// This query is no longer unknown
-			counters.unknown--;
+			counters->unknown--;
 
 			// Get time index
 			int querytimestamp, overTimetimestamp;
@@ -696,13 +697,13 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 				case QUERY_GRAVITY: // gravity.list
 				case QUERY_BLACKLIST: // black.list
 				case QUERY_WILDCARD: // regex blocked
-					counters.blocked++;
+					counters->blocked++;
 					overTime[timeidx].blocked++;
 					domains[domainID].blockedcount++;
 					clients[clientID].blockedcount++;
 					break;
 				case QUERY_CACHE: // cached from one of the lists
-					counters.cached++;
+					counters->cached++;
 					overTime[timeidx].cached++;
 					break;
 				case QUERY_EXTERNAL_BLOCKED:
@@ -723,7 +724,7 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 		logg("*************************** unknown CACHE reply (2) ***************************");
 		print_flags(flags);
 	}
-	disable_thread_lock();
+	unlock_shm();
 }
 
 void FTL_dnssec(int status, int id)
@@ -733,13 +734,13 @@ void FTL_dnssec(int status, int id)
 		return;
 
 	// Process DNSSEC result for a domain
-	enable_thread_lock();
+	lock_shm();
 	// Search for corresponding query identified by ID
 	int i = findQueryID(id);
 	if(i < 0)
 	{
 		// This may happen e.g. if the original query was an unhandled query type
-		disable_thread_lock();
+		unlock_shm();
 		return;
 	}
 
@@ -748,7 +749,7 @@ void FTL_dnssec(int status, int id)
 	{
 		int domainID = queries[i].domainID;
 		validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
-		logg("**** got DNSSEC details for %s: %i (ID %i)", domains[domainID].domain, status, id);
+		logg("**** got DNSSEC details for %s: %i (ID %i)", getstr(domains[domainID].domainpos), status, id);
 	}
 
 	// Iterate through possible values
@@ -759,7 +760,7 @@ void FTL_dnssec(int status, int id)
 	else
 		queries[i].dnssec = DNSSEC_BOGUS;
 
-	disable_thread_lock();
+	unlock_shm();
 }
 
 void FTL_header_ADbit(unsigned char header4, int id)
@@ -768,12 +769,12 @@ void FTL_header_ADbit(unsigned char header4, int id)
 	if(config.privacylevel >= PRIVACY_NOSTATS)
 		return;
 
-	enable_thread_lock();
+	lock_shm();
 	// Check if AD bit is set in DNS header
 	if(!(header4 & 0x20))
 	{
 		// AD bit not set
-		disable_thread_lock();
+		unlock_shm();
 		return;
 	}
 
@@ -782,14 +783,14 @@ void FTL_header_ADbit(unsigned char header4, int id)
 	if(i < 0)
 	{
 		// This may happen e.g. if the original query was an unhandled query type
-		disable_thread_lock();
+		unlock_shm();
 		return;
 	}
 
 	// Store AD bit in query data
 	queries[i].AD = true;
 
-	disable_thread_lock();
+	unlock_shm();
 }
 
 void print_flags(unsigned int flags)
@@ -815,26 +816,26 @@ void save_reply_type(unsigned int flags, int queryID, struct timeval response)
 		{
 			// NXDOMAIN
 			queries[queryID].reply = REPLY_NXDOMAIN;
-			counters.reply_NXDOMAIN++;
+			counters->reply_NXDOMAIN++;
 		}
 		else
 		{
 			// NODATA(-IPv6)
 			queries[queryID].reply = REPLY_NODATA;
-			counters.reply_NODATA++;
+			counters->reply_NODATA++;
 		}
 	}
 	else if(flags & F_CNAME)
 	{
 		// <CNAME>
 		queries[queryID].reply = REPLY_CNAME;
-		counters.reply_CNAME++;
+		counters->reply_CNAME++;
 	}
 	else if(flags & F_REVERSE)
 	{
 		// reserve lookup
 		queries[queryID].reply = REPLY_DOMAIN;
-		counters.reply_domain++;
+		counters->reply_domain++;
 	}
 	else if(flags & F_RRNAME)
 	{
@@ -845,7 +846,7 @@ void save_reply_type(unsigned int flags, int queryID, struct timeval response)
 	{
 		// Valid IP
 		queries[queryID].reply = REPLY_IP;
-		counters.reply_IP++;
+		counters->reply_IP++;
 	}
 
 	// Save response time (relative time)
@@ -955,7 +956,7 @@ void FTL_forwarding_failed(struct server *server)
 		return;
 
 	// Save that this query got forwarded to an upstream server
-	enable_thread_lock();
+	lock_shm();
 	char dest[ADDRSTRLEN];
 	if(server->addr.sa.sa_family == AF_INET)
 		inet_ntop(AF_INET, &server->addr.in.sin_addr, dest, ADDRSTRLEN);
@@ -972,7 +973,7 @@ void FTL_forwarding_failed(struct server *server)
 	forwarded[forwardID].failed++;
 
 	free(forward);
-	disable_thread_lock();
+	unlock_shm();
 	return;
 }
 
@@ -1169,6 +1170,6 @@ int FTL_listsfile(char* filename, unsigned int index, FILE *f, int cache_size, s
 	}
 
 	logg("%s: parsed %i domains (took %.1f ms)", filename, added, timer_elapsed_msec(LISTS_TIMER));
-	counters.gravity += added;
+	counters->gravity += added;
 	return name_count;
 }

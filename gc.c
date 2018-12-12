@@ -9,6 +9,8 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
+#include "shmem.h"
+
 bool doGC = false;
 
 time_t lastGCrun = 0;
@@ -30,7 +32,7 @@ void *GC_thread(void *val)
 
 			// Lock FTL's data structure, since it is likely that it will be changed here
 			// Requests should not be processed/answered when data is about to change
-			enable_thread_lock();
+			lock_shm();
 
 			// Get minimum time stamp to keep
 			time_t mintime = time(NULL) - config.maxlogage;
@@ -42,7 +44,7 @@ void *GC_thread(void *val)
 			if(debug) logg("GC starting, mintime: %u %s", mintime, ctime(&mintime));
 
 			// Process all queries
-			for(i=0; i < counters.queries; i++)
+			for(i=0; i < counters->queries; i++)
 			{
 				validate_access("queries", i, true, __LINE__, __FUNCTION__, __FILE__);
 				// Test if this query is too new
@@ -51,7 +53,7 @@ void *GC_thread(void *val)
 
 
 				// Adjust total counters and total over time data
-				// We cannot edit counters.queries directly as it is used
+				// We cannot edit counters->queries directly as it is used
 				// as max ID for the queries[] struct
 				int timeidx = queries[i].timeidx;
 				validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
@@ -63,8 +65,7 @@ void *GC_thread(void *val)
 				clients[clientID].count--;
 
 				// Adjust corresponding overTime counters
-				validate_access_oTcl(timeidx, clientID, __LINE__, __FUNCTION__, __FILE__);
-				overTime[timeidx].clientdata[clientID]--;
+				overTimeClientData[clientID][timeidx]--;
 
 				// Adjust domain counter (no overTime information)
 				int domainID = queries[i].domainID;
@@ -76,25 +77,25 @@ void *GC_thread(void *val)
 				{
 					case QUERY_UNKNOWN:
 						// Unknown (?)
-						counters.unknown--;
+						counters->unknown--;
 						break;
 					case QUERY_FORWARDED:
 						// Forwarded to an upstream DNS server
-						counters.forwardedqueries--;
+						counters->forwardedqueries--;
 						overTime[timeidx].forwarded--;
 						validate_access("forwarded", queries[i].forwardID, true, __LINE__, __FUNCTION__, __FILE__);
 						forwarded[queries[i].forwardID].count--;
 						break;
 					case QUERY_CACHE:
 						// Answered from local cache _or_ local config
-						counters.cached--;
+						counters->cached--;
 						overTime[timeidx].cached--;
 						break;
 					case QUERY_GRAVITY: // Blocked by Pi-hole's blocking lists (fall through)
 					case QUERY_BLACKLIST: // Exact blocked (fall through)
 					case QUERY_WILDCARD: // Regex blocked (fall through)
 					case QUERY_EXTERNAL_BLOCKED: // Blocked by upstream provider (fall through)
-						counters.blocked--;
+						counters->blocked--;
 						overTime[timeidx].blocked--;
 						domains[domainID].blockedcount--;
 						clients[clientID].blockedcount--;
@@ -108,23 +109,23 @@ void *GC_thread(void *val)
 				switch(queries[i].reply)
 				{
 					case REPLY_NODATA: // NODATA(-IPv6)
-					counters.reply_NODATA--;
+					counters->reply_NODATA--;
 					break;
 
 					case REPLY_NXDOMAIN: // NXDOMAIN
-					counters.reply_NXDOMAIN--;
+					counters->reply_NXDOMAIN--;
 					break;
 
 					case REPLY_CNAME: // <CNAME>
-					counters.reply_CNAME--;
+					counters->reply_CNAME--;
 					break;
 
 					case REPLY_IP: // valid IP
-					counters.reply_IP--;
+					counters->reply_IP--;
 					break;
 
 					case REPLY_DOMAIN: // reverse lookup
-					counters.reply_domain--;
+					counters->reply_domain--;
 					break;
 
 					default: // Incomplete query or TXT, do nothing
@@ -134,7 +135,7 @@ void *GC_thread(void *val)
 				// Update type counters
 				if(queries[i].type >= TYPE_A && queries[i].type < TYPE_MAX)
 				{
-					counters.querytype[queries[i].type-1]--;
+					counters->querytype[queries[i].type-1]--;
 					validate_access("overTime", queries[i].timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 					overTime[queries[i].timeidx].querytypedata[queries[i].type-1]--;
 				}
@@ -149,18 +150,18 @@ void *GC_thread(void *val)
 			// Example: (I = now invalid, X = still valid queries, F = free space)
 			//   Before: IIIIIIXXXXFF
 			//   After:  XXXXFFFFFFFF
-			memmove(&queries[0], &queries[removed], (counters.queries - removed)*sizeof(*queries));
+			memmove(&queries[0], &queries[removed], (counters->queries - removed)*sizeof(*queries));
 
 			// Update queries counter
-			counters.queries -= removed;
+			counters->queries -= removed;
 
 			// Zero out remaining memory (marked as "F" in the above example)
-			memset(&queries[counters.queries], 0, (counters.queries_MAX - counters.queries)*sizeof(*queries));
+			memset(&queries[counters->queries], 0, (counters->queries_MAX - counters->queries)*sizeof(*queries));
 
 			if(debug) logg("Notice: GC removed %i queries (took %.2f ms)", removed, timer_elapsed_msec(GC_TIMER));
 
 			// Release thread lock
-			disable_thread_lock();
+			unlock_shm();
 
 			// After storing data in the database for the next time,
 			// we should scan for old entries, which will then be deleted
