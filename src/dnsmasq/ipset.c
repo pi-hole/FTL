@@ -120,7 +120,7 @@ static int new_add_to_ipset(const char *setname, const union all_addr *ipaddr, i
   struct my_nfgenmsg *nfg;
   struct my_nlattr *nested[2];
   uint8_t proto;
-  int addrsz = (af == AF_INET6) ? INADDRSZ : IN6ADDRSZ;
+  int addrsz = (af == AF_INET6) ? IN6ADDRSZ : INADDRSZ;
 
   if (strlen(setname) >= IPSET_MAXNAMELEN) 
     {
