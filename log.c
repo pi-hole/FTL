@@ -71,7 +71,7 @@ void logg(const char *format, ...)
 	get_timestr(timestring);
 
 	// Print to stdout before writing to file
-	if(debug)
+	if(!daemonmode)
 	{
 		printf("[%s] ", timestring);
 		va_start(args, format);
