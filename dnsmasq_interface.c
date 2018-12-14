@@ -1054,12 +1054,15 @@ static int add_blocked_domain_cache(struct all_addr *addr4, struct all_addr *add
 		if(config.blockingmode == MODE_NX) cache4->flags |= F_IPV6 | F_NEG | F_NXDOMAIN;
 		// If we block in NULL mode, we make this host record also valid for AAAA requests
 		else if(config.blockingmode == MODE_NULL) cache4->flags |= F_IPV6;
+		// If we block in NODATA mode, we make this host record also valid for AAAA requests
+		// and apply the NEG response flag (but not the NXDOMAIN flag)
+		else if(config.blockingmode == MODE_NODATA) cache4->flags |= F_IPV6 | F_NEG;
 		cache4->ttd = daemon->local_ttl;
 		add_hosts_entry(cache4, addr4, INADDRSZ, index, rhash, hashsz);
 		name_count++;
 	}
 	// Add IPv6 record only if we respond with a non-NULL IP address to blocked domains
-	if(has_IPv6 && config.blockingmode != MODE_NX && config.blockingmode != MODE_NULL &&
+	if(has_IPv6 && (config.blockingmode == MODE_IP || config.blockingmode == MODE_IP_NODATA_AAAA) &&
 	   (cache6 = malloc(sizeof(struct crec) + strlen(domain)+1-SMALLDNAME)))
 	{
 		strcpy(cache6->name.sname, domain);
