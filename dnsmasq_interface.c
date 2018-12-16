@@ -758,21 +758,20 @@ void FTL_dnssec(int status, int id)
 	disable_thread_lock();
 }
 
-void FTL_header_ADbit(unsigned char header4, int id)
+void FTL_header_ADbit(unsigned char header4, unsigned int rcode, int id)
 {
 	// Don't analyze anything if in PRIVACY_NOSTATS mode
 	if(config.privacylevel >= PRIVACY_NOSTATS)
 		return;
 
-	enable_thread_lock();
 	// Check if AD bit is set in DNS header
 	if(!(header4 & 0x20))
 	{
 		// AD bit not set
-		disable_thread_lock();
 		return;
 	}
 
+	enable_thread_lock();
 	// Search for corresponding query identified by ID
 	int i = findQueryID(id);
 	if(i < 0)
@@ -782,8 +781,34 @@ void FTL_header_ADbit(unsigned char header4, int id)
 		return;
 	}
 
+	if(debug)
+	{
+		int domainID = queries[i].domainID;
+		validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
+		logg("**** AD bit set for %s (ID %i, RCODE %u)", domains[domainID].domain, id, rcode);
+	}
+
 	// Store AD bit in query data
 	queries[i].AD = true;
+
+	// If the response code (rcode) is NXDOMAIN, we may be seeing a response from
+	// an externally blocked query. As they are not always accompany a necessary
+	// SOA record, they are not getting added to our cache and, therefore,
+	// FTL_reply() is never getting called from within the cache routines.
+	// Hence, we have to store the necessary information about the NXDOMAIN
+	// reply already here.
+	if(rcode == NXDOMAIN)
+	{
+		// Get response time
+		struct timeval response;
+		gettimeofday(&response, 0);
+
+		// Store query as externally blocked
+		query_externally_blocked(i);
+
+		// Store reply type as replied with NXDOMAIN
+		save_reply_type(F_NEG | F_NXDOMAIN, i, response);
+	}
 
 	disable_thread_lock();
 }
