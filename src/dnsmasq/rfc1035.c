@@ -917,6 +917,13 @@ unsigned int extract_request(struct dns_header *header, size_t qlen, char *name,
       if (qtype == T_ANY)
 	return  F_IPV4 | F_IPV6;
     }
+
+  /* F_DNSSECOK as agument to search_servers() inhibits forwarding
+     to servers for domains without a trust anchor. This make the
+     behaviour for DS and DNSKEY queries we forward the same
+     as for DS and DNSKEY queries we originate. */
+  if (qtype == T_DS || qtype == T_DNSKEY)
+    return F_DNSSECOK;
   
   return F_QUERY;
 }
