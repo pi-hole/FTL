@@ -987,46 +987,37 @@ unsigned long converttimeval(struct timeval time)
 // This subroutine prepares IPv4 and IPv6 addresses for blocking queries depending on the configured blocking mode
 static void prepare_blocking_mode(struct all_addr *addr4, struct all_addr *addr6, bool *has_IPv4, bool *has_IPv6)
 {
-	char *a=NULL;
-	// Prepare IPv4 entry
-	char *IPv4addr;
 	if(config.blockingmode == MODE_IP || config.blockingmode == MODE_IP_NODATA_AAAA)
 	{
 		// Read IPv4 address for host entries from setupVars.conf
-		IPv4addr = read_setupVarsconf("IPV4_ADDRESS");
-	}
-	else
-	{
-		IPv4addr = "0.0.0.0";
-	}
-	if(IPv4addr != NULL)
-	{
+		char* const IPv4addr = read_setupVarsconf("IPV4_ADDRESS");
 		// Strip off everything at the end of the IP (CIDR might be there)
-		a=IPv4addr; for(;*a;a++) if(*a == '/') *a = 0;
+		char* a=IPv4addr; for(;*a;a++) if(*a == '/') *a = 0;
 		// Prepare IPv4 address for records
 		if(inet_pton(AF_INET, IPv4addr, addr4) > 0)
 			*has_IPv4 = true;
-	}
-	clearSetupVarsArray(); // will free/invalidate IPv4addr
-
-	// Prepare IPv6 entry
-	char *IPv6addr;
-	if(config.blockingmode == MODE_IP)
-	{
-		// Read IPv6 address for host entries from setupVars.conf
-		IPv6addr = read_setupVarsconf("IPV6_ADDRESS");
+		clearSetupVarsArray(); // will free/invalidate IPv4addr
 	}
 	else
 	{
-		IPv6addr = "::";
+		// Blocking mode will use zero-initialized all_addr struct
+		*has_IPv4 = true;
 	}
-	if(IPv6addr != NULL)
+
+	if(config.blockingmode == MODE_IP)
 	{
+		// Read IPv6 address for host entries from setupVars.conf
+		char* const IPv6addr = read_setupVarsconf("IPV6_ADDRESS");
 		// Strip off everything at the end of the IP (CIDR might be there)
-		a=IPv6addr; for(;*a;a++) if(*a == '/') *a = 0;
+		char* a=IPv6addr; for(;*a;a++) if(*a == '/') *a = 0;
 		// Prepare IPv6 address for records
 		if(inet_pton(AF_INET6, IPv6addr, addr6) > 0)
 			*has_IPv6 = true;
+	}
+	else
+	{
+		// Blocking mode will use zero-initialized all_addr struct
+		*has_IPv6 = true;
 	}
 	clearSetupVarsArray(); // will free/invalidate IPv6addr
 }
@@ -1078,7 +1069,7 @@ static int add_blocked_domain_cache(struct all_addr *addr4, struct all_addr *add
 // Add a single domain to resolver's cache. This respects the configured blocking mode
 static void block_single_domain(char *domain)
 {
-	struct all_addr addr4, addr6;
+	struct all_addr addr4 = { 0 }, addr6 = { 0 };
 	bool has_IPv4 = false, has_IPv6 = false;
 
 	// Get IPv4/v6 addresses for blocking depending on user configures blocking mode
@@ -1097,7 +1088,7 @@ int FTL_listsfile(char* filename, unsigned int index, FILE *f, int cache_size, s
 	int added = 0;
 	size_t size = 0;
 	char *buffer = NULL;
-	struct all_addr addr4, addr6;
+	struct all_addr addr4 = { 0 }, addr6 = { 0 };
 	bool has_IPv4 = false, has_IPv6 = false;
 
 	// Handle only gravity.list and black.list
