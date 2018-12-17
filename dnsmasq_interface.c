@@ -1069,7 +1069,7 @@ static int add_blocked_domain_cache(struct all_addr *addr4, struct all_addr *add
 // Add a single domain to resolver's cache. This respects the configured blocking mode
 static void block_single_domain(char *domain)
 {
-	struct all_addr addr4 = { 0 }, addr6 = { 0 };
+	struct all_addr addr4 = {{{ 0 }}}, addr6 = {{{ 0 }}};
 	bool has_IPv4 = false, has_IPv6 = false;
 
 	// Get IPv4/v6 addresses for blocking depending on user configures blocking mode
@@ -1088,7 +1088,7 @@ int FTL_listsfile(char* filename, unsigned int index, FILE *f, int cache_size, s
 	int added = 0;
 	size_t size = 0;
 	char *buffer = NULL;
-	struct all_addr addr4 = { 0 }, addr6 = { 0 };
+	struct all_addr addr4 = {{{ 0 }}}, addr6 = {{{ 0 }}};
 	bool has_IPv4 = false, has_IPv6 = false;
 
 	// Handle only gravity.list and black.list
