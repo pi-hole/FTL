@@ -650,7 +650,7 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 		}
 
 		int i = findQueryID(id);
-		if(i < 0)
+		if(i < 0 || queries[i].complete)
 		{
 			// This may happen e.g. if the original query was a PTR query or "pi.hole"
 			// as we ignore them altogether
@@ -658,62 +658,59 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 			return;
 		}
 
-		if(!queries[i].complete)
+		// This query is no longer unknown
+		counters.unknown--;
+
+		// Get time index
+		int querytimestamp, overTimetimestamp;
+		gettimestamp(&querytimestamp, &overTimetimestamp);
+		int timeidx = findOverTimeID(overTimetimestamp);
+		validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
+
+		int domainID = queries[i].domainID;
+		validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
+
+		int clientID = queries[i].clientID;
+		validate_access("clients", clientID, true, __LINE__, __FUNCTION__, __FILE__);
+
+		// Mark this query as blocked if domain was matched by a regex
+		if(domains[domainID].regexmatch == REGEX_BLOCKED)
+			requesttype = QUERY_WILDCARD;
+
+		queries[i].status = requesttype;
+
+		// Detect if returned IP indicates that this query was blocked
+		detect_blocked_IP(flags, dest, i);
+
+		// Re-read requesttype as detect_blocked_IP() might have changed it
+		requesttype = queries[i].status;
+
+		// Handle counters accordingly
+		switch(requesttype)
 		{
-			// This query is no longer unknown
-			counters.unknown--;
-
-			// Get time index
-			int querytimestamp, overTimetimestamp;
-			gettimestamp(&querytimestamp, &overTimetimestamp);
-			int timeidx = findOverTimeID(overTimetimestamp);
-			validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
-
-			int domainID = queries[i].domainID;
-			validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
-
-			int clientID = queries[i].clientID;
-			validate_access("clients", clientID, true, __LINE__, __FUNCTION__, __FILE__);
-
-			// Mark this query as blocked if domain was matched by a regex
-			if(domains[domainID].regexmatch == REGEX_BLOCKED)
-				requesttype = QUERY_WILDCARD;
-
-			queries[i].status = requesttype;
-
-			// Detect if returned IP indicates that this query was blocked
-			detect_blocked_IP(flags, dest, i);
-
-			// Re-read requesttype as detect_blocked_IP() might have changed it
-			requesttype = queries[i].status;
-
-			// Handle counters accordingly
-			switch(requesttype)
-			{
-				case QUERY_GRAVITY: // gravity.list
-				case QUERY_BLACKLIST: // black.list
-				case QUERY_WILDCARD: // regex blocked
-					counters.blocked++;
-					overTime[timeidx].blocked++;
-					domains[domainID].blockedcount++;
-					clients[clientID].blockedcount++;
-					break;
-				case QUERY_CACHE: // cached from one of the lists
-					counters.cached++;
-					overTime[timeidx].cached++;
-					break;
-				case QUERY_EXTERNAL_BLOCKED:
-					// everything has already done
-					// in query_externally_blocked()
-					break;
-			}
-
-			// Save reply type and update individual reply counters
-			save_reply_type(flags, i, response);
-
-			// Hereby, this query is now fully determined
-			queries[i].complete = true;
+			case QUERY_GRAVITY: // gravity.list
+			case QUERY_BLACKLIST: // black.list
+			case QUERY_WILDCARD: // regex blocked
+				counters.blocked++;
+				overTime[timeidx].blocked++;
+				domains[domainID].blockedcount++;
+				clients[clientID].blockedcount++;
+				break;
+			case QUERY_CACHE: // cached from one of the lists
+				counters.cached++;
+				overTime[timeidx].cached++;
+				break;
+			case QUERY_EXTERNAL_BLOCKED:
+				// everything has already been done
+				// in query_externally_blocked()
+				break;
 		}
+
+		// Save reply type and update individual reply counters
+		save_reply_type(flags, i, response);
+
+		// Hereby, this query is now fully determined
+		queries[i].complete = true;
 	}
 	else
 	{
