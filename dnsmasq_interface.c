@@ -422,7 +422,12 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 		return;
 	}
 
-	if(flags & F_CONFIG)
+	// Determine if this
+	int domainID = queries[i].domainID;
+	validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
+	bool isExactMatch = (strcmp(domains[domainID].domain, name) == 0);
+
+	if((flags & F_CONFIG) && isExactMatch && !queries[i].complete)
 	{
 		// Answered from local configuration, might be a wildcard or user-provided
 		// This query is no longer unknown
@@ -465,32 +470,35 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 		// Hereby, this query is now fully determined
 		queries[i].complete = true;
 	}
-	else if(flags & F_FORWARD)
-	{
-		int domainID = queries[i].domainID;
-		validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
-
-		if(strcmp(domains[domainID].domain, name) == 0)
-		{
-			// Save reply type and update individual reply counters
-			save_reply_type(flags, i, response);
-
-			// If received NXDOMAIN and AD bit is set, Quad9 may have blocked this query
-			if(flags & F_NXDOMAIN && queries[i].AD)
-			{
-				query_externally_blocked(i);
-			}
-
-			// Detect if returned IP indicates that this query was blocked
-			detect_blocked_IP(flags, answer, i);
-		}
-	}
-	else if(flags & F_REVERSE)
+	else if((flags & F_FORWARD) && isExactMatch)
 	{
 		// Save reply type and update individual reply counters
 		save_reply_type(flags, i, response);
+
+		// If received NXDOMAIN and AD bit is set, Quad9 may have blocked this query
+		if(flags & F_NXDOMAIN && queries[i].AD)
+		{
+			query_externally_blocked(i);
+		}
+
+		// Detect if returned IP indicates that this query was blocked
+		detect_blocked_IP(flags, answer, i);
 	}
-	else
+	else if(flags & F_REVERSE)
+	{
+		// isExactMatch is not used here as the PTR is special.
+		// Example:
+		// Question: PTR 8.8.8.8
+		// will lead to:
+		//   domains[domainID].domain = 8.8.8.8.in-addr.arpa
+		// and will return
+		//   name = google-public-dns-a.google.com
+		// Hence, isExactMatch is always false
+
+		// Save reply type and update individual reply counters
+		save_reply_type(flags, i, response);
+	}
+	else if(isExactMatch && !queries[i].complete)
 	{
 		logg("*************************** unknown REPLY ***************************");
 		print_flags(flags);
@@ -653,7 +661,7 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 		if(i < 0 || queries[i].complete)
 		{
 			// This may happen e.g. if the original query was a PTR query or "pi.hole"
-			// as we ignore them altogether
+			// as we ignore them altogether or if the query is already complete
 			disable_thread_lock();
 			return;
 		}
