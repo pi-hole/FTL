@@ -987,27 +987,29 @@ unsigned long converttimeval(struct timeval time)
 // This subroutine prepares IPv4 and IPv6 addresses for blocking queries depending on the configured blocking mode
 static void prepare_blocking_mode(struct all_addr *addr4, struct all_addr *addr6, bool *has_IPv4, bool *has_IPv6)
 {
-	if(config.blockingmode == MODE_IP || config.blockingmode == MODE_IP_NODATA_AAAA)
+	// Read IPv4 address for host entries from setupVars.conf
+	char* const IPv4addr = read_setupVarsconf("IPV4_ADDRESS");
+	if((config.blockingmode == MODE_IP || config.blockingmode == MODE_IP_NODATA_AAAA) &&
+	   IPv4addr != NULL && strlen(IPv4addr) > 0)
 	{
-		// Read IPv4 address for host entries from setupVars.conf
-		char* const IPv4addr = read_setupVarsconf("IPV4_ADDRESS");
 		// Strip off everything at the end of the IP (CIDR might be there)
 		char* a=IPv4addr; for(;*a;a++) if(*a == '/') *a = 0;
 		// Prepare IPv4 address for records
 		if(inet_pton(AF_INET, IPv4addr, addr4) > 0)
 			*has_IPv4 = true;
-		clearSetupVarsArray(); // will free/invalidate IPv4addr
 	}
 	else
 	{
 		// Blocking mode will use zero-initialized all_addr struct
 		*has_IPv4 = true;
 	}
+	clearSetupVarsArray(); // will free/invalidate IPv4addr
 
-	if(config.blockingmode == MODE_IP)
+	// Read IPv6 address for host entries from setupVars.conf
+	char* const IPv6addr = read_setupVarsconf("IPV6_ADDRESS");
+	if(config.blockingmode == MODE_IP &&
+	   IPv6addr != NULL && strlen(IPv6addr) > 0)
 	{
-		// Read IPv6 address for host entries from setupVars.conf
-		char* const IPv6addr = read_setupVarsconf("IPV6_ADDRESS");
 		// Strip off everything at the end of the IP (CIDR might be there)
 		char* a=IPv6addr; for(;*a;a++) if(*a == '/') *a = 0;
 		// Prepare IPv6 address for records
