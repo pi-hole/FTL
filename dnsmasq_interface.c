@@ -268,13 +268,10 @@ void FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id
 		return;
 	}
 
-	// Set query status
-	queries[i].status = QUERY_FORWARDED;
-
 	// Proceed only if
 	// - current query has not been marked as replied to so far
 	//   (it could be that answers from multiple forward
-	//    destionations are coimg in for the same query)
+	//    destinations are coming in for the same query)
 	// - the query was formally known as cached but had to be forwarded
 	//   (this is a special case further described below)
 	if(queries[i].complete && queries[i].status != QUERY_CACHE)
@@ -289,54 +286,58 @@ void FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id
 	int forwardID = findForwardID(forward, true);
 	queries[i].forwardID = forwardID;
 
-	if(!queries[i].complete)
+	int j = queries[i].timeidx;
+	validate_access("overTime", j, true, __LINE__, __FUNCTION__, __FILE__);
+
+	if(queries[i].status == QUERY_CACHE)
 	{
-		int j = queries[i].timeidx;
-		validate_access("overTime", j, true, __LINE__, __FUNCTION__, __FILE__);
+		// Detect if we cached the <CNAME> but need to ask the upstream
+		// servers for the actual IPs now, we remove this query from the
+		// counters for cache replied queries as we had to forward a
+		// request for it. Example:
+		// Assume a domain a.com is a CNAME which is cached and has a very
+		// long TTL. It point to another domain server.a.com which has an
+		// A record but this has a much lower TTL.
+		// If you now query a.com and then again after some time, you end
+		// up in a situation where dnsmasq can answer the first level of
+		// the DNS result (the CNAME) from cache, hence the status of this
+		// query is marked as "answered from cache" in FTLDNS. However, for
+		// server.a.com wit the much shorter TTL, we still have to forward
+		// something and ask the upstream server for the final IP address.
+		// This code section acknowledges this by removing one entry from
+		// the cached counters as we will re-brand this query as having been
+		// forwarded in the following.
+		counters.cached--;
+		// Also correct overTime data
+		overTime[j].cached--;
 
-		if(queries[i].status == QUERY_CACHE)
-		{
-			// Detect if we cached the <CNAME> but need to ask the upstream
-			// servers for the actual IPs now, we remove this query from the
-			// counters for cache replied queries as we had to forward a
-			// request for it. Example:
-			// Assume a domain a.com is a CNAME which is cached and has a very
-			// long TTL. It point to another domain server.a.com which has an
-			// A record but this has a much lower TTL.
-			// If you now query a.com and then again after some time, you end
-			// up in a situation where dnsmasq can answer the first level of
-			// the DNS result (the CNAME) from cache, hence the status of this
-			// query is marked as "answered from cache" in FTLDNS. However, for
-			// server.a.com wit the much shorter TTL, we still have to forward
-			// something and ask the upstream server for the final IP address.
-			// This code section acknowledges this by removing one entry from
-			// the cached counters as we will re-brand this query as having been
-			// forwarded in the following.
-			counters.cached--;
-			// Also correct overTime data
-			overTime[j].cached--;
-
-			// Correct reply timer
-			struct timeval response;
-			gettimeofday(&response, 0);
-			// Reset timer, shift slightly into the past to acknowledge the time
-			// FTLDNS needed to look up the CNAME in its cache
-			queries[i].response = converttimeval(response) - queries[i].response;
-		}
-		else
-		{
-			// Normal cache reply
-			// Query is no longer unknown
-			counters.unknown--;
-			// Hereby, this query is now fully determined
-			queries[i].complete = true;
-		}
-		// Update overTime data
-		overTime[j].forwarded++;
-
-		// Update couter for forwarded queries
-		counters.forwardedqueries++;
+		// Correct reply timer
+		struct timeval response;
+		gettimeofday(&response, 0);
+		// Reset timer, shift slightly into the past to acknowledge the time
+		// FTLDNS needed to look up the CNAME in its cache
+		queries[i].response = converttimeval(response) - queries[i].response;
 	}
+	else
+	{
+		// Normal forwarded query (status is set below)
+		// Query is no longer unknown
+		counters.unknown--;
+		// Hereby, this query is now fully determined
+		queries[i].complete = true;
+	}
+
+	// Set query status to forwarded only after the
+	// if(queries[i].status == QUERY_CACHE) { ... }
+	// from above as otherwise this check will always
+	// be negative
+	queries[i].status = QUERY_FORWARDED;
+
+	// Update overTime data
+	overTime[j].forwarded++;
+
+	// Update counter for forwarded queries
+	counters.forwardedqueries++;
 
 	// Release allocated memory
 	free(forward);
@@ -421,7 +422,12 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 		return;
 	}
 
-	if(flags & F_CONFIG)
+	// Determine if this reply is an exact match for the queried domain
+	int domainID = queries[i].domainID;
+	validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
+	bool isExactMatch = (strcmp(domains[domainID].domain, name) == 0);
+
+	if((flags & F_CONFIG) && isExactMatch && !queries[i].complete)
 	{
 		// Answered from local configuration, might be a wildcard or user-provided
 		// This query is no longer unknown
@@ -464,32 +470,35 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 		// Hereby, this query is now fully determined
 		queries[i].complete = true;
 	}
-	else if(flags & F_FORWARD)
-	{
-		int domainID = queries[i].domainID;
-		validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
-
-		if(strcmp(domains[domainID].domain, name) == 0)
-		{
-			// Save reply type and update individual reply counters
-			save_reply_type(flags, i, response);
-
-			// If received NXDOMAIN and AD bit is set, Quad9 may have blocked this query
-			if(flags & F_NXDOMAIN && queries[i].AD)
-			{
-				query_externally_blocked(i);
-			}
-
-			// Detect if returned IP indicates that this query was blocked
-			detect_blocked_IP(flags, answer, i);
-		}
-	}
-	else if(flags & F_REVERSE)
+	else if((flags & F_FORWARD) && isExactMatch)
 	{
 		// Save reply type and update individual reply counters
 		save_reply_type(flags, i, response);
+
+		// If received NXDOMAIN and AD bit is set, Quad9 may have blocked this query
+		if(flags & F_NXDOMAIN && queries[i].AD)
+		{
+			query_externally_blocked(i);
+		}
+
+		// Detect if returned IP indicates that this query was blocked
+		detect_blocked_IP(flags, answer, i);
 	}
-	else
+	else if(flags & F_REVERSE)
+	{
+		// isExactMatch is not used here as the PTR is special.
+		// Example:
+		// Question: PTR 8.8.8.8
+		// will lead to:
+		//   domains[domainID].domain = 8.8.8.8.in-addr.arpa
+		// and will return
+		//   name = google-public-dns-a.google.com
+		// Hence, isExactMatch is always false
+
+		// Save reply type and update individual reply counters
+		save_reply_type(flags, i, response);
+	}
+	else if(isExactMatch && !queries[i].complete)
 	{
 		logg("*************************** unknown REPLY ***************************");
 		print_flags(flags);
@@ -649,70 +658,67 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 		}
 
 		int i = findQueryID(id);
-		if(i < 0)
+		if(i < 0 || queries[i].complete)
 		{
 			// This may happen e.g. if the original query was a PTR query or "pi.hole"
-			// as we ignore them altogether
+			// as we ignore them altogether or if the query is already complete
 			disable_thread_lock();
 			return;
 		}
 
-		if(!queries[i].complete)
+		// This query is no longer unknown
+		counters.unknown--;
+
+		// Get time index
+		int querytimestamp, overTimetimestamp;
+		gettimestamp(&querytimestamp, &overTimetimestamp);
+		int timeidx = findOverTimeID(overTimetimestamp);
+		validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
+
+		int domainID = queries[i].domainID;
+		validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
+
+		int clientID = queries[i].clientID;
+		validate_access("clients", clientID, true, __LINE__, __FUNCTION__, __FILE__);
+
+		// Mark this query as blocked if domain was matched by a regex
+		if(domains[domainID].regexmatch == REGEX_BLOCKED)
+			requesttype = QUERY_WILDCARD;
+
+		queries[i].status = requesttype;
+
+		// Detect if returned IP indicates that this query was blocked
+		detect_blocked_IP(flags, dest, i);
+
+		// Re-read requesttype as detect_blocked_IP() might have changed it
+		requesttype = queries[i].status;
+
+		// Handle counters accordingly
+		switch(requesttype)
 		{
-			// This query is no longer unknown
-			counters.unknown--;
-
-			// Get time index
-			int querytimestamp, overTimetimestamp;
-			gettimestamp(&querytimestamp, &overTimetimestamp);
-			int timeidx = findOverTimeID(overTimetimestamp);
-			validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
-
-			int domainID = queries[i].domainID;
-			validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
-
-			int clientID = queries[i].clientID;
-			validate_access("clients", clientID, true, __LINE__, __FUNCTION__, __FILE__);
-
-			// Mark this query as blocked if domain was matched by a regex
-			if(domains[domainID].regexmatch == REGEX_BLOCKED)
-				requesttype = QUERY_WILDCARD;
-
-			queries[i].status = requesttype;
-
-			// Detect if returned IP indicates that this query was blocked
-			detect_blocked_IP(flags, dest, i);
-
-			// Re-read requesttype as detect_blocked_IP() might have changed it
-			requesttype = queries[i].status;
-
-			// Handle counters accordingly
-			switch(requesttype)
-			{
-				case QUERY_GRAVITY: // gravity.list
-				case QUERY_BLACKLIST: // black.list
-				case QUERY_WILDCARD: // regex blocked
-					counters.blocked++;
-					overTime[timeidx].blocked++;
-					domains[domainID].blockedcount++;
-					clients[clientID].blockedcount++;
-					break;
-				case QUERY_CACHE: // cached from one of the lists
-					counters.cached++;
-					overTime[timeidx].cached++;
-					break;
-				case QUERY_EXTERNAL_BLOCKED:
-					// everything has already done
-					// in query_externally_blocked()
-					break;
-			}
-
-			// Save reply type and update individual reply counters
-			save_reply_type(flags, i, response);
-
-			// Hereby, this query is now fully determined
-			queries[i].complete = true;
+			case QUERY_GRAVITY: // gravity.list
+			case QUERY_BLACKLIST: // black.list
+			case QUERY_WILDCARD: // regex blocked
+				counters.blocked++;
+				overTime[timeidx].blocked++;
+				domains[domainID].blockedcount++;
+				clients[clientID].blockedcount++;
+				break;
+			case QUERY_CACHE: // cached from one of the lists
+				counters.cached++;
+				overTime[timeidx].cached++;
+				break;
+			case QUERY_EXTERNAL_BLOCKED:
+				// everything has already been done
+				// in query_externally_blocked()
+				break;
 		}
+
+		// Save reply type and update individual reply counters
+		save_reply_type(flags, i, response);
+
+		// Hereby, this query is now fully determined
+		queries[i].complete = true;
 	}
 	else
 	{
