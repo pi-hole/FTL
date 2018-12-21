@@ -425,7 +425,7 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 	// Determine if this reply is an exact match for the queried domain
 	int domainID = queries[i].domainID;
 	validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
-	bool isExactMatch = (strcmp(domains[domainID].domain, name) == 0);
+	bool isExactMatch = (name != NULL && strcmp(domains[domainID].domain, name) == 0);
 
 	if((flags & F_CONFIG) && isExactMatch && !queries[i].complete)
 	{
