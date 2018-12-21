@@ -424,7 +424,12 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 		return;
 	}
 
-	if(flags & F_CONFIG)
+	// Determine if this reply is an exact match for the queried domain
+	int domainID = queries[i].domainID;
+	validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
+	bool isExactMatch = (name != NULL && strcmp(getstr(domains[domainID].domainpos), name) == 0);
+
+	if((flags & F_CONFIG) && isExactMatch && !queries[i].complete)
 	{
 		// Answered from local configuration, might be a wildcard or user-provided
 		// This query is no longer unknown
@@ -467,34 +472,35 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 		// Hereby, this query is now fully determined
 		queries[i].complete = true;
 	}
-	else if(flags & F_FORWARD)
-	{
-		int domainID = queries[i].domainID;
-		validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
-
-		if(strcmp(getstr(domains[domainID].domainpos), name) == 0)
-		{
-			// Save reply type and update individual reply counters
-			save_reply_type(flags, i, response);
-
-			// If received NXDOMAIN and AD bit is set, Quad9 may have blocked this query
-			if((flags & F_NXDOMAIN) && queries[i].AD)
-			{
-				query_externally_blocked(i);
-			}
-			else
-			{
-				// Detect if returned IP indicates that this query was blocked
-				detect_blocked_IP(flags, answer, i);
-			}
-		}
-	}
-	else if(flags & F_REVERSE)
+	else if((flags & F_FORWARD) && isExactMatch)
 	{
 		// Save reply type and update individual reply counters
 		save_reply_type(flags, i, response);
+
+		// If received NXDOMAIN and AD bit is set, Quad9 may have blocked this query
+		if(flags & F_NXDOMAIN && queries[i].AD)
+		{
+			query_externally_blocked(i);
+		}
+
+		// Detect if returned IP indicates that this query was blocked
+		detect_blocked_IP(flags, answer, i);
 	}
-	else
+	else if(flags & F_REVERSE)
+	{
+		// isExactMatch is not used here as the PTR is special.
+		// Example:
+		// Question: PTR 8.8.8.8
+		// will lead to:
+		//   domains[domainID].domain = 8.8.8.8.in-addr.arpa
+		// and will return
+		//   name = google-public-dns-a.google.com
+		// Hence, isExactMatch is always false
+
+		// Save reply type and update individual reply counters
+		save_reply_type(flags, i, response);
+	}
+	else if(isExactMatch && !queries[i].complete)
 	{
 		logg("*************************** unknown REPLY ***************************");
 		print_flags(flags);
@@ -654,70 +660,67 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 		}
 
 		int i = findQueryID(id);
-		if(i < 0)
+		if(i < 0 || queries[i].complete)
 		{
 			// This may happen e.g. if the original query was a PTR query or "pi.hole"
-			// as we ignore them altogether
+			// as we ignore them altogether or if the query is already complete
 			unlock_shm();
 			return;
 		}
 
-		if(!queries[i].complete)
+		// This query is no longer unknown
+		counters->unknown--;
+
+		// Get time index
+		int querytimestamp, overTimetimestamp;
+		gettimestamp(&querytimestamp, &overTimetimestamp);
+		int timeidx = findOverTimeID(overTimetimestamp);
+		validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
+
+		int domainID = queries[i].domainID;
+		validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
+
+		int clientID = queries[i].clientID;
+		validate_access("clients", clientID, true, __LINE__, __FUNCTION__, __FILE__);
+
+		// Mark this query as blocked if domain was matched by a regex
+		if(domains[domainID].regexmatch == REGEX_BLOCKED)
+			requesttype = QUERY_WILDCARD;
+
+		queries[i].status = requesttype;
+
+		// Detect if returned IP indicates that this query was blocked
+		detect_blocked_IP(flags, dest, i);
+
+		// Re-read requesttype as detect_blocked_IP() might have changed it
+		requesttype = queries[i].status;
+
+		// Handle counters accordingly
+		switch(requesttype)
 		{
-			// This query is no longer unknown
-			counters->unknown--;
-
-			// Get time index
-			int querytimestamp, overTimetimestamp;
-			gettimestamp(&querytimestamp, &overTimetimestamp);
-			int timeidx = findOverTimeID(overTimetimestamp);
-			validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
-
-			int domainID = queries[i].domainID;
-			validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
-
-			int clientID = queries[i].clientID;
-			validate_access("clients", clientID, true, __LINE__, __FUNCTION__, __FILE__);
-
-			// Mark this query as blocked if domain was matched by a regex
-			if(domains[domainID].regexmatch == REGEX_BLOCKED)
-				requesttype = QUERY_WILDCARD;
-
-			queries[i].status = requesttype;
-
-			// Detect if returned IP indicates that this query was blocked
-			detect_blocked_IP(flags, dest, i);
-
-			// Re-read requesttype as detect_blocked_IP() might have changed it
-			requesttype = queries[i].status;
-
-			// Handle counters accordingly
-			switch(requesttype)
-			{
-				case QUERY_GRAVITY: // gravity.list
-				case QUERY_BLACKLIST: // black.list
-				case QUERY_WILDCARD: // regex blocked
-					counters->blocked++;
-					overTime[timeidx].blocked++;
-					domains[domainID].blockedcount++;
-					clients[clientID].blockedcount++;
-					break;
-				case QUERY_CACHE: // cached from one of the lists
-					counters->cached++;
-					overTime[timeidx].cached++;
-					break;
-				case QUERY_EXTERNAL_BLOCKED:
-					// everything has already been done
-					// in query_externally_blocked()
-					break;
-			}
-
-			// Save reply type and update individual reply counters
-			save_reply_type(flags, i, response);
-
-			// Hereby, this query is now fully determined
-			queries[i].complete = true;
+			case QUERY_GRAVITY: // gravity.list
+			case QUERY_BLACKLIST: // black.list
+			case QUERY_WILDCARD: // regex blocked
+				counters->blocked++;
+				overTime[timeidx].blocked++;
+				domains[domainID].blockedcount++;
+				clients[clientID].blockedcount++;
+				break;
+			case QUERY_CACHE: // cached from one of the lists
+				counters->cached++;
+				overTime[timeidx].cached++;
+				break;
+			case QUERY_EXTERNAL_BLOCKED:
+				// everything has already been done
+				// in query_externally_blocked()
+				break;
 		}
+
+		// Save reply type and update individual reply counters
+		save_reply_type(flags, i, response);
+
+		// Hereby, this query is now fully determined
+		queries[i].complete = true;
 	}
 	else
 	{
@@ -763,21 +766,20 @@ void FTL_dnssec(int status, int id)
 	unlock_shm();
 }
 
-void FTL_header_ADbit(unsigned char header4, int id)
+void FTL_header_ADbit(unsigned char header4, unsigned int rcode, int id)
 {
 	// Don't analyze anything if in PRIVACY_NOSTATS mode
 	if(config.privacylevel >= PRIVACY_NOSTATS)
 		return;
 
-	lock_shm();
 	// Check if AD bit is set in DNS header
 	if(!(header4 & 0x20))
 	{
 		// AD bit not set
-		unlock_shm();
 		return;
 	}
 
+	lock_shm();
 	// Search for corresponding query identified by ID
 	int i = findQueryID(id);
 	if(i < 0)
@@ -787,8 +789,34 @@ void FTL_header_ADbit(unsigned char header4, int id)
 		return;
 	}
 
+	if(debug)
+	{
+		int domainID = queries[i].domainID;
+		validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
+		logg("**** AD bit set for %s (ID %i, RCODE %u)", getstr(domains[domainID].domainpos), id, rcode);
+	}
+
 	// Store AD bit in query data
 	queries[i].AD = true;
+
+	// If the response code (rcode) is NXDOMAIN, we may be seeing a response from
+	// an externally blocked query. As they are not always accompany a necessary
+	// SOA record, they are not getting added to our cache and, therefore,
+	// FTL_reply() is never getting called from within the cache routines.
+	// Hence, we have to store the necessary information about the NXDOMAIN
+	// reply already here.
+	if(rcode == NXDOMAIN)
+	{
+		// Get response time
+		struct timeval response;
+		gettimeofday(&response, 0);
+
+		// Store query as externally blocked
+		query_externally_blocked(i);
+
+		// Store reply type as replied with NXDOMAIN
+		save_reply_type(F_NEG | F_NXDOMAIN, i, response);
+	}
 
 	unlock_shm();
 }
