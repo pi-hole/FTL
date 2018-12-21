@@ -648,7 +648,7 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
 	}
     }
 
-  FTL_header_ADbit(header->hb4, daemon->log_display_id);
+  FTL_header_ADbit(header->hb4, RCODE(header), daemon->log_display_id);
 
   /* RFC 4035 sect 4.6 para 3 */
   if (!is_sign && !option_bool(OPT_DNSSEC_PROXY))

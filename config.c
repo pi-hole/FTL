@@ -332,7 +332,7 @@ void getpath(FILE* fp, const char *option, const char *defaultloc, char **pointe
 	// option:     Option string ("key") to try to read
 	// defaultloc: Value used if key is not found in file
 	// pointer:    Location where read (or default) parameter is stored
-	char *buffer = parse_FTLconf(fp, "PIDFILE");
+	char *buffer = parse_FTLconf(fp, option);
 
 	errno = 0;
 	// Use sscanf() to obtain filename from config file parameter only if buffer != NULL
