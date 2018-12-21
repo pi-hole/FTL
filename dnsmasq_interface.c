@@ -793,7 +793,7 @@ void FTL_header_ADbit(unsigned char header4, unsigned int rcode, int id)
 	{
 		int domainID = queries[i].domainID;
 		validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
-		logg("**** AD bit set for %s (ID %i, RCODE %u)", domains[domainID].domain, id, rcode);
+		logg("**** AD bit set for %s (ID %i, RCODE %u)", getstr(domains[domainID].domainpos), id, rcode);
 	}
 
 	// Store AD bit in query data
