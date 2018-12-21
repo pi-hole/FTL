@@ -54,6 +54,7 @@
 #define OPTION_SNAME             66
 #define OPTION_FILENAME          67
 #define OPTION_USER_CLASS        77
+#define OPTION_RAPID_COMMIT      80
 #define OPTION_CLIENT_FQDN       81
 #define OPTION_AGENT_ID          82
 #define OPTION_ARCH              93

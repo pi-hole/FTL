@@ -42,6 +42,12 @@
 #  define __EXTENSIONS__
 #endif
 
+#if (defined(__GNUC__) && __GNUC__ >= 3) || defined(__clang__)
+#define ATTRIBUTE_NORETURN __attribute__ ((noreturn))
+#else
+#define ATTRIBUTE_NORETURN
+#endif
+
 /* get these before config.h  for IPv6 stuff... */
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -57,6 +63,7 @@
 
 #include "config.h"
 #include "ip6addr.h"
+#include "metrics.h"
 
 typedef unsigned char u8;
 typedef unsigned short u16;
@@ -119,6 +126,9 @@ typedef unsigned long long u64;
 #include <net/if_arp.h>
 #include <netinet/in_systm.h>
 #include <netinet/ip.h>
+#ifdef HAVE_IPV6
+#include <netinet/ip6.h>
+#endif
 #include <netinet/ip_icmp.h>
 #include <sys/uio.h>
 #include <syslog.h>
@@ -241,7 +251,7 @@ struct event_desc {
 #define OPT_DNSSEC_VALID   45
 #define OPT_DNSSEC_TIME    46
 #define OPT_DNSSEC_DEBUG   47
-#define OPT_DNSSEC_NO_SIGN 48
+#define OPT_DNSSEC_IGN_NS  48
 #define OPT_LOCAL_SERVICE  49
 #define OPT_LOOP_DETECT    50
 #define OPT_EXTRALOG       51
@@ -250,7 +260,9 @@ struct event_desc {
 #define OPT_MAC_B64        54
 #define OPT_MAC_HEX        55
 #define OPT_TFTP_APREF_MAC 56
-#define OPT_LAST           57
+#define OPT_RAPID_COMMIT   57
+#define OPT_UBUS           58
+#define OPT_LAST           59
 
 /* extra flags for my_syslog, we use a couple of facilities since they are known
    not to occupy the same bits as priorities, no matter how syslog.h is set up. */
@@ -268,6 +280,10 @@ struct all_addr {
     struct {
       unsigned short keytag, algo, digest;
     } log;
+    /* for log_query */
+    struct {
+      unsigned int rcode;
+    } rcode;
     /* for cache_insert of DNSKEY, DS */
     struct {
       unsigned short class, type;
@@ -429,6 +445,9 @@ struct crec {
   } name;
 };
 
+#define SIZEOF_BARE_CREC (sizeof(struct crec) - SMALLDNAME)
+#define SIZEOF_POINTER_CREC (sizeof(struct crec) + sizeof(char *) - SMALLDNAME)
+
 #define F_IMMORTAL  (1u<<0)
 #define F_NAMEP     (1u<<1)
 #define F_REVERSE   (1u<<2)
@@ -461,9 +480,14 @@ struct crec {
 #define F_IPSET     (1u<<26)
 #define F_NOEXTRA   (1u<<27)
 #define F_SERVFAIL  (1u<<28)
+#define F_RCODE     (1u<<29)
 
+#define UID_NONE      0
 /* Values of uid in crecs with F_CONFIG bit set. */
-#define SRC_INTERFACE 0
+/* cname to uid SRC_INTERFACE are to interface names,
+   so use UID_NONE for that to eliminate clashes with
+   any other uid */
+#define SRC_INTERFACE UID_NONE
 #define SRC_CONFIG    1
 #define SRC_HOSTS     2
 /*----- Pi-hole modification -----*/
@@ -513,7 +537,7 @@ struct serverfd {
   int fd;
   union mysockaddr source_addr;
   char interface[IF_NAMESIZE+1];
-  unsigned int ifindex, used;
+  unsigned int ifindex, used, preallocated;
   struct serverfd *next;
 };
 
@@ -599,6 +623,16 @@ struct hostsfile {
 #endif
   unsigned int index; /* matches to cache entries for logging */
 };
+
+/* packet-dump flags */
+#define DUMP_QUERY     0x0001
+#define DUMP_REPLY     0x0002
+#define DUMP_UP_QUERY  0x0004
+#define DUMP_UP_REPLY  0x0008
+#define DUMP_SEC_QUERY 0x0010
+#define DUMP_SEC_REPLY 0x0020
+#define DUMP_BOGUS     0x0040
+#define DUMP_SEC_BOGUS 0x0080
 
 
 /* DNSSEC status values. */
@@ -805,6 +839,13 @@ struct dhcp_boot {
   struct dhcp_boot *next;
 };
 
+struct dhcp_match_name {
+  char *name;
+  int wildcard;
+  struct dhcp_netid *netid;
+  struct dhcp_match_name *next;
+};
+
 struct pxe_service {
   unsigned short CSA, type;
   char *menu, *basename, *sname;
@@ -997,6 +1038,7 @@ extern struct daemon {
   struct ra_interface *ra_interfaces;
   struct dhcp_config *dhcp_conf;
   struct dhcp_opt *dhcp_opts, *dhcp_match, *dhcp_opts6, *dhcp_match6;
+  struct dhcp_match_name *dhcp_name_match;
   struct dhcp_vendor *dhcp_vendors;
   struct dhcp_mac *dhcp_macs;
   struct dhcp_boot *boot_config;
@@ -1022,14 +1064,15 @@ extern struct daemon {
   unsigned int duid_enterprise, duid_config_len;
   unsigned char *duid_config;
   char *dbus_name;
+  char *dump_file;
+  int dump_mask;
   unsigned long soa_sn, soa_refresh, soa_retry, soa_expiry;
+  u32 metrics[__METRIC_MAX];
 #ifdef OPTION6_PREFIX_CLASS
   struct prefix_class *prefix_classes;
 #endif
 #ifdef HAVE_DNSSEC
   struct ds_config *ds;
-  int dnssec_no_time_check;
-  int back_to_the_future;
   char *timestamp_file;
 #endif
 
@@ -1042,8 +1085,9 @@ extern struct daemon {
   char *workspacename; /* ditto */
   char *rr_status; /* flags for individual RRs */
   int rr_status_sz;
+  int dnssec_no_time_check;
+  int back_to_the_future;
 #endif
-  unsigned int local_answer, queries_forwarded, auth_answer;
   struct frec *frec_list;
   struct serverfd *sfds;
   struct irec *interfaces;
@@ -1096,13 +1140,19 @@ extern struct daemon {
   char *addrbuff;
   char *addrbuff2; /* only allocated when OPT_EXTRALOG */
 
+#ifdef HAVE_DUMPFILE
+  /* file for packet dumps. */
+  int dumpfd;
+#endif
 } *daemon;
 
 /* cache.c */
 void cache_init(void);
+void next_uid(struct crec *crecp);
 void log_query(unsigned int flags, char *name, struct all_addr *addr, char *arg);
 char *record_source(unsigned int index);
 char *querystr(char *desc, unsigned short type);
+int cache_find_non_terminal(char *name, time_t now);
 struct crec *cache_find_by_addr(struct crec *crecp,
 				struct all_addr *addr, time_t now,
 				unsigned int prot);
@@ -1185,7 +1235,7 @@ int in_zone(struct auth_zone *zone, char *name, char **cut);
 #endif
 
 /* dnssec.c */
-size_t dnssec_generate_query(struct dns_header *header, unsigned char *end, char *name, int class, int type, union mysockaddr *addr, int edns_pktsz);
+size_t dnssec_generate_query(struct dns_header *header, unsigned char *end, char *name, int class, int type, int edns_pktsz);
 int dnssec_validate_by_ds(time_t now, struct dns_header *header, size_t plen, char *name, char *keyname, int class);
 int dnssec_validate_ds(time_t now, struct dns_header *header, size_t plen, char *name, char *keyname, int class);
 int dnssec_validate_reply(time_t now, struct dns_header *header, size_t plen, char *name, char *keyname, int *class,
@@ -1213,11 +1263,13 @@ int legal_hostname(char *name);
 char *canonicalise(char *in, int *nomem);
 unsigned char *do_rfc1035_name(unsigned char *p, char *sval, char *limit);
 void *safe_malloc(size_t size);
+void safe_strncpy(char *dest, const char *src, size_t size);
 void safe_pipe(int *fd, int read_noblock);
 void *whine_malloc(size_t size);
 int sa_len(union mysockaddr *addr);
 int sockaddr_isequal(union mysockaddr *s1, union mysockaddr *s2);
 int hostname_isequal(const char *a, const char *b);
+int hostname_issubdomain(char *a, char *b);
 time_t dnsmasq_time(void);
 int netmask_length(struct in_addr mask);
 int is_same_net(struct in_addr a, struct in_addr b, struct in_addr mask);
@@ -1241,7 +1293,7 @@ int wildcard_match(const char* wildcard, const char* match);
 int wildcard_matchn(const char* wildcard, const char* match, int num);
 
 /* log.c */
-void die(char *message, char *arg1, int exit_code);
+void die(char *message, char *arg1, int exit_code) ATTRIBUTE_NORETURN;
 int log_start(struct passwd *ent_pw, int errfd);
 int log_reopen(char *log_file);
 
@@ -1423,6 +1475,13 @@ void emit_dbus_signal(int action, struct dhcp_lease *lease, char *hostname);
 #  endif
 #endif
 
+/* ubus.c */
+#ifdef HAVE_UBUS
+void set_ubus_listeners(void);
+void check_ubus_listeners(void);
+void ubus_event_bcast(const char *type, const char *mac, const char *ip, const char *name, const char *interface);
+#endif
+
 /* ipset.c */
 #ifdef HAVE_IPSET
 void ipset_init(void);
@@ -1590,3 +1649,9 @@ int check_source(struct dns_header *header, size_t plen, unsigned char *pseudohe
 /* arp.c */
 int find_mac(union mysockaddr *addr, unsigned char *mac, int lazy, time_t now);
 int do_arp_script_run(void);
+
+/* dump.c */
+#ifdef HAVE_DUMPFILE
+void dump_init(void);
+void dump_packet(int mask, void *packet, size_t len, union mysockaddr *src, union mysockaddr *dst);
+#endif

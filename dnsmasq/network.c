@@ -30,7 +30,7 @@ int indextoname(int fd, int index, char *name)
   if (ioctl(fd, SIOCGIFNAME, &ifr) == -1)
     return 0;
 
-  strncpy(name, ifr.ifr_name, IF_NAMESIZE);
+  safe_strncpy(name, ifr.ifr_name, IF_NAMESIZE);
 
   return 1;
 }
@@ -83,12 +83,12 @@ int indextoname(int fd, int index, char *name)
   for (i = lifc.lifc_len / sizeof(struct lifreq); i; i--, lifrp++)
     {
       struct lifreq lifr;
-      strncpy(lifr.lifr_name, lifrp->lifr_name, IF_NAMESIZE);
+      safe_strncpy(lifr.lifr_name, lifrp->lifr_name, IF_NAMESIZE);
       if (ioctl(fd, SIOCGLIFINDEX, &lifr) < 0)
 	return 0;
 
       if (lifr.lifr_index == index) {
-	strncpy(name, lifr.lifr_name, IF_NAMESIZE);
+	safe_strncpy(name, lifr.lifr_name, IF_NAMESIZE);
 	return 1;
       }
     }
@@ -189,7 +189,7 @@ int loopback_exception(int fd, int family, struct all_addr *addr, char *name)
   struct ifreq ifr;
   struct irec *iface;
 
-  strncpy(ifr.ifr_name, name, IF_NAMESIZE);
+  safe_strncpy(ifr.ifr_name, name, IF_NAMESIZE);
   if (ioctl(fd, SIOCGIFFLAGS, &ifr) != -1 &&
       ifr.ifr_flags & IFF_LOOPBACK)
     {
@@ -1235,6 +1235,7 @@ static struct serverfd *allocate_sfd(union mysockaddr *addr, char *intname)
   struct serverfd *sfd;
   unsigned int ifindex = 0;
   int errsave;
+  int opt = 1;
 
   /* when using random ports, servers which would otherwise use
      the INADDR_ANY/port0 socket have sfd set to NULL */
@@ -1276,19 +1277,21 @@ static struct serverfd *allocate_sfd(union mysockaddr *addr, char *intname)
       return NULL;
     }
 
-  if (!local_bind(sfd->fd, addr, intname, ifindex, 0) || !fix_fd(sfd->fd))
+  if ((addr->sa.sa_family == AF_INET6 && setsockopt(sfd->fd, IPPROTO_IPV6, IPV6_V6ONLY, &opt, sizeof(opt)) == -1) ||
+      !local_bind(sfd->fd, addr, intname, ifindex, 0) || !fix_fd(sfd->fd))
     {
-      errsave = errno; /* save error from bind. */
+      errsave = errno; /* save error from bind/setsockopt. */
       close(sfd->fd);
       free(sfd);
       errno = errsave;
       return NULL;
     }
 
-  strcpy(sfd->interface, intname);
+  safe_strncpy(sfd->interface, intname, sizeof(sfd->interface));
   sfd->source_addr = *addr;
   sfd->next = daemon->sfds;
   sfd->ifindex = ifindex;
+  sfd->preallocated = 0;
   daemon->sfds = sfd;
 
   return sfd;
@@ -1299,6 +1302,7 @@ static struct serverfd *allocate_sfd(union mysockaddr *addr, char *intname)
 void pre_allocate_sfds(void)
 {
   struct server *srv;
+  struct serverfd *sfd;
 
   if (daemon->query_port != 0)
     {
@@ -1310,7 +1314,8 @@ void pre_allocate_sfds(void)
 #ifdef HAVE_SOCKADDR_SA_LEN
       addr.in.sin_len = sizeof(struct sockaddr_in);
 #endif
-      allocate_sfd(&addr, "");
+      if ((sfd = allocate_sfd(&addr, "")))
+	sfd->preallocated = 1;
 #ifdef HAVE_IPV6
       memset(&addr, 0, sizeof(addr));
       addr.in6.sin6_family = AF_INET6;
@@ -1319,7 +1324,8 @@ void pre_allocate_sfds(void)
 #ifdef HAVE_SOCKADDR_SA_LEN
       addr.in6.sin6_len = sizeof(struct sockaddr_in6);
 #endif
-      allocate_sfd(&addr, "");
+      if ((sfd = allocate_sfd(&addr, "")))
+	sfd->preallocated = 1;
 #endif
     }
 
@@ -1453,7 +1459,7 @@ void add_update_server(int flags,
 	serv->flags |= SERV_HAS_DOMAIN;
 
       if (interface)
-	strcpy(serv->interface, interface);
+	safe_strncpy(serv->interface, interface, sizeof(serv->interface));
       if (addr)
 	serv->addr = *addr;
       if (source_addr)
@@ -1473,8 +1479,9 @@ void check_servers(void)
   if (!option_bool(OPT_NOWILD))
     enumerate_interfaces(0);
 
+  /* don't garbage collect pre-allocated sfds. */
   for (sfd = daemon->sfds; sfd; sfd = sfd->next)
-    sfd->used = 0;
+    sfd->used = sfd->preallocated;
 
   for (count = 0, serv = daemon->servers; serv; serv = serv->next)
     {
