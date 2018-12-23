@@ -11,21 +11,14 @@
 #include "FTL.h"
 #include "shmem.h"
 
-sqlite3 *db;
+static sqlite3 *db;
 bool database = false;
 bool DBdeleteoldqueries = false;
 long int lastdbindex = 0;
-long int lastDBimportedtimestamp = 0;
 
-pthread_mutex_t dblock;
-
-// TABLE ftl
-enum { DB_VERSION, DB_LASTTIMESTAMP, DB_FIRSTCOUNTERTIMESTAMP };
-// TABLE counters
-enum { DB_TOTALQUERIES, DB_BLOCKEDQUERIES };
+static pthread_mutex_t dblock;
 
 bool db_set_counter(unsigned int ID, int value);
-bool db_set_FTL_property(unsigned int ID, int value);
 int db_get_FTL_property(unsigned int ID);
 
 void check_database(int rc)
@@ -155,8 +148,8 @@ bool db_create(void)
 	ret = dbquery("CREATE TABLE ftl ( id INTEGER PRIMARY KEY NOT NULL, value BLOB NOT NULL );");
 	if(!ret){ dbclose(); return false; }
 
-	// DB version 2
-	ret = dbquery("INSERT INTO ftl (ID,VALUE) VALUES(%i,2);", DB_VERSION);
+	// Set DB version 1
+	ret = dbquery("INSERT INTO ftl (ID,VALUE) VALUES(%i,1);", DB_VERSION);
 	if(!ret){ dbclose(); return false; }
 
 	// Most recent timestamp initialized to 00:00 1 Jan 1970
@@ -164,7 +157,13 @@ bool db_create(void)
 	if(!ret){ dbclose(); return false; }
 
 	// Create counter table
+	// Will update DB version to 2
 	if(!create_counter_table())
+		return false;
+
+	// Create network table
+	// Will update DB version to 3
+	if(!create_network_table())
 		return false;
 
 	return true;
@@ -203,16 +202,33 @@ void db_init(void)
 		database = false;
 		return;
 	}
-	else if(dbversion < 2)
+	// Update to version 2 if still version 1
+	if(dbversion < 2)
 	{
-		// Database is still in version 1
-		// Update to version 2 and create counters table
+		// Update to version 2: Create counters table
+		logg("Updating long-term database to version 2");
 		if (!create_counter_table())
 		{
 			logg("Counter table not initialized, database not available");
 			database = false;
 			return;
 		}
+		// Get updated version
+		dbversion = db_get_FTL_property(DB_VERSION);
+	}
+	// Update to version 2 if still version 1
+	if(dbversion < 3)
+	{
+		// Update to version 3: Create network table
+		logg("Updating long-term database to version 3");
+		if (!create_network_table())
+		{
+			logg("Network table not initialized, database not available");
+			database = false;
+			return;
+		}
+		// Get updated version
+		dbversion = db_get_FTL_property(DB_VERSION);
 	}
 
 	// Close database to prevent having it opened all time
@@ -406,7 +422,7 @@ void save_to_DB(void)
 	int total = 0, blocked = 0;
 	time_t currenttimestamp = time(NULL);
 	time_t newlasttimestamp = 0;
-	for(i = 0; i < counters->queries; i++)
+	for(i = lastdbindex; i < counters->queries; i++)
 	{
 		validate_access("queries", i, true, __LINE__, __FUNCTION__, __FILE__);
 		if(queries[i].db != 0)
@@ -741,7 +757,6 @@ void read_data_from_DB(void)
 		queries[queryIndex].complete = true; // Mark as all information is avaiable
 		queries[queryIndex].response = 0;
 		queries[queryIndex].AD = false;
-		lastDBimportedtimestamp = queryTimeStamp;
 
 		// Handle type counters
 		if(type >= TYPE_A && type < TYPE_MAX)

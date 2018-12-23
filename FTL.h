@@ -80,6 +80,11 @@ enum { MODE_IP, MODE_NX, MODE_NULL, MODE_IP_NODATA_AAAA, MODE_NODATA };
 enum { REGEX_UNKNOWN, REGEX_BLOCKED, REGEX_NOTBLOCKED };
 enum { BLOCKING_DISABLED, BLOCKING_ENABLED, BLOCKING_UNKNOWN };
 
+// Database table "ftl"
+enum { DB_VERSION, DB_LASTTIMESTAMP, DB_FIRSTCOUNTERTIMESTAMP };
+// Database table "counters"
+enum { DB_TOTALQUERIES, DB_BLOCKEDQUERIES };
+
 // Privacy mode constants
 #define HIDDEN_DOMAIN "hidden"
 #define HIDDEN_CLIENT "0.0.0.0"
@@ -250,7 +255,6 @@ extern long int lastdbindex;
 extern bool travis;
 extern bool DBdeleteoldqueries;
 extern bool rereadgravity;
-extern long int lastDBimportedtimestamp;
 extern bool ipv4telnet, ipv6telnet;
 extern bool istelnet[MAXCONNS];
 
