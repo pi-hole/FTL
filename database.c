@@ -32,6 +32,7 @@ void check_database(int rc)
 	   rc != SQLITE_ROW &&
 	   rc != SQLITE_BUSY)
 	{
+		logg("check_database(%i): Disabling database connection due to error", rc);
 		database = false;
 	}
 }
@@ -196,13 +197,14 @@ void db_init(void)
 
 	// Test DB version and see if we need to upgrade the database file
 	int dbversion = db_get_FTL_property(DB_VERSION);
+	logg("Database version is %i", dbversion);
 	if(dbversion < 1)
 	{
 		logg("Database version incorrect, database not available");
 		database = false;
 		return;
 	}
-	// Update to version 2 if still version 1
+	// Update to version 2 if lower
 	if(dbversion < 2)
 	{
 		// Update to version 2: Create counters table
@@ -216,7 +218,7 @@ void db_init(void)
 		// Get updated version
 		dbversion = db_get_FTL_property(DB_VERSION);
 	}
-	// Update to version 2 if still version 1
+	// Update to version 3 if lower
 	if(dbversion < 3)
 	{
 		// Update to version 3: Create network table
@@ -304,6 +306,46 @@ bool db_update_counters(int total, int blocked)
 	if(!dbquery("UPDATE counters SET value = value + %i WHERE id = %i;", blocked, DB_BLOCKEDQUERIES))
 		return false;
 	return true;
+}
+
+int db_query_int(const char* querystr)
+{
+	// Check if database is enabled
+	if(!database)
+		return -2;
+
+	sqlite3_stmt* stmt;
+	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
+	if( rc ){
+		logg("db_query_int(%s) - SQL error prepare (%i): %s", querystr, rc, sqlite3_errmsg(db));
+		dbclose();
+		check_database(rc);
+		return -2;
+	}
+
+	rc = sqlite3_step(stmt);
+	int result;
+
+	if( rc == SQLITE_ROW )
+	{
+		result = sqlite3_column_int(stmt, 0);
+	}
+	else if( rc == SQLITE_DONE )
+	{
+		// No rows available
+		result = -1;
+	}
+	else
+	{
+		logg("db_query_int(%s) - SQL error step (%i): %s", querystr, rc, sqlite3_errmsg(db));
+		dbclose();
+		check_database(rc);
+		return -2;
+	}
+
+	sqlite3_finalize(stmt);
+
+	return result;
 }
 
 int number_of_queries_in_DB(void)

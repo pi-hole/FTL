@@ -83,10 +83,11 @@ void *DB_thread(void *val);
 int get_number_of_queries_in_DB(void);
 void save_to_DB(void);
 void read_data_from_DB(void);
-
 bool db_set_FTL_property(unsigned int ID, int value);
 bool dbquery(const char *format, ...);
+bool dbopen(void);
 void dbclose(void);
+int db_query_int(const char*);
 
 // memory.c
 void memory_check(int which);
@@ -133,3 +134,4 @@ void addOverTimeClientSlot();
 
 // networktable.c
 bool create_network_table(void);
+void read_arp_cache(void);

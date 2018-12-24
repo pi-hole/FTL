@@ -9,18 +9,20 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
+#define ARPCACHE "/proc/net/arp"
 
 bool create_network_table(void)
 {
 	bool ret;
 	// Create FTL table in the database (holds properties like database version, etc.)
-	ret = dbquery("CREATE TABLE network ( id        INTEGER PRIMARY KEY NOT NULL, \
-	                                      ip        TEXT NOT NULL, \
-	                                      mac       TEXT NOT NULL, \
-	                                      name      TEXT, \
-	                                      firstSeen INTEGER NOT NULL, \
-	                                      lastSeen  INTEGER NOT NULL, \
-	                                      PiholeDNS BOOLEAN NOT NULL );");
+	ret = dbquery("CREATE TABLE network ( id INTEGER PRIMARY KEY NOT NULL, " \
+	                                     "ip TEXT NOT NULL, " \
+	                                     "hwaddr TEXT NOT NULL, " \
+	                                     "interface TEXT NOT NULL, " \
+	                                     "name TEXT, " \
+	                                     "firstSeen INTEGER NOT NULL, " \
+	                                     "lastSeen INTEGER NOT NULL, " \
+	                                     "usesPihole BOOLEAN NOT NULL );");
 	if(!ret){ dbclose(); return false; }
 
 	// Update database version to 3
@@ -28,4 +30,91 @@ bool create_network_table(void)
 	if(!ret){ dbclose(); return false; }
 
 	return true;
+}
+
+// Read kernel's ARP cache using procfs
+void read_arp_cache(void)
+{
+	FILE* arpfp = NULL;
+	// Try to access the kernel's ARP cache
+	if((arpfp = fopen(ARPCACHE, "r")) == NULL)
+	{
+		logg("WARN: Opening of %s failed!", ARPCACHE);
+		logg("      Message: %s", strerror(errno));
+		return;
+	}
+
+	// Open database file
+	if(!dbopen())
+	{
+		logg("read_arp_cache() - Failed to open DB");
+		return;
+	}
+
+	// Prepare buffers
+	char * linebuffer = NULL;
+	size_t linebuffersize = 0;
+	char ip[100], mask[100], hwaddr[100], iface[100];
+	int type, flags, entries = 0;
+	time_t now = time(NULL);
+
+	// Read ARP cache line by line
+	while(getline(&linebuffer, &linebuffersize, arpfp) != -1)
+	{
+		int num = sscanf(linebuffer, "%99s 0x%x 0x%x %99s %99s %99s\n",
+		                 ip, &type, &flags, hwaddr, mask, iface);
+
+		// Skip header and empty lines
+		if (num < 4)
+			continue;
+
+		if (num == 5)
+		{
+			/*
+			* This happens for incomplete ARP entries for which there is
+			* no hardware address in the line. We don't use these
+			*/
+			//num = sscanf(linebuffer, "%s 0x%x 0x%x %99s %99s\n",
+			//             ip, &type, &flags, mask, iface);
+			//hwaddr[0] = '\0';
+		}
+
+		entries++;
+		if(debug) logg("ARP (%i): %i %i %s %s %s <-> %s", num, type, flags, mask, iface, hwaddr, ip);
+
+		// Get ID of this device in our network database. If it cannot be found, then this is a new device
+		char querystr[256];
+		sprintf(querystr, "SELECT id FROM network WHERE ip = \"%s\" AND hwaddr = \"%s\";", ip, hwaddr);
+		int dbID = db_query_int(querystr);
+
+		if(dbID == -2)
+		{
+			// SQLite error
+			break;
+		}
+		else if(dbID == -1)
+		{
+			// Device not in database, add new entry
+			dbquery("INSERT INTO network "\
+			        "(ip,hwaddr,interface,firstSeen,lastSeen,usesPihole) "\
+			        "VALUES "\
+			        "(\"%s\",\"%s\",\"%s\",%lu,%lu,false);",\
+			        ip, hwaddr, iface, now, now);
+		}
+		else
+		{
+			// Device already known, update lastSeen
+			dbquery("UPDATE network "\
+			        "SET lastSeen = %lu "\
+			        "WHERE id = %i;",\
+			        now, dbID);
+		}
+
+	}
+
+	// Close file handle
+	fclose(arpfp);
+
+	// Close database connection
+	dbclose();
 }
