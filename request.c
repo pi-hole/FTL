@@ -26,100 +26,134 @@ void process_request(char *client_message, int *sock)
 	if(command(client_message, ">stats"))
 	{
 		processed = true;
+		lock_shm();
 		getStats(sock);
+		unlock_shm();
 	}
 	else if(command(client_message, ">overTime"))
 	{
 		processed = true;
+		lock_shm();
 		getOverTime(sock);
+		unlock_shm();
 	}
 	else if(command(client_message, ">top-domains") || command(client_message, ">top-ads"))
 	{
 		processed = true;
+		lock_shm();
 		getTopDomains(client_message, sock);
+		unlock_shm();
 	}
 	else if(command(client_message, ">top-clients"))
 	{
 		processed = true;
+		lock_shm();
 		getTopClients(client_message, sock);
+		unlock_shm();
 	}
 	else if(command(client_message, ">forward-dest"))
 	{
 		processed = true;
+		lock_shm();
 		getForwardDestinations(client_message, sock);
+		unlock_shm();
 	}
 	else if(command(client_message, ">forward-names"))
 	{
 		processed = true;
+		lock_shm();
 		getForwardDestinations(">forward-dest unsorted", sock);
+		unlock_shm();
 	}
 	else if(command(client_message, ">querytypes"))
 	{
 		processed = true;
+		lock_shm();
 		getQueryTypes(sock);
+		unlock_shm();
 	}
 	else if(command(client_message, ">getallqueries"))
 	{
 		processed = true;
+		lock_shm();
 		getAllQueries(client_message, sock);
+		unlock_shm();
 	}
 	else if(command(client_message, ">recentBlocked"))
 	{
 		processed = true;
+		lock_shm();
 		getRecentBlocked(client_message, sock);
+		unlock_shm();
 	}
 	else if(command(client_message, ">clientID"))
 	{
 		processed = true;
+		lock_shm();
 		getClientID(sock);
+		unlock_shm();
 	}
 	else if(command(client_message, ">QueryTypesoverTime"))
 	{
 		processed = true;
+		lock_shm();
 		getQueryTypesOverTime(sock);
+		unlock_shm();
 	}
 	else if(command(client_message, ">version"))
 	{
 		processed = true;
+		// No lock required
 		getVersion(sock);
 	}
 	else if(command(client_message, ">dbstats"))
 	{
 		processed = true;
+		// No lock required. Access to the database
+		// is guaranteed to be atomic
 		getDBstats(sock);
 	}
 	else if(command(client_message, ">ClientsoverTime"))
 	{
 		processed = true;
+		lock_shm();
 		getClientsOverTime(sock);
+		unlock_shm();
 	}
 	else if(command(client_message, ">client-names"))
 	{
 		processed = true;
+		lock_shm();
 		getClientNames(sock);
+		unlock_shm();
 	}
 	else if(command(client_message, ">unknown"))
 	{
 		processed = true;
+		lock_shm();
 		getUnknownQueries(sock);
+		unlock_shm();
 	}
 	else if(command(client_message, ">domain"))
 	{
 		processed = true;
+		lock_shm();
 		getDomainDetails(client_message, sock);
+		unlock_shm();
 	}
 	else if(command(client_message, ">cacheinfo"))
 	{
 		processed = true;
+		lock_shm();
 		getCacheInformation(sock);
+		unlock_shm();
 	}
 	else if(command(client_message, ">reresolve"))
 	{
 		processed = true;
 		logg("Received API request to re-resolve host names");
-		// Need to release the thread lock already here to allow
-		// the resolver to process the incoming PTR requests
-		unlock_shm();
+		// Important: Don't obtain a lock for this request
+		//            Locking will be done internally when needed
 		// onlynew=false -> reresolve all host names
 		resolveClients(false);
 		resolveForwardDestinations(false);
@@ -129,8 +163,10 @@ void process_request(char *client_message, int *sock)
 	{
 		processed = true;
 		logg("Received API request to recompile regex");
+		lock_shm();
 		free_regex();
 		read_regex_from_file();
+		unlock_shm();
 	}
 	else if(command(client_message, ">arp"))
 	{
