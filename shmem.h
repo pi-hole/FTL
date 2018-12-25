@@ -41,11 +41,11 @@ bool realloc_shm(SharedMemory *sharedMemory, size_t size);
 void delete_shm(SharedMemory *sharedMemory);
 
 /// Block until a lock can be obtained
-#define lock_shm() _lock_shm(__FUNCTION__, __LINE__);
-void _lock_shm(const char* func, const int line);
+#define lock_shm() _lock_shm(__FUNCTION__, __LINE__, __FILE__);
+void _lock_shm(const char* func, const int line, const char* file);
 
 /// Unlock the lock. Only call this if there is an active lock.
-#define unlock_shm() _unlock_shm(__FUNCTION__, __LINE__);
-void _unlock_shm(const char* func, const int line);
+#define unlock_shm() _unlock_shm(__FUNCTION__, __LINE__, __FILE__);
+void _unlock_shm(const char* func, const int line, const char* file);
 
 #endif //SHARED_MEMORY_SERVER_H
