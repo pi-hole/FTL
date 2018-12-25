@@ -22,8 +22,7 @@ bool create_network_table(void)
 	                                     "interface TEXT NOT NULL, " \
 	                                     "name TEXT, " \
 	                                     "firstSeen INTEGER NOT NULL, " \
-	                                     "lastSeen INTEGER NOT NULL, " \
-	                                     "usesPihole BOOLEAN NOT NULL );");
+	                                     "lastQuery INTEGER NOT NULL);");
 	if(!ret){ dbclose(); return false; }
 
 	// Update database version to 3
@@ -72,9 +71,6 @@ void parse_arp_cache(void)
 		if (num < 4)
 			continue;
 
-		entries++;
-		if(debug) logg("ARP (%i): %i %i %s %s %s <-> %s", num, type, flags, mask, iface, hwaddr, ip);
-
 		// Get ID of this device in our network database. If it cannot be found, then this is a new device
 		char querystr[256];
 		sprintf(querystr, "SELECT id FROM network WHERE ip = \"%s\" AND hwaddr = \"%s\";", ip, hwaddr);
@@ -97,35 +93,34 @@ void parse_arp_cache(void)
 
 		char *hostname = NULL;
 		if(clientKnown)
+		{
+			validate_access("clients", clientID, true, __LINE__, __FUNCTION__, __FILE__);
 			hostname = getstr(clients[clientID].namepos);
+		}
 
 		if(dbID == -1)
 		{
 			// Device not in database, add new entry
 			dbquery("INSERT INTO network "\
-			        "(ip,hwaddr,interface,firstSeen,lastSeen,usesPihole,name) "\
+			        "(ip,hwaddr,interface,firstSeen,lastQuery,name) "\
 			        "VALUES "\
-			        "(\"%s\",\"%s\",\"%s\",%lu, %lu, %s, \"%s\");",\
-			        ip, hwaddr, iface, now, now,
-			        clientKnown ? "true" : "false",
+			        "(\"%s\",\"%s\",\"%s\",%lu, 0, \"%s\");",\
+			        ip, hwaddr, iface, now,
 			        hostname == NULL ? "" : hostname);
 		}
-		else
+		else if(clientKnown)
 		{
 			// Start collecting database commands
 			dbquery("BEGIN TRANSACTION");
 
-			// Update lastSeen
+			// Update lastQuery, only use new value if larger
+			// clients[clientID].lastQuery may be zero if this
+			// client is only known from a database entry but has
+			// not been seen since then
 			dbquery("UPDATE network "\
-			        "SET lastSeen = %lu "\
+			        "SET lastQuery = MAX(lastQuery, %ld) "\
 			        "WHERE id = %i;",\
-			        now, dbID);
-
-			// Store if device uses Pi-hole
-			dbquery("UPDATE network "\
-			        "SET usesPihole = %s "\
-			        "WHERE id = %i;",\
-			        clientKnown ? "true" : "false", dbID);
+			        clients[clientID].lastQuery, dbID);
 
 			// Store hostname if available
 			if(hostname != NULL && strlen(hostname) > 0)
@@ -140,9 +135,10 @@ void parse_arp_cache(void)
 			// Actually update the database
 			dbquery("COMMIT");
 		}
+		entries++;
 	}
 
-	if(debug) logg("ARP table processing took %.1ems",timer_elapsed_msec(ARP_TIMER));
+	if(debug) logg("ARP table processing (%i entries) took %.1f ms", entries, timer_elapsed_msec(ARP_TIMER));
 
 	// Close file handle
 	fclose(arpfp);

@@ -187,6 +187,7 @@ typedef struct {
 	unsigned long long ippos;
 	unsigned long long namepos;
 	bool new;
+	time_t lastQuery;
 } clientsDataStruct;
 
 typedef struct {

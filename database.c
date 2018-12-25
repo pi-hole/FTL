@@ -708,7 +708,7 @@ void read_data_from_DB(void)
 	while((rc = sqlite3_step(stmt)) == SQLITE_ROW)
 	{
 		sqlite3_int64 dbid = sqlite3_column_int64(stmt, 0);
-		int queryTimeStamp = sqlite3_column_int(stmt, 1);
+		time_t queryTimeStamp = sqlite3_column_int(stmt, 1);
 		// 1483228800 = 01/01/2017 @ 12:00am (UTC)
 		if(queryTimeStamp < 1483228800)
 		{
@@ -791,6 +791,7 @@ void read_data_from_DB(void)
 		// Store this query in memory
 		validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 		validate_access("queries", queryIndex, false, __LINE__, __FUNCTION__, __FILE__);
+		validate_access("clients", clientID, true, __LINE__, __FUNCTION__, __FILE__);
 		queries[queryIndex].magic = MAGICBYTE;
 		queries[queryIndex].timestamp = queryTimeStamp;
 		queries[queryIndex].type = type;
@@ -804,6 +805,9 @@ void read_data_from_DB(void)
 		queries[queryIndex].complete = true; // Mark as all information is avaiable
 		queries[queryIndex].response = 0;
 		queries[queryIndex].AD = false;
+
+		// Update lastQuery of corresponding client
+		clients[clientID].lastQuery = queryTimeStamp;
 
 		// Handle type counters
 		if(type >= TYPE_A && type < TYPE_MAX)

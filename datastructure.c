@@ -222,6 +222,8 @@ int findClientID(const char *client, bool addNew)
 	// to be done separately to be non-blocking
 	clients[clientID].new = true;
 	clients[clientID].namepos = 0;
+	// No query seen so far
+	clients[clientID].lastQuery = 0;
 	// Increase counter by one
 	counters->clients++;
 
