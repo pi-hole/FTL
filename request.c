@@ -168,11 +168,6 @@ void process_request(char *client_message, int *sock)
 		read_regex_from_file();
 		unlock_shm();
 	}
-	else if(command(client_message, ">arp"))
-	{
-		processed = true;
-		read_arp_cache();
-	}
 
 	// Test only at the end if we want to quit or kill
 	// so things can be processed before

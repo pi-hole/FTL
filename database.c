@@ -656,6 +656,9 @@ void *DB_thread(void *val)
 				delete_old_queries_in_DB();
 				DBdeleteoldqueries = false;
 			}
+
+			// Parse ARP cache (fill network table)
+			parse_arp_cache();
 		}
 		sleepms(100);
 	}

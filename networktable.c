@@ -9,6 +9,7 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
+#include "shmem.h"
 #define ARPCACHE "/proc/net/arp"
 
 bool create_network_table(void)
@@ -33,7 +34,7 @@ bool create_network_table(void)
 }
 
 // Read kernel's ARP cache using procfs
-void read_arp_cache(void)
+void parse_arp_cache(void)
 {
 	FILE* arpfp = NULL;
 	// Try to access the kernel's ARP cache
@@ -50,6 +51,9 @@ void read_arp_cache(void)
 		logg("read_arp_cache() - Failed to open DB");
 		return;
 	}
+
+	// Start ARP timer
+	if(debug) timer_start(ARP_TIMER);
 
 	// Prepare buffers
 	char * linebuffer = NULL;
@@ -86,51 +90,59 @@ void read_arp_cache(void)
 		// is known to pihole-FTL
 		// false = do not create a new record if the client is
 		//         unknown (only DNS requesting clients do this)
+		lock_shm();
 		int clientID = findClientID(ip, false);
+		unlock_shm();
 		bool clientKnown = clientID >= 0;
+
+		char *hostname = NULL;
+		if(clientKnown)
+			hostname = getstr(clients[clientID].namepos);
 
 		if(dbID == -1)
 		{
 			// Device not in database, add new entry
 			dbquery("INSERT INTO network "\
-			        "(ip,hwaddr,interface,firstSeen,lastSeen,usesPihole) "\
+			        "(ip,hwaddr,interface,firstSeen,lastSeen,usesPihole,name) "\
 			        "VALUES "\
-			        "(\"%s\",\"%s\",\"%s\",%lu,%lu,%s);",\
+			        "(\"%s\",\"%s\",\"%s\",%lu, %lu, %s, \"%s\");",\
 			        ip, hwaddr, iface, now, now,
-			        clientKnown ? "true" : "false");
+			        clientKnown ? "true" : "false",
+			        hostname == NULL ? "" : hostname);
 		}
 		else
 		{
-			// Device already in database, update lastSeen
+			// Start collecting database commands
+			dbquery("BEGIN TRANSACTION");
+
+			// Update lastSeen
 			dbquery("UPDATE network "\
 			        "SET lastSeen = %lu "\
 			        "WHERE id = %i;",\
 			        now, dbID);
 
 			// Store if device uses Pi-hole
-			if(clientKnown)
-			{
-				// Device uses Pi-hole, update record
-				dbquery("UPDATE network "\
-				        "SET usesPihole = true "\
-				        "WHERE id = %i;",\
-				        dbID);
-			}
-		}
-
-		char *hostname = NULL;
-		if(clientKnown)
-			hostname = getstr(clients[clientID].namepos);
-		if(hostname != NULL && strlen(hostname) > 0)
-		{
-			// Store host name
 			dbquery("UPDATE network "\
-			        "SET name = \"%s\" "\
+			        "SET usesPihole = %s "\
 			        "WHERE id = %i;",\
-			        hostname, dbID);
-		}
+			        clientKnown ? "true" : "false", dbID);
 
+			// Store hostname if available
+			if(hostname != NULL && strlen(hostname) > 0)
+			{
+				// Store host name
+				dbquery("UPDATE network "\
+				        "SET name = \"%s\" "\
+				        "WHERE id = %i;",\
+				        hostname, dbID);
+			}
+
+			// Actually update the database
+			dbquery("COMMIT");
+		}
 	}
+
+	if(debug) logg("ARP table processing took %.1ems",timer_elapsed_msec(ARP_TIMER));
 
 	// Close file handle
 	fclose(arpfp);

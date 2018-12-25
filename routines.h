@@ -134,4 +134,4 @@ void addOverTimeClientSlot();
 
 // networktable.c
 bool create_network_table(void);
-void read_arp_cache(void);
+void parse_arp_cache(void);
