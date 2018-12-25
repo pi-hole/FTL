@@ -29,7 +29,7 @@ void strtolower(char *str);
 int findOverTimeID(int overTimetimestamp);
 int findForwardID(const char * forward, bool count);
 int findDomainID(const char *domain);
-int findClientID(const char *client);
+int findClientID(const char *client, bool addNew);
 bool isValidIPv4(const char *addr);
 bool isValidIPv6(const char *addr);
 char *getDomainString(int queryID);

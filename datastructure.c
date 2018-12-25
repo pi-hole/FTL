@@ -176,7 +176,7 @@ int findDomainID(const char *domain)
 	return domainID;
 }
 
-int findClientID(const char *client)
+int findClientID(const char *client, bool addNew)
 {
 	int i;
 	// Compare content of client against known client IP addresses
@@ -195,6 +195,10 @@ int findClientID(const char *client)
 			return i;
 		}
 	}
+
+	// Return -1 (= not found) if addNew is false
+	if(!addNew)
+		return -1;
 
 	// If we did not return until here, then this client is definitely new
 	// Store ID

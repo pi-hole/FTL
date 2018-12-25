@@ -88,6 +88,8 @@ bool dbquery(const char *format, ...)
 		return false;
 	}
 
+	if(debug) logg("dbquery: %s", query);
+
 	int rc = sqlite3_exec(db, query, NULL, NULL, &zErrMsg);
 
 	if( rc != SQLITE_OK ){
@@ -775,7 +777,7 @@ void read_data_from_DB(void)
 		int overTimeTimeStamp = queryTimeStamp - (queryTimeStamp % 600) + 300;
 		int timeidx = findOverTimeID(overTimeTimeStamp);
 		int domainID = findDomainID(domain);
-		int clientID = findClientID(client);
+		int clientID = findClientID(client, true);
 
 		// Ensure we have enough space in the queries struct
 		memory_check(QUERIES);

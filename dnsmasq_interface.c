@@ -137,7 +137,7 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	int domainID = findDomainID(domain);
 
 	// Go through already knows clients and see if it is one of them
-	int clientID = findClientID(client);
+	int clientID = findClientID(client, true);
 
 	// Save everything
 	validate_access("queries", queryID, false, __LINE__, __FUNCTION__, __FILE__);

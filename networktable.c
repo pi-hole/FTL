@@ -68,17 +68,6 @@ void read_arp_cache(void)
 		if (num < 4)
 			continue;
 
-		if (num == 5)
-		{
-			/*
-			* This happens for incomplete ARP entries for which there is
-			* no hardware address in the line. We don't use these
-			*/
-			//num = sscanf(linebuffer, "%s 0x%x 0x%x %99s %99s\n",
-			//             ip, &type, &flags, mask, iface);
-			//hwaddr[0] = '\0';
-		}
-
 		entries++;
 		if(debug) logg("ARP (%i): %i %i %s %s %s <-> %s", num, type, flags, mask, iface, hwaddr, ip);
 
@@ -92,22 +81,53 @@ void read_arp_cache(void)
 			// SQLite error
 			break;
 		}
-		else if(dbID == -1)
+
+		// If we reach this point, we can check if this client
+		// is known to pihole-FTL
+		// false = do not create a new record if the client is
+		//         unknown (only DNS requesting clients do this)
+		int clientID = findClientID(ip, false);
+		bool clientKnown = clientID >= 0;
+
+		if(dbID == -1)
 		{
 			// Device not in database, add new entry
 			dbquery("INSERT INTO network "\
 			        "(ip,hwaddr,interface,firstSeen,lastSeen,usesPihole) "\
 			        "VALUES "\
-			        "(\"%s\",\"%s\",\"%s\",%lu,%lu,false);",\
-			        ip, hwaddr, iface, now, now);
+			        "(\"%s\",\"%s\",\"%s\",%lu,%lu,%s);",\
+			        ip, hwaddr, iface, now, now,
+			        clientKnown ? "true" : "false");
 		}
 		else
 		{
-			// Device already known, update lastSeen
+			// Device already in database, update lastSeen
 			dbquery("UPDATE network "\
 			        "SET lastSeen = %lu "\
 			        "WHERE id = %i;",\
 			        now, dbID);
+
+			// Store if device uses Pi-hole
+			if(clientKnown)
+			{
+				// Device uses Pi-hole, update record
+				dbquery("UPDATE network "\
+				        "SET usesPihole = true "\
+				        "WHERE id = %i;",\
+				        dbID);
+			}
+		}
+
+		char *hostname = NULL;
+		if(clientKnown)
+			hostname = getstr(clients[clientID].namepos);
+		if(hostname != NULL && strlen(hostname) > 0)
+		{
+			// Store host name
+			dbquery("UPDATE network "\
+			        "SET name = \"%s\" "\
+			        "WHERE id = %i;",\
+			        hostname, dbID);
 		}
 
 	}
