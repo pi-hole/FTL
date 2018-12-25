@@ -155,11 +155,15 @@ pthread_mutex_t create_mutex() {
 	return lock;
 }
 
-void lock_shm() {
+void _lock_shm(const char* function, const int line) {
 	// Signal that FTL is waiting for a lock
 	shmLock->waitingForLock = true;
 
+	if(debug) logg("Waiting for lock in %s():%i", function, line);
+
 	int result = pthread_mutex_lock(&shmLock->lock);
+
+	if(debug) logg("Obtained lock for %s():%i", function, line);
 
 	// Turn off the waiting for lock signal to notify everyone who was
 	// deferring to FTL that they can jump in the lock queue.
@@ -175,8 +179,10 @@ void lock_shm() {
 		logg("Failed to obtain SHM lock: %s", strerror(result));
 }
 
-void unlock_shm() {
+void _unlock_shm(const char* function, const int line) {
 	int result = pthread_mutex_unlock(&shmLock->lock);
+
+	if(debug) logg("Removed lock in %s():%i", function, line);
 
 	if(result != 0)
 		logg("Failed to unlock SHM lock: %s", strerror(result));
