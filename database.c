@@ -252,43 +252,20 @@ void db_init(void)
 
 int db_get_FTL_property(unsigned int ID)
 {
-	int rc, ret = 0;
-	sqlite3_stmt* dbstmt;
-	char *querystring = NULL;
-
 	// Prepare SQL statement
-	ret = asprintf(&querystring, "SELECT VALUE FROM ftl WHERE id = %u;",ID);
+	char* querystr = NULL;
+	int ret = asprintf(&querystr, "SELECT VALUE FROM ftl WHERE id = %u;", ID);
 
-	if(querystring == NULL || ret < 0)
+	if(querystr == NULL || ret < 0)
 	{
-		logg("Memory allocation failed in db_get_FTL_property, not saving query with ID = %u (%i)", ID, ret);
+		logg("Memory allocation failed in db_get_FTL_property with ID = %u (%i)", ID, ret);
 		return false;
 	}
 
-	rc = sqlite3_prepare(db, querystring, -1, &dbstmt, NULL);
-	if( rc ){
-		logg("db_get_FTL_property() - SQL error prepare (%i): %s", rc, sqlite3_errmsg(db));
-		logg("Query: \"%s\"", querystring);
-		dbclose();
-		check_database(rc);
-		return -1;
-	}
-	free(querystring);
+	int value = db_query_int(querystr);
+	free(querystr);
 
-	// Evaluate SQL statement
-	rc = sqlite3_step(dbstmt);
-	if( rc != SQLITE_ROW ){
-		logg("db_get_FTL_property() - SQL error step (%i): %s", rc, sqlite3_errmsg(db));
-		dbclose();
-		check_database(rc);
-		return -1;
-	}
-
-	int result = sqlite3_column_int(dbstmt, 0);
-
-	sqlite3_finalize(dbstmt);
-
-	return result;
+	return value;
 }
 
 bool db_set_FTL_property(unsigned int ID, int value)
