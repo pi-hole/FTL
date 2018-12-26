@@ -149,6 +149,7 @@ typedef struct {
 	bool regex_debugmode;
 	bool analyze_only_A_AAAA;
 	bool DBimport;
+	bool parse_arp_cache;
 } ConfigStruct;
 
 // Dynamic structs

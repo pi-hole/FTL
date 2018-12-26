@@ -630,8 +630,9 @@ void *DB_thread(void *val)
 				DBdeleteoldqueries = false;
 			}
 
-			// Parse ARP cache (fill network table)
-			parse_arp_cache();
+			// Parse ARP cache (fill network table) if enabled
+			if (config.parse_arp_cache)
+				parse_arp_cache();
 		}
 		sleepms(100);
 	}

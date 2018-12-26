@@ -319,6 +319,19 @@ void read_FTLconf(void)
 	// AUDITLISTFILE
 	getpath(fp, "AUDITLISTFILE", "/etc/pihole/auditlog.list", &files.auditlist);
 
+	// PARSE_ARP_CACHE
+	// defaults to: Yes
+	config.parse_arp_cache = true;
+	buffer = parse_FTLconf(fp, "PARSE_ARP_CACHE");
+
+	if(buffer != NULL && strcasecmp(buffer, "false") == 0)
+		config.parse_arp_cache = false;
+
+	if(config.parse_arp_cache)
+		logg("   PARSE_ARP_CACHE: Active");
+	else
+		logg("   PARSE_ARP_CACHE: Inactive");
+
 	logg("Finished config file parsing");
 
 	// Release memory
