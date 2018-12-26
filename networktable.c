@@ -87,13 +87,13 @@ void parse_arp_cache(void)
 		// such as this SELECT command will be executed immediately on the database.
 		char* querystr = NULL;
 		int ret = asprintf(&querystr, "SELECT id FROM network WHERE ip = \"%s\" AND hwaddr = \"%s\";", ip, hwaddr);
-
 		if(querystr == NULL || ret < 0)
 		{
 			logg("Memory allocation failed in parse_arp_cache (%i)", ret);
 			break;
 		}
 
+		// Perform SQL query
 		int dbID = db_query_int(querystr);
 		free(querystr);
 
@@ -110,8 +110,12 @@ void parse_arp_cache(void)
 		lock_shm();
 		int clientID = findClientID(ip, false);
 		unlock_shm();
+
+		// This client is known (by its IP address) to pihole-FTL if
+		// findClientID() returned a non-negative index
 		bool clientKnown = clientID >= 0;
 
+		// Get hostname of this client if the client is known
 		char *hostname = NULL;
 		if(clientKnown)
 		{
@@ -119,17 +123,17 @@ void parse_arp_cache(void)
 			hostname = getstr(clients[clientID].namepos);
 		}
 
+		// Device not in database, add new entry
 		if(dbID == -1)
 		{
-			// Device not in database, add new entry
 			dbquery("INSERT INTO network "\
 			        "(ip,hwaddr,interface,firstSeen,lastQuery,name) "\
-			        "VALUES "\
-			        "(\"%s\",\"%s\",\"%s\",%lu, %lu, \"%s\");",\
+			        "VALUES (\"%s\",\"%s\",\"%s\",%lu, %ld, \"%s\");",\
 			        ip, hwaddr, iface, now,
 			        clientKnown ? clients[clientID].lastQuery : 0L,
 			        hostname == NULL ? "" : hostname);
 		}
+		// Device in database AND client known to Pi-hole
 		else if(clientKnown)
 		{
 			// Update lastQuery, only use new value if larger
@@ -151,12 +155,17 @@ void parse_arp_cache(void)
 				        hostname, dbID);
 			}
 		}
+		// else:
+		// Device in database but not known to Pi-hole: No action required
+
+		// Count number of processed ARP cache entries
 		entries++;
 	}
 
 	// Actually update the database
 	dbquery("COMMIT");
 
+	// Debug logging
 	if(debug) logg("ARP table processing (%i entries) took %.1f ms", entries, timer_elapsed_msec(ARP_TIMER));
 
 	// Close file handle
