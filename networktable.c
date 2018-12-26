@@ -61,6 +61,9 @@ void parse_arp_cache(void)
 	int type, flags, entries = 0;
 	time_t now = time(NULL);
 
+	// Start collecting database commands
+	dbquery("BEGIN TRANSACTION");
+
 	// Read ARP cache line by line
 	while(getline(&linebuffer, &linebuffersize, arpfp) != -1)
 	{
@@ -71,10 +74,28 @@ void parse_arp_cache(void)
 		if (num < 4)
 			continue;
 
+		// Skip incomplete entires, i.e., entries without C (complete) flag
+		if(!(flags & 0x02))
+			continue;
+
 		// Get ID of this device in our network database. If it cannot be found, then this is a new device
-		char querystr[256];
-		sprintf(querystr, "SELECT id FROM network WHERE ip = \"%s\" AND hwaddr = \"%s\";", ip, hwaddr);
+		// We match both IP *and* MAC address
+		// Same MAC, two IPs: Non-deterministic DHCP server, treat as two entries
+		// Same IP, two MACs: Either non-deterministic DHCP server or (almost) full DHCP address pool
+		// We can run this SELECT inside the currently active transaction as only the
+		// changed to the database are collected for latter commitment. Read-only access
+		// such as this SELECT command will be executed immediately on the database.
+		char* querystr = NULL;
+		int ret = asprintf(&querystr, "SELECT id FROM network WHERE ip = \"%s\" AND hwaddr = \"%s\";", ip, hwaddr);
+
+		if(querystr == NULL || ret < 0)
+		{
+			logg("Memory allocation failed in parse_arp_cache (%i)", ret);
+			break;
+		}
+
 		int dbID = db_query_int(querystr);
+		free(querystr);
 
 		if(dbID == -2)
 		{
@@ -110,9 +131,6 @@ void parse_arp_cache(void)
 		}
 		else if(clientKnown)
 		{
-			// Start collecting database commands
-			dbquery("BEGIN TRANSACTION");
-
 			// Update lastQuery, only use new value if larger
 			// clients[clientID].lastQuery may be zero if this
 			// client is only known from a database entry but has
@@ -131,12 +149,12 @@ void parse_arp_cache(void)
 				        "WHERE id = %i;",\
 				        hostname, dbID);
 			}
-
-			// Actually update the database
-			dbquery("COMMIT");
 		}
 		entries++;
 	}
+
+	// Actually update the database
+	dbquery("COMMIT");
 
 	if(debug) logg("ARP table processing (%i entries) took %.1f ms", entries, timer_elapsed_msec(ARP_TIMER));
 
