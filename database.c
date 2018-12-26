@@ -259,7 +259,7 @@ int db_get_FTL_property(unsigned int ID)
 	if(querystr == NULL || ret < 0)
 	{
 		logg("Memory allocation failed in db_get_FTL_property with ID = %u (%i)", ID, ret);
-		return false;
+		return -2;
 	}
 
 	int value = db_query_int(querystr);
@@ -289,10 +289,6 @@ bool db_update_counters(int total, int blocked)
 
 int db_query_int(const char* querystr)
 {
-	// Check if database is enabled
-	if(!database)
-		return -2;
-
 	sqlite3_stmt* stmt;
 	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 	if( rc ){

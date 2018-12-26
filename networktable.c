@@ -125,8 +125,9 @@ void parse_arp_cache(void)
 			dbquery("INSERT INTO network "\
 			        "(ip,hwaddr,interface,firstSeen,lastQuery,name) "\
 			        "VALUES "\
-			        "(\"%s\",\"%s\",\"%s\",%lu, 0, \"%s\");",\
+			        "(\"%s\",\"%s\",\"%s\",%lu, %lu, \"%s\");",\
 			        ip, hwaddr, iface, now,
+			        clientKnown ? clients[clientID].lastQuery : 0L,
 			        hostname == NULL ? "" : hostname);
 		}
 		else if(clientKnown)
