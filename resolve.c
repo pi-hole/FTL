@@ -85,11 +85,19 @@ void resolveClients(bool onlynew)
 		if(onlynew && !clients[clientID].new)
 			continue;
 
+		// Lock data when obtaining IP of this client
 		lock_shm();
+		const char* ipaddr = getstr(clients[clientID].ippos);
+		unlock_shm();
 
-		clients[clientID].namepos = addstr(resolveHostname(getstr(clients[clientID].ippos)));
+		// Important: Don't hold a lock while resolving as the main thread
+		// (dnsmasq) needs to be operable during the call to resolveHostname()
+		const char* hostname = resolveHostname(ipaddr);
+
+		// Finally, lock data when storing obtained hostname
+		lock_shm();
+		clients[clientID].namepos = addstr(hostname);
 		clients[clientID].new = false;
-
 		unlock_shm();
 	}
 }
@@ -108,11 +116,20 @@ void resolveForwardDestinations(bool onlynew)
 		if(onlynew && !forwarded[forwardID].new)
 			continue;
 
+		// Lock data when obtaining IP of this forward destination
 		lock_shm();
+		const char* ipaddr = getstr(forwarded[forwardID].ippos);
+		unlock_shm();
 
-		forwarded[forwardID].namepos = addstr(resolveHostname(getstr(forwarded[forwardID].ippos)));
+
+		// Important: Don't hold a lock while resolving as the main thread
+		// (dnsmasq) needs to be operable during the call to resolveHostname()
+		const char* hostname = resolveHostname(ipaddr);
+
+		// Finally, lock data when storing obtained hostname
+		lock_shm();
+		forwarded[forwardID].namepos = addstr(hostname);
 		forwarded[forwardID].new = false;
-
 		unlock_shm();
 	}
 }
