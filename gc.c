@@ -51,7 +51,6 @@ void *GC_thread(void *val)
 				if(queries[i].timestamp > mintime)
 					break;
 
-
 				// Adjust total counters and total over time data
 				// We cannot edit counters->queries directly as it is used
 				// as max ID for the queries[] struct

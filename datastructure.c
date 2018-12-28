@@ -176,7 +176,7 @@ int findDomainID(const char *domain)
 	return domainID;
 }
 
-int findClientID(const char *client, bool addNew)
+int findClientID(const char *client, bool count)
 {
 	int i;
 	// Compare content of client against known client IP addresses
@@ -191,14 +191,16 @@ int findClientID(const char *client, bool addNew)
 		// If so, compare the full IP using strcmp
 		if(strcmp(getstr(clients[i].ippos), client) == 0)
 		{
-			clients[i].count++;
+			// Add one if count == true (do not add one, e.g., during ARP table processing)
+			if(count) clients[i].count++;
 			return i;
 		}
 	}
 
-	// Return -1 (= not found) if addNew is false
-	if(!addNew)
+	// Return -1 (= not found) if count is false ...
+	if(!count)
 		return -1;
+	// ... otherwise proceed with adding a new client entry
 
 	// If we did not return until here, then this client is definitely new
 	// Store ID
