@@ -776,12 +776,13 @@ void read_data_from_DB(void)
 		queries[queryIndex].timeidx = timeidx;
 		queries[queryIndex].db = dbid;
 		queries[queryIndex].id = 0;
-		queries[queryIndex].complete = true; // Mark as all information is avaiable
+		queries[queryIndex].complete = true; // Mark as all information is available
 		queries[queryIndex].response = 0;
 		queries[queryIndex].AD = false;
 
-		// Update lastQuery of corresponding client
+		// Set lastQuery timer and add one query for network table
 		clients[clientID].lastQuery = queryTimeStamp;
+		clients[clientID].numQueriesARP++;
 
 		// Handle type counters
 		if(type >= TYPE_A && type < TYPE_MAX)

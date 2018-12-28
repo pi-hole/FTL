@@ -189,6 +189,7 @@ typedef struct {
 	unsigned long long namepos;
 	bool new;
 	time_t lastQuery;
+	unsigned int numQueriesARP;
 } clientsDataStruct;
 
 typedef struct {

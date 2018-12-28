@@ -22,7 +22,8 @@ bool create_network_table(void)
 	                                     "interface TEXT NOT NULL, " \
 	                                     "name TEXT, " \
 	                                     "firstSeen INTEGER NOT NULL, " \
-	                                     "lastQuery INTEGER NOT NULL);");
+	                                     "lastQuery INTEGER NOT NULL, " \
+	                                     "numQueries INTEGER NOT NULL);");
 	if(!ret){ dbclose(); return false; }
 
 	// Update database version to 3
@@ -127,16 +128,17 @@ void parse_arp_cache(void)
 		if(dbID == -1)
 		{
 			dbquery("INSERT INTO network "\
-			        "(ip,hwaddr,interface,firstSeen,lastQuery,name) "\
-			        "VALUES (\"%s\",\"%s\",\"%s\",%lu, %ld, \"%s\");",\
+			        "(ip,hwaddr,interface,firstSeen,lastQuery,numQueries,name) "\
+			        "VALUES (\"%s\",\"%s\",\"%s\",%lu, %ld, %u, \"%s\");",\
 			        ip, hwaddr, iface, now,
 			        clientKnown ? clients[clientID].lastQuery : 0L,
+			        clientKnown ? clients[clientID].numQueriesARP : 0u,
 			        hostname == NULL ? "" : hostname);
 		}
 		// Device in database AND client known to Pi-hole
 		else if(clientKnown)
 		{
-			// Update lastQuery, only use new value if larger
+			// Update lastQuery. Only use new value if larger
 			// clients[clientID].lastQuery may be zero if this
 			// client is only known from a database entry but has
 			// not been seen since then
@@ -144,6 +146,14 @@ void parse_arp_cache(void)
 			        "SET lastQuery = MAX(lastQuery, %ld) "\
 			        "WHERE id = %i;",\
 			        clients[clientID].lastQuery, dbID);
+
+			// Update numQueries. Add queries seen since last update
+			// and reset counter afterwards
+			dbquery("UPDATE network "\
+			        "SET numQueries = numQueries + %u "\
+			        "WHERE id = %i;",\
+			        clients[clientID].numQueriesARP, dbID);
+			clients[clientID].numQueriesARP = 0;
 
 			// Store hostname if available
 			if(hostname != NULL && strlen(hostname) > 0)
