@@ -241,7 +241,7 @@ char* getMACVendor(const char* hwaddr)
 		// Need to use sprintf(%s) to convert unsigned char* to
 		// standard C string literals (which are char*)
 		if(asprintf(&vendor, "%s", result) < 1)
-			logg("getMACVendor(%s) - Allocation error 2");
+			logg("getMACVendor(%s) - Allocation error 2", hwaddr);
 	}
 	else if(rc == SQLITE_DONE)
 	{
@@ -259,4 +259,79 @@ char* getMACVendor(const char* hwaddr)
 	sqlite3_close(macdb);
 
 	return vendor;
+}
+
+void updateMACVendorRecords()
+{
+	struct stat st;
+	if(stat(FTLfiles.macvendordb, &st) != 0)
+	{
+		// File does not exist or MAC address is incomplete
+		if(debug) logg("updateMACVendorRecords(): %s does not exist", FTLfiles.macvendordb);
+		return;
+	}
+
+	sqlite3 *db;
+	int rc = sqlite3_open_v2(FTLfiles.db, &db, SQLITE_OPEN_READWRITE, NULL);
+	if( rc ){
+		logg("updateMACVendorRecords() - SQL error (%i): %s", rc, sqlite3_errmsg(db));
+		sqlite3_close(db);
+		return;
+	}
+
+	sqlite3_stmt* stmt;
+	const char* querystr = "SELECT id,hwaddr FROM network;";
+	rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
+	if( rc ){
+		logg("updateMACVendorRecords() - SQL error prepare (%s, %i): %s", querystr, rc, sqlite3_errmsg(db));
+		sqlite3_close(db);
+		return;
+	}
+
+	while((rc = sqlite3_step(stmt)) == SQLITE_ROW)
+	{
+		const int id = sqlite3_column_int(stmt, 0);
+		const unsigned char *hwaddr = sqlite3_column_text(stmt, 1);
+		// Need to use sprintf(%s) to convert unsigned char* to
+		// standard C string literals (which are char*)
+		char *querystr = NULL;
+		if(asprintf(&querystr, "%s", hwaddr) < 1)
+		{
+			logg("updateMACVendorRecords() - Allocation error 1");
+			break;
+		}
+
+		// Get vendor for MAC
+		char* vendor = getMACVendor(querystr);
+		free(querystr);
+
+		// Prepare UPDATE statement
+		if(asprintf(&querystr, "UPDATE network SET macVendor = \"%s\" WHERE id = %i", vendor, id) < 1)
+		{
+			logg("updateMACVendorRecords() - Allocation error 2");
+			break;
+		}
+
+		// Execute prepared statement
+		char *zErrMsg = NULL;
+		rc = sqlite3_exec(db, querystr, NULL, NULL, &zErrMsg);
+		if( rc != SQLITE_OK ){
+			logg("updateMACVendorRecords() - SQL exec error: %s (%i): %s", querystr, rc, zErrMsg);
+			sqlite3_free(zErrMsg);
+			break;
+		}
+
+		// Free allocated memory
+		free(querystr);
+		if(strlen(vendor) > 0)
+			free(vendor);
+	}
+	if(rc != SQLITE_DONE)
+	{
+		// Error
+		logg("updateMACVendorRecords() - SQL error step (%i): %s", rc, sqlite3_errmsg(db));
+	}
+
+	sqlite3_finalize(stmt);
+	sqlite3_close(db);
 }
