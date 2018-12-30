@@ -98,6 +98,7 @@ typedef struct {
 	char* port;
 	char* db;
 	char* socketfile;
+	char* macvendordb;
 } FTLFileNamesStruct;
 
 typedef struct {

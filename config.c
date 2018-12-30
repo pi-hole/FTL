@@ -319,6 +319,9 @@ void read_FTLconf(void)
 	// AUDITLISTFILE
 	getpath(fp, "AUDITLISTFILE", "/etc/pihole/auditlog.list", &files.auditlist);
 
+	// MACVENDORDB
+	getpath(fp, "MACVENDORDB", "/etc/pihole/macvendor.db", &FTLfiles.macvendordb);
+
 	// PARSE_ARP_CACHE
 	// defaults to: Yes
 	config.parse_arp_cache = true;

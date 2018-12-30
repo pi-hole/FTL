@@ -12,6 +12,9 @@
 #include "shmem.h"
 #define ARPCACHE "/proc/net/arp"
 
+// Private prototypes
+char* getMACVendor(const char* hwaddr);
+
 bool create_network_table(void)
 {
 	bool ret;
@@ -23,7 +26,8 @@ bool create_network_table(void)
 	                                     "name TEXT, " \
 	                                     "firstSeen INTEGER NOT NULL, " \
 	                                     "lastQuery INTEGER NOT NULL, " \
-	                                     "numQueries INTEGER NOT NULL);");
+	                                     "numQueries INTEGER NOT NULL," \
+	                                     "macVendor TEXT);");
 	if(!ret){ dbclose(); return false; }
 
 	// Update database version to 3
@@ -127,13 +131,17 @@ void parse_arp_cache(void)
 		// Device not in database, add new entry
 		if(dbID == -1)
 		{
+			char* macVendor = getMACVendor(hwaddr);
 			dbquery("INSERT INTO network "\
-			        "(ip,hwaddr,interface,firstSeen,lastQuery,numQueries,name) "\
-			        "VALUES (\"%s\",\"%s\",\"%s\",%lu, %ld, %u, \"%s\");",\
+			        "(ip,hwaddr,interface,firstSeen,lastQuery,numQueries,name,macVendor) "\
+			        "VALUES (\"%s\",\"%s\",\"%s\",%lu, %ld, %u, \"%s\", \"%s\");",\
 			        ip, hwaddr, iface, now,
 			        clientKnown ? clients[clientID].lastQuery : 0L,
 			        clientKnown ? clients[clientID].numQueriesARP : 0u,
-			        hostname == NULL ? "" : hostname);
+			        hostname == NULL ? "" : hostname,
+			        macVendor);
+			if(strlen(macVendor) > 0)
+				free(macVendor);
 		}
 		// Device in database AND client known to Pi-hole
 		else if(clientKnown)
@@ -183,4 +191,72 @@ void parse_arp_cache(void)
 
 	// Close database connection
 	dbclose();
+}
+
+char* getMACVendor(const char* hwaddr)
+{
+	struct stat st;
+	if(stat(FTLfiles.macvendordb, &st) != 0 || strlen(hwaddr) != 17)
+	{
+		// File does not exist or MAC address is incomplete
+		if(debug) logg("getMACVenor(%s): %s does not exist or MAC invalid (length %lu)", hwaddr, FTLfiles.macvendordb, strlen(hwaddr));
+		return "";
+	}
+
+	sqlite3 *macdb;
+	int rc = sqlite3_open_v2(FTLfiles.macvendordb, &macdb, SQLITE_OPEN_READONLY, NULL);
+	if( rc ){
+		logg("getMACVendor(%s) - SQL error (%i): %s", hwaddr, rc, sqlite3_errmsg(macdb));
+		sqlite3_close(macdb);
+		return "";
+	}
+
+	char *querystr = NULL;
+	// Only keep "XX:YY:ZZ" (8 characters)
+	char * hwaddrshort = strdup(hwaddr);
+	hwaddrshort[8] = '\0';
+	rc = asprintf(&querystr, "SELECT vendor FROM macvendor WHERE mac LIKE \"%s\";", hwaddrshort);
+	if(rc < 1)
+	{
+		logg("getMACVendor(%s) - Allocation error (%i)", hwaddr, rc);
+		sqlite3_close(macdb);
+		return "";
+	}
+	free(hwaddrshort);
+
+	sqlite3_stmt* stmt;
+	rc = sqlite3_prepare_v2(macdb, querystr, -1, &stmt, NULL);
+	if( rc ){
+		logg("getMACVendor(%s) - SQL error prepare (%s, %i): %s", hwaddr, querystr, rc, sqlite3_errmsg(macdb));
+		sqlite3_close(macdb);
+		return "";
+	}
+	free(querystr);
+
+	char *vendor = NULL;
+	rc = sqlite3_step(stmt);
+	if(rc == SQLITE_ROW)
+	{
+		const unsigned char *result = sqlite3_column_text(stmt, 0);
+		// Need to use sprintf(%s) to convert unsigned char* to
+		// standard C string literals (which are char*)
+		if(asprintf(&vendor, "%s", result) < 1)
+			logg("getMACVendor(%s) - Allocation error 2");
+	}
+	else if(rc == SQLITE_DONE)
+	{
+		// Not found
+		vendor = "";
+	}
+	else
+	{
+		// Error
+		logg("getMACVendor(%s) - SQL error step (%i): %s", hwaddr, rc, sqlite3_errmsg(macdb));
+		vendor = "";
+	}
+
+	sqlite3_finalize(stmt);
+	sqlite3_close(macdb);
+
+	return vendor;
 }
