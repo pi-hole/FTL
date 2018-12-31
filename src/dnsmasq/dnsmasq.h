@@ -283,12 +283,8 @@ struct all_addr {
     struct in6_addr addr6;
     /* for log_query */
     struct {
-      unsigned short keytag, algo, digest;
+      unsigned short keytag, algo, digest, rcode;
     } log;
-    /* for log_query */
-    struct {
-      unsigned int rcode;
-    } rcode;
     /* for cache_insert of DNSKEY, DS */
     struct {
       unsigned short class, type;

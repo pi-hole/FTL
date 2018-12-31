@@ -680,7 +680,7 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
   if (rcode != NOERROR && rcode != NXDOMAIN)
     {
       struct all_addr a;
-      a.addr.rcode.rcode = rcode;
+      a.addr.log.rcode = rcode;
       FTL_upstream_error(rcode, daemon->log_display_id);
       log_query(F_UPSTREAM | F_RCODE, "error", &a, NULL);
       

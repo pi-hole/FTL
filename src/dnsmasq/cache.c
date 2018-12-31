@@ -1946,7 +1946,7 @@ void log_query(unsigned int flags, char *name, struct all_addr *addr, char *arg)
 	sprintf(daemon->addrbuff, arg, addr->addr.log.keytag, addr->addr.log.algo, addr->addr.log.digest);
       else if (flags & F_RCODE)
 	{
-	  unsigned int rcode = addr->addr.rcode.rcode;
+	  unsigned int rcode = addr->addr.log.rcode;
 
 	   if (rcode == SERVFAIL)
 	     dest = "SERVFAIL";
