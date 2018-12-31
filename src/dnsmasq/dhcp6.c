@@ -431,8 +431,15 @@ struct dhcp_context *address6_allocate(struct dhcp_context *context,  unsigned c
       else
 	{ 
 	  if (!temp_addr && option_bool(OPT_CONSEC_ADDR))
-	    /* seed is largest extant lease addr in this context */
-	    start = lease_find_max_addr6(c) + serial;
+	    {
+	      /* seed is largest extant lease addr in this context,
+		 skip addresses equal to the number of addresses rejected
+		 by clients. This should avoid the same client being offered the same
+		 address after it has rjected it. */
+	      start = lease_find_max_addr6(c) + serial + c->addr_epoch;
+	      if (c->addr_epoch)
+		c->addr_epoch--;
+	    }
 	  else
 	    {
 	      u64 range = 1 + addr6part(&c->end6) - addr6part(&c->start6);
