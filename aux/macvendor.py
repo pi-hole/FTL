@@ -1,0 +1,69 @@
+# Pi-hole: A black hole for Internet advertisements
+# (c) 2019 Pi-hole, LLC (https://pi-hole.net)
+# Network-wide ad blocking via your own hardware.
+#
+# FTL Engine - auxiliary files
+# MAC -> Vendor database generator
+#
+# This is a python3 script
+#
+# This file is copyright under the latest version of the EUPL.
+# Please see LICENSE file for your rights under this license.
+
+import os, re, urllib.request, sqlite3
+import unicodecsv as unicodecsv
+
+# Download raw data from Wireshark's website
+# We use the official URL recommended in the header of this file
+print("Downloading...")
+urllib.request.urlretrieve("https://code.wireshark.org/review/gitweb?p=wireshark.git;a=blob_plain;f=manuf", "manuf.data")
+print("...done")
+
+# Read file into memory and process lines
+file = open("manuf.data", "r")
+data = []
+print("Processing...")
+for line in file:
+	line = line.strip()
+
+	# Skip comments and empty lines
+	if line[:1] == "#" or line == "":
+		continue
+	# \s = Unicode whitespace characters, including [ \t\n\r\f\v]
+	cols = re.split("\s\s+|\t", line)
+	# Use try/except chain to catch empty/incomplete lines without failing hard
+	try:
+		# Strip whitespace and quotation marks (some entries are incomplete and cause errors with the CSV parser otherwise)
+		mac = cols[0].strip().strip("\"")
+	except:
+		continue
+	try:
+		desc_short = cols[1].strip().strip("\"")
+	except:
+		desc_short = ""
+	try:
+		desc_long = cols[2].strip().strip("\"")
+	except:
+		desc_long = ""
+
+	# Only add long description where available
+	# There are a few vendors for which only the
+	# short description field is used
+	if(len(desc_long) > 0):
+		data.append([mac, desc_long])
+	else:
+		data.append([mac, desc_short])
+print("...done")
+file.close()
+
+# Create database
+database = "macvendor.db"
+os.remove(database)
+print("Generating database...")
+con = sqlite3.connect(database)
+cur = con.cursor()
+cur.execute("CREATE TABLE macvendor (mac TEXT NOT NULL, vendor TEXT NOT NULL, PRIMARY KEY (mac))")
+cur.executemany("INSERT INTO macvendor (mac, vendor) VALUES (?, ?);", data)
+con.commit()
+print("...done.")
+print("Lines inserted into database:", cur.rowcount)
