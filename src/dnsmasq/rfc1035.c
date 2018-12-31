@@ -702,7 +702,7 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 			  goto cname_loop;
 			}
 		      
-		      cache_insert(name, &addr, now, cttl, name_encoding | secflag | F_REVERSE);
+		      cache_insert(name, &addr, C_IN, now, cttl, name_encoding | secflag | F_REVERSE);
 		      found = 1; 
 		    }
 		  
@@ -720,7 +720,7 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 		  ttl = find_soa(header, qlen, NULL, doctored);
 		}
 	      if (ttl)
-		cache_insert(NULL, &addr, now, ttl, name_encoding | F_REVERSE | F_NEG | flags | (secure ?  F_DNSSECOK : 0));	
+		cache_insert(NULL, &addr, C_IN, now, ttl, name_encoding | F_REVERSE | F_NEG | flags | (secure ?  F_DNSSECOK : 0));	
 	    }
 	}
       else
@@ -774,7 +774,7 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 		    {
 		      if (!cname_count--)
 			return 0; /* looped CNAMES */
-		      newc = cache_insert(name, NULL, now, attl, F_CNAME | F_FORWARD | secflag);
+		      newc = cache_insert(name, NULL, C_IN, now, attl, F_CNAME | F_FORWARD | secflag);
 		      if (newc)
 			{
 			  newc->addr.cname.target.cache = NULL;
@@ -834,7 +834,7 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 			}
 #endif
 		      
-		      newc = cache_insert(name, &addr, now, attl, flags | F_FORWARD | secflag);
+		      newc = cache_insert(name, &addr, C_IN, now, attl, flags | F_FORWARD | secflag);
 		      if (newc && cpp)
 			{
 			  next_uid(newc);
@@ -861,7 +861,7 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 		 pointing at this, inherit its TTL */
 	      if (ttl || cpp)
 		{
-		  newc = cache_insert(name, NULL, now, ttl ? ttl : cttl, F_FORWARD | F_NEG | flags | (secure ? F_DNSSECOK : 0));	
+		  newc = cache_insert(name, NULL, C_IN, now, ttl ? ttl : cttl, F_FORWARD | F_NEG | flags | (secure ? F_DNSSECOK : 0));	
 		  if (newc && cpp)
 		    {
 		      next_uid(newc);
@@ -1055,7 +1055,7 @@ int check_for_bogus_wildcard(struct dns_header *header, size_t qlen, char *name,
 		/* Found a bogus address. Insert that info here, since there no SOA record
 		   to get the ttl from in the normal processing */
 		cache_start_insert();
-		cache_insert(name, NULL, now, ttl, F_IPV4 | F_FORWARD | F_NEG | F_NXDOMAIN);
+		cache_insert(name, NULL, C_IN, now, ttl, F_IPV4 | F_FORWARD | F_NEG | F_NXDOMAIN);
 		cache_end_insert();
 		
 		return 1;

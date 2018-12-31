@@ -27,7 +27,7 @@ static union bigname *big_free = NULL;
 static int bignames_left, hash_size;
 
 static void make_non_terminals(struct crec *source);
-static struct crec *really_insert(char *name, struct all_addr *addr, 
+static struct crec *really_insert(char *name, struct all_addr *addr, unsigned short class,
 				  time_t now,  unsigned long ttl, unsigned short flags);
 
 /* type->string mapping: this is also used by the name-hash function as a mixing table. */
@@ -331,8 +331,8 @@ static int is_expired(time_t now, struct crec *crecp)
   return 1;
 }
 
-static struct crec *cache_scan_free(char *name, struct all_addr *addr, time_t now, unsigned short flags,
-				    struct crec **target_crec, unsigned int *target_uid)
+static struct crec *cache_scan_free(char *name, struct all_addr *addr, unsigned short class, time_t now,
+				    unsigned short flags, struct crec **target_crec, unsigned int *target_uid)
 {
   /* Scan and remove old entries.
      If (flags & F_FORWARD) then remove any forward entries for name and any expired
@@ -351,6 +351,8 @@ static struct crec *cache_scan_free(char *name, struct all_addr *addr, time_t no
      This entry will get re-used with the same name, to preserve CNAMEs. */
  
   struct crec *crecp, **up;
+
+  (void)class;
   
   if (flags & F_FORWARD)
     {
@@ -382,7 +384,7 @@ static struct crec *cache_scan_free(char *name, struct all_addr *addr, time_t no
 	      
 #ifdef HAVE_DNSSEC
 	      /* Deletion has to be class-sensitive for DS and DNSKEY */
-	      if ((flags & crecp->flags & (F_DNSKEY | F_DS)) && crecp->uid == addr->addr.dnssec.class)
+	      if ((flags & crecp->flags & (F_DNSKEY | F_DS)) && crecp->uid == class)
 		{
 		  if (crecp->flags & F_CONFIG)
 		    return crecp;
@@ -465,7 +467,7 @@ void cache_start_insert(void)
   insert_error = 0;
 }
 
-struct crec *cache_insert(char *name, struct all_addr *addr, 
+struct crec *cache_insert(char *name, struct all_addr *addr, unsigned short class,
 			  time_t now,  unsigned long ttl, unsigned short flags)
 {
   /* Don't log DNSSEC records here, done elsewhere */
@@ -480,11 +482,11 @@ struct crec *cache_insert(char *name, struct all_addr *addr,
       FTL_reply(flags, name, addr, daemon->log_display_id);
     }
   
-  return really_insert(name, addr, now, ttl, flags);
+  return really_insert(name, addr, class, now, ttl, flags);
 }
 
 
-static struct crec *really_insert(char *name, struct all_addr *addr, 
+static struct crec *really_insert(char *name, struct all_addr *addr, unsigned short class,
 				  time_t now,  unsigned long ttl, unsigned short flags)
 {
   struct crec *new, *target_crec = NULL;
@@ -499,7 +501,7 @@ static struct crec *really_insert(char *name, struct all_addr *addr,
   
   /* First remove any expired entries and entries for the name/address we
      are currently inserting. */
-  if ((new = cache_scan_free(name, addr, now, flags, &target_crec, &target_uid)))
+  if ((new = cache_scan_free(name, addr, class, now, flags, &target_crec, &target_uid)))
     {
       /* We're trying to insert a record over one from 
 	 /etc/hosts or DHCP, or other config. If the 
@@ -555,21 +557,14 @@ static struct crec *really_insert(char *name, struct all_addr *addr,
       
       if (freed_all)
 	{
-	  struct all_addr free_addr = new->addr.addr;;
-	  
-#ifdef HAVE_DNSSEC
-	  /* For DNSSEC records, addr holds class. */
-	  if (new->flags & (F_DS | F_DNSKEY))
-	    free_addr.addr.dnssec.class = new->uid;
-#endif
-	  
+	  /* For DNSSEC records, uid holds class. */
 	  free_avail = 1; /* Must be free space now. */
-	  cache_scan_free(cache_get_name(new), &free_addr, now, new->flags, NULL, NULL);
+	  cache_scan_free(cache_get_name(new), &new->addr.addr, new->uid, now, new->flags, NULL, NULL);
 	  daemon->metrics[METRIC_DNS_CACHE_LIVE_FREED]++;
 	}
       else
 	{
-	  cache_scan_free(NULL, NULL, now, 0, NULL, NULL);
+	  cache_scan_free(NULL, NULL, class, now, 0, NULL, NULL);
 	  freed_all = 1;
 	}
     }
@@ -617,15 +612,13 @@ static struct crec *really_insert(char *name, struct all_addr *addr,
   else
     *cache_get_name(new) = 0;
 
-  if (addr)
-    {
 #ifdef HAVE_DNSSEC
-      if (flags & (F_DS | F_DNSKEY))
-	new->uid = addr->addr.dnssec.class;
-      else
+  if (flags & (F_DS | F_DNSKEY))
+    new->uid = class;
 #endif
-	new->addr.addr = *addr;	
-    }
+
+  if (addr)
+    new->addr.addr = *addr;	
 
   new->ttd = now + (time_t)ttl;
   new->next = new_chain;
@@ -749,11 +742,11 @@ int cache_recv_insert(time_t now, int fd)
 	{
 	  if (!read_write(fd, (unsigned char *)&addr, sizeof(addr), 1))
 	    return 0;
-	  crecp = really_insert(daemon->namebuff, &addr, now, ttl, flags);
+	  crecp = really_insert(daemon->namebuff, &addr, C_IN, now, ttl, flags);
 	}
       else if (flags & F_CNAME)
 	{
-	  struct crec *newc = really_insert(daemon->namebuff, NULL, now, ttl, flags);
+	  struct crec *newc = really_insert(daemon->namebuff, NULL, C_IN, now, ttl, flags);
 	  /* This relies on the fact the the target of a CNAME immediately preceeds
 	     it because of the order of extraction in extract_addresses, and
 	     the order reversal on the new_chain. */
@@ -782,10 +775,8 @@ int cache_recv_insert(time_t now, int fd)
 	  
 	  if (!read_write(fd, (unsigned char *)&class, sizeof(class), 1))
 	    return 0;
-	  /* Cache needs to known class for DNSSEC stuff */
-	  addr.addr.dnssec.class = class;
-
-	  crecp = really_insert(daemon->namebuff, &addr, now, ttl, flags);
+	 
+	  crecp = really_insert(daemon->namebuff, NULL, class, now, ttl, flags);
 	    
 	  if (flags & F_DNSKEY)
 	    {
@@ -1469,7 +1460,7 @@ void cache_add_dhcp_entry(char *host_name, int prot,
 	}
       else if (!(crec->flags & F_DHCP))
 	{
-	  cache_scan_free(host_name, NULL, 0, crec->flags & (flags | F_CNAME | F_FORWARD), NULL, NULL);
+	  cache_scan_free(host_name, NULL, C_IN, 0, crec->flags & (flags | F_CNAME | F_FORWARD), NULL, NULL);
 	  /* scan_free deletes all addresses associated with name */
 	  break;
 	}
@@ -1496,7 +1487,7 @@ void cache_add_dhcp_entry(char *host_name, int prot,
       if (crec->flags & F_NEG)
 	{
 	  flags |= F_REVERSE;
-	  cache_scan_free(NULL, (struct all_addr *)host_address, 0, flags, NULL, NULL);
+	  cache_scan_free(NULL, (struct all_addr *)host_address, C_IN, 0, flags, NULL, NULL);
 	}
     }
   else

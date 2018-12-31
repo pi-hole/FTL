@@ -798,12 +798,9 @@ int dnssec_validate_by_ds(time_t now, struct dns_header *header, size_t plen, ch
 		  algo = *p++;
 		  keytag = dnskey_keytag(algo, flags, p, rdlen - 4);
 		  
-		  /* Cache needs to known class for DNSSEC stuff */
-		  a.addr.dnssec.class = class;
-		  
 		  if ((key = blockdata_alloc((char*)p, rdlen - 4)))
 		    {
-		      if (!(recp1 = cache_insert(name, &a, now, ttl, F_FORWARD | F_DNSKEY | F_DNSSECOK)))
+		      if (!(recp1 = cache_insert(name, &a, class, now, ttl, F_FORWARD | F_DNSKEY | F_DNSSECOK)))
 			{
 			  blockdata_free(key);
 			  return STAT_BOGUS;
@@ -927,12 +924,9 @@ int dnssec_validate_ds(time_t now, struct dns_header *header, size_t plen, char 
 	      algo = *p++;
 	      digest = *p++;
 	      
-	      /* Cache needs to known class for DNSSEC stuff */
-	      a.addr.dnssec.class = class;
-	      
 	      if ((key = blockdata_alloc((char*)p, rdlen - 4)))
 		{
-		  if (!(crecp = cache_insert(name, &a, now, ttl, F_FORWARD | F_DS | F_DNSSECOK)))
+		  if (!(crecp = cache_insert(name, NULL, class, now, ttl, F_FORWARD | F_DS | F_DNSSECOK)))
 		    {
 		      blockdata_free(key);
 		      return STAT_BOGUS;
@@ -1021,8 +1015,7 @@ int dnssec_validate_ds(time_t now, struct dns_header *header, size_t plen, char 
 	{
 	  cache_start_insert();
 	  
-	  a.addr.dnssec.class = class;
-	  if (!cache_insert(name, &a, now, ttl, flags))
+	  if (!cache_insert(name, NULL, class, now, ttl, flags))
 	    return STAT_BOGUS;
 	  
 	  cache_end_insert();  

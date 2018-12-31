@@ -1162,7 +1162,7 @@ struct crec *cache_find_by_name(struct crec *crecp,
 void cache_end_insert(void);
 void cache_start_insert(void);
 int cache_recv_insert(time_t now, int fd);
-struct crec *cache_insert(char *name, struct all_addr *addr,
+struct crec *cache_insert(char *name, struct all_addr *addr, unsigned short class, 
 			  time_t now, unsigned long ttl, unsigned short flags);
 void cache_reload(void);
 void cache_add_dhcp_entry(char *host_name, int prot, struct all_addr *host_address, time_t ttd);
