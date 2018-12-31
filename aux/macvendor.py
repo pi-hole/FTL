@@ -58,7 +58,13 @@ file.close()
 
 # Create database
 database = "macvendor.db"
-os.remove(database)
+
+# Try to delete old database file, pass if no old file exists
+try:
+	os.remove(database)
+except OSError:
+	pass
+
 print("Generating database...")
 con = sqlite3.connect(database)
 cur = con.cursor()
@@ -66,4 +72,7 @@ cur.execute("CREATE TABLE macvendor (mac TEXT NOT NULL, vendor TEXT NOT NULL, PR
 cur.executemany("INSERT INTO macvendor (mac, vendor) VALUES (?, ?);", data)
 con.commit()
 print("...done.")
+print("Optimizing database...")
+con.execute("VACUUM")
+print("...done")
 print("Lines inserted into database:", cur.rowcount)
