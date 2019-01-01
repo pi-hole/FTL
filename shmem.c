@@ -55,6 +55,11 @@ unsigned long long addstr(const char *str)
 	// Get string length
 	size_t len = strlen(str);
 
+	// If this is an empty string, use the one at position zero
+	if(len == 0) {
+		return 0;
+	}
+
 	if(debug) logg("Adding \"%s\" (len %i) to buffer. next_pos is %i", str, len, next_pos);
 
 	// Reserve additional memory if necessary
