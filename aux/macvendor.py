@@ -29,6 +29,9 @@ for line in file:
 	# Skip comments and empty lines
 	if line[:1] == "#" or line == "":
 		continue
+
+	# Remove quotation marks as these might interfere with later INSERT / UPDATE commands
+	line = re.sub("\'|\"","", line)
 	# \s = Unicode whitespace characters, including [ \t\n\r\f\v]
 	cols = re.split("\s\s+|\t", line)
 	# Use try/except chain to catch empty/incomplete lines without failing hard
