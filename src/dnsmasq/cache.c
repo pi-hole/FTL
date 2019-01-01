@@ -203,9 +203,9 @@ static void cache_hash(struct crec *crecp)
 static void cache_blockdata_free(struct crec *crecp)
 {
   if (crecp->flags & F_DNSKEY)
-    blockdata_free(crecp->addr.key.keydata);
+    blockdata_free(crecp->addr.addr.addr.key.keydata);
   else if ((crecp->flags & F_DS) && !(crecp->flags & F_NEG))
-    blockdata_free(crecp->addr.ds.keydata);
+    blockdata_free(crecp->addr.addr.addr.ds.keydata);
 }
 #endif
 
@@ -661,33 +661,22 @@ void cache_end_insert(void)
 	      read_write(daemon->pipe_to_parent, (unsigned char *)&new_chain->ttd, sizeof(new_chain->ttd), 0);
 	      read_write(daemon->pipe_to_parent, (unsigned  char *)&flags, sizeof(flags), 0);
 
-	      if (flags & (F_IPV4 | F_IPV6))
+	      if (flags & (F_IPV4 | F_IPV6 | F_DNSKEY | F_DS))
 		read_write(daemon->pipe_to_parent, (unsigned char *)&new_chain->addr, sizeof(new_chain->addr), 0);
 #ifdef HAVE_DNSSEC
-	      else if (flags & F_DNSKEY)
+	      if (flags & F_DNSKEY)
 		{
 		  read_write(daemon->pipe_to_parent, (unsigned char *)&class, sizeof(class), 0);
-		  read_write(daemon->pipe_to_parent, (unsigned char *)&new_chain->addr.key.algo, sizeof(new_chain->addr.key.algo), 0);
-		  read_write(daemon->pipe_to_parent, (unsigned char *)&new_chain->addr.key.keytag, sizeof(new_chain->addr.key.keytag), 0);
-		  read_write(daemon->pipe_to_parent, (unsigned char *)&new_chain->addr.key.flags, sizeof(new_chain->addr.key.flags), 0);
-		  read_write(daemon->pipe_to_parent, (unsigned char *)&new_chain->addr.key.keylen, sizeof(new_chain->addr.key.keylen), 0);
-		  blockdata_write(new_chain->addr.key.keydata, new_chain->addr.key.keylen, daemon->pipe_to_parent);
+		  blockdata_write(new_chain->addr.addr.addr.key.keydata, new_chain->addr.addr.addr.key.keylen, daemon->pipe_to_parent);
 		}
 	      else if (flags & F_DS)
 		{
 		  read_write(daemon->pipe_to_parent, (unsigned char *)&class, sizeof(class), 0);
 		  /* A negative DS entry is possible and has no data, obviously. */
 		  if (!(flags & F_NEG))
-		    {
-		      read_write(daemon->pipe_to_parent, (unsigned char *)&new_chain->addr.ds.algo, sizeof(new_chain->addr.ds.algo), 0);
-		      read_write(daemon->pipe_to_parent, (unsigned char *)&new_chain->addr.ds.keytag, sizeof(new_chain->addr.ds.keytag), 0);
-		      read_write(daemon->pipe_to_parent, (unsigned char *)&new_chain->addr.ds.digest, sizeof(new_chain->addr.ds.digest), 0);
-		      read_write(daemon->pipe_to_parent, (unsigned char *)&new_chain->addr.ds.keylen, sizeof(new_chain->addr.ds.keylen), 0);
-		      blockdata_write(new_chain->addr.ds.keydata, new_chain->addr.ds.keylen, daemon->pipe_to_parent);
-		    }
+		    blockdata_write(new_chain->addr.addr.addr.ds.keydata, new_chain->addr.addr.addr.ds.keylen, daemon->pipe_to_parent);
 		}
 #endif
-	      
 	    }
 	}
       
@@ -738,11 +727,30 @@ int cache_recv_insert(time_t now, int fd)
 
       ttl = difftime(ttd, now);
       
-      if (flags & (F_IPV4 | F_IPV6))
+      if (flags & (F_IPV4 | F_IPV6 | F_DNSKEY | F_DS))
 	{
+	  unsigned short class = C_IN;
+
 	  if (!read_write(fd, (unsigned char *)&addr, sizeof(addr), 1))
 	    return 0;
-	  crecp = really_insert(daemon->namebuff, &addr, C_IN, now, ttl, flags);
+	  
+#ifdef HAVE_DNSSEC
+	   if (flags & F_DNSKEY)
+	     {
+	       if (!read_write(fd, (unsigned char *)&class, sizeof(class), 1) ||
+		   !(addr.addr.key.keydata = blockdata_read(fd, addr.addr.key.keylen)))
+		 return 0;
+	     }
+	   else  if (flags & F_DS)
+	     {
+	        if (!read_write(fd, (unsigned char *)&class, sizeof(class), 1) ||
+		   (flags & F_NEG) ||
+		    !(addr.addr.key.keydata = blockdata_read(fd, addr.addr.key.keylen)))
+		  return 0;
+	     }
+#endif
+	       
+	  crecp = really_insert(daemon->namebuff, &addr, class, now, ttl, flags);
 	}
       else if (flags & F_CNAME)
 	{
@@ -766,58 +774,6 @@ int cache_recv_insert(time_t now, int fd)
 		}
 	    }
 	}
-#ifdef HAVE_DNSSEC
-      else if (flags & (F_DNSKEY | F_DS))
-	{
-	  unsigned short class, keylen, keyflags, keytag;
-	  unsigned char algo, digest;
-	  struct blockdata *keydata;
-	  
-	  if (!read_write(fd, (unsigned char *)&class, sizeof(class), 1))
-	    return 0;
-	 
-	  crecp = really_insert(daemon->namebuff, NULL, class, now, ttl, flags);
-	    
-	  if (flags & F_DNSKEY)
-	    {
-	      if (!read_write(fd, (unsigned char *)&algo, sizeof(algo), 1) ||
-		  !read_write(fd, (unsigned char *)&keytag, sizeof(keytag), 1) ||
-		  !read_write(fd, (unsigned char *)&keyflags, sizeof(keyflags), 1) ||
-		  !read_write(fd, (unsigned char *)&keylen, sizeof(keylen), 1) ||
-		  !(keydata = blockdata_read(fd, keylen)))
-		return 0;
-	    }
-	  else if (!(flags & F_NEG))
-	    {
-	      if (!read_write(fd, (unsigned char *)&algo, sizeof(algo), 1) ||
-		  !read_write(fd, (unsigned char *)&keytag, sizeof(keytag), 1) ||
-		  !read_write(fd, (unsigned char *)&digest, sizeof(digest), 1) ||
-		  !read_write(fd, (unsigned char *)&keylen, sizeof(keylen), 1) ||
-		  !(keydata = blockdata_read(fd, keylen)))
-		return 0;
-	    }
-
-	  if (crecp)
-	    {
-	       if (flags & F_DNSKEY)
-		 {
-		   crecp->addr.key.algo = algo;
-		   crecp->addr.key.keytag = keytag;
-		   crecp->addr.key.flags = flags;
-		   crecp->addr.key.keylen = keylen;
-		   crecp->addr.key.keydata = keydata;
-		 }
-	       else if (!(flags & F_NEG))
-		 {
-		   crecp->addr.ds.algo = algo;
-		   crecp->addr.ds.keytag = keytag;
-		   crecp->addr.ds.digest = digest;
-		   crecp->addr.ds.keylen = keylen;
-		   crecp->addr.ds.keydata = keydata;
-		 }
-	    }
-	}
-#endif
     }
 }
 	
@@ -1292,15 +1248,15 @@ void cache_reload(void)
 #ifdef HAVE_DNSSEC
   for (ds = daemon->ds; ds; ds = ds->next)
     if ((cache = whine_malloc(SIZEOF_POINTER_CREC)) &&
-	(cache->addr.ds.keydata = blockdata_alloc(ds->digest, ds->digestlen)))
+	(cache->addr.addr.addr.ds.keydata = blockdata_alloc(ds->digest, ds->digestlen)))
       {
 	cache->flags = F_FORWARD | F_IMMORTAL | F_DS | F_CONFIG | F_NAMEP;
 	cache->ttd = daemon->local_ttl;
 	cache->name.namep = ds->name;
-	cache->addr.ds.keylen = ds->digestlen;
-	cache->addr.ds.algo = ds->algo;
-	cache->addr.ds.keytag = ds->keytag;
-	cache->addr.ds.digest = ds->digest_type;
+	cache->addr.addr.addr.ds.keylen = ds->digestlen;
+	cache->addr.addr.addr.ds.algo = ds->algo;
+	cache->addr.addr.addr.ds.keytag = ds->keytag;
+	cache->addr.addr.addr.ds.digest = ds->digest_type;
 	cache->uid = ds->class;
 	cache_hash(cache);
 	make_non_terminals(cache);
@@ -1787,12 +1743,12 @@ void dump_cache(time_t now)
 	    else if (cache->flags & F_DS)
 	      {
 		if (!(cache->flags & F_NEG))
-		  sprintf(a, "%5u %3u %3u", cache->addr.ds.keytag,
-			  cache->addr.ds.algo, cache->addr.ds.digest);
+		  sprintf(a, "%5u %3u %3u", cache->addr.addr.addr.ds.keytag,
+			  cache->addr.addr.addr.ds.algo, cache->addr.addr.addr.ds.digest);
 	      }
 	    else if (cache->flags & F_DNSKEY)
-	      sprintf(a, "%5u %3u %3u", cache->addr.key.keytag,
-		      cache->addr.key.algo, cache->addr.key.flags);
+	      sprintf(a, "%5u %3u %3u", cache->addr.addr.addr.key.keytag,
+		      cache->addr.addr.addr.key.algo, cache->addr.addr.addr.key.flags);
 #endif
 	    else if (!(cache->flags & F_NEG) || !(cache->flags & F_FORWARD))
 	      { 

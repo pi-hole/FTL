@@ -281,14 +281,21 @@ struct all_addr {
   union {
     struct in_addr addr4;
     struct in6_addr addr6;
+    struct {
+      struct blockdata *keydata;
+      unsigned short keylen, flags, keytag;
+      unsigned char algo;
+    } key; 
+    struct {
+      struct blockdata *keydata;
+      unsigned short keylen, keytag;
+      unsigned char algo;
+      unsigned char digest; 
+    } ds;
     /* for log_query */
     struct {
       unsigned short keytag, algo, digest, rcode;
     } log;
-    /* for cache_insert of DNSKEY, DS */
-    struct {
-      unsigned short class, type;
-    } dnssec;      
   } addr;
 };
 
@@ -421,17 +428,6 @@ struct crec {
       } target;
       unsigned int uid; /* 0 if union is interface-name */
     } cname;
-    struct {
-      struct blockdata *keydata;
-      unsigned short keylen, flags, keytag;
-      unsigned char algo;
-    } key; 
-    struct {
-      struct blockdata *keydata;
-      unsigned short keylen, keytag;
-      unsigned char algo;
-      unsigned char digest; 
-    } ds; 
   } addr;
   time_t ttd; /* time to die */
   /* used as class if DNSKEY/DS, index to source for F_HOSTS */
