@@ -2120,7 +2120,7 @@ void relay_upstream6(struct dhcp_relay *relay, ssize_t sz,
 {
   /* ->local is same value for all relays on ->current chain */
   
-  struct all_addr from;
+  union all_addr from;
   unsigned char *header;
   unsigned char *inbuff = daemon->dhcp_packet.iov_base;
   int msg_type = *inbuff;
@@ -2133,7 +2133,7 @@ void relay_upstream6(struct dhcp_relay *relay, ssize_t sz,
   get_client_mac(peer_address, scope_id, mac, &maclen, &mactype, now);
 
   /* source address == relay address */
-  from.addr.addr6 = relay->local.addr.addr6;
+  from.addr6 = relay->local.addr6;
     
   /* Get hop count from nested relayed message */ 
   if (msg_type == DHCP6RELAYFORW)
@@ -2153,7 +2153,7 @@ void relay_upstream6(struct dhcp_relay *relay, ssize_t sz,
 
       header[0] = DHCP6RELAYFORW;
       header[1] = hopcount;
-      memcpy(&header[2],  &relay->local.addr.addr6, IN6ADDRSZ);
+      memcpy(&header[2],  &relay->local.addr6, IN6ADDRSZ);
       memcpy(&header[18], peer_address, IN6ADDRSZ);
  
       /* RFC-6939 */
@@ -2174,12 +2174,12 @@ void relay_upstream6(struct dhcp_relay *relay, ssize_t sz,
 	  union mysockaddr to;
 	  
 	  to.sa.sa_family = AF_INET6;
-	  to.in6.sin6_addr = relay->server.addr.addr6;
+	  to.in6.sin6_addr = relay->server.addr6;
 	  to.in6.sin6_port = htons(DHCPV6_SERVER_PORT);
 	  to.in6.sin6_flowinfo = 0;
 	  to.in6.sin6_scope_id = 0;
 
-	  if (IN6_ARE_ADDR_EQUAL(&relay->server.addr.addr6, &multicast))
+	  if (IN6_ARE_ADDR_EQUAL(&relay->server.addr6, &multicast))
 	    {
 	      int multicast_iface;
 	      if (!relay->interface || strchr(relay->interface, '*') ||
@@ -2218,7 +2218,7 @@ unsigned short relay_reply6(struct sockaddr_in6 *peer, ssize_t sz, char *arrival
   memcpy(&link, &inbuff[2], IN6ADDRSZ); 
   
   for (relay = daemon->relay6; relay; relay = relay->next)
-    if (IN6_ARE_ADDR_EQUAL(&link, &relay->local.addr.addr6) &&
+    if (IN6_ARE_ADDR_EQUAL(&link, &relay->local.addr6) &&
 	(!relay->interface || wildcard_match(relay->interface, arrival_interface)))
       break;
       

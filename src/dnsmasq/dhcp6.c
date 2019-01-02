@@ -371,7 +371,7 @@ static int complete_context6(struct in6_addr *local,  int prefix,
 	}
 
       for (relay = daemon->relay6; relay; relay = relay->next)
-	if (IN6_ARE_ADDR_EQUAL(local, &relay->local.addr.addr6) && relay->current == relay &&
+	if (IN6_ARE_ADDR_EQUAL(local, &relay->local.addr6) && relay->current == relay &&
 	    (IN6_IS_ADDR_UNSPECIFIED(&param->relay_local) || IN6_ARE_ADDR_EQUAL(local, &param->relay_local)))
 	  {
 	    relay->current = param->relay;

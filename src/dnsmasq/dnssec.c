@@ -628,10 +628,10 @@ static int validate_rrset(time_t now, struct dns_header *header, size_t plen, in
 	{
 	  /* iterate through all possible keys 4035 5.3.1 */
 	  for (; crecp; crecp = cache_find_by_name(crecp, keyname, now, F_DNSKEY))
-	    if (crecp->addr.addr.addr.key.algo == algo && 
-		crecp->addr.addr.addr.key.keytag == key_tag &&
+	    if (crecp->addr.key.algo == algo && 
+		crecp->addr.key.keytag == key_tag &&
 		crecp->uid == (unsigned int)class &&
-		verify(crecp->addr.addr.addr.key.keydata, crecp->addr.addr.addr.key.keylen, sig, sig_len, digest, hash->digest_size, algo))
+		verify(crecp->addr.key.keydata, crecp->addr.key.keylen, sig, sig_len, digest, hash->digest_size, algo))
 	      return (labels < name_labels) ? STAT_SECURE_WILDCARD : STAT_SECURE;
 	}
     }
@@ -655,7 +655,7 @@ int dnssec_validate_by_ds(time_t now, struct dns_header *header, size_t plen, ch
   struct crec *crecp, *recp1;
   int rc, j, qtype, qclass, ttl, rdlen, flags, algo, valid, keytag;
   struct blockdata *key;
-  struct all_addr a;
+  union all_addr a;
 
   if (ntohs(header->qdcount) != 1 ||
       !extract_name(header, plen, &p, name, 1, 4))
@@ -728,10 +728,10 @@ int dnssec_validate_by_ds(time_t now, struct dns_header *header, size_t plen, ch
 	  const struct nettle_hash *hash;
 	  int sigcnt, rrcnt;
 
-	  if (recp1->addr.addr.addr.ds.algo == algo && 
-	      recp1->addr.addr.addr.ds.keytag == keytag &&
+	  if (recp1->addr.ds.algo == algo && 
+	      recp1->addr.ds.keytag == keytag &&
 	      recp1->uid == (unsigned int)class &&
-	      (hash = hash_find(ds_digest_name(recp1->addr.addr.addr.ds.digest))) &&
+	      (hash = hash_find(ds_digest_name(recp1->addr.ds.digest))) &&
 	      hash_init(hash, &ctx, &digest))
 	    
 	    {
@@ -746,9 +746,9 @@ int dnssec_validate_by_ds(time_t now, struct dns_header *header, size_t plen, ch
 	      from_wire(name);
 	      
 	      if (!(recp1->flags & F_NEG) &&
-		  recp1->addr.addr.addr.ds.keylen == (int)hash->digest_size &&
-		  (ds_digest = blockdata_retrieve(recp1->addr.addr.addr.ds.keydata, recp1->addr.addr.addr.ds.keylen, NULL)) &&
-		  memcmp(ds_digest, digest, recp1->addr.addr.addr.ds.keylen) == 0 &&
+		  recp1->addr.ds.keylen == (int)hash->digest_size &&
+		  (ds_digest = blockdata_retrieve(recp1->addr.ds.keydata, recp1->addr.ds.keylen, NULL)) &&
+		  memcmp(ds_digest, digest, recp1->addr.ds.keylen) == 0 &&
 		  explore_rrset(header, plen, class, T_DNSKEY, name, keyname, &sigcnt, &rrcnt) &&
 		  sigcnt != 0 && rrcnt != 0 &&
 		  validate_rrset(now, header, plen, class, T_DNSKEY, sigcnt, rrcnt, name, keyname, 
@@ -800,11 +800,11 @@ int dnssec_validate_by_ds(time_t now, struct dns_header *header, size_t plen, ch
 		  
 		  if ((key = blockdata_alloc((char*)p, rdlen - 4)))
 		    {
-		      a.addr.key.keylen = rdlen - 4;
-		      a.addr.key.keydata = key;
-		      a.addr.key.algo = algo;
-		      a.addr.key.keytag = keytag;
-		      a.addr.key.flags = flags;
+		      a.key.keylen = rdlen - 4;
+		      a.key.keydata = key;
+		      a.key.algo = algo;
+		      a.key.keytag = keytag;
+		      a.key.flags = flags;
 		      
 		      if (!cache_insert(name, &a, class, now, ttl, F_FORWARD | F_DNSKEY | F_DNSSECOK))
 			{
@@ -813,8 +813,8 @@ int dnssec_validate_by_ds(time_t now, struct dns_header *header, size_t plen, ch
 			}
 		      else
 			{
-			  a.addr.log.keytag = keytag;
-			  a.addr.log.algo = algo;
+			  a.log.keytag = keytag;
+			  a.log.algo = algo;
 			  if (algo_digest_name(algo))
 			    log_query(F_NOEXTRA | F_KEYTAG | F_UPSTREAM, name, &a, "DNSKEY keytag %hu, algo %hu");
 			  else
@@ -857,7 +857,7 @@ int dnssec_validate_ds(time_t now, struct dns_header *header, size_t plen, char 
   int qtype, qclass, rc, i, neganswer, nons;
   int aclass, atype, rdlen;
   unsigned long ttl;
-  struct all_addr a;
+  union all_addr a;
 
   if (ntohs(header->qdcount) != 1 ||
       !(p = skip_name(p, header, plen, 4)))
@@ -925,11 +925,11 @@ int dnssec_validate_ds(time_t now, struct dns_header *header, size_t plen, char 
 	      
 	      if ((key = blockdata_alloc((char*)p, rdlen - 4)))
 		{
-		  a.addr.ds.digest = digest;
-		  a.addr.ds.keydata = key;
-		  a.addr.ds.algo = algo;
-		  a.addr.ds.keytag = keytag;
-		  a.addr.ds.keylen = rdlen - 4;
+		  a.ds.digest = digest;
+		  a.ds.keydata = key;
+		  a.ds.algo = algo;
+		  a.ds.keytag = keytag;
+		  a.ds.keylen = rdlen - 4;
 
 		  if (!cache_insert(name, &a, class, now, ttl, F_FORWARD | F_DS | F_DNSSECOK))
 		    {
@@ -938,9 +938,9 @@ int dnssec_validate_ds(time_t now, struct dns_header *header, size_t plen, char 
 		    }
 		  else
 		    {
-		      a.addr.log.keytag = keytag;
-		      a.addr.log.algo = algo;
-		      a.addr.log.digest = digest;
+		      a.log.keytag = keytag;
+		      a.log.algo = algo;
+		      a.log.digest = digest;
 		      if (ds_digest_name(digest) && algo_digest_name(algo))
 			log_query(F_NOEXTRA | F_KEYTAG | F_UPSTREAM, name, &a, "DS keytag %hu, algo %hu, digest %hu");
 		      else
@@ -1710,8 +1710,8 @@ static int zone_status(char *name, int class, char *keyname, time_t now)
 	  do 
 	    {
 	      if (crecp->uid == (unsigned int)class &&
-		  ds_digest_name(crecp->addr.addr.addr.ds.digest) &&
-		  algo_digest_name(crecp->addr.addr.addr.ds.algo))
+		  ds_digest_name(crecp->addr.ds.digest) &&
+		  algo_digest_name(crecp->addr.ds.algo))
 		break;
 	    }
 	  while ((crecp = cache_find_by_name(crecp, keyname, now, F_DS)));

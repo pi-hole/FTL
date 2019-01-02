@@ -144,7 +144,7 @@ int extract_name(struct dns_header *header, size_t plen, unsigned char **pp,
  
 /* Max size of input string (for IPv6) is 75 chars.) */
 #define MAXARPANAME 75
-int in_arpa_name_2_addr(char *namein, struct all_addr *addrp)
+int in_arpa_name_2_addr(char *namein, union all_addr *addrp)
 {
   int j;
   char name[MAXARPANAME+1], *cp1;
@@ -154,7 +154,7 @@ int in_arpa_name_2_addr(char *namein, struct all_addr *addrp)
   if (strlen(namein) > MAXARPANAME)
     return 0;
 
-  memset(addrp, 0, sizeof(struct all_addr));
+  memset(addrp, 0, sizeof(union all_addr));
 
   /* turn name into a series of asciiz strings */
   /* j counts no. of labels */
@@ -235,7 +235,7 @@ int in_arpa_name_2_addr(char *namein, struct all_addr *addrp)
 	      if (*(cp1+1) || !isxdigit((unsigned char)*cp1))
 		return 0;
 	      
-	      for (j = sizeof(struct all_addr)-1; j>0; j--)
+	      for (j = sizeof(struct in6_addr)-1; j>0; j--)
 		addr[j] = (addr[j] >> 4) | (addr[j-1] << 4);
 	      addr[0] = (addr[0] >> 4) | (strtol(cp1, NULL, 16) << 4);
 	    }
@@ -586,7 +586,7 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
   unsigned char *p, *p1, *endrr, *namep;
   int i, j, qtype, qclass, aqtype, aqclass, ardlen, res, searched_soa = 0;
   unsigned long ttl = 0;
-  struct all_addr addr;
+  union all_addr addr;
 #ifdef HAVE_IPSET
   char **ipsets_cur;
 #else
@@ -809,14 +809,14 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 		      if (check_rebind)
 			{
 			  if ((flags & F_IPV4) &&
-			      private_net(addr.addr.addr4, !option_bool(OPT_LOCAL_REBIND)))
+			      private_net(addr.addr4, !option_bool(OPT_LOCAL_REBIND)))
 			    return 1;
 			  
 			  if ((flags & F_IPV6) &&
-			      IN6_IS_ADDR_V4MAPPED(&addr.addr.addr6))
+			      IN6_IS_ADDR_V4MAPPED(&addr.addr6))
 			    {
 			      struct in_addr v4;
-			      v4.s_addr = ((const uint32_t *) (&addr.addr.addr6))[3];
+			      v4.s_addr = ((const uint32_t *) (&addr.addr6))[3];
 			      if (private_net(v4, !option_bool(OPT_LOCAL_REBIND)))
 				return 1;
 			    }
@@ -929,7 +929,7 @@ unsigned int extract_request(struct dns_header *header, size_t qlen, char *name,
 }
 
 size_t setup_reply(struct dns_header *header, size_t qlen,
-		struct all_addr *addrp, unsigned int flags, unsigned long ttl)
+		   union all_addr *addrp, unsigned int flags, unsigned long ttl)
 {
   unsigned char *p;
   
@@ -950,8 +950,8 @@ size_t setup_reply(struct dns_header *header, size_t qlen,
     SET_RCODE(header, NXDOMAIN);
   else if (flags == F_SERVFAIL)
     {
-      struct all_addr a;
-      a.addr.log.rcode = SERVFAIL;
+      union all_addr a;
+      a.log.rcode = SERVFAIL;
       log_query(F_CONFIG | F_RCODE, "error", &a, NULL);
       SET_RCODE(header, SERVFAIL);
     }
@@ -975,8 +975,8 @@ size_t setup_reply(struct dns_header *header, size_t qlen,
     }
   else /* nowhere to forward to */
     {
-      struct all_addr a;
-      a.addr.log.rcode = REFUSED;
+      union all_addr a;
+      a.log.rcode = REFUSED;
       log_query(F_CONFIG | F_RCODE, "error", &a, NULL);
       SET_RCODE(header, REFUSED);
     }
@@ -1278,7 +1278,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
   char *name = daemon->namebuff;
   unsigned char *p, *ansp;
   unsigned int qtype, qclass;
-  struct all_addr addr;
+  union all_addr addr;
   int nameoffset;
   unsigned short flag;
   int q, ans, anscount = 0, addncount = 0;
@@ -1376,7 +1376,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		  notimp = 1, auth = 0;
 		  if (!dryrun)
 		    {
-		       addr.addr.log.rcode = NOTIMP;
+		       addr.log.rcode = NOTIMP;
 		       log_query(F_CONFIG | F_RCODE, name, &addr, NULL);
 		       FTL_cache(F_CONFIG | F_RCODE, name, &addr, NULL, daemon->log_display_id);
 		    }
@@ -1422,7 +1422,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		    struct addrlist *addrlist;
 		    
 		    for (addrlist = intr->addr; addrlist; addrlist = addrlist->next)
-		      if (!(addrlist->flags & ADDRLIST_IPV6) && addr.addr.addr4.s_addr == addrlist->addr.addr.addr4.s_addr)
+		      if (!(addrlist->flags & ADDRLIST_IPV6) && addr.addr4.s_addr == addrlist->addr.addr4.s_addr)
 			break;
 		    
 		    if (addrlist)
@@ -1437,7 +1437,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		    struct addrlist *addrlist;
 		    
 		    for (addrlist = intr->addr; addrlist; addrlist = addrlist->next)
-		      if ((addrlist->flags & ADDRLIST_IPV6) && IN6_ARE_ADDR_EQUAL(&addr.addr.addr6, &addrlist->addr.addr.addr6))
+		      if ((addrlist->flags & ADDRLIST_IPV6) && IN6_ARE_ADDR_EQUAL(&addr.addr6, &addrlist->addr.addr6))
 			break;
 		    
 		    if (addrlist)
@@ -1545,8 +1545,8 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		    }
 		}
 	      else if (option_bool(OPT_BOGUSPRIV) && (
-		       (is_arpa == F_IPV6 && private_net6(&addr.addr.addr6)) ||
-		       (is_arpa == F_IPV4 && private_net(addr.addr.addr4, 1))))
+		       (is_arpa == F_IPV6 && private_net6(&addr.addr6)) ||
+		       (is_arpa == F_IPV4 && private_net(addr.addr4, 1))))
 		{
 		  struct server *serv;
 		  unsigned int namelen = strlen(name);
@@ -1616,7 +1616,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		      if (hostname_isequal(name, intr->name))
 			for (addrlist = intr->addr; addrlist; addrlist = addrlist->next)
 			  if (!(addrlist->flags & ADDRLIST_IPV6) && 
-			      is_same_net(*((struct in_addr *)&addrlist->addr), local_addr, local_netmask))
+			      is_same_net(addrlist->addr.addr4, local_addr, local_netmask))
 			    {
 			      localise = 1;
 			      break;
@@ -1629,7 +1629,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 			  if (((addrlist->flags & ADDRLIST_IPV6) ? T_AAAA : T_A) == type)
 			    {
 			      if (localise && 
-				  !is_same_net(*((struct in_addr *)&addrlist->addr), local_addr, local_netmask))
+				  !is_same_net(addrlist->addr.addr4, local_addr, local_netmask))
 				continue;
 
 			      if (addrlist->flags & ADDRLIST_REVONLY)
@@ -1671,7 +1671,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		      struct crec *save = crecp;
 		      do {
 			if ((crecp->flags & F_HOSTS) &&
-			    is_same_net(*((struct in_addr *)&crecp->addr), local_addr, local_netmask))
+			    is_same_net(crecp->addr.addr4, local_addr, local_netmask))
 			  {
 			    localise = 1;
 			    break;
@@ -1736,7 +1736,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 			       filter here. */
 			    if (localise && 
 				(crecp->flags & F_HOSTS) &&
-				!is_same_net(*((struct in_addr *)&crecp->addr), local_addr, local_netmask))
+				!is_same_net(crecp->addr.addr4, local_addr, local_netmask))
 			      continue;
 			    
 			    if (!(crecp->flags & (F_HOSTS | F_DHCP)))
@@ -1745,7 +1745,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 			    ans = 1;
 			    if (!dryrun)
 			      {
-				log_query(crecp->flags & ~F_REVERSE, name, &crecp->addr.addr,
+				log_query(crecp->flags & ~F_REVERSE, name, &crecp->addr,
 					  record_source(crecp->uid));
 				FTL_cache(crecp->flags & ~F_REVERSE, name, &crecp->addr.addr,
 				          record_source(crecp->uid),

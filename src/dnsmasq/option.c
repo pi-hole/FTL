@@ -2068,7 +2068,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	    int is_exclude = 0;
 	    char *prefix;
 	    struct addrlist *subnet =  NULL;
-	    struct all_addr addr;
+	    union all_addr addr;
 
 	    comma = split(arg);
 	    prefix = split_chr(arg, '/');
@@ -2082,13 +2082,13 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 		    arg = arg+8;
 	      }
 
-	    if (inet_pton(AF_INET, arg, &addr.addr.addr4))
+	    if (inet_pton(AF_INET, arg, &addr.addr4))
 	      {
 		subnet = opt_malloc(sizeof(struct addrlist));
 		subnet->prefixlen = (prefixlen == 0) ? 24 : prefixlen;
 		subnet->flags = ADDRLIST_LITERAL;
 	      }
-	    else if (inet_pton(AF_INET6, arg, &addr.addr.addr6))
+	    else if (inet_pton(AF_INET6, arg, &addr.addr6))
 	      {
 		subnet = opt_malloc(sizeof(struct addrlist));
 		subnet->prefixlen = (prefixlen == 0) ? 64 : prefixlen;
@@ -4272,7 +4272,7 @@ err:
 
 	while (arg)
 	  {
-	    struct all_addr addr;
+	    union all_addr addr;
 	    char *dig;
 
 	    for (dig = arg; *dig != 0; dig++)
@@ -4280,10 +4280,10 @@ err:
 		break;
 	    if (*dig == 0)
 	      new->ttl = atoi(arg);
-	    else if (inet_pton(AF_INET, arg, &addr))
-	      new->addr = addr.addr.addr4;
-	    else if (inet_pton(AF_INET6, arg, &addr))
-	      new->addr6 = addr.addr.addr6;
+	    else if (inet_pton(AF_INET, arg, &addr.addr4))
+	      new->addr = addr.addr4;
+	    else if (inet_pton(AF_INET6, arg, &addr.addr6))
+	      new->addr6 = addr.addr6;
 	    else
 	      {
 		int nomem;

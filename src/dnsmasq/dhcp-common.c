@@ -403,30 +403,30 @@ void dhcp_update_configs(struct dhcp_config *configs)
 		  crec = cache_find_by_name(crec, config->hostname, 0, cacheflags);
 		if (!crec)
 		  continue; /* should be never */
-		inet_ntop(prot, &crec->addr.addr, daemon->addrbuff, ADDRSTRLEN);
+		inet_ntop(prot, &crec->addr, daemon->addrbuff, ADDRSTRLEN);
 		my_syslog(MS_DHCP | LOG_WARNING, _("%s has more than one address in hostsfile, using %s for DHCP"), 
 			  config->hostname, daemon->addrbuff);
 	      }
 	    
 	    if (prot == AF_INET && 
-		(!(conf_tmp = config_find_by_address(configs, crec->addr.addr.addr.addr4)) || conf_tmp == config))
+		(!(conf_tmp = config_find_by_address(configs, crec->addr.addr4)) || conf_tmp == config))
 	      {
-		config->addr = crec->addr.addr.addr.addr4;
+		config->addr = crec->addr.addr4;
 		config->flags |= CONFIG_ADDR | CONFIG_ADDR_HOSTS;
 		continue;
 	      }
 
 #ifdef HAVE_DHCP6
 	    if (prot == AF_INET6 && 
-		(!(conf_tmp = config_find_by_address6(configs, &crec->addr.addr.addr.addr6, 128, 0)) || conf_tmp == config))
+		(!(conf_tmp = config_find_by_address6(configs, &crec->addr.addr6, 128, 0)) || conf_tmp == config))
 	      {
-		memcpy(&config->addr6, &crec->addr.addr.addr.addr6, IN6ADDRSZ);
+		memcpy(&config->addr6, &crec->addr.addr6, IN6ADDRSZ);
 		config->flags |= CONFIG_ADDR6 | CONFIG_ADDR_HOSTS;
 		continue;
 	      }
 #endif
 
-	    inet_ntop(prot, &crec->addr.addr, daemon->addrbuff, ADDRSTRLEN);
+	    inet_ntop(prot, &crec->addr, daemon->addrbuff, ADDRSTRLEN);
 	    my_syslog(MS_DHCP | LOG_WARNING, _("duplicate IP address %s (%s) in dhcp-config directive"), 
 		      daemon->addrbuff, config->hostname);
 	    
@@ -693,7 +693,7 @@ char *option_string(int prot, unsigned int opt, unsigned char *val, int opt_len,
 	    
 	    if (ot[o].size & OT_ADDR_LIST) 
 	      {
-		struct all_addr addr;
+		union all_addr addr;
 		int addr_len = INADDRSZ;
 
 #ifdef HAVE_DHCP6
