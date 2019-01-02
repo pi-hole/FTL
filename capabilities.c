@@ -16,19 +16,25 @@ bool check_capabilities()
 	if(!cap_get_bound(CAP_NET_ADMIN))
 	{
 		// Needed for ARP-injection (used when we're the DHCP server)
-		logg("FATAL: Required linux capability CAP_NET_ADMIN not available");
+		logg("**************************************************************");
+		logg("WARNING: Required linux capability CAP_NET_ADMIN not available");
+		logg("**************************************************************");
 		return false;
 	}
 	if(!cap_get_bound(CAP_NET_RAW))
 	{
 		// Needed for raw socket access (necessary for ICMP)
-		logg("FATAL: Required linux capability CAP_NET_RAW not available");
+		logg("************************************************************");
+		logg("WARNING: Required linux capability CAP_NET_RAW not available");
+		logg("************************************************************");
 		return false;
 	}
 	if(!cap_get_bound(CAP_NET_BIND_SERVICE))
 	{
 		// Necessary for dynamic port binding
-		logg("FATAL: Required linux capability CAP_NET_BIND_SERVICE not available");
+		logg("*********************************************************************");
+		logg("WARNING: Required linux capability CAP_NET_BIND_SERVICE not available");
+		logg("*********************************************************************");
 		return false;
 	}
 

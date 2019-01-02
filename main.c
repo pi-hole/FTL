@@ -70,10 +70,11 @@ int main (int argc, char* argv[])
 	check_setupVarsconf();
 
 	// Check for availability of advanced capabilities
-	// immediately before starting the resolver. If all
-	// capabilities are available, we start the resolver
-	if(check_capabiltities())
-		main_dnsmasq(argc_dnsmasq, argv_dnsmasq);
+	// immediately before starting the resolver.
+	check_capabilities();
+
+	// Start the resolver
+	main_dnsmasq(argc_dnsmasq, argv_dnsmasq);
 
 	logg("Shutting down...");
 
