@@ -126,3 +126,6 @@ void newOverTimeClient();
  * This also updates `overTimeClientData`.
  */
 void addOverTimeClientSlot();
+
+// capabilities.c
+bool check_capabilities(void);

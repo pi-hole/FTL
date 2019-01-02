@@ -69,8 +69,11 @@ int main (int argc, char* argv[])
 	log_counter_info();
 	check_setupVarsconf();
 
-	// Preparations done - start the resolver
-	main_dnsmasq(argc_dnsmasq, argv_dnsmasq);
+	// Check for availability of advanced capabilities
+	// immediately before starting the resolver. If all
+	// capabilities are available, we start the resolver
+	if(check_capabiltities())
+		main_dnsmasq(argc_dnsmasq, argv_dnsmasq);
 
 	logg("Shutting down...");
 
