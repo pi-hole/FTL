@@ -744,8 +744,7 @@ int cache_recv_insert(time_t now, int fd)
 	   else  if (flags & F_DS)
 	     {
 	        if (!read_write(fd, (unsigned char *)&class, sizeof(class), 1) ||
-		   (flags & F_NEG) ||
-		    !(addr.key.keydata = blockdata_read(fd, addr.key.keylen)))
+		    (!(flags & F_NEG) && !(addr.key.keydata = blockdata_read(fd, addr.key.keylen))))
 		  return 0;
 	     }
 #endif
