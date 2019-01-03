@@ -14,7 +14,7 @@ version: 2
         command: |
           BRANCH=$([ -z "$CIRCLE_TAG" ] && echo "$CIRCLE_BRANCH" || echo "master")
 
-          make CFLAGS="${CFLAGS}" GIT_BRANCH="${BRANCH}" GIT_TAG="${CIRCLE_TAG}"
+          make GIT_BRANCH="${BRANCH}" GIT_TAG="${CIRCLE_TAG}"
           file pihole-FTL
     - run:
         name: "Upload"
@@ -59,7 +59,6 @@ jobs:
     <<: *job_template
     environment:
       BIN_NAME: "pihole-FTL-linux-x86_32"
-      CFLAGS: "-m32"
 
 workflows:
   version: 2
