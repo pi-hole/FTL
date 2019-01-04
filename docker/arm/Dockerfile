@@ -3,7 +3,7 @@ FROM debian:stretch
 RUN dpkg --add-architecture armhf && \
     apt-get update && \
     apt-get install -y --no-install-recommends nettle-dev:armhf \
-        make file wget netcat-traditional sqlite3 git ca-certificates ssh
+        make file wget netcat-traditional sqlite3 git ca-certificates ssh libcap-dev:armhf
 
 # Use Raspbian's GCC
 # This command was taken from https://github.com/dockcross/dockcross/blob/master/linux-armv6/Dockerfile
@@ -19,4 +19,4 @@ RUN wget ftl.pi-hole.net/libraries/libgmp.a -O /usr/local/lib/libgmp.a && \
     wget ftl.pi-hole.net/libraries/libhogweed.a -O /usr/local/lib/libhogweed.a
 
 # Allow libnettle to be used, because this GCC doesn't have all the right header and library directories
-ENV CC "arm-linux-gnueabihf-gcc -I/usr/include -I/usr/include/arm-linux-gnueabihf"
+ENV CC "arm-linux-gnueabihf-gcc -I/usr/include -I/usr/include/arm-linux-gnueabihf -L/usr/lib/arm-linux-gnueabihf"
