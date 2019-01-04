@@ -194,7 +194,6 @@ bool init_shmem(void)
 	pagesize = getpagesize();
 
 	/****************************** shared memory lock ******************************/
-	shm_unlink(SHARED_LOCK_NAME);
 	// Try to create shared memory object
 	shm_lock = create_shm(SHARED_LOCK_NAME, sizeof(ShmLock));
 	if(shm_lock.ptr == NULL)
@@ -204,10 +203,6 @@ bool init_shmem(void)
 	shmLock->waitingForLock = false;
 
 	/****************************** shared strings buffer ******************************/
-	// Try unlinking the shared memory object before creating a new one
-	// If the object is still existing, e.g., due to a past unclean exit
-	// of FTL, shm_open() would fail with error "File exists"
-	shm_unlink(SHARED_STRINGS_NAME);
 	// Try to create shared memory object
 	shm_strings = create_shm(SHARED_STRINGS_NAME, pagesize);
 	if(shm_strings.ptr == NULL)
@@ -218,7 +213,6 @@ bool init_shmem(void)
 	next_pos = 1;
 
 	/****************************** shared counters struct ******************************/
-	shm_unlink(SHARED_COUNTERS_NAME);
 	// Try to create shared memory object
 	shm_counters = create_shm(SHARED_COUNTERS_NAME, sizeof(countersStruct));
 	if(shm_counters.ptr == NULL)
@@ -226,7 +220,6 @@ bool init_shmem(void)
 	counters = (countersStruct*)shm_counters.ptr;
 
 	/****************************** shared domains struct ******************************/
-	shm_unlink(SHARED_DOMAINS_NAME);
 	// Try to create shared memory object
 	shm_domains = create_shm(SHARED_DOMAINS_NAME, pagesize*sizeof(domainsDataStruct));
 	if(shm_domains.ptr == NULL)
@@ -235,7 +228,6 @@ bool init_shmem(void)
 	counters->domains_MAX = pagesize;
 
 	/****************************** shared clients struct ******************************/
-	shm_unlink(SHARED_CLIENTS_NAME);
 	// Try to create shared memory object
 	shm_clients = create_shm(SHARED_CLIENTS_NAME, pagesize*sizeof(clientsDataStruct));
 	if(shm_clients.ptr == NULL)
@@ -244,7 +236,6 @@ bool init_shmem(void)
 	counters->clients_MAX = pagesize;
 
 	/****************************** shared forwarded struct ******************************/
-	shm_unlink(SHARED_FORWARDED_NAME);
 	// Try to create shared memory object
 	shm_forwarded = create_shm(SHARED_FORWARDED_NAME, pagesize*sizeof(forwardedDataStruct));
 	if(shm_forwarded.ptr == NULL)
@@ -253,7 +244,6 @@ bool init_shmem(void)
 	counters->forwarded_MAX = pagesize;
 
 	/****************************** shared queries struct ******************************/
-	shm_unlink(SHARED_QUERIES_NAME);
 	// Try to create shared memory object
 	shm_queries = create_shm(SHARED_QUERIES_NAME, pagesize*sizeof(queriesDataStruct));
 	if(shm_queries.ptr == NULL)
@@ -262,7 +252,6 @@ bool init_shmem(void)
 	counters->queries_MAX = pagesize;
 
 	/****************************** shared overTime struct ******************************/
-	shm_unlink(SHARED_OVERTIME_NAME);
 	// Try to create shared memory object
 	shm_overTime = create_shm(SHARED_OVERTIME_NAME, pagesize*sizeof(overTimeDataStruct));
 	if(shm_overTime.ptr == NULL)
@@ -302,6 +291,16 @@ SharedMemory create_shm(char *name, size_t size)
 		.size = size,
 		.ptr = NULL
 	};
+
+	// Try unlinking the shared memory object before creating a new one.
+	// If the object is still existing, e.g., due to a past unclean exit
+	// of FTL, shm_open() would fail with error "File exists"
+	int ret = shm_unlink(name);
+	// Check return code. shm_unlink() returns -1 on error and sets errno
+	// We specifically ignore ENOENT (No such file or directory) as this is not an
+	// error in our use case (we only want the file to be deleted when existing)
+	if(ret != 0 && errno != ENOENT)
+		logg("create_shm(): shm_unlink(\"%s\") failed: %s (%i)", name, strerror(errno), errno);
 
 	// Create the shared memory file in read/write mode with 600 permissions
 	int fd = shm_open(sharedMemory.name, O_CREAT | O_EXCL | O_TRUNC | O_RDWR, S_IRUSR | S_IWUSR);
@@ -448,5 +447,5 @@ void delete_shm(SharedMemory *sharedMemory)
 	// and once all others unlink, it will be destroyed.
 	ret = shm_unlink(sharedMemory->name);
 	if(ret != 0)
-		logg("delete_shm(): munmap(%s) failed: %s", sharedMemory->name, strerror(errno));
+		logg("delete_shm(): shm_unlink(%s) failed: %s", sharedMemory->name, strerror(errno));
 }
