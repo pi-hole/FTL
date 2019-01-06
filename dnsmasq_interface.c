@@ -25,7 +25,7 @@ static int findQueryID(int id);
 unsigned char* pihole_privacylevel = &config.privacylevel;
 char flagnames[28][12] = {"F_IMMORTAL ", "F_NAMEP ", "F_REVERSE ", "F_FORWARD ", "F_DHCP ", "F_NEG ", "F_HOSTS ", "F_IPV4 ", "F_IPV6 ", "F_BIGNAME ", "F_NXDOMAIN ", "F_CNAME ", "F_DNSKEY ", "F_CONFIG ", "F_DS ", "F_DNSSECOK ", "F_UPSTREAM ", "F_RRNAME ", "F_SERVER ", "F_QUERY ", "F_NOERR ", "F_AUTH ", "F_DNSSEC ", "F_KEYTAG ", "F_SECSTAT ", "F_NO_RR ", "F_IPSET ", "F_NOEXTRA "};
 
-void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *types, int id, char type)
+void _FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *types, int id, char type, const char* file, const int line)
 {
 	// Don't analyze anything if in PRIVACY_NOSTATS mode
 	if(config.privacylevel >= PRIVACY_NOSTATS)
@@ -112,7 +112,7 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 
 	// Log new query if in debug mode
 	char *proto = (type == UDP) ? "UDP" : "TCP";
-	if(debug) logg("**** new %s %s \"%s\" from %s (ID %i)", proto, types, domain, client, id);
+	if(debug) logg("**** new %s %s \"%s\" from %s (ID %i, %s:%i)", proto, types, domain, client, id, file, line);
 
 	// Update counters
 	int timeidx = findOverTimeID(overTimetimestamp);
@@ -243,7 +243,7 @@ static int findQueryID(int id)
 	return -1;
 }
 
-void FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id)
+void _FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id, const char* file, const int line)
 {
 	// Don't analyze anything if in PRIVACY_NOSTATS mode
 	if(config.privacylevel >= PRIVACY_NOSTATS)
@@ -261,7 +261,7 @@ void FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id
 	strtolower(forward);
 
 	// Debug logging
-	if(debug) logg("**** forwarded %s to %s (ID %i)", name, forward, id);
+	if(debug) logg("**** forwarded %s to %s (ID %i, %s:%i)", name, forward, id, file, line);
 
 	// Save status and forwardID in corresponding query identified by dnsmasq's ID
 	int i = findQueryID(id);
@@ -376,7 +376,7 @@ void FTL_dnsmasq_reload(void)
 	read_regex_from_file();
 }
 
-void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
+void _FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id, const char* file, const int line)
 {
 	// Don't analyze anything if in PRIVACY_NOSTATS mode
 	if(config.privacylevel >= PRIVACY_NOSTATS)
@@ -403,7 +403,7 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 
 	if(debug)
 	{
-		logg("**** got reply %s is %s (ID %i)", name, answer, id);
+		logg("**** got reply %s is %s (ID %i, %s:%i)", name, answer, id, file, line);
 		print_flags(flags);
 	}
 
@@ -588,7 +588,7 @@ static void query_externally_blocked(int i)
 	queries[i].status = QUERY_EXTERNAL_BLOCKED;
 }
 
-void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg, int id)
+void _FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg, int id, const char* file, const int line)
 {
 	// Don't analyze anything if in PRIVACY_NOSTATS mode
 	if(config.privacylevel >= PRIVACY_NOSTATS)
@@ -617,7 +617,7 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 	free(domain);
 
 	// Debug logging
-	if(debug) logg("**** got cache answer for %s / %s / %s (ID %i)", name, dest, arg, id);
+	if(debug) logg("**** got cache answer for %s / %s / %s (ID %i, %s:%i)", name, dest, arg, id, file, line);
 	if(debug) print_flags(flags);
 
 	// Get response time
@@ -734,7 +734,7 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 	unlock_shm();
 }
 
-void FTL_dnssec(int status, int id)
+void _FTL_dnssec(int status, int id, const char* file, const int line)
 {
 	// Don't analyze anything if in PRIVACY_NOSTATS mode
 	if(config.privacylevel >= PRIVACY_NOSTATS)
@@ -756,7 +756,7 @@ void FTL_dnssec(int status, int id)
 	{
 		int domainID = queries[i].domainID;
 		validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
-		logg("**** got DNSSEC details for %s: %i (ID %i)", getstr(domains[domainID].domainpos), status, id);
+		logg("**** got DNSSEC details for %s: %i (ID %i, %s:%i)", getstr(domains[domainID].domainpos), status, id, file, line);
 	}
 
 	// Iterate through possible values
@@ -770,7 +770,7 @@ void FTL_dnssec(int status, int id)
 	unlock_shm();
 }
 
-void FTL_header_ADbit(unsigned char header4, unsigned int rcode, int id)
+void _FTL_header_ADbit(unsigned char header4, unsigned int rcode, int id, const char* file, const int line)
 {
 	// Don't analyze anything if in PRIVACY_NOSTATS mode
 	if(config.privacylevel >= PRIVACY_NOSTATS)
@@ -797,7 +797,7 @@ void FTL_header_ADbit(unsigned char header4, unsigned int rcode, int id)
 	{
 		int domainID = queries[i].domainID;
 		validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
-		logg("**** AD bit set for %s (ID %i, RCODE %u)", getstr(domains[domainID].domainpos), id, rcode);
+		logg("**** AD bit set for %s (ID %i, RCODE %u, %s:%i)", getstr(domains[domainID].domainpos), id, rcode, file, line);
 	}
 
 	// Store AD bit in query data
@@ -981,7 +981,7 @@ void getCacheInformation(int *sock)
 	// which hasn't been looked up for the longest time is evicted.
 }
 
-void FTL_forwarding_failed(struct server *server)
+void _FTL_forwarding_failed(struct server *server, const char* file, const int line)
 {
 	// Don't analyze anything if in PRIVACY_NOSTATS mode
 	if(config.privacylevel >= PRIVACY_NOSTATS)
@@ -1000,7 +1000,7 @@ void FTL_forwarding_failed(struct server *server)
 	strtolower(forward);
 	int forwardID = findForwardID(forward, false);
 
-	if(debug) logg("**** forwarding to %s (ID %i) failed", dest, forwardID);
+	if(debug) logg("**** forwarding to %s (ID %i, %s:%i) failed", dest, forwardID, file, line);
 
 	forwarded[forwardID].failed++;
 
