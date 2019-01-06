@@ -10,7 +10,10 @@
 # This file is copyright under the latest version of the EUPL.
 # Please see LICENSE file for your rights under this license.
 
-import os, re, urllib.request, sqlite3
+import os
+import re
+import urllib.request
+import sqlite3
 import unicodecsv as unicodecsv
 
 # Download raw data from Wireshark's website
@@ -20,10 +23,10 @@ urllib.request.urlretrieve("https://code.wireshark.org/review/gitweb?p=wireshark
 print("...done")
 
 # Read file into memory and process lines
-file = open("manuf.data", "r")
+manuf = open("manuf.data", "r")
 data = []
 print("Processing...")
-for line in file:
+for line in manuf:
 	line = line.strip()
 
 	# Skip comments and empty lines
@@ -52,12 +55,12 @@ for line in file:
 	# Only add long description where available
 	# There are a few vendors for which only the
 	# short description field is used
-	if(len(desc_long) > 0):
+	if(desc_long):
 		data.append([mac, desc_long])
 	else:
 		data.append([mac, desc_short])
 print("...done")
-file.close()
+manuf.close()
 
 # Create database
 database = "macvendor.db"
