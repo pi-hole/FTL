@@ -303,6 +303,10 @@ union all_addr {
     unsigned char algo;
     unsigned char digest; 
   } ds;
+  struct {
+    struct blockdata *target;
+    unsigned short targetlen, srvport, priority, weight;
+  } srv;
   /* for log_query */
   struct {
     unsigned short keytag, algo, digest, rcode;
@@ -433,7 +437,7 @@ struct crec {
   time_t ttd; /* time to die */
   /* used as class if DNSKEY/DS, index to source for F_HOSTS */
   unsigned int uid; 
-  unsigned short flags;
+  unsigned int flags;
   union {
     char sname[SMALLDNAME];
     union bigname *bname;
@@ -477,6 +481,7 @@ struct crec {
 #define F_NOEXTRA   (1u<<27)
 #define F_SERVFAIL  (1u<<28)
 #define F_RCODE     (1u<<29)
+#define F_SRV       (1u<<30)
 
 #define UID_NONE      0
 /* Values of uid in crecs with F_CONFIG bit set. */
@@ -1160,7 +1165,7 @@ void cache_end_insert(void);
 void cache_start_insert(void);
 int cache_recv_insert(time_t now, int fd);
 struct crec *cache_insert(char *name, union all_addr *addr, unsigned short class, 
-			  time_t now, unsigned long ttl, unsigned short flags);
+			  time_t now, unsigned long ttl, unsigned int flags);
 void cache_reload(void);
 void cache_add_dhcp_entry(char *host_name, int prot, union all_addr *host_address, time_t ttd);
 struct in_addr a_record_from_hosts(char *name, time_t now);
@@ -1176,7 +1181,6 @@ int read_hostsfile(char *filename, unsigned int index, int cache_size,
 		   struct crec **rhash, int hashsz);
 
 /* blockdata.c */
-#ifdef HAVE_DNSSEC
 void blockdata_init(void);
 void blockdata_report(void);
 struct blockdata *blockdata_alloc(char *data, size_t len);
@@ -1184,7 +1188,6 @@ void *blockdata_retrieve(struct blockdata *block, size_t len, void *data);
 struct blockdata *blockdata_read(int fd, size_t len);
 void blockdata_write(struct blockdata *block, size_t len, int fd);
 void blockdata_free(struct blockdata *blocks);
-#endif
 
 /* domain.c */
 char *get_domain(struct in_addr addr);

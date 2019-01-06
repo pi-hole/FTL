@@ -28,7 +28,7 @@ static int bignames_left, hash_size;
 
 static void make_non_terminals(struct crec *source);
 static struct crec *really_insert(char *name, union all_addr *addr, unsigned short class,
-				  time_t now,  unsigned long ttl, unsigned short flags);
+				  time_t now,  unsigned long ttl, unsigned int flags);
 
 /* type->string mapping: this is also used by the name-hash function as a mixing table. */
 static const struct {
@@ -199,15 +199,17 @@ static void cache_hash(struct crec *crecp)
   *up = crecp;
 }
 
-#ifdef HAVE_DNSSEC
 static void cache_blockdata_free(struct crec *crecp)
 {
-  if (crecp->flags & F_DNSKEY)
+  if (crecp->flags & F_SRV)
+    blockdata_free(crecp->addr.srv.target);
+#ifdef HAVE_DNSSEC
+  else if (crecp->flags & F_DNSKEY)
     blockdata_free(crecp->addr.key.keydata);
   else if ((crecp->flags & F_DS) && !(crecp->flags & F_NEG))
     blockdata_free(crecp->addr.ds.keydata);
-}
 #endif
+}
 
 static void cache_free(struct crec *crecp)
 {
@@ -231,9 +233,7 @@ static void cache_free(struct crec *crecp)
       crecp->flags &= ~F_BIGNAME;
     }
 
-#ifdef HAVE_DNSSEC
   cache_blockdata_free(crecp);
-#endif
 }    
 
 /* insert a new cache entry at the head of the list (youngest entry) */
@@ -332,7 +332,7 @@ static int is_expired(time_t now, struct crec *crecp)
 }
 
 static struct crec *cache_scan_free(char *name, union all_addr *addr, unsigned short class, time_t now,
-				    unsigned short flags, struct crec **target_crec, unsigned int *target_uid)
+				    unsigned int flags, struct crec **target_crec, unsigned int *target_uid)
 {
   /* Scan and remove old entries.
      If (flags & F_FORWARD) then remove any forward entries for name and any expired
@@ -361,7 +361,7 @@ static struct crec *cache_scan_free(char *name, union all_addr *addr, unsigned s
 	  if ((crecp->flags & F_FORWARD) && hostname_isequal(cache_get_name(crecp), name))
 	    {
 	      /* Don't delete DNSSEC in favour of a CNAME, they can co-exist */
-	      if ((flags & crecp->flags & (F_IPV4 | F_IPV6)) || 
+	      if ((flags & crecp->flags & (F_IPV4 | F_IPV6 | F_SRV)) || 
 		  (((crecp->flags | flags) & F_CNAME) && !(crecp->flags & (F_DNSKEY | F_DS))))
 		{
 		  if (crecp->flags & (F_HOSTS | F_DHCP | F_CONFIG))
@@ -468,10 +468,10 @@ void cache_start_insert(void)
 }
 
 struct crec *cache_insert(char *name, union all_addr *addr, unsigned short class,
-			  time_t now,  unsigned long ttl, unsigned short flags)
+			  time_t now,  unsigned long ttl, unsigned int flags)
 {
   /* Don't log DNSSEC records here, done elsewhere */
-  if (flags & (F_IPV4 | F_IPV6 | F_CNAME))
+  if (flags & (F_IPV4 | F_IPV6 | F_CNAME | F_SRV))
     {
       log_query(flags | F_UPSTREAM, name, addr, NULL);
       /* Don't mess with TTL for DNSSEC records. */
@@ -487,7 +487,7 @@ struct crec *cache_insert(char *name, union all_addr *addr, unsigned short class
 
 
 static struct crec *really_insert(char *name, union all_addr *addr, unsigned short class,
-				  time_t now,  unsigned long ttl, unsigned short flags)
+				  time_t now,  unsigned long ttl, unsigned int flags)
 {
   struct crec *new, *target_crec = NULL;
   union bigname *big_name = NULL;
@@ -651,7 +651,7 @@ void cache_end_insert(void)
 	    {
 	      char *name = cache_get_name(new_chain);
 	      ssize_t m = strlen(name);
-	      unsigned short flags = new_chain->flags;
+	      unsigned int flags = new_chain->flags;
 #ifdef HAVE_DNSSEC
 	      u16 class = new_chain->uid;
 #endif
@@ -661,8 +661,10 @@ void cache_end_insert(void)
 	      read_write(daemon->pipe_to_parent, (unsigned char *)&new_chain->ttd, sizeof(new_chain->ttd), 0);
 	      read_write(daemon->pipe_to_parent, (unsigned  char *)&flags, sizeof(flags), 0);
 
-	      if (flags & (F_IPV4 | F_IPV6 | F_DNSKEY | F_DS))
+	      if (flags & (F_IPV4 | F_IPV6 | F_DNSKEY | F_DS | F_SRV))
 		read_write(daemon->pipe_to_parent, (unsigned char *)&new_chain->addr, sizeof(new_chain->addr), 0);
+	      if (flags & F_SRV)
+		 blockdata_write(new_chain->addr.srv.target, new_chain->addr.srv.targetlen, daemon->pipe_to_parent);
 #ifdef HAVE_DNSSEC
 	      if (flags & F_DNSKEY)
 		{
@@ -701,7 +703,7 @@ int cache_recv_insert(time_t now, int fd)
   union all_addr addr;
   unsigned long ttl;
   time_t ttd;
-  unsigned short flags;
+  unsigned int flags;
   struct crec *crecp = NULL;
   
   cache_start_insert();
@@ -727,13 +729,16 @@ int cache_recv_insert(time_t now, int fd)
 
       ttl = difftime(ttd, now);
       
-      if (flags & (F_IPV4 | F_IPV6 | F_DNSKEY | F_DS))
+      if (flags & (F_IPV4 | F_IPV6 | F_DNSKEY | F_DS | F_SRV))
 	{
 	  unsigned short class = C_IN;
 
 	  if (!read_write(fd, (unsigned char *)&addr, sizeof(addr), 1))
 	    return 0;
-	  
+
+	  if (flags & F_SRV && !(addr.srv.target = blockdata_read(fd, addr.srv.targetlen)))
+	    return 0;
+	
 #ifdef HAVE_DNSSEC
 	   if (flags & F_DNSKEY)
 	     {
@@ -804,7 +809,7 @@ struct crec *cache_find_by_name(struct crec *crecp, char *name, time_t now, unsi
       /* first search, look for relevant entries and push to top of list
 	 also free anything which has expired */
       struct crec *next, **up, **insert = NULL, **chainp = &ans;
-      unsigned short ins_flags = 0;
+      unsigned int ins_flags = 0;
       
       for (up = hash_bucket(name), crecp = *up; crecp; crecp = next)
 	{
@@ -1088,7 +1093,7 @@ int read_hostsfile(char *filename, unsigned int index, int cache_size, struct cr
   FILE *f = fopen(filename, "r");
   char *token = daemon->namebuff, *domain_suffix = NULL;
   int addr_count = 0, name_count = cache_size, lineno = 0;
-  unsigned short flags = 0;
+  unsigned int flags = 0;
   union all_addr addr;
   int atnl, addrlen = 0;
 
@@ -1203,9 +1208,8 @@ void cache_reload(void)
   for (i=0; i<hash_size; i++)
     for (cache = hash_table[i], up = &hash_table[i]; cache; cache = tmp)
       {
-#ifdef HAVE_DNSSEC
 	cache_blockdata_free(cache);
-#endif
+
 	tmp = cache->hash_next;
 	if (cache->flags & (F_HOSTS | F_CONFIG))
 	  {
@@ -1387,7 +1391,7 @@ void cache_add_dhcp_entry(char *host_name, int prot,
 			  union all_addr *host_address, time_t ttd) 
 {
   struct crec *crec = NULL, *fail_crec = NULL;
-  unsigned short flags = F_IPV4;
+  unsigned int flags = F_IPV4;
   int in_hosts = 0;
   size_t addrlen = sizeof(struct in_addr);
 
@@ -1694,9 +1698,8 @@ void dump_cache(time_t now)
 #ifdef HAVE_AUTH
   my_syslog(LOG_INFO, _("queries for authoritative zones %u"), daemon->metrics[METRIC_DNS_AUTH_ANSWERED]);
 #endif
-#ifdef HAVE_DNSSEC
+
   blockdata_report();
-#endif
 
   /* sum counts from different records for same server */
   for (serv = daemon->servers; serv; serv = serv->next)
@@ -1738,6 +1741,17 @@ void dump_cache(time_t now)
 	    p += sprintf(p, "%-30.30s ", sanitise(n));
 	    if ((cache->flags & F_CNAME) && !is_outdated_cname_pointer(cache))
 	      a = sanitise(cache_get_cname_target(cache));
+	    else if ((cache->flags & F_SRV) && !(cache->flags & F_NEG))
+	      {
+		int targetlen = cache->addr.srv.targetlen;
+		ssize_t len = sprintf(a, "%u %u %u ", cache->addr.srv.priority,
+				      cache->addr.srv.weight, cache->addr.srv.srvport);
+
+		if (targetlen > (40 - len))
+		  targetlen = 40 - len;
+		blockdata_retrieve(cache->addr.srv.target, targetlen, a + len);
+		a[len + targetlen] = 0;		
+	      }
 #ifdef HAVE_DNSSEC
 	    else if (cache->flags & F_DS)
 	      {
@@ -1764,6 +1778,8 @@ void dump_cache(time_t now)
 	      t = "6";
 	    else if (cache->flags & F_CNAME)
 	      t = "C";
+	    else if (cache->flags & F_SRV)
+	      t = "V";
 #ifdef HAVE_DNSSEC
 	    else if (cache->flags & F_DS)
 	      t = "S";
@@ -1933,6 +1949,8 @@ void log_query(unsigned int flags, char *name, union all_addr *addr, char *arg)
     }
   else if (flags & F_CNAME)
     dest = "<CNAME>";
+  else if (flags & F_SRV)
+    dest = "<SRV>";
   else if (flags & F_RRNAME)
     dest = arg;
     

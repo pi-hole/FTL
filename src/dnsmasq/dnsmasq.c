@@ -368,9 +368,7 @@ int main_dnsmasq (int argc, char **argv)
     {
       cache_init();
 
-#ifdef HAVE_DNSSEC
       blockdata_init();
-#endif
     }
 
 #ifdef HAVE_INOTIFY
