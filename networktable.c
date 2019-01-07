@@ -262,7 +262,7 @@ void updateMACVendorRecords()
 	struct stat st;
 	if(stat(FTLfiles.macvendordb, &st) != 0)
 	{
-		// File does not exist or MAC address is incomplete
+		// File does not exist
 		if(debug) logg("updateMACVendorRecords(): %s does not exist", FTLfiles.macvendordb);
 		return;
 	}
@@ -299,6 +299,10 @@ void updateMACVendorRecords()
 		if(asprintf(&querystr, "UPDATE network SET macVendor = \"%s\" WHERE id = %i", vendor, id) < 1)
 		{
 			logg("updateMACVendorRecords() - Allocation error 2");
+
+			if(strlen(vendor) > 0)
+				free(vendor);
+
 			break;
 		}
 
@@ -308,6 +312,11 @@ void updateMACVendorRecords()
 		if( rc != SQLITE_OK ){
 			logg("updateMACVendorRecords() - SQL exec error: %s (%i): %s", querystr, rc, zErrMsg);
 			sqlite3_free(zErrMsg);
+
+			free(querystr);
+			if(strlen(vendor) > 0)
+				free(vendor);
+
 			break;
 		}
 
