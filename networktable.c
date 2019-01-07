@@ -196,10 +196,16 @@ void parse_arp_cache(void)
 char* getMACVendor(const char* hwaddr)
 {
 	struct stat st;
-	if(stat(FTLfiles.macvendordb, &st) != 0 || strlen(hwaddr) != 17)
+	if(stat(FTLfiles.macvendordb, &st) != 0)
 	{
-		// File does not exist or MAC address is incomplete
-		if(debug) logg("getMACVenor(%s): %s does not exist or MAC invalid (length %lu)", hwaddr, FTLfiles.macvendordb, strlen(hwaddr));
+		// File does not exist
+		if(debug) logg("getMACVenor(%s): %s does not exist", hwaddr, FTLfiles.macvendordb);
+		return "";
+	}
+	else if(strlen(hwaddr) != 17)
+	{
+		// MAC address is incomplete
+		if(debug) logg("getMACVenor(%s): MAC invalid (length %lu)", hwaddr, strlen(hwaddr));
 		return "";
 	}
 
