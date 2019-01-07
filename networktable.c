@@ -13,7 +13,7 @@
 #define ARPCACHE "/proc/net/arp"
 
 // Private prototypes
-char* getMACVendor(const char* hwaddr);
+static char* getMACVendor(const char* hwaddr);
 
 bool create_network_table(void)
 {
@@ -194,7 +194,7 @@ void parse_arp_cache(void)
 	dbclose();
 }
 
-char* getMACVendor(const char* hwaddr)
+static char* getMACVendor(const char* hwaddr)
 {
 	struct stat st;
 	if(stat(FTLfiles.macvendordb, &st) != 0)
@@ -246,16 +246,16 @@ char* getMACVendor(const char* hwaddr)
 	{
 		vendor = strdup((char*)sqlite3_column_text(stmt, 0));
 	}
-	else if(rc == SQLITE_DONE)
+	else
 	{
 		// Not found
-		vendor = "";
+		vendor = strdup("");
 	}
-	else
+
+	if(rc != SQLITE_DONE && rc != SQLITE_ROW)
 	{
 		// Error
 		logg("getMACVendor(%s) - SQL error step (%i): %s", hwaddr, rc, sqlite3_errmsg(macdb));
-		vendor = "";
 	}
 
 	sqlite3_finalize(stmt);
@@ -306,10 +306,7 @@ void updateMACVendorRecords()
 		if(asprintf(&querystr, "UPDATE network SET macVendor = \"%s\" WHERE id = %i", vendor, id) < 1)
 		{
 			logg("updateMACVendorRecords() - Allocation error 2");
-
-			if(strlen(vendor) > 0)
-				free(vendor);
-
+			free(vendor);
 			break;
 		}
 
@@ -319,18 +316,14 @@ void updateMACVendorRecords()
 		if( rc != SQLITE_OK ){
 			logg("updateMACVendorRecords() - SQL exec error: %s (%i): %s", querystr, rc, zErrMsg);
 			sqlite3_free(zErrMsg);
-
 			free(querystr);
-			if(strlen(vendor) > 0)
-				free(vendor);
-
+			free(vendor);
 			break;
 		}
 
 		// Free allocated memory
 		free(querystr);
-		if(strlen(vendor) > 0)
-			free(vendor);
+		free(vendor);
 	}
 	if(rc != SQLITE_DONE)
 	{

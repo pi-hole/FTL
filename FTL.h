@@ -222,7 +222,7 @@ typedef struct {
 // Used to check memory integrity in various structs
 #define MAGICBYTE 0x57
 
-// Some magic database constants constants
+// Some magic database constants
 #define DB_FAILED -2
 #define DB_NODATA -1
 
