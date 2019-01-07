@@ -319,6 +319,9 @@ void read_FTLconf(void)
 	// AUDITLISTFILE
 	getpath(fp, "AUDITLISTFILE", "/etc/pihole/auditlog.list", &files.auditlist);
 
+	// GRAVITYFILE
+	getpath(fp, "GRAVITYFILE", "/etc/pihole/gravity.db", &FTLfiles.gravitydb);
+
 	logg("Finished config file parsing");
 
 	// Release memory

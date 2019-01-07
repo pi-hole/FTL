@@ -1013,7 +1013,7 @@ unsigned long converttimeval(struct timeval time)
 }
 
 // This subroutine prepares IPv4 and IPv6 addresses for blocking queries depending on the configured blocking mode
-static void prepare_blocking_mode(struct all_addr *addr4, struct all_addr *addr6, bool *has_IPv4, bool *has_IPv6)
+void prepare_blocking_mode(struct all_addr *addr4, struct all_addr *addr6, bool *has_IPv4, bool *has_IPv6)
 {
 	// Read IPv4 address for host entries from setupVars.conf
 	char* const IPv4addr = read_setupVarsconf("IPV4_ADDRESS");
@@ -1059,8 +1059,8 @@ void rehash(int size);
 // This routine adds one domain to the resolver's cache. Depending on the configured blocking mode it may create
 // a single entry valid for IPv4 & IPv6 or two entries one for IPv4 and one for IPv6.
 // When IPv6 is not available on the machine, we do not add IPv6 cache entries (likewise for IPv4)
-static int add_blocked_domain_cache(struct all_addr *addr4, struct all_addr *addr6, bool has_IPv4, bool has_IPv6,
-                                    char *domain, struct crec **rhash, int hashsz, unsigned int index)
+int add_blocked_domain_cache(struct all_addr *addr4, struct all_addr *addr6, bool has_IPv4, bool has_IPv6,
+                             char *domain, struct crec **rhash, int hashsz, unsigned int index)
 {
 	int name_count = 0;
 	struct crec *cache4,*cache6;
@@ -1196,4 +1196,11 @@ int FTL_listsfile(char* filename, unsigned int index, FILE *f, int cache_size, s
 	logg("%s: parsed %i domains (took %.1f ms)", filename, added, timer_elapsed_msec(LISTS_TIMER));
 	counters->gravity += added;
 	return name_count;
+}
+
+void FTL_read_gravity(void)
+{
+	logg("Start reading gravity database...");
+	readGravity();
+	logg("...done reading gravity database.");
 }

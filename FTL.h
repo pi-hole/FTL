@@ -93,6 +93,7 @@ typedef struct {
 	char* port;
 	char* db;
 	char* socketfile;
+	char* gravitydb;
 } FTLFileNamesStruct;
 
 typedef struct {

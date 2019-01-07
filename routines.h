@@ -129,3 +129,6 @@ void addOverTimeClientSlot();
 
 // capabilities.c
 bool check_capabilities(void);
+
+// gravity.c
+bool readGravity(void);

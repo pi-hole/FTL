@@ -35,3 +35,5 @@ void _FTL_forwarding_failed(struct server *server, const char* file, const int l
 void FTL_dnsmasq_reload(void);
 void FTL_fork_and_bind_sockets(struct passwd *ent_pw);
 int FTL_listsfile(char* filename, unsigned int index, FILE *f, int cache_size, struct crec **rhash, int hashsz);
+
+void FTL_read_gravity(void);
