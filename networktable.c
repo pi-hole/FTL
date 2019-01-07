@@ -141,8 +141,7 @@ void parse_arp_cache(void)
 			        clientKnown ? clients[clientID].numQueriesARP : 0u,
 			        hostname,
 			        macVendor);
-			if(strlen(macVendor) > 0)
-				free(macVendor);
+			free(macVendor);
 		}
 		// Device in database AND client known to Pi-hole
 		else if(clientKnown)
@@ -165,7 +164,7 @@ void parse_arp_cache(void)
 			clients[clientID].numQueriesARP = 0;
 
 			// Store hostname if available
-			if(hostname != NULL && strlen(hostname) > 0)
+			if(strlen(hostname) > 0)
 			{
 				// Store host name
 				dbquery("UPDATE network "\
