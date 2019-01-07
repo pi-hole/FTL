@@ -14,7 +14,6 @@ import os
 import re
 import urllib.request
 import sqlite3
-import unicodecsv as unicodecsv
 
 # Download raw data from Wireshark's website
 # We use the official URL recommended in the header of this file
