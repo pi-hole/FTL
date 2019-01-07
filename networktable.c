@@ -237,11 +237,7 @@ char* getMACVendor(const char* hwaddr)
 	rc = sqlite3_step(stmt);
 	if(rc == SQLITE_ROW)
 	{
-		const unsigned char *result = sqlite3_column_text(stmt, 0);
-		// Need to use sprintf(%s) to convert unsigned char* to
-		// standard C string literals (which are char*)
-		if(asprintf(&vendor, "%s", result) < 1)
-			logg("getMACVendor(%s) - Allocation error 2", hwaddr);
+		vendor = strdup((char*)sqlite3_column_text(stmt, 0));
 	}
 	else if(rc == SQLITE_DONE)
 	{
@@ -291,21 +287,15 @@ void updateMACVendorRecords()
 	while((rc = sqlite3_step(stmt)) == SQLITE_ROW)
 	{
 		const int id = sqlite3_column_int(stmt, 0);
-		const unsigned char *hwaddr = sqlite3_column_text(stmt, 1);
-		// Need to use sprintf(%s) to convert unsigned char* to
-		// standard C string literals (which are char*)
-		char *querystr = NULL;
-		if(asprintf(&querystr, "%s", hwaddr) < 1)
-		{
-			logg("updateMACVendorRecords() - Allocation error 1");
-			break;
-		}
+		char* hwaddr = strdup((char*)sqlite3_column_text(stmt, 1));
 
 		// Get vendor for MAC
-		char* vendor = getMACVendor(querystr);
-		free(querystr);
+		char* vendor = getMACVendor(hwaddr);
+		free(hwaddr);
+		hwaddr = NULL;
 
 		// Prepare UPDATE statement
+		char *querystr = NULL;
 		if(asprintf(&querystr, "UPDATE network SET macVendor = \"%s\" WHERE id = %i", vendor, id) < 1)
 		{
 			logg("updateMACVendorRecords() - Allocation error 2");
