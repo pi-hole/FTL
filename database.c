@@ -259,7 +259,7 @@ int db_get_FTL_property(unsigned int ID)
 	if(querystr == NULL || ret < 0)
 	{
 		logg("Memory allocation failed in db_get_FTL_property with ID = %u (%i)", ID, ret);
-		return -2;
+		return DB_FAILED;
 	}
 
 	int value = db_query_int(querystr);
@@ -295,7 +295,7 @@ int db_query_int(const char* querystr)
 		logg("db_query_int(%s) - SQL error prepare (%i): %s", querystr, rc, sqlite3_errmsg(db));
 		dbclose();
 		check_database(rc);
-		return -2;
+		return DB_FAILED;
 	}
 
 	rc = sqlite3_step(stmt);
@@ -308,14 +308,14 @@ int db_query_int(const char* querystr)
 	else if( rc == SQLITE_DONE )
 	{
 		// No rows available
-		result = -1;
+		result = DB_NODATA;
 	}
 	else
 	{
 		logg("db_query_int(%s) - SQL error step (%i): %s", querystr, rc, sqlite3_errmsg(db));
 		dbclose();
 		check_database(rc);
-		return -2;
+		return DB_FAILED;
 	}
 
 	sqlite3_finalize(stmt);
@@ -333,7 +333,7 @@ int number_of_queries_in_DB(void)
 		logg("number_of_queries_in_DB() - SQL error prepare (%i): %s", rc, sqlite3_errmsg(db));
 		dbclose();
 		check_database(rc);
-		return -1;
+		return DB_FAILED;
 	}
 
 	rc = sqlite3_step(stmt);
@@ -341,7 +341,7 @@ int number_of_queries_in_DB(void)
 		logg("number_of_queries_in_DB() - SQL error step (%i): %s", rc, sqlite3_errmsg(db));
 		dbclose();
 		check_database(rc);
-		return -1;
+		return DB_FAILED;
 	}
 
 	int result = sqlite3_column_int(stmt, 0);
@@ -360,7 +360,7 @@ static sqlite3_int64 last_ID_in_DB(void)
 		logg("last_ID_in_DB() - SQL error prepare (%i): %s", rc, sqlite3_errmsg(db));
 		dbclose();
 		check_database(rc);
-		return -1;
+		return DB_FAILED;
 	}
 
 	rc = sqlite3_step(stmt);
@@ -368,7 +368,7 @@ static sqlite3_int64 last_ID_in_DB(void)
 		logg("last_ID_in_DB() - SQL error step (%i): %s", rc, sqlite3_errmsg(db));
 		dbclose();
 		check_database(rc);
-		return -1;
+		return DB_FAILED;
 	}
 
 	sqlite3_int64 result = sqlite3_column_int64(stmt, 0);
@@ -380,12 +380,12 @@ static sqlite3_int64 last_ID_in_DB(void)
 
 int get_number_of_queries_in_DB(void)
 {
-	int result = -1;
+	int result = DB_NODATA;
 
 	if(!dbopen())
 	{
 		logg("Failed to open DB in get_number_of_queries_in_DB()");
-		return -2;
+		return DB_FAILED;
 	}
 
 	result = number_of_queries_in_DB();

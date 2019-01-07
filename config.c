@@ -323,7 +323,7 @@ void read_FTLconf(void)
 	getpath(fp, "MACVENDORDB", "/etc/pihole/macvendor.db", &FTLfiles.macvendordb);
 
 	// PARSE_ARP_CACHE
-	// defaults to: Yes
+	// defaults to: true
 	config.parse_arp_cache = true;
 	buffer = parse_FTLconf(fp, "PARSE_ARP_CACHE");
 

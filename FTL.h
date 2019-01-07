@@ -222,6 +222,10 @@ typedef struct {
 // Used to check memory integrity in various structs
 #define MAGICBYTE 0x57
 
+// Some magic database constants constants
+#define DB_FAILED -2
+#define DB_NODATA -1
+
 extern logFileNamesStruct files;
 extern FTLFileNamesStruct FTLfiles;
 extern countersStruct *counters;

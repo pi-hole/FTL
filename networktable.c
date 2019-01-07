@@ -18,7 +18,7 @@ char* getMACVendor(const char* hwaddr);
 bool create_network_table(void)
 {
 	bool ret;
-	// Create FTL table in the database (holds properties like database version, etc.)
+	// Create network table in the database
 	ret = dbquery("CREATE TABLE network ( id INTEGER PRIMARY KEY NOT NULL, " \
 	                                     "ip TEXT NOT NULL, " \
 	                                     "hwaddr TEXT NOT NULL, " \
@@ -53,6 +53,7 @@ void parse_arp_cache(void)
 	if(!dbopen())
 	{
 		logg("read_arp_cache() - Failed to open DB");
+		fclose(arpfp);
 		return;
 	}
 
@@ -102,7 +103,7 @@ void parse_arp_cache(void)
 		int dbID = db_query_int(querystr);
 		free(querystr);
 
-		if(dbID == -2)
+		if(dbID == DB_FAILED)
 		{
 			// SQLite error
 			break;
@@ -129,7 +130,7 @@ void parse_arp_cache(void)
 		}
 
 		// Device not in database, add new entry
-		if(dbID == -1)
+		if(dbID == DB_NODATA)
 		{
 			char* macVendor = getMACVendor(hwaddr);
 			dbquery("INSERT INTO network "\
