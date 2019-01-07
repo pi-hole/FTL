@@ -121,7 +121,7 @@ void parse_arp_cache(void)
 		bool clientKnown = clientID >= 0;
 
 		// Get hostname of this client if the client is known
-		char *hostname = NULL;
+		char *hostname = "";
 		if(clientKnown)
 		{
 			validate_access("clients", clientID, true, __LINE__, __FUNCTION__, __FILE__);
@@ -138,7 +138,7 @@ void parse_arp_cache(void)
 			        ip, hwaddr, iface, now,
 			        clientKnown ? clients[clientID].lastQuery : 0L,
 			        clientKnown ? clients[clientID].numQueriesARP : 0u,
-			        hostname == NULL ? "" : hostname,
+			        hostname,
 			        macVendor);
 			if(strlen(macVendor) > 0)
 				free(macVendor);
