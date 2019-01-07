@@ -1069,7 +1069,7 @@ static int add_blocked_domain_cache(struct all_addr *addr4, struct all_addr *add
 	   (cache4 = malloc(sizeof(struct crec) + strlen(domain)+1-SMALLDNAME)))
 	{
 		strcpy(cache4->name.sname, domain);
-		cache4->flags = F_HOSTS | F_IMMORTAL | F_FORWARD | F_REVERSE | F_IPV4;
+		cache4->flags = F_HOSTS | F_IMMORTAL | F_FORWARD | F_IPV4;
 		int memorysize = INADDRSZ;
 		if(config.blockingmode == MODE_NX)
 		{
@@ -1099,7 +1099,7 @@ static int add_blocked_domain_cache(struct all_addr *addr4, struct all_addr *add
 	   (cache6 = malloc(sizeof(struct crec) + strlen(domain)+1-SMALLDNAME)))
 	{
 		strcpy(cache6->name.sname, domain);
-		cache6->flags = F_HOSTS | F_IMMORTAL | F_FORWARD | F_REVERSE | F_IPV6;
+		cache6->flags = F_HOSTS | F_IMMORTAL | F_FORWARD | F_IPV6;
 		if(config.blockingmode == MODE_IP_NODATA_AAAA) cache6->flags |= F_NEG;
 		cache6->ttd = daemon->local_ttl;
 		add_hosts_entry(cache6, addr6, IN6ADDRSZ, index, rhash, hashsz);
