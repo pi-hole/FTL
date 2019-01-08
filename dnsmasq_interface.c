@@ -1069,17 +1069,29 @@ static int add_blocked_domain_cache(struct all_addr *addr4, struct all_addr *add
 	   (cache4 = malloc(sizeof(struct crec) + strlen(domain)+1-SMALLDNAME)))
 	{
 		strcpy(cache4->name.sname, domain);
-		cache4->flags = F_HOSTS | F_IMMORTAL | F_FORWARD | F_REVERSE | F_IPV4;
-		// If we block in NXDOMAIN mode, we add the NXDOMAIN flag and make this host record
-		// also valid for AAAA requests
-		if(config.blockingmode == MODE_NX) cache4->flags |= F_IPV6 | F_NEG | F_NXDOMAIN;
-		// If we block in NULL mode, we make this host record also valid for AAAA requests
-		else if(config.blockingmode == MODE_NULL) cache4->flags |= F_IPV6;
-		// If we block in NODATA mode, we make this host record also valid for AAAA requests
-		// and apply the NEG response flag (but not the NXDOMAIN flag)
-		else if(config.blockingmode == MODE_NODATA) cache4->flags |= F_IPV6 | F_NEG;
+		cache4->flags = F_HOSTS | F_IMMORTAL | F_FORWARD | F_IPV4;
+		int memorysize = INADDRSZ;
+		if(config.blockingmode == MODE_NX)
+		{
+			// If we block in NXDOMAIN mode, we add the NXDOMAIN flag and make this host record
+			// also valid for AAAA requests
+			 cache4->flags |= F_IPV6 | F_NEG | F_NXDOMAIN;
+		}
+		else if(config.blockingmode == MODE_NULL)
+		{
+			// If we block in NULL mode, we make this host record also valid for AAAA requests
+			// This is okay as the addr structs have been statically zero-initialized
+			cache4->flags |= F_IPV6;
+			memorysize = IN6ADDRSZ;
+		}
+		else if(config.blockingmode == MODE_NODATA)
+		{
+			// If we block in NODATA mode, we make this host record also valid for AAAA requests
+			// and apply the NEG response flag (but not the NXDOMAIN flag)
+			cache4->flags |= F_IPV6 | F_NEG;
+		}
 		cache4->ttd = daemon->local_ttl;
-		add_hosts_entry(cache4, addr4, INADDRSZ, index, rhash, hashsz);
+		add_hosts_entry(cache4, addr4, memorysize, index, rhash, hashsz);
 		name_count++;
 	}
 	// Add IPv6 record only if we respond with a non-NULL IP address to blocked domains
@@ -1087,7 +1099,7 @@ static int add_blocked_domain_cache(struct all_addr *addr4, struct all_addr *add
 	   (cache6 = malloc(sizeof(struct crec) + strlen(domain)+1-SMALLDNAME)))
 	{
 		strcpy(cache6->name.sname, domain);
-		cache6->flags = F_HOSTS | F_IMMORTAL | F_FORWARD | F_REVERSE | F_IPV6;
+		cache6->flags = F_HOSTS | F_IMMORTAL | F_FORWARD | F_IPV6;
 		if(config.blockingmode == MODE_IP_NODATA_AAAA) cache6->flags |= F_NEG;
 		cache6->ttd = daemon->local_ttl;
 		add_hosts_entry(cache6, addr6, IN6ADDRSZ, index, rhash, hashsz);
