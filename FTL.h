@@ -69,7 +69,7 @@
 #define MAXITER 1000
 
 // FTLDNS enums
-enum { DATABASE_WRITE_TIMER, EXIT_TIMER, GC_TIMER, LISTS_TIMER, REGEX_TIMER };
+enum { DATABASE_WRITE_TIMER, EXIT_TIMER, GC_TIMER, LISTS_TIMER, REGEX_TIMER, ARP_TIMER, LAST_TIMER };
 enum { QUERIES, FORWARDED, CLIENTS, DOMAINS, OVERTIME, WILDCARD };
 enum { DNSSEC_UNSPECIFIED, DNSSEC_SECURE, DNSSEC_INSECURE, DNSSEC_BOGUS, DNSSEC_ABANDONED, DNSSEC_UNKNOWN };
 enum { QUERY_UNKNOWN, QUERY_GRAVITY, QUERY_FORWARDED, QUERY_CACHE, QUERY_WILDCARD, QUERY_BLACKLIST, QUERY_EXTERNAL_BLOCKED };
@@ -79,6 +79,11 @@ enum { PRIVACY_SHOW_ALL = 0, PRIVACY_HIDE_DOMAINS, PRIVACY_HIDE_DOMAINS_CLIENTS,
 enum { MODE_IP, MODE_NX, MODE_NULL, MODE_IP_NODATA_AAAA, MODE_NODATA };
 enum { REGEX_UNKNOWN, REGEX_BLOCKED, REGEX_NOTBLOCKED };
 enum { BLOCKING_DISABLED, BLOCKING_ENABLED, BLOCKING_UNKNOWN };
+
+// Database table "ftl"
+enum { DB_VERSION, DB_LASTTIMESTAMP, DB_FIRSTCOUNTERTIMESTAMP };
+// Database table "counters"
+enum { DB_TOTALQUERIES, DB_BLOCKEDQUERIES };
 
 // Privacy mode constants
 #define HIDDEN_DOMAIN "hidden"
@@ -93,6 +98,7 @@ typedef struct {
 	char* port;
 	char* db;
 	char* socketfile;
+	char* macvendordb;
 } FTLFileNamesStruct;
 
 typedef struct {
@@ -144,6 +150,7 @@ typedef struct {
 	bool regex_debugmode;
 	bool analyze_only_A_AAAA;
 	bool DBimport;
+	bool parse_arp_cache;
 } ConfigStruct;
 
 // Dynamic structs
@@ -182,6 +189,8 @@ typedef struct {
 	unsigned long long ippos;
 	unsigned long long namepos;
 	bool new;
+	time_t lastQuery;
+	unsigned int numQueriesARP;
 } clientsDataStruct;
 
 typedef struct {
@@ -208,10 +217,14 @@ typedef struct {
 } whitelistStruct;
 
 // Prepare timers, used mainly for debugging purposes
-#define NUMTIMERS 5
+#define NUMTIMERS LAST_TIMER
 
 // Used to check memory integrity in various structs
 #define MAGICBYTE 0x57
+
+// Some magic database constants
+#define DB_FAILED -2
+#define DB_NODATA -1
 
 extern logFileNamesStruct files;
 extern FTLFileNamesStruct FTLfiles;
@@ -250,7 +263,6 @@ extern long int lastdbindex;
 extern bool travis;
 extern bool DBdeleteoldqueries;
 extern bool rereadgravity;
-extern long int lastDBimportedtimestamp;
 extern bool ipv4telnet, ipv6telnet;
 extern bool istelnet[MAXCONNS];
 
