@@ -201,7 +201,7 @@ static void cache_hash(struct crec *crecp)
 
 static void cache_blockdata_free(struct crec *crecp)
 {
-  if (crecp->flags & F_SRV)
+  if (crecp->flags & F_SRV && !(crecp->flags & F_NEG))
     blockdata_free(crecp->addr.srv.target);
 #ifdef HAVE_DNSSEC
   else if (crecp->flags & F_DNSKEY)
