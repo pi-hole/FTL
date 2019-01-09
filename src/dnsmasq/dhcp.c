@@ -754,19 +754,6 @@ int address_allocate(struct dhcp_context *context,
 	      if (addr.s_addr == d->router.s_addr)
 		break;
 
-	    /* in consec-ip mode, skip addresses equal to
-	       the number of addresses rejected by clients. This
-	       should avoid the same client being offered the same
-	       address after it has rjected it. */
-	    if (option_bool(OPT_CONSEC_ADDR))
-	      {
-		if (c->addr_epoch)
-		  {
-		    c->addr_epoch--;
-		    d = context; /* d non-NULL skips the address. */
-		  }
-	      }
-	    
 	    /* Addresses which end in .255 and .0 are broken in Windows even when using 
 	       supernetting. ie dhcp-range=192.168.0.1,192.168.1.254,255,255,254.0
 	       then 192.168.0.255 is a valid IP address, but not for Windows as it's
@@ -778,24 +765,33 @@ int address_allocate(struct dhcp_context *context,
 		(!IN_CLASSC(ntohl(addr.s_addr)) || 
 		 ((ntohl(addr.s_addr) & 0xff) != 0xff && ((ntohl(addr.s_addr) & 0xff) != 0x0))))
 	      {
-		struct ping_result *r;
-		
-		if ((r = do_icmp_ping(now, addr, j, loopback)))
- 		  {
-		    /* consec-ip mode: we offered this address for another client
-		       (different hash) recently, don't offer it to this one. */
-		    if (!option_bool(OPT_CONSEC_ADDR) || r->hash == j)
-		      {
-			*addrp = addr;
-			return 1;
-		      }
-		  }
+		/* in consec-ip mode, skip addresses equal to
+		   the number of addresses rejected by clients. This
+		   should avoid the same client being offered the same
+		   address after it has rjected it. */
+		if (option_bool(OPT_CONSEC_ADDR) && c->addr_epoch)
+		  c->addr_epoch--;
 		else
 		  {
-		    /* address in use: perturb address selection so that we are
-		       less likely to try this address again. */
-		    if (!option_bool(OPT_CONSEC_ADDR))
-		      c->addr_epoch++;
+		    struct ping_result *r;
+		    
+		    if ((r = do_icmp_ping(now, addr, j, loopback)))
+		      {
+			/* consec-ip mode: we offered this address for another client
+			   (different hash) recently, don't offer it to this one. */
+			if (!option_bool(OPT_CONSEC_ADDR) || r->hash == j)
+			  {
+			    *addrp = addr;
+			    return 1;
+			  }
+		      }
+		    else
+		      {
+			/* address in use: perturb address selection so that we are
+			   less likely to try this address again. */
+			if (!option_bool(OPT_CONSEC_ADDR))
+			  c->addr_epoch++;
+		      }
 		  }
 	      }
 	    

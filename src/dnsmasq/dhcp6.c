@@ -436,7 +436,7 @@ struct dhcp_context *address6_allocate(struct dhcp_context *context,  unsigned c
 		 skip addresses equal to the number of addresses rejected
 		 by clients. This should avoid the same client being offered the same
 		 address after it has rjected it. */
-	      start = lease_find_max_addr6(c) + serial + c->addr_epoch;
+	      start = lease_find_max_addr6(c) + 1 + serial + c->addr_epoch;
 	      if (c->addr_epoch)
 		c->addr_epoch--;
 	    }
