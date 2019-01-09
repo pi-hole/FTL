@@ -313,7 +313,7 @@ static int is_outdated_cname_pointer(struct crec *crecp)
   /* NB. record may be reused as DS or DNSKEY, where uid is 
      overloaded for something completely different */
   if (crecp->addr.cname.target.cache && 
-      (crecp->addr.cname.target.cache->flags & (F_IPV4 | F_IPV6 | F_CNAME)) &&
+      !(crecp->addr.cname.target.cache->flags & (F_DNSKEY | F_DS)) &&
       crecp->addr.cname.uid == crecp->addr.cname.target.cache->uid)
     return 0;
   
