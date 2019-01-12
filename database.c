@@ -741,6 +741,8 @@ void read_data_from_DB(void)
 		queries[queryIndex].complete = true; // Mark as all information is avaiable
 		queries[queryIndex].response = 0;
 		queries[queryIndex].AD = false;
+		queries[queryIndex].dnssec = DNSSEC_UNKNOWN;
+		queries[queryIndex].reply = REPLY_UNKNOWN;
 		lastDBimportedtimestamp = queryTimeStamp;
 
 		// Handle type counters
