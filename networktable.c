@@ -200,13 +200,13 @@ static char* getMACVendor(const char* hwaddr)
 	{
 		// File does not exist
 		if(debug) logg("getMACVenor(%s): %s does not exist", hwaddr, FTLfiles.macvendordb);
-		return "";
+		return strdup("");
 	}
 	else if(strlen(hwaddr) != 17)
 	{
 		// MAC address is incomplete
 		if(debug) logg("getMACVenor(%s): MAC invalid (length %lu)", hwaddr, strlen(hwaddr));
-		return "";
+		return strdup("");
 	}
 
 	sqlite3 *macdb;
@@ -214,7 +214,7 @@ static char* getMACVendor(const char* hwaddr)
 	if( rc ){
 		logg("getMACVendor(%s) - SQL error (%i): %s", hwaddr, rc, sqlite3_errmsg(macdb));
 		sqlite3_close(macdb);
-		return "";
+		return strdup("");
 	}
 
 	char *querystr = NULL;
@@ -226,7 +226,7 @@ static char* getMACVendor(const char* hwaddr)
 	{
 		logg("getMACVendor(%s) - Allocation error (%i)", hwaddr, rc);
 		sqlite3_close(macdb);
-		return "";
+		return strdup("");
 	}
 	free(hwaddrshort);
 
@@ -235,7 +235,7 @@ static char* getMACVendor(const char* hwaddr)
 	if( rc ){
 		logg("getMACVendor(%s) - SQL error prepare (%s, %i): %s", hwaddr, querystr, rc, sqlite3_errmsg(macdb));
 		sqlite3_close(macdb);
-		return "";
+		return strdup("");
 	}
 	free(querystr);
 
