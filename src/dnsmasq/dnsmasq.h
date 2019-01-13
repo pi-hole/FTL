@@ -807,6 +807,7 @@ struct dhcp_config {
 #define CONFIG_BANK           2048    /* from dhcp hosts file */
 #define CONFIG_ADDR6          4096
 #define CONFIG_WILDCARD       8192
+#define CONFIG_ADDR6_HOSTS   16384    /* address added by from /etc/hosts */
 
 struct dhcp_opt {
   int opt, len, flags;

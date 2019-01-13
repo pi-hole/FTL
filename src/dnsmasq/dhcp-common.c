@@ -372,7 +372,11 @@ void dhcp_update_configs(struct dhcp_config *configs)
 
   for (config = configs; config; config = config->next)
     if (config->flags & CONFIG_ADDR_HOSTS)
-      config->flags &= ~(CONFIG_ADDR | CONFIG_ADDR6 | CONFIG_ADDR_HOSTS);
+      config->flags &= ~(CONFIG_ADDR | CONFIG_ADDR_HOSTS);
+#ifdef HAVE_DHCP6
+    if (config->flags & CONFIG_ADDR6_HOSTS)
+      config->flags &= ~(CONFIG_ADDR6 | CONFIG_ADDR6_HOSTS);
+#endif
 
 #ifdef HAVE_DHCP6 
  again:  
@@ -421,7 +425,7 @@ void dhcp_update_configs(struct dhcp_config *configs)
 		(!(conf_tmp = config_find_by_address6(configs, &crec->addr.addr6, 128, 0)) || conf_tmp == config))
 	      {
 		memcpy(&config->addr6, &crec->addr.addr6, IN6ADDRSZ);
-		config->flags |= CONFIG_ADDR6 | CONFIG_ADDR_HOSTS;
+		config->flags |= CONFIG_ADDR6 | CONFIG_ADDR6_HOSTS;
 		continue;
 	      }
 #endif
