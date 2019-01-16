@@ -61,7 +61,7 @@ void _FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char 
 	else
 	{
 		// Return early to avoid accessing querytypedata out of bounds
-		if(debug) logg("Notice: Skipping unknown query type: %s (%i)", types, id);
+		if(config.debug & DEBUG_QUERIES) logg("Notice: Skipping unknown query type: %s (%i)", types, id);
 		unlock_shm();
 		return;
 	}
@@ -69,7 +69,7 @@ void _FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char 
 	// Skip AAAA queries if user doesn't want to have them analyzed
 	if(!config.analyze_AAAA && querytype == TYPE_AAAA)
 	{
-		if(debug) logg("Not analyzing AAAA query");
+		if(config.debug & DEBUG_QUERIES) logg("Not analyzing AAAA query");
 		unlock_shm();
 		return;
 	}
@@ -112,7 +112,7 @@ void _FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char 
 
 	// Log new query if in debug mode
 	char *proto = (type == UDP) ? "UDP" : "TCP";
-	if(debug) logg("**** new %s %s \"%s\" from %s (ID %i, %s:%i)", proto, types, domain, client, id, file, line);
+	if(config.debug & DEBUG_QUERIES) logg("**** new %s %s \"%s\" from %s (ID %i, %s:%i)", proto, types, domain, client, id, file, line);
 
 	// Update counters
 	int timeidx = findOverTimeID(overTimetimestamp);
@@ -125,7 +125,7 @@ void _FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char 
 	if(config.analyze_only_A_AAAA && querytype != TYPE_A && querytype != TYPE_AAAA)
 	{
 		// Don't process this query further here, we already counted it
-		if(debug) logg("Notice: Skipping new query: %s (%i)", types, id);
+		if(config.debug & DEBUG_QUERIES) logg("Notice: Skipping new query: %s (%i)", types, id);
 		free(domain);
 		free(domainbuffer);
 		free(client);
@@ -261,7 +261,7 @@ void _FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int i
 	strtolower(forward);
 
 	// Debug logging
-	if(debug) logg("**** forwarded %s to %s (ID %i, %s:%i)", name, forward, id, file, line);
+	if(config.debug & DEBUG_QUERIES) logg("**** forwarded %s to %s (ID %i, %s:%i)", name, forward, id, file, line);
 
 	// Save status and forwardID in corresponding query identified by dnsmasq's ID
 	int i = findQueryID(id);
@@ -374,6 +374,9 @@ void FTL_dnsmasq_reload(void)
 	// Reread regex.list
 	free_regex();
 	read_regex_from_file();
+
+	// Reread pihole-FTL.conf to see which debugging flags are set
+	read_debuging_settings(NULL);
 }
 
 void _FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id, const char* file, const int line)
@@ -401,7 +404,7 @@ void _FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id,
 	else if(flags & F_NEG)
 		answer = "(NODATA)";
 
-	if(debug)
+	if(config.debug & DEBUG_QUERIES)
 	{
 		logg("**** got reply %s is %s (ID %i, %s:%i)", name, answer, id, file, line);
 		print_flags(flags);
@@ -416,7 +419,7 @@ void _FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id,
 	if(i < 0)
 	{
 		// This may happen e.g. if the original query was "pi.hole"
-		if(debug) logg("FTL_reply(): Query %i has not been found", id);
+		if(config.debug & DEBUG_QUERIES) logg("FTL_reply(): Query %i has not been found", id);
 		unlock_shm();
 		return;
 	}
@@ -617,8 +620,11 @@ void _FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg
 	free(domain);
 
 	// Debug logging
-	if(debug) logg("**** got cache answer for %s / %s / %s (ID %i, %s:%i)", name, dest, arg, id, file, line);
-	if(debug) print_flags(flags);
+	if(config.debug & DEBUG_QUERIES)
+	{
+		logg("**** got cache answer for %s / %s / %s (ID %i, %s:%i)", name, dest, arg, id, file, line);
+		print_flags(flags);
+	}
 
 	// Get response time
 	struct timeval response;
@@ -752,7 +758,7 @@ void _FTL_dnssec(int status, int id, const char* file, const int line)
 	}
 
 	// Debug logging
-	if(debug)
+	if(config.debug & DEBUG_QUERIES)
 	{
 		int domainID = queries[i].domainID;
 		validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
@@ -793,7 +799,7 @@ void _FTL_header_ADbit(unsigned char header4, unsigned int rcode, int id, const 
 		return;
 	}
 
-	if(debug)
+	if(config.debug & DEBUG_QUERIES)
 	{
 		int domainID = queries[i].domainID;
 		validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
@@ -829,6 +835,11 @@ void print_flags(unsigned int flags)
 {
 	// Debug function, listing resolver flags in clear text
 	// e.g. "Flags: F_FORWARD F_NEG F_IPV6"
+
+	// Only print flags if corresponding debugging flag is set
+	if(!(config.debug & DEBUG_FLAGS))
+		return;
+
 	unsigned int i;
 	char *flagstr = calloc(256,sizeof(char));
 	for(i = 0; i < sizeof(flags)*8; i++)
@@ -1000,7 +1011,7 @@ void _FTL_forwarding_failed(struct server *server, const char* file, const int l
 	strtolower(forward);
 	int forwardID = findForwardID(forward, false);
 
-	if(debug) logg("**** forwarding to %s (ID %i, %s:%i) failed", dest, forwardID, file, line);
+	if(config.debug & DEBUG_QUERIES) logg("**** forwarding to %s (ID %i, %s:%i) failed", dest, forwardID, file, line);
 
 	forwarded[forwardID].failed++;
 
@@ -1123,7 +1134,7 @@ static void block_single_domain(char *domain)
 	regexlistname = files.regexlist;
 	add_blocked_domain_cache(&addr4, &addr6, has_IPv4, has_IPv6, domain, NULL, 0, SRC_REGEX);
 
-	if(debug) logg("Added %s to cache", domain);
+	if(config.debug & DEBUG_QUERIES) logg("Added %s to cache", domain);
 
 	return;
 }

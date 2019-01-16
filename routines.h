@@ -73,6 +73,7 @@ void getLogFilePath(void);
 void read_FTLconf(void);
 void get_privacy_level(FILE *fp);
 void get_blocking_mode(FILE *fp);
+void read_debuging_settings(FILE *fp);
 
 // gc.c
 void *GC_thread(void *val);

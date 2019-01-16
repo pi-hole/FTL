@@ -37,11 +37,11 @@ void *GC_thread(void *val)
 			// Get minimum time stamp to keep
 			time_t mintime = time(NULL) - config.maxlogage;
 
-			if(debug) timer_start(GC_TIMER);
+			if(config.debug & DEBUG_GC) timer_start(GC_TIMER);
 
 			long int i;
 			int removed = 0;
-			if(debug) logg("GC starting, mintime: %u %s", mintime, ctime(&mintime));
+			if(config.debug & DEBUG_GC) logg("GC starting, mintime: %u %s", mintime, ctime(&mintime));
 
 			// Process all queries
 			for(i=0; i < counters->queries; i++)
@@ -159,7 +159,7 @@ void *GC_thread(void *val)
 			// Zero out remaining memory (marked as "F" in the above example)
 			memset(&queries[counters->queries], 0, (counters->queries_MAX - counters->queries)*sizeof(*queries));
 
-			if(debug) logg("Notice: GC removed %i queries (took %.2f ms)", removed, timer_elapsed_msec(GC_TIMER));
+			if(config.debug & DEBUG_GC) logg("Notice: GC removed %i queries (took %.2f ms)", removed, timer_elapsed_msec(GC_TIMER));
 
 			// Release thread lock
 			unlock_shm();

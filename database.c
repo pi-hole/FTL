@@ -88,7 +88,7 @@ bool dbquery(const char *format, ...)
 		return false;
 	}
 
-	if(debug) logg("dbquery: %s", query);
+	if(config.debug & DEBUG_DATABASE) logg("dbquery: %s", query);
 
 	int rc = sqlite3_exec(db, query, NULL, NULL, &zErrMsg);
 
@@ -403,7 +403,7 @@ void save_to_DB(void)
 		return;
 
 	// Start database timer
-	if(debug) timer_start(DATABASE_WRITE_TIMER);
+	if(config.debug & DEBUG_DATABASE) timer_start(DATABASE_WRITE_TIMER);
 
 	// Open database
 	if(!dbopen())
@@ -554,7 +554,7 @@ void save_to_DB(void)
 	// Close database
 	dbclose();
 
-	if(debug)
+	if(config.debug & DEBUG_DATABASE)
 	{
 		logg("Notice: Queries stored in DB: %u (took %.1f ms, last SQLite ID %llu)", saved, timer_elapsed_msec(DATABASE_WRITE_TIMER), lastID);
 		if(saved_error > 0)
@@ -585,7 +585,7 @@ void delete_old_queries_in_DB(void)
 	int affected = sqlite3_changes(db);
 
 	// Print final message only if there is a difference
-	if(debug || affected)
+	if((config.debug & DEBUG_DATABASE) || affected)
 		logg("Notice: Database size is %.2f MB, deleted %i rows", get_db_filesize(), affected);
 
 	// Close database
@@ -666,7 +666,7 @@ void read_data_from_DB(void)
 		return;
 	}
 	// Log DB query string in debug mode
-	if(debug) logg(rstr);
+	if(config.debug & DEBUG_DATABASE) logg(rstr);
 
 	// Prepare SQLite3 statement
 	sqlite3_stmt* stmt;
@@ -691,7 +691,7 @@ void read_data_from_DB(void)
 		}
 		if(queryTimeStamp > now)
 		{
-			if(debug) logg("DB warn: Skipping query logged in the future (%i)", queryTimeStamp);
+			if(config.debug & DEBUG_DATABASE) logg("DB warn: Skipping query logged in the future (%i)", queryTimeStamp);
 			continue;
 		}
 

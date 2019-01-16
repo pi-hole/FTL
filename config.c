@@ -255,19 +255,6 @@ void read_FTLconf(void)
 			break;
 	}
 
-	// REGEX_DEBUGMODE
-	// defaults to: No
-	config.regex_debugmode = false;
-	buffer = parse_FTLconf(fp, "REGEX_DEBUGMODE");
-
-	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
-		config.regex_debugmode = true;
-
-	if(config.regex_debugmode)
-		logg("   REGEX_DEBUGMODE: Active. May increase log file size!");
-	else
-		logg("   REGEX_DEBUGMODE: Inactive");
-
 	// ANALYZE_ONLY_A_AND_AAAA
 	// defaults to: No
 	config.analyze_only_A_AAAA = false;
@@ -334,6 +321,9 @@ void read_FTLconf(void)
 		logg("   PARSE_ARP_CACHE: Active");
 	else
 		logg("   PARSE_ARP_CACHE: Inactive");
+
+	// Read DEBUG_... setting from pihole-FTL.conf
+	read_debuging_settings(fp);
 
 	logg("Finished config file parsing");
 
@@ -508,4 +498,114 @@ void get_blocking_mode(FILE *fp)
 	// Have to close the config file if we opened it
 	if(opened)
 		fclose(fp);
+}
+
+void read_debuging_settings(FILE *fp)
+{
+	// Set default (no debug instructions set)
+	config.debug = 0;
+
+	// See if we got a file handle, if not we have to open
+	// the config file ourselves
+	bool opened = false;
+	if(fp == NULL)
+	{
+		if((fp = fopen(FTLfiles.conf, "r")) == NULL)
+			// Return silently if there is no config file available
+			return;
+		opened = true;
+	}
+
+	// DEBUG_DATABASE
+	// defaults to: false
+	char* buffer = parse_FTLconf(fp, "DEBUG_DATABASE");
+	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
+		config.debug |= DEBUG_DATABASE;
+
+	// DEBUG_NETWORKING
+	// defaults to: false
+	buffer = parse_FTLconf(fp, "DEBUG_NETWORKING");
+	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
+		config.debug |= DEBUG_NETWORKING;
+
+	// DEBUG_LOCKS
+	// defaults to: false
+	buffer = parse_FTLconf(fp, "DEBUG_LOCKS");
+	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
+		config.debug |= DEBUG_LOCKS;
+
+	// DEBUG_QUERIES
+	// defaults to: false
+	buffer = parse_FTLconf(fp, "DEBUG_QUERIES");
+	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
+		config.debug |= DEBUG_QUERIES;
+
+	// DEBUG_FLAGS
+	// defaults to: false
+	buffer = parse_FTLconf(fp, "DEBUG_FLAGS");
+	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
+		config.debug |= DEBUG_FLAGS;
+
+	// DEBUG_SHMEM
+	// defaults to: false
+	buffer = parse_FTLconf(fp, "DEBUG_SHMEM");
+	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
+		config.debug |= DEBUG_SHMEM;
+
+	// DEBUG_GC
+	// defaults to: false
+	buffer = parse_FTLconf(fp, "DEBUG_GC");
+	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
+		config.debug |= DEBUG_GC;
+
+	// DEBUG_ARP
+	// defaults to: false
+	buffer = parse_FTLconf(fp, "DEBUG_ARP");
+	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
+		config.debug |= DEBUG_ARP;
+
+	// DEBUG_REGEX or REGEX_DEBUGMODE (legacy config option)
+	// defaults to: false
+	buffer = parse_FTLconf(fp, "DEBUG_REGEX");
+	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
+		config.debug |= DEBUG_REGEX;
+	buffer = parse_FTLconf(fp, "REGEX_DEBUGMODE");
+	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
+		config.debug |= DEBUG_REGEX;
+
+	if(config.debug)
+	{
+		logg("*********************");
+		logg("* Debugging enabled *");
+		if(config.debug & DEBUG_DATABASE)
+			logg("* DEBUG_DATABASE    *");
+		if(config.debug & DEBUG_NETWORKING)
+			logg("* DEBUG_NETWORKING  *");
+		if(config.debug & DEBUG_LOCKS)
+			logg("* DEBUG_LOCKS       *");
+		if(config.debug & DEBUG_QUERIES)
+			logg("* DEBUG_QUERIES     *");
+		if(config.debug & DEBUG_FLAGS)
+			logg("* DEBUG_FLAGS       *");
+		if(config.debug & DEBUG_SHMEM)
+			logg("* DEBUG_SHMEM       *");
+		if(config.debug & DEBUG_GC)
+			logg("* DEBUG_GC          *");
+		if(config.debug & DEBUG_ARP)
+			logg("* DEBUG_ARP         *");
+		if(config.debug & DEBUG_REGEX)
+			logg("* DEBUG_REGEX       *");
+		logg("*********************");
+	}
+
+	// Have to close the config file if we opened it
+	if(opened)
+	{
+		fclose(fp);
+
+		// Release memory only when we opened the file
+		// Otherwise, it may still be needed outside of
+		// this function (initial config parsing)
+		release_config_memory();
+	}
 }

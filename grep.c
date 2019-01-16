@@ -142,5 +142,5 @@ void check_blocking_status(void)
 		message = "disabled";
 	}
 
-	if(debug) logg("Blocking status is %s", message);
+	logg("Blocking status is %s", message);
 }

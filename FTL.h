@@ -79,6 +79,17 @@ enum { PRIVACY_SHOW_ALL = 0, PRIVACY_HIDE_DOMAINS, PRIVACY_HIDE_DOMAINS_CLIENTS,
 enum { MODE_IP, MODE_NX, MODE_NULL, MODE_IP_NODATA_AAAA, MODE_NODATA };
 enum { REGEX_UNKNOWN, REGEX_BLOCKED, REGEX_NOTBLOCKED };
 enum { BLOCKING_DISABLED, BLOCKING_ENABLED, BLOCKING_UNKNOWN };
+enum {
+  DEBUG_DATABASE   = (1 << 0), /* 00000000 00000001 */
+  DEBUG_NETWORKING = (1 << 1), /* 00000000 00000010 */
+  DEBUG_LOCKS      = (1 << 2), /* 00000000 00000100 */
+  DEBUG_QUERIES    = (1 << 3), /* 00000000 00001000 */
+  DEBUG_FLAGS      = (1 << 4), /* 00000000 00010000 */
+  DEBUG_SHMEM      = (1 << 5), /* 00000000 00100000 */
+  DEBUG_GC         = (1 << 6), /* 00000000 01000000 */
+  DEBUG_ARP        = (1 << 7), /* 00000000 10000000 */
+  DEBUG_REGEX      = (1 << 8), /* 00000001 00000000 */
+};
 
 // Database table "ftl"
 enum { DB_VERSION, DB_LASTTIMESTAMP, DB_FIRSTCOUNTERTIMESTAMP };
@@ -147,10 +158,10 @@ typedef struct {
 	unsigned char privacylevel;
 	bool ignore_localhost;
 	unsigned char blockingmode;
-	bool regex_debugmode;
 	bool analyze_only_A_AAAA;
 	bool DBimport;
 	bool parse_arp_cache;
+	int16_t debug;
 } ConfigStruct;
 
 // Dynamic structs
