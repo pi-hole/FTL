@@ -371,12 +371,14 @@ void dhcp_update_configs(struct dhcp_config *configs)
   int prot = AF_INET;
 
   for (config = configs; config; config = config->next)
+  {
     if (config->flags & CONFIG_ADDR_HOSTS)
       config->flags &= ~(CONFIG_ADDR | CONFIG_ADDR_HOSTS);
 #ifdef HAVE_DHCP6
     if (config->flags & CONFIG_ADDR6_HOSTS)
       config->flags &= ~(CONFIG_ADDR6 | CONFIG_ADDR6_HOSTS);
 #endif
+  }
 
 #ifdef HAVE_DHCP6 
  again:  
