@@ -60,8 +60,13 @@ static int read_leases(time_t now, FILE *leasestream)
 	
 	if (fscanf(leasestream, " %64s %255s %764s",
 		   daemon->namebuff, daemon->dhcp_buff, daemon->packet) != 3)
-	  return 0;
-	
+	  {
+	    my_syslog(MS_DHCP | LOG_WARNING, _("ignoring invalid line in lease database: %s %s %s %s ..."),
+		      daemon->dhcp_buff3, daemon->dhcp_buff2,
+		      daemon->namebuff, daemon->dhcp_buff);
+	    continue;
+	  }
+		
 	if (inet_pton(AF_INET, daemon->namebuff, &addr.addr4))
 	  {
 	    if ((lease = lease4_allocate(addr.addr4)))
@@ -92,7 +97,12 @@ static int read_leases(time_t now, FILE *leasestream)
 	  }
 #endif
 	else
-	  return 0;
+	  {
+	    my_syslog(MS_DHCP | LOG_WARNING, _("ignoring invalid line in lease database, bad address: %s"),
+		      daemon->namebuff);
+	    continue;
+	  }
+	
 
 	if (!lease)
 	  die (_("too many stored leases"), NULL, EC_MISC);
@@ -172,10 +182,8 @@ void lease_init(time_t now)
   if (leasestream)
     {
       if (!read_leases(now, leasestream))
-	my_syslog(MS_DHCP | LOG_ERR, _("failed to parse lease database, invalid line: %s %s %s %s ..."),
-		  daemon->dhcp_buff3, daemon->dhcp_buff2,
-		  daemon->namebuff, daemon->dhcp_buff);
-
+	my_syslog(MS_DHCP | LOG_ERR, _("failed to parse lease database cleanly"));
+      
       if (ferror(leasestream))
 	die(_("failed to read lease file %s: %s"), daemon->lease_file, EC_FILE);
     }
