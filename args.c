@@ -11,6 +11,7 @@
 #include "FTL.h"
 #include "version.h"
 
+static bool debug = false;
 bool daemonmode = true;
 bool travis = false;
 int argc_dnsmasq = 0;
@@ -33,6 +34,7 @@ void parse_args(int argc, char* argv[])
 		if(strcmp(argv[i], "d") == 0 ||
 		   strcmp(argv[i], "debug") == 0)
 		{
+			debug = true;
 			daemonmode = false;
 			ok = true;
 
