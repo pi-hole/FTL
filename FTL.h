@@ -259,7 +259,6 @@ extern char ** setupVarsArray;
 extern int setupVarsElements;
 
 extern bool initialscan;
-extern bool debug;
 extern bool threadwritelock;
 extern bool threadreadlock;
 extern unsigned char blockingstatus;
