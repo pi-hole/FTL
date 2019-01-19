@@ -11,6 +11,9 @@
 #include "FTL.h"
 #include "shmem.h"
 
+/// The version of shared memory used
+#define SHARED_MEMORY_VERSION 1
+
 /// The name of the shared memory. Use this when connecting to the shared memory.
 #define SHARED_LOCK_NAME "/FTL-lock"
 #define SHARED_STRINGS_NAME "/FTL-strings"
@@ -20,6 +23,7 @@
 #define SHARED_QUERIES_NAME "/FTL-queries"
 #define SHARED_FORWARDED_NAME "/FTL-forwarded"
 #define SHARED_OVERTIME_NAME "/FTL-overTime"
+#define SHARED_SETTINGS_NAME "/FTL-settings"
 
 /// The pointer in shared memory to the shared string buffer
 static SharedMemory shm_lock = { 0 };
@@ -30,6 +34,7 @@ static SharedMemory shm_clients = { 0 };
 static SharedMemory shm_queries = { 0 };
 static SharedMemory shm_forwarded = { 0 };
 static SharedMemory shm_overTime = { 0 };
+static SharedMemory shm_settings = { 0 };
 
 typedef struct {
 	pthread_mutex_t lock;
@@ -189,6 +194,14 @@ bool init_shmem(void)
 	counters->overTime_MAX = (int) size;
 	initOverTime();
 
+	/****************************** shared settings struct ******************************/
+	// Try to create shared memory object
+	shm_settings = create_shm(SHARED_SETTINGS_NAME, sizeof(ShmSettings));
+	if(shm_settings.ptr == NULL)
+		return false;
+	ShmSettings *settings = (ShmSettings*)shm_settings.ptr;
+	settings->version = SHARED_MEMORY_VERSION;
+
 	return true;
 }
 
@@ -205,6 +218,7 @@ void destroy_shmem(void)
 	delete_shm(&shm_queries);
 	delete_shm(&shm_forwarded);
 	delete_shm(&shm_overTime);
+	delete_shm(&shm_settings);
 }
 
 SharedMemory create_shm(char *name, size_t size)
