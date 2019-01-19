@@ -65,7 +65,7 @@ unsigned long long addstr(const char *str)
 		return 0;
 	}
 
-	if(debug) logg("Adding \"%s\" (len %i) to buffer. next_pos is %i", str, len, next_pos);
+	if(config.debug & DEBUG_SHMEM) logg("Adding \"%s\" (len %i) to buffer. next_pos is %i", str, len, next_pos);
 
 	// Reserve additional memory if necessary
 	size_t required_size = next_pos + len + 1;
@@ -169,11 +169,13 @@ void _lock_shm(const char* function, const int line, const char * file) {
 	// Signal that FTL is waiting for a lock
 	shmLock->waitingForLock = true;
 
-	if(debug) logg("Waiting for lock in %s() (%s:%i)", function, file, line);
+	if(config.debug & DEBUG_LOCKS)
+		logg("Waiting for lock in %s() (%s:%i)", function, file, line);
 
 	int result = pthread_mutex_lock(&shmLock->lock);
 
-	if(debug) logg("Obtained lock for %s() (%s:%i)", function, file, line);
+	if(config.debug & DEBUG_LOCKS)
+		logg("Obtained lock for %s() (%s:%i)", function, file, line);
 
 	// Turn off the waiting for lock signal to notify everyone who was
 	// deferring to FTL that they can jump in the lock queue.
@@ -192,7 +194,8 @@ void _lock_shm(const char* function, const int line, const char * file) {
 void _unlock_shm(const char* function, const int line, const char * file) {
 	int result = pthread_mutex_unlock(&shmLock->lock);
 
-	if(debug) logg("Removed lock in %s() (%s:%i)", function, file, line);
+	if(config.debug & DEBUG_LOCKS)
+		logg("Removed lock in %s() (%s:%i)", function, file, line);
 
 	if(result != 0)
 		logg("Failed to unlock SHM lock: %s", strerror(result));
@@ -303,7 +306,8 @@ void destroy_shmem(void)
 
 SharedMemory create_shm(char *name, size_t size)
 {
-	if(debug) logg("Creating shared memory with name \"%s\" and size %zu", name, size);
+	if(config.debug & DEBUG_SHMEM)
+		logg("Creating shared memory with name \"%s\" and size %zu", name, size);
 
 	SharedMemory sharedMemory = {
 		.name = name,
@@ -411,7 +415,8 @@ void *enlarge_shmem_struct(char type)
 }
 
 bool realloc_shm(SharedMemory *sharedMemory, size_t size) {
-	logg("Resizing \"%s\" from %zu to %zu", sharedMemory->name, sharedMemory->size, size);
+	if(config.debug & DEBUG_SHMEM)
+		logg("Resizing \"%s\" from %zu to %zu", sharedMemory->name, sharedMemory->size, size);
 
 	int result = munmap(sharedMemory->ptr, sharedMemory->size);
 	if(result != 0)

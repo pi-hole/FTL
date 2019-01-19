@@ -58,7 +58,7 @@ void parse_arp_cache(void)
 	}
 
 	// Start ARP timer
-	if(debug) timer_start(ARP_TIMER);
+	if(config.debug & DEBUG_ARP) timer_start(ARP_TIMER);
 
 	// Prepare buffers
 	char * linebuffer = NULL;
@@ -184,7 +184,7 @@ void parse_arp_cache(void)
 	dbquery("COMMIT");
 
 	// Debug logging
-	if(debug) logg("ARP table processing (%i entries) took %.1f ms", entries, timer_elapsed_msec(ARP_TIMER));
+	if(config.debug & DEBUG_ARP) logg("ARP table processing (%i entries) took %.1f ms", entries, timer_elapsed_msec(ARP_TIMER));
 
 	// Close file handle
 	fclose(arpfp);
@@ -199,13 +199,13 @@ static char* getMACVendor(const char* hwaddr)
 	if(stat(FTLfiles.macvendordb, &st) != 0)
 	{
 		// File does not exist
-		if(debug) logg("getMACVenor(%s): %s does not exist", hwaddr, FTLfiles.macvendordb);
+		if(config.debug & DEBUG_ARP) logg("getMACVenor(%s): %s does not exist", hwaddr, FTLfiles.macvendordb);
 		return strdup("");
 	}
 	else if(strlen(hwaddr) != 17)
 	{
 		// MAC address is incomplete
-		if(debug) logg("getMACVenor(%s): MAC invalid (length %lu)", hwaddr, strlen(hwaddr));
+		if(config.debug & DEBUG_ARP) logg("getMACVenor(%s): MAC invalid (length %lu)", hwaddr, strlen(hwaddr));
 		return strdup("");
 	}
 
@@ -269,7 +269,7 @@ void updateMACVendorRecords()
 	if(stat(FTLfiles.macvendordb, &st) != 0)
 	{
 		// File does not exist
-		if(debug) logg("updateMACVendorRecords(): %s does not exist", FTLfiles.macvendordb);
+		if(config.debug & DEBUG_ARP) logg("updateMACVendorRecords(): %s does not exist", FTLfiles.macvendordb);
 		return;
 	}
 
