@@ -216,6 +216,10 @@ typedef struct {
 	char **domains;
 } whitelistStruct;
 
+typedef struct {
+	int version;
+} ShmSettings;
+
 // Prepare timers, used mainly for debugging purposes
 #define NUMTIMERS LAST_TIMER
 
