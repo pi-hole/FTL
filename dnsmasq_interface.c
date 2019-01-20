@@ -229,9 +229,9 @@ static int findQueryID(int id)
 	// Validate access only once for the maximum index (all lower will work)
 	validate_access("queries", counters->queries-1, false, __LINE__, __FUNCTION__, __FILE__);
 	int until = MAX(0, counters->queries-MAXITER);
-	int i;
+	int start = MAX(0, counters->queries-1);
 	// Check UUIDs of queries
-	for(i = counters->queries-1; i >= until; i--)
+	for(int i = start; i >= until; i--)
 		if(queries[i].id == id)
 			return i;
 
