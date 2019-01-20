@@ -38,6 +38,26 @@ char* find_equals(const char* s)
 	return (char*)s;
 }
 
+void trim_whitespace(char *string)
+{
+	// isspace(char*) man page:
+	// checks for white-space  characters. In the "C" and "POSIX"
+	// locales, these are: space, form-feed ('\f'), newline ('\n'),
+	// carriage return ('\r'), horizontal tab ('\t'), and vertical tab
+	// ('\v').
+	char *original = string, *modified = string;
+	// Trim any whitespace characters (see above) at the beginning by increasing the pointer address
+	while (isspace((unsigned char)*original))
+		original++;
+	// Copy the content of original into modified as long as there is something in original
+	while ((*modified = *original++) != '\0')
+		modified++;
+	// Trim any whitespace characters (see above) at the end of the string by overwriting it
+	// with the zero character (marking the end of a C string)
+	while (modified > string && isspace((unsigned char)*--modified))
+		*modified = '\0';
+}
+
 // This will hold the read string
 // in memory and will serve the space
 // we will point to in the rest of the
