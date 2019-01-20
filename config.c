@@ -389,9 +389,6 @@ static char *parse_FTLconf(FILE *fp, const char * key)
 	errno = 0;
 	while(getline(&conflinebuffer, &size, fp) != -1)
 	{
-		// Strip (possible) newline
-		conflinebuffer[strcspn(conflinebuffer, "\n")] = '\0';
-
 		// Skip comment lines
 		if(conflinebuffer[0] == '#' || conflinebuffer[0] == ';')
 			continue;
@@ -402,7 +399,13 @@ static char *parse_FTLconf(FILE *fp, const char * key)
 
 		// otherwise: key found
 		free(keystr);
-		return (find_equals(conflinebuffer) + 1);
+		// Note: value is still a pointer into the conflinebuffer
+		//       its memory will get released in release_config_memory()
+		char* value = find_equals(conflinebuffer) + 1;
+		// Trim whitespace at beginning and end, this function
+		// modifies the string inplace
+		trim_whitespace(value);
+		return value;
 	}
 
 	if(errno == ENOMEM)

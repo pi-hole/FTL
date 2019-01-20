@@ -66,7 +66,9 @@ bool getSetupVarsBool(char * input);
 
 void parse_args(int argc, char* argv[]);
 
+// setupVars.c
 char* find_equals(const char* s);
+void trim_whitespace(char *string);
 
 // config.c
 void getLogFilePath(void);
