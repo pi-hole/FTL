@@ -10,6 +10,7 @@
 
 #include "FTL.h"
 #include "shmem.h"
+#include "sqlite3.h"
 
 static sqlite3 *db;
 bool database = false;
