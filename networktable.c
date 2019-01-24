@@ -10,6 +10,7 @@
 
 #include "FTL.h"
 #include "shmem.h"
+#include "sqlite3.h"
 #define ARPCACHE "/proc/net/arp"
 
 // Private prototypes

@@ -36,8 +36,6 @@
 #include <pwd.h>
 // syslog
 #include <syslog.h>
-// SQLite
-#include "sqlite3.h"
 // tolower()
 #include <ctype.h>
 // Unix socket
@@ -174,7 +172,7 @@ typedef struct {
 	int domainID;
 	int clientID;
 	int forwardID;
-	sqlite3_int64 db;
+	int64_t db;
 	int id; // the ID is a (signed) int in dnsmasq, so no need for a long int here
 	bool complete;
 	unsigned char privacylevel;

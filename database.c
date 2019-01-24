@@ -10,6 +10,7 @@
 
 #include "FTL.h"
 #include "shmem.h"
+#include "sqlite3.h"
 
 static sqlite3 *db;
 bool database = false;
@@ -439,7 +440,7 @@ void save_to_DB(void)
 	int total = 0, blocked = 0;
 	time_t currenttimestamp = time(NULL);
 	time_t newlasttimestamp = 0;
-	for(i = lastdbindex; i < counters->queries; i++)
+	for(i = MAX(0, lastdbindex); i < counters->queries; i++)
 	{
 		validate_access("queries", i, true, __LINE__, __FUNCTION__, __FILE__);
 		if(queries[i].db != 0)
@@ -836,6 +837,10 @@ void read_data_from_DB(void)
 		}
 	}
 	logg("Imported %i queries from the long-term database", counters->queries);
+
+	// Update lastdbindex so that the next call to save_to_DB()
+	// skips the queries that we just imported from the database
+	lastdbindex = counters->queries;
 
 	if( rc != SQLITE_DONE ){
 		logg("read_data_from_DB() - SQL error step (%i): %s", rc, sqlite3_errmsg(db));
