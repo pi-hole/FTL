@@ -17,7 +17,7 @@
 void print_flags(unsigned int flags);
 void save_reply_type(unsigned int flags, int queryID, struct timeval response);
 unsigned long converttimeval(struct timeval time);
-static void block_single_domain(char *domain);
+static void block_single_domain_regex(char *domain);
 static void detect_blocked_IP(unsigned short flags, char* answer, int queryID);
 static void query_externally_blocked(int i);
 static int findQueryID(int id);
@@ -200,7 +200,7 @@ void _FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char 
 		if(match_regex(domainbuffer) && !in_whitelist(domainbuffer))
 		{
 			// We have to block this domain
-			block_single_domain(domainbuffer);
+			block_single_domain_regex(domainbuffer);
 			domains[domainID].regexmatch = REGEX_BLOCKED;
 		}
 		else
@@ -1074,14 +1074,15 @@ void rehash(int size);
 // This routine adds one domain to the resolver's cache. Depending on the configured blocking mode it may create
 // a single entry valid for IPv4 & IPv6 or two entries one for IPv4 and one for IPv6.
 // When IPv6 is not available on the machine, we do not add IPv6 cache entries (likewise for IPv4)
-static int add_blocked_domain_cache(struct all_addr *addr4, struct all_addr *addr6, bool has_IPv4, bool has_IPv6,
-                                    char *domain, struct crec **rhash, int hashsz, unsigned int index)
+static int add_blocked_domain(struct all_addr *addr4, struct all_addr *addr6, bool has_IPv4, bool has_IPv6,
+                              char *domain, int len, struct crec **rhash, int hashsz, unsigned int index)
 {
 	int name_count = 0;
 	struct crec *cache4,*cache6;
-	// Add IPv4 record
+	// Add IPv4 record, allocate enough space for cache entry including arbitrary domain name length
+	// (the domain name is stored at the end of struct crec)
 	if(has_IPv4 &&
-	   (cache4 = malloc(sizeof(struct crec) + strlen(domain)+1-SMALLDNAME)))
+	   (cache4 = malloc(sizeof(struct crec) + len+1-SMALLDNAME)))
 	{
 		strcpy(cache4->name.sname, domain);
 		cache4->flags = F_HOSTS | F_IMMORTAL | F_FORWARD | F_IPV4;
@@ -1111,7 +1112,7 @@ static int add_blocked_domain_cache(struct all_addr *addr4, struct all_addr *add
 	}
 	// Add IPv6 record only if we respond with a non-NULL IP address to blocked domains
 	if(has_IPv6 && (config.blockingmode == MODE_IP || config.blockingmode == MODE_IP_NODATA_AAAA) &&
-	   (cache6 = malloc(sizeof(struct crec) + strlen(domain)+1-SMALLDNAME)))
+	   (cache6 = malloc(sizeof(struct crec) + len+1-SMALLDNAME)))
 	{
 		strcpy(cache6->name.sname, domain);
 		cache6->flags = F_HOSTS | F_IMMORTAL | F_FORWARD | F_IPV6;
@@ -1120,11 +1121,15 @@ static int add_blocked_domain_cache(struct all_addr *addr4, struct all_addr *add
 		add_hosts_entry(cache6, addr6, IN6ADDRSZ, index, rhash, hashsz);
 		name_count++;
 	}
+
+	// Return 1 if only one cache slot was allocated (IPv4) or 2 if two slots were allocated (IPv4 + IPv6)
 	return name_count;
 }
 
 // Add a single domain to resolver's cache. This respects the configured blocking mode
-static void block_single_domain(char *domain)
+// Note: This routine is meant for adding a single domain at a time. It should not be
+//       invoked for batch processing
+static void block_single_domain_regex(char *domain)
 {
 	struct all_addr addr4 = {{{ 0 }}}, addr6 = {{{ 0 }}};
 	bool has_IPv4 = false, has_IPv6 = false;
@@ -1132,7 +1137,7 @@ static void block_single_domain(char *domain)
 	// Get IPv4/v6 addresses for blocking depending on user configures blocking mode
 	prepare_blocking_mode(&addr4, &addr6, &has_IPv4, &has_IPv6);
 	regexlistname = files.regexlist;
-	add_blocked_domain_cache(&addr4, &addr6, has_IPv4, has_IPv6, domain, NULL, 0, SRC_REGEX);
+	add_blocked_domain(&addr4, &addr6, has_IPv4, has_IPv6, domain, strlen(domain), NULL, 0, SRC_REGEX);
 
 	if(config.debug & DEBUG_QUERIES) logg("Added %s to cache", domain);
 
@@ -1160,7 +1165,8 @@ int FTL_listsfile(char* filename, unsigned int index, FILE *f, int cache_size, s
 	// Get IPv4/v6 addresses for blocking depending on user configured blocking mode
 	prepare_blocking_mode(&addr4, &addr6, &has_IPv4, &has_IPv6);
 
-	// If we have neither a valid IPv4 nor a valid IPv6, then we cannot add any entries here
+	// If we have neither a valid IPv4 nor a valid IPv6 but the user asked for
+	// blocking modes MODE_IP or MODE_IP_NODATA_AAAA then we cannot add any entries here
 	if(!has_IPv4 && !has_IPv6)
 	{
 		logg("ERROR: found neither a valid IPV4_ADDRESS nor IPV6_ADDRESS in setupVars.conf");
@@ -1181,7 +1187,8 @@ int FTL_listsfile(char* filename, unsigned int index, FILE *f, int cache_size, s
 
 		// Check for spaces or tabs
 		// If found, then this list is still in HOSTS format and we
-		// don't analyze it here.
+		// don't analyze it here. We only check the first line for
+		// efficiency reasons (strstr() is slow)
 		if(firstline &&
 		   (strstr(domain, " ") != NULL || strstr(domain, "\t") != NULL))
 		{
@@ -1193,12 +1200,16 @@ int FTL_listsfile(char* filename, unsigned int index, FILE *f, int cache_size, s
 		firstline = false;
 
 		// Skip empty lines
-		if(strlen(domain) == 0)
+		int len = strlen(domain);
+		if(len == 0)
 			continue;
 
 		// Strip newline character at the end of line we just read
-		if(domain[strlen(domain)-1] == '\n')
-			domain[strlen(domain)-1] = '\0';
+		if(domain[len-1] == '\n')
+		{
+			domain[len-1] = '\0';
+			len -= 1;
+		}
 
 		// As of here we assume the entry to be valid
 		// Rehash every 1000 valid names
@@ -1208,10 +1219,16 @@ int FTL_listsfile(char* filename, unsigned int index, FILE *f, int cache_size, s
 			cache_size = name_count;
 		}
 
-		name_count += add_blocked_domain_cache(&addr4, &addr6, has_IPv4, has_IPv6, domain, rhash, hashsz, index);
+		// Add domain
+		name_count += add_blocked_domain(&addr4, &addr6, has_IPv4, has_IPv6, domain, len, rhash, hashsz, index);
+
 		// Count added domain
 		added++;
 	}
+
+	// Rehash after having read all entries
+	if(rhash)
+		rehash(name_count);
 
 	// Free allocated memory
 	if(buffer != NULL)
