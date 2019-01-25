@@ -218,11 +218,12 @@ int findClientID(const char *client)
 	// to be done separately to be non-blocking
 	clients[clientID].new = true;
 	clients[clientID].namepos = 0;
-	// Increase counter by one
-	counters->clients++;
 
 	// Create new overTime client data
-	newOverTimeClient();
+	newOverTimeClient(clientID);
+
+	// Increase counter by one
+	counters->clients++;
 
 	return clientID;
 }
