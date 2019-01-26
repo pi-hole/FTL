@@ -262,6 +262,9 @@ bool init_shmem(void)
 
 void destroy_shmem(void)
 {
+	// Store the number of clients so we can use it after deleting the counters memory
+	int clientCount = counters->clients;
+
 	pthread_mutex_destroy(&shmLock->lock);
 	shmLock = NULL;
 
@@ -274,7 +277,8 @@ void destroy_shmem(void)
 	delete_shm(&shm_forwarded);
 	delete_shm(&shm_overTime);
 
-	for(int i = 0; i < counters->clients; i++) {
+	// Don't use counters->clients because it's been freed
+	for(int i = 0; i < clientCount; i++) {
 		delete_shm(&shm_overTimeClients[i]);
 		free(shm_overTimeClients[i].name);
 	}
