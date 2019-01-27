@@ -74,6 +74,10 @@ workflows:
           filters:
             tags:
               only: /^v.*/
+      - arm-rpi:
+          filters:
+            tags:
+              only: /^v.*/
       - armhf:
           filters:
             tags:
