@@ -35,6 +35,11 @@ jobs:
     environment:
       BIN_NAME: "pihole-FTL-arm-linux-gnueabi"
 
+  arm-rpi:
+    <<: *job_template
+    environment:
+      BIN_NAME: "pihole-FTL-armv6-linux-gnueabihf"
+
   armhf:
     <<: *job_template
     environment:
