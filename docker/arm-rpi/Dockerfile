@@ -10,9 +10,9 @@ RUN dpkg --add-architecture armhf && \
 # Slightly modified from the original
 RUN mkdir rpi_tools && cd rpi_tools && git init && git remote add origin https://github.com/raspberrypi/tools && \
     git config core.sparseCheckout true && \
-    echo "arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian-x64" >> .git/info/sparse-checkout && \
+    echo "arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf" >> .git/info/sparse-checkout && \
     git pull --depth=1 origin master && \
-    cp -a arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian-x64/* /usr/ && rm -rf ../rpi_tools
+    cp -a arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf/* /usr/ && rm -rf ../rpi_tools
 
 RUN wget ftl.pi-hole.net/libraries/libgmp.a -O /usr/local/lib/libgmp.a && \
     wget ftl.pi-hole.net/libraries/libnettle.a -O /usr/local/lib/libnettle.a && \
