@@ -294,7 +294,6 @@ void safe_strncpy(char *dest, const char *src, size_t size)
     }
 }
 
-
 void safe_pipe(int *fd, int read_noblock)
 {
   if (pipe(fd) == -1 ||

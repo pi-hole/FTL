@@ -237,6 +237,7 @@ int inotify_check(time_t now)
 	      (in->name[0] == '#' && in->name[namelen - 1] == '#') ||
 	      in->name[0] == '.')
 	    continue;
+
 	  for (res = daemon->resolv_files; res; res = res->next)
 	    if (res->wd == in->wd && strcmp(res->file, in->name) == 0)
 	      hit = 1;
