@@ -1571,8 +1571,7 @@ void check_servers(void)
 	      else if (strlen(serv->domain) == 0)
 		s1 = _("default"), s2 = "";
 	      else
-		//s1 = _("domain"), s2 = serv->domain;
-		continue;
+		s1 = _("domain"), s2 = serv->domain;
 
 	      if (serv->flags & SERV_NO_ADDR)
 		{
@@ -1596,10 +1595,10 @@ void check_servers(void)
 	}
     }
 
-  // if (locals > LOCALS_LOGGED)
-  //   my_syslog(LOG_INFO, _("using %d more local addresses"), locals - LOCALS_LOGGED);
-  // if (count - 1 > SERVERS_LOGGED)
-  //   my_syslog(LOG_INFO, _("using %d more nameservers"), count - SERVERS_LOGGED - 1);
+  if (locals > LOCALS_LOGGED)
+    my_syslog(LOG_INFO, _("using %d more local addresses"), locals - LOCALS_LOGGED);
+  if (count - 1 > SERVERS_LOGGED)
+    my_syslog(LOG_INFO, _("using %d more nameservers"), count - SERVERS_LOGGED - 1);
 
   /* Remove unused sfds */
   for (sfd = daemon->sfds, up = &daemon->sfds; sfd; sfd = tmp)
