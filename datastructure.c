@@ -231,7 +231,10 @@ int findClientID(const char *client, bool count)
 	counters->clients++;
 
 	// Create new overTime client data
-	newOverTimeClient();
+	newOverTimeClient(clientID);
+
+	// Increase counter by one
+	counters->clients++;
 
 	return clientID;
 }
