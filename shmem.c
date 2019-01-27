@@ -38,7 +38,6 @@ static SharedMemory shm_overTime = { 0 };
 static SharedMemory shm_settings = { 0 };
 
 static SharedMemory *shm_overTimeClients = NULL;
-static int overTimeClientCount = 0;
 
 typedef struct {
 	pthread_mutex_t lock;
@@ -98,33 +97,32 @@ static char *clientShmName(int id) {
 	return name;
 }
 
-void newOverTimeClient() {
+void newOverTimeClient(int clientID) {
 	// Get the name of the new shared memory.
 	// This will be used in the struct, so it should not be immediately freed.
-	char *name = clientShmName(overTimeClientCount);
+	char *name = clientShmName(clientID);
 
 	// Create the shared memory with enough space for the current overTime slots
 	shm_unlink(name);
 	SharedMemory shm = create_shm(name, (counters->overTime/pagesize + 1)*pagesize*sizeof(int));
 	if(shm.ptr == NULL) {
 		free(shm.name);
-		logg("Failed to initialize new overTime client %d", overTimeClientCount);
+		logg("Failed to initialize new overTime client %d", clientID);
 		return;
 	}
 
 	// Make space for the new shared memory
-	shm_overTimeClients = realloc(shm_overTimeClients, sizeof(SharedMemory) * (overTimeClientCount + 1));
-	overTimeClientCount++;
-	shm_overTimeClients[overTimeClientCount-1] = shm;
+	shm_overTimeClients = realloc(shm_overTimeClients, sizeof(SharedMemory) * (clientID + 1));
+	shm_overTimeClients[clientID] = shm;
 
 	// Add to overTimeClientData
-	overTimeClientData = realloc(overTimeClientData, sizeof(int*) * (overTimeClientCount));
-	overTimeClientData[overTimeClientCount-1] = shm.ptr;
+	overTimeClientData = realloc(overTimeClientData, sizeof(int*) * (clientID + 1));
+	overTimeClientData[clientID] = shm.ptr;
 }
 
 void addOverTimeClientSlot() {
 	// For each client slot, add pagesize overTime slots
-	for(int i = 0; i < overTimeClientCount; i++)
+	for(int i = 0; i < counters->clients; i++)
 	{
 		// Only increase the size of the shm object if needed
 		// shm_overTimeClients[i].size stores the size of the memory in bytes whereas
@@ -285,6 +283,9 @@ bool init_shmem(void)
 
 void destroy_shmem(void)
 {
+	// Store the number of clients so we can use it after deleting the counters memory
+	int clientCount = counters->clients;
+
 	pthread_mutex_destroy(&shmLock->lock);
 	shmLock = NULL;
 
@@ -298,7 +299,8 @@ void destroy_shmem(void)
 	delete_shm(&shm_overTime);
 	delete_shm(&shm_settings);
 
-	for(int i = 0; i < overTimeClientCount; i++) {
+	// Don't use counters->clients because it's been freed
+	for(int i = 0; i < clientCount; i++) {
 		delete_shm(&shm_overTimeClients[i]);
 		free(shm_overTimeClients[i].name);
 	}

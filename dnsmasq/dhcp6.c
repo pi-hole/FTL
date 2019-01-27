@@ -668,7 +668,7 @@ static int construct_worker(struct in6_addr *local, int prefix,
 	setaddr6part(&end6, addr6part(&template->end6));
 
 	for (context = daemon->dhcp6; context; context = context->next)
-	  if ((context->flags & CONTEXT_TEMPLATE) &&
+	  if (!(context->flags & CONTEXT_TEMPLATE) &&
 	      IN6_ARE_ADDR_EQUAL(&start6, &context->start6) &&
 	      IN6_ARE_ADDR_EQUAL(&end6, &context->end6))
 	    {

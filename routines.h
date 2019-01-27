@@ -127,7 +127,7 @@ void *enlarge_shmem_struct(char type);
  * Create a new overTime client shared memory block.
  * This also updates `overTimeClientData`.
  */
-void newOverTimeClient();
+void newOverTimeClient(int clientID);
 
 /**
  * Add a new overTime slot to each overTime client shared memory block.
