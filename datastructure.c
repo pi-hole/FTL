@@ -227,8 +227,6 @@ int findClientID(const char *client, bool count)
 	// No query seen so far
 	clients[clientID].lastQuery = 0;
 	clients[clientID].numQueriesARP = 0;
-	// Increase counter by one
-	counters->clients++;
 
 	// Create new overTime client data
 	newOverTimeClient(clientID);
