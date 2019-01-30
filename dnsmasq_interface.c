@@ -775,9 +775,13 @@ void _FTL_dnssec(int status, int id, const char* file, const int line)
 
 	unlock_shm();
 }
+
 void _FTL_query_error(unsigned int rcode, int id, const char* file, const int line)
 {
-	// Process upstream error messages
+	// Process upstream errors
+	// Queries with error are those where the RCODE
+	// in the DNS header is neither NOERROR nor NXDOMAIN.
+
 	// Don't analyze anything if in PRIVACY_NOSTATS mode
 	if(config.privacylevel >= PRIVACY_NOSTATS)
 		return;
@@ -795,30 +799,26 @@ void _FTL_query_error(unsigned int rcode, int id, const char* file, const int li
 	// Translate dnsmasq's rcode into something we can use
 	char *rcodestr = NULL;
 	bool alloc = false;
-	unsigned char reply;
 	switch(rcode)
 	{
 		case SERVFAIL:
 			rcodestr = "SERVFAIL";
-			reply = REPLY_SERVFAIL;
+			queries[i].reply = REPLY_SERVFAIL;
 			break;
 		case REFUSED:
 			rcodestr = "REFUSED";
-			reply = REPLY_REFUSED;
+			queries[i].reply = REPLY_REFUSED;
 			break;
 		case NOTIMP:
 			rcodestr = "NOT IMPLEMENTED";
-			reply = REPLY_NOTIMP;
+			queries[i].reply = REPLY_NOTIMP;
 			break;
 		default:
 			if(asprintf(&rcodestr, "Unknown error type (%u)", rcode) > -1)
 				alloc = true;
-			reply = REPLY_OTHER;
+			queries[i].reply = REPLY_OTHER;
 			break;
 	}
-
-	// Set reply status
-	queries[i].reply = reply;
 
 	// Debug logging
 	if(config.debug & DEBUG_QUERIES)
