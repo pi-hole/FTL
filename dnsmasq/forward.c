@@ -700,6 +700,7 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
     {
       struct all_addr a;
       a.addr.rcode.rcode = rcode;
+      FTL_query_error(rcode, daemon->log_display_id);
       log_query(F_UPSTREAM | F_RCODE, "error", &a, NULL);
 
       return resize_packet(header, n, pheader, plen);

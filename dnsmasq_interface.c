@@ -775,6 +775,65 @@ void _FTL_dnssec(int status, int id, const char* file, const int line)
 
 	unlock_shm();
 }
+void _FTL_query_error(unsigned int rcode, int id, const char* file, const int line)
+{
+	// Process upstream error messages
+	// Don't analyze anything if in PRIVACY_NOSTATS mode
+	if(config.privacylevel >= PRIVACY_NOSTATS)
+		return;
+
+	// Process DNSSEC result for a domain
+	lock_shm();
+	// Search for corresponding query identified by ID
+	int i = findQueryID(id);
+	if(i < 0)
+	{
+		// This may happen e.g. if the original query was an unhandled query type
+		unlock_shm();
+		return;
+	}
+	// Translate dnsmasq's rcode into something we can use
+	char *rcodestr = NULL;
+	bool alloc = false;
+	unsigned char reply;
+	switch(rcode)
+	{
+		case SERVFAIL:
+			rcodestr = "SERVFAIL";
+			reply = REPLY_SERVFAIL;
+			break;
+		case REFUSED:
+			rcodestr = "REFUSED";
+			reply = REPLY_REFUSED;
+			break;
+		case NOTIMP:
+			rcodestr = "NOT IMPLEMENTED";
+			reply = REPLY_NOTIMP;
+			break;
+		default:
+			if(asprintf(&rcodestr, "Unknown error type (%u)", rcode) > -1)
+				alloc = true;
+			reply = REPLY_OTHER;
+			break;
+	}
+
+	// Set reply status
+	queries[i].reply = reply;
+
+	// Debug logging
+	if(config.debug & DEBUG_QUERIES)
+	{
+		int domainID = queries[i].domainID;
+		validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
+		logg("**** got error report for %s: %s (ID %i, %s:%i)", getstr(domains[domainID].domainpos), rcodestr, id, file, line);
+	}
+
+	// If we allocated memory (due to an unknown error type), we need to free it here
+	if(alloc)
+		free(rcodestr);
+
+	unlock_shm();
+}
 
 void _FTL_header_ADbit(unsigned char header4, unsigned int rcode, int id, const char* file, const int line)
 {
