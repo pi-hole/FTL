@@ -776,7 +776,7 @@ void _FTL_dnssec(int status, int id, const char* file, const int line)
 	unlock_shm();
 }
 
-void _FTL_query_error(unsigned int rcode, int id, const char* file, const int line)
+void _FTL_upstream_error(unsigned int rcode, int id, const char* file, const int line)
 {
 	// Process upstream errors
 	// Queries with error are those where the RCODE
