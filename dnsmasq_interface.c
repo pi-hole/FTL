@@ -787,9 +787,10 @@ void FTL_header_analysis(unsigned char header4, unsigned int rcode, int id)
 	}
 
 	lock_shm();
+
 	// Search for corresponding query identified by ID
-	int i = findQueryID(id);
-	if(i < 0)
+	int queryID = findQueryID(id);
+	if(queryID < 0)
 	{
 		// This may happen e.g. if the original query was an unhandled query type
 		unlock_shm();
@@ -798,9 +799,9 @@ void FTL_header_analysis(unsigned char header4, unsigned int rcode, int id)
 
 	if(debug)
 	{
-		int domainID = queries[i].domainID;
+		int domainID = queries[queryID].domainID;
 		validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
-		logg("**** %s externally blocked (ID %i)", getstr(domains[domainID].domainpos), id);
+		logg("**** %s externally blocked (ID %i, FTL %i)", getstr(domains[domainID].domainpos), id, queryID);
 	}
 
 
@@ -809,10 +810,10 @@ void FTL_header_analysis(unsigned char header4, unsigned int rcode, int id)
 	gettimeofday(&response, 0);
 
 	// Store query as externally blocked
-	query_externally_blocked(i);
+	query_externally_blocked(queryID);
 
 	// Store reply type as replied with NXDOMAIN
-	save_reply_type(F_NEG | F_NXDOMAIN, i, response);
+	save_reply_type(F_NEG | F_NXDOMAIN, queryID, response);
 
 	unlock_shm();
 }
