@@ -773,9 +773,6 @@ void FTL_header_analysis(unsigned char header4, unsigned int rcode, int id)
 	if(config.privacylevel >= PRIVACY_NOSTATS)
 		return;
 
-	// Temporary debugging log function
-	logg("Query ID %i: %s %s %s", id, (header4 & 0x20)?"Y":"N", !(header4 & 0x80)?"Y":"N", (rcode == NXDOMAIN)?"Y":"N");
-
 	// Check if RA bit is unset in DNS header and rcode is NXDOMAIN
 	// If the response code (rcode) is NXDOMAIN, we may be seeing a response from
 	// an externally blocked query. As they are not always accompany a necessary
