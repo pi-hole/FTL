@@ -112,7 +112,7 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 
 	// Log new query if in debug mode
 	char *proto = (type == UDP) ? "UDP" : "TCP";
-	if(debug) logg("**** new %s %s \"%s\" from %s (ID %i)", proto, types, domain, client, id);
+	if(debug) logg("**** new %s %s \"%s\" from %s (ID %i, FTL %i)", proto, types, domain, client, id, queryID);
 
 	// Update counters
 	int timeidx = findOverTimeID(overTimetimestamp);
