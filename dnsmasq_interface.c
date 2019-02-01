@@ -767,7 +767,7 @@ void FTL_dnssec(int status, int id)
 	unlock_shm();
 }
 
-void FTL_header_ADbit(unsigned char header4, unsigned int rcode, int id)
+void FTL_header_analysis(unsigned char header4, unsigned int rcode, int id)
 {
 	// Don't analyze anything if in PRIVACY_NOSTATS mode
 	if(config.privacylevel >= PRIVACY_NOSTATS)
@@ -776,17 +776,16 @@ void FTL_header_ADbit(unsigned char header4, unsigned int rcode, int id)
 	// Temporary debugging log function
 	logg("Query ID %i: %s %s %s", id, (header4 & 0x20)?"Y":"N", !(header4 & 0x80)?"Y":"N", (rcode == NXDOMAIN)?"Y":"N");
 
-	// Check if AD is set and RA bit is unset in DNS header
+	// Check if RA bit is unset in DNS header and rcode is NXDOMAIN
 	// If the response code (rcode) is NXDOMAIN, we may be seeing a response from
 	// an externally blocked query. As they are not always accompany a necessary
 	// SOA record, they are not getting added to our cache and, therefore,
 	// FTL_reply() is never getting called from within the cache routines.
 	// Hence, we have to store the necessary information about the NXDOMAIN
 	// reply already here.
-	//              AD                  RA
-	if(!(header4 & 0x20) || (header4 & 0x80) || rcode != NXDOMAIN)
+	if((header4 & 0x80) || rcode != NXDOMAIN)
 	{
-		// AD bit not set or RA bit set
+		// RA bit is set or rcode is not NXDOMAIN
 		return;
 	}
 
@@ -804,7 +803,7 @@ void FTL_header_ADbit(unsigned char header4, unsigned int rcode, int id)
 	{
 		int domainID = queries[i].domainID;
 		validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
-		logg("**** AD bit set for %s (ID %i, RCODE %u)", getstr(domains[domainID].domainpos), id, rcode);
+		logg("**** %s externally blocked (ID %i)", getstr(domains[domainID].domainpos), id);
 	}
 
 

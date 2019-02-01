@@ -19,7 +19,7 @@ void FTL_dnssec(int status, int id);
 void FTL_dnsmasq_reload(void);
 void FTL_fork_and_bind_sockets(struct passwd *ent_pw);
 
-void FTL_header_ADbit(unsigned char header4, unsigned int rcode, int id);
+void FTL_header_analysis(unsigned char header4, unsigned int rcode, int id);
 
 void FTL_forwarding_failed(struct server *server);
 int FTL_listsfile(char* filename, unsigned int index, FILE *f, int cache_size, struct crec **rhash, int hashsz);
