@@ -157,8 +157,6 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	queries[queryID].reply = REPLY_UNKNOWN;
 	// Store DNSSEC result for this domain
 	queries[queryID].dnssec = DNSSEC_UNSPECIFIED;
-	// AD has not yet been received for this query
-	queries[queryID].AD = false;
 
 	// Check and apply possible privacy level rules
 	// The currently set privacy level (at the time the query is
@@ -474,17 +472,16 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 	}
 	else if((flags & F_FORWARD) && isExactMatch)
 	{
-		// Save reply type and update individual reply counters
-		save_reply_type(flags, i, response);
-
-		// If received NXDOMAIN and AD bit is set, Quad9 may have blocked this query
-		if(flags & F_NXDOMAIN && queries[i].AD)
+		// Only proceed if query is not already known
+		// to have been blocked by Quad9
+		if(queries[i].reply != QUERY_EXTERNAL_BLOCKED)
 		{
-			query_externally_blocked(i);
-		}
+			// Save reply type and update individual reply counters
+			save_reply_type(flags, i, response);
 
-		// Detect if returned IP indicates that this query was blocked
-		detect_blocked_IP(flags, answer, i);
+			// Detect if returned IP indicates that this query was blocked
+			detect_blocked_IP(flags, answer, i);
+		}
 	}
 	else if(flags & F_REVERSE)
 	{
@@ -564,6 +561,11 @@ static void detect_blocked_IP(unsigned short flags, char* answer, int queryID)
 
 static void query_externally_blocked(int i)
 {
+	// If query is already known to be externally blocked,
+	// then we have nothing to do here
+	if(queries[i].status == QUERY_EXTERNAL_BLOCKED)
+		return;
+
 	// Correct counters if necessary ...
 	if(queries[i].status == QUERY_FORWARDED)
 	{
@@ -572,7 +574,6 @@ static void query_externally_blocked(int i)
 		validate_access("forwarded", queries[i].forwardID, true, __LINE__, __FUNCTION__, __FILE__);
 		forwarded[queries[i].forwardID].count--;
 	}
-
 	// ... but as blocked
 	counters->blocked++;
 	overTime[queries[i].timeidx].blocked++;
@@ -773,10 +774,17 @@ void FTL_header_ADbit(unsigned char header4, unsigned int rcode, int id)
 		return;
 
 	// Check if AD is set and RA bit is unset in DNS header
+	// If the response code (rcode) is NXDOMAIN, we may be seeing a response from
+	// an externally blocked query. As they are not always accompany a necessary
+	// SOA record, they are not getting added to our cache and, therefore,
+	// FTL_reply() is never getting called from within the cache routines.
+	// Hence, we have to store the necessary information about the NXDOMAIN
+	// reply already here.
 	//              AD                  RA
-	if(!(header4 & 0x20) || (header4 & 0x80))
+	if(!(header4 & 0x20) || (header4 & 0x80) || rcode != NXDOMAIN)
 	{
 		// AD bit not set or RA bit set
+		logg("Query %i: %s %s %s", (header4 & 0x20)?"Y":"N", (header4 & 0x80)?"Y":"N", (rcode != NXDOMAIN)?"Y":"N");
 		return;
 	}
 
@@ -797,27 +805,16 @@ void FTL_header_ADbit(unsigned char header4, unsigned int rcode, int id)
 		logg("**** AD bit set for %s (ID %i, RCODE %u)", getstr(domains[domainID].domainpos), id, rcode);
 	}
 
-	// Store AD bit in query data
-	queries[i].AD = true;
 
-	// If the response code (rcode) is NXDOMAIN, we may be seeing a response from
-	// an externally blocked query. As they are not always accompany a necessary
-	// SOA record, they are not getting added to our cache and, therefore,
-	// FTL_reply() is never getting called from within the cache routines.
-	// Hence, we have to store the necessary information about the NXDOMAIN
-	// reply already here.
-	if(rcode == NXDOMAIN)
-	{
-		// Get response time
-		struct timeval response;
-		gettimeofday(&response, 0);
+	// Get response time
+	struct timeval response;
+	gettimeofday(&response, 0);
 
-		// Store query as externally blocked
-		query_externally_blocked(i);
+	// Store query as externally blocked
+	query_externally_blocked(i);
 
-		// Store reply type as replied with NXDOMAIN
-		save_reply_type(F_NEG | F_NXDOMAIN, i, response);
-	}
+	// Store reply type as replied with NXDOMAIN
+	save_reply_type(F_NEG | F_NXDOMAIN, i, response);
 
 	unlock_shm();
 }

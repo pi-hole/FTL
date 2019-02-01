@@ -163,7 +163,6 @@ typedef struct {
 	unsigned long response; // saved in units of 1/10 milliseconds (1 = 0.1ms, 2 = 0.2ms, 2500 = 250.0ms, etc.)
 	unsigned char reply;
 	unsigned char dnssec;
-	bool AD;
 } queriesDataStruct;
 
 typedef struct {
