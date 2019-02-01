@@ -841,10 +841,11 @@ void _FTL_header_ADbit(unsigned char header4, unsigned int rcode, int id, const 
 	if(config.privacylevel >= PRIVACY_NOSTATS)
 		return;
 
-	// Check if AD bit is set in DNS header
-	if(!(header4 & 0x20))
+	// Check if AD is set and RA bit is unset in DNS header
+	//              AD                  RA
+	if(!(header4 & 0x20) || (header4 & 0x80))
 	{
-		// AD bit not set
+		// AD bit not set or RA bit set
 		return;
 	}
 
