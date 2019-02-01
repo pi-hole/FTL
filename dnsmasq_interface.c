@@ -773,6 +773,9 @@ void FTL_header_ADbit(unsigned char header4, unsigned int rcode, int id)
 	if(config.privacylevel >= PRIVACY_NOSTATS)
 		return;
 
+	// Temporary debugging log function
+	logg("Query ID %i: %s %s %s", id, (header4 & 0x20)?"Y":"N", !(header4 & 0x80)?"Y":"N", (rcode == NXDOMAIN)?"Y":"N");
+
 	// Check if AD is set and RA bit is unset in DNS header
 	// If the response code (rcode) is NXDOMAIN, we may be seeing a response from
 	// an externally blocked query. As they are not always accompany a necessary
@@ -784,7 +787,6 @@ void FTL_header_ADbit(unsigned char header4, unsigned int rcode, int id)
 	if(!(header4 & 0x20) || (header4 & 0x80) || rcode != NXDOMAIN)
 	{
 		// AD bit not set or RA bit set
-		if(debug) logg("Query ID %i: %s %s %s", id, (header4 & 0x20)?"Y":"N", !(header4 & 0x80)?"Y":"N", (rcode == NXDOMAIN)?"Y":"N");
 		return;
 	}
 
