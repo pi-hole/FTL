@@ -784,7 +784,7 @@ void FTL_header_ADbit(unsigned char header4, unsigned int rcode, int id)
 	if(!(header4 & 0x20) || (header4 & 0x80) || rcode != NXDOMAIN)
 	{
 		// AD bit not set or RA bit set
-		logg("Query %i: %s %s %s", (header4 & 0x20)?"Y":"N", (header4 & 0x80)?"Y":"N", (rcode != NXDOMAIN)?"Y":"N");
+		if(debug) logg("Query ID %i: %s %s %s", id, (header4 & 0x20)?"Y":"N", !(header4 & 0x80)?"Y":"N", (rcode == NXDOMAIN)?"Y":"N");
 		return;
 	}
 
