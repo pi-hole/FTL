@@ -940,8 +940,6 @@ int main_dnsmasq (int argc, char **argv)
   poll_resolv(1, 0, now);
 #endif
 
-  FTL_read_gravity();
-
   while (!terminate)
     {
       int t, timeout = -1;

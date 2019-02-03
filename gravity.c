@@ -8,22 +8,19 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-// Needed for SRC_GRAVITYDB
-#include "dnsmasq/dnsmasq.h"
-#undef __USE_XOPEN
 #include "FTL.h"
 #include "shmem.h"
 #include <sqlite3.h>
 
-// Semi-private prototypes. Routines are defined in dnsmasq_interface.c
-extern int add_blocked_domain(struct all_addr *addr4, struct all_addr *addr6, bool has_IPv4, bool has_IPv6,
-                              char *domain, int len, struct crec **rhash, int hashsz, unsigned int index);
-extern void prepare_blocking_mode(struct all_addr *addr4, struct all_addr *addr6, bool *has_IPv4, bool *has_IPv6);
+// Private variables
+static sqlite3 *gravitydb = NULL;
+static FILE *gravityfile = NULL;
+static sqlite3_stmt* stmt = NULL;
 
 // Prototypes from functions in dnsmasq's source
 void rehash(int size);
 
-bool readGravity(void)
+static bool gravityDB_open(void)
 {
 	struct stat st;
 	if(stat(FTLfiles.gravitydb, &st) != 0)
@@ -33,10 +30,6 @@ bool readGravity(void)
 		return false;
 	}
 
-	// Start timer for list analysis
-	timer_start(LISTS_TIMER);
-
-	sqlite3 *gravitydb = NULL;
 	int rc = sqlite3_open_v2(FTLfiles.gravitydb, &gravitydb, SQLITE_OPEN_READONLY, NULL);
 	if( rc ){
 		logg("readGravity() - SQL error (%i): %s", rc, sqlite3_errmsg(gravitydb));
@@ -55,94 +48,83 @@ bool readGravity(void)
 		return false;
 	}
 
+	return true;
+}
+
+static void gravityDB_close(void)
+{
+	// Close database handle
+	sqlite3_close(gravitydb);
+}
+
+bool gravityDB_getTable(unsigned char list)
+{
 	// Read gravity domains
-	sqlite3_stmt* stmt = NULL;
-	rc = sqlite3_prepare_v2(gravitydb, "SELECT * FROM vw_gravity;", -1, &stmt, NULL);
+	gravityDB_open();
+	char *querystr = NULL;
+	switch(list)
+	{
+		case GRAVITY_LIST:
+			querystr = "SELECT * FROM vw_gravity;";
+			break;
+		case BLACK_LIST:
+			querystr = "SELECT * FROM blacklist;";
+			break;
+		default:
+			logg("gravityDB_getTable(%i): Requested list is not known!", list);
+			return false;
+	}
+
+	// Prepare SQLite3 statement
+	int rc = sqlite3_prepare_v2(gravitydb, querystr, -1, &stmt, NULL);
 	if( rc ){
 		logg("readGravity(vw_gravity) - SQL error prepare (%i): %s", rc, sqlite3_errmsg(gravitydb));
 		sqlite3_close(gravitydb);
 		return false;
 	}
 
-	// Prepare cache ingredients
-	struct all_addr addr4 = {{{ 0 }}}, addr6 = {{{ 0 }}};
-	bool has_IPv4 = false, has_IPv6 = false;
-	// Get IPv4/v6 addresses for blocking depending on user configured blocking mode
-	prepare_blocking_mode(&addr4, &addr6, &has_IPv4, &has_IPv6);
-
-	char *domain = NULL;
-	unsigned int added = 0;
-
-	FILE *gravityfile = NULL;
+	// Open debugging file if in GRAVITYDB debug mode
 	if(config.debug & DEBUG_GRAVITYDB)
 		gravityfile = fopen("/etc/pihole/gravity_db.list", "w");
 
-	while((rc = sqlite3_step(stmt)) == SQLITE_ROW)
-	{
-		domain = (char*)sqlite3_column_text(stmt, 0);
+	return true;
+}
 
-		// Write domain to gravity file
+const char* gravityDB_getDomain(void)
+{
+	int rc;
+	if((rc = sqlite3_step(stmt)) == SQLITE_ROW)
+	{
+		const char* domain = (char*)sqlite3_column_text(stmt, 0);
+
+		// Write domain to gravity file if in debug mode
 		if(gravityfile != NULL)
 			fprintf(gravityfile, "%s\n", domain);
 
-		// Add domain to DNS cache
-		add_blocked_domain(&addr4, &addr6, has_IPv4, has_IPv6, domain, strlen(domain), NULL, 0, SRC_GRAVITYDB);
-		added++;
-
-		if(added % 1000 == 0)
-			rehash(added);
+		return domain;
 	}
-	if(gravityfile != NULL)
-		fclose(gravityfile);
-
 	if(rc != SQLITE_DONE)
 	{
 		// Error
 		logg("readGravity(vw_gravity) - SQL error step (%i): %s", rc, sqlite3_errmsg(gravitydb));
 		sqlite3_finalize(stmt);
 		sqlite3_close(gravitydb);
-		return false;
-	}
-	sqlite3_finalize(stmt);
-
-	logg("Imported %u domains from vw_gravity database (took %.1f ms)", added, timer_elapsed_msec(LISTS_TIMER));
-
-	// Read blacklist domains
-	timer_start(LISTS_TIMER);
-	rc = sqlite3_prepare_v2(gravitydb, "SELECT domain FROM blacklist;", -1, &stmt, NULL);
-	if( rc ){
-		logg("readGravity(blacklist) - SQL error prepare (%i): %s", rc, sqlite3_errmsg(gravitydb));
-		sqlite3_close(gravitydb);
-		return false;
+		return NULL;
 	}
 
-	unsigned int gravity = added;
-	while((rc = sqlite3_step(stmt)) == SQLITE_ROW)
-	{
-		domain = (char*)sqlite3_column_text(stmt, 0);
-		add_blocked_domain(&addr4, &addr6, has_IPv4, has_IPv6, domain, strlen(domain), NULL, 0, SRC_BLACKDB);
-		added++;
+	// Finished reading
+	return NULL;
+}
 
-		if(added % 1000 == 0)
-			rehash(added);
-	}
+void gravityDB_finalizeTable(void)
+{
+	// Close file handle if file is open
+	if(gravityfile != NULL)
+		fclose(gravityfile);
 
-	if(rc != SQLITE_DONE)
-	{
-		// Error
-		logg("readGravity(blacklist) - SQL error step (%i): %s", rc, sqlite3_errmsg(gravitydb));
-		sqlite3_finalize(stmt);
-		sqlite3_close(gravitydb);
-		return false;
-	}
-
-	logg("Imported %u domains from blacklist database (took %.1f ms)", added-gravity, timer_elapsed_msec(LISTS_TIMER));
-
+	// Finalize statement
 	sqlite3_finalize(stmt);
 
 	// Close database handle
-	sqlite3_close(gravitydb);
-
-	counters->gravity += added;
-	return true;
+	gravityDB_close();
 }

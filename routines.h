@@ -145,4 +145,6 @@ void parse_arp_cache(void);
 void updateMACVendorRecords(void);
 
 // gravity.c
-bool readGravity(void);
+bool gravityDB_getTable(unsigned char list);
+const char* gravityDB_getDomain(void);
+void gravityDB_finalizeTable(void);

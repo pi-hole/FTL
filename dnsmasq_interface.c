@@ -1208,19 +1208,30 @@ int FTL_listsfile(char* filename, unsigned int index, FILE *f, int cache_size, s
 {
 	int name_count = cache_size;
 	int added = 0;
-	size_t size = 0;
-	char *buffer = NULL;
 	struct all_addr addr4 = {{{ 0 }}}, addr6 = {{{ 0 }}};
 	bool has_IPv4 = false, has_IPv6 = false;
+	unsigned char list = 0;
 
 	// Handle only gravity.list and black.list
 	// Skip all other files (they are interpreted in the usual format)
-	if(strcmp(filename, files.gravity) != 0 &&
-	   strcmp(filename, files.blacklist) != 0)
+	if(strcmp(filename, files.gravity) == 0)
+		list = GRAVITY_LIST;
+	else if(strcmp(filename, files.blacklist) == 0)
+		list = BLACK_LIST;
+	else
 		return cache_size;
+
+	logg(" Importing content of template %s from database", filename);
 
 	// Start timer for list analysis
 	timer_start(LISTS_TIMER);
+
+	// Start database interaction
+	bool ret = gravityDB_getTable(list);
+	if(!ret)
+	{
+		logg("FTL_listsfile(%s, ...): Error getting table from database", filename);
+	}
 
 	// Get IPv4/v6 addresses for blocking depending on user configured blocking mode
 	prepare_blocking_mode(&addr4, &addr6, &has_IPv4, &has_IPv6);
@@ -1233,43 +1244,18 @@ int FTL_listsfile(char* filename, unsigned int index, FILE *f, int cache_size, s
 		return cache_size;
 	}
 
-	// Walk file line by line
-	bool firstline = true;
-	while(getline(&buffer, &size, f) != -1)
+	// Walk database table
+	const char *buffer = NULL;
+	while((buffer = gravityDB_getDomain()) != NULL)
 	{
-		char *domain = buffer;
-		// Skip hashed out lines
-		if(*domain == '#')
-			continue;
-
+		char *domain = (char*)buffer;
 		// Filter leading dots or spaces
 		while (*domain == '.' || *domain == ' ') domain++;
-
-		// Check for spaces or tabs
-		// If found, then this list is still in HOSTS format and we
-		// don't analyze it here. We only check the first line for
-		// efficiency reasons (strstr() is slow)
-		if(firstline &&
-		   (strstr(domain, " ") != NULL || strstr(domain, "\t") != NULL))
-		{
-			// Reset file pointer back to beginning of the list
-			rewind(f);
-			logg("File %s is in HOSTS format, please run pihole -g!", filename);
-			return name_count;
-		}
-		firstline = false;
 
 		// Skip empty lines
 		int len = strlen(domain);
 		if(len == 0)
 			continue;
-
-		// Strip newline character at the end of line we just read
-		if(domain[len-1] == '\n')
-		{
-			domain[len-1] = '\0';
-			len -= 1;
-		}
 
 		// As of here we assume the entry to be valid
 		// Rehash every 1000 valid names
@@ -1290,21 +1276,15 @@ int FTL_listsfile(char* filename, unsigned int index, FILE *f, int cache_size, s
 	if(rhash)
 		rehash(name_count);
 
-	// Free allocated memory
-	if(buffer != NULL)
-	{
-		free(buffer);
-		buffer = NULL;
-	}
+	// Finalize statement and close gravity database handle
+	gravityDB_finalizeTable();
 
-	logg("%s: parsed %i domains (took %.1f ms)", filename, added, timer_elapsed_msec(LISTS_TIMER));
+	// Jump to end of file to ensure dnsmasq does not try to read whatever
+	// might be in the file on disk (we only import from the database)
+	fseek(f, 0, SEEK_END);
+
+	// Final logging
+	logg("%s: imported %i domains (took %.1f ms)", filename, added, timer_elapsed_msec(LISTS_TIMER));
 	counters->gravity += added;
 	return name_count;
-}
-
-void FTL_read_gravity(void)
-{
-	logg("Start reading gravity database...");
-	readGravity();
-	logg("...done reading gravity database.");
 }
