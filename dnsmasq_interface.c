@@ -1088,7 +1088,7 @@ unsigned long converttimeval(struct timeval time)
 }
 
 // This subroutine prepares IPv4 and IPv6 addresses for blocking queries depending on the configured blocking mode
-void prepare_blocking_mode(struct all_addr *addr4, struct all_addr *addr6, bool *has_IPv4, bool *has_IPv6)
+static void prepare_blocking_mode(struct all_addr *addr4, struct all_addr *addr6, bool *has_IPv4, bool *has_IPv6)
 {
 	// Read IPv4 address for host entries from setupVars.conf
 	char* const IPv4addr = read_setupVarsconf("IPV4_ADDRESS");
@@ -1134,8 +1134,8 @@ void rehash(int size);
 // This routine adds one domain to the resolver's cache. Depending on the configured blocking mode it may create
 // a single entry valid for IPv4 & IPv6 or two entries one for IPv4 and one for IPv6.
 // When IPv6 is not available on the machine, we do not add IPv6 cache entries (likewise for IPv4)
-int add_blocked_domain(struct all_addr *addr4, struct all_addr *addr6, bool has_IPv4, bool has_IPv6,
-                       char *domain, int len, struct crec **rhash, int hashsz, unsigned int index)
+static int add_blocked_domain(struct all_addr *addr4, struct all_addr *addr6, const bool has_IPv4, const bool has_IPv6,
+                              const char *domain, const int len, struct crec **rhash, int hashsz, const unsigned int index)
 {
 	int name_count = 0;
 	struct crec *cache4,*cache6;
@@ -1200,8 +1200,6 @@ static void block_single_domain_regex(char *domain)
 	add_blocked_domain(&addr4, &addr6, has_IPv4, has_IPv6, domain, strlen(domain), NULL, 0, SRC_REGEX);
 
 	if(config.debug & DEBUG_QUERIES) logg("Added %s to cache", domain);
-
-	return;
 }
 
 int FTL_listsfile(char* filename, unsigned int index, FILE *f, int cache_size, struct crec **rhash, int hashsz)
@@ -1221,7 +1219,7 @@ int FTL_listsfile(char* filename, unsigned int index, FILE *f, int cache_size, s
 	else
 		return cache_size;
 
-	logg(" Importing content of template %s from database", filename);
+	logg("Importing content of template %s from database", filename);
 
 	// Start timer for list analysis
 	timer_start(LISTS_TIMER);
@@ -1240,18 +1238,15 @@ int FTL_listsfile(char* filename, unsigned int index, FILE *f, int cache_size, s
 	// blocking modes MODE_IP or MODE_IP_NODATA_AAAA then we cannot add any entries here
 	if(!has_IPv4 && !has_IPv6)
 	{
-		logg("ERROR: found neither a valid IPV4_ADDRESS nor IPV6_ADDRESS in setupVars.conf");
+		logg("ERROR: Cannot add domains from gravity because pihole-FTL found\n" \
+		     "       neither a valid IPV4_ADDRESS nor IPV6_ADDRESS in setupVars.conf");
 		return cache_size;
 	}
 
 	// Walk database table
-	const char *buffer = NULL;
-	while((buffer = gravityDB_getDomain()) != NULL)
+	const char *domain = NULL;
+	while((domain = gravityDB_getDomain()) != NULL)
 	{
-		char *domain = (char*)buffer;
-		// Filter leading dots or spaces
-		while (*domain == '.' || *domain == ' ') domain++;
-
 		// Skip empty lines
 		int len = strlen(domain);
 		if(len == 0)
