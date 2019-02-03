@@ -1239,10 +1239,10 @@ int FTL_listsfile(char* filename, unsigned int index, FILE *f, int cache_size, s
 	timer_start(LISTS_TIMER);
 
 	// Start database interaction
-	bool ret = gravityDB_getTable(list);
-	if(!ret)
+	if(!gravityDB_getTable(list))
 	{
 		logg("FTL_listsfile(%s, ...): Error getting table from database", filename);
+		return name_count;
 	}
 
 	// Get IPv4/v6 addresses for blocking depending on user configured blocking mode

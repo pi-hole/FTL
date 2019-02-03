@@ -179,7 +179,11 @@ static void read_whitelist_from_database(void)
 	whitelist.domains = calloc(whitelist.count, sizeof(char*));
 
 	// Connect to whitelist table
-	gravityDB_getTable(WHITE_LIST);
+	if(!gravityDB_getTable(WHITE_LIST))
+	{
+		logg("read_whitelist_from_database(): Error getting table from database");
+		return;
+	}
 
 	// Walk database table
 	const char *domain = NULL;
@@ -224,7 +228,11 @@ void read_regex_from_database(void)
 		regexbuffer = calloc(num_regex, sizeof(char*));
 
 	// Connect to whitelist table
-	gravityDB_getTable(REGEX_LIST);
+	if(!gravityDB_getTable(REGEX_LIST))
+	{
+		logg("read_regex_from_database(): Error getting table from database");
+		return;
+	}
 
 	// Walk database table
 	const char *domain = NULL;
