@@ -44,6 +44,17 @@ bool readGravity(void)
 		return false;
 	}
 
+	// Tell SQLite3 to store temporary tables in memory. This speeds up read operations on
+	// temporary tables, indices, and views.
+	char *zErrMsg = NULL;
+	rc = sqlite3_exec(gravitydb, "PRAGMA temp_store = MEMORY", NULL, NULL, &zErrMsg);
+	if( rc != SQLITE_OK ){
+		logg("readGravity(PRAGMA temp_store) - SQL error (%i): %s", rc, zErrMsg);
+		sqlite3_free(zErrMsg);
+		sqlite3_close(gravitydb);
+		return false;
+	}
+
 	// Read gravity domains
 	sqlite3_stmt* stmt = NULL;
 	rc = sqlite3_prepare_v2(gravitydb, "SELECT * FROM vw_gravity;", -1, &stmt, NULL);
@@ -61,15 +72,28 @@ bool readGravity(void)
 
 	char *domain = NULL;
 	unsigned int added = 0;
+
+	FILE *gravityfile = NULL;
+	if(config.debug & DEBUG_GRAVITYDB)
+		gravityfile = fopen("/etc/pihole/gravity_db.list", "w");
+
 	while((rc = sqlite3_step(stmt)) == SQLITE_ROW)
 	{
 		domain = (char*)sqlite3_column_text(stmt, 0);
+
+		// Write domain to gravity file
+		if(gravityfile != NULL)
+			fprintf(gravityfile, "%s\n", domain);
+
+		// Add domain to DNS cache
 		add_blocked_domain(&addr4, &addr6, has_IPv4, has_IPv6, domain, strlen(domain), NULL, 0, SRC_GRAVITYDB);
 		added++;
 
 		if(added % 1000 == 0)
 			rehash(added);
 	}
+	if(gravityfile != NULL)
+		fclose(gravityfile);
 
 	if(rc != SQLITE_DONE)
 	{
@@ -115,6 +139,8 @@ bool readGravity(void)
 	logg("Imported %u domains from blacklist database (took %.1f ms)", added-gravity, timer_elapsed_msec(LISTS_TIMER));
 
 	sqlite3_finalize(stmt);
+
+	// Close database handle
 	sqlite3_close(gravitydb);
 
 	counters->gravity += added;

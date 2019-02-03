@@ -579,6 +579,12 @@ void read_debuging_settings(FILE *fp)
 	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
 		config.debug |= DEBUG_REGEX;
 
+	// DEBUG_GRAVITYDB
+	// defaults to: false
+	buffer = parse_FTLconf(fp, "DEBUG_GRAVITYDB");
+	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
+		config.debug |= DEBUG_GRAVITYDB;
+
 	if(config.debug)
 	{
 		logg("************************");
@@ -592,6 +598,7 @@ void read_debuging_settings(FILE *fp)
 		logg("* DEBUG_GC         %s *", (config.debug & DEBUG_GC)? "YES":"NO ");
 		logg("* DEBUG_ARP        %s *", (config.debug & DEBUG_ARP)? "YES":"NO ");
 		logg("* DEBUG_REGEX      %s *", (config.debug & DEBUG_REGEX)? "YES":"NO ");
+		logg("* DEBUG_GRAVITYDB  %s *", (config.debug & DEBUG_GRAVITYDB)? "YES":"NO ");
 		logg("************************");
 	}
 
