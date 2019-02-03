@@ -105,11 +105,6 @@ void newOverTimeClient(int clientID) {
 	// Create the shared memory with enough space for the current overTime slots
 	shm_unlink(name);
 	SharedMemory shm = create_shm(name, (counters->overTime/pagesize + 1)*pagesize*sizeof(int));
-	if(shm.ptr == NULL) {
-		free(shm.name);
-		logg("Failed to initialize new overTime client %d", clientID);
-		return;
-	}
 
 	// Make space for the new shared memory
 	shm_overTimeClients = realloc(shm_overTimeClients, sizeof(SharedMemory) * (clientID + 1));
@@ -207,8 +202,6 @@ bool init_shmem(void)
 	/****************************** shared memory lock ******************************/
 	// Try to create shared memory object
 	shm_lock = create_shm(SHARED_LOCK_NAME, sizeof(ShmLock));
-	if(shm_lock.ptr == NULL)
-		return false;
 	shmLock = (ShmLock*) shm_lock.ptr;
 	shmLock->lock = create_mutex();
 	shmLock->waitingForLock = false;
@@ -216,8 +209,6 @@ bool init_shmem(void)
 	/****************************** shared strings buffer ******************************/
 	// Try to create shared memory object
 	shm_strings = create_shm(SHARED_STRINGS_NAME, pagesize);
-	if(shm_strings.ptr == NULL)
-		return false;
 
 	// Initialize shared string object with an empty string at position zero
 	((char*)shm_strings.ptr)[0] = '\0';
@@ -226,55 +217,41 @@ bool init_shmem(void)
 	/****************************** shared counters struct ******************************/
 	// Try to create shared memory object
 	shm_counters = create_shm(SHARED_COUNTERS_NAME, sizeof(countersStruct));
-	if(shm_counters.ptr == NULL)
-		return false;
 	counters = (countersStruct*)shm_counters.ptr;
 
 	/****************************** shared domains struct ******************************/
 	// Try to create shared memory object
 	shm_domains = create_shm(SHARED_DOMAINS_NAME, pagesize*sizeof(domainsDataStruct));
-	if(shm_domains.ptr == NULL)
-		return false;
 	domains = (domainsDataStruct*)shm_domains.ptr;
 	counters->domains_MAX = pagesize;
 
 	/****************************** shared clients struct ******************************/
 	// Try to create shared memory object
 	shm_clients = create_shm(SHARED_CLIENTS_NAME, pagesize*sizeof(clientsDataStruct));
-	if(shm_clients.ptr == NULL)
-		return false;
 	clients = (clientsDataStruct*)shm_clients.ptr;
 	counters->clients_MAX = pagesize;
 
 	/****************************** shared forwarded struct ******************************/
 	// Try to create shared memory object
 	shm_forwarded = create_shm(SHARED_FORWARDED_NAME, pagesize*sizeof(forwardedDataStruct));
-	if(shm_forwarded.ptr == NULL)
-		return false;
 	forwarded = (forwardedDataStruct*)shm_forwarded.ptr;
 	counters->forwarded_MAX = pagesize;
 
 	/****************************** shared queries struct ******************************/
 	// Try to create shared memory object
 	shm_queries = create_shm(SHARED_QUERIES_NAME, pagesize*sizeof(queriesDataStruct));
-	if(shm_queries.ptr == NULL)
-		return false;
 	queries = (queriesDataStruct*)shm_queries.ptr;
 	counters->queries_MAX = pagesize;
 
 	/****************************** shared overTime struct ******************************/
 	// Try to create shared memory object
 	shm_overTime = create_shm(SHARED_OVERTIME_NAME, pagesize*sizeof(overTimeDataStruct));
-	if(shm_overTime.ptr == NULL)
-		return false;
 	overTime = (overTimeDataStruct*)shm_overTime.ptr;
 	counters->overTime_MAX = pagesize;
 
 	/****************************** shared settings struct ******************************/
 	// Try to create shared memory object
 	shm_settings = create_shm(SHARED_SETTINGS_NAME, sizeof(ShmSettings));
-	if(shm_settings.ptr == NULL)
-		return false;
 	ShmSettings *settings = (ShmSettings*)shm_settings.ptr;
 	settings->version = SHARED_MEMORY_VERSION;
 
@@ -333,9 +310,9 @@ SharedMemory create_shm(char *name, size_t size)
 	// Check for `shm_open` error
 	if(fd == -1)
 	{
-		logg("create_shm(): Failed to create_shm shared memory object \"%s\": %s",
+		logg("FATAL: create_shm(): Failed to create_shm shared memory object \"%s\": %s",
 		     name, strerror(errno));
-		return sharedMemory;
+		exit(EXIT_FAILURE);
 	}
 
 	// Resize shared memory file
@@ -344,9 +321,9 @@ SharedMemory create_shm(char *name, size_t size)
 	// Check for `ftruncate` error
 	if(result == -1)
 	{
-		logg("create_shm(): ftruncate(%i, %zu): Failed to resize shared memory object \"%s\": %s",
+		logg("FATAL: create_shm(): ftruncate(%i, %zu): Failed to resize shared memory object \"%s\": %s",
 		     fd, size, sharedMemory.name, strerror(errno));
-		return sharedMemory;
+		exit(EXIT_FAILURE);
 	}
 
 	// Create shared memory mapping
@@ -355,9 +332,9 @@ SharedMemory create_shm(char *name, size_t size)
 	// Check for `mmap` error
 	if(shm == MAP_FAILED)
 	{
-		logg("create_shm(): Failed to map shared memory object \"%s\" (%i): %s",
+		logg("FATAL: create_shm(): Failed to map shared memory object \"%s\" (%i): %s",
 		     sharedMemory.name, fd, strerror(errno));
-		return sharedMemory;
+		exit(EXIT_FAILURE);
 	}
 
 	// Close shared memory object file descriptor as it is no longer
@@ -428,27 +405,27 @@ bool realloc_shm(SharedMemory *sharedMemory, size_t size) {
 	int fd = shm_open(sharedMemory->name, O_RDWR, S_IRUSR | S_IWUSR);
 	if(fd == -1)
 	{
-		logg("realloc_shm(): Failed to open shared memory object \"%s\": %s",
+		logg("FATAL: realloc_shm(): Failed to open shared memory object \"%s\": %s",
 		     sharedMemory->name, strerror(errno));
-		return false;
+		exit(EXIT_FAILURE);
 	}
 
 	// Resize shard memory object to requested size
 	result = ftruncate(fd, size);
 	if(result == -1) {
-		logg("realloc_shm(): ftruncate(%i, %zu): Failed to resize \"%s\": %s",
+		logg("FATAL: realloc_shm(): ftruncate(%i, %zu): Failed to resize \"%s\": %s",
 		     fd, size, sharedMemory->name, strerror(errno));
-		return false;
+		exit(EXIT_FAILURE);
 	}
 
 //	void *new_ptr = mremap(sharedMemory->ptr, sharedMemory->size, size, MREMAP_MAYMOVE);
 	void *new_ptr = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
 	if(new_ptr == MAP_FAILED)
 	{
-		logg("realloc_shm(): mremap(%p, %zu, %zu, MREMAP_MAYMOVE): Failed to reallocate \"%s\" (%i): %s",
+		logg("FATAL: realloc_shm(): mremap(%p, %zu, %zu, MREMAP_MAYMOVE): Failed to reallocate \"%s\" (%i): %s",
 		     sharedMemory->ptr, sharedMemory->size, size, sharedMemory->name, fd,
 		     strerror(errno));
-		return false;
+		exit(EXIT_FAILURE);
 	}
 
 	// Close shared memory object file descriptor as it is no longer
