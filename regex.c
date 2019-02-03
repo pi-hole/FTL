@@ -164,56 +164,39 @@ void free_regex(void)
 	free_whitelist_domains();
 }
 
-static void read_whitelist_from_file(void)
+static void read_whitelist_from_database(void)
 {
-	FILE *fp;
-	char *buffer = NULL;
-	size_t size = 0;
-
 	// Get number of lines in the whitelist file
-	whitelist.count = countlines(files.whitelist);
+	whitelist.count = gravityDB_count(WHITE_LIST);
 
 	if(whitelist.count < 0)
 	{
-		logg("INFO: No whitelist file found");
-		return;
-	}
-
-	if((fp = fopen(files.whitelist, "r")) == NULL) {
-		logg("WARN: Cannot access whitelist (%s)",files.whitelist);
+		logg("INFO: No whitelist entries found");
 		return;
 	}
 
 	// Allocate memory for array of whitelisted domains
 	whitelist.domains = calloc(whitelist.count, sizeof(char*));
 
-	// Search through file
-	// getline reads a string from the specified file up to either a
-	// newline character or EOF
-	for(int i=0; getline(&buffer, &size, fp) != -1; i++)
+	// Connect to whitelist table
+	gravityDB_getTable(WHITE_LIST);
+
+	// Walk database table
+	const char *domain = NULL;
+	int i = 0;
+	while((domain = gravityDB_getDomain()) != NULL)
 	{
-		// Test if file has changed since we counted the lines therein (unlikely
-		// but not impossible). If so, read only as far as we have reserved memory
+		// Avoid buffer overflow if database table changed
+		// since we counted its entries
 		if(i >= whitelist.count)
 			break;
 
-		// Strip potential newline character at the end of line we just read
-		if(buffer[strlen(buffer)-1] == '\n')
-			buffer[strlen(buffer)-1] = '\0';
-
 		// Copy this whitelisted domain into memory
-		whitelist.domains[i] = strdup(buffer);
+		whitelist.domains[i++] = strdup(domain);
 	}
 
-	// Free allocated memory
-	if(buffer != NULL)
-	{
-		free(buffer);
-		buffer = NULL;
-	}
-
-	// Close the file
-	fclose(fp);
+	// Finalize statement and close gravity database handle
+	gravityDB_finalizeTable();
 }
 
 void read_regex_from_file(void)
@@ -298,8 +281,8 @@ void read_regex_from_file(void)
 	// Close the file
 	fclose(fp);
 
-	// Read whitelisted domains from file
-	read_whitelist_from_file();
+	// Read whitelisted domains from database
+	read_whitelist_from_database();
 
 	logg("Compiled %i Regex filters and %i whitelisted domains in %.1f msec (%i errors)", (num_regex-skipped), whitelist.count > 0 ? whitelist.count : 0, timer_elapsed_msec(REGEX_TIMER), errors);
 }

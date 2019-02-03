@@ -127,3 +127,53 @@ void gravityDB_finalizeTable(void)
 	// Close database handle
 	gravityDB_close();
 }
+
+int gravityDB_count(unsigned char list)
+{
+	char *querystr = NULL;
+	switch(list)
+	{
+		case GRAVITY_LIST:
+			querystr = "SELECT COUNT(*) FROM vw_gravity;";
+			break;
+		case BLACK_LIST:
+			querystr = "SELECT COUNT(*) FROM vw_blacklist;";
+			break;
+		case WHITE_LIST:
+			querystr = "SELECT COUNT(*) FROM vw_whitelist;";
+			break;
+		default:
+			logg("gravityDB_count(%i): Requested list is not known!", list);
+			return false;
+	}
+
+	// Open database handle
+	gravityDB_open();
+
+	sqlite3_stmt* stmt;
+	// Prepare query
+	int rc = sqlite3_prepare_v2(gravitydb, querystr, -1, &stmt, NULL);
+	if( rc ){
+		logg("gravityDB_count(%s) - SQL error prepare (%i): %s", querystr, rc, sqlite3_errmsg(gravitydb));
+		sqlite3_finalize(stmt);
+		sqlite3_close(gravitydb);
+		return DB_FAILED;
+	}
+
+	// Perform query
+	rc = sqlite3_step(stmt);
+	if( rc != SQLITE_ROW ){
+		logg("gravityDB_count(%s) - SQL error step (%i): %s", querystr, rc, sqlite3_errmsg(gravitydb));
+		sqlite3_finalize(stmt);
+		sqlite3_close(gravitydb);
+		return DB_FAILED;
+	}
+
+	// Get result when there was no error
+	int result = sqlite3_column_int(stmt, 0);
+	sqlite3_finalize(stmt);
+
+	gravityDB_close();
+
+	return result;
+}

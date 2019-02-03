@@ -148,3 +148,4 @@ void updateMACVendorRecords(void);
 bool gravityDB_getTable(unsigned char list);
 const char* gravityDB_getDomain(void);
 void gravityDB_finalizeTable(void);
+int gravityDB_count(unsigned char list);
