@@ -492,13 +492,9 @@ struct crec {
 #define SRC_HOSTS     2
 /*----- Pi-hole modification -----*/
 // ID 3 will be used for the regex list file name
-// ID 4 will be used for the gravity list file name
-// ID 5 will be used for the blacklist list file name
-// ID 6 will be used as starting index for any Additional Hosts (AH) files
+// ID 4 will be used as starting index for any Additional Hosts (AH) files
 #define SRC_REGEX     3
-#define SRC_GRAVITYDB 4
-#define SRC_BLACKDB   5
-#define SRC_AH        6
+#define SRC_AH        4
 const char *regexlistname;
 /*--------------------------------*/
 

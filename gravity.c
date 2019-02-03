@@ -68,7 +68,10 @@ bool gravityDB_getTable(unsigned char list)
 			querystr = "SELECT * FROM vw_gravity;";
 			break;
 		case BLACK_LIST:
-			querystr = "SELECT * FROM blacklist;";
+			querystr = "SELECT * FROM vw_blacklist;";
+			break;
+		case WHITE_LIST:
+			querystr = "SELECT * FROM vw_whitelist;";
 			break;
 		default:
 			logg("gravityDB_getTable(%i): Requested list is not known!", list);
@@ -78,14 +81,10 @@ bool gravityDB_getTable(unsigned char list)
 	// Prepare SQLite3 statement
 	int rc = sqlite3_prepare_v2(gravitydb, querystr, -1, &stmt, NULL);
 	if( rc ){
-		logg("readGravity(vw_gravity) - SQL error prepare (%i): %s", rc, sqlite3_errmsg(gravitydb));
+		logg("readGravity(%s) - SQL error prepare (%i): %s", querystr, rc, sqlite3_errmsg(gravitydb));
 		sqlite3_close(gravitydb);
 		return false;
 	}
-
-	// Open debugging file if in GRAVITYDB debug mode
-	if(config.debug & DEBUG_GRAVITYDB)
-		gravityfile = fopen("/etc/pihole/gravity_db.list", "w");
 
 	return true;
 }
