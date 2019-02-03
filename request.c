@@ -165,7 +165,7 @@ void process_request(char *client_message, int *sock)
 		logg("Received API request to recompile regex");
 		lock_shm();
 		free_regex();
-		read_regex_from_file();
+		read_regex_from_database();
 		unlock_shm();
 	}
 	else if(command(client_message, ">update-mac-vendor"))

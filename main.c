@@ -52,7 +52,7 @@ int main (int argc, char* argv[])
 	read_FTLconf();
 
 	// Read and compile possible regex filters
-	read_regex_from_file();
+	read_regex_from_database();
 
 	// Catch signals like SIGTERM and SIGINT
 	// Other signals like SIGHUP, SIGUSR1 are handled by the resolver part

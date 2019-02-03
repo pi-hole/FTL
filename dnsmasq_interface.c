@@ -373,7 +373,7 @@ void FTL_dnsmasq_reload(void)
 
 	// Reread regex.list
 	free_regex();
-	read_regex_from_file();
+	read_regex_from_database();
 
 	// Reread pihole-FTL.conf to see which debugging flags are set
 	read_debuging_settings(NULL);

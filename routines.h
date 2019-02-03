@@ -113,7 +113,7 @@ void resolveForwardDestinations(bool onlynew);
 // regex.c
 bool match_regex(char *input);
 void free_regex(void);
-void read_regex_from_file(void);
+void read_regex_from_database(void);
 bool in_whitelist(char *domain);
 
 // shmem.c

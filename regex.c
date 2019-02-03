@@ -166,7 +166,7 @@ void free_regex(void)
 
 static void read_whitelist_from_database(void)
 {
-	// Get number of lines in the whitelist file
+	// Get number of lines in the whitelist table
 	whitelist.count = gravityDB_count(WHITE_LIST);
 
 	if(whitelist.count < 0)
@@ -199,27 +199,19 @@ static void read_whitelist_from_database(void)
 	gravityDB_finalizeTable();
 }
 
-void read_regex_from_file(void)
+void read_regex_from_database(void)
 {
-	FILE *fp;
-	char *buffer = NULL;
-	size_t size = 0;
 	int errors = 0, skipped = 0;
 
 	// Start timer for regex compilation analysis
 	timer_start(REGEX_TIMER);
 
-	// Get number of lines in the regex file
-	num_regex = countlines(files.regexlist);
+	// Get number of lines in the regex table
+	num_regex = gravityDB_count(REGEX_LIST);
 
 	if(num_regex < 0)
 	{
-		logg("INFO: No Regex file found");
-		return;
-	}
-
-	if((fp = fopen(files.regexlist, "r")) == NULL) {
-		logg("WARN: Cannot access Regex file");
+		logg("INFO: No Regex entries found");
 		return;
 	}
 
@@ -231,55 +223,48 @@ void read_regex_from_file(void)
 	if(config.debug & DEBUG_REGEX)
 		regexbuffer = calloc(num_regex, sizeof(char*));
 
-	// Search through file
-	// getline reads a string from the specified file up to either a
-	// newline character or EOF
-	for(int i=0; getline(&buffer, &size, fp) != -1; i++)
+	// Connect to whitelist table
+	gravityDB_getTable(REGEX_LIST);
+
+	// Walk database table
+	const char *domain = NULL;
+	int i = 0;
+	while((domain = gravityDB_getDomain()) != NULL)
 	{
-		// Test if file has changed since we counted the lines therein (unlikely
-		// but not impossible). If so, read only as far as we have reserved memory
+		// Avoid buffer overflow if database table changed
+		// since we counted its entries
 		if(i >= num_regex)
 			break;
-
-		// Strip potential newline character at the end of line we just read
-		if(buffer[strlen(buffer)-1] == '\n')
-			buffer[strlen(buffer)-1] = '\0';
 
 		// Skip this entry if empty: an empty regex filter would match
 		// anything anywhere and hence match (and block) all incoming domains.
 		// A user can still achieve this with a filter such as ".*", however
 		// empty lines in regex.list are probably not expected to have such an
 		// effect and would immediately lead to "blocking the entire Internet"
-		if(strlen(buffer) < 1)
+		if(strlen(domain) < 1)
 		{
 			regexconfigured[i] = false;
-			logg("Skipping empty regex filter on line %i", i+1);
+			logg("Skipping empty regex filter");
 			skipped++;
 			continue;
 		}
 
-		// Skip this entry if it is commented out
-		if(buffer[0] == '#')
+		// Skip this entry if it is commented out using the legacy syntax
+		// (should use the disabled property of the table now)
+		if(domain[0] == '#')
 		{
 			regexconfigured[i] = false;
-			logg("Skipping commented out regex filter on line %i", i+1);
+			logg("Skipping commented out regex filter \"%s\"", domain);
 			skipped++;
 			continue;
 		}
 
-		// Compile this regex
-		regexconfigured[i] = init_regex(buffer, i);
+		// Copy this whitelisted domain into memory
+		regexconfigured[i] = init_regex(domain, i);
 	}
 
-	// Free allocated memory
-	if(buffer != NULL)
-	{
-		free(buffer);
-		buffer = NULL;
-	}
-
-	// Close the file
-	fclose(fp);
+	// Finalize statement and close gravity database handle
+	gravityDB_finalizeTable();
 
 	// Read whitelisted domains from database
 	read_whitelist_from_database();
