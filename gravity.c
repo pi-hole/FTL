@@ -73,6 +73,9 @@ bool gravityDB_getTable(unsigned char list)
 		case WHITE_LIST:
 			querystr = "SELECT * FROM vw_whitelist;";
 			break;
+		case REGEX_LIST:
+			querystr = "SELECT * FROM vw_regex;";
+			break;
 		default:
 			logg("gravityDB_getTable(%i): Requested list is not known!", list);
 			return false;
@@ -141,6 +144,9 @@ int gravityDB_count(unsigned char list)
 			break;
 		case WHITE_LIST:
 			querystr = "SELECT COUNT(*) FROM vw_whitelist;";
+			break;
+		case REGEX_LIST:
+			querystr = "SELECT COUNT(*) FROM vw_regex;";
 			break;
 		default:
 			logg("gravityDB_count(%i): Requested list is not known!", list);
