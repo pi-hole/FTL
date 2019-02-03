@@ -11,6 +11,8 @@
 #include "FTL.h"
 #include "api.h"
 #include "version.h"
+// needed for sqlite3_libversion()
+#include "sqlite3.h"
 
 #define min(a,b) ({ __typeof__ (a) _a = (a); __typeof__ (b) _b = (b); _a < _b ? _a : _b; })
 
@@ -801,7 +803,7 @@ void getAllQueries(char *client_message, int *sock)
 
 		if(istelnet[*sock])
 		{
-			if(debug)
+			if(config.debug & DEBUG_API)
 				ssend(*sock,"%i %s %s %s %i %i %i %lu %i\n",queries[i].timestamp,qtype,domain,client,queries[i].status,queries[i].dnssec,queries[i].reply,delay,i);
 			else
 				ssend(*sock,"%i %s %s %s %i %i %i %lu\n",queries[i].timestamp,qtype,domain,client,queries[i].status,queries[i].dnssec,queries[i].reply,delay);

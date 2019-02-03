@@ -11,6 +11,9 @@
 #include "FTL.h"
 #include "shmem.h"
 
+/// The version of shared memory used
+#define SHARED_MEMORY_VERSION 1
+
 /// The name of the shared memory. Use this when connecting to the shared memory.
 #define SHARED_LOCK_NAME "/FTL-lock"
 #define SHARED_STRINGS_NAME "/FTL-strings"
@@ -20,6 +23,7 @@
 #define SHARED_QUERIES_NAME "/FTL-queries"
 #define SHARED_FORWARDED_NAME "/FTL-forwarded"
 #define SHARED_OVERTIME_NAME "/FTL-overTime"
+#define SHARED_SETTINGS_NAME "/FTL-settings"
 #define SHARED_OVERTIMECLIENT_PREFIX "/FTL-client-"
 
 /// The pointer in shared memory to the shared string buffer
@@ -31,6 +35,7 @@ static SharedMemory shm_clients = { 0 };
 static SharedMemory shm_queries = { 0 };
 static SharedMemory shm_forwarded = { 0 };
 static SharedMemory shm_overTime = { 0 };
+static SharedMemory shm_settings = { 0 };
 
 static SharedMemory *shm_overTimeClients = NULL;
 
@@ -54,7 +59,12 @@ unsigned long long addstr(const char *str)
 	// Get string length
 	size_t len = strlen(str);
 
-	if(debug) logg("Adding \"%s\" (len %i) to buffer at pos %u", str, len, next_pos);
+	// If this is an empty string, use the one at position zero
+	if(len == 0) {
+		return 0;
+	}
+
+	if(config.debug & DEBUG_SHMEM) logg("Adding \"%s\" (len %i) to buffer. next_pos is %i", str, len, next_pos);
 
 	// Reserve additional memory if necessary
 	size_t required_size = next_pos + len + 1;
@@ -157,11 +167,13 @@ void _lock_shm(const char* function, const int line, const char * file) {
 	// Signal that FTL is waiting for a lock
 	shmLock->waitingForLock = true;
 
-	if(debug) logg("Waiting for lock in %s() (%s:%i)", function, file, line);
+	if(config.debug & DEBUG_LOCKS)
+		logg("Waiting for lock in %s() (%s:%i)", function, file, line);
 
 	int result = pthread_mutex_lock(&shmLock->lock);
 
-	if(debug) logg("Obtained lock for %s() (%s:%i)", function, file, line);
+	if(config.debug & DEBUG_LOCKS)
+		logg("Obtained lock for %s() (%s:%i)", function, file, line);
 
 	// Turn off the waiting for lock signal to notify everyone who was
 	// deferring to FTL that they can jump in the lock queue.
@@ -180,7 +192,8 @@ void _lock_shm(const char* function, const int line, const char * file) {
 void _unlock_shm(const char* function, const int line, const char * file) {
 	int result = pthread_mutex_unlock(&shmLock->lock);
 
-	if(debug) logg("Removed lock in %s() (%s:%i)", function, file, line);
+	if(config.debug & DEBUG_LOCKS)
+		logg("Removed lock in %s() (%s:%i)", function, file, line);
 
 	if(result != 0)
 		logg("Failed to unlock SHM lock: %s", strerror(result));
@@ -257,6 +270,14 @@ bool init_shmem(void)
 	overTime = (overTimeDataStruct*)shm_overTime.ptr;
 	counters->overTime_MAX = pagesize;
 
+	/****************************** shared settings struct ******************************/
+	// Try to create shared memory object
+	shm_settings = create_shm(SHARED_SETTINGS_NAME, sizeof(ShmSettings));
+	if(shm_settings.ptr == NULL)
+		return false;
+	ShmSettings *settings = (ShmSettings*)shm_settings.ptr;
+	settings->version = SHARED_MEMORY_VERSION;
+
 	return true;
 }
 
@@ -276,6 +297,7 @@ void destroy_shmem(void)
 	delete_shm(&shm_queries);
 	delete_shm(&shm_forwarded);
 	delete_shm(&shm_overTime);
+	delete_shm(&shm_settings);
 
 	// Don't use counters->clients because it's been freed
 	for(int i = 0; i < clientCount; i++) {
@@ -286,7 +308,8 @@ void destroy_shmem(void)
 
 SharedMemory create_shm(char *name, size_t size)
 {
-	if(debug) logg("Creating shared memory with name \"%s\" and size %zu", name, size);
+	if(config.debug & DEBUG_SHMEM)
+		logg("Creating shared memory with name \"%s\" and size %zu", name, size);
 
 	SharedMemory sharedMemory = {
 		.name = name,
@@ -394,7 +417,8 @@ void *enlarge_shmem_struct(char type)
 }
 
 bool realloc_shm(SharedMemory *sharedMemory, size_t size) {
-	logg("Resizing \"%s\" from %zu to %zu", sharedMemory->name, sharedMemory->size, size);
+	if(config.debug & DEBUG_SHMEM)
+		logg("Resizing \"%s\" from %zu to %zu", sharedMemory->name, sharedMemory->size, size);
 
 	int result = munmap(sharedMemory->ptr, sharedMemory->size);
 	if(result != 0)
