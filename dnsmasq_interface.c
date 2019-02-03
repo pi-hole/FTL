@@ -776,16 +776,76 @@ void _FTL_dnssec(int status, int id, const char* file, const int line)
 	unlock_shm();
 }
 
+void _FTL_upstream_error(unsigned int rcode, int id, const char* file, const int line)
+{
+	// Process upstream errors
+	// Queries with error are those where the RCODE
+	// in the DNS header is neither NOERROR nor NXDOMAIN.
+
+	// Don't analyze anything if in PRIVACY_NOSTATS mode
+	if(config.privacylevel >= PRIVACY_NOSTATS)
+		return;
+
+	// Process DNSSEC result for a domain
+	lock_shm();
+	// Search for corresponding query identified by ID
+	int i = findQueryID(id);
+	if(i < 0)
+	{
+		// This may happen e.g. if the original query was an unhandled query type
+		unlock_shm();
+		return;
+	}
+	// Translate dnsmasq's rcode into something we can use
+	char *rcodestr = NULL;
+	bool alloc = false;
+	switch(rcode)
+	{
+		case SERVFAIL:
+			rcodestr = "SERVFAIL";
+			queries[i].reply = REPLY_SERVFAIL;
+			break;
+		case REFUSED:
+			rcodestr = "REFUSED";
+			queries[i].reply = REPLY_REFUSED;
+			break;
+		case NOTIMP:
+			rcodestr = "NOT IMPLEMENTED";
+			queries[i].reply = REPLY_NOTIMP;
+			break;
+		default:
+			if(asprintf(&rcodestr, "Unknown error type (%u)", rcode) > -1)
+				alloc = true;
+			queries[i].reply = REPLY_OTHER;
+			break;
+	}
+
+	// Debug logging
+	if(config.debug & DEBUG_QUERIES)
+	{
+		int domainID = queries[i].domainID;
+		validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
+		logg("**** got error report for %s: %s (ID %i, %s:%i)", getstr(domains[domainID].domainpos), rcodestr, id, file, line);
+	}
+
+	// If we allocated memory (due to an unknown error type), we need to free it here
+	if(alloc)
+		free(rcodestr);
+
+	unlock_shm();
+}
+
 void _FTL_header_ADbit(unsigned char header4, unsigned int rcode, int id, const char* file, const int line)
 {
 	// Don't analyze anything if in PRIVACY_NOSTATS mode
 	if(config.privacylevel >= PRIVACY_NOSTATS)
 		return;
 
-	// Check if AD bit is set in DNS header
-	if(!(header4 & 0x20))
+	// Check if AD is set and RA bit is unset in DNS header
+	//              AD                  RA
+	if(!(header4 & 0x20) || (header4 & 0x80))
 	{
-		// AD bit not set
+		// AD bit not set or RA bit set
 		return;
 	}
 
