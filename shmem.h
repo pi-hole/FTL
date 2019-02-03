@@ -25,7 +25,8 @@ typedef struct {
 ///
 /// \param name the name of the shared memory
 /// \param size the size to allocate
-/// \return a structure with a pointer to the mounted shared memory. The pointer will be NULL if it failed
+/// \return a structure with a pointer to the mounted shared memory. The pointer
+/// will always be valid, because if it failed FTL will have exited.
 SharedMemory create_shm(char *name, size_t size);
 
 /// Reallocate shared memory
