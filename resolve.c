@@ -9,6 +9,7 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
+#include "shmem.h"
 
 // Resolve new client and upstream server host names
 // once every minute
@@ -73,56 +74,63 @@ char *resolveHostname(const char *addr)
 // Resolve client host names
 void resolveClients(bool onlynew)
 {
-	int i;
-	for(i = 0; i < counters.clients; i++)
+	int clientID;
+	for(clientID = 0; clientID < counters->clients; clientID++)
 	{
 		// Memory validation
-		validate_access("clients", i, true, __LINE__, __FUNCTION__, __FILE__);
+		validate_access("clients", clientID, true, __LINE__, __FUNCTION__, __FILE__);
 
 		// If onlynew flag is set, we will only resolve new clients
 		// If not, we will try to re-resolve all known clients
-		if(onlynew && !clients[i].new)
+		if(onlynew && !clients[clientID].new)
 			continue;
 
-		char *hostname = resolveHostname(clients[i].ip);
+		// Lock data when obtaining IP of this client
+		lock_shm();
+		const char* ipaddr = getstr(clients[clientID].ippos);
+		unlock_shm();
 
-		enable_thread_lock();
+		// Important: Don't hold a lock while resolving as the main thread
+		// (dnsmasq) needs to be operable during the call to resolveHostname()
+		const char* hostname = resolveHostname(ipaddr);
 
-		if(clients[i].name != NULL)
-			free(clients[i].name);
-
-		clients[i].name = hostname;
-		clients[i].new = false;
-
-		disable_thread_lock();
+		// Finally, lock data when storing obtained hostname
+		lock_shm();
+		clients[clientID].namepos = addstr(hostname);
+		clients[clientID].new = false;
+		unlock_shm();
 	}
 }
 
 // Resolve upstream destination host names
 void resolveForwardDestinations(bool onlynew)
 {
-	int i;
-	for(i = 0; i < counters.forwarded; i++)
+	int forwardID;
+	for(forwardID = 0; forwardID < counters->forwarded; forwardID++)
 	{
 		// Memory validation
-		validate_access("forwarded", i, true, __LINE__, __FUNCTION__, __FILE__);
+		validate_access("forwarded", forwardID, true, __LINE__, __FUNCTION__, __FILE__);
 
 		// If onlynew flag is set, we will only resolve new upstream destinations
 		// If not, we will try to re-resolve all known upstream destinations
-		if(onlynew && !forwarded[i].new)
+		if(onlynew && !forwarded[forwardID].new)
 			continue;
 
-		char *hostname = resolveHostname(forwarded[i].ip);
+		// Lock data when obtaining IP of this forward destination
+		lock_shm();
+		const char* ipaddr = getstr(forwarded[forwardID].ippos);
+		unlock_shm();
 
-		enable_thread_lock();
 
-		if(forwarded[i].name != NULL)
-			free(forwarded[i].name);
+		// Important: Don't hold a lock while resolving as the main thread
+		// (dnsmasq) needs to be operable during the call to resolveHostname()
+		const char* hostname = resolveHostname(ipaddr);
 
-		forwarded[i].name = hostname;
-		forwarded[i].new = false;
-
-		disable_thread_lock();
+		// Finally, lock data when storing obtained hostname
+		lock_shm();
+		forwarded[forwardID].namepos = addstr(hostname);
+		forwarded[forwardID].new = false;
+		unlock_shm();
 	}
 }
 

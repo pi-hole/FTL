@@ -9,6 +9,7 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
+#include "shmem.h"
 
 sqlite3 *db;
 bool database = false;
@@ -317,6 +318,33 @@ int number_of_queries_in_DB(void)
 	return result;
 }
 
+static sqlite3_int64 last_ID_in_DB(void)
+{
+	sqlite3_stmt* stmt;
+
+	int rc = sqlite3_prepare_v2(db, "SELECT MAX(ID) FROM queries", -1, &stmt, NULL);
+	if( rc ){
+		logg("last_ID_in_DB() - SQL error prepare (%i): %s", rc, sqlite3_errmsg(db));
+		dbclose();
+		check_database(rc);
+		return -1;
+	}
+
+	rc = sqlite3_step(stmt);
+	if( rc != SQLITE_ROW ){
+		logg("last_ID_in_DB() - SQL error step (%i): %s", rc, sqlite3_errmsg(db));
+		dbclose();
+		check_database(rc);
+		return -1;
+	}
+
+	sqlite3_int64 result = sqlite3_column_int64(stmt, 0);
+
+	sqlite3_finalize(stmt);
+
+	return result;
+}
+
 int get_number_of_queries_in_DB(void)
 {
 	int result = -1;
@@ -355,6 +383,9 @@ void save_to_DB(void)
 	long int i;
 	sqlite3_stmt* stmt;
 
+	// Get last ID stored in the database
+	sqlite3_int64 lastID = last_ID_in_DB();
+
 	bool ret = dbquery("BEGIN TRANSACTION");
 	if(!ret)
 	{
@@ -375,10 +406,10 @@ void save_to_DB(void)
 	int total = 0, blocked = 0;
 	time_t currenttimestamp = time(NULL);
 	time_t newlasttimestamp = 0;
-	for(i = 0; i < counters.queries; i++)
+	for(i = 0; i < counters->queries; i++)
 	{
 		validate_access("queries", i, true, __LINE__, __FUNCTION__, __FILE__);
-		if(queries[i].db)
+		if(queries[i].db != 0)
 		{
 			// Skip, already saved in database
 			continue;
@@ -422,7 +453,7 @@ void save_to_DB(void)
 		if(queries[i].status == QUERY_FORWARDED && queries[i].forwardID > -1)
 		{
 			validate_access("forwarded", queries[i].forwardID, true, __LINE__, __FUNCTION__, __FILE__);
-			sqlite3_bind_text(stmt, 6, forwarded[queries[i].forwardID].ip, -1, SQLITE_TRANSIENT);
+			sqlite3_bind_text(stmt, 6, getstr(forwarded[queries[i].forwardID].ippos), -1, SQLITE_TRANSIENT);
 		}
 		else
 		{
@@ -451,8 +482,8 @@ void save_to_DB(void)
 		}
 
 		saved++;
-		// Mark this query as saved in the database only if successful
-		queries[i].db = true;
+		// Mark this query as saved in the database by setting the corresponding ID
+		queries[i].db = ++lastID;
 
 		// Total counter information (delta computation)
 		total++;
@@ -492,7 +523,7 @@ void save_to_DB(void)
 
 	if(debug)
 	{
-		logg("Notice: Queries stored in DB: %u (took %.1f ms)", saved, timer_elapsed_msec(DATABASE_WRITE_TIMER));
+		logg("Notice: Queries stored in DB: %u (took %.1f ms, last SQLite ID %llu)", saved, timer_elapsed_msec(DATABASE_WRITE_TIMER), lastID);
 		if(saved_error > 0)
 			logg("        There are queries that have not been saved");
 	}
@@ -548,15 +579,15 @@ void *DB_thread(void *val)
 			// Update lastDBsave timer
 			lastDBsave = time(NULL) - time(NULL)%config.DBinterval;
 
-			// Lock FTL's data structure, since it is
-			// likely that it will be changed here
-			enable_thread_lock();
+			// Lock FTL's data structures, since it is
+			// likely that they will be changed here
+			lock_shm();
 
 			// Save data to database
 			save_to_DB();
 
-			// Release thread lock
-			disable_thread_lock();
+			// Release data lock
+			unlock_shm();
 
 			// Check if GC should be done on the database
 			if(DBdeleteoldqueries)
@@ -613,12 +644,7 @@ void read_data_from_DB(void)
 	// Loop through returned database rows
 	while((rc = sqlite3_step(stmt)) == SQLITE_ROW)
 	{
-		// Ensure we have enough space in the queries struct
-		memory_check(QUERIES);
-
-		// Set ID for this query
-		int queryID = counters.queries;
-
+		sqlite3_int64 dbid = sqlite3_column_int64(stmt, 0);
 		int queryTimeStamp = sqlite3_column_int(stmt, 1);
 		// 1483228800 = 01/01/2017 @ 12:00am (UTC)
 		if(queryTimeStamp < 1483228800)
@@ -673,10 +699,6 @@ void read_data_from_DB(void)
 			continue;
 		}
 
-		// Obtain IDs only after filtering which queries we want to keep
-		int domainID = findDomainID(domain);
-		int clientID = findClientID(client);
-
 		const char *forwarddest = (const char *)sqlite3_column_text(stmt, 6);
 		int forwardID = 0;
 		// Determine forwardID only when status == 2 (forwarded) as the
@@ -691,31 +713,42 @@ void read_data_from_DB(void)
 			forwardID = findForwardID(forwarddest, true);
 		}
 
+		// Obtain IDs only after filtering which queries we want to keep
 		int overTimeTimeStamp = queryTimeStamp - (queryTimeStamp % 600) + 300;
 		int timeidx = findOverTimeID(overTimeTimeStamp);
-		validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
+		int domainID = findDomainID(domain);
+		int clientID = findClientID(client);
+
+		// Ensure we have enough space in the queries struct
+		memory_check(QUERIES);
+
+		// Set index for this query
+		int queryIndex = counters->queries;
 
 		// Store this query in memory
-		validate_access("queries", queryID, false, __LINE__, __FUNCTION__, __FILE__);
-		queries[queryID].magic = MAGICBYTE;
-		queries[queryID].timestamp = queryTimeStamp;
-		queries[queryID].type = type;
-		queries[queryID].status = status;
-		queries[queryID].domainID = domainID;
-		queries[queryID].clientID = clientID;
-		queries[queryID].forwardID = forwardID;
-		queries[queryID].timeidx = timeidx;
-		queries[queryID].db = true; // Mark this as already present in the database
-		queries[queryID].id = 0; // This is dnsmasq's internal ID. We don't store it in the database
-		queries[queryID].complete = true; // Mark as all information is avaiable
-		queries[queryID].response = 0;
-		queries[queryID].AD = false;
+		validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
+		validate_access("queries", queryIndex, false, __LINE__, __FUNCTION__, __FILE__);
+		queries[queryIndex].magic = MAGICBYTE;
+		queries[queryIndex].timestamp = queryTimeStamp;
+		queries[queryIndex].type = type;
+		queries[queryIndex].status = status;
+		queries[queryIndex].domainID = domainID;
+		queries[queryIndex].clientID = clientID;
+		queries[queryIndex].forwardID = forwardID;
+		queries[queryIndex].timeidx = timeidx;
+		queries[queryIndex].db = dbid;
+		queries[queryIndex].id = 0;
+		queries[queryIndex].complete = true; // Mark as all information is avaiable
+		queries[queryIndex].response = 0;
+		queries[queryIndex].AD = false;
+		queries[queryIndex].dnssec = DNSSEC_UNKNOWN;
+		queries[queryIndex].reply = REPLY_UNKNOWN;
 		lastDBimportedtimestamp = queryTimeStamp;
 
 		// Handle type counters
 		if(type >= TYPE_A && type < TYPE_MAX)
 		{
-			counters.querytype[type-1]++;
+			counters->querytype[type-1]++;
 			overTime[timeidx].querytypedata[type-1]++;
 		}
 
@@ -723,36 +756,35 @@ void read_data_from_DB(void)
 		overTime[timeidx].total++;
 
 		// Update overTime data structure with the new client
-		validate_access_oTcl(timeidx, clientID, __LINE__, __FUNCTION__, __FILE__);
-		overTime[timeidx].clientdata[clientID]++;
+		overTimeClientData[clientID][timeidx]++;
 
 		// Increase DNS queries counter
-		counters.queries++;
+		counters->queries++;
 
 		// Increment status counters
 		switch(status)
 		{
 			case QUERY_UNKNOWN: // Unknown
-				counters.unknown++;
+				counters->unknown++;
 				break;
 
 			case QUERY_GRAVITY: // Blocked by gravity.list
 			case QUERY_WILDCARD: // Blocked by regex filter
 			case QUERY_BLACKLIST: // Blocked by black.list
 			case QUERY_EXTERNAL_BLOCKED: // Blocked by external provider
-				counters.blocked++;
+				counters->blocked++;
 				overTime[timeidx].blocked++;
 				domains[domainID].blockedcount++;
 				clients[clientID].blockedcount++;
 				break;
 
 			case QUERY_FORWARDED: // Forwarded
-				counters.forwardedqueries++;
+				counters->forwardedqueries++;
 				// Update overTime data structure
 				break;
 
 			case QUERY_CACHE: // Cached or local config
-				counters.cached++;
+				counters->cached++;
 				// Update overTime data structure
 				overTime[timeidx].cached++;
 				break;
@@ -764,7 +796,7 @@ void read_data_from_DB(void)
 				break;
 		}
 	}
-	logg("Imported %i queries from the long-term database", counters.queries);
+	logg("Imported %i queries from the long-term database", counters->queries);
 
 	if( rc != SQLITE_DONE ){
 		logg("read_data_from_DB() - SQL error step (%i): %s", rc, sqlite3_errmsg(db));

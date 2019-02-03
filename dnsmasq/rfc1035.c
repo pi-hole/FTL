@@ -789,6 +789,7 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 			  newc->addr.cname.uid = 1;
 			  if (cpp)
 			    {
+			      next_uid(newc);
 			      cpp->addr.cname.target.cache = newc;
 			      cpp->addr.cname.uid = newc->uid;
 			    }
@@ -845,6 +846,7 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 		      newc = cache_insert(name, &addr, now, attl, flags | F_FORWARD | secflag);
 		      if (newc && cpp)
 			{
+			  next_uid(newc);
 			  cpp->addr.cname.target.cache = newc;
 			  cpp->addr.cname.uid = newc->uid;
 			}
@@ -871,6 +873,7 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 		  newc = cache_insert(name, NULL, now, ttl ? ttl : cttl, F_FORWARD | F_NEG | flags | (secure ? F_DNSSECOK : 0));
 		  if (newc && cpp)
 		    {
+		      next_uid(newc);
 		      cpp->addr.cname.target.cache = newc;
 		      cpp->addr.cname.uid = newc->uid;
 		    }
@@ -927,7 +930,6 @@ unsigned int extract_request(struct dns_header *header, size_t qlen, char *name,
   return F_QUERY;
 }
 
-
 size_t setup_reply(struct dns_header *header, size_t qlen,
 		struct all_addr *addrp, unsigned int flags, unsigned long ttl)
 {
@@ -949,25 +951,39 @@ size_t setup_reply(struct dns_header *header, size_t qlen,
   else if (flags == F_NXDOMAIN)
     SET_RCODE(header, NXDOMAIN);
   else if (flags == F_SERVFAIL)
-    SET_RCODE(header, SERVFAIL);
-  else if (flags == F_IPV4)
-    { /* we know the address */
-      SET_RCODE(header, NOERROR);
-      header->ancount = htons(1);
-      header->hb3 |= HB3_AA;
-      add_resource_record(header, NULL, NULL, sizeof(struct dns_header), &p, ttl, NULL, T_A, C_IN, "4", addrp);
-    }
-#ifdef HAVE_IPV6
-  else if (flags == F_IPV6)
     {
-      SET_RCODE(header, NOERROR);
-      header->ancount = htons(1);
-      header->hb3 |= HB3_AA;
-      add_resource_record(header, NULL, NULL, sizeof(struct dns_header), &p, ttl, NULL, T_AAAA, C_IN, "6", addrp);
+      struct all_addr a;
+      a.addr.rcode.rcode = SERVFAIL;
+      log_query(F_CONFIG | F_RCODE, "error", &a, NULL);
+      SET_RCODE(header, SERVFAIL);
     }
+  else if (flags & ( F_IPV4 | F_IPV6))
+    {
+      if (flags & F_IPV4)
+	{ /* we know the address */
+	  SET_RCODE(header, NOERROR);
+	  header->ancount = htons(1);
+	  header->hb3 |= HB3_AA;
+	  add_resource_record(header, NULL, NULL, sizeof(struct dns_header), &p, ttl, NULL, T_A, C_IN, "4", addrp);
+	}
+
+#ifdef HAVE_IPV6
+      if (flags & F_IPV6)
+	{
+	  SET_RCODE(header, NOERROR);
+	  header->ancount = htons(ntohs(header->ancount) + 1);
+	  header->hb3 |= HB3_AA;
+	  add_resource_record(header, NULL, NULL, sizeof(struct dns_header), &p, ttl, NULL, T_AAAA, C_IN, "6", addrp);
+	}
 #endif
+    }
   else /* nowhere to forward to */
-    SET_RCODE(header, REFUSED);
+    {
+      struct all_addr a;
+      a.addr.rcode.rcode = REFUSED;
+      log_query(F_CONFIG | F_RCODE, "error", &a, NULL);
+      SET_RCODE(header, REFUSED);
+    }
 
   return p - (unsigned char *)header;
 }
@@ -975,39 +991,34 @@ size_t setup_reply(struct dns_header *header, size_t qlen,
 /* check if name matches local names ie from /etc/hosts or DHCP or local mx names. */
 int check_for_local_domain(char *name, time_t now)
 {
-  struct crec *crecp;
   struct mx_srv_record *mx;
   struct txt_record *txt;
   struct interface_name *intr;
   struct ptr_record *ptr;
   struct naptr *naptr;
 
-  /* Note: the call to cache_find_by_name is intended to find any record which matches
-     ie A, AAAA, CNAME. */
-
-  if ((crecp = cache_find_by_name(NULL, name, now, F_IPV4 | F_IPV6 | F_CNAME | F_NO_RR)) &&
-      (crecp->flags & (F_HOSTS | F_DHCP | F_CONFIG)))
-    return 1;
-
   for (naptr = daemon->naptr; naptr; naptr = naptr->next)
-     if (hostname_isequal(name, naptr->name))
+     if (hostname_issubdomain(name, naptr->name))
       return 1;
 
    for (mx = daemon->mxnames; mx; mx = mx->next)
-    if (hostname_isequal(name, mx->name))
+    if (hostname_issubdomain(name, mx->name))
       return 1;
 
   for (txt = daemon->txt; txt; txt = txt->next)
-    if (hostname_isequal(name, txt->name))
+    if (hostname_issubdomain(name, txt->name))
       return 1;
 
   for (intr = daemon->int_names; intr; intr = intr->next)
-    if (hostname_isequal(name, intr->name))
+    if (hostname_issubdomain(name, intr->name))
       return 1;
 
   for (ptr = daemon->ptr; ptr; ptr = ptr->next)
-    if (hostname_isequal(name, ptr->name))
+    if (hostname_issubdomain(name, ptr->name))
       return 1;
+
+  if (cache_find_non_terminal(name, now))
+    return 1;
 
   return 0;
 }
@@ -1283,15 +1294,13 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
   struct mx_srv_record *rec;
   size_t len;
 
-  if (ntohs(header->ancount) != 0 ||
+  /* never answer queries with RD unset, to avoid cache snooping. */
+  if (!(header->hb3 & HB3_RD) ||
+      ntohs(header->ancount) != 0 ||
       ntohs(header->nscount) != 0 ||
       ntohs(header->qdcount) == 0 ||
       OPCODE(header) != QUERY )
     return 0;
-
-  /* always servfail queries with RD unset, to avoid cache snooping. */
-  if (!(header->hb3 & HB3_RD))
-    return setup_reply(header, qlen, NULL, F_SERVFAIL, 0);
 
   /* Don't return AD set if checking disabled. */
   if (header->hb4 & HB4_CD)
@@ -1372,12 +1381,12 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		sec_data = 0;
 		if (!dryrun)
 		  {
-		    log_query(F_CONFIG | F_RRNAME, name, NULL, "<RR>");
-		    FTL_cache(F_CONFIG | F_RRNAME, name, NULL, "<RR>", daemon->log_display_id);
+		    log_query(F_CONFIG | F_RRNAME, name, NULL, querystr(NULL, t->class));
+		    FTL_cache(F_CONFIG | F_RRNAME, name, NULL, querystr(NULL, t->class), daemon->log_display_id);
 		    if (add_resource_record(header, limit, &trunc, nameoffset, &ansp,
 					    daemon->local_ttl, NULL,
 					    t->class, C_IN, "t", t->len, t->txt))
-		      anscount ++;
+		      anscount++;
 		  }
 	      }
 
@@ -1673,7 +1682,9 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		    }
 
 		  /* If the client asked for DNSSEC  don't use cached data. */
-		  if ((crecp->flags & (F_HOSTS | F_DHCP | F_CONFIG)) || !do_bit || !(crecp->flags & F_DNSSECOK))
+		  if ((crecp->flags & (F_HOSTS | F_DHCP | F_CONFIG)) ||
+		      !do_bit ||
+		      (option_bool(OPT_DNSSEC_VALID) && !(crecp->flags & F_DNSSECOK)))
 		    do
 		      {
 			/* don't answer wildcard queries with data not from /etc/hosts
@@ -1714,8 +1725,8 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 			      nxdomain = 1;
 			    if (!dryrun)
 			    {
-			      log_query(crecp->flags, name, NULL, record_source(crecp->uid));
-			      FTL_cache(crecp->flags, name, NULL, record_source(crecp->uid), daemon->log_display_id);
+			      log_query(crecp->flags, name, NULL, NULL);
+			      FTL_cache(crecp->flags, name, NULL, NULL, daemon->log_display_id);
 			    }
 			  }
 			else
@@ -1765,7 +1776,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 	    {
 	      if ((crecp = cache_find_by_name(NULL, name, now, F_CNAME | (dryrun ? F_NO_RR : 0))) &&
 		  (qtype == T_CNAME || (crecp->flags & F_CONFIG)) &&
-		  ((crecp->flags & F_CONFIG) || !do_bit || !(crecp->flags & F_DNSSECOK)))
+		  ((crecp->flags & F_CONFIG) || !do_bit || (option_bool(OPT_DNSSEC_VALID) && !(crecp->flags & F_DNSSECOK))))
 		{
 		  if (!(crecp->flags & F_DNSSECOK))
 		    sec_data = 0;
