@@ -17,7 +17,7 @@
 void print_flags(unsigned int flags);
 void save_reply_type(unsigned int flags, int queryID, struct timeval response);
 unsigned long converttimeval(struct timeval time);
-static void block_single_domain(char *domain);
+static void block_single_domain_regex(char *domain);
 static void detect_blocked_IP(unsigned short flags, char* answer, int queryID);
 static void query_externally_blocked(int i);
 static int findQueryID(int id);
@@ -61,7 +61,7 @@ void _FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char 
 	else
 	{
 		// Return early to avoid accessing querytypedata out of bounds
-		if(debug) logg("Notice: Skipping unknown query type: %s (%i)", types, id);
+		if(config.debug & DEBUG_QUERIES) logg("Notice: Skipping unknown query type: %s (%i)", types, id);
 		unlock_shm();
 		return;
 	}
@@ -69,7 +69,7 @@ void _FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char 
 	// Skip AAAA queries if user doesn't want to have them analyzed
 	if(!config.analyze_AAAA && querytype == TYPE_AAAA)
 	{
-		if(debug) logg("Not analyzing AAAA query");
+		if(config.debug & DEBUG_QUERIES) logg("Not analyzing AAAA query");
 		unlock_shm();
 		return;
 	}
@@ -112,7 +112,7 @@ void _FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char 
 
 	// Log new query if in debug mode
 	char *proto = (type == UDP) ? "UDP" : "TCP";
-	if(debug) logg("**** new %s %s \"%s\" from %s (ID %i, %s:%i)", proto, types, domain, client, id, file, line);
+	if(config.debug & DEBUG_QUERIES) logg("**** new %s %s \"%s\" from %s (ID %i, %s:%i)", proto, types, domain, client, id, file, line);
 
 	// Update counters
 	int timeidx = findOverTimeID(overTimetimestamp);
@@ -125,7 +125,7 @@ void _FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char 
 	if(config.analyze_only_A_AAAA && querytype != TYPE_A && querytype != TYPE_AAAA)
 	{
 		// Don't process this query further here, we already counted it
-		if(debug) logg("Notice: Skipping new query: %s (%i)", types, id);
+		if(config.debug & DEBUG_QUERIES) logg("Notice: Skipping new query: %s (%i)", types, id);
 		free(domain);
 		free(domainbuffer);
 		free(client);
@@ -137,7 +137,7 @@ void _FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char 
 	int domainID = findDomainID(domain);
 
 	// Go through already knows clients and see if it is one of them
-	int clientID = findClientID(client);
+	int clientID = findClientID(client, true);
 
 	// Save everything
 	validate_access("queries", queryID, false, __LINE__, __FUNCTION__, __FILE__);
@@ -179,6 +179,10 @@ void _FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char 
 	// Update overTime data structure with the new client
 	overTimeClientData[clientID][timeidx]++;
 
+	// Set lastQuery timer and add one query for network table
+	clients[clientID].lastQuery = querytimestamp;
+	clients[clientID].numQueriesARP++;
+
 	// Try blocking regex if configured
 	validate_access("domains", domainID, false, __LINE__, __FUNCTION__, __FILE__);
 	if(domains[domainID].regexmatch == REGEX_UNKNOWN && blockingstatus != BLOCKING_DISABLED)
@@ -196,7 +200,7 @@ void _FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char 
 		if(match_regex(domainbuffer) && !in_whitelist(domainbuffer))
 		{
 			// We have to block this domain
-			block_single_domain(domainbuffer);
+			block_single_domain_regex(domainbuffer);
 			domains[domainID].regexmatch = REGEX_BLOCKED;
 		}
 		else
@@ -229,9 +233,9 @@ static int findQueryID(int id)
 	// Validate access only once for the maximum index (all lower will work)
 	validate_access("queries", counters->queries-1, false, __LINE__, __FUNCTION__, __FILE__);
 	int until = MAX(0, counters->queries-MAXITER);
-	int i;
+	int start = MAX(0, counters->queries-1);
 	// Check UUIDs of queries
-	for(i = counters->queries-1; i >= until; i--)
+	for(int i = start; i >= until; i--)
 		if(queries[i].id == id)
 			return i;
 
@@ -257,7 +261,7 @@ void _FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int i
 	strtolower(forward);
 
 	// Debug logging
-	if(debug) logg("**** forwarded %s to %s (ID %i, %s:%i)", name, forward, id, file, line);
+	if(config.debug & DEBUG_QUERIES) logg("**** forwarded %s to %s (ID %i, %s:%i)", name, forward, id, file, line);
 
 	// Save status and forwardID in corresponding query identified by dnsmasq's ID
 	int i = findQueryID(id);
@@ -370,6 +374,9 @@ void FTL_dnsmasq_reload(void)
 	// Reread regex.list
 	free_regex();
 	read_regex_from_file();
+
+	// Reread pihole-FTL.conf to see which debugging flags are set
+	read_debuging_settings(NULL);
 }
 
 void _FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id, const char* file, const int line)
@@ -397,7 +404,7 @@ void _FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id,
 	else if(flags & F_NEG)
 		answer = "(NODATA)";
 
-	if(debug)
+	if(config.debug & DEBUG_QUERIES)
 	{
 		logg("**** got reply %s is %s (ID %i, %s:%i)", name, answer, id, file, line);
 		print_flags(flags);
@@ -412,7 +419,7 @@ void _FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id,
 	if(i < 0)
 	{
 		// This may happen e.g. if the original query was "pi.hole"
-		if(debug) logg("FTL_reply(): Query %i has not been found", id);
+		if(config.debug & DEBUG_QUERIES) logg("FTL_reply(): Query %i has not been found", id);
 		unlock_shm();
 		return;
 	}
@@ -613,8 +620,11 @@ void _FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg
 	free(domain);
 
 	// Debug logging
-	if(debug) logg("**** got cache answer for %s / %s / %s (ID %i, %s:%i)", name, dest, arg, id, file, line);
-	if(debug) print_flags(flags);
+	if(config.debug & DEBUG_QUERIES)
+	{
+		logg("**** got cache answer for %s / %s / %s (ID %i, %s:%i)", name, dest, arg, id, file, line);
+		print_flags(flags);
+	}
 
 	// Get response time
 	struct timeval response;
@@ -748,7 +758,7 @@ void _FTL_dnssec(int status, int id, const char* file, const int line)
 	}
 
 	// Debug logging
-	if(debug)
+	if(config.debug & DEBUG_QUERIES)
 	{
 		int domainID = queries[i].domainID;
 		validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
@@ -789,7 +799,7 @@ void _FTL_header_ADbit(unsigned char header4, unsigned int rcode, int id, const 
 		return;
 	}
 
-	if(debug)
+	if(config.debug & DEBUG_QUERIES)
 	{
 		int domainID = queries[i].domainID;
 		validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
@@ -825,6 +835,11 @@ void print_flags(unsigned int flags)
 {
 	// Debug function, listing resolver flags in clear text
 	// e.g. "Flags: F_FORWARD F_NEG F_IPV6"
+
+	// Only print flags if corresponding debugging flag is set
+	if(!(config.debug & DEBUG_FLAGS))
+		return;
+
 	unsigned int i;
 	char *flagstr = calloc(256,sizeof(char));
 	for(i = 0; i < sizeof(flags)*8; i++)
@@ -996,7 +1011,7 @@ void _FTL_forwarding_failed(struct server *server, const char* file, const int l
 	strtolower(forward);
 	int forwardID = findForwardID(forward, false);
 
-	if(debug) logg("**** forwarding to %s (ID %i, %s:%i) failed", dest, forwardID, file, line);
+	if(config.debug & DEBUG_QUERIES) logg("**** forwarding to %s (ID %i, %s:%i) failed", dest, forwardID, file, line);
 
 	forwarded[forwardID].failed++;
 
@@ -1059,45 +1074,62 @@ void rehash(int size);
 // This routine adds one domain to the resolver's cache. Depending on the configured blocking mode it may create
 // a single entry valid for IPv4 & IPv6 or two entries one for IPv4 and one for IPv6.
 // When IPv6 is not available on the machine, we do not add IPv6 cache entries (likewise for IPv4)
-int add_blocked_domain_cache(struct all_addr *addr4, struct all_addr *addr6, bool has_IPv4, bool has_IPv6,
-                             char *domain, struct crec **rhash, int hashsz, unsigned int index)
+int add_blocked_domain(struct all_addr *addr4, struct all_addr *addr6, bool has_IPv4, bool has_IPv6,
+                       char *domain, int len, struct crec **rhash, int hashsz, unsigned int index)
 {
 	int name_count = 0;
 	struct crec *cache4,*cache6;
-	// Add IPv4 record
+	// Add IPv4 record, allocate enough space for cache entry including arbitrary domain name length
+	// (the domain name is stored at the end of struct crec)
 	if(has_IPv4 &&
-	   (cache4 = malloc(sizeof(struct crec) + strlen(domain)+1-SMALLDNAME)))
+	   (cache4 = malloc(sizeof(struct crec) + len+1-SMALLDNAME)))
 	{
 		strcpy(cache4->name.sname, domain);
-		cache4->flags = F_HOSTS | F_IMMORTAL | F_FORWARD | F_REVERSE | F_IPV4;
-		// If we block in NXDOMAIN mode, we add the NXDOMAIN flag and make this host record
-		// also valid for AAAA requests
-		if(config.blockingmode == MODE_NX) cache4->flags |= F_IPV6 | F_NEG | F_NXDOMAIN;
-		// If we block in NULL mode, we make this host record also valid for AAAA requests
-		else if(config.blockingmode == MODE_NULL) cache4->flags |= F_IPV6;
-		// If we block in NODATA mode, we make this host record also valid for AAAA requests
-		// and apply the NEG response flag (but not the NXDOMAIN flag)
-		else if(config.blockingmode == MODE_NODATA) cache4->flags |= F_IPV6 | F_NEG;
+		cache4->flags = F_HOSTS | F_IMMORTAL | F_FORWARD | F_IPV4;
+		int memorysize = INADDRSZ;
+		if(config.blockingmode == MODE_NX)
+		{
+			// If we block in NXDOMAIN mode, we add the NXDOMAIN flag and make this host record
+			// also valid for AAAA requests
+			 cache4->flags |= F_IPV6 | F_NEG | F_NXDOMAIN;
+		}
+		else if(config.blockingmode == MODE_NULL)
+		{
+			// If we block in NULL mode, we make this host record also valid for AAAA requests
+			// This is okay as the addr structs have been statically zero-initialized
+			cache4->flags |= F_IPV6;
+			memorysize = IN6ADDRSZ;
+		}
+		else if(config.blockingmode == MODE_NODATA)
+		{
+			// If we block in NODATA mode, we make this host record also valid for AAAA requests
+			// and apply the NEG response flag (but not the NXDOMAIN flag)
+			cache4->flags |= F_IPV6 | F_NEG;
+		}
 		cache4->ttd = daemon->local_ttl;
-		add_hosts_entry(cache4, addr4, INADDRSZ, index, rhash, hashsz);
+		add_hosts_entry(cache4, addr4, memorysize, index, rhash, hashsz);
 		name_count++;
 	}
 	// Add IPv6 record only if we respond with a non-NULL IP address to blocked domains
 	if(has_IPv6 && (config.blockingmode == MODE_IP || config.blockingmode == MODE_IP_NODATA_AAAA) &&
-	   (cache6 = malloc(sizeof(struct crec) + strlen(domain)+1-SMALLDNAME)))
+	   (cache6 = malloc(sizeof(struct crec) + len+1-SMALLDNAME)))
 	{
 		strcpy(cache6->name.sname, domain);
-		cache6->flags = F_HOSTS | F_IMMORTAL | F_FORWARD | F_REVERSE | F_IPV6;
+		cache6->flags = F_HOSTS | F_IMMORTAL | F_FORWARD | F_IPV6;
 		if(config.blockingmode == MODE_IP_NODATA_AAAA) cache6->flags |= F_NEG;
 		cache6->ttd = daemon->local_ttl;
 		add_hosts_entry(cache6, addr6, IN6ADDRSZ, index, rhash, hashsz);
 		name_count++;
 	}
+
+	// Return 1 if only one cache slot was allocated (IPv4) or 2 if two slots were allocated (IPv4 + IPv6)
 	return name_count;
 }
 
 // Add a single domain to resolver's cache. This respects the configured blocking mode
-static void block_single_domain(char *domain)
+// Note: This routine is meant for adding a single domain at a time. It should not be
+//       invoked for batch processing
+static void block_single_domain_regex(char *domain)
 {
 	struct all_addr addr4 = {{{ 0 }}}, addr6 = {{{ 0 }}};
 	bool has_IPv4 = false, has_IPv6 = false;
@@ -1105,9 +1137,9 @@ static void block_single_domain(char *domain)
 	// Get IPv4/v6 addresses for blocking depending on user configures blocking mode
 	prepare_blocking_mode(&addr4, &addr6, &has_IPv4, &has_IPv6);
 	regexlistname = files.regexlist;
-	add_blocked_domain_cache(&addr4, &addr6, has_IPv4, has_IPv6, domain, NULL, 0, SRC_REGEX);
+	add_blocked_domain(&addr4, &addr6, has_IPv4, has_IPv6, domain, strlen(domain), NULL, 0, SRC_REGEX);
 
-	if(debug) logg("Added %s to cache", domain);
+	if(config.debug & DEBUG_QUERIES) logg("Added %s to cache", domain);
 
 	return;
 }
@@ -1133,7 +1165,8 @@ int FTL_listsfile(char* filename, unsigned int index, FILE *f, int cache_size, s
 	// Get IPv4/v6 addresses for blocking depending on user configured blocking mode
 	prepare_blocking_mode(&addr4, &addr6, &has_IPv4, &has_IPv6);
 
-	// If we have neither a valid IPv4 nor a valid IPv6, then we cannot add any entries here
+	// If we have neither a valid IPv4 nor a valid IPv6 but the user asked for
+	// blocking modes MODE_IP or MODE_IP_NODATA_AAAA then we cannot add any entries here
 	if(!has_IPv4 && !has_IPv6)
 	{
 		logg("ERROR: found neither a valid IPV4_ADDRESS nor IPV6_ADDRESS in setupVars.conf");
@@ -1154,7 +1187,8 @@ int FTL_listsfile(char* filename, unsigned int index, FILE *f, int cache_size, s
 
 		// Check for spaces or tabs
 		// If found, then this list is still in HOSTS format and we
-		// don't analyze it here.
+		// don't analyze it here. We only check the first line for
+		// efficiency reasons (strstr() is slow)
 		if(firstline &&
 		   (strstr(domain, " ") != NULL || strstr(domain, "\t") != NULL))
 		{
@@ -1166,12 +1200,16 @@ int FTL_listsfile(char* filename, unsigned int index, FILE *f, int cache_size, s
 		firstline = false;
 
 		// Skip empty lines
-		if(strlen(domain) == 0)
+		int len = strlen(domain);
+		if(len == 0)
 			continue;
 
 		// Strip newline character at the end of line we just read
-		if(domain[strlen(domain)-1] == '\n')
-			domain[strlen(domain)-1] = '\0';
+		if(domain[len-1] == '\n')
+		{
+			domain[len-1] = '\0';
+			len -= 1;
+		}
 
 		// As of here we assume the entry to be valid
 		// Rehash every 1000 valid names
@@ -1181,10 +1219,16 @@ int FTL_listsfile(char* filename, unsigned int index, FILE *f, int cache_size, s
 			cache_size = name_count;
 		}
 
-		name_count += add_blocked_domain_cache(&addr4, &addr6, has_IPv4, has_IPv6, domain, rhash, hashsz, index);
+		// Add domain
+		name_count += add_blocked_domain(&addr4, &addr6, has_IPv4, has_IPv6, domain, len, rhash, hashsz, index);
+
 		// Count added domain
 		added++;
 	}
+
+	// Rehash after having read all entries
+	if(rhash)
+		rehash(name_count);
 
 	// Free allocated memory
 	if(buffer != NULL)

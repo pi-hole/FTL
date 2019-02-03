@@ -19,3 +19,7 @@ version*
 /pihole-FTL.conf
 /pihole-FTL.db
 /pihole-FTL.log
+
+# aux files
+aux/manuf.data
+aux/macvendor.db

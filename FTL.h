@@ -36,8 +36,6 @@
 #include <pwd.h>
 // syslog
 #include <syslog.h>
-// SQLite
-#include "sqlite3.h"
 // tolower()
 #include <ctype.h>
 // Unix socket
@@ -69,7 +67,7 @@
 #define MAXITER 1000
 
 // FTLDNS enums
-enum { DATABASE_WRITE_TIMER, EXIT_TIMER, GC_TIMER, LISTS_TIMER, REGEX_TIMER };
+enum { DATABASE_WRITE_TIMER, EXIT_TIMER, GC_TIMER, LISTS_TIMER, REGEX_TIMER, ARP_TIMER, LAST_TIMER };
 enum { QUERIES, FORWARDED, CLIENTS, DOMAINS, OVERTIME, WILDCARD };
 enum { DNSSEC_UNSPECIFIED, DNSSEC_SECURE, DNSSEC_INSECURE, DNSSEC_BOGUS, DNSSEC_ABANDONED, DNSSEC_UNKNOWN };
 enum { QUERY_UNKNOWN, QUERY_GRAVITY, QUERY_FORWARDED, QUERY_CACHE, QUERY_WILDCARD, QUERY_BLACKLIST, QUERY_EXTERNAL_BLOCKED };
@@ -79,6 +77,22 @@ enum { PRIVACY_SHOW_ALL = 0, PRIVACY_HIDE_DOMAINS, PRIVACY_HIDE_DOMAINS_CLIENTS,
 enum { MODE_IP, MODE_NX, MODE_NULL, MODE_IP_NODATA_AAAA, MODE_NODATA };
 enum { REGEX_UNKNOWN, REGEX_BLOCKED, REGEX_NOTBLOCKED };
 enum { BLOCKING_DISABLED, BLOCKING_ENABLED, BLOCKING_UNKNOWN };
+enum {
+  DEBUG_DATABASE   = (1 << 0), /* 00000000 00000001 */
+  DEBUG_NETWORKING = (1 << 1), /* 00000000 00000010 */
+  DEBUG_LOCKS      = (1 << 2), /* 00000000 00000100 */
+  DEBUG_QUERIES    = (1 << 3), /* 00000000 00001000 */
+  DEBUG_FLAGS      = (1 << 4), /* 00000000 00010000 */
+  DEBUG_SHMEM      = (1 << 5), /* 00000000 00100000 */
+  DEBUG_GC         = (1 << 6), /* 00000000 01000000 */
+  DEBUG_ARP        = (1 << 7), /* 00000000 10000000 */
+  DEBUG_REGEX      = (1 << 8), /* 00000001 00000000 */
+};
+
+// Database table "ftl"
+enum { DB_VERSION, DB_LASTTIMESTAMP, DB_FIRSTCOUNTERTIMESTAMP };
+// Database table "counters"
+enum { DB_TOTALQUERIES, DB_BLOCKEDQUERIES };
 
 // Privacy mode constants
 #define HIDDEN_DOMAIN "hidden"
@@ -94,6 +108,7 @@ typedef struct {
 	char* db;
 	char* socketfile;
 	char* gravitydb;
+	char* macvendordb;
 } FTLFileNamesStruct;
 
 typedef struct {
@@ -142,9 +157,10 @@ typedef struct {
 	unsigned char privacylevel;
 	bool ignore_localhost;
 	unsigned char blockingmode;
-	bool regex_debugmode;
 	bool analyze_only_A_AAAA;
 	bool DBimport;
+	bool parse_arp_cache;
+	int16_t debug;
 } ConfigStruct;
 
 // Dynamic structs
@@ -157,7 +173,7 @@ typedef struct {
 	int domainID;
 	int clientID;
 	int forwardID;
-	sqlite3_int64 db;
+	int64_t db;
 	int id; // the ID is a (signed) int in dnsmasq, so no need for a long int here
 	bool complete;
 	unsigned char privacylevel;
@@ -183,6 +199,8 @@ typedef struct {
 	unsigned long long ippos;
 	unsigned long long namepos;
 	bool new;
+	time_t lastQuery;
+	unsigned int numQueriesARP;
 } clientsDataStruct;
 
 typedef struct {
@@ -208,11 +226,19 @@ typedef struct {
 	char **domains;
 } whitelistStruct;
 
+typedef struct {
+	int version;
+} ShmSettings;
+
 // Prepare timers, used mainly for debugging purposes
-#define NUMTIMERS 5
+#define NUMTIMERS LAST_TIMER
 
 // Used to check memory integrity in various structs
 #define MAGICBYTE 0x57
+
+// Some magic database constants
+#define DB_FAILED -2
+#define DB_NODATA -1
 
 extern logFileNamesStruct files;
 extern FTLFileNamesStruct FTLfiles;
@@ -236,7 +262,6 @@ extern char ** setupVarsArray;
 extern int setupVarsElements;
 
 extern bool initialscan;
-extern bool debug;
 extern bool threadwritelock;
 extern bool threadreadlock;
 extern unsigned char blockingstatus;
@@ -251,7 +276,6 @@ extern long int lastdbindex;
 extern bool travis;
 extern bool DBdeleteoldqueries;
 extern bool rereadgravity;
-extern long int lastDBimportedtimestamp;
 extern bool ipv4telnet, ipv6telnet;
 extern bool istelnet[MAXCONNS];
 

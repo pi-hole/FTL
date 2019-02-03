@@ -11,6 +11,9 @@
 #include "FTL.h"
 #include "shmem.h"
 
+/// The version of shared memory used
+#define SHARED_MEMORY_VERSION 1
+
 /// The name of the shared memory. Use this when connecting to the shared memory.
 #define SHARED_LOCK_NAME "/FTL-lock"
 #define SHARED_STRINGS_NAME "/FTL-strings"
@@ -20,6 +23,7 @@
 #define SHARED_QUERIES_NAME "/FTL-queries"
 #define SHARED_FORWARDED_NAME "/FTL-forwarded"
 #define SHARED_OVERTIME_NAME "/FTL-overTime"
+#define SHARED_SETTINGS_NAME "/FTL-settings"
 #define SHARED_OVERTIMECLIENT_PREFIX "/FTL-client-"
 
 /// The pointer in shared memory to the shared string buffer
@@ -31,9 +35,9 @@ static SharedMemory shm_clients = { 0 };
 static SharedMemory shm_queries = { 0 };
 static SharedMemory shm_forwarded = { 0 };
 static SharedMemory shm_overTime = { 0 };
+static SharedMemory shm_settings = { 0 };
 
 static SharedMemory *shm_overTimeClients = NULL;
-static int overTimeClientCount = 0;
 
 typedef struct {
 	pthread_mutex_t lock;
@@ -60,7 +64,7 @@ unsigned long long addstr(const char *str)
 		return 0;
 	}
 
-	if(debug) logg("Adding \"%s\" (len %i) to buffer. next_pos is %i", str, len, next_pos);
+	if(config.debug & DEBUG_SHMEM) logg("Adding \"%s\" (len %i) to buffer. next_pos is %i", str, len, next_pos);
 
 	// Reserve additional memory if necessary
 	size_t required_size = next_pos + len + 1;
@@ -93,33 +97,32 @@ static char *clientShmName(int id) {
 	return name;
 }
 
-void newOverTimeClient() {
+void newOverTimeClient(int clientID) {
 	// Get the name of the new shared memory.
 	// This will be used in the struct, so it should not be immediately freed.
-	char *name = clientShmName(overTimeClientCount);
+	char *name = clientShmName(clientID);
 
 	// Create the shared memory with enough space for the current overTime slots
 	shm_unlink(name);
 	SharedMemory shm = create_shm(name, (counters->overTime/pagesize + 1)*pagesize*sizeof(int));
 	if(shm.ptr == NULL) {
 		free(shm.name);
-		logg("Failed to initialize new overTime client %d", overTimeClientCount);
+		logg("Failed to initialize new overTime client %d", clientID);
 		return;
 	}
 
 	// Make space for the new shared memory
-	shm_overTimeClients = realloc(shm_overTimeClients, sizeof(SharedMemory) * (overTimeClientCount + 1));
-	overTimeClientCount++;
-	shm_overTimeClients[overTimeClientCount-1] = shm;
+	shm_overTimeClients = realloc(shm_overTimeClients, sizeof(SharedMemory) * (clientID + 1));
+	shm_overTimeClients[clientID] = shm;
 
 	// Add to overTimeClientData
-	overTimeClientData = realloc(overTimeClientData, sizeof(int*) * (overTimeClientCount));
-	overTimeClientData[overTimeClientCount-1] = shm.ptr;
+	overTimeClientData = realloc(overTimeClientData, sizeof(int*) * (clientID + 1));
+	overTimeClientData[clientID] = shm.ptr;
 }
 
 void addOverTimeClientSlot() {
 	// For each client slot, add pagesize overTime slots
-	for(int i = 0; i < overTimeClientCount; i++)
+	for(int i = 0; i < counters->clients; i++)
 	{
 		// Only increase the size of the shm object if needed
 		// shm_overTimeClients[i].size stores the size of the memory in bytes whereas
@@ -164,11 +167,13 @@ void _lock_shm(const char* function, const int line, const char * file) {
 	// Signal that FTL is waiting for a lock
 	shmLock->waitingForLock = true;
 
-	if(debug) logg("Waiting for lock in %s() (%s:%i)", function, file, line);
+	if(config.debug & DEBUG_LOCKS)
+		logg("Waiting for lock in %s() (%s:%i)", function, file, line);
 
 	int result = pthread_mutex_lock(&shmLock->lock);
 
-	if(debug) logg("Obtained lock for %s() (%s:%i)", function, file, line);
+	if(config.debug & DEBUG_LOCKS)
+		logg("Obtained lock for %s() (%s:%i)", function, file, line);
 
 	// Turn off the waiting for lock signal to notify everyone who was
 	// deferring to FTL that they can jump in the lock queue.
@@ -187,7 +192,8 @@ void _lock_shm(const char* function, const int line, const char * file) {
 void _unlock_shm(const char* function, const int line, const char * file) {
 	int result = pthread_mutex_unlock(&shmLock->lock);
 
-	if(debug) logg("Removed lock in %s() (%s:%i)", function, file, line);
+	if(config.debug & DEBUG_LOCKS)
+		logg("Removed lock in %s() (%s:%i)", function, file, line);
 
 	if(result != 0)
 		logg("Failed to unlock SHM lock: %s", strerror(result));
@@ -199,7 +205,6 @@ bool init_shmem(void)
 	pagesize = getpagesize();
 
 	/****************************** shared memory lock ******************************/
-	shm_unlink(SHARED_LOCK_NAME);
 	// Try to create shared memory object
 	shm_lock = create_shm(SHARED_LOCK_NAME, sizeof(ShmLock));
 	if(shm_lock.ptr == NULL)
@@ -209,10 +214,6 @@ bool init_shmem(void)
 	shmLock->waitingForLock = false;
 
 	/****************************** shared strings buffer ******************************/
-	// Try unlinking the shared memory object before creating a new one
-	// If the object is still existing, e.g., due to a past unclean exit
-	// of FTL, shm_open() would fail with error "File exists"
-	shm_unlink(SHARED_STRINGS_NAME);
 	// Try to create shared memory object
 	shm_strings = create_shm(SHARED_STRINGS_NAME, pagesize);
 	if(shm_strings.ptr == NULL)
@@ -223,7 +224,6 @@ bool init_shmem(void)
 	next_pos = 1;
 
 	/****************************** shared counters struct ******************************/
-	shm_unlink(SHARED_COUNTERS_NAME);
 	// Try to create shared memory object
 	shm_counters = create_shm(SHARED_COUNTERS_NAME, sizeof(countersStruct));
 	if(shm_counters.ptr == NULL)
@@ -231,7 +231,6 @@ bool init_shmem(void)
 	counters = (countersStruct*)shm_counters.ptr;
 
 	/****************************** shared domains struct ******************************/
-	shm_unlink(SHARED_DOMAINS_NAME);
 	// Try to create shared memory object
 	shm_domains = create_shm(SHARED_DOMAINS_NAME, pagesize*sizeof(domainsDataStruct));
 	if(shm_domains.ptr == NULL)
@@ -240,7 +239,6 @@ bool init_shmem(void)
 	counters->domains_MAX = pagesize;
 
 	/****************************** shared clients struct ******************************/
-	shm_unlink(SHARED_CLIENTS_NAME);
 	// Try to create shared memory object
 	shm_clients = create_shm(SHARED_CLIENTS_NAME, pagesize*sizeof(clientsDataStruct));
 	if(shm_clients.ptr == NULL)
@@ -249,7 +247,6 @@ bool init_shmem(void)
 	counters->clients_MAX = pagesize;
 
 	/****************************** shared forwarded struct ******************************/
-	shm_unlink(SHARED_FORWARDED_NAME);
 	// Try to create shared memory object
 	shm_forwarded = create_shm(SHARED_FORWARDED_NAME, pagesize*sizeof(forwardedDataStruct));
 	if(shm_forwarded.ptr == NULL)
@@ -258,7 +255,6 @@ bool init_shmem(void)
 	counters->forwarded_MAX = pagesize;
 
 	/****************************** shared queries struct ******************************/
-	shm_unlink(SHARED_QUERIES_NAME);
 	// Try to create shared memory object
 	shm_queries = create_shm(SHARED_QUERIES_NAME, pagesize*sizeof(queriesDataStruct));
 	if(shm_queries.ptr == NULL)
@@ -267,7 +263,6 @@ bool init_shmem(void)
 	counters->queries_MAX = pagesize;
 
 	/****************************** shared overTime struct ******************************/
-	shm_unlink(SHARED_OVERTIME_NAME);
 	// Try to create shared memory object
 	shm_overTime = create_shm(SHARED_OVERTIME_NAME, pagesize*sizeof(overTimeDataStruct));
 	if(shm_overTime.ptr == NULL)
@@ -275,11 +270,22 @@ bool init_shmem(void)
 	overTime = (overTimeDataStruct*)shm_overTime.ptr;
 	counters->overTime_MAX = pagesize;
 
+	/****************************** shared settings struct ******************************/
+	// Try to create shared memory object
+	shm_settings = create_shm(SHARED_SETTINGS_NAME, sizeof(ShmSettings));
+	if(shm_settings.ptr == NULL)
+		return false;
+	ShmSettings *settings = (ShmSettings*)shm_settings.ptr;
+	settings->version = SHARED_MEMORY_VERSION;
+
 	return true;
 }
 
 void destroy_shmem(void)
 {
+	// Store the number of clients so we can use it after deleting the counters memory
+	int clientCount = counters->clients;
+
 	pthread_mutex_destroy(&shmLock->lock);
 	shmLock = NULL;
 
@@ -291,8 +297,10 @@ void destroy_shmem(void)
 	delete_shm(&shm_queries);
 	delete_shm(&shm_forwarded);
 	delete_shm(&shm_overTime);
+	delete_shm(&shm_settings);
 
-	for(int i = 0; i < overTimeClientCount; i++) {
+	// Don't use counters->clients because it's been freed
+	for(int i = 0; i < clientCount; i++) {
 		delete_shm(&shm_overTimeClients[i]);
 		free(shm_overTimeClients[i].name);
 	}
@@ -300,13 +308,24 @@ void destroy_shmem(void)
 
 SharedMemory create_shm(char *name, size_t size)
 {
-	if(debug) logg("Creating shared memory with name \"%s\" and size %zu", name, size);
+	if(config.debug & DEBUG_SHMEM)
+		logg("Creating shared memory with name \"%s\" and size %zu", name, size);
 
 	SharedMemory sharedMemory = {
 		.name = name,
 		.size = size,
 		.ptr = NULL
 	};
+
+	// Try unlinking the shared memory object before creating a new one.
+	// If the object is still existing, e.g., due to a past unclean exit
+	// of FTL, shm_open() would fail with error "File exists"
+	int ret = shm_unlink(name);
+	// Check return code. shm_unlink() returns -1 on error and sets errno
+	// We specifically ignore ENOENT (No such file or directory) as this is not an
+	// error in our use case (we only want the file to be deleted when existing)
+	if(ret != 0 && errno != ENOENT)
+		logg("create_shm(): shm_unlink(\"%s\") failed: %s (%i)", name, strerror(errno), errno);
 
 	// Create the shared memory file in read/write mode with 600 permissions
 	int fd = shm_open(sharedMemory.name, O_CREAT | O_EXCL | O_TRUNC | O_RDWR, S_IRUSR | S_IWUSR);
@@ -398,7 +417,8 @@ void *enlarge_shmem_struct(char type)
 }
 
 bool realloc_shm(SharedMemory *sharedMemory, size_t size) {
-	logg("Resizing \"%s\" from %zu to %zu", sharedMemory->name, sharedMemory->size, size);
+	if(config.debug & DEBUG_SHMEM)
+		logg("Resizing \"%s\" from %zu to %zu", sharedMemory->name, sharedMemory->size, size);
 
 	int result = munmap(sharedMemory->ptr, sharedMemory->size);
 	if(result != 0)
@@ -453,5 +473,5 @@ void delete_shm(SharedMemory *sharedMemory)
 	// and once all others unlink, it will be destroyed.
 	ret = shm_unlink(sharedMemory->name);
 	if(ret != 0)
-		logg("delete_shm(): munmap(%s) failed: %s", sharedMemory->name, strerror(errno));
+		logg("delete_shm(): shm_unlink(%s) failed: %s", sharedMemory->name, strerror(errno));
 }

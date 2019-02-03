@@ -552,14 +552,14 @@ bool ipv6_available(void)
 			{
 				iface[addr->sa_family == AF_INET6 ? 1 : 0]++;
 
-				// For now unused debug statement
-				// logg("Interface %s is %s", interface->ifa_name, addr->sa_family == AF_INET6 ? "IPv6" : "IPv4");
+				if(config.debug & DEBUG_NETWORKING)
+					logg("Interface %s is %s", interface->ifa_name, addr->sa_family == AF_INET6 ? "IPv6" : "IPv4");
 			}
 		}
 		freeifaddrs(allInterfaces);
 	}
 
-	if(debug)
+	if(config.debug & DEBUG_NETWORKING)
 	{
 		logg("Found %i IPv4 and %i IPv6 capable interfaces", iface[0], iface[1]);
 	}

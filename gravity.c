@@ -13,11 +13,12 @@
 #undef __USE_XOPEN
 #include "FTL.h"
 #include "shmem.h"
+#include <sqlite3.h>
 
 // Semi-private prototypes. Routines are defined in dnsmasq_interface.c
-int add_blocked_domain_cache(struct all_addr *addr4, struct all_addr *addr6, bool has_IPv4, bool has_IPv6,
-                             char *domain, struct crec **rhash, int hashsz, unsigned int index);
-void prepare_blocking_mode(struct all_addr *addr4, struct all_addr *addr6, bool *has_IPv4, bool *has_IPv6);
+extern int add_blocked_domain(struct all_addr *addr4, struct all_addr *addr6, bool has_IPv4, bool has_IPv6,
+                              char *domain, struct crec **rhash, int hashsz, unsigned int index);
+extern void prepare_blocking_mode(struct all_addr *addr4, struct all_addr *addr6, bool *has_IPv4, bool *has_IPv6);
 
 // Prototypes from functions in dnsmasq's source
 void rehash(int size);
@@ -28,7 +29,7 @@ bool readGravity(void)
 	if(stat(FTLfiles.gravitydb, &st) != 0)
 	{
 		// File does not exist
-		if(debug) logg("readGravity(): %s does not exist", FTLfiles.gravitydb);
+		if(config.debug & DEBUG_DATABASE) logg("readGravity(): %s does not exist", FTLfiles.gravitydb);
 		return false;
 	}
 
@@ -63,7 +64,7 @@ bool readGravity(void)
 	while((rc = sqlite3_step(stmt)) == SQLITE_ROW)
 	{
 		domain = (char*)sqlite3_column_text(stmt, 0);
-		add_blocked_domain_cache(&addr4, &addr6, has_IPv4, has_IPv6, domain, NULL, 0, SRC_GRAVITYDB);
+		add_blocked_domain(&addr4, &addr6, has_IPv4, has_IPv6, domain, NULL, 0, SRC_GRAVITYDB);
 		added++;
 
 		if(added % 1000 == 0)
@@ -95,7 +96,7 @@ bool readGravity(void)
 	while((rc = sqlite3_step(stmt)) == SQLITE_ROW)
 	{
 		domain = (char*)sqlite3_column_text(stmt, 0);
-		add_blocked_domain_cache(&addr4, &addr6, has_IPv4, has_IPv6, domain, NULL, 0, SRC_BLACKDB);
+		add_blocked_domain(&addr4, &addr6, has_IPv4, has_IPv6, domain, NULL, 0, SRC_BLACKDB);
 		added++;
 
 		if(added % 1000 == 0)

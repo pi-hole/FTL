@@ -29,7 +29,7 @@ void strtolower(char *str);
 int findOverTimeID(int overTimetimestamp);
 int findForwardID(const char * forward, bool count);
 int findDomainID(const char *domain);
-int findClientID(const char *client);
+int findClientID(const char *client, bool addNew);
 bool isValidIPv4(const char *addr);
 bool isValidIPv6(const char *addr);
 char *getDomainString(int queryID);
@@ -66,13 +66,16 @@ bool getSetupVarsBool(char * input);
 
 void parse_args(int argc, char* argv[]);
 
+// setupVars.c
 char* find_equals(const char* s);
+void trim_whitespace(char *string);
 
 // config.c
 void getLogFilePath(void);
 void read_FTLconf(void);
 void get_privacy_level(FILE *fp);
 void get_blocking_mode(FILE *fp);
+void read_debuging_settings(FILE *fp);
 
 // gc.c
 void *GC_thread(void *val);
@@ -83,6 +86,11 @@ void *DB_thread(void *val);
 int get_number_of_queries_in_DB(void);
 void save_to_DB(void);
 void read_data_from_DB(void);
+bool db_set_FTL_property(unsigned int ID, int value);
+bool dbquery(const char *format, ...);
+bool dbopen(void);
+void dbclose(void);
+int db_query_int(const char*);
 
 // memory.c
 void memory_check(int which);
@@ -119,7 +127,7 @@ void *enlarge_shmem_struct(char type);
  * Create a new overTime client shared memory block.
  * This also updates `overTimeClientData`.
  */
-void newOverTimeClient();
+void newOverTimeClient(int clientID);
 
 /**
  * Add a new overTime slot to each overTime client shared memory block.
@@ -129,6 +137,12 @@ void addOverTimeClientSlot();
 
 // capabilities.c
 bool check_capabilities(void);
+
+
+// networktable.c
+bool create_network_table(void);
+void parse_arp_cache(void);
+void updateMACVendorRecords(void);
 
 // gravity.c
 bool readGravity(void);
