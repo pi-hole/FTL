@@ -1219,7 +1219,21 @@ int FTL_listsfile(char* filename, unsigned int index, FILE *f, int cache_size, s
 	else
 		return cache_size;
 
-	logg("Importing content of template %s from database", filename);
+	// Jump to end of file to ensure dnsmasq does not
+	// try to read whatever might be in the file on
+	// disk when we return
+	fseek(f, 0, SEEK_END);
+
+	if(blockingstatus == BLOCKING_DISABLED)
+	{
+		logg("Skipping %s because blocking is disabled", filename);
+		return cache_size;
+	}
+	else
+	{
+		logg("Importing content of template %s from database", filename);
+
+	}
 
 	// Start timer for list analysis
 	timer_start(LISTS_TIMER);
@@ -1273,10 +1287,6 @@ int FTL_listsfile(char* filename, unsigned int index, FILE *f, int cache_size, s
 
 	// Finalize statement and close gravity database handle
 	gravityDB_finalizeTable();
-
-	// Jump to end of file to ensure dnsmasq does not try to read whatever
-	// might be in the file on disk (we only import from the database)
-	fseek(f, 0, SEEK_END);
 
 	// Final logging
 	logg("%s: imported %i domains (took %.1f ms)", filename, added, timer_elapsed_msec(LISTS_TIMER));
