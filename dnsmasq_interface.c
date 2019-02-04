@@ -19,7 +19,7 @@ void save_reply_type(unsigned int flags, int queryID, struct timeval response);
 unsigned long converttimeval(struct timeval time);
 static void block_single_domain_regex(char *domain);
 static void detect_blocked_IP(unsigned short flags, char* answer, int queryID);
-static void query_externally_blocked(int i);
+static void query_externally_blocked(int i, unsigned char status);
 static int findQueryID(int id);
 
 unsigned char* pihole_privacylevel = &config.privacylevel;
@@ -482,7 +482,9 @@ void _FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id,
 	{
 		// Only proceed if query is not already known
 		// to have been blocked by Quad9
-		if(queries[i].reply != QUERY_EXTERNAL_BLOCKED)
+		if(queries[i].reply != QUERY_EXTERNAL_BLOCKED_IP &&
+		   queries[i].reply != QUERY_EXTERNAL_BLOCKED_NULL &&
+		   queries[i].reply != QUERY_EXTERNAL_BLOCKED_NXRA)
 		{
 			// Save reply type and update individual reply counters
 			save_reply_type(flags, i, response);
@@ -536,7 +538,7 @@ static void detect_blocked_IP(unsigned short flags, char* answer, int queryID)
 		 strcmp("146.112.61.109", answer) == 0 ||
 		 strcmp("146.112.61.110", answer) == 0 ))
 	{
-			query_externally_blocked(queryID);
+			query_externally_blocked(queryID, QUERY_EXTERNAL_BLOCKED_IP);
 	}
 
 	else if(flags & F_IPV6 && answer != NULL &&
@@ -548,7 +550,7 @@ static void detect_blocked_IP(unsigned short flags, char* answer, int queryID)
 		 strcmp("::ffff:146.112.61.109", answer) == 0 ||
 		 strcmp("::ffff:146.112.61.110", answer) == 0 ))
 	{
-			query_externally_blocked(queryID);
+			query_externally_blocked(queryID, QUERY_EXTERNAL_BLOCKED_IP);
 	}
 
 	// If upstream replied with 0.0.0.0 or ::,
@@ -557,21 +559,23 @@ static void detect_blocked_IP(unsigned short flags, char* answer, int queryID)
 	else if(flags & F_IPV4 && answer != NULL &&
 		strcmp("0.0.0.0", answer) == 0)
 	{
-			query_externally_blocked(queryID);
+			query_externally_blocked(queryID, QUERY_EXTERNAL_BLOCKED_NULL);
 	}
 
 	else if(flags & F_IPV6 && answer != NULL &&
 		strcmp("::", answer) == 0)
 	{
-			query_externally_blocked(queryID);
+			query_externally_blocked(queryID, QUERY_EXTERNAL_BLOCKED_NULL);
 	}
 }
 
-static void query_externally_blocked(int i)
+static void query_externally_blocked(int i, unsigned char status)
 {
 	// If query is already known to be externally blocked,
 	// then we have nothing to do here
-	if(queries[i].status == QUERY_EXTERNAL_BLOCKED)
+	if(queries[i].status == QUERY_EXTERNAL_BLOCKED_IP ||
+	   queries[i].status == QUERY_EXTERNAL_BLOCKED_NULL ||
+	   queries[i].status == QUERY_EXTERNAL_BLOCKED_NXRA)
 		return;
 
 	// Correct counters if necessary ...
@@ -590,7 +594,7 @@ static void query_externally_blocked(int i)
 	validate_access("clients", queries[i].clientID, true, __LINE__, __FUNCTION__, __FILE__);
 	clients[queries[i].clientID].blockedcount++;
 
-	queries[i].status = QUERY_EXTERNAL_BLOCKED;
+	queries[i].status = status;
 }
 
 void _FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg, int id, const char* file, const int line)
@@ -722,7 +726,9 @@ void _FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg
 				counters->cached++;
 				overTime[timeidx].cached++;
 				break;
-			case QUERY_EXTERNAL_BLOCKED:
+			case QUERY_EXTERNAL_BLOCKED_IP:
+			case QUERY_EXTERNAL_BLOCKED_NULL:
+			case QUERY_EXTERNAL_BLOCKED_NXRA:
 				// everything has already been done
 				// in query_externally_blocked()
 				break;
@@ -880,7 +886,7 @@ void _FTL_header_analysis(const unsigned char header4, const unsigned int rcode,
 	gettimeofday(&response, 0);
 
 	// Store query as externally blocked
-	query_externally_blocked(queryID);
+	query_externally_blocked(queryID, QUERY_EXTERNAL_BLOCKED_NXRA);
 
 	// Store reply type as replied with NXDOMAIN
 	save_reply_type(F_NEG | F_NXDOMAIN, queryID, response);
