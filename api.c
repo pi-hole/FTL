@@ -803,10 +803,10 @@ void getAllQueries(char *client_message, int *sock)
 
 		if(istelnet[*sock])
 		{
+			ssend(*sock,"%i %s %s %s %i %i %i %lu",queries[i].timestamp,qtype,domain,client,queries[i].status,queries[i].dnssec,queries[i].reply,delay);
 			if(config.debug & DEBUG_API)
-				ssend(*sock,"%i %s %s %s %i %i %i %lu %i\n",queries[i].timestamp,qtype,domain,client,queries[i].status,queries[i].dnssec,queries[i].reply,delay,i);
-			else
-				ssend(*sock,"%i %s %s %s %i %i %i %lu\n",queries[i].timestamp,qtype,domain,client,queries[i].status,queries[i].dnssec,queries[i].reply,delay);
+				ssend(*sock, " %i", i);
+			ssend(*sock, "\n");
 		}
 		else
 		{
