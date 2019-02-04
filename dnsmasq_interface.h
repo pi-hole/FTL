@@ -32,6 +32,9 @@ void _FTL_header_analysis(unsigned char header4, unsigned int rcode, int id, con
 #define FTL_forwarding_failed(server) _FTL_forwarding_failed(server, __FILE__, __LINE__)
 void _FTL_forwarding_failed(struct server *server, const char* file, const int line);
 
+#define FTL_upstream_error(rcode, id) _FTL_upstream_error(rcode, id, __FILE__, __LINE__)
+void _FTL_upstream_error(unsigned int rcode, int id, const char* file, const int line);
+
 void FTL_dnsmasq_reload(void);
 void FTL_fork_and_bind_sockets(struct passwd *ent_pw);
 int FTL_listsfile(char* filename, unsigned int index, FILE *f, int cache_size, struct crec **rhash, int hashsz);
