@@ -114,7 +114,9 @@ void resolveForwardDestinations(bool onlynew);
 bool match_regex(char *input);
 void free_regex(void);
 void read_regex_from_database(void);
+void read_whitelist_from_database(void);
 bool in_whitelist(char *domain);
+void log_regex_whitelist(double time);
 
 // shmem.c
 bool init_shmem(void);
@@ -137,7 +139,6 @@ void addOverTimeClientSlot();
 
 // capabilities.c
 bool check_capabilities(void);
-
 
 // networktable.c
 bool create_network_table(void);

@@ -372,8 +372,16 @@ void FTL_dnsmasq_reload(void)
 	get_blocking_mode(NULL);
 
 	// Reread regex.list
+	// Free regex list
 	free_regex();
+	// Start timer for regex compilation analysis
+	timer_start(REGEX_TIMER);
+	// Read and compile possible regex filters
 	read_regex_from_database();
+	// Read whitelisted domains from database
+	read_whitelist_from_database();
+	// Log result
+	log_regex_whitelist(timer_elapsed_msec(REGEX_TIMER));
 
 	// Reread pihole-FTL.conf to see which debugging flags are set
 	read_debuging_settings(NULL);
@@ -1261,8 +1269,8 @@ int FTL_listsfile(char* filename, unsigned int index, FILE *f, int cache_size, s
 	const char *domain = NULL;
 	while((domain = gravityDB_getDomain()) != NULL)
 	{
-		// Skip empty lines
 		int len = strlen(domain);
+		// Skip empty database rows
 		if(len == 0)
 			continue;
 

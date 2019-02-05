@@ -51,8 +51,14 @@ int main (int argc, char* argv[])
 	// Process pihole-FTL.conf
 	read_FTLconf();
 
+	// Start timer for regex compilation analysis
+	timer_start(REGEX_TIMER);
 	// Read and compile possible regex filters
 	read_regex_from_database();
+	// Read whitelisted domains from database
+	read_whitelist_from_database();
+	log_regex_whitelist(timer_elapsed_msec(REGEX_TIMER));
+
 
 	// Catch signals like SIGTERM and SIGINT
 	// Other signals like SIGHUP, SIGUSR1 are handled by the resolver part

@@ -14,7 +14,6 @@
 
 // Private variables
 static sqlite3 *gravitydb = NULL;
-static FILE *gravityfile = NULL;
 static sqlite3_stmt* stmt = NULL;
 
 // Prototypes from functions in dnsmasq's source
@@ -26,7 +25,7 @@ static bool gravityDB_open(void)
 	if(stat(FTLfiles.gravitydb, &st) != 0)
 	{
 		// File does not exist
-		if(config.debug & DEBUG_DATABASE) logg("readGravity(): %s does not exist", FTLfiles.gravitydb);
+		logg("readGravity(): %s does not exist", FTLfiles.gravitydb);
 		return false;
 	}
 
@@ -65,16 +64,16 @@ bool gravityDB_getTable(unsigned char list)
 	switch(list)
 	{
 		case GRAVITY_LIST:
-			querystr = "SELECT * FROM vw_gravity;";
+			querystr = "SELECT domain FROM vw_gravity;";
 			break;
 		case BLACK_LIST:
-			querystr = "SELECT * FROM vw_blacklist;";
+			querystr = "SELECT domain FROM vw_blacklist;";
 			break;
 		case WHITE_LIST:
-			querystr = "SELECT * FROM vw_whitelist;";
+			querystr = "SELECT domain FROM vw_whitelist;";
 			break;
 		case REGEX_LIST:
-			querystr = "SELECT * FROM vw_regex;";
+			querystr = "SELECT filter FROM vw_regex;";
 			break;
 		default:
 			logg("gravityDB_getTable(%i): Requested list is not known!", list);
@@ -95,20 +94,19 @@ bool gravityDB_getTable(unsigned char list)
 const char* gravityDB_getDomain(void)
 {
 	int rc;
+
+	// Perform step
 	if((rc = sqlite3_step(stmt)) == SQLITE_ROW)
 	{
 		const char* domain = (char*)sqlite3_column_text(stmt, 0);
-
-		// Write domain to gravity file if in debug mode
-		if(gravityfile != NULL)
-			fprintf(gravityfile, "%s\n", domain);
-
 		return domain;
 	}
+
+
+	// Error ?
 	if(rc != SQLITE_DONE)
 	{
-		// Error
-		logg("readGravity(vw_gravity) - SQL error step (%i): %s", rc, sqlite3_errmsg(gravitydb));
+		logg("gravityDB_getDomain() - SQL error step (%i): %s", rc, sqlite3_errmsg(gravitydb));
 		sqlite3_finalize(stmt);
 		sqlite3_close(gravitydb);
 		return NULL;
@@ -120,10 +118,6 @@ const char* gravityDB_getDomain(void)
 
 void gravityDB_finalizeTable(void)
 {
-	// Close file handle if file is open
-	if(gravityfile != NULL)
-		fclose(gravityfile);
-
 	// Finalize statement
 	sqlite3_finalize(stmt);
 

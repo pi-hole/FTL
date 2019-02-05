@@ -164,14 +164,20 @@ void free_regex(void)
 	free_whitelist_domains();
 }
 
-static void read_whitelist_from_database(void)
+void read_whitelist_from_database(void)
 {
 	// Get number of lines in the whitelist table
 	whitelist.count = gravityDB_count(WHITE_LIST);
 
-	if(whitelist.count < 0)
+	if(whitelist.count == 0)
 	{
 		logg("INFO: No whitelist entries found");
+		return;
+	}
+	else if(whitelist.count == DB_FAILED)
+	{
+		logg("WARN: Database query failed, assuming there are no whitelist entries");
+		whitelist.count = 0;
 		return;
 	}
 
@@ -205,17 +211,18 @@ static void read_whitelist_from_database(void)
 
 void read_regex_from_database(void)
 {
-	int errors = 0, skipped = 0;
-
-	// Start timer for regex compilation analysis
-	timer_start(REGEX_TIMER);
-
 	// Get number of lines in the regex table
 	num_regex = gravityDB_count(REGEX_LIST);
 
-	if(num_regex < 0)
+	if(num_regex == 0)
 	{
-		logg("INFO: No Regex entries found");
+		logg("INFO: No regex entries found");
+		return;
+	}
+	else if(num_regex == DB_FAILED)
+	{
+		logg("WARN: Database query failed, assuming there are no regex entries");
+		num_regex = 0;
 		return;
 	}
 
@@ -247,35 +254,23 @@ void read_regex_from_database(void)
 		// Skip this entry if empty: an empty regex filter would match
 		// anything anywhere and hence match (and block) all incoming domains.
 		// A user can still achieve this with a filter such as ".*", however
-		// empty lines in regex.list are probably not expected to have such an
-		// effect and would immediately lead to "blocking the entire Internet"
+		// empty filters in the regex table are probably not expected to have such
+		// an effect and would immediately lead to "blocking the entire Internet"
 		if(strlen(domain) < 1)
-		{
-			regexconfigured[i] = false;
-			logg("Skipping empty regex filter");
-			skipped++;
 			continue;
-		}
 
-		// Skip this entry if it is commented out using the legacy syntax
-		// (should use the disabled property of the table now)
-		if(domain[0] == '#')
-		{
-			regexconfigured[i] = false;
-			logg("Skipping commented out regex filter \"%s\"", domain);
-			skipped++;
-			continue;
-		}
-
-		// Copy this whitelisted domain into memory
+		// Copy this regex domain into memory
 		regexconfigured[i] = init_regex(domain, i);
+
+		// Increase counter
+		i++;
 	}
 
 	// Finalize statement and close gravity database handle
 	gravityDB_finalizeTable();
+}
 
-	// Read whitelisted domains from database
-	read_whitelist_from_database();
-
-	logg("Compiled %i Regex filters and %i whitelisted domains in %.1f msec (%i errors)", (num_regex-skipped), whitelist.count > 0 ? whitelist.count : 0, timer_elapsed_msec(REGEX_TIMER), errors);
+void log_regex_whitelist(double time)
+{
+	logg("Compiled %i Regex filters and %i whitelisted domains in %.1f msec (%i errors)", num_regex, whitelist.count, time);
 }
