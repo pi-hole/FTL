@@ -21,7 +21,7 @@ void logg(const char* format, ...);
 void logg_struct_resize(const char* str, int to, int step);
 void log_counter_info(void);
 void format_memory_size(char *prefix, unsigned long int bytes, double *formated);
-void log_FTL_version(void);
+void log_FTL_version(bool crashreport);
 
 // datastructure.c
 void gettimestamp(int *querytimestamp, int *overTimetimestamp);

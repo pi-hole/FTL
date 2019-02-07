@@ -137,11 +137,14 @@ void log_counter_info(void)
 	logg(" -> Known forward destinations: %i", counters->forwarded);
 }
 
-void log_FTL_version(void)
+void log_FTL_version(bool crashreport)
 {
 	logg("FTL branch: %s", GIT_BRANCH);
 	logg("FTL version: %s", GIT_TAG);
 	logg("FTL commit: %s", GIT_HASH);
 	logg("FTL date: %s", GIT_DATE);
-	logg("FTL user: %s", username);
+	if(crashreport)
+		logg("FTL user: started as %s, ended as %s", username, getUserName());
+	else
+		logg("FTL user: %s", username);
 }

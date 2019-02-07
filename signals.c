@@ -26,7 +26,7 @@ static void SIGSEGV_handler(int sig, siginfo_t *si, void *unused)
 	{
 		logg("FTL has been running for %i seconds", time(NULL)-FTLstarttime);
 	}
-	log_FTL_version();
+	log_FTL_version(true);
 
 	logg("Received signal: %s", strsignal(sig));
 	logg("     at address: %lu", (unsigned long) si->si_addr);
