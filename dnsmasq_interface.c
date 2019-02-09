@@ -231,9 +231,10 @@ static int findQueryID(int id)
 	// MAX(0, a) is used to return 0 in case a is negative (negative array indices are harmful)
 
 	// Validate access only once for the maximum index (all lower will work)
-	validate_access("queries", counters->queries-1, false, __LINE__, __FUNCTION__, __FILE__);
 	int until = MAX(0, counters->queries-MAXITER);
 	int start = MAX(0, counters->queries-1);
+	validate_access("queries", until, false, __LINE__, __FUNCTION__, __FILE__);
+
 	// Check UUIDs of queries
 	for(int i = start; i >= until; i--)
 		if(queries[i].id == id)
