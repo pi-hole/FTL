@@ -26,7 +26,7 @@ void initOverTime(void)
 		overTime[i].blocked = 0;
 		overTime[i].cached = 0;
 		overTime[i].forwarded = 0;
-		for(int j; j < TYPE_MAX; j++)
+		for(int j = 0; j < TYPE_MAX; j++)
 			overTime[i].querytypedata[j] = 0;
 
 		// Prepare for next iteration
