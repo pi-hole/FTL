@@ -23,8 +23,8 @@ void initOverTime(void)
 	// Get current timestamp
 	time_t now = time(NULL);
 
-	// Center in current interval
-	time_t timestamp = now - now % OVERTIME_INTERVAL + OVERTIME_INTERVAL/2;
+	// Center in next interval. This makes room for the buffer overTime slot.
+	time_t timestamp = now - now % OVERTIME_INTERVAL + (3 * OVERTIME_INTERVAL) / 2;
 
 	if(debug) logg("initOverTime(): Initializing %i slots from %u to %u", OVERTIME_SLOTS, timestamp-OVERTIME_SLOTS*OVERTIME_INTERVAL, timestamp);
 
