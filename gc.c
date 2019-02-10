@@ -152,14 +152,14 @@ void *GC_thread(void *val)
 			//   After:  XXXXFFFFFFFF
 			memmove(&queries[0], &queries[removed], (counters->queries - removed)*sizeof(*queries));
 
-			// Determine if overTime memory needs to get moved
-			moveOverTimeMemory();
-
 			// Update queries counter
 			counters->queries -= removed;
 
 			// Zero out remaining memory (marked as "F" in the above example)
 			memset(&queries[counters->queries], 0, (counters->queries_MAX - counters->queries)*sizeof(*queries));
+
+			// Determine if overTime memory needs to get moved
+			moveOverTimeMemory();
 
 			if(debug) logg("Notice: GC removed %i queries (took %.2f ms)", removed, timer_elapsed_msec(GC_TIMER));
 
