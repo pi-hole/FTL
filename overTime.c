@@ -31,8 +31,6 @@ void initOverTime(void)
 	// Iterate over overTime and initialize it
 	for(int i = OVERTIME_SLOTS-1; i >= 0 ; i--)
 	{
-		if(debug) logg("Writing %i = %u", i, timestamp);
-
 		initSlot(i, timestamp);
 
 		// Prepare for next iteration
@@ -85,8 +83,6 @@ void moveOverTimeMemory(void)
 			time_t timestamp = overTime[i-1].timestamp + OVERTIME_INTERVAL;
 
 			initSlot(i, timestamp);
-
-			if(debug) logg("moveOverTimeMemory: %i is now timestamp %u", i, overTime[i].timestamp);
 		}
 
 		// Move client-specific overTime counters
