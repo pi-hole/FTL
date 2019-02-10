@@ -24,9 +24,7 @@ void format_memory_size(char *prefix, unsigned long int bytes, double *formated)
 void log_FTL_version(bool crashreport);
 
 // datastructure.c
-void gettimestamp(int *querytimestamp, int *overTimetimestamp);
 void strtolower(char *str);
-int findOverTimeID(int overTimetimestamp);
 int findForwardID(const char * forward, bool count);
 int findDomainID(const char *domain);
 int findClientID(const char *client);
@@ -126,3 +124,8 @@ void newOverTimeClient(int clientID);
  * This also updates `overTimeClientData`.
  */
 void addOverTimeClientSlot();
+
+// overTime.c
+void initOverTime(void);
+int getOverTimeID(time_t timestamp);
+void moveOverTimeMemory(void);

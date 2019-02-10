@@ -32,8 +32,6 @@ static SharedMemory shm_queries = { 0 };
 static SharedMemory shm_forwarded = { 0 };
 static SharedMemory shm_overTime = { 0 };
 
-static SharedMemory *shm_overTimeClients = NULL;
-
 typedef struct {
 	pthread_mutex_t lock;
 	bool waitingForLock;
@@ -77,57 +75,6 @@ unsigned long long addstr(const char *str)
 char *getstr(unsigned long long pos)
 {
 	return &((char*)shm_strings.ptr)[pos];
-}
-
-static char *clientShmName(int id) {
-	int name_len = 1 + snprintf(NULL, 0, "%s%d", SHARED_OVERTIMECLIENT_PREFIX, id);
-	char *name = malloc(sizeof(char) * name_len);
-	snprintf(name, (size_t) name_len, "%s%d", SHARED_OVERTIMECLIENT_PREFIX, id);
-
-	return name;
-}
-
-void newOverTimeClient(int clientID) {
-	// Get the name of the new shared memory.
-	// This will be used in the struct, so it should not be immediately freed.
-	char *name = clientShmName(clientID);
-
-	// Create the shared memory with enough space for the current overTime slots
-	shm_unlink(name);
-	SharedMemory shm = create_shm(name, (counters->overTime/pagesize + 1)*pagesize*sizeof(int));
-	if(shm.ptr == NULL) {
-		free(shm.name);
-		logg("Failed to initialize new overTime client %d", clientID);
-		return;
-	}
-
-	// Make space for the new shared memory
-	shm_overTimeClients = realloc(shm_overTimeClients, sizeof(SharedMemory) * (clientID + 1));
-	shm_overTimeClients[clientID] = shm;
-
-	// Add to overTimeClientData
-	overTimeClientData = realloc(overTimeClientData, sizeof(int*) * (clientID + 1));
-	overTimeClientData[clientID] = shm.ptr;
-}
-
-void addOverTimeClientSlot() {
-	// For each client slot, add pagesize overTime slots
-	for(int i = 0; i < counters->clients; i++)
-	{
-		// Only increase the size of the shm object if needed
-		// shm_overTimeClients[i].size stores the size of the memory in bytes whereas
-		// counters->overTime (effectively) stores the number of slots each overTime
-		// client should have. Hence, counters->overTime needs to be multiplied by
-		// sizeof(int) to get the actual requested memory size
-		if(shm_overTimeClients[i].size > (size_t)counters->overTime*sizeof(int))
-			continue;
-
-		// Reallocate with one more slot
-		realloc_shm(&shm_overTimeClients[i], (counters->overTime + pagesize)*sizeof(int));
-
-		// Update overTimeClientData
-		overTimeClientData[i] = shm_overTimeClients[i].ptr;
-	}
 }
 
 /// Create a mutex for shared memory
@@ -250,21 +197,20 @@ bool init_shmem(void)
 	counters->queries_MAX = pagesize;
 
 	/****************************** shared overTime struct ******************************/
+	size_t size = (OVERTIME_SLOTS*sizeof(overTimeDataStruct)/pagesize + 1)*pagesize;
 	// Try to create shared memory object
-	shm_overTime = create_shm(SHARED_OVERTIME_NAME, pagesize*sizeof(overTimeDataStruct));
+	shm_overTime = create_shm(SHARED_OVERTIME_NAME, size);
 	if(shm_overTime.ptr == NULL)
 		return false;
 	overTime = (overTimeDataStruct*)shm_overTime.ptr;
-	counters->overTime_MAX = pagesize;
+	counters->overTime_MAX = size;
+	initOverTime();
 
 	return true;
 }
 
 void destroy_shmem(void)
 {
-	// Store the number of clients so we can use it after deleting the counters memory
-	int clientCount = counters->clients;
-
 	pthread_mutex_destroy(&shmLock->lock);
 	shmLock = NULL;
 
@@ -276,12 +222,6 @@ void destroy_shmem(void)
 	delete_shm(&shm_queries);
 	delete_shm(&shm_forwarded);
 	delete_shm(&shm_overTime);
-
-	// Don't use counters->clients because it's been freed
-	for(int i = 0; i < clientCount; i++) {
-		delete_shm(&shm_overTimeClients[i]);
-		free(shm_overTimeClients[i].name);
-	}
 }
 
 SharedMemory create_shm(char *name, size_t size)
@@ -373,11 +313,6 @@ void *enlarge_shmem_struct(char type)
 			sharedMemory = &shm_forwarded;
 			sizeofobj = sizeof(forwardedDataStruct);
 			counter = &counters->forwarded_MAX;
-			break;
-		case OVERTIME:
-			sharedMemory = &shm_overTime;
-			sizeofobj = sizeof(overTimeDataStruct);
-			counter = &counters->overTime_MAX;
 			break;
 		default:
 			logg("Invalid argument in enlarge_shmem_struct(): %i", type);

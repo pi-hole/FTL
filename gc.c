@@ -51,21 +51,19 @@ void *GC_thread(void *val)
 				if(queries[i].timestamp > mintime)
 					break;
 
-
-				// Adjust total counters and total over time data
-				// We cannot edit counters->queries directly as it is used
-				// as max ID for the queries[] struct
-				int timeidx = queries[i].timeidx;
-				validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
-				overTime[timeidx].total--;
-
 				// Adjust client counter
 				int clientID = queries[i].clientID;
 				validate_access("clients", clientID, true, __LINE__, __FUNCTION__, __FILE__);
 				clients[clientID].count--;
 
-				// Adjust corresponding overTime counters
-				overTimeClientData[clientID][timeidx]--;
+				// Adjust total counters and total over time data
+				int timeidx = queries[i].timeidx;
+				if(timeidx != OVERTIME_NOT_AVAILABLE)
+				{
+					overTime[timeidx].total--;
+					// Adjust corresponding overTime counters
+					clients[clientID].overTime[timeidx]--;
+				}
 
 				// Adjust domain counter (no overTime information)
 				int domainID = queries[i].domainID;
@@ -82,14 +80,16 @@ void *GC_thread(void *val)
 					case QUERY_FORWARDED:
 						// Forwarded to an upstream DNS server
 						counters->forwardedqueries--;
-						overTime[timeidx].forwarded--;
 						validate_access("forwarded", queries[i].forwardID, true, __LINE__, __FUNCTION__, __FILE__);
 						forwarded[queries[i].forwardID].count--;
+						if(timeidx != OVERTIME_NOT_AVAILABLE)
+							overTime[timeidx].forwarded--;
 						break;
 					case QUERY_CACHE:
 						// Answered from local cache _or_ local config
 						counters->cached--;
-						overTime[timeidx].cached--;
+						if(timeidx != OVERTIME_NOT_AVAILABLE)
+							overTime[timeidx].cached--;
 						break;
 					case QUERY_GRAVITY: // Blocked by Pi-hole's blocking lists (fall through)
 					case QUERY_BLACKLIST: // Exact blocked (fall through)
@@ -136,8 +136,8 @@ void *GC_thread(void *val)
 				if(queries[i].type >= TYPE_A && queries[i].type < TYPE_MAX)
 				{
 					counters->querytype[queries[i].type-1]--;
-					validate_access("overTime", queries[i].timeidx, true, __LINE__, __FUNCTION__, __FILE__);
-					overTime[queries[i].timeidx].querytypedata[queries[i].type-1]--;
+					if(timeidx != OVERTIME_NOT_AVAILABLE)
+						overTime[timeidx].querytypedata[queries[i].type-1]--;
 				}
 
 				// Count removed queries
@@ -151,6 +151,9 @@ void *GC_thread(void *val)
 			//   Before: IIIIIIXXXXFF
 			//   After:  XXXXFFFFFFFF
 			memmove(&queries[0], &queries[removed], (counters->queries - removed)*sizeof(*queries));
+
+			// Determine if overTime memory needs to get moved
+			moveOverTimeMemory();
 
 			// Update queries counter
 			counters->queries -= removed;

@@ -714,8 +714,7 @@ void read_data_from_DB(void)
 		}
 
 		// Obtain IDs only after filtering which queries we want to keep
-		int overTimeTimeStamp = queryTimeStamp - (queryTimeStamp % 600) + 300;
-		int timeidx = findOverTimeID(overTimeTimeStamp);
+		int timeidx = getOverTimeID(queryTimeStamp);
 		int domainID = findDomainID(domain);
 		int clientID = findClientID(client);
 
@@ -726,7 +725,6 @@ void read_data_from_DB(void)
 		int queryIndex = counters->queries;
 
 		// Store this query in memory
-		validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 		validate_access("queries", queryIndex, false, __LINE__, __FUNCTION__, __FILE__);
 		queries[queryIndex].magic = MAGICBYTE;
 		queries[queryIndex].timestamp = queryTimeStamp;
@@ -749,14 +747,17 @@ void read_data_from_DB(void)
 		if(type >= TYPE_A && type < TYPE_MAX)
 		{
 			counters->querytype[type-1]++;
-			overTime[timeidx].querytypedata[type-1]++;
+			if(timeidx != OVERTIME_NOT_AVAILABLE)
+				overTime[timeidx].querytypedata[type-1]++;
 		}
 
 		// Update overTime data
-		overTime[timeidx].total++;
-
-		// Update overTime data structure with the new client
-		overTimeClientData[clientID][timeidx]++;
+		if(timeidx != OVERTIME_NOT_AVAILABLE)
+		{
+			overTime[timeidx].total++;
+			// Update overTime data structure with the new client
+			clients[clientID].overTime[timeidx]++;
+		}
 
 		// Increase DNS queries counter
 		counters->queries++;
@@ -773,20 +774,25 @@ void read_data_from_DB(void)
 			case QUERY_BLACKLIST: // Blocked by black.list
 			case QUERY_EXTERNAL_BLOCKED: // Blocked by external provider
 				counters->blocked++;
-				overTime[timeidx].blocked++;
 				domains[domainID].blockedcount++;
 				clients[clientID].blockedcount++;
+				// Update overTime data structure
+				if(timeidx != OVERTIME_NOT_AVAILABLE)
+					overTime[timeidx].blocked++;
 				break;
 
 			case QUERY_FORWARDED: // Forwarded
 				counters->forwardedqueries++;
 				// Update overTime data structure
+				if(timeidx != OVERTIME_NOT_AVAILABLE)
+					overTime[timeidx].forwarded++;
 				break;
 
 			case QUERY_CACHE: // Cached or local config
 				counters->cached++;
 				// Update overTime data structure
-				overTime[timeidx].cached++;
+				if(timeidx != OVERTIME_NOT_AVAILABLE)
+					overTime[timeidx].cached++;
 				break;
 
 			default:
