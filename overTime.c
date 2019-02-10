@@ -31,7 +31,7 @@ void initOverTime(void)
 	// Iterate over overTime and initialize it
 	for(int i = OVERTIME_SLOTS-1; i >= 0 ; i--)
 	{
-		logg("Writing %i = %u", i, timestamp);
+		if(debug) logg("Writing %i = %u", i, timestamp);
 
 		initSlot(i, timestamp);
 
@@ -49,30 +49,7 @@ int getOverTimeID(time_t timestamp)
 	// Get timestamp of first interval
 	time_t firstTimestamp = overTime[0].timestamp;
 
-	int overTimeID = (int) ((timestamp - firstTimestamp) / OVERTIME_INTERVAL);
-
-	// Validity check
-	// TODO: verify if check is necessary
-	if(overTimeID < 0 || overTimeID > OVERTIME_SLOTS)
-	{
-		logg("WARN: overTime ID invalid:\n%i = (%u - %u)/%i", overTimeID, timestamp, firstTimestamp, OVERTIME_INTERVAL);
-		return OVERTIME_NOT_AVAILABLE;
-	}
-
-	// Exact match check
-	// TODO: verify if check is necessary
-	if(overTime[overTimeID].timestamp != timestamp)
-	{
-		// This might happen when we are already in a new hour but
-		// GC didn't initialize the next hour already, we discard
-		// this query in this case
-		logg("WARN: overTime ID %i: %i != %i", overTimeID, overTime[overTimeID].timestamp, timestamp);
-		return OVERTIME_NOT_AVAILABLE;
-	}
-
-	logg("Valid overTime: %i, %u", overTimeID, timestamp);
-
-	return overTimeID;
+	return (int) ((timestamp - firstTimestamp) / OVERTIME_INTERVAL);
 }
 
 // This routine is called by garbage collection to rearrange the overTime structure for the next hour
@@ -94,8 +71,8 @@ void moveOverTimeMemory(void)
 
 	if(debug) logg("moveOverTimeMemory(): IS: %u, SHOULD: %i, MOVING: %i", oldestOverTimeIS, oldestOverTimeSHOULD, moveOverTime);
 
-	// Check if the move over amount is valid
-	// TODO: verify if this check is necessary
+	// Check if the move over amount is valid. This prevents errors if the
+	// function is called before GC is necessary.
 	if(moveOverTime > 0 && moveOverTime < OVERTIME_SLOTS)
 	{
 		// Move overTime memory

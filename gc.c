@@ -58,12 +58,9 @@ void *GC_thread(void *val)
 
 				// Adjust total counters and total over time data
 				int timeidx = queries[i].timeidx;
-				if(timeidx != OVERTIME_NOT_AVAILABLE)
-				{
-					overTime[timeidx].total--;
-					// Adjust corresponding overTime counters
-					clients[clientID].overTime[timeidx]--;
-				}
+				overTime[timeidx].total--;
+				// Adjust corresponding overTime counters
+				clients[clientID].overTime[timeidx]--;
 
 				// Adjust domain counter (no overTime information)
 				int domainID = queries[i].domainID;
@@ -82,14 +79,12 @@ void *GC_thread(void *val)
 						counters->forwardedqueries--;
 						validate_access("forwarded", queries[i].forwardID, true, __LINE__, __FUNCTION__, __FILE__);
 						forwarded[queries[i].forwardID].count--;
-						if(timeidx != OVERTIME_NOT_AVAILABLE)
-							overTime[timeidx].forwarded--;
+						overTime[timeidx].forwarded--;
 						break;
 					case QUERY_CACHE:
 						// Answered from local cache _or_ local config
 						counters->cached--;
-						if(timeidx != OVERTIME_NOT_AVAILABLE)
-							overTime[timeidx].cached--;
+						overTime[timeidx].cached--;
 						break;
 					case QUERY_GRAVITY: // Blocked by Pi-hole's blocking lists (fall through)
 					case QUERY_BLACKLIST: // Exact blocked (fall through)
@@ -136,8 +131,7 @@ void *GC_thread(void *val)
 				if(queries[i].type >= TYPE_A && queries[i].type < TYPE_MAX)
 				{
 					counters->querytype[queries[i].type-1]--;
-					if(timeidx != OVERTIME_NOT_AVAILABLE)
-						overTime[timeidx].querytypedata[queries[i].type-1]--;
+					overTime[timeidx].querytypedata[queries[i].type-1]--;
 				}
 
 				// Count removed queries

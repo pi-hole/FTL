@@ -174,12 +174,9 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	counters->unknown++;
 
 	// Update overTime data
-	if(timeidx != OVERTIME_NOT_AVAILABLE)
-	{
-		overTime[timeidx].total++;
-		// Update overTime data structure with the new client
-		clients[clientID].overTime[timeidx]++;
-	}
+	overTime[timeidx].total++;
+	// Update overTime data structure with the new client
+	clients[clientID].overTime[timeidx]++;
 
 
 	// Try blocking regex if configured
@@ -313,8 +310,7 @@ void FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id
 		// forwarded in the following.
 		counters->cached--;
 		// Also correct overTime data
-		if(timeidx != OVERTIME_NOT_AVAILABLE)
-			overTime[timeidx].cached--;
+		overTime[timeidx].cached--;
 
 		// Correct reply timer
 		struct timeval response;
@@ -339,8 +335,7 @@ void FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id
 	queries[i].status = QUERY_FORWARDED;
 
 	// Update overTime data
-	if(timeidx != OVERTIME_NOT_AVAILABLE)
-		overTime[timeidx].forwarded++;
+	overTime[timeidx].forwarded++;
 
 	// Update counter for forwarded queries
 	counters->forwardedqueries++;
@@ -448,8 +443,7 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 		{
 			// Answered from user-defined blocking rules (dnsmasq config files)
 			counters->blocked++;
-			if(timeidx != OVERTIME_NOT_AVAILABLE)
-				overTime[timeidx].blocked++;
+			overTime[timeidx].blocked++;
 
 			validate_access("domains", queries[i].domainID, true, __LINE__, __FUNCTION__, __FILE__);
 			domains[queries[i].domainID].blockedcount++;
@@ -463,8 +457,7 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 		{
 			// Answered from a custom (user provided) cache file
 			counters->cached++;
-			if(timeidx != OVERTIME_NOT_AVAILABLE)
-				overTime[timeidx].cached++;
+			overTime[timeidx].cached++;
 
 			queries[i].status = QUERY_CACHE;
 		}
@@ -573,16 +566,14 @@ static void query_externally_blocked(int i)
 	if(queries[i].status == QUERY_FORWARDED)
 	{
 		counters->forwardedqueries--;
-		if(timeidx != OVERTIME_NOT_AVAILABLE)
-			overTime[timeidx].forwarded--;
+		overTime[timeidx].forwarded--;
 		validate_access("forwarded", queries[i].forwardID, true, __LINE__, __FUNCTION__, __FILE__);
 		forwarded[queries[i].forwardID].count--;
 	}
 
 	// ... but as blocked
 	counters->blocked++;
-	if(timeidx != OVERTIME_NOT_AVAILABLE)
-		overTime[timeidx].blocked++;
+	overTime[timeidx].blocked++;
 	validate_access("domains", queries[i].domainID, true, __LINE__, __FUNCTION__, __FILE__);
 	domains[queries[i].domainID].blockedcount++;
 	validate_access("clients", queries[i].clientID, true, __LINE__, __FUNCTION__, __FILE__);
@@ -706,15 +697,13 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 			case QUERY_BLACKLIST: // black.list
 			case QUERY_WILDCARD: // regex blocked
 				counters->blocked++;
-				if(timeidx != OVERTIME_NOT_AVAILABLE)
-					overTime[timeidx].blocked++;
+				overTime[timeidx].blocked++;
 				domains[domainID].blockedcount++;
 				clients[clientID].blockedcount++;
 				break;
 			case QUERY_CACHE: // cached from one of the lists
 				counters->cached++;
-				if(timeidx != OVERTIME_NOT_AVAILABLE)
-					overTime[timeidx].cached++;
+				overTime[timeidx].cached++;
 				break;
 			case QUERY_EXTERNAL_BLOCKED:
 				// everything has already been done

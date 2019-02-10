@@ -747,17 +747,13 @@ void read_data_from_DB(void)
 		if(type >= TYPE_A && type < TYPE_MAX)
 		{
 			counters->querytype[type-1]++;
-			if(timeidx != OVERTIME_NOT_AVAILABLE)
-				overTime[timeidx].querytypedata[type-1]++;
+			overTime[timeidx].querytypedata[type-1]++;
 		}
 
 		// Update overTime data
-		if(timeidx != OVERTIME_NOT_AVAILABLE)
-		{
-			overTime[timeidx].total++;
-			// Update overTime data structure with the new client
-			clients[clientID].overTime[timeidx]++;
-		}
+		overTime[timeidx].total++;
+		// Update overTime data structure with the new client
+		clients[clientID].overTime[timeidx]++;
 
 		// Increase DNS queries counter
 		counters->queries++;
@@ -777,22 +773,19 @@ void read_data_from_DB(void)
 				domains[domainID].blockedcount++;
 				clients[clientID].blockedcount++;
 				// Update overTime data structure
-				if(timeidx != OVERTIME_NOT_AVAILABLE)
-					overTime[timeidx].blocked++;
+				overTime[timeidx].blocked++;
 				break;
 
 			case QUERY_FORWARDED: // Forwarded
 				counters->forwardedqueries++;
 				// Update overTime data structure
-				if(timeidx != OVERTIME_NOT_AVAILABLE)
-					overTime[timeidx].forwarded++;
+				overTime[timeidx].forwarded++;
 				break;
 
 			case QUERY_CACHE: // Cached or local config
 				counters->cached++;
 				// Update overTime data structure
-				if(timeidx != OVERTIME_NOT_AVAILABLE)
-					overTime[timeidx].cached++;
+				overTime[timeidx].cached++;
 				break;
 
 			default:
