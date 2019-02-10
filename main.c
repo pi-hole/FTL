@@ -34,7 +34,7 @@ int main (int argc, char* argv[])
 	open_FTL_log(true);
 	timer_start(EXIT_TIMER);
 	logg("########## FTL started! ##########");
-	log_FTL_version();
+	log_FTL_version(false);
 
 	// Initialize shared memory
 	if(!init_shmem())
