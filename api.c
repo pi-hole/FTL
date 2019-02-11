@@ -113,7 +113,7 @@ void getOverTime(int *sock)
 {
 	int i, from = 0, until = OVERTIME_SLOTS;
 	bool found = false;
-	time_t mintime = time(NULL) - config.maxlogage;
+	time_t mintime = overTime[0].timestamp;
 
 	// Start with the first non-empty overTime slot
 	for(i=0; i < OVERTIME_SLOTS; i++)
@@ -889,7 +889,7 @@ void getClientID(int *sock)
 void getQueryTypesOverTime(int *sock)
 {
 	int i, from = -1, until = OVERTIME_SLOTS;
-	time_t mintime = time(NULL) - config.maxlogage;
+	time_t mintime = overTime[0].timestamp;
 	for(i = 0; i < OVERTIME_SLOTS; i++)
 	{
 		if((overTime[i].total > 0 || overTime[i].blocked > 0) && overTime[i].timestamp >= mintime)
@@ -1022,7 +1022,7 @@ void getClientsOverTime(int *sock)
 	for(i = 0; i < OVERTIME_SLOTS; i++)
 	{
 		if((overTime[i].total > 0 || overTime[i].blocked > 0) &&
-		   overTime[i].timestamp >= time(NULL) - config.maxlogage)
+		   overTime[i].timestamp >= overTime[0].timestamp)
 		{
 			sendit = i;
 			break;
