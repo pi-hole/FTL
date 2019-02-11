@@ -14,8 +14,13 @@ static void initSlot(int index, time_t timestamp) {
 	overTime[index].cached = 0;
 	overTime[index].forwarded = 0;
 
-	for(int j = 0; j < TYPE_MAX; j++)
-		overTime[index].querytypedata[j] = 0;
+	// Zero all query types
+	for(int queryType = 0; queryType < TYPE_MAX; queryType++)
+		overTime[index].querytypedata[queryType] = 0;
+
+	// Zero overTime counter for all known clients
+	for(int clientID = 0; clientID < counters->clients; clientID++)
+		clients[clientID].overTime[index] = 0;
 }
 
 void initOverTime(void)
@@ -76,17 +81,18 @@ void moveOverTimeMemory(void)
 		// Move overTime memory
 		memmove(&overTime[0], &overTime[moveOverTime], remainingSlots*sizeof(*overTime));
 
+		// Move client-specific overTime memory
+		for(int clientID = 0; clientID < counters->clients; clientID++)
+		{
+			memmove(&clients[clientID].overTime[0], &clients[clientID].overTime[moveOverTime], remainingSlots*sizeof(clients[clientID].overTime[0]));
+		}
+
 		// Iterate over new overTime region and initialize it
 		for(int i = remainingSlots; i < OVERTIME_SLOTS ; i++)
 		{
 			// This slot is OVERTIME_INTERVAL seconds after the previous slot
 			time_t timestamp = overTime[i-1].timestamp + OVERTIME_INTERVAL;
-
 			initSlot(i, timestamp);
 		}
-
-		// Move client-specific overTime counters
-		for(int clientID = 0; clientID < counters->clients; clientID++)
-			memmove(&clients[clientID].overTime[0], &clients[clientID].overTime[moveOverTime], remainingSlots*sizeof(clients[clientID].overTime[0]));
 	}
 }
