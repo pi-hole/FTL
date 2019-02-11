@@ -127,5 +127,5 @@ void addOverTimeClientSlot();
 
 // overTime.c
 void initOverTime(void);
-int getOverTimeID(time_t timestamp);
+unsigned int getOverTimeID(time_t timestamp);
 void moveOverTimeMemory(void);

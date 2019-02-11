@@ -15,7 +15,7 @@ static void initSlot(int index, time_t timestamp) {
 	overTime[index].forwarded = 0;
 
 	// Zero all query types
-	for(int queryType = 0; queryType < TYPE_MAX; queryType++)
+	for(unsigned int queryType = 0; queryType < TYPE_MAX; queryType++)
 		overTime[index].querytypedata[queryType] = 0;
 
 	// Zero overTime counter for all known clients
@@ -43,7 +43,7 @@ void initOverTime(void)
 	}
 }
 
-int getOverTimeID(time_t timestamp)
+unsigned int getOverTimeID(time_t timestamp)
 {
 	// Center timestamp in OVERTIME_INTERVAL
 	timestamp -= timestamp % OVERTIME_INTERVAL;
@@ -52,14 +52,22 @@ int getOverTimeID(time_t timestamp)
 	// Get timestamp of first interval
 	time_t firstTimestamp = overTime[0].timestamp;
 
-	return (int) ((timestamp - firstTimestamp) / OVERTIME_INTERVAL);
+	int id = (timestamp - firstTimestamp) / OVERTIME_INTERVAL;
+
+	if(id < 0)
+	{
+		logg("FATAL: getOverTimeID is negative: %u / %u ", timestamp, firstTimestamp);
+		return 0;
+	}
+
+	return (unsigned int) id;
 }
 
 // This routine is called by garbage collection to rearrange the overTime structure for the next hour
 void moveOverTimeMemory(void)
 {
 	time_t oldestOverTimeIS = overTime[0].timestamp;
-	time_t oldestOverTimeSHOULD = time(NULL) - 24*3600;
+	time_t oldestOverTimeSHOULD = time(NULL) - MAXLOGAGE*3600;
 
 	// Center in interval
 	oldestOverTimeSHOULD -= oldestOverTimeSHOULD % OVERTIME_INTERVAL;
@@ -67,10 +75,10 @@ void moveOverTimeMemory(void)
 
 	// Calculate the number of slots to be garbage collected, which is also the
 	// ID of the slot to move to the zero position
-	int moveOverTime = (int) ((oldestOverTimeSHOULD - oldestOverTimeIS) / OVERTIME_INTERVAL);
+	unsigned int moveOverTime = (int) ((oldestOverTimeSHOULD - oldestOverTimeIS) / OVERTIME_INTERVAL);
 
 	// The number of slots which will be moved (not garbage collected)
-	int remainingSlots = OVERTIME_SLOTS - moveOverTime;
+	unsigned int remainingSlots = OVERTIME_SLOTS - moveOverTime;
 
 	if(debug) logg("moveOverTimeMemory(): IS: %u, SHOULD: %i, MOVING: %i", oldestOverTimeIS, oldestOverTimeSHOULD, moveOverTime);
 
@@ -88,7 +96,7 @@ void moveOverTimeMemory(void)
 		}
 
 		// Iterate over new overTime region and initialize it
-		for(int i = remainingSlots; i < OVERTIME_SLOTS ; i++)
+		for(unsigned int i = remainingSlots; i < OVERTIME_SLOTS ; i++)
 		{
 			// This slot is OVERTIME_INTERVAL seconds after the previous slot
 			time_t timestamp = overTime[i-1].timestamp + OVERTIME_INTERVAL;

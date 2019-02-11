@@ -379,7 +379,7 @@ static char *parse_FTLconf(FILE *fp, const char * key)
 	// Go to beginning of file
 	fseek(fp, 0L, SEEK_SET);
 
-	size_t size;
+	size_t size = 0;
 	errno = 0;
 	while(getline(&conflinebuffer, &size, fp) != -1)
 	{

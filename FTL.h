@@ -163,7 +163,7 @@ typedef struct {
 typedef struct {
 	unsigned char magic;
 	time_t timestamp;
-	int timeidx;
+	unsigned int timeidx;
 	unsigned char type;
 	unsigned char status;
 	int domainID;
