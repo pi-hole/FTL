@@ -52,12 +52,19 @@ unsigned int getOverTimeID(time_t timestamp)
 	// Get timestamp of first interval
 	time_t firstTimestamp = overTime[0].timestamp;
 
+	// Compute overTime ID
 	int id = (int) ((timestamp - firstTimestamp) / OVERTIME_INTERVAL);
 
+	// Check bounds manually
 	if(id < 0)
 	{
 		logg("FATAL: getOverTimeID is negative: %u / %u ", timestamp, firstTimestamp);
 		return 0;
+	}
+	else if(id > OVERTIME_INTERVAL-1)
+	{
+		logg("FATAL: getOverTimeID is too large: %u / %u ", timestamp, firstTimestamp);
+		return OVERTIME_INTERVAL-1;
 	}
 
 	return (unsigned int) id;
