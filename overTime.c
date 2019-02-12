@@ -28,8 +28,9 @@ void initOverTime(void)
 	// Get current timestamp
 	time_t now = time(NULL);
 
-	// Center in next interval. This makes room for the buffer overTime slot.
-	time_t timestamp = now - now % OVERTIME_INTERVAL + (3 * OVERTIME_INTERVAL) / 2;
+	// The last timestamp (overTime[149]) should be the last interval of this hour
+	// If the current time is 09:35, the last interval is 09:50 - 10:00 (centered at 09:55)
+	time_t timestamp = now - now % 3600 + 3600 - (OVERTIME_INTERVAL / 2);
 
 	if(debug) logg("initOverTime(): Initializing %i slots from %u to %u", OVERTIME_SLOTS, timestamp-OVERTIME_SLOTS*OVERTIME_INTERVAL, timestamp);
 
@@ -67,6 +68,8 @@ unsigned int getOverTimeID(time_t timestamp)
 		return OVERTIME_INTERVAL-1;
 	}
 
+	if(debug) logg("getOverTimeID = %i", id);
+
 	return (unsigned int) id;
 }
 
@@ -94,6 +97,7 @@ void moveOverTimeMemory(void)
 	if(moveOverTime > 0 && moveOverTime < OVERTIME_SLOTS)
 	{
 		// Move overTime memory
+		if(debug) logg("GC: Moving overTime %u - %u to 0 - %u", moveOverTime, moveOverTime+remainingSlots, remainingSlots);
 		memmove(&overTime[0], &overTime[moveOverTime], remainingSlots*sizeof(*overTime));
 
 		// Move client-specific overTime memory
@@ -107,6 +111,7 @@ void moveOverTimeMemory(void)
 		{
 			// This slot is OVERTIME_INTERVAL seconds after the previous slot
 			time_t timestamp = overTime[i-1].timestamp + OVERTIME_INTERVAL;
+			if(debug) logg("GC: Zeroing overTime %u (timestamp %u)", i, timestamp);
 			initSlot(i, timestamp);
 		}
 	}
