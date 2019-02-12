@@ -118,8 +118,7 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 
 	// Update overTime
 	int timeidx = getOverTimeID(querytimestamp);
-	if(timeidx > 0)
-		overTime[timeidx].querytypedata[querytype-1]++;
+	overTime[timeidx].querytypedata[querytype-1]++;
 
 	// Skip rest of the analysis if this query is not of type A or AAAA
 	// but user wants to see only A and AAAA queries (pre-v4.1 behavior)
