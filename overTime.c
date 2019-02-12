@@ -77,7 +77,8 @@ unsigned int getOverTimeID(time_t timestamp)
 void moveOverTimeMemory(void)
 {
 	time_t oldestOverTimeIS = overTime[0].timestamp;
-	time_t oldestOverTimeSHOULD = time(NULL) - MAXLOGAGE*3600;
+	// Shift SHOULD timestemp into the future by the amount GC is running earlier
+	time_t oldestOverTimeSHOULD = (time(NULL) - GCdelay) - MAXLOGAGE*3600;
 
 	// Center in interval
 	oldestOverTimeSHOULD -= oldestOverTimeSHOULD % OVERTIME_INTERVAL;
