@@ -92,7 +92,7 @@ void moveOverTimeMemory(void)
 		// Move client-specific overTime memory
 		for(int clientID = 0; clientID < counters->clients; clientID++)
 		{
-			memmove(&clients[clientID].overTime[0], &clients[clientID].overTime[moveOverTime], remainingSlots*sizeof(clients[clientID].overTime[0]));
+			memmove(&clients[clientID].overTime[0], &clients[clientID].overTime[moveOverTime], remainingSlots*sizeof(int));
 		}
 
 		// Iterate over new overTime region and initialize it
