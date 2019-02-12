@@ -62,10 +62,10 @@ unsigned int getOverTimeID(time_t timestamp)
 		logg("FATAL: getOverTimeID is negative: %u / %u ", timestamp, firstTimestamp);
 		return 0;
 	}
-	else if(id > OVERTIME_INTERVAL-1)
+	else if(id > OVERTIME_SLOTS-1)
 	{
 		logg("FATAL: getOverTimeID is too large: %u / %u ", timestamp, firstTimestamp);
-		return OVERTIME_INTERVAL-1;
+		return OVERTIME_SLOTS-1;
 	}
 
 	if(debug) logg("getOverTimeID = %i", id);
