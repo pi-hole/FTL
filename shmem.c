@@ -20,7 +20,6 @@
 #define SHARED_QUERIES_NAME "/FTL-queries"
 #define SHARED_FORWARDED_NAME "/FTL-forwarded"
 #define SHARED_OVERTIME_NAME "/FTL-overTime"
-#define SHARED_OVERTIMECLIENT_PREFIX "/FTL-client-"
 
 /// The pointer in shared memory to the shared string buffer
 static SharedMemory shm_lock = { 0 };
@@ -183,11 +182,11 @@ bool init_shmem(void)
 	counters->queries_MAX = pagesize;
 
 	/****************************** shared overTime struct ******************************/
-	size_t size = (OVERTIME_SLOTS*sizeof(overTimeDataStruct)/pagesize + 1)*pagesize;
+	size_t size = ((OVERTIME_SLOTS*sizeof(overTimeDataStruct))/pagesize + 1)*pagesize;
 	// Try to create shared memory object
 	shm_overTime = create_shm(SHARED_OVERTIME_NAME, size);
 	overTime = (overTimeDataStruct*)shm_overTime.ptr;
-	counters->overTime_MAX = size;
+	counters->overTime_MAX = (int) size;
 	initOverTime();
 
 	return true;

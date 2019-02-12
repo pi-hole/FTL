@@ -52,7 +52,7 @@ unsigned int getOverTimeID(time_t timestamp)
 	// Get timestamp of first interval
 	time_t firstTimestamp = overTime[0].timestamp;
 
-	int id = (timestamp - firstTimestamp) / OVERTIME_INTERVAL;
+	int id = (int) ((timestamp - firstTimestamp) / OVERTIME_INTERVAL);
 
 	if(id < 0)
 	{
@@ -75,7 +75,7 @@ void moveOverTimeMemory(void)
 
 	// Calculate the number of slots to be garbage collected, which is also the
 	// ID of the slot to move to the zero position
-	unsigned int moveOverTime = (int) ((oldestOverTimeSHOULD - oldestOverTimeIS) / OVERTIME_INTERVAL);
+	unsigned int moveOverTime = (unsigned int) ((oldestOverTimeSHOULD - oldestOverTimeIS) / OVERTIME_INTERVAL);
 
 	// The number of slots which will be moved (not garbage collected)
 	unsigned int remainingSlots = OVERTIME_SLOTS - moveOverTime;
