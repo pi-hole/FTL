@@ -39,6 +39,8 @@ GIT_TAG := $(shell git describe --tags --abbrev=0)
 # -Wl,-z,now: Disable lazy binding
 # -Wl,-z,relro: Read-only segments after relocation
 HARDENING_FLAGS=-fstack-protector -D_FORTIFY_SOURCE=2 -O3 -Wl,-z,relro,-z,now -pie -fPIE -fexceptions -fasynchronous-unwind-tables -Wl,-z,defs -Wl,-z,now -Wl,-z,relro
+# Enable AddressSanitizer, a fast memory error detector. Memory access instructions are instrumented to detect out-of-bounds and use-after-free bugs.
+SANITIZER_FLAGS=-fsanitize=bounds-strict
 DEBUG_FLAGS=-rdynamic -fno-omit-frame-pointer
 # -DSQLITE_OMIT_LOAD_EXTENSION: This option omits the entire extension loading mechanism from SQLite, including sqlite3_enable_load_extension() and sqlite3_load_extension() interfaces. (needs -ldl linking option, otherwise)
 # -DSQLITE_DEFAULT_MEMSTATUS=0: This setting causes the sqlite3_status() interfaces that track memory usage to be disabled. This helps the sqlite3_malloc() routines run much faster, and since SQLite uses sqlite3_malloc() internally, this helps to make the entire library faster.
@@ -46,7 +48,8 @@ DEBUG_FLAGS=-rdynamic -fno-omit-frame-pointer
 # -DSQLITE_OMIT_PROGRESS_CALLBACK: The progress handler callback counter must be checked in the inner loop of the bytecode engine. By omitting this interface, a single conditional is removed from the inner loop of the bytecode engine, helping SQL statements to run slightly faster.
 SQLITEFLAGS=-DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_DEFAULT_MEMSTATUS=0 -DSQLITE_OMIT_DEPRECATED -DSQLITE_OMIT_PROGRESS_CALLBACK -DSQLITE_OMIT_MEMORYDB
 # -FILE_OFFSET_BITS=64: used by stat(). Avoids problems with files > 2 GB on 32bit machines
-CCFLAGS=-std=gnu11 -I$(IDIR) -Wall -Wextra -Wno-unused-parameter -D_FILE_OFFSET_BITS=64 $(HARDENING_FLAGS) $(DEBUG_FLAGS) $(CFLAGS) $(SQLITEFLAGS)
+WARNFLAGS=-Wall -Wextra -Wno-unused-parameter -Warray-bounds=2
+CCFLAGS=-std=gnu11 -I$(IDIR) $(WARNFLAGS) -D_FILE_OFFSET_BITS=64 $(HARDENING_FLAGS) $(SANITIZER_FLAGS) $(DEBUG_FLAGS) $(CFLAGS) $(SQLITEFLAGS)
 # for FTL we need the pthread library
 # for dnsmasq we need the nettle crypto library and the gmp maths library
 # We link the two libraries statically. Althougth this increases the binary file size by about 1 MB, it saves about 5 MB of shared libraries and makes deployment easier
