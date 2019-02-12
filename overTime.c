@@ -15,7 +15,7 @@ static void initSlot(int index, time_t timestamp) {
 	overTime[index].forwarded = 0;
 
 	// Zero all query types
-	for(unsigned int queryType = 0; queryType < TYPE_MAX; queryType++)
+	for(unsigned int queryType = 0; queryType < TYPE_MAX-1; queryType++)
 		overTime[index].querytypedata[queryType] = 0;
 
 	// Zero overTime counter for all known clients
