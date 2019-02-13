@@ -101,6 +101,19 @@ void moveOverTimeMemory(void)
 		if(debug) logg("GC: Moving overTime %u - %u to 0 - %u", moveOverTime, moveOverTime+remainingSlots, remainingSlots);
 		memmove(&overTime[0], &overTime[moveOverTime], remainingSlots*sizeof(*overTime));
 
+		// Correct time indices of queries. This is necessary because we just moved the memory this index points to
+		for(int queryID = 0; queryID < counters->queries; queryID++)
+		{
+			if(((int)queries[queryID].timeidx - (int)remainingSlots) < 0)
+			{
+				logg("WARN: overTime timeidx correction failed (%i: %u / %u)", queryID, queries[queryID].timeidx, remainingSlots);
+			}
+			else
+			{
+				queries[queryID].timeidx -= remainingSlots;
+			}
+		}
+
 		// Move client-specific overTime memory
 		for(int clientID = 0; clientID < counters->clients; clientID++)
 		{
