@@ -35,7 +35,7 @@ void *GC_thread(void *val)
 			lock_shm();
 
 			// Get minimum time stamp to keep
-			time_t mintime = overTime[0].timestamp;
+			time_t mintime = time(NULL) - MAXLOGAGE*360;
 
 			if(debug) timer_start(GC_TIMER);
 

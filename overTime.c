@@ -104,13 +104,13 @@ void moveOverTimeMemory(void)
 		// Correct time indices of queries. This is necessary because we just moved the memory this index points to
 		for(int queryID = 0; queryID < counters->queries; queryID++)
 		{
-			if(((int)queries[queryID].timeidx - (int)remainingSlots) < 0)
+			if(((int)queries[queryID].timeidx - (int)moveOverTime) < 0)
 			{
-				logg("WARN: overTime timeidx correction failed (%i: %u / %u)", queryID, queries[queryID].timeidx, remainingSlots);
+				logg("WARN: overTime timeidx correction failed (%i: %u / %u)", queryID, queries[queryID].timeidx, moveOverTime);
 			}
 			else
 			{
-				queries[queryID].timeidx -= remainingSlots;
+				queries[queryID].timeidx -= moveOverTime;
 			}
 		}
 
