@@ -80,11 +80,11 @@ unsigned int getOverTimeID(time_t timestamp)
 }
 
 // This routine is called by garbage collection to rearrange the overTime structure for the next hour
-void moveOverTimeMemory(void)
+void moveOverTimeMemory(time_t mintime)
 {
 	time_t oldestOverTimeIS = overTime[0].timestamp;
 	// Shift SHOULD timestemp into the future by the amount GC is running earlier
-	time_t oldestOverTimeSHOULD = (time(NULL) - GCdelay) - MAXLOGAGE*3600;
+	time_t oldestOverTimeSHOULD = mintime;
 
 	// Center in interval
 	oldestOverTimeSHOULD -= oldestOverTimeSHOULD % OVERTIME_INTERVAL;
@@ -107,9 +107,10 @@ void moveOverTimeMemory(void)
 		if(debug) logg("moveOverTimeMemory(): Moving overTime %u - %u to 0 - %u", moveOverTime, moveOverTime+remainingSlots, remainingSlots);
 		memmove(&overTime[0], &overTime[moveOverTime], remainingSlots*sizeof(*overTime));
 
-		// Correct time indices of queries. This is necessary because we just moved the memory this index points to
+		// Correct time indices of queries. This is necessary because we just moved the slot this index points to
 		for(int queryID = 0; queryID < counters->queries; queryID++)
 		{
+			// Check if the index would become negative if we adjusted it
 			if(((int)queries[queryID].timeidx - (int)moveOverTime) < 0)
 			{
 				// This should never happen, but we print a warning if it still happens
