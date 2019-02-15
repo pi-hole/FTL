@@ -45,8 +45,23 @@ DEBUG_FLAGS=-rdynamic -fno-omit-frame-pointer
 # -DSQLITE_OMIT_DEPRECATED: Omitting deprecated interfaces and features will not help SQLite to run any faster. It will reduce the library footprint, however. And it is the right thing to do.
 # -DSQLITE_OMIT_PROGRESS_CALLBACK: The progress handler callback counter must be checked in the inner loop of the bytecode engine. By omitting this interface, a single conditional is removed from the inner loop of the bytecode engine, helping SQL statements to run slightly faster.
 SQLITEFLAGS=-DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_DEFAULT_MEMSTATUS=0 -DSQLITE_OMIT_DEPRECATED -DSQLITE_OMIT_PROGRESS_CALLBACK -DSQLITE_OMIT_MEMORYDB
+# -Wall: This enables all the warnings about constructions that some users consider questionable, and that are easy to avoid (or modify to prevent the warning), even in conjunction with macros. This also enables some language-specific warnings described in C++ Dialect Options and Objective-C and Objective-C++ Dialect Options.
+# -Wextra: This enables some extra warning flags that are not enabled by -Wall.
+# -Wno-unused-parameter: Disable warning for unused parameters. For threads that don't need arguments, we still have to provide a void* args which is then unused.
+WARNFLAGS=-Wall -Wextra -Wno-unused-parameter
+# Extra warning flags we apply only to the FTL part of the code (used not for foreign code such as dnsmasq and SQLite3)
+# -Werror: Halt on any warnings, useful for enforcing clean code without any warnings (we use it only for our code part)
+# -Waddress: Warn about suspicious uses of memory addresses
+# -Wlogical-op: Warn about suspicious uses of logical operators in expressions
+# -Wmissing-field-initializers: Warn if a structure's initializer has some fields missing
+# -Woverlength-strings: Warn about string constants that are longer than the "minimum maximum length specified in the C standard
+# -Wformat: Check calls to printf and scanf, etc., to make sure that the arguments supplied have types appropriate to the format string specified, and that the conversions specified in the format string make sense.
+# -Wformat-nonliteral: If -Wformat is specified, also warn if the format string is not a string literal and so cannot be checked, unless the format function takes its format arguments as a va_list.
+# -Wformat-signedness: If -Wformat is specified, also warn if the format string requires an unsigned argument and the argument is signed and vice versa.
+# -Wuninitialized: Warn if an automatic variable is used without first being initialized
+# -Wswitch-enum: Warn whenever a switch statement has an index of enumerated type and lacks a case for one or more of the named codes of that enumeration.
+EXTRAWARN=-Werror -Waddress -Wlogical-op -Wmissing-field-initializers -Woverlength-strings -Wformat -Wformat-nonliteral -Wformat-signedness -Wuninitialized -Wswitch-enum
 # -FILE_OFFSET_BITS=64: used by stat(). Avoids problems with files > 2 GB on 32bit machines
-WARNFLAGS=-Wall -Wextra -Wno-unused-parameter -Warray-bounds=2
 CCFLAGS=-std=gnu11 -I$(IDIR) $(WARNFLAGS) -D_FILE_OFFSET_BITS=64 $(HARDENING_FLAGS) $(DEBUG_FLAGS) $(CFLAGS) $(SQLITEFLAGS)
 # for FTL we need the pthread library
 # for dnsmasq we need the nettle crypto library and the gmp maths library
@@ -68,14 +83,6 @@ _DNSMASQDEPS = $(patsubst %,$(DNSMASQDIR)/%,$(DNSMASQDEPS))
 _DNSMASQOBJ = $(patsubst %,$(DNSMASQODIR)/%,$(DNSMASQOBJ))
 
 all: pihole-FTL
-
-# Extra warning flags we apply only to the FTL part of the code
-# -Werror: Halt on any warnings, useful for enforcing clean code without any warnings (we use it only for our code part)
-# -Waddress: Warn about suspicious uses of memory addresses
-# -Wlogical-op: Warn about suspicious uses of logical operators in expressions
-# -Wmissing-field-initializers: Warn if a structure's initializer has some fields missing
-# -Woverlength-strings: Warn about string constants that are longer than the "minimum maximum length specified in the C standard
-EXTRAWARN=-Werror -Waddress -Wlogical-op -Wmissing-field-initializers -Woverlength-strings
 $(ODIR)/%.o: %.c $(_FTLDEPS) | $(ODIR)
 	$(CC) -c -o $@ $< -g3 $(CCFLAGS) $(EXTRAWARN)
 
