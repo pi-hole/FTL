@@ -35,7 +35,12 @@ void *GC_thread(void *val)
 			lock_shm();
 
 			// Get minimum time stamp to keep
-			time_t mintime = time(NULL) - MAXLOGAGE*3600;
+			time_t mintime = (time(NULL) - GCdelay) - MAXLOGAGE*3600;
+
+			// Align to the start of the next hour. This will also align with
+			// the oldest overTime interval after GC is done.
+			mintime -= mintime % 3600;
+			mintime += 3600;
 
 			if(debug) timer_start(GC_TIMER);
 
@@ -153,7 +158,7 @@ void *GC_thread(void *val)
 			memset(&queries[counters->queries], 0, (counters->queries_MAX - counters->queries)*sizeof(*queries));
 
 			// Determine if overTime memory needs to get moved
-			moveOverTimeMemory();
+			moveOverTimeMemory(mintime);
 
 			if(debug) logg("Notice: GC removed %i queries (took %.2f ms)", removed, timer_elapsed_msec(GC_TIMER));
 

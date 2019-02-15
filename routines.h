@@ -128,4 +128,11 @@ void addOverTimeClientSlot();
 // overTime.c
 void initOverTime(void);
 unsigned int getOverTimeID(time_t timestamp);
-void moveOverTimeMemory(void);
+
+/**
+ * Move the overTime slots so the oldest interval starts with mintime. The time
+ * given will be aligned to OVERTIME_INTERVAL.
+ *
+ * @param mintime The start of the oldest interval
+ */
+void moveOverTimeMemory(time_t mintime);
