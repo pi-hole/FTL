@@ -117,7 +117,7 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	counters->querytype[querytype-1]++;
 
 	// Update overTime
-	int timeidx = getOverTimeID(querytimestamp);
+	unsigned int timeidx = getOverTimeID(querytimestamp);
 	overTime[timeidx].querytypedata[querytype-1]++;
 
 	// Skip rest of the analysis if this query is not of type A or AAAA
@@ -286,7 +286,7 @@ void FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id
 	int forwardID = findForwardID(forward, true);
 	queries[i].forwardID = forwardID;
 
-	int timeidx = queries[i].timeidx;
+	unsigned int timeidx = queries[i].timeidx;
 
 	if(queries[i].status == QUERY_CACHE)
 	{
@@ -433,7 +433,7 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 		counters->unknown--;
 
 		// Get time index
-		int timeidx = queries[i].timeidx;
+		unsigned int timeidx = queries[i].timeidx;
 
 		if(strcmp(answer, "(NXDOMAIN)") == 0 ||
 		   strcmp(answer, "0.0.0.0") == 0 ||
@@ -558,7 +558,7 @@ static void detect_blocked_IP(unsigned short flags, char* answer, int queryID)
 
 static void query_externally_blocked(int i)
 {
-	int timeidx = queries[i].timeidx;
+	unsigned int timeidx = queries[i].timeidx;
 
 	// Correct counters if necessary ...
 	if(queries[i].status == QUERY_FORWARDED)
@@ -668,7 +668,7 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 		counters->unknown--;
 
 		// Get time index
-		int timeidx = queries[i].timeidx;
+		unsigned int timeidx = queries[i].timeidx;
 
 		int domainID = queries[i].domainID;
 		validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
