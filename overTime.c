@@ -6,7 +6,11 @@
  * @param index The overTime slot index
  * @param timestamp The timestamp of the slot
  */
-static void initSlot(int index, time_t timestamp) {
+static void initSlot(unsigned int index, time_t timestamp)
+{
+	// Possible debug printing
+	if(debug) logg("initSlot(%u, %u): Zeroing overTIme slot", index, timestamp);
+
 	overTime[index].magic = MAGICBYTE;
 	overTime[index].timestamp = timestamp;
 	overTime[index].total = 0;
@@ -59,16 +63,18 @@ unsigned int getOverTimeID(time_t timestamp)
 	// Check bounds manually
 	if(id < 0)
 	{
-		logg("FATAL: getOverTimeID is negative: %u / %u ", timestamp, firstTimestamp);
+		logg("WARN: getOverTimeID(%u): %u is negative: %u", timestamp, id, firstTimestamp);
+		// Return first timestamp in case negative timestamp was determined
 		return 0;
 	}
 	else if(id > OVERTIME_SLOTS-1)
 	{
-		logg("FATAL: getOverTimeID is too large: %u / %u ", timestamp, firstTimestamp);
+		logg("WARN: getOverTimeID(%u): %i is too large: %u", timestamp, id, firstTimestamp);
+		// Return last timestamp in case a too large timestamp was determined
 		return OVERTIME_SLOTS-1;
 	}
 
-	if(debug) logg("getOverTimeID = %i", id);
+	if(debug) logg("getOverTimeID(%u): %i", timestamp, id);
 
 	return (unsigned int) id;
 }
@@ -91,14 +97,14 @@ void moveOverTimeMemory(void)
 	// The number of slots which will be moved (not garbage collected)
 	unsigned int remainingSlots = OVERTIME_SLOTS - moveOverTime;
 
-	if(debug) logg("moveOverTimeMemory(): IS: %u, SHOULD: %i, MOVING: %i", oldestOverTimeIS, oldestOverTimeSHOULD, moveOverTime);
+	if(debug) logg("moveOverTimeMemory(): IS: %u, SHOULD: %u, MOVING: %u", oldestOverTimeIS, oldestOverTimeSHOULD, moveOverTime);
 
 	// Check if the move over amount is valid. This prevents errors if the
 	// function is called before GC is necessary.
 	if(moveOverTime > 0 && moveOverTime < OVERTIME_SLOTS)
 	{
 		// Move overTime memory
-		if(debug) logg("GC: Moving overTime %u - %u to 0 - %u", moveOverTime, moveOverTime+remainingSlots, remainingSlots);
+		if(debug) logg("moveOverTimeMemory(): Moving overTime %u - %u to 0 - %u", moveOverTime, moveOverTime+remainingSlots, remainingSlots);
 		memmove(&overTime[0], &overTime[moveOverTime], remainingSlots*sizeof(*overTime));
 
 		// Correct time indices of queries. This is necessary because we just moved the memory this index points to
@@ -106,7 +112,9 @@ void moveOverTimeMemory(void)
 		{
 			if(((int)queries[queryID].timeidx - (int)moveOverTime) < 0)
 			{
-				logg("WARN: overTime timeidx correction failed (%i: %u / %u)", queryID, queries[queryID].timeidx, moveOverTime);
+				// This should never happen, but we print a warning if it still happens
+				// We don't do anything in this case
+				logg("WARN: moveOverTimeMemory(): overTime time index correction failed (%i: %u / %u)", queryID, queries[queryID].timeidx, moveOverTime);
 			}
 			else
 			{
@@ -121,12 +129,11 @@ void moveOverTimeMemory(void)
 		}
 
 		// Iterate over new overTime region and initialize it
-		for(unsigned int i = remainingSlots; i < OVERTIME_SLOTS ; i++)
+		for(unsigned int timeidx = remainingSlots; timeidx < OVERTIME_SLOTS ; timeidx++)
 		{
 			// This slot is OVERTIME_INTERVAL seconds after the previous slot
-			time_t timestamp = overTime[i-1].timestamp + OVERTIME_INTERVAL;
-			if(debug) logg("GC: Zeroing overTime %u (timestamp %u)", i, timestamp);
-			initSlot(i, timestamp);
+			time_t timestamp = overTime[timeidx-1].timestamp + OVERTIME_INTERVAL;
+			initSlot(timeidx, timestamp);
 		}
 	}
 }
