@@ -173,6 +173,12 @@ bool db_create(void)
 	return true;
 }
 
+void SQLite3LogCallback(void *pArg, int iErrCode, const char *zMsg)
+{
+	// Note: pArg is NULL and nut used
+	logg("SQLite3 message: %s (%d)", iErrCode, zMsg);
+}
+
 void db_init(void)
 {
 	// First check if the user doesn't want to use the database and set an
@@ -182,6 +188,12 @@ void db_init(void)
 		database = false;
 		return;
 	}
+
+	// Initialize SQLite3 logging callback
+	// This ensures SQLite3 errors and warnings are logged to pihole-FTL.log
+	// We use this to possibly catch even more errors in places we do not
+	// explicitly check for failures to have happened
+	sqlite3_config(SQLITE_CONFIG_LOG, SQLite3LogCallback, NULL);
 
 	int rc = sqlite3_open_v2(FTLfiles.db, &db, SQLITE_OPEN_READWRITE, NULL);
 	if( rc ){
