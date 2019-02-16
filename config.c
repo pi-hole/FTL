@@ -576,6 +576,12 @@ void read_debuging_settings(FILE *fp)
 	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
 		config.debug |= DEBUG_REGEX;
 
+	// DEBUG_ALL
+	// defaults to: false
+	buffer = parse_FTLconf(fp, "DEBUG_ALL");
+	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
+		config.debug = ~0;
+
 	if(config.debug)
 	{
 		logg("************************");
