@@ -76,7 +76,7 @@ char *getstr(unsigned long long pos)
 	return &((char*)shm_strings.ptr)[pos];
 }
 
-// Create a mutex for shared memory
+/// Create a mutex for shared memory
 pthread_mutex_t create_mutex() {
 	pthread_mutexattr_t lock_attr = {};
 	pthread_mutex_t lock = {};
