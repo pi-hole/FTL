@@ -539,14 +539,14 @@ void save_to_DB(void)
 
 	// Store index for next loop interation round and update last time stamp
 	// in the database only if all queries have been saved successfully
-	if(saved_error == 0)
+	if(saved > 0 && saved_error == 0)
 	{
 		lastdbindex = i;
 		db_set_FTL_property(DB_LASTTIMESTAMP, newlasttimestamp);
 	}
 
 	// Update total counters in DB
-	if(!db_update_counters(total, blocked))
+	if(saved > 0 && !db_update_counters(total, blocked))
 	{
 		dbclose();
 		return;
