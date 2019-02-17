@@ -248,6 +248,8 @@ void FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id
 
 	// Get forward destination IP address
 	char dest[ADDRSTRLEN];
+	// If addr == NULL, we will only duplicate an empty string instead of uninitialized memory
+	dest[0] = '\0';
 	if(addr != NULL)
 		inet_ntop((flags & F_IPV4) ? AF_INET : AF_INET6, addr, dest, ADDRSTRLEN);
 	// Convert forward to lower case
