@@ -175,7 +175,7 @@ bool db_create(void)
 
 void SQLite3LogCallback(void *pArg, int iErrCode, const char *zMsg)
 {
-	// Note: pArg is NULL and nut used
+	// Note: pArg is NULL and not used
 	// See https://sqlite.org/rescode.html#extrc for details
 	// concerning the return codes returned here
 	logg("SQLite3 message: %s (%d)", zMsg, iErrCode);
