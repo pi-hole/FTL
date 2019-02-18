@@ -70,10 +70,14 @@ void logg(const char *format, ...)
 
 	get_timestr(timestring);
 
+	// Get and log PID of current process to avoid ambiguities when more than one
+	// pihole-FTL instance is logging into the same file
+	long pid = (long)getpid();
+
 	// Print to stdout before writing to file
 	if(!daemonmode)
 	{
-		printf("[%s] ", timestring);
+		printf("[%s %ld] ", timestring, pid);
 		va_start(args, format);
 		vprintf(format, args);
 		va_end(args);
@@ -86,7 +90,7 @@ void logg(const char *format, ...)
 	// Write to log file
 	if(logfile != NULL)
 	{
-		fprintf(logfile, "[%s] ", timestring);
+		fprintf(logfile, "[%s %ld] ", timestring, pid);
 		va_start(args, format);
 		vfprintf(logfile, format, args);
 		va_end(args);

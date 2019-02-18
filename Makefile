@@ -14,7 +14,7 @@ DNSMASQOPTS = -DHAVE_DNSSEC -DHAVE_DNSSEC_STATIC
 # Flags for compiling with libidn2: -DHAVE_LIBIDN2 -DIDN2_VERSION_NUMBER=0x02000003
 
 FTLDEPS = FTL.h routines.h version.h api.h dnsmasq_interface.h shmem.h
-FTLOBJ = main.o memory.o log.o daemon.o datastructure.o signals.o socket.o request.o grep.o setupVars.o args.o gc.o config.o database.o msgpack.o api.o dnsmasq_interface.o resolve.o regex.o shmem.o capabilities.o networktable.o
+FTLOBJ = main.o memory.o log.o daemon.o datastructure.o signals.o socket.o request.o grep.o setupVars.o args.o gc.o config.o database.o msgpack.o api.o dnsmasq_interface.o resolve.o regex.o shmem.o capabilities.o networktable.o overTime.o
 
 DNSMASQDEPS = config.h dhcp-protocol.h dns-protocol.h radv-protocol.h dhcp6-protocol.h dnsmasq.h ip6addr.h metrics.h ../dnsmasq_interface.h
 DNSMASQOBJ = arp.o dbus.o domain.o lease.o outpacket.o rrfilter.o auth.o dhcp6.o edns0.o log.o poll.o slaac.o blockdata.o dhcp.o forward.o loop.o radv.o tables.o bpf.o dhcp-common.o helper.o netlink.o rfc1035.o tftp.o cache.o dnsmasq.o inotify.o network.o rfc2131.o util.o conntrack.o dnssec.o ipset.o option.o rfc3315.o crypto.o dump.o ubus.o metrics.o
@@ -45,11 +45,26 @@ DEBUG_FLAGS=-rdynamic -fno-omit-frame-pointer
 # -DSQLITE_OMIT_DEPRECATED: Omitting deprecated interfaces and features will not help SQLite to run any faster. It will reduce the library footprint, however. And it is the right thing to do.
 # -DSQLITE_OMIT_PROGRESS_CALLBACK: The progress handler callback counter must be checked in the inner loop of the bytecode engine. By omitting this interface, a single conditional is removed from the inner loop of the bytecode engine, helping SQL statements to run slightly faster.
 SQLITEFLAGS=-DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_DEFAULT_MEMSTATUS=0 -DSQLITE_OMIT_DEPRECATED -DSQLITE_OMIT_PROGRESS_CALLBACK -DSQLITE_OMIT_MEMORYDB
+# -Wall: This enables all the warnings about constructions that some users consider questionable, and that are easy to avoid (or modify to prevent the warning), even in conjunction with macros. This also enables some language-specific warnings described in C++ Dialect Options and Objective-C and Objective-C++ Dialect Options.
+# -Wextra: This enables some extra warning flags that are not enabled by -Wall.
+# -Wno-unused-parameter: Disable warning for unused parameters. For threads that don't need arguments, we still have to provide a void* args which is then unused.
+WARNFLAGS=-Wall -Wextra -Wno-unused-parameter
+# Extra warning flags we apply only to the FTL part of the code (used not for foreign code such as dnsmasq and SQLite3)
+# -Werror: Halt on any warnings, useful for enforcing clean code without any warnings (we use it only for our code part)
+# -Waddress: Warn about suspicious uses of memory addresses
+# -Wlogical-op: Warn about suspicious uses of logical operators in expressions
+# -Wmissing-field-initializers: Warn if a structure's initializer has some fields missing
+# -Woverlength-strings: Warn about string constants that are longer than the "minimum maximum length specified in the C standard
+# -Wformat: Check calls to printf and scanf, etc., to make sure that the arguments supplied have types appropriate to the format string specified, and that the conversions specified in the format string make sense.
+# -Wformat-nonliteral: If -Wformat is specified, also warn if the format string is not a string literal and so cannot be checked, unless the format function takes its format arguments as a va_list.
+# -Wuninitialized: Warn if an automatic variable is used without first being initialized
+# -Wswitch-enum: Warn whenever a switch statement has an index of enumerated type and lacks a case for one or more of the named codes of that enumeration.
+EXTRAWARN=-Werror -Waddress -Wlogical-op -Wmissing-field-initializers -Woverlength-strings -Wformat -Wformat-nonliteral -Wuninitialized -Wswitch-enum
 # -FILE_OFFSET_BITS=64: used by stat(). Avoids problems with files > 2 GB on 32bit machines
-CCFLAGS=-std=gnu11 -I$(IDIR) -Wall -Wextra -Wno-unused-parameter -D_FILE_OFFSET_BITS=64 $(HARDENING_FLAGS) $(DEBUG_FLAGS) $(CFLAGS) $(SQLITEFLAGS)
+CCFLAGS=-std=gnu11 -I$(IDIR) $(WARNFLAGS) -D_FILE_OFFSET_BITS=64 $(HARDENING_FLAGS) $(DEBUG_FLAGS) $(CFLAGS) $(SQLITEFLAGS)
 # for FTL we need the pthread library
 # for dnsmasq we need the nettle crypto library and the gmp maths library
-# We link the two libraries statically. Althougth this increases the binary file size by about 1 MB, it saves about 5 MB of shared libraries and makes deployment easier
+# We link the two libraries statically. Although this increases the binary file size by about 1 MB, it saves about 5 MB of shared libraries and makes deployment easier
 #LIBS=-pthread -lnettle -lgmp -lhogweed
 LIBS=-pthread -Wl,-Bstatic -L/usr/local/lib -lhogweed -lgmp -lnettle -Wl,-Bdynamic -lrt -lcap
 # Flags for compiling with libidn : -lidn
@@ -67,14 +82,6 @@ _DNSMASQDEPS = $(patsubst %,$(DNSMASQDIR)/%,$(DNSMASQDEPS))
 _DNSMASQOBJ = $(patsubst %,$(DNSMASQODIR)/%,$(DNSMASQOBJ))
 
 all: pihole-FTL
-
-# Extra warning flags we apply only to the FTL part of the code
-# -Werror: Halt on any warnings, useful for enforcing clean code without any warnings (we use it only for our code part)
-# -Waddress: Warn about suspicious uses of memory addresses
-# -Wlogical-op: Warn about suspicious uses of logical operators in expressions
-# -Wmissing-field-initializers: Warn if a structure's initializer has some fields missing
-# -Woverlength-strings: Warn about string constants that are longer than the "minimum maximum length specified in the C standard
-EXTRAWARN=-Werror -Waddress -Wlogical-op -Wmissing-field-initializers -Woverlength-strings
 $(ODIR)/%.o: %.c $(_FTLDEPS) | $(ODIR)
 	$(CC) -c -o $@ $< -g3 $(CCFLAGS) $(EXTRAWARN)
 

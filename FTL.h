@@ -57,7 +57,7 @@
 #define GCinterval 3600
 
 // Delay applied to the garbage collecting [seconds]
-// Default -60 (one minute before a full hour)
+// Default: -60 (one minute before a full hour)
 #define GCdelay (-60)
 
 // How many client connection do we accept at once?
@@ -65,6 +65,20 @@
 
 // Over how many queries do we iterate at most when trying to find a match?
 #define MAXITER 1000
+
+// How many hours do we want to store in FTL's memory? [hours]
+#define MAXLOGAGE 24
+
+// Interval for overTime data [seconds]
+// Default: 600 (10 minute intervals)
+#define OVERTIME_INTERVAL 600
+
+// How many overTime slots do we need?
+// (24+1) hours * number of intervals per hour
+// We need to be able to hold 25 hours as we need some reserve
+// due to that GC is only running once an hours so the shown data
+// can be 24 hours + 59 minutes
+#define OVERTIME_SLOTS ((MAXLOGAGE+1)*3600/OVERTIME_INTERVAL)
 
 // FTLDNS enums
 enum { DATABASE_WRITE_TIMER, EXIT_TIMER, GC_TIMER, LISTS_TIMER, REGEX_TIMER, ARP_TIMER, LAST_TIMER };
@@ -78,15 +92,16 @@ enum { MODE_IP, MODE_NX, MODE_NULL, MODE_IP_NODATA_AAAA, MODE_NODATA };
 enum { REGEX_UNKNOWN, REGEX_BLOCKED, REGEX_NOTBLOCKED };
 enum { BLOCKING_DISABLED, BLOCKING_ENABLED, BLOCKING_UNKNOWN };
 enum {
-  DEBUG_DATABASE   = (1 << 0), /* 00000000 00000001 */
-  DEBUG_NETWORKING = (1 << 1), /* 00000000 00000010 */
-  DEBUG_LOCKS      = (1 << 2), /* 00000000 00000100 */
-  DEBUG_QUERIES    = (1 << 3), /* 00000000 00001000 */
-  DEBUG_FLAGS      = (1 << 4), /* 00000000 00010000 */
-  DEBUG_SHMEM      = (1 << 5), /* 00000000 00100000 */
-  DEBUG_GC         = (1 << 6), /* 00000000 01000000 */
-  DEBUG_ARP        = (1 << 7), /* 00000000 10000000 */
-  DEBUG_REGEX      = (1 << 8), /* 00000001 00000000 */
+  DEBUG_DATABASE   = (1 << 0),  /* 00000000 00000001 */
+  DEBUG_NETWORKING = (1 << 1),  /* 00000000 00000010 */
+  DEBUG_LOCKS      = (1 << 2),  /* 00000000 00000100 */
+  DEBUG_QUERIES    = (1 << 3),  /* 00000000 00001000 */
+  DEBUG_FLAGS      = (1 << 4),  /* 00000000 00010000 */
+  DEBUG_SHMEM      = (1 << 5),  /* 00000000 00100000 */
+  DEBUG_GC         = (1 << 6),  /* 00000000 01000000 */
+  DEBUG_ARP        = (1 << 7),  /* 00000000 10000000 */
+  DEBUG_REGEX      = (1 << 8),  /* 00000001 00000000 */
+  DEBUG_OVERTIME   = (1 << 10), /* 00000100 00000000 */
 };
 
 // Database table "ftl"
@@ -134,7 +149,6 @@ typedef struct {
 	int overTime_MAX;
 	int gravity;
 	int gravity_conf;
-	int overTime;
 	int querytype[TYPE_MAX-1];
 	int forwardedqueries;
 	int reply_NODATA;
@@ -166,7 +180,7 @@ typedef struct {
 typedef struct {
 	unsigned char magic;
 	time_t timestamp;
-	int timeidx;
+	unsigned int timeidx;
 	unsigned char type;
 	unsigned char status;
 	int domainID;
@@ -198,6 +212,7 @@ typedef struct {
 	unsigned long long ippos;
 	unsigned long long namepos;
 	bool new;
+	int overTime[OVERTIME_SLOTS];
 	time_t lastQuery;
 	unsigned int numQueriesARP;
 } clientsDataStruct;
