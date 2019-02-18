@@ -35,8 +35,7 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	lock_shm();
 
 	// Get timestamp
-	int querytimestamp, overTimetimestamp;
-	gettimestamp(&querytimestamp, &overTimetimestamp);
+	time_t querytimestamp = time(NULL);
 
 	// Save request time
 	struct timeval request;
@@ -115,10 +114,11 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	if(debug) logg("**** new %s %s \"%s\" from %s (ID %i)", proto, types, domain, client, id);
 
 	// Update counters
-	int timeidx = findOverTimeID(overTimetimestamp);
-	validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
-	overTime[timeidx].querytypedata[querytype-1]++;
 	counters->querytype[querytype-1]++;
+
+	// Update overTime
+	unsigned int timeidx = getOverTimeID(querytimestamp);
+	overTime[timeidx].querytypedata[querytype-1]++;
 
 	// Skip rest of the analysis if this query is not of type A or AAAA
 	// but user wants to see only A and AAAA queries (pre-v4.1 behavior)
@@ -173,11 +173,9 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	counters->unknown++;
 
 	// Update overTime data
-	validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 	overTime[timeidx].total++;
-
 	// Update overTime data structure with the new client
-	overTimeClientData[clientID][timeidx]++;
+	clients[clientID].overTime[timeidx]++;
 
 	// Try blocking regex if configured
 	validate_access("domains", domainID, false, __LINE__, __FUNCTION__, __FILE__);
@@ -250,6 +248,8 @@ void FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id
 
 	// Get forward destination IP address
 	char dest[ADDRSTRLEN];
+	// If addr == NULL, we will only duplicate an empty string instead of uninitialized memory
+	dest[0] = '\0';
 	if(addr != NULL)
 		inet_ntop((flags & F_IPV4) ? AF_INET : AF_INET6, addr, dest, ADDRSTRLEN);
 	// Convert forward to lower case
@@ -288,8 +288,7 @@ void FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id
 	int forwardID = findForwardID(forward, true);
 	queries[i].forwardID = forwardID;
 
-	int j = queries[i].timeidx;
-	validate_access("overTime", j, true, __LINE__, __FUNCTION__, __FILE__);
+	unsigned int timeidx = queries[i].timeidx;
 
 	if(queries[i].status == QUERY_CACHE)
 	{
@@ -311,7 +310,7 @@ void FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id
 		// forwarded in the following.
 		counters->cached--;
 		// Also correct overTime data
-		overTime[j].cached--;
+		overTime[timeidx].cached--;
 
 		// Correct reply timer
 		struct timeval response;
@@ -336,7 +335,7 @@ void FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int id
 	queries[i].status = QUERY_FORWARDED;
 
 	// Update overTime data
-	overTime[j].forwarded++;
+	overTime[timeidx].forwarded++;
 
 	// Update counter for forwarded queries
 	counters->forwardedqueries++;
@@ -436,10 +435,7 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 		counters->unknown--;
 
 		// Get time index
-		int querytimestamp, overTimetimestamp;
-		gettimestamp(&querytimestamp, &overTimetimestamp);
-		int timeidx = findOverTimeID(overTimetimestamp);
-		validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
+		unsigned int timeidx = queries[i].timeidx;
 
 		if(strcmp(answer, "(NXDOMAIN)") == 0 ||
 		   strcmp(answer, "0.0.0.0") == 0 ||
@@ -564,18 +560,20 @@ static void detect_blocked_IP(unsigned short flags, char* answer, int queryID)
 
 static void query_externally_blocked(int i)
 {
+	unsigned int timeidx = queries[i].timeidx;
+
 	// Correct counters if necessary ...
 	if(queries[i].status == QUERY_FORWARDED)
 	{
 		counters->forwardedqueries--;
-		overTime[queries[i].timeidx].forwarded--;
+		overTime[timeidx].forwarded--;
 		validate_access("forwarded", queries[i].forwardID, true, __LINE__, __FUNCTION__, __FILE__);
 		forwarded[queries[i].forwardID].count--;
 	}
 
 	// ... but as blocked
 	counters->blocked++;
-	overTime[queries[i].timeidx].blocked++;
+	overTime[timeidx].blocked++;
 	validate_access("domains", queries[i].domainID, true, __LINE__, __FUNCTION__, __FILE__);
 	domains[queries[i].domainID].blockedcount++;
 	validate_access("clients", queries[i].clientID, true, __LINE__, __FUNCTION__, __FILE__);
@@ -672,10 +670,7 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 		counters->unknown--;
 
 		// Get time index
-		int querytimestamp, overTimetimestamp;
-		gettimestamp(&querytimestamp, &overTimetimestamp);
-		int timeidx = findOverTimeID(overTimetimestamp);
-		validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
+		unsigned int timeidx = queries[i].timeidx;
 
 		int domainID = queries[i].domainID;
 		validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);

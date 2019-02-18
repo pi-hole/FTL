@@ -42,7 +42,6 @@ forwardedDataStruct *forwarded = NULL;
 clientsDataStruct *clients = NULL;
 domainsDataStruct *domains = NULL;
 overTimeDataStruct *overTime = NULL;
-int **overTimeClientData = NULL;
 
 void memory_check(int which)
 {
@@ -96,18 +95,6 @@ void memory_check(int which)
 				}
 			}
 		break;
-		case OVERTIME:
-			if(counters->overTime >= counters->overTime_MAX-1)
-			{
-				// Have to reallocate shared memory
-				overTime = enlarge_shmem_struct(OVERTIME);
-				if(overTime == NULL)
-				{
-					logg("FATAL: Memory allocation failed! Exiting");
-					exit(EXIT_FAILURE);
-				}
-			}
-		break;
 		default:
 			/* That cannot happen */
 			logg("Fatal error in memory_check(%i)", which);
@@ -122,7 +109,6 @@ void validate_access(const char * name, int pos, bool testmagic, int line, const
 	if(name[0] == 'c') limit = counters->clients_MAX;
 	else if(name[0] == 'd') limit = counters->domains_MAX;
 	else if(name[0] == 'q') limit = counters->queries_MAX;
-	else if(name[0] == 'o') limit = counters->overTime_MAX;
 	else if(name[0] == 'f') limit = counters->forwarded_MAX;
 	else { logg("Validator error (range)"); killed = 1; }
 
@@ -138,7 +124,6 @@ void validate_access(const char * name, int pos, bool testmagic, int line, const
 		if(name[0] == 'c') magic = clients[pos].magic;
 		else if(name[0] == 'd') magic = domains[pos].magic;
 		else if(name[0] == 'q') magic = queries[pos].magic;
-		else if(name[0] == 'o') magic = overTime[pos].magic;
 		else if(name[0] == 'f') magic = forwarded[pos].magic;
 		else { logg("Validator error (magic byte)"); killed = 1; }
 		if(magic != MAGICBYTE)

@@ -59,7 +59,7 @@
 #define GCinterval 3600
 
 // Delay applied to the garbage collecting [seconds]
-// Default -60 (one minute before a full hour)
+// Default: -60 (one minute before a full hour)
 #define GCdelay (-60)
 
 // How many client connection do we accept at once?
@@ -67,6 +67,20 @@
 
 // Over how many queries do we iterate at most when trying to find a match?
 #define MAXITER 1000
+
+// How many hours do we want to store in FTL's memory? [hours]
+#define MAXLOGAGE 24
+
+// Interval for overTime data [seconds]
+// Default: 600 (10 minute intervals)
+#define OVERTIME_INTERVAL 600
+
+// How many overTime slots do we need?
+// (24+1) hours * number of intervals per hour
+// We need to be able to hold 25 hours as we need some reserve
+// due to that GC is only running once an hours so the shown data
+// can be 24 hours + 59 minutes
+#define OVERTIME_SLOTS ((MAXLOGAGE+1)*3600/OVERTIME_INTERVAL)
 
 // FTLDNS enums
 enum { DATABASE_WRITE_TIMER, EXIT_TIMER, GC_TIMER, LISTS_TIMER, REGEX_TIMER };
@@ -119,7 +133,6 @@ typedef struct {
 	int overTime_MAX;
 	int gravity;
 	int gravity_conf;
-	int overTime;
 	int querytype[TYPE_MAX-1];
 	int forwardedqueries;
 	int reply_NODATA;
@@ -150,7 +163,7 @@ typedef struct {
 typedef struct {
 	unsigned char magic;
 	time_t timestamp;
-	int timeidx;
+	unsigned int timeidx;
 	unsigned char type;
 	unsigned char status;
 	int domainID;
@@ -182,6 +195,7 @@ typedef struct {
 	unsigned long long ippos;
 	unsigned long long namepos;
 	bool new;
+	int overTime[OVERTIME_SLOTS];
 } clientsDataStruct;
 
 typedef struct {
