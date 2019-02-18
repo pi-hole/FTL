@@ -12,7 +12,7 @@
 #include "shmem.h"
 
 /// The version of shared memory used
-#define SHARED_MEMORY_VERSION 2
+#define SHARED_MEMORY_VERSION 3
 
 /// The name of the shared memory. Use this when connecting to the shared memory.
 #define SHARED_LOCK_NAME "/FTL-lock"
