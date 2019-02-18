@@ -19,7 +19,8 @@
 static void initSlot(unsigned int index, time_t timestamp)
 {
 	// Possible debug printing
-	if(debug) logg("initSlot(%u, %u): Zeroing overTIme slot", index, timestamp);
+	if(config.debug & DEBUG_OVERTIME)
+		logg("initSlot(%u, %u): Zeroing overTIme slot", index, timestamp);
 
 	overTime[index].magic = MAGICBYTE;
 	overTime[index].timestamp = timestamp;
@@ -46,7 +47,8 @@ void initOverTime(void)
 	// If the current time is 09:35, the last interval is 09:50 - 10:00 (centered at 09:55)
 	time_t timestamp = now - now % 3600 + 3600 - (OVERTIME_INTERVAL / 2);
 
-	if(debug) logg("initOverTime(): Initializing %i slots from %u to %u", OVERTIME_SLOTS, timestamp-OVERTIME_SLOTS*OVERTIME_INTERVAL, timestamp);
+	if(config.debug & DEBUG_OVERTIME)
+		logg("initOverTime(): Initializing %i slots from %u to %u", OVERTIME_SLOTS, timestamp-OVERTIME_SLOTS*OVERTIME_INTERVAL, timestamp);
 
 	// Iterate over overTime and initialize it
 	for(int i = OVERTIME_SLOTS-1; i >= 0 ; i--)
@@ -84,7 +86,8 @@ unsigned int getOverTimeID(time_t timestamp)
 		return OVERTIME_SLOTS-1;
 	}
 
-	if(debug) logg("getOverTimeID(%u): %i", timestamp, id);
+	if(config.debug & DEBUG_OVERTIME)
+		logg("getOverTimeID(%u): %i", timestamp, id);
 
 	return (unsigned int) id;
 }
@@ -107,14 +110,16 @@ void moveOverTimeMemory(time_t mintime)
 	// The number of slots which will be moved (not garbage collected)
 	unsigned int remainingSlots = OVERTIME_SLOTS - moveOverTime;
 
-	if(debug) logg("moveOverTimeMemory(): IS: %u, SHOULD: %u, MOVING: %u", oldestOverTimeIS, oldestOverTimeSHOULD, moveOverTime);
+	if(config.debug & DEBUG_OVERTIME)
+		logg("moveOverTimeMemory(): IS: %u, SHOULD: %u, MOVING: %u", oldestOverTimeIS, oldestOverTimeSHOULD, moveOverTime);
 
 	// Check if the move over amount is valid. This prevents errors if the
 	// function is called before GC is necessary.
 	if(moveOverTime > 0 && moveOverTime < OVERTIME_SLOTS)
 	{
 		// Move overTime memory
-		if(debug) logg("moveOverTimeMemory(): Moving overTime %u - %u to 0 - %u", moveOverTime, moveOverTime+remainingSlots, remainingSlots);
+		if(config.debug & DEBUG_OVERTIME)
+			logg("moveOverTimeMemory(): Moving overTime %u - %u to 0 - %u", moveOverTime, moveOverTime+remainingSlots, remainingSlots);
 		memmove(&overTime[0], &overTime[moveOverTime], remainingSlots*sizeof(*overTime));
 
 		// Correct time indices of queries. This is necessary because we just moved the slot this index points to

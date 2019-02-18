@@ -11,7 +11,7 @@
 #include "FTL.h"
 #include "version.h"
 
-bool debug = false;
+static bool debug = false;
 bool daemonmode = true;
 bool travis = false;
 int argc_dnsmasq = 0;

@@ -168,6 +168,12 @@ void process_request(char *client_message, int *sock)
 		read_regex_from_file();
 		unlock_shm();
 	}
+	else if(command(client_message, ">update-mac-vendor"))
+	{
+		processed = true;
+		logg("Received API request to update vendors in network table");
+		updateMACVendorRecords();
+	}
 
 	// Test only at the end if we want to quit or kill
 	// so things can be processed before

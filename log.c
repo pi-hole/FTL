@@ -96,7 +96,7 @@ void logg(const char *format, ...)
 		va_end(args);
 		fputc('\n',logfile);
 	}
-	else if(debug)
+	else if(!daemonmode)
 	{
 		printf("!!! WARNING: Writing to FTL\'s log file failed!\n");
 		syslog(LOG_ERR, "Writing to FTL\'s log file failed!");

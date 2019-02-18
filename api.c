@@ -11,6 +11,8 @@
 #include "FTL.h"
 #include "api.h"
 #include "version.h"
+// needed for sqlite3_libversion()
+#include "sqlite3.h"
 
 #define min(a,b) ({ __typeof__ (a) _a = (a); __typeof__ (b) _b = (b); _a < _b ? _a : _b; })
 

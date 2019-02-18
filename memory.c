@@ -20,6 +20,7 @@ FTLFileNamesStruct FTLfiles = {
 	NULL,
 	NULL,
 	NULL,
+	NULL,
 	NULL
 };
 
