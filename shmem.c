@@ -110,6 +110,7 @@ void remap_shm(void)
 {
 	// Remap shared object pointers which might have changed
 	realloc_shm(&shm_queries, 0);
+	realloc_shm(&shm_strings, 0);
 	realloc_shm(&shm_domains, 0);
 	realloc_shm(&shm_clients, 0);
 	realloc_shm(&shm_forwarded, 0);
