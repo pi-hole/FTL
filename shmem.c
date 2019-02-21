@@ -64,7 +64,7 @@ unsigned long long addstr(const char *str)
 	size_t required_size = next_pos + len + 1;
 	// Need to cast to long long because size_t calculations cannot be negative
 	if((long long)required_size-(long long)shm_strings.size > 0 &&
-	   !realloc_shm(&shm_strings, shm_strings.size + pagesize))
+	   !realloc_shm(&shm_strings, shm_strings.size + pagesize, true))
 		return 0;
 
 	// Copy the C string pointed by str into the shared string buffer
@@ -109,11 +109,11 @@ pthread_mutex_t create_mutex() {
 void remap_shm(void)
 {
 	// Remap shared object pointers which might have changed
-	realloc_shm(&shm_queries, 0);
-	realloc_shm(&shm_strings, 0);
-	realloc_shm(&shm_domains, 0);
-	realloc_shm(&shm_clients, 0);
-	realloc_shm(&shm_forwarded, 0);
+	realloc_shm(&shm_queries, counters->queries_MAX*sizeof(queriesDataStruct), false);
+	realloc_shm(&shm_domains, counters->domains_MAX*sizeof(domainsDataStruct), false);
+	realloc_shm(&shm_clients, counters->clients_MAX*sizeof(clientsDataStruct), false);
+	realloc_shm(&shm_forwarded, counters->forwarded_MAX*sizeof(forwardedDataStruct), false);
+	realloc_shm(&shm_strings, counters->strings_MAX*sizeof(char), false);
 
 	// Update local counter to reflect that we absorbed this change
 	local_shm_counter = shmSettings->global_shm_counter;
@@ -172,18 +172,19 @@ bool init_shmem(void)
 	shmLock->lock = create_mutex();
 	shmLock->waitingForLock = false;
 
-	/****************************** shared strings buffer ******************************/
-	// Try to create shared memory object
-	shm_strings = create_shm(SHARED_STRINGS_NAME, pagesize);
-
-	// Initialize shared string object with an empty string at position zero
-	((char*)shm_strings.ptr)[0] = '\0';
-	next_pos = 1;
-
 	/****************************** shared counters struct ******************************/
 	// Try to create shared memory object
 	shm_counters = create_shm(SHARED_COUNTERS_NAME, sizeof(countersStruct));
 	counters = (countersStruct*)shm_counters.ptr;
+
+	/****************************** shared strings buffer ******************************/
+	// Try to create shared memory object
+	shm_strings = create_shm(SHARED_STRINGS_NAME, pagesize);
+	counters->strings_MAX = pagesize;
+
+	// Initialize shared string object with an empty string at position zero
+	((char*)shm_strings.ptr)[0] = '\0';
+	next_pos = 1;
 
 	/****************************** shared domains struct ******************************/
 	// Try to create shared memory object
@@ -214,7 +215,6 @@ bool init_shmem(void)
 	// Try to create shared memory object
 	shm_overTime = create_shm(SHARED_OVERTIME_NAME, size);
 	overTime = (overTimeDataStruct*)shm_overTime.ptr;
-	counters->overTime_MAX = (int) size;
 	initOverTime();
 
 	/****************************** shared settings struct ******************************/
@@ -341,7 +341,7 @@ void *enlarge_shmem_struct(char type)
 	}
 
 	// Reallocate enough space for 4096 instances of requested object
-	realloc_shm(sharedMemory, sharedMemory->size + pagesize*sizeofobj);
+	realloc_shm(sharedMemory, sharedMemory->size + pagesize*sizeofobj, true);
 
 	// Add allocated memory to corresponding counter
 	*counter += pagesize;
@@ -349,7 +349,7 @@ void *enlarge_shmem_struct(char type)
 	return sharedMemory->ptr;
 }
 
-bool realloc_shm(SharedMemory *sharedMemory, size_t size)
+bool realloc_shm(SharedMemory *sharedMemory, size_t size, bool resize)
 {
 	if(size > 0)
 		logg("Resizing \"%s\" from %zu to %zu", sharedMemory->name, sharedMemory->size, size);
@@ -371,7 +371,7 @@ bool realloc_shm(SharedMemory *sharedMemory, size_t size)
 	// If not, we only remap a shared memory object which might have changed
 	// in another process. This happens when pihole-FTL forks due to incoming
 	// TCP requests.
-	if(size > 0)
+	if(resize)
 	{
 		result = ftruncate(fd, size);
 		if(result == -1) {
@@ -383,11 +383,6 @@ bool realloc_shm(SharedMemory *sharedMemory, size_t size)
 		// Update shm counters to indicate that at least one shared memory object changed
 		shmSettings->global_shm_counter++;
 		local_shm_counter++;
-	}
-	else
-	{
-		// If we are not resizing, we copy sharedMemory->size to pass this to mmap() in the next step
-		size = sharedMemory->size;
 	}
 
 //	void *new_ptr = mremap(sharedMemory->ptr, sharedMemory->size, size, MREMAP_MAYMOVE);
