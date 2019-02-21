@@ -370,21 +370,23 @@ bool realloc_shm(SharedMemory *sharedMemory, size_t size, bool resize)
 	// Log that we are doing something here
 	logg("%s \"%s\" from %zu to %zu", resize ? "Resizing" : "Remapping", sharedMemory->name, sharedMemory->size, size);
 
-	// Open shared memory object
-	int fd = shm_open(sharedMemory->name, O_RDWR, S_IRUSR | S_IWUSR);
-	if(fd == -1)
-	{
-		logg("FATAL: realloc_shm(): Failed to open shared memory object \"%s\": %s",
-		     sharedMemory->name, strerror(errno));
-		exit(EXIT_FAILURE);
-	}
-
 	// Resize shard memory object if requested
 	// If not, we only remap a shared memory object which might have changed
 	// in another process. This happens when pihole-FTL forks due to incoming
 	// TCP requests.
+	int fd = -1;
 	if(resize)
 	{
+		// Open shared memory object
+		fd = shm_open(sharedMemory->name, O_RDWR, S_IRUSR | S_IWUSR);
+		if(fd == -1)
+		{
+			logg("FATAL: realloc_shm(): Failed to open shared memory object \"%s\": %s",
+			     sharedMemory->name, strerror(errno));
+			exit(EXIT_FAILURE);
+		}
+
+		// Truncate shared memory object to specified size
 		int result = ftruncate(fd, size);
 		if(result == -1) {
 			logg("FATAL: realloc_shm(): ftruncate(%i, %zu): Failed to resize \"%s\": %s",
@@ -408,7 +410,8 @@ bool realloc_shm(SharedMemory *sharedMemory, size_t size, bool resize)
 
 	// Close shared memory object file descriptor as it is no longer
 	// needed after having called ftruncate()
-	close(fd);
+	if(resize)
+		close(fd);
 
 	sharedMemory->ptr = new_ptr;
 	sharedMemory->size = size;
