@@ -23,8 +23,8 @@ version: 2
           mv pihole-FTL "${BIN_NAME}"
           sha1sum pihole-FTL-* > ${BIN_NAME}.sha1
           ssh-keyscan -H $SSH_HOST >> ~/.ssh/known_hosts
-          [[ "$CIRCLE_PR_NUMBER" == "" ]] && sftp $SSH_USER@$SSH_HOST <<<$'mkdir ${CIRCLE_TAG:CIRCLE_BRANCH}'
-          [[ "$CIRCLE_PR_NUMBER" == "" ]] && sftp $SSH_USER@$SSH_HOST <<<$'put ${BIN_NAME}*'
+          [[ "$CIRCLE_PR_NUMBER" == "" ]] && sftp $SSH_USER@$SSH_HOST <<<$"mkdir ${CIRCLE_TAG:CIRCLE_BRANCH}"
+          [[ "$CIRCLE_PR_NUMBER" == "" ]] && sftp $SSH_USER@$SSH_HOST <<<$"put ${BIN_NAME}*"
           mv "${BIN_NAME}" pihole-FTL
     - run:
         name: "Test"
