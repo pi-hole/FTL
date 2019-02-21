@@ -12,7 +12,7 @@
 #include "shmem.h"
 
 /// The version of shared memory used
-#define SHARED_MEMORY_VERSION 1
+#define SHARED_MEMORY_VERSION 5
 
 /// The name of the shared memory. Use this when connecting to the shared memory.
 #define SHARED_LOCK_NAME "/FTL-lock"
@@ -41,9 +41,11 @@ typedef struct {
 	bool waitingForLock;
 } ShmLock;
 static ShmLock *shmLock = NULL;
+static ShmSettings *shmSettings = NULL;
 
 static int pagesize;
 static unsigned int next_pos = 0;
+static unsigned int local_shm_counter = 0;
 
 unsigned long long addstr(const char *str)
 {
@@ -104,11 +106,31 @@ pthread_mutex_t create_mutex() {
 	return lock;
 }
 
+void remap_shm(void)
+{
+	// Remap shared object pointers which might have changed
+	realloc_shm(&shm_queries, 0);
+	realloc_shm(&shm_domains, 0);
+	realloc_shm(&shm_clients, 0);
+	realloc_shm(&shm_forwarded, 0);
+
+	// Update local counter to reflect that we absorbed this change
+	local_shm_counter = shmSettings->global_shm_counter;
+}
+
 void _lock_shm(const char* function, const int line, const char * file) {
 	// Signal that FTL is waiting for a lock
 	shmLock->waitingForLock = true;
 
 	if(debug) logg("Waiting for lock in %s() (%s:%i)", function, file, line);
+
+	// Check if this process needs to remap the shared memory objects
+	if(shmSettings != NULL &&
+	   local_shm_counter != shmSettings->global_shm_counter)
+	{
+		logg("Remapping shared memory for current process %u %u", local_shm_counter, shmSettings->global_shm_counter);
+		remap_shm();
+	}
 
 	int result = pthread_mutex_lock(&shmLock->lock);
 
@@ -199,8 +221,9 @@ bool init_shmem(void)
 	shm_settings = create_shm(SHARED_SETTINGS_NAME, sizeof(ShmSettings));
 	if(shm_settings.ptr == NULL)
 		return false;
-	ShmSettings *settings = (ShmSettings*)shm_settings.ptr;
-	settings->version = SHARED_MEMORY_VERSION;
+	shmSettings = (ShmSettings*)shm_settings.ptr;
+	shmSettings->version = SHARED_MEMORY_VERSION;
+	shmSettings->global_shm_counter = 0;
 
 	return true;
 }
@@ -325,8 +348,10 @@ void *enlarge_shmem_struct(char type)
 	return sharedMemory->ptr;
 }
 
-bool realloc_shm(SharedMemory *sharedMemory, size_t size) {
-	logg("Resizing \"%s\" from %zu to %zu", sharedMemory->name, sharedMemory->size, size);
+bool realloc_shm(SharedMemory *sharedMemory, size_t size)
+{
+	if(size > 0)
+		logg("Resizing \"%s\" from %zu to %zu", sharedMemory->name, sharedMemory->size, size);
 
 	int result = munmap(sharedMemory->ptr, sharedMemory->size);
 	if(result != 0)
@@ -341,12 +366,27 @@ bool realloc_shm(SharedMemory *sharedMemory, size_t size) {
 		exit(EXIT_FAILURE);
 	}
 
-	// Resize shard memory object to requested size
-	result = ftruncate(fd, size);
-	if(result == -1) {
-		logg("FATAL: realloc_shm(): ftruncate(%i, %zu): Failed to resize \"%s\": %s",
-		     fd, size, sharedMemory->name, strerror(errno));
-		exit(EXIT_FAILURE);
+	// Resize shard memory object if requested
+	// If not, we only remap a shared memory object which might have changed
+	// in another process. This happens when pihole-FTL forks due to incoming
+	// TCP requests.
+	if(size > 0)
+	{
+		result = ftruncate(fd, size);
+		if(result == -1) {
+			logg("FATAL: realloc_shm(): ftruncate(%i, %zu): Failed to resize \"%s\": %s",
+			     fd, size, sharedMemory->name, strerror(errno));
+			exit(EXIT_FAILURE);
+		}
+
+		// Update shm counters to indicate that at least one shared memory object changed
+		shmSettings->global_shm_counter++;
+		local_shm_counter++;
+	}
+	else
+	{
+		// If we are not resizing, we copy sharedMemory->size to pass this to mmap() in the next step
+		size = sharedMemory->size;
 	}
 
 //	void *new_ptr = mremap(sharedMemory->ptr, sharedMemory->size, size, MREMAP_MAYMOVE);
