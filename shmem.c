@@ -114,10 +114,15 @@ void remap_shm(void)
 {
 	// Remap shared object pointers which might have changed
 	realloc_shm(&shm_queries, counters->queries_MAX*sizeof(queriesDataStruct), false);
+	queries = (queriesDataStruct*)shm_queries.ptr;
 	realloc_shm(&shm_domains, counters->domains_MAX*sizeof(domainsDataStruct), false);
+	domains = (domainsDataStruct*)shm_domains.ptr;
 	realloc_shm(&shm_clients, counters->clients_MAX*sizeof(clientsDataStruct), false);
+	clients = (clientsDataStruct*)shm_clients.ptr;
 	realloc_shm(&shm_forwarded, counters->forwarded_MAX*sizeof(forwardedDataStruct), false);
+	forwarded = (forwardedDataStruct*)shm_forwarded.ptr;
 	realloc_shm(&shm_strings, counters->strings_MAX, false);
+	// strings are not exposed by a global pointer
 
 	// Update local counter to reflect that we absorbed this change
 	local_shm_counter = shmSettings->global_shm_counter;
@@ -137,7 +142,8 @@ void _lock_shm(const char* function, const int line, const char * file) {
 	if(shmSettings != NULL &&
 	   local_shm_counter != shmSettings->global_shm_counter)
 	{
-		logg("Remapping shared memory for current process %u %u", local_shm_counter, shmSettings->global_shm_counter);
+		if(debug) logg("Remapping shared memory for current process %u %u",
+		               local_shm_counter, shmSettings->global_shm_counter);
 		remap_shm();
 	}
 
@@ -355,7 +361,14 @@ void *enlarge_shmem_struct(char type)
 
 bool realloc_shm(SharedMemory *sharedMemory, size_t size, bool resize)
 {
-	logg("%s \"%s\" from %zu to %zu", resize ? "Remapping" : "Resizing", sharedMemory->name, sharedMemory->size, size);
+	// Check if we can skip this routine as nothing is to be done
+	// when an object is not to be resized and its size didn't
+	// change elsewhere
+	if(!resize && size == sharedMemory->size)
+		return true;
+
+	// Log that we are doing something here
+	logg("%s \"%s\" from %zu to %zu", resize ? "Resizing" : "Remapping", sharedMemory->name, sharedMemory->size, size);
 
 	// Open shared memory object
 	int fd = shm_open(sharedMemory->name, O_RDWR, S_IRUSR | S_IWUSR);
@@ -394,7 +407,7 @@ bool realloc_shm(SharedMemory *sharedMemory, size_t size, bool resize)
 	}
 
 	// Close shared memory object file descriptor as it is no longer
-	// needed after having called mmap()
+	// needed after having called ftruncate()
 	close(fd);
 
 	sharedMemory->ptr = new_ptr;
