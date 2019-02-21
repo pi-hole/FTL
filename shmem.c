@@ -67,6 +67,10 @@ unsigned long long addstr(const char *str)
 	   !realloc_shm(&shm_strings, shm_strings.size + pagesize, true))
 		return 0;
 
+	// Store new string buffer size in corresponding counters entry
+	// for re-using when we need to re-map shared memory objects
+	counters->strings_MAX = shm_strings.size;
+
 	// Copy the C string pointed by str into the shared string buffer
 	strncpy(&((char*)shm_strings.ptr)[next_pos], str, len);
 	((char*)shm_strings.ptr)[next_pos + len] = '\0';
@@ -113,7 +117,7 @@ void remap_shm(void)
 	realloc_shm(&shm_domains, counters->domains_MAX*sizeof(domainsDataStruct), false);
 	realloc_shm(&shm_clients, counters->clients_MAX*sizeof(clientsDataStruct), false);
 	realloc_shm(&shm_forwarded, counters->forwarded_MAX*sizeof(forwardedDataStruct), false);
-	realloc_shm(&shm_strings, counters->strings_MAX*sizeof(char), false);
+	realloc_shm(&shm_strings, counters->strings_MAX, false);
 
 	// Update local counter to reflect that we absorbed this change
 	local_shm_counter = shmSettings->global_shm_counter;
@@ -125,6 +129,10 @@ void _lock_shm(const char* function, const int line, const char * file) {
 
 	if(debug) logg("Waiting for lock in %s() (%s:%i)", function, file, line);
 
+	int result = pthread_mutex_lock(&shmLock->lock);
+
+	if(debug) logg("Obtained lock for %s() (%s:%i)", function, file, line);
+
 	// Check if this process needs to remap the shared memory objects
 	if(shmSettings != NULL &&
 	   local_shm_counter != shmSettings->global_shm_counter)
@@ -132,10 +140,6 @@ void _lock_shm(const char* function, const int line, const char * file) {
 		logg("Remapping shared memory for current process %u %u", local_shm_counter, shmSettings->global_shm_counter);
 		remap_shm();
 	}
-
-	int result = pthread_mutex_lock(&shmLock->lock);
-
-	if(debug) logg("Obtained lock for %s() (%s:%i)", function, file, line);
 
 	// Turn off the waiting for lock signal to notify everyone who was
 	// deferring to FTL that they can jump in the lock queue.
@@ -351,12 +355,7 @@ void *enlarge_shmem_struct(char type)
 
 bool realloc_shm(SharedMemory *sharedMemory, size_t size, bool resize)
 {
-	if(size > 0)
-		logg("Resizing \"%s\" from %zu to %zu", sharedMemory->name, sharedMemory->size, size);
-
-	int result = munmap(sharedMemory->ptr, sharedMemory->size);
-	if(result != 0)
-		logg("realloc_shm(): munmap(%p, %zu) failed: %s", sharedMemory->ptr, sharedMemory->size, strerror(errno));
+	logg("%s \"%s\" from %zu to %zu", resize ? "Remapping" : "Resizing", sharedMemory->name, sharedMemory->size, size);
 
 	// Open shared memory object
 	int fd = shm_open(sharedMemory->name, O_RDWR, S_IRUSR | S_IWUSR);
@@ -373,7 +372,7 @@ bool realloc_shm(SharedMemory *sharedMemory, size_t size, bool resize)
 	// TCP requests.
 	if(resize)
 	{
-		result = ftruncate(fd, size);
+		int result = ftruncate(fd, size);
 		if(result == -1) {
 			logg("FATAL: realloc_shm(): ftruncate(%i, %zu): Failed to resize \"%s\": %s",
 			     fd, size, sharedMemory->name, strerror(errno));
@@ -385,8 +384,7 @@ bool realloc_shm(SharedMemory *sharedMemory, size_t size, bool resize)
 		local_shm_counter++;
 	}
 
-//	void *new_ptr = mremap(sharedMemory->ptr, sharedMemory->size, size, MREMAP_MAYMOVE);
-	void *new_ptr = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+	void *new_ptr = mremap(sharedMemory->ptr, sharedMemory->size, size, MREMAP_MAYMOVE);
 	if(new_ptr == MAP_FAILED)
 	{
 		logg("FATAL: realloc_shm(): mremap(%p, %zu, %zu, MREMAP_MAYMOVE): Failed to reallocate \"%s\" (%i): %s",
