@@ -224,6 +224,7 @@ typedef struct {
 typedef struct {
 	int version;
 	unsigned int global_shm_counter;
+	unsigned int next_str_pos;
 } ShmSettings;
 
 // Prepare timers, used mainly for debugging purposes

@@ -44,7 +44,6 @@ static ShmLock *shmLock = NULL;
 static ShmSettings *shmSettings = NULL;
 
 static int pagesize;
-static unsigned int next_pos = 0;
 static unsigned int local_shm_counter = 0;
 
 unsigned long long addstr(const char *str)
@@ -58,10 +57,10 @@ unsigned long long addstr(const char *str)
 	// Get string length
 	size_t len = strlen(str);
 
-	if(debug) logg("Adding \"%s\" (len %i) to buffer. next_pos is %i", str, len, next_pos);
+	if(debug) logg("Adding \"%s\" (len %i) to buffer. next_str_pos is %i", str, len, shmSettings->next_str_pos);
 
 	// Reserve additional memory if necessary
-	size_t required_size = next_pos + len + 1;
+	size_t required_size = shmSettings->next_str_pos + len + 1;
 	// Need to cast to long long because size_t calculations cannot be negative
 	if((long long)required_size-(long long)shm_strings.size > 0 &&
 	   !realloc_shm(&shm_strings, shm_strings.size + pagesize, true))
@@ -72,14 +71,14 @@ unsigned long long addstr(const char *str)
 	counters->strings_MAX = shm_strings.size;
 
 	// Copy the C string pointed by str into the shared string buffer
-	strncpy(&((char*)shm_strings.ptr)[next_pos], str, len);
-	((char*)shm_strings.ptr)[next_pos + len] = '\0';
+	strncpy(&((char*)shm_strings.ptr)[shmSettings->next_str_pos], str, len);
+	((char*)shm_strings.ptr)[shmSettings->next_str_pos + len] = '\0';
 
 	// Increment string length counter
-	next_pos += len+1;
+	shmSettings->next_str_pos += len+1;
 
 	// Return start of stored string
-	return (next_pos - (len + 1));
+	return (shmSettings->next_str_pos - (len + 1));
 }
 
 char *getstr(unsigned long long pos)
@@ -187,6 +186,13 @@ bool init_shmem(void)
 	shm_counters = create_shm(SHARED_COUNTERS_NAME, sizeof(countersStruct));
 	counters = (countersStruct*)shm_counters.ptr;
 
+	/****************************** shared settings struct ******************************/
+	// Try to create shared memory object
+	shm_settings = create_shm(SHARED_SETTINGS_NAME, sizeof(ShmSettings));
+	shmSettings = (ShmSettings*)shm_settings.ptr;
+	shmSettings->version = SHARED_MEMORY_VERSION;
+	shmSettings->global_shm_counter = 0;
+
 	/****************************** shared strings buffer ******************************/
 	// Try to create shared memory object
 	shm_strings = create_shm(SHARED_STRINGS_NAME, pagesize);
@@ -194,7 +200,7 @@ bool init_shmem(void)
 
 	// Initialize shared string object with an empty string at position zero
 	((char*)shm_strings.ptr)[0] = '\0';
-	next_pos = 1;
+	shmSettings->next_str_pos = 1;
 
 	/****************************** shared domains struct ******************************/
 	// Try to create shared memory object
@@ -226,15 +232,6 @@ bool init_shmem(void)
 	shm_overTime = create_shm(SHARED_OVERTIME_NAME, size);
 	overTime = (overTimeDataStruct*)shm_overTime.ptr;
 	initOverTime();
-
-	/****************************** shared settings struct ******************************/
-	// Try to create shared memory object
-	shm_settings = create_shm(SHARED_SETTINGS_NAME, sizeof(ShmSettings));
-	if(shm_settings.ptr == NULL)
-		return false;
-	shmSettings = (ShmSettings*)shm_settings.ptr;
-	shmSettings->version = SHARED_MEMORY_VERSION;
-	shmSettings->global_shm_counter = 0;
 
 	return true;
 }
