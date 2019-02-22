@@ -148,7 +148,8 @@ int gravityDB_count(unsigned char list)
 	}
 
 	// Open database handle
-	gravityDB_open();
+	if(!gravityDB_open())
+		return DB_FAILED;
 
 	sqlite3_stmt* stmt;
 	// Prepare query

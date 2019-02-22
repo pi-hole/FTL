@@ -272,5 +272,5 @@ void read_regex_from_database(void)
 
 void log_regex_whitelist(double time)
 {
-	logg("Compiled %i Regex filters and %i whitelisted domains in %.1f msec (%i errors)", num_regex, whitelist.count, time);
+	logg("Compiled %i Regex filters and %i whitelisted domains in %.1f msec", num_regex, whitelist.count, time);
 }
