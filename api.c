@@ -113,19 +113,28 @@ void getStats(int *sock)
 
 void getOverTime(int *sock)
 {
-	int i, j = 9999999;
+	int i, from = 0, until = OVERTIME_SLOTS;
 	bool found = false;
-	time_t mintime = time(NULL) - config.maxlogage;
+	time_t mintime = overTime[0].timestamp;
 
 	// Start with the first non-empty overTime slot
-	for(i=0; i < counters->overTime; i++)
+	for(i=0; i < OVERTIME_SLOTS; i++)
 	{
-		validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
 		if((overTime[i].total > 0 || overTime[i].blocked > 0) &&
 		   overTime[i].timestamp >= mintime)
 		{
-			j = i;
+			from = i;
 			found = true;
+			break;
+		}
+	}
+
+	// End with last non-empty overTime slot
+	for(i = 0; i < OVERTIME_SLOTS; i++)
+	{
+		if(overTime[i].timestamp >= time(NULL))
+		{
+			until = i;
 			break;
 		}
 	}
@@ -136,7 +145,7 @@ void getOverTime(int *sock)
 
 	if(istelnet[*sock])
 	{
-		for(i = j; i < counters->overTime; i++)
+		for(i = from; i < until; i++)
 		{
 			ssend(*sock,"%i %i %i\n",overTime[i].timestamp,overTime[i].total,overTime[i].blocked);
 		}
@@ -147,15 +156,15 @@ void getOverTime(int *sock)
 		// and map16 can hold up to (2^16)-1 = 65535 pairs
 
 		// Send domains over time
-		pack_map16_start(*sock, (uint16_t) (counters->overTime - j));
-		for(i = j; i < counters->overTime; i++) {
+		pack_map16_start(*sock, (uint16_t) (until - from));
+		for(i = from; i < until; i++) {
 			pack_int32(*sock, overTime[i].timestamp);
 			pack_int32(*sock, overTime[i].total);
 		}
 
 		// Send ads over time
-		pack_map16_start(*sock, (uint16_t) (counters->overTime - j));
-		for(i = j; i < counters->overTime; i++) {
+		pack_map16_start(*sock, (uint16_t) (until - from));
+		for(i = from; i < until; i++) {
 			pack_int32(*sock, overTime[i].timestamp);
 			pack_int32(*sock, overTime[i].blocked);
 		}
@@ -881,39 +890,47 @@ void getClientID(int *sock)
 
 void getQueryTypesOverTime(int *sock)
 {
-	int i, sendit = -1;
-	time_t mintime = time(NULL) - config.maxlogage;
-	for(i = 0; i < counters->overTime; i++)
+	int i, from = -1, until = OVERTIME_SLOTS;
+	time_t mintime = overTime[0].timestamp;
+	for(i = 0; i < OVERTIME_SLOTS; i++)
 	{
-		validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
 		if((overTime[i].total > 0 || overTime[i].blocked > 0) && overTime[i].timestamp >= mintime)
 		{
-			sendit = i;
+			from = i;
 			break;
 		}
 	}
 
-	if(sendit > -1)
+	// End with last non-empty overTime slot
+	for(i = 0; i < OVERTIME_SLOTS; i++)
 	{
-		for(i = sendit; i < counters->overTime; i++)
+		if(overTime[i].timestamp >= time(NULL))
 		{
-			validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
+			until = i;
+			break;
+		}
+	}
 
-			float percentageIPv4 = 0.0, percentageIPv6 = 0.0;
-			int sum = overTime[i].querytypedata[0] + overTime[i].querytypedata[1];
+	// No data?
+	if(from < 0)
+		return;
 
-			if(sum > 0) {
-				percentageIPv4 = (float) (1e2 * overTime[i].querytypedata[0] / sum);
-				percentageIPv6 = (float) (1e2 * overTime[i].querytypedata[1] / sum);
-			}
+	for(i = from; i < until; i++)
+	{
+		float percentageIPv4 = 0.0, percentageIPv6 = 0.0;
+		int sum = overTime[i].querytypedata[0] + overTime[i].querytypedata[1];
 
-			if(istelnet[*sock])
-				ssend(*sock, "%i %.2f %.2f\n", overTime[i].timestamp, percentageIPv4, percentageIPv6);
-			else {
-				pack_int32(*sock, overTime[i].timestamp);
-				pack_float(*sock, percentageIPv4);
-				pack_float(*sock, percentageIPv6);
-			}
+		if(sum > 0) {
+			percentageIPv4 = (float) (1e2 * overTime[i].querytypedata[0] / sum);
+			percentageIPv6 = (float) (1e2 * overTime[i].querytypedata[1] / sum);
+		}
+
+		if(istelnet[*sock])
+			ssend(*sock, "%i %.2f %.2f\n", overTime[i].timestamp, percentageIPv4, percentageIPv6);
+		else {
+			pack_int32(*sock, overTime[i].timestamp);
+			pack_float(*sock, percentageIPv4);
+			pack_float(*sock, percentageIPv6);
 		}
 	}
 }
@@ -996,18 +1013,18 @@ void getDBstats(int *sock)
 
 void getClientsOverTime(int *sock)
 {
-	int i, sendit = -1;
+	int i, sendit = -1, until = OVERTIME_SLOTS;
 
 	// Exit before processing any data if requested via config setting
 	get_privacy_level(NULL);
 	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS_CLIENTS)
 		return;
 
-	for(i = 0; i < counters->overTime; i++)
+	// Find minimum ID to send
+	for(i = 0; i < OVERTIME_SLOTS; i++)
 	{
-		validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
 		if((overTime[i].total > 0 || overTime[i].blocked > 0) &&
-		   overTime[i].timestamp >= time(NULL) - config.maxlogage)
+		   overTime[i].timestamp >= overTime[0].timestamp)
 		{
 			sendit = i;
 			break;
@@ -1015,6 +1032,16 @@ void getClientsOverTime(int *sock)
 	}
 	if(sendit < 0)
 		return;
+
+	// Find minimum ID to send
+	for(i = 0; i < OVERTIME_SLOTS; i++)
+	{
+		if(overTime[i].timestamp >= time(NULL))
+		{
+			until = i;
+			break;
+		}
+	}
 
 	// Get clients which the user doesn't want to see
 	char * excludeclients = read_setupVarsconf("API_EXCLUDE_CLIENTS");
@@ -1039,23 +1066,20 @@ void getClientsOverTime(int *sock)
 	}
 
 	// Main return loop
-	for(i = sendit; i < counters->overTime; i++)
+	for(i = sendit; i < until; i++)
 	{
-		validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
-
 		if(istelnet[*sock])
 			ssend(*sock, "%i", overTime[i].timestamp);
 		else
 			pack_int32(*sock, overTime[i].timestamp);
 
 		// Loop over forward destinations to generate output to be sent to the client
-		int j;
-		for(j = 0; j < counters->clients; j++)
+		for(int j = 0; j < counters->clients; j++)
 		{
 			if(skipclient[j])
 				continue;
 
-			int thisclient = overTimeClientData[j][i];
+			int thisclient = clients[j].overTime[i];
 
 			if(istelnet[*sock])
 				ssend(*sock, " %i", thisclient);

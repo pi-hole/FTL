@@ -93,7 +93,7 @@ void parse_arp_cache(void)
 		// changed to the database are collected for latter commitment. Read-only access
 		// such as this SELECT command will be executed immediately on the database.
 		char* querystr = NULL;
-		int ret = asprintf(&querystr, "SELECT id FROM network WHERE ip = \"%s\" AND hwaddr = \"%s\";", ip, hwaddr);
+		int ret = asprintf(&querystr, "SELECT id FROM network WHERE ip = \'%s\' AND hwaddr = \'%s\';", ip, hwaddr);
 		if(querystr == NULL || ret < 0)
 		{
 			logg("Memory allocation failed in parse_arp_cache (%i)", ret);
@@ -136,7 +136,7 @@ void parse_arp_cache(void)
 			char* macVendor = getMACVendor(hwaddr);
 			dbquery("INSERT INTO network "\
 			        "(ip,hwaddr,interface,firstSeen,lastQuery,numQueries,name,macVendor) "\
-			        "VALUES (\"%s\",\"%s\",\"%s\",%lu, %ld, %u, \"%s\", \"%s\");",\
+			        "VALUES (\'%s\',\'%s\',\'%s\',%lu, %ld, %u, \'%s\', \'%s\');",\
 			        ip, hwaddr, iface, now,
 			        clientKnown ? clients[clientID].lastQuery : 0L,
 			        clientKnown ? clients[clientID].numQueriesARP : 0u,
@@ -169,7 +169,7 @@ void parse_arp_cache(void)
 			{
 				// Store host name
 				dbquery("UPDATE network "\
-				        "SET name = \"%s\" "\
+				        "SET name = \'%s\' "\
 				        "WHERE id = %i;",\
 				        hostname, dbID);
 			}
@@ -222,7 +222,7 @@ static char* getMACVendor(const char* hwaddr)
 	// Only keep "XX:YY:ZZ" (8 characters)
 	char * hwaddrshort = strdup(hwaddr);
 	hwaddrshort[8] = '\0';
-	rc = asprintf(&querystr, "SELECT vendor FROM macvendor WHERE mac LIKE \"%s\";", hwaddrshort);
+	rc = asprintf(&querystr, "SELECT vendor FROM macvendor WHERE mac LIKE \'%s\';", hwaddrshort);
 	if(rc < 1)
 	{
 		logg("getMACVendor(%s) - Allocation error (%i)", hwaddr, rc);
@@ -303,7 +303,7 @@ void updateMACVendorRecords()
 
 		// Prepare UPDATE statement
 		char *querystr = NULL;
-		if(asprintf(&querystr, "UPDATE network SET macVendor = \"%s\" WHERE id = %i", vendor, id) < 1)
+		if(asprintf(&querystr, "UPDATE network SET macVendor = \'%s\' WHERE id = %i", vendor, id) < 1)
 		{
 			logg("updateMACVendorRecords() - Allocation error 2");
 			free(vendor);

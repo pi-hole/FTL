@@ -196,13 +196,13 @@ void read_FTLconf(void)
 
 	// MAXLOGAGE
 	// Up to how many hours in the past should queries be imported from the database?
-	// defaults to: 24.0
-	config.maxlogage = 24*3600;
+	// defaults to: 24.0 via MAXLOGAGE defined in FTL.h
+	config.maxlogage = MAXLOGAGE*3600;
 	buffer = parse_FTLconf(fp, "MAXLOGAGE");
 
 	fvalue = 0;
 	if(buffer != NULL && sscanf(buffer, "%f", &fvalue))
-		if(fvalue >= 0.0f && value <= 744.0f)
+		if(fvalue >= 0.0f && fvalue <= 1.0f*MAXLOGAGE)
 			config.maxlogage = (int)(fvalue * 3600);
 	logg("   MAXLOGAGE: Importing up to %.1f hours of log data", (float)config.maxlogage/3600.0f);
 
@@ -388,7 +388,7 @@ static char *parse_FTLconf(FILE *fp, const char * key)
 	// Go to beginning of file
 	fseek(fp, 0L, SEEK_SET);
 
-	size_t size;
+	size_t size = 0;
 	errno = 0;
 	while(getline(&conflinebuffer, &size, fp) != -1)
 	{
@@ -579,6 +579,18 @@ void read_debuging_settings(FILE *fp)
 	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
 		config.debug |= DEBUG_REGEX;
 
+	// DEBUG_OVERTIME
+	// defaults to: false
+	buffer = parse_FTLconf(fp, "DEBUG_OVERTIME");
+	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
+		config.debug |= DEBUG_OVERTIME;
+
+	// DEBUG_ALL
+	// defaults to: false
+	buffer = parse_FTLconf(fp, "DEBUG_ALL");
+	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
+		config.debug = ~0;
+
 	if(config.debug)
 	{
 		logg("************************");
@@ -592,6 +604,7 @@ void read_debuging_settings(FILE *fp)
 		logg("* DEBUG_GC         %s *", (config.debug & DEBUG_GC)? "YES":"NO ");
 		logg("* DEBUG_ARP        %s *", (config.debug & DEBUG_ARP)? "YES":"NO ");
 		logg("* DEBUG_REGEX      %s *", (config.debug & DEBUG_REGEX)? "YES":"NO ");
+		logg("* DEBUG_OVERTIME   %s *", (config.debug & DEBUG_OVERTIME)? "YES":"NO ");
 		logg("************************");
 	}
 

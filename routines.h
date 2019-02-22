@@ -21,12 +21,10 @@ void logg(const char* format, ...);
 void logg_struct_resize(const char* str, int to, int step);
 void log_counter_info(void);
 void format_memory_size(char *prefix, unsigned long int bytes, double *formated);
-void log_FTL_version(void);
+void log_FTL_version(bool crashreport);
 
 // datastructure.c
-void gettimestamp(int *querytimestamp, int *overTimetimestamp);
 void strtolower(char *str);
-int findOverTimeID(int overTimetimestamp);
 int findForwardID(const char * forward, bool count);
 int findDomainID(const char *domain);
 int findClientID(const char *client, bool addNew);
@@ -136,6 +134,18 @@ void newOverTimeClient(int clientID);
  * This also updates `overTimeClientData`.
  */
 void addOverTimeClientSlot();
+
+// overTime.c
+void initOverTime(void);
+unsigned int getOverTimeID(time_t timestamp);
+
+/**
+ * Move the overTime slots so the oldest interval starts with mintime. The time
+ * given will be aligned to OVERTIME_INTERVAL.
+ *
+ * @param mintime The start of the oldest interval
+ */
+void moveOverTimeMemory(time_t mintime);
 
 // capabilities.c
 bool check_capabilities(void);

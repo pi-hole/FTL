@@ -34,7 +34,7 @@ int main (int argc, char* argv[])
 	open_FTL_log(true);
 	timer_start(EXIT_TIMER);
 	logg("########## FTL started! ##########");
-	log_FTL_version();
+	log_FTL_version(false);
 
 	// Initialize shared memory
 	if(!init_shmem())
@@ -50,15 +50,6 @@ int main (int argc, char* argv[])
 
 	// Process pihole-FTL.conf
 	read_FTLconf();
-
-	// Start timer for regex compilation analysis
-	timer_start(REGEX_TIMER);
-	// Read and compile possible regex filters
-	read_regex_from_database();
-	// Read whitelisted domains from database
-	read_whitelist_from_database();
-	log_regex_whitelist(timer_elapsed_msec(REGEX_TIMER));
-
 
 	// Catch signals like SIGTERM and SIGINT
 	// Other signals like SIGHUP, SIGUSR1 are handled by the resolver part
@@ -109,5 +100,5 @@ int main (int argc, char* argv[])
 	//Remove PID file
 	removepid();
 	logg("########## FTL terminated after %.1f ms! ##########", timer_elapsed_msec(EXIT_TIMER));
-	return 1;
+	return EXIT_SUCCESS;
 }

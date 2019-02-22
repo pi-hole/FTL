@@ -151,7 +151,7 @@ char *getUserName(void)
 	}
 	else
 	{
-		if(asprintf(&username, "%i", euid) < 0)
+		if(asprintf(&username, "%u", euid) < 0)
 			return NULL;
 	}
 
