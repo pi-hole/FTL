@@ -144,7 +144,7 @@ int gravityDB_count(unsigned char list)
 			break;
 		default:
 			logg("gravityDB_count(%i): Requested list is not known!", list);
-			return false;
+			return DB_FAILED;
 	}
 
 	// Open database handle
