@@ -195,7 +195,7 @@ bool init_shmem(void)
 	counters->queries_MAX = pagesize;
 
 	/****************************** shared overTime struct ******************************/
-	size_t size = ((OVERTIME_SLOTS*sizeof(overTimeDataStruct))/pagesize + 1)*pagesize;
+	size_t size = (OVERTIME_SLOTS/pagesize + 1)*pagesize*sizeof(overTimeDataStruct);
 	// Try to create shared memory object
 	shm_overTime = create_shm(SHARED_OVERTIME_NAME, size);
 	overTime = (overTimeDataStruct*)shm_overTime.ptr;
