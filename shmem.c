@@ -389,11 +389,10 @@ bool realloc_shm(SharedMemory *sharedMemory, size_t size, bool resize)
 	// If not, we only remap a shared memory object which might have changed
 	// in another process. This happens when pihole-FTL forks due to incoming
 	// TCP requests.
-	int fd = -1;
 	if(resize)
 	{
 		// Open shared memory object
-		fd = shm_open(sharedMemory->name, O_RDWR, S_IRUSR | S_IWUSR);
+		int fd = shm_open(sharedMemory->name, O_RDWR, S_IRUSR | S_IWUSR);
 		if(fd == -1)
 		{
 			logg("FATAL: realloc_shm(): Failed to open shared memory object \"%s\": %s",
@@ -409,6 +408,10 @@ bool realloc_shm(SharedMemory *sharedMemory, size_t size, bool resize)
 			exit(EXIT_FAILURE);
 		}
 
+		// Close shared memory object file descriptor as it is no longer
+		// needed after having called ftruncate()
+		close(fd);
+
 		// Update shm counters to indicate that at least one shared memory object changed
 		shmSettings->global_shm_counter++;
 		local_shm_counter++;
@@ -417,16 +420,11 @@ bool realloc_shm(SharedMemory *sharedMemory, size_t size, bool resize)
 	void *new_ptr = mremap(sharedMemory->ptr, sharedMemory->size, size, MREMAP_MAYMOVE);
 	if(new_ptr == MAP_FAILED)
 	{
-		logg("FATAL: realloc_shm(): mremap(%p, %zu, %zu, MREMAP_MAYMOVE): Failed to reallocate \"%s\" (%i): %s",
-		     sharedMemory->ptr, sharedMemory->size, size, sharedMemory->name, fd,
+		logg("FATAL: realloc_shm(): mremap(%p, %zu, %zu, MREMAP_MAYMOVE): Failed to reallocate \"%s\": %s",
+		     sharedMemory->ptr, sharedMemory->size, size, sharedMemory->name,
 		     strerror(errno));
 		exit(EXIT_FAILURE);
 	}
-
-	// Close shared memory object file descriptor as it is no longer
-	// needed after having called ftruncate()
-	if(resize)
-		close(fd);
 
 	sharedMemory->ptr = new_ptr;
 	sharedMemory->size = size;
