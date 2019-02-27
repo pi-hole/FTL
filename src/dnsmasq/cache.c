@@ -792,6 +792,7 @@ int cache_find_non_terminal(char *name, time_t now)
     if (!is_outdated_cname_pointer(crecp) &&
 	!is_expired(now, crecp) &&
 	(crecp->flags & F_FORWARD) &&
+	!(crecp->flags & F_NXDOMAIN) && 
 	hostname_isequal(name, cache_get_name(crecp)))
       return 1;
 
