@@ -244,12 +244,6 @@ bool init_shmem(void)
 	overTime = (overTimeDataStruct*)shm_overTime.ptr;
 	initOverTime();
 
-	/****************************** shared settings struct ******************************/
-	// Try to create shared memory object
-	shm_settings = create_shm(SHARED_SETTINGS_NAME, sizeof(ShmSettings));
-	ShmSettings *settings = (ShmSettings*)shm_settings.ptr;
-	settings->version = SHARED_MEMORY_VERSION;
-
 	return true;
 }
 
