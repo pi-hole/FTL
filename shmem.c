@@ -366,7 +366,7 @@ void *enlarge_shmem_struct(char type)
 			break;
 		case FORWARDED:
 			sharedMemory = &shm_forwarded;
-			allocation_step = pagesize;
+			allocation_step = get_optimal_object_size(sizeof(forwardedDataStruct));
 			sizeofobj = sizeof(forwardedDataStruct);
 			counter = &counters->forwarded_MAX;
 			break;
