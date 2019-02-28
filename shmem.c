@@ -230,9 +230,10 @@ bool init_shmem(void)
 
 	/****************************** shared forwarded struct ******************************/
 	// Try to create shared memory object
-	shm_forwarded = create_shm(SHARED_FORWARDED_NAME, pagesize*sizeof(forwardedDataStruct));
+	size = get_optimal_object_size(sizeof(forwardedDataStruct));
+	shm_forwarded = create_shm(SHARED_FORWARDED_NAME, size*sizeof(forwardedDataStruct));
 	forwarded = (forwardedDataStruct*)shm_forwarded.ptr;
-	counters->forwarded_MAX = pagesize;
+	counters->forwarded_MAX = size;
 
 	/****************************** shared queries struct ******************************/
 	// Try to create shared memory object
