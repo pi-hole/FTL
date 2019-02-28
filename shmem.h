@@ -33,8 +33,9 @@ SharedMemory create_shm(char *name, size_t size);
 ///
 /// \param sharedMemory the shared memory struct
 /// \param size the new size
+/// \param resize whether the object should be resized or only remapped
 /// \return if reallocation was successful
-bool realloc_shm(SharedMemory *sharedMemory, size_t size);
+bool realloc_shm(SharedMemory *sharedMemory, size_t size, bool resize);
 
 /// Disconnect from shared memory. If there are no other connections to shared memory, it will be deleted.
 ///
