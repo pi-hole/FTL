@@ -46,6 +46,8 @@ static ShmSettings *shmSettings = NULL;
 static int pagesize;
 static unsigned int local_shm_counter = 0;
 
+static size_t get_optimal_object_size(size_t objsize);
+
 unsigned long long addstr(const char *str)
 {
 	if(str == NULL)
@@ -238,7 +240,12 @@ bool init_shmem(void)
 	counters->queries_MAX = pagesize;
 
 	/****************************** shared overTime struct ******************************/
-	size_t size = ((OVERTIME_SLOTS*sizeof(overTimeDataStruct))/pagesize + 1)*pagesize;
+	size_t size = get_optimal_object_size(sizeof(overTimeDataStruct));
+	size_t required_size = OVERTIME_SLOTS*sizeof(overTimeDataStruct);
+	if(size < required_size)
+	{
+		logg("FATAL: LCM(%i, %zu) == %zu < %zu", pagesize, sizeof(overTimeDataStruct), size, required_size);
+	}
 	// Try to create shared memory object
 	shm_overTime = create_shm(SHARED_OVERTIME_NAME, size);
 	overTime = (overTimeDataStruct*)shm_overTime.ptr;
@@ -439,4 +446,35 @@ void delete_shm(SharedMemory *sharedMemory)
 	ret = shm_unlink(sharedMemory->name);
 	if(ret != 0)
 		logg("delete_shm(): shm_unlink(%s) failed: %s", sharedMemory->name, strerror(errno));
+}
+
+// Recursive function to return GCD of a and b
+// Credits: https://www.geeksforgeeks.org/program-to-find-lcm-of-two-numbers/
+// The code in this link has been modified by the Pi-hole developers
+static size_t gcd(size_t a, size_t b)
+{
+	// Everything divides 0
+	// (except maybe zero)
+	if (a == 0 || b == 0)
+		return 1;
+
+	// Base case
+	if (a == b)
+		return a;
+
+	// a is greater
+	if (a > b)
+		return gcd(a-b, b);
+
+	// b is greater
+	return gcd(a, b-a);
+}
+
+// Function to return the optimal (minimum) size for page-aligned
+// shared memory objects. This routine works by computing the LCM
+// of two numbers, the pagesize and the size of a single element
+// in the shared memory object
+static size_t get_optimal_object_size(size_t objsize)
+{
+	return (pagesize*objsize)/gcd(pagesize, objsize);
 }
