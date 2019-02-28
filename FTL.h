@@ -148,7 +148,7 @@ typedef struct {
 	int forwarded_MAX;
 	int clients_MAX;
 	int domains_MAX;
-	int overTime_MAX;
+	int strings_MAX;
 	int gravity;
 	int gravity_conf;
 	int querytype[TYPE_MAX-1];
@@ -244,6 +244,8 @@ typedef struct {
 
 typedef struct {
 	int version;
+	unsigned int global_shm_counter;
+	unsigned int next_str_pos;
 } ShmSettings;
 
 // Prepare timers, used mainly for debugging purposes
