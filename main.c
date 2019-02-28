@@ -91,8 +91,9 @@ int main (int argc, char* argv[])
 	close_telnet_socket();
 	close_unix_socket();
 
-	// Invalidate blocking regex if compiled
+	// Free regex list and array of whitelisted domains
 	free_regex();
+	free_whitelist_domains();
 
 	// Remove shared memory objects
 	destroy_shmem();

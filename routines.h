@@ -111,6 +111,7 @@ void resolveForwardDestinations(bool onlynew);
 // regex.c
 bool match_regex(char *input);
 void free_regex(void);
+void free_whitelist_domains(void);
 void read_regex_from_database(void);
 void read_whitelist_from_database(void);
 bool in_whitelist(char *domain);

@@ -9,7 +9,6 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
-#include "shmem.h"
 #include <sqlite3.h>
 
 // Private variables

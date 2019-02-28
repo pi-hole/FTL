@@ -165,8 +165,9 @@ void process_request(char *client_message, int *sock)
 		logg("Received API request to recompile regex");
 		lock_shm();
 		// Reread regex.list
-		// Free regex list
+		// Free regex list and array of whitelisted domains
 		free_regex();
+		free_whitelist_domains();
 		// Start timer for regex compilation analysis
 		timer_start(REGEX_TIMER);
 		// Read and compile possible regex filters

@@ -62,7 +62,7 @@ bool in_whitelist(char *domain)
 	return found;
 }
 
-static void free_whitelist_domains(void)
+void free_whitelist_domains(void)
 {
 	for(int i=0; i < whitelist.count; i++)
 		free(whitelist.domains[i]);
@@ -159,9 +159,6 @@ void free_regex(void)
 	{
 		domains[i].regexmatch = REGEX_UNKNOWN;
 	}
-
-	// Also free array of whitelisted domains
-	free_whitelist_domains();
 }
 
 void read_whitelist_from_database(void)

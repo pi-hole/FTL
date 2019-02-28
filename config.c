@@ -306,11 +306,11 @@ void read_FTLconf(void)
 	// AUDITLISTFILE
 	getpath(fp, "AUDITLISTFILE", "/etc/pihole/auditlog.list", &files.auditlist);
 
-	// GRAVITYFILE
-	getpath(fp, "GRAVITYFILE", "/etc/pihole/gravity.db", &FTLfiles.gravitydb);
-
 	// MACVENDORDB
 	getpath(fp, "MACVENDORDB", "/etc/pihole/macvendor.db", &FTLfiles.macvendordb);
+
+	// GRAVITYDB
+	getpath(fp, "GRAVITYDB", "/etc/pihole/gravity.db", &FTLfiles.gravitydb);
 
 	// PARSE_ARP_CACHE
 	// defaults to: true

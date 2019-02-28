@@ -372,8 +372,10 @@ void FTL_dnsmasq_reload(void)
 	get_blocking_mode(NULL);
 
 	// Reread regex.list
-	// Free regex list
+	// Free regex list and array of whitelisted domains
 	free_regex();
+	free_whitelist_domains();
+
 	// Start timer for regex compilation analysis
 	timer_start(REGEX_TIMER);
 	// Read and compile possible regex filters
@@ -1236,7 +1238,6 @@ int FTL_listsfile(char* filename, unsigned int index, FILE *f, int cache_size, s
 	else
 	{
 		logg("Importing content of template %s from database", filename);
-
 	}
 
 	// Start timer for list analysis
