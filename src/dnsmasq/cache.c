@@ -1128,6 +1128,7 @@ int read_hostsfile(char *filename, unsigned int index, int cache_size, struct cr
 	  my_syslog(LOG_ERR, _("bad address at %s line %d"), filename, lineno); 
 	  while (atnl == 0)
 	    atnl = gettok(f, token);
+	  lineno += atnl;
 	  continue;
 	}
       
