@@ -66,7 +66,7 @@ unsigned long long addstr(const char *str)
 
 	// Debugging output
 	if(config.debug & DEBUG_SHMEM)
-		logg("Adding \"%s\" (len %i) to buffer. next_str_pos is %i", str, len, shmSettings->next_str_pos);
+		logg("Adding \"%s\" (len %zu) to buffer. next_str_pos is %u", str, len, shmSettings->next_str_pos);
 
 	// Reserve additional memory if necessary
 	size_t required_size = shmSettings->next_str_pos + len + 1;
@@ -92,7 +92,14 @@ unsigned long long addstr(const char *str)
 
 char *getstr(unsigned long long pos)
 {
-	return &((char*)shm_strings.ptr)[pos];
+	// Only access the string memory if this memory region has already been set
+	if(pos < shmSettings->next_str_pos)
+		return &((char*)shm_strings.ptr)[pos];
+	else
+	{
+		logg("WARN: Tried to access %llu but next_str_pos is %u", pos, shmSettings->next_str_pos);
+		return "";
+	}
 }
 
 /// Create a mutex for shared memory
