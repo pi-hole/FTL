@@ -230,15 +230,17 @@ bool init_shmem(void)
 
 	/****************************** shared clients struct ******************************/
 	// Try to create shared memory object
-	shm_clients = create_shm(SHARED_CLIENTS_NAME, pagesize*sizeof(clientsDataStruct));
+	size_t size = get_optimal_object_size(sizeof(clientsDataStruct));
+	shm_clients = create_shm(SHARED_CLIENTS_NAME, size*sizeof(clientsDataStruct));
 	clients = (clientsDataStruct*)shm_clients.ptr;
-	counters->clients_MAX = pagesize;
+	counters->clients_MAX = size;
 
 	/****************************** shared forwarded struct ******************************/
 	// Try to create shared memory object
-	shm_forwarded = create_shm(SHARED_FORWARDED_NAME, pagesize*sizeof(forwardedDataStruct));
+	size = get_optimal_object_size(sizeof(forwardedDataStruct));
+	shm_forwarded = create_shm(SHARED_FORWARDED_NAME, size*sizeof(forwardedDataStruct));
 	forwarded = (forwardedDataStruct*)shm_forwarded.ptr;
-	counters->forwarded_MAX = pagesize;
+	counters->forwarded_MAX = size;
 
 	/****************************** shared queries struct ******************************/
 	// Try to create shared memory object
@@ -247,14 +249,17 @@ bool init_shmem(void)
 	counters->queries_MAX = pagesize;
 
 	/****************************** shared overTime struct ******************************/
-	size_t size = get_optimal_object_size(sizeof(overTimeDataStruct));
-	size_t required_size = OVERTIME_SLOTS*sizeof(overTimeDataStruct);
+	size = get_optimal_object_size(sizeof(overTimeDataStruct));
+	size_t required_size = OVERTIME_SLOTS;
 	if(size < required_size)
 	{
-		logg("FATAL: LCM(%i, %zu) == %zu < %zu", pagesize, sizeof(overTimeDataStruct), size, required_size);
+		logg("FATAL: LCM(%i, %zu) == %zu < %zu",
+		     pagesize, sizeof(overTimeDataStruct),
+		     size*sizeof(overTimeDataStruct),
+		     required_size*sizeof(overTimeDataStruct));
 	}
 	// Try to create shared memory object
-	shm_overTime = create_shm(SHARED_OVERTIME_NAME, size);
+	shm_overTime = create_shm(SHARED_OVERTIME_NAME, size*sizeof(overTimeDataStruct));
 	overTime = (overTimeDataStruct*)shm_overTime.ptr;
 	initOverTime();
 
@@ -341,30 +346,34 @@ SharedMemory create_shm(char *name, size_t size)
 
 void *enlarge_shmem_struct(char type)
 {
-	SharedMemory *sharedMemory;
-	size_t sizeofobj;
-	int *counter;
+	SharedMemory *sharedMemory = NULL;
+	size_t sizeofobj, allocation_step;
+	int *counter = NULL;
 
 	// Select type of struct that should be enlarged
 	switch(type)
 	{
 		case QUERIES:
 			sharedMemory = &shm_queries;
+			allocation_step = pagesize;
 			sizeofobj = sizeof(queriesDataStruct);
 			counter = &counters->queries_MAX;
 			break;
 		case CLIENTS:
 			sharedMemory = &shm_clients;
+			allocation_step = get_optimal_object_size(sizeof(clientsDataStruct));
 			sizeofobj = sizeof(clientsDataStruct);
 			counter = &counters->clients_MAX;
 			break;
 		case DOMAINS:
 			sharedMemory = &shm_domains;
+			allocation_step = pagesize;
 			sizeofobj = sizeof(domainsDataStruct);
 			counter = &counters->domains_MAX;
 			break;
 		case FORWARDED:
 			sharedMemory = &shm_forwarded;
+			allocation_step = get_optimal_object_size(sizeof(forwardedDataStruct));
 			sizeofobj = sizeof(forwardedDataStruct);
 			counter = &counters->forwarded_MAX;
 			break;
@@ -374,10 +383,10 @@ void *enlarge_shmem_struct(char type)
 	}
 
 	// Reallocate enough space for 4096 instances of requested object
-	realloc_shm(sharedMemory, sharedMemory->size + pagesize*sizeofobj, true);
+	realloc_shm(sharedMemory, sharedMemory->size + allocation_step*sizeofobj, true);
 
 	// Add allocated memory to corresponding counter
-	*counter += pagesize;
+	*counter += allocation_step;
 
 	return sharedMemory->ptr;
 }
@@ -483,5 +492,5 @@ static size_t gcd(size_t a, size_t b)
 // in the shared memory object
 static size_t get_optimal_object_size(size_t objsize)
 {
-	return (pagesize*objsize)/gcd(pagesize, objsize);
+	return pagesize / gcd(pagesize, objsize);
 }
