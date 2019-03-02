@@ -46,7 +46,7 @@ static ShmSettings *shmSettings = NULL;
 static int pagesize;
 static unsigned int local_shm_counter = 0;
 
-static size_t get_optimal_object_size(size_t objsize);
+static size_t get_optimal_object_size(size_t objsize, unsigned int minsize);
 
 unsigned long long addstr(const char *str)
 {
@@ -229,14 +229,14 @@ bool init_shmem(void)
 	counters->domains_MAX = pagesize;
 
 	/****************************** shared clients struct ******************************/
-	size_t size = get_optimal_object_size(sizeof(clientsDataStruct));
+	size_t size = get_optimal_object_size(sizeof(clientsDataStruct), 1);
 	// Try to create shared memory object
 	shm_clients = create_shm(SHARED_CLIENTS_NAME, size*sizeof(clientsDataStruct));
 	clients = (clientsDataStruct*)shm_clients.ptr;
 	counters->clients_MAX = size;
 
 	/****************************** shared forwarded struct ******************************/
-	size = get_optimal_object_size(sizeof(forwardedDataStruct));
+	size = get_optimal_object_size(sizeof(forwardedDataStruct), 1);
 	// Try to create shared memory object
 	shm_forwarded = create_shm(SHARED_FORWARDED_NAME, size*sizeof(forwardedDataStruct));
 	forwarded = (forwardedDataStruct*)shm_forwarded.ptr;
@@ -249,16 +249,7 @@ bool init_shmem(void)
 	counters->queries_MAX = pagesize;
 
 	/****************************** shared overTime struct ******************************/
-	size = get_optimal_object_size(sizeof(overTimeDataStruct));
-	size_t required_size = OVERTIME_SLOTS;
-	if(size < required_size)
-	{
-		logg("FATAL: LCM(%i, %zu) == %zu < %zu",
-		     pagesize, sizeof(overTimeDataStruct),
-		     size*sizeof(overTimeDataStruct),
-		     required_size*sizeof(overTimeDataStruct));
-		exit(EXIT_FAILURE);
-	}
+	size = get_optimal_object_size(sizeof(overTimeDataStruct), OVERTIME_SLOTS);
 	// Try to create shared memory object
 	shm_overTime = create_shm(SHARED_OVERTIME_NAME, size*sizeof(overTimeDataStruct));
 	overTime = (overTimeDataStruct*)shm_overTime.ptr;
@@ -362,7 +353,7 @@ void *enlarge_shmem_struct(char type)
 			break;
 		case CLIENTS:
 			sharedMemory = &shm_clients;
-			allocation_step = get_optimal_object_size(sizeof(clientsDataStruct));
+			allocation_step = get_optimal_object_size(sizeof(clientsDataStruct), 1);
 			sizeofobj = sizeof(clientsDataStruct);
 			counter = &counters->clients_MAX;
 			break;
@@ -374,7 +365,7 @@ void *enlarge_shmem_struct(char type)
 			break;
 		case FORWARDED:
 			sharedMemory = &shm_forwarded;
-			allocation_step = get_optimal_object_size(sizeof(forwardedDataStruct));
+			allocation_step = get_optimal_object_size(sizeof(forwardedDataStruct), 1);
 			sizeofobj = sizeof(forwardedDataStruct);
 			counter = &counters->forwarded_MAX;
 			break;
@@ -491,7 +482,32 @@ static size_t gcd(size_t a, size_t b)
 // shared memory objects. This routine works by computing the LCM
 // of two numbers, the pagesize and the size of a single element
 // in the shared memory object
-static size_t get_optimal_object_size(size_t objsize)
+static size_t get_optimal_object_size(size_t objsize, unsigned int minsize)
 {
-	return pagesize / gcd(pagesize, objsize);
+	size_t optsize = pagesize / gcd(pagesize, objsize);
+	if(optsize < minsize)
+	{
+		if(config.debug & DEBUG_SHMEM)
+		{
+			logg("DEBUG: LCM(%i, %zu) == %zu < %zu",
+			     pagesize, objsize,
+			     optsize*objsize,
+			     minsize*objsize);
+		}
+
+		// Upscale optimal size by a certain factor
+		// Logic of this computation:
+		// First part: Integer division, may cause clipping, e.g., 5/3 = 1
+		// Second part: Catch a possibly happened clipping event by adding
+		//              one to the number: (5 % 3 != 0) is 1
+		unsigned int multiplier = minsize/optsize + (minsize % optsize != 0);
+		// As optsize ensures perfect page-alignment,
+		// any multiple of it will be aligned as well
+		return optsize*multiplier;
+	}
+	else
+	{
+		// Return computed optimal size
+		return optsize;
+	}
 }
