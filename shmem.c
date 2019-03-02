@@ -500,7 +500,7 @@ static size_t get_optimal_object_size(size_t objsize, unsigned int minsize)
 		// First part: Integer division, may cause clipping, e.g., 5/3 = 1
 		// Second part: Catch a possibly happened clipping event by adding
 		//              one to the number: (5 % 3 != 0) is 1
-		unsigned int multiplier = minsize/optsize + (minsize % optsize != 0);
+		unsigned int multiplier = minsize/optsize + (minsize % optsize != 0) ? 1 : 0;
 		// As optsize ensures perfect page-alignment,
 		// any multiple of it will be aligned as well
 		return optsize*multiplier;
