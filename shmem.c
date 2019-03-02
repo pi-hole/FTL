@@ -229,15 +229,15 @@ bool init_shmem(void)
 	counters->domains_MAX = pagesize;
 
 	/****************************** shared clients struct ******************************/
-	// Try to create shared memory object
 	size_t size = get_optimal_object_size(sizeof(clientsDataStruct));
+	// Try to create shared memory object
 	shm_clients = create_shm(SHARED_CLIENTS_NAME, size*sizeof(clientsDataStruct));
 	clients = (clientsDataStruct*)shm_clients.ptr;
 	counters->clients_MAX = size;
 
 	/****************************** shared forwarded struct ******************************/
-	// Try to create shared memory object
 	size = get_optimal_object_size(sizeof(forwardedDataStruct));
+	// Try to create shared memory object
 	shm_forwarded = create_shm(SHARED_FORWARDED_NAME, size*sizeof(forwardedDataStruct));
 	forwarded = (forwardedDataStruct*)shm_forwarded.ptr;
 	counters->forwarded_MAX = size;
@@ -257,6 +257,7 @@ bool init_shmem(void)
 		     pagesize, sizeof(overTimeDataStruct),
 		     size*sizeof(overTimeDataStruct),
 		     required_size*sizeof(overTimeDataStruct));
+		exit(EXIT_FAILURE);
 	}
 	// Try to create shared memory object
 	shm_overTime = create_shm(SHARED_OVERTIME_NAME, size*sizeof(overTimeDataStruct));
