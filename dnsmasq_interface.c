@@ -1126,7 +1126,7 @@ static void prepare_blocking_mode(struct all_addr *addr4, struct all_addr *addr6
 	else
 	{
 		// Don't create IPv6 cache entries when we don't need them
-		// Also, don't create them if we ate in IP blocking mode and
+		// Also, don't create them if we are in IP blocking mode and
 		// strlen(IPv6addr) == 0
 		*has_IPv6 = false;
 	}
