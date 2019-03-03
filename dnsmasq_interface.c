@@ -1115,10 +1115,20 @@ static void prepare_blocking_mode(struct all_addr *addr4, struct all_addr *addr6
 		if(inet_pton(AF_INET6, IPv6addr, addr6) > 0)
 			*has_IPv6 = true;
 	}
-	else
+	else if(config.blockingmode == MODE_IP_NODATA_AAAA)
 	{
 		// Blocking mode will use zero-initialized all_addr struct
+		// This is irrelevant, however, as this blocking mode will
+		// reply with NODATA to AAAA queries. Still, we need to
+		// generate separate IPv4 (IP) and AAAA (NODATA) records
 		*has_IPv6 = true;
+	}
+	else
+	{
+		// Don't create IPv6 cache entries when we don't need them
+		// Also, don't create them if we are in IP blocking mode and
+		// strlen(IPv6addr) == 0
+		*has_IPv6 = false;
 	}
 	clearSetupVarsArray(); // will free/invalidate IPv6addr
 }
