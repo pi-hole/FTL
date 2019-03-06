@@ -35,7 +35,7 @@ logFileNamesStruct files = {
 
 // Fixed size structs
 countersStruct *counters = NULL;
-overTimeDataStruct *overTime = NULL;
+overTimeData *overTime = NULL;
 ConfigStruct config;
 
 // The special memory handling routines have to be the last ones in this source file

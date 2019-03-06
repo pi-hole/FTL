@@ -37,7 +37,7 @@ static void initSlot(unsigned int index, time_t timestamp)
 	for(int clientID = 0; clientID < counters->clients; clientID++)
 	{
 		// Get client pointer
-		clientsDataStruct* client = getClient(clientID);
+		clientsData* client = getClient(clientID);
 
 		client->overTime[index] = 0;
 	}
@@ -131,7 +131,7 @@ void moveOverTimeMemory(time_t mintime)
 		for(int queryID = 0; queryID < counters->queries; queryID++)
 		{
 			// Get query pointer
-			queriesDataStruct* query = getQuery(queryID);
+			queriesData* query = getQuery(queryID);
 			// Check if the index would become negative if we adjusted it
 			if(((int)query->timeidx - (int)moveOverTime) < 0)
 			{

@@ -194,7 +194,7 @@ typedef struct {
 	unsigned char reply;
 	unsigned char dnssec;
 	bool AD;
-} queriesDataStruct;
+} queriesData;
 
 typedef struct {
 	unsigned char magic;
@@ -203,7 +203,7 @@ typedef struct {
 	unsigned long long ippos;
 	unsigned long long namepos;
 	bool new;
-} forwardedDataStruct;
+} forwardedData;
 
 typedef struct {
 	unsigned char magic;
@@ -215,7 +215,7 @@ typedef struct {
 	int overTime[OVERTIME_SLOTS];
 	time_t lastQuery;
 	unsigned int numQueriesARP;
-} clientsDataStruct;
+} clientsData;
 
 typedef struct {
 	unsigned char magic;
@@ -223,7 +223,7 @@ typedef struct {
 	int blockedcount;
 	unsigned long long domainpos;
 	unsigned char regexmatch;
-} domainsDataStruct;
+} domainsData;
 
 typedef struct {
 	unsigned char magic;
@@ -233,7 +233,7 @@ typedef struct {
 	int cached;
 	int forwarded;
 	int querytypedata[TYPE_MAX-1];
-} overTimeDataStruct;
+} overTimeData;
 
 typedef struct {
 	int count;
@@ -261,7 +261,7 @@ extern FTLFileNamesStruct FTLfiles;
 extern countersStruct *counters;
 extern ConfigStruct config;
 
-extern overTimeDataStruct *overTime;
+extern overTimeData *overTime;
 
 /// Indexed by client ID, then time index (like `overTime`).
 /// This gets automatically updated whenever a new client or overTime slot is added.
@@ -314,10 +314,10 @@ extern pthread_t DNSclientthread;
 
 // Pointer getter functions
 #define getQuery(queryID) _getQuery(queryID, __LINE__, __FUNCTION__, __FILE__)
-queriesDataStruct* _getQuery(int queryID, int line, const char * function, const char * file);
+queriesData* _getQuery(int queryID, int line, const char * function, const char * file);
 #define getClient(clientID) _getClient(clientID, __LINE__, __FUNCTION__, __FILE__)
-clientsDataStruct* _getClient(int clientID, int line, const char * function, const char * file);
+clientsData* _getClient(int clientID, int line, const char * function, const char * file);
 #define getDomain(domainID) _getDomain(domainID, __LINE__, __FUNCTION__, __FILE__)
-domainsDataStruct* _getDomain(int domainID, int line, const char * function, const char * file);
+domainsData* _getDomain(int domainID, int line, const char * function, const char * file);
 #define getForward(forwardID) _getForward(forwardID, __LINE__, __FUNCTION__, __FILE__)
-forwardedDataStruct* _getForward(int forwardID, int line, const char * function, const char * file);
+forwardedData* _getForward(int forwardID, int line, const char * function, const char * file);

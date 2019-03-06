@@ -140,7 +140,7 @@ void _FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char 
 	int clientID = findClientID(clientIP, true);
 
 	// Save everything
-	queriesDataStruct* query = getQuery(queryID);
+	queriesData* query = getQuery(queryID);
 	query->magic = MAGICBYTE;
 	query->timestamp = querytimestamp;
 	query->type = querytype;
@@ -176,7 +176,7 @@ void _FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char 
 	overTime[timeidx].total++;
 
 	// Get client pointer
-	clientsDataStruct* client = getClient(clientID);
+	clientsData* client = getClient(clientID);
 	// Update overTime data structure with the new client
 	client->overTime[timeidx]++;
 
@@ -185,7 +185,7 @@ void _FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char 
 	client->numQueriesARP++;
 
 	// Get domain pointer
-	domainsDataStruct* domain = getDomain(domainID);
+	domainsData* domain = getDomain(domainID);
 
 	// Try blocking regex if configured
 	if(domain->regexmatch == REGEX_UNKNOWN && blockingstatus != BLOCKING_DISABLED)
@@ -238,7 +238,7 @@ static int findQueryID(int id)
 	// Check UUIDs of queries
 	for(int i = start; i >= until; i--)
 	{
-		queriesDataStruct* query = getQuery(i);
+		queriesData* query = getQuery(i);
 		if(query->id == id)
 			return i;
 	}
@@ -281,7 +281,7 @@ void _FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int i
 	}
 
 	// Get query pointer
-	queriesDataStruct* query = getQuery(i);
+	queriesData* query = getQuery(i);
 
 	// Proceed only if
 	// - current query has not been marked as replied to so far
@@ -433,7 +433,7 @@ void _FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id,
 	}
 
 	// Get query pointer
-	queriesDataStruct* query = getQuery(i);
+	queriesData* query = getQuery(i);
 
 	if(query->reply != REPLY_UNKNOWN)
 	{
@@ -446,7 +446,7 @@ void _FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id,
 	int domainID = query->domainID;
 
 	// Get domain pointer
-	domainsDataStruct* domain = getDomain(domainID);
+	domainsData* domain = getDomain(domainID);
 
 	// Check if this domain matches exactly
 	bool isExactMatch = (name != NULL && strcmp(getstr(domain->domainpos), name) == 0);
@@ -472,7 +472,7 @@ void _FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id,
 			domain->blockedcount++;
 
 			// Get client pointer
-			clientsDataStruct* client = getClient(query->clientID);
+			clientsData* client = getClient(query->clientID);
 
 			// Update client blocked counter
 			client->blockedcount++;
@@ -588,7 +588,7 @@ static void detect_blocked_IP(unsigned short flags, char* answer, int queryID)
 static void query_externally_blocked(int i)
 {
 	// Get query pointer
-	queriesDataStruct* query = getQuery(i);
+	queriesData* query = getQuery(i);
 
 	// Get time index
 	unsigned int timeidx = query->timeidx;
@@ -600,7 +600,7 @@ static void query_externally_blocked(int i)
 		overTime[timeidx].forwarded--;
 
 		// Get forward pointer
-		forwardedDataStruct* forward = getForward(query->forwardID);
+		forwardedData* forward = getForward(query->forwardID);
 		forward->count--;
 	}
 
@@ -609,12 +609,12 @@ static void query_externally_blocked(int i)
 	overTime[timeidx].blocked++;
 
 	// Get domain pointer
-	domainsDataStruct* domain = getDomain(query->domainID);
+	domainsData* domain = getDomain(query->domainID);
 
 	domain->blockedcount++;
 
 	// Get client pointer
-	clientsDataStruct* client = getClient(query->clientID);
+	clientsData* client = getClient(query->clientID);
 	client->blockedcount++;
 
 	query->status = QUERY_EXTERNAL_BLOCKED;
@@ -708,7 +708,7 @@ void _FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg
 		}
 
 		// Get query pointer
-		queriesDataStruct* query = getQuery(i);
+		queriesData* query = getQuery(i);
 
 		if(query->complete)
 		{
@@ -724,10 +724,10 @@ void _FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg
 		unsigned int timeidx = query->timeidx;
 
 		// Get domain pointer
-		domainsDataStruct* domain = getDomain(query->domainID);
+		domainsData* domain = getDomain(query->domainID);
 
 		// Get client pointer
-		clientsDataStruct* client = getClient(query->clientID);
+		clientsData* client = getClient(query->clientID);
 
 		// Mark this query as blocked if domain was matched by a regex
 		if(domain->regexmatch == REGEX_BLOCKED)
@@ -794,13 +794,13 @@ void _FTL_dnssec(int status, int id, const char* file, const int line)
 	}
 
 	// Get query pointer
-	queriesDataStruct* query = getQuery(i);
+	queriesData* query = getQuery(i);
 
 	// Debug logging
 	if(config.debug & DEBUG_QUERIES)
 	{
 		// Get domain pointer
-		domainsDataStruct* domain = getDomain(query->domainID);
+		domainsData* domain = getDomain(query->domainID);
 
 		logg("**** got DNSSEC details for %s: %i (ID %i, %s:%i)", getstr(domain->domainpos), status, id, file, line);
 	}
@@ -838,7 +838,7 @@ void _FTL_upstream_error(unsigned int rcode, int id, const char* file, const int
 	}
 
 	// Get query pointer
-	queriesDataStruct* query = getQuery(i);
+	queriesData* query = getQuery(i);
 
 	// Translate dnsmasq's rcode into something we can use
 	char *rcodestr = NULL;
@@ -868,7 +868,7 @@ void _FTL_upstream_error(unsigned int rcode, int id, const char* file, const int
 	if(config.debug & DEBUG_QUERIES)
 	{
 		// Get domain pointer
-		domainsDataStruct* domain = getDomain(query->domainID);
+		domainsData* domain = getDomain(query->domainID);
 
 		logg("**** got error report for %s: %s (ID %i, %s:%i)", getstr(domain->domainpos), rcodestr, id, file, line);
 	}
@@ -905,12 +905,12 @@ void _FTL_header_ADbit(unsigned char header4, unsigned int rcode, int id, const 
 	}
 
 	// Get query pointer
-	queriesDataStruct* query = getQuery(i);
+	queriesData* query = getQuery(i);
 
 	if(config.debug & DEBUG_QUERIES)
 	{
 		// Get domain pointer
-		domainsDataStruct* domain = getDomain(query->domainID);
+		domainsData* domain = getDomain(query->domainID);
 
 		logg("**** AD bit set for %s (ID %i, RCODE %u, %s:%i)", getstr(domain->domainpos), id, rcode, file, line);
 	}
@@ -961,7 +961,7 @@ void print_flags(unsigned int flags)
 void save_reply_type(unsigned int flags, int queryID, struct timeval response)
 {
 	// Get query pointer
-	queriesDataStruct* query = getQuery(queryID);
+	queriesData* query = getQuery(queryID);
 
 	// Iterate through possible values
 	if(flags & F_NEG)
@@ -1125,7 +1125,7 @@ void _FTL_forwarding_failed(struct server *server, const char* file, const int l
 	if(config.debug & DEBUG_QUERIES) logg("**** forwarding to %s (ID %i, %s:%i) failed", dest, forwardID, file, line);
 
 	// Get forward pointer
-	forwardedDataStruct* forward = getForward(forwardID);
+	forwardedData* forward = getForward(forwardID);
 
 	// Update counter
 	forward->failed++;

@@ -77,7 +77,7 @@ void resolveClients(bool onlynew)
 	for(int clientID = 0; clientID < counters->clients; clientID++)
 	{
 		// Get client pointer
-		clientsDataStruct* client = getClient(clientID);
+		clientsData* client = getClient(clientID);
 
 		// If onlynew flag is set, we will only resolve new clients
 		// If not, we will try to re-resolve all known clients
@@ -108,7 +108,7 @@ void resolveForwardDestinations(bool onlynew)
 	for(forwardID = 0; forwardID < counters->forwarded; forwardID++)
 	{
 		// Get forward pointer
-		forwardedDataStruct* forward = getForward(forwardID);
+		forwardedData* forward = getForward(forwardID);
 
 		// If onlynew flag is set, we will only resolve new upstream destinations
 		// If not, we will try to re-resolve all known upstream destinations

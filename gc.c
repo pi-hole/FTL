@@ -51,13 +51,13 @@ void *GC_thread(void *val)
 			// Process all queries
 			for(i=0; i < counters->queries; i++)
 			{
-				queriesDataStruct* query = getQuery(i);
+				queriesData* query = getQuery(i);
 				// Test if this query is too new
 				if(query->timestamp > mintime)
 					break;
 
 				// Adjust client counter
-				clientsDataStruct* client = getClient(query->clientID);
+				clientsData* client = getClient(query->clientID);
 				client->count--;
 
 				// Adjust total counters and total over time data
@@ -67,11 +67,11 @@ void *GC_thread(void *val)
 				client->overTime[timeidx]--;
 
 				// Adjust domain counter (no overTime information)
-				domainsDataStruct* domain = getDomain(query->domainID);
+				domainsData* domain = getDomain(query->domainID);
 				domain->count--;
 
 				// Get forward pointer
-				forwardedDataStruct* forward = getForward(query->forwardID);
+				forwardedData* forward = getForward(query->forwardID);
 
 				// Change other counters according to status of this query
 				switch(query->status)
@@ -150,7 +150,7 @@ void *GC_thread(void *val)
 			// Example: (I = now invalid, X = still valid queries, F = free space)
 			//   Before: IIIIIIXXXXFF
 			//   After:  XXXXFFFFFFFF
-			memmove(getQuery(0), getQuery(removed), (counters->queries - removed)*sizeof(queriesDataStruct));
+			memmove(getQuery(0), getQuery(removed), (counters->queries - removed)*sizeof(queriesData));
 
 			// Update queries counter
 			counters->queries -= removed;
@@ -158,7 +158,7 @@ void *GC_thread(void *val)
 			lastdbindex -= removed;
 
 			// Zero out remaining memory (marked as "F" in the above example)
-			memset(getQuery(counters->queries), 0, (counters->queries_MAX - counters->queries)*sizeof(queriesDataStruct));
+			memset(getQuery(counters->queries), 0, (counters->queries_MAX - counters->queries)*sizeof(queriesData));
 
 			// Determine if overTime memory needs to get moved
 			moveOverTimeMemory(mintime);

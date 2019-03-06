@@ -456,7 +456,7 @@ void save_to_DB(void)
 	time_t newlasttimestamp = 0;
 	for(i = MAX(0, lastdbindex); i < counters->queries; i++)
 	{
-		queriesDataStruct* query = getQuery(i);
+		queriesData* query = getQuery(i);
 		if(query->db != 0)
 		{
 			// Skip, already saved in database
@@ -498,7 +498,7 @@ void save_to_DB(void)
 		if(query->status == QUERY_FORWARDED && query->forwardID > -1)
 		{
 			// Get forward pointer
-			forwardedDataStruct* forward = getForward(query->forwardID);
+			forwardedData* forward = getForward(query->forwardID);
 			sqlite3_bind_text(stmt, 6, getstr(forward->ippos), -1, SQLITE_TRANSIENT);
 		}
 		else
@@ -775,7 +775,7 @@ void read_data_from_DB(void)
 		int queryIndex = counters->queries;
 
 		// Store this query in memory
-		queriesDataStruct* query = getQuery(queryIndex);
+		queriesData* query = getQuery(queryIndex);
 		query->magic = MAGICBYTE;
 		query->timestamp = queryTimeStamp;
 		query->type = type;
@@ -793,7 +793,7 @@ void read_data_from_DB(void)
 		query->reply = REPLY_UNKNOWN;
 
 		// Set lastQuery timer and add one query for network table
-		clientsDataStruct* client = getClient(clientID);
+		clientsData* client = getClient(clientID);
 		client->lastQuery = queryTimeStamp;
 		client->numQueriesARP++;
 
@@ -825,7 +825,7 @@ void read_data_from_DB(void)
 			case QUERY_EXTERNAL_BLOCKED: // Blocked by external provider
 				counters->blocked++;
 				// Get domain pointer
-				domainsDataStruct* domain = getDomain(domainID);
+				domainsData* domain = getDomain(domainID);
 				domain->blockedcount++;
 				client->blockedcount++;
 				// Update overTime data structure
