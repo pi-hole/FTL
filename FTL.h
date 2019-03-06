@@ -262,7 +262,6 @@ extern countersStruct *counters;
 extern ConfigStruct config;
 
 extern forwardedDataStruct *forwarded;
-extern domainsDataStruct *domains;
 extern overTimeDataStruct *overTime;
 
 /// Indexed by client ID, then time index (like `overTime`).
@@ -319,3 +318,5 @@ extern pthread_t DNSclientthread;
 queriesDataStruct* _getQuery(int queryID, int line, const char * function, const char * file);
 #define getClient(clientID) _getClient(clientID, __LINE__, __FUNCTION__, __FILE__)
 clientsDataStruct* _getClient(int clientID, int line, const char * function, const char * file);
+#define getDomain(domainID) _getDomain(domainID, __LINE__, __FUNCTION__, __FILE__)
+domainsDataStruct* _getDomain(int domainID, int line, const char * function, const char * file);

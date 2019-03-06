@@ -63,21 +63,21 @@ int findForwardID(const char * forward, bool count)
 	return forwardID;
 }
 
-int findDomainID(const char *domain)
+int findDomainID(const char *domainString)
 {
-	int i;
-	if(counters->domains > 0)
-		validate_access("domains", counters->domains-1, true, __LINE__, __FUNCTION__, __FILE__);
-	for(i=0; i < counters->domains; i++)
+	for(int i=0; i < counters->domains; i++)
 	{
+		// Get domain pointer
+		domainsDataStruct* domain = getDomain(i);
+
 		// Quick test: Does the domain start with the same character?
-		if(getstr(domains[i].domainpos)[0] != domain[0])
+		if(getstr(domain->domainpos)[0] != domainString[0])
 			continue;
 
 		// If so, compare the full domain using strcmp
-		if(strcmp(getstr(domains[i].domainpos), domain) == 0)
+		if(strcmp(getstr(domain->domainpos), domainString) == 0)
 		{
-			domains[i].count++;
+			domain->count++;
 			return i;
 		}
 	}
@@ -89,17 +89,19 @@ int findDomainID(const char *domain)
 	// Check struct size
 	memory_check(DOMAINS);
 
-	validate_access("domains", domainID, false, __LINE__, __FUNCTION__, __FILE__);
+	// Get domain pointer
+	domainsDataStruct* domain = getDomain(domainID);
+
 	// Set magic byte
-	domains[domainID].magic = MAGICBYTE;
+	domain->magic = MAGICBYTE;
 	// Set its counter to 1
-	domains[domainID].count = 1;
+	domain->count = 1;
 	// Set blocked counter to zero
-	domains[domainID].blockedcount = 0;
+	domain->blockedcount = 0;
 	// Store domain name - no need to check for NULL here as it doesn't harm
-	domains[domainID].domainpos = addstr(domain);
+	domain->domainpos = addstr(domainString);
 	// RegEx needs to be evaluated for this new domain
-	domains[domainID].regexmatch = REGEX_UNKNOWN;
+	domain->regexmatch = REGEX_UNKNOWN;
 	// Increase counter by one
 	counters->domains++;
 
@@ -113,6 +115,7 @@ int findClientID(const char *clientIP, bool count)
 	{
 		// Get client pointer
 		clientsDataStruct* client = getClient(i);
+
 		// Quick test: Does the clients IP start with the same character?
 		if(getstr(client->ippos)[0] != clientIP[0])
 			continue;
@@ -188,8 +191,11 @@ char *getDomainString(int queryID)
 	queriesDataStruct* query = getQuery(queryID);
 	if(query->privacylevel < PRIVACY_HIDE_DOMAINS)
 	{
-		validate_access("domains", query->domainID, true, __LINE__, __FUNCTION__, __FILE__);
-		return getstr(domains[query->domainID].domainpos);
+		// Get domain pointer
+		domainsDataStruct* domain = getDomain(query->domainID);
+
+		// Return string
+		return getstr(domain->domainpos);
 	}
 	else
 		return HIDDEN_DOMAIN;

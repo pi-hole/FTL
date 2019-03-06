@@ -67,9 +67,8 @@ void *GC_thread(void *val)
 				client->overTime[timeidx]--;
 
 				// Adjust domain counter (no overTime information)
-				int domainID = query->domainID;
-				validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
-				domains[domainID].count--;
+				domainsDataStruct* domain = getDomain(query->domainID);
+				domain->count--;
 
 				// Change other counters according to status of this query
 				switch(query->status)
@@ -96,7 +95,7 @@ void *GC_thread(void *val)
 					case QUERY_EXTERNAL_BLOCKED: // Blocked by upstream provider (fall through)
 						counters->blocked--;
 						overTime[timeidx].blocked--;
-						domains[domainID].blockedcount--;
+						domain->blockedcount--;
 						client->blockedcount--;
 						break;
 					default:

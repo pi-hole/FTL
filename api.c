@@ -174,7 +174,7 @@ void getOverTime(int *sock)
 
 void getTopDomains(char *client_message, int *sock)
 {
-	int i, temparray[counters->domains][2], count=10, num;
+	int temparray[counters->domains][2], count=10, num;
 	bool blocked, audit = false, asc = false;
 
 	blocked = command(client_message, ">top-ads");
@@ -206,15 +206,17 @@ void getTopDomains(char *client_message, int *sock)
 	if(command(client_message, " asc"))
 		asc = true;
 
-	for(i=0; i < counters->domains; i++)
+	for(int i=0; i < counters->domains; i++)
 	{
-		validate_access("domains", i, true, __LINE__, __FUNCTION__, __FILE__);
+		// Get domain pointer
+		domainsDataStruct* domain = getDomain(i);
+
 		temparray[i][0] = i;
 		if(blocked)
-			temparray[i][1] = domains[i].blockedcount;
+			temparray[i][1] = domain->blockedcount;
 		else
 			// Count only permitted queries
-			temparray[i][1] = (domains[i].count - domains[i].blockedcount);
+			temparray[i][1] = (domain->count - domain->blockedcount);
 	}
 
 	// Sort temporary array
@@ -262,65 +264,67 @@ void getTopDomains(char *client_message, int *sock)
 	}
 
 	int n = 0;
-	for(i=0; i < counters->domains; i++)
+	for(int i=0; i < counters->domains; i++)
 	{
 		// Get sorted indices
 		int j = temparray[i][0];
-		validate_access("domains", j, true, __LINE__, __FUNCTION__, __FILE__);
+
+		// Get domain pointer
+		domainsDataStruct* domain = getDomain(j);
 
 		// Skip this domain if there is a filter on it
-		if(excludedomains != NULL && insetupVarsArray(getstr(domains[j].domainpos)))
+		if(excludedomains != NULL && insetupVarsArray(getstr(domain->domainpos)))
 			continue;
 
 		// Skip this domain if already included in audit
-		if(audit && countlineswith(getstr(domains[j].domainpos), files.auditlist) > 0)
+		if(audit && countlineswith(getstr(domain->domainpos), files.auditlist) > 0)
 			continue;
 
 		// Hidden domain, probably due to privacy level. Skip this in the top lists
-		if(strcmp(getstr(domains[j].domainpos), HIDDEN_DOMAIN) == 0)
+		if(strcmp(getstr(domain->domainpos), HIDDEN_DOMAIN) == 0)
 			continue;
 
-		if(blocked && showblocked && domains[j].blockedcount > 0)
+		if(blocked && showblocked && domain->blockedcount > 0)
 		{
-			if(audit && domains[j].regexmatch == REGEX_BLOCKED)
+			if(audit && domain->regexmatch == REGEX_BLOCKED)
 			{
 				if(istelnet[*sock])
-					ssend(*sock, "%i %i %s wildcard\n", n, domains[j].blockedcount, getstr(domains[j].domainpos));
+					ssend(*sock, "%i %i %s wildcard\n", n, domain->blockedcount, getstr(domain->domainpos));
 				else {
-					char *fancyWildcard = calloc(3 + strlen(getstr(domains[j].domainpos)), sizeof(char));
+					char *fancyWildcard = calloc(3 + strlen(getstr(domain->domainpos)), sizeof(char));
 					if(fancyWildcard == NULL) return;
-					sprintf(fancyWildcard, "*.%s", getstr(domains[j].domainpos));
+					sprintf(fancyWildcard, "*.%s", getstr(domain->domainpos));
 
 					if(!pack_str32(*sock, fancyWildcard))
 						return;
 
-					pack_int32(*sock, domains[j].blockedcount);
+					pack_int32(*sock, domain->blockedcount);
 					free(fancyWildcard);
 				}
 			}
 			else
 			{
 				if(istelnet[*sock])
-					ssend(*sock, "%i %i %s\n", n, domains[j].blockedcount, getstr(domains[j].domainpos));
+					ssend(*sock, "%i %i %s\n", n, domain->blockedcount, getstr(domain->domainpos));
 				else {
-					if(!pack_str32(*sock, getstr(domains[j].domainpos)))
+					if(!pack_str32(*sock, getstr(domain->domainpos)))
 						return;
 
-					pack_int32(*sock, domains[j].blockedcount);
+					pack_int32(*sock, domain->blockedcount);
 				}
 			}
 			n++;
 		}
-		else if(!blocked && showpermitted && (domains[j].count - domains[j].blockedcount) > 0)
+		else if(!blocked && showpermitted && (domain->count - domain->blockedcount) > 0)
 		{
 			if(istelnet[*sock])
-				ssend(*sock,"%i %i %s\n",n,(domains[j].count - domains[j].blockedcount),getstr(domains[j].domainpos));
+				ssend(*sock,"%i %i %s\n",n,(domain->count - domain->blockedcount),getstr(domain->domainpos));
 			else
 			{
-				if(!pack_str32(*sock, getstr(domains[j].domainpos)))
+				if(!pack_str32(*sock, getstr(domain->domainpos)))
 					return;
 
-				pack_int32(*sock, domains[j].count - domains[j].blockedcount);
+				pack_int32(*sock, domain->count - domain->blockedcount);
 			}
 			n++;
 		}
@@ -667,12 +671,13 @@ void getAllQueries(char *client_message, int *sock)
 		sscanf(client_message, ">getallqueries-domain %255s", domainname);
 		filterdomainname = true;
 		// Iterate through all known domains
-		int i;
-		validate_access("domains", MAX(0,counters->domains-1), true, __LINE__, __FUNCTION__, __FILE__);
-		for(i = 0; i < counters->domains; i++)
+		for(int i = 0; i < counters->domains; i++)
 		{
+			// Get domain pointer
+			domainsDataStruct* domain = getDomain(i);
+
 			// Try to match the requested string
-			if(strcmp(getstr(domains[i].domainpos), domainname) == 0)
+			if(strcmp(getstr(domain->domainpos), domainname) == 0)
 			{
 				domainid = i;
 				break;
@@ -1189,14 +1194,15 @@ void getUnknownQueries(int *sock)
 			strcpy(type,"IPv6");
 		}
 
-		validate_access("domains", query->domainID, true, __LINE__, __FUNCTION__, __FILE__);
+		// Get domain pointer
+		domainsDataStruct* domain = getDomain(query->domainID);
 		// Get client pointer
 		clientsDataStruct* client = getClient(query->clientID);
 
 		char *clientIP = getstr(client->ippos);
 
 		if(istelnet[*sock])
-			ssend(*sock, "%i %i %i %s %s %s %i %s\n", query->timestamp, i, query->id, type, getstr(domains[query->domainID].domainpos), clientIP, query->status, query->complete ? "true" : "false");
+			ssend(*sock, "%i %i %i %s %s %s %i %s\n", query->timestamp, i, query->id, type, getstr(domain->domainpos), clientIP, query->status, query->complete ? "true" : "false");
 		else {
 			pack_int32(*sock, query->timestamp);
 			pack_int32(*sock, query->id);
@@ -1206,7 +1212,7 @@ void getUnknownQueries(int *sock)
 				return;
 
 			// Use str32 for domain and client because we have no idea how long they will be (max is 4294967295 for str32)
-			if(!pack_str32(*sock, getstr(domains[query->domainID].domainpos)) || !pack_str32(*sock, clientIP))
+			if(!pack_str32(*sock, getstr(domain->domainpos)) || !pack_str32(*sock, clientIP))
 				return;
 
 			pack_uint8(*sock, query->status);
@@ -1218,26 +1224,27 @@ void getUnknownQueries(int *sock)
 void getDomainDetails(char *client_message, int *sock)
 {
 	// Get domain name
-	char domain[128];
-	if(sscanf(client_message, "%*[^ ] %127s", domain) < 1)
+	char domainString[128];
+	if(sscanf(client_message, "%*[^ ] %127s", domainString) < 1)
 	{
 		ssend(*sock, "Need domain for this request\n");
 		return;
 	}
 
-	int i;
-	for(i = 0; i < counters->domains; i++)
+	for(int i = 0; i < counters->domains; i++)
 	{
-		validate_access("domains", i, true, __LINE__, __FUNCTION__, __FILE__);
-		if(strcmp(getstr(domains[i].domainpos), domain) == 0)
+		// Get domain pointer
+		domainsDataStruct* domain = getDomain(i);
+
+		if(strcmp(getstr(domain->domainpos), domainString) == 0)
 		{
-			ssend(*sock,"Domain \"%s\", ID: %i\n", domain, i);
-			ssend(*sock,"Total: %i\n", domains[i].count);
-			ssend(*sock,"Blocked: %i\n", domains[i].blockedcount);
+			ssend(*sock,"Domain \"%s\", ID: %i\n", domainString, i);
+			ssend(*sock,"Total: %i\n", domain->count);
+			ssend(*sock,"Blocked: %i\n", domain->blockedcount);
 			char *regexstatus;
-			if(domains[i].regexmatch == REGEX_BLOCKED)
+			if(domain->regexmatch == REGEX_BLOCKED)
 				regexstatus = "blocked";
-			if(domains[i].regexmatch == REGEX_NOTBLOCKED)
+			if(domain->regexmatch == REGEX_NOTBLOCKED)
 				regexstatus = "not blocked";
 			else
 				regexstatus = "unknown";
@@ -1247,5 +1254,5 @@ void getDomainDetails(char *client_message, int *sock)
 	}
 
 	// for loop finished without an exact match
-	ssend(*sock,"Domain \"%s\" is unknown\n", domain);
+	ssend(*sock,"Domain \"%s\" is unknown\n", domainString);
 }

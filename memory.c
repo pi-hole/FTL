@@ -39,14 +39,12 @@ ConfigStruct config;
 
 // Variable size array structs
 forwardedDataStruct *forwarded = NULL;
-domainsDataStruct *domains = NULL;
 overTimeDataStruct *overTime = NULL;
 
 void validate_access(const char * name, int pos, bool testmagic, int line, const char * function, const char * file)
 {
 	int limit = 0;
-	if(name[0] == 'd') limit = counters->domains_MAX;
-	else if(name[0] == 'f') limit = counters->forwarded_MAX;
+	if(name[0] == 'f') limit = counters->forwarded_MAX;
 	else { logg("Validator error (range)"); killed = 1; }
 
 	if(pos >= limit || pos < 0)
@@ -58,8 +56,7 @@ void validate_access(const char * name, int pos, bool testmagic, int line, const
 	else if(testmagic)
 	{
 		unsigned char magic = 0x00;
-		if(name[0] == 'd') magic = domains[pos].magic;
-		else if(name[0] == 'f') magic = forwarded[pos].magic;
+		if(name[0] == 'f') magic = forwarded[pos].magic;
 		else { logg("Validator error (magic byte)"); killed = 1; }
 		if(magic != MAGICBYTE)
 		{

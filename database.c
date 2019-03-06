@@ -826,7 +826,9 @@ void read_data_from_DB(void)
 			case QUERY_BLACKLIST: // Blocked by black.list
 			case QUERY_EXTERNAL_BLOCKED: // Blocked by external provider
 				counters->blocked++;
-				domains[domainID].blockedcount++;
+				// Get domain pointer
+				domainsDataStruct* domain = getDomain(domainID);
+				domain->blockedcount++;
 				client->blockedcount++;
 				// Update overTime data structure
 				overTime[timeidx].blocked++;

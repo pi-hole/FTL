@@ -39,6 +39,7 @@ static SharedMemory shm_settings = { 0 };
 // Variable size array structs
 static queriesDataStruct *queries = NULL;
 static clientsDataStruct *clients = NULL;
+static domainsDataStruct *domains = NULL;
 
 typedef struct {
 	pthread_mutex_t lock;
@@ -608,4 +609,21 @@ clientsDataStruct* _getClient(int clientID, int line, const char * function, con
 		return NULL;
 	}
 	return &clients[clientID];
+}
+
+domainsDataStruct* _getDomain(int domainID, int line, const char * function, const char * file)
+{
+	if(domainID < 0 || domainID > counters->domains_MAX)
+	{
+		logg("FATAL: Trying to access domain ID %i, but maximum is %i", domainID, counters->domains_MAX);
+		logg("       found in %s() (%s:%i)", function, file, line);
+		return NULL;
+	}
+	if(domains[domainID].magic != MAGICBYTE)
+	{
+		logg("FATAL: Trying to access domain ID %i, but magic byte is %x", domainID, domains[domainID].magic);
+		logg("       found in %s() (%s:%i)", function, file, line);
+		return NULL;
+	}
+	return &domains[domainID];
 }

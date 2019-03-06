@@ -78,20 +78,20 @@ void _FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char 
 	int queryID = counters->queries;
 
 	// Convert domain to lower case
-	char *domain = strdup(name);
-	strtolower(domain);
+	char *domainString = strdup(name);
+	strtolower(domainString);
 
 	// If domain is "pi.hole" we skip this query
-	if(strcmp(domain, "pi.hole") == 0)
+	if(strcmp(domainString, "pi.hole") == 0)
 	{
 		// free memory already allocated here
-		free(domain);
+		free(domainString);
 		unlock_shm();
 		return;
 	}
 
 	// Store plain text domain in buffer for regex validation
-	char *domainbuffer = strdup(domain);
+	char *domainbuffer = strdup(domainString);
 
 	// Get client IP address
 	char dest[ADDRSTRLEN];
@@ -103,7 +103,7 @@ void _FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char 
 	if(config.ignore_localhost &&
 	   (strcmp(clientIP, "127.0.0.1") == 0 || strcmp(clientIP, "::1") == 0))
 	{
-		free(domain);
+		free(domainString);
 		free(clientIP);
 		unlock_shm();
 		return;
@@ -111,7 +111,7 @@ void _FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char 
 
 	// Log new query if in debug mode
 	char *proto = (type == UDP) ? "UDP" : "TCP";
-	if(config.debug & DEBUG_QUERIES) logg("**** new %s %s \"%s\" from %s (ID %i, %s:%i)", proto, types, domain, clientIP, id, file, line);
+	if(config.debug & DEBUG_QUERIES) logg("**** new %s %s \"%s\" from %s (ID %i, %s:%i)", proto, types, domainString, clientIP, id, file, line);
 
 	// Update counters
 	counters->querytype[querytype-1]++;
@@ -126,7 +126,7 @@ void _FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char 
 	{
 		// Don't process this query further here, we already counted it
 		if(config.debug & DEBUG_QUERIES) logg("Notice: Skipping new query: %s (%i)", types, id);
-		free(domain);
+		free(domainString);
 		free(domainbuffer);
 		free(clientIP);
 		unlock_shm();
@@ -134,7 +134,7 @@ void _FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char 
 	}
 
 	// Go through already knows domains and see if it is one of them
-	int domainID = findDomainID(domain);
+	int domainID = findDomainID(domainString);
 
 	// Go through already knows clients and see if it is one of them
 	int clientID = findClientID(clientIP, true);
@@ -184,9 +184,11 @@ void _FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char 
 	client->lastQuery = querytimestamp;
 	client->numQueriesARP++;
 
+	// Get domain pointer
+	domainsDataStruct* domain = getDomain(domainID);
+
 	// Try blocking regex if configured
-	validate_access("domains", domainID, false, __LINE__, __FUNCTION__, __FILE__);
-	if(domains[domainID].regexmatch == REGEX_UNKNOWN && blockingstatus != BLOCKING_DISABLED)
+	if(domain->regexmatch == REGEX_UNKNOWN && blockingstatus != BLOCKING_DISABLED)
 	{
 		// For minimal performance impact, we test the regex only when
 		// - regex checking is enabled, and
@@ -202,13 +204,13 @@ void _FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char 
 		{
 			// We have to block this domain
 			block_single_domain_regex(domainbuffer);
-			domains[domainID].regexmatch = REGEX_BLOCKED;
+			domain->regexmatch = REGEX_BLOCKED;
 		}
 		else
 		{
 			// Explicitly mark as not blocked to skip regex test
 			// next time we see this domain
-			domains[domainID].regexmatch = REGEX_NOTBLOCKED;
+			domain->regexmatch = REGEX_NOTBLOCKED;
 		}
 	}
 
@@ -442,8 +444,12 @@ void _FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id,
 
 	// Determine if this reply is an exact match for the queried domain
 	int domainID = query->domainID;
-	validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
-	bool isExactMatch = (name != NULL && strcmp(getstr(domains[domainID].domainpos), name) == 0);
+
+	// Get domain pointer
+	domainsDataStruct* domain = getDomain(domainID);
+
+	// Check if this domain matches exactly
+	bool isExactMatch = (name != NULL && strcmp(getstr(domain->domainpos), name) == 0);
 
 	if((flags & F_CONFIG) && isExactMatch && !query->complete)
 	{
@@ -462,8 +468,8 @@ void _FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id,
 			counters->blocked++;
 			overTime[timeidx].blocked++;
 
-			validate_access("domains", query->domainID, true, __LINE__, __FUNCTION__, __FILE__);
-			domains[query->domainID].blockedcount++;
+			// Update domain blocked counter
+			domain->blockedcount++;
 
 			// Get client pointer
 			clientsDataStruct* client = getClient(query->clientID);
@@ -509,7 +515,7 @@ void _FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id,
 		// Example:
 		// Question: PTR 8.8.8.8
 		// will lead to:
-		//   domains[domainID].domain = 8.8.8.8.in-addr.arpa
+		//   domain->domain = 8.8.8.8.in-addr.arpa
 		// and will return
 		//   name = google-public-dns-a.google.com
 		// Hence, isExactMatch is always false
@@ -599,8 +605,11 @@ static void query_externally_blocked(int i)
 	// ... but as blocked
 	counters->blocked++;
 	overTime[timeidx].blocked++;
-	validate_access("domains", query->domainID, true, __LINE__, __FUNCTION__, __FILE__);
-	domains[query->domainID].blockedcount++;
+
+	// Get domain pointer
+	domainsDataStruct* domain = getDomain(query->domainID);
+
+	domain->blockedcount++;
 
 	// Get client pointer
 	clientsDataStruct* client = getClient(query->clientID);
@@ -712,14 +721,14 @@ void _FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg
 		// Get time index
 		unsigned int timeidx = query->timeidx;
 
-		int domainID = query->domainID;
-		validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
+		// Get domain pointer
+		domainsDataStruct* domain = getDomain(query->domainID);
 
 		// Get client pointer
 		clientsDataStruct* client = getClient(query->clientID);
 
 		// Mark this query as blocked if domain was matched by a regex
-		if(domains[domainID].regexmatch == REGEX_BLOCKED)
+		if(domain->regexmatch == REGEX_BLOCKED)
 			requesttype = QUERY_WILDCARD;
 
 		query->status = requesttype;
@@ -738,7 +747,7 @@ void _FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg
 			case QUERY_WILDCARD: // regex blocked
 				counters->blocked++;
 				overTime[timeidx].blocked++;
-				domains[domainID].blockedcount++;
+				domain->blockedcount++;
 				client->blockedcount++;
 				break;
 			case QUERY_CACHE: // cached from one of the lists
@@ -788,9 +797,10 @@ void _FTL_dnssec(int status, int id, const char* file, const int line)
 	// Debug logging
 	if(config.debug & DEBUG_QUERIES)
 	{
-		int domainID = query->domainID;
-		validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
-		logg("**** got DNSSEC details for %s: %i (ID %i, %s:%i)", getstr(domains[domainID].domainpos), status, id, file, line);
+		// Get domain pointer
+		domainsDataStruct* domain = getDomain(query->domainID);
+
+		logg("**** got DNSSEC details for %s: %i (ID %i, %s:%i)", getstr(domain->domainpos), status, id, file, line);
 	}
 
 	// Iterate through possible values
@@ -855,9 +865,10 @@ void _FTL_upstream_error(unsigned int rcode, int id, const char* file, const int
 	// Debug logging
 	if(config.debug & DEBUG_QUERIES)
 	{
-		int domainID = query->domainID;
-		validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
-		logg("**** got error report for %s: %s (ID %i, %s:%i)", getstr(domains[domainID].domainpos), rcodestr, id, file, line);
+		// Get domain pointer
+		domainsDataStruct* domain = getDomain(query->domainID);
+
+		logg("**** got error report for %s: %s (ID %i, %s:%i)", getstr(domain->domainpos), rcodestr, id, file, line);
 	}
 
 	// If we allocated memory (due to an unknown error type), we need to free it here
@@ -896,9 +907,10 @@ void _FTL_header_ADbit(unsigned char header4, unsigned int rcode, int id, const 
 
 	if(config.debug & DEBUG_QUERIES)
 	{
-		int domainID = query->domainID;
-		validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
-		logg("**** AD bit set for %s (ID %i, RCODE %u, %s:%i)", getstr(domains[domainID].domainpos), id, rcode, file, line);
+		// Get domain pointer
+		domainsDataStruct* domain = getDomain(query->domainID);
+
+		logg("**** AD bit set for %s (ID %i, RCODE %u, %s:%i)", getstr(domain->domainpos), id, rcode, file, line);
 	}
 
 	// Store AD bit in query data
