@@ -463,7 +463,6 @@ void getForwardDestinations(char *client_message, int *sock)
 		sort = false;
 
 	for(int i = 0; i < counters->forwarded; i++) {
-		validate_access("forwarded", i, true, __LINE__, __FUNCTION__, __FILE__);
 		// If we want to print a sorted output, we fill the temporary array with
 		// the values we will use for sorting afterwards
 		if(sort) {
@@ -643,10 +642,8 @@ void getAllQueries(char *client_message, int *sock)
 		else
 		{
 			// Iterate through all known forward destinations
-			int i;
-			validate_access("forwards", MAX(0,counters->forwarded-1), true, __LINE__, __FUNCTION__, __FILE__);
 			forwarddestid = -3;
-			for(i = 0; i < counters->forwarded; i++)
+			for(int i = 0; i < counters->forwarded; i++)
 			{
 				// Get forward pointer
 				forwardedDataStruct* forward = getForward(i);
@@ -764,9 +761,6 @@ void getAllQueries(char *client_message, int *sock)
 		queriesDataStruct* query = getQuery(i);
 		// Check if this query has been create while in maximum privacy mode
 		if(query->privacylevel >= PRIVACY_MAXIMUM) continue;
-
-		validate_access("domains", query->domainID, true, __LINE__, __FUNCTION__, __FILE__);
-		validate_access("clients", query->clientID, true, __LINE__, __FUNCTION__, __FILE__);
 
 		char *qtype = querytypes[query->type - TYPE_A];
 
@@ -1122,8 +1116,6 @@ void getClientsOverTime(int *sock)
 
 void getClientNames(int *sock)
 {
-	int i;
-
 	// Exit before processing any data if requested via config setting
 	get_privacy_level(NULL);
 	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS_CLIENTS)
@@ -1141,7 +1133,7 @@ void getClientNames(int *sock)
 	{
 		getSetupVarsArray(excludeclients);
 
-		for(i=0; i < counters->clients; i++)
+		for(int i=0; i < counters->clients; i++)
 		{
 			// Get client pointer
 			clientsDataStruct* client = getClient(i);
@@ -1153,9 +1145,8 @@ void getClientNames(int *sock)
 	}
 
 	// Loop over clients to generate output to be sent to the client
-	for(i = 0; i < counters->clients; i++)
+	for(int i = 0; i < counters->clients; i++)
 	{
-		validate_access("clients", i, true, __LINE__, __FUNCTION__, __FILE__);
 		if(skipclient[i])
 			continue;
 

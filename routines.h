@@ -96,7 +96,6 @@ char *FTLstrdup(const char *src, const char *file, const char *function, int lin
 void *FTLcalloc(size_t nmemb, size_t size, const char *file, const char *function, int line);
 void *FTLrealloc(void *ptr_in, size_t size, const char *file, const char *function, int line);
 void FTLfree(void *ptr, const char* file, const char *function, int line);
-void validate_access(const char * name, int pos, bool testmagic, int line, const char * function, const char * file);
 
 int main_dnsmasq(int argc, char **argv);
 

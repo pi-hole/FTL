@@ -35,10 +35,8 @@ logFileNamesStruct files = {
 
 // Fixed size structs
 countersStruct *counters = NULL;
-ConfigStruct config;
-
-// Variable size array structs
 overTimeDataStruct *overTime = NULL;
+ConfigStruct config;
 
 // The special memory handling routines have to be the last ones in this source file
 // as we restore the original definition of the strdup, free, calloc, and realloc

@@ -470,9 +470,6 @@ void save_to_DB(void)
 			break;
 		}
 
-		// Memory checks
-		validate_access("queries", i, true, __LINE__, __FUNCTION__, __FILE__);
-
 		if(query->privacylevel >= PRIVACY_MAXIMUM)
 		{
 			// Skip, we never store nor count queries recorded
