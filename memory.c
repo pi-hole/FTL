@@ -38,78 +38,16 @@ countersStruct *counters = NULL;
 ConfigStruct config;
 
 // Variable size array structs
-queriesDataStruct *queries = NULL;
 forwardedDataStruct *forwarded = NULL;
 clientsDataStruct *clients = NULL;
 domainsDataStruct *domains = NULL;
 overTimeDataStruct *overTime = NULL;
-
-void memory_check(int which)
-{
-	switch(which)
-	{
-		case QUERIES:
-			if(counters->queries >= counters->queries_MAX-1)
-			{
-				// Have to reallocate shared memory
-				queries = enlarge_shmem_struct(QUERIES);
-				if(queries == NULL)
-				{
-					logg("FATAL: Memory allocation failed! Exiting");
-					exit(EXIT_FAILURE);
-				}
-			}
-		break;
-		case FORWARDED:
-			if(counters->forwarded >= counters->forwarded_MAX-1)
-			{
-				// Have to reallocate shared memory
-				forwarded = enlarge_shmem_struct(FORWARDED);
-				if(forwarded == NULL)
-				{
-					logg("FATAL: Memory allocation failed! Exiting");
-					exit(EXIT_FAILURE);
-				}
-			}
-		break;
-		case CLIENTS:
-			if(counters->clients >= counters->clients_MAX-1)
-			{
-				// Have to reallocate shared memory
-				clients = enlarge_shmem_struct(CLIENTS);
-				if(clients == NULL)
-				{
-					logg("FATAL: Memory allocation failed! Exiting");
-					exit(EXIT_FAILURE);
-				}
-			}
-		break;
-		case DOMAINS:
-			if(counters->domains >= counters->domains_MAX-1)
-			{
-				// Have to reallocate shared memory
-				domains = enlarge_shmem_struct(DOMAINS);
-				if(domains == NULL)
-				{
-					logg("FATAL: Memory allocation failed! Exiting");
-					exit(EXIT_FAILURE);
-				}
-			}
-		break;
-		default:
-			/* That cannot happen */
-			logg("Fatal error in memory_check(%i)", which);
-			exit(EXIT_FAILURE);
-		break;
-	}
-}
 
 void validate_access(const char * name, int pos, bool testmagic, int line, const char * function, const char * file)
 {
 	int limit = 0;
 	if(name[0] == 'c') limit = counters->clients_MAX;
 	else if(name[0] == 'd') limit = counters->domains_MAX;
-	else if(name[0] == 'q') limit = counters->queries_MAX;
 	else if(name[0] == 'f') limit = counters->forwarded_MAX;
 	else { logg("Validator error (range)"); killed = 1; }
 
@@ -124,7 +62,6 @@ void validate_access(const char * name, int pos, bool testmagic, int line, const
 		unsigned char magic = 0x00;
 		if(name[0] == 'c') magic = clients[pos].magic;
 		else if(name[0] == 'd') magic = domains[pos].magic;
-		else if(name[0] == 'q') magic = queries[pos].magic;
 		else if(name[0] == 'f') magic = forwarded[pos].magic;
 		else { logg("Validator error (magic byte)"); killed = 1; }
 		if(magic != MAGICBYTE)

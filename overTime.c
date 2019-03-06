@@ -125,16 +125,18 @@ void moveOverTimeMemory(time_t mintime)
 		// Correct time indices of queries. This is necessary because we just moved the slot this index points to
 		for(int queryID = 0; queryID < counters->queries; queryID++)
 		{
+			// Get query pointer
+			queriesDataStruct* query = getQuery(queryID);
 			// Check if the index would become negative if we adjusted it
-			if(((int)queries[queryID].timeidx - (int)moveOverTime) < 0)
+			if(((int)query->timeidx - (int)moveOverTime) < 0)
 			{
 				// This should never happen, but we print a warning if it still happens
 				// We don't do anything in this case
-				logg("WARN: moveOverTimeMemory(): overTime time index correction failed (%i: %u / %u)", queryID, queries[queryID].timeidx, moveOverTime);
+				logg("WARN: moveOverTimeMemory(): overTime time index correction failed (%i: %u / %u)", queryID, query->timeidx, moveOverTime);
 			}
 			else
 			{
-				queries[queryID].timeidx -= moveOverTime;
+				query->timeidx -= moveOverTime;
 			}
 		}
 

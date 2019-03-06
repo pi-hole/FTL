@@ -184,10 +184,11 @@ bool isValidIPv6(const char *addr)
 // only when appropriate for the requested query
 char *getDomainString(int queryID)
 {
-	if(queries[queryID].privacylevel < PRIVACY_HIDE_DOMAINS)
+	queriesDataStruct* query = getQuery(queryID);
+	if(query->privacylevel < PRIVACY_HIDE_DOMAINS)
 	{
-		validate_access("domains", queries[queryID].domainID, true, __LINE__, __FUNCTION__, __FILE__);
-		return getstr(domains[queries[queryID].domainID].domainpos);
+		validate_access("domains", query->domainID, true, __LINE__, __FUNCTION__, __FILE__);
+		return getstr(domains[query->domainID].domainpos);
 	}
 	else
 		return HIDDEN_DOMAIN;
@@ -197,10 +198,11 @@ char *getDomainString(int queryID)
 // only when appropriate for the requested query
 char *getClientIPString(int queryID)
 {
-	if(queries[queryID].privacylevel < PRIVACY_HIDE_DOMAINS_CLIENTS)
+	queriesDataStruct* query = getQuery(queryID);
+	if(query->privacylevel < PRIVACY_HIDE_DOMAINS_CLIENTS)
 	{
-		validate_access("clients", queries[queryID].clientID, true, __LINE__, __FUNCTION__, __FILE__);
-		return getstr(clients[queries[queryID].clientID].ippos);
+		validate_access("clients", query->clientID, true, __LINE__, __FUNCTION__, __FILE__);
+		return getstr(clients[query->clientID].ippos);
 	}
 	else
 		return HIDDEN_CLIENT;
@@ -210,10 +212,11 @@ char *getClientIPString(int queryID)
 // only when appropriate for the requested query
 char *getClientNameString(int queryID)
 {
-	if(queries[queryID].privacylevel < PRIVACY_HIDE_DOMAINS_CLIENTS)
+	queriesDataStruct* query = getQuery(queryID);
+	if(query->privacylevel < PRIVACY_HIDE_DOMAINS_CLIENTS)
 	{
-		validate_access("clients", queries[queryID].clientID, true, __LINE__, __FUNCTION__, __FILE__);
-		return getstr(clients[queries[queryID].clientID].namepos);
+		validate_access("clients", query->clientID, true, __LINE__, __FUNCTION__, __FILE__);
+		return getstr(clients[query->clientID].namepos);
 	}
 	else
 		return HIDDEN_CLIENT;

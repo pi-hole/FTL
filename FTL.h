@@ -261,7 +261,6 @@ extern FTLFileNamesStruct FTLfiles;
 extern countersStruct *counters;
 extern ConfigStruct config;
 
-extern queriesDataStruct *queries;
 extern forwardedDataStruct *forwarded;
 extern clientsDataStruct *clients;
 extern domainsDataStruct *domains;
@@ -315,3 +314,7 @@ extern pthread_t socket_listenthread;
 extern pthread_t DBthread;
 extern pthread_t GCthread;
 extern pthread_t DNSclientthread;
+
+// Pointer getter functions
+#define getQuery(queryID) _getQuery(queryID, __LINE__, __FUNCTION__, __FILE__)
+queriesDataStruct* _getQuery(int queryID, int line, const char * function, const char * file);

@@ -456,14 +456,14 @@ void save_to_DB(void)
 	time_t newlasttimestamp = 0;
 	for(i = MAX(0, lastdbindex); i < counters->queries; i++)
 	{
-		validate_access("queries", i, true, __LINE__, __FUNCTION__, __FILE__);
-		if(queries[i].db != 0)
+		queriesDataStruct* query = getQuery(i);
+		if(query->db != 0)
 		{
 			// Skip, already saved in database
 			continue;
 		}
 
-		if(!queries[i].complete && queries[i].timestamp > currenttimestamp-2)
+		if(!query->complete && query->timestamp > currenttimestamp-2)
 		{
 			// Break if a brand new query (age < 2 seconds) is not yet completed
 			// giving it a chance to be stored next time
@@ -473,7 +473,7 @@ void save_to_DB(void)
 		// Memory checks
 		validate_access("queries", i, true, __LINE__, __FUNCTION__, __FILE__);
 
-		if(queries[i].privacylevel >= PRIVACY_MAXIMUM)
+		if(query->privacylevel >= PRIVACY_MAXIMUM)
 		{
 			// Skip, we never store nor count queries recorded
 			// while have been in maximum privacy mode in the database
@@ -481,13 +481,13 @@ void save_to_DB(void)
 		}
 
 		// TIMESTAMP
-		sqlite3_bind_int(stmt, 1, queries[i].timestamp);
+		sqlite3_bind_int(stmt, 1, query->timestamp);
 
 		// TYPE
-		sqlite3_bind_int(stmt, 2, queries[i].type);
+		sqlite3_bind_int(stmt, 2, query->type);
 
 		// STATUS
-		sqlite3_bind_int(stmt, 3, queries[i].status);
+		sqlite3_bind_int(stmt, 3, query->status);
 
 		// DOMAIN
 		char *domain = getDomainString(i);
@@ -498,10 +498,10 @@ void save_to_DB(void)
 		sqlite3_bind_text(stmt, 5, client, -1, SQLITE_TRANSIENT);
 
 		// FORWARD
-		if(queries[i].status == QUERY_FORWARDED && queries[i].forwardID > -1)
+		if(query->status == QUERY_FORWARDED && query->forwardID > -1)
 		{
-			validate_access("forwarded", queries[i].forwardID, true, __LINE__, __FUNCTION__, __FILE__);
-			sqlite3_bind_text(stmt, 6, getstr(forwarded[queries[i].forwardID].ippos), -1, SQLITE_TRANSIENT);
+			validate_access("forwarded", query->forwardID, true, __LINE__, __FUNCTION__, __FILE__);
+			sqlite3_bind_text(stmt, 6, getstr(forwarded[query->forwardID].ippos), -1, SQLITE_TRANSIENT);
 		}
 		else
 		{
@@ -531,19 +531,19 @@ void save_to_DB(void)
 
 		saved++;
 		// Mark this query as saved in the database by setting the corresponding ID
-		queries[i].db = ++lastID;
+		query->db = ++lastID;
 
 		// Total counter information (delta computation)
 		total++;
-		if(queries[i].status == QUERY_GRAVITY ||
-		   queries[i].status == QUERY_BLACKLIST ||
-		   queries[i].status == QUERY_WILDCARD ||
-		   queries[i].status == QUERY_EXTERNAL_BLOCKED)
+		if(query->status == QUERY_GRAVITY ||
+		   query->status == QUERY_BLACKLIST ||
+		   query->status == QUERY_WILDCARD ||
+		   query->status == QUERY_EXTERNAL_BLOCKED)
 			blocked++;
 
 		// Update lasttimestamp variable with timestamp of the latest stored query
-		if(queries[i].timestamp > newlasttimestamp)
-			newlasttimestamp = queries[i].timestamp;
+		if(query->timestamp > newlasttimestamp)
+			newlasttimestamp = query->timestamp;
 	}
 
 	// Finish prepared statement
@@ -777,25 +777,25 @@ void read_data_from_DB(void)
 		int queryIndex = counters->queries;
 
 		// Store this query in memory
-		validate_access("queries", queryIndex, false, __LINE__, __FUNCTION__, __FILE__);
-		validate_access("clients", clientID, true, __LINE__, __FUNCTION__, __FILE__);
-		queries[queryIndex].magic = MAGICBYTE;
-		queries[queryIndex].timestamp = queryTimeStamp;
-		queries[queryIndex].type = type;
-		queries[queryIndex].status = status;
-		queries[queryIndex].domainID = domainID;
-		queries[queryIndex].clientID = clientID;
-		queries[queryIndex].forwardID = forwardID;
-		queries[queryIndex].timeidx = timeidx;
-		queries[queryIndex].db = dbid;
-		queries[queryIndex].id = 0;
-		queries[queryIndex].complete = true; // Mark as all information is available
-		queries[queryIndex].response = 0;
-		queries[queryIndex].AD = false;
-		queries[queryIndex].dnssec = DNSSEC_UNKNOWN;
-		queries[queryIndex].reply = REPLY_UNKNOWN;
+		queriesDataStruct* query = getQuery(queryIndex);
+		query->magic = MAGICBYTE;
+		query->timestamp = queryTimeStamp;
+		query->type = type;
+		query->status = status;
+		query->domainID = domainID;
+		query->clientID = clientID;
+		query->forwardID = forwardID;
+		query->timeidx = timeidx;
+		query->db = dbid;
+		query->id = 0;
+		query->complete = true; // Mark as all information is available
+		query->response = 0;
+		query->AD = false;
+		query->dnssec = DNSSEC_UNKNOWN;
+		query->reply = REPLY_UNKNOWN;
 
 		// Set lastQuery timer and add one query for network table
+		validate_access("clients", clientID, true, __LINE__, __FUNCTION__, __FILE__);
 		clients[clientID].lastQuery = queryTimeStamp;
 		clients[clientID].numQueriesARP++;
 

@@ -51,29 +51,29 @@ void *GC_thread(void *val)
 			// Process all queries
 			for(i=0; i < counters->queries; i++)
 			{
-				validate_access("queries", i, true, __LINE__, __FUNCTION__, __FILE__);
+				queriesDataStruct* query = getQuery(i);
 				// Test if this query is too new
-				if(queries[i].timestamp > mintime)
+				if(query->timestamp > mintime)
 					break;
 
 				// Adjust client counter
-				int clientID = queries[i].clientID;
+				int clientID = query->clientID;
 				validate_access("clients", clientID, true, __LINE__, __FUNCTION__, __FILE__);
 				clients[clientID].count--;
 
 				// Adjust total counters and total over time data
-				int timeidx = queries[i].timeidx;
+				int timeidx = query->timeidx;
 				overTime[timeidx].total--;
 				// Adjust corresponding overTime counters
 				clients[clientID].overTime[timeidx]--;
 
 				// Adjust domain counter (no overTime information)
-				int domainID = queries[i].domainID;
+				int domainID = query->domainID;
 				validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
 				domains[domainID].count--;
 
 				// Change other counters according to status of this query
-				switch(queries[i].status)
+				switch(query->status)
 				{
 					case QUERY_UNKNOWN:
 						// Unknown (?)
@@ -82,8 +82,8 @@ void *GC_thread(void *val)
 					case QUERY_FORWARDED:
 						// Forwarded to an upstream DNS server
 						counters->forwardedqueries--;
-						validate_access("forwarded", queries[i].forwardID, true, __LINE__, __FUNCTION__, __FILE__);
-						forwarded[queries[i].forwardID].count--;
+						validate_access("forwarded", query->forwardID, true, __LINE__, __FUNCTION__, __FILE__);
+						forwarded[query->forwardID].count--;
 						overTime[timeidx].forwarded--;
 						break;
 					case QUERY_CACHE:
@@ -106,7 +106,7 @@ void *GC_thread(void *val)
 				}
 
 				// Update reply counters
-				switch(queries[i].reply)
+				switch(query->reply)
 				{
 					case REPLY_NODATA: // NODATA(-IPv6)
 					counters->reply_NODATA--;
@@ -133,10 +133,10 @@ void *GC_thread(void *val)
 				}
 
 				// Update type counters
-				if(queries[i].type >= TYPE_A && queries[i].type < TYPE_MAX)
+				if(query->type >= TYPE_A && query->type < TYPE_MAX)
 				{
-					counters->querytype[queries[i].type-1]--;
-					overTime[timeidx].querytypedata[queries[i].type-1]--;
+					counters->querytype[query->type-1]--;
+					overTime[timeidx].querytypedata[query->type-1]--;
 				}
 
 				// Count removed queries
@@ -149,7 +149,7 @@ void *GC_thread(void *val)
 			// Example: (I = now invalid, X = still valid queries, F = free space)
 			//   Before: IIIIIIXXXXFF
 			//   After:  XXXXFFFFFFFF
-			memmove(&queries[0], &queries[removed], (counters->queries - removed)*sizeof(*queries));
+			memmove(getQuery(0), getQuery(removed), (counters->queries - removed)*sizeof(queriesDataStruct));
 
 			// Update queries counter
 			counters->queries -= removed;
@@ -157,7 +157,7 @@ void *GC_thread(void *val)
 			lastdbindex -= removed;
 
 			// Zero out remaining memory (marked as "F" in the above example)
-			memset(&queries[counters->queries], 0, (counters->queries_MAX - counters->queries)*sizeof(*queries));
+			memset(getQuery(counters->queries), 0, (counters->queries_MAX - counters->queries)*sizeof(queriesDataStruct));
 
 			// Determine if overTime memory needs to get moved
 			moveOverTimeMemory(mintime);

@@ -36,6 +36,9 @@ static SharedMemory shm_forwarded = { 0 };
 static SharedMemory shm_overTime = { 0 };
 static SharedMemory shm_settings = { 0 };
 
+// Variable size array structs
+static queriesDataStruct *queries = NULL;
+
 typedef struct {
 	pthread_mutex_t lock;
 	bool waitingForLock;
@@ -510,4 +513,81 @@ static size_t get_optimal_object_size(size_t objsize, unsigned int minsize)
 		// Return computed optimal size
 		return optsize;
 	}
+}
+
+void memory_check(int which)
+{
+	switch(which)
+	{
+		case QUERIES:
+			if(counters->queries >= counters->queries_MAX-1)
+			{
+				// Have to reallocate shared memory
+				queries = enlarge_shmem_struct(QUERIES);
+				if(queries == NULL)
+				{
+					logg("FATAL: Memory allocation failed! Exiting");
+					exit(EXIT_FAILURE);
+				}
+			}
+		break;
+		case FORWARDED:
+			if(counters->forwarded >= counters->forwarded_MAX-1)
+			{
+				// Have to reallocate shared memory
+				forwarded = enlarge_shmem_struct(FORWARDED);
+				if(forwarded == NULL)
+				{
+					logg("FATAL: Memory allocation failed! Exiting");
+					exit(EXIT_FAILURE);
+				}
+			}
+		break;
+		case CLIENTS:
+			if(counters->clients >= counters->clients_MAX-1)
+			{
+				// Have to reallocate shared memory
+				clients = enlarge_shmem_struct(CLIENTS);
+				if(clients == NULL)
+				{
+					logg("FATAL: Memory allocation failed! Exiting");
+					exit(EXIT_FAILURE);
+				}
+			}
+		break;
+		case DOMAINS:
+			if(counters->domains >= counters->domains_MAX-1)
+			{
+				// Have to reallocate shared memory
+				domains = enlarge_shmem_struct(DOMAINS);
+				if(domains == NULL)
+				{
+					logg("FATAL: Memory allocation failed! Exiting");
+					exit(EXIT_FAILURE);
+				}
+			}
+		break;
+		default:
+			/* That cannot happen */
+			logg("Fatal error in memory_check(%i)", which);
+			exit(EXIT_FAILURE);
+		break;
+	}
+}
+
+queriesDataStruct* _getQuery(int queryID, int line, const char * function, const char * file)
+{
+	if(queryID < 0 || queryID > counters->queries_MAX)
+	{
+		logg("FATAL: Trying to access query ID %i, but maximum is %i", queryID, counters->queries_MAX);
+		logg("       found in %s() (%s:%i)", function, file, line);
+		return NULL;
+	}
+	if(queries[queryID].magic != MAGICBYTE)
+	{
+		logg("FATAL: Trying to access query ID %i, but magic byte is %x", queryID, queries[queryID].magic);
+		logg("       found in %s() (%s:%i)", function, file, line);
+		return NULL;
+	}
+	return &queries[queryID];
 }

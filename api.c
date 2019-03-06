@@ -745,53 +745,53 @@ void getAllQueries(char *client_message, int *sock)
 	int i;
 	for(i=ibeg; i < counters->queries; i++)
 	{
-		validate_access("queries", i, true, __LINE__, __FUNCTION__, __FILE__);
+		queriesDataStruct* query = getQuery(i);
 		// Check if this query has been create while in maximum privacy mode
-		if(queries[i].privacylevel >= PRIVACY_MAXIMUM) continue;
+		if(query->privacylevel >= PRIVACY_MAXIMUM) continue;
 
-		validate_access("domains", queries[i].domainID, true, __LINE__, __FUNCTION__, __FILE__);
-		validate_access("clients", queries[i].clientID, true, __LINE__, __FUNCTION__, __FILE__);
+		validate_access("domains", query->domainID, true, __LINE__, __FUNCTION__, __FILE__);
+		validate_access("clients", query->clientID, true, __LINE__, __FUNCTION__, __FILE__);
 
-		char *qtype = querytypes[queries[i].type - TYPE_A];
+		char *qtype = querytypes[query->type - TYPE_A];
 
 		// 1 = gravity.list, 4 = wildcard, 5 = black.list
-		if((queries[i].status == QUERY_GRAVITY ||
-		    queries[i].status == QUERY_WILDCARD ||
-		    queries[i].status == QUERY_BLACKLIST) && !showblocked)
+		if((query->status == QUERY_GRAVITY ||
+		    query->status == QUERY_WILDCARD ||
+		    query->status == QUERY_BLACKLIST) && !showblocked)
 			continue;
 		// 2 = forwarded, 3 = cached
-		if((queries[i].status == QUERY_FORWARDED ||
-		    queries[i].status == QUERY_CACHE) && !showpermitted)
+		if((query->status == QUERY_FORWARDED ||
+		    query->status == QUERY_CACHE) && !showpermitted)
 			continue;
 
 		// Skip those entries which so not meet the requested timeframe
-		if((from > queries[i].timestamp && from != 0) || (queries[i].timestamp > until && until != 0))
+		if((from > query->timestamp && from != 0) || (query->timestamp > until && until != 0))
 			continue;
 
 		// Skip if domain is not identical with what the user wants to see
-		if(filterdomainname && queries[i].domainID != domainid)
+		if(filterdomainname && query->domainID != domainid)
 			continue;
 
 		// Skip if client name and IP are not identical with what the user wants to see
-		if(filterclientname && queries[i].clientID != clientid)
+		if(filterclientname && query->clientID != clientid)
 			continue;
 
 		// Skip if query type is not identical with what the user wants to see
-		if(querytype != 0 && querytype != queries[i].type)
+		if(querytype != 0 && querytype != query->type)
 			continue;
 
 		if(filterforwarddest)
 		{
 			// Does the user want to see queries answered from blocking lists?
-			if(forwarddestid == -2 && queries[i].status != QUERY_GRAVITY
-			                       && queries[i].status != QUERY_WILDCARD
-			                       && queries[i].status != QUERY_BLACKLIST)
+			if(forwarddestid == -2 && query->status != QUERY_GRAVITY
+			                       && query->status != QUERY_WILDCARD
+			                       && query->status != QUERY_BLACKLIST)
 				continue;
 			// Does the user want to see queries answered from local cache?
-			else if(forwarddestid == -1 && queries[i].status != QUERY_CACHE)
+			else if(forwarddestid == -1 && query->status != QUERY_CACHE)
 				continue;
 			// Does the user want to see queries answered by an upstream server?
-			else if(forwarddestid >= 0 && forwarddestid != queries[i].forwardID)
+			else if(forwarddestid >= 0 && forwarddestid != query->forwardID)
 				continue;
 		}
 
@@ -800,23 +800,23 @@ void getAllQueries(char *client_message, int *sock)
 		char *domain = getDomainString(i);
 		// Similarly for the client
 		char *client;
-		if(strlen(getstr(clients[queries[i].clientID].namepos)) > 0)
+		if(strlen(getstr(clients[query->clientID].namepos)) > 0)
 			client = getClientNameString(i);
 		else
 			client = getClientIPString(i);
 
-		unsigned long delay = queries[i].response;
+		unsigned long delay = query->response;
 		// Check if received (delay should be smaller than 30min)
 		if(delay > 1.8e7)
 			delay = 0;
 
 		if(istelnet[*sock])
 		{
-			ssend(*sock,"%i %s %s %s %i %i %i %lu\n",queries[i].timestamp,qtype,domain,client,queries[i].status,queries[i].dnssec,queries[i].reply,delay);
+			ssend(*sock,"%i %s %s %s %i %i %i %lu\n",query->timestamp,qtype,domain,client,query->status,query->dnssec,query->reply,delay);
 		}
 		else
 		{
-			pack_int32(*sock, queries[i].timestamp);
+			pack_int32(*sock, query->timestamp);
 
 			// Use a fixstr because the length of qtype is always 4 (max is 31 for fixstr)
 			if(!pack_fixstr(*sock, qtype))
@@ -826,8 +826,8 @@ void getAllQueries(char *client_message, int *sock)
 			if(!pack_str32(*sock, domain) || !pack_str32(*sock, client))
 				return;
 
-			pack_uint8(*sock, queries[i].status);
-			pack_uint8(*sock, queries[i].dnssec);
+			pack_uint8(*sock, query->status);
+			pack_uint8(*sock, query->dnssec);
 		}
 	}
 
@@ -857,11 +857,11 @@ void getRecentBlocked(char *client_message, int *sock)
 	int found = 0;
 	for(i = counters->queries - 1; i > 0 ; i--)
 	{
-		validate_access("queries", i, true, __LINE__, __FUNCTION__, __FILE__);
+		queriesDataStruct* query = getQuery(i);
 
-		if(queries[i].status == QUERY_GRAVITY ||
-		   queries[i].status == QUERY_WILDCARD ||
-		   queries[i].status == QUERY_BLACKLIST)
+		if(query->status == QUERY_GRAVITY ||
+		   query->status == QUERY_WILDCARD ||
+		   query->status == QUERY_BLACKLIST)
 		{
 			found++;
 
@@ -1160,11 +1160,12 @@ void getUnknownQueries(int *sock)
 	int i;
 	for(i=0; i < counters->queries; i++)
 	{
-		validate_access("queries", i, true, __LINE__, __FUNCTION__, __FILE__);
-		if(queries[i].status != QUERY_UNKNOWN && queries[i].complete) continue;
+		queriesDataStruct* query = getQuery(i);
+
+		if(query->status != QUERY_UNKNOWN && query->complete) continue;
 
 		char type[5];
-		if(queries[i].type == TYPE_A)
+		if(query->type == TYPE_A)
 		{
 			strcpy(type,"IPv4");
 		}
@@ -1173,28 +1174,28 @@ void getUnknownQueries(int *sock)
 			strcpy(type,"IPv6");
 		}
 
-		validate_access("domains", queries[i].domainID, true, __LINE__, __FUNCTION__, __FILE__);
-		validate_access("clients", queries[i].clientID, true, __LINE__, __FUNCTION__, __FILE__);
+		validate_access("domains", query->domainID, true, __LINE__, __FUNCTION__, __FILE__);
+		validate_access("clients", query->clientID, true, __LINE__, __FUNCTION__, __FILE__);
 
 
-		char *client = getstr(clients[queries[i].clientID].ippos);
+		char *client = getstr(clients[query->clientID].ippos);
 
 		if(istelnet[*sock])
-			ssend(*sock, "%i %i %i %s %s %s %i %s\n", queries[i].timestamp, i, queries[i].id, type, getstr(domains[queries[i].domainID].domainpos), client, queries[i].status, queries[i].complete ? "true" : "false");
+			ssend(*sock, "%i %i %i %s %s %s %i %s\n", query->timestamp, i, query->id, type, getstr(domains[query->domainID].domainpos), client, query->status, query->complete ? "true" : "false");
 		else {
-			pack_int32(*sock, queries[i].timestamp);
-			pack_int32(*sock, queries[i].id);
+			pack_int32(*sock, query->timestamp);
+			pack_int32(*sock, query->id);
 
 			// Use a fixstr because the length of qtype is always 4 (max is 31 for fixstr)
 			if(!pack_fixstr(*sock, type))
 				return;
 
 			// Use str32 for domain and client because we have no idea how long they will be (max is 4294967295 for str32)
-			if(!pack_str32(*sock, getstr(domains[queries[i].domainID].domainpos)) || !pack_str32(*sock, client))
+			if(!pack_str32(*sock, getstr(domains[query->domainID].domainpos)) || !pack_str32(*sock, client))
 				return;
 
-			pack_uint8(*sock, queries[i].status);
-			pack_bool(*sock, queries[i].complete);
+			pack_uint8(*sock, query->status);
+			pack_bool(*sock, query->complete);
 		}
 	}
 }
