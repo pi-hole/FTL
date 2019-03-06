@@ -62,11 +62,12 @@ void getStats(int *sock)
 		pack_int32(*sock, counters->gravity);
 
 	// unique_clients: count only clients that have been active within the most recent 24 hours
-	int i, activeclients = 0;
-	for(i=0; i < counters->clients; i++)
+	int activeclients = 0;
+	for(int i=0; i < counters->clients; i++)
 	{
-		validate_access("clients", i, true, __LINE__, __FUNCTION__, __FILE__);
-		if(clients[i].count > 0)
+		// Get client pointer
+		clientsDataStruct* client = getClient(i);
+		if(client->count > 0)
 			activeclients++;
 	}
 
@@ -80,7 +81,7 @@ void getStats(int *sock)
 
 		// Sum up all query types (A, AAAA, ANY, SRV, SOA, ...)
 		int sumalltypes = 0;
-		for(i=0; i < TYPE_MAX-1; i++)
+		for(int i=0; i < TYPE_MAX-1; i++)
 		{
 			sumalltypes += counters->querytype[i];
 		}
@@ -335,7 +336,7 @@ void getTopDomains(char *client_message, int *sock)
 
 void getTopClients(char *client_message, int *sock)
 {
-	int i, temparray[counters->clients][2], count=10, num;
+	int temparray[counters->clients][2], count=10, num;
 
 	// Exit before processing any data if requested via config setting
 	get_privacy_level(NULL);
@@ -368,12 +369,13 @@ void getTopClients(char *client_message, int *sock)
 	if(command(client_message, " blocked"))
 		blockedonly = true;
 
-	for(i=0; i < counters->clients; i++)
+	for(int i=0; i < counters->clients; i++)
 	{
-		validate_access("clients", i, true, __LINE__, __FUNCTION__, __FILE__);
+		// Get client pointer
+		clientsDataStruct* client = getClient(i);
 		temparray[i][0] = i;
 		// Use either blocked or total count based on request string
-		temparray[i][1] = blockedonly ? clients[i].blockedcount : clients[i].count;
+		temparray[i][1] = blockedonly ? client->blockedcount : client->count;
 	}
 
 	// Sort in ascending order?
@@ -389,7 +391,7 @@ void getTopClients(char *client_message, int *sock)
 		qsort(temparray, counters->clients, sizeof(int[2]), cmpdesc);
 
 	// Get clients which the user doesn't want to see
-	char * excludeclients = read_setupVarsconf("API_EXCLUDE_CLIENTS");
+	char* excludeclients = read_setupVarsconf("API_EXCLUDE_CLIENTS");
 	if(excludeclients != NULL)
 	{
 		getSetupVarsArray(excludeclients);
@@ -402,24 +404,25 @@ void getTopClients(char *client_message, int *sock)
 	}
 
 	int n = 0;
-	for(i=0; i < counters->clients; i++)
+	for(int i=0; i < counters->clients; i++)
 	{
 		// Get sorted indices and counter values (may be either total or blocked count)
 		int j = temparray[i][0];
 		int ccount = temparray[i][1];
-		validate_access("clients", j, true, __LINE__, __FUNCTION__, __FILE__);
+		// Get client pointer
+		clientsDataStruct* client = getClient(j);
 
 		// Skip this client if there is a filter on it
 		if(excludeclients != NULL &&
-			(insetupVarsArray(getstr(clients[j].ippos)) || insetupVarsArray(getstr(clients[j].namepos))))
+			(insetupVarsArray(getstr(client->ippos)) || insetupVarsArray(getstr(client->namepos))))
 			continue;
 
 		// Hidden client, probably due to privacy level. Skip this in the top lists
-		if(strcmp(getstr(clients[j].ippos), HIDDEN_CLIENT) == 0)
+		if(strcmp(getstr(client->ippos), HIDDEN_CLIENT) == 0)
 			continue;
 
-		char *client_ip = getstr(clients[j].ippos);
-		char *client_name = getstr(clients[j].namepos);
+		char *client_ip = getstr(client->ippos);
+		char *client_name = getstr(client->namepos);
 
 		// Return this client if either
 		// - "withzero" option is set, and/or
@@ -691,15 +694,16 @@ void getAllQueries(char *client_message, int *sock)
 		if(clientname == NULL) return;
 		sscanf(client_message, ">getallqueries-client %255s", clientname);
 		filterclientname = true;
+
 		// Iterate through all known clients
-		int i;
-		validate_access("clients", MAX(0,counters->clients-1), true, __LINE__, __FUNCTION__, __FILE__);
-		for(i = 0; i < counters->clients; i++)
+		for(int i = 0; i < counters->clients; i++)
 		{
+			// Get client pointer
+			clientsDataStruct* client = getClient(i);
 			// Try to match the requested string
-			if(strcmp(getstr(clients[i].ippos), clientname) == 0 ||
-			   (clients[i].namepos != 0 &&
-			    strcmp(getstr(clients[i].namepos), clientname) == 0))
+			if(strcmp(getstr(client->ippos), clientname) == 0 ||
+			   (client->namepos != 0 &&
+			    strcmp(getstr(client->namepos), clientname) == 0))
 			{
 				clientid = i;
 				break;
@@ -798,12 +802,15 @@ void getAllQueries(char *client_message, int *sock)
 		// Ask subroutine for domain. It may return "hidden" depending on
 		// the privacy settings at the time the query was made
 		char *domain = getDomainString(i);
+
 		// Similarly for the client
-		char *client;
-		if(strlen(getstr(clients[query->clientID].namepos)) > 0)
-			client = getClientNameString(i);
+		char *clientIPName = NULL;
+		// Get client pointer
+		clientsDataStruct* client = getClient(i);
+		if(strlen(getstr(client->namepos)) > 0)
+			clientIPName = getClientNameString(i);
 		else
-			client = getClientIPString(i);
+			clientIPName = getClientIPString(i);
 
 		unsigned long delay = query->response;
 		// Check if received (delay should be smaller than 30min)
@@ -812,7 +819,7 @@ void getAllQueries(char *client_message, int *sock)
 
 		if(istelnet[*sock])
 		{
-			ssend(*sock,"%i %s %s %s %i %i %i %lu\n",query->timestamp,qtype,domain,client,query->status,query->dnssec,query->reply,delay);
+			ssend(*sock,"%i %s %s %s %i %i %i %lu\n",query->timestamp,qtype,domain,clientIPName,query->status,query->dnssec,query->reply,delay);
 		}
 		else
 		{
@@ -823,7 +830,7 @@ void getAllQueries(char *client_message, int *sock)
 				return;
 
 			// Use str32 for domain and client because we have no idea how long they will be (max is 4294967295 for str32)
-			if(!pack_str32(*sock, domain) || !pack_str32(*sock, client))
+			if(!pack_str32(*sock, domain) || !pack_str32(*sock, clientIPName))
 				return;
 
 			pack_uint8(*sock, query->status);
@@ -1013,7 +1020,7 @@ void getDBstats(int *sock)
 
 void getClientsOverTime(int *sock)
 {
-	int i, sendit = -1, until = OVERTIME_SLOTS;
+	int sendit = -1, until = OVERTIME_SLOTS;
 
 	// Exit before processing any data if requested via config setting
 	get_privacy_level(NULL);
@@ -1021,7 +1028,7 @@ void getClientsOverTime(int *sock)
 		return;
 
 	// Find minimum ID to send
-	for(i = 0; i < OVERTIME_SLOTS; i++)
+	for(int i = 0; i < OVERTIME_SLOTS; i++)
 	{
 		if((overTime[i].total > 0 || overTime[i].blocked > 0) &&
 		   overTime[i].timestamp >= overTime[0].timestamp)
@@ -1034,7 +1041,7 @@ void getClientsOverTime(int *sock)
 		return;
 
 	// Find minimum ID to send
-	for(i = 0; i < OVERTIME_SLOTS; i++)
+	for(int i = 0; i < OVERTIME_SLOTS; i++)
 	{
 		if(overTime[i].timestamp >= time(NULL))
 		{
@@ -1055,18 +1062,19 @@ void getClientsOverTime(int *sock)
 	{
 		getSetupVarsArray(excludeclients);
 
-		for(i=0; i < counters->clients; i++)
+		for(int i=0; i < counters->clients; i++)
 		{
-			validate_access("clients", i, true, __LINE__, __FUNCTION__, __FILE__);
+			// Get client pointer
+			clientsDataStruct* client = getClient(i);
 			// Check if this client should be skipped
-			if(insetupVarsArray(getstr(clients[i].ippos)) ||
-			   insetupVarsArray(getstr(clients[i].namepos)))
+			if(insetupVarsArray(getstr(client->ippos)) ||
+			   insetupVarsArray(getstr(client->namepos)))
 				skipclient[i] = true;
 		}
 	}
 
 	// Main return loop
-	for(i = sendit; i < until; i++)
+	for(int i = sendit; i < until; i++)
 	{
 		if(istelnet[*sock])
 			ssend(*sock, "%i", overTime[i].timestamp);
@@ -1079,7 +1087,10 @@ void getClientsOverTime(int *sock)
 			if(skipclient[j])
 				continue;
 
-			int thisclient = clients[j].overTime[i];
+			// Get client pointer
+			clientsDataStruct* client = getClient(j);
+
+			int thisclient = client->overTime[i];
 
 			if(istelnet[*sock])
 				ssend(*sock, " %i", thisclient);
@@ -1120,10 +1131,11 @@ void getClientNames(int *sock)
 
 		for(i=0; i < counters->clients; i++)
 		{
-			validate_access("clients", i, true, __LINE__, __FUNCTION__, __FILE__);
+			// Get client pointer
+			clientsDataStruct* client = getClient(i);
 			// Check if this client should be skipped
-			if(insetupVarsArray(getstr(clients[i].ippos)) ||
-			   insetupVarsArray(getstr(clients[i].namepos)))
+			if(insetupVarsArray(getstr(client->ippos)) ||
+			   insetupVarsArray(getstr(client->namepos)))
 				skipclient[i] = true;
 		}
 	}
@@ -1135,8 +1147,11 @@ void getClientNames(int *sock)
 		if(skipclient[i])
 			continue;
 
-		char *client_ip = getstr(clients[i].ippos);
-		char *client_name = getstr(clients[i].namepos);
+		// Get client pointer
+		clientsDataStruct* client = getClient(i);
+
+		char *client_ip = getstr(client->ippos);
+		char *client_name = getstr(client->namepos);
 
 		if(istelnet[*sock])
 			ssend(*sock, "%s %s\n", client_name, client_ip);
@@ -1175,13 +1190,13 @@ void getUnknownQueries(int *sock)
 		}
 
 		validate_access("domains", query->domainID, true, __LINE__, __FUNCTION__, __FILE__);
-		validate_access("clients", query->clientID, true, __LINE__, __FUNCTION__, __FILE__);
+		// Get client pointer
+		clientsDataStruct* client = getClient(query->clientID);
 
-
-		char *client = getstr(clients[query->clientID].ippos);
+		char *clientIP = getstr(client->ippos);
 
 		if(istelnet[*sock])
-			ssend(*sock, "%i %i %i %s %s %s %i %s\n", query->timestamp, i, query->id, type, getstr(domains[query->domainID].domainpos), client, query->status, query->complete ? "true" : "false");
+			ssend(*sock, "%i %i %i %s %s %s %i %s\n", query->timestamp, i, query->id, type, getstr(domains[query->domainID].domainpos), clientIP, query->status, query->complete ? "true" : "false");
 		else {
 			pack_int32(*sock, query->timestamp);
 			pack_int32(*sock, query->id);
@@ -1191,7 +1206,7 @@ void getUnknownQueries(int *sock)
 				return;
 
 			// Use str32 for domain and client because we have no idea how long they will be (max is 4294967295 for str32)
-			if(!pack_str32(*sock, getstr(domains[query->domainID].domainpos)) || !pack_str32(*sock, client))
+			if(!pack_str32(*sock, getstr(domains[query->domainID].domainpos)) || !pack_str32(*sock, clientIP))
 				return;
 
 			pack_uint8(*sock, query->status);

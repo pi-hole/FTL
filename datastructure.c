@@ -106,23 +106,22 @@ int findDomainID(const char *domain)
 	return domainID;
 }
 
-int findClientID(const char *client, bool count)
+int findClientID(const char *clientIP, bool count)
 {
-	int i;
 	// Compare content of client against known client IP addresses
-	if(counters->clients > 0)
-		validate_access("clients", counters->clients-1, true, __LINE__, __FUNCTION__, __FILE__);
-	for(i=0; i < counters->clients; i++)
+	for(int i=0; i < counters->clients; i++)
 	{
+		// Get client pointer
+		clientsDataStruct* client = getClient(i);
 		// Quick test: Does the clients IP start with the same character?
-		if(getstr(clients[i].ippos)[0] != client[0])
+		if(getstr(client->ippos)[0] != clientIP[0])
 			continue;
 
 		// If so, compare the full IP using strcmp
-		if(strcmp(getstr(clients[i].ippos), client) == 0)
+		if(strcmp(getstr(client->ippos), clientIP) == 0)
 		{
 			// Add one if count == true (do not add one, e.g., during ARP table processing)
-			if(count) clients[i].count++;
+			if(count) client->count++;
 			return i;
 		}
 	}
@@ -139,28 +138,30 @@ int findClientID(const char *client, bool count)
 	// Check struct size
 	memory_check(CLIENTS);
 
-	validate_access("clients", clientID, false, __LINE__, __FUNCTION__, __FILE__);
+	// Get client pointer
+	clientsDataStruct* client = getClient(clientID);
+
 	// Set magic byte
-	clients[clientID].magic = MAGICBYTE;
+	client->magic = MAGICBYTE;
 	// Set its counter to 1
-	clients[clientID].count = 1;
+	client->count = 1;
 	// Initialize blocked count to zero
-	clients[clientID].blockedcount = 0;
+	client->blockedcount = 0;
 	// Store client IP - no need to check for NULL here as it doesn't harm
-	clients[clientID].ippos = addstr(client);
+	client->ippos = addstr(clientIP);
 	// Initialize client hostname
 	// Due to the nature of us being the resolver,
 	// the actual resolving of the host name has
 	// to be done separately to be non-blocking
-	clients[clientID].new = true;
-	clients[clientID].namepos = 0;
+	client->new = true;
+	client->namepos = 0;
 	// No query seen so far
-	clients[clientID].lastQuery = 0;
-	clients[clientID].numQueriesARP = 0;
+	client->lastQuery = 0;
+	client->numQueriesARP = 0;
 
 	// Initialize client-specific overTime data
 	for(int i = 0; i < OVERTIME_SLOTS; i++)
-		clients[clientID].overTime[i] = 0;
+		client->overTime[i] = 0;
 
 	// Increase counter by one
 	counters->clients++;
@@ -201,8 +202,11 @@ char *getClientIPString(int queryID)
 	queriesDataStruct* query = getQuery(queryID);
 	if(query->privacylevel < PRIVACY_HIDE_DOMAINS_CLIENTS)
 	{
-		validate_access("clients", query->clientID, true, __LINE__, __FUNCTION__, __FILE__);
-		return getstr(clients[query->clientID].ippos);
+		// Get client pointer
+		clientsDataStruct* client = getClient(query->clientID);
+
+		// Return string
+		return getstr(client->ippos);
 	}
 	else
 		return HIDDEN_CLIENT;
@@ -215,8 +219,11 @@ char *getClientNameString(int queryID)
 	queriesDataStruct* query = getQuery(queryID);
 	if(query->privacylevel < PRIVACY_HIDE_DOMAINS_CLIENTS)
 	{
-		validate_access("clients", query->clientID, true, __LINE__, __FUNCTION__, __FILE__);
-		return getstr(clients[query->clientID].namepos);
+		// Get client pointer
+		clientsDataStruct* client = getClient(query->clientID);
+
+		// Return string
+		return getstr(client->namepos);
 	}
 	else
 		return HIDDEN_CLIENT;

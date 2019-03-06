@@ -96,22 +96,22 @@ void _FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char 
 	// Get client IP address
 	char dest[ADDRSTRLEN];
 	inet_ntop((flags & F_IPV4) ? AF_INET : AF_INET6, addr, dest, ADDRSTRLEN);
-	char *client = strdup(dest);
-	strtolower(client);
+	char *clientIP = strdup(dest);
+	strtolower(clientIP);
 
 	// Check if user wants to skip queries coming from localhost
 	if(config.ignore_localhost &&
-	   (strcmp(client, "127.0.0.1") == 0 || strcmp(client, "::1") == 0))
+	   (strcmp(clientIP, "127.0.0.1") == 0 || strcmp(clientIP, "::1") == 0))
 	{
 		free(domain);
-		free(client);
+		free(clientIP);
 		unlock_shm();
 		return;
 	}
 
 	// Log new query if in debug mode
 	char *proto = (type == UDP) ? "UDP" : "TCP";
-	if(config.debug & DEBUG_QUERIES) logg("**** new %s %s \"%s\" from %s (ID %i, %s:%i)", proto, types, domain, client, id, file, line);
+	if(config.debug & DEBUG_QUERIES) logg("**** new %s %s \"%s\" from %s (ID %i, %s:%i)", proto, types, domain, clientIP, id, file, line);
 
 	// Update counters
 	counters->querytype[querytype-1]++;
@@ -128,7 +128,7 @@ void _FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char 
 		if(config.debug & DEBUG_QUERIES) logg("Notice: Skipping new query: %s (%i)", types, id);
 		free(domain);
 		free(domainbuffer);
-		free(client);
+		free(clientIP);
 		unlock_shm();
 		return;
 	}
@@ -137,7 +137,7 @@ void _FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char 
 	int domainID = findDomainID(domain);
 
 	// Go through already knows clients and see if it is one of them
-	int clientID = findClientID(client, true);
+	int clientID = findClientID(clientIP, true);
 
 	// Save everything
 	queriesDataStruct* query = getQuery(queryID);
@@ -174,12 +174,15 @@ void _FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char 
 
 	// Update overTime data
 	overTime[timeidx].total++;
+
+	// Get client pointer
+	clientsDataStruct* client = getClient(clientID);
 	// Update overTime data structure with the new client
-	clients[clientID].overTime[timeidx]++;
+	client->overTime[timeidx]++;
 
 	// Set lastQuery timer and add one query for network table
-	clients[clientID].lastQuery = querytimestamp;
-	clients[clientID].numQueriesARP++;
+	client->lastQuery = querytimestamp;
+	client->numQueriesARP++;
 
 	// Try blocking regex if configured
 	validate_access("domains", domainID, false, __LINE__, __FUNCTION__, __FILE__);
@@ -462,9 +465,13 @@ void _FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id,
 			validate_access("domains", query->domainID, true, __LINE__, __FUNCTION__, __FILE__);
 			domains[query->domainID].blockedcount++;
 
-			validate_access("clients", query->clientID, true, __LINE__, __FUNCTION__, __FILE__);
-			clients[query->clientID].blockedcount++;
+			// Get client pointer
+			clientsDataStruct* client = getClient(query->clientID);
 
+			// Update client blocked counter
+			client->blockedcount++;
+
+			// Set query status to wildcard
 			query->status = QUERY_WILDCARD;
 		}
 		else
@@ -594,8 +601,10 @@ static void query_externally_blocked(int i)
 	overTime[timeidx].blocked++;
 	validate_access("domains", query->domainID, true, __LINE__, __FUNCTION__, __FILE__);
 	domains[query->domainID].blockedcount++;
-	validate_access("clients", query->clientID, true, __LINE__, __FUNCTION__, __FILE__);
-	clients[query->clientID].blockedcount++;
+
+	// Get client pointer
+	clientsDataStruct* client = getClient(query->clientID);
+	client->blockedcount++;
 
 	query->status = QUERY_EXTERNAL_BLOCKED;
 }
@@ -706,8 +715,8 @@ void _FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg
 		int domainID = query->domainID;
 		validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
 
-		int clientID = query->clientID;
-		validate_access("clients", clientID, true, __LINE__, __FUNCTION__, __FILE__);
+		// Get client pointer
+		clientsDataStruct* client = getClient(query->clientID);
 
 		// Mark this query as blocked if domain was matched by a regex
 		if(domains[domainID].regexmatch == REGEX_BLOCKED)
@@ -730,7 +739,7 @@ void _FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg
 				counters->blocked++;
 				overTime[timeidx].blocked++;
 				domains[domainID].blockedcount++;
-				clients[clientID].blockedcount++;
+				client->blockedcount++;
 				break;
 			case QUERY_CACHE: // cached from one of the lists
 				counters->cached++;

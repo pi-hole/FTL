@@ -737,8 +737,8 @@ void read_data_from_DB(void)
 			continue;
 		}
 
-		const char * client = (const char *)sqlite3_column_text(stmt, 5);
-		if(client == NULL)
+		const char * clientIP = (const char *)sqlite3_column_text(stmt, 5);
+		if(clientIP == NULL)
 		{
 			logg("DB warn: CLIENT should never be NULL, %i", queryTimeStamp);
 			continue;
@@ -746,7 +746,7 @@ void read_data_from_DB(void)
 
 		// Check if user wants to skip queries coming from localhost
 		if(config.ignore_localhost &&
-		   (strcmp(client, "127.0.0.1") == 0 || strcmp(client, "::1") == 0))
+		   (strcmp(clientIP, "127.0.0.1") == 0 || strcmp(clientIP, "::1") == 0))
 		{
 			continue;
 		}
@@ -768,7 +768,7 @@ void read_data_from_DB(void)
 		// Obtain IDs only after filtering which queries we want to keep
 		int timeidx = getOverTimeID(queryTimeStamp);
 		int domainID = findDomainID(domain);
-		int clientID = findClientID(client, true);
+		int clientID = findClientID(clientIP, true);
 
 		// Ensure we have enough space in the queries struct
 		memory_check(QUERIES);
@@ -795,9 +795,9 @@ void read_data_from_DB(void)
 		query->reply = REPLY_UNKNOWN;
 
 		// Set lastQuery timer and add one query for network table
-		validate_access("clients", clientID, true, __LINE__, __FUNCTION__, __FILE__);
-		clients[clientID].lastQuery = queryTimeStamp;
-		clients[clientID].numQueriesARP++;
+		clientsDataStruct* client = getClient(clientID);
+		client->lastQuery = queryTimeStamp;
+		client->numQueriesARP++;
 
 		// Handle type counters
 		if(type >= TYPE_A && type < TYPE_MAX)
@@ -809,7 +809,7 @@ void read_data_from_DB(void)
 		// Update overTime data
 		overTime[timeidx].total++;
 		// Update overTime data structure with the new client
-		clients[clientID].overTime[timeidx]++;
+		client->overTime[timeidx]++;
 
 		// Increase DNS queries counter
 		counters->queries++;
@@ -827,7 +827,7 @@ void read_data_from_DB(void)
 			case QUERY_EXTERNAL_BLOCKED: // Blocked by external provider
 				counters->blocked++;
 				domains[domainID].blockedcount++;
-				clients[clientID].blockedcount++;
+				client->blockedcount++;
 				// Update overTime data structure
 				overTime[timeidx].blocked++;
 				break;

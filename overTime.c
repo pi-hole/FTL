@@ -35,7 +35,12 @@ static void initSlot(unsigned int index, time_t timestamp)
 
 	// Zero overTime counter for all known clients
 	for(int clientID = 0; clientID < counters->clients; clientID++)
-		clients[clientID].overTime[index] = 0;
+	{
+		// Get client pointer
+		clientsDataStruct* client = getClient(clientID);
+
+		client->overTime[index] = 0;
+	}
 }
 
 void initOverTime(void)
@@ -143,7 +148,7 @@ void moveOverTimeMemory(time_t mintime)
 		// Move client-specific overTime memory
 		for(int clientID = 0; clientID < counters->clients; clientID++)
 		{
-			memmove(&clients[clientID].overTime[0], &clients[clientID].overTime[moveOverTime], remainingSlots*sizeof(int));
+			memmove(&getClient(clientID)->overTime[0], &getClient(clientID)->overTime[moveOverTime], remainingSlots*sizeof(int));
 		}
 
 		// Iterate over new overTime region and initialize it

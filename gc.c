@@ -57,15 +57,14 @@ void *GC_thread(void *val)
 					break;
 
 				// Adjust client counter
-				int clientID = query->clientID;
-				validate_access("clients", clientID, true, __LINE__, __FUNCTION__, __FILE__);
-				clients[clientID].count--;
+				clientsDataStruct* client = getClient(query->clientID);
+				client->count--;
 
 				// Adjust total counters and total over time data
 				int timeidx = query->timeidx;
 				overTime[timeidx].total--;
 				// Adjust corresponding overTime counters
-				clients[clientID].overTime[timeidx]--;
+				client->overTime[timeidx]--;
 
 				// Adjust domain counter (no overTime information)
 				int domainID = query->domainID;
@@ -98,7 +97,7 @@ void *GC_thread(void *val)
 						counters->blocked--;
 						overTime[timeidx].blocked--;
 						domains[domainID].blockedcount--;
-						clients[clientID].blockedcount--;
+						client->blockedcount--;
 						break;
 					default:
 						/* That cannot happen */

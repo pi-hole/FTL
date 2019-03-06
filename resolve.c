@@ -74,20 +74,19 @@ char *resolveHostname(const char *addr)
 // Resolve client host names
 void resolveClients(bool onlynew)
 {
-	int clientID;
-	for(clientID = 0; clientID < counters->clients; clientID++)
+	for(int clientID = 0; clientID < counters->clients; clientID++)
 	{
-		// Memory validation
-		validate_access("clients", clientID, true, __LINE__, __FUNCTION__, __FILE__);
+		// Get client pointer
+		clientsDataStruct* client = getClient(clientID);
 
 		// If onlynew flag is set, we will only resolve new clients
 		// If not, we will try to re-resolve all known clients
-		if(onlynew && !clients[clientID].new)
+		if(onlynew && !client->new)
 			continue;
 
 		// Lock data when obtaining IP of this client
 		lock_shm();
-		const char* ipaddr = getstr(clients[clientID].ippos);
+		const char* ipaddr = getstr(client->ippos);
 		unlock_shm();
 
 		// Important: Don't hold a lock while resolving as the main thread
@@ -96,8 +95,8 @@ void resolveClients(bool onlynew)
 
 		// Finally, lock data when storing obtained hostname
 		lock_shm();
-		clients[clientID].namepos = addstr(hostname);
-		clients[clientID].new = false;
+		client->namepos = addstr(hostname);
+		client->new = false;
 		unlock_shm();
 	}
 }

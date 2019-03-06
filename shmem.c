@@ -38,6 +38,7 @@ static SharedMemory shm_settings = { 0 };
 
 // Variable size array structs
 static queriesDataStruct *queries = NULL;
+static clientsDataStruct *clients = NULL;
 
 typedef struct {
 	pthread_mutex_t lock;
@@ -590,4 +591,21 @@ queriesDataStruct* _getQuery(int queryID, int line, const char * function, const
 		return NULL;
 	}
 	return &queries[queryID];
+}
+
+clientsDataStruct* _getClient(int clientID, int line, const char * function, const char * file)
+{
+	if(clientID < 0 || clientID > counters->clients_MAX)
+	{
+		logg("FATAL: Trying to access client ID %i, but maximum is %i", clientID, counters->clients_MAX);
+		logg("       found in %s() (%s:%i)", function, file, line);
+		return NULL;
+	}
+	if(clients[clientID].magic != MAGICBYTE)
+	{
+		logg("FATAL: Trying to access client ID %i, but magic byte is %x", clientID, clients[clientID].magic);
+		logg("       found in %s() (%s:%i)", function, file, line);
+		return NULL;
+	}
+	return &clients[clientID];
 }

@@ -262,7 +262,6 @@ extern countersStruct *counters;
 extern ConfigStruct config;
 
 extern forwardedDataStruct *forwarded;
-extern clientsDataStruct *clients;
 extern domainsDataStruct *domains;
 extern overTimeDataStruct *overTime;
 
@@ -318,3 +317,5 @@ extern pthread_t DNSclientthread;
 // Pointer getter functions
 #define getQuery(queryID) _getQuery(queryID, __LINE__, __FUNCTION__, __FILE__)
 queriesDataStruct* _getQuery(int queryID, int line, const char * function, const char * file);
+#define getClient(clientID) _getClient(clientID, __LINE__, __FUNCTION__, __FILE__)
+clientsDataStruct* _getClient(int clientID, int line, const char * function, const char * file);

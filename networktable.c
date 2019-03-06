@@ -124,10 +124,12 @@ void parse_arp_cache(void)
 
 		// Get hostname of this client if the client is known
 		char *hostname = "";
+		// Get client pointer
+		clientsDataStruct* client = getClient(clientID);
+
 		if(clientKnown)
 		{
-			validate_access("clients", clientID, true, __LINE__, __FUNCTION__, __FILE__);
-			hostname = getstr(clients[clientID].namepos);
+			hostname = getstr(client->namepos);
 		}
 
 		// Device not in database, add new entry
@@ -138,8 +140,8 @@ void parse_arp_cache(void)
 			        "(ip,hwaddr,interface,firstSeen,lastQuery,numQueries,name,macVendor) "\
 			        "VALUES (\'%s\',\'%s\',\'%s\',%lu, %ld, %u, \'%s\', \'%s\');",\
 			        ip, hwaddr, iface, now,
-			        clientKnown ? clients[clientID].lastQuery : 0L,
-			        clientKnown ? clients[clientID].numQueriesARP : 0u,
+			        clientKnown ? client->lastQuery : 0L,
+			        clientKnown ? client->numQueriesARP : 0u,
 			        hostname,
 			        macVendor);
 			free(macVendor);
@@ -148,21 +150,21 @@ void parse_arp_cache(void)
 		else if(clientKnown)
 		{
 			// Update lastQuery. Only use new value if larger
-			// clients[clientID].lastQuery may be zero if this
+			// client->lastQuery may be zero if this
 			// client is only known from a database entry but has
 			// not been seen since then
 			dbquery("UPDATE network "\
 			        "SET lastQuery = MAX(lastQuery, %ld) "\
 			        "WHERE id = %i;",\
-			        clients[clientID].lastQuery, dbID);
+			        client->lastQuery, dbID);
 
 			// Update numQueries. Add queries seen since last update
 			// and reset counter afterwards
 			dbquery("UPDATE network "\
 			        "SET numQueries = numQueries + %u "\
 			        "WHERE id = %i;",\
-			        clients[clientID].numQueriesARP, dbID);
-			clients[clientID].numQueriesARP = 0;
+			        client->numQueriesARP, dbID);
+			client->numQueriesARP = 0;
 
 			// Store hostname if available
 			if(strlen(hostname) > 0)
