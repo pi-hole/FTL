@@ -17,46 +17,48 @@ void strtolower(char *str)
 	while(str[i]){ str[i] = tolower(str[i]); i++; }
 }
 
-int findForwardID(const char * forward, bool count)
+int findForwardID(const char * forwardString, bool count)
 {
-	int i, forwardID = -1;
-	if(counters->forwarded > 0)
-		validate_access("forwarded", counters->forwarded-1, true, __LINE__, __FUNCTION__, __FILE__);
+	int forwardID = -1;
 	// Go through already knows forward servers and see if we used one of those
-	for(i=0; i < counters->forwarded; i++)
+	for(int i=0; i < counters->forwarded; i++)
 	{
-		if(strcmp(getstr(forwarded[i].ippos), forward) == 0)
+		// Get forward pointer
+		forwardedDataStruct* forward = getForward(i);
+
+		if(strcmp(getstr(forward->ippos), forwardString) == 0)
 		{
-			forwardID = i;
-			if(count) forwarded[forwardID].count++;
-			return forwardID;
+			if(count) forward->count++;
+			return i;
 		}
 	}
 	// This forward server is not known
 	// Store ID
 	forwardID = counters->forwarded;
-	logg("New forward server: %s (%i/%u)", forward, forwardID, counters->forwarded_MAX);
+	logg("New forward server: %s (%i/%u)", forwardString, forwardID, counters->forwarded_MAX);
 
 	// Check struct size
 	memory_check(FORWARDED);
 
-	validate_access("forwarded", forwardID, false, __LINE__, __FUNCTION__, __FILE__);
+	// Get forward pointer
+	forwardedDataStruct* forward = getForward(forwardID);
+
 	// Set magic byte
-	forwarded[forwardID].magic = MAGICBYTE;
+	forward->magic = MAGICBYTE;
 	// Initialize its counter
 	if(count)
-		forwarded[forwardID].count = 1;
+		forward->count = 1;
 	else
-		forwarded[forwardID].count = 0;
+		forward->count = 0;
 	// Save forward destination IP address
-	forwarded[forwardID].ippos = addstr(forward);
-	forwarded[forwardID].failed = 0;
+	forward->ippos = addstr(forwardString);
+	forward->failed = 0;
 	// Initialize forward hostname
 	// Due to the nature of us being the resolver,
 	// the actual resolving of the host name has
 	// to be done separately to be non-blocking
-	forwarded[forwardID].new = true;
-	forwarded[forwardID].namepos = 0; // 0 -> string with length zero
+	forward->new = true;
+	forward->namepos = 0; // 0 -> string with length zero
 	// Increase counter by one
 	counters->forwarded++;
 

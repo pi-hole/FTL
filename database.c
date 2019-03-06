@@ -500,8 +500,9 @@ void save_to_DB(void)
 		// FORWARD
 		if(query->status == QUERY_FORWARDED && query->forwardID > -1)
 		{
-			validate_access("forwarded", query->forwardID, true, __LINE__, __FUNCTION__, __FILE__);
-			sqlite3_bind_text(stmt, 6, getstr(forwarded[query->forwardID].ippos), -1, SQLITE_TRANSIENT);
+			// Get forward pointer
+			forwardedDataStruct* forward = getForward(query->forwardID);
+			sqlite3_bind_text(stmt, 6, getstr(forward->ippos), -1, SQLITE_TRANSIENT);
 		}
 		else
 		{

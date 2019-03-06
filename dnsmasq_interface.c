@@ -598,8 +598,10 @@ static void query_externally_blocked(int i)
 	{
 		counters->forwardedqueries--;
 		overTime[timeidx].forwarded--;
-		validate_access("forwarded", query->forwardID, true, __LINE__, __FUNCTION__, __FILE__);
-		forwarded[query->forwardID].count--;
+
+		// Get forward pointer
+		forwardedDataStruct* forward = getForward(query->forwardID);
+		forward->count--;
 	}
 
 	// ... but as blocked
@@ -1116,13 +1118,17 @@ void _FTL_forwarding_failed(struct server *server, const char* file, const int l
 		inet_ntop(AF_INET6, &server->addr.in6.sin6_addr, dest, ADDRSTRLEN);
 
 	// Convert forward to lower case
-	char *forward = strdup(dest);
-	strtolower(forward);
-	int forwardID = findForwardID(forward, false);
+	char *forwarddest = strdup(dest);
+	strtolower(forwarddest);
+	int forwardID = findForwardID(forwarddest, false);
 
 	if(config.debug & DEBUG_QUERIES) logg("**** forwarding to %s (ID %i, %s:%i) failed", dest, forwardID, file, line);
 
-	forwarded[forwardID].failed++;
+	// Get forward pointer
+	forwardedDataStruct* forward = getForward(forwardID);
+
+	// Update counter
+	forward->failed++;
 
 	free(forward);
 	unlock_shm();

@@ -107,17 +107,17 @@ void resolveForwardDestinations(bool onlynew)
 	int forwardID;
 	for(forwardID = 0; forwardID < counters->forwarded; forwardID++)
 	{
-		// Memory validation
-		validate_access("forwarded", forwardID, true, __LINE__, __FUNCTION__, __FILE__);
+		// Get forward pointer
+		forwardedDataStruct* forward = getForward(forwardID);
 
 		// If onlynew flag is set, we will only resolve new upstream destinations
 		// If not, we will try to re-resolve all known upstream destinations
-		if(onlynew && !forwarded[forwardID].new)
+		if(onlynew && !forward->new)
 			continue;
 
 		// Lock data when obtaining IP of this forward destination
 		lock_shm();
-		const char* ipaddr = getstr(forwarded[forwardID].ippos);
+		const char* ipaddr = getstr(forward->ippos);
 		unlock_shm();
 
 
@@ -127,8 +127,8 @@ void resolveForwardDestinations(bool onlynew)
 
 		// Finally, lock data when storing obtained hostname
 		lock_shm();
-		forwarded[forwardID].namepos = addstr(hostname);
-		forwarded[forwardID].new = false;
+		forward->namepos = addstr(hostname);
+		forward->new = false;
 		unlock_shm();
 	}
 }

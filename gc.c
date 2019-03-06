@@ -70,6 +70,9 @@ void *GC_thread(void *val)
 				domainsDataStruct* domain = getDomain(query->domainID);
 				domain->count--;
 
+				// Get forward pointer
+				forwardedDataStruct* forward = getForward(query->forwardID);
+
 				// Change other counters according to status of this query
 				switch(query->status)
 				{
@@ -79,9 +82,9 @@ void *GC_thread(void *val)
 						break;
 					case QUERY_FORWARDED:
 						// Forwarded to an upstream DNS server
+						// Adjust counters
 						counters->forwardedqueries--;
-						validate_access("forwarded", query->forwardID, true, __LINE__, __FUNCTION__, __FILE__);
-						forwarded[query->forwardID].count--;
+						forward->count--;
 						overTime[timeidx].forwarded--;
 						break;
 					case QUERY_CACHE:

@@ -38,33 +38,7 @@ countersStruct *counters = NULL;
 ConfigStruct config;
 
 // Variable size array structs
-forwardedDataStruct *forwarded = NULL;
 overTimeDataStruct *overTime = NULL;
-
-void validate_access(const char * name, int pos, bool testmagic, int line, const char * function, const char * file)
-{
-	int limit = 0;
-	if(name[0] == 'f') limit = counters->forwarded_MAX;
-	else { logg("Validator error (range)"); killed = 1; }
-
-	if(pos >= limit || pos < 0)
-	{
-		logg("FATAL ERROR: Trying to access %s[%i], but maximum is %i", name, pos, limit);
-		logg("             found in %s() (%s:%i)", function, file, line);
-	}
-	// Don't test magic byte if detected potential out-of-bounds error
-	else if(testmagic)
-	{
-		unsigned char magic = 0x00;
-		if(name[0] == 'f') magic = forwarded[pos].magic;
-		else { logg("Validator error (magic byte)"); killed = 1; }
-		if(magic != MAGICBYTE)
-		{
-			logg("FATAL ERROR: Trying to access %s[%i], but magic byte is %x", name, pos, magic);
-			logg("             found in %s() (%s:%i)", function, file, line);
-		}
-	}
-}
 
 // The special memory handling routines have to be the last ones in this source file
 // as we restore the original definition of the strdup, free, calloc, and realloc

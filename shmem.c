@@ -40,6 +40,7 @@ static SharedMemory shm_settings = { 0 };
 static queriesDataStruct *queries = NULL;
 static clientsDataStruct *clients = NULL;
 static domainsDataStruct *domains = NULL;
+static forwardedDataStruct *forwarded = NULL;
 
 typedef struct {
 	pthread_mutex_t lock;
@@ -626,4 +627,21 @@ domainsDataStruct* _getDomain(int domainID, int line, const char * function, con
 		return NULL;
 	}
 	return &domains[domainID];
+}
+
+forwardedDataStruct* _getForward(int forwardID, int line, const char * function, const char * file)
+{
+	if(forwardID < 0 || forwardID > counters->forwarded_MAX)
+	{
+		logg("FATAL: Trying to access forwarded ID %i, but maximum is %i", forwardID, counters->forwarded_MAX);
+		logg("       found in %s() (%s:%i)", function, file, line);
+		return NULL;
+	}
+	if(forwarded[forwardID].magic != MAGICBYTE)
+	{
+		logg("FATAL: Trying to access forwarded ID %i, but magic byte is %x", forwardID, forwarded[forwardID].magic);
+		logg("       found in %s() (%s:%i)", function, file, line);
+		return NULL;
+	}
+	return &forwarded[forwardID];
 }

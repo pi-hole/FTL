@@ -261,7 +261,6 @@ extern FTLFileNamesStruct FTLfiles;
 extern countersStruct *counters;
 extern ConfigStruct config;
 
-extern forwardedDataStruct *forwarded;
 extern overTimeDataStruct *overTime;
 
 /// Indexed by client ID, then time index (like `overTime`).
@@ -320,3 +319,5 @@ queriesDataStruct* _getQuery(int queryID, int line, const char * function, const
 clientsDataStruct* _getClient(int clientID, int line, const char * function, const char * file);
 #define getDomain(domainID) _getDomain(domainID, __LINE__, __FUNCTION__, __FILE__)
 domainsDataStruct* _getDomain(int domainID, int line, const char * function, const char * file);
+#define getForward(forwardID) _getForward(forwardID, __LINE__, __FUNCTION__, __FILE__)
+forwardedDataStruct* _getForward(int forwardID, int line, const char * function, const char * file);

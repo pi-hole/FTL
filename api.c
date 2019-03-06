@@ -457,18 +457,21 @@ void getTopClients(char *client_message, int *sock)
 void getForwardDestinations(char *client_message, int *sock)
 {
 	bool sort = true;
-	int i, temparray[counters->forwarded][2], totalqueries = 0;
+	int temparray[counters->forwarded][2], totalqueries = 0;
 
 	if(command(client_message, "unsorted"))
 		sort = false;
 
-	for(i=0; i < counters->forwarded; i++) {
+	for(int i = 0; i < counters->forwarded; i++) {
 		validate_access("forwarded", i, true, __LINE__, __FUNCTION__, __FILE__);
 		// If we want to print a sorted output, we fill the temporary array with
 		// the values we will use for sorting afterwards
 		if(sort) {
+			// Get forward pointer
+			forwardedDataStruct* forward = getForward(i);
+
 			temparray[i][0] = i;
-			temparray[i][1] = forwarded[i].count;
+			temparray[i][1] = forward->count;
 		}
 	}
 
@@ -481,7 +484,7 @@ void getForwardDestinations(char *client_message, int *sock)
 	totalqueries = counters->forwardedqueries + counters->cached + counters->blocked;
 
 	// Loop over available forward destinations
-	for(i=-2; i < min(counters->forwarded, 8); i++)
+	for(int i = -2; i < min(counters->forwarded, 8); i++)
 	{
 		char *ip, *name;
 		float percentage = 0.0f;
@@ -515,15 +518,17 @@ void getForwardDestinations(char *client_message, int *sock)
 				j = temparray[i][0];
 			else
 				j = i;
-			validate_access("forwarded", j, true, __LINE__, __FUNCTION__, __FILE__);
+
+			// Get forward pointer
+			forwardedDataStruct* forward = getForward(j);
 
 			// Get IP and host name of forward destination if available
-			ip = getstr(forwarded[j].ippos);
-			name = getstr(forwarded[j].namepos);
+			ip = getstr(forward->ippos);
+			name = getstr(forward->namepos);
 
 			// Get percentage
 			if(totalqueries > 0)
-				percentage = 1e2f * forwarded[j].count / totalqueries;
+				percentage = 1e2f * forward->count / totalqueries;
 		}
 
 		// Send data:
@@ -643,11 +648,13 @@ void getAllQueries(char *client_message, int *sock)
 			forwarddestid = -3;
 			for(i = 0; i < counters->forwarded; i++)
 			{
+				// Get forward pointer
+				forwardedDataStruct* forward = getForward(i);
 				// Try to match the requested string against their IP addresses and
 				// (if available) their host names
-				if(strcmp(getstr(forwarded[i].ippos), forwarddest) == 0 ||
-				   (forwarded[i].namepos != 0 &&
-				    strcmp(getstr(forwarded[i].namepos), forwarddest) == 0))
+				if(strcmp(getstr(forward->ippos), forwarddest) == 0 ||
+				   (forward->namepos != 0 &&
+				    strcmp(getstr(forward->namepos), forwarddest) == 0))
 				{
 					forwarddestid = i;
 					break;
