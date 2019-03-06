@@ -313,11 +313,11 @@ extern pthread_t GCthread;
 extern pthread_t DNSclientthread;
 
 // Pointer getter functions
-#define getQuery(queryID) _getQuery(queryID, __LINE__, __FUNCTION__, __FILE__)
-queriesData* _getQuery(int queryID, int line, const char * function, const char * file);
-#define getClient(clientID) _getClient(clientID, __LINE__, __FUNCTION__, __FILE__)
-clientsData* _getClient(int clientID, int line, const char * function, const char * file);
-#define getDomain(domainID) _getDomain(domainID, __LINE__, __FUNCTION__, __FILE__)
-domainsData* _getDomain(int domainID, int line, const char * function, const char * file);
-#define getForward(forwardID) _getForward(forwardID, __LINE__, __FUNCTION__, __FILE__)
-forwardedData* _getForward(int forwardID, int line, const char * function, const char * file);
+#define getQuery(queryID, checkMagic) _getQuery(queryID, checkMagic, __LINE__, __FUNCTION__, __FILE__)
+queriesData* _getQuery(int queryID, bool checkMagic, int line, const char * function, const char * file);
+#define getClient(clientID, checkMagic) _getClient(clientID, checkMagic, __LINE__, __FUNCTION__, __FILE__)
+clientsData* _getClient(int clientID, bool checkMagic, int line, const char * function, const char * file);
+#define getDomain(domainID, checkMagic) _getDomain(domainID, checkMagic, __LINE__, __FUNCTION__, __FILE__)
+domainsData* _getDomain(int domainID, bool checkMagic, int line, const char * function, const char * file);
+#define getForward(forwardID, checkMagic) _getForward(forwardID, checkMagic, __LINE__, __FUNCTION__, __FILE__)
+forwardedData* _getForward(int forwardID, bool checkMagic, int line, const char * function, const char * file);

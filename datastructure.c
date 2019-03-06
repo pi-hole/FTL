@@ -24,7 +24,7 @@ int findForwardID(const char * forwardString, bool count)
 	for(int i=0; i < counters->forwarded; i++)
 	{
 		// Get forward pointer
-		forwardedData* forward = getForward(i);
+		forwardedData* forward = getForward(i, true);
 
 		if(strcmp(getstr(forward->ippos), forwardString) == 0)
 		{
@@ -41,7 +41,7 @@ int findForwardID(const char * forwardString, bool count)
 	memory_check(FORWARDED);
 
 	// Get forward pointer
-	forwardedData* forward = getForward(forwardID);
+	forwardedData* forward = getForward(forwardID, false);
 
 	// Set magic byte
 	forward->magic = MAGICBYTE;
@@ -70,7 +70,7 @@ int findDomainID(const char *domainString)
 	for(int i=0; i < counters->domains; i++)
 	{
 		// Get domain pointer
-		domainsData* domain = getDomain(i);
+		domainsData* domain = getDomain(i, true);
 
 		// Quick test: Does the domain start with the same character?
 		if(getstr(domain->domainpos)[0] != domainString[0])
@@ -92,7 +92,7 @@ int findDomainID(const char *domainString)
 	memory_check(DOMAINS);
 
 	// Get domain pointer
-	domainsData* domain = getDomain(domainID);
+	domainsData* domain = getDomain(domainID, false);
 
 	// Set magic byte
 	domain->magic = MAGICBYTE;
@@ -116,7 +116,7 @@ int findClientID(const char *clientIP, bool count)
 	for(int i=0; i < counters->clients; i++)
 	{
 		// Get client pointer
-		clientsData* client = getClient(i);
+		clientsData* client = getClient(i, true);
 
 		// Quick test: Does the clients IP start with the same character?
 		if(getstr(client->ippos)[0] != clientIP[0])
@@ -144,7 +144,7 @@ int findClientID(const char *clientIP, bool count)
 	memory_check(CLIENTS);
 
 	// Get client pointer
-	clientsData* client = getClient(clientID);
+	clientsData* client = getClient(clientID, false);
 
 	// Set magic byte
 	client->magic = MAGICBYTE;
@@ -190,11 +190,11 @@ bool isValidIPv6(const char *addr)
 // only when appropriate for the requested query
 char *getDomainString(int queryID)
 {
-	queriesData* query = getQuery(queryID);
+	queriesData* query = getQuery(queryID, true);
 	if(query->privacylevel < PRIVACY_HIDE_DOMAINS)
 	{
 		// Get domain pointer
-		domainsData* domain = getDomain(query->domainID);
+		domainsData* domain = getDomain(query->domainID, true);
 
 		// Return string
 		return getstr(domain->domainpos);
@@ -207,11 +207,11 @@ char *getDomainString(int queryID)
 // only when appropriate for the requested query
 char *getClientIPString(int queryID)
 {
-	queriesData* query = getQuery(queryID);
+	queriesData* query = getQuery(queryID, false);
 	if(query->privacylevel < PRIVACY_HIDE_DOMAINS_CLIENTS)
 	{
 		// Get client pointer
-		clientsData* client = getClient(query->clientID);
+		clientsData* client = getClient(query->clientID, false);
 
 		// Return string
 		return getstr(client->ippos);
@@ -224,11 +224,11 @@ char *getClientIPString(int queryID)
 // only when appropriate for the requested query
 char *getClientNameString(int queryID)
 {
-	queriesData* query = getQuery(queryID);
+	queriesData* query = getQuery(queryID, true);
 	if(query->privacylevel < PRIVACY_HIDE_DOMAINS_CLIENTS)
 	{
 		// Get client pointer
-		clientsData* client = getClient(query->clientID);
+		clientsData* client = getClient(query->clientID, true);
 
 		// Return string
 		return getstr(client->namepos);

@@ -156,7 +156,7 @@ void free_regex(void)
 	for(int i=0; i < counters->domains; i++)
 	{
 		// Get domain pointer
-		domainsData* domain = getDomain(i);
+		domainsData* domain = getDomain(i, true);
 
 		// Reset regexmatch to unknown
 		domain->regexmatch = REGEX_UNKNOWN;

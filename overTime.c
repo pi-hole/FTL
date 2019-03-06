@@ -37,7 +37,7 @@ static void initSlot(unsigned int index, time_t timestamp)
 	for(int clientID = 0; clientID < counters->clients; clientID++)
 	{
 		// Get client pointer
-		clientsData* client = getClient(clientID);
+		clientsData* client = getClient(clientID, true);
 
 		client->overTime[index] = 0;
 	}
@@ -131,7 +131,7 @@ void moveOverTimeMemory(time_t mintime)
 		for(int queryID = 0; queryID < counters->queries; queryID++)
 		{
 			// Get query pointer
-			queriesData* query = getQuery(queryID);
+			queriesData* query = getQuery(queryID, true);
 			// Check if the index would become negative if we adjusted it
 			if(((int)query->timeidx - (int)moveOverTime) < 0)
 			{
@@ -148,7 +148,7 @@ void moveOverTimeMemory(time_t mintime)
 		// Move client-specific overTime memory
 		for(int clientID = 0; clientID < counters->clients; clientID++)
 		{
-			memmove(&getClient(clientID)->overTime[0], &getClient(clientID)->overTime[moveOverTime], remainingSlots*sizeof(int));
+			memmove(&(getClient(clientID, true)->overTime[0]), &(getClient(clientID, true)->overTime[moveOverTime]), remainingSlots*sizeof(int));
 		}
 
 		// Iterate over new overTime region and initialize it
