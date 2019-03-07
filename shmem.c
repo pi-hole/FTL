@@ -578,78 +578,64 @@ void memory_check(int which)
 	}
 }
 
-queriesData* _getQuery(int queryID, bool checkMagic, int line, const char * function, const char * file)
+static inline bool check_range(int ID, int MAXID, const char* type, int line, const char * function, const char * file)
 {
-	if(queryID < 0 || queryID > counters->queries_MAX)
+	if(ID < 0 || ID > MAXID)
 	{
 		// Check bounds
-		logg("FATAL: Trying to access query ID %i, but maximum is %i", queryID, counters->queries_MAX);
+		logg("FATAL: Trying to access %s ID %i, but maximum is %i", type, ID, MAXID);
 		logg("       found in %s() (%s:%i)", function, file, line);
-		return NULL;
+		return false;
 	}
-	if(checkMagic && queries[queryID].magic != MAGICBYTE)
+	// Everything okay
+	return true;
+}
+
+static inline bool check_magic(int ID, bool checkMagic, unsigned char magic, const char* type, int line, const char * function, const char * file)
+{
+	if(checkMagic && magic != MAGICBYTE)
 	{
 		// Check magic only if requested (skipped for new entries which are uninitialized)
-		logg("FATAL: Trying to access query ID %i, but magic byte is %x", queryID, queries[queryID].magic);
+		logg("FATAL: Trying to access %s ID %i, but magic byte is %x", type, ID, magic);
 		logg("       found in %s() (%s:%i)", function, file, line);
-		return NULL;
+		return false;
 	}
-	return &queries[queryID];
+	// Everything okay
+	return true;
+}
+
+queriesData* _getQuery(int queryID, bool checkMagic, int line, const char * function, const char * file)
+{
+	if(check_range(queryID, counters->queries_MAX, "query", line, function, file) &&
+	   check_magic(queryID, checkMagic, queries[queryID].magic, "query", line, function, file))
+		return &queries[queryID];
+	else
+		return NULL;
 }
 
 clientsData* _getClient(int clientID, bool checkMagic, int line, const char * function, const char * file)
 {
-	if(clientID < 0 || clientID > counters->clients_MAX)
-	{
-		// Check bounds
-		logg("FATAL: Trying to access client ID %i, but maximum is %i", clientID, counters->clients_MAX);
-		logg("       found in %s() (%s:%i)", function, file, line);
+	if(check_range(clientID, counters->clients_MAX, "client", line, function, file) &&
+	   check_magic(clientID, checkMagic, clients[clientID].magic, "client", line, function, file))
+		return &clients[clientID];
+	else
 		return NULL;
-	}
-	if(checkMagic && clients[clientID].magic != MAGICBYTE)
-	{
-		// Check magic only if requested (skipped for new entries which are uninitialized)
-		logg("FATAL: Trying to access client ID %i, but magic byte is %x", clientID, clients[clientID].magic);
-		logg("       found in %s() (%s:%i)", function, file, line);
-		return NULL;
-	}
-	return &clients[clientID];
 }
 
 domainsData* _getDomain(int domainID, bool checkMagic, int line, const char * function, const char * file)
 {
-	if(domainID < 0 || domainID > counters->domains_MAX)
-	{
-		// Check bounds
-		logg("FATAL: Trying to access domain ID %i, but maximum is %i", domainID, counters->domains_MAX);
-		logg("       found in %s() (%s:%i)", function, file, line);
+	if(check_range(domainID, counters->domains_MAX, "domain", line, function, file) &&
+	   check_magic(domainID, checkMagic, domains[domainID].magic, "domain", line, function, file))
+		return &domains[domainID];
+	else
 		return NULL;
-	}
-	if(checkMagic && domains[domainID].magic != MAGICBYTE)
-	{
-		// Check magic only if requested (skipped for new entries which are uninitialized)
-		logg("FATAL: Trying to access domain ID %i, but magic byte is %x", domainID, domains[domainID].magic);
-		logg("       found in %s() (%s:%i)", function, file, line);
-		return NULL;
-	}
-	return &domains[domainID];
 }
 
 forwardedData* _getForward(int forwardID, bool checkMagic, int line, const char * function, const char * file)
 {
-	if(forwardID < 0 || forwardID > counters->forwarded_MAX)
-	{
-		// Check bounds
-		logg("FATAL: Trying to access forwarded ID %i, but maximum is %i", forwardID, counters->forwarded_MAX);
-		logg("       found in %s() (%s:%i)", function, file, line);
+	if(check_range(forwardID, counters->forwarded_MAX, "forward", line, function, file) &&
+	   check_magic(forwardID, checkMagic, forwarded[forwardID].magic, "forward", line, function, file))
+		return &forwarded[forwardID];
+	else
 		return NULL;
-	}
-	if(checkMagic && forwarded[forwardID].magic != MAGICBYTE)
-	{
-		// Check magic only if requested (skipped for new entries which are uninitialized)
-		logg("FATAL: Trying to access forwarded ID %i, but magic byte is %x", forwardID, forwarded[forwardID].magic);
-		logg("       found in %s() (%s:%i)", function, file, line);
-		return NULL;
-	}
-	return &forwarded[forwardID];
 }
