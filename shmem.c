@@ -516,7 +516,7 @@ static unsigned int get_optimal_object_size(unsigned int objsize, unsigned int m
 	{
 		if(config.debug & DEBUG_SHMEM)
 		{
-			logg("DEBUG: LCM(%i, %zu) == %zu >= %zu",
+			logg("DEBUG: LCM(%i, %u) == %u >= %u",
 			     pagesize, objsize,
 			     optsize*objsize,
 			     minsize*objsize);
