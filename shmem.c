@@ -456,26 +456,16 @@ void delete_shm(SharedMemory *sharedMemory)
 		logg("delete_shm(): shm_unlink(%s) failed: %s", sharedMemory->name, strerror(errno));
 }
 
-// Recursive function to return GCD of a and b
-// Credits: https://www.geeksforgeeks.org/program-to-find-lcm-of-two-numbers/
-// The code in this link has been modified by the Pi-hole developers
+// Euclidean algorithm to return greatest common divisor of the numbers
 static size_t gcd(size_t a, size_t b)
 {
-	// Everything divides 0
-	// (except maybe zero)
-	if (a == 0 || b == 0)
-		return 1;
-
-	// Base case
-	if (a == b)
-		return a;
-
-	// a is greater
-	if (a > b)
-		return gcd(a-b, b);
-
-	// b is greater
-	return gcd(a, b-a);
+	while(b != 0)
+	{
+		size_t temp = b;
+		b = a % b;
+		a = temp;
+	}
+	return a;
 }
 
 // Function to return the optimal (minimum) size for page-aligned
