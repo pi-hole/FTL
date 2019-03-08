@@ -141,7 +141,7 @@ void validate_access(const char * name, int pos, bool testmagic, int line, const
 // not be protected by our (error logging) functions!
 
 #undef strdup
-char *FTLstrdup(const char *src, const char * file, const char * function, int line)
+char* __attribute__((malloc)) FTLstrdup(const char *src, const char * file, const char * function, int line)
 {
 	// The FTLstrdup() function returns a pointer to a new string which is a
 	// duplicate of the string s. Memory for the new string is obtained with

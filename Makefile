@@ -26,6 +26,9 @@ GIT_VERSION := $(shell git --no-pager describe --tags --always --dirty)
 GIT_DATE := $(shell git --no-pager show --date=short --format="%ai" --name-only | head -n 1)
 GIT_TAG := $(shell git describe --tags --abbrev=0)
 
+# Is compiler at least gcc version 8? We cannot do ifgt in Makefile, so we use the shell expr command
+GCCVERSION8 := $(shell expr `$(CC) -dumpversion | cut -f1 -d.` \>= 8)
+
 # -fstack-protector-strong: The program will be resistant to having its stack overflowed
 # -Wp,-D_FORTIFY_SOURCE=2 and -O1 or higher: This causes certain unsafe glibc functions to be replaced with their safer counterparts
 # -Wl,-z,relro: reduces the possible areas of memory in a program that can be used by an attacker that performs a successful memory corruption exploit
@@ -59,8 +62,12 @@ WARNFLAGS=-Wall -Wextra -Wno-unused-parameter
 # -Wformat-nonliteral: If -Wformat is specified, also warn if the format string is not a string literal and so cannot be checked, unless the format function takes its format arguments as a va_list.
 # -Wuninitialized: Warn if an automatic variable is used without first being initialized
 # -Wswitch-enum: Warn whenever a switch statement has an index of enumerated type and lacks a case for one or more of the named codes of that enumeration.
-# ATTRIBUTEWARNINGS: Warn for cases where adding an attribute may be beneficial.
-ATTRIBUTEWARNINGS= -Wsuggest-attribute=pure -Wsuggest-attribute=const -Wsuggest-attribute=noreturn -Wmissing-noreturn -Wsuggest-attribute=malloc -Wsuggest-attribute=format -Wmissing-format-attribute -Wsuggest-attribute=cold
+ifeq "$(GCCVERSION8)" "1"
+  # ATTRIBUTEWARNINGS: Warn for cases where adding an attribute may be beneficial.
+  ATTRIBUTEWARNINGS=-Wsuggest-attribute=pure -Wsuggest-attribute=const -Wsuggest-attribute=noreturn -Wmissing-noreturn -Wsuggest-attribute=malloc -Wsuggest-attribute=format -Wmissing-format-attribute -Wsuggest-attribute=cold
+else
+  ATTRIBUTEWARNINGS=""
+endif
 EXTRAWARN=-Werror -Waddress -Wlogical-op -Wmissing-field-initializers -Woverlength-strings -Wformat -Wformat-nonliteral -Wuninitialized -Wswitch-enum $(ATTRIBUTEWARNINGS)
 # -FILE_OFFSET_BITS=64: used by stat(). Avoids problems with files > 2 GB on 32bit machines
 CCFLAGS=-std=gnu11 -I$(IDIR) $(WARNFLAGS) -D_FILE_OFFSET_BITS=64 $(HARDENING_FLAGS) $(DEBUG_FLAGS) $(CFLAGS) $(SQLITEFLAGS)

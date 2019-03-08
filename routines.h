@@ -92,7 +92,7 @@ int db_query_int(const char*);
 
 // memory.c
 void memory_check(int which);
-char *FTLstrdup(const char *src, const char *file, const char *function, int line);
+char *FTLstrdup(const char *src, const char *file, const char *function, int line) __attribute__((malloc));
 void *FTLcalloc(size_t nmemb, size_t size, const char *file, const char *function, int line) __attribute__((malloc));
 void *FTLrealloc(void *ptr_in, size_t size, const char *file, const char *function, int line);
 void FTLfree(void *ptr, const char* file, const char *function, int line);
