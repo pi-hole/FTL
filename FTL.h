@@ -283,7 +283,6 @@ extern bool threadreadlock;
 extern unsigned char blockingstatus;
 
 extern char * username;
-extern char timestamp[16];
 extern bool flush;
 extern bool needGC;
 extern bool daemonmode;
