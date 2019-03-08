@@ -17,7 +17,7 @@ char * getUserName(void);
 void removepid(void);
 
 void open_FTL_log(bool test);
-void logg(const char* format, ...);
+void logg(const char* format, ...) __attribute__ ((format (gnu_printf, 1, 2)));
 void logg_struct_resize(const char* str, int to, int step);
 void log_counter_info(void);
 void format_memory_size(char *prefix, unsigned long int bytes, double *formated);
@@ -37,7 +37,7 @@ char *getClientNameString(int queryID);
 void close_telnet_socket(void);
 void close_unix_socket(void);
 void seom(int sock);
-void ssend(int sock, const char *format, ...);
+void ssend(int sock, const char *format, ...) __attribute__ ((format (gnu_printf, 2, 3)));
 void swrite(int sock, void *value, size_t size);
 void *telnet_listening_thread_IPv4(void *args);
 void *telnet_listening_thread_IPv6(void *args);
@@ -47,7 +47,7 @@ bool ipv6_available(void);
 void bind_sockets(void);
 
 void process_request(char *client_message, int *sock);
-bool command(char *client_message, const char* cmd);
+bool command(char *client_message, const char* cmd) __attribute__((pure));
 bool matchesEndpoint(char *client_message, const char *cmd);
 
 // grep.c
@@ -60,12 +60,12 @@ char * read_setupVarsconf(const char * key);
 void getSetupVarsArray(char * input);
 void clearSetupVarsArray(void);
 bool insetupVarsArray(char * str);
-bool getSetupVarsBool(char * input);
+bool getSetupVarsBool(char * input) __attribute__((pure));
 
 void parse_args(int argc, char* argv[]);
 
 // setupVars.c
-char* find_equals(const char* s);
+char* find_equals(const char* s) __attribute__((pure));
 void trim_whitespace(char *string);
 
 // config.c
@@ -93,7 +93,7 @@ int db_query_int(const char*);
 // memory.c
 void memory_check(int which);
 char *FTLstrdup(const char *src, const char *file, const char *function, int line);
-void *FTLcalloc(size_t nmemb, size_t size, const char *file, const char *function, int line);
+void *FTLcalloc(size_t nmemb, size_t size, const char *file, const char *function, int line) __attribute__((malloc));
 void *FTLrealloc(void *ptr_in, size_t size, const char *file, const char *function, int line);
 void FTLfree(void *ptr, const char* file, const char *function, int line);
 void validate_access(const char * name, int pos, bool testmagic, int line, const char * function, const char * file);
@@ -112,7 +112,7 @@ void resolveForwardDestinations(bool onlynew);
 bool match_regex(char *input);
 void free_regex(void);
 void read_regex_from_file(void);
-bool in_whitelist(char *domain);
+bool in_whitelist(char *domain) __attribute__((pure));
 
 // shmem.c
 bool init_shmem(void);

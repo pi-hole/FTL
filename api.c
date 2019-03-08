@@ -17,7 +17,7 @@
 #define min(a,b) ({ __typeof__ (a) _a = (a); __typeof__ (b) _b = (b); _a < _b ? _a : _b; })
 
 /* qsort comparision function (count field), sort ASC */
-int cmpasc(const void *a, const void *b)
+static int __attribute__((pure)) cmpasc(const void *a, const void *b)
 {
 	int *elem1 = (int*)a;
 	int *elem2 = (int*)b;
@@ -31,7 +31,7 @@ int cmpasc(const void *a, const void *b)
 }
 
 // qsort subroutine, sort DESC
-int cmpdesc(const void *a, const void *b)
+static int __attribute__((pure)) cmpdesc(const void *a, const void *b)
 {
 	int *elem1 = (int*)a;
 	int *elem2 = (int*)b;
@@ -147,7 +147,7 @@ void getOverTime(int *sock)
 	{
 		for(i = from; i < until; i++)
 		{
-			ssend(*sock,"%i %i %i\n",overTime[i].timestamp,overTime[i].total,overTime[i].blocked);
+			ssend(*sock,"%li %i %i\n",overTime[i].timestamp,overTime[i].total,overTime[i].blocked);
 		}
 	}
 	else
@@ -812,7 +812,7 @@ void getAllQueries(char *client_message, int *sock)
 
 		if(istelnet[*sock])
 		{
-			ssend(*sock,"%i %s %s %s %i %i %i %lu\n",queries[i].timestamp,qtype,domain,client,queries[i].status,queries[i].dnssec,queries[i].reply,delay);
+			ssend(*sock,"%li %s %s %s %i %i %i %lu\n",queries[i].timestamp,qtype,domain,client,queries[i].status,queries[i].dnssec,queries[i].reply,delay);
 		}
 		else
 		{
@@ -926,7 +926,7 @@ void getQueryTypesOverTime(int *sock)
 		}
 
 		if(istelnet[*sock])
-			ssend(*sock, "%i %.2f %.2f\n", overTime[i].timestamp, percentageIPv4, percentageIPv6);
+			ssend(*sock, "%li %.2f %.2f\n", overTime[i].timestamp, percentageIPv4, percentageIPv6);
 		else {
 			pack_int32(*sock, overTime[i].timestamp);
 			pack_float(*sock, percentageIPv4);
@@ -1069,7 +1069,7 @@ void getClientsOverTime(int *sock)
 	for(i = sendit; i < until; i++)
 	{
 		if(istelnet[*sock])
-			ssend(*sock, "%i", overTime[i].timestamp);
+			ssend(*sock, "%li", overTime[i].timestamp);
 		else
 			pack_int32(*sock, overTime[i].timestamp);
 
@@ -1180,7 +1180,7 @@ void getUnknownQueries(int *sock)
 		char *client = getstr(clients[queries[i].clientID].ippos);
 
 		if(istelnet[*sock])
-			ssend(*sock, "%i %i %i %s %s %s %i %s\n", queries[i].timestamp, i, queries[i].id, type, getstr(domains[queries[i].domainID].domainpos), client, queries[i].status, queries[i].complete ? "true" : "false");
+			ssend(*sock, "%li %i %i %s %s %s %i %s\n", queries[i].timestamp, i, queries[i].id, type, getstr(domains[queries[i].domainID].domainpos), client, queries[i].status, queries[i].complete ? "true" : "false");
 		else {
 			pack_int32(*sock, queries[i].timestamp);
 			pack_int32(*sock, queries[i].id);

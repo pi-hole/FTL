@@ -46,7 +46,7 @@ void *GC_thread(void *val)
 
 			long int i;
 			int removed = 0;
-			if(config.debug & DEBUG_GC) logg("GC starting, mintime: %u %s", mintime, ctime(&mintime));
+			if(config.debug & DEBUG_GC) logg("GC starting, mintime: %lu %s", mintime, ctime(&mintime));
 
 			// Process all queries
 			for(i=0; i < counters->queries; i++)
