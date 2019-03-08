@@ -66,7 +66,7 @@ ifeq "$(GCCVERSION8)" "1"
   # ATTRIBUTEWARNINGS: Warn for cases where adding an attribute may be beneficial.
   ATTRIBUTEWARNINGS=-Wsuggest-attribute=pure -Wsuggest-attribute=const -Wsuggest-attribute=noreturn -Wmissing-noreturn -Wsuggest-attribute=malloc -Wsuggest-attribute=format -Wmissing-format-attribute -Wsuggest-attribute=cold
 else
-  ATTRIBUTEWARNINGS=""
+  ATTRIBUTEWARNINGS=
 endif
 EXTRAWARN=-Werror -Waddress -Wlogical-op -Wmissing-field-initializers -Woverlength-strings -Wformat -Wformat-nonliteral -Wuninitialized -Wswitch-enum $(ATTRIBUTEWARNINGS)
 # -FILE_OFFSET_BITS=64: used by stat(). Avoids problems with files > 2 GB on 32bit machines
