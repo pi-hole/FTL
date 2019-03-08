@@ -267,31 +267,23 @@ extern clientsDataStruct *clients;
 extern domainsDataStruct *domains;
 extern overTimeDataStruct *overTime;
 
-/// Indexed by client ID, then time index (like `overTime`).
-/// This gets automatically updated whenever a new client or overTime slot is added.
-extern int **overTimeClientData;
-
-extern FILE *logfile;
+// Used in gc.c, memory.c, resolve.c, signals.c, and socket.c
 extern volatile sig_atomic_t killed;
-
-extern char ** setupVarsArray;
-extern int setupVarsElements;
-
-extern bool initialscan;
-extern bool threadwritelock;
-extern bool threadreadlock;
+// Used in api.c, grep.c, and dnsmasq_interface.c
 extern unsigned char blockingstatus;
-
+// Used in main.c, log.c, and others
 extern char * username;
-extern bool flush;
-extern bool needGC;
+// Used in main.c, args.c, log.c, and others
 extern bool daemonmode;
+// Used in main.c, database.c, and others
 extern bool database;
+// Used in database.c and gc.c
 extern long int lastdbindex;
-extern bool travis;
+// Used in database.c and gc.c
 extern bool DBdeleteoldqueries;
-extern bool rereadgravity;
+// Used in main.c, socket.c, and dnsmasq_interface.c
 extern bool ipv4telnet, ipv6telnet;
+// Used in api.c, and socket.c
 extern bool istelnet[MAXCONNS];
 
 // Use out own memory handling functions that will detect possible errors
