@@ -12,7 +12,7 @@
 #include "api.h"
 #include "shmem.h"
 
-bool command(char *client_message, const char* cmd) {
+bool __attribute__((pure)) command(char *client_message, const char* cmd) {
 	return strstr(client_message, cmd) != NULL;
 }
 

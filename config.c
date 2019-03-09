@@ -112,7 +112,7 @@ void read_FTLconf(void)
 			config.maxDBdays = value;
 
 	if(config.maxDBdays == 0)
-		logg("   MAXDBDAYS: --- (DB disabled)", config.maxDBdays);
+		logg("   MAXDBDAYS: --- (DB disabled)");
 	else
 		logg("   MAXDBDAYS: max age for stored queries is %i days", config.maxDBdays);
 

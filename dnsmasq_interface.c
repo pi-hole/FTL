@@ -16,7 +16,7 @@
 
 void print_flags(unsigned int flags);
 void save_reply_type(unsigned int flags, int queryID, struct timeval response);
-unsigned long converttimeval(struct timeval time);
+static unsigned long converttimeval(struct timeval time) __attribute__((const));
 static void block_single_domain_regex(char *domain);
 static void detect_blocked_IP(unsigned short flags, char* answer, int queryID);
 static void query_externally_blocked(int i);
@@ -1076,7 +1076,7 @@ void _FTL_forwarding_failed(struct server *server, const char* file, const int l
 	return;
 }
 
-unsigned long converttimeval(struct timeval time)
+static unsigned long __attribute__((const)) converttimeval(struct timeval time)
 {
 	// Convert time from struct timeval into units
 	// of 10*milliseconds

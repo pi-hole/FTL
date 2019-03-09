@@ -206,7 +206,7 @@ static char* getMACVendor(const char* hwaddr)
 	else if(strlen(hwaddr) != 17)
 	{
 		// MAC address is incomplete
-		if(config.debug & DEBUG_ARP) logg("getMACVenor(%s): MAC invalid (length %lu)", hwaddr, strlen(hwaddr));
+		if(config.debug & DEBUG_ARP) logg("getMACVenor(%s): MAC invalid (length %zu)", hwaddr, strlen(hwaddr));
 		return strdup("");
 	}
 

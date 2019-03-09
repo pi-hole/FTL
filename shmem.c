@@ -457,7 +457,7 @@ void delete_shm(SharedMemory *sharedMemory)
 }
 
 // Euclidean algorithm to return greatest common divisor of the numbers
-static size_t gcd(size_t a, size_t b)
+static size_t __attribute__((const)) gcd(size_t a, size_t b)
 {
 	while(b != 0)
 	{

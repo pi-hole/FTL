@@ -47,7 +47,7 @@ static bool init_regex(const char *regexin, int index)
 	return true;
 }
 
-bool in_whitelist(char *domain)
+bool __attribute__((pure)) in_whitelist(char *domain)
 {
 	bool found = false;
 	for(int i=0; i < whitelist.count; i++)
