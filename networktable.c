@@ -283,10 +283,10 @@ void updateMACVendorRecords()
 	}
 
 	sqlite3_stmt* stmt;
-	const char* querystr = "SELECT id,hwaddr FROM network;";
-	rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
+	const char* selectstr = "SELECT id,hwaddr FROM network;";
+	rc = sqlite3_prepare_v2(db, selectstr, -1, &stmt, NULL);
 	if( rc ){
-		logg("updateMACVendorRecords() - SQL error prepare (%s, %i): %s", querystr, rc, sqlite3_errmsg(db));
+		logg("updateMACVendorRecords() - SQL error prepare (%s, %i): %s", selectstr, rc, sqlite3_errmsg(db));
 		sqlite3_close(db);
 		return;
 	}
@@ -302,8 +302,8 @@ void updateMACVendorRecords()
 		hwaddr = NULL;
 
 		// Prepare UPDATE statement
-		char *querystr = NULL;
-		if(asprintf(&querystr, "UPDATE network SET macVendor = \'%s\' WHERE id = %i", vendor, id) < 1)
+		char *updatestr = NULL;
+		if(asprintf(&updatestr, "UPDATE network SET macVendor = \'%s\' WHERE id = %i", vendor, id) < 1)
 		{
 			logg("updateMACVendorRecords() - Allocation error 2");
 			free(vendor);
@@ -312,17 +312,17 @@ void updateMACVendorRecords()
 
 		// Execute prepared statement
 		char *zErrMsg = NULL;
-		rc = sqlite3_exec(db, querystr, NULL, NULL, &zErrMsg);
+		rc = sqlite3_exec(db, updatestr, NULL, NULL, &zErrMsg);
 		if( rc != SQLITE_OK ){
-			logg("updateMACVendorRecords() - SQL exec error: %s (%i): %s", querystr, rc, zErrMsg);
+			logg("updateMACVendorRecords() - SQL exec error: %s (%i): %s", updatestr, rc, zErrMsg);
 			sqlite3_free(zErrMsg);
-			free(querystr);
+			free(updatestr);
 			free(vendor);
 			break;
 		}
 
 		// Free allocated memory
-		free(querystr);
+		free(updatestr);
 		free(vendor);
 	}
 	if(rc != SQLITE_DONE)
