@@ -46,7 +46,7 @@ static ShmSettings *shmSettings = NULL;
 static int pagesize;
 static unsigned int local_shm_counter = 0;
 
-static size_t get_optimal_object_size(size_t objsize, unsigned int minsize);
+static size_t get_optimal_object_size(size_t objsize, size_t minsize);
 
 unsigned long long addstr(const char *str)
 {
@@ -472,7 +472,7 @@ static size_t __attribute__((const)) gcd(size_t a, size_t b)
 // shared memory objects. This routine works by computing the LCM
 // of two numbers, the pagesize and the size of a single element
 // in the shared memory object
-static size_t get_optimal_object_size(size_t objsize, unsigned int minsize)
+static size_t get_optimal_object_size(size_t objsize, size_t minsize)
 {
 	size_t optsize = pagesize / gcd(pagesize, objsize);
 	if(optsize < minsize)
@@ -490,13 +490,28 @@ static size_t get_optimal_object_size(size_t objsize, unsigned int minsize)
 		// First part: Integer division, may cause clipping, e.g., 5/3 = 1
 		// Second part: Catch a possibly happened clipping event by adding
 		//              one to the number: (5 % 3 != 0) is 1
-		unsigned int multiplier = minsize/optsize + (minsize % optsize != 0) ? 1 : 0;
+		size_t multiplier = (minsize/optsize) + ((minsize % optsize != 0) ? 1u : 0u);
+		if(config.debug & DEBUG_SHMEM)
+		{
+			logg("DEBUG: Using %zu*%zu == %zu >= %zu",
+			     multiplier, optsize*objsize,
+			     multiplier*optsize*objsize,
+			     minsize*objsize);
+		}
 		// As optsize ensures perfect page-alignment,
 		// any multiple of it will be aligned as well
-		return optsize*multiplier;
+		return multiplier*optsize;
 	}
 	else
 	{
+		if(config.debug & DEBUG_SHMEM)
+		{
+			logg("DEBUG: LCM(%i, %zu) == %zu >= %zu",
+			     pagesize, objsize,
+			     optsize*objsize,
+			     minsize*objsize);
+		}
+
 		// Return computed optimal size
 		return optsize;
 	}

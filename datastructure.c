@@ -108,11 +108,10 @@ int findDomainID(const char *domain)
 
 int findClientID(const char *client, bool count)
 {
-	int i;
 	// Compare content of client against known client IP addresses
 	if(counters->clients > 0)
 		validate_access("clients", counters->clients-1, true, __LINE__, __FUNCTION__, __FILE__);
-	for(i=0; i < counters->clients; i++)
+	for(int i=0; i < counters->clients; i++)
 	{
 		// Quick test: Does the clients IP start with the same character?
 		if(getstr(clients[i].ippos)[0] != client[0])
