@@ -46,8 +46,8 @@ void *socket_listening_thread(void *args);
 bool ipv6_available(void);
 void bind_sockets(void);
 
-void process_request(char *client_message, int *sock);
-bool command(char *client_message, const char* cmd) __attribute__((pure));
+void process_request(const char *client_message, int *sock);
+bool command(const char *client_message, const char* cmd) __attribute__((pure));
 bool matchesEndpoint(char *client_message, const char *cmd);
 
 // grep.c

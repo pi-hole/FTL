@@ -11,16 +11,16 @@
 // Statistic methods
 void getStats(int *sock);
 void getOverTime(int *sock);
-void getTopDomains(char *client_message, int *sock);
-void getTopClients(char *client_message, int *sock);
-void getForwardDestinations(char *client_message, int *sock);
+void getTopDomains(const char *client_message, int *sock);
+void getTopClients(const char *client_message, int *sock);
+void getForwardDestinations(const char *client_message, int *sock);
 void getQueryTypes(int *sock);
-void getAllQueries(char *client_message, int *sock);
-void getRecentBlocked(char *client_message, int *sock);
+void getAllQueries(const char *client_message, int *sock);
+void getRecentBlocked(const char *client_message, int *sock);
 void getQueryTypesOverTime(int *sock);
 void getClientsOverTime(int *sock);
 void getClientNames(int *sock);
-void getDomainDetails(char *client_message, int *sock);
+void getDomainDetails(const char *client_message, int *sock);
 
 // FTL methods
 void getClientID(int *sock);

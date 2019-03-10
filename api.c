@@ -171,7 +171,7 @@ void getOverTime(int *sock)
 	}
 }
 
-void getTopDomains(char *client_message, int *sock)
+void getTopDomains(const char *client_message, int *sock)
 {
 	int i, temparray[counters->domains][2], count=10, num;
 	bool blocked, audit = false, asc = false;
@@ -333,7 +333,7 @@ void getTopDomains(char *client_message, int *sock)
 		clearSetupVarsArray();
 }
 
-void getTopClients(char *client_message, int *sock)
+void getTopClients(const char *client_message, int *sock)
 {
 	int i, temparray[counters->clients][2], count=10, num;
 
@@ -447,7 +447,7 @@ void getTopClients(char *client_message, int *sock)
 }
 
 
-void getForwardDestinations(char *client_message, int *sock)
+void getForwardDestinations(const char *client_message, int *sock)
 {
 	bool sort = true;
 	int temparray[counters->forwarded][2], totalqueries = 0;
@@ -576,7 +576,7 @@ void getQueryTypes(int *sock)
 
 char *querytypes[8] = {"A","AAAA","ANY","SRV","SOA","PTR","TXT","UNKN"};
 
-void getAllQueries(char *client_message, int *sock)
+void getAllQueries(const char *client_message, int *sock)
 {
 	// Exit before processing any data if requested via config setting
 	get_privacy_level(NULL);
@@ -842,7 +842,7 @@ void getAllQueries(char *client_message, int *sock)
 		free(forwarddest);
 }
 
-void getRecentBlocked(char *client_message, int *sock)
+void getRecentBlocked(const char *client_message, int *sock)
 {
 	int num=1;
 
@@ -1199,7 +1199,7 @@ void getUnknownQueries(int *sock)
 	}
 }
 
-void getDomainDetails(char *client_message, int *sock)
+void getDomainDetails(const char *client_message, int *sock)
 {
 	// Get domain name
 	char domain[128];
