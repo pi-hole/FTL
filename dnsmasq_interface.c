@@ -8,11 +8,14 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
+#define FTLDNS
 #include "dnsmasq/dnsmasq.h"
 #undef __USE_XOPEN
 #include "FTL.h"
 #include "dnsmasq_interface.h"
 #include "shmem.h"
+// Prototype of getCacheInformation()
+#include "api.h"
 
 void print_flags(unsigned int flags);
 void save_reply_type(unsigned int flags, int queryID, struct timeval response);

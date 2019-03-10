@@ -79,7 +79,12 @@ EXTRAWARN=-Werror -Waddress -Wlogical-op -Wmissing-field-initializers -Woverleng
 # -Wbad-function-cast: Warn when a function call is cast to a non-matching type
 # -Wcast-align=strict: Warn whenever a pointer is cast such that the required alignment of the target is increased. For example, warn if a "char *" is cast to an "int *" regardless of the target machine.
 # -Wwrite-strings: When compiling C, give string constants the type "const char[length]" so that copying the address of one into a non-"const" "char *" pointer produces a warning
-EXTRAWARN2=-Wduplicated-branches -Wduplicated-cond -Wfloat-equal -Wunsafe-loop-optimizations -funsafe-loop-optimizations -Wbad-function-cast -Wcast-align=strict -Wwrite-strings -Wconversion -Wparentheses
+# -Wparentheses: Warn if parentheses are omitted in certain contexts, such as when there is an assignment in a context where a truth value is expected, or when operators are nested whose precedence people often get confused about
+# -Wlogical-op: Warn about suspicious uses of logical operators in expressions
+# -Wlogical-not-parentheses: Warn about logical not used on the left hand side operand of a comparison
+# -Wstrict-prototypes: Warn if a function is declared or defined without specifying the argument types
+# -Wmissing-prototypes: Warn if a global function is defined without a previous prototype declaration
+EXTRAWARN2=-Wduplicated-branches -Wduplicated-cond -Wfloat-equal -Wunsafe-loop-optimizations -funsafe-loop-optimizations -Wbad-function-cast -Wcast-align=strict -Wwrite-strings -Wparentheses -Wlogical-op -Wlogical-not-parentheses -Wstrict-prototypes -Wmissing-prototypes
 # -FILE_OFFSET_BITS=64: used by stat(). Avoids problems with files > 2 GB on 32bit machines
 CCFLAGS=-std=gnu11 -I$(IDIR) $(WARNFLAGS) -D_FILE_OFFSET_BITS=64 $(HARDENING_FLAGS) $(DEBUG_FLAGS) $(CFLAGS) $(SQLITEFLAGS)
 # for FTL we need the pthread library

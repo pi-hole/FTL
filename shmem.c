@@ -103,7 +103,7 @@ const char *getstr(unsigned long long pos)
 }
 
 /// Create a mutex for shared memory
-pthread_mutex_t create_mutex() {
+static pthread_mutex_t create_mutex(void) {
 	pthread_mutexattr_t lock_attr = {};
 	pthread_mutex_t lock = {};
 
@@ -125,7 +125,7 @@ pthread_mutex_t create_mutex() {
 	return lock;
 }
 
-void remap_shm(void)
+static void remap_shm(void)
 {
 	// Remap shared object pointers which might have changed
 	realloc_shm(&shm_queries, counters->queries_MAX*sizeof(queriesDataStruct), false);

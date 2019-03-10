@@ -1463,7 +1463,18 @@ void route_sock(void);
 #endif
 
 /* bpf.c or netlink.c */
+/************ Pi-hole modification ************/
+// We need to skip this function declaration
+// when compiling FTLDNS code as it is not
+// a valid prototype such that this line
+// would throw an error when compiling
+// dnsmasq_interface.c
+#if !defined(FTLDNS)
+/**********************************************/
 int iface_enumerate(int family, void *parm, int (callback)());
+/************ Pi-hole modification ************/
+#endif
+/**********************************************/
 
 /* dbus.c */
 #ifdef HAVE_DBUS

@@ -17,7 +17,7 @@ void pack_eom(int sock) {
 	swrite(sock, &eom, sizeof(eom));
 }
 
-void pack_basic(int sock, uint8_t format, void *value, size_t size) {
+static void pack_basic(int sock, uint8_t format, void *value, size_t size) {
 	swrite(sock, &format, sizeof(format));
 	swrite(sock, value, size);
 }

@@ -89,6 +89,7 @@ bool dbquery(const char *format, ...);
 bool dbopen(void);
 void dbclose(void);
 int db_query_int(const char*);
+void SQLite3LogCallback(void *pArg, int iErrCode, const char *zMsg);
 
 // memory.c
 void memory_check(int which);
@@ -131,7 +132,7 @@ void newOverTimeClient(int clientID);
  * Add a new overTime slot to each overTime client shared memory block.
  * This also updates `overTimeClientData`.
  */
-void addOverTimeClientSlot();
+void addOverTimeClientSlot(void);
 
 // overTime.c
 void initOverTime(void);
