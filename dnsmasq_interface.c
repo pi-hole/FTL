@@ -18,7 +18,7 @@ void print_flags(unsigned int flags);
 void save_reply_type(unsigned int flags, int queryID, struct timeval response);
 static unsigned long converttimeval(struct timeval time) __attribute__((const));
 static void block_single_domain_regex(char *domain);
-static void detect_blocked_IP(unsigned short flags, char* answer, int queryID);
+static void detect_blocked_IP(unsigned short flags, const char* answer, int queryID);
 static void query_externally_blocked(int i);
 static int findQueryID(int id);
 
@@ -110,7 +110,7 @@ void _FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char 
 	}
 
 	// Log new query if in debug mode
-	char *proto = (type == UDP) ? "UDP" : "TCP";
+	const char *proto = (type == UDP) ? "UDP" : "TCP";
 	if(config.debug & DEBUG_QUERIES) logg("**** new %s %s \"%s\" from %s (ID %i, %s:%i)", proto, types, domain, client, id, file, line);
 
 	// Update counters
@@ -396,7 +396,7 @@ void _FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id,
 
 	// Extract answer (used e.g. for detecting if a local config is a user-defined
 	// wildcard blocking entry in form "server=/tobeblocked.com/")
-	char *answer = dest;
+	const char *answer = dest;
 	if(flags & F_CNAME)
 		answer = "(CNAME)";
 	else if((flags & F_NEG) && (flags & F_NXDOMAIN))
@@ -513,7 +513,7 @@ void _FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id,
 	unlock_shm();
 }
 
-static void detect_blocked_IP(unsigned short flags, char* answer, int queryID)
+static void detect_blocked_IP(unsigned short flags, const char* answer, int queryID)
 {
 	// Skip replies which originated locally. Otherwise, we would count
 	// gravity.list blocked queries as externally blocked.
@@ -793,8 +793,7 @@ void _FTL_upstream_error(unsigned int rcode, int id, const char* file, const int
 		return;
 	}
 	// Translate dnsmasq's rcode into something we can use
-	char *rcodestr = NULL;
-	bool alloc = false;
+	const char *rcodestr = NULL;
 	switch(rcode)
 	{
 		case SERVFAIL:
@@ -810,8 +809,7 @@ void _FTL_upstream_error(unsigned int rcode, int id, const char* file, const int
 			queries[i].reply = REPLY_NOTIMP;
 			break;
 		default:
-			if(asprintf(&rcodestr, "Unknown error type (%u)", rcode) > -1)
-				alloc = true;
+			rcodestr = "UNKNOWN";
 			queries[i].reply = REPLY_OTHER;
 			break;
 	}
@@ -822,11 +820,11 @@ void _FTL_upstream_error(unsigned int rcode, int id, const char* file, const int
 		int domainID = queries[i].domainID;
 		validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
 		logg("**** got error report for %s: %s (ID %i, %s:%i)", getstr(domains[domainID].domainpos), rcodestr, id, file, line);
+		if(queries[i].reply == REPLY_OTHER)
+		{
+			logg("Unknown rcode = %i", rcode);
+		}
 	}
-
-	// If we allocated memory (due to an unknown error type), we need to free it here
-	if(alloc)
-		free(rcodestr);
 
 	unlock_shm();
 }

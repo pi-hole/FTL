@@ -79,7 +79,7 @@ EXTRAWARN=-Werror -Waddress -Wlogical-op -Wmissing-field-initializers -Woverleng
 # -Wbad-function-cast: Warn when a function call is cast to a non-matching type
 # -Wcast-align=strict: Warn whenever a pointer is cast such that the required alignment of the target is increased. For example, warn if a "char *" is cast to an "int *" regardless of the target machine.
 # -Wwrite-strings: When compiling C, give string constants the type "const char[length]" so that copying the address of one into a non-"const" "char *" pointer produces a warning
-EXTRAWARN2=-Wduplicated-branches -Wduplicated-cond -Wfloat-equal -Wunsafe-loop-optimizations -funsafe-loop-optimizations -Wbad-function-cast -Wcast-align=strict -Wwrite-strings
+EXTRAWARN2=-Wduplicated-branches -Wduplicated-cond -Wfloat-equal -Wunsafe-loop-optimizations -funsafe-loop-optimizations -Wbad-function-cast -Wcast-align=strict -Wwrite-strings -Wconversion -Wparentheses
 # -FILE_OFFSET_BITS=64: used by stat(). Avoids problems with files > 2 GB on 32bit machines
 CCFLAGS=-std=gnu11 -I$(IDIR) $(WARNFLAGS) -D_FILE_OFFSET_BITS=64 $(HARDENING_FLAGS) $(DEBUG_FLAGS) $(CFLAGS) $(SQLITEFLAGS)
 # for FTL we need the pthread library

@@ -274,7 +274,7 @@ void destroy_shmem(void)
 	delete_shm(&shm_settings);
 }
 
-SharedMemory create_shm(char *name, size_t size)
+SharedMemory create_shm(const char *name, size_t size)
 {
 	if(config.debug & DEBUG_SHMEM)
 		logg("Creating shared memory with name \"%s\" and size %zu", name, size);
