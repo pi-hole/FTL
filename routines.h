@@ -99,7 +99,7 @@ void *FTLrealloc(void *ptr_in, size_t size, const char *file, const char *functi
 void FTLfree(void *ptr, const char* file, const char *function, int line);
 void validate_access(const char * name, int pos, bool testmagic, int line, const char * function, const char * file);
 
-int main_dnsmasq(int argc, char **argv);
+int main_dnsmasq(int argc, const char ** argv);
 
 // signals.c
 void handle_signals(void);

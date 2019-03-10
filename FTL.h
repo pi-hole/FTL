@@ -298,7 +298,7 @@ extern bool istelnet[MAXCONNS];
 #define realloc(p1,p2) FTLrealloc(p1,p2, __FILE__,  __FUNCTION__,  __LINE__)
 
 extern int argc_dnsmasq;
-extern char **argv_dnsmasq;
+extern const char ** argv_dnsmasq;
 
 extern pthread_t telnet_listenthreadv4;
 extern pthread_t telnet_listenthreadv6;

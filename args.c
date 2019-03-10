@@ -15,7 +15,7 @@ static bool debug = false;
 bool daemonmode = true;
 bool travis = false;
 int argc_dnsmasq = 0;
-char **argv_dnsmasq = NULL;
+const char** argv_dnsmasq = NULL;
 
 void parse_args(int argc, char* argv[])
 {
@@ -24,8 +24,8 @@ void parse_args(int argc, char* argv[])
 	// Regardless of any arguments, we always pass "-k" (nofork) to dnsmasq
 	argc_dnsmasq = 2;
 	argv_dnsmasq = calloc(argc_dnsmasq, sizeof(char*));
-	argv_dnsmasq[0] = (char*)"";
-	argv_dnsmasq[1] = (char*)"-k";
+	argv_dnsmasq[0] = "";
+	argv_dnsmasq[1] = "-k";
 
 	// start from 1, as argv[0] is the executable name "pihole-FTL"
 	for(i=1; i < argc; i++)
@@ -39,7 +39,7 @@ void parse_args(int argc, char* argv[])
 			ok = true;
 
 			// Replace "-k" by "-d" (debug mode implies nofork)
-			argv_dnsmasq[1] = (char*)"-d";
+			argv_dnsmasq[1] = "-d";
 		}
 
 		if(strcmp(argv[i], "test") == 0)
@@ -100,9 +100,9 @@ void parse_args(int argc, char* argv[])
 		// Implement dnsmasq's test function
 		if(strcmp(argv[i], "dnsmasq-test") == 0)
 		{
-			char *arg[2];
-			arg[0] = (char*)"";
-			arg[1] = (char*)"--test";
+			const char *arg[2];
+			arg[0] = "";
+			arg[1] = "--test";
 			main_dnsmasq(2, arg);
 			ok = true;
 		}
@@ -113,10 +113,10 @@ void parse_args(int argc, char* argv[])
 			int j;
 			argc_dnsmasq = argc - i + 1;
 			if(argv_dnsmasq != NULL) free(argv_dnsmasq);
-			argv_dnsmasq = calloc(argc_dnsmasq + 2,sizeof(char*));
-			argv_dnsmasq[0] = (char*)"";
-			if(debug) argv_dnsmasq[1] = (char*)"-d";
-			else      argv_dnsmasq[1] = (char*)"-k";
+			argv_dnsmasq = calloc(argc_dnsmasq + 2,sizeof(const char*));
+			argv_dnsmasq[0] = "";
+			if(debug) argv_dnsmasq[1] = "-d";
+			else      argv_dnsmasq[1] = "-k";
 
 			for(j=2; j < argc_dnsmasq; j++)
 			{
