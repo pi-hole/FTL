@@ -70,6 +70,16 @@ else
   ATTRIBUTEWARNINGS=
 endif
 EXTRAWARN=-Werror -Waddress -Wlogical-op -Wmissing-field-initializers -Woverlength-strings -Wformat -Wformat-nonliteral -Wuninitialized -Wswitch-enum -Wshadow $(ATTRIBUTEWARNINGS)
+# -Wduplicated-branches: Warn when an if-else has identical branches
+# -Wduplicated-cond: Warn about duplicated conditions in an if-else-if chain
+# -Wfloat-equal: Warn if floating-point values are used in equality comparisons
+# -Wunsafe-loop-optimizations -funsafe-loop-optimizations: Warn if the loop cannot be optimized because the compiler cannot assume anything on the bounds of the loop indices
+# -Wpointer-arith: Warn about anything that depends on the "size of" a function type or of "void".  GNU C assigns these types a size of 1
+# -Wundef: Warn if an undefined identifier is evaluated in an "#if" directive
+# -Wbad-function-cast: Warn when a function call is cast to a non-matching type
+# -Wcast-align=strict: Warn whenever a pointer is cast such that the required alignment of the target is increased. For example, warn if a "char *" is cast to an "int *" regardless of the target machine.
+# -Wwrite-strings: When compiling C, give string constants the type "const char[length]" so that copying the address of one into a non-"const" "char *" pointer produces a warning
+EXTRAWARN2=-Wduplicated-branches -Wduplicated-cond -Wfloat-equal -Wunsafe-loop-optimizations -funsafe-loop-optimizations -Wbad-function-cast -Wcast-align=strict -Wwrite-strings
 # -FILE_OFFSET_BITS=64: used by stat(). Avoids problems with files > 2 GB on 32bit machines
 CCFLAGS=-std=gnu11 -I$(IDIR) $(WARNFLAGS) -D_FILE_OFFSET_BITS=64 $(HARDENING_FLAGS) $(DEBUG_FLAGS) $(CFLAGS) $(SQLITEFLAGS)
 # for FTL we need the pthread library
@@ -93,7 +103,7 @@ _DNSMASQOBJ = $(patsubst %,$(DNSMASQODIR)/%,$(DNSMASQOBJ))
 
 all: pihole-FTL
 $(ODIR)/%.o: %.c $(_FTLDEPS) | $(ODIR)
-	$(CC) -c -o $@ $< -g3 $(CCFLAGS) $(EXTRAWARN)
+	$(CC) -c -o $@ $< -g3 $(CCFLAGS) $(EXTRAWARN) $(EXTRAWARN2)
 
 $(DNSMASQODIR)/%.o: $(DNSMASQDIR)/%.c $(_DNSMASQDEPS) | $(DNSMASQODIR)
 	$(CC) -c -o $@ $< -g3 $(CCFLAGS) -DVERSION=\"$(DNSMASQVERSION)\" $(DNSMASQOPTS)
