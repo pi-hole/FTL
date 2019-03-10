@@ -70,14 +70,15 @@ else
   ATTRIBUTEWARNINGS=
 endif
 EXTRAWARN=-Werror -Waddress -Wlogical-op -Wmissing-field-initializers -Woverlength-strings -Wformat -Wformat-nonliteral -Wuninitialized -Wswitch-enum -Wshadow $(ATTRIBUTEWARNINGS)
+# -Wduplicated-cond: Warn about duplicated conditions in an if-else-if chain
 # -Wduplicated-branches: Warn when an if-else has identical branches
 # -Wcast-align=strict: Warn whenever a pointer is cast such that the required alignment of the target is increased. For example, warn if a "char *" is cast to an "int *" regardless of the target machine.
+# -Wlogical-not-parentheses: Warn about logical not used on the left hand side operand of a comparison
 ifeq "$(GCCVERSION8)" "1"
-  EXTRAWARNGCC8=-Wduplicated-branches -Wcast-align=strict
+  EXTRAWARNGCC8=-Wduplicated-cond -Wduplicated-branches -Wcast-align=strict -Wlogical-not-parentheses
 else
   EXTRAWARNGCC8=
 endif
-# -Wduplicated-cond: Warn about duplicated conditions in an if-else-if chain
 # -Wfloat-equal: Warn if floating-point values are used in equality comparisons
 # -Wunsafe-loop-optimizations -funsafe-loop-optimizations: Warn if the loop cannot be optimized because the compiler cannot assume anything on the bounds of the loop indices
 # -Wpointer-arith: Warn about anything that depends on the "size of" a function type or of "void".  GNU C assigns these types a size of 1
@@ -86,12 +87,11 @@ endif
 # -Wwrite-strings: When compiling C, give string constants the type "const char[length]" so that copying the address of one into a non-"const" "char *" pointer produces a warning
 # -Wparentheses: Warn if parentheses are omitted in certain contexts, such as when there is an assignment in a context where a truth value is expected, or when operators are nested whose precedence people often get confused about
 # -Wlogical-op: Warn about suspicious uses of logical operators in expressions
-# -Wlogical-not-parentheses: Warn about logical not used on the left hand side operand of a comparison
 # -Wstrict-prototypes: Warn if a function is declared or defined without specifying the argument types
 # -Wmissing-prototypes: Warn if a global function is defined without a previous prototype declaration
 # -Wredundant-decls: Warn if anything is declared more than once in the same scope
 # -Winline: Warn if a function that is declared as inline cannot be inlined
-EXTRAWARN2=-Wduplicated-cond -Wfloat-equal -Wunsafe-loop-optimizations -funsafe-loop-optimizations -Wbad-function-cast -Wwrite-strings -Wparentheses -Wlogical-op -Wlogical-not-parentheses -Wstrict-prototypes -Wmissing-prototypes -Wredundant-decls -Winline $(EXTRAWARNGCC8)
+EXTRAWARN2=-Wfloat-equal -Wunsafe-loop-optimizations -funsafe-loop-optimizations -Wbad-function-cast -Wwrite-strings -Wparentheses -Wlogical-op -Wstrict-prototypes -Wmissing-prototypes -Wredundant-decls -Winline $(EXTRAWARNGCC8)
 # -FILE_OFFSET_BITS=64: used by stat(). Avoids problems with files > 2 GB on 32bit machines
 CCFLAGS=-std=gnu11 -I$(IDIR) $(WARNFLAGS) -D_FILE_OFFSET_BITS=64 $(HARDENING_FLAGS) $(DEBUG_FLAGS) $(CFLAGS) $(SQLITEFLAGS)
 # for FTL we need the pthread library
