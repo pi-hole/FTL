@@ -490,11 +490,11 @@ void save_to_DB(void)
 		sqlite3_bind_int(stmt, 3, queries[i].status);
 
 		// DOMAIN
-		char *domain = getDomainString(i);
+		const char *domain = getDomainString(i);
 		sqlite3_bind_text(stmt, 4, domain, -1, SQLITE_TRANSIENT);
 
 		// CLIENT
-		char *client = getClientIPString(i);
+		const char *client = getClientIPString(i);
 		sqlite3_bind_text(stmt, 5, client, -1, SQLITE_TRANSIENT);
 
 		// FORWARD

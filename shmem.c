@@ -90,11 +90,11 @@ unsigned long long addstr(const char *str)
 	return (shmSettings->next_str_pos - (len + 1));
 }
 
-char *getstr(unsigned long long pos)
+const char *getstr(unsigned long long pos)
 {
 	// Only access the string memory if this memory region has already been set
 	if(pos < shmSettings->next_str_pos)
-		return &((char*)shm_strings.ptr)[pos];
+		return &((const char*)shm_strings.ptr)[pos];
 	else
 	{
 		logg("WARN: Tried to access %llu but next_str_pos is %u", pos, shmSettings->next_str_pos);

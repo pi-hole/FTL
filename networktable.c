@@ -123,7 +123,7 @@ void parse_arp_cache(void)
 		bool clientKnown = clientID >= 0;
 
 		// Get hostname of this client if the client is known
-		char *hostname = "";
+		const char *hostname = "";
 		if(clientKnown)
 		{
 			validate_access("clients", clientID, true, __LINE__, __FUNCTION__, __FILE__);

@@ -181,7 +181,7 @@ bool isValidIPv6(const char *addr)
 
 // Privacy-level sensitive subroutine that returns the domain name
 // only when appropriate for the requested query
-char *getDomainString(int queryID)
+const char *getDomainString(int queryID)
 {
 	if(queries[queryID].privacylevel < PRIVACY_HIDE_DOMAINS)
 	{
@@ -194,7 +194,7 @@ char *getDomainString(int queryID)
 
 // Privacy-level sensitive subroutine that returns the client IP
 // only when appropriate for the requested query
-char *getClientIPString(int queryID)
+const char *getClientIPString(int queryID)
 {
 	if(queries[queryID].privacylevel < PRIVACY_HIDE_DOMAINS_CLIENTS)
 	{
@@ -207,7 +207,7 @@ char *getClientIPString(int queryID)
 
 // Privacy-level sensitive subroutine that returns the client host name
 // only when appropriate for the requested query
-char *getClientNameString(int queryID)
+const char *getClientNameString(int queryID)
 {
 	if(queries[queryID].privacylevel < PRIVACY_HIDE_DOMAINS_CLIENTS)
 	{

@@ -75,7 +75,7 @@ void pack_float(int sock, float value) {
 }
 
 // Return true if successful
-bool pack_fixstr(int sock, char *string) {
+bool pack_fixstr(int sock, const char *string) {
 	// Make sure that the length is less than 32
 	size_t length = strlen(string);
 
@@ -86,13 +86,13 @@ bool pack_fixstr(int sock, char *string) {
 
 	uint8_t format = (uint8_t) (0xA0 | length);
 	swrite(sock, &format, sizeof(format));
-	swrite(sock, string, length);
+	swrite(sock, (char*)string, length);
 
 	return true;
 }
 
 // Return true if successful
-bool pack_str32(int sock, char *string) {
+bool pack_str32(int sock, const char *string) {
 	// Make sure that the length is less than 4294967296
 	size_t length = strlen(string);
 
@@ -105,7 +105,7 @@ bool pack_str32(int sock, char *string) {
 	swrite(sock, &format, sizeof(format));
 	uint32_t bigELength = htonl((uint32_t) length);
 	swrite(sock, &bigELength, sizeof(bigELength));
-	swrite(sock, string, length);
+	swrite(sock, (char*)string, length);
 
 	return true;
 }

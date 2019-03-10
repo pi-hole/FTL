@@ -30,9 +30,9 @@ int findDomainID(const char *domain);
 int findClientID(const char *client, bool addNew);
 bool isValidIPv4(const char *addr);
 bool isValidIPv6(const char *addr);
-char *getDomainString(int queryID);
-char *getClientIPString(int queryID);
-char *getClientNameString(int queryID);
+const char *getDomainString(int queryID);
+const char *getClientIPString(int queryID);
+const char *getClientNameString(int queryID);
 
 void close_telnet_socket(void);
 void close_unix_socket(void);
@@ -57,10 +57,10 @@ void check_blocking_status(void);
 
 void check_setupVarsconf(void);
 char * read_setupVarsconf(const char * key);
-void getSetupVarsArray(char * input);
+void getSetupVarsArray(const char * input);
 void clearSetupVarsArray(void);
-bool insetupVarsArray(char * str);
-bool getSetupVarsBool(char * input) __attribute__((pure));
+bool insetupVarsArray(const char * str);
+bool getSetupVarsBool(const char * input) __attribute__((pure));
 
 void parse_args(int argc, char* argv[]);
 
@@ -118,7 +118,7 @@ bool in_whitelist(char *domain) __attribute__((pure));
 bool init_shmem(void);
 void destroy_shmem(void);
 unsigned long long addstr(const char *str);
-char *getstr(unsigned long long pos);
+const char *getstr(unsigned long long pos);
 void *enlarge_shmem_struct(char type);
 
 /**
