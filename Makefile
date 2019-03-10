@@ -84,7 +84,9 @@ EXTRAWARN=-Werror -Waddress -Wlogical-op -Wmissing-field-initializers -Woverleng
 # -Wlogical-not-parentheses: Warn about logical not used on the left hand side operand of a comparison
 # -Wstrict-prototypes: Warn if a function is declared or defined without specifying the argument types
 # -Wmissing-prototypes: Warn if a global function is defined without a previous prototype declaration
-EXTRAWARN2=-Wduplicated-branches -Wduplicated-cond -Wfloat-equal -Wunsafe-loop-optimizations -funsafe-loop-optimizations -Wbad-function-cast -Wcast-align=strict -Wwrite-strings -Wparentheses -Wlogical-op -Wlogical-not-parentheses -Wstrict-prototypes -Wmissing-prototypes
+# -Wredundant-decls: Warn if anything is declared more than once in the same scope
+# -Winline: Warn if a function that is declared as inline cannot be inlined
+EXTRAWARN2=-Wduplicated-branches -Wduplicated-cond -Wfloat-equal -Wunsafe-loop-optimizations -funsafe-loop-optimizations -Wbad-function-cast -Wcast-align=strict -Wwrite-strings -Wparentheses -Wlogical-op -Wlogical-not-parentheses -Wstrict-prototypes -Wmissing-prototypes -Wredundant-decls -Winline
 # -FILE_OFFSET_BITS=64: used by stat(). Avoids problems with files > 2 GB on 32bit machines
 CCFLAGS=-std=gnu11 -I$(IDIR) $(WARNFLAGS) -D_FILE_OFFSET_BITS=64 $(HARDENING_FLAGS) $(DEBUG_FLAGS) $(CFLAGS) $(SQLITEFLAGS)
 # for FTL we need the pthread library
