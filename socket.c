@@ -224,7 +224,7 @@ void __attribute__ ((format (gnu_printf, 2, 3))) ssend(int sock, const char *for
 	}
 }
 
-void swrite(int sock, void *value, size_t size) {
+void swrite(int sock, const void *value, size_t size) {
 	if(write(sock, value, size) == -1)
 		logg("WARNING: Socket write returned error code %i", errno);
 }

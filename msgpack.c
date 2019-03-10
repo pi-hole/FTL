@@ -86,7 +86,7 @@ bool pack_fixstr(int sock, const char *string) {
 
 	uint8_t format = (uint8_t) (0xA0 | length);
 	swrite(sock, &format, sizeof(format));
-	swrite(sock, (char*)string, length);
+	swrite(sock, string, length);
 
 	return true;
 }
@@ -105,7 +105,7 @@ bool pack_str32(int sock, const char *string) {
 	swrite(sock, &format, sizeof(format));
 	uint32_t bigELength = htonl((uint32_t) length);
 	swrite(sock, &bigELength, sizeof(bigELength));
-	swrite(sock, (char*)string, length);
+	swrite(sock, string, length);
 
 	return true;
 }

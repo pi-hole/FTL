@@ -38,7 +38,7 @@ void close_telnet_socket(void);
 void close_unix_socket(void);
 void seom(int sock);
 void ssend(int sock, const char *format, ...) __attribute__ ((format (gnu_printf, 2, 3)));
-void swrite(int sock, void *value, size_t size);
+void swrite(int sock, const void* value, size_t size);
 void *telnet_listening_thread_IPv4(void *args);
 void *telnet_listening_thread_IPv6(void *args);
 
