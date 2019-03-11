@@ -30,7 +30,7 @@ void check_setupVarsconf(void)
 	}
 }
 
-char* find_equals(const char* s)
+char* __attribute__((pure)) find_equals(const char* s)
 {
 	const char* chars = "=";
 	while (*s && (!chars || !strchr(chars, *s)))
@@ -221,7 +221,7 @@ bool insetupVarsArray(char * str)
 	return false;
 }
 
-bool getSetupVarsBool(char * input)
+bool __attribute__((pure)) getSetupVarsBool(char * input)
 {
 	if((strcmp(input, "true")) == 0)
 		return true;

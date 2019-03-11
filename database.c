@@ -679,7 +679,7 @@ void read_data_from_DB(void)
 		return;
 	}
 	// Log DB query string in debug mode
-	if(config.debug & DEBUG_DATABASE) logg(rstr);
+	if(config.debug & DEBUG_DATABASE) logg("%s", rstr);
 
 	// Prepare SQLite3 statement
 	sqlite3_stmt* stmt;
@@ -699,12 +699,12 @@ void read_data_from_DB(void)
 		// 1483228800 = 01/01/2017 @ 12:00am (UTC)
 		if(queryTimeStamp < 1483228800)
 		{
-			logg("DB warn: TIMESTAMP should be larger than 01/01/2017 but is %i", queryTimeStamp);
+			logg("DB warn: TIMESTAMP should be larger than 01/01/2017 but is %li", queryTimeStamp);
 			continue;
 		}
 		if(queryTimeStamp > now)
 		{
-			if(config.debug & DEBUG_DATABASE) logg("DB warn: Skipping query logged in the future (%i)", queryTimeStamp);
+			if(config.debug & DEBUG_DATABASE) logg("DB warn: Skipping query logged in the future (%li)", queryTimeStamp);
 			continue;
 		}
 
@@ -728,17 +728,17 @@ void read_data_from_DB(void)
 			continue;
 		}
 
-		const char * domain = (const char *)sqlite3_column_text(stmt, 4);
-		if(domain == NULL)
+		const char * domainname = (const char *)sqlite3_column_text(stmt, 4);
+		if(domainname == NULL)
 		{
-			logg("DB warn: DOMAIN should never be NULL, %i", queryTimeStamp);
+			logg("DB warn: DOMAIN should never be NULL, %li", queryTimeStamp);
 			continue;
 		}
 
 		const char * clientIP = (const char *)sqlite3_column_text(stmt, 5);
 		if(clientIP == NULL)
 		{
-			logg("DB warn: CLIENT should never be NULL, %i", queryTimeStamp);
+			logg("DB warn: CLIENT should never be NULL, %li", queryTimeStamp);
 			continue;
 		}
 
@@ -757,7 +757,7 @@ void read_data_from_DB(void)
 		{
 			if(forwarddest == NULL)
 			{
-				logg("DB warn: FORWARD should not be NULL with status QUERY_FORWARDED, %i", queryTimeStamp);
+				logg("DB warn: FORWARD should not be NULL with status QUERY_FORWARDED, %li", queryTimeStamp);
 				continue;
 			}
 			forwardID = findForwardID(forwarddest, true);
@@ -765,7 +765,7 @@ void read_data_from_DB(void)
 
 		// Obtain IDs only after filtering which queries we want to keep
 		int timeidx = getOverTimeID(queryTimeStamp);
-		int domainID = findDomainID(domain);
+		int domainID = findDomainID(domainname);
 		int clientID = findClientID(clientIP, true);
 
 		// Ensure we have enough space in the queries struct
@@ -846,7 +846,7 @@ void read_data_from_DB(void)
 
 			default:
 				logg("Error: Found unknown status %i in long term database!", status);
-				logg("       Timestamp: %i", queryTimeStamp);
+				logg("       Timestamp: %li", queryTimeStamp);
 				logg("       Continuing anyway...");
 				break;
 		}

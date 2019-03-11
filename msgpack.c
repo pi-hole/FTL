@@ -22,7 +22,7 @@ void pack_basic(int sock, uint8_t format, void *value, size_t size) {
 	swrite(sock, value, size);
 }
 
-uint64_t leToBe64(uint64_t value) {
+static uint64_t __attribute__((const)) leToBe64(uint64_t value) {
 	char *ptr = (char *) &value;
 	uint32_t part1, part2;
 

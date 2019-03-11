@@ -61,7 +61,7 @@ void get_timestr(char *timestring)
 	sprintf(timestring,"%d-%02d-%02d %02d:%02d:%02d.%03i", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, millisec);
 }
 
-void logg(const char *format, ...)
+void __attribute__ ((format (gnu_printf, 1, 2))) logg(const char *format, ...)
 {
 	char timestring[32] = "";
 	va_list args;

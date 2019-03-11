@@ -16,7 +16,7 @@
 
 void print_flags(unsigned int flags);
 void save_reply_type(unsigned int flags, int queryID, struct timeval response);
-unsigned long converttimeval(struct timeval time);
+static unsigned long converttimeval(struct timeval time) __attribute__((const));
 static void block_single_domain_regex(char *domain);
 static void detect_blocked_IP(unsigned short flags, char* answer, int queryID);
 static void query_externally_blocked(int i);
@@ -77,21 +77,16 @@ void _FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char 
 	memory_check(QUERIES);
 	int queryID = counters->queries;
 
-	// Convert domain to lower case
-	char *domainString = strdup(name);
-	strtolower(domainString);
-
 	// If domain is "pi.hole" we skip this query
-	if(strcmp(domainString, "pi.hole") == 0)
+	if(strcasecmp(name, "pi.hole") == 0)
 	{
-		// free memory already allocated here
-		free(domainString);
 		unlock_shm();
 		return;
 	}
 
-	// Store plain text domain in buffer for regex validation
-	char *domainbuffer = strdup(domainString);
+	// Convert domain to lower case
+	char *domainString = strdup(name);
+	strtolower(domainString);
 
 	// Get client IP address
 	char dest[ADDRSTRLEN];
@@ -127,7 +122,6 @@ void _FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char 
 		// Don't process this query further here, we already counted it
 		if(config.debug & DEBUG_QUERIES) logg("Notice: Skipping new query: %s (%i)", types, id);
 		free(domainString);
-		free(domainbuffer);
 		free(clientIP);
 		unlock_shm();
 		return;
@@ -200,10 +194,10 @@ void _FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char 
 		// of a specific domain. The logic herein is:
 		// If matched, then compare against whitelist
 		// If in whitelist, negate matched so this function returns: not-to-be-blocked
-		if(match_regex(domainbuffer) && !in_whitelist(domainbuffer))
+		if(match_regex(domainString) && !in_whitelist(domainString))
 		{
 			// We have to block this domain
-			block_single_domain_regex(domainbuffer);
+			block_single_domain_regex(domainString);
 			domain->regexmatch = REGEX_BLOCKED;
 		}
 		else
@@ -217,7 +211,6 @@ void _FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char 
 	// Free allocated memory
 	free(client);
 	free(domain);
-	free(domainbuffer);
 
 	// Release thread lock
 	unlock_shm();
@@ -634,19 +627,13 @@ void _FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg
 		inet_ntop((flags & F_IPV4) ? AF_INET : AF_INET6, addr, dest, ADDRSTRLEN);
 	}
 
-	// Convert domain to lower case
-	char *domain = strdup(name);
-	strtolower(domain);
-
 	// If domain is "pi.hole", we skip this query
-	if(strcmp(domain, "pi.hole") == 0)
+	// We compare case-insensitive here
+	if(strcasecmp(name, "pi.hole") == 0)
 	{
-		// free memory already allocated here
-		free(domain);
 		unlock_shm();
 		return;
 	}
-	free(domain);
 
 	// Debug logging
 	if(config.debug & DEBUG_QUERIES)
@@ -1135,7 +1122,7 @@ void _FTL_forwarding_failed(struct server *server, const char* file, const int l
 	return;
 }
 
-unsigned long converttimeval(struct timeval time)
+static unsigned long __attribute__((const)) converttimeval(struct timeval time)
 {
 	// Convert time from struct timeval into units
 	// of 10*milliseconds
