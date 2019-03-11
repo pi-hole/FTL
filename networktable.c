@@ -93,7 +93,7 @@ void parse_arp_cache(void)
 		// changed to the database are collected for latter commitment. Read-only access
 		// such as this SELECT command will be executed immediately on the database.
 		char* querystr = NULL;
-		int ret = asprintf(&querystr, "SELECT id FROM network WHERE ip = \"%s\" AND hwaddr = \"%s\";", ip, hwaddr);
+		int ret = asprintf(&querystr, "SELECT id FROM network WHERE ip = \'%s\' AND hwaddr = \'%s\';", ip, hwaddr);
 		if(querystr == NULL || ret < 0)
 		{
 			logg("Memory allocation failed in parse_arp_cache (%i)", ret);
@@ -136,7 +136,7 @@ void parse_arp_cache(void)
 			char* macVendor = getMACVendor(hwaddr);
 			dbquery("INSERT INTO network "\
 			        "(ip,hwaddr,interface,firstSeen,lastQuery,numQueries,name,macVendor) "\
-			        "VALUES (\"%s\",\"%s\",\"%s\",%lu, %ld, %u, \"%s\", \"%s\");",\
+			        "VALUES (\'%s\',\'%s\',\'%s\',%lu, %ld, %u, \'%s\', \'%s\');",\
 			        ip, hwaddr, iface, now,
 			        clientKnown ? clients[clientID].lastQuery : 0L,
 			        clientKnown ? clients[clientID].numQueriesARP : 0u,
@@ -169,7 +169,7 @@ void parse_arp_cache(void)
 			{
 				// Store host name
 				dbquery("UPDATE network "\
-				        "SET name = \"%s\" "\
+				        "SET name = \'%s\' "\
 				        "WHERE id = %i;",\
 				        hostname, dbID);
 			}
@@ -206,7 +206,7 @@ static char* getMACVendor(const char* hwaddr)
 	else if(strlen(hwaddr) != 17)
 	{
 		// MAC address is incomplete
-		if(config.debug & DEBUG_ARP) logg("getMACVenor(%s): MAC invalid (length %lu)", hwaddr, strlen(hwaddr));
+		if(config.debug & DEBUG_ARP) logg("getMACVenor(%s): MAC invalid (length %zu)", hwaddr, strlen(hwaddr));
 		return strdup("");
 	}
 
@@ -222,7 +222,7 @@ static char* getMACVendor(const char* hwaddr)
 	// Only keep "XX:YY:ZZ" (8 characters)
 	char * hwaddrshort = strdup(hwaddr);
 	hwaddrshort[8] = '\0';
-	rc = asprintf(&querystr, "SELECT vendor FROM macvendor WHERE mac LIKE \"%s\";", hwaddrshort);
+	rc = asprintf(&querystr, "SELECT vendor FROM macvendor WHERE mac LIKE \'%s\';", hwaddrshort);
 	if(rc < 1)
 	{
 		logg("getMACVendor(%s) - Allocation error (%i)", hwaddr, rc);
@@ -283,10 +283,10 @@ void updateMACVendorRecords()
 	}
 
 	sqlite3_stmt* stmt;
-	const char* querystr = "SELECT id,hwaddr FROM network;";
-	rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
+	const char* selectstr = "SELECT id,hwaddr FROM network;";
+	rc = sqlite3_prepare_v2(db, selectstr, -1, &stmt, NULL);
 	if( rc ){
-		logg("updateMACVendorRecords() - SQL error prepare (%s, %i): %s", querystr, rc, sqlite3_errmsg(db));
+		logg("updateMACVendorRecords() - SQL error prepare (%s, %i): %s", selectstr, rc, sqlite3_errmsg(db));
 		sqlite3_close(db);
 		return;
 	}
@@ -302,8 +302,8 @@ void updateMACVendorRecords()
 		hwaddr = NULL;
 
 		// Prepare UPDATE statement
-		char *querystr = NULL;
-		if(asprintf(&querystr, "UPDATE network SET macVendor = \"%s\" WHERE id = %i", vendor, id) < 1)
+		char *updatestr = NULL;
+		if(asprintf(&updatestr, "UPDATE network SET macVendor = \'%s\' WHERE id = %i", vendor, id) < 1)
 		{
 			logg("updateMACVendorRecords() - Allocation error 2");
 			free(vendor);
@@ -312,17 +312,17 @@ void updateMACVendorRecords()
 
 		// Execute prepared statement
 		char *zErrMsg = NULL;
-		rc = sqlite3_exec(db, querystr, NULL, NULL, &zErrMsg);
+		rc = sqlite3_exec(db, updatestr, NULL, NULL, &zErrMsg);
 		if( rc != SQLITE_OK ){
-			logg("updateMACVendorRecords() - SQL exec error: %s (%i): %s", querystr, rc, zErrMsg);
+			logg("updateMACVendorRecords() - SQL exec error: %s (%i): %s", updatestr, rc, zErrMsg);
 			sqlite3_free(zErrMsg);
-			free(querystr);
+			free(updatestr);
 			free(vendor);
 			break;
 		}
 
 		// Free allocated memory
-		free(querystr);
+		free(updatestr);
 		free(vendor);
 	}
 	if(rc != SQLITE_DONE)

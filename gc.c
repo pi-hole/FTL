@@ -35,13 +35,18 @@ void *GC_thread(void *val)
 			lock_shm();
 
 			// Get minimum time stamp to keep
-			time_t mintime = time(NULL) - config.maxlogage;
+			time_t mintime = (time(NULL) - GCdelay) - MAXLOGAGE*3600;
+
+			// Align to the start of the next hour. This will also align with
+			// the oldest overTime interval after GC is done.
+			mintime -= mintime % 3600;
+			mintime += 3600;
 
 			if(config.debug & DEBUG_GC) timer_start(GC_TIMER);
 
 			long int i;
 			int removed = 0;
-			if(config.debug & DEBUG_GC) logg("GC starting, mintime: %u %s", mintime, ctime(&mintime));
+			if(config.debug & DEBUG_GC) logg("GC starting, mintime: %lu %s", mintime, ctime(&mintime));
 
 			// Process all queries
 			for(i=0; i < counters->queries; i++)
@@ -51,20 +56,16 @@ void *GC_thread(void *val)
 				if(queries[i].timestamp > mintime)
 					break;
 
-				// Adjust total counters and total over time data
-				// We cannot edit counters->queries directly as it is used
-				// as max ID for the queries[] struct
-				int timeidx = queries[i].timeidx;
-				validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
-				overTime[timeidx].total--;
-
 				// Adjust client counter
 				int clientID = queries[i].clientID;
 				validate_access("clients", clientID, true, __LINE__, __FUNCTION__, __FILE__);
 				clients[clientID].count--;
 
+				// Adjust total counters and total over time data
+				int timeidx = queries[i].timeidx;
+				overTime[timeidx].total--;
 				// Adjust corresponding overTime counters
-				overTimeClientData[clientID][timeidx]--;
+				clients[clientID].overTime[timeidx]--;
 
 				// Adjust domain counter (no overTime information)
 				int domainID = queries[i].domainID;
@@ -81,9 +82,9 @@ void *GC_thread(void *val)
 					case QUERY_FORWARDED:
 						// Forwarded to an upstream DNS server
 						counters->forwardedqueries--;
-						overTime[timeidx].forwarded--;
 						validate_access("forwarded", queries[i].forwardID, true, __LINE__, __FUNCTION__, __FILE__);
 						forwarded[queries[i].forwardID].count--;
+						overTime[timeidx].forwarded--;
 						break;
 					case QUERY_CACHE:
 						// Answered from local cache _or_ local config
@@ -137,8 +138,7 @@ void *GC_thread(void *val)
 				if(queries[i].type >= TYPE_A && queries[i].type < TYPE_MAX)
 				{
 					counters->querytype[queries[i].type-1]--;
-					validate_access("overTime", queries[i].timeidx, true, __LINE__, __FUNCTION__, __FILE__);
-					overTime[queries[i].timeidx].querytypedata[queries[i].type-1]--;
+					overTime[timeidx].querytypedata[queries[i].type-1]--;
 				}
 
 				// Count removed queries
@@ -160,6 +160,9 @@ void *GC_thread(void *val)
 
 			// Zero out remaining memory (marked as "F" in the above example)
 			memset(&queries[counters->queries], 0, (counters->queries_MAX - counters->queries)*sizeof(*queries));
+
+			// Determine if overTime memory needs to get moved
+			moveOverTimeMemory(mintime);
 
 			if(config.debug & DEBUG_GC) logg("Notice: GC removed %i queries (took %.2f ms)", removed, timer_elapsed_msec(GC_TIMER));
 

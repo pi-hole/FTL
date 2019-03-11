@@ -36,6 +36,13 @@ int main (int argc, char* argv[])
 	logg("########## FTL started! ##########");
 	log_FTL_version(false);
 
+	// Catch signals like SIGTERM and SIGINT
+	// Other signals like SIGHUP, SIGUSR1 are handled by the resolver part
+	handle_signals();
+
+	// Process pihole-FTL.conf
+	read_FTLconf();
+
 	// Initialize shared memory
 	if(!init_shmem())
 	{
@@ -47,16 +54,6 @@ int main (int argc, char* argv[])
 	// print warning otherwise
 	if(strcmp(username, "pihole") != 0)
 		logg("WARNING: Starting pihole-FTL as user %s is not recommended", username);
-
-	// Process pihole-FTL.conf
-	read_FTLconf();
-
-	// Read and compile possible regex filters
-	read_regex_from_file();
-
-	// Catch signals like SIGTERM and SIGINT
-	// Other signals like SIGHUP, SIGUSR1 are handled by the resolver part
-	handle_signals();
 
 	// Initialize database
 	if(config.maxDBdays != 0)
@@ -103,5 +100,5 @@ int main (int argc, char* argv[])
 	//Remove PID file
 	removepid();
 	logg("########## FTL terminated after %.1f ms! ##########", timer_elapsed_msec(EXIT_TIMER));
-	return 1;
+	return EXIT_SUCCESS;
 }

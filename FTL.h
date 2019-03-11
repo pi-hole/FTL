@@ -57,7 +57,7 @@
 #define GCinterval 3600
 
 // Delay applied to the garbage collecting [seconds]
-// Default -60 (one minute before a full hour)
+// Default: -60 (one minute before a full hour)
 #define GCdelay (-60)
 
 // How many client connection do we accept at once?
@@ -65,6 +65,20 @@
 
 // Over how many queries do we iterate at most when trying to find a match?
 #define MAXITER 1000
+
+// How many hours do we want to store in FTL's memory? [hours]
+#define MAXLOGAGE 24
+
+// Interval for overTime data [seconds]
+// Default: 600 (10 minute intervals)
+#define OVERTIME_INTERVAL 600
+
+// How many overTime slots do we need?
+// (24+1) hours * number of intervals per hour
+// We need to be able to hold 25 hours as we need some reserve
+// due to that GC is only running once an hours so the shown data
+// can be 24 hours + 59 minutes
+#define OVERTIME_SLOTS ((MAXLOGAGE+1)*3600/OVERTIME_INTERVAL)
 
 // FTLDNS enums
 enum { DATABASE_WRITE_TIMER, EXIT_TIMER, GC_TIMER, LISTS_TIMER, REGEX_TIMER, ARP_TIMER, LAST_TIMER };
@@ -78,16 +92,17 @@ enum { MODE_IP, MODE_NX, MODE_NULL, MODE_IP_NODATA_AAAA, MODE_NODATA };
 enum { REGEX_UNKNOWN, REGEX_BLOCKED, REGEX_NOTBLOCKED };
 enum { BLOCKING_DISABLED, BLOCKING_ENABLED, BLOCKING_UNKNOWN };
 enum {
-  DEBUG_DATABASE   = (1 << 0), /* 00000000 00000001 */
-  DEBUG_NETWORKING = (1 << 1), /* 00000000 00000010 */
-  DEBUG_LOCKS      = (1 << 2), /* 00000000 00000100 */
-  DEBUG_QUERIES    = (1 << 3), /* 00000000 00001000 */
-  DEBUG_FLAGS      = (1 << 4), /* 00000000 00010000 */
-  DEBUG_SHMEM      = (1 << 5), /* 00000000 00100000 */
-  DEBUG_GC         = (1 << 6), /* 00000000 01000000 */
-  DEBUG_ARP        = (1 << 7), /* 00000000 10000000 */
-  DEBUG_REGEX      = (1 << 8), /* 00000001 00000000 */
-  DEBUG_API        = (1 << 9), /* 00000010 00000000 */
+  DEBUG_DATABASE   = (1 << 0),  /* 00000000 00000001 */
+  DEBUG_NETWORKING = (1 << 1),  /* 00000000 00000010 */
+  DEBUG_LOCKS      = (1 << 2),  /* 00000000 00000100 */
+  DEBUG_QUERIES    = (1 << 3),  /* 00000000 00001000 */
+  DEBUG_FLAGS      = (1 << 4),  /* 00000000 00010000 */
+  DEBUG_SHMEM      = (1 << 5),  /* 00000000 00100000 */
+  DEBUG_GC         = (1 << 6),  /* 00000000 01000000 */
+  DEBUG_ARP        = (1 << 7),  /* 00000000 10000000 */
+  DEBUG_REGEX      = (1 << 8),  /* 00000001 00000000 */
+  DEBUG_API        = (1 << 9),  /* 00000010 00000000 */
+  DEBUG_OVERTIME   = (1 << 10), /* 00000100 00000000 */
 };
 
 // Database table "ftl"
@@ -132,10 +147,9 @@ typedef struct {
 	int forwarded_MAX;
 	int clients_MAX;
 	int domains_MAX;
-	int overTime_MAX;
+	int strings_MAX;
 	int gravity;
 	int gravity_conf;
-	int overTime;
 	int querytype[TYPE_MAX-1];
 	int forwardedqueries;
 	int reply_NODATA;
@@ -167,7 +181,7 @@ typedef struct {
 typedef struct {
 	unsigned char magic;
 	time_t timestamp;
-	int timeidx;
+	unsigned int timeidx;
 	unsigned char type;
 	unsigned char status;
 	int domainID;
@@ -198,6 +212,7 @@ typedef struct {
 	unsigned long long ippos;
 	unsigned long long namepos;
 	bool new;
+	int overTime[OVERTIME_SLOTS];
 	time_t lastQuery;
 	unsigned int numQueriesARP;
 } clientsDataStruct;
@@ -227,6 +242,8 @@ typedef struct {
 
 typedef struct {
 	int version;
+	unsigned int global_shm_counter;
+	unsigned int next_str_pos;
 } ShmSettings;
 
 // Prepare timers, used mainly for debugging purposes
@@ -250,32 +267,23 @@ extern clientsDataStruct *clients;
 extern domainsDataStruct *domains;
 extern overTimeDataStruct *overTime;
 
-/// Indexed by client ID, then time index (like `overTime`).
-/// This gets automatically updated whenever a new client or overTime slot is added.
-extern int **overTimeClientData;
-
-extern FILE *logfile;
+// Used in gc.c, memory.c, resolve.c, signals.c, and socket.c
 extern volatile sig_atomic_t killed;
-
-extern char ** setupVarsArray;
-extern int setupVarsElements;
-
-extern bool initialscan;
-extern bool threadwritelock;
-extern bool threadreadlock;
+// Used in api.c, grep.c, and dnsmasq_interface.c
 extern unsigned char blockingstatus;
-
+// Used in main.c, log.c, and others
 extern char * username;
-extern char timestamp[16];
-extern bool flush;
-extern bool needGC;
+// Used in main.c, args.c, log.c, and others
 extern bool daemonmode;
+// Used in main.c, database.c, and others
 extern bool database;
+// Used in database.c and gc.c
 extern long int lastdbindex;
-extern bool travis;
+// Used in database.c and gc.c
 extern bool DBdeleteoldqueries;
-extern bool rereadgravity;
+// Used in main.c, socket.c, and dnsmasq_interface.c
 extern bool ipv4telnet, ipv6telnet;
+// Used in api.c, and socket.c
 extern bool istelnet[MAXCONNS];
 
 // Use out own memory handling functions that will detect possible errors

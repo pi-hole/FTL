@@ -173,6 +173,14 @@ bool db_create(void)
 	return true;
 }
 
+void SQLite3LogCallback(void *pArg, int iErrCode, const char *zMsg)
+{
+	// Note: pArg is NULL and not used
+	// See https://sqlite.org/rescode.html#extrc for details
+	// concerning the return codes returned here
+	logg("SQLite3 message: %s (%d)", zMsg, iErrCode);
+}
+
 void db_init(void)
 {
 	// First check if the user doesn't want to use the database and set an
@@ -182,6 +190,12 @@ void db_init(void)
 		database = false;
 		return;
 	}
+
+	// Initialize SQLite3 logging callback
+	// This ensures SQLite3 errors and warnings are logged to pihole-FTL.log
+	// We use this to possibly catch even more errors in places we do not
+	// explicitly check for failures to have happened
+	sqlite3_config(SQLITE_CONFIG_LOG, SQLite3LogCallback, NULL);
 
 	int rc = sqlite3_open_v2(FTLfiles.db, &db, SQLITE_OPEN_READWRITE, NULL);
 	if( rc ){
@@ -541,14 +555,14 @@ void save_to_DB(void)
 
 	// Store index for next loop interation round and update last time stamp
 	// in the database only if all queries have been saved successfully
-	if(saved_error == 0)
+	if(saved > 0 && saved_error == 0)
 	{
 		lastdbindex = i;
 		db_set_FTL_property(DB_LASTTIMESTAMP, newlasttimestamp);
 	}
 
 	// Update total counters in DB
-	if(!db_update_counters(total, blocked))
+	if(saved > 0 && !db_update_counters(total, blocked))
 	{
 		dbclose();
 		return;
@@ -669,7 +683,7 @@ void read_data_from_DB(void)
 		return;
 	}
 	// Log DB query string in debug mode
-	if(config.debug & DEBUG_DATABASE) logg(rstr);
+	if(config.debug & DEBUG_DATABASE) logg("%s", rstr);
 
 	// Prepare SQLite3 statement
 	sqlite3_stmt* stmt;
@@ -689,12 +703,12 @@ void read_data_from_DB(void)
 		// 1483228800 = 01/01/2017 @ 12:00am (UTC)
 		if(queryTimeStamp < 1483228800)
 		{
-			logg("DB warn: TIMESTAMP should be larger than 01/01/2017 but is %i", queryTimeStamp);
+			logg("DB warn: TIMESTAMP should be larger than 01/01/2017 but is %li", queryTimeStamp);
 			continue;
 		}
 		if(queryTimeStamp > now)
 		{
-			if(config.debug & DEBUG_DATABASE) logg("DB warn: Skipping query logged in the future (%i)", queryTimeStamp);
+			if(config.debug & DEBUG_DATABASE) logg("DB warn: Skipping query logged in the future (%li)", queryTimeStamp);
 			continue;
 		}
 
@@ -721,14 +735,14 @@ void read_data_from_DB(void)
 		const char * domain = (const char *)sqlite3_column_text(stmt, 4);
 		if(domain == NULL)
 		{
-			logg("DB warn: DOMAIN should never be NULL, %i", queryTimeStamp);
+			logg("DB warn: DOMAIN should never be NULL, %li", queryTimeStamp);
 			continue;
 		}
 
 		const char * client = (const char *)sqlite3_column_text(stmt, 5);
 		if(client == NULL)
 		{
-			logg("DB warn: CLIENT should never be NULL, %i", queryTimeStamp);
+			logg("DB warn: CLIENT should never be NULL, %li", queryTimeStamp);
 			continue;
 		}
 
@@ -747,15 +761,14 @@ void read_data_from_DB(void)
 		{
 			if(forwarddest == NULL)
 			{
-				logg("DB warn: FORWARD should not be NULL with status QUERY_FORWARDED, %i", queryTimeStamp);
+				logg("DB warn: FORWARD should not be NULL with status QUERY_FORWARDED, %li", queryTimeStamp);
 				continue;
 			}
 			forwardID = findForwardID(forwarddest, true);
 		}
 
 		// Obtain IDs only after filtering which queries we want to keep
-		int overTimeTimeStamp = queryTimeStamp - (queryTimeStamp % 600) + 300;
-		int timeidx = findOverTimeID(overTimeTimeStamp);
+		int timeidx = getOverTimeID(queryTimeStamp);
 		int domainID = findDomainID(domain);
 		int clientID = findClientID(client, true);
 
@@ -766,7 +779,6 @@ void read_data_from_DB(void)
 		int queryIndex = counters->queries;
 
 		// Store this query in memory
-		validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 		validate_access("queries", queryIndex, false, __LINE__, __FUNCTION__, __FILE__);
 		validate_access("clients", clientID, true, __LINE__, __FUNCTION__, __FILE__);
 		queries[queryIndex].magic = MAGICBYTE;
@@ -797,9 +809,8 @@ void read_data_from_DB(void)
 
 		// Update overTime data
 		overTime[timeidx].total++;
-
 		// Update overTime data structure with the new client
-		overTimeClientData[clientID][timeidx]++;
+		clients[clientID].overTime[timeidx]++;
 
 		// Increase DNS queries counter
 		counters->queries++;
@@ -818,14 +829,16 @@ void read_data_from_DB(void)
 			case QUERY_EXTERNAL_BLOCKED_NULL: // Blocked by external provider
 			case QUERY_EXTERNAL_BLOCKED_NXRA: // Blocked by external provider
 				counters->blocked++;
-				overTime[timeidx].blocked++;
 				domains[domainID].blockedcount++;
 				clients[clientID].blockedcount++;
+				// Update overTime data structure
+				overTime[timeidx].blocked++;
 				break;
 
 			case QUERY_FORWARDED: // Forwarded
 				counters->forwardedqueries++;
 				// Update overTime data structure
+				overTime[timeidx].forwarded++;
 				break;
 
 			case QUERY_CACHE: // Cached or local config
@@ -836,7 +849,7 @@ void read_data_from_DB(void)
 
 			default:
 				logg("Error: Found unknown status %i in long term database!", status);
-				logg("       Timestamp: %i", queryTimeStamp);
+				logg("       Timestamp: %li", queryTimeStamp);
 				logg("       Continuing anyway...");
 				break;
 		}

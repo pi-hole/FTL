@@ -17,76 +17,6 @@ void strtolower(char *str)
 	while(str[i]){ str[i] = tolower(str[i]); i++; }
 }
 
-void gettimestamp(int *querytimestamp, int *overTimetimestamp)
-{
-	// Get current time
-	*querytimestamp = (int)time(NULL);
-
-	// Floor timestamp to the beginning of 10 minutes interval
-	// and add 5 minutes to center it in the interval
-	*overTimetimestamp = *querytimestamp-(*querytimestamp%600)+300;
-}
-
-int findOverTimeID(int overTimetimestamp)
-{
-	int timeidx = -1, i;
-	// Check struct size
-	memory_check(OVERTIME);
-	if(counters->overTime > 0)
-		validate_access("overTime", counters->overTime-1, true, __LINE__, __FUNCTION__, __FILE__);
-	for(i=0; i < counters->overTime; i++)
-	{
-		if(overTime[i].timestamp == overTimetimestamp)
-			return i;
-	}
-	// We loop over this to fill potential data holes with zeros
-	int nexttimestamp = 0;
-	if(counters->overTime != 0)
-	{
-		validate_access("overTime", counters->overTime-1, false, __LINE__, __FUNCTION__, __FILE__);
-		nexttimestamp = overTime[counters->overTime-1].timestamp + 600;
-	}
-	else
-	{
-		nexttimestamp = overTimetimestamp;
-	}
-
-	// Fill potential holes in the overTime struct (may happen
-	// if there haven't been any queries within a time interval)
-	while(overTimetimestamp >= nexttimestamp)
-	{
-		// Check struct size
-		memory_check(OVERTIME);
-		timeidx = counters->overTime;
-		validate_access("overTime", timeidx, false, __LINE__, __FUNCTION__, __FILE__);
-		// Set magic byte
-		overTime[timeidx].magic = MAGICBYTE;
-		overTime[timeidx].timestamp = nexttimestamp;
-		overTime[timeidx].total = 0;
-		overTime[timeidx].blocked = 0;
-		overTime[timeidx].cached = 0;
-		// overTime[timeidx].querytypedata is static
-		counters->overTime++;
-
-		// Create new overTime slot in client shared memory
-		addOverTimeClientSlot();
-
-		// Update time stamp for next loop interaction
-		if(counters->overTime != 0)
-		{
-			validate_access("overTime", counters->overTime-1, false, __LINE__, __FUNCTION__, __FILE__);
-			nexttimestamp = overTime[counters->overTime-1].timestamp + 600;
-		}
-	}
-
-	// Ensure that we don't return negative time indices. This may happen
-	// when the system time is getting corrected backwards since FTL started
-	if(timeidx < 0)
-		timeidx = 0;
-
-	return timeidx;
-}
-
 int findForwardID(const char * forward, bool count)
 {
 	int i, forwardID = -1;
@@ -178,11 +108,10 @@ int findDomainID(const char *domain)
 
 int findClientID(const char *client, bool count)
 {
-	int i;
 	// Compare content of client against known client IP addresses
 	if(counters->clients > 0)
 		validate_access("clients", counters->clients-1, true, __LINE__, __FUNCTION__, __FILE__);
-	for(i=0; i < counters->clients; i++)
+	for(int i=0; i < counters->clients; i++)
 	{
 		// Quick test: Does the clients IP start with the same character?
 		if(getstr(clients[i].ippos)[0] != client[0])
@@ -228,8 +157,9 @@ int findClientID(const char *client, bool count)
 	clients[clientID].lastQuery = 0;
 	clients[clientID].numQueriesARP = 0;
 
-	// Create new overTime client data
-	newOverTimeClient(clientID);
+	// Initialize client-specific overTime data
+	for(int i = 0; i < OVERTIME_SLOTS; i++)
+		clients[clientID].overTime[i] = 0;
 
 	// Increase counter by one
 	counters->clients++;

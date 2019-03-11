@@ -43,7 +43,6 @@ forwardedDataStruct *forwarded = NULL;
 clientsDataStruct *clients = NULL;
 domainsDataStruct *domains = NULL;
 overTimeDataStruct *overTime = NULL;
-int **overTimeClientData = NULL;
 
 void memory_check(int which)
 {
@@ -97,18 +96,6 @@ void memory_check(int which)
 				}
 			}
 		break;
-		case OVERTIME:
-			if(counters->overTime >= counters->overTime_MAX-1)
-			{
-				// Have to reallocate shared memory
-				overTime = enlarge_shmem_struct(OVERTIME);
-				if(overTime == NULL)
-				{
-					logg("FATAL: Memory allocation failed! Exiting");
-					exit(EXIT_FAILURE);
-				}
-			}
-		break;
 		default:
 			/* That cannot happen */
 			logg("Fatal error in memory_check(%i)", which);
@@ -123,7 +110,6 @@ void validate_access(const char * name, int pos, bool testmagic, int line, const
 	if(name[0] == 'c') limit = counters->clients_MAX;
 	else if(name[0] == 'd') limit = counters->domains_MAX;
 	else if(name[0] == 'q') limit = counters->queries_MAX;
-	else if(name[0] == 'o') limit = counters->overTime_MAX;
 	else if(name[0] == 'f') limit = counters->forwarded_MAX;
 	else { logg("Validator error (range)"); killed = 1; }
 
@@ -139,7 +125,6 @@ void validate_access(const char * name, int pos, bool testmagic, int line, const
 		if(name[0] == 'c') magic = clients[pos].magic;
 		else if(name[0] == 'd') magic = domains[pos].magic;
 		else if(name[0] == 'q') magic = queries[pos].magic;
-		else if(name[0] == 'o') magic = overTime[pos].magic;
 		else if(name[0] == 'f') magic = forwarded[pos].magic;
 		else { logg("Validator error (magic byte)"); killed = 1; }
 		if(magic != MAGICBYTE)
@@ -156,7 +141,7 @@ void validate_access(const char * name, int pos, bool testmagic, int line, const
 // not be protected by our (error logging) functions!
 
 #undef strdup
-char *FTLstrdup(const char *src, const char * file, const char * function, int line)
+char* __attribute__((malloc)) FTLstrdup(const char *src, const char * file, const char * function, int line)
 {
 	// The FTLstrdup() function returns a pointer to a new string which is a
 	// duplicate of the string s. Memory for the new string is obtained with
@@ -181,7 +166,7 @@ char *FTLstrdup(const char *src, const char * file, const char * function, int l
 }
 
 #undef calloc
-void *FTLcalloc(size_t nmemb, size_t size, const char * file, const char * function, int line)
+void* __attribute__((malloc)) FTLcalloc(size_t nmemb, size_t size, const char * file, const char * function, int line)
 {
 	// The FTLcalloc() function allocates memory for an array of nmemb elements
 	// of size bytes each and returns a pointer to the allocated memory. The
@@ -190,7 +175,7 @@ void *FTLcalloc(size_t nmemb, size_t size, const char * file, const char * funct
 	// passed to free().
 	void *ptr = calloc(nmemb, size);
 	if(ptr == NULL)
-		logg("FATAL: Memory allocation (%u x %u) failed in %s() (%s:%i)",
+		logg("FATAL: Memory allocation (%zu x %zu) failed in %s() (%s:%i)",
 		     nmemb, size, function, file, line);
 
 	return ptr;
@@ -211,7 +196,7 @@ void *FTLrealloc(void *ptr_in, size_t size, const char * file, const char * func
 	// done.
 	void *ptr_out = realloc(ptr_in, size);
 	if(ptr_out == NULL)
-		logg("FATAL: Memory reallocation (%p -> %u) failed in %s() (%s:%i)",
+		logg("FATAL: Memory reallocation (%p -> %zu) failed in %s() (%s:%i)",
 		     ptr_in, size, function, file, line);
 
 	return ptr_out;

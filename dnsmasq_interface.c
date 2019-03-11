@@ -16,7 +16,7 @@
 
 void print_flags(unsigned int flags);
 void save_reply_type(unsigned int flags, int queryID, struct timeval response);
-unsigned long converttimeval(struct timeval time);
+static unsigned long converttimeval(struct timeval time) __attribute__((const));
 static void block_single_domain_regex(char *domain);
 static void detect_blocked_IP(unsigned short flags, char* answer, int queryID);
 static void query_externally_blocked(int i, unsigned char status);
@@ -35,8 +35,7 @@ void _FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char 
 	lock_shm();
 
 	// Get timestamp
-	int querytimestamp, overTimetimestamp;
-	gettimestamp(&querytimestamp, &overTimetimestamp);
+	time_t querytimestamp = time(NULL);
 
 	// Save request time
 	struct timeval request;
@@ -116,10 +115,11 @@ void _FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char 
 		logg("**** new %s %s \"%s\" from %s (ID %i, FTL %i, %s:%i)", proto, types, domain, client, id, queryID, file, line);
 
 	// Update counters
-	int timeidx = findOverTimeID(overTimetimestamp);
-	validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
-	overTime[timeidx].querytypedata[querytype-1]++;
 	counters->querytype[querytype-1]++;
+
+	// Update overTime
+	unsigned int timeidx = getOverTimeID(querytimestamp);
+	overTime[timeidx].querytypedata[querytype-1]++;
 
 	// Skip rest of the analysis if this query is not of type A or AAAA
 	// but user wants to see only A and AAAA queries (pre-v4.1 behavior)
@@ -172,11 +172,9 @@ void _FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char 
 	counters->unknown++;
 
 	// Update overTime data
-	validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 	overTime[timeidx].total++;
-
 	// Update overTime data structure with the new client
-	overTimeClientData[clientID][timeidx]++;
+	clients[clientID].overTime[timeidx]++;
 
 	// Set lastQuery timer and add one query for network table
 	clients[clientID].lastQuery = querytimestamp;
@@ -230,9 +228,10 @@ static int findQueryID(int id)
 	// MAX(0, a) is used to return 0 in case a is negative (negative array indices are harmful)
 
 	// Validate access only once for the maximum index (all lower will work)
-	validate_access("queries", counters->queries-1, false, __LINE__, __FUNCTION__, __FILE__);
 	int until = MAX(0, counters->queries-MAXITER);
 	int start = MAX(0, counters->queries-1);
+	validate_access("queries", until, false, __LINE__, __FUNCTION__, __FILE__);
+
 	// Check UUIDs of queries
 	for(int i = start; i >= until; i--)
 		if(queries[i].id == id)
@@ -253,6 +252,8 @@ void _FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int i
 
 	// Get forward destination IP address
 	char dest[ADDRSTRLEN];
+	// If addr == NULL, we will only duplicate an empty string instead of uninitialized memory
+	dest[0] = '\0';
 	if(addr != NULL)
 		inet_ntop((flags & F_IPV4) ? AF_INET : AF_INET6, addr, dest, ADDRSTRLEN);
 	// Convert forward to lower case
@@ -291,8 +292,7 @@ void _FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int i
 	int forwardID = findForwardID(forward, true);
 	queries[i].forwardID = forwardID;
 
-	int j = queries[i].timeidx;
-	validate_access("overTime", j, true, __LINE__, __FUNCTION__, __FILE__);
+	unsigned int timeidx = queries[i].timeidx;
 
 	if(queries[i].status == QUERY_CACHE)
 	{
@@ -314,7 +314,7 @@ void _FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int i
 		// forwarded in the following.
 		counters->cached--;
 		// Also correct overTime data
-		overTime[j].cached--;
+		overTime[timeidx].cached--;
 
 		// Correct reply timer
 		struct timeval response;
@@ -339,7 +339,7 @@ void _FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int i
 	queries[i].status = QUERY_FORWARDED;
 
 	// Update overTime data
-	overTime[j].forwarded++;
+	overTime[timeidx].forwarded++;
 
 	// Update counter for forwarded queries
 	counters->forwardedqueries++;
@@ -442,10 +442,7 @@ void _FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id,
 		counters->unknown--;
 
 		// Get time index
-		int querytimestamp, overTimetimestamp;
-		gettimestamp(&querytimestamp, &overTimetimestamp);
-		int timeidx = findOverTimeID(overTimetimestamp);
-		validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
+		unsigned int timeidx = queries[i].timeidx;
 
 		if(strcmp(answer, "(NXDOMAIN)") == 0 ||
 		   strcmp(answer, "0.0.0.0") == 0 ||
@@ -578,17 +575,20 @@ static void query_externally_blocked(int i, unsigned char status)
 	   queries[i].status == QUERY_EXTERNAL_BLOCKED_NXRA)
 		return;
 
+	// Get time index of this query
+	unsigned int timeidx = queries[i].timeidx;
+
 	// Correct counters if necessary ...
 	if(queries[i].status == QUERY_FORWARDED)
 	{
 		counters->forwardedqueries--;
-		overTime[queries[i].timeidx].forwarded--;
+		overTime[timeidx].forwarded--;
 		validate_access("forwarded", queries[i].forwardID, true, __LINE__, __FUNCTION__, __FILE__);
 		forwarded[queries[i].forwardID].count--;
 	}
 	// ... but as blocked
 	counters->blocked++;
-	overTime[queries[i].timeidx].blocked++;
+	overTime[timeidx].blocked++;
 	validate_access("domains", queries[i].domainID, true, __LINE__, __FUNCTION__, __FILE__);
 	domains[queries[i].domainID].blockedcount++;
 	validate_access("clients", queries[i].clientID, true, __LINE__, __FUNCTION__, __FILE__);
@@ -688,10 +688,7 @@ void _FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg
 		counters->unknown--;
 
 		// Get time index
-		int querytimestamp, overTimetimestamp;
-		gettimestamp(&querytimestamp, &overTimetimestamp);
-		int timeidx = findOverTimeID(overTimetimestamp);
-		validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
+		unsigned int timeidx = queries[i].timeidx;
 
 		int domainID = queries[i].domainID;
 		validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
@@ -1083,7 +1080,7 @@ void _FTL_forwarding_failed(struct server *server, const char* file, const int l
 	return;
 }
 
-unsigned long converttimeval(struct timeval time)
+static unsigned long __attribute__((const)) converttimeval(struct timeval time)
 {
 	// Convert time from struct timeval into units
 	// of 10*milliseconds
@@ -1122,10 +1119,20 @@ static void prepare_blocking_mode(struct all_addr *addr4, struct all_addr *addr6
 		if(inet_pton(AF_INET6, IPv6addr, addr6) > 0)
 			*has_IPv6 = true;
 	}
-	else
+	else if(config.blockingmode == MODE_IP_NODATA_AAAA)
 	{
 		// Blocking mode will use zero-initialized all_addr struct
+		// This is irrelevant, however, as this blocking mode will
+		// reply with NODATA to AAAA queries. Still, we need to
+		// generate separate IPv4 (IP) and AAAA (NODATA) records
 		*has_IPv6 = true;
+	}
+	else
+	{
+		// Don't create IPv6 cache entries when we don't need them
+		// Also, don't create them if we are in IP blocking mode and
+		// strlen(IPv6addr) == 0
+		*has_IPv6 = false;
 	}
 	clearSetupVarsArray(); // will free/invalidate IPv6addr
 }
