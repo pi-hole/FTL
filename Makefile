@@ -63,22 +63,6 @@ WARNFLAGS=-Wall -Wextra -Wno-unused-parameter
 # -Wuninitialized: Warn if an automatic variable is used without first being initialized
 # -Wswitch-enum: Warn whenever a switch statement has an index of enumerated type and lacks a case for one or more of the named codes of that enumeration.
 # -Wshadow: Warn whenever a local variable or type declaration shadows another variable, parameter, type, class member, or whenever a built-in function is shadowed.
-ifeq "$(GCCVERSION8)" "1"
-  # ATTRIBUTEWARNINGS: Warn for cases where adding an attribute may be beneficial.
-  ATTRIBUTEWARNINGS=-Wsuggest-attribute=pure -Wsuggest-attribute=const -Wsuggest-attribute=noreturn -Wmissing-noreturn -Wsuggest-attribute=malloc -Wsuggest-attribute=format -Wmissing-format-attribute -Wsuggest-attribute=cold
-else
-  ATTRIBUTEWARNINGS=
-endif
-EXTRAWARN=-Werror -Waddress -Wlogical-op -Wmissing-field-initializers -Woverlength-strings -Wformat -Wformat-nonliteral -Wuninitialized -Wswitch-enum -Wshadow $(ATTRIBUTEWARNINGS)
-# -Wduplicated-cond: Warn about duplicated conditions in an if-else-if chain
-# -Wduplicated-branches: Warn when an if-else has identical branches
-# -Wcast-align=strict: Warn whenever a pointer is cast such that the required alignment of the target is increased. For example, warn if a "char *" is cast to an "int *" regardless of the target machine.
-# -Wlogical-not-parentheses: Warn about logical not used on the left hand side operand of a comparison
-ifeq "$(GCCVERSION8)" "1"
-  EXTRAWARNGCC8=-Wduplicated-cond -Wduplicated-branches -Wcast-align=strict -Wlogical-not-parentheses
-else
-  EXTRAWARNGCC8=
-endif
 # -Wfloat-equal: Warn if floating-point values are used in equality comparisons
 # -Wunsafe-loop-optimizations -funsafe-loop-optimizations: Warn if the loop cannot be optimized because the compiler cannot assume anything on the bounds of the loop indices
 # -Wpointer-arith: Warn about anything that depends on the "size of" a function type or of "void".  GNU C assigns these types a size of 1
@@ -91,7 +75,17 @@ endif
 # -Wmissing-prototypes: Warn if a global function is defined without a previous prototype declaration
 # -Wredundant-decls: Warn if anything is declared more than once in the same scope
 # -Winline: Warn if a function that is declared as inline cannot be inlined
-EXTRAWARN2=-Wfloat-equal -Wunsafe-loop-optimizations -funsafe-loop-optimizations -Wbad-function-cast -Wwrite-strings -Wparentheses -Wlogical-op -Wstrict-prototypes -Wmissing-prototypes -Wredundant-decls -Winline $(EXTRAWARNGCC8)
+ifeq "$(GCCVERSION8)" "1"
+  EXTRAWARNGCC8=-Wduplicated-cond -Wduplicated-branches -Wcast-align=strict -Wlogical-not-parentheses -Wsuggest-attribute=pure -Wsuggest-attribute=const -Wsuggest-attribute=noreturn -Wsuggest-attribute=malloc -Wsuggest-attribute=format -Wsuggest-attribute=cold
+else
+  EXTRAWARNGCC8=
+endif
+# -Wduplicated-cond: Warn about duplicated conditions in an if-else-if chain
+# -Wduplicated-branches: Warn when an if-else has identical branches
+# -Wcast-align=strict: Warn whenever a pointer is cast such that the required alignment of the target is increased. For example, warn if a "char *" is cast to an "int *" regardless of the target machine.
+# -Wlogical-not-parentheses: Warn about logical not used on the left hand side operand of a comparison
+EXTRAWARN=-Werror -Waddress -Wlogical-op -Wmissing-field-initializers -Woverlength-strings -Wformat -Wformat-nonliteral -Wuninitialized -Wswitch-enum -Wshadow \
+-Wfloat-equal -Wunsafe-loop-optimizations -funsafe-loop-optimizations -Wbad-function-cast -Wwrite-strings -Wparentheses -Wlogical-op -Wstrict-prototypes -Wmissing-prototypes -Wredundant-decls -Winline $(EXTRAWARNGCC8)
 # -FILE_OFFSET_BITS=64: used by stat(). Avoids problems with files > 2 GB on 32bit machines
 CCFLAGS=-std=gnu11 -I$(IDIR) $(WARNFLAGS) -D_FILE_OFFSET_BITS=64 $(HARDENING_FLAGS) $(DEBUG_FLAGS) $(CFLAGS) $(SQLITEFLAGS)
 # for FTL we need the pthread library
@@ -115,7 +109,7 @@ _DNSMASQOBJ = $(patsubst %,$(DNSMASQODIR)/%,$(DNSMASQOBJ))
 
 all: pihole-FTL
 $(ODIR)/%.o: %.c $(_FTLDEPS) | $(ODIR)
-	$(CC) -c -o $@ $< -g3 $(CCFLAGS) $(EXTRAWARN) $(EXTRAWARN2)
+	$(CC) -c -o $@ $< -g3 $(CCFLAGS) $(EXTRAWARN)
 
 $(DNSMASQODIR)/%.o: $(DNSMASQDIR)/%.c $(_DNSMASQDEPS) | $(DNSMASQODIR)
 	$(CC) -c -o $@ $< -g3 $(CCFLAGS) -DVERSION=\"$(DNSMASQVERSION)\" $(DNSMASQOPTS)
