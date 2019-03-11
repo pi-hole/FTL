@@ -94,8 +94,8 @@ void SQLite3LogCallback(void *pArg, int iErrCode, const char *zMsg);
 // memory.c
 void memory_check(int which);
 char *FTLstrdup(const char *src, const char *file, const char *function, int line) __attribute__((malloc));
-void *FTLcalloc(size_t nmemb, size_t size, const char *file, const char *function, int line) __attribute__((malloc));
-void *FTLrealloc(void *ptr_in, size_t size, const char *file, const char *function, int line);
+void *FTLcalloc(size_t nmemb, size_t size, const char *file, const char *function, int line) __attribute__((malloc)) __attribute__((alloc_size(1,2)));
+void *FTLrealloc(void *ptr_in, size_t size, const char *file, const char *function, int line) __attribute__((alloc_size(2)));
 void FTLfree(void *ptr, const char* file, const char *function, int line);
 void validate_access(const char * name, int pos, bool testmagic, int line, const char * function, const char * file);
 
