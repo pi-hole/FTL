@@ -209,8 +209,8 @@ void _FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char 
 	}
 
 	// Free allocated memory
-	free(client);
-	free(domain);
+	free(domainString);
+	free(clientIP);
 
 	// Release thread lock
 	unlock_shm();
@@ -263,8 +263,8 @@ void _FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int i
 	if(config.debug & DEBUG_QUERIES) logg("**** forwarded %s to %s (ID %i, %s:%i)", name, forward, id, file, line);
 
 	// Save status and forwardID in corresponding query identified by dnsmasq's ID
-	int i = findQueryID(id);
-	if(i < 0)
+	int queryID = findQueryID(id);
+	if(queryID < 0)
 	{
 		// This may happen e.g. if the original query was a PTR query or "pi.hole"
 		// as we ignore them altogether
@@ -274,7 +274,7 @@ void _FTL_forwarded(unsigned int flags, char *name, struct all_addr *addr, int i
 	}
 
 	// Get query pointer
-	queriesData* query = getQuery(i, true);
+	queriesData* query = getQuery(queryID, true);
 
 	// Proceed only if
 	// - current query has not been marked as replied to so far
