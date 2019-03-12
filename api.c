@@ -66,7 +66,7 @@ void getStats(int *sock)
 	for(int i=0; i < counters->clients; i++)
 	{
 		// Get client pointer
-		clientsData* client = getClient(i, true);
+		const clientsData* client = getClient(i, true);
 		if(client->count > 0)
 			activeclients++;
 	}
@@ -209,7 +209,7 @@ void getTopDomains(char *client_message, int *sock)
 	for(int i=0; i < counters->domains; i++)
 	{
 		// Get domain pointer
-		domainsData* domain = getDomain(i, true);
+		const domainsData* domain = getDomain(i, true);
 
 		temparray[i][0] = i;
 		if(blocked)
@@ -270,7 +270,7 @@ void getTopDomains(char *client_message, int *sock)
 		int j = temparray[i][0];
 
 		// Get domain pointer
-		domainsData* domain = getDomain(j, true);
+		const domainsData* domain = getDomain(j, true);
 
 		// Skip this domain if there is a filter on it
 		if(excludedomains != NULL && insetupVarsArray(getstr(domain->domainpos)))
@@ -376,7 +376,7 @@ void getTopClients(char *client_message, int *sock)
 	for(int i=0; i < counters->clients; i++)
 	{
 		// Get client pointer
-		clientsData* client = getClient(i, true);
+		const clientsData* client = getClient(i, true);
 		temparray[i][0] = i;
 		// Use either blocked or total count based on request string
 		temparray[i][1] = blockedonly ? client->blockedcount : client->count;
@@ -414,7 +414,7 @@ void getTopClients(char *client_message, int *sock)
 		int j = temparray[i][0];
 		int ccount = temparray[i][1];
 		// Get client pointer
-		clientsData* client = getClient(j, true);
+		const clientsData* client = getClient(j, true);
 
 		// Skip this client if there is a filter on it
 		if(excludeclients != NULL &&
@@ -467,7 +467,7 @@ void getForwardDestinations(char *client_message, int *sock)
 		// the values we will use for sorting afterwards
 		if(sort) {
 			// Get forward pointer
-			forwardedData* forward = getForward(i, true);
+			const forwardedData* forward = getForward(i, true);
 
 			temparray[i][0] = i;
 			temparray[i][1] = forward->count;
@@ -519,7 +519,7 @@ void getForwardDestinations(char *client_message, int *sock)
 				j = i;
 
 			// Get forward pointer
-			forwardedData* forward = getForward(j, true);
+			const forwardedData* forward = getForward(j, true);
 
 			// Get IP and host name of forward destination if available
 			ip = getstr(forward->ippos);
@@ -646,7 +646,7 @@ void getAllQueries(char *client_message, int *sock)
 			for(int i = 0; i < counters->forwarded; i++)
 			{
 				// Get forward pointer
-				forwardedData* forward = getForward(i, true);
+				const forwardedData* forward = getForward(i, true);
 				// Try to match the requested string against their IP addresses and
 				// (if available) their host names
 				if(strcmp(getstr(forward->ippos), forwarddest) == 0 ||
@@ -678,7 +678,7 @@ void getAllQueries(char *client_message, int *sock)
 		for(int i = 0; i < counters->domains; i++)
 		{
 			// Get domain pointer
-			domainsData* domain = getDomain(i, true);
+			const domainsData* domain = getDomain(i, true);
 
 			// Try to match the requested string
 			if(strcmp(getstr(domain->domainpos), domainname) == 0)
@@ -708,7 +708,7 @@ void getAllQueries(char *client_message, int *sock)
 		for(int i = 0; i < counters->clients; i++)
 		{
 			// Get client pointer
-			clientsData* client = getClient(i, true);
+			const clientsData* client = getClient(i, true);
 			// Try to match the requested string
 			if(strcmp(getstr(client->ippos), clientname) == 0 ||
 			   (client->namepos != 0 &&
@@ -758,7 +758,7 @@ void getAllQueries(char *client_message, int *sock)
 	int i;
 	for(i=ibeg; i < counters->queries; i++)
 	{
-		queriesData* query = getQuery(i, true);
+		const queriesData* query = getQuery(i, true);
 		// Check if this query has been create while in maximum privacy mode
 		if(query->privacylevel >= PRIVACY_MAXIMUM) continue;
 
@@ -812,7 +812,7 @@ void getAllQueries(char *client_message, int *sock)
 		// Similarly for the client
 		char *clientIPName = NULL;
 		// Get client pointer
-		clientsData* client = getClient(i, true);
+		const clientsData* client = getClient(i, true);
 		if(strlen(getstr(client->namepos)) > 0)
 			clientIPName = getClientNameString(i);
 		else
@@ -870,7 +870,7 @@ void getRecentBlocked(char *client_message, int *sock)
 	int found = 0;
 	for(i = counters->queries - 1; i > 0 ; i--)
 	{
-		queriesData* query = getQuery(i, true);
+		const queriesData* query = getQuery(i, true);
 
 		if(query->status == QUERY_GRAVITY ||
 		   query->status == QUERY_WILDCARD ||
@@ -1071,7 +1071,7 @@ void getClientsOverTime(int *sock)
 		for(int i=0; i < counters->clients; i++)
 		{
 			// Get client pointer
-			clientsData* client = getClient(i, true);
+			const clientsData* client = getClient(i, true);
 			// Check if this client should be skipped
 			if(insetupVarsArray(getstr(client->ippos)) ||
 			   insetupVarsArray(getstr(client->namepos)))
@@ -1094,7 +1094,7 @@ void getClientsOverTime(int *sock)
 				continue;
 
 			// Get client pointer
-			clientsData* client = getClient(j, true);
+			const clientsData* client = getClient(j, true);
 
 			int thisclient = client->overTime[i];
 
@@ -1136,7 +1136,7 @@ void getClientNames(int *sock)
 		for(int i=0; i < counters->clients; i++)
 		{
 			// Get client pointer
-			clientsData* client = getClient(i, true);
+			const clientsData* client = getClient(i, true);
 			// Check if this client should be skipped
 			if(insetupVarsArray(getstr(client->ippos)) ||
 			   insetupVarsArray(getstr(client->namepos)))
@@ -1151,7 +1151,7 @@ void getClientNames(int *sock)
 			continue;
 
 		// Get client pointer
-		clientsData* client = getClient(i, true);
+		const clientsData* client = getClient(i, true);
 
 		char *client_ip = getstr(client->ippos);
 		char *client_name = getstr(client->namepos);
@@ -1178,7 +1178,7 @@ void getUnknownQueries(int *sock)
 	int i;
 	for(i=0; i < counters->queries; i++)
 	{
-		queriesData* query = getQuery(i, true);
+		const queriesData* query = getQuery(i, true);
 
 		if(query->status != QUERY_UNKNOWN && query->complete) continue;
 
@@ -1193,9 +1193,9 @@ void getUnknownQueries(int *sock)
 		}
 
 		// Get domain pointer
-		domainsData* domain = getDomain(query->domainID, true);
+		const domainsData* domain = getDomain(query->domainID, true);
 		// Get client pointer
-		clientsData* client = getClient(query->clientID, true);
+		const clientsData* client = getClient(query->clientID, true);
 
 		char *clientIP = getstr(client->ippos);
 
@@ -1232,7 +1232,7 @@ void getDomainDetails(char *client_message, int *sock)
 	for(int i = 0; i < counters->domains; i++)
 	{
 		// Get domain pointer
-		domainsData* domain = getDomain(i, true);
+		const domainsData* domain = getDomain(i, true);
 
 		if(strcmp(getstr(domain->domainpos), domainString) == 0)
 		{
