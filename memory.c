@@ -166,7 +166,7 @@ char* __attribute__((malloc)) FTLstrdup(const char *src, const char * file, cons
 }
 
 #undef calloc
-void* __attribute__((malloc)) FTLcalloc(size_t nmemb, size_t size, const char * file, const char * function, int line)
+void* __attribute__((malloc)) __attribute__((alloc_size(1,2))) FTLcalloc(size_t nmemb, size_t size, const char * file, const char * function, int line)
 {
 	// The FTLcalloc() function allocates memory for an array of nmemb elements
 	// of size bytes each and returns a pointer to the allocated memory. The
@@ -182,7 +182,7 @@ void* __attribute__((malloc)) FTLcalloc(size_t nmemb, size_t size, const char * 
 }
 
 #undef realloc
-void *FTLrealloc(void *ptr_in, size_t size, const char * file, const char * function, int line)
+void __attribute__((alloc_size(2))) *FTLrealloc(void *ptr_in, size_t size, const char * file, const char * function, int line)
 {
 	// The FTLrealloc() function changes the size of the memory block pointed to
 	// by ptr to size bytes. The contents will be unchanged in the range from

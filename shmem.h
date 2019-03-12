@@ -16,7 +16,7 @@
 #include <stdbool.h>
 
 typedef struct {
-    char *name;
+    const char *name;
     size_t size;
     void *ptr;
 } SharedMemory;
@@ -27,7 +27,7 @@ typedef struct {
 /// \param size the size to allocate
 /// \return a structure with a pointer to the mounted shared memory. The pointer
 /// will always be valid, because if it failed FTL will have exited.
-SharedMemory create_shm(char *name, size_t size);
+SharedMemory create_shm(const char *name, size_t size);
 
 /// Reallocate shared memory
 ///

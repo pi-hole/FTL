@@ -22,7 +22,7 @@ static pthread_mutex_t dblock;
 bool db_set_counter(unsigned int ID, int value);
 int db_get_FTL_property(unsigned int ID);
 
-void check_database(int rc)
+static void check_database(int rc)
 {
 	// We will retry if the database is busy at the moment
 	// However, we won't retry if any other error happened
@@ -49,7 +49,7 @@ void dbclose(void)
 	pthread_mutex_unlock(&dblock);
 }
 
-double get_db_filesize(void)
+static double get_db_filesize(void)
 {
 	struct stat st;
 	if(stat(FTLfiles.db, &st) != 0)
@@ -106,7 +106,7 @@ bool dbquery(const char *format, ...)
 
 }
 
-bool create_counter_table(void)
+static bool create_counter_table(void)
 {
 	bool ret;
 	// Create FTL table in the database (holds properties like database version, etc.)
@@ -132,7 +132,7 @@ bool create_counter_table(void)
 	return true;
 }
 
-bool db_create(void)
+static bool db_create(void)
 {
 	bool ret;
 	int rc = sqlite3_open_v2(FTLfiles.db, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL);
@@ -293,7 +293,7 @@ bool db_set_counter(unsigned int ID, int value)
 	return dbquery("INSERT OR REPLACE INTO counters (id, value) VALUES ( %u, %i );", ID, value);
 }
 
-bool db_update_counters(int total, int blocked)
+static bool db_update_counters(int total, int blocked)
 {
 	if(!dbquery("UPDATE counters SET value = value + %i WHERE id = %i;", total, DB_TOTALQUERIES))
 		return false;
@@ -338,7 +338,7 @@ int db_query_int(const char* querystr)
 	return result;
 }
 
-int number_of_queries_in_DB(void)
+static int number_of_queries_in_DB(void)
 {
 	sqlite3_stmt* stmt;
 
@@ -490,11 +490,11 @@ void save_to_DB(void)
 		sqlite3_bind_int(stmt, 3, queries[i].status);
 
 		// DOMAIN
-		char *domain = getDomainString(i);
+		const char *domain = getDomainString(i);
 		sqlite3_bind_text(stmt, 4, domain, -1, SQLITE_TRANSIENT);
 
 		// CLIENT
-		char *client = getClientIPString(i);
+		const char *client = getClientIPString(i);
 		sqlite3_bind_text(stmt, 5, client, -1, SQLITE_TRANSIENT);
 
 		// FORWARD
@@ -577,7 +577,7 @@ void save_to_DB(void)
 	}
 }
 
-void delete_old_queries_in_DB(void)
+static void delete_old_queries_in_DB(void)
 {
 	// Open database
 	if(!dbopen())
