@@ -17,7 +17,7 @@ static bool *regexconfigured = NULL;
 static char **regexbuffer = NULL;
 static whitelistStruct whitelist = { 0, NULL };
 
-static void log_regex_error(char *where, int errcode, int index)
+static void log_regex_error(const char *where, int errcode, int index)
 {
 	// Regex failed for some reason (probably user syntax error)
 	// Get error string and log it

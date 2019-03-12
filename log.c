@@ -14,7 +14,7 @@
 pthread_mutex_t lock;
 FILE *logfile = NULL;
 
-void close_FTL_log(void)
+static void close_FTL_log(void)
 {
 	if(logfile != NULL)
 		fclose(logfile);
@@ -50,7 +50,7 @@ void open_FTL_log(bool test)
 	}
 }
 
-void get_timestr(char *timestring)
+static void get_timestr(char *timestring)
 {
 	time_t t = time(NULL);
 	struct tm tm = *localtime(&t);
@@ -63,7 +63,7 @@ void get_timestr(char *timestring)
 
 void __attribute__ ((format (gnu_printf, 1, 2))) logg(const char *format, ...)
 {
-	char timestring[32] = "";
+	char timestring[84] = "";
 	va_list args;
 
 	pthread_mutex_lock(&lock);

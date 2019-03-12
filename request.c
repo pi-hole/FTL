@@ -12,11 +12,11 @@
 #include "api.h"
 #include "shmem.h"
 
-bool __attribute__((pure)) command(char *client_message, const char* cmd) {
+bool __attribute__((pure)) command(const char *client_message, const char* cmd) {
 	return strstr(client_message, cmd) != NULL;
 }
 
-void process_request(char *client_message, int *sock)
+void process_request(const char *client_message, int *sock)
 {
 	char EOT[2];
 	EOT[0] = 0x04;
