@@ -48,7 +48,7 @@ static unsigned int local_shm_counter = 0;
 
 static size_t get_optimal_object_size(size_t objsize, size_t minsize);
 
-unsigned long long addstr(const char *str)
+size_t addstr(const char *str)
 {
 	if(str == NULL)
 	{
@@ -90,14 +90,14 @@ unsigned long long addstr(const char *str)
 	return (shmSettings->next_str_pos - (len + 1));
 }
 
-const char *getstr(unsigned long long pos)
+const char *getstr(size_t pos)
 {
 	// Only access the string memory if this memory region has already been set
 	if(pos < shmSettings->next_str_pos)
 		return &((const char*)shm_strings.ptr)[pos];
 	else
 	{
-		logg("WARN: Tried to access %llu but next_str_pos is %u", pos, shmSettings->next_str_pos);
+		logg("WARN: Tried to access %zu but next_str_pos is %u", pos, shmSettings->next_str_pos);
 		return "";
 	}
 }

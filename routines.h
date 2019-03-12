@@ -118,8 +118,8 @@ bool in_whitelist(char *domain) __attribute__((pure));
 // shmem.c
 bool init_shmem(void);
 void destroy_shmem(void);
-unsigned long long addstr(const char *str);
-const char *getstr(unsigned long long pos);
+size_t addstr(const char *str);
+const char *getstr(size_t pos);
 void *enlarge_shmem_struct(char type);
 
 /**
