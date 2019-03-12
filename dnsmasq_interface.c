@@ -231,7 +231,7 @@ static int findQueryID(int id)
 	// Check UUIDs of queries
 	for(int i = start; i >= until; i--)
 	{
-		queriesData* query = getQuery(i, true);
+		const queriesData* query = getQuery(i, true);
 		if(query->id == id)
 			return i;
 	}
@@ -603,7 +603,6 @@ static void query_externally_blocked(int i)
 
 	// Get domain pointer
 	domainsData* domain = getDomain(query->domainID, true);
-
 	domain->blockedcount++;
 
 	// Get client pointer
@@ -787,7 +786,7 @@ void _FTL_dnssec(int status, int id, const char* file, const int line)
 	if(config.debug & DEBUG_QUERIES)
 	{
 		// Get domain pointer
-		domainsData* domain = getDomain(query->domainID, true);
+		const domainsData* domain = getDomain(query->domainID, true);
 
 		logg("**** got DNSSEC details for %s: %i (ID %i, %s:%i)", getstr(domain->domainpos), status, id, file, line);
 	}
@@ -855,7 +854,7 @@ void _FTL_upstream_error(unsigned int rcode, int id, const char* file, const int
 	if(config.debug & DEBUG_QUERIES)
 	{
 		// Get domain pointer
-		domainsData* domain = getDomain(query->domainID, true);
+		const domainsData* domain = getDomain(query->domainID, true);
 
 		logg("**** got error report for %s: %s (ID %i, %s:%i)", getstr(domain->domainpos), rcodestr, id, file, line);
 	}
@@ -897,7 +896,7 @@ void _FTL_header_ADbit(unsigned char header4, unsigned int rcode, int id, const 
 	if(config.debug & DEBUG_QUERIES)
 	{
 		// Get domain pointer
-		domainsData* domain = getDomain(query->domainID, true);
+		const domainsData* domain = getDomain(query->domainID, true);
 
 		logg("**** AD bit set for %s (ID %i, RCODE %u, %s:%i)", getstr(domain->domainpos), id, rcode, file, line);
 	}

@@ -38,7 +38,6 @@ static void initSlot(unsigned int index, time_t timestamp)
 	{
 		// Get client pointer
 		clientsData* client = getClient(clientID, true);
-
 		client->overTime[index] = 0;
 	}
 }

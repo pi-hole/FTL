@@ -498,7 +498,7 @@ void save_to_DB(void)
 		if(query->status == QUERY_FORWARDED && query->forwardID > -1)
 		{
 			// Get forward pointer
-			forwardedData* forward = getForward(query->forwardID, true);
+			const forwardedData* forward = getForward(query->forwardID, true);
 			sqlite3_bind_text(stmt, 6, getstr(forward->ippos), -1, SQLITE_TRANSIENT);
 		}
 		else

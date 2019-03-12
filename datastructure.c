@@ -190,11 +190,11 @@ bool isValidIPv6(const char *addr)
 // only when appropriate for the requested query
 char *getDomainString(int queryID)
 {
-	queriesData* query = getQuery(queryID, true);
+	const queriesData* query = getQuery(queryID, true);
 	if(query->privacylevel < PRIVACY_HIDE_DOMAINS)
 	{
 		// Get domain pointer
-		domainsData* domain = getDomain(query->domainID, true);
+		const domainsData* domain = getDomain(query->domainID, true);
 
 		// Return string
 		return getstr(domain->domainpos);
@@ -207,11 +207,11 @@ char *getDomainString(int queryID)
 // only when appropriate for the requested query
 char *getClientIPString(int queryID)
 {
-	queriesData* query = getQuery(queryID, false);
+	const queriesData* query = getQuery(queryID, false);
 	if(query->privacylevel < PRIVACY_HIDE_DOMAINS_CLIENTS)
 	{
 		// Get client pointer
-		clientsData* client = getClient(query->clientID, false);
+		const clientsData* client = getClient(query->clientID, false);
 
 		// Return string
 		return getstr(client->ippos);
@@ -224,11 +224,11 @@ char *getClientIPString(int queryID)
 // only when appropriate for the requested query
 char *getClientNameString(int queryID)
 {
-	queriesData* query = getQuery(queryID, true);
+	const queriesData* query = getQuery(queryID, true);
 	if(query->privacylevel < PRIVACY_HIDE_DOMAINS_CLIENTS)
 	{
 		// Get client pointer
-		clientsData* client = getClient(query->clientID, true);
+		const clientsData* client = getClient(query->clientID, true);
 
 		// Return string
 		return getstr(client->namepos);
