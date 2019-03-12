@@ -69,6 +69,7 @@ void parse_arp_cache(void)
 	time_t now = time(NULL);
 
 	// Start collecting database commands
+	lock_shm();
 	dbquery("BEGIN TRANSACTION");
 
 	// Read ARP cache line by line
@@ -114,21 +115,16 @@ void parse_arp_cache(void)
 		// is known to pihole-FTL
 		// false = do not create a new record if the client is
 		//         unknown (only DNS requesting clients do this)
-		lock_shm();
 		int clientID = findClientID(ip, false);
-		unlock_shm();
-
-		// This client is known (by its IP address) to pihole-FTL if
-		// findClientID() returned a non-negative index
-		bool clientKnown = clientID >= 0;
 
 		// Get hostname of this client if the client is known
 		char *hostname = "";
 		// Get client pointer
-		clientsData* client = getClient(clientID, true);
+		clientsData* client = NULL;
 
-		if(clientKnown)
+		if(clientID >= 0)
 		{
+			client = getClient(clientID, true);
 			hostname = getstr(client->namepos);
 		}
 
@@ -140,14 +136,14 @@ void parse_arp_cache(void)
 			        "(ip,hwaddr,interface,firstSeen,lastQuery,numQueries,name,macVendor) "\
 			        "VALUES (\'%s\',\'%s\',\'%s\',%lu, %ld, %u, \'%s\', \'%s\');",\
 			        ip, hwaddr, iface, now,
-			        clientKnown ? client->lastQuery : 0L,
-			        clientKnown ? client->numQueriesARP : 0u,
+			        client != NULL ? client->lastQuery : 0L,
+			        client != NULL ? client->numQueriesARP : 0u,
 			        hostname,
 			        macVendor);
 			free(macVendor);
 		}
 		// Device in database AND client known to Pi-hole
-		else if(clientKnown)
+		else if(client != NULL)
 		{
 			// Update lastQuery. Only use new value if larger
 			// client->lastQuery may be zero if this
@@ -185,6 +181,7 @@ void parse_arp_cache(void)
 
 	// Actually update the database
 	dbquery("COMMIT");
+	unlock_shm();
 
 	// Debug logging
 	if(config.debug & DEBUG_ARP) logg("ARP table processing (%i entries) took %.1f ms", entries, timer_elapsed_msec(ARP_TIMER));
