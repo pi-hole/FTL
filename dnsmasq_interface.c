@@ -22,7 +22,7 @@ void save_reply_type(unsigned int flags, int queryID, struct timeval response);
 static unsigned long converttimeval(struct timeval time) __attribute__((const));
 static void block_single_domain_regex(char *domain);
 static void detect_blocked_IP(unsigned short flags, const char* answer, int queryID);
-static void query_externally_blocked(int i);
+static void query_externally_blocked(int i, unsigned char status);
 static int findQueryID(int id);
 
 unsigned char* pihole_privacylevel = &config.privacylevel;
@@ -114,7 +114,8 @@ void _FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char 
 
 	// Log new query if in debug mode
 	const char *proto = (type == UDP) ? "UDP" : "TCP";
-	if(config.debug & DEBUG_QUERIES) logg("**** new %s %s \"%s\" from %s (ID %i, %s:%i)", proto, types, domain, client, id, file, line);
+	if(config.debug & DEBUG_QUERIES)
+		logg("**** new %s %s \"%s\" from %s (ID %i, FTL %i, %s:%i)", proto, types, domain, client, id, queryID, file, line);
 
 	// Update counters
 	counters->querytype[querytype-1]++;
@@ -160,8 +161,6 @@ void _FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char 
 	queries[queryID].reply = REPLY_UNKNOWN;
 	// Store DNSSEC result for this domain
 	queries[queryID].dnssec = DNSSEC_UNSPECIFIED;
-	// AD has not yet been received for this query
-	queries[queryID].AD = false;
 
 	// Check and apply possible privacy level rules
 	// The currently set privacy level (at the time the query is
@@ -481,17 +480,18 @@ void _FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id,
 	}
 	else if((flags & F_FORWARD) && isExactMatch)
 	{
-		// Save reply type and update individual reply counters
-		save_reply_type(flags, i, response);
-
-		// If received NXDOMAIN and AD bit is set, Quad9 may have blocked this query
-		if(flags & F_NXDOMAIN && queries[i].AD)
+		// Only proceed if query is not already known
+		// to have been blocked by Quad9
+		if(queries[i].reply != QUERY_EXTERNAL_BLOCKED_IP &&
+		   queries[i].reply != QUERY_EXTERNAL_BLOCKED_NULL &&
+		   queries[i].reply != QUERY_EXTERNAL_BLOCKED_NXRA)
 		{
-			query_externally_blocked(i);
-		}
+			// Save reply type and update individual reply counters
+			save_reply_type(flags, i, response);
 
-		// Detect if returned IP indicates that this query was blocked
-		detect_blocked_IP(flags, answer, i);
+			// Detect if returned IP indicates that this query was blocked
+			detect_blocked_IP(flags, answer, i);
+		}
 	}
 	else if(flags & F_REVERSE)
 	{
@@ -538,7 +538,7 @@ static void detect_blocked_IP(unsigned short flags, const char* answer, int quer
 		 strcmp("146.112.61.109", answer) == 0 ||
 		 strcmp("146.112.61.110", answer) == 0 ))
 	{
-			query_externally_blocked(queryID);
+			query_externally_blocked(queryID, QUERY_EXTERNAL_BLOCKED_IP);
 	}
 
 	else if(flags & F_IPV6 && answer != NULL &&
@@ -550,7 +550,7 @@ static void detect_blocked_IP(unsigned short flags, const char* answer, int quer
 		 strcmp("::ffff:146.112.61.109", answer) == 0 ||
 		 strcmp("::ffff:146.112.61.110", answer) == 0 ))
 	{
-			query_externally_blocked(queryID);
+			query_externally_blocked(queryID, QUERY_EXTERNAL_BLOCKED_IP);
 	}
 
 	// If upstream replied with 0.0.0.0 or ::,
@@ -559,18 +559,26 @@ static void detect_blocked_IP(unsigned short flags, const char* answer, int quer
 	else if(flags & F_IPV4 && answer != NULL &&
 		strcmp("0.0.0.0", answer) == 0)
 	{
-			query_externally_blocked(queryID);
+			query_externally_blocked(queryID, QUERY_EXTERNAL_BLOCKED_NULL);
 	}
 
 	else if(flags & F_IPV6 && answer != NULL &&
 		strcmp("::", answer) == 0)
 	{
-			query_externally_blocked(queryID);
+			query_externally_blocked(queryID, QUERY_EXTERNAL_BLOCKED_NULL);
 	}
 }
 
-static void query_externally_blocked(int i)
+static void query_externally_blocked(int i, unsigned char status)
 {
+	// If query is already known to be externally blocked,
+	// then we have nothing to do here
+	if(queries[i].status == QUERY_EXTERNAL_BLOCKED_IP ||
+	   queries[i].status == QUERY_EXTERNAL_BLOCKED_NULL ||
+	   queries[i].status == QUERY_EXTERNAL_BLOCKED_NXRA)
+		return;
+
+	// Get time index of this query
 	unsigned int timeidx = queries[i].timeidx;
 
 	// Correct counters if necessary ...
@@ -581,7 +589,6 @@ static void query_externally_blocked(int i)
 		validate_access("forwarded", queries[i].forwardID, true, __LINE__, __FUNCTION__, __FILE__);
 		forwarded[queries[i].forwardID].count--;
 	}
-
 	// ... but as blocked
 	counters->blocked++;
 	overTime[timeidx].blocked++;
@@ -590,7 +597,7 @@ static void query_externally_blocked(int i)
 	validate_access("clients", queries[i].clientID, true, __LINE__, __FUNCTION__, __FILE__);
 	clients[queries[i].clientID].blockedcount++;
 
-	queries[i].status = QUERY_EXTERNAL_BLOCKED;
+	queries[i].status = status;
 }
 
 void _FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg, int id, const char* file, const int line)
@@ -719,7 +726,9 @@ void _FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg
 				counters->cached++;
 				overTime[timeidx].cached++;
 				break;
-			case QUERY_EXTERNAL_BLOCKED:
+			case QUERY_EXTERNAL_BLOCKED_IP:
+			case QUERY_EXTERNAL_BLOCKED_NULL:
+			case QUERY_EXTERNAL_BLOCKED_NXRA:
 				// everything has already been done
 				// in query_externally_blocked()
 				break;
@@ -832,24 +841,30 @@ void _FTL_upstream_error(unsigned int rcode, int id, const char* file, const int
 	unlock_shm();
 }
 
-void _FTL_header_ADbit(unsigned char header4, unsigned int rcode, int id, const char* file, const int line)
+void _FTL_header_analysis(const unsigned char header4, const unsigned int rcode, const int id, const char* file, const int line)
 {
 	// Don't analyze anything if in PRIVACY_NOSTATS mode
 	if(config.privacylevel >= PRIVACY_NOSTATS)
 		return;
 
-	// Check if AD is set and RA bit is unset in DNS header
-	//              AD                  RA
-	if(!(header4 & 0x20) || (header4 & 0x80))
+	// Check if RA bit is unset in DNS header and rcode is NXDOMAIN
+	// If the response code (rcode) is NXDOMAIN, we may be seeing a response from
+	// an externally blocked query. As they are not always accompany a necessary
+	// SOA record, they are not getting added to our cache and, therefore,
+	// FTL_reply() is never getting called from within the cache routines.
+	// Hence, we have to store the necessary information about the NXDOMAIN
+	// reply already here.
+	if((header4 & 0x80) || rcode != NXDOMAIN)
 	{
-		// AD bit not set or RA bit set
+		// RA bit is set or rcode is not NXDOMAIN
 		return;
 	}
 
 	lock_shm();
+
 	// Search for corresponding query identified by ID
-	int i = findQueryID(id);
-	if(i < 0)
+	int queryID = findQueryID(id);
+	if(queryID < 0)
 	{
 		// This may happen e.g. if the original query was an unhandled query type
 		unlock_shm();
@@ -858,32 +873,21 @@ void _FTL_header_ADbit(unsigned char header4, unsigned int rcode, int id, const 
 
 	if(config.debug & DEBUG_QUERIES)
 	{
-		int domainID = queries[i].domainID;
+		int domainID = queries[queryID].domainID;
 		validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
-		logg("**** AD bit set for %s (ID %i, RCODE %u, %s:%i)", getstr(domains[domainID].domainpos), id, rcode, file, line);
+		logg("**** %s externally blocked (ID %i, FTL %i, %s:%i)", getstr(domains[domainID].domainpos), id, queryID, file, line);
 	}
 
-	// Store AD bit in query data
-	queries[i].AD = true;
 
-	// If the response code (rcode) is NXDOMAIN, we may be seeing a response from
-	// an externally blocked query. As they are not always accompany a necessary
-	// SOA record, they are not getting added to our cache and, therefore,
-	// FTL_reply() is never getting called from within the cache routines.
-	// Hence, we have to store the necessary information about the NXDOMAIN
-	// reply already here.
-	if(rcode == NXDOMAIN)
-	{
-		// Get response time
-		struct timeval response;
-		gettimeofday(&response, 0);
+	// Get response time
+	struct timeval response;
+	gettimeofday(&response, 0);
 
-		// Store query as externally blocked
-		query_externally_blocked(i);
+	// Store query as externally blocked
+	query_externally_blocked(queryID, QUERY_EXTERNAL_BLOCKED_NXRA);
 
-		// Store reply type as replied with NXDOMAIN
-		save_reply_type(F_NEG | F_NXDOMAIN, i, response);
-	}
+	// Store reply type as replied with NXDOMAIN
+	save_reply_type(F_NEG | F_NXDOMAIN, queryID, response);
 
 	unlock_shm();
 }

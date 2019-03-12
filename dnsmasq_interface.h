@@ -26,8 +26,8 @@ void _FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char * ar
 #define FTL_dnssec(status, id) _FTL_dnssec(status, id, __FILE__, __LINE__)
 void _FTL_dnssec(int status, int id, const char* file, const int line);
 
-#define FTL_header_ADbit(header4, rcode, id) _FTL_header_ADbit(header4, rcode, id, __FILE__, __LINE__)
-void _FTL_header_ADbit(unsigned char header4, unsigned int rcode, int id, const char* file, const int line);
+#define FTL_header_analysis(header4, rcode, id) _FTL_header_analysis(header4, rcode, id, __FILE__, __LINE__)
+void _FTL_header_analysis(unsigned char header4, unsigned int rcode, int id, const char* file, const int line);
 
 #define FTL_forwarding_failed(server) _FTL_forwarding_failed(server, __FILE__, __LINE__)
 void _FTL_forwarding_failed(struct server *server, const char* file, const int line);
