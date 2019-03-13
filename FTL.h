@@ -160,69 +160,69 @@ typedef struct {
 } countersStruct;
 
 typedef struct {
-	bool socket_listenlocal;
-	bool analyze_AAAA;
 	int maxDBdays;
-	bool resolveIPv6;
-	bool resolveIPv4;
 	int DBinterval;
 	int port;
 	int maxlogage;
+	int16_t debug;
 	unsigned char privacylevel;
-	bool ignore_localhost;
 	unsigned char blockingmode;
+	bool socket_listenlocal;
+	bool analyze_AAAA;
+	bool resolveIPv6;
+	bool resolveIPv4;
+	bool ignore_localhost;
 	bool analyze_only_A_AAAA;
 	bool DBimport;
 	bool parse_arp_cache;
-	int16_t debug;
 } ConfigStruct;
 
 // Dynamic structs
 typedef struct {
 	unsigned char magic;
-	time_t timestamp;
-	unsigned int timeidx;
 	unsigned char type;
 	unsigned char status;
+	unsigned char privacylevel;
+	unsigned char reply;
+	unsigned char dnssec;
+	time_t timestamp;
 	int domainID;
 	int clientID;
 	int forwardID;
-	int64_t db;
 	int id; // the ID is a (signed) int in dnsmasq, so no need for a long int here
-	bool complete;
-	unsigned char privacylevel;
 	unsigned long response; // saved in units of 1/10 milliseconds (1 = 0.1ms, 2 = 0.2ms, 2500 = 250.0ms, etc.)
-	unsigned char reply;
-	unsigned char dnssec;
+	int64_t db;
+	unsigned int timeidx;
+	bool complete;
 } queriesDataStruct;
 
 typedef struct {
 	unsigned char magic;
+	size_t ippos;
+	size_t namepos;
 	int count;
 	int failed;
-	unsigned long long ippos;
-	unsigned long long namepos;
 	bool new;
 } forwardedDataStruct;
 
 typedef struct {
 	unsigned char magic;
+	size_t ippos;
+	size_t namepos;
+	time_t lastQuery;
 	int count;
 	int blockedcount;
-	unsigned long long ippos;
-	unsigned long long namepos;
-	bool new;
 	int overTime[OVERTIME_SLOTS];
-	time_t lastQuery;
 	unsigned int numQueriesARP;
+	bool new;
 } clientsDataStruct;
 
 typedef struct {
 	unsigned char magic;
+	unsigned char regexmatch;
+	size_t domainpos;
 	int count;
 	int blockedcount;
-	unsigned long long domainpos;
-	unsigned char regexmatch;
 } domainsDataStruct;
 
 typedef struct {
@@ -236,8 +236,8 @@ typedef struct {
 } overTimeDataStruct;
 
 typedef struct {
-	int count;
 	char **domains;
+	int count;
 } whitelistStruct;
 
 typedef struct {
