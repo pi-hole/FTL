@@ -145,20 +145,24 @@ void *GC_thread(void *val)
 
 			}
 
-			// Move memory forward to keep only what we want
-			// Note: for overlapping memory blocks, memmove() is a safer approach than memcpy()
-			// Example: (I = now invalid, X = still valid queries, F = free space)
-			//   Before: IIIIIIXXXXFF
-			//   After:  XXXXFFFFFFFF
-			memmove(getQuery(0, true), getQuery(removed, true), (counters->queries - removed)*sizeof(queriesData));
+			// Only perform memory operations when we actually removed queries
+			if(removed > 0)
+			{
+				// Move memory forward to keep only what we want
+				// Note: for overlapping memory blocks, memmove() is a safer approach than memcpy()
+				// Example: (I = now invalid, X = still valid queries, F = free space)
+				//   Before: IIIIIIXXXXFF
+				//   After:  XXXXFFFFFFFF
+				memmove(getQuery(0, true), getQuery(removed, true), (counters->queries - removed)*sizeof(queriesData));
 
-			// Update queries counter
-			counters->queries -= removed;
-			// Update DB index as total number of queries reduced
-			lastdbindex -= removed;
+				// Update queries counter
+				counters->queries -= removed;
+				// Update DB index as total number of queries reduced
+				lastdbindex -= removed;
 
-			// Zero out remaining memory (marked as "F" in the above example)
-			memset(getQuery(counters->queries, true), 0, (counters->queries_MAX - counters->queries)*sizeof(queriesData));
+				// ensure remaining memory is zeroed out (marked as "F" in the above example)
+				memset(getQuery(counters->queries, true), 0, (counters->queries_MAX - counters->queries)*sizeof(queriesData));
+			}
 
 			// Determine if overTime memory needs to get moved
 			moveOverTimeMemory(mintime);
