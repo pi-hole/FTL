@@ -14,9 +14,6 @@ char * username;
 bool needGC = false;
 bool needDBGC = false;
 
-// Prototype
-int main_dnsmasq(int argc, char **argv);
-
 int main (int argc, char* argv[])
 {
 	// Get user pihole-FTL is running as

@@ -11,16 +11,16 @@
 // Statistic methods
 void getStats(int *sock);
 void getOverTime(int *sock);
-void getTopDomains(char *client_message, int *sock);
-void getTopClients(char *client_message, int *sock);
-void getForwardDestinations(char *client_message, int *sock);
+void getTopDomains(const char *client_message, int *sock);
+void getTopClients(const char *client_message, int *sock);
+void getForwardDestinations(const char *client_message, int *sock);
 void getQueryTypes(int *sock);
-void getAllQueries(char *client_message, int *sock);
-void getRecentBlocked(char *client_message, int *sock);
+void getAllQueries(const char *client_message, int *sock);
+void getRecentBlocked(const char *client_message, int *sock);
 void getQueryTypesOverTime(int *sock);
 void getClientsOverTime(int *sock);
 void getClientNames(int *sock);
-void getDomainDetails(char *client_message, int *sock);
+void getDomainDetails(const char *client_message, int *sock);
 
 // FTL methods
 void getClientID(int *sock);
@@ -39,6 +39,6 @@ void pack_uint64(int sock, uint64_t value);
 void pack_int32(int sock, int32_t value);
 void pack_int64(int sock, int64_t value);
 void pack_float(int sock, float value);
-bool pack_fixstr(int sock, char *string);
-bool pack_str32(int sock, char *string);
+bool pack_fixstr(int sock, const char *string);
+bool pack_str32(int sock, const char *string);
 void pack_map16_start(int sock, uint16_t length);

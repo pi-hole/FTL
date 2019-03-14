@@ -172,7 +172,7 @@ void getOverTime(int *sock)
 	}
 }
 
-void getTopDomains(char *client_message, int *sock)
+void getTopDomains(const char *client_message, int *sock)
 {
 	int temparray[counters->domains][2], count=10, num;
 	bool blocked, audit = false, asc = false;
@@ -338,7 +338,7 @@ void getTopDomains(char *client_message, int *sock)
 		clearSetupVarsArray();
 }
 
-void getTopClients(char *client_message, int *sock)
+void getTopClients(const char *client_message, int *sock)
 {
 	int temparray[counters->clients][2], count=10, num;
 
@@ -425,8 +425,9 @@ void getTopClients(char *client_message, int *sock)
 		if(strcmp(getstr(client->ippos), HIDDEN_CLIENT) == 0)
 			continue;
 
-		char *client_ip = getstr(client->ippos);
-		char *client_name = getstr(client->namepos);
+		// Get client IP and name
+		const char *client_ip = getstr(client->ippos);
+		const char *client_name = getstr(client->namepos);
 
 		// Return this client if either
 		// - "withzero" option is set, and/or
@@ -454,7 +455,7 @@ void getTopClients(char *client_message, int *sock)
 }
 
 
-void getForwardDestinations(char *client_message, int *sock)
+void getForwardDestinations(const char *client_message, int *sock)
 {
 	bool sort = true;
 	int temparray[counters->forwarded][2], totalqueries = 0;
@@ -462,7 +463,8 @@ void getForwardDestinations(char *client_message, int *sock)
 	if(command(client_message, "unsorted"))
 		sort = false;
 
-	for(int i = 0; i < counters->forwarded; i++) {
+	for(int i = 0; i < counters->forwarded; i++)
+	{
 		// If we want to print a sorted output, we fill the temporary array with
 		// the values we will use for sorting afterwards
 		if(sort) {
@@ -485,8 +487,8 @@ void getForwardDestinations(char *client_message, int *sock)
 	// Loop over available forward destinations
 	for(int i = -2; i < min(counters->forwarded, 8); i++)
 	{
-		char *ip, *name;
 		float percentage = 0.0f;
+		const char* ip, *name;
 
 		if(i == -2)
 		{
@@ -585,9 +587,9 @@ void getQueryTypes(int *sock)
 	}
 }
 
-char *querytypes[8] = {"A","AAAA","ANY","SRV","SOA","PTR","TXT","UNKN"};
+const char *querytypes[8] = {"A","AAAA","ANY","SRV","SOA","PTR","TXT","UNKN"};
 
-void getAllQueries(char *client_message, int *sock)
+void getAllQueries(const char *client_message, int *sock)
 {
 	// Exit before processing any data if requested via config setting
 	get_privacy_level(NULL);
@@ -762,7 +764,8 @@ void getAllQueries(char *client_message, int *sock)
 		// Check if this query has been create while in maximum privacy mode
 		if(query->privacylevel >= PRIVACY_MAXIMUM) continue;
 
-		char *qtype = querytypes[query->type - TYPE_A];
+		// Get query type
+		const char *qtype = querytypes[query->type - TYPE_A];
 
 		// 1 = gravity.list, 4 = wildcard, 5 = black.list
 		if((query->status == QUERY_GRAVITY ||
@@ -807,10 +810,10 @@ void getAllQueries(char *client_message, int *sock)
 
 		// Ask subroutine for domain. It may return "hidden" depending on
 		// the privacy settings at the time the query was made
-		char *domain = getDomainString(i);
+		const char *domain = getDomainString(i);
 
 		// Similarly for the client
-		char *clientIPName = NULL;
+		const char *clientIPName = NULL;
 		// Get client pointer
 		const clientsData* client = getClient(i, true);
 		if(strlen(getstr(client->namepos)) > 0)
@@ -825,7 +828,10 @@ void getAllQueries(char *client_message, int *sock)
 
 		if(istelnet[*sock])
 		{
-			ssend(*sock,"%li %s %s %s %i %i %i %lu\n",query->timestamp,qtype,domain,clientIPName,query->status,query->dnssec,query->reply,delay);
+			ssend(*sock,"%li %s %s %s %i %i %i %lu",query->timestamp,qtype,domain,clientIPName,query->status,query->dnssec,query->reply,delay);
+			if(config.debug & DEBUG_API)
+				ssend(*sock, " %i", i);
+			ssend(*sock, "\n");
 		}
 		else
 		{
@@ -855,9 +861,9 @@ void getAllQueries(char *client_message, int *sock)
 		free(forwarddest);
 }
 
-void getRecentBlocked(char *client_message, int *sock)
+void getRecentBlocked(const char *client_message, int *sock)
 {
-	int i, num=1;
+	int num=1;
 
 	// Test for integer that specifies number of entries to be shown
 	if(sscanf(client_message, "%*[^(](%i)", &num) > 0) {
@@ -868,7 +874,7 @@ void getRecentBlocked(char *client_message, int *sock)
 
 	// Find most recently blocked query
 	int found = 0;
-	for(i = counters->queries - 1; i > 0 ; i--)
+	for(int i = counters->queries - 1; i > 0 ; i--)
 	{
 		const queriesData* query = getQuery(i, true);
 
@@ -880,7 +886,7 @@ void getRecentBlocked(char *client_message, int *sock)
 
 			// Ask subroutine for domain. It may return "hidden" depending on
 			// the privacy settings at the time the query was made
-			char *domain = getDomainString(i);
+			const char *domain = getDomainString(i);
 
 			if(istelnet[*sock])
 				ssend(*sock,"%s\n", domain);
@@ -1153,8 +1159,8 @@ void getClientNames(int *sock)
 		// Get client pointer
 		const clientsData* client = getClient(i, true);
 
-		char *client_ip = getstr(client->ippos);
-		char *client_name = getstr(client->namepos);
+		const char *client_ip = getstr(client->ippos);
+		const char *client_name = getstr(client->namepos);
 
 		if(istelnet[*sock])
 			ssend(*sock, "%s %s\n", client_name, client_ip);
@@ -1197,7 +1203,8 @@ void getUnknownQueries(int *sock)
 		// Get client pointer
 		const clientsData* client = getClient(query->clientID, true);
 
-		char *clientIP = getstr(client->ippos);
+		// Get client IP string
+		const char *clientIP = getstr(client->ippos);
 
 		if(istelnet[*sock])
 			ssend(*sock, "%li %i %i %s %s %s %i %s\n", query->timestamp, i, query->id, type, getstr(domain->domainpos), clientIP, query->status, query->complete ? "true" : "false");
@@ -1219,7 +1226,7 @@ void getUnknownQueries(int *sock)
 	}
 }
 
-void getDomainDetails(char *client_message, int *sock)
+void getDomainDetails(const char *client_message, int *sock)
 {
 	// Get domain name
 	char domainString[128];
@@ -1239,10 +1246,10 @@ void getDomainDetails(char *client_message, int *sock)
 			ssend(*sock,"Domain \"%s\", ID: %i\n", domainString, i);
 			ssend(*sock,"Total: %i\n", domain->count);
 			ssend(*sock,"Blocked: %i\n", domain->blockedcount);
-			char *regexstatus;
+			const char *regexstatus;
 			if(domain->regexmatch == REGEX_BLOCKED)
 				regexstatus = "blocked";
-			if(domain->regexmatch == REGEX_NOTBLOCKED)
+			else if(domain->regexmatch == REGEX_NOTBLOCKED)
 				regexstatus = "not blocked";
 			else
 				regexstatus = "unknown";

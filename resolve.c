@@ -19,7 +19,7 @@
 // once every hour
 #define RERESOLVE_INTERVAL 3600
 
-char *resolveHostname(const char *addr)
+static const char *resolveHostname(const char *addr)
 {
 	// Get host name
 	struct hostent *he = NULL;

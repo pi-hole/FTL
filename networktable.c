@@ -118,7 +118,7 @@ void parse_arp_cache(void)
 		int clientID = findClientID(ip, false);
 
 		// Get hostname of this client if the client is known
-		char *hostname = "";
+		const char *hostname = "";
 		// Get client pointer
 		clientsData* client = NULL;
 

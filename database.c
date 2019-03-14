@@ -22,7 +22,7 @@ static pthread_mutex_t dblock;
 bool db_set_counter(unsigned int ID, int value);
 int db_get_FTL_property(unsigned int ID);
 
-void check_database(int rc)
+static void check_database(int rc)
 {
 	// We will retry if the database is busy at the moment
 	// However, we won't retry if any other error happened
@@ -49,7 +49,7 @@ void dbclose(void)
 	pthread_mutex_unlock(&dblock);
 }
 
-double get_db_filesize(void)
+static double get_db_filesize(void)
 {
 	struct stat st;
 	if(stat(FTLfiles.db, &st) != 0)
@@ -106,7 +106,7 @@ bool dbquery(const char *format, ...)
 
 }
 
-bool create_counter_table(void)
+static bool create_counter_table(void)
 {
 	bool ret;
 	// Create FTL table in the database (holds properties like database version, etc.)
@@ -132,7 +132,7 @@ bool create_counter_table(void)
 	return true;
 }
 
-bool db_create(void)
+static bool db_create(void)
 {
 	bool ret;
 	int rc = sqlite3_open_v2(FTLfiles.db, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL);
@@ -293,7 +293,7 @@ bool db_set_counter(unsigned int ID, int value)
 	return dbquery("INSERT OR REPLACE INTO counters (id, value) VALUES ( %u, %i );", ID, value);
 }
 
-bool db_update_counters(int total, int blocked)
+static bool db_update_counters(int total, int blocked)
 {
 	if(!dbquery("UPDATE counters SET value = value + %i WHERE id = %i;", total, DB_TOTALQUERIES))
 		return false;
@@ -338,7 +338,7 @@ int db_query_int(const char* querystr)
 	return result;
 }
 
-int number_of_queries_in_DB(void)
+static int number_of_queries_in_DB(void)
 {
 	sqlite3_stmt* stmt;
 
@@ -487,11 +487,11 @@ void save_to_DB(void)
 		sqlite3_bind_int(stmt, 3, query->status);
 
 		// DOMAIN
-		char *domain = getDomainString(i);
+		const char *domain = getDomainString(i);
 		sqlite3_bind_text(stmt, 4, domain, -1, SQLITE_TRANSIENT);
 
 		// CLIENT
-		char *client = getClientIPString(i);
+		const char *client = getClientIPString(i);
 		sqlite3_bind_text(stmt, 5, client, -1, SQLITE_TRANSIENT);
 
 		// FORWARD
@@ -536,7 +536,9 @@ void save_to_DB(void)
 		if(query->status == QUERY_GRAVITY ||
 		   query->status == QUERY_BLACKLIST ||
 		   query->status == QUERY_WILDCARD ||
-		   query->status == QUERY_EXTERNAL_BLOCKED)
+		   query->status == QUERY_EXTERNAL_BLOCKED_IP ||
+		   query->status == QUERY_EXTERNAL_BLOCKED_NULL ||
+		   query->status == QUERY_EXTERNAL_BLOCKED_NXRA)
 			blocked++;
 
 		// Update lasttimestamp variable with timestamp of the latest stored query
@@ -575,7 +577,7 @@ void save_to_DB(void)
 	}
 }
 
-void delete_old_queries_in_DB(void)
+static void delete_old_queries_in_DB(void)
 {
 	// Open database
 	if(!dbopen())
@@ -722,9 +724,9 @@ void read_data_from_DB(void)
 		}
 
 		int status = sqlite3_column_int(stmt, 3);
-		if(status < QUERY_UNKNOWN || status > QUERY_EXTERNAL_BLOCKED)
+		if(status < QUERY_UNKNOWN || status > QUERY_EXTERNAL_BLOCKED_NXRA)
 		{
-			logg("DB warn: STATUS should be within [%i,%i] but is %i", QUERY_UNKNOWN, QUERY_EXTERNAL_BLOCKED, status);
+			logg("DB warn: STATUS should be within [%i,%i] but is %i", QUERY_UNKNOWN, QUERY_EXTERNAL_BLOCKED_NXRA, status);
 			continue;
 		}
 
@@ -788,7 +790,6 @@ void read_data_from_DB(void)
 		query->id = 0;
 		query->complete = true; // Mark as all information is available
 		query->response = 0;
-		query->AD = false;
 		query->dnssec = DNSSEC_UNKNOWN;
 		query->reply = REPLY_UNKNOWN;
 
@@ -822,7 +823,9 @@ void read_data_from_DB(void)
 			case QUERY_GRAVITY: // Blocked by gravity.list
 			case QUERY_WILDCARD: // Blocked by regex filter
 			case QUERY_BLACKLIST: // Blocked by black.list
-			case QUERY_EXTERNAL_BLOCKED: // Blocked by external provider
+			case QUERY_EXTERNAL_BLOCKED_IP: // Blocked by external provider
+			case QUERY_EXTERNAL_BLOCKED_NULL: // Blocked by external provider
+			case QUERY_EXTERNAL_BLOCKED_NXRA: // Blocked by external provider
 				counters->blocked++;
 				// Get domain pointer
 				domainsData* domain = getDomain(domainID, true);

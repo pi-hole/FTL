@@ -84,7 +84,7 @@
 enum { DATABASE_WRITE_TIMER, EXIT_TIMER, GC_TIMER, LISTS_TIMER, REGEX_TIMER, ARP_TIMER, LAST_TIMER };
 enum { QUERIES, FORWARDED, CLIENTS, DOMAINS, OVERTIME, WILDCARD };
 enum { DNSSEC_UNSPECIFIED, DNSSEC_SECURE, DNSSEC_INSECURE, DNSSEC_BOGUS, DNSSEC_ABANDONED, DNSSEC_UNKNOWN };
-enum { QUERY_UNKNOWN, QUERY_GRAVITY, QUERY_FORWARDED, QUERY_CACHE, QUERY_WILDCARD, QUERY_BLACKLIST, QUERY_EXTERNAL_BLOCKED };
+enum { QUERY_UNKNOWN, QUERY_GRAVITY, QUERY_FORWARDED, QUERY_CACHE, QUERY_WILDCARD, QUERY_BLACKLIST, QUERY_EXTERNAL_BLOCKED_IP, QUERY_EXTERNAL_BLOCKED_NULL, QUERY_EXTERNAL_BLOCKED_NXRA };
 enum { TYPE_A = 1, TYPE_AAAA, TYPE_ANY, TYPE_SRV, TYPE_SOA, TYPE_PTR, TYPE_TXT, TYPE_MAX };
 enum { REPLY_UNKNOWN, REPLY_NODATA, REPLY_NXDOMAIN, REPLY_CNAME, REPLY_IP, REPLY_DOMAIN, REPLY_RRNAME, REPLY_SERVFAIL, REPLY_REFUSED, REPLY_NOTIMP, REPLY_OTHER };
 enum { PRIVACY_SHOW_ALL = 0, PRIVACY_HIDE_DOMAINS, PRIVACY_HIDE_DOMAINS_CLIENTS, PRIVACY_MAXIMUM, PRIVACY_NOSTATS };
@@ -101,6 +101,7 @@ enum {
   DEBUG_GC         = (1 << 6),  /* 00000000 01000000 */
   DEBUG_ARP        = (1 << 7),  /* 00000000 10000000 */
   DEBUG_REGEX      = (1 << 8),  /* 00000001 00000000 */
+  DEBUG_API        = (1 << 9),  /* 00000010 00000000 */
   DEBUG_OVERTIME   = (1 << 10), /* 00000100 00000000 */
 };
 
@@ -159,70 +160,69 @@ typedef struct {
 } countersStruct;
 
 typedef struct {
-	bool socket_listenlocal;
-	bool analyze_AAAA;
 	int maxDBdays;
-	bool resolveIPv6;
-	bool resolveIPv4;
 	int DBinterval;
 	int port;
 	int maxlogage;
+	int16_t debug;
 	unsigned char privacylevel;
-	bool ignore_localhost;
 	unsigned char blockingmode;
+	bool socket_listenlocal;
+	bool analyze_AAAA;
+	bool resolveIPv6;
+	bool resolveIPv4;
+	bool ignore_localhost;
 	bool analyze_only_A_AAAA;
 	bool DBimport;
 	bool parse_arp_cache;
-	int16_t debug;
 } ConfigStruct;
 
 // Dynamic structs
 typedef struct {
 	unsigned char magic;
-	time_t timestamp;
-	unsigned int timeidx;
 	unsigned char type;
 	unsigned char status;
+	unsigned char privacylevel;
+	unsigned char reply;
+	unsigned char dnssec;
+	time_t timestamp;
 	int domainID;
 	int clientID;
 	int forwardID;
-	int64_t db;
 	int id; // the ID is a (signed) int in dnsmasq, so no need for a long int here
-	bool complete;
-	unsigned char privacylevel;
 	unsigned long response; // saved in units of 1/10 milliseconds (1 = 0.1ms, 2 = 0.2ms, 2500 = 250.0ms, etc.)
-	unsigned char reply;
-	unsigned char dnssec;
-	bool AD;
+	int64_t db;
+	unsigned int timeidx;
+	bool complete;
 } queriesData;
 
 typedef struct {
 	unsigned char magic;
+	size_t ippos;
+	size_t namepos;
 	int count;
 	int failed;
-	unsigned long long ippos;
-	unsigned long long namepos;
 	bool new;
 } forwardedData;
 
 typedef struct {
 	unsigned char magic;
+	size_t ippos;
+	size_t namepos;
+	time_t lastQuery;
 	int count;
 	int blockedcount;
-	unsigned long long ippos;
-	unsigned long long namepos;
-	bool new;
 	int overTime[OVERTIME_SLOTS];
-	time_t lastQuery;
 	unsigned int numQueriesARP;
+	bool new;
 } clientsData;
 
 typedef struct {
 	unsigned char magic;
+	unsigned char regexmatch;
+	size_t domainpos;
 	int count;
 	int blockedcount;
-	unsigned long long domainpos;
-	unsigned char regexmatch;
 } domainsData;
 
 typedef struct {
@@ -236,8 +236,8 @@ typedef struct {
 } overTimeData;
 
 typedef struct {
-	int count;
 	char **domains;
+	int count;
 } whitelistStruct;
 
 typedef struct {
@@ -294,7 +294,7 @@ extern bool istelnet[MAXCONNS];
 #define realloc(p1,p2) FTLrealloc(p1,p2, __FILE__,  __FUNCTION__,  __LINE__)
 
 extern int argc_dnsmasq;
-extern char **argv_dnsmasq;
+extern const char ** argv_dnsmasq;
 
 extern pthread_t telnet_listenthreadv4;
 extern pthread_t telnet_listenthreadv6;

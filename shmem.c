@@ -12,7 +12,7 @@
 #include "shmem.h"
 
 /// The version of shared memory used
-#define SHARED_MEMORY_VERSION 4
+#define SHARED_MEMORY_VERSION 6
 
 /// The name of the shared memory. Use this when connecting to the shared memory.
 #define SHARED_LOCK_NAME "/FTL-lock"
@@ -54,7 +54,7 @@ static unsigned int local_shm_counter = 0;
 
 static size_t get_optimal_object_size(size_t objsize, size_t minsize);
 
-unsigned long long addstr(const char *str)
+size_t addstr(const char *str)
 {
 	if(str == NULL)
 	{
@@ -96,20 +96,20 @@ unsigned long long addstr(const char *str)
 	return (shmSettings->next_str_pos - (len + 1));
 }
 
-char *getstr(unsigned long long pos)
+const char *getstr(size_t pos)
 {
 	// Only access the string memory if this memory region has already been set
 	if(pos < shmSettings->next_str_pos)
-		return &((char*)shm_strings.ptr)[pos];
+		return &((const char*)shm_strings.ptr)[pos];
 	else
 	{
-		logg("WARN: Tried to access %llu but next_str_pos is %u", pos, shmSettings->next_str_pos);
+		logg("WARN: Tried to access %zu but next_str_pos is %u", pos, shmSettings->next_str_pos);
 		return "";
 	}
 }
 
 /// Create a mutex for shared memory
-pthread_mutex_t create_mutex() {
+static pthread_mutex_t create_mutex(void) {
 	pthread_mutexattr_t lock_attr = {};
 	pthread_mutex_t lock = {};
 
@@ -131,7 +131,7 @@ pthread_mutex_t create_mutex() {
 	return lock;
 }
 
-void remap_shm(void)
+static void remap_shm(void)
 {
 	// Remap shared object pointers which might have changed
 	realloc_shm(&shm_queries, counters->queries_MAX*sizeof(queriesData), false);
@@ -280,7 +280,7 @@ void destroy_shmem(void)
 	delete_shm(&shm_settings);
 }
 
-SharedMemory create_shm(char *name, size_t size)
+SharedMemory create_shm(const char *name, size_t size)
 {
 	if(config.debug & DEBUG_SHMEM)
 		logg("Creating shared memory with name \"%s\" and size %zu", name, size);
