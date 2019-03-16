@@ -557,7 +557,7 @@ static void detect_blocked_IP(unsigned short flags, const char* answer, int quer
 		if(config.debug & DEBUG_EXTBLOCKED)
 		{
 			logg("Upstream responded with known blocking page (IPv4), ID %i:\n\t\"%s\" -> \"%s\"",
-			     queryID, answer, getstr(domains[queryID].domainpos));
+			     queryID, getstr(domains[queryID].domainpos), answer);
 		}
 
 		// Update status
@@ -576,7 +576,7 @@ static void detect_blocked_IP(unsigned short flags, const char* answer, int quer
 		if(config.debug & DEBUG_EXTBLOCKED)
 		{
 			logg("Upstream responded with known blocking page (IPv6), ID %i:\n\t\"%s\" -> \"%s\"",
-			     queryID, answer, getstr(domains[queryID].domainpos));
+			     queryID, getstr(domains[queryID].domainpos), answer);
 		}
 
 		// Update status
@@ -592,7 +592,7 @@ static void detect_blocked_IP(unsigned short flags, const char* answer, int quer
 		if(config.debug & DEBUG_EXTBLOCKED)
 		{
 			logg("Upstream responded with 0.0.0.0, ID %i:\n\t\"%s\" -> \"%s\"",
-			     queryID, answer, getstr(domains[queryID].domainpos));
+			     queryID, getstr(domains[queryID].domainpos), answer);
 		}
 
 		// Update status
@@ -605,7 +605,7 @@ static void detect_blocked_IP(unsigned short flags, const char* answer, int quer
 		if(config.debug & DEBUG_EXTBLOCKED)
 		{
 			logg("Upstream responded with ::, ID %i:\n\t\"%s\" -> \"%s\"",
-			     queryID, answer, getstr(domains[queryID].domainpos));
+			     queryID, getstr(domains[queryID].domainpos), answer);
 		}
 
 		// Update status
