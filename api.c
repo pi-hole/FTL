@@ -81,9 +81,9 @@ void getStats(int *sock)
 
 		// Sum up all query types (A, AAAA, ANY, SRV, SOA, ...)
 		int sumalltypes = 0;
-		for(int i=0; i < TYPE_MAX-1; i++)
+		for(int queryType=0; queryType < TYPE_MAX-1; queryType++)
 		{
-			sumalltypes += counters->querytype[i];
+			sumalltypes += counters->querytype[queryType];
 		}
 		ssend(*sock, "dns_queries_all_types %i\n", sumalltypes);
 
@@ -114,28 +114,28 @@ void getStats(int *sock)
 
 void getOverTime(int *sock)
 {
-	int i, from = 0, until = OVERTIME_SLOTS;
+	int from = 0, until = OVERTIME_SLOTS;
 	bool found = false;
 	time_t mintime = overTime[0].timestamp;
 
 	// Start with the first non-empty overTime slot
-	for(i=0; i < OVERTIME_SLOTS; i++)
+	for(int slot = 0; slot < OVERTIME_SLOTS; slot++)
 	{
-		if((overTime[i].total > 0 || overTime[i].blocked > 0) &&
-		   overTime[i].timestamp >= mintime)
+		if((overTime[slot].total > 0 || overTime[slot].blocked > 0) &&
+		   overTime[slot].timestamp >= mintime)
 		{
-			from = i;
+			from = slot;
 			found = true;
 			break;
 		}
 	}
 
 	// End with last non-empty overTime slot
-	for(i = 0; i < OVERTIME_SLOTS; i++)
+	for(int slot = 0; slot < OVERTIME_SLOTS; slot++)
 	{
-		if(overTime[i].timestamp >= time(NULL))
+		if(overTime[slot].timestamp >= time(NULL))
 		{
-			until = i;
+			until = slot;
 			break;
 		}
 	}
@@ -146,9 +146,12 @@ void getOverTime(int *sock)
 
 	if(istelnet[*sock])
 	{
-		for(i = from; i < until; i++)
+		for(int slot = from; slot < until; slot++)
 		{
-			ssend(*sock,"%li %i %i\n",overTime[i].timestamp,overTime[i].total,overTime[i].blocked);
+			ssend(*sock,"%li %i %i\n",
+			      overTime[slot].timestamp,
+			      overTime[slot].total,
+			      overTime[slot].blocked);
 		}
 	}
 	else
@@ -158,16 +161,16 @@ void getOverTime(int *sock)
 
 		// Send domains over time
 		pack_map16_start(*sock, (uint16_t) (until - from));
-		for(i = from; i < until; i++) {
-			pack_int32(*sock, overTime[i].timestamp);
-			pack_int32(*sock, overTime[i].total);
+		for(int slot = from; slot < until; slot++) {
+			pack_int32(*sock, overTime[slot].timestamp);
+			pack_int32(*sock, overTime[slot].total);
 		}
 
 		// Send ads over time
 		pack_map16_start(*sock, (uint16_t) (until - from));
-		for(i = from; i < until; i++) {
-			pack_int32(*sock, overTime[i].timestamp);
-			pack_int32(*sock, overTime[i].blocked);
+		for(int slot = from; slot < until; slot++) {
+			pack_int32(*sock, overTime[slot].timestamp);
+			pack_int32(*sock, overTime[slot].blocked);
 		}
 	}
 }
@@ -411,10 +414,10 @@ void getTopClients(const char *client_message, int *sock)
 	for(int i=0; i < counters->clients; i++)
 	{
 		// Get sorted indices and counter values (may be either total or blocked count)
-		int j = temparray[i][0];
+		int clientID = temparray[i][0];
 		int ccount = temparray[i][1];
 		// Get client pointer
-		const clientsData* client = getClient(j, true);
+		const clientsData* client = getClient(clientID, true);
 
 		// Skip this client if there is a filter on it
 		if(excludeclients != NULL &&
@@ -463,16 +466,16 @@ void getForwardDestinations(const char *client_message, int *sock)
 	if(command(client_message, "unsorted"))
 		sort = false;
 
-	for(int i = 0; i < counters->forwarded; i++)
+	for(int forwardID = 0; forwardID < counters->forwarded; forwardID++)
 	{
 		// If we want to print a sorted output, we fill the temporary array with
 		// the values we will use for sorting afterwards
 		if(sort) {
 			// Get forward pointer
-			const forwardedData* forward = getForward(i, true);
+			const forwardedData* forward = getForward(forwardID, true);
 
-			temparray[i][0] = i;
-			temparray[i][1] = forward->count;
+			temparray[forwardID][0] = forwardID;
+			temparray[forwardID][1] = forward->count;
 		}
 	}
 
@@ -514,14 +517,14 @@ void getForwardDestinations(const char *client_message, int *sock)
 		{
 			// Regular forward destionation
 			// Get sorted indices
-			int j;
+			int forwardID;
 			if(sort)
-				j = temparray[i][0];
+				forwardID = temparray[i][0];
 			else
-				j = i;
+				forwardID = i;
 
 			// Get forward pointer
-			const forwardedData* forward = getForward(j, true);
+			const forwardedData* forward = getForward(forwardID, true);
 
 			// Get IP and host name of forward destination if available
 			ip = getstr(forward->ippos);
@@ -553,16 +556,22 @@ void getForwardDestinations(const char *client_message, int *sock)
 
 void getQueryTypes(int *sock)
 {
-	int i,total = 0;
-	for(i=0; i < TYPE_MAX-1; i++)
+	int total = 0;
+	for(int i=0; i < TYPE_MAX-1; i++)
+	{
 		total += counters->querytype[i];
+	}
 
 	float percentage[TYPE_MAX-1] = { 0.0 };
 
 	// Prevent floating point exceptions by checking if the divisor is != 0
 	if(total > 0)
-		for(i=0; i < TYPE_MAX-1; i++)
+	{
+		for(int i=0; i < TYPE_MAX-1; i++)
+		{
 			percentage[i] = 1e2f*counters->querytype[i]/total;
+		}
+	}
 
 	if(istelnet[*sock]) {
 		ssend(*sock, "A (IPv4): %.2f\nAAAA (IPv6): %.2f\nANY: %.2f\nSRV: %.2f\nSOA: %.2f\nPTR: %.2f\nTXT: %.2f\n",
@@ -910,21 +919,21 @@ void getQueryTypesOverTime(int *sock)
 {
 	int from = -1, until = OVERTIME_SLOTS;
 	time_t mintime = overTime[0].timestamp;
-	for(int i = 0; i < OVERTIME_SLOTS; i++)
+	for(int slot = 0; slot < OVERTIME_SLOTS; slot++)
 	{
-		if((overTime[i].total > 0 || overTime[i].blocked > 0) && overTime[i].timestamp >= mintime)
+		if((overTime[slot].total > 0 || overTime[slot].blocked > 0) && overTime[slot].timestamp >= mintime)
 		{
-			from = i;
+			from = slot;
 			break;
 		}
 	}
 
 	// End with last non-empty overTime slot
-	for(int i = 0; i < OVERTIME_SLOTS; i++)
+	for(int slot = 0; slot < OVERTIME_SLOTS; slot++)
 	{
-		if(overTime[i].timestamp >= time(NULL))
+		if(overTime[slot].timestamp >= time(NULL))
 		{
-			until = i;
+			until = slot;
 			break;
 		}
 	}
@@ -933,20 +942,20 @@ void getQueryTypesOverTime(int *sock)
 	if(from < 0)
 		return;
 
-	for(int i = from; i < until; i++)
+	for(int slot = from; slot < until; slot++)
 	{
 		float percentageIPv4 = 0.0, percentageIPv6 = 0.0;
-		int sum = overTime[i].querytypedata[0] + overTime[i].querytypedata[1];
+		int sum = overTime[slot].querytypedata[0] + overTime[slot].querytypedata[1];
 
 		if(sum > 0) {
-			percentageIPv4 = (float) (1e2 * overTime[i].querytypedata[0] / sum);
-			percentageIPv6 = (float) (1e2 * overTime[i].querytypedata[1] / sum);
+			percentageIPv4 = (float) (1e2 * overTime[slot].querytypedata[0] / sum);
+			percentageIPv6 = (float) (1e2 * overTime[slot].querytypedata[1] / sum);
 		}
 
 		if(istelnet[*sock])
-			ssend(*sock, "%li %.2f %.2f\n", overTime[i].timestamp, percentageIPv4, percentageIPv6);
+			ssend(*sock, "%li %.2f %.2f\n", overTime[slot].timestamp, percentageIPv4, percentageIPv6);
 		else {
-			pack_int32(*sock, overTime[i].timestamp);
+			pack_int32(*sock, overTime[slot].timestamp);
 			pack_float(*sock, percentageIPv4);
 			pack_float(*sock, percentageIPv6);
 		}
@@ -1039,12 +1048,12 @@ void getClientsOverTime(int *sock)
 		return;
 
 	// Find minimum ID to send
-	for(int i = 0; i < OVERTIME_SLOTS; i++)
+	for(int slot = 0; slot < OVERTIME_SLOTS; slot++)
 	{
-		if((overTime[i].total > 0 || overTime[i].blocked > 0) &&
-		   overTime[i].timestamp >= overTime[0].timestamp)
+		if((overTime[slot].total > 0 || overTime[slot].blocked > 0) &&
+		   overTime[slot].timestamp >= overTime[0].timestamp)
 		{
-			sendit = i;
+			sendit = slot;
 			break;
 		}
 	}
@@ -1052,11 +1061,11 @@ void getClientsOverTime(int *sock)
 		return;
 
 	// Find minimum ID to send
-	for(int i = 0; i < OVERTIME_SLOTS; i++)
+	for(int slot = 0; slot < OVERTIME_SLOTS; slot++)
 	{
-		if(overTime[i].timestamp >= time(NULL))
+		if(overTime[slot].timestamp >= time(NULL))
 		{
-			until = i;
+			until = slot;
 			break;
 		}
 	}
@@ -1085,23 +1094,23 @@ void getClientsOverTime(int *sock)
 	}
 
 	// Main return loop
-	for(int i = sendit; i < until; i++)
+	for(int slot = sendit; slot < until; slot++)
 	{
 		if(istelnet[*sock])
-			ssend(*sock, "%li", overTime[i].timestamp);
+			ssend(*sock, "%li", overTime[slot].timestamp);
 		else
-			pack_int32(*sock, overTime[i].timestamp);
+			pack_int32(*sock, overTime[slot].timestamp);
 
 		// Loop over forward destinations to generate output to be sent to the client
-		for(int j = 0; j < counters->clients; j++)
+		for(int clientID = 0; clientID < counters->clients; clientID++)
 		{
-			if(skipclient[j])
+			if(skipclient[clientID])
 				continue;
 
 			// Get client pointer
-			const clientsData* client = getClient(j, true);
+			const clientsData* client = getClient(clientID, true);
 
-			int thisclient = client->overTime[i];
+			int thisclient = client->overTime[slot];
 
 			if(istelnet[*sock])
 				ssend(*sock, " %i", thisclient);
