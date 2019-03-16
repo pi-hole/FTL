@@ -527,7 +527,7 @@ static void detect_blocked_IP(unsigned short flags, const char* answer, int quer
 		// count gravity.list blocked queries as externally blocked.
 		if(config.debug & DEBUG_EXTBLOCKED)
 		{
-			logg("Skipping detection of external blocking IP for query ID %i as origin is HOSTS", queryID);
+			logg("Skipping detection of external blocking IP for ID %i as origin is HOSTS", queryID);
 		}
 		return;
 	}
@@ -536,7 +536,7 @@ static void detect_blocked_IP(unsigned short flags, const char* answer, int quer
 		// Do not mark responses of PTR requests as externally blocked.
 		if(config.debug & DEBUG_EXTBLOCKED)
 		{
-			logg("Skipping detection of external blocking IP for query ID %i as query is PTR", queryID);
+			logg("Skipping detection of external blocking IP for ID %i as query is PTR", queryID);
 		}
 		return;
 	}
@@ -556,7 +556,8 @@ static void detect_blocked_IP(unsigned short flags, const char* answer, int quer
 	{
 		if(config.debug & DEBUG_EXTBLOCKED)
 		{
-			logg("Upstream responded with known blocking page IPv6 for query ID %i:\n\t\"%s\"", queryID, answer);
+			logg("Upstream responded with known blocking page (IPv4), ID %i:\n\t\"%s\" -> \"%s\"",
+			     queryID, answer, getstr(domains[queryID].domainpos));
 		}
 
 		// Update status
@@ -574,7 +575,8 @@ static void detect_blocked_IP(unsigned short flags, const char* answer, int quer
 	{
 		if(config.debug & DEBUG_EXTBLOCKED)
 		{
-			logg("Upstream responded with known blocking page IPv6 for query ID %i:\n\t\"%s\"", queryID, answer);
+			logg("Upstream responded with known blocking page (IPv6), ID %i:\n\t\"%s\" -> \"%s\"",
+			     queryID, answer, getstr(domains[queryID].domainpos));
 		}
 
 		// Update status
@@ -589,8 +591,8 @@ static void detect_blocked_IP(unsigned short flags, const char* answer, int quer
 	{
 		if(config.debug & DEBUG_EXTBLOCKED)
 		{
-			logg("Upstream responded with 0.0.0.0 for query ID %i\nDomain: \"%s\"",
-			     queryID, getstr(domains[queryID].domainpos));
+			logg("Upstream responded with 0.0.0.0, ID %i:\n\t\"%s\" -> \"%s\"",
+			     queryID, answer, getstr(domains[queryID].domainpos));
 		}
 
 		// Update status
@@ -602,8 +604,8 @@ static void detect_blocked_IP(unsigned short flags, const char* answer, int quer
 	{
 		if(config.debug & DEBUG_EXTBLOCKED)
 		{
-			logg("Upstream responded with :: for query ID %i\nDomain: \"%s\"",
-			     queryID, getstr(domains[queryID].domainpos));
+			logg("Upstream responded with ::, ID %i:\n\t\"%s\" -> \"%s\"",
+			     queryID, answer, getstr(domains[queryID].domainpos));
 		}
 
 		// Update status
