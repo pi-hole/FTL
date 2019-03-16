@@ -428,7 +428,6 @@ void save_to_DB(void)
 	}
 
 	unsigned int saved = 0, saved_error = 0;
-	long int i;
 	sqlite3_stmt* stmt;
 
 	// Get last ID stored in the database
@@ -454,9 +453,10 @@ void save_to_DB(void)
 	int total = 0, blocked = 0;
 	time_t currenttimestamp = time(NULL);
 	time_t newlasttimestamp = 0;
-	for(i = MAX(0, lastdbindex); i < counters->queries; i++)
+	long int queryID;
+	for(queryID = MAX(0, lastdbindex); queryID < counters->queries; queryID++)
 	{
-		queriesData* query = getQuery(i, true);
+		queriesData* query = getQuery(queryID, true);
 		if(query->db != 0)
 		{
 			// Skip, already saved in database
@@ -487,11 +487,11 @@ void save_to_DB(void)
 		sqlite3_bind_int(stmt, 3, query->status);
 
 		// DOMAIN
-		const char *domain = getDomainString(i);
+		const char *domain = getDomainString(queryID);
 		sqlite3_bind_text(stmt, 4, domain, -1, SQLITE_TRANSIENT);
 
 		// CLIENT
-		const char *client = getClientIPString(i);
+		const char *client = getClientIPString(queryID);
 		sqlite3_bind_text(stmt, 5, client, -1, SQLITE_TRANSIENT);
 
 		// FORWARD
@@ -555,7 +555,7 @@ void save_to_DB(void)
 	// in the database only if all queries have been saved successfully
 	if(saved > 0 && saved_error == 0)
 	{
-		lastdbindex = i;
+		lastdbindex = queryID;
 		db_set_FTL_property(DB_LASTTIMESTAMP, newlasttimestamp);
 	}
 

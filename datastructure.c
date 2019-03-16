@@ -19,22 +19,21 @@ void strtolower(char *str)
 
 int findForwardID(const char * forwardString, bool count)
 {
-	int forwardID = -1;
 	// Go through already knows forward servers and see if we used one of those
-	for(int i=0; i < counters->forwarded; i++)
+	for(int forwardID=0; forwardID < counters->forwarded; forwardID++)
 	{
 		// Get forward pointer
-		forwardedData* forward = getForward(i, true);
+		forwardedData* forward = getForward(forwardID, true);
 
 		if(strcmp(getstr(forward->ippos), forwardString) == 0)
 		{
 			if(count) forward->count++;
-			return i;
+			return forwardID;
 		}
 	}
 	// This forward server is not known
 	// Store ID
-	forwardID = counters->forwarded;
+	const int forwardID = counters->forwarded;
 	logg("New forward server: %s (%i/%u)", forwardString, forwardID, counters->forwarded_MAX);
 
 	// Check struct size
@@ -67,10 +66,10 @@ int findForwardID(const char * forwardString, bool count)
 
 int findDomainID(const char *domainString)
 {
-	for(int i=0; i < counters->domains; i++)
+	for(int domainID = 0; domainID < counters->domains; domainID++)
 	{
 		// Get domain pointer
-		domainsData* domain = getDomain(i, true);
+		domainsData* domain = getDomain(domainID, true);
 
 		// Quick test: Does the domain start with the same character?
 		if(getstr(domain->domainpos)[0] != domainString[0])
@@ -80,13 +79,13 @@ int findDomainID(const char *domainString)
 		if(strcmp(getstr(domain->domainpos), domainString) == 0)
 		{
 			domain->count++;
-			return i;
+			return domainID;
 		}
 	}
 
 	// If we did not return until here, then this domain is not known
 	// Store ID
-	int domainID = counters->domains;
+	const int domainID = counters->domains;
 
 	// Check struct size
 	memory_check(DOMAINS);
@@ -113,10 +112,10 @@ int findDomainID(const char *domainString)
 int findClientID(const char *clientIP, bool count)
 {
 	// Compare content of client against known client IP addresses
-	for(int i=0; i < counters->clients; i++)
+	for(int clientID=0; clientID < counters->clients; clientID++)
 	{
 		// Get client pointer
-		clientsData* client = getClient(i, true);
+		clientsData* client = getClient(clientID, true);
 
 		// Quick test: Does the clients IP start with the same character?
 		if(getstr(client->ippos)[0] != clientIP[0])
@@ -127,7 +126,7 @@ int findClientID(const char *clientIP, bool count)
 		{
 			// Add one if count == true (do not add one, e.g., during ARP table processing)
 			if(count) client->count++;
-			return i;
+			return clientID;
 		}
 	}
 
@@ -138,7 +137,7 @@ int findClientID(const char *clientIP, bool count)
 
 	// If we did not return until here, then this client is definitely new
 	// Store ID
-	int clientID = counters->clients;
+	const int clientID = counters->clients;
 
 	// Check struct size
 	memory_check(CLIENTS);

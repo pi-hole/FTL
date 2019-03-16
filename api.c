@@ -772,6 +772,9 @@ void getAllQueries(const char *client_message, int *sock)
 		// Check if this query has been create while in maximum privacy mode
 		if(query->privacylevel >= PRIVACY_MAXIMUM) continue;
 
+		// Verify query type
+		if(query->type > TYPE_MAX-1)
+			continue;
 		// Get query type
 		const char *qtype = querytypes[query->type - TYPE_A];
 
@@ -818,7 +821,7 @@ void getAllQueries(const char *client_message, int *sock)
 
 		// Ask subroutine for domain. It may return "hidden" depending on
 		// the privacy settings at the time the query was made
-		const char *domain = getDomainString(query->domainID);
+		const char *domain = getDomainString(queryID);
 
 		// Similarly for the client
 		const char *clientIPName = NULL;
@@ -894,7 +897,7 @@ void getRecentBlocked(const char *client_message, int *sock)
 
 			// Ask subroutine for domain. It may return "hidden" depending on
 			// the privacy settings at the time the query was made
-			const char *domain = getDomainString(query->domainID);
+			const char *domain = getDomainString(queryID);
 
 			if(istelnet[*sock])
 				ssend(*sock,"%s\n", domain);
