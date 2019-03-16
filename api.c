@@ -63,10 +63,10 @@ void getStats(int *sock)
 
 	// unique_clients: count only clients that have been active within the most recent 24 hours
 	int activeclients = 0;
-	for(int i=0; i < counters->clients; i++)
+	for(int clientID=0; clientID < counters->clients; clientID++)
 	{
 		// Get client pointer
-		const clientsData* client = getClient(i, true);
+		const clientsData* client = getClient(clientID, true);
 		if(client->count > 0)
 			activeclients++;
 	}
@@ -206,17 +206,17 @@ void getTopDomains(const char *client_message, int *sock)
 	if(command(client_message, " asc"))
 		asc = true;
 
-	for(int i=0; i < counters->domains; i++)
+	for(int domainID=0; domainID < counters->domains; domainID++)
 	{
 		// Get domain pointer
-		const domainsData* domain = getDomain(i, true);
+		const domainsData* domain = getDomain(domainID, true);
 
-		temparray[i][0] = i;
+		temparray[domainID][0] = domainID;
 		if(blocked)
-			temparray[i][1] = domain->blockedcount;
+			temparray[domainID][1] = domain->blockedcount;
 		else
 			// Count only permitted queries
-			temparray[i][1] = (domain->count - domain->blockedcount);
+			temparray[domainID][1] = (domain->count - domain->blockedcount);
 	}
 
 	// Sort temporary array
@@ -266,11 +266,11 @@ void getTopDomains(const char *client_message, int *sock)
 	int n = 0;
 	for(int i=0; i < counters->domains; i++)
 	{
-		// Get sorted indices
-		int j = temparray[i][0];
+		// Get sorted index
+		int domainID = temparray[i][0];
 
 		// Get domain pointer
-		const domainsData* domain = getDomain(j, true);
+		const domainsData* domain = getDomain(domainID, true);
 
 		// Skip this domain if there is a filter on it
 		if(excludedomains != NULL && insetupVarsArray(getstr(domain->domainpos)))
@@ -373,13 +373,13 @@ void getTopClients(const char *client_message, int *sock)
 	if(command(client_message, " blocked"))
 		blockedonly = true;
 
-	for(int i=0; i < counters->clients; i++)
+	for(int clientID = 0; clientID < counters->clients; clientID++)
 	{
 		// Get client pointer
-		const clientsData* client = getClient(i, true);
-		temparray[i][0] = i;
+		const clientsData* client = getClient(clientID, true);
+		temparray[clientID][0] = clientID;
 		// Use either blocked or total count based on request string
-		temparray[i][1] = blockedonly ? client->blockedcount : client->count;
+		temparray[clientID][1] = blockedonly ? client->blockedcount : client->count;
 	}
 
 	// Sort in ascending order?
@@ -677,15 +677,15 @@ void getAllQueries(const char *client_message, int *sock)
 		sscanf(client_message, ">getallqueries-domain %255s", domainname);
 		filterdomainname = true;
 		// Iterate through all known domains
-		for(int i = 0; i < counters->domains; i++)
+		for(int domainID = 0; domainID < counters->domains; domainID++)
 		{
 			// Get domain pointer
-			const domainsData* domain = getDomain(i, true);
+			const domainsData* domain = getDomain(domainID, true);
 
 			// Try to match the requested string
 			if(strcmp(getstr(domain->domainpos), domainname) == 0)
 			{
-				domainid = i;
+				domainid = domainID;
 				break;
 			}
 		}
@@ -757,10 +757,9 @@ void getAllQueries(const char *client_message, int *sock)
 	}
 	clearSetupVarsArray();
 
-	int i;
-	for(i=ibeg; i < counters->queries; i++)
+	for(int queryID = ibeg; queryID < counters->queries; queryID++)
 	{
-		const queriesData* query = getQuery(i, true);
+		const queriesData* query = getQuery(queryID, true);
 		// Check if this query has been create while in maximum privacy mode
 		if(query->privacylevel >= PRIVACY_MAXIMUM) continue;
 
@@ -810,16 +809,16 @@ void getAllQueries(const char *client_message, int *sock)
 
 		// Ask subroutine for domain. It may return "hidden" depending on
 		// the privacy settings at the time the query was made
-		const char *domain = getDomainString(i);
+		const char *domain = getDomainString(query->domainID);
 
 		// Similarly for the client
 		const char *clientIPName = NULL;
 		// Get client pointer
-		const clientsData* client = getClient(i, true);
+		const clientsData* client = getClient(query->clientID, true);
 		if(strlen(getstr(client->namepos)) > 0)
-			clientIPName = getClientNameString(i);
+			clientIPName = getClientNameString(queryID);
 		else
-			clientIPName = getClientIPString(i);
+			clientIPName = getClientIPString(queryID);
 
 		unsigned long delay = query->response;
 		// Check if received (delay should be smaller than 30min)
@@ -830,7 +829,7 @@ void getAllQueries(const char *client_message, int *sock)
 		{
 			ssend(*sock,"%li %s %s %s %i %i %i %lu",query->timestamp,qtype,domain,clientIPName,query->status,query->dnssec,query->reply,delay);
 			if(config.debug & DEBUG_API)
-				ssend(*sock, " %i", i);
+				ssend(*sock, " %i", queryID);
 			ssend(*sock, "\n");
 		}
 		else
@@ -874,9 +873,9 @@ void getRecentBlocked(const char *client_message, int *sock)
 
 	// Find most recently blocked query
 	int found = 0;
-	for(int i = counters->queries - 1; i > 0 ; i--)
+	for(int queryID = counters->queries - 1; queryID > 0 ; queryID--)
 	{
-		const queriesData* query = getQuery(i, true);
+		const queriesData* query = getQuery(queryID, true);
 
 		if(query->status == QUERY_GRAVITY ||
 		   query->status == QUERY_WILDCARD ||
@@ -886,7 +885,7 @@ void getRecentBlocked(const char *client_message, int *sock)
 
 			// Ask subroutine for domain. It may return "hidden" depending on
 			// the privacy settings at the time the query was made
-			const char *domain = getDomainString(i);
+			const char *domain = getDomainString(query->domainID);
 
 			if(istelnet[*sock])
 				ssend(*sock,"%s\n", domain);
@@ -909,9 +908,9 @@ void getClientID(int *sock)
 
 void getQueryTypesOverTime(int *sock)
 {
-	int i, from = -1, until = OVERTIME_SLOTS;
+	int from = -1, until = OVERTIME_SLOTS;
 	time_t mintime = overTime[0].timestamp;
-	for(i = 0; i < OVERTIME_SLOTS; i++)
+	for(int i = 0; i < OVERTIME_SLOTS; i++)
 	{
 		if((overTime[i].total > 0 || overTime[i].blocked > 0) && overTime[i].timestamp >= mintime)
 		{
@@ -921,7 +920,7 @@ void getQueryTypesOverTime(int *sock)
 	}
 
 	// End with last non-empty overTime slot
-	for(i = 0; i < OVERTIME_SLOTS; i++)
+	for(int i = 0; i < OVERTIME_SLOTS; i++)
 	{
 		if(overTime[i].timestamp >= time(NULL))
 		{
@@ -934,7 +933,7 @@ void getQueryTypesOverTime(int *sock)
 	if(from < 0)
 		return;
 
-	for(i = from; i < until; i++)
+	for(int i = from; i < until; i++)
 	{
 		float percentageIPv4 = 0.0, percentageIPv6 = 0.0;
 		int sum = overTime[i].querytypedata[0] + overTime[i].querytypedata[1];
@@ -1074,14 +1073,14 @@ void getClientsOverTime(int *sock)
 	{
 		getSetupVarsArray(excludeclients);
 
-		for(int i=0; i < counters->clients; i++)
+		for(int clientID=0; clientID < counters->clients; clientID++)
 		{
 			// Get client pointer
-			const clientsData* client = getClient(i, true);
+			const clientsData* client = getClient(clientID, true);
 			// Check if this client should be skipped
 			if(insetupVarsArray(getstr(client->ippos)) ||
 			   insetupVarsArray(getstr(client->namepos)))
-				skipclient[i] = true;
+				skipclient[clientID] = true;
 		}
 	}
 
@@ -1139,25 +1138,25 @@ void getClientNames(int *sock)
 	{
 		getSetupVarsArray(excludeclients);
 
-		for(int i=0; i < counters->clients; i++)
+		for(int clientID=0; clientID < counters->clients; clientID++)
 		{
 			// Get client pointer
-			const clientsData* client = getClient(i, true);
+			const clientsData* client = getClient(clientID, true);
 			// Check if this client should be skipped
 			if(insetupVarsArray(getstr(client->ippos)) ||
 			   insetupVarsArray(getstr(client->namepos)))
-				skipclient[i] = true;
+				skipclient[clientID] = true;
 		}
 	}
 
 	// Loop over clients to generate output to be sent to the client
-	for(int i = 0; i < counters->clients; i++)
+	for(int clientID = 0; clientID < counters->clients; clientID++)
 	{
-		if(skipclient[i])
+		if(skipclient[clientID])
 			continue;
 
 		// Get client pointer
-		const clientsData* client = getClient(i, true);
+		const clientsData* client = getClient(clientID, true);
 
 		const char *client_ip = getstr(client->ippos);
 		const char *client_name = getstr(client->namepos);
@@ -1181,10 +1180,9 @@ void getUnknownQueries(int *sock)
 	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS)
 		return;
 
-	int i;
-	for(i=0; i < counters->queries; i++)
+	for(int queryID = 0; queryID < counters->queries; queryID++)
 	{
-		const queriesData* query = getQuery(i, true);
+		const queriesData* query = getQuery(queryID, true);
 
 		if(query->status != QUERY_UNKNOWN && query->complete) continue;
 
@@ -1207,7 +1205,7 @@ void getUnknownQueries(int *sock)
 		const char *clientIP = getstr(client->ippos);
 
 		if(istelnet[*sock])
-			ssend(*sock, "%li %i %i %s %s %s %i %s\n", query->timestamp, i, query->id, type, getstr(domain->domainpos), clientIP, query->status, query->complete ? "true" : "false");
+			ssend(*sock, "%li %i %i %s %s %s %i %s\n", query->timestamp, queryID, query->id, type, getstr(domain->domainpos), clientIP, query->status, query->complete ? "true" : "false");
 		else {
 			pack_int32(*sock, query->timestamp);
 			pack_int32(*sock, query->id);
@@ -1236,14 +1234,14 @@ void getDomainDetails(const char *client_message, int *sock)
 		return;
 	}
 
-	for(int i = 0; i < counters->domains; i++)
+	for(int domainID = 0; domainID < counters->domains; domainID++)
 	{
 		// Get domain pointer
-		const domainsData* domain = getDomain(i, true);
+		const domainsData* domain = getDomain(domainID, true);
 
 		if(strcmp(getstr(domain->domainpos), domainString) == 0)
 		{
-			ssend(*sock,"Domain \"%s\", ID: %i\n", domainString, i);
+			ssend(*sock,"Domain \"%s\", ID: %i\n", domainString, domainID);
 			ssend(*sock,"Total: %i\n", domain->count);
 			ssend(*sock,"Blocked: %i\n", domain->blockedcount);
 			const char *regexstatus;
