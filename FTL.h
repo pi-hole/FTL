@@ -103,6 +103,7 @@ enum {
   DEBUG_REGEX      = (1 << 8),  /* 00000001 00000000 */
   DEBUG_API        = (1 << 9),  /* 00000010 00000000 */
   DEBUG_OVERTIME   = (1 << 10), /* 00000100 00000000 */
+  DEBUG_EXTBLOCKED = (1 << 11), /* 00001000 00000000 */
 };
 
 // Database table "ftl"

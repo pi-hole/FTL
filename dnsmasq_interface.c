@@ -521,13 +521,22 @@ void _FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id,
 
 static void detect_blocked_IP(unsigned short flags, const char* answer, int queryID)
 {
-	// Skip replies which originated locally. Otherwise, we would count
-	// gravity.list blocked queries as externally blocked.
 	if(flags & F_HOSTS)
 	{
-		if(config.debug & DEBUG_QUERIES)
+		// Skip replies which originated locally. Otherwise, we would
+		// count gravity.list blocked queries as externally blocked.
+		if(config.debug & DEBUG_EXTBLOCKED)
 		{
 			logg("Skipping detection of external blocking IP for query ID %i as origin is HOSTS", queryID);
+		}
+		return;
+	}
+	else if(flags & F_REVERSE)
+	{
+		// Do not mark responses of PTR requests as externally blocked.
+		if(config.debug & DEBUG_EXTBLOCKED)
+		{
+			logg("Skipping detection of external blocking IP for query ID %i as query is PTR", queryID);
 		}
 		return;
 	}
@@ -545,7 +554,7 @@ static void detect_blocked_IP(unsigned short flags, const char* answer, int quer
 		 strcmp("146.112.61.109", answer) == 0 ||
 		 strcmp("146.112.61.110", answer) == 0 ))
 	{
-		if(config.debug & DEBUG_QUERIES)
+		if(config.debug & DEBUG_EXTBLOCKED)
 		{
 			logg("Upstream responded with known blocking page IPv6 for query ID %i:\n\t\"%s\"", queryID, answer);
 		}
@@ -563,7 +572,7 @@ static void detect_blocked_IP(unsigned short flags, const char* answer, int quer
 		 strcmp("::ffff:146.112.61.109", answer) == 0 ||
 		 strcmp("::ffff:146.112.61.110", answer) == 0 ))
 	{
-		if(config.debug & DEBUG_QUERIES)
+		if(config.debug & DEBUG_EXTBLOCKED)
 		{
 			logg("Upstream responded with known blocking page IPv6 for query ID %i:\n\t\"%s\"", queryID, answer);
 		}
@@ -578,7 +587,7 @@ static void detect_blocked_IP(unsigned short flags, const char* answer, int quer
 	else if(flags & F_IPV4 && answer != NULL &&
 		strcmp("0.0.0.0", answer) == 0)
 	{
-		if(config.debug & DEBUG_QUERIES)
+		if(config.debug & DEBUG_EXTBLOCKED)
 		{
 			logg("Upstream responded with 0.0.0.0 for query ID %i\nDomain: \"%s\"",
 			     queryID, getstr(domains[queryID].domainpos));
@@ -591,7 +600,7 @@ static void detect_blocked_IP(unsigned short flags, const char* answer, int quer
 	else if(flags & F_IPV6 && answer != NULL &&
 		strcmp("::", answer) == 0)
 	{
-		if(config.debug & DEBUG_QUERIES)
+		if(config.debug & DEBUG_EXTBLOCKED)
 		{
 			logg("Upstream responded with :: for query ID %i\nDomain: \"%s\"",
 			     queryID, getstr(domains[queryID].domainpos));
