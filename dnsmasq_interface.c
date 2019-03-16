@@ -580,7 +580,8 @@ static void detect_blocked_IP(unsigned short flags, const char* answer, int quer
 	{
 		if(config.debug & DEBUG_QUERIES)
 		{
-			logg("Upstream responded with 0.0.0.0 for query ID %i:\n\t\"%s\"", queryID, answer);
+			logg("Upstream responded with 0.0.0.0 for query ID %i\nDomain: \"%s\"",
+			     queryID, getstr(domains[queryID].domainpos));
 		}
 
 		// Update status
@@ -592,7 +593,8 @@ static void detect_blocked_IP(unsigned short flags, const char* answer, int quer
 	{
 		if(config.debug & DEBUG_QUERIES)
 		{
-			logg("Upstream responded with :: for query ID %i:\n\t\"%s\"", queryID, answer);
+			logg("Upstream responded with :: for query ID %i\nDomain: \"%s\"",
+			     queryID, getstr(domains[queryID].domainpos));
 		}
 
 		// Update status
