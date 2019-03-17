@@ -48,9 +48,9 @@ bool check_capabilities()
 			logg("DEBUG: Capability %-24s (%02u) = %s%s%s",
 			     capabilityNames[capid],
 			     capid,
-			     ((data->effective & (1 << capid)) ? "E":"-"),
 			     ((data->permitted & (1 << capid)) ? "P":"-"),
-			     ((data->inheritable & (1 << capid)) ? "I":"-"));
+			     ((data->inheritable & (1 << capid)) ? "I":"-"),
+			     ((data->effective & (1 << capid)) ? "E":"-"));
 		}
 		logg("*********************************************************************");
 	}
