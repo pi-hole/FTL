@@ -45,6 +45,12 @@ bool check_capabilities()
 		for(unsigned int i = 0u; i < (sizeof(capabilityIntegers)/sizeof(const int)); i++)
 		{
 			unsigned int capid = capabilityIntegers[i];
+
+			// Check if capability is valid for the current kernel
+			// If not, exit loop early
+			if(!cap_valid(capid))
+				break;
+
 			logg("DEBUG: Capability %-24s (%02u) = %s%s%s",
 			     capabilityNames[capid],
 			     capid,
