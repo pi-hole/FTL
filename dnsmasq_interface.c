@@ -115,7 +115,10 @@ void _FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char 
 	// Log new query if in debug mode
 	const char *proto = (type == UDP) ? "UDP" : "TCP";
 	if(config.debug & DEBUG_QUERIES)
-		logg("**** new %s %s \"%s\" from %s (ID %i, FTL %i, %s:%i)", proto, types, domain, client, id, queryID, file, line);
+	{
+		logg("**** new %s %s \"%s\" from %s (ID %i, FTL %i, %s:%i)",
+		     proto, types, domain, client, id, queryID, file, line);
+	}
 
 	// Update counters
 	counters->querytype[querytype-1]++;
@@ -518,10 +521,23 @@ void _FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id,
 
 static void detect_blocked_IP(unsigned short flags, const char* answer, int queryID)
 {
-	// Skip replies which originated locally. Otherwise, we would count
-	// gravity.list blocked queries as externally blocked.
 	if(flags & F_HOSTS)
 	{
+		// Skip replies which originated locally. Otherwise, we would
+		// count gravity.list blocked queries as externally blocked.
+		if(config.debug & DEBUG_EXTBLOCKED)
+		{
+			logg("Skipping detection of external blocking IP for ID %i as origin is HOSTS", queryID);
+		}
+		return;
+	}
+	else if(flags & F_REVERSE)
+	{
+		// Do not mark responses of PTR requests as externally blocked.
+		if(config.debug & DEBUG_EXTBLOCKED)
+		{
+			logg("Skipping detection of external blocking IP for ID %i as query is PTR", queryID);
+		}
 		return;
 	}
 
@@ -538,7 +554,14 @@ static void detect_blocked_IP(unsigned short flags, const char* answer, int quer
 		 strcmp("146.112.61.109", answer) == 0 ||
 		 strcmp("146.112.61.110", answer) == 0 ))
 	{
-			query_externally_blocked(queryID, QUERY_EXTERNAL_BLOCKED_IP);
+		if(config.debug & DEBUG_EXTBLOCKED)
+		{
+			logg("Upstream responded with known blocking page (IPv4), ID %i:\n\t\"%s\" -> \"%s\"",
+			     queryID, getstr(domains[queryID].domainpos), answer);
+		}
+
+		// Update status
+		query_externally_blocked(queryID, QUERY_EXTERNAL_BLOCKED_IP);
 	}
 
 	else if(flags & F_IPV6 && answer != NULL &&
@@ -550,7 +573,14 @@ static void detect_blocked_IP(unsigned short flags, const char* answer, int quer
 		 strcmp("::ffff:146.112.61.109", answer) == 0 ||
 		 strcmp("::ffff:146.112.61.110", answer) == 0 ))
 	{
-			query_externally_blocked(queryID, QUERY_EXTERNAL_BLOCKED_IP);
+		if(config.debug & DEBUG_EXTBLOCKED)
+		{
+			logg("Upstream responded with known blocking page (IPv6), ID %i:\n\t\"%s\" -> \"%s\"",
+			     queryID, getstr(domains[queryID].domainpos), answer);
+		}
+
+		// Update status
+		query_externally_blocked(queryID, QUERY_EXTERNAL_BLOCKED_IP);
 	}
 
 	// If upstream replied with 0.0.0.0 or ::,
@@ -559,13 +589,27 @@ static void detect_blocked_IP(unsigned short flags, const char* answer, int quer
 	else if(flags & F_IPV4 && answer != NULL &&
 		strcmp("0.0.0.0", answer) == 0)
 	{
-			query_externally_blocked(queryID, QUERY_EXTERNAL_BLOCKED_NULL);
+		if(config.debug & DEBUG_EXTBLOCKED)
+		{
+			logg("Upstream responded with 0.0.0.0, ID %i:\n\t\"%s\" -> \"%s\"",
+			     queryID, getstr(domains[queryID].domainpos), answer);
+		}
+
+		// Update status
+		query_externally_blocked(queryID, QUERY_EXTERNAL_BLOCKED_NULL);
 	}
 
 	else if(flags & F_IPV6 && answer != NULL &&
 		strcmp("::", answer) == 0)
 	{
-			query_externally_blocked(queryID, QUERY_EXTERNAL_BLOCKED_NULL);
+		if(config.debug & DEBUG_EXTBLOCKED)
+		{
+			logg("Upstream responded with ::, ID %i:\n\t\"%s\" -> \"%s\"",
+			     queryID, getstr(domains[queryID].domainpos), answer);
+		}
+
+		// Update status
+		query_externally_blocked(queryID, QUERY_EXTERNAL_BLOCKED_NULL);
 	}
 }
 
@@ -597,6 +641,7 @@ static void query_externally_blocked(int i, unsigned char status)
 	validate_access("clients", queries[i].clientID, true, __LINE__, __FUNCTION__, __FILE__);
 	clients[queries[i].clientID].blockedcount++;
 
+	// Update status
 	queries[i].status = status;
 }
 
