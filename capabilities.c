@@ -19,25 +19,35 @@ const char* capabilityNames[]  = {"CAP_CHOWN", "CAP_DAC_OVERRIDE", "CAP_DAC_READ
 
 bool check_capabilities()
 {
-	int capsize = 1; /* for header version 1 */
-	cap_user_header_t hdr = NULL;
+	// First assume header version 1
+	int capsize = VFS_CAP_U32_1;
 	cap_user_data_t data = NULL;
+	cap_user_header_t hdr = calloc(sizeof(*hdr), capsize);
 
-	/* find version supported by kernel */
-	hdr = calloc(sizeof(*hdr), capsize);
+	// Determine capabilities version used by the current kernel
 	memset(hdr, 0, sizeof(*hdr));
 	capget(hdr, NULL);
 
+	// Check version
 	if (hdr->version != LINUX_CAPABILITY_VERSION_1)
 	{
-	    /* if unknown version, use largest supported version (3) */
-	    if (hdr->version != LINUX_CAPABILITY_VERSION_2)
-	     hdr->version = LINUX_CAPABILITY_VERSION_3;
-	    capsize = 2;
+		// If unknown version, use largest supported version (3)
+		// Version 2 is deprecated according to linux/capability.h
+		if (hdr->version != LINUX_CAPABILITY_VERSION_2)
+		{
+			hdr->version = LINUX_CAPABILITY_VERSION_3;
+			capsize = VFS_CAP_U32_3;
+		}
+		else
+		{
+			// Use version 2
+			capsize = VFS_CAP_U32_2;
+		}
 	}
 
+	// Get current capabilities
 	data = calloc(sizeof(*data), capsize);
-	capget(hdr, data); /* Get current values, for verification */
+	capget(hdr, data);
 
 	if(config.debug & DEBUG_CAPS)
 	{
@@ -94,6 +104,10 @@ bool check_capabilities()
 		logg("*********************************************************************");
 		capabilities_okay = false;
 	}
+
+	// Free allocated memory
+	free(hdr);
+	free(data);
 
 	// All okay!
 	return capabilities_okay;
