@@ -52,7 +52,7 @@ bool check_capabilities()
 
 	if(config.debug & DEBUG_CAPS)
 	{
-		logg("*********************************************************************");
+		logg("*********************************************************");
 		for(unsigned int i = 0u; i < numCaps; i++)
 		{
 			unsigned int capid = capabilityIntegers[i];
@@ -62,38 +62,38 @@ bool check_capabilities()
 			if(!cap_valid(capid))
 				break;
 
-			logg("DEBUG: Capability %-24s (%02u) = %s%s%s",
+			logg("* DEBUG: Capability %-24s (%02u) = %s%s%s *",
 			     capabilityNames[capid], capid,
 			     ((data->permitted & (1 << capid)) ? "P":"-"),
 			     ((data->inheritable & (1 << capid)) ? "I":"-"),
 			     ((data->effective & (1 << capid)) ? "E":"-"));
 		}
-		logg("*********************************************************************");
+		logg("*********************************************************");
 	}
 
 	bool capabilities_okay = true;
 	if (!(data->permitted & (1 << CAP_NET_ADMIN)))
 	{
 		// Needed for ARP-injection (used when we're the DHCP server)
-		logg("*********************************************************************");
-		logg("WARNING: Required linux capability CAP_NET_ADMIN not available");
-		logg("*********************************************************************");
+		logg("*************************************************************************");
+		logg("* WARNING: Required Linux capability CAP_NET_ADMIN not available        *");
+		logg("*************************************************************************");
 		capabilities_okay = false;
 	}
 	if (!(data->permitted & (1 << CAP_NET_RAW)))
 	{
 		// Needed for raw socket access (necessary for ICMP)
-		logg("*********************************************************************");
-		logg("WARNING: Required linux capability CAP_NET_RAW not available");
-		logg("*********************************************************************");
+		logg("*************************************************************************");
+		logg("* WARNING: Required Linux capability CAP_NET_RAW not available          *");
+		logg("*************************************************************************");
 		capabilities_okay = false;
 	}
 	if (!(data->permitted & (1 << CAP_NET_BIND_SERVICE)))
 	{
 		// Necessary for dynamic port binding
-		logg("*********************************************************************");
-		logg("WARNING: Required linux capability CAP_NET_BIND_SERVICE not available");
-		logg("*********************************************************************");
+		logg("*************************************************************************");
+		logg("* WARNING: Required Linux capability CAP_NET_BIND_SERVICE not available *");
+		logg("*************************************************************************");
 		capabilities_okay = false;
 	}
 

@@ -361,6 +361,8 @@ void FTL_dnsmasq_reload(void)
 	// *before* clearing the cache and rereading the lists
 	// This is the only hook that is not skipped in PRIVACY_NOSTATS mode
 
+	logg("Received SIGHUP, reloading cache");
+
 	// Called when dnsmasq re-reads its config and hosts files
 	// Reset number of blocked domains
 	counters->gravity = 0;
