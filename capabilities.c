@@ -96,14 +96,6 @@ bool check_capabilities()
 		logg("*********************************************************************");
 		capabilities_okay = false;
 	}
-	if (!(data->permitted & (1 << CAP_SETUID)))
-	{
-		// Necessary for changing our own user ID ("daemonizing")
-		logg("*********************************************************************");
-		logg("WARNING: Required linux capability CAP_SETUID not available");
-		logg("*********************************************************************");
-		capabilities_okay = false;
-	}
 
 	// Free allocated memory
 	free(hdr);
