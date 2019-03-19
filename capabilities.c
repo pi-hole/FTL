@@ -26,7 +26,6 @@ bool check_capabilities()
 	cap_user_header_t hdr = calloc(sizeof(*hdr), capsize);
 
 	// Determine capabilities version used by the current kernel
-	memset(hdr, 0, sizeof(*hdr));
 	capget(hdr, NULL);
 
 	// Check version
@@ -102,6 +101,6 @@ bool check_capabilities()
 	free(hdr);
 	free(data);
 
-	// All okay!
+	// Return whether capabilities are all okay
 	return capabilities_okay;
 }
