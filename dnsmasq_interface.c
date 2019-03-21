@@ -361,6 +361,8 @@ void FTL_dnsmasq_reload(void)
 	// *before* clearing the cache and rereading the lists
 	// This is the only hook that is not skipped in PRIVACY_NOSTATS mode
 
+	logg("Received SIGHUP, reloading cache");
+
 	// Called when dnsmasq re-reads its config and hosts files
 	// Reset number of blocked domains
 	counters->gravity = 0;
@@ -382,6 +384,10 @@ void FTL_dnsmasq_reload(void)
 
 	// Reread pihole-FTL.conf to see which debugging flags are set
 	read_debuging_settings(NULL);
+
+	// Print current set of capabilities if requested via debug flag
+	if(config.debug & DEBUG_CAPS)
+		check_capabilities();
 }
 
 void _FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id, const char* file, const int line)
