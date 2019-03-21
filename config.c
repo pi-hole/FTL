@@ -594,6 +594,12 @@ void read_debuging_settings(FILE *fp)
 	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
 		config.debug |= DEBUG_EXTBLOCKED;
 
+	// DEBUG_CAPS
+	// defaults to: false
+	buffer = parse_FTLconf(fp, "DEBUG_CAPS");
+	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
+		config.debug |= DEBUG_CAPS;
+
 	// DEBUG_ALL
 	// defaults to: false
 	buffer = parse_FTLconf(fp, "DEBUG_ALL");
@@ -616,6 +622,7 @@ void read_debuging_settings(FILE *fp)
 		logg("* DEBUG_API        %s *", (config.debug & DEBUG_API)? "YES":"NO ");
 		logg("* DEBUG_OVERTIME   %s *", (config.debug & DEBUG_OVERTIME)? "YES":"NO ");
 		logg("* DEBUG_EXTBLOCKED %s *", (config.debug & DEBUG_EXTBLOCKED)? "YES":"NO ");
+		logg("* DEBUG_CAPS       %s *", (config.debug & DEBUG_CAPS)? "YES":"NO ");
 		logg("************************");
 	}
 
