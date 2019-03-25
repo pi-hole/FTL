@@ -1148,6 +1148,11 @@ extern struct daemon {
 #ifdef HAVE_DBUS
   struct watch *watches;
 #endif
+  /* UBus stuff */
+#ifdef HAVE_UBUS
+  /* void * here to avoid depending on ubus headers outside ubus.c */
+  void *ubus;
+#endif
 
   /* TFTP stuff */
   struct tftp_transfer *tftp_trans, *tftp_done_trans;
@@ -1496,6 +1501,7 @@ void emit_dbus_signal(int action, struct dhcp_lease *lease, char *hostname);
 
 /* ubus.c */
 #ifdef HAVE_UBUS
+void ubus_init(void);
 void set_ubus_listeners(void);
 void check_ubus_listeners(void);
 void ubus_event_bcast(const char *type, const char *mac, const char *ip, const char *name, const char *interface);
