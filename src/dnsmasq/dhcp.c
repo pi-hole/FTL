@@ -401,7 +401,8 @@ void dhcp_packet(time_t now, int pxe_fd)
       pkt = (struct in_pktinfo *)CMSG_DATA(cmptr);
       pkt->ipi_ifindex = rcvd_iface_index;
       pkt->ipi_spec_dst.s_addr = 0;
-      msg.msg_controllen = cmptr->cmsg_len = CMSG_LEN(sizeof(struct in_pktinfo));
+      msg.msg_controllen = CMSG_SPACE(sizeof(struct in_pktinfo));
+      cmptr->cmsg_len = CMSG_LEN(sizeof(struct in_pktinfo));
       cmptr->cmsg_level = IPPROTO_IP;
       cmptr->cmsg_type = IP_PKTINFO;
 
