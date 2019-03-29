@@ -5022,9 +5022,14 @@ void read_opts(int argc, char **argv, char *compile_opts)
         }
       else if (option == 'C')
 	{
-          if (conffile)
-            free(conffile);
-	  conffile = opt_string_alloc(arg);
+          if (!conffile)
+	    conffile = opt_string_alloc(arg);
+	  else
+	    {
+	      char *extra = opt_string_alloc(arg);
+	      one_file(extra, 0);
+	      free(extra);
+	    }
 	}
       else
 	{
