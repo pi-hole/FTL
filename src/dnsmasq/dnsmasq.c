@@ -554,7 +554,7 @@ int main_dnsmasq (int argc, char **argv)
 	      char *msg;
 
 	      /* close our copy of write-end */
-	      while (retry_send(close(err_pipe[1])));
+	      close(err_pipe[1]);
 	      
 	      /* check for errors after the fork */
 	      if (read_event(err_pipe[0], &ev, &msg))
@@ -563,7 +563,7 @@ int main_dnsmasq (int argc, char **argv)
 	      _exit(EC_GOOD);
 	    } 
 	  
-	  while (retry_send(close(err_pipe[0])));
+	  close(err_pipe[0]);
 
 	  /* NO calls to die() from here on. */
 	  
@@ -625,8 +625,7 @@ int main_dnsmasq (int argc, char **argv)
 		err = 1;
 	      else
 		{
-		  while (retry_send(close(fd)));
-		  if (errno != 0)
+		  if (close(fd) == -1)
 		    err = 1;
 		}
 	    }
@@ -961,7 +960,7 @@ int main_dnsmasq (int argc, char **argv)
 
   /* finished start-up - release original process */
   if (err_pipe[1] != -1)
-    while (retry_send(close(err_pipe[1])));
+    close(err_pipe[1]);
   
   if (daemon->port != 0)
     check_servers();
@@ -1488,7 +1487,7 @@ static void async_event(int pipe, time_t now)
 	    do {
 	      helper_write();
 	    } while (!helper_buf_empty() || do_script_run(now));
-	    while (retry_send(close(daemon->helperfd)));
+	    close(daemon->helperfd);
 	  }
 #endif
 	
@@ -1736,7 +1735,7 @@ static void check_dns_listeners(time_t now)
 	  
 	  if (getsockname(confd, (struct sockaddr *)&tcp_addr, &tcp_len) == -1)
 	    {
-	      while (retry_send(close(confd)));
+	      close(confd);
 	      continue;
 	    }
 	  
@@ -1801,7 +1800,7 @@ static void check_dns_listeners(time_t now)
 	  if (!client_ok)
 	    {
 	      shutdown(confd, SHUT_RDWR);
-	      while (retry_send(close(confd)));
+	      close(confd);
 	    }
 	  else if (!option_bool(OPT_DEBUG) && pipe(pipefd) == 0 && (p = fork()) != 0)
 	    {
@@ -1820,7 +1819,7 @@ static void check_dns_listeners(time_t now)
 			break;
 		      }
 		}
-	      while (retry_send(close(confd)));
+	      close(confd);
 
 	      /* The child can use up to TCP_MAX_QUERIES ids, so skip that many. */
 	      daemon->log_id += TCP_MAX_QUERIES;
@@ -1866,7 +1865,7 @@ static void check_dns_listeners(time_t now)
 	      buff = tcp_request(confd, now, &tcp_addr, netmask, auth_dns);
 	       
 	      shutdown(confd, SHUT_RDWR);
-	      while (retry_send(close(confd)));
+	      close(confd);
 	      
 	      if (buff)
 		free(buff);
@@ -1875,7 +1874,7 @@ static void check_dns_listeners(time_t now)
 		if (s->tcpfd != -1)
 		  {
 		    shutdown(s->tcpfd, SHUT_RDWR);
-		    while (retry_send(close(s->tcpfd)));
+		    close(s->tcpfd);
 		  }
 	      if (!option_bool(OPT_DEBUG))
 		{
@@ -1951,7 +1950,7 @@ int icmp_ping(struct in_addr addr)
   gotreply = delay_dhcp(dnsmasq_time(), PING_WAIT, fd, addr.s_addr, id);
 
 #if defined(HAVE_LINUX_NETWORK) || defined(HAVE_SOLARIS_NETWORK)
-  while (retry_send(close(fd)));
+  close(fd);
 #else
   opt = 1;
   setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &opt, sizeof(opt));
