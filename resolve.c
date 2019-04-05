@@ -88,6 +88,7 @@ void resolveClients(bool onlynew)
 		// Lock data when obtaining IP of this client
 		lock_shm();
 		const char* ipaddr = getstr(clients[clientID].ippos);
+		const char* name = getstr(clients[clientID].namepos);
 		unlock_shm();
 
 		// Important: Don't hold a lock while resolving as the main thread
@@ -96,7 +97,13 @@ void resolveClients(bool onlynew)
 
 		// Finally, lock data when storing obtained hostname
 		lock_shm();
-		clients[clientID].namepos = addstr(hostname);
+		// Only store new hostname if it changed
+		if(hostname != NULL && strcmp(name, hostname) != 0)
+		{
+			// We do not need to check for name == NULL as name is
+			// always initialized with an empty string at position 0
+			clients[clientID].namepos = addstr(hostname);
+		}
 		clients[clientID].new = false;
 		unlock_shm();
 	}
@@ -119,6 +126,7 @@ void resolveForwardDestinations(bool onlynew)
 		// Lock data when obtaining IP of this forward destination
 		lock_shm();
 		const char* ipaddr = getstr(forwarded[forwardID].ippos);
+		const char* name = getstr(forwarded[forwardID].namepos);
 		unlock_shm();
 
 
@@ -128,7 +136,13 @@ void resolveForwardDestinations(bool onlynew)
 
 		// Finally, lock data when storing obtained hostname
 		lock_shm();
-		forwarded[forwardID].namepos = addstr(hostname);
+		// Only store new hostname if it changed
+		if(hostname != NULL && strcmp(name, hostname) != 0)
+		{
+			// We do not need to check for name == NULL as name is
+			// always initialized with an empty string at position 0
+			forwarded[forwardID].namepos = addstr(hostname);
+		}
 		forwarded[forwardID].new = false;
 		unlock_shm();
 	}
