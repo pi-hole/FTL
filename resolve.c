@@ -108,7 +108,7 @@ void resolveClients(bool onlynew)
 		else if(config.debug & DEBUG_SHMEM)
 		{
 			// Debugging output
-			logg("Not adding \"%s\" (unchanged)", name);
+			logg("Not adding \"%s\" to buffer (unchanged)", name);
 		}
 
 		// Release allocated memory
@@ -159,7 +159,7 @@ void resolveForwardDestinations(bool onlynew)
 		else if(config.debug & DEBUG_SHMEM)
 		{
 			// Debugging output
-			logg("Not adding \"%s\" (unchanged)", name);
+			logg("Not adding \"%s\" to buffer (unchanged)", name);
 		}
 
 		// Release allocated memory
