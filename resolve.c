@@ -19,7 +19,7 @@
 // once every hour
 #define RERESOLVE_INTERVAL 3600
 
-static const char *resolveHostname(const char *addr)
+static char *resolveHostname(const char *addr)
 {
 	// Get host name
 	struct hostent *he = NULL;
@@ -93,10 +93,11 @@ void resolveClients(bool onlynew)
 
 		// Important: Don't hold a lock while resolving as the main thread
 		// (dnsmasq) needs to be operable during the call to resolveHostname()
-		const char* hostname = resolveHostname(ipaddr);
+		char* hostname = resolveHostname(ipaddr);
 
 		// Finally, lock data when storing obtained hostname
 		lock_shm();
+
 		// Only store new hostname if it changed
 		if(hostname != NULL && strcmp(name, hostname) != 0)
 		{
@@ -106,11 +107,17 @@ void resolveClients(bool onlynew)
 		}
 		else if(config.debug & DEBUG_SHMEM)
 		{
-			// Debug output
+			// Debugging output
 			logg("Not adding \"%s\" (unchanged)", name);
 		}
+
+		// Release allocated memory
+		free(hostname);
+
 		// Mark entry as not new
 		clients[clientID].new = false;
+
+		// Unlock shared memory
 		unlock_shm();
 	}
 }
@@ -138,7 +145,7 @@ void resolveForwardDestinations(bool onlynew)
 
 		// Important: Don't hold a lock while resolving as the main thread
 		// (dnsmasq) needs to be operable during the call to resolveHostname()
-		const char* hostname = resolveHostname(ipaddr);
+		char* hostname = resolveHostname(ipaddr);
 
 		// Finally, lock data when storing obtained hostname
 		lock_shm();
@@ -151,11 +158,17 @@ void resolveForwardDestinations(bool onlynew)
 		}
 		else if(config.debug & DEBUG_SHMEM)
 		{
-			// Debug output
+			// Debugging output
 			logg("Not adding \"%s\" (unchanged)", name);
 		}
+
+		// Release allocated memory
+		free(hostname);
+
 		// Mark entry as not new
 		forwarded[forwardID].new = false;
+
+		// Unlock shared memory
 		unlock_shm();
 	}
 }
