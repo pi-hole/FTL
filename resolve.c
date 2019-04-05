@@ -104,6 +104,12 @@ void resolveClients(bool onlynew)
 			// always initialized with an empty string at position 0
 			clients[clientID].namepos = addstr(hostname);
 		}
+		else if(config.debug & DEBUG_SHMEM)
+		{
+			// Debug output
+			logg("Not adding \"%s\" (unchanged)", name);
+		}
+		// Mark entry as not new
 		clients[clientID].new = false;
 		unlock_shm();
 	}
@@ -143,6 +149,12 @@ void resolveForwardDestinations(bool onlynew)
 			// always initialized with an empty string at position 0
 			forwarded[forwardID].namepos = addstr(hostname);
 		}
+		else if(config.debug & DEBUG_SHMEM)
+		{
+			// Debug output
+			logg("Not adding \"%s\" (unchanged)", name);
+		}
+		// Mark entry as not new
 		forwarded[forwardID].new = false;
 		unlock_shm();
 	}
