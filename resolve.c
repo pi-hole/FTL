@@ -99,10 +99,10 @@ void resolveClients(bool onlynew)
 		lock_shm();
 
 		// Only store new hostname if it changed
+		// We do not need to check for name == NULL as name is
+		// always initialized with an empty string at position 0
 		if(hostname != NULL && strcmp(name, hostname) != 0)
 		{
-			// We do not need to check for name == NULL as name is
-			// always initialized with an empty string at position 0
 			clients[clientID].namepos = addstr(hostname);
 		}
 		else if(config.debug & DEBUG_SHMEM)
@@ -112,7 +112,8 @@ void resolveClients(bool onlynew)
 		}
 
 		// Release allocated memory
-		free(hostname);
+		if(hostname != NULL)
+			free(hostname);
 
 		// Mark entry as not new
 		clients[clientID].new = false;
@@ -150,10 +151,10 @@ void resolveForwardDestinations(bool onlynew)
 		// Finally, lock data when storing obtained hostname
 		lock_shm();
 		// Only store new hostname if it changed
+		// We do not need to check for name == NULL as name is
+		// always initialized with an empty string at position 0
 		if(hostname != NULL && strcmp(name, hostname) != 0)
 		{
-			// We do not need to check for name == NULL as name is
-			// always initialized with an empty string at position 0
 			forwarded[forwardID].namepos = addstr(hostname);
 		}
 		else if(config.debug & DEBUG_SHMEM)
@@ -163,7 +164,8 @@ void resolveForwardDestinations(bool onlynew)
 		}
 
 		// Release allocated memory
-		free(hostname);
+		if(hostname != NULL)
+			free(hostname);
 
 		// Mark entry as not new
 		forwarded[forwardID].new = false;
