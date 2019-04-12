@@ -11,14 +11,6 @@
 #include "FTL.h"
 #include "shmem.h"
 
-// Resolve new client and upstream server host names
-// once every minute
-#define RESOLVE_INTERVAL 60
-
-// Re-resolve client names
-// once every hour
-#define RERESOLVE_INTERVAL 3600
-
 static char *resolveHostname(const char *addr)
 {
 	// Get host name
