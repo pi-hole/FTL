@@ -71,6 +71,37 @@ static char *resolveHostname(const char *addr)
 	return hostname;
 }
 
+// Resolve upstream destination host names
+static size_t resolveAndAddHostname(size_t ippos, size_t oldnamepos)
+{
+	// Get IP and host name strings
+	const char* ipaddr = getstr(ippos);
+	const char* oldname = getstr(oldnamepos);
+
+	// Important: Don't hold a lock while resolving as the main thread
+	// (dnsmasq) needs to be operable during the call to resolveHostname()
+	char* newname = resolveHostname(ipaddr);
+
+	// Only store new newname if it changed
+	if(newname != NULL && strcmp(oldname, newname) != 0)
+	{
+		// We do not need to check for name == NULL as name is
+		// always initialized with an empty string at position 0
+		size_t newnamepos = addstr(newname);
+		if(newname != NULL)
+			free(newname);
+		return newnamepos;
+	}
+	else if(config.debug & DEBUG_SHMEM)
+	{
+		// Debugging output
+		logg("Not adding \"%s\" to buffer (unchanged)", oldname);
+	}
+
+	// Not changed, return old namepos
+	return oldnamepos;
+}
+
 // Resolve client host names
 void resolveClients(bool onlynew)
 {
@@ -85,41 +116,20 @@ void resolveClients(bool onlynew)
 		if(onlynew && !clients[clientID].new)
 			continue;
 
-		// Lock data when obtaining IP of this client
-		lock_shm();
-		const char* ipaddr = getstr(clients[clientID].ippos);
-		const char* name = getstr(clients[clientID].namepos);
-		unlock_shm();
+		// Obtain/update hostname of this client
+		size_t oldnamepos = clients[clientID].namepos;
+		size_t newnamepos = resolveAndAddHostname(clients[clientID].ippos, oldnamepos);
 
-		// Important: Don't hold a lock while resolving as the main thread
-		// (dnsmasq) needs to be operable during the call to resolveHostname()
-		char* hostname = resolveHostname(ipaddr);
-
-		// Finally, lock data when storing obtained hostname
-		lock_shm();
-
-		// Only store new hostname if it changed
-		// We do not need to check for name == NULL as name is
-		// always initialized with an empty string at position 0
-		if(hostname != NULL && strcmp(name, hostname) != 0)
+		if(newnamepos != oldnamepos)
 		{
-			clients[clientID].namepos = addstr(hostname);
+			// Need lock when storing obtained hostname
+			lock_shm();
+			clients[clientID].namepos = newnamepos;
+			unlock_shm();
 		}
-		else if(config.debug & DEBUG_SHMEM)
-		{
-			// Debugging output
-			logg("Not adding \"%s\" to buffer (unchanged)", name);
-		}
-
-		// Release allocated memory
-		if(hostname != NULL)
-			free(hostname);
 
 		// Mark entry as not new
 		clients[clientID].new = false;
-
-		// Unlock shared memory
-		unlock_shm();
 	}
 }
 
@@ -137,41 +147,20 @@ void resolveForwardDestinations(bool onlynew)
 		if(onlynew && !forwarded[forwardID].new)
 			continue;
 
-		// Lock data when obtaining IP of this forward destination
-		lock_shm();
-		const char* ipaddr = getstr(forwarded[forwardID].ippos);
-		const char* name = getstr(forwarded[forwardID].namepos);
-		unlock_shm();
+		// Obtain/update hostname of this client
+		size_t oldnamepos = forwarded[forwardID].namepos;
+		size_t newnamepos = resolveAndAddHostname(forwarded[forwardID].ippos, oldnamepos);
 
-
-		// Important: Don't hold a lock while resolving as the main thread
-		// (dnsmasq) needs to be operable during the call to resolveHostname()
-		char* hostname = resolveHostname(ipaddr);
-
-		// Finally, lock data when storing obtained hostname
-		lock_shm();
-		// Only store new hostname if it changed
-		// We do not need to check for name == NULL as name is
-		// always initialized with an empty string at position 0
-		if(hostname != NULL && strcmp(name, hostname) != 0)
+		if(newnamepos != oldnamepos)
 		{
-			forwarded[forwardID].namepos = addstr(hostname);
+			// Need lock when storing obtained hostname
+			lock_shm();
+			forwarded[forwardID].namepos = newnamepos;
+			unlock_shm();
 		}
-		else if(config.debug & DEBUG_SHMEM)
-		{
-			// Debugging output
-			logg("Not adding \"%s\" to buffer (unchanged)", name);
-		}
-
-		// Release allocated memory
-		if(hostname != NULL)
-			free(hostname);
 
 		// Mark entry as not new
 		forwarded[forwardID].new = false;
-
-		// Unlock shared memory
-		unlock_shm();
 	}
 }
 
