@@ -102,25 +102,28 @@ static size_t resolveAndAddHostname(size_t ippos, size_t oldnamepos)
 // Resolve client host names
 void resolveClients(bool onlynew)
 {
-	int clientID;
-	for(clientID = 0; clientID < counters->clients; clientID++)
+	// Lock counter access here, we use a copy in the following loop
+	lock_shm();
+	int clientscount = counters->clients;
+	unlock_shm();
+	for(int clientID = 0; clientID < clientscount; clientID++)
 	{
 		// Memory validation
 		validate_access("clients", clientID, true, __LINE__, __FUNCTION__, __FILE__);
 
-		// If onlynew flag is set, we will only resolve new clients
-		// If not, we will try to re-resolve all known clients
+		// Memory access needs to get locked
 		lock_shm();
 		bool newlock = clients[clientID].new;
+		size_t ippos = clients[clientID].ippos;
+		size_t oldnamepos = clients[clientID].namepos;
 		unlock_shm();
+
+		// If onlynew flag is set, we will only resolve new clients
+		// If not, we will try to re-resolve all known clients
 		if(onlynew && !newlock)
 			continue;
 
 		// Obtain/update hostname of this client
-		lock_shm();
-		size_t oldnamepos = clients[clientID].namepos;
-		size_t ippos = clients[clientID].ippos;
-		unlock_shm();
 		size_t newnamepos = resolveAndAddHostname(ippos, oldnamepos);
 
 		if(newnamepos != oldnamepos)
@@ -128,38 +131,45 @@ void resolveClients(bool onlynew)
 			// Need lock when storing obtained hostname
 			lock_shm();
 			clients[clientID].namepos = newnamepos;
+			clients[clientID].new = false;
 			unlock_shm();
 		}
 
-		// Mark entry as not new
-		lock_shm();
-		clients[clientID].new = false;
-		unlock_shm();
+		// Mark entry as not new even when we don't have a new host name
+		if(clients[clientID].new)
+		{
+			lock_shm();
+			clients[clientID].new = false;
+			unlock_shm();
+		}
 	}
 }
 
 // Resolve upstream destination host names
 void resolveForwardDestinations(bool onlynew)
 {
-	int forwardID;
-	for(forwardID = 0; forwardID < counters->forwarded; forwardID++)
+	// Lock counter access here, we use a copy in the following loop
+	lock_shm();
+	int forwardedcount = counters->forwarded;
+	unlock_shm();
+	for(int forwardID = 0; forwardID < forwardedcount; forwardID++)
 	{
 		// Memory validation
 		validate_access("forwarded", forwardID, true, __LINE__, __FUNCTION__, __FILE__);
 
-		// If onlynew flag is set, we will only resolve new upstream destinations
-		// If not, we will try to re-resolve all known upstream destinations
+		// Memory access needs to get locked
 		lock_shm();
 		bool newflag = forwarded[forwardID].new;
+		size_t ippos = forwarded[forwardID].ippos;
+		size_t oldnamepos = forwarded[forwardID].namepos;
 		unlock_shm();
+
+		// If onlynew flag is set, we will only resolve new upstream destinations
+		// If not, we will try to re-resolve all known upstream destinations
 		if(onlynew && !newflag)
 			continue;
 
 		// Obtain/update hostname of this client
-		lock_shm();
-		size_t oldnamepos = forwarded[forwardID].namepos;
-		size_t ippos = forwarded[forwardID].ippos;
-		unlock_shm();
 		size_t newnamepos = resolveAndAddHostname(ippos, oldnamepos);
 
 		if(newnamepos != oldnamepos)
@@ -167,13 +177,17 @@ void resolveForwardDestinations(bool onlynew)
 			// Need lock when storing obtained hostname
 			lock_shm();
 			forwarded[forwardID].namepos = newnamepos;
+			forwarded[forwardID].new = false;
 			unlock_shm();
 		}
 
 		// Mark entry as not new
-		lock_shm();
-		forwarded[forwardID].new = false;
-		unlock_shm();
+		if(forwarded[forwardID].new)
+		{
+			lock_shm();
+			forwarded[forwardID].new = false;
+			unlock_shm();
+		}
 	}
 }
 
