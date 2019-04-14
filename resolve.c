@@ -126,7 +126,9 @@ void resolveClients(bool onlynew)
 		}
 
 		// Mark entry as not new
+		lock_shm();
 		clients[clientID].new = false;
+		unlock_shm();
 	}
 }
 
@@ -157,7 +159,9 @@ void resolveForwardDestinations(bool onlynew)
 		}
 
 		// Mark entry as not new
+		lock_shm();
 		forwarded[forwardID].new = false;
+		unlock_shm();
 	}
 }
 
