@@ -67,8 +67,10 @@ static char *resolveHostname(const char *addr)
 static size_t resolveAndAddHostname(size_t ippos, size_t oldnamepos)
 {
 	// Get IP and host name strings
+	lock_shm();
 	const char* ipaddr = getstr(ippos);
 	const char* oldname = getstr(oldnamepos);
+	unlock_shm();
 
 	// Important: Don't hold a lock while resolving as the main thread
 	// (dnsmasq) needs to be operable during the call to resolveHostname()
@@ -79,7 +81,9 @@ static size_t resolveAndAddHostname(size_t ippos, size_t oldnamepos)
 	{
 		// We do not need to check for name == NULL as name is
 		// always initialized with an empty string at position 0
+		lock_shm();
 		size_t newnamepos = addstr(newname);
+		unlock_shm();
 		if(newname != NULL)
 			free(newname);
 		return newnamepos;
