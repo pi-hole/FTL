@@ -126,23 +126,13 @@ void resolveClients(bool onlynew)
 		// Obtain/update hostname of this client
 		size_t newnamepos = resolveAndAddHostname(ippos, oldnamepos);
 
-		if(newnamepos != oldnamepos)
-		{
-			// Need lock when storing obtained hostname
-			lock_shm();
-			clients[clientID].namepos = newnamepos;
-			clients[clientID].new = false;
-			newflag = false;
-			unlock_shm();
-		}
+		lock_shm();
+		// Store obtained host name (may be unchanged)
+		clients[clientID].namepos = newnamepos;
 
-		// Mark entry as not new even when we don't have a new host name
-		if(newflag)
-		{
-			lock_shm();
-			clients[clientID].new = false;
-			unlock_shm();
-		}
+		// Mark entry as not new
+		clients[clientID].new = false;
+		unlock_shm();
 	}
 }
 
@@ -173,23 +163,12 @@ void resolveForwardDestinations(bool onlynew)
 		// Obtain/update hostname of this client
 		size_t newnamepos = resolveAndAddHostname(ippos, oldnamepos);
 
-		if(newnamepos != oldnamepos)
-		{
-			// Need lock when storing obtained hostname
-			lock_shm();
-			forwarded[forwardID].namepos = newnamepos;
-			forwarded[forwardID].new = false;
-			newflag = false;
-			unlock_shm();
-		}
-
+		lock_shm();
+		// Store obtained host name (may be unchanged)
+		forwarded[forwardID].namepos = newnamepos;
 		// Mark entry as not new
-		if(newflag)
-		{
-			lock_shm();
-			forwarded[forwardID].new = false;
-			unlock_shm();
-		}
+		forwarded[forwardID].new = false;
+		unlock_shm();
 	}
 }
 
