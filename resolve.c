@@ -113,14 +113,14 @@ void resolveClients(bool onlynew)
 
 		// Memory access needs to get locked
 		lock_shm();
-		bool newlock = clients[clientID].new;
+		bool newflag = clients[clientID].new;
 		size_t ippos = clients[clientID].ippos;
 		size_t oldnamepos = clients[clientID].namepos;
 		unlock_shm();
 
 		// If onlynew flag is set, we will only resolve new clients
 		// If not, we will try to re-resolve all known clients
-		if(onlynew && !newlock)
+		if(onlynew && !newflag)
 			continue;
 
 		// Obtain/update hostname of this client
@@ -132,11 +132,12 @@ void resolveClients(bool onlynew)
 			lock_shm();
 			clients[clientID].namepos = newnamepos;
 			clients[clientID].new = false;
+			newflag = false;
 			unlock_shm();
 		}
 
 		// Mark entry as not new even when we don't have a new host name
-		if(clients[clientID].new)
+		if(newflag)
 		{
 			lock_shm();
 			clients[clientID].new = false;
@@ -178,11 +179,12 @@ void resolveForwardDestinations(bool onlynew)
 			lock_shm();
 			forwarded[forwardID].namepos = newnamepos;
 			forwarded[forwardID].new = false;
+			newflag = false;
 			unlock_shm();
 		}
 
 		// Mark entry as not new
-		if(forwarded[forwardID].new)
+		if(newflag)
 		{
 			lock_shm();
 			forwarded[forwardID].new = false;
