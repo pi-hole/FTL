@@ -110,12 +110,18 @@ void resolveClients(bool onlynew)
 
 		// If onlynew flag is set, we will only resolve new clients
 		// If not, we will try to re-resolve all known clients
-		if(onlynew && !clients[clientID].new)
+		lock_shm();
+		bool newlock = clients[clientID].new;
+		unlock_shm();
+		if(onlynew && !newlock)
 			continue;
 
 		// Obtain/update hostname of this client
+		lock_shm();
 		size_t oldnamepos = clients[clientID].namepos;
-		size_t newnamepos = resolveAndAddHostname(clients[clientID].ippos, oldnamepos);
+		size_t ippos = clients[clientID].ippos;
+		unlock_shm();
+		size_t newnamepos = resolveAndAddHostname(ippos, oldnamepos);
 
 		if(newnamepos != oldnamepos)
 		{
@@ -143,12 +149,18 @@ void resolveForwardDestinations(bool onlynew)
 
 		// If onlynew flag is set, we will only resolve new upstream destinations
 		// If not, we will try to re-resolve all known upstream destinations
-		if(onlynew && !forwarded[forwardID].new)
+		lock_shm();
+		bool newflag = forwarded[forwardID].new;
+		unlock_shm();
+		if(onlynew && !newflag)
 			continue;
 
 		// Obtain/update hostname of this client
+		lock_shm();
 		size_t oldnamepos = forwarded[forwardID].namepos;
-		size_t newnamepos = resolveAndAddHostname(forwarded[forwardID].ippos, oldnamepos);
+		size_t ippos = forwarded[forwardID].ippos;
+		unlock_shm();
+		size_t newnamepos = resolveAndAddHostname(ippos, oldnamepos);
 
 		if(newnamepos != oldnamepos)
 		{
