@@ -76,16 +76,17 @@ static size_t resolveAndAddHostname(size_t ippos, size_t oldnamepos)
 	// (dnsmasq) needs to be operable during the call to resolveHostname()
 	char* newname = resolveHostname(ipaddr);
 
-	// Only store new newname if it changed
+	// Only store new newname if it is valid and differs from oldname
+	// We do not need to check for oldname == NULL as names are
+	// always initialized with an empty string at position 0
 	if(newname != NULL && strcmp(oldname, newname) != 0)
 	{
-		// We do not need to check for name == NULL as name is
-		// always initialized with an empty string at position 0
 		lock_shm();
 		size_t newnamepos = addstr(newname);
+		// newname has already been checked against NULL
+		// so we can safely free it
+		free(newname);
 		unlock_shm();
-		if(newname != NULL)
-			free(newname);
 		return newnamepos;
 	}
 	else if(config.debug & DEBUG_SHMEM)
