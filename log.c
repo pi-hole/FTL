@@ -11,8 +11,8 @@
 #include "FTL.h"
 #include "version.h"
 
-pthread_mutex_t lock;
-FILE *logfile = NULL;
+static pthread_mutex_t lock;
+static FILE *logfile = NULL;
 
 static void close_FTL_log(void)
 {
@@ -20,7 +20,7 @@ static void close_FTL_log(void)
 		fclose(logfile);
 }
 
-void open_FTL_log(bool test)
+void open_FTL_log(const bool test)
 {
 	if(test)
 	{
@@ -52,11 +52,11 @@ void open_FTL_log(bool test)
 
 static void get_timestr(char *timestring)
 {
-	time_t t = time(NULL);
-	struct tm tm = *localtime(&t);
+	const time_t t = time(NULL);
+	const struct tm tm = *localtime(&t);
 	struct timeval tv;
 	gettimeofday(&tv, NULL);
-	int millisec = tv.tv_usec/1000;
+	const int millisec = tv.tv_usec/1000;
 
 	sprintf(timestring,"%d-%02d-%02d %02d:%02d:%02d.%03i", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, millisec);
 }
@@ -72,7 +72,7 @@ void __attribute__ ((format (gnu_printf, 1, 2))) logg(const char *format, ...)
 
 	// Get and log PID of current process to avoid ambiguities when more than one
 	// pihole-FTL instance is logging into the same file
-	long pid = (long)getpid();
+	const long pid = (long)getpid();
 
 	// Print to stdout before writing to file
 	if(!daemonmode)
@@ -108,7 +108,7 @@ void __attribute__ ((format (gnu_printf, 1, 2))) logg(const char *format, ...)
 	pthread_mutex_unlock(&lock);
 }
 
-void format_memory_size(char *prefix, unsigned long int bytes, double *formated)
+void format_memory_size(char *prefix, const unsigned long int bytes, double *formated)
 {
 	int i;
 	*formated = bytes;
@@ -124,7 +124,7 @@ void format_memory_size(char *prefix, unsigned long int bytes, double *formated)
 	strcpy(prefix, prefixes[i]);
 }
 
-void logg_struct_resize(const char* str, int to, int step)
+void logg_struct_resize(const char* str, const int to, const int step)
 {
 	logg("Notice: Increasing %s struct size from %i to %i", str, (to-step), to);
 }
@@ -141,7 +141,7 @@ void log_counter_info(void)
 	logg(" -> Known forward destinations: %i", counters->forwarded);
 }
 
-void log_FTL_version(bool crashreport)
+void log_FTL_version(const bool crashreport)
 {
 	logg("FTL branch: %s", GIT_BRANCH);
 	logg("FTL version: %s", GIT_TAG);

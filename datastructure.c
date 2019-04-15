@@ -17,7 +17,7 @@ void strtolower(char *str)
 	while(str[i]){ str[i] = tolower(str[i]); i++; }
 }
 
-int findForwardID(const char * forward, bool count)
+int findForwardID(const char * forward, const bool count)
 {
 	int i, forwardID = -1;
 	if(counters->forwarded > 0)
@@ -106,7 +106,7 @@ int findDomainID(const char *domain)
 	return domainID;
 }
 
-int findClientID(const char *client, bool count)
+int findClientID(const char *client, const bool count)
 {
 	// Compare content of client against known client IP addresses
 	if(counters->clients > 0)
@@ -181,7 +181,7 @@ bool isValidIPv6(const char *addr)
 
 // Privacy-level sensitive subroutine that returns the domain name
 // only when appropriate for the requested query
-const char *getDomainString(int queryID)
+const char *getDomainString(const int queryID)
 {
 	if(queries[queryID].privacylevel < PRIVACY_HIDE_DOMAINS)
 	{
@@ -194,7 +194,7 @@ const char *getDomainString(int queryID)
 
 // Privacy-level sensitive subroutine that returns the client IP
 // only when appropriate for the requested query
-const char *getClientIPString(int queryID)
+const char *getClientIPString(const int queryID)
 {
 	if(queries[queryID].privacylevel < PRIVACY_HIDE_DOMAINS_CLIENTS)
 	{
@@ -207,7 +207,7 @@ const char *getClientIPString(int queryID)
 
 // Privacy-level sensitive subroutine that returns the client host name
 // only when appropriate for the requested query
-const char *getClientNameString(int queryID)
+const char *getClientNameString(const int queryID)
 {
 	if(queries[queryID].privacylevel < PRIVACY_HIDE_DOMAINS_CLIENTS)
 	{

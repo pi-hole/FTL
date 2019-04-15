@@ -65,7 +65,7 @@ void parse_arp_cache(void)
 	char * linebuffer = NULL;
 	size_t linebuffersize = 0;
 	char ip[100], mask[100], hwaddr[100], iface[100];
-	int type, flags, entries = 0;
+	unsigned int type, flags, entries = 0;
 	time_t now = time(NULL);
 
 	// Start collecting database commands
@@ -101,7 +101,7 @@ void parse_arp_cache(void)
 		}
 
 		// Perform SQL query
-		int dbID = db_query_int(querystr);
+		const int dbID = db_query_int(querystr);
 		free(querystr);
 
 		if(dbID == DB_FAILED)
@@ -120,7 +120,7 @@ void parse_arp_cache(void)
 
 		// This client is known (by its IP address) to pihole-FTL if
 		// findClientID() returned a non-negative index
-		bool clientKnown = clientID >= 0;
+		const bool clientKnown = clientID >= 0;
 
 		// Get hostname of this client if the client is known
 		const char *hostname = "";

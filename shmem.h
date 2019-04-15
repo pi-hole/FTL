@@ -27,7 +27,7 @@ typedef struct {
 /// \param size the size to allocate
 /// \return a structure with a pointer to the mounted shared memory. The pointer
 /// will always be valid, because if it failed FTL will have exited.
-SharedMemory create_shm(const char *name, size_t size);
+SharedMemory create_shm(const char *name, const size_t size);
 
 /// Reallocate shared memory
 ///
@@ -35,7 +35,7 @@ SharedMemory create_shm(const char *name, size_t size);
 /// \param size the new size
 /// \param resize whether the object should be resized or only remapped
 /// \return if reallocation was successful
-bool realloc_shm(SharedMemory *sharedMemory, size_t size, bool resize);
+bool realloc_shm(SharedMemory *sharedMemory, const size_t size, const bool resize);
 
 /// Disconnect from shared memory. If there are no other connections to shared memory, it will be deleted.
 ///

@@ -72,7 +72,7 @@ static const char *resolveHostname(const char *addr)
 }
 
 // Resolve client host names
-void resolveClients(bool onlynew)
+void resolveClients(const bool onlynew)
 {
 	int clientID;
 	for(clientID = 0; clientID < counters->clients; clientID++)
@@ -103,7 +103,7 @@ void resolveClients(bool onlynew)
 }
 
 // Resolve upstream destination host names
-void resolveForwardDestinations(bool onlynew)
+void resolveForwardDestinations(const bool onlynew)
 {
 	int forwardID;
 	for(forwardID = 0; forwardID < counters->forwarded; forwardID++)

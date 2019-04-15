@@ -105,7 +105,7 @@ int countlineswith(const char* str, const char* fname)
 
 void check_blocking_status(void)
 {
-	char* blocking = read_setupVarsconf("BLOCKING_ENABLED");
+	const char* blocking = read_setupVarsconf("BLOCKING_ENABLED");
 	const char* message;
 
 	if(blocking == NULL || getSetupVarsBool(blocking))

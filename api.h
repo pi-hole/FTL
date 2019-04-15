@@ -9,36 +9,36 @@
 *  Please see LICENSE file for your rights under this license. */
 
 // Statistic methods
-void getStats(int *sock);
-void getOverTime(int *sock);
-void getTopDomains(const char *client_message, int *sock);
-void getTopClients(const char *client_message, int *sock);
-void getForwardDestinations(const char *client_message, int *sock);
-void getQueryTypes(int *sock);
-void getAllQueries(const char *client_message, int *sock);
-void getRecentBlocked(const char *client_message, int *sock);
-void getQueryTypesOverTime(int *sock);
-void getClientsOverTime(int *sock);
-void getClientNames(int *sock);
-void getDomainDetails(const char *client_message, int *sock);
+void getStats(const int *sock);
+void getOverTime(const int *sock);
+void getTopDomains(const char *client_message, const int *sock);
+void getTopClients(const char *client_message, const int *sock);
+void getForwardDestinations(const char *client_message, const int *sock);
+void getQueryTypes(const int *sock);
+void getAllQueries(const char *client_message, const int *sock);
+void getRecentBlocked(const char *client_message, const int *sock);
+void getQueryTypesOverTime(const int *sock);
+void getClientsOverTime(const int *sock);
+void getClientNames(const int *sock);
+void getDomainDetails(const char *client_message, const int *sock);
 
 // FTL methods
-void getClientID(int *sock);
-void getVersion(int *sock);
-void getDBstats(int *sock);
-void getUnknownQueries(int *sock);
+void getClientID(const int *sock);
+void getVersion(const int *sock);
+void getDBstats(const int *sock);
+void getUnknownQueries(const int *sock);
 
 // DNS resolver methods (dnsmasq_interface.c)
-void getCacheInformation(int *sock);
+void getCacheInformation(const int *sock);
 
 // MessagePack serialization helpers
-void pack_eom(int sock);
-void pack_bool(int sock, bool value);
-void pack_uint8(int sock, uint8_t value);
-void pack_uint64(int sock, uint64_t value);
-void pack_int32(int sock, int32_t value);
-void pack_int64(int sock, int64_t value);
-void pack_float(int sock, float value);
-bool pack_fixstr(int sock, const char *string);
-bool pack_str32(int sock, const char *string);
-void pack_map16_start(int sock, uint16_t length);
+void pack_eom(const int sock);
+void pack_bool(const int sock, const bool value);
+void pack_uint8(const int sock, const uint8_t value);
+void pack_uint64(const int sock, const uint64_t value);
+void pack_int32(const int sock, const int32_t value);
+void pack_int64(const int sock, const int64_t value);
+void pack_float(const int sock, const float value);
+bool pack_fixstr(const int sock, const char *string);
+bool pack_str32(const int sock, const char *string);
+void pack_map16_start(const int sock, const uint16_t length);
