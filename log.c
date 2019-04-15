@@ -124,11 +124,6 @@ void format_memory_size(char *prefix, const unsigned long int bytes, double *for
 	strcpy(prefix, prefixes[i]);
 }
 
-void logg_struct_resize(const char* str, const int to, const int step)
-{
-	logg("Notice: Increasing %s struct size from %i to %i", str, (to-step), to);
-}
-
 void log_counter_info(void)
 {
 	logg(" -> Total DNS queries: %i", counters->queries);

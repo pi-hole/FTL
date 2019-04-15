@@ -22,7 +22,7 @@ static void save_reply_type(const unsigned int flags, const int queryID, const s
 static unsigned long converttimeval(const struct timeval time) __attribute__((const));
 static void block_single_domain_regex(const char *domain);
 static void detect_blocked_IP(const unsigned short flags, const char* answer, const int queryID);
-static void query_externally_blocked(const int i, const unsigned char status);
+static void query_externally_blocked(const int queryID, const unsigned char status);
 static int findQueryID(const int id);
 
 unsigned char* pihole_privacylevel = &config.privacylevel;
