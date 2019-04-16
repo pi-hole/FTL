@@ -17,22 +17,22 @@ static bool *regexconfigured = NULL;
 static char **regexbuffer = NULL;
 static whitelistStruct whitelist = { NULL, 0 };
 
-static void log_regex_error(const char *where, int errcode, int index)
+static void log_regex_error(const char *where, const int errcode, const int index)
 {
 	// Regex failed for some reason (probably user syntax error)
 	// Get error string and log it
-	size_t length = regerror(errcode, &regex[index], NULL, 0);
+	const size_t length = regerror(errcode, &regex[index], NULL, 0);
 	char *buffer = calloc(length,sizeof(char));
 	(void) regerror (errcode, &regex[index], buffer, length);
 	logg("ERROR %s regex on line %i: %s (%i)", where, index+1, buffer, errcode);
 	free(buffer);
 }
 
-static bool init_regex(const char *regexin, int index)
+static bool init_regex(const char *regexin, const int index)
 {
 	// compile regular expressions into data structures that
 	// can be used with regexec to match against a string
-	int errcode = regcomp(&regex[index], regexin, REG_EXTENDED);
+	const int errcode = regcomp(&regex[index], regexin, REG_EXTENDED);
 	if(errcode != 0)
 	{
 		log_regex_error("compiling", errcode, index);
@@ -47,7 +47,7 @@ static bool init_regex(const char *regexin, int index)
 	return true;
 }
 
-bool __attribute__((pure)) in_whitelist(char *domain)
+bool __attribute__((pure)) in_whitelist(const char *domain)
 {
 	bool found = false;
 	for(int i=0; i < whitelist.count; i++)
@@ -77,14 +77,13 @@ static void free_whitelist_domains(void)
 	}
 }
 
-bool match_regex(char *input)
+bool match_regex(const char *input)
 {
-	int index;
 	bool matched = false;
 
 	// Start matching timer
 	timer_start(REGEX_TIMER);
-	for(index = 0; index < num_regex; index++)
+	for(int index = 0; index < num_regex; index++)
 	{
 		// Only check regex which have been successfully compiled
 		if(!regexconfigured[index])

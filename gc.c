@@ -44,12 +44,11 @@ void *GC_thread(void *val)
 
 			if(config.debug & DEBUG_GC) timer_start(GC_TIMER);
 
-			long int i;
 			int removed = 0;
 			if(config.debug & DEBUG_GC) logg("GC starting, mintime: %lu %s", mintime, ctime(&mintime));
 
 			// Process all queries
-			for(i=0; i < counters->queries; i++)
+			for(long int i=0; i < counters->queries; i++)
 			{
 				queriesData* query = getQuery(i, true);
 				// Test if this query is too new
@@ -61,7 +60,7 @@ void *GC_thread(void *val)
 				client->count--;
 
 				// Adjust total counters and total over time data
-				int timeidx = query->timeidx;
+				const int timeidx = query->timeidx;
 				overTime[timeidx].total--;
 				// Adjust corresponding overTime counters
 				client->overTime[timeidx]--;
@@ -169,7 +168,8 @@ void *GC_thread(void *val)
 			// Determine if overTime memory needs to get moved
 			moveOverTimeMemory(mintime);
 
-			if(config.debug & DEBUG_GC) logg("Notice: GC removed %i queries (took %.2f ms)", removed, timer_elapsed_msec(GC_TIMER));
+			if(config.debug & DEBUG_GC)
+				logg("Notice: GC removed %i queries (took %.2f ms)", removed, timer_elapsed_msec(GC_TIMER));
 
 			// Release thread lock
 			unlock_shm();

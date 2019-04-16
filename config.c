@@ -13,7 +13,7 @@
 ConfigStruct config;
 static char *parse_FTLconf(FILE *fp, const char * key);
 static void release_config_memory(void);
-void getpath(FILE* fp, const char *option, const char *defaultloc, char **pointer);
+static void getpath(FILE* fp, const char *option, const char *defaultloc, char **pointer);
 
 char *conflinebuffer = NULL;
 
@@ -334,7 +334,7 @@ void read_FTLconf(void)
 		fclose(fp);
 }
 
-void getpath(FILE* fp, const char *option, const char *defaultloc, char **pointer)
+static void getpath(FILE* fp, const char *option, const char *defaultloc, char **pointer)
 {
 	// This subroutine is used to read paths from pihole-FTL.conf
 	// fp:         File pointer to opened and readable config file
@@ -588,6 +588,18 @@ void read_debuging_settings(FILE *fp)
 	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
 		config.debug |= DEBUG_OVERTIME;
 
+	// DEBUG_EXTBLOCKED
+	// defaults to: false
+	buffer = parse_FTLconf(fp, "DEBUG_EXTBLOCKED");
+	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
+		config.debug |= DEBUG_EXTBLOCKED;
+
+	// DEBUG_CAPS
+	// defaults to: false
+	buffer = parse_FTLconf(fp, "DEBUG_CAPS");
+	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
+		config.debug |= DEBUG_CAPS;
+
 	// DEBUG_ALL
 	// defaults to: false
 	buffer = parse_FTLconf(fp, "DEBUG_ALL");
@@ -609,6 +621,8 @@ void read_debuging_settings(FILE *fp)
 		logg("* DEBUG_REGEX      %s *", (config.debug & DEBUG_REGEX)? "YES":"NO ");
 		logg("* DEBUG_API        %s *", (config.debug & DEBUG_API)? "YES":"NO ");
 		logg("* DEBUG_OVERTIME   %s *", (config.debug & DEBUG_OVERTIME)? "YES":"NO ");
+		logg("* DEBUG_EXTBLOCKED %s *", (config.debug & DEBUG_EXTBLOCKED)? "YES":"NO ");
+		logg("* DEBUG_CAPS       %s *", (config.debug & DEBUG_CAPS)? "YES":"NO ");
 		logg("************************");
 	}
 

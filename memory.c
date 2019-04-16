@@ -44,7 +44,7 @@ ConfigStruct config;
 // not be protected by our (error logging) functions!
 
 #undef strdup
-char* __attribute__((malloc)) FTLstrdup(const char *src, const char * file, const char * function, int line)
+char* __attribute__((malloc)) FTLstrdup(const char *src, const char * file, const char * function, const int line)
 {
 	// The FTLstrdup() function returns a pointer to a new string which is a
 	// duplicate of the string s. Memory for the new string is obtained with
@@ -54,7 +54,7 @@ char* __attribute__((malloc)) FTLstrdup(const char *src, const char * file, cons
 		logg("WARN: Trying to copy a NULL string in %s() (%s:%i)", function, file, line);
 		return NULL;
 	}
-	size_t len = strlen(src);
+	const size_t len = strlen(src);
 	char *dest = calloc(len+1, sizeof(char));
 	if(dest == NULL)
 	{
@@ -69,7 +69,7 @@ char* __attribute__((malloc)) FTLstrdup(const char *src, const char * file, cons
 }
 
 #undef calloc
-void* __attribute__((malloc)) __attribute__((alloc_size(1,2))) FTLcalloc(size_t nmemb, size_t size, const char * file, const char * function, int line)
+void* __attribute__((malloc)) __attribute__((alloc_size(1,2))) FTLcalloc(const size_t nmemb, const size_t size, const char * file, const char * function, const int line)
 {
 	// The FTLcalloc() function allocates memory for an array of nmemb elements
 	// of size bytes each and returns a pointer to the allocated memory. The
@@ -85,7 +85,7 @@ void* __attribute__((malloc)) __attribute__((alloc_size(1,2))) FTLcalloc(size_t 
 }
 
 #undef realloc
-void __attribute__((alloc_size(2))) *FTLrealloc(void *ptr_in, size_t size, const char * file, const char * function, int line)
+void __attribute__((alloc_size(2))) *FTLrealloc(void *ptr_in, const size_t size, const char * file, const char * function, const int line)
 {
 	// The FTLrealloc() function changes the size of the memory block pointed to
 	// by ptr to size bytes. The contents will be unchanged in the range from
@@ -106,7 +106,7 @@ void __attribute__((alloc_size(2))) *FTLrealloc(void *ptr_in, size_t size, const
 }
 
 #undef free
-void FTLfree(void *ptr, const char * file, const char * function, int line)
+void FTLfree(void *ptr, const char * file, const char * function, const int line)
 {
 	// The free() function frees the memory space pointed  to  by  ptr,  which
 	// must  have  been  returned by a previous call to malloc(), calloc(), or

@@ -80,6 +80,14 @@
 // can be 24 hours + 59 minutes
 #define OVERTIME_SLOTS ((MAXLOGAGE+1)*3600/OVERTIME_INTERVAL)
 
+// Interval for resolving NEW client and upstream server host names [seconds]
+// Default: 60 (once every minute)
+#define RESOLVE_INTERVAL 60
+
+// Interval for re-resolving ALL known host names [seconds]
+// Default: 3600 (once every hour)
+#define RERESOLVE_INTERVAL 3600
+
 // FTLDNS enums
 enum { DATABASE_WRITE_TIMER, EXIT_TIMER, GC_TIMER, LISTS_TIMER, REGEX_TIMER, ARP_TIMER, LAST_TIMER };
 enum { QUERIES, FORWARDED, CLIENTS, DOMAINS, OVERTIME, WILDCARD };
@@ -103,6 +111,8 @@ enum {
   DEBUG_REGEX      = (1 << 8),  /* 00000001 00000000 */
   DEBUG_API        = (1 << 9),  /* 00000010 00000000 */
   DEBUG_OVERTIME   = (1 << 10), /* 00000100 00000000 */
+  DEBUG_EXTBLOCKED = (1 << 11), /* 00001000 00000000 */
+  DEBUG_CAPS       = (1 << 12), /* 00010000 00000000 */
 };
 
 // Database table "ftl"

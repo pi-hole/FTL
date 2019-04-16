@@ -19,8 +19,8 @@
 /* qsort comparision function (count field), sort ASC */
 static int __attribute__((pure)) cmpasc(const void *a, const void *b)
 {
-	int *elem1 = (int*)a;
-	int *elem2 = (int*)b;
+	const int *elem1 = (int*)a;
+	const int *elem2 = (int*)b;
 
 	if (elem1[1] < elem2[1])
 		return -1;
@@ -33,8 +33,8 @@ static int __attribute__((pure)) cmpasc(const void *a, const void *b)
 // qsort subroutine, sort DESC
 static int __attribute__((pure)) cmpdesc(const void *a, const void *b)
 {
-	int *elem1 = (int*)a;
-	int *elem2 = (int*)b;
+	const int *elem1 = (int*)a;
+	const int *elem2 = (int*)b;
 
 	if (elem1[1] > elem2[1])
 		return -1;
@@ -44,10 +44,10 @@ static int __attribute__((pure)) cmpdesc(const void *a, const void *b)
 		return 0;
 }
 
-void getStats(int *sock)
+void getStats(const int *sock)
 {
-	int blocked = counters->blocked;
-	int total = counters->queries;
+	const int blocked = counters->blocked;
+	const int total = counters->queries;
 	float percentage = 0.0f;
 
 	// Avoid 1/0 condition
@@ -112,7 +112,7 @@ void getStats(int *sock)
 		pack_uint8(*sock, blockingstatus);
 }
 
-void getOverTime(int *sock)
+void getOverTime(const int *sock)
 {
 	int from = 0, until = OVERTIME_SLOTS;
 	bool found = false;
@@ -175,12 +175,12 @@ void getOverTime(int *sock)
 	}
 }
 
-void getTopDomains(const char *client_message, int *sock)
+void getTopDomains(const char *client_message, const int *sock)
 {
 	int temparray[counters->domains][2], count=10, num;
-	bool blocked, audit = false, asc = false;
+	bool audit = false, asc = false;
 
-	blocked = command(client_message, ">top-ads");
+	const bool blocked = command(client_message, ">top-ads");
 
 	// Exit before processing any data if requested via config setting
 	get_privacy_level(NULL);
@@ -230,7 +230,7 @@ void getTopDomains(const char *client_message, int *sock)
 
 
 	// Get filter
-	char * filter = read_setupVarsconf("API_QUERY_LOG_SHOW");
+	const char* filter = read_setupVarsconf("API_QUERY_LOG_SHOW");
 	bool showpermitted = true, showblocked = true;
 	if(filter != NULL)
 	{
@@ -270,8 +270,7 @@ void getTopDomains(const char *client_message, int *sock)
 	for(int i=0; i < counters->domains; i++)
 	{
 		// Get sorted index
-		int domainID = temparray[i][0];
-
+		const int domainID = temparray[i][0];
 		// Get domain pointer
 		const domainsData* domain = getDomain(domainID, true);
 
@@ -341,7 +340,7 @@ void getTopDomains(const char *client_message, int *sock)
 		clearSetupVarsArray();
 }
 
-void getTopClients(const char *client_message, int *sock)
+void getTopClients(const char *client_message, const int *sock)
 {
 	int temparray[counters->clients][2], count=10, num;
 
@@ -398,7 +397,7 @@ void getTopClients(const char *client_message, int *sock)
 		qsort(temparray, counters->clients, sizeof(int[2]), cmpdesc);
 
 	// Get clients which the user doesn't want to see
-	char* excludeclients = read_setupVarsconf("API_EXCLUDE_CLIENTS");
+	const char* excludeclients = read_setupVarsconf("API_EXCLUDE_CLIENTS");
 	if(excludeclients != NULL)
 	{
 		getSetupVarsArray(excludeclients);
@@ -414,8 +413,8 @@ void getTopClients(const char *client_message, int *sock)
 	for(int i=0; i < counters->clients; i++)
 	{
 		// Get sorted indices and counter values (may be either total or blocked count)
-		int clientID = temparray[i][0];
-		int ccount = temparray[i][1];
+		const int clientID = temparray[i][0];
+		const int ccount = temparray[i][1];
 		// Get client pointer
 		const clientsData* client = getClient(clientID, true);
 
@@ -458,7 +457,7 @@ void getTopClients(const char *client_message, int *sock)
 }
 
 
-void getForwardDestinations(const char *client_message, int *sock)
+void getForwardDestinations(const char *client_message, const int *sock)
 {
 	bool sort = true;
 	int temparray[counters->forwarded][2], totalqueries = 0;
@@ -554,7 +553,7 @@ void getForwardDestinations(const char *client_message, int *sock)
 }
 
 
-void getQueryTypes(int *sock)
+void getQueryTypes(const int *sock)
 {
 	int total = 0;
 	for(int i=0; i < TYPE_MAX-1; i++)
@@ -598,7 +597,7 @@ void getQueryTypes(int *sock)
 
 const char *querytypes[8] = {"A","AAAA","ANY","SRV","SOA","PTR","TXT","UNKN"};
 
-void getAllQueries(const char *client_message, int *sock)
+void getAllQueries(const char *client_message, const int *sock)
 {
 	// Exit before processing any data if requested via config setting
 	get_privacy_level(NULL);
@@ -872,7 +871,7 @@ void getAllQueries(const char *client_message, int *sock)
 		free(forwarddest);
 }
 
-void getRecentBlocked(const char *client_message, int *sock)
+void getRecentBlocked(const char *client_message, const int *sock)
 {
 	int num=1;
 
@@ -910,7 +909,7 @@ void getRecentBlocked(const char *client_message, int *sock)
 	}
 }
 
-void getClientID(int *sock)
+void getClientID(const int *sock)
 {
 	if(istelnet[*sock])
 		ssend(*sock,"%i\n", *sock);
@@ -918,10 +917,11 @@ void getClientID(int *sock)
 		pack_int32(*sock, *sock);
 }
 
-void getQueryTypesOverTime(int *sock)
+void getQueryTypesOverTime(const int *sock)
 {
 	int from = -1, until = OVERTIME_SLOTS;
-	time_t mintime = overTime[0].timestamp;
+	const time_t mintime = overTime[0].timestamp;
+
 	for(int slot = 0; slot < OVERTIME_SLOTS; slot++)
 	{
 		if((overTime[slot].total > 0 || overTime[slot].blocked > 0) && overTime[slot].timestamp >= mintime)
@@ -965,7 +965,7 @@ void getQueryTypesOverTime(int *sock)
 	}
 }
 
-void getVersion(int *sock)
+void getVersion(const int *sock)
 {
 	const char * commit = GIT_HASH;
 	const char * tag = GIT_TAG;
@@ -1014,7 +1014,7 @@ void getVersion(int *sock)
 	}
 }
 
-void getDBstats(int *sock)
+void getDBstats(const int *sock)
 {
 	// Get file details
 	struct stat st;
@@ -1041,7 +1041,7 @@ void getDBstats(int *sock)
 	}
 }
 
-void getClientsOverTime(int *sock)
+void getClientsOverTime(const int *sock)
 {
 	int sendit = -1, until = OVERTIME_SLOTS;
 
@@ -1112,8 +1112,7 @@ void getClientsOverTime(int *sock)
 
 			// Get client pointer
 			const clientsData* client = getClient(clientID, true);
-
-			int thisclient = client->overTime[slot];
+			const int thisclient = client->overTime[slot];
 
 			if(istelnet[*sock])
 				ssend(*sock, " %i", thisclient);
@@ -1131,7 +1130,7 @@ void getClientsOverTime(int *sock)
 		clearSetupVarsArray();
 }
 
-void getClientNames(int *sock)
+void getClientNames(const int *sock)
 {
 	// Exit before processing any data if requested via config setting
 	get_privacy_level(NULL);
@@ -1169,7 +1168,6 @@ void getClientNames(int *sock)
 
 		// Get client pointer
 		const clientsData* client = getClient(clientID, true);
-
 		const char *client_ip = getstr(client->ippos);
 		const char *client_name = getstr(client->namepos);
 
@@ -1185,7 +1183,7 @@ void getClientNames(int *sock)
 		clearSetupVarsArray();
 }
 
-void getUnknownQueries(int *sock)
+void getUnknownQueries(const int *sock)
 {
 	// Exit before processing any data if requested via config setting
 	get_privacy_level(NULL);
@@ -1236,7 +1234,7 @@ void getUnknownQueries(int *sock)
 	}
 }
 
-void getDomainDetails(const char *client_message, int *sock)
+void getDomainDetails(const char *client_message, const int *sock)
 {
 	// Get domain name
 	char domainString[128];

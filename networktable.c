@@ -65,7 +65,7 @@ void parse_arp_cache(void)
 	char * linebuffer = NULL;
 	size_t linebuffersize = 0;
 	char ip[100], mask[100], hwaddr[100], iface[100];
-	int type, flags, entries = 0;
+	unsigned int type, flags, entries = 0;
 	time_t now = time(NULL);
 
 	// Start collecting database commands
@@ -102,7 +102,7 @@ void parse_arp_cache(void)
 		}
 
 		// Perform SQL query
-		int dbID = db_query_int(querystr);
+		const int dbID = db_query_int(querystr);
 		free(querystr);
 
 		if(dbID == DB_FAILED)
@@ -122,6 +122,8 @@ void parse_arp_cache(void)
 		// Get client pointer
 		clientsData* client = NULL;
 
+		// This client is known (by its IP address) to pihole-FTL if
+		// findClientID() returned a non-negative index
 		if(clientID >= 0)
 		{
 			client = getClient(clientID, true);
@@ -184,7 +186,8 @@ void parse_arp_cache(void)
 	unlock_shm();
 
 	// Debug logging
-	if(config.debug & DEBUG_ARP) logg("ARP table processing (%i entries) took %.1f ms", entries, timer_elapsed_msec(ARP_TIMER));
+	if(config.debug & DEBUG_ARP)
+		logg("ARP table processing (%i entries) took %.1f ms", entries, timer_elapsed_msec(ARP_TIMER));
 
 	// Close file handle
 	fclose(arpfp);
@@ -199,13 +202,15 @@ static char* getMACVendor(const char* hwaddr)
 	if(stat(FTLfiles.macvendordb, &st) != 0)
 	{
 		// File does not exist
-		if(config.debug & DEBUG_ARP) logg("getMACVenor(%s): %s does not exist", hwaddr, FTLfiles.macvendordb);
+		if(config.debug & DEBUG_ARP)
+			logg("getMACVenor(%s): %s does not exist", hwaddr, FTLfiles.macvendordb);
 		return strdup("");
 	}
 	else if(strlen(hwaddr) != 17)
 	{
 		// MAC address is incomplete
-		if(config.debug & DEBUG_ARP) logg("getMACVenor(%s): MAC invalid (length %zu)", hwaddr, strlen(hwaddr));
+		if(config.debug & DEBUG_ARP)
+			logg("getMACVenor(%s): MAC invalid (length %zu)", hwaddr, strlen(hwaddr));
 		return strdup("");
 	}
 
@@ -269,7 +274,8 @@ void updateMACVendorRecords()
 	if(stat(FTLfiles.macvendordb, &st) != 0)
 	{
 		// File does not exist
-		if(config.debug & DEBUG_ARP) logg("updateMACVendorRecords(): %s does not exist", FTLfiles.macvendordb);
+		if(config.debug & DEBUG_ARP)
+			logg("updateMACVendorRecords(): %s does not exist", FTLfiles.macvendordb);
 		return;
 	}
 

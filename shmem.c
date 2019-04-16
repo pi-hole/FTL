@@ -52,7 +52,7 @@ static ShmSettings *shmSettings = NULL;
 static int pagesize;
 static unsigned int local_shm_counter = 0;
 
-static size_t get_optimal_object_size(size_t objsize, size_t minsize);
+static size_t get_optimal_object_size(const size_t objsize, const size_t minsize);
 
 size_t addstr(const char *str)
 {
@@ -96,7 +96,7 @@ size_t addstr(const char *str)
 	return (shmSettings->next_str_pos - (len + 1));
 }
 
-const char *getstr(size_t pos)
+const char *getstr(const size_t pos)
 {
 	// Only access the string memory if this memory region has already been set
 	if(pos < shmSettings->next_str_pos)
@@ -149,17 +149,17 @@ static void remap_shm(void)
 	local_shm_counter = shmSettings->global_shm_counter;
 }
 
-void _lock_shm(const char* function, const int line, const char * file) {
+void _lock_shm(const char* func, const int line, const char * file) {
 	// Signal that FTL is waiting for a lock
 	shmLock->waitingForLock = true;
 
 	if(config.debug & DEBUG_LOCKS)
-		logg("Waiting for lock in %s() (%s:%i)", function, file, line);
+		logg("Waiting for lock in %s() (%s:%i)", func, file, line);
 
 	int result = pthread_mutex_lock(&shmLock->lock);
 
 	if(config.debug & DEBUG_LOCKS)
-		logg("Obtained lock for %s() (%s:%i)", function, file, line);
+		logg("Obtained lock for %s() (%s:%i)", func, file, line);
 
 	// Check if this process needs to remap the shared memory objects
 	if(shmSettings != NULL &&
@@ -185,11 +185,11 @@ void _lock_shm(const char* function, const int line, const char * file) {
 		logg("Failed to obtain SHM lock: %s", strerror(result));
 }
 
-void _unlock_shm(const char* function, const int line, const char * file) {
+void _unlock_shm(const char* func, const int line, const char * file) {
 	int result = pthread_mutex_unlock(&shmLock->lock);
 
 	if(config.debug & DEBUG_LOCKS)
-		logg("Removed lock in %s() (%s:%i)", function, file, line);
+		logg("Removed lock in %s() (%s:%i)", func, file, line);
 
 	if(result != 0)
 		logg("Failed to unlock SHM lock: %s", strerror(result));
@@ -280,7 +280,7 @@ void destroy_shmem(void)
 	delete_shm(&shm_settings);
 }
 
-SharedMemory create_shm(const char *name, size_t size)
+SharedMemory create_shm(const char *name, const size_t size)
 {
 	if(config.debug & DEBUG_SHMEM)
 		logg("Creating shared memory with name \"%s\" and size %zu", name, size);
@@ -313,10 +313,10 @@ SharedMemory create_shm(const char *name, size_t size)
 	}
 
 	// Resize shared memory file
-	int result = ftruncate(fd, size);
+	ret = ftruncate(fd, size);
 
 	// Check for `ftruncate` error
-	if(result == -1)
+	if(ret == -1)
 	{
 		logg("FATAL: create_shm(): ftruncate(%i, %zu): Failed to resize shared memory object \"%s\": %s",
 		     fd, size, sharedMemory.name, strerror(errno));
@@ -342,7 +342,7 @@ SharedMemory create_shm(const char *name, size_t size)
 	return sharedMemory;
 }
 
-void *enlarge_shmem_struct(char type)
+void *enlarge_shmem_struct(const char type)
 {
 	SharedMemory *sharedMemory = NULL;
 	size_t sizeofobj, allocation_step;
@@ -389,7 +389,7 @@ void *enlarge_shmem_struct(char type)
 	return sharedMemory->ptr;
 }
 
-bool realloc_shm(SharedMemory *sharedMemory, size_t size, bool resize)
+bool realloc_shm(SharedMemory *sharedMemory, const size_t size, const bool resize)
 {
 	// Check if we can skip this routine as nothing is to be done
 	// when an object is not to be resized and its size didn't
@@ -407,7 +407,7 @@ bool realloc_shm(SharedMemory *sharedMemory, size_t size, bool resize)
 	if(resize)
 	{
 		// Open shared memory object
-		int fd = shm_open(sharedMemory->name, O_RDWR, S_IRUSR | S_IWUSR);
+		const int fd = shm_open(sharedMemory->name, O_RDWR, S_IRUSR | S_IWUSR);
 		if(fd == -1)
 		{
 			logg("FATAL: realloc_shm(): Failed to open shared memory object \"%s\": %s",
@@ -416,7 +416,7 @@ bool realloc_shm(SharedMemory *sharedMemory, size_t size, bool resize)
 		}
 
 		// Truncate shared memory object to specified size
-		int result = ftruncate(fd, size);
+		const int result = ftruncate(fd, size);
 		if(result == -1) {
 			logg("FATAL: realloc_shm(): ftruncate(%i, %zu): Failed to resize \"%s\": %s",
 			     fd, size, sharedMemory->name, strerror(errno));
@@ -450,8 +450,7 @@ bool realloc_shm(SharedMemory *sharedMemory, size_t size, bool resize)
 void delete_shm(SharedMemory *sharedMemory)
 {
 	// Unmap shared memory
-	int ret;
-	ret = munmap(sharedMemory->ptr, sharedMemory->size);
+	int ret = munmap(sharedMemory->ptr, sharedMemory->size);
 	if(ret != 0)
 		logg("delete_shm(): munmap(%p, %zu) failed: %s", sharedMemory->ptr, sharedMemory->size, strerror(errno));
 
@@ -478,9 +477,9 @@ static size_t __attribute__((const)) gcd(size_t a, size_t b)
 // shared memory objects. This routine works by computing the LCM
 // of two numbers, the pagesize and the size of a single element
 // in the shared memory object
-static size_t get_optimal_object_size(size_t objsize, size_t minsize)
+static size_t get_optimal_object_size(const size_t objsize, const size_t minsize)
 {
-	size_t optsize = pagesize / gcd(pagesize, objsize);
+	const size_t optsize = pagesize / gcd(pagesize, objsize);
 	if(optsize < minsize)
 	{
 		if(config.debug & DEBUG_SHMEM)
@@ -496,7 +495,7 @@ static size_t get_optimal_object_size(size_t objsize, size_t minsize)
 		// First part: Integer division, may cause clipping, e.g., 5/3 = 1
 		// Second part: Catch a possibly happened clipping event by adding
 		//              one to the number: (5 % 3 != 0) is 1
-		size_t multiplier = (minsize/optsize) + ((minsize % optsize != 0) ? 1u : 0u);
+		const size_t multiplier = (minsize/optsize) + ((minsize % optsize != 0) ? 1u : 0u);
 		if(config.debug & DEBUG_SHMEM)
 		{
 			logg("DEBUG: Using %zu*%zu == %zu >= %zu",
