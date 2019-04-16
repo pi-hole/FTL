@@ -16,11 +16,11 @@
  * @param index The overTime slot index
  * @param timestamp The timestamp of the slot
  */
-static void initSlot(unsigned int index, time_t timestamp)
+static void initSlot(const unsigned int index, const time_t timestamp)
 {
 	// Possible debug printing
 	if(config.debug & DEBUG_OVERTIME)
-		logg("initSlot(%u, %u): Zeroing overTIme slot", index, timestamp);
+		logg("initSlot(%u, %lu): Zeroing overTime slot", index, timestamp);
 
 	overTime[index].magic = MAGICBYTE;
 	overTime[index].timestamp = timestamp;
@@ -48,7 +48,7 @@ void initOverTime(void)
 	time_t timestamp = now - now % 3600 + 3600 - (OVERTIME_INTERVAL / 2);
 
 	if(config.debug & DEBUG_OVERTIME)
-		logg("initOverTime(): Initializing %i slots from %u to %u", OVERTIME_SLOTS, timestamp-OVERTIME_SLOTS*OVERTIME_INTERVAL, timestamp);
+		logg("initOverTime(): Initializing %i slots from %lu to %lu", OVERTIME_SLOTS, timestamp-OVERTIME_SLOTS*OVERTIME_INTERVAL, timestamp);
 
 	// Iterate over overTime and initialize it
 	for(int i = OVERTIME_SLOTS-1; i >= 0 ; i--)
@@ -67,35 +67,35 @@ unsigned int getOverTimeID(time_t timestamp)
 	timestamp += OVERTIME_INTERVAL/2;
 
 	// Get timestamp of first interval
-	time_t firstTimestamp = overTime[0].timestamp;
+	const time_t firstTimestamp = overTime[0].timestamp;
 
 	// Compute overTime ID
-	int id = (int) ((timestamp - firstTimestamp) / OVERTIME_INTERVAL);
+	const int id = (int) ((timestamp - firstTimestamp) / OVERTIME_INTERVAL);
 
 	// Check bounds manually
 	if(id < 0)
 	{
-		logg("WARN: getOverTimeID(%u): %u is negative: %u", timestamp, id, firstTimestamp);
+		logg("WARN: getOverTimeID(%lu): %u is negative: %lu", timestamp, id, firstTimestamp);
 		// Return first timestamp in case negative timestamp was determined
 		return 0;
 	}
 	else if(id > OVERTIME_SLOTS-1)
 	{
-		logg("WARN: getOverTimeID(%u): %i is too large: %u", timestamp, id, firstTimestamp);
+		logg("WARN: getOverTimeID(%lu): %i is too large: %lu", timestamp, id, firstTimestamp);
 		// Return last timestamp in case a too large timestamp was determined
 		return OVERTIME_SLOTS-1;
 	}
 
 	if(config.debug & DEBUG_OVERTIME)
-		logg("getOverTimeID(%u): %i", timestamp, id);
+		logg("getOverTimeID(%lu): %i", timestamp, id);
 
 	return (unsigned int) id;
 }
 
 // This routine is called by garbage collection to rearrange the overTime structure for the next hour
-void moveOverTimeMemory(time_t mintime)
+void moveOverTimeMemory(const time_t mintime)
 {
-	time_t oldestOverTimeIS = overTime[0].timestamp;
+	const time_t oldestOverTimeIS = overTime[0].timestamp;
 	// Shift SHOULD timestemp into the future by the amount GC is running earlier
 	time_t oldestOverTimeSHOULD = mintime;
 
@@ -105,13 +105,13 @@ void moveOverTimeMemory(time_t mintime)
 
 	// Calculate the number of slots to be garbage collected, which is also the
 	// ID of the slot to move to the zero position
-	unsigned int moveOverTime = (unsigned int) ((oldestOverTimeSHOULD - oldestOverTimeIS) / OVERTIME_INTERVAL);
+	const unsigned int moveOverTime = (unsigned int) ((oldestOverTimeSHOULD - oldestOverTimeIS) / OVERTIME_INTERVAL);
 
 	// The number of slots which will be moved (not garbage collected)
-	unsigned int remainingSlots = OVERTIME_SLOTS - moveOverTime;
+	const unsigned int remainingSlots = OVERTIME_SLOTS - moveOverTime;
 
 	if(config.debug & DEBUG_OVERTIME)
-		logg("moveOverTimeMemory(): IS: %u, SHOULD: %u, MOVING: %u", oldestOverTimeIS, oldestOverTimeSHOULD, moveOverTime);
+		logg("moveOverTimeMemory(): IS: %lu, SHOULD: %lu, MOVING: %u", oldestOverTimeIS, oldestOverTimeSHOULD, moveOverTime);
 
 	// Check if the move over amount is valid. This prevents errors if the
 	// function is called before GC is necessary.
@@ -148,7 +148,7 @@ void moveOverTimeMemory(time_t mintime)
 		for(unsigned int timeidx = remainingSlots; timeidx < OVERTIME_SLOTS ; timeidx++)
 		{
 			// This slot is OVERTIME_INTERVAL seconds after the previous slot
-			time_t timestamp = overTime[timeidx-1].timestamp + OVERTIME_INTERVAL;
+			const time_t timestamp = overTime[timeidx-1].timestamp + OVERTIME_INTERVAL;
 			initSlot(timeidx, timestamp);
 		}
 	}

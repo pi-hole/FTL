@@ -65,7 +65,7 @@ void parse_arp_cache(void)
 	char * linebuffer = NULL;
 	size_t linebuffersize = 0;
 	char ip[100], mask[100], hwaddr[100], iface[100];
-	int type, flags, entries = 0;
+	unsigned int type, flags, entries = 0;
 	time_t now = time(NULL);
 
 	// Start collecting database commands
@@ -101,7 +101,7 @@ void parse_arp_cache(void)
 		}
 
 		// Perform SQL query
-		int dbID = db_query_int(querystr);
+		const int dbID = db_query_int(querystr);
 		free(querystr);
 
 		if(dbID == DB_FAILED)
@@ -120,10 +120,10 @@ void parse_arp_cache(void)
 
 		// This client is known (by its IP address) to pihole-FTL if
 		// findClientID() returned a non-negative index
-		bool clientKnown = clientID >= 0;
+		const bool clientKnown = clientID >= 0;
 
 		// Get hostname of this client if the client is known
-		char *hostname = "";
+		const char *hostname = "";
 		if(clientKnown)
 		{
 			validate_access("clients", clientID, true, __LINE__, __FUNCTION__, __FILE__);
@@ -206,7 +206,7 @@ static char* getMACVendor(const char* hwaddr)
 	else if(strlen(hwaddr) != 17)
 	{
 		// MAC address is incomplete
-		if(config.debug & DEBUG_ARP) logg("getMACVenor(%s): MAC invalid (length %lu)", hwaddr, strlen(hwaddr));
+		if(config.debug & DEBUG_ARP) logg("getMACVenor(%s): MAC invalid (length %zu)", hwaddr, strlen(hwaddr));
 		return strdup("");
 	}
 
@@ -283,10 +283,10 @@ void updateMACVendorRecords()
 	}
 
 	sqlite3_stmt* stmt;
-	const char* querystr = "SELECT id,hwaddr FROM network;";
-	rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
+	const char* selectstr = "SELECT id,hwaddr FROM network;";
+	rc = sqlite3_prepare_v2(db, selectstr, -1, &stmt, NULL);
 	if( rc ){
-		logg("updateMACVendorRecords() - SQL error prepare (%s, %i): %s", querystr, rc, sqlite3_errmsg(db));
+		logg("updateMACVendorRecords() - SQL error prepare (%s, %i): %s", selectstr, rc, sqlite3_errmsg(db));
 		sqlite3_close(db);
 		return;
 	}
@@ -302,8 +302,8 @@ void updateMACVendorRecords()
 		hwaddr = NULL;
 
 		// Prepare UPDATE statement
-		char *querystr = NULL;
-		if(asprintf(&querystr, "UPDATE network SET macVendor = \'%s\' WHERE id = %i", vendor, id) < 1)
+		char *updatestr = NULL;
+		if(asprintf(&updatestr, "UPDATE network SET macVendor = \'%s\' WHERE id = %i", vendor, id) < 1)
 		{
 			logg("updateMACVendorRecords() - Allocation error 2");
 			free(vendor);
@@ -312,17 +312,17 @@ void updateMACVendorRecords()
 
 		// Execute prepared statement
 		char *zErrMsg = NULL;
-		rc = sqlite3_exec(db, querystr, NULL, NULL, &zErrMsg);
+		rc = sqlite3_exec(db, updatestr, NULL, NULL, &zErrMsg);
 		if( rc != SQLITE_OK ){
-			logg("updateMACVendorRecords() - SQL exec error: %s (%i): %s", querystr, rc, zErrMsg);
+			logg("updateMACVendorRecords() - SQL exec error: %s (%i): %s", updatestr, rc, zErrMsg);
 			sqlite3_free(zErrMsg);
-			free(querystr);
+			free(updatestr);
 			free(vendor);
 			break;
 		}
 
 		// Free allocated memory
-		free(querystr);
+		free(updatestr);
 		free(vendor);
 	}
 	if(rc != SQLITE_DONE)

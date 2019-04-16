@@ -19,10 +19,10 @@ long int lastdbindex = 0;
 
 static pthread_mutex_t dblock;
 
-bool db_set_counter(unsigned int ID, int value);
-int db_get_FTL_property(unsigned int ID);
+static bool db_set_counter(const unsigned int ID, const int value);
+static int db_get_FTL_property(const unsigned int ID);
 
-void check_database(int rc)
+static void check_database(int rc)
 {
 	// We will retry if the database is busy at the moment
 	// However, we won't retry if any other error happened
@@ -49,7 +49,7 @@ void dbclose(void)
 	pthread_mutex_unlock(&dblock);
 }
 
-double get_db_filesize(void)
+static double get_db_filesize(void)
 {
 	struct stat st;
 	if(stat(FTLfiles.db, &st) != 0)
@@ -106,7 +106,7 @@ bool dbquery(const char *format, ...)
 
 }
 
-bool create_counter_table(void)
+static bool create_counter_table(void)
 {
 	bool ret;
 	// Create FTL table in the database (holds properties like database version, etc.)
@@ -132,7 +132,7 @@ bool create_counter_table(void)
 	return true;
 }
 
-bool db_create(void)
+static bool db_create(void)
 {
 	bool ret;
 	int rc = sqlite3_open_v2(FTLfiles.db, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL);
@@ -265,7 +265,7 @@ void db_init(void)
 	database = true;
 }
 
-int db_get_FTL_property(unsigned int ID)
+static int db_get_FTL_property(const unsigned int ID)
 {
 	// Prepare SQL statement
 	char* querystr = NULL;
@@ -283,17 +283,17 @@ int db_get_FTL_property(unsigned int ID)
 	return value;
 }
 
-bool db_set_FTL_property(unsigned int ID, int value)
+bool db_set_FTL_property(const unsigned int ID, const int value)
 {
 	return dbquery("INSERT OR REPLACE INTO ftl (id, value) VALUES ( %u, %i );", ID, value);
 }
 
-bool db_set_counter(unsigned int ID, int value)
+static bool db_set_counter(const unsigned int ID, const int value)
 {
 	return dbquery("INSERT OR REPLACE INTO counters (id, value) VALUES ( %u, %i );", ID, value);
 }
 
-bool db_update_counters(int total, int blocked)
+static bool db_update_counters(const int total, const int blocked)
 {
 	if(!dbquery("UPDATE counters SET value = value + %i WHERE id = %i;", total, DB_TOTALQUERIES))
 		return false;
@@ -338,7 +338,7 @@ int db_query_int(const char* querystr)
 	return result;
 }
 
-int number_of_queries_in_DB(void)
+static int number_of_queries_in_DB(void)
 {
 	sqlite3_stmt* stmt;
 
@@ -429,7 +429,7 @@ void save_to_DB(void)
 
 	unsigned int saved = 0, saved_error = 0;
 	long int i;
-	sqlite3_stmt* stmt;
+	sqlite3_stmt* stmt = NULL;
 
 	// Get last ID stored in the database
 	sqlite3_int64 lastID = last_ID_in_DB();
@@ -490,11 +490,11 @@ void save_to_DB(void)
 		sqlite3_bind_int(stmt, 3, queries[i].status);
 
 		// DOMAIN
-		char *domain = getDomainString(i);
+		const char *domain = getDomainString(i);
 		sqlite3_bind_text(stmt, 4, domain, -1, SQLITE_TRANSIENT);
 
 		// CLIENT
-		char *client = getClientIPString(i);
+		const char *client = getClientIPString(i);
 		sqlite3_bind_text(stmt, 5, client, -1, SQLITE_TRANSIENT);
 
 		// FORWARD
@@ -538,7 +538,9 @@ void save_to_DB(void)
 		if(queries[i].status == QUERY_GRAVITY ||
 		   queries[i].status == QUERY_BLACKLIST ||
 		   queries[i].status == QUERY_WILDCARD ||
-		   queries[i].status == QUERY_EXTERNAL_BLOCKED)
+		   queries[i].status == QUERY_EXTERNAL_BLOCKED_IP ||
+		   queries[i].status == QUERY_EXTERNAL_BLOCKED_NULL ||
+		   queries[i].status == QUERY_EXTERNAL_BLOCKED_NXRA)
 			blocked++;
 
 		// Update lasttimestamp variable with timestamp of the latest stored query
@@ -577,7 +579,7 @@ void save_to_DB(void)
 	}
 }
 
-void delete_old_queries_in_DB(void)
+static void delete_old_queries_in_DB(void)
 {
 	// Open database
 	if(!dbopen())
@@ -597,7 +599,7 @@ void delete_old_queries_in_DB(void)
 	}
 
 	// Get how many rows have been affected (deleted)
-	int affected = sqlite3_changes(db);
+	const int affected = sqlite3_changes(db);
 
 	// Print final message only if there is a difference
 	if((config.debug & DEBUG_DATABASE) || affected)
@@ -672,8 +674,8 @@ void read_data_from_DB(void)
 	// Prepare request
 	char *rstr = NULL;
 	// Get time stamp 24 hours in the past
-	time_t now = time(NULL);
-	time_t mintime = now - config.maxlogage;
+	const time_t now = time(NULL);
+	const time_t mintime = now - config.maxlogage;
 	int rc = asprintf(&rstr, "SELECT * FROM queries WHERE timestamp >= %li", mintime);
 	if(rc < 1)
 	{
@@ -681,10 +683,10 @@ void read_data_from_DB(void)
 		return;
 	}
 	// Log DB query string in debug mode
-	if(config.debug & DEBUG_DATABASE) logg(rstr);
+	if(config.debug & DEBUG_DATABASE) logg("%s", rstr);
 
 	// Prepare SQLite3 statement
-	sqlite3_stmt* stmt;
+	sqlite3_stmt* stmt = NULL;
 	rc = sqlite3_prepare_v2(db, rstr, -1, &stmt, NULL);
 	if( rc ){
 		logg("read_data_from_DB() - SQL error prepare (%i): %s", rc, sqlite3_errmsg(db));
@@ -696,21 +698,21 @@ void read_data_from_DB(void)
 	// Loop through returned database rows
 	while((rc = sqlite3_step(stmt)) == SQLITE_ROW)
 	{
-		sqlite3_int64 dbid = sqlite3_column_int64(stmt, 0);
-		time_t queryTimeStamp = sqlite3_column_int(stmt, 1);
+		const sqlite3_int64 dbid = sqlite3_column_int64(stmt, 0);
+		const time_t queryTimeStamp = sqlite3_column_int(stmt, 1);
 		// 1483228800 = 01/01/2017 @ 12:00am (UTC)
 		if(queryTimeStamp < 1483228800)
 		{
-			logg("DB warn: TIMESTAMP should be larger than 01/01/2017 but is %i", queryTimeStamp);
+			logg("DB warn: TIMESTAMP should be larger than 01/01/2017 but is %li", queryTimeStamp);
 			continue;
 		}
 		if(queryTimeStamp > now)
 		{
-			if(config.debug & DEBUG_DATABASE) logg("DB warn: Skipping query logged in the future (%i)", queryTimeStamp);
+			if(config.debug & DEBUG_DATABASE) logg("DB warn: Skipping query logged in the future (%li)", queryTimeStamp);
 			continue;
 		}
 
-		int type = sqlite3_column_int(stmt, 2);
+		const int type = sqlite3_column_int(stmt, 2);
 		if(type < TYPE_A || type >= TYPE_MAX)
 		{
 			logg("DB warn: TYPE should not be %i", type);
@@ -723,24 +725,24 @@ void read_data_from_DB(void)
 			continue;
 		}
 
-		int status = sqlite3_column_int(stmt, 3);
-		if(status < QUERY_UNKNOWN || status > QUERY_EXTERNAL_BLOCKED)
+		const int status = sqlite3_column_int(stmt, 3);
+		if(status < QUERY_UNKNOWN || status > QUERY_EXTERNAL_BLOCKED_NXRA)
 		{
-			logg("DB warn: STATUS should be within [%i,%i] but is %i", QUERY_UNKNOWN, QUERY_EXTERNAL_BLOCKED, status);
+			logg("DB warn: STATUS should be within [%i,%i] but is %i", QUERY_UNKNOWN, QUERY_EXTERNAL_BLOCKED_NXRA, status);
 			continue;
 		}
 
 		const char * domain = (const char *)sqlite3_column_text(stmt, 4);
 		if(domain == NULL)
 		{
-			logg("DB warn: DOMAIN should never be NULL, %i", queryTimeStamp);
+			logg("DB warn: DOMAIN should never be NULL, %li", queryTimeStamp);
 			continue;
 		}
 
 		const char * client = (const char *)sqlite3_column_text(stmt, 5);
 		if(client == NULL)
 		{
-			logg("DB warn: CLIENT should never be NULL, %i", queryTimeStamp);
+			logg("DB warn: CLIENT should never be NULL, %li", queryTimeStamp);
 			continue;
 		}
 
@@ -759,22 +761,22 @@ void read_data_from_DB(void)
 		{
 			if(forwarddest == NULL)
 			{
-				logg("DB warn: FORWARD should not be NULL with status QUERY_FORWARDED, %i", queryTimeStamp);
+				logg("DB warn: FORWARD should not be NULL with status QUERY_FORWARDED, %li", queryTimeStamp);
 				continue;
 			}
 			forwardID = findForwardID(forwarddest, true);
 		}
 
 		// Obtain IDs only after filtering which queries we want to keep
-		int timeidx = getOverTimeID(queryTimeStamp);
-		int domainID = findDomainID(domain);
-		int clientID = findClientID(client, true);
+		const int timeidx = getOverTimeID(queryTimeStamp);
+		const int domainID = findDomainID(domain);
+		const int clientID = findClientID(client, true);
 
 		// Ensure we have enough space in the queries struct
 		memory_check(QUERIES);
 
 		// Set index for this query
-		int queryIndex = counters->queries;
+		const int queryIndex = counters->queries;
 
 		// Store this query in memory
 		validate_access("queries", queryIndex, false, __LINE__, __FUNCTION__, __FILE__);
@@ -791,7 +793,6 @@ void read_data_from_DB(void)
 		queries[queryIndex].id = 0;
 		queries[queryIndex].complete = true; // Mark as all information is available
 		queries[queryIndex].response = 0;
-		queries[queryIndex].AD = false;
 		queries[queryIndex].dnssec = DNSSEC_UNKNOWN;
 		queries[queryIndex].reply = REPLY_UNKNOWN;
 
@@ -824,7 +825,9 @@ void read_data_from_DB(void)
 			case QUERY_GRAVITY: // Blocked by gravity.list
 			case QUERY_WILDCARD: // Blocked by regex filter
 			case QUERY_BLACKLIST: // Blocked by black.list
-			case QUERY_EXTERNAL_BLOCKED: // Blocked by external provider
+			case QUERY_EXTERNAL_BLOCKED_IP: // Blocked by external provider
+			case QUERY_EXTERNAL_BLOCKED_NULL: // Blocked by external provider
+			case QUERY_EXTERNAL_BLOCKED_NXRA: // Blocked by external provider
 				counters->blocked++;
 				domains[domainID].blockedcount++;
 				clients[clientID].blockedcount++;
@@ -846,7 +849,7 @@ void read_data_from_DB(void)
 
 			default:
 				logg("Error: Found unknown status %i in long term database!", status);
-				logg("       Timestamp: %i", queryTimeStamp);
+				logg("       Timestamp: %li", queryTimeStamp);
 				logg("       Continuing anyway...");
 				break;
 		}

@@ -44,12 +44,11 @@ void *GC_thread(void *val)
 
 			if(config.debug & DEBUG_GC) timer_start(GC_TIMER);
 
-			long int i;
 			int removed = 0;
-			if(config.debug & DEBUG_GC) logg("GC starting, mintime: %u %s", mintime, ctime(&mintime));
+			if(config.debug & DEBUG_GC) logg("GC starting, mintime: %lu %s", mintime, ctime(&mintime));
 
 			// Process all queries
-			for(i=0; i < counters->queries; i++)
+			for(long int i=0; i < counters->queries; i++)
 			{
 				validate_access("queries", i, true, __LINE__, __FUNCTION__, __FILE__);
 				// Test if this query is too new
@@ -57,18 +56,18 @@ void *GC_thread(void *val)
 					break;
 
 				// Adjust client counter
-				int clientID = queries[i].clientID;
+				const int clientID = queries[i].clientID;
 				validate_access("clients", clientID, true, __LINE__, __FUNCTION__, __FILE__);
 				clients[clientID].count--;
 
 				// Adjust total counters and total over time data
-				int timeidx = queries[i].timeidx;
+				const int timeidx = queries[i].timeidx;
 				overTime[timeidx].total--;
 				// Adjust corresponding overTime counters
 				clients[clientID].overTime[timeidx]--;
 
 				// Adjust domain counter (no overTime information)
-				int domainID = queries[i].domainID;
+				const int domainID = queries[i].domainID;
 				validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
 				domains[domainID].count--;
 
@@ -94,7 +93,9 @@ void *GC_thread(void *val)
 					case QUERY_GRAVITY: // Blocked by Pi-hole's blocking lists (fall through)
 					case QUERY_BLACKLIST: // Exact blocked (fall through)
 					case QUERY_WILDCARD: // Regex blocked (fall through)
-					case QUERY_EXTERNAL_BLOCKED: // Blocked by upstream provider (fall through)
+					case QUERY_EXTERNAL_BLOCKED_IP: // Blocked by upstream provider (fall through)
+					case QUERY_EXTERNAL_BLOCKED_NXRA: // Blocked by upstream provider (fall through)
+					case QUERY_EXTERNAL_BLOCKED_NULL: // Blocked by upstream provider (fall through)
 						counters->blocked--;
 						overTime[timeidx].blocked--;
 						domains[domainID].blockedcount--;
@@ -162,7 +163,8 @@ void *GC_thread(void *val)
 			// Determine if overTime memory needs to get moved
 			moveOverTimeMemory(mintime);
 
-			if(config.debug & DEBUG_GC) logg("Notice: GC removed %i queries (took %.2f ms)", removed, timer_elapsed_msec(GC_TIMER));
+			if(config.debug & DEBUG_GC)
+				logg("Notice: GC removed %i queries (took %.2f ms)", removed, timer_elapsed_msec(GC_TIMER));
 
 			// Release thread lock
 			unlock_shm();

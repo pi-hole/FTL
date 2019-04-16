@@ -14,9 +14,6 @@ char * username;
 bool needGC = false;
 bool needDBGC = false;
 
-// Prototype
-int main_dnsmasq(int argc, char **argv);
-
 int main (int argc, char* argv[])
 {
 	// Get user pihole-FTL is running as
@@ -36,6 +33,13 @@ int main (int argc, char* argv[])
 	logg("########## FTL started! ##########");
 	log_FTL_version(false);
 
+	// Catch signals like SIGTERM and SIGINT
+	// Other signals like SIGHUP, SIGUSR1 are handled by the resolver part
+	handle_signals();
+
+	// Process pihole-FTL.conf
+	read_FTLconf();
+
 	// Initialize shared memory
 	if(!init_shmem())
 	{
@@ -47,13 +51,6 @@ int main (int argc, char* argv[])
 	// print warning otherwise
 	if(strcmp(username, "pihole") != 0)
 		logg("WARNING: Starting pihole-FTL as user %s is not recommended", username);
-
-	// Process pihole-FTL.conf
-	read_FTLconf();
-
-	// Catch signals like SIGTERM and SIGINT
-	// Other signals like SIGHUP, SIGUSR1 are handled by the resolver part
-	handle_signals();
 
 	// Initialize database
 	if(config.maxDBdays != 0)

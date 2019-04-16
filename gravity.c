@@ -59,7 +59,7 @@ bool gravityDB_getTable(unsigned char list)
 {
 	// Read gravity domains
 	gravityDB_open();
-	char *querystr = NULL;
+	const char *querystr = NULL;
 	switch(list)
 	{
 		case GRAVITY_LIST:
@@ -101,7 +101,6 @@ const char* gravityDB_getDomain(void)
 		return domain;
 	}
 
-
 	// Error ?
 	if(rc != SQLITE_DONE)
 	{
@@ -126,7 +125,7 @@ void gravityDB_finalizeTable(void)
 
 int gravityDB_count(unsigned char list)
 {
-	char *querystr = NULL;
+	const char* querystr = NULL;
 	switch(list)
 	{
 		case GRAVITY_LIST:
@@ -150,7 +149,6 @@ int gravityDB_count(unsigned char list)
 	if(!gravityDB_open())
 		return DB_FAILED;
 
-	sqlite3_stmt* stmt;
 	// Prepare query
 	int rc = sqlite3_prepare_v2(gravitydb, querystr, -1, &stmt, NULL);
 	if( rc ){

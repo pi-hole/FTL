@@ -13,7 +13,7 @@
 ConfigStruct config;
 static char *parse_FTLconf(FILE *fp, const char * key);
 static void release_config_memory(void);
-void getpath(FILE* fp, const char *option, const char *defaultloc, char **pointer);
+static void getpath(FILE* fp, const char *option, const char *defaultloc, char **pointer);
 
 char *conflinebuffer = NULL;
 
@@ -112,7 +112,7 @@ void read_FTLconf(void)
 			config.maxDBdays = value;
 
 	if(config.maxDBdays == 0)
-		logg("   MAXDBDAYS: --- (DB disabled)", config.maxDBdays);
+		logg("   MAXDBDAYS: --- (DB disabled)");
 	else
 		logg("   MAXDBDAYS: max age for stored queries is %i days", config.maxDBdays);
 
@@ -337,7 +337,7 @@ void read_FTLconf(void)
 		fclose(fp);
 }
 
-void getpath(FILE* fp, const char *option, const char *defaultloc, char **pointer)
+static void getpath(FILE* fp, const char *option, const char *defaultloc, char **pointer)
 {
 	// This subroutine is used to read paths from pihole-FTL.conf
 	// fp:         File pointer to opened and readable config file
@@ -579,11 +579,29 @@ void read_debuging_settings(FILE *fp)
 	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
 		config.debug |= DEBUG_REGEX;
 
+	// DEBUG_API
+	// defaults to: false
+	buffer = parse_FTLconf(fp, "DEBUG_API");
+	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
+		config.debug |= DEBUG_API;
+
 	// DEBUG_OVERTIME
 	// defaults to: false
 	buffer = parse_FTLconf(fp, "DEBUG_OVERTIME");
 	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
 		config.debug |= DEBUG_OVERTIME;
+
+	// DEBUG_EXTBLOCKED
+	// defaults to: false
+	buffer = parse_FTLconf(fp, "DEBUG_EXTBLOCKED");
+	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
+		config.debug |= DEBUG_EXTBLOCKED;
+
+	// DEBUG_CAPS
+	// defaults to: false
+	buffer = parse_FTLconf(fp, "DEBUG_CAPS");
+	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
+		config.debug |= DEBUG_CAPS;
 
 	// DEBUG_ALL
 	// defaults to: false
@@ -604,7 +622,10 @@ void read_debuging_settings(FILE *fp)
 		logg("* DEBUG_GC         %s *", (config.debug & DEBUG_GC)? "YES":"NO ");
 		logg("* DEBUG_ARP        %s *", (config.debug & DEBUG_ARP)? "YES":"NO ");
 		logg("* DEBUG_REGEX      %s *", (config.debug & DEBUG_REGEX)? "YES":"NO ");
+		logg("* DEBUG_API        %s *", (config.debug & DEBUG_API)? "YES":"NO ");
 		logg("* DEBUG_OVERTIME   %s *", (config.debug & DEBUG_OVERTIME)? "YES":"NO ");
+		logg("* DEBUG_EXTBLOCKED %s *", (config.debug & DEBUG_EXTBLOCKED)? "YES":"NO ");
+		logg("* DEBUG_CAPS       %s *", (config.debug & DEBUG_CAPS)? "YES":"NO ");
 		logg("************************");
 	}
 

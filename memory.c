@@ -45,7 +45,7 @@ clientsDataStruct *clients = NULL;
 domainsDataStruct *domains = NULL;
 overTimeDataStruct *overTime = NULL;
 
-void memory_check(int which)
+void memory_check(const int which)
 {
 	switch(which)
 	{
@@ -105,7 +105,8 @@ void memory_check(int which)
 	}
 }
 
-void validate_access(const char * name, int pos, bool testmagic, int line, const char * function, const char * file)
+void validate_access(const char * name, const int pos, const bool testmagic,
+                     const int line, const char * function, const char * file)
 {
 	int limit = 0;
 	if(name[0] == 'c') limit = counters->clients_MAX;
@@ -142,7 +143,7 @@ void validate_access(const char * name, int pos, bool testmagic, int line, const
 // not be protected by our (error logging) functions!
 
 #undef strdup
-char *FTLstrdup(const char *src, const char * file, const char * function, int line)
+char* __attribute__((malloc)) FTLstrdup(const char *src, const char * file, const char * function, const int line)
 {
 	// The FTLstrdup() function returns a pointer to a new string which is a
 	// duplicate of the string s. Memory for the new string is obtained with
@@ -152,7 +153,7 @@ char *FTLstrdup(const char *src, const char * file, const char * function, int l
 		logg("WARN: Trying to copy a NULL string in %s() (%s:%i)", function, file, line);
 		return NULL;
 	}
-	size_t len = strlen(src);
+	const size_t len = strlen(src);
 	char *dest = calloc(len+1, sizeof(char));
 	if(dest == NULL)
 	{
@@ -167,7 +168,7 @@ char *FTLstrdup(const char *src, const char * file, const char * function, int l
 }
 
 #undef calloc
-void *FTLcalloc(size_t nmemb, size_t size, const char * file, const char * function, int line)
+void* __attribute__((malloc)) __attribute__((alloc_size(1,2))) FTLcalloc(const size_t nmemb, const size_t size, const char * file, const char * function, const int line)
 {
 	// The FTLcalloc() function allocates memory for an array of nmemb elements
 	// of size bytes each and returns a pointer to the allocated memory. The
@@ -176,14 +177,14 @@ void *FTLcalloc(size_t nmemb, size_t size, const char * file, const char * funct
 	// passed to free().
 	void *ptr = calloc(nmemb, size);
 	if(ptr == NULL)
-		logg("FATAL: Memory allocation (%u x %u) failed in %s() (%s:%i)",
+		logg("FATAL: Memory allocation (%zu x %zu) failed in %s() (%s:%i)",
 		     nmemb, size, function, file, line);
 
 	return ptr;
 }
 
 #undef realloc
-void *FTLrealloc(void *ptr_in, size_t size, const char * file, const char * function, int line)
+void __attribute__((alloc_size(2))) *FTLrealloc(void *ptr_in, const size_t size, const char * file, const char * function, const int line)
 {
 	// The FTLrealloc() function changes the size of the memory block pointed to
 	// by ptr to size bytes. The contents will be unchanged in the range from
@@ -197,14 +198,14 @@ void *FTLrealloc(void *ptr_in, size_t size, const char * file, const char * func
 	// done.
 	void *ptr_out = realloc(ptr_in, size);
 	if(ptr_out == NULL)
-		logg("FATAL: Memory reallocation (%p -> %u) failed in %s() (%s:%i)",
+		logg("FATAL: Memory reallocation (%p -> %zu) failed in %s() (%s:%i)",
 		     ptr_in, size, function, file, line);
 
 	return ptr_out;
 }
 
 #undef free
-void FTLfree(void *ptr, const char * file, const char * function, int line)
+void FTLfree(void *ptr, const char * file, const char * function, const int line)
 {
 	// The free() function frees the memory space pointed  to  by  ptr,  which
 	// must  have  been  returned by a previous call to malloc(), calloc(), or

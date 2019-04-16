@@ -45,25 +45,6 @@ int countlines(const char* fname)
 	return lines;
 }
 
-int readnumberfromfile(const char* fname)
-{
-	FILE *fp;
-	int num;
-
-	if((fp = fopen(fname, "r")) == NULL)
-	{
-		return -1;
-	}
-
-	if(fscanf(fp,"%i",&num) != 1)
-	{
-		num = -1;
-	}
-
-	fclose(fp);
-	return num;
-}
-
 int countlineswith(const char* str, const char* fname)
 {
 	FILE *fp;
@@ -124,8 +105,8 @@ int countlineswith(const char* str, const char* fname)
 
 void check_blocking_status(void)
 {
-	char* blocking = read_setupVarsconf("BLOCKING_ENABLED");
-	char* message;
+	const char* blocking = read_setupVarsconf("BLOCKING_ENABLED");
+	const char* message;
 
 	if(blocking == NULL || getSetupVarsBool(blocking))
 	{

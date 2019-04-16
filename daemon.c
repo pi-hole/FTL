@@ -14,11 +14,8 @@ struct timeval t0[NUMTIMERS];
 
 void go_daemon(void)
 {
-	pid_t process_id = 0;
-	pid_t sid = 0;
-
 	// Create child process
-	process_id = fork();
+	pid_t process_id = fork();
 
 	// Indication of fork() failure
 	if (process_id < 0)
@@ -41,7 +38,7 @@ void go_daemon(void)
 
 	//set new session
 	// creates a session and sets the process group ID
-	sid = setsid();
+	const pid_t sid = setsid();
 	if(sid < 0)
 	{
 		// Return failure
@@ -80,7 +77,7 @@ void go_daemon(void)
 	// Closing stdin, stdout and stderr is handled by dnsmasq
 }
 
-void timer_start(int i)
+void timer_start(const int i)
 {
 	if(i >= NUMTIMERS)
 	{
@@ -90,7 +87,7 @@ void timer_start(int i)
 	gettimeofday(&t0[i], 0);
 }
 
-double timer_elapsed_msec(int i)
+double timer_elapsed_msec(const int i)
 {
 	if(i >= NUMTIMERS)
 	{
@@ -102,7 +99,7 @@ double timer_elapsed_msec(int i)
 	return (t1.tv_sec - t0[i].tv_sec) * 1000.0f + (t1.tv_usec - t0[i].tv_usec) / 1000.0f;
 }
 
-void sleepms(int milliseconds)
+void sleepms(const int milliseconds)
 {
 	struct timeval tv;
 	tv.tv_sec = milliseconds / 1000;
@@ -113,7 +110,7 @@ void sleepms(int milliseconds)
 void savepid(void)
 {
 	FILE *f;
-	pid_t pid = getpid();
+	const pid_t pid = getpid();
 	if((f = fopen(FTLfiles.pid, "w+")) == NULL)
 	{
 		logg("WARNING: Unable to write PID to file.");
@@ -140,20 +137,20 @@ void removepid(void)
 
 char *getUserName(void)
 {
-	char * username;
+	char * name;
 	// the getpwuid() function shall search the user database for an entry with a matching uid
 	// the geteuid() function shall return the effective user ID of the calling process - this is used as the search criteria for the getpwuid() function
-	uid_t euid = geteuid();
-	struct passwd *pw = getpwuid(euid);
+	const uid_t euid = geteuid();
+	const struct passwd *pw = getpwuid(euid);
 	if(pw)
 	{
-		username = strdup(pw->pw_name);
+		name = strdup(pw->pw_name);
 	}
 	else
 	{
-		if(asprintf(&username, "%u", euid) < 0)
+		if(asprintf(&name, "%u", euid) < 0)
 			return NULL;
 	}
 
-	return username;
+	return name;
 }

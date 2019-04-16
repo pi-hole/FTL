@@ -28,7 +28,7 @@ bool dualstack = false;
 bool ipv4telnet = false, ipv6telnet = false;
 bool istelnet[MAXCONNS];
 
-void saveport(void)
+static void saveport(void)
 {
 	FILE *f;
 	if((f = fopen(FTLfiles.port, "w+")) == NULL)
@@ -43,7 +43,7 @@ void saveport(void)
 	}
 }
 
-bool bind_to_telnet_port_IPv4(int *socketdescriptor)
+static bool bind_to_telnet_port_IPv4(int *socketdescriptor)
 {
 	// IPv4 socket
 	*socketdescriptor = socket(AF_INET, SOCK_STREAM, 0);
@@ -92,7 +92,7 @@ bool bind_to_telnet_port_IPv4(int *socketdescriptor)
 	return true;
 }
 
-bool bind_to_telnet_port_IPv6(int *socketdescriptor)
+static bool bind_to_telnet_port_IPv6(int *socketdescriptor)
 {
 	// IPv6 socket
 	*socketdescriptor = socket(AF_INET6, SOCK_STREAM, 0);
@@ -154,7 +154,7 @@ bool bind_to_telnet_port_IPv6(int *socketdescriptor)
 	return true;
 }
 
-void bind_to_unix_socket(int *socketdescriptor)
+static void bind_to_unix_socket(int *socketdescriptor)
 {
 	*socketdescriptor = socket(AF_LOCAL, SOCK_STREAM, 0);
 
@@ -190,7 +190,7 @@ void bind_to_unix_socket(int *socketdescriptor)
 }
 
 // Called from main() at graceful shutdown
-void removeport(void)
+static void removeport(void)
 {
 	FILE *f;
 	if((f = fopen(FTLfiles.port, "w+")) == NULL)
@@ -201,7 +201,7 @@ void removeport(void)
 	fclose(f);
 }
 
-void seom(int sock)
+void seom(const int sock)
 {
 	if(istelnet[sock])
 		ssend(sock, "---EOM---\n\n");
@@ -209,7 +209,7 @@ void seom(int sock)
 		pack_eom(sock);
 }
 
-void ssend(int sock, const char *format, ...)
+void __attribute__ ((format (gnu_printf, 2, 3))) ssend(const int sock, const char *format, ...)
 {
 	char *buffer;
 	va_list args;
@@ -224,12 +224,12 @@ void ssend(int sock, const char *format, ...)
 	}
 }
 
-void swrite(int sock, void *value, size_t size) {
+void swrite(const int sock, const void *value, size_t size) {
 	if(write(sock, value, size) == -1)
 		logg("WARNING: Socket write returned error code %i", errno);
 }
 
-int checkClientLimit(int socket) {
+static inline int checkClientLimit(const int socket) {
 	if(socket < MAXCONNS)
 	{
 		return socket;
@@ -243,7 +243,7 @@ int checkClientLimit(int socket) {
 	}
 }
 
-int listener(int sockfd, char type)
+static int listener(const int sockfd, const char type)
 {
 	struct sockaddr_un un_addr;
 	struct sockaddr_in in4_addr;
@@ -294,7 +294,7 @@ void close_unix_socket(void)
 	close(socketfd);
 }
 
-void *telnet_connection_handler_thread(void *socket_desc)
+static void *telnet_connection_handler_thread(void *socket_desc)
 {
 	//Get the socket descriptor
 	int sock = *(int*)socket_desc;
@@ -345,7 +345,7 @@ void *telnet_connection_handler_thread(void *socket_desc)
 }
 
 
-void *socket_connection_handler_thread(void *socket_desc)
+static void *socket_connection_handler_thread(void *socket_desc)
 {
 	//Get the socket descriptor
 	int sock = *(int*)socket_desc;
@@ -430,7 +430,7 @@ void *telnet_listening_thread_IPv4(void *args)
 	while(!killed)
 	{
 		// Look for new clients that want to connect
-		int csck = listener(telnetfd4, 4);
+		const int csck = listener(telnetfd4, 4);
 		if(csck == -1)
 		{
 			logg("IPv4 telnet error: %s (%i)", strerror(errno), errno);
@@ -471,7 +471,7 @@ void *telnet_listening_thread_IPv6(void *args)
 	while(!killed)
 	{
 		// Look for new clients that want to connect
-		int csck = listener(telnetfd6, 6);
+		const int csck = listener(telnetfd6, 6);
 		if(csck == -1)
 		{
 			logg("IPv6 telnet error: %s (%i)", strerror(errno), errno);
@@ -512,7 +512,7 @@ void *socket_listening_thread(void *args)
 	while(!killed)
 	{
 		// Look for new clients that want to connect
-		int csck = listener(socketfd, 0);
+		const int csck = listener(socketfd, 0);
 		if(csck < 0) continue;
 
 		// Allocate memory used to transport client socket ID to client listening thread
@@ -544,8 +544,8 @@ bool ipv6_available(void)
 		// Loop over interfaces
 		for (interface = allInterfaces; interface != NULL; interface = interface->ifa_next)
 		{
-			unsigned int flags = interface->ifa_flags;
-			struct sockaddr *addr = interface->ifa_addr;
+			const unsigned int flags = interface->ifa_flags;
+			const struct sockaddr *addr = interface->ifa_addr;
 
 			// Check only for up and running IPv4, IPv6 interfaces
 			if ((flags & (IFF_UP|IFF_RUNNING)) && addr != NULL)

@@ -15,7 +15,7 @@ static bool debug = false;
 bool daemonmode = true;
 bool travis = false;
 int argc_dnsmasq = 0;
-char **argv_dnsmasq = NULL;
+const char** argv_dnsmasq = NULL;
 
 void parse_args(int argc, char* argv[])
 {
@@ -52,7 +52,6 @@ void parse_args(int argc, char* argv[])
 		   strcmp(argv[i], "version") == 0 ||
 		   strcmp(argv[i], "--version") == 0)
 		{
-			const char * commit = GIT_HASH;
 			const char * tag = GIT_TAG;
 			if(strlen(tag) > 1)
 			{
@@ -60,6 +59,7 @@ void parse_args(int argc, char* argv[])
 			}
 			else
 			{
+				const char * commit = GIT_HASH;
 				char hash[8];
 				// Extract first 7 characters of the hash
 				strncpy(hash, commit, 7); hash[7] = 0;
@@ -100,10 +100,10 @@ void parse_args(int argc, char* argv[])
 		// Implement dnsmasq's test function
 		if(strcmp(argv[i], "dnsmasq-test") == 0)
 		{
-			char *arg[2];
+			const char *arg[2];
 			arg[0] = "";
 			arg[1] = "--test";
-			main_dnsmasq(2,arg);
+			main_dnsmasq(2, arg);
 			ok = true;
 		}
 
@@ -113,7 +113,7 @@ void parse_args(int argc, char* argv[])
 			int j;
 			argc_dnsmasq = argc - i + 1;
 			if(argv_dnsmasq != NULL) free(argv_dnsmasq);
-			argv_dnsmasq = calloc(argc_dnsmasq + 2,sizeof(char*));
+			argv_dnsmasq = calloc(argc_dnsmasq + 2,sizeof(const char*));
 			argv_dnsmasq[0] = "";
 			if(debug) argv_dnsmasq[1] = "-d";
 			else      argv_dnsmasq[1] = "-k";
