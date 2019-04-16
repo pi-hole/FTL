@@ -13,7 +13,7 @@
 ConfigStruct config;
 static char *parse_FTLconf(FILE *fp, const char * key);
 static void release_config_memory(void);
-void getpath(FILE* fp, const char *option, const char *defaultloc, char **pointer);
+static void getpath(FILE* fp, const char *option, const char *defaultloc, char **pointer);
 
 char *conflinebuffer = NULL;
 
@@ -334,7 +334,7 @@ void read_FTLconf(void)
 		fclose(fp);
 }
 
-void getpath(FILE* fp, const char *option, const char *defaultloc, char **pointer)
+static void getpath(FILE* fp, const char *option, const char *defaultloc, char **pointer)
 {
 	// This subroutine is used to read paths from pihole-FTL.conf
 	// fp:         File pointer to opened and readable config file

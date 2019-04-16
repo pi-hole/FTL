@@ -100,7 +100,7 @@ static size_t resolveAndAddHostname(size_t ippos, size_t oldnamepos)
 }
 
 // Resolve client host names
-void resolveClients(bool onlynew)
+void resolveClients(const bool onlynew)
 {
 	// Lock counter access here, we use a copy in the following loop
 	lock_shm();
@@ -137,7 +137,7 @@ void resolveClients(bool onlynew)
 }
 
 // Resolve upstream destination host names
-void resolveForwardDestinations(bool onlynew)
+void resolveForwardDestinations(const bool onlynew)
 {
 	// Lock counter access here, we use a copy in the following loop
 	lock_shm();
