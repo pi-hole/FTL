@@ -152,11 +152,13 @@ void free_regex(void)
 
 	// Must reevaluate regex filters after having reread the regex filter
 	// We reset all regex status to unknown to have them being reevaluated
-	if(counters->domains > 0)
-		validate_access("domains", counters->domains-1, false, __LINE__, __FUNCTION__, __FILE__);
 	for(int i=0; i < counters->domains; i++)
 	{
-		domains[i].regexmatch = REGEX_UNKNOWN;
+		// Get domain pointer
+		domainsData* domain = getDomain(i, true);
+
+		// Reset regexmatch to unknown
+		domain->regexmatch = REGEX_UNKNOWN;
 	}
 
 	// Also free array of whitelisted domains

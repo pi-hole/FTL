@@ -17,112 +17,116 @@ void strtolower(char *str)
 	while(str[i]){ str[i] = tolower(str[i]); i++; }
 }
 
-int findForwardID(const char * forward, const bool count)
+int findForwardID(const char * forwardString, const bool count)
 {
-	int i, forwardID = -1;
-	if(counters->forwarded > 0)
-		validate_access("forwarded", counters->forwarded-1, true, __LINE__, __FUNCTION__, __FILE__);
 	// Go through already knows forward servers and see if we used one of those
-	for(i=0; i < counters->forwarded; i++)
+	for(int forwardID=0; forwardID < counters->forwarded; forwardID++)
 	{
-		if(strcmp(getstr(forwarded[i].ippos), forward) == 0)
+		// Get forward pointer
+		forwardedData* forward = getForward(forwardID, true);
+
+		if(strcmp(getstr(forward->ippos), forwardString) == 0)
 		{
-			forwardID = i;
-			if(count) forwarded[forwardID].count++;
+			if(count) forward->count++;
 			return forwardID;
 		}
 	}
 	// This forward server is not known
 	// Store ID
-	forwardID = counters->forwarded;
-	logg("New forward server: %s (%i/%u)", forward, forwardID, counters->forwarded_MAX);
+	const int forwardID = counters->forwarded;
+	logg("New forward server: %s (%i/%u)", forwardString, forwardID, counters->forwarded_MAX);
 
 	// Check struct size
 	memory_check(FORWARDED);
 
-	validate_access("forwarded", forwardID, false, __LINE__, __FUNCTION__, __FILE__);
+	// Get forward pointer
+	forwardedData* forward = getForward(forwardID, false);
+
 	// Set magic byte
-	forwarded[forwardID].magic = MAGICBYTE;
+	forward->magic = MAGICBYTE;
 	// Initialize its counter
 	if(count)
-		forwarded[forwardID].count = 1;
+		forward->count = 1;
 	else
-		forwarded[forwardID].count = 0;
+		forward->count = 0;
 	// Save forward destination IP address
-	forwarded[forwardID].ippos = addstr(forward);
-	forwarded[forwardID].failed = 0;
+	forward->ippos = addstr(forwardString);
+	forward->failed = 0;
 	// Initialize forward hostname
 	// Due to the nature of us being the resolver,
 	// the actual resolving of the host name has
 	// to be done separately to be non-blocking
-	forwarded[forwardID].new = true;
-	forwarded[forwardID].namepos = 0; // 0 -> string with length zero
+	forward->new = true;
+	forward->namepos = 0; // 0 -> string with length zero
 	// Increase counter by one
 	counters->forwarded++;
 
 	return forwardID;
 }
 
-int findDomainID(const char *domain)
+int findDomainID(const char *domainString)
 {
-	int i;
-	if(counters->domains > 0)
-		validate_access("domains", counters->domains-1, true, __LINE__, __FUNCTION__, __FILE__);
-	for(i=0; i < counters->domains; i++)
+	for(int domainID = 0; domainID < counters->domains; domainID++)
 	{
+		// Get domain pointer
+		domainsData* domain = getDomain(domainID, true);
+
 		// Quick test: Does the domain start with the same character?
-		if(getstr(domains[i].domainpos)[0] != domain[0])
+		if(getstr(domain->domainpos)[0] != domainString[0])
 			continue;
 
 		// If so, compare the full domain using strcmp
-		if(strcmp(getstr(domains[i].domainpos), domain) == 0)
+		if(strcmp(getstr(domain->domainpos), domainString) == 0)
 		{
-			domains[i].count++;
-			return i;
+			domain->count++;
+			return domainID;
 		}
 	}
 
 	// If we did not return until here, then this domain is not known
 	// Store ID
-	int domainID = counters->domains;
+	const int domainID = counters->domains;
 
 	// Check struct size
 	memory_check(DOMAINS);
 
-	validate_access("domains", domainID, false, __LINE__, __FUNCTION__, __FILE__);
+	// Get domain pointer
+	domainsData* domain = getDomain(domainID, false);
+
 	// Set magic byte
-	domains[domainID].magic = MAGICBYTE;
+	domain->magic = MAGICBYTE;
 	// Set its counter to 1
-	domains[domainID].count = 1;
+	domain->count = 1;
 	// Set blocked counter to zero
-	domains[domainID].blockedcount = 0;
+	domain->blockedcount = 0;
 	// Store domain name - no need to check for NULL here as it doesn't harm
-	domains[domainID].domainpos = addstr(domain);
+	domain->domainpos = addstr(domainString);
 	// RegEx needs to be evaluated for this new domain
-	domains[domainID].regexmatch = REGEX_UNKNOWN;
+	domain->regexmatch = REGEX_UNKNOWN;
 	// Increase counter by one
 	counters->domains++;
 
 	return domainID;
 }
 
-int findClientID(const char *client, const bool count)
+int findClientID(const char *clientIP, const bool count)
 {
 	// Compare content of client against known client IP addresses
-	if(counters->clients > 0)
-		validate_access("clients", counters->clients-1, true, __LINE__, __FUNCTION__, __FILE__);
-	for(int i=0; i < counters->clients; i++)
+	for(int clientID=0; clientID < counters->clients; clientID++)
 	{
+		// Get client pointer
+		clientsData* client = getClient(clientID, true);
+
 		// Quick test: Does the clients IP start with the same character?
-		if(getstr(clients[i].ippos)[0] != client[0])
+		if(getstr(client->ippos)[0] != clientIP[0])
 			continue;
 
 		// If so, compare the full IP using strcmp
-		if(strcmp(getstr(clients[i].ippos), client) == 0)
+		if(strcmp(getstr(client->ippos), clientIP) == 0)
 		{
 			// Add one if count == true (do not add one, e.g., during ARP table processing)
-			if(count) clients[i].count++;
-			return i;
+			if(count) client->count++;
+			return clientID;
 		}
 	}
 
@@ -133,33 +137,35 @@ int findClientID(const char *client, const bool count)
 
 	// If we did not return until here, then this client is definitely new
 	// Store ID
-	int clientID = counters->clients;
+	const int clientID = counters->clients;
 
 	// Check struct size
 	memory_check(CLIENTS);
 
-	validate_access("clients", clientID, false, __LINE__, __FUNCTION__, __FILE__);
+	// Get client pointer
+	clientsData* client = getClient(clientID, false);
+
 	// Set magic byte
-	clients[clientID].magic = MAGICBYTE;
+	client->magic = MAGICBYTE;
 	// Set its counter to 1
-	clients[clientID].count = 1;
+	client->count = 1;
 	// Initialize blocked count to zero
-	clients[clientID].blockedcount = 0;
+	client->blockedcount = 0;
 	// Store client IP - no need to check for NULL here as it doesn't harm
-	clients[clientID].ippos = addstr(client);
+	client->ippos = addstr(clientIP);
 	// Initialize client hostname
 	// Due to the nature of us being the resolver,
 	// the actual resolving of the host name has
 	// to be done separately to be non-blocking
-	clients[clientID].new = true;
-	clients[clientID].namepos = 0;
+	client->new = true;
+	client->namepos = 0;
 	// No query seen so far
-	clients[clientID].lastQuery = 0;
-	clients[clientID].numQueriesARP = 0;
+	client->lastQuery = 0;
+	client->numQueriesARP = 0;
 
 	// Initialize client-specific overTime data
 	for(int i = 0; i < OVERTIME_SLOTS; i++)
-		clients[clientID].overTime[i] = 0;
+		client->overTime[i] = 0;
 
 	// Increase counter by one
 	counters->clients++;
@@ -183,10 +189,14 @@ bool isValidIPv6(const char *addr)
 // only when appropriate for the requested query
 const char *getDomainString(const int queryID)
 {
-	if(queries[queryID].privacylevel < PRIVACY_HIDE_DOMAINS)
+	const queriesData* query = getQuery(queryID, true);
+	if(query->privacylevel < PRIVACY_HIDE_DOMAINS)
 	{
-		validate_access("domains", queries[queryID].domainID, true, __LINE__, __FUNCTION__, __FILE__);
-		return getstr(domains[queries[queryID].domainID].domainpos);
+		// Get domain pointer
+		const domainsData* domain = getDomain(query->domainID, true);
+
+		// Return string
+		return getstr(domain->domainpos);
 	}
 	else
 		return HIDDEN_DOMAIN;
@@ -196,10 +206,14 @@ const char *getDomainString(const int queryID)
 // only when appropriate for the requested query
 const char *getClientIPString(const int queryID)
 {
-	if(queries[queryID].privacylevel < PRIVACY_HIDE_DOMAINS_CLIENTS)
+	const queriesData* query = getQuery(queryID, false);
+	if(query->privacylevel < PRIVACY_HIDE_DOMAINS_CLIENTS)
 	{
-		validate_access("clients", queries[queryID].clientID, true, __LINE__, __FUNCTION__, __FILE__);
-		return getstr(clients[queries[queryID].clientID].ippos);
+		// Get client pointer
+		const clientsData* client = getClient(query->clientID, false);
+
+		// Return string
+		return getstr(client->ippos);
 	}
 	else
 		return HIDDEN_CLIENT;
@@ -209,10 +223,14 @@ const char *getClientIPString(const int queryID)
 // only when appropriate for the requested query
 const char *getClientNameString(const int queryID)
 {
-	if(queries[queryID].privacylevel < PRIVACY_HIDE_DOMAINS_CLIENTS)
+	const queriesData* query = getQuery(queryID, true);
+	if(query->privacylevel < PRIVACY_HIDE_DOMAINS_CLIENTS)
 	{
-		validate_access("clients", queries[queryID].clientID, true, __LINE__, __FUNCTION__, __FILE__);
-		return getstr(clients[queries[queryID].clientID].namepos);
+		// Get client pointer
+		const clientsData* client = getClient(query->clientID, true);
+
+		// Return string
+		return getstr(client->namepos);
 	}
 	else
 		return HIDDEN_CLIENT;

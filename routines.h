@@ -95,7 +95,6 @@ char *FTLstrdup(const char *src, const char *file, const char *function, const i
 void *FTLcalloc(size_t nmemb, size_t size, const char *file, const char *function, const int line) __attribute__((malloc)) __attribute__((alloc_size(1,2)));
 void *FTLrealloc(void *ptr_in, size_t size, const char *file, const char *function, const int line) __attribute__((alloc_size(2)));
 void FTLfree(void *ptr, const char* file, const char *function, const int line);
-void validate_access(const char * name, int pos, bool testmagic, const int line, const char * function, const char * file);
 
 int main_dnsmasq(int argc, const char ** argv);
 

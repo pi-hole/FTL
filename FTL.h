@@ -204,7 +204,7 @@ typedef struct {
 	int64_t db;
 	unsigned int timeidx;
 	bool complete;
-} queriesDataStruct;
+} queriesData;
 
 typedef struct {
 	unsigned char magic;
@@ -213,7 +213,7 @@ typedef struct {
 	int count;
 	int failed;
 	bool new;
-} forwardedDataStruct;
+} forwardedData;
 
 typedef struct {
 	unsigned char magic;
@@ -225,7 +225,7 @@ typedef struct {
 	int overTime[OVERTIME_SLOTS];
 	unsigned int numQueriesARP;
 	bool new;
-} clientsDataStruct;
+} clientsData;
 
 typedef struct {
 	unsigned char magic;
@@ -233,7 +233,7 @@ typedef struct {
 	size_t domainpos;
 	int count;
 	int blockedcount;
-} domainsDataStruct;
+} domainsData;
 
 typedef struct {
 	unsigned char magic;
@@ -243,7 +243,7 @@ typedef struct {
 	int cached;
 	int forwarded;
 	int querytypedata[TYPE_MAX-1];
-} overTimeDataStruct;
+} overTimeData;
 
 typedef struct {
 	char **domains;
@@ -271,11 +271,7 @@ extern FTLFileNamesStruct FTLfiles;
 extern countersStruct *counters;
 extern ConfigStruct config;
 
-extern queriesDataStruct *queries;
-extern forwardedDataStruct *forwarded;
-extern clientsDataStruct *clients;
-extern domainsDataStruct *domains;
-extern overTimeDataStruct *overTime;
+extern overTimeData *overTime;
 
 // Used in gc.c, memory.c, resolve.c, signals.c, and socket.c
 extern volatile sig_atomic_t killed;
@@ -316,3 +312,13 @@ extern pthread_t socket_listenthread;
 extern pthread_t DBthread;
 extern pthread_t GCthread;
 extern pthread_t DNSclientthread;
+
+// Pointer getter functions
+#define getQuery(queryID, checkMagic) _getQuery(queryID, checkMagic, __LINE__, __FUNCTION__, __FILE__)
+queriesData* _getQuery(int queryID, bool checkMagic, int line, const char * function, const char * file);
+#define getClient(clientID, checkMagic) _getClient(clientID, checkMagic, __LINE__, __FUNCTION__, __FILE__)
+clientsData* _getClient(int clientID, bool checkMagic, int line, const char * function, const char * file);
+#define getDomain(domainID, checkMagic) _getDomain(domainID, checkMagic, __LINE__, __FUNCTION__, __FILE__)
+domainsData* _getDomain(int domainID, bool checkMagic, int line, const char * function, const char * file);
+#define getForward(forwardID, checkMagic) _getForward(forwardID, checkMagic, __LINE__, __FUNCTION__, __FILE__)
+forwardedData* _getForward(int forwardID, bool checkMagic, int line, const char * function, const char * file);
