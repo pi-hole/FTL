@@ -37,12 +37,13 @@ GCCVERSION8 := $(shell expr `$(CC) -dumpversion | cut -f1 -d.` \>= 8)
 # -pie -fPIE: For ASLR (address space layout randomization)
 # -g3: More debugging information
 # -fno-omit-frame-pointer: get nicer stacktraces
+# -funwind-tables: Generate static data for unwinding
 # -fasynchronous-unwind-tables: Increased reliability of backtraces
 # -fexceptions: Enable table-based thread cancellation
 # -Wl,-z,defs: Detect and reject underlinking (phenomenon caused by missing shared library arguments when invoking the linked editor to produce another shared library)
 # -Wl,-z,now: Disable lazy binding
 # -Wl,-z,relro: Read-only segments after relocation
-HARDENING_FLAGS=-fstack-protector-strong -Wp,-D_FORTIFY_SOURCE=2 -O3 -Wl,-z,relro,-z,now -pie -fPIE -fexceptions -fasynchronous-unwind-tables -Wl,-z,defs -Wl,-z,now -Wl,-z,relro
+HARDENING_FLAGS=-fstack-protector-strong -Wp,-D_FORTIFY_SOURCE=2 -O3 -Wl,-z,relro,-z,now -pie -fPIE -fexceptions -funwind-tables -fasynchronous-unwind-tables -Wl,-z,defs -Wl,-z,now -Wl,-z,relro
 DEBUG_FLAGS=-rdynamic -fno-omit-frame-pointer
 
 # -DSQLITE_OMIT_LOAD_EXTENSION: This option omits the entire extension loading mechanism from SQLite, including sqlite3_enable_load_extension() and sqlite3_load_extension() interfaces. (needs -ldl linking option, otherwise)

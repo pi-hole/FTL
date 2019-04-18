@@ -50,7 +50,7 @@ static void __attribute__((noreturn)) SIGSEGV_handler(int sig, siginfo_t *si, vo
 	char ** bcktrace = backtrace_symbols(buffer, calls);
 	if(bcktrace == NULL)
 	{
-		logg("Unable to obtain backtrace symbols!", calls);
+		logg("Unable to obtain backtrace symbols!");
 		for(int j = 0; j < calls; j++)
 		{
 			logg("B[%04i]: %p", j, buffer[j]);
