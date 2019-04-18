@@ -40,13 +40,12 @@ static void __attribute__((noreturn)) SIGSEGV_handler(int sig, siginfo_t *si, vo
 		default: logg("     with code: Unknown (%i)", si->si_code); break;
 	}
 
+// Check GLIBC availability as MUSL does not support live backtrace generation
+#if defined(__GLIBC__)
 	// Try to obtain backtrace. This may not always be helpful, but it is better than nothing
 	void *buffer[255];
 	const int calls = backtrace(buffer, sizeof(buffer)/sizeof(void *));
 	logg("Backtrace:");
-
-// Check GLIBC availability as MUSL does not support backtrace_symbols()
-#if defined(__GLIBC__)
 	char ** bcktrace = backtrace_symbols(buffer, calls);
 	if(bcktrace == NULL)
 	{
@@ -66,10 +65,6 @@ static void __attribute__((noreturn)) SIGSEGV_handler(int sig, siginfo_t *si, vo
 	free(bcktrace);
 #else
 	logg("!!! INFO: pihole-FTL has not been compiled for glibc !!!");
-	for(int j = 0; j < calls; j++)
-	{
-		logg("B[%04i]: %p", j, buffer[j]);
-	}
 #endif
 	logg("Thank you for helping us to improve our FTL engine!");
 
