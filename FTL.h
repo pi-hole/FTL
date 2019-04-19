@@ -7,6 +7,8 @@
 *
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
+#ifndef FTL_H
+#define FTL_H
 
 #define __USE_XOPEN
 #define _GNU_SOURCE
@@ -322,3 +324,5 @@ clientsData* _getClient(int clientID, bool checkMagic, int line, const char * fu
 domainsData* _getDomain(int domainID, bool checkMagic, int line, const char * function, const char * file);
 #define getForward(forwardID, checkMagic) _getForward(forwardID, checkMagic, __LINE__, __FUNCTION__, __FILE__)
 forwardedData* _getForward(int forwardID, bool checkMagic, int line, const char * function, const char * file);
+
+#endif // FTL_H

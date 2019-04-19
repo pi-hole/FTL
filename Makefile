@@ -141,11 +141,14 @@ clean:
 version~: force
 	@echo '$(GIT_BRANCH) $(GIT_VERSION) $(GIT_DATE) $(GIT_TAG)' | cmp -s - $@ || echo '$(GIT_BRANCH) $(GIT_VERSION) $(GIT_DATE) $(GIT_TAG)' > $@
 version.h: version~
-	@echo '#define GIT_VERSION "$(GIT_VERSION)"' > "$@"
+	@echo '#ifndef VERSION_H' > "$@"
+	@echo '#define VERSION_H' >> "$@"
+	@echo '#define GIT_VERSION "$(GIT_VERSION)"' >> "$@"
 	@echo '#define GIT_DATE "$(GIT_DATE)"' >> "$@"
 	@echo '#define GIT_BRANCH "$(GIT_BRANCH)"' >> "$@"
 	@echo '#define GIT_TAG "$(GIT_TAG)"' >> "$@"
 	@echo '#define GIT_HASH "$(GIT_HASH)"' >> "$@"
+	@echo '#endif // VERSION_H' >> "$@"
 	@echo "Making FTL version on branch $(GIT_BRANCH) - $(GIT_VERSION) ($(GIT_DATE))"
 
 prefix=/usr
