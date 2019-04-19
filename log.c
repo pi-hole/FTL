@@ -53,7 +53,9 @@ void open_FTL_log(const bool test)
 static void get_timestr(char *timestring)
 {
 	const time_t t = time(NULL);
-	const struct tm tm = *localtime(&t);
+	struct tm tm;
+	localtime_r(&t, &tm);
+
 	struct timeval tv;
 	gettimeofday(&tv, NULL);
 	const int millisec = tv.tv_usec/1000;

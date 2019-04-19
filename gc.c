@@ -45,7 +45,8 @@ void *GC_thread(void *val)
 			if(config.debug & DEBUG_GC) timer_start(GC_TIMER);
 
 			int removed = 0;
-			if(config.debug & DEBUG_GC) logg("GC starting, mintime: %lu %s", mintime, ctime(&mintime));
+			char ctimebuffer[32]; // need at least 26 bytes according to ctime_r man page
+			if(config.debug & DEBUG_GC) logg("GC starting, mintime: %lu %s", mintime, ctime_r(&mintime, ctimebuffer));
 
 			// Process all queries
 			for(long int i=0; i < counters->queries; i++)
