@@ -7,7 +7,10 @@
 *
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
+#ifndef ROUTINES_H
+#define ROUTINES_H
 
+// daemon.c
 void go_daemon(void);
 void timer_start(const int i);
 double timer_elapsed_msec(const int i);
@@ -16,6 +19,7 @@ void savepid(void);
 char * getUserName(void);
 void removepid(void);
 
+// log.c
 void open_FTL_log(const bool test);
 void logg(const char* format, ...) __attribute__ ((format (gnu_printf, 1, 2)));
 void log_counter_info(void);
@@ -150,3 +154,5 @@ bool check_capabilities(void);
 bool create_network_table(void);
 void parse_arp_cache(void);
 void updateMACVendorRecords(void);
+
+#endif // ROUTINES_H
