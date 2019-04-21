@@ -9,7 +9,9 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
+#if defined(__GLIBC__)
 #include <execinfo.h>
+#endif
 
 volatile sig_atomic_t killed = 0;
 static time_t FTLstarttime = 0;
@@ -46,23 +48,18 @@ static void __attribute__((noreturn)) SIGSEGV_handler(int sig, siginfo_t *si, vo
 	void *buffer[255];
 	const int calls = backtrace(buffer, sizeof(buffer)/sizeof(void *));
 	logg("Backtrace:");
+
 	char ** bcktrace = backtrace_symbols(buffer, calls);
 	if(bcktrace == NULL)
-	{
 		logg("Unable to obtain backtrace symbols!");
-		for(int j = 0; j < calls; j++)
-		{
-			logg("B[%04i]: %p", j, buffer[j]);
-		}
-	}
-	else
+
+	for(int j = 0; j < calls; j++)
 	{
-		for(int j = 0; j < calls; j++)
-		{
-			logg("B[%04i]: %s", j, bcktrace[j]);
-		}
+		logg("B[%04i]: %p, %s", j, buffer[j],
+		     bcktrace != NULL ? bcktrace[j] : "---");
 	}
-	free(bcktrace);
+	if(bcktrace != NULL)
+		free(bcktrace);
 #else
 	logg("!!! INFO: pihole-FTL has not been compiled for glibc !!!");
 #endif
