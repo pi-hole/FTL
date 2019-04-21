@@ -1182,7 +1182,7 @@ void _FTL_forwarding_failed(const struct server *server, const char* file, const
 	// Update counter
 	forward->failed++;
 
-	free(forward);
+	free(forwarddest);
 	unlock_shm();
 	return;
 }
