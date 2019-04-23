@@ -21,6 +21,7 @@ void logg(const char* format, ...) __attribute__ ((format (gnu_printf, 1, 2)));
 void log_counter_info(void);
 void format_memory_size(char *prefix, unsigned long int bytes, double *formated);
 void log_FTL_version(bool crashreport);
+void get_timestr(char *timestring, const time_t timein);
 
 // datastructure.c
 void strtolower(char *str);
