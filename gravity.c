@@ -55,10 +55,14 @@ static void gravityDB_close(void)
 	sqlite3_close(gravitydb);
 }
 
-bool gravityDB_getTable(unsigned char list)
+bool gravityDB_getTable(const unsigned char list)
 {
-	// Read gravity domains
-	gravityDB_open();
+	// Open gravity database, fail is not possible
+	// Possible if the database has not yet been created by gravity
+	if(!gravityDB_open())
+		return false;
+
+	// Select correct query string to be used depending on list to be read
 	const char *querystr = NULL;
 	switch(list)
 	{
@@ -90,18 +94,21 @@ bool gravityDB_getTable(unsigned char list)
 	return true;
 }
 
-const char* gravityDB_getDomain(void)
+inline const char* gravityDB_getDomain(void)
 {
-	int rc;
-
 	// Perform step
-	if((rc = sqlite3_step(stmt)) == SQLITE_ROW)
+	const int rc = sqlite3_step(stmt);
+
+	// Valid row
+	if(rc == SQLITE_ROW)
 	{
 		const char* domain = (char*)sqlite3_column_text(stmt, 0);
 		return domain;
 	}
 
-	// Error ?
+	// Check for error. An error happened when the result is neither
+	// SQLITE_ROW (we returned earlier in this case), nor
+	// SQLITE_DONE (we are finished reading the table)
 	if(rc != SQLITE_DONE)
 	{
 		logg("gravityDB_getDomain() - SQL error step (%i): %s", rc, sqlite3_errmsg(gravitydb));
@@ -110,7 +117,7 @@ const char* gravityDB_getDomain(void)
 		return NULL;
 	}
 
-	// Finished reading
+	// Finished reading, nothing to get here
 	return NULL;
 }
 
@@ -123,8 +130,9 @@ void gravityDB_finalizeTable(void)
 	gravityDB_close();
 }
 
-int gravityDB_count(unsigned char list)
+int gravityDB_count(const unsigned char list)
 {
+	// Select correct query string to be used depending on list to be read
 	const char* querystr = NULL;
 	switch(list)
 	{
@@ -168,7 +176,7 @@ int gravityDB_count(unsigned char list)
 	}
 
 	// Get result when there was no error
-	int result = sqlite3_column_int(stmt, 0);
+	const int result = sqlite3_column_int(stmt, 0);
 	sqlite3_finalize(stmt);
 
 	gravityDB_close();
