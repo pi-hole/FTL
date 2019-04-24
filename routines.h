@@ -7,7 +7,10 @@
 *
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
+#ifndef ROUTINES_H
+#define ROUTINES_H
 
+// daemon.c
 void go_daemon(void);
 void timer_start(const int i);
 double timer_elapsed_msec(const int i);
@@ -16,11 +19,13 @@ void savepid(void);
 char * getUserName(void);
 void removepid(void);
 
+// log.c
 void open_FTL_log(const bool test);
 void logg(const char* format, ...) __attribute__ ((format (gnu_printf, 1, 2)));
 void log_counter_info(void);
 void format_memory_size(char *prefix, unsigned long int bytes, double *formated);
 void log_FTL_version(bool crashreport);
+void get_timestr(char *timestring, const time_t timein);
 
 // datastructure.c
 void strtolower(char *str);
@@ -95,7 +100,6 @@ char *FTLstrdup(const char *src, const char *file, const char *function, const i
 void *FTLcalloc(size_t nmemb, size_t size, const char *file, const char *function, const int line) __attribute__((malloc)) __attribute__((alloc_size(1,2)));
 void *FTLrealloc(void *ptr_in, size_t size, const char *file, const char *function, const int line) __attribute__((alloc_size(2)));
 void FTLfree(void *ptr, const char* file, const char *function, const int line);
-void validate_access(const char * name, int pos, bool testmagic, const int line, const char * function, const char * file);
 
 int main_dnsmasq(int argc, const char ** argv);
 
@@ -160,3 +164,4 @@ bool gravityDB_getTable(unsigned char list);
 const char* gravityDB_getDomain(void);
 void gravityDB_finalizeTable(void);
 int gravityDB_count(unsigned char list);
+#endif // ROUTINES_H

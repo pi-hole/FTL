@@ -36,6 +36,12 @@ static SharedMemory shm_forwarded = { 0 };
 static SharedMemory shm_overTime = { 0 };
 static SharedMemory shm_settings = { 0 };
 
+// Variable size array structs
+static queriesData *queries = NULL;
+static clientsData *clients = NULL;
+static domainsData *domains = NULL;
+static forwardedData *forwarded = NULL;
+
 typedef struct {
 	pthread_mutex_t lock;
 	bool waitingForLock;
@@ -128,14 +134,14 @@ static pthread_mutex_t create_mutex(void) {
 static void remap_shm(void)
 {
 	// Remap shared object pointers which might have changed
-	realloc_shm(&shm_queries, counters->queries_MAX*sizeof(queriesDataStruct), false);
-	queries = (queriesDataStruct*)shm_queries.ptr;
-	realloc_shm(&shm_domains, counters->domains_MAX*sizeof(domainsDataStruct), false);
-	domains = (domainsDataStruct*)shm_domains.ptr;
-	realloc_shm(&shm_clients, counters->clients_MAX*sizeof(clientsDataStruct), false);
-	clients = (clientsDataStruct*)shm_clients.ptr;
-	realloc_shm(&shm_forwarded, counters->forwarded_MAX*sizeof(forwardedDataStruct), false);
-	forwarded = (forwardedDataStruct*)shm_forwarded.ptr;
+	realloc_shm(&shm_queries, counters->queries_MAX*sizeof(queriesData), false);
+	queries = (queriesData*)shm_queries.ptr;
+	realloc_shm(&shm_domains, counters->domains_MAX*sizeof(domainsData), false);
+	domains = (domainsData*)shm_domains.ptr;
+	realloc_shm(&shm_clients, counters->clients_MAX*sizeof(clientsData), false);
+	clients = (clientsData*)shm_clients.ptr;
+	realloc_shm(&shm_forwarded, counters->forwarded_MAX*sizeof(forwardedData), false);
+	forwarded = (forwardedData*)shm_forwarded.ptr;
 	realloc_shm(&shm_strings, counters->strings_MAX, false);
 	// strings are not exposed by a global pointer
 
@@ -224,35 +230,35 @@ bool init_shmem(void)
 
 	/****************************** shared domains struct ******************************/
 	// Try to create shared memory object
-	shm_domains = create_shm(SHARED_DOMAINS_NAME, pagesize*sizeof(domainsDataStruct));
-	domains = (domainsDataStruct*)shm_domains.ptr;
+	shm_domains = create_shm(SHARED_DOMAINS_NAME, pagesize*sizeof(domainsData));
+	domains = (domainsData*)shm_domains.ptr;
 	counters->domains_MAX = pagesize;
 
 	/****************************** shared clients struct ******************************/
-	size_t size = get_optimal_object_size(sizeof(clientsDataStruct), 1);
+	size_t size = get_optimal_object_size(sizeof(clientsData), 1);
 	// Try to create shared memory object
-	shm_clients = create_shm(SHARED_CLIENTS_NAME, size*sizeof(clientsDataStruct));
-	clients = (clientsDataStruct*)shm_clients.ptr;
+	shm_clients = create_shm(SHARED_CLIENTS_NAME, size*sizeof(clientsData));
+	clients = (clientsData*)shm_clients.ptr;
 	counters->clients_MAX = size;
 
 	/****************************** shared forwarded struct ******************************/
-	size = get_optimal_object_size(sizeof(forwardedDataStruct), 1);
+	size = get_optimal_object_size(sizeof(forwardedData), 1);
 	// Try to create shared memory object
-	shm_forwarded = create_shm(SHARED_FORWARDED_NAME, size*sizeof(forwardedDataStruct));
-	forwarded = (forwardedDataStruct*)shm_forwarded.ptr;
+	shm_forwarded = create_shm(SHARED_FORWARDED_NAME, size*sizeof(forwardedData));
+	forwarded = (forwardedData*)shm_forwarded.ptr;
 	counters->forwarded_MAX = size;
 
 	/****************************** shared queries struct ******************************/
 	// Try to create shared memory object
-	shm_queries = create_shm(SHARED_QUERIES_NAME, pagesize*sizeof(queriesDataStruct));
-	queries = (queriesDataStruct*)shm_queries.ptr;
+	shm_queries = create_shm(SHARED_QUERIES_NAME, pagesize*sizeof(queriesData));
+	queries = (queriesData*)shm_queries.ptr;
 	counters->queries_MAX = pagesize;
 
 	/****************************** shared overTime struct ******************************/
-	size = get_optimal_object_size(sizeof(overTimeDataStruct), OVERTIME_SLOTS);
+	size = get_optimal_object_size(sizeof(overTimeData), OVERTIME_SLOTS);
 	// Try to create shared memory object
-	shm_overTime = create_shm(SHARED_OVERTIME_NAME, size*sizeof(overTimeDataStruct));
-	overTime = (overTimeDataStruct*)shm_overTime.ptr;
+	shm_overTime = create_shm(SHARED_OVERTIME_NAME, size*sizeof(overTimeData));
+	overTime = (overTimeData*)shm_overTime.ptr;
 	initOverTime();
 
 	return true;
@@ -348,25 +354,25 @@ void *enlarge_shmem_struct(const char type)
 		case QUERIES:
 			sharedMemory = &shm_queries;
 			allocation_step = pagesize;
-			sizeofobj = sizeof(queriesDataStruct);
+			sizeofobj = sizeof(queriesData);
 			counter = &counters->queries_MAX;
 			break;
 		case CLIENTS:
 			sharedMemory = &shm_clients;
-			allocation_step = get_optimal_object_size(sizeof(clientsDataStruct), 1);
-			sizeofobj = sizeof(clientsDataStruct);
+			allocation_step = get_optimal_object_size(sizeof(clientsData), 1);
+			sizeofobj = sizeof(clientsData);
 			counter = &counters->clients_MAX;
 			break;
 		case DOMAINS:
 			sharedMemory = &shm_domains;
 			allocation_step = pagesize;
-			sizeofobj = sizeof(domainsDataStruct);
+			sizeofobj = sizeof(domainsData);
 			counter = &counters->domains_MAX;
 			break;
 		case FORWARDED:
 			sharedMemory = &shm_forwarded;
-			allocation_step = get_optimal_object_size(sizeof(forwardedDataStruct), 1);
-			sizeofobj = sizeof(forwardedDataStruct);
+			allocation_step = get_optimal_object_size(sizeof(forwardedData), 1);
+			sizeofobj = sizeof(forwardedData);
 			counter = &counters->forwarded_MAX;
 			break;
 		default:
@@ -514,4 +520,126 @@ static size_t get_optimal_object_size(const size_t objsize, const size_t minsize
 		// Return computed optimal size
 		return optsize;
 	}
+}
+
+void memory_check(int which)
+{
+	switch(which)
+	{
+		case QUERIES:
+			if(counters->queries >= counters->queries_MAX-1)
+			{
+				// Have to reallocate shared memory
+				queries = enlarge_shmem_struct(QUERIES);
+				if(queries == NULL)
+				{
+					logg("FATAL: Memory allocation failed! Exiting");
+					exit(EXIT_FAILURE);
+				}
+			}
+		break;
+		case FORWARDED:
+			if(counters->forwarded >= counters->forwarded_MAX-1)
+			{
+				// Have to reallocate shared memory
+				forwarded = enlarge_shmem_struct(FORWARDED);
+				if(forwarded == NULL)
+				{
+					logg("FATAL: Memory allocation failed! Exiting");
+					exit(EXIT_FAILURE);
+				}
+			}
+		break;
+		case CLIENTS:
+			if(counters->clients >= counters->clients_MAX-1)
+			{
+				// Have to reallocate shared memory
+				clients = enlarge_shmem_struct(CLIENTS);
+				if(clients == NULL)
+				{
+					logg("FATAL: Memory allocation failed! Exiting");
+					exit(EXIT_FAILURE);
+				}
+			}
+		break;
+		case DOMAINS:
+			if(counters->domains >= counters->domains_MAX-1)
+			{
+				// Have to reallocate shared memory
+				domains = enlarge_shmem_struct(DOMAINS);
+				if(domains == NULL)
+				{
+					logg("FATAL: Memory allocation failed! Exiting");
+					exit(EXIT_FAILURE);
+				}
+			}
+		break;
+		default:
+			/* That cannot happen */
+			logg("Fatal error in memory_check(%i)", which);
+			exit(EXIT_FAILURE);
+		break;
+	}
+}
+
+static inline bool check_range(int ID, int MAXID, const char* type, int line, const char * function, const char * file)
+{
+	if(ID < 0 || ID > MAXID)
+	{
+		// Check bounds
+		logg("FATAL: Trying to access %s ID %i, but maximum is %i", type, ID, MAXID);
+		logg("       found in %s() (%s:%i)", function, file, line);
+		return false;
+	}
+	// Everything okay
+	return true;
+}
+
+static inline bool check_magic(int ID, bool checkMagic, unsigned char magic, const char* type, int line, const char * function, const char * file)
+{
+	if(checkMagic && magic != MAGICBYTE)
+	{
+		// Check magic only if requested (skipped for new entries which are uninitialized)
+		logg("FATAL: Trying to access %s ID %i, but magic byte is %x", type, ID, magic);
+		logg("       found in %s() (%s:%i)", function, file, line);
+		return false;
+	}
+	// Everything okay
+	return true;
+}
+
+queriesData* _getQuery(int queryID, bool checkMagic, int line, const char * function, const char * file)
+{
+	if(check_range(queryID, counters->queries_MAX, "query", line, function, file) &&
+	   check_magic(queryID, checkMagic, queries[queryID].magic, "query", line, function, file))
+		return &queries[queryID];
+	else
+		return NULL;
+}
+
+clientsData* _getClient(int clientID, bool checkMagic, int line, const char * function, const char * file)
+{
+	if(check_range(clientID, counters->clients_MAX, "client", line, function, file) &&
+	   check_magic(clientID, checkMagic, clients[clientID].magic, "client", line, function, file))
+		return &clients[clientID];
+	else
+		return NULL;
+}
+
+domainsData* _getDomain(int domainID, bool checkMagic, int line, const char * function, const char * file)
+{
+	if(check_range(domainID, counters->domains_MAX, "domain", line, function, file) &&
+	   check_magic(domainID, checkMagic, domains[domainID].magic, "domain", line, function, file))
+		return &domains[domainID];
+	else
+		return NULL;
+}
+
+forwardedData* _getForward(int forwardID, bool checkMagic, int line, const char * function, const char * file)
+{
+	if(check_range(forwardID, counters->forwarded_MAX, "forward", line, function, file) &&
+	   check_magic(forwardID, checkMagic, forwarded[forwardID].magic, "forward", line, function, file))
+		return &forwarded[forwardID];
+	else
+		return NULL;
 }

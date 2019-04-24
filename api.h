@@ -7,6 +7,8 @@
 *
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
+#ifndef API_H
+#define API_H
 
 // Statistic methods
 void getStats(const int *sock);
@@ -42,3 +44,5 @@ void pack_float(const int sock, const float value);
 bool pack_fixstr(const int sock, const char *string);
 bool pack_str32(const int sock, const char *string);
 void pack_map16_start(const int sock, const uint16_t length);
+
+#endif // API_H

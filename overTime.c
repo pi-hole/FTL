@@ -20,8 +20,11 @@ static void initSlot(const unsigned int index, const time_t timestamp)
 {
 	// Possible debug printing
 	if(config.debug & DEBUG_OVERTIME)
+	{
 		logg("initSlot(%u, %lu): Zeroing overTime slot", index, timestamp);
+	}
 
+	// Initialize overTime entry
 	overTime[index].magic = MAGICBYTE;
 	overTime[index].timestamp = timestamp;
 	overTime[index].total = 0;
@@ -31,11 +34,18 @@ static void initSlot(const unsigned int index, const time_t timestamp)
 
 	// Zero all query types
 	for(unsigned int queryType = 0; queryType < TYPE_MAX-1; queryType++)
+	{
 		overTime[index].querytypedata[queryType] = 0;
+	}
 
 	// Zero overTime counter for all known clients
 	for(int clientID = 0; clientID < counters->clients; clientID++)
-		clients[clientID].overTime[index] = 0;
+	{
+		// Get client pointer
+		clientsData* client = getClient(clientID, true);
+		// Set overTime data to zero
+		client->overTime[index] = 0;
+	}
 }
 
 void initOverTime(void)
@@ -50,11 +60,11 @@ void initOverTime(void)
 	if(config.debug & DEBUG_OVERTIME)
 		logg("initOverTime(): Initializing %i slots from %lu to %lu", OVERTIME_SLOTS, timestamp-OVERTIME_SLOTS*OVERTIME_INTERVAL, timestamp);
 
-	// Iterate over overTime and initialize it
+	// Iterate over overTime
 	for(int i = OVERTIME_SLOTS-1; i >= 0 ; i--)
 	{
+		// Initialize onerTime slot
 		initSlot(i, timestamp);
-
 		// Prepare for next iteration
 		timestamp -= OVERTIME_INTERVAL;
 	}
@@ -87,7 +97,10 @@ unsigned int getOverTimeID(time_t timestamp)
 	}
 
 	if(config.debug & DEBUG_OVERTIME)
+	{
+		// Debug output
 		logg("getOverTimeID(%lu): %i", timestamp, id);
+	}
 
 	return (unsigned int) id;
 }
@@ -111,7 +124,10 @@ void moveOverTimeMemory(const time_t mintime)
 	const unsigned int remainingSlots = OVERTIME_SLOTS - moveOverTime;
 
 	if(config.debug & DEBUG_OVERTIME)
-		logg("moveOverTimeMemory(): IS: %lu, SHOULD: %lu, MOVING: %u", oldestOverTimeIS, oldestOverTimeSHOULD, moveOverTime);
+	{
+		logg("moveOverTimeMemory(): IS: %lu, SHOULD: %lu, MOVING: %u",
+		     oldestOverTimeIS, oldestOverTimeSHOULD, moveOverTime);
+	}
 
 	// Check if the move over amount is valid. This prevents errors if the
 	// function is called before GC is necessary.
@@ -119,29 +135,41 @@ void moveOverTimeMemory(const time_t mintime)
 	{
 		// Move overTime memory
 		if(config.debug & DEBUG_OVERTIME)
-			logg("moveOverTimeMemory(): Moving overTime %u - %u to 0 - %u", moveOverTime, moveOverTime+remainingSlots, remainingSlots);
-		memmove(&overTime[0], &overTime[moveOverTime], remainingSlots*sizeof(*overTime));
+		{
+			logg("moveOverTimeMemory(): Moving overTime %u - %u to 0 - %u",
+			     moveOverTime, moveOverTime+remainingSlots, remainingSlots);
+		}
+
+		// Move overTime memory forward to update data structure
+		memmove(&overTime[0],
+		        &overTime[moveOverTime],
+		        remainingSlots*sizeof(*overTime));
 
 		// Correct time indices of queries. This is necessary because we just moved the slot this index points to
 		for(int queryID = 0; queryID < counters->queries; queryID++)
 		{
+			// Get query pointer
+			queriesData* query = getQuery(queryID, true);
 			// Check if the index would become negative if we adjusted it
-			if(((int)queries[queryID].timeidx - (int)moveOverTime) < 0)
+			if(((int)query->timeidx - (int)moveOverTime) < 0)
 			{
 				// This should never happen, but we print a warning if it still happens
 				// We don't do anything in this case
-				logg("WARN: moveOverTimeMemory(): overTime time index correction failed (%i: %u / %u)", queryID, queries[queryID].timeidx, moveOverTime);
+				logg("WARN: moveOverTimeMemory(): overTime time index correction failed (%i: %u / %u)",
+				     queryID, query->timeidx, moveOverTime);
 			}
 			else
 			{
-				queries[queryID].timeidx -= moveOverTime;
+				query->timeidx -= moveOverTime;
 			}
 		}
 
 		// Move client-specific overTime memory
 		for(int clientID = 0; clientID < counters->clients; clientID++)
 		{
-			memmove(&clients[clientID].overTime[0], &clients[clientID].overTime[moveOverTime], remainingSlots*sizeof(int));
+			memmove(&(getClient(clientID, true)->overTime[0]),
+			        &(getClient(clientID, true)->overTime[moveOverTime]),
+			        remainingSlots*sizeof(int));
 		}
 
 		// Iterate over new overTime region and initialize it

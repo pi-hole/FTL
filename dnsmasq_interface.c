@@ -82,34 +82,29 @@ void _FTL_new_query(const unsigned int flags, const char *name, const struct all
 	memory_check(QUERIES);
 	const int queryID = counters->queries;
 
-	// Convert domain to lower case
-	char *domain = strdup(name);
-	strtolower(domain);
-
 	// If domain is "pi.hole" we skip this query
-	if(strcmp(domain, "pi.hole") == 0)
+	if(strcasecmp(name, "pi.hole") == 0)
 	{
-		// free memory already allocated here
-		free(domain);
 		unlock_shm();
 		return;
 	}
 
-	// Store plain text domain in buffer for regex validation
-	char *domainbuffer = strdup(domain);
+	// Convert domain to lower case
+	char *domainString = strdup(name);
+	strtolower(domainString);
 
 	// Get client IP address
 	char dest[ADDRSTRLEN];
 	inet_ntop((flags & F_IPV4) ? AF_INET : AF_INET6, addr, dest, ADDRSTRLEN);
-	char *client = strdup(dest);
-	strtolower(client);
+	char *clientIP = strdup(dest);
+	strtolower(clientIP);
 
 	// Check if user wants to skip queries coming from localhost
 	if(config.ignore_localhost &&
-	   (strcmp(client, "127.0.0.1") == 0 || strcmp(client, "::1") == 0))
+	   (strcmp(clientIP, "127.0.0.1") == 0 || strcmp(clientIP, "::1") == 0))
 	{
-		free(domain);
-		free(client);
+		free(domainString);
+		free(clientIP);
 		unlock_shm();
 		return;
 	}
@@ -119,7 +114,7 @@ void _FTL_new_query(const unsigned int flags, const char *name, const struct all
 	if(config.debug & DEBUG_QUERIES)
 	{
 		logg("**** new %s %s \"%s\" from %s (ID %i, FTL %i, %s:%i)",
-		     proto, types, domain, client, id, queryID, file, line);
+		     proto, types, domainString, clientIP, id, queryID, file, line);
 	}
 
 	// Update counters
@@ -135,43 +130,42 @@ void _FTL_new_query(const unsigned int flags, const char *name, const struct all
 	{
 		// Don't process this query further here, we already counted it
 		if(config.debug & DEBUG_QUERIES) logg("Notice: Skipping new query: %s (%i)", types, id);
-		free(domain);
-		free(domainbuffer);
-		free(client);
+		free(domainString);
+		free(clientIP);
 		unlock_shm();
 		return;
 	}
 
 	// Go through already knows domains and see if it is one of them
-	const int domainID = findDomainID(domain);
+	const int domainID = findDomainID(domainString);
 
 	// Go through already knows clients and see if it is one of them
-	const int clientID = findClientID(client, true);
+	const int clientID = findClientID(clientIP, true);
 
 	// Save everything
-	validate_access("queries", queryID, false, __LINE__, __FUNCTION__, __FILE__);
-	queries[queryID].magic = MAGICBYTE;
-	queries[queryID].timestamp = querytimestamp;
-	queries[queryID].type = querytype;
-	queries[queryID].status = QUERY_UNKNOWN;
-	queries[queryID].domainID = domainID;
-	queries[queryID].clientID = clientID;
-	queries[queryID].timeidx = timeidx;
+	queriesData* query = getQuery(queryID, false);
+	query->magic = MAGICBYTE;
+	query->timestamp = querytimestamp;
+	query->type = querytype;
+	query->status = QUERY_UNKNOWN;
+	query->domainID = domainID;
+	query->clientID = clientID;
+	query->timeidx = timeidx;
 	// Initialize database rowID with zero, will be set when the query is stored in the long-term DB
-	queries[queryID].db = 0;
-	queries[queryID].id = id;
-	queries[queryID].complete = false;
-	queries[queryID].response = converttimeval(request);
+	query->db = 0;
+	query->id = id;
+	query->complete = false;
+	query->response = converttimeval(request);
 	// Initialize reply type
-	queries[queryID].reply = REPLY_UNKNOWN;
+	query->reply = REPLY_UNKNOWN;
 	// Store DNSSEC result for this domain
-	queries[queryID].dnssec = DNSSEC_UNSPECIFIED;
+	query->dnssec = DNSSEC_UNSPECIFIED;
 
 	// Check and apply possible privacy level rules
 	// The currently set privacy level (at the time the query is
 	// generated) is stored in the queries structure
 	get_privacy_level(NULL);
-	queries[queryID].privacylevel = config.privacylevel;
+	query->privacylevel = config.privacylevel;
 
 	// Increase DNS queries counter
 	counters->queries++;
@@ -181,16 +175,21 @@ void _FTL_new_query(const unsigned int flags, const char *name, const struct all
 
 	// Update overTime data
 	overTime[timeidx].total++;
+
+	// Get client pointer
+	clientsData* client = getClient(clientID, true);
 	// Update overTime data structure with the new client
-	clients[clientID].overTime[timeidx]++;
+	client->overTime[timeidx]++;
 
 	// Set lastQuery timer and add one query for network table
-	clients[clientID].lastQuery = querytimestamp;
-	clients[clientID].numQueriesARP++;
+	client->lastQuery = querytimestamp;
+	client->numQueriesARP++;
+
+	// Get domain pointer
+	domainsData* domain = getDomain(domainID, true);
 
 	// Try blocking regex if configured
-	validate_access("domains", domainID, false, __LINE__, __FUNCTION__, __FILE__);
-	if(domains[domainID].regexmatch == REGEX_UNKNOWN && blockingstatus != BLOCKING_DISABLED)
+	if(domain->regexmatch == REGEX_UNKNOWN && blockingstatus != BLOCKING_DISABLED)
 	{
 		// For minimal performance impact, we test the regex only when
 		// - regex checking is enabled, and
@@ -202,24 +201,23 @@ void _FTL_new_query(const unsigned int flags, const char *name, const struct all
 		// of a specific domain. The logic herein is:
 		// If matched, then compare against whitelist
 		// If in whitelist, negate matched so this function returns: not-to-be-blocked
-		if(match_regex(domainbuffer) && !in_whitelist(domainbuffer))
+		if(match_regex(domainString) && !in_whitelist(domainString))
 		{
 			// We have to block this domain
-			block_single_domain_regex(domainbuffer);
-			domains[domainID].regexmatch = REGEX_BLOCKED;
+			block_single_domain_regex(domainString);
+			domain->regexmatch = REGEX_BLOCKED;
 		}
 		else
 		{
 			// Explicitly mark as not blocked to skip regex test
 			// next time we see this domain
-			domains[domainID].regexmatch = REGEX_NOTBLOCKED;
+			domain->regexmatch = REGEX_NOTBLOCKED;
 		}
 	}
 
 	// Free allocated memory
-	free(client);
-	free(domain);
-	free(domainbuffer);
+	free(domainString);
+	free(clientIP);
 
 	// Release thread lock
 	unlock_shm();
@@ -234,16 +232,16 @@ static int findQueryID(const int id)
 	// We iterate from the most recent query down to at most MAXITER queries in the past to avoid
 	// iterating through the entire array of queries
 	// MAX(0, a) is used to return 0 in case a is negative (negative array indices are harmful)
-
-	// Validate access only once for the maximum index (all lower will work)
 	const int until = MAX(0, counters->queries-MAXITER);
 	const int start = MAX(0, counters->queries-1);
-	validate_access("queries", until, false, __LINE__, __FUNCTION__, __FILE__);
 
 	// Check UUIDs of queries
 	for(int i = start; i >= until; i--)
-		if(queries[i].id == id)
+	{
+		const queriesData* query = getQuery(i, true);
+		if(query->id == id)
 			return i;
+	}
 
 	// If not found
 	return -1;
@@ -273,8 +271,8 @@ void _FTL_forwarded(const unsigned int flags, const char *name, const struct all
 	if(config.debug & DEBUG_QUERIES) logg("**** forwarded %s to %s (ID %i, %s:%i)", name, forward, id, file, line);
 
 	// Save status and forwardID in corresponding query identified by dnsmasq's ID
-	const int i = findQueryID(id);
-	if(i < 0)
+	const int queryID = findQueryID(id);
+	if(queryID < 0)
 	{
 		// This may happen e.g. if the original query was a PTR query or "pi.hole"
 		// as we ignore them altogether
@@ -283,13 +281,16 @@ void _FTL_forwarded(const unsigned int flags, const char *name, const struct all
 		return;
 	}
 
+	// Get query pointer
+	queriesData* query = getQuery(queryID, true);
+
 	// Proceed only if
 	// - current query has not been marked as replied to so far
 	//   (it could be that answers from multiple forward
 	//    destinations are coming in for the same query)
 	// - the query was formally known as cached but had to be forwarded
 	//   (this is a special case further described below)
-	if(queries[i].complete && queries[i].status != QUERY_CACHE)
+	if(query->complete && query->status != QUERY_CACHE)
 	{
 		free(forward);
 		unlock_shm();
@@ -299,11 +300,11 @@ void _FTL_forwarded(const unsigned int flags, const char *name, const struct all
 	// Get ID of forward destination, create new forward destination record
 	// if not found in current data structure
 	const int forwardID = findForwardID(forward, true);
-	queries[i].forwardID = forwardID;
+	query->forwardID = forwardID;
 
-	const unsigned int timeidx = queries[i].timeidx;
+	const unsigned int timeidx = query->timeidx;
 
-	if(queries[i].status == QUERY_CACHE)
+	if(query->status == QUERY_CACHE)
 	{
 		// Detect if we cached the <CNAME> but need to ask the upstream
 		// servers for the actual IPs now, we remove this query from the
@@ -330,7 +331,7 @@ void _FTL_forwarded(const unsigned int flags, const char *name, const struct all
 		gettimeofday(&response, 0);
 		// Reset timer, shift slightly into the past to acknowledge the time
 		// FTLDNS needed to look up the CNAME in its cache
-		queries[i].response = converttimeval(response) - queries[i].response;
+		query->response = converttimeval(response) - query->response;
 	}
 	else
 	{
@@ -338,14 +339,14 @@ void _FTL_forwarded(const unsigned int flags, const char *name, const struct all
 		// Query is no longer unknown
 		counters->unknown--;
 		// Hereby, this query is now fully determined
-		queries[i].complete = true;
+		query->complete = true;
 	}
 
 	// Set query status to forwarded only after the
-	// if(queries[i].status == QUERY_CACHE) { ... }
+	// if(query->status == QUERY_CACHE) { ... }
 	// from above as otherwise this check will always
 	// be negative
-	queries[i].status = QUERY_FORWARDED;
+	query->status = QUERY_FORWARDED;
 
 	// Update overTime data
 	overTime[timeidx].forwarded++;
@@ -449,7 +450,10 @@ void _FTL_reply(const unsigned short flags, const char *name, const struct all_a
 		return;
 	}
 
-	if(queries[i].reply != REPLY_UNKNOWN)
+	// Get query pointer
+	queriesData* query = getQuery(i, true);
+
+	if(query->reply != REPLY_UNKNOWN)
 	{
 		// Nothing to be done here
 		unlock_shm();
@@ -457,18 +461,22 @@ void _FTL_reply(const unsigned short flags, const char *name, const struct all_a
 	}
 
 	// Determine if this reply is an exact match for the queried domain
-	const int domainID = queries[i].domainID;
-	validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
-	const bool isExactMatch = (name != NULL && strcmp(getstr(domains[domainID].domainpos), name) == 0);
+	const int domainID = query->domainID;
 
-	if((flags & F_CONFIG) && isExactMatch && !queries[i].complete)
+	// Get domain pointer
+	domainsData* domain = getDomain(domainID, true);
+
+	// Check if this domain matches exactly
+	const bool isExactMatch = (name != NULL && strcmp(getstr(domain->domainpos), name) == 0);
+
+	if((flags & F_CONFIG) && isExactMatch && !query->complete)
 	{
 		// Answered from local configuration, might be a wildcard or user-provided
 		// This query is no longer unknown
 		counters->unknown--;
 
 		// Get time index
-		const unsigned int timeidx = queries[i].timeidx;
+		const unsigned int timeidx = query->timeidx;
 
 		if(strcmp(answer, "(NXDOMAIN)") == 0 ||
 		   strcmp(answer, "0.0.0.0") == 0 ||
@@ -478,13 +486,17 @@ void _FTL_reply(const unsigned short flags, const char *name, const struct all_a
 			counters->blocked++;
 			overTime[timeidx].blocked++;
 
-			validate_access("domains", queries[i].domainID, true, __LINE__, __FUNCTION__, __FILE__);
-			domains[queries[i].domainID].blockedcount++;
+			// Update domain blocked counter
+			domain->blockedcount++;
 
-			validate_access("clients", queries[i].clientID, true, __LINE__, __FUNCTION__, __FILE__);
-			clients[queries[i].clientID].blockedcount++;
+			// Get client pointer
+			clientsData* client = getClient(query->clientID, true);
 
-			queries[i].status = QUERY_WILDCARD;
+			// Update client blocked counter
+			client->blockedcount++;
+
+			// Set query status to wildcard
+			query->status = QUERY_WILDCARD;
 		}
 		else
 		{
@@ -492,22 +504,22 @@ void _FTL_reply(const unsigned short flags, const char *name, const struct all_a
 			counters->cached++;
 			overTime[timeidx].cached++;
 
-			queries[i].status = QUERY_CACHE;
+			query->status = QUERY_CACHE;
 		}
 
 		// Save reply type and update individual reply counters
 		save_reply_type(flags, i, response);
 
 		// Hereby, this query is now fully determined
-		queries[i].complete = true;
+		query->complete = true;
 	}
 	else if((flags & F_FORWARD) && isExactMatch)
 	{
 		// Only proceed if query is not already known
 		// to have been blocked by Quad9
-		if(queries[i].reply != QUERY_EXTERNAL_BLOCKED_IP &&
-		   queries[i].reply != QUERY_EXTERNAL_BLOCKED_NULL &&
-		   queries[i].reply != QUERY_EXTERNAL_BLOCKED_NXRA)
+		if(query->reply != QUERY_EXTERNAL_BLOCKED_IP &&
+		   query->reply != QUERY_EXTERNAL_BLOCKED_NULL &&
+		   query->reply != QUERY_EXTERNAL_BLOCKED_NXRA)
 		{
 			// Save reply type and update individual reply counters
 			save_reply_type(flags, i, response);
@@ -522,7 +534,7 @@ void _FTL_reply(const unsigned short flags, const char *name, const struct all_a
 		// Example:
 		// Question: PTR 8.8.8.8
 		// will lead to:
-		//   domains[domainID].domain = 8.8.8.8.in-addr.arpa
+		//   domain->domain = 8.8.8.8.in-addr.arpa
 		// and will return
 		//   name = google-public-dns-a.google.com
 		// Hence, isExactMatch is always false
@@ -530,7 +542,7 @@ void _FTL_reply(const unsigned short flags, const char *name, const struct all_a
 		// Save reply type and update individual reply counters
 		save_reply_type(flags, i, response);
 	}
-	else if(isExactMatch && !queries[i].complete)
+	else if(isExactMatch && !query->complete)
 	{
 		logg("*************************** unknown REPLY ***************************");
 		print_flags(flags);
@@ -576,8 +588,10 @@ static void detect_blocked_IP(const unsigned short flags, const char* answer, co
 	{
 		if(config.debug & DEBUG_EXTBLOCKED)
 		{
+			const queriesData* query = getQuery(queryID, true);
+			const domainsData* domain = getDomain(query->domainID, true);
 			logg("Upstream responded with known blocking page (IPv4), ID %i:\n\t\"%s\" -> \"%s\"",
-			     queryID, getstr(domains[queryID].domainpos), answer);
+			     queryID, getstr(domain->domainpos), answer);
 		}
 
 		// Update status
@@ -595,8 +609,10 @@ static void detect_blocked_IP(const unsigned short flags, const char* answer, co
 	{
 		if(config.debug & DEBUG_EXTBLOCKED)
 		{
+			const queriesData* query = getQuery(queryID, true);
+			const domainsData* domain = getDomain(query->domainID, true);
 			logg("Upstream responded with known blocking page (IPv6), ID %i:\n\t\"%s\" -> \"%s\"",
-			     queryID, getstr(domains[queryID].domainpos), answer);
+			     queryID, getstr(domain->domainpos), answer);
 		}
 
 		// Update status
@@ -611,8 +627,10 @@ static void detect_blocked_IP(const unsigned short flags, const char* answer, co
 	{
 		if(config.debug & DEBUG_EXTBLOCKED)
 		{
+			const queriesData* query = getQuery(queryID, true);
+			const domainsData* domain = getDomain(query->domainID, true);
 			logg("Upstream responded with 0.0.0.0, ID %i:\n\t\"%s\" -> \"%s\"",
-			     queryID, getstr(domains[queryID].domainpos), answer);
+			     queryID, getstr(domain->domainpos), answer);
 		}
 
 		// Update status
@@ -624,8 +642,10 @@ static void detect_blocked_IP(const unsigned short flags, const char* answer, co
 	{
 		if(config.debug & DEBUG_EXTBLOCKED)
 		{
+			const queriesData* query = getQuery(queryID, true);
+			const domainsData* domain = getDomain(query->domainID, true);
 			logg("Upstream responded with ::, ID %i:\n\t\"%s\" -> \"%s\"",
-			     queryID, getstr(domains[queryID].domainpos), answer);
+			     queryID, getstr(domain->domainpos), answer);
 		}
 
 		// Update status
@@ -635,34 +655,43 @@ static void detect_blocked_IP(const unsigned short flags, const char* answer, co
 
 static void query_externally_blocked(const int queryID, const unsigned char status)
 {
+	// Get query pointer
+	queriesData* query = getQuery(queryID, true);
+
+	// Get time index
+	const unsigned int timeidx = query->timeidx;
+
 	// If query is already known to be externally blocked,
 	// then we have nothing to do here
-	if(queries[queryID].status == QUERY_EXTERNAL_BLOCKED_IP ||
-	   queries[queryID].status == QUERY_EXTERNAL_BLOCKED_NULL ||
-	   queries[queryID].status == QUERY_EXTERNAL_BLOCKED_NXRA)
+	if(query->status == QUERY_EXTERNAL_BLOCKED_IP ||
+	   query->status == QUERY_EXTERNAL_BLOCKED_NULL ||
+	   query->status == QUERY_EXTERNAL_BLOCKED_NXRA)
 		return;
 
-	// Get time index of this query
-	const unsigned int timeidx = queries[queryID].timeidx;
-
 	// Correct counters if necessary ...
-	if(queries[queryID].status == QUERY_FORWARDED)
+	if(query->status == QUERY_FORWARDED)
 	{
 		counters->forwardedqueries--;
 		overTime[timeidx].forwarded--;
-		validate_access("forwarded", queries[queryID].forwardID, true, __LINE__, __FUNCTION__, __FILE__);
-		forwarded[queries[queryID].forwardID].count--;
+
+		// Get forward pointer
+		forwardedData* forward = getForward(query->forwardID, true);
+		forward->count--;
 	}
-	// ... but as blocked
+	// Mark query as blocked
 	counters->blocked++;
 	overTime[timeidx].blocked++;
-	validate_access("domains", queries[queryID].domainID, true, __LINE__, __FUNCTION__, __FILE__);
-	domains[queries[queryID].domainID].blockedcount++;
-	validate_access("clients", queries[queryID].clientID, true, __LINE__, __FUNCTION__, __FILE__);
-	clients[queries[queryID].clientID].blockedcount++;
 
-	// Update status
-	queries[queryID].status = status;
+	// Get domain pointer
+	domainsData* domain = getDomain(query->domainID, true);
+	domain->blockedcount++;
+
+	// Get client pointer
+	clientsData* client = getClient(query->clientID, true);
+	client->blockedcount++;
+
+	// Set query status
+	query->status = status;
 }
 
 void _FTL_cache(const unsigned int flags, const char *name, const struct all_addr *addr,
@@ -680,19 +709,13 @@ void _FTL_cache(const unsigned int flags, const char *name, const struct all_add
 		inet_ntop((flags & F_IPV4) ? AF_INET : AF_INET6, addr, dest, ADDRSTRLEN);
 	}
 
-	// Convert domain to lower case
-	char *domain = strdup(name);
-	strtolower(domain);
-
 	// If domain is "pi.hole", we skip this query
-	if(strcmp(domain, "pi.hole") == 0)
+	// We compare case-insensitive here
+	if(strcasecmp(name, "pi.hole") == 0)
 	{
-		// free memory already allocated here
-		free(domain);
 		unlock_shm();
 		return;
 	}
-	free(domain);
 
 	// Debug logging
 	if(config.debug & DEBUG_QUERIES)
@@ -745,10 +768,20 @@ void _FTL_cache(const unsigned int flags, const char *name, const struct all_add
 		}
 
 		const int queryID = findQueryID(id);
-		if(queryID < 0 || queries[queryID].complete)
+		if(queryID < 0)
 		{
 			// This may happen e.g. if the original query was a PTR query or "pi.hole"
-			// as we ignore them altogether or if the query is already complete
+			// as we ignore them altogether
+			unlock_shm();
+			return;
+		}
+
+		// Get query pointer
+		queriesData* query = getQuery(queryID, true);
+
+		if(query->complete)
+		{
+			// Skip query if already complete
 			unlock_shm();
 			return;
 		}
@@ -757,25 +790,25 @@ void _FTL_cache(const unsigned int flags, const char *name, const struct all_add
 		counters->unknown--;
 
 		// Get time index
-		const unsigned int timeidx = queries[queryID].timeidx;
+		const unsigned int timeidx = query->timeidx;
 
-		const int domainID = queries[queryID].domainID;
-		validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
+		// Get domain pointer
+		domainsData* domain = getDomain(query->domainID, true);
 
-		const int clientID = queries[queryID].clientID;
-		validate_access("clients", clientID, true, __LINE__, __FUNCTION__, __FILE__);
+		// Get client pointer
+		clientsData* client = getClient(query->clientID, true);
 
 		// Mark this query as blocked if domain was matched by a regex
-		if(domains[domainID].regexmatch == REGEX_BLOCKED)
+		if(domain->regexmatch == REGEX_BLOCKED)
 			requesttype = QUERY_WILDCARD;
 
-		queries[queryID].status = requesttype;
+		query->status = requesttype;
 
 		// Detect if returned IP indicates that this query was blocked
 		detect_blocked_IP(flags, dest, queryID);
 
 		// Re-read requesttype as detect_blocked_IP() might have changed it
-		requesttype = queries[queryID].status;
+		requesttype = query->status;
 
 		// Handle counters accordingly
 		switch(requesttype)
@@ -785,8 +818,8 @@ void _FTL_cache(const unsigned int flags, const char *name, const struct all_add
 			case QUERY_WILDCARD: // regex blocked
 				counters->blocked++;
 				overTime[timeidx].blocked++;
-				domains[domainID].blockedcount++;
-				clients[clientID].blockedcount++;
+				domain->blockedcount++;
+				client->blockedcount++;
 				break;
 			case QUERY_CACHE: // cached from one of the lists
 				counters->cached++;
@@ -804,7 +837,7 @@ void _FTL_cache(const unsigned int flags, const char *name, const struct all_add
 		save_reply_type(flags, queryID, response);
 
 		// Hereby, this query is now fully determined
-		queries[queryID].complete = true;
+		query->complete = true;
 	}
 	else
 	{
@@ -831,21 +864,25 @@ void _FTL_dnssec(const int status, const int id, const char* file, const int lin
 		return;
 	}
 
+	// Get query pointer
+	queriesData* query = getQuery(queryID, true);
+
 	// Debug logging
 	if(config.debug & DEBUG_QUERIES)
 	{
-		const int domainID = queries[queryID].domainID;
-		validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
-		logg("**** got DNSSEC details for %s: %i (ID %i, %s:%i)", getstr(domains[domainID].domainpos), status, id, file, line);
+		// Get domain pointer
+		const domainsData* domain = getDomain(query->domainID, true);
+
+		logg("**** got DNSSEC details for %s: %i (ID %i, %s:%i)", getstr(domain->domainpos), status, id, file, line);
 	}
 
 	// Iterate through possible values
 	if(status == STAT_SECURE)
-		queries[queryID].dnssec = DNSSEC_SECURE;
+		query->dnssec = DNSSEC_SECURE;
 	else if(status == STAT_INSECURE)
-		queries[queryID].dnssec = DNSSEC_INSECURE;
+		query->dnssec = DNSSEC_INSECURE;
 	else
-		queries[queryID].dnssec = DNSSEC_BOGUS;
+		query->dnssec = DNSSEC_BOGUS;
 
 	unlock_shm();
 }
@@ -870,35 +907,41 @@ void _FTL_upstream_error(const unsigned int rcode, const int id, const char* fil
 		unlock_shm();
 		return;
 	}
+
+	// Get query pointer
+	queriesData* query = getQuery(queryID, true);
+
 	// Translate dnsmasq's rcode into something we can use
 	const char *rcodestr = NULL;
 	switch(rcode)
 	{
 		case SERVFAIL:
 			rcodestr = "SERVFAIL";
-			queries[queryID].reply = REPLY_SERVFAIL;
+			query->reply = REPLY_SERVFAIL;
 			break;
 		case REFUSED:
 			rcodestr = "REFUSED";
-			queries[queryID].reply = REPLY_REFUSED;
+			query->reply = REPLY_REFUSED;
 			break;
 		case NOTIMP:
 			rcodestr = "NOT IMPLEMENTED";
-			queries[queryID].reply = REPLY_NOTIMP;
+			query->reply = REPLY_NOTIMP;
 			break;
 		default:
 			rcodestr = "UNKNOWN";
-			queries[queryID].reply = REPLY_OTHER;
+			query->reply = REPLY_OTHER;
 			break;
 	}
 
 	// Debug logging
 	if(config.debug & DEBUG_QUERIES)
 	{
-		const int domainID = queries[queryID].domainID;
-		validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
-		logg("**** got error report for %s: %s (ID %i, %s:%i)", getstr(domains[domainID].domainpos), rcodestr, id, file, line);
-		if(queries[queryID].reply == REPLY_OTHER)
+		// Get domain pointer
+		const domainsData* domain = getDomain(query->domainID, true);
+
+		logg("**** got error report for %s: %s (ID %i, %s:%i)", getstr(domain->domainpos), rcodestr, id, file, line);
+
+		if(query->reply == REPLY_OTHER)
 		{
 			logg("Unknown rcode = %i", rcode);
 		}
@@ -937,13 +980,15 @@ void _FTL_header_analysis(const unsigned char header4, const unsigned int rcode,
 		return;
 	}
 
+	// Get query pointer
+	queriesData* query = getQuery(queryID, true);
+
 	if(config.debug & DEBUG_QUERIES)
 	{
-		const int domainID = queries[queryID].domainID;
-		validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
-		logg("**** %s externally blocked (ID %i, FTL %i, %s:%i)", getstr(domains[domainID].domainpos), id, queryID, file, line);
+		// Get domain pointer
+		const domainsData* domain = getDomain(query->domainID, true);
+		logg("**** %s externally blocked (ID %i, FTL %i, %s:%i)", getstr(domain->domainpos), id, queryID, file, line);
 	}
-
 
 	// Get response time
 	struct timeval response;
@@ -977,50 +1022,52 @@ void print_flags(const unsigned int flags)
 
 void save_reply_type(const unsigned int flags, const int queryID, const struct timeval response)
 {
+	// Get query pointer
+	queriesData* query = getQuery(queryID, true);
+
 	// Iterate through possible values
-	validate_access("queries", queryID, false, __LINE__, __FUNCTION__, __FILE__);
 	if(flags & F_NEG)
 	{
 		if(flags & F_NXDOMAIN)
 		{
 			// NXDOMAIN
-			queries[queryID].reply = REPLY_NXDOMAIN;
+			query->reply = REPLY_NXDOMAIN;
 			counters->reply_NXDOMAIN++;
 		}
 		else
 		{
 			// NODATA(-IPv6)
-			queries[queryID].reply = REPLY_NODATA;
+			query->reply = REPLY_NODATA;
 			counters->reply_NODATA++;
 		}
 	}
 	else if(flags & F_CNAME)
 	{
 		// <CNAME>
-		queries[queryID].reply = REPLY_CNAME;
+		query->reply = REPLY_CNAME;
 		counters->reply_CNAME++;
 	}
 	else if(flags & F_REVERSE)
 	{
 		// reserve lookup
-		queries[queryID].reply = REPLY_DOMAIN;
+		query->reply = REPLY_DOMAIN;
 		counters->reply_domain++;
 	}
 	else if(flags & F_RRNAME)
 	{
 		// TXT query
-		queries[queryID].reply = REPLY_RRNAME;
+		query->reply = REPLY_RRNAME;
 	}
 	else
 	{
 		// Valid IP
-		queries[queryID].reply = REPLY_IP;
+		query->reply = REPLY_IP;
 		counters->reply_IP++;
 	}
 
 	// Save response time (relative time)
-	queries[queryID].response = converttimeval(response) -
-	                            queries[queryID].response;
+	query->response = converttimeval(response) -
+	                            query->response;
 }
 
 pthread_t telnet_listenthreadv4;
@@ -1133,15 +1180,19 @@ void _FTL_forwarding_failed(const struct server *server, const char* file, const
 		inet_ntop(AF_INET6, &server->addr.in6.sin6_addr, dest, ADDRSTRLEN);
 
 	// Convert forward to lower case
-	char *forward = strdup(dest);
-	strtolower(forward);
-	const int forwardID = findForwardID(forward, false);
+	char *forwarddest = strdup(dest);
+	strtolower(forwarddest);
+	const int forwardID = findForwardID(forwarddest, false);
 
 	if(config.debug & DEBUG_QUERIES) logg("**** forwarding to %s (ID %i, %s:%i) failed", dest, forwardID, file, line);
 
-	forwarded[forwardID].failed++;
+	// Get forward pointer
+	forwardedData* forward = getForward(forwardID, true);
 
-	free(forward);
+	// Update counter
+	forward->failed++;
+
+	free(forwarddest);
 	unlock_shm();
 	return;
 }

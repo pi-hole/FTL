@@ -50,10 +50,11 @@ void open_FTL_log(const bool test)
 	}
 }
 
-static void get_timestr(char *timestring)
+void get_timestr(char *timestring, const time_t timein)
 {
-	const time_t t = time(NULL);
-	const struct tm tm = *localtime(&t);
+	struct tm tm;
+	localtime_r(&timein, &tm);
+
 	struct timeval tv;
 	gettimeofday(&tv, NULL);
 	const int millisec = tv.tv_usec/1000;
@@ -68,7 +69,7 @@ void __attribute__ ((format (gnu_printf, 1, 2))) logg(const char *format, ...)
 
 	pthread_mutex_lock(&lock);
 
-	get_timestr(timestring);
+	get_timestr(timestring, time(NULL));
 
 	// Get and log PID of current process to avoid ambiguities when more than one
 	// pihole-FTL instance is logging into the same file

@@ -108,14 +108,14 @@ void resolveClients(const bool onlynew)
 	unlock_shm();
 	for(int clientID = 0; clientID < clientscount; clientID++)
 	{
-		// Memory validation
-		validate_access("clients", clientID, true, __LINE__, __FUNCTION__, __FILE__);
+		// Get client pointer
+		clientsData* client = getClient(clientID, true);
 
 		// Memory access needs to get locked
 		lock_shm();
-		bool newflag = clients[clientID].new;
-		size_t ippos = clients[clientID].ippos;
-		size_t oldnamepos = clients[clientID].namepos;
+		bool newflag = client->new;
+		size_t ippos = client->ippos;
+		size_t oldnamepos = client->namepos;
 		unlock_shm();
 
 		// If onlynew flag is set, we will only resolve new clients
@@ -128,10 +128,9 @@ void resolveClients(const bool onlynew)
 
 		lock_shm();
 		// Store obtained host name (may be unchanged)
-		clients[clientID].namepos = newnamepos;
-
+		client->namepos = newnamepos;
 		// Mark entry as not new
-		clients[clientID].new = false;
+		client->new = false;
 		unlock_shm();
 	}
 }
@@ -145,14 +144,14 @@ void resolveForwardDestinations(const bool onlynew)
 	unlock_shm();
 	for(int forwardID = 0; forwardID < forwardedcount; forwardID++)
 	{
-		// Memory validation
-		validate_access("forwarded", forwardID, true, __LINE__, __FUNCTION__, __FILE__);
+		// Get forward pointer
+		forwardedData* forward = getForward(forwardID, true);
 
 		// Memory access needs to get locked
 		lock_shm();
-		bool newflag = forwarded[forwardID].new;
-		size_t ippos = forwarded[forwardID].ippos;
-		size_t oldnamepos = forwarded[forwardID].namepos;
+		bool newflag = forward->new;
+		size_t ippos = forward->ippos;
+		size_t oldnamepos = forward->namepos;
 		unlock_shm();
 
 		// If onlynew flag is set, we will only resolve new upstream destinations
@@ -165,9 +164,9 @@ void resolveForwardDestinations(const bool onlynew)
 
 		lock_shm();
 		// Store obtained host name (may be unchanged)
-		forwarded[forwardID].namepos = newnamepos;
+		forward->namepos = newnamepos;
 		// Mark entry as not new
-		forwarded[forwardID].new = false;
+		forward->new = false;
 		unlock_shm();
 	}
 }
