@@ -1335,14 +1335,21 @@ int FTL_listsfile(const char* filename, unsigned int index, FILE *f, int cache_s
 	int added = 0;
 	struct all_addr addr4 = {{{ 0 }}}, addr6 = {{{ 0 }}};
 	bool has_IPv4 = false, has_IPv6 = false;
-	unsigned char list = 0;
+	unsigned char list = UNKNOWN_LIST;
 
 	// Handle only gravity.list and black.list
 	// Skip all other files (they are interpreted in the usual format)
+	const char* tablename = NULL;
 	if(strcmp(filename, files.gravity) == 0)
+	{
 		list = GRAVITY_LIST;
+		tablename = "gravity";
+	}
 	else if(strcmp(filename, files.blacklist) == 0)
+	{
 		list = BLACK_LIST;
+		tablename = "blacklist";
+	}
 	else
 		return cache_size;
 
@@ -1353,12 +1360,12 @@ int FTL_listsfile(const char* filename, unsigned int index, FILE *f, int cache_s
 
 	if(blockingstatus == BLOCKING_DISABLED)
 	{
-		logg("Skipping %s because blocking is disabled", filename);
+		logg("Skipping import of %s because blocking is disabled", tablename);
 		return cache_size;
 	}
 	else
 	{
-		logg("Importing content of template %s from database", filename);
+		logg("Importing %s...", tablename);
 	}
 
 	// Start timer for list analysis
@@ -1367,7 +1374,7 @@ int FTL_listsfile(const char* filename, unsigned int index, FILE *f, int cache_s
 	// Start database interaction
 	if(!gravityDB_getTable(list))
 	{
-		logg("FTL_listsfile(%s, ...): Error getting table from database", filename);
+		logg("FTL_listsfile(): Error getting %s table from database", tablename);
 		return name_count;
 	}
 
@@ -1379,7 +1386,9 @@ int FTL_listsfile(const char* filename, unsigned int index, FILE *f, int cache_s
 	if(!has_IPv4 && !has_IPv6)
 	{
 		logg("ERROR: Cannot add domains from gravity because pihole-FTL found\n" \
-		     "       neither a valid IPV4_ADDRESS nor IPV6_ADDRESS in setupVars.conf");
+		     "       neither a valid IPV4_ADDRESS nor IPV6_ADDRESS in setupVars.conf" \
+		     "       This is an impossible configuration. Please contact the Pi-hole" \
+		     "       support if you need assistance.");
 		return cache_size;
 	}
 
@@ -1415,7 +1424,7 @@ int FTL_listsfile(const char* filename, unsigned int index, FILE *f, int cache_s
 	gravityDB_finalizeTable();
 
 	// Final logging
-	logg("%s: imported %i domains (took %.1f ms)", filename, added, timer_elapsed_msec(LISTS_TIMER));
+	logg("Database (%s): imported %i domains (took %.1f ms)", tablename, added, timer_elapsed_msec(LISTS_TIMER));
 	counters->gravity += added;
 	return name_count;
 }
