@@ -288,18 +288,6 @@ void read_FTLconf(void)
 	// SOCKETFILE
 	getpath(fp, "SOCKETFILE", "/var/run/pihole/FTL.sock", &FTLfiles.socketfile);
 
-	// WHITELISTFILE
-	getpath(fp, "WHITELISTFILE", "/etc/pihole/whitelist.txt", &files.whitelist);
-
-	// BLACKLISTFILE
-	getpath(fp, "BLACKLISTFILE", "/etc/pihole/black.list", &files.blacklist);
-
-	// GRAVITYFILE
-	getpath(fp, "GRAVITYFILE", "/etc/pihole/gravity.list", &files.gravity);
-
-	// REGEXLISTFILE
-	getpath(fp, "REGEXLISTFILE", "/etc/pihole/regex.list", &files.regexlist);
-
 	// SETUPVARSFILE
 	getpath(fp, "SETUPVARSFILE", "/etc/pihole/setupVars.conf", &files.setupVars);
 

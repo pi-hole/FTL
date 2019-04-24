@@ -981,9 +981,6 @@ int read_hostsfile(char *filename, unsigned int index, int cache_size, struct cr
 
   eatspace(f);
 
-  name_count = FTL_listsfile(filename, index, f, cache_size, rhash, hashsz);
-  addr_count = name_count - cache_size;
-
   while ((atnl = gettok(f, token)) != EOF)
     {
       lineno++;
@@ -1185,6 +1182,10 @@ void cache_reload(void)
     }
   else
     {
+      /*------------------------------- Pi-hole modification -------------------------------*/
+      total_size = FTL_database_import(total_size, (struct crec **)daemon->packet, revhashsz);
+      /*------------------------------------------------------------------------------------*/
+
       if (!option_bool(OPT_NO_HOSTS))
 	total_size = read_hostsfile(HOSTSFILE, SRC_HOSTS, total_size, (struct crec **)daemon->packet, revhashsz);
 
@@ -1688,7 +1689,11 @@ char *record_source(unsigned int index)
     return HOSTSFILE;
   /*----- Pi-hole modification -----*/
   else if (index == SRC_REGEX)
-    return (char*)regexlistname;
+    return "regex";
+  else if (index == SRC_GRAVITY)
+    return "gravity";
+  else if (index == SRC_BLACK)
+    return "blacklist";
   /*--------------------------------*/
 
   for (ah = daemon->addn_hosts; ah; ah = ah->next)

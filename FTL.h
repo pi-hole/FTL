@@ -141,10 +141,6 @@ typedef struct {
 } FTLFileNamesStruct;
 
 typedef struct {
-	char* whitelist;
-	char* blacklist;
-	char* gravity;
-	char* regexlist;
 	char* setupVars;
 	char* auditlist;
 } logFileNamesStruct;

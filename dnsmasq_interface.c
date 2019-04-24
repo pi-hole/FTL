@@ -1323,73 +1323,26 @@ static void block_single_domain_regex(const char *domain)
 
 	// Get IPv4/v6 addresses for blocking depending on user configures blocking mode
 	prepare_blocking_mode(&addr4, &addr6, &has_IPv4, &has_IPv6);
-	regexlistname = files.regexlist;
 	add_blocked_domain(&addr4, &addr6, has_IPv4, has_IPv6, domain, strlen(domain), NULL, 0, SRC_REGEX);
 
 	if(config.debug & DEBUG_QUERIES) logg("Added %s to cache", domain);
 }
 
-int FTL_listsfile(const char* filename, unsigned int index, FILE *f, int cache_size, struct crec **rhash, int hashsz)
+static int FTL_table_import(const char *tablename, const unsigned char list, const unsigned int index,
+                             struct all_addr addr4, struct all_addr addr6, bool has_IPv4, bool has_IPv6,
+                             int cache_size, struct crec **rhash, int hashsz)
 {
-	int name_count = cache_size;
-	int added = 0;
-	struct all_addr addr4 = {{{ 0 }}}, addr6 = {{{ 0 }}};
-	bool has_IPv4 = false, has_IPv6 = false;
-	unsigned char list = UNKNOWN_LIST;
-
-	// Handle only gravity.list and black.list
-	// Skip all other files (they are interpreted in the usual format)
-	const char* tablename = NULL;
-	if(strcmp(filename, files.gravity) == 0)
-	{
-		list = GRAVITY_LIST;
-		tablename = "gravity";
-	}
-	else if(strcmp(filename, files.blacklist) == 0)
-	{
-		list = BLACK_LIST;
-		tablename = "blacklist";
-	}
-	else
-		return cache_size;
-
-	// Jump to end of file to ensure dnsmasq does not
-	// try to read whatever might be in the file on
-	// disk when we return
-	fseek(f, 0, SEEK_END);
-
-	if(blockingstatus == BLOCKING_DISABLED)
-	{
-		logg("Skipping import of %s because blocking is disabled", tablename);
-		return cache_size;
-	}
-	else
-	{
-		logg("Importing %s...", tablename);
-	}
+	// Variables
+	int name_count = cache_size, added = 0;
 
 	// Start timer for list analysis
 	timer_start(LISTS_TIMER);
 
-	// Start database interaction
+	// Get database table handle
 	if(!gravityDB_getTable(list))
 	{
 		logg("FTL_listsfile(): Error getting %s table from database", tablename);
 		return name_count;
-	}
-
-	// Get IPv4/v6 addresses for blocking depending on user configured blocking mode
-	prepare_blocking_mode(&addr4, &addr6, &has_IPv4, &has_IPv6);
-
-	// If we have neither a valid IPv4 nor a valid IPv6 but the user asked for
-	// blocking modes MODE_IP or MODE_IP_NODATA_AAAA then we cannot add any entries here
-	if(!has_IPv4 && !has_IPv6)
-	{
-		logg("ERROR: Cannot add domains from gravity because pihole-FTL found\n" \
-		     "       neither a valid IPV4_ADDRESS nor IPV6_ADDRESS in setupVars.conf" \
-		     "       This is an impossible configuration. Please contact the Pi-hole" \
-		     "       support if you need assistance.");
-		return cache_size;
 	}
 
 	// Walk database table
@@ -1425,6 +1378,43 @@ int FTL_listsfile(const char* filename, unsigned int index, FILE *f, int cache_s
 
 	// Final logging
 	logg("Database (%s): imported %i domains (took %.1f ms)", tablename, added, timer_elapsed_msec(LISTS_TIMER));
+
+	return added;
+}
+
+int FTL_database_import(int cache_size, struct crec **rhash, int hashsz)
+{
+	struct all_addr addr4 = {{{ 0 }}}, addr6 = {{{ 0 }}};
+	bool has_IPv4 = false, has_IPv6 = false;
+
+	if(blockingstatus == BLOCKING_DISABLED)
+	{
+		logg("Skipping import of database tables because blocking is disabled");
+		return cache_size;
+	}
+
+	// Get IPv4/v6 addresses for blocking depending on user configured blocking mode
+	prepare_blocking_mode(&addr4, &addr6, &has_IPv4, &has_IPv6);
+
+	// If we have neither a valid IPv4 nor a valid IPv6 but the user asked for
+	// blocking modes MODE_IP or MODE_IP_NODATA_AAAA then we cannot add any entries here
+	if(!has_IPv4 && !has_IPv6)
+	{
+		logg("ERROR: Cannot add domains from gravity because pihole-FTL found\n" \
+		     "       neither a valid IPV4_ADDRESS nor IPV6_ADDRESS in setupVars.conf" \
+		     "       This is an impossible configuration. Please contact the Pi-hole" \
+		     "       support if you need assistance.");
+		return cache_size;
+	}
+
+	// Import gravity and blacklist domains
+	int added;
+	added  = FTL_table_import("gravity", GRAVITY_LIST, SRC_GRAVITY, addr4, addr6, has_IPv4, has_IPv6, cache_size, rhash, hashsz);
+	added += FTL_table_import("blacklist", BLACK_LIST, SRC_BLACK, addr4, addr6, has_IPv4, has_IPv6, cache_size, rhash, hashsz);
+
+	// Update counter of blocked domains
 	counters->gravity += added;
-	return name_count;
+
+	// Return new cache size which now includes more domains than before
+	return cache_size + added;
 }

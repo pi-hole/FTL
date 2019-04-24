@@ -27,10 +27,6 @@ FTLFileNamesStruct FTLfiles = {
 
 logFileNamesStruct files = {
 	NULL,
-	NULL,
-	NULL,
-	NULL,
-	NULL,
 	NULL
 };
 
