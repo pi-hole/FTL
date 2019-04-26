@@ -18,6 +18,7 @@ static sqlite3_stmt* stmt = NULL;
 // Prototypes from functions in dnsmasq's source
 void rehash(int size);
 
+// Open gravity database
 static bool gravityDB_open(void)
 {
 	struct stat st;
@@ -49,12 +50,15 @@ static bool gravityDB_open(void)
 	return true;
 }
 
+// Close gravity database handle
 static void gravityDB_close(void)
 {
-	// Close database handle
 	sqlite3_close(gravitydb);
 }
 
+// Prepare a SQLite3 statement which can be used by
+// gravityDB_getDomain() to get blocking domains from
+// a table which is specified when calling this function
 bool gravityDB_getTable(const unsigned char list)
 {
 	// Open gravity database, fail is not possible
@@ -95,6 +99,14 @@ bool gravityDB_getTable(const unsigned char list)
 	return true;
 }
 
+// Get a single domain from a running SELECT operation
+// This function returns a pointer to a string as long
+// as there are domains available. Once we reached the
+// end of the table, it returns NULL. It also returns
+// NULL when it encounters an error (e.g., on reading
+// errors). Errors are logged to pihole-FTL.log
+// This function is performance critical as it might
+// be called millions of times for large blocking lists
 inline const char* gravityDB_getDomain(void)
 {
 	// Perform step
@@ -122,6 +134,8 @@ inline const char* gravityDB_getDomain(void)
 	return NULL;
 }
 
+// Finalize statement of a gravity database transaction
+// and close the database handle
 void gravityDB_finalizeTable(void)
 {
 	// Finalize statement
@@ -131,6 +145,9 @@ void gravityDB_finalizeTable(void)
 	gravityDB_close();
 }
 
+// Get number of domains in a specified table of the gravity database
+// We return the constant DB_FAILED and log to pihole-FTL.log if we
+// encounter any error
 int gravityDB_count(const unsigned char list)
 {
 	// Select correct query string to be used depending on list to be read
@@ -178,8 +195,9 @@ int gravityDB_count(const unsigned char list)
 
 	// Get result when there was no error
 	const int result = sqlite3_column_int(stmt, 0);
-	sqlite3_finalize(stmt);
 
+	// Finalize statement and close database handle
+	sqlite3_finalize(stmt);
 	gravityDB_close();
 
 	return result;
