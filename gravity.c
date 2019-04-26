@@ -81,7 +81,7 @@ bool gravityDB_getTable(const unsigned char list)
 			querystr = "SELECT domain FROM vw_whitelist;";
 			break;
 		case REGEX_LIST:
-			querystr = "SELECT filter FROM vw_regex;";
+			querystr = "SELECT domain FROM vw_regex;";
 			break;
 		default:
 			logg("gravityDB_getTable(%i): Requested list is not known!", list);
