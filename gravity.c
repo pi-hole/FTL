@@ -58,7 +58,8 @@ static void gravityDB_close(void)
 bool gravityDB_getTable(const unsigned char list)
 {
 	// Open gravity database, fail is not possible
-	// Possible if the database has not yet been created by gravity
+	// Note: This might fail when the database has
+	// not yet been created by gravity
 	if(!gravityDB_open())
 		return false;
 

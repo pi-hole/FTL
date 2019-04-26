@@ -1328,6 +1328,10 @@ static void block_single_domain_regex(const char *domain)
 	if(config.debug & DEBUG_QUERIES) logg("Added %s to cache", domain);
 }
 
+// Import a specified table form the gravity database and
+// add the read domains to the cache using the currently
+// selected blocking mode. This function is used to import
+// both, the blacklist as well as the gravity blocking domains
 static int FTL_table_import(const char *tablename, const unsigned char list, const unsigned int index,
                              struct all_addr addr4, struct all_addr addr6, bool has_IPv4, bool has_IPv6,
                              int cache_size, struct crec **rhash, int hashsz)
@@ -1382,6 +1386,9 @@ static int FTL_table_import(const char *tablename, const unsigned char list, con
 	return added;
 }
 
+// Import blocking domains from the gravity database
+// This function is run whenever dnsmasq reads in HOSTS
+// files (on startup as well as on receipt of SIGHUP)
 int FTL_database_import(int cache_size, struct crec **rhash, int hashsz)
 {
 	struct all_addr addr4 = {{{ 0 }}}, addr6 = {{{ 0 }}};
@@ -1413,7 +1420,7 @@ int FTL_database_import(int cache_size, struct crec **rhash, int hashsz)
 	added += FTL_table_import("blacklist", BLACK_LIST, SRC_BLACK, addr4, addr6, has_IPv4, has_IPv6, cache_size, rhash, hashsz);
 
 	// Update counter of blocked domains
-	counters->gravity += added;
+	counters->gravity = added;
 
 	// Return new cache size which now includes more domains than before
 	return cache_size + added;

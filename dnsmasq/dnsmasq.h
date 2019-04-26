@@ -492,8 +492,8 @@ struct crec {
 #define SRC_HOSTS     2
 /*------------------------- Pi-hole modification -------------------------*/
 // ID 3 will be used for the regex table
-// ID 3 will be used for the gravity table
-// ID 3 will be used for the blacklist table
+// ID 4 will be used for the gravity table
+// ID 5 will be used for the blacklist table
 // ID 6 will be used as starting index for any Additional Hosts (AH) files
 #define SRC_REGEX     3
 #define SRC_GRAVITY   4
