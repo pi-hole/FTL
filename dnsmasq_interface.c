@@ -1328,10 +1328,10 @@ static void block_single_domain_regex(const char *domain)
 	if(config.debug & DEBUG_QUERIES) logg("Added %s to cache", domain);
 }
 
-// Import a specified table form the gravity database and
+// Import a specified table from the gravity database and
 // add the read domains to the cache using the currently
 // selected blocking mode. This function is used to import
-// both, the blacklist as well as the gravity blocking domains
+// both the blacklist and the gravity blocking domains
 static int FTL_table_import(const char *tablename, const unsigned char list, const unsigned int index,
                              struct all_addr addr4, struct all_addr addr6, bool has_IPv4, bool has_IPv6,
                              int cache_size, struct crec **rhash, int hashsz)

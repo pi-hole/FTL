@@ -50,18 +50,12 @@ static bool gravityDB_open(void)
 	return true;
 }
 
-// Close gravity database handle
-static void gravityDB_close(void)
-{
-	sqlite3_close(gravitydb);
-}
-
 // Prepare a SQLite3 statement which can be used by
 // gravityDB_getDomain() to get blocking domains from
 // a table which is specified when calling this function
 bool gravityDB_getTable(const unsigned char list)
 {
-	// Open gravity database, fail is not possible
+	// Open gravity database
 	// Note: This might fail when the database has
 	// not yet been created by gravity
 	if(!gravityDB_open())
@@ -125,8 +119,7 @@ inline const char* gravityDB_getDomain(void)
 	if(rc != SQLITE_DONE)
 	{
 		logg("gravityDB_getDomain() - SQL error step (%i): %s", rc, sqlite3_errmsg(gravitydb));
-		sqlite3_finalize(stmt);
-		sqlite3_close(gravitydb);
+		gravityDB_finalizeTable();
 		return NULL;
 	}
 
@@ -142,7 +135,7 @@ void gravityDB_finalizeTable(void)
 	sqlite3_finalize(stmt);
 
 	// Close database handle
-	gravityDB_close();
+	sqlite3_close(gravitydb);
 }
 
 // Get number of domains in a specified table of the gravity database
@@ -197,8 +190,7 @@ int gravityDB_count(const unsigned char list)
 	const int result = sqlite3_column_int(stmt, 0);
 
 	// Finalize statement and close database handle
-	sqlite3_finalize(stmt);
-	gravityDB_close();
+	gravityDB_finalizeTable();
 
 	return result;
 }
