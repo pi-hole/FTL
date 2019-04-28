@@ -95,7 +95,11 @@ typedef unsigned long long u64;
 #if defined(HAVE_SOLARIS_NETWORK)
 #  include <sys/sockio.h>
 #endif
-#include <sys/poll.h>
+#if defined(HAVE_POLL_H)
+#  include <poll.h>
+#else
+#  include <sys/poll.h>
+#endif
 #include <sys/wait.h>
 #include <sys/time.h>
 #include <sys/un.h>
