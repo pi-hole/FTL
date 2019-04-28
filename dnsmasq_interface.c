@@ -748,9 +748,9 @@ void _FTL_cache(const unsigned int flags, const char *name, const struct all_add
 		unsigned char requesttype = 0;
 		if(flags & F_HOSTS)
 		{
-			if(arg != NULL && strcmp(arg, "gravity") == 0)
+			if(arg != NULL && strcmp(arg, SRC_GRAVITY_NAME) == 0)
 				requesttype = QUERY_GRAVITY;
-			else if(arg != NULL && strcmp(arg, "blacklist") == 0)
+			else if(arg != NULL && strcmp(arg, SRC_BLACK_NAME) == 0)
 				requesttype = QUERY_BLACKLIST;
 			else // local.list, hostname.list, /etc/hosts and others
 				requesttype = QUERY_CACHE;
