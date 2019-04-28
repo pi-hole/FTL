@@ -1689,11 +1689,11 @@ char *record_source(unsigned int index)
     return HOSTSFILE;
   /*----- Pi-hole modification -----*/
   else if (index == SRC_REGEX)
-    return "regex";
+    return SRC_REGEX_NAME;
   else if (index == SRC_GRAVITY)
-    return "gravity";
+    return SRC_GRAVITY_NAME;
   else if (index == SRC_BLACK)
-    return "blacklist";
+    return SRC_BLACK_NAME;
   /*--------------------------------*/
 
   for (ah = daemon->addn_hosts; ah; ah = ah->next)

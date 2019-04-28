@@ -496,8 +496,11 @@ struct crec {
 // ID 5 will be used for the blacklist table
 // ID 6 will be used as starting index for any Additional Hosts (AH) files
 #define SRC_REGEX     3
+#define SRC_REGEX_NAME   "regex"
 #define SRC_GRAVITY   4
+#define SRC_GRAVITY_NAME "gravity"
 #define SRC_BLACK     5
+#define SRC_BLACK_NAME   "blacklist"
 #define SRC_AH        6
 /*------------------------------------------------------------------------*/
 

@@ -734,7 +734,9 @@ void _FTL_cache(const unsigned int flags, const char *name, const struct all_add
 	   (flags & F_REVERSE) ||
 	   (flags & F_RRNAME))
 	{
-		// List data: /etc/pihole/gravity.list, /etc/pihole/black.list, /etc/pihole/local.list, etc.
+		// Local list: /etc/hosts, /etc/pihole/local.list, etc.
+		// or
+		// blocked domain from gravity database
 		// or
 		// DHCP server reply
 		// or
@@ -746,9 +748,9 @@ void _FTL_cache(const unsigned int flags, const char *name, const struct all_add
 		unsigned char requesttype = 0;
 		if(flags & F_HOSTS)
 		{
-			if(arg != NULL && strstr(arg, "gravity") != NULL)
+			if(arg != NULL && strcmp(arg, "gravity") == 0)
 				requesttype = QUERY_GRAVITY;
-			else if(arg != NULL && strstr(arg, "blacklist") != NULL)
+			else if(arg != NULL && strcmp(arg, "blacklist") == 0)
 				requesttype = QUERY_BLACKLIST;
 			else // local.list, hostname.list, /etc/hosts and others
 				requesttype = QUERY_CACHE;
