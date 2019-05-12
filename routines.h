@@ -114,8 +114,11 @@ void resolveForwardDestinations(const bool onlynew);
 // regex.c
 bool match_regex(const char *input);
 void free_regex(void);
-void read_regex_from_file(void);
+void free_whitelist_domains(void);
+void read_regex_from_database(void);
+void read_whitelist_from_database(void);
 bool in_whitelist(const char *domain) __attribute__((pure));
+void log_regex_whitelist(const double time);
 
 // shmem.c
 bool init_shmem(void);
@@ -156,4 +159,9 @@ bool create_network_table(void);
 void parse_arp_cache(void);
 void updateMACVendorRecords(void);
 
+// gravity.c
+bool gravityDB_getTable(unsigned char list);
+const char* gravityDB_getDomain(void);
+void gravityDB_finalizeTable(void);
+int gravityDB_count(unsigned char list);
 #endif // ROUTINES_H

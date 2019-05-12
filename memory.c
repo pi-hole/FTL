@@ -21,14 +21,11 @@ FTLFileNamesStruct FTLfiles = {
 	NULL,
 	NULL,
 	NULL,
+	NULL,
 	NULL
 };
 
 logFileNamesStruct files = {
-	NULL,
-	NULL,
-	NULL,
-	NULL,
 	NULL,
 	NULL
 };

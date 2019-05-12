@@ -40,6 +40,6 @@ void _FTL_upstream_error(const unsigned int rcode, const int id, const char* fil
 
 void FTL_dnsmasq_reload(void);
 void FTL_fork_and_bind_sockets(struct passwd *ent_pw);
-int FTL_listsfile(const char* filename, unsigned int index, FILE *f, int cache_size, struct crec **rhash, int hashsz);
+int FTL_database_import(int cache_size, struct crec **rhash, int hashsz);
 
 #endif // DNSMASQ_INTERFACE_H
