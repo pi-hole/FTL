@@ -17,12 +17,12 @@ void pack_eom(int sock) {
 	swrite(sock, &eom, sizeof(eom));
 }
 
-void pack_basic(int sock, uint8_t format, void *value, size_t size) {
+static void pack_basic(int sock, uint8_t format, void *value, size_t size) {
 	swrite(sock, &format, sizeof(format));
 	swrite(sock, value, size);
 }
 
-uint64_t leToBe64(uint64_t value) {
+static uint64_t __attribute__((const)) leToBe64(uint64_t value) {
 	char *ptr = (char *) &value;
 	uint32_t part1, part2;
 
@@ -75,7 +75,7 @@ void pack_float(int sock, float value) {
 }
 
 // Return true if successful
-bool pack_fixstr(int sock, char *string) {
+bool pack_fixstr(int sock, const char *string) {
 	// Make sure that the length is less than 32
 	size_t length = strlen(string);
 
@@ -92,7 +92,7 @@ bool pack_fixstr(int sock, char *string) {
 }
 
 // Return true if successful
-bool pack_str32(int sock, char *string) {
+bool pack_str32(int sock, const char *string) {
 	// Make sure that the length is less than 4294967296
 	size_t length = strlen(string);
 

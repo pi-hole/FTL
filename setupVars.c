@@ -30,12 +30,32 @@ void check_setupVarsconf(void)
 	}
 }
 
-char* find_equals(const char* s)
+char* __attribute__((pure)) find_equals(const char* s)
 {
 	const char* chars = "=";
 	while (*s && (!chars || !strchr(chars, *s)))
 		s++;
 	return (char*)s;
+}
+
+void trim_whitespace(char *string)
+{
+	// isspace(char*) man page:
+	// checks for white-space  characters. In the "C" and "POSIX"
+	// locales, these are: space, form-feed ('\f'), newline ('\n'),
+	// carriage return ('\r'), horizontal tab ('\t'), and vertical tab
+	// ('\v').
+	char *original = string, *modified = string;
+	// Trim any whitespace characters (see above) at the beginning by increasing the pointer address
+	while (isspace((unsigned char)*original))
+		original++;
+	// Copy the content of original into modified as long as there is something in original
+	while ((*modified = *original++) != '\0')
+		modified++;
+	// Trim any whitespace characters (see above) at the end of the string by overwriting it
+	// with the zero character (marking the end of a C string)
+	while (modified > string && isspace((unsigned char)*--modified))
+		*modified = '\0';
 }
 
 // This will hold the read string
@@ -113,9 +133,9 @@ char * read_setupVarsconf(const char * key)
 // setupVarsArray[1] = def
 // setupVarsArray[2] = ghi
 // setupVarsArray[3] = NULL
-void getSetupVarsArray(char * input)
+void getSetupVarsArray(const char * input)
 {
-	char * p = strtok(input, ",");
+	char * p = strtok((char*)input, ",");
 
 	/* split string and append tokens to 'res' */
 
@@ -162,16 +182,15 @@ void clearSetupVarsArray(void)
 	clearSetupVarsArray();
 */
 
-bool insetupVarsArray(char * str)
+bool insetupVarsArray(const char * str)
 {
-	int i;
 	// Check for possible NULL pointer
 	// (this is valid input, e.g. if clients[i].name is unspecified)
 	if(str == NULL)
 		return false;
 
 	// Loop over all entries in setupVarsArray
-	for (i = 0; i < setupVarsElements; ++i)
+	for (int i = 0; i < setupVarsElements; ++i)
 		if(setupVarsArray[i][0] == '*')
 		{
 			// Copying strlen-1 chars into buffer of size strlen: OK
@@ -201,7 +220,7 @@ bool insetupVarsArray(char * str)
 	return false;
 }
 
-bool getSetupVarsBool(char * input)
+bool __attribute__((pure)) getSetupVarsBool(const char * input)
 {
 	if((strcmp(input, "true")) == 0)
 		return true;

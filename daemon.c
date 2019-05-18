@@ -140,20 +140,20 @@ void removepid(void)
 
 char *getUserName(void)
 {
-	char * username;
+	char * name;
 	// the getpwuid() function shall search the user database for an entry with a matching uid
 	// the geteuid() function shall return the effective user ID of the calling process - this is used as the search criteria for the getpwuid() function
 	uid_t euid = geteuid();
 	struct passwd *pw = getpwuid(euid);
 	if(pw)
 	{
-		username = strdup(pw->pw_name);
+		name = strdup(pw->pw_name);
 	}
 	else
 	{
-		if(asprintf(&username, "%u", euid) < 0)
+		if(asprintf(&name, "%u", euid) < 0)
 			return NULL;
 	}
 
-	return username;
+	return name;
 }

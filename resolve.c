@@ -11,15 +11,7 @@
 #include "FTL.h"
 #include "shmem.h"
 
-// Resolve new client and upstream server host names
-// once every minute
-#define RESOLVE_INTERVAL 60
-
-// Re-resolve client names
-// once every hour
-#define RERESOLVE_INTERVAL 3600
-
-char *resolveHostname(const char *addr)
+static char *resolveHostname(const char *addr)
 {
 	// Get host name
 	struct hostent *he = NULL;
@@ -71,32 +63,74 @@ char *resolveHostname(const char *addr)
 	return hostname;
 }
 
+// Resolve upstream destination host names
+static size_t resolveAndAddHostname(size_t ippos, size_t oldnamepos)
+{
+	// Get IP and host name strings
+	lock_shm();
+	const char* ipaddr = getstr(ippos);
+	const char* oldname = getstr(oldnamepos);
+	unlock_shm();
+
+	// Important: Don't hold a lock while resolving as the main thread
+	// (dnsmasq) needs to be operable during the call to resolveHostname()
+	char* newname = resolveHostname(ipaddr);
+
+	// Only store new newname if it is valid and differs from oldname
+	// We do not need to check for oldname == NULL as names are
+	// always initialized with an empty string at position 0
+	if(newname != NULL && strcmp(oldname, newname) != 0)
+	{
+		lock_shm();
+		size_t newnamepos = addstr(newname);
+		// newname has already been checked against NULL
+		// so we can safely free it
+		free(newname);
+		unlock_shm();
+		return newnamepos;
+	}
+	else if(config.debug & DEBUG_SHMEM)
+	{
+		// Debugging output
+		logg("Not adding \"%s\" to buffer (unchanged)", oldname);
+	}
+
+	// Not changed, return old namepos
+	return oldnamepos;
+}
+
 // Resolve client host names
 void resolveClients(bool onlynew)
 {
-	int clientID;
-	for(clientID = 0; clientID < counters->clients; clientID++)
+	// Lock counter access here, we use a copy in the following loop
+	lock_shm();
+	int clientscount = counters->clients;
+	unlock_shm();
+	for(int clientID = 0; clientID < clientscount; clientID++)
 	{
 		// Memory validation
 		validate_access("clients", clientID, true, __LINE__, __FUNCTION__, __FILE__);
 
-		// If onlynew flag is set, we will only resolve new clients
-		// If not, we will try to re-resolve all known clients
-		if(onlynew && !clients[clientID].new)
-			continue;
-
-		// Lock data when obtaining IP of this client
+		// Memory access needs to get locked
 		lock_shm();
-		const char* ipaddr = getstr(clients[clientID].ippos);
+		bool newflag = clients[clientID].new;
+		size_t ippos = clients[clientID].ippos;
+		size_t oldnamepos = clients[clientID].namepos;
 		unlock_shm();
 
-		// Important: Don't hold a lock while resolving as the main thread
-		// (dnsmasq) needs to be operable during the call to resolveHostname()
-		const char* hostname = resolveHostname(ipaddr);
+		// If onlynew flag is set, we will only resolve new clients
+		// If not, we will try to re-resolve all known clients
+		if(onlynew && !newflag)
+			continue;
 
-		// Finally, lock data when storing obtained hostname
+		// Obtain/update hostname of this client
+		size_t newnamepos = resolveAndAddHostname(ippos, oldnamepos);
+
 		lock_shm();
-		clients[clientID].namepos = addstr(hostname);
+		// Store obtained host name (may be unchanged)
+		clients[clientID].namepos = newnamepos;
+
+		// Mark entry as not new
 		clients[clientID].new = false;
 		unlock_shm();
 	}
@@ -105,30 +139,34 @@ void resolveClients(bool onlynew)
 // Resolve upstream destination host names
 void resolveForwardDestinations(bool onlynew)
 {
-	int forwardID;
-	for(forwardID = 0; forwardID < counters->forwarded; forwardID++)
+	// Lock counter access here, we use a copy in the following loop
+	lock_shm();
+	int forwardedcount = counters->forwarded;
+	unlock_shm();
+	for(int forwardID = 0; forwardID < forwardedcount; forwardID++)
 	{
 		// Memory validation
 		validate_access("forwarded", forwardID, true, __LINE__, __FUNCTION__, __FILE__);
 
-		// If onlynew flag is set, we will only resolve new upstream destinations
-		// If not, we will try to re-resolve all known upstream destinations
-		if(onlynew && !forwarded[forwardID].new)
-			continue;
-
-		// Lock data when obtaining IP of this forward destination
+		// Memory access needs to get locked
 		lock_shm();
-		const char* ipaddr = getstr(forwarded[forwardID].ippos);
+		bool newflag = forwarded[forwardID].new;
+		size_t ippos = forwarded[forwardID].ippos;
+		size_t oldnamepos = forwarded[forwardID].namepos;
 		unlock_shm();
 
+		// If onlynew flag is set, we will only resolve new upstream destinations
+		// If not, we will try to re-resolve all known upstream destinations
+		if(onlynew && !newflag)
+			continue;
 
-		// Important: Don't hold a lock while resolving as the main thread
-		// (dnsmasq) needs to be operable during the call to resolveHostname()
-		const char* hostname = resolveHostname(ipaddr);
+		// Obtain/update hostname of this client
+		size_t newnamepos = resolveAndAddHostname(ippos, oldnamepos);
 
-		// Finally, lock data when storing obtained hostname
 		lock_shm();
-		forwarded[forwardID].namepos = addstr(hostname);
+		// Store obtained host name (may be unchanged)
+		forwarded[forwardID].namepos = newnamepos;
+		// Mark entry as not new
 		forwarded[forwardID].new = false;
 		unlock_shm();
 	}

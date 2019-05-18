@@ -42,11 +42,11 @@ void *GC_thread(void *val)
 			mintime -= mintime % 3600;
 			mintime += 3600;
 
-			if(debug) timer_start(GC_TIMER);
+			if(config.debug & DEBUG_GC) timer_start(GC_TIMER);
 
 			long int i;
 			int removed = 0;
-			if(debug) logg("GC starting, mintime: %u %s", mintime, ctime(&mintime));
+			if(config.debug & DEBUG_GC) logg("GC starting, mintime: %lu %s", mintime, ctime(&mintime));
 
 			// Process all queries
 			for(i=0; i < counters->queries; i++)
@@ -94,7 +94,9 @@ void *GC_thread(void *val)
 					case QUERY_GRAVITY: // Blocked by Pi-hole's blocking lists (fall through)
 					case QUERY_BLACKLIST: // Exact blocked (fall through)
 					case QUERY_WILDCARD: // Regex blocked (fall through)
-					case QUERY_EXTERNAL_BLOCKED: // Blocked by upstream provider (fall through)
+					case QUERY_EXTERNAL_BLOCKED_IP: // Blocked by upstream provider (fall through)
+					case QUERY_EXTERNAL_BLOCKED_NXRA: // Blocked by upstream provider (fall through)
+					case QUERY_EXTERNAL_BLOCKED_NULL: // Blocked by upstream provider (fall through)
 						counters->blocked--;
 						overTime[timeidx].blocked--;
 						domains[domainID].blockedcount--;
@@ -153,6 +155,8 @@ void *GC_thread(void *val)
 
 			// Update queries counter
 			counters->queries -= removed;
+			// Update DB index as total number of queries reduced
+			lastdbindex -= removed;
 
 			// Zero out remaining memory (marked as "F" in the above example)
 			memset(&queries[counters->queries], 0, (counters->queries_MAX - counters->queries)*sizeof(*queries));
@@ -160,7 +164,7 @@ void *GC_thread(void *val)
 			// Determine if overTime memory needs to get moved
 			moveOverTimeMemory(mintime);
 
-			if(debug) logg("Notice: GC removed %i queries (took %.2f ms)", removed, timer_elapsed_msec(GC_TIMER));
+			if(config.debug & DEBUG_GC) logg("Notice: GC removed %i queries (took %.2f ms)", removed, timer_elapsed_msec(GC_TIMER));
 
 			// Release thread lock
 			unlock_shm();

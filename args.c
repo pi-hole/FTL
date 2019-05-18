@@ -11,11 +11,11 @@
 #include "FTL.h"
 #include "version.h"
 
-bool debug = false;
+static bool debug = false;
 bool daemonmode = true;
 bool travis = false;
 int argc_dnsmasq = 0;
-char **argv_dnsmasq = NULL;
+const char** argv_dnsmasq = NULL;
 
 void parse_args(int argc, char* argv[])
 {
@@ -100,10 +100,10 @@ void parse_args(int argc, char* argv[])
 		// Implement dnsmasq's test function
 		if(strcmp(argv[i], "dnsmasq-test") == 0)
 		{
-			char *arg[2];
+			const char *arg[2];
 			arg[0] = "";
 			arg[1] = "--test";
-			main_dnsmasq(2,arg);
+			main_dnsmasq(2, arg);
 			ok = true;
 		}
 
@@ -113,7 +113,7 @@ void parse_args(int argc, char* argv[])
 			int j;
 			argc_dnsmasq = argc - i + 1;
 			if(argv_dnsmasq != NULL) free(argv_dnsmasq);
-			argv_dnsmasq = calloc(argc_dnsmasq + 2,sizeof(char*));
+			argv_dnsmasq = calloc(argc_dnsmasq + 2,sizeof(const char*));
 			argv_dnsmasq[0] = "";
 			if(debug) argv_dnsmasq[1] = "-d";
 			else      argv_dnsmasq[1] = "-k";

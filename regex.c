@@ -15,9 +15,9 @@ static int num_regex;
 static regex_t *regex = NULL;
 static bool *regexconfigured = NULL;
 static char **regexbuffer = NULL;
-static whitelistStruct whitelist = { 0, NULL };
+static whitelistStruct whitelist = { NULL, 0 };
 
-static void log_regex_error(char *where, int errcode, int index)
+static void log_regex_error(const char *where, int errcode, int index)
 {
 	// Regex failed for some reason (probably user syntax error)
 	// Get error string and log it
@@ -40,14 +40,14 @@ static bool init_regex(const char *regexin, int index)
 	}
 
 	// Store compiled regex string in buffer if in regex debug mode
-	if(config.regex_debugmode)
+	if(config.debug & DEBUG_REGEX)
 	{
 		regexbuffer[index] = strdup(regexin);
 	}
 	return true;
 }
 
-bool in_whitelist(char *domain)
+bool __attribute__((pure)) in_whitelist(char *domain)
 {
 	bool found = false;
 	for(int i=0; i < whitelist.count; i++)
@@ -98,8 +98,8 @@ bool match_regex(char *input)
 			matched = true;
 
 			// Print match message when in regex debug mode
-			if(config.regex_debugmode)
-				logg("DEBUG: Regex in line %i \"%s\" matches \"%s\"", index+1, regexbuffer[index], input);
+			if(config.debug & DEBUG_REGEX)
+				logg("Regex in line %i \"%s\" matches \"%s\"", index+1, regexbuffer[index], input);
 			break;
 		}
 		else if (errcode != REG_NOMATCH)
@@ -134,7 +134,7 @@ void free_regex(void)
 			regfree(&regex[index]);
 
 			// Also free buffered regex strings if in regex debug mode
-			if(config.regex_debugmode)
+			if(config.debug & DEBUG_REGEX)
 			{
 				free(regexbuffer[index]);
 				regexbuffer[index] = NULL;
@@ -245,7 +245,7 @@ void read_regex_from_file(void)
 	regexconfigured = calloc(num_regex, sizeof(bool));
 
 	// Buffer strings if in regex debug mode
-	if(config.regex_debugmode)
+	if(config.debug & DEBUG_REGEX)
 		regexbuffer = calloc(num_regex, sizeof(char*));
 
 	// Search through file

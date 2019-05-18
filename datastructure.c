@@ -106,13 +106,12 @@ int findDomainID(const char *domain)
 	return domainID;
 }
 
-int findClientID(const char *client)
+int findClientID(const char *client, bool count)
 {
-	int i;
 	// Compare content of client against known client IP addresses
 	if(counters->clients > 0)
 		validate_access("clients", counters->clients-1, true, __LINE__, __FUNCTION__, __FILE__);
-	for(i=0; i < counters->clients; i++)
+	for(int i=0; i < counters->clients; i++)
 	{
 		// Quick test: Does the clients IP start with the same character?
 		if(getstr(clients[i].ippos)[0] != client[0])
@@ -121,10 +120,16 @@ int findClientID(const char *client)
 		// If so, compare the full IP using strcmp
 		if(strcmp(getstr(clients[i].ippos), client) == 0)
 		{
-			clients[i].count++;
+			// Add one if count == true (do not add one, e.g., during ARP table processing)
+			if(count) clients[i].count++;
 			return i;
 		}
 	}
+
+	// Return -1 (= not found) if count is false ...
+	if(!count)
+		return -1;
+	// ... otherwise proceed with adding a new client entry
 
 	// If we did not return until here, then this client is definitely new
 	// Store ID
@@ -148,6 +153,9 @@ int findClientID(const char *client)
 	// to be done separately to be non-blocking
 	clients[clientID].new = true;
 	clients[clientID].namepos = 0;
+	// No query seen so far
+	clients[clientID].lastQuery = 0;
+	clients[clientID].numQueriesARP = 0;
 
 	// Initialize client-specific overTime data
 	for(int i = 0; i < OVERTIME_SLOTS; i++)
@@ -173,7 +181,7 @@ bool isValidIPv6(const char *addr)
 
 // Privacy-level sensitive subroutine that returns the domain name
 // only when appropriate for the requested query
-char *getDomainString(int queryID)
+const char *getDomainString(int queryID)
 {
 	if(queries[queryID].privacylevel < PRIVACY_HIDE_DOMAINS)
 	{
@@ -186,7 +194,7 @@ char *getDomainString(int queryID)
 
 // Privacy-level sensitive subroutine that returns the client IP
 // only when appropriate for the requested query
-char *getClientIPString(int queryID)
+const char *getClientIPString(int queryID)
 {
 	if(queries[queryID].privacylevel < PRIVACY_HIDE_DOMAINS_CLIENTS)
 	{
@@ -199,7 +207,7 @@ char *getClientIPString(int queryID)
 
 // Privacy-level sensitive subroutine that returns the client host name
 // only when appropriate for the requested query
-char *getClientNameString(int queryID)
+const char *getClientNameString(int queryID)
 {
 	if(queries[queryID].privacylevel < PRIVACY_HIDE_DOMAINS_CLIENTS)
 	{

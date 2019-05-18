@@ -11,11 +11,13 @@
 #include "FTL.h"
 #include "api.h"
 #include "version.h"
+// needed for sqlite3_libversion()
+#include "sqlite3.h"
 
 #define min(a,b) ({ __typeof__ (a) _a = (a); __typeof__ (b) _b = (b); _a < _b ? _a : _b; })
 
 /* qsort comparision function (count field), sort ASC */
-int cmpasc(const void *a, const void *b)
+static int __attribute__((pure)) cmpasc(const void *a, const void *b)
 {
 	int *elem1 = (int*)a;
 	int *elem2 = (int*)b;
@@ -29,7 +31,7 @@ int cmpasc(const void *a, const void *b)
 }
 
 // qsort subroutine, sort DESC
-int cmpdesc(const void *a, const void *b)
+static int __attribute__((pure)) cmpdesc(const void *a, const void *b)
 {
 	int *elem1 = (int*)a;
 	int *elem2 = (int*)b;
@@ -145,7 +147,7 @@ void getOverTime(int *sock)
 	{
 		for(i = from; i < until; i++)
 		{
-			ssend(*sock,"%i %i %i\n",overTime[i].timestamp,overTime[i].total,overTime[i].blocked);
+			ssend(*sock,"%li %i %i\n",overTime[i].timestamp,overTime[i].total,overTime[i].blocked);
 		}
 	}
 	else
@@ -169,7 +171,7 @@ void getOverTime(int *sock)
 	}
 }
 
-void getTopDomains(char *client_message, int *sock)
+void getTopDomains(const char *client_message, int *sock)
 {
 	int i, temparray[counters->domains][2], count=10, num;
 	bool blocked, audit = false, asc = false;
@@ -331,7 +333,7 @@ void getTopDomains(char *client_message, int *sock)
 		clearSetupVarsArray();
 }
 
-void getTopClients(char *client_message, int *sock)
+void getTopClients(const char *client_message, int *sock)
 {
 	int i, temparray[counters->clients][2], count=10, num;
 
@@ -416,8 +418,8 @@ void getTopClients(char *client_message, int *sock)
 		if(strcmp(getstr(clients[j].ippos), HIDDEN_CLIENT) == 0)
 			continue;
 
-		char *client_ip = getstr(clients[j].ippos);
-		char *client_name = getstr(clients[j].namepos);
+		const char *client_ip = getstr(clients[j].ippos);
+		const char *client_name = getstr(clients[j].namepos);
 
 		// Return this client if either
 		// - "withzero" option is set, and/or
@@ -445,15 +447,15 @@ void getTopClients(char *client_message, int *sock)
 }
 
 
-void getForwardDestinations(char *client_message, int *sock)
+void getForwardDestinations(const char *client_message, int *sock)
 {
 	bool sort = true;
-	int i, temparray[counters->forwarded][2], totalqueries = 0;
+	int temparray[counters->forwarded][2], totalqueries = 0;
 
 	if(command(client_message, "unsorted"))
 		sort = false;
 
-	for(i=0; i < counters->forwarded; i++) {
+	for(int i = 0; i < counters->forwarded; i++) {
 		validate_access("forwarded", i, true, __LINE__, __FUNCTION__, __FILE__);
 		// If we want to print a sorted output, we fill the temporary array with
 		// the values we will use for sorting afterwards
@@ -472,10 +474,10 @@ void getForwardDestinations(char *client_message, int *sock)
 	totalqueries = counters->forwardedqueries + counters->cached + counters->blocked;
 
 	// Loop over available forward destinations
-	for(i=-2; i < min(counters->forwarded, 8); i++)
+	for(int i = -2; i < min(counters->forwarded, 8); i++)
 	{
-		char *ip, *name;
 		float percentage = 0.0f;
+		const char* ip, *name;
 
 		if(i == -2)
 		{
@@ -572,9 +574,9 @@ void getQueryTypes(int *sock)
 	}
 }
 
-char *querytypes[8] = {"A","AAAA","ANY","SRV","SOA","PTR","TXT","UNKN"};
+const char *querytypes[8] = {"A","AAAA","ANY","SRV","SOA","PTR","TXT","UNKN"};
 
-void getAllQueries(char *client_message, int *sock)
+void getAllQueries(const char *client_message, int *sock)
 {
 	// Exit before processing any data if requested via config setting
 	get_privacy_level(NULL);
@@ -750,7 +752,7 @@ void getAllQueries(char *client_message, int *sock)
 		validate_access("domains", queries[i].domainID, true, __LINE__, __FUNCTION__, __FILE__);
 		validate_access("clients", queries[i].clientID, true, __LINE__, __FUNCTION__, __FILE__);
 
-		char *qtype = querytypes[queries[i].type - TYPE_A];
+		const char *qtype = querytypes[queries[i].type - TYPE_A];
 
 		// 1 = gravity.list, 4 = wildcard, 5 = black.list
 		if((queries[i].status == QUERY_GRAVITY ||
@@ -795,9 +797,9 @@ void getAllQueries(char *client_message, int *sock)
 
 		// Ask subroutine for domain. It may return "hidden" depending on
 		// the privacy settings at the time the query was made
-		char *domain = getDomainString(i);
+		const char *domain = getDomainString(i);
 		// Similarly for the client
-		char *client;
+		const char *client;
 		if(strlen(getstr(clients[queries[i].clientID].namepos)) > 0)
 			client = getClientNameString(i);
 		else
@@ -810,7 +812,10 @@ void getAllQueries(char *client_message, int *sock)
 
 		if(istelnet[*sock])
 		{
-			ssend(*sock,"%i %s %s %s %i %i %i %lu\n",queries[i].timestamp,qtype,domain,client,queries[i].status,queries[i].dnssec,queries[i].reply,delay);
+			ssend(*sock,"%li %s %s %s %i %i %i %lu",queries[i].timestamp,qtype,domain,client,queries[i].status,queries[i].dnssec,queries[i].reply,delay);
+			if(config.debug & DEBUG_API)
+				ssend(*sock, " %i", i);
+			ssend(*sock, "\n");
 		}
 		else
 		{
@@ -840,9 +845,9 @@ void getAllQueries(char *client_message, int *sock)
 		free(forwarddest);
 }
 
-void getRecentBlocked(char *client_message, int *sock)
+void getRecentBlocked(const char *client_message, int *sock)
 {
-	int i, num=1;
+	int num=1;
 
 	// Test for integer that specifies number of entries to be shown
 	if(sscanf(client_message, "%*[^(](%i)", &num) > 0) {
@@ -853,7 +858,7 @@ void getRecentBlocked(char *client_message, int *sock)
 
 	// Find most recently blocked query
 	int found = 0;
-	for(i = counters->queries - 1; i > 0 ; i--)
+	for(int i = counters->queries - 1; i > 0 ; i--)
 	{
 		validate_access("queries", i, true, __LINE__, __FUNCTION__, __FILE__);
 
@@ -865,7 +870,7 @@ void getRecentBlocked(char *client_message, int *sock)
 
 			// Ask subroutine for domain. It may return "hidden" depending on
 			// the privacy settings at the time the query was made
-			char *domain = getDomainString(i);
+			const char *domain = getDomainString(i);
 
 			if(istelnet[*sock])
 				ssend(*sock,"%s\n", domain);
@@ -924,7 +929,7 @@ void getQueryTypesOverTime(int *sock)
 		}
 
 		if(istelnet[*sock])
-			ssend(*sock, "%i %.2f %.2f\n", overTime[i].timestamp, percentageIPv4, percentageIPv6);
+			ssend(*sock, "%li %.2f %.2f\n", overTime[i].timestamp, percentageIPv4, percentageIPv6);
 		else {
 			pack_int32(*sock, overTime[i].timestamp);
 			pack_float(*sock, percentageIPv4);
@@ -1067,7 +1072,7 @@ void getClientsOverTime(int *sock)
 	for(i = sendit; i < until; i++)
 	{
 		if(istelnet[*sock])
-			ssend(*sock, "%i", overTime[i].timestamp);
+			ssend(*sock, "%li", overTime[i].timestamp);
 		else
 			pack_int32(*sock, overTime[i].timestamp);
 
@@ -1133,8 +1138,8 @@ void getClientNames(int *sock)
 		if(skipclient[i])
 			continue;
 
-		char *client_ip = getstr(clients[i].ippos);
-		char *client_name = getstr(clients[i].namepos);
+		const char *client_ip = getstr(clients[i].ippos);
+		const char *client_name = getstr(clients[i].namepos);
 
 		if(istelnet[*sock])
 			ssend(*sock, "%s %s\n", client_name, client_ip);
@@ -1175,10 +1180,10 @@ void getUnknownQueries(int *sock)
 		validate_access("clients", queries[i].clientID, true, __LINE__, __FUNCTION__, __FILE__);
 
 
-		char *client = getstr(clients[queries[i].clientID].ippos);
+		const char *client = getstr(clients[queries[i].clientID].ippos);
 
 		if(istelnet[*sock])
-			ssend(*sock, "%i %i %i %s %s %s %i %s\n", queries[i].timestamp, i, queries[i].id, type, getstr(domains[queries[i].domainID].domainpos), client, queries[i].status, queries[i].complete ? "true" : "false");
+			ssend(*sock, "%li %i %i %s %s %s %i %s\n", queries[i].timestamp, i, queries[i].id, type, getstr(domains[queries[i].domainID].domainpos), client, queries[i].status, queries[i].complete ? "true" : "false");
 		else {
 			pack_int32(*sock, queries[i].timestamp);
 			pack_int32(*sock, queries[i].id);
@@ -1197,7 +1202,7 @@ void getUnknownQueries(int *sock)
 	}
 }
 
-void getDomainDetails(char *client_message, int *sock)
+void getDomainDetails(const char *client_message, int *sock)
 {
 	// Get domain name
 	char domain[128];
@@ -1216,7 +1221,7 @@ void getDomainDetails(char *client_message, int *sock)
 			ssend(*sock,"Domain \"%s\", ID: %i\n", domain, i);
 			ssend(*sock,"Total: %i\n", domains[i].count);
 			ssend(*sock,"Blocked: %i\n", domains[i].blockedcount);
-			char *regexstatus;
+			const char *regexstatus;
 			if(domains[i].regexmatch == REGEX_BLOCKED)
 				regexstatus = "blocked";
 			if(domains[i].regexmatch == REGEX_NOTBLOCKED)

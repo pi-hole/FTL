@@ -14,7 +14,7 @@
 pthread_mutex_t lock;
 FILE *logfile = NULL;
 
-void close_FTL_log(void)
+static void close_FTL_log(void)
 {
 	if(logfile != NULL)
 		fclose(logfile);
@@ -50,7 +50,7 @@ void open_FTL_log(bool test)
 	}
 }
 
-void get_timestr(char *timestring)
+static void get_timestr(char *timestring)
 {
 	time_t t = time(NULL);
 	struct tm tm = *localtime(&t);
@@ -61,9 +61,9 @@ void get_timestr(char *timestring)
 	sprintf(timestring,"%d-%02d-%02d %02d:%02d:%02d.%03i", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, millisec);
 }
 
-void logg(const char *format, ...)
+void __attribute__ ((format (gnu_printf, 1, 2))) logg(const char *format, ...)
 {
-	char timestring[32] = "";
+	char timestring[84] = "";
 	va_list args;
 
 	pthread_mutex_lock(&lock);
@@ -96,7 +96,7 @@ void logg(const char *format, ...)
 		va_end(args);
 		fputc('\n',logfile);
 	}
-	else if(debug)
+	else if(!daemonmode)
 	{
 		printf("!!! WARNING: Writing to FTL\'s log file failed!\n");
 		syslog(LOG_ERR, "Writing to FTL\'s log file failed!");

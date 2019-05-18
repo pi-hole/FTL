@@ -112,7 +112,7 @@ void read_FTLconf(void)
 			config.maxDBdays = value;
 
 	if(config.maxDBdays == 0)
-		logg("   MAXDBDAYS: --- (DB disabled)", config.maxDBdays);
+		logg("   MAXDBDAYS: --- (DB disabled)");
 	else
 		logg("   MAXDBDAYS: max age for stored queries is %i days", config.maxDBdays);
 
@@ -255,19 +255,6 @@ void read_FTLconf(void)
 			break;
 	}
 
-	// REGEX_DEBUGMODE
-	// defaults to: No
-	config.regex_debugmode = false;
-	buffer = parse_FTLconf(fp, "REGEX_DEBUGMODE");
-
-	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
-		config.regex_debugmode = true;
-
-	if(config.regex_debugmode)
-		logg("   REGEX_DEBUGMODE: Active. May increase log file size!");
-	else
-		logg("   REGEX_DEBUGMODE: Inactive");
-
 	// ANALYZE_ONLY_A_AND_AAAA
 	// defaults to: No
 	config.analyze_only_A_AAAA = false;
@@ -318,6 +305,25 @@ void read_FTLconf(void)
 
 	// AUDITLISTFILE
 	getpath(fp, "AUDITLISTFILE", "/etc/pihole/auditlog.list", &files.auditlist);
+
+	// MACVENDORDB
+	getpath(fp, "MACVENDORDB", "/etc/pihole/macvendor.db", &FTLfiles.macvendordb);
+
+	// PARSE_ARP_CACHE
+	// defaults to: true
+	config.parse_arp_cache = true;
+	buffer = parse_FTLconf(fp, "PARSE_ARP_CACHE");
+
+	if(buffer != NULL && strcasecmp(buffer, "false") == 0)
+		config.parse_arp_cache = false;
+
+	if(config.parse_arp_cache)
+		logg("   PARSE_ARP_CACHE: Active");
+	else
+		logg("   PARSE_ARP_CACHE: Inactive");
+
+	// Read DEBUG_... setting from pihole-FTL.conf
+	read_debuging_settings(fp);
 
 	logg("Finished config file parsing");
 
@@ -383,9 +389,6 @@ static char *parse_FTLconf(FILE *fp, const char * key)
 	errno = 0;
 	while(getline(&conflinebuffer, &size, fp) != -1)
 	{
-		// Strip (possible) newline
-		conflinebuffer[strcspn(conflinebuffer, "\n")] = '\0';
-
 		// Skip comment lines
 		if(conflinebuffer[0] == '#' || conflinebuffer[0] == ';')
 			continue;
@@ -396,7 +399,13 @@ static char *parse_FTLconf(FILE *fp, const char * key)
 
 		// otherwise: key found
 		free(keystr);
-		return (find_equals(conflinebuffer) + 1);
+		// Note: value is still a pointer into the conflinebuffer
+		//       its memory will get released in release_config_memory()
+		char* value = find_equals(conflinebuffer) + 1;
+		// Trim whitespace at beginning and end, this function
+		// modifies the string inplace
+		trim_whitespace(value);
+		return value;
 	}
 
 	if(errno == ENOMEM)
@@ -492,4 +501,139 @@ void get_blocking_mode(FILE *fp)
 	// Have to close the config file if we opened it
 	if(opened)
 		fclose(fp);
+}
+
+void read_debuging_settings(FILE *fp)
+{
+	// Set default (no debug instructions set)
+	config.debug = 0;
+
+	// See if we got a file handle, if not we have to open
+	// the config file ourselves
+	bool opened = false;
+	if(fp == NULL)
+	{
+		if((fp = fopen(FTLfiles.conf, "r")) == NULL)
+			// Return silently if there is no config file available
+			return;
+		opened = true;
+	}
+
+	// DEBUG_DATABASE
+	// defaults to: false
+	char* buffer = parse_FTLconf(fp, "DEBUG_DATABASE");
+	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
+		config.debug |= DEBUG_DATABASE;
+
+	// DEBUG_NETWORKING
+	// defaults to: false
+	buffer = parse_FTLconf(fp, "DEBUG_NETWORKING");
+	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
+		config.debug |= DEBUG_NETWORKING;
+
+	// DEBUG_LOCKS
+	// defaults to: false
+	buffer = parse_FTLconf(fp, "DEBUG_LOCKS");
+	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
+		config.debug |= DEBUG_LOCKS;
+
+	// DEBUG_QUERIES
+	// defaults to: false
+	buffer = parse_FTLconf(fp, "DEBUG_QUERIES");
+	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
+		config.debug |= DEBUG_QUERIES;
+
+	// DEBUG_FLAGS
+	// defaults to: false
+	buffer = parse_FTLconf(fp, "DEBUG_FLAGS");
+	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
+		config.debug |= DEBUG_FLAGS;
+
+	// DEBUG_SHMEM
+	// defaults to: false
+	buffer = parse_FTLconf(fp, "DEBUG_SHMEM");
+	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
+		config.debug |= DEBUG_SHMEM;
+
+	// DEBUG_GC
+	// defaults to: false
+	buffer = parse_FTLconf(fp, "DEBUG_GC");
+	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
+		config.debug |= DEBUG_GC;
+
+	// DEBUG_ARP
+	// defaults to: false
+	buffer = parse_FTLconf(fp, "DEBUG_ARP");
+	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
+		config.debug |= DEBUG_ARP;
+
+	// DEBUG_REGEX or REGEX_DEBUGMODE (legacy config option)
+	// defaults to: false
+	buffer = parse_FTLconf(fp, "DEBUG_REGEX");
+	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
+		config.debug |= DEBUG_REGEX;
+	buffer = parse_FTLconf(fp, "REGEX_DEBUGMODE");
+	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
+		config.debug |= DEBUG_REGEX;
+
+	// DEBUG_API
+	// defaults to: false
+	buffer = parse_FTLconf(fp, "DEBUG_API");
+	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
+		config.debug |= DEBUG_API;
+
+	// DEBUG_OVERTIME
+	// defaults to: false
+	buffer = parse_FTLconf(fp, "DEBUG_OVERTIME");
+	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
+		config.debug |= DEBUG_OVERTIME;
+
+	// DEBUG_EXTBLOCKED
+	// defaults to: false
+	buffer = parse_FTLconf(fp, "DEBUG_EXTBLOCKED");
+	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
+		config.debug |= DEBUG_EXTBLOCKED;
+
+	// DEBUG_CAPS
+	// defaults to: false
+	buffer = parse_FTLconf(fp, "DEBUG_CAPS");
+	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
+		config.debug |= DEBUG_CAPS;
+
+	// DEBUG_ALL
+	// defaults to: false
+	buffer = parse_FTLconf(fp, "DEBUG_ALL");
+	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
+		config.debug = ~0;
+
+	if(config.debug)
+	{
+		logg("************************");
+		logg("* Debugging enabled    *");
+		logg("* DEBUG_DATABASE   %s *", (config.debug & DEBUG_DATABASE)? "YES":"NO ");
+		logg("* DEBUG_NETWORKING %s *", (config.debug & DEBUG_NETWORKING)? "YES":"NO ");
+		logg("* DEBUG_LOCKS      %s *", (config.debug & DEBUG_LOCKS)? "YES":"NO ");
+		logg("* DEBUG_QUERIES    %s *", (config.debug & DEBUG_QUERIES)? "YES":"NO ");
+		logg("* DEBUG_FLAGS      %s *", (config.debug & DEBUG_FLAGS)? "YES":"NO ");
+		logg("* DEBUG_SHMEM      %s *", (config.debug & DEBUG_SHMEM)? "YES":"NO ");
+		logg("* DEBUG_GC         %s *", (config.debug & DEBUG_GC)? "YES":"NO ");
+		logg("* DEBUG_ARP        %s *", (config.debug & DEBUG_ARP)? "YES":"NO ");
+		logg("* DEBUG_REGEX      %s *", (config.debug & DEBUG_REGEX)? "YES":"NO ");
+		logg("* DEBUG_API        %s *", (config.debug & DEBUG_API)? "YES":"NO ");
+		logg("* DEBUG_OVERTIME   %s *", (config.debug & DEBUG_OVERTIME)? "YES":"NO ");
+		logg("* DEBUG_EXTBLOCKED %s *", (config.debug & DEBUG_EXTBLOCKED)? "YES":"NO ");
+		logg("* DEBUG_CAPS       %s *", (config.debug & DEBUG_CAPS)? "YES":"NO ");
+		logg("************************");
+	}
+
+	// Have to close the config file if we opened it
+	if(opened)
+	{
+		fclose(fp);
+
+		// Release memory only when we opened the file
+		// Otherwise, it may still be needed outside of
+		// this function (initial config parsing)
+		release_config_memory();
+	}
 }

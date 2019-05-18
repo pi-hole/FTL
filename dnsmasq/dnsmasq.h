@@ -1220,9 +1220,6 @@ size_t resize_packet(struct dns_header *header, size_t plen,
 int add_resource_record(struct dns_header *header, char *limit, int *truncp,
 			int nameoffset, unsigned char **pp, unsigned long ttl,
 			int *offset, unsigned short type, unsigned short class, char *format, ...);
-unsigned char *skip_questions(struct dns_header *header, size_t plen);
-int extract_name(struct dns_header *header, size_t plen, unsigned char **pp,
-		 char *name, int isExtract, int extrabytes);
 int in_arpa_name_2_addr(char *namein, struct all_addr *addrp);
 int private_net(struct in_addr addr, int ban_localhost);
 
@@ -1463,7 +1460,18 @@ void route_sock(void);
 #endif
 
 /* bpf.c or netlink.c */
+/************ Pi-hole modification ************/
+// We need to skip this function declaration
+// when compiling FTLDNS code as it is not
+// a valid prototype such that this line
+// would throw an error when compiling
+// dnsmasq_interface.c
+#if !defined(FTLDNS)
+/**********************************************/
 int iface_enumerate(int family, void *parm, int (callback)());
+/************ Pi-hole modification ************/
+#endif
+/**********************************************/
 
 /* dbus.c */
 #ifdef HAVE_DBUS
@@ -1564,8 +1572,6 @@ void dhcp_update_configs(struct dhcp_config *configs);
 void display_opts(void);
 int lookup_dhcp_opt(int prot, char *name);
 int lookup_dhcp_len(int prot, int val);
-char *option_string(int prot, unsigned int opt, unsigned char *val,
-		    int opt_len, char *buf, int buf_len);
 struct dhcp_config *find_config(struct dhcp_config *configs,
 				struct dhcp_context *context,
 				unsigned char *clid, int clid_len,

@@ -20,6 +20,7 @@ FTLFileNamesStruct FTLfiles = {
 	NULL,
 	NULL,
 	NULL,
+	NULL,
 	NULL
 };
 
@@ -140,7 +141,7 @@ void validate_access(const char * name, int pos, bool testmagic, int line, const
 // not be protected by our (error logging) functions!
 
 #undef strdup
-char *FTLstrdup(const char *src, const char * file, const char * function, int line)
+char* __attribute__((malloc)) FTLstrdup(const char *src, const char * file, const char * function, int line)
 {
 	// The FTLstrdup() function returns a pointer to a new string which is a
 	// duplicate of the string s. Memory for the new string is obtained with
@@ -165,7 +166,7 @@ char *FTLstrdup(const char *src, const char * file, const char * function, int l
 }
 
 #undef calloc
-void *FTLcalloc(size_t nmemb, size_t size, const char * file, const char * function, int line)
+void* __attribute__((malloc)) __attribute__((alloc_size(1,2))) FTLcalloc(size_t nmemb, size_t size, const char * file, const char * function, int line)
 {
 	// The FTLcalloc() function allocates memory for an array of nmemb elements
 	// of size bytes each and returns a pointer to the allocated memory. The
@@ -174,14 +175,14 @@ void *FTLcalloc(size_t nmemb, size_t size, const char * file, const char * funct
 	// passed to free().
 	void *ptr = calloc(nmemb, size);
 	if(ptr == NULL)
-		logg("FATAL: Memory allocation (%u x %u) failed in %s() (%s:%i)",
+		logg("FATAL: Memory allocation (%zu x %zu) failed in %s() (%s:%i)",
 		     nmemb, size, function, file, line);
 
 	return ptr;
 }
 
 #undef realloc
-void *FTLrealloc(void *ptr_in, size_t size, const char * file, const char * function, int line)
+void __attribute__((alloc_size(2))) *FTLrealloc(void *ptr_in, size_t size, const char * file, const char * function, int line)
 {
 	// The FTLrealloc() function changes the size of the memory block pointed to
 	// by ptr to size bytes. The contents will be unchanged in the range from
@@ -195,7 +196,7 @@ void *FTLrealloc(void *ptr_in, size_t size, const char * file, const char * func
 	// done.
 	void *ptr_out = realloc(ptr_in, size);
 	if(ptr_out == NULL)
-		logg("FATAL: Memory reallocation (%p -> %u) failed in %s() (%s:%i)",
+		logg("FATAL: Memory reallocation (%p -> %zu) failed in %s() (%s:%i)",
 		     ptr_in, size, function, file, line);
 
 	return ptr_out;

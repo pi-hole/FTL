@@ -24,7 +24,7 @@ static void SIGSEGV_handler(int sig, siginfo_t *si, void *unused)
 
 	if(FTLstarttime != 0)
 	{
-		logg("FTL has been running for %i seconds", time(NULL)-FTLstarttime);
+		logg("FTL has been running for %li seconds", time(NULL)-FTLstarttime);
 	}
 	log_FTL_version(true);
 

@@ -12,11 +12,11 @@
 #include "api.h"
 #include "shmem.h"
 
-bool command(char *client_message, const char* cmd) {
+bool __attribute__((pure)) command(const char *client_message, const char* cmd) {
 	return strstr(client_message, cmd) != NULL;
 }
 
-void process_request(char *client_message, int *sock)
+void process_request(const char *client_message, int *sock)
 {
 	char EOT[2];
 	EOT[0] = 0x04;
@@ -167,6 +167,12 @@ void process_request(char *client_message, int *sock)
 		free_regex();
 		read_regex_from_file();
 		unlock_shm();
+	}
+	else if(command(client_message, ">update-mac-vendor"))
+	{
+		processed = true;
+		logg("Received API request to update vendors in network table");
+		updateMACVendorRecords();
 	}
 
 	// Test only at the end if we want to quit or kill

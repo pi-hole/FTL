@@ -12,7 +12,7 @@
 #include "shmem.h"
 
 /// The version of shared memory used
-#define SHARED_MEMORY_VERSION 4
+#define SHARED_MEMORY_VERSION 6
 
 /// The name of the shared memory. Use this when connecting to the shared memory.
 #define SHARED_LOCK_NAME "/FTL-lock"
@@ -46,7 +46,9 @@ static ShmSettings *shmSettings = NULL;
 static int pagesize;
 static unsigned int local_shm_counter = 0;
 
-unsigned long long addstr(const char *str)
+static size_t get_optimal_object_size(size_t objsize, size_t minsize);
+
+size_t addstr(const char *str)
 {
 	if(str == NULL)
 	{
@@ -57,7 +59,14 @@ unsigned long long addstr(const char *str)
 	// Get string length
 	size_t len = strlen(str);
 
-	if(debug) logg("Adding \"%s\" (len %i) to buffer. next_str_pos is %i", str, len, shmSettings->next_str_pos);
+	// If this is an empty string, use the one at position zero
+	if(len == 0) {
+		return 0;
+	}
+
+	// Debugging output
+	if(config.debug & DEBUG_SHMEM)
+		logg("Adding \"%s\" (len %zu) to buffer. next_str_pos is %u", str, len, shmSettings->next_str_pos);
 
 	// Reserve additional memory if necessary
 	size_t required_size = shmSettings->next_str_pos + len + 1;
@@ -81,13 +90,20 @@ unsigned long long addstr(const char *str)
 	return (shmSettings->next_str_pos - (len + 1));
 }
 
-char *getstr(unsigned long long pos)
+const char *getstr(size_t pos)
 {
-	return &((char*)shm_strings.ptr)[pos];
+	// Only access the string memory if this memory region has already been set
+	if(pos < shmSettings->next_str_pos)
+		return &((const char*)shm_strings.ptr)[pos];
+	else
+	{
+		logg("WARN: Tried to access %zu but next_str_pos is %u", pos, shmSettings->next_str_pos);
+		return "";
+	}
 }
 
 /// Create a mutex for shared memory
-pthread_mutex_t create_mutex() {
+static pthread_mutex_t create_mutex(void) {
 	pthread_mutexattr_t lock_attr = {};
 	pthread_mutex_t lock = {};
 
@@ -109,7 +125,7 @@ pthread_mutex_t create_mutex() {
 	return lock;
 }
 
-void remap_shm(void)
+static void remap_shm(void)
 {
 	// Remap shared object pointers which might have changed
 	realloc_shm(&shm_queries, counters->queries_MAX*sizeof(queriesDataStruct), false);
@@ -131,18 +147,21 @@ void _lock_shm(const char* function, const int line, const char * file) {
 	// Signal that FTL is waiting for a lock
 	shmLock->waitingForLock = true;
 
-	if(debug) logg("Waiting for lock in %s() (%s:%i)", function, file, line);
+	if(config.debug & DEBUG_LOCKS)
+		logg("Waiting for lock in %s() (%s:%i)", function, file, line);
 
 	int result = pthread_mutex_lock(&shmLock->lock);
 
-	if(debug) logg("Obtained lock for %s() (%s:%i)", function, file, line);
+	if(config.debug & DEBUG_LOCKS)
+		logg("Obtained lock for %s() (%s:%i)", function, file, line);
 
 	// Check if this process needs to remap the shared memory objects
 	if(shmSettings != NULL &&
 	   local_shm_counter != shmSettings->global_shm_counter)
 	{
-		if(debug) logg("Remapping shared memory for current process %u %u",
-		               local_shm_counter, shmSettings->global_shm_counter);
+		if(config.debug & DEBUG_SHMEM)
+			logg("Remapping shared memory for current process %u %u",
+		             local_shm_counter, shmSettings->global_shm_counter);
 		remap_shm();
 	}
 
@@ -163,7 +182,8 @@ void _lock_shm(const char* function, const int line, const char * file) {
 void _unlock_shm(const char* function, const int line, const char * file) {
 	int result = pthread_mutex_unlock(&shmLock->lock);
 
-	if(debug) logg("Removed lock in %s() (%s:%i)", function, file, line);
+	if(config.debug & DEBUG_LOCKS)
+		logg("Removed lock in %s() (%s:%i)", function, file, line);
 
 	if(result != 0)
 		logg("Failed to unlock SHM lock: %s", strerror(result));
@@ -209,16 +229,18 @@ bool init_shmem(void)
 	counters->domains_MAX = pagesize;
 
 	/****************************** shared clients struct ******************************/
+	size_t size = get_optimal_object_size(sizeof(clientsDataStruct), 1);
 	// Try to create shared memory object
-	shm_clients = create_shm(SHARED_CLIENTS_NAME, pagesize*sizeof(clientsDataStruct));
+	shm_clients = create_shm(SHARED_CLIENTS_NAME, size*sizeof(clientsDataStruct));
 	clients = (clientsDataStruct*)shm_clients.ptr;
-	counters->clients_MAX = pagesize;
+	counters->clients_MAX = size;
 
 	/****************************** shared forwarded struct ******************************/
+	size = get_optimal_object_size(sizeof(forwardedDataStruct), 1);
 	// Try to create shared memory object
-	shm_forwarded = create_shm(SHARED_FORWARDED_NAME, pagesize*sizeof(forwardedDataStruct));
+	shm_forwarded = create_shm(SHARED_FORWARDED_NAME, size*sizeof(forwardedDataStruct));
 	forwarded = (forwardedDataStruct*)shm_forwarded.ptr;
-	counters->forwarded_MAX = pagesize;
+	counters->forwarded_MAX = size;
 
 	/****************************** shared queries struct ******************************/
 	// Try to create shared memory object
@@ -227,9 +249,9 @@ bool init_shmem(void)
 	counters->queries_MAX = pagesize;
 
 	/****************************** shared overTime struct ******************************/
-	size_t size = ((OVERTIME_SLOTS*sizeof(overTimeDataStruct))/pagesize + 1)*pagesize;
+	size = get_optimal_object_size(sizeof(overTimeDataStruct), OVERTIME_SLOTS);
 	// Try to create shared memory object
-	shm_overTime = create_shm(SHARED_OVERTIME_NAME, size);
+	shm_overTime = create_shm(SHARED_OVERTIME_NAME, size*sizeof(overTimeDataStruct));
 	overTime = (overTimeDataStruct*)shm_overTime.ptr;
 	initOverTime();
 
@@ -252,9 +274,10 @@ void destroy_shmem(void)
 	delete_shm(&shm_settings);
 }
 
-SharedMemory create_shm(char *name, size_t size)
+SharedMemory create_shm(const char *name, size_t size)
 {
-	if(debug) logg("Creating shared memory with name \"%s\" and size %zu", name, size);
+	if(config.debug & DEBUG_SHMEM)
+		logg("Creating shared memory with name \"%s\" and size %zu", name, size);
 
 	SharedMemory sharedMemory = {
 		.name = name,
@@ -315,30 +338,34 @@ SharedMemory create_shm(char *name, size_t size)
 
 void *enlarge_shmem_struct(char type)
 {
-	SharedMemory *sharedMemory;
-	size_t sizeofobj;
-	int *counter;
+	SharedMemory *sharedMemory = NULL;
+	size_t sizeofobj, allocation_step;
+	int *counter = NULL;
 
 	// Select type of struct that should be enlarged
 	switch(type)
 	{
 		case QUERIES:
 			sharedMemory = &shm_queries;
+			allocation_step = pagesize;
 			sizeofobj = sizeof(queriesDataStruct);
 			counter = &counters->queries_MAX;
 			break;
 		case CLIENTS:
 			sharedMemory = &shm_clients;
+			allocation_step = get_optimal_object_size(sizeof(clientsDataStruct), 1);
 			sizeofobj = sizeof(clientsDataStruct);
 			counter = &counters->clients_MAX;
 			break;
 		case DOMAINS:
 			sharedMemory = &shm_domains;
+			allocation_step = pagesize;
 			sizeofobj = sizeof(domainsDataStruct);
 			counter = &counters->domains_MAX;
 			break;
 		case FORWARDED:
 			sharedMemory = &shm_forwarded;
+			allocation_step = get_optimal_object_size(sizeof(forwardedDataStruct), 1);
 			sizeofobj = sizeof(forwardedDataStruct);
 			counter = &counters->forwarded_MAX;
 			break;
@@ -348,10 +375,10 @@ void *enlarge_shmem_struct(char type)
 	}
 
 	// Reallocate enough space for 4096 instances of requested object
-	realloc_shm(sharedMemory, sharedMemory->size + pagesize*sizeofobj, true);
+	realloc_shm(sharedMemory, sharedMemory->size + allocation_step*sizeofobj, true);
 
 	// Add allocated memory to corresponding counter
-	*counter += pagesize;
+	*counter += allocation_step;
 
 	return sharedMemory->ptr;
 }
@@ -371,11 +398,10 @@ bool realloc_shm(SharedMemory *sharedMemory, size_t size, bool resize)
 	// If not, we only remap a shared memory object which might have changed
 	// in another process. This happens when pihole-FTL forks due to incoming
 	// TCP requests.
-	int fd = -1;
 	if(resize)
 	{
 		// Open shared memory object
-		fd = shm_open(sharedMemory->name, O_RDWR, S_IRUSR | S_IWUSR);
+		int fd = shm_open(sharedMemory->name, O_RDWR, S_IRUSR | S_IWUSR);
 		if(fd == -1)
 		{
 			logg("FATAL: realloc_shm(): Failed to open shared memory object \"%s\": %s",
@@ -391,6 +417,10 @@ bool realloc_shm(SharedMemory *sharedMemory, size_t size, bool resize)
 			exit(EXIT_FAILURE);
 		}
 
+		// Close shared memory object file descriptor as it is no longer
+		// needed after having called ftruncate()
+		close(fd);
+
 		// Update shm counters to indicate that at least one shared memory object changed
 		shmSettings->global_shm_counter++;
 		local_shm_counter++;
@@ -399,16 +429,11 @@ bool realloc_shm(SharedMemory *sharedMemory, size_t size, bool resize)
 	void *new_ptr = mremap(sharedMemory->ptr, sharedMemory->size, size, MREMAP_MAYMOVE);
 	if(new_ptr == MAP_FAILED)
 	{
-		logg("FATAL: realloc_shm(): mremap(%p, %zu, %zu, MREMAP_MAYMOVE): Failed to reallocate \"%s\" (%i): %s",
-		     sharedMemory->ptr, sharedMemory->size, size, sharedMemory->name, fd,
+		logg("FATAL: realloc_shm(): mremap(%p, %zu, %zu, MREMAP_MAYMOVE): Failed to reallocate \"%s\": %s",
+		     sharedMemory->ptr, sharedMemory->size, size, sharedMemory->name,
 		     strerror(errno));
 		exit(EXIT_FAILURE);
 	}
-
-	// Close shared memory object file descriptor as it is no longer
-	// needed after having called ftruncate()
-	if(resize)
-		close(fd);
 
 	sharedMemory->ptr = new_ptr;
 	sharedMemory->size = size;
@@ -429,4 +454,65 @@ void delete_shm(SharedMemory *sharedMemory)
 	ret = shm_unlink(sharedMemory->name);
 	if(ret != 0)
 		logg("delete_shm(): shm_unlink(%s) failed: %s", sharedMemory->name, strerror(errno));
+}
+
+// Euclidean algorithm to return greatest common divisor of the numbers
+static size_t __attribute__((const)) gcd(size_t a, size_t b)
+{
+	while(b != 0)
+	{
+		size_t temp = b;
+		b = a % b;
+		a = temp;
+	}
+	return a;
+}
+
+// Function to return the optimal (minimum) size for page-aligned
+// shared memory objects. This routine works by computing the LCM
+// of two numbers, the pagesize and the size of a single element
+// in the shared memory object
+static size_t get_optimal_object_size(size_t objsize, size_t minsize)
+{
+	size_t optsize = pagesize / gcd(pagesize, objsize);
+	if(optsize < minsize)
+	{
+		if(config.debug & DEBUG_SHMEM)
+		{
+			logg("DEBUG: LCM(%i, %zu) == %zu < %zu",
+			     pagesize, objsize,
+			     optsize*objsize,
+			     minsize*objsize);
+		}
+
+		// Upscale optimal size by a certain factor
+		// Logic of this computation:
+		// First part: Integer division, may cause clipping, e.g., 5/3 = 1
+		// Second part: Catch a possibly happened clipping event by adding
+		//              one to the number: (5 % 3 != 0) is 1
+		size_t multiplier = (minsize/optsize) + ((minsize % optsize != 0) ? 1u : 0u);
+		if(config.debug & DEBUG_SHMEM)
+		{
+			logg("DEBUG: Using %zu*%zu == %zu >= %zu",
+			     multiplier, optsize*objsize,
+			     multiplier*optsize*objsize,
+			     minsize*objsize);
+		}
+		// As optsize ensures perfect page-alignment,
+		// any multiple of it will be aligned as well
+		return multiplier*optsize;
+	}
+	else
+	{
+		if(config.debug & DEBUG_SHMEM)
+		{
+			logg("DEBUG: LCM(%i, %zu) == %zu >= %zu",
+			     pagesize, objsize,
+			     optsize*objsize,
+			     minsize*objsize);
+		}
+
+		// Return computed optimal size
+		return optsize;
+	}
 }
