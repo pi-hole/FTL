@@ -66,10 +66,11 @@ static char *resolveHostname(const char *addr)
 // Resolve upstream destination host names
 static size_t resolveAndAddHostname(size_t ippos, size_t oldnamepos)
 {
-	// Get IP and host name strings
+	// Get IP and host name strings. They are cloned in case shared memory is
+	// resized before the next lock
 	lock_shm();
-	const char* ipaddr = getstr(ippos);
-	const char* oldname = getstr(oldnamepos);
+	char* ipaddr = strdup(getstr(ippos));
+	char* oldname = strdup(getstr(oldnamepos));
 	unlock_shm();
 
 	// Important: Don't hold a lock while resolving as the main thread
@@ -86,6 +87,8 @@ static size_t resolveAndAddHostname(size_t ippos, size_t oldnamepos)
 		// newname has already been checked against NULL
 		// so we can safely free it
 		free(newname);
+		free(ipaddr);
+		free(oldname);
 		unlock_shm();
 		return newnamepos;
 	}
@@ -94,6 +97,9 @@ static size_t resolveAndAddHostname(size_t ippos, size_t oldnamepos)
 		// Debugging output
 		logg("Not adding \"%s\" to buffer (unchanged)", oldname);
 	}
+
+	free(ipaddr);
+	free(oldname);
 
 	// Not changed, return old namepos
 	return oldnamepos;
