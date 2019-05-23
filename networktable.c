@@ -116,7 +116,6 @@ void parse_arp_cache(void)
 		//         unknown (only DNS requesting clients do this)
 		lock_shm();
 		int clientID = findClientID(ip, false);
-		unlock_shm();
 
 		// This client is known (by its IP address) to pihole-FTL if
 		// findClientID() returned a non-negative index
@@ -176,6 +175,8 @@ void parse_arp_cache(void)
 		}
 		// else:
 		// Device in database but not known to Pi-hole: No action required
+
+		unlock_shm();
 
 		// Count number of processed ARP cache entries
 		entries++;
