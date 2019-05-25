@@ -62,6 +62,12 @@ static double get_db_filesize(void)
 	return 1e-6*st.st_size;
 }
 
+static bool file_exists(const char *filename)
+{
+	struct stat st;
+	return (stat(filename, &st) != 0);
+}
+
 bool dbopen(void)
 {
 	pthread_mutex_lock(&dblock);
@@ -199,19 +205,20 @@ void db_init(void)
 	// explicitly check for failures to have happened
 	sqlite3_config(SQLITE_CONFIG_LOG, SQLite3LogCallback, NULL);
 
-	int rc = sqlite3_open_v2(FTLfiles.db, &db, SQLITE_OPEN_READWRITE, NULL);
-	if( rc == SQLITE_CANTOPEN )
+	// Check if database exists, if not create empty database
+	if(!file_exists(FTLfiles.db))
 	{
-		logg("Database not found, creating new (empty) database");
+		logg("No database file found, creating new (empty) database");
 		if (!db_create())
 		{
-			logg("Database not available");
+			logg("Creation of database failed, database is not available");
 			database = false;
 			return;
 		}
-
 	}
-	else if( rc ){
+
+	int rc = sqlite3_open_v2(FTLfiles.db, &db, SQLITE_OPEN_READWRITE, NULL);
+	if( rc ){
 		logg("db_init() - Cannot open database (%i): %s", rc, sqlite3_errmsg(db));
 		dbclose();
 
