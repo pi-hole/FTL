@@ -65,7 +65,7 @@ static double get_db_filesize(void)
 static bool file_exists(const char *filename)
 {
 	struct stat st;
-	return (stat(filename, &st) != 0);
+	return stat(filename, &st) == 0;
 }
 
 bool dbopen(void)
