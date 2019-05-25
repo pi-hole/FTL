@@ -972,7 +972,7 @@ void getVersion(const int *sock)
 
 	// Extract first 7 characters of the hash
 	char hash[8];
-	strncpy(hash, commit, 7); hash[7] = 0;
+	memcpy(hash, commit, 7); hash[7] = 0;
 
 	if(strlen(tag) > 1) {
 		if(istelnet[*sock])

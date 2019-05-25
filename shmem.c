@@ -86,8 +86,8 @@ size_t addstr(const char *str)
 	counters->strings_MAX = shm_strings.size;
 
 	// Copy the C string pointed by str into the shared string buffer
-	strncpy(&((char*)shm_strings.ptr)[shmSettings->next_str_pos], str, len);
-	((char*)shm_strings.ptr)[shmSettings->next_str_pos + len] = '\0';
+	// the length (len+1) ensures that we copy the terminator as well
+	strncpy(&((char*)shm_strings.ptr)[shmSettings->next_str_pos], str, len + 1);
 
 	// Increment string length counter
 	shmSettings->next_str_pos += len+1;
