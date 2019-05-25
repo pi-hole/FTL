@@ -62,12 +62,20 @@ size_t addstr(const char *str)
 		return 0;
 	}
 
-	// Get string length
-	size_t len = strlen(str);
+	// Get string length, add terminating character
+	size_t len = strlen(str) + 1;
 
-	// If this is an empty string, use the one at position zero
-	if(len == 0) {
+	// If this is an empty string (only the terminating character is present),
+	// use the shared memory string at position zero instead of creating a new
+	// entry here. We also ensure that the given string is not too long to
+	// prevent possible memory corruption caused by strncpy() further down
+	if(len == 1) {
 		return 0;
+	}
+	else if(len > (size_t)(pagesize-1))
+	{
+		logg("WARN: Shortening too long string (len %zu)", len);
+		len = pagesize;
 	}
 
 	// Debugging output
@@ -75,9 +83,7 @@ size_t addstr(const char *str)
 		logg("Adding \"%s\" (len %zu) to buffer. next_str_pos is %u", str, len, shmSettings->next_str_pos);
 
 	// Reserve additional memory if necessary
-	size_t required_size = shmSettings->next_str_pos + len + 1;
-	// Need to cast to long long because size_t calculations cannot be negative
-	if((long long)required_size-(long long)shm_strings.size > 0 &&
+	if(shmSettings->next_str_pos + len > shm_strings.size &&
 	   !realloc_shm(&shm_strings, shm_strings.size + pagesize, true))
 		return 0;
 
@@ -86,14 +92,13 @@ size_t addstr(const char *str)
 	counters->strings_MAX = shm_strings.size;
 
 	// Copy the C string pointed by str into the shared string buffer
-	// the length (len+1) ensures that we copy the terminator as well
-	strncpy(&((char*)shm_strings.ptr)[shmSettings->next_str_pos], str, len + 1);
+	strncpy(&((char*)shm_strings.ptr)[shmSettings->next_str_pos], str, len);
 
 	// Increment string length counter
-	shmSettings->next_str_pos += len+1;
+	shmSettings->next_str_pos += len;
 
 	// Return start of stored string
-	return (shmSettings->next_str_pos - (len + 1));
+	return (shmSettings->next_str_pos - len);
 }
 
 const char *getstr(const size_t pos)
