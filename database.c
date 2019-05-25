@@ -22,7 +22,7 @@ static pthread_mutex_t dblock;
 static bool db_set_counter(const unsigned int ID, const int value);
 static int db_get_FTL_property(const unsigned int ID);
 
-static void check_database(int rc)
+static bool check_database(int rc)
 {
 	// We will retry if the database is busy at the moment
 	// However, we won't retry if any other error happened
@@ -36,6 +36,8 @@ static void check_database(int rc)
 		logg("check_database(%i): Disabling database connection due to error", rc);
 		database = false;
 	}
+
+	return database;
 }
 
 void dbclose(void)
@@ -198,18 +200,23 @@ void db_init(void)
 	sqlite3_config(SQLITE_CONFIG_LOG, SQLite3LogCallback, NULL);
 
 	int rc = sqlite3_open_v2(FTLfiles.db, &db, SQLITE_OPEN_READWRITE, NULL);
-	if( rc ){
-		logg("db_init() - Cannot open database (%i): %s", rc, sqlite3_errmsg(db));
-		dbclose();
-		check_database(rc);
-
-		logg("Creating new (empty) database");
+	if( rc == SQLITE_CANTOPEN )
+	{
+		logg("Database not found, creating new (empty) database");
 		if (!db_create())
 		{
 			logg("Database not available");
 			database = false;
 			return;
 		}
+
+	}
+	else if( rc ){
+		logg("db_init() - Cannot open database (%i): %s", rc, sqlite3_errmsg(db));
+		dbclose();
+
+		database = false;
+		return;
 	}
 
 	// Test DB version and see if we need to upgrade the database file
