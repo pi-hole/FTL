@@ -269,10 +269,10 @@ void db_init(void)
 		dbversion = db_get_FTL_property(DB_VERSION);
 	}
 
-	//Update to version 4 if lower
+	// Update to version 4 if lower
 	if(dbversion < 4)
 	{
-		// Update to version 3: Create network table
+		// Update to version 4: Unify clients in network table
 		logg("Updating long-term database to version 4");
 		unify_hwaddr(db);
 		// Get updated version

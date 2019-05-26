@@ -88,7 +88,7 @@ void parse_arp_cache(void)
 			continue;
 
 		// Get ID of this device in our network database. If it cannot be
-		// found, then this is a new device We only use the hardware address
+		// found, then this is a new device. We only use the hardware address
 		// to uniquely identify clients and only use the first returned ID.
 		//
 		// Same MAC, two IPs: Non-deterministic (sequential) DHCP server, we
@@ -283,7 +283,7 @@ bool unify_hwaddr(sqlite3 *db)
 	// See https://www.sqlite.org/lang_createtable.html#constraints:
 	// >>> In most cases, UNIQUE and PRIMARY KEY constraints are
 	// >>> implemented by creating a unique index in the database.
-	dbquery("CREATE UNIQUE INDEX hwaddr_idx ON network(hwaddr)");
+	dbquery("CREATE UNIQUE INDEX network_hwaddr_idx ON network(hwaddr)");
 
 	// Update database version to 4
 	if(!db_set_FTL_property(DB_VERSION, 4))
