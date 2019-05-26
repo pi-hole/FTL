@@ -15,6 +15,7 @@
 
 // Private prototypes
 static char* getMACVendor(const char* hwaddr);
+bool unify_hwaddr(sqlite3 *db);
 
 bool create_network_table(void)
 {
@@ -86,15 +87,19 @@ void parse_arp_cache(void)
 		if(!(flags & 0x02))
 			continue;
 
-		// Get ID of this device in our network database. If it cannot be found, then this is a new device
-		// We match both IP *and* MAC address
-		// Same MAC, two IPs: Non-deterministic DHCP server, treat as two entries
-		// Same IP, two MACs: Either non-deterministic DHCP server or (almost) full DHCP address pool
-		// We can run this SELECT inside the currently active transaction as only the
-		// changed to the database are collected for latter commitment. Read-only access
-		// such as this SELECT command will be executed immediately on the database.
+		// Get ID of this device in our network database. If it cannot be
+		// found, then this is a new device. We only use the hardware address
+		// to uniquely identify clients and only use the first returned ID.
+		//
+		// Same MAC, two IPs: Non-deterministic (sequential) DHCP server, we
+		// update the IP address to the last seen one.
+		//
+		// We can run this SELECT inside the currently active transaction as
+		// only the changed to the database are collected for latter
+		// commitment. Read-only access such as this SELECT command will be
+		// executed immediately on the database.
 		char* querystr = NULL;
-		int ret = asprintf(&querystr, "SELECT id FROM network WHERE ip = \'%s\' AND hwaddr = \'%s\';", ip, hwaddr);
+		int ret = asprintf(&querystr, "SELECT id FROM network WHERE hwaddr = \'%s\';", hwaddr);
 		if(querystr == NULL || ret < 0)
 		{
 			logg("Memory allocation failed in parse_arp_cache (%i)", ret);
@@ -164,6 +169,13 @@ void parse_arp_cache(void)
 			        client->numQueriesARP, dbID);
 			client->numQueriesARP = 0;
 
+			// Update IP address in case it changed. This might happen with
+			// sequential DHCP servers as found in many commercial routers
+			dbquery("UPDATE network "\
+			        "SET ip = \'%s\' "\
+			        "WHERE id = %i;",\
+			        ip, dbID);
+
 			// Store hostname if available
 			if(strlen(hostname) > 0)
 			{
@@ -194,6 +206,93 @@ void parse_arp_cache(void)
 
 	// Close database connection
 	dbclose();
+}
+
+// Loop over all entries in network table and unify entries by their hwaddr
+// If we find duplicates, we keep the most recent entry, while
+// - we replace the first-seen date by the earliest across all rows
+// - we sum up the number of queries of all clients with the same hwaddr
+bool unify_hwaddr(sqlite3 *db)
+{
+	// We request sets of (id,hwaddr). They are GROUPed BY hwaddr to make
+	// the set unique in hwaddr.
+	// The grouping is constrained by the HAVING clause which is
+	// evaluated once across all rows of a group to ensure the returned
+	// set represents the most recent entry for a given hwaddr
+	char* querystr = NULL;
+	int ret = asprintf(&querystr, "SELECT id,hwaddr FROM network GROUP BY hwaddr HAVING MAX(lastQuery)");
+	if(querystr == NULL || ret < 0)
+	{
+		logg("Memory allocation failed in unify_hwaddr (%i)", ret);
+		dbclose();
+		return false;
+	}
+
+	// Perform SQL query
+	sqlite3_stmt* stmt;
+	ret = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
+	if( ret ){
+		logg("unify_hwaddr(%s) - SQL error prepare (%i): %s", querystr, ret, sqlite3_errmsg(db));
+		dbclose();
+		return false;
+	}
+
+	// Loop until no further (id,hwaddr) sets are available
+	while((ret = sqlite3_step(stmt)) != SQLITE_DONE)
+	{
+		// Check if we ran into an error
+		if(ret != SQLITE_ROW)
+		{
+			logg("unify_hwaddr(%s) - SQL error step (%i): %s", querystr, ret, sqlite3_errmsg(db));
+			dbclose();
+			return false;
+		}
+
+		// Obtain id and hwaddr of the most recent entry for this particular client
+		const int id = sqlite3_column_int(stmt, 0);
+		const char *hwaddr = (const char *)sqlite3_column_text(stmt, 1);
+
+		// Update firstSeen with lowest value across all rows with the same hwaddr
+		dbquery("UPDATE network "\
+		        "SET firstSeen = (SELECT MIN(firstSeen) FROM network WHERE hwaddr = \'%s\') "\
+		        "WHERE id = %i;",\
+		        hwaddr, id);
+
+		// Update numQueries with sum of all rows with the same hwaddr
+		dbquery("UPDATE network "\
+		        "SET numQueries = (SELECT SUM(numQueries) FROM network WHERE hwaddr = \'%s\') "\
+		        "WHERE id = %i;",\
+		        hwaddr, id);
+
+		// Remove all other lines with the same hwaddr but a different id
+		dbquery("DELETE FROM network "\
+		        "WHERE hwaddr = \'%s\' "\
+		        "AND id != %i;",\
+		        hwaddr, id);
+	}
+
+	// Finalize statement and free query string
+	sqlite3_finalize(stmt);
+	free(querystr);
+
+	// Ensure hwaddr is a unique field
+	// Unfortunately, SQLite's ALTER TABLE does not support adding
+	// constraints to existing tables. However, we can add a unique
+	// index for the table to achieve the same effect.
+	//
+	// See https://www.sqlite.org/lang_createtable.html#constraints:
+	// >>> In most cases, UNIQUE and PRIMARY KEY constraints are
+	// >>> implemented by creating a unique index in the database.
+	dbquery("CREATE UNIQUE INDEX network_hwaddr_idx ON network(hwaddr)");
+
+	// Update database version to 4
+	if(!db_set_FTL_property(DB_VERSION, 4))
+	{
+		dbclose();
+		return false;
+	}
+
+	return true;
 }
 
 static char* getMACVendor(const char* hwaddr)
