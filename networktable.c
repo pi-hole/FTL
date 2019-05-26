@@ -99,7 +99,7 @@ void parse_arp_cache(void)
 		// commitment. Read-only access such as this SELECT command will be
 		// executed immediately on the database.
 		char* querystr = NULL;
-		int ret = asprintf(&querystr, "SELECT id FROM network WHERE hwaddr = \'%s\' LIMIT 1;", hwaddr);
+		int ret = asprintf(&querystr, "SELECT id FROM network WHERE hwaddr = \'%s\';", hwaddr);
 		if(querystr == NULL || ret < 0)
 		{
 			logg("Memory allocation failed in parse_arp_cache (%i)", ret);
@@ -273,6 +273,16 @@ bool unify_hwaddr(sqlite3 *db)
 
 	sqlite3_finalize(stmt);
 	free(querystr);
+
+	// Ensure hwaddr is a unique field
+	// Unfortunaltely, SQLite's ALTER TABLE does not support adding
+	// constraints to existing tables. However, we can add a unique
+	// index for the table to achieve the same effect.
+	//
+	// See https://www.sqlite.org/lang_createtable.html#constraints:
+	// >>> In most cases, UNIQUE and PRIMARY KEY constraints are
+	// >>> implemented by creating a unique index in the database.
+	dbquery("CREATE UNIQUE INDEX hwaddr_idx ON network(hwaddr)");
 
 	// Update database version to 4
 	if(!db_set_FTL_property(DB_VERSION, 4))
