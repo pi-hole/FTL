@@ -15,6 +15,7 @@
 
 // Private prototypes
 static char* getMACVendor(const char* hwaddr);
+bool unify_hwaddr(sqlite3 *db);
 
 bool create_network_table(void)
 {
@@ -169,7 +170,7 @@ void parse_arp_cache(void)
 			client->numQueriesARP = 0;
 
 			// Update IP address in case it changed. This might happen with
-			// sequential  DHCP servers as found in many commercial routers
+			// sequential DHCP servers as found in many commercial routers
 			dbquery("UPDATE network "\
 			        "SET ip = \'%s\' "\
 			        "WHERE id = %i;",\
@@ -205,6 +206,82 @@ void parse_arp_cache(void)
 
 	// Close database connection
 	dbclose();
+}
+
+// Loop over all entries in network table and unify entries by their hardware addresses
+// If we find duplicates, we keep the most recent entry, while
+// - we replace the first-seen date by the smallest one
+// - we sum up the number of queries of all rows
+// Note: The database handle is already active when this subroutine is called
+bool unify_hwaddr(sqlite3 *db)
+{
+	char* querystr = NULL;
+	// We request sets of (id,hwaddr). They are GROUPed BY hwaddr to make
+	// the set unique in hwaddr, while the grouping is constrained by the
+	// HAVING clause which is evaluated once across all rows of a group to
+	// ensure the returned set represents the most recent entry for a given
+	// hwaddr
+	int ret = asprintf(&querystr, "SELECT id,hwaddr FROM network GROUP BY hwaddr HAVING MAX(lastQuery)");
+	if(querystr == NULL || ret < 0)
+	{
+		logg("Memory allocation failed in unify_hwaddr (%i)", ret);
+		dbclose();
+		return false;
+	}
+
+	// Perform SQL query
+	sqlite3_stmt* stmt;
+	ret = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
+	if( ret ){
+		logg("unify_hwaddr(%s) - SQL error prepare (%i): %s", querystr, ret, sqlite3_errmsg(db));
+		dbclose();
+		return false;
+	}
+
+	// Loop until no further rows are read
+	while((ret = sqlite3_step(stmt)) != SQLITE_DONE)
+	{
+		// Check if we ran into an error
+		if(ret != SQLITE_ROW)
+		{
+			logg("unify_hwaddr(%s) - SQL error step (%i): %s", querystr, ret, sqlite3_errmsg(db));
+			dbclose();
+			return false;
+		}
+
+		const int id = sqlite3_column_int(stmt, 0);
+		const char *hwaddr = (const char *)sqlite3_column_text(stmt, 1);
+
+		// Update firstSeen with lowest value
+		dbquery("UPDATE network "\
+		        "SET firstSeen = (SELECT MIN(firstSeen) FROM network WHERE hwaddr = \'%s\') "\
+		        "WHERE id = %i;",\
+		        hwaddr, id);
+
+		// Update numQueries with sum of all rows
+		dbquery("UPDATE network "\
+		        "SET numQueries = (SELECT SUM(numQueries) FROM network WHERE hwaddr = \'%s\') "\
+		        "WHERE id = %i;",\
+		        hwaddr, id);
+
+		// Remove all other lines with the same hwaddr
+		dbquery("DELETE FROM network "\
+		        "WHERE hwaddr = \'%s\' "\
+		        "AND id != %i;",\
+		        hwaddr, id);
+	}
+
+	sqlite3_finalize(stmt);
+	free(querystr);
+
+	// Update database version to 4
+	if(!db_set_FTL_property(DB_VERSION, 4))
+	{
+		dbclose();
+		return false;
+	}
+
+	return true;
 }
 
 static char* getMACVendor(const char* hwaddr)

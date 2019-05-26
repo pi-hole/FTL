@@ -22,6 +22,9 @@ static pthread_mutex_t dblock;
 static bool db_set_counter(const unsigned int ID, const int value);
 static int db_get_FTL_property(const unsigned int ID);
 
+// defined in networktable.c
+extern bool unify_hwaddr(sqlite3 *db);
+
 static bool check_database(int rc)
 {
 	// We will retry if the database is busy at the moment
@@ -235,6 +238,7 @@ void db_init(void)
 		database = false;
 		return;
 	}
+
 	// Update to version 2 if lower
 	if(dbversion < 2)
 	{
@@ -249,6 +253,7 @@ void db_init(void)
 		// Get updated version
 		dbversion = db_get_FTL_property(DB_VERSION);
 	}
+
 	// Update to version 3 if lower
 	if(dbversion < 3)
 	{
@@ -260,6 +265,16 @@ void db_init(void)
 			database = false;
 			return;
 		}
+		// Get updated version
+		dbversion = db_get_FTL_property(DB_VERSION);
+	}
+
+	//Update to version 4 if lower
+	if(dbversion < 4)
+	{
+		// Update to version 3: Create network table
+		logg("Updating long-term database to version 4");
+		unify_hwaddr(db);
 		// Get updated version
 		dbversion = db_get_FTL_property(DB_VERSION);
 	}
