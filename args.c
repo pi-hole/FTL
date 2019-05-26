@@ -52,7 +52,6 @@ void parse_args(int argc, char* argv[])
 		   strcmp(argv[i], "version") == 0 ||
 		   strcmp(argv[i], "--version") == 0)
 		{
-			const char * commit = GIT_HASH;
 			const char * tag = GIT_TAG;
 			if(strlen(tag) > 1)
 			{
@@ -60,9 +59,10 @@ void parse_args(int argc, char* argv[])
 			}
 			else
 			{
+				const char * commit = GIT_HASH;
 				char hash[8];
 				// Extract first 7 characters of the hash
-				strncpy(hash, commit, 7); hash[7] = 0;
+				memcpy(hash, commit, 7); hash[7] = 0;
 				printf("vDev-%s\n", hash);
 			}
 			exit(EXIT_SUCCESS);

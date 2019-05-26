@@ -17,22 +17,22 @@ static bool *regexconfigured = NULL;
 static char **regexbuffer = NULL;
 static whitelistStruct whitelist = { NULL, 0 };
 
-static void log_regex_error(const char *where, int errcode, int index)
+static void log_regex_error(const char *where, const int errcode, const int index)
 {
 	// Regex failed for some reason (probably user syntax error)
 	// Get error string and log it
-	size_t length = regerror(errcode, &regex[index], NULL, 0);
+	const size_t length = regerror(errcode, &regex[index], NULL, 0);
 	char *buffer = calloc(length,sizeof(char));
 	(void) regerror (errcode, &regex[index], buffer, length);
 	logg("ERROR %s regex on line %i: %s (%i)", where, index+1, buffer, errcode);
 	free(buffer);
 }
 
-static bool init_regex(const char *regexin, int index)
+static bool init_regex(const char *regexin, const int index)
 {
 	// compile regular expressions into data structures that
 	// can be used with regexec to match against a string
-	int errcode = regcomp(&regex[index], regexin, REG_EXTENDED);
+	const int errcode = regcomp(&regex[index], regexin, REG_EXTENDED);
 	if(errcode != 0)
 	{
 		log_regex_error("compiling", errcode, index);
@@ -47,7 +47,7 @@ static bool init_regex(const char *regexin, int index)
 	return true;
 }
 
-bool __attribute__((pure)) in_whitelist(char *domain)
+bool __attribute__((pure)) in_whitelist(const char *domain)
 {
 	bool found = false;
 	for(int i=0; i < whitelist.count; i++)
@@ -62,7 +62,7 @@ bool __attribute__((pure)) in_whitelist(char *domain)
 	return found;
 }
 
-static void free_whitelist_domains(void)
+void free_whitelist_domains(void)
 {
 	for(int i=0; i < whitelist.count; i++)
 		free(whitelist.domains[i]);
@@ -77,14 +77,13 @@ static void free_whitelist_domains(void)
 	}
 }
 
-bool match_regex(char *input)
+bool match_regex(const char *input)
 {
-	int index;
 	bool matched = false;
 
 	// Start matching timer
 	timer_start(REGEX_TIMER);
-	for(index = 0; index < num_regex; index++)
+	for(int index = 0; index < num_regex; index++)
 	{
 		// Only check regex which have been successfully compiled
 		if(!regexconfigured[index])
@@ -153,90 +152,75 @@ void free_regex(void)
 
 	// Must reevaluate regex filters after having reread the regex filter
 	// We reset all regex status to unknown to have them being reevaluated
-	if(counters->domains > 0)
-		validate_access("domains", counters->domains-1, false, __LINE__, __FUNCTION__, __FILE__);
 	for(int i=0; i < counters->domains; i++)
 	{
-		domains[i].regexmatch = REGEX_UNKNOWN;
-	}
+		// Get domain pointer
+		domainsData* domain = getDomain(i, true);
 
-	// Also free array of whitelisted domains
-	free_whitelist_domains();
+		// Reset regexmatch to unknown
+		domain->regexmatch = REGEX_UNKNOWN;
+	}
 }
 
-static void read_whitelist_from_file(void)
+void read_whitelist_from_database(void)
 {
-	FILE *fp;
-	char *buffer = NULL;
-	size_t size = 0;
+	// Get number of lines in the whitelist table
+	whitelist.count = gravityDB_count(WHITE_LIST);
 
-	// Get number of lines in the whitelist file
-	whitelist.count = countlines(files.whitelist);
-
-	if(whitelist.count < 0)
+	if(whitelist.count == 0)
 	{
-		logg("INFO: No whitelist file found");
+		logg("INFO: No whitelist entries found");
 		return;
 	}
-
-	if((fp = fopen(files.whitelist, "r")) == NULL) {
-		logg("WARN: Cannot access whitelist (%s)",files.whitelist);
+	else if(whitelist.count == DB_FAILED)
+	{
+		logg("WARN: Database query failed, assuming there are no whitelist entries");
+		whitelist.count = 0;
 		return;
 	}
 
 	// Allocate memory for array of whitelisted domains
 	whitelist.domains = calloc(whitelist.count, sizeof(char*));
 
-	// Search through file
-	// getline reads a string from the specified file up to either a
-	// newline character or EOF
-	for(int i=0; getline(&buffer, &size, fp) != -1; i++)
+	// Connect to whitelist table
+	if(!gravityDB_getTable(WHITE_LIST))
 	{
-		// Test if file has changed since we counted the lines therein (unlikely
-		// but not impossible). If so, read only as far as we have reserved memory
-		if(i >= whitelist.count)
-			break;
-
-		// Strip potential newline character at the end of line we just read
-		if(buffer[strlen(buffer)-1] == '\n')
-			buffer[strlen(buffer)-1] = '\0';
-
-		// Copy this whitelisted domain into memory
-		whitelist.domains[i] = strdup(buffer);
-	}
-
-	// Free allocated memory
-	if(buffer != NULL)
-	{
-		free(buffer);
-		buffer = NULL;
-	}
-
-	// Close the file
-	fclose(fp);
-}
-
-void read_regex_from_file(void)
-{
-	FILE *fp;
-	char *buffer = NULL;
-	size_t size = 0;
-	int errors = 0, skipped = 0;
-
-	// Start timer for regex compilation analysis
-	timer_start(REGEX_TIMER);
-
-	// Get number of lines in the regex file
-	num_regex = countlines(files.regexlist);
-
-	if(num_regex < 0)
-	{
-		logg("INFO: No Regex file found");
+		logg("read_whitelist_from_database(): Error getting table from database");
 		return;
 	}
 
-	if((fp = fopen(files.regexlist, "r")) == NULL) {
-		logg("WARN: Cannot access Regex file");
+	// Walk database table
+	const char *domain = NULL;
+	int i = 0;
+	while((domain = gravityDB_getDomain()) != NULL)
+	{
+		// Avoid buffer overflow if database table changed
+		// since we counted its entries
+		if(i >= whitelist.count)
+			break;
+
+		// Copy this whitelisted domain into memory
+		whitelist.domains[i++] = strdup(domain);
+	}
+
+	// Finalize statement and close gravity database handle
+	gravityDB_finalizeTable();
+}
+
+void read_regex_from_database(void)
+{
+	// Get number of lines in the regex table
+	num_regex = gravityDB_count(REGEX_LIST);
+
+	if(num_regex == 0)
+	{
+		logg("INFO: No regex entries found");
+		return;
+	}
+	else if(num_regex == DB_FAILED)
+	{
+		logg("WARN: Database query failed, assuming there are no regex entries");
+		num_regex = 0;
 		return;
 	}
 
@@ -248,58 +232,43 @@ void read_regex_from_file(void)
 	if(config.debug & DEBUG_REGEX)
 		regexbuffer = calloc(num_regex, sizeof(char*));
 
-	// Search through file
-	// getline reads a string from the specified file up to either a
-	// newline character or EOF
-	for(int i=0; getline(&buffer, &size, fp) != -1; i++)
+	// Connect to whitelist table
+	if(!gravityDB_getTable(REGEX_LIST))
 	{
-		// Test if file has changed since we counted the lines therein (unlikely
-		// but not impossible). If so, read only as far as we have reserved memory
+		logg("read_regex_from_database(): Error getting table from database");
+		return;
+	}
+
+	// Walk database table
+	const char *domain = NULL;
+	int i = 0;
+	while((domain = gravityDB_getDomain()) != NULL)
+	{
+		// Avoid buffer overflow if database table changed
+		// since we counted its entries
 		if(i >= num_regex)
 			break;
-
-		// Strip potential newline character at the end of line we just read
-		if(buffer[strlen(buffer)-1] == '\n')
-			buffer[strlen(buffer)-1] = '\0';
 
 		// Skip this entry if empty: an empty regex filter would match
 		// anything anywhere and hence match (and block) all incoming domains.
 		// A user can still achieve this with a filter such as ".*", however
-		// empty lines in regex.list are probably not expected to have such an
-		// effect and would immediately lead to "blocking the entire Internet"
-		if(strlen(buffer) < 1)
-		{
-			regexconfigured[i] = false;
-			logg("Skipping empty regex filter on line %i", i+1);
-			skipped++;
+		// empty filters in the regex table are probably not expected to have such
+		// an effect and would immediately lead to "blocking the entire Internet"
+		if(strlen(domain) < 1)
 			continue;
-		}
 
-		// Skip this entry if it is commented out
-		if(buffer[0] == '#')
-		{
-			regexconfigured[i] = false;
-			logg("Skipping commented out regex filter on line %i", i+1);
-			skipped++;
-			continue;
-		}
+		// Copy this regex domain into memory
+		regexconfigured[i] = init_regex(domain, i);
 
-		// Compile this regex
-		regexconfigured[i] = init_regex(buffer, i);
+		// Increase counter
+		i++;
 	}
 
-	// Free allocated memory
-	if(buffer != NULL)
-	{
-		free(buffer);
-		buffer = NULL;
-	}
+	// Finalize statement and close gravity database handle
+	gravityDB_finalizeTable();
+}
 
-	// Close the file
-	fclose(fp);
-
-	// Read whitelisted domains from file
-	read_whitelist_from_file();
-
-	logg("Compiled %i Regex filters and %i whitelisted domains in %.1f msec (%i errors)", (num_regex-skipped), whitelist.count > 0 ? whitelist.count : 0, timer_elapsed_msec(REGEX_TIMER), errors);
+void log_regex_whitelist(const double time)
+{
+	logg("Compiled %i Regex filters and %i whitelisted domains in %.1f msec", num_regex, whitelist.count, time);
 }

@@ -164,8 +164,18 @@ void process_request(const char *client_message, int *sock)
 		processed = true;
 		logg("Received API request to recompile regex");
 		lock_shm();
+		// Reread regex.list
+		// Free regex list and array of whitelisted domains
 		free_regex();
-		read_regex_from_file();
+		free_whitelist_domains();
+		// Start timer for regex compilation analysis
+		timer_start(REGEX_TIMER);
+		// Read and compile possible regex filters
+		read_regex_from_database();
+		// Read whitelisted domains from database
+		read_whitelist_from_database();
+		// Log result
+		log_regex_whitelist(timer_elapsed_msec(REGEX_TIMER));
 		unlock_shm();
 	}
 	else if(command(client_message, ">update-mac-vendor"))

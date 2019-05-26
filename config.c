@@ -13,7 +13,7 @@
 ConfigStruct config;
 static char *parse_FTLconf(FILE *fp, const char * key);
 static void release_config_memory(void);
-void getpath(FILE* fp, const char *option, const char *defaultloc, char **pointer);
+static void getpath(FILE* fp, const char *option, const char *defaultloc, char **pointer);
 
 char *conflinebuffer = NULL;
 
@@ -288,18 +288,6 @@ void read_FTLconf(void)
 	// SOCKETFILE
 	getpath(fp, "SOCKETFILE", "/var/run/pihole/FTL.sock", &FTLfiles.socketfile);
 
-	// WHITELISTFILE
-	getpath(fp, "WHITELISTFILE", "/etc/pihole/whitelist.txt", &files.whitelist);
-
-	// BLACKLISTFILE
-	getpath(fp, "BLACKLISTFILE", "/etc/pihole/black.list", &files.blacklist);
-
-	// GRAVITYFILE
-	getpath(fp, "GRAVITYFILE", "/etc/pihole/gravity.list", &files.gravity);
-
-	// REGEXLISTFILE
-	getpath(fp, "REGEXLISTFILE", "/etc/pihole/regex.list", &files.regexlist);
-
 	// SETUPVARSFILE
 	getpath(fp, "SETUPVARSFILE", "/etc/pihole/setupVars.conf", &files.setupVars);
 
@@ -308,6 +296,9 @@ void read_FTLconf(void)
 
 	// MACVENDORDB
 	getpath(fp, "MACVENDORDB", "/etc/pihole/macvendor.db", &FTLfiles.macvendordb);
+
+	// GRAVITYDB
+	getpath(fp, "GRAVITYDB", "/etc/pihole/gravity.db", &FTLfiles.gravitydb);
 
 	// PARSE_ARP_CACHE
 	// defaults to: true
@@ -334,7 +325,7 @@ void read_FTLconf(void)
 		fclose(fp);
 }
 
-void getpath(FILE* fp, const char *option, const char *defaultloc, char **pointer)
+static void getpath(FILE* fp, const char *option, const char *defaultloc, char **pointer)
 {
 	// This subroutine is used to read paths from pihole-FTL.conf
 	// fp:         File pointer to opened and readable config file

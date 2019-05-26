@@ -42,38 +42,42 @@ void *GC_thread(void *val)
 			mintime -= mintime % 3600;
 			mintime += 3600;
 
-			if(config.debug & DEBUG_GC) timer_start(GC_TIMER);
-
-			long int i;
-			int removed = 0;
-			if(config.debug & DEBUG_GC) logg("GC starting, mintime: %lu %s", mintime, ctime(&mintime));
+			if(config.debug & DEBUG_GC)
+			{
+				timer_start(GC_TIMER);
+				char timestring[84] = "";
+				get_timestr(timestring, mintime);
+				logg("GC starting, mintime: %s (%lu)", timestring, mintime);
+			}
 
 			// Process all queries
-			for(i=0; i < counters->queries; i++)
+			int removed = 0;
+			for(long int i=0; i < counters->queries; i++)
 			{
-				validate_access("queries", i, true, __LINE__, __FUNCTION__, __FILE__);
+				queriesData* query = getQuery(i, true);
 				// Test if this query is too new
-				if(queries[i].timestamp > mintime)
+				if(query->timestamp > mintime)
 					break;
 
 				// Adjust client counter
-				int clientID = queries[i].clientID;
-				validate_access("clients", clientID, true, __LINE__, __FUNCTION__, __FILE__);
-				clients[clientID].count--;
+				clientsData* client = getClient(query->clientID, true);
+				client->count--;
 
 				// Adjust total counters and total over time data
-				int timeidx = queries[i].timeidx;
+				const int timeidx = query->timeidx;
 				overTime[timeidx].total--;
 				// Adjust corresponding overTime counters
-				clients[clientID].overTime[timeidx]--;
+				client->overTime[timeidx]--;
 
 				// Adjust domain counter (no overTime information)
-				int domainID = queries[i].domainID;
-				validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
-				domains[domainID].count--;
+				domainsData* domain = getDomain(query->domainID, true);
+				domain->count--;
+
+				// Get forward pointer
+				forwardedData* forward = getForward(query->forwardID, true);
 
 				// Change other counters according to status of this query
-				switch(queries[i].status)
+				switch(query->status)
 				{
 					case QUERY_UNKNOWN:
 						// Unknown (?)
@@ -81,9 +85,9 @@ void *GC_thread(void *val)
 						break;
 					case QUERY_FORWARDED:
 						// Forwarded to an upstream DNS server
+						// Adjust counters
 						counters->forwardedqueries--;
-						validate_access("forwarded", queries[i].forwardID, true, __LINE__, __FUNCTION__, __FILE__);
-						forwarded[queries[i].forwardID].count--;
+						forward->count--;
 						overTime[timeidx].forwarded--;
 						break;
 					case QUERY_CACHE:
@@ -99,8 +103,8 @@ void *GC_thread(void *val)
 					case QUERY_EXTERNAL_BLOCKED_NULL: // Blocked by upstream provider (fall through)
 						counters->blocked--;
 						overTime[timeidx].blocked--;
-						domains[domainID].blockedcount--;
-						clients[clientID].blockedcount--;
+						domain->blockedcount--;
+						client->blockedcount--;
 						break;
 					default:
 						/* That cannot happen */
@@ -108,7 +112,7 @@ void *GC_thread(void *val)
 				}
 
 				// Update reply counters
-				switch(queries[i].reply)
+				switch(query->reply)
 				{
 					case REPLY_NODATA: // NODATA(-IPv6)
 					counters->reply_NODATA--;
@@ -135,10 +139,10 @@ void *GC_thread(void *val)
 				}
 
 				// Update type counters
-				if(queries[i].type >= TYPE_A && queries[i].type < TYPE_MAX)
+				if(query->type >= TYPE_A && query->type < TYPE_MAX)
 				{
-					counters->querytype[queries[i].type-1]--;
-					overTime[timeidx].querytypedata[queries[i].type-1]--;
+					counters->querytype[query->type-1]--;
+					overTime[timeidx].querytypedata[query->type-1]--;
 				}
 
 				// Count removed queries
@@ -146,25 +150,30 @@ void *GC_thread(void *val)
 
 			}
 
-			// Move memory forward to keep only what we want
-			// Note: for overlapping memory blocks, memmove() is a safer approach than memcpy()
-			// Example: (I = now invalid, X = still valid queries, F = free space)
-			//   Before: IIIIIIXXXXFF
-			//   After:  XXXXFFFFFFFF
-			memmove(&queries[0], &queries[removed], (counters->queries - removed)*sizeof(*queries));
+			// Only perform memory operations when we actually removed queries
+			if(removed > 0)
+			{
+				// Move memory forward to keep only what we want
+				// Note: for overlapping memory blocks, memmove() is a safer approach than memcpy()
+				// Example: (I = now invalid, X = still valid queries, F = free space)
+				//   Before: IIIIIIXXXXFF
+				//   After:  XXXXFFFFFFFF
+				memmove(getQuery(0, true), getQuery(removed, true), (counters->queries - removed)*sizeof(queriesData));
 
-			// Update queries counter
-			counters->queries -= removed;
-			// Update DB index as total number of queries reduced
-			lastdbindex -= removed;
+				// Update queries counter
+				counters->queries -= removed;
+				// Update DB index as total number of queries reduced
+				lastdbindex -= removed;
 
-			// Zero out remaining memory (marked as "F" in the above example)
-			memset(&queries[counters->queries], 0, (counters->queries_MAX - counters->queries)*sizeof(*queries));
+				// ensure remaining memory is zeroed out (marked as "F" in the above example)
+				memset(getQuery(counters->queries, true), 0, (counters->queries_MAX - counters->queries)*sizeof(queriesData));
+			}
 
 			// Determine if overTime memory needs to get moved
 			moveOverTimeMemory(mintime);
 
-			if(config.debug & DEBUG_GC) logg("Notice: GC removed %i queries (took %.2f ms)", removed, timer_elapsed_msec(GC_TIMER));
+			if(config.debug & DEBUG_GC)
+				logg("Notice: GC removed %i queries (took %.2f ms)", removed, timer_elapsed_msec(GC_TIMER));
 
 			// Release thread lock
 			unlock_shm();

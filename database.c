@@ -19,8 +19,8 @@ long int lastdbindex = 0;
 
 static pthread_mutex_t dblock;
 
-bool db_set_counter(unsigned int ID, int value);
-int db_get_FTL_property(unsigned int ID);
+static bool db_set_counter(const unsigned int ID, const int value);
+static int db_get_FTL_property(const unsigned int ID);
 
 static void check_database(int rc)
 {
@@ -265,7 +265,7 @@ void db_init(void)
 	database = true;
 }
 
-int db_get_FTL_property(unsigned int ID)
+static int db_get_FTL_property(const unsigned int ID)
 {
 	// Prepare SQL statement
 	char* querystr = NULL;
@@ -283,17 +283,17 @@ int db_get_FTL_property(unsigned int ID)
 	return value;
 }
 
-bool db_set_FTL_property(unsigned int ID, int value)
+bool db_set_FTL_property(const unsigned int ID, const int value)
 {
 	return dbquery("INSERT OR REPLACE INTO ftl (id, value) VALUES ( %u, %i );", ID, value);
 }
 
-bool db_set_counter(unsigned int ID, int value)
+static bool db_set_counter(const unsigned int ID, const int value)
 {
 	return dbquery("INSERT OR REPLACE INTO counters (id, value) VALUES ( %u, %i );", ID, value);
 }
 
-static bool db_update_counters(int total, int blocked)
+static bool db_update_counters(const int total, const int blocked)
 {
 	if(!dbquery("UPDATE counters SET value = value + %i WHERE id = %i;", total, DB_TOTALQUERIES))
 		return false;
@@ -428,8 +428,7 @@ void save_to_DB(void)
 	}
 
 	unsigned int saved = 0, saved_error = 0;
-	long int i;
-	sqlite3_stmt* stmt;
+	sqlite3_stmt* stmt = NULL;
 
 	// Get last ID stored in the database
 	sqlite3_int64 lastID = last_ID_in_DB();
@@ -454,26 +453,24 @@ void save_to_DB(void)
 	int total = 0, blocked = 0;
 	time_t currenttimestamp = time(NULL);
 	time_t newlasttimestamp = 0;
-	for(i = MAX(0, lastdbindex); i < counters->queries; i++)
+	long int queryID;
+	for(queryID = MAX(0, lastdbindex); queryID < counters->queries; queryID++)
 	{
-		validate_access("queries", i, true, __LINE__, __FUNCTION__, __FILE__);
-		if(queries[i].db != 0)
+		queriesData* query = getQuery(queryID, true);
+		if(query->db != 0)
 		{
 			// Skip, already saved in database
 			continue;
 		}
 
-		if(!queries[i].complete && queries[i].timestamp > currenttimestamp-2)
+		if(!query->complete && query->timestamp > currenttimestamp-2)
 		{
 			// Break if a brand new query (age < 2 seconds) is not yet completed
 			// giving it a chance to be stored next time
 			break;
 		}
 
-		// Memory checks
-		validate_access("queries", i, true, __LINE__, __FUNCTION__, __FILE__);
-
-		if(queries[i].privacylevel >= PRIVACY_MAXIMUM)
+		if(query->privacylevel >= PRIVACY_MAXIMUM)
 		{
 			// Skip, we never store nor count queries recorded
 			// while have been in maximum privacy mode in the database
@@ -481,27 +478,28 @@ void save_to_DB(void)
 		}
 
 		// TIMESTAMP
-		sqlite3_bind_int(stmt, 1, queries[i].timestamp);
+		sqlite3_bind_int(stmt, 1, query->timestamp);
 
 		// TYPE
-		sqlite3_bind_int(stmt, 2, queries[i].type);
+		sqlite3_bind_int(stmt, 2, query->type);
 
 		// STATUS
-		sqlite3_bind_int(stmt, 3, queries[i].status);
+		sqlite3_bind_int(stmt, 3, query->status);
 
 		// DOMAIN
-		const char *domain = getDomainString(i);
+		const char *domain = getDomainString(queryID);
 		sqlite3_bind_text(stmt, 4, domain, -1, SQLITE_TRANSIENT);
 
 		// CLIENT
-		const char *client = getClientIPString(i);
+		const char *client = getClientIPString(queryID);
 		sqlite3_bind_text(stmt, 5, client, -1, SQLITE_TRANSIENT);
 
 		// FORWARD
-		if(queries[i].status == QUERY_FORWARDED && queries[i].forwardID > -1)
+		if(query->status == QUERY_FORWARDED && query->forwardID > -1)
 		{
-			validate_access("forwarded", queries[i].forwardID, true, __LINE__, __FUNCTION__, __FILE__);
-			sqlite3_bind_text(stmt, 6, getstr(forwarded[queries[i].forwardID].ippos), -1, SQLITE_TRANSIENT);
+			// Get forward pointer
+			const forwardedData* forward = getForward(query->forwardID, true);
+			sqlite3_bind_text(stmt, 6, getstr(forward->ippos), -1, SQLITE_TRANSIENT);
 		}
 		else
 		{
@@ -531,21 +529,21 @@ void save_to_DB(void)
 
 		saved++;
 		// Mark this query as saved in the database by setting the corresponding ID
-		queries[i].db = ++lastID;
+		query->db = ++lastID;
 
 		// Total counter information (delta computation)
 		total++;
-		if(queries[i].status == QUERY_GRAVITY ||
-		   queries[i].status == QUERY_BLACKLIST ||
-		   queries[i].status == QUERY_WILDCARD ||
-		   queries[i].status == QUERY_EXTERNAL_BLOCKED_IP ||
-		   queries[i].status == QUERY_EXTERNAL_BLOCKED_NULL ||
-		   queries[i].status == QUERY_EXTERNAL_BLOCKED_NXRA)
+		if(query->status == QUERY_GRAVITY ||
+		   query->status == QUERY_BLACKLIST ||
+		   query->status == QUERY_WILDCARD ||
+		   query->status == QUERY_EXTERNAL_BLOCKED_IP ||
+		   query->status == QUERY_EXTERNAL_BLOCKED_NULL ||
+		   query->status == QUERY_EXTERNAL_BLOCKED_NXRA)
 			blocked++;
 
 		// Update lasttimestamp variable with timestamp of the latest stored query
-		if(queries[i].timestamp > newlasttimestamp)
-			newlasttimestamp = queries[i].timestamp;
+		if(query->timestamp > newlasttimestamp)
+			newlasttimestamp = query->timestamp;
 	}
 
 	// Finish prepared statement
@@ -557,7 +555,7 @@ void save_to_DB(void)
 	// in the database only if all queries have been saved successfully
 	if(saved > 0 && saved_error == 0)
 	{
-		lastdbindex = i;
+		lastdbindex = queryID;
 		db_set_FTL_property(DB_LASTTIMESTAMP, newlasttimestamp);
 	}
 
@@ -599,7 +597,7 @@ static void delete_old_queries_in_DB(void)
 	}
 
 	// Get how many rows have been affected (deleted)
-	int affected = sqlite3_changes(db);
+	const int affected = sqlite3_changes(db);
 
 	// Print final message only if there is a difference
 	if((config.debug & DEBUG_DATABASE) || affected)
@@ -674,8 +672,8 @@ void read_data_from_DB(void)
 	// Prepare request
 	char *rstr = NULL;
 	// Get time stamp 24 hours in the past
-	time_t now = time(NULL);
-	time_t mintime = now - config.maxlogage;
+	const time_t now = time(NULL);
+	const time_t mintime = now - config.maxlogage;
 	int rc = asprintf(&rstr, "SELECT * FROM queries WHERE timestamp >= %li", mintime);
 	if(rc < 1)
 	{
@@ -686,7 +684,7 @@ void read_data_from_DB(void)
 	if(config.debug & DEBUG_DATABASE) logg("%s", rstr);
 
 	// Prepare SQLite3 statement
-	sqlite3_stmt* stmt;
+	sqlite3_stmt* stmt = NULL;
 	rc = sqlite3_prepare_v2(db, rstr, -1, &stmt, NULL);
 	if( rc ){
 		logg("read_data_from_DB() - SQL error prepare (%i): %s", rc, sqlite3_errmsg(db));
@@ -698,8 +696,8 @@ void read_data_from_DB(void)
 	// Loop through returned database rows
 	while((rc = sqlite3_step(stmt)) == SQLITE_ROW)
 	{
-		sqlite3_int64 dbid = sqlite3_column_int64(stmt, 0);
-		time_t queryTimeStamp = sqlite3_column_int(stmt, 1);
+		const sqlite3_int64 dbid = sqlite3_column_int64(stmt, 0);
+		const time_t queryTimeStamp = sqlite3_column_int(stmt, 1);
 		// 1483228800 = 01/01/2017 @ 12:00am (UTC)
 		if(queryTimeStamp < 1483228800)
 		{
@@ -712,7 +710,7 @@ void read_data_from_DB(void)
 			continue;
 		}
 
-		int type = sqlite3_column_int(stmt, 2);
+		const int type = sqlite3_column_int(stmt, 2);
 		if(type < TYPE_A || type >= TYPE_MAX)
 		{
 			logg("DB warn: TYPE should not be %i", type);
@@ -725,22 +723,22 @@ void read_data_from_DB(void)
 			continue;
 		}
 
-		int status = sqlite3_column_int(stmt, 3);
+		const int status = sqlite3_column_int(stmt, 3);
 		if(status < QUERY_UNKNOWN || status > QUERY_EXTERNAL_BLOCKED_NXRA)
 		{
 			logg("DB warn: STATUS should be within [%i,%i] but is %i", QUERY_UNKNOWN, QUERY_EXTERNAL_BLOCKED_NXRA, status);
 			continue;
 		}
 
-		const char * domain = (const char *)sqlite3_column_text(stmt, 4);
-		if(domain == NULL)
+		const char * domainname = (const char *)sqlite3_column_text(stmt, 4);
+		if(domainname == NULL)
 		{
 			logg("DB warn: DOMAIN should never be NULL, %li", queryTimeStamp);
 			continue;
 		}
 
-		const char * client = (const char *)sqlite3_column_text(stmt, 5);
-		if(client == NULL)
+		const char * clientIP = (const char *)sqlite3_column_text(stmt, 5);
+		if(clientIP == NULL)
 		{
 			logg("DB warn: CLIENT should never be NULL, %li", queryTimeStamp);
 			continue;
@@ -748,7 +746,7 @@ void read_data_from_DB(void)
 
 		// Check if user wants to skip queries coming from localhost
 		if(config.ignore_localhost &&
-		   (strcmp(client, "127.0.0.1") == 0 || strcmp(client, "::1") == 0))
+		   (strcmp(clientIP, "127.0.0.1") == 0 || strcmp(clientIP, "::1") == 0))
 		{
 			continue;
 		}
@@ -768,37 +766,37 @@ void read_data_from_DB(void)
 		}
 
 		// Obtain IDs only after filtering which queries we want to keep
-		int timeidx = getOverTimeID(queryTimeStamp);
-		int domainID = findDomainID(domain);
-		int clientID = findClientID(client, true);
+		const int timeidx = getOverTimeID(queryTimeStamp);
+		const int domainID = findDomainID(domainname);
+		const int clientID = findClientID(clientIP, true);
 
 		// Ensure we have enough space in the queries struct
 		memory_check(QUERIES);
 
 		// Set index for this query
-		int queryIndex = counters->queries;
+		const int queryIndex = counters->queries;
 
 		// Store this query in memory
-		validate_access("queries", queryIndex, false, __LINE__, __FUNCTION__, __FILE__);
-		validate_access("clients", clientID, true, __LINE__, __FUNCTION__, __FILE__);
-		queries[queryIndex].magic = MAGICBYTE;
-		queries[queryIndex].timestamp = queryTimeStamp;
-		queries[queryIndex].type = type;
-		queries[queryIndex].status = status;
-		queries[queryIndex].domainID = domainID;
-		queries[queryIndex].clientID = clientID;
-		queries[queryIndex].forwardID = forwardID;
-		queries[queryIndex].timeidx = timeidx;
-		queries[queryIndex].db = dbid;
-		queries[queryIndex].id = 0;
-		queries[queryIndex].complete = true; // Mark as all information is available
-		queries[queryIndex].response = 0;
-		queries[queryIndex].dnssec = DNSSEC_UNKNOWN;
-		queries[queryIndex].reply = REPLY_UNKNOWN;
+		queriesData* query = getQuery(queryIndex, false);
+		query->magic = MAGICBYTE;
+		query->timestamp = queryTimeStamp;
+		query->type = type;
+		query->status = status;
+		query->domainID = domainID;
+		query->clientID = clientID;
+		query->forwardID = forwardID;
+		query->timeidx = timeidx;
+		query->db = dbid;
+		query->id = 0;
+		query->complete = true; // Mark as all information is available
+		query->response = 0;
+		query->dnssec = DNSSEC_UNKNOWN;
+		query->reply = REPLY_UNKNOWN;
 
 		// Set lastQuery timer and add one query for network table
-		clients[clientID].lastQuery = queryTimeStamp;
-		clients[clientID].numQueriesARP++;
+		clientsData* client = getClient(clientID, true);
+		client->lastQuery = queryTimeStamp;
+		client->numQueriesARP++;
 
 		// Handle type counters
 		if(type >= TYPE_A && type < TYPE_MAX)
@@ -810,7 +808,7 @@ void read_data_from_DB(void)
 		// Update overTime data
 		overTime[timeidx].total++;
 		// Update overTime data structure with the new client
-		clients[clientID].overTime[timeidx]++;
+		client->overTime[timeidx]++;
 
 		// Increase DNS queries counter
 		counters->queries++;
@@ -829,8 +827,10 @@ void read_data_from_DB(void)
 			case QUERY_EXTERNAL_BLOCKED_NULL: // Blocked by external provider
 			case QUERY_EXTERNAL_BLOCKED_NXRA: // Blocked by external provider
 				counters->blocked++;
-				domains[domainID].blockedcount++;
-				clients[clientID].blockedcount++;
+				// Get domain pointer
+				domainsData* domain = getDomain(domainID, true);
+				domain->blockedcount++;
+				client->blockedcount++;
 				// Update overTime data structure
 				overTime[timeidx].blocked++;
 				break;
