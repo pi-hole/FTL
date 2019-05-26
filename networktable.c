@@ -86,15 +86,19 @@ void parse_arp_cache(void)
 		if(!(flags & 0x02))
 			continue;
 
-		// Get ID of this device in our network database. If it cannot be found, then this is a new device
-		// We match both IP *and* MAC address
-		// Same MAC, two IPs: Non-deterministic DHCP server, treat as two entries
-		// Same IP, two MACs: Either non-deterministic DHCP server or (almost) full DHCP address pool
-		// We can run this SELECT inside the currently active transaction as only the
-		// changed to the database are collected for latter commitment. Read-only access
-		// such as this SELECT command will be executed immediately on the database.
+		// Get ID of this device in our network database. If it cannot be
+		// found, then this is a new device We only use the hardware address
+		// to uniquely identify clients and only use the first returned ID.
+		//
+		// Same MAC, two IPs: Non-deterministic (sequential) DHCP server, we
+		// update the IP address to the last seen one.
+		//
+		// We can run this SELECT inside the currently active transaction as
+		// only the changed to the database are collected for latter
+		// commitment. Read-only access such as this SELECT command will be
+		// executed immediately on the database.
 		char* querystr = NULL;
-		int ret = asprintf(&querystr, "SELECT id FROM network WHERE ip = \'%s\' AND hwaddr = \'%s\';", ip, hwaddr);
+		int ret = asprintf(&querystr, "SELECT id FROM network WHERE hwaddr = \'%s\' LIMIT 1;", hwaddr);
 		if(querystr == NULL || ret < 0)
 		{
 			logg("Memory allocation failed in parse_arp_cache (%i)", ret);
@@ -163,6 +167,13 @@ void parse_arp_cache(void)
 			        "WHERE id = %i;",\
 			        client->numQueriesARP, dbID);
 			client->numQueriesARP = 0;
+
+			// Update IP address in case it changed. This might happen with
+			// sequential  DHCP servers as found in many commercial routers
+			dbquery("UPDATE network "\
+			        "SET ip = \'%s\' "\
+			        "WHERE id = %i;",\
+			        ip, dbID);
 
 			// Store hostname if available
 			if(strlen(hostname) > 0)
