@@ -177,6 +177,8 @@ void parse_arp_cache(void)
 		// else:
 		// Device in database but not known to Pi-hole: No action required
 
+		unlock_shm();
+
 		// Count number of processed ARP cache entries
 		entries++;
 	}
