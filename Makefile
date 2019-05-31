@@ -152,6 +152,7 @@ version.h: version~
 	@echo "Making FTL version on branch $(GIT_BRANCH) - $(GIT_VERSION) ($(GIT_DATE))"
 
 prefix=/usr
+SETCAP = $(shell which setcap)
 
 # install target just installs the executable
 # other requirements (correct ownership of files, etc.) is managed by
@@ -159,4 +160,4 @@ prefix=/usr
 install: pihole-FTL
 	mkdir -p $(DESTDIR)$(prefix)/bin
 	install -m 0755 pihole-FTL $(DESTDIR)$(prefix)/bin
-	/sbin/setcap CAP_NET_BIND_SERVICE,CAP_NET_RAW,CAP_NET_ADMIN+eip $(DESTDIR)$(prefix)/bin/pihole-FTL
+	$(SETCAP) CAP_NET_BIND_SERVICE,CAP_NET_RAW,CAP_NET_ADMIN+eip $(DESTDIR)$(prefix)/bin/pihole-FTL
