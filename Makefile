@@ -151,11 +151,12 @@ version.h: version~
 	@echo '#endif // VERSION_H' >> "$@"
 	@echo "Making FTL version on branch $(GIT_BRANCH) - $(GIT_VERSION) ($(GIT_DATE))"
 
-prefix=/usr
+PREFIX=/usr
 
 # install target just installs the executable
 # other requirements (correct ownership of files, etc.) is managed by
 # the service script on sudo service pihole-FTL (re)start
 install: pihole-FTL
-	install -m 0755 pihole-FTL $(prefix)/bin
-	/sbin/setcap CAP_NET_BIND_SERVICE,CAP_NET_RAW,CAP_NET_ADMIN+eip $(prefix)/bin/pihole-FTL
+	mkdir -p $(DESTDIR)$(PREFIX)/bin
+	install -m 0755 pihole-FTL $(DESTDIR)$(PREFIX)/bin
+	/sbin/setcap CAP_NET_BIND_SERVICE,CAP_NET_RAW,CAP_NET_ADMIN+eip $(DESTDIR)$(PREFIX)/bin/pihole-FTL
