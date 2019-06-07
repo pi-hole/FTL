@@ -10,72 +10,104 @@ load 'libs/bats-support/load'
   [[ ${lines[3]} == "branch "* ]]
   [[ ${lines[4]} == "hash "* ]]
   [[ ${lines[5]} == "date "* ]]
+  [[ ${lines[6]} == "" ]]
 }
 
 @test "Blacklisted domain is blocked" {
   run bash -c "dig blacklisted.com @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0.0.0.0" ]]
+  [[ ${lines[1]} == "" ]]
 }
 
 @test "Whitelisted domain is not blocked" {
   run bash -c "dig whitelisted.com @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} != "0.0.0.0" ]]
+  [[ ${lines[1]} == "" ]]
 }
 
 @test "Regex filter match is blocked" {
   run bash -c "dig regex5.com @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0.0.0.0" ]]
+  [[ ${lines[1]} == "" ]]
 }
 
 @test "Regex filter mismatch is not blocked" {
   run bash -c "dig regexA.com @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} != "0.0.0.0" ]]
+  [[ ${lines[1]} == "" ]]
+}
+
+@test "Google.com (A) is not blocked" {
+  run bash -c "dig A google.com @127.0.0.1 +short"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} != "0.0.0.0" ]]
+  [[ ${lines[1]} == "" ]]
+}
+
+@test "Google.com (AAAA) is not blocked (TCP query)" {
+  run bash -c "dig AAAA google.com @127.0.0.1 +short +tcp"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} != "::" ]]
+  [[ ${lines[1]} == "" ]]
+}
+
+@test "Known host is resolved as expected" {
+  run bash -c "dig ftl.pi-hole.net @127.0.0.1 +short"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "139.59.170.52" ]]
+  [[ ${lines[1]} == "" ]]
 }
 
 @test "Statistics as expected" {
   run bash -c 'echo ">stats >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[1]} == "domains_being_blocked 45732" ]]
-  [[ ${lines[2]} == "dns_queries_today 6" ]]
+  [[ ${lines[2]} == "dns_queries_today 9" ]]
   [[ ${lines[3]} == "ads_blocked_today 2" ]]
-  [[ ${lines[4]} == "ads_percentage_today 33.333332" ]]
-  [[ ${lines[5]} == "unique_domains 6" ]]
-  [[ ${lines[6]} == "queries_forwarded 2" ]]
+  [[ ${lines[4]} == "ads_percentage_today 22.222221" ]]
+  [[ ${lines[5]} == "unique_domains 8" ]]
+  [[ ${lines[6]} == "queries_forwarded 5" ]]
   [[ ${lines[7]} == "queries_cached 2" ]]
   [[ ${lines[8]} == "clients_ever_seen 1" ]]
   [[ ${lines[9]} == "unique_clients 1" ]]
-  [[ ${lines[10]} == "dns_queries_all_types 6" ]]
+  [[ ${lines[10]} == "dns_queries_all_types 9" ]]
   [[ ${lines[11]} == "reply_NODATA 0" ]]
   [[ ${lines[12]} == "reply_NXDOMAIN 0" ]]
   [[ ${lines[13]} == "reply_CNAME 0" ]]
-  [[ ${lines[14]} == "reply_IP 3" ]]
+  [[ ${lines[14]} == "reply_IP 6" ]]
   [[ ${lines[15]} == "privacy_level 0" ]]
   [[ ${lines[16]} == "status enabled" ]]
+  [[ ${lines[17]} == "" ]]
 }
 
 @test "Top Clients (descending, default)" {
   run bash -c 'echo ">top-clients >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "0 6 127.0.0.1 " ]]
+  [[ ${lines[1]} == "0 9 127.0.0.1 " ]]
+  [[ ${lines[2]} == "" ]]
 }
 
 @test "Top Clients (ascending)" {
   run bash -c 'echo ">top-clients asc >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "0 6 127.0.0.1 " ]]
+  [[ ${lines[1]} == "0 9 127.0.0.1 " ]]
+  [[ ${lines[2]} == "" ]]
 }
 
 @test "Top Domains (descending, default)" {
   run bash -c 'echo ">top-domains >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "0 1 version.ftl" ]]
-  [[ ${lines[2]} == "1 1 version.bind" ]]
-  [[ ${lines[3]} == "2 1 whitelisted.com" ]]
-  [[ ${lines[4]} == "3 1 regexa.com" ]]
+  [[ ${lines[1]} == "0 2 google.com" ]]
+  [[ ${lines[2]} == "1 1 version.ftl" ]]
+  [[ ${lines[3]} == "2 1 version.bind" ]]
+  [[ ${lines[4]} == "3 1 whitelisted.com" ]]
+  [[ ${lines[5]} == "4 1 regexa.com" ]]
+  [[ ${lines[6]} == "5 1 ftl.pi-hole.net" ]]
+  [[ ${lines[7]} == "" ]]
 }
 
 @test "Top Domains (ascending)" {
@@ -85,6 +117,9 @@ load 'libs/bats-support/load'
   [[ ${lines[2]} == "1 1 version.bind" ]]
   [[ ${lines[3]} == "2 1 whitelisted.com" ]]
   [[ ${lines[4]} == "3 1 regexa.com" ]]
+  [[ ${lines[5]} == "4 1 ftl.pi-hole.net" ]]
+  [[ ${lines[6]} == "5 2 google.com" ]]
+  [[ ${lines[7]} == "" ]]
 }
 
 @test "Top Ads (descending, default)" {
@@ -92,6 +127,7 @@ load 'libs/bats-support/load'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[1]} == "0 1 blacklisted.com" ]]
   [[ ${lines[2]} == "1 1 regex5.com" ]]
+  [[ ${lines[3]} == "" ]]
 }
 
 @test "Top Ads (ascending)" {
@@ -99,34 +135,38 @@ load 'libs/bats-support/load'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[1]} == "0 1 blacklisted.com" ]]
   [[ ${lines[2]} == "1 1 regex5.com" ]]
+  [[ ${lines[3]} == "" ]]
 }
 
 @test "Forward Destinations" {
   run bash -c 'echo ">forward-dest >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "-2 33.33 blocklist blocklist" ]]
-  [[ ${lines[2]} == "-1 33.33 cache cache" ]]
-  [[ ${lines[3]} == "0 33.33 127.0.0.11 " ]]
+  [[ ${lines[1]} == "-2 22.22 blocklist blocklist" ]]
+  [[ ${lines[2]} == "-1 22.22 cache cache" ]]
+  [[ ${lines[3]} == "0 55.56 127.0.0.11 " ]]
+  [[ ${lines[4]} == "" ]]
 }
 
 @test "Forward Destinations (unsorted)" {
   run bash -c 'echo ">forward-dest unsorted >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "-2 33.33 blocklist blocklist" ]]
-  [[ ${lines[2]} == "-1 33.33 cache cache" ]]
-  [[ ${lines[3]} == "0 33.33 127.0.0.11 " ]]
+  [[ ${lines[1]} == "-2 22.22 blocklist blocklist" ]]
+  [[ ${lines[2]} == "-1 22.22 cache cache" ]]
+  [[ ${lines[3]} == "0 55.56 127.0.0.11 " ]]
+  [[ ${lines[4]} == "" ]]
 }
 
 @test "Query Types" {
   run bash -c 'echo ">querytypes >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[1]} == "A (IPv4): 66.67" ]]
-  [[ ${lines[2]} == "AAAA (IPv6): 0.00" ]]
+  [[ ${lines[2]} == "AAAA (IPv6): 11.11" ]]
   [[ ${lines[3]} == "ANY: 0.00" ]]
   [[ ${lines[4]} == "SRV: 0.00" ]]
   [[ ${lines[5]} == "SOA: 0.00" ]]
   [[ ${lines[6]} == "PTR: 0.00" ]]
-  [[ ${lines[7]} == "TXT: 33.33" ]]
+  [[ ${lines[7]} == "TXT: 22.22" ]]
+  [[ ${lines[8]} == "" ]]
 }
 
 @test "Get all queries" {
@@ -138,18 +178,24 @@ load 'libs/bats-support/load'
   [[ ${lines[4]} == *"A whitelisted.com 127.0.0.1 2 0 4"* ]]
   [[ ${lines[5]} == *"A regex5.com 127.0.0.1 4 0 4"* ]]
   [[ ${lines[6]} == *"A regexa.com 127.0.0.1 2 0 7"* ]]
+  [[ ${lines[7]} == *"A google.com 127.0.0.1 2 0 4"* ]]
+  [[ ${lines[8]} == *"AAAA google.com 127.0.0.1 2 0 4"* ]]
+  [[ ${lines[9]} == *"A ftl.pi-hole.net 127.0.0.1 2 0 4"* ]]
+  [[ ${lines[10]} == "" ]]
 }
 
 @test "Get all queries (domain filtered)" {
   run bash -c 'echo ">getallqueries-domain regexa.com >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[1]} == *"A regexa.com 127.0.0.1 2 0 7"* ]]
+  [[ ${lines[2]} == "" ]]
 }
 
 @test "Get all queries (domain + number filtered)" {
-  run bash -c 'echo ">getallqueries-domain regexa.com (3) >quit" | nc -v 127.0.0.1 4711'
+  run bash -c 'echo ">getallqueries-domain regexa.com (6) >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[1]} == *"A regexa.com 127.0.0.1 2 0 7"* ]]
+  [[ ${lines[2]} == "" ]]
 }
 
 @test "Get all queries (client filtered)" {
@@ -161,19 +207,25 @@ load 'libs/bats-support/load'
   [[ ${lines[4]} == *"A whitelisted.com 127.0.0.1 2 0 4"* ]]
   [[ ${lines[5]} == *"A regex5.com 127.0.0.1 4 0 4"* ]]
   [[ ${lines[6]} == *"A regexa.com 127.0.0.1 2 0 7"* ]]
+  [[ ${lines[7]} == *"A google.com 127.0.0.1 2 0 4"* ]]
+  [[ ${lines[8]} == *"AAAA google.com 127.0.0.1 2 0 4"* ]]
+  [[ ${lines[9]} == *"A ftl.pi-hole.net 127.0.0.1 2 0 4"* ]]
+  [[ ${lines[10]} == "" ]]
 }
 
 @test "Get all queries (client + number filtered)" {
   run bash -c 'echo ">getallqueries-client 127.0.0.1 (2) >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == *"A regex5.com 127.0.0.1 4 0 4"* ]]
-  [[ ${lines[2]} == *"A regexa.com 127.0.0.1 2 0 7"* ]]
+  [[ ${lines[1]} == *"AAAA google.com 127.0.0.1 2 0 4"* ]]
+  [[ ${lines[2]} == *"A ftl.pi-hole.net 127.0.0.1 2 0 4"* ]]
+  [[ ${lines[3]} == "" ]]
 }
 
 @test "Recent blocked" {
   run bash -c 'echo ">recentBlocked >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[1]} == "regex5.com" ]]
+  [[ ${lines[2]} == "" ]]
 }
 
 @test "pihole-FTL.db schema as expected" {
