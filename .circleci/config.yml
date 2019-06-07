@@ -28,6 +28,10 @@ version: 2
           [[ "$CIRCLE_PR_NUMBER" == "" ]] && ./FTL-client "${FOLDER}" "${BIN_NAME}.sha1" "${FTL_SECRET}"
           rm ./FTL-client
           ls -lah .
+    - run:
+        name: "Test"
+        command: |
+          test/run.sh "${BIN_NAME}"
 
 jobs:
   arm:
