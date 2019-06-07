@@ -13,7 +13,6 @@
 
 static bool debug = false;
 bool daemonmode = true;
-bool travis = false;
 int argc_dnsmasq = 0;
 const char** argv_dnsmasq = NULL;
 
@@ -87,13 +86,6 @@ void parse_args(int argc, char* argv[])
 		   strcmp(argv[i], "no-daemon") == 0)
 		{
 			daemonmode = false;
-			ok = true;
-		}
-
-		// Use files in local places for Travis-CI tests
-		if(strcmp(argv[i], "travis-ci") == 0)
-		{
-			travis = true;
 			ok = true;
 		}
 

@@ -49,10 +49,6 @@ int main (int argc, char **argv) {
 			command = argv[i];
 			continue;
 		}
-
-		// Set socket file location (respect special location on the CI system Travis)
-		if(strcmp(argv[i], "travis") == 0)
-			strcpy(address.sun_path,"pihole-FTL.sock");
 	}
 
 	// Connect to the socket provided by pihole-FTL
