@@ -6,10 +6,16 @@ if [[ "${1}" != "pihole-FTL-linux-x86_64" ]]; then
 fi
 
 # Install necessary additional components for testing
-apt install dnsutils -y
+apt -qq install dnsutils -y
 
 # Create necessary directories
 mkdir -p /etc/pihole /var/run/pihole /var/log
+
+# Download prepared gravity database
+wget "https://ftl.pi-hole.net/gravity.db" "/etc/pihole/gravity.db"
+
+# Prepare setupVars.conf
+echo "BLOCKING_ENABLED=true" > /etc/pihole/setupVars.conf
 
 # Start FTL
 ./pihole-FTL-linux-x86_64
@@ -24,9 +30,9 @@ git submodule add https://github.com/ztombol/bats-support test/libs/bats-support
 sleep 2
 
 # Print versions of pihole-FTL
-echo "FTL version:"
+echo -n "FTL version: "
 dig TXT CHAOS version.FTL @127.0.0.1 +short
-echo "Contained dnsmasq version:"
+echo -n "Contained dnsmasq version: "
 dig TXT CHAOS version.bind @127.0.0.1 +short
 
 # Print content of pihole-FTL.log
