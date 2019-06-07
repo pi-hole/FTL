@@ -7,7 +7,7 @@ if [[ "${1}" != "pihole-FTL-linux-x86_64" ]]; then
 fi
 
 # Install necessary additional components for testing
-apt -qq install dnsutils -y > /dev/null
+apt-get -qq install dnsutils -y > /dev/null
 
 # Create necessary directories
 mkdir -p /etc/pihole /var/run/pihole /var/log

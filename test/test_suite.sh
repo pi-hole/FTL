@@ -20,6 +20,13 @@ load 'libs/bats-support/load'
   [[ ${lines[1]} == "" ]]
 }
 
+@test "Gravity domain is blocked" {
+  run bash -c "dig 0427d7.se @127.0.0.1 +short"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "0.0.0.0" ]]
+  [[ ${lines[1]} == "" ]]
+}
+
 @test "Whitelisted domain is not blocked" {
   run bash -c "dig whitelisted.com @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
@@ -66,19 +73,19 @@ load 'libs/bats-support/load'
   run bash -c 'echo ">stats >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[1]} == "domains_being_blocked 45732" ]]
-  [[ ${lines[2]} == "dns_queries_today 9" ]]
-  [[ ${lines[3]} == "ads_blocked_today 2" ]]
-  [[ ${lines[4]} == "ads_percentage_today 22.222221" ]]
-  [[ ${lines[5]} == "unique_domains 8" ]]
+  [[ ${lines[2]} == "dns_queries_today 10" ]]
+  [[ ${lines[3]} == "ads_blocked_today 3" ]]
+  [[ ${lines[4]} == "ads_percentage_today 30.000000" ]]
+  [[ ${lines[5]} == "unique_domains 9" ]]
   [[ ${lines[6]} == "queries_forwarded 5" ]]
   [[ ${lines[7]} == "queries_cached 2" ]]
   [[ ${lines[8]} == "clients_ever_seen 1" ]]
   [[ ${lines[9]} == "unique_clients 1" ]]
-  [[ ${lines[10]} == "dns_queries_all_types 9" ]]
+  [[ ${lines[10]} == "dns_queries_all_types 10" ]]
   [[ ${lines[11]} == "reply_NODATA 0" ]]
   [[ ${lines[12]} == "reply_NXDOMAIN 0" ]]
   [[ ${lines[13]} == "reply_CNAME 0" ]]
-  [[ ${lines[14]} == "reply_IP 6" ]]
+  [[ ${lines[14]} == "reply_IP 7" ]]
   [[ ${lines[15]} == "privacy_level 0" ]]
   [[ ${lines[16]} == "status enabled" ]]
   [[ ${lines[17]} == "" ]]
@@ -87,14 +94,14 @@ load 'libs/bats-support/load'
 @test "Top Clients (descending, default)" {
   run bash -c 'echo ">top-clients >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "0 9 127.0.0.1 " ]]
+  [[ ${lines[1]} == "0 10 127.0.0.1 " ]]
   [[ ${lines[2]} == "" ]]
 }
 
 @test "Top Clients (ascending)" {
   run bash -c 'echo ">top-clients asc >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "0 9 127.0.0.1 " ]]
+  [[ ${lines[1]} == "0 10 127.0.0.1 " ]]
   [[ ${lines[2]} == "" ]]
 }
 
@@ -126,46 +133,48 @@ load 'libs/bats-support/load'
   run bash -c 'echo ">top-ads >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[1]} == "0 1 blacklisted.com" ]]
-  [[ ${lines[2]} == "1 1 regex5.com" ]]
-  [[ ${lines[3]} == "" ]]
+  [[ ${lines[2]} == "1 1 0427d7.se" ]]
+  [[ ${lines[3]} == "2 1 regex5.com" ]]
+  [[ ${lines[4]} == "" ]]
 }
 
 @test "Top Ads (ascending)" {
   run bash -c 'echo ">top-ads asc >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[1]} == "0 1 blacklisted.com" ]]
-  [[ ${lines[2]} == "1 1 regex5.com" ]]
-  [[ ${lines[3]} == "" ]]
+  [[ ${lines[2]} == "1 1 0427d7.se" ]]
+  [[ ${lines[3]} == "2 1 regex5.com" ]]
+  [[ ${lines[4]} == "" ]]
 }
 
 @test "Forward Destinations" {
   run bash -c 'echo ">forward-dest >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "-2 22.22 blocklist blocklist" ]]
-  [[ ${lines[2]} == "-1 22.22 cache cache" ]]
-  [[ ${lines[3]} == "0 55.56 127.0.0.11 " ]]
+  [[ ${lines[1]} == "-2 30.00 blocklist blocklist" ]]
+  [[ ${lines[2]} == "-1 20.00 cache cache" ]]
+  [[ ${lines[3]} == "0 50.00 127.0.0.11 " ]]
   [[ ${lines[4]} == "" ]]
 }
 
 @test "Forward Destinations (unsorted)" {
   run bash -c 'echo ">forward-dest unsorted >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "-2 22.22 blocklist blocklist" ]]
-  [[ ${lines[2]} == "-1 22.22 cache cache" ]]
-  [[ ${lines[3]} == "0 55.56 127.0.0.11 " ]]
+  [[ ${lines[1]} == "-2 30.00 blocklist blocklist" ]]
+  [[ ${lines[2]} == "-1 20.00 cache cache" ]]
+  [[ ${lines[3]} == "0 50.00 127.0.0.11 " ]]
   [[ ${lines[4]} == "" ]]
 }
 
 @test "Query Types" {
   run bash -c 'echo ">querytypes >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "A (IPv4): 66.67" ]]
-  [[ ${lines[2]} == "AAAA (IPv6): 11.11" ]]
+  [[ ${lines[1]} == "A (IPv4): 70.00" ]]
+  [[ ${lines[2]} == "AAAA (IPv6): 10.00" ]]
   [[ ${lines[3]} == "ANY: 0.00" ]]
   [[ ${lines[4]} == "SRV: 0.00" ]]
   [[ ${lines[5]} == "SOA: 0.00" ]]
   [[ ${lines[6]} == "PTR: 0.00" ]]
-  [[ ${lines[7]} == "TXT: 22.22" ]]
+  [[ ${lines[7]} == "TXT: 20.00" ]]
   [[ ${lines[8]} == "" ]]
 }
 
@@ -175,13 +184,14 @@ load 'libs/bats-support/load'
   [[ ${lines[1]} == *"TXT version.ftl 127.0.0.1 3 0 6"* ]]
   [[ ${lines[2]} == *"TXT version.bind 127.0.0.1 3 0 6"* ]]
   [[ ${lines[3]} == *"A blacklisted.com 127.0.0.1 5 0 4"* ]]
-  [[ ${lines[4]} == *"A whitelisted.com 127.0.0.1 2 0 4"* ]]
-  [[ ${lines[5]} == *"A regex5.com 127.0.0.1 4 0 4"* ]]
-  [[ ${lines[6]} == *"A regexa.com 127.0.0.1 2 0 7"* ]]
-  [[ ${lines[7]} == *"A google.com 127.0.0.1 2 0 4"* ]]
-  [[ ${lines[8]} == *"AAAA google.com 127.0.0.1 2 0 4"* ]]
-  [[ ${lines[9]} == *"A ftl.pi-hole.net 127.0.0.1 2 0 4"* ]]
-  [[ ${lines[10]} == "" ]]
+  [[ ${lines[4]} == *"A 0427d7.se 127.0.0.1 1 0 4"* ]]
+  [[ ${lines[5]} == *"A whitelisted.com 127.0.0.1 2 0 4"* ]]
+  [[ ${lines[6]} == *"A regex5.com 127.0.0.1 4 0 4"* ]]
+  [[ ${lines[7]} == *"A regexa.com 127.0.0.1 2 0 7"* ]]
+  [[ ${lines[8]} == *"A google.com 127.0.0.1 2 0 4"* ]]
+  [[ ${lines[9]} == *"AAAA google.com 127.0.0.1 2 0 4"* ]]
+  [[ ${lines[10]} == *"A ftl.pi-hole.net 127.0.0.1 2 0 4"* ]]
+  [[ ${lines[11]} == "" ]]
 }
 
 @test "Get all queries (domain filtered)" {
@@ -204,13 +214,14 @@ load 'libs/bats-support/load'
   [[ ${lines[1]} == *"TXT version.ftl 127.0.0.1 3 0 6"* ]]
   [[ ${lines[2]} == *"TXT version.bind 127.0.0.1 3 0 6"* ]]
   [[ ${lines[3]} == *"A blacklisted.com 127.0.0.1 5 0 4"* ]]
-  [[ ${lines[4]} == *"A whitelisted.com 127.0.0.1 2 0 4"* ]]
-  [[ ${lines[5]} == *"A regex5.com 127.0.0.1 4 0 4"* ]]
-  [[ ${lines[6]} == *"A regexa.com 127.0.0.1 2 0 7"* ]]
-  [[ ${lines[7]} == *"A google.com 127.0.0.1 2 0 4"* ]]
-  [[ ${lines[8]} == *"AAAA google.com 127.0.0.1 2 0 4"* ]]
-  [[ ${lines[9]} == *"A ftl.pi-hole.net 127.0.0.1 2 0 4"* ]]
-  [[ ${lines[10]} == "" ]]
+  [[ ${lines[4]} == *"A 0427d7.se 127.0.0.1 1 0 4"* ]]
+  [[ ${lines[5]} == *"A whitelisted.com 127.0.0.1 2 0 4"* ]]
+  [[ ${lines[6]} == *"A regex5.com 127.0.0.1 4 0 4"* ]]
+  [[ ${lines[7]} == *"A regexa.com 127.0.0.1 2 0 7"* ]]
+  [[ ${lines[8]} == *"A google.com 127.0.0.1 2 0 4"* ]]
+  [[ ${lines[9]} == *"AAAA google.com 127.0.0.1 2 0 4"* ]]
+  [[ ${lines[10]} == *"A ftl.pi-hole.net 127.0.0.1 2 0 4"* ]]
+  [[ ${lines[11]} == "" ]]
 }
 
 @test "Get all queries (client + number filtered)" {
