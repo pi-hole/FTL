@@ -19,6 +19,10 @@
 #include "dnsmasq.h"
 #include <setjmp.h>
 
+/* Pi-hole modification */
+#include "../version.h"
+/************************/
+
 static volatile int mem_recover = 0;
 static jmp_buf mem_jmp;
 static int one_file(char *file, int hard_opt);
@@ -4772,6 +4776,9 @@ void read_opts(int argc, char **argv, char *compile_opts)
   add_txt("privacylevel.pihole", NULL, TXT_PRIVACYLEVEL);
   /************************/
 #endif
+  /******** Pi-hole modification ********/
+  add_txt("version.FTL", GIT_VERSION, 0 );
+  /**************************************/
 
   while (1)
     {

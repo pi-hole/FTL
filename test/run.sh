@@ -6,13 +6,16 @@ if [[ "${1}" != "pihole-FTL-linux-x86_64" ]]; then
 fi
 
 # Install necessary additional components for testing
-apt install dns-utils
+apt install dnsutils -y
 
 # Create necessary directories
 mkdir -p /etc/pihole /var/run/pihole /var/log
 
+# We cannot bind to port
+echo "port=50" > /etc/dnsmasq.conf
+
 # Start FTL
-./pihole-FTL
+project/pihole-FTL-linux-x86_64
 
 # Prepare BATS
 mkdir -p test/libs
@@ -22,6 +25,12 @@ git submodule add https://github.com/ztombol/bats-support test/libs/bats-support
 
 # Block until FTL is ready, retry once per second for 45 seconds
 sleep 2
+
+# Print versions of pihole-FTL
+echo "FTL version:"
+dig TXT CHAOS version.FTL @127.0.0.1 +short
+echo "Contained dnsmasq version:"
+dig TXT CHAOS version.bind @127.0.0.1 +short
 
 # Print content of pihole-FTL.log
 cat /var/log/pihole-FTL.log
