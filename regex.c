@@ -17,7 +17,7 @@ static bool *regexconfigured = NULL;
 static char **regexbuffer = NULL;
 static whitelistStruct whitelist = { NULL, 0 };
 
-static void clear_regex_matches();
+static void clear_regex_matches(void);
 
 static void log_regex_error(const char *where, const int errcode, const int index)
 {
@@ -157,7 +157,7 @@ void free_regex(void)
 }
 
 /// Clear all cached regex matches from domains
-static void clear_regex_matches() {
+static void clear_regex_matches(void) {
 	// We reset all regex status to unknown to have them being reevaluated
 	for(int i = 0; i < counters->domains; i++) {
 		// Get domain pointer
