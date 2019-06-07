@@ -36,181 +36,145 @@ load 'libs/bats-support/load'
   [[ ${lines[0]} != "0.0.0.0" ]]
 }
 
-@test "Statistics" {
+@test "Statistics as expected" {
   run bash -c 'echo ">stats >quit" | nc -v 127.0.0.1 4711'
-  echo "output: ${lines[@]}"
-  [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
-  [[ ${lines[1]} =~ "domains_being_blocked -1" ]]
-  [[ ${lines[2]} =~ "dns_queries_today 7" ]]
-  [[ ${lines[3]} =~ "ads_blocked_today 2" ]]
-  [[ ${lines[4]} =~ "ads_percentage_today 28.571428" ]]
-  [[ ${lines[5]} =~ "unique_domains 6" ]]
-  [[ ${lines[6]} =~ "queries_forwarded 3" ]]
-  [[ ${lines[7]} =~ "queries_cached 2" ]]
-  [[ ${lines[8]} == "clients_ever_seen 3" ]]
-  [[ ${lines[9]} == "unique_clients 3" ]]
-  [[ ${lines[10]} == "status unknown" ]]
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[1]} == "domains_being_blocked 45732" ]]
+  [[ ${lines[2]} == "dns_queries_today 6" ]]
+  [[ ${lines[3]} == "ads_blocked_today 2" ]]
+  [[ ${lines[4]} == "ads_percentage_today 33.333332" ]]
+  [[ ${lines[5]} == "unique_domains 6" ]]
+  [[ ${lines[6]} == "queries_forwarded 2" ]]
+  [[ ${lines[7]} == "queries_cached 2" ]]
+  [[ ${lines[8]} == "clients_ever_seen 1" ]]
+  [[ ${lines[9]} == "unique_clients 1" ]]
+  [[ ${lines[10]} == "dns_queries_all_types 6" ]]
+  [[ ${lines[11]} == "reply_NODATA 0" ]]
+  [[ ${lines[12]} == "reply_NXDOMAIN 0" ]]
+  [[ ${lines[13]} == "reply_CNAME 0" ]]
+  [[ ${lines[14]} == "reply_IP 3" ]]
+  [[ ${lines[15]} == "privacy_level 0" ]]
+  [[ ${lines[16]} == "status enabled" ]]
 }
 
 @test "Top Clients (descending, default)" {
   run bash -c 'echo ">top-clients >quit" | nc -v 127.0.0.1 4711'
-  echo "output: ${lines[@]}"
-  [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
-  [[ ${lines[1]} =~ "0 4 192.168.2.208" ]]
-  [[ ${lines[2]} =~ "1 2 127.0.0.1" ]]
-  [[ ${lines[3]} =~ "2 1 10.8.0.2" ]]
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[1]} == "0 6 127.0.0.1 " ]]
 }
 
 @test "Top Clients (ascending)" {
   run bash -c 'echo ">top-clients asc >quit" | nc -v 127.0.0.1 4711'
-  echo "output: ${lines[@]}"
-  [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
-  [[ ${lines[1]} =~ "0 1 10.8.0.2" ]]
-  [[ ${lines[2]} =~ "1 2 127.0.0.1" ]]
-  [[ ${lines[3]} =~ "2 4 192.168.2.208" ]]
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[1]} == "0 6 127.0.0.1 " ]]
 }
 
 @test "Top Domains (descending, default)" {
   run bash -c 'echo ">top-domains >quit" | nc -v 127.0.0.1 4711'
-  echo "output: ${lines[@]}"
-  [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
-  [[ ${lines[1]} == "0 2 play.google.com" ]]
-  [[ ${lines[2]} == "1 1 raspberrypi" ]]
-  [[ ${lines[3]} == "2 1 checkip.dyndns.org" ]]
-  [[ ${lines[4]} == "3 1 example.com" ]]
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[1]} == "0 1 version.ftl" ]]
+  [[ ${lines[2]} == "1 1 version.bind" ]]
+  [[ ${lines[3]} == "2 1 whitelisted.com" ]]
+  [[ ${lines[4]} == "3 1 regexa.com" ]]
 }
 
 @test "Top Domains (ascending)" {
   run bash -c 'echo ">top-domains asc >quit" | nc -v 127.0.0.1 4711'
-  echo "output: ${lines[@]}"
-  [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
-  [[ ${lines[1]} == "0 1 raspberrypi" ]]
-  [[ ${lines[2]} == "1 1 checkip.dyndns.org" ]]
-  [[ ${lines[3]} == "2 1 example.com" ]]
-  [[ ${lines[4]} == "3 2 play.google.com" ]]
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[1]} == "0 1 version.ftl" ]]
+  [[ ${lines[2]} == "1 1 version.bind" ]]
+  [[ ${lines[3]} == "2 1 whitelisted.com" ]]
+  [[ ${lines[4]} == "3 1 regexa.com" ]]
 }
 
 @test "Top Ads (descending, default)" {
   run bash -c 'echo ">top-ads >quit" | nc -v 127.0.0.1 4711'
-  echo "output: ${lines[@]}"
-  [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
+  printf "%s\n" "${lines[@]}"
   [[ ${lines[1]} == "0 1 blacklisted.com" ]]
-  [[ ${lines[2]} == "1 1 addomain.com" ]]
+  [[ ${lines[2]} == "1 1 regex5.com" ]]
 }
 
 @test "Top Ads (ascending)" {
   run bash -c 'echo ">top-ads asc >quit" | nc -v 127.0.0.1 4711'
-  echo "output: ${lines[@]}"
-  [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
+  printf "%s\n" "${lines[@]}"
   [[ ${lines[1]} == "0 1 blacklisted.com" ]]
-  [[ ${lines[2]} == "1 1 addomain.com" ]]
-}
-
-@test "Over Time" {
-  run bash -c 'echo ">overTime >quit" | nc -v 127.0.0.1 4711'
-  echo "output: ${lines[@]}"
-  [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
-  [[ ${lines[1]} =~ "7 2" ]]
+  [[ ${lines[2]} == "1 1 regex5.com" ]]
 }
 
 @test "Forward Destinations" {
   run bash -c 'echo ">forward-dest >quit" | nc -v 127.0.0.1 4711'
-  echo "output: ${lines[@]}"
-  [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
-  [[ ${lines[1]} =~ "0 57.14 ::1 local" ]]
-  [[ ${lines[2]} =~ "1 28.57 2001:1608:10:25::9249:d69b" ]]
-  [[ ${lines[3]} =~ "2 14.29 2620:0:ccd::2 resolver2.ipv6-sandbox.opendns.com" ]]
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[1]} == "-2 33.33 blocklist blocklist" ]]
+  [[ ${lines[2]} == "-1 33.33 cache cache" ]]
+  [[ ${lines[3]} == "0 33.33 127.0.0.11 " ]]
 }
 
 @test "Forward Destinations (unsorted)" {
   run bash -c 'echo ">forward-dest unsorted >quit" | nc -v 127.0.0.1 4711'
-  echo "output: ${lines[@]}"
-  [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
-  [[ ${lines[1]} =~ "0 28.57 2001:1608:10:25::9249:d69b" ]]
-  [[ ${lines[2]} =~ "1 14.29 2620:0:ccd::2 resolver2.ipv6-sandbox.opendns.com" ]]
-  [[ ${lines[3]} =~ "2 57.14 ::1 local" ]]
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[1]} == "-2 33.33 blocklist blocklist" ]]
+  [[ ${lines[2]} == "-1 33.33 cache cache" ]]
+  [[ ${lines[3]} == "0 33.33 127.0.0.11 " ]]
 }
 
 @test "Query Types" {
   run bash -c 'echo ">querytypes >quit" | nc -v 127.0.0.1 4711'
-  echo "output: ${lines[@]}"
-  [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
-  [[ ${lines[1]} == "A (IPv4): 71.43" ]]
-  [[ ${lines[2]} == "AAAA (IPv6): 28.57" ]]
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[1]} == "A (IPv4): 66.67" ]]
+  [[ ${lines[2]} == "AAAA (IPv6): 0.00" ]]
+  [[ ${lines[3]} == "ANY: 0.00" ]]
+  [[ ${lines[4]} == "SRV: 0.00" ]]
+  [[ ${lines[5]} == "SOA: 0.00" ]]
+  [[ ${lines[6]} == "PTR: 0.00" ]]
+  [[ ${lines[7]} == "TXT: 33.33" ]]
 }
 
 @test "Get all queries" {
   run bash -c 'echo ">getallqueries >quit" | nc -v 127.0.0.1 4711'
-  echo "output: ${lines[@]}"
-  [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
-  [[ ${lines[1]} =~ "IPv6 raspberrypi" ]]
-  [[ ${lines[2]} =~ "IPv4 checkip.dyndns.org" ]]
-  [[ ${lines[3]} =~ "IPv4 example.com" ]]
-  [[ ${lines[4]} =~ "IPv4 play.google.com" ]]
-  [[ ${lines[5]} =~ "IPv6 play.google.com" ]]
-  [[ ${lines[6]} =~ "IPv4 blacklisted.com" ]]
-  [[ ${lines[7]} =~ "IPv4 addomain.com" ]]
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[1]} == *"TXT version.ftl 127.0.0.1 3 0 6"* ]]
+  [[ ${lines[2]} == *"TXT version.bind 127.0.0.1 3 0 6"* ]]
+  [[ ${lines[3]} == *"A blacklisted.com 127.0.0.1 5 0 4"* ]]
+  [[ ${lines[4]} == *"A whitelisted.com 127.0.0.1 2 0 4"* ]]
+  [[ ${lines[5]} == *"A regex5.com 127.0.0.1 4 0 4"* ]]
+  [[ ${lines[6]} == *"A regexa.com 127.0.0.1 2 0 7"* ]]
 }
 
 @test "Get all queries (domain filtered)" {
-  run bash -c 'echo ">getallqueries-domain play.google.com >quit" | nc -v 127.0.0.1 4711'
-  echo "output: ${lines[@]}"
-  [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
-  [[ ${lines[1]} =~ "IPv4 play.google.com" ]]
-  [[ ${lines[2]} =~ "IPv6 play.google.com" ]]
+  run bash -c 'echo ">getallqueries-domain regexa.com >quit" | nc -v 127.0.0.1 4711'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[1]} == *"A regexa.com 127.0.0.1 2 0 7"* ]]
 }
 
 @test "Get all queries (domain + number filtered)" {
-  run bash -c 'echo ">getallqueries-domain play.google.com (3) >quit" | nc -v 127.0.0.1 4711'
-  echo "output: ${lines[@]}"
-  [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
-  [[ ${lines[1]} =~ "IPv6 play.google.com" ]]
+  run bash -c 'echo ">getallqueries-domain regexa.com (3) >quit" | nc -v 127.0.0.1 4711'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[1]} == *"A regexa.com 127.0.0.1 2 0 7"* ]]
 }
 
 @test "Get all queries (client filtered)" {
   run bash -c 'echo ">getallqueries-client 127.0.0.1 >quit" | nc -v 127.0.0.1 4711'
-  echo "output: ${lines[@]}"
-  [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
-  [[ ${lines[1]} =~ "IPv6 raspberrypi" ]]
-  [[ ${lines[2]} =~ "IPv4 checkip.dyndns.org" ]]
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[1]} == *"TXT version.ftl 127.0.0.1 3 0 6"* ]]
+  [[ ${lines[2]} == *"TXT version.bind 127.0.0.1 3 0 6"* ]]
+  [[ ${lines[3]} == *"A blacklisted.com 127.0.0.1 5 0 4"* ]]
+  [[ ${lines[4]} == *"A whitelisted.com 127.0.0.1 2 0 4"* ]]
+  [[ ${lines[5]} == *"A regex5.com 127.0.0.1 4 0 4"* ]]
+  [[ ${lines[6]} == *"A regexa.com 127.0.0.1 2 0 7"* ]]
 }
 
 @test "Get all queries (client + number filtered)" {
-  run bash -c 'echo ">getallqueries-client 127.0.0.1 (6) >quit" | nc -v 127.0.0.1 4711'
-  echo "output: ${lines[@]}"
-  [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
-  [[ ${lines[1]} =~ "IPv4 checkip.dyndns.org" ]]
-}
-
-@test "Memory" {
-  run bash -c 'echo ">memory >quit" | nc -v 127.0.0.1 4711'
-  echo "output: ${lines[@]}"
-  [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
-  [[ ${lines[1]} =~ "memory allocated for internal data structure:" ]]
-  [[ ${lines[2]} =~ "dynamically allocated allocated memory used for strings:" ]]
-  [[ ${lines[3]} =~ "Sum:" ]]
-}
-
-@test "Get client ID" {
-  run bash -c 'echo ">clientID >quit" | nc -v 127.0.0.1 4711'
-  echo "output: ${lines[@]}"
-  [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
+  run bash -c 'echo ">getallqueries-client 127.0.0.1 (2) >quit" | nc -v 127.0.0.1 4711'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[1]} == *"A regex5.com 127.0.0.1 4 0 4"* ]]
+  [[ ${lines[2]} == *"A regexa.com 127.0.0.1 2 0 7"* ]]
 }
 
 @test "Recent blocked" {
   run bash -c 'echo ">recentBlocked >quit" | nc -v 127.0.0.1 4711'
-  echo "output: ${lines[@]}"
-  [[ ${lines[0]} == "Connection to 127.0.0.1 4711 port [tcp/*] succeeded!" ]]
-  [[ ${lines[1]} == "addomain.com" ]]
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[1]} == "regex5.com" ]]
 }
-
-# @test "IPv6 socket connection" {
-#   run bash -c 'echo ">recentBlocked" | nc -v ::1 4711'
-#   echo "output: ${lines[@]}"
-#   [[ ${lines[0]} == "Connection to ::1 4711 port [tcp/*] succeeded!" ]]
-#   [[ ${lines[1]} == "addomain.com"
-# }
-
 
 @test "pihole-FTL.db schema as expected" {
   run bash -c 'sqlite3 /etc/pihole/pihole-FTL.db .dump'
@@ -244,6 +208,6 @@ load 'libs/bats-support/load'
 }
 
 @test "Final part of the tests: Kill pihole-FTL process" {
-  run bash -c 'kill $(pidof pihole-FTL)'
+  run bash -c 'kill $(pidof pihole-FTL-linux-x86_64)'
   printf "%s\n" "${lines[@]}"
 }
