@@ -6,16 +6,20 @@ if [[ "${1}" != "pihole-FTL-linux-x86_64" ]]; then
 fi
 
 # Install necessary additional components for testing
-apt -qq install dnsutils -y
+apt -qq install dnsutils -y > /dev/null
 
 # Create necessary directories
 mkdir -p /etc/pihole /var/run/pihole /var/log
 
 # Download prepared gravity database
-wget "https://ftl.pi-hole.net/gravity.db" "/etc/pihole/gravity.db"
+wget https://ftl.pi-hole.net/gravity.db
+mv gravity.db /etc/pihole/gravity.db
 
 # Prepare setupVars.conf
 echo "BLOCKING_ENABLED=true" > /etc/pihole/setupVars.conf
+
+# Prepare pihole-FTL.conf
+echo "" > /etc/pihole/pihole-FTL.conf
 
 # Start FTL
 ./pihole-FTL-linux-x86_64
