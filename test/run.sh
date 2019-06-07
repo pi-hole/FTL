@@ -2,6 +2,7 @@
 
 # Only run tests on x86_64 target
 if [[ "${1}" != "pihole-FTL-linux-x86_64" ]]; then
+  echo "Skipping tests (${1})!"
   exit 0
 fi
 
@@ -22,13 +23,15 @@ echo "BLOCKING_ENABLED=true" > /etc/pihole/setupVars.conf
 echo "" > /etc/pihole/pihole-FTL.conf
 
 # Start FTL
-./pihole-FTL-linux-x86_64
+if ! ./pihole-FTL-linux-x86_64; then
+  echo "Pihole-FTL failed to start"
+  exit 1
+fi
 
 # Prepare BATS
 mkdir -p test/libs
-git submodule add https://github.com/sstephenson/bats test/libs/bats
-git submodule add https://github.com/ztombol/bats-support test/libs/bats-support
-# git submodule add https://github.com/ztombol/bats-assert test/libs/bats-assert
+git clone --depth=1 https://github.com/sstephenson/bats test/libs/bats > /dev/null
+git clone --depth=1 https://github.com/ztombol/bats-support test/libs/bats-support > /dev/null
 
 # Block until FTL is ready, retry once per second for 45 seconds
 sleep 2
@@ -43,5 +46,5 @@ dig TXT CHAOS version.bind @127.0.0.1 +short
 cat /var/log/pihole-FTL.log
 
 # Run tests
-#test/libs/bats/bin/bats "test/test_suite.sh"
+test/libs/bats/bin/bats "test/test_suite.sh"
 exit $?
