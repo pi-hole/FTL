@@ -11,11 +11,8 @@ apt install dnsutils -y
 # Create necessary directories
 mkdir -p /etc/pihole /var/run/pihole /var/log
 
-# We cannot bind to port
-echo "port=50" > /etc/dnsmasq.conf
-
 # Start FTL
-project/pihole-FTL-linux-x86_64
+./pihole-FTL-linux-x86_64
 
 # Prepare BATS
 mkdir -p test/libs
