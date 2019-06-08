@@ -13,7 +13,7 @@ apt-get -qq install dnsutils -y > /dev/null
 mkdir -p /etc/pihole /var/run/pihole /var/log
 
 # Prepare gravity database
-sqlite3 /etc/pihole/gravity.db < test/gravity.db.schema
+sqlite3 /etc/pihole/gravity.db < test/gravity.db.sql
 
 # Prepare setupVars.conf
 echo "BLOCKING_ENABLED=true" > /etc/pihole/setupVars.conf
