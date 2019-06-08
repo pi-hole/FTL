@@ -1,7 +1,9 @@
 #!/bin/bash
 
+binary="${1}"
+
 # Only run tests on x86_64 target
-if [[ "${1}" != "pihole-FTL-linux-x86_64" ]]; then
+if [[ ${CI} && "${binary}" != "pihole-FTL-linux-x86_64" ]]; then
   echo "Skipping tests (${1})!"
   exit 0
 fi
@@ -23,7 +25,7 @@ echo "BLOCKING_ENABLED=true" > /etc/pihole/setupVars.conf
 echo "" > /etc/pihole/pihole-FTL.conf
 
 # Start FTL
-if ! ./pihole-FTL-linux-x86_64; then
+if ! ./${binary}; then
   echo "Pihole-FTL failed to start"
   exit 1
 fi
