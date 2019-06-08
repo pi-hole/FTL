@@ -251,14 +251,14 @@ load 'libs/bats-support/load'
 }
 
 @test "Fail on invalid argument" {
-  run bash -c './pihole-FTL-linux-x86_64 abc'
+  run bash -c './pihole-FTL abc'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "pihole-FTL: invalid option -- 'abc'" ]]
-  [[ ${lines[1]} == "Try './pihole-FTL-linux-x86_64 --help' for more information" ]]
+  [[ ${lines[1]} == "Try './pihole-FTL --help' for more information" ]]
 }
 
 @test "Help argument return help text" {
-  run bash -c './pihole-FTL-linux-x86_64 help'
+  run bash -c './pihole-FTL help'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "pihole-FTL - The Pi-hole FTL engine" ]]
   [[ ${lines[3]} == "Available arguments:" ]]
@@ -271,6 +271,6 @@ load 'libs/bats-support/load'
 }
 
 @test "Final part of the tests: Kill pihole-FTL process" {
-  run bash -c 'kill $(pidof pihole-FTL-linux-x86_64)'
+  run bash -c 'kill $(pidof pihole-FTL)'
   printf "%s\n" "${lines[@]}"
 }

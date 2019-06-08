@@ -31,7 +31,8 @@ version: 2
     - run:
         name: "Test"
         command: |
-          test/run.sh "${BIN_NAME}"
+          mv "${BIN_NAME}" pihole-FTL
+          test/run.sh
 
 jobs:
   arm:

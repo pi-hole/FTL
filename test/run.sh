@@ -1,10 +1,8 @@
 #!/bin/bash
 
-binary="${1}"
-
 # Only run tests on x86_64 target
-if [[ ${CI} == "true" && "${binary}" != "pihole-FTL-linux-x86_64" ]]; then
-  echo "Skipping tests (${1})!"
+if [[ ${CI} == "true" && "${CIRCLE_JOB}" != "x86_64" ]]; then
+  echo "Skipping tests (CIRCLE_JOB: ${CIRCLE_JOB})!"
   exit 0
 fi
 
@@ -24,8 +22,8 @@ echo "BLOCKING_ENABLED=true" > /etc/pihole/setupVars.conf
 echo "" > /etc/pihole/pihole-FTL.conf
 
 # Start FTL
-if ! ./${binary}; then
-  echo "Pihole-FTL failed to start"
+if ! ./pihole-FTL; then
+  echo "pihole-FTL failed to start"
   exit 1
 fi
 
