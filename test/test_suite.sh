@@ -72,7 +72,7 @@ load 'libs/bats-support/load'
 @test "Statistics as expected" {
   run bash -c 'echo ">stats >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "domains_being_blocked 45732" ]]
+  [[ ${lines[1]} == "domains_being_blocked 2" ]]
   [[ ${lines[2]} == "dns_queries_today 10" ]]
   [[ ${lines[3]} == "ads_blocked_today 3" ]]
   [[ ${lines[4]} == "ads_percentage_today 30.000000" ]]
