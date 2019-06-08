@@ -17,8 +17,6 @@ static bool *regexconfigured = NULL;
 static char **regexbuffer = NULL;
 static whitelistStruct whitelist = { NULL, 0 };
 
-static void clear_regex_matches(void);
-
 static void log_regex_error(const char *where, const int errcode, const int index)
 {
 	// Regex failed for some reason (probably user syntax error)
@@ -123,6 +121,15 @@ bool match_regex(const char *input)
 
 void free_regex(void)
 {
+	// Reset cached regex results
+	for(int i = 0; i < counters->domains; i++) {
+		// Get domain pointer
+		domainsData *domain = getDomain(i, true);
+
+		// Reset regexmatch to unknown
+		domain->regexmatch = REGEX_UNKNOWN;
+	}
+
 	// Return early if we don't use any regex
 	if(regex == NULL)
 		return;
@@ -151,21 +158,6 @@ void free_regex(void)
 
 	// Reset counter for number of regex
 	num_regex = 0;
-
-	// Must reevaluate regex filters after having cleared them
-	clear_regex_matches();
-}
-
-/// Clear all cached regex matches from domains
-static void clear_regex_matches(void) {
-	// We reset all regex status to unknown to have them being reevaluated
-	for(int i = 0; i < counters->domains; i++) {
-		// Get domain pointer
-		domainsData *domain = getDomain(i, true);
-
-		// Reset regexmatch to unknown
-		domain->regexmatch = REGEX_UNKNOWN;
-	}
 }
 
 void read_whitelist_from_database(void)
@@ -272,9 +264,6 @@ void read_regex_from_database(void)
 
 	// Finalize statement and close gravity database handle
 	gravityDB_finalizeTable();
-
-	// We read in possibly new regex, so the cached regex results are no longer valid
-	clear_regex_matches();
 }
 
 void log_regex_whitelist(const double time)
