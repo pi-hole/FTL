@@ -1,7 +1,5 @@
 #!./test/libs/bats/bin/bats
 
-load 'libs/bats-support/load'
-
 @test "Version, Tag, Branch, Hash, Date is reported" {
   run bash -c 'echo ">version >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
