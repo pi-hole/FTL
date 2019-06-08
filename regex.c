@@ -121,6 +121,15 @@ bool match_regex(const char *input)
 
 void free_regex(void)
 {
+	// Reset cached regex results
+	for(int i = 0; i < counters->domains; i++) {
+		// Get domain pointer
+		domainsData *domain = getDomain(i, true);
+
+		// Reset regexmatch to unknown
+		domain->regexmatch = REGEX_UNKNOWN;
+	}
+
 	// Return early if we don't use any regex
 	if(regex == NULL)
 		return;
@@ -149,17 +158,6 @@ void free_regex(void)
 
 	// Reset counter for number of regex
 	num_regex = 0;
-
-	// Must reevaluate regex filters after having reread the regex filter
-	// We reset all regex status to unknown to have them being reevaluated
-	for(int i=0; i < counters->domains; i++)
-	{
-		// Get domain pointer
-		domainsData* domain = getDomain(i, true);
-
-		// Reset regexmatch to unknown
-		domain->regexmatch = REGEX_UNKNOWN;
-	}
 }
 
 void read_whitelist_from_database(void)
