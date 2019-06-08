@@ -3,7 +3,7 @@
 binary="${1}"
 
 # Only run tests on x86_64 target
-if [[ ${CI} && "${binary}" != "pihole-FTL-linux-x86_64" ]]; then
+if [[ ${CI} == "true" && "${binary}" != "pihole-FTL-linux-x86_64" ]]; then
   echo "Skipping tests (${1})!"
   exit 0
 fi
