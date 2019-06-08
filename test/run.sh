@@ -45,5 +45,5 @@ dig TXT CHAOS version.bind @127.0.0.1 +short
 cat /var/log/pihole-FTL.log
 
 # Run tests
-test/libs/bats/bin/bats "test/test_suite.sh"
+test/libs/bats/bin/bats "test/test_suite.bats"
 exit $?
