@@ -29,8 +29,7 @@ fi
 
 # Prepare BATS
 mkdir -p test/libs
-git clone --depth=1 https://github.com/sstephenson/bats test/libs/bats > /dev/null
-git clone --depth=1 https://github.com/ztombol/bats-support test/libs/bats-support > /dev/null
+git clone --depth=1 https://github.com/bats-core/bats-core test/libs/bats > /dev/null
 
 # Block until FTL is ready, retry once per second for 45 seconds
 sleep 2
