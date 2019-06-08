@@ -19,6 +19,7 @@ version: 2
     - run:
         name: "Upload"
         command: |
+          [ -z "$FTL_SECRET" ] && exit 0
           FOLDER=$([ -z "$CIRCLE_TAG" ] && echo "$CIRCLE_BRANCH" || echo "$CIRCLE_TAG")
           mv pihole-FTL "${BIN_NAME}"
           sha1sum pihole-FTL-* > ${BIN_NAME}.sha1
@@ -27,11 +28,11 @@ version: 2
           [[ "$CIRCLE_PR_NUMBER" == "" ]] && ./FTL-client "${FOLDER}" "${BIN_NAME}" "${FTL_SECRET}"
           [[ "$CIRCLE_PR_NUMBER" == "" ]] && ./FTL-client "${FOLDER}" "${BIN_NAME}.sha1" "${FTL_SECRET}"
           rm ./FTL-client
+          mv "${BIN_NAME}" pihole-FTL
           ls -lah .
     - run:
         name: "Test"
         command: |
-          mv "${BIN_NAME}" pihole-FTL
           test/run.sh
 
 jobs:
