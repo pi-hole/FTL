@@ -93,6 +93,7 @@ bool dbopen(void);
 void dbclose(void);
 int db_query_int(const char*);
 void SQLite3LogCallback(void *pArg, int iErrCode, const char *zMsg);
+bool chmod_file(const char *filename, mode_t mode);
 
 // memory.c
 void memory_check(const int which);

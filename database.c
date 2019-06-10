@@ -181,6 +181,15 @@ static bool db_create(void)
 	if(!create_network_table())
 		return false;
 
+	// Done initializing the database
+	// Close database handle
+	dbclose();
+
+	// Explicitly set permissions to 0644
+	// 644 =            u+w       u+r       g+r       o+r
+	const mode_t mode = S_IWUSR | S_IRUSR | S_IRGRP | S_IROTH;
+	chmod_file(FTLfiles.db, mode);
+
 	return true;
 }
 
@@ -900,4 +909,29 @@ void read_data_from_DB(void)
 	sqlite3_finalize(stmt);
 	dbclose();
 	free(rstr);
+}
+
+// chmod a given file
+bool chmod_file(const char *filename, mode_t mode)
+{
+	if(chmod(filename, mode) < 0)
+	{
+		logg("ERROR: chmod(%s, %d): chmod() failed: %s (%d)", filename, mode, strerror(errno), errno);
+		return false;
+	}
+
+	struct stat st;
+	if(stat(filename, &st) < 0)
+	{
+		logg("ERROR: chmod(%s, %d): stat() failed: %s (%d)", filename, mode, strerror(errno), errno);
+		return false;
+	}
+
+	if(st.st_mode != mode)
+	{
+		logg("ERROR: chmod(%s, %d): Verification failed, %d != %d", filename, mode, st.st_mode, mode);
+		return false;
+	}
+
+	return true;
 }
