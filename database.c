@@ -927,7 +927,9 @@ bool chmod_file(const char *filename, mode_t mode)
 		return false;
 	}
 
-	if(st.st_mode != mode)
+	// We need to apply a bitmask on st.st_mode as the upper bits may contain random data
+	// 0x1FF = 0b111_111_111
+	if((st.st_mode & 0x1FF) != mode)
 	{
 		logg("ERROR: chmod(%s, %d): Verification failed, %d != %d", filename, mode, st.st_mode, mode);
 		return false;
