@@ -21,6 +21,10 @@ echo "BLOCKING_ENABLED=true" > /etc/pihole/setupVars.conf
 # Prepare pihole-FTL.conf
 echo "" > /etc/pihole/pihole-FTL.conf
 
+# Set restrictive umask
+OLDUMASK=$(umask)
+umask 0022
+
 # Start FTL
 if ! ./pihole-FTL; then
   echo "pihole-FTL failed to start"
@@ -45,4 +49,10 @@ cat /var/log/pihole-FTL.log
 
 # Run tests
 test/libs/bats/bin/bats "test/test_suite.bats"
-exit $?
+RET=$?
+
+# Restore umask
+umask $OLDUMASK
+
+# Exit with return code of bats tests
+exit $RET
