@@ -279,6 +279,21 @@ void db_init(void)
 		dbversion = db_get_FTL_property(DB_VERSION);
 	}
 
+	// Update to version 5 if lower
+	if(dbversion < 5)
+	{
+		// Update to version 5: Create network-addresses table
+		logg("Updating long-term database to version 5");
+		if(!create_network_addresses_table())
+		{
+			logg("Network-addresses table not initialized, database not available");
+			database = false;
+			return;
+		}
+		// Get updated version
+		dbversion = db_get_FTL_property(DB_VERSION);
+	}
+
 	// Close database to prevent having it opened all time
 	// we already closed the database when we returned earlier
 	sqlite3_close(db);
@@ -674,9 +689,9 @@ void *DB_thread(void *val)
 				DBdeleteoldqueries = false;
 			}
 
-			// Parse ARP cache (fill network table) if enabled
+			// Parse neighbor cache (fill network table) if enabled
 			if (config.parse_arp_cache)
-				parse_arp_cache();
+				parse_neigh_cache();
 		}
 		sleepms(100);
 	}

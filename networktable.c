@@ -38,8 +38,24 @@ bool create_network_table(void)
 	return true;
 }
 
-// Parse kernel's ARP cache
-void parse_arp_cache(void)
+bool create_network_addresses_table(void)
+{
+	bool ret;
+	// Create network-addresses table in the database
+	ret = dbquery("CREATE TABLE network-addresses ( id INTEGER NOT NULL, " \
+	                                               "lastQuery INTEGER NOT NULL, " \
+	                                               "ip TEXT NOT NULL);");
+	if(!ret){ dbclose(); return false; }
+
+	// Update database version to 5
+	ret = db_set_FTL_property(DB_VERSION, 5);
+	if(!ret){ dbclose(); return false; }
+
+	return true;
+}
+
+// Parse kernel's neighbor cache
+void parse_neigh_cache(void)
 {
 	FILE* arpfp = NULL;
 	// Try to access the kernel's ARP/NDP cache
