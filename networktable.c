@@ -11,7 +11,6 @@
 #include "FTL.h"
 #include "shmem.h"
 #include "sqlite3.h"
-#define ARPCACHE "/proc/net/arp"
 
 // Private prototypes
 static char* getMACVendor(const char* hwaddr);
@@ -39,14 +38,14 @@ bool create_network_table(void)
 	return true;
 }
 
-// Read kernel's ARP cache using procfs
+// Parse kernel's ARP cache
 void parse_arp_cache(void)
 {
 	FILE* arpfp = NULL;
-	// Try to access the kernel's ARP cache
-	if((arpfp = fopen(ARPCACHE, "r")) == NULL)
+	// Try to access the kernel's ARP/NDP cache
+	if((arpfp = popen("ip neigh show", "r")) == NULL)
 	{
-		logg("WARN: Opening of %s failed!", ARPCACHE);
+		logg("WARN: Command \"ip neigh show\" failed!");
 		logg("      Message: %s", strerror(errno));
 		return;
 	}
@@ -54,8 +53,8 @@ void parse_arp_cache(void)
 	// Open database file
 	if(!dbopen())
 	{
-		logg("read_arp_cache() - Failed to open DB");
-		fclose(arpfp);
+		logg("parse_arp_cache() - Failed to open DB");
+		pclose(arpfp);
 		return;
 	}
 
@@ -65,8 +64,8 @@ void parse_arp_cache(void)
 	// Prepare buffers
 	char * linebuffer = NULL;
 	size_t linebuffersize = 0;
-	char ip[100], mask[100], hwaddr[100], iface[100];
-	unsigned int type, flags, entries = 0;
+	char ip[100], status[100], hwaddr[100], iface[100];
+	unsigned int entries = 0;
 	time_t now = time(NULL);
 
 	// Start collecting database commands
@@ -76,15 +75,16 @@ void parse_arp_cache(void)
 	// Read ARP cache line by line
 	while(getline(&linebuffer, &linebuffersize, arpfp) != -1)
 	{
-		int num = sscanf(linebuffer, "%99s 0x%x 0x%x %99s %99s %99s\n",
-		                 ip, &type, &flags, hwaddr, mask, iface);
+		int num = sscanf(linebuffer, "%99s dev %99s lladdr %99s %99s",
+		                 ip, iface, hwaddr, status);
 
-		// Skip header and empty lines
-		if (num < 4)
+		// Skip addresses without hardware address information
+		if (num != 4)
 			continue;
 
-		// Skip incomplete entires, i.e., entries without C (complete) flag
-		if(!(flags & 0x02))
+		// Only process active entries
+		if(strcasecmp(status, "reachable") != 0 &&
+		   strcasecmp(status, "stale")     != 0)
 			continue;
 
 		// Get ID of this device in our network database. If it cannot be
@@ -102,7 +102,7 @@ void parse_arp_cache(void)
 		int ret = asprintf(&querystr, "SELECT id FROM network WHERE hwaddr = \'%s\';", hwaddr);
 		if(querystr == NULL || ret < 0)
 		{
-			logg("Memory allocation failed in parse_arp_cache (%i)", ret);
+			logg("Memory allocation failed in parse_arp_cache(): %i", ret);
 			break;
 		}
 
@@ -202,7 +202,7 @@ void parse_arp_cache(void)
 		logg("ARP table processing (%i entries) took %.1f ms", entries, timer_elapsed_msec(ARP_TIMER));
 
 	// Close file handle
-	fclose(arpfp);
+	pclose(arpfp);
 
 	// Close database connection
 	dbclose();
