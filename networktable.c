@@ -41,10 +41,11 @@ bool create_network_table(void)
 bool create_network_addresses_table(void)
 {
 	bool ret;
-	// Create network-addresses table in the database
-	ret = dbquery("CREATE TABLE network-addresses ( id INTEGER NOT NULL, " \
+	// Create network_addresses table in the database
+	ret = dbquery("CREATE TABLE network_addresses ( id INTEGER NOT NULL, " \
+	                                               "ip TEXT NOT NULL, "\
 	                                               "lastQuery INTEGER NOT NULL, " \
-	                                               "ip TEXT NOT NULL);");
+	                                               "UNIQUE(id,ip));");
 	if(!ret){ dbclose(); return false; }
 
 	// Update database version to 5
@@ -58,7 +59,7 @@ bool create_network_addresses_table(void)
 void parse_neigh_cache(void)
 {
 	FILE* arpfp = NULL;
-	// Try to access the kernel's ARP/NDP cache
+	// Try to access the kernel's neighbor cache
 	if((arpfp = popen("ip neigh show", "r")) == NULL)
 	{
 		logg("WARN: Command \"ip neigh show\" failed!");
@@ -191,6 +192,15 @@ void parse_neigh_cache(void)
 			        "SET ip = \'%s\' "\
 			        "WHERE id = %i;",\
 			        ip, dbID);
+
+			// Add unique pair of ID (corresponds to one particular hardware
+			// address) and IP address if it does not exist (INSERT). In case
+			// this pair already exists, the UNIQUE(id,ip) trigger becomes
+			// active and the line is instead REPLACEd, causing the lastQuery
+			// timestamp to be updated
+			dbquery("INSERT OR REPLACE INTO network_addresses "\
+			        "(id,ip,lastQuery) VALUES(%i,\'%s\',%i);",\
+			        dbID, ip, client->lastQuery);
 
 			// Store hostname if available
 			if(strlen(hostname) > 0)
