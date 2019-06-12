@@ -157,7 +157,7 @@ bool check_capabilities(void);
 // networktable.c
 bool create_network_table(void);
 bool create_network_addresses_table(void);
-void parse_neigh_cache(void);
+void parse_neighbor_cache(void);
 void updateMACVendorRecords(void);
 
 // gravity.c

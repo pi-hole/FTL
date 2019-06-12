@@ -691,7 +691,7 @@ void *DB_thread(void *val)
 
 			// Parse neighbor cache (fill network table) if enabled
 			if (config.parse_arp_cache)
-				parse_neigh_cache();
+				parse_neighbor_cache();
 		}
 		sleepms(100);
 	}

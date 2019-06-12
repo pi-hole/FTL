@@ -45,7 +45,7 @@ bool create_network_addresses_table(void)
 	ret = dbquery("CREATE TABLE network_addresses ( network_id INTEGER NOT NULL, "\
 	                                               "ip TEXT NOT NULL, "\
 	                                               "lastQuery INTEGER NOT NULL, "\
-	                                               "UNIQUE(network_id,ip)), "\
+	                                               "UNIQUE(network_id,ip), "\
 	                                               "FOREIGN KEY(network_id) REFERENCES network(id));");
 	if(!ret){ dbclose(); return false; }
 
@@ -57,7 +57,7 @@ bool create_network_addresses_table(void)
 }
 
 // Parse kernel's neighbor cache
-void parse_neigh_cache(void)
+void parse_neighbor_cache(void)
 {
 	FILE* arpfp = NULL;
 	// Try to access the kernel's neighbor cache
