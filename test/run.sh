@@ -35,7 +35,7 @@ echo "BLOCKING_ENABLED=true" > /etc/pihole/setupVars.conf
 echo "" > /etc/pihole/pihole-FTL.conf
 
 # Start FTL
-if ! runuser -l pihole -c /home/pihole/pihole-FTL; then
+if ! runuser -l pihole -s /bin/sh -c /home/pihole/pihole-FTL; then
   echo "pihole-FTL failed to start"
   exit 1
 fi
