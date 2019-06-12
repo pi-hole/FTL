@@ -53,10 +53,11 @@ void bind_sockets(void);
 void process_request(const char *client_message, int *sock);
 bool command(const char *client_message, const char* cmd) __attribute__((pure));
 
-// grep.c
+// misc.c
 int countlines(const char* fname);
 int countlineswith(const char* str, const char* fname);
 void check_blocking_status(void);
+bool chmod_file(const char *filename, const mode_t mode);
 
 void check_setupVarsconf(void);
 char * read_setupVarsconf(const char * key);
@@ -93,7 +94,6 @@ bool dbopen(void);
 void dbclose(void);
 int db_query_int(const char*);
 void SQLite3LogCallback(void *pArg, int iErrCode, const char *zMsg);
-bool chmod_file(const char *filename, mode_t mode);
 
 // memory.c
 void memory_check(const int which);

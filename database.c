@@ -910,30 +910,3 @@ void read_data_from_DB(void)
 	dbclose();
 	free(rstr);
 }
-
-// chmod a given file
-bool chmod_file(const char *filename, mode_t mode)
-{
-	if(chmod(filename, mode) < 0)
-	{
-		logg("ERROR: chmod(%s, %d): chmod() failed: %s (%d)", filename, mode, strerror(errno), errno);
-		return false;
-	}
-
-	struct stat st;
-	if(stat(filename, &st) < 0)
-	{
-		logg("ERROR: chmod(%s, %d): stat() failed: %s (%d)", filename, mode, strerror(errno), errno);
-		return false;
-	}
-
-	// We need to apply a bitmask on st.st_mode as the upper bits may contain random data
-	// 0x1FF = 0b111_111_111
-	if((st.st_mode & 0x1FF) != mode)
-	{
-		logg("ERROR: chmod(%s, %d): Verification failed, %d != %d", filename, mode, st.st_mode, mode);
-		return false;
-	}
-
-	return true;
-}
