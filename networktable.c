@@ -42,10 +42,11 @@ bool create_network_addresses_table(void)
 {
 	bool ret;
 	// Create network_addresses table in the database
-	ret = dbquery("CREATE TABLE network_addresses ( id INTEGER NOT NULL, " \
+	ret = dbquery("CREATE TABLE network_addresses ( network_id INTEGER NOT NULL, "\
 	                                               "ip TEXT NOT NULL, "\
-	                                               "lastQuery INTEGER NOT NULL, " \
-	                                               "UNIQUE(id,ip));");
+	                                               "lastQuery INTEGER NOT NULL, "\
+	                                               "UNIQUE(network_id,ip)), "\
+	                                               "FOREIGN KEY(network_id) REFERENCES network(id));");
 	if(!ret){ dbclose(); return false; }
 
 	// Update database version to 5
@@ -195,11 +196,11 @@ void parse_neigh_cache(void)
 
 			// Add unique pair of ID (corresponds to one particular hardware
 			// address) and IP address if it does not exist (INSERT). In case
-			// this pair already exists, the UNIQUE(id,ip) trigger becomes
-			// active and the line is instead REPLACEd, causing the lastQuery
-			// timestamp to be updated
+			// this pair already exists, the UNIQUE(network_id,ip) trigger
+			// becomes active and the line is instead REPLACEd, causing the
+			// lastQuery timestamp to be updated
 			dbquery("INSERT OR REPLACE INTO network_addresses "\
-			        "(id,ip,lastQuery) VALUES(%i,\'%s\',%i);",\
+			        "(network_id,ip,lastQuery) VALUES(%i,\'%s\',%i);",\
 			        dbID, ip, client->lastQuery);
 
 			// Store hostname if available
