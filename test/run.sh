@@ -9,8 +9,10 @@ fi
 # Install necessary additional components for testing
 apt-get -qq install dnsutils libcap2-bin -y > /dev/null
 
-# Create pihole user
-useradd -m -s /bin/bash pihole
+# Create pihole user if it does not exist
+if ! id -u pihole &> /dev/null; then
+  useradd -m -s /usr/sbin/nologin pihole
+fi
 
 # Create necessary directories and files
 mkdir -p /etc/pihole /var/run/pihole /var/log
