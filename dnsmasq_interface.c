@@ -383,8 +383,18 @@ void FTL_dnsmasq_reload(void)
 	get_blocking_mode(NULL);
 
 	// Reread regex.list
+	// Free regex list and array of whitelisted domains
 	free_regex();
-	read_regex_from_file();
+	free_whitelist_domains();
+
+	// Start timer for regex compilation analysis
+	timer_start(REGEX_TIMER);
+	// Read and compile possible regex filters
+	read_regex_from_database();
+	// Read whitelisted domains from database
+	read_whitelist_from_database();
+	// Log result
+	log_regex_whitelist(timer_elapsed_msec(REGEX_TIMER));
 
 	// Reread pihole-FTL.conf to see which debugging flags are set
 	read_debuging_settings(NULL);
@@ -724,7 +734,9 @@ void _FTL_cache(const unsigned int flags, const char *name, const struct all_add
 	   (flags & F_REVERSE) ||
 	   (flags & F_RRNAME))
 	{
-		// List data: /etc/pihole/gravity.list, /etc/pihole/black.list, /etc/pihole/local.list, etc.
+		// Local list: /etc/hosts, /etc/pihole/local.list, etc.
+		// or
+		// blocked domain from gravity database
 		// or
 		// DHCP server reply
 		// or
@@ -736,9 +748,9 @@ void _FTL_cache(const unsigned int flags, const char *name, const struct all_add
 		unsigned char requesttype = 0;
 		if(flags & F_HOSTS)
 		{
-			if(arg != NULL && strstr(arg, "/gravity.list") != NULL)
+			if(arg != NULL && strcmp(arg, SRC_GRAVITY_NAME) == 0)
 				requesttype = QUERY_GRAVITY;
-			else if(arg != NULL && strstr(arg, "/black.list") != NULL)
+			else if(arg != NULL && strcmp(arg, SRC_BLACK_NAME) == 0)
 				requesttype = QUERY_BLACKLIST;
 			else // local.list, hostname.list, /etc/hosts and others
 				requesttype = QUERY_CACHE;
@@ -1182,7 +1194,7 @@ void _FTL_forwarding_failed(const struct server *server, const char* file, const
 	// Update counter
 	forward->failed++;
 
-	free(forward);
+	free(forwarddest);
 	unlock_shm();
 	return;
 }
@@ -1252,7 +1264,7 @@ void rehash(int size);
 // a single entry valid for IPv4 & IPv6 or two entries one for IPv4 and one for IPv6.
 // When IPv6 is not available on the machine, we do not add IPv6 cache entries (likewise for IPv4)
 static int add_blocked_domain(struct all_addr *addr4, struct all_addr *addr6, const bool has_IPv4, const bool has_IPv6,
-                              const char *domain, const int len, struct crec **rhash, int hashsz, unsigned int index)
+                              const char *domain, const int len, struct crec **rhash, int hashsz, const unsigned int index)
 {
 	int name_count = 0;
 	struct crec *cache4,*cache6;
@@ -1313,80 +1325,40 @@ static void block_single_domain_regex(const char *domain)
 
 	// Get IPv4/v6 addresses for blocking depending on user configures blocking mode
 	prepare_blocking_mode(&addr4, &addr6, &has_IPv4, &has_IPv6);
-	regexlistname = files.regexlist;
 	add_blocked_domain(&addr4, &addr6, has_IPv4, has_IPv6, domain, strlen(domain), NULL, 0, SRC_REGEX);
 
 	if(config.debug & DEBUG_QUERIES) logg("Added %s to cache", domain);
-
-	return;
 }
 
-int FTL_listsfile(const char* filename, unsigned int index, FILE *f, int cache_size, struct crec **rhash, int hashsz)
+// Import a specified table from the gravity database and
+// add the read domains to the cache using the currently
+// selected blocking mode. This function is used to import
+// both the blacklist and the gravity blocking domains
+static int FTL_table_import(const char *tablename, const unsigned char list, const unsigned int index,
+                             struct all_addr addr4, struct all_addr addr6, bool has_IPv4, bool has_IPv6,
+                             int cache_size, struct crec **rhash, int hashsz)
 {
-	int name_count = cache_size;
-	int added = 0;
-	size_t size = 0;
-	char *buffer = NULL;
-	struct all_addr addr4 = {{{ 0 }}}, addr6 = {{{ 0 }}};
-	bool has_IPv4 = false, has_IPv6 = false;
-
-	// Handle only gravity.list and black.list
-	// Skip all other files (they are interpreted in the usual format)
-	if(strcmp(filename, files.gravity) != 0 &&
-	   strcmp(filename, files.blacklist) != 0)
-		return cache_size;
+	// Variables
+	int name_count = cache_size, added = 0;
 
 	// Start timer for list analysis
 	timer_start(LISTS_TIMER);
 
-	// Get IPv4/v6 addresses for blocking depending on user configured blocking mode
-	prepare_blocking_mode(&addr4, &addr6, &has_IPv4, &has_IPv6);
-
-	// If we have neither a valid IPv4 nor a valid IPv6 but the user asked for
-	// blocking modes MODE_IP or MODE_IP_NODATA_AAAA then we cannot add any entries here
-	if(!has_IPv4 && !has_IPv6)
+	// Get database table handle
+	if(!gravityDB_getTable(list))
 	{
-		logg("ERROR: found neither a valid IPV4_ADDRESS nor IPV6_ADDRESS in setupVars.conf");
-		return cache_size;
+		logg("FTL_listsfile(): Error getting %s table from database", tablename);
+		return name_count;
 	}
 
-	// Walk file line by line
-	bool firstline = true;
-	while(getline(&buffer, &size, f) != -1)
+	// Walk database table
+	const char *domain = NULL;
+	while((domain = gravityDB_getDomain()) != NULL)
 	{
-		char *domain = buffer;
-		// Skip hashed out lines
-		if(*domain == '#')
-			continue;
-
-		// Filter leading dots or spaces
-		while (*domain == '.' || *domain == ' ') domain++;
-
-		// Check for spaces or tabs
-		// If found, then this list is still in HOSTS format and we
-		// don't analyze it here. We only check the first line for
-		// efficiency reasons (strstr() is slow)
-		if(firstline &&
-		   (strstr(domain, " ") != NULL || strstr(domain, "\t") != NULL))
-		{
-			// Reset file pointer back to beginning of the list
-			rewind(f);
-			logg("File %s is in HOSTS format, please run pihole -g!", filename);
-			return name_count;
-		}
-		firstline = false;
-
-		// Skip empty lines
 		int len = strlen(domain);
+		// Skip empty database rows
 		if(len == 0)
 			continue;
-
-		// Strip newline character at the end of line we just read
-		if(domain[len-1] == '\n')
-		{
-			domain[len-1] = '\0';
-			len -= 1;
-		}
 
 		// As of here we assume the entry to be valid
 		// Rehash every 1000 valid names
@@ -1407,14 +1379,51 @@ int FTL_listsfile(const char* filename, unsigned int index, FILE *f, int cache_s
 	if(rhash)
 		rehash(name_count);
 
-	// Free allocated memory
-	if(buffer != NULL)
+	// Finalize statement and close gravity database handle
+	gravityDB_finalizeTable();
+
+	// Final logging
+	logg("Database (%s): imported %i domains (took %.1f ms)", tablename, added, timer_elapsed_msec(LISTS_TIMER));
+
+	return added;
+}
+
+// Import blocking domains from the gravity database
+// This function is run whenever dnsmasq reads in HOSTS
+// files (on startup as well as on receipt of SIGHUP)
+int FTL_database_import(int cache_size, struct crec **rhash, int hashsz)
+{
+	struct all_addr addr4 = {{{ 0 }}}, addr6 = {{{ 0 }}};
+	bool has_IPv4 = false, has_IPv6 = false;
+
+	if(blockingstatus == BLOCKING_DISABLED)
 	{
-		free(buffer);
-		buffer = NULL;
+		logg("Skipping import of database tables because blocking is disabled");
+		return cache_size;
 	}
 
-	logg("%s: parsed %i domains (took %.1f ms)", filename, added, timer_elapsed_msec(LISTS_TIMER));
-	counters->gravity += added;
-	return name_count;
+	// Get IPv4/v6 addresses for blocking depending on user configured blocking mode
+	prepare_blocking_mode(&addr4, &addr6, &has_IPv4, &has_IPv6);
+
+	// If we have neither a valid IPv4 nor a valid IPv6 but the user asked for
+	// blocking modes MODE_IP or MODE_IP_NODATA_AAAA then we cannot add any entries here
+	if(!has_IPv4 && !has_IPv6)
+	{
+		logg("ERROR: Cannot add domains from gravity because pihole-FTL found\n" \
+		     "       neither a valid IPV4_ADDRESS nor IPV6_ADDRESS in setupVars.conf" \
+		     "       This is an impossible configuration. Please contact the Pi-hole" \
+		     "       support if you need assistance.");
+		return cache_size;
+	}
+
+	// Import gravity and blacklist domains
+	int added;
+	added  = FTL_table_import("gravity", GRAVITY_LIST, SRC_GRAVITY, addr4, addr6, has_IPv4, has_IPv6, cache_size, rhash, hashsz);
+	added += FTL_table_import("blacklist", BLACK_LIST, SRC_BLACK, addr4, addr6, has_IPv4, has_IPv6, cache_size, rhash, hashsz);
+
+	// Update counter of blocked domains
+	counters->gravity = added;
+
+	// Return new cache size which now includes more domains than before
+	return cache_size + added;
 }

@@ -42,12 +42,16 @@ void *GC_thread(void *val)
 			mintime -= mintime % 3600;
 			mintime += 3600;
 
-			if(config.debug & DEBUG_GC) timer_start(GC_TIMER);
-
-			int removed = 0;
-			if(config.debug & DEBUG_GC) logg("GC starting, mintime: %lu %s", mintime, ctime(&mintime));
+			if(config.debug & DEBUG_GC)
+			{
+				timer_start(GC_TIMER);
+				char timestring[84] = "";
+				get_timestr(timestring, mintime);
+				logg("GC starting, mintime: %s (%lu)", timestring, mintime);
+			}
 
 			// Process all queries
+			int removed = 0;
 			for(long int i=0; i < counters->queries; i++)
 			{
 				queriesData* query = getQuery(i, true);

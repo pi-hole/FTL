@@ -13,7 +13,6 @@
 
 static bool debug = false;
 bool daemonmode = true;
-bool travis = false;
 int argc_dnsmasq = 0;
 const char** argv_dnsmasq = NULL;
 
@@ -62,7 +61,7 @@ void parse_args(int argc, char* argv[])
 				const char * commit = GIT_HASH;
 				char hash[8];
 				// Extract first 7 characters of the hash
-				strncpy(hash, commit, 7); hash[7] = 0;
+				memcpy(hash, commit, 7); hash[7] = 0;
 				printf("vDev-%s\n", hash);
 			}
 			exit(EXIT_SUCCESS);
@@ -87,13 +86,6 @@ void parse_args(int argc, char* argv[])
 		   strcmp(argv[i], "no-daemon") == 0)
 		{
 			daemonmode = false;
-			ok = true;
-		}
-
-		// Use files in local places for Travis-CI tests
-		if(strcmp(argv[i], "travis-ci") == 0)
-		{
-			travis = true;
 			ok = true;
 		}
 

@@ -22,7 +22,10 @@ static pthread_mutex_t dblock;
 static bool db_set_counter(const unsigned int ID, const int value);
 static int db_get_FTL_property(const unsigned int ID);
 
-static void check_database(int rc)
+// defined in networktable.c
+extern bool unify_hwaddr(sqlite3 *db);
+
+static bool check_database(int rc)
 {
 	// We will retry if the database is busy at the moment
 	// However, we won't retry if any other error happened
@@ -36,6 +39,8 @@ static void check_database(int rc)
 		logg("check_database(%i): Disabling database connection due to error", rc);
 		database = false;
 	}
+
+	return database;
 }
 
 void dbclose(void)
@@ -58,6 +63,12 @@ static double get_db_filesize(void)
 		return 0;
 	}
 	return 1e-6*st.st_size;
+}
+
+static bool file_exists(const char *filename)
+{
+	struct stat st;
+	return stat(filename, &st) == 0;
 }
 
 bool dbopen(void)
@@ -197,19 +208,25 @@ void db_init(void)
 	// explicitly check for failures to have happened
 	sqlite3_config(SQLITE_CONFIG_LOG, SQLite3LogCallback, NULL);
 
+	// Check if database exists, if not create empty database
+	if(!file_exists(FTLfiles.db))
+	{
+		logg("No database file found, creating new (empty) database");
+		if (!db_create())
+		{
+			logg("Creation of database failed, database is not available");
+			database = false;
+			return;
+		}
+	}
+
 	int rc = sqlite3_open_v2(FTLfiles.db, &db, SQLITE_OPEN_READWRITE, NULL);
 	if( rc ){
 		logg("db_init() - Cannot open database (%i): %s", rc, sqlite3_errmsg(db));
 		dbclose();
-		check_database(rc);
 
-		logg("Creating new (empty) database");
-		if (!db_create())
-		{
-			logg("Database not available");
-			database = false;
-			return;
-		}
+		database = false;
+		return;
 	}
 
 	// Test DB version and see if we need to upgrade the database file
@@ -221,6 +238,7 @@ void db_init(void)
 		database = false;
 		return;
 	}
+
 	// Update to version 2 if lower
 	if(dbversion < 2)
 	{
@@ -235,6 +253,7 @@ void db_init(void)
 		// Get updated version
 		dbversion = db_get_FTL_property(DB_VERSION);
 	}
+
 	// Update to version 3 if lower
 	if(dbversion < 3)
 	{
@@ -246,6 +265,16 @@ void db_init(void)
 			database = false;
 			return;
 		}
+		// Get updated version
+		dbversion = db_get_FTL_property(DB_VERSION);
+	}
+
+	// Update to version 4 if lower
+	if(dbversion < 4)
+	{
+		// Update to version 4: Unify clients in network table
+		logg("Updating long-term database to version 4");
+		unify_hwaddr(db);
 		// Get updated version
 		dbversion = db_get_FTL_property(DB_VERSION);
 	}

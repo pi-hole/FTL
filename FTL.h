@@ -7,6 +7,8 @@
 *
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
+#ifndef FTL_H
+#define FTL_H
 
 #define __USE_XOPEN
 #define _GNU_SOURCE
@@ -99,6 +101,7 @@ enum { PRIVACY_SHOW_ALL = 0, PRIVACY_HIDE_DOMAINS, PRIVACY_HIDE_DOMAINS_CLIENTS,
 enum { MODE_IP, MODE_NX, MODE_NULL, MODE_IP_NODATA_AAAA, MODE_NODATA };
 enum { REGEX_UNKNOWN, REGEX_BLOCKED, REGEX_NOTBLOCKED };
 enum { BLOCKING_DISABLED, BLOCKING_ENABLED, BLOCKING_UNKNOWN };
+enum { GRAVITY_LIST, BLACK_LIST, WHITE_LIST, REGEX_LIST, UNKNOWN_LIST };
 enum {
   DEBUG_DATABASE   = (1 << 0),  /* 00000000 00000001 */
   DEBUG_NETWORKING = (1 << 1),  /* 00000000 00000010 */
@@ -133,14 +136,11 @@ typedef struct {
 	char* port;
 	char* db;
 	char* socketfile;
+	char* gravitydb;
 	char* macvendordb;
 } FTLFileNamesStruct;
 
 typedef struct {
-	char* whitelist;
-	char* blacklist;
-	char* gravity;
-	char* regexlist;
 	char* setupVars;
 	char* auditlist;
 } logFileNamesStruct;
@@ -322,3 +322,5 @@ clientsData* _getClient(int clientID, bool checkMagic, int line, const char * fu
 domainsData* _getDomain(int domainID, bool checkMagic, int line, const char * function, const char * file);
 #define getForward(forwardID, checkMagic) _getForward(forwardID, checkMagic, __LINE__, __FUNCTION__, __FILE__)
 forwardedData* _getForward(int forwardID, bool checkMagic, int line, const char * function, const char * file);
+
+#endif // FTL_H
