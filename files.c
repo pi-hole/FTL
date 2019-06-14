@@ -126,27 +126,29 @@ void check_blocking_status(void)
 	logg("Blocking status is %s", message);
 }
 
-// chmod a given file
+// chmod_file() changes the file mode bits of a given file (relative
+// to the directory file descriptor) according to mode. mode is an
+// octal number representing the bit pattern for the new mode bits
 bool chmod_file(const char *filename, const mode_t mode)
 {
 	if(chmod(filename, mode) < 0)
 	{
-		logg("ERROR: chmod(%s, %d): chmod() failed: %s (%d)", filename, mode, strerror(errno), errno);
+		logg("WARNING: chmod(%s, %d): chmod() failed: %s (%d)", filename, mode, strerror(errno), errno);
 		return false;
 	}
 
 	struct stat st;
 	if(stat(filename, &st) < 0)
 	{
-		logg("ERROR: chmod(%s, %d): stat() failed: %s (%d)", filename, mode, strerror(errno), errno);
+		logg("WARNING: chmod(%s, %d): stat() failed: %s (%d)", filename, mode, strerror(errno), errno);
 		return false;
 	}
 
 	// We need to apply a bitmask on st.st_mode as the upper bits may contain random data
-	// 0x1FF = 0b111_111_111
+	// 0x1FF = 0b111_111_111 corresponding to the three-digit octal mode number
 	if((st.st_mode & 0x1FF) != mode)
 	{
-		logg("ERROR: chmod(%s, %d): Verification failed, %d != %d", filename, mode, st.st_mode, mode);
+		logg("WARNING: chmod(%s, %d): Verification failed, %d != %d", filename, mode, st.st_mode, mode);
 		return false;
 	}
 
