@@ -212,15 +212,6 @@ void parse_neighbor_cache(void)
 			        "WHERE id = %i;",\
 			        ip, dbID);
 
-			// Add unique pair of ID (corresponds to one particular hardware
-			// address) and IP address if it does not exist (INSERT). In case
-			// this pair already exists, the UNIQUE(network_id,ip) trigger
-			// becomes active and the line is instead REPLACEd, causing the
-			// lastQuery timestamp to be updated
-			dbquery("INSERT OR REPLACE INTO network_addresses "\
-			        "(network_id,ip,lastQuery) VALUES(%i,\'%s\',%i);",\
-			        dbID, ip, client->lastQuery);
-
 			// Store hostname if available
 			if(strlen(hostname) > 0)
 			{
@@ -235,6 +226,15 @@ void parse_neighbor_cache(void)
 		// Device in database but not known to Pi-hole: No action required
 		else if(config.debug & DEBUG_ARP)
 			logg("Skipping %s %s",ip,hwaddr);
+
+		// Add unique pair of ID (corresponds to one particular hardware
+		// address) and IP address if it does not exist (INSERT). In case
+		// this pair already exists, the UNIQUE(network_id,ip) trigger
+		// becomes active and the line is instead REPLACEd, causing the
+		// lastQuery timestamp to be updated
+		dbquery("INSERT OR REPLACE INTO network_addresses "\
+		        "(network_id,ip,lastQuery) VALUES(%i,\'%s\',%i);",\
+		        dbID, ip, client->lastQuery);
 
 		// Count number of processed ARP cache entries
 		entries++;
