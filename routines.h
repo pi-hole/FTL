@@ -38,6 +38,7 @@ const char *getDomainString(const int queryID);
 const char *getClientIPString(const int queryID);
 const char *getClientNameString(const int queryID);
 
+// socket.c
 void close_telnet_socket(void);
 void close_unix_socket(void);
 void seom(const int sock);
@@ -45,32 +46,32 @@ void ssend(const int sock, const char *format, ...) __attribute__ ((format (gnu_
 void swrite(const int sock, const void* value, const size_t size);
 void *telnet_listening_thread_IPv4(void *args);
 void *telnet_listening_thread_IPv6(void *args);
-
 void *socket_listening_thread(void *args);
 bool ipv6_available(void);
 void bind_sockets(void);
 
+// request.c
 void process_request(const char *client_message, int *sock);
 bool command(const char *client_message, const char* cmd) __attribute__((pure));
 
-// misc.c
+// files.c
 int countlines(const char* fname);
 int countlineswith(const char* str, const char* fname);
 void check_blocking_status(void);
 bool chmod_file(const char *filename, const mode_t mode);
 
+// setupVars.c
 void check_setupVarsconf(void);
 char * read_setupVarsconf(const char * key);
 void getSetupVarsArray(const char * input);
 void clearSetupVarsArray(void);
 bool insetupVarsArray(const char * str);
 bool getSetupVarsBool(const char * input) __attribute__((pure));
-
-void parse_args(int argc, char* argv[]);
-
-// setupVars.c
 char* find_equals(const char* s) __attribute__((pure));
 void trim_whitespace(char *string);
+
+// args.c
+void parse_args(int argc, char* argv[]);
 
 // config.c
 void getLogFilePath(void);
@@ -102,6 +103,7 @@ void *FTLcalloc(size_t nmemb, size_t size, const char *file, const char *functio
 void *FTLrealloc(void *ptr_in, size_t size, const char *file, const char *function, const int line) __attribute__((alloc_size(2)));
 void FTLfree(void *ptr, const char* file, const char *function, const int line);
 
+// dnsmasq/dnsmasq.c
 int main_dnsmasq(int argc, const char ** argv);
 
 // signals.c
