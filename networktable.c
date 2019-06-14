@@ -224,8 +224,6 @@ void parse_neighbor_cache(void)
 		}
 		// else:
 		// Device in database but not known to Pi-hole: No action required
-		else if(config.debug & DEBUG_ARP)
-			logg("Skipping %s %s",ip,hwaddr);
 
 		// Add unique pair of ID (corresponds to one particular hardware
 		// address) and IP address if it does not exist (INSERT). In case
