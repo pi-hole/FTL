@@ -44,7 +44,7 @@ bool create_network_addresses_table(void)
 	// Create network_addresses table in the database
 	ret = dbquery("CREATE TABLE network_addresses ( network_id INTEGER NOT NULL, "\
 	                                               "ip TEXT NOT NULL, "\
-	                                               "lastQuery INTEGER NOT NULL, "\
+	                                               "lastSeen INTEGER NOT NULL, "\
 	                                               "PRIMARY KEY(network_id,ip), "\
 	                                               "FOREIGN KEY(network_id) REFERENCES network(id));");
 	if(!ret){ dbclose(); return false; }
@@ -233,8 +233,8 @@ void parse_neighbor_cache(void)
 		// becomes active and the line is instead REPLACEd, causing the
 		// lastQuery timestamp to be updated
 		dbquery("INSERT OR REPLACE INTO network_addresses "\
-		        "(network_id,ip,lastQuery) VALUES(%i,\'%s\',%i);",\
-		        dbID, ip, client->lastQuery);
+		        "(network_id,ip,lastSeen) VALUES(%i,\'%s\',%d);",\
+		        dbID, ip, time(NULL));
 
 		// Count number of processed ARP cache entries
 		entries++;
