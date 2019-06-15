@@ -249,14 +249,14 @@
 }
 
 @test "Fail on invalid argument" {
-  run bash -c './pihole-FTL abc'
+  run bash -c '/home/pihole/pihole-FTL abc'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "pihole-FTL: invalid option -- 'abc'" ]]
-  [[ ${lines[1]} == "Try './pihole-FTL --help' for more information" ]]
+  [[ ${lines[1]} == "Try '/home/pihole/pihole-FTL --help' for more information" ]]
 }
 
 @test "Help argument return help text" {
-  run bash -c './pihole-FTL help'
+  run bash -c '/home/pihole/pihole-FTL help'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "pihole-FTL - The Pi-hole FTL engine" ]]
   [[ ${lines[3]} == "Available arguments:" ]]
