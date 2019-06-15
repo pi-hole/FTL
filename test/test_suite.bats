@@ -244,7 +244,7 @@
   [[ "${lines[@]}" == *"CREATE TABLE ftl ( id INTEGER PRIMARY KEY NOT NULL, value BLOB NOT NULL );"* ]]
   [[ "${lines[@]}" == *"CREATE TABLE counters ( id INTEGER PRIMARY KEY NOT NULL, value INTEGER NOT NULL );"* ]]
   [[ "${lines[@]}" == *"CREATE TABLE network ( id INTEGER PRIMARY KEY NOT NULL, ip TEXT NOT NULL, hwaddr TEXT NOT NULL, interface TEXT NOT NULL, name TEXT, firstSeen INTEGER NOT NULL, lastQuery INTEGER NOT NULL, numQueries INTEGER NOT NULL,macVendor TEXT);"* ]]
-  [[ "${lines[@]}" == *"CREATE TABLE network_addresses ( network_id INTEGER NOT NULL, ip TEXT NOT NULL, lastSeen INTEGER NOT NULL, PRIMARY KEY(network_id,ip), FOREIGN KEY(network_id) REFERENCES network(id));"* ]]
+  [[ "${lines[@]}" == *"CREATE TABLE network_addresses ( network_id INTEGER NOT NULL, ip TEXT NOT NULL, lastSeen INTEGER NOT NULL, UNIQUE(network_id,ip), FOREIGN KEY(network_id) REFERENCES network(id));"* ]]
   [[ "${lines[@]}" == *"CREATE INDEX idx_queries_timestamps ON queries (timestamp);"* ]]
   [[ "${lines[@]}" == *"CREATE UNIQUE INDEX network_hwaddr_idx ON network(hwaddr);"* ]]
 }
