@@ -45,7 +45,7 @@ bool create_network_addresses_table(void)
 	ret = dbquery("CREATE TABLE network_addresses ( network_id INTEGER NOT NULL, "\
 	                                               "ip TEXT NOT NULL, "\
 	                                               "lastSeen INTEGER NOT NULL, "\
-	                                               "PRIMARY KEY(network_id,ip), "\
+	                                               "UNIQUE(network_id,ip), "\
 	                                               "FOREIGN KEY(network_id) REFERENCES network(id));");
 	if(!ret){ dbclose(); return false; }
 
