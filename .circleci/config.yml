@@ -86,7 +86,10 @@ workflows:
           filters:
             tags:
               only: /^v.*/
-#      - x86_64-musl
+      - x86_64-musl:
+          filters:
+            tags:
+              only: /^v.*/
       - x86_32:
           filters:
             tags:
