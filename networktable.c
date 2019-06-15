@@ -143,7 +143,7 @@ void parse_neighbor_cache(void)
 		}
 
 		// Perform SQL query
-		const int dbID = db_query_int(querystr);
+		int dbID = db_query_int(querystr);
 		free(querystr);
 
 		if(dbID == DB_FAILED)
@@ -184,6 +184,9 @@ void parse_neighbor_cache(void)
 			        hostname,
 			        macVendor);
 			free(macVendor);
+
+			// Obtain ID which was given to this new entry
+			dbID = db_lastID();
 		}
 		// Device in database AND client known to Pi-hole
 		else if(client != NULL)

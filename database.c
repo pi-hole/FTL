@@ -931,3 +931,12 @@ void read_data_from_DB(void)
 	dbclose();
 	free(rstr);
 }
+
+// Returns ID of the most recent successful INSERT.
+long db_lastID(void)
+{
+	long id = sqlite3_last_insert_rowid(db);
+	if(config.debug & DEBUG_DATABASE)
+		logg("db_lastID(): %ld", id);
+	return id;
+}
