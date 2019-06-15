@@ -110,9 +110,9 @@ void parse_neighbor_cache(void)
 
 			// Example: dead:beef:dead:beef:dead:beef dev wlp3s0 lladdr de:ad:be:ef:de:ad router REACHABLE
 			case 5:
-				if(strcasecmp(status1, "router")     != 0 &&
-				   (strcasecmp(status2, "reachable") != 0 &&
-				    strcasecmp(status2, "stale")     != 0 ))
+				if(strcasecmp(status1, "router")    != 0 &&
+				   strcasecmp(status2, "reachable") != 0 &&
+				   strcasecmp(status2, "stale")     != 0)
 				{
 					continue;
 				}
