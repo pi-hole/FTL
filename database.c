@@ -82,6 +82,21 @@ bool dbopen(void)
 		return false;
 	}
 
+	// Enable the enforcement of foreign key constraints. As of SQLite
+	// version 3.6.19 (2009-10-14), the default setting for foreign key
+	// enforcement is false.
+	// Foreign key constraints are disabled by default (for backwards
+	// compatibility), so must be enabled separately for each database
+	// connection (see also https://www.sqlite.org/foreignkeys.html).
+	rc = dbquery("PRAGMA FOREIGN_KEYS=ON;");
+	if( !rc )
+	{
+		logg("dbopen() - FOREIGN_KEYS error (%i): %s", rc, sqlite3_errmsg(db));
+		dbclose();
+		check_database(rc);
+		return false;
+	}
+
 	return true;
 }
 
