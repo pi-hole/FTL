@@ -181,6 +181,15 @@ static bool db_create(void)
 	if(!create_network_table())
 		return false;
 
+	// Done initializing the database
+	// Close database handle
+	dbclose();
+
+	// Explicitly set permissions to 0644
+	// 644 =            u+w       u+r       g+r       o+r
+	const mode_t mode = S_IWUSR | S_IRUSR | S_IRGRP | S_IROTH;
+	chmod_file(FTLfiles.db, mode);
+
 	return true;
 }
 
