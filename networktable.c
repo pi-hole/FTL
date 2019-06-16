@@ -16,47 +16,57 @@
 static char* getMACVendor(const char* hwaddr);
 bool unify_hwaddr(sqlite3 *db);
 
+// Private macro
+#define SQL(sql) {\
+	if(!dbquery(sql)) {\
+		logg("%s(): \"%s\" failed!", __FUNCTION__, sql);\
+		dbclose();\
+		return false;\
+	}\
+}
+#define SQL_void(sql) {\
+	if(!dbquery(sql)) {\
+		logg("%s(): \"%s\" failed!", __FUNCTION__, sql);\
+		dbclose();\
+		return;\
+	}\
+}
+
 bool create_network_table(void)
 {
-	bool ret;
 	// Create network table in the database
-	ret = dbquery("CREATE TABLE network ( id INTEGER PRIMARY KEY NOT NULL, " \
-	                                     "ip TEXT NOT NULL, " \
-	                                     "hwaddr TEXT NOT NULL, " \
-	                                     "interface TEXT NOT NULL, " \
-	                                     "name TEXT, " \
-	                                     "firstSeen INTEGER NOT NULL, " \
-	                                     "lastQuery INTEGER NOT NULL, " \
-	                                     "numQueries INTEGER NOT NULL," \
-	                                     "macVendor TEXT);");
-	if(!ret){ dbclose(); return false; }
+	SQL("CREATE TABLE network ( id INTEGER PRIMARY KEY NOT NULL, " \
+	                           "ip TEXT NOT NULL, " \
+	                           "hwaddr TEXT NOT NULL, " \
+	                           "interface TEXT NOT NULL, " \
+	                           "name TEXT, " \
+	                           "firstSeen INTEGER NOT NULL, " \
+	                           "lastQuery INTEGER NOT NULL, " \
+	                           "numQueries INTEGER NOT NULL," \
+	                           "macVendor TEXT);");
 
 	// Update database version to 3
-	ret = db_set_FTL_property(DB_VERSION, 3);
-	if(!ret){ dbclose(); return false; }
+	if(!db_set_FTL_property(DB_VERSION, 3))
+	{
+		logg("create_network_table(): Failed to update database version!");
+		dbclose();
+		return false;
+	}
 
 	return true;
 }
 
-// Private macro
-#define SQL(sql) {\
-    if(!dbquery(sql)) {\
-        logg("create_network_addresses_table(): \"%s\" failed!", sql);\
-        dbclose();\
-        return false;\
-    }\
-}
-
 bool create_network_addresses_table(void)
 {
+	// Begin new transaction
 	SQL("BEGIN TRANSACTION");
 
 	// Create network_addresses table in the database
 	SQL("CREATE TABLE network_addresses ( network_id INTEGER NOT NULL, "\
-	                                               "ip TEXT NOT NULL, "\
-	                                               "lastSeen INTEGER NOT NULL DEFAULT (cast(strftime('%%s', 'now') as int)), "\
-	                                               "UNIQUE(network_id,ip), "\
-	                                               "FOREIGN KEY(network_id) REFERENCES network(id));");
+	                                     "ip TEXT NOT NULL, "\
+	                                     "lastSeen INTEGER NOT NULL DEFAULT (cast(strftime('%%s', 'now') as int)), "\
+	                                     "UNIQUE(network_id,ip), "\
+	                                     "FOREIGN KEY(network_id) REFERENCES network(id));");
 
 	// Create a network_addresses row for each entry in the network table
 	SQL("INSERT INTO network_addresses (network_id,ip) SELECT id,ip FROM network;");
@@ -65,23 +75,22 @@ bool create_network_addresses_table(void)
 	// As ALTER TABLE is severely limit, we have to do the column deletion manually.
 	// Step 1: We create a new table without the ip column
 	SQL("CREATE TABLE network_bck ( id INTEGER PRIMARY KEY NOT NULL, " \
-	                                         "hwaddr TEXT UNIQUE NOT NULL, " \
-	                                         "interface TEXT NOT NULL, " \
-	                                         "name TEXT, " \
-	                                         "firstSeen INTEGER NOT NULL, " \
-	                                         "lastQuery INTEGER NOT NULL, " \
-	                                         "numQueries INTEGER NOT NULL, " \
-	                                         "macVendor TEXT);");
+	                               "hwaddr TEXT UNIQUE NOT NULL, " \
+	                               "interface TEXT NOT NULL, " \
+	                               "name TEXT, " \
+	                               "firstSeen INTEGER NOT NULL, " \
+	                               "lastQuery INTEGER NOT NULL, " \
+	                               "numQueries INTEGER NOT NULL, " \
+	                               "macVendor TEXT);");
 
 	// Step 2: Copy data (except ip column) from network into network_back
 	SQL("INSERT INTO network_bck "\
-	              "SELECT id, hwaddr, interface, name, firstSeen, "\
-	                     "lastQuery, numQueries, macVendor "\
-	                     "FROM network;");
+	    "SELECT id, hwaddr, interface, name, firstSeen, "\
+	           "lastQuery, numQueries, macVendor "\
+	           "FROM network;");
 
 	// Step 3: Drop the network table, the unique index will be automatically dropped
 	SQL("DROP TABLE network;");
-
 
 	// Step 4: Rename network_bck table to network table as last step
 	SQL("ALTER TABLE network_bck RENAME TO network;");
@@ -94,7 +103,8 @@ bool create_network_addresses_table(void)
 		return false;
 	}
 
-	dbquery("COMMIT");
+	// Finish transaction
+	SQL("COMMIT");
 
 	return true;
 }
@@ -132,7 +142,7 @@ void parse_neighbor_cache(void)
 
 	// Start collecting database commands
 	lock_shm();
-	dbquery("BEGIN TRANSACTION");
+	SQL_void("BEGIN TRANSACTION");
 
 	// Read ARP cache line by line
 	while(getline(&linebuffer, &linebuffersize, arpfp) != -1)
@@ -255,7 +265,7 @@ void parse_neighbor_cache(void)
 	}
 
 	// Actually update the database
-	dbquery("COMMIT");
+	SQL_void("COMMIT");
 	unlock_shm();
 
 	// Debug logging
@@ -344,7 +354,7 @@ bool unify_hwaddr(sqlite3 *db)
 	// See https://www.sqlite.org/lang_createtable.html#constraints:
 	// >>> In most cases, UNIQUE and PRIMARY KEY constraints are
 	// >>> implemented by creating a unique index in the database.
-	dbquery("CREATE UNIQUE INDEX network_hwaddr_idx ON network(hwaddr)");
+	SQL("CREATE UNIQUE INDEX network_hwaddr_idx ON network(hwaddr)");
 
 	// Update database version to 4
 	if(!db_set_FTL_property(DB_VERSION, 4))
