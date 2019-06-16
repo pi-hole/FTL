@@ -17,7 +17,7 @@ static char* getMACVendor(const char* hwaddr);
 bool unify_hwaddr(sqlite3 *db);
 
 // Private macro
-#define SQL(sql) {\
+#define SQL_bool(sql) {\
 	if(!dbquery(sql)) {\
 		logg("%s(): \"%s\" failed!", __FUNCTION__, sql);\
 		dbclose();\
@@ -35,15 +35,15 @@ bool unify_hwaddr(sqlite3 *db);
 bool create_network_table(void)
 {
 	// Create network table in the database
-	SQL("CREATE TABLE network ( id INTEGER PRIMARY KEY NOT NULL, " \
-	                           "ip TEXT NOT NULL, " \
-	                           "hwaddr TEXT NOT NULL, " \
-	                           "interface TEXT NOT NULL, " \
-	                           "name TEXT, " \
-	                           "firstSeen INTEGER NOT NULL, " \
-	                           "lastQuery INTEGER NOT NULL, " \
-	                           "numQueries INTEGER NOT NULL," \
-	                           "macVendor TEXT);");
+	SQL_bool("CREATE TABLE network ( id INTEGER PRIMARY KEY NOT NULL, " \
+	                                "ip TEXT NOT NULL, " \
+	                                "hwaddr TEXT NOT NULL, " \
+	                                "interface TEXT NOT NULL, " \
+	                                "name TEXT, " \
+	                                "firstSeen INTEGER NOT NULL, " \
+	                                "lastQuery INTEGER NOT NULL, " \
+	                                "numQueries INTEGER NOT NULL," \
+	                                "macVendor TEXT);");
 
 	// Update database version to 3
 	if(!db_set_FTL_property(DB_VERSION, 3))
@@ -59,41 +59,41 @@ bool create_network_table(void)
 bool create_network_addresses_table(void)
 {
 	// Begin new transaction
-	SQL("BEGIN TRANSACTION");
+	SQL_bool("BEGIN TRANSACTION");
 
 	// Create network_addresses table in the database
-	SQL("CREATE TABLE network_addresses ( network_id INTEGER NOT NULL, "\
-	                                     "ip TEXT NOT NULL, "\
-	                                     "lastSeen INTEGER NOT NULL DEFAULT (cast(strftime('%%s', 'now') as int)), "\
-	                                     "UNIQUE(network_id,ip), "\
-	                                     "FOREIGN KEY(network_id) REFERENCES network(id));");
+	SQL_bool("CREATE TABLE network_addresses ( network_id INTEGER NOT NULL, "\
+	                                          "ip TEXT NOT NULL, "\
+	                                          "lastSeen INTEGER NOT NULL DEFAULT (cast(strftime('%%s', 'now') as int)), "\
+	                                          "UNIQUE(network_id,ip), "\
+	                                          "FOREIGN KEY(network_id) REFERENCES network(id));");
 
 	// Create a network_addresses row for each entry in the network table
-	SQL("INSERT INTO network_addresses (network_id,ip) SELECT id,ip FROM network;");
+	SQL_bool("INSERT INTO network_addresses (network_id,ip) SELECT id,ip FROM network;");
 
 	// Remove IP column from network table.
 	// As ALTER TABLE is severely limit, we have to do the column deletion manually.
 	// Step 1: We create a new table without the ip column
-	SQL("CREATE TABLE network_bck ( id INTEGER PRIMARY KEY NOT NULL, " \
-	                               "hwaddr TEXT UNIQUE NOT NULL, " \
-	                               "interface TEXT NOT NULL, " \
-	                               "name TEXT, " \
-	                               "firstSeen INTEGER NOT NULL, " \
-	                               "lastQuery INTEGER NOT NULL, " \
-	                               "numQueries INTEGER NOT NULL, " \
-	                               "macVendor TEXT);");
+	SQL_bool("CREATE TABLE network_bck ( id INTEGER PRIMARY KEY NOT NULL, " \
+	                                    "hwaddr TEXT UNIQUE NOT NULL, " \
+	                                    "interface TEXT NOT NULL, " \
+	                                    "name TEXT, " \
+	                                    "firstSeen INTEGER NOT NULL, " \
+	                                    "lastQuery INTEGER NOT NULL, " \
+	                                    "numQueries INTEGER NOT NULL, " \
+	                                    "macVendor TEXT);");
 
 	// Step 2: Copy data (except ip column) from network into network_back
-	SQL("INSERT INTO network_bck "\
-	    "SELECT id, hwaddr, interface, name, firstSeen, "\
-	           "lastQuery, numQueries, macVendor "\
-	           "FROM network;");
+	SQL_bool("INSERT INTO network_bck "\
+	         "SELECT id, hwaddr, interface, name, firstSeen, "\
+	                "lastQuery, numQueries, macVendor "\
+	                "FROM network;");
 
 	// Step 3: Drop the network table, the unique index will be automatically dropped
-	SQL("DROP TABLE network;");
+	SQL_bool("DROP TABLE network;");
 
 	// Step 4: Rename network_bck table to network table as last step
-	SQL("ALTER TABLE network_bck RENAME TO network;");
+	SQL_bool("ALTER TABLE network_bck RENAME TO network;");
 
 	// Update database version to 5
 	if(!db_set_FTL_property(DB_VERSION, 5))
@@ -104,7 +104,7 @@ bool create_network_addresses_table(void)
 	}
 
 	// Finish transaction
-	SQL("COMMIT");
+	SQL_bool("COMMIT");
 
 	return true;
 }
@@ -354,7 +354,7 @@ bool unify_hwaddr(sqlite3 *db)
 	// See https://www.sqlite.org/lang_createtable.html#constraints:
 	// >>> In most cases, UNIQUE and PRIMARY KEY constraints are
 	// >>> implemented by creating a unique index in the database.
-	SQL("CREATE UNIQUE INDEX network_hwaddr_idx ON network(hwaddr)");
+	SQL_bool("CREATE UNIQUE INDEX network_hwaddr_idx ON network(hwaddr)");
 
 	// Update database version to 4
 	if(!db_set_FTL_property(DB_VERSION, 4))
