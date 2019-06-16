@@ -71,14 +71,13 @@ bool create_network_addresses_table(void)
 	// Step 1: We create a new table without the ip column
 	//         We add the UNIQUE constraint on (ip,hwaddr) already here
 	ret = dbquery("CREATE TABLE network_bck ( id INTEGER PRIMARY KEY NOT NULL, " \
-	                                         "hwaddr TEXT NOT NULL, " \
+	                                         "hwaddr TEXT UNIQUE NOT NULL, " \
 	                                         "interface TEXT NOT NULL, " \
 	                                         "name TEXT, " \
 	                                         "firstSeen INTEGER NOT NULL, " \
 	                                         "lastQuery INTEGER NOT NULL, " \
 	                                         "numQueries INTEGER NOT NULL, " \
-	                                         "macVendor TEXT, " \
-	                                         "UNIQUE(id,hwaddr));");
+	                                         "macVendor TEXT);");
 	if(!ret)
 	{
 		logg("create_network_addresses_table(): CREATE TABLE network_bck failed!");
