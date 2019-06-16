@@ -69,7 +69,6 @@ bool create_network_addresses_table(void)
 	// Remove IP column from network table.
 	// As ALTER TABLE is severely limit, we have to do the column deletion manually.
 	// Step 1: We create a new table without the ip column
-	//         We add the UNIQUE constraint on (ip,hwaddr) already here
 	ret = dbquery("CREATE TABLE network_bck ( id INTEGER PRIMARY KEY NOT NULL, " \
 	                                         "hwaddr TEXT UNIQUE NOT NULL, " \
 	                                         "interface TEXT NOT NULL, " \
