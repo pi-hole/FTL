@@ -16,8 +16,8 @@ fi
 
 # Create necessary directories and files
 mkdir -p /etc/pihole /var/run/pihole /var/log
-touch /var/log/pihole-FTL.log
-chown pihole:pihole /etc/pihole /var/run/pihole /var/log/pihole-FTL.log
+touch /var/log/pihole-FTL.log /var/run/pihole-FTL.pid /var/run/pihole-FTL.port
+chown pihole:pihole /etc/pihole /var/run/pihole /var/log/pihole-FTL.log /var/run/pihole-FTL.pid /var/run/pihole-FTL.port
 
 # Copy binary into a location the new user pihole can access
 cp ./pihole-FTL /home/pihole
