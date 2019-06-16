@@ -97,16 +97,7 @@ bool create_network_addresses_table(void)
 		return false;
 	}
 
-	// Step 3: Drop unique index in hwaddr before dropping the network table
-	ret = dbquery("DROP INDEX network_hwaddr_idx;");
-	if(!ret)
-	{
-		logg("create_network_addresses_table(): DROP INDEX network_hwaddr_idx failed!");
-		dbclose();
-		return false;
-	}
-
-	// Step 4: Drop the network table
+	// Step 3: Drop the network table, the unique index will be automatically dropped
 	ret = dbquery("DROP TABLE network;");
 	if(!ret)
 	{
@@ -116,7 +107,7 @@ bool create_network_addresses_table(void)
 	}
 
 
-	// Step 5: Rename network_bck table to network table as last step
+	// Step 4: Rename network_bck table to network table as last step
 	ret = dbquery("ALTER TABLE network_bck RENAME TO network;");
 	if(!ret)
 	{
