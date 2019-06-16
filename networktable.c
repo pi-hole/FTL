@@ -44,10 +44,84 @@ bool create_network_addresses_table(void)
 	// Create network_addresses table in the database
 	ret = dbquery("CREATE TABLE network_addresses ( network_id INTEGER NOT NULL, "\
 	                                               "ip TEXT NOT NULL, "\
-	                                               "lastSeen INTEGER NOT NULL, "\
+	                                               "lastSeen INTEGER NOT NULL DEFAULT (cast(strftime('%%s', 'now') as int)), "\
 	                                               "UNIQUE(network_id,ip), "\
 	                                               "FOREIGN KEY(network_id) REFERENCES network(id));");
-	if(!ret){ dbclose(); return false; }
+	if(!ret)
+	{
+		logg("create_network_addresses_table(): CREATE TABLE network_addresses failed!");
+		dbclose();
+		return false;
+	}
+
+	// Create a network_addresses row for each entry in the network table
+	ret = dbquery("INSERT INTO network_addresses (network_id,ip) SELECT id,ip FROM network;");
+	if(!ret)
+	{
+		logg("create_network_addresses_table(): INSERT INTO network_addresses failed!");
+		dbclose();
+		return false;
+	}
+
+	// Remove IP column from network table.
+	// As ALTER TABLE is severely limit, we have to do the column deletion manually.
+	// Step 1: We create a new table without the ip column
+	//         We add the UNIQUE constraint on (ip,hwaddr) already here
+	ret = dbquery("CREATE TABLE network_bck ( id INTEGER PRIMARY KEY NOT NULL, " \
+	                                         "hwaddr TEXT NOT NULL, " \
+	                                         "interface TEXT NOT NULL, " \
+	                                         "name TEXT, " \
+	                                         "firstSeen INTEGER NOT NULL, " \
+	                                         "lastQuery INTEGER NOT NULL, " \
+	                                         "numQueries INTEGER NOT NULL, " \
+	                                         "macVendor TEXT, " \
+	                                         "UNIQUE(id,hwaddr));");
+	if(!ret)
+	{
+		logg("create_network_addresses_table(): CREATE TABLE network_bck failed!");
+		dbclose();
+		return false;
+	}
+
+	// Step 2: Copy data (except ip column) from network into network_back
+	ret = dbquery("INSERT INTO network_bck "\
+	              "SELECT id, hwaddr, interface, name, firstSeen, "\
+	                     "lastQuery, numQueries, macVendor "\
+	                     "FROM network;");
+	if(!ret)
+	{
+		logg("create_network_addresses_table(): INSERT INTO network_bck failed!");
+		dbclose();
+		return false;
+	}
+
+	// Step 3: Drop unique index in hwaddr before dropping the network table
+	ret = dbquery("DROP INDEX network_hwaddr_idx;");
+	if(!ret)
+	{
+		logg("create_network_addresses_table(): DROP INDEX network_hwaddr_idx failed!");
+		dbclose();
+		return false;
+	}
+
+	// Step 4: Drop the network table
+	ret = dbquery("DROP TABLE network;");
+	if(!ret)
+	{
+		logg("create_network_addresses_table(): DROP TABLE network failed!");
+		dbclose();
+		return false;
+	}
+
+
+	// Step 5: Rename network_bck table to network table as last step
+	ret = dbquery("ALTER TABLE network_bck RENAME TO network;");
+	if(!ret)
+	{
+		logg("create_network_addresses_table(): ALTER TABLE network_bck failed!");
+		dbclose();
+		return false;
+	}
 
 	// Update database version to 5
 	ret = db_set_FTL_property(DB_VERSION, 5);
@@ -176,9 +250,9 @@ void parse_neighbor_cache(void)
 		{
 			char* macVendor = getMACVendor(hwaddr);
 			dbquery("INSERT INTO network "\
-			        "(ip,hwaddr,interface,firstSeen,lastQuery,numQueries,name,macVendor) "\
-			        "VALUES (\'%s\',\'%s\',\'%s\',%lu, %ld, %u, \'%s\', \'%s\');",\
-			        ip, hwaddr, iface, now,
+			        "(hwaddr,interface,firstSeen,lastQuery,numQueries,name,macVendor) "\
+			        "VALUES (\'%s\',\'%s\',%lu, %ld, %u, \'%s\', \'%s\');",\
+			        hwaddr, iface, now,
 			        client != NULL ? client->lastQuery : 0L,
 			        client != NULL ? client->numQueriesARP : 0u,
 			        hostname,
@@ -207,13 +281,6 @@ void parse_neighbor_cache(void)
 			        "WHERE id = %i;",\
 			        client->numQueriesARP, dbID);
 			client->numQueriesARP = 0;
-
-			// Update IP address in case it changed. This might happen with
-			// sequential DHCP servers as found in many commercial routers
-			dbquery("UPDATE network "\
-			        "SET ip = \'%s\' "\
-			        "WHERE id = %i;",\
-			        ip, dbID);
 
 			// Store hostname if available
 			if(strlen(hostname) > 0)
