@@ -135,9 +135,10 @@ void parse_neighbor_cache(void)
 {
 	FILE* arpfp = NULL;
 	// Try to access the kernel's neighbor cache
-	if((arpfp = popen("ip neigh show", "r")) == NULL)
+	// We are only interested in entries which are in either STALE or REACHABLE state
+	if((arpfp = popen("ip neigh show nud stale nud reachable", "r")) == NULL)
 	{
-		logg("WARN: Command \"ip neigh show\" failed!");
+		logg("WARN: Command \"ip neigh show nud stale nud reachable\" failed!");
 		logg("      Message: %s", strerror(errno));
 		return;
 	}
@@ -156,7 +157,7 @@ void parse_neighbor_cache(void)
 	// Prepare buffers
 	char * linebuffer = NULL;
 	size_t linebuffersize = 0;
-	char ip[100], status1[100], status2[100], hwaddr[100], iface[100];
+	char ip[100], hwaddr[100], iface[100];
 	unsigned int entries = 0;
 	time_t now = time(NULL);
 
@@ -167,35 +168,12 @@ void parse_neighbor_cache(void)
 	// Read ARP cache line by line
 	while(getline(&linebuffer, &linebuffersize, arpfp) != -1)
 	{
-		int num = sscanf(linebuffer, "%99s dev %99s lladdr %99s %99s %99s",
-		                 ip, iface, hwaddr, status1, status2);
+		int num = sscanf(linebuffer, "%99s dev %99s lladdr %99s",
+		                 ip, iface, hwaddr);
 
 		// Check if we want to process the line we just read
-		switch(num)
-		{
-			// Example: 2003:17:7:dc:e1b1:1e01:1a5a:ff dev eth0 lladdr a0:20:29:24:98:99 REACHABLE
-			case 4:
-				if(strcasecmp(status1, "reachable") != 0 &&
-				   strcasecmp(status1, "stale")     != 0)
-				{
-					continue;
-				}
-				break;
-
-			// Example: dead:beef:dead:beef:dead:beef dev wlp3s0 lladdr de:ad:be:ef:de:ad router REACHABLE
-			case 5:
-				if(strcasecmp(status1, "router")    != 0 &&
-				   strcasecmp(status2, "reachable") != 0 &&
-				   strcasecmp(status2, "stale")     != 0)
-				{
-					continue;
-				}
-				break;
-
-			// Skip lines without hardware information
-			default:
-				continue;
-		}
+		if(num != 3)
+			continue;
 
 		// Get ID of this device in our network database. If it cannot be
 		// found, then this is a new device. We only use the hardware address
