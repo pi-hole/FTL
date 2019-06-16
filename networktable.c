@@ -301,8 +301,7 @@ void parse_neighbor_cache(void)
 		// becomes active and the line is instead REPLACEd, causing the
 		// lastQuery timestamp to be updated
 		dbquery("INSERT OR REPLACE INTO network_addresses "\
-		        "(network_id,ip,lastSeen) VALUES(%i,\'%s\',%d);",\
-		        dbID, ip, time(NULL));
+		        "(network_id,ip) VALUES(%i,\'%s\');", dbID, ip);
 
 		// Count number of processed ARP cache entries
 		entries++;
