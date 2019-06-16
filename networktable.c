@@ -38,38 +38,33 @@ bool create_network_table(void)
 	return true;
 }
 
+// Private macro
+#define SQL(sql) {\
+    if(!dbquery(sql)) {\
+        logg("create_network_addresses_table(): \"%s\" failed!", sql);\
+        dbclose();\
+        return false;\
+    }\
+}
+
 bool create_network_addresses_table(void)
 {
-	bool ret;
-
-	dbquery("BEGIN TRANSACTION");
+	SQL("BEGIN TRANSACTION");
 
 	// Create network_addresses table in the database
-	ret = dbquery("CREATE TABLE network_addresses ( network_id INTEGER NOT NULL, "\
+	SQL("CREATE TABLE network_addresses ( network_id INTEGER NOT NULL, "\
 	                                               "ip TEXT NOT NULL, "\
 	                                               "lastSeen INTEGER NOT NULL DEFAULT (cast(strftime('%%s', 'now') as int)), "\
 	                                               "UNIQUE(network_id,ip), "\
 	                                               "FOREIGN KEY(network_id) REFERENCES network(id));");
-	if(!ret)
-	{
-		logg("create_network_addresses_table(): CREATE TABLE network_addresses failed!");
-		dbclose();
-		return false;
-	}
 
 	// Create a network_addresses row for each entry in the network table
-	ret = dbquery("INSERT INTO network_addresses (network_id,ip) SELECT id,ip FROM network;");
-	if(!ret)
-	{
-		logg("create_network_addresses_table(): INSERT INTO network_addresses failed!");
-		dbclose();
-		return false;
-	}
+	SQL("INSERT INTO network_addresses (network_id,ip) SELECT id,ip FROM network;");
 
 	// Remove IP column from network table.
 	// As ALTER TABLE is severely limit, we have to do the column deletion manually.
 	// Step 1: We create a new table without the ip column
-	ret = dbquery("CREATE TABLE network_bck ( id INTEGER PRIMARY KEY NOT NULL, " \
+	SQL("CREATE TABLE network_bck ( id INTEGER PRIMARY KEY NOT NULL, " \
 	                                         "hwaddr TEXT UNIQUE NOT NULL, " \
 	                                         "interface TEXT NOT NULL, " \
 	                                         "name TEXT, " \
@@ -77,47 +72,22 @@ bool create_network_addresses_table(void)
 	                                         "lastQuery INTEGER NOT NULL, " \
 	                                         "numQueries INTEGER NOT NULL, " \
 	                                         "macVendor TEXT);");
-	if(!ret)
-	{
-		logg("create_network_addresses_table(): CREATE TABLE network_bck failed!");
-		dbclose();
-		return false;
-	}
 
 	// Step 2: Copy data (except ip column) from network into network_back
-	ret = dbquery("INSERT INTO network_bck "\
+	SQL("INSERT INTO network_bck "\
 	              "SELECT id, hwaddr, interface, name, firstSeen, "\
 	                     "lastQuery, numQueries, macVendor "\
 	                     "FROM network;");
-	if(!ret)
-	{
-		logg("create_network_addresses_table(): INSERT INTO network_bck failed!");
-		dbclose();
-		return false;
-	}
 
 	// Step 3: Drop the network table, the unique index will be automatically dropped
-	ret = dbquery("DROP TABLE network;");
-	if(!ret)
-	{
-		logg("create_network_addresses_table(): DROP TABLE network failed!");
-		dbclose();
-		return false;
-	}
+	SQL("DROP TABLE network;");
 
 
 	// Step 4: Rename network_bck table to network table as last step
-	ret = dbquery("ALTER TABLE network_bck RENAME TO network;");
-	if(!ret)
-	{
-		logg("create_network_addresses_table(): ALTER TABLE network_bck failed!");
-		dbclose();
-		return false;
-	}
+	SQL("ALTER TABLE network_bck RENAME TO network;");
 
 	// Update database version to 5
-	ret = db_set_FTL_property(DB_VERSION, 5);
-	if(!ret)
+	if(!db_set_FTL_property(DB_VERSION, 5))
 	{
 		logg("create_network_addresses_table(): Failed to update database version!");
 		dbclose();
