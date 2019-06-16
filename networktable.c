@@ -41,6 +41,9 @@ bool create_network_table(void)
 bool create_network_addresses_table(void)
 {
 	bool ret;
+
+	dbquery("BEGIN TRANSACTION");
+
 	// Create network_addresses table in the database
 	ret = dbquery("CREATE TABLE network_addresses ( network_id INTEGER NOT NULL, "\
 	                                               "ip TEXT NOT NULL, "\
@@ -125,7 +128,14 @@ bool create_network_addresses_table(void)
 
 	// Update database version to 5
 	ret = db_set_FTL_property(DB_VERSION, 5);
-	if(!ret){ dbclose(); return false; }
+	if(!ret)
+	{
+		logg("create_network_addresses_table(): Failed to update database version!");
+		dbclose();
+		return false;
+	}
+
+	dbquery("COMMIT");
 
 	return true;
 }
