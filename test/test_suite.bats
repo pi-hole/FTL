@@ -249,23 +249,41 @@
 }
 
 @test "Fail on invalid argument" {
-  run bash -c './pihole-FTL abc'
+  run bash -c '/home/pihole/pihole-FTL abc'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "pihole-FTL: invalid option -- 'abc'" ]]
-  [[ ${lines[1]} == "Try './pihole-FTL --help' for more information" ]]
+  [[ ${lines[1]} == "Try '/home/pihole/pihole-FTL --help' for more information" ]]
 }
 
 @test "Help argument return help text" {
-  run bash -c './pihole-FTL help'
+  run bash -c '/home/pihole/pihole-FTL help'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "pihole-FTL - The Pi-hole FTL engine" ]]
   [[ ${lines[3]} == "Available arguments:" ]]
 }
 
-@test "No FATAL messages in pihole-FTL.log" {
-  run bash -c 'grep -c "FATAL" /var/log/pihole-FTL.log'
+@test "No WARNING messages in pihole-FTL.log (besides known capability issues)" {
+  run bash -c 'grep "WARNING:" /var/log/pihole-FTL.log | grep -c -v -E "CAP_NET_ADMIN|CAP_NET_RAW"'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0" ]]
+}
+
+@test "No ERROR messages in pihole-FTL.log" {
+  run bash -c 'grep -c "ERROR:" /var/log/pihole-FTL.log'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "0" ]]
+}
+
+@test "No FATAL messages in pihole-FTL.log" {
+  run bash -c 'grep -c "FATAL:" /var/log/pihole-FTL.log'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "0" ]]
+}
+
+@test "Ownership and permissions of pihole-FTL.db correct" {
+  run bash -c 'ls -l /etc/pihole/pihole-FTL.db'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "-rw-r--r-- 1 pihole pihole"* ]]
 }
 
 @test "Final part of the tests: Kill pihole-FTL process" {

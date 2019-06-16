@@ -7,10 +7,23 @@ if [[ ${CI} == "true" && "${CIRCLE_JOB}" != "x86_64" ]]; then
 fi
 
 # Install necessary additional components for testing
-apt-get -qq install dnsutils -y > /dev/null
+apt-get -qq install dnsutils libcap2-bin -y > /dev/null
 
-# Create necessary directories
+# Create pihole user if it does not exist
+if ! id -u pihole &> /dev/null; then
+  useradd -m -s /usr/sbin/nologin pihole
+fi
+
+# Create necessary directories and files
 mkdir -p /etc/pihole /var/run/pihole /var/log
+touch /var/log/pihole-FTL.log /var/run/pihole-FTL.pid /var/run/pihole-FTL.port
+chown pihole:pihole /etc/pihole /var/run/pihole /var/log/pihole-FTL.log /var/run/pihole-FTL.pid /var/run/pihole-FTL.port
+
+# Copy binary into a location the new user pihole can access
+cp ./pihole-FTL /home/pihole
+chmod +x /home/pihole/pihole-FTL
+# Note: We cannot add CAP_NET_RAW and CAP_NET_ADMIN at this point
+setcap CAP_NET_BIND_SERVICE+eip /home/pihole/pihole-FTL
 
 # Prepare gravity database
 sqlite3 /etc/pihole/gravity.db < test/gravity.db.sql
@@ -21,15 +34,19 @@ echo "BLOCKING_ENABLED=true" > /etc/pihole/setupVars.conf
 # Prepare pihole-FTL.conf
 echo "" > /etc/pihole/pihole-FTL.conf
 
+# Set restrictive umask
+OLDUMASK=$(umask)
+umask 0022
+
 # Start FTL
-if ! ./pihole-FTL; then
+if ! runuser -l pihole -s /bin/sh -c /home/pihole/pihole-FTL; then
   echo "pihole-FTL failed to start"
   exit 1
 fi
 
 # Prepare BATS
 mkdir -p test/libs
-git clone --depth=1 https://github.com/bats-core/bats-core test/libs/bats > /dev/null
+git clone --depth=1 --quiet https://github.com/bats-core/bats-core test/libs/bats > /dev/null
 
 # Block until FTL is ready, retry once per second for 45 seconds
 sleep 2
@@ -45,4 +62,13 @@ cat /var/log/pihole-FTL.log
 
 # Run tests
 test/libs/bats/bin/bats "test/test_suite.bats"
-exit $?
+RET=$?
+
+# Restore umask
+umask $OLDUMASK
+
+# Remove copied file
+rm /home/pihole/pihole-FTL
+
+# Exit with return code of bats tests
+exit $RET
