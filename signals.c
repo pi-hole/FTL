@@ -61,7 +61,7 @@ static void __attribute__((noreturn)) SIGSEGV_handler(int sig, siginfo_t *si, vo
 	if(bcktrace != NULL)
 		free(bcktrace);
 #else
-	logg("!!! INFO: pihole-FTL has not been compiled for glibc !!!");
+	logg("!!! INFO: pihole-FTL has not been compiled with glibc/backtrace support, not generating one !!!");
 #endif
 	logg("Thank you for helping us to improve our FTL engine!");
 
