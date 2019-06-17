@@ -130,18 +130,18 @@
 @test "Top Ads (descending, default)" {
   run bash -c 'echo ">top-ads >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ "${lines[@]}" == *"0 1 blacklisted.com"* ]]
-  [[ "${lines[@]}" == *"1 1 0427d7.se"* ]]
-  [[ "${lines[@]}" == *"2 1 regex5.com"* ]]
+  [[ "${lines[@]}" == *" 1 blacklisted.com"* ]]
+  [[ "${lines[@]}" == *" 1 0427d7.se"* ]]
+  [[ "${lines[@]}" == *" 1 regex5.com"* ]]
   [[ ${lines[4]} == "" ]]
 }
 
 @test "Top Ads (ascending)" {
   run bash -c 'echo ">top-ads asc >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "0 1 blacklisted.com" ]]
-  [[ ${lines[2]} == "1 1 0427d7.se" ]]
-  [[ ${lines[3]} == "2 1 regex5.com" ]]
+  [[ "${lines[@]}" == *" 1 blacklisted.com"* ]]
+  [[ "${lines[@]}" == *" 1 0427d7.se"* ]]
+  [[ "${lines[@]}" == *" 1 regex5.com"* ]]
   [[ ${lines[4]} == "" ]]
 }
 
@@ -283,8 +283,7 @@
 @test "Ownership and permissions of pihole-FTL.db correct" {
   run bash -c 'ls -l /etc/pihole/pihole-FTL.db'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == *"pihole pihole"* ]]
-  [[ ${lines[0]} == *"-rw-r--r--"* ]]
+  [[ ${lines[0]} == "-rw-r--r-- 1 pihole pihole"* || ${lines[0]} == "-rw-r--r--    1 pihole   pihole"* ]]
 }
 
 @test "Final part of the tests: Kill pihole-FTL process" {
