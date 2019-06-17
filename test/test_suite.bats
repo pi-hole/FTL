@@ -107,22 +107,22 @@
   run bash -c 'echo ">top-domains >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[1]} == "0 2 google.com" ]]
-  [[ ${lines[2]} == "1 1 version.ftl" ]]
-  [[ ${lines[3]} == "2 1 version.bind" ]]
-  [[ ${lines[4]} == "3 1 whitelisted.com" ]]
-  [[ ${lines[5]} == "4 1 regexa.com" ]]
-  [[ ${lines[6]} == "5 1 ftl.pi-hole.net" ]]
+  [[ "${lines[@]}" == *" 1 version.ftl"* ]]
+  [[ "${lines[@]}" == *" 1 version.bind"* ]]
+  [[ "${lines[@]}" == *" 1 whitelisted.com"* ]]
+  [[ "${lines[@]}" == *" 1 regexa.com"* ]]
+  [[ "${lines[@]}" == *" 1 ftl.pi-hole.net"* ]]
   [[ ${lines[7]} == "" ]]
 }
 
 @test "Top Domains (ascending)" {
   run bash -c 'echo ">top-domains asc >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "0 1 version.ftl" ]]
-  [[ ${lines[2]} == "1 1 version.bind" ]]
-  [[ ${lines[3]} == "2 1 whitelisted.com" ]]
-  [[ ${lines[4]} == "3 1 regexa.com" ]]
-  [[ ${lines[5]} == "4 1 ftl.pi-hole.net" ]]
+  [[ "${lines[@]}" == *" 1 version.ftl"* ]]
+  [[ "${lines[@]}" == *" 1 version.bind"* ]]
+  [[ "${lines[@]}" == *" 1 whitelisted.com"* ]]
+  [[ "${lines[@]}" == *" 1 regexa.com"* ]]
+  [[ "${lines[@]}" == *" 1 ftl.pi-hole.net"* ]]
   [[ ${lines[6]} == "5 2 google.com" ]]
   [[ ${lines[7]} == "" ]]
 }
@@ -130,9 +130,9 @@
 @test "Top Ads (descending, default)" {
   run bash -c 'echo ">top-ads >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "0 1 blacklisted.com" ]]
-  [[ ${lines[2]} == "1 1 0427d7.se" ]]
-  [[ ${lines[3]} == "2 1 regex5.com" ]]
+  [[ "${lines[@]}" == *"0 1 blacklisted.com"* ]]
+  [[ "${lines[@]}" == *"1 1 0427d7.se"* ]]
+  [[ "${lines[@]}" == *"2 1 regex5.com"* ]]
   [[ ${lines[4]} == "" ]]
 }
 
@@ -150,7 +150,7 @@
   printf "%s\n" "${lines[@]}"
   [[ ${lines[1]} == "-2 30.00 blocklist blocklist" ]]
   [[ ${lines[2]} == "-1 20.00 cache cache" ]]
-  [[ ${lines[3]} == "0 50.00 127.0.0.11 " ]]
+  [[ ${lines[3]} == "0 50.00 "* ]]
   [[ ${lines[4]} == "" ]]
 }
 
@@ -159,7 +159,7 @@
   printf "%s\n" "${lines[@]}"
   [[ ${lines[1]} == "-2 30.00 blocklist blocklist" ]]
   [[ ${lines[2]} == "-1 20.00 cache cache" ]]
-  [[ ${lines[3]} == "0 50.00 127.0.0.11 " ]]
+  [[ ${lines[3]} == "0 50.00 "* ]]
   [[ ${lines[4]} == "" ]]
 }
 
@@ -283,7 +283,8 @@
 @test "Ownership and permissions of pihole-FTL.db correct" {
   run bash -c 'ls -l /etc/pihole/pihole-FTL.db'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "-rw-r--r-- 1 pihole pihole"* ]]
+  [[ ${lines[0]} == *"pihole pihole"* ]]
+  [[ ${lines[0]} == *"-rw-r--r--"* ]]
 }
 
 @test "Final part of the tests: Kill pihole-FTL process" {

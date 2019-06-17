@@ -1,13 +1,10 @@
 #!/bin/bash
 
 # Only run tests on x86_64 target
-if [[ ${CI} == "true" && "${CIRCLE_JOB}" != "x86_64" ]]; then
+if [[ ${CI} == "true" && "${CIRCLE_JOB}" != "x86_64" && "${CIRCLE_JOB}" != "x86_64-musl" ]]; then
   echo "Skipping tests (CIRCLE_JOB: ${CIRCLE_JOB})!"
   exit 0
 fi
-
-# Install necessary additional components for testing
-apt-get -qq install dnsutils libcap2-bin -y > /dev/null
 
 # Create pihole user if it does not exist
 if ! id -u pihole &> /dev/null; then
@@ -39,7 +36,7 @@ OLDUMASK=$(umask)
 umask 0022
 
 # Start FTL
-if ! runuser -l pihole -s /bin/sh -c /home/pihole/pihole-FTL; then
+if ! su pihole -s /bin/sh -c /home/pihole/pihole-FTL; then
   echo "pihole-FTL failed to start"
   exit 1
 fi
