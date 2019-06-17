@@ -283,7 +283,8 @@
 @test "Ownership and permissions of pihole-FTL.db correct" {
   run bash -c 'ls -l /etc/pihole/pihole-FTL.db'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "-rw-r--r-- 1 pihole pihole"* || ${lines[0]} == "-rw-r--r--    1 pihole   pihole"* ]]
+  [[ ${lines[0]} == *"pihole pihole"* || ${lines[0]} == *"pihole   pihole"* ]]
+  [[ ${lines[0]} == "-rw-r--r--"* ]]
 }
 
 @test "Final part of the tests: Kill pihole-FTL process" {

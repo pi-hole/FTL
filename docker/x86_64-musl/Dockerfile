@@ -10,6 +10,8 @@ RUN wget https://github.com/tcnksm/ghr/releases/download/v0.12.0/ghr_v0.12.0_lin
 RUN apk add --no-cache alpine-sdk linux-headers gmp-dev nettle-dev \
                        sqlite bash bind-tools libcap shadow
 
-RUN git clone https://github.com/pi-hole/FTL && cd FTL && git checkout tweak/musl_support
+ENV CC gcc
 
-RUN cd FTL && make -j 4
+#RUN git clone https://github.com/pi-hole/FTL && cd FTL && git checkout tweak/musl_support
+#RUN cd FTL && make -j 4
+#RUN cd FTL && test/run.sh
