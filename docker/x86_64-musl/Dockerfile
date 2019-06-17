@@ -13,7 +13,3 @@ RUN wget https://github.com/tcnksm/ghr/releases/download/v0.12.0/ghr_v0.12.0_lin
     mv ghr_*_linux_amd64/ghr /usr/bin/ghr
 
 ENV CC gcc
-
-#RUN git clone https://github.com/pi-hole/FTL && cd FTL
-#RUN cd FTL && make -j 4
-#RUN cd FTL && test/run.sh

@@ -103,6 +103,12 @@
   [[ ${lines[2]} == "" ]]
 }
 
+# Here and below: It is not meaningful to assume a particular order
+# here as the values are sorted before output. It is unpredictable in
+# which order they may come out. While this has always been the same
+# when compiling for glibc, the new musl build reveals that another
+# library may have a different interpretation here.
+
 @test "Top Domains (descending, default)" {
   run bash -c 'echo ">top-domains >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
@@ -175,6 +181,9 @@
   [[ ${lines[7]} == "TXT: 20.00" ]]
   [[ ${lines[8]} == "" ]]
 }
+
+# Here and below: Acknowledge that there might be a host name after
+# the IP address of the client (..."*"...)
 
 @test "Get all queries" {
   run bash -c 'echo ">getallqueries >quit" | nc -v 127.0.0.1 4711'
@@ -279,6 +288,10 @@
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0" ]]
 }
+
+# x86_64-musl is built on busybox which has a slightly different
+# variant of ls displaying three, instead of one, spaces between the
+# user and group names.
 
 @test "Ownership and permissions of pihole-FTL.db correct" {
   run bash -c 'ls -l /etc/pihole/pihole-FTL.db'
