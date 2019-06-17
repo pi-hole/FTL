@@ -1,8 +1,10 @@
 FROM alpine:edge
 
-# First line: Packages needed for building
-# Second line: Packages needed for testing
+# 1st line: Packages needed for building
+# 2nd line: Packaged needed by the CI
+# 3rd line: Packages needed for testing
 RUN apk add --no-cache alpine-sdk linux-headers gmp-dev nettle-dev \
+                       openssh-client \
                        sqlite bash bind-tools libcap shadow
 
 # Install ghr for GitHub Releases: https://github.com/tcnksm/ghr
