@@ -1,12 +1,3 @@
-FROM debian:stretch
+FROM alpine:edge
 
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends nettle-dev musl-tools \
-        make file wget netcat-traditional sqlite3 git ca-certificates ssh
-
-# Install ghr for GitHub Releases: https://github.com/tcnksm/ghr
-RUN wget https://github.com/tcnksm/ghr/releases/download/v0.12.0/ghr_v0.12.0_linux_amd64.tar.gz && \
-    tar -xzf ghr_*_linux_amd64.tar.gz && \
-    mv ghr_*_linux_amd64/ghr /usr/bin/ghr
-
-ENV CC musl-gcc
+RUN apk add --no-cache alpine-sdk linux-headers gmp-dev nettle-dev
