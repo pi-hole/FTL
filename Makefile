@@ -98,10 +98,16 @@ CCFLAGS=-std=gnu11 -I$(IDIR) $(WARNFLAGS) -D_FILE_OFFSET_BITS=64 $(HARDENING_FLA
 # for FTL we need the pthread library
 # for dnsmasq we need the nettle crypto library and the gmp maths library
 # We link the two libraries statically. Although this increases the binary file size by about 1 MB, it saves about 5 MB of shared libraries and makes deployment easier
-#LIBS=-pthread -lnettle -lgmp -lhogweed
-LIBS=-pthread -lrt -Wl,-Bstatic -L/usr/local/lib -lhogweed -lgmp -lnettle -Wl,-Bdynamic
+LIBS=-pthread -lrt -Wl,-Bstatic -L/usr/local/lib -lhogweed -lgmp -lnettle
 # Flags for compiling with libidn : -lidn
 # Flags for compiling with libidn2: -lidn2
+
+# Do we want to compile a statically linked musl executable?
+ifeq "$(CIRCLE_JOB)" "x86_64-musl"
+  CC := $(CC) -Wl,-Bstatic -static-libgcc -static-pie
+else
+  LIBS := $(LIBS) -Wl,-Bdynamic
+endif
 
 IDIR = .
 ODIR = obj
