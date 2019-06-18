@@ -34,7 +34,6 @@ GCCVERSION8 := $(shell expr `$(CC) -dumpversion | cut -f1 -d.` \>= 8)
 # -Wp,-D_FORTIFY_SOURCE=2 and -O1 or higher: This causes certain unsafe glibc functions to be replaced with their safer counterparts
 # -Wl,-z,relro: reduces the possible areas of memory in a program that can be used by an attacker that performs a successful memory corruption exploit
 # -Wl,-z,now: When combined with RELRO above, this further reduces the regions of memory available to memory corruption attacks
-# -pie -fPIE: For ASLR (address space layout randomization)
 # -g3: More debugging information
 # -fno-omit-frame-pointer: get nicer stacktraces
 # -funwind-tables: Generate static data for unwinding
@@ -43,7 +42,7 @@ GCCVERSION8 := $(shell expr `$(CC) -dumpversion | cut -f1 -d.` \>= 8)
 # -Wl,-z,defs: Detect and reject underlinking (phenomenon caused by missing shared library arguments when invoking the linked editor to produce another shared library)
 # -Wl,-z,now: Disable lazy binding
 # -Wl,-z,relro: Read-only segments after relocation
-HARDENING_FLAGS=-fstack-protector-strong -Wp,-D_FORTIFY_SOURCE=2 -O3 -Wl,-z,relro,-z,now -pie -fPIE -fexceptions -funwind-tables -fasynchronous-unwind-tables -Wl,-z,defs -Wl,-z,now -Wl,-z,relro
+HARDENING_FLAGS=-fstack-protector-strong -Wp,-D_FORTIFY_SOURCE=2 -O3 -Wl,-z,relro,-z,now -fexceptions -funwind-tables -fasynchronous-unwind-tables -Wl,-z,defs -Wl,-z,now -Wl,-z,relro
 DEBUG_FLAGS=-rdynamic -fno-omit-frame-pointer
 
 # -DSQLITE_OMIT_LOAD_EXTENSION: This option omits the entire extension loading mechanism from SQLite, including sqlite3_enable_load_extension() and sqlite3_load_extension() interfaces. (needs -ldl linking option, otherwise)
@@ -107,6 +106,8 @@ ifeq "$(CIRCLE_JOB)" "x86_64-musl"
   CC := $(CC) -Wl,-Bstatic -static-libgcc -static-pie
 else
   LIBS := $(LIBS) -Wl,-Bdynamic
+  # -pie -fPIE: (Dynamic) position independent executable
+  HARDENING_FLAGS := $(HARDENING_FLAGS) -pie -fPIE
 endif
 
 IDIR = .
