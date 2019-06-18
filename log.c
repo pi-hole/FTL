@@ -140,11 +140,37 @@ void log_counter_info(void)
 void log_FTL_version(const bool crashreport)
 {
 	logg("FTL branch: %s", GIT_BRANCH);
-	logg("FTL version: %s", GIT_TAG);
+	logg("FTL version: %s", get_FTL_version());
 	logg("FTL commit: %s", GIT_HASH);
 	logg("FTL date: %s", GIT_DATE);
 	if(crashreport)
 		logg("FTL user: started as %s, ended as %s", username, getUserName());
 	else
 		logg("FTL user: %s", username);
+}
+
+static char *FTLversion = NULL;
+const char __attribute__ ((malloc)) *get_FTL_version(void)
+{
+	// Obtain FTL version if not already determined
+	if(FTLversion == NULL)
+	{
+		const char *tag = GIT_TAG;
+		if(strlen(tag) > 1)
+		{
+			FTLversion = strdup(GIT_VERSION);
+		}
+		else
+		{
+			const char *commit = GIT_HASH;
+			FTLversion = calloc(13, sizeof(char));
+			// Build version by appending 7 characters of the hash to "vDev-"
+			memcpy(FTLversion, "vDev-", 5);
+			memcpy(FTLversion+5, commit, 7);
+			// Zero-terminate string
+			FTLversion[12] = 0;
+		}
+	}
+
+	return FTLversion;
 }

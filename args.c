@@ -51,19 +51,7 @@ void parse_args(int argc, char* argv[])
 		   strcmp(argv[i], "version") == 0 ||
 		   strcmp(argv[i], "--version") == 0)
 		{
-			const char * tag = GIT_TAG;
-			if(strlen(tag) > 1)
-			{
-				printf("%s\n",GIT_VERSION);
-			}
-			else
-			{
-				const char * commit = GIT_HASH;
-				char hash[8];
-				// Extract first 7 characters of the hash
-				memcpy(hash, commit, 7); hash[7] = 0;
-				printf("vDev-%s\n", hash);
-			}
+			printf("%s\n", get_FTL_version());
 			exit(EXIT_SUCCESS);
 		}
 

@@ -967,8 +967,9 @@ void getQueryTypesOverTime(const int *sock)
 
 void getVersion(const int *sock)
 {
-	const char * commit = GIT_HASH;
-	const char * tag = GIT_TAG;
+	const char *commit = GIT_HASH;
+	const char *tag = GIT_TAG;
+	const char *version = get_FTL_version();
 
 	// Extract first 7 characters of the hash
 	char hash[8];
@@ -979,10 +980,10 @@ void getVersion(const int *sock)
 			ssend(
 					*sock,
 					"version %s\ntag %s\nbranch %s\nhash %s\ndate %s\n",
-					GIT_VERSION, tag, GIT_BRANCH, hash, GIT_DATE
+					version, tag, GIT_BRANCH, hash, GIT_DATE
 			);
 		else {
-			if(!pack_str32(*sock, GIT_VERSION) ||
+			if(!pack_str32(*sock, version) ||
 					!pack_str32(*sock, (char *) tag) ||
 					!pack_str32(*sock, GIT_BRANCH) ||
 					!pack_str32(*sock, hash) ||

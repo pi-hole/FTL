@@ -20,7 +20,7 @@
 #include <setjmp.h>
 
 /* Pi-hole modification */
-#include "../version.h"
+extern char *get_FTL_version(void);
 /************************/
 
 static volatile int mem_recover = 0;
@@ -4777,7 +4777,7 @@ void read_opts(int argc, char **argv, char *compile_opts)
   /************************/
 #endif
   /******** Pi-hole modification ********/
-  add_txt("version.FTL", GIT_VERSION, 0 );
+  add_txt("version.FTL", get_FTL_version(), 0 );
   /**************************************/
 
   while (1)
