@@ -150,7 +150,7 @@ version.h: version~
 	@echo '#define GIT_TAG "$(GIT_TAG)"' >> "$@"
 	@echo '#define GIT_HASH "$(GIT_HASH)"' >> "$@"
 	@echo '#endif // VERSION_H' >> "$@"
-	@echo "Making FTL version on branch $(GIT_BRANCH) - $(GIT_VERSION) ($(GIT_DATE))"
+	@echo "Making FTL version on branch $(GIT_BRANCH) - $(GIT_VERSION) / $(GIT_TAG) / $(GIT_HASH) ($(GIT_DATE))"
 
 PREFIX=/usr
 SETCAP = $(shell which setcap)
