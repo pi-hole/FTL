@@ -303,13 +303,13 @@
 @test "Dependence on shared libraries" {
   run bash -c 'ldd ./pihole-FTL'
   printf "%s\n" "${lines[@]}"
-  [[ $STATIC != "true" && "${lines[@]}" == *"=>"* ]] ||
-  [[ $STATIC == "true" && "${lines[@]}" != *"=>"* ]]
+  [[ "${STATIC}" != "true" && "${lines[@]}" == *"=>"* ]] || \
+  [[ "${STATIC}" == "true" && "${lines[@]}" != *"=>"* ]]
 }
 
 @test "Dependence on specific interpreter" {
   run bash -c 'file ./pihole-FTL'
   printf "%s\n" "${lines[@]}"
-  [[ $STATIC != "true" && "${lines[@]}" == *"interpreter"* ]] ||
-  [[ $STATIC == "true" && "${lines[@]}" != *"interpreter"* ]]
+  [[ "${STATIC}" != "true" && "${lines[@]}" == *"interpreter"* ]] || \
+  [[ "${STATIC}" == "true" && "${lines[@]}" != *"interpreter"* ]]
 }
