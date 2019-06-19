@@ -188,54 +188,54 @@
 @test "Get all queries" {
   run bash -c 'echo ">getallqueries >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == *"TXT version.ftl 127.0.0.1 "*"3 0 6"* ]]
-  [[ ${lines[2]} == *"TXT version.bind 127.0.0.1 "*"3 0 6"* ]]
-  [[ ${lines[3]} == *"A blacklisted.com 127.0.0.1 "*"5 0 4"* ]]
-  [[ ${lines[4]} == *"A 0427d7.se 127.0.0.1 "*"1 0 4"* ]]
-  [[ ${lines[5]} == *"A whitelisted.com 127.0.0.1 "*"2 0 4"* ]]
-  [[ ${lines[6]} == *"A regex5.com 127.0.0.1 "*"4 0 4"* ]]
-  [[ ${lines[7]} == *"A regexa.com 127.0.0.1 "*"2 0 7"* ]]
-  [[ ${lines[8]} == *"A google.com 127.0.0.1 "*"2 0 4"* ]]
-  [[ ${lines[9]} == *"AAAA google.com 127.0.0.1 "*"2 0 4"* ]]
-  [[ ${lines[10]} == *"A ftl.pi-hole.net 127.0.0.1 "*"2 0 4"* ]]
+  [[ ${lines[1]} == *"TXT version.ftl "*" 3 0 6"* ]]
+  [[ ${lines[2]} == *"TXT version.bind "*" 3 0 6"* ]]
+  [[ ${lines[3]} == *"A blacklisted.com "*" 5 0 4"* ]]
+  [[ ${lines[4]} == *"A 0427d7.se "*" 1 0 4"* ]]
+  [[ ${lines[5]} == *"A whitelisted.com "*" 2 0 4"* ]]
+  [[ ${lines[6]} == *"A regex5.com "*" 4 0 4"* ]]
+  [[ ${lines[7]} == *"A regexa.com "*" 2 0 7"* ]]
+  [[ ${lines[8]} == *"A google.com "*" 2 0 4"* ]]
+  [[ ${lines[9]} == *"AAAA google.com "*" 2 0 4"* ]]
+  [[ ${lines[10]} == *"A ftl.pi-hole.net "*" 2 0 4"* ]]
   [[ ${lines[11]} == "" ]]
 }
 
 @test "Get all queries (domain filtered)" {
   run bash -c 'echo ">getallqueries-domain regexa.com >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == *"A regexa.com 127.0.0.1 "*"2 0 7"* ]]
+  [[ ${lines[1]} == *"A regexa.com "*" 2 0 7"* ]]
   [[ ${lines[2]} == "" ]]
 }
 
 @test "Get all queries (domain + number filtered)" {
   run bash -c 'echo ">getallqueries-domain regexa.com (6) >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == *"A regexa.com 127.0.0.1 "*"2 0 7"* ]]
+  [[ ${lines[1]} == *"A regexa.com "*" 2 0 7"* ]]
   [[ ${lines[2]} == "" ]]
 }
 
 @test "Get all queries (client filtered)" {
   run bash -c 'echo ">getallqueries-client 127.0.0.1 >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == *"TXT version.ftl 127.0.0.1 "*"3 0 6"* ]]
-  [[ ${lines[2]} == *"TXT version.bind 127.0.0.1 "*"3 0 6"* ]]
-  [[ ${lines[3]} == *"A blacklisted.com 127.0.0.1 "*"5 0 4"* ]]
-  [[ ${lines[4]} == *"A 0427d7.se 127.0.0.1 "*"1 0 4"* ]]
-  [[ ${lines[5]} == *"A whitelisted.com 127.0.0.1 "*"2 0 4"* ]]
-  [[ ${lines[6]} == *"A regex5.com 127.0.0.1 "*"4 0 4"* ]]
-  [[ ${lines[7]} == *"A regexa.com 127.0.0.1 "*"2 0 7"* ]]
-  [[ ${lines[8]} == *"A google.com 127.0.0.1 "*"2 0 4"* ]]
-  [[ ${lines[9]} == *"AAAA google.com 127.0.0.1 "*"2 0 4"* ]]
-  [[ ${lines[10]} == *"A ftl.pi-hole.net 127.0.0.1 "*"2 0 4"* ]]
+  [[ ${lines[1]} == *"TXT version.ftl "*" 3 0 6"* ]]
+  [[ ${lines[2]} == *"TXT version.bind "*" 3 0 6"* ]]
+  [[ ${lines[3]} == *"A blacklisted.com "*" 5 0 4"* ]]
+  [[ ${lines[4]} == *"A 0427d7.se "*" 1 0 4"* ]]
+  [[ ${lines[5]} == *"A whitelisted.com "*" 2 0 4"* ]]
+  [[ ${lines[6]} == *"A regex5.com "*" 4 0 4"* ]]
+  [[ ${lines[7]} == *"A regexa.com "*" 2 0 7"* ]]
+  [[ ${lines[8]} == *"A google.com "*" 2 0 4"* ]]
+  [[ ${lines[9]} == *"AAAA google.com "*" 2 0 4"* ]]
+  [[ ${lines[10]} == *"A ftl.pi-hole.net "*" 2 0 4"* ]]
   [[ ${lines[11]} == "" ]]
 }
 
 @test "Get all queries (client + number filtered)" {
   run bash -c 'echo ">getallqueries-client 127.0.0.1 (2) >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == *"AAAA google.com 127.0.0.1 "*"2 0 4"* ]]
-  [[ ${lines[2]} == *"A ftl.pi-hole.net 127.0.0.1 "*"2 0 4"* ]]
+  [[ ${lines[1]} == *"AAAA google.com "*" 2 0 4"* ]]
+  [[ ${lines[2]} == *"A ftl.pi-hole.net "*" 2 0 4"* ]]
   [[ ${lines[3]} == "" ]]
 }
 
