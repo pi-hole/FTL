@@ -155,20 +155,15 @@ const char __attribute__ ((malloc)) *get_FTL_version(void)
 	// Obtain FTL version if not already determined
 	if(FTLversion == NULL)
 	{
-		const char *tag = GIT_TAG;
-		if(strlen(tag) > 1)
+		if(strlen(GIT_TAG) > 1)
 		{
 			FTLversion = strdup(GIT_VERSION);
 		}
 		else
 		{
-			const char *commit = GIT_HASH;
 			FTLversion = calloc(13, sizeof(char));
 			// Build version by appending 7 characters of the hash to "vDev-"
-			memcpy(FTLversion, "vDev-", 5);
-			memcpy(FTLversion+5, commit, 7);
-			// Zero-terminate string
-			FTLversion[12] = 0;
+			snprintf(FTLversion, 13, "vDev-%.7s", GIT_HASH);
 		}
 	}
 
