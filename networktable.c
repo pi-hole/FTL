@@ -16,22 +16,6 @@
 static char* getMACVendor(const char* hwaddr);
 bool unify_hwaddr(sqlite3 *db);
 
-// Private macro
-#define SQL_bool(sql) {\
-	if(!dbquery(sql)) {\
-		logg("%s(): \"%s\" failed!", __FUNCTION__, sql);\
-		dbclose();\
-		return false;\
-	}\
-}
-#define SQL_void(sql) {\
-	if(!dbquery(sql)) {\
-		logg("%s(): \"%s\" failed!", __FUNCTION__, sql);\
-		dbclose();\
-		return;\
-	}\
-}
-
 bool create_network_table(void)
 {
 	// Create network table in the database

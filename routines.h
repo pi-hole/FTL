@@ -169,4 +169,23 @@ bool gravityDB_getTable(unsigned char list);
 const char* gravityDB_getDomain(void);
 void gravityDB_finalizeTable(void);
 int gravityDB_count(unsigned char list);
+
+
+// Database macros
+#define SQL_bool(sql) {\
+	if(!dbquery(sql)) {\
+		logg("%s(): \"%s\" failed!", __FUNCTION__, sql);\
+		dbclose();\
+		return false;\
+	}\
+}
+
+#define SQL_void(sql) {\
+	if(!dbquery(sql)) {\
+		logg("%s(): \"%s\" failed!", __FUNCTION__, sql);\
+		dbclose();\
+		return;\
+	}\
+}
+
 #endif // ROUTINES_H
