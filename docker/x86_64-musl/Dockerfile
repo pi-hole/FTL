@@ -13,3 +13,4 @@ RUN wget https://github.com/tcnksm/ghr/releases/download/v0.12.0/ghr_v0.12.0_lin
     mv ghr_*_linux_amd64/ghr /usr/bin/ghr
 
 ENV CC gcc
+ENV STATIC true

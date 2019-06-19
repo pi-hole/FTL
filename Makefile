@@ -102,7 +102,7 @@ LIBS=-pthread -lrt -Wl,-Bstatic -L/usr/local/lib -lhogweed -lgmp -lnettle
 # Flags for compiling with libidn2: -lidn2
 
 # Do we want to compile a statically linked musl executable?
-ifeq "$(CIRCLE_JOB)" "x86_64-musl"
+ifeq "$(STATIC)" "true"
   CC := $(CC) -Wl,-Bstatic -static-libgcc -static-pie
 else
   LIBS := $(LIBS) -Wl,-Bdynamic
