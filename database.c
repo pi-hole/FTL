@@ -88,14 +88,7 @@ bool dbopen(void)
 	// Foreign key constraints are disabled by default (for backwards
 	// compatibility), so must be enabled separately for each database
 	// connection (see also https://www.sqlite.org/foreignkeys.html).
-	rc = dbquery("PRAGMA FOREIGN_KEYS=ON;");
-	if( !rc )
-	{
-		logg("dbopen() - FOREIGN_KEYS error (%i): %s", rc, sqlite3_errmsg(db));
-		dbclose();
-		check_database(rc);
-		return false;
-	}
+	SQL_bool("PRAGMA FOREIGN_KEYS=ON;");
 
 	return true;
 }
@@ -134,26 +127,20 @@ bool dbquery(const char *format, ...)
 
 static bool create_counter_table(void)
 {
-	bool ret;
 	// Create FTL table in the database (holds properties like database version, etc.)
-	ret = dbquery("CREATE TABLE counters ( id INTEGER PRIMARY KEY NOT NULL, value INTEGER NOT NULL );");
-	if(!ret){ dbclose(); return false; }
+	SQL_bool("CREATE TABLE counters ( id INTEGER PRIMARY KEY NOT NULL, value INTEGER NOT NULL );");
 
 	// ID 0 = total queries
-	ret = db_set_counter(DB_TOTALQUERIES, 0);
-	if(!ret){ dbclose(); return false; }
+	if(!db_set_counter(DB_TOTALQUERIES, 0)){ dbclose(); return false; }
 
 	// ID 1 = total blocked queries
-	ret = db_set_counter(DB_BLOCKEDQUERIES, 0);
-	if(!ret){ dbclose(); return false; }
+	if(!db_set_counter(DB_BLOCKEDQUERIES, 0)){ dbclose(); return false; }
 
 	// Time stamp of creation of the counters database
-	ret = db_set_FTL_property(DB_FIRSTCOUNTERTIMESTAMP, time(NULL));
-	if(!ret){ dbclose(); return false; }
+	if(!db_set_FTL_property(DB_FIRSTCOUNTERTIMESTAMP, time(NULL))){ dbclose(); return false; }
 
 	// Update database version to 2
-	ret = db_set_FTL_property(DB_VERSION, 2);
-	if(!ret){ dbclose(); return false; }
+	if(!db_set_FTL_property(DB_VERSION, 2)){ dbclose(); return false; }
 
 	return true;
 }
@@ -169,14 +156,13 @@ static bool db_create(void)
 		return false;
 	}
 	// Create Queries table in the database
-	ret = dbquery("CREATE TABLE queries ( id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL, type INTEGER NOT NULL, status INTEGER NOT NULL, domain TEXT NOT NULL, client TEXT NOT NULL, forward TEXT );");
-	if(!ret){ dbclose(); return false; }
+	SQL_bool("CREATE TABLE queries ( id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL, type INTEGER NOT NULL, status INTEGER NOT NULL, domain TEXT NOT NULL, client TEXT NOT NULL, forward TEXT );");
+
 	// Add an index on the timestamps (not a unique index!)
-	ret = dbquery("CREATE INDEX idx_queries_timestamps ON queries (timestamp);");
-	if(!ret){ dbclose(); return false; }
+	SQL_bool("CREATE INDEX idx_queries_timestamps ON queries (timestamp);");
+
 	// Create FTL table in the database (holds properties like database version, etc.)
-	ret = dbquery("CREATE TABLE ftl ( id INTEGER PRIMARY KEY NOT NULL, value BLOB NOT NULL );");
-	if(!ret){ dbclose(); return false; }
+	SQL_bool("CREATE TABLE ftl ( id INTEGER PRIMARY KEY NOT NULL, value BLOB NOT NULL );");
 
 	// Set DB version 1
 	ret = dbquery("INSERT INTO ftl (ID,VALUE) VALUES(%i,1);", DB_VERSION);
@@ -615,9 +601,9 @@ void save_to_DB(void)
 	}
 
 	// Finish prepared statement
-	ret = dbquery("END TRANSACTION");
+	SQL_void("END TRANSACTION");
 	int ret2 = sqlite3_finalize(stmt);
-	if(!ret || ret2 != SQLITE_OK){ dbclose(); return; }
+	if(ret2 != SQLITE_OK){ dbclose(); return; }
 
 	// Store index for next loop interation round and update last time stamp
 	// in the database only if all queries have been saved successfully
