@@ -234,7 +234,7 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
 	subnet_addr = option_addr(opt);
       
       /* If there is no client identifier option, use the hardware address */
-      if ((opt = option_find(mess, sz, OPTION_CLIENT_ID, 1)))
+      if (!option_bool(OPT_IGNORE_CLID) && (opt = option_find(mess, sz, OPTION_CLIENT_ID, 1)))
 	{
 	  clid_len = option_len(opt);
 	  clid = option_ptr(opt, 0);

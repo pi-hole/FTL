@@ -264,7 +264,8 @@ struct event_desc {
 #define OPT_TFTP_APREF_MAC 56
 #define OPT_RAPID_COMMIT   57
 #define OPT_UBUS           58
-#define OPT_LAST           59
+#define OPT_IGNORE_CLID    59
+#define OPT_LAST           60
 
 #define OPTION_BITS (sizeof(unsigned int)*8)
 #define OPTION_SIZE ( (OPT_LAST/OPTION_BITS)+((OPT_LAST%OPTION_BITS)!=0) )
