@@ -219,20 +219,35 @@ int gravityDB_count(const unsigned char list)
 
 bool in_whitelist(const char *domain)
 {
-	// Perform step
-	sqlite3_reset(whitelist_stmt);
-
 	// Bind domain to prepared statement
-	sqlite3_bind_text(whitelist_stmt, 1, domain, -1, SQLITE_TRANSIENT);
+	// SQLITE_STATIC: Use the string without first duplicating it internally.
+	sqlite3_bind_text(whitelist_stmt, 1, domain, -1, SQLITE_STATIC);
 
 	// Perform step
-	sqlite3_step(whitelist_stmt);
+	int result;
+	if((result = sqlite3_step(whitelist_stmt)) != SQLITE_ROW)
+	{
+		logg("in_whitelist(%s): Failed to perform step (error %d) - %s",
+		     domain, result, sqlite3_errmsg(gravitydb));
+		return false;
+	}
 
 	// Get result of query. SELECT EXISTS(...) always returns 0 or 1
-	int result = sqlite3_column_int(whitelist_stmt, 0);
+	result = sqlite3_column_int(whitelist_stmt, 0);
 
 	if(config.debug & DEBUG_DATABASE)
 		logg("in_whitelist(%s): %d", domain, result);
+
+	// The sqlite3_reset() function is called to reset a prepared
+	// statement object back to its initial state, ready to be
+	// re-executed. Note: Any SQL statement variables that had values
+	// bound to them using the sqlite3_bind_*() API retain their values.
+	sqlite3_reset(whitelist_stmt);
+
+	// Contrary to the intuition of many, sqlite3_reset() does not reset
+	// the bindings on a prepared statement. Use this routine to reset
+	// all host parameters to NULL.
+	sqlite3_clear_bindings(whitelist_stmt);
 
 	return result == 1;
 }
