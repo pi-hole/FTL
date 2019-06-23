@@ -219,24 +219,30 @@ int gravityDB_count(const unsigned char list)
 
 bool in_whitelist(const char *domain)
 {
+	int retval;
 	// Bind domain to prepared statement
 	// SQLITE_STATIC: Use the string without first duplicating it internally.
-	sqlite3_bind_text(whitelist_stmt, 1, domain, -1, SQLITE_STATIC);
-
-	// Perform step
-	int result;
-	if((result = sqlite3_step(whitelist_stmt)) != SQLITE_ROW)
+	// We can do this as domain has dynamic scope that exceeds that of the binding.
+	if((retval = sqlite3_bind_text(whitelist_stmt, 1, domain, -1, SQLITE_STATIC)) != SQLITE_OK)
 	{
-		logg("in_whitelist(%s): Failed to perform step (error %d) - %s",
-		     domain, result, sqlite3_errmsg(gravitydb));
+		logg("in_whitelist(\"%s\"): Failed to bind domain (error %d) - %s",
+		     domain, retval, sqlite3_errmsg(gravitydb));
 		return false;
 	}
 
-	// Get result of query. SELECT EXISTS(...) always returns 0 or 1
-	result = sqlite3_column_int(whitelist_stmt, 0);
+	// Perform step
+	if((retval = sqlite3_step(whitelist_stmt)) != SQLITE_ROW)
+	{
+		logg("in_whitelist(\"%s\"): Failed to perform step (error %d) - %s",
+		     domain, retval, sqlite3_errmsg(gravitydb));
+		return false;
+	}
+
+	// Get result of query "SELECT EXISTS(...)"
+	const int result = sqlite3_column_int(whitelist_stmt, 0);
 
 	if(config.debug & DEBUG_DATABASE)
-		logg("in_whitelist(%s): %d", domain, result);
+		logg("in_whitelist(\"%s\"): %d", domain, result);
 
 	// The sqlite3_reset() function is called to reset a prepared
 	// statement object back to its initial state, ready to be
@@ -249,6 +255,8 @@ bool in_whitelist(const char *domain)
 	// all host parameters to NULL.
 	sqlite3_clear_bindings(whitelist_stmt);
 
+	// Return result.
+	// SELECT EXISTS(...) either returns 0 (false) or 1 (true).
 	return result == 1;
 }
 
