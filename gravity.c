@@ -227,14 +227,29 @@ bool in_whitelist(const char *domain)
 	{
 		logg("in_whitelist(\"%s\"): Failed to bind domain (error %d) - %s",
 		     domain, retval, sqlite3_errmsg(gravitydb));
+		sqlite3_reset(whitelist_stmt);
 		return false;
 	}
 
 	// Perform step
-	if((retval = sqlite3_step(whitelist_stmt)) != SQLITE_ROW)
+	retval = sqlite3_step(whitelist_stmt);
+	if(retval == SQLITE_BUSY)
 	{
+		// Database is busy
+		logg("in_whitelist(\"%s\"): Database is busy, assuming domain is NOT whitelisted",
+		     domain);
+		sqlite3_reset(whitelist_stmt);
+		sqlite3_clear_bindings(whitelist_stmt);
+		return false;
+	}
+	else if(retval != SQLITE_ROW)
+	{
+		// Any return code that is neither SQLITE_BUSY not SQLITE_ROW
+		// is a real error we should log
 		logg("in_whitelist(\"%s\"): Failed to perform step (error %d) - %s",
 		     domain, retval, sqlite3_errmsg(gravitydb));
+		sqlite3_reset(whitelist_stmt);
+		sqlite3_clear_bindings(whitelist_stmt);
 		return false;
 	}
 
