@@ -47,8 +47,10 @@ void dbclose(void)
 {
 	int rc = sqlite3_close(db);
 	// Report any error
-	if( rc )
+	if( rc != SQLITE_OK )
+	{
 		logg("dbclose() - SQL error (%i): %s", rc, sqlite3_errmsg(db));
+	}
 
 	// Unlock mutex on the database
 	pthread_mutex_unlock(&dblock);
@@ -75,20 +77,12 @@ bool dbopen(void)
 {
 	pthread_mutex_lock(&dblock);
 	int rc = sqlite3_open_v2(FTLfiles.db, &db, SQLITE_OPEN_READWRITE, NULL);
-	if( rc ){
+	if( rc != SQLITE_OK ){
 		logg("dbopen() - SQL error (%i): %s", rc, sqlite3_errmsg(db));
 		dbclose();
 		check_database(rc);
 		return false;
 	}
-
-	// Enable the enforcement of foreign key constraints. As of SQLite
-	// version 3.6.19 (2009-10-14), the default setting for foreign key
-	// enforcement is false.
-	// Foreign key constraints are disabled by default (for backwards
-	// compatibility), so must be enabled separately for each database
-	// connection (see also https://www.sqlite.org/foreignkeys.html).
-	SQL_bool("PRAGMA FOREIGN_KEYS=ON;");
 
 	return true;
 }
@@ -108,7 +102,8 @@ bool dbquery(const char *format, ...)
 		return false;
 	}
 
-	if(config.debug & DEBUG_DATABASE) logg("dbquery: %s", query);
+	if(config.debug & DEBUG_DATABASE)
+		logg("dbquery: \"%s\"", query);
 
 	int rc = sqlite3_exec(db, query, NULL, NULL, &zErrMsg);
 
