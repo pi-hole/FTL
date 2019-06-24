@@ -300,12 +300,29 @@
   [[ ${lines[0]} == "-rw-r--r--"* ]]
 }
 
+# "ldd" prints library dependencies and the used interpreter for a given program
+# Dependencies on shared libraries are displayed like
+#    libm.so.6 => /lib/x86_64-linux-gnu/libm.so.6 (0x00007fa7d28be000)
+#
+# In this test, we use ldd and check for the dependency arrow "=>" to check if
+# our generated binary depends on shared libraries in the way we expect it to
+
 @test "Dependence on shared libraries" {
   run bash -c 'ldd ./pihole-FTL'
   printf "%s\n" "${lines[@]}"
   [[ "${STATIC}" != "true" && "${lines[@]}" == *"=>"* ]] || \
   [[ "${STATIC}" == "true" && "${lines[@]}" != *"=>"* ]]
 }
+
+# "file" determines the file type of our generated binary
+# More specifically, we use its ability to test whether a specific interpreter
+# is needed required by the given executable. What the interpreter is is not
+# really well documented in "man elf(5)", however, one can say that the
+# interpreter is a program that finds and loads the shared libraries
+# needed by a program, prepares the program to run, and then runs it.
+#
+# In this test, we use file to confirm the absence of the dependence on an
+# interpreter for the static binary.
 
 @test "Dependence on specific interpreter" {
   run bash -c 'file ./pihole-FTL'
