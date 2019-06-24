@@ -85,6 +85,7 @@ void *GC_thread(void *val);
 
 // database.c
 void db_init(void);
+bool check_database(int rc);
 void *DB_thread(void *val);
 int get_number_of_queries_in_DB(void);
 void save_to_DB(void);
@@ -175,7 +176,6 @@ int gravityDB_count(unsigned char list);
 #define SQL_bool(sql) {\
 	if(!dbquery(sql)) {\
 		logg("%s(): \"%s\" failed!", __FUNCTION__, sql);\
-		dbclose();\
 		return false;\
 	}\
 }
@@ -183,7 +183,6 @@ int gravityDB_count(unsigned char list);
 #define SQL_void(sql) {\
 	if(!dbquery(sql)) {\
 		logg("%s(): \"%s\" failed!", __FUNCTION__, sql);\
-		dbclose();\
 		return;\
 	}\
 }

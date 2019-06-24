@@ -33,7 +33,6 @@ bool create_network_table(void)
 	if(!db_set_FTL_property(DB_VERSION, 3))
 	{
 		logg("create_network_table(): Failed to update database version!");
-		dbclose();
 		return false;
 	}
 
@@ -83,7 +82,6 @@ bool create_network_addresses_table(void)
 	if(!db_set_FTL_property(DB_VERSION, 5))
 	{
 		logg("create_network_addresses_table(): Failed to update database version!");
-		dbclose();
 		return false;
 	}
 
@@ -96,21 +94,20 @@ bool create_network_addresses_table(void)
 // Parse kernel's neighbor cache
 void parse_neighbor_cache(void)
 {
-	FILE* arpfp = NULL;
-	// Try to access the kernel's neighbor cache
-	// We are only interested in entries which are in either STALE or REACHABLE state
-	if((arpfp = popen("ip neigh show nud stale nud reachable", "r")) == NULL)
-	{
-		logg("WARN: Command \"ip neigh show nud stale nud reachable\" failed!");
-		logg("      Message: %s", strerror(errno));
-		return;
-	}
-
 	// Open database file
 	if(!dbopen())
 	{
 		logg("parse_arp_cache() - Failed to open DB");
-		pclose(arpfp);
+		return;
+	}
+
+	// Try to access the kernel's neighbor cache
+	// We are only interested in entries which are in either STALE or REACHABLE state
+	FILE* arpfp = NULL;
+	if((arpfp = popen("ip neigh show nud stale nud reachable", "r")) == NULL)
+	{
+		logg("WARN: Command \"ip neigh show nud stale nud reachable\" failed!");
+		logg("      Message: %s", strerror(errno));
 		return;
 	}
 
@@ -286,9 +283,9 @@ bool unify_hwaddr(sqlite3 *db)
 	// Perform SQL query
 	sqlite3_stmt* stmt;
 	ret = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
-	if( ret ){
+	if( ret != SQLITE_OK){
 		logg("unify_hwaddr(%s) - SQL error prepare (%i): %s", querystr, ret, sqlite3_errmsg(db));
-		dbclose();
+		check_database(ret);
 		return false;
 	}
 
@@ -342,10 +339,7 @@ bool unify_hwaddr(sqlite3 *db)
 
 	// Update database version to 4
 	if(!db_set_FTL_property(DB_VERSION, 4))
-	{
-		dbclose();
 		return false;
-	}
 
 	return true;
 }
@@ -370,7 +364,7 @@ static char* getMACVendor(const char* hwaddr)
 
 	sqlite3 *macdb;
 	int rc = sqlite3_open_v2(FTLfiles.macvendordb, &macdb, SQLITE_OPEN_READONLY, NULL);
-	if( rc ){
+	if( rc != SQLITE_OK ){
 		logg("getMACVendor(%s) - SQL error (%i): %s", hwaddr, rc, sqlite3_errmsg(macdb));
 		sqlite3_close(macdb);
 		return strdup("");
@@ -391,7 +385,7 @@ static char* getMACVendor(const char* hwaddr)
 
 	sqlite3_stmt* stmt;
 	rc = sqlite3_prepare_v2(macdb, querystr, -1, &stmt, NULL);
-	if( rc ){
+	if( rc != SQLITE_OK ){
 		logg("getMACVendor(%s) - SQL error prepare (%s, %i): %s", hwaddr, querystr, rc, sqlite3_errmsg(macdb));
 		sqlite3_close(macdb);
 		return strdup("");
@@ -435,7 +429,7 @@ void updateMACVendorRecords()
 
 	sqlite3 *db;
 	int rc = sqlite3_open_v2(FTLfiles.db, &db, SQLITE_OPEN_READWRITE, NULL);
-	if( rc ){
+	if( rc != SQLITE_OK ){
 		logg("updateMACVendorRecords() - SQL error (%i): %s", rc, sqlite3_errmsg(db));
 		sqlite3_close(db);
 		return;
@@ -444,7 +438,7 @@ void updateMACVendorRecords()
 	sqlite3_stmt* stmt;
 	const char* selectstr = "SELECT id,hwaddr FROM network;";
 	rc = sqlite3_prepare_v2(db, selectstr, -1, &stmt, NULL);
-	if( rc ){
+	if( rc != SQLITE_OK ){
 		logg("updateMACVendorRecords() - SQL error prepare (%s, %i): %s", selectstr, rc, sqlite3_errmsg(db));
 		sqlite3_close(db);
 		return;
