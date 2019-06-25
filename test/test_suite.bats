@@ -92,37 +92,43 @@
 @test "Top Clients (descending, default)" {
   run bash -c 'echo ">top-clients >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "0 10 127.0.0.1 " ]]
+  [[ ${lines[1]} == "0 10 127.0.0.1 "* ]]
   [[ ${lines[2]} == "" ]]
 }
 
 @test "Top Clients (ascending)" {
   run bash -c 'echo ">top-clients asc >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "0 10 127.0.0.1 " ]]
+  [[ ${lines[1]} == "0 10 127.0.0.1 "* ]]
   [[ ${lines[2]} == "" ]]
 }
+
+# Here and below: It is not meaningful to assume a particular order
+# here as the values are sorted before output. It is unpredictable in
+# which order they may come out. While this has always been the same
+# when compiling for glibc, the new musl build reveals that another
+# library may have a different interpretation here.
 
 @test "Top Domains (descending, default)" {
   run bash -c 'echo ">top-domains >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[1]} == "0 2 google.com" ]]
-  [[ ${lines[2]} == "1 1 version.ftl" ]]
-  [[ ${lines[3]} == "2 1 version.bind" ]]
-  [[ ${lines[4]} == "3 1 whitelisted.com" ]]
-  [[ ${lines[5]} == "4 1 regexa.com" ]]
-  [[ ${lines[6]} == "5 1 ftl.pi-hole.net" ]]
+  [[ "${lines[@]}" == *" 1 version.ftl"* ]]
+  [[ "${lines[@]}" == *" 1 version.bind"* ]]
+  [[ "${lines[@]}" == *" 1 whitelisted.com"* ]]
+  [[ "${lines[@]}" == *" 1 regexa.com"* ]]
+  [[ "${lines[@]}" == *" 1 ftl.pi-hole.net"* ]]
   [[ ${lines[7]} == "" ]]
 }
 
 @test "Top Domains (ascending)" {
   run bash -c 'echo ">top-domains asc >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "0 1 version.ftl" ]]
-  [[ ${lines[2]} == "1 1 version.bind" ]]
-  [[ ${lines[3]} == "2 1 whitelisted.com" ]]
-  [[ ${lines[4]} == "3 1 regexa.com" ]]
-  [[ ${lines[5]} == "4 1 ftl.pi-hole.net" ]]
+  [[ "${lines[@]}" == *" 1 version.ftl"* ]]
+  [[ "${lines[@]}" == *" 1 version.bind"* ]]
+  [[ "${lines[@]}" == *" 1 whitelisted.com"* ]]
+  [[ "${lines[@]}" == *" 1 regexa.com"* ]]
+  [[ "${lines[@]}" == *" 1 ftl.pi-hole.net"* ]]
   [[ ${lines[6]} == "5 2 google.com" ]]
   [[ ${lines[7]} == "" ]]
 }
@@ -130,18 +136,18 @@
 @test "Top Ads (descending, default)" {
   run bash -c 'echo ">top-ads >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "0 1 blacklisted.com" ]]
-  [[ ${lines[2]} == "1 1 0427d7.se" ]]
-  [[ ${lines[3]} == "2 1 regex5.com" ]]
+  [[ "${lines[@]}" == *" 1 blacklisted.com"* ]]
+  [[ "${lines[@]}" == *" 1 0427d7.se"* ]]
+  [[ "${lines[@]}" == *" 1 regex5.com"* ]]
   [[ ${lines[4]} == "" ]]
 }
 
 @test "Top Ads (ascending)" {
   run bash -c 'echo ">top-ads asc >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "0 1 blacklisted.com" ]]
-  [[ ${lines[2]} == "1 1 0427d7.se" ]]
-  [[ ${lines[3]} == "2 1 regex5.com" ]]
+  [[ "${lines[@]}" == *" 1 blacklisted.com"* ]]
+  [[ "${lines[@]}" == *" 1 0427d7.se"* ]]
+  [[ "${lines[@]}" == *" 1 regex5.com"* ]]
   [[ ${lines[4]} == "" ]]
 }
 
@@ -150,7 +156,7 @@
   printf "%s\n" "${lines[@]}"
   [[ ${lines[1]} == "-2 30.00 blocklist blocklist" ]]
   [[ ${lines[2]} == "-1 20.00 cache cache" ]]
-  [[ ${lines[3]} == "0 50.00 127.0.0.11 " ]]
+  [[ ${lines[3]} == "0 50.00 "* ]]
   [[ ${lines[4]} == "" ]]
 }
 
@@ -159,7 +165,7 @@
   printf "%s\n" "${lines[@]}"
   [[ ${lines[1]} == "-2 30.00 blocklist blocklist" ]]
   [[ ${lines[2]} == "-1 20.00 cache cache" ]]
-  [[ ${lines[3]} == "0 50.00 127.0.0.11 " ]]
+  [[ ${lines[3]} == "0 50.00 "* ]]
   [[ ${lines[4]} == "" ]]
 }
 
@@ -176,57 +182,60 @@
   [[ ${lines[8]} == "" ]]
 }
 
+# Here and below: Acknowledge that there might be a host name after
+# the IP address of the client (..."*"...)
+
 @test "Get all queries" {
   run bash -c 'echo ">getallqueries >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == *"TXT version.ftl 127.0.0.1 3 0 6"* ]]
-  [[ ${lines[2]} == *"TXT version.bind 127.0.0.1 3 0 6"* ]]
-  [[ ${lines[3]} == *"A blacklisted.com 127.0.0.1 5 0 4"* ]]
-  [[ ${lines[4]} == *"A 0427d7.se 127.0.0.1 1 0 4"* ]]
-  [[ ${lines[5]} == *"A whitelisted.com 127.0.0.1 2 0 4"* ]]
-  [[ ${lines[6]} == *"A regex5.com 127.0.0.1 4 0 4"* ]]
-  [[ ${lines[7]} == *"A regexa.com 127.0.0.1 2 0 7"* ]]
-  [[ ${lines[8]} == *"A google.com 127.0.0.1 2 0 4"* ]]
-  [[ ${lines[9]} == *"AAAA google.com 127.0.0.1 2 0 4"* ]]
-  [[ ${lines[10]} == *"A ftl.pi-hole.net 127.0.0.1 2 0 4"* ]]
+  [[ ${lines[1]} == *"TXT version.ftl "?*" 3 0 6"* ]]
+  [[ ${lines[2]} == *"TXT version.bind "?*" 3 0 6"* ]]
+  [[ ${lines[3]} == *"A blacklisted.com "?*" 5 0 4"* ]]
+  [[ ${lines[4]} == *"A 0427d7.se "?*" 1 0 4"* ]]
+  [[ ${lines[5]} == *"A whitelisted.com "?*" 2 0 4"* ]]
+  [[ ${lines[6]} == *"A regex5.com "?*" 4 0 4"* ]]
+  [[ ${lines[7]} == *"A regexa.com "?*" 2 0 7"* ]]
+  [[ ${lines[8]} == *"A google.com "?*" 2 0 4"* ]]
+  [[ ${lines[9]} == *"AAAA google.com "?*" 2 0 4"* ]]
+  [[ ${lines[10]} == *"A ftl.pi-hole.net "?*" 2 0 4"* ]]
   [[ ${lines[11]} == "" ]]
 }
 
 @test "Get all queries (domain filtered)" {
   run bash -c 'echo ">getallqueries-domain regexa.com >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == *"A regexa.com 127.0.0.1 2 0 7"* ]]
+  [[ ${lines[1]} == *"A regexa.com "?*" 2 0 7"* ]]
   [[ ${lines[2]} == "" ]]
 }
 
 @test "Get all queries (domain + number filtered)" {
   run bash -c 'echo ">getallqueries-domain regexa.com (6) >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == *"A regexa.com 127.0.0.1 2 0 7"* ]]
+  [[ ${lines[1]} == *"A regexa.com "?*" 2 0 7"* ]]
   [[ ${lines[2]} == "" ]]
 }
 
 @test "Get all queries (client filtered)" {
   run bash -c 'echo ">getallqueries-client 127.0.0.1 >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == *"TXT version.ftl 127.0.0.1 3 0 6"* ]]
-  [[ ${lines[2]} == *"TXT version.bind 127.0.0.1 3 0 6"* ]]
-  [[ ${lines[3]} == *"A blacklisted.com 127.0.0.1 5 0 4"* ]]
-  [[ ${lines[4]} == *"A 0427d7.se 127.0.0.1 1 0 4"* ]]
-  [[ ${lines[5]} == *"A whitelisted.com 127.0.0.1 2 0 4"* ]]
-  [[ ${lines[6]} == *"A regex5.com 127.0.0.1 4 0 4"* ]]
-  [[ ${lines[7]} == *"A regexa.com 127.0.0.1 2 0 7"* ]]
-  [[ ${lines[8]} == *"A google.com 127.0.0.1 2 0 4"* ]]
-  [[ ${lines[9]} == *"AAAA google.com 127.0.0.1 2 0 4"* ]]
-  [[ ${lines[10]} == *"A ftl.pi-hole.net 127.0.0.1 2 0 4"* ]]
+  [[ ${lines[1]} == *"TXT version.ftl "?*" 3 0 6"* ]]
+  [[ ${lines[2]} == *"TXT version.bind "?*" 3 0 6"* ]]
+  [[ ${lines[3]} == *"A blacklisted.com "?*" 5 0 4"* ]]
+  [[ ${lines[4]} == *"A 0427d7.se "?*" 1 0 4"* ]]
+  [[ ${lines[5]} == *"A whitelisted.com "?*" 2 0 4"* ]]
+  [[ ${lines[6]} == *"A regex5.com "?*" 4 0 4"* ]]
+  [[ ${lines[7]} == *"A regexa.com "?*" 2 0 7"* ]]
+  [[ ${lines[8]} == *"A google.com "?*" 2 0 4"* ]]
+  [[ ${lines[9]} == *"AAAA google.com "?*" 2 0 4"* ]]
+  [[ ${lines[10]} == *"A ftl.pi-hole.net "?*" 2 0 4"* ]]
   [[ ${lines[11]} == "" ]]
 }
 
 @test "Get all queries (client + number filtered)" {
   run bash -c 'echo ">getallqueries-client 127.0.0.1 (2) >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == *"AAAA google.com 127.0.0.1 2 0 4"* ]]
-  [[ ${lines[2]} == *"A ftl.pi-hole.net 127.0.0.1 2 0 4"* ]]
+  [[ ${lines[1]} == *"AAAA google.com "?*" 2 0 4"* ]]
+  [[ ${lines[2]} == *"A ftl.pi-hole.net "?*" 2 0 4"* ]]
   [[ ${lines[3]} == "" ]]
 }
 
@@ -280,10 +289,15 @@
   [[ ${lines[0]} == "0" ]]
 }
 
+# x86_64-musl is built on busybox which has a slightly different
+# variant of ls displaying three, instead of one, spaces between the
+# user and group names.
+
 @test "Ownership and permissions of pihole-FTL.db correct" {
   run bash -c 'ls -l /etc/pihole/pihole-FTL.db'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "-rw-r--r-- 1 pihole pihole"* ]]
+  [[ ${lines[0]} == *"pihole pihole"* || ${lines[0]} == *"pihole   pihole"* ]]
+  [[ ${lines[0]} == "-rw-r--r--"* ]]
 }
 
 @test "Final part of the tests: Kill pihole-FTL process" {

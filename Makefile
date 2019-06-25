@@ -34,15 +34,15 @@ GCCVERSION8 := $(shell expr `$(CC) -dumpversion | cut -f1 -d.` \>= 8)
 # -Wp,-D_FORTIFY_SOURCE=2 and -O1 or higher: This causes certain unsafe glibc functions to be replaced with their safer counterparts
 # -Wl,-z,relro: reduces the possible areas of memory in a program that can be used by an attacker that performs a successful memory corruption exploit
 # -Wl,-z,now: When combined with RELRO above, this further reduces the regions of memory available to memory corruption attacks
-# -pie -fPIE: For ASLR (address space layout randomization)
 # -g3: More debugging information
 # -fno-omit-frame-pointer: get nicer stacktraces
+# -funwind-tables: Generate static data for unwinding
 # -fasynchronous-unwind-tables: Increased reliability of backtraces
 # -fexceptions: Enable table-based thread cancellation
 # -Wl,-z,defs: Detect and reject underlinking (phenomenon caused by missing shared library arguments when invoking the linked editor to produce another shared library)
 # -Wl,-z,now: Disable lazy binding
 # -Wl,-z,relro: Read-only segments after relocation
-HARDENING_FLAGS=-fstack-protector-strong -Wp,-D_FORTIFY_SOURCE=2 -O3 -Wl,-z,relro,-z,now -pie -fPIE -fexceptions -fasynchronous-unwind-tables -Wl,-z,defs -Wl,-z,now -Wl,-z,relro
+HARDENING_FLAGS=-fstack-protector-strong -Wp,-D_FORTIFY_SOURCE=2 -O3 -Wl,-z,relro,-z,now -fexceptions -funwind-tables -fasynchronous-unwind-tables -Wl,-z,defs -Wl,-z,now -Wl,-z,relro
 DEBUG_FLAGS=-rdynamic -fno-omit-frame-pointer
 
 # -DSQLITE_OMIT_LOAD_EXTENSION: This option omits the entire extension loading mechanism from SQLite, including sqlite3_enable_load_extension() and sqlite3_load_extension() interfaces. (needs -ldl linking option, otherwise)
@@ -98,10 +98,18 @@ CCFLAGS=-std=gnu11 -I$(IDIR) $(WARNFLAGS) -D_FILE_OFFSET_BITS=64 $(HARDENING_FLA
 # for FTL we need the pthread library
 # for dnsmasq we need the nettle crypto library and the gmp maths library
 # We link the two libraries statically. Although this increases the binary file size by about 1 MB, it saves about 5 MB of shared libraries and makes deployment easier
-#LIBS=-pthread -lnettle -lgmp -lhogweed
-LIBS=-pthread -lrt -Wl,-Bstatic -L/usr/local/lib -lhogweed -lgmp -lnettle -Wl,-Bdynamic
+LIBS=-pthread -lrt -Wl,-Bstatic -L/usr/local/lib -lhogweed -lgmp -lnettle
 # Flags for compiling with libidn : -lidn
 # Flags for compiling with libidn2: -lidn2
+
+# Do we want to compile a statically linked musl executable?
+ifeq "$(STATIC)" "true"
+  CC := $(CC) -Wl,-Bstatic -static-libgcc -static-pie
+else
+  LIBS := $(LIBS) -Wl,-Bdynamic
+  # -pie -fPIE: (Dynamic) position independent executable
+  HARDENING_FLAGS := $(HARDENING_FLAGS) -pie -fPIE
+endif
 
 IDIR = .
 ODIR = obj
@@ -150,7 +158,7 @@ version.h: version~
 	@echo '#define GIT_TAG "$(GIT_TAG)"' >> "$@"
 	@echo '#define GIT_HASH "$(GIT_HASH)"' >> "$@"
 	@echo '#endif // VERSION_H' >> "$@"
-	@echo "Making FTL version on branch $(GIT_BRANCH) - $(GIT_VERSION) ($(GIT_DATE))"
+	@echo "Making FTL version on branch $(GIT_BRANCH) - $(GIT_VERSION) / $(GIT_TAG) / $(GIT_HASH) ($(GIT_DATE))"
 
 PREFIX=/usr
 SETCAP = $(shell which setcap)

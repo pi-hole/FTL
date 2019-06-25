@@ -9,12 +9,14 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
+#if defined(__GLIBC__)
 #include <execinfo.h>
+#endif
 
 volatile sig_atomic_t killed = 0;
-time_t FTLstarttime = 0;
+static time_t FTLstarttime = 0;
 
-static void SIGSEGV_handler(int sig, siginfo_t *si, void *unused)
+static void __attribute__((noreturn)) SIGSEGV_handler(int sig, siginfo_t *si, void *unused)
 {
 	logg("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
 	logg("---------------------------->  FTL crashed!  <----------------------------");
@@ -29,7 +31,7 @@ static void SIGSEGV_handler(int sig, siginfo_t *si, void *unused)
 	log_FTL_version(true);
 
 	logg("Received signal: %s", strsignal(sig));
-	logg("     at address: %lu", (unsigned long) si->si_addr);
+	logg("     at address: %p", si->si_addr);
 	switch (si->si_code)
 	{
 		case SEGV_MAPERR: logg("     with code: SEGV_MAPERR (Address not mapped to object)"); break;
@@ -37,28 +39,30 @@ static void SIGSEGV_handler(int sig, siginfo_t *si, void *unused)
 #if defined(SEGV_BNDERR)
 		case SEGV_BNDERR: logg("     with code: SEGV_BNDERR (Failed address bound checks)"); break;
 #endif
-		default: logg("     with code: Unknown (%i), ",si->si_code); break;
+		default: logg("     with code: Unknown (%i)", si->si_code); break;
 	}
 
+// Check GLIBC availability as MUSL does not support live backtrace generation
+#if defined(__GLIBC__)
 	// Try to obtain backtrace. This may not always be helpful, but it is better than nothing
 	void *buffer[255];
 	const int calls = backtrace(buffer, sizeof(buffer)/sizeof(void *));
+	logg("Backtrace:");
+
 	char ** bcktrace = backtrace_symbols(buffer, calls);
 	if(bcktrace == NULL)
-	{
-		logg("Unable to obtain backtrace (%i)!",calls);
-	}
-	else
-	{
-		logg("Backtrace:");
-		int j;
-		for (j = 0; j < calls; j++)
-		{
-			logg("B[%04i]: %s",j,bcktrace[j]);
-		}
-	}
-	free(bcktrace);
+		logg("Unable to obtain backtrace symbols!");
 
+	for(int j = 0; j < calls; j++)
+	{
+		logg("B[%04i]: %p, %s", j, buffer[j],
+		     bcktrace != NULL ? bcktrace[j] : "---");
+	}
+	if(bcktrace != NULL)
+		free(bcktrace);
+#else
+	logg("!!! INFO: pihole-FTL has not been compiled with glibc/backtrace support, not generating one !!!");
+#endif
 	logg("Thank you for helping us to improve our FTL engine!");
 
 	// Print message and abort

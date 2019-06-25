@@ -13,8 +13,7 @@ version: 2
         name: "Build"
         command: |
           BRANCH=$([ -z "$CIRCLE_TAG" ] && echo "$CIRCLE_BRANCH" || echo "master")
-
-          make GIT_BRANCH="${BRANCH}" GIT_TAG="${CIRCLE_TAG}"
+          make GIT_BRANCH="${BRANCH}" GIT_TAG="${CIRCLE_TAG}" STATIC="${STATIC}"
           file pihole-FTL
     - run:
         name: "Upload"
@@ -23,6 +22,7 @@ version: 2
           DIR="${CIRCLE_TAG:-${CIRCLE_BRANCH}}"
           mv pihole-FTL "${BIN_NAME}"
           sha1sum pihole-FTL-* > ${BIN_NAME}.sha1
+          mkdir -p ~/.ssh/
           ssh-keyscan -H $SSH_HOST >> ~/.ssh/known_hosts
           sftp -b - $SSH_USER@$SSH_HOST <<< "-mkdir ${DIR}
           put ${BIN_NAME}* ${DIR}"
@@ -83,7 +83,10 @@ workflows:
           filters:
             tags:
               only: /^v.*/
-#      - x86_64-musl
+      - x86_64-musl:
+          filters:
+            tags:
+              only: /^v.*/
       - x86_32:
           filters:
             tags:
