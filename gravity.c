@@ -32,7 +32,8 @@ bool gravityDB_open(void)
 	}
 
 	int rc = sqlite3_open_v2(FTLfiles.gravitydb, &gravitydb, SQLITE_OPEN_READONLY, NULL);
-	if( rc ){
+	if( rc )
+	{
 		logg("gravityDB_open() - SQL error (%i): %s", rc, sqlite3_errmsg(gravitydb));
 		gravityDB_close();
 		return false;
@@ -42,7 +43,8 @@ bool gravityDB_open(void)
 	// temporary tables, indices, and views.
 	char *zErrMsg = NULL;
 	rc = sqlite3_exec(gravitydb, "PRAGMA temp_store = MEMORY", NULL, NULL, &zErrMsg);
-	if( rc != SQLITE_OK ){
+	if( rc != SQLITE_OK )
+	{
 		logg("gravityDB_open(PRAGMA temp_store) - SQL error (%i): %s", rc, zErrMsg);
 		sqlite3_free(zErrMsg);
 		gravityDB_close();
@@ -56,7 +58,8 @@ bool gravityDB_open(void)
 	// returns true as soon as it sees the first row from the query inside
 	// of EXISTS().
 	rc = sqlite3_prepare_v2(gravitydb, "SELECT EXISTS(SELECT domain from vw_whitelist WHERE domain = ?);", -1, &whitelist_stmt, NULL);
-	if( rc ){
+	if( rc )
+	{
 		logg("gravityDB_open(\"SELECT EXISTS(...)\") - SQL error prepare (%i): %s", rc, sqlite3_errmsg(gravitydb));
 		gravityDB_close();
 		return false;
@@ -72,6 +75,10 @@ bool gravityDB_open(void)
 
 void gravityDB_close(void)
 {
+	// Return early if gravity database is not available
+	if(!gravity_database_avail)
+		return;
+
 	// Finalize whitelist scanning statement
 	sqlite3_finalize(whitelist_stmt);
 
@@ -86,7 +93,10 @@ void gravityDB_close(void)
 bool gravityDB_getTable(const unsigned char list)
 {
 	if(!gravity_database_avail)
+	{
+		logg("gravityDB_getTable(%d): Gravity database not available", list);
 		return false;
+	}
 
 	// Select correct query string to be used depending on list to be read
 	const char *querystr = NULL;
@@ -108,7 +118,8 @@ bool gravityDB_getTable(const unsigned char list)
 
 	// Prepare SQLite3 statement
 	int rc = sqlite3_prepare_v2(gravitydb, querystr, -1, &stmt, NULL);
-	if( rc ){
+	if( rc )
+	{
 		logg("readGravity(%s) - SQL error prepare (%i): %s", querystr, rc, sqlite3_errmsg(gravitydb));
 		gravityDB_close();
 		return false;
@@ -167,7 +178,10 @@ void gravityDB_finalizeTable(void)
 int gravityDB_count(const unsigned char list)
 {
 	if(!gravity_database_avail)
+	{
+		logg("gravityDB_count(%d): Gravity database not available", list);
 		return DB_FAILED;
+	}
 
 	// Select correct query string to be used depending on list to be read
 	const char* querystr = NULL;
