@@ -108,6 +108,7 @@ void parse_neighbor_cache(void)
 	{
 		logg("WARN: Command \"ip neigh show nud stale nud reachable\" failed!");
 		logg("      Message: %s", strerror(errno));
+		dbclose();
 		return;
 	}
 
