@@ -79,8 +79,6 @@ CREATE TABLE info
 	value TEXT NOT NULL
 );
 
-INSERT INTO info VALUES("version","1");
-
 CREATE VIEW vw_gravity AS SELECT a.domain
     FROM gravity a
     WHERE a.domain NOT IN (SELECT domain from vw_whitelist);
