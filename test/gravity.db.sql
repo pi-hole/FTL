@@ -133,7 +133,7 @@ CREATE TRIGGER tr_adlists_update AFTER UPDATE ON adlists
 INSERT INTO whitelist VALUES(1,'whitelisted.com',1,1559928803,1559928803,0,'Migrated from /etc/pihole/whitelist.txt');
 INSERT INTO blacklist VALUES(1,'blacklisted.com',1,1559928803,1559928803,0,'Migrated from /etc/pihole/blacklist.txt');
 INSERT INTO regex VALUES(1,'regex[0-9].com',1,1559928803,1559928803,0,'Migrated from /etc/pihole/regex.list');
-INSERT INTO adlists VALUES(1,'https://hosts-file.net/ad_servers.txt',1,1559928803,1559928803,'Migrated from /etc/pihole/adlists.list');
+INSERT INTO adlists VALUES(1,'https://hosts-file.net/ad_servers.txt',1,1559928803,1559928803,0,'Migrated from /etc/pihole/adlists.list');
 INSERT INTO gravity VALUES('0427d7.se');
 INSERT INTO info VALUES('version','1');
 COMMIT;
