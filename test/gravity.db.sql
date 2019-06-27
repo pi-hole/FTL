@@ -1,5 +1,17 @@
-PRAGMA foreign_keys=OFF;
-BEGIN TRANSACTION;
+PRAGMA FOREIGN_KEYS=ON;
+
+CREATE TABLE domain_groups
+(
+	"id" INTEGER PRIMARY KEY AUTOINCREMENT,
+	"enabled" BOOLEAN NOT NULL DEFAULT 1,
+	"description" TEXT
+);
+INSERT INTO domain_groups ("id","description") VALUES (0,'Standard group');
+CREATE TRIGGER domain_groups_standard_group AFTER DELETE ON domain_groups WHEN OLD.id = 0
+    BEGIN
+      INSERT INTO domain_groups ("id","description") VALUES (0,'Standard group');
+    END;
+
 CREATE TABLE whitelist
 (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -7,9 +19,10 @@ CREATE TABLE whitelist
 	enabled BOOLEAN NOT NULL DEFAULT 1,
 	date_added INTEGER NOT NULL DEFAULT (cast(strftime('%s', 'now') as int)),
 	date_modified INTEGER NOT NULL DEFAULT (cast(strftime('%s', 'now') as int)),
-	comment TEXT
+	group_id INTEGER NOT NULL DEFAULT 0,
+	comment TEXT,
+	FOREIGN KEY (group_id) REFERENCES domain_groups(id)
 );
-INSERT INTO whitelist VALUES(1,'whitelisted.com',1,1559928803,1559928803,'Migrated from /etc/pihole/whitelist.txt');
 CREATE TABLE blacklist
 (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -17,9 +30,10 @@ CREATE TABLE blacklist
 	enabled BOOLEAN NOT NULL DEFAULT 1,
 	date_added INTEGER NOT NULL DEFAULT (cast(strftime('%s', 'now') as int)),
 	date_modified INTEGER NOT NULL DEFAULT (cast(strftime('%s', 'now') as int)),
-	comment TEXT
+	group_id INTEGER NOT NULL DEFAULT 0,
+	comment TEXT,
+	FOREIGN KEY (group_id) REFERENCES domain_groups(id)
 );
-INSERT INTO blacklist VALUES(1,'blacklisted.com',1,1559928803,1559928803,'Migrated from /etc/pihole/blacklist.txt');
 CREATE TABLE regex
 (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -27,9 +41,23 @@ CREATE TABLE regex
 	enabled BOOLEAN NOT NULL DEFAULT 1,
 	date_added INTEGER NOT NULL DEFAULT (cast(strftime('%s', 'now') as int)),
 	date_modified INTEGER NOT NULL DEFAULT (cast(strftime('%s', 'now') as int)),
-	comment TEXT
+	group_id INTEGER NOT NULL DEFAULT 0,
+	comment TEXT,
+	FOREIGN KEY (group_id) REFERENCES domain_groups(id)
 );
-INSERT INTO regex VALUES(1,'regex[0-9].com',1,1559928803,1559928803,'Migrated from /etc/pihole/regex.list');
+
+CREATE TABLE adlist_groups
+(
+	"id" INTEGER PRIMARY KEY AUTOINCREMENT,
+	"enabled" BOOLEAN NOT NULL DEFAULT 1,
+	"description" TEXT
+);
+INSERT INTO adlist_groups ("id","description") VALUES (0,'Standard group');
+CREATE TRIGGER adlist_groups_standard_group AFTER DELETE ON adlist_groups WHEN OLD.id = 0
+    BEGIN
+      INSERT INTO adlist_groups ("id","description") VALUES (0,'Standard group');
+    END;
+
 CREATE TABLE adlists
 (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -37,58 +65,66 @@ CREATE TABLE adlists
 	enabled BOOLEAN NOT NULL DEFAULT 1,
 	date_added INTEGER NOT NULL DEFAULT (cast(strftime('%s', 'now') as int)),
 	date_modified INTEGER NOT NULL DEFAULT (cast(strftime('%s', 'now') as int)),
-	comment TEXT
+	group_id INTEGER NOT NULL DEFAULT 0,
+	comment TEXT,
+	FOREIGN KEY (group_id) REFERENCES adlist_groups(id)
 );
-INSERT INTO adlists VALUES(1,'https://hosts-file.net/ad_servers.txt',1,1559928803,1559928803,'Migrated from /etc/pihole/adlists.list');
 CREATE TABLE gravity
 (
 	domain TEXT PRIMARY KEY
 );
-INSERT INTO gravity VALUES('0427d7.se');
 CREATE TABLE info
 (
 	property TEXT PRIMARY KEY,
 	value TEXT NOT NULL
 );
-INSERT INTO info VALUES('version','1');
-DELETE FROM sqlite_sequence;
-INSERT INTO sqlite_sequence VALUES('adlists',1);
-INSERT INTO sqlite_sequence VALUES('blacklist',1);
-INSERT INTO sqlite_sequence VALUES('whitelist',1);
-INSERT INTO sqlite_sequence VALUES('regex',1);
+
+INSERT INTO info VALUES("version","1");
+
 CREATE VIEW vw_gravity AS SELECT a.domain
-	FROM gravity a
-	WHERE a.domain NOT IN (SELECT domain from whitelist WHERE enabled == 1);
+    FROM gravity a
+    WHERE a.domain NOT IN (SELECT domain from vw_whitelist);
+
 CREATE VIEW vw_whitelist AS SELECT a.domain
-	FROM whitelist a
-	WHERE a.enabled == 1
-	ORDER BY a.id;
+    FROM whitelist a
+    INNER JOIN domain_groups b ON b.id = a.group_id
+    WHERE a.enabled = 1 AND b.enabled = 1
+    ORDER BY a.id;
+
 CREATE TRIGGER tr_whitelist_update AFTER UPDATE ON whitelist
-	BEGIN
-		UPDATE whitelist SET date_modified = (cast(strftime('%s', 'now') as int)) WHERE domain = NEW.domain;
-	END;
+    BEGIN
+      UPDATE whitelist SET date_modified = (cast(strftime('%s', 'now') as int)) WHERE domain = NEW.domain;
+    END;
+
 CREATE VIEW vw_blacklist AS SELECT a.domain
-	FROM blacklist a
-	WHERE a.enabled == 1 AND a.domain NOT IN vw_whitelist
-	ORDER BY a.id;
+    FROM blacklist a
+    INNER JOIN domain_groups b ON b.id = a.group_id
+    WHERE a.enabled = 1 AND a.domain NOT IN vw_whitelist AND b.enabled = 1
+    ORDER BY a.id;
+
 CREATE TRIGGER tr_blacklist_update AFTER UPDATE ON blacklist
-	BEGIN
-		UPDATE blacklist SET date_modified = (cast(strftime('%s', 'now') as int)) WHERE domain = NEW.domain;
-	END;
+    BEGIN
+      UPDATE blacklist SET date_modified = (cast(strftime('%s', 'now') as int)) WHERE domain = NEW.domain;
+    END;
+
 CREATE VIEW vw_regex AS SELECT a.domain
-	FROM regex a
-	WHERE a.enabled == 1
-	ORDER BY a.id;
+    FROM regex a
+    INNER JOIN domain_groups b ON b.id = a.group_id
+    WHERE a.enabled = 1 AND b.enabled = 1
+    ORDER BY a.id;
+
 CREATE TRIGGER tr_regex_update AFTER UPDATE ON regex
-	BEGIN
-		UPDATE regex SET date_modified = (cast(strftime('%s', 'now') as int)) WHERE domain = NEW.domain;
-	END;
+    BEGIN
+      UPDATE regex SET date_modified = (cast(strftime('%s', 'now') as int)) WHERE domain = NEW.domain;
+    END;
+
 CREATE VIEW vw_adlists AS SELECT a.address
-	FROM adlists a
-	WHERE a.enabled == 1
-	ORDER BY a.id;
+    FROM adlists a
+    INNER JOIN adlist_groups b ON b.id = a.group_id
+    WHERE a.enabled = 1 AND b.enabled = 1
+    ORDER BY a.id;
+
 CREATE TRIGGER tr_adlists_update AFTER UPDATE ON adlists
-	BEGIN
-		UPDATE adlists SET date_modified = (cast(strftime('%s', 'now') as int)) WHERE address = NEW.address;
-	END;
-COMMIT;
+    BEGIN
+      UPDATE adlists SET date_modified = (cast(strftime('%s', 'now') as int)) WHERE address = NEW.address;
+    END;
