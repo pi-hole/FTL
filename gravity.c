@@ -14,25 +14,28 @@
 // Private variables
 static sqlite3 *gravitydb = NULL;
 static sqlite3_stmt* stmt = NULL;
+static sqlite3_stmt* whitelist_stmt = NULL;
+bool gravity_database_avail = false;
 
 // Prototypes from functions in dnsmasq's source
 void rehash(int size);
 
 // Open gravity database
-static bool gravityDB_open(void)
+bool gravityDB_open(void)
 {
 	struct stat st;
 	if(stat(FTLfiles.gravitydb, &st) != 0)
 	{
 		// File does not exist
-		logg("readGravity(): %s does not exist", FTLfiles.gravitydb);
+		logg("gravityDB_open(): %s does not exist", FTLfiles.gravitydb);
 		return false;
 	}
 
 	int rc = sqlite3_open_v2(FTLfiles.gravitydb, &gravitydb, SQLITE_OPEN_READONLY, NULL);
-	if( rc ){
-		logg("readGravity() - SQL error (%i): %s", rc, sqlite3_errmsg(gravitydb));
-		sqlite3_close(gravitydb);
+	if( rc )
+	{
+		logg("gravityDB_open() - SQL error (%i): %s", rc, sqlite3_errmsg(gravitydb));
+		gravityDB_close();
 		return false;
 	}
 
@@ -40,14 +43,48 @@ static bool gravityDB_open(void)
 	// temporary tables, indices, and views.
 	char *zErrMsg = NULL;
 	rc = sqlite3_exec(gravitydb, "PRAGMA temp_store = MEMORY", NULL, NULL, &zErrMsg);
-	if( rc != SQLITE_OK ){
-		logg("readGravity(PRAGMA temp_store) - SQL error (%i): %s", rc, zErrMsg);
+	if( rc != SQLITE_OK )
+	{
+		logg("gravityDB_open(PRAGMA temp_store) - SQL error (%i): %s", rc, zErrMsg);
 		sqlite3_free(zErrMsg);
-		sqlite3_close(gravitydb);
+		gravityDB_close();
 		return false;
 	}
 
+	// Prepare whitelist statement
+	// We use SELECT EXISTS() as this is known to efficiently use the index
+	// We are only interested in whether the domain exists or not in the
+	// list but don't case about duplicates or similar. SELECT EXISTS(...)
+	// returns true as soon as it sees the first row from the query inside
+	// of EXISTS().
+	rc = sqlite3_prepare_v2(gravitydb, "SELECT EXISTS(SELECT domain from vw_whitelist WHERE domain = ?);", -1, &whitelist_stmt, NULL);
+	if( rc )
+	{
+		logg("gravityDB_open(\"SELECT EXISTS(...)\") - SQL error prepare (%i): %s", rc, sqlite3_errmsg(gravitydb));
+		gravityDB_close();
+		return false;
+	}
+
+	// Database connection is now open
+	gravity_database_avail = true;
+	if(config.debug & DEBUG_DATABASE)
+		logg("gravityDB_open(): Successfully opened gravity.db");
+
 	return true;
+}
+
+void gravityDB_close(void)
+{
+	// Return early if gravity database is not available
+	if(!gravity_database_avail)
+		return;
+
+	// Finalize whitelist scanning statement
+	sqlite3_finalize(whitelist_stmt);
+
+	// Close table
+	sqlite3_close(gravitydb);
+	gravity_database_avail = false;
 }
 
 // Prepare a SQLite3 statement which can be used by
@@ -55,11 +92,11 @@ static bool gravityDB_open(void)
 // a table which is specified when calling this function
 bool gravityDB_getTable(const unsigned char list)
 {
-	// Open gravity database
-	// Note: This might fail when the database has
-	// not yet been created by gravity
-	if(!gravityDB_open())
+	if(!gravity_database_avail)
+	{
+		logg("gravityDB_getTable(%d): Gravity database not available", list);
 		return false;
+	}
 
 	// Select correct query string to be used depending on list to be read
 	const char *querystr = NULL;
@@ -71,9 +108,6 @@ bool gravityDB_getTable(const unsigned char list)
 		case BLACK_LIST:
 			querystr = "SELECT domain FROM vw_blacklist;";
 			break;
-		case WHITE_LIST:
-			querystr = "SELECT domain FROM vw_whitelist;";
-			break;
 		case REGEX_LIST:
 			querystr = "SELECT domain FROM vw_regex;";
 			break;
@@ -84,9 +118,10 @@ bool gravityDB_getTable(const unsigned char list)
 
 	// Prepare SQLite3 statement
 	int rc = sqlite3_prepare_v2(gravitydb, querystr, -1, &stmt, NULL);
-	if( rc ){
+	if( rc )
+	{
 		logg("readGravity(%s) - SQL error prepare (%i): %s", querystr, rc, sqlite3_errmsg(gravitydb));
-		sqlite3_close(gravitydb);
+		gravityDB_close();
 		return false;
 	}
 
@@ -128,14 +163,13 @@ inline const char* gravityDB_getDomain(void)
 }
 
 // Finalize statement of a gravity database transaction
-// and close the database handle
 void gravityDB_finalizeTable(void)
 {
+	if(!gravity_database_avail)
+		return;
+
 	// Finalize statement
 	sqlite3_finalize(stmt);
-
-	// Close database handle
-	sqlite3_close(gravitydb);
 }
 
 // Get number of domains in a specified table of the gravity database
@@ -143,6 +177,12 @@ void gravityDB_finalizeTable(void)
 // encounter any error
 int gravityDB_count(const unsigned char list)
 {
+	if(!gravity_database_avail)
+	{
+		logg("gravityDB_count(%d): Gravity database not available", list);
+		return DB_FAILED;
+	}
+
 	// Select correct query string to be used depending on list to be read
 	const char* querystr = NULL;
 	switch(list)
@@ -164,16 +204,12 @@ int gravityDB_count(const unsigned char list)
 			return DB_FAILED;
 	}
 
-	// Open database handle
-	if(!gravityDB_open())
-		return DB_FAILED;
-
 	// Prepare query
 	int rc = sqlite3_prepare_v2(gravitydb, querystr, -1, &stmt, NULL);
 	if( rc ){
 		logg("gravityDB_count(%s) - SQL error prepare (%i): %s", querystr, rc, sqlite3_errmsg(gravitydb));
 		sqlite3_finalize(stmt);
-		sqlite3_close(gravitydb);
+		gravityDB_close();
 		return DB_FAILED;
 	}
 
@@ -182,15 +218,74 @@ int gravityDB_count(const unsigned char list)
 	if( rc != SQLITE_ROW ){
 		logg("gravityDB_count(%s) - SQL error step (%i): %s", querystr, rc, sqlite3_errmsg(gravitydb));
 		sqlite3_finalize(stmt);
-		sqlite3_close(gravitydb);
+		gravityDB_close();
 		return DB_FAILED;
 	}
 
 	// Get result when there was no error
 	const int result = sqlite3_column_int(stmt, 0);
 
-	// Finalize statement and close database handle
+	// Finalize statement
 	gravityDB_finalizeTable();
 
 	return result;
 }
+
+bool in_whitelist(const char *domain)
+{
+	int retval;
+	// Bind domain to prepared statement
+	// SQLITE_STATIC: Use the string without first duplicating it internally.
+	// We can do this as domain has dynamic scope that exceeds that of the binding.
+	if((retval = sqlite3_bind_text(whitelist_stmt, 1, domain, -1, SQLITE_STATIC)) != SQLITE_OK)
+	{
+		logg("in_whitelist(\"%s\"): Failed to bind domain (error %d) - %s",
+		     domain, retval, sqlite3_errmsg(gravitydb));
+		sqlite3_reset(whitelist_stmt);
+		return false;
+	}
+
+	// Perform step
+	retval = sqlite3_step(whitelist_stmt);
+	if(retval == SQLITE_BUSY)
+	{
+		// Database is busy
+		logg("in_whitelist(\"%s\"): Database is busy, assuming domain is NOT whitelisted",
+		     domain);
+		sqlite3_reset(whitelist_stmt);
+		sqlite3_clear_bindings(whitelist_stmt);
+		return false;
+	}
+	else if(retval != SQLITE_ROW)
+	{
+		// Any return code that is neither SQLITE_BUSY not SQLITE_ROW
+		// is a real error we should log
+		logg("in_whitelist(\"%s\"): Failed to perform step (error %d) - %s",
+		     domain, retval, sqlite3_errmsg(gravitydb));
+		sqlite3_reset(whitelist_stmt);
+		sqlite3_clear_bindings(whitelist_stmt);
+		return false;
+	}
+
+	// Get result of query "SELECT EXISTS(...)"
+	const int result = sqlite3_column_int(whitelist_stmt, 0);
+
+	if(config.debug & DEBUG_DATABASE)
+		logg("in_whitelist(\"%s\"): %d", domain, result);
+
+	// The sqlite3_reset() function is called to reset a prepared
+	// statement object back to its initial state, ready to be
+	// re-executed. Note: Any SQL statement variables that had values
+	// bound to them using the sqlite3_bind_*() API retain their values.
+	sqlite3_reset(whitelist_stmt);
+
+	// Contrary to the intuition of many, sqlite3_reset() does not reset
+	// the bindings on a prepared statement. Use this routine to reset
+	// all host parameters to NULL.
+	sqlite3_clear_bindings(whitelist_stmt);
+
+	// Return result.
+	// SELECT EXISTS(...) either returns 0 (false) or 1 (true).
+	return result == 1;
+}
+
