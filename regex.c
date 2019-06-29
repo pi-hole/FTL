@@ -9,7 +9,11 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
-#include "routines.h"
+#include "regex_r.h"
+#include "gravity.h"
+#include "daemon.h"
+#include "memory.h"
+#include "log.h"
 #include <regex.h>
 
 static int num_regex;

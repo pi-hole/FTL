@@ -9,7 +9,9 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
-#include "routines.h"
+#include "shmem.h"
+#include "shmem_r.h"
+#include "log.h"
 
 /**
  * Initialize the overTime slot

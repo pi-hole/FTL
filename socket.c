@@ -10,8 +10,10 @@
 
 #include "FTL.h"
 #include "api.h"
-#include "shmem.h"
-#include "routines.h"
+#include "log.h"
+#include "socket.h"
+#include "request.h"
+#include "memory.h"
 
 // The backlog argument defines the maximum length
 // to which the queue of pending connections for

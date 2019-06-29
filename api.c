@@ -9,7 +9,17 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
-#include "routines.h"
+#include "memory.h"
+#include "shmem_r.h"
+#include "memory.h"
+#include "datastructure.h"
+#include "setupVars.h"
+#include "socket.h"
+#include "files.h"
+#include "log.h"
+#include "request.h"
+#include "config.h"
+#include "database.h"
 #include "api.h"
 #include "version.h"
 // needed for sqlite3_libversion()

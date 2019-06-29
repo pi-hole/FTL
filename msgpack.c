@@ -10,7 +10,8 @@
 
 #include "FTL.h"
 #include "api.h"
-#include "routines.h"
+#include "socket.h"
+#include "log.h"
 
 void pack_eom(const int sock) {
 	// This byte is explicitly never used in the MessagePack spec, so it is perfect to use as an EOM for this API.

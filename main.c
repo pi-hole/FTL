@@ -9,7 +9,19 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
-#include "routines.h"
+#include "daemon.h"
+#include "log.h"
+#include "socket.h"
+#include "setupVars.h"
+#include "args.h"
+#include "config.h"
+#include "database.h"
+#include "main.h"
+#include "signals.h"
+#include "regex_r.h"
+#include "shmem_r.h"
+#include "capabilities.h"
+#include "gravity.h"
 
 char * username;
 bool needGC = false;

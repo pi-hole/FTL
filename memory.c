@@ -10,7 +10,8 @@
 
 #include "FTL.h"
 #include "shmem.h"
-#include "routines.h"
+#include "memory.h"
+#include "log.h"
 
 FTLFileNamesStruct FTLfiles = {
 	// Default path for config file (regular installations)

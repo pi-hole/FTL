@@ -9,7 +9,10 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
-#include "routines.h"
+#include "files.h"
+#include "memory.h"
+#include "setupVars.h"
+#include "log.h"
 
 char ** wildcarddomains = NULL;
 unsigned char blockingstatus = 2;

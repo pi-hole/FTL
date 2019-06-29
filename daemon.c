@@ -9,7 +9,9 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
-#include "routines.h"
+#include "daemon.h"
+#include "memory.h"
+#include "log.h"
 
 struct timeval t0[NUMTIMERS];
 

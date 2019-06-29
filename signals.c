@@ -9,10 +9,12 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
-#include "routines.h"
 #if defined(__GLIBC__)
 #include <execinfo.h>
 #endif
+#include "signals.h"
+#include "log.h"
+#include "memory.h"
 
 volatile sig_atomic_t killed = 0;
 static time_t FTLstarttime = 0;

@@ -9,8 +9,11 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
-#include "routines.h"
+#include "args.h"
 #include "version.h"
+#include "memory.h"
+#include "main.h"
+#include "log.h"
 
 static bool debug = false;
 bool daemonmode = true;

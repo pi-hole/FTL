@@ -11,7 +11,13 @@
 #include "FTL.h"
 #include "api.h"
 #include "shmem.h"
-#include "routines.h"
+#include "daemon.h"
+#include "request.h"
+#include "socket.h"
+#include "resolve.h"
+#include "regex_r.h"
+#include "networktable.h"
+#include "log.h"
 
 bool __attribute__((pure)) command(const char *client_message, const char* cmd) {
 	return strstr(client_message, cmd) != NULL;

@@ -9,7 +9,11 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
-#include "routines.h"
+#include "datastructure.h"
+#include "memory.h"
+#include "shmem.h"
+#include "shmem_r.h"
+#include "log.h"
 
 // converts upper to lower case, and leaves other characters unchanged
 void strtolower(char *str)

@@ -14,9 +14,23 @@
 #include "FTL.h"
 #include "dnsmasq_interface.h"
 #include "shmem.h"
+#include "shmem_r.h"
 // Prototype of getCacheInformation()
 #include "api.h"
-#include "routines.h"
+#include "memory.h"
+#include "gravity.h"
+#include "setupVars.h"
+#include "daemon.h"
+#include "gc.h"
+#include "socket.h"
+#include "regex_r.h"
+#include "datastructure.h"
+#include "config.h"
+#include "capabilities.h"
+#include "resolve.h"
+#include "database.h"
+#include "files.h"
+#include "log.h"
 
 static void print_flags(const unsigned int flags);
 static void save_reply_type(const unsigned int flags, const int queryID, const struct timeval response);

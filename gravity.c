@@ -9,7 +9,8 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
-#include "routines.h"
+#include "gravity.h"
+#include "log.h"
 #include <sqlite3.h>
 
 // Private variables

@@ -10,8 +10,14 @@
 
 #include "FTL.h"
 #include "shmem.h"
+#include "shmem_r.h"
 #include "sqlite3.h"
-#include "routines.h"
+#include "networktable.h"
+#include "memory.h"
+#include "database.h"
+#include "log.h"
+#include "daemon.h"
+#include "datastructure.h"
 #define ARPCACHE "/proc/net/arp"
 
 // Private prototypes

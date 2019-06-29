@@ -9,8 +9,11 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
+#include "gc.h"
 #include "shmem.h"
-#include "routines.h"
+#include "shmem_r.h"
+#include "daemon.h"
+#include "log.h"
 
 bool doGC = false;
 

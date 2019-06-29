@@ -10,8 +10,15 @@
 
 #include "FTL.h"
 #include "shmem.h"
+#include "shmem_r.h"
 #include "sqlite3.h"
-#include "routines.h"
+#include "database.h"
+#include "networktable.h"
+#include "datastructure.h"
+#include "memory.h"
+#include "log.h"
+#include "daemon.h"
+#include "files.h"
 
 static sqlite3 *db;
 bool database = false;

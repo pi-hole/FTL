@@ -10,7 +10,9 @@
 
 #include "FTL.h"
 #include "shmem.h"
-#include "routines.h"
+#include "shmem_r.h"
+#include "log.h"
+#include "memory.h"
 
 /// The version of shared memory used
 #define SHARED_MEMORY_VERSION 6
