@@ -10,6 +10,7 @@
 
 #include "FTL.h"
 #include "version.h"
+#include "routines.h"
 
 static pthread_mutex_t lock;
 static FILE *logfile = NULL;

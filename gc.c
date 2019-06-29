@@ -10,6 +10,7 @@
 
 #include "FTL.h"
 #include "shmem.h"
+#include "routines.h"
 
 bool doGC = false;
 

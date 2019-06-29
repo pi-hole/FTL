@@ -11,6 +11,7 @@
 #include "FTL.h"
 #include "shmem.h"
 #include "sqlite3.h"
+#include "routines.h"
 
 static sqlite3 *db;
 bool database = false;

@@ -16,6 +16,7 @@
 #include "shmem.h"
 // Prototype of getCacheInformation()
 #include "api.h"
+#include "routines.h"
 
 static void print_flags(const unsigned int flags);
 static void save_reply_type(const unsigned int flags, const int queryID, const struct timeval response);

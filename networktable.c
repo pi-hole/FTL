@@ -11,6 +11,7 @@
 #include "FTL.h"
 #include "shmem.h"
 #include "sqlite3.h"
+#include "routines.h"
 #define ARPCACHE "/proc/net/arp"
 
 // Private prototypes

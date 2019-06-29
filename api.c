@@ -9,6 +9,7 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
+#include "routines.h"
 #include "api.h"
 #include "version.h"
 // needed for sqlite3_libversion()

@@ -9,6 +9,7 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
+#include "routines.h"
 
 ConfigStruct config;
 static char *parse_FTLconf(FILE *fp, const char * key);

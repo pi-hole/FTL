@@ -9,6 +9,7 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
+#include "routines.h"
 #include "version.h"
 
 static bool debug = false;

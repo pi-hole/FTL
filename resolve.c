@@ -10,6 +10,7 @@
 
 #include "FTL.h"
 #include "shmem.h"
+#include "routines.h"
 
 static char *resolveHostname(const char *addr)
 {

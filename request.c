@@ -11,6 +11,7 @@
 #include "FTL.h"
 #include "api.h"
 #include "shmem.h"
+#include "routines.h"
 
 bool __attribute__((pure)) command(const char *client_message, const char* cmd) {
 	return strstr(client_message, cmd) != NULL;

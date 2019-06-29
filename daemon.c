@@ -9,6 +9,7 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
+#include "routines.h"
 
 struct timeval t0[NUMTIMERS];
 

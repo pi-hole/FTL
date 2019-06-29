@@ -9,6 +9,7 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
+#include "routines.h"
 
 // converts upper to lower case, and leaves other characters unchanged
 void strtolower(char *str)
