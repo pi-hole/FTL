@@ -21,6 +21,7 @@
 #include "gravity.h"
 #include "setupVars.h"
 #include "daemon.h"
+#include "timers.h"
 #include "gc.h"
 #include "socket.h"
 #include "regex_r.h"

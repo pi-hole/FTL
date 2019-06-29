@@ -17,7 +17,7 @@
 #include "datastructure.h"
 #include "memory.h"
 #include "log.h"
-#include "daemon.h"
+#include "timers.h"
 #include "files.h"
 
 static sqlite3 *db;

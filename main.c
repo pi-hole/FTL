@@ -22,6 +22,7 @@
 #include "shmem_r.h"
 #include "capabilities.h"
 #include "gravity.h"
+#include "timers.h"
 
 char * username;
 bool needGC = false;

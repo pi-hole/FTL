@@ -14,7 +14,7 @@
 #include "memory.h"
 #include "datastructure.h"
 #include "resolve.h"
-#include "daemon.h"
+#include "timers.h"
 #include "log.h"
 
 static char *resolveHostname(const char *addr)

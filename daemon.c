@@ -13,8 +13,6 @@
 #include "memory.h"
 #include "log.h"
 
-struct timeval t0[NUMTIMERS];
-
 void go_daemon(void)
 {
 	// Create child process
@@ -78,36 +76,6 @@ void go_daemon(void)
 	savepid();
 
 	// Closing stdin, stdout and stderr is handled by dnsmasq
-}
-
-void timer_start(const int i)
-{
-	if(i >= NUMTIMERS)
-	{
-		logg("Code error: Timer %i not defined in timer_start().", i);
-		exit(EXIT_FAILURE);
-	}
-	gettimeofday(&t0[i], 0);
-}
-
-double timer_elapsed_msec(const int i)
-{
-	if(i >= NUMTIMERS)
-	{
-		logg("Code error: Timer %i not defined in timer_elapsed_msec().", i);
-		exit(EXIT_FAILURE);
-	}
-	struct timeval t1;
-	gettimeofday(&t1, 0);
-	return (t1.tv_sec - t0[i].tv_sec) * 1000.0f + (t1.tv_usec - t0[i].tv_usec) / 1000.0f;
-}
-
-void sleepms(const int milliseconds)
-{
-	struct timeval tv;
-	tv.tv_sec = milliseconds / 1000;
-	tv.tv_usec = (milliseconds % 1000) * 1000;
-	select(0, NULL, NULL, NULL, &tv);
 }
 
 void savepid(void)

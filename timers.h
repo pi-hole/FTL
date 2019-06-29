@@ -3,16 +3,15 @@
 *  Network-wide ad blocking via your own hardware.
 *
 *  FTL Engine
-*  Daemon prototypes
+*  Timer prototypes
 *
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
-#ifndef DAEMON_H
-#define DAEMON_H
+#ifndef TIMERS_H
+#define TIMERS_H
 
-void go_daemon(void);
-void savepid(void);
-char * getUserName(void);
-void removepid(void);
+void timer_start(const int i);
+double timer_elapsed_msec(const int i);
+void sleepms(const int milliseconds);
 
-#endif //DAEMON_H
+#endif //TIMERS_H

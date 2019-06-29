@@ -12,7 +12,7 @@
 #include "gc.h"
 #include "shmem.h"
 #include "shmem_r.h"
-#include "daemon.h"
+#include "timers.h"
 #include "log.h"
 
 bool doGC = false;
