@@ -8,6 +8,9 @@
 # This file is copyright under the latest version of the EUPL.
 # Please see LICENSE file for your rights under this license.
 
+IDIR = src
+ODIR = build
+
 DNSMASQVERSION = "pi-hole-2.80"
 DNSMASQOPTS = -DHAVE_DNSSEC -DHAVE_DNSSEC_STATIC
 # Flags for compiling with libidn : -DHAVE_IDN
@@ -111,25 +114,28 @@ else
   HARDENING_FLAGS := $(HARDENING_FLAGS) -pie -fPIE
 endif
 
-IDIR = .
-ODIR = obj
-DBDIR = database
-DBOBJDIR = $(ODIR)/$(DBDIR)
-DNSMASQDIR = dnsmasq
-DNSMASQOBJDIR = $(DNSMASQDIR)/obj
+DBOBJDIR = $(ODIR)/database
+DNSMASQOBJDIR = $(ODIR)/dnsmasq
 
 _FTLDEPS = $(patsubst %,$(IDIR)/%,$(FTLDEPS))
 _FTLOBJ = $(patsubst %,$(ODIR)/%,$(FTLOBJ))
 
-_DNSMASQDEPS = $(patsubst %,$(DNSMASQDIR)/%,$(DNSMASQDEPS))
+_DNSMASQDEPS = $(patsubst %,$(IDIR)/dnsmasq/%,$(DNSMASQDEPS))
 _DNSMASQOBJ = $(patsubst %,$(DNSMASQOBJDIR)/%,$(DNSMASQOBJ))
 
 all: pihole-FTL
-$(ODIR)/%.o: %.c $(_FTLDEPS) | $(ODIR) $(DBOBJDIR)
+
+# Compile FTL source code files with virtually all possible warnings a modern gcc can generate
+$(_FTLOBJ): $(ODIR)/%.o: $(IDIR)/%.c $(_FTLDEPS) | $(ODIR) $(DBOBJDIR)
 	$(CC) -c -o $@ $< -g3 $(CCFLAGS) $(EXTRAWARN)
 
-$(DNSMASQOBJDIR)/%.o: $(DNSMASQDIR)/%.c $(_DNSMASQDEPS) | $(DNSMASQOBJDIR)
+# Compile the contained dnsmasq code with much less strict requirements as it would fail to comply
+# when enforcing the standards we enforce for the rest of our FTL code base
+$(_DNSMASQOBJ): $(DNSMASQOBJDIR)/%.o: $(IDIR)/dnsmasq/%.c $(_DNSMASQDEPS) | $(DNSMASQOBJDIR)
 	$(CC) -c -o $@ $< -g3 $(CCFLAGS) -DVERSION=\"$(DNSMASQVERSION)\" $(DNSMASQOPTS)
+
+$(DBOBJDIR)/sqlite3.o: $(IDIR)/database/sqlite3.c | $(DBOBJDIR)
+	$(CC) -c -o $@ $< $(CCFLAGS)
 
 $(ODIR):
 	mkdir -p $(ODIR)
@@ -140,21 +146,18 @@ $(DBOBJDIR):
 $(DNSMASQOBJDIR):
 	mkdir -p $(DNSMASQOBJDIR)
 
-$(DBOBJDIR)/sqlite3.o: $(DBDIR)/sqlite3.c | $(DBOBJDIR)
-	$(CC) -c -o $@ $< $(CCFLAGS)
-
 pihole-FTL: $(_FTLOBJ) $(_DNSMASQOBJ) $(DBOBJDIR)/sqlite3.o
 	$(CC) $(CCFLAGS) -o $@ $^ $(LIBS)
 
 .PHONY: clean force install
 
 clean:
-	rm -f $(ODIR)/*.o $(DBOBJDIR)/*.o  $(DNSMASQOBJDIR)/*.o pihole-FTL
+	rm -rf $(ODIR) pihole-FTL
 
 # # recreate version.h when GIT_VERSION changes, uses temporary file version~
-version~: force
+$(IDIR)/version~: force
 	@echo '$(GIT_BRANCH) $(GIT_VERSION) $(GIT_DATE) $(GIT_TAG)' | cmp -s - $@ || echo '$(GIT_BRANCH) $(GIT_VERSION) $(GIT_DATE) $(GIT_TAG)' > $@
-version.h: version~
+$(IDIR)/version.h: $(IDIR)/version~
 	@echo '#ifndef VERSION_H' > "$@"
 	@echo '#define VERSION_H' >> "$@"
 	@echo '#define GIT_VERSION "$(GIT_VERSION)"' >> "$@"
