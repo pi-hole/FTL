@@ -9,7 +9,7 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
-#include "gravity.h"
+#include "gravity-db.h"
 #include "config.h"
 #include "log.h"
 // global variable counters
