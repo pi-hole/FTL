@@ -15,7 +15,7 @@
 #include "setupVars.h"
 #include "args.h"
 #include "config.h"
-#include "database/database.h"
+#include "database/common.h"
 #include "main.h"
 #include "signals.h"
 #include "regex_r.h"

@@ -9,11 +9,11 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
+#include "networktable.h"
+#include "common.h"
 #include "shmem.h"
 #include "sqlite3.h"
-#include "networktable.h"
 #include "memory.h"
-#include "database.h"
 #include "log.h"
 #include "timers.h"
 #include "config.h"

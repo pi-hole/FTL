@@ -18,7 +18,7 @@
 #include "log.h"
 #include "request.h"
 #include "config.h"
-#include "database/database.h"
+#include "database/common.h"
 #include "overTime.h"
 #include "api.h"
 #include "version.h"

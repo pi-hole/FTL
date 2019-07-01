@@ -14,7 +14,7 @@
 #include "timers.h"
 #include "config.h"
 #include "overTime.h"
-#include "database/database.h"
+#include "database/common.h"
 #include "log.h"
 // global variable counters
 #include "memory.h"

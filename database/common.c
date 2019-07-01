@@ -9,10 +9,10 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
+#include "common.h"
 #include "shmem.h"
 #include "overTime.h"
 #include "sqlite3.h"
-#include "database.h"
 #include "networktable.h"
 #include "datastructure.h"
 #include "memory.h"

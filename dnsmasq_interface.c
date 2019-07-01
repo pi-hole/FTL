@@ -29,7 +29,7 @@
 #include "config.h"
 #include "capabilities.h"
 #include "resolve.h"
-#include "database/database.h"
+#include "database/common.h"
 #include "files.h"
 #include "log.h"
 // global variable daemonmode
