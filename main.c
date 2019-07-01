@@ -22,7 +22,7 @@
 #include "regex_r.h"
 #include "shmem.h"
 #include "capabilities.h"
-#include "database/gravity.h"
+#include "database/gravity-db.h"
 #include "timers.h"
 
 char * username;

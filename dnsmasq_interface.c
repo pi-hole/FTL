@@ -18,7 +18,7 @@
 // Prototype of getCacheInformation()
 #include "api.h"
 #include "memory.h"
-#include "database/gravity.h"
+#include "database/gravity-db.h"
 #include "setupVars.h"
 #include "daemon.h"
 #include "timers.h"
