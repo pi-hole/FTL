@@ -21,45 +21,17 @@
 #include "config.h"
 #include "shmem.h"
 
-static int number_of_queries_in_DB(void)
-{
-	sqlite3_stmt* stmt;
-
-	// Count number of rows using the index timestamp is faster than select(*)
-	int rc = sqlite3_prepare_v2(FTL_db, "SELECT COUNT(timestamp) FROM queries", -1, &stmt, NULL);
-	if( rc ){
-		logg("number_of_queries_in_DB() - SQL error prepare (%i): %s", rc, sqlite3_errmsg(FTL_db));
-		dbclose();
-		check_database(rc);
-		return DB_FAILED;
-	}
-
-	rc = sqlite3_step(stmt);
-	if( rc != SQLITE_ROW ){
-		logg("number_of_queries_in_DB() - SQL error step (%i): %s", rc, sqlite3_errmsg(FTL_db));
-		dbclose();
-		check_database(rc);
-		return DB_FAILED;
-	}
-
-	int result = sqlite3_column_int(stmt, 0);
-
-	sqlite3_finalize(stmt);
-
-	return result;
-}
-
 int get_number_of_queries_in_DB(void)
 {
-	int result = DB_NODATA;
-
+	// This routine is used by the API routines.
+	// We need to handle opening/closing of the database herein.
 	if(!dbopen())
 	{
-		logg("Failed to open FTL_db in get_number_of_queries_in_DB()");
+		logg("number_of_queries_in_DB() - Failed to open database.");
 		return DB_FAILED;
 	}
 
-	result = number_of_queries_in_DB();
+	int result = db_query_int("SELECT COUNT(timestamp) FROM queries");
 
 	// Close database
 	dbclose();
