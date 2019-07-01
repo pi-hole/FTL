@@ -41,6 +41,10 @@ bool create_network_table(void)
 
 bool create_network_addresses_table(void)
 {
+	// Disable foreign key enforcement for this transaction
+	// Otherwise, dropping the network table would not be allowed
+	SQL_bool("PRAGMA foreign_keys=OFF");
+
 	// Begin new transaction
 	SQL_bool("BEGIN TRANSACTION");
 
@@ -87,6 +91,9 @@ bool create_network_addresses_table(void)
 
 	// Finish transaction
 	SQL_bool("COMMIT");
+
+	// Re-enable foreign key enforcement
+	SQL_bool("PRAGMA foreign_keys=OFF");
 
 	return true;
 }
