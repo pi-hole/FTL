@@ -128,7 +128,7 @@ all: pihole-FTL
 $(ODIR)/%.o: %.c $(_FTLDEPS) | $(ODIR) $(DBOBJDIR)
 	$(CC) -c -o $@ $< -g3 $(CCFLAGS) $(EXTRAWARN)
 
-$(DNSMASQODIR)/%.o: $(DNSMASQDIR)/%.c $(_DNSMASQDEPS) | $(DNSMASQODIR)
+$(DNSMASQOBJDIR)/%.o: $(DNSMASQDIR)/%.c $(_DNSMASQDEPS) | $(DNSMASQOBJDIR)
 	$(CC) -c -o $@ $< -g3 $(CCFLAGS) -DVERSION=\"$(DNSMASQVERSION)\" $(DNSMASQOPTS)
 
 $(ODIR):
@@ -137,8 +137,8 @@ $(ODIR):
 $(DBOBJDIR):
 	mkdir -p $(DBOBJDIR)
 
-$(DNSMASQODIR):
-	mkdir -p $(DNSMASQODIR)
+$(DNSMASQOBJDIR):
+	mkdir -p $(DNSMASQOBJDIR)
 
 $(DBOBJDIR)/sqlite3.o: $(DBDIR)/sqlite3.c | $(DBOBJDIR)
 	$(CC) -c -o $@ $< $(CCFLAGS)
@@ -149,7 +149,7 @@ pihole-FTL: $(_FTLOBJ) $(_DNSMASQOBJ) $(DBOBJDIR)/sqlite3.o
 .PHONY: clean force install
 
 clean:
-	rm -f $(ODIR)/*.o $(DBOBJDIR)/*.o  $(DNSMASQODIR)/*.o pihole-FTL
+	rm -f $(ODIR)/*.o $(DBOBJDIR)/*.o  $(DNSMASQOBJDIR)/*.o pihole-FTL
 
 # # recreate version.h when GIT_VERSION changes, uses temporary file version~
 version~: force
