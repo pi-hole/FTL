@@ -14,7 +14,7 @@
 #include "log.h"
 // global variable counters
 #include "memory.h"
-#include <sqlite3.h>
+#include "sqlite3.h"
 
 // Private variables
 static sqlite3 *gravity_db = NULL;
