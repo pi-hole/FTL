@@ -18,7 +18,7 @@
 // Prototype of getCacheInformation()
 #include "api.h"
 #include "memory.h"
-#include "gravity.h"
+#include "database/gravity.h"
 #include "setupVars.h"
 #include "daemon.h"
 #include "timers.h"
@@ -29,7 +29,7 @@
 #include "config.h"
 #include "capabilities.h"
 #include "resolve.h"
-#include "database.h"
+#include "database/database.h"
 #include "files.h"
 #include "log.h"
 // global variable daemonmode

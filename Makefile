@@ -14,7 +14,8 @@ DNSMASQOPTS = -DHAVE_DNSSEC -DHAVE_DNSSEC_STATIC
 # Flags for compiling with libidn2: -DHAVE_LIBIDN2 -DIDN2_VERSION_NUMBER=0x02000003
 
 FTLDEPS = *.h
-FTLOBJ = main.o memory.o log.o daemon.o datastructure.o signals.o socket.o request.o files.o setupVars.o args.o gc.o config.o database.o msgpack.o api.o dnsmasq_interface.o resolve.o regex.o shmem.o capabilities.o networktable.o overTime.o gravity.o timers.o
+FTLDBOBJ = database/database.o database/gravity.o database/networktable.o
+FTLOBJ = $(FTLDBOBJ) main.o memory.o log.o daemon.o datastructure.o signals.o socket.o request.o files.o setupVars.o args.o gc.o config.o msgpack.o api.o dnsmasq_interface.o resolve.o regex.o shmem.o capabilities.o overTime.o timers.o
 
 DNSMASQDEPS = config.h dhcp-protocol.h dns-protocol.h radv-protocol.h dhcp6-protocol.h dnsmasq.h ip6addr.h metrics.h ../dnsmasq_interface.h
 DNSMASQOBJ = arp.o dbus.o domain.o lease.o outpacket.o rrfilter.o auth.o dhcp6.o edns0.o log.o poll.o slaac.o blockdata.o dhcp.o forward.o loop.o radv.o tables.o bpf.o dhcp-common.o helper.o netlink.o rfc1035.o tftp.o cache.o dnsmasq.o inotify.o network.o rfc2131.o util.o conntrack.o dnssec.o ipset.o option.o rfc3315.o crypto.o dump.o ubus.o metrics.o
@@ -112,17 +113,19 @@ endif
 
 IDIR = .
 ODIR = obj
+DBDIR = database
+DBOBJDIR = $(ODIR)/$(DBDIR)
 DNSMASQDIR = dnsmasq
-DNSMASQODIR = $(DNSMASQDIR)/obj
+DNSMASQOBJDIR = $(DNSMASQDIR)/obj
 
 _FTLDEPS = $(patsubst %,$(IDIR)/%,$(FTLDEPS))
 _FTLOBJ = $(patsubst %,$(ODIR)/%,$(FTLOBJ))
 
 _DNSMASQDEPS = $(patsubst %,$(DNSMASQDIR)/%,$(DNSMASQDEPS))
-_DNSMASQOBJ = $(patsubst %,$(DNSMASQODIR)/%,$(DNSMASQOBJ))
+_DNSMASQOBJ = $(patsubst %,$(DNSMASQOBJDIR)/%,$(DNSMASQOBJ))
 
 all: pihole-FTL
-$(ODIR)/%.o: %.c $(_FTLDEPS) | $(ODIR)
+$(ODIR)/%.o: %.c $(_FTLDEPS) | $(ODIR) $(DBOBJDIR)
 	$(CC) -c -o $@ $< -g3 $(CCFLAGS) $(EXTRAWARN)
 
 $(DNSMASQODIR)/%.o: $(DNSMASQDIR)/%.c $(_DNSMASQDEPS) | $(DNSMASQODIR)
@@ -131,19 +134,22 @@ $(DNSMASQODIR)/%.o: $(DNSMASQDIR)/%.c $(_DNSMASQDEPS) | $(DNSMASQODIR)
 $(ODIR):
 	mkdir -p $(ODIR)
 
+$(DBOBJDIR):
+	mkdir -p $(DBOBJDIR)
+
 $(DNSMASQODIR):
 	mkdir -p $(DNSMASQODIR)
 
-$(ODIR)/sqlite3.o: $(IDIR)/sqlite3.c | $(ODIR)
+$(DBOBJDIR)/sqlite3.o: $(DBDIR)/sqlite3.c | $(DBOBJDIR)
 	$(CC) -c -o $@ $< $(CCFLAGS)
 
-pihole-FTL: $(_FTLOBJ) $(_DNSMASQOBJ) $(ODIR)/sqlite3.o
+pihole-FTL: $(_FTLOBJ) $(_DNSMASQOBJ) $(DBOBJDIR)/sqlite3.o
 	$(CC) $(CCFLAGS) -o $@ $^ $(LIBS)
 
 .PHONY: clean force install
 
 clean:
-	rm -f $(ODIR)/*.o $(DNSMASQODIR)/*.o pihole-FTL
+	rm -f $(ODIR)/*.o $(ODIR)/$(DBOBJDIR)/*.o  $(DNSMASQODIR)/*.o pihole-FTL
 
 # # recreate version.h when GIT_VERSION changes, uses temporary file version~
 version~: force

@@ -10,7 +10,7 @@
 
 #include "FTL.h"
 #include "regex_r.h"
-#include "gravity.h"
+#include "database/gravity.h"
 #include "timers.h"
 #include "memory.h"
 #include "log.h"

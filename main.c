@@ -15,13 +15,13 @@
 #include "setupVars.h"
 #include "args.h"
 #include "config.h"
-#include "database.h"
+#include "database/database.h"
 #include "main.h"
 #include "signals.h"
 #include "regex_r.h"
 #include "shmem.h"
 #include "capabilities.h"
-#include "gravity.h"
+#include "database/gravity.h"
 #include "timers.h"
 
 char * username;
