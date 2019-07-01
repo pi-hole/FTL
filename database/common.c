@@ -437,3 +437,8 @@ void *DB_thread(void *val)
 
 	return NULL;
 }
+
+const char *get_sqlite3_version(void)
+{
+	return sqlite3_libversion();
+}

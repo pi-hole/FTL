@@ -15,9 +15,8 @@
 #include "dnsmasq_interface.h"
 #include "shmem.h"
 #include "overTime.h"
-// Prototype of getCacheInformation()
-#include "api.h"
 #include "memory.h"
+#include "database/common.h"
 #include "database/gravity-db.h"
 #include "setupVars.h"
 #include "daemon.h"
@@ -29,9 +28,10 @@
 #include "config.h"
 #include "capabilities.h"
 #include "resolve.h"
-#include "database/common.h"
 #include "files.h"
 #include "log.h"
+// Prototype of getCacheInformation()
+#include "api.h"
 // global variable daemonmode
 #include "args.h"
 

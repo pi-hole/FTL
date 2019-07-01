@@ -149,7 +149,7 @@ pihole-FTL: $(_FTLOBJ) $(_DNSMASQOBJ) $(DBOBJDIR)/sqlite3.o
 .PHONY: clean force install
 
 clean:
-	rm -f $(ODIR)/*.o $(ODIR)/$(DBOBJDIR)/*.o  $(DNSMASQODIR)/*.o pihole-FTL
+	rm -f $(ODIR)/*.o $(DBOBJDIR)/*.o  $(DNSMASQODIR)/*.o pihole-FTL
 
 # # recreate version.h when GIT_VERSION changes, uses temporary file version~
 version~: force

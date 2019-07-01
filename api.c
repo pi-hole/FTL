@@ -23,8 +23,6 @@
 #include "overTime.h"
 #include "api.h"
 #include "version.h"
-// needed for sqlite3_libversion()
-#include "sqlite3.h"
 
 #define min(a,b) ({ __typeof__ (a) _a = (a); __typeof__ (b) _b = (b); _a < _b ? _a : _b; })
 
@@ -1038,12 +1036,12 @@ void getDBstats(const int *sock)
 	format_memory_size(prefix, filesize, &formated);
 
 	if(istelnet[*sock])
-		ssend(*sock,"queries in database: %i\ndatabase filesize: %.2f %sB\nSQLite version: %s\n", get_number_of_queries_in_DB(), formated, prefix, sqlite3_libversion());
+		ssend(*sock,"queries in database: %i\ndatabase filesize: %.2f %sB\nSQLite version: %s\n", get_number_of_queries_in_DB(), formated, prefix, get_sqlite3_version());
 	else {
 		pack_int32(*sock, get_number_of_queries_in_DB());
 		pack_int64(*sock, filesize);
 
-		if(!pack_str32(*sock, (char *) sqlite3_libversion()))
+		if(!pack_str32(*sock, (char *) get_sqlite3_version()))
 			return;
 	}
 }
