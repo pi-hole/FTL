@@ -13,6 +13,7 @@
 #include "log.h"
 #include "socket.h"
 #include "request.h"
+#include "config.h"
 #include "memory.h"
 
 // The backlog argument defines the maximum length

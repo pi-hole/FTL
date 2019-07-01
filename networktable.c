@@ -16,6 +16,7 @@
 #include "database.h"
 #include "log.h"
 #include "timers.h"
+#include "config.h"
 #include "datastructure.h"
 #define ARPCACHE "/proc/net/arp"
 

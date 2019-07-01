@@ -12,6 +12,8 @@
 #include "gc.h"
 #include "shmem.h"
 #include "timers.h"
+#include "config.h"
+#include "overTime.h"
 #include "log.h"
 
 bool doGC = false;

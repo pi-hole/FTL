@@ -68,17 +68,4 @@ void newOverTimeClient(const int clientID);
  */
 void addOverTimeClientSlot(void);
 
-// overTime.c
-void initOverTime(void);
-unsigned int getOverTimeID(const time_t timestamp);
-
-/**
- * Move the overTime slots so the oldest interval starts with mintime. The time
- * given will be aligned to OVERTIME_INTERVAL.
- *
- * @param mintime The start of the oldest interval
- */
-void moveOverTimeMemory(const time_t mintime);
-
-
 #endif //SHARED_MEMORY_SERVER_H

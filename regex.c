@@ -14,6 +14,7 @@
 #include "timers.h"
 #include "memory.h"
 #include "log.h"
+#include "config.h"
 #include <regex.h>
 
 static int num_regex;

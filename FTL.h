@@ -88,6 +88,17 @@
 // Default: 3600 (once every hour)
 #define RERESOLVE_INTERVAL 3600
 
+// Privacy mode constants
+#define HIDDEN_DOMAIN "hidden"
+#define HIDDEN_CLIENT "0.0.0.0"
+
+// Used to check memory integrity in various structs
+#define MAGICBYTE 0x57
+
+// Some magic database constants
+#define DB_FAILED -2
+#define DB_NODATA -1
+
 // FTLDNS enums
 enum { DATABASE_WRITE_TIMER, EXIT_TIMER, GC_TIMER, LISTS_TIMER, REGEX_TIMER, ARP_TIMER, LAST_TIMER };
 enum { QUERIES, FORWARDED, CLIENTS, DOMAINS, OVERTIME, WILDCARD };
@@ -120,10 +131,6 @@ enum {
 enum { DB_VERSION, DB_LASTTIMESTAMP, DB_FIRSTCOUNTERTIMESTAMP };
 // Database table "counters"
 enum { DB_TOTALQUERIES, DB_BLOCKEDQUERIES };
-
-// Privacy mode constants
-#define HIDDEN_DOMAIN "hidden"
-#define HIDDEN_CLIENT "0.0.0.0"
 
 // Static structs
 typedef struct {
@@ -257,19 +264,9 @@ typedef struct {
 // Prepare timers, used mainly for debugging purposes
 #define NUMTIMERS LAST_TIMER
 
-// Used to check memory integrity in various structs
-#define MAGICBYTE 0x57
-
-// Some magic database constants
-#define DB_FAILED -2
-#define DB_NODATA -1
-
 extern logFileNamesStruct files;
 extern FTLFileNamesStruct FTLfiles;
 extern countersStruct *counters;
-extern ConfigStruct config;
-
-extern overTimeData *overTime;
 
 // Used in gc.c, memory.c, resolve.c, signals.c, and socket.c
 extern volatile sig_atomic_t killed;

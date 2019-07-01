@@ -19,7 +19,7 @@ static char *parse_FTLconf(FILE *fp, const char * key);
 static void release_config_memory(void);
 static void getpath(FILE* fp, const char *option, const char *defaultloc, char **pointer);
 
-char *conflinebuffer = NULL;
+static char *conflinebuffer = NULL;
 
 void getLogFilePath(void)
 {

@@ -13,6 +13,7 @@
 #include "memory.h"
 #include "datastructure.h"
 #include "resolve.h"
+#include "config.h"
 #include "timers.h"
 #include "log.h"
 

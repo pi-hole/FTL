@@ -10,6 +10,7 @@
 
 #include "FTL.h"
 #include "gravity.h"
+#include "config.h"
 #include "log.h"
 #include <sqlite3.h>
 

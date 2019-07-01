@@ -16,4 +16,6 @@ void get_privacy_level(FILE *fp);
 void get_blocking_mode(FILE *fp);
 void read_debuging_settings(FILE *fp);
 
+extern ConfigStruct config;
+
 #endif //CONFIG_H
