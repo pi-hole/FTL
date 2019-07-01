@@ -173,7 +173,7 @@ void read_FTLconf(void)
 	if(!(buffer != NULL && sscanf(buffer, "%127ms", &FTLfiles.FTL_db)))
 	{
 		// Use standard path if no custom path was obtained from the config file
-		FTLfiles.FTL_db = strdup("/etc/pihole/pihole-FTL.FTL_db");
+		FTLfiles.FTL_db = strdup("/etc/pihole/pihole-FTL.db");
 	}
 
 	// Test if memory allocation was successful
