@@ -17,7 +17,7 @@ version*
 # Test-generated files
 /pihole.log
 /pihole-FTL.conf
-/pihole-FTL.db
+/*.db
 /pihole-FTL.log
 
 # MAC->Vendor database files
