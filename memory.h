@@ -16,5 +16,8 @@ void *FTLcalloc(size_t nmemb, size_t size, const char *file, const char *functio
 void *FTLrealloc(void *ptr_in, size_t size, const char *file, const char *function, const int line) __attribute__((alloc_size(2)));
 void FTLfree(void *ptr, const char* file, const char *function, const int line);
 
+extern logFileNamesStruct files;
+extern FTLFileNamesStruct FTLfiles;
+extern countersStruct *counters;
 
 #endif //MEMORY_H

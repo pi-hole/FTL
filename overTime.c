@@ -13,6 +13,8 @@
 #include "shmem.h"
 #include "config.h"
 #include "log.h"
+// global variable counters
+#include "memory.h"
 
 /**
  * Initialize the overTime slot

@@ -14,7 +14,12 @@
 #include "timers.h"
 #include "config.h"
 #include "overTime.h"
+#include "database.h"
 #include "log.h"
+// global variable counters
+#include "memory.h"
+// global variable killed
+#include "signals.h"
 
 bool doGC = false;
 

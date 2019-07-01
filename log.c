@@ -14,6 +14,10 @@
 #include "daemon.h"
 #include "config.h"
 #include "log.h"
+// global variable username
+#include "main.h"
+// global variable daemonmode
+#include "args.h"
 
 static pthread_mutex_t lock;
 static FILE *logfile = NULL;

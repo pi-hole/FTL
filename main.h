@@ -12,4 +12,6 @@
 
 int main_dnsmasq(int argc, const char ** argv);
 
+extern char * username;
+
 #endif //MAIN_H

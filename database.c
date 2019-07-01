@@ -20,6 +20,8 @@
 #include "log.h"
 #include "timers.h"
 #include "files.h"
+// global variable killed
+#include "signals.h"
 
 static sqlite3 *db;
 bool database = false;

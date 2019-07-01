@@ -264,29 +264,6 @@ typedef struct {
 // Prepare timers, used mainly for debugging purposes
 #define NUMTIMERS LAST_TIMER
 
-extern logFileNamesStruct files;
-extern FTLFileNamesStruct FTLfiles;
-extern countersStruct *counters;
-
-// Used in gc.c, memory.c, resolve.c, signals.c, and socket.c
-extern volatile sig_atomic_t killed;
-// Used in api.c, grep.c, and dnsmasq_interface.c
-extern unsigned char blockingstatus;
-// Used in main.c, log.c, and others
-extern char * username;
-// Used in main.c, args.c, log.c, and others
-extern bool daemonmode;
-// Used in main.c, database.c, and others
-extern bool database;
-// Used in database.c and gc.c
-extern long int lastdbindex;
-// Used in database.c and gc.c
-extern bool DBdeleteoldqueries;
-// Used in main.c, socket.c, and dnsmasq_interface.c
-extern bool ipv4telnet, ipv6telnet;
-// Used in api.c, and socket.c
-extern bool istelnet[MAXCONNS];
-
 // Use out own memory handling functions that will detect possible errors
 // and report accordingly in the log. This will make debugging FTL crashs
 // caused by insufficient memory or by code bugs (not properly dealing
@@ -297,9 +274,6 @@ extern bool istelnet[MAXCONNS];
 #define strdup(param) FTLstrdup(param, __FILE__,  __FUNCTION__,  __LINE__)
 #define calloc(p1,p2) FTLcalloc(p1,p2, __FILE__,  __FUNCTION__,  __LINE__)
 #define realloc(p1,p2) FTLrealloc(p1,p2, __FILE__,  __FUNCTION__,  __LINE__)
-
-extern int argc_dnsmasq;
-extern const char ** argv_dnsmasq;
 
 extern pthread_t telnet_listenthreadv4;
 extern pthread_t telnet_listenthreadv6;

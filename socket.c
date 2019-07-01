@@ -15,6 +15,8 @@
 #include "request.h"
 #include "config.h"
 #include "memory.h"
+// global variable killed
+#include "signals.h"
 
 // The backlog argument defines the maximum length
 // to which the queue of pending connections for

@@ -32,6 +32,8 @@
 #include "database.h"
 #include "files.h"
 #include "log.h"
+// global variable daemonmode
+#include "args.h"
 
 static void print_flags(const unsigned int flags);
 static void save_reply_type(const unsigned int flags, const int queryID, const struct timeval response);

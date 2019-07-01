@@ -16,6 +16,8 @@
 #include "config.h"
 #include "timers.h"
 #include "log.h"
+// global variable killed
+#include "signals.h"
 
 static char *resolveHostname(const char *addr)
 {

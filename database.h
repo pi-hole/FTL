@@ -22,4 +22,8 @@ void dbclose(void);
 int db_query_int(const char*);
 void SQLite3LogCallback(void *pArg, int iErrCode, const char *zMsg);
 
+extern bool database;
+extern long int lastdbindex;
+extern bool DBdeleteoldqueries;
+
 #endif //DATABASE_H

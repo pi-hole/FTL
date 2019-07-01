@@ -12,4 +12,6 @@
 
 void handle_signals(void);
 
+extern volatile sig_atomic_t killed;
+
 #endif //SIGNALS_H

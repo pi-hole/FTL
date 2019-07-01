@@ -15,4 +15,6 @@ int countlineswith(const char* str, const char* fname);
 void check_blocking_status(void);
 bool chmod_file(const char *filename, const mode_t mode);
 
+extern unsigned char blockingstatus;
+
 #endif //FILE_H

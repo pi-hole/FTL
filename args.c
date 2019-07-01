@@ -14,6 +14,8 @@
 #include "memory.h"
 #include "main.h"
 #include "log.h"
+// global variable killed
+#include "signals.h"
 
 static bool debug = false;
 bool daemonmode = true;

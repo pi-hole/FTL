@@ -21,4 +21,7 @@ void *socket_listening_thread(void *args);
 bool ipv6_available(void);
 void bind_sockets(void);
 
+extern bool ipv4telnet, ipv6telnet;
+extern bool istelnet[MAXCONNS];
+
 #endif //SOCKET_H
