@@ -16,6 +16,7 @@
 #include "args.h"
 #include "config.h"
 #include "database/common.h"
+#include "database/query-table.h"
 #include "main.h"
 #include "signals.h"
 #include "regex_r.h"

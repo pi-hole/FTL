@@ -3,15 +3,16 @@
 *  Network-wide ad blocking via your own hardware.
 *
 *  FTL Engine
-*  pihole-FTL.db -> network tables prototypes
+*  Query table database prototypes
 *
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
-#ifndef NETWORKTABLE_H
-#define NETWORKTABLE_H
+#ifndef DATABASE_QUERY_TABLE_H
+#define DATABASE_QUERY_TABLE_H
 
-bool create_network_table(void);
-void parse_arp_cache(void);
-void updateMACVendorRecords(void);
+int get_number_of_queries_in_DB(void);
+void delete_old_queries_in_DB(void);
+void save_to_DB(void);
+void read_data_from_DB(void);
 
-#endif //NETWORKTABLE_H
+#endif //DATABASE_QUERY_TABLE_H

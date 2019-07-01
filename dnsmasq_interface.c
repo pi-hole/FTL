@@ -1163,9 +1163,11 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 	if(ent_pw != NULL && getuid() == 0)
 	{
 		if(chown(FTLfiles.log, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
-			logg("Setting ownership (%i:%i) of %s failed: %s (%i)", ent_pw->pw_uid, ent_pw->pw_gid, FTLfiles.log, strerror(errno), errno);
-		if(database && chown(FTLfiles.db, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
-			logg("Setting ownership (%i:%i) of %s failed: %s (%i)", ent_pw->pw_uid, ent_pw->pw_gid, FTLfiles.db, strerror(errno), errno);
+			logg("Setting ownership (%i:%i) of %s failed: %s (%i)",
+			     ent_pw->pw_uid, ent_pw->pw_gid, FTLfiles.log, strerror(errno), errno);
+		if(database && chown(FTLfiles.FTL_db, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
+			logg("Setting ownership (%i:%i) of %s failed: %s (%i)",
+			     ent_pw->pw_uid, ent_pw->pw_gid, FTLfiles.FTL_db, strerror(errno), errno);
 	}
 }
 

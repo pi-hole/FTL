@@ -17,7 +17,7 @@
 #include <sqlite3.h>
 
 // Private variables
-static sqlite3 *gravitydb = NULL;
+static sqlite3 *gravity_db = NULL;
 static sqlite3_stmt* stmt = NULL;
 static sqlite3_stmt* whitelist_stmt = NULL;
 bool gravity_database_avail = false;
@@ -29,17 +29,17 @@ void rehash(int size);
 bool gravityDB_open(void)
 {
 	struct stat st;
-	if(stat(FTLfiles.gravitydb, &st) != 0)
+	if(stat(FTLfiles.gravity_db, &st) != 0)
 	{
 		// File does not exist
-		logg("gravityDB_open(): %s does not exist", FTLfiles.gravitydb);
+		logg("gravityDB_open(): %s does not exist", FTLfiles.gravity_db);
 		return false;
 	}
 
-	int rc = sqlite3_open_v2(FTLfiles.gravitydb, &gravitydb, SQLITE_OPEN_READONLY, NULL);
+	int rc = sqlite3_open_v2(FTLfiles.gravity_db, &gravity_db, SQLITE_OPEN_READONLY, NULL);
 	if( rc )
 	{
-		logg("gravityDB_open() - SQL error (%i): %s", rc, sqlite3_errmsg(gravitydb));
+		logg("gravityDB_open() - SQL error (%i): %s", rc, sqlite3_errmsg(gravity_db));
 		gravityDB_close();
 		return false;
 	}
@@ -47,7 +47,7 @@ bool gravityDB_open(void)
 	// Tell SQLite3 to store temporary tables in memory. This speeds up read operations on
 	// temporary tables, indices, and views.
 	char *zErrMsg = NULL;
-	rc = sqlite3_exec(gravitydb, "PRAGMA temp_store = MEMORY", NULL, NULL, &zErrMsg);
+	rc = sqlite3_exec(gravity_db, "PRAGMA temp_store = MEMORY", NULL, NULL, &zErrMsg);
 	if( rc != SQLITE_OK )
 	{
 		logg("gravityDB_open(PRAGMA temp_store) - SQL error (%i): %s", rc, zErrMsg);
@@ -62,10 +62,10 @@ bool gravityDB_open(void)
 	// list but don't case about duplicates or similar. SELECT EXISTS(...)
 	// returns true as soon as it sees the first row from the query inside
 	// of EXISTS().
-	rc = sqlite3_prepare_v2(gravitydb, "SELECT EXISTS(SELECT domain from vw_whitelist WHERE domain = ?);", -1, &whitelist_stmt, NULL);
+	rc = sqlite3_prepare_v2(gravity_db, "SELECT EXISTS(SELECT domain from vw_whitelist WHERE domain = ?);", -1, &whitelist_stmt, NULL);
 	if( rc )
 	{
-		logg("gravityDB_open(\"SELECT EXISTS(...)\") - SQL error prepare (%i): %s", rc, sqlite3_errmsg(gravitydb));
+		logg("gravityDB_open(\"SELECT EXISTS(...)\") - SQL error prepare (%i): %s", rc, sqlite3_errmsg(gravity_db));
 		gravityDB_close();
 		return false;
 	}
@@ -88,7 +88,7 @@ void gravityDB_close(void)
 	sqlite3_finalize(whitelist_stmt);
 
 	// Close table
-	sqlite3_close(gravitydb);
+	sqlite3_close(gravity_db);
 	gravity_database_avail = false;
 }
 
@@ -122,10 +122,10 @@ bool gravityDB_getTable(const unsigned char list)
 	}
 
 	// Prepare SQLite3 statement
-	int rc = sqlite3_prepare_v2(gravitydb, querystr, -1, &stmt, NULL);
+	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &stmt, NULL);
 	if( rc )
 	{
-		logg("readGravity(%s) - SQL error prepare (%i): %s", querystr, rc, sqlite3_errmsg(gravitydb));
+		logg("readGravity(%s) - SQL error prepare (%i): %s", querystr, rc, sqlite3_errmsg(gravity_db));
 		gravityDB_close();
 		return false;
 	}
@@ -158,7 +158,7 @@ inline const char* gravityDB_getDomain(void)
 	// SQLITE_DONE (we are finished reading the table)
 	if(rc != SQLITE_DONE)
 	{
-		logg("gravityDB_getDomain() - SQL error step (%i): %s", rc, sqlite3_errmsg(gravitydb));
+		logg("gravityDB_getDomain() - SQL error step (%i): %s", rc, sqlite3_errmsg(gravity_db));
 		gravityDB_finalizeTable();
 		return NULL;
 	}
@@ -210,9 +210,9 @@ int gravityDB_count(const unsigned char list)
 	}
 
 	// Prepare query
-	int rc = sqlite3_prepare_v2(gravitydb, querystr, -1, &stmt, NULL);
+	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &stmt, NULL);
 	if( rc ){
-		logg("gravityDB_count(%s) - SQL error prepare (%i): %s", querystr, rc, sqlite3_errmsg(gravitydb));
+		logg("gravityDB_count(%s) - SQL error prepare (%i): %s", querystr, rc, sqlite3_errmsg(gravity_db));
 		sqlite3_finalize(stmt);
 		gravityDB_close();
 		return DB_FAILED;
@@ -221,7 +221,7 @@ int gravityDB_count(const unsigned char list)
 	// Perform query
 	rc = sqlite3_step(stmt);
 	if( rc != SQLITE_ROW ){
-		logg("gravityDB_count(%s) - SQL error step (%i): %s", querystr, rc, sqlite3_errmsg(gravitydb));
+		logg("gravityDB_count(%s) - SQL error step (%i): %s", querystr, rc, sqlite3_errmsg(gravity_db));
 		sqlite3_finalize(stmt);
 		gravityDB_close();
 		return DB_FAILED;
@@ -245,7 +245,7 @@ bool in_whitelist(const char *domain)
 	if((retval = sqlite3_bind_text(whitelist_stmt, 1, domain, -1, SQLITE_STATIC)) != SQLITE_OK)
 	{
 		logg("in_whitelist(\"%s\"): Failed to bind domain (error %d) - %s",
-		     domain, retval, sqlite3_errmsg(gravitydb));
+		     domain, retval, sqlite3_errmsg(gravity_db));
 		sqlite3_reset(whitelist_stmt);
 		return false;
 	}
@@ -266,7 +266,7 @@ bool in_whitelist(const char *domain)
 		// Any return code that is neither SQLITE_BUSY not SQLITE_ROW
 		// is a real error we should log
 		logg("in_whitelist(\"%s\"): Failed to perform step (error %d) - %s",
-		     domain, retval, sqlite3_errmsg(gravitydb));
+		     domain, retval, sqlite3_errmsg(gravity_db));
 		sqlite3_reset(whitelist_stmt);
 		sqlite3_clear_bindings(whitelist_stmt);
 		return false;

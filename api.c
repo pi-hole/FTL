@@ -19,6 +19,7 @@
 #include "request.h"
 #include "config.h"
 #include "database/common.h"
+#include "database/query-table.h"
 #include "overTime.h"
 #include "api.h"
 #include "version.h"
@@ -1029,13 +1030,7 @@ void getVersion(const int *sock)
 void getDBstats(const int *sock)
 {
 	// Get file details
-	struct stat st;
-	long int filesize = 0;
-	if(stat(FTLfiles.db, &st) != 0)
-		// stat() failed (maybe the file does not exist?)
-		filesize = -1;
-	else
-		filesize = st.st_size;
+	long int filesize = ((long int)1e6*get_FTL_db_filesize());
 
 	char *prefix = calloc(2, sizeof(char));
 	if(prefix == NULL) return;

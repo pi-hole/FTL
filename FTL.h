@@ -139,10 +139,10 @@ typedef struct {
 	char* log;
 	char* pid;
 	char* port;
-	char* db;
 	char* socketfile;
-	char* gravitydb;
-	char* macvendordb;
+	char* FTL_db;
+	char* gravity_db;
+	char* macvendor_db;
 } FTLFileNamesStruct;
 
 typedef struct {

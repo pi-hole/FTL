@@ -9,7 +9,7 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
-#include "networktable.h"
+#include "network-table.h"
 #include "common.h"
 #include "shmem.h"
 #include "sqlite3.h"
@@ -22,7 +22,6 @@
 
 // Private prototypes
 static char* getMACVendor(const char* hwaddr);
-bool unify_hwaddr(sqlite3 *db);
 
 bool create_network_table(void)
 {
@@ -61,7 +60,7 @@ void parse_arp_cache(void)
 	// Open database file
 	if(!dbopen())
 	{
-		logg("read_arp_cache() - Failed to open DB");
+		logg("read_arp_cache() - Failed to open FTL_db");
 		fclose(arpfp);
 		return;
 	}
@@ -219,7 +218,7 @@ void parse_arp_cache(void)
 // If we find duplicates, we keep the most recent entry, while
 // - we replace the first-seen date by the earliest across all rows
 // - we sum up the number of queries of all clients with the same hwaddr
-bool unify_hwaddr(sqlite3 *db)
+bool unify_hwaddr(void)
 {
 	// We request sets of (id,hwaddr). They are GROUPed BY hwaddr to make
 	// the set unique in hwaddr.
@@ -237,9 +236,9 @@ bool unify_hwaddr(sqlite3 *db)
 
 	// Perform SQL query
 	sqlite3_stmt* stmt;
-	ret = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
+	ret = sqlite3_prepare_v2(FTL_db, querystr, -1, &stmt, NULL);
 	if( ret ){
-		logg("unify_hwaddr(%s) - SQL error prepare (%i): %s", querystr, ret, sqlite3_errmsg(db));
+		logg("unify_hwaddr(%s) - SQL error prepare (%i): %s", querystr, ret, sqlite3_errmsg(FTL_db));
 		dbclose();
 		return false;
 	}
@@ -250,7 +249,7 @@ bool unify_hwaddr(sqlite3 *db)
 		// Check if we ran into an error
 		if(ret != SQLITE_ROW)
 		{
-			logg("unify_hwaddr(%s) - SQL error step (%i): %s", querystr, ret, sqlite3_errmsg(db));
+			logg("unify_hwaddr(%s) - SQL error step (%i): %s", querystr, ret, sqlite3_errmsg(FTL_db));
 			dbclose();
 			return false;
 		}
@@ -305,11 +304,11 @@ bool unify_hwaddr(sqlite3 *db)
 static char* getMACVendor(const char* hwaddr)
 {
 	struct stat st;
-	if(stat(FTLfiles.macvendordb, &st) != 0)
+	if(stat(FTLfiles.macvendor_db, &st) != 0)
 	{
 		// File does not exist
 		if(config.debug & DEBUG_ARP)
-			logg("getMACVenor(%s): %s does not exist", hwaddr, FTLfiles.macvendordb);
+			logg("getMACVenor(%s): %s does not exist", hwaddr, FTLfiles.macvendor_db);
 		return strdup("");
 	}
 	else if(strlen(hwaddr) != 17)
@@ -320,11 +319,11 @@ static char* getMACVendor(const char* hwaddr)
 		return strdup("");
 	}
 
-	sqlite3 *macdb;
-	int rc = sqlite3_open_v2(FTLfiles.macvendordb, &macdb, SQLITE_OPEN_READONLY, NULL);
+	sqlite3 *macvendor_db;
+	int rc = sqlite3_open_v2(FTLfiles.macvendor_db, &macvendor_db, SQLITE_OPEN_READONLY, NULL);
 	if( rc ){
-		logg("getMACVendor(%s) - SQL error (%i): %s", hwaddr, rc, sqlite3_errmsg(macdb));
-		sqlite3_close(macdb);
+		logg("getMACVendor(%s) - SQL error (%i): %s", hwaddr, rc, sqlite3_errmsg(macvendor_db));
+		sqlite3_close(macvendor_db);
 		return strdup("");
 	}
 
@@ -336,16 +335,16 @@ static char* getMACVendor(const char* hwaddr)
 	if(rc < 1)
 	{
 		logg("getMACVendor(%s) - Allocation error (%i)", hwaddr, rc);
-		sqlite3_close(macdb);
+		sqlite3_close(macvendor_db);
 		return strdup("");
 	}
 	free(hwaddrshort);
 
 	sqlite3_stmt* stmt;
-	rc = sqlite3_prepare_v2(macdb, querystr, -1, &stmt, NULL);
+	rc = sqlite3_prepare_v2(macvendor_db, querystr, -1, &stmt, NULL);
 	if( rc ){
-		logg("getMACVendor(%s) - SQL error prepare (%s, %i): %s", hwaddr, querystr, rc, sqlite3_errmsg(macdb));
-		sqlite3_close(macdb);
+		logg("getMACVendor(%s) - SQL error prepare (%s, %i): %s", hwaddr, querystr, rc, sqlite3_errmsg(macvendor_db));
+		sqlite3_close(macvendor_db);
 		return strdup("");
 	}
 	free(querystr);
@@ -365,40 +364,34 @@ static char* getMACVendor(const char* hwaddr)
 	if(rc != SQLITE_DONE && rc != SQLITE_ROW)
 	{
 		// Error
-		logg("getMACVendor(%s) - SQL error step (%i): %s", hwaddr, rc, sqlite3_errmsg(macdb));
+		logg("getMACVendor(%s) - SQL error step (%i): %s", hwaddr, rc, sqlite3_errmsg(macvendor_db));
 	}
 
 	sqlite3_finalize(stmt);
-	sqlite3_close(macdb);
+	sqlite3_close(macvendor_db);
 
 	return vendor;
 }
 
-void updateMACVendorRecords()
+void updateMACVendorRecords(void)
 {
 	struct stat st;
-	if(stat(FTLfiles.macvendordb, &st) != 0)
+	if(stat(FTLfiles.macvendor_db, &st) != 0)
 	{
 		// File does not exist
 		if(config.debug & DEBUG_ARP)
-			logg("updateMACVendorRecords(): %s does not exist", FTLfiles.macvendordb);
+			logg("updateMACVendorRecords(): %s does not exist", FTLfiles.macvendor_db);
 		return;
 	}
 
-	sqlite3 *db;
-	int rc = sqlite3_open_v2(FTLfiles.db, &db, SQLITE_OPEN_READWRITE, NULL);
-	if( rc ){
-		logg("updateMACVendorRecords() - SQL error (%i): %s", rc, sqlite3_errmsg(db));
-		sqlite3_close(db);
-		return;
-	}
+	dbopen();
 
 	sqlite3_stmt* stmt;
 	const char* selectstr = "SELECT id,hwaddr FROM network;";
-	rc = sqlite3_prepare_v2(db, selectstr, -1, &stmt, NULL);
+	int rc = sqlite3_prepare_v2(FTL_db, selectstr, -1, &stmt, NULL);
 	if( rc ){
-		logg("updateMACVendorRecords() - SQL error prepare (%s, %i): %s", selectstr, rc, sqlite3_errmsg(db));
-		sqlite3_close(db);
+		logg("updateMACVendorRecords() - SQL error prepare (%s, %i): %s", selectstr, rc, sqlite3_errmsg(FTL_db));
+		sqlite3_close(FTL_db);
 		return;
 	}
 
@@ -423,7 +416,7 @@ void updateMACVendorRecords()
 
 		// Execute prepared statement
 		char *zErrMsg = NULL;
-		rc = sqlite3_exec(db, updatestr, NULL, NULL, &zErrMsg);
+		rc = sqlite3_exec(FTL_db, updatestr, NULL, NULL, &zErrMsg);
 		if( rc != SQLITE_OK ){
 			logg("updateMACVendorRecords() - SQL exec error: %s (%i): %s", updatestr, rc, zErrMsg);
 			sqlite3_free(zErrMsg);
@@ -439,9 +432,9 @@ void updateMACVendorRecords()
 	if(rc != SQLITE_DONE)
 	{
 		// Error
-		logg("updateMACVendorRecords() - SQL error step (%i): %s", rc, sqlite3_errmsg(db));
+		logg("updateMACVendorRecords() - SQL error step (%i): %s", rc, sqlite3_errmsg(FTL_db));
 	}
 
 	sqlite3_finalize(stmt);
-	sqlite3_close(db);
+	dbclose();
 }

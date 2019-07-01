@@ -170,20 +170,20 @@ void read_FTLconf(void)
 
 	errno = 0;
 	// Use sscanf() to obtain filename from config file parameter only if buffer != NULL
-	if(!(buffer != NULL && sscanf(buffer, "%127ms", &FTLfiles.db)))
+	if(!(buffer != NULL && sscanf(buffer, "%127ms", &FTLfiles.FTL_db)))
 	{
 		// Use standard path if no custom path was obtained from the config file
-		FTLfiles.db = strdup("/etc/pihole/pihole-FTL.db");
+		FTLfiles.FTL_db = strdup("/etc/pihole/pihole-FTL.FTL_db");
 	}
 
 	// Test if memory allocation was successful
-	if(FTLfiles.db == NULL && errno != 0)
+	if(FTLfiles.FTL_db == NULL && errno != 0)
 	{
-		logg("FATAL: Allocating memory for FTLfiles.db failed (%s, %i). Exiting.", strerror(errno), errno);
+		logg("FATAL: Allocating memory for FTLfiles.FTL_db failed (%s, %i). Exiting.", strerror(errno), errno);
 		exit(EXIT_FAILURE);
 	}
-	else if(FTLfiles.db != NULL && strlen(FTLfiles.db) > 0)
-		logg("   DBFILE: Using %s", FTLfiles.db);
+	else if(FTLfiles.FTL_db != NULL && strlen(FTLfiles.FTL_db) > 0)
+		logg("   DBFILE: Using %s", FTLfiles.FTL_db);
 	else
 		logg("   DBFILE: Not using database due to empty filename");
 
@@ -299,10 +299,10 @@ void read_FTLconf(void)
 	getpath(fp, "AUDITLISTFILE", "/etc/pihole/auditlog.list", &files.auditlist);
 
 	// MACVENDORDB
-	getpath(fp, "MACVENDORDB", "/etc/pihole/macvendor.db", &FTLfiles.macvendordb);
+	getpath(fp, "MACVENDORDB", "/etc/pihole/macvendor.db", &FTLfiles.macvendor_db);
 
 	// GRAVITYDB
-	getpath(fp, "GRAVITYDB", "/etc/pihole/gravity.db", &FTLfiles.gravitydb);
+	getpath(fp, "GRAVITYDB", "/etc/pihole/gravity.db", &FTLfiles.gravity_db);
 
 	// PARSE_ARP_CACHE
 	// defaults to: true

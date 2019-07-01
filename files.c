@@ -159,3 +159,19 @@ bool chmod_file(const char *filename, const mode_t mode)
 	return true;
 }
 
+bool file_exists(const char *filename)
+{
+	struct stat st;
+	return stat(filename, &st) == 0;
+}
+
+double get_FTL_db_filesize(void)
+{
+	struct stat st;
+	if(stat(FTLfiles.FTL_db, &st) != 0)
+	{
+		// stat() failed (maybe the DB file does not exist?)
+		return 0;
+	}
+	return 1e-6*st.st_size;
+}
