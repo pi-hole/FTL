@@ -10,7 +10,6 @@
 
 #include "FTL.h"
 #include "shmem.h"
-#include "shmem_r.h"
 #include "log.h"
 
 /**

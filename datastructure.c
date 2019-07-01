@@ -12,7 +12,6 @@
 #include "datastructure.h"
 #include "memory.h"
 #include "shmem.h"
-#include "shmem_r.h"
 #include "log.h"
 
 // converts upper to lower case, and leaves other characters unchanged

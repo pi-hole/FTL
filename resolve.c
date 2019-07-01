@@ -10,7 +10,6 @@
 
 #include "FTL.h"
 #include "shmem.h"
-#include "shmem_r.h"
 #include "memory.h"
 #include "datastructure.h"
 #include "resolve.h"

@@ -14,7 +14,6 @@
 #include "FTL.h"
 #include "dnsmasq_interface.h"
 #include "shmem.h"
-#include "shmem_r.h"
 // Prototype of getCacheInformation()
 #include "api.h"
 #include "memory.h"

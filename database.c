@@ -10,7 +10,6 @@
 
 #include "FTL.h"
 #include "shmem.h"
-#include "shmem_r.h"
 #include "sqlite3.h"
 #include "database.h"
 #include "networktable.h"

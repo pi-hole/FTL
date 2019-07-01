@@ -19,7 +19,7 @@
 #include "main.h"
 #include "signals.h"
 #include "regex_r.h"
-#include "shmem_r.h"
+#include "shmem.h"
 #include "capabilities.h"
 #include "gravity.h"
 #include "timers.h"

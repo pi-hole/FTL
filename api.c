@@ -10,8 +10,7 @@
 
 #include "FTL.h"
 #include "memory.h"
-#include "shmem_r.h"
-#include "memory.h"
+#include "shmem.h"
 #include "datastructure.h"
 #include "setupVars.h"
 #include "socket.h"

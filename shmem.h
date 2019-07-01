@@ -50,4 +50,35 @@ void _lock_shm(const char* func, const int line, const char* file);
 #define unlock_shm() _unlock_shm(__FUNCTION__, __LINE__, __FILE__)
 void _unlock_shm(const char* func, const int line, const char* file);
 
+bool init_shmem(void);
+void destroy_shmem(void);
+size_t addstr(const char *str);
+const char *getstr(const size_t pos);
+void *enlarge_shmem_struct(const char type);
+
+/**
+ * Create a new overTime client shared memory block.
+ * This also updates `overTimeClientData`.
+ */
+void newOverTimeClient(const int clientID);
+
+/**
+ * Add a new overTime slot to each overTime client shared memory block.
+ * This also updates `overTimeClientData`.
+ */
+void addOverTimeClientSlot(void);
+
+// overTime.c
+void initOverTime(void);
+unsigned int getOverTimeID(const time_t timestamp);
+
+/**
+ * Move the overTime slots so the oldest interval starts with mintime. The time
+ * given will be aligned to OVERTIME_INTERVAL.
+ *
+ * @param mintime The start of the oldest interval
+ */
+void moveOverTimeMemory(const time_t mintime);
+
+
 #endif //SHARED_MEMORY_SERVER_H
