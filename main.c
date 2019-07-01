@@ -73,7 +73,7 @@ int main (int argc, char* argv[])
 
 	// Try to import queries from long-term database if available
 	if(database && config.DBimport)
-		read_data_from_DB();
+		DB_read_queries();
 
 	log_counter_info();
 	check_setupVarsconf();
@@ -95,7 +95,7 @@ int main (int argc, char* argv[])
 	// Save new queries to database
 	if(database)
 	{
-		save_to_DB();
+		DB_save_queries();
 		logg("Finished final database update");
 	}
 

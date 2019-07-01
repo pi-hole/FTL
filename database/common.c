@@ -415,7 +415,7 @@ void *DB_thread(void *val)
 			lock_shm();
 
 			// Save data to database
-			save_to_DB();
+			DB_save_queries();
 
 			// Release data lock
 			unlock_shm();

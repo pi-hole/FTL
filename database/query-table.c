@@ -67,7 +67,7 @@ int get_number_of_queries_in_DB(void)
 	return result;
 }
 
-void save_to_DB(void)
+void DB_save_queries(void)
 {
 	// Don't save anything to the database if in PRIVACY_NOSTATS mode
 	if(config.privacylevel >= PRIVACY_NOSTATS)
@@ -267,7 +267,7 @@ void delete_old_queries_in_DB(void)
 }
 
 // Get most recent 24 hours data from long-term database
-void read_data_from_DB(void)
+void DB_read_queries(void)
 {
 	// Don't try to load anything to the database if in PRIVACY_NOSTATS mode
 	if(config.privacylevel >= PRIVACY_NOSTATS)
