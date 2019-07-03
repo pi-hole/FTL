@@ -389,10 +389,11 @@ static int iface_allowed(struct iface_param *param, int if_index, char *label,
   /* check whether the interface IP has been added already 
      we call this routine multiple times. */
   for (iface = daemon->interfaces; iface; iface = iface->next) 
-    if (sockaddr_isequal(&iface->addr, addr))
+    if (sockaddr_isequal(&iface->addr, addr) && iface->index == if_index)
       {
 	iface->dad = !!(iface_flags & IFACE_TENTATIVE);
 	iface->found = 1; /* for garbage collection */
+	iface->netmask = netmask;
 	return 1;
       }
 
