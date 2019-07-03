@@ -93,7 +93,7 @@ bool create_network_addresses_table(void)
 	SQL_bool("COMMIT");
 
 	// Re-enable foreign key enforcement
-	SQL_bool("PRAGMA foreign_keys=OFF");
+	SQL_bool("PRAGMA foreign_keys=ON");
 
 	return true;
 }
