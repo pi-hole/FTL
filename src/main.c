@@ -11,7 +11,7 @@
 #include "FTL.h"
 #include "daemon.h"
 #include "log.h"
-#include "socket.h"
+#include "api/socket.h"
 #include "setupVars.h"
 #include "args.h"
 #include "config.h"

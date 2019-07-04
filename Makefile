@@ -18,7 +18,8 @@ DNSMASQOPTS = -DHAVE_DNSSEC -DHAVE_DNSSEC_STATIC
 
 FTLDEPS = *.h version.h
 FTLDBOBJ = database/common.o database/query-table.o database/network-table.o database/gravity-db.o
-FTLOBJ = $(FTLDBOBJ) main.o memory.o log.o daemon.o datastructure.o signals.o socket.o request.o files.o setupVars.o args.o gc.o config.o msgpack.o api.o dnsmasq_interface.o resolve.o regex.o shmem.o capabilities.o overTime.o timers.o
+FTLAPIOBJ = api/socket.o api/request.o api/msgpack.o api/api.o
+FTLOBJ = $(FTLDBOBJ) $(FTLAPIOBJ) main.o memory.o log.o daemon.o datastructure.o signals.o files.o setupVars.o args.o gc.o config.o dnsmasq_interface.o resolve.o regex.o shmem.o capabilities.o overTime.o timers.o
 
 DNSMASQDEPS = config.h dhcp-protocol.h dns-protocol.h radv-protocol.h dhcp6-protocol.h dnsmasq.h ip6addr.h metrics.h ../dnsmasq_interface.h
 DNSMASQOBJ = arp.o dbus.o domain.o lease.o outpacket.o rrfilter.o auth.o dhcp6.o edns0.o log.o poll.o slaac.o blockdata.o dhcp.o forward.o loop.o radv.o tables.o bpf.o dhcp-common.o helper.o netlink.o rfc1035.o tftp.o cache.o dnsmasq.o inotify.o network.o rfc2131.o util.o conntrack.o dnssec.o ipset.o option.o rfc3315.o crypto.o dump.o ubus.o metrics.o
@@ -116,6 +117,7 @@ else
 endif
 
 DBOBJDIR = $(ODIR)/database
+APIOBJDIR = $(ODIR)/api
 DNSMASQOBJDIR = $(ODIR)/dnsmasq
 
 _FTLDEPS = $(patsubst %,$(IDIR)/%,$(FTLDEPS))
@@ -127,7 +129,7 @@ _DNSMASQOBJ = $(patsubst %,$(DNSMASQOBJDIR)/%,$(DNSMASQOBJ))
 all: pihole-FTL
 
 # Compile FTL source code files with virtually all possible warnings a modern gcc can generate
-$(_FTLOBJ): $(ODIR)/%.o: $(IDIR)/%.c $(_FTLDEPS) | $(ODIR) $(DBOBJDIR)
+$(_FTLOBJ): $(ODIR)/%.o: $(IDIR)/%.c $(_FTLDEPS) | $(ODIR) $(DBOBJDIR) $(APIOBJDIR)
 	$(CC) -c -o $@ $< -g3 $(CCFLAGS) $(EXTRAWARN)
 
 # Compile the contained dnsmasq code with much less strict requirements as it would fail to comply
@@ -143,6 +145,9 @@ $(ODIR):
 
 $(DBOBJDIR):
 	mkdir -p $(DBOBJDIR)
+
+$(APIOBJDIR):
+	mkdir -p $(APIOBJDIR)
 
 $(DNSMASQOBJDIR):
 	mkdir -p $(DNSMASQOBJDIR)

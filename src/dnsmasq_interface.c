@@ -22,7 +22,7 @@
 #include "daemon.h"
 #include "timers.h"
 #include "gc.h"
-#include "socket.h"
+#include "api/socket.h"
 #include "regex_r.h"
 #include "datastructure.h"
 #include "config.h"
@@ -31,7 +31,7 @@
 #include "files.h"
 #include "log.h"
 // Prototype of getCacheInformation()
-#include "api.h"
+#include "api/api.h"
 // global variable daemonmode
 #include "args.h"
 
