@@ -11,7 +11,8 @@
 #define NETWORKTABLE_H
 
 bool create_network_table(void);
-void parse_arp_cache(void);
+bool create_network_addresses_table(void);
+void parse_neighbor_cache(void);
 void updateMACVendorRecords(void);
 bool unify_hwaddr(void);
 

@@ -31,9 +31,10 @@ int get_number_of_queries_in_DB(void)
 		return DB_FAILED;
 	}
 
+	// Count number of rows using the index timestamp is faster than select(*)
 	int result = db_query_int("SELECT COUNT(timestamp) FROM queries");
 
-	// Close database
+	// Close pihole-FTL.db database connection
 	dbclose();
 
 	return result;
@@ -46,12 +47,13 @@ void DB_save_queries(void)
 		return;
 
 	// Start database timer
-	if(config.debug & DEBUG_DATABASE) timer_start(DATABASE_WRITE_TIMER);
+	if(config.debug & DEBUG_DATABASE)
+		timer_start(DATABASE_WRITE_TIMER);
 
 	// Open database
 	if(!dbopen())
 	{
-		logg("save_to_DB() - failed to open FTL_db");
+		logg("DB_save_queries() - failed to open FTL_db");
 		return;
 	}
 
@@ -59,21 +61,14 @@ void DB_save_queries(void)
 	sqlite3_stmt* stmt = NULL;
 
 	// Get last ID stored in the database
-	sqlite3_int64 lastID = last_ID_in_DB();
+	long int lastID = get_max_query_ID();
 
-	bool ret = dbquery("BEGIN TRANSACTION");
-	if(!ret)
-	{
-		logg("save_to_DB() - unable to begin transaction (%i): %s", ret, sqlite3_errmsg(FTL_db));
-		dbclose();
-		return;
-	}
+	SQL_void("BEGIN TRANSACTION");
 
 	int rc = sqlite3_prepare_v2(FTL_db, "INSERT INTO queries VALUES (NULL,?,?,?,?,?,?)", -1, &stmt, NULL);
-	if( rc )
+	if( rc != SQLITE_OK )
 	{
-		logg("save_to_DB() - error in preparing SQL statement (%i): %s", ret, sqlite3_errmsg(FTL_db));
-		dbclose();
+		logg("DB_save_queries() - error in preparing SQL statement (%i): %s", rc, sqlite3_errmsg(FTL_db));
 		check_database(rc);
 		return;
 	}
@@ -140,7 +135,7 @@ void DB_save_queries(void)
 		sqlite3_reset(stmt);
 
 		if( rc != SQLITE_DONE ){
-			logg("save_to_DB() - SQL error (%i): %s", rc, sqlite3_errmsg(FTL_db));
+			logg("DB_save_queries() - SQL error (%i): %s", rc, sqlite3_errmsg(FTL_db));
 			saved_error++;
 			if(saved_error < 3)
 			{
@@ -148,7 +143,7 @@ void DB_save_queries(void)
 			}
 			else
 			{
-				logg("save_to_DB() - exiting due to too many errors");
+				logg("DB_save_queries() - exiting due to too many errors");
 				break;
 			}
 			// Check this error message
@@ -175,9 +170,12 @@ void DB_save_queries(void)
 	}
 
 	// Finish prepared statement
-	ret = dbquery("END TRANSACTION");
-	int ret2 = sqlite3_finalize(stmt);
-	if(!ret || ret2 != SQLITE_OK){ dbclose(); return; }
+	SQL_void("END TRANSACTION");
+	if((rc = sqlite3_finalize(stmt)) != SQLITE_OK)
+	{
+		check_database(rc);
+		return;
+	}
 
 	// Store index for next loop interation round and update last time stamp
 	// in the database only if all queries have been saved successfully
@@ -199,7 +197,7 @@ void DB_save_queries(void)
 
 	if(config.debug & DEBUG_DATABASE)
 	{
-		logg("Notice: Queries stored in FTL_db: %u (took %.1f ms, last SQLite ID %llu)", saved, timer_elapsed_msec(DATABASE_WRITE_TIMER), lastID);
+		logg("Notice: Queries stored in FTL_db: %u (took %.1f ms, last SQLite ID %li)", saved, timer_elapsed_msec(DATABASE_WRITE_TIMER), lastID);
 		if(saved_error > 0)
 			logg("        There are queries that have not been saved");
 	}
@@ -218,9 +216,7 @@ void delete_old_queries_in_DB(void)
 
 	if(!dbquery("DELETE FROM queries WHERE timestamp <= %i", timestamp))
 	{
-		dbclose();
 		logg("delete_old_queries_in_DB(): Deleting queries due to age of entries failed!");
-		database = true;
 		return;
 	}
 
@@ -248,30 +244,30 @@ void DB_read_queries(void)
 	// Open database file
 	if(!dbopen())
 	{
-		logg("read_data_from_DB() - Failed to open FTL_db");
+		logg("DB_read_queries() - Failed to open FTL_db");
 		return;
 	}
 
 	// Prepare request
-	char *rstr = NULL;
 	// Get time stamp 24 hours in the past
 	const time_t now = time(NULL);
 	const time_t mintime = now - config.maxlogage;
-	int rc = asprintf(&rstr, "SELECT * FROM queries WHERE timestamp >= %li", mintime);
+	char *querystr = NULL;
+	int rc = asprintf(&querystr, "SELECT * FROM queries WHERE timestamp >= %li", mintime);
 	if(rc < 1)
 	{
-		logg("read_data_from_DB() - Allocation error (%i): %s", rc, sqlite3_errmsg(FTL_db));
+		logg("DB_read_queries() - Allocation error (%i): %s", rc, sqlite3_errmsg(FTL_db));
 		return;
 	}
 	// Log FTL_db query string in debug mode
-	if(config.debug & DEBUG_DATABASE) logg("%s", rstr);
+	if(config.debug & DEBUG_DATABASE)
+		logg("DB_read_queries(): \"%s\"", querystr);
 
 	// Prepare SQLite3 statement
 	sqlite3_stmt* stmt = NULL;
-	rc = sqlite3_prepare_v2(FTL_db, rstr, -1, &stmt, NULL);
-	if( rc ){
-		logg("read_data_from_DB() - SQL error prepare (%i): %s", rc, sqlite3_errmsg(FTL_db));
-		dbclose();
+	rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &stmt, NULL);
+	if( rc != SQLITE_OK ){
+		logg("DB_read_queries() - SQL error prepare (%i): %s", rc, sqlite3_errmsg(FTL_db));
 		check_database(rc);
 		return;
 	}
@@ -439,12 +435,12 @@ void DB_read_queries(void)
 	}
 	logg("Imported %i queries from the long-term database", counters->queries);
 
-	// Update lastdbindex so that the next call to save_to_DB()
+	// Update lastdbindex so that the next call to DB_save_queries()
 	// skips the queries that we just imported from the database
 	lastdbindex = counters->queries;
 
 	if( rc != SQLITE_DONE ){
-		logg("read_data_from_DB() - SQL error step (%i): %s", rc, sqlite3_errmsg(FTL_db));
+		logg("DB_read_queries() - SQL error step (%i): %s", rc, sqlite3_errmsg(FTL_db));
 		dbclose();
 		check_database(rc);
 		return;
@@ -453,5 +449,5 @@ void DB_read_queries(void)
 	// Finalize SQLite3 statement
 	sqlite3_finalize(stmt);
 	dbclose();
-	free(rstr);
+	free(querystr);
 }

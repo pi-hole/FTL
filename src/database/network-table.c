@@ -18,50 +18,110 @@
 #include "timers.h"
 #include "config.h"
 #include "datastructure.h"
-#define ARPCACHE "/proc/net/arp"
 
 // Private prototypes
 static char* getMACVendor(const char* hwaddr);
 
 bool create_network_table(void)
 {
-	bool ret;
 	// Create network table in the database
-	ret = dbquery("CREATE TABLE network ( id INTEGER PRIMARY KEY NOT NULL, " \
-	                                     "ip TEXT NOT NULL, " \
-	                                     "hwaddr TEXT NOT NULL, " \
-	                                     "interface TEXT NOT NULL, " \
-	                                     "name TEXT, " \
-	                                     "firstSeen INTEGER NOT NULL, " \
-	                                     "lastQuery INTEGER NOT NULL, " \
-	                                     "numQueries INTEGER NOT NULL," \
-	                                     "macVendor TEXT);");
-	if(!ret){ dbclose(); return false; }
+	SQL_bool("CREATE TABLE network ( id INTEGER PRIMARY KEY NOT NULL, " \
+	                                "ip TEXT NOT NULL, " \
+	                                "hwaddr TEXT NOT NULL, " \
+	                                "interface TEXT NOT NULL, " \
+	                                "name TEXT, " \
+	                                "firstSeen INTEGER NOT NULL, " \
+	                                "lastQuery INTEGER NOT NULL, " \
+	                                "numQueries INTEGER NOT NULL," \
+	                                "macVendor TEXT);");
 
 	// Update database version to 3
-	ret = db_set_FTL_property(DB_VERSION, 3);
-	if(!ret){ dbclose(); return false; }
+	if(!db_set_FTL_property(DB_VERSION, 3))
+	{
+		logg("create_network_table(): Failed to update database version!");
+		return false;
+	}
 
 	return true;
 }
 
-// Read kernel's ARP cache using procfs
-void parse_arp_cache(void)
+bool create_network_addresses_table(void)
 {
-	FILE* arpfp = NULL;
-	// Try to access the kernel's ARP cache
-	if((arpfp = fopen(ARPCACHE, "r")) == NULL)
+	// Disable foreign key enforcement for this transaction
+	// Otherwise, dropping the network table would not be allowed
+	SQL_bool("PRAGMA foreign_keys=OFF");
+
+	// Begin new transaction
+	SQL_bool("BEGIN TRANSACTION");
+
+	// Create network_addresses table in the database
+	SQL_bool("CREATE TABLE network_addresses ( network_id INTEGER NOT NULL, "\
+	                                          "ip TEXT NOT NULL, "\
+	                                          "lastSeen INTEGER NOT NULL DEFAULT (cast(strftime('%%s', 'now') as int)), "\
+	                                          "UNIQUE(network_id,ip), "\
+	                                          "FOREIGN KEY(network_id) REFERENCES network(id));");
+
+	// Create a network_addresses row for each entry in the network table
+	SQL_bool("INSERT INTO network_addresses (network_id,ip) SELECT id,ip FROM network;");
+
+	// Remove IP column from network table.
+	// As ALTER TABLE is severely limit, we have to do the column deletion manually.
+	// Step 1: We create a new table without the ip column
+	SQL_bool("CREATE TABLE network_bck ( id INTEGER PRIMARY KEY NOT NULL, " \
+	                                    "hwaddr TEXT UNIQUE NOT NULL, " \
+	                                    "interface TEXT NOT NULL, " \
+	                                    "name TEXT, " \
+	                                    "firstSeen INTEGER NOT NULL, " \
+	                                    "lastQuery INTEGER NOT NULL, " \
+	                                    "numQueries INTEGER NOT NULL, " \
+	                                    "macVendor TEXT);");
+
+	// Step 2: Copy data (except ip column) from network into network_back
+	SQL_bool("INSERT INTO network_bck "\
+	         "SELECT id, hwaddr, interface, name, firstSeen, "\
+	                "lastQuery, numQueries, macVendor "\
+	                "FROM network;");
+
+	// Step 3: Drop the network table, the unique index will be automatically dropped
+	SQL_bool("DROP TABLE network;");
+
+	// Step 4: Rename network_bck table to network table as last step
+	SQL_bool("ALTER TABLE network_bck RENAME TO network;");
+
+	// Update database version to 5
+	if(!db_set_FTL_property(DB_VERSION, 5))
 	{
-		logg("WARN: Opening of %s failed!", ARPCACHE);
-		logg("      Message: %s", strerror(errno));
-		return;
+		logg("create_network_addresses_table(): Failed to update database version!");
+		return false;
 	}
 
+	// Finish transaction
+	SQL_bool("COMMIT");
+
+	// Re-enable foreign key enforcement
+	SQL_bool("PRAGMA foreign_keys=ON");
+
+	return true;
+}
+
+// Parse kernel's neighbor cache
+void parse_neighbor_cache(void)
+{
 	// Open database file
 	if(!dbopen())
 	{
-		logg("read_arp_cache() - Failed to open FTL_db");
-		fclose(arpfp);
+		logg("parse_neighbor_cache() - Failed to open DB");
+		return;
+	}
+
+	// Try to access the kernel's neighbor cache
+	// We are only interested in entries which are in either STALE or REACHABLE state
+	FILE* arpfp = NULL;
+	if((arpfp = popen("ip neigh show nud stale nud reachable", "r")) == NULL)
+	{
+		logg("WARN: Command \"ip neigh show nud stale nud reachable\" failed!");
+		logg("      Message: %s", strerror(errno));
+		dbclose();
 		return;
 	}
 
@@ -71,26 +131,22 @@ void parse_arp_cache(void)
 	// Prepare buffers
 	char * linebuffer = NULL;
 	size_t linebuffersize = 0;
-	char ip[100], mask[100], hwaddr[100], iface[100];
-	unsigned int type, flags, entries = 0;
+	char ip[100], hwaddr[100], iface[100];
+	unsigned int entries = 0;
 	time_t now = time(NULL);
 
 	// Start collecting database commands
 	lock_shm();
-	dbquery("BEGIN TRANSACTION");
+	SQL_void("BEGIN TRANSACTION");
 
 	// Read ARP cache line by line
 	while(getline(&linebuffer, &linebuffersize, arpfp) != -1)
 	{
-		int num = sscanf(linebuffer, "%99s 0x%x 0x%x %99s %99s %99s\n",
-		                 ip, &type, &flags, hwaddr, mask, iface);
+		int num = sscanf(linebuffer, "%99s dev %99s lladdr %99s",
+		                 ip, iface, hwaddr);
 
-		// Skip header and empty lines
-		if (num < 4)
-			continue;
-
-		// Skip incomplete entires, i.e., entries without C (complete) flag
-		if(!(flags & 0x02))
+		// Check if we want to process the line we just read
+		if(num != 3)
 			continue;
 
 		// Get ID of this device in our network database. If it cannot be
@@ -108,12 +164,12 @@ void parse_arp_cache(void)
 		int ret = asprintf(&querystr, "SELECT id FROM network WHERE hwaddr = \'%s\';", hwaddr);
 		if(querystr == NULL || ret < 0)
 		{
-			logg("Memory allocation failed in parse_arp_cache (%i)", ret);
+			logg("Memory allocation failed in parse_arp_cache(): %i", ret);
 			break;
 		}
 
 		// Perform SQL query
-		const int dbID = db_query_int(querystr);
+		int dbID = db_query_int(querystr);
 		free(querystr);
 
 		if(dbID == DB_FAILED)
@@ -146,14 +202,17 @@ void parse_arp_cache(void)
 		{
 			char* macVendor = getMACVendor(hwaddr);
 			dbquery("INSERT INTO network "\
-			        "(ip,hwaddr,interface,firstSeen,lastQuery,numQueries,name,macVendor) "\
-			        "VALUES (\'%s\',\'%s\',\'%s\',%lu, %ld, %u, \'%s\', \'%s\');",\
-			        ip, hwaddr, iface, now,
+			        "(hwaddr,interface,firstSeen,lastQuery,numQueries,name,macVendor) "\
+			        "VALUES (\'%s\',\'%s\',%lu, %ld, %u, \'%s\', \'%s\');",\
+			        hwaddr, iface, now,
 			        client != NULL ? client->lastQuery : 0L,
 			        client != NULL ? client->numQueriesARP : 0u,
 			        hostname,
 			        macVendor);
 			free(macVendor);
+
+			// Obtain ID which was given to this new entry
+			dbID = get_lastID();
 		}
 		// Device in database AND client known to Pi-hole
 		else if(client != NULL)
@@ -175,13 +234,6 @@ void parse_arp_cache(void)
 			        client->numQueriesARP, dbID);
 			client->numQueriesARP = 0;
 
-			// Update IP address in case it changed. This might happen with
-			// sequential DHCP servers as found in many commercial routers
-			dbquery("UPDATE network "\
-			        "SET ip = \'%s\' "\
-			        "WHERE id = %i;",\
-			        ip, dbID);
-
 			// Store hostname if available
 			if(strlen(hostname) > 0)
 			{
@@ -195,12 +247,20 @@ void parse_arp_cache(void)
 		// else:
 		// Device in database but not known to Pi-hole: No action required
 
+		// Add unique pair of ID (corresponds to one particular hardware
+		// address) and IP address if it does not exist (INSERT). In case
+		// this pair already exists, the UNIQUE(network_id,ip) trigger
+		// becomes active and the line is instead REPLACEd, causing the
+		// lastQuery timestamp to be updated
+		dbquery("INSERT OR REPLACE INTO network_addresses "\
+		        "(network_id,ip) VALUES(%i,\'%s\');", dbID, ip);
+
 		// Count number of processed ARP cache entries
 		entries++;
 	}
 
 	// Actually update the database
-	dbquery("COMMIT");
+	SQL_void("COMMIT");
 	unlock_shm();
 
 	// Debug logging
@@ -208,7 +268,7 @@ void parse_arp_cache(void)
 		logg("ARP table processing (%i entries) took %.1f ms", entries, timer_elapsed_msec(ARP_TIMER));
 
 	// Close file handle
-	fclose(arpfp);
+	pclose(arpfp);
 
 	// Close database connection
 	dbclose();
@@ -237,9 +297,9 @@ bool unify_hwaddr(void)
 	// Perform SQL query
 	sqlite3_stmt* stmt;
 	ret = sqlite3_prepare_v2(FTL_db, querystr, -1, &stmt, NULL);
-	if( ret ){
+	if( ret != SQLITE_OK ){
 		logg("unify_hwaddr(%s) - SQL error prepare (%i): %s", querystr, ret, sqlite3_errmsg(FTL_db));
-		dbclose();
+		check_database(ret);
 		return false;
 	}
 
@@ -289,14 +349,11 @@ bool unify_hwaddr(void)
 	// See https://www.sqlite.org/lang_createtable.html#constraints:
 	// >>> In most cases, UNIQUE and PRIMARY KEY constraints are
 	// >>> implemented by creating a unique index in the database.
-	dbquery("CREATE UNIQUE INDEX network_hwaddr_idx ON network(hwaddr)");
+	SQL_bool("CREATE UNIQUE INDEX network_hwaddr_idx ON network(hwaddr)");
 
 	// Update database version to 4
 	if(!db_set_FTL_property(DB_VERSION, 4))
-	{
-		dbclose();
 		return false;
-	}
 
 	return true;
 }
@@ -319,9 +376,9 @@ static char* getMACVendor(const char* hwaddr)
 		return strdup("");
 	}
 
-	sqlite3 *macvendor_db;
+	sqlite3 *macvendor_db = NULL;
 	int rc = sqlite3_open_v2(FTLfiles.macvendor_db, &macvendor_db, SQLITE_OPEN_READONLY, NULL);
-	if( rc ){
+	if( rc != SQLITE_OK  ){
 		logg("getMACVendor(%s) - SQL error (%i): %s", hwaddr, rc, sqlite3_errmsg(macvendor_db));
 		sqlite3_close(macvendor_db);
 		return strdup("");
@@ -340,9 +397,9 @@ static char* getMACVendor(const char* hwaddr)
 	}
 	free(hwaddrshort);
 
-	sqlite3_stmt* stmt;
+	sqlite3_stmt* stmt = NULL;
 	rc = sqlite3_prepare_v2(macvendor_db, querystr, -1, &stmt, NULL);
-	if( rc ){
+	if( rc != SQLITE_OK ){
 		logg("getMACVendor(%s) - SQL error prepare (%s, %i): %s", hwaddr, querystr, rc, sqlite3_errmsg(macvendor_db));
 		sqlite3_close(macvendor_db);
 		return strdup("");
@@ -380,18 +437,19 @@ void updateMACVendorRecords(void)
 	{
 		// File does not exist
 		if(config.debug & DEBUG_ARP)
-			logg("updateMACVendorRecords(): %s does not exist", FTLfiles.macvendor_db);
+			logg("updateMACVendorRecords(): \"%s\" does not exist", FTLfiles.macvendor_db);
 		return;
 	}
 
+	// Open database connection
 	dbopen();
 
 	sqlite3_stmt* stmt;
 	const char* selectstr = "SELECT id,hwaddr FROM network;";
 	int rc = sqlite3_prepare_v2(FTL_db, selectstr, -1, &stmt, NULL);
-	if( rc ){
+	if( rc != SQLITE_OK ){
 		logg("updateMACVendorRecords() - SQL error prepare (%s, %i): %s", selectstr, rc, sqlite3_errmsg(FTL_db));
-		sqlite3_close(FTL_db);
+		dbclose();
 		return;
 	}
 
