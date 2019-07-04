@@ -644,7 +644,7 @@ int enumerate_interfaces(int reset)
 	      if (l->iface->done)
 	        {
 	          iface = l->iface;
-	          prettyprint_addr(&iface->addr, daemon->addrbuff);
+	          (void)prettyprint_addr(&iface->addr, daemon->addrbuff);
 	          my_syslog(LOG_DEBUG, _("stopped listening on %s(#%d): %s"),
 	                    iface->name, iface->index, daemon->addrbuff);
 	        }
@@ -959,7 +959,7 @@ void create_bound_listeners(int dienow)
 	new->next = daemon->listeners;
 	daemon->listeners = new;
 	iface->done = 1;
-	prettyprint_addr(&iface->addr, daemon->addrbuff);
+	(void)prettyprint_addr(&iface->addr, daemon->addrbuff);
 	my_syslog(LOG_DEBUG, _("listening on %s(#%d): %s"),
 	          iface->name, iface->index, daemon->addrbuff);
       }
@@ -981,7 +981,7 @@ void create_bound_listeners(int dienow)
       {
 	new->next = daemon->listeners;
 	daemon->listeners = new;
-	prettyprint_addr(&if_tmp->addr, daemon->addrbuff);
+	(void)prettyprint_addr(&if_tmp->addr, daemon->addrbuff);
 	my_syslog(LOG_DEBUG, _("listening on %s"), daemon->addrbuff);
       }
 }
@@ -1314,7 +1314,7 @@ void pre_allocate_sfds(void)
 	errno != 0 &&
 	option_bool(OPT_NOWILD))
       {
-	prettyprint_addr(&srv->source_addr, daemon->namebuff);
+	(void)prettyprint_addr(&srv->source_addr, daemon->namebuff);
 	if (srv->interface[0] != 0)
 	  {
 	    strcat(daemon->namebuff, " ");

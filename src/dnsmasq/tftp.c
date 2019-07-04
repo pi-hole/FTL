@@ -322,7 +322,7 @@ void tftp_request(struct listener *listen, time_t now)
   transfer->opt_blocksize = transfer->opt_transize = 0;
   transfer->netascii = transfer->carrylf = 0;
  
-  prettyprint_addr(&peer, daemon->addrbuff);
+  (void)prettyprint_addr(&peer, daemon->addrbuff);
   
   /* if we have a nailed-down range, iterate until we find a free one. */
   while (!option_bool(OPT_SINGLE_PORT))
@@ -624,7 +624,7 @@ void check_tftp_listeners(time_t now)
 	    {
 	      strcpy(daemon->namebuff, transfer->file->filename);
 	      sanitise(daemon->namebuff);
-	      prettyprint_addr(&transfer->peer, daemon->addrbuff);
+	      (void)prettyprint_addr(&transfer->peer, daemon->addrbuff);
 	      my_syslog(MS_TFTP | LOG_INFO, endcon ? _("failed sending %s to %s") : _("sent %s to %s"), daemon->namebuff, daemon->addrbuff);
 	      /* unlink */
 	      *up = tmp;
@@ -667,7 +667,7 @@ static void handle_tftp(time_t now, struct tftp_transfer *transfer, ssize_t len)
 	  char *end = daemon->packet + len;
 	  char *err = next(&p, end);
 	  
-	  prettyprint_addr(&transfer->peer, daemon->addrbuff);
+	  (void)prettyprint_addr(&transfer->peer, daemon->addrbuff);
 	  
 	  /* Sanitise error message */
 	  if (!err)
