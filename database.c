@@ -25,7 +25,7 @@ static int db_get_FTL_property(const unsigned int ID);
 // defined in networktable.c
 extern bool unify_hwaddr(sqlite3 *db);
 
-static bool check_database(int rc)
+bool check_database(int rc)
 {
 	// We will retry if the database is busy at the moment
 	// However, we won't retry if any other error happened
@@ -37,6 +37,7 @@ static bool check_database(int rc)
 	   rc != SQLITE_BUSY)
 	{
 		logg("check_database(%i): Disabling database connection due to error", rc);
+		dbclose();
 		database = false;
 	}
 
@@ -47,8 +48,10 @@ void dbclose(void)
 {
 	int rc = sqlite3_close(db);
 	// Report any error
-	if( rc )
+	if( rc != SQLITE_OK )
+	{
 		logg("dbclose() - SQL error (%i): %s", rc, sqlite3_errmsg(db));
+	}
 
 	// Unlock mutex on the database
 	pthread_mutex_unlock(&dblock);
@@ -75,7 +78,7 @@ bool dbopen(void)
 {
 	pthread_mutex_lock(&dblock);
 	int rc = sqlite3_open_v2(FTLfiles.db, &db, SQLITE_OPEN_READWRITE, NULL);
-	if( rc ){
+	if( rc != SQLITE_OK ){
 		logg("dbopen() - SQL error (%i): %s", rc, sqlite3_errmsg(db));
 		dbclose();
 		check_database(rc);
@@ -100,7 +103,8 @@ bool dbquery(const char *format, ...)
 		return false;
 	}
 
-	if(config.debug & DEBUG_DATABASE) logg("dbquery: %s", query);
+	if(config.debug & DEBUG_DATABASE)
+		logg("dbquery: \"%s\"", query);
 
 	int rc = sqlite3_exec(db, query, NULL, NULL, &zErrMsg);
 
@@ -119,57 +123,48 @@ bool dbquery(const char *format, ...)
 
 static bool create_counter_table(void)
 {
-	bool ret;
 	// Create FTL table in the database (holds properties like database version, etc.)
-	ret = dbquery("CREATE TABLE counters ( id INTEGER PRIMARY KEY NOT NULL, value INTEGER NOT NULL );");
-	if(!ret){ dbclose(); return false; }
+	SQL_bool("CREATE TABLE counters ( id INTEGER PRIMARY KEY NOT NULL, value INTEGER NOT NULL );");
 
 	// ID 0 = total queries
-	ret = db_set_counter(DB_TOTALQUERIES, 0);
-	if(!ret){ dbclose(); return false; }
+	if(!db_set_counter(DB_TOTALQUERIES, 0)){ dbclose(); return false; }
 
 	// ID 1 = total blocked queries
-	ret = db_set_counter(DB_BLOCKEDQUERIES, 0);
-	if(!ret){ dbclose(); return false; }
+	if(!db_set_counter(DB_BLOCKEDQUERIES, 0)){ dbclose(); return false; }
 
 	// Time stamp of creation of the counters database
-	ret = db_set_FTL_property(DB_FIRSTCOUNTERTIMESTAMP, time(NULL));
-	if(!ret){ dbclose(); return false; }
+	if(!db_set_FTL_property(DB_FIRSTCOUNTERTIMESTAMP, time(NULL))){ dbclose(); return false; }
 
 	// Update database version to 2
-	ret = db_set_FTL_property(DB_VERSION, 2);
-	if(!ret){ dbclose(); return false; }
+	if(!db_set_FTL_property(DB_VERSION, 2)){ dbclose(); return false; }
 
 	return true;
 }
 
 static bool db_create(void)
 {
-	bool ret;
 	int rc = sqlite3_open_v2(FTLfiles.db, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL);
-	if( rc ){
+	if( rc != SQLITE_OK ){
 		logg("db_create() - SQL error (%i): %s", rc, sqlite3_errmsg(db));
-		dbclose();
 		check_database(rc);
 		return false;
 	}
 	// Create Queries table in the database
-	ret = dbquery("CREATE TABLE queries ( id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL, type INTEGER NOT NULL, status INTEGER NOT NULL, domain TEXT NOT NULL, client TEXT NOT NULL, forward TEXT );");
-	if(!ret){ dbclose(); return false; }
+	SQL_bool("CREATE TABLE queries ( id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL, type INTEGER NOT NULL, status INTEGER NOT NULL, domain TEXT NOT NULL, client TEXT NOT NULL, forward TEXT );");
+
 	// Add an index on the timestamps (not a unique index!)
-	ret = dbquery("CREATE INDEX idx_queries_timestamps ON queries (timestamp);");
-	if(!ret){ dbclose(); return false; }
+	SQL_bool("CREATE INDEX idx_queries_timestamps ON queries (timestamp);");
+
 	// Create FTL table in the database (holds properties like database version, etc.)
-	ret = dbquery("CREATE TABLE ftl ( id INTEGER PRIMARY KEY NOT NULL, value BLOB NOT NULL );");
-	if(!ret){ dbclose(); return false; }
+	SQL_bool("CREATE TABLE ftl ( id INTEGER PRIMARY KEY NOT NULL, value BLOB NOT NULL );");
 
 	// Set DB version 1
-	ret = dbquery("INSERT INTO ftl (ID,VALUE) VALUES(%i,1);", DB_VERSION);
-	if(!ret){ dbclose(); return false; }
+	if(!dbquery("INSERT INTO ftl (ID,VALUE) VALUES(%i,1);", DB_VERSION))
+		return false;
 
 	// Most recent timestamp initialized to 00:00 1 Jan 1970
-	ret = dbquery("INSERT INTO ftl (ID,VALUE) VALUES(%i,0);", DB_LASTTIMESTAMP);
-	if(!ret){ dbclose(); return false; }
+	if(!dbquery("INSERT INTO ftl (ID,VALUE) VALUES(%i,0);", DB_LASTTIMESTAMP))
+		return false;
 
 	// Create counter table
 	// Will update DB version to 2
@@ -288,6 +283,21 @@ void db_init(void)
 		dbversion = db_get_FTL_property(DB_VERSION);
 	}
 
+	// Update to version 5 if lower
+	if(dbversion < 5)
+	{
+		// Update to version 5: Create network-addresses table
+		logg("Updating long-term database to version 5");
+		if(!create_network_addresses_table())
+		{
+			logg("Network-addresses table not initialized, database not available");
+			database = false;
+			return;
+		}
+		// Get updated version
+		dbversion = db_get_FTL_property(DB_VERSION);
+	}
+
 	// Close database to prevent having it opened all time
 	// we already closed the database when we returned earlier
 	sqlite3_close(db);
@@ -344,9 +354,8 @@ int db_query_int(const char* querystr)
 {
 	sqlite3_stmt* stmt;
 	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
-	if( rc ){
+	if( rc != SQLITE_OK ){
 		logg("db_query_int(%s) - SQL error prepare (%i): %s", querystr, rc, sqlite3_errmsg(db));
-		dbclose();
 		check_database(rc);
 		return DB_FAILED;
 	}
@@ -366,7 +375,6 @@ int db_query_int(const char* querystr)
 	else
 	{
 		logg("db_query_int(%s) - SQL error step (%i): %s", querystr, rc, sqlite3_errmsg(db));
-		dbclose();
 		check_database(rc);
 		return DB_FAILED;
 	}
@@ -382,9 +390,8 @@ static int number_of_queries_in_DB(void)
 
 	// Count number of rows using the index timestamp is faster than select(*)
 	int rc = sqlite3_prepare_v2(db, "SELECT COUNT(timestamp) FROM queries", -1, &stmt, NULL);
-	if( rc ){
+	if( rc != SQLITE_OK ){
 		logg("number_of_queries_in_DB() - SQL error prepare (%i): %s", rc, sqlite3_errmsg(db));
-		dbclose();
 		check_database(rc);
 		return DB_FAILED;
 	}
@@ -392,7 +399,6 @@ static int number_of_queries_in_DB(void)
 	rc = sqlite3_step(stmt);
 	if( rc != SQLITE_ROW ){
 		logg("number_of_queries_in_DB() - SQL error step (%i): %s", rc, sqlite3_errmsg(db));
-		dbclose();
 		check_database(rc);
 		return DB_FAILED;
 	}
@@ -409,9 +415,8 @@ static sqlite3_int64 last_ID_in_DB(void)
 	sqlite3_stmt* stmt;
 
 	int rc = sqlite3_prepare_v2(db, "SELECT MAX(ID) FROM queries", -1, &stmt, NULL);
-	if( rc ){
+	if( rc != SQLITE_OK ){
 		logg("last_ID_in_DB() - SQL error prepare (%i): %s", rc, sqlite3_errmsg(db));
-		dbclose();
 		check_database(rc);
 		return DB_FAILED;
 	}
@@ -419,7 +424,6 @@ static sqlite3_int64 last_ID_in_DB(void)
 	rc = sqlite3_step(stmt);
 	if( rc != SQLITE_ROW ){
 		logg("last_ID_in_DB() - SQL error step (%i): %s", rc, sqlite3_errmsg(db));
-		dbclose();
 		check_database(rc);
 		return DB_FAILED;
 	}
@@ -471,19 +475,12 @@ void save_to_DB(void)
 	// Get last ID stored in the database
 	sqlite3_int64 lastID = last_ID_in_DB();
 
-	bool ret = dbquery("BEGIN TRANSACTION");
-	if(!ret)
-	{
-		logg("save_to_DB() - unable to begin transaction (%i): %s", ret, sqlite3_errmsg(db));
-		dbclose();
-		return;
-	}
+	SQL_void("BEGIN TRANSACTION");
 
 	int rc = sqlite3_prepare_v2(db, "INSERT INTO queries VALUES (NULL,?,?,?,?,?,?)", -1, &stmt, NULL);
-	if( rc )
+	if( rc != SQLITE_OK )
 	{
-		logg("save_to_DB() - error in preparing SQL statement (%i): %s", ret, sqlite3_errmsg(db));
-		dbclose();
+		logg("save_to_DB() - error in preparing SQL statement (%i): %s", rc, sqlite3_errmsg(db));
 		check_database(rc);
 		return;
 	}
@@ -585,9 +582,9 @@ void save_to_DB(void)
 	}
 
 	// Finish prepared statement
-	ret = dbquery("END TRANSACTION");
+	SQL_void("END TRANSACTION");
 	int ret2 = sqlite3_finalize(stmt);
-	if(!ret || ret2 != SQLITE_OK){ dbclose(); return; }
+	if(ret2 != SQLITE_OK){ dbclose(); return; }
 
 	// Store index for next loop interation round and update last time stamp
 	// in the database only if all queries have been saved successfully
@@ -628,9 +625,7 @@ static void delete_old_queries_in_DB(void)
 
 	if(!dbquery("DELETE FROM queries WHERE timestamp <= %i", timestamp))
 	{
-		dbclose();
 		logg("delete_old_queries_in_DB(): Deleting queries due to age of entries failed!");
-		database = true;
 		return;
 	}
 
@@ -683,9 +678,9 @@ void *DB_thread(void *val)
 				DBdeleteoldqueries = false;
 			}
 
-			// Parse ARP cache (fill network table) if enabled
+			// Parse neighbor cache (fill network table) if enabled
 			if (config.parse_arp_cache)
-				parse_arp_cache();
+				parse_neighbor_cache();
 		}
 		sleepms(100);
 	}
@@ -724,9 +719,8 @@ void read_data_from_DB(void)
 	// Prepare SQLite3 statement
 	sqlite3_stmt* stmt = NULL;
 	rc = sqlite3_prepare_v2(db, rstr, -1, &stmt, NULL);
-	if( rc ){
+	if( rc != SQLITE_OK ){
 		logg("read_data_from_DB() - SQL error prepare (%i): %s", rc, sqlite3_errmsg(db));
-		dbclose();
 		check_database(rc);
 		return;
 	}
@@ -909,4 +903,13 @@ void read_data_from_DB(void)
 	sqlite3_finalize(stmt);
 	dbclose();
 	free(rstr);
+}
+
+// Returns ID of the most recent successful INSERT.
+long db_lastID(void)
+{
+	long id = sqlite3_last_insert_rowid(db);
+	if(config.debug & DEBUG_DATABASE)
+		logg("db_lastID(): %ld", id);
+	return id;
 }

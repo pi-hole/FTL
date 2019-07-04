@@ -86,6 +86,7 @@ void *GC_thread(void *val);
 
 // database.c
 void db_init(void);
+bool check_database(int rc);
 void *DB_thread(void *val);
 int get_number_of_queries_in_DB(void);
 void save_to_DB(void);
@@ -96,6 +97,7 @@ bool dbopen(void);
 void dbclose(void);
 int db_query_int(const char*);
 void SQLite3LogCallback(void *pArg, int iErrCode, const char *zMsg);
+long db_lastID(void);
 
 // memory.c
 void memory_check(const int which);
@@ -157,7 +159,8 @@ bool check_capabilities(void);
 
 // networktable.c
 bool create_network_table(void);
-void parse_arp_cache(void);
+bool create_network_addresses_table(void);
+void parse_neighbor_cache(void);
 void updateMACVendorRecords(void);
 
 // gravity.c
@@ -168,5 +171,20 @@ const char* gravityDB_getDomain(void);
 void gravityDB_finalizeTable(void);
 int gravityDB_count(unsigned char list);
 bool in_whitelist(const char *domain);
+
+// Database macros
+#define SQL_bool(sql) {\
+	if(!dbquery(sql)) {\
+		logg("%s(): \"%s\" failed!", __FUNCTION__, sql);\
+		return false;\
+	}\
+}
+
+#define SQL_void(sql) {\
+	if(!dbquery(sql)) {\
+		logg("%s(): \"%s\" failed!", __FUNCTION__, sql);\
+		return;\
+	}\
+}
 
 #endif // ROUTINES_H
