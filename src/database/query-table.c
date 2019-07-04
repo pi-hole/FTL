@@ -11,14 +11,17 @@
 #include "FTL.h"
 #include "query-table.h"
 #include "common.h"
-#include "sqlite3.h"
+// get[Domain,ClientIP,Forward]String(), etc.
 #include "datastructure.h"
+// getOverTimeID()
 #include "overTime.h"
+// get_FTL_db_filesize()
 #include "files.h"
 #include "memory.h"
 #include "timers.h"
 #include "log.h"
 #include "config.h"
+// getstr()
 #include "shmem.h"
 
 int get_number_of_queries_in_DB(void)
@@ -111,18 +114,18 @@ void DB_save_queries(void)
 
 		// DOMAIN
 		const char *domain = getDomainString(queryID);
-		sqlite3_bind_text(stmt, 4, domain, -1, SQLITE_TRANSIENT);
+		sqlite3_bind_text(stmt, 4, domain, -1, SQLITE_STATIC);
 
 		// CLIENT
 		const char *client = getClientIPString(queryID);
-		sqlite3_bind_text(stmt, 5, client, -1, SQLITE_TRANSIENT);
+		sqlite3_bind_text(stmt, 5, client, -1, SQLITE_STATIC);
 
 		// FORWARD
 		if(query->status == QUERY_FORWARDED && query->forwardID > -1)
 		{
 			// Get forward pointer
 			const forwardedData* forward = getForward(query->forwardID, true);
-			sqlite3_bind_text(stmt, 6, getstr(forward->ippos), -1, SQLITE_TRANSIENT);
+			sqlite3_bind_text(stmt, 6, getstr(forward->ippos), -1, SQLITE_STATIC);
 		}
 		else
 		{

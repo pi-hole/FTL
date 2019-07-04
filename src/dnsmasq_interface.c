@@ -17,6 +17,7 @@
 #include "overTime.h"
 #include "memory.h"
 #include "database/common.h"
+#include "database/database-thread.h"
 #include "database/gravity-db.h"
 #include "setupVars.h"
 #include "daemon.h"

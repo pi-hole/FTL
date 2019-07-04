@@ -10,19 +10,13 @@
 
 #include "FTL.h"
 #include "common.h"
-#include "sqlite3.h"
 #include "shmem.h"
-#include "overTime.h"
 #include "network-table.h"
-#include "query-table.h"
-#include "datastructure.h"
 #include "memory.h"
 #include "config.h"
 #include "log.h"
 #include "timers.h"
 #include "files.h"
-// global variable killed
-#include "signals.h"
 
 sqlite3 *FTL_db;
 bool database = false;
@@ -424,52 +418,7 @@ long get_lastID(void)
 	return id;
 }
 
-void *DB_thread(void *val)
-{
-	int lastDBsave = 0;
-
-	// Set thread name
-	prctl(PR_SET_NAME,"database",0,0,0);
-
-	// Save timestamp as we do not want to store immediately
-	// to the database
-	lastDBsave = time(NULL) - time(NULL)%config.DBinterval;
-
-	while(!killed && database)
-	{
-		if(time(NULL) - lastDBsave >= config.DBinterval)
-		{
-			// Update lastDBsave timer
-			lastDBsave = time(NULL) - time(NULL)%config.DBinterval;
-
-			// Lock FTL's data structures, since it is
-			// likely that they will be changed here
-			lock_shm();
-
-			// Save data to database
-			DB_save_queries();
-
-			// Release data lock
-			unlock_shm();
-
-			// Check if GC should be done on the database
-			if(DBdeleteoldqueries)
-			{
-				// No thread locks needed
-				delete_old_queries_in_DB();
-				DBdeleteoldqueries = false;
-			}
-
-			// Parse neighbor cache (fill network table) if enabled
-			if (config.parse_arp_cache)
-				parse_neighbor_cache();
-		}
-		sleepms(100);
-	}
-
-	return NULL;
-}
-
+// Return SQLite3 engine version string
 const char *get_sqlite3_version(void)
 {
 	return sqlite3_libversion();

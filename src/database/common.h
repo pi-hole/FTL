@@ -14,7 +14,6 @@
 
 bool check_database(int rc);
 void db_init(void);
-void *DB_thread(void *val);
 int db_get_FTL_property(const unsigned int ID);
 bool db_set_FTL_property(const unsigned int ID, const int value);
 bool dbquery(const char *format, ...);

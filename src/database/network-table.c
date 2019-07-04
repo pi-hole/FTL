@@ -12,7 +12,6 @@
 #include "network-table.h"
 #include "common.h"
 #include "shmem.h"
-#include "sqlite3.h"
 #include "memory.h"
 #include "log.h"
 #include "timers.h"
