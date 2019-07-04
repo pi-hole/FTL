@@ -15,7 +15,6 @@ static int num_regex;
 static regex_t *regex = NULL;
 static bool *regexconfigured = NULL;
 static char **regexbuffer = NULL;
-static whitelistStruct whitelist = { NULL, 0 };
 
 static void log_regex_error(const char *where, const int errcode, const int index)
 {
@@ -45,36 +44,6 @@ static bool init_regex(const char *regexin, const int index)
 		regexbuffer[index] = strdup(regexin);
 	}
 	return true;
-}
-
-bool __attribute__((pure)) in_whitelist(const char *domain)
-{
-	bool found = false;
-	for(int i=0; i < whitelist.count; i++)
-	{
-		// strcasecmp() compares two strings ignoring case
-		if(strcasecmp(whitelist.domains[i], domain) == 0)
-		{
-			found = true;
-			break;
-		}
-	}
-	return found;
-}
-
-void free_whitelist_domains(void)
-{
-	for(int i=0; i < whitelist.count; i++)
-		free(whitelist.domains[i]);
-
-	whitelist.count = 0;
-
-	// Free whitelist domains array only allocated
-	if(whitelist.domains != NULL)
-	{
-		free(whitelist.domains);
-		whitelist.domains = NULL;
-	}
 }
 
 bool match_regex(const char *input)
@@ -160,51 +129,6 @@ void free_regex(void)
 	num_regex = 0;
 }
 
-void read_whitelist_from_database(void)
-{
-	// Get number of lines in the whitelist table
-	whitelist.count = gravityDB_count(WHITE_LIST);
-
-	if(whitelist.count == 0)
-	{
-		logg("INFO: No whitelist entries found");
-		return;
-	}
-	else if(whitelist.count == DB_FAILED)
-	{
-		logg("WARN: Database query failed, assuming there are no whitelist entries");
-		whitelist.count = 0;
-		return;
-	}
-
-	// Allocate memory for array of whitelisted domains
-	whitelist.domains = calloc(whitelist.count, sizeof(char*));
-
-	// Connect to whitelist table
-	if(!gravityDB_getTable(WHITE_LIST))
-	{
-		logg("read_whitelist_from_database(): Error getting table from database");
-		return;
-	}
-
-	// Walk database table
-	const char *domain = NULL;
-	int i = 0;
-	while((domain = gravityDB_getDomain()) != NULL)
-	{
-		// Avoid buffer overflow if database table changed
-		// since we counted its entries
-		if(i >= whitelist.count)
-			break;
-
-		// Copy this whitelisted domain into memory
-		whitelist.domains[i++] = strdup(domain);
-	}
-
-	// Finalize statement and close gravity database handle
-	gravityDB_finalizeTable();
-}
-
 void read_regex_from_database(void)
 {
 	// Get number of lines in the regex table
@@ -266,7 +190,7 @@ void read_regex_from_database(void)
 	gravityDB_finalizeTable();
 }
 
-void log_regex_whitelist(const double time)
+void log_regex(const double time)
 {
-	logg("Compiled %i Regex filters and %i whitelisted domains in %.1f msec", num_regex, whitelist.count, time);
+	logg("Compiled %i Regex filters in %.1f msec", num_regex, time);
 }

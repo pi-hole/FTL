@@ -90,10 +90,12 @@ int main (int argc, char* argv[])
 
 	// Free regex list and array of whitelisted domains
 	free_regex();
-	free_whitelist_domains();
 
 	// Remove shared memory objects
 	destroy_shmem();
+
+	// Close gravity database connection
+	gravityDB_close();
 
 	//Remove PID file
 	removepid();
