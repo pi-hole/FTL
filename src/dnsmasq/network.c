@@ -641,6 +641,13 @@ int enumerate_interfaces(int reset)
 	  else
 	    {
 	      *up = l->next;
+	      if (l->iface->done)
+	        {
+	          iface = l->iface;
+	          prettyprint_addr(&iface->addr, daemon->addrbuff);
+	          my_syslog(LOG_DEBUG, _("stopped listening on %s(#%d): %s"),
+	                    iface->name, iface->index, daemon->addrbuff);
+	        }
 	      
 	      /* In case it ever returns */
 	      l->iface->done = 0;
@@ -952,6 +959,9 @@ void create_bound_listeners(int dienow)
 	new->next = daemon->listeners;
 	daemon->listeners = new;
 	iface->done = 1;
+	prettyprint_addr(&iface->addr, daemon->addrbuff);
+	my_syslog(LOG_DEBUG, _("listening on %s(#%d): %s"),
+	          iface->name, iface->index, daemon->addrbuff);
       }
 
   /* Check for --listen-address options that haven't been used because there's
@@ -971,6 +981,8 @@ void create_bound_listeners(int dienow)
       {
 	new->next = daemon->listeners;
 	daemon->listeners = new;
+	prettyprint_addr(&if_tmp->addr, daemon->addrbuff);
+	my_syslog(LOG_DEBUG, _("listening on %s"), daemon->addrbuff);
       }
 }
 
