@@ -61,6 +61,9 @@ cat /var/log/pihole-FTL.log
 test/libs/bats/bin/bats "test/test_suite.bats"
 RET=$?
 
+# Kill pihole-FTL after having completed tests
+kill $(pidof pihole-FTL)
+
 # Restore umask
 umask $OLDUMASK
 
