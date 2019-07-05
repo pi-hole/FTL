@@ -12,11 +12,8 @@
 
 int countlines(const char* fname);
 int countlineswith(const char* str, const char* fname);
-void check_blocking_status(void);
 bool chmod_file(const char *filename, const mode_t mode);
 bool file_exists(const char *filename);
 long int get_FTL_db_filesize(void);
-
-extern unsigned char blockingstatus;
 
 #endif //FILE_H

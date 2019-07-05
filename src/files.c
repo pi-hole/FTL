@@ -15,7 +15,6 @@
 #include "log.h"
 
 char ** wildcarddomains = NULL;
-unsigned char blockingstatus = 2;
 
 int countlines(const char* fname)
 {
@@ -105,29 +104,6 @@ int countlineswith(const char* str, const char* fname)
 	fclose(fp);
 
 	return found;
-}
-
-void check_blocking_status(void)
-{
-	const char* blocking = read_setupVarsconf("BLOCKING_ENABLED");
-	const char* message;
-
-	if(blocking == NULL || getSetupVarsBool(blocking))
-	{
-		// Parameter either not present in setupVars.conf
-		// or explicitly set to true
-		blockingstatus = BLOCKING_ENABLED;
-		message = "enabled";
-		clearSetupVarsArray();
-	}
-	else
-	{
-		// Disabled
-		blockingstatus = BLOCKING_DISABLED;
-		message = "disabled";
-	}
-
-	logg("Blocking status is %s", message);
 }
 
 // chmod_file() changes the file mode bits of a given file (relative

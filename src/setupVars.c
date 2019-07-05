@@ -229,3 +229,29 @@ bool __attribute__((pure)) getSetupVarsBool(const char * input)
 	else
 		return false;
 }
+
+// Global variable showing current blocking status
+unsigned char blockingstatus = BLOCKING_UNKNOWN;
+
+void check_blocking_status(void)
+{
+	const char* blocking = read_setupVarsconf("BLOCKING_ENABLED");
+	const char* message;
+
+	if(blocking == NULL || getSetupVarsBool(blocking))
+	{
+		// Parameter either not present in setupVars.conf
+		// or explicitly set to true
+		blockingstatus = BLOCKING_ENABLED;
+		message = "enabled";
+		clearSetupVarsArray();
+	}
+	else
+	{
+		// Disabled
+		blockingstatus = BLOCKING_DISABLED;
+		message = "disabled";
+	}
+
+	logg("Blocking status is %s", message);
+}
