@@ -107,11 +107,10 @@ bool dbquery(const char *format, ...)
 		check_database(rc);
 		return false;
 	}
-
+	// Free allocated memory for query string
 	sqlite3_free(query);
-
+	// Return success
 	return true;
-
 }
 
 static bool create_counter_table(void)

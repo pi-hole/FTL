@@ -377,7 +377,7 @@ static char* getMACVendor(const char* hwaddr)
 
 	sqlite3 *macvendor_db = NULL;
 	int rc = sqlite3_open_v2(FTLfiles.macvendor_db, &macvendor_db, SQLITE_OPEN_READONLY, NULL);
-	if( rc != SQLITE_OK  ){
+	if( rc != SQLITE_OK ){
 		logg("getMACVendor(%s) - SQL error (%i): %s", hwaddr, rc, sqlite3_errmsg(macvendor_db));
 		sqlite3_close(macvendor_db);
 		return strdup("");
