@@ -11,18 +11,18 @@
 IDIR = src
 ODIR = build
 
-DNSMASQVERSION = "pi-hole-2.80"
-DNSMASQOPTS = -DHAVE_DNSSEC -DHAVE_DNSSEC_STATIC
+DNSMASQ_VERSION = "pi-hole-2.80"
+DNSMASQ_OPTS = -DHAVE_DNSSEC -DHAVE_DNSSEC_STATIC
 # Flags for compiling with libidn : -DHAVE_IDN
 # Flags for compiling with libidn2: -DHAVE_LIBIDN2 -DIDN2_VERSION_NUMBER=0x02000003
 
-FTLDEPS = *.h version.h
-FTLDBOBJ = database/common.o database/query-table.o database/network-table.o database/gravity-db.o database/database-thread.o
-FTLAPIOBJ = api/socket.o api/request.o api/msgpack.o api/api.o
-FTLOBJ = $(FTLDBOBJ) $(FTLAPIOBJ) main.o memory.o log.o daemon.o datastructure.o signals.o files.o setupVars.o args.o gc.o config.o dnsmasq_interface.o resolve.o regex.o shmem.o capabilities.o overTime.o timers.o
+FTL_DEPS = *.h version.h
+FTL_DB_OBJ = database/common.o database/query-table.o database/network-table.o database/gravity-db.o database/database-thread.o
+FTL_API_OBJ = api/socket.o api/request.o api/msgpack.o api/api.o
+FTL_OBJ = $(FTL_DB_OBJ) $(FTL_API_OBJ) main.o memory.o log.o daemon.o datastructure.o signals.o files.o setupVars.o args.o gc.o config.o dnsmasq_interface.o resolve.o regex.o shmem.o capabilities.o overTime.o timers.o
 
-DNSMASQDEPS = config.h dhcp-protocol.h dns-protocol.h radv-protocol.h dhcp6-protocol.h dnsmasq.h ip6addr.h metrics.h ../dnsmasq_interface.h
-DNSMASQOBJ = arp.o dbus.o domain.o lease.o outpacket.o rrfilter.o auth.o dhcp6.o edns0.o log.o poll.o slaac.o blockdata.o dhcp.o forward.o loop.o radv.o tables.o bpf.o dhcp-common.o helper.o netlink.o rfc1035.o tftp.o cache.o dnsmasq.o inotify.o network.o rfc2131.o util.o conntrack.o dnssec.o ipset.o option.o rfc3315.o crypto.o dump.o ubus.o metrics.o
+DNSMASQ_DEPS = config.h dhcp-protocol.h dns-protocol.h radv-protocol.h dhcp6-protocol.h dnsmasq.h ip6addr.h metrics.h ../dnsmasq_interface.h
+DNSMASQ_OBJ = arp.o dbus.o domain.o lease.o outpacket.o rrfilter.o auth.o dhcp6.o edns0.o log.o poll.o slaac.o blockdata.o dhcp.o forward.o loop.o radv.o tables.o bpf.o dhcp-common.o helper.o netlink.o rfc1035.o tftp.o cache.o dnsmasq.o inotify.o network.o rfc2131.o util.o conntrack.o dnssec.o ipset.o option.o rfc3315.o crypto.o dump.o ubus.o metrics.o
 
 # Get git commit version and date
 GIT_BRANCH := $(shell git branch | sed -n 's/^\* //p')
@@ -55,12 +55,12 @@ DEBUG_FLAGS=-rdynamic -fno-omit-frame-pointer
 # -DSQLITE_OMIT_DEPRECATED: Omitting deprecated interfaces and features will not help SQLite to run any faster. It will reduce the library footprint, however. And it is the right thing to do.
 # -DSQLITE_OMIT_PROGRESS_CALLBACK: The progress handler callback counter must be checked in the inner loop of the bytecode engine. By omitting this interface, a single conditional is removed from the inner loop of the bytecode engine, helping SQL statements to run slightly faster.
 # -DSQLITE_DEFAULT_FOREIGN_KEYS=1: This macro determines whether enforcement of foreign key constraints is enabled or disabled by default for new database connections.
-SQLITEFLAGS=-DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_DEFAULT_MEMSTATUS=0 -DSQLITE_OMIT_DEPRECATED -DSQLITE_OMIT_PROGRESS_CALLBACK -DSQLITE_OMIT_MEMORYDB -DSQLITE_DEFAULT_FOREIGN_KEYS=1
+SQLITE_FLAGS=-DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_DEFAULT_MEMSTATUS=0 -DSQLITE_OMIT_DEPRECATED -DSQLITE_OMIT_PROGRESS_CALLBACK -DSQLITE_OMIT_MEMORYDB -DSQLITE_DEFAULT_FOREIGN_KEYS=1
 
 # -Wall: This enables all the warnings about constructions that some users consider questionable, and that are easy to avoid (or modify to prevent the warning), even in conjunction with macros. This also enables some language-specific warnings described in C++ Dialect Options and Objective-C and Objective-C++ Dialect Options.
 # -Wextra: This enables some extra warning flags that are not enabled by -Wall.
 # -Wno-unused-parameter: Disable warning for unused parameters. For threads that don't need arguments, we still have to provide a void* args which is then unused.
-WARNFLAGS=-Wall -Wextra -Wno-unused-parameter
+WARN_FLAGS=-Wall -Wextra -Wno-unused-parameter
 
 # Extra warning flags we apply only to the FTL part of the code (used not for foreign code such as dnsmasq and SQLite3)
 # -Werror: Halt on any warnings, useful for enforcing clean code without any warnings (we use it only for our code part)
@@ -90,15 +90,15 @@ ifeq "$(GCCVERSION8)" "1"
   # -Wduplicated-branches: Warn when an if-else has identical branches
   # -Wcast-align=strict: Warn whenever a pointer is cast such that the required alignment of the target is increased. For example, warn if a "char *" is cast to an "int *" regardless of the target machine.
   # -Wlogical-not-parentheses: Warn about logical not used on the left hand side operand of a comparison
-  EXTRAWARNGCC8=-Wduplicated-cond -Wduplicated-branches -Wcast-align=strict -Wlogical-not-parentheses -Wsuggest-attribute=pure -Wsuggest-attribute=const -Wsuggest-attribute=noreturn -Wsuggest-attribute=malloc -Wsuggest-attribute=format -Wsuggest-attribute=cold
+  EXTRAWARN_GCC8=-Wduplicated-cond -Wduplicated-branches -Wcast-align=strict -Wlogical-not-parentheses -Wsuggest-attribute=pure -Wsuggest-attribute=const -Wsuggest-attribute=noreturn -Wsuggest-attribute=malloc -Wsuggest-attribute=format -Wsuggest-attribute=cold
 else
-  EXTRAWARNGCC8=
+  EXTRAWARN_GCC8=
 endif
 EXTRAWARN=-Werror -Waddress -Wlogical-op -Wmissing-field-initializers -Woverlength-strings -Wformat -Wformat-nonliteral -Wuninitialized -Wswitch-enum -Wshadow \
--Wfloat-equal -Wunsafe-loop-optimizations -funsafe-loop-optimizations -Wbad-function-cast -Wwrite-strings -Wparentheses -Wlogical-op -Wstrict-prototypes -Wmissing-prototypes -Wredundant-decls -Winline $(EXTRAWARNGCC8)
+-Wfloat-equal -Wunsafe-loop-optimizations -funsafe-loop-optimizations -Wbad-function-cast -Wwrite-strings -Wparentheses -Wlogical-op -Wstrict-prototypes -Wmissing-prototypes -Wredundant-decls -Winline $(EXTRAWARN_GCC8)
 
 # -FILE_OFFSET_BITS=64: used by stat(). Avoids problems with files > 2 GB on 32bit machines
-CCFLAGS=-std=gnu11 -I$(IDIR) $(WARNFLAGS) -D_FILE_OFFSET_BITS=64 $(HARDENING_FLAGS) $(DEBUG_FLAGS) $(CFLAGS) $(SQLITEFLAGS)
+CCFLAGS=-std=gnu11 -I$(IDIR) $(WARN_FLAGS) -D_FILE_OFFSET_BITS=64 $(HARDENING_FLAGS) $(DEBUG_FLAGS) $(CFLAGS) $(SQLITE_FLAGS)
 
 # for FTL we need the pthread library
 # for dnsmasq we need the nettle crypto library and the gmp maths library
@@ -116,43 +116,43 @@ else
   HARDENING_FLAGS := $(HARDENING_FLAGS) -pie -fPIE
 endif
 
-DBOBJDIR = $(ODIR)/database
-APIOBJDIR = $(ODIR)/api
-DNSMASQOBJDIR = $(ODIR)/dnsmasq
+DB_OBJ_DIR = $(ODIR)/database
+API_OBJ_DIR = $(ODIR)/api
+DNSMASQ_OBJ_DIR = $(ODIR)/dnsmasq
 
-_FTLDEPS = $(patsubst %,$(IDIR)/%,$(FTLDEPS))
-_FTLOBJ = $(patsubst %,$(ODIR)/%,$(FTLOBJ))
+_FTL_DEPS = $(patsubst %,$(IDIR)/%,$(FTL_DEPS))
+_FTL_OBJ = $(patsubst %,$(ODIR)/%,$(FTL_OBJ))
 
-_DNSMASQDEPS = $(patsubst %,$(IDIR)/dnsmasq/%,$(DNSMASQDEPS))
-_DNSMASQOBJ = $(patsubst %,$(DNSMASQOBJDIR)/%,$(DNSMASQOBJ))
+_DNSMASQ_DEPS = $(patsubst %,$(IDIR)/dnsmasq/%,$(DNSMASQ_DEPS))
+_DNSMASQ_OBJ = $(patsubst %,$(DNSMASQ_OBJ_DIR)/%,$(DNSMASQ_OBJ))
 
 all: pihole-FTL
 
 # Compile FTL source code files with virtually all possible warnings a modern gcc can generate
-$(_FTLOBJ): $(ODIR)/%.o: $(IDIR)/%.c $(_FTLDEPS) | $(ODIR) $(DBOBJDIR) $(APIOBJDIR)
+$(_FTL_OBJ): $(ODIR)/%.o: $(IDIR)/%.c $(_FTL_DEPS) | $(ODIR) $(DB_OBJ_DIR) $(API_OBJ_DIR)
 	$(CC) -c -o $@ $< -g3 $(CCFLAGS) $(EXTRAWARN)
 
 # Compile the contained dnsmasq code with much less strict requirements as it would fail to comply
 # when enforcing the standards we enforce for the rest of our FTL code base
-$(_DNSMASQOBJ): $(DNSMASQOBJDIR)/%.o: $(IDIR)/dnsmasq/%.c $(_DNSMASQDEPS) | $(DNSMASQOBJDIR)
-	$(CC) -c -o $@ $< -g3 $(CCFLAGS) -DVERSION=\"$(DNSMASQVERSION)\" $(DNSMASQOPTS)
+$(_DNSMASQ_OBJ): $(DNSMASQ_OBJ_DIR)/%.o: $(IDIR)/dnsmasq/%.c $(_DNSMASQ_DEPS) | $(DNSMASQ_OBJ_DIR)
+	$(CC) -c -o $@ $< -g3 $(CCFLAGS) -DVERSION=\"$(DNSMASQ_VERSION)\" $(DNSMASQ_OPTS)
 
-$(DBOBJDIR)/sqlite3.o: $(IDIR)/database/sqlite3.c | $(DBOBJDIR)
+$(DB_OBJ_DIR)/sqlite3.o: $(IDIR)/database/sqlite3.c | $(DB_OBJ_DIR)
 	$(CC) -c -o $@ $< $(CCFLAGS)
 
 $(ODIR):
 	mkdir -p $(ODIR)
 
-$(DBOBJDIR):
-	mkdir -p $(DBOBJDIR)
+$(DB_OBJ_DIR):
+	mkdir -p $(DB_OBJ_DIR)
 
-$(APIOBJDIR):
-	mkdir -p $(APIOBJDIR)
+$(API_OBJ_DIR):
+	mkdir -p $(API_OBJ_DIR)
 
-$(DNSMASQOBJDIR):
-	mkdir -p $(DNSMASQOBJDIR)
+$(DNSMASQ_OBJ_DIR):
+	mkdir -p $(DNSMASQ_OBJ_DIR)
 
-pihole-FTL: $(_FTLOBJ) $(_DNSMASQOBJ) $(DBOBJDIR)/sqlite3.o
+pihole-FTL: $(_FTL_OBJ) $(_DNSMASQ_OBJ) $(DB_OBJ_DIR)/sqlite3.o
 	$(CC) $(CCFLAGS) -o $@ $^ $(LIBS)
 
 .PHONY: clean force install
