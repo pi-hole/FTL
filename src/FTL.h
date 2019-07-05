@@ -100,7 +100,6 @@
 #define DB_NODATA -1
 
 // FTLDNS enums
-enum { DATABASE_WRITE_TIMER, EXIT_TIMER, GC_TIMER, LISTS_TIMER, REGEX_TIMER, ARP_TIMER, LAST_TIMER };
 enum { QUERIES, FORWARDED, CLIENTS, DOMAINS, OVERTIME, WILDCARD };
 enum { DNSSEC_UNSPECIFIED, DNSSEC_SECURE, DNSSEC_INSECURE, DNSSEC_BOGUS, DNSSEC_ABANDONED, DNSSEC_UNKNOWN };
 enum { QUERY_UNKNOWN, QUERY_GRAVITY, QUERY_FORWARDED, QUERY_CACHE, QUERY_WILDCARD, QUERY_BLACKLIST, QUERY_EXTERNAL_BLOCKED_IP, QUERY_EXTERNAL_BLOCKED_NULL, QUERY_EXTERNAL_BLOCKED_NXRA };
@@ -242,9 +241,6 @@ typedef struct {
 	unsigned int global_shm_counter;
 	unsigned int next_str_pos;
 } ShmSettings;
-
-// Prepare timers, used mainly for debugging purposes
-#define NUMTIMERS LAST_TIMER
 
 // Use out own memory handling functions that will detect possible errors
 // and report accordingly in the log. This will make debugging FTL crashs
