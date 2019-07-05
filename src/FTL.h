@@ -174,24 +174,6 @@ typedef struct {
 	int reply_domain;
 } countersStruct;
 
-typedef struct {
-	int maxDBdays;
-	int DBinterval;
-	int port;
-	int maxlogage;
-	int16_t debug;
-	unsigned char privacylevel;
-	unsigned char blockingmode;
-	bool socket_listenlocal;
-	bool analyze_AAAA;
-	bool resolveIPv6;
-	bool resolveIPv4;
-	bool ignore_localhost;
-	bool analyze_only_A_AAAA;
-	bool DBimport;
-	bool parse_arp_cache;
-} ConfigStruct;
-
 // Dynamic structs
 typedef struct {
 	unsigned char magic;
