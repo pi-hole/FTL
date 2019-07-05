@@ -228,7 +228,7 @@ void delete_old_queries_in_DB(void)
 
 	// Print final message only if there is a difference
 	if((config.debug & DEBUG_DATABASE) || affected)
-		logg("Notice: Database size is %.2f MB, deleted %i rows", get_FTL_db_filesize(), affected);
+		logg("Notice: Database size is %.2f MB, deleted %i rows", 1e-6*get_FTL_db_filesize(), affected);
 
 	// Close database
 	dbclose();

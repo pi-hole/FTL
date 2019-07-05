@@ -165,7 +165,7 @@ bool file_exists(const char *filename)
 	return stat(filename, &st) == 0;
 }
 
-double get_FTL_db_filesize(void)
+long int get_FTL_db_filesize(void)
 {
 	struct stat st;
 	if(stat(FTLfiles.FTL_db, &st) != 0)
@@ -173,5 +173,5 @@ double get_FTL_db_filesize(void)
 		// stat() failed (maybe the DB file does not exist?)
 		return 0;
 	}
-	return 1e-6*st.st_size;
+	return st.st_size;
 }

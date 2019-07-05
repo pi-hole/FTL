@@ -1028,7 +1028,7 @@ void getVersion(const int *sock)
 void getDBstats(const int *sock)
 {
 	// Get file details
-	long int filesize = ((long int)1e6*get_FTL_db_filesize());
+	long int filesize = get_FTL_db_filesize();
 
 	char *prefix = calloc(2, sizeof(char));
 	if(prefix == NULL) return;
