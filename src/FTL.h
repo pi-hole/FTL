@@ -132,6 +132,7 @@ enum { DB_VERSION, DB_LASTTIMESTAMP, DB_FIRSTCOUNTERTIMESTAMP };
 enum { DB_TOTALQUERIES, DB_BLOCKEDQUERIES };
 
 // Static structs
+<<<<<<< HEAD
 typedef struct {
 	const char* conf;
 	const char* snapConf;
@@ -147,6 +148,8 @@ typedef struct {
 typedef struct {
 	char* setupVars;
 } logFileNamesStruct;
+=======
+>>>>>>> e13e39a... Union FTLFileNamesStruct and logFileNamesStruct and define them in config{.c/.h}
 
 typedef struct {
 	int queries;

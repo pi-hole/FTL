@@ -290,8 +290,13 @@ void getTopDomains(const char *client_message, const int *sock)
 		if(excludedomains != NULL && insetupVarsArray(getstr(domain->domainpos)))
 			continue;
 
+<<<<<<< HEAD
 		// Skip this domain if already audited
 		if(audit && in_auditlist(getstr(domain->domainpos)) > 0)
+=======
+		// Skip this domain if already included in audit
+		if(audit && countlineswith(getstr(domain->domainpos), FTLfiles.auditlist) > 0)
+>>>>>>> e13e39a... Union FTLFileNamesStruct and logFileNamesStruct and define them in config{.c/.h}
 			continue;
 
 		// Hidden domain, probably due to privacy level. Skip this in the top lists
