@@ -313,12 +313,6 @@ void read_FTLconf(void)
 	// SETUPVARSFILE
 	getpath(fp, "SETUPVARSFILE", "/etc/pihole/setupVars.conf", &FTLfiles.setupVars);
 
-<<<<<<< HEAD
-=======
-	// AUDITLISTFILE
-	getpath(fp, "AUDITLISTFILE", "/etc/pihole/auditlog.list", &FTLfiles.auditlist);
-
->>>>>>> e13e39a... Union FTLFileNamesStruct and logFileNamesStruct and define them in config{.c/.h}
 	// MACVENDORDB
 	getpath(fp, "MACVENDORDB", "/etc/pihole/macvendor.db", &FTLfiles.macvendor_db);
 

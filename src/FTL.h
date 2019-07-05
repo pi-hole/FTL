@@ -131,26 +131,6 @@ enum { DB_VERSION, DB_LASTTIMESTAMP, DB_FIRSTCOUNTERTIMESTAMP };
 // Database table "counters"
 enum { DB_TOTALQUERIES, DB_BLOCKEDQUERIES };
 
-// Static structs
-<<<<<<< HEAD
-typedef struct {
-	const char* conf;
-	const char* snapConf;
-	char* log;
-	char* pid;
-	char* port;
-	char* socketfile;
-	char* FTL_db;
-	char* gravity_db;
-	char* macvendor_db;
-} FTLFileNamesStruct;
-
-typedef struct {
-	char* setupVars;
-} logFileNamesStruct;
-=======
->>>>>>> e13e39a... Union FTLFileNamesStruct and logFileNamesStruct and define them in config{.c/.h}
-
 typedef struct {
 	int queries;
 	int blocked;
