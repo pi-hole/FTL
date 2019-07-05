@@ -292,7 +292,11 @@ void getTopDomains(const char *client_message, const int *sock)
 
 		// Skip this domain if already audited
 		if(audit && in_auditlist(getstr(domain->domainpos)) > 0)
+		{
+			if(config.debug & DEBUG_API)
+				logg("API: %s has been audited.", getstr(domain->domainpos));
 			continue;
+		}
 
 		// Hidden domain, probably due to privacy level. Skip this in the top lists
 		if(strcmp(getstr(domain->domainpos), HIDDEN_DOMAIN) == 0)
