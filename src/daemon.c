@@ -11,6 +11,7 @@
 #include "FTL.h"
 #include "daemon.h"
 #include "memory.h"
+#include "config.h"
 #include "log.h"
 
 void go_daemon(void)

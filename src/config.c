@@ -15,11 +15,29 @@
 #include "log.h"
 
 ConfigStruct config;
+FTLFileNamesStruct FTLfiles = {
+	// Default path for config file (regular installations)
+	"/etc/pihole/pihole-FTL.conf",
+	// Alternative path for config file (snap installations)
+	"/var/snap/pihole/common/etc/pihole/pihole-FTL.conf",
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL
+};
+
+// Private global variables
+static char *conflinebuffer = NULL;
+
+// Private prototypes
 static char *parse_FTLconf(FILE *fp, const char * key);
 static void release_config_memory(void);
 static void getpath(FILE* fp, const char *option, const char *defaultloc, char **pointer);
-
-static char *conflinebuffer = NULL;
 
 void getLogFilePath(void)
 {
@@ -293,10 +311,10 @@ void read_FTLconf(void)
 	getpath(fp, "SOCKETFILE", "/var/run/pihole/FTL.sock", &FTLfiles.socketfile);
 
 	// SETUPVARSFILE
-	getpath(fp, "SETUPVARSFILE", "/etc/pihole/setupVars.conf", &files.setupVars);
+	getpath(fp, "SETUPVARSFILE", "/etc/pihole/setupVars.conf", &FTLfiles.setupVars);
 
 	// AUDITLISTFILE
-	getpath(fp, "AUDITLISTFILE", "/etc/pihole/auditlog.list", &files.auditlist);
+	getpath(fp, "AUDITLISTFILE", "/etc/pihole/auditlog.list", &FTLfiles.auditlist);
 
 	// MACVENDORDB
 	getpath(fp, "MACVENDORDB", "/etc/pihole/macvendor.db", &FTLfiles.macvendor_db);

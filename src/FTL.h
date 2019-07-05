@@ -132,22 +132,6 @@ enum { DB_VERSION, DB_LASTTIMESTAMP, DB_FIRSTCOUNTERTIMESTAMP };
 enum { DB_TOTALQUERIES, DB_BLOCKEDQUERIES };
 
 // Static structs
-typedef struct {
-	const char* conf;
-	const char* snapConf;
-	char* log;
-	char* pid;
-	char* port;
-	char* socketfile;
-	char* FTL_db;
-	char* gravity_db;
-	char* macvendor_db;
-} FTLFileNamesStruct;
-
-typedef struct {
-	char* setupVars;
-	char* auditlist;
-} logFileNamesStruct;
 
 typedef struct {
 	int queries;

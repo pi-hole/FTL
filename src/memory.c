@@ -13,25 +13,6 @@
 #include "memory.h"
 #include "log.h"
 
-FTLFileNamesStruct FTLfiles = {
-	// Default path for config file (regular installations)
-	"/etc/pihole/pihole-FTL.conf",
-	// Alternative path for config file (snap installations)
-	"/var/snap/pihole/common/etc/pihole/pihole-FTL.conf",
-	NULL,
-	NULL,
-	NULL,
-	NULL,
-	NULL,
-	NULL,
-	NULL
-};
-
-logFileNamesStruct files = {
-	NULL,
-	NULL
-};
-
 // Fixed size structs
 countersStruct *counters = NULL;
 overTimeData *overTime = NULL;

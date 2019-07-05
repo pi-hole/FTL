@@ -34,6 +34,21 @@ typedef struct {
 	bool parse_arp_cache;
 } ConfigStruct;
 
+typedef struct {
+	const char* conf;
+	const char* snapConf;
+	char* log;
+	char* pid;
+	char* port;
+	char* socketfile;
+	char* FTL_db;
+	char* gravity_db;
+	char* macvendor_db;
+	char* setupVars;
+	char* auditlist;
+} FTLFileNamesStruct;
+
 extern ConfigStruct config;
+extern FTLFileNamesStruct FTLfiles;
 
 #endif //CONFIG_H

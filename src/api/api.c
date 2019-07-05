@@ -289,7 +289,7 @@ void getTopDomains(const char *client_message, const int *sock)
 			continue;
 
 		// Skip this domain if already included in audit
-		if(audit && countlineswith(getstr(domain->domainpos), files.auditlist) > 0)
+		if(audit && countlineswith(getstr(domain->domainpos), FTLfiles.auditlist) > 0)
 			continue;
 
 		// Hidden domain, probably due to privacy level. Skip this in the top lists
