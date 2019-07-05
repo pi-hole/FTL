@@ -20,7 +20,7 @@
 static sqlite3 *gravity_db = NULL;
 static sqlite3_stmt* table_stmt = NULL;
 static sqlite3_stmt* whitelist_stmt = NULL;
-static sqlite3_stmt* audit_stmt = NULL;
+static sqlite3_stmt* auditlist_stmt = NULL;
 bool gravity_database_avail = false;
 
 // Prototypes from functions in dnsmasq's source
@@ -72,10 +72,10 @@ bool gravityDB_open(void)
 	}
 
 	// Prepare audit statement
-	rc = sqlite3_prepare_v2(gravity_db, "SELECT EXISTS(SELECT domain from auditlist WHERE domain = ?);", -1, &audit_stmt, NULL);
+	rc = sqlite3_prepare_v2(gravity_db, "SELECT EXISTS(SELECT domain from auditlist WHERE domain = ?);", -1, &auditlist_stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
-		logg("gravityDB_open(\"SELECT EXISTS(... audit ...)\") - SQL error prepare (%i): %s", rc, sqlite3_errmsg(gravity_db));
+		logg("gravityDB_open(\"SELECT EXISTS(... auditlist ...)\") - SQL error prepare (%i): %s", rc, sqlite3_errmsg(gravity_db));
 		gravityDB_close();
 		return false;
 	}
@@ -98,7 +98,7 @@ void gravityDB_close(void)
 	sqlite3_finalize(whitelist_stmt);
 
 	// Finalize audit scanning statement
-	sqlite3_finalize(audit_stmt);
+	sqlite3_finalize(auditlist_stmt);
 
 	// Close table
 	sqlite3_close(gravity_db);
@@ -314,6 +314,6 @@ bool in_whitelist(const char *domain)
 
 bool in_auditlist(const char *domain)
 {
-	return domain_in_list(domain, audit_stmt);
+	return domain_in_list(domain, auditlist_stmt);
 }
 
