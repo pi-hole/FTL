@@ -20,6 +20,8 @@
 #include "config.h"
 #include "database/common.h"
 #include "database/query-table.h"
+// in_auditlist()
+#include "database/gravity-db.h"
 #include "overTime.h"
 #include "api.h"
 #include "version.h"
@@ -288,8 +290,8 @@ void getTopDomains(const char *client_message, const int *sock)
 		if(excludedomains != NULL && insetupVarsArray(getstr(domain->domainpos)))
 			continue;
 
-		// Skip this domain if already included in audit
-		if(audit && countlineswith(getstr(domain->domainpos), files.auditlist) > 0)
+		// Skip this domain if already audited
+		if(audit && in_auditlist(getstr(domain->domainpos)) > 0)
 			continue;
 
 		// Hidden domain, probably due to privacy level. Skip this in the top lists

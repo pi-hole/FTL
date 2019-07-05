@@ -295,9 +295,6 @@ void read_FTLconf(void)
 	// SETUPVARSFILE
 	getpath(fp, "SETUPVARSFILE", "/etc/pihole/setupVars.conf", &files.setupVars);
 
-	// AUDITLISTFILE
-	getpath(fp, "AUDITLISTFILE", "/etc/pihole/auditlog.list", &files.auditlist);
-
 	// MACVENDORDB
 	getpath(fp, "MACVENDORDB", "/etc/pihole/macvendor.db", &FTLfiles.macvendor_db);
 

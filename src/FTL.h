@@ -146,7 +146,6 @@ typedef struct {
 
 typedef struct {
 	char* setupVars;
-	char* auditlist;
 } logFileNamesStruct;
 
 typedef struct {

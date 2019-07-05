@@ -28,7 +28,6 @@ FTLFileNamesStruct FTLfiles = {
 };
 
 logFileNamesStruct files = {
-	NULL,
 	NULL
 };
 
