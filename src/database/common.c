@@ -81,9 +81,7 @@ bool dbopen(void)
 
 bool dbquery(const char *format, ...)
 {
-	char *zErrMsg = NULL;
 	va_list args;
-
 	va_start(args, format);
 	char *query = sqlite3_vmprintf(format, args);
 	va_end(args);
@@ -108,11 +106,9 @@ bool dbquery(const char *format, ...)
 		logg("dbquery: \"%s\"", query);
 	}
 
-	int rc = sqlite3_exec(FTL_db, query, NULL, NULL, &zErrMsg);
+	int rc = sqlite3_exec(FTL_db, query, NULL, NULL, NULL);
 
 	if( rc != SQLITE_OK ){
-		logg("dbquery(%s) - SQL error (%i): %s", query, rc, zErrMsg);
-		sqlite3_free(zErrMsg);
 		check_database(rc);
 		return false;
 	}
