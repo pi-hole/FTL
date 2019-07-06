@@ -19,7 +19,10 @@
 #include "files.h"
 
 sqlite3 *FTL_db;
-bool database = false;
+// This boolean is set to false once we hit the
+// first database error to prevent further access
+// to the pihole-FTL.db database
+bool database = true;
 bool DBdeleteoldqueries = false;
 long int lastdbindex = 0;
 
@@ -235,9 +238,6 @@ void db_init(void)
 		return;
 	}
 
-	// Database connection is not open
-	database = true;
-
 	// Test FTL_db version and see if we need to upgrade the database file
 	int dbversion = db_get_FTL_property(DB_VERSION);
 	logg("Database version is %i", dbversion);
@@ -320,7 +320,6 @@ void db_init(void)
 	}
 
 	logg("Database successfully initialized");
-	database = true;
 }
 
 int db_get_FTL_property(const unsigned int ID)
