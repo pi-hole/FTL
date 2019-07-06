@@ -72,10 +72,10 @@ bool gravityDB_open(void)
 	}
 
 	// Prepare audit statement
-	rc = sqlite3_prepare_v2(gravity_db, "SELECT EXISTS(SELECT domain from auditlist WHERE domain = ?);", -1, &auditlist_stmt, NULL);
+	rc = sqlite3_prepare_v2(gravity_db, "SELECT EXISTS(SELECT domain from domain_auditlist WHERE domain = ?);", -1, &auditlist_stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
-		logg("gravityDB_open(\"SELECT EXISTS(... auditlist ...)\") - SQL error prepare (%i): %s", rc, sqlite3_errmsg(gravity_db));
+		logg("gravityDB_open(\"SELECT EXISTS(... domain_auditlist ...)\") - SQL error prepare (%i): %s", rc, sqlite3_errmsg(gravity_db));
 		gravityDB_close();
 		return false;
 	}

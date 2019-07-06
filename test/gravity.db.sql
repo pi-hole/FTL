@@ -82,7 +82,7 @@ CREATE TABLE gravity
 	domain TEXT PRIMARY KEY
 );
 
-CREATE TABLE auditlist
+CREATE TABLE domain_auditlist
 (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	domain TEXT UNIQUE NOT NULL,
