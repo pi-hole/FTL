@@ -94,6 +94,15 @@ bool dbquery(const char *format, ...)
 		return false;
 	}
 
+	// Log generated SQL string when dbquery() is called
+	// although the database connection is not available
+	if(!database)
+	{
+		logg("dbquery(\"%s\") called but database is not available!", query);
+		sqlite3_free(query);
+		return false;
+	}
+
 	if(config.debug & DEBUG_DATABASE)
 	{
 		logg("dbquery: \"%s\"", query);
@@ -230,6 +239,9 @@ void db_init(void)
 		return;
 	}
 
+	// Database connection is not open
+	database = true;
+
 	// Test FTL_db version and see if we need to upgrade the database file
 	int dbversion = db_get_FTL_property(DB_VERSION);
 	logg("Database version is %i", dbversion);
@@ -275,7 +287,12 @@ void db_init(void)
 	{
 		// Update to version 4: Unify clients in network table
 		logg("Updating long-term database to version 4");
-		unify_hwaddr();
+		if(!unify_hwaddr())
+		{
+			logg("Unable to unify clients in network table, database not available");
+			database = false;
+			return;
+		}
 		// Get updated version
 		dbversion = db_get_FTL_property(DB_VERSION);
 	}
@@ -312,6 +329,11 @@ void db_init(void)
 
 int db_get_FTL_property(const unsigned int ID)
 {
+	if(!database)
+	{
+		logg("db_get_FTL_property(%u) called but database is not available!", ID);
+		return DB_FAILED;
+	}
 	// Prepare SQL statement
 	char* querystr = NULL;
 	int ret = asprintf(&querystr, "SELECT VALUE FROM ftl WHERE id = %u;", ID);
@@ -330,16 +352,31 @@ int db_get_FTL_property(const unsigned int ID)
 
 bool db_set_FTL_property(const unsigned int ID, const int value)
 {
+	if(!database)
+	{
+		logg("db_set_FTL_property(%u, %i) called but database is not available!", ID, value);
+		return false;
+	}
 	return dbquery("INSERT OR REPLACE INTO ftl (id, value) VALUES ( %u, %i );", ID, value);
 }
 
 bool db_set_counter(const unsigned int ID, const int value)
 {
+	if(!database)
+	{
+		logg("db_set_counter(%u, %i) called but database is not available!", ID, value);
+		return false;
+	}
 	return dbquery("INSERT OR REPLACE INTO counters (id, value) VALUES ( %u, %i );", ID, value);
 }
 
 bool db_update_counters(const int total, const int blocked)
 {
+	if(!database)
+	{
+		logg("db_update_counters(%i, %i) called but database is not available!", total, blocked);
+		return false;
+	}
 	if(!dbquery("UPDATE counters SET value = value + %i WHERE id = %i;", total, DB_TOTALQUERIES))
 		return false;
 	if(!dbquery("UPDATE counters SET value = value + %i WHERE id = %i;", blocked, DB_BLOCKEDQUERIES))
@@ -349,6 +386,12 @@ bool db_update_counters(const int total, const int blocked)
 
 int db_query_int(const char* querystr)
 {
+	if(!database)
+	{
+		logg("db_query_int(\"%s\") called but database is not available!", querystr);
+		return DB_FAILED;
+	}
+
 	sqlite3_stmt* stmt;
 	int rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK ){
@@ -383,6 +426,12 @@ int db_query_int(const char* querystr)
 
 long int get_max_query_ID(void)
 {
+	if(!database)
+	{
+		logg("get_max_query_ID() called but database is not available!");
+		return DB_FAILED;
+	}
+
 	sqlite3_stmt* stmt;
 
 	int rc = sqlite3_prepare_v2(FTL_db, "SELECT MAX(ID) FROM queries", -1, &stmt, NULL);
@@ -411,10 +460,12 @@ long int get_max_query_ID(void)
 // Returns ID of the most recent successful INSERT.
 long get_lastID(void)
 {
-	long id = sqlite3_last_insert_rowid(FTL_db);
-	if(config.debug & DEBUG_DATABASE)
-		logg("get_lastID(): %ld", id);
-	return id;
+	if(!database)
+	{
+		logg("get_lastID() called but database is not available!");
+		return DB_FAILED;
+	}
+	return sqlite3_last_insert_rowid(FTL_db);
 }
 
 // Return SQLite3 engine version string
