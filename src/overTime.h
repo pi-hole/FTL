@@ -22,6 +22,16 @@ unsigned int getOverTimeID(const time_t timestamp);
  */
 void moveOverTimeMemory(const time_t mintime);
 
+typedef struct {
+	unsigned char magic;
+	time_t timestamp;
+	int total;
+	int blocked;
+	int cached;
+	int forwarded;
+	int querytypedata[TYPE_MAX-1];
+} overTimeData;
+
 extern overTimeData *overTime;
 
 #endif //OVERTIME_H

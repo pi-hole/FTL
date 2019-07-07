@@ -47,4 +47,9 @@ extern bool DBdeleteoldqueries;
 	}\
 }
 
+// Database table "ftl"
+enum { DB_VERSION, DB_LASTTIMESTAMP, DB_FIRSTCOUNTERTIMESTAMP };
+// Database table "counters"
+enum { DB_TOTALQUERIES, DB_BLOCKEDQUERIES };
+
 #endif //DATABASE_COMMON_H

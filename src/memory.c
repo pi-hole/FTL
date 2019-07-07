@@ -13,9 +13,7 @@
 #include "memory.h"
 #include "log.h"
 
-// Fixed size structs
 countersStruct *counters = NULL;
-overTimeData *overTime = NULL;
 
 // The special memory handling routines have to be the last ones in this source file
 // as we restore the original definition of the strdup, free, calloc, and realloc

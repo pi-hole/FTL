@@ -13,6 +13,8 @@
 #include "memory.h"
 #include "shmem.h"
 #include "log.h"
+// enum REGEX
+#include "regex_r.h"
 
 // converts upper to lower case, and leaves other characters unchanged
 void strtolower(char *str)
