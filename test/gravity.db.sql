@@ -82,7 +82,7 @@ CREATE TABLE gravity
 	domain TEXT PRIMARY KEY
 );
 
-CREATE TABLE domain_auditlist
+CREATE TABLE domain_audit
 (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	domain TEXT UNIQUE NOT NULL,
@@ -159,6 +159,6 @@ INSERT INTO "group" VALUES(1,0,'Test group','A disabled test group');
 INSERT INTO blacklist VALUES(2,'blacklisted-group-disabled.com',1,1559928803,1559928803,'Entry disabled by a group');
 INSERT INTO blacklist_by_group VALUES(2,1);
 
-INSERT INTO domain_auditlist VALUES(1,'google.com',1559928803);
+INSERT INTO domain_audit VALUES(1,'google.com',1559928803);
 
 COMMIT;
