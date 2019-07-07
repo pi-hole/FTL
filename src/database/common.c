@@ -3,7 +3,7 @@
 *  Network-wide ad blocking via your own hardware.
 *
 *  FTL Engine
-*  Common database routines
+*  Common database routines for pihole-FTL.db
 *
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
@@ -203,9 +203,11 @@ void SQLite3LogCallback(void *pArg, int iErrCode, const char *zMsg)
 
 void db_init(void)
 {
-	// First check if the user doesn't want to use the database and set an
-	// empty string as file name in FTL's config file
-	if(FTLfiles.FTL_db == NULL || strlen(FTLfiles.FTL_db) == 0)
+	// First check if the user doesn't want to use the database and set
+	// an empty string as file name in FTL's config file or configured
+	// a maximum history of zero days
+	if(FTLfiles.FTL_db == NULL || strlen(FTLfiles.FTL_db) == 0 ||
+	   config.maxDBdays == 0)
 	{
 		database = false;
 		return;

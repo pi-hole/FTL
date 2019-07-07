@@ -68,8 +68,7 @@ int main (int argc, char* argv[])
 		logg("WARNING: Starting pihole-FTL as user %s is not recommended", username);
 
 	// Initialize database
-	if(config.maxDBdays != 0)
-		db_init();
+	db_init();
 
 	// Try to import queries from long-term database if available
 	if(database && config.DBimport)
