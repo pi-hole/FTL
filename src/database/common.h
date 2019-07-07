@@ -35,14 +35,14 @@ extern bool DBdeleteoldqueries;
 // Database macros
 #define SQL_bool(sql) {\
 	if(!dbquery(sql)) {\
-		logg("%s(): \"%s\" failed!", __FUNCTION__, sql);\
+		logg("ERROR: %s() failed!", __FUNCTION__);\
 		return false;\
 	}\
 }
 
 #define SQL_void(sql) {\
 	if(!dbquery(sql)) {\
-		logg("%s(): \"%s\" failed!", __FUNCTION__, sql);\
+		logg("ERROR: %s() failed!", __FUNCTION__);\
 		return;\
 	}\
 }

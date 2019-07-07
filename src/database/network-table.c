@@ -284,18 +284,11 @@ bool unify_hwaddr(void)
 	// The grouping is constrained by the HAVING clause which is
 	// evaluated once across all rows of a group to ensure the returned
 	// set represents the most recent entry for a given hwaddr
-	char* querystr = NULL;
-	int ret = asprintf(&querystr, "SELECT id,hwaddr FROM network GROUP BY hwaddr HAVING MAX(lastQuery)");
-	if(querystr == NULL || ret < 0)
-	{
-		logg("Memory allocation failed in unify_hwaddr (%i)", ret);
-		dbclose();
-		return false;
-	}
+	const char* querystr = "SELECT id,hwaddr FROM network GROUP BY hwaddr HAVING MAX(lastQuery)";
 
 	// Perform SQL query
 	sqlite3_stmt* stmt;
-	ret = sqlite3_prepare_v2(FTL_db, querystr, -1, &stmt, NULL);
+	int ret = sqlite3_prepare_v2(FTL_db, querystr, -1, &stmt, NULL);
 	if( ret != SQLITE_OK ){
 		logg("unify_hwaddr(%s) - SQL error prepare (%i): %s", querystr, ret, sqlite3_errmsg(FTL_db));
 		check_database(ret);
@@ -338,7 +331,6 @@ bool unify_hwaddr(void)
 
 	// Finalize statement and free query string
 	sqlite3_finalize(stmt);
-	free(querystr);
 
 	// Ensure hwaddr is a unique field
 	// Unfortunately, SQLite's ALTER TABLE does not support adding
