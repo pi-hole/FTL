@@ -15,6 +15,8 @@
 // global variable counters
 #include "memory.h"
 #include "sqlite3.h"
+// match_regex()
+#include "regex_r.h"
 
 // Private variables
 static sqlite3 *gravity_db = NULL;
@@ -113,8 +115,11 @@ bool gravityDB_getTable(const unsigned char list)
 		case BLACK_LIST:
 			querystr = "SELECT domain FROM vw_blacklist;";
 			break;
-		case REGEX_LIST:
-			querystr = "SELECT domain FROM vw_regex;";
+		case REGEX_BLACK_LIST:
+			querystr = "SELECT domain FROM vw_black_regex;";
+			break;
+		case REGEX_WHITE_LIST:
+			querystr = "SELECT domain FROM vw_black_regex;";
 			break;
 		default:
 			logg("gravityDB_getTable(%i): Requested list is not known!", list);
@@ -201,8 +206,11 @@ int gravityDB_count(const unsigned char list)
 		case WHITE_LIST:
 			querystr = "SELECT COUNT(*) FROM vw_whitelist;";
 			break;
-		case REGEX_LIST:
-			querystr = "SELECT COUNT(*) FROM vw_regex;";
+		case REGEX_BLACK_LIST:
+			querystr = "SELECT COUNT(*) FROM vw_black_regex;";
+			break;
+		case REGEX_WHITE_LIST:
+			querystr = "SELECT COUNT(*) FROM vw_white_regex;";
 			break;
 		default:
 			logg("gravityDB_count(%i): Requested list is not known!", list);
@@ -289,8 +297,12 @@ bool in_whitelist(const char *domain)
 	// all host parameters to NULL.
 	sqlite3_clear_bindings(whitelist_stmt);
 
-	// Return result.
+	// Return early in case we already have found an exact match.
 	// SELECT EXISTS(...) either returns 0 (false) or 1 (true).
-	return result == 1;
+	if(result == 1)
+		return true;
+
+	// If not: Walk regex-based whitelist filters in addition
+	return match_regex(domain, REGEX_WHITELIST);
 }
 

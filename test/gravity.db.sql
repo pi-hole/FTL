@@ -60,6 +60,23 @@ CREATE TABLE regex_by_group
 	PRIMARY KEY (regex_id, group_id)
 );
 
+CREATE TABLE whitelist_regex
+(
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	domain TEXT UNIQUE NOT NULL,
+	enabled BOOLEAN NOT NULL DEFAULT 1,
+	date_added INTEGER NOT NULL DEFAULT (cast(strftime('%s', 'now') as int)),
+	date_modified INTEGER NOT NULL DEFAULT (cast(strftime('%s', 'now') as int)),
+	comment TEXT
+);
+
+CREATE TABLE whitelist_regex_by_group
+(
+	whitelist_regex_id INTEGER NOT NULL REFERENCES whitelist_regex (id),
+	group_id INTEGER NOT NULL REFERENCES "group" (id),
+	PRIMARY KEY (whitelist_regex_id, group_id)
+);
+
 CREATE TABLE adlist
 (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -127,6 +144,18 @@ CREATE VIEW vw_regex AS SELECT DISTINCT domain
 CREATE TRIGGER tr_regex_update AFTER UPDATE ON regex
     BEGIN
       UPDATE regex SET date_modified = (cast(strftime('%s', 'now') as int)) WHERE domain = NEW.domain;
+    END;
+
+CREATE VIEW vw_regex_whitelist AS SELECT DISTINCT domain
+    FROM regex_whitelist
+    LEFT JOIN regex_whitelist_by_group ON regex_whitelist_by_group.regex_whitelist_id = regex_whitelist.id
+    LEFT JOIN "group" ON "group".id = regex_whitelist_by_group.group_id
+    WHERE regex_whitelist.enabled = 1 AND (regex_whitelist_by_group.group_id IS NULL OR "group".enabled = 1)
+    ORDER BY regex_whitelist.id;
+
+CREATE TRIGGER tr_regex_whitelist_update AFTER UPDATE ON regex_whitelist
+    BEGIN
+      UPDATE regex_whitelist SET date_modified = (cast(strftime('%s', 'now') as int)) WHERE domain = NEW.domain;
     END;
 
 CREATE VIEW vw_adlist AS SELECT DISTINCT address

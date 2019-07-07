@@ -10,11 +10,12 @@
 #ifndef REGEX_H
 #define REGEX_H
 
-bool match_regex(const char *input);
+bool match_regex(const char *input, const unsigned char regexid);
 void free_regex(void);
 void read_regex_from_database(void);
 void log_regex(const double time);
 
 enum { REGEX_UNKNOWN, REGEX_BLOCKED, REGEX_NOTBLOCKED };
+enum { REGEX_BLACKLIST, REGEX_WHITELIST };
 
 #endif //REGEX_H

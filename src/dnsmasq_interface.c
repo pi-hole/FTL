@@ -225,7 +225,8 @@ void _FTL_new_query(const unsigned int flags, const char *name, const struct all
 		// of a specific domain. The logic herein is:
 		// If matched, then compare against whitelist
 		// If in whitelist, negate matched so this function returns: not-to-be-blocked
-		if(match_regex(domainString) && !in_whitelist(domainString))
+		if(match_regex(domainString, REGEX_BLACKLIST) &&
+		   !in_whitelist(domainString))
 		{
 			// We have to block this domain
 			block_single_domain_regex(domainString);
@@ -1437,6 +1438,11 @@ static int FTL_table_import(const char *tablename, const unsigned char list, con
 		int len = strlen(domain);
 		// Skip empty database rows
 		if(len == 0)
+			continue;
+
+		// Do not add gravity or blacklist domains that match
+		// a regex-based whitelist filter
+		if(match_regex(domain, REGEX_WHITELIST))
 			continue;
 
 		// As of here we assume the entry to be valid
