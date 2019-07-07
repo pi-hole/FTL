@@ -116,10 +116,10 @@ bool gravityDB_getTable(const unsigned char list)
 			querystr = "SELECT domain FROM vw_blacklist;";
 			break;
 		case REGEX_BLACK_LIST:
-			querystr = "SELECT domain FROM vw_black_regex;";
+			querystr = "SELECT domain FROM vw_regex;";
 			break;
 		case REGEX_WHITE_LIST:
-			querystr = "SELECT domain FROM vw_black_regex;";
+			querystr = "SELECT domain FROM vw_regex_whitelist;";
 			break;
 		default:
 			logg("gravityDB_getTable(%i): Requested list is not known!", list);
@@ -207,10 +207,10 @@ int gravityDB_count(const unsigned char list)
 			querystr = "SELECT COUNT(*) FROM vw_whitelist;";
 			break;
 		case REGEX_BLACK_LIST:
-			querystr = "SELECT COUNT(*) FROM vw_black_regex;";
+			querystr = "SELECT COUNT(*) FROM vw_regex;";
 			break;
 		case REGEX_WHITE_LIST:
-			querystr = "SELECT COUNT(*) FROM vw_white_regex;";
+			querystr = "SELECT COUNT(*) FROM vw_regex_whitelist;";
 			break;
 		default:
 			logg("gravityDB_count(%i): Requested list is not known!", list);

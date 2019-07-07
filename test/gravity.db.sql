@@ -60,7 +60,7 @@ CREATE TABLE regex_by_group
 	PRIMARY KEY (regex_id, group_id)
 );
 
-CREATE TABLE whitelist_regex
+CREATE TABLE regex_whitelist
 (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	domain TEXT UNIQUE NOT NULL,
