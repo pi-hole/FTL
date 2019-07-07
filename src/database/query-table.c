@@ -232,9 +232,6 @@ void delete_old_queries_in_DB(void)
 
 	// Close database
 	dbclose();
-
-	// Re-enable database actions
-	database = true;
 }
 
 // Get most recent 24 hours data from long-term database
