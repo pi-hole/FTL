@@ -51,11 +51,13 @@ void _FTL_new_query(const unsigned int flags, const char *name, const struct all
                     const char *types, const int id, const char type,
                     const char* file, const int line)
 {
+	// Create new query in data structure
+
 	// Don't analyze anything if in PRIVACY_NOSTATS mode
 	if(config.privacylevel >= PRIVACY_NOSTATS)
 		return;
 
-	// Create new query in data structure
+	// Lock shared memory
 	lock_shm();
 
 	// Get timestamp
@@ -84,7 +86,8 @@ void _FTL_new_query(const unsigned int flags, const char *name, const struct all
 	else
 	{
 		// Return early to avoid accessing querytypedata out of bounds
-		if(config.debug & DEBUG_QUERIES) logg("Notice: Skipping unknown query type: %s (%i)", types, id);
+		if(config.debug & DEBUG_QUERIES)
+			logg("Notice: Skipping unknown query type: %s (%i)", types, id);
 		unlock_shm();
 		return;
 	}
@@ -92,7 +95,8 @@ void _FTL_new_query(const unsigned int flags, const char *name, const struct all
 	// Skip AAAA queries if user doesn't want to have them analyzed
 	if(!config.analyze_AAAA && querytype == TYPE_AAAA)
 	{
-		if(config.debug & DEBUG_QUERIES) logg("Not analyzing AAAA query");
+		if(config.debug & DEBUG_QUERIES)
+			logg("Not analyzing AAAA query");
 		unlock_shm();
 		return;
 	}
@@ -197,6 +201,7 @@ void _FTL_new_query(const unsigned int flags, const char *name, const struct all
 
 	// Get client pointer
 	clientsData* client = getClient(clientID, true);
+
 	// Update overTime data structure with the new client
 	client->overTime[timeidx]++;
 
@@ -269,11 +274,13 @@ static int findQueryID(const int id)
 void _FTL_forwarded(const unsigned int flags, const char *name, const struct all_addr *addr, const int id,
                     const char* file, const int line)
 {
+	// Save that this query got forwarded to an upstream server
+
 	// Don't analyze anything if in PRIVACY_NOSTATS mode
 	if(config.privacylevel >= PRIVACY_NOSTATS)
 		return;
 
-	// Save that this query got forwarded to an upstream server
+	// Lock shared memory
 	lock_shm();
 
 	// Get forward destination IP address
@@ -282,6 +289,7 @@ void _FTL_forwarded(const unsigned int flags, const char *name, const struct all
 	dest[0] = '\0';
 	if(addr != NULL)
 		inet_ntop((flags & F_IPV4) ? AF_INET : AF_INET6, addr, dest, ADDRSTRLEN);
+
 	// Convert forward to lower case
 	char *forward = strdup(dest);
 	strtolower(forward);
@@ -321,6 +329,7 @@ void _FTL_forwarded(const unsigned int flags, const char *name, const struct all
 	const int forwardID = findForwardID(forward, true);
 	query->forwardID = forwardID;
 
+	// Get time index for this query
 	const unsigned int timeidx = query->timeidx;
 
 	if(query->status == QUERY_CACHE)
@@ -375,6 +384,8 @@ void _FTL_forwarded(const unsigned int flags, const char *name, const struct all
 
 	// Release allocated memory
 	free(forward);
+
+	// Unlock shared memory
 	unlock_shm();
 }
 
@@ -384,7 +395,7 @@ void FTL_dnsmasq_reload(void)
 	// *before* clearing the cache and rereading the lists
 	// This is the only hook that is not skipped in PRIVACY_NOSTATS mode
 
-	logg("Received SIGHUP, reloading cache");
+	logg("Reloading DNS cache");
 
 	// Called when dnsmasq re-reads its config and hosts files
 	// Reset number of blocked domains
@@ -431,8 +442,9 @@ void _FTL_reply(const unsigned short flags, const char *name, const struct all_a
 	if(config.privacylevel >= PRIVACY_NOSTATS)
 		return;
 
-	// Interpret hosts files that have been read by dnsmasq
+	// Lock shared memory
 	lock_shm();
+
 	// Determine returned result if available
 	char dest[ADDRSTRLEN]; dest[0] = '\0';
 	if(addr)
@@ -450,6 +462,7 @@ void _FTL_reply(const unsigned short flags, const char *name, const struct all_a
 	else if(flags & F_NEG)
 		answer = "(NODATA)";
 
+	// Possible debugging output
 	if(config.debug & DEBUG_QUERIES)
 	{
 		logg("**** got reply %s is %s (ID %i, %s:%i)", name, answer, id, file, line);
@@ -473,6 +486,8 @@ void _FTL_reply(const unsigned short flags, const char *name, const struct all_a
 	// Get query pointer
 	queriesData* query = getQuery(i, true);
 
+	// Check if reply time is still unknown
+	// We only process the first reply in here
 	if(query->reply != REPLY_UNKNOWN)
 	{
 		// Nothing to be done here
@@ -498,6 +513,7 @@ void _FTL_reply(const unsigned short flags, const char *name, const struct all_a
 		// Get time index
 		const unsigned int timeidx = query->timeidx;
 
+		// Check whether this query was blocked
 		if(strcmp(answer, "(NXDOMAIN)") == 0 ||
 		   strcmp(answer, "0.0.0.0") == 0 ||
 		   strcmp(answer, "::") == 0)
@@ -573,6 +589,9 @@ void _FTL_reply(const unsigned short flags, const char *name, const struct all_a
 
 static void detect_blocked_IP(const unsigned short flags, const char* answer, const int queryID)
 {
+	// Compare returned IP against list of known blocking splash pages
+
+	// First, we check if we want to skip this result even before comparing against the known IPs
 	if(flags & F_HOSTS)
 	{
 		// Skip replies which originated locally. Otherwise, we would
@@ -616,8 +635,8 @@ static void detect_blocked_IP(const unsigned short flags, const char* answer, co
 
 		// Update status
 		query_externally_blocked(queryID, QUERY_EXTERNAL_BLOCKED_IP);
+		return;
 	}
-
 	else if(flags & F_IPV6 && answer != NULL &&
 		(strcmp("::ffff:146.112.61.104", answer) == 0 ||
 		 strcmp("::ffff:146.112.61.105", answer) == 0 ||
@@ -637,6 +656,7 @@ static void detect_blocked_IP(const unsigned short flags, const char* answer, co
 
 		// Update status
 		query_externally_blocked(queryID, QUERY_EXTERNAL_BLOCKED_IP);
+		return;
 	}
 
 	// If upstream replied with 0.0.0.0 or ::,
@@ -655,8 +675,8 @@ static void detect_blocked_IP(const unsigned short flags, const char* answer, co
 
 		// Update status
 		query_externally_blocked(queryID, QUERY_EXTERNAL_BLOCKED_NULL);
+		return;
 	}
-
 	else if(flags & F_IPV6 && answer != NULL &&
 		strcmp("::", answer) == 0)
 	{
@@ -670,6 +690,7 @@ static void detect_blocked_IP(const unsigned short flags, const char* answer, co
 
 		// Update status
 		query_externally_blocked(queryID, QUERY_EXTERNAL_BLOCKED_NULL);
+		return;
 	}
 }
 
@@ -717,12 +738,16 @@ static void query_externally_blocked(const int queryID, const unsigned char stat
 void _FTL_cache(const unsigned int flags, const char *name, const struct all_addr *addr,
                 const char *arg, const int id, const char* file, const int line)
 {
+	// Save that this query got answered from cache
+
 	// Don't analyze anything if in PRIVACY_NOSTATS mode
 	if(config.privacylevel >= PRIVACY_NOSTATS)
 		return;
 
-	// Save that this query got answered from cache
+	// Lock shared memory
 	lock_shm();
+
+	// Obtain destination IP address if available for this query type
 	char dest[ADDRSTRLEN]; dest[0] = '\0';
 	if(addr)
 	{
@@ -789,6 +814,7 @@ void _FTL_cache(const unsigned int flags, const char *name, const struct all_add
 			print_flags(flags);
 		}
 
+		// Search query in FTL's query data
 		const int queryID = findQueryID(id);
 		if(queryID < 0)
 		{
@@ -801,9 +827,9 @@ void _FTL_cache(const unsigned int flags, const char *name, const struct all_add
 		// Get query pointer
 		queriesData* query = getQuery(queryID, true);
 
+		// Skip this query if already marked as complete
 		if(query->complete)
 		{
-			// Skip query if already complete
 			unlock_shm();
 			return;
 		}
@@ -871,12 +897,15 @@ void _FTL_cache(const unsigned int flags, const char *name, const struct all_add
 
 void _FTL_dnssec(const int status, const int id, const char* file, const int line)
 {
+	// Process DNSSEC result for a domain
+
 	// Don't analyze anything if in PRIVACY_NOSTATS mode
 	if(config.privacylevel >= PRIVACY_NOSTATS)
 		return;
 
-	// Process DNSSEC result for a domain
+	// Lock shared memory
 	lock_shm();
+
 	// Search for corresponding query identified by ID
 	const int queryID = findQueryID(id);
 	if(queryID < 0)
@@ -906,6 +935,7 @@ void _FTL_dnssec(const int status, const int id, const char* file, const int lin
 	else
 		query->dnssec = DNSSEC_BOGUS;
 
+	// Unlock shared memory
 	unlock_shm();
 }
 
@@ -919,8 +949,9 @@ void _FTL_upstream_error(const unsigned int rcode, const int id, const char* fil
 	if(config.privacylevel >= PRIVACY_NOSTATS)
 		return;
 
-	// Process DNSSEC result for a domain
+	// Lock shared memory
 	lock_shm();
+
 	// Search for corresponding query identified by ID
 	const int queryID = findQueryID(id);
 	if(queryID < 0)
@@ -969,11 +1000,14 @@ void _FTL_upstream_error(const unsigned int rcode, const int id, const char* fil
 		}
 	}
 
+	// Unlock shared memory
 	unlock_shm();
 }
 
 void _FTL_header_analysis(const unsigned char header4, const unsigned int rcode, const int id, const char* file, const int line)
 {
+	// Analyze DNS header bits
+
 	// Don't analyze anything if in PRIVACY_NOSTATS mode
 	if(config.privacylevel >= PRIVACY_NOSTATS)
 		return;
@@ -991,6 +1025,7 @@ void _FTL_header_analysis(const unsigned char header4, const unsigned int rcode,
 		return;
 	}
 
+	// Lock shared memory
 	lock_shm();
 
 	// Search for corresponding query identified by ID
@@ -1005,6 +1040,7 @@ void _FTL_header_analysis(const unsigned char header4, const unsigned int rcode,
 	// Get query pointer
 	queriesData* query = getQuery(queryID, true);
 
+	// Possible debugging information
 	if(config.debug & DEBUG_QUERIES)
 	{
 		// Get domain pointer
@@ -1022,6 +1058,7 @@ void _FTL_header_analysis(const unsigned char header4, const unsigned int rcode,
 	// Store reply type as replied with NXDOMAIN
 	save_reply_type(F_NEG | F_NXDOMAIN, queryID, response);
 
+	// Unlock shared memory
 	unlock_shm();
 }
 
@@ -1101,17 +1138,23 @@ pthread_t DNSclientthread;
 
 void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 {
+	// Going into daemon mode involves storing the
+	// PID of the generated child process. If FTL
+	// is asked to stay in foreground, we just save
+	// the PID of the current process in the PID file
 	if(daemonmode)
 		go_daemon();
 	else
 		savepid();
 
-	// We will use the attributes object later to start all threads in detached mode
+	// We will use the attributes object later to start all threads in
+	// detached mode
 	pthread_attr_t attr;
 	// Initialize thread attributes object with default attribute values
 	pthread_attr_init(&attr);
-	// When a detached thread terminates, its resources are automatically released back to
-	// the system without the need for another thread to join with the terminated thread
+	// When a detached thread terminates, its resources are automatically
+	// released back to the system without the need for another thread to
+	// join with the terminated thread
 	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
 	// Bind to sockets
@@ -1145,22 +1188,24 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 		exit(EXIT_FAILURE);
 	}
 
-	// Start thread that will stay in the background until garbage collection needs to be done
+	// Start thread that will stay in the background until garbage
+	// collection needs to be done
 	if(pthread_create( &GCthread, &attr, GC_thread, NULL ) != 0)
 	{
 		logg("Unable to open GC thread. Exiting...");
 		exit(EXIT_FAILURE);
 	}
 
-	// Start thread that will stay in the background until host names needs to be resolved
+	// Start thread that will stay in the background until host names
+	// needs to be resolved
 	if(pthread_create( &DNSclientthread, &attr, DNSclient_thread, NULL ) != 0)
 	{
 		logg("Unable to open DNS client thread. Exiting...");
 		exit(EXIT_FAILURE);
 	}
 
-	// Chown files if FTL started as user root but a dnsmasq config option
-	// states to run as a different user/group (e.g. "nobody")
+	// Chown files if FTL started as user root but a dnsmasq config
+	// option states to run as a different user/group (e.g. "nobody")
 	if(ent_pw != NULL && getuid() == 0)
 	{
 		if(chown(FTLfiles.log, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
@@ -1180,23 +1225,28 @@ void getCacheInformation(const int *sock)
 	            daemon->metrics[METRIC_DNS_CACHE_LIVE_FREED],
 	            daemon->metrics[METRIC_DNS_CACHE_INSERTED]);
 	// cache-size is obvious
-	// It means the resolver handled <cache-inserted> names lookups that needed to be sent to
-	// upstream severes and that <cache-live-freed> was thrown out of the cache
-	// before reaching the end of its time-to-live, to make room for a newer name.
-	// For <cache-live-freed>, smaller is better.
-	// New queries are always cached. If the cache is full with entries
-	// which haven't reached the end of their time-to-live, then the entry
-	// which hasn't been looked up for the longest time is evicted.
+	// It means the resolver handled <cache-inserted> names lookups that
+	// needed to be sent to upstream servers and that <cache-live-freed>
+	// was thrown out of the cache before reaching the end of its
+	// time-to-live, to make room for a newer name.
+	// For <cache-live-freed>, smaller is better. New queries are always
+	// cached. If the cache is full with entries which haven't reached
+	// the end of their time-to-live, then the entry which hasn't been
+	// looked up for the longest time is evicted.
 }
 
 void _FTL_forwarding_failed(const struct server *server, const char* file, const int line)
 {
+	// Save that this query got forwarded to an upstream server
+
 	// Don't analyze anything if in PRIVACY_NOSTATS mode
 	if(config.privacylevel >= PRIVACY_NOSTATS)
 		return;
 
-	// Save that this query got forwarded to an upstream server
+	// Lock shared memory
 	lock_shm();
+
+	// Try to obtain destination IP address if available
 	char dest[ADDRSTRLEN];
 	if(server->addr.sa.sa_family == AF_INET)
 		inet_ntop(AF_INET, &server->addr.in.sin_addr, dest, ADDRSTRLEN);
@@ -1206,8 +1256,11 @@ void _FTL_forwarding_failed(const struct server *server, const char* file, const
 	// Convert forward to lower case
 	char *forwarddest = strdup(dest);
 	strtolower(forwarddest);
+
+	// Get forward ID
 	const int forwardID = findForwardID(forwarddest, false);
 
+	// Possible debugging information
 	if(config.debug & DEBUG_QUERIES) logg("**** forwarding to %s (ID %i, %s:%i) failed", dest, forwardID, file, line);
 
 	// Get forward pointer
@@ -1216,6 +1269,7 @@ void _FTL_forwarding_failed(const struct server *server, const char* file, const
 	// Update counter
 	forward->failed++;
 
+	// Clean up and unlock shared memory
 	free(forwarddest);
 	unlock_shm();
 	return;
@@ -1247,7 +1301,8 @@ static void prepare_blocking_mode(struct all_addr *addr4, struct all_addr *addr6
 		// Blocking mode will use zero-initialized all_addr struct
 		*has_IPv4 = true;
 	}
-	clearSetupVarsArray(); // will free/invalidate IPv4addr
+	// Free IPv4addr
+	clearSetupVarsArray();
 
 	// Read IPv6 address for host entries from setupVars.conf
 	char* const IPv6addr = read_setupVarsconf("IPV6_ADDRESS");
@@ -1275,7 +1330,8 @@ static void prepare_blocking_mode(struct all_addr *addr4, struct all_addr *addr6
 		// strlen(IPv6addr) == 0
 		*has_IPv6 = false;
 	}
-	clearSetupVarsArray(); // will free/invalidate IPv6addr
+	// Free IPv6addr
+	clearSetupVarsArray();
 }
 
 // Prototypes from functions in dnsmasq's source
@@ -1349,7 +1405,8 @@ static void block_single_domain_regex(const char *domain)
 	prepare_blocking_mode(&addr4, &addr6, &has_IPv4, &has_IPv6);
 	add_blocked_domain(&addr4, &addr6, has_IPv4, has_IPv6, domain, strlen(domain), NULL, 0, SRC_REGEX);
 
-	if(config.debug & DEBUG_QUERIES) logg("Added %s to cache", domain);
+	if(config.debug & DEBUG_QUERIES)
+		logg("Added %s to cache", domain);
 }
 
 // Import a specified table from the gravity database and
@@ -1407,6 +1464,7 @@ static int FTL_table_import(const char *tablename, const unsigned char list, con
 	// Final logging
 	logg("Database (%s): imported %i domains (took %.1f ms)", tablename, added, timer_elapsed_msec(LISTS_TIMER));
 
+	// Return number of domains added to the cache
 	return added;
 }
 
