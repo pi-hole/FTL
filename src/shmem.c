@@ -14,6 +14,8 @@
 #include "log.h"
 #include "memory.h"
 #include "config.h"
+// data getter functions
+#include "datastructure.h"
 
 /// The version of shared memory used
 #define SHARED_MEMORY_VERSION 6

@@ -20,6 +20,8 @@
 #include "memory.h"
 // global variable killed
 #include "signals.h"
+// data getter functions
+#include "datastructure.h"
 
 bool doGC = false;
 

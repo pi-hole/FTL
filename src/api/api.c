@@ -23,6 +23,8 @@
 #include "overTime.h"
 #include "api.h"
 #include "version.h"
+// enum REGEX
+#include "regex_r.h"
 
 #define min(a,b) ({ __typeof__ (a) _a = (a); __typeof__ (b) _b = (b); _a < _b ? _a : _b; })
 

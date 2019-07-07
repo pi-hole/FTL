@@ -20,4 +20,61 @@ const char *getDomainString(const int queryID);
 const char *getClientIPString(const int queryID);
 const char *getClientNameString(const int queryID);
 
+typedef struct {
+	unsigned char magic;
+	unsigned char type;
+	unsigned char status;
+	unsigned char privacylevel;
+	unsigned char reply;
+	unsigned char dnssec;
+	time_t timestamp;
+	int domainID;
+	int clientID;
+	int forwardID;
+	int id; // the ID is a (signed) int in dnsmasq, so no need for a long int here
+	unsigned long response; // saved in units of 1/10 milliseconds (1 = 0.1ms, 2 = 0.2ms, 2500 = 250.0ms, etc.)
+	int64_t db;
+	unsigned int timeidx;
+	bool complete;
+} queriesData;
+
+typedef struct {
+	unsigned char magic;
+	size_t ippos;
+	size_t namepos;
+	int count;
+	int failed;
+	bool new;
+} forwardedData;
+
+typedef struct {
+	unsigned char magic;
+	size_t ippos;
+	size_t namepos;
+	time_t lastQuery;
+	int count;
+	int blockedcount;
+	int overTime[OVERTIME_SLOTS];
+	unsigned int numQueriesARP;
+	bool new;
+} clientsData;
+
+typedef struct {
+	unsigned char magic;
+	unsigned char regexmatch;
+	size_t domainpos;
+	int count;
+	int blockedcount;
+} domainsData;
+
+// Pointer getter functions
+#define getQuery(queryID, checkMagic) _getQuery(queryID, checkMagic, __LINE__, __FUNCTION__, __FILE__)
+queriesData* _getQuery(int queryID, bool checkMagic, int line, const char * function, const char * file);
+#define getClient(clientID, checkMagic) _getClient(clientID, checkMagic, __LINE__, __FUNCTION__, __FILE__)
+clientsData* _getClient(int clientID, bool checkMagic, int line, const char * function, const char * file);
+#define getDomain(domainID, checkMagic) _getDomain(domainID, checkMagic, __LINE__, __FUNCTION__, __FILE__)
+domainsData* _getDomain(int domainID, bool checkMagic, int line, const char * function, const char * file);
+#define getForward(forwardID, checkMagic) _getForward(forwardID, checkMagic, __LINE__, __FUNCTION__, __FILE__)
+forwardedData* _getForward(int forwardID, bool checkMagic, int line, const char * function, const char * file);
+
 #endif //DATASTRUCTURE_H

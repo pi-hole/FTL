@@ -21,6 +21,12 @@ typedef struct {
     void *ptr;
 } SharedMemory;
 
+typedef struct {
+	int version;
+	unsigned int global_shm_counter;
+	unsigned int next_str_pos;
+} ShmSettings;
+
 /// Create shared memory
 ///
 /// \param name the name of the shared memory

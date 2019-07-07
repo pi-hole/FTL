@@ -15,4 +15,6 @@ void free_regex(void);
 void read_regex_from_database(void);
 void log_regex(const double time);
 
+enum { REGEX_UNKNOWN, REGEX_BLOCKED, REGEX_NOTBLOCKED };
+
 #endif //REGEX_H

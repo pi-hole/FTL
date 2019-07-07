@@ -15,6 +15,8 @@
 #include "memory.h"
 #include "log.h"
 #include "config.h"
+// data getter functions
+#include "datastructure.h"
 #include <regex.h>
 
 static int num_regex;
