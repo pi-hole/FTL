@@ -70,11 +70,11 @@ CREATE TABLE regex_whitelist
 	comment TEXT
 );
 
-CREATE TABLE whitelist_regex_by_group
+CREATE TABLE regex_whitelist_by_group
 (
-	whitelist_regex_id INTEGER NOT NULL REFERENCES whitelist_regex (id),
+	regex_whitelist_id INTEGER NOT NULL REFERENCES regex_whitelist (id),
 	group_id INTEGER NOT NULL REFERENCES "group" (id),
-	PRIMARY KEY (whitelist_regex_id, group_id)
+	PRIMARY KEY (regex_whitelist_id, group_id)
 );
 
 CREATE TABLE adlist

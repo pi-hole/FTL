@@ -76,8 +76,8 @@ bool match_regex(const char *input, const unsigned char regexid)
 			matched = true;
 
 			// Print match message when in regex debug mode
-			if(config.debug & DEBUG_REGEX)
-				logg("Regex %s in line %i \"%s\" matches \"%s\"", regextype[regexid], index+1, regexbuffer[regexid][index], input);
+		//	if(config.debug & DEBUG_REGEX)
+		//		logg("Regex %s in line %i \"%s\" matches \"%s\"", regextype[regexid], index+1, regexbuffer[regexid][index], input);
 			break;
 		}
 		else if (errcode != REG_NOMATCH)
@@ -132,10 +132,16 @@ void free_regex(void)
 		}
 
 		// Free array with regex datastructure
-		free(regex[regexid]);
-		regex[regexid] = NULL;
-		free(regexconfigured[regexid]);
-		regexconfigured[regexid] = NULL;
+		if(regex[regexid] != NULL)
+		{
+			free(regex[regexid]);
+			regex[regexid] = NULL;
+		}
+		if(regexconfigured[regexid] != NULL)
+		{
+			free(regexconfigured[regexid]);
+			regexconfigured[regexid] = NULL;
+		}
 
 		// Reset counter for number of regex
 		num_regex[regexid] = 0;
