@@ -592,23 +592,18 @@ static void detect_blocked_IP(const unsigned short flags, const char* answer, co
 	// Compare returned IP against list of known blocking splash pages
 
 	// First, we check if we want to skip this result even before comparing against the known IPs
-	if(flags & F_HOSTS)
+	if(flags & F_HOSTS || flags & F_REVERSE)
 	{
 		// Skip replies which originated locally. Otherwise, we would
 		// count gravity.list blocked queries as externally blocked.
+		// Also: Do not mark responses of PTR requests as externally blocked.
 		if(config.debug & DEBUG_EXTBLOCKED)
 		{
-			logg("Skipping detection of external blocking IP for ID %i as origin is HOSTS", queryID);
+			const char *cause = (flags & F_HOSTS) ? "origin is HOSTS" : "query is PTR";
+			logg("Skipping detection of external blocking IP for ID %i as %s", queryID, cause);
 		}
-		return;
-	}
-	else if(flags & F_REVERSE)
-	{
-		// Do not mark responses of PTR requests as externally blocked.
-		if(config.debug & DEBUG_EXTBLOCKED)
-		{
-			logg("Skipping detection of external blocking IP for ID %i as query is PTR", queryID);
-		}
+
+		// Return early, do not compare against known blocking page IP addresses below
 		return;
 	}
 
@@ -635,7 +630,6 @@ static void detect_blocked_IP(const unsigned short flags, const char* answer, co
 
 		// Update status
 		query_externally_blocked(queryID, QUERY_EXTERNAL_BLOCKED_IP);
-		return;
 	}
 	else if(flags & F_IPV6 && answer != NULL &&
 		(strcmp("::ffff:146.112.61.104", answer) == 0 ||
@@ -656,7 +650,6 @@ static void detect_blocked_IP(const unsigned short flags, const char* answer, co
 
 		// Update status
 		query_externally_blocked(queryID, QUERY_EXTERNAL_BLOCKED_IP);
-		return;
 	}
 
 	// If upstream replied with 0.0.0.0 or ::,
@@ -675,7 +668,6 @@ static void detect_blocked_IP(const unsigned short flags, const char* answer, co
 
 		// Update status
 		query_externally_blocked(queryID, QUERY_EXTERNAL_BLOCKED_NULL);
-		return;
 	}
 	else if(flags & F_IPV6 && answer != NULL &&
 		strcmp("::", answer) == 0)
@@ -690,7 +682,6 @@ static void detect_blocked_IP(const unsigned short flags, const char* answer, co
 
 		// Update status
 		query_externally_blocked(queryID, QUERY_EXTERNAL_BLOCKED_NULL);
-		return;
 	}
 }
 
