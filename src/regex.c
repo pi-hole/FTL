@@ -218,6 +218,6 @@ void read_regex_from_database(void)
 
 void log_regex(const double time)
 {
-	const int sum_regex = num_regex[0] + num_regex[1];
-	logg("Compiled %i Regex filters in %.1f msec", sum_regex, time);
+	logg("Compiled %i whitelist and %i blacklist regex filters in %.1f msec",
+	     num_regex[REGEX_WHITELIST], num_regex[REGEX_BLACKLIST], time);
 }
