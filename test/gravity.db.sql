@@ -43,7 +43,7 @@ CREATE TABLE blacklist_by_group
 	PRIMARY KEY (blacklist_id, group_id)
 );
 
-CREATE TABLE regex
+CREATE TABLE regex_blacklist
 (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	domain TEXT UNIQUE NOT NULL,
@@ -53,11 +53,11 @@ CREATE TABLE regex
 	comment TEXT
 );
 
-CREATE TABLE regex_by_group
+CREATE TABLE regex_blacklist_by_group
 (
-	regex_id INTEGER NOT NULL REFERENCES regex (id),
+	regex_blacklist_id INTEGER NOT NULL REFERENCES regex_blacklist (id),
 	group_id INTEGER NOT NULL REFERENCES "group" (id),
-	PRIMARY KEY (regex_id, group_id)
+	PRIMARY KEY (regex_blacklist_id, group_id)
 );
 
 CREATE TABLE regex_whitelist
@@ -134,12 +134,12 @@ CREATE TRIGGER tr_blacklist_update AFTER UPDATE ON blacklist
       UPDATE blacklist SET date_modified = (cast(strftime('%s', 'now') as int)) WHERE domain = NEW.domain;
     END;
 
-CREATE VIEW vw_regex AS SELECT DISTINCT domain
-    FROM regex
-    LEFT JOIN regex_by_group ON regex_by_group.regex_id = regex.id
-    LEFT JOIN "group" ON "group".id = regex_by_group.group_id
-    WHERE regex.enabled = 1 AND (regex_by_group.group_id IS NULL OR "group".enabled = 1)
-    ORDER BY regex.id;
+CREATE VIEW vw_regex_blacklist AS SELECT DISTINCT domain
+    FROM regex_blacklist
+    LEFT JOIN regex_blacklist_by_group ON regex_blacklist_by_group.regex_blacklist_id = regex_blacklist.id
+    LEFT JOIN "group" ON "group".id = regex_blacklist_by_group.group_id
+    WHERE regex_blacklist.enabled = 1 AND (regex_blacklist_by_group.group_id IS NULL OR "group".enabled = 1)
+    ORDER BY regex_blacklist.id;
 
 CREATE TRIGGER tr_regex_update AFTER UPDATE ON regex
     BEGIN
@@ -172,7 +172,7 @@ CREATE TRIGGER tr_adlist_update AFTER UPDATE ON adlist
 
 INSERT INTO whitelist VALUES(1,'whitelisted.com',1,1559928803,1559928803,'Migrated from /etc/pihole/whitelist.txt');
 INSERT INTO blacklist VALUES(1,'blacklisted.com',1,1559928803,1559928803,'Migrated from /etc/pihole/blacklist.txt');
-INSERT INTO regex VALUES(1,'regex[0-9].com',1,1559928803,1559928803,'Migrated from /etc/pihole/regex.list');
+INSERT INTO regex_blacklist VALUES(1,'regex[0-9].com',1,1559928803,1559928803,'Migrated from /etc/pihole/regex.list');
 INSERT INTO adlist VALUES(1,'https://hosts-file.net/ad_servers.txt',1,1559928803,1559928803,'Migrated from /etc/pihole/adlists.list');
 INSERT INTO gravity VALUES('0427d7.se');
 

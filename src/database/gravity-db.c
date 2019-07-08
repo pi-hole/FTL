@@ -116,7 +116,7 @@ bool gravityDB_getTable(const unsigned char list)
 			querystr = "SELECT domain FROM vw_blacklist;";
 			break;
 		case REGEX_BLACK_LIST:
-			querystr = "SELECT domain FROM vw_regex;";
+			querystr = "SELECT domain FROM vw_regex_blacklist;";
 			break;
 		case REGEX_WHITE_LIST:
 			querystr = "SELECT domain FROM vw_regex_whitelist;";
@@ -207,7 +207,7 @@ int gravityDB_count(const unsigned char list)
 			querystr = "SELECT COUNT(*) FROM vw_whitelist;";
 			break;
 		case REGEX_BLACK_LIST:
-			querystr = "SELECT COUNT(*) FROM vw_regex;";
+			querystr = "SELECT COUNT(*) FROM vw_regex_blacklist;";
 			break;
 		case REGEX_WHITE_LIST:
 			querystr = "SELECT COUNT(*) FROM vw_regex_whitelist;";
