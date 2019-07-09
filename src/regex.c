@@ -37,7 +37,7 @@ static void log_regex_error(const char *where, const int errcode, const int inde
 	free(buffer);
 }
 
-static bool init_regex(const char *regexin, const int index, const unsigned char regexid)
+static bool compile_regex(const char *regexin, const int index, const unsigned char regexid)
 {
 	// compile regular expressions into data structures that
 	// can be used with regexec to match against a string
@@ -53,6 +53,7 @@ static bool init_regex(const char *regexin, const int index, const unsigned char
 	{
 		regexbuffer[regexid][index] = strdup(regexin);
 	}
+
 	return true;
 }
 
@@ -76,8 +77,8 @@ bool match_regex(const char *input, const unsigned char regexid)
 			matched = true;
 
 			// Print match message when in regex debug mode
-		//	if(config.debug & DEBUG_REGEX)
-		//		logg("Regex %s in line %i \"%s\" matches \"%s\"", regextype[regexid], index+1, regexbuffer[regexid][index], input);
+			if(config.debug & DEBUG_REGEX)
+				logg("Regex %s in line %i \"%s\" matches \"%s\"", regextype[regexid], index+1, regexbuffer[regexid][index], input);
 			break;
 		}
 		else if (errcode != REG_NOMATCH)
@@ -148,10 +149,12 @@ void free_regex(void)
 	}
 }
 
-static void read_regex_tables(unsigned char regexid)
+static void read_regex_table(unsigned char regexid)
 {
+	// Get database ID
+	unsigned char databaseID = (regexid == REGEX_BLACKLIST) ? REGEX_BLACK_LIST : REGEX_WHITE_LIST;
+
 	// Get number of lines in the regex table
-	unsigned char databaseID = regexid == REGEX_BLACKLIST ? REGEX_BLACK_LIST : REGEX_WHITE_LIST;
 	num_regex[regexid] = gravityDB_count(databaseID);
 
 	if(num_regex[regexid] == 0)
@@ -174,7 +177,7 @@ static void read_regex_tables(unsigned char regexid)
 	if(config.debug & DEBUG_REGEX)
 		regexbuffer[regexid] = calloc(num_regex[regexid], sizeof(char*));
 
-	// Connect to regex blacklist table
+	// Connect to regex table
 	if(!gravityDB_getTable(databaseID))
 	{
 		logg("read_regex_from_database(): Error getting regex %s table from database", regextype[regexid]);
@@ -192,15 +195,16 @@ static void read_regex_tables(unsigned char regexid)
 			break;
 
 		// Skip this entry if empty: an empty regex filter would match
-		// anything anywhere and hence match (and block) all incoming domains.
-		// A user can still achieve this with a filter such as ".*", however
-		// empty filters in the regex table are probably not expected to have such
-		// an effect and would immediately lead to "blocking the entire Internet"
+		// anything anywhere and hence match all incoming domains. A user
+		// can still achieve this with a filter such as ".*", however empty
+		// filters in the regex table are probably not expected to have such
+		// an effect and would immediately lead to "blocking or whitelisting
+		// the entire Internet"
 		if(strlen(domain) < 1)
 			continue;
 
-		// Copy this regex domain into memory
-		regexconfigured[regexid][i] = init_regex(domain, i, regexid);
+		// Compile this regex
+		regexconfigured[regexid][i] = compile_regex(domain, i, regexid);
 
 		// Increase counter
 		i++;
@@ -212,8 +216,11 @@ static void read_regex_tables(unsigned char regexid)
 
 void read_regex_from_database(void)
 {
-	read_regex_tables(REGEX_BLACKLIST);
-	read_regex_tables(REGEX_WHITELIST);
+	// Read and compile regex blacklist
+	read_regex_table(REGEX_BLACKLIST);
+
+	// Read and compile regex whitelist
+	read_regex_table(REGEX_WHITELIST);
 }
 
 void log_regex(const double time)
