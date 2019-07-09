@@ -141,9 +141,9 @@ CREATE VIEW vw_regex_blacklist AS SELECT DISTINCT domain
     WHERE regex_blacklist.enabled = 1 AND (regex_blacklist_by_group.group_id IS NULL OR "group".enabled = 1)
     ORDER BY regex_blacklist.id;
 
-CREATE TRIGGER tr_regex_update AFTER UPDATE ON regex
+CREATE TRIGGER tr_regex_update AFTER UPDATE ON regex_blacklist
     BEGIN
-      UPDATE regex SET date_modified = (cast(strftime('%s', 'now') as int)) WHERE domain = NEW.domain;
+      UPDATE regex_blacklist SET date_modified = (cast(strftime('%s', 'now') as int)) WHERE domain = NEW.domain;
     END;
 
 CREATE VIEW vw_regex_whitelist AS SELECT DISTINCT domain
@@ -171,10 +171,18 @@ CREATE TRIGGER tr_adlist_update AFTER UPDATE ON adlist
     END;
 
 INSERT INTO whitelist VALUES(1,'whitelisted.com',1,1559928803,1559928803,'Migrated from /etc/pihole/whitelist.txt');
+INSERT INTO whitelist VALUES(2,'regex1.com',1,1559928803,1559928803,'');
+INSERT INTO regex_whitelist VALUES(1,'regex2.com',1,1559928803,1559928803,'');
+INSERT INTO regex_whitelist VALUES(2,'tse',1,1559928803,1559928803,'');
+
 INSERT INTO blacklist VALUES(1,'blacklisted.com',1,1559928803,1559928803,'Migrated from /etc/pihole/blacklist.txt');
 INSERT INTO regex_blacklist VALUES(1,'regex[0-9].com',1,1559928803,1559928803,'Migrated from /etc/pihole/regex.list');
+
 INSERT INTO adlist VALUES(1,'https://hosts-file.net/ad_servers.txt',1,1559928803,1559928803,'Migrated from /etc/pihole/adlists.list');
+
+INSERT INTO gravity VALUES('whitelisted.com');
 INSERT INTO gravity VALUES('0427d7.se');
+INSERT INTO gravity VALUES('01tse443.se');
 
 INSERT INTO "group" VALUES(1,0,'Test group','A disabled test group');
 INSERT INTO blacklist VALUES(2,'blacklisted-group-disabled.com',1,1559928803,1559928803,'Entry disabled by a group');
