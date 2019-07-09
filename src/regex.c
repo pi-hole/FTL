@@ -110,11 +110,12 @@ static void free_regex(void)
 		domain->regexmatch = REGEX_UNKNOWN;
 	}
 
-	// Return early if we don't use any regex
-	if(regex == NULL)
+	// Return early if we don't use any regex filters
+	if(regex[REGEX_WHITELIST] == NULL &&
+	   regex[REGEX_BLACKLIST] == NULL)
 		return;
 
-	// Disable blocking regex checking and free regex datastructure
+	// Free regex datastructure
 	for(int regexid = 0; regexid < 2; regexid++)
 	{
 		for(int index = 0; index < num_regex[regexid]; index++)
@@ -214,13 +215,6 @@ static void read_regex_table(unsigned char regexid)
 	gravityDB_finalizeTable();
 }
 
-static void log_regex(const double time)
-{
-	// Message to be shown in FTL's log after reloading regex filters
-	logg("Compiled %i whitelist and %i blacklist regex filters in %.1f msec",
-	     num_regex[REGEX_WHITELIST], num_regex[REGEX_BLACKLIST], time);
-}
-
 void read_regex_from_database(void)
 {
 	// Free regex filters
@@ -237,6 +231,7 @@ void read_regex_from_database(void)
 	// Read and compile regex whitelist
 	read_regex_table(REGEX_WHITELIST);
 
-	// Log result
-	log_regex(timer_elapsed_msec(REGEX_TIMER));
+	// Print message to FTL's log after reloading regex filters
+	logg("Compiled %i whitelist and %i blacklist regex filters in %.1f msec",
+	     num_regex[REGEX_WHITELIST], num_regex[REGEX_BLACKLIST], timer_elapsed_msec(REGEX_TIMER));
 }
