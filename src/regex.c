@@ -99,7 +99,7 @@ bool match_regex(const char *input, const unsigned char regexid)
 	return matched;
 }
 
-void free_regex(void)
+static void free_regex(void)
 {
 	// Reset cached regex results
 	for(int i = 0; i < counters->domains; i++) {
@@ -214,17 +214,29 @@ static void read_regex_table(unsigned char regexid)
 	gravityDB_finalizeTable();
 }
 
+static void log_regex(const double time)
+{
+	// Message to be shown in FTL's log after reloading regex filters
+	logg("Compiled %i whitelist and %i blacklist regex filters in %.1f msec",
+	     num_regex[REGEX_WHITELIST], num_regex[REGEX_BLACKLIST], time);
+}
+
 void read_regex_from_database(void)
 {
+	// Free regex filters
+	// This routine is safe to be called even when there
+	// are no regex filters at the moment
+	free_regex();
+
+	// Start timer for regex compilation analysis
+	timer_start(REGEX_TIMER);
+
 	// Read and compile regex blacklist
 	read_regex_table(REGEX_BLACKLIST);
 
 	// Read and compile regex whitelist
 	read_regex_table(REGEX_WHITELIST);
-}
 
-void log_regex(const double time)
-{
-	logg("Compiled %i whitelist and %i blacklist regex filters in %.1f msec",
-	     num_regex[REGEX_WHITELIST], num_regex[REGEX_BLACKLIST], time);
+	// Log result
+	log_regex(timer_elapsed_msec(REGEX_TIMER));
 }

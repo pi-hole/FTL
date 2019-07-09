@@ -416,20 +416,13 @@ void FTL_dnsmasq_reload(void)
 	// Reread pihole-FTL.conf to see which debugging flags are set
 	read_debuging_settings(NULL);
 
-	// Free regex list
-	free_regex();
-
 	// (Re-)open gravity database connection
 	gravityDB_close();
 	gravityDB_open();
 
-	// Start timer for regex compilation analysis
-	timer_start(REGEX_TIMER);
 	// Read and compile possible regex filters
 	// only after having called gravityDB_open()
 	read_regex_from_database();
-	// Log result
-	log_regex(timer_elapsed_msec(REGEX_TIMER));
 
 	// Print current set of capabilities if requested via debug flag
 	if(config.debug & DEBUG_CAPS)
