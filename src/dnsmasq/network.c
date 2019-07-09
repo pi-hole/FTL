@@ -534,7 +534,30 @@ static int iface_allowed_v4(struct in_addr local, int if_index, char *label,
 
   return iface_allowed((struct iface_param *)vparam, if_index, label, &addr, netmask, prefix, 0);
 }
-   
+
+/*
+ * Clean old interfaces no longer found.
+ */
+static void clean_interfaces()
+{
+  struct irec *iface;
+  struct irec **up = &daemon->interfaces;
+
+  for (iface = *up; iface; iface = *up)
+  {
+    if (!iface->found && !iface->done)
+      {
+        *up = iface->next;
+        free(iface->name);
+        free(iface);
+      }
+    else
+      {
+        up = &iface->next;
+      }
+  }
+}
+
 int enumerate_interfaces(int reset)
 {
   static struct addrlist *spare = NULL;
@@ -632,6 +655,7 @@ int enumerate_interfaces(int reset)
 	 in OPT_CLEVERBIND mode, that at listener will just disappear after
 	 a call to enumerate_interfaces, this is checked OK on all calls. */
       struct listener *l, *tmp, **up;
+      int freed = 0;
       
       for (up = &daemon->listeners, l = daemon->listeners; l; l = tmp)
 	{
@@ -661,10 +685,14 @@ int enumerate_interfaces(int reset)
 		close(l->tftpfd);
 	      
 	      free(l);
+	      freed = 1;
 	    }
 	}
+
+      if (freed)
+	clean_interfaces();
     }
-  
+
   errno = errsave;
   spare = param.spare;
     
