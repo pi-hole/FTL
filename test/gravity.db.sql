@@ -172,7 +172,7 @@ CREATE TRIGGER tr_adlist_update AFTER UPDATE ON adlist
 
 INSERT INTO whitelist VALUES(1,'whitelisted.com',1,1559928803,1559928803,'Migrated from /etc/pihole/whitelist.txt');
 INSERT INTO whitelist VALUES(2,'regex1.com',1,1559928803,1559928803,'');
-INSERT INTO regex_whitelist VALUES(1,'regex2.com',1,1559928803,1559928803,'');
+INSERT INTO regex_whitelist VALUES(1,'regex2',1,1559928803,1559928803,'');
 INSERT INTO regex_whitelist VALUES(2,'tse',1,1559928803,1559928803,'');
 
 INSERT INTO blacklist VALUES(1,'blacklisted.com',1,1559928803,1559928803,'Migrated from /etc/pihole/blacklist.txt');
