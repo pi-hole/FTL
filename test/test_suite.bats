@@ -127,13 +127,13 @@
   [[ ${lines[3]} == "ads_blocked_today 3" ]]
   [[ ${lines[4]} == "ads_percentage_today 23.076923" ]]
   [[ ${lines[5]} == "unique_domains 11" ]]
-  [[ ${lines[6]} == "queries_forwarded 8" ]]
-  [[ ${lines[7]} == "queries_cached 2" ]]
+  [[ ${lines[6]} == "queries_forwarded 7" ]]
+  [[ ${lines[7]} == "queries_cached 3" ]]
   [[ ${lines[8]} == "clients_ever_seen 1" ]]
   [[ ${lines[9]} == "unique_clients 1" ]]
   [[ ${lines[10]} == "dns_queries_all_types 13" ]]
   [[ ${lines[11]} == "reply_NODATA 0" ]]
-  [[ ${lines[12]} == "reply_NXDOMAIN 0" ]]
+  [[ ${lines[12]} == "reply_NXDOMAIN 2" ]]
   [[ ${lines[13]} == "reply_CNAME 0" ]]
   [[ ${lines[14]} == "reply_IP 8" ]]
   [[ ${lines[15]} == "privacy_level 0" ]]
@@ -211,8 +211,8 @@
   run bash -c 'echo ">forward-dest >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[1]} == "-2 23.08 blocklist blocklist" ]]
-  [[ ${lines[2]} == "-1 15.38 cache cache" ]]
-  [[ ${lines[3]} == "0 61.54 "* ]]
+  [[ ${lines[2]} == "-1 23.08 cache cache" ]]
+  [[ ${lines[3]} == "0 53.85 "* ]]
   [[ ${lines[4]} == "" ]]
 }
 
@@ -220,8 +220,8 @@
   run bash -c 'echo ">forward-dest unsorted >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[1]} == "-2 23.08 blocklist blocklist" ]]
-  [[ ${lines[2]} == "-1 15.38 cache cache" ]]
-  [[ ${lines[3]} == "0 61.54 "* ]]
+  [[ ${lines[2]} == "-1 23.08 cache cache" ]]
+  [[ ${lines[3]} == "0 53.85 "* ]]
   [[ ${lines[4]} == "" ]]
 }
 
@@ -249,11 +249,11 @@
   [[ ${lines[3]} == *"A blacklisted.com "?*" 5 0 4"* ]]
   [[ ${lines[4]} == *"A 0427d7.se "?*" 1 0 4"* ]]
   [[ ${lines[5]} == *"A whitelisted.com "?*" 2 0 4"* ]]
-  [[ ${lines[6]} == *"A 01tse443.se "?*" 2 0 0"* ]]
+  [[ ${lines[6]} == *"A 01tse443.se "?*" 2 0 2"* ]]
   [[ ${lines[7]} == *"A regex5.com "?*" 4 0 4"* ]]
   [[ ${lines[8]} == *"A regexa.com "?*" 2 0 7"* ]]
   [[ ${lines[9]} == *"A regex1.com "?*" 2 0 4"* ]]
-  [[ ${lines[10]} == *"A 01tse443.se "?*" 2 0 0"* ]]
+  [[ ${lines[10]} == *"A 01tse443.se "?*" 3 0 2"* ]]
   [[ ${lines[11]} == *"A google.com "?*" 2 0 4"* ]]
   [[ ${lines[12]} == *"AAAA google.com "?*" 2 0 4"* ]]
   [[ ${lines[13]} == *"A ftl.pi-hole.net "?*" 2 0 4"* ]]
@@ -282,11 +282,11 @@
   [[ ${lines[3]} == *"A blacklisted.com "?*" 5 0 4"* ]]
   [[ ${lines[4]} == *"A 0427d7.se "?*" 1 0 4"* ]]
   [[ ${lines[5]} == *"A whitelisted.com "?*" 2 0 4"* ]]
-  [[ ${lines[6]} == *"A 01tse443.se "?*" 2 0 0"* ]]
+  [[ ${lines[6]} == *"A 01tse443.se "?*" 2 0 2"* ]]
   [[ ${lines[7]} == *"A regex5.com "?*" 4 0 4"* ]]
   [[ ${lines[8]} == *"A regexa.com "?*" 2 0 7"* ]]
   [[ ${lines[9]} == *"A regex1.com "?*" 2 0 4"* ]]
-  [[ ${lines[10]} == *"A 01tse443.se "?*" 2 0 0"* ]]
+  [[ ${lines[10]} == *"A 01tse443.se "?*" 3 0 2"* ]]
   [[ ${lines[11]} == *"A google.com "?*" 2 0 4"* ]]
   [[ ${lines[12]} == *"AAAA google.com "?*" 2 0 4"* ]]
   [[ ${lines[13]} == *"A ftl.pi-hole.net "?*" 2 0 4"* ]]
