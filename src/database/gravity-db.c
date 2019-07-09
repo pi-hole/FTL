@@ -244,7 +244,7 @@ int gravityDB_count(const unsigned char list)
 	return result;
 }
 
-bool in_whitelist(const char *domain)
+bool whitelisted(const char *domain)
 {
 	int retval;
 	// Bind domain to prepared statement
@@ -252,7 +252,7 @@ bool in_whitelist(const char *domain)
 	// We can do this as domain has dynamic scope that exceeds that of the binding.
 	if((retval = sqlite3_bind_text(whitelist_stmt, 1, domain, -1, SQLITE_STATIC)) != SQLITE_OK)
 	{
-		logg("in_whitelist(\"%s\"): Failed to bind domain (error %d) - %s",
+		logg("whitelisted(\"%s\"): Failed to bind domain (error %d) - %s",
 		     domain, retval, sqlite3_errmsg(gravity_db));
 		sqlite3_reset(whitelist_stmt);
 		return false;
@@ -263,7 +263,7 @@ bool in_whitelist(const char *domain)
 	if(retval == SQLITE_BUSY)
 	{
 		// Database is busy
-		logg("in_whitelist(\"%s\"): Database is busy, assuming domain is NOT whitelisted",
+		logg("whitelisted(\"%s\"): Database is busy, assuming domain is NOT whitelisted",
 		     domain);
 		sqlite3_reset(whitelist_stmt);
 		sqlite3_clear_bindings(whitelist_stmt);
@@ -273,7 +273,7 @@ bool in_whitelist(const char *domain)
 	{
 		// Any return code that is neither SQLITE_BUSY not SQLITE_ROW
 		// is a real error we should log
-		logg("in_whitelist(\"%s\"): Failed to perform step (error %d) - %s",
+		logg("whitelisted(\"%s\"): Failed to perform step (error %d) - %s",
 		     domain, retval, sqlite3_errmsg(gravity_db));
 		sqlite3_reset(whitelist_stmt);
 		sqlite3_clear_bindings(whitelist_stmt);
@@ -284,7 +284,7 @@ bool in_whitelist(const char *domain)
 	const int result = sqlite3_column_int(whitelist_stmt, 0);
 
 	if(config.debug & DEBUG_DATABASE)
-		logg("in_whitelist(\"%s\"): %d", domain, result);
+		logg("whitelisted(\"%s\"): %d", domain, result);
 
 	// The sqlite3_reset() function is called to reset a prepared
 	// statement object back to its initial state, ready to be
