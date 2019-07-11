@@ -81,13 +81,21 @@ CREATE TABLE gravity
 (
 	domain TEXT PRIMARY KEY
 );
+
+CREATE TABLE domain_audit
+(
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	domain TEXT UNIQUE NOT NULL,
+	date_added INTEGER NOT NULL DEFAULT (cast(strftime('%s', 'now') as int))
+);
+
 CREATE TABLE info
 (
 	property TEXT PRIMARY KEY,
 	value TEXT NOT NULL
 );
 
-INSERT INTO info VALUES("version","1");
+INSERT INTO info VALUES("version","2");
 
 CREATE VIEW vw_gravity AS SELECT domain
     FROM gravity
@@ -150,5 +158,7 @@ INSERT INTO gravity VALUES('0427d7.se');
 INSERT INTO "group" VALUES(1,0,'Test group','A disabled test group');
 INSERT INTO blacklist VALUES(2,'blacklisted-group-disabled.com',1,1559928803,1559928803,'Entry disabled by a group');
 INSERT INTO blacklist_by_group VALUES(2,1);
+
+INSERT INTO domain_audit VALUES(1,'google.com',1559928803);
 
 COMMIT;

@@ -18,8 +18,9 @@
 
 // Private variables
 static sqlite3 *gravity_db = NULL;
-static sqlite3_stmt* stmt = NULL;
+static sqlite3_stmt* table_stmt = NULL;
 static sqlite3_stmt* whitelist_stmt = NULL;
+static sqlite3_stmt* auditlist_stmt = NULL;
 bool gravity_database_avail = false;
 
 // Prototypes from functions in dnsmasq's source
@@ -37,7 +38,7 @@ bool gravityDB_open(void)
 	}
 
 	int rc = sqlite3_open_v2(FTLfiles.gravity_db, &gravity_db, SQLITE_OPEN_READONLY, NULL);
-	if( rc )
+	if( rc != SQLITE_OK )
 	{
 		logg("gravityDB_open() - SQL error (%i): %s", rc, sqlite3_errmsg(gravity_db));
 		gravityDB_close();
@@ -63,9 +64,18 @@ bool gravityDB_open(void)
 	// returns true as soon as it sees the first row from the query inside
 	// of EXISTS().
 	rc = sqlite3_prepare_v2(gravity_db, "SELECT EXISTS(SELECT domain from vw_whitelist WHERE domain = ?);", -1, &whitelist_stmt, NULL);
-	if( rc )
+	if( rc != SQLITE_OK )
 	{
-		logg("gravityDB_open(\"SELECT EXISTS(...)\") - SQL error prepare (%i): %s", rc, sqlite3_errmsg(gravity_db));
+		logg("gravityDB_open(\"SELECT EXISTS(... vw_whitelist ...)\") - SQL error prepare (%i): %s", rc, sqlite3_errmsg(gravity_db));
+		gravityDB_close();
+		return false;
+	}
+
+	// Prepare audit statement
+	rc = sqlite3_prepare_v2(gravity_db, "SELECT EXISTS(SELECT domain from domain_audit WHERE domain = ?);", -1, &auditlist_stmt, NULL);
+	if( rc != SQLITE_OK )
+	{
+		logg("gravityDB_open(\"SELECT EXISTS(... domain_audit ...)\") - SQL error prepare (%i): %s", rc, sqlite3_errmsg(gravity_db));
 		gravityDB_close();
 		return false;
 	}
@@ -86,6 +96,9 @@ void gravityDB_close(void)
 
 	// Finalize whitelist scanning statement
 	sqlite3_finalize(whitelist_stmt);
+
+	// Finalize audit scanning statement
+	sqlite3_finalize(auditlist_stmt);
 
 	// Close table
 	sqlite3_close(gravity_db);
@@ -122,7 +135,7 @@ bool gravityDB_getTable(const unsigned char list)
 	}
 
 	// Prepare SQLite3 statement
-	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &stmt, NULL);
+	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &table_stmt, NULL);
 	if( rc )
 	{
 		logg("readGravity(%s) - SQL error prepare (%i): %s", querystr, rc, sqlite3_errmsg(gravity_db));
@@ -144,12 +157,12 @@ bool gravityDB_getTable(const unsigned char list)
 inline const char* gravityDB_getDomain(void)
 {
 	// Perform step
-	const int rc = sqlite3_step(stmt);
+	const int rc = sqlite3_step(table_stmt);
 
 	// Valid row
 	if(rc == SQLITE_ROW)
 	{
-		const char* domain = (char*)sqlite3_column_text(stmt, 0);
+		const char* domain = (char*)sqlite3_column_text(table_stmt, 0);
 		return domain;
 	}
 
@@ -174,7 +187,7 @@ void gravityDB_finalizeTable(void)
 		return;
 
 	// Finalize statement
-	sqlite3_finalize(stmt);
+	sqlite3_finalize(table_stmt);
 }
 
 // Get number of domains in a specified table of the gravity database
@@ -210,25 +223,25 @@ int gravityDB_count(const unsigned char list)
 	}
 
 	// Prepare query
-	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &stmt, NULL);
+	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &table_stmt, NULL);
 	if( rc ){
 		logg("gravityDB_count(%s) - SQL error prepare (%i): %s", querystr, rc, sqlite3_errmsg(gravity_db));
-		sqlite3_finalize(stmt);
+		sqlite3_finalize(table_stmt);
 		gravityDB_close();
 		return DB_FAILED;
 	}
 
 	// Perform query
-	rc = sqlite3_step(stmt);
+	rc = sqlite3_step(table_stmt);
 	if( rc != SQLITE_ROW ){
 		logg("gravityDB_count(%s) - SQL error step (%i): %s", querystr, rc, sqlite3_errmsg(gravity_db));
-		sqlite3_finalize(stmt);
+		sqlite3_finalize(table_stmt);
 		gravityDB_close();
 		return DB_FAILED;
 	}
 
 	// Get result when there was no error
-	const int result = sqlite3_column_int(stmt, 0);
+	const int result = sqlite3_column_int(table_stmt, 0);
 
 	// Finalize statement
 	gravityDB_finalizeTable();
@@ -236,61 +249,71 @@ int gravityDB_count(const unsigned char list)
 	return result;
 }
 
-bool in_whitelist(const char *domain)
+static bool domain_in_list(const char *domain, sqlite3_stmt* stmt)
 {
 	int retval;
 	// Bind domain to prepared statement
 	// SQLITE_STATIC: Use the string without first duplicating it internally.
 	// We can do this as domain has dynamic scope that exceeds that of the binding.
-	if((retval = sqlite3_bind_text(whitelist_stmt, 1, domain, -1, SQLITE_STATIC)) != SQLITE_OK)
+	if((retval = sqlite3_bind_text(stmt, 1, domain, -1, SQLITE_STATIC)) != SQLITE_OK)
 	{
-		logg("in_whitelist(\"%s\"): Failed to bind domain (error %d) - %s",
+		logg("domain_in_list(\"%s\"): Failed to bind domain (error %d) - %s",
 		     domain, retval, sqlite3_errmsg(gravity_db));
-		sqlite3_reset(whitelist_stmt);
+		sqlite3_reset(stmt);
 		return false;
 	}
 
 	// Perform step
-	retval = sqlite3_step(whitelist_stmt);
+	retval = sqlite3_step(stmt);
 	if(retval == SQLITE_BUSY)
 	{
 		// Database is busy
-		logg("in_whitelist(\"%s\"): Database is busy, assuming domain is NOT whitelisted",
+		logg("domain_in_list(\"%s\"): Database is busy, assuming domain is NOT on list",
 		     domain);
-		sqlite3_reset(whitelist_stmt);
-		sqlite3_clear_bindings(whitelist_stmt);
+		sqlite3_reset(stmt);
+		sqlite3_clear_bindings(stmt);
 		return false;
 	}
 	else if(retval != SQLITE_ROW)
 	{
 		// Any return code that is neither SQLITE_BUSY not SQLITE_ROW
 		// is a real error we should log
-		logg("in_whitelist(\"%s\"): Failed to perform step (error %d) - %s",
+		logg("domain_in_list(\"%s\"): Failed to perform step (error %d) - %s",
 		     domain, retval, sqlite3_errmsg(gravity_db));
-		sqlite3_reset(whitelist_stmt);
-		sqlite3_clear_bindings(whitelist_stmt);
+		sqlite3_reset(stmt);
+		sqlite3_clear_bindings(stmt);
 		return false;
 	}
 
 	// Get result of query "SELECT EXISTS(...)"
-	const int result = sqlite3_column_int(whitelist_stmt, 0);
+	const int result = sqlite3_column_int(stmt, 0);
 
 	if(config.debug & DEBUG_DATABASE)
-		logg("in_whitelist(\"%s\"): %d", domain, result);
+		logg("domain_in_list(\"%s\"): %d", domain, result);
 
 	// The sqlite3_reset() function is called to reset a prepared
 	// statement object back to its initial state, ready to be
 	// re-executed. Note: Any SQL statement variables that had values
 	// bound to them using the sqlite3_bind_*() API retain their values.
-	sqlite3_reset(whitelist_stmt);
+	sqlite3_reset(stmt);
 
 	// Contrary to the intuition of many, sqlite3_reset() does not reset
 	// the bindings on a prepared statement. Use this routine to reset
 	// all host parameters to NULL.
-	sqlite3_clear_bindings(whitelist_stmt);
+	sqlite3_clear_bindings(stmt);
 
 	// Return result.
 	// SELECT EXISTS(...) either returns 0 (false) or 1 (true).
 	return result == 1;
+}
+
+bool in_whitelist(const char *domain)
+{
+	return domain_in_list(domain, whitelist_stmt);
+}
+
+bool in_auditlist(const char *domain)
+{
+	return domain_in_list(domain, auditlist_stmt);
 }
 
