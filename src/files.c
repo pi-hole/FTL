@@ -149,7 +149,7 @@ bool file_exists(const char *filename)
 	return stat(filename, &st) == 0;
 }
 
-uint64_t get_FTL_db_filesize(void)
+unsigned long long get_FTL_db_filesize(void)
 {
 	struct stat st;
 	if(stat(FTLfiles.FTL_db, &st) != 0)
@@ -224,8 +224,12 @@ void ls_dir(const char* path)
 		         st.st_mode & S_IWOTH ? "w":"-",
 		         st.st_mode & S_IXOTH ? "x":"-");
 
+		char prefix[2] = " ";
+		double formated = 0.0;
+		format_memory_size(prefix, (unsigned long long)st.st_size, &formated);
+
 		// Log output for this file
-		logg("%s %s:%s % 10ld %s", permissions, user, group, (uint64_t)st.st_size, filename);
+		logg("%s %s:%s %.0f%s %s", permissions, user, group, formated, prefix, filename);
 	}
 
 	logg("---------------------------------------------------");
