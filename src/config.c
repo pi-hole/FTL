@@ -313,9 +313,6 @@ void read_FTLconf(void)
 	// SETUPVARSFILE
 	getpath(fp, "SETUPVARSFILE", "/etc/pihole/setupVars.conf", &FTLfiles.setupVars);
 
-	// AUDITLISTFILE
-	getpath(fp, "AUDITLISTFILE", "/etc/pihole/auditlog.list", &FTLfiles.auditlist);
-
 	// MACVENDORDB
 	getpath(fp, "MACVENDORDB", "/etc/pihole/macvendor.db", &FTLfiles.macvendor_db);
 
@@ -516,6 +513,22 @@ void get_blocking_mode(FILE *fp)
 		fclose(fp);
 }
 
+// Routine for setting the debug flags in the config struct
+static void setDebugOption(FILE* fp, const char* option, int16_t bitmask)
+{
+	const char* buffer = parse_FTLconf(fp, option);
+
+	// Return early if the key has not been found in FTL's config file
+	if(buffer == NULL)
+		return;
+
+	// Set bit if value equals "true", clear bit otherwise
+	if(strcasecmp(buffer, "true") == 0)
+		config.debug |= bitmask;
+	else
+		config.debug &= ~bitmask;
+}
+
 void read_debuging_settings(FILE *fp)
 {
 	// Set default (no debug instructions set)
@@ -532,92 +545,63 @@ void read_debuging_settings(FILE *fp)
 		opened = true;
 	}
 
+	// DEBUG_ALL
+	// defaults to: false
+	// ~0 is a shortcut for "all bits set"
+	setDebugOption(fp, "DEBUG_ALL", ~(int16_t)0);
+
 	// DEBUG_DATABASE
 	// defaults to: false
-	char* buffer = parse_FTLconf(fp, "DEBUG_DATABASE");
-	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
-		config.debug |= DEBUG_DATABASE;
+	setDebugOption(fp, "DEBUG_DATABASE", DEBUG_DATABASE);
 
 	// DEBUG_NETWORKING
 	// defaults to: false
-	buffer = parse_FTLconf(fp, "DEBUG_NETWORKING");
-	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
-		config.debug |= DEBUG_NETWORKING;
+	setDebugOption(fp, "DEBUG_NETWORKING", DEBUG_NETWORKING);
 
 	// DEBUG_LOCKS
 	// defaults to: false
-	buffer = parse_FTLconf(fp, "DEBUG_LOCKS");
-	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
-		config.debug |= DEBUG_LOCKS;
+	setDebugOption(fp, "DEBUG_LOCKS", DEBUG_LOCKS);
 
 	// DEBUG_QUERIES
 	// defaults to: false
-	buffer = parse_FTLconf(fp, "DEBUG_QUERIES");
-	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
-		config.debug |= DEBUG_QUERIES;
+	setDebugOption(fp, "DEBUG_QUERIES", DEBUG_QUERIES);
 
 	// DEBUG_FLAGS
 	// defaults to: false
-	buffer = parse_FTLconf(fp, "DEBUG_FLAGS");
-	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
-		config.debug |= DEBUG_FLAGS;
+	setDebugOption(fp, "DEBUG_FLAGS", DEBUG_FLAGS);
 
 	// DEBUG_SHMEM
 	// defaults to: false
-	buffer = parse_FTLconf(fp, "DEBUG_SHMEM");
-	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
-		config.debug |= DEBUG_SHMEM;
+	setDebugOption(fp, "DEBUG_SHMEM", DEBUG_SHMEM);
 
 	// DEBUG_GC
 	// defaults to: false
-	buffer = parse_FTLconf(fp, "DEBUG_GC");
-	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
-		config.debug |= DEBUG_GC;
+	setDebugOption(fp, "DEBUG_GC", DEBUG_GC);
 
 	// DEBUG_ARP
 	// defaults to: false
-	buffer = parse_FTLconf(fp, "DEBUG_ARP");
-	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
-		config.debug |= DEBUG_ARP;
+	setDebugOption(fp, "DEBUG_ARP", DEBUG_ARP);
 
 	// DEBUG_REGEX or REGEX_DEBUGMODE (legacy config option)
 	// defaults to: false
-	buffer = parse_FTLconf(fp, "DEBUG_REGEX");
-	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
-		config.debug |= DEBUG_REGEX;
-	buffer = parse_FTLconf(fp, "REGEX_DEBUGMODE");
-	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
-		config.debug |= DEBUG_REGEX;
+	setDebugOption(fp, "REGEX_DEBUGMODE", DEBUG_REGEX);
+	setDebugOption(fp, "DEBUG_REGEX", DEBUG_REGEX);
 
 	// DEBUG_API
 	// defaults to: false
-	buffer = parse_FTLconf(fp, "DEBUG_API");
-	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
-		config.debug |= DEBUG_API;
+	setDebugOption(fp, "DEBUG_API", DEBUG_API);
 
 	// DEBUG_OVERTIME
 	// defaults to: false
-	buffer = parse_FTLconf(fp, "DEBUG_OVERTIME");
-	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
-		config.debug |= DEBUG_OVERTIME;
+	setDebugOption(fp, "DEBUG_OVERTIME", DEBUG_OVERTIME);
 
 	// DEBUG_EXTBLOCKED
 	// defaults to: false
-	buffer = parse_FTLconf(fp, "DEBUG_EXTBLOCKED");
-	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
-		config.debug |= DEBUG_EXTBLOCKED;
+	setDebugOption(fp, "DEBUG_EXTBLOCKED", DEBUG_EXTBLOCKED);
 
 	// DEBUG_CAPS
 	// defaults to: false
-	buffer = parse_FTLconf(fp, "DEBUG_CAPS");
-	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
-		config.debug |= DEBUG_CAPS;
-
-	// DEBUG_ALL
-	// defaults to: false
-	buffer = parse_FTLconf(fp, "DEBUG_ALL");
-	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
-		config.debug = ~0;
+	setDebugOption(fp, "DEBUG_CAPS", DEBUG_CAPS);
 
 	if(config.debug)
 	{

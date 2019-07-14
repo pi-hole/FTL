@@ -151,6 +151,12 @@
   [[ ${lines[4]} == "" ]]
 }
 
+@test "Domain auditing, approved domains are not shown" {
+  run bash -c 'echo ">top-domains for audit >quit" | nc -v 127.0.0.1 4711'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[@]} != *"google.com"* ]]
+}
+
 @test "Forward Destinations" {
   run bash -c 'echo ">forward-dest >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"

@@ -10,8 +10,6 @@
 #ifndef FILE_H
 #define FILE_H
 
-int countlines(const char* fname);
-int countlineswith(const char* str, const char* fname);
 bool chmod_file(const char *filename, const mode_t mode);
 bool file_exists(const char *filename);
 unsigned long long get_FTL_db_filesize(void);
