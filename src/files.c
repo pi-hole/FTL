@@ -15,6 +15,13 @@
 #include "setupVars.h"
 #include "log.h"
 
+// opendir(), readdir()
+#include <dirent.h>
+// getpwuid()
+#include <pwd.h>
+// getgrgid()
+#include <grp.h>
+
 char ** wildcarddomains = NULL;
 
 int countlines(const char* fname)
@@ -151,4 +158,78 @@ long int get_FTL_db_filesize(void)
 		return 0;
 	}
 	return st.st_size;
+}
+
+void ls_dir(const char* path)
+{
+	// Open directory stream
+	DIR* dirp = opendir(path);
+	if(dirp == NULL)
+	{
+		logg("opendir(\"%s\") failed with %s (%d)", path, strerror(errno), errno);
+		return;
+	}
+
+	// Stack space for full path (directory + "/" + filename + terminating \0)
+	char full_path[strlen(path)+NAME_MAX+2];
+
+	logg("------ Listing content of directory %s ------", path);
+	logg("File Mode User:Group  Filesize Filename");
+
+	struct dirent *dircontent = NULL;
+	// Walk directory file by file
+	while((dircontent = readdir(dirp)) != NULL)
+	{
+		// Get filename
+		const char *filename = dircontent->d_name;
+
+		// Construct full path
+		snprintf(full_path, sizeof(full_path), "%s/%s", path, filename);
+
+		struct stat st;
+		// Use stat to get file size, permissions, and ownership
+		if(stat(full_path, &st) < 0)
+		{
+			logg("%s failed with %s (%d)", filename, strerror(errno), errno);
+			continue;
+		}
+
+		// Get owner's name
+		struct passwd *pwd;
+		char user[256];
+		if ((pwd = getpwuid(st.st_uid)) != NULL)
+			snprintf(user, sizeof(user), "%s", pwd->pw_name);
+		else
+			snprintf(user, sizeof(user), "%d", st.st_uid);
+
+		struct group *grp;
+		char group[256];
+		// Get out group name
+		if ((grp = getgrgid(st.st_gid)) != NULL)
+			snprintf(group, sizeof(group), "%s", grp->gr_name);
+		else
+			snprintf(group, sizeof(group), "%d", st.st_gid);
+
+		char permissions[10];
+		// Get human-readable format of permissions as known from ls
+		snprintf(permissions, sizeof(permissions),
+		         "%s%s%s%s%s%s%s%s%s",
+		         st.st_mode & S_IRUSR ? "r":"-",
+		         st.st_mode & S_IWUSR ? "w":"-",
+		         st.st_mode & S_IXUSR ? "x":"-",
+		         st.st_mode & S_IRGRP ? "r":"-",
+		         st.st_mode & S_IWGRP ? "w":"-",
+		         st.st_mode & S_IXGRP ? "x":"-",
+		         st.st_mode & S_IROTH ? "r":"-",
+		         st.st_mode & S_IWOTH ? "w":"-",
+		         st.st_mode & S_IXOTH ? "x":"-");
+
+		// Log output for this file
+		logg("%s %s:%s % 10ld %s", permissions, user, group, st.st_size, filename);
+	}
+
+	logg("---------------------------------------------------");
+
+	// Close directory stream
+	closedir(dirp);
 }

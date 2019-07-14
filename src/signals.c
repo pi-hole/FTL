@@ -15,6 +15,8 @@
 #include "signals.h"
 #include "log.h"
 #include "memory.h"
+// ls_dir()
+#include "files.h"
 
 volatile sig_atomic_t killed = 0;
 static time_t FTLstarttime = 0;
@@ -66,6 +68,9 @@ static void __attribute__((noreturn)) SIGSEGV_handler(int sig, siginfo_t *si, vo
 #else
 	logg("!!! INFO: pihole-FTL has not been compiled with glibc/backtrace support, not generating one !!!");
 #endif
+	// Print content of /dev/shm
+	ls_dir("/dev/shm");
+
 	logg("Thank you for helping us to improve our FTL engine!");
 
 	// Print message and abort
