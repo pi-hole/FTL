@@ -14,7 +14,7 @@ int countlines(const char* fname);
 int countlineswith(const char* str, const char* fname);
 bool chmod_file(const char *filename, const mode_t mode);
 bool file_exists(const char *filename);
-long int get_FTL_db_filesize(void);
+uint64_t get_FTL_db_filesize(void);
 void ls_dir(const char* path);
 
 #endif //FILE_H
