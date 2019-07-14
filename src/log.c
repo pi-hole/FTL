@@ -117,7 +117,7 @@ void __attribute__ ((format (gnu_printf, 1, 2))) logg(const char *format, ...)
 	pthread_mutex_unlock(&lock);
 }
 
-void format_memory_size(char *prefix, const unsigned long int bytes, double *formated)
+void format_memory_size(char *prefix, const unsigned long long int bytes, double *formated)
 {
 	int i;
 	*formated = bytes;
