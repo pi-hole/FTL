@@ -16,6 +16,7 @@ bool gravityDB_getTable(unsigned char list);
 const char* gravityDB_getDomain(void);
 void gravityDB_finalizeTable(void);
 int gravityDB_count(unsigned char list);
-bool whitelisted(const char *domain);
+bool in_whitelist(const char *domain);
+bool in_auditlist(const char *domain);
 
 #endif //GRAVITY_H
