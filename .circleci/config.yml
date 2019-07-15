@@ -13,7 +13,7 @@ version: 2
         name: "Build"
         command: |
           BRANCH=$([ -z "$CIRCLE_TAG" ] && echo "$CIRCLE_BRANCH" || echo "master")
-          make GIT_BRANCH="${BRANCH}" GIT_TAG="${CIRCLE_TAG}" STATIC="${STATIC}" CI_JOB="${CIRCLE_JOB}"
+          make GIT_BRANCH="${BRANCH}" GIT_TAG="${CIRCLE_TAG}" STATIC="${STATIC}"
           file pihole-FTL
     - run:
         name: "Upload"

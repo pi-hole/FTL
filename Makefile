@@ -160,11 +160,11 @@ pihole-FTL: $(_FTL_OBJ) $(_DNSMASQ_OBJ) $(DB_OBJ_DIR)/sqlite3.o
 clean:
 	rm -rf $(ODIR) pihole-FTL
 
-# If CI_JOB is unset (local compilation), ask uname -m and add locally compiled comment)
-ifeq ($(strip $(CI_JOB)),)
+# If CIRCLE_JOB is unset (local compilation), ask uname -m and add locally compiled comment)
+ifeq ($(strip $(CIRCLE_JOB)),)
 FTL_ARCH := $(shell uname -m) (compiled locally)
 else
-FTL_ARCH := $(ARCH) (compiled on CI)
+FTL_ARCH := $(CIRCLE_JOB) (compiled on CI)
 endif
 # Get compiler version
 FTL_CC := $(shell $(CC) --version | head -n 1)
