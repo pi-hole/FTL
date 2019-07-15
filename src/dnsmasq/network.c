@@ -558,6 +558,58 @@ static void clean_interfaces()
   }
 }
 
+/** Release listener if no other interface needs it.
+ *
+ * @return 1 if released, 0 if still required
+ */
+static int release_listener(struct listener *l)
+{
+  if (l->used > 1)
+    {
+      struct irec *iface;
+      for (iface = daemon->interfaces; iface; iface = iface->next)
+	if (iface->done && sockaddr_isequal(&l->addr, &iface->addr))
+	  {
+	    if (iface->found)
+	      {
+		/* update listener to point to active interface instead */
+		if (!l->iface->found)
+		  l->iface = iface;
+	      }
+	    else
+	      {
+		l->used--;
+		iface->done = 0;
+	      }
+	  }
+
+      /* Someone is still using this listener, skip its deletion */
+      if (l->used > 0)
+	return 0;
+    }
+
+  if (l->iface->done)
+    {
+      int port;
+
+      port = prettyprint_addr(&l->iface->addr, daemon->addrbuff);
+      my_syslog(LOG_DEBUG, _("stopped listening on %s(#%d): %s port %d"),
+		l->iface->name, l->iface->index, daemon->addrbuff, port);
+      /* In case it ever returns */
+      l->iface->done = 0;
+    }
+
+  if (l->fd != -1)
+    close(l->fd);
+  if (l->tcpfd != -1)
+    close(l->tcpfd);
+  if (l->tftpfd != -1)
+    close(l->tftpfd);
+
+  free(l);
+  return 1;
+}
+
 int enumerate_interfaces(int reset)
 {
   static struct addrlist *spare = NULL;
@@ -663,29 +715,10 @@ int enumerate_interfaces(int reset)
 	  
 	  if (!l->iface || l->iface->found)
 	    up = &l->next;
-	  else
+	  else if (release_listener(l))
 	    {
-	      *up = l->next;
-	      if (l->iface->done)
-	        {
-	          iface = l->iface;
-	          (void)prettyprint_addr(&iface->addr, daemon->addrbuff);
-	          my_syslog(LOG_DEBUG, _("stopped listening on %s(#%d): %s"),
-	                    iface->name, iface->index, daemon->addrbuff);
-	        }
-	      
-	      /* In case it ever returns */
-	      l->iface->done = 0;
-	      
-	      if (l->fd != -1)
-		close(l->fd);
-	      if (l->tcpfd != -1)
-		close(l->tcpfd);
-	      if (l->tftpfd != -1)
-		close(l->tftpfd);
-	      
-	      free(l);
-	      freed = 1;
+	      *up = tmp;
+		freed = 1;
 	    }
 	}
 
@@ -935,7 +968,9 @@ static struct listener *create_listeners(union mysockaddr *addr, int do_tftp, in
       l->family = addr->sa.sa_family;
       l->fd = fd;
       l->tcpfd = tcpfd;
-      l->tftpfd = tftpfd;	
+      l->tftpfd = tftpfd;
+      l->addr = *addr;
+      l->used = 1;
       l->iface = NULL;
     }
 
@@ -974,23 +1009,43 @@ void create_wildcard_listeners(void)
   daemon->listeners = l;
 }
 
+static struct listener *find_listener(union mysockaddr *addr)
+{
+  struct listener *l;
+  for (l = daemon->listeners; l; l = l->next)
+    if (sockaddr_isequal(&l->addr, addr))
+      return l;
+  return NULL;
+}
+
 void create_bound_listeners(int dienow)
 {
   struct listener *new;
   struct irec *iface;
   struct iname *if_tmp;
+  struct listener *existing;
 
   for (iface = daemon->interfaces; iface; iface = iface->next)
-    if (!iface->done && !iface->dad && iface->found &&
-	(new = create_listeners(&iface->addr, iface->tftp_ok, dienow)))
+    if (!iface->done && !iface->dad && iface->found)
       {
-	new->iface = iface;
-	new->next = daemon->listeners;
-	daemon->listeners = new;
-	iface->done = 1;
-	(void)prettyprint_addr(&iface->addr, daemon->addrbuff);
-	my_syslog(LOG_DEBUG, _("listening on %s(#%d): %s"),
-	          iface->name, iface->index, daemon->addrbuff);
+	existing = find_listener(&iface->addr);
+	if (existing)
+	  {
+	    iface->done = 1;
+	    existing->used++; /* increase usage counter */
+	  }
+	else if ((new = create_listeners(&iface->addr, iface->tftp_ok, dienow)))
+	  {
+	    int port;
+
+	    new->iface = iface;
+	    new->next = daemon->listeners;
+	    daemon->listeners = new;
+	    iface->done = 1;
+	    port = prettyprint_addr(&iface->addr, daemon->addrbuff);
+	    my_syslog(LOG_DEBUG, _("listening on %s(#%d): %s port %d"),
+		      iface->name, iface->index, daemon->addrbuff, port);
+	  }
       }
 
   /* Check for --listen-address options that haven't been used because there's
@@ -1008,10 +1063,12 @@ void create_bound_listeners(int dienow)
     if (!if_tmp->used && 
 	(new = create_listeners(&if_tmp->addr, !!option_bool(OPT_TFTP), dienow)))
       {
+	int port;
+
 	new->next = daemon->listeners;
 	daemon->listeners = new;
-	(void)prettyprint_addr(&if_tmp->addr, daemon->addrbuff);
-	my_syslog(LOG_DEBUG, _("listening on %s"), daemon->addrbuff);
+	port = prettyprint_addr(&if_tmp->addr, daemon->addrbuff);
+	my_syslog(LOG_DEBUG, _("listening on %s port %d"), daemon->addrbuff, port);
       }
 }
 

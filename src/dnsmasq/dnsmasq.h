@@ -574,7 +574,8 @@ struct irec {
 };
 
 struct listener {
-  int fd, tcpfd, tftpfd, family;
+  int fd, tcpfd, tftpfd, family, used;
+  union mysockaddr addr;
   struct irec *iface; /* only sometimes valid for non-wildcard */
   struct listener *next;
 };
