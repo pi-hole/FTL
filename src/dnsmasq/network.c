@@ -965,7 +965,6 @@ static struct listener *create_listeners(union mysockaddr *addr, int do_tftp, in
     {
       l = safe_malloc(sizeof(struct listener));
       l->next = NULL;
-      l->family = addr->sa.sa_family;
       l->fd = fd;
       l->tcpfd = tcpfd;
       l->tftpfd = tftpfd;
