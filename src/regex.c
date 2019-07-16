@@ -39,7 +39,10 @@ static bool init_regex(const char *regexin, const int index)
 {
 	// compile regular expressions into data structures that
 	// can be used with regexec to match against a string
-	const int errcode = regcomp(&regex[index], regexin, REG_EXTENDED);
+	int regflags = REG_EXTENDED;
+	if(config.regex_ignorecase)
+		regflags |= REG_ICASE;
+	const int errcode = regcomp(&regex[index], regexin, regflags);
 	if(errcode != 0)
 	{
 		log_regex_error("compiling", errcode, index);
