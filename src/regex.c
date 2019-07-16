@@ -34,7 +34,7 @@ static void log_regex_error(const char *where, const int errcode, const int inde
 	const size_t length = regerror(errcode, &regex[regexid][index], NULL, 0);
 	char *buffer = calloc(length,sizeof(char));
 	(void) regerror (errcode, &regex[regexid][index], buffer, length);
-	logg("ERROR: %s regex %s filter \"%s\": %s (%i)", where, regextype[regexid], regexin, buffer, errcode);
+	logg("ERROR: %s regex %s filter \"%s\": %s (error %i)", where, regextype[regexid], regexin, buffer, errcode);
 	free(buffer);
 }
 
