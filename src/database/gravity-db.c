@@ -305,22 +305,25 @@ static bool domain_in_list(const char *domain, sqlite3_stmt* stmt)
 	// all host parameters to NULL.
 	sqlite3_clear_bindings(stmt);
 
-	// Return early in case we already have found an exact match.
+	// Return return
 	// SELECT EXISTS(...) either returns 0 (false) or 1 (true).
-	if(result == 1)
-		return true;
-
-	// If not: Walk regex-based whitelist filters in addition
-	return match_regex(domain, REGEX_WHITELIST);
+	return (result == 1);
 }
 
 bool in_whitelist(const char *domain)
 {
-	return domain_in_list(domain, whitelist_stmt);
+	// We have to check both the exact whitelist (using a prepared database statement)
+	// as well the compiled regex whitelist filters to check if the current domain is
+	// whitelisted. Due to short-circuit-evaluation in C, the regex evaluations is executed
+	// only if the exact whitelist lookup does not deliver a positive match. This is an
+	// optimization as the database lookup will most likely hit (a) more domains and (b)
+	// will be faster (given a sufficiently large number of regex whitelisting filters).
+	return domain_in_list(domain, whitelist_stmt) || match_regex(domain, REGEX_WHITELIST);
 }
 
 bool in_auditlist(const char *domain)
 {
+	// We check the domain_audit table for the given domain
 	return domain_in_list(domain, auditlist_stmt);
 }
 
