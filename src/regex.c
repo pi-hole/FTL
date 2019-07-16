@@ -24,7 +24,7 @@ static regex_t *regex[2] = { NULL };
 static bool *regexconfigured[2] = { NULL };
 static char **regexbuffer[2] = { NULL };
 
-static const char regextype[2][10] = { "whitelist", "blacklist" };
+static const char *regextype[] = { "blacklist", "whitelist" };
 
 static void log_regex_error(const char *where, const int errcode, const int index,
                             const unsigned char regexid, const char *regexin)
@@ -85,7 +85,7 @@ bool match_regex(const char *input, const unsigned char regexid)
 		else if (errcode != REG_NOMATCH)
 		{
 			// Error, return false afterwards
-			log_regex_error("matching", errcode, index, regexid, regexin);
+			log_regex_error("matching", errcode, index, regexid, "");
 			break;
 		}
 	}

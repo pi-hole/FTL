@@ -215,11 +215,14 @@ int gravityDB_count(const unsigned char list)
 
 	char *querystr = NULL;
 	// Build correct query string to be used depending on list to be read
-	if(asprintf(&querystr, "SELECT domain FROM %s", tablename[list]) < 18)
+	if(asprintf(&querystr, "SELECT count(domain) FROM %s", tablename[list]) < 18)
 	{
 		logg("readGravity(%u) - asprintf() error", list);
 		return false;
 	}
+
+	if(config.debug & DEBUG_DATABASE)
+		logg("Querying gravity database table %s", tablename[list]);
 
 	// Prepare query
 	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &table_stmt, NULL);
@@ -312,6 +315,8 @@ static bool domain_in_list(const char *domain, sqlite3_stmt* stmt)
 
 bool in_whitelist(const char *domain)
 {
+	if(config.debug & DEBUG_DATABASE)
+		logg("Querying whitelist for %s", domain);
 	// We have to check both the exact whitelist (using a prepared database statement)
 	// as well the compiled regex whitelist filters to check if the current domain is
 	// whitelisted. Due to short-circuit-evaluation in C, the regex evaluations is executed
@@ -323,6 +328,8 @@ bool in_whitelist(const char *domain)
 
 bool in_auditlist(const char *domain)
 {
+	if(config.debug & DEBUG_DATABASE)
+		logg("Querying audit list for %s", domain);
 	// We check the domain_audit table for the given domain
 	return domain_in_list(domain, auditlist_stmt);
 }
