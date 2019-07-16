@@ -160,7 +160,7 @@ pihole-FTL: $(_FTL_OBJ) $(_DNSMASQ_OBJ) $(DB_OBJ_DIR)/sqlite3.o
 clean:
 	rm -rf $(ODIR) pihole-FTL
 
-# If CIRCLE_JOB is unset (local compilation), ask uname -m and add locally compiled comment)
+# If CIRCLE_JOB is unset (local compilation), ask uname -m and add locally compiled comment
 ifeq ($(strip $(CIRCLE_JOB)),)
 FTL_ARCH := $(shell uname -m) (compiled locally)
 else
