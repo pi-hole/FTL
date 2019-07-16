@@ -153,7 +153,7 @@ static void free_regex(void)
 static void read_regex_table(unsigned char regexid)
 {
 	// Get database ID
-	unsigned char databaseID = (regexid == REGEX_BLACKLIST) ? REGEX_BLACK_LIST : REGEX_WHITE_LIST;
+	unsigned char databaseID = (regexid == REGEX_BLACKLIST) ? REGEX_BLACKLIST_TABLE : REGEX_WHITELIST_TABLE;
 
 	// Get number of lines in the regex table
 	num_regex[regexid] = gravityDB_count(databaseID);

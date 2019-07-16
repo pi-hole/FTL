@@ -1486,10 +1486,10 @@ int FTL_database_import(int cache_size, struct crec **rhash, int hashsz)
 		return cache_size;
 	}
 
-	// Import gravity and blacklist domains
+	// Import gravity and exact blacklisted domains
 	int added;
-	added  = FTL_table_import("gravity", GRAVITY_LIST, SRC_GRAVITY, addr4, addr6, has_IPv4, has_IPv6, cache_size, rhash, hashsz);
-	added += FTL_table_import("blacklist", BLACK_LIST, SRC_BLACK, addr4, addr6, has_IPv4, has_IPv6, cache_size, rhash, hashsz);
+	added  = FTL_table_import("gravity", GRAVITY_TABLE, SRC_GRAVITY, addr4, addr6, has_IPv4, has_IPv6, cache_size, rhash, hashsz);
+	added += FTL_table_import("blacklist", EXACT_BLACKLIST_TABLE, SRC_BLACK, addr4, addr6, has_IPv4, has_IPv6, cache_size, rhash, hashsz);
 
 	// Update counter of blocked domains
 	counters->gravity = added;
