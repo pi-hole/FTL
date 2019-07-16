@@ -149,7 +149,7 @@ CREATE VIEW vw_regex_blacklist AS SELECT DISTINCT domain
     WHERE regex_blacklist.enabled = 1 AND (regex_blacklist_by_group.group_id IS NULL OR "group".enabled = 1)
     ORDER BY regex_blacklist.id;
 
-CREATE TRIGGER tr_regex_update AFTER UPDATE ON regex_blacklist
+CREATE TRIGGER tr_regex_blacklist_update AFTER UPDATE ON regex_blacklist
     BEGIN
       UPDATE regex_blacklist SET date_modified = (cast(strftime('%s', 'now') as int)) WHERE domain = NEW.domain;
     END;
