@@ -26,14 +26,15 @@ static char **regexbuffer[2] = { NULL };
 
 static const char regextype[2][10] = { "whitelist", "blacklist" };
 
-static void log_regex_error(const char *where, const int errcode, const int index, const unsigned char regexid)
+static void log_regex_error(const char *where, const int errcode, const int index,
+                            const unsigned char regexid, const char *regexin)
 {
 	// Regex failed for some reason (probably user syntax error)
 	// Get error string and log it
 	const size_t length = regerror(errcode, &regex[regexid][index], NULL, 0);
 	char *buffer = calloc(length,sizeof(char));
 	(void) regerror (errcode, &regex[regexid][index], buffer, length);
-	logg("ERROR %s regex %s no. %i: %s (%i)", where, regextype[regexid], index+1, buffer, errcode);
+	logg("ERROR: %s regex %s filter \"%s\": %s (%i)", where, regextype[regexid], regexin, buffer, errcode);
 	free(buffer);
 }
 
@@ -44,7 +45,7 @@ static bool compile_regex(const char *regexin, const int index, const unsigned c
 	const int errcode = regcomp(&regex[regexid][index], regexin, REG_EXTENDED);
 	if(errcode != 0)
 	{
-		log_regex_error("compiling", errcode, index, regexid);
+		log_regex_error("compiling", errcode, index, regexid, regexin);
 		return false;
 	}
 
@@ -84,7 +85,7 @@ bool match_regex(const char *input, const unsigned char regexid)
 		else if (errcode != REG_NOMATCH)
 		{
 			// Error, return false afterwards
-			log_regex_error("matching", errcode, index, regexid);
+			log_regex_error("matching", errcode, index, regexid, regexin);
 			break;
 		}
 	}
