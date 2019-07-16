@@ -72,6 +72,8 @@ bool match_regex(const char *input, const unsigned char regexid)
 
 		// Try to match the compiled regular expression against input
 		int errcode = regexec(&regex[regexid][index], input, 0, NULL, 0);
+		// regexec() returns zero for a successful match or REG_NOMATCH for failure.
+		// We are only interested in the matching case here.
 		if (errcode == 0)
 		{
 			// Match, return true
@@ -80,12 +82,6 @@ bool match_regex(const char *input, const unsigned char regexid)
 			// Print match message when in regex debug mode
 			if(config.debug & DEBUG_REGEX)
 				logg("Regex %s in line %i \"%s\" matches \"%s\"", regextype[regexid], index+1, regexbuffer[regexid][index], input);
-			break;
-		}
-		else if (errcode != REG_NOMATCH)
-		{
-			// Error, return false afterwards
-			log_regex_error("matching", errcode, index, regexid, "");
 			break;
 		}
 	}
