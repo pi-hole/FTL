@@ -147,7 +147,7 @@ static void free_regex(void)
 	}
 }
 
-static void read_regex_table(unsigned char regexid)
+static void read_regex_table(const unsigned char regexid)
 {
 	// Get database ID
 	unsigned char databaseID = (regexid == REGEX_BLACKLIST) ? REGEX_BLACKLIST_TABLE : REGEX_WHITELIST_TABLE;

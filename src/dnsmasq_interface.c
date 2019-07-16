@@ -225,8 +225,7 @@ void _FTL_new_query(const unsigned int flags, const char *name, const struct all
 		// of a specific domain. The logic herein is:
 		// If matched, then compare against whitelist
 		// If in whitelist, negate matched so this function returns: not-to-be-blocked
-		if(match_regex(domainString, REGEX_BLACKLIST) &&
-		   !in_whitelist(domainString))
+		if(match_regex(domainString, REGEX_BLACKLIST) && !in_whitelist(domainString))
 		{
 			// We have to block this domain
 			block_single_domain_regex(domainString);

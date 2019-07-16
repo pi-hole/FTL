@@ -308,7 +308,7 @@ static bool domain_in_list(const char *domain, sqlite3_stmt* stmt)
 	// all host parameters to NULL.
 	sqlite3_clear_bindings(stmt);
 
-	// Return return
+	// Return if domain was found in current table
 	// SELECT EXISTS(...) either returns 0 (false) or 1 (true).
 	return (result == 1);
 }
