@@ -243,7 +243,7 @@ void read_FTLconf(void)
 	logg("   PRIVACYLEVEL: Set to %i", config.privacylevel);
 
 	// IGNORE_LOCALHOST
-	// defaults to: No
+	// defaults to: false
 	config.ignore_localhost = false;
 	buffer = parse_FTLconf(fp, "IGNORE_LOCALHOST");
 
@@ -278,7 +278,7 @@ void read_FTLconf(void)
 	}
 
 	// ANALYZE_ONLY_A_AND_AAAA
-	// defaults to: No
+	// defaults to: false
 	config.analyze_only_A_AAAA = false;
 	buffer = parse_FTLconf(fp, "ANALYZE_ONLY_A_AND_AAAA");
 
@@ -333,7 +333,7 @@ void read_FTLconf(void)
 		logg("   PARSE_ARP_CACHE: Inactive");
 
 	// REGEX_IGNORECASE
-	// defaults to: No
+	// defaults to: false
 	config.regex_ignorecase = false;
 	buffer = parse_FTLconf(fp, "REGEX_IGNORECASE");
 
