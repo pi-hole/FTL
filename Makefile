@@ -160,6 +160,15 @@ pihole-FTL: $(_FTL_OBJ) $(_DNSMASQ_OBJ) $(DB_OBJ_DIR)/sqlite3.o
 clean:
 	rm -rf $(ODIR) pihole-FTL
 
+# If CIRCLE_JOB is unset (local compilation), ask uname -m and add locally compiled comment
+ifeq ($(strip $(CIRCLE_JOB)),)
+FTL_ARCH := $(shell uname -m) (compiled locally)
+else
+FTL_ARCH := $(CIRCLE_JOB) (compiled on CI)
+endif
+# Get compiler version
+FTL_CC := $(shell $(CC) --version | head -n 1)
+
 # # recreate version.h when GIT_VERSION changes, uses temporary file version~
 $(IDIR)/version~: force
 	@echo '$(GIT_BRANCH) $(GIT_VERSION) $(GIT_DATE) $(GIT_TAG)' | cmp -s - $@ || echo '$(GIT_BRANCH) $(GIT_VERSION) $(GIT_DATE) $(GIT_TAG)' > $@
@@ -171,6 +180,8 @@ $(IDIR)/version.h: $(IDIR)/version~
 	@echo '#define GIT_BRANCH "$(GIT_BRANCH)"' >> "$@"
 	@echo '#define GIT_TAG "$(GIT_TAG)"' >> "$@"
 	@echo '#define GIT_HASH "$(GIT_HASH)"' >> "$@"
+	@echo '#define FTL_ARCH "$(FTL_ARCH)"' >> "$@"
+	@echo '#define FTL_CC "$(FTL_CC)"' >> "$@"
 	@echo '#endif // VERSION_H' >> "$@"
 	@echo "Making FTL version on branch $(GIT_BRANCH) - $(GIT_VERSION) / $(GIT_TAG) / $(GIT_HASH) ($(GIT_DATE))"
 

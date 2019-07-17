@@ -339,3 +339,23 @@
   [[ "${STATIC}" != "true" && "${lines[@]}" == *"interpreter"* ]] || \
   [[ "${STATIC}" == "true" && "${lines[@]}" != *"interpreter"* ]]
 }
+
+@test "Architecture is correctly reported on startup" {
+  run bash -c 'grep "Compiled for" /var/log/pihole-FTL.log'
+  printf "Output: %s\n\$CIRCLE_JOB: %s\nuname -m: %s\n" "${lines[@]:-not set}" "${CIRCLE_JOB:-not set}" "$(uname -m)"
+  [[ ${lines[0]} == *"Compiled for ${CIRCLE_JOB:-$(uname -m)}"* ]]
+}
+
+@test "Building machine (CI) is reported on startup" {
+  [[ ${CIRCLE_JOB} != "" ]] && compiled_str="on CI" || compiled_str="locally" && export compiled_str
+  run bash -c 'grep "Compiled for" /var/log/pihole-FTL.log'
+  printf "Output: %s\n\$CIRCLE_JOB: %s\n" "${lines[@]:-not set}" "${CIRCLE_JOB:-not set}"
+  [[ ${lines[0]} == *"(compiled ${compiled_str})"* ]]
+}
+
+@test "Compiler version is correctly reported on startup" {
+  compiler_version="$(${CC} --version | head -n1)" && export compiler_version
+  run bash -c 'grep "Compiled for" /var/log/pihole-FTL.log'
+  printf "Output: %s\n\$CC: %s\nVersion: %s\n" "${lines[@]:-not set}" "${CC:-not set}" "${compiler_version:-not set}"
+  [[ ${lines[0]} == *"using ${compiler_version}"* ]]
+}
