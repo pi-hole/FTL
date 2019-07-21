@@ -82,7 +82,7 @@ bool dbopen(void)
 	return true;
 }
 
-bool dbquery(const char *format, ...)
+int dbquery_ret(const char *format, ...)
 {
 	va_list args;
 	va_start(args, format);
@@ -92,7 +92,7 @@ bool dbquery(const char *format, ...)
 	if(query == NULL)
 	{
 		logg("Memory allocation failed in dbquery()");
-		return false;
+		return SQLITE_ERROR;
 	}
 
 	// Log generated SQL string when dbquery() is called
@@ -101,7 +101,7 @@ bool dbquery(const char *format, ...)
 	{
 		logg("dbquery(\"%s\") called but database is not available!", query);
 		sqlite3_free(query);
-		return false;
+		return SQLITE_ERROR;
 	}
 
 	if(config.debug & DEBUG_DATABASE)
@@ -114,12 +114,12 @@ bool dbquery(const char *format, ...)
 	if( rc != SQLITE_OK ){
 		logg("ERROR: SQL query failed with code %d: %s", rc, query);
 		check_database(rc);
-		return false;
+		return rc;
 	}
 	// Free allocated memory for query string
 	sqlite3_free(query);
 	// Return success
-	return true;
+	return SQLITE_OK;
 }
 
 static bool create_counter_table(void)

@@ -16,7 +16,10 @@ bool check_database(int rc);
 void db_init(void);
 int db_get_FTL_property(const unsigned int ID);
 bool db_set_FTL_property(const unsigned int ID, const int value);
-bool dbquery(const char *format, ...);
+
+/// Execute a formatted SQL query and get the return code
+int dbquery_ret(const char *format, ...);
+
 bool dbopen(void);
 void dbclose(void);
 int db_query_int(const char*);
@@ -33,6 +36,11 @@ extern long int lastdbindex;
 extern bool DBdeleteoldqueries;
 
 // Database macros
+
+/// Execute a formatted SQL query. The returned boolean indicates if it was
+/// successful or not
+#define dbquery(format, ...) (dbquery_ret(format, ## __VA_ARGS__) == SQLITE_OK)
+
 #define SQL_bool(sql) {\
 	if(!dbquery(sql)) {\
 		logg("ERROR: %s() failed!", __FUNCTION__);\

@@ -137,8 +137,14 @@ void parse_neighbor_cache(void)
 	// Start collecting database commands
 	lock_shm();
 
-	if(!dbquery("BEGIN TRANSACTION")) {
-		logg("ERROR: parse_neighbor_cache() failed! SQL = \"BEGIN TRANSACTION\"");
+	int ret = dbquery_ret("BEGIN TRANSACTION");
+
+	if(ret == SQLITE_BUSY) {
+		logg("WARN: parse_neighbor_cache(), database is busy, skipping");
+		unlock_shm();
+		return;
+	} else if(ret != SQLITE_OK) {
+		logg("ERROR: parse_neighbor_cache() failed!");
 		unlock_shm();
 		return;
 	}
@@ -265,7 +271,7 @@ void parse_neighbor_cache(void)
 
 	// Actually update the database
 	if(!dbquery("COMMIT")) {
-		logg("ERROR: parse_neighbor_cache() failed! SQL = \"COMMIT\"");
+		logg("ERROR: parse_neighbor_cache() failed!");
 		unlock_shm();
 		return;
 	}
