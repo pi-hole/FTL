@@ -45,6 +45,13 @@ bool gravityDB_open(void)
 		return false;
 	}
 
+	// Explicitly set busy handler to zero milliseconds
+	rc = sqlite3_busy_timeout(gravity_db, 0);
+	if(rc != SQLITE_OK)
+	{
+		logg("gravityDB_open() - Cannot set busy handler (%i): %s", rc, sqlite3_errmsg(gravity_db));
+	}
+
 	// Tell SQLite3 to store temporary tables in memory. This speeds up read operations on
 	// temporary tables, indices, and views.
 	char *zErrMsg = NULL;

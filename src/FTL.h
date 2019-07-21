@@ -99,6 +99,10 @@
 #define DB_FAILED -2
 #define DB_NODATA -1
 
+// Add a timeout for the pihole-FTL.db database connection.
+// This prevents immediate failures when the database is busy for a short time.
+#define DATABASE_BUSY_TIMEOUT 1000
+
 // FTLDNS enums
 enum { QUERIES, FORWARDED, CLIENTS, DOMAINS, OVERTIME, WILDCARD };
 enum { DNSSEC_UNSPECIFIED, DNSSEC_SECURE, DNSSEC_INSECURE, DNSSEC_BOGUS, DNSSEC_ABANDONED, DNSSEC_UNKNOWN };

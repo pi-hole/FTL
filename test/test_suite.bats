@@ -339,3 +339,9 @@
   [[ "${STATIC}" != "true" && "${lines[@]}" == *"interpreter"* ]] || \
   [[ "${STATIC}" == "true" && "${lines[@]}" != *"interpreter"* ]]
 }
+
+@test "No errors on setting busy handlers for the databases" {
+  run bash -c 'grep -c "Cannot set busy handler" /var/log/pihole-FTL.log'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "0" ]]
+}
