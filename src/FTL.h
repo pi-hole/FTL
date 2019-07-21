@@ -99,8 +99,9 @@
 #define DB_FAILED -2
 #define DB_NODATA -1
 
-// Add a timeout for the pihole-FTL.db database connection.
+// Add a timeout for the pihole-FTL.db database connection [milliseconds]
 // This prevents immediate failures when the database is busy for a short time.
+// Default: 1000 (one second)
 #define DATABASE_BUSY_TIMEOUT 1000
 
 // FTLDNS enums
