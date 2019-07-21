@@ -112,6 +112,7 @@ bool dbquery(const char *format, ...)
 	int rc = sqlite3_exec(FTL_db, query, NULL, NULL, NULL);
 
 	if( rc != SQLITE_OK ){
+		logg("ERROR: SQL query failed with code %d: %s", rc, query);
 		check_database(rc);
 		return false;
 	}
