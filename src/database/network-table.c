@@ -136,7 +136,12 @@ void parse_neighbor_cache(void)
 
 	// Start collecting database commands
 	lock_shm();
-	SQL_void("BEGIN TRANSACTION");
+
+	if(!dbquery("BEGIN TRANSACTION")) {
+		logg("ERROR: parse_neighbor_cache() failed! SQL = \"BEGIN TRANSACTION\"");
+		unlock_shm();
+		return;
+	}
 
 	// Read ARP cache line by line
 	while(getline(&linebuffer, &linebuffersize, arpfp) != -1)
@@ -259,7 +264,12 @@ void parse_neighbor_cache(void)
 	}
 
 	// Actually update the database
-	SQL_void("COMMIT");
+	if(!dbquery("COMMIT")) {
+		logg("ERROR: parse_neighbor_cache() failed! SQL = \"COMMIT\"");
+		unlock_shm();
+		return;
+	}
+
 	unlock_shm();
 
 	// Debug logging
