@@ -155,8 +155,7 @@ static bool db_create(void)
 		return false;
 	}
 	// Create Queries table in the database
-	SQL_bool(
-			"CREATE TABLE queries ( id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL, type INTEGER NOT NULL, status INTEGER NOT NULL, domain TEXT NOT NULL, client TEXT NOT NULL, forward TEXT );");
+	SQL_bool("CREATE TABLE queries ( id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL, type INTEGER NOT NULL, status INTEGER NOT NULL, domain TEXT NOT NULL, client TEXT NOT NULL, forward TEXT );");
 
 	// Add an index on the timestamps (not a unique index!)
 	SQL_bool("CREATE INDEX idx_queries_timestamps ON queries (timestamp);");
