@@ -32,6 +32,7 @@ typedef struct {
 	bool analyze_only_A_AAAA;
 	bool DBimport;
 	bool parse_arp_cache;
+	bool regex_ignorecase;
 } ConfigStruct;
 
 typedef struct {

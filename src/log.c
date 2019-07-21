@@ -155,6 +155,7 @@ void log_FTL_version(const bool crashreport)
 		logg("FTL user: started as %s, ended as %s", username, getUserName());
 	else
 		logg("FTL user: %s", username);
+	logg("Compiled for %s using %s", FTL_ARCH, FTL_CC);
 }
 
 static char *FTLversion = NULL;
