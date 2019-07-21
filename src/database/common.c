@@ -79,6 +79,13 @@ bool dbopen(void)
 		return false;
 	}
 
+	// Explicitly set busy handler to value defined in FTL.h
+	rc = sqlite3_busy_timeout(FTL_db, DATABASE_BUSY_TIMEOUT);
+	if(rc != SQLITE_OK)
+	{
+		logg("dbopen() - Cannot set busy handler (%i): %s", rc, sqlite3_errmsg(FTL_db));
+	}
+
 	return true;
 }
 

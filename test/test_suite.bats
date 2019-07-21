@@ -359,3 +359,9 @@
   printf "Output: %s\n\$CC: %s\nVersion: %s\n" "${lines[@]:-not set}" "${CC:-not set}" "${compiler_version:-not set}"
   [[ ${lines[0]} == *"using ${compiler_version}"* ]]
 }
+
+@test "No errors on setting busy handlers for the databases" {
+  run bash -c 'grep -c "Cannot set busy handler" /var/log/pihole-FTL.log'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "0" ]]
+}
