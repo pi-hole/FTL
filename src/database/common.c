@@ -82,7 +82,7 @@ bool dbopen(void)
 	return true;
 }
 
-int dbquery_ret(const char *format, ...)
+int dbquery(const char *format, ...)
 {
 	va_list args;
 	va_start(args, format);
@@ -155,7 +155,8 @@ static bool db_create(void)
 		return false;
 	}
 	// Create Queries table in the database
-	SQL_bool("CREATE TABLE queries ( id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL, type INTEGER NOT NULL, status INTEGER NOT NULL, domain TEXT NOT NULL, client TEXT NOT NULL, forward TEXT );");
+	SQL_bool(
+			"CREATE TABLE queries ( id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL, type INTEGER NOT NULL, status INTEGER NOT NULL, domain TEXT NOT NULL, client TEXT NOT NULL, forward TEXT );");
 
 	// Add an index on the timestamps (not a unique index!)
 	SQL_bool("CREATE INDEX idx_queries_timestamps ON queries (timestamp);");
@@ -165,11 +166,11 @@ static bool db_create(void)
 
 
 	// Set FTL_db version 1
-	if(!dbquery("INSERT INTO ftl (ID,VALUE) VALUES(%i,1);", DB_VERSION))
+	if(dbquery("INSERT INTO ftl (ID,VALUE) VALUES(%i,1);", DB_VERSION) != SQLITE_OK)
 		return false;
 
 	// Most recent timestamp initialized to 00:00 1 Jan 1970
-	if(!dbquery("INSERT INTO ftl (ID,VALUE) VALUES(%i,0);", DB_LASTTIMESTAMP))
+	if(dbquery("INSERT INTO ftl (ID,VALUE) VALUES(%i,0);", DB_LASTTIMESTAMP) != SQLITE_OK)
 		return false;
 
 	// Create counter table
@@ -355,7 +356,7 @@ bool db_set_FTL_property(const unsigned int ID, const int value)
 		logg("db_set_FTL_property(%u, %i) called but database is not available!", ID, value);
 		return false;
 	}
-	return dbquery("INSERT OR REPLACE INTO ftl (id, value) VALUES ( %u, %i );", ID, value);
+	return dbquery("INSERT OR REPLACE INTO ftl (id, value) VALUES ( %u, %i );", ID, value) == SQLITE_OK;
 }
 
 bool db_set_counter(const unsigned int ID, const int value)
@@ -365,7 +366,7 @@ bool db_set_counter(const unsigned int ID, const int value)
 		logg("db_set_counter(%u, %i) called but database is not available!", ID, value);
 		return false;
 	}
-	return dbquery("INSERT OR REPLACE INTO counters (id, value) VALUES ( %u, %i );", ID, value);
+	return dbquery("INSERT OR REPLACE INTO counters (id, value) VALUES ( %u, %i );", ID, value) == SQLITE_OK;
 }
 
 bool db_update_counters(const int total, const int blocked)
@@ -375,9 +376,9 @@ bool db_update_counters(const int total, const int blocked)
 		logg("db_update_counters(%i, %i) called but database is not available!", total, blocked);
 		return false;
 	}
-	if(!dbquery("UPDATE counters SET value = value + %i WHERE id = %i;", total, DB_TOTALQUERIES))
+	if(dbquery("UPDATE counters SET value = value + %i WHERE id = %i;", total, DB_TOTALQUERIES) != SQLITE_OK)
 		return false;
-	if(!dbquery("UPDATE counters SET value = value + %i WHERE id = %i;", blocked, DB_BLOCKEDQUERIES))
+	if(dbquery("UPDATE counters SET value = value + %i WHERE id = %i;", blocked, DB_BLOCKEDQUERIES) != SQLITE_OK)
 		return false;
 	return true;
 }

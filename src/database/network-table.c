@@ -137,7 +137,7 @@ void parse_neighbor_cache(void)
 	// Start collecting database commands
 	lock_shm();
 
-	int ret = dbquery_ret("BEGIN TRANSACTION");
+	int ret = dbquery("BEGIN TRANSACTION");
 
 	if(ret == SQLITE_BUSY) {
 		logg("WARN: parse_neighbor_cache(), database is busy, skipping");
@@ -171,7 +171,7 @@ void parse_neighbor_cache(void)
 		// commitment. Read-only access such as this SELECT command will be
 		// executed immediately on the database.
 		char* querystr = NULL;
-		int ret = asprintf(&querystr, "SELECT id FROM network WHERE hwaddr = \'%s\';", hwaddr);
+		ret = asprintf(&querystr, "SELECT id FROM network WHERE hwaddr = \'%s\';", hwaddr);
 		if(querystr == NULL || ret < 0)
 		{
 			logg("Memory allocation failed in parse_arp_cache(): %i", ret);
@@ -270,7 +270,7 @@ void parse_neighbor_cache(void)
 	}
 
 	// Actually update the database
-	if(!dbquery("COMMIT")) {
+	if(dbquery("COMMIT") != SQLITE_OK) {
 		logg("ERROR: parse_neighbor_cache() failed!");
 		unlock_shm();
 		return;
