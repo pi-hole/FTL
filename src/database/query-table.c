@@ -217,7 +217,7 @@ void delete_old_queries_in_DB(void)
 
 	int timestamp = time(NULL) - config.maxDBdays * 86400;
 
-	if(!dbquery("DELETE FROM queries WHERE timestamp <= %i", timestamp))
+	if(dbquery("DELETE FROM queries WHERE timestamp <= %i", timestamp) != SQLITE_OK)
 	{
 		logg("delete_old_queries_in_DB(): Deleting queries due to age of entries failed!");
 		return;
