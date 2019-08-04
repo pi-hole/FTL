@@ -222,9 +222,10 @@ void db_init(void)
 	}
 
 	// Initialize database lock mutex
-	if (pthread_mutex_init(&dblock, NULL) != 0)
+	int rc;
+	if((rc = pthread_mutex_init(&dblock, NULL)) != 0)
 	{
-		logg("FATAL: FTL_db mutex init failed\n");
+		logg("FATAL: FTL_db mutex init failed (%s, %i)\n", strerror(rc), rc);
 		// Return failure
 		exit(EXIT_FAILURE);
 	}
@@ -253,7 +254,7 @@ void db_init(void)
 	}
 
 	// Try to open the database connection
-	int rc = sqlite3_open_v2(FTLfiles.FTL_db, &FTL_db, SQLITE_OPEN_READWRITE, NULL);
+	rc = sqlite3_open_v2(FTLfiles.FTL_db, &FTL_db, SQLITE_OPEN_READWRITE, NULL);
 	if( rc != SQLITE_OK ){
 		logg("db_init() - Cannot open database (%i): %s", rc, sqlite3_errmsg(FTL_db));
 		dbclose();
