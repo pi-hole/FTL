@@ -221,6 +221,14 @@ void db_init(void)
 		return;
 	}
 
+	// Initialize database lock mutex
+	if (pthread_mutex_init(&dblock, NULL) != 0)
+	{
+		logg("FATAL: FTL_db mutex init failed\n");
+		// Return failure
+		exit(EXIT_FAILURE);
+	}
+
 	// Initialize SQLite3 logging callback
 	// This ensures SQLite3 errors and warnings are logged to pihole-FTL.log
 	// We use this to possibly catch even more errors in places we do not
@@ -321,13 +329,6 @@ void db_init(void)
 	// Close database to prevent having it opened all time
 	// we already closed the database when we returned earlier
 	sqlite3_close(FTL_db);
-
-	if (pthread_mutex_init(&dblock, NULL) != 0)
-	{
-		logg("FATAL: FTL_db mutex init failed\n");
-		// Return failure
-		exit(EXIT_FAILURE);
-	}
 
 	logg("Database successfully initialized");
 }
