@@ -177,7 +177,6 @@ inline const char* gravityDB_getDomain(void)
 	if(rc != SQLITE_DONE)
 	{
 		logg("gravityDB_getDomain() - SQL error step (%i): %s", rc, sqlite3_errmsg(gravity_db));
-		gravityDB_finalizeTable();
 		return NULL;
 	}
 
