@@ -29,7 +29,7 @@ for line in manuf:
 	line = line.strip()
 
 	# Skip comments and empty lines
-	if line[1] == "#" or line == "":
+	if line == "" or line[0] == "#":
 		continue
 
 	# Remove quotation marks as these might interfere with later INSERT / UPDATE commands
