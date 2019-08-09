@@ -221,6 +221,18 @@ void db_init(void)
 		return;
 	}
 
+	// Initialize database lock mutex
+	int rc;
+	if((rc = pthread_mutex_init(&dblock, NULL)) != 0)
+	{
+		logg("FATAL: FTL_db mutex init failed (%s, %i)\n", strerror(rc), rc);
+		// Return failure
+		exit(EXIT_FAILURE);
+	}
+
+	// Lock database thread
+	pthread_mutex_lock(&dblock);
+
 	// Initialize SQLite3 logging callback
 	// This ensures SQLite3 errors and warnings are logged to pihole-FTL.log
 	// We use this to possibly catch even more errors in places we do not
@@ -234,12 +246,15 @@ void db_init(void)
 		if (!db_create())
 		{
 			logg("Creation of database failed, database is not available");
+			pthread_mutex_unlock(&dblock);
+
 			database = false;
 			return;
 		}
 	}
 
-	int rc = sqlite3_open_v2(FTLfiles.FTL_db, &FTL_db, SQLITE_OPEN_READWRITE, NULL);
+	// Try to open the database connection
+	rc = sqlite3_open_v2(FTLfiles.FTL_db, &FTL_db, SQLITE_OPEN_READWRITE, NULL);
 	if( rc != SQLITE_OK ){
 		logg("db_init() - Cannot open database (%i): %s", rc, sqlite3_errmsg(FTL_db));
 		dbclose();
@@ -250,12 +265,17 @@ void db_init(void)
 
 	// Test FTL_db version and see if we need to upgrade the database file
 	int dbversion = db_get_FTL_property(DB_VERSION);
-	logg("Database version is %i", dbversion);
 	if(dbversion < 1)
 	{
-		logg("Database version incorrect, database not available");
+		logg("Database version incorrect (%i), database not available", dbversion);
+		dbclose();
+
 		database = false;
 		return;
+	}
+	else
+	{
+		logg("Database version is %i", dbversion);
 	}
 
 	// Update to version 2 if lower
@@ -266,6 +286,8 @@ void db_init(void)
 		if (!create_counter_table())
 		{
 			logg("Counter table not initialized, database not available");
+			dbclose();
+
 			database = false;
 			return;
 		}
@@ -281,6 +303,8 @@ void db_init(void)
 		if (!create_network_table())
 		{
 			logg("Network table not initialized, database not available");
+			dbclose();
+
 			database = false;
 			return;
 		}
@@ -296,6 +320,8 @@ void db_init(void)
 		if(!unify_hwaddr())
 		{
 			logg("Unable to unify clients in network table, database not available");
+			dbclose();
+
 			database = false;
 			return;
 		}
@@ -311,6 +337,8 @@ void db_init(void)
 		if(!create_network_addresses_table())
 		{
 			logg("Network-addresses table not initialized, database not available");
+			dbclose();
+
 			database = false;
 			return;
 		}
@@ -319,15 +347,8 @@ void db_init(void)
 	}
 
 	// Close database to prevent having it opened all time
-	// we already closed the database when we returned earlier
-	sqlite3_close(FTL_db);
-
-	if (pthread_mutex_init(&dblock, NULL) != 0)
-	{
-		logg("FATAL: FTL_db mutex init failed\n");
-		// Return failure
-		exit(EXIT_FAILURE);
-	}
+	// We already closed the database when we returned earlier
+	dbclose();
 
 	logg("Database successfully initialized");
 }
