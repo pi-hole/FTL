@@ -117,7 +117,7 @@ void __attribute__ ((format (gnu_printf, 1, 2))) logg(const char *format, ...)
 	pthread_mutex_unlock(&lock);
 }
 
-void format_memory_size(char *prefix, const unsigned long int bytes, double *formated)
+void format_memory_size(char *prefix, const unsigned long long int bytes, double *formated)
 {
 	int i;
 	*formated = bytes;
@@ -155,6 +155,7 @@ void log_FTL_version(const bool crashreport)
 		logg("FTL user: started as %s, ended as %s", username, getUserName());
 	else
 		logg("FTL user: %s", username);
+	logg("Compiled for %s using %s", FTL_ARCH, FTL_CC);
 }
 
 static char *FTLversion = NULL;

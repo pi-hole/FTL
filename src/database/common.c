@@ -79,10 +79,17 @@ bool dbopen(void)
 		return false;
 	}
 
+	// Explicitly set busy handler to value defined in FTL.h
+	rc = sqlite3_busy_timeout(FTL_db, DATABASE_BUSY_TIMEOUT);
+	if(rc != SQLITE_OK)
+	{
+		logg("dbopen() - Cannot set busy handler (%i): %s", rc, sqlite3_errmsg(FTL_db));
+	}
+
 	return true;
 }
 
-bool dbquery(const char *format, ...)
+int dbquery(const char *format, ...)
 {
 	va_list args;
 	va_start(args, format);
@@ -92,7 +99,7 @@ bool dbquery(const char *format, ...)
 	if(query == NULL)
 	{
 		logg("Memory allocation failed in dbquery()");
-		return false;
+		return SQLITE_ERROR;
 	}
 
 	// Log generated SQL string when dbquery() is called
@@ -101,7 +108,7 @@ bool dbquery(const char *format, ...)
 	{
 		logg("dbquery(\"%s\") called but database is not available!", query);
 		sqlite3_free(query);
-		return false;
+		return SQLITE_ERROR;
 	}
 
 	if(config.debug & DEBUG_DATABASE)
@@ -112,13 +119,14 @@ bool dbquery(const char *format, ...)
 	int rc = sqlite3_exec(FTL_db, query, NULL, NULL, NULL);
 
 	if( rc != SQLITE_OK ){
+		logg("ERROR: SQL query failed with code %d: %s", rc, query);
 		check_database(rc);
-		return false;
+		return rc;
 	}
 	// Free allocated memory for query string
 	sqlite3_free(query);
 	// Return success
-	return true;
+	return SQLITE_OK;
 }
 
 static bool create_counter_table(void)
@@ -164,11 +172,11 @@ static bool db_create(void)
 
 
 	// Set FTL_db version 1
-	if(!dbquery("INSERT INTO ftl (ID,VALUE) VALUES(%i,1);", DB_VERSION))
+	if(dbquery("INSERT INTO ftl (ID,VALUE) VALUES(%i,1);", DB_VERSION) != SQLITE_OK)
 		return false;
 
 	// Most recent timestamp initialized to 00:00 1 Jan 1970
-	if(!dbquery("INSERT INTO ftl (ID,VALUE) VALUES(%i,0);", DB_LASTTIMESTAMP))
+	if(dbquery("INSERT INTO ftl (ID,VALUE) VALUES(%i,0);", DB_LASTTIMESTAMP) != SQLITE_OK)
 		return false;
 
 	// Create counter table
@@ -213,6 +221,18 @@ void db_init(void)
 		return;
 	}
 
+	// Initialize database lock mutex
+	int rc;
+	if((rc = pthread_mutex_init(&dblock, NULL)) != 0)
+	{
+		logg("FATAL: FTL_db mutex init failed (%s, %i)\n", strerror(rc), rc);
+		// Return failure
+		exit(EXIT_FAILURE);
+	}
+
+	// Lock database thread
+	pthread_mutex_lock(&dblock);
+
 	// Initialize SQLite3 logging callback
 	// This ensures SQLite3 errors and warnings are logged to pihole-FTL.log
 	// We use this to possibly catch even more errors in places we do not
@@ -226,12 +246,15 @@ void db_init(void)
 		if (!db_create())
 		{
 			logg("Creation of database failed, database is not available");
+			pthread_mutex_unlock(&dblock);
+
 			database = false;
 			return;
 		}
 	}
 
-	int rc = sqlite3_open_v2(FTLfiles.FTL_db, &FTL_db, SQLITE_OPEN_READWRITE, NULL);
+	// Try to open the database connection
+	rc = sqlite3_open_v2(FTLfiles.FTL_db, &FTL_db, SQLITE_OPEN_READWRITE, NULL);
 	if( rc != SQLITE_OK ){
 		logg("db_init() - Cannot open database (%i): %s", rc, sqlite3_errmsg(FTL_db));
 		dbclose();
@@ -242,12 +265,17 @@ void db_init(void)
 
 	// Test FTL_db version and see if we need to upgrade the database file
 	int dbversion = db_get_FTL_property(DB_VERSION);
-	logg("Database version is %i", dbversion);
 	if(dbversion < 1)
 	{
-		logg("Database version incorrect, database not available");
+		logg("Database version incorrect (%i), database not available", dbversion);
+		dbclose();
+
 		database = false;
 		return;
+	}
+	else
+	{
+		logg("Database version is %i", dbversion);
 	}
 
 	// Update to version 2 if lower
@@ -258,6 +286,8 @@ void db_init(void)
 		if (!create_counter_table())
 		{
 			logg("Counter table not initialized, database not available");
+			dbclose();
+
 			database = false;
 			return;
 		}
@@ -273,6 +303,8 @@ void db_init(void)
 		if (!create_network_table())
 		{
 			logg("Network table not initialized, database not available");
+			dbclose();
+
 			database = false;
 			return;
 		}
@@ -288,6 +320,8 @@ void db_init(void)
 		if(!unify_hwaddr())
 		{
 			logg("Unable to unify clients in network table, database not available");
+			dbclose();
+
 			database = false;
 			return;
 		}
@@ -303,6 +337,8 @@ void db_init(void)
 		if(!create_network_addresses_table())
 		{
 			logg("Network-addresses table not initialized, database not available");
+			dbclose();
+
 			database = false;
 			return;
 		}
@@ -311,15 +347,8 @@ void db_init(void)
 	}
 
 	// Close database to prevent having it opened all time
-	// we already closed the database when we returned earlier
-	sqlite3_close(FTL_db);
-
-	if (pthread_mutex_init(&dblock, NULL) != 0)
-	{
-		logg("FATAL: FTL_db mutex init failed\n");
-		// Return failure
-		exit(EXIT_FAILURE);
-	}
+	// We already closed the database when we returned earlier
+	dbclose();
 
 	logg("Database successfully initialized");
 }
@@ -354,7 +383,7 @@ bool db_set_FTL_property(const unsigned int ID, const int value)
 		logg("db_set_FTL_property(%u, %i) called but database is not available!", ID, value);
 		return false;
 	}
-	return dbquery("INSERT OR REPLACE INTO ftl (id, value) VALUES ( %u, %i );", ID, value);
+	return dbquery("INSERT OR REPLACE INTO ftl (id, value) VALUES ( %u, %i );", ID, value) == SQLITE_OK;
 }
 
 bool db_set_counter(const unsigned int ID, const int value)
@@ -364,7 +393,7 @@ bool db_set_counter(const unsigned int ID, const int value)
 		logg("db_set_counter(%u, %i) called but database is not available!", ID, value);
 		return false;
 	}
-	return dbquery("INSERT OR REPLACE INTO counters (id, value) VALUES ( %u, %i );", ID, value);
+	return dbquery("INSERT OR REPLACE INTO counters (id, value) VALUES ( %u, %i );", ID, value) == SQLITE_OK;
 }
 
 bool db_update_counters(const int total, const int blocked)
@@ -374,9 +403,9 @@ bool db_update_counters(const int total, const int blocked)
 		logg("db_update_counters(%i, %i) called but database is not available!", total, blocked);
 		return false;
 	}
-	if(!dbquery("UPDATE counters SET value = value + %i WHERE id = %i;", total, DB_TOTALQUERIES))
+	if(dbquery("UPDATE counters SET value = value + %i WHERE id = %i;", total, DB_TOTALQUERIES) != SQLITE_OK)
 		return false;
-	if(!dbquery("UPDATE counters SET value = value + %i WHERE id = %i;", blocked, DB_BLOCKEDQUERIES))
+	if(dbquery("UPDATE counters SET value = value + %i WHERE id = %i;", blocked, DB_BLOCKEDQUERIES) != SQLITE_OK)
 		return false;
 	return true;
 }

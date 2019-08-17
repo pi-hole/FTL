@@ -12,6 +12,7 @@
 
 bool chmod_file(const char *filename, const mode_t mode);
 bool file_exists(const char *filename);
-long int get_FTL_db_filesize(void);
+unsigned long long get_FTL_db_filesize(void);
+void ls_dir(const char* path);
 
 #endif //FILE_H
