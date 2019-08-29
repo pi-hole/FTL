@@ -854,7 +854,7 @@ int dnssec_validate_by_ds(time_t now, struct dns_header *header, size_t plen, ch
 int dnssec_validate_ds(time_t now, struct dns_header *header, size_t plen, char *name, char *keyname, int class)
 {
   unsigned char *p = (unsigned char *)(header+1);
-  int qtype, qclass, rc, i, neganswer, nons;
+  int qtype, qclass, rc, i, neganswer, nons, neg_ttl = 0;
   int aclass, atype, rdlen;
   unsigned long ttl;
   union all_addr a;
@@ -869,7 +869,7 @@ int dnssec_validate_ds(time_t now, struct dns_header *header, size_t plen, char 
   if (qtype != T_DS || qclass != class)
     rc = STAT_BOGUS;
   else
-    rc = dnssec_validate_reply(now, header, plen, name, keyname, NULL, 0, &neganswer, &nons);
+    rc = dnssec_validate_reply(now, header, plen, name, keyname, NULL, 0, &neganswer, &nons, &neg_ttl);
   
   if (rc == STAT_INSECURE)
     {
@@ -960,11 +960,7 @@ int dnssec_validate_ds(time_t now, struct dns_header *header, size_t plen, char 
   else
     {
       int flags = F_FORWARD | F_DS | F_NEG | F_DNSSECOK;
-      unsigned long minttl = ULONG_MAX;
-      
-      if (!(p = skip_section(p, ntohs(header->ancount), header, plen)))
-	return STAT_BOGUS;
-      
+            
       if (RCODE(header) == NXDOMAIN)
 	flags |= F_NXDOMAIN;
       
@@ -973,54 +969,15 @@ int dnssec_validate_ds(time_t now, struct dns_header *header, size_t plen, char 
       if (nons)
 	flags &= ~F_DNSSECOK;
       
-      for (i = ntohs(header->nscount); i != 0; i--)
-	{
-	  if (!(p = skip_name(p, header, plen, 0)))
-	    return STAT_BOGUS;
+      cache_start_insert();
 	  
-	  GETSHORT(atype, p); 
-	  GETSHORT(aclass, p);
-	  GETLONG(ttl, p);
-	  GETSHORT(rdlen, p);
-	  
-	  if (!CHECK_LEN(header, p, plen, rdlen))
-	    return STAT_BOGUS; /* bad packet */
-	  
-	  if (aclass != class || atype != T_SOA)
-	    {
-	      p += rdlen;
-	      continue;
-	    }
-	  
-	  if (ttl < minttl)
-	    minttl = ttl;
-	  
-	  /* MNAME */
-	  if (!(p = skip_name(p, header, plen, 0)))
-	    return STAT_BOGUS;
-	  /* RNAME */
-	  if (!(p = skip_name(p, header, plen, 20)))
-	    return STAT_BOGUS;
-	  p += 16; /* SERIAL REFRESH RETRY EXPIRE */
-	  
-	  GETLONG(ttl, p); /* minTTL */
-	  if (ttl < minttl)
-	    minttl = ttl;
-	  
-	  break;
-	}
+      /* Use TTL from NSEC for negative cache entries */
+      if (!cache_insert(name, NULL, class, now, neg_ttl, flags))
+	return STAT_BOGUS;
       
-      if (i != 0)
-	{
-	  cache_start_insert();
-	  
-	  if (!cache_insert(name, NULL, class, now, ttl, flags))
-	    return STAT_BOGUS;
-	  
-	  cache_end_insert();  
-	  
-	  log_query(F_NOEXTRA | F_UPSTREAM, name, NULL, "no DS");
-	}
+      cache_end_insert();  
+      
+      log_query(F_NOEXTRA | F_UPSTREAM, name, NULL, "no DS");
     }
       
   return STAT_OK;
@@ -1534,14 +1491,14 @@ static int prove_non_existence_nsec3(struct dns_header *header, size_t plen, uns
   return 1;
 }
 
-static int prove_non_existence(struct dns_header *header, size_t plen, char *keyname, char *name, int qtype, int qclass, char *wildname, int *nons)
+static int prove_non_existence(struct dns_header *header, size_t plen, char *keyname, char *name, int qtype, int qclass, char *wildname, int *nons, int *nsec_ttl)
 {
   static unsigned char **nsecset = NULL, **rrsig_labels = NULL;
   static int nsecset_sz = 0, rrsig_labels_sz = 0;
   
   int type_found = 0;
   unsigned char *auth_start, *p = skip_questions(header, plen);
-  int type, class, rdlen, i, nsecs_found;
+  int type, class, rdlen, i, nsecs_found, ttl;
   
   /* Move to NS section */
   if (!p || !(p = skip_section(p, ntohs(header->ancount), header, plen)))
@@ -1558,11 +1515,14 @@ static int prove_non_existence(struct dns_header *header, size_t plen, char *key
 	  
       GETSHORT(type, p); 
       GETSHORT(class, p);
-      p += 4; /* TTL */
+      GETLONG(ttl, p);
       GETSHORT(rdlen, p);
 
       if (class == qclass && (type == T_NSEC || type == T_NSEC3))
 	{
+	  if (nsec_ttl)
+	    *nsec_ttl = ttl;
+
 	  /* No mixed NSECing 'round here, thankyouverymuch */
 	  if (type_found != 0 && type_found != type)
 	    return 0;
@@ -1744,9 +1704,13 @@ static int zone_status(char *name, int class, char *keyname, time_t now)
 
    daemon->rr_status points to a char array which corressponds to the RRs in the 
    answer section (only). This is set to 1 for each RR which is validated, and 0 for any which aren't.
+
+   When validating replies to DS records, we're only interested in the NSEC{3} RRs in the auth section.
+   Other RRs in that section missing sigs will not cause am INSECURE reply. We determine this mode
+   is the nons argument is non-NULL.
 */
 int dnssec_validate_reply(time_t now, struct dns_header *header, size_t plen, char *name, char *keyname, 
-			  int *class, int check_unsigned, int *neganswer, int *nons)
+			  int *class, int check_unsigned, int *neganswer, int *nons, int *nsec_ttl)
 {
   static unsigned char **targets = NULL;
   static int target_sz = 0;
@@ -1878,19 +1842,27 @@ int dnssec_validate_reply(time_t now, struct dns_header *header, size_t plen, ch
 	  /* No signatures for RRset. We can be configured to assume this is OK and return an INSECURE result. */
 	  if (sigcnt == 0)
 	    {
-	      if (check_unsigned)
+	      /* If we're validating a DS reply, rather than looking for the value of AD bit,
+		 we only care that NSEC and NSEC3 RRs in the auth section are signed. 
+		 Return SECURE even if others (SOA....) are not. */
+	      if (nons && i >= ntohs(header->ancount) && type1 != T_NSEC && type1 != T_NSEC3)
+		rc = STAT_SECURE;
+	      else
 		{
-		  rc = zone_status(name, class1, keyname, now);
-		  if (rc == STAT_SECURE)
-		    rc = STAT_BOGUS;
-		  if (class)
-		    *class = class1; /* Class for NEED_DS or NEED_KEY */
+		  if (check_unsigned)
+		    {
+		      rc = zone_status(name, class1, keyname, now);
+		      if (rc == STAT_SECURE)
+			rc = STAT_BOGUS;
+		      if (class)
+			*class = class1; /* Class for NEED_DS or NEED_KEY */
+		    }
+		  else 
+		    rc = STAT_INSECURE; 
+		  
+		  if (rc != STAT_INSECURE)
+		    return rc;
 		}
-	      else 
-		rc = STAT_INSECURE; 
-	      
-	      if (rc != STAT_INSECURE)
-		return rc;
 	    }
 	  else
 	    {
@@ -1947,7 +1919,7 @@ int dnssec_validate_reply(time_t now, struct dns_header *header, size_t plen, ch
 		     That's not a problem since if the RRsets later fail
 		     we'll return BOGUS then. */
 		  if (rc == STAT_SECURE_WILDCARD &&
-		      !prove_non_existence(header, plen, keyname, name, type1, class1, wildname, NULL))
+		      !prove_non_existence(header, plen, keyname, name, type1, class1, wildname, NULL, NULL))
 		    return STAT_BOGUS;
 
 		  rc = STAT_SECURE;
@@ -1974,7 +1946,7 @@ int dnssec_validate_reply(time_t now, struct dns_header *header, size_t plen, ch
 	  
 	  /* For anything other than a DS record, this situation is OK if either
 	     the answer is in an unsigned zone, or there's a NSEC records. */
-	  if (!prove_non_existence(header, plen, keyname, name, qtype, qclass, NULL, nons))
+	  if (!prove_non_existence(header, plen, keyname, name, qtype, qclass, NULL, nons, nsec_ttl))
 	    {
 	      /* Empty DS without NSECS */
 	      if (qtype == T_DS)
