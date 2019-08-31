@@ -1747,7 +1747,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 			      {
 				log_query(crecp->flags & ~F_REVERSE, name, &crecp->addr,
 					  record_source(crecp->uid));
-				FTL_cache(crecp->flags & ~F_REVERSE, name, &crecp->addr.addr,
+				FTL_cache(crecp->flags & ~F_REVERSE, name, &crecp->addr,
 				          record_source(crecp->uid),
 				          daemon->log_display_id);
 				

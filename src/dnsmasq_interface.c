@@ -47,7 +47,7 @@ static int findQueryID(const int id);
 unsigned char* pihole_privacylevel = &config.privacylevel;
 const char flagnames[28][12] = {"F_IMMORTAL ", "F_NAMEP ", "F_REVERSE ", "F_FORWARD ", "F_DHCP ", "F_NEG ", "F_HOSTS ", "F_IPV4 ", "F_IPV6 ", "F_BIGNAME ", "F_NXDOMAIN ", "F_CNAME ", "F_DNSKEY ", "F_CONFIG ", "F_DS ", "F_DNSSECOK ", "F_UPSTREAM ", "F_RRNAME ", "F_SERVER ", "F_QUERY ", "F_NOERR ", "F_AUTH ", "F_DNSSEC ", "F_KEYTAG ", "F_SECSTAT ", "F_NO_RR ", "F_IPSET ", "F_NOEXTRA "};
 
-void _FTL_new_query(const unsigned int flags, const char *name, const struct all_addr *addr,
+void _FTL_new_query(const unsigned int flags, const char *name, const union all_addr *addr,
                     const char *types, const int id, const char type,
                     const char* file, const int line)
 {
@@ -271,7 +271,7 @@ static int findQueryID(const int id)
 	return -1;
 }
 
-void _FTL_forwarded(const unsigned int flags, const char *name, const struct all_addr *addr, const int id,
+void _FTL_forwarded(const unsigned int flags, const char *name, const union all_addr *addr, const int id,
                     const char* file, const int line)
 {
 	// Save that this query got forwarded to an upstream server
@@ -435,7 +435,7 @@ void FTL_dnsmasq_reload(void)
 		check_capabilities();
 }
 
-void _FTL_reply(const unsigned short flags, const char *name, const struct all_addr *addr, const int id,
+void _FTL_reply(const unsigned short flags, const char *name, const union all_addr *addr, const int id,
                 const char* file, const int line)
 {
 	// Don't analyze anything if in PRIVACY_NOSTATS mode
@@ -726,7 +726,7 @@ static void query_externally_blocked(const int queryID, const unsigned char stat
 	query->status = status;
 }
 
-void _FTL_cache(const unsigned int flags, const char *name, const struct all_addr *addr,
+void _FTL_cache(const unsigned int flags, const char *name, const union all_addr *addr,
                 const char *arg, const int id, const char* file, const int line)
 {
 	// Save that this query got answered from cache
@@ -1274,7 +1274,7 @@ static unsigned long __attribute__((const)) converttimeval(const struct timeval 
 }
 
 // This subroutine prepares IPv4 and IPv6 addresses for blocking queries depending on the configured blocking mode
-static void prepare_blocking_mode(struct all_addr *addr4, struct all_addr *addr6, bool *has_IPv4, bool *has_IPv6)
+static void prepare_blocking_mode(union all_addr *addr4, union all_addr *addr6, bool *has_IPv4, bool *has_IPv6)
 {
 	// Read IPv4 address for host entries from setupVars.conf
 	char* const IPv4addr = read_setupVarsconf("IPV4_ADDRESS");
@@ -1326,13 +1326,13 @@ static void prepare_blocking_mode(struct all_addr *addr4, struct all_addr *addr6
 }
 
 // Prototypes from functions in dnsmasq's source
-void add_hosts_entry(struct crec *cache, struct all_addr *addr, int addrlen, unsigned int index, struct crec **rhash, int hashsz);
+void add_hosts_entry(struct crec *cache, union all_addr *addr, int addrlen, unsigned int index, struct crec **rhash, int hashsz);
 void rehash(int size);
 
 // This routine adds one domain to the resolver's cache. Depending on the configured blocking mode it may create
 // a single entry valid for IPv4 & IPv6 or two entries one for IPv4 and one for IPv6.
 // When IPv6 is not available on the machine, we do not add IPv6 cache entries (likewise for IPv4)
-static int add_blocked_domain(struct all_addr *addr4, struct all_addr *addr6, const bool has_IPv4, const bool has_IPv6,
+static int add_blocked_domain(union all_addr *addr4, union all_addr *addr6, const bool has_IPv4, const bool has_IPv6,
                               const char *domain, const int len, struct crec **rhash, int hashsz, const unsigned int index)
 {
 	int name_count = 0;
@@ -1389,7 +1389,9 @@ static int add_blocked_domain(struct all_addr *addr4, struct all_addr *addr6, co
 //       invoked for batch processing
 static void block_single_domain_regex(const char *domain)
 {
-	struct all_addr addr4 = {{{ 0 }}}, addr6 = {{{ 0 }}};
+	union all_addr addr4, addr6;
+	memset(&addr4.addr4, 0, sizeof(addr4.addr4));
+	memset(&addr6.addr6, 0, sizeof(addr6.addr6));
 	bool has_IPv4 = false, has_IPv6 = false;
 
 	// Get IPv4/v6 addresses for blocking depending on user configures blocking mode
@@ -1405,7 +1407,7 @@ static void block_single_domain_regex(const char *domain)
 // selected blocking mode. This function is used to import
 // both the blacklist and the gravity blocking domains
 static int FTL_table_import(const char *tablename, const unsigned char list, const unsigned int index,
-                             struct all_addr addr4, struct all_addr addr6, bool has_IPv4, bool has_IPv6,
+                             union all_addr addr4, union all_addr addr6, bool has_IPv4, bool has_IPv6,
                              int cache_size, struct crec **rhash, int hashsz)
 {
 	// Variables
@@ -1464,7 +1466,9 @@ static int FTL_table_import(const char *tablename, const unsigned char list, con
 // files (on startup as well as on receipt of SIGHUP)
 int FTL_database_import(int cache_size, struct crec **rhash, int hashsz)
 {
-	struct all_addr addr4 = {{{ 0 }}}, addr6 = {{{ 0 }}};
+	union all_addr addr4, addr6;
+	memset(&addr4.addr4, 0, sizeof(addr4.addr4));
+	memset(&addr6.addr6, 0, sizeof(addr6.addr6));
 	bool has_IPv4 = false, has_IPv6 = false;
 
 	if(blockingstatus == BLOCKING_DISABLED)

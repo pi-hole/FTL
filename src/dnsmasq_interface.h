@@ -15,16 +15,16 @@ extern unsigned char* pihole_privacylevel;
 enum { TCP, UDP };
 
 #define FTL_new_query(flags, name, addr, types, id, type) _FTL_new_query(flags, name, addr, types, id, type, __FILE__, __LINE__)
-void _FTL_new_query(const unsigned int flags, const char *name, const struct all_addr *addr, const char *types, const int id, const char type, const char* file, const int line);
+void _FTL_new_query(const unsigned int flags, const char *name, const union all_addr *addr, const char *types, const int id, const char type, const char* file, const int line);
 
 #define FTL_forwarded(flags, name, addr, id) _FTL_forwarded(flags, name, addr, id, __FILE__, __LINE__)
-void _FTL_forwarded(const unsigned int flags, const char *name, const struct all_addr *addr, const int id, const char* file, const int line);
+void _FTL_forwarded(const unsigned int flags, const char *name, const union all_addr *addr, const int id, const char* file, const int line);
 
 #define FTL_reply(flags, name, addr, id) _FTL_reply(flags, name, addr, id, __FILE__, __LINE__)
-void _FTL_reply(const unsigned short flags, const char *name, const struct all_addr *addr, const int id, const char* file, const int line);
+void _FTL_reply(const unsigned short flags, const char *name, const union all_addr *addr, const int id, const char* file, const int line);
 
 #define FTL_cache(flags, name, addr, arg, id) _FTL_cache(flags, name, addr, arg, id, __FILE__, __LINE__)
-void _FTL_cache(const unsigned int flags, const char *name, const struct all_addr *addr, const char * arg, const int id, const char* file, const int line);
+void _FTL_cache(const unsigned int flags, const char *name, const union all_addr *addr, const char * arg, const int id, const char* file, const int line);
 
 #define FTL_dnssec(status, id) _FTL_dnssec(status, id, __FILE__, __LINE__)
 void _FTL_dnssec(const int status, const int id, const char* file, const int line);
