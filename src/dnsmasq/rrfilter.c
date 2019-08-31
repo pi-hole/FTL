@@ -14,7 +14,7 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-/* Code to safely remove RRs from a DNS answer */
+/* Code to safely remove RRs from a DNS answer */ 
 
 #include "dnsmasq.h"
 
@@ -244,7 +244,7 @@ size_t rrfilter(struct dns_header *header, size_t plen, int mode)
   
   check_name(&p, header, plen, 1, rrs, rr_found);
   p += 4; /* qclass, qtype */
-
+  
   check_rrs(p, header, plen, 1, rrs, rr_found);
 
   /* Fourth pass, elide records */

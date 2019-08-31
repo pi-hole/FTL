@@ -4,12 +4,12 @@
    it under the terms of the GNU General Public License as published by
    the Free Software Foundation; version 2 dated June, 1991, or
    (at your option) version 3 dated 29 June, 2007.
-
+ 
    This program is distributed in the hope that it will be useful,
    but WITHOUT ANY WARRANTY; without even the implied warranty of
    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
    GNU General Public License for more details.
-
+     
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
@@ -46,7 +46,7 @@ void dump_init(void)
   struct pcaprec_hdr_s pcap_header;
 
   packet_count = 0;
-
+  
   if (stat(daemon->dump_file, &buf) == -1)
     {
       /* doesn't exist, create and add header */
@@ -98,10 +98,10 @@ void dump_packet(int mask, void *packet, size_t len, union mysockaddr *src, unio
   void *iphdr;
   size_t ipsz;
   int rc;
-
+  
   if (daemon->dumpfd == -1 || !(mask & daemon->dump_mask))
     return;
-
+  
   /* So wireshark can Id the packet. */
   udp.uh_sport = udp.uh_dport = htons(NAMESERVER_PORT);
 
@@ -116,7 +116,7 @@ void dump_packet(int mask, void *packet, size_t len, union mysockaddr *src, unio
       iphdr = &ip6;
       ipsz = sizeof(ip6);
       memset(&ip6, 0, sizeof(ip6));
-
+      
       ip6.ip6_vfc = 6 << 4;
       ip6.ip6_plen = htons(sizeof(struct udphdr) + len);
       ip6.ip6_nxt = IPPROTO_UDP;
@@ -127,13 +127,13 @@ void dump_packet(int mask, void *packet, size_t len, union mysockaddr *src, unio
 	  memcpy(&ip6.ip6_src, &src->in6.sin6_addr, IN6ADDRSZ);
 	  udp.uh_sport = src->in6.sin6_port;
 	}
-
+      
       if (dst)
 	{
 	  memcpy(&ip6.ip6_dst, &dst->in6.sin6_addr, IN6ADDRSZ);
 	  udp.uh_dport = dst->in6.sin6_port;
 	}
-
+            
       /* start UDP checksum */
       for (sum = 0, i = 0; i < IN6ADDRSZ; i++)
 	sum += ((u16 *)&ip6.ip6_src)[i];
@@ -144,13 +144,13 @@ void dump_packet(int mask, void *packet, size_t len, union mysockaddr *src, unio
       iphdr = &ip;
       ipsz = sizeof(ip);
       memset(&ip, 0, sizeof(ip));
-
+      
       ip.ip_v = IPVERSION;
       ip.ip_hl = sizeof(struct ip) / 4;
-      ip.ip_len = htons(sizeof(struct ip) + sizeof(struct udphdr) + len);
+      ip.ip_len = htons(sizeof(struct ip) + sizeof(struct udphdr) + len); 
       ip.ip_ttl = IPDEFTTL;
       ip.ip_p = IPPROTO_UDP;
-
+      
       if (src)
 	{
 	  ip.ip_src = src->in.sin_addr;
@@ -162,21 +162,21 @@ void dump_packet(int mask, void *packet, size_t len, union mysockaddr *src, unio
 	  ip.ip_dst = dst->in.sin_addr;
 	  udp.uh_dport = dst->in.sin_port;
 	}
-
+      
       ip.ip_sum = 0;
       for (sum = 0, i = 0; i < sizeof(struct ip) / 2; i++)
 	sum += ((u16 *)&ip)[i];
       while (sum >> 16)
-	sum = (sum & 0xffff) + (sum >> 16);
+	sum = (sum & 0xffff) + (sum >> 16);  
       ip.ip_sum = (sum == 0xffff) ? sum : ~sum;
-
+      
       /* start UDP checksum */
       sum = ip.ip_src.s_addr & 0xffff;
       sum += (ip.ip_src.s_addr >> 16) & 0xffff;
       sum += ip.ip_dst.s_addr & 0xffff;
       sum += (ip.ip_dst.s_addr >> 16) & 0xffff;
     }
-
+  
   if (len & 1)
     ((unsigned char *)packet)[len] = 0; /* for checksum, in case length is odd. */
 
@@ -196,7 +196,7 @@ void dump_packet(int mask, void *packet, size_t len, union mysockaddr *src, unio
   pcap_header.ts_sec = time.tv_sec;
   pcap_header.ts_usec = time.tv_usec;
   pcap_header.incl_len = pcap_header.orig_len = ipsz + sizeof(udp) + len;
-
+  
   if (rc == -1 ||
       !read_write(daemon->dumpfd, (void *)&pcap_header, sizeof(pcap_header), 0) ||
       !read_write(daemon->dumpfd, iphdr, ipsz, 0) ||

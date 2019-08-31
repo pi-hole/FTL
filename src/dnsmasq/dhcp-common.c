@@ -482,7 +482,7 @@ char *whichdevice(void)
 
   return NULL;
 }
-
+ 
 void  bindtodevice(char *device, int fd)
 {
   size_t len = strlen(device)+1;
