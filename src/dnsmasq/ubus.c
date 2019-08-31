@@ -4,12 +4,12 @@
    it under the terms of the GNU General Public License as published by
    the Free Software Foundation; version 2 dated June, 1991, or
    (at your option) version 3 dated 29 June, 2007.
-
+ 
    This program is distributed in the hope that it will be useful,
    but WITHOUT ANY WARRANTY; without even the implied warranty of
    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
    GNU General Public License for more details.
-
+     
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
@@ -58,10 +58,10 @@ void check_ubus_listeners()
 	return;
       ubus_add_object(ubus, &ubus_object);
     }
-
+  
   if (poll_check(ubus->sock.fd, POLLIN))
     ubus_handle_event(ubus);
-
+  
   if (poll_check(ubus->sock.fd, POLLHUP))
     {
       ubus_free(ubus);
@@ -79,9 +79,9 @@ static int ubus_handle_metrics(struct ubus_context *ctx, struct ubus_object *obj
 
   for(i=0; i < __METRIC_MAX; i++)
     blobmsg_add_u32(&b, get_metric_name(i), daemon->metrics[i]);
-
+  
   ubus_send_reply(ctx, req, b.head);
-
+  
   return 0;
 }
 
@@ -99,7 +99,7 @@ void ubus_event_bcast(const char *type, const char *mac, const char *ip, const c
     blobmsg_add_string(&b, "name", name);
   if (interface)
     blobmsg_add_string(&b, "interface", interface);
-
+  
   ubus_notify(ubus, &ubus_object, type, b.head, -1);
 }
 

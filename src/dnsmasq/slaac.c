@@ -4,12 +4,12 @@
    it under the terms of the GNU General Public License as published by
    the Free Software Foundation; version 2 dated June, 1991, or
    (at your option) version 3 dated 29 June, 2007.
-
+ 
    This program is distributed in the hope that it will be useful,
    but WITHOUT ANY WARRANTY; without even the implied warranty of
    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
    GNU General Public License for more details.
-
+     
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
@@ -27,18 +27,18 @@ void slaac_add_addrs(struct dhcp_lease *lease, time_t now, int force)
   struct slaac_address *slaac, *old, **up;
   struct dhcp_context *context;
   int dns_dirty = 0;
-
-  if (!(lease->flags & LEASE_HAVE_HWADDR) ||
+  
+  if (!(lease->flags & LEASE_HAVE_HWADDR) || 
       (lease->flags & (LEASE_TA | LEASE_NA)) ||
       lease->last_interface == 0 ||
       !lease->hostname)
     return ;
-
+  
   old = lease->slaac_address;
   lease->slaac_address = NULL;
 
-  for (context = daemon->dhcp6; context; context = context->next)
-    if ((context->flags & CONTEXT_RA_NAME) &&
+  for (context = daemon->dhcp6; context; context = context->next) 
+    if ((context->flags & CONTEXT_RA_NAME) && 
 	!(context->flags & CONTEXT_OLD) &&
 	lease->last_interface == context->if_index)
       {
@@ -58,7 +58,7 @@ void slaac_add_addrs(struct dhcp_lease *lease, time_t now, int force)
 	  memcpy(&addr.s6_addr[8], lease->hwaddr, 8);
 #endif
 #if defined(ARPHRD_IEEE1394) && defined(ARPHRD_EUI64)
-	else if (lease->clid_len == 9 &&
+	else if (lease->clid_len == 9 && 
 		 lease->clid[0] ==  ARPHRD_EUI64 &&
 		 lease->hwaddr_type == ARPHRD_IEEE1394)
 	  /* firewire has EUI-64 identifier as clid */
@@ -66,9 +66,9 @@ void slaac_add_addrs(struct dhcp_lease *lease, time_t now, int force)
 #endif
 	else
 	  continue;
-
+	
 	addr.s6_addr[8] ^= 0x02;
-
+	
 	/* check if we already have this one */
 	for (up = &old, slaac = old; slaac; slaac = slaac->next)
 	  {
@@ -86,7 +86,7 @@ void slaac_add_addrs(struct dhcp_lease *lease, time_t now, int force)
 	      }
 	    up = &slaac->next;
 	  }
-
+	    
 	/* No, make new one */
 	if (!slaac && (slaac = whine_malloc(sizeof(struct slaac_address))))
 	  {
@@ -96,17 +96,17 @@ void slaac_add_addrs(struct dhcp_lease *lease, time_t now, int force)
 	    /* Do RA's to prod it */
 	    ra_start_unsolicited(now, context);
 	  }
-
+	
 	if (slaac)
 	  {
 	    slaac->next = lease->slaac_address;
 	    lease->slaac_address = slaac;
 	  }
       }
-
+  
   if (old || dns_dirty)
     lease_update_dns(1);
-
+  
   /* Free any no reused */
   for (; old; old = slaac)
     {
@@ -122,7 +122,7 @@ time_t periodic_slaac(time_t now, struct dhcp_lease *leases)
   struct dhcp_lease *lease;
   struct slaac_address *slaac;
   time_t next_event = 0;
-
+  
   for (context = daemon->dhcp6; context; context = context->next)
     if ((context->flags & CONTEXT_RA_NAME) && !(context->flags & CONTEXT_OLD))
       break;
@@ -140,12 +140,12 @@ time_t periodic_slaac(time_t now, struct dhcp_lease *leases)
 	/* confirmed or given up? */
 	if (slaac->backoff == 0 || slaac->ping_time == 0)
 	  continue;
-
+	
 	if (difftime(slaac->ping_time, now) <= 0.0)
 	  {
 	    struct ping_packet *ping;
 	    struct sockaddr_in6 addr;
-
+ 
 	    reset_counter();
 
 	    if (!(ping = expand(sizeof(struct ping_packet))))
@@ -155,7 +155,7 @@ time_t periodic_slaac(time_t now, struct dhcp_lease *leases)
 	    ping->code = 0;
 	    ping->identifier = ping_id;
 	    ping->sequence_no = slaac->backoff;
-
+	    
 	    memset(&addr, 0, sizeof(addr));
 #ifdef HAVE_SOCKADDR_SA_LEN
 	    addr.sin6_len = sizeof(struct sockaddr_in6);
@@ -163,12 +163,12 @@ time_t periodic_slaac(time_t now, struct dhcp_lease *leases)
 	    addr.sin6_family = AF_INET6;
 	    addr.sin6_port = htons(IPPROTO_ICMPV6);
 	    addr.sin6_addr = slaac->addr;
-
+	    
 	    if (sendto(daemon->icmp6fd, daemon->outpacket.iov_base, save_counter(-1), 0,
 		       (struct sockaddr *)&addr,  sizeof(addr)) == -1 &&
 		errno == EHOSTUNREACH &&
 		slaac->backoff == 12)
-	      slaac->ping_time = 0; /* Give up */
+	      slaac->ping_time = 0; /* Give up */ 
 	    else
 	      {
 		slaac->ping_time += (1 << (slaac->backoff - 1)) + (rand16()/21785); /* 0 - 3 */
@@ -178,7 +178,7 @@ time_t periodic_slaac(time_t now, struct dhcp_lease *leases)
 		  slaac->backoff++;
 	      }
 	  }
-
+	
 	if (slaac->ping_time != 0 &&
 	    (next_event == 0 || difftime(next_event, slaac->ping_time) >= 0.0))
 	  next_event = slaac->ping_time;
@@ -194,7 +194,7 @@ void slaac_ping_reply(struct in6_addr *sender, unsigned char *packet, char *inte
   struct slaac_address *slaac;
   struct ping_packet *ping = (struct ping_packet *)packet;
   int gotone = 0;
-
+  
   if (ping->identifier == ping_id)
     for (lease = leases; lease; lease = lease->next)
       for (slaac = lease->slaac_address; slaac; slaac = slaac->next)
@@ -204,10 +204,10 @@ void slaac_ping_reply(struct in6_addr *sender, unsigned char *packet, char *inte
 	    gotone = 1;
 	    inet_ntop(AF_INET6, sender, daemon->addrbuff, ADDRSTRLEN);
 	    if (!option_bool(OPT_QUIET_DHCP6))
-	      my_syslog(MS_DHCP | LOG_INFO, "SLAAC-CONFIRM(%s) %s %s", interface, daemon->addrbuff, lease->hostname);
+	      my_syslog(MS_DHCP | LOG_INFO, "SLAAC-CONFIRM(%s) %s %s", interface, daemon->addrbuff, lease->hostname); 
 	  }
-
+  
   lease_update_dns(gotone);
 }
-
+	
 #endif

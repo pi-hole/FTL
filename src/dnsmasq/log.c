@@ -4,12 +4,12 @@
    it under the terms of the GNU General Public License as published by
    the Free Software Foundation; version 2 dated June, 1991, or
    (at your option) version 3 dated 29 June, 2007.
-
+ 
    This program is distributed in the hope that it will be useful,
    but WITHOUT ANY WARRANTY; without even the implied warranty of
    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
    GNU General Public License for more details.
-
+     
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
@@ -20,10 +20,10 @@
 #  include <android/log.h>
 #endif
 
-/* Implement logging to /dev/log asynchronously. If syslogd is
+/* Implement logging to /dev/log asynchronously. If syslogd is 
    making DNS lookups through dnsmasq, and dnsmasq blocks awaiting
    syslogd, then the two daemons can deadlock. We get around this
-   by not blocking when talking to syslog, instead we queue up to
+   by not blocking when talking to syslog, instead we queue up to 
    MAX_LOGS messages. If more are queued, they will be dropped,
    and the drop event itself logged. */
 
@@ -69,7 +69,7 @@ int log_start(struct passwd *ent_pw, int errfd)
 #endif
 
   if (daemon->log_file)
-    {
+    { 
       log_to_file = 1;
       daemon->max_logs = 0;
       if (strcmp(daemon->log_file, "-") == 0)
@@ -79,7 +79,7 @@ int log_start(struct passwd *ent_pw, int errfd)
 	  log_fd = dup(STDERR_FILENO);
 	}
     }
-
+  
   max_logs = daemon->max_logs;
 
   if (!log_reopen(daemon->log_file))
@@ -91,7 +91,7 @@ int log_start(struct passwd *ent_pw, int errfd)
   /* if queuing is inhibited, make sure we allocate
      the one required buffer now. */
   if (max_logs == 0)
-    {
+    {  
       free_entries = safe_malloc(sizeof(struct log_entry));
       free_entries->next = NULL;
       entries_alloced = 1;
@@ -101,7 +101,7 @@ int log_start(struct passwd *ent_pw, int errfd)
      change the ownership here so that the file is always owned by
      the dnsmasq user. Then logrotate can just copy the owner.
      Failure of the chown call is OK, (for instance when started as non-root) */
-  if (log_to_file && !log_stderr && ent_pw && ent_pw->pw_uid != 0 &&
+  if (log_to_file && !log_stderr && ent_pw && ent_pw->pw_uid != 0 && 
       fchown(log_fd, ent_pw->pw_uid, -1) != 0)
     ret = errno;
 
@@ -111,14 +111,14 @@ int log_start(struct passwd *ent_pw, int errfd)
 int log_reopen(char *log_file)
 {
   if (!log_stderr)
-    {
+    {      
       if (log_fd != -1)
 	close(log_fd);
-
+      
       /* NOTE: umask is set to 022 by the time this gets called */
-
+      
       if (log_file)
-	log_fd = open(log_file, O_WRONLY|O_CREAT|O_APPEND, S_IRUSR|S_IWUSR|S_IRGRP);
+	log_fd = open(log_file, O_WRONLY|O_CREAT|O_APPEND, S_IRUSR|S_IWUSR|S_IRGRP);      
       else
 	{
 #if defined(HAVE_SOLARIS_NETWORK) || defined(__ANDROID__)
@@ -129,14 +129,14 @@ int log_reopen(char *log_file)
 #else
 	  int flags;
 	  log_fd = socket(AF_UNIX, connection_type, 0);
-
+	  
 	  /* if max_logs is zero, leave the socket blocking */
 	  if (log_fd != -1 && max_logs != 0 && (flags = fcntl(log_fd, F_GETFL)) != -1)
 	    fcntl(log_fd, F_SETFL, flags | O_NONBLOCK);
 #endif
 	}
     }
-
+  
   return log_fd != -1;
 }
 
@@ -146,19 +146,19 @@ static void free_entry(void)
   entries = tmp->next;
   tmp->next = free_entries;
   free_entries = tmp;
-}
+}      
 
 static void log_write(void)
 {
   ssize_t rc;
-
+   
   while (entries)
     {
-      /* The data in the payload is written with a terminating zero character
-	 and the length reflects this. For a stream connection we need to
-	 send the zero as a record terminator, but this isn't done for a
-	 datagram connection, so treat the length as one less than reality
-	 to elide the zero. If we're logging to a file, turn the zero into
+      /* The data in the payload is written with a terminating zero character 
+	 and the length reflects this. For a stream connection we need to 
+	 send the zero as a record terminator, but this isn't done for a 
+	 datagram connection, so treat the length as one less than reality 
+	 to elide the zero. If we're logging to a file, turn the zero into 
 	 a newline, and leave the length alone. */
       int len_adjust = 0;
 
@@ -188,24 +188,24 @@ static void log_write(void)
 		  int e = entries_lost;
 		  entries_lost = 0; /* avoid wild recursion */
 		  my_syslog(LOG_WARNING, _("overflow: %d log entries lost"), e);
-		}
+		}	  
 	    }
 	  continue;
 	}
-
+      
       if (errno == EINTR)
 	continue;
 
       if (errno == EAGAIN || errno == EWOULDBLOCK)
 	return; /* syslogd busy, go again when select() or poll() says so */
-
+      
       if (errno == ENOBUFS)
 	{
 	  connection_good = 0;
 	  return;
 	}
 
-      /* errors handling after this assumes sockets */
+      /* errors handling after this assumes sockets */ 
       if (!log_to_file)
 	{
 	  /* Once a stream socket hits EPIPE, we have to close and re-open
@@ -215,43 +215,43 @@ static void log_write(void)
 	      if (log_reopen(NULL))
 		continue;
 	    }
-	  else if (errno == ECONNREFUSED ||
-		   errno == ENOTCONN ||
-		   errno == EDESTADDRREQ ||
+	  else if (errno == ECONNREFUSED || 
+		   errno == ENOTCONN || 
+		   errno == EDESTADDRREQ || 
 		   errno == ECONNRESET)
 	    {
 	      /* socket went (syslogd down?), try and reconnect. If we fail,
-		 stop trying until the next call to my_syslog()
+		 stop trying until the next call to my_syslog() 
 		 ECONNREFUSED -> connection went down
 		 ENOTCONN -> nobody listening
 		 (ECONNRESET, EDESTADDRREQ are *BSD equivalents) */
-
+	      
 	      struct sockaddr_un logaddr;
-
+	      
 #ifdef HAVE_SOCKADDR_SA_LEN
-	      logaddr.sun_len = sizeof(logaddr) - sizeof(logaddr.sun_path) + strlen(_PATH_LOG) + 1;
+	      logaddr.sun_len = sizeof(logaddr) - sizeof(logaddr.sun_path) + strlen(_PATH_LOG) + 1; 
 #endif
 	      logaddr.sun_family = AF_UNIX;
 	      safe_strncpy(logaddr.sun_path, _PATH_LOG, sizeof(logaddr.sun_path));
-
+	      
 	      /* Got connection back? try again. */
 	      if (connect(log_fd, (struct sockaddr *)&logaddr, sizeof(logaddr)) != -1)
 		continue;
-
+	      
 	      /* errors from connect which mean we should keep trying */
-	      if (errno == ENOENT ||
-		  errno == EALREADY ||
+	      if (errno == ENOENT || 
+		  errno == EALREADY || 
 		  errno == ECONNREFUSED ||
-		  errno == EISCONN ||
+		  errno == EISCONN || 
 		  errno == EINTR ||
-		  errno == EAGAIN ||
+		  errno == EAGAIN || 
 		  errno == EWOULDBLOCK)
 		{
 		  /* try again on next syslog() call */
 		  connection_good = 0;
 		  return;
 		}
-
+	      
 	      /* try the other sort of socket... */
 	      if (errno == EPROTOTYPE)
 		{
@@ -290,7 +290,7 @@ void my_syslog(int priority, const char *format, ...)
     func = "-dhcp";
   else if ((LOG_FACMASK & priority) == MS_SCRIPT)
     func = "-script";
-
+	    
 #ifdef LOG_PRI
   priority = LOG_PRI(priority);
 #else
@@ -298,7 +298,7 @@ void my_syslog(int priority, const char *format, ...)
   priority &= LOG_PRIMASK;
 #endif
 
-  if (echo_stderr)
+  if (echo_stderr) 
     {
       fprintf(stderr, "dnsmasq%s: ", func);
       va_start(ap, format);
@@ -310,10 +310,10 @@ void my_syslog(int priority, const char *format, ...)
   if (log_fd == -1)
     {
 #ifdef __ANDROID__
-      /* do android-specific logging.
+      /* do android-specific logging. 
 	 log_fd is always -1 on Android except when logging to a file. */
       int alog_lvl;
-
+      
       if (priority <= LOG_ERR)
 	alog_lvl = ANDROID_LOG_ERROR;
       else if (priority == LOG_WARNING)
@@ -327,7 +327,7 @@ void my_syslog(int priority, const char *format, ...)
       __android_log_vprint(alog_lvl, "dnsmasq", format, ap);
       va_end(ap);
 #else
-      /* fall-back to syslog if we die during startup or
+      /* fall-back to syslog if we die during startup or 
 	 fail during running (always on Solaris). */
       static int isopen = 0;
 
@@ -336,19 +336,19 @@ void my_syslog(int priority, const char *format, ...)
 	  openlog("dnsmasq", LOG_PID, log_fac);
 	  isopen = 1;
 	}
-      va_start(ap, format);
+      va_start(ap, format);  
       vsyslog(priority, format, ap);
       va_end(ap);
 #endif
 
       return;
     }
-
+  
   if ((entry = free_entries))
     free_entries = entry->next;
   else if (entries_alloced < max_logs && (entry = malloc(sizeof(struct log_entry))))
     entries_alloced++;
-
+  
   if (!entry)
     entries_lost++;
   else
@@ -363,36 +363,36 @@ void my_syslog(int priority, const char *format, ...)
 	  for (tmp = entries; tmp->next; tmp = tmp->next);
 	  tmp->next = entry;
 	}
-
+      
       time(&time_now);
       p = entry->payload;
       if (!log_to_file)
 	p += sprintf(p, "<%d>", priority | log_fac);
 
       /* Omit timestamp for default daemontools situation */
-      if (!log_stderr || !option_bool(OPT_NO_FORK))
+      if (!log_stderr || !option_bool(OPT_NO_FORK)) 
 	p += sprintf(p, "%.15s ", ctime(&time_now) + 4);
-
+      
       p += sprintf(p, "dnsmasq%s[%d]: ", func, (int)pid);
-
+        
       len = p - entry->payload;
-      va_start(ap, format);
+      va_start(ap, format);  
       len += vsnprintf(p, MAX_MESSAGE - len, format, ap) + 1; /* include zero-terminator */
       va_end(ap);
       entry->length = len > MAX_MESSAGE ? MAX_MESSAGE : len;
       entry->offset = 0;
       entry->pid = pid;
     }
-
+  
   /* almost always, logging won't block, so try and write this now,
      to save collecting too many log messages during a select loop. */
   log_write();
-
+  
   /* Since we're doing things asynchronously, a cache-dump, for instance,
      can now generate log lines very fast. With a small buffer (desirable),
      that means it can overflow the log-buffer very quickly,
-     so that the cache dump becomes mainly a count of how many lines
-     overflowed. To avoid this, we delay here, the delay is controlled
+     so that the cache dump becomes mainly a count of how many lines 
+     overflowed. To avoid this, we delay here, the delay is controlled 
      by queue-occupancy, and grows exponentially. The delay is limited to (2^8)ms.
      The scaling stuff ensures that when the queue is bigger than 8, the delay
      only occurs for the last 8 entries. Once the queue is full, we stop delaying
@@ -402,9 +402,9 @@ void my_syslog(int priority, const char *format, ...)
   if (entries && max_logs != 0)
     {
       int d;
-
+      
       for (d = 0,entry = entries; entry; entry = entry->next, d++);
-
+      
       if (d == max_logs)
 	d = 0;
       else if (max_logs > 8)
@@ -416,11 +416,11 @@ void my_syslog(int priority, const char *format, ...)
 	  waiter.tv_sec = 0;
 	  waiter.tv_nsec = 1000000 << (d - 1); /* 1 ms */
 	  nanosleep(&waiter, NULL);
-
+      
 	  /* Have another go now */
 	  log_write();
 	}
-    }
+    } 
 }
 
 void set_log_writer(void)
@@ -445,7 +445,7 @@ void flush_log(void)
       log_write();
       if (!entries || !connection_good)
 	{
-	  close(log_fd);
+	  close(log_fd);	
 	  break;
 	}
       waiter.tv_sec = 0;
@@ -457,7 +457,7 @@ void flush_log(void)
 void die(char *message, char *arg1, int exit_code)
 {
   char *errmess = strerror(errno);
-
+  
   if (!arg1)
     arg1 = errmess;
 
@@ -470,6 +470,6 @@ void die(char *message, char *arg1, int exit_code)
   echo_stderr = 0;
   my_syslog(LOG_CRIT, _("FAILED to start up"));
   flush_log();
-
+  
   exit(exit_code);
 }

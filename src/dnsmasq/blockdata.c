@@ -24,11 +24,11 @@ static unsigned int blockdata_count, blockdata_hwm, blockdata_alloced;
 static void blockdata_expand(int n)
 {
   struct blockdata *new = whine_malloc(n * sizeof(struct blockdata));
-
+  
   if (new)
     {
       int i;
-
+      
       new[n-1].next = keyblock_free;
       keyblock_free = new;
 
@@ -47,7 +47,7 @@ void blockdata_init(void)
   blockdata_count = 0;
   blockdata_hwm = 0;
 
-  /* Note that daemon->cachesize is enforced to have non-zero size if OPT_DNSSEC_VALID is set */
+  /* Note that daemon->cachesize is enforced to have non-zero size if OPT_DNSSEC_VALID is set */  
   if (option_bool(OPT_DNSSEC_VALID))
     blockdata_expand(daemon->cachesize);
 }
