@@ -11,6 +11,37 @@
   [[ ${lines[6]} == "" ]]
 }
 
+@test "Starting tests without prior history" {
+  run bash -c 'grep -c "Total DNS queries: 0" /var/log/pihole-FTL.log'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "1" ]]
+}
+
+@test "Initial blocking status is enabled" {
+  run bash -c 'grep -c "Blocking status is enabled" /var/log/pihole-FTL.log'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "1" ]]
+}
+
+@test "Number of imported gravity domains as expected" {
+  run bash -c 'grep -c "Database (gravity): imported 1 domains" /var/log/pihole-FTL.log'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "1" ]]
+}
+
+
+@test "Number of compiled regex filters as expected" {
+  run bash -c 'grep -c "Compiled 2 whitelist and 1 blacklist regex filters" /var/log/pihole-FTL.log'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "1" ]]
+}
+
+@test "Number of imported blacklist domains as expected" {
+  run bash -c 'grep -c "Database (blacklist): imported 1 domains" /var/log/pihole-FTL.log'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "1" ]]
+}
+
 @test "Blacklisted domain is blocked" {
   run bash -c "dig blacklisted.com @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
@@ -25,22 +56,43 @@
   [[ ${lines[1]} == "" ]]
 }
 
-@test "Whitelisted domain is not blocked" {
+@test "Gravity domain + whitelist exact match is not blocked" {
   run bash -c "dig whitelisted.com @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} != "0.0.0.0" ]]
   [[ ${lines[1]} == "" ]]
 }
 
-@test "Regex filter match is blocked" {
+@test "Gravity domain + whitelist regex match is not blocked" {
+  run bash -c "dig 01tse443.se @127.0.0.1 +short"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} != "0.0.0.0" ]]
+  [[ ${lines[1]} == "" ]]
+}
+
+@test "Regex blacklist match is blocked" {
   run bash -c "dig regex5.com @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0.0.0.0" ]]
   [[ ${lines[1]} == "" ]]
 }
 
-@test "Regex filter mismatch is not blocked" {
+@test "Regex blacklist mismatch is not blocked" {
   run bash -c "dig regexA.com @127.0.0.1 +short"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} != "0.0.0.0" ]]
+  [[ ${lines[1]} == "" ]]
+}
+
+@test "Regex blacklist match + whitelist exact match is not blocked" {
+  run bash -c "dig regex1.com @127.0.0.1 +short"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} != "0.0.0.0" ]]
+  [[ ${lines[1]} == "" ]]
+}
+
+@test "Regex blacklist match + whitelist regex match is not blocked" {
+  run bash -c "dig regex2.com @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} != "0.0.0.0" ]]
   [[ ${lines[1]} == "" ]]
@@ -71,19 +123,19 @@
   run bash -c 'echo ">stats >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[1]} == "domains_being_blocked 2" ]]
-  [[ ${lines[2]} == "dns_queries_today 10" ]]
+  [[ ${lines[2]} == "dns_queries_today 13" ]]
   [[ ${lines[3]} == "ads_blocked_today 3" ]]
-  [[ ${lines[4]} == "ads_percentage_today 30.000000" ]]
-  [[ ${lines[5]} == "unique_domains 9" ]]
-  [[ ${lines[6]} == "queries_forwarded 5" ]]
+  [[ ${lines[4]} == "ads_percentage_today 23.076923" ]]
+  [[ ${lines[5]} == "unique_domains 12" ]]
+  [[ ${lines[6]} == "queries_forwarded 8" ]]
   [[ ${lines[7]} == "queries_cached 2" ]]
   [[ ${lines[8]} == "clients_ever_seen 1" ]]
   [[ ${lines[9]} == "unique_clients 1" ]]
-  [[ ${lines[10]} == "dns_queries_all_types 10" ]]
+  [[ ${lines[10]} == "dns_queries_all_types 13" ]]
   [[ ${lines[11]} == "reply_NODATA 0" ]]
-  [[ ${lines[12]} == "reply_NXDOMAIN 0" ]]
+  [[ ${lines[12]} == "reply_NXDOMAIN 2" ]]
   [[ ${lines[13]} == "reply_CNAME 0" ]]
-  [[ ${lines[14]} == "reply_IP 7" ]]
+  [[ ${lines[14]} == "reply_IP 8" ]]
   [[ ${lines[15]} == "privacy_level 0" ]]
   [[ ${lines[16]} == "status enabled" ]]
   [[ ${lines[17]} == "" ]]
@@ -92,14 +144,14 @@
 @test "Top Clients (descending, default)" {
   run bash -c 'echo ">top-clients >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "0 10 127.0.0.1 "* ]]
+  [[ ${lines[1]} == "0 13 127.0.0.1 "* ]]
   [[ ${lines[2]} == "" ]]
 }
 
 @test "Top Clients (ascending)" {
   run bash -c 'echo ">top-clients asc >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "0 10 127.0.0.1 "* ]]
+  [[ ${lines[1]} == "0 13 127.0.0.1 "* ]]
   [[ ${lines[2]} == "" ]]
 }
 
@@ -112,13 +164,16 @@
 @test "Top Domains (descending, default)" {
   run bash -c 'echo ">top-domains >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "0 2 google.com" ]]
+  [[ "${lines[1]}" == *" 2 google.com"* ]]
   [[ "${lines[@]}" == *" 1 version.ftl"* ]]
   [[ "${lines[@]}" == *" 1 version.bind"* ]]
   [[ "${lines[@]}" == *" 1 whitelisted.com"* ]]
+  [[ "${lines[@]}" == *" 1 01tse443.se"* ]]
   [[ "${lines[@]}" == *" 1 regexa.com"* ]]
+  [[ "${lines[@]}" == *" 1 regex1.com"* ]]
+  [[ "${lines[@]}" == *" 1 regex2.com"* ]]
   [[ "${lines[@]}" == *" 1 ftl.pi-hole.net"* ]]
-  [[ ${lines[7]} == "" ]]
+  [[ "${lines[10]}" == "" ]]
 }
 
 @test "Top Domains (ascending)" {
@@ -127,10 +182,13 @@
   [[ "${lines[@]}" == *" 1 version.ftl"* ]]
   [[ "${lines[@]}" == *" 1 version.bind"* ]]
   [[ "${lines[@]}" == *" 1 whitelisted.com"* ]]
+  [[ "${lines[@]}" == *" 1 01tse443.se"* ]]
   [[ "${lines[@]}" == *" 1 regexa.com"* ]]
+  [[ "${lines[@]}" == *" 1 regex1.com"* ]]
+  [[ "${lines[@]}" == *" 1 regex2.com"* ]]
   [[ "${lines[@]}" == *" 1 ftl.pi-hole.net"* ]]
-  [[ ${lines[6]} == "5 2 google.com" ]]
-  [[ ${lines[7]} == "" ]]
+  [[ "${lines[9]}" == *" 2 google.com"* ]]
+  [[ "${lines[10]}" == "" ]]
 }
 
 @test "Top Ads (descending, default)" {
@@ -160,31 +218,31 @@
 @test "Forward Destinations" {
   run bash -c 'echo ">forward-dest >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "-2 30.00 blocklist blocklist" ]]
-  [[ ${lines[2]} == "-1 20.00 cache cache" ]]
-  [[ ${lines[3]} == "0 50.00 "* ]]
+  [[ ${lines[1]} == "-2 23.08 blocklist blocklist" ]]
+  [[ ${lines[2]} == "-1 15.38 cache cache" ]]
+  [[ ${lines[3]} == "0 61.54 "* ]]
   [[ ${lines[4]} == "" ]]
 }
 
 @test "Forward Destinations (unsorted)" {
   run bash -c 'echo ">forward-dest unsorted >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "-2 30.00 blocklist blocklist" ]]
-  [[ ${lines[2]} == "-1 20.00 cache cache" ]]
-  [[ ${lines[3]} == "0 50.00 "* ]]
+  [[ ${lines[1]} == "-2 23.08 blocklist blocklist" ]]
+  [[ ${lines[2]} == "-1 15.38 cache cache" ]]
+  [[ ${lines[3]} == "0 61.54 "* ]]
   [[ ${lines[4]} == "" ]]
 }
 
 @test "Query Types" {
   run bash -c 'echo ">querytypes >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "A (IPv4): 70.00" ]]
-  [[ ${lines[2]} == "AAAA (IPv6): 10.00" ]]
+  [[ ${lines[1]} == "A (IPv4): 76.92" ]]
+  [[ ${lines[2]} == "AAAA (IPv6): 7.69" ]]
   [[ ${lines[3]} == "ANY: 0.00" ]]
   [[ ${lines[4]} == "SRV: 0.00" ]]
   [[ ${lines[5]} == "SOA: 0.00" ]]
   [[ ${lines[6]} == "PTR: 0.00" ]]
-  [[ ${lines[7]} == "TXT: 20.00" ]]
+  [[ ${lines[7]} == "TXT: 15.38" ]]
   [[ ${lines[8]} == "" ]]
 }
 
@@ -199,12 +257,15 @@
   [[ ${lines[3]} == *"A blacklisted.com "?*" 5 0 4"* ]]
   [[ ${lines[4]} == *"A 0427d7.se "?*" 1 0 4"* ]]
   [[ ${lines[5]} == *"A whitelisted.com "?*" 2 0 4"* ]]
-  [[ ${lines[6]} == *"A regex5.com "?*" 4 0 4"* ]]
-  [[ ${lines[7]} == *"A regexa.com "?*" 2 0 7"* ]]
-  [[ ${lines[8]} == *"A google.com "?*" 2 0 4"* ]]
-  [[ ${lines[9]} == *"AAAA google.com "?*" 2 0 4"* ]]
-  [[ ${lines[10]} == *"A ftl.pi-hole.net "?*" 2 0 4"* ]]
-  [[ ${lines[11]} == "" ]]
+  [[ ${lines[6]} == *"A 01tse443.se "?*" 2 0 2"* ]]
+  [[ ${lines[7]} == *"A regex5.com "?*" 4 0 4"* ]]
+  [[ ${lines[8]} == *"A regexa.com "?*" 2 0 7"* ]]
+  [[ ${lines[9]} == *"A regex1.com "?*" 2 0 4"* ]]
+  [[ ${lines[10]} == *"A regex2.com "?*" 2 0 2"* ]]
+  [[ ${lines[11]} == *"A google.com "?*" 2 0 4"* ]]
+  [[ ${lines[12]} == *"AAAA google.com "?*" 2 0 4"* ]]
+  [[ ${lines[13]} == *"A ftl.pi-hole.net "?*" 2 0 4"* ]]
+  [[ ${lines[14]} == "" ]]
 }
 
 @test "Get all queries (domain filtered)" {
@@ -229,12 +290,15 @@
   [[ ${lines[3]} == *"A blacklisted.com "?*" 5 0 4"* ]]
   [[ ${lines[4]} == *"A 0427d7.se "?*" 1 0 4"* ]]
   [[ ${lines[5]} == *"A whitelisted.com "?*" 2 0 4"* ]]
-  [[ ${lines[6]} == *"A regex5.com "?*" 4 0 4"* ]]
-  [[ ${lines[7]} == *"A regexa.com "?*" 2 0 7"* ]]
-  [[ ${lines[8]} == *"A google.com "?*" 2 0 4"* ]]
-  [[ ${lines[9]} == *"AAAA google.com "?*" 2 0 4"* ]]
-  [[ ${lines[10]} == *"A ftl.pi-hole.net "?*" 2 0 4"* ]]
-  [[ ${lines[11]} == "" ]]
+  [[ ${lines[6]} == *"A 01tse443.se "?*" 2 0 2"* ]]
+  [[ ${lines[7]} == *"A regex5.com "?*" 4 0 4"* ]]
+  [[ ${lines[8]} == *"A regexa.com "?*" 2 0 7"* ]]
+  [[ ${lines[9]} == *"A regex1.com "?*" 2 0 4"* ]]
+  [[ ${lines[10]} == *"A regex2.com "?*" 2 0 2"* ]]
+  [[ ${lines[11]} == *"A google.com "?*" 2 0 4"* ]]
+  [[ ${lines[12]} == *"AAAA google.com "?*" 2 0 4"* ]]
+  [[ ${lines[13]} == *"A ftl.pi-hole.net "?*" 2 0 4"* ]]
+  [[ ${lines[14]} == "" ]]
 }
 
 @test "Get all queries (client + number filtered)" {

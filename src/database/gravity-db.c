@@ -15,6 +15,8 @@
 // global variable counters
 #include "memory.h"
 #include "sqlite3.h"
+// match_regex()
+#include "regex_r.h"
 
 // Private variables
 static sqlite3 *gravity_db = NULL;
@@ -22,6 +24,9 @@ static sqlite3_stmt* table_stmt = NULL;
 static sqlite3_stmt* whitelist_stmt = NULL;
 static sqlite3_stmt* auditlist_stmt = NULL;
 bool gravity_database_avail = false;
+
+// Table names corresponding to the enum defined in gravity-db.h
+static const char* tablename[] = { "vw_gravity", "vw_blacklist", "vw_whitelist", "vw_regex_blacklist", "vw_regex_whitelist" , ""};
 
 // Prototypes from functions in dnsmasq's source
 void rehash(int size);
@@ -119,37 +124,37 @@ bool gravityDB_getTable(const unsigned char list)
 {
 	if(!gravity_database_avail)
 	{
-		logg("gravityDB_getTable(%d): Gravity database not available", list);
+		logg("gravityDB_getTable(%u): Gravity database not available", list);
 		return false;
 	}
 
-	// Select correct query string to be used depending on list to be read
-	const char *querystr = NULL;
-	switch(list)
+	// Checking for smaller than GRAVITY_LIST is omitted due to list being unsigned
+	if(list >= UNKNOWN_TABLE)
 	{
-		case GRAVITY_LIST:
-			querystr = "SELECT domain FROM vw_gravity;";
-			break;
-		case BLACK_LIST:
-			querystr = "SELECT domain FROM vw_blacklist;";
-			break;
-		case REGEX_LIST:
-			querystr = "SELECT domain FROM vw_regex;";
-			break;
-		default:
-			logg("gravityDB_getTable(%i): Requested list is not known!", list);
-			return false;
+		logg("gravityDB_getTable(%u): Requested list is not known!", list);
+		return false;
+	}
+
+	char *querystr = NULL;
+	// Build correct query string to be used depending on list to be read
+	if(asprintf(&querystr, "SELECT domain FROM %s", tablename[list]) < 18)
+	{
+		logg("readGravity(%u) - asprintf() error", list);
+		return false;
 	}
 
 	// Prepare SQLite3 statement
 	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &table_stmt, NULL);
-	if( rc )
+	if(rc != SQLITE_OK)
 	{
 		logg("readGravity(%s) - SQL error prepare (%i): %s", querystr, rc, sqlite3_errmsg(gravity_db));
 		gravityDB_close();
+		free(querystr);
 		return false;
 	}
 
+	// Free allocated memory and return success
+	free(querystr);
 	return true;
 }
 
@@ -179,7 +184,6 @@ inline const char* gravityDB_getDomain(void)
 	if(rc != SQLITE_DONE)
 	{
 		logg("gravityDB_getDomain() - SQL error step (%i): %s", rc, sqlite3_errmsg(gravity_db));
-		gravityDB_finalizeTable();
 		return NULL;
 	}
 
@@ -208,42 +212,41 @@ int gravityDB_count(const unsigned char list)
 		return DB_FAILED;
 	}
 
-	// Select correct query string to be used depending on list to be read
-	const char* querystr = NULL;
-	switch(list)
+	// Checking for smaller than GRAVITY_LIST is omitted due to list being unsigned
+	if(list >= UNKNOWN_TABLE)
 	{
-		case GRAVITY_LIST:
-			querystr = "SELECT COUNT(*) FROM vw_gravity;";
-			break;
-		case BLACK_LIST:
-			querystr = "SELECT COUNT(*) FROM vw_blacklist;";
-			break;
-		case WHITE_LIST:
-			querystr = "SELECT COUNT(*) FROM vw_whitelist;";
-			break;
-		case REGEX_LIST:
-			querystr = "SELECT COUNT(*) FROM vw_regex;";
-			break;
-		default:
-			logg("gravityDB_count(%i): Requested list is not known!", list);
-			return DB_FAILED;
+		logg("gravityDB_getTable(%u): Requested list is not known!", list);
+		return false;
 	}
+
+	char *querystr = NULL;
+	// Build correct query string to be used depending on list to be read
+	if(asprintf(&querystr, "SELECT count(domain) FROM %s", tablename[list]) < 18)
+	{
+		logg("readGravity(%u) - asprintf() error", list);
+		return false;
+	}
+
+	if(config.debug & DEBUG_DATABASE)
+		logg("Querying gravity database table %s", tablename[list]);
 
 	// Prepare query
 	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &table_stmt, NULL);
-	if( rc ){
+	if(rc != SQLITE_OK){
 		logg("gravityDB_count(%s) - SQL error prepare (%i): %s", querystr, rc, sqlite3_errmsg(gravity_db));
 		sqlite3_finalize(table_stmt);
 		gravityDB_close();
+		free(querystr);
 		return DB_FAILED;
 	}
 
 	// Perform query
 	rc = sqlite3_step(table_stmt);
-	if( rc != SQLITE_ROW ){
+	if(rc != SQLITE_ROW){
 		logg("gravityDB_count(%s) - SQL error step (%i): %s", querystr, rc, sqlite3_errmsg(gravity_db));
 		sqlite3_finalize(table_stmt);
 		gravityDB_close();
+		free(querystr);
 		return DB_FAILED;
 	}
 
@@ -253,6 +256,8 @@ int gravityDB_count(const unsigned char list)
 	// Finalize statement
 	gravityDB_finalizeTable();
 
+	// Free allocated memory and return result
+	free(querystr);
 	return result;
 }
 
@@ -309,18 +314,29 @@ static bool domain_in_list(const char *domain, sqlite3_stmt* stmt)
 	// all host parameters to NULL.
 	sqlite3_clear_bindings(stmt);
 
-	// Return result.
+	// Return if domain was found in current table
 	// SELECT EXISTS(...) either returns 0 (false) or 1 (true).
-	return result == 1;
+	return (result == 1);
 }
 
 bool in_whitelist(const char *domain)
 {
-	return domain_in_list(domain, whitelist_stmt);
+	if(config.debug & DEBUG_DATABASE)
+		logg("Querying whitelist for %s", domain);
+	// We have to check both the exact whitelist (using a prepared database statement)
+	// as well the compiled regex whitelist filters to check if the current domain is
+	// whitelisted. Due to short-circuit-evaluation in C, the regex evaluations is executed
+	// only if the exact whitelist lookup does not deliver a positive match. This is an
+	// optimization as the database lookup will most likely hit (a) more domains and (b)
+	// will be faster (given a sufficiently large number of regex whitelisting filters).
+	return domain_in_list(domain, whitelist_stmt) || match_regex(domain, REGEX_WHITELIST);
 }
 
 bool in_auditlist(const char *domain)
 {
+	if(config.debug & DEBUG_DATABASE)
+		logg("Querying audit list for %s", domain);
+	// We check the domain_audit table for the given domain
 	return domain_in_list(domain, auditlist_stmt);
 }
 

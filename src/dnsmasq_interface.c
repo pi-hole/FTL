@@ -225,7 +225,7 @@ void _FTL_new_query(const unsigned int flags, const char *name, const struct all
 		// of a specific domain. The logic herein is:
 		// If matched, then compare against whitelist
 		// If in whitelist, negate matched so this function returns: not-to-be-blocked
-		if(match_regex(domainString) && !in_whitelist(domainString))
+		if(match_regex(domainString, REGEX_BLACKLIST) && !in_whitelist(domainString))
 		{
 			// We have to block this domain
 			block_single_domain_regex(domainString);
@@ -415,20 +415,13 @@ void FTL_dnsmasq_reload(void)
 	// Reread pihole-FTL.conf to see which debugging flags are set
 	read_debuging_settings(NULL);
 
-	// Free regex list
-	free_regex();
-
 	// (Re-)open gravity database connection
 	gravityDB_close();
 	gravityDB_open();
 
-	// Start timer for regex compilation analysis
-	timer_start(REGEX_TIMER);
 	// Read and compile possible regex filters
 	// only after having called gravityDB_open()
 	read_regex_from_database();
-	// Log result
-	log_regex(timer_elapsed_msec(REGEX_TIMER));
 
 	// Print current set of capabilities if requested via debug flag
 	if(config.debug & DEBUG_CAPS)
@@ -1430,6 +1423,11 @@ static int FTL_table_import(const char *tablename, const unsigned char list, con
 		if(len == 0)
 			continue;
 
+		// Do not add gravity or blacklist domains that match
+		// a regex-based whitelist filter
+		if(match_regex(domain, REGEX_WHITELIST))
+			continue;
+
 		// As of here we assume the entry to be valid
 		// Rehash every 1000 valid names
 		if(rhash && ((name_count - cache_size) > 1000))
@@ -1487,10 +1485,10 @@ int FTL_database_import(int cache_size, struct crec **rhash, int hashsz)
 		return cache_size;
 	}
 
-	// Import gravity and blacklist domains
+	// Import gravity and exact blacklisted domains
 	int added;
-	added  = FTL_table_import("gravity", GRAVITY_LIST, SRC_GRAVITY, addr4, addr6, has_IPv4, has_IPv6, cache_size, rhash, hashsz);
-	added += FTL_table_import("blacklist", BLACK_LIST, SRC_BLACK, addr4, addr6, has_IPv4, has_IPv6, cache_size, rhash, hashsz);
+	added  = FTL_table_import("gravity", GRAVITY_TABLE, SRC_GRAVITY, addr4, addr6, has_IPv4, has_IPv6, cache_size, rhash, hashsz);
+	added += FTL_table_import("blacklist", EXACT_BLACKLIST_TABLE, SRC_BLACK, addr4, addr6, has_IPv4, has_IPv6, cache_size, rhash, hashsz);
 
 	// Update counter of blocked domains
 	counters->gravity = added;

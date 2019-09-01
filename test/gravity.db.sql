@@ -43,7 +43,7 @@ CREATE TABLE blacklist_by_group
 	PRIMARY KEY (blacklist_id, group_id)
 );
 
-CREATE TABLE regex
+CREATE TABLE regex_blacklist
 (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	domain TEXT UNIQUE NOT NULL,
@@ -53,11 +53,28 @@ CREATE TABLE regex
 	comment TEXT
 );
 
-CREATE TABLE regex_by_group
+CREATE TABLE regex_blacklist_by_group
 (
-	regex_id INTEGER NOT NULL REFERENCES regex (id),
+	regex_blacklist_id INTEGER NOT NULL REFERENCES regex_blacklist (id),
 	group_id INTEGER NOT NULL REFERENCES "group" (id),
-	PRIMARY KEY (regex_id, group_id)
+	PRIMARY KEY (regex_blacklist_id, group_id)
+);
+
+CREATE TABLE regex_whitelist
+(
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	domain TEXT UNIQUE NOT NULL,
+	enabled BOOLEAN NOT NULL DEFAULT 1,
+	date_added INTEGER NOT NULL DEFAULT (cast(strftime('%s', 'now') as int)),
+	date_modified INTEGER NOT NULL DEFAULT (cast(strftime('%s', 'now') as int)),
+	comment TEXT
+);
+
+CREATE TABLE regex_whitelist_by_group
+(
+	regex_whitelist_id INTEGER NOT NULL REFERENCES regex_whitelist (id),
+	group_id INTEGER NOT NULL REFERENCES "group" (id),
+	PRIMARY KEY (regex_whitelist_id, group_id)
 );
 
 CREATE TABLE adlist
@@ -125,16 +142,28 @@ CREATE TRIGGER tr_blacklist_update AFTER UPDATE ON blacklist
       UPDATE blacklist SET date_modified = (cast(strftime('%s', 'now') as int)) WHERE domain = NEW.domain;
     END;
 
-CREATE VIEW vw_regex AS SELECT DISTINCT domain
-    FROM regex
-    LEFT JOIN regex_by_group ON regex_by_group.regex_id = regex.id
-    LEFT JOIN "group" ON "group".id = regex_by_group.group_id
-    WHERE regex.enabled = 1 AND (regex_by_group.group_id IS NULL OR "group".enabled = 1)
-    ORDER BY regex.id;
+CREATE VIEW vw_regex_blacklist AS SELECT DISTINCT domain
+    FROM regex_blacklist
+    LEFT JOIN regex_blacklist_by_group ON regex_blacklist_by_group.regex_blacklist_id = regex_blacklist.id
+    LEFT JOIN "group" ON "group".id = regex_blacklist_by_group.group_id
+    WHERE regex_blacklist.enabled = 1 AND (regex_blacklist_by_group.group_id IS NULL OR "group".enabled = 1)
+    ORDER BY regex_blacklist.id;
 
-CREATE TRIGGER tr_regex_update AFTER UPDATE ON regex
+CREATE TRIGGER tr_regex_blacklist_update AFTER UPDATE ON regex_blacklist
     BEGIN
-      UPDATE regex SET date_modified = (cast(strftime('%s', 'now') as int)) WHERE domain = NEW.domain;
+      UPDATE regex_blacklist SET date_modified = (cast(strftime('%s', 'now') as int)) WHERE domain = NEW.domain;
+    END;
+
+CREATE VIEW vw_regex_whitelist AS SELECT DISTINCT domain
+    FROM regex_whitelist
+    LEFT JOIN regex_whitelist_by_group ON regex_whitelist_by_group.regex_whitelist_id = regex_whitelist.id
+    LEFT JOIN "group" ON "group".id = regex_whitelist_by_group.group_id
+    WHERE regex_whitelist.enabled = 1 AND (regex_whitelist_by_group.group_id IS NULL OR "group".enabled = 1)
+    ORDER BY regex_whitelist.id;
+
+CREATE TRIGGER tr_regex_whitelist_update AFTER UPDATE ON regex_whitelist
+    BEGIN
+      UPDATE regex_whitelist SET date_modified = (cast(strftime('%s', 'now') as int)) WHERE domain = NEW.domain;
     END;
 
 CREATE VIEW vw_adlist AS SELECT DISTINCT address
@@ -150,10 +179,18 @@ CREATE TRIGGER tr_adlist_update AFTER UPDATE ON adlist
     END;
 
 INSERT INTO whitelist VALUES(1,'whitelisted.com',1,1559928803,1559928803,'Migrated from /etc/pihole/whitelist.txt');
+INSERT INTO whitelist VALUES(2,'regex1.com',1,1559928803,1559928803,'');
+INSERT INTO regex_whitelist VALUES(1,'regex2',1,1559928803,1559928803,'');
+INSERT INTO regex_whitelist VALUES(2,'tse',1,1559928803,1559928803,'');
+
 INSERT INTO blacklist VALUES(1,'blacklisted.com',1,1559928803,1559928803,'Migrated from /etc/pihole/blacklist.txt');
-INSERT INTO regex VALUES(1,'regex[0-9].com',1,1559928803,1559928803,'Migrated from /etc/pihole/regex.list');
+INSERT INTO regex_blacklist VALUES(1,'regex[0-9].com',1,1559928803,1559928803,'Migrated from /etc/pihole/regex.list');
+
 INSERT INTO adlist VALUES(1,'https://hosts-file.net/ad_servers.txt',1,1559928803,1559928803,'Migrated from /etc/pihole/adlists.list');
+
+INSERT INTO gravity VALUES('whitelisted.com');
 INSERT INTO gravity VALUES('0427d7.se');
+INSERT INTO gravity VALUES('01tse443.se');
 
 INSERT INTO "group" VALUES(1,0,'Test group','A disabled test group');
 INSERT INTO blacklist VALUES(2,'blacklisted-group-disabled.com',1,1559928803,1559928803,'Entry disabled by a group');
