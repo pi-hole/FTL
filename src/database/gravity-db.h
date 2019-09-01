@@ -10,6 +10,9 @@
 #ifndef GRAVITY_H
 #define GRAVITY_H
 
+// Table indices
+enum { GRAVITY_TABLE, EXACT_BLACKLIST_TABLE, EXACT_WHITELIST_TABLE, REGEX_BLACKLIST_TABLE, REGEX_WHITELIST_TABLE, UNKNOWN_TABLE };
+
 bool gravityDB_open(void);
 void gravityDB_close(void);
 bool gravityDB_getTable(unsigned char list);
