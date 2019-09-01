@@ -263,6 +263,11 @@ static int findQueryID(const int id)
 	for(int i = start; i >= until; i--)
 	{
 		const queriesData* query = getQuery(i, true);
+
+		// Check if the returned pointer is valid before trying to access it
+		if(query == NULL)
+			continue;
+
 		if(query->id == id)
 			return i;
 	}

@@ -31,6 +31,10 @@ int findForwardID(const char * forwardString, const bool count)
 		// Get forward pointer
 		forwardedData* forward = getForward(forwardID, true);
 
+		// Check if the returned pointer is valid before trying to access it
+		if(forward == NULL)
+			continue;
+
 		if(strcmp(getstr(forward->ippos), forwardString) == 0)
 		{
 			if(count) forward->count++;
@@ -77,6 +81,10 @@ int findDomainID(const char *domainString)
 		// Get domain pointer
 		domainsData* domain = getDomain(domainID, true);
 
+		// Check if the returned pointer is valid before trying to access it
+		if(domain == NULL)
+			continue;
+
 		// Quick test: Does the domain start with the same character?
 		if(getstr(domain->domainpos)[0] != domainString[0])
 			continue;
@@ -122,6 +130,10 @@ int findClientID(const char *clientIP, const bool count)
 	{
 		// Get client pointer
 		clientsData* client = getClient(clientID, true);
+
+		// Check if the returned pointer is valid before trying to access it
+		if(client == NULL)
+			continue;
 
 		// Quick test: Does the clients IP start with the same character?
 		if(getstr(client->ippos)[0] != clientIP[0])
@@ -196,6 +208,11 @@ bool isValidIPv6(const char *addr)
 const char *getDomainString(const int queryID)
 {
 	const queriesData* query = getQuery(queryID, true);
+
+	// Check if the returned pointer is valid before trying to access it
+	if(query == NULL)
+		return "";
+
 	if(query->privacylevel < PRIVACY_HIDE_DOMAINS)
 	{
 		// Get domain pointer
@@ -213,6 +230,11 @@ const char *getDomainString(const int queryID)
 const char *getClientIPString(const int queryID)
 {
 	const queriesData* query = getQuery(queryID, false);
+
+	// Check if the returned pointer is valid before trying to access it
+	if(query == NULL)
+		return "";
+
 	if(query->privacylevel < PRIVACY_HIDE_DOMAINS_CLIENTS)
 	{
 		// Get client pointer
@@ -230,6 +252,11 @@ const char *getClientIPString(const int queryID)
 const char *getClientNameString(const int queryID)
 {
 	const queriesData* query = getQuery(queryID, true);
+
+	// Check if the returned pointer is valid before trying to access it
+	if(query == NULL)
+		return "";
+
 	if(query->privacylevel < PRIVACY_HIDE_DOMAINS_CLIENTS)
 	{
 		// Get client pointer
