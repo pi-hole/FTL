@@ -1870,14 +1870,18 @@ int dnssec_validate_reply(time_t now, struct dns_header *header, size_t plen, ch
 	  /* No signatures for RRset. We can be configured to assume this is OK and return an INSECURE result. */
 	  if (sigcnt == 0)
 	    {
-	      /* If we're validating a DS reply, rather than looking for the value of AD bit,
-		 we only care that NSEC and NSEC3 RRs in the auth section are signed. 
-		 Return SECURE even if others (SOA....) are not. */
-	      if (nons && i >= ntohs(header->ancount) && type1 != T_NSEC && type1 != T_NSEC3)
+	      /* NSEC and NSEC3 records must be signed. We make this assumption elsewhere. */
+	      if (type1 == T_NSEC || type1 == T_NSEC3)
+		rc = STAT_INSECURE;
+	      else if (nons && i >= ntohs(header->ancount))
+		/* If we're validating a DS reply, rather than looking for the value of AD bit,
+		   we only care that NSEC and NSEC3 RRs in the auth section are signed. 
+		   Return SECURE even if others (SOA....) are not. */
 		rc = STAT_SECURE;
 	      else
 		{
-		  if (check_unsigned)
+		  /* unsigned RRsets in auth section are not BOGUS, but do make reply insecure. */
+		  if (check_unsigned && i < ntohs(header->ancount))
 		    {
 		      rc = zone_status(name, class1, keyname, now);
 		      if (rc == STAT_SECURE)
