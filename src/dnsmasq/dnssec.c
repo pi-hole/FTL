@@ -1532,7 +1532,7 @@ static int prove_non_existence(struct dns_header *header, size_t plen, char *key
 
   auth_start = p;
   
-  for (nsecs_found = 0, i = ntohs(header->nscount); i != 0; i--)
+  for (nsecs_found = 0, i = 0; i < ntohs(header->nscount); i++)
     {
       unsigned char *pstart = p;
       
