@@ -186,10 +186,8 @@ int setup_timestamp(void)
 }
 
 /* Check whether today/now is between date_start and date_end */
-static int check_date_range(u32 date_start, u32 date_end)
+static int is_check_date(unsigned long curtime)
 {
-  unsigned long curtime = time(0);
- 
   /* Checking timestamps may be temporarily disabled */
     
   /* If the current time if _before_ the timestamp
@@ -211,12 +209,15 @@ static int check_date_range(u32 date_start, u32 date_end)
 	  queue_event(EVENT_RELOAD); /* purge cache */
 	} 
 
-      if (daemon->back_to_the_future == 0)
-	return 1;
+      return daemon->back_to_the_future;
     }
-  else if (daemon->dnssec_no_time_check)
-    return 1;
-  
+  else
+    return !daemon->dnssec_no_time_check;
+}
+
+/* Check whether today/now is between date_start and date_end */
+static int check_date_range(unsigned long curtime, u32 date_start, u32 date_end)
+{
   /* We must explicitly check against wanted values, because of SERIAL_UNDEF */
   return serial_compare_32(curtime, date_start) == SERIAL_GT
     && serial_compare_32(curtime, date_end) == SERIAL_LT;
@@ -390,10 +391,10 @@ static int explore_rrset(struct dns_header *header, size_t plen, int class, int 
       
       GETSHORT(stype, p);
       GETSHORT(sclass, p);
-      p += 4; /* TTL */
-      
+           
       pdata = p;
 
+      p += 4; /* TTL */
       GETSHORT(rdlen, p);
       
       if (!CHECK_LEN(header, p, plen, rdlen))
@@ -456,7 +457,7 @@ static int explore_rrset(struct dns_header *header, size_t plen, int class, int 
 		  sigs[sigidx++] = pdata;
 		} 
 	      
-	      p = pdata + 2; /* restore for ADD_RDLEN */
+	      p = pdata + 6; /* restore for ADD_RDLEN */
 	    }
 	}
       
@@ -485,16 +486,22 @@ static int explore_rrset(struct dns_header *header, size_t plen, int class, int 
    Name is unchanged on exit. keyname is used as workspace and trashed.
 
    Call explore_rrset first to find and count RRs and sigs.
+
+   ttl_out is the floor on TTL, based on TTL and orig_ttl and expiration of sig used to validate.
 */
 static int validate_rrset(time_t now, struct dns_header *header, size_t plen, int class, int type, int sigidx, int rrsetidx, 
-			  char *name, char *keyname, char **wildcard_out, struct blockdata *key, int keylen, int algo_in, int keytag_in)
+			  char *name, char *keyname, char **wildcard_out, struct blockdata *key, int keylen,
+			  int algo_in, int keytag_in, unsigned long *ttl_out)
 {
   unsigned char *p;
-  int rdlen, j, name_labels, algo, labels, orig_ttl, key_tag;
+  int rdlen, j, name_labels, algo, labels, key_tag;
   struct crec *crecp = NULL;
   u16 *rr_desc = rrfilter_desc(type);
-  u32 sig_expiration, sig_inception
-;
+  u32 sig_expiration, sig_inception;
+
+  unsigned long curtime = time(0);
+  int time_check = is_check_date(curtime);
+  
   if (wildcard_out)
     *wildcard_out = NULL;
   
@@ -513,9 +520,10 @@ static int validate_rrset(time_t now, struct dns_header *header, size_t plen, in
       const struct nettle_hash *hash;
       void *ctx;
       char *name_start;
-      u32 nsigttl;
+      u32 nsigttl, ttl, orig_ttl;
       
       p = sigs[j];
+      GETLONG(ttl, p);
       GETSHORT(rdlen, p); /* rdlen >= 18 checked previously */
       psav = p;
       
@@ -530,16 +538,28 @@ static int validate_rrset(time_t now, struct dns_header *header, size_t plen, in
       if (!extract_name(header, plen, &p, keyname, 1, 0))
 	return STAT_BOGUS;
 
-      if (!check_date_range(sig_inception, sig_expiration) ||
+      if ((time_check && !check_date_range(curtime, sig_inception, sig_expiration)) ||
 	  labels > name_labels ||
 	  !(hash = hash_find(algo_digest_name(algo))) ||
 	  !hash_init(hash, &ctx, &digest))
 	continue;
-      
+
       /* OK, we have the signature record, see if the relevant DNSKEY is in the cache. */
       if (!key && !(crecp = cache_find_by_name(NULL, keyname, now, F_DNSKEY)))
 	return STAT_NEED_KEY;
-      
+
+       if (ttl_out)
+	 {
+	   /* 4035 5.3.3 rules on TTLs */
+	   if (orig_ttl < ttl)
+	     ttl = orig_ttl;
+	   
+	   if (time_check && difftime(sig_expiration, curtime) < ttl)
+	     ttl = difftime(sig_expiration, curtime);
+
+	   *ttl_out = ttl;
+	 }
+       
       sig = p;
       sig_len = rdlen - (p - psav);
               
@@ -653,7 +673,8 @@ int dnssec_validate_by_ds(time_t now, struct dns_header *header, size_t plen, ch
 {
   unsigned char *psave, *p = (unsigned char *)(header+1);
   struct crec *crecp, *recp1;
-  int rc, j, qtype, qclass, ttl, rdlen, flags, algo, valid, keytag;
+  int rc, j, qtype, qclass, rdlen, flags, algo, valid, keytag;
+  unsigned long ttl, sig_ttl;
   struct blockdata *key;
   union all_addr a;
 
@@ -752,7 +773,7 @@ int dnssec_validate_by_ds(time_t now, struct dns_header *header, size_t plen, ch
 		  explore_rrset(header, plen, class, T_DNSKEY, name, keyname, &sigcnt, &rrcnt) &&
 		  sigcnt != 0 && rrcnt != 0 &&
 		  validate_rrset(now, header, plen, class, T_DNSKEY, sigcnt, rrcnt, name, keyname, 
-				 NULL, key, rdlen - 4, algo, keytag) == STAT_SECURE)
+				 NULL, key, rdlen - 4, algo, keytag, &sig_ttl) == STAT_SECURE)
 		{
 		  valid = 1;
 		  break;
@@ -779,6 +800,10 @@ int dnssec_validate_by_ds(time_t now, struct dns_header *header, size_t plen, ch
 	  GETSHORT(qclass, p);
 	  GETLONG(ttl, p);
 	  GETSHORT(rdlen, p);
+
+	  /* TTL may be limited by sig. */
+	  if (sig_ttl < ttl)
+	    ttl = sig_ttl;
 	    
 	  if (!CHECK_LEN(header, p, plen, rdlen))
 	    return STAT_BOGUS; /* bad packet */
@@ -1498,7 +1523,8 @@ static int prove_non_existence(struct dns_header *header, size_t plen, char *key
   
   int type_found = 0;
   unsigned char *auth_start, *p = skip_questions(header, plen);
-  int type, class, rdlen, i, nsecs_found, ttl;
+  int type, class, rdlen, i, nsecs_found;
+  unsigned long ttl;
   
   /* Move to NS section */
   if (!p || !(p = skip_section(p, ntohs(header->ancount), header, plen)))
@@ -1521,8 +1547,13 @@ static int prove_non_existence(struct dns_header *header, size_t plen, char *key
       if (class == qclass && (type == T_NSEC || type == T_NSEC3))
 	{
 	  if (nsec_ttl)
-	    *nsec_ttl = ttl;
-
+	    {
+	      /* Limit TTL with sig TTL */
+	      if (daemon->rr_status[ntohs(header->ancount) + i] < ttl)
+		ttl = daemon->rr_status[ntohs(header->ancount) + i];
+	      *nsec_ttl = ttl;
+	    }
+	  
 	  /* No mixed NSECing 'round here, thankyouverymuch */
 	  if (type_found != 0 && type_found != type)
 	    return 0;
@@ -1703,7 +1734,7 @@ static int zone_status(char *name, int class, char *keyname, time_t now)
    STAT_NEED_DS  need DS to complete validation (name is returned in keyname)
 
    daemon->rr_status points to a char array which corressponds to the RRs in the 
-   answer section (only). This is set to 1 for each RR which is validated, and 0 for any which aren't.
+   answer and auth sections. This is set to 1 for each RR which is validated, and 0 for any which aren't.
 
    When validating replies to DS records, we're only interested in the NSEC{3} RRs in the auth section.
    Other RRs in that section missing sigs will not cause am INSECURE reply. We determine this mode
@@ -1721,19 +1752,19 @@ int dnssec_validate_reply(time_t now, struct dns_header *header, size_t plen, ch
   int secure = STAT_SECURE;
 
   /* extend rr_status if necessary */
-  if (daemon->rr_status_sz < ntohs(header->ancount))
+  if (daemon->rr_status_sz < ntohs(header->ancount) + ntohs(header->nscount))
     {
-      char *new = whine_malloc(ntohs(header->ancount) + 64);
+      unsigned long *new = whine_malloc(sizeof(*daemon->rr_status) * (ntohs(header->ancount) + ntohs(header->nscount) + 64));
 
       if (!new)
 	return STAT_BOGUS;
 
       free(daemon->rr_status);
       daemon->rr_status = new;
-      daemon->rr_status_sz = ntohs(header->ancount) + 64;
+      daemon->rr_status_sz = ntohs(header->ancount) + ntohs(header->nscount) + 64;
     }
   
-  memset(daemon->rr_status, 0, ntohs(header->ancount));
+  memset(daemon->rr_status, 0, sizeof(*daemon->rr_status) * daemon->rr_status_sz);
   
   if (neganswer)
     *neganswer = 0;
@@ -1824,12 +1855,9 @@ int dnssec_validate_reply(time_t now, struct dns_header *header, size_t plen, ch
 	    return STAT_BOGUS;
 	}
       
+      /* Done already: copy the validation status */
       if (j != i)
-	{
-	  /* Done already: copy the validation status */
-	  if (i < ntohs(header->ancount))
-	    daemon->rr_status[i] = daemon->rr_status[j];
-	}
+	daemon->rr_status[i] = daemon->rr_status[j];
       else
 	{
 	  /* Not done, validate now */
@@ -1881,8 +1909,9 @@ int dnssec_validate_reply(time_t now, struct dns_header *header, size_t plen, ch
 	      /* Zone is insecure, don't need to validate RRset */
 	      if (rc == STAT_SECURE)
 		{
+		  unsigned long sig_ttl;
 		  rc = validate_rrset(now, header, plen, class1, type1, sigcnt,
-				      rrcnt, name, keyname, &wildname, NULL, 0, 0, 0);
+				      rrcnt, name, keyname, &wildname, NULL, 0, 0, 0, &sig_ttl);
 		  
 		  if (rc == STAT_BOGUS || rc == STAT_NEED_KEY || rc == STAT_NEED_DS)
 		    {
@@ -1894,8 +1923,7 @@ int dnssec_validate_reply(time_t now, struct dns_header *header, size_t plen, ch
 		  /* rc is now STAT_SECURE or STAT_SECURE_WILDCARD */
 		  
 		  /* Note that RR is validated */
-		   if (i < ntohs(header->ancount))
-		     daemon->rr_status[i] = 1;
+		  daemon->rr_status[i] = sig_ttl;
 		   
 		  /* Note if we've validated either the answer to the question
 		     or the target of a CNAME. Any not noted will need NSEC or

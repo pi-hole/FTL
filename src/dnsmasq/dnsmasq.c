@@ -127,7 +127,7 @@ int main_dnsmasq (int argc, char **argv)
       daemon->workspacename = safe_malloc(MAXDNAME * 2);
       /* one char flag per possible RR in answer section (may get extended). */
       daemon->rr_status_sz = 64;
-      daemon->rr_status = safe_malloc(daemon->rr_status_sz);
+      daemon->rr_status = safe_malloc(sizeof(*daemon->rr_status) * daemon->rr_status_sz);
     }
 #endif
 

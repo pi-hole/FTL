@@ -1096,7 +1096,7 @@ extern struct daemon {
 #ifdef HAVE_DNSSEC
   char *keyname; /* MAXDNAME size buffer */
   char *workspacename; /* ditto */
-  char *rr_status; /* flags for individual RRs */
+  unsigned long *rr_status; /* ceiling in TTL from DNSSEC or zero for insecure */
   int rr_status_sz;
   int dnssec_no_time_check;
   int back_to_the_future;
