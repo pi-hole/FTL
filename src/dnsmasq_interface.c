@@ -43,6 +43,7 @@ static void detect_blocked_IP(const unsigned short flags, const char* answer, co
 static void query_externally_blocked(const int queryID, const unsigned char status);
 static int findQueryID(const int id);
 static void prepare_blocking_metadata(void);
+static void query_blocked(const int queryID, const queriesData* query, domainsData* domain, clientsData* client);
 
 // Static blocking metadata (stored precomputed as time-critical)
 static unsigned int blocking_flags = 0;
@@ -224,10 +225,18 @@ char _FTL_new_query(const unsigned int flags, const char *name, const struct all
 		// We check the user blacklist first as it is typically smaller than gravity
 		// If a domain is on the exact blacklist or gravity but also on the whitelist,
 		// we do NOT block it.
-		if((in_blacklist(domainString) || in_gravity(domainString)) &&
+		bool black = false, gravity = false;
+		if(((black = in_blacklist(domainString)) || (gravity = in_gravity(domainString))) &&
 		   !in_whitelist(domainString))
 		{
 			blockDomain = 1;
+			if(black)
+				query->status = QUERY_BLACKLIST;
+			else if(gravity)
+				query->status = QUERY_GRAVITY;
+
+			// Adjust counters
+			query_blocked(queryID, query, domain, client);
 		}
 
 		// If a regex filter matched, we additionally compare the domain
@@ -244,10 +253,17 @@ char _FTL_new_query(const unsigned int flags, const char *name, const struct all
 			// Mark domain as regex match
 			domain->regexmatch = REGEX_BLOCKED;
 		}
+
+		// Status can be REGEX_BLOCKED either due to being set above
+		// or by having been set before for this domain
 		if(domain->regexmatch == REGEX_BLOCKED)
 		{
 			// We have to block this domain
 			blockDomain = 1;
+			query->status = QUERY_WILDCARD;
+
+			// Adjust counters
+			query_blocked(queryID, query, domain, client);
 		}
 		else if(domain->regexmatch == REGEX_UNKNOWN && !blockDomain)
 		{
@@ -812,11 +828,7 @@ void _FTL_cache(const unsigned int flags, const char *name, const struct all_add
 	{
 		// Local list: /etc/hosts, /etc/pihole/local.list, etc.
 		// or
-		// blocked domain from gravity database
-		// or
 		// DHCP server reply
-		// or
-		// regex blocked query
 		// or
 		// cached answer to previously forwarded request
 
@@ -843,6 +855,8 @@ void _FTL_cache(const unsigned int flags, const char *name, const struct all_add
 		{
 			logg("*************************** unknown CACHE reply (1) ***************************");
 			print_flags(flags);
+			unlock_shm();
+			return;
 		}
 
 		// Search query in FTL's query data
@@ -871,16 +885,6 @@ void _FTL_cache(const unsigned int flags, const char *name, const struct all_add
 		// Get time index
 		const unsigned int timeidx = query->timeidx;
 
-		// Get domain pointer
-		domainsData* domain = getDomain(query->domainID, true);
-
-		// Get client pointer
-		clientsData* client = getClient(query->clientID, true);
-
-		// Mark this query as blocked if domain was matched by a regex
-		if(domain->regexmatch == REGEX_BLOCKED)
-			requesttype = QUERY_WILDCARD;
-
 		query->status = requesttype;
 
 		// Detect if returned IP indicates that this query was blocked
@@ -892,14 +896,6 @@ void _FTL_cache(const unsigned int flags, const char *name, const struct all_add
 		// Handle counters accordingly
 		switch(requesttype)
 		{
-			case QUERY_GRAVITY: // gravity.list
-			case QUERY_BLACKLIST: // black.list
-			case QUERY_WILDCARD: // regex blocked
-				counters->blocked++;
-				overTime[timeidx].blocked++;
-				domain->blockedcount++;
-				client->blockedcount++;
-				break;
 			case QUERY_CACHE: // cached from one of the lists
 				counters->cached++;
 				overTime[timeidx].cached++;
@@ -924,6 +920,22 @@ void _FTL_cache(const unsigned int flags, const char *name, const struct all_add
 		print_flags(flags);
 	}
 	unlock_shm();
+}
+
+static inline void query_blocked(const int queryID, const queriesData* query, domainsData* domain, clientsData* client)
+{
+	// This query is no longer unknown
+	counters->unknown--;
+
+	// Get response time
+	struct timeval response;
+	gettimeofday(&response, 0);
+	save_reply_type(blocking_flags, queryID, response);
+
+	counters->blocked++;
+	overTime[query->timeidx].blocked++;
+	domain->blockedcount++;
+	client->blockedcount++;
 }
 
 void _FTL_dnssec(const int status, const int id, const char* file, const int line)
