@@ -149,7 +149,6 @@
   [[ "${lines[@]}" == *" 1 version.ftl"* ]]
   [[ "${lines[@]}" == *" 1 version.bind"* ]]
   [[ "${lines[@]}" == *" 1 whitelisted.com"* ]]
-  [[ "${lines[@]}" == *" 1 blacklisted.com"* ]]
   [[ "${lines[@]}" == *" 1 01tse443.se"* ]]
   [[ "${lines[@]}" == *" 1 regexa.com"* ]]
   [[ "${lines[@]}" == *" 1 regex1.com"* ]]
