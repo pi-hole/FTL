@@ -23,21 +23,8 @@
   [[ ${lines[0]} == "1" ]]
 }
 
-@test "Number of imported gravity domains as expected" {
-  run bash -c 'grep -c "Database (gravity): imported 1 domains" /var/log/pihole-FTL.log'
-  printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "1" ]]
-}
-
-
 @test "Number of compiled regex filters as expected" {
   run bash -c 'grep -c "Compiled 2 whitelist and 1 blacklist regex filters" /var/log/pihole-FTL.log'
-  printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "1" ]]
-}
-
-@test "Number of imported blacklist domains as expected" {
-  run bash -c 'grep -c "Database (blacklist): imported 1 domains" /var/log/pihole-FTL.log'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
 }
@@ -60,14 +47,12 @@
   run bash -c "dig whitelisted.com @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} != "0.0.0.0" ]]
-  [[ ${lines[1]} == "" ]]
 }
 
 @test "Gravity domain + whitelist regex match is not blocked" {
   run bash -c "dig 01tse443.se @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} != "0.0.0.0" ]]
-  [[ ${lines[1]} == "" ]]
 }
 
 @test "Regex blacklist match is blocked" {
@@ -81,28 +66,24 @@
   run bash -c "dig regexA.com @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} != "0.0.0.0" ]]
-  [[ ${lines[1]} == "" ]]
 }
 
 @test "Regex blacklist match + whitelist exact match is not blocked" {
   run bash -c "dig regex1.com @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} != "0.0.0.0" ]]
-  [[ ${lines[1]} == "" ]]
 }
 
 @test "Regex blacklist match + whitelist regex match is not blocked" {
   run bash -c "dig regex2.com @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} != "0.0.0.0" ]]
-  [[ ${lines[1]} == "" ]]
 }
 
 @test "Google.com (A) is not blocked" {
   run bash -c "dig A google.com @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} != "0.0.0.0" ]]
-  [[ ${lines[1]} == "" ]]
 }
 
 @test "Google.com (AAAA) is not blocked (TCP query)" {

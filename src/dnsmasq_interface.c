@@ -222,7 +222,10 @@ char _FTL_new_query(const unsigned int flags, const char *name, const struct all
 	if(blockingstatus != BLOCKING_DISABLED)
 	{
 		// We check the user blacklist first as it is typically smaller than gravity
-		if(in_blacklist(domainString) || in_gravity(domainString))
+		// If a domain is on the exact blacklist or gravity but also on the whitelist,
+		// we do NOT block it.
+		if((in_blacklist(domainString) || in_gravity(domainString)) &&
+		   !in_whitelist(domainString))
 		{
 			blockDomain = 1;
 		}
