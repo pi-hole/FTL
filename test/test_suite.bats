@@ -135,7 +135,7 @@
   [[ ${lines[11]} == "reply_NODATA 0" ]]
   [[ ${lines[12]} == "reply_NXDOMAIN 2" ]]
   [[ ${lines[13]} == "reply_CNAME 0" ]]
-  [[ ${lines[14]} == "reply_IP 8" ]]
+  [[ ${lines[14]} == "reply_IP 9" ]]
   [[ ${lines[15]} == "privacy_level 0" ]]
   [[ ${lines[16]} == "status enabled" ]]
   [[ ${lines[17]} == "" ]]
