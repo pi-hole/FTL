@@ -1333,6 +1333,9 @@ void receive_query(struct listener *listen, time_t now)
 #else
   int check_dst = !option_bool(OPT_NOWILD);
 #endif
+  /************ Pi-hole modification ************/
+  char piholeblocked = 0;
+  /**********************************************/
 
   /* packet buffer overwritten */
   daemon->srv_save = NULL;
@@ -1556,7 +1559,7 @@ void receive_query(struct listener *listen, time_t now)
       {
 	log_query(F_QUERY | F_IPV4 | F_FORWARD, daemon->namebuff, 
 		  (struct all_addr *)&source_addr.in.sin_addr, types);
-	FTL_new_query(F_QUERY | F_IPV4 | F_FORWARD, daemon->namebuff,
+	piholeblocked = FTL_new_query(F_QUERY | F_IPV4 | F_FORWARD, daemon->namebuff,
 	              (struct all_addr *)&source_addr.in.sin_addr, types, daemon->log_display_id, UDP);
       }
 #ifdef HAVE_IPV6
@@ -1564,7 +1567,7 @@ void receive_query(struct listener *listen, time_t now)
       {
 	log_query(F_QUERY | F_IPV6 | F_FORWARD, daemon->namebuff,
 		  (struct all_addr *)&source_addr.in6.sin6_addr, types);
-	FTL_new_query(F_QUERY | F_IPV6 | F_FORWARD, daemon->namebuff,
+	piholeblocked = FTL_new_query(F_QUERY | F_IPV6 | F_FORWARD, daemon->namebuff,
 	              (struct all_addr *)&source_addr.in6.sin6_addr, types, daemon->log_display_id, UDP);
       }
 #endif
@@ -1632,6 +1635,20 @@ void receive_query(struct listener *listen, time_t now)
       m = answer_request(header, ((char *) header) + udp_size, (size_t)n, 
 			 dst_addr_4, netmask, now, ad_reqd, do_bit, have_pseudoheader);
       
+      /************ Pi-hole modification ************/
+      if(piholeblocked)
+	{
+	  size_t plen = n;
+	  struct all_addr *addrp = NULL;
+	  unsigned int flags = (listen->family == AF_INET) ? F_IPV4 : F_IPV6;
+	  FTL_get_blocking_metadata(&addrp, &flags);
+	  plen = setup_reply(header, n, addrp, flags, daemon->local_ttl);
+//	  if (find_pseudoheader(header, plen, NULL, NULL, NULL, NULL))
+//	    plen = add_pseudoheader(header, plen, ((unsigned char *) header) + PACKETSZ, daemon->edns_pktsz, 0, NULL, 0, do_bit, 0);
+	  send_from(listen->fd, option_bool(OPT_NOWILD) || option_bool(OPT_CLEVERBIND), (char *)header, plen, (union mysockaddr*)&source_addr, &dst_addr, if_index);
+	}
+      else
+      /**********************************************/
       if (m >= 1)
 	{
 	  send_from(listen->fd, option_bool(OPT_NOWILD) || option_bool(OPT_CLEVERBIND),
@@ -1837,6 +1854,10 @@ unsigned char *tcp_request(int confd, time_t now,
   (void)mark;
   (void)have_mark;
 
+  /************ Pi-hole modification ************/
+  char piholeblocked = 0;
+  /**********************************************/
+
   if (getpeername(confd, (struct sockaddr *)&peer_addr, &peer_len) == -1)
     return packet;
 
@@ -1925,7 +1946,7 @@ unsigned char *tcp_request(int confd, time_t now,
 	  {
 	    log_query(F_QUERY | F_IPV4 | F_FORWARD, daemon->namebuff, 
 		      (struct all_addr *)&peer_addr.in.sin_addr, types);
-	    FTL_new_query(F_QUERY | F_IPV4 | F_FORWARD, daemon->namebuff,
+	    piholeblocked = FTL_new_query(F_QUERY | F_IPV4 | F_FORWARD, daemon->namebuff,
 	              (struct all_addr *)&peer_addr.in.sin_addr, types, daemon->log_display_id, TCP);
 	  }
 #ifdef HAVE_IPV6
@@ -1933,7 +1954,7 @@ unsigned char *tcp_request(int confd, time_t now,
 	  {
 	    log_query(F_QUERY | F_IPV6 | F_FORWARD, daemon->namebuff,
 		      (struct all_addr *)&peer_addr.in6.sin6_addr, types);
-	    FTL_new_query(F_QUERY | F_IPV6 | F_FORWARD, daemon->namebuff,
+	    piholeblocked = FTL_new_query(F_QUERY | F_IPV6 | F_FORWARD, daemon->namebuff,
 	              (struct all_addr *)&peer_addr.in6.sin6_addr, types, daemon->log_display_id, TCP);
 	  }
 #endif
@@ -1989,6 +2010,18 @@ unsigned char *tcp_request(int confd, time_t now,
 	  /* Do this by steam now we're not in the select() loop */
 	  check_log_writer(1); 
 	  
+	  /************ Pi-hole modification ************/
+	  if(piholeblocked)
+	    {
+	      struct all_addr *addrp = NULL;
+	      unsigned int flags = (peer_addr.sa.sa_family == AF_INET) ? F_IPV4 : F_IPV6;
+	      FTL_get_blocking_metadata(&addrp, &flags);
+	      m = setup_reply(header, size, addrp, flags, daemon->local_ttl);
+	      if (have_pseudoheader)
+	        m = add_pseudoheader(header, m, ((unsigned char *) header) + 65536, daemon->edns_pktsz, 0, NULL, 0, do_bit, 0);
+	    }
+	  else
+	  /**********************************************/
 	  if (m == 0)
 	    {
 	      unsigned int flags = 0;

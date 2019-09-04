@@ -23,6 +23,8 @@ static sqlite3 *gravity_db = NULL;
 static sqlite3_stmt* table_stmt = NULL;
 static sqlite3_stmt* whitelist_stmt = NULL;
 static sqlite3_stmt* auditlist_stmt = NULL;
+static sqlite3_stmt* gravity_stmt = NULL;
+static sqlite3_stmt* blacklist_stmt = NULL;
 bool gravity_database_avail = false;
 
 // Table names corresponding to the enum defined in gravity-db.h
@@ -88,6 +90,24 @@ bool gravityDB_open(void)
 	if( rc != SQLITE_OK )
 	{
 		logg("gravityDB_open(\"SELECT EXISTS(... domain_audit ...)\") - SQL error prepare (%i): %s", rc, sqlite3_errmsg(gravity_db));
+		gravityDB_close();
+		return false;
+	}
+
+	// Prepare gravity statement
+	rc = sqlite3_prepare_v2(gravity_db, "SELECT EXISTS(SELECT domain from vw_gravity WHERE domain = ?);", -1, &gravity_stmt, NULL);
+	if( rc != SQLITE_OK )
+	{
+		logg("gravityDB_open(\"SELECT EXISTS(... vw_gravity ...)\") - SQL error prepare (%i): %s", rc, sqlite3_errmsg(gravity_db));
+		gravityDB_close();
+		return false;
+	}
+
+	// Prepare blacklist statement
+	rc = sqlite3_prepare_v2(gravity_db, "SELECT EXISTS(SELECT domain from vw_blacklist WHERE domain = ?);", -1, &blacklist_stmt, NULL);
+	if( rc != SQLITE_OK )
+	{
+		logg("gravityDB_open(\"SELECT EXISTS(... vw_blacklist ...)\") - SQL error prepare (%i): %s", rc, sqlite3_errmsg(gravity_db));
 		gravityDB_close();
 		return false;
 	}
@@ -330,6 +350,16 @@ bool in_whitelist(const char *domain)
 	// optimization as the database lookup will most likely hit (a) more domains and (b)
 	// will be faster (given a sufficiently large number of regex whitelisting filters).
 	return domain_in_list(domain, whitelist_stmt) || match_regex(domain, REGEX_WHITELIST);
+}
+
+inline bool in_gravity(const char *domain)
+{
+	return domain_in_list(domain, gravity_stmt);
+}
+
+inline bool in_blacklist(const char *domain)
+{
+	return domain_in_list(domain, blacklist_stmt);
 }
 
 bool in_auditlist(const char *domain)

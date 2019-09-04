@@ -1182,10 +1182,6 @@ void cache_reload(void)
     }
   else
     {
-      /*------------------------------- Pi-hole modification -------------------------------*/
-      total_size = FTL_database_import(total_size, (struct crec **)daemon->packet, revhashsz);
-      /*------------------------------------------------------------------------------------*/
-
       if (!option_bool(OPT_NO_HOSTS))
 	total_size = read_hostsfile(HOSTSFILE, SRC_HOSTS, total_size, (struct crec **)daemon->packet, revhashsz);
       

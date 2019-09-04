@@ -22,4 +22,7 @@ int gravityDB_count(unsigned char list);
 bool in_whitelist(const char *domain);
 bool in_auditlist(const char *domain);
 
+bool in_gravity(const char *domain);
+bool in_blacklist(const char *domain);
+
 #endif //GRAVITY_H

@@ -15,7 +15,7 @@ extern unsigned char* pihole_privacylevel;
 enum { TCP, UDP };
 
 #define FTL_new_query(flags, name, addr, types, id, type) _FTL_new_query(flags, name, addr, types, id, type, __FILE__, __LINE__)
-void _FTL_new_query(const unsigned int flags, const char *name, const struct all_addr *addr, const char *types, const int id, const char type, const char* file, const int line);
+char _FTL_new_query(const unsigned int flags, const char *name, const struct all_addr *addr, const char *types, const int id, const char type, const char* file, const int line);
 
 #define FTL_forwarded(flags, name, addr, id) _FTL_forwarded(flags, name, addr, id, __FILE__, __LINE__)
 void _FTL_forwarded(const unsigned int flags, const char *name, const struct all_addr *addr, const int id, const char* file, const int line);
@@ -38,8 +38,10 @@ void _FTL_forwarding_failed(const struct server *server, const char* file, const
 #define FTL_upstream_error(rcode, id) _FTL_upstream_error(rcode, id, __FILE__, __LINE__)
 void _FTL_upstream_error(const unsigned int rcode, const int id, const char* file, const int line);
 
+#define FTL_get_blocking_metadata(addrp, flags) _FTL_get_blocking_metadata(addrp, flags, __FILE__, __LINE__)
+void _FTL_get_blocking_metadata(struct all_addr **addrp, unsigned int *flags, const char* file, const int line);
+
 void FTL_dnsmasq_reload(void);
 void FTL_fork_and_bind_sockets(struct passwd *ent_pw);
-int FTL_database_import(int cache_size, struct crec **rhash, int hashsz);
 
 #endif // DNSMASQ_INTERFACE_H
