@@ -442,10 +442,6 @@ void FTL_dnsmasq_reload(void)
 
 	logg("Reloading DNS cache");
 
-	// Called when dnsmasq re-reads its config and hosts files
-	// Reset number of blocked domains
-	counters->gravity = 0;
-
 	// Inspect 01-pihole.conf to see if Pi-hole blocking is enabled,
 	// i.e. if /etc/pihole/gravity.list is sourced as addn-hosts file
 	check_blocking_status();
@@ -466,6 +462,9 @@ void FTL_dnsmasq_reload(void)
 	// (Re-)open gravity database connection
 	gravityDB_close();
 	gravityDB_open();
+
+	// Reset number of blocked domains
+	counters->gravity = gravityDB_count(GRAVITY_TABLE);
 
 	// Read and compile possible regex filters
 	// only after having called gravityDB_open()

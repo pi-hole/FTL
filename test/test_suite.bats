@@ -143,12 +143,13 @@
 # library may have a different interpretation here.
 
 @test "Top Domains (descending, default)" {
-  run bash -c 'echo ">top-domains >quit" | nc -v 127.0.0.1 4711'
+  run bash -c 'echo ">top-domains (20) >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
   [[ "${lines[1]}" == *" 2 google.com"* ]]
   [[ "${lines[@]}" == *" 1 version.ftl"* ]]
   [[ "${lines[@]}" == *" 1 version.bind"* ]]
   [[ "${lines[@]}" == *" 1 whitelisted.com"* ]]
+  [[ "${lines[@]}" == *" 1 blacklisted.com"* ]]
   [[ "${lines[@]}" == *" 1 01tse443.se"* ]]
   [[ "${lines[@]}" == *" 1 regexa.com"* ]]
   [[ "${lines[@]}" == *" 1 regex1.com"* ]]
@@ -158,7 +159,7 @@
 }
 
 @test "Top Domains (ascending)" {
-  run bash -c 'echo ">top-domains asc >quit" | nc -v 127.0.0.1 4711'
+  run bash -c 'echo ">top-domains asc (20) >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
   [[ "${lines[@]}" == *" 1 version.ftl"* ]]
   [[ "${lines[@]}" == *" 1 version.bind"* ]]
@@ -173,7 +174,7 @@
 }
 
 @test "Top Ads (descending, default)" {
-  run bash -c 'echo ">top-ads >quit" | nc -v 127.0.0.1 4711'
+  run bash -c 'echo ">top-ads (20) >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
   [[ "${lines[@]}" == *" 1 blacklisted.com"* ]]
   [[ "${lines[@]}" == *" 1 0427d7.se"* ]]
@@ -182,7 +183,7 @@
 }
 
 @test "Top Ads (ascending)" {
-  run bash -c 'echo ">top-ads asc >quit" | nc -v 127.0.0.1 4711'
+  run bash -c 'echo ">top-ads asc (20) >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
   [[ "${lines[@]}" == *" 1 blacklisted.com"* ]]
   [[ "${lines[@]}" == *" 1 0427d7.se"* ]]
