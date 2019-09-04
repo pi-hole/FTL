@@ -240,7 +240,7 @@
   [[ ${lines[5]} == *"A whitelisted.com "?*" 2 0 4"* ]]
   [[ ${lines[6]} == *"A 01tse443.se "?*" 2 0 2"* ]]
   [[ ${lines[7]} == *"A regex5.com "?*" 4 0 4"* ]]
-  [[ ${lines[8]} == *"A regexa.com "?*" 2 0 7"* ]]
+  [[ ${lines[8]} == *"A regexa.com "?*" 2 0 4"* ]]
   [[ ${lines[9]} == *"A regex1.com "?*" 2 0 4"* ]]
   [[ ${lines[10]} == *"A regex2.com "?*" 2 0 2"* ]]
   [[ ${lines[11]} == *"A google.com "?*" 2 0 4"* ]]
@@ -252,14 +252,14 @@
 @test "Get all queries (domain filtered)" {
   run bash -c 'echo ">getallqueries-domain regexa.com >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == *"A regexa.com "?*" 2 0 7"* ]]
+  [[ ${lines[1]} == *"A regexa.com "?*" 2 0 4"* ]]
   [[ ${lines[2]} == "" ]]
 }
 
 @test "Get all queries (domain + number filtered)" {
   run bash -c 'echo ">getallqueries-domain regexa.com (6) >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == *"A regexa.com "?*" 2 0 7"* ]]
+  [[ ${lines[1]} == *"A regexa.com "?*" 2 0 4"* ]]
   [[ ${lines[2]} == "" ]]
 }
 
@@ -273,7 +273,7 @@
   [[ ${lines[5]} == *"A whitelisted.com "?*" 2 0 4"* ]]
   [[ ${lines[6]} == *"A 01tse443.se "?*" 2 0 2"* ]]
   [[ ${lines[7]} == *"A regex5.com "?*" 4 0 4"* ]]
-  [[ ${lines[8]} == *"A regexa.com "?*" 2 0 7"* ]]
+  [[ ${lines[8]} == *"A regexa.com "?*" 2 0 4"* ]]
   [[ ${lines[9]} == *"A regex1.com "?*" 2 0 4"* ]]
   [[ ${lines[10]} == *"A regex2.com "?*" 2 0 2"* ]]
   [[ ${lines[11]} == *"A google.com "?*" 2 0 4"* ]]
