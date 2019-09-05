@@ -339,7 +339,7 @@ static bool domain_in_list(const char *domain, sqlite3_stmt* stmt)
 	return (result == 1);
 }
 
-bool in_whitelist(const char *domain)
+inline bool in_whitelist(const char *domain)
 {
 	if(config.debug & DEBUG_DATABASE)
 		logg("Querying whitelist for %s", domain);
