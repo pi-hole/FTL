@@ -51,6 +51,11 @@ int findForwardID(const char * forwardString, const bool count)
 
 	// Get forward pointer
 	forwardedData* forward = getForward(forwardID, false);
+	if(forward == NULL)
+	{
+		logg("ERROR: Encountered serious memory error in findForwardID()");
+		return -1;
+	}
 
 	// Set magic byte
 	forward->magic = MAGICBYTE;
@@ -106,6 +111,11 @@ int findDomainID(const char *domainString)
 
 	// Get domain pointer
 	domainsData* domain = getDomain(domainID, false);
+	if(domain == NULL)
+	{
+		logg("ERROR: Encountered serious memory error in findDomainID()");
+		return -1;
+	}
 
 	// Set magic byte
 	domain->magic = MAGICBYTE;
@@ -162,6 +172,11 @@ int findClientID(const char *clientIP, const bool count)
 
 	// Get client pointer
 	clientsData* client = getClient(clientID, false);
+	if(client == NULL)
+	{
+		logg("ERROR: Encountered serious memory error in findClientID()");
+		return -1;
+	}
 
 	// Set magic byte
 	client->magic = MAGICBYTE;

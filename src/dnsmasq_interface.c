@@ -37,7 +37,7 @@
 #include "args.h"
 
 static void print_flags(const unsigned int flags);
-static void save_reply_type(const unsigned int flags, const int queryID, const struct timeval response);
+static void save_reply_type(const unsigned int flags, queriesData* query, const struct timeval response);
 static unsigned long converttimeval(const struct timeval time) __attribute__((const));
 static void block_single_domain_regex(const char *domain);
 static void detect_blocked_IP(const unsigned short flags, const char* answer, const int queryID);
@@ -167,6 +167,17 @@ void _FTL_new_query(const unsigned int flags, const char *name, const struct all
 
 	// Save everything
 	queriesData* query = getQuery(queryID, false);
+	if(query == NULL)
+	{
+		// Encountered memory error, skip query
+		// Free allocated memory
+		free(domainString);
+		free(clientIP);
+		// Release thread lock
+		unlock_shm();
+		return;
+	}
+
 	query->magic = MAGICBYTE;
 	query->timestamp = querytimestamp;
 	query->type = querytype;
@@ -201,6 +212,16 @@ void _FTL_new_query(const unsigned int flags, const char *name, const struct all
 
 	// Get client pointer
 	clientsData* client = getClient(clientID, true);
+	if(client == NULL)
+	{
+		// Encountered memory error, skip query
+		// Free allocated memory
+		free(domainString);
+		free(clientIP);
+		// Release thread lock
+		unlock_shm();
+		return;
+	}
 
 	// Update overTime data structure with the new client
 	client->overTime[timeidx]++;
@@ -229,13 +250,15 @@ void _FTL_new_query(const unsigned int flags, const char *name, const struct all
 		{
 			// We have to block this domain
 			block_single_domain_regex(domainString);
-			domain->regexmatch = REGEX_BLOCKED;
+			if(domain != NULL)
+				domain->regexmatch = REGEX_BLOCKED;
 		}
 		else
 		{
 			// Explicitly mark as not blocked to skip regex test
 			// next time we see this domain
-			domain->regexmatch = REGEX_NOTBLOCKED;
+			if(domain != NULL)
+				domain->regexmatch = REGEX_NOTBLOCKED;
 		}
 	}
 
@@ -322,7 +345,8 @@ void _FTL_forwarded(const unsigned int flags, const char *name, const struct all
 	//    destinations are coming in for the same query)
 	// - the query was formally known as cached but had to be forwarded
 	//   (this is a special case further described below)
-	if(query->complete && query->status != QUERY_CACHE)
+	// Use short-circuit evaluation to check if query is NULL
+	if(query == NULL || (query->complete && query->status != QUERY_CACHE))
 	{
 		free(forward);
 		unlock_shm();
@@ -486,7 +510,8 @@ void _FTL_reply(const unsigned short flags, const char *name, const struct all_a
 
 	// Check if reply time is still unknown
 	// We only process the first reply in here
-	if(query->reply != REPLY_UNKNOWN)
+	// Use short-circuit evaluation to check if query is NULL
+	if(query == NULL || query->reply != REPLY_UNKNOWN)
 	{
 		// Nothing to be done here
 		unlock_shm();
@@ -498,6 +523,12 @@ void _FTL_reply(const unsigned short flags, const char *name, const struct all_a
 
 	// Get domain pointer
 	domainsData* domain = getDomain(domainID, true);
+	if(domain == NULL)
+	{
+		// Memory error, skip reply
+		unlock_shm();
+		return;
+	}
 
 	// Check if this domain matches exactly
 	const bool isExactMatch = (name != NULL && strcmp(getstr(domain->domainpos), name) == 0);
@@ -523,14 +554,16 @@ void _FTL_reply(const unsigned short flags, const char *name, const struct all_a
 			// Update domain blocked counter
 			domain->blockedcount++;
 
-			// Get client pointer
-			clientsData* client = getClient(query->clientID, true);
-
-			// Update client blocked counter
-			client->blockedcount++;
-
 			// Set query status to wildcard
 			query->status = QUERY_WILDCARD;
+
+			// Get client pointer
+			clientsData* client = getClient(query->clientID, true);
+			if(client != NULL)
+			{
+				// Update client blocked counter
+				client->blockedcount++;
+			}
 		}
 		else
 		{
@@ -542,7 +575,7 @@ void _FTL_reply(const unsigned short flags, const char *name, const struct all_a
 		}
 
 		// Save reply type and update individual reply counters
-		save_reply_type(flags, i, response);
+		save_reply_type(flags, query, response);
 
 		// Hereby, this query is now fully determined
 		query->complete = true;
@@ -556,7 +589,7 @@ void _FTL_reply(const unsigned short flags, const char *name, const struct all_a
 		   query->reply != QUERY_EXTERNAL_BLOCKED_NXRA)
 		{
 			// Save reply type and update individual reply counters
-			save_reply_type(flags, i, response);
+			save_reply_type(flags, query, response);
 
 			// Detect if returned IP indicates that this query was blocked
 			detect_blocked_IP(flags, answer, i);
@@ -574,7 +607,7 @@ void _FTL_reply(const unsigned short flags, const char *name, const struct all_a
 		// Hence, isExactMatch is always false
 
 		// Save reply type and update individual reply counters
-		save_reply_type(flags, i, response);
+		save_reply_type(flags, query, response);
 	}
 	else if(isExactMatch && !query->complete)
 	{
@@ -621,9 +654,15 @@ static void detect_blocked_IP(const unsigned short flags, const char* answer, co
 		if(config.debug & DEBUG_EXTBLOCKED)
 		{
 			const queriesData* query = getQuery(queryID, true);
-			const domainsData* domain = getDomain(query->domainID, true);
-			logg("Upstream responded with known blocking page (IPv4), ID %i:\n\t\"%s\" -> \"%s\"",
-			     queryID, getstr(domain->domainpos), answer);
+			if(query != NULL)
+			{
+				const domainsData* domain = getDomain(query->domainID, true);
+				if(domain != NULL)
+				{
+					logg("Upstream responded with known blocking page (IPv4), ID %i:\n\t\"%s\" -> \"%s\"",
+					     queryID, getstr(domain->domainpos), answer);
+				}
+			}
 		}
 
 		// Update status
@@ -641,9 +680,15 @@ static void detect_blocked_IP(const unsigned short flags, const char* answer, co
 		if(config.debug & DEBUG_EXTBLOCKED)
 		{
 			const queriesData* query = getQuery(queryID, true);
-			const domainsData* domain = getDomain(query->domainID, true);
-			logg("Upstream responded with known blocking page (IPv6), ID %i:\n\t\"%s\" -> \"%s\"",
-			     queryID, getstr(domain->domainpos), answer);
+			if(query != NULL)
+			{
+				const domainsData* domain = getDomain(query->domainID, true);
+				if(domain != NULL)
+				{
+					logg("Upstream responded with known blocking page (IPv6), ID %i:\n\t\"%s\" -> \"%s\"",
+					     queryID, getstr(domain->domainpos), answer);
+				}
+			}
 		}
 
 		// Update status
@@ -659,9 +704,15 @@ static void detect_blocked_IP(const unsigned short flags, const char* answer, co
 		if(config.debug & DEBUG_EXTBLOCKED)
 		{
 			const queriesData* query = getQuery(queryID, true);
-			const domainsData* domain = getDomain(query->domainID, true);
-			logg("Upstream responded with 0.0.0.0, ID %i:\n\t\"%s\" -> \"%s\"",
-			     queryID, getstr(domain->domainpos), answer);
+			if(query != NULL)
+			{
+				const domainsData* domain = getDomain(query->domainID, true);
+				if(domain != NULL)
+				{
+					logg("Upstream responded with 0.0.0.0, ID %i:\n\t\"%s\" -> \"%s\"",
+					     queryID, getstr(domain->domainpos), answer);
+				}
+			}
 		}
 
 		// Update status
@@ -673,9 +724,15 @@ static void detect_blocked_IP(const unsigned short flags, const char* answer, co
 		if(config.debug & DEBUG_EXTBLOCKED)
 		{
 			const queriesData* query = getQuery(queryID, true);
-			const domainsData* domain = getDomain(query->domainID, true);
-			logg("Upstream responded with ::, ID %i:\n\t\"%s\" -> \"%s\"",
-			     queryID, getstr(domain->domainpos), answer);
+			if(query != NULL)
+			{
+				const domainsData* domain = getDomain(query->domainID, true);
+				if(domain != NULL)
+				{
+					logg("Upstream responded with ::, ID %i:\n\t\"%s\" -> \"%s\"",
+					     queryID, getstr(domain->domainpos), answer);
+				}
+			}
 		}
 
 		// Update status
@@ -687,6 +744,11 @@ static void query_externally_blocked(const int queryID, const unsigned char stat
 {
 	// Get query pointer
 	queriesData* query = getQuery(queryID, true);
+	if(query == NULL)
+	{
+		// Memory error, skip check for this query
+		return;
+	}
 
 	// Get time index
 	const unsigned int timeidx = query->timeidx;
@@ -706,19 +768,23 @@ static void query_externally_blocked(const int queryID, const unsigned char stat
 
 		// Get forward pointer
 		forwardedData* forward = getForward(query->forwardID, true);
-		forward->count--;
+		if(forward != NULL)
+			forward->count--;
 	}
+
 	// Mark query as blocked
 	counters->blocked++;
 	overTime[timeidx].blocked++;
 
 	// Get domain pointer
 	domainsData* domain = getDomain(query->domainID, true);
-	domain->blockedcount++;
+	if(domain != NULL)
+		domain->blockedcount++;
 
 	// Get client pointer
 	clientsData* client = getClient(query->clientID, true);
-	client->blockedcount++;
+	if(client != NULL)
+		client->blockedcount++;
 
 	// Set query status
 	query->status = status;
@@ -817,7 +883,8 @@ void _FTL_cache(const unsigned int flags, const char *name, const struct all_add
 		queriesData* query = getQuery(queryID, true);
 
 		// Skip this query if already marked as complete
-		if(query->complete)
+		// Use short-circuit evaluation to check query if query is NULL
+		if(query == NULL || query->complete)
 		{
 			unlock_shm();
 			return;
@@ -834,6 +901,13 @@ void _FTL_cache(const unsigned int flags, const char *name, const struct all_add
 
 		// Get client pointer
 		clientsData* client = getClient(query->clientID, true);
+
+		if(domain == NULL || client == NULL)
+		{
+			// Memory error, skip this cache reply
+			unlock_shm();
+			return;
+		}
 
 		// Mark this query as blocked if domain was matched by a regex
 		if(domain->regexmatch == REGEX_BLOCKED)
@@ -871,7 +945,7 @@ void _FTL_cache(const unsigned int flags, const char *name, const struct all_add
 		}
 
 		// Save reply type and update individual reply counters
-		save_reply_type(flags, queryID, response);
+		save_reply_type(flags, query, response);
 
 		// Hereby, this query is now fully determined
 		query->complete = true;
@@ -906,6 +980,12 @@ void _FTL_dnssec(const int status, const int id, const char* file, const int lin
 
 	// Get query pointer
 	queriesData* query = getQuery(queryID, true);
+	if(query == NULL)
+	{
+		// Memory error, skip this DNSSEC details
+		unlock_shm();
+		return;
+	}
 
 	// Debug logging
 	if(config.debug & DEBUG_QUERIES)
@@ -952,6 +1032,12 @@ void _FTL_upstream_error(const unsigned int rcode, const int id, const char* fil
 
 	// Get query pointer
 	queriesData* query = getQuery(queryID, true);
+	if(query == NULL)
+	{
+		// Memory error, skip this query
+		unlock_shm();
+		return;
+	}
 
 	// Translate dnsmasq's rcode into something we can use
 	const char *rcodestr = NULL;
@@ -981,7 +1067,14 @@ void _FTL_upstream_error(const unsigned int rcode, const int id, const char* fil
 		// Get domain pointer
 		const domainsData* domain = getDomain(query->domainID, true);
 
-		logg("**** got error report for %s: %s (ID %i, %s:%i)", getstr(domain->domainpos), rcodestr, id, file, line);
+		// Get domain name
+		const char *domainname;
+		if(domain != NULL)
+			domainname = getstr(domain->domainpos);
+		else
+			domainname = "<cannot access domain struct>";
+
+		logg("**** got error report for %s: %s (ID %i, %s:%i)", domainname, rcodestr, id, file, line);
 
 		if(query->reply == REPLY_OTHER)
 		{
@@ -1028,13 +1121,27 @@ void _FTL_header_analysis(const unsigned char header4, const unsigned int rcode,
 
 	// Get query pointer
 	queriesData* query = getQuery(queryID, true);
+	if(query == NULL)
+	{
+		// Memory error, skip this query
+		unlock_shm();
+		return;
+	}
 
 	// Possible debugging information
 	if(config.debug & DEBUG_QUERIES)
 	{
 		// Get domain pointer
 		const domainsData* domain = getDomain(query->domainID, true);
-		logg("**** %s externally blocked (ID %i, FTL %i, %s:%i)", getstr(domain->domainpos), id, queryID, file, line);
+
+		// Get domain name
+		const char *domainname;
+		if(domain != NULL)
+			domainname = getstr(domain->domainpos);
+		else
+			domainname = "<cannot access domain struct>";
+
+		logg("**** %s externally blocked (ID %i, FTL %i, %s:%i)", domainname, id, queryID, file, line);
 	}
 
 	// Get response time
@@ -1045,7 +1152,7 @@ void _FTL_header_analysis(const unsigned char header4, const unsigned int rcode,
 	query_externally_blocked(queryID, QUERY_EXTERNAL_BLOCKED_NXRA);
 
 	// Store reply type as replied with NXDOMAIN
-	save_reply_type(F_NEG | F_NXDOMAIN, queryID, response);
+	save_reply_type(F_NEG | F_NXDOMAIN, query, response);
 
 	// Unlock shared memory
 	unlock_shm();
@@ -1068,11 +1175,8 @@ void print_flags(const unsigned int flags)
 	free(flagstr);
 }
 
-void save_reply_type(const unsigned int flags, const int queryID, const struct timeval response)
+static void save_reply_type(const unsigned int flags, queriesData* query, const struct timeval response)
 {
-	// Get query pointer
-	queriesData* query = getQuery(queryID, true);
-
 	// Iterate through possible values
 	if(flags & F_NEG)
 	{
@@ -1256,7 +1360,8 @@ void _FTL_forwarding_failed(const struct server *server, const char* file, const
 	forwardedData* forward = getForward(forwardID, true);
 
 	// Update counter
-	forward->failed++;
+	if(forward != NULL)
+		forward->failed++;
 
 	// Clean up and unlock shared memory
 	free(forwarddest);

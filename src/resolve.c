@@ -124,6 +124,8 @@ void resolveClients(const bool onlynew)
 	{
 		// Get client pointer
 		clientsData* client = getClient(clientID, true);
+		if(client == NULL)
+			continue;
 
 		// Memory access needs to get locked
 		lock_shm();
@@ -160,6 +162,8 @@ void resolveForwardDestinations(const bool onlynew)
 	{
 		// Get forward pointer
 		forwardedData* forward = getForward(forwardID, true);
+		if(forward == NULL)
+			continue;
 
 		// Memory access needs to get locked
 		lock_shm();

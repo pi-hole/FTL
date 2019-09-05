@@ -67,23 +67,28 @@ void *GC_thread(void *val)
 			for(long int i=0; i < counters->queries; i++)
 			{
 				queriesData* query = getQuery(i, true);
+				if(query == NULL)
+					continue;
+
 				// Test if this query is too new
 				if(query->timestamp > mintime)
 					break;
 
 				// Adjust client counter
 				clientsData* client = getClient(query->clientID, true);
-				client->count--;
+				if(client != NULL)
+					client->count--;
 
 				// Adjust total counters and total over time data
 				const int timeidx = query->timeidx;
 				overTime[timeidx].total--;
-				// Adjust corresponding overTime counters
-				client->overTime[timeidx]--;
+				if(client != NULL)
+					client->overTime[timeidx]--;
 
 				// Adjust domain counter (no overTime information)
 				domainsData* domain = getDomain(query->domainID, true);
-				domain->count--;
+				if(domain != NULL)
+					domain->count--;
 
 				// Get forward pointer
 				forwardedData* forward = getForward(query->forwardID, true);
@@ -99,7 +104,8 @@ void *GC_thread(void *val)
 						// Forwarded to an upstream DNS server
 						// Adjust counters
 						counters->forwardedqueries--;
-						forward->count--;
+						if(forward != NULL)
+							forward->count--;
 						overTime[timeidx].forwarded--;
 						break;
 					case QUERY_CACHE:
@@ -115,8 +121,10 @@ void *GC_thread(void *val)
 					case QUERY_EXTERNAL_BLOCKED_NULL: // Blocked by upstream provider (fall through)
 						counters->blocked--;
 						overTime[timeidx].blocked--;
-						domain->blockedcount--;
-						client->blockedcount--;
+						if(domain != NULL)
+							domain->blockedcount--;
+						if(client != NULL)
+							client->blockedcount--;
 						break;
 					default:
 						/* That cannot happen */
