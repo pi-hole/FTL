@@ -81,7 +81,6 @@
   run bash -c "dig regexA.com @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} != "0.0.0.0" ]]
-  [[ ${lines[1]} == "" ]]
 }
 
 @test "Regex blacklist match + whitelist exact match is not blocked" {
