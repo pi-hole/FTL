@@ -531,7 +531,7 @@ void _FTL_reply(const unsigned short flags, const char *name, const struct all_a
 	}
 
 	// Check if this domain matches exactly
-	const bool isExactMatch = (name != NULL && strcmp(getstr(domain->domainpos), name) == 0);
+	const bool isExactMatch = (name != NULL && strcasecmp(getstr(domain->domainpos), name) == 0);
 
 	if((flags & F_CONFIG) && isExactMatch && !query->complete)
 	{
