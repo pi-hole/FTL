@@ -834,16 +834,14 @@ void _FTL_cache(const unsigned int flags, const char *name, const struct all_add
 
 		// Determine requesttype
 		unsigned char requesttype = 0;
-		if(flags & F_HOSTS) // local.list, hostname.list, /etc/hosts and others
+		if((flags & F_HOSTS) || // local.list, hostname.list, /etc/hosts and others
+		  ((flags & F_NAMEP) && (flags & F_DHCP)) || // DHCP server reply
+		   (flags & F_FORWARD) || // cached answer to previously forwarded request
+		   (flags & F_REVERSE) || // cached answer to reverse request (PTR)
+		   (flags & F_RRNAME)) // cached answer to TXT query
+		{
 			requesttype = QUERY_CACHE;
-		else if((flags & F_NAMEP) && (flags & F_DHCP)) // DHCP server reply
-			requesttype = QUERY_CACHE;
-		else if(flags & F_FORWARD) // cached answer to previously forwarded request
-			requesttype = QUERY_CACHE;
-		else if(flags & F_REVERSE) // cached answer to reverse request (PTR)
-			requesttype = QUERY_CACHE;
-		else if(flags & F_RRNAME) // cached answer to TXT query
-			requesttype = QUERY_CACHE;
+		}
 		else
 		{
 			logg("*************************** unknown CACHE reply (1) ***************************");
