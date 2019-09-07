@@ -11,7 +11,7 @@
 #define DATASTRUCTURE_H
 
 // Definition of sqlite3_stmt
-#include "sqlite3.h"
+#include "database/sqlite3.h"
 
 void strtolower(char *str);
 int findForwardID(const char * forward, const bool count);

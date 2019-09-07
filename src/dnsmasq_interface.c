@@ -12,7 +12,6 @@
 #include "dnsmasq/dnsmasq.h"
 #undef __USE_XOPEN
 #include "FTL.h"
-#include "sqlite3.h"
 #include "dnsmasq_interface.h"
 #include "shmem.h"
 #include "overTime.h"
