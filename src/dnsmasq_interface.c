@@ -12,12 +12,14 @@
 #include "dnsmasq/dnsmasq.h"
 #undef __USE_XOPEN
 #include "FTL.h"
+#include "sqlite3.h"
 #include "dnsmasq_interface.h"
 #include "shmem.h"
 #include "overTime.h"
 #include "memory.h"
 #include "database/common.h"
 #include "database/database-thread.h"
+#include "datastructure.h"
 #include "database/gravity-db.h"
 #include "setupVars.h"
 #include "daemon.h"
@@ -25,7 +27,6 @@
 #include "gc.h"
 #include "api/socket.h"
 #include "regex_r.h"
-#include "datastructure.h"
 #include "config.h"
 #include "capabilities.h"
 #include "resolve.h"
@@ -226,8 +227,8 @@ char _FTL_new_query(const unsigned int flags, const char *name, const struct all
 		// If a domain is on the exact blacklist or gravity but also on the whitelist,
 		// we do NOT block it.
 		bool black = false, gravity = false;
-		if(((black = in_blacklist(domainString)) || (gravity = in_gravity(domainString))) &&
-		   !in_whitelist(domainString))
+		if(((black = in_blacklist(domainString, client)) || (gravity = in_gravity(domainString, client))) &&
+		   !in_whitelist(domainString, client))
 		{
 			blockDomain = 1;
 			if(black)
@@ -248,7 +249,7 @@ char _FTL_new_query(const unsigned int flags, const char *name, const struct all
 		if(domain->regexmatch == REGEX_UNKNOWN &&
 		   !blockDomain &&
 		   match_regex(domainString, REGEX_BLACKLIST) &&
-		   !in_whitelist(domainString))
+		   !in_whitelist(domainString, client))
 		{
 			// Mark domain as regex match
 			domain->regexmatch = REGEX_BLOCKED;

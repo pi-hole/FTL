@@ -9,22 +9,20 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
+#include "sqlite3.h"
+#include "datastructure.h"
 #include "gravity-db.h"
 #include "config.h"
 #include "log.h"
 // global variable counters
 #include "memory.h"
-#include "sqlite3.h"
 // match_regex()
 #include "regex_r.h"
 
 // Private variables
 static sqlite3 *gravity_db = NULL;
 static sqlite3_stmt* table_stmt = NULL;
-static sqlite3_stmt* whitelist_stmt = NULL;
 static sqlite3_stmt* auditlist_stmt = NULL;
-static sqlite3_stmt* gravity_stmt = NULL;
-static sqlite3_stmt* blacklist_stmt = NULL;
 bool gravity_database_avail = false;
 
 // Table names corresponding to the enum defined in gravity-db.h
@@ -71,43 +69,11 @@ bool gravityDB_open(void)
 		return false;
 	}
 
-	// Prepare whitelist statement
-	// We use SELECT EXISTS() as this is known to efficiently use the index
-	// We are only interested in whether the domain exists or not in the
-	// list but don't case about duplicates or similar. SELECT EXISTS(...)
-	// returns true as soon as it sees the first row from the query inside
-	// of EXISTS().
-	rc = sqlite3_prepare_v2(gravity_db, "SELECT EXISTS(SELECT domain from vw_whitelist WHERE domain = ?);", -1, &whitelist_stmt, NULL);
-	if( rc != SQLITE_OK )
-	{
-		logg("gravityDB_open(\"SELECT EXISTS(... vw_whitelist ...)\") - SQL error prepare (%i): %s", rc, sqlite3_errmsg(gravity_db));
-		gravityDB_close();
-		return false;
-	}
-
 	// Prepare audit statement
 	rc = sqlite3_prepare_v2(gravity_db, "SELECT EXISTS(SELECT domain from domain_audit WHERE domain = ?);", -1, &auditlist_stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
 		logg("gravityDB_open(\"SELECT EXISTS(... domain_audit ...)\") - SQL error prepare (%i): %s", rc, sqlite3_errmsg(gravity_db));
-		gravityDB_close();
-		return false;
-	}
-
-	// Prepare gravity statement
-	rc = sqlite3_prepare_v2(gravity_db, "SELECT EXISTS(SELECT domain from vw_gravity WHERE domain = ?);", -1, &gravity_stmt, NULL);
-	if( rc != SQLITE_OK )
-	{
-		logg("gravityDB_open(\"SELECT EXISTS(... vw_gravity ...)\") - SQL error prepare (%i): %s", rc, sqlite3_errmsg(gravity_db));
-		gravityDB_close();
-		return false;
-	}
-
-	// Prepare blacklist statement
-	rc = sqlite3_prepare_v2(gravity_db, "SELECT EXISTS(SELECT domain from vw_blacklist WHERE domain = ?);", -1, &blacklist_stmt, NULL);
-	if( rc != SQLITE_OK )
-	{
-		logg("gravityDB_open(\"SELECT EXISTS(... vw_blacklist ...)\") - SQL error prepare (%i): %s", rc, sqlite3_errmsg(gravity_db));
 		gravityDB_close();
 		return false;
 	}
@@ -120,16 +86,67 @@ bool gravityDB_open(void)
 	return true;
 }
 
+bool gravityDB_prepare_client_statements(clientsData* client)
+{
+	// Return early if gravity database is not available
+	if(!gravity_database_avail)
+		return false;
+
+	// Prepare whitelist statement
+	// We use SELECT EXISTS() as this is known to efficiently use the index
+	// We are only interested in whether the domain exists or not in the
+	// list but don't case about duplicates or similar. SELECT EXISTS(...)
+	// returns true as soon as it sees the first row from the query inside
+	// of EXISTS().
+	int rc = sqlite3_prepare_v2(gravity_db, "SELECT EXISTS(SELECT domain from vw_whitelist WHERE domain = ?);", -1, &client->whitelist_stmt, NULL);
+	if( rc != SQLITE_OK )
+	{
+		logg("gravityDB_open(\"SELECT EXISTS(... vw_whitelist ...)\") - SQL error prepare (%i): %s", rc, sqlite3_errmsg(gravity_db));
+		gravityDB_close();
+		return false;
+	}
+
+	// Prepare gravity statement
+	rc = sqlite3_prepare_v2(gravity_db, "SELECT EXISTS(SELECT domain from vw_gravity WHERE domain = ?);", -1, &client->gravity_stmt, NULL);
+	if( rc != SQLITE_OK )
+	{
+		logg("gravityDB_open(\"SELECT EXISTS(... vw_gravity ...)\") - SQL error prepare (%i): %s", rc, sqlite3_errmsg(gravity_db));
+		gravityDB_close();
+		return false;
+	}
+
+	// Prepare blacklist statement
+	rc = sqlite3_prepare_v2(gravity_db, "SELECT EXISTS(SELECT domain from vw_blacklist WHERE domain = ?);", -1, &client->blacklist_stmt, NULL);
+	if( rc != SQLITE_OK )
+	{
+		logg("gravityDB_open(\"SELECT EXISTS(... vw_blacklist ...)\") - SQL error prepare (%i): %s", rc, sqlite3_errmsg(gravity_db));
+		gravityDB_close();
+		return false;
+	}
+
+	return true;
+}
+
+inline void gravityDB_finalize_client_statements(clientsData* client)
+{
+	sqlite3_finalize(client->gravity_stmt);
+	sqlite3_finalize(client->blacklist_stmt);
+	sqlite3_finalize(client->whitelist_stmt);
+}
+
 void gravityDB_close(void)
 {
 	// Return early if gravity database is not available
 	if(!gravity_database_avail)
 		return;
 
-	// Finalize whitelist scanning statement
-	sqlite3_finalize(whitelist_stmt);
-
-	// Finalize audit scanning statement
+	// Finalize list statements
+	for(int i=0; i < counters->clients; i++)
+	{
+		clientsData* client = getClient(i, true);
+		if(client != NULL)
+			gravityDB_finalize_client_statements(client);
+	}
 	sqlite3_finalize(auditlist_stmt);
 
 	// Close table
@@ -281,7 +298,7 @@ int gravityDB_count(const unsigned char list)
 	return result;
 }
 
-static bool domain_in_list(const char *domain, sqlite3_stmt* stmt)
+static bool domain_in_list(const char *domain, sqlite3_stmt* stmt, const char* listname)
 {
 	int retval;
 	// Bind domain to prepared statement
@@ -321,7 +338,7 @@ static bool domain_in_list(const char *domain, sqlite3_stmt* stmt)
 	const int result = sqlite3_column_int(stmt, 0);
 
 	if(config.debug & DEBUG_DATABASE)
-		logg("domain_in_list(\"%s\"): %d", domain, result);
+		logg("domain_in_%s(\"%s\"): %d", listname, domain, result);
 
 	// The sqlite3_reset() function is called to reset a prepared
 	// statement object back to its initial state, ready to be
@@ -339,34 +356,30 @@ static bool domain_in_list(const char *domain, sqlite3_stmt* stmt)
 	return (result == 1);
 }
 
-inline bool in_whitelist(const char *domain)
+inline bool in_whitelist(const char *domain, clientsData* client)
 {
-	if(config.debug & DEBUG_DATABASE)
-		logg("Querying whitelist for %s", domain);
 	// We have to check both the exact whitelist (using a prepared database statement)
 	// as well the compiled regex whitelist filters to check if the current domain is
 	// whitelisted. Due to short-circuit-evaluation in C, the regex evaluations is executed
 	// only if the exact whitelist lookup does not deliver a positive match. This is an
 	// optimization as the database lookup will most likely hit (a) more domains and (b)
 	// will be faster (given a sufficiently large number of regex whitelisting filters).
-	return domain_in_list(domain, whitelist_stmt) || match_regex(domain, REGEX_WHITELIST);
+	return domain_in_list(domain, client->whitelist_stmt, "whitelist") || match_regex(domain, REGEX_WHITELIST);
 }
 
-inline bool in_gravity(const char *domain)
+inline bool in_gravity(const char *domain, clientsData* client)
 {
-	return domain_in_list(domain, gravity_stmt);
+	return domain_in_list(domain, client->gravity_stmt, "gravity");
 }
 
-inline bool in_blacklist(const char *domain)
+inline bool in_blacklist(const char *domain, clientsData* client)
 {
-	return domain_in_list(domain, blacklist_stmt);
+	return domain_in_list(domain, client->blacklist_stmt, "blacklist");
 }
 
 bool in_auditlist(const char *domain)
 {
-	if(config.debug & DEBUG_DATABASE)
-		logg("Querying audit list for %s", domain);
 	// We check the domain_audit table for the given domain
-	return domain_in_list(domain, auditlist_stmt);
+	return domain_in_list(domain, auditlist_stmt, "auditlist");
 }
 

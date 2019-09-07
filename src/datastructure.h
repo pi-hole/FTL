@@ -10,6 +10,9 @@
 #ifndef DATASTRUCTURE_H
 #define DATASTRUCTURE_H
 
+// Definition of sqlite3_stmt
+#include "sqlite3.h"
+
 void strtolower(char *str);
 int findForwardID(const char * forward, const bool count);
 int findDomainID(const char *domain);
@@ -57,6 +60,9 @@ typedef struct {
 	int overTime[OVERTIME_SLOTS];
 	unsigned int numQueriesARP;
 	bool new;
+	sqlite3_stmt* whitelist_stmt;
+	sqlite3_stmt* gravity_stmt;
+	sqlite3_stmt* blacklist_stmt;
 } clientsData;
 
 typedef struct {

@@ -10,7 +10,6 @@
 
 #include "FTL.h"
 #include "regex_r.h"
-#include "database/gravity-db.h"
 #include "timers.h"
 #include "memory.h"
 #include "log.h"
@@ -18,6 +17,7 @@
 // data getter functions
 #include "datastructure.h"
 #include <regex.h>
+#include "database/gravity-db.h"
 
 static int num_regex[2] = { 0 };
 static regex_t *regex[2] = { NULL };
