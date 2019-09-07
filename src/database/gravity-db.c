@@ -18,6 +18,8 @@
 #include "memory.h"
 // match_regex()
 #include "regex_r.h"
+// getstr()
+#include "shmem.h"
 
 // Private variables
 static sqlite3 *gravity_db = NULL;
@@ -86,11 +88,90 @@ bool gravityDB_open(void)
 	return true;
 }
 
+static char* get_client_querystr(const char* table, const char* groups)
+{
+	// Build query string
+	char *querystr = NULL;
+	if(groups != NULL)
+	{
+		// Group filtering
+		if(asprintf(&querystr, "SELECT EXISTS(SELECT domain from %s WHERE domain = ? AND group_id IN (%s));", table, groups) < 1)
+		{
+			logg("get_client_querystr(%s, %s) - asprintf() error", table, groups);
+			return NULL;
+		}
+	}
+	else
+	{
+		// No group filtering
+		if(asprintf(&querystr, "SELECT EXISTS(SELECT domain from %s WHERE domain = ?);", table) < 1)
+		{
+			logg("get_client_querystr(%s, %s) - asprintf() error", table, groups);
+			return NULL;
+		}
+	}
+	if(config.debug & DEBUG_DATABASE)
+		logg("get_client_querystr: %s", querystr);
+
+	return querystr;
+}
+
 bool gravityDB_prepare_client_statements(clientsData* client)
 {
 	// Return early if gravity database is not available
 	if(!gravity_database_avail)
 		return false;
+
+	// Get associated groups for this client (if defined)
+	char *querystr = NULL;
+	const char *groups;
+	const char *ip = getstr(client->ippos);
+	// Build query string
+	if(asprintf(&querystr, "SELECT \"groups\" FROM client WHERE ip = \'%s\'", ip) < 1)
+	{
+		logg("gravityDB_prepare_client_statements(%s) - asprintf() error", ip);
+		return false;
+	}
+
+	if(config.debug & DEBUG_DATABASE)
+		logg("Querying gravity database for client %s", ip);
+
+	// Prepare query
+	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &table_stmt, NULL);
+	if(rc != SQLITE_OK){
+		logg("gravityDB_prepare_client_statements(%s) - SQL error prepare (%i): %s",
+		     querystr, rc, sqlite3_errmsg(gravity_db));
+		sqlite3_finalize(table_stmt);
+		gravityDB_close();
+		free(querystr);
+		return false;
+	}
+
+	// Perform query
+	rc = sqlite3_step(table_stmt);
+	if(rc == SQLITE_ROW)
+	{
+		// There is a record for this client in the database
+		groups = strdup((const char*)sqlite3_column_text(table_stmt, 0));
+	}
+	else if(rc == SQLITE_DONE)
+	{
+		// Found no record for this client in the database
+		groups = NULL;
+	}
+	else
+	{
+		logg("gravityDB_prepare_client_statements(%s) - SQL error step (%i): %s",
+		     querystr, rc, sqlite3_errmsg(gravity_db));
+		sqlite3_finalize(table_stmt);
+		gravityDB_close();
+		free(querystr);
+		return false;
+	}
+	// Finalize statement
+	gravityDB_finalizeTable();
+	// Free allocated memory and return result
+	free(querystr);
 
 	// Prepare whitelist statement
 	// We use SELECT EXISTS() as this is known to efficiently use the index
@@ -98,31 +179,37 @@ bool gravityDB_prepare_client_statements(clientsData* client)
 	// list but don't case about duplicates or similar. SELECT EXISTS(...)
 	// returns true as soon as it sees the first row from the query inside
 	// of EXISTS().
-	int rc = sqlite3_prepare_v2(gravity_db, "SELECT EXISTS(SELECT domain from vw_whitelist WHERE domain = ?);", -1, &client->whitelist_stmt, NULL);
+	querystr = get_client_querystr("vw_whitelist", groups);
+	rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &client->whitelist_stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
 		logg("gravityDB_open(\"SELECT EXISTS(... vw_whitelist ...)\") - SQL error prepare (%i): %s", rc, sqlite3_errmsg(gravity_db));
 		gravityDB_close();
 		return false;
 	}
+	free(querystr);
 
 	// Prepare gravity statement
-	rc = sqlite3_prepare_v2(gravity_db, "SELECT EXISTS(SELECT domain from vw_gravity WHERE domain = ?);", -1, &client->gravity_stmt, NULL);
+	querystr = get_client_querystr("vw_gravity", groups);
+	rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &client->gravity_stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
 		logg("gravityDB_open(\"SELECT EXISTS(... vw_gravity ...)\") - SQL error prepare (%i): %s", rc, sqlite3_errmsg(gravity_db));
 		gravityDB_close();
 		return false;
 	}
+	free(querystr);
 
 	// Prepare blacklist statement
-	rc = sqlite3_prepare_v2(gravity_db, "SELECT EXISTS(SELECT domain from vw_blacklist WHERE domain = ?);", -1, &client->blacklist_stmt, NULL);
+	querystr = get_client_querystr("vw_blacklist", groups);
+	rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &client->blacklist_stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
 		logg("gravityDB_open(\"SELECT EXISTS(... vw_blacklist ...)\") - SQL error prepare (%i): %s", rc, sqlite3_errmsg(gravity_db));
 		gravityDB_close();
 		return false;
 	}
+	free(querystr);
 
 	return true;
 }
