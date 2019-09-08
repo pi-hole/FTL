@@ -124,10 +124,13 @@ bool gravityDB_prepare_client_statements(clientsData* client)
 
 	// Get associated groups for this client (if defined)
 	char *querystr = NULL;
-	const char *groups;
+	char *groups = NULL;
 	const char *ip = getstr(client->ippos);
-	// Build query string
-	if(asprintf(&querystr, "SELECT \"groups\" FROM client WHERE ip = \'%s\'", ip) < 1)
+	// Build query string to get possible group associations for this particular client
+	// The SQL GROUP_CONCAT() function returns a string which is the concatenation of all
+	// non-NULL values of group_id separated by ','. The order of the concatenated elements
+	// is arbitrary, however, is of no relevance for your use case.
+	if(asprintf(&querystr, "SELECT GROUP_CONCAT(group_id) FROM client_by_group WHERE client_id = (SELECT id FROM client WHERE ip = \'%s\');", ip) < 1)
 	{
 		logg("gravityDB_prepare_client_statements(%s) - asprintf() error", ip);
 		return false;
@@ -152,12 +155,13 @@ bool gravityDB_prepare_client_statements(clientsData* client)
 	if(rc == SQLITE_ROW)
 	{
 		// There is a record for this client in the database
-		groups = strdup((const char*)sqlite3_column_text(table_stmt, 0));
+		const char* result = (const char*)sqlite3_column_text(table_stmt, 0);
+		if(result != NULL)
+			groups = strdup(result);
 	}
 	else if(rc == SQLITE_DONE)
 	{
 		// Found no record for this client in the database
-		groups = NULL;
 	}
 	else
 	{
@@ -210,6 +214,13 @@ bool gravityDB_prepare_client_statements(clientsData* client)
 		return false;
 	}
 	free(querystr);
+
+	// Free groups string is allocated
+	if(groups != NULL)
+	{
+		free(groups);
+		groups = NULL;
+	}
 
 	return true;
 }
