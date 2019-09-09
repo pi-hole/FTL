@@ -70,7 +70,6 @@ int main (int argc, char* argv[])
 
 	// Initialize database
 	db_init();
-	gravityDB_open();
 
 	// Try to import queries from long-term database if available
 	if(database && config.DBimport)

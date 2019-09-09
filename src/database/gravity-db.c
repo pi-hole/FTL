@@ -118,12 +118,12 @@ static char* get_client_querystr(const char* table, const char* groups)
 
 bool gravityDB_prepare_client_statements(clientsData* client)
 {
-	if(config.debug & DEBUG_DATABASE)
-		logg("Initializing gravity statements for %s", getstr(client->ippos));
-
 	// Return early if gravity database is not available
 	if(!gravity_database_avail)
 		return false;
+
+	if(config.debug & DEBUG_DATABASE)
+		logg("Initializing gravity statements for %s", getstr(client->ippos));
 
 	// Get associated groups for this client (if defined)
 	char *querystr = NULL;
@@ -469,6 +469,8 @@ static bool domain_in_list(const char *domain, sqlite3_stmt* stmt, const char* l
 
 inline bool in_whitelist(const char *domain, clientsData* client)
 {
+	if(client->whitelist_stmt == NULL)
+		gravityDB_prepare_client_statements(client);
 	// We have to check both the exact whitelist (using a prepared database statement)
 	// as well the compiled regex whitelist filters to check if the current domain is
 	// whitelisted. Due to short-circuit-evaluation in C, the regex evaluations is executed
@@ -480,11 +482,15 @@ inline bool in_whitelist(const char *domain, clientsData* client)
 
 inline bool in_gravity(const char *domain, clientsData* client)
 {
+	if(client->gravity_stmt == NULL)
+		gravityDB_prepare_client_statements(client);
 	return domain_in_list(domain, client->gravity_stmt, "gravity");
 }
 
 inline bool in_blacklist(const char *domain, clientsData* client)
 {
+	if(client->blacklist_stmt == NULL)
+		gravityDB_prepare_client_statements(client);
 	return domain_in_list(domain, client->blacklist_stmt, "blacklist");
 }
 

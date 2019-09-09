@@ -174,9 +174,6 @@ int findClientID(const char *clientIP, const bool count)
 	for(int i = 0; i < OVERTIME_SLOTS; i++)
 		client->overTime[i] = 0;
 
-	// Initialize client-specific gravity database statements
-	gravityDB_prepare_client_statements(client);
-
 	// Increase counter by one
 	counters->clients++;
 
