@@ -30,52 +30,52 @@
 }
 
 @test "Blacklisted domain is blocked" {
-  run bash -c "dig blacklisted.com @127.0.0.1 +short"
+  run bash -c "dig blacklist-blocked.test.pi-hole.net @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0.0.0.0" ]]
   [[ ${lines[1]} == "" ]]
 }
 
 @test "Gravity domain is blocked" {
-  run bash -c "dig 0427d7.se @127.0.0.1 +short"
+  run bash -c "dig gravity-blocked.test.pi-hole.net @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0.0.0.0" ]]
   [[ ${lines[1]} == "" ]]
 }
 
 @test "Gravity domain + whitelist exact match is not blocked" {
-  run bash -c "dig whitelisted.com @127.0.0.1 +short"
+  run bash -c "dig whitelisted.test.pi-hole.net @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} != "0.0.0.0" ]]
 }
 
 @test "Gravity domain + whitelist regex match is not blocked" {
-  run bash -c "dig 01tse443.se @127.0.0.1 +short"
+  run bash -c "dig discourse.pi-hole.net @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} != "0.0.0.0" ]]
 }
 
 @test "Regex blacklist match is blocked" {
-  run bash -c "dig regex5.com @127.0.0.1 +short"
+  run bash -c "dig regex5.test.pi-hole.net @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0.0.0.0" ]]
   [[ ${lines[1]} == "" ]]
 }
 
 @test "Regex blacklist mismatch is not blocked" {
-  run bash -c "dig regexA.com @127.0.0.1 +short"
+  run bash -c "dig regexA.test.pi-hole.net @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} != "0.0.0.0" ]]
 }
 
 @test "Regex blacklist match + whitelist exact match is not blocked" {
-  run bash -c "dig regex1.com @127.0.0.1 +short"
+  run bash -c "dig regex1.test.pi-hole.net @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} != "0.0.0.0" ]]
 }
 
 @test "Regex blacklist match + whitelist regex match is not blocked" {
-  run bash -c "dig regex2.com @127.0.0.1 +short"
+  run bash -c "dig regex2.test.pi-hole.net @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} != "0.0.0.0" ]]
 }
@@ -103,7 +103,7 @@
 @test "Statistics as expected" {
   run bash -c 'echo ">stats >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "domains_being_blocked 2" ]]
+  [[ ${lines[1]} == "domains_being_blocked 3" ]]
   [[ ${lines[2]} == "dns_queries_today 13" ]]
   [[ ${lines[3]} == "ads_blocked_today 3" ]]
   [[ ${lines[4]} == "ads_percentage_today 23.076923" ]]
@@ -114,9 +114,9 @@
   [[ ${lines[9]} == "unique_clients 1" ]]
   [[ ${lines[10]} == "dns_queries_all_types 13" ]]
   [[ ${lines[11]} == "reply_NODATA 0" ]]
-  [[ ${lines[12]} == "reply_NXDOMAIN 2" ]]
+  [[ ${lines[12]} == "reply_NXDOMAIN 0" ]]
   [[ ${lines[13]} == "reply_CNAME 0" ]]
-  [[ ${lines[14]} == "reply_IP 9" ]]
+  [[ ${lines[14]} == "reply_IP 11" ]]
   [[ ${lines[15]} == "privacy_level 0" ]]
   [[ ${lines[16]} == "status enabled" ]]
   [[ ${lines[17]} == "" ]]
@@ -148,11 +148,10 @@
   [[ "${lines[1]}" == *" 2 google.com"* ]]
   [[ "${lines[@]}" == *" 1 version.ftl"* ]]
   [[ "${lines[@]}" == *" 1 version.bind"* ]]
-  [[ "${lines[@]}" == *" 1 whitelisted.com"* ]]
-  [[ "${lines[@]}" == *" 1 01tse443.se"* ]]
-  [[ "${lines[@]}" == *" 1 regexa.com"* ]]
-  [[ "${lines[@]}" == *" 1 regex1.com"* ]]
-  [[ "${lines[@]}" == *" 1 regex2.com"* ]]
+  [[ "${lines[@]}" == *" 1 whitelisted.test.pi-hole.net"* ]]
+  [[ "${lines[@]}" == *" 1 regexa.test.pi-hole.net"* ]]
+  [[ "${lines[@]}" == *" 1 regex1.test.pi-hole.net"* ]]
+  [[ "${lines[@]}" == *" 1 regex2.test.pi-hole.net"* ]]
   [[ "${lines[@]}" == *" 1 ftl.pi-hole.net"* ]]
   [[ "${lines[10]}" == "" ]]
 }
@@ -162,11 +161,10 @@
   printf "%s\n" "${lines[@]}"
   [[ "${lines[@]}" == *" 1 version.ftl"* ]]
   [[ "${lines[@]}" == *" 1 version.bind"* ]]
-  [[ "${lines[@]}" == *" 1 whitelisted.com"* ]]
-  [[ "${lines[@]}" == *" 1 01tse443.se"* ]]
-  [[ "${lines[@]}" == *" 1 regexa.com"* ]]
-  [[ "${lines[@]}" == *" 1 regex1.com"* ]]
-  [[ "${lines[@]}" == *" 1 regex2.com"* ]]
+  [[ "${lines[@]}" == *" 1 whitelisted.test.pi-hole.net"* ]]
+  [[ "${lines[@]}" == *" 1 regexa.test.pi-hole.net"* ]]
+  [[ "${lines[@]}" == *" 1 regex1.test.pi-hole.net"* ]]
+  [[ "${lines[@]}" == *" 1 regex2.test.pi-hole.net"* ]]
   [[ "${lines[@]}" == *" 1 ftl.pi-hole.net"* ]]
   [[ "${lines[9]}" == *" 2 google.com"* ]]
   [[ "${lines[10]}" == "" ]]
@@ -175,18 +173,18 @@
 @test "Top Ads (descending, default)" {
   run bash -c 'echo ">top-ads (20) >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ "${lines[@]}" == *" 1 blacklisted.com"* ]]
-  [[ "${lines[@]}" == *" 1 0427d7.se"* ]]
-  [[ "${lines[@]}" == *" 1 regex5.com"* ]]
+  [[ "${lines[@]}" == *" 1 blacklist-blocked.test.pi-hole.net"* ]]
+  [[ "${lines[@]}" == *" 1 gravity-blocked.test.pi-hole.net"* ]]
+  [[ "${lines[@]}" == *" 1 regex5.test.pi-hole.net"* ]]
   [[ ${lines[4]} == "" ]]
 }
 
 @test "Top Ads (ascending)" {
   run bash -c 'echo ">top-ads asc (20) >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ "${lines[@]}" == *" 1 blacklisted.com"* ]]
-  [[ "${lines[@]}" == *" 1 0427d7.se"* ]]
-  [[ "${lines[@]}" == *" 1 regex5.com"* ]]
+  [[ "${lines[@]}" == *" 1 blacklist-blocked.test.pi-hole.net"* ]]
+  [[ "${lines[@]}" == *" 1 gravity-blocked.test.pi-hole.net"* ]]
+  [[ "${lines[@]}" == *" 1 regex5.test.pi-hole.net"* ]]
   [[ ${lines[4]} == "" ]]
 }
 
@@ -235,14 +233,14 @@
   printf "%s\n" "${lines[@]}"
   [[ ${lines[1]} == *"TXT version.ftl "?*" 3 0 6"* ]]
   [[ ${lines[2]} == *"TXT version.bind "?*" 3 0 6"* ]]
-  [[ ${lines[3]} == *"A blacklisted.com "?*" 5 0 4"* ]]
-  [[ ${lines[4]} == *"A 0427d7.se "?*" 1 0 4"* ]]
-  [[ ${lines[5]} == *"A whitelisted.com "?*" 2 0 4"* ]]
-  [[ ${lines[6]} == *"A 01tse443.se "?*" 2 0 2"* ]]
-  [[ ${lines[7]} == *"A regex5.com "?*" 4 0 4"* ]]
-  [[ ${lines[8]} == *"A regexa.com "?*" 2 0 4"* ]]
-  [[ ${lines[9]} == *"A regex1.com "?*" 2 0 4"* ]]
-  [[ ${lines[10]} == *"A regex2.com "?*" 2 0 2"* ]]
+  [[ ${lines[3]} == *"A blacklist-blocked.test.pi-hole.net "?*" 5 0 4"* ]]
+  [[ ${lines[4]} == *"A gravity-blocked.test.pi-hole.net "?*" 1 0 4"* ]]
+  [[ ${lines[5]} == *"A whitelisted.test.pi-hole.net "?*" 2 0 4"* ]]
+  [[ ${lines[6]} == *"A discourse.pi-hole.net "?*" 2 0 4"* ]]
+  [[ ${lines[7]} == *"A regex5.test.pi-hole.net "?*" 4 0 4"* ]]
+  [[ ${lines[8]} == *"A regexa.test.pi-hole.net "?*" 2 0 4"* ]]
+  [[ ${lines[9]} == *"A regex1.test.pi-hole.net "?*" 2 0 4"* ]]
+  [[ ${lines[10]} == *"A regex2.test.pi-hole.net "?*" 2 0 4"* ]]
   [[ ${lines[11]} == *"A google.com "?*" 2 0 4"* ]]
   [[ ${lines[12]} == *"AAAA google.com "?*" 2 0 4"* ]]
   [[ ${lines[13]} == *"A ftl.pi-hole.net "?*" 2 0 4"* ]]
@@ -250,16 +248,16 @@
 }
 
 @test "Get all queries (domain filtered)" {
-  run bash -c 'echo ">getallqueries-domain regexa.com >quit" | nc -v 127.0.0.1 4711'
+  run bash -c 'echo ">getallqueries-domain regexa.test.pi-hole.net >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == *"A regexa.com "?*" 2 0 4"* ]]
+  [[ ${lines[1]} == *"A regexa.test.pi-hole.net "?*" 2 0 4"* ]]
   [[ ${lines[2]} == "" ]]
 }
 
 @test "Get all queries (domain + number filtered)" {
-  run bash -c 'echo ">getallqueries-domain regexa.com (6) >quit" | nc -v 127.0.0.1 4711'
+  run bash -c 'echo ">getallqueries-domain regexa.test.pi-hole.net (6) >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == *"A regexa.com "?*" 2 0 4"* ]]
+  [[ ${lines[1]} == *"A regexa.test.pi-hole.net "?*" 2 0 4"* ]]
   [[ ${lines[2]} == "" ]]
 }
 
@@ -268,14 +266,14 @@
   printf "%s\n" "${lines[@]}"
   [[ ${lines[1]} == *"TXT version.ftl "?*" 3 0 6"* ]]
   [[ ${lines[2]} == *"TXT version.bind "?*" 3 0 6"* ]]
-  [[ ${lines[3]} == *"A blacklisted.com "?*" 5 0 4"* ]]
-  [[ ${lines[4]} == *"A 0427d7.se "?*" 1 0 4"* ]]
-  [[ ${lines[5]} == *"A whitelisted.com "?*" 2 0 4"* ]]
-  [[ ${lines[6]} == *"A 01tse443.se "?*" 2 0 2"* ]]
-  [[ ${lines[7]} == *"A regex5.com "?*" 4 0 4"* ]]
-  [[ ${lines[8]} == *"A regexa.com "?*" 2 0 4"* ]]
-  [[ ${lines[9]} == *"A regex1.com "?*" 2 0 4"* ]]
-  [[ ${lines[10]} == *"A regex2.com "?*" 2 0 2"* ]]
+  [[ ${lines[3]} == *"A blacklist-blocked.test.pi-hole.net "?*" 5 0 4"* ]]
+  [[ ${lines[4]} == *"A gravity-blocked.test.pi-hole.net "?*" 1 0 4"* ]]
+  [[ ${lines[5]} == *"A whitelisted.test.pi-hole.net "?*" 2 0 4"* ]]
+  [[ ${lines[6]} == *"A discourse.pi-hole.net "?*" 2 0 4"* ]]
+  [[ ${lines[7]} == *"A regex5.test.pi-hole.net "?*" 4 0 4"* ]]
+  [[ ${lines[8]} == *"A regexa.test.pi-hole.net "?*" 2 0 4"* ]]
+  [[ ${lines[9]} == *"A regex1.test.pi-hole.net "?*" 2 0 4"* ]]
+  [[ ${lines[10]} == *"A regex2.test.pi-hole.net "?*" 2 0 4"* ]]
   [[ ${lines[11]} == *"A google.com "?*" 2 0 4"* ]]
   [[ ${lines[12]} == *"AAAA google.com "?*" 2 0 4"* ]]
   [[ ${lines[13]} == *"A ftl.pi-hole.net "?*" 2 0 4"* ]]
@@ -293,7 +291,7 @@
 @test "Recent blocked" {
   run bash -c 'echo ">recentBlocked >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "regex5.com" ]]
+  [[ ${lines[1]} == "regex5.test.pi-hole.net" ]]
   [[ ${lines[2]} == "" ]]
 }
 
