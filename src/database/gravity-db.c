@@ -235,6 +235,16 @@ inline void gravityDB_finalize_client_statements(clientsData* client)
 	sqlite3_finalize(client->whitelist_stmt);
 }
 
+void gravityDB_reload_client_statements(void)
+{
+	for(int i=0; i < counters->clients; i++)
+	{
+		clientsData* client = getClient(i, true);
+		if(client != NULL)
+			gravityDB_prepare_client_statements(client);
+	}
+}
+
 void gravityDB_close(void)
 {
 	// Return early if gravity database is not available

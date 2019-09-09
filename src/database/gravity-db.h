@@ -16,6 +16,7 @@ enum { GRAVITY_TABLE, EXACT_BLACKLIST_TABLE, EXACT_WHITELIST_TABLE, REGEX_BLACKL
 bool gravityDB_open(void);
 bool gravityDB_prepare_client_statements(clientsData* client);
 void gravityDB_finalize_client_statements(clientsData* client);
+void gravityDB_reload_client_statements(void);
 void gravityDB_close(void);
 bool gravityDB_getTable(unsigned char list);
 const char* gravityDB_getDomain(void);
