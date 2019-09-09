@@ -118,6 +118,9 @@ static char* get_client_querystr(const char* table, const char* groups)
 
 bool gravityDB_prepare_client_statements(clientsData* client)
 {
+	if(config.debug & DEBUG_DATABASE)
+		logg("Initializing gravity statements for %s", getstr(client->ippos));
+
 	// Return early if gravity database is not available
 	if(!gravity_database_avail)
 		return false;
