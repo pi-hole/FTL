@@ -11,10 +11,13 @@ if ! id -u pihole &> /dev/null; then
   useradd -m -s /usr/sbin/nologin pihole
 fi
 
+# Clean up possible old files from earlier test runs
+rm -f /etc/pihole/gravity.db /etc/pihole/pihole-FTL.db /var/log/pihole.log /var/log/pihole-FTL.log
+
 # Create necessary directories and files
 mkdir -p /etc/pihole /var/run/pihole /var/log
-touch /var/log/pihole-FTL.log /var/run/pihole-FTL.pid /var/run/pihole-FTL.port
-chown pihole:pihole /etc/pihole /var/run/pihole /var/log/pihole-FTL.log /var/run/pihole-FTL.pid /var/run/pihole-FTL.port
+touch /var/log/pihole-FTL.log /var/log/pihole.log /var/run/pihole-FTL.pid /var/run/pihole-FTL.port
+chown pihole:pihole /etc/pihole /var/run/pihole /var/log/pihole.log /var/log/pihole-FTL.log /var/run/pihole-FTL.pid /var/run/pihole-FTL.port
 
 # Copy binary into a location the new user pihole can access
 cp ./pihole-FTL /home/pihole
@@ -54,7 +57,8 @@ dig TXT CHAOS version.FTL @127.0.0.1 +short
 echo -n "Contained dnsmasq version: "
 dig TXT CHAOS version.bind @127.0.0.1 +short
 
-# Print content of pihole-FTL.log
+# Print content of pihole.log and pihole-FTL.log
+cat /var/log/pihole.log
 cat /var/log/pihole-FTL.log
 
 # Run tests
