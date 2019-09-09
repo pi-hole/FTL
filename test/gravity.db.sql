@@ -96,7 +96,22 @@ CREATE TABLE adlist_by_group
 
 CREATE TABLE gravity
 (
-	domain TEXT PRIMARY KEY
+	domain TEXT NOT NULL,
+	adlist_id INTEGER NOT NULL REFERENCES adlist (id),
+	PRIMARY KEY(domain, adlist_id)
+);
+
+CREATE TABLE client
+(
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	ip TEXT NOL NULL UNIQUE
+);
+
+CREATE TABLE client_by_group
+(
+	client_id INTEGER NOT NULL REFERENCES client (id),
+	group_id INTEGER NOT NULL REFERENCES "group" (id),
+	PRIMARY KEY (client_id, group_id)
 );
 
 CREATE TABLE domain_audit
@@ -114,11 +129,14 @@ CREATE TABLE info
 
 INSERT INTO info VALUES("version","2");
 
-CREATE VIEW vw_gravity AS SELECT domain
+CREATE VIEW vw_gravity AS SELECT domain, adlist_by_group.group_id AS group_id
     FROM gravity
-    WHERE domain NOT IN (SELECT domain from vw_whitelist);
+    LEFT JOIN adlist_by_group ON adlist_by_group.adlist_id = gravity.adlist_id
+    LEFT JOIN adlist ON adlist.id = gravity.adlist_id
+    LEFT JOIN "group" ON "group".id = adlist_by_group.group_id
+    WHERE adlist.enabled = 1 AND (adlist_by_group.group_id IS NULL OR "group".enabled = 1);
 
-CREATE VIEW vw_whitelist AS SELECT DISTINCT domain
+CREATE VIEW vw_whitelist AS SELECT domain, whitelist_by_group.group_id AS group_id
     FROM whitelist
     LEFT JOIN whitelist_by_group ON whitelist_by_group.whitelist_id = whitelist.id
     LEFT JOIN "group" ON "group".id = whitelist_by_group.group_id
@@ -130,7 +148,7 @@ CREATE TRIGGER tr_whitelist_update AFTER UPDATE ON whitelist
       UPDATE whitelist SET date_modified = (cast(strftime('%s', 'now') as int)) WHERE domain = NEW.domain;
     END;
 
-CREATE VIEW vw_blacklist AS SELECT DISTINCT domain
+CREATE VIEW vw_blacklist AS SELECT domain, blacklist_by_group.group_id AS group_id
     FROM blacklist
     LEFT JOIN blacklist_by_group ON blacklist_by_group.blacklist_id = blacklist.id
     LEFT JOIN "group" ON "group".id = blacklist_by_group.group_id
@@ -188,9 +206,9 @@ INSERT INTO regex_blacklist VALUES(1,'regex[0-9].test.pi-hole.net',1,1559928803,
 
 INSERT INTO adlist VALUES(1,'https://hosts-file.net/ad_servers.txt',1,1559928803,1559928803,'Migrated from /etc/pihole/adlists.list');
 
-INSERT INTO gravity VALUES('whitelisted.test.pi-hole.net');
-INSERT INTO gravity VALUES('gravity-blocked.test.pi-hole.net');
-INSERT INTO gravity VALUES('discourse.pi-hole.net');
+INSERT INTO gravity VALUES('whitelisted.test.pi-hole.net',1);
+INSERT INTO gravity VALUES('gravity-blocked.test.pi-hole.net',1);
+INSERT INTO gravity VALUES('discourse.pi-hole.net',1);
 
 INSERT INTO "group" VALUES(1,0,'Test group','A disabled test group');
 INSERT INTO blacklist VALUES(2,'blacklisted-group-disabled.com',1,1559928803,1559928803,'Entry disabled by a group');
