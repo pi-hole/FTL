@@ -127,8 +127,6 @@ CREATE TABLE info
 	value TEXT NOT NULL
 );
 
-INSERT INTO info VALUES("version","2");
-
 CREATE VIEW vw_gravity AS SELECT domain, adlist_by_group.group_id AS group_id
     FROM gravity
     LEFT JOIN adlist_by_group ON adlist_by_group.adlist_id = gravity.adlist_id
@@ -215,5 +213,7 @@ INSERT INTO blacklist VALUES(2,'blacklisted-group-disabled.com',1,1559928803,155
 INSERT INTO blacklist_by_group VALUES(2,1);
 
 INSERT INTO domain_audit VALUES(1,'google.com',1559928803);
+
+INSERT INTO info VALUES("version","4");
 
 COMMIT;
