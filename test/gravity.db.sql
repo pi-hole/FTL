@@ -178,19 +178,19 @@ CREATE TRIGGER tr_adlist_update AFTER UPDATE ON adlist
       UPDATE adlist SET date_modified = (cast(strftime('%s', 'now') as int)) WHERE address = NEW.address;
     END;
 
-INSERT INTO whitelist VALUES(1,'whitelisted.com',1,1559928803,1559928803,'Migrated from /etc/pihole/whitelist.txt');
-INSERT INTO whitelist VALUES(2,'regex1.com',1,1559928803,1559928803,'');
+INSERT INTO whitelist VALUES(1,'whitelisted.test.pi-hole.net',1,1559928803,1559928803,'Migrated from /etc/pihole/whitelist.txt');
+INSERT INTO whitelist VALUES(2,'regex1.test.pi-hole.net',1,1559928803,1559928803,'');
 INSERT INTO regex_whitelist VALUES(1,'regex2',1,1559928803,1559928803,'');
-INSERT INTO regex_whitelist VALUES(2,'tse',1,1559928803,1559928803,'');
+INSERT INTO regex_whitelist VALUES(2,'discourse',1,1559928803,1559928803,'');
 
-INSERT INTO blacklist VALUES(1,'blacklisted.com',1,1559928803,1559928803,'Migrated from /etc/pihole/blacklist.txt');
-INSERT INTO regex_blacklist VALUES(1,'regex[0-9].com',1,1559928803,1559928803,'Migrated from /etc/pihole/regex.list');
+INSERT INTO blacklist VALUES(1,'blacklist-blocked.test.pi-hole.net',1,1559928803,1559928803,'Migrated from /etc/pihole/blacklist.txt');
+INSERT INTO regex_blacklist VALUES(1,'regex[0-9].test.pi-hole.net',1,1559928803,1559928803,'Migrated from /etc/pihole/regex.list');
 
 INSERT INTO adlist VALUES(1,'https://hosts-file.net/ad_servers.txt',1,1559928803,1559928803,'Migrated from /etc/pihole/adlists.list');
 
-INSERT INTO gravity VALUES('whitelisted.com');
-INSERT INTO gravity VALUES('0427d7.se');
-INSERT INTO gravity VALUES('01tse443.se');
+INSERT INTO gravity VALUES('whitelisted.test.pi-hole.net');
+INSERT INTO gravity VALUES('gravity-blocked.test.pi-hole.net');
+INSERT INTO gravity VALUES('discourse.pi-hole.net');
 
 INSERT INTO "group" VALUES(1,0,'Test group','A disabled test group');
 INSERT INTO blacklist VALUES(2,'blacklisted-group-disabled.com',1,1559928803,1559928803,'Entry disabled by a group');
