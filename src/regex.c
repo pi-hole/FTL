@@ -178,6 +178,9 @@ void allocate_regex_client_enabled(clientsData *client)
 	                                  "vw_regex_blacklist");
 
 	client->regex_enabled[REGEX_WHITELIST] = calloc(num_regex[REGEX_WHITELIST], sizeof(bool));
+	gravityDB_get_regex_client_groups(client, num_regex[REGEX_WHITELIST],
+	                                  regex_id[REGEX_WHITELIST], REGEX_WHITELIST,
+	                                  "vw_regex_whitelist");
 }
 
 static void read_regex_table(const unsigned char regexid)
