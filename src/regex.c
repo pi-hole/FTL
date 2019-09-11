@@ -21,6 +21,7 @@
 
 static int num_regex[2] = { 0 };
 static regex_t *regex[2] = { NULL };
+static bool *regex_available[2] = { NULL };
 static int *regex_id[2] = { NULL };
 static char **regexbuffer[2] = { NULL };
 
@@ -76,7 +77,7 @@ bool match_regex(const char *input, const clientsData *client, const unsigned ch
 	{
 		// Only check regex which have been successfully compiled and
 		// are enabled for this client
-		if(regex[regexid][index].allocated == 0 ||
+		if(!regex_available[regexid][index] ||
 		   !client->regex_enabled[regexid][index])
 			continue;
 
@@ -148,6 +149,9 @@ static void free_regex(void)
 	{
 		for(int index = 0; index < num_regex[regexid]; index++)
 		{
+			if(!regex_available[regexid][index])
+				continue;
+
 			regfree(&regex[regexid][index]);
 
 			// Also free buffered regex strings if in regex debug mode
@@ -206,6 +210,7 @@ static void read_regex_table(const unsigned char regexid)
 	// Allocate memory for regex
 	regex[regexid] = calloc(num_regex[regexid], sizeof(regex_t));
 	regex_id[regexid] = calloc(num_regex[regexid], sizeof(int));
+	regex_available[regexid] = calloc(num_regex[regexid], sizeof(bool));
 
 	// Buffer strings if in regex debug mode
 	if(config.debug & DEBUG_REGEX)
@@ -238,7 +243,7 @@ static void read_regex_table(const unsigned char regexid)
 			continue;
 
 		// Compile this regex
-		compile_regex(domain, i, regexid);
+		regex_available[regexid][i] = compile_regex(domain, i, regexid);
 		regex_id[regexid][i] = rowid;
 
 		// Increase counter
