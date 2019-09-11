@@ -95,7 +95,7 @@ static char* get_client_querystr(const char* table, const char* groups)
 	if(groups != NULL)
 	{
 		// Group filtering
-		if(asprintf(&querystr, "SELECT EXISTS(SELECT domain from %s WHERE domain = ? AND group_id IN (%s));", table, groups) < 1)
+		if(asprintf(&querystr, "SELECT EXISTS(SELECT domain from %s WHERE domain = ? AND group_id IN (%s) OR group_id IS NULL);", table, groups) < 1)
 		{
 			logg("get_client_querystr(%s, %s) - asprintf() error", table, groups);
 			return NULL;
@@ -524,7 +524,7 @@ bool gravityDB_get_regex_client_groups(clientsData* client, const int numregex, 
 	if(groups != NULL)
 	{
 		// Group filtering
-		if(asprintf(&querystr, "SELECT id from %s WHERE (group_id IN (%s));", table, groups) < 1)
+		if(asprintf(&querystr, "SELECT id from %s WHERE (group_id IN (%s) OR group_id IS NULL);", table, groups) < 1)
 		{
 			logg("gravityDB_get_regex_client_groups(%s, %s) - asprintf() error", table, groups);
 			return false;
