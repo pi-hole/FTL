@@ -63,6 +63,7 @@ typedef struct {
 	sqlite3_stmt* whitelist_stmt;
 	sqlite3_stmt* gravity_stmt;
 	sqlite3_stmt* blacklist_stmt;
+	bool *regex_enabled[2];
 } clientsData;
 
 typedef struct {

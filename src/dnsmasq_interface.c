@@ -245,9 +245,8 @@ char _FTL_new_query(const unsigned int flags, const char *name, const struct all
 		// - Walk regex only if not already exactly matched above
 		// - If matched, then compare against whitelist
 		// - If in whitelist, negate matched so this function returns: not-to-be-blocked
-		if(domain->regexmatch == REGEX_UNKNOWN &&
-		   !blockDomain &&
-		   match_regex(domainString, REGEX_BLACKLIST) &&
+		if(!blockDomain &&
+		   match_regex(domainString, client, REGEX_BLACKLIST) &&
 		   !in_whitelist(domainString, client))
 		{
 			// Mark domain as regex match

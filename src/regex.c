@@ -21,7 +21,7 @@
 
 static int num_regex[2] = { 0 };
 static regex_t *regex[2] = { NULL };
-static bool *regexconfigured[2] = { NULL };
+static int *regex_id[2] = { NULL };
 static char **regexbuffer[2] = { NULL };
 
 static const char *regextype[] = { "blacklist", "whitelist" };
@@ -60,16 +60,24 @@ static bool compile_regex(const char *regexin, const int index, const unsigned c
 	return true;
 }
 
-bool match_regex(const char *input, const unsigned char regexid)
+bool match_regex(const char *input, const clientsData *client, const unsigned char regexid)
 {
 	bool matched = false;
+
+	if(client->regex_enabled[regexid] == NULL)
+	{
+		logg("Regex list %d for client not configured!", regexid);
+		return false;
+	}
 
 	// Start matching timer
 	timer_start(REGEX_TIMER);
 	for(int index = 0; index < num_regex[regexid]; index++)
 	{
-		// Only check regex which have been successfully compiled
-		if(!regexconfigured[regexid][index])
+		// Only check regex which have been successfully compiled and
+		// are enabled for this client
+		if(regex[regexid][index].allocated == 0 ||
+		   !client->regex_enabled[regexid][index])
 			continue;
 
 		// Try to match the compiled regular expression against input
@@ -114,21 +122,39 @@ static void free_regex(void)
 	   regex[REGEX_BLACKLIST] == NULL)
 		return;
 
+	// Reset client configuration
+	for(int i = 0; i < counters->clients; i++)
+	{
+		// Get client pointer
+		clientsData *client = getClient(i, true);
+		if(client == NULL)
+			continue;
+
+		if(client->regex_enabled[REGEX_WHITELIST] != NULL)
+		{
+			free(client->regex_enabled[REGEX_WHITELIST]);
+			client->regex_enabled[REGEX_WHITELIST] = NULL;
+		}
+
+		if(client->regex_enabled[REGEX_BLACKLIST] != NULL)
+		{
+			free(client->regex_enabled[REGEX_BLACKLIST]);
+			client->regex_enabled[REGEX_BLACKLIST] = NULL;
+		}
+	}
+
 	// Free regex datastructure
 	for(int regexid = 0; regexid < 2; regexid++)
 	{
 		for(int index = 0; index < num_regex[regexid]; index++)
 		{
-			if(regexconfigured[regexid][index])
-			{
-				regfree(&regex[regexid][index]);
+			regfree(&regex[regexid][index]);
 
-				// Also free buffered regex strings if in regex debug mode
-				if(config.debug & DEBUG_REGEX)
-				{
-					free(regexbuffer[regexid][index]);
-					regexbuffer[regexid][index] = NULL;
-				}
+			// Also free buffered regex strings if in regex debug mode
+			if(config.debug & DEBUG_REGEX && regexbuffer[regexid][index] != NULL)
+			{
+				free(regexbuffer[regexid][index]);
+				regexbuffer[regexid][index] = NULL;
 			}
 		}
 
@@ -138,15 +164,20 @@ static void free_regex(void)
 			free(regex[regexid]);
 			regex[regexid] = NULL;
 		}
-		if(regexconfigured[regexid] != NULL)
-		{
-			free(regexconfigured[regexid]);
-			regexconfigured[regexid] = NULL;
-		}
 
 		// Reset counter for number of regex
 		num_regex[regexid] = 0;
 	}
+}
+
+void allocate_regex_client_enabled(clientsData *client)
+{
+	client->regex_enabled[REGEX_BLACKLIST] = calloc(num_regex[REGEX_BLACKLIST], sizeof(bool));
+	gravityDB_get_regex_client_groups(client, num_regex[REGEX_BLACKLIST],
+	                                  regex_id[REGEX_BLACKLIST], REGEX_BLACKLIST,
+	                                  "vw_regex_blacklist");
+
+	client->regex_enabled[REGEX_WHITELIST] = calloc(num_regex[REGEX_WHITELIST], sizeof(bool));
 }
 
 static void read_regex_table(const unsigned char regexid)
@@ -171,7 +202,7 @@ static void read_regex_table(const unsigned char regexid)
 
 	// Allocate memory for regex
 	regex[regexid] = calloc(num_regex[regexid], sizeof(regex_t));
-	regexconfigured[regexid] = calloc(num_regex[regexid], sizeof(bool));
+	regex_id[regexid] = calloc(num_regex[regexid], sizeof(int));
 
 	// Buffer strings if in regex debug mode
 	if(config.debug & DEBUG_REGEX)
@@ -186,8 +217,8 @@ static void read_regex_table(const unsigned char regexid)
 
 	// Walk database table
 	const char *domain = NULL;
-	int i = 0;
-	while((domain = gravityDB_getDomain()) != NULL)
+	int i = 0, rowid = 0;
+	while((domain = gravityDB_getDomain(&rowid)) != NULL)
 	{
 		// Avoid buffer overflow if database table changed
 		// since we counted its entries
@@ -204,7 +235,8 @@ static void read_regex_table(const unsigned char regexid)
 			continue;
 
 		// Compile this regex
-		regexconfigured[regexid][i] = compile_regex(domain, i, regexid);
+		compile_regex(domain, i, regexid);
+		regex_id[regexid][i] = rowid;
 
 		// Increase counter
 		i++;
@@ -229,6 +261,17 @@ void read_regex_from_database(void)
 
 	// Read and compile regex whitelist
 	read_regex_table(REGEX_WHITELIST);
+
+
+	for(int i = 0; i < counters->clients; i++)
+	{
+		// Get client pointer
+		clientsData *client = getClient(i, true);
+		if(client == NULL)
+			continue;
+
+		allocate_regex_client_enabled(client);
+	}
 
 	// Print message to FTL's log after reloading regex filters
 	logg("Compiled %i whitelist and %i blacklist regex filters in %.1f msec",
