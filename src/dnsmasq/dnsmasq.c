@@ -483,10 +483,10 @@ int main_dnsmasq (int argc, char **argv)
     need_cap_net_bind_service = 1;
 
   /* usptream servers which bind to an interface call SO_BINDTODEVICE
-     for each TCP connection, so need CAP_NET_ADMIN */
+     for each TCP connection, so need CAP_NET_RAW */
   for (serv = daemon->servers; serv; serv = serv->next)
     if (serv->interface[0] != 0)
-      need_cap_net_admin = 1;
+      need_cap_net_raw = 1;
 
   /* If we're doing Dbus or UBus, the above can be set dynamically,
      (as can ports) so always (potentially) needed. */
@@ -494,7 +494,7 @@ int main_dnsmasq (int argc, char **argv)
   if (option_bool(OPT_DBUS))
     {
       need_cap_net_bind_service = 1;
-      need_cap_net_admin = 1;
+      need_cap_net_raw = 1;
     }
 #endif
 
@@ -502,7 +502,7 @@ int main_dnsmasq (int argc, char **argv)
   if (option_bool(OPT_UBUS))
     {
       need_cap_net_bind_service = 1;
-      need_cap_net_admin = 1;
+      need_cap_net_raw = 1;
     }
 #endif
   
