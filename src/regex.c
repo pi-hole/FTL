@@ -75,11 +75,22 @@ bool match_regex(const char *input, const clientsData *client, const unsigned ch
 	timer_start(REGEX_TIMER);
 	for(int index = 0; index < num_regex[regexid]; index++)
 	{
-		// Only check regex which have been successfully compiled and
-		// are enabled for this client
-		if(!regex_available[regexid][index] ||
-		   !client->regex_enabled[regexid][index])
+		// Only check regex which have been successfully compiled ...
+		if(!regex_available[regexid][index])
+		{
+			if(config.debug & DEBUG_REGEX)
+				logg("Regex %s ID %d not available", regextype[regexid], index);
+
 			continue;
+		}
+		// ... and are enabled for this client
+		if(!client->regex_enabled[regexid][index])
+		{
+			if(config.debug & DEBUG_REGEX)
+				logg("Regex %s ID %d not enabled for this client", regextype[regexid], index);
+
+			continue;
+		}
 
 		// Try to match the compiled regular expression against input
 		int errcode = regexec(&regex[regexid][index], input, 0, NULL, 0);

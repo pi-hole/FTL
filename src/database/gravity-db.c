@@ -95,7 +95,7 @@ static char* get_client_querystr(const char* table, const char* groups)
 	if(groups != NULL)
 	{
 		// Group filtering
-		if(asprintf(&querystr, "SELECT EXISTS(SELECT domain from %s WHERE domain = ? AND group_id IN (%s) OR group_id IS NULL);", table, groups) < 1)
+		if(asprintf(&querystr, "SELECT EXISTS(SELECT domain from %s WHERE domain = ? AND group_id IN (%s));", table, groups) < 1)
 		{
 			logg("get_client_querystr(%s, %s) - asprintf() error", table, groups);
 			return NULL;
@@ -294,7 +294,7 @@ bool gravityDB_getTable(const unsigned char list)
 
 	char *querystr = NULL;
 	// Build correct query string to be used depending on list to be read
-	if(asprintf(&querystr, "SELECT domain FROM %s", tablename[list]) < 18)
+	if(asprintf(&querystr, "SELECT domain, id FROM %s", tablename[list]) < 18)
 	{
 		logg("readGravity(%u) - asprintf() error", list);
 		return false;
@@ -524,7 +524,7 @@ bool gravityDB_get_regex_client_groups(clientsData* client, const int numregex, 
 	if(groups != NULL)
 	{
 		// Group filtering
-		if(asprintf(&querystr, "SELECT id from %s WHERE (group_id IN (%s) OR group_id IS NULL);", table, groups) < 1)
+		if(asprintf(&querystr, "SELECT id from %s WHERE group_id IN (%s);", table, groups) < 1)
 		{
 			logg("gravityDB_get_regex_client_groups(%s, %s) - asprintf() error", table, groups);
 			return false;
@@ -535,6 +535,10 @@ bool gravityDB_get_regex_client_groups(clientsData* client, const int numregex, 
 		// No group filtering, enable all regex for this client
 		for(int i = 0; i < numregex; i++)
 			client->regex_enabled[type][i] = true;
+
+		if(config.debug & DEBUG_DATABASE)
+			logg("No group filtering, enable all regex for this client");
+
 		return true;
 	}
 
@@ -555,10 +559,14 @@ bool gravityDB_get_regex_client_groups(clientsData* client, const int numregex, 
 	while((rc = sqlite3_step(query_stmt)) == SQLITE_ROW)
 	{
 		const int result = sqlite3_column_int(query_stmt, 0);
-		logg("%d",result);
 		for(int i = 0; i < numregex; i++)
+		{
 			if(regexid[i] == result)
+			{
 				client->regex_enabled[type][i] = true;
+				break;
+			}
+		}
 	}
 
 	// Finalize statement
