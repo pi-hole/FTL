@@ -134,7 +134,7 @@ CREATE VIEW vw_gravity AS SELECT domain, adlist_by_group.group_id AS group_id
     LEFT JOIN "group" ON "group".id = adlist_by_group.group_id
     WHERE adlist.enabled = 1 AND (adlist_by_group.group_id IS NULL OR "group".enabled = 1);
 
-CREATE VIEW vw_whitelist AS SELECT domain, whitelist_by_group.group_id AS group_id
+CREATE VIEW vw_whitelist AS SELECT domain, whitelist.id AS id, whitelist_by_group.group_id AS group_id
     FROM whitelist
     LEFT JOIN whitelist_by_group ON whitelist_by_group.whitelist_id = whitelist.id
     LEFT JOIN "group" ON "group".id = whitelist_by_group.group_id
@@ -146,7 +146,7 @@ CREATE TRIGGER tr_whitelist_update AFTER UPDATE ON whitelist
       UPDATE whitelist SET date_modified = (cast(strftime('%s', 'now') as int)) WHERE domain = NEW.domain;
     END;
 
-CREATE VIEW vw_blacklist AS SELECT domain, blacklist_by_group.group_id AS group_id
+CREATE VIEW vw_blacklist AS SELECT domain, blacklist.id AS id, blacklist_by_group.group_id AS group_id
     FROM blacklist
     LEFT JOIN blacklist_by_group ON blacklist_by_group.blacklist_id = blacklist.id
     LEFT JOIN "group" ON "group".id = blacklist_by_group.group_id
@@ -158,7 +158,7 @@ CREATE TRIGGER tr_blacklist_update AFTER UPDATE ON blacklist
       UPDATE blacklist SET date_modified = (cast(strftime('%s', 'now') as int)) WHERE domain = NEW.domain;
     END;
 
-CREATE VIEW vw_regex_blacklist AS SELECT DISTINCT domain
+CREATE VIEW vw_regex_blacklist AS SELECT DISTINCT domain, regex_blacklist.id AS id, regex_blacklist_by_group.group_id AS group_id
     FROM regex_blacklist
     LEFT JOIN regex_blacklist_by_group ON regex_blacklist_by_group.regex_blacklist_id = regex_blacklist.id
     LEFT JOIN "group" ON "group".id = regex_blacklist_by_group.group_id
@@ -170,7 +170,7 @@ CREATE TRIGGER tr_regex_blacklist_update AFTER UPDATE ON regex_blacklist
       UPDATE regex_blacklist SET date_modified = (cast(strftime('%s', 'now') as int)) WHERE domain = NEW.domain;
     END;
 
-CREATE VIEW vw_regex_whitelist AS SELECT DISTINCT domain
+CREATE VIEW vw_regex_whitelist AS SELECT DISTINCT domain, regex_whitelist.id AS id, regex_whitelist_by_group.group_id AS group_id
     FROM regex_whitelist
     LEFT JOIN regex_whitelist_by_group ON regex_whitelist_by_group.regex_whitelist_id = regex_whitelist.id
     LEFT JOIN "group" ON "group".id = regex_whitelist_by_group.group_id
@@ -213,6 +213,15 @@ INSERT INTO blacklist VALUES(2,'blacklisted-group-disabled.com',1,1559928803,155
 INSERT INTO blacklist_by_group VALUES(2,1);
 
 INSERT INTO domain_audit VALUES(1,'google.com',1559928803);
+
+INSERT INTO client VALUES(1,"127.0.0.1");
+INSERT INTO client VALUES(2,"127.0.0.2");
+INSERT INTO client VALUES(3,"127.0.0.3");
+
+INSERT INTO "group" VALUES(2,1,"Second test group","A group associated with client 127.0.0.2");
+INSERT INTO client_by_group VALUES(2,2);
+INSERT INTO adlist_by_group VALUES(1,2);
+INSERT INTO regex_blacklist_by_group VALUES(1,2);
 
 INSERT INTO info VALUES("version","4");
 
