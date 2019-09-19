@@ -1632,9 +1632,6 @@ void receive_query(struct listener *listen, time_t now)
       if (header->hb4 & HB4_AD)
 	ad_reqd = 1;
 
-      m = answer_request(header, ((char *) header) + udp_size, (size_t)n, 
-			 dst_addr_4, netmask, now, ad_reqd, do_bit, have_pseudoheader);
-      
       /************ Pi-hole modification ************/
       if(piholeblocked)
 	{
@@ -1643,12 +1640,16 @@ void receive_query(struct listener *listen, time_t now)
 	  unsigned int flags = (listen->family == AF_INET) ? F_IPV4 : F_IPV6;
 	  FTL_get_blocking_metadata(&addrp, &flags);
 	  plen = setup_reply(header, n, addrp, flags, daemon->local_ttl);
-//	  if (find_pseudoheader(header, plen, NULL, NULL, NULL, NULL))
-//	    plen = add_pseudoheader(header, plen, ((unsigned char *) header) + PACKETSZ, daemon->edns_pktsz, 0, NULL, 0, do_bit, 0);
+	  if (find_pseudoheader(header, plen, NULL, NULL, NULL, NULL))
+	    plen = add_pseudoheader(header, plen, ((unsigned char *) header) + PACKETSZ, daemon->edns_pktsz, 0, NULL, 0, do_bit, 0);
 	  send_from(listen->fd, option_bool(OPT_NOWILD) || option_bool(OPT_CLEVERBIND), (char *)header, plen, (union mysockaddr*)&source_addr, &dst_addr, if_index);
+	  return;
 	}
-      else
       /**********************************************/
+
+      m = answer_request(header, ((char *) header) + udp_size, (size_t)n, 
+			 dst_addr_4, netmask, now, ad_reqd, do_bit, have_pseudoheader);
+      
       if (m >= 1)
 	{
 	  send_from(listen->fd, option_bool(OPT_NOWILD) || option_bool(OPT_CLEVERBIND),
@@ -2002,10 +2003,6 @@ unsigned char *tcp_request(int confd, time_t now,
 	   /* RFC 6840 5.7 */
 	   if (header->hb4 & HB4_AD)
 	     ad_reqd = 1;
-	   
-	   /* m > 0 if answered from cache */
-	   m = answer_request(header, ((char *) header) + 65536, (size_t)size, 
-			      dst_addr_4, netmask, now, ad_reqd, do_bit, have_pseudoheader);
 	  
 	  /* Do this by steam now we're not in the select() loop */
 	  check_log_writer(1); 
@@ -2021,7 +2018,13 @@ unsigned char *tcp_request(int confd, time_t now,
 	        m = add_pseudoheader(header, m, ((unsigned char *) header) + 65536, daemon->edns_pktsz, 0, NULL, 0, do_bit, 0);
 	    }
 	  else
+	  {
 	  /**********************************************/
+	   
+	   /* m > 0 if answered from cache */
+	   m = answer_request(header, ((char *) header) + 65536, (size_t)size, 
+			      dst_addr_4, netmask, now, ad_reqd, do_bit, have_pseudoheader);
+	  
 	  if (m == 0)
 	    {
 	      unsigned int flags = 0;
@@ -2235,6 +2238,9 @@ unsigned char *tcp_request(int confd, time_t now,
 		    m = add_pseudoheader(header, m, ((unsigned char *) header) + 65536, daemon->edns_pktsz, 0, NULL, 0, do_bit, 0);
 		}
 	    }
+	  /************ Pi-hole modification ************/
+	  }
+	  /**********************************************/
 	}
 	  
       check_log_writer(1);
