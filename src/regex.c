@@ -103,7 +103,7 @@ bool match_regex(const char *input, const clientsData *client, const unsigned ch
 
 			// Print match message when in regex debug mode
 			if(config.debug & DEBUG_REGEX)
-				logg("Regex %s in line %i \"%s\" matches \"%s\"", regextype[regexid], index+1, regexbuffer[regexid][index], input);
+				logg("Regex %s (ID %i) \"%s\" matches \"%s\"", regextype[regexid], regex_id[regexid][index], regexbuffer[regexid][index], input);
 			break;
 		}
 	}
