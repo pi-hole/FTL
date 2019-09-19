@@ -215,13 +215,21 @@ INSERT INTO blacklist_by_group VALUES(2,1);
 INSERT INTO domain_audit VALUES(1,'google.com',1559928803);
 
 INSERT INTO client VALUES(1,"127.0.0.1");
-INSERT INTO client VALUES(2,"127.0.0.2");
-INSERT INTO client VALUES(3,"127.0.0.3");
 
+# A group associated with client 127.0.0.2
+# We do connect one adlist, and one regex blacklist
+INSERT INTO client VALUES(2,"127.0.0.2");
 INSERT INTO "group" VALUES(2,1,"Second test group","A group associated with client 127.0.0.2");
 INSERT INTO client_by_group VALUES(2,2);
 INSERT INTO adlist_by_group VALUES(1,2);
 INSERT INTO regex_blacklist_by_group VALUES(1,2);
+
+# A group associated with client 127.0.0.3
+# We do not connect any domains so we expect no queries to be blocked at all
+INSERT INTO client VALUES(3,"127.0.0.3");
+INSERT INTO "group" VALUES(3,1,"Third test group","A group associated with client 127.0.0.3");
+INSERT INTO client_by_group VALUES(3,3);
+INSERT INTO adlist_by_group VALUES(1,3);
 
 INSERT INTO info VALUES("version","4");
 
