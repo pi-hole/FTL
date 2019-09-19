@@ -381,7 +381,7 @@ int gravityDB_count(const unsigned char list)
 
 	char *querystr = NULL;
 	// Build correct query string to be used depending on list to be read
-	if(asprintf(&querystr, "SELECT count(domain) FROM %s", tablename[list]) < 18)
+	if(asprintf(&querystr, "SELECT count(DISTINCT domain) FROM %s", tablename[list]) < 18)
 	{
 		logg("readGravity(%u) - asprintf() error", list);
 		return false;
