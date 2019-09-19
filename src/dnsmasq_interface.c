@@ -249,14 +249,9 @@ char _FTL_new_query(const unsigned int flags, const char *name, const struct all
 		   match_regex(domainString, client, REGEX_BLACKLIST) &&
 		   !in_whitelist(domainString, client))
 		{
-			// Mark domain as regex match
+			// Mark domain as regex match (note that this might not apply for all clients!)
 			domain->regexmatch = REGEX_BLOCKED;
-		}
 
-		// Status can be REGEX_BLOCKED either due to being set above
-		// or by having been set before for this domain
-		if(domain->regexmatch == REGEX_BLOCKED)
-		{
 			// We have to block this domain
 			blockDomain = 1;
 			query->status = QUERY_WILDCARD;
