@@ -32,7 +32,7 @@ sqlite3 /etc/pihole/gravity.db < test/gravity.db.sql
 echo "BLOCKING_ENABLED=true" > /etc/pihole/setupVars.conf
 
 # Prepare pihole-FTL.conf
-echo "" > /etc/pihole/pihole-FTL.conf
+echo "DEBUG_ALL=true" > /etc/pihole/pihole-FTL.conf
 
 # Set restrictive umask
 OLDUMASK=$(umask)
