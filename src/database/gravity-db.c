@@ -263,6 +263,13 @@ int gravityDB_count(const unsigned char list)
 
 static bool domain_in_list(const char *domain, sqlite3_stmt* stmt)
 {
+	// Do not try to bind text to statement when database is not available
+	if(!gravity_database_avail)
+	{
+		logg("domain_in_list(%s): Gravity database not available", domain);
+		return false;
+	}
+
 	int retval;
 	// Bind domain to prepared statement
 	// SQLITE_STATIC: Use the string without first duplicating it internally.
