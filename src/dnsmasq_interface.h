@@ -10,12 +10,15 @@
 #ifndef DNSMASQ_INTERFACE_H
 #define DNSMASQ_INTERFACE_H
 
+// Including stdbool.h here as it is required for defining the boolean prototype of FTL_new_query
+#include <stdbool.h>
+
 extern int socketfd, telnetfd4, telnetfd6;
 extern unsigned char* pihole_privacylevel;
 enum { TCP, UDP };
 
 #define FTL_new_query(flags, name, addr, types, id, type) _FTL_new_query(flags, name, addr, types, id, type, __FILE__, __LINE__)
-char _FTL_new_query(const unsigned int flags, const char *name, const struct all_addr *addr, const char *types, const int id, const char type, const char* file, const int line);
+bool _FTL_new_query(const unsigned int flags, const char *name, const struct all_addr *addr, const char *types, const int id, const char type, const char* file, const int line);
 
 #define FTL_forwarded(flags, name, addr, id) _FTL_forwarded(flags, name, addr, id, __FILE__, __LINE__)
 void _FTL_forwarded(const unsigned int flags, const char *name, const struct all_addr *addr, const int id, const char* file, const int line);

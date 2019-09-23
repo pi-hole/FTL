@@ -53,7 +53,7 @@ static struct all_addr blocking_addrp_v6 = {{{ 0 }}};
 unsigned char* pihole_privacylevel = &config.privacylevel;
 const char flagnames[28][12] = {"F_IMMORTAL ", "F_NAMEP ", "F_REVERSE ", "F_FORWARD ", "F_DHCP ", "F_NEG ", "F_HOSTS ", "F_IPV4 ", "F_IPV6 ", "F_BIGNAME ", "F_NXDOMAIN ", "F_CNAME ", "F_DNSKEY ", "F_CONFIG ", "F_DS ", "F_DNSSECOK ", "F_UPSTREAM ", "F_RRNAME ", "F_SERVER ", "F_QUERY ", "F_NOERR ", "F_AUTH ", "F_DNSSEC ", "F_KEYTAG ", "F_SECSTAT ", "F_NO_RR ", "F_IPSET ", "F_NOEXTRA "};
 
-char _FTL_new_query(const unsigned int flags, const char *name, const struct all_addr *addr,
+bool _FTL_new_query(const unsigned int flags, const char *name, const struct all_addr *addr,
                     const char *types, const int id, const char type,
                     const char* file, const int line)
 {
@@ -61,7 +61,7 @@ char _FTL_new_query(const unsigned int flags, const char *name, const struct all
 
 	// Don't analyze anything if in PRIVACY_NOSTATS mode
 	if(config.privacylevel >= PRIVACY_NOSTATS)
-		return 0;
+		return false;
 
 	// Lock shared memory
 	lock_shm();
@@ -95,7 +95,7 @@ char _FTL_new_query(const unsigned int flags, const char *name, const struct all
 		if(config.debug & DEBUG_QUERIES)
 			logg("Notice: Skipping unknown query type: %s (%i)", types, id);
 		unlock_shm();
-		return 0;
+		return false;
 	}
 
 	// Skip AAAA queries if user doesn't want to have them analyzed
@@ -104,7 +104,7 @@ char _FTL_new_query(const unsigned int flags, const char *name, const struct all
 		if(config.debug & DEBUG_QUERIES)
 			logg("Not analyzing AAAA query");
 		unlock_shm();
-		return 0;
+		return false;
 	}
 
 	// Ensure we have enough space in the queries struct
@@ -115,7 +115,7 @@ char _FTL_new_query(const unsigned int flags, const char *name, const struct all
 	if(strcasecmp(name, "pi.hole") == 0)
 	{
 		unlock_shm();
-		return 0;
+		return false;
 	}
 
 	// Convert domain to lower case
@@ -135,7 +135,7 @@ char _FTL_new_query(const unsigned int flags, const char *name, const struct all
 		free(domainString);
 		free(clientIP);
 		unlock_shm();
-		return 0;
+		return false;
 	}
 
 	// Log new query if in debug mode
@@ -162,7 +162,7 @@ char _FTL_new_query(const unsigned int flags, const char *name, const struct all
 		free(domainString);
 		free(clientIP);
 		unlock_shm();
-		return 0;
+		return false;
 	}
 
 	// Go through already knows domains and see if it is one of them
@@ -219,7 +219,7 @@ char _FTL_new_query(const unsigned int flags, const char *name, const struct all
 	domainsData* domain = getDomain(domainID, true);
 
 	// Only check domains for blocking conditions when global blocking is enabled
-	char blockDomain = 0;
+	bool blockDomain = false;
 	if(blockingstatus != BLOCKING_DISABLED)
 	{
 		// We check the user blacklist first as it is typically smaller than gravity
@@ -229,7 +229,7 @@ char _FTL_new_query(const unsigned int flags, const char *name, const struct all
 		if(((black = in_blacklist(domainString, client)) || (gravity = in_gravity(domainString, client))) &&
 		   !in_whitelist(domainString, client))
 		{
-			blockDomain = 1;
+			blockDomain = true;
 			if(black)
 				query->status = QUERY_BLACKLIST;
 			else if(gravity)
@@ -253,7 +253,7 @@ char _FTL_new_query(const unsigned int flags, const char *name, const struct all
 			domain->regexmatch = REGEX_BLOCKED;
 
 			// We have to block this domain
-			blockDomain = 1;
+			blockDomain = true;
 			query->status = QUERY_WILDCARD;
 
 			// Adjust counters

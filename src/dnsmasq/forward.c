@@ -1334,7 +1334,7 @@ void receive_query(struct listener *listen, time_t now)
   int check_dst = !option_bool(OPT_NOWILD);
 #endif
   /************ Pi-hole modification ************/
-  char piholeblocked = 0;
+  bool piholeblocked = false;
   /**********************************************/
 
   /* packet buffer overwritten */
@@ -1856,7 +1856,7 @@ unsigned char *tcp_request(int confd, time_t now,
   (void)have_mark;
 
   /************ Pi-hole modification ************/
-  char piholeblocked = 0;
+  bool piholeblocked = false;
   /**********************************************/
 
   if (getpeername(confd, (struct sockaddr *)&peer_addr, &peer_len) == -1)
