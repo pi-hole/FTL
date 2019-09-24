@@ -34,6 +34,9 @@ echo "BLOCKING_ENABLED=true" > /etc/pihole/setupVars.conf
 # Prepare pihole-FTL.conf
 echo "DEBUG_ALL=true" > /etc/pihole/pihole-FTL.conf
 
+# Prepare dnsmasq.conf
+echo -e "log-queries\nlog-facility=/var/log/pihole.log" > /etc/dnsmasq.conf
+
 # Set restrictive umask
 OLDUMASK=$(umask)
 umask 0022

@@ -426,3 +426,9 @@
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0" ]]
 }
+
+@test "Blocking status is correctly logged in pihole.log" {
+  run bash -c 'grep -c "gravity blocked gravity-blocked.test.pi-hole.net is 0.0.0.0" /var/log/pihole.log'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "2" ]]
+}

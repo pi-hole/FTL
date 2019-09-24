@@ -2016,7 +2016,7 @@ unsigned char *tcp_request(int confd, time_t now,
 	      struct all_addr *addrp = NULL;
 	      unsigned int flags = (peer_addr.sa.sa_family == AF_INET) ? F_IPV4 : F_IPV6;
 	      FTL_get_blocking_metadata(&addrp, &flags);
-	      log_query(F_CONFIG, daemon->namebuff, NULL, (char*)blockingreason);
+	      log_query(flags, daemon->namebuff, addrp, (char*)blockingreason);
 	      m = setup_reply(header, size, addrp, flags, daemon->local_ttl);
 	      if (have_pseudoheader)
 	        m = add_pseudoheader(header, m, ((unsigned char *) header) + 65536, daemon->edns_pktsz, 0, NULL, 0, do_bit, 0);
