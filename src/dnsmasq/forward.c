@@ -1335,6 +1335,7 @@ void receive_query(struct listener *listen, time_t now)
 #endif
   /************ Pi-hole modification ************/
   bool piholeblocked = false;
+  const char* blockingreason = NULL;
   /**********************************************/
 
   /* packet buffer overwritten */
@@ -1559,7 +1560,7 @@ void receive_query(struct listener *listen, time_t now)
       {
 	log_query(F_QUERY | F_IPV4 | F_FORWARD, daemon->namebuff, 
 		  (struct all_addr *)&source_addr.in.sin_addr, types);
-	piholeblocked = FTL_new_query(F_QUERY | F_IPV4 | F_FORWARD, daemon->namebuff,
+	piholeblocked = FTL_new_query(F_QUERY | F_IPV4 | F_FORWARD, daemon->namebuff, &blockingreason,
 	              (struct all_addr *)&source_addr.in.sin_addr, types, daemon->log_display_id, UDP);
       }
 #ifdef HAVE_IPV6
@@ -1567,7 +1568,7 @@ void receive_query(struct listener *listen, time_t now)
       {
 	log_query(F_QUERY | F_IPV6 | F_FORWARD, daemon->namebuff,
 		  (struct all_addr *)&source_addr.in6.sin6_addr, types);
-	piholeblocked = FTL_new_query(F_QUERY | F_IPV6 | F_FORWARD, daemon->namebuff,
+	piholeblocked = FTL_new_query(F_QUERY | F_IPV6 | F_FORWARD, daemon->namebuff, &blockingreason,
 	              (struct all_addr *)&source_addr.in6.sin6_addr, types, daemon->log_display_id, UDP);
       }
 #endif
@@ -1639,6 +1640,7 @@ void receive_query(struct listener *listen, time_t now)
 	  struct all_addr *addrp = NULL;
 	  unsigned int flags = (listen->family == AF_INET) ? F_IPV4 : F_IPV6;
 	  FTL_get_blocking_metadata(&addrp, &flags);
+	  log_query(flags, daemon->namebuff, addrp, (char*)blockingreason);
 	  plen = setup_reply(header, n, addrp, flags, daemon->local_ttl);
 	  if (find_pseudoheader(header, plen, NULL, NULL, NULL, NULL))
 	    plen = add_pseudoheader(header, plen, ((unsigned char *) header) + PACKETSZ, daemon->edns_pktsz, 0, NULL, 0, do_bit, 0);
@@ -1857,6 +1859,7 @@ unsigned char *tcp_request(int confd, time_t now,
 
   /************ Pi-hole modification ************/
   bool piholeblocked = false;
+  const char* blockingreason = NULL;
   /**********************************************/
 
   if (getpeername(confd, (struct sockaddr *)&peer_addr, &peer_len) == -1)
@@ -1947,7 +1950,7 @@ unsigned char *tcp_request(int confd, time_t now,
 	  {
 	    log_query(F_QUERY | F_IPV4 | F_FORWARD, daemon->namebuff, 
 		      (struct all_addr *)&peer_addr.in.sin_addr, types);
-	    piholeblocked = FTL_new_query(F_QUERY | F_IPV4 | F_FORWARD, daemon->namebuff,
+	    piholeblocked = FTL_new_query(F_QUERY | F_IPV4 | F_FORWARD, daemon->namebuff, &blockingreason,
 	              (struct all_addr *)&peer_addr.in.sin_addr, types, daemon->log_display_id, TCP);
 	  }
 #ifdef HAVE_IPV6
@@ -1955,7 +1958,7 @@ unsigned char *tcp_request(int confd, time_t now,
 	  {
 	    log_query(F_QUERY | F_IPV6 | F_FORWARD, daemon->namebuff,
 		      (struct all_addr *)&peer_addr.in6.sin6_addr, types);
-	    piholeblocked = FTL_new_query(F_QUERY | F_IPV6 | F_FORWARD, daemon->namebuff,
+	    piholeblocked = FTL_new_query(F_QUERY | F_IPV6 | F_FORWARD, daemon->namebuff, &blockingreason,
 	              (struct all_addr *)&peer_addr.in6.sin6_addr, types, daemon->log_display_id, TCP);
 	  }
 #endif
@@ -2013,6 +2016,7 @@ unsigned char *tcp_request(int confd, time_t now,
 	      struct all_addr *addrp = NULL;
 	      unsigned int flags = (peer_addr.sa.sa_family == AF_INET) ? F_IPV4 : F_IPV6;
 	      FTL_get_blocking_metadata(&addrp, &flags);
+	      log_query(F_CONFIG, daemon->namebuff, NULL, (char*)blockingreason);
 	      m = setup_reply(header, size, addrp, flags, daemon->local_ttl);
 	      if (have_pseudoheader)
 	        m = add_pseudoheader(header, m, ((unsigned char *) header) + 65536, daemon->edns_pktsz, 0, NULL, 0, do_bit, 0);

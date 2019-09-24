@@ -53,7 +53,8 @@ static struct all_addr blocking_addrp_v6 = {{{ 0 }}};
 unsigned char* pihole_privacylevel = &config.privacylevel;
 const char flagnames[28][12] = {"F_IMMORTAL ", "F_NAMEP ", "F_REVERSE ", "F_FORWARD ", "F_DHCP ", "F_NEG ", "F_HOSTS ", "F_IPV4 ", "F_IPV6 ", "F_BIGNAME ", "F_NXDOMAIN ", "F_CNAME ", "F_DNSKEY ", "F_CONFIG ", "F_DS ", "F_DNSSECOK ", "F_UPSTREAM ", "F_RRNAME ", "F_SERVER ", "F_QUERY ", "F_NOERR ", "F_AUTH ", "F_DNSSEC ", "F_KEYTAG ", "F_SECSTAT ", "F_NO_RR ", "F_IPSET ", "F_NOEXTRA "};
 
-bool _FTL_new_query(const unsigned int flags, const char *name, const struct all_addr *addr,
+bool _FTL_new_query(const unsigned int flags, const char *name,
+                    const char **blockingreason, const struct all_addr *addr,
                     const char *types, const int id, const char type,
                     const char* file, const int line)
 {
@@ -231,9 +232,15 @@ bool _FTL_new_query(const unsigned int flags, const char *name, const struct all
 		{
 			blockDomain = true;
 			if(black)
+			{
 				query->status = QUERY_BLACKLIST;
+				*blockingreason = "exactly blacklisted";
+			}
 			else if(gravity)
+			{
 				query->status = QUERY_GRAVITY;
+				*blockingreason = "gravity blocked";
+			}
 
 			// Adjust counters
 			query_blocked(queryID, query, domain, client);
@@ -254,6 +261,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name, const struct all
 
 			// We have to block this domain
 			blockDomain = true;
+			*blockingreason = "regex blacklisted";
 			query->status = QUERY_WILDCARD;
 
 			// Adjust counters
@@ -266,6 +274,9 @@ bool _FTL_new_query(const unsigned int flags, const char *name, const struct all
 			domain->regexmatch = REGEX_NOTBLOCKED;
 		}
 	}
+
+	if(config.debug & DEBUG_QUERIES && blockDomain)
+		logg("Blocking %s as domain in %s", domainString, *blockingreason);
 
 	// Free allocated memory
 	free(domainString);
@@ -1319,6 +1330,11 @@ static void prepare_blocking_metadata(void)
 	blocking_flags = 0;
 	memset(&blocking_addrp_v4, 0, sizeof(blocking_addrp_v4));
 	memset(&blocking_addrp_v6, 0, sizeof(blocking_addrp_v6));
+
+	// Set blocking_flags to F_HOSTS so dnsmasq logs blocked queries being answered from a specific source
+	// (it would otherwise assume it knew the blocking status from cache which would prevent us from
+	// printing the blocking source (blacklist, regex, gravity) in dnsmasq's log file, our pihole.log)
+	blocking_flags = F_HOSTS;
 
 	// Use the blocking IPv4 address from setupVars.conf only if needed for selected blocking mode
 	char* const IPv4addr = read_setupVarsconf("IPV4_ADDRESS");
