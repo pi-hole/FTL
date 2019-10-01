@@ -175,9 +175,9 @@ static void bind_to_unix_socket(int *socketdescriptor)
 
 	struct sockaddr_un address;
 	address.sun_family = AF_LOCAL;
-	strcpy(address.sun_path, FTLfiles.socketfile);
+	strncpy(address.sun_path, FTLfiles.socketfile, sizeof(address.sun_path));
 
-	// Bild to Unix socket handle
+	// Bind to Unix socket handle
 	errno = 0;
 	if(bind(*socketdescriptor, (struct sockaddr *) &address, sizeof (address)) != 0)
 	{
