@@ -303,7 +303,8 @@ bool unify_hwaddr(void)
 	// The grouping is constrained by the HAVING clause which is
 	// evaluated once across all rows of a group to ensure the returned
 	// set represents the most recent entry for a given hwaddr
-	const char* querystr = "SELECT id,hwaddr FROM network GROUP BY hwaddr HAVING MAX(lastQuery);";
+	// Get only duplicated hwaddrs here (HAVING cnt > 1).
+	const char* querystr = "SELECT id,hwaddr,COUNT(*) AS cnt FROM network GROUP BY hwaddr HAVING MAX(lastQuery) AND cnt > 1;";
 
 	// Perform SQL query
 	sqlite3_stmt* stmt;
@@ -327,7 +328,11 @@ bool unify_hwaddr(void)
 
 		// Obtain id and hwaddr of the most recent entry for this particular client
 		const int id = sqlite3_column_int(stmt, 0);
-		const char *hwaddr = (const char *)sqlite3_column_text(stmt, 1);
+		char *hwaddr = strdup((char*)sqlite3_column_text(stmt, 1));
+
+		// Finalize statement
+		sqlite3_finalize(stmt);
+		sqlite3_reset(stmt);
 
 		// Update firstSeen with lowest value across all rows with the same hwaddr
 		dbquery("UPDATE network "\
@@ -346,10 +351,9 @@ bool unify_hwaddr(void)
 		        "WHERE hwaddr = \'%s\' "\
 		        "AND id != %i;",\
 		        hwaddr, id);
-	}
 
-	// Finalize statement and free query string
-	sqlite3_finalize(stmt);
+		free(hwaddr);
+	}
 
 	// Update database version to 4
 	if(!db_set_FTL_property(DB_VERSION, 4))
