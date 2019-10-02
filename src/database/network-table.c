@@ -496,3 +496,60 @@ void updateMACVendorRecords(void)
 	sqlite3_finalize(stmt);
 	dbclose();
 }
+
+char* getDatabaseHostname(const char* ipaddr)
+{
+	// Open pihole-FTL.db database file
+	if(!dbopen())
+	{
+		logg("getDatabaseHostname(%s) - Failed to open DB", ipaddr);
+		return strdup("");
+	}
+
+	// Prepare SQLite statement
+	sqlite3_stmt* stmt = NULL;
+	const char *querystr = "SELECT name FROM network WHERE id = (SELECT network_id FROM network_addresses WHERE ip = ?);";
+	int rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &stmt, NULL);
+	if( rc != SQLITE_OK ){
+		logg("getDatabaseHostname(%s) - SQL error prepare (%i): %s",
+		     ipaddr, rc, sqlite3_errmsg(FTL_db));
+		return strdup("");
+	}
+
+	// Bind domain to prepared statement
+	// SQLITE_STATIC: Use the string without first duplicating it internally.
+	// We can do this as domain has dynamic scope that exceeds that of the binding.
+	if((rc = sqlite3_bind_text(stmt, 1, ipaddr, -1, SQLITE_STATIC)) != SQLITE_OK)
+	{
+		logg("getDatabaseHostname(%s): Failed to bind domain (error %d) - %s",
+		     ipaddr, rc, sqlite3_errmsg(FTL_db));
+		sqlite3_reset(stmt);
+		sqlite3_finalize(stmt);
+		return strdup("");
+	}
+
+	char *hostname = NULL;
+	rc = sqlite3_step(stmt);
+	if(rc == SQLITE_ROW)
+	{
+		// Database record found (result might be empty)
+		hostname = strdup((char*)sqlite3_column_text(stmt, 0));
+	}
+	else
+	{
+		// Not found
+		hostname = strdup("");
+	}
+
+	if(rc != SQLITE_DONE && rc != SQLITE_ROW)
+	{
+		// Error
+		logg("getDatabaseHostname(%s) - SQL error step (%i): %s", ipaddr, rc, sqlite3_errmsg(FTL_db));
+	}
+
+	// Finalize statement and close database handle
+	sqlite3_finalize(stmt);
+	dbclose();
+
+	return hostname;
+}
