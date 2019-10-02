@@ -516,9 +516,7 @@ char* getDatabaseHostname(const char* ipaddr)
 		return strdup("");
 	}
 
-	// Bind domain to prepared statement
-	// SQLITE_STATIC: Use the string without first duplicating it internally.
-	// We can do this as domain has dynamic scope that exceeds that of the binding.
+	// Bind ipaddr to prepared statement
 	if((rc = sqlite3_bind_text(stmt, 1, ipaddr, -1, SQLITE_STATIC)) != SQLITE_OK)
 	{
 		logg("getDatabaseHostname(%s): Failed to bind domain (error %d) - %s",
@@ -537,17 +535,12 @@ char* getDatabaseHostname(const char* ipaddr)
 	}
 	else
 	{
-		// Not found
+		// Not found or error (will be logged automatically through our SQLite3 hook)
 		hostname = strdup("");
 	}
 
-	if(rc != SQLITE_DONE && rc != SQLITE_ROW)
-	{
-		// Error
-		logg("getDatabaseHostname(%s) - SQL error step (%i): %s", ipaddr, rc, sqlite3_errmsg(FTL_db));
-	}
-
 	// Finalize statement and close database handle
+	sqlite3_reset(stmt);
 	sqlite3_finalize(stmt);
 	dbclose();
 
