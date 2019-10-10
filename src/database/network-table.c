@@ -330,8 +330,7 @@ bool unify_hwaddr(void)
 		const int id = sqlite3_column_int(stmt, 0);
 		char *hwaddr = strdup((char*)sqlite3_column_text(stmt, 1));
 
-		// Finalize statement
-		sqlite3_finalize(stmt);
+		// Reset statement
 		sqlite3_reset(stmt);
 
 		// Update firstSeen with lowest value across all rows with the same hwaddr
@@ -354,6 +353,9 @@ bool unify_hwaddr(void)
 
 		free(hwaddr);
 	}
+
+	// Finalize statement
+	sqlite3_finalize(stmt);
 
 	// Update database version to 4
 	if(!db_set_FTL_property(DB_VERSION, 4))
