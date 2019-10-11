@@ -897,7 +897,11 @@ void reply_query(int fd, int family, time_t now)
 		  fd = forward->rfd4->fd;
 		}
 	    }
-	
+
+#ifdef HAVE_DUMPFILE
+	  dump_packet(DUMP_SEC_QUERY, (void *)header, (size_t)plen, NULL, &start->addr);
+#endif
+
 	  while (retry_send(sendto(fd, (char *)header, plen, 0,
 				   &start->addr.sa,
 				   sa_len(&start->addr))));
