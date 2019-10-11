@@ -969,12 +969,12 @@ void reply_query(int fd, int family, time_t now)
   /* We tried resending to this server with a smaller maximum size and got an answer.
      Make that permanent. To avoid reduxing the packet size for a single dropped packet,
      only do this when we get a truncated answer, or one larger than the safe size. */
-  if (server && server->edns_pktsz > SAFE_PKTSZ && (forward->flags & FREC_TEST_PKTSZ) && 
+  if (forward->sentto->edns_pktsz > SAFE_PKTSZ && (forward->flags & FREC_TEST_PKTSZ) && 
       ((header->hb3 & HB3_TC) || n >= SAFE_PKTSZ))
     {
-      server->edns_pktsz = SAFE_PKTSZ;
-      server->pktsz_reduced = now;
-      prettyprint_addr(&server->addr, daemon->addrbuff);
+      forward->sentto->edns_pktsz = SAFE_PKTSZ;
+      forward->sentto->pktsz_reduced = now;
+      prettyprint_addr(&forward->sentto->addr, daemon->addrbuff);
       my_syslog(LOG_WARNING, _("reducing DNS packet size for nameserver %s to %d"), daemon->addrbuff, SAFE_PKTSZ);
     }
 
@@ -996,7 +996,7 @@ void reply_query(int fd, int family, time_t now)
 	no_cache_dnssec = 1;
       
 #ifdef HAVE_DNSSEC
-      if (server && (server->flags & SERV_DO_DNSSEC) && 
+      if ((forward->sentto->flags & SERV_DO_DNSSEC) && 
 	  option_bool(OPT_DNSSEC_VALID) && !(forward->flags & FREC_CHECKING_DISABLED))
 	{
 	  int status = 0;
@@ -1225,6 +1225,7 @@ void reply_query(int fd, int family, time_t now)
 	      bogusanswer = 1;
 	    }
 	}
+
 #endif
 
       /* restore CD bit to the value in the query */
