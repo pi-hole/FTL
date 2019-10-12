@@ -1030,7 +1030,7 @@ void reply_query(int fd, int family, time_t now)
 		    status = dnssec_validate_ds(now, header, n, daemon->namebuff, daemon->keyname, forward->class);
 		  else
 		    status = dnssec_validate_reply(now, header, n, daemon->namebuff, daemon->keyname, &forward->class, 
-						   !option_bool(OPT_DNSSEC_IGN_NS) && (server->flags & SERV_DO_DNSSEC),
+						   !option_bool(OPT_DNSSEC_IGN_NS) && (forward->sentto->flags & SERV_DO_DNSSEC),
 						   NULL, NULL, NULL);
 #ifdef HAVE_DUMPFILE
 		  if (status == STAT_BOGUS)
@@ -1074,7 +1074,8 @@ void reply_query(int fd, int family, time_t now)
 			 servers for domains are involved. */		      
 		      if (search_servers(now, NULL, F_DNSSECOK, daemon->keyname, &type, &domain, NULL) == 0)
 			{
-			  struct server *start = server, *new_server = NULL;
+			  struct server *start, *new_server = NULL;
+			  start = server = forward->sentto;
 			  
 			  while (1)
 			    {
