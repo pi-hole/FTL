@@ -503,7 +503,7 @@ void updateMACVendorRecords(void)
 	dbclose();
 }
 
-char* getDatabaseHostname(const char* ipaddr)
+char* __attribute__((malloc)) getDatabaseHostname(const char* ipaddr)
 {
 	// Open pihole-FTL.db database file
 	if(!dbopen())
