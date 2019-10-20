@@ -18,6 +18,8 @@
 #include "log.h"
 // global variable killed
 #include "signals.h"
+// getDatabaseHostname()
+#include "database/network-table.h"
 
 static char *resolveHostname(const char *addr)
 {
@@ -84,6 +86,13 @@ static size_t resolveAndAddHostname(size_t ippos, size_t oldnamepos)
 	// Important: Don't hold a lock while resolving as the main thread
 	// (dnsmasq) needs to be operable during the call to resolveHostname()
 	char* newname = resolveHostname(ipaddr);
+
+	// If no hostname was found, try to obtain hostname from the network table
+	if(strlen(newname) == 0)
+	{
+		free(newname);
+		newname = getDatabaseHostname(ipaddr);
+	}
 
 	// Only store new newname if it is valid and differs from oldname
 	// We do not need to check for oldname == NULL as names are
