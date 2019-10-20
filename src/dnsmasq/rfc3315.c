@@ -21,11 +21,11 @@
 
 struct state {
   unsigned char *clid;
-  int clid_len, iaid, ia_type, interface, hostname_auth, lease_allocate;
+  int clid_len, ia_type, interface, hostname_auth, lease_allocate;
   char *client_hostname, *hostname, *domain, *send_domain;
   struct dhcp_context *context;
   struct in6_addr *link_address, *fallback, *ll_addr, *ula_addr;
-  unsigned int xid, fqdn_flags;
+  unsigned int xid, fqdn_flags, iaid;
   char *iface_name;
   void *packet_options, *end;
   struct dhcp_netid *tags, *context_tags;

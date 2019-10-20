@@ -740,7 +740,7 @@ struct dhcp_lease {
   int new_prefixlen;     /* and its prefix length */
 #ifdef HAVE_DHCP6
   struct in6_addr addr6;
-  int iaid;
+  unsigned int iaid;
   struct slaac_address {
     struct in6_addr addr;
     time_t ping_time;
@@ -1412,14 +1412,15 @@ struct dhcp_lease *lease4_allocate(struct in_addr addr);
 #ifdef HAVE_DHCP6
 struct dhcp_lease *lease6_allocate(struct in6_addr *addrp, int lease_type);
 struct dhcp_lease *lease6_find(unsigned char *clid, int clid_len, 
-			       int lease_type, int iaid, struct in6_addr *addr);
+			       int lease_type, unsigned int iaid, struct in6_addr *addr);
 void lease6_reset(void);
-struct dhcp_lease *lease6_find_by_client(struct dhcp_lease *first, int lease_type, unsigned char *clid, int clid_len, int iaid);
+struct dhcp_lease *lease6_find_by_client(struct dhcp_lease *first, int lease_type,
+					 unsigned char *clid, int clid_len, unsigned int iaid);
 struct dhcp_lease *lease6_find_by_addr(struct in6_addr *net, int prefix, u64 addr);
 u64 lease_find_max_addr6(struct dhcp_context *context);
 void lease_ping_reply(struct in6_addr *sender, unsigned char *packet, char *interface);
 void lease_update_slaac(time_t now);
-void lease_set_iaid(struct dhcp_lease *lease, int iaid);
+void lease_set_iaid(struct dhcp_lease *lease, unsigned int iaid);
 void lease_make_duid(time_t now);
 #endif
 void lease_set_hwaddr(struct dhcp_lease *lease, const unsigned char *hwaddr,
@@ -1548,7 +1549,7 @@ int get_incoming_mark(union mysockaddr *peer_addr, union all_addr *local_addr,
 void dhcp6_init(void);
 void dhcp6_packet(time_t now);
 struct dhcp_context *address6_allocate(struct dhcp_context *context,  unsigned char *clid, int clid_len, int temp_addr,
-				       int iaid, int serial, struct dhcp_netid *netids, int plain_range, struct in6_addr *ans);
+				       unsigned int iaid, int serial, struct dhcp_netid *netids, int plain_range, struct in6_addr *ans);
 int config_valid(struct dhcp_config *config, struct dhcp_context *context, struct in6_addr *addr);
 struct dhcp_context *address6_available(struct dhcp_context *context, 
 					struct in6_addr *taddr,
