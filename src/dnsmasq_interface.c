@@ -1112,9 +1112,9 @@ void print_flags(const unsigned int flags)
 	if(!(config.debug & DEBUG_FLAGS))
 		return;
 
-	char *flagstr = calloc(256,sizeof(char));
-	for(unsigned int i = 0; i < sizeof(flags)*8; i++)
-		if(flags & (1u << i))
+	char *flagstr = calloc(sizeof(flagnames) + 1, sizeof(char));
+	for (unsigned int i = 0; i < (sizeof(flagnames) / sizeof(*flagnames)); i++)
+		if (flags & (1u << i))
 			strcat(flagstr, flagnames[i]);
 	logg("     Flags: %s", flagstr);
 	free(flagstr);

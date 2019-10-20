@@ -61,10 +61,11 @@ bool create_network_addresses_table(void)
 	                                          "FOREIGN KEY(network_id) REFERENCES network(id));");
 
 	// Create a network_addresses row for each entry in the network table
-	SQL_bool("INSERT INTO network_addresses (network_id,ip) SELECT id,ip FROM network;");
+	// Ignore possible duplicates as they are harmless and can be skipped
+	SQL_bool("INSERT OR IGNORE INTO network_addresses (network_id,ip) SELECT id,ip FROM network;");
 
 	// Remove IP column from network table.
-	// As ALTER TABLE is severely limit, we have to do the column deletion manually.
+	// As ALTER TABLE is severely limited, we have to do the column deletion manually.
 	// Step 1: We create a new table without the ip column
 	SQL_bool("CREATE TABLE network_bck ( id INTEGER PRIMARY KEY NOT NULL, " \
 	                                    "hwaddr TEXT UNIQUE NOT NULL, " \
@@ -76,10 +77,12 @@ bool create_network_addresses_table(void)
 	                                    "macVendor TEXT);");
 
 	// Step 2: Copy data (except ip column) from network into network_back
+	//         The unique constraint on hwaddr is satisfied by grouping results
+	//         by this field where we chose to take only the most recent entry
 	SQL_bool("INSERT INTO network_bck "\
 	         "SELECT id, hwaddr, interface, name, firstSeen, "\
 	                "lastQuery, numQueries, macVendor "\
-	                "FROM network;");
+	                "FROM network GROUP BY hwaddr HAVING max(lastQuery);");
 
 	// Step 3: Drop the network table, the unique index will be automatically dropped
 	SQL_bool("DROP TABLE network;");
@@ -300,7 +303,8 @@ bool unify_hwaddr(void)
 	// The grouping is constrained by the HAVING clause which is
 	// evaluated once across all rows of a group to ensure the returned
 	// set represents the most recent entry for a given hwaddr
-	const char* querystr = "SELECT id,hwaddr FROM network GROUP BY hwaddr HAVING MAX(lastQuery)";
+	// Get only duplicated hwaddrs here (HAVING cnt > 1).
+	const char* querystr = "SELECT id,hwaddr,COUNT(*) AS cnt FROM network GROUP BY hwaddr HAVING MAX(lastQuery) AND cnt > 1;";
 
 	// Perform SQL query
 	sqlite3_stmt* stmt;
@@ -324,7 +328,10 @@ bool unify_hwaddr(void)
 
 		// Obtain id and hwaddr of the most recent entry for this particular client
 		const int id = sqlite3_column_int(stmt, 0);
-		const char *hwaddr = (const char *)sqlite3_column_text(stmt, 1);
+		char *hwaddr = strdup((char*)sqlite3_column_text(stmt, 1));
+
+		// Reset statement
+		sqlite3_reset(stmt);
 
 		// Update firstSeen with lowest value across all rows with the same hwaddr
 		dbquery("UPDATE network "\
@@ -343,20 +350,12 @@ bool unify_hwaddr(void)
 		        "WHERE hwaddr = \'%s\' "\
 		        "AND id != %i;",\
 		        hwaddr, id);
+
+		free(hwaddr);
 	}
 
-	// Finalize statement and free query string
+	// Finalize statement
 	sqlite3_finalize(stmt);
-
-	// Ensure hwaddr is a unique field
-	// Unfortunately, SQLite's ALTER TABLE does not support adding
-	// constraints to existing tables. However, we can add a unique
-	// index for the table to achieve the same effect.
-	//
-	// See https://www.sqlite.org/lang_createtable.html#constraints:
-	// >>> In most cases, UNIQUE and PRIMARY KEY constraints are
-	// >>> implemented by creating a unique index in the database.
-	SQL_bool("CREATE UNIQUE INDEX network_hwaddr_idx ON network(hwaddr)");
 
 	// Update database version to 4
 	if(!db_set_FTL_property(DB_VERSION, 4))
