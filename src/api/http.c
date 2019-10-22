@@ -17,11 +17,10 @@
 // Server context handle
 static struct mg_context *ctx = NULL;
 
-static int handler(struct mg_connection *conn, void *ignored)
+static int print_http(struct mg_connection *conn, void *input)
 {
-	const char *msg = "Greetings from FTL!\n";
+	const char* msg = input;
 	unsigned long len = (unsigned long)strlen(msg);
-
 	mg_printf(conn,
 	          "HTTP/1.1 200 OK\r\n"
 	          "Content-Length: %lu\r\n"
@@ -30,7 +29,6 @@ static int handler(struct mg_connection *conn, void *ignored)
 	          len);
 
 	mg_write(conn, msg, len);
-
 	return 200;
 }
 
@@ -63,8 +61,9 @@ void http_init(void)
 		return;
 	}
 
-	/* Add simple handler for demonstration */
-	mg_set_request_handler(ctx, "/api/ftl", handler, (char*)"Grettings from FTL!");
+	/* Add simple demonstration callbacks */
+	mg_set_request_handler(ctx, "/ping", print_http, (char*)"pong\n");
+	mg_set_request_handler(ctx, "/test/ftl", print_http, (char*)"Greetings from FTL!\n");
 }
 
 void http_terminate(void)

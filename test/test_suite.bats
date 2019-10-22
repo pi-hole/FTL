@@ -451,3 +451,9 @@
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "2" ]]
 }
+
+@test "HTTP server responds correctly to ping" {
+  run bash -c 'curl 127.0.0.1:8080/ping'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "pong" ]]
+}
