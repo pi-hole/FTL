@@ -13,22 +13,65 @@
 #include "../config.h"
 #include "../log.h"
 #include "../civetweb/civetweb.h"
+#include "../cJSON/cJSON.h"
 
 // Server context handle
 static struct mg_context *ctx = NULL;
 
-static int print_http(struct mg_connection *conn, void *input)
+// Print passed string as JSON
+static int print_json(struct mg_connection *conn, void *input)
 {
-	const char* msg = input;
-	unsigned long len = (unsigned long)strlen(msg);
+	// Create JSON object
+	cJSON *json = cJSON_CreateObject();
+
+	// Add string to created object
+	if(cJSON_AddStringToObject(json, "message", (const char*)input) == NULL)
+	{
+		cJSON_Delete(json);
+		return 500;
+	}
+
+	// Generate string to be sent to the client
+	const char* msg = cJSON_Print(json);
+	if(msg == NULL)
+	{
+		cJSON_Delete(json);
+		return 500;
+	}
+
+	// Send string
+	unsigned long len = strlen(msg);
 	mg_printf(conn,
 	          "HTTP/1.1 200 OK\r\n"
 	          "Content-Length: %lu\r\n"
 	          "Content-Type: text/plain\r\n"
 	          "Connection: close\r\n\r\n",
 	          len);
-
 	mg_write(conn, msg, len);
+
+	// Free JSON ressources
+	cJSON_Delete(json);
+
+	// HTTP status code to return
+	return 200;
+}
+
+// Print passed string directly
+static int print_simple(struct mg_connection *conn, void *input)
+{
+	const char* msg = input;
+
+	// Send string
+	unsigned long len = strlen(msg);
+	mg_printf(conn,
+	          "HTTP/1.1 200 OK\r\n"
+	          "Content-Length: %lu\r\n"
+	          "Content-Type: text/plain\r\n"
+	          "Connection: close\r\n\r\n",
+	          len);
+	mg_write(conn, msg, len);
+
+	// HTTP status code to return
 	return 200;
 }
 
@@ -62,8 +105,8 @@ void http_init(void)
 	}
 
 	/* Add simple demonstration callbacks */
-	mg_set_request_handler(ctx, "/ping", print_http, (char*)"pong\n");
-	mg_set_request_handler(ctx, "/test/ftl", print_http, (char*)"Greetings from FTL!\n");
+	mg_set_request_handler(ctx, "/ping", print_simple, (char*)"pong\n");
+	mg_set_request_handler(ctx, "/test/ftl", print_json, (char*)"Greetings from FTL!");
 }
 
 void http_terminate(void)

@@ -37,6 +37,10 @@ CIVETWEB_OPTS = -DNO_CGI -DNO_SSL_DL -DNO_SSL -DUSE_SERVER_STATS -DUSE_IPV6
 CIVETWEB_DEPS = civetweb.h
 CIVETWEB_OBJ = civetweb.o
 
+# cJSON does not need/has compile-time options
+CJSON_DEPS = cJSON.h
+CJSON_OBJ = cJSON.o
+
 # Get git commit version and date
 GIT_BRANCH := $(shell git branch | sed -n 's/^\* //p')
 GIT_HASH := $(shell git --no-pager describe --always --dirty)
@@ -132,6 +136,7 @@ DB_OBJ_DIR = $(ODIR)/database
 API_OBJ_DIR = $(ODIR)/api
 DNSMASQ_OBJ_DIR = $(ODIR)/dnsmasq
 CIVETWEB_OBJ_DIR = $(ODIR)/civetweb
+CJSON_OBJ_DIR = $(ODIR)/cJSON
 
 _FTL_DEPS = $(patsubst %,$(IDIR)/%,$(FTL_DEPS))
 _FTL_OBJ = $(patsubst %,$(ODIR)/%,$(FTL_OBJ))
@@ -142,21 +147,23 @@ _DNSMASQ_OBJ = $(patsubst %,$(DNSMASQ_OBJ_DIR)/%,$(DNSMASQ_OBJ))
 _CIVETWEB_DEPS = $(patsubst %,$(IDIR)/civetweb/%,$(CIVETWEB_DEPS))
 _CIVETWEB_OBJ = $(patsubst %,$(CIVETWEB_OBJ_DIR)/%,$(CIVETWEB_OBJ))
 
+_CJSON_DEPS = $(patsubst %,$(IDIR)/cJSON/%,$(CJSON_DEPS))
+_CJSON_OBJ = $(patsubst %,$(CJSON_OBJ_DIR)/%,$(CJSON_OBJ))
+
 all: pihole-FTL
 
 # Compile FTL source code files with virtually all possible warnings a modern gcc can generate
 $(_FTL_OBJ): $(ODIR)/%.o: $(IDIR)/%.c $(_FTL_DEPS) | $(ODIR) $(DB_OBJ_DIR) $(API_OBJ_DIR)
 	$(CC) -c -o $@ $< -g3 $(CCFLAGS) $(EXTRAWARN)
 
-# Compile the contained dnsmasq code with much less strict requirements as it would fail to comply
+# Compile the contained external codes with much less strict requirements as they fail to compile
 # when enforcing the standards we enforce for the rest of our FTL code base
 $(_DNSMASQ_OBJ): $(DNSMASQ_OBJ_DIR)/%.o: $(IDIR)/dnsmasq/%.c $(_DNSMASQ_DEPS) | $(DNSMASQ_OBJ_DIR)
 	$(CC) -c -o $@ $< -g3 $(CCFLAGS) -DVERSION=\"$(DNSMASQ_VERSION)\" $(DNSMASQ_OPTS)
-
-# Compile the contained dnsmasq code with much less strict requirements as it would fail to comply
-# when enforcing the standards we enforce for the rest of our FTL code base
 $(_CIVETWEB_OBJ): $(CIVETWEB_OBJ_DIR)/%.o: $(IDIR)/civetweb/%.c $(_CIVETWEB_DEPS) | $(CIVETWEB_OBJ_DIR)
 	$(CC) -c -o $@ $< -g3 $(CCFLAGS) $(CIVETWEB_OPTS)
+$(_CJSON_OBJ): $(CJSON_OBJ_DIR)/%.o: $(IDIR)/cJSON/%.c $(_CJSON_DEPS) | $(CJSON_OBJ_DIR)
+	$(CC) -c -o $@ $< -g3 $(CCFLAGS)
 
 $(DB_OBJ_DIR)/sqlite3.o: $(IDIR)/database/sqlite3.c | $(DB_OBJ_DIR)
 	$(CC) -c -o $@ $< -g3 $(CCFLAGS)
@@ -176,7 +183,10 @@ $(DNSMASQ_OBJ_DIR):
 $(CIVETWEB_OBJ_DIR):
 	mkdir -p $(CIVETWEB_OBJ_DIR)
 
-pihole-FTL: $(_FTL_OBJ) $(_DNSMASQ_OBJ) $(_CIVETWEB_OBJ) $(DB_OBJ_DIR)/sqlite3.o
+$(CJSON_OBJ_DIR):
+	mkdir -p $(CJSON_OBJ_DIR)
+
+pihole-FTL: $(_FTL_OBJ) $(_DNSMASQ_OBJ) $(_CIVETWEB_OBJ) $(_CJSON_OBJ) $(DB_OBJ_DIR)/sqlite3.o
 	$(CC) $(CCFLAGS) -o $@ $^ $(LIBS)
 
 .PHONY: clean force install
