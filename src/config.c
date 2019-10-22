@@ -390,7 +390,7 @@ void read_FTLconf(void)
 	if(buffer != NULL && sscanf(buffer, "%i", &value))
 		if(value > 0 && value <= __UINT16_MAX__)
 			port = value;
-	snprintf(httpsettings.port, sizeof(httpsettings.port), "%u", port);
+	snprintf(httpsettings.port, sizeof(httpsettings.port), "%u,[::]:%u", port, port);
 	logg("   WEBPORT: Port %s", httpsettings.port);
 
 	logg("Finished config file parsing");
