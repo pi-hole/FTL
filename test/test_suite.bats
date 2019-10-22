@@ -453,7 +453,7 @@
 }
 
 @test "HTTP server responds correctly to ping" {
-  run bash -c 'curl 127.0.0.1:8080/ping'
+  run bash -c 'wget 127.0.0.1:8080/ping -q -O -'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "pong" ]]
 }
