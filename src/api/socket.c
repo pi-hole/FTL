@@ -17,6 +17,8 @@
 #include "memory.h"
 // global variable killed
 #include "signals.h"
+// http_init()
+#include "api/http.h"
 
 // The backlog argument defines the maximum length
 // to which the queue of pending connections for
@@ -429,6 +431,9 @@ void bind_sockets(void)
 
 	// Initialize Unix socket
 	bind_to_unix_socket(&socketfd);
+
+	// Initialize HTTP server
+	http_init();
 }
 
 void *telnet_listening_thread_IPv4(void *args)

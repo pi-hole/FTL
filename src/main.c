@@ -24,6 +24,7 @@
 #include "capabilities.h"
 #include "database/gravity-db.h"
 #include "timers.h"
+#include "api/http.h"
 
 char * username;
 bool needGC = false;
@@ -118,6 +119,8 @@ int main (int argc, char* argv[])
 	//            counters-> ... Do this last when
 	//            terminating in main.c !
 	destroy_shmem();
+	// Terminate HTTP server
+	http_terminate();
 
 	//Remove PID file
 	removepid();

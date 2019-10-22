@@ -55,8 +55,14 @@ typedef struct {
 	char* auditlist;
 } FTLFileNamesStruct;
 
+typedef struct httpsettings {
+	char *webroot;
+	char port[6]; // maximum length of a uint16_t is 5 characters + NULL
+} httpsettingsStruct;
+
 extern ConfigStruct config;
 extern FTLFileNamesStruct FTLfiles;
+extern httpsettingsStruct httpsettings;
 
 enum {
   DEBUG_DATABASE      = (1 << 0),  /* 00000000 00000001 */

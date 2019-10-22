@@ -16,7 +16,7 @@ DNSMASQ_OPTS = -DHAVE_DNSSEC -DHAVE_DNSSEC_STATIC -DHAVE_IDN
 
 FTL_DEPS = *.h database/*.h api/*.h version.h
 FTL_DB_OBJ = database/common.o database/query-table.o database/network-table.o database/gravity-db.o database/database-thread.o \
-             database/sqlite3-ext.o database/message-table.o
+             database/sqlite3-ext.o database/message-table.o api/http.o
 FTL_API_OBJ = api/socket.o api/request.o api/msgpack.o api/api.o
 FTL_OBJ = $(FTL_DB_OBJ) $(FTL_API_OBJ) main.o memory.o log.o daemon.o datastructure.o signals.o files.o setupVars.o args.o gc.o config.o \
           dnsmasq_interface.o resolve.o regex.o shmem.o capabilities.o overTime.o timers.o vector.o
@@ -25,6 +25,17 @@ DNSMASQ_DEPS = config.h dhcp-protocol.h dns-protocol.h radv-protocol.h dhcp6-pro
 DNSMASQ_OBJ = arp.o dbus.o domain.o lease.o outpacket.o rrfilter.o auth.o dhcp6.o edns0.o log.o poll.o slaac.o blockdata.o dhcp.o forward.o \
               loop.o radv.o tables.o bpf.o dhcp-common.o helper.o netlink.o rfc1035.o tftp.o cache.o dnsmasq.o inotify.o network.o rfc2131.o \
               util.o conntrack.o dnssec.o ipset.o option.o rfc3315.o crypto.o dump.o ubus.o metrics.o
+
+# We can remove the NO_SSL later on. It adds additional constraints to the build system (availablity of libSSL-dev)
+# -DNO_CGI = no CGI support (we don't need it)
+# -DNO_SSL_DL -DNO_SSL = no SSL support (for now)
+# -DUSE_SERVER_STATS = makes a few anonymous statistics available, such as
+#   - Number of connections (currently and total)
+#   - Amount of data read and written
+# -DUSE_IPV6: add IPv6 support
+CIVETWEB_OPTS = -DNO_CGI -DNO_SSL_DL -DNO_SSL -DUSE_SERVER_STATS -DUSE_IPV6
+CIVETWEB_DEPS = civetweb.h
+CIVETWEB_OBJ = civetweb.o
 
 # Get git commit version and date
 GIT_BRANCH := $(shell git branch | sed -n 's/^\* //p')
@@ -120,12 +131,16 @@ endif
 DB_OBJ_DIR = $(ODIR)/database
 API_OBJ_DIR = $(ODIR)/api
 DNSMASQ_OBJ_DIR = $(ODIR)/dnsmasq
+CIVETWEB_OBJ_DIR = $(ODIR)/civetweb
 
 _FTL_DEPS = $(patsubst %,$(IDIR)/%,$(FTL_DEPS))
 _FTL_OBJ = $(patsubst %,$(ODIR)/%,$(FTL_OBJ))
 
 _DNSMASQ_DEPS = $(patsubst %,$(IDIR)/dnsmasq/%,$(DNSMASQ_DEPS))
 _DNSMASQ_OBJ = $(patsubst %,$(DNSMASQ_OBJ_DIR)/%,$(DNSMASQ_OBJ))
+
+_CIVETWEB_DEPS = $(patsubst %,$(IDIR)/civetweb/%,$(CIVETWEB_DEPS))
+_CIVETWEB_OBJ = $(patsubst %,$(CIVETWEB_OBJ_DIR)/%,$(CIVETWEB_OBJ))
 
 all: pihole-FTL
 
@@ -137,6 +152,11 @@ $(_FTL_OBJ): $(ODIR)/%.o: $(IDIR)/%.c $(_FTL_DEPS) | $(ODIR) $(DB_OBJ_DIR) $(API
 # when enforcing the standards we enforce for the rest of our FTL code base
 $(_DNSMASQ_OBJ): $(DNSMASQ_OBJ_DIR)/%.o: $(IDIR)/dnsmasq/%.c $(_DNSMASQ_DEPS) | $(DNSMASQ_OBJ_DIR)
 	$(CC) -c -o $@ $< -g3 $(CCFLAGS) -DVERSION=\"$(DNSMASQ_VERSION)\" $(DNSMASQ_OPTS)
+
+# Compile the contained dnsmasq code with much less strict requirements as it would fail to comply
+# when enforcing the standards we enforce for the rest of our FTL code base
+$(_CIVETWEB_OBJ): $(CIVETWEB_OBJ_DIR)/%.o: $(IDIR)/civetweb/%.c $(_CIVETWEB_DEPS) | $(CIVETWEB_OBJ_DIR)
+	$(CC) -c -o $@ $< -g3 $(CCFLAGS) $(CIVETWEB_OPTS)
 
 $(DB_OBJ_DIR)/sqlite3.o: $(IDIR)/database/sqlite3.c | $(DB_OBJ_DIR)
 	$(CC) -c -o $@ $< -g3 $(CCFLAGS)
@@ -153,7 +173,10 @@ $(API_OBJ_DIR):
 $(DNSMASQ_OBJ_DIR):
 	mkdir -p $(DNSMASQ_OBJ_DIR)
 
-pihole-FTL: $(_FTL_OBJ) $(_DNSMASQ_OBJ) $(DB_OBJ_DIR)/sqlite3.o
+$(CIVETWEB_OBJ_DIR):
+	mkdir -p $(CIVETWEB_OBJ_DIR)
+
+pihole-FTL: $(_FTL_OBJ) $(_DNSMASQ_OBJ) $(_CIVETWEB_OBJ) $(DB_OBJ_DIR)/sqlite3.o
 	$(CC) $(CCFLAGS) -o $@ $^ $(LIBS)
 
 .PHONY: clean force install

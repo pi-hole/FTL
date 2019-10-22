@@ -31,6 +31,8 @@ FTLFileNamesStruct FTLfiles = {
 	NULL
 };
 
+httpsettingsStruct httpsettings;
+
 // Private global variables
 static char *conflinebuffer = NULL;
 static size_t size = 0;
@@ -374,6 +376,22 @@ void read_FTLconf(void)
 
 	// Read DEBUG_... setting from pihole-FTL.conf
 	read_debuging_settings(fp);
+
+	// WEBROOT
+	getpath(fp, "WEBROOT", "/var/www/html", &httpsettings.webroot);
+
+	// WEBPORT
+	// On which port should FTL's API be listening?
+	// defaults to: 8080
+	uint16_t port = 8080;
+	buffer = parse_FTLconf(fp, "WEBPORT");
+
+	value = 0;
+	if(buffer != NULL && sscanf(buffer, "%i", &value))
+		if(value > 0 && value <= __UINT16_MAX__)
+			port = value;
+	snprintf(httpsettings.port, sizeof(httpsettings.port), "%u", port);
+	logg("   WEBPORT: Port %s", httpsettings.port);
 
 	logg("Finished config file parsing");
 
