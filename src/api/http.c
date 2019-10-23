@@ -18,20 +18,29 @@
 // Server context handle
 static struct mg_context *ctx = NULL;
 
-static int send_http(struct mg_connection *conn, const char *contenttype, const char *msg)
+static int send_http(struct mg_connection *conn, const char *mime_type, const char *msg)
 {
-	// Send string
-	unsigned long len = strlen(msg);
-	mg_printf(conn,
-	         "HTTP/1.1 200 OK\r\n"
-	         "Content-Length: %lu\r\n"
-	         "Content-Type: %s\r\n"
-	         "Connection: close\r\n\r\n",
-	          len, contenttype);
-	if(mg_write(conn, msg, len) < 0)
-		return 500;
-	else
-		return 200;
+	mg_send_http_ok(conn, mime_type, strlen(msg));
+	return mg_write(conn, msg, strlen(msg));
+	return 200;
+}
+
+static int send_http_chunked_simulator(struct mg_connection *conn, const char *mime_type, const char *msg)
+{
+	mg_send_http_ok(conn, mime_type, -1);
+	// Send bytes one after another
+	for(unsigned int i = 0; i < strlen(msg); i++)
+	{
+		char msgpart[2] = { 0 };
+		msgpart[0] = msg[i];
+		mg_send_chunk(conn, msgpart, strlen(msgpart));
+	}
+	return 200;
+}
+
+static int send_http_error(struct mg_connection *conn)
+{
+	return mg_send_http_error(conn, 500, "Internal server error");
 }
 
 // Print passed string as JSON
@@ -44,6 +53,7 @@ static int print_json(struct mg_connection *conn, void *input)
 	if(cJSON_AddStringToObject(json, "message", (const char*)input) == NULL)
 	{
 		cJSON_Delete(json);
+		send_http_error(conn);
 		return 500;
 	}
 
@@ -53,6 +63,15 @@ static int print_json(struct mg_connection *conn, void *input)
 	if(cJSON_AddStringToObject(json, "uri", request->local_uri) == NULL)
 	{
 		cJSON_Delete(json);
+		send_http_error(conn);
+		return 500;
+	}
+
+	// Add URL-decoded URI (relative) to created object
+	if(cJSON_AddStringToObject(json, "client", request->remote_addr) == NULL)
+	{
+		cJSON_Delete(json);
+		send_http_error(conn);
 		return 500;
 	}
 
@@ -61,11 +80,15 @@ static int print_json(struct mg_connection *conn, void *input)
 	if(msg == NULL)
 	{
 		cJSON_Delete(json);
+		send_http_error(conn);
 		return 500;
 	}
 
-	// Send string
-	send_http(conn, "application/json", msg);
+	// Send JSON string
+	if(strcmp(request->local_uri, "/api/chunk_test") == 0)
+		send_http_chunked_simulator(conn, "application/json", msg);
+	else
+		send_http(conn, "application/json", msg);
 
 	// Free JSON ressources
 	cJSON_Delete(json);
