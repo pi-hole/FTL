@@ -32,7 +32,7 @@ static int print_json(struct mg_connection *conn, void *input)
 	}
 
 	// Generate string to be sent to the client
-	const char* msg = cJSON_Print(json);
+	const char* msg = cJSON_PrintUnformatted(json);
 	if(msg == NULL)
 	{
 		cJSON_Delete(json);
