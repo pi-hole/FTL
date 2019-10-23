@@ -18,6 +18,22 @@
 // Server context handle
 static struct mg_context *ctx = NULL;
 
+static int send_http(struct mg_connection *conn, const char *contenttype, const char *msg)
+{
+	// Send string
+	unsigned long len = strlen(msg);
+	mg_printf(conn,
+	         "HTTP/1.1 200 OK\r\n"
+	         "Content-Length: %lu\r\n"
+	         "Content-Type: %s\r\n"
+	         "Connection: close\r\n\r\n",
+	          len, contenttype);
+	if(mg_write(conn, msg, len) < 0)
+		return 500;
+	else
+		return 200;
+}
+
 // Print passed string as JSON
 static int print_json(struct mg_connection *conn, void *input)
 {
@@ -49,14 +65,7 @@ static int print_json(struct mg_connection *conn, void *input)
 	}
 
 	// Send string
-	unsigned long len = strlen(msg);
-	mg_printf(conn,
-	          "HTTP/1.1 200 OK\r\n"
-	          "Content-Length: %lu\r\n"
-	          "Content-Type: application/json\r\n"
-	          "Connection: close\r\n\r\n",
-	          len);
-	mg_write(conn, msg, len);
+	send_http(conn, "application/json", msg);
 
 	// Free JSON ressources
 	cJSON_Delete(json);
@@ -68,20 +77,7 @@ static int print_json(struct mg_connection *conn, void *input)
 // Print passed string directly
 static int print_simple(struct mg_connection *conn, void *input)
 {
-	const char* msg = input;
-
-	// Send string
-	unsigned long len = strlen(msg);
-	mg_printf(conn,
-	          "HTTP/1.1 200 OK\r\n"
-	          "Content-Length: %lu\r\n"
-	          "Content-Type: text/plain\r\n"
-	          "Connection: close\r\n\r\n",
-	          len);
-	mg_write(conn, msg, len);
-
-	// HTTP status code to return
-	return 200;
+	return send_http(conn, "text/plain", input);
 }
 
 void http_init(void)
