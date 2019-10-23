@@ -31,6 +31,15 @@ static int print_json(struct mg_connection *conn, void *input)
 		return 500;
 	}
 
+	const struct mg_request_info *request = mg_get_request_info(conn);
+
+	// Add URL-decoded URI (relative) to created object
+	if(cJSON_AddStringToObject(json, "uri", request->local_uri) == NULL)
+	{
+		cJSON_Delete(json);
+		return 500;
+	}
+
 	// Generate string to be sent to the client
 	const char* msg = cJSON_PrintUnformatted(json);
 	if(msg == NULL)
@@ -106,7 +115,7 @@ void http_init(void)
 
 	/* Add simple demonstration callbacks */
 	mg_set_request_handler(ctx, "/ping", print_simple, (char*)"pong\n");
-	mg_set_request_handler(ctx, "/test/ftl", print_json, (char*)"Greetings from FTL!");
+	mg_set_request_handler(ctx, "/api", print_json, (char*)"Greetings from FTL!");
 }
 
 void http_terminate(void)
