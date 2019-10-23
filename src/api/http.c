@@ -53,7 +53,7 @@ static int print_json(struct mg_connection *conn, void *input)
 	mg_printf(conn,
 	          "HTTP/1.1 200 OK\r\n"
 	          "Content-Length: %lu\r\n"
-	          "Content-Type: text/plain\r\n"
+	          "Content-Type: application/json\r\n"
 	          "Connection: close\r\n\r\n",
 	          len);
 	mg_write(conn, msg, len);
