@@ -16,10 +16,9 @@ DNSMASQ_OPTS = -DHAVE_DNSSEC -DHAVE_DNSSEC_STATIC -DHAVE_IDN
 
 FTL_DEPS = *.h database/*.h api/*.h version.h
 FTL_DB_OBJ = database/common.o database/query-table.o database/network-table.o database/gravity-db.o database/database-thread.o \
-             database/sqlite3-ext.o database/message-table.o api/http.o
-FTL_API_OBJ = api/socket.o api/request.o api/msgpack.o api/api.o
-FTL_OBJ = $(FTL_DB_OBJ) $(FTL_API_OBJ) main.o memory.o log.o daemon.o datastructure.o signals.o files.o setupVars.o args.o gc.o config.o \
-          dnsmasq_interface.o resolve.o regex.o shmem.o capabilities.o overTime.o timers.o vector.o
+             database/sqlite3-ext.o database/message-table.o
+FTL_API_OBJ = api/api.o api/http.o
+FTL_OBJ = $(FTL_DB_OBJ) $(FTL_API_OBJ) main.o memory.o log.o daemon.o datastructure.o signals.o files.o setupVars.o args.o gc.o config.o dnsmasq_interface.o resolve.o regex.o shmem.o capabilities.o overTime.o timers.o vector.o
 
 DNSMASQ_DEPS = config.h dhcp-protocol.h dns-protocol.h radv-protocol.h dhcp6-protocol.h dnsmasq.h ip6addr.h metrics.h ../dnsmasq_interface.h
 DNSMASQ_OBJ = arp.o dbus.o domain.o lease.o outpacket.o rrfilter.o auth.o dhcp6.o edns0.o log.o poll.o slaac.o blockdata.o dhcp.o forward.o \

@@ -10,28 +10,30 @@
 #ifndef API_H
 #define API_H
 
+// struct mg_connection
+#include "../civetweb/civetweb.h"
+// http_send_json_chunk()
+#include "../api/http.h"
+
 // Statistic methods
-void getStats(const int *sock);
-void getOverTime(const int *sock);
-void getTopDomains(const char *client_message, const int *sock);
-void getTopClients(const char *client_message, const int *sock);
-void getUpstreamDestinations(const char *client_message, const int *sock);
-void getQueryTypes(const int *sock);
-void getAllQueries(const char *client_message, const int *sock);
-void getRecentBlocked(const char *client_message, const int *sock);
-void getQueryTypesOverTime(const int *sock);
-void getClientsOverTime(const int *sock);
-void getClientNames(const int *sock);
-void getDomainDetails(const char *client_message, const int *sock);
+void getStats(struct mg_connection *conn);
+void getOverTime(struct mg_connection *conn);
+void getTopDomains(const bool blocked, struct mg_connection *conn);
+void getTopClients(const bool blocked_only, struct mg_connection *conn);
+void getForwardDestinations(struct mg_connection *conn);
+void getQueryTypes(struct mg_connection *conn);
+void getAllQueries(const char *client_message, struct mg_connection *conn);
+void getRecentBlocked(const char *client_message, struct mg_connection *conn);
+void getQueryTypesOverTime(struct mg_connection *conn);
+void getClientsOverTime(struct mg_connection *conn);
+void getClientNames(struct mg_connection *conn);
+void getDomainDetails(const char *client_message, struct mg_connection *conn);
 
 // FTL methods
-void getClientID(const int *sock);
-void getVersion(const int *sock);
-void getDBstats(const int *sock);
-void getUnknownQueries(const int *sock);
-
-// DNS resolver methods (dnsmasq_interface.c)
-void getCacheInformation(const int *sock);
+void getClientIP(struct mg_connection *conn);
+void getVersion(struct mg_connection *conn);
+void getDBstats(struct mg_connection *conn);
+void getUnknownQueries(struct mg_connection *conn);
 
 // MessagePack serialization helpers
 void pack_eom(const int sock);

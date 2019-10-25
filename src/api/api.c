@@ -13,10 +13,8 @@
 #include "shmem.h"
 #include "datastructure.h"
 #include "setupVars.h"
-#include "socket.h"
 #include "files.h"
 #include "log.h"
-#include "request.h"
 #include "config.h"
 #include "database/common.h"
 #include "database/query-table.h"
@@ -58,7 +56,7 @@ static int __attribute__((pure)) cmpdesc(const void *a, const void *b)
 		return 0;
 }
 
-void getStats(const int *sock)
+void getStats(struct mg_connection *conn)
 {
 	const int blocked = counters->blocked;
 	const int total = counters->queries;
@@ -69,11 +67,7 @@ void getStats(const int *sock)
 		percentage = 1e2f*blocked/total;
 
 	// Send domains being blocked
-	if(istelnet[*sock]) {
-		ssend(*sock, "domains_being_blocked %i\n", counters->gravity);
-	}
-	else
-		pack_int32(*sock, counters->gravity);
+	http_send_json_chunk(conn, "gravity_size:%i,", counters->gravity);
 
 	// unique_clients: count only clients that have been active within the most recent 24 hours
 	int activeclients = 0;
@@ -88,48 +82,31 @@ void getStats(const int *sock)
 			activeclients++;
 	}
 
-	if(istelnet[*sock]) {
-		ssend(*sock, "dns_queries_today %i\nads_blocked_today %i\nads_percentage_today %f\n",
-		      total, blocked, percentage);
-		ssend(*sock, "unique_domains %i\nqueries_forwarded %i\nqueries_cached %i\n",
-		      counters->domains, counters->forwarded, counters->cached);
-		ssend(*sock, "clients_ever_seen %i\n", counters->clients);
-		ssend(*sock, "unique_clients %i\n", activeclients);
+	http_send_json_chunk(conn, "dns_queries_today %i\nads_blocked_today %i\nads_percentage_today %f\n",
+		total, blocked, percentage);
+	http_send_json_chunk(conn, "unique_domains %i\nqueries_forwarded %i\nqueries_cached %i\n",
+		counters->domains, counters->forwarded, counters->cached);
+	http_send_json_chunk(conn, "clients_ever_seen %i\n", counters->clients);
+	http_send_json_chunk(conn, "unique_clients %i\n", activeclients);
 
-		// Sum up all query types (A, AAAA, ANY, SRV, SOA, ...)
-		int sumalltypes = 0;
-		for(int queryType=0; queryType < TYPE_MAX-1; queryType++)
-		{
-			sumalltypes += counters->querytype[queryType];
-		}
-		ssend(*sock, "dns_queries_all_types %i\n", sumalltypes);
-
-		// Send individual reply type counters
-		ssend(*sock, "reply_NODATA %i\nreply_NXDOMAIN %i\nreply_CNAME %i\nreply_IP %i\n",
-		      counters->reply_NODATA, counters->reply_NXDOMAIN, counters->reply_CNAME, counters->reply_IP);
-		ssend(*sock, "privacy_level %i\n", config.privacylevel);
-	}
-	else
+	// Sum up all query types (A, AAAA, ANY, SRV, SOA, ...)
+	int sumalltypes = 0;
+	for(int queryType=0; queryType < TYPE_MAX-1; queryType++)
 	{
-		pack_int32(*sock, total);
-		pack_int32(*sock, blocked);
-		pack_float(*sock, percentage);
-		pack_int32(*sock, counters->domains);
-		pack_int32(*sock, counters->forwarded);
-		pack_int32(*sock, counters->cached);
-		pack_int32(*sock, counters->clients);
-		pack_int32(*sock, activeclients);
+		sumalltypes += counters->querytype[queryType];
 	}
+	http_send_json_chunk(conn, "dns_queries_all_types %i\n", sumalltypes);
+
+	// Send individual reply type counters
+	http_send_json_chunk(conn, "reply_NODATA %i\nreply_NXDOMAIN %i\nreply_CNAME %i\nreply_IP %i\n",
+		counters->reply_NODATA, counters->reply_NXDOMAIN, counters->reply_CNAME, counters->reply_IP);
+	http_send_json_chunk(conn, "privacy_level %i\n", config.privacylevel);
 
 	// Send status
-	if(istelnet[*sock]) {
-		ssend(*sock, "status %s\n", blockingstatus ? "enabled" : "disabled");
-	}
-	else
-		pack_uint8(*sock, blockingstatus);
+	http_send_json_chunk(conn, "status %s\n", counters->gravity > 0 ? "enabled" : "disabled");
 }
 
-void getOverTime(const int *sock)
+void getOverTime(struct mg_connection *conn)
 {
 	int from = 0, until = OVERTIME_SLOTS;
 	bool found = false;
@@ -161,54 +138,26 @@ void getOverTime(const int *sock)
 	if(!found)
 		return;
 
-	if(istelnet[*sock])
+	for(int slot = from; slot < until; slot++)
 	{
-		for(int slot = from; slot < until; slot++)
-		{
-			ssend(*sock,"%li %i %i\n",
-			      overTime[slot].timestamp,
-			      overTime[slot].total,
-			      overTime[slot].blocked);
-		}
-	}
-	else
-	{
-		// We can use the map16 type because there should only be about 288 time slots (TIMEFRAME set to "yesterday")
-		// and map16 can hold up to (2^16)-1 = 65535 pairs
-
-		// Send domains over time
-		pack_map16_start(*sock, (uint16_t) (until - from));
-		for(int slot = from; slot < until; slot++) {
-			pack_int32(*sock, overTime[slot].timestamp);
-			pack_int32(*sock, overTime[slot].total);
-		}
-
-		// Send ads over time
-		pack_map16_start(*sock, (uint16_t) (until - from));
-		for(int slot = from; slot < until; slot++) {
-			pack_int32(*sock, overTime[slot].timestamp);
-			pack_int32(*sock, overTime[slot].blocked);
-		}
+		http_send_json_chunk(conn, "%li %i %i\n",
+			overTime[slot].timestamp,
+			overTime[slot].total,
+			overTime[slot].blocked);
 	}
 }
 
-void getTopDomains(const char *client_message, const int *sock)
+void getTopDomains(const bool blocked, struct mg_connection *conn)
 {
-	int temparray[counters->domains][2], count=10, num;
+	int temparray[counters->domains][2], count=10;
 	bool audit = false, asc = false;
-
-	const bool blocked = command(client_message, ">top-ads");
 
 	// Exit before processing any data if requested via config setting
 	get_privacy_level(NULL);
 	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS) {
-		// Always send the total number of domains, but pretend it's 0
-		if(!istelnet[*sock])
-			pack_int32(*sock, 0);
-
 		return;
 	}
-
+/*
 	// Match both top-domains and top-ads
 	// example: >top-domains (15)
 	if(sscanf(client_message, "%*[^(](%i)", &num) > 0) {
@@ -225,7 +174,7 @@ void getTopDomains(const char *client_message, const int *sock)
 	// example: >top-domains asc
 	if(command(client_message, " asc"))
 		asc = true;
-
+*/
 	for(int domainID=0; domainID < counters->domains; domainID++)
 	{
 		// Get domain pointer
@@ -276,15 +225,6 @@ void getTopDomains(const char *client_message, const int *sock)
 		}
 	}
 
-	if(!istelnet[*sock])
-	{
-		// Send the data required to get the percentage each domain has been blocked / queried
-		if(blocked)
-			pack_int32(*sock, counters->blocked);
-		else
-			pack_int32(*sock, counters->queries);
-	}
-
 	int n = 0;
 	for(int i=0; i < counters->domains; i++)
 	{
@@ -313,27 +253,12 @@ void getTopDomains(const char *client_message, const int *sock)
 
 		if(blocked && showblocked && domain->blockedcount > 0)
 		{
-			if(istelnet[*sock])
-				ssend(*sock, "%i %i %s\n", n, domain->blockedcount, getstr(domain->domainpos));
-			else {
-				if(!pack_str32(*sock, getstr(domain->domainpos)))
-					return;
-
-				pack_int32(*sock, domain->blockedcount);
-			}
+			http_send_json_chunk(conn, "%i %i %s\n", n, domain->blockedcount, getstr(domain->domainpos));
 			n++;
 		}
 		else if(!blocked && showpermitted && (domain->count - domain->blockedcount) > 0)
 		{
-			if(istelnet[*sock])
-				ssend(*sock,"%i %i %s\n",n,(domain->count - domain->blockedcount),getstr(domain->domainpos));
-			else
-			{
-				if(!pack_str32(*sock, getstr(domain->domainpos)))
-					return;
-
-				pack_int32(*sock, domain->count - domain->blockedcount);
-			}
+			http_send_json_chunk(conn, "%i %i %s\n",n,(domain->count - domain->blockedcount),getstr(domain->domainpos));
 			n++;
 		}
 
@@ -346,41 +271,39 @@ void getTopDomains(const char *client_message, const int *sock)
 		clearSetupVarsArray();
 }
 
-void getTopClients(const char *client_message, const int *sock)
+void getTopClients(const bool blocked_only, struct mg_connection *conn)
 {
-	int temparray[counters->clients][2], count=10, num;
+	int temparray[counters->clients][2], count=10;
 
 	// Exit before processing any data if requested via config setting
 	get_privacy_level(NULL);
 	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS_CLIENTS) {
-		// Always send the total number of clients, but pretend it's 0
-		if(!istelnet[*sock])
-			pack_int32(*sock, 0);
-
 		return;
 	}
-
+/*
 	// Match both top-domains and top-ads
 	// example: >top-clients (15)
 	if(sscanf(client_message, "%*[^(](%i)", &num) > 0) {
 		// User wants a different number of requests
 		count = num;
 	}
-
+*/
 	// Show also clients which have not been active recently?
 	// This option can be combined with existing options,
 	// i.e. both >top-clients withzero" and ">top-clients withzero (123)" are valid
 	bool includezeroclients = false;
+/*
 	if(command(client_message, " withzero"))
 		includezeroclients = true;
-
+*/
 	// Show number of blocked queries instead of total number?
 	// This option can be combined with existing options,
 	// i.e. ">top-clients withzero blocked (123)" would be valid
 	bool blockedonly = false;
+/*
 	if(command(client_message, " blocked"))
 		blockedonly = true;
-
+*/
 	for(int clientID = 0; clientID < counters->clients; clientID++)
 	{
 		// Get client pointer
@@ -395,9 +318,10 @@ void getTopClients(const char *client_message, const int *sock)
 	// Sort in ascending order?
 	// example: >top-clients asc
 	bool asc = false;
+/*
 	if(command(client_message, " asc"))
 		asc = true;
-
+*/
 	// Sort temporary array
 	if(asc)
 		qsort(temparray, counters->clients, sizeof(int[2]), cmpasc);
@@ -409,12 +333,6 @@ void getTopClients(const char *client_message, const int *sock)
 	if(excludeclients != NULL)
 	{
 		getSetupVarsArray(excludeclients);
-	}
-
-	if(!istelnet[*sock])
-	{
-		// Send the total queries so they can make percentages from this data
-		pack_int32(*sock, counters->queries);
 	}
 
 	int n = 0;
@@ -446,15 +364,7 @@ void getTopClients(const char *client_message, const int *sock)
 		// - the client made at least one query within the most recent 24 hours
 		if(includezeroclients || ccount > 0)
 		{
-			if(istelnet[*sock])
-				ssend(*sock,"%i %i %s %s\n", n, ccount, client_ip, client_name);
-			else
-			{
-				if(!pack_str32(*sock, "") || !pack_str32(*sock, client_ip))
-					return;
-
-				pack_int32(*sock, ccount);
-			}
+			http_send_json_chunk(conn, "%i %i %s %s\n", n, ccount, client_ip, client_name);
 			n++;
 		}
 
@@ -467,15 +377,15 @@ void getTopClients(const char *client_message, const int *sock)
 }
 
 
-void getUpstreamDestinations(const char *client_message, const int *sock)
+void getForwardDestinations(struct mg_connection *conn)
 {
 	bool sort = true;
-	int temparray[counters->upstreams][2], totalqueries = 0;
-
+	int temparray[counters->forwarded][2], totalqueries = 0;
+/*
 	if(command(client_message, "unsorted"))
 		sort = false;
-
-	for(int upstreamID = 0; upstreamID < counters->upstreams; upstreamID++)
+*/
+	for(int upstreamID = 0; upstreamID < counters->forwarded; upstreamID++)
 	{
 		// If we want to print a sorted output, we fill the temporary array with
 		// the values we will use for sorting afterwards
@@ -553,21 +463,13 @@ void getUpstreamDestinations(const char *client_message, const int *sock)
 		// - only if percentage > 0.0 for all others (i > 0)
 		if(percentage > 0.0f || i < 0)
 		{
-			if(istelnet[*sock])
-				ssend(*sock, "%i %.2f %s %s\n", i, percentage, ip, name);
-			else
-			{
-				if(!pack_str32(*sock, name) || !pack_str32(*sock, ip))
-					return;
-
-				pack_float(*sock, percentage);
-			}
+			http_send_json_chunk(conn, "%i %.2f %s %s\n", i, percentage, ip, name);
 		}
 	}
 }
 
 
-void getQueryTypes(const int *sock)
+void getQueryTypes(struct mg_connection *conn)
 {
 	int total = 0;
 	for(int i=0; i < TYPE_MAX-1; i++)
@@ -586,35 +488,14 @@ void getQueryTypes(const int *sock)
 		}
 	}
 
-	if(istelnet[*sock]) {
-		ssend(*sock, "A (IPv4): %.2f\nAAAA (IPv6): %.2f\nANY: %.2f\nSRV: %.2f\n"
-		             "SOA: %.2f\nPTR: %.2f\nTXT: %.2f\nNAPTR: %.2f\n",
-		      percentage[0], percentage[1], percentage[2], percentage[3],
-		      percentage[4], percentage[5], percentage[6], percentage[7]);
-	}
-	else {
-		pack_str32(*sock, "A (IPv4)");
-		pack_float(*sock, percentage[0]);
-		pack_str32(*sock, "AAAA (IPv6)");
-		pack_float(*sock, percentage[1]);
-		pack_str32(*sock, "ANY");
-		pack_float(*sock, percentage[2]);
-		pack_str32(*sock, "SRV");
-		pack_float(*sock, percentage[3]);
-		pack_str32(*sock, "SOA");
-		pack_float(*sock, percentage[4]);
-		pack_str32(*sock, "PTR");
-		pack_float(*sock, percentage[5]);
-		pack_str32(*sock, "TXT");
-		pack_float(*sock, percentage[6]);
-		pack_str32(*sock, "NAPTR");
-		pack_float(*sock, percentage[7]);
-	}
+	http_send_json_chunk(conn, "A (IPv4): %.2f\nAAAA (IPv6): %.2f\nANY: %.2f\nSRV: %.2f\nSOA: %.2f\nPTR: %.2f\nTXT: %.2f\n",
+		percentage[0], percentage[1], percentage[2], percentage[3],
+		percentage[4], percentage[5], percentage[6]);
 }
 
 const char *querytypes[TYPE_MAX] = {"A","AAAA","ANY","SRV","SOA","PTR","TXT","NAPTR","UNKN"};
 
-void getAllQueries(const char *client_message, const int *sock)
+void getAllQueries(const char *client_message, struct mg_connection *conn)
 {
 	// Exit before processing any data if requested via config setting
 	get_privacy_level(NULL);
@@ -637,7 +518,7 @@ void getAllQueries(const char *client_message, const int *sock)
 	char *forwarddest = NULL;
 	bool filterforwarddest = false;
 	int forwarddestid = 0;
-
+/*
 	// Time filtering?
 	if(command(client_message, ">getallqueries-time")) {
 		sscanf(client_message, ">getallqueries-time %i %i",&from, &until);
@@ -761,7 +642,7 @@ void getAllQueries(const char *client_message, const int *sock)
 			return;
 		}
 	}
-
+*/
 	int ibeg = 0, num;
 	// Test for integer that specifies number of entries to be shown
 	if(sscanf(client_message, "%*[^(](%i)", &num) > 0)
@@ -871,55 +752,10 @@ void getAllQueries(const char *client_message, const int *sock)
 		if(delay > 1.8e7)
 			delay = 0;
 
-		// Get domain blocked during deep CNAME inspection, if applicable
-		const char *CNAME_domain = "N/A";
-		if(query->CNAME_domainID > -1)
-		{
-			CNAME_domain = getCNAMEDomainString(query);
-		}
-
-		// Get ID of blocking regex, if applicable
-		int regex_idx = -1;
-		if (query->status == QUERY_REGEX || query->status == QUERY_REGEX_CNAME)
-		{
-			unsigned int cacheID = findCacheID(query->domainID, query->clientID);
-			DNSCacheData *dns_cache = getDNSCache(cacheID, true);
-			if(dns_cache != NULL)
-				regex_idx = dns_cache->black_regex_idx;
-		}
-
-		if(istelnet[*sock])
-		{
-			ssend(*sock,"%li %s %s %s %i %i %i %lu %s %i",
-				query->timestamp,
-				qtype,
-				domain,
-				clientIPName,
-				query->status,
-				query->dnssec,
-				query->reply,
-				delay,
-				CNAME_domain,
-				regex_idx);
-			if(config.debug & DEBUG_API)
-				ssend(*sock, " %i", queryID);
-			ssend(*sock, "\n");
-		}
-		else
-		{
-			pack_int32(*sock, query->timestamp);
-
-			// Use a fixstr because the length of qtype is always 4 (max is 31 for fixstr)
-			if(!pack_fixstr(*sock, qtype))
-				return;
-
-			// Use str32 for domain and client because we have no idea how long they will be (max is 4294967295 for str32)
-			if(!pack_str32(*sock, domain) || !pack_str32(*sock, clientIPName))
-				return;
-
-			pack_uint8(*sock, query->status);
-			pack_uint8(*sock, query->dnssec);
-		}
+		http_send_json_chunk(conn, "%li %s %s %s %i %i %i %lu",query->timestamp,qtype,domain,clientIPName,query->status,query->dnssec,query->reply,delay);
+		if(config.debug & DEBUG_API)
+			http_send_json_chunk(conn, " %i", queryID);
+		http_send_json_chunk(conn, "\n");
 	}
 
 	// Free allocated memory
@@ -933,7 +769,7 @@ void getAllQueries(const char *client_message, const int *sock)
 		free(forwarddest);
 }
 
-void getRecentBlocked(const char *client_message, const int *sock)
+void getRecentBlocked(const char *client_message, struct mg_connection *conn)
 {
 	int num=1;
 
@@ -967,10 +803,7 @@ void getRecentBlocked(const char *client_message, const int *sock)
 			if(domain == NULL)
 				continue;
 
-			if(istelnet[*sock])
-				ssend(*sock,"%s\n", domain);
-			else if(!pack_str32(*sock, domain))
-				return;
+			http_send_json_chunk(conn, "%s\n", domain);
 		}
 
 		if(found >= num)
@@ -978,15 +811,13 @@ void getRecentBlocked(const char *client_message, const int *sock)
 	}
 }
 
-void getClientID(const int *sock)
+void getClientIP(struct mg_connection *conn)
 {
-	if(istelnet[*sock])
-		ssend(*sock,"%i\n", *sock);
-	else
-		pack_int32(*sock, *sock);
+	const struct mg_request_info *request = mg_get_request_info(conn);
+	http_send_json_chunk(conn, "remote_addr:\"%s\"", request->remote_addr);
 }
 
-void getQueryTypesOverTime(const int *sock)
+void getQueryTypesOverTime(struct mg_connection *conn)
 {
 	int from = -1, until = OVERTIME_SLOTS;
 	const time_t mintime = overTime[0].timestamp;
@@ -1024,17 +855,11 @@ void getQueryTypesOverTime(const int *sock)
 			percentageIPv6 = (float) (1e2 * overTime[slot].querytypedata[1] / sum);
 		}
 
-		if(istelnet[*sock])
-			ssend(*sock, "%li %.2f %.2f\n", overTime[slot].timestamp, percentageIPv4, percentageIPv6);
-		else {
-			pack_int32(*sock, overTime[slot].timestamp);
-			pack_float(*sock, percentageIPv4);
-			pack_float(*sock, percentageIPv6);
-		}
+		http_send_json_chunk(conn, "%li %.2f %.2f\n", overTime[slot].timestamp, percentageIPv4, percentageIPv6);
 	}
 }
 
-void getVersion(const int *sock)
+void getVersion(struct mg_connection *conn)
 {
 	const char *commit = GIT_HASH;
 	const char *tag = GIT_TAG;
@@ -1045,46 +870,20 @@ void getVersion(const int *sock)
 	memcpy(hash, commit, 7); hash[7] = 0;
 
 	if(strlen(tag) > 1) {
-		if(istelnet[*sock])
-			ssend(
-					*sock,
-					"version %s\ntag %s\nbranch %s\nhash %s\ndate %s\n",
-					version, tag, GIT_BRANCH, hash, GIT_DATE
-			);
-		else {
-			if(!pack_str32(*sock, version) ||
-					!pack_str32(*sock, (char *) tag) ||
-					!pack_str32(*sock, GIT_BRANCH) ||
-					!pack_str32(*sock, hash) ||
-					!pack_str32(*sock, GIT_DATE))
-				return;
-		}
+		http_send_json_chunk(conn,
+				"version %s\ntag %s\nbranch %s\nhash %s\ndate %s\n",
+				version, tag, GIT_BRANCH, hash, GIT_DATE
+		);
 	}
 	else {
-		if(istelnet[*sock])
-			ssend(
-					*sock,
-					"version vDev-%s\ntag %s\nbranch %s\nhash %s\ndate %s\n",
-					hash, tag, GIT_BRANCH, hash, GIT_DATE
-			);
-		else {
-			char *hashVersion = calloc(6 + strlen(hash), sizeof(char));
-			if(hashVersion == NULL) return;
-			sprintf(hashVersion, "vDev-%s", hash);
-
-			if(!pack_str32(*sock, hashVersion) ||
-					!pack_str32(*sock, (char *) tag) ||
-					!pack_str32(*sock, GIT_BRANCH) ||
-					!pack_str32(*sock, hash) ||
-					!pack_str32(*sock, GIT_DATE))
-				return;
-
-			free(hashVersion);
-		}
+		http_send_json_chunk(conn,
+				"version vDev-%s\ntag %s\nbranch %s\nhash %s\ndate %s\n",
+				hash, tag, GIT_BRANCH, hash, GIT_DATE
+		);
 	}
 }
 
-void getDBstats(const int *sock)
+void getDBstats(struct mg_connection *conn)
 {
 	// Get file details
 	unsigned long long int filesize = get_FTL_db_filesize();
@@ -1094,18 +893,10 @@ void getDBstats(const int *sock)
 	double formated = 0.0;
 	format_memory_size(prefix, filesize, &formated);
 
-	if(istelnet[*sock])
-		ssend(*sock,"queries in database: %i\ndatabase filesize: %.2f %sB\nSQLite version: %s\n", get_number_of_queries_in_DB(), formated, prefix, get_sqlite3_version());
-	else {
-		pack_int32(*sock, get_number_of_queries_in_DB());
-		pack_int64(*sock, filesize);
-
-		if(!pack_str32(*sock, (char *) get_sqlite3_version()))
-			return;
-	}
+	http_send_json_chunk(conn, "queries in database: %i\ndatabase filesize: %.2f %sB\nSQLite version: %s\n", get_number_of_queries_in_DB(), formated, prefix, get_sqlite3_version());
 }
 
-void getClientsOverTime(const int *sock)
+void getClientsOverTime(struct mg_connection *conn)
 {
 	int sendit = -1, until = OVERTIME_SLOTS;
 
@@ -1165,10 +956,7 @@ void getClientsOverTime(const int *sock)
 	// Main return loop
 	for(int slot = sendit; slot < until; slot++)
 	{
-		if(istelnet[*sock])
-			ssend(*sock, "%li", overTime[slot].timestamp);
-		else
-			pack_int32(*sock, overTime[slot].timestamp);
+		http_send_json_chunk(conn, "%li", overTime[slot].timestamp);
 
 		// Loop over forward destinations to generate output to be sent to the client
 		for(int clientID = 0; clientID < counters->clients; clientID++)
@@ -1182,23 +970,17 @@ void getClientsOverTime(const int *sock)
 				continue;
 			const int thisclient = client->overTime[slot];
 
-			if(istelnet[*sock])
-				ssend(*sock, " %i", thisclient);
-			else
-				pack_int32(*sock, thisclient);
+			http_send_json_chunk(conn, " %i", thisclient);
 		}
 
-		if(istelnet[*sock])
-			ssend(*sock, "\n");
-		else
-			pack_int32(*sock, -1);
+		http_send_json_chunk(conn, "\n");
 	}
 
 	if(excludeclients != NULL)
 		clearSetupVarsArray();
 }
 
-void getClientNames(const int *sock)
+void getClientNames(struct mg_connection *conn)
 {
 	// Exit before processing any data if requested via config setting
 	get_privacy_level(NULL);
@@ -1245,19 +1027,14 @@ void getClientNames(const int *sock)
 		const char *client_ip = getstr(client->ippos);
 		const char *client_name = getstr(client->namepos);
 
-		if(istelnet[*sock])
-			ssend(*sock, "%s %s\n", client_name, client_ip);
-		else {
-			pack_str32(*sock, client_name);
-			pack_str32(*sock, client_ip);
-		}
+		http_send_json_chunk(conn, "%s %s\n", client_name, client_ip);
 	}
 
 	if(excludeclients != NULL)
 		clearSetupVarsArray();
 }
 
-void getUnknownQueries(const int *sock)
+void getUnknownQueries(struct mg_connection *conn)
 {
 	// Exit before processing any data if requested via config setting
 	get_privacy_level(NULL);
@@ -1293,35 +1070,19 @@ void getUnknownQueries(const int *sock)
 		// Get client IP string
 		const char *clientIP = getstr(client->ippos);
 
-		if(istelnet[*sock])
-			ssend(*sock, "%li %i %i %s %s %s %i %s\n", query->timestamp, queryID, query->id, type, getstr(domain->domainpos), clientIP, query->status, query->complete ? "true" : "false");
-		else {
-			pack_int32(*sock, query->timestamp);
-			pack_int32(*sock, query->id);
-
-			// Use a fixstr because the length of qtype is always 4 (max is 31 for fixstr)
-			if(!pack_fixstr(*sock, type))
-				return;
-
-			// Use str32 for domain and client because we have no idea how long they will be (max is 4294967295 for str32)
-			if(!pack_str32(*sock, getstr(domain->domainpos)) || !pack_str32(*sock, clientIP))
-				return;
-
-			pack_uint8(*sock, query->status);
-			pack_bool(*sock, query->complete);
-		}
+		http_send_json_chunk(conn, "%li %i %i %s %s %s %i %s\n", query->timestamp, queryID, query->id, type, getstr(domain->domainpos), clientIP, query->status, query->complete ? "true" : "false");
 	}
 }
 
-void getDomainDetails(const char *client_message, const int *sock)
+void getDomainDetails(const char *client_message, struct mg_connection *conn)
 {
 	// Get domain name
 	bool show_all = false;
 	char domainString[128];
 	if(sscanf(client_message, "%*[^ ] %127s", domainString) < 1)
 	{
-		ssend(*sock, "No domain specified, listing all known (%d)\n", counters->domains);
-		show_all = true;
+		http_send_json_chunk(conn, "Need domain for this request\n");
+		return;
 	}
 
 	for(int domainID = 0; domainID < counters->domains; domainID++)
@@ -1333,56 +1094,13 @@ void getDomainDetails(const char *client_message, const int *sock)
 
 		if(show_all || strcmp(getstr(domain->domainpos), domainString) == 0)
 		{
-			ssend(*sock,"Domain \"%s\", ID: %i\n", getstr(domain->domainpos), domainID);
-			ssend(*sock,"Total: %i\n", domain->count);
-			ssend(*sock,"Blocked: %i\n", domain->blockedcount);
-			ssend(*sock,"Client status:\n");
-			for(int clientID = 0; clientID < counters->clients; clientID++)
-			{
-				clientsData *client = getClient(clientID, true);
-				if(client == NULL)
-				{
-					continue;
-				}
-				const char *str = "N/A";
-				unsigned int cacheID = findCacheID(domainID, clientID);
-				DNSCacheData *dns_cache = getDNSCache(cacheID, true);
-				switch(dns_cache->blocking_status)
-				{
-					case UNKNOWN_BLOCKED:
-						str = "unknown";
-						break;
-					case BLACKLIST_BLOCKED:
-						str = "blacklisted";
-						break;
-					case GRAVITY_BLOCKED:
-						str = "gravity";
-						break;
-					case REGEX_BLOCKED:
-						str = "regex";
-						break;
-					case NOT_BLOCKED:
-						str = "not blocked";
-						break;
-					default:
-						str = "this cannot happen";
-						break;
-				}
-				ssend(*sock, " %s (ID %d): %s\n", getstr(client->ippos), clientID, str);
-			}
-			ssend(*sock,"\n");
-
-			// Return early
-			if(!show_all)
-			{
-				return;
-			}
+			http_send_json_chunk(conn, "Domain \"%s\", ID: %i\n", domainString, domainID);
+			http_send_json_chunk(conn, "Total: %i\n", domain->count);
+			http_send_json_chunk(conn, "Blocked: %i\n", domain->blockedcount);
+			return;
 		}
 	}
 
 	// for loop finished without an exact match
-	if(!show_all)
-	{
-		ssend(*sock,"Domain \"%s\" is unknown\n", domainString);
-	}
+	http_send_json_chunk(conn, "Domain \"%s\" is unknown\n", domainString);
 }

@@ -24,7 +24,6 @@
 #include "daemon.h"
 #include "timers.h"
 #include "gc.h"
-#include "api/socket.h"
 #include "regex_r.h"
 #include "config.h"
 #include "capabilities.h"
@@ -1613,8 +1612,6 @@ static void save_reply_type(const unsigned int flags, const union all_addr *addr
 	                            query->response;
 }
 
-pthread_t telnet_listenthreadv4;
-pthread_t telnet_listenthreadv6;
 pthread_t DBthread;
 pthread_t GCthread;
 pthread_t DNSclientthread;
@@ -1639,23 +1636,6 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 	// released back to the system without the need for another thread to
 	// join with the terminated thread
 	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-
-	// Bind to sockets
-	bind_sockets();
-
-	// Start TELNET IPv4 thread
-	if(ipv4telnet && pthread_create( &telnet_listenthreadv4, &attr, telnet_listening_thread_IPv4, NULL ) != 0)
-	{
-		logg("Unable to open IPv4 telnet listening thread. Exiting...");
-		exit(EXIT_FAILURE);
-	}
-
-	// Start TELNET IPv6 thread
-	if(ipv6telnet &&  pthread_create( &telnet_listenthreadv6, &attr, telnet_listening_thread_IPv6, NULL ) != 0)
-	{
-		logg("Unable to open IPv6 telnet listening thread. Exiting...");
-		exit(EXIT_FAILURE);
-	}
 
 	// Start database thread if database is used
 	if(database && pthread_create( &DBthread, &attr, DB_thread, NULL ) != 0)
@@ -1701,13 +1681,17 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 }
 
 // int cache_inserted, cache_live_freed are defined in dnsmasq/cache.c
-void getCacheInformation(const int *sock)
+int *getCacheInformation(void)
 {
-	ssend(*sock,"cache-size: %i\ncache-live-freed: %i\ncache-inserted: %i\n",
-	            daemon->cachesize,
-	            daemon->metrics[METRIC_DNS_CACHE_LIVE_FREED],
-	            daemon->metrics[METRIC_DNS_CACHE_INSERTED]);
-	// cache-size is obvious
+	// Allocate memory
+	int *cacheinfo = calloc(3,sizeof(int));
+	// cache-size - interpretation is obvious
+	cacheinfo[0] = daemon->cachesize;
+	// cache-live-freed - interpretation see below
+	cacheinfo[1] = daemon->metrics[METRIC_DNS_CACHE_LIVE_FREED];
+	// cache-inserted - interpretation see below
+	cacheinfo[2] = daemon->metrics[METRIC_DNS_CACHE_INSERTED];
+	// cache-live-freed and cache-inserted:
 	// It means the resolver handled <cache-inserted> names lookups that
 	// needed to be sent to upstream servers and that <cache-live-freed>
 	// was thrown out of the cache before reaching the end of its
@@ -1716,6 +1700,7 @@ void getCacheInformation(const int *sock)
 	// cached. If the cache is full with entries which haven't reached
 	// the end of their time-to-live, then the entry which hasn't been
 	// looked up for the longest time is evicted.
+	return cacheinfo;
 }
 
 void _FTL_forwarding_failed(const struct server *server, const char* file, const int line)

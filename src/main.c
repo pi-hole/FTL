@@ -11,7 +11,6 @@
 #include "FTL.h"
 #include "daemon.h"
 #include "log.h"
-#include "api/socket.h"
 #include "setupVars.h"
 #include "args.h"
 #include "config.h"
@@ -24,6 +23,7 @@
 #include "capabilities.h"
 #include "database/gravity-db.h"
 #include "timers.h"
+// http_terminate()
 #include "api/http.h"
 
 char * username;
@@ -95,19 +95,12 @@ int main (int argc, char* argv[])
 
 	logg("Shutting down...");
 
-	// Cancel active threads as we don't need them any more
-	if(ipv4telnet) pthread_cancel(telnet_listenthreadv4);
-	if(ipv6telnet) pthread_cancel(telnet_listenthreadv6);
-
 	// Save new queries to database
 	if(database)
 	{
 		DB_save_queries();
 		logg("Finished final database update");
 	}
-
-	// Close sockets
-	close_telnet_socket();
 
 	// Close gravity database connection
 	gravityDB_close();

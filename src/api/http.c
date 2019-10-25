@@ -12,8 +12,6 @@
 #include "http.h"
 #include "../config.h"
 #include "../log.h"
-#include "../civetweb/civetweb.h"
-#include "../cJSON/cJSON.h"
 
 // Server context handle
 static struct mg_context *ctx = NULL;
@@ -41,6 +39,24 @@ static int send_http_chunked_simulator(struct mg_connection *conn, const char *m
 static int send_http_error(struct mg_connection *conn)
 {
 	return mg_send_http_error(conn, 500, "Internal server error");
+}
+
+void __attribute__ ((format (gnu_printf, 2, 3))) http_send_json_chunk(struct mg_connection *conn, const char *format, ...)
+{
+	char *buffer;
+	va_list args;
+	va_start(args, format);
+	int len = vasprintf(&buffer, format, args);
+	va_end(args);
+	if(len > 0)
+	{
+		if(mg_send_chunk(conn, buffer, len) < 0)
+		{
+			logg("WARNING: Chunk writing returned error %s "
+			     "(%i, length %i)", strerror(errno), errno, len);
+		}
+		free(buffer);
+	}
 }
 
 // Print passed string as JSON
