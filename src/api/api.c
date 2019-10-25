@@ -827,7 +827,7 @@ void getClientIP(struct mg_connection *conn)
 	const struct mg_request_info *request = mg_get_request_info(conn);
 	http_send(conn, false, "remote_addr:\"%s\"", request->remote_addr);
 }
-
+/*
 void getQueryTypesOverTime(struct mg_connection *conn)
 {
 	int from = -1, until = OVERTIME_SLOTS;
@@ -869,8 +869,8 @@ void getQueryTypesOverTime(struct mg_connection *conn)
 		http_send(conn, false, "%li %.2f %.2f\n", overTime[slot].timestamp, percentageIPv4, percentageIPv6);
 	}
 }
-
-void getVersion(struct mg_connection *conn)
+*/
+void api_ftl_version(struct mg_connection *conn)
 {
 	const char *commit = GIT_HASH;
 	const char *tag = GIT_TAG;
@@ -881,13 +881,14 @@ void getVersion(struct mg_connection *conn)
 	memcpy(hash, commit, 7); hash[7] = 0;
 
 	if(strlen(tag) > 1) {
-		http_send(conn, false, 				"version %s\ntag %s\nbranch %s\nhash %s\ndate %s\n",
-				version, tag, GIT_BRANCH, hash, GIT_DATE
+		http_send(conn, false,
+			  "{\"version\":\"%s\",\"tag\":\"%s\",\"branch\":\"%s\",\"hash\":\"%s\",\"date\":\"%s\"}",
+			  version, tag, GIT_BRANCH, hash, GIT_DATE
 		);
-	}
-	else {
-		http_send(conn, false, 				"version vDev-%s\ntag %s\nbranch %s\nhash %s\ndate %s\n",
-				hash, tag, GIT_BRANCH, hash, GIT_DATE
+	} else {
+		http_send(conn, false,
+			  "{\"version\":\"vDev-%s\",\"tag\":\"%s\",\"branch\":\"%s\",\"hash\":\"%s\",\"date\":\"%s\"}",
+			  hash, tag, GIT_BRANCH, hash, GIT_DATE
 		);
 	}
 }

@@ -140,8 +140,13 @@ static int api_handler(struct mg_connection *conn, void *ignored)
 	{
 		api_dns_status(conn);
 	}
+	/******************************** api/ftl ****************************/
+	else if(strcasecmp("/api/ftl/version",request->local_uri) == 0)
+	{
+		api_ftl_version(conn);
+	}
 	/******************************** api/summary ****************************/
-	if(strcasecmp("/api/stats/summary",request->local_uri) == 0)
+	else if(strcasecmp("/api/stats/summary",request->local_uri) == 0)
 	{
 		api_stats_summary(conn);
 	}
