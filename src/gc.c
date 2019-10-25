@@ -162,10 +162,10 @@ void *GC_thread(void *val)
 				}
 
 				// Update type counters
-				if(query->type >= TYPE_A && query->type < TYPE_MAX)
+				if(query->type < TYPE_MAX)
 				{
-					counters->querytype[query->type-1]--;
-					overTime[timeidx].querytypedata[query->type-1]--;
+					counters->querytype[query->type]--;
+					overTime[timeidx].querytypedata[query->type]--;
 				}
 
 				// Count removed queries

@@ -79,13 +79,7 @@ void api_stats_summary(struct mg_connection *conn)
 			activeclients++;
 	}
 
-	// Sum up all query types (A, AAAA, ANY, SRV, SOA, ...)
-	int sumalltypes = 0;
-	for(int queryType=0; queryType < TYPE_MAX-1; queryType++)
-	{
-		sumalltypes += counters->querytype[queryType];
-	}
-
+	// Send response
 	http_send(conn, false,
 		  "{\"gravity_size\":%i,"
 		  "\"total_queries\":{\"A\":%i,\"AAAA\":%i,\"ANY\":%i,\"SRV\":%i,\"SOA\":%i,\"PTR\":%i,\"TXT\":%i},"
@@ -113,6 +107,7 @@ void api_stats_summary(struct mg_connection *conn)
 
 void api_dns_status(struct mg_connection *conn)
 {
+	// Send status
 	http_send(conn, false, "{\"status\":\"%s\"}",
 		  counters->gravity > 0 ? "enabled" : "disabled");
 }
@@ -499,9 +494,9 @@ void getQueryTypes(struct mg_connection *conn)
 		}
 	}
 
-	http_send(conn, false, "A (IPv4): %.2f\nAAAA (IPv6): %.2f\nANY: %.2f\nSRV: %.2f\nSOA: %.2f\nPTR: %.2f\nTXT: %.2f\n",
-		percentage[0], percentage[1], percentage[2], percentage[3],
-		percentage[4], percentage[5], percentage[6]);
+	http_send(conn, false, "A (IPv4): %.2f\nAAAA (IPv6): %.2f\nANY: %.2f\nSRV: %.2f\nSOA: %.2f\nPTR: %.2f\nTXT: %.2f\nNAPTR: %.2f\n",
+		percentage[TYPE_A], percentage[TYPE_AAAA], percentage[TYPE_ANY], percentage[TYPE_SRV],
+		percentage[TYPE_SOA], percentage[TYPE_PTR], percentage[TYPE_TXT], percentage[TYPE_NAPTR]);
 }
 
 const char *querytypes[TYPE_MAX] = {"A","AAAA","ANY","SRV","SOA","PTR","TXT","NAPTR","UNKN"};
@@ -690,10 +685,10 @@ void getAllQueries(const char *client_message, struct mg_connection *conn)
 			continue;
 
 		// Verify query type
-		if(query->type > TYPE_MAX-1)
+		if(query->type >= TYPE_MAX)
 			continue;
 		// Get query type
-		const char *qtype = querytypes[query->type - TYPE_A];
+		const char *qtype = querytypes[query->type];
 
 		// 1 = gravity.list, 4 = wildcard, 5 = black.list
 		if((query->status == QUERY_GRAVITY ||

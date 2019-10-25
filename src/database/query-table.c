@@ -143,8 +143,8 @@ void DB_save_queries(void)
 		// TIMESTAMP
 		sqlite3_bind_int(stmt, 1, query->timestamp);
 
-		// TYPE
-		sqlite3_bind_int(stmt, 2, query->type);
+		// TYPE (stored incremented by one so A = 1, AAAA = 2, ... for legacy reasons)
+		sqlite3_bind_int(stmt, 2, query->type+1);
 
 		// STATUS
 		sqlite3_bind_int(stmt, 3, query->status);
@@ -419,7 +419,7 @@ void DB_read_queries(void)
 		queriesData* query = getQuery(queryIndex, false);
 		query->magic = MAGICBYTE;
 		query->timestamp = queryTimeStamp;
-		query->type = type;
+		query->type = type - 1; // The type is stored incremented by one so A = 1, AAAA = 2, ... for legacy reasons
 		query->status = status;
 		query->domainID = domainID;
 		query->clientID = clientID;
