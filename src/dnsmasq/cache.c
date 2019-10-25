@@ -501,6 +501,13 @@ static struct crec *really_insert(char *name, union all_addr *addr, unsigned sho
   /* if previous insertion failed give up now. */
   if (insert_error)
     return NULL;
+
+  /* we don't cache zero-TTL records. */
+  if (ttl == 0)
+    {
+      insert_error = 1;
+      return NULL;
+    }
   
   /* First remove any expired entries and entries for the name/address we
      are currently inserting. */
