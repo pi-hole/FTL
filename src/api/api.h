@@ -34,7 +34,7 @@ void getDomainDetails(const char *client_message, struct mg_connection *conn);
 // FTL methods
 void getClientIP(struct mg_connection *conn);
 void api_ftl_version(struct mg_connection *conn);
-void getDBstats(struct mg_connection *conn);
+void api_ftl_db(struct mg_connection *conn);
 void getUnknownQueries(struct mg_connection *conn);
 
 // MessagePack serialization helpers

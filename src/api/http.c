@@ -145,6 +145,10 @@ static int api_handler(struct mg_connection *conn, void *ignored)
 	{
 		api_ftl_version(conn);
 	}
+	else if(strcasecmp("/api/ftl/db",request->local_uri) == 0)
+	{
+		api_ftl_db(conn);
+	}
 	/******************************** api/summary ****************************/
 	else if(strcasecmp("/api/stats/summary",request->local_uri) == 0)
 	{

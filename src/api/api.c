@@ -893,7 +893,7 @@ void api_ftl_version(struct mg_connection *conn)
 	}
 }
 
-void getDBstats(struct mg_connection *conn)
+void api_ftl_db(struct mg_connection *conn)
 {
 	// Get file details
 	unsigned long long int filesize = get_FTL_db_filesize();
@@ -903,7 +903,15 @@ void getDBstats(struct mg_connection *conn)
 	double formated = 0.0;
 	format_memory_size(prefix, filesize, &formated);
 
-	http_send(conn, false, "queries in database: %i\ndatabase filesize: %.2f %sB\nSQLite version: %s\n", get_number_of_queries_in_DB(), formated, prefix, get_sqlite3_version());
+	http_send(conn, false,
+		  "{\"queries in database\":%i,"
+		  "\"database filesize_raw\":%llu,"
+		  "\"database filesize_formatted\":\"%.2f %sB\","
+		  "\"SQLite version\":\"%s\"}",
+		  get_number_of_queries_in_DB(),
+		  filesize,
+		  formated, prefix,
+		  get_sqlite3_version());
 }
 
 void getClientsOverTime(struct mg_connection *conn)
