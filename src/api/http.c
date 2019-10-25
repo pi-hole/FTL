@@ -24,19 +24,6 @@ static int send_http(struct mg_connection *conn, const char *mime_type, const ch
 	return 200;
 }
 /*
-static int send_http_chunked_simulator(struct mg_connection *conn, const char *mime_type, const char *msg)
-{
-	mg_send_http_ok(conn, mime_type, -1);
-	// Send bytes one after another
-	for(unsigned int i = 0; i < strlen(msg); i++)
-	{
-		char msgpart[2] = { 0 };
-		msgpart[0] = msg[i];
-		mg_send_chunk(conn, msgpart, strlen(msgpart));
-	}
-	return 200;
-}
-
 static int send_http_error(struct mg_connection *conn)
 {
 	return mg_send_http_error(conn, 500, "Internal server error");
@@ -69,61 +56,7 @@ void __attribute__ ((format (gnu_printf, 3, 4))) http_send(struct mg_connection 
 		free(buffer);
 	}
 }
-/*
-// Print passed string as JSON
-static int print_json(struct mg_connection *conn, void *input)
-{
-	// Create JSON object
-	cJSON *json = cJSON_CreateObject();
 
-	// Add string to created object
-	if(cJSON_AddStringToObject(json, "message", (const char*)input) == NULL)
-	{
-		cJSON_Delete(json);
-		send_http_error(conn);
-		return 500;
-	}
-
-	const struct mg_request_info *request = mg_get_request_info(conn);
-
-	// Add URL-decoded URI (relative) to created object
-	if(cJSON_AddStringToObject(json, "uri", request->local_uri) == NULL)
-	{
-		cJSON_Delete(json);
-		send_http_error(conn);
-		return 500;
-	}
-
-	// Add URL-decoded URI (relative) to created object
-	if(cJSON_AddStringToObject(json, "client", request->remote_addr) == NULL)
-	{
-		cJSON_Delete(json);
-		send_http_error(conn);
-		return 500;
-	}
-
-	// Generate string to be sent to the client
-	const char* msg = cJSON_PrintUnformatted(json);
-	if(msg == NULL)
-	{
-		cJSON_Delete(json);
-		send_http_error(conn);
-		return 500;
-	}
-
-	// Send JSON string
-	if(strcmp(request->local_uri, "/api/chunk_test") == 0)
-		send_http_chunked_simulator(conn, "application/json", msg);
-	else
-		send_http(conn, "application/json", msg);
-
-	// Free JSON ressources
-	cJSON_Delete(json);
-
-	// HTTP status code to return
-	return 200;
-}
-*/
 // Print passed string directly
 static int print_simple(struct mg_connection *conn, void *input)
 {
@@ -132,30 +65,26 @@ static int print_simple(struct mg_connection *conn, void *input)
 
 static int api_handler(struct mg_connection *conn, void *ignored)
 {
-	
-	//mg_send_chunk(conn, "{", 2);
 	const struct mg_request_info *request = mg_get_request_info(conn);
 	/******************************** api/dns ********************************/
-	if(strcasecmp("/api/dns/status",request->local_uri) == 0)
+	if(strcasecmp("/api/dns/status", request->local_uri) == 0)
 	{
 		api_dns_status(conn);
 	}
 	/******************************** api/ftl ****************************/
-	else if(strcasecmp("/api/ftl/version",request->local_uri) == 0)
+	else if(strcasecmp("/api/ftl/version", request->local_uri) == 0)
 	{
 		api_ftl_version(conn);
 	}
-	else if(strcasecmp("/api/ftl/db",request->local_uri) == 0)
+	else if(strcasecmp("/api/ftl/db", request->local_uri) == 0)
 	{
 		api_ftl_db(conn);
 	}
 	/******************************** api/summary ****************************/
-	else if(strcasecmp("/api/stats/summary",request->local_uri) == 0)
+	else if(strcasecmp("/api/stats/summary", request->local_uri) == 0)
 	{
 		api_stats_summary(conn);
 	}
-	// mg_send_http_ok(conn, "application/json", -1);
-	//mg_send_chunk(conn, "}", 2);
 	return 200;
 }
 
@@ -190,7 +119,6 @@ void http_init(void)
 
 	/* Add simple demonstration callbacks */
 	mg_set_request_handler(ctx, "/ping", print_simple, (char*)"pong\n");
-//	mg_set_request_handler(ctx, "/json_test", print_json, (char*)"Greetings from FTL!");
 	mg_set_request_handler(ctx, "/api", api_handler, NULL);
 }
 

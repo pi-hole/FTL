@@ -29,13 +29,11 @@ void getRecentBlocked(const char *client_message, struct mg_connection *conn);
 void getQueryTypesOverTime(struct mg_connection *conn);
 void getClientsOverTime(struct mg_connection *conn);
 void getClientNames(struct mg_connection *conn);
-void getDomainDetails(const char *client_message, struct mg_connection *conn);
 
 // FTL methods
 void getClientIP(struct mg_connection *conn);
 void api_ftl_version(struct mg_connection *conn);
 void api_ftl_db(struct mg_connection *conn);
-void getUnknownQueries(struct mg_connection *conn);
 
 // MessagePack serialization helpers
 void pack_eom(const int sock);
