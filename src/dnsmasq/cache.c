@@ -1292,7 +1292,7 @@ void cache_reload(void)
   for (hr = daemon->host_records; hr; hr = hr->next)
     for (nl = hr->names; nl; nl = nl->next)
       {
-	if (hr->addr.s_addr != 0 &&
+	if ((hr->flags & HR_4) &&
 	    (cache = whine_malloc(SIZEOF_POINTER_CREC)))
 	  {
 	    cache->name.namep = nl->name;
@@ -1301,7 +1301,7 @@ void cache_reload(void)
 	    add_hosts_entry(cache, (union all_addr *)&hr->addr, INADDRSZ, SRC_CONFIG, (struct crec **)daemon->packet, revhashsz);
 	  }
 
-	if (!IN6_IS_ADDR_UNSPECIFIED(&hr->addr6) &&
+	if ((hr->flags & HR_6) &&
 	    (cache = whine_malloc(SIZEOF_POINTER_CREC)))
 	  {
 	    cache->name.namep = nl->name;

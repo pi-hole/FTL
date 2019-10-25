@@ -403,9 +403,11 @@ struct auth_zone {
   struct auth_zone *next;
 };
 
+#define HR_6 1
+#define HR_4 2
 
 struct host_record {
-  int ttl;
+  int ttl, flags;
   struct name_list {
     char *name;
     struct name_list *next;

@@ -4325,6 +4325,7 @@ err:
 	new = opt_malloc(sizeof(struct host_record));
 	memset(new, 0, sizeof(struct host_record));
 	new->ttl = -1;
+	new->flags = 0;
 
 	while (arg)
 	  {
@@ -4337,9 +4338,15 @@ err:
 	    if (*dig == 0)
 	      new->ttl = atoi(arg);
 	    else if (inet_pton(AF_INET, arg, &addr.addr4))
-	      new->addr = addr.addr4;
+	      {
+		new->addr = addr.addr4;
+		new->flags |= HR_4;
+	      }
 	    else if (inet_pton(AF_INET6, arg, &addr.addr6))
-	      new->addr6 = addr.addr6;
+	      {
+		new->addr6 = addr.addr6;
+		new->flags |= HR_6;
+	      }
 	    else
 	      {
 		int nomem;
@@ -5093,7 +5100,7 @@ void read_opts(int argc, char **argv, char *compile_opts)
 #define NOLOOP 1
 #define TESTLOOP 2      
 
-      /* Fill in TTL for CNAMES noe we have local_ttl.
+      /* Fill in TTL for CNAMES now we have local_ttl.
 	 Also prepare to do loop detection. */
       for (cn = daemon->cnames; cn; cn = cn->next)
 	{
