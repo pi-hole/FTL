@@ -56,7 +56,7 @@ static int __attribute__((pure)) cmpdesc(const void *a, const void *b)
 		return 0;
 }
 
-void getStats(struct mg_connection *conn)
+void api_stats_summary(struct mg_connection *conn)
 {
 	const int blocked = counters->blocked;
 	const int total = counters->queries;
@@ -65,9 +65,6 @@ void getStats(struct mg_connection *conn)
 	// Avoid 1/0 condition
 	if(total > 0)
 		percentage = 1e2f*blocked/total;
-
-	// Send domains being blocked
-	http_send_json_chunk(conn, "gravity_size:%i,", counters->gravity);
 
 	// unique_clients: count only clients that have been active within the most recent 24 hours
 	int activeclients = 0;
@@ -82,28 +79,42 @@ void getStats(struct mg_connection *conn)
 			activeclients++;
 	}
 
-	http_send_json_chunk(conn, "dns_queries_today %i\nads_blocked_today %i\nads_percentage_today %f\n",
-		total, blocked, percentage);
-	http_send_json_chunk(conn, "unique_domains %i\nqueries_forwarded %i\nqueries_cached %i\n",
-		counters->domains, counters->forwarded, counters->cached);
-	http_send_json_chunk(conn, "clients_ever_seen %i\n", counters->clients);
-	http_send_json_chunk(conn, "unique_clients %i\n", activeclients);
-
 	// Sum up all query types (A, AAAA, ANY, SRV, SOA, ...)
 	int sumalltypes = 0;
 	for(int queryType=0; queryType < TYPE_MAX-1; queryType++)
 	{
 		sumalltypes += counters->querytype[queryType];
 	}
-	http_send_json_chunk(conn, "dns_queries_all_types %i\n", sumalltypes);
 
-	// Send individual reply type counters
-	http_send_json_chunk(conn, "reply_NODATA %i\nreply_NXDOMAIN %i\nreply_CNAME %i\nreply_IP %i\n",
-		counters->reply_NODATA, counters->reply_NXDOMAIN, counters->reply_CNAME, counters->reply_IP);
-	http_send_json_chunk(conn, "privacy_level %i\n", config.privacylevel);
+	http_send(conn, false,
+		  "{\"gravity_size\":%i,"
+		  "\"total_queries\":{\"A\":%i,\"AAAA\":%i,\"ANY\":%i,\"SRV\":%i,\"SOA\":%i,\"PTR\":%i,\"TXT\":%i},"
+		  "\"blocked_queries\":%i,\"percent_blocked\":%f,"
+		  "\"unique_domains\":%i,"
+		  "\"forwarded_queries\":%i,\"cached_queries\":%i,"
+		  "\"reply_types\":{\"NODATA\":%i,\"NXDOMAIN\":%i,\"CNAME\":%i,\"IP\":%i},"
+		  "\"privacy_level\":%i,"
+		  "\"total_clients\":%i,\"active_clients\":%i,"
+		  "\"status\":\"%s\"}",
+		  counters->gravity,
+		  counters->querytype[TYPE_A], counters->querytype[TYPE_AAAA],
+		  counters->querytype[TYPE_ANY], counters->querytype[TYPE_SRV],
+		  counters->querytype[TYPE_SOA], counters->querytype[TYPE_PTR],
+		  counters->querytype[TYPE_TXT],
+		  blocked, percentage,
+		  counters->domains,
+		  counters->forwarded, counters->cached,
+		  counters->reply_NODATA, counters->reply_NXDOMAIN,
+		  counters->reply_CNAME, counters->reply_IP,
+		  config.privacylevel,
+		  counters->clients, activeclients,
+		  counters->gravity > 0 ? "enabled" : "disabled");
+}
 
-	// Send status
-	http_send_json_chunk(conn, "status %s\n", counters->gravity > 0 ? "enabled" : "disabled");
+void api_dns_status(struct mg_connection *conn)
+{
+	http_send(conn, false, "{\"status\":\"%s\"}",
+		  counters->gravity > 0 ? "enabled" : "disabled");
 }
 
 void getOverTime(struct mg_connection *conn)
@@ -140,7 +151,7 @@ void getOverTime(struct mg_connection *conn)
 
 	for(int slot = from; slot < until; slot++)
 	{
-		http_send_json_chunk(conn, "%li %i %i\n",
+		http_send(conn, false, "%li %i %i\n",
 			overTime[slot].timestamp,
 			overTime[slot].total,
 			overTime[slot].blocked);
@@ -253,12 +264,12 @@ void getTopDomains(const bool blocked, struct mg_connection *conn)
 
 		if(blocked && showblocked && domain->blockedcount > 0)
 		{
-			http_send_json_chunk(conn, "%i %i %s\n", n, domain->blockedcount, getstr(domain->domainpos));
+			http_send(conn, false, "%i %i %s\n", n, domain->blockedcount, getstr(domain->domainpos));
 			n++;
 		}
 		else if(!blocked && showpermitted && (domain->count - domain->blockedcount) > 0)
 		{
-			http_send_json_chunk(conn, "%i %i %s\n",n,(domain->count - domain->blockedcount),getstr(domain->domainpos));
+			http_send(conn, false, "%i %i %s\n", n, (domain->count - domain->blockedcount), getstr(domain->domainpos));
 			n++;
 		}
 
@@ -364,7 +375,7 @@ void getTopClients(const bool blocked_only, struct mg_connection *conn)
 		// - the client made at least one query within the most recent 24 hours
 		if(includezeroclients || ccount > 0)
 		{
-			http_send_json_chunk(conn, "%i %i %s %s\n", n, ccount, client_ip, client_name);
+			http_send(conn, false, "%i %i %s %s\n", n, ccount, client_ip, client_name);
 			n++;
 		}
 
@@ -463,7 +474,7 @@ void getForwardDestinations(struct mg_connection *conn)
 		// - only if percentage > 0.0 for all others (i > 0)
 		if(percentage > 0.0f || i < 0)
 		{
-			http_send_json_chunk(conn, "%i %.2f %s %s\n", i, percentage, ip, name);
+			http_send(conn, false, "%i %.2f %s %s\n", i, percentage, ip, name);
 		}
 	}
 }
@@ -488,7 +499,7 @@ void getQueryTypes(struct mg_connection *conn)
 		}
 	}
 
-	http_send_json_chunk(conn, "A (IPv4): %.2f\nAAAA (IPv6): %.2f\nANY: %.2f\nSRV: %.2f\nSOA: %.2f\nPTR: %.2f\nTXT: %.2f\n",
+	http_send(conn, false, "A (IPv4): %.2f\nAAAA (IPv6): %.2f\nANY: %.2f\nSRV: %.2f\nSOA: %.2f\nPTR: %.2f\nTXT: %.2f\n",
 		percentage[0], percentage[1], percentage[2], percentage[3],
 		percentage[4], percentage[5], percentage[6]);
 }
@@ -752,10 +763,10 @@ void getAllQueries(const char *client_message, struct mg_connection *conn)
 		if(delay > 1.8e7)
 			delay = 0;
 
-		http_send_json_chunk(conn, "%li %s %s %s %i %i %i %lu",query->timestamp,qtype,domain,clientIPName,query->status,query->dnssec,query->reply,delay);
+		http_send(conn, false, "%li %s %s %s %i %i %i %lu",query->timestamp,qtype,domain,clientIPName,query->status,query->dnssec,query->reply,delay);
 		if(config.debug & DEBUG_API)
-			http_send_json_chunk(conn, " %i", queryID);
-		http_send_json_chunk(conn, "\n");
+			http_send(conn, false, " %i", queryID);
+		http_send(conn, false, "\n");
 	}
 
 	// Free allocated memory
@@ -803,7 +814,7 @@ void getRecentBlocked(const char *client_message, struct mg_connection *conn)
 			if(domain == NULL)
 				continue;
 
-			http_send_json_chunk(conn, "%s\n", domain);
+			http_send(conn, false, "%s\n", domain);
 		}
 
 		if(found >= num)
@@ -814,7 +825,7 @@ void getRecentBlocked(const char *client_message, struct mg_connection *conn)
 void getClientIP(struct mg_connection *conn)
 {
 	const struct mg_request_info *request = mg_get_request_info(conn);
-	http_send_json_chunk(conn, "remote_addr:\"%s\"", request->remote_addr);
+	http_send(conn, false, "remote_addr:\"%s\"", request->remote_addr);
 }
 
 void getQueryTypesOverTime(struct mg_connection *conn)
@@ -855,7 +866,7 @@ void getQueryTypesOverTime(struct mg_connection *conn)
 			percentageIPv6 = (float) (1e2 * overTime[slot].querytypedata[1] / sum);
 		}
 
-		http_send_json_chunk(conn, "%li %.2f %.2f\n", overTime[slot].timestamp, percentageIPv4, percentageIPv6);
+		http_send(conn, false, "%li %.2f %.2f\n", overTime[slot].timestamp, percentageIPv4, percentageIPv6);
 	}
 }
 
@@ -870,14 +881,12 @@ void getVersion(struct mg_connection *conn)
 	memcpy(hash, commit, 7); hash[7] = 0;
 
 	if(strlen(tag) > 1) {
-		http_send_json_chunk(conn,
-				"version %s\ntag %s\nbranch %s\nhash %s\ndate %s\n",
+		http_send(conn, false, 				"version %s\ntag %s\nbranch %s\nhash %s\ndate %s\n",
 				version, tag, GIT_BRANCH, hash, GIT_DATE
 		);
 	}
 	else {
-		http_send_json_chunk(conn,
-				"version vDev-%s\ntag %s\nbranch %s\nhash %s\ndate %s\n",
+		http_send(conn, false, 				"version vDev-%s\ntag %s\nbranch %s\nhash %s\ndate %s\n",
 				hash, tag, GIT_BRANCH, hash, GIT_DATE
 		);
 	}
@@ -893,7 +902,7 @@ void getDBstats(struct mg_connection *conn)
 	double formated = 0.0;
 	format_memory_size(prefix, filesize, &formated);
 
-	http_send_json_chunk(conn, "queries in database: %i\ndatabase filesize: %.2f %sB\nSQLite version: %s\n", get_number_of_queries_in_DB(), formated, prefix, get_sqlite3_version());
+	http_send(conn, false, "queries in database: %i\ndatabase filesize: %.2f %sB\nSQLite version: %s\n", get_number_of_queries_in_DB(), formated, prefix, get_sqlite3_version());
 }
 
 void getClientsOverTime(struct mg_connection *conn)
@@ -956,7 +965,7 @@ void getClientsOverTime(struct mg_connection *conn)
 	// Main return loop
 	for(int slot = sendit; slot < until; slot++)
 	{
-		http_send_json_chunk(conn, "%li", overTime[slot].timestamp);
+		http_send(conn, false, "%li", overTime[slot].timestamp);
 
 		// Loop over forward destinations to generate output to be sent to the client
 		for(int clientID = 0; clientID < counters->clients; clientID++)
@@ -970,10 +979,10 @@ void getClientsOverTime(struct mg_connection *conn)
 				continue;
 			const int thisclient = client->overTime[slot];
 
-			http_send_json_chunk(conn, " %i", thisclient);
+			http_send(conn, false, " %i", thisclient);
 		}
 
-		http_send_json_chunk(conn, "\n");
+		http_send(conn, false, "\n");
 	}
 
 	if(excludeclients != NULL)
@@ -1027,7 +1036,7 @@ void getClientNames(struct mg_connection *conn)
 		const char *client_ip = getstr(client->ippos);
 		const char *client_name = getstr(client->namepos);
 
-		http_send_json_chunk(conn, "%s %s\n", client_name, client_ip);
+		http_send(conn, false, "%s %s\n", client_name, client_ip);
 	}
 
 	if(excludeclients != NULL)
@@ -1070,7 +1079,7 @@ void getUnknownQueries(struct mg_connection *conn)
 		// Get client IP string
 		const char *clientIP = getstr(client->ippos);
 
-		http_send_json_chunk(conn, "%li %i %i %s %s %s %i %s\n", query->timestamp, queryID, query->id, type, getstr(domain->domainpos), clientIP, query->status, query->complete ? "true" : "false");
+		http_send(conn, false, "%li %i %i %s %s %s %i %s\n", query->timestamp, queryID, query->id, type, getstr(domain->domainpos), clientIP, query->status, query->complete ? "true" : "false");
 	}
 }
 
@@ -1081,7 +1090,7 @@ void getDomainDetails(const char *client_message, struct mg_connection *conn)
 	char domainString[128];
 	if(sscanf(client_message, "%*[^ ] %127s", domainString) < 1)
 	{
-		http_send_json_chunk(conn, "Need domain for this request\n");
+		http_send(conn, false, "Need domain for this request\n");
 		return;
 	}
 
@@ -1094,13 +1103,13 @@ void getDomainDetails(const char *client_message, struct mg_connection *conn)
 
 		if(show_all || strcmp(getstr(domain->domainpos), domainString) == 0)
 		{
-			http_send_json_chunk(conn, "Domain \"%s\", ID: %i\n", domainString, domainID);
-			http_send_json_chunk(conn, "Total: %i\n", domain->count);
-			http_send_json_chunk(conn, "Blocked: %i\n", domain->blockedcount);
+			http_send(conn, false, "Domain \"%s\", ID: %i\n", domainString, domainID);
+			http_send(conn, false, "Total: %i\n", domain->count);
+			http_send(conn, false, "Blocked: %i\n", domain->blockedcount);
 			return;
 		}
 	}
 
 	// for loop finished without an exact match
-	http_send_json_chunk(conn, "Domain \"%s\" is unknown\n", domainString);
+	http_send(conn, false, "Domain \"%s\" is unknown\n", domainString);
 }

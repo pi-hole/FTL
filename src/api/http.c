@@ -9,6 +9,7 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
+#include "api.h"
 #include "http.h"
 #include "../config.h"
 #include "../log.h"
@@ -22,7 +23,7 @@ static int send_http(struct mg_connection *conn, const char *mime_type, const ch
 	return mg_write(conn, msg, strlen(msg));
 	return 200;
 }
-
+/*
 static int send_http_chunked_simulator(struct mg_connection *conn, const char *mime_type, const char *msg)
 {
 	mg_send_http_ok(conn, mime_type, -1);
@@ -40,8 +41,8 @@ static int send_http_error(struct mg_connection *conn)
 {
 	return mg_send_http_error(conn, 500, "Internal server error");
 }
-
-void __attribute__ ((format (gnu_printf, 2, 3))) http_send_json_chunk(struct mg_connection *conn, const char *format, ...)
+*/
+void __attribute__ ((format (gnu_printf, 3, 4))) http_send(struct mg_connection *conn, bool chunk, const char *format, ...)
 {
 	char *buffer;
 	va_list args;
@@ -50,15 +51,25 @@ void __attribute__ ((format (gnu_printf, 2, 3))) http_send_json_chunk(struct mg_
 	va_end(args);
 	if(len > 0)
 	{
-		if(mg_send_chunk(conn, buffer, len) < 0)
+		if(!chunk)
 		{
-			logg("WARNING: Chunk writing returned error %s "
+			// Send 200 HTTP header with content size
+			mg_send_http_ok(conn, "application/json", len);
+		}
+		if(chunk && mg_send_chunk(conn, buffer, len) < 0)
+		{
+			logg("WARNING: Chunked HTTP writing returned error %s "
+			     "(%i, length %i)", strerror(errno), errno, len);
+		}
+		else if(!chunk && mg_write(conn, buffer, len) < 0)
+		{
+			logg("WARNING: Regular HTTP writing returned error %s "
 			     "(%i, length %i)", strerror(errno), errno, len);
 		}
 		free(buffer);
 	}
 }
-
+/*
 // Print passed string as JSON
 static int print_json(struct mg_connection *conn, void *input)
 {
@@ -112,11 +123,31 @@ static int print_json(struct mg_connection *conn, void *input)
 	// HTTP status code to return
 	return 200;
 }
-
+*/
 // Print passed string directly
 static int print_simple(struct mg_connection *conn, void *input)
 {
 	return send_http(conn, "text/plain", input);
+}
+
+static int api_handler(struct mg_connection *conn, void *ignored)
+{
+	
+	//mg_send_chunk(conn, "{", 2);
+	const struct mg_request_info *request = mg_get_request_info(conn);
+	/******************************** api/dns ********************************/
+	if(strcasecmp("/api/dns/status",request->local_uri) == 0)
+	{
+		api_dns_status(conn);
+	}
+	/******************************** api/summary ****************************/
+	if(strcasecmp("/api/stats/summary",request->local_uri) == 0)
+	{
+		api_stats_summary(conn);
+	}
+	// mg_send_http_ok(conn, "application/json", -1);
+	//mg_send_chunk(conn, "}", 2);
+	return 200;
 }
 
 void http_init(void)
@@ -150,7 +181,8 @@ void http_init(void)
 
 	/* Add simple demonstration callbacks */
 	mg_set_request_handler(ctx, "/ping", print_simple, (char*)"pong\n");
-	mg_set_request_handler(ctx, "/api", print_json, (char*)"Greetings from FTL!");
+//	mg_set_request_handler(ctx, "/json_test", print_json, (char*)"Greetings from FTL!");
+	mg_set_request_handler(ctx, "/api", api_handler, NULL);
 }
 
 void http_terminate(void)

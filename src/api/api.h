@@ -16,7 +16,9 @@
 #include "../api/http.h"
 
 // Statistic methods
-void getStats(struct mg_connection *conn);
+void api_stats_summary(struct mg_connection *conn);
+void api_dns_status(struct mg_connection *conn);
+
 void getOverTime(struct mg_connection *conn);
 void getTopDomains(const bool blocked, struct mg_connection *conn);
 void getTopClients(const bool blocked_only, struct mg_connection *conn);

@@ -22,6 +22,6 @@
 
 void http_init(void);
 void http_terminate(void);
-void http_send_json_chunk(struct mg_connection *conn, const char *format, ...) __attribute__ ((format (gnu_printf, 2, 3)));
+void http_send(struct mg_connection *conn, bool chunk, const char *format, ...) __attribute__ ((format (gnu_printf, 3, 4)));
 
 #endif // HTTP_H
