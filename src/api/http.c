@@ -85,6 +85,12 @@ static int api_handler(struct mg_connection *conn, void *ignored)
 	{
 		api_stats_summary(conn);
 	}
+	/******************************** not found ******************************/
+	else
+	{
+		http_send(conn, false, "{\"message\":\"%s is not available\"}", request->local_uri);
+	}
+
 	return 200;
 }
 
