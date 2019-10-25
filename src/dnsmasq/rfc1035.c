@@ -803,8 +803,10 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 		      if (attl < cttl)
 			cttl = attl;
 		      
+		      namep = p1;
 		      if (!extract_name(header, qlen, &p1, name, 1, 0))
 			return 0;
+		      
 		      goto cname_loop1;
 		    }
 		  else if (!(flags & F_NXDOMAIN))
@@ -1914,26 +1916,16 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 			    if (!dryrun)
 			      log_query(crecp->flags, name, NULL, NULL);
 			  }
-			else 
+			else if (!dryrun)
 			  {
-			    unsigned char *p1 = ((unsigned char *)header) + nameoffset;
+			    char *target = blockdata_retrieve(crecp->addr.srv.target, crecp->addr.srv.targetlen, NULL);
+			    log_query(crecp->flags, name, NULL, 0);
 			    
-			    if (!dryrun)
-			      {
-				log_query(crecp->flags, name, NULL, 0);
-				
-				blockdata_retrieve(crecp->addr.srv.target, crecp->addr.srv.targetlen, name); 
-				if (add_resource_record(header, limit, &trunc, nameoffset, &ansp, 
-							crec_ttl(crecp, now), NULL, T_SRV, C_IN, "sssd",
-							crecp->addr.srv.priority, crecp->addr.srv.weight, crecp->addr.srv.srvport,
-							name))
-				  anscount++;
-				
-				
-				/* restore name we overwrote */
-				if (!extract_name(header, qlen, &p1, name, 1, 0))
-				  return 0; /* bad packet */
-			      }
+			    if (add_resource_record(header, limit, &trunc, nameoffset, &ansp, 
+						    crec_ttl(crecp, now), NULL, T_SRV, C_IN, "sssd",
+						    crecp->addr.srv.priority, crecp->addr.srv.weight, crecp->addr.srv.srvport,
+						    target))
+			      anscount++;
 			  }
 		      } while ((crecp = cache_find_by_name(crecp, name, now, F_SRV)));
 		    }
