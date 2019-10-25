@@ -17,8 +17,6 @@
 #include "memory.h"
 // global variable killed
 #include "signals.h"
-// http_init()
-#include "http.h"
 
 // The backlog argument defines the maximum length
 // to which the queue of pending connections for
@@ -31,7 +29,7 @@
 #define BACKLOG 5
 
 // File descriptors
-int socketfd, telnetfd4 = 0, telnetfd6 = 0;
+int telnetfd4 = 0, telnetfd6 = 0;
 bool dualstack = false;
 bool ipv4telnet = false, ipv6telnet = false;
 bool sock_avail = false;
@@ -163,51 +161,6 @@ static bool bind_to_telnet_port_IPv6(int *socketdescriptor)
 	return true;
 }
 
-static void bind_to_unix_socket(int *socketdescriptor)
-{
-	*socketdescriptor = socket(AF_LOCAL, SOCK_STREAM, 0);
-
-	if(*socketdescriptor < 0)
-	{
-		logg("WARNING: Error opening Unix socket.");
-		logg("         Continuing anyway.");
-		return;
-	}
-
-	// Make sure unix socket file handle does not exist, if it exists, remove it
-	unlink(FTLfiles.socketfile);
-
-	struct sockaddr_un address;
-	address.sun_family = AF_LOCAL;
-	// The sockaddr_un.sum_path may be shorter than the size of the FTLfiles.socketfile
-	// buffer. Ensure that the string is null-terminated even when the string is too large.
-	// In case strlen(FTLfiles.socketfile) < sizeof(address.sun_path) [this will virtually
-	// always be the case], the explicit setting of the last byte to zero is a no-op as
-	// strncpy() writes additional null bytes to ensure that a total of n bytes are written.
-	strncpy(address.sun_path, FTLfiles.socketfile, sizeof(address.sun_path));
-	address.sun_path[sizeof(address.sun_path)-1] = '\0';
-
-	// Bind to Unix socket handle
-	errno = 0;
-	if(bind(*socketdescriptor, (struct sockaddr *) &address, sizeof (address)) != 0)
-	{
-		logg("WARNING: Cannot bind on Unix socket %s: %s (%i)", FTLfiles.socketfile, strerror(errno), errno);
-		logg("         Continuing anyway.");
-		return;
-	}
-
-	// The listen system call allows the process to listen on the Unix socket for connections
-	if(listen(*socketdescriptor, BACKLOG) == -1)
-	{
-		logg("WARNING: Cannot listen on Unix socket: %s (%i)", strerror(errno), errno);
-		logg("         Continuing anyway.");
-		return;
-	}
-
-	logg("Listening on Unix socket");
-	sock_avail = true;
-}
-
 // Called from main() at graceful shutdown
 static void removeport(void)
 {
@@ -272,11 +225,6 @@ static int listener(const int sockfd, const char type)
 
 	switch(type)
 	{
-		case 0: // Unix socket
-			memset(&un_addr, 0, sizeof(un_addr));
-			socklen = sizeof(un_addr);
-			return accept(sockfd, (struct sockaddr *) &un_addr, &socklen);
-
 		case 4: // Internet socket (IPv4)
 			memset(&in4_addr, 0, sizeof(in4_addr));
 			socklen = sizeof(un_addr);
@@ -303,14 +251,6 @@ void close_telnet_socket(void)
 		close(telnetfd4);
 	if(telnetfd6)
 		close(telnetfd6);
-}
-
-void close_unix_socket(void)
-{
-	// The process has to take care of unlinking the socket file description on exit
-	unlink(FTLfiles.socketfile);
-	// Using global variable here
-	close(socketfd);
 }
 
 static void *telnet_connection_handler_thread(void *socket_desc)
@@ -363,7 +303,6 @@ static void *telnet_connection_handler_thread(void *socket_desc)
 	return false;
 }
 
-
 static void *socket_connection_handler_thread(void *socket_desc)
 {
 	//Get the socket descriptor
@@ -410,65 +349,6 @@ static void *socket_connection_handler_thread(void *socket_desc)
 	//Free the socket pointer
 	if(sock != 0)
 		close(sock);
-	free(socket_desc);
-
-	return false;
-}
-
-void bind_sockets(void)
-{
-	// Initialize IPv4 telnet socket
-	if(bind_to_telnet_port_IPv4(&telnetfd4))
-		ipv4telnet = true;
-
-	// Initialize IPv6 telnet socket
-	// only if IPv6 interfaces are available
-	if(ipv6_available())
-		if(bind_to_telnet_port_IPv6(&telnetfd6))
-			ipv6telnet = true;
-
-	saveport();
-
-	// Initialize Unix socket
-	bind_to_unix_socket(&socketfd);
-
-	// Initialize HTTP server
-	http_init();
-}
-
-void *telnet_listening_thread_IPv4(void *args)
-{
-	// We will use the attributes object later to start all threads in detached mode
-	pthread_attr_t attr;
-	// Initialize thread attributes object with default attribute values
-	pthread_attr_init(&attr);
-	// When a detached thread terminates, its resources are automatically released back to
-	// the system without the need for another thread to join with the terminated thread
-	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-
-	// Set thread name
-	prctl(PR_SET_NAME,"telnet-IPv4",0,0,0);
-
-	// Listen as long as FTL is not killed
-	while(!killed)
-	{
-		// Look for new clients that want to connect
-		const int csck = listener(telnetfd4, 4);
-		if(csck == -1)
-		{
-			logg("IPv4 telnet error: %s (%i)", strerror(errno), errno);
-			continue;
-		}
-
-		// Allocate memory used to transport client socket ID to client listening thread
-		int *newsock;
-		newsock = calloc(1,sizeof(int));
-		if(newsock == NULL) break;
-		*newsock = csck;
-
-		pthread_t telnet_connection_thread;
-		// Create a new thread
-		if(pthread_create( &telnet_connection_thread, &attr, telnet_connection_handler_thread, (void*) newsock ) != 0)
 		{
 			// Log the error code description
 			logg("WARNING: Unable to open telnet processing thread, error: %s", strerror(errno));
@@ -513,47 +393,6 @@ void *telnet_listening_thread_IPv6(void *args)
 		{
 			// Log the error code description
 			logg("WARNING: Unable to open telnet processing thread, error: %s", strerror(errno));
-		}
-	}
-	return false;
-}
-
-void *socket_listening_thread(void *args)
-{
-	// We will use the attributes object later to start all threads in detached mode
-	pthread_attr_t attr;
-	// Initialize thread attributes object with default attribute values
-	pthread_attr_init(&attr);
-	// When a detached thread terminates, its resources are automatically released back to
-	// the system without the need for another thread to join with the terminated thread
-	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-
-	// Set thread name
-	prctl(PR_SET_NAME,"socket listener",0,0,0);
-
-	// Return early to avoid CPU spinning if Unix socket is not available
-	if(!sock_avail)
-		return NULL;
-
-	// Listen as long as FTL is not killed
-	while(!killed)
-	{
-		// Look for new clients that want to connect
-		const int csck = listener(socketfd, 0);
-		if(csck < 0) continue;
-
-		// Allocate memory used to transport client socket ID to client listening thread
-		int *newsock;
-		newsock = calloc(1,sizeof(int));
-		if(newsock == NULL) break;
-		*newsock = csck;
-
-		pthread_t socket_connection_thread;
-		// Create a new thread
-		if(pthread_create( &socket_connection_thread, &attr, socket_connection_handler_thread, (void*) newsock ) != 0)
-		{
-			// Log the error code description
-			logg("WARNING: Unable to open socket processing thread, error: %s", strerror(errno));
 		}
 	}
 	return false;

@@ -10,10 +10,7 @@
 #ifndef DNSMASQ_INTERFACE_H
 #define DNSMASQ_INTERFACE_H
 
-// Including stdbool.h here as it is required for defining the boolean prototype of FTL_new_query
-#include <stdbool.h>
-
-extern int socketfd, telnetfd4, telnetfd6;
+extern int telnetfd4, telnetfd6;
 extern unsigned char* pihole_privacylevel;
 enum { TCP, UDP };
 

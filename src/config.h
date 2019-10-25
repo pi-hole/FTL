@@ -47,7 +47,6 @@ typedef struct {
 	char* log;
 	char* pid;
 	char* port;
-	char* socketfile;
 	char* FTL_db;
 	char* gravity_db;
 	char* macvendor_db;

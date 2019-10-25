@@ -35,6 +35,8 @@
 #include "api/api.h"
 // global variable daemonmode
 #include "args.h"
+// http_init()
+#include "api/http.h"
 
 static void print_flags(const unsigned int flags);
 static void save_reply_type(const unsigned int flags, const union all_addr *addr,
@@ -1613,7 +1615,6 @@ static void save_reply_type(const unsigned int flags, const union all_addr *addr
 
 pthread_t telnet_listenthreadv4;
 pthread_t telnet_listenthreadv6;
-pthread_t socket_listenthread;
 pthread_t DBthread;
 pthread_t GCthread;
 pthread_t DNSclientthread;
@@ -1656,13 +1657,6 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 		exit(EXIT_FAILURE);
 	}
 
-	// Start SOCKET thread
-	if(pthread_create( &socket_listenthread, &attr, socket_listening_thread, NULL ) != 0)
-	{
-		logg("Unable to open Unix socket listening thread. Exiting...");
-		exit(EXIT_FAILURE);
-	}
-
 	// Start database thread if database is used
 	if(database && pthread_create( &DBthread, &attr, DB_thread, NULL ) != 0)
 	{
@@ -1701,6 +1695,9 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 
 	// Obtain DNS port from dnsmasq daemon
 	config.dns_port = daemon->port;
+
+	// Initialize FTL HTTP server
+	http_init();
 }
 
 // int cache_inserted, cache_live_freed are defined in dnsmasq/cache.c
