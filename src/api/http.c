@@ -13,22 +13,22 @@
 #include "http.h"
 #include "../config.h"
 #include "../log.h"
+#include "json_macros.h"
 
 // Server context handle
 static struct mg_context *ctx = NULL;
 
-static int send_http(struct mg_connection *conn, const char *mime_type, const char *msg)
+int send_http(struct mg_connection *conn, const char *mime_type, const char *msg)
 {
 	mg_send_http_ok(conn, mime_type, strlen(msg));
 	return mg_write(conn, msg, strlen(msg));
-	return 200;
 }
-/*
-static int send_http_error(struct mg_connection *conn)
+
+int send_http_error(struct mg_connection *conn)
 {
 	return mg_send_http_error(conn, 500, "Internal server error");
 }
-*/
+
 void __attribute__ ((format (gnu_printf, 3, 4))) http_send(struct mg_connection *conn, bool chunk, const char *format, ...)
 {
 	char *buffer;
@@ -66,32 +66,40 @@ static int print_simple(struct mg_connection *conn, void *input)
 static int api_handler(struct mg_connection *conn, void *ignored)
 {
 	const struct mg_request_info *request = mg_get_request_info(conn);
+	// HTTP response
+	int ret = 0;
 	/******************************** api/dns ********************************/
 	if(strcasecmp("/api/dns/status", request->local_uri) == 0)
 	{
-		api_dns_status(conn);
+		ret = api_dns_status(conn);
 	}
 	/******************************** api/ftl ****************************/
 	else if(strcasecmp("/api/ftl/version", request->local_uri) == 0)
 	{
-		api_ftl_version(conn);
+		ret = api_ftl_version(conn);
 	}
 	else if(strcasecmp("/api/ftl/db", request->local_uri) == 0)
 	{
-		api_ftl_db(conn);
+		ret = api_ftl_db(conn);
+	}
+	else if(strcasecmp("/api/ftl/clientIP", request->local_uri) == 0)
+	{
+		ret = api_ftl_clientIP(conn);
 	}
 	/******************************** api/summary ****************************/
 	else if(strcasecmp("/api/stats/summary", request->local_uri) == 0)
 	{
-		api_stats_summary(conn);
+		ret = api_stats_summary(conn);
 	}
 	/******************************** not found ******************************/
 	else
 	{
-		http_send(conn, false, "{\"message\":\"%s is not available\"}", request->local_uri);
+		cJSON *json = JSON_NEW_OBJ();
+		JSON_OBJ_ADD_STR(json, "status", "requested path is not available");
+		JSON_OBJ_ADD_STR(json, "path", request->local_uri);
+		JSON_SENT_OBJECT(json);
 	}
-
-	return 200;
+	return ret;
 }
 
 void http_init(void)

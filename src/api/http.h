@@ -24,4 +24,7 @@ void http_init(void);
 void http_terminate(void);
 void http_send(struct mg_connection *conn, bool chunk, const char *format, ...) __attribute__ ((format (gnu_printf, 3, 4)));
 
+int send_http(struct mg_connection *conn, const char *mime_type, const char *msg);
+int send_http_error(struct mg_connection *conn);
+
 #endif // HTTP_H

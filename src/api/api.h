@@ -16,8 +16,8 @@
 #include "../api/http.h"
 
 // Statistic methods
-void api_stats_summary(struct mg_connection *conn);
-void api_dns_status(struct mg_connection *conn);
+int api_stats_summary(struct mg_connection *conn);
+int api_dns_status(struct mg_connection *conn);
 
 void getOverTime(struct mg_connection *conn);
 void getTopDomains(const bool blocked, struct mg_connection *conn);
@@ -31,20 +31,8 @@ void getClientsOverTime(struct mg_connection *conn);
 void getClientNames(struct mg_connection *conn);
 
 // FTL methods
-void getClientIP(struct mg_connection *conn);
-void api_ftl_version(struct mg_connection *conn);
-void api_ftl_db(struct mg_connection *conn);
-
-// MessagePack serialization helpers
-void pack_eom(const int sock);
-void pack_bool(const int sock, const bool value);
-void pack_uint8(const int sock, const uint8_t value);
-void pack_uint64(const int sock, const uint64_t value);
-void pack_int32(const int sock, const int32_t value);
-void pack_int64(const int sock, const int64_t value);
-void pack_float(const int sock, const float value);
-bool pack_fixstr(const int sock, const char *string);
-bool pack_str32(const int sock, const char *string);
-void pack_map16_start(const int sock, const uint16_t length);
+int api_ftl_clientIP(struct mg_connection *conn);
+int api_ftl_version(struct mg_connection *conn);
+int api_ftl_db(struct mg_connection *conn);
 
 #endif // API_H

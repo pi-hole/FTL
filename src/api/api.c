@@ -26,6 +26,8 @@
 // enum REGEX
 #include "regex_r.h"
 
+#include "json_macros.h"
+
 #define min(a,b) ({ __typeof__ (a) _a = (a); __typeof__ (b) _b = (b); _a < _b ? _a : _b; })
 
 /* qsort comparision function (count field), sort ASC */
@@ -56,15 +58,15 @@ static int __attribute__((pure)) cmpdesc(const void *a, const void *b)
 		return 0;
 }
 
-void api_stats_summary(struct mg_connection *conn)
+int api_stats_summary(struct mg_connection *conn)
 {
 	const int blocked = counters->blocked;
 	const int total = counters->queries;
-	float percentage = 0.0f;
+	float percent_blocked = 0.0f;
 
 	// Avoid 1/0 condition
 	if(total > 0)
-		percentage = 1e2f*blocked/total;
+		percent_blocked = 1e2f*blocked/total;
 
 	// unique_clients: count only clients that have been active within the most recent 24 hours
 	int activeclients = 0;
@@ -80,36 +82,44 @@ void api_stats_summary(struct mg_connection *conn)
 	}
 
 	// Send response
-	http_send(conn, false,
-		  "{\"gravity_size\":%i,"
-		  "\"total_queries\":{\"A\":%i,\"AAAA\":%i,\"ANY\":%i,\"SRV\":%i,\"SOA\":%i,\"PTR\":%i,\"TXT\":%i},"
-		  "\"blocked_queries\":%i,\"percent_blocked\":%f,"
-		  "\"unique_domains\":%i,"
-		  "\"forwarded_queries\":%i,\"cached_queries\":%i,"
-		  "\"reply_types\":{\"NODATA\":%i,\"NXDOMAIN\":%i,\"CNAME\":%i,\"IP\":%i},"
-		  "\"privacy_level\":%i,"
-		  "\"total_clients\":%i,\"active_clients\":%i,"
-		  "\"status\":\"%s\"}",
-		  counters->gravity,
-		  counters->querytype[TYPE_A], counters->querytype[TYPE_AAAA],
-		  counters->querytype[TYPE_ANY], counters->querytype[TYPE_SRV],
-		  counters->querytype[TYPE_SOA], counters->querytype[TYPE_PTR],
-		  counters->querytype[TYPE_TXT],
-		  blocked, percentage,
-		  counters->domains,
-		  counters->forwarded, counters->cached,
-		  counters->reply_NODATA, counters->reply_NXDOMAIN,
-		  counters->reply_CNAME, counters->reply_IP,
-		  config.privacylevel,
-		  counters->clients, activeclients,
-		  counters->gravity > 0 ? "enabled" : "disabled");
+	cJSON *json = JSON_NEW_OBJ();
+	JSON_OBJ_ADD_NUMBER(json, "gravity_size", counters->gravity);
+	JSON_OBJ_ADD_NUMBER(json, "blocked_queries", counters->blocked);
+	JSON_OBJ_ADD_NUMBER(json, "percent_blocked", percent_blocked);
+	JSON_OBJ_ADD_NUMBER(json, "unique_domains", counters->domains);
+	JSON_OBJ_ADD_NUMBER(json, "forwarded_queries", counters->forwarded);
+	JSON_OBJ_ADD_NUMBER(json, "cached_queries", counters->cached);
+	JSON_OBJ_ADD_NUMBER(json, "privacy_level", config.privacylevel);
+	JSON_OBJ_ADD_NUMBER(json, "total_clients", counters->clients);
+	JSON_OBJ_ADD_NUMBER(json, "active_clients", activeclients);
+	JSON_OBJ_ADD_STR(json, "status", (counters->gravity > 0 ? "enabled" : "disabled"));
+
+	cJSON *total_queries = JSON_NEW_OBJ();
+	JSON_OBJ_ADD_NUMBER(total_queries, "A", counters->querytype[TYPE_A]);
+	JSON_OBJ_ADD_NUMBER(total_queries, "AAAA", counters->querytype[TYPE_AAAA]);
+	JSON_OBJ_ADD_NUMBER(total_queries, "ANY", counters->querytype[TYPE_ANY]);
+	JSON_OBJ_ADD_NUMBER(total_queries, "SRV", counters->querytype[TYPE_SRV]);
+	JSON_OBJ_ADD_NUMBER(total_queries, "SOA", counters->querytype[TYPE_SOA]);
+	JSON_OBJ_ADD_NUMBER(total_queries, "PTR", counters->querytype[TYPE_PTR]);
+	JSON_OBJ_ADD_NUMBER(total_queries, "TXT", counters->querytype[TYPE_TXT]);
+	JSON_OBJ_ADD_ITEM(json, "total_queries", total_queries);
+	
+	cJSON *reply_types = JSON_NEW_OBJ();
+	JSON_OBJ_ADD_NUMBER(reply_types, "NODATA", counters->reply_NODATA);
+	JSON_OBJ_ADD_NUMBER(reply_types, "NXDOMAIN", counters->reply_NXDOMAIN);
+	JSON_OBJ_ADD_NUMBER(reply_types, "CNAME", counters->reply_CNAME);
+	JSON_OBJ_ADD_NUMBER(reply_types, "IP", counters->reply_IP);
+	JSON_OBJ_ADD_ITEM(json, "reply_types", reply_types);
+
+	JSON_SENT_OBJECT(json);
 }
 
-void api_dns_status(struct mg_connection *conn)
+int api_dns_status(struct mg_connection *conn)
 {
 	// Send status
-	http_send(conn, false, "{\"status\":\"%s\"}",
-		  counters->gravity > 0 ? "enabled" : "disabled");
+	cJSON *json = JSON_NEW_OBJ();
+	JSON_OBJ_ADD_STR(json, "status", (counters->gravity > 0 ? "enabled" : "disabled"));
+	JSON_SENT_OBJECT(json);
 }
 
 void getOverTime(struct mg_connection *conn)
@@ -817,10 +827,12 @@ void getRecentBlocked(const char *client_message, struct mg_connection *conn)
 	}
 }
 
-void getClientIP(struct mg_connection *conn)
+int api_ftl_clientIP(struct mg_connection *conn)
 {
+	cJSON *json = JSON_NEW_OBJ();
 	const struct mg_request_info *request = mg_get_request_info(conn);
-	http_send(conn, false, "remote_addr:\"%s\"", request->remote_addr);
+	JSON_OBJ_ADD_STR(json,"remote_addr", request->remote_addr);
+	JSON_SENT_OBJECT(json);
 }
 /*
 void getQueryTypesOverTime(struct mg_connection *conn)
@@ -865,7 +877,7 @@ void getQueryTypesOverTime(struct mg_connection *conn)
 	}
 }
 */
-void api_ftl_version(struct mg_connection *conn)
+int api_ftl_version(struct mg_connection *conn)
 {
 	const char *commit = GIT_HASH;
 	const char *tag = GIT_TAG;
@@ -875,38 +887,35 @@ void api_ftl_version(struct mg_connection *conn)
 	char hash[8];
 	memcpy(hash, commit, 7); hash[7] = 0;
 
+	cJSON *json = JSON_NEW_OBJ();
 	if(strlen(tag) > 1) {
-		http_send(conn, false,
-			  "{\"version\":\"%s\",\"tag\":\"%s\",\"branch\":\"%s\",\"hash\":\"%s\",\"date\":\"%s\"}",
-			  version, tag, GIT_BRANCH, hash, GIT_DATE
-		);
+		JSON_OBJ_ADD_STR(json, "version", version);
 	} else {
-		http_send(conn, false,
-			  "{\"version\":\"vDev-%s\",\"tag\":\"%s\",\"branch\":\"%s\",\"hash\":\"%s\",\"date\":\"%s\"}",
-			  hash, tag, GIT_BRANCH, hash, GIT_DATE
-		);
+		char *vDev = NULL;
+		if(asprintf(&vDev, "vDev-%s", hash) > 0)
+		{
+			JSON_OBJ_ADD_STR(json, "version", version);
+			// We can free here as the string has
+			// been copied into the JSON structure
+			free(vDev);
+		}
 	}
+	JSON_OBJ_ADD_STR(json, "tag", tag);
+	JSON_OBJ_ADD_STR(json, "branch", GIT_BRANCH);
+	JSON_OBJ_ADD_STR(json, "hash", hash);
+	JSON_OBJ_ADD_STR(json, "date", GIT_DATE);
+	JSON_SENT_OBJECT(json);
 }
 
-void api_ftl_db(struct mg_connection *conn)
+int api_ftl_db(struct mg_connection *conn)
 {
-	// Get file details
-	unsigned long long int filesize = get_FTL_db_filesize();
-
-	char *prefix = calloc(2, sizeof(char));
-	if(prefix == NULL) return;
-	double formated = 0.0;
-	format_memory_size(prefix, filesize, &formated);
-
-	http_send(conn, false,
-		  "{\"queries in database\":%i,"
-		  "\"database filesize_raw\":%llu,"
-		  "\"database filesize_formatted\":\"%.2f %sB\","
-		  "\"SQLite version\":\"%s\"}",
-		  get_number_of_queries_in_DB(),
-		  filesize,
-		  formated, prefix,
-		  get_sqlite3_version());
+	cJSON *json = JSON_NEW_OBJ();
+	const int queries_in_database = get_number_of_queries_in_DB();
+	JSON_OBJ_ADD_NUMBER(json, "queries in database", queries_in_database);
+	const int db_filesize = get_FTL_db_filesize();
+	JSON_OBJ_ADD_NUMBER(json, "database filesize", db_filesize);
+	JSON_OBJ_ADD_STR(json, "SQLite version", get_sqlite3_version());
+	JSON_SENT_OBJECT(json);
 }
 
 void getClientsOverTime(struct mg_connection *conn)
