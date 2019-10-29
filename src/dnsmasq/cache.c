@@ -1181,6 +1181,12 @@ void cache_reload(void)
   struct host_record *hr;
   struct name_list *nl;
   struct cname *a;
+  struct crec lrec;
+  struct mx_srv_record *mx;
+  struct txt_record *txt;
+  struct interface_name *intr;
+  struct ptr_record *ptr;
+  struct naptr *naptr;
 #ifdef HAVE_DNSSEC
   struct ds_config *ds;
 #endif
@@ -1294,7 +1300,40 @@ void cache_reload(void)
 	if (!(ah->flags & AH_INACTIVE))
 	  total_size = read_hostsfile(ah->fname, ah->index, total_size, (struct crec **)daemon->packet, revhashsz);
     }
+  
+  /* Make non-terminal records for all locally-define RRs */
+  lrec.flags = F_FORWARD | F_CONFIG | F_NAMEP | F_IMMORTAL;
+  
+  for (txt = daemon->txt; txt; txt = txt->next)
+    {
+      lrec.name.namep = txt->name;
+      make_non_terminals(&lrec);
+    }
 
+  for (naptr = daemon->naptr; naptr; naptr = naptr->next)
+    {
+      lrec.name.namep = naptr->name;
+      make_non_terminals(&lrec);
+    }
+
+  for (mx = daemon->mxnames; mx; mx = mx->next)
+    {
+      lrec.name.namep = mx->name;
+      make_non_terminals(&lrec);
+    }
+
+  for (intr = daemon->int_names; intr; intr = intr->next)
+    {
+      lrec.name.namep = intr->name;
+      make_non_terminals(&lrec);
+    }
+  
+  for (ptr = daemon->ptr; ptr; ptr = ptr->next)
+    {
+      lrec.name.namep = ptr->name;
+      make_non_terminals(&lrec);
+    }
+  
 #ifdef HAVE_INOTIFY
   set_dynamic_inotify(AH_HOSTS, total_size, (struct crec **)daemon->packet, revhashsz);
 #endif
@@ -1447,7 +1486,7 @@ static void make_non_terminals(struct crec *source)
       if (!is_outdated_cname_pointer(crecp) &&
 	  (crecp->flags & F_FORWARD) &&
 	  (crecp->flags & type) &&
-	  !(crecp->flags & (F_IPV4 | F_IPV6 | F_CNAME | F_DNSKEY | F_DS)) && 
+	  !(crecp->flags & (F_IPV4 | F_IPV6 | F_CNAME | F_SRV | F_DNSKEY | F_DS)) && 
 	  hostname_isequal(name, cache_get_name(crecp)))
 	{
 	  *up = crecp->hash_next;
@@ -1504,7 +1543,7 @@ static void make_non_terminals(struct crec *source)
 
       if (crecp)
 	{
-	  crecp->flags = (source->flags | F_NAMEP) & ~(F_IPV4 | F_IPV6 | F_CNAME | F_DNSKEY | F_DS | F_REVERSE);
+	  crecp->flags = (source->flags | F_NAMEP) & ~(F_IPV4 | F_IPV6 | F_CNAME | F_SRV | F_DNSKEY | F_DS | F_REVERSE);
 	  crecp->ttd = source->ttd;
 	  crecp->name.namep = name;
 	  
