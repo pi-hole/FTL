@@ -277,10 +277,10 @@ char *cache_get_name(struct crec *crecp)
 
 char *cache_get_cname_target(struct crec *crecp)
 {
-  if (crecp->addr.cname.uid != SRC_INTERFACE)
+  if (crecp->addr.cname.uid != SRC_PTR)
     return cache_get_name(crecp->addr.cname.target.cache);
 
-  return crecp->addr.cname.target.int_name->name;
+  return crecp->addr.cname.target.name;
 }
 
 
@@ -310,7 +310,7 @@ struct crec *cache_enumerate(int init)
 
 static int is_outdated_cname_pointer(struct crec *crecp)
 {
-  if (!(crecp->flags & F_CNAME) || crecp->addr.cname.uid == SRC_INTERFACE)
+  if (!(crecp->flags & F_CNAME) || crecp->addr.cname.uid == SRC_PTR)
     return 0;
   
   /* NB. record may be reused as DS or DNSKEY, where uid is 
@@ -515,7 +515,7 @@ static struct crec *really_insert(char *name, union all_addr *addr, unsigned sho
     {
       /* We're trying to insert a record over one from 
 	 /etc/hosts or DHCP, or other config. If the 
-	 existing record is for an A or AAAA and
+	 existing record is for an A or AAAA or CNAME and
 	 the record we're trying to insert is the same, 
 	 just drop the insert, but don't error the whole process. */
       if ((flags & (F_IPV4 | F_IPV6)) && (flags & F_FORWARD) && addr)
@@ -527,7 +527,7 @@ static struct crec *really_insert(char *name, union all_addr *addr, unsigned sho
 		   IN6_ARE_ADDR_EQUAL(&new->addr.addr6, &addr->addr6))
 	    return new;
 	}
-      
+
       insert_error = 1;
       return NULL;
     }
@@ -958,48 +958,20 @@ struct crec *cache_find_by_addr(struct crec *crecp, union all_addr *addr,
   return NULL;
 }
 
-static void add_hosts_cname(struct crec *target)
-{
-  struct crec *crec;
-  struct cname *a;
-  
-  for (a = daemon->cnames; a; a = a->next)
-    if (a->alias[1] != '*' &&
-	hostname_isequal(cache_get_name(target), a->target) &&
-	(crec = whine_malloc(SIZEOF_POINTER_CREC)))
-      {
-	crec->flags = F_FORWARD | F_IMMORTAL | F_NAMEP | F_CONFIG | F_CNAME;
-	crec->ttd = a->ttl;
-	crec->name.namep = a->alias;
-	crec->addr.cname.target.cache = target;
-	next_uid(target);
-	crec->addr.cname.uid = target->uid;
-	crec->uid = UID_NONE;
-	cache_hash(crec);
-	make_non_terminals(crec);
-	
-	add_hosts_cname(crec); /* handle chains */
-      }
-}
-  
 void add_hosts_entry(struct crec *cache, union all_addr *addr, int addrlen, 
 			     unsigned int index, struct crec **rhash, int hashsz)
 {
   struct crec *lookup = cache_find_by_name(NULL, cache_get_name(cache), 0, cache->flags & (F_IPV4 | F_IPV6));
-  int i, nameexists = 0;
+  int i;
   unsigned int j; 
 
   /* Remove duplicates in hosts files. */
-  if (lookup && (lookup->flags & F_HOSTS))
+  if (lookup && (lookup->flags & F_HOSTS) && memcmp(&lookup->addr, addr, addrlen) == 0)
     {
-      nameexists = 1;
-      if (memcmp(&lookup->addr, addr, addrlen) == 0)
-	{
-	  free(cache);
-	  return;
-	}
+      free(cache);
+      return;
     }
-  
+    
   /* Ensure there is only one address -> name mapping (first one trumps) 
      We do this by steam here, The entries are kept in hash chains, linked
      by ->next (which is unused at this point) held in hash buckets in
@@ -1050,10 +1022,6 @@ void add_hosts_entry(struct crec *cache, union all_addr *addr, int addrlen,
   memcpy(&cache->addr, addr, addrlen);  
   cache_hash(cache);
   make_non_terminals(cache);
-  
-  /* don't need to do alias stuff for second and subsequent addresses. */
-  if (!nameexists)
-    add_hosts_cname(cache);
 }
 
 static int eatspace(FILE *f)
@@ -1213,7 +1181,6 @@ void cache_reload(void)
   struct host_record *hr;
   struct name_list *nl;
   struct cname *a;
-  struct interface_name *intr;
 #ifdef HAVE_DNSSEC
   struct ds_config *ds;
 #endif
@@ -1246,24 +1213,21 @@ void cache_reload(void)
 	  up = &cache->hash_next;
       }
   
-  /* Add CNAMEs to interface_names to the cache */
+  /* Add locally-configured CNAMEs to the cache */
   for (a = daemon->cnames; a; a = a->next)
-    for (intr = daemon->int_names; intr; intr = intr->next)
-      if (a->alias[1] != '*' &&
-	  hostname_isequal(a->target, intr->name) &&
-	  ((cache = whine_malloc(SIZEOF_POINTER_CREC))))
-	{
-	  cache->flags = F_FORWARD | F_NAMEP | F_CNAME | F_IMMORTAL | F_CONFIG;
-	  cache->ttd = a->ttl;
-	  cache->name.namep = a->alias;
-	  cache->addr.cname.target.int_name = intr;
-	  cache->addr.cname.uid = SRC_INTERFACE;
-	  cache->uid = UID_NONE;
-	  cache_hash(cache);
-	  make_non_terminals(cache);
-	  add_hosts_cname(cache); /* handle chains */
-	}
-
+    if (a->alias[1] != '*' &&
+	((cache = whine_malloc(SIZEOF_POINTER_CREC))))
+      {
+	cache->flags = F_FORWARD | F_NAMEP | F_CNAME | F_IMMORTAL | F_CONFIG;
+	cache->ttd = a->ttl;
+	cache->name.namep = a->alias;
+	cache->addr.cname.target.name = a->target;
+	cache->addr.cname.uid = SRC_PTR;
+	cache->uid = UID_NONE;
+	cache_hash(cache);
+	make_non_terminals(cache);
+      }
+  
 #ifdef HAVE_DNSSEC
   for (ds = daemon->ds; ds; ds = ds->next)
     if ((cache = whine_malloc(SIZEOF_POINTER_CREC)) &&
@@ -1370,39 +1334,6 @@ void cache_unhash_dhcp(void)
 	up = &cache->hash_next;
 }
 
-static void add_dhcp_cname(struct crec *target, time_t ttd)
-{
-  struct crec *aliasc;
-  struct cname *a;
-  
-  for (a = daemon->cnames; a; a = a->next)
-    if (a->alias[1] != '*' &&
-	hostname_isequal(cache_get_name(target), a->target))
-      {
-	if ((aliasc = dhcp_spare))
-	  dhcp_spare = dhcp_spare->next;
-	else /* need new one */
-	  aliasc = whine_malloc(SIZEOF_POINTER_CREC);
-	
-	if (aliasc)
-	  {
-	    aliasc->flags = F_FORWARD | F_NAMEP | F_DHCP | F_CNAME | F_CONFIG;
-	    if (ttd == 0)
-	      aliasc->flags |= F_IMMORTAL;
-	    else
-	      aliasc->ttd = ttd;
-	    aliasc->name.namep = a->alias;
-	    aliasc->addr.cname.target.cache = target;
-	    next_uid(target);
-	    aliasc->addr.cname.uid = target->uid;
-	    aliasc->uid = UID_NONE;
-	    cache_hash(aliasc);
-	    make_non_terminals(aliasc);
-	    add_dhcp_cname(aliasc, ttd);
-	  }
-      }
-}
-
 void cache_add_dhcp_entry(char *host_name, int prot,
 			  union all_addr *host_address, time_t ttd) 
 {
@@ -1485,8 +1416,6 @@ void cache_add_dhcp_entry(char *host_name, int prot,
       crec->uid = UID_NONE;
       cache_hash(crec);
       make_non_terminals(crec);
-
-      add_dhcp_cname(crec, ttd);
     }
 }
 #endif

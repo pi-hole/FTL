@@ -290,9 +290,9 @@ union all_addr {
   struct {
     union {
       struct crec *cache;
-      struct interface_name *int_name;
+      char *name;
     } target;
-    unsigned int uid; /* 0 if union is interface-name */
+    unsigned int uid; /* 0 if union is char * */
   } cname;
   struct {
     struct blockdata *keydata;
@@ -489,10 +489,10 @@ struct crec {
 
 #define UID_NONE      0
 /* Values of uid in crecs with F_CONFIG bit set. */
-/* cname to uid SRC_INTERFACE are to interface names,
-   so use UID_NONE for that to eliminate clashes with
-   any other uid */
-#define SRC_INTERFACE UID_NONE
+/* cname to uid SRC_PTR are to locally-configured CNAME
+   so use UID_NONE for that to 
+   eliminate clashes with any other uid */
+#define SRC_PTR UID_NONE
 #define SRC_CONFIG    1
 #define SRC_HOSTS     2
 /*------------------------- Pi-hole modification -------------------------*/
