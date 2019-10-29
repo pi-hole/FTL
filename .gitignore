@@ -13,6 +13,7 @@ version*
 
 # IDE files
 .idea/
+*.sw*
 
 # Test-generated files
 /pihole.log
