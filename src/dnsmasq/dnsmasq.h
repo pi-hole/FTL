@@ -469,9 +469,6 @@ struct crec {
 #define F_CONFIG    (1u<<13)
 #define F_DS        (1u<<14)
 #define F_DNSSECOK  (1u<<15)
-
-/* below here are only valid as args to log_query: cache
-   entries are limited to 16 bits */
 #define F_UPSTREAM  (1u<<16)
 #define F_RRNAME    (1u<<17)
 #define F_SERVER    (1u<<18)
