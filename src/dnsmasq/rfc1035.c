@@ -785,12 +785,11 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 		    {
 		      if (!cname_count--)
 			return 0; /* looped CNAMES */
-		      newc = cache_insert(name, NULL, C_IN, now, attl, F_CNAME | F_FORWARD | secflag);
-		      if (newc)
+
+		      if ((newc = cache_insert(name, NULL, C_IN, now, attl, F_CNAME | F_FORWARD | secflag)))
 			{
 			  newc->addr.cname.target.cache = NULL;
-			  /* anything other than zero, to avoid being mistaken for a local CNAME */ 
-			  newc->addr.cname.uid = 1; 
+			  newc->addr.cname.is_name_ptr = 0; 
 			  if (cpp)
 			    {
 			      next_uid(newc);

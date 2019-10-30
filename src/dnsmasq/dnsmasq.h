@@ -292,7 +292,8 @@ union all_addr {
       struct crec *cache;
       char *name;
     } target;
-    unsigned int uid; /* 0 if union is char * */
+    unsigned int uid;
+    int is_name_ptr;  /* disciminates target union */
   } cname;
   struct {
     struct blockdata *keydata;
@@ -489,10 +490,6 @@ struct crec {
 
 #define UID_NONE      0
 /* Values of uid in crecs with F_CONFIG bit set. */
-/* cname to uid SRC_PTR are to locally-configured CNAME
-   so use UID_NONE for that to 
-   eliminate clashes with any other uid */
-#define SRC_PTR UID_NONE
 #define SRC_CONFIG    1
 #define SRC_HOSTS     2
 /*------------------------- Pi-hole modification -------------------------*/

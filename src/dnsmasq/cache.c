@@ -277,10 +277,10 @@ char *cache_get_name(struct crec *crecp)
 
 char *cache_get_cname_target(struct crec *crecp)
 {
-  if (crecp->addr.cname.uid != SRC_PTR)
+  if (crecp->addr.cname.is_name_ptr)
+     return crecp->addr.cname.target.name;
+  else
     return cache_get_name(crecp->addr.cname.target.cache);
-
-  return crecp->addr.cname.target.name;
 }
 
 
@@ -310,7 +310,7 @@ struct crec *cache_enumerate(int init)
 
 static int is_outdated_cname_pointer(struct crec *crecp)
 {
-  if (!(crecp->flags & F_CNAME) || crecp->addr.cname.uid == SRC_PTR)
+  if (!(crecp->flags & F_CNAME) || crecp->addr.cname.is_name_ptr)
     return 0;
   
   /* NB. record may be reused as DS or DNSKEY, where uid is 
@@ -778,13 +778,11 @@ int cache_recv_insert(time_t now, int fd)
 	     the order reversal on the new_chain. */
 	  if (newc)
 	    {
-	      if (!crecp)
-		{
-		  newc->addr.cname.target.cache = NULL;
-		  /* anything other than zero, to avoid being mistaken for CNAME to interface-name */ 
-		  newc->addr.cname.uid = 1; 
-		}
-	      else
+	       newc->addr.cname.is_name_ptr = 0;
+	       
+	       if (!crecp)
+		 newc->addr.cname.target.cache = NULL;
+	       else
 		{
 		  next_uid(crecp);
 		  newc->addr.cname.target.cache = crecp;
@@ -1228,7 +1226,7 @@ void cache_reload(void)
 	cache->ttd = a->ttl;
 	cache->name.namep = a->alias;
 	cache->addr.cname.target.name = a->target;
-	cache->addr.cname.uid = SRC_PTR;
+	cache->addr.cname.is_name_ptr = 1;
 	cache->uid = UID_NONE;
 	cache_hash(cache);
 	make_non_terminals(cache);
