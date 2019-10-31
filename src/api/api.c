@@ -92,7 +92,7 @@ int api_stats_summary(struct mg_connection *conn)
 	JSON_OBJ_ADD_NUMBER(json, "privacy_level", config.privacylevel);
 	JSON_OBJ_ADD_NUMBER(json, "total_clients", counters->clients);
 	JSON_OBJ_ADD_NUMBER(json, "active_clients", activeclients);
-	JSON_OBJ_ADD_STR(json, "status", (counters->gravity > 0 ? "enabled" : "disabled"));
+	JSON_OBJ_REF_STR(json, "status", (counters->gravity > 0 ? "enabled" : "disabled"));
 
 	cJSON *total_queries = JSON_NEW_OBJ();
 	JSON_OBJ_ADD_NUMBER(total_queries, "A", counters->querytype[TYPE_A]);
@@ -118,7 +118,7 @@ int api_dns_status(struct mg_connection *conn)
 {
 	// Send status
 	cJSON *json = JSON_NEW_OBJ();
-	JSON_OBJ_ADD_STR(json, "status", (counters->gravity > 0 ? "enabled" : "disabled"));
+	JSON_OBJ_REF_STR(json, "status", (counters->gravity > 0 ? "enabled" : "disabled"));
 	JSON_SENT_OBJECT(json);
 }
 
@@ -831,7 +831,7 @@ int api_ftl_clientIP(struct mg_connection *conn)
 {
 	cJSON *json = JSON_NEW_OBJ();
 	const struct mg_request_info *request = mg_get_request_info(conn);
-	JSON_OBJ_ADD_STR(json,"remote_addr", request->remote_addr);
+	JSON_OBJ_REF_STR(json,"remote_addr", request->remote_addr);
 	JSON_SENT_OBJECT(json);
 }
 /*
@@ -880,7 +880,9 @@ void getQueryTypesOverTime(struct mg_connection *conn)
 int api_ftl_version(struct mg_connection *conn)
 {
 	const char *commit = GIT_HASH;
+	const char *branch = GIT_BRANCH;
 	const char *tag = GIT_TAG;
+	const char *date = GIT_DATE;
 	const char *version = get_FTL_version();
 
 	// Extract first 7 characters of the hash
@@ -889,21 +891,21 @@ int api_ftl_version(struct mg_connection *conn)
 
 	cJSON *json = JSON_NEW_OBJ();
 	if(strlen(tag) > 1) {
-		JSON_OBJ_ADD_STR(json, "version", version);
+		JSON_OBJ_REF_STR(json, "version", version);
 	} else {
 		char *vDev = NULL;
 		if(asprintf(&vDev, "vDev-%s", hash) > 0)
 		{
-			JSON_OBJ_ADD_STR(json, "version", version);
+			JSON_OBJ_COPY_STR(json, "version", version);
 			// We can free here as the string has
 			// been copied into the JSON structure
 			free(vDev);
 		}
 	}
-	JSON_OBJ_ADD_STR(json, "tag", tag);
-	JSON_OBJ_ADD_STR(json, "branch", GIT_BRANCH);
-	JSON_OBJ_ADD_STR(json, "hash", hash);
-	JSON_OBJ_ADD_STR(json, "date", GIT_DATE);
+	JSON_OBJ_REF_STR(json, "tag", tag);
+	JSON_OBJ_REF_STR(json, "branch", branch);
+	JSON_OBJ_REF_STR(json, "hash", hash);
+	JSON_OBJ_REF_STR(json, "date", date);
 	JSON_SENT_OBJECT(json);
 }
 
@@ -914,7 +916,7 @@ int api_ftl_db(struct mg_connection *conn)
 	JSON_OBJ_ADD_NUMBER(json, "queries in database", queries_in_database);
 	const int db_filesize = get_FTL_db_filesize();
 	JSON_OBJ_ADD_NUMBER(json, "database filesize", db_filesize);
-	JSON_OBJ_ADD_STR(json, "SQLite version", get_sqlite3_version());
+	JSON_OBJ_REF_STR(json, "SQLite version", get_sqlite3_version());
 	JSON_SENT_OBJECT(json);
 }
 

@@ -32,13 +32,24 @@
 
 #define JSON_NEW_OBJ() cJSON_CreateObject();
 
-#define JSON_OBJ_ADD_STR(object, key,string){ \
+#define JSON_OBJ_COPY_STR(object, key, string){ \
 	if(cJSON_AddStringToObject(json, key, (const char*)string) == NULL) \
 	{ \
 		cJSON_Delete(object); \
 		send_http_error(conn); \
 		return 500; \
 	} \
+}
+
+#define JSON_OBJ_REF_STR(object, key, string){ \
+	cJSON *string_item = cJSON_CreateStringReference((const char*)string); \
+	if(string_item == NULL) \
+	{ \
+		cJSON_Delete(object); \
+		send_http_error(conn); \
+		return 500; \
+	} \
+	cJSON_AddItemToObject(object, key, string_item); \
 }
 
 #define JSON_OBJ_ADD_NUMBER(object, key, number){ \
