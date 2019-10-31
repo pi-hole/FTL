@@ -95,6 +95,10 @@ static int api_handler(struct mg_connection *conn, void *ignored)
 	{
 		ret = api_stats_overTime_history(conn);
 	}
+	else if(strcasecmp("/api/stats/overTime/clients", request->local_uri) == 0)
+	{
+		ret = api_stats_overTime_clients(conn);
+	}
 	/******************************** not found ******************************/
 	else
 	{

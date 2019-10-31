@@ -64,6 +64,11 @@
 	} \
 }
 
+#define JSON_ARRAY_ADD_NUMBER(object, number){ \
+	cJSON *number_item = cJSON_CreateNumber((double)number); \
+	cJSON_AddItemToArray(object, number_item); \
+}
+
 // cJSON_AddItemToObject() does not return anything
 // Note that this operation transfers the ownership of the added item to the
 // new parent so that when that array or object is deleted, it gets deleted as well.
