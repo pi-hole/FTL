@@ -104,13 +104,13 @@ static int api_handler(struct mg_connection *conn, void *ignored)
 		ret = api_stats_query_types(conn);
 	}
 	/******************************** not found ******************************/
-	else
+/*	else
 	{
 		cJSON *json = JSON_NEW_OBJ();
 		JSON_OBJ_REF_STR(json, "status", "requested path is not available");
 		JSON_OBJ_REF_STR(json, "path", request->local_uri);
 		JSON_SENT_OBJECT(json);
-	}
+	}*/
 	return ret;
 }
 
