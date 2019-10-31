@@ -103,6 +103,10 @@ static int api_handler(struct mg_connection *conn, void *ignored)
 	{
 		ret = api_stats_query_types(conn);
 	}
+	else if(strcasecmp("/api/stats/upstreams", request->local_uri) == 0)
+	{
+		ret = api_stats_upstreams(conn);
+	}
 	/******************************** not found ******************************/
 /*	else
 	{

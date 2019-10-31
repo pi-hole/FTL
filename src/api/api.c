@@ -400,10 +400,10 @@ void getTopClients(const bool blocked_only, struct mg_connection *conn)
 }
 
 
-void getForwardDestinations(struct mg_connection *conn)
+int api_stats_upstreams(struct mg_connection *conn)
 {
 	bool sort = true;
-	int temparray[counters->forwarded][2], totalqueries = 0;
+	int temparray[counters->forwarded][2];
 /*
 	if(command(client_message, "unsorted"))
 		sort = false;
@@ -429,12 +429,11 @@ void getForwardDestinations(struct mg_connection *conn)
 		qsort(temparray, counters->upstreams, sizeof(int[2]), cmpdesc);
 	}
 
-	totalqueries = counters->forwarded + counters->cached + counters->blocked;
-
 	// Loop over available forward destinations
+	cJSON *upstreams = JSON_NEW_ARRAY();
 	for(int i = -2; i < min(counters->upstreams, 8); i++)
 	{
-		float percentage = 0.0f;
+		int count = 0;
 		const char* ip, *name;
 
 		if(i == -2)
@@ -442,20 +441,14 @@ void getForwardDestinations(struct mg_connection *conn)
 			// Blocked queries (local lists)
 			ip = "blocklist";
 			name = ip;
-
-			if(totalqueries > 0)
-				// Whats the percentage of locked queries on the total amount of queries?
-				percentage = 1e2f * counters->blocked / totalqueries;
+			count = counters->blocked;
 		}
 		else if(i == -1)
 		{
 			// Local cache
 			ip = "cache";
 			name = ip;
-
-			if(totalqueries > 0)
-				// Whats the percentage of cached queries on the total amount of queries?
-				percentage = 1e2f * counters->cached / totalqueries;
+			count = counters->cached;
 		}
 		else
 		{
@@ -477,18 +470,27 @@ void getForwardDestinations(struct mg_connection *conn)
 			name = getstr(forward->namepos);
 
 			// Get percentage
-			if(totalqueries > 0)
-				percentage = 1e2f * forward->count / totalqueries;
+			count = forward->count;
 		}
 
 		// Send data:
 		// - always if i < 0 (special upstreams: blocklist and cache)
-		// - only if percentage > 0.0 for all others (i > 0)
-		if(percentage > 0.0f || i < 0)
+		// - only if there are any queries for all others (i > 0)
+		if(count > 0 || i < 0)
 		{
-			http_send(conn, false, "%i %.2f %s %s\n", i, percentage, ip, name);
+			cJSON *upstream = JSON_NEW_OBJ();
+			JSON_OBJ_REF_STR(upstream, "name", name);
+			JSON_OBJ_REF_STR(upstream, "ip", ip);
+			JSON_OBJ_ADD_NUMBER(upstream, "count", count);
+			JSON_ARRAY_ADD_ITEM(upstreams, upstream);
 		}
 	}
+	cJSON *json = JSON_NEW_OBJ();
+	JSON_OBJ_ADD_ITEM(json, "upstreams", upstreams);
+	JSON_OBJ_ADD_NUMBER(json, "forwarded_queries", counters->forwarded);
+	const int total_queries = counters->forwarded + counters->cached + counters->blocked;
+	JSON_OBJ_ADD_NUMBER(json, "total_queries", total_queries);
+	JSON_SENT_OBJECT(json);
 }
 
 static const char *querytypes[TYPE_MAX] = {"A","AAAA","ANY","SRV","SOA","PTR","TXT","NAPTR","UNKN"};
