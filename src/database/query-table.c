@@ -43,6 +43,28 @@ int get_number_of_queries_in_DB(void)
 	return result;
 }
 
+// Duplicated and escapes non-ASCII characters
+// Make sure to free string returned by this routine
+static char* escape_ascii(const char *in)
+{
+	char * out;
+	if(in == NULL || (out = strdup(in)) == NULL)
+		return NULL;
+
+	size_t len = strlen(out);
+	for(unsigned int i = 0; i < len; i++)
+	{
+		if(isprint(out[i]) == 0)
+		{
+			// Replace inline when non-ASCII character is found
+			// This is safe as we're just replacing one character
+			// by another one, so no extra space is needed
+			out[i] = '?';
+		}
+	}
+	return out;
+}
+
 void DB_save_queries(void)
 {
 	// Don't save anything to the database if in PRIVACY_NOSTATS mode
@@ -113,19 +135,21 @@ void DB_save_queries(void)
 		sqlite3_bind_int(stmt, 3, query->status);
 
 		// DOMAIN
-		const char *domain = getDomainString(queryID);
+		char *domain = escape_ascii(getDomainString(queryID));
 		sqlite3_bind_text(stmt, 4, domain, -1, SQLITE_STATIC);
 
 		// CLIENT
-		const char *client = getClientIPString(queryID);
+		char *client = escape_ascii(getClientIPString(queryID));
 		sqlite3_bind_text(stmt, 5, client, -1, SQLITE_STATIC);
 
 		// FORWARD
+		char *forwardDest = NULL;
 		if(query->status == QUERY_FORWARDED && query->forwardID > -1)
 		{
 			// Get forward pointer
 			const forwardedData* forward = getForward(query->forwardID, true);
-			sqlite3_bind_text(stmt, 6, getstr(forward->ippos), -1, SQLITE_STATIC);
+			forwardDest = escape_ascii(getstr(forward->ippos));
+			sqlite3_bind_text(stmt, 6, forwardDest, -1, SQLITE_STATIC);
 		}
 		else
 		{
@@ -136,6 +160,13 @@ void DB_save_queries(void)
 		rc = sqlite3_step(stmt);
 		sqlite3_clear_bindings(stmt);
 		sqlite3_reset(stmt);
+
+		// Free allocated memory
+		// forwardDest might not have been used
+		free(client);
+		free(domain);
+		if(forwardDest != NULL)
+			free(forwardDest);
 
 		if( rc != SQLITE_DONE ){
 			logg("DB_save_queries() - SQL error (%i): %s", rc, sqlite3_errmsg(FTL_db));
