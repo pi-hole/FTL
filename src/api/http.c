@@ -115,6 +115,14 @@ static int api_handler(struct mg_connection *conn, void *ignored)
 	{
 		ret = api_stats_top_domains(true, conn);
 	}
+	else if(strcasecmp("/api/stats/top_clients", request->local_uri) == 0)
+	{
+		ret = api_stats_top_clients(false, conn);
+	}
+	else if(strcasecmp("/api/stats/top_blocked_clients", request->local_uri) == 0)
+	{
+		ret = api_stats_top_clients(true, conn);
+	}
 	/******************************** not found ******************************/
 /*	else
 	{

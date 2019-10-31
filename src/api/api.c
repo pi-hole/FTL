@@ -328,21 +328,31 @@ int api_stats_top_domains(bool blocked, struct mg_connection *conn)
 	JSON_SENT_OBJECT(json);
 }
 
-void getTopClients(const bool blocked_only, struct mg_connection *conn)
+int api_stats_top_clients(bool blocked, struct mg_connection *conn)
 {
-	int temparray[counters->clients][2], count=10;
+	int temparray[counters->clients][2], show=10;
+
+	// /api/stats/top_clients9?blocked=true is allowed as well
+	const struct mg_request_info *request = mg_get_request_info(conn);
+	if(request->query_string != NULL &&
+	   strstr(request->query_string, "blocked=true") != NULL)
+	{
+		blocked = true;
+	}
 
 	// Exit before processing any data if requested via config setting
 	get_privacy_level(NULL);
-	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS_CLIENTS) {
-		return;
+	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS_CLIENTS)
+	{
+		cJSON *json = JSON_NEW_ARRAY();
+		JSON_SENT_OBJECT(json);
 	}
 /*
 	// Match both top-domains and top-ads
 	// example: >top-clients (15)
 	if(sscanf(client_message, "%*[^(](%i)", &num) > 0) {
 		// User wants a different number of requests
-		count = num;
+		show = num;
 	}
 */
 	// Show also clients which have not been active recently?
@@ -356,10 +366,9 @@ void getTopClients(const bool blocked_only, struct mg_connection *conn)
 	// Show number of blocked queries instead of total number?
 	// This option can be combined with existing options,
 	// i.e. ">top-clients withzero blocked (123)" would be valid
-	bool blockedonly = false;
 /*
 	if(command(client_message, " blocked"))
-		blockedonly = true;
+		blocked = true;
 */
 	for(int clientID = 0; clientID < counters->clients; clientID++)
 	{
@@ -369,7 +378,7 @@ void getTopClients(const bool blocked_only, struct mg_connection *conn)
 			continue;
 		temparray[clientID][0] = clientID;
 		// Use either blocked or total count based on request string
-		temparray[clientID][1] = blockedonly ? client->blockedcount : client->count;
+		temparray[clientID][1] = blocked ? client->blockedcount : client->count;
 	}
 
 	// Sort in ascending order?
@@ -393,11 +402,12 @@ void getTopClients(const bool blocked_only, struct mg_connection *conn)
 	}
 
 	int n = 0;
+	cJSON *top_clients = JSON_NEW_ARRAY();
 	for(int i=0; i < counters->clients; i++)
 	{
 		// Get sorted indices and counter values (may be either total or blocked count)
 		const int clientID = temparray[i][0];
-		const int ccount = temparray[i][1];
+		const int count = temparray[i][1];
 		// Get client pointer
 		const clientsData* client = getClient(clientID, true);
 		if(client == NULL)
@@ -419,18 +429,37 @@ void getTopClients(const bool blocked_only, struct mg_connection *conn)
 		// Return this client if either
 		// - "withzero" option is set, and/or
 		// - the client made at least one query within the most recent 24 hours
-		if(includezeroclients || ccount > 0)
+		if(includezeroclients || count > 0)
 		{
-			http_send(conn, false, "%i %i %s %s\n", n, ccount, client_ip, client_name);
+			cJSON *client_item = JSON_NEW_OBJ();
+			JSON_OBJ_REF_STR(client_item, "name", client_name);
+			JSON_OBJ_REF_STR(client_item, "ip", client_ip);
+			JSON_OBJ_ADD_NUMBER(client_item, "count", count);
+			JSON_ARRAY_ADD_ITEM(top_clients, client_item);
 			n++;
 		}
 
-		if(n == count)
+		if(n == show)
 			break;
 	}
 
 	if(excludeclients != NULL)
 		clearSetupVarsArray();
+
+	cJSON *json = JSON_NEW_OBJ();
+	JSON_OBJ_ADD_ITEM(json, "top_clients", top_clients);
+
+	if(blocked)
+	{
+		JSON_OBJ_ADD_NUMBER(json, "blocked_queries", counters->blocked);
+	}
+	else
+	{
+		const int total_queries = counters->forwardedqueries + counters->cached + counters->blocked;
+		JSON_OBJ_ADD_NUMBER(json, "total_queries", total_queries);
+	}
+
+	JSON_SENT_OBJECT(json);
 }
 
 
