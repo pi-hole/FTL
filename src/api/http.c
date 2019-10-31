@@ -107,6 +107,14 @@ static int api_handler(struct mg_connection *conn, void *ignored)
 	{
 		ret = api_stats_upstreams(conn);
 	}
+	else if(strcasecmp("/api/stats/top_domains", request->local_uri) == 0)
+	{
+		ret = api_stats_top_domains(false, conn);
+	}
+	else if(strcasecmp("/api/stats/top_blocked", request->local_uri) == 0)
+	{
+		ret = api_stats_top_domains(true, conn);
+	}
 	/******************************** not found ******************************/
 /*	else
 	{

@@ -170,22 +170,32 @@ int api_stats_overTime_history(struct mg_connection *conn)
 	JSON_SENT_OBJECT(json);
 }
 
-void getTopDomains(const bool blocked, struct mg_connection *conn)
+int api_stats_top_domains(bool blocked, struct mg_connection *conn)
 {
-	int temparray[counters->domains][2], count=10;
+	int temparray[counters->domains][2], show=10;
 	bool audit = false, asc = false;
+
+	// /api/stats/top_domains?blocked=true is allowed as well
+	const struct mg_request_info *request = mg_get_request_info(conn);
+	if(request->query_string != NULL &&
+	   strstr(request->query_string, "blocked=true") != NULL)
+	{
+		blocked = true;
+	}
 
 	// Exit before processing any data if requested via config setting
 	get_privacy_level(NULL);
-	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS) {
-		return;
+	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS)
+	{
+		cJSON *json = JSON_NEW_ARRAY();
+		JSON_SENT_OBJECT(json);
 	}
 /*
 	// Match both top-domains and top-ads
 	// example: >top-domains (15)
 	if(sscanf(client_message, "%*[^(](%i)", &num) > 0) {
 		// User wants a different number of requests
-		count = num;
+		show = num;
 	}
 
 	// Apply Audit Log filtering?
@@ -249,6 +259,7 @@ void getTopDomains(const bool blocked, struct mg_connection *conn)
 	}
 
 	int n = 0;
+	cJSON *top_domains = JSON_NEW_ARRAY();
 	for(int i=0; i < counters->domains; i++)
 	{
 		// Get sorted index
@@ -274,24 +285,47 @@ void getTopDomains(const bool blocked, struct mg_connection *conn)
 		if(strcmp(getstr(domain->domainpos), HIDDEN_DOMAIN) == 0)
 			continue;
 
+		int count = -1;
 		if(blocked && showblocked && domain->blockedcount > 0)
 		{
-			http_send(conn, false, "%i %i %s\n", n, domain->blockedcount, getstr(domain->domainpos));
+			count = domain->blockedcount;
 			n++;
 		}
 		else if(!blocked && showpermitted && (domain->count - domain->blockedcount) > 0)
 		{
-			http_send(conn, false, "%i %i %s\n", n, (domain->count - domain->blockedcount), getstr(domain->domainpos));
+			count = domain->count - domain->blockedcount;
 			n++;
+		}
+		if(count > -1)
+		{
+			cJSON *domain_item = JSON_NEW_OBJ();
+			JSON_OBJ_REF_STR(domain_item, "domain", getstr(domain->domainpos));
+			JSON_OBJ_ADD_NUMBER(domain_item, "count", count);
+			JSON_ARRAY_ADD_ITEM(top_domains, domain_item);
 		}
 
 		// Only count entries that are actually sent and return when we have send enough data
-		if(n == count)
+		if(n == show)
 			break;
 	}
 
 	if(excludedomains != NULL)
 		clearSetupVarsArray();
+
+	cJSON *json = JSON_NEW_OBJ();
+	JSON_OBJ_ADD_ITEM(json, "top_domains", top_domains);
+
+	if(blocked)
+	{
+		JSON_OBJ_ADD_NUMBER(json, "blocked_queries", counters->blocked);
+	}
+	else
+	{
+		const int total_queries = counters->forwarded + counters->cached + counters->blocked;
+		JSON_OBJ_ADD_NUMBER(json, "total_queries", total_queries);
+	}
+
+	JSON_SENT_OBJECT(json);
 }
 
 void getTopClients(const bool blocked_only, struct mg_connection *conn)
