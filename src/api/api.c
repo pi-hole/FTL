@@ -491,32 +491,20 @@ void getForwardDestinations(struct mg_connection *conn)
 	}
 }
 
+static const char *querytypes[TYPE_MAX] = {"A","AAAA","ANY","SRV","SOA","PTR","TXT","NAPTR","UNKN"};
 
-void getQueryTypes(struct mg_connection *conn)
+int api_stats_query_types(struct mg_connection *conn)
 {
-	int total = 0;
-	for(int i=0; i < TYPE_MAX-1; i++)
+	cJSON *json = JSON_NEW_ARRAY();
+	for(int i=0; i < TYPE_MAX; i++)
 	{
-		total += counters->querytype[i];
+		cJSON *item = JSON_NEW_OBJ();
+		JSON_OBJ_REF_STR(item, "name", querytypes[i]);
+		JSON_OBJ_ADD_NUMBER(item, "count", counters->querytype[i]);
+		JSON_ARRAY_ADD_ITEM(json, item);
 	}
-
-	float percentage[TYPE_MAX-1] = { 0.0 };
-
-	// Prevent floating point exceptions by checking if the divisor is != 0
-	if(total > 0)
-	{
-		for(int i=0; i < TYPE_MAX-1; i++)
-		{
-			percentage[i] = 1e2f*counters->querytype[i]/total;
-		}
-	}
-
-	http_send(conn, false, "A (IPv4): %.2f\nAAAA (IPv6): %.2f\nANY: %.2f\nSRV: %.2f\nSOA: %.2f\nPTR: %.2f\nTXT: %.2f\nNAPTR: %.2f\n",
-		percentage[TYPE_A], percentage[TYPE_AAAA], percentage[TYPE_ANY], percentage[TYPE_SRV],
-		percentage[TYPE_SOA], percentage[TYPE_PTR], percentage[TYPE_TXT], percentage[TYPE_NAPTR]);
+	JSON_SENT_OBJECT(json);
 }
-
-const char *querytypes[TYPE_MAX] = {"A","AAAA","ANY","SRV","SOA","PTR","TXT","NAPTR","UNKN"};
 
 void getAllQueries(const char *client_message, struct mg_connection *conn)
 {

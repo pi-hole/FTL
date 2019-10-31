@@ -21,11 +21,11 @@ int api_dns_status(struct mg_connection *conn);
 
 int api_stats_overTime_history(struct mg_connection *conn);
 int api_stats_overTime_clients(struct mg_connection *conn);
+int api_stats_query_types(struct mg_connection *conn);
 
 void getTopDomains(const bool blocked, struct mg_connection *conn);
 void getTopClients(const bool blocked_only, struct mg_connection *conn);
 void getForwardDestinations(struct mg_connection *conn);
-void getQueryTypes(struct mg_connection *conn);
 void getAllQueries(const char *client_message, struct mg_connection *conn);
 void getRecentBlocked(const char *client_message, struct mg_connection *conn);
 void getQueryTypesOverTime(struct mg_connection *conn);
