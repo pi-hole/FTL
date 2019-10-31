@@ -177,10 +177,20 @@ int api_stats_top_domains(bool blocked, struct mg_connection *conn)
 
 	// /api/stats/top_domains?blocked=true is allowed as well
 	const struct mg_request_info *request = mg_get_request_info(conn);
-	if(request->query_string != NULL &&
-	   strstr(request->query_string, "blocked=true") != NULL)
+	if(request->query_string != NULL)
 	{
-		blocked = true;
+		// Should blocked clients be shown?
+		if(strstr(request->query_string, "blocked=true") != NULL)
+		{
+			blocked = true;
+		}
+
+		// Does the user request a non-default number of replies?
+		int num;
+		if(sscanf(request->query_string, "num=%d", &num) == 1)
+		{
+			show = num;
+		}
 	}
 
 	// Exit before processing any data if requested via config setting
@@ -191,13 +201,6 @@ int api_stats_top_domains(bool blocked, struct mg_connection *conn)
 		JSON_SENT_OBJECT(json);
 	}
 /*
-	// Match both top-domains and top-ads
-	// example: >top-domains (15)
-	if(sscanf(client_message, "%*[^(](%i)", &num) > 0) {
-		// User wants a different number of requests
-		show = num;
-	}
-
 	// Apply Audit Log filtering?
 	// example: >top-domains for audit
 	if(command(client_message, " for audit"))
@@ -334,10 +337,20 @@ int api_stats_top_clients(bool blocked, struct mg_connection *conn)
 
 	// /api/stats/top_clients9?blocked=true is allowed as well
 	const struct mg_request_info *request = mg_get_request_info(conn);
-	if(request->query_string != NULL &&
-	   strstr(request->query_string, "blocked=true") != NULL)
+	if(request->query_string != NULL)
 	{
-		blocked = true;
+		// Should blocked clients be shown?
+		if(strstr(request->query_string, "blocked=true") != NULL)
+		{
+			blocked = true;
+		}
+
+		// Does the user request a non-default number of replies?
+		int num;
+		if(sscanf(request->query_string, "num=%d", &num) == 1)
+		{
+			show = num;
+		}
 	}
 
 	// Exit before processing any data if requested via config setting
@@ -347,14 +360,7 @@ int api_stats_top_clients(bool blocked, struct mg_connection *conn)
 		cJSON *json = JSON_NEW_ARRAY();
 		JSON_SENT_OBJECT(json);
 	}
-/*
-	// Match both top-domains and top-ads
-	// example: >top-clients (15)
-	if(sscanf(client_message, "%*[^(](%i)", &num) > 0) {
-		// User wants a different number of requests
-		show = num;
-	}
-*/
+
 	// Show also clients which have not been active recently?
 	// This option can be combined with existing options,
 	// i.e. both >top-clients withzero" and ">top-clients withzero (123)" are valid
