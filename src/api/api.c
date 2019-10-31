@@ -122,7 +122,7 @@ int api_dns_status(struct mg_connection *conn)
 	JSON_SENT_OBJECT(json);
 }
 
-void getOverTime(struct mg_connection *conn)
+int api_stats_overTime_history(struct mg_connection *conn)
 {
 	int from = 0, until = OVERTIME_SLOTS;
 	bool found = false;
@@ -150,17 +150,24 @@ void getOverTime(struct mg_connection *conn)
 		}
 	}
 
-	// Check if there is any data to be sent
+	// If there is no data to be sent, we send back an empty array
+	// and thereby return early
 	if(!found)
-		return;
+	{
+		cJSON *json = JSON_NEW_ARRAY();
+		JSON_SENT_OBJECT(json);
+	}
 
+	cJSON *json = JSON_NEW_ARRAY();
 	for(int slot = from; slot < until; slot++)
 	{
-		http_send(conn, false, "%li %i %i\n",
-			overTime[slot].timestamp,
-			overTime[slot].total,
-			overTime[slot].blocked);
+		cJSON *item = JSON_NEW_OBJ();
+		JSON_OBJ_ADD_NUMBER(item, "timestamp", overTime[slot].timestamp);
+		JSON_OBJ_ADD_NUMBER(item, "total_queries", overTime[slot].total);
+		JSON_OBJ_ADD_NUMBER(item, "blocked_queries", overTime[slot].blocked);
+		JSON_ARRAY_ADD_ITEM(json, item);
 	}
+	JSON_SENT_OBJECT(json);
 }
 
 void getTopDomains(const bool blocked, struct mg_connection *conn)

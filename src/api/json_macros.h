@@ -31,6 +31,9 @@
 #endif
 
 #define JSON_NEW_OBJ() cJSON_CreateObject();
+#define JSON_NEW_ARRAY() cJSON_CreateArray();
+
+#define JSON_ARRAY_ADD_ITEM(array, item) cJSON_AddItemToArray(array, item);
 
 #define JSON_OBJ_COPY_STR(object, key, string){ \
 	if(cJSON_AddStringToObject(json, key, (const char*)string) == NULL) \
