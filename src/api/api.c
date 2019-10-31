@@ -570,12 +570,15 @@ int api_stats_query_types(struct mg_connection *conn)
 	JSON_SENT_OBJECT(json);
 }
 
-void getAllQueries(const char *client_message, struct mg_connection *conn)
+int api_stats_history(const char *client_message, struct mg_connection *conn)
 {
 	// Exit before processing any data if requested via config setting
 	get_privacy_level(NULL);
 	if(config.privacylevel >= PRIVACY_MAXIMUM)
-		return;
+	{
+		cJSON *json = JSON_NEW_ARRAY();
+		JSON_SENT_OBJECT(json);
+	}
 
 	// Do we want a more specific version of this command (domain/client/time interval filtered)?
 	int from = 0, until = 0;
@@ -746,6 +749,7 @@ void getAllQueries(const char *client_message, struct mg_connection *conn)
 	}
 	clearSetupVarsArray();
 
+	cJSON *history = JSON_NEW_ARRAY();
 	for(int queryID = ibeg; queryID < counters->queries; queryID++)
 	{
 		const queriesData* query = getQuery(queryID, true);
@@ -756,8 +760,6 @@ void getAllQueries(const char *client_message, struct mg_connection *conn)
 		// Verify query type
 		if(query->type >= TYPE_MAX)
 			continue;
-		// Get query type
-		const char *qtype = querytypes[query->type];
 
 		// 1 = gravity.list, 4 = wildcard, 5 = black.list
 		if((query->status == QUERY_GRAVITY ||
@@ -827,10 +829,18 @@ void getAllQueries(const char *client_message, struct mg_connection *conn)
 		if(delay > 1.8e7)
 			delay = 0;
 
-		http_send(conn, false, "%li %s %s %s %i %i %i %lu",query->timestamp,qtype,domain,clientIPName,query->status,query->dnssec,query->reply,delay);
+		cJSON *item = JSON_NEW_OBJ();
+		JSON_OBJ_ADD_NUMBER(item, "timestamp", query->timestamp);
+		JSON_OBJ_ADD_NUMBER(item, "type", query->type);
+		JSON_OBJ_ADD_NUMBER(item, "status", query->status);
+		JSON_OBJ_COPY_STR(item, "domain", domain);
+		JSON_OBJ_COPY_STR(item, "client", clientIPName);
+		JSON_OBJ_ADD_NUMBER(item, "dnssec", query->dnssec);
+		JSON_OBJ_ADD_NUMBER(item, "reply", query->reply);
+		JSON_OBJ_ADD_NUMBER(item, "response_time", delay);
 		if(config.debug & DEBUG_API)
-			http_send(conn, false, " %i", queryID);
-		http_send(conn, false, "\n");
+			JSON_OBJ_ADD_NUMBER(item, "queryID", queryID);
+		JSON_ARRAY_ADD_ITEM(history, item);
 	}
 
 	// Free allocated memory
@@ -842,6 +852,11 @@ void getAllQueries(const char *client_message, struct mg_connection *conn)
 
 	if(filterforwarddest)
 		free(forwarddest);
+
+	cJSON *json = JSON_NEW_OBJ();
+	JSON_OBJ_ADD_ITEM(json, "history", history);
+	JSON_OBJ_ADD_NUMBER(json, "cursor", 0);
+	JSON_SENT_OBJECT(json);
 }
 
 void getRecentBlocked(const char *client_message, struct mg_connection *conn)

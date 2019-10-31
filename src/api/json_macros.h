@@ -36,12 +36,14 @@
 #define JSON_ARRAY_ADD_ITEM(array, item) cJSON_AddItemToArray(array, item);
 
 #define JSON_OBJ_COPY_STR(object, key, string){ \
-	if(cJSON_AddStringToObject(json, key, (const char*)string) == NULL) \
+	cJSON *string_item = cJSON_CreateString((const char*)string); \
+	if(string_item == NULL) \
 	{ \
 		cJSON_Delete(object); \
 		send_http_error(conn); \
 		return 500; \
 	} \
+	cJSON_AddItemToObject(object, key, string_item); \
 }
 
 #define JSON_OBJ_REF_STR(object, key, string){ \

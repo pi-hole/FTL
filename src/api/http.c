@@ -86,7 +86,7 @@ static int api_handler(struct mg_connection *conn, void *ignored)
 	{
 		ret = api_ftl_clientIP(conn);
 	}
-	/******************************** api/summary ****************************/
+	/******************************** api/stats **************************/
 	else if(strcasecmp("/api/stats/summary", request->local_uri) == 0)
 	{
 		ret = api_stats_summary(conn);
@@ -122,6 +122,10 @@ static int api_handler(struct mg_connection *conn, void *ignored)
 	else if(strcasecmp("/api/stats/top_blocked_clients", request->local_uri) == 0)
 	{
 		ret = api_stats_top_clients(true, conn);
+	}
+	else if(strcasecmp("/api/stats/history", request->local_uri) == 0)
+	{
+		ret = api_stats_history("", conn);
 	}
 	/******************************** not found ******************************/
 /*	else

@@ -25,8 +25,8 @@ int api_stats_query_types(struct mg_connection *conn);
 int api_stats_upstreams(struct mg_connection *conn);
 int api_stats_top_domains(bool blocked, struct mg_connection *conn);
 int api_stats_top_clients(bool blocked, struct mg_connection *conn);
+int api_stats_history(const char *client_message, struct mg_connection *conn);
 
-void getAllQueries(const char *client_message, struct mg_connection *conn);
 void getRecentBlocked(const char *client_message, struct mg_connection *conn);
 void getQueryTypesOverTime(struct mg_connection *conn);
 void getClientNames(struct mg_connection *conn);
