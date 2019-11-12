@@ -239,6 +239,16 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 
 	// Get domain pointer
 	domainsData* domain = getDomain(domainID, true);
+	if(domain == NULL)
+	{
+		// Encountered memory error, skip query
+		// Free allocated memory
+		free(domainString);
+		free(clientIP);
+		// Release thread lock
+		unlock_shm();
+		return false;
+	}
 
 	// Only check domains for blocking conditions when global blocking is enabled
 	bool blockDomain = false;
@@ -278,8 +288,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		   !in_whitelist(domainString, client))
 		{
 			// Mark domain as regex match (note that this might not apply for all clients!)
-			if(domain != NULL)
-				domain->regexmatch = REGEX_BLOCKED;
+			domain->regexmatch = REGEX_BLOCKED;
 
 			// We have to block this domain
 			blockDomain = true;
@@ -293,8 +302,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		{
 			// Explicitly mark as not blocked to skip regex test
 			// next time we see this domain
-			if(domain != NULL)
-				domain->regexmatch = REGEX_NOTBLOCKED;
+			domain->regexmatch = REGEX_NOTBLOCKED;
 		}
 	}
 
@@ -1042,8 +1050,10 @@ void _FTL_dnssec(const int status, const int id, const char* file, const int lin
 	{
 		// Get domain pointer
 		const domainsData* domain = getDomain(query->domainID, true);
-
-		logg("**** got DNSSEC details for %s: %i (ID %i, %s:%i)", getstr(domain->domainpos), status, id, file, line);
+		if(domain != NULL)
+		{
+			logg("**** got DNSSEC details for %s: %i (ID %i, %s:%i)", getstr(domain->domainpos), status, id, file, line);
+		}
 	}
 
 	// Iterate through possible values
