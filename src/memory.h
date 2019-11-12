@@ -30,7 +30,6 @@ typedef struct {
 	int domains_MAX;
 	int strings_MAX;
 	int gravity;
-	int gravity_conf;
 	int querytype[TYPE_MAX-1];
 	int forwardedqueries;
 	int reply_NODATA;

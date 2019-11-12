@@ -53,8 +53,11 @@ static void initSlot(const unsigned int index, const time_t timestamp)
 	{
 		// Get client pointer
 		clientsData* client = getClient(clientID, true);
-		// Set overTime data to zero
-		client->overTime[index] = 0;
+		if(client != NULL)
+		{
+			// Set overTime data to zero
+			client->overTime[index] = 0;
+		}
 	}
 }
 
@@ -160,6 +163,9 @@ void moveOverTimeMemory(const time_t mintime)
 		{
 			// Get query pointer
 			queriesData* query = getQuery(queryID, true);
+			if(query == NULL)
+				continue;
+
 			// Check if the index would become negative if we adjusted it
 			if(((int)query->timeidx - (int)moveOverTime) < 0)
 			{

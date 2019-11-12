@@ -15,5 +15,6 @@ bool create_network_addresses_table(void);
 void parse_neighbor_cache(void);
 void updateMACVendorRecords(void);
 bool unify_hwaddr(void);
+char* getDatabaseHostname(const char* ipaddr) __attribute__((malloc));
 
 #endif //NETWORKTABLE_H
