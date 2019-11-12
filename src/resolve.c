@@ -18,6 +18,8 @@
 #include "log.h"
 // global variable killed
 #include "signals.h"
+// getDatabaseHostname()
+#include "database/network-table.h"
 
 static char *resolveHostname(const char *addr)
 {
@@ -85,6 +87,13 @@ static size_t resolveAndAddHostname(size_t ippos, size_t oldnamepos)
 	// (dnsmasq) needs to be operable during the call to resolveHostname()
 	char* newname = resolveHostname(ipaddr);
 
+	// If no hostname was found, try to obtain hostname from the network table
+	if(strlen(newname) == 0)
+	{
+		free(newname);
+		newname = getDatabaseHostname(ipaddr);
+	}
+
 	// Only store new newname if it is valid and differs from oldname
 	// We do not need to check for oldname == NULL as names are
 	// always initialized with an empty string at position 0
@@ -124,6 +133,8 @@ void resolveClients(const bool onlynew)
 	{
 		// Get client pointer
 		clientsData* client = getClient(clientID, true);
+		if(client == NULL)
+			continue;
 
 		// Memory access needs to get locked
 		lock_shm();
@@ -160,6 +171,8 @@ void resolveForwardDestinations(const bool onlynew)
 	{
 		// Get forward pointer
 		forwardedData* forward = getForward(forwardID, true);
+		if(forward == NULL)
+			continue;
 
 		// Memory access needs to get locked
 		lock_shm();

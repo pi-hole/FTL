@@ -81,6 +81,9 @@ void getStats(const int *sock)
 	{
 		// Get client pointer
 		const clientsData* client = getClient(clientID, true);
+		if(client == NULL)
+			continue;
+
 		if(client->count > 0)
 			activeclients++;
 	}
@@ -227,6 +230,8 @@ void getTopDomains(const char *client_message, const int *sock)
 	{
 		// Get domain pointer
 		const domainsData* domain = getDomain(domainID, true);
+		if(domain == NULL)
+			continue;
 
 		temparray[domainID][0] = domainID;
 		if(blocked)
@@ -287,6 +292,8 @@ void getTopDomains(const char *client_message, const int *sock)
 		const int domainID = temparray[i][0];
 		// Get domain pointer
 		const domainsData* domain = getDomain(domainID, true);
+		if(domain == NULL)
+			continue;
 
 		// Skip this domain if there is a filter on it
 		if(excludedomains != NULL && insetupVarsArray(getstr(domain->domainpos)))
@@ -397,6 +404,8 @@ void getTopClients(const char *client_message, const int *sock)
 	{
 		// Get client pointer
 		const clientsData* client = getClient(clientID, true);
+		if(client == NULL)
+			continue;
 		temparray[clientID][0] = clientID;
 		// Use either blocked or total count based on request string
 		temparray[clientID][1] = blockedonly ? client->blockedcount : client->count;
@@ -435,6 +444,8 @@ void getTopClients(const char *client_message, const int *sock)
 		const int ccount = temparray[i][1];
 		// Get client pointer
 		const clientsData* client = getClient(clientID, true);
+		if(client == NULL)
+			continue;
 
 		// Skip this client if there is a filter on it
 		if(excludeclients != NULL &&
@@ -490,6 +501,8 @@ void getForwardDestinations(const char *client_message, const int *sock)
 		if(sort) {
 			// Get forward pointer
 			const forwardedData* forward = getForward(forwardID, true);
+			if(forward == NULL)
+				continue;
 
 			temparray[forwardID][0] = forwardID;
 			temparray[forwardID][1] = forward->count;
@@ -542,6 +555,8 @@ void getForwardDestinations(const char *client_message, const int *sock)
 
 			// Get forward pointer
 			const forwardedData* forward = getForward(forwardID, true);
+			if(forward == NULL)
+				continue;
 
 			// Get IP and host name of forward destination if available
 			ip = getstr(forward->ippos);
@@ -675,6 +690,9 @@ void getAllQueries(const char *client_message, const int *sock)
 			{
 				// Get forward pointer
 				const forwardedData* forward = getForward(i, true);
+				if(forward == NULL)
+					continue;
+
 				// Try to match the requested string against their IP addresses and
 				// (if available) their host names
 				if(strcmp(getstr(forward->ippos), forwarddest) == 0 ||
@@ -707,6 +725,8 @@ void getAllQueries(const char *client_message, const int *sock)
 		{
 			// Get domain pointer
 			const domainsData* domain = getDomain(domainID, true);
+			if(domain == NULL)
+				continue;
 
 			// Try to match the requested string
 			if(strcmp(getstr(domain->domainpos), domainname) == 0)
@@ -737,6 +757,9 @@ void getAllQueries(const char *client_message, const int *sock)
 		{
 			// Get client pointer
 			const clientsData* client = getClient(i, true);
+			if(client == NULL)
+				continue;
+
 			// Try to match the requested string
 			if(strcmp(getstr(client->ippos), clientname) == 0 ||
 			   (client->namepos != 0 &&
@@ -787,7 +810,8 @@ void getAllQueries(const char *client_message, const int *sock)
 	{
 		const queriesData* query = getQuery(queryID, true);
 		// Check if this query has been create while in maximum privacy mode
-		if(query->privacylevel >= PRIVACY_MAXIMUM) continue;
+		if(query == NULL || query->privacylevel >= PRIVACY_MAXIMUM)
+			continue;
 
 		// Verify query type
 		if(query->type > TYPE_MAX-1)
@@ -844,6 +868,9 @@ void getAllQueries(const char *client_message, const int *sock)
 		const char *clientIPName = NULL;
 		// Get client pointer
 		const clientsData* client = getClient(query->clientID, true);
+		if(domain == NULL || client == NULL)
+			continue;
+
 		if(strlen(getstr(client->namepos)) > 0)
 			clientIPName = getClientNameString(queryID);
 		else
@@ -905,6 +932,8 @@ void getRecentBlocked(const char *client_message, const int *sock)
 	for(int queryID = counters->queries - 1; queryID > 0 ; queryID--)
 	{
 		const queriesData* query = getQuery(queryID, true);
+		if(query == NULL)
+			continue;
 
 		if(query->status == QUERY_GRAVITY ||
 		   query->status == QUERY_WILDCARD ||
@@ -915,6 +944,8 @@ void getRecentBlocked(const char *client_message, const int *sock)
 			// Ask subroutine for domain. It may return "hidden" depending on
 			// the privacy settings at the time the query was made
 			const char *domain = getDomainString(queryID);
+			if(domain == NULL)
+				continue;
 
 			if(istelnet[*sock])
 				ssend(*sock,"%s\n", domain);
@@ -1102,6 +1133,8 @@ void getClientsOverTime(const int *sock)
 		{
 			// Get client pointer
 			const clientsData* client = getClient(clientID, true);
+			if(client == NULL)
+				continue;
 			// Check if this client should be skipped
 			if(insetupVarsArray(getstr(client->ippos)) ||
 			   insetupVarsArray(getstr(client->namepos)))
@@ -1125,6 +1158,8 @@ void getClientsOverTime(const int *sock)
 
 			// Get client pointer
 			const clientsData* client = getClient(clientID, true);
+			if(client == NULL)
+				continue;
 			const int thisclient = client->overTime[slot];
 
 			if(istelnet[*sock])
@@ -1166,6 +1201,9 @@ void getClientNames(const int *sock)
 		{
 			// Get client pointer
 			const clientsData* client = getClient(clientID, true);
+			if(client == NULL)
+				continue;
+
 			// Check if this client should be skipped
 			if(insetupVarsArray(getstr(client->ippos)) ||
 			   insetupVarsArray(getstr(client->namepos)))
@@ -1181,6 +1219,9 @@ void getClientNames(const int *sock)
 
 		// Get client pointer
 		const clientsData* client = getClient(clientID, true);
+		if(client == NULL)
+			continue;
+
 		const char *client_ip = getstr(client->ippos);
 		const char *client_name = getstr(client->namepos);
 
@@ -1207,7 +1248,9 @@ void getUnknownQueries(const int *sock)
 	{
 		const queriesData* query = getQuery(queryID, true);
 
-		if(query->status != QUERY_UNKNOWN && query->complete) continue;
+		if(query == NULL ||
+		  (query->status != QUERY_UNKNOWN && query->complete))
+			continue;
 
 		char type[5];
 		if(query->type == TYPE_A)
@@ -1223,6 +1266,9 @@ void getUnknownQueries(const int *sock)
 		const domainsData* domain = getDomain(query->domainID, true);
 		// Get client pointer
 		const clientsData* client = getClient(query->clientID, true);
+
+		if(domain == NULL || client == NULL)
+			continue;
 
 		// Get client IP string
 		const char *clientIP = getstr(client->ippos);
@@ -1261,6 +1307,8 @@ void getDomainDetails(const char *client_message, const int *sock)
 	{
 		// Get domain pointer
 		const domainsData* domain = getDomain(domainID, true);
+		if(domain == NULL)
+			continue;
 
 		if(strcmp(getstr(domain->domainpos), domainString) == 0)
 		{
