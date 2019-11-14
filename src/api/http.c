@@ -125,7 +125,7 @@ static int api_handler(struct mg_connection *conn, void *ignored)
 	}
 	else if(strcasecmp("/api/stats/history", request->local_uri) == 0)
 	{
-		ret = api_stats_history("", conn);
+		ret = api_stats_history(conn);
 	}
 	else if(strcasecmp("/api/stats/recent_blocked", request->local_uri) == 0)
 	{

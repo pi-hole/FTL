@@ -572,7 +572,7 @@ int api_stats_query_types(struct mg_connection *conn)
 	JSON_SENT_OBJECT(json);
 }
 
-int api_stats_history(const char *client_message, struct mg_connection *conn)
+int api_stats_history(struct mg_connection *conn)
 {
 	// Exit before processing any data if requested via config setting
 	get_privacy_level(NULL);

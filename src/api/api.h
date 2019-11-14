@@ -25,12 +25,8 @@ int api_stats_query_types(struct mg_connection *conn);
 int api_stats_upstreams(struct mg_connection *conn);
 int api_stats_top_domains(bool blocked, struct mg_connection *conn);
 int api_stats_top_clients(bool blocked, struct mg_connection *conn);
-int api_stats_history(const char *client_message, struct mg_connection *conn);
+int api_stats_history(struct mg_connection *conn);
 int api_stats_recentblocked(struct mg_connection *conn);
-
-void getRecentBlocked(const char *client_message, struct mg_connection *conn);
-void getQueryTypesOverTime(struct mg_connection *conn);
-void getClientNames(struct mg_connection *conn);
 
 // FTL methods
 int api_ftl_clientIP(struct mg_connection *conn);
