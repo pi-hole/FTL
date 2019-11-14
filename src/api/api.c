@@ -947,49 +947,7 @@ int api_ftl_clientIP(struct mg_connection *conn)
 	JSON_OBJ_REF_STR(json,"remote_addr", request->remote_addr);
 	JSON_SENT_OBJECT(json);
 }
-/*
-void getQueryTypesOverTime(struct mg_connection *conn)
-{
-	int from = -1, until = OVERTIME_SLOTS;
-	const time_t mintime = overTime[0].timestamp;
 
-	for(int slot = 0; slot < OVERTIME_SLOTS; slot++)
-	{
-		if((overTime[slot].total > 0 || overTime[slot].blocked > 0) && overTime[slot].timestamp >= mintime)
-		{
-			from = slot;
-			break;
-		}
-	}
-
-	// End with last non-empty overTime slot
-	for(int slot = 0; slot < OVERTIME_SLOTS; slot++)
-	{
-		if(overTime[slot].timestamp >= time(NULL))
-		{
-			until = slot;
-			break;
-		}
-	}
-
-	// No data?
-	if(from < 0)
-		return;
-
-	for(int slot = from; slot < until; slot++)
-	{
-		float percentageIPv4 = 0.0, percentageIPv6 = 0.0;
-		int sum = overTime[slot].querytypedata[0] + overTime[slot].querytypedata[1];
-
-		if(sum > 0) {
-			percentageIPv4 = (float) (1e2 * overTime[slot].querytypedata[0] / sum);
-			percentageIPv6 = (float) (1e2 * overTime[slot].querytypedata[1] / sum);
-		}
-
-		http_send(conn, false, "%li %.2f %.2f\n", overTime[slot].timestamp, percentageIPv4, percentageIPv6);
-	}
-}
-*/
 int api_ftl_version(struct mg_connection *conn)
 {
 	const char *commit = GIT_HASH;
