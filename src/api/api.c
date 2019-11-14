@@ -456,7 +456,7 @@ int api_stats_top_clients(bool blocked, struct mg_connection *conn)
 	}
 	else
 	{
-		const int total_queries = counters->forwardedqueries + counters->cached + counters->blocked;
+		const int total_queries = counters->forwarded + counters->cached + counters->blocked;
 		JSON_OBJ_ADD_NUMBER(json, "total_queries", total_queries);
 	}
 
@@ -609,10 +609,12 @@ int api_stats_history(const char *client_message, struct mg_connection *conn)
 		{
 			sscanf(buffer, "%u", &from);
 		}
+
 		if(GET_VAR("until", buffer, request->query_string) > 0)
 		{
 			sscanf(buffer, "%u", &until);
 		}
+
 		if(GET_VAR("querytype", buffer, request->query_string) > 0)
 		{
 			unsigned int qtype;
@@ -622,6 +624,7 @@ int api_stats_history(const char *client_message, struct mg_connection *conn)
 				querytype = qtype;
 			}
 		}
+
 		if(GET_VAR("forward", buffer, request->query_string) > 0)
 		{
 			forwarddest = calloc(256, sizeof(char));
@@ -647,7 +650,7 @@ int api_stats_history(const char *client_message, struct mg_connection *conn)
 				for(int i = 0; i < counters->forwarded; i++)
 				{
 					// Get forward pointer
-					const forwardedData* forward = getForward(i, true);
+					const upstreamsData* forward = getUpstream(i, true);
 					if(forward == NULL)
 					{
 						continue;
@@ -673,82 +676,45 @@ int api_stats_history(const char *client_message, struct mg_connection *conn)
 				}
 			}
 		}
-	}
-/*
-	// Forward destination filtering?
-	if(command(client_message, ">getallqueries-forward")) {
-		// Get forward destination name we want to see only (limit length to 255 chars)
-		forwarddest = calloc(256, sizeof(char));
-		if(forwarddest == NULL) return;
-		sscanf(client_message, ">getallqueries-forward %255s", forwarddest);
-		filterforwarddest = true;
 
-		if(strcmp(forwarddest, "cache") == 0)
-			forwarddestid = -1;
-		else if(strcmp(forwarddest, "blocklist") == 0)
-			forwarddestid = -2;
-		else
+
+		if(GET_VAR("domain", buffer, request->query_string) > 0)
 		{
-			// Iterate through all known forward destinations
-			forwarddestid = -3;
-			for(int i = 0; i < counters->upstreams; i++)
+			domainname = calloc(512, sizeof(char));
+			if(domainname == NULL)
 			{
-				// Get forward pointer
-				const upstreamsData* forward = getUpstream(i, true);
-				if(forward == NULL)
-					continue;
-
-				// Try to match the requested string against their IP addresses and
-				// (if available) their host names
-				if(strcmp(getstr(forward->ippos), forwarddest) == 0 ||
-				   (forward->namepos != 0 &&
-				    strcmp(getstr(forward->namepos), forwarddest) == 0))
+				return false;
+			}
+			sscanf(buffer, "%511s", domainname);
+			filterdomainname = true;
+			// Iterate through all known domains
+			for(int domainID = 0; domainID < counters->domains; domainID++)
+			{
+				// Get domain pointer
+				const domainsData* domain = getDomain(domainID, true);
+				if(domain == NULL)
 				{
-					forwarddestid = i;
+					continue;
+				}
+
+				// Try to match the requested string
+				if(strcmp(getstr(domain->domainpos), domainname) == 0)
+				{
+					domainid = domainID;
 					break;
 				}
 			}
-			if(forwarddestid < 0)
+			if(domainid < 0)
 			{
-				// Requested forward destination has not been found, we directly
+				// Requested domain has not been found, we directly
 				// exit here as there is no data to be returned
-				free(forwarddest);
-				return;
+				free(domainname);
+				cJSON *json = JSON_NEW_ARRAY();
+				JSON_SENT_OBJECT(json);
 			}
 		}
 	}
-
-	// Domain filtering?
-	if(command(client_message, ">getallqueries-domain")) {
-		// Get domain name we want to see only (limit length to 255 chars)
-		domainname = calloc(256, sizeof(char));
-		if(domainname == NULL) return;
-		sscanf(client_message, ">getallqueries-domain %255s", domainname);
-		filterdomainname = true;
-		// Iterate through all known domains
-		for(int domainID = 0; domainID < counters->domains; domainID++)
-		{
-			// Get domain pointer
-			const domainsData* domain = getDomain(domainID, true);
-			if(domain == NULL)
-				continue;
-
-			// Try to match the requested string
-			if(strcmp(getstr(domain->domainpos), domainname) == 0)
-			{
-				domainid = domainID;
-				break;
-			}
-		}
-		if(domainid < 0)
-		{
-			// Requested domain has not been found, we directly
-			// exit here as there is no data to be returned
-			free(domainname);
-			return;
-		}
-	}
-
+/*
 	// Client filtering?
 	if(command(client_message, ">getallqueries-client")) {
 		// Get client name we want to see only (limit length to 255 chars)
