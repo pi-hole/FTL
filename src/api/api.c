@@ -622,6 +622,57 @@ int api_stats_history(const char *client_message, struct mg_connection *conn)
 				querytype = qtype;
 			}
 		}
+		if(GET_VAR("forward", buffer, request->query_string) > 0)
+		{
+			forwarddest = calloc(256, sizeof(char));
+			if(forwarddest == NULL)
+			{
+				return false;
+			}
+			sscanf(buffer, "%255s", forwarddest);
+			filterforwarddest = true;
+
+			if(strcmp(forwarddest, "cache") == 0)
+			{
+				forwarddestid = -1;
+			}
+			else if(strcmp(forwarddest, "blocklist") == 0)
+			{
+				forwarddestid = -2;
+			}
+			else
+			{
+				// Iterate through all known forward destinations
+				forwarddestid = -3;
+				for(int i = 0; i < counters->forwarded; i++)
+				{
+					// Get forward pointer
+					const forwardedData* forward = getForward(i, true);
+					if(forward == NULL)
+					{
+						continue;
+					}
+
+					// Try to match the requested string against their IP addresses and
+					// (if available) their host names
+					if(strcmp(getstr(forward->ippos), forwarddest) == 0 ||
+					   (forward->namepos != 0 &&
+					    strcmp(getstr(forward->namepos), forwarddest) == 0))
+					{
+						forwarddestid = i;
+						break;
+					}
+				}
+				if(forwarddestid < 0)
+				{
+					// Requested forward destination has not been found, we directly
+					// exit here as there is no data to be returned
+					free(forwarddest);
+					cJSON *json = JSON_NEW_ARRAY();
+					JSON_SENT_OBJECT(json);
+				}
+			}
+		}
 	}
 /*
 	// Forward destination filtering?
