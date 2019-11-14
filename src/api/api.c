@@ -814,7 +814,7 @@ int api_stats_history(struct mg_connection *conn)
 			continue;
 
 		// Skip those entries which so not meet the requested timeframe
-		if((from > query->timestamp && from != 0) || (query->timestamp > until && until != 0))
+		if((from > (unsigned int)query->timestamp && from != 0) || ((unsigned int)query->timestamp > until && until != 0))
 			continue;
 
 		// Skip if domain is not identical with what the user wants to see
