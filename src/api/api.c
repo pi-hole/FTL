@@ -898,28 +898,44 @@ int api_stats_history(const char *client_message, struct mg_connection *conn)
 	JSON_SENT_OBJECT(json);
 }
 
-void getRecentBlocked(const char *client_message, struct mg_connection *conn)
+int api_stats_recentblocked(struct mg_connection *conn)
 {
-	int num=1;
+	unsigned int num=1;
 
-	// Test for integer that specifies number of entries to be shown
-	if(sscanf(client_message, "%*[^(](%i)", &num) > 0) {
-		// User wants a different number of requests
-		if(num >= counters->queries)
-			num = 0;
+	const struct mg_request_info *request = mg_get_request_info(conn);
+	if(request->query_string != NULL)
+	{
+		char buffer[256] = { 0 };
+
+		// Test for integer that specifies number of entries to be shown
+		if(GET_VAR("show", buffer, request->query_string) > 0)
+		{
+			// User wants a different number of requests
+			sscanf(buffer, "%u", &num);
+			if(num >= (unsigned int)counters->queries)
+			{
+				num = 0;
+			}
+		}
 	}
 
 	// Find most recently blocked query
-	int found = 0;
+	unsigned int found = 0;
+	cJSON *blocked = JSON_NEW_ARRAY();
 	for(int queryID = counters->queries - 1; queryID > 0 ; queryID--)
 	{
 		const queriesData* query = getQuery(queryID, true);
 		if(query == NULL)
+		{
 			continue;
+		}
 
 		if(query->status == QUERY_GRAVITY ||
 		   query->status == QUERY_REGEX ||
 		   query->status == QUERY_BLACKLIST ||
+		   query->status == QUERY_EXTERNAL_BLOCKED_IP ||
+		   query->status == QUERY_EXTERNAL_BLOCKED_NULL ||
+		   query->status == QUERY_EXTERNAL_BLOCKED_NXRA ||
 		   query->status == QUERY_GRAVITY_CNAME ||
 		   query->status == QUERY_REGEX_CNAME ||
 		   query->status == QUERY_BLACKLIST_CNAME)
@@ -930,14 +946,19 @@ void getRecentBlocked(const char *client_message, struct mg_connection *conn)
 			// the privacy settings at the time the query was made
 			const char *domain = getDomainString(query);
 			if(domain == NULL)
+			{
 				continue;
+			}
 
-			http_send(conn, false, "%s\n", domain);
+			JSON_ARRAY_REF_STR(blocked, domain);
 		}
 
 		if(found >= num)
 			break;
 	}
+	cJSON *json = JSON_NEW_OBJ();
+	JSON_OBJ_ADD_ITEM(json, "blocked", blocked);
+	JSON_SENT_OBJECT(json);
 }
 
 int api_ftl_clientIP(struct mg_connection *conn)

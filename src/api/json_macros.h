@@ -71,6 +71,17 @@
 	cJSON_AddItemToArray(object, number_item); \
 }
 
+#define JSON_ARRAY_REF_STR(array, string){ \
+	cJSON *string_item = cJSON_CreateStringReference((const char*)string); \
+	if(string_item == NULL) \
+	{ \
+		cJSON_Delete(array); \
+		send_http_error(conn); \
+		return 500; \
+	} \
+	cJSON_AddItemToArray(array, string_item); \
+}
+
 // cJSON_AddItemToObject() does not return anything
 // Note that this operation transfers the ownership of the added item to the
 // new parent so that when that array or object is deleted, it gets deleted as well.
