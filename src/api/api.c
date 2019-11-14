@@ -613,23 +613,17 @@ int api_stats_history(const char *client_message, struct mg_connection *conn)
 		{
 			sscanf(buffer, "%u", &until);
 		}
-	}
-/*
-	if(command(client_message, ">getallqueries-time")) {
-		sscanf(client_message, ">getallqueries-time %i %i",&from, &until);
-	}
-
-	// Query type filtering?
-	if(command(client_message, ">getallqueries-qtype")) {
-		// Get query type we want to see only
-		sscanf(client_message, ">getallqueries-qtype %i", &querytype);
-		if(querytype < 1 || querytype >= TYPE_MAX)
+		if(GET_VAR("querytype", buffer, request->query_string) > 0)
 		{
-			// Invalid query type requested
-			return;
+			unsigned int qtype;
+			sscanf(buffer, "%u", &qtype);
+			if(querytype < TYPE_MAX)
+			{
+				querytype = qtype;
+			}
 		}
 	}
-
+/*
 	// Forward destination filtering?
 	if(command(client_message, ">getallqueries-forward")) {
 		// Get forward destination name we want to see only (limit length to 255 chars)
