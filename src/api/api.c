@@ -677,7 +677,6 @@ int api_stats_history(const char *client_message, struct mg_connection *conn)
 			}
 		}
 
-
 		if(GET_VAR("domain", buffer, request->query_string) > 0)
 		{
 			domainname = calloc(512, sizeof(char));
@@ -713,42 +712,47 @@ int api_stats_history(const char *client_message, struct mg_connection *conn)
 				JSON_SENT_OBJECT(json);
 			}
 		}
-	}
-/*
-	// Client filtering?
-	if(command(client_message, ">getallqueries-client")) {
-		// Get client name we want to see only (limit length to 255 chars)
-		clientname = calloc(256, sizeof(char));
-		if(clientname == NULL) return;
-		sscanf(client_message, ">getallqueries-client %255s", clientname);
-		filterclientname = true;
 
-		// Iterate through all known clients
-		for(int i = 0; i < counters->clients; i++)
+		if(GET_VAR("client", buffer, request->query_string) > 0)
 		{
-			// Get client pointer
-			const clientsData* client = getClient(i, true);
-			if(client == NULL)
-				continue;
-
-			// Try to match the requested string
-			if(strcmp(getstr(client->ippos), clientname) == 0 ||
-			   (client->namepos != 0 &&
-			    strcmp(getstr(client->namepos), clientname) == 0))
+			clientname = calloc(512, sizeof(char));
+			if(clientname == NULL)
 			{
-				clientid = i;
-				break;
+				return false;
+			}
+			sscanf(buffer, "%511s", clientname);
+			filterclientname = true;
+
+			// Iterate through all known clients
+			for(int i = 0; i < counters->clients; i++)
+			{
+				// Get client pointer
+				const clientsData* client = getClient(i, true);
+				if(client == NULL)
+				{
+					continue;
+				}
+
+				// Try to match the requested string
+				if(strcmp(getstr(client->ippos), clientname) == 0 ||
+				   (client->namepos != 0 &&
+				    strcmp(getstr(client->namepos), clientname) == 0))
+				{
+					clientid = i;
+					break;
+				}
+			}
+			if(clientid < 0)
+			{
+				// Requested client has not been found, we directly
+				// exit here as there is no data to be returned
+				free(clientname);
+				cJSON *json = JSON_NEW_ARRAY();
+				JSON_SENT_OBJECT(json);
 			}
 		}
-		if(clientid < 0)
-		{
-			// Requested client has not been found, we directly
-			// exit here as there is no data to be returned
-			free(clientname);
-			return;
-		}
 	}
-*/
+
 	int ibeg = 0, num;
 	// Test for integer that specifies number of entries to be shown
 	if(sscanf(client_message, "%*[^(](%i)", &num) > 0)
