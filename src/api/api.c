@@ -155,6 +155,8 @@ int api_stats_overTime_history(struct mg_connection *conn)
 	if(!found)
 	{
 		cJSON *json = JSON_NEW_ARRAY();
+		cJSON *item = JSON_NEW_OBJ();
+		JSON_ARRAY_ADD_ITEM(json, item);
 		JSON_SENT_OBJECT(json);
 	}
 
@@ -1019,6 +1021,10 @@ int api_stats_overTime_clients(struct mg_connection *conn)
 	if(sendit < 0)
 	{
 		cJSON *json = JSON_NEW_OBJ();
+		cJSON *over_time = JSON_NEW_ARRAY();
+		JSON_OBJ_ADD_ITEM(json, "over_time", over_time);
+		cJSON *clients = JSON_NEW_ARRAY();
+		JSON_OBJ_ADD_ITEM(json, "clients", clients);
 		JSON_SENT_OBJECT(json);
 	}
 
