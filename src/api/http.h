@@ -27,4 +27,7 @@ void http_send(struct mg_connection *conn, bool chunk, const char *format, ...) 
 int send_http(struct mg_connection *conn, const char *mime_type, const char *msg);
 int send_http_error(struct mg_connection *conn);
 
+// HTTP macros
+#define GET_VAR(variable, destination, source) mg_get_var(source, strlen(source), variable, destination, sizeof(destination))
+
 #endif // HTTP_H

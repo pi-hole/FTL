@@ -583,7 +583,7 @@ int api_stats_history(const char *client_message, struct mg_connection *conn)
 	}
 
 	// Do we want a more specific version of this command (domain/client/time interval filtered)?
-	int from = 0, until = 0;
+	unsigned int from = 0, until = 0;
 
 	char *domainname = NULL;
 	bool filterdomainname = false;
@@ -598,8 +598,23 @@ int api_stats_history(const char *client_message, struct mg_connection *conn)
 	char *forwarddest = NULL;
 	bool filterforwarddest = false;
 	int forwarddestid = 0;
+
+	const struct mg_request_info *request = mg_get_request_info(conn);
+	if(request->query_string != NULL)
+	{
+		char buffer[256] = { 0 };
+
+		// Time filtering?
+		if(GET_VAR("from", buffer, request->query_string) > 0)
+		{
+			sscanf(buffer, "%u", &from);
+		}
+		if(GET_VAR("until", buffer, request->query_string) > 0)
+		{
+			sscanf(buffer, "%u", &until);
+		}
+	}
 /*
-	// Time filtering?
 	if(command(client_message, ">getallqueries-time")) {
 		sscanf(client_message, ">getallqueries-time %i %i",&from, &until);
 	}
