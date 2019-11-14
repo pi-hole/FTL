@@ -599,6 +599,8 @@ int api_stats_history(const char *client_message, struct mg_connection *conn)
 	bool filterforwarddest = false;
 	int forwarddestid = 0;
 
+	unsigned int ibeg = 0;
+
 	const struct mg_request_info *request = mg_get_request_info(conn);
 	if(request->query_string != NULL)
 	{
@@ -615,6 +617,7 @@ int api_stats_history(const char *client_message, struct mg_connection *conn)
 			sscanf(buffer, "%u", &until);
 		}
 
+		// Query type filtering?
 		if(GET_VAR("querytype", buffer, request->query_string) > 0)
 		{
 			unsigned int qtype;
@@ -625,6 +628,7 @@ int api_stats_history(const char *client_message, struct mg_connection *conn)
 			}
 		}
 
+		// Forward destination filtering?
 		if(GET_VAR("forward", buffer, request->query_string) > 0)
 		{
 			forwarddest = calloc(256, sizeof(char));
@@ -677,6 +681,7 @@ int api_stats_history(const char *client_message, struct mg_connection *conn)
 			}
 		}
 
+		// Domain filtering?
 		if(GET_VAR("domain", buffer, request->query_string) > 0)
 		{
 			domainname = calloc(512, sizeof(char));
@@ -713,6 +718,7 @@ int api_stats_history(const char *client_message, struct mg_connection *conn)
 			}
 		}
 
+		// Client filtering?
 		if(GET_VAR("client", buffer, request->query_string) > 0)
 		{
 			clientname = calloc(512, sizeof(char));
@@ -751,17 +757,18 @@ int api_stats_history(const char *client_message, struct mg_connection *conn)
 				JSON_SENT_OBJECT(json);
 			}
 		}
-	}
 
-	int ibeg = 0, num;
-	// Test for integer that specifies number of entries to be shown
-	if(sscanf(client_message, "%*[^(](%i)", &num) > 0)
-	{
-		// User wants a different number of requests
-		// Don't allow a start index that is smaller than zero
-		ibeg = counters->queries-num;
-		if(ibeg < 0)
-			ibeg = 0;
+		if(GET_VAR("show", buffer, request->query_string) > 0)
+		{
+			unsigned int num = 0;
+			sscanf(buffer, "%u", &num);
+			// User wants a different number of requests
+			// Don't allow a start index that is smaller than zero
+			if(num <= (unsigned int)counters->queries)
+				ibeg = counters->queries-num;
+			else
+				ibeg = 0;
+		}
 	}
 
 	// Get potentially existing filtering flags
