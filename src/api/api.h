@@ -14,6 +14,7 @@
 #include "../civetweb/civetweb.h"
 // http_send_json_chunk()
 #include "../api/http.h"
+#include "json_macros.h"
 
 // Statistic methods
 int api_stats_summary(struct mg_connection *conn);
