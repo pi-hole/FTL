@@ -156,6 +156,11 @@ static int api_handler(struct mg_connection *conn, void *ignored)
 	{
 		ret = api_stats_recentblocked(conn);
 	}
+	/******************************** api/version ****************************/
+	else if(strcasecmp("/api/version", request->local_uri) == 0)
+	{
+		ret = api_version(conn);
+	}
 	/******************************** not found ******************************/
 /*	else
 	{

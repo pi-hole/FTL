@@ -161,7 +161,7 @@ void log_FTL_version(const bool crashreport)
 }
 
 static char *FTLversion = NULL;
-const char __attribute__ ((malloc)) *get_FTL_version(void)
+char __attribute__ ((malloc)) *get_FTL_version(void)
 {
 	// Obtain FTL version if not already determined
 	if(FTLversion == NULL)

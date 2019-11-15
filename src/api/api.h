@@ -41,4 +41,7 @@ int api_dns_blacklist(struct mg_connection *conn);
 int api_dns_blacklist_exact(struct mg_connection *conn);
 int api_dns_blacklist_regex(struct mg_connection *conn);
 
+// Version method
+int api_version(struct mg_connection *conn);
+
 #endif // API_H
