@@ -73,6 +73,31 @@ static int api_handler(struct mg_connection *conn, void *ignored)
 	{
 		ret = api_dns_status(conn);
 	}
+	else if(strcasecmp("/api/dns/whitelist", request->local_uri) == 0)
+	{
+		ret = api_dns_whitelist(conn);
+	}
+	else if(strcasecmp("/api/dns/whitelist/exact", request->local_uri) == 0)
+	{
+		ret = api_dns_whitelist_exact(conn);
+	}
+	else if(strcasecmp("/api/dns/whitelist/regex", request->local_uri) == 0)
+	{
+		ret = api_dns_whitelist_regex(conn);
+	}
+	else if(strcasecmp("/api/dns/blacklist", request->local_uri) == 0)
+	{
+		ret = api_dns_blacklist(conn);
+	}
+	else if(strcasecmp("/api/dns/blacklist/exact", request->local_uri) == 0)
+	{
+		ret = api_dns_blacklist_exact(conn);
+	}
+	else if(strcasecmp("/api/dns/blacklist/regex", request->local_uri) == 0 ||
+	        strcasecmp("/api/dns/regexlist",       request->local_uri) == 0)
+	{
+		ret = api_dns_blacklist_regex(conn);
+	}
 	/******************************** api/ftl ****************************/
 	else if(strcasecmp("/api/ftl/version", request->local_uri) == 0)
 	{

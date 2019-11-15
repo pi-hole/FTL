@@ -18,8 +18,6 @@
 
 // Statistic methods
 int api_stats_summary(struct mg_connection *conn);
-int api_dns_status(struct mg_connection *conn);
-
 int api_stats_overTime_history(struct mg_connection *conn);
 int api_stats_overTime_clients(struct mg_connection *conn);
 int api_stats_query_types(struct mg_connection *conn);
@@ -33,5 +31,14 @@ int api_stats_recentblocked(struct mg_connection *conn);
 int api_ftl_clientIP(struct mg_connection *conn);
 int api_ftl_version(struct mg_connection *conn);
 int api_ftl_db(struct mg_connection *conn);
+
+// DNS methods
+int api_dns_status(struct mg_connection *conn);
+int api_dns_whitelist(struct mg_connection *conn);
+int api_dns_whitelist_exact(struct mg_connection *conn);
+int api_dns_whitelist_regex(struct mg_connection *conn);
+int api_dns_blacklist(struct mg_connection *conn);
+int api_dns_blacklist_exact(struct mg_connection *conn);
+int api_dns_blacklist_regex(struct mg_connection *conn);
 
 #endif // API_H
