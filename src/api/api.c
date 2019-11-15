@@ -599,7 +599,10 @@ int api_stats_history(struct mg_connection *conn)
 	bool filterforwarddest = false;
 	int forwarddestid = 0;
 
-	unsigned int ibeg = 0;
+	// We start with the most recent query at the beginning (until the cursor is changed)
+	unsigned int cursor = counters->queries;
+	// We send 200 queries (until the API is asked for a different limit)
+	unsigned int show = 20u;
 
 	const struct mg_request_info *request = mg_get_request_info(conn);
 	if(request->query_string != NULL)
@@ -758,18 +761,28 @@ int api_stats_history(struct mg_connection *conn)
 			}
 		}
 
+		if(GET_VAR("cursor", buffer, request->query_string) > 0)
+		{
+			unsigned int num = 0u;
+			sscanf(buffer, "%u", &num);
+			// Do not start at the most recent, but at an older query
+			// Don't allow a start index that is smaller than zero
+			if(num > 0u && num < (unsigned int)counters->queries)
+			{
+				cursor = num;
+			}
+		}
+
 		if(GET_VAR("show", buffer, request->query_string) > 0)
 		{
-			unsigned int num = 0;
-			sscanf(buffer, "%u", &num);
+			sscanf(buffer, "%u", &show);
 			// User wants a different number of requests
-			// Don't allow a start index that is smaller than zero
-			if(num <= (unsigned int)counters->queries)
-				ibeg = counters->queries-num;
-			else
-				ibeg = 0;
 		}
 	}
+
+	// Compute limits for the main for-loop
+	// Default: Show the most recent 200 queries
+	unsigned int ibeg = cursor;
 
 	// Get potentially existing filtering flags
 	char * filter = read_setupVarsconf("API_QUERY_LOG_SHOW");
@@ -789,8 +802,11 @@ int api_stats_history(struct mg_connection *conn)
 	clearSetupVarsArray();
 
 	cJSON *history = JSON_NEW_ARRAY();
-	for(int queryID = ibeg; queryID < counters->queries; queryID++)
+	unsigned int added = 0u;
+	unsigned int lastID = 0u;
+	for(unsigned int i = ibeg; i > 0u; i--)
 	{
+		const unsigned int queryID = i-1u;
 		const queriesData* query = getQuery(queryID, true);
 		// Check if this query has been create while in maximum privacy mode
 		if(query == NULL || query->privacylevel >= PRIVACY_MAXIMUM)
@@ -880,6 +896,13 @@ int api_stats_history(struct mg_connection *conn)
 		if(config.debug & DEBUG_API)
 			JSON_OBJ_ADD_NUMBER(item, "queryID", queryID);
 		JSON_ARRAY_ADD_ITEM(history, item);
+
+		if(++added > show)
+		{
+			break;
+		}
+
+		lastID = queryID;
 	}
 
 	// Free allocated memory
@@ -894,7 +917,20 @@ int api_stats_history(struct mg_connection *conn)
 
 	cJSON *json = JSON_NEW_OBJ();
 	JSON_OBJ_ADD_ITEM(json, "history", history);
-	JSON_OBJ_ADD_NUMBER(json, "cursor", 0);
+
+	if(lastID > 0)
+	{
+		// There are more queries available, send cursor pointing
+		// onto the next older query so the API can request it if
+		// needed
+		JSON_OBJ_ADD_NUMBER(json, "cursor", lastID);
+	}
+	else
+	{
+		// There are no more queries available, send NULL cursor
+		JSON_OBJ_ADD_NULL(json, "cursor");
+	}
+
 	JSON_SENT_OBJECT(json);
 }
 

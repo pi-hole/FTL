@@ -66,6 +66,17 @@
 	} \
 }
 
+#define JSON_OBJ_ADD_NULL(object, key) {\
+	cJSON *null_item = cJSON_CreateNull(); \
+	if(null_item == NULL) \
+	{ \
+		cJSON_Delete(object); \
+		send_http_error(conn); \
+		return 500; \
+	} \
+	cJSON_AddItemToObject(object, key, null_item); \
+}
+
 #define JSON_ARRAY_ADD_NUMBER(object, number){ \
 	cJSON *number_item = cJSON_CreateNumber((double)number); \
 	cJSON_AddItemToArray(object, number_item); \
