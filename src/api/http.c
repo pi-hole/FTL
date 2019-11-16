@@ -212,6 +212,7 @@ void http_init(void)
 		"document_root", httpsettings.webroot,
 		"listening_ports", httpsettings.port,
 		"decode_url", "no",
+		"num_threads", "4",
 		NULL
 	};
 
