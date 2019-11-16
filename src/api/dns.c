@@ -22,114 +22,49 @@ int api_dns_status(struct mg_connection *conn)
 	JSON_SENT_OBJECT(json);
 }
 
-// TODO: Return object with property regex = true/false
-int api_dns_whitelist(struct mg_connection *conn)
+int api_dns_somelist(struct mg_connection *conn,
+                     bool show_exact, bool show_regex,
+                     bool whitelist)
 {
-	cJSON *json = JSON_NEW_ARRAY();
+	cJSON *exact = NULL;
+	cJSON *regex = NULL;
 	const char *domain = NULL;
 	int rowid = 0;
 
-	gravityDB_getTable(EXACT_WHITELIST_TABLE);
-	while((domain = gravityDB_getDomain(&rowid)) != NULL)
+	if(show_exact)
 	{
-		JSON_ARRAY_COPY_STR(json, domain);
+		exact = JSON_NEW_ARRAY()
+		gravityDB_getTable(whitelist ? EXACT_WHITELIST_TABLE : EXACT_BLACKLIST_TABLE);
+		while((domain = gravityDB_getDomain(&rowid)) != NULL)
+		{
+			JSON_ARRAY_COPY_STR(exact, domain);
+		}
+		gravityDB_finalizeTable();
 	}
-	gravityDB_finalizeTable();
 
-	gravityDB_getTable(REGEX_WHITELIST_TABLE);
-	while((domain = gravityDB_getDomain(&rowid)) != NULL)
+	if(show_regex)
 	{
-		JSON_ARRAY_COPY_STR(json, domain);
+		regex = JSON_NEW_ARRAY()
+		gravityDB_getTable(whitelist ? REGEX_WHITELIST_TABLE : REGEX_BLACKLIST_TABLE);
+		while((domain = gravityDB_getDomain(&rowid)) != NULL)
+		{
+			JSON_ARRAY_COPY_STR(regex, domain);
+		}
+		gravityDB_finalizeTable();
 	}
-	gravityDB_finalizeTable();
-
-	JSON_SENT_OBJECT(json);
-}
-
-int api_dns_whitelist_exact(struct mg_connection *conn)
-{
-	cJSON *json = JSON_NEW_ARRAY();
-	const char *domain = NULL;
-	int rowid = 0;
-
-	gravityDB_getTable(EXACT_WHITELIST_TABLE);
-	while((domain = gravityDB_getDomain(&rowid)) != NULL)
+	if(show_exact && ! show_regex)
 	{
-		JSON_ARRAY_COPY_STR(json, domain);
+		JSON_SENT_OBJECT(exact);
 	}
-	gravityDB_finalizeTable();
-
-	JSON_SENT_OBJECT(json);
-}
-
-int api_dns_whitelist_regex(struct mg_connection *conn)
-{
-	cJSON *json = JSON_NEW_ARRAY();
-	const char *domain = NULL;
-	int rowid = 0;
-
-	gravityDB_getTable(REGEX_WHITELIST_TABLE);
-	while((domain = gravityDB_getDomain(&rowid)) != NULL)
+	else if(!show_exact && show_regex)
 	{
-		JSON_ARRAY_COPY_STR(json, domain);
+		JSON_SENT_OBJECT(regex);
 	}
-	gravityDB_finalizeTable();
-
-	JSON_SENT_OBJECT(json);
-}
-
-// TODO: Return object with property regex = true/false
-int api_dns_blacklist(struct mg_connection *conn)
-{
-	cJSON *json = JSON_NEW_ARRAY();
-	const char *domain = NULL;
-	int rowid = 0;
-
-	gravityDB_getTable(EXACT_BLACKLIST_TABLE);
-	while((domain = gravityDB_getDomain(&rowid)) != NULL)
+	else
 	{
-		JSON_ARRAY_COPY_STR(json, domain);
+		cJSON *json = JSON_NEW_OBJ();
+		JSON_OBJ_ADD_ITEM(json, "exact", exact);
+		JSON_OBJ_ADD_ITEM(json, "regex", regex);
+		JSON_SENT_OBJECT(json);
 	}
-	gravityDB_finalizeTable();
-
-	gravityDB_getTable(REGEX_BLACKLIST_TABLE);
-	while((domain = gravityDB_getDomain(&rowid)) != NULL)
-	{
-		JSON_ARRAY_COPY_STR(json, domain);
-	}
-	gravityDB_finalizeTable();
-
-	JSON_SENT_OBJECT(json);
-}
-
-int api_dns_blacklist_exact(struct mg_connection *conn)
-{
-	cJSON *json = JSON_NEW_ARRAY();
-	const char *domain = NULL;
-	int rowid = 0;
-
-	gravityDB_getTable(EXACT_BLACKLIST_TABLE);
-	while((domain = gravityDB_getDomain(&rowid)) != NULL)
-	{
-		JSON_ARRAY_COPY_STR(json, domain);
-	}
-	gravityDB_finalizeTable();
-
-	JSON_SENT_OBJECT(json);
-}
-
-int api_dns_blacklist_regex(struct mg_connection *conn)
-{
-	cJSON *json = JSON_NEW_ARRAY();
-	const char *domain = NULL;
-	int rowid = 0;
-
-	gravityDB_getTable(REGEX_BLACKLIST_TABLE);
-	while((domain = gravityDB_getDomain(&rowid)) != NULL)
-	{
-		JSON_ARRAY_COPY_STR(json, domain);
-	}
-	gravityDB_finalizeTable();
-
-	JSON_SENT_OBJECT(json);
 }

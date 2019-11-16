@@ -109,6 +109,8 @@
 // new parent so that when that array or object is deleted, it gets deleted as well.
 #define JSON_OBJ_ADD_ITEM(object, key, item) cJSON_AddItemToObject(object, key, item)
 
+#define JSON_DELETE(object) cJSON_Delete(object)
+
 #define JSON_SENT_OBJECT(object){ \
 	const char* msg = JSON_FORMATTER(object); \
 	if(msg == NULL) \
@@ -118,5 +120,6 @@
 		return 500; \
 	} \
 	send_http(conn, "application/json", msg); \
+	cJSON_Delete(object); \
 	return 200; \
 }

@@ -75,28 +75,28 @@ static int api_handler(struct mg_connection *conn, void *ignored)
 	}
 	else if(strcasecmp("/api/dns/whitelist", request->local_uri) == 0)
 	{
-		ret = api_dns_whitelist(conn);
+		ret = api_dns_somelist(conn, true, true, true);
 	}
 	else if(strcasecmp("/api/dns/whitelist/exact", request->local_uri) == 0)
 	{
-		ret = api_dns_whitelist_exact(conn);
+		ret = api_dns_somelist(conn, true, false, true);
 	}
 	else if(strcasecmp("/api/dns/whitelist/regex", request->local_uri) == 0)
 	{
-		ret = api_dns_whitelist_regex(conn);
+		ret = api_dns_somelist(conn, false, true, true);
 	}
 	else if(strcasecmp("/api/dns/blacklist", request->local_uri) == 0)
 	{
-		ret = api_dns_blacklist(conn);
+		ret = api_dns_somelist(conn, true, true, false);
 	}
 	else if(strcasecmp("/api/dns/blacklist/exact", request->local_uri) == 0)
 	{
-		ret = api_dns_blacklist_exact(conn);
+		ret = api_dns_somelist(conn, true, false, false);
 	}
 	else if(strcasecmp("/api/dns/blacklist/regex", request->local_uri) == 0 ||
 	        strcasecmp("/api/dns/regexlist",       request->local_uri) == 0)
 	{
-		ret = api_dns_blacklist_regex(conn);
+		ret = api_dns_somelist(conn, false, true, false);
 	}
 	/******************************** api/ftl ****************************/
 	else if(strcasecmp("/api/ftl/version", request->local_uri) == 0)
