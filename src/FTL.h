@@ -134,6 +134,7 @@ enum { REGEX_BLACKLIST, REGEX_WHITELIST };
 extern pthread_t DBthread;
 extern pthread_t GCthread;
 extern pthread_t DNSclientthread;
+extern pthread_t timerthread;
 
 // Intentionally ignore result of function declared warn_unused_result
 #define igr(x) {__typeof__(x) __attribute__((unused)) d=(x);} 

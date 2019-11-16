@@ -17,6 +17,10 @@
 #include "log.h"
 // {s,g}et_blockingstatus()
 #include "setupVars.h"
+// floor()
+#include <math.h>
+// set_blockingmode_timer()
+#include "timers.h"
 
 int api_dns_status(struct mg_connection *conn)
 {
@@ -44,30 +48,43 @@ int api_dns_status(struct mg_connection *conn)
 			return 400;
 		}
 
-		cJSON *elem = cJSON_GetObjectItemCaseSensitive(obj, "action");
-
-		if (!cJSON_IsString(elem)) {
+		cJSON *elem1 = cJSON_GetObjectItemCaseSensitive(obj, "action");
+		if (!cJSON_IsString(elem1)) {
 			cJSON_Delete(obj);
 			mg_send_http_error(conn, 400, "%s", "No \"action\" string in body data");
 			return 400;
 		}
-		const char *action = elem->valuestring;
+		const char *action = elem1->valuestring;
+
+		unsigned int delay = -1;
+		cJSON *elem2 = cJSON_GetObjectItemCaseSensitive(obj, "time");
+		if (cJSON_IsNumber(elem2) && elem2->valuedouble > 0.0)
+		{
+			delay = floor(elem2->valuedouble);
+		}
 
 		cJSON *json = JSON_NEW_OBJ();
 		if(strcmp(action, "enable") == 0)
 		{
+			cJSON_Delete(obj);
 			JSON_OBJ_REF_STR(json, "key", "enabled");
+			// If no "time" key was present, we call this subroutine with
+			// delay == -1 which will disable all previously set timers
+			set_blockingmode_timer(delay, false);
 			set_blockingstatus(true);
-			raise(SIGHUP);
 		}
 		else if(strcmp(action, "disable") == 0)
 		{
+			cJSON_Delete(obj);
 			JSON_OBJ_REF_STR(json, "key", "disabled");
+			// If no "time" key was present, we call this subroutine with
+			// delay == -1 which will disable all previously set timers
+			set_blockingmode_timer(delay, true);
 			set_blockingstatus(false);
-			raise(SIGHUP);
 		}
 		else
 		{
+			cJSON_Delete(obj);
 			JSON_OBJ_REF_STR(json, "key", "unsupported action");
 		}
 		JSON_SENT_OBJECT(json);

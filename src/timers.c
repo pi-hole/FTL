@@ -12,6 +12,10 @@
 #include "timers.h"
 #include "memory.h"
 #include "log.h"
+// killed
+#include "signals.h"
+// set_blockingmode()
+#include "setupVars.h"
 
 struct timeval t0[NUMTIMERS];
 
@@ -43,4 +47,38 @@ void sleepms(const int milliseconds)
 	tv.tv_sec = milliseconds / 1000;
 	tv.tv_usec = (milliseconds % 1000) * 1000;
 	select(0, NULL, NULL, NULL, &tv);
+}
+
+static int timer_delay = -1;
+static bool timer_targer_state;
+
+void set_blockingmode_timer(int delay, bool blocked)
+{
+	timer_delay = delay;
+	timer_targer_state = blocked;
+}
+
+void *timer(void *val)
+{
+	// Set thread name
+	prctl(PR_SET_NAME,"int.timer",0,0,0);
+
+	// Save timestamp as we do not want to store immediately
+	// to the database
+	//lastGCrun = time(NULL) - time(NULL)%GCinterval;
+	while(!killed)
+	{
+		if(timer_delay > 0)
+		{
+			timer_delay--;
+		}
+		else if(timer_delay == 0)
+		{
+			set_blockingstatus(timer_targer_state);
+			timer_delay = -1;
+		}
+		sleepms(1000);
+	}
+
+	return NULL;
 }

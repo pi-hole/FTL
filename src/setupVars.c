@@ -265,4 +265,5 @@ bool __attribute__((pure)) get_blockingstatus(void)
 void set_blockingstatus(bool enabled)
 {
 	blockingstatus = enabled;
+	raise(SIGHUP);
 }

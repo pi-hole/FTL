@@ -1611,6 +1611,7 @@ static void save_reply_type(const unsigned int flags, const union all_addr *addr
 pthread_t DBthread;
 pthread_t GCthread;
 pthread_t DNSclientthread;
+pthread_t timerthread;
 
 void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 {
@@ -1653,6 +1654,14 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 	if(pthread_create( &DNSclientthread, &attr, DNSclient_thread, NULL ) != 0)
 	{
 		logg("Unable to open DNS client thread. Exiting...");
+		exit(EXIT_FAILURE);
+	}
+
+	// Start thread that will stay in the background until timed events
+	// are happening (such as blocking status changes)
+	if(pthread_create( &timerthread, &attr, timer, NULL ) != 0)
+	{
+		logg("Unable to open timer thread. Exiting...");
 		exit(EXIT_FAILURE);
 	}
 
