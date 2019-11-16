@@ -105,6 +105,9 @@
 // Default: 300 (five minutes)
 #define API_SESSION_EXPIRE 300
 
+// How many authenticated API clients are allowed simultaneously? [.]
+#define API_MAX_CLIENTS 16
+
 // FTLDNS enums
 enum { QUERIES, UPSTREAMS, CLIENTS, DOMAINS, OVERTIME, WILDCARD, DNS_CACHE };
 enum { DNSSEC_UNSPECIFIED, DNSSEC_SECURE, DNSSEC_INSECURE, DNSSEC_BOGUS, DNSSEC_ABANDONED };
