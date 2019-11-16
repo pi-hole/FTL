@@ -118,7 +118,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
                                 const char* file, const int line)
 {
 	// Only check blocking conditions when global blocking is enabled
-	if(blockingstatus == BLOCKING_DISABLED)
+	if(get_blockingstatus() == BLOCKING_DISABLED)
 	{
 		return false;
 	}
@@ -812,10 +812,6 @@ void FTL_dnsmasq_reload(void)
 
 	// Reload the privacy level in case the user changed it
 	get_privacy_level(NULL);
-
-	// Inspect 01-pihole.conf to see if Pi-hole blocking is enabled,
-	// i.e. if /etc/pihole/gravity.list is sourced as addn-hosts file
-	check_blocking_status();
 
 	// Reread pihole-FTL.conf to see which blocking mode the user wants to use
 	// It is possible to change the blocking mode here as we anyhow clear the

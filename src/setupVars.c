@@ -232,7 +232,7 @@ bool __attribute__((pure)) getSetupVarsBool(const char * input)
 }
 
 // Global variable showing current blocking status
-unsigned char blockingstatus = BLOCKING_UNKNOWN;
+static unsigned char blockingstatus = BLOCKING_UNKNOWN;
 
 void check_blocking_status(void)
 {
@@ -255,4 +255,14 @@ void check_blocking_status(void)
 	}
 
 	logg("Blocking status is %s", message);
+}
+
+bool __attribute__((pure)) get_blockingstatus(void)
+{
+	return blockingstatus;
+}
+
+void set_blockingstatus(bool enabled)
+{
+	blockingstatus = enabled;
 }

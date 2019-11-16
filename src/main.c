@@ -91,6 +91,10 @@ int main (int argc, char* argv[])
 		for(int i = 0; i < argc_dnsmasq; i++)
 			logg("DEBUG: argv[%i] = \"%s\"", i, argv_dnsmasq[i]);
 	}
+	// Check initial blocking status
+	check_blocking_status();
+
+	// Start the resolver
 	main_dnsmasq(argc_dnsmasq, argv_dnsmasq);
 
 	logg("Shutting down...");

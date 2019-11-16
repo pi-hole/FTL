@@ -15,13 +15,68 @@
 #include "database/gravity-db.h"
 #include "api/http.h"
 #include "log.h"
+// {s,g}et_blockingstatus()
+#include "setupVars.h"
 
 int api_dns_status(struct mg_connection *conn)
 {
-	// Send status
-	cJSON *json = JSON_NEW_OBJ();
-	JSON_OBJ_REF_STR(json, "status", (counters->gravity > 0 ? "enabled" : "disabled"));
-	JSON_SENT_OBJECT(json);
+	int method = http_method(conn);
+	if(method == HTTP_GET)
+	{
+		// Return current status
+		cJSON *json = JSON_NEW_OBJ();
+		JSON_OBJ_REF_STR(json, "status", (get_blockingstatus() ? "enabled" : "disabled"));
+		JSON_SENT_OBJECT(json);
+	}
+	else if(method == HTTP_POST)
+	{
+		char buffer[1024];
+		int data_len = mg_read(conn, buffer, sizeof(buffer) - 1);
+		if ((data_len < 1) || (data_len >= (int)sizeof(buffer))) {
+			mg_send_http_error(conn, 400, "%s", "No request body data");
+			return 400;
+		}
+		buffer[data_len] = '\0';
+
+		cJSON *obj = cJSON_Parse(buffer);
+		if (obj == NULL) {
+			mg_send_http_error(conn, 400, "%s", "Invalid request body data");
+			return 400;
+		}
+
+		cJSON *elem = cJSON_GetObjectItemCaseSensitive(obj, "action");
+
+		if (!cJSON_IsString(elem)) {
+			cJSON_Delete(obj);
+			mg_send_http_error(conn, 400, "%s", "No \"action\" string in body data");
+			return 400;
+		}
+		const char *action = elem->valuestring;
+
+		cJSON *json = JSON_NEW_OBJ();
+		if(strcmp(action, "enable") == 0)
+		{
+			JSON_OBJ_REF_STR(json, "key", "enabled");
+			set_blockingstatus(true);
+			raise(SIGHUP);
+		}
+		else if(strcmp(action, "disable") == 0)
+		{
+			JSON_OBJ_REF_STR(json, "key", "disabled");
+			set_blockingstatus(false);
+			raise(SIGHUP);
+		}
+		else
+		{
+			JSON_OBJ_REF_STR(json, "key", "unsupported action");
+		}
+		JSON_SENT_OBJECT(json);
+	}
+	else
+	{
+		// This results in error 404
+		return 0;
+	}
 }
 
 static int api_dns_somelist_read(struct mg_connection *conn, bool exact, bool whitelist)
