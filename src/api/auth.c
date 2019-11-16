@@ -41,35 +41,39 @@ int api_auth(struct mg_connection *conn)
 	const char *xHeader = mg_get_header(conn, "X-Pi-hole-Authenticate");
 	if(xHeader != NULL && strlen(xHeader) > 0)
 	{
-		// TODO: Check hash here
-		// Accepted
-		for(unsigned int i = 0; i < API_MAX_CLIENTS; i++)
+		// TODO: Read hash from file or database table
+		// This is the hardcoded password "A"
+		if(strcmp(xHeader,"599d48457e4996df84cbfeb973cd109827c0de9fa211c0d062eab13584ea6bb8") == 0)
 		{
-			if(!auth_data[i].used)
+			// Accepted
+			for(unsigned int i = 0; i < API_MAX_CLIENTS; i++)
 			{
-				// Found an unused slot
-				auth_data[i].used = true;
-				auth_data[i].valid_until = time(NULL) + API_SESSION_EXPIRE;
-				auth_data[i].remote_addr = strdup(request->remote_addr);
+				if(!auth_data[i].used)
+				{
+					// Found an unused slot
+					auth_data[i].used = true;
+					auth_data[i].valid_until = time(NULL) + API_SESSION_EXPIRE;
+					auth_data[i].remote_addr = strdup(request->remote_addr);
 
-				user_id = i;
-				break;
+					user_id = i;
+					break;
+				}
 			}
-		}
 
-		if(config.debug & DEBUG_API)
-		{
-			logg("Received X-Pi-hole-Authenticate: %s", xHeader);
-			if(user_id > -1)
+			if(config.debug & DEBUG_API)
 			{
-				char timestr[128];
-				get_timestr(timestr, auth_data[user_id].valid_until);
-				logg("Registered new user:\n  user_id %i\n  valid_until: %s\n  remote_addr %s",
-				      user_id, timestr, auth_data[user_id].remote_addr);
-			}
-			else
-			{
-				logg("No free user slots available, not authenticating user");
+				logg("Received X-Pi-hole-Authenticate: %s", xHeader);
+				if(user_id > -1)
+				{
+					char timestr[128];
+					get_timestr(timestr, auth_data[user_id].valid_until);
+					logg("Registered new user:\n  user_id %i\n  valid_until: %s\n  remote_addr %s",
+					user_id, timestr, auth_data[user_id].remote_addr);
+				}
+				else
+				{
+					logg("No free user slots available, not authenticating user");
+				}
 			}
 		}
 	}
