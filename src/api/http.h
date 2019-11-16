@@ -37,4 +37,8 @@ bool http_get_cookie_str(struct mg_connection *conn, const char *cookieName, cha
 // HTTP macros
 #define GET_VAR(variable, destination, source) mg_get_var(source, strlen(source), variable, destination, sizeof(destination))
 
+// Method routines
+enum { HTTP_UNKNOWN, HTTP_GET, HTTP_DELETE };
+int http_method(struct mg_connection *conn);
+
 #endif // HTTP_H

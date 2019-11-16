@@ -83,12 +83,12 @@ int api_auth(struct mg_connection *conn)
 	if(http_get_cookie_int(conn, "user_id", &num) && num > -1 && num < API_MAX_CLIENTS)
 	{
 		if(config.debug & DEBUG_API)
-			logg("Read user_id=%i from user-provided cookie", user_id);
+			logg("Read user_id=%i from user-provided cookie", num);
 
 		time_t now = time(NULL);
 		if(auth_data[num].used &&
-			auth_data[num].valid_until >= now &&
-			strcmp(auth_data[num].remote_addr, request->remote_addr) == 0)
+		   auth_data[num].valid_until >= now &&
+		   strcmp(auth_data[num].remote_addr, request->remote_addr) == 0)
 		{
 			// Authenticationm succesful:
 			// - We know this client
@@ -107,7 +107,7 @@ int api_auth(struct mg_connection *conn)
 	}
 
 	cJSON *json = JSON_NEW_OBJ();
-	if(user_id > -1)
+	if(user_id > -1 && http_method(conn) == HTTP_GET)
 	{
 		if(config.debug & DEBUG_API)
 			logg("Authentification: OK");
@@ -123,6 +123,21 @@ int api_auth(struct mg_connection *conn)
 		{
 			JSON_SENT_OBJECT(json);
 		}
+	}
+	else if(user_id > -1 && http_method(conn) == HTTP_DELETE)
+	{
+		if(config.debug & DEBUG_API)
+			logg("Authentification: OK, requested to revoke");
+
+		// Revoke client authentication. This slot can be used by a new client, afterwards.
+		auth_data[num].used = false;
+		auth_data[num].valid_until = time(NULL);
+		free(auth_data[num].remote_addr);
+		auth_data[num].remote_addr = NULL;
+
+		JSON_OBJ_REF_STR(json, "status", "success");
+		char *additional_headers = strdup("Set-Cookie: user_id=deleted; Path=/; Max-Age=-1\r\n");
+		JSON_SENT_OBJECT_AND_HEADERS(json, additional_headers);
 	}
 	else
 	{

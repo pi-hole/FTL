@@ -260,3 +260,20 @@ bool http_get_cookie_str(struct mg_connection *conn, const char *cookieName, cha
 	}
 	return false;
 }
+
+int http_method(struct mg_connection *conn)
+{
+	const struct mg_request_info *request = mg_get_request_info(conn);
+	if(strcmp(request->request_method, "GET") == 0)
+	{
+		return HTTP_GET;
+	}
+	else if(strcmp(request->request_method, "DELETE") == 0)
+	{
+		return HTTP_DELETE;
+	}
+	else
+	{
+		return HTTP_UNKNOWN;
+	}
+}
