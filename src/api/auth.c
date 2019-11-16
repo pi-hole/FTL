@@ -107,7 +107,8 @@ int api_auth(struct mg_connection *conn)
 	}
 
 	cJSON *json = JSON_NEW_OBJ();
-	if(user_id > -1 && http_method(conn) == HTTP_GET)
+	int method = http_method(conn);
+	if(user_id > -1 && method == HTTP_GET)
 	{
 		if(config.debug & DEBUG_API)
 			logg("Authentification: OK");
@@ -124,7 +125,7 @@ int api_auth(struct mg_connection *conn)
 			JSON_SENT_OBJECT(json);
 		}
 	}
-	else if(user_id > -1 && http_method(conn) == HTTP_DELETE)
+	else if(user_id > -1 && method == HTTP_DELETE)
 	{
 		if(config.debug & DEBUG_API)
 			logg("Authentification: OK, requested to revoke");

@@ -130,7 +130,7 @@
 		send_http_error(conn); \
 		return 500; \
 	} \
-	send_http(conn, "application/json", NULL, msg); \
+	send_http(conn, "application/json; charset=utf-8", NULL, msg); \
 	cJSON_Delete(object); \
 	return 200; \
 }
@@ -143,7 +143,7 @@
 		send_http_error(conn); \
 		return 500; \
 	} \
-	send_http(conn, "application/json", additional_headers, msg); \
+	send_http(conn, "application/json; charset=utf-8", additional_headers, msg); \
 	cJSON_Delete(object); \
 	free(additional_headers); \
 	return 200; \

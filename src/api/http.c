@@ -77,6 +77,11 @@ static int api_handler(struct mg_connection *conn, void *ignored)
 	const struct mg_request_info *request = mg_get_request_info(conn);
 	// HTTP response
 	int ret = 0;
+	if(config.debug & DEBUG_API)
+	{
+		logg("Received request for %s (method %s)",
+		     request->local_uri, request->request_method);
+	}
 	/******************************** api/dns ********************************/
 	if(strcasecmp("/api/dns/status", request->local_uri) == 0)
 	{
@@ -271,6 +276,10 @@ int http_method(struct mg_connection *conn)
 	else if(strcmp(request->request_method, "DELETE") == 0)
 	{
 		return HTTP_DELETE;
+	}
+	else if(strcmp(request->request_method, "POST") == 0)
+	{
+		return HTTP_POST;
 	}
 	else
 	{

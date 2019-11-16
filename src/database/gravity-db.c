@@ -97,7 +97,7 @@ bool gravityDB_open(void)
 
 	if(config.debug & DEBUG_DATABASE)
 		logg("gravityDB_open(): Trying to open %s in read-only mode", FTLfiles.gravity_db);
-	int rc = sqlite3_open_v2(FTLfiles.gravity_db, &gravity_db, SQLITE_OPEN_READONLY, NULL);
+	int rc = sqlite3_open_v2(FTLfiles.gravity_db, &gravity_db, SQLITE_OPEN_READWRITE, NULL);
 	if( rc != SQLITE_OK )
 	{
 		logg("gravityDB_open() - SQL error: %s", sqlite3_errstr(rc));
@@ -936,6 +936,53 @@ bool gravityDB_get_regex_client_groups(clientsData* client, const int numregex, 
 
 	// Free allocated memory and return result
 	free(querystr);
+
+	return true;
+}
+
+bool gravityDB_addToTable(const char *table, const char* domain)
+{
+	char *querystr = NULL;
+	// Build query string
+	if(asprintf(&querystr, "INSERT INTO %s (domain) VALUES (?);", table) < 30)
+	{
+		logg("gravityDB_addToTable(%s, %s) - asprintf() error", table, domain);
+		return false;
+	}
+
+	// Prepare SQLite statement
+	sqlite3_stmt* stmt = NULL;
+	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &stmt, NULL);
+	if( rc != SQLITE_OK ){
+		logg("gravityDB_addToTable(%s, %s) - SQL error prepare (%i): %s",
+		     table, domain, rc, sqlite3_errmsg(gravity_db));
+		return false;
+	}
+
+	// Bind domain to prepared statement
+	if((rc = sqlite3_bind_text(stmt, 1, domain, -1, SQLITE_STATIC)) != SQLITE_OK)
+	{
+		logg("gravityDB_addToTable(%s, %s): Failed to bind domain (error %d) - %s",
+		     table, domain, rc, sqlite3_errmsg(gravity_db));
+		sqlite3_reset(stmt);
+		sqlite3_finalize(stmt);
+		return false;
+	}
+
+	rc = sqlite3_step(stmt);
+	if(rc == SQLITE_ROW)
+	{
+		// Database record found (result might be empty)
+		logg("ROW");
+	}
+	else
+	{
+		logg("Returned %i", rc);
+	}
+
+	// Finalize statement and close database handle
+	sqlite3_reset(stmt);
+	sqlite3_finalize(stmt);
 
 	return true;
 }
