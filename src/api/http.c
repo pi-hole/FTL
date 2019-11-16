@@ -215,6 +215,7 @@ void http_init(void)
 	const char *options[] = {
 		"document_root", httpsettings.webroot,
 		"listening_ports", httpsettings.port,
+		"decode_url", "no",
 		NULL
 	};
 
