@@ -19,6 +19,19 @@ static struct {
 	char *remote_addr;
 } auth_data[API_MAX_CLIENTS] = {{false, 0, NULL}};
 
+// All printable ASCII characters, c.f., https://www.asciitable.com/
+// Inspired by https://codereview.stackexchange.com/a/194388
+// Randomness: rougly 6 Bit per Byte
+#define ASCII_BEG 0x20
+#define ASCII_END 0x7E
+static void generateRandomString(char *str, size_t size)
+{
+	for(size_t i = 0u; i < size-1u; i++)
+		str[i] = (char) (rand()%(ASCII_END-ASCII_BEG))+ASCII_BEG;
+
+	str[size-1] = '\0';
+}
+
 int api_auth(struct mg_connection *conn)
 {
 	int user_id = -1;
@@ -113,8 +126,17 @@ int api_auth(struct mg_connection *conn)
 			logg("Authentification: FAIL");
 
 		JSON_OBJ_REF_STR(json, "key", "unauthorized");
-		JSON_OBJ_REF_STR(json, "salt", "unauthorized");
 		char *additional_headers = strdup("Set-Cookie: user_id=deleted; Path=/; Max-Age=-1\r\n");
 		JSON_SENT_OBJECT_AND_HEADERS_CODE(json, 401, additional_headers);
 	}
+}
+
+int api_auth_salt(struct mg_connection *conn)
+{
+	// Generate some salt ((0x7E-0x20)/256*8*44 = 129.25 Bit)
+	char salt[45];
+	generateRandomString(salt, sizeof(salt));
+	cJSON *json = JSON_NEW_OBJ();
+	JSON_OBJ_REF_STR(json, "salt", salt);
+	JSON_SENT_OBJECT(json);
 }

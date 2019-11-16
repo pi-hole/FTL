@@ -175,6 +175,10 @@ static int api_handler(struct mg_connection *conn, void *ignored)
 	{
 		ret = api_auth(conn);
 	}
+	else if(strcasecmp("/api/auth/salt", request->local_uri) == 0)
+	{
+		ret = api_auth_salt(conn);
+	}
 	/******************************** api/settings ****************************/
 	else if(strcasecmp("/api/settings/web", request->local_uri) == 0)
 	{
