@@ -60,7 +60,7 @@ int api_dns_status(struct mg_connection *conn)
 		cJSON *elem2 = cJSON_GetObjectItemCaseSensitive(obj, "time");
 		if (cJSON_IsNumber(elem2) && elem2->valuedouble > 0.0)
 		{
-			delay = (int)elem2->valuedouble;
+			delay = elem2->valueint;
 		}
 
 		cJSON *json = JSON_NEW_OBJ();
