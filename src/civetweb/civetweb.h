@@ -939,6 +939,8 @@ CIVETWEB_API int mg_send_http_error(struct mg_connection *conn,
  * Parameters:
  *   conn: Current connection handle.
  *   mime_type: Set Content-Type for the following content.
+ *   additional_header: Pi-hole addition for sending custom additional
+ *                      information (like settingcookies)
  *   content_length: Size of the following content, if content_length >= 0.
  *                   Will set transfer-encoding to chunked, if set to -1.
  * Return:
@@ -946,6 +948,7 @@ CIVETWEB_API int mg_send_http_error(struct mg_connection *conn,
  */
 CIVETWEB_API int mg_send_http_ok(struct mg_connection *conn,
                                  const char *mime_type,
+                                 const char *additional_headers,
                                  long long content_length);
 
 

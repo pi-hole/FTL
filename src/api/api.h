@@ -41,4 +41,10 @@ int api_dns_somelist(struct mg_connection *conn,
 // Version method
 int api_version(struct mg_connection *conn);
 
+// Auth method
+int api_auth(struct mg_connection *conn);
+
+// Settings methods
+int api_settings_web(struct mg_connection *conn);
+
 #endif // API_H

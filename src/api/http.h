@@ -24,8 +24,15 @@ void http_init(void);
 void http_terminate(void);
 void http_send(struct mg_connection *conn, bool chunk, const char *format, ...) __attribute__ ((format (gnu_printf, 3, 4)));
 
-int send_http(struct mg_connection *conn, const char *mime_type, const char *msg);
+int send_http(struct mg_connection *conn, const char *mime_type,
+              const char *additional_headers, const char *msg);
+int send_http_unauth(struct mg_connection *conn,
+                     const char *additional_headers, const char *msg);
 int send_http_error(struct mg_connection *conn);
+
+// Cookie routines
+bool http_get_cookie_int(struct mg_connection *conn, const char *cookieName, int *i);
+bool http_get_cookie_str(struct mg_connection *conn, const char *cookieName, char *str, size_t str_size);
 
 // HTTP macros
 #define GET_VAR(variable, destination, source) mg_get_var(source, strlen(source), variable, destination, sizeof(destination))

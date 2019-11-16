@@ -18,10 +18,19 @@
 // Server context handle
 static struct mg_context *ctx = NULL;
 
-int send_http(struct mg_connection *conn, const char *mime_type, const char *msg)
+int send_http(struct mg_connection *conn, const char *mime_type,
+              const char *additional_headers, const char *msg)
 {
-	mg_send_http_ok(conn, mime_type, strlen(msg));
+	mg_send_http_ok(conn, mime_type, additional_headers, strlen(msg));
 	return mg_write(conn, msg, strlen(msg));
+}
+
+int send_http_unauth(struct mg_connection *conn,
+                     const char *additional_headers, const char *msg)
+{
+	// MPayload will be sent with text/plain encoding due to
+	// the first line being "Error 401" by definition
+	return mg_send_http_error(conn, 401, "%s", msg);
 }
 
 int send_http_error(struct mg_connection *conn)
@@ -41,7 +50,7 @@ void __attribute__ ((format (gnu_printf, 3, 4))) http_send(struct mg_connection 
 		if(!chunk)
 		{
 			// Send 200 HTTP header with content size
-			mg_send_http_ok(conn, "application/json", len);
+			mg_send_http_ok(conn, "application/json", NULL, len);
 		}
 		if(chunk && mg_send_chunk(conn, buffer, len) < 0)
 		{
@@ -60,7 +69,7 @@ void __attribute__ ((format (gnu_printf, 3, 4))) http_send(struct mg_connection 
 // Print passed string directly
 static int print_simple(struct mg_connection *conn, void *input)
 {
-	return send_http(conn, "text/plain", input);
+	return send_http(conn, "text/plain", NULL, input);
 }
 
 static int api_handler(struct mg_connection *conn, void *ignored)
@@ -161,6 +170,16 @@ static int api_handler(struct mg_connection *conn, void *ignored)
 	{
 		ret = api_version(conn);
 	}
+	/******************************** api/auth ****************************/
+	else if(strcasecmp("/api/auth", request->local_uri) == 0)
+	{
+		ret = api_auth(conn);
+	}
+	/******************************** api/settings ****************************/
+	else if(strcasecmp("/api/settings/web", request->local_uri) == 0)
+	{
+		ret = api_settings_web(conn);
+	}
 	/******************************** not found ******************************/
 /*	else
 	{
@@ -213,4 +232,27 @@ void http_terminate(void)
 
 	/* Un-initialize the library */
 	mg_exit_library();
+}
+
+bool http_get_cookie_int(struct mg_connection *conn, const char *cookieName, int *i)
+{
+	// Maximum cookie length is 4KB
+	char cookieValue[4096];
+	const char *cookie = mg_get_header(conn, "Cookie");
+	if(mg_get_cookie(cookie, cookieName, cookieValue, sizeof(cookieValue)) > 0)
+	{
+		*i = atoi(cookieValue);
+		return true;
+	}
+	return false;
+}
+
+bool http_get_cookie_str(struct mg_connection *conn, const char *cookieName, char *str, size_t str_size)
+{
+	const char *cookie = mg_get_header(conn, "Cookie");
+	if(mg_get_cookie(cookie, cookieName, str, str_size) > 0)
+	{
+		return true;
+	}
+	return false;
 }

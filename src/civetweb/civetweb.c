@@ -4802,6 +4802,7 @@ mg_send_http_error(struct mg_connection *conn, int status, const char *fmt, ...)
 int
 mg_send_http_ok(struct mg_connection *conn,
                 const char *mime_type,
+                const char *additional_headers,
                 long long content_length)
 {
 	char date[64];
@@ -4822,6 +4823,11 @@ mg_send_http_ok(struct mg_connection *conn,
 	          mime_type,
 	          date,
 	          suggest_connection_header(conn));
+
+	if(additional_headers != NULL && strlen(additional_headers) > 0)
+	{
+		mg_write(conn, additional_headers, strlen(additional_headers));
+	}
 
 	send_no_cache_header(conn);
 	send_additional_header(conn);

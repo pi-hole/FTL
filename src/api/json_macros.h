@@ -77,6 +77,17 @@
 	cJSON_AddItemToObject(object, key, null_item); \
 }
 
+#define JSON_OBJ_ADD_BOOL(object, key, value) {\
+	cJSON *bool_item = cJSON_CreateBool(value); \
+	if(bool_item == NULL) \
+	{ \
+		cJSON_Delete(object); \
+		send_http_error(conn); \
+		return 500; \
+	} \
+	cJSON_AddItemToObject(object, key, bool_item); \
+}
+
 #define JSON_ARRAY_ADD_NUMBER(object, number){ \
 	cJSON *number_item = cJSON_CreateNumber((double)number); \
 	cJSON_AddItemToArray(object, number_item); \
@@ -119,7 +130,35 @@
 		send_http_error(conn); \
 		return 500; \
 	} \
-	send_http(conn, "application/json", msg); \
+	send_http(conn, "application/json", NULL, msg); \
 	cJSON_Delete(object); \
 	return 200; \
+}
+
+#define JSON_SENT_OBJECT_AND_HEADERS(object, additional_headers){ \
+	const char* msg = JSON_FORMATTER(object); \
+	if(msg == NULL) \
+	{ \
+		cJSON_Delete(object); \
+		send_http_error(conn); \
+		return 500; \
+	} \
+	send_http(conn, "application/json", additional_headers, msg); \
+	cJSON_Delete(object); \
+	free(additional_headers); \
+	return 200; \
+}
+
+#define JSON_SENT_OBJECT_AND_HEADERS_CODE(object, code, additional_headers){ \
+	const char* msg = JSON_FORMATTER(object); \
+	if(msg == NULL) \
+	{ \
+		cJSON_Delete(object); \
+		send_http_error(conn); \
+		return 500; \
+	} \
+	send_http_unauth(conn, additional_headers, msg); \
+	cJSON_Delete(object); \
+	free(additional_headers); \
+	return code; \
 }
