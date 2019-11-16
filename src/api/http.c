@@ -109,14 +109,6 @@ static int api_handler(struct mg_connection *conn, void *ignored)
 		ret = api_dns_somelist(conn, false, false);
 	}
 	/******************************** api/ftl ****************************/
-	else if(startsWith("/api/ftl/version", request->local_uri))
-	{
-		ret = api_ftl_version(conn);
-	}
-	else if(startsWith("/api/ftl/db", request->local_uri))
-	{
-		ret = api_ftl_db(conn);
-	}
 	else if(startsWith("/api/ftl/clientIP", request->local_uri))
 	{
 		ret = api_ftl_clientIP(conn);
@@ -184,6 +176,10 @@ static int api_handler(struct mg_connection *conn, void *ignored)
 	else if(startsWith("/api/settings/web", request->local_uri))
 	{
 		ret = api_settings_web(conn);
+	}
+	else if(startsWith("/api/settings/ftldb", request->local_uri))
+	{
+		ret = api_settings_ftldb(conn);
 	}
 	/******************************** not found ******************************/
 /*	else

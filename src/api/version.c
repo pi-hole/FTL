@@ -55,10 +55,10 @@ int api_version(struct mg_connection *conn)
 	cJSON *ftl = JSON_NEW_OBJ();
 	JSON_OBJ_REF_STR(ftl, "branch", GIT_BRANCH);
 	JSON_OBJ_REF_STR(ftl, "hash", GIT_HASH);
+	JSON_OBJ_REF_STR(ftl, "date", GIT_DATE);
 	char *version = get_FTL_version();
-	JSON_OBJ_COPY_STR(ftl, "tag", version);
+	JSON_OBJ_REF_STR(ftl, "tag", version);
 	JSON_OBJ_ADD_ITEM(json, "ftl", ftl);
-	free(version);
 
 	JSON_SENT_OBJECT(json);
 }

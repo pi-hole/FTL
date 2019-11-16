@@ -45,5 +45,6 @@ int api_auth_salt(struct mg_connection *conn);
 
 // Settings methods
 int api_settings_web(struct mg_connection *conn);
+int api_settings_ftldb(struct mg_connection *conn);
 
 #endif // API_H
