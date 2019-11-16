@@ -35,5 +35,6 @@ bool in_blacklist(const char *domain, const int clientID, clientsData* client);
 bool gravityDB_get_regex_client_groups(clientsData* client, const int numregex, const int *regexid,
                                        const unsigned char type, const char* table, const int clientID);
 bool gravityDB_addToTable(const char *table, const char* domain);
+bool gravityDB_delFromTable(const char *table, const char* domain);
 
 #endif //GRAVITY_H

@@ -25,17 +25,22 @@ int send_http(struct mg_connection *conn, const char *mime_type,
 	return mg_write(conn, msg, strlen(msg));
 }
 
-int send_http_unauth(struct mg_connection *conn,
+int send_http_code(struct mg_connection *conn, int code,
                      const char *additional_headers, const char *msg)
 {
-	// MPayload will be sent with text/plain encoding due to
-	// the first line being "Error 401" by definition
-	return mg_send_http_error(conn, 401, "%s", msg);
+	// Payload will be sent with text/plain encoding due to
+	// the first line being "Error <code>>" by definition
+	return mg_send_http_error(conn, code, "%s", msg);
 }
 
 int send_http_error(struct mg_connection *conn)
 {
 	return mg_send_http_error(conn, 500, "Internal server error");
+}
+
+static bool startsWith(const char *path, const char *pattern)
+{
+	return strncmp(path, pattern, strlen(pattern)) == 0;
 }
 
 void __attribute__ ((format (gnu_printf, 3, 4))) http_send(struct mg_connection *conn, bool chunk, const char *format, ...)
@@ -83,109 +88,109 @@ static int api_handler(struct mg_connection *conn, void *ignored)
 		     request->local_uri, request->request_method);
 	}
 	/******************************** api/dns ********************************/
-	if(strcasecmp("/api/dns/status", request->local_uri) == 0)
+	if(startsWith(request->local_uri, "/api/dns/status"))
 	{
 		ret = api_dns_status(conn);
 	}
-	else if(strcasecmp("/api/dns/whitelist", request->local_uri) == 0)
+	else if(startsWith(request->local_uri, "/api/dns/whitelist"))
 	{
 		ret = api_dns_somelist(conn, true, true, true);
 	}
-	else if(strcasecmp("/api/dns/whitelist/exact", request->local_uri) == 0)
+	else if(startsWith(request->local_uri, "/api/dns/whitelist/exact"))
 	{
 		ret = api_dns_somelist(conn, true, false, true);
 	}
-	else if(strcasecmp("/api/dns/whitelist/regex", request->local_uri) == 0)
+	else if(startsWith(request->local_uri, "/api/dns/whitelist/regex"))
 	{
 		ret = api_dns_somelist(conn, false, true, true);
 	}
-	else if(strcasecmp("/api/dns/blacklist", request->local_uri) == 0)
+	else if(startsWith(request->local_uri, "/api/dns/blacklist"))
 	{
 		ret = api_dns_somelist(conn, true, true, false);
 	}
-	else if(strcasecmp("/api/dns/blacklist/exact", request->local_uri) == 0)
+	else if(startsWith(request->local_uri, "/api/dns/blacklist/exact"))
 	{
 		ret = api_dns_somelist(conn, true, false, false);
 	}
-	else if(strcasecmp("/api/dns/blacklist/regex", request->local_uri) == 0 ||
-	        strcasecmp("/api/dns/regexlist",       request->local_uri) == 0)
+	else if(startsWith(request->local_uri, "/api/dns/blacklist/regex") ||
+	        startsWith(request->local_uri, "/api/dns/regexlist"))
 	{
 		ret = api_dns_somelist(conn, false, true, false);
 	}
 	/******************************** api/ftl ****************************/
-	else if(strcasecmp("/api/ftl/version", request->local_uri) == 0)
+	else if(startsWith("/api/ftl/version", request->local_uri))
 	{
 		ret = api_ftl_version(conn);
 	}
-	else if(strcasecmp("/api/ftl/db", request->local_uri) == 0)
+	else if(startsWith("/api/ftl/db", request->local_uri))
 	{
 		ret = api_ftl_db(conn);
 	}
-	else if(strcasecmp("/api/ftl/clientIP", request->local_uri) == 0)
+	else if(startsWith("/api/ftl/clientIP", request->local_uri))
 	{
 		ret = api_ftl_clientIP(conn);
 	}
 	/******************************** api/stats **************************/
-	else if(strcasecmp("/api/stats/summary", request->local_uri) == 0)
+	else if(startsWith("/api/stats/summary", request->local_uri))
 	{
 		ret = api_stats_summary(conn);
 	}
-	else if(strcasecmp("/api/stats/overTime/history", request->local_uri) == 0)
+	else if(startsWith("/api/stats/overTime/history", request->local_uri))
 	{
 		ret = api_stats_overTime_history(conn);
 	}
-	else if(strcasecmp("/api/stats/overTime/clients", request->local_uri) == 0)
+	else if(startsWith("/api/stats/overTime/clients", request->local_uri))
 	{
 		ret = api_stats_overTime_clients(conn);
 	}
-	else if(strcasecmp("/api/stats/query_types", request->local_uri) == 0)
+	else if(startsWith("/api/stats/query_types", request->local_uri))
 	{
 		ret = api_stats_query_types(conn);
 	}
-	else if(strcasecmp("/api/stats/upstreams", request->local_uri) == 0)
+	else if(startsWith("/api/stats/upstreams", request->local_uri))
 	{
 		ret = api_stats_upstreams(conn);
 	}
-	else if(strcasecmp("/api/stats/top_domains", request->local_uri) == 0)
+	else if(startsWith("/api/stats/top_domains", request->local_uri))
 	{
 		ret = api_stats_top_domains(false, conn);
 	}
-	else if(strcasecmp("/api/stats/top_blocked", request->local_uri) == 0)
+	else if(startsWith("/api/stats/top_blocked", request->local_uri))
 	{
 		ret = api_stats_top_domains(true, conn);
 	}
-	else if(strcasecmp("/api/stats/top_clients", request->local_uri) == 0)
+	else if(startsWith("/api/stats/top_clients", request->local_uri))
 	{
 		ret = api_stats_top_clients(false, conn);
 	}
-	else if(strcasecmp("/api/stats/top_blocked_clients", request->local_uri) == 0)
+	else if(startsWith("/api/stats/top_blocked_clients", request->local_uri))
 	{
 		ret = api_stats_top_clients(true, conn);
 	}
-	else if(strcasecmp("/api/stats/history", request->local_uri) == 0)
+	else if(startsWith("/api/stats/history", request->local_uri))
 	{
 		ret = api_stats_history(conn);
 	}
-	else if(strcasecmp("/api/stats/recent_blocked", request->local_uri) == 0)
+	else if(startsWith("/api/stats/recent_blocked", request->local_uri))
 	{
 		ret = api_stats_recentblocked(conn);
 	}
 	/******************************** api/version ****************************/
-	else if(strcasecmp("/api/version", request->local_uri) == 0)
+	else if(startsWith("/api/version", request->local_uri))
 	{
 		ret = api_version(conn);
 	}
 	/******************************** api/auth ****************************/
-	else if(strcasecmp("/api/auth", request->local_uri) == 0)
+	else if(startsWith("/api/auth", request->local_uri))
 	{
 		ret = api_auth(conn);
 	}
-	else if(strcasecmp("/api/auth/salt", request->local_uri) == 0)
+	else if(startsWith("/api/auth/salt", request->local_uri))
 	{
 		ret = api_auth_salt(conn);
 	}
 	/******************************** api/settings ****************************/
-	else if(strcasecmp("/api/settings/web", request->local_uri) == 0)
+	else if(startsWith("/api/settings/web", request->local_uri))
 	{
 		ret = api_settings_web(conn);
 	}

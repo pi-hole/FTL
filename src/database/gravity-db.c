@@ -969,20 +969,59 @@ bool gravityDB_addToTable(const char *table, const char* domain)
 		return false;
 	}
 
-	rc = sqlite3_step(stmt);
-	if(rc == SQLITE_ROW)
+	bool okay = false;
+	if((rc = sqlite3_step(stmt)) == SQLITE_DONE)
 	{
-		// Database record found (result might be empty)
-		logg("ROW");
-	}
-	else
-	{
-		logg("Returned %i", rc);
+		// Domain added
+		okay = true;
 	}
 
 	// Finalize statement and close database handle
 	sqlite3_reset(stmt);
 	sqlite3_finalize(stmt);
 
-	return true;
+	return okay;
+}
+
+bool gravityDB_delFromTable(const char *table, const char* domain)
+{
+	char *querystr = NULL;
+	// Build query string
+	if(asprintf(&querystr, "DELETE FROM %s WHERE domain = ?;", table) < 30)
+	{
+		logg("gravityDB_delFromTable(%s, %s) - asprintf() error", table, domain);
+		return false;
+	}
+
+	// Prepare SQLite statement
+	sqlite3_stmt* stmt = NULL;
+	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &stmt, NULL);
+	if( rc != SQLITE_OK ){
+		logg("gravityDB_delFromTable(%s, %s) - SQL error prepare (%i): %s",
+		     table, domain, rc, sqlite3_errmsg(gravity_db));
+		return false;
+	}
+
+	// Bind domain to prepared statement
+	if((rc = sqlite3_bind_text(stmt, 1, domain, -1, SQLITE_STATIC)) != SQLITE_OK)
+	{
+		logg("gravityDB_delFromTable(%s, %s): Failed to bind domain (error %d) - %s",
+		     table, domain, rc, sqlite3_errmsg(gravity_db));
+		sqlite3_reset(stmt);
+		sqlite3_finalize(stmt);
+		return false;
+	}
+
+	bool okay = false;
+	if((rc = sqlite3_step(stmt)) == SQLITE_DONE)
+	{
+		// Domain removed
+		okay = true;
+	}
+
+	// Finalize statement and close database handle
+	sqlite3_reset(stmt);
+	sqlite3_finalize(stmt);
+
+	return okay;
 }

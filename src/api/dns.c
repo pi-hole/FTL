@@ -23,9 +23,9 @@ int api_dns_status(struct mg_connection *conn)
 	JSON_SENT_OBJECT(json);
 }
 
-static int api_dns_somelist_GET(struct mg_connection *conn,
-                                bool show_exact, bool show_regex,
-                                bool whitelist)
+static int api_dns_somelist_read(struct mg_connection *conn,
+                                 bool show_exact, bool show_regex,
+                                 bool whitelist)
 {
 	cJSON *exact = NULL;
 	cJSON *regex = NULL;
@@ -71,8 +71,8 @@ static int api_dns_somelist_GET(struct mg_connection *conn,
 }
 
 static int api_dns_somelist_POST(struct mg_connection *conn,
-                                 bool store_exact,
-                                 bool whitelist)
+                                   bool store_exact,
+                                   bool whitelist)
 {
 	char buffer[1024];
 	int data_len = mg_read(conn, buffer, sizeof(buffer) - 1);
@@ -80,7 +80,7 @@ static int api_dns_somelist_POST(struct mg_connection *conn,
 		mg_send_http_error(conn, 400, "%s", "No request body data");
 		return 400;
 	}
-	buffer[data_len] ='\0';
+	buffer[data_len] = '\0';
 
 	cJSON *obj = cJSON_Parse(buffer);
 	if (obj == NULL) {
@@ -113,14 +113,57 @@ static int api_dns_somelist_POST(struct mg_connection *conn,
 	if(gravityDB_addToTable(table, domain))
 	{
 		JSON_OBJ_REF_STR(json, "key", "added");
-		// Send 201 created
-		JSON_SENT_OBJECT_AND_HEADERS_CODE(json, 201, NULL);
+		JSON_OBJ_COPY_STR(json, "domain", domain);
+		cJSON_Delete(obj);
+		JSON_SENT_OBJECT(json);
 	}
 	else
 	{
 		JSON_OBJ_REF_STR(json, "key", "error");
+		JSON_OBJ_COPY_STR(json, "domain", domain);
+		cJSON_Delete(obj);
 		// Send 500 internal server error
-		JSON_SENT_OBJECT_AND_HEADERS_CODE(json, 500, NULL);
+		JSON_SENT_OBJECT_CODE(json, 500);
+	}
+}
+
+static int api_dns_somelist_DELETE(struct mg_connection *conn,
+                                   bool store_exact,
+                                   bool whitelist)
+{
+	const struct mg_request_info *request = mg_get_request_info(conn);
+
+	char domain[1024];
+	// Advance one character to strip "/"
+	const char *encoded_uri = strrchr(request->local_uri, '/')+1u;
+	// Decode URL (necessar for regular expressions, harmless for domains)
+	mg_url_decode(encoded_uri, strlen(encoded_uri), domain, sizeof(domain)-1u, 0);
+
+	const char *table;
+	if(whitelist)
+		if(store_exact)
+			table = "whitelist";
+		else
+			table = "regex_whitelist";
+	else
+		if(store_exact)
+			table = "blacklist";
+		else
+			table = "regex_blacklist";
+
+	cJSON *json = JSON_NEW_OBJ();
+	if(gravityDB_delFromTable(table, domain))
+	{
+		JSON_OBJ_REF_STR(json, "key", "removed");
+		JSON_OBJ_REF_STR(json, "domain", domain);
+		JSON_SENT_OBJECT(json);
+	}
+	else
+	{
+		JSON_OBJ_REF_STR(json, "key", "error");
+		JSON_OBJ_REF_STR(json, "domain", domain);
+		// Send 500 internal server error
+		JSON_SENT_OBJECT_CODE(json, 500);
 	}
 }
 
@@ -131,13 +174,19 @@ int api_dns_somelist(struct mg_connection *conn,
 	int method = http_method(conn);
 	if(method == HTTP_GET)
 	{
-		return api_dns_somelist_GET(conn, show_exact, show_regex, whitelist);
+		return api_dns_somelist_read(conn, show_exact, show_regex, whitelist);
 	}
 	else if(method == HTTP_POST)
 	{
-		// Add list to exact white-/blacklist when a user sends it to
-		// the general address /api/dns/{white,black}list
+		// Add domain from exact white-/blacklist when a user sends
+		// the request to the general address /api/dns/{white,black}list
 		return api_dns_somelist_POST(conn, show_exact, whitelist);
+	}
+	else if(method == HTTP_DELETE)
+	{
+		// Delete domain from exact white-/blacklist when a user sends
+		// the request to the general address /api/dns/{white,black}list
+		return api_dns_somelist_DELETE(conn, show_exact, whitelist);
 	}
 	else
 	{

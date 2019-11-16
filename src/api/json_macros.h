@@ -135,6 +135,19 @@
 	return 200; \
 }
 
+#define JSON_SENT_OBJECT_CODE(object, code){ \
+	const char* msg = JSON_FORMATTER(object); \
+	if(msg == NULL) \
+	{ \
+		cJSON_Delete(object); \
+		send_http_error(conn); \
+		return 500; \
+	} \
+	send_http_code(conn, code, NULL, msg); \
+	cJSON_Delete(object); \
+	return 200; \
+}
+
 #define JSON_SENT_OBJECT_AND_HEADERS(object, additional_headers){ \
 	const char* msg = JSON_FORMATTER(object); \
 	if(msg == NULL) \
@@ -157,7 +170,7 @@
 		send_http_error(conn); \
 		return 500; \
 	} \
-	send_http_unauth(conn, additional_headers, msg); \
+	send_http_code(conn, code, additional_headers, msg); \
 	cJSON_Delete(object); \
 	free(additional_headers); \
 	return code; \

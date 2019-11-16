@@ -26,7 +26,7 @@ void http_send(struct mg_connection *conn, bool chunk, const char *format, ...) 
 
 int send_http(struct mg_connection *conn, const char *mime_type,
               const char *additional_headers, const char *msg);
-int send_http_unauth(struct mg_connection *conn,
+int send_http_code(struct mg_connection *conn, int code,
                      const char *additional_headers, const char *msg);
 int send_http_error(struct mg_connection *conn);
 
