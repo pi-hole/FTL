@@ -13,6 +13,7 @@
 // counters
 #include "shmem.h"
 #include "database/gravity-db.h"
+#include "api/http.h"
 #include "log.h"
 
 int api_dns_status(struct mg_connection *conn)
@@ -23,51 +24,32 @@ int api_dns_status(struct mg_connection *conn)
 	JSON_SENT_OBJECT(json);
 }
 
-static int api_dns_somelist_read(struct mg_connection *conn,
-                                 bool show_exact, bool show_regex,
-                                 bool whitelist)
+static int api_dns_somelist_read(struct mg_connection *conn, bool exact, bool whitelist)
 {
-	cJSON *exact = NULL;
-	cJSON *regex = NULL;
+	cJSON *json = JSON_NEW_ARRAY();
 	const char *domain = NULL;
 	int rowid = 0;
 
-	if(show_exact)
-	{
-		exact = JSON_NEW_ARRAY()
-		gravityDB_getTable(whitelist ? EXACT_WHITELIST_TABLE : EXACT_BLACKLIST_TABLE);
-		while((domain = gravityDB_getDomain(&rowid)) != NULL)
-		{
-			JSON_ARRAY_COPY_STR(exact, domain);
-		}
-		gravityDB_finalizeTable();
-	}
-
-	if(show_regex)
-	{
-		regex = JSON_NEW_ARRAY()
-		gravityDB_getTable(whitelist ? REGEX_WHITELIST_TABLE : REGEX_BLACKLIST_TABLE);
-		while((domain = gravityDB_getDomain(&rowid)) != NULL)
-		{
-			JSON_ARRAY_COPY_STR(regex, domain);
-		}
-		gravityDB_finalizeTable();
-	}
-	if(show_exact && ! show_regex)
-	{
-		JSON_SENT_OBJECT(exact);
-	}
-	else if(!show_exact && show_regex)
-	{
-		JSON_SENT_OBJECT(regex);
-	}
+	int table;
+	if(whitelist)
+		if(exact)
+			table = EXACT_WHITELIST_TABLE;
+		else
+			table = REGEX_WHITELIST_TABLE;
 	else
+		if(exact)
+			table = EXACT_BLACKLIST_TABLE;
+		else
+			table = REGEX_BLACKLIST_TABLE;
+
+	gravityDB_getTable(table);
+	while((domain = gravityDB_getDomain(&rowid)) != NULL)
 	{
-		cJSON *json = JSON_NEW_OBJ();
-		JSON_OBJ_ADD_ITEM(json, "exact", exact);
-		JSON_OBJ_ADD_ITEM(json, "regex", regex);
-		JSON_SENT_OBJECT(json);
+		JSON_ARRAY_COPY_STR(json, domain);
 	}
+	gravityDB_finalizeTable();
+
+	JSON_SENT_OBJECT(json);
 }
 
 static int api_dns_somelist_POST(struct mg_connection *conn,
@@ -167,26 +149,24 @@ static int api_dns_somelist_DELETE(struct mg_connection *conn,
 	}
 }
 
-int api_dns_somelist(struct mg_connection *conn,
-                     bool show_exact, bool show_regex,
-                     bool whitelist)
+int api_dns_somelist(struct mg_connection *conn, bool exact, bool whitelist)
 {
 	int method = http_method(conn);
 	if(method == HTTP_GET)
 	{
-		return api_dns_somelist_read(conn, show_exact, show_regex, whitelist);
+		return api_dns_somelist_read(conn, exact, whitelist);
 	}
 	else if(method == HTTP_POST)
 	{
 		// Add domain from exact white-/blacklist when a user sends
 		// the request to the general address /api/dns/{white,black}list
-		return api_dns_somelist_POST(conn, show_exact, whitelist);
+		return api_dns_somelist_POST(conn, exact, whitelist);
 	}
 	else if(method == HTTP_DELETE)
 	{
 		// Delete domain from exact white-/blacklist when a user sends
 		// the request to the general address /api/dns/{white,black}list
-		return api_dns_somelist_DELETE(conn, show_exact, whitelist);
+		return api_dns_somelist_DELETE(conn, exact, whitelist);
 	}
 	else
 	{

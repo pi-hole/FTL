@@ -92,30 +92,21 @@ static int api_handler(struct mg_connection *conn, void *ignored)
 	{
 		ret = api_dns_status(conn);
 	}
-	else if(startsWith(request->local_uri, "/api/dns/whitelist"))
-	{
-		ret = api_dns_somelist(conn, true, true, true);
-	}
 	else if(startsWith(request->local_uri, "/api/dns/whitelist/exact"))
 	{
-		ret = api_dns_somelist(conn, true, false, true);
+		ret = api_dns_somelist(conn, true, true);
 	}
 	else if(startsWith(request->local_uri, "/api/dns/whitelist/regex"))
 	{
-		ret = api_dns_somelist(conn, false, true, true);
-	}
-	else if(startsWith(request->local_uri, "/api/dns/blacklist"))
-	{
-		ret = api_dns_somelist(conn, true, true, false);
+		ret = api_dns_somelist(conn, false, true);
 	}
 	else if(startsWith(request->local_uri, "/api/dns/blacklist/exact"))
 	{
-		ret = api_dns_somelist(conn, true, false, false);
+		ret = api_dns_somelist(conn, true, false);
 	}
-	else if(startsWith(request->local_uri, "/api/dns/blacklist/regex") ||
-	        startsWith(request->local_uri, "/api/dns/regexlist"))
+	else if(startsWith(request->local_uri, "/api/dns/blacklist/regex"))
 	{
-		ret = api_dns_somelist(conn, false, true, false);
+		ret = api_dns_somelist(conn, false, false);
 	}
 	/******************************** api/ftl ****************************/
 	else if(startsWith("/api/ftl/version", request->local_uri))
