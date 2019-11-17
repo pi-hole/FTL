@@ -18,12 +18,6 @@ int api_version(struct mg_connection *conn)
 {
 	cJSON *json = JSON_NEW_OBJ();
 
-	cJSON *api = JSON_NEW_OBJ();
-	JSON_OBJ_REF_STR(api, "branch", "none");
-	JSON_OBJ_REF_STR(api, "hash", "none");
-	JSON_OBJ_REF_STR(api, "tag", "none");
-	JSON_OBJ_ADD_ITEM(json, "api", api);
-
 	FILE* file;
 	char coreversion[256] = "N/A";
 	char webversion[256]  = "N/A";

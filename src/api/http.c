@@ -29,7 +29,7 @@ int send_http_code(struct mg_connection *conn, int code,
                      const char *additional_headers, const char *msg)
 {
 	// Payload will be sent with text/plain encoding due to
-	// the first line being "Error <code>>" by definition
+	// the first line being "Error <code>" by definition
 	return mg_send_http_error(conn, code, "%s", msg);
 }
 
