@@ -374,6 +374,11 @@ void read_FTLconf(void)
 	snprintf(httpsettings.port, sizeof(httpsettings.port), "%u,[::]:%u", port, port);
 	logg("   WEBPORT: Port %s", httpsettings.port);
 
+	// WEBHOME
+	// From which sub-directory is the web interface served from?
+	// Defaults to: /admin
+	getpath(fp, "WEBHOME", "/admin", &httpsettings.webhome);
+
 	logg("Finished config file parsing");
 
 	// Release memory

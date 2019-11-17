@@ -55,9 +55,25 @@ int send_http_error(struct mg_connection *conn)
 	return mg_send_http_error(conn, 500, "Internal server error");
 }
 
-static bool startsWith(const char *path, const char *pattern)
+static bool startsWith(const char *path, const char *uri)
 {
-	return strncmp(path, pattern, strlen(pattern)) == 0;
+	unsigned int webhome_length = strlen(httpsettings.webhome);
+	unsigned int uri_length = strlen(uri);
+	if(uri_length > webhome_length)
+	{
+		// Compare strings while skipping any possible webhome
+		// Note: this is not an issue here as the API callback
+		// doesn't even get called when the path does not start in
+		// what is configured by httpsettings.webhome.
+		// In other words: This strips the webhome such that any
+		// request will look like "/api/dns/status" even when the
+		// webhome is configured to something like "/admin"
+		return strncmp(path, uri+webhome_length, strlen(path)) == 0;
+	}
+	else
+	{
+		return false;
+	}
 }
 
 void __attribute__ ((format (gnu_printf, 3, 4))) http_send(struct mg_connection *conn, bool chunk, const char *format, ...)
@@ -105,23 +121,23 @@ static int api_handler(struct mg_connection *conn, void *ignored)
 		     request->local_uri, request->request_method);
 	}
 	/******************************** api/dns ********************************/
-	if(startsWith(request->local_uri, "/api/dns/status"))
+	if(startsWith("/api/dns/status", request->local_uri))
 	{
 		ret = api_dns_status(conn);
 	}
-	else if(startsWith(request->local_uri, "/api/dns/whitelist/exact"))
+	else if(startsWith("/api/dns/whitelist/exact", request->local_uri))
 	{
 		ret = api_dns_somelist(conn, true, true);
 	}
-	else if(startsWith(request->local_uri, "/api/dns/whitelist/regex"))
+	else if(startsWith("/api/dns/whitelist/regex", request->local_uri))
 	{
 		ret = api_dns_somelist(conn, false, true);
 	}
-	else if(startsWith(request->local_uri, "/api/dns/blacklist/exact"))
+	else if(startsWith("/api/dns/blacklist/exact", request->local_uri))
 	{
 		ret = api_dns_somelist(conn, true, false);
 	}
-	else if(startsWith(request->local_uri, "/api/dns/blacklist/regex"))
+	else if(startsWith("/api/dns/blacklist/regex", request->local_uri))
 	{
 		ret = api_dns_somelist(conn, false, false);
 	}
@@ -214,7 +230,8 @@ void http_init(void)
 	logg("Initializing HTTP server on port %s", httpsettings.port);
 
 	// Create rewrite rules
-	int rewrite_target_length = strlen(httpsettings.webroot);
+	unsigned int rewrite_target_length = strlen(httpsettings.webroot);
+	unsigned int webhome_length = strlen(httpsettings.webhome);
 
 	// Measure needed space for rewrite rules
 	unsigned int rewrite_rules_length = 0u;
@@ -230,6 +247,8 @@ void http_init(void)
 		rewrite_rules_length += 2u;
 		// 2 * "," (separation element)
 		rewrite_rules_length += 2u;
+		// 4 * webhome (typically "/admin")
+		rewrite_rules_length += 4u*webhome_length;
 	}
 
 	// Actually build rewrite rules
@@ -237,10 +256,12 @@ void http_init(void)
 	char *rewrite_rules_ptr = rewrite_rules;
 	for(unsigned int i = 0; i < (sizeof(rewrite_paths)/sizeof(*rewrite_paths)); i++)
 	{
-		int bytes_written = sprintf(rewrite_rules_ptr, "%s%s$=%s/,%s/=%s/",
+		int bytes_written = sprintf(rewrite_rules_ptr, "%s%s%s$=%s%s/,%s%s/=%s%s/",
 		                            i > 0 ? "," : "",
-		                            rewrite_paths[i], httpsettings.webroot,
-					    rewrite_paths[i], httpsettings.webroot);
+		                            httpsettings.webhome, rewrite_paths[i],
+					    httpsettings.webroot, httpsettings.webhome,
+					    httpsettings.webhome, rewrite_paths[i],
+					    httpsettings.webroot, httpsettings.webhome);
 		if(config.debug & DEBUG_API)
 			logg("Added rewrite rule: \"%s\" (length %i)", rewrite_rules_ptr, bytes_written);
 		rewrite_rules_ptr += bytes_written;
@@ -277,7 +298,17 @@ void http_init(void)
 
 	/* Add simple demonstration callbacks */
 	mg_set_request_handler(ctx, "/ping", print_simple, (char*)"pong\n");
-	mg_set_request_handler(ctx, "/api", api_handler, NULL);
+	char *api_path = NULL;
+	if(asprintf(&api_path, "%s/api", httpsettings.webhome) > 4)
+	{
+		if(config.debug & DEBUG_API)
+		{
+			logg("Installing API handler at %s", api_path);
+		}
+		mg_set_request_handler(ctx, api_path, api_handler, NULL);
+		// The request handler URI got duplicated
+		free(api_path);
+	}
 }
 
 void http_terminate(void)

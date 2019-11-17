@@ -55,6 +55,7 @@ typedef struct {
 
 typedef struct httpsettings {
 	char *webroot;
+	char *webhome;
 	char port[20]; // enough space for 2*(maximum length of number in a uint16_t = 5 characters) + ",[::]:" + NULL
 } httpsettingsStruct;
 
