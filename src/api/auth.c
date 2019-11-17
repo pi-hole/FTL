@@ -34,7 +34,7 @@ static void generateRandomString(char *str, size_t size)
 	str[size-1] = '\0';
 }
 
-static char *get_password_hash(void)
+static __attribute__((malloc)) char *get_password_hash(void)
 {
 	// Try to obtain password from setupVars.conf
 	const char* password = read_setupVarsconf("WEBPASSWORD");
@@ -49,7 +49,7 @@ static char *get_password_hash(void)
 			logg("Substituting password 'A'");
 	}
 
-	char *hash= strdup(password);
+	char *hash = strdup(password);
 
 	// Free memory, harmless to call if read_setupVarsconf() didn't return a result
 	clearSetupVarsArray();
