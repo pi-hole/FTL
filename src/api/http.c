@@ -15,6 +15,23 @@
 #include "../log.h"
 #include "json_macros.h"
 
+// List of paths that need to be rewritten to index.html.
+// New endpoints can simply be appended to this list.
+// Note 1: Children have to come *before* their parents.
+// Note 2: Always put a "/" at the beginning
+// Note 3: Do not add a "/" at the end
+static const char *rewrite_paths[] = { "/dashboard",
+                                       "/query-log",
+				       "/whitelist/exact",
+				       "/whitelist/regex",
+				       "/whitelist",
+				       "/blacklist/exact",
+				       "/blacklist/regex",
+				       "/blacklist",
+                                       "/settings",
+				       "/login",
+				       "/logout" };
+
 // Server context handle
 static struct mg_context *ctx = NULL;
 
@@ -196,6 +213,41 @@ void http_init(void)
 {
 	logg("Initializing HTTP server on port %s", httpsettings.port);
 
+	// Create rewrite rules
+	int rewrite_target_length = strlen(httpsettings.webroot);
+
+	// Measure needed space for rewrite rules
+	unsigned int rewrite_rules_length = 0u;
+	for(unsigned int i = 0; i < (sizeof(rewrite_paths)/sizeof(*rewrite_paths)); i++)
+	{
+		// "/dashboard$" and "/dashboard/" (the ressource and possible sub-content)
+		rewrite_rules_length += 2u*(strlen(rewrite_paths[i]) + 1u);
+		// 2 * "="
+		rewrite_rules_length += 2u;
+		// 2 * rewrite_target (typically "/var/www/html")
+		rewrite_rules_length += 2u*rewrite_target_length;
+		// 2 * "/" at the end of the rewrite-target
+		rewrite_rules_length += 2u;
+		// 2 * "," (separation element)
+		rewrite_rules_length += 2u;
+	}
+
+	// Actually build rewrite rules
+	char *rewrite_rules = calloc(rewrite_rules_length + 1u, sizeof(char));
+	char *rewrite_rules_ptr = rewrite_rules;
+	for(unsigned int i = 0; i < (sizeof(rewrite_paths)/sizeof(*rewrite_paths)); i++)
+	{
+		int bytes_written = sprintf(rewrite_rules_ptr, "%s%s$=%s/,%s/=%s/",
+		                            i > 0 ? "," : "",
+		                            rewrite_paths[i], httpsettings.webroot,
+					    rewrite_paths[i], httpsettings.webroot);
+		if(config.debug & DEBUG_API)
+			logg("Added rewrite rule: \"%s\" (length %i)", rewrite_rules_ptr, bytes_written);
+		rewrite_rules_ptr += bytes_written;
+	}
+
+	logg("%u / %lu", rewrite_rules_length, strlen(rewrite_rules));
+
 	/* Initialize the library */
 	unsigned int features = MG_FEATURES_FILES |
 				MG_FEATURES_IPV6 |
@@ -214,6 +266,7 @@ void http_init(void)
 		"decode_url", "no",
 		"num_threads", "4",
 		"additional_header", "Access-Control-Allow-Origin: *",
+		"url_rewrite_patterns", rewrite_rules,
 		NULL
 	};
 
