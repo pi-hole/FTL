@@ -18,7 +18,7 @@ version: 2
     - run:
         name: "Upload"
         command: |
-          [[ -z "$FTL_SECRET" || "$CIRCLE_PR_NUMBER" != "" || "$CIRCLE_USERNAME" != "pi-hole" ]] && exit 0
+          [[ "$CIRCLE_PROJECT_REPONAME" == "FTL" && "$CIRCLE_USERNAME" == "pi-hole" ]] || exit 0
           DIR="${CIRCLE_TAG:-${CIRCLE_BRANCH}}"
           mv pihole-FTL "${BIN_NAME}"
           sha1sum pihole-FTL-* > ${BIN_NAME}.sha1
