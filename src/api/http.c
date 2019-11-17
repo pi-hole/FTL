@@ -209,6 +209,39 @@ static int api_handler(struct mg_connection *conn, void *ignored)
 	return ret;
 }
 
+static char *indexfile_content = NULL;
+static void read_indexfile(void)
+{
+	char *index_path = NULL;
+	if(asprintf(&index_path, "%s%sindex.html", httpsettings.webroot, httpsettings.webhome) < 0)
+	{
+		logg("read_indexfile(): Memory error. Exiting.");
+		exit(EXIT_FAILURE);
+	}
+
+	FILE *indexfile = fopen(index_path, "r");
+	free(index_path);
+
+	// Get file size by seeking the EOF
+	fseek(indexfile, 0, SEEK_END);
+	long fsize = ftell(indexfile);
+
+	// Go back to the beginning
+	fseek(indexfile, 0, SEEK_SET);
+
+	// Allocate memory for the index file
+	indexfile_content = calloc(fsize + 1, sizeof(char));
+
+	// Read entire file into buffer
+	igr(fread(indexfile_content, sizeof(char), fsize, indexfile));
+
+	// Close file handle
+	fclose(indexfile);
+
+	// Zero-terminate string
+	indexfile_content[fsize] = '\0';
+}
+
 static int index_handler(struct mg_connection *conn, void *ignored)
 {
 	const struct mg_request_info *request = mg_get_request_info(conn);
@@ -224,13 +257,10 @@ static int index_handler(struct mg_connection *conn, void *ignored)
 	if(config.debug & DEBUG_API)
 		logg("Received request for %s -> rerouting to index.html", request->local_uri);
 
-	// Plain request found, we serve the index.html file
-	char *index_path = NULL;
-	if(asprintf(&index_path, "%s%sindex.html", httpsettings.webroot, httpsettings.webhome) > 0)
-	{
-		mg_send_mime_file(conn, index_path, "text/html");
-		free(index_path);
-	}
+	// Plain request found, we serve the index.html file we have in memory
+	logg("Sending index.html from in memory");
+	mg_send_http_ok(conn, "text/html", NULL, strlen(indexfile_content));
+	mg_write(conn, indexfile_content, strlen(indexfile_content));
 	return 200;
 }
 
@@ -280,6 +310,7 @@ void http_init(void)
 		free(api_path);
 	}
 
+	read_indexfile();
 	mg_set_request_handler(ctx, httpsettings.webhome, index_handler, NULL);
 }
 
@@ -287,6 +318,9 @@ void http_terminate(void)
 {
 	/* Stop the server */
 	mg_stop(ctx);
+
+	// Release memory for the index.html file
+	free(indexfile_content);
 
 	/* Un-initialize the library */
 	mg_exit_library();
