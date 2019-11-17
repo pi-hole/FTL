@@ -12,6 +12,8 @@
 #include "api.h"
 #include "log.h"
 #include "config.h"
+// read_setupVarsconf()
+#include "setupVars.h"
 
 static struct {
 	bool used;
@@ -32,6 +34,29 @@ static void generateRandomString(char *str, size_t size)
 	str[size-1] = '\0';
 }
 
+static char *get_password_hash(void)
+{
+	// Try to obtain password from setupVars.conf
+	const char* password = read_setupVarsconf("WEBPASSWORD");
+
+	// If the value was not set (or we couldn't open the file for reading),
+	// substitute password with the hash for "A". This is only meant to be
+	// used during the development of the FTL HTTP API
+	if(password == NULL)
+	{
+		password = "599d48457e4996df84cbfeb973cd109827c0de9fa211c0d062eab13584ea6bb8";
+		if(config.debug & DEBUG_API)
+			logg("Substituting password 'A'");
+	}
+
+	char *hash= strdup(password);
+
+	// Free memory, harmless to call if read_setupVarsconf() didn't return a result
+	clearSetupVarsArray();
+
+	return hash;
+}
+
 int api_auth(struct mg_connection *conn)
 {
 	int user_id = -1;
@@ -41,9 +66,8 @@ int api_auth(struct mg_connection *conn)
 	const char *xHeader = mg_get_header(conn, "X-Pi-hole-Authenticate");
 	if(xHeader != NULL && strlen(xHeader) > 0)
 	{
-		// TODO: Read hash from file or database table
-		// This is the hardcoded password "A"
-		if(strcmp(xHeader,"599d48457e4996df84cbfeb973cd109827c0de9fa211c0d062eab13584ea6bb8") == 0)
+		char *passord_hash = get_password_hash();
+		if(strcmp(xHeader,passord_hash) == 0)
 		{
 			// Accepted
 			for(unsigned int i = 0; i < API_MAX_CLIENTS; i++)
@@ -76,6 +100,7 @@ int api_auth(struct mg_connection *conn)
 				}
 			}
 		}
+		free(passord_hash);
 	}
 
 	// Does the client provide a user_id cookie?
