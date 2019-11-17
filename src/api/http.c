@@ -246,8 +246,6 @@ void http_init(void)
 		rewrite_rules_ptr += bytes_written;
 	}
 
-	logg("%u / %lu", rewrite_rules_length, strlen(rewrite_rules));
-
 	/* Initialize the library */
 	unsigned int features = MG_FEATURES_FILES |
 				MG_FEATURES_IPV6 |
