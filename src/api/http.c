@@ -215,12 +215,24 @@ static void read_indexfile(void)
 	char *index_path = NULL;
 	if(asprintf(&index_path, "%s%sindex.html", httpsettings.webroot, httpsettings.webhome) < 0)
 	{
-		logg("read_indexfile(): Memory error. Exiting.");
+		logg("read_indexfile(): Memory error (1). Exiting.");
 		exit(EXIT_FAILURE);
 	}
+	char *base_tag = NULL;
+	if(asprintf(&base_tag, "<base href='%s'>", httpsettings.webhome) < 0)
+	{
+		logg("read_indexfile(): Memory error (2). Exiting.");
+		exit(EXIT_FAILURE);
+	}
+	unsigned int base_tag_length = strlen(base_tag);
 
 	FILE *indexfile = fopen(index_path, "r");
-	free(index_path);
+	if(indexfile == NULL)
+	{
+		logg("ERROR. Cannot open \"%s\"", index_path);
+		free(index_path);
+		return;
+	}
 
 	// Get file size by seeking the EOF
 	fseek(indexfile, 0, SEEK_END);
@@ -230,7 +242,7 @@ static void read_indexfile(void)
 	fseek(indexfile, 0, SEEK_SET);
 
 	// Allocate memory for the index file
-	indexfile_content = calloc(fsize + 1, sizeof(char));
+	indexfile_content = calloc(fsize + base_tag_length + 1, sizeof(char));
 
 	// Read entire file into buffer
 	igr(fread(indexfile_content, sizeof(char), fsize, indexfile));
@@ -240,6 +252,27 @@ static void read_indexfile(void)
 
 	// Zero-terminate string
 	indexfile_content[fsize] = '\0';
+
+	// Find "<head>"
+	char *head_ptr = strstr(indexfile_content, "<head>");
+	if(head_ptr == NULL)
+	{
+		logg("ERROR: No <head> tag found in \"%s\"", index_path);
+		free(index_path);
+		return;
+	}
+
+	// Advance beyond the <head> tag
+	head_ptr += 6u; // 6u == strlen("<head>");
+
+	// Make space for <base> tag to be inserted
+	memmove(head_ptr + base_tag_length, head_ptr, base_tag_length);
+
+	// Insert <base> tag into new space
+	memcpy(head_ptr, base_tag, base_tag_length);
+
+	// Free memory
+	free(index_path);
 }
 
 static int index_handler(struct mg_connection *conn, void *ignored)
@@ -259,9 +292,18 @@ static int index_handler(struct mg_connection *conn, void *ignored)
 
 	// Plain request found, we serve the index.html file we have in memory
 	logg("Sending index.html from in memory");
-	mg_send_http_ok(conn, "text/html", NULL, strlen(indexfile_content));
-	mg_write(conn, indexfile_content, strlen(indexfile_content));
-	return 200;
+	if(indexfile_content != NULL)
+	{
+		mg_send_http_ok(conn, "text/html", NULL, strlen(indexfile_content));
+		mg_write(conn, indexfile_content, strlen(indexfile_content));
+		return 200;
+	}
+	else
+	{
+		send_http_error(conn);
+		return 500;
+	}
+	
 }
 
 void http_init(void)
