@@ -376,8 +376,8 @@ void read_FTLconf(void)
 
 	// WEBHOME
 	// From which sub-directory is the web interface served from?
-	// Defaults to: /admin
-	getpath(fp, "WEBHOME", "/admin", &httpsettings.webhome);
+	// Defaults to: /admin/ (both slashes are needed!)
+	getpath(fp, "WEBHOME", "/admin/", &httpsettings.webhome);
 
 	logg("Finished config file parsing");
 
