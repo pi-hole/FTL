@@ -336,7 +336,6 @@ void http_init(void)
 		"listening_ports", httpsettings.port,
 		"decode_url", "no",
 		"num_threads", "4",
-		"additional_header", "Access-Control-Allow-Origin: *",
 		NULL
 	};
 
