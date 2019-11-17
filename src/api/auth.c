@@ -67,9 +67,11 @@ int check_client_auth(struct mg_connection *conn)
 					user_id, timestr, auth_data[user_id].remote_addr);
 			}
 		}
+		else if(config.debug & DEBUG_API)
+			logg("Authentification: FAIL (cookie invalid/expired)");
 	}
-	if(user_id < 0 && config.debug & DEBUG_API)
-		logg("Authentification: FAIL");
+	else if(config.debug & DEBUG_API)
+		logg("Authentification: FAIL (no cookie provided)");
 
 	return user_id;
 }
