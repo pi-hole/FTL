@@ -215,14 +215,13 @@ static void read_indexfile(void)
 	char *index_path = NULL;
 	if(asprintf(&index_path, "%s%sindex.html", httpsettings.webroot, httpsettings.webhome) < 0)
 	{
-		logg("read_indexfile(): Memory error (1). Exiting.");
-		exit(EXIT_FAILURE);
+		logg("read_indexfile(): Memory error (1)");
+		return;
 	}
 	char *base_tag = NULL;
 	if(asprintf(&base_tag, "<base href='%s'>", httpsettings.webhome) < 0)
 	{
-		logg("read_indexfile(): Memory error (2). Exiting.");
-		exit(EXIT_FAILURE);
+		logg("read_indexfile(): Memory error (2)");
 	}
 	unsigned int base_tag_length = strlen(base_tag);
 
@@ -236,16 +235,25 @@ static void read_indexfile(void)
 
 	// Get file size by seeking the EOF
 	fseek(indexfile, 0, SEEK_END);
-	long fsize = ftell(indexfile);
+	size_t fsize = ftell(indexfile);
 
 	// Go back to the beginning
 	fseek(indexfile, 0, SEEK_SET);
 
 	// Allocate memory for the index file
 	indexfile_content = calloc(fsize + base_tag_length + 1, sizeof(char));
+	if(indexfile_content == NULL)
+	{
+		logg("read_indexfile(): Memory error (3)");
+		free(index_path);
+		free(base_tag);
+	}
 
 	// Read entire file into buffer
-	igr(fread(indexfile_content, sizeof(char), fsize, indexfile));
+	if(fread(indexfile_content, sizeof(char), fsize, indexfile) != fsize)
+	{
+		logg("WARNING: Filesize of \"%s\" changed during reading.", index_path);
+	}
 
 	// Close file handle
 	fclose(indexfile);
@@ -273,6 +281,7 @@ static void read_indexfile(void)
 
 	// Free memory
 	free(index_path);
+	free(base_tag);
 }
 
 static int index_handler(struct mg_connection *conn, void *ignored)
