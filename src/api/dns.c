@@ -34,6 +34,14 @@ int api_dns_status(struct mg_connection *conn)
 	}
 	else if(method == HTTP_POST)
 	{
+		// Verify requesting client is allowed to access this ressource
+		if(check_client_auth(conn) < 0)
+		{
+			cJSON *json = JSON_NEW_OBJ();
+			JSON_OBJ_REF_STR(json, "key", "unauthorized");
+			JSON_SENT_OBJECT_CODE(json, 401);
+		}
+
 		char buffer[1024];
 		int data_len = mg_read(conn, buffer, sizeof(buffer) - 1);
 		if ((data_len < 1) || (data_len >= (int)sizeof(buffer))) {
@@ -223,6 +231,14 @@ static int api_dns_somelist_DELETE(struct mg_connection *conn,
 
 int api_dns_somelist(struct mg_connection *conn, bool exact, bool whitelist)
 {
+	// Verify requesting client is allowed to see this ressource
+	if(check_client_auth(conn) < 0)
+	{
+		cJSON *json = JSON_NEW_OBJ();
+		JSON_OBJ_REF_STR(json, "key", "unauthorized");
+		JSON_SENT_OBJECT_CODE(json, 401);
+	}
+
 	int method = http_method(conn);
 	if(method == HTTP_GET)
 	{

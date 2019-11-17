@@ -40,6 +40,7 @@ int api_dns_somelist(struct mg_connection *conn, bool exact, bool whitelist);
 int api_version(struct mg_connection *conn);
 
 // Auth method
+int check_client_auth(struct mg_connection *conn);
 int api_auth(struct mg_connection *conn);
 int api_auth_salt(struct mg_connection *conn);
 

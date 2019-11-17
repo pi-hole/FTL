@@ -34,6 +34,46 @@ static void generateRandomString(char *str, size_t size)
 	str[size-1] = '\0';
 }
 
+// Can we validate this client?
+// Returns -1 if not authenticated or expired
+// Returns >= 0 for any valid authentication
+int check_client_auth(struct mg_connection *conn)
+{
+	int user_id = -1;
+	const struct mg_request_info *request = mg_get_request_info(conn);
+	// Does the client provide a user_id cookie?
+	int num;
+	if(http_get_cookie_int(conn, "user_id", &num) && num > -1 && num < API_MAX_CLIENTS)
+	{
+		if(config.debug & DEBUG_API)
+			logg("Read user_id=%i from user-provided cookie", num);
+
+		time_t now = time(NULL);
+		if(auth_data[num].used &&
+		   auth_data[num].valid_until >= now &&
+		   strcmp(auth_data[num].remote_addr, request->remote_addr) == 0)
+		{
+			// Authenticationm succesful:
+			// - We know this client
+			// - The session is stil valid
+			// - The IP matches the one we've seen earlier
+			user_id = num;
+
+			if(config.debug & DEBUG_API)
+			{
+				char timestr[128];
+				get_timestr(timestr, auth_data[user_id].valid_until);
+				logg("Recognized known user: user_id %i valid_until: %s remote_addr %s",
+					user_id, timestr, auth_data[user_id].remote_addr);
+			}
+		}
+	}
+	if(user_id < 0 && config.debug & DEBUG_API)
+		logg("Authentification: FAIL");
+
+	return user_id;
+}
+
 static __attribute__((malloc)) char *get_password_hash(void)
 {
 	// Try to obtain password from setupVars.conf
@@ -91,7 +131,7 @@ int api_auth(struct mg_connection *conn)
 				{
 					char timestr[128];
 					get_timestr(timestr, auth_data[user_id].valid_until);
-					logg("Registered new user:\n  user_id %i\n  valid_until: %s\n  remote_addr %s",
+					logg("Registered new user: user_id %i valid_until: %s remote_addr %s",
 					user_id, timestr, auth_data[user_id].remote_addr);
 				}
 				else
@@ -103,40 +143,16 @@ int api_auth(struct mg_connection *conn)
 		free(passord_hash);
 	}
 
-	// Does the client provide a user_id cookie?
-	int num;
-	if(http_get_cookie_int(conn, "user_id", &num) && num > -1 && num < API_MAX_CLIENTS)
-	{
-		if(config.debug & DEBUG_API)
-			logg("Read user_id=%i from user-provided cookie", num);
-
-		time_t now = time(NULL);
-		if(auth_data[num].used &&
-		   auth_data[num].valid_until >= now &&
-		   strcmp(auth_data[num].remote_addr, request->remote_addr) == 0)
-		{
-			// Authenticationm succesful:
-			// - We know this client
-			// - The session is stil valid
-			// - The IP matches the one we've seen earlier
-			user_id = num;
-
-			if(config.debug & DEBUG_API)
-			{
-				char timestr[128];
-				get_timestr(timestr, auth_data[user_id].valid_until);
-				logg("Recognized known user:\n  user_id %i\n  valid_until: %s\n  remote_addr %s",
-					user_id, timestr, auth_data[user_id].remote_addr);
-			}
-		}
-	}
+	// Did the client authenticate before and we can validate this?
+	if(user_id < 0)
+		user_id = check_client_auth(conn);
 
 	cJSON *json = JSON_NEW_OBJ();
 	int method = http_method(conn);
 	if(user_id > -1 && method == HTTP_GET)
 	{
 		if(config.debug & DEBUG_API)
-			logg("Authentification: OK");
+			logg("Authentification: OK, registered new client");
 
 		JSON_OBJ_REF_STR(json, "status", "success");
 		// Ten minutes validity
@@ -156,10 +172,10 @@ int api_auth(struct mg_connection *conn)
 			logg("Authentification: OK, requested to revoke");
 
 		// Revoke client authentication. This slot can be used by a new client, afterwards.
-		auth_data[num].used = false;
-		auth_data[num].valid_until = time(NULL);
-		free(auth_data[num].remote_addr);
-		auth_data[num].remote_addr = NULL;
+		auth_data[user_id].used = false;
+		auth_data[user_id].valid_until = time(NULL);
+		free(auth_data[user_id].remote_addr);
+		auth_data[user_id].remote_addr = NULL;
 
 		JSON_OBJ_REF_STR(json, "status", "success");
 		char *additional_headers = strdup("Set-Cookie: user_id=deleted; Path=/; Max-Age=-1\r\n");
@@ -167,9 +183,6 @@ int api_auth(struct mg_connection *conn)
 	}
 	else
 	{
-		if(config.debug & DEBUG_API)
-			logg("Authentification: FAIL");
-
 		JSON_OBJ_REF_STR(json, "key", "unauthorized");
 		char *additional_headers = strdup("Set-Cookie: user_id=deleted; Path=/; Max-Age=-1\r\n");
 		JSON_SENT_OBJECT_AND_HEADERS_CODE(json, 401, additional_headers);

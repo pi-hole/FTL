@@ -27,6 +27,14 @@ int api_settings_web(struct mg_connection *conn)
 
 int api_settings_ftldb(struct mg_connection *conn)
 {
+	// Verify requesting client is allowed to see this ressource
+	if(check_client_auth(conn) < 0)
+	{
+		cJSON *json = JSON_NEW_OBJ();
+		JSON_OBJ_REF_STR(json, "key", "unauthorized");
+		JSON_SENT_OBJECT_CODE(json, 401);
+	}
+
 	cJSON *json = JSON_NEW_OBJ();
 	const int db_filesize = get_FTL_db_filesize();
 	JSON_OBJ_ADD_NUMBER(json, "filesize", db_filesize);

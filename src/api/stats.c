@@ -166,6 +166,14 @@ int api_stats_top_domains(bool blocked, struct mg_connection *conn)
 	int temparray[counters->domains][2], show=10;
 	bool audit = false, asc = false;
 
+	// Verify requesting client is allowed to see this ressource
+	if(check_client_auth(conn) < 0)
+	{
+		cJSON *json = JSON_NEW_OBJ();
+		JSON_OBJ_REF_STR(json, "key", "unauthorized");
+		JSON_SENT_OBJECT_CODE(json, 401);
+	}
+
 	// /api/stats/top_domains?blocked=true is allowed as well
 	const struct mg_request_info *request = mg_get_request_info(conn);
 	if(request->query_string != NULL)
@@ -329,6 +337,14 @@ int api_stats_top_clients(bool blocked, struct mg_connection *conn)
 	int temparray[counters->clients][2], show=10;
 	bool asc = false, includezeroclients = false;
 
+	// Verify requesting client is allowed to see this ressource
+	if(check_client_auth(conn) < 0)
+	{
+		cJSON *json = JSON_NEW_OBJ();
+		JSON_OBJ_REF_STR(json, "key", "unauthorized");
+		JSON_SENT_OBJECT_CODE(json, 401);
+	}
+
 	// /api/stats/top_clients9?blocked=true is allowed as well
 	const struct mg_request_info *request = mg_get_request_info(conn);
 	if(request->query_string != NULL)
@@ -457,6 +473,14 @@ int api_stats_upstreams(struct mg_connection *conn)
 {
 	bool sort = true;
 	int temparray[counters->forwarded][2];
+
+	// Verify requesting client is allowed to see this ressource
+	if(check_client_auth(conn) < 0)
+	{
+		cJSON *json = JSON_NEW_OBJ();
+		JSON_OBJ_REF_STR(json, "key", "unauthorized");
+		JSON_SENT_OBJECT_CODE(json, 401);
+	}
 /*
 	if(command(client_message, "unsorted"))
 		sort = false;
@@ -569,6 +593,14 @@ int api_stats_history(struct mg_connection *conn)
 	{
 		cJSON *json = JSON_NEW_ARRAY();
 		JSON_SENT_OBJECT(json);
+	}
+
+	// Verify requesting client is allowed to see this ressource
+	if(check_client_auth(conn) < 0)
+	{
+		cJSON *json = JSON_NEW_OBJ();
+		JSON_OBJ_REF_STR(json, "key", "unauthorized");
+		JSON_SENT_OBJECT_CODE(json, 401);
 	}
 
 	// Do we want a more specific version of this command (domain/client/time interval filtered)?
@@ -927,6 +959,14 @@ int api_stats_recentblocked(struct mg_connection *conn)
 {
 	unsigned int num=1;
 
+	// Verify requesting client is allowed to see this ressource
+	if(check_client_auth(conn) < 0)
+	{
+		cJSON *json = JSON_NEW_OBJ();
+		JSON_OBJ_REF_STR(json, "key", "unauthorized");
+		JSON_SENT_OBJECT_CODE(json, 401);
+	}
+
 	const struct mg_request_info *request = mg_get_request_info(conn);
 	if(request->query_string != NULL)
 	{
@@ -996,6 +1036,14 @@ int api_stats_overTime_clients(struct mg_connection *conn)
 	{
 		cJSON *json = JSON_NEW_OBJ();
 		JSON_SENT_OBJECT(json);
+	}
+
+	// Verify requesting client is allowed to see this ressource
+	if(check_client_auth(conn) < 0)
+	{
+		cJSON *json = JSON_NEW_OBJ();
+		JSON_OBJ_REF_STR(json, "key", "unauthorized");
+		JSON_SENT_OBJECT_CODE(json, 401);
 	}
 
 	// Find minimum ID to send
