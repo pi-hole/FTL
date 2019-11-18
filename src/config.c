@@ -403,7 +403,8 @@ void read_FTLconf(void)
 	}
 	else
 	{
-		httpsettings.acl = "";
+		// Default: allow all access
+		httpsettings.acl = "+0.0.0.0/0";
 		logg("   WEBACL: Allowing all access.");
 	}
 
