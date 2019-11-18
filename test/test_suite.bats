@@ -175,8 +175,8 @@
   [[ ${lines[0]} == "0" ]]
 }
 
-@test "No ERROR messages in pihole-FTL.log" {
-  run bash -c 'grep -c "ERROR:" /var/log/pihole-FTL.log'
+@test "No ERROR messages in pihole-FTL.log (besides known index.html error)" {
+  run bash -c 'grep "ERROR:" /var/log/pihole-FTL.log | grep -c -v -E "index\.html"'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0" ]]
 }

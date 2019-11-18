@@ -223,7 +223,7 @@ static void read_indexfile(void)
 	FILE *indexfile = fopen(index_path, "r");
 	if(indexfile == NULL)
 	{
-		logg("ERROR. Cannot open \"%s\"", index_path);
+		logg("ERROR: Cannot open \"%s\"", index_path);
 		free(index_path);
 		return;
 	}
@@ -262,6 +262,7 @@ static void read_indexfile(void)
 	{
 		logg("ERROR: No <head> tag found in \"%s\"", index_path);
 		free(index_path);
+		free(base_tag);
 		return;
 	}
 
@@ -300,7 +301,7 @@ static int index_handler(struct mg_connection *conn, void *ignored)
 	}
 	else
 	{
-		logg("ERROR: index.hmtl not available, responding with Error 500.");
+		logg("ERROR: index.html not available, responding with Error 500.");
 		send_http_error(conn);
 		return 500;
 	}
