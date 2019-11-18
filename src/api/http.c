@@ -99,11 +99,6 @@ static int api_handler(struct mg_connection *conn, void *ignored)
 	const struct mg_request_info *request = mg_get_request_info(conn);
 	// HTTP response
 	int ret = 0;
-	if(config.debug & DEBUG_API)
-	{
-		logg("Received request for %s (method %s)",
-		     request->local_uri, request->request_method);
-	}
 	/******************************** api/dns ********************************/
 	if(startsWith("/api/dns/status", request->local_uri))
 	{
@@ -290,9 +285,6 @@ static int index_handler(struct mg_connection *conn, void *ignored)
 
 	if(strstr(request->local_uri, ".") > strstr(request->local_uri, "/"))
 	{
-		if(config.debug & DEBUG_API)
-			logg("Received request for %s", request->local_uri);
-
 		// Found file extension, process as usual
 		return 0;
 	}
@@ -300,7 +292,6 @@ static int index_handler(struct mg_connection *conn, void *ignored)
 		logg("Received request for %s -> rerouting to index.html", request->local_uri);
 
 	// Plain request found, we serve the index.html file we have in memory
-	logg("Sending index.html from in memory");
 	if(indexfile_content != NULL)
 	{
 		mg_send_http_ok(conn, "text/html", NULL, strlen(indexfile_content));
@@ -309,10 +300,18 @@ static int index_handler(struct mg_connection *conn, void *ignored)
 	}
 	else
 	{
+		logg("ERROR: index.hmtl not available, responding with Error 500.");
 		send_http_error(conn);
 		return 500;
 	}
 	
+}
+
+static int log_http_message(const struct mg_connection *conn, const char *message)
+{
+	logg("HTTP: %s", message);
+	// A non-zero return value signals we logged something.
+	return 1;
 }
 
 void http_init(void)
@@ -340,10 +339,18 @@ void http_init(void)
 		NULL
 	};
 
+	// Configure logging handler
+	struct mg_callbacks callbacks = {NULL};
+	callbacks.log_message = log_http_message;
+
+	// We log all access to pihole-FTL.log when in API debugging mode
+	if(config.debug & DEBUG_API)
+		callbacks.log_access = log_http_message;
+
 	/* Start the server */
-	if((ctx = mg_start(NULL, NULL, options)) == NULL)
+	if((ctx = mg_start(&callbacks, NULL, options)) == NULL)
 	{
-		logg("Initializing HTTP library failed!");
+		logg("ERROR: Initializing HTTP library failed!");
 		return;
 	}
 
