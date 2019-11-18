@@ -355,9 +355,6 @@ void read_FTLconf(void)
 	else
 		logg("   BLOCK_ESNI: Disabled");
 
-	// Read DEBUG_... setting from pihole-FTL.conf
-	read_debuging_settings(fp);
-
 	// WEBROOT
 	getpath(fp, "WEBROOT", "/var/www/html", &httpsettings.webroot);
 
@@ -378,6 +375,43 @@ void read_FTLconf(void)
 	// From which sub-directory is the web interface served from?
 	// Defaults to: /admin/ (both slashes are needed!)
 	getpath(fp, "WEBHOME", "/admin/", &httpsettings.webhome);
+
+	// WEBACL
+	// An Access Control List (ACL) allows restrictions to be
+	// put on the list of IP addresses which have access to our
+	// web server.
+	// The ACL is a comma separated list of IP subnets, where
+	// each subnet is pre-pended by either a - or a + sign.
+	// A plus sign means allow, where a minus sign means deny.
+	// If a subnet mask is omitted, such as -1.2.3.4, this means
+	// to deny only that single IP address.
+	// Subnet masks may vary from 0 to 32, inclusive. The default
+	// setting is to allow all accesses. On each request the full
+	// list is traversed, and the last match wins.
+	//
+	// Example 1: "-0.0.0.0/0,+127.0.0.1"
+	//            ---> deny all accesses, except from localhost (IPv4)
+	// Example 2: "-0.0.0.0/0,+192.168/16"
+	//            ---> deny all accesses, except from the
+	//                 192.168/16 subnet
+	//
+	buffer = parse_FTLconf(fp, "WEBACL");
+	if(buffer != NULL)
+	{
+		httpsettings.acl = strdup(buffer);
+		logg("   WEBACL: Using access control list.");
+	}
+	else
+	{
+		httpsettings.acl = "";
+		logg("   WEBACL: Allowing all access.");
+	}
+
+	// Read DEBUG_... setting from pihole-FTL.conf
+	// This option should be the last one as it causes
+	// some rather verbose output into the log when
+	// listing all the enabled/disabled debugging options
+	read_debuging_settings(fp);
 
 	logg("Finished config file parsing");
 

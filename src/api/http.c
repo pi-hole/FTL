@@ -336,6 +336,7 @@ void http_init(void)
 		"listening_ports", httpsettings.port,
 		"decode_url", "no",
 		"num_threads", "4",
+		"access_control_list", httpsettings.acl,
 		NULL
 	};
 
