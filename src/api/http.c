@@ -309,8 +309,16 @@ static int index_handler(struct mg_connection *conn, void *ignored)
 
 static int log_http_message(const struct mg_connection *conn, const char *message)
 {
-	logg("HTTP: %s", message);
-	// A non-zero return value signals we logged something.
+	logg("HTTP info: %s", message);
+	return 1;
+}
+
+static int log_http_access(const struct mg_connection *conn, const char *message)
+{
+	// Only log when in API debugging mode
+	if(config.debug & DEBUG_API)
+		logg("HTTP access: %s", message);
+
 	return 1;
 }
 
@@ -344,8 +352,7 @@ void http_init(void)
 	callbacks.log_message = log_http_message;
 
 	// We log all access to pihole-FTL.log when in API debugging mode
-	if(config.debug & DEBUG_API)
-		callbacks.log_access = log_http_message;
+	callbacks.log_access = log_http_access;
 
 	/* Start the server */
 	if((ctx = mg_start(&callbacks, NULL, options)) == NULL)
