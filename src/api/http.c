@@ -25,12 +25,15 @@ int send_http(struct mg_connection *conn, const char *mime_type,
 	return mg_write(conn, msg, strlen(msg));
 }
 
-int send_http_code(struct mg_connection *conn, int code,
-                     const char *additional_headers, const char *msg)
+int send_http_code(struct mg_connection *conn, const char *mime_type,
+                   const char *additional_headers, int code, const char *msg)
 {
 	// Payload will be sent with text/plain encoding due to
 	// the first line being "Error <code>" by definition
-	return mg_send_http_error(conn, code, "%s", msg);
+	//return mg_send_http_error(conn, code, "%s", msg);
+	my_send_http_error_headers(conn, code, mime_type,
+	                           additional_headers, strlen(msg));
+	return mg_write(conn, msg, strlen(msg));
 }
 
 int send_http_error(struct mg_connection *conn)

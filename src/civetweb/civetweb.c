@@ -4785,6 +4785,41 @@ mg_send_http_error_impl(struct mg_connection *conn,
 }
 
 
+/************************************** Pi-hole method **************************************/
+void my_send_http_error_headers(struct mg_connection *conn,
+                                int status, const char* mime_type,
+				const char *additional_headers,
+                                long long content_length)
+{
+	/* Set status (for log) */
+	conn->status_code = status;
+	const char *status_text = mg_get_response_code_text(conn, status);
+	mg_printf(conn, "HTTP/1.1 %d %s\r\n", status, status_text);
+
+	send_no_cache_header(conn);
+	send_additional_header(conn);
+	conn->must_close = 1;
+
+	char date[64];
+	time_t curtime = time(NULL);
+	gmt_time_string(date, sizeof(date), &curtime);
+	mg_printf(conn, "Content-Type: %s\r\n"
+			"Date: %s\r\n"
+			"Connection: close\r\n",
+			mime_type,
+			date);
+
+	// We may use additional headers to set or clear cookies
+	if(additional_headers != NULL && strlen(additional_headers) > 0)
+	{
+		mg_write(conn, additional_headers, strlen(additional_headers));
+	}
+
+	mg_printf(conn, "Content-Length: %" UINT64_FMT "\r\n\r\n",
+			(uint64_t)content_length);
+}
+/********************************************************************************************/
+
 int
 mg_send_http_error(struct mg_connection *conn, int status, const char *fmt, ...)
 {

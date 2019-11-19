@@ -932,6 +932,13 @@ CIVETWEB_API int mg_send_http_error(struct mg_connection *conn,
                                     PRINTF_FORMAT_STRING(const char *fmt),
                                     ...) PRINTF_ARGS(3, 4);
 
+/************************************** Pi-hole method **************************************/
+void my_send_http_error_headers(struct mg_connection *conn,
+                                int status, const char* mime_type,
+                                const char *additional_headers,
+                                long long content_length);
+/********************************************************************************************/
+
 
 /* Send "HTTP 200 OK" response header.
  * After calling this function, use mg_write or mg_send_chunk to send the
