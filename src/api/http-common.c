@@ -136,35 +136,6 @@ bool __attribute__((pure)) startsWith(const char *path, const char *uri)
 	}
 }
 
-void __attribute__ ((format (gnu_printf, 3, 4)))
-     http_send(struct mg_connection *conn, bool chunk, const char *format, ...)
-{
-	char *buffer;
-	va_list args;
-	va_start(args, format);
-	int len = vasprintf(&buffer, format, args);
-	va_end(args);
-	if(len > 0)
-	{
-		if(!chunk)
-		{
-			// Send 200 HTTP header with content size
-			mg_send_http_ok(conn, "application/json", NULL, len);
-		}
-		if(chunk && mg_send_chunk(conn, buffer, len) < 0)
-		{
-			logg("WARNING: Chunked HTTP writing returned error %s "
-			     "(%i, length %i)", strerror(errno), errno, len);
-		}
-		else if(!chunk && mg_write(conn, buffer, len) < 0)
-		{
-			logg("WARNING: Regular HTTP writing returned error %s "
-			     "(%i, length %i)", strerror(errno), errno, len);
-		}
-		free(buffer);
-	}
-}
-
 // Print passed string directly
 static int print_simple(struct mg_connection *conn, void *input)
 {
