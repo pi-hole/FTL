@@ -636,7 +636,7 @@ int api_stats_history(struct mg_connection *conn)
 				if(forwarddestid < 0)
 				{
 					// Requested upstream has not been found, we directly
-					// tell teh user here as there is no data to be returned
+					// tell the user here as there is no data to be returned
 					cJSON *json = JSON_NEW_OBJ();
 					JSON_OBJ_COPY_STR(json, "upstream", forwarddest);
 					free(forwarddest);

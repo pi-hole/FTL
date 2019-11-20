@@ -136,7 +136,8 @@ bool __attribute__((pure)) startsWith(const char *path, const char *uri)
 	}
 }
 
-void __attribute__ ((format (gnu_printf, 3, 4))) http_send(struct mg_connection *conn, bool chunk, const char *format, ...)
+void __attribute__ ((format (gnu_printf, 3, 4)))
+     http_send(struct mg_connection *conn, bool chunk, const char *format, ...)
 {
 	char *buffer;
 	va_list args;
@@ -171,18 +172,18 @@ static int print_simple(struct mg_connection *conn, void *input)
 }
 
 static char *indexfile_content = NULL;
-static void read_indexfile(void)
+static void prepare_index_html(void)
 {
 	char *index_path = NULL;
 	if(asprintf(&index_path, "%s%sindex.html", httpsettings.webroot, httpsettings.webhome) < 0)
 	{
-		logg("read_indexfile(): Memory error (1)");
+		logg("prepare_index_html(): Memory error (1)");
 		return;
 	}
 	char *base_tag = NULL;
 	if(asprintf(&base_tag, "<base href='%s'>", httpsettings.webhome) < 0)
 	{
-		logg("read_indexfile(): Memory error (2)");
+		logg("prepare_index_html(): Memory error (2)");
 	}
 	unsigned int base_tag_length = strlen(base_tag);
 
@@ -205,7 +206,7 @@ static void read_indexfile(void)
 	indexfile_content = calloc(fsize + base_tag_length + 1, sizeof(char));
 	if(indexfile_content == NULL)
 	{
-		logg("read_indexfile(): Memory error (3)");
+		logg("prepare_index_html(): Memory error (3)");
 		free(index_path);
 		free(base_tag);
 	}
@@ -314,17 +315,16 @@ void http_init(void)
 		NULL
 	};
 
-	// Configure logging handler
-	struct mg_callbacks callbacks = {NULL};
+	// Configure logging handlers
+	struct mg_callbacks callbacks = { NULL };
 	callbacks.log_message = log_http_message;
-
-	// We log all access to pihole-FTL.log when in API debugging mode
-	callbacks.log_access = log_http_access;
+	callbacks.log_access  = log_http_access;
 
 	/* Start the server */
 	if((ctx = mg_start(&callbacks, NULL, options)) == NULL)
 	{
-		logg("ERROR: Initializing HTTP library failed!");
+		logg("ERROR: Initializing HTTP library failed!\n"
+		     "       Web interface will not be available!");
 		return;
 	}
 
@@ -342,7 +342,7 @@ void http_init(void)
 		free(api_path);
 	}
 
-	read_indexfile();
+	prepare_index_html();
 	mg_set_request_handler(ctx, httpsettings.webhome, index_handler, NULL);
 }
 

@@ -11,7 +11,8 @@
 #include "../FTL.h"
 // struct mg_connection
 #include "../civetweb/civetweb.h"
-#include "../api/http-common.h"
+#include "http-common.h"
+#include "json_macros.h"
 #include "routes.h"
 
 int api_handler(struct mg_connection *conn, void *ignored)
@@ -114,12 +115,16 @@ int api_handler(struct mg_connection *conn, void *ignored)
 		ret = api_settings_ftldb(conn);
 	}
 	/******************************** not found ******************************/
-/*	else
+	else
 	{
 		cJSON *json = JSON_NEW_OBJ();
-		JSON_OBJ_REF_STR(json, "status", "requested path is not available");
 		JSON_OBJ_REF_STR(json, "path", request->local_uri);
-		JSON_SEND_OBJECT(json);
-	}*/
+
+		ret = send_json_error(conn, 404,
+		                      "not_found",
+		                      "Not found",
+		                      json, NULL);
+	}
+
 	return ret;
 }
