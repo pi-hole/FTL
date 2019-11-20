@@ -282,8 +282,8 @@
   [[ ${lines[0]} == "Error 404: Not Found" ]]
 }
 
-@test "HTTP server responds without error to undefined path inside /admin" {
-  run bash -c 'curl -I -s 127.0.0.1:8080/undefined'
+@test "HTTP server responds without error to undefined path inside /admin (rerouted to index.html)" {
+  run bash -c 'curl -I -s 127.0.0.1:8080/admin/undefined'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "HTTP/1.1 200 OK"* ]]
 }
