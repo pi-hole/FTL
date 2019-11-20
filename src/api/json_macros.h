@@ -39,7 +39,7 @@
 	if(string_item == NULL) \
 	{ \
 		cJSON_Delete(object); \
-		send_http_error(conn); \
+		send_http_internal_error(conn); \
 		return 500; \
 	} \
 	cJSON_AddItemToObject(object, key, string_item); \
@@ -50,7 +50,7 @@
 	if(string_item == NULL) \
 	{ \
 		cJSON_Delete(object); \
-		send_http_error(conn); \
+		send_http_internal_error(conn); \
 		return 500; \
 	} \
 	cJSON_AddItemToObject(object, key, string_item); \
@@ -60,7 +60,7 @@
 	if(cJSON_AddNumberToObject(object, key, (double)number) == NULL) \
 	{ \
 		cJSON_Delete(object); \
-		send_http_error(conn); \
+		send_http_internal_error(conn); \
 		return 500; \
 	} \
 }
@@ -70,7 +70,7 @@
 	if(null_item == NULL) \
 	{ \
 		cJSON_Delete(object); \
-		send_http_error(conn); \
+		send_http_internal_error(conn); \
 		return 500; \
 	} \
 	cJSON_AddItemToObject(object, key, null_item); \
@@ -81,7 +81,7 @@
 	if(bool_item == NULL) \
 	{ \
 		cJSON_Delete(object); \
-		send_http_error(conn); \
+		send_http_internal_error(conn); \
 		return 500; \
 	} \
 	cJSON_AddItemToObject(object, key, bool_item); \
@@ -97,7 +97,7 @@
 	if(string_item == NULL) \
 	{ \
 		cJSON_Delete(array); \
-		send_http_error(conn); \
+		send_http_internal_error(conn); \
 		return 500; \
 	} \
 	cJSON_AddItemToArray(array, string_item); \
@@ -108,7 +108,7 @@
 	if(string_item == NULL) \
 	{ \
 		cJSON_Delete(array); \
-		send_http_error(conn); \
+		send_http_internal_error(conn); \
 		return 500; \
 	} \
 	cJSON_AddItemToArray(array, string_item); \
@@ -126,7 +126,7 @@
 	if(msg == NULL) \
 	{ \
 		cJSON_Delete(object); \
-		send_http_error(conn); \
+		send_http_internal_error(conn); \
 		return 500; \
 	} \
 	send_http(conn, "application/json; charset=utf-8", NULL, msg); \
@@ -139,7 +139,7 @@
 	if(msg == NULL) \
 	{ \
 		cJSON_Delete(object); \
-		send_http_error(conn); \
+		send_http_internal_error(conn); \
 		return 500; \
 	} \
 	send_http_code(conn, "application/json; charset=utf-8", NULL, code, msg); \
@@ -152,7 +152,7 @@
 	if(msg == NULL) \
 	{ \
 		cJSON_Delete(object); \
-		send_http_error(conn); \
+		send_http_internal_error(conn); \
 		return 500; \
 	} \
 	send_http(conn, "application/json; charset=utf-8", additional_headers, msg); \
@@ -166,7 +166,7 @@
 	if(msg == NULL) \
 	{ \
 		cJSON_Delete(object); \
-		send_http_error(conn); \
+		send_http_internal_error(conn); \
 		return 500; \
 	} \
 	send_http_code(conn, "application/json; charset=utf-8", additional_headers, code, msg); \

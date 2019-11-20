@@ -86,7 +86,7 @@ int send_json_success(struct mg_connection *conn,
 	JSON_SEND_OBJECT_AND_HEADERS(json, additional_headers);
 }
 
-int send_http_error(struct mg_connection *conn)
+int send_http_internal_error(struct mg_connection *conn)
 {
 	return mg_send_http_error(conn, 500, "Internal server error");
 }
@@ -240,7 +240,7 @@ static int index_handler(struct mg_connection *conn, void *ignored)
 	else
 	{
 		logg("ERROR: index.html not available, responding with Error 500.");
-		send_http_error(conn);
+		send_http_internal_error(conn);
 		return 500;
 	}
 	

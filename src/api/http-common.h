@@ -27,7 +27,7 @@ int send_http(struct mg_connection *conn, const char *mime_type,
               const char *additional_headers, const char *msg);
 int send_http_code(struct mg_connection *conn, const char *mime_type,
                    const char *additional_headers, int code, const char *msg);
-int send_http_error(struct mg_connection *conn);
+int send_http_internal_error(struct mg_connection *conn);
 int send_json_unauthorized(struct mg_connection *conn,
                            char *additional_headers);
 int send_json_error(struct mg_connection *conn, const int code,
