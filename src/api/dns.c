@@ -39,30 +39,33 @@ int api_dns_status(struct mg_connection *conn)
 		// Verify requesting client is allowed to access this ressource
 		if(check_client_auth(conn) < 0)
 		{
-			cJSON *json = JSON_NEW_OBJ();
-			JSON_OBJ_REF_STR(json, "key", "unauthorized");
-			JSON_SENT_OBJECT_CODE(json, 401);
+			return send_json_unauthorized(conn, NULL);
 		}
 
 		char buffer[1024];
 		int data_len = mg_read(conn, buffer, sizeof(buffer) - 1);
 		if ((data_len < 1) || (data_len >= (int)sizeof(buffer))) {
-			mg_send_http_error(conn, 400, "%s", "No request body data");
-			return 400;
+			return send_json_error(conn, 400,
+			                       "bad_request", "No request body data",
+                                               NULL, NULL);
 		}
 		buffer[data_len] = '\0';
 
 		cJSON *obj = cJSON_Parse(buffer);
 		if (obj == NULL) {
-			mg_send_http_error(conn, 400, "%s", "Invalid request body data");
-			return 400;
+			return send_json_error(conn, 400,
+                                               "bad_request",
+                                               "Invalid request body data",
+                                                NULL, NULL);
 		}
 
 		cJSON *elem1 = cJSON_GetObjectItemCaseSensitive(obj, "action");
 		if (!cJSON_IsString(elem1)) {
 			cJSON_Delete(obj);
-			mg_send_http_error(conn, 400, "%s", "No \"action\" string in body data");
-			return 400;
+			return send_json_error(conn, 400,
+			                       "bad_request",
+                                               "No \"action\" string in body data",
+                                               NULL, NULL);
 		}
 		const char *action = elem1->valuestring;
 
@@ -95,7 +98,10 @@ int api_dns_status(struct mg_connection *conn)
 		else
 		{
 			cJSON_Delete(obj);
-			JSON_OBJ_REF_STR(json, "key", "unsupported action");
+			return send_json_error(conn, 400,
+			                       "bad_request",
+                                               "Invalid \"action\" requested",
+                                               NULL, NULL);
 		}
 		JSON_SENT_OBJECT(json);
 	}
@@ -141,23 +147,28 @@ static int api_dns_somelist_POST(struct mg_connection *conn,
 	char buffer[1024];
 	int data_len = mg_read(conn, buffer, sizeof(buffer) - 1);
 	if ((data_len < 1) || (data_len >= (int)sizeof(buffer))) {
-		mg_send_http_error(conn, 400, "%s", "No request body data");
-		return 400;
+		return send_json_error(conn, 400,
+                                       "bad_request", "No request body data",
+                                       NULL, NULL);
 	}
 	buffer[data_len] = '\0';
 
 	cJSON *obj = cJSON_Parse(buffer);
 	if (obj == NULL) {
-		mg_send_http_error(conn, 400, "%s", "Invalid request body data");
-		return 400;
+		return send_json_error(conn, 400,
+                                       "bad_request",
+                                       "Invalid request body data",
+                                       NULL, NULL);
 	}
 
 	cJSON *elem = cJSON_GetObjectItemCaseSensitive(obj, "domain");
 
 	if (!cJSON_IsString(elem)) {
 		cJSON_Delete(obj);
-		mg_send_http_error(conn, 400, "%s", "No \"domain\" string in body data");
-		return 400;
+		return send_json_error(conn, 400,
+                                       "bad_request",
+                                       "No \"domain\" string in body data",
+                                       NULL, NULL);
 	}
 	const char *domain = elem->valuestring;
 
@@ -183,11 +194,12 @@ static int api_dns_somelist_POST(struct mg_connection *conn,
 	}
 	else
 	{
-		JSON_OBJ_REF_STR(json, "key", "error");
 		JSON_OBJ_COPY_STR(json, "domain", domain);
 		cJSON_Delete(obj);
-		// Send 500 internal server error
-		JSON_SENT_OBJECT_CODE(json, 500);
+		return send_json_error(conn, 500,
+                                       "database_error",
+                                       "Could not add domain to database table",
+                                       json, NULL);
 	}
 }
 
@@ -224,10 +236,11 @@ static int api_dns_somelist_DELETE(struct mg_connection *conn,
 	}
 	else
 	{
-		JSON_OBJ_REF_STR(json, "key", "error");
 		JSON_OBJ_REF_STR(json, "domain", domain);
-		// Send 500 internal server error
-		JSON_SENT_OBJECT_CODE(json, 500);
+		return send_json_error(conn, 500,
+                                       "database_error",
+                                       "Could not remove domain from database table",
+                                       json, NULL);
 	}
 }
 
@@ -236,9 +249,7 @@ int api_dns_somelist(struct mg_connection *conn, bool exact, bool whitelist)
 	// Verify requesting client is allowed to see this ressource
 	if(check_client_auth(conn) < 0)
 	{
-		cJSON *json = JSON_NEW_OBJ();
-		JSON_OBJ_REF_STR(json, "key", "unauthorized");
-		JSON_SENT_OBJECT_CODE(json, 401);
+		return send_json_unauthorized(conn, NULL);
 	}
 
 	int method = http_method(conn);

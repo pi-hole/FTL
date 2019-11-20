@@ -13,6 +13,7 @@
 #include "http-common.h"
 #include "../config.h"
 #include "../log.h"
+#include "../cJSON/cJSON.h"
 #include "json_macros.h"
 
 // Server context handle
@@ -34,6 +35,47 @@ int send_http_code(struct mg_connection *conn, const char *mime_type,
 	my_send_http_error_headers(conn, code, mime_type,
 	                           additional_headers, strlen(msg));
 	return mg_write(conn, msg, strlen(msg));
+}
+
+int send_json_unauthorized(struct mg_connection *conn,
+                           char *additional_headers)
+{
+	return send_json_error(conn, 401,
+                               "unauthorized",
+                               "Unauthorized",
+                               NULL, additional_headers);
+}
+
+int send_json_error(struct mg_connection *conn, const int code,
+                    const char *key, const char* message,
+                    cJSON *data, char *additional_headers)
+{
+	cJSON *json = JSON_NEW_OBJ();
+	cJSON *error = JSON_NEW_OBJ();
+	JSON_OBJ_REF_STR(error, "key", key);
+	JSON_OBJ_REF_STR(error, "message", message);
+
+	// Add data if available
+	if(data == NULL)
+	{
+		JSON_OBJ_ADD_NULL(error, "data");
+	}
+	else
+	{
+		JSON_OBJ_ADD_ITEM(error, "data", data);
+	}
+		
+	JSON_OBJ_ADD_ITEM(json, "error", error);
+
+	// Send additional headers if supplied
+	if(additional_headers == NULL)
+	{
+		JSON_SENT_OBJECT_CODE(json, code);
+	}
+	else
+	{
+		JSON_SENT_OBJECT_AND_HEADERS_CODE(json, code, additional_headers);
+	}
 }
 
 int send_http_error(struct mg_connection *conn)

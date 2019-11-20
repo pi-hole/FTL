@@ -154,13 +154,13 @@ int api_auth(struct mg_connection *conn)
 	if(user_id < 0)
 		user_id = check_client_auth(conn);
 
-	cJSON *json = JSON_NEW_OBJ();
 	int method = http_method(conn);
 	if(user_id > -1 && method == HTTP_GET)
 	{
 		if(config.debug & DEBUG_API)
 			logg("Authentification: OK, registered new client");
 
+		cJSON *json = JSON_NEW_OBJ();
 		JSON_OBJ_REF_STR(json, "status", "success");
 		// Ten minutes validity
 		char *additional_headers = NULL;
@@ -184,19 +184,15 @@ int api_auth(struct mg_connection *conn)
 		free(auth_data[user_id].remote_addr);
 		auth_data[user_id].remote_addr = NULL;
 
+		cJSON *json = JSON_NEW_OBJ();
 		JSON_OBJ_REF_STR(json, "status", "success");
 		char *additional_headers = strdup("Set-Cookie: user_id=deleted; Path=/; Max-Age=-1\r\n");
 		JSON_SENT_OBJECT_AND_HEADERS(json, additional_headers);
 	}
 	else
 	{
-		cJSON *error = JSON_NEW_OBJ();
-		JSON_OBJ_REF_STR(error, "key", "unauthorized");
-		JSON_OBJ_REF_STR(error, "message", "Unauthorized");
-		JSON_OBJ_ADD_NULL(error, "data");
-		JSON_OBJ_ADD_ITEM(json, "error", error);
 		char *additional_headers = strdup("Set-Cookie: user_id=deleted; Path=/; Max-Age=-1\r\n");
-		JSON_SENT_OBJECT_AND_HEADERS_CODE(json, 401, additional_headers);
+		return send_json_unauthorized(conn, additional_headers);
 	}
 }
 
