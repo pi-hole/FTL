@@ -306,13 +306,38 @@ void http_init(void)
 	}
 
 	// Prepare options for HTTP server (NULL-terminated list)
+	// Note about the additional headers:
+	// - "Content-Security-Policy: [...]"
+	//   "style-src 'self' 'unsafe-inline' is required by Chart.js styling some elements directly
+	//   "script-src 'self' 'unsafe-inline' is required by index.html containing inline Javascript code.
+	// - "X-Frame-Options: SAMEORIGIN"
+	//   The page can only be displayed in a frame on the same origin as the page itself.
+	// - "X-Xss-Protection: 1; mode=block"
+	//   Enables XSS filtering. Rather than sanitizing the page, the browser will prevent
+	//   rendering of the page if an attack is detected.
+	// - "X-Content-Type-Options: nosniff"
+	//   Marker used by the server to indicate that the MIME types advertised in the
+	//   Content-Type headers should not be changed and be followed. This allows to
+	//   opt-out of MIME type sniffing, or, in other words, it is a way to say that the
+	//   webmasters knew what they were doing. Site security testers usually expect this
+	//   header to be set.
+	// - "Referrer-Policy: same-origin"
+	//   A referrer will be sent for same-site origins, but cross-origin requests will
+	//   send no referrer information.
+	// The latter four headers are set as expected by https://securityheaders.io
 	const char *options[] = {
 		"document_root", httpsettings.webroot,
 		"listening_ports", httpsettings.port,
 		"decode_url", "no",
 		"num_threads", "4",
 		"access_control_list", httpsettings.acl,
-		"additional_header", "Content-Security-Policy: default-src 'self' 'unsafe-inline';",
+		"additional_header", "Content-Security-Policy: default-src 'self'; "
+		                                              "style-src 'self' 'unsafe-inline';"
+		                                              "script-src 'self' 'unsafe-inline';\r\n"
+		                     "X-Frame-Options: SAMEORIGIN\r\n"
+		                     "X-Xss-Protection: 1; mode=block\r\n"
+		                     "X-Content-Type-Options: nosniff\r\n"
+		                     "Referrer-Policy: same-origin",
 		NULL
 	};
 
