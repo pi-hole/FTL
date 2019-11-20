@@ -164,14 +164,14 @@ int api_auth(struct mg_connection *conn)
 		JSON_OBJ_REF_STR(json, "status", "success");
 		// Ten minutes validity
 		char *additional_headers = NULL;
-		if(asprintf(&additional_headers, "Set-Cookie: user_id=%u; Path=/; Max-Age=%u\r\n", user_id, API_SESSION_EXPIRE) > 0)
+		if(asprintf(&additional_headers,
+		            "Set-Cookie: user_id=%u; Path=/; Max-Age=%u\r\n",
+		            user_id, API_SESSION_EXPIRE) < 0)
 		{
-			JSON_SENT_OBJECT_AND_HEADERS(json, additional_headers);
+			return send_json_error(conn, 500, "internal_error", "Internal server error", NULL, NULL);
 		}
-		else
-		{
-			JSON_SENT_OBJECT(json);
-		}
+	
+		return send_json_success(conn, additional_headers);
 	}
 	else if(user_id > -1 && method == HTTP_DELETE)
 	{
@@ -184,10 +184,8 @@ int api_auth(struct mg_connection *conn)
 		free(auth_data[user_id].remote_addr);
 		auth_data[user_id].remote_addr = NULL;
 
-		cJSON *json = JSON_NEW_OBJ();
-		JSON_OBJ_REF_STR(json, "status", "success");
 		char *additional_headers = strdup("Set-Cookie: user_id=deleted; Path=/; Max-Age=-1\r\n");
-		JSON_SENT_OBJECT_AND_HEADERS(json, additional_headers);
+		return send_json_success(conn, additional_headers);
 	}
 	else
 	{

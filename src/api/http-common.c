@@ -78,6 +78,14 @@ int send_json_error(struct mg_connection *conn, const int code,
 	}
 }
 
+int send_json_success(struct mg_connection *conn,
+                      char * additional_headers)
+{
+	cJSON *json = JSON_NEW_OBJ();
+	JSON_OBJ_REF_STR(json, "status", "success");
+	JSON_SENT_OBJECT_AND_HEADERS(json, additional_headers);
+}
+
 int send_http_error(struct mg_connection *conn)
 {
 	return mg_send_http_error(conn, 500, "Internal server error");

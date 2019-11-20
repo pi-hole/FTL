@@ -34,6 +34,8 @@ int send_json_unauthorized(struct mg_connection *conn,
 int send_json_error(struct mg_connection *conn, const int code,
                     const char *key, const char* message,
                     cJSON *data, char *additional_headers);
+int send_json_success(struct mg_connection *conn,
+                      char * additional_headers);
 
 // Cookie routines
 bool http_get_cookie_int(struct mg_connection *conn, const char *cookieName, int *i);
