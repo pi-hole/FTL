@@ -84,13 +84,11 @@ static __attribute__((malloc)) char *get_password_hash(void)
 	const char* password = read_setupVarsconf("WEBPASSWORD");
 
 	// If the value was not set (or we couldn't open the file for reading),
-	// substitute password with the hash for "A". This is only meant to be
-	// used during the development of the FTL HTTP API
-	if(password == NULL)
+	// substitute password with the hash for an empty string (= no password).
+	if(password == NULL || (password != NULL && strlen(password) == 0u))
 	{
-		password = "599d48457e4996df84cbfeb973cd109827c0de9fa211c0d062eab13584ea6bb8";
-		if(config.debug & DEBUG_API)
-			logg("Substituting password 'A'");
+		// This is the empty password hash
+		password = "cd372fb85148700fa88095e3492d3f9f5beb43e555e5ff26d95f5a6adc36f8e6";
 	}
 
 	char *hash = strdup(password);
@@ -110,8 +108,8 @@ int api_auth(struct mg_connection *conn)
 	const char *xHeader = mg_get_header(conn, "X-Pi-hole-Authenticate");
 	if(xHeader != NULL && strlen(xHeader) > 0)
 	{
-		char *passord_hash = get_password_hash();
-		if(strcmp(xHeader,passord_hash) == 0)
+		char *password_hash = get_password_hash();
+		if(strcmp(xHeader, password_hash) == 0)
 		{
 			// Accepted
 			for(unsigned int i = 0; i < API_MAX_CLIENTS; i++)
@@ -144,7 +142,12 @@ int api_auth(struct mg_connection *conn)
 				}
 			}
 		}
-		free(passord_hash);
+		else if(config.debug & DEBUG_API)
+		{
+			logg("Password mismatch. User=%s, setupVars=%s", xHeader, password_hash);
+		}
+
+		free(password_hash);
 	}
 
 	// Did the client authenticate before and we can validate this?
