@@ -269,3 +269,15 @@
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "pong" ]]
 }
+
+@test "HTTP server responds wth JSON 404 to unknown API path" {
+  run bash -c 'wget 127.0.0.1:8080/admin/api/undefined -q -O - --content-on-error'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "{\"error\":{\"key\":\"not_found\",\"message\":\"Not found\",\"data\":{\"path\":\"/admin/api/undefined\"}}}" ]]
+}
+
+@test "HTTP server responds wth normal 404 to path outside /admin" {
+  run bash -c 'wget 127.0.0.1:8080/undefined -q -O - --content-on-error'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "Error 404: Not Found" ]]
+}
