@@ -70,11 +70,11 @@ int send_json_error(struct mg_connection *conn, const int code,
 	// Send additional headers if supplied
 	if(additional_headers == NULL)
 	{
-		JSON_SENT_OBJECT_CODE(json, code);
+		JSON_SEND_OBJECT_CODE(json, code);
 	}
 	else
 	{
-		JSON_SENT_OBJECT_AND_HEADERS_CODE(json, code, additional_headers);
+		JSON_SEND_OBJECT_AND_HEADERS_CODE(json, code, additional_headers);
 	}
 }
 
@@ -83,12 +83,35 @@ int send_json_success(struct mg_connection *conn,
 {
 	cJSON *json = JSON_NEW_OBJ();
 	JSON_OBJ_REF_STR(json, "status", "success");
-	JSON_SENT_OBJECT_AND_HEADERS(json, additional_headers);
+	JSON_SEND_OBJECT_AND_HEADERS(json, additional_headers);
 }
 
 int send_http_error(struct mg_connection *conn)
 {
 	return mg_send_http_error(conn, 500, "Internal server error");
+}
+
+bool get_bool_var(const char *source, const char *var)
+{
+	char buffer[16] = { 0 };
+	if(GET_VAR(var, buffer, source))
+	{
+		return (strstr(buffer, "true") != NULL);
+	}
+	return false;
+}
+
+int get_int_var(const char *source, const char *var)
+{
+	int num = -1;
+	char buffer[16] = { 0 };
+	if(GET_VAR(var, buffer, source) &&
+	   sscanf(buffer, "%d", &num) == 1)
+	{
+		return num;
+	}
+
+	return -1;
 }
 
 bool __attribute__((pure)) startsWith(const char *path, const char *uri)

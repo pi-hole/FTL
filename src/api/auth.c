@@ -201,5 +201,5 @@ int api_auth_salt(struct mg_connection *conn)
 	generateRandomString(salt, sizeof(salt));
 	cJSON *json = JSON_NEW_OBJ();
 	JSON_OBJ_REF_STR(json, "salt", salt);
-	JSON_SENT_OBJECT(json);
+	JSON_SEND_OBJECT(json);
 }

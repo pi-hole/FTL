@@ -24,7 +24,7 @@ int api_settings_web(struct mg_connection *conn)
 	cJSON *json = JSON_NEW_OBJ();
 	JSON_OBJ_REF_STR(json, "layout", "boxed");
 	JSON_OBJ_REF_STR(json, "language", "en");
-	JSON_SENT_OBJECT(json);
+	JSON_SEND_OBJECT(json);
 }
 
 int api_settings_ftldb(struct mg_connection *conn)
@@ -41,5 +41,5 @@ int api_settings_ftldb(struct mg_connection *conn)
 	const int queries_in_database = get_number_of_queries_in_DB();
 	JSON_OBJ_ADD_NUMBER(json, "queries", queries_in_database);
 	JSON_OBJ_REF_STR(json, "sqlite_version", get_sqlite3_version());
-	JSON_SENT_OBJECT(json);
+	JSON_SEND_OBJECT(json);
 }

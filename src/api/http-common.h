@@ -41,6 +41,10 @@ int send_json_success(struct mg_connection *conn,
 bool http_get_cookie_int(struct mg_connection *conn, const char *cookieName, int *i);
 bool http_get_cookie_str(struct mg_connection *conn, const char *cookieName, char *str, size_t str_size);
 
+// HTTP parameter routines
+bool get_bool_var(const char *source, const char *var);
+int get_int_var(const char *source, const char *var);
+
 // HTTP macros
 #define GET_VAR(variable, destination, source) mg_get_var(source, strlen(source), variable, destination, sizeof(destination))
 

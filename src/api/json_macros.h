@@ -121,7 +121,7 @@
 
 #define JSON_DELETE(object) cJSON_Delete(object)
 
-#define JSON_SENT_OBJECT(object){ \
+#define JSON_SEND_OBJECT(object){ \
 	const char* msg = JSON_FORMATTER(object); \
 	if(msg == NULL) \
 	{ \
@@ -134,7 +134,7 @@
 	return 200; \
 }
 
-#define JSON_SENT_OBJECT_CODE(object, code){ \
+#define JSON_SEND_OBJECT_CODE(object, code){ \
 	const char* msg = JSON_FORMATTER(object); \
 	if(msg == NULL) \
 	{ \
@@ -147,7 +147,7 @@
 	return 200; \
 }
 
-#define JSON_SENT_OBJECT_AND_HEADERS(object, additional_headers){ \
+#define JSON_SEND_OBJECT_AND_HEADERS(object, additional_headers){ \
 	const char* msg = JSON_FORMATTER(object); \
 	if(msg == NULL) \
 	{ \
@@ -161,7 +161,7 @@
 	return 200; \
 }
 
-#define JSON_SENT_OBJECT_AND_HEADERS_CODE(object, code, additional_headers){ \
+#define JSON_SEND_OBJECT_AND_HEADERS_CODE(object, code, additional_headers){ \
 	const char* msg = JSON_FORMATTER(object); \
 	if(msg == NULL) \
 	{ \

@@ -56,5 +56,5 @@ int api_version(struct mg_connection *conn)
 	JSON_OBJ_REF_STR(ftl, "tag", version);
 	JSON_OBJ_ADD_ITEM(json, "ftl", ftl);
 
-	JSON_SENT_OBJECT(json);
+	JSON_SEND_OBJECT(json);
 }

@@ -32,7 +32,7 @@ int api_dns_status(struct mg_connection *conn)
 		// Return current status
 		cJSON *json = JSON_NEW_OBJ();
 		JSON_OBJ_REF_STR(json, "status", (get_blockingstatus() ? "enabled" : "disabled"));
-		JSON_SENT_OBJECT(json);
+		JSON_SEND_OBJECT(json);
 	}
 	else if(method == HTTP_POST)
 	{
@@ -103,7 +103,7 @@ int api_dns_status(struct mg_connection *conn)
                                                "Invalid \"action\" requested",
                                                NULL, NULL);
 		}
-		JSON_SENT_OBJECT(json);
+		JSON_SEND_OBJECT(json);
 	}
 	else
 	{
@@ -137,7 +137,7 @@ static int api_dns_somelist_read(struct mg_connection *conn, bool exact, bool wh
 	}
 	gravityDB_finalizeTable();
 
-	JSON_SENT_OBJECT(json);
+	JSON_SEND_OBJECT(json);
 }
 
 static int api_dns_somelist_POST(struct mg_connection *conn,
@@ -190,7 +190,7 @@ static int api_dns_somelist_POST(struct mg_connection *conn,
 		JSON_OBJ_REF_STR(json, "key", "added");
 		JSON_OBJ_COPY_STR(json, "domain", domain);
 		cJSON_Delete(obj);
-		JSON_SENT_OBJECT(json);
+		JSON_SEND_OBJECT(json);
 	}
 	else
 	{
@@ -232,7 +232,7 @@ static int api_dns_somelist_DELETE(struct mg_connection *conn,
 	{
 		JSON_OBJ_REF_STR(json, "key", "removed");
 		JSON_OBJ_REF_STR(json, "domain", domain);
-		JSON_SENT_OBJECT(json);
+		JSON_SEND_OBJECT(json);
 	}
 	else
 	{

@@ -29,7 +29,7 @@
 
 #define min(a,b) ({ __typeof__ (a) _a = (a); __typeof__ (b) _b = (b); _a < _b ? _a : _b; })
 
-/* qsort comparision function (count field), sort ASC */
+/* qsort comparision function (count field), sort ASC
 static int __attribute__((pure)) cmpasc(const void *a, const void *b)
 {
 	const int *elem1 = (int*)a;
@@ -41,7 +41,7 @@ static int __attribute__((pure)) cmpasc(const void *a, const void *b)
 		return 1;
 	else
 		return 0;
-}
+} */
 
 // qsort subroutine, sort DESC
 static int __attribute__((pure)) cmpdesc(const void *a, const void *b)
@@ -110,7 +110,7 @@ int api_stats_summary(struct mg_connection *conn)
 	JSON_OBJ_ADD_NUMBER(reply_types, "IP", counters->reply_IP);
 	JSON_OBJ_ADD_ITEM(json, "reply_types", reply_types);
 
-	JSON_SENT_OBJECT(json);
+	JSON_SEND_OBJECT(json);
 }
 
 int api_stats_overTime_history(struct mg_connection *conn)
@@ -148,7 +148,7 @@ int api_stats_overTime_history(struct mg_connection *conn)
 		cJSON *json = JSON_NEW_ARRAY();
 		cJSON *item = JSON_NEW_OBJ();
 		JSON_ARRAY_ADD_ITEM(json, item);
-		JSON_SENT_OBJECT(json);
+		JSON_SEND_OBJECT(json);
 	}
 
 	cJSON *json = JSON_NEW_ARRAY();
@@ -160,13 +160,13 @@ int api_stats_overTime_history(struct mg_connection *conn)
 		JSON_OBJ_ADD_NUMBER(item, "blocked_queries", overTime[slot].blocked);
 		JSON_ARRAY_ADD_ITEM(json, item);
 	}
-	JSON_SENT_OBJECT(json);
+	JSON_SEND_OBJECT(json);
 }
 
 int api_stats_top_domains(bool blocked, struct mg_connection *conn)
 {
-	int temparray[counters->domains][2], show=10;
-	bool audit = false, asc = false;
+	int temparray[counters->domains][2], show = 10;
+	bool audit = false;
 
 	// Verify requesting client is allowed to see this ressource
 	if(check_client_auth(conn) < 0)
@@ -174,42 +174,29 @@ int api_stats_top_domains(bool blocked, struct mg_connection *conn)
 		return send_json_unauthorized(conn, NULL);
 	}
 
+	// Exit before processing any data if requested via config setting
+	get_privacy_level(NULL);
+	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS)
+	{
+		cJSON* json = JSON_NEW_OBJ();
+		JSON_SEND_OBJECT(json);
+	}
+
 	// /api/stats/top_domains?blocked=true is allowed as well
 	const struct mg_request_info *request = mg_get_request_info(conn);
 	if(request->query_string != NULL)
 	{
 		// Should blocked clients be shown?
-		if(strstr(request->query_string, "blocked=true") != NULL)
-		{
-			blocked = true;
-		}
+		blocked = get_bool_var(request->query_string, "blocked");
 
 		// Does the user request a non-default number of replies?
+		// Note: We do not accept zero query requests here
 		int num;
-		if(sscanf(request->query_string, "num=%d", &num) == 1)
-		{
+		if((num = get_int_var(request->query_string, "show")) > 0)
 			show = num;
-		}
 
 		// Apply Audit Log filtering?
-		if(strstr(request->query_string, "audit=true") != NULL)
-		{
-			audit = true;
-		}
-
-		// Sort in ascending order?
-		if(strstr(request->query_string, "sort=asc") != NULL)
-		{
-			asc = true;
-		}
-	}
-
-	// Exit before processing any data if requested via config setting
-	get_privacy_level(NULL);
-	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS)
-	{
-		cJSON *json = JSON_NEW_ARRAY();
-		JSON_SENT_OBJECT(json);
+		audit = get_bool_var(request->query_string, "audit");
 	}
 
 	for(int domainID=0; domainID < counters->domains; domainID++)
@@ -228,10 +215,7 @@ int api_stats_top_domains(bool blocked, struct mg_connection *conn)
 	}
 
 	// Sort temporary array
-	if(asc)
-		qsort(temparray, counters->domains, sizeof(int[2]), cmpasc);
-	else
-		qsort(temparray, counters->domains, sizeof(int[2]), cmpdesc);
+	qsort(temparray, counters->domains, sizeof(int[2]), cmpdesc);
 
 
 	// Get filter
@@ -252,7 +236,7 @@ int api_stats_top_domains(bool blocked, struct mg_connection *conn)
 	clearSetupVarsArray();
 
 	// Get domains which the user doesn't want to see
-	char * excludedomains = NULL;
+	char *excludedomains = NULL;
 	if(!audit)
 	{
 		excludedomains = read_setupVarsconf("API_EXCLUDE_DOMAINS");
@@ -329,13 +313,13 @@ int api_stats_top_domains(bool blocked, struct mg_connection *conn)
 		JSON_OBJ_ADD_NUMBER(json, "total_queries", total_queries);
 	}
 
-	JSON_SENT_OBJECT(json);
+	JSON_SEND_OBJECT(json);
 }
 
 int api_stats_top_clients(bool blocked, struct mg_connection *conn)
 {
-	int temparray[counters->clients][2], show=10;
-	bool asc = false, includezeroclients = false;
+	int temparray[counters->clients][2], show = 10;
+	bool includezeroclients = false;
 
 	// Verify requesting client is allowed to see this ressource
 	if(check_client_auth(conn) < 0)
@@ -343,42 +327,29 @@ int api_stats_top_clients(bool blocked, struct mg_connection *conn)
 		return send_json_unauthorized(conn, NULL);
 	}
 
+	// Exit before processing any data if requested via config setting
+	get_privacy_level(NULL);
+	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS)
+	{
+		cJSON* json = JSON_NEW_OBJ();
+		JSON_SEND_OBJECT(json);
+	}
+
 	// /api/stats/top_clients9?blocked=true is allowed as well
 	const struct mg_request_info *request = mg_get_request_info(conn);
 	if(request->query_string != NULL)
 	{
 		// Should blocked clients be shown?
-		if(strstr(request->query_string, "blocked=true") != NULL)
-		{
-			blocked = true;
-		}
+		blocked = get_bool_var(request->query_string, "blocked");
 
 		// Does the user request a non-default number of replies?
+		// Note: We do not accept zero query requests here
 		int num;
-		if(sscanf(request->query_string, "num=%d", &num) == 1)
-		{
+		if((num = get_int_var(request->query_string, "show")) > 0)
 			show = num;
-		}
-
-		// Sort in ascending order?
-		if(strstr(request->query_string, "sort=asc") != NULL)
-		{
-			asc = true;
-		}
 
 		// Show also clients which have not been active recently?
-		if(strstr(request->query_string, "withzero=true") != NULL)
-		{
-			includezeroclients = true;
-		}
-	}
-
-	// Exit before processing any data if requested via config setting
-	get_privacy_level(NULL);
-	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS_CLIENTS)
-	{
-		cJSON *json = JSON_NEW_ARRAY();
-		JSON_SENT_OBJECT(json);
+		includezeroclients = get_bool_var(request->query_string, "withzero");
 	}
 
 	for(int clientID = 0; clientID < counters->clients; clientID++)
@@ -393,10 +364,7 @@ int api_stats_top_clients(bool blocked, struct mg_connection *conn)
 	}
 
 	// Sort temporary array
-	if(asc)
-		qsort(temparray, counters->clients, sizeof(int[2]), cmpasc);
-	else
-		qsort(temparray, counters->clients, sizeof(int[2]), cmpdesc);
+	qsort(temparray, counters->clients, sizeof(int[2]), cmpdesc);
 
 	// Get clients which the user doesn't want to see
 	const char* excludeclients = read_setupVarsconf("API_EXCLUDE_CLIENTS");
@@ -463,7 +431,7 @@ int api_stats_top_clients(bool blocked, struct mg_connection *conn)
 		JSON_OBJ_ADD_NUMBER(json, "total_queries", total_queries);
 	}
 
-	JSON_SENT_OBJECT(json);
+	JSON_SEND_OBJECT(json);
 }
 
 
@@ -547,7 +515,7 @@ int api_stats_upstreams(struct mg_connection *conn)
 	JSON_OBJ_ADD_NUMBER(json, "forwarded_queries", counters->forwarded);
 	const int total_queries = counters->forwarded + counters->cached + counters->blocked;
 	JSON_OBJ_ADD_NUMBER(json, "total_queries", total_queries);
-	JSON_SENT_OBJECT(json);
+	JSON_SEND_OBJECT(json);
 }
 
 static const char *querytypes[TYPE_MAX] = {"A","AAAA","ANY","SRV","SOA","PTR","TXT","NAPTR","UNKN"};
@@ -562,7 +530,7 @@ int api_stats_query_types(struct mg_connection *conn)
 		JSON_OBJ_ADD_NUMBER(item, "count", counters->querytype[i]);
 		JSON_ARRAY_ADD_ITEM(json, item);
 	}
-	JSON_SENT_OBJECT(json);
+	JSON_SEND_OBJECT(json);
 }
 
 int api_stats_history(struct mg_connection *conn)
@@ -571,8 +539,8 @@ int api_stats_history(struct mg_connection *conn)
 	get_privacy_level(NULL);
 	if(config.privacylevel >= PRIVACY_MAXIMUM)
 	{
-		cJSON *json = JSON_NEW_ARRAY();
-		JSON_SENT_OBJECT(json);
+		cJSON* json = JSON_NEW_OBJ();
+		JSON_SEND_OBJECT(json);
 	}
 
 	// Verify requesting client is allowed to see this ressource
@@ -606,31 +574,24 @@ int api_stats_history(struct mg_connection *conn)
 	const struct mg_request_info *request = mg_get_request_info(conn);
 	if(request->query_string != NULL)
 	{
-		char buffer[256] = { 0 };
-
+		int num;
 		// Time filtering?
-		if(GET_VAR("from", buffer, request->query_string) > 0)
-		{
-			sscanf(buffer, "%u", &from);
-		}
-
-		if(GET_VAR("until", buffer, request->query_string) > 0)
-		{
-			sscanf(buffer, "%u", &until);
-		}
+		if((num = get_int_var(request->query_string, "from")) > 0)
+			from = num;
+		if((num = get_int_var(request->query_string, "until")) > 0)
+			until = num;
 
 		// Query type filtering?
-		if(GET_VAR("querytype", buffer, request->query_string) > 0)
-		{
-			unsigned int qtype;
-			sscanf(buffer, "%u", &qtype);
-			if(querytype < TYPE_MAX)
-			{
-				querytype = qtype;
-			}
-		}
+		if((num = get_int_var(request->query_string, "querytype")) > 0 && num < TYPE_MAX)
+			querytype = num;
+
+		// Does the user request a non-default number of replies?
+		// Note: We do not accept zero query requests here
+		if((num = get_int_var(request->query_string, "show")) > 0)
+			show = num;
 
 		// Forward destination filtering?
+		char buffer[256] = { 0 };
 		if(GET_VAR("forward", buffer, request->query_string) > 0)
 		{
 			forwarddest = calloc(256, sizeof(char));
@@ -674,11 +635,16 @@ int api_stats_history(struct mg_connection *conn)
 				}
 				if(forwarddestid < 0)
 				{
-					// Requested forward destination has not been found, we directly
-					// exit here as there is no data to be returned
+					// Requested upstream has not been found, we directly
+					// tell teh user here as there is no data to be returned
+					cJSON *json = JSON_NEW_OBJ();
+					JSON_OBJ_COPY_STR(json, "upstream", forwarddest);
 					free(forwarddest);
-					cJSON *json = JSON_NEW_ARRAY();
-					JSON_SENT_OBJECT(json);
+
+					return send_json_error(conn, 400,
+					"bad_request",
+					"Requested upstream not found",
+					json, NULL);
 				}
 			}
 		}
@@ -713,10 +679,15 @@ int api_stats_history(struct mg_connection *conn)
 			if(domainid < 0)
 			{
 				// Requested domain has not been found, we directly
-				// exit here as there is no data to be returned
+				// tell the user here as there is no data to be returned
+				cJSON *json = JSON_NEW_OBJ();
+				JSON_OBJ_COPY_STR(json, "domain", domainname);
 				free(domainname);
-				cJSON *json = JSON_NEW_ARRAY();
-				JSON_SENT_OBJECT(json);
+
+				return send_json_error(conn, 400,
+                                       "bad_request",
+                                       "Requested domain not found",
+                                       json, NULL);
 			}
 		}
 
@@ -753,29 +724,43 @@ int api_stats_history(struct mg_connection *conn)
 			if(clientid < 0)
 			{
 				// Requested client has not been found, we directly
-				// exit here as there is no data to be returned
+				// tell the user here as there is no data to be returned
+				cJSON *json = JSON_NEW_OBJ();
+				JSON_OBJ_COPY_STR(json, "client", clientname);
 				free(clientname);
-				cJSON *json = JSON_NEW_ARRAY();
-				JSON_SENT_OBJECT(json);
+
+				return send_json_error(conn, 400,
+				"bad_request",
+				"Requested client not found",
+				json, NULL);
 			}
 		}
 
 		if(GET_VAR("cursor", buffer, request->query_string) > 0)
 		{
-			unsigned int num = 0u;
-			sscanf(buffer, "%u", &num);
-			// Do not start at the most recent, but at an older query
-			// Don't allow a start index that is smaller than zero
-			if(num > 0u && num < (unsigned int)counters->queries)
-			{
-				cursor = num;
-			}
-		}
+			unsigned int unum = 0u;
+			sscanf(buffer, "%u", &unum);
 
-		if(GET_VAR("show", buffer, request->query_string) > 0)
-		{
-			sscanf(buffer, "%u", &show);
-			// User wants a different number of requests
+			// Do not start at the most recent, but at an older query
+			if(unum < (unsigned int)counters->queries)
+			{
+				cursor = unum;
+			}
+			else
+			{
+				// Cursors larger than the current known number
+				// of queries are invalid
+				cJSON *json = JSON_NEW_OBJ();
+				JSON_OBJ_ADD_NUMBER(json, "cursor", unum);
+				JSON_OBJ_ADD_NUMBER(json, "maxval", counters->queries);
+				free(clientname);
+
+				return send_json_error(conn, 400,
+				"bad_request",
+				"Requested cursor larger than number of queries",
+				json, NULL);
+			}
+			
 		}
 	}
 
@@ -930,12 +915,12 @@ int api_stats_history(struct mg_connection *conn)
 		JSON_OBJ_ADD_NULL(json, "cursor");
 	}
 
-	JSON_SENT_OBJECT(json);
+	JSON_SEND_OBJECT(json);
 }
 
 int api_stats_recentblocked(struct mg_connection *conn)
 {
-	unsigned int num = 1;
+	unsigned int show = 1;
 
 	// Verify requesting client is allowed to see this ressource
 	if(check_client_auth(conn) < 0)
@@ -946,18 +931,11 @@ int api_stats_recentblocked(struct mg_connection *conn)
 	const struct mg_request_info *request = mg_get_request_info(conn);
 	if(request->query_string != NULL)
 	{
-		char buffer[256] = { 0 };
-
-		// Test for integer that specifies number of entries to be shown
-		if(GET_VAR("show", buffer, request->query_string) > 0)
-		{
-			// User wants a different number of requests
-			sscanf(buffer, "%u", &num);
-			if(num >= (unsigned int)counters->queries)
-			{
-				num = 0;
-			}
-		}
+		// Does the user request a non-default number of replies?
+		// Note: We do not accept zero query requests here
+		int num;
+		if((num = get_int_var(request->query_string, "show")) > 0)
+			show = num;
 	}
 
 	// Find most recently blocked query
@@ -994,30 +972,30 @@ int api_stats_recentblocked(struct mg_connection *conn)
 			JSON_ARRAY_REF_STR(blocked, domain);
 		}
 
-		if(found >= num)
+		if(found >= show)
 			break;
 	}
 	cJSON *json = JSON_NEW_OBJ();
 	JSON_OBJ_ADD_ITEM(json, "blocked", blocked);
-	JSON_SENT_OBJECT(json);
+	JSON_SEND_OBJECT(json);
 }
 
 int api_stats_overTime_clients(struct mg_connection *conn)
 {
 	int sendit = -1, until = OVERTIME_SLOTS;
 
-	// Exit before processing any data if requested via config setting
-	get_privacy_level(NULL);
-	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS_CLIENTS)
-	{
-		cJSON *json = JSON_NEW_OBJ();
-		JSON_SENT_OBJECT(json);
-	}
-
 	// Verify requesting client is allowed to see this ressource
 	if(check_client_auth(conn) < 0)
 	{
 		return send_json_unauthorized(conn, NULL);
+	}
+
+	// Exit before processing any data if requested via config setting
+	get_privacy_level(NULL);
+	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS_CLIENTS)
+	{
+		cJSON* json = JSON_NEW_OBJ();
+		JSON_SEND_OBJECT(json);
 	}
 
 	// Find minimum ID to send
@@ -1037,7 +1015,7 @@ int api_stats_overTime_clients(struct mg_connection *conn)
 		JSON_OBJ_ADD_ITEM(json, "over_time", over_time);
 		cJSON *clients = JSON_NEW_ARRAY();
 		JSON_OBJ_ADD_ITEM(json, "clients", clients);
-		JSON_SENT_OBJECT(json);
+		JSON_SEND_OBJECT(json);
 	}
 
 	// Find minimum ID to send
@@ -1128,5 +1106,5 @@ int api_stats_overTime_clients(struct mg_connection *conn)
 	if(excludeclients != NULL)
 		clearSetupVarsArray();
 
-	JSON_SENT_OBJECT(json);
+	JSON_SEND_OBJECT(json);
 }

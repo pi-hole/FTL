@@ -23,5 +23,5 @@ int api_ftl_clientIP(struct mg_connection *conn)
 	cJSON *json = JSON_NEW_OBJ();
 	const struct mg_request_info *request = mg_get_request_info(conn);
 	JSON_OBJ_REF_STR(json,"remote_addr", request->remote_addr);
-	JSON_SENT_OBJECT(json);
+	JSON_SEND_OBJECT(json);
 }
