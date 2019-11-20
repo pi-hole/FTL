@@ -265,25 +265,25 @@
 }
 
 @test "HTTP server responds correctly to ping" {
-  run bash -c 'curl 127.0.0.1:8080/ping'
+  run bash -c 'curl -s 127.0.0.1:8080/ping'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "pong" ]]
 }
 
 @test "HTTP server responds wth JSON error 404 to unknown API path" {
-  run bash -c 'curl 127.0.0.1:8080/admin/api/undefined'
+  run bash -c 'curl -s 127.0.0.1:8080/admin/api/undefined'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "{\"error\":{\"key\":\"not_found\",\"message\":\"Not found\",\"data\":{\"path\":\"/admin/api/undefined\"}}}" ]]
 }
 
 @test "HTTP server responds wth normal error 404 to path outside /admin" {
-  run bash -c 'curl 127.0.0.1:8080/undefined'
+  run bash -c 'curl -s 127.0.0.1:8080/undefined'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "Error 404: Not Found" ]]
 }
 
 @test "HTTP server responds without error to undefined path inside /admin" {
-  run bash -c 'curl -I 127.0.0.1:8080/undefined'
+  run bash -c 'curl -I -s 127.0.0.1:8080/undefined'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "HTTP/1.1 200 OK"* ]]
 }
