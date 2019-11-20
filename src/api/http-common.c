@@ -308,8 +308,8 @@ void http_init(void)
 	// Prepare options for HTTP server (NULL-terminated list)
 	// Note about the additional headers:
 	// - "Content-Security-Policy: [...]"
-	//   "style-src 'self' 'unsafe-inline' is required by Chart.js styling some elements directly
-	//   "script-src 'self' 'unsafe-inline' is required by index.html containing inline Javascript code.
+	//   'unsafe-inline' is both required by Chart.js styling some elements directly, and
+	//   index.html containing some inlined Javascript code.
 	// - "X-Frame-Options: SAMEORIGIN"
 	//   The page can only be displayed in a frame on the same origin as the page itself.
 	// - "X-Xss-Protection: 1; mode=block"
@@ -331,9 +331,7 @@ void http_init(void)
 		"decode_url", "no",
 		"num_threads", "4",
 		"access_control_list", httpsettings.acl,
-		"additional_header", "Content-Security-Policy: default-src 'self'; "
-		                                              "style-src 'self' 'unsafe-inline';"
-		                                              "script-src 'self' 'unsafe-inline';\r\n"
+		"additional_header", "Content-Security-Policy: default-src 'self' 'unsafe-inline';\r\n"
 		                     "X-Frame-Options: SAMEORIGIN\r\n"
 		                     "X-Xss-Protection: 1; mode=block\r\n"
 		                     "X-Content-Type-Options: nosniff\r\n"

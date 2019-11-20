@@ -178,7 +178,11 @@ int api_stats_top_domains(bool blocked, struct mg_connection *conn)
 	get_privacy_level(NULL);
 	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS)
 	{
-		cJSON* json = JSON_NEW_OBJ();
+		// Minimum structure is
+		// {"top_domains":[]}
+		cJSON *json = JSON_NEW_OBJ();
+		cJSON *top_domains = JSON_NEW_ARRAY();
+		JSON_OBJ_ADD_ITEM(json, "top_domains", top_domains);
 		JSON_SEND_OBJECT(json);
 	}
 
@@ -329,9 +333,13 @@ int api_stats_top_clients(bool blocked, struct mg_connection *conn)
 
 	// Exit before processing any data if requested via config setting
 	get_privacy_level(NULL);
-	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS)
+	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS_CLIENTS)
 	{
-		cJSON* json = JSON_NEW_OBJ();
+		// Minimum structure is
+		// {"top_clients":[]}
+		cJSON *json = JSON_NEW_OBJ();
+		cJSON *top_clients = JSON_NEW_ARRAY();
+		JSON_OBJ_ADD_ITEM(json, "top_clients", top_clients);
 		JSON_SEND_OBJECT(json);
 	}
 
@@ -539,7 +547,13 @@ int api_stats_history(struct mg_connection *conn)
 	get_privacy_level(NULL);
 	if(config.privacylevel >= PRIVACY_MAXIMUM)
 	{
-		cJSON* json = JSON_NEW_OBJ();
+		// Minimum structure is
+		// {"history":[{}]}
+		cJSON *json = JSON_NEW_OBJ();
+		cJSON *history = JSON_NEW_ARRAY();
+		cJSON *item = JSON_NEW_OBJ();
+		JSON_ARRAY_ADD_ITEM(history, item);
+		JSON_OBJ_ADD_ITEM(json, "history", history);
 		JSON_SEND_OBJECT(json);
 	}
 
@@ -685,9 +699,9 @@ int api_stats_history(struct mg_connection *conn)
 				free(domainname);
 
 				return send_json_error(conn, 400,
-                                       "bad_request",
-                                       "Requested domain not found",
-                                       json, NULL);
+				                       "bad_request",
+				                       "Requested domain not found",
+				                       json, NULL);
 			}
 		}
 
@@ -928,6 +942,17 @@ int api_stats_recentblocked(struct mg_connection *conn)
 		return send_json_unauthorized(conn, NULL);
 	}
 
+	// Exit before processing any data if requested via config setting
+	get_privacy_level(NULL);
+	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS)
+	{
+		// Minimum structure is
+		// {"blocked":null}
+		cJSON *json = JSON_NEW_OBJ();
+		JSON_OBJ_ADD_NULL(json, "blocked");
+		JSON_SEND_OBJECT(json);
+	}
+
 	const struct mg_request_info *request = mg_get_request_info(conn);
 	if(request->query_string != NULL)
 	{
@@ -994,7 +1019,13 @@ int api_stats_overTime_clients(struct mg_connection *conn)
 	get_privacy_level(NULL);
 	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS_CLIENTS)
 	{
-		cJSON* json = JSON_NEW_OBJ();
+		// Minimum structure is
+		// {"over_time":[], "clients":[]}
+		cJSON *json = JSON_NEW_OBJ();
+		cJSON *over_time = JSON_NEW_ARRAY();
+		JSON_OBJ_ADD_ITEM(json, "over_time", over_time);
+		cJSON *clients = JSON_NEW_ARRAY();
+		JSON_OBJ_ADD_ITEM(json, "clients", clients);
 		JSON_SEND_OBJECT(json);
 	}
 
@@ -1010,6 +1041,8 @@ int api_stats_overTime_clients(struct mg_connection *conn)
 	}
 	if(sendit < 0)
 	{
+		// Minimum structure is
+		// {"over_time":[], "clients":[]}
 		cJSON *json = JSON_NEW_OBJ();
 		cJSON *over_time = JSON_NEW_ARRAY();
 		JSON_OBJ_ADD_ITEM(json, "over_time", over_time);
