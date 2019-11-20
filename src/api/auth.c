@@ -9,7 +9,9 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
-#include "api.h"
+#include "http-common.h"
+#include "routes.h"
+#include "json_macros.h"
 #include "log.h"
 #include "config.h"
 // read_setupVarsconf()
@@ -187,6 +189,7 @@ int api_auth(struct mg_connection *conn)
 	{
 		cJSON *error = JSON_NEW_OBJ();
 		JSON_OBJ_REF_STR(error, "key", "unauthorized");
+		JSON_OBJ_REF_STR(error, "message", "Unauthorized");
 		JSON_OBJ_ADD_NULL(error, "data");
 		JSON_OBJ_ADD_ITEM(json, "error", error);
 		char *additional_headers = strdup("Set-Cookie: user_id=deleted; Path=/; Max-Age=-1\r\n");

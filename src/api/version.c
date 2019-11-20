@@ -9,7 +9,9 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
-#include "api.h"
+#include "http-common.h"
+#include "routes.h"
+#include "json_macros.h"
 // get_FTL_version()
 #include "log.h"
 #include "version.h"

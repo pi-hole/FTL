@@ -9,7 +9,6 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "../cJSON/cJSON.h"
-#include "http.h"
 
 // Provides a compile-time flag for JSON formatting
 // This should never be needed as all modern browsers

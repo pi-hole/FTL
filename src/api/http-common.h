@@ -41,4 +41,7 @@ bool http_get_cookie_str(struct mg_connection *conn, const char *cookieName, cha
 enum { HTTP_UNKNOWN, HTTP_GET, HTTP_POST, HTTP_DELETE };
 int http_method(struct mg_connection *conn);
 
+// Utils
+bool startsWith(const char *path, const char *uri) __attribute__((pure));
+
 #endif // HTTP_H

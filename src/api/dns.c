@@ -9,11 +9,13 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
-#include "api.h"
 // counters
 #include "shmem.h"
+#include "http-common.h"
+#include "routes.h"
+#include "json_macros.h"
 #include "database/gravity-db.h"
-#include "api/http.h"
+#include "api/http-common.h"
 #include "log.h"
 // {s,g}et_blockingstatus()
 #include "setupVars.h"

@@ -3,18 +3,18 @@
 *  Network-wide ad blocking via your own hardware.
 *
 *  FTL Engine
-*  API commands and MessagePack helpers
+*  API route prototypes
 *
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
-#ifndef API_H
-#define API_H
+#ifndef ROUTES_H
+#define ROUTES_H
 
 // struct mg_connection
 #include "../civetweb/civetweb.h"
-// http_send_json_chunk()
-#include "../api/http.h"
-#include "json_macros.h"
+
+// API router
+int api_handler(struct mg_connection *conn, void *ignored);
 
 // Statistic methods
 int api_stats_summary(struct mg_connection *conn);
@@ -48,4 +48,4 @@ int api_auth_salt(struct mg_connection *conn);
 int api_settings_web(struct mg_connection *conn);
 int api_settings_ftldb(struct mg_connection *conn);
 
-#endif // API_H
+#endif // ROUTES_H

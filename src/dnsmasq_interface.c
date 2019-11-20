@@ -30,12 +30,10 @@
 #include "resolve.h"
 #include "files.h"
 #include "log.h"
-// Prototype of getCacheInformation()
-#include "api/api.h"
 // global variable daemonmode
 #include "args.h"
 // http_init()
-#include "api/http.h"
+#include "api/http-common.h"
 
 static void print_flags(const unsigned int flags);
 static void save_reply_type(const unsigned int flags, const union all_addr *addr,
