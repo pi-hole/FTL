@@ -26,7 +26,7 @@ vector *vNew(void);
 unsigned int vSize(vector *v);
 void vAppend(vector *v, void *item, bool allocated);
 void vSet(vector *v, unsigned int index, void *item, bool allocated);
-void *vGet(vector *v, unsigned int index);
+void *vGet(vector *v, unsigned int index) __attribute__((pure));
 void vRemove(vector *v, unsigned int index);
 void vFree(vector *v);
 

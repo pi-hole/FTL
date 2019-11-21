@@ -103,7 +103,10 @@ void vSet(vector *v, unsigned int index, void *item, bool allocated)
 	v->alloc[index] = allocated;
 }
 
-void *vGet(vector *v, unsigned int index)
+// This function has no effects except to return a value. It can
+// be subject to data flow analysis and might be eliminated.
+// Hence, we add the "pure" attribute to this function.
+void __attribute__((pure)) *vGet(vector *v, unsigned int index)
 {
 	if (v != NULL && index < v->size)
 	{
