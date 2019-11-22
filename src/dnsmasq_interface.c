@@ -57,7 +57,7 @@ const char flagnames[28][12] = {"F_IMMORTAL ", "F_NAMEP ", "F_REVERSE ", "F_FORW
 static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const char **blockingreason,
                                 const char* file, const int line)
 {
-	// Only check domains for blocking conditions when global blocking is enabled
+	// Only check blocking conditions when global blocking is enabled
 	if(blockingstatus == BLOCKING_DISABLED)
 	{
 		return false;
@@ -81,26 +81,46 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 		case UNKNOWN_BLOCKED:
 			// New domain/client combination.
 			// We have to go through all the tests below
+			if(config.debug & DEBUG_QUERIES)
+			{
+				logg("Query is not known");
+			}
 			break;
 		case BLACKLIST_BLOCKED:
 			query->status = QUERY_BLACKLIST;
 			*blockingreason = "exactly blacklisted";
 			query_blocked(queryID, query, domain, client);
+			if(config.debug & DEBUG_QUERIES)
+			{
+				logg("Query is known as %s", *blockingreason);
+			}
 			return true;
 			break;
 		case GRAVITY_BLOCKED:
 			query->status = QUERY_GRAVITY;
 			*blockingreason = "gravity blocked";
 			query_blocked(queryID, query, domain, client);
+			if(config.debug & DEBUG_QUERIES)
+			{
+				logg("Query is known as %s", *blockingreason);
+			}
 			return true;
 			break;
 		case REGEX_BLOCKED:
 			query->status = QUERY_WILDCARD;
 			*blockingreason = "regex blacklisted";
 			query_blocked(queryID, query, domain, client);
+			if(config.debug & DEBUG_QUERIES)
+			{
+				logg("Query is known as %s", *blockingreason);
+			}
 			return true;
 			break;
 		case NOT_BLOCKED:
+			if(config.debug & DEBUG_QUERIES)
+			{
+				logg("Query is known as not blocked");
+			}
 			return false;
 			break;
 	}
