@@ -53,6 +53,119 @@ static struct all_addr blocking_addrp_v6 = {{{ 0 }}};
 unsigned char* pihole_privacylevel = &config.privacylevel;
 const char flagnames[28][12] = {"F_IMMORTAL ", "F_NAMEP ", "F_REVERSE ", "F_FORWARD ", "F_DHCP ", "F_NEG ", "F_HOSTS ", "F_IPV4 ", "F_IPV6 ", "F_BIGNAME ", "F_NXDOMAIN ", "F_CNAME ", "F_DNSKEY ", "F_CONFIG ", "F_DS ", "F_DNSSECOK ", "F_UPSTREAM ", "F_RRNAME ", "F_SERVER ", "F_QUERY ", "F_NOERR ", "F_AUTH ", "F_DNSSEC ", "F_KEYTAG ", "F_SECSTAT ", "F_NO_RR ", "F_IPSET ", "F_NOEXTRA "};
 
+
+static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const char **blockingreason,
+                                const char* file, const int line)
+{
+	// Only check domains for blocking conditions when global blocking is enabled
+	if(blockingstatus == BLOCKING_DISABLED)
+	{
+		return false;
+	}
+
+	// Get query, domain and client pointers
+	queriesData* query  = getQuery(queryID,   true);
+	domainsData* domain = getDomain(domainID, true);
+	clientsData* client = getClient(clientID, true);
+	if(query == NULL || domain == NULL || client == NULL)
+	{
+		// Encountered memory error, skip query
+		return false;
+	}
+
+	// Skip the entire chain of tests if we already know the answer for this
+	// particular client
+	unsigned char blockingStatus = domain->clientstatus->get(domain->clientstatus, clientID);
+	switch(blockingStatus)
+	{
+		case UNKNOWN_BLOCKED:
+			// New domain/client combination.
+			// We have to go through all the tests below
+			break;
+		case BLACKLIST_BLOCKED:
+			query->status = QUERY_BLACKLIST;
+			*blockingreason = "exactly blacklisted";
+			query_blocked(queryID, query, domain, client);
+			return true;
+			break;
+		case GRAVITY_BLOCKED:
+			query->status = QUERY_GRAVITY;
+			*blockingreason = "gravity blocked";
+			query_blocked(queryID, query, domain, client);
+			return true;
+			break;
+		case REGEX_BLOCKED:
+			query->status = QUERY_WILDCARD;
+			*blockingreason = "regex blacklisted";
+			query_blocked(queryID, query, domain, client);
+			return true;
+			break;
+		case NOT_BLOCKED:
+			return false;
+			break;
+	}
+
+	// We check the user blacklist first as it is typically smaller than gravity
+	// If a domain is on the exact blacklist or gravity but also on the whitelist,
+	// we do NOT block it.
+	// in_whitelist() checks both the exact and the regex whitelist
+	bool blockDomain = false, black = false, gravity = false;
+	const char *domainString = getstr(domain->domainpos);
+	if(((black = in_blacklist(domainString, client)) ||
+	    (gravity = in_gravity(domainString, client))) &&
+	   !in_whitelist(domainString, client))
+	{
+		blockDomain = true;
+		if(black)
+		{
+			// Mark domain as regex matched for this one client
+			domain->clientstatus->set(domain->clientstatus, clientID, BLACKLIST_BLOCKED);
+			query->status = QUERY_BLACKLIST;
+			*blockingreason = "exactly blacklisted";
+		}
+		else if(gravity)
+		{
+			domain->clientstatus->set(domain->clientstatus, clientID, GRAVITY_BLOCKED);
+			query->status = QUERY_GRAVITY;
+			*blockingreason = "gravity blocked";
+		}
+
+		// Adjust counters
+		query_blocked(queryID, query, domain, client);
+	}
+
+	// If a regex filter matched, we additionally compare the domain
+	// against all known whitelisted domains to possibly prevent blocking
+	// of a specific domain. The logic herein is:
+	// - Walk regex only if not already exactly matched above
+	// - If matched, then compare against whitelist
+	// - If in whitelist, negate matched so this function returns: not-to-be-blocked
+	if(!blockDomain &&
+	   match_regex(domainString, client, REGEX_BLACKLIST) &&
+	   !in_whitelist(domainString, client))
+	{
+		// Mark domain as regex matched for this one client
+		domain->clientstatus->set(domain->clientstatus, clientID, REGEX_BLOCKED);
+
+		// We have to block this domain
+		blockDomain = true;
+		query->status = QUERY_WILDCARD;
+		*blockingreason = "regex blacklisted";
+
+		// Adjust counters
+		query_blocked(queryID, query, domain, client);
+	}
+	// Explicitly mark as not blocked to skip the entire
+	// gravity/blacklist chain when the same client asks
+	// for the same domain in the future
+	domain->clientstatus->set(domain->clientstatus, clientID, NOT_BLOCKED);
+
+	if(config.debug & DEBUG_QUERIES && blockDomain)
+		logg("Blocking %s as domain in %s", domainString, *blockingreason);
+
+	return blockDomain;
+}
+
 bool _FTL_new_query(const unsigned int flags, const char *name,
                     const char **blockingreason, const struct all_addr *addr,
                     const char *types, const int id, const char type,
@@ -237,77 +350,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	client->lastQuery = querytimestamp;
 	client->numQueriesARP++;
 
-	// Get domain pointer
-	domainsData* domain = getDomain(domainID, true);
-	if(domain == NULL)
-	{
-		// Encountered memory error, skip query
-		// Free allocated memory
-		free(domainString);
-		free(clientIP);
-		// Release thread lock
-		unlock_shm();
-		return false;
-	}
-
-	// Only check domains for blocking conditions when global blocking is enabled
-	bool blockDomain = false;
-	if(blockingstatus != BLOCKING_DISABLED)
-	{
-		// We check the user blacklist first as it is typically smaller than gravity
-		// If a domain is on the exact blacklist or gravity but also on the whitelist,
-		// we do NOT block it.
-		bool black = false, gravity = false;
-		if(((black = in_blacklist(domainString, client)) || (gravity = in_gravity(domainString, client))) &&
-		   !in_whitelist(domainString, client))
-		{
-			blockDomain = true;
-			if(black)
-			{
-				query->status = QUERY_BLACKLIST;
-				*blockingreason = "exactly blacklisted";
-			}
-			else if(gravity)
-			{
-				query->status = QUERY_GRAVITY;
-				*blockingreason = "gravity blocked";
-			}
-
-			// Adjust counters
-			query_blocked(queryID, query, domain, client);
-		}
-
-		// If a regex filter matched, we additionally compare the domain
-		// against all known whitelisted domains to possibly prevent blocking
-		// of a specific domain. The logic herein is:
-		// - Walk regex only if not already exactly matched above
-		// - If matched, then compare against whitelist
-		// - If in whitelist, negate matched so this function returns: not-to-be-blocked
-		if(!blockDomain &&
-		   match_regex(domainString, client, REGEX_BLACKLIST) &&
-		   !in_whitelist(domainString, client))
-		{
-			// Mark domain as regex match (note that this might not apply for all clients!)
-			domain->regexmatch = REGEX_BLOCKED;
-
-			// We have to block this domain
-			blockDomain = true;
-			*blockingreason = "regex blacklisted";
-			query->status = QUERY_WILDCARD;
-
-			// Adjust counters
-			query_blocked(queryID, query, domain, client);
-		}
-		else if(domain->regexmatch == REGEX_UNKNOWN && !blockDomain)
-		{
-			// Explicitly mark as not blocked to skip regex test
-			// next time we see this domain
-			domain->regexmatch = REGEX_NOTBLOCKED;
-		}
-	}
-
-	if(config.debug & DEBUG_QUERIES && blockDomain)
-		logg("Blocking %s as domain in %s", domainString, *blockingreason);
+	bool blockDomain = FTL_check_blocking(queryID, domainID, clientID, blockingreason);
 
 	// Free allocated memory
 	free(domainString);

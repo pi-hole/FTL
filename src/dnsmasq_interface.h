@@ -44,6 +44,8 @@ void _FTL_upstream_error(const unsigned int rcode, const int id, const char* fil
 #define FTL_get_blocking_metadata(addrp, flags) _FTL_get_blocking_metadata(addrp, flags, __FILE__, __LINE__)
 void _FTL_get_blocking_metadata(struct all_addr **addrp, unsigned int *flags, const char* file, const int line);
 
+#define FTL_check_blocking(queryID, domainID, clientID, blockingreason) _FTL_check_blocking(queryID, domainID, clientID, blockingreason, __FILE__, __LINE__)
+
 void FTL_dnsmasq_reload(void);
 void FTL_fork_and_bind_sockets(struct passwd *ent_pw);
 

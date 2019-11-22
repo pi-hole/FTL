@@ -12,6 +12,8 @@
 
 // Definition of sqlite3_stmt
 #include "database/sqlite3.h"
+// struct ucharvec
+#include "vector.h"
 
 void strtolower(char *str);
 int findForwardID(const char * forward, const bool count);
@@ -68,10 +70,10 @@ typedef struct {
 
 typedef struct {
 	unsigned char magic;
-	unsigned char regexmatch;
 	size_t domainpos;
 	int count;
 	int blockedcount;
+	ucharvec *clientstatus;
 } domainsData;
 
 // Pointer getter functions

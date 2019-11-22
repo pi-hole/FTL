@@ -17,7 +17,10 @@ bool match_regex(const char *input, const clientsData *client, const unsigned ch
 void allocate_regex_client_enabled(clientsData *client);
 void read_regex_from_database(void);
 
-enum { REGEX_UNKNOWN, REGEX_BLOCKED, REGEX_NOTBLOCKED };
 enum { REGEX_BLACKLIST, REGEX_WHITELIST };
+// Blocking status constants used by the domain->clientstatus vector
+// We explicitly force UNKNOWN_BLOCKED to zero on all platforms as this is the
+// default value set initially with calloc
+enum { UNKNOWN_BLOCKED = 0, GRAVITY_BLOCKED, BLACKLIST_BLOCKED, REGEX_BLOCKED, NOT_BLOCKED };
 
 #endif //REGEX_H

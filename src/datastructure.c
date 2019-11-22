@@ -126,8 +126,8 @@ int findDomainID(const char *domainString)
 	domain->blockedcount = 0;
 	// Store domain name - no need to check for NULL here as it doesn't harm
 	domain->domainpos = addstr(domainString);
-	// RegEx needs to be evaluated for this new domain
-	domain->regexmatch = REGEX_UNKNOWN;
+	// Storage for individual client blocking status
+	domain->clientstatus = new_ucharvec(counters->clients);
 	// Increase counter by one
 	counters->domains++;
 
@@ -200,6 +200,13 @@ int findClientID(const char *clientIP, const bool count)
 	// Initialize client-specific overTime data
 	for(int i = 0; i < OVERTIME_SLOTS; i++)
 		client->overTime[i] = 0;
+
+	// Initialize client-specific domain data
+	for(int domainID = 0; domainID < counters->domains; domainID++)
+	{
+		domainsData *domain = getDomain(domainID, true);
+		domain->clientstatus->append(domain->clientstatus, UNKNOWN_BLOCKED);
+	}
 
 	// Allocate regex substructure
 	allocate_regex_client_enabled(client);

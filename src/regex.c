@@ -121,12 +121,18 @@ bool match_regex(const char *input, const clientsData *client, const unsigned ch
 static void free_regex(void)
 {
 	// Reset cached regex results
-	for(int i = 0; i < counters->domains; i++) {
+	for(int i = 0u; i < counters->domains; i++)
+	{
 		// Get domain pointer
 		domainsData *domain = getDomain(i, true);
+		if(domain == NULL)
+			continue;
 
-		// Reset regexmatch to unknown
-		domain->regexmatch = REGEX_UNKNOWN;
+		// Reset blocking status of domain for all clients to unknown
+		for(int clientID = 0u; clientID < counters->clients; clientID++)
+		{
+			domain->clientstatus->set(domain->clientstatus, clientID, UNKNOWN_BLOCKED);
+		}
 	}
 
 	// Return early if we don't use any regex filters
