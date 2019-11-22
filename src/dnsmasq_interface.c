@@ -178,10 +178,13 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 	// Explicitly mark as not blocked to skip the entire
 	// gravity/blacklist chain when the same client asks
 	// for the same domain in the future
-	domain->clientstatus->set(domain->clientstatus, clientID, NOT_BLOCKED);
+	if(!blockDomain)
+	{
+		domain->clientstatus->set(domain->clientstatus, clientID, NOT_BLOCKED);
+	}
 
 	if(config.debug & DEBUG_QUERIES && blockDomain)
-		logg("Blocking %s as domain in %s", domainString, *blockingreason);
+		logg("Blocking %s as domain is %s", domainString, *blockingreason);
 
 	return blockDomain;
 }
