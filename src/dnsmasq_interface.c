@@ -1043,7 +1043,7 @@ void _FTL_cache(const unsigned int flags, const char *name, const struct all_add
 	unlock_shm();
 }
 
-static inline void query_blocked(const int queryID, queriesData* query, domainsData* domain, clientsData* client)
+static void query_blocked(const int queryID, queriesData* query, domainsData* domain, clientsData* client)
 {
 	// This query is no longer unknown
 	counters->unknown--;
