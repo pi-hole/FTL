@@ -1810,3 +1810,27 @@ void FTL_TCP_worker_terminating(void)
 	// Close dedicated database connection of this fork
 	gravityDB_close();
 }
+
+void FTL_dnsmasq_log(const char *payload, const int length)
+{
+	// Get temporary space for dnsmasq's log message
+	char log_str[length + 1u];
+
+	// Copy relevant string into temporary buffer
+	memcpy(log_str, payload, length);
+
+	// Zero-terminate buffer, truncate newline if found
+	if(log_str[length - 1u] == '\n')
+	{
+		log_str[length - 1u] = '\0';
+	}
+	else
+	{
+		log_str[length] = '\0';
+	}
+
+	if(config.debug & DEBUG_API)
+	{
+		logg("DNSMASQ LOG: \"%s\"", log_str);
+	}
+}

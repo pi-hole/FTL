@@ -15,6 +15,7 @@
 */
 
 #include "dnsmasq.h"
+#include "../dnsmasq_interface.h"
 
 #ifdef __ANDROID__
 #  include <android/log.h>
@@ -297,6 +298,14 @@ void my_syslog(int priority, const char *format, ...)
   /* Solaris doesn't have LOG_PRI */
   priority &= LOG_PRIMASK;
 #endif
+
+  /*************************** Pi-hole specific logging **************************/
+  va_start(ap, format);
+  char buffer[MAX_MESSAGE + 1u];
+  len = vsnprintf(buffer, MAX_MESSAGE, format, ap) + 1u; /* include zero-terminator */
+  va_end(ap);
+  FTL_dnsmasq_log(buffer, len > MAX_MESSAGE ? MAX_MESSAGE : len);
+  /*******************************************************************************/
 
   if (echo_stderr) 
     {
