@@ -98,7 +98,6 @@ int api_ftl_dnsmasq_log(struct mg_connection *conn)
 		}
 
 		cJSON *entry = JSON_NEW_OBJ();
-		JSON_OBJ_ADD_NUMBER(entry, "id", idx);
 		JSON_OBJ_ADD_NUMBER(entry, "timestamp", dnsmasq_log_stamps[i]);
 		JSON_OBJ_REF_STR(entry, "message", dnsmasq_log_messages[i]);
 		JSON_ARRAY_ADD_ITEM(log, entry);
