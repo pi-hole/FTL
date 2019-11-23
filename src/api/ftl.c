@@ -29,7 +29,7 @@ int api_ftl_clientIP(struct mg_connection *conn)
 	JSON_SEND_OBJECT(json);
 }
 
-static char dnsmasq_log_messages[LOG_SIZE][MAX_MESSAGE] = { 0 };
+static char dnsmasq_log_messages[LOG_SIZE][MAX_MESSAGE] = {{ 0 }};
 static time_t dnsmasq_log_stamps[LOG_SIZE] = { 0 };
 static int dnsmasq_next_id = 0;
 
