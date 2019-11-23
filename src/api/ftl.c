@@ -84,6 +84,12 @@ int api_ftl_dnsmasq_log(struct mg_connection *conn)
 			idx = dnsmasq_next_id - LOG_SIZE + i;
 		}
 
+		if(dnsmasq_log_stamps[i] == 0)
+		{
+			// Uninitialized buffer entry
+			break;
+		}
+
 		cJSON *entry = JSON_NEW_OBJ();
 		JSON_OBJ_ADD_NUMBER(entry, "id", idx);
 		JSON_OBJ_ADD_NUMBER(entry, "timestamp", dnsmasq_log_stamps[i]);
