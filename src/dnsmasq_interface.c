@@ -1556,3 +1556,23 @@ static void prepare_blocking_metadata(void)
 	// Free IPv6addr
 	clearSetupVarsArray();
 }
+
+void FTL_reset_per_client_domain_data(void)
+{
+	logg("Received SIGUSR2, resetting domain blocking data");
+
+	for(int domainID = 0; domainID < counters->domains; domainID++)
+	{
+		domainsData *domain = getDomain(domainID, true);
+		if(domain == NULL)
+			continue;
+
+		for(int clientID = 0; clientID < counters->clients; clientID++)
+		{
+			// Reset all blocking yes/no fields for all domains and clients
+			// This forces a reprocessing of all available filters for any
+			// given domain and client the next time they are seen
+			domain->clientstatus->set(domain->clientstatus, clientID, UNKNOWN_BLOCKED);
+		}
+	}
+}

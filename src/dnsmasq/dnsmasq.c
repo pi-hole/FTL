@@ -1412,6 +1412,8 @@ static void async_event(int pipe, time_t now)
 	   we leave them logging to the old file. */
 	if (daemon->log_file != NULL)
 	  log_reopen(daemon->log_file);
+
+	FTL_reset_per_client_domain_data();
 	break;
 
       case EVENT_NEWADDR:
