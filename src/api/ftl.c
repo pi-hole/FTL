@@ -78,19 +78,8 @@ int api_ftl_dnsmasq_log(struct mg_connection *conn)
 	// Process data
 	cJSON *json = JSON_NEW_OBJ();
 	cJSON *log = JSON_NEW_ARRAY();
-	unsigned int idx = 0u;
 	for(unsigned int i = start; i < LOG_SIZE; i++)
 	{
-		// Reconstruct log message identification number
-		if(dnsmasq_next_id < LOG_SIZE)
-		{
-			idx = i;
-		}
-		else
-		{
-			idx = dnsmasq_next_id - LOG_SIZE + i;
-		}
-
 		if(dnsmasq_log_stamps[i] == 0)
 		{
 			// Uninitialized buffer entry
