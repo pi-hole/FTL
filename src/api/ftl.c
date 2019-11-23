@@ -60,10 +60,17 @@ int api_ftl_dnsmasq_log(struct mg_connection *conn)
 				// We return the entire buffer
 				start = 0;
 			}
+			else if(dnsmasq_next_id >= LOG_SIZE)
+			{
+				// Reply with partial buffer, measure from the end
+				// (the log is full)
+				start = LOG_SIZE - (dnsmasq_next_id - num);
+			}
 			else
 			{
-				// Reply with partial buffer
-				start = LOG_SIZE - (dnsmasq_next_id - num);
+				// Reply with partial buffer, measure from the start
+				// (the log is not yet full)
+				start = num;
 			}
 		}
 	}
