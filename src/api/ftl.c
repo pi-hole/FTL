@@ -29,10 +29,7 @@ int api_ftl_clientIP(struct mg_connection *conn)
 	JSON_SEND_OBJECT(json);
 }
 
-static char dnsmasq_log_messages[LOG_SIZE][MAX_MESSAGE] = {{ 0 }};
-static time_t dnsmasq_log_stamps[LOG_SIZE] = { 0 };
-static int dnsmasq_next_id = 0;
-
+fifologData *fifo_log = NULL;
 int api_ftl_dnsmasq_log(struct mg_connection *conn)
 {
 	// Verify requesting client is allowed to see this ressource
@@ -49,22 +46,22 @@ int api_ftl_dnsmasq_log(struct mg_connection *conn)
 		int num;
 		if((num = get_int_var(request->query_string, "nextID")) > 0)
 		{
-			if(num >= dnsmasq_next_id)
+			if(num >= fifo_log->next_id)
 			{
 				// Do not return any data
 				start = LOG_SIZE;
 			}
-			else if(num < max(dnsmasq_next_id - LOG_SIZE, 0))
+			else if(num < max((fifo_log->next_id) - LOG_SIZE, 0))
 			{
 				// Requested an ID smaller than the lowest one we have
 				// We return the entire buffer
-				start = 0;
+				start = 0u;
 			}
-			else if(dnsmasq_next_id >= LOG_SIZE)
+			else if(fifo_log->next_id >= LOG_SIZE)
 			{
 				// Reply with partial buffer, measure from the end
 				// (the log is full)
-				start = LOG_SIZE - (dnsmasq_next_id - num);
+				start = LOG_SIZE - (fifo_log->next_id - num);
 			}
 			else
 			{
@@ -80,44 +77,47 @@ int api_ftl_dnsmasq_log(struct mg_connection *conn)
 	cJSON *log = JSON_NEW_ARRAY();
 	for(unsigned int i = start; i < LOG_SIZE; i++)
 	{
-		if(dnsmasq_log_stamps[i] == 0)
+		if(fifo_log->timestamp[i] == 0)
 		{
 			// Uninitialized buffer entry
 			break;
 		}
 
 		cJSON *entry = JSON_NEW_OBJ();
-		JSON_OBJ_ADD_NUMBER(entry, "timestamp", dnsmasq_log_stamps[i]);
-		JSON_OBJ_REF_STR(entry, "message", dnsmasq_log_messages[i]);
+		JSON_OBJ_ADD_NUMBER(entry, "timestamp", fifo_log->timestamp[i]);
+		JSON_OBJ_REF_STR(entry, "message", fifo_log->message[i]);
 		JSON_ARRAY_ADD_ITEM(log, entry);
 	}
 	JSON_OBJ_ADD_ITEM(json, "log", log);
-	JSON_OBJ_ADD_NUMBER(json, "nextID", dnsmasq_next_id);
+	JSON_OBJ_ADD_NUMBER(json, "nextID", fifo_log->next_id);
 	JSON_SEND_OBJECT(json);
 }
 
 void add_to_dnsmasq_log_fifo_buffer(const char *payload, const int length)
 {
-	unsigned int idx = dnsmasq_next_id++;
+	unsigned int idx = fifo_log->next_id++;
 	if(idx >= LOG_SIZE)
 	{
-		// Log is full, move everything one slot forward to make space
-		memmove(dnsmasq_log_messages[0], dnsmasq_log_messages[1], (LOG_SIZE - 1u) * MAX_MESSAGE);
+		// Log is full, move everything one slot forward to make space for a new record at the end
+		// This pruges the oldest message from the list (it is overwritten by the second message)
+		memmove(fifo_log->message[0], fifo_log->message[1], (LOG_SIZE - 1u) * MAX_MESSAGE);
+		memmove(&fifo_log->timestamp[0], &fifo_log->timestamp[1], (LOG_SIZE - 1u) * sizeof(time_t));
 		idx = LOG_SIZE - 1u;
 	}
+
 	// Copy relevant string into temporary buffer
-	memcpy(dnsmasq_log_messages[idx], payload, length);
+	memcpy(fifo_log->message[idx], payload, length);
 
 	// Zero-terminate buffer, truncate newline if found
-	if(dnsmasq_log_messages[idx][length - 1u] == '\n')
+	if(fifo_log->message[idx][length - 1u] == '\n')
 	{
-		dnsmasq_log_messages[idx][length - 1u] = '\0';
+		fifo_log->message[idx][length - 1u] = '\0';
 	}
 	else
 	{
-		dnsmasq_log_messages[idx][length] = '\0';
+		fifo_log->message[idx][length] = '\0';
 	}
 
 	// Set timestamp
-	dnsmasq_log_stamps[idx] = time(NULL);
+	fifo_log->timestamp[idx] = time(NULL);
 }
