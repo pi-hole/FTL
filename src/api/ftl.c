@@ -20,6 +20,8 @@
 #include "version.h"
 // config struct
 #include "config.h"
+// {un,}lock_shm()
+#include "../shmem.h"
 
 int api_ftl_clientIP(struct mg_connection *conn)
 {
@@ -95,6 +97,9 @@ int api_ftl_dnsmasq_log(struct mg_connection *conn)
 
 void add_to_dnsmasq_log_fifo_buffer(const char *payload, const int length)
 {
+	// Lock SHM
+	lock_shm();
+
 	unsigned int idx = fifo_log->next_id++;
 	if(idx >= LOG_SIZE)
 	{
@@ -120,4 +125,7 @@ void add_to_dnsmasq_log_fifo_buffer(const char *payload, const int length)
 
 	// Set timestamp
 	fifo_log->timestamp[idx] = time(NULL);
+
+	// Unlock SHM
+	unlock_shm();
 }
