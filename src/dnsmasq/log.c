@@ -300,8 +300,8 @@ void my_syslog(int priority, const char *format, ...)
 #endif
 
   /*************************** Pi-hole specific logging **************************/
-  va_start(ap, format);
   char buffer[MAX_MESSAGE + 1u];
+  va_start(ap, format);
   len = vsnprintf(buffer, MAX_MESSAGE, format, ap) + 1u; /* include zero-terminator */
   va_end(ap);
   FTL_dnsmasq_log(buffer, len > MAX_MESSAGE ? MAX_MESSAGE : len);

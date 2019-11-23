@@ -44,6 +44,10 @@ int api_handler(struct mg_connection *conn, void *ignored)
 	{
 		return api_ftl_clientIP(conn);
 	}
+	else if(startsWith("/api/ftl/dnsmasq_log", request->local_uri))
+	{
+		return api_ftl_dnsmasq_log(conn);
+	}
 	/******************************** api/stats **************************/
 	else if(startsWith("/api/stats/summary", request->local_uri))
 	{
