@@ -39,10 +39,18 @@ static void generateRandomString(char *str, size_t size)
 // Can we validate this client?
 // Returns -1 if not authenticated or expired
 // Returns >= 0 for any valid authentication
+#define LOCALHOSTv4 "127.0.0.1"
+#define LOCALHOSTv6 "::1"
 int check_client_auth(struct mg_connection *conn)
 {
 	int user_id = -1;
 	const struct mg_request_info *request = mg_get_request_info(conn);
+
+	// Is the user requesting from localhost?
+	if(!httpsettings.api_auth_for_localhost && (strcmp(request->remote_addr, LOCALHOSTv4) == 0 ||
+	                                            strcmp(request->remote_addr, LOCALHOSTv6) == 0))
+		return API_MAX_CLIENTS;
+
 	// Does the client provide a user_id cookie?
 	int num;
 	if(http_get_cookie_int(conn, "user_id", &num) && num > -1 && num < API_MAX_CLIENTS)
@@ -136,10 +144,10 @@ int api_auth(struct mg_connection *conn)
 					logg("Registered new user: user_id %i valid_until: %s remote_addr %s",
 					user_id, timestr, auth_data[user_id].remote_addr);
 				}
-				else
-				{
-					logg("No free user slots available, not authenticating user");
-				}
+			}
+			if(user_id == -1)
+			{
+				logg("WARNING: No free slots available, not authenticating user");
 			}
 		}
 		else if(config.debug & DEBUG_API)
@@ -155,6 +163,19 @@ int api_auth(struct mg_connection *conn)
 		user_id = check_client_auth(conn);
 
 	int method = http_method(conn);
+	if(user_id == API_MAX_CLIENTS)
+	{
+		if(config.debug & DEBUG_API)
+			logg("Authentification: OK, localhost does not need auth.");
+		// We still have to send a cookie for the web interface to be happy
+		char *additional_headers = NULL;
+		if(asprintf(&additional_headers,
+		            "Set-Cookie: user_id=%u; Path=/; Max-Age=%u\r\n",
+		            API_MAX_CLIENTS, API_SESSION_EXPIRE) < 0)
+		{
+			return send_json_error(conn, 500, "internal_error", "Internal server error", NULL, NULL);
+		}
+	}
 	if(user_id > -1 && method == HTTP_GET)
 	{
 		if(config.debug & DEBUG_API)

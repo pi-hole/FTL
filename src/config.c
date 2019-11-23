@@ -408,6 +408,20 @@ void read_FTLconf(void)
 		logg("   WEBACL: Allowing all access.");
 	}
 
+	// API_AUTH_FOR_LOALHOST
+	// defaults to: false
+	httpsettings.api_auth_for_localhost = false;
+	buffer = parse_FTLconf(fp, "API_AUTH_FOR_LOALHOST");
+
+	if(buffer != NULL && (strcasecmp(buffer, "yes") == 0 ||
+	                      strcasecmp(buffer, "true") == 0))
+		httpsettings.api_auth_for_localhost = true;
+
+	if(httpsettings.api_auth_for_localhost)
+		logg("   API_AUTH_FOR_LOCALHOST: Active");
+	else
+		logg("   API_AUTH_FOR_LOCALHOST: Inactive");
+
 	// Read DEBUG_... setting from pihole-FTL.conf
 	// This option should be the last one as it causes
 	// some rather verbose output into the log when

@@ -57,6 +57,7 @@ typedef struct httpsettings {
 	char *webroot;
 	char *webhome;
 	const char *acl;
+	bool api_auth_for_localhost;
 	char port[20]; // enough space for 2*(maximum length of number in a uint16_t = 5 characters) + ",[::]:" + NULL
 } httpsettingsStruct;
 

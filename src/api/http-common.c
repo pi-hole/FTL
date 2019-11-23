@@ -83,7 +83,16 @@ int send_json_success(struct mg_connection *conn,
 {
 	cJSON *json = JSON_NEW_OBJ();
 	JSON_OBJ_REF_STR(json, "status", "success");
-	JSON_SEND_OBJECT_AND_HEADERS(json, additional_headers);
+
+	// Send additional headers if supplied
+	if(additional_headers == NULL)
+	{
+		JSON_SEND_OBJECT(json);
+	}
+	else
+	{
+		JSON_SEND_OBJECT_AND_HEADERS(json, additional_headers);
+	}
 }
 
 int send_http_internal_error(struct mg_connection *conn)
