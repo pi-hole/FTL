@@ -49,6 +49,6 @@ void _FTL_get_blocking_metadata(struct all_addr **addrp, unsigned int *flags, co
 void FTL_dnsmasq_reload(void);
 void FTL_fork_and_bind_sockets(struct passwd *ent_pw);
 
-void FTL_reset_per_client_domain_data(void);
+void FTL_reset_per_client_domain_data(bool sigusr2);
 
 #endif // DNSMASQ_INTERFACE_H

@@ -596,6 +596,8 @@ void FTL_dnsmasq_reload(void)
 	// only after having called gravityDB_open()
 	read_regex_from_database();
 
+	FTL_reset_per_client_domain_data(false);
+
 	// Print current set of capabilities if requested via debug flag
 	if(config.debug & DEBUG_CAPS)
 		check_capabilities();
@@ -1557,9 +1559,10 @@ static void prepare_blocking_metadata(void)
 	clearSetupVarsArray();
 }
 
-void FTL_reset_per_client_domain_data(void)
+void FTL_reset_per_client_domain_data(bool sigusr2)
 {
-	logg("Received SIGUSR2, resetting domain blocking data");
+	if(sigusr2)
+		logg("Received SIGUSR2, resetting domain blocking data");
 
 	for(int domainID = 0; domainID < counters->domains; domainID++)
 	{

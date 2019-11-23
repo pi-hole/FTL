@@ -1413,7 +1413,7 @@ static void async_event(int pipe, time_t now)
 	if (daemon->log_file != NULL)
 	  log_reopen(daemon->log_file);
 
-	FTL_reset_per_client_domain_data();
+	FTL_reset_per_client_domain_data(true);
 	break;
 
       case EVENT_NEWADDR:
