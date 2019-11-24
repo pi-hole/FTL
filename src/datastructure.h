@@ -73,7 +73,7 @@ typedef struct {
 	size_t domainpos;
 	int count;
 	int blockedcount;
-	ucharvec *clientstatus;
+	ucharvec *clientstatus; // FTL-internal cache, not accessible over shared memory!
 } domainsData;
 
 // Pointer getter functions
