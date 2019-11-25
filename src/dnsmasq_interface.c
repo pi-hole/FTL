@@ -85,42 +85,66 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			{
 				logg("Query is not known");
 			}
+
 			break;
+
 		case BLACKLIST_BLOCKED:
+			// Known as exactly blacklistes, we
+			// return this result early, skipping
+			// all the lengthy tests below
 			query->status = QUERY_BLACKLIST;
 			*blockingreason = "exactly blacklisted";
 			query_blocked(queryID, query, domain, client);
+
 			if(config.debug & DEBUG_QUERIES)
 			{
 				logg("Query is known as %s", *blockingreason);
 			}
+
 			return true;
 			break;
+
 		case GRAVITY_BLOCKED:
+			// Known as gravity blocked, we
+			// return this result early, skipping
+			// all the lengthy tests below
 			query->status = QUERY_GRAVITY;
 			*blockingreason = "gravity blocked";
 			query_blocked(queryID, query, domain, client);
+
 			if(config.debug & DEBUG_QUERIES)
 			{
 				logg("Query is known as %s", *blockingreason);
 			}
+
 			return true;
 			break;
+
 		case REGEX_BLOCKED:
+			// Known as regex blacklisted, we
+			// return this result early, skipping
+			// all the lengthy tests below
 			query->status = QUERY_WILDCARD;
 			*blockingreason = "regex blacklisted";
 			query_blocked(queryID, query, domain, client);
+
 			if(config.debug & DEBUG_QUERIES)
 			{
 				logg("Query is known as %s", *blockingreason);
 			}
+
 			return true;
 			break;
+
 		case NOT_BLOCKED:
+			// Known as not blocked, we
+			// return this result early, skipping
+			// all the lengthy tests below
 			if(config.debug & DEBUG_QUERIES)
 			{
 				logg("Query is known as not blocked");
 			}
+
 			return false;
 			break;
 	}
@@ -171,20 +195,25 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 		blockDomain = true;
 		query->status = QUERY_WILDCARD;
 		*blockingreason = "regex blacklisted";
+	}
 
+	// Common actions regardless what the possible blocking reason is
+	if(blockDomain)
+	{
 		// Adjust counters
 		query_blocked(queryID, query, domain, client);
+
+		// Debug output
+		if(config.debug & DEBUG_QUERIES)
+			logg("Blocking %s as domain is %s", domainString, *blockingreason);
 	}
-	// Explicitly mark as not blocked to skip the entire
-	// gravity/blacklist chain when the same client asks
-	// for the same domain in the future
-	if(!blockDomain)
+	else
 	{
+		// Explicitly mark as not blocked to skip the entire
+		// gravity/blacklist chain when the same client asks
+		// for the same domain in the future
 		domain->clientstatus->set(domain->clientstatus, clientID, NOT_BLOCKED);
 	}
-
-	if(config.debug & DEBUG_QUERIES && blockDomain)
-		logg("Blocking %s as domain is %s", domainString, *blockingreason);
 
 	return blockDomain;
 }
