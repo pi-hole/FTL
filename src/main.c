@@ -102,11 +102,14 @@ int main (int argc, char* argv[])
 	close_telnet_socket();
 	close_unix_socket();
 
-	// Remove shared memory objects
-	destroy_shmem();
-
 	// Close gravity database connection
 	gravityDB_close();
+
+	// Remove shared memory objects
+	// Important: This invalidated all objects such as
+	//            counters-> ... Do this last when
+	//            terminating in main.c !
+	destroy_shmem();
 
 	//Remove PID file
 	removepid();
