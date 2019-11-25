@@ -740,13 +740,20 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
 	  SET_RCODE(header, NOERROR);
 	  cache_secure = 0;
 	}
-      
-      if (extract_addresses(header, n, daemon->namebuff, now, sets, is_sign, check_rebind, no_cache, cache_secure, &doctored))
+      /******************************** Pi-hole modification ********************************/
+      int ret = extract_addresses(header, n, daemon->namebuff, now, sets, is_sign, check_rebind, no_cache, cache_secure, &doctored);
+      if (ret == 2)
+	{
+	  munged = 1;
+	  cache_secure = 0;
+	}
+      else if(ret)
 	{
 	  my_syslog(LOG_WARNING, _("possible DNS-rebind attack detected: %s"), daemon->namebuff);
 	  munged = 1;
 	  cache_secure = 0;
 	}
+      /**************************************************************************************/
 
       if (doctored)
 	cache_secure = 0;

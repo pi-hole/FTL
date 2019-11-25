@@ -46,6 +46,9 @@ void _FTL_get_blocking_metadata(struct all_addr **addrp, unsigned int *flags, co
 
 #define FTL_check_blocking(queryID, domainID, clientID, blockingreason) _FTL_check_blocking(queryID, domainID, clientID, blockingreason, __FILE__, __LINE__)
 
+#define FTL_CNAME(domain, cpp, id) _FTL_CNAME(domain, cpp, id, __FILE__, __LINE__)
+bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const char* file, const int line);
+
 void FTL_dnsmasq_reload(void);
 void FTL_fork_and_bind_sockets(struct passwd *ent_pw);
 

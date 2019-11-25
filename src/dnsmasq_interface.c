@@ -53,7 +53,6 @@ static struct all_addr blocking_addrp_v6 = {{{ 0 }}};
 unsigned char* pihole_privacylevel = &config.privacylevel;
 const char flagnames[28][12] = {"F_IMMORTAL ", "F_NAMEP ", "F_REVERSE ", "F_FORWARD ", "F_DHCP ", "F_NEG ", "F_HOSTS ", "F_IPV4 ", "F_IPV6 ", "F_BIGNAME ", "F_NXDOMAIN ", "F_CNAME ", "F_DNSKEY ", "F_CONFIG ", "F_DS ", "F_DNSSECOK ", "F_UPSTREAM ", "F_RRNAME ", "F_SERVER ", "F_QUERY ", "F_NOERR ", "F_AUTH ", "F_DNSSEC ", "F_KEYTAG ", "F_SECSTAT ", "F_NO_RR ", "F_IPSET ", "F_NOEXTRA "};
 
-
 static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const char **blockingreason,
                                 const char* file, const int line)
 {
@@ -83,7 +82,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			// We have to go through all the tests below
 			if(config.debug & DEBUG_QUERIES)
 			{
-				logg("Query is not known");
+				logg("Domain is not known");
 			}
 
 			break;
@@ -98,7 +97,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 
 			if(config.debug & DEBUG_QUERIES)
 			{
-				logg("Query is known as %s", *blockingreason);
+				logg("Domain is known as %s", *blockingreason);
 			}
 
 			return true;
@@ -114,7 +113,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 
 			if(config.debug & DEBUG_QUERIES)
 			{
-				logg("Query is known as %s", *blockingreason);
+				logg("Domain is known as %s", *blockingreason);
 			}
 
 			return true;
@@ -130,7 +129,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 
 			if(config.debug & DEBUG_QUERIES)
 			{
-				logg("Query is known as %s", *blockingreason);
+				logg("Domain is known as %s", *blockingreason);
 			}
 
 			return true;
@@ -142,7 +141,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			// all the lengthy tests below
 			if(config.debug & DEBUG_QUERIES)
 			{
-				logg("Query is known as not blocked");
+				logg("Domain is known as not to be blocked");
 			}
 
 			return false;
@@ -217,6 +216,71 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 
 	return blockDomain;
 }
+
+
+bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const char* file, const int line)
+{
+	// Don't analyze anything if in PRIVACY_NOSTATS mode
+	if(config.privacylevel >= PRIVACY_NOSTATS)
+		return false;
+
+	// Lock shared memory
+	lock_shm();
+
+	// Get CNAME destination and source (if applicable)
+	const char *src = cpp != NULL ? cpp->flags & F_BIGNAME ? cpp->name.bname->name : cpp->name.sname : NULL;
+	const char *dst = domain;
+
+	// Save status and forwardID in corresponding query identified by dnsmasq's ID
+	const int queryID = findQueryID(id);
+	if(queryID < 0)
+	{
+		// This may happen e.g. if the original query was a PTR query
+		// or "pi.hole" and we ignored them altogether
+		unlock_shm();
+		return false;
+	}
+
+	// Get query pointer so we can later extract the client requesting this domain for
+	// the per-client blocking evaluation
+	queriesData* query = getQuery(queryID, true);
+	if(query == NULL)
+	{
+		// Nothing to be done here
+		unlock_shm();
+		return false;
+	}
+
+	// Go through already knows domains and see if it is one of them
+	// As this domain might have been found in the middle of a CNAME-path,
+	// it may be not have been seen by FTL_new_query() before
+	char *domainString = strdup(domain);
+	strtolower(domainString);
+	const int domainID = findDomainID(domainString);
+
+	// Get client ID from original query
+	const int clientID = query->clientID;
+
+	// Perform per-client blocking evaluation for this domain. The result for this
+	// domain-client combination will be cached to be immediately available for later
+	// queries of the same domain by the same client
+	const char *blockingreason = NULL;
+	bool block = FTL_check_blocking(queryID, domainID, clientID, &blockingreason);
+
+	if(config.debug & DEBUG_QUERIES)
+	{
+		if(src == NULL)
+			logg("CNAME %s", dst);
+		else
+			logg("CNAME %s ---> %s", src, dst);
+	}
+
+	// Return result
+	free(domainString);
+	unlock_shm();
+	return block;
+}
+
 
 bool _FTL_new_query(const unsigned int flags, const char *name,
                     const char **blockingreason, const struct all_addr *addr,
