@@ -80,7 +80,7 @@ int findForwardID(const char * forwardString, const bool count)
 	return forwardID;
 }
 
-int findDomainID(const char *domainString)
+int findDomainID(const char *domainString, const bool count)
 {
 	for(int domainID = 0; domainID < counters->domains; domainID++)
 	{
@@ -98,7 +98,8 @@ int findDomainID(const char *domainString)
 		// If so, compare the full domain using strcmp
 		if(strcmp(getstr(domain->domainpos), domainString) == 0)
 		{
-			domain->count++;
+			if(count)
+				domain->count++;
 			return domainID;
 		}
 	}

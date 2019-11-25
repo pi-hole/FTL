@@ -17,7 +17,7 @@
 
 void strtolower(char *str);
 int findForwardID(const char * forward, const bool count);
-int findDomainID(const char *domain);
+int findDomainID(const char *domain, const bool count);
 int findClientID(const char *client, const bool count);
 bool isValidIPv4(const char *addr);
 bool isValidIPv6(const char *addr);

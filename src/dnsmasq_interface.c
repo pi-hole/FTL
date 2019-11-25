@@ -43,7 +43,7 @@ static void detect_blocked_IP(const unsigned short flags, const char* answer, co
 static void query_externally_blocked(const int queryID, const unsigned char status);
 static int findQueryID(const int id);
 static void prepare_blocking_metadata(void);
-static void query_blocked(const int queryID, queriesData* query, domainsData* domain, clientsData* client);
+static void query_blocked(queriesData* query, domainsData* domain, clientsData* client);
 
 // Static blocking metadata (stored precomputed as time-critical)
 static unsigned int blocking_flags = 0;
@@ -91,9 +91,9 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			// Known as exactly blacklistes, we
 			// return this result early, skipping
 			// all the lengthy tests below
+			query_blocked(query, domain, client);
 			query->status = QUERY_BLACKLIST;
 			*blockingreason = "exactly blacklisted";
-			query_blocked(queryID, query, domain, client);
 
 			if(config.debug & DEBUG_QUERIES)
 			{
@@ -107,9 +107,9 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			// Known as gravity blocked, we
 			// return this result early, skipping
 			// all the lengthy tests below
+			query_blocked(query, domain, client);
 			query->status = QUERY_GRAVITY;
 			*blockingreason = "gravity blocked";
-			query_blocked(queryID, query, domain, client);
 
 			if(config.debug & DEBUG_QUERIES)
 			{
@@ -123,9 +123,9 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			// Known as regex blacklisted, we
 			// return this result early, skipping
 			// all the lengthy tests below
+			query_blocked(query, domain, client);
 			query->status = QUERY_WILDCARD;
 			*blockingreason = "regex blacklisted";
-			query_blocked(queryID, query, domain, client);
 
 			if(config.debug & DEBUG_QUERIES)
 			{
@@ -153,6 +153,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 	// we do NOT block it.
 	// in_whitelist() checks both the exact and the regex whitelist
 	bool blockDomain = false, black = false, gravity = false;
+	unsigned char new_status = QUERY_UNKNOWN;
 	const char *domainString = getstr(domain->domainpos);
 	if(((black = in_blacklist(domainString, client)) ||
 	    (gravity = in_gravity(domainString, client))) &&
@@ -163,18 +164,15 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 		{
 			// Mark domain as regex matched for this one client
 			domain->clientstatus->set(domain->clientstatus, clientID, BLACKLIST_BLOCKED);
-			query->status = QUERY_BLACKLIST;
+			new_status = QUERY_BLACKLIST;
 			*blockingreason = "exactly blacklisted";
 		}
 		else if(gravity)
 		{
 			domain->clientstatus->set(domain->clientstatus, clientID, GRAVITY_BLOCKED);
-			query->status = QUERY_GRAVITY;
+			new_status = QUERY_GRAVITY;
 			*blockingreason = "gravity blocked";
 		}
-
-		// Adjust counters
-		query_blocked(queryID, query, domain, client);
 	}
 
 	// If a regex filter matched, we additionally compare the domain
@@ -192,7 +190,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 
 		// We have to block this domain
 		blockDomain = true;
-		query->status = QUERY_WILDCARD;
+		new_status = QUERY_WILDCARD;
 		*blockingreason = "regex blacklisted";
 	}
 
@@ -200,7 +198,8 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 	if(blockDomain)
 	{
 		// Adjust counters
-		query_blocked(queryID, query, domain, client);
+		query_blocked(query, domain, client);
+		query->status = new_status;
 
 		// Debug output
 		if(config.debug & DEBUG_QUERIES)
@@ -256,7 +255,7 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 	// it may be not have been seen by FTL_new_query() before
 	char *domainString = strdup(domain);
 	strtolower(domainString);
-	const int domainID = findDomainID(domainString);
+	const int domainID = findDomainID(domainString, false);
 
 	// Get client ID from original query
 	const int clientID = query->clientID;
@@ -396,7 +395,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	}
 
 	// Go through already knows domains and see if it is one of them
-	const int domainID = findDomainID(domainString);
+	const int domainID = findDomainID(domainString, true);
 
 	// Go through already knows clients and see if it is one of them
 	const int clientID = findClientID(clientIP, true);
@@ -787,22 +786,25 @@ void _FTL_reply(const unsigned short flags, const char *name, const struct all_a
 		   strcmp(answer, "::") == 0)
 		{
 			// Answered from user-defined blocking rules (dnsmasq config files)
-			counters->blocked++;
-			overTime[timeidx].blocked++;
+			if(query->status == QUERY_UNKNOWN)
+			{
+				counters->blocked++;
+				overTime[timeidx].blocked++;
 
-			// Update domain blocked counter
-			domain->blockedcount++;
+				// Update domain blocked counter
+				domain->blockedcount++;
+
+				// Get client pointer
+				clientsData* client = getClient(query->clientID, true);
+				if(client != NULL)
+				{
+					// Update client blocked counter
+					client->blockedcount++;
+				}
+			}
 
 			// Set query status to wildcard
 			query->status = QUERY_WILDCARD;
-
-			// Get client pointer
-			clientsData* client = getClient(query->clientID, true);
-			if(client != NULL)
-			{
-				// Update client blocked counter
-				client->blockedcount++;
-			}
 		}
 		else
 		{
@@ -1012,18 +1014,21 @@ static void query_externally_blocked(const int queryID, const unsigned char stat
 	}
 
 	// Mark query as blocked
-	counters->blocked++;
-	overTime[timeidx].blocked++;
+	if(query->status == QUERY_UNKNOWN)
+	{
+		counters->blocked++;
+		overTime[timeidx].blocked++;
 
-	// Get domain pointer
-	domainsData* domain = getDomain(query->domainID, true);
-	if(domain != NULL)
-		domain->blockedcount++;
+		// Get domain pointer
+		domainsData* domain = getDomain(query->domainID, true);
+		if(domain != NULL)
+			domain->blockedcount++;
 
-	// Get client pointer
-	clientsData* client = getClient(query->clientID, true);
-	if(client != NULL)
-		client->blockedcount++;
+		// Get client pointer
+		clientsData* client = getClient(query->clientID, true);
+		if(client != NULL)
+			client->blockedcount++;
+	}
 
 	// Set query status
 	query->status = status;
@@ -1161,20 +1166,22 @@ void _FTL_cache(const unsigned int flags, const char *name, const struct all_add
 	unlock_shm();
 }
 
-static void query_blocked(const int queryID, queriesData* query, domainsData* domain, clientsData* client)
+static void query_blocked(queriesData* query, domainsData* domain, clientsData* client)
 {
-	// This query is no longer unknown
-	counters->unknown--;
-
 	// Get response time
 	struct timeval response;
 	gettimeofday(&response, 0);
 	save_reply_type(blocking_flags, query, response);
 
-	counters->blocked++;
-	overTime[query->timeidx].blocked++;
-	domain->blockedcount++;
-	client->blockedcount++;
+	// Adjust counters
+	if(query->status == QUERY_UNKNOWN)
+	{
+		counters->unknown--;
+		counters->blocked++;
+		overTime[query->timeidx].blocked++;
+		domain->blockedcount++;
+		client->blockedcount++;
+	}
 }
 
 void _FTL_dnssec(const int status, const int id, const char* file, const int line)
