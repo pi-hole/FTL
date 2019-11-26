@@ -552,6 +552,8 @@ int api_stats_history(struct mg_connection *conn)
 		cJSON *item = JSON_NEW_OBJ();
 		JSON_ARRAY_ADD_ITEM(history, item);
 		JSON_OBJ_ADD_ITEM(json, "history", history);
+		// There are no more queries available, send NULL cursor
+		JSON_OBJ_ADD_NULL(json, "cursor");
 		JSON_SEND_OBJECT(json);
 	}
 
