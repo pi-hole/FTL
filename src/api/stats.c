@@ -750,11 +750,10 @@ int api_stats_history(struct mg_connection *conn)
 			}
 		}
 
-		if(GET_VAR("cursor", buffer, request->query_string) > 0)
+		unsigned int unum = 0u;
+		if(GET_VAR("cursor", buffer, request->query_string) > 0 &&
+		   sscanf(buffer, "%u", &unum) > 0)
 		{
-			unsigned int unum = 0u;
-			sscanf(buffer, "%u", &unum);
-
 			// Do not start at the most recent, but at an older query
 			if(unum < (unsigned int)counters->queries)
 			{
