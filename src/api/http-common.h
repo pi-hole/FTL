@@ -36,6 +36,8 @@ int send_json_error(struct mg_connection *conn, const int code,
 int send_json_success(struct mg_connection *conn,
                       char * additional_headers);
 
+void http_reread_index_html(void);
+
 // Cookie routines
 bool http_get_cookie_int(struct mg_connection *conn, const char *cookieName, int *i);
 bool http_get_cookie_str(struct mg_connection *conn, const char *cookieName, char *str, size_t str_size);

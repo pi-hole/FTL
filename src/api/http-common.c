@@ -350,6 +350,16 @@ void http_init(void)
 	mg_set_request_handler(ctx, httpsettings.webhome, index_handler, NULL);
 }
 
+void http_reread_index_html(void)
+{
+	// Release memory for the index.html file
+	if(indexfile_content != NULL)
+		free(indexfile_content);
+
+	// Re-read index.html into memory
+	prepare_index_html();
+}
+
 void http_terminate(void)
 {
 	/* Stop the server */
@@ -357,6 +367,7 @@ void http_terminate(void)
 
 	// Release memory for the index.html file
 	free(indexfile_content);
+	indexfile_content = NULL;
 
 	/* Un-initialize the library */
 	mg_exit_library();
