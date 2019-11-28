@@ -18,6 +18,8 @@
 #include "datastructure.h"
 #include <regex.h>
 #include "database/gravity-db.h"
+// bool startup
+#include "main.h"
 
 static int num_regex[2] = { 0 };
 static regex_t *regex[2] = { NULL };
@@ -194,14 +196,18 @@ static void free_regex(void)
 void allocate_regex_client_enabled(clientsData *client)
 {
 	client->regex_enabled[REGEX_BLACKLIST] = calloc(num_regex[REGEX_BLACKLIST], sizeof(bool));
-	gravityDB_get_regex_client_groups(client, num_regex[REGEX_BLACKLIST],
-	                                  regex_id[REGEX_BLACKLIST], REGEX_BLACKLIST,
-	                                  "vw_regex_blacklist");
-
 	client->regex_enabled[REGEX_WHITELIST] = calloc(num_regex[REGEX_WHITELIST], sizeof(bool));
-	gravityDB_get_regex_client_groups(client, num_regex[REGEX_WHITELIST],
-	                                  regex_id[REGEX_WHITELIST], REGEX_WHITELIST,
-	                                  "vw_regex_whitelist");
+
+	// Only initialize regex associations when dnsmasq is ready (otherwise, we're still in history reading mode)
+	if(!startup)
+	{
+		gravityDB_get_regex_client_groups(client, num_regex[REGEX_BLACKLIST],
+						regex_id[REGEX_BLACKLIST], REGEX_BLACKLIST,
+						"vw_regex_blacklist");
+		gravityDB_get_regex_client_groups(client, num_regex[REGEX_WHITELIST],
+						regex_id[REGEX_WHITELIST], REGEX_WHITELIST,
+						"vw_regex_whitelist");
+	}
 }
 
 static void read_regex_table(const unsigned char regexid)

@@ -28,6 +28,7 @@
 char * username;
 bool needGC = false;
 bool needDBGC = false;
+bool startup = true;
 
 int main (int argc, char* argv[])
 {
@@ -67,7 +68,7 @@ int main (int argc, char* argv[])
 	if(strcmp(username, "pihole") != 0)
 		logg("WARNING: Starting pihole-FTL as user %s is not recommended", username);
 
-	// Initialize database
+	// Initialize query database (pihole-FTL.db)
 	db_init();
 
 	// Try to import queries from long-term database if available
@@ -82,6 +83,7 @@ int main (int argc, char* argv[])
 	check_capabilities();
 
 	// Start the resolver
+	startup = false;
 	main_dnsmasq(argc_dnsmasq, argv_dnsmasq);
 
 	logg("Shutting down...");
