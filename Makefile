@@ -78,7 +78,6 @@ WARN_FLAGS=-Wall -Wextra -Wno-unused-parameter
 # -Wswitch-enum: Warn whenever a switch statement has an index of enumerated type and lacks a case for one or more of the named codes of that enumeration.
 # -Wshadow: Warn whenever a local variable or type declaration shadows another variable, parameter, type, class member, or whenever a built-in function is shadowed.
 # -Wfloat-equal: Warn if floating-point values are used in equality comparisons
-# -Wunsafe-loop-optimizations -funsafe-loop-optimizations: Warn if the loop cannot be optimized because the compiler cannot assume anything on the bounds of the loop indices
 # -Wpointer-arith: Warn about anything that depends on the "size of" a function type or of "void".  GNU C assigns these types a size of 1
 # -Wundef: Warn if an undefined identifier is evaluated in an "#if" directive
 # -Wbad-function-cast: Warn when a function call is cast to a non-matching type
@@ -99,7 +98,7 @@ else
   EXTRAWARN_GCC8=
 endif
 EXTRAWARN=-Werror -Waddress -Wlogical-op -Wmissing-field-initializers -Woverlength-strings -Wformat -Wformat-nonliteral -Wuninitialized -Wswitch-enum -Wshadow \
--Wfloat-equal -Wunsafe-loop-optimizations -funsafe-loop-optimizations -Wbad-function-cast -Wwrite-strings -Wparentheses -Wlogical-op -Wstrict-prototypes -Wmissing-prototypes -Wredundant-decls -Winline $(EXTRAWARN_GCC8)
+-Wfloat-equal -Wbad-function-cast -Wwrite-strings -Wparentheses -Wlogical-op -Wstrict-prototypes -Wmissing-prototypes -Wredundant-decls -Winline $(EXTRAWARN_GCC8)
 
 # -FILE_OFFSET_BITS=64: used by stat(). Avoids problems with files > 2 GB on 32bit machines
 CCFLAGS=-std=gnu11 -I$(IDIR) $(WARN_FLAGS) -D_FILE_OFFSET_BITS=64 $(HARDENING_FLAGS) $(DEBUG_FLAGS) $(CFLAGS) $(SQLITE_FLAGS)
