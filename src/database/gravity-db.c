@@ -121,13 +121,21 @@ static bool get_client_groupids(const clientsData* client, char **groups)
 	// Get associated groups for this client (if defined)
 	char *querystr = NULL;
 	const char *ip = getstr(client->ippos);
+
+	// Do not proceed when database is not available
+	if(!gravity_database_avail)
+	{
+		logg("get_client_groupids(): Gravity database not available");
+		return false;
+	}
+
 	// Build query string to get possible group associations for this particular client
 	// The SQL GROUP_CONCAT() function returns a string which is the concatenation of all
 	// non-NULL values of group_id separated by ','. The order of the concatenated elements
 	// is arbitrary, however, is of no relevance for your use case.
 	if(asprintf(&querystr, "SELECT GROUP_CONCAT(group_id) FROM client_by_group WHERE client_id = (SELECT id FROM client WHERE ip = \'%s\');", ip) < 1)
 	{
-		logg("gravityDB_prepare_client_statements(%s) - asprintf() error", ip);
+		logg("get_client_groupids() - asprintf() error");
 		return false;
 	}
 
@@ -137,7 +145,7 @@ static bool get_client_groupids(const clientsData* client, char **groups)
 	// Prepare query
 	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &table_stmt, NULL);
 	if(rc != SQLITE_OK){
-		logg("gravityDB_prepare_client_statements(%s) - SQL error prepare (%i): %s",
+		logg("get_client_groupids(%s) - SQL error prepare (%i): %s",
 		     querystr, rc, sqlite3_errmsg(gravity_db));
 		sqlite3_finalize(table_stmt);
 		gravityDB_close();
@@ -160,7 +168,7 @@ static bool get_client_groupids(const clientsData* client, char **groups)
 	}
 	else
 	{
-		logg("gravityDB_prepare_client_statements(%s) - SQL error step (%i): %s",
+		logg("get_client_groupids(%s) - SQL error step (%i): %s",
 		     querystr, rc, sqlite3_errmsg(gravity_db));
 		sqlite3_finalize(table_stmt);
 		gravityDB_close();
