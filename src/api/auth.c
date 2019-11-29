@@ -69,6 +69,10 @@ int check_client_auth(struct mg_connection *conn)
 			// - The IP matches the one we've seen earlier
 			user_id = num;
 
+			// Update timestamp of this client to extend
+			// the validity of their API authentication
+			auth_data[num].valid_until = now;
+
 			if(config.debug & DEBUG_API)
 			{
 				char timestr[128];
