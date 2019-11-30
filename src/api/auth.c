@@ -137,13 +137,28 @@ int api_auth(struct mg_connection *conn)
 		if(hash_match || empty_password)
 		{
 			// Accepted
+			time_t now = time(NULL);
 			for(unsigned int i = 0; i < API_MAX_CLIENTS; i++)
 			{
+				// Expired slow, mark as unused
+				if(auth_data[i].valid_until < now)
+				{
+					if(config.debug & DEBUG_API)
+					{
+						logg("API: Session of client %u (%s) expired, freeing...",
+						     i, auth_data[i].remote_addr);
+					}
+					auth_data[i].used = false;
+					auth_data[i].valid_until = 0;
+					free(auth_data[i].remote_addr);
+					auth_data[i].remote_addr = NULL;
+				}
+
+				// Found unused authentication slot (might have been freed before)
 				if(!auth_data[i].used)
 				{
-					// Found an unused slot
 					auth_data[i].used = true;
-					auth_data[i].valid_until = time(NULL) + httpsettings.session_timeout;
+					auth_data[i].valid_until = now + httpsettings.session_timeout;
 					auth_data[i].remote_addr = strdup(request->remote_addr);
 
 					user_id = i;
@@ -151,24 +166,12 @@ int api_auth(struct mg_connection *conn)
 				}
 			}
 
-			if(config.debug & DEBUG_API)
+			if(config.debug & DEBUG_API && user_id > -1)
 			{
-				if(header_set)
-				{
-					logg("API: Received X-Pi-hole-Authenticate: %s", xHeader);
-				}
-				else if(strlen(password_hash) == 0u)
-				{
-					logg("API: No password required on this machine");
-				}
-
-				if(user_id > -1)
-				{
-					char timestr[128];
-					get_timestr(timestr, auth_data[user_id].valid_until);
-					logg("API: Registered new user: user_id %i valid_until: %s remote_addr %s",
-					user_id, timestr, auth_data[user_id].remote_addr);
-				}
+				char timestr[128];
+				get_timestr(timestr, auth_data[user_id].valid_until);
+				logg("API: Registered new user: user_id %i valid_until: %s remote_addr %s",
+				user_id, timestr, auth_data[user_id].remote_addr);
 			}
 			if(user_id == -1)
 			{
@@ -231,7 +234,7 @@ int api_auth(struct mg_connection *conn)
 
 		// Revoke client authentication. This slot can be used by a new client, afterwards.
 		auth_data[user_id].used = false;
-		auth_data[user_id].valid_until = time(NULL);
+		auth_data[user_id].valid_until = 0;
 		free(auth_data[user_id].remote_addr);
 		auth_data[user_id].remote_addr = NULL;
 
