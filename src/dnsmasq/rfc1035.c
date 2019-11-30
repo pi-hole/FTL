@@ -1389,9 +1389,10 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 					  T_CNAME, C_IN, "d", cname_target))
 		    anscount++;
 		}
-	  
-	      strcpy(name, cname_target);
+
 	    }
+
+	  strcpy(name, cname_target);
 	}
 	  
       if (qtype == T_TXT || qtype == T_ANY)
