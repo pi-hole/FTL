@@ -1353,6 +1353,8 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 
   for (q = ntohs(header->qdcount); q != 0; q--)
     {
+      int count = 255; /* catch loops */
+      
       /* save pointer to name for copying into answers */
       nameoffset = p - (unsigned char *)header;
 
@@ -1365,7 +1367,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 
       ans = 0; /* have we answered this question */
 
-      while ((crecp = cache_find_by_name(NULL, name, now, F_CNAME)))
+      while (--count != 0 && (crecp = cache_find_by_name(NULL, name, now, F_CNAME)))
 	{
 	  char *cname_target = cache_get_cname_target(crecp);
 
