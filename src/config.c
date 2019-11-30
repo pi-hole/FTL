@@ -422,6 +422,19 @@ void read_FTLconf(void)
 	else
 		logg("   API_AUTH_FOR_LOCALHOST: Inactive");
 
+	// HTTP_SESSION_TIMEOUT
+	// How long should a session be considered valid after login?
+	// defaults to: 300 seconds
+	httpsettings.session_timeout = 300;
+	buffer = parse_FTLconf(fp, "WEBPORT");
+
+	value = 0;
+	if(buffer != NULL && sscanf(buffer, "%i", &value) && value > 0)
+	{
+		httpsettings.session_timeout = value;
+	}
+	logg("   HTTP_SESSION_TIMEOUT: %u seconds", httpsettings.session_timeout);
+
 	// Read DEBUG_... setting from pihole-FTL.conf
 	// This option should be the last one as it causes
 	// some rather verbose output into the log when

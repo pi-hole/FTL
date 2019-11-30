@@ -71,13 +71,13 @@ int check_client_auth(struct mg_connection *conn)
 
 			// Update timestamp of this client to extend
 			// the validity of their API authentication
-			auth_data[num].valid_until = now;
+			auth_data[num].valid_until = now + httpsettings.session_timeout;
 
 			// Update user cookie
 			char *buffer = NULL;
 			if(asprintf(&buffer,
 				"Set-Cookie: user_id=%u; Path=/; Max-Age=%u\r\n",
-				num, API_SESSION_EXPIRE) < 0)
+				num, httpsettings.session_timeout) < 0)
 			{
 				return send_json_error(conn, 500, "internal_error", "Internal server error", NULL);
 			}
@@ -141,7 +141,7 @@ int api_auth(struct mg_connection *conn)
 				{
 					// Found an unused slot
 					auth_data[i].used = true;
-					auth_data[i].valid_until = time(NULL) + API_SESSION_EXPIRE;
+					auth_data[i].valid_until = time(NULL) + httpsettings.session_timeout;
 					auth_data[i].remote_addr = strdup(request->remote_addr);
 
 					user_id = i;
