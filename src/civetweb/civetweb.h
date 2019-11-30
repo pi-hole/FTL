@@ -935,8 +935,9 @@ CIVETWEB_API int mg_send_http_error(struct mg_connection *conn,
 /************************************** Pi-hole method **************************************/
 void my_send_http_error_headers(struct mg_connection *conn,
                                 int status, const char* mime_type,
-                                const char *additional_headers,
+//                              const char *additional_headers,
                                 long long content_length);
+void my_set_cookie_header(struct mg_connection *conn, const char *cookie_header);
 /********************************************************************************************/
 
 

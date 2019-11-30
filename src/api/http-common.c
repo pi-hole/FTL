@@ -20,35 +20,36 @@
 static struct mg_context *ctx = NULL;
 
 int send_http(struct mg_connection *conn, const char *mime_type,
-              const char *additional_headers, const char *msg)
+              const char *msg)
 {
-	mg_send_http_ok(conn, mime_type, additional_headers, strlen(msg));
+	mg_send_http_ok(conn, mime_type, NULL, strlen(msg));
 	return mg_write(conn, msg, strlen(msg));
 }
 
 int send_http_code(struct mg_connection *conn, const char *mime_type,
-                   const char *additional_headers, int code, const char *msg)
+                   int code, const char *msg)
 {
 	// Payload will be sent with text/plain encoding due to
 	// the first line being "Error <code>" by definition
 	//return mg_send_http_error(conn, code, "%s", msg);
-	my_send_http_error_headers(conn, code, mime_type,
-	                           additional_headers, strlen(msg));
+	my_send_http_error_headers(conn, code,
+	                           mime_type,
+	                           strlen(msg));
+
 	return mg_write(conn, msg, strlen(msg));
 }
 
-int send_json_unauthorized(struct mg_connection *conn,
-                           char *additional_headers)
+int send_json_unauthorized(struct mg_connection *conn)
 {
 	return send_json_error(conn, 401,
                                "unauthorized",
                                "Unauthorized",
-                               NULL, additional_headers);
+                               NULL);
 }
 
 int send_json_error(struct mg_connection *conn, const int code,
                     const char *key, const char* message,
-                    cJSON *data, char *additional_headers)
+                    cJSON *data)
 {
 	cJSON *json = JSON_NEW_OBJ();
 	cJSON *error = JSON_NEW_OBJ();
@@ -67,32 +68,14 @@ int send_json_error(struct mg_connection *conn, const int code,
 		
 	JSON_OBJ_ADD_ITEM(json, "error", error);
 
-	// Send additional headers if supplied
-	if(additional_headers == NULL)
-	{
-		JSON_SEND_OBJECT_CODE(json, code);
-	}
-	else
-	{
-		JSON_SEND_OBJECT_AND_HEADERS_CODE(json, code, additional_headers);
-	}
+	JSON_SEND_OBJECT_CODE(json, code);
 }
 
-int send_json_success(struct mg_connection *conn,
-                      char * additional_headers)
+int send_json_success(struct mg_connection *conn)
 {
 	cJSON *json = JSON_NEW_OBJ();
 	JSON_OBJ_REF_STR(json, "status", "success");
-
-	// Send additional headers if supplied
-	if(additional_headers == NULL)
-	{
-		JSON_SEND_OBJECT(json);
-	}
-	else
-	{
-		JSON_SEND_OBJECT_AND_HEADERS(json, additional_headers);
-	}
+	JSON_SEND_OBJECT(json);
 }
 
 int send_http_internal_error(struct mg_connection *conn)
@@ -148,7 +131,7 @@ bool __attribute__((pure)) startsWith(const char *path, const char *uri)
 // Print passed string directly
 static int print_simple(struct mg_connection *conn, void *input)
 {
-	return send_http(conn, "text/plain", NULL, input);
+	return send_http(conn, "text/plain", input);
 }
 
 static char *indexfile_content = NULL;

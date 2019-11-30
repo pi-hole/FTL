@@ -23,18 +23,14 @@
 void http_init(void);
 void http_terminate(void);
 
-int send_http(struct mg_connection *conn, const char *mime_type,
-              const char *additional_headers, const char *msg);
-int send_http_code(struct mg_connection *conn, const char *mime_type,
-                   const char *additional_headers, int code, const char *msg);
+int send_http(struct mg_connection *conn, const char *mime_type, const char *msg);
+int send_http_code(struct mg_connection *conn, const char *mime_type, int code, const char *msg);
 int send_http_internal_error(struct mg_connection *conn);
-int send_json_unauthorized(struct mg_connection *conn,
-                           char *additional_headers);
+int send_json_unauthorized(struct mg_connection *conn);
 int send_json_error(struct mg_connection *conn, const int code,
                     const char *key, const char* message,
-                    cJSON *data, char *additional_headers);
-int send_json_success(struct mg_connection *conn,
-                      char * additional_headers);
+                    cJSON *data);
+int send_json_success(struct mg_connection *conn);
 
 void http_reread_index_html(void);
 

@@ -2812,6 +2812,8 @@ struct mg_connection {
 
 	void *tls_user_ptr; /* User defined pointer in thread local storage,
 	                     * for quick access */
+
+	char *cookie_header; // <---- Pi-hole modification
 };
 
 
@@ -4390,6 +4392,16 @@ send_additional_header(struct mg_connection *conn)
 	}
 #endif
 
+	/**************** Pi-hole modification ****************/
+	if(conn->cookie_header != NULL &&
+	   conn->cookie_header[0])
+	{
+		i += mg_printf(conn, "%s", conn->cookie_header);
+		mg_free(conn->cookie_header);
+		conn->cookie_header = NULL;
+	}
+	/******************************************************/
+
 	if (header && header[0]) {
 		i += mg_printf(conn, "%s\r\n", header);
 	}
@@ -4788,7 +4800,6 @@ mg_send_http_error_impl(struct mg_connection *conn,
 /************************************** Pi-hole method **************************************/
 void my_send_http_error_headers(struct mg_connection *conn,
                                 int status, const char* mime_type,
-				const char *additional_headers,
                                 long long content_length)
 {
 	/* Set status (for log) */
@@ -4809,14 +4820,14 @@ void my_send_http_error_headers(struct mg_connection *conn,
 			mime_type,
 			date);
 
-	// We may use additional headers to set or clear cookies
-	if(additional_headers != NULL && strlen(additional_headers) > 0)
-	{
-		mg_write(conn, additional_headers, strlen(additional_headers));
-	}
-
 	mg_printf(conn, "Content-Length: %" UINT64_FMT "\r\n\r\n",
 			(uint64_t)content_length);
+}
+
+void my_set_cookie_header(struct mg_connection *conn,
+                          const char *cookie_header)
+{
+	conn->cookie_header = mg_strdup(cookie_header);
 }
 /********************************************************************************************/
 
@@ -17994,6 +18005,7 @@ worker_thread_run(struct mg_connection *conn)
 #if defined(USE_SERVER_STATS)
 	conn->conn_state = 1; /* not consumed */
 #endif
+	conn->cookie_header = NULL; // <--- Pi-hole modification
 
 	/* Call consume_socket() even when ctx->stop_flag > 0, to let it
 	 * signal sq_empty condvar to wake up the master waiting in

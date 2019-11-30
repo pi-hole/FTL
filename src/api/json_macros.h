@@ -129,7 +129,7 @@
 		send_http_internal_error(conn); \
 		return 500; \
 	} \
-	send_http(conn, "application/json; charset=utf-8", NULL, msg); \
+	send_http(conn, "application/json; charset=utf-8", msg); \
 	cJSON_Delete(object); \
 	return 200; \
 }
@@ -142,11 +142,11 @@
 		send_http_internal_error(conn); \
 		return 500; \
 	} \
-	send_http_code(conn, "application/json; charset=utf-8", NULL, code, msg); \
+	send_http_code(conn, "application/json; charset=utf-8", code, msg); \
 	cJSON_Delete(object); \
 	return 200; \
 }
-
+/*
 #define JSON_SEND_OBJECT_AND_HEADERS(object, additional_headers){ \
 	const char* msg = JSON_FORMATTER(object); \
 	if(msg == NULL) \
@@ -174,3 +174,4 @@
 	free(additional_headers); \
 	return code; \
 }
+*/

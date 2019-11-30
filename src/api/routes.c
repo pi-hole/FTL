@@ -130,7 +130,7 @@ int api_handler(struct mg_connection *conn, void *ignored)
 		ret = send_json_error(conn, 404,
 		                      "not_found",
 		                      "Not found",
-		                      json, NULL);
+		                      json);
 	}
 
 	// Unlock after API access

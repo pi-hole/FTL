@@ -37,7 +37,7 @@ int api_ftl_dnsmasq_log(struct mg_connection *conn)
 	// Verify requesting client is allowed to see this ressource
 	if(check_client_auth(conn) < 0)
 	{
-		return send_json_unauthorized(conn, NULL);
+		return send_json_unauthorized(conn);
 	}
 
 	unsigned int start = 0u;

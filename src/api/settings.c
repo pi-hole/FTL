@@ -32,7 +32,7 @@ int api_settings_ftldb(struct mg_connection *conn)
 	// Verify requesting client is allowed to see this ressource
 	if(check_client_auth(conn) < 0)
 	{
-		send_json_unauthorized(conn, NULL);
+		send_json_unauthorized(conn);
 	}
 
 	cJSON *json = JSON_NEW_OBJ();
