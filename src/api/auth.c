@@ -56,7 +56,7 @@ int check_client_auth(struct mg_connection *conn)
 	if(http_get_cookie_int(conn, "user_id", &num) && num > -1 && num < API_MAX_CLIENTS)
 	{
 		if(config.debug & DEBUG_API)
-			logg("Read user_id=%i from user-provided cookie", num);
+			logg("API: Read user_id=%i from user-provided cookie", num);
 
 		time_t now = time(NULL);
 		if(auth_data[num].used &&
@@ -88,15 +88,15 @@ int check_client_auth(struct mg_connection *conn)
 			{
 				char timestr[128];
 				get_timestr(timestr, auth_data[user_id].valid_until);
-				logg("Recognized known user: user_id %i valid_until: %s remote_addr %s",
+				logg("API: Recognized known user: user_id %i valid_until: %s remote_addr %s",
 					user_id, timestr, auth_data[user_id].remote_addr);
 			}
 		}
 		else if(config.debug & DEBUG_API)
-			logg("Authentification: FAIL (cookie invalid/expired)");
+			logg("API Authentification: FAIL (cookie invalid/expired)");
 	}
 	else if(config.debug & DEBUG_API)
-		logg("Authentification: FAIL (no cookie provided)");
+		logg("API Authentification: FAIL (no cookie provided)");
 
 	return user_id;
 }
@@ -107,11 +107,10 @@ static __attribute__((malloc)) char *get_password_hash(void)
 	const char* password = read_setupVarsconf("WEBPASSWORD");
 
 	// If the value was not set (or we couldn't open the file for reading),
-	// substitute password with the hash for an empty string (= no password).
+	// we hand an empty string back to the caller
 	if(password == NULL || (password != NULL && strlen(password) == 0u))
 	{
-		// This is the empty password hash
-		password = "cd372fb85148700fa88095e3492d3f9f5beb43e555e5ff26d95f5a6adc36f8e6";
+		password = "";
 	}
 
 	char *hash = strdup(password);
@@ -125,14 +124,17 @@ static __attribute__((malloc)) char *get_password_hash(void)
 int api_auth(struct mg_connection *conn)
 {
 	int user_id = -1;
+	char *password_hash = get_password_hash();
 	const struct mg_request_info *request = mg_get_request_info(conn);
 	
-	// Does the client try to authenticate through a set header?
+	// Does the client try to authenticate through a set header or is there no password on this machine?
 	const char *xHeader = mg_get_header(conn, "X-Pi-hole-Authenticate");
-	if(xHeader != NULL && strlen(xHeader) > 0)
+	const bool header_set = (xHeader != NULL && strlen(xHeader) > 0);
+	const bool empty_password = (strlen(password_hash) == 0u);
+	if(header_set || empty_password )
 	{
-		char *password_hash = get_password_hash();
-		if(strcmp(xHeader, password_hash) == 0)
+		const bool hash_match = (strcmp(xHeader, password_hash) == 0);
+		if(hash_match || empty_password)
 		{
 			// Accepted
 			for(unsigned int i = 0; i < API_MAX_CLIENTS; i++)
@@ -151,27 +153,36 @@ int api_auth(struct mg_connection *conn)
 
 			if(config.debug & DEBUG_API)
 			{
-				logg("Received X-Pi-hole-Authenticate: %s", xHeader);
+				if(header_set)
+				{
+					logg("API: Received X-Pi-hole-Authenticate: %s", xHeader);
+				}
+				else if(strlen(password_hash) == 0u)
+				{
+					logg("API: No password required on this machine");
+				}
+
 				if(user_id > -1)
 				{
 					char timestr[128];
 					get_timestr(timestr, auth_data[user_id].valid_until);
-					logg("Registered new user: user_id %i valid_until: %s remote_addr %s",
+					logg("API: Registered new user: user_id %i valid_until: %s remote_addr %s",
 					user_id, timestr, auth_data[user_id].remote_addr);
 				}
 			}
 			if(user_id == -1)
 			{
-				logg("WARNING: No free slots available, not authenticating user");
+				logg("WARNING: No free API slots available, not authenticating user");
 			}
 		}
 		else if(config.debug & DEBUG_API)
 		{
-			logg("Password mismatch. User=%s, setupVars=%s", xHeader, password_hash);
+			logg("API: Password mismatch. User=%s, setupVars=%s", xHeader, password_hash);
 		}
 
-		free(password_hash);
 	}
+	free(password_hash);
+	password_hash = NULL;
 
 	// Did the client authenticate before and we can validate this?
 	if(user_id < 0)
@@ -181,7 +192,7 @@ int api_auth(struct mg_connection *conn)
 	if(user_id == API_MAX_CLIENTS)
 	{
 		if(config.debug & DEBUG_API)
-			logg("Authentification: OK, localhost does not need auth.");
+			logg("API Authentification: OK, localhost does not need auth.");
 		// We still have to send a cookie for the web interface to be happy
 		char *buffer = NULL;
 		if(asprintf(&buffer,
@@ -196,7 +207,7 @@ int api_auth(struct mg_connection *conn)
 	if(user_id > -1 && method == HTTP_GET)
 	{
 		if(config.debug & DEBUG_API)
-			logg("Authentification: OK, registered new client");
+			logg("API Authentification: OK, registered new client");
 
 		cJSON *json = JSON_NEW_OBJ();
 		JSON_OBJ_REF_STR(json, "status", "success");
@@ -216,7 +227,7 @@ int api_auth(struct mg_connection *conn)
 	else if(user_id > -1 && method == HTTP_DELETE)
 	{
 		if(config.debug & DEBUG_API)
-			logg("Authentification: OK, requested to revoke");
+			logg("API Authentification: OK, requested to revoke");
 
 		// Revoke client authentication. This slot can be used by a new client, afterwards.
 		auth_data[user_id].used = false;

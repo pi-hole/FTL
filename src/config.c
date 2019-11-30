@@ -426,7 +426,7 @@ void read_FTLconf(void)
 	// How long should a session be considered valid after login?
 	// defaults to: 300 seconds
 	httpsettings.session_timeout = 300;
-	buffer = parse_FTLconf(fp, "WEBPORT");
+	buffer = parse_FTLconf(fp, "HTTP_SESSION_TIMEOUT");
 
 	value = 0;
 	if(buffer != NULL && sscanf(buffer, "%i", &value) && value > 0)
