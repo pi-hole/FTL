@@ -78,6 +78,13 @@ static void __attribute__((noreturn)) SIGSEGV_handler(int sig, siginfo_t *si, vo
 	abort();
 }
 
+static void sig_rt_min(int signum) 
+{ 
+	signal(signum, sig_rt_min); /* reset signal */
+	int rtsig = signum - SIGRTMIN;
+	logg("Received real-time signal %d", rtsig); 
+} 
+
 void handle_signals(void)
 {
 	struct sigaction old_action;
@@ -92,6 +99,12 @@ void handle_signals(void)
 		sigemptyset(&SEGVaction.sa_mask);
 		SEGVaction.sa_sigaction = &SIGSEGV_handler;
 		sigaction(SIGSEGV, &SEGVaction, NULL);
+	}
+
+	// Catch first five real-time signals
+	for(unsigned int i = 0; i < 5; i++)
+	{
+		signal(SIGRTMIN + i, sig_rt_min); 
 	}
 
 	// Log start time of FTL
