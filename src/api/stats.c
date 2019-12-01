@@ -583,7 +583,7 @@ int api_stats_history(struct mg_connection *conn)
 	// We start with the most recent query at the beginning (until the cursor is changed)
 	unsigned int cursor = counters->queries;
 	// We send 200 queries (until the API is asked for a different limit)
-	unsigned int show = 20u;
+	unsigned int show = 200u;
 
 	const struct mg_request_info *request = mg_get_request_info(conn);
 	if(request->query_string != NULL)
