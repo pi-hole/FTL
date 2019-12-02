@@ -295,3 +295,41 @@ const char *getClientNameString(const int queryID)
 	else
 		return HIDDEN_CLIENT;
 }
+
+void FTL_reset_per_client_domain_data(void)
+{
+	for(int domainID = 0; domainID < counters->domains; domainID++)
+	{
+		domainsData *domain = getDomain(domainID, true);
+		if(domain == NULL)
+			continue;
+
+		for(int clientID = 0; clientID < counters->clients; clientID++)
+		{
+			// Reset all blocking yes/no fields for all domains and clients
+			// This forces a reprocessing of all available filters for any
+			// given domain and client the next time they are seen
+			domain->clientstatus->set(domain->clientstatus, clientID, UNKNOWN_BLOCKED);
+		}
+	}
+}
+
+void FTL_reload_all_domainlists(void)
+{
+	// (Re-)open gravity database connection
+	gravityDB_close();
+	gravityDB_open();
+	// gravityDB_close() has finalized all prepared statements, reinitialize them
+	gravityDB_reload_client_statements();
+
+	// Reset number of blocked domains
+	counters->gravity = gravityDB_count(GRAVITY_TABLE);
+
+	// Read and compile possible regex filters
+	// only after having called gravityDB_open()
+	read_regex_from_database();
+
+	// Reset FTL's internal DNS cache storing whether a specific domain
+	// has already been validated for a specific user
+	FTL_reset_per_client_domain_data();
+}

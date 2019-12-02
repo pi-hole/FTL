@@ -17,6 +17,8 @@
 #include "memory.h"
 // ls_dir()
 #include "files.h"
+// FTL_reload_all_domainlists()
+#include "datastructure.h"
 
 volatile sig_atomic_t killed = 0;
 static time_t FTLstarttime = 0;
@@ -82,6 +84,18 @@ static void SIGRT_handler(int signum, siginfo_t *si, void *unused)
 { 
 	int rtsig = signum - SIGRTMIN;
 	logg("Received: %s (%d -> %d)", strsignal(signum), signum, rtsig);
+
+	if(rtsig == 0)
+	{
+		// Reload
+		// - gravity
+		// - exact whitelist
+		// - regex whitelist
+		// - exact blacklist
+		// - exact blacklist
+		// WITHOUT wiping the DNS cache itself
+		FTL_reload_all_domainlists();
+	}
 } 
 
 void handle_signals(void)

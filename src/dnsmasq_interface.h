@@ -52,6 +52,4 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 void FTL_dnsmasq_reload(void);
 void FTL_fork_and_bind_sockets(struct passwd *ent_pw);
 
-void FTL_reset_per_client_domain_data(bool sigusr2);
-
 #endif // DNSMASQ_INTERFACE_H

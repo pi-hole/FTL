@@ -25,6 +25,9 @@ const char *getDomainString(const int queryID);
 const char *getClientIPString(const int queryID);
 const char *getClientNameString(const int queryID);
 
+void FTL_reload_all_domainlists(void);
+void FTL_reset_per_client_domain_data(void);
+
 typedef struct {
 	unsigned char magic;
 	unsigned char type;

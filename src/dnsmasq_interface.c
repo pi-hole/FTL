@@ -675,20 +675,7 @@ void FTL_dnsmasq_reload(void)
 	// Reread pihole-FTL.conf to see which debugging flags are set
 	read_debuging_settings(NULL);
 
-	// (Re-)open gravity database connection
-	gravityDB_close();
-	gravityDB_open();
-	// gravityDB_close() has finalized all prepared statements, reinitialize them
-	gravityDB_reload_client_statements();
-
-	// Reset number of blocked domains
-	counters->gravity = gravityDB_count(GRAVITY_TABLE);
-
-	// Read and compile possible regex filters
-	// only after having called gravityDB_open()
-	read_regex_from_database();
-
-	FTL_reset_per_client_domain_data(false);
+	FTL_reload_all_domainlists();
 
 	// Print current set of capabilities if requested via debug flag
 	if(config.debug & DEBUG_CAPS)
@@ -1657,25 +1644,4 @@ static void prepare_blocking_metadata(void)
 	}
 	// Free IPv6addr
 	clearSetupVarsArray();
-}
-
-void FTL_reset_per_client_domain_data(bool sigusr2)
-{
-	if(sigusr2)
-		logg("Received SIGUSR2, resetting domain blocking data");
-
-	for(int domainID = 0; domainID < counters->domains; domainID++)
-	{
-		domainsData *domain = getDomain(domainID, true);
-		if(domain == NULL)
-			continue;
-
-		for(int clientID = 0; clientID < counters->clients; clientID++)
-		{
-			// Reset all blocking yes/no fields for all domains and clients
-			// This forces a reprocessing of all available filters for any
-			// given domain and client the next time they are seen
-			domain->clientstatus->set(domain->clientstatus, clientID, UNKNOWN_BLOCKED);
-		}
-	}
 }
