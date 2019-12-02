@@ -17,6 +17,10 @@
 
 // Table indices
 enum { GRAVITY_TABLE, EXACT_BLACKLIST_TABLE, EXACT_WHITELIST_TABLE, REGEX_BLACKLIST_TABLE, REGEX_WHITELIST_TABLE, UNKNOWN_TABLE };
+enum { GRAVITY_DOMAINLIST_EXACT_WHITELIST = 0,
+       GRAVITY_DOMAINLIST_EXACT_BLACKLIST = 1,
+       GRAVITY_DOMAINLIST_REGEX_WHITELIST = 2,
+       GRAVITY_DOMAINLIST_REGEX_BLACKLIST = 3 };
 
 bool gravityDB_open(void);
 bool gravityDB_prepare_client_statements(const int clientID, clientsData* client);
@@ -34,7 +38,7 @@ bool in_blacklist(const char *domain, const int clientID, clientsData* client);
 
 bool gravityDB_get_regex_client_groups(clientsData* client, const int numregex, const int *regexid,
                                        const unsigned char type, const char* table, const int clientID);
-bool gravityDB_addToTable(const char *table, const char* domain);
-bool gravityDB_delFromTable(const char *table, const char* domain);
+bool gravityDB_addToTable(const int type, const char* domain);
+bool gravityDB_delFromTable(const int type, const char* domain);
 
 #endif //GRAVITY_H

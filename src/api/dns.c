@@ -172,17 +172,17 @@ static int api_dns_somelist_POST(struct mg_connection *conn,
 	}
 	const char *domain = elem->valuestring;
 
-	const char *table;
+	int table;
 	if(whitelist)
 		if(store_exact)
-			table = "whitelist";
+			table = GRAVITY_DOMAINLIST_EXACT_WHITELIST;
 		else
-			table = "regex_whitelist";
+			table = GRAVITY_DOMAINLIST_REGEX_WHITELIST;
 	else
 		if(store_exact)
-			table = "blacklist";
+			table = GRAVITY_DOMAINLIST_EXACT_BLACKLIST;
 		else
-			table = "regex_blacklist";
+			table = GRAVITY_DOMAINLIST_REGEX_BLACKLIST;
 
 	cJSON *json = JSON_NEW_OBJ();
 	if(gravityDB_addToTable(table, domain))
@@ -215,17 +215,17 @@ static int api_dns_somelist_DELETE(struct mg_connection *conn,
 	// Decode URL (necessar for regular expressions, harmless for domains)
 	mg_url_decode(encoded_uri, strlen(encoded_uri), domain, sizeof(domain)-1u, 0);
 
-	const char *table;
+	int table;
 	if(whitelist)
 		if(store_exact)
-			table = "whitelist";
+			table = GRAVITY_DOMAINLIST_EXACT_WHITELIST;
 		else
-			table = "regex_whitelist";
+			table = GRAVITY_DOMAINLIST_REGEX_WHITELIST;
 	else
 		if(store_exact)
-			table = "blacklist";
+			table = GRAVITY_DOMAINLIST_EXACT_BLACKLIST;
 		else
-			table = "regex_blacklist";
+			table = GRAVITY_DOMAINLIST_REGEX_BLACKLIST;
 
 	cJSON *json = JSON_NEW_OBJ();
 	if(gravityDB_delFromTable(table, domain))
