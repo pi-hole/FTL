@@ -809,6 +809,7 @@ void FTL_dnsmasq_reload(void)
 	// This is the only hook that is not skipped in PRIVACY_NOSTATS mode
 
 	logg("Reloading DNS cache");
+	lock_shm();
 
 	// Reload the privacy level in case the user changed it
 	get_privacy_level(NULL);
@@ -828,14 +829,11 @@ void FTL_dnsmasq_reload(void)
 
 	FTL_reload_all_domainlists();
 
-	// Re-read index.html
-	// This is necessary when the content of /admin is updated as
-	// the paths of the contained JS/CSS scripts will have changed
-	http_reread_index_html();
-
 	// Print current set of capabilities if requested via debug flag
 	if(config.debug & DEBUG_CAPS)
 		check_capabilities();
+
+	unlock_shm();
 }
 
 void _FTL_reply(const unsigned short flags, const char *name, const union all_addr *addr, const int id,
