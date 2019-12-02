@@ -22,6 +22,14 @@ enum { GRAVITY_DOMAINLIST_EXACT_WHITELIST = 0,
        GRAVITY_DOMAINLIST_REGEX_WHITELIST = 2,
        GRAVITY_DOMAINLIST_REGEX_BLACKLIST = 3 };
 
+typedef struct domainrecord {
+	const char *domain;
+	time_t date_added;
+	time_t date_modified;
+	const char *comment;
+	bool enabled;
+} domainrecord;
+
 bool gravityDB_open(void);
 bool gravityDB_prepare_client_statements(const int clientID, clientsData* client);
 void gravityDB_close(void);
@@ -40,5 +48,8 @@ bool gravityDB_get_regex_client_groups(clientsData* client, const int numregex, 
                                        const unsigned char type, const char* table, const int clientID);
 bool gravityDB_addToTable(const int type, const char* domain);
 bool gravityDB_delFromTable(const int type, const char* domain);
+bool gravityDB_readTable(const int type);
+bool gravityDB_readTableGetDomain(domainrecord *domain);
+void gravityDB_readTableFinalize(void);
 
 #endif //GRAVITY_H

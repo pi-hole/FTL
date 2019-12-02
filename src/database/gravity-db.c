@@ -1031,3 +1031,73 @@ bool gravityDB_delFromTable(const int type, const char* domain)
 
 	return okay;
 }
+
+typedef struct domainrecords {
+	const char *domain;
+	time_t date_added;
+	time_t date_modified;
+	const char *comment;
+	bool enabled;
+} domainrecords;
+
+
+static sqlite3_stmt* read_stmt = NULL;
+bool gravityDB_readTable(const int type)
+{
+	// Prepare SQLite statement
+	const char *querystr = "SELECT domain,enabled,date_added,date_modified,comment FROM domainlist WHERE type = ?;";
+	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &read_stmt, NULL);
+	if( rc != SQLITE_OK ){
+		logg("gravityDB_readTable(%d) - SQL error prepare 2 (%i): %s",
+		     type, rc, sqlite3_errmsg(gravity_db));
+		return false;
+	}
+
+	// Bind domain type to prepared statement
+	if((rc = sqlite3_bind_int(read_stmt, 1, type)) != SQLITE_OK)
+	{
+		logg("gravityDB_readTable(%d): Failed to bind domain (error %d) - %s",
+		     type, rc, sqlite3_errmsg(gravity_db));
+		sqlite3_reset(read_stmt);
+		sqlite3_finalize(read_stmt);
+		return false;
+	}
+
+	return true;
+}
+
+bool gravityDB_readTableGetDomain(domainrecord *domain)
+{
+	// Perform step
+	const int rc = sqlite3_step(read_stmt);
+
+	// Valid row
+	if(rc == SQLITE_ROW)
+	{
+		domain->domain = (char*)sqlite3_column_text(read_stmt, 0);
+		domain->enabled = sqlite3_column_int(read_stmt, 1) != 0;
+		domain->date_added = sqlite3_column_int(read_stmt, 2);
+		domain->date_modified = sqlite3_column_int(read_stmt, 3);
+		domain->comment = (char*)sqlite3_column_text(read_stmt, 4);
+		return true;
+	}
+
+	// Check for error. An error happened when the result is neither
+	// SQLITE_ROW (we returned earlier in this case), nor
+	// SQLITE_DONE (we are finished reading the table)
+	if(rc != SQLITE_DONE)
+	{
+		logg("gravityDB_getDomain() - SQL error step (%i): %s", rc, sqlite3_errmsg(gravity_db));
+		return NULL;
+	}
+
+	// Finished reading, nothing to get here
+	return NULL;
+}
+
+// Finalize statement of a gravity database transaction
+void gravityDB_readTableFinalize(void)
+{
+	// Finalize statement
+	sqlite3_finalize(read_stmt);
+}

@@ -114,34 +114,41 @@ int api_dns_status(struct mg_connection *conn)
 
 static int api_dns_somelist_read(struct mg_connection *conn, bool exact, bool whitelist)
 {
-	cJSON *json = JSON_NEW_ARRAY();
-	const char *domain = NULL;
-	int rowid = 0;
-
 	int table;
 	if(whitelist)
 		if(exact)
-			table = EXACT_WHITELIST_TABLE;
+			table = GRAVITY_DOMAINLIST_EXACT_WHITELIST;
 		else
-			table = REGEX_WHITELIST_TABLE;
+			table = GRAVITY_DOMAINLIST_REGEX_WHITELIST;
 	else
 		if(exact)
-			table = EXACT_BLACKLIST_TABLE;
+			table = GRAVITY_DOMAINLIST_EXACT_BLACKLIST;
 		else
-			table = REGEX_BLACKLIST_TABLE;
+			table = GRAVITY_DOMAINLIST_REGEX_BLACKLIST;
 
-	gravityDB_getTable(table);
-	while((domain = gravityDB_getDomain(&rowid)) != NULL)
+	if(!gravityDB_readTable(table))
 	{
-		JSON_ARRAY_COPY_STR(json, domain);
+		cJSON *json = JSON_NEW_OBJ();
+		return send_json_error(conn, 500,
+                                       "database_error",
+                                       "Could not read domain from database table",
+                                       json);
 	}
-	gravityDB_finalizeTable();
+
+	domainrecord domain;
+	cJSON *json = JSON_NEW_ARRAY();
+	while(gravityDB_readTableGetDomain(&domain))
+	{
+		// We also have domain.enabled, domain.date_added, domain.comment, ... available here
+		JSON_ARRAY_COPY_STR(json, domain.domain);
+	}
+	gravityDB_readTableFinalize();
 
 	JSON_SEND_OBJECT(json);
 }
 
 static int api_dns_somelist_POST(struct mg_connection *conn,
-                                   bool store_exact,
+                                   bool exact,
                                    bool whitelist)
 {
 	char buffer[1024];
@@ -174,12 +181,12 @@ static int api_dns_somelist_POST(struct mg_connection *conn,
 
 	int table;
 	if(whitelist)
-		if(store_exact)
+		if(exact)
 			table = GRAVITY_DOMAINLIST_EXACT_WHITELIST;
 		else
 			table = GRAVITY_DOMAINLIST_REGEX_WHITELIST;
 	else
-		if(store_exact)
+		if(exact)
 			table = GRAVITY_DOMAINLIST_EXACT_BLACKLIST;
 		else
 			table = GRAVITY_DOMAINLIST_REGEX_BLACKLIST;
@@ -204,7 +211,7 @@ static int api_dns_somelist_POST(struct mg_connection *conn,
 }
 
 static int api_dns_somelist_DELETE(struct mg_connection *conn,
-                                   bool store_exact,
+                                   bool exact,
                                    bool whitelist)
 {
 	const struct mg_request_info *request = mg_get_request_info(conn);
@@ -217,12 +224,12 @@ static int api_dns_somelist_DELETE(struct mg_connection *conn,
 
 	int table;
 	if(whitelist)
-		if(store_exact)
+		if(exact)
 			table = GRAVITY_DOMAINLIST_EXACT_WHITELIST;
 		else
 			table = GRAVITY_DOMAINLIST_REGEX_WHITELIST;
 	else
-		if(store_exact)
+		if(exact)
 			table = GRAVITY_DOMAINLIST_EXACT_BLACKLIST;
 		else
 			table = GRAVITY_DOMAINLIST_REGEX_BLACKLIST;
