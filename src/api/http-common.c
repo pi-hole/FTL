@@ -19,6 +19,31 @@
 // Server context handle
 static struct mg_context *ctx = NULL;
 
+// Provides a compile-time flag for JSON formatting
+// This should never be needed as all modern browsers
+// tyoically contain a JSON explorer
+const char* json_formatter(const cJSON *object)
+{
+	if(httpsettings.prettyJSON)
+	{
+		/* Examplary output:
+		{
+			"queries in database":	70,
+			"database filesize":	49152,
+			"SQLite version":	"3.30.1"
+		}
+		*/
+		return cJSON_Print(object);
+	}
+	else
+	{
+		/* Exemplary output
+		{"queries in database":70,"database filesize":49152,"SQLite version":"3.30.1"}
+		*/
+		return cJSON_PrintUnformatted(object);
+	}
+}
+
 int send_http(struct mg_connection *conn, const char *mime_type,
               const char *msg)
 {

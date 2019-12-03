@@ -10,25 +10,6 @@
 
 #include "../cJSON/cJSON.h"
 
-// Provides a compile-time flag for JSON formatting
-// This should never be needed as all modern browsers
-// tyoically contain a JSON explorer
-#ifdef JSON_FORMATTED
-/* Examplary output:
-{
-	"queries in database":	70,
-	"database filesize":	49152,
-	"SQLite version":	"3.30.1"
-}
-*/
-#define JSON_FORMATTER(object) cJSON_Print(object)
-#else
-/* Exemplary output
-{"queries in database":70,"database filesize":49152,"SQLite version":"3.30.1"}
-*/
-#define JSON_FORMATTER(object) cJSON_PrintUnformatted(object)
-#endif
-
 #define JSON_NEW_OBJ() cJSON_CreateObject();
 #define JSON_NEW_ARRAY() cJSON_CreateArray();
 
@@ -122,7 +103,7 @@
 #define JSON_DELETE(object) cJSON_Delete(object)
 
 #define JSON_SEND_OBJECT(object){ \
-	const char* msg = JSON_FORMATTER(object); \
+	const char* msg = json_formatter(object); \
 	if(msg == NULL) \
 	{ \
 		cJSON_Delete(object); \
@@ -135,7 +116,7 @@
 }
 
 #define JSON_SEND_OBJECT_CODE(object, code){ \
-	const char* msg = JSON_FORMATTER(object); \
+	const char* msg = json_formatter(object); \
 	if(msg == NULL) \
 	{ \
 		cJSON_Delete(object); \
@@ -148,7 +129,7 @@
 }
 /*
 #define JSON_SEND_OBJECT_AND_HEADERS(object, additional_headers){ \
-	const char* msg = JSON_FORMATTER(object); \
+	const char* msg = json_formatter(object); \
 	if(msg == NULL) \
 	{ \
 		cJSON_Delete(object); \
@@ -162,7 +143,7 @@
 }
 
 #define JSON_SEND_OBJECT_AND_HEADERS_CODE(object, code, additional_headers){ \
-	const char* msg = JSON_FORMATTER(object); \
+	const char* msg = json_formatter(object); \
 	if(msg == NULL) \
 	{ \
 		cJSON_Delete(object); \

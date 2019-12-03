@@ -422,18 +422,31 @@ void read_FTLconf(void)
 	else
 		logg("   API_AUTH_FOR_LOCALHOST: Inactive");
 
-	// HTTP_SESSION_TIMEOUT
+	// API_SESSION_TIMEOUT
 	// How long should a session be considered valid after login?
 	// defaults to: 300 seconds
 	httpsettings.session_timeout = 300;
-	buffer = parse_FTLconf(fp, "HTTP_SESSION_TIMEOUT");
+	buffer = parse_FTLconf(fp, "API_SESSION_TIMEOUT");
 
 	value = 0;
 	if(buffer != NULL && sscanf(buffer, "%i", &value) && value > 0)
 	{
 		httpsettings.session_timeout = value;
 	}
-	logg("   HTTP_SESSION_TIMEOUT: %u seconds", httpsettings.session_timeout);
+	logg("   API_SESSION_TIMEOUT: %u seconds", httpsettings.session_timeout);
+
+	// API_PRETTY_JSON
+	// defaults to: false
+	httpsettings.prettyJSON = false;
+	buffer = parse_FTLconf(fp, "API_PRETTY_JSON");
+
+	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
+		httpsettings.prettyJSON = true;
+
+	if(httpsettings.prettyJSON)
+		logg("   API_PRETTY_JSON: Enabled. Using additional formatting in API output.");
+	else
+		logg("   API_PRETTY_JSON: Disabled. Compact API output.");
 
 	// Read DEBUG_... setting from pihole-FTL.conf
 	// This option should be the last one as it causes

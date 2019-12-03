@@ -23,6 +23,8 @@
 void http_init(void);
 void http_terminate(void);
 
+const char* json_formatter(const cJSON *object);
+
 int send_http(struct mg_connection *conn, const char *mime_type, const char *msg);
 int send_http_code(struct mg_connection *conn, const char *mime_type, int code, const char *msg);
 int send_http_internal_error(struct mg_connection *conn);
