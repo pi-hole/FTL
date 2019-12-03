@@ -139,8 +139,13 @@ static int api_dns_somelist_read(struct mg_connection *conn, bool exact, bool wh
 	cJSON *json = JSON_NEW_ARRAY();
 	while(gravityDB_readTableGetDomain(&domain))
 	{
-		// We also have domain.enabled, domain.date_added, domain.comment, ... available here
-		JSON_ARRAY_COPY_STR(json, domain.domain);
+		cJSON *item = JSON_NEW_OBJ();
+		JSON_OBJ_COPY_STR(item, "domain", domain.domain);
+		JSON_OBJ_ADD_BOOL(item, "enabled", domain.enabled);
+		JSON_OBJ_ADD_NUMBER(item, "date_added", domain.date_added);
+		JSON_OBJ_ADD_NUMBER(item, "date_modified", domain.date_modified);
+		JSON_OBJ_COPY_STR(item, "comment", domain.comment);
+		JSON_ARRAY_ADD_ITEM(json, item);
 	}
 	gravityDB_readTableFinalize();
 

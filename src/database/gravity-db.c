@@ -1032,15 +1032,6 @@ bool gravityDB_delFromTable(const int type, const char* domain)
 	return okay;
 }
 
-typedef struct domainrecords {
-	const char *domain;
-	time_t date_added;
-	time_t date_modified;
-	const char *comment;
-	bool enabled;
-} domainrecords;
-
-
 static sqlite3_stmt* read_stmt = NULL;
 bool gravityDB_readTable(const int type)
 {
@@ -1087,12 +1078,12 @@ bool gravityDB_readTableGetDomain(domainrecord *domain)
 	// SQLITE_DONE (we are finished reading the table)
 	if(rc != SQLITE_DONE)
 	{
-		logg("gravityDB_getDomain() - SQL error step (%i): %s", rc, sqlite3_errmsg(gravity_db));
-		return NULL;
+		logg("gravityDB_readTableGetDomain() - SQL error step (%i): %s", rc, sqlite3_errmsg(gravity_db));
+		return false;
 	}
 
 	// Finished reading, nothing to get here
-	return NULL;
+	return false;
 }
 
 // Finalize statement of a gravity database transaction
