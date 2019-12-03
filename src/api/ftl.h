@@ -15,8 +15,8 @@
 
 // How many messages do we keep in memory (FIFO message buffer)?
 // The memory required is the set number in kilobytes
-// Defaults to 32 [uses 32 KB of memory]
-#define LOG_SIZE 32
+// Defaults to 64 [uses 64 KB of memory]
+#define LOG_SIZE 64
 
 void init_dnsmasq_fifo_log(void);
 void free_dnsmasq_fifo_log(void);
