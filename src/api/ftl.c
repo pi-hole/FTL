@@ -22,6 +22,8 @@
 #include "config.h"
 // {un,}lock_shm()
 #include "../shmem.h"
+// networkrecord
+#include "../database/network-table.h"
 
 int api_ftl_clientIP(struct mg_connection *conn)
 {
@@ -128,4 +130,54 @@ void add_to_dnsmasq_log_fifo_buffer(const char *payload, const int length)
 
 	// Unlock SHM
 	unlock_shm();
+}
+
+int api_ftl_network(struct mg_connection *conn)
+{
+	// Verify requesting client is allowed to see this ressource
+	if(check_client_auth(conn) < 0)
+	{
+		return send_json_unauthorized(conn);
+	}
+
+	// Connect to database
+	if(!networkTable_readDevices())
+	{
+		cJSON *json = JSON_NEW_OBJ();
+		return send_json_error(conn, 500,
+                                       "database_error",
+                                       "Could not read network details from database table",
+                                       json);
+	}
+
+	// Read record for a single device
+	networkrecord network;
+	cJSON *json = JSON_NEW_ARRAY();
+	while(networkTable_readDevicesGetRecord(&network))
+	{
+		cJSON *item = JSON_NEW_OBJ();
+		JSON_OBJ_COPY_STR(item, "hwaddr", network.hwaddr);
+		JSON_OBJ_COPY_STR(item, "interface", network.interface);
+		JSON_OBJ_COPY_STR(item, "name", network.name);
+		JSON_OBJ_ADD_NUMBER(item, "firstSeen", network.firstSeen);
+		JSON_OBJ_ADD_NUMBER(item, "lastQuery", network.lastQuery);
+		JSON_OBJ_ADD_NUMBER(item, "numQueries", network.numQueries);
+		JSON_OBJ_COPY_STR(item, "macVendor", network.macVendor);
+
+		// Build array of all IP addresses known associated to this client
+		cJSON *ip = JSON_NEW_ARRAY();
+		networkTable_readIPs(network.id);
+		const char *ipaddr;
+		while((ipaddr = networkTable_readIPsGetRecord()) != NULL)
+		{
+			JSON_ARRAY_COPY_STR(ip, ipaddr);
+		}
+		networkTable_readIPsFinalize();
+		JSON_OBJ_ADD_ITEM(item, "ip", ip);
+
+		JSON_ARRAY_ADD_ITEM(json, item);
+	}
+	networkTable_readDevicesFinalize();
+
+	JSON_SEND_OBJECT(json);
 }

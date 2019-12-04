@@ -942,3 +942,125 @@ char* __attribute__((malloc)) getDatabaseHostname(const char* ipaddr)
 
 	return hostname;
 }
+
+static sqlite3_stmt* read_stmt = NULL;
+bool networkTable_readDevices(void)
+{
+	// Open pihole-FTL.db database file
+	if(!dbopen())
+	{
+		logg("networkTable_readDevices() - Failed to open DB");
+		return false;
+	}
+
+	// Prepare SQLite statement
+	const char *querystr = "SELECT id,hwaddr,interface,name,firstSeen,lastQuery,numQueries,macVendor FROM network;";
+	int rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &read_stmt, NULL);
+	if( rc != SQLITE_OK ){
+		logg("networkTable_readDevices() - SQL error prepare (%i): %s",
+		      rc, sqlite3_errmsg(FTL_db));
+		return false;
+	}
+
+	return true;
+}
+
+bool networkTable_readDevicesGetRecord(networkrecord *network)
+{
+	// Perform step
+	const int rc = sqlite3_step(read_stmt);
+
+	// Valid row
+	if(rc == SQLITE_ROW)
+	{
+		network->id = sqlite3_column_int(read_stmt, 0);
+		network->hwaddr = (char*)sqlite3_column_text(read_stmt, 1);
+		network->interface = (char*)sqlite3_column_text(read_stmt, 2);
+		network->name = (char*)sqlite3_column_text(read_stmt, 3);
+		network->firstSeen = sqlite3_column_int(read_stmt, 4);
+		network->lastQuery = sqlite3_column_int(read_stmt, 5);
+		network->numQueries = sqlite3_column_int(read_stmt, 6);
+		network->macVendor = (char*)sqlite3_column_text(read_stmt, 7);
+		return true;
+	}
+
+	// Check for error. An error happened when the result is neither
+	// SQLITE_ROW (we returned earlier in this case), nor
+	// SQLITE_DONE (we are finished reading the table)
+	if(rc != SQLITE_DONE)
+	{
+		logg("networkTable_readDevicesGetRecord() - SQL error step (%i): %s",
+		     rc, sqlite3_errmsg(FTL_db));
+		return false;
+	}
+
+	// Finished reading, nothing to get here
+	return false;
+}
+
+// Finalize statement of a gravity database transaction
+void networkTable_readDevicesFinalize(void)
+{
+	// Finalize statement
+	sqlite3_finalize(read_stmt);
+
+	// Close database connection
+	dbclose();
+}
+
+static sqlite3_stmt* read_stmt_ip = NULL;
+bool networkTable_readIPs(const int id)
+{
+	// Prepare SQLite statement
+	const char *querystr = "SELECT ip FROM network_addresses WHERE network_id = ? ORDER BY lastSeen DESC;";
+	int rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &read_stmt_ip, NULL);
+	if( rc != SQLITE_OK ){
+		logg("networkTable_readIPs(%i) - SQL error prepare (%i): %s",
+		      id, rc, sqlite3_errmsg(FTL_db));
+		return false;
+	}
+
+	// Bind ipaddr to prepared statement
+	if((rc = sqlite3_bind_int(read_stmt_ip, 1, id)) != SQLITE_OK)
+	{
+		logg("networkTable_readIPs(%i): Failed to bind domain (error %d) - %s",
+		     id, rc, sqlite3_errmsg(FTL_db));
+		sqlite3_reset(read_stmt_ip);
+		sqlite3_finalize(read_stmt_ip);
+		return false;
+	}
+
+	return true;
+}
+
+const char *networkTable_readIPsGetRecord(void)
+{
+	// Perform step
+	const int rc = sqlite3_step(read_stmt_ip);
+
+	// Valid row
+	if(rc == SQLITE_ROW)
+	{
+		return (char*)sqlite3_column_text(read_stmt_ip, 0);
+	}
+
+	// Check for error. An error happened when the result is neither
+	// SQLITE_ROW (we returned earlier in this case), nor
+	// SQLITE_DONE (we are finished reading the table)
+	if(rc != SQLITE_DONE)
+	{
+		logg("networkTable_readDevicesGetIP() - SQL error step (%i): %s",
+		     rc, sqlite3_errmsg(FTL_db));
+		return NULL;
+	}
+
+	// Finished reading, nothing to get here
+	return NULL;
+}
+
+// Finalize statement of a gravity database transaction
+void networkTable_readIPsFinalize(void)
+{
+	// Finalize statement
+	sqlite3_finalize(read_stmt_ip);
+}

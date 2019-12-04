@@ -1039,7 +1039,7 @@ bool gravityDB_readTable(const int type)
 	const char *querystr = "SELECT domain,enabled,date_added,date_modified,comment FROM domainlist WHERE type = ?;";
 	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &read_stmt, NULL);
 	if( rc != SQLITE_OK ){
-		logg("gravityDB_readTable(%d) - SQL error prepare 2 (%i): %s",
+		logg("gravityDB_readTable(%d) - SQL error prepare (%i): %s",
 		     type, rc, sqlite3_errmsg(gravity_db));
 		return false;
 	}
