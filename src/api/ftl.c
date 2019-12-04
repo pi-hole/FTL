@@ -166,13 +166,16 @@ int api_ftl_network(struct mg_connection *conn)
 
 		// Build array of all IP addresses known associated to this client
 		cJSON *ip = JSON_NEW_ARRAY();
-		networkTable_readIPs(network.id);
-		const char *ipaddr;
-		while((ipaddr = networkTable_readIPsGetRecord()) != NULL)
+		if(networkTable_readIPs(network.id))
 		{
-			JSON_ARRAY_COPY_STR(ip, ipaddr);
+			// Only walk known IP addresses when SELECT query succeeded
+			const char *ipaddr;
+			while((ipaddr = networkTable_readIPsGetRecord()) != NULL)
+			{
+				JSON_ARRAY_COPY_STR(ip, ipaddr);
+			}
+			networkTable_readIPsFinalize();
 		}
-		networkTable_readIPsFinalize();
 		JSON_OBJ_ADD_ITEM(item, "ip", ip);
 
 		JSON_ARRAY_ADD_ITEM(json, item);
