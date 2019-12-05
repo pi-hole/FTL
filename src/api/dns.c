@@ -300,8 +300,8 @@ int api_dns_cacheinfo(struct mg_connection *conn)
 	cacheinforecord cacheinfo;
 	getCacheInformation(&cacheinfo);
 	cJSON *json = JSON_NEW_OBJ();
-	JSON_OBJ_ADD_NUMBER(json, "cache-size", cacheinfo.cache_size);
-	JSON_OBJ_ADD_NUMBER(json, "cache-live-freed", cacheinfo.cache_live_freed);
-	JSON_OBJ_ADD_NUMBER(json, "cache-inserted", cacheinfo.cache_inserted);
+	JSON_OBJ_ADD_NUMBER(json, "cache_size", cacheinfo.cache_size);
+	JSON_OBJ_ADD_NUMBER(json, "cache_inserted", cacheinfo.cache_inserted);
+	JSON_OBJ_ADD_NUMBER(json, "cache_evicted", cacheinfo.cache_live_freed);
 	JSON_SEND_OBJECT(json);
 }
