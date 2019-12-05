@@ -773,7 +773,7 @@ int cache_recv_insert(time_t now, int fd)
       else if (flags & F_CNAME)
 	{
 	  struct crec *newc = really_insert(daemon->namebuff, NULL, C_IN, now, ttl, flags);
-	  /* This relies on the fact the the target of a CNAME immediately preceeds
+	  /* This relies on the fact that the target of a CNAME immediately precedes
 	     it because of the order of extraction in extract_addresses, and
 	     the order reversal on the new_chain. */
 	  if (newc)
