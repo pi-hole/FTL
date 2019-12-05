@@ -11,6 +11,7 @@
 #include "FTL.h"
 // counters
 #include "shmem.h"
+#include "dns.h"
 #include "http-common.h"
 #include "routes.h"
 #include "json_macros.h"
@@ -286,4 +287,21 @@ int api_dns_somelist(struct mg_connection *conn, bool exact, bool whitelist)
 		// This results in error 404
 		return 0;
 	}
+}
+
+int api_dns_cacheinfo(struct mg_connection *conn)
+{
+	// Verify requesting client is allowed to access this ressource
+	if(check_client_auth(conn) < 0)
+	{
+		return send_json_unauthorized(conn);
+	}
+
+	cacheinforecord cacheinfo;
+	getCacheInformation(&cacheinfo);
+	cJSON *json = JSON_NEW_OBJ();
+	JSON_OBJ_ADD_NUMBER(json, "cache-size", cacheinfo.cache_size);
+	JSON_OBJ_ADD_NUMBER(json, "cache-live-freed", cacheinfo.cache_live_freed);
+	JSON_OBJ_ADD_NUMBER(json, "cache-inserted", cacheinfo.cache_inserted);
+	JSON_SEND_OBJECT(json);
 }

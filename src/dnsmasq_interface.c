@@ -1689,16 +1689,14 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 }
 
 // int cache_inserted, cache_live_freed are defined in dnsmasq/cache.c
-int *getCacheInformation(void)
+void getCacheInformation(cacheinforecord *cacheinfo)
 {
-	// Allocate memory
-	int *cacheinfo = calloc(3,sizeof(int));
 	// cache-size - interpretation is obvious
-	cacheinfo[0] = daemon->cachesize;
+	cacheinfo->cache_size = daemon->cachesize;
 	// cache-live-freed - interpretation see below
-	cacheinfo[1] = daemon->metrics[METRIC_DNS_CACHE_LIVE_FREED];
+	cacheinfo->cache_live_freed = daemon->metrics[METRIC_DNS_CACHE_LIVE_FREED];
 	// cache-inserted - interpretation see below
-	cacheinfo[2] = daemon->metrics[METRIC_DNS_CACHE_INSERTED];
+	cacheinfo->cache_inserted = daemon->metrics[METRIC_DNS_CACHE_INSERTED];
 	// cache-live-freed and cache-inserted:
 	// It means the resolver handled <cache-inserted> names lookups that
 	// needed to be sent to upstream servers and that <cache-live-freed>
@@ -1708,7 +1706,6 @@ int *getCacheInformation(void)
 	// cached. If the cache is full with entries which haven't reached
 	// the end of their time-to-live, then the entry which hasn't been
 	// looked up for the longest time is evicted.
-	return cacheinfo;
 }
 
 void _FTL_forwarding_failed(const struct server *server, const char* file, const int line)

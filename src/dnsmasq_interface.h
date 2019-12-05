@@ -11,6 +11,8 @@
 #define DNSMASQ_INTERFACE_H
 
 #include <stdbool.h>
+// cacheinforecord
+#include "api/dns.h"
 
 extern unsigned char* pihole_privacylevel;
 enum { TCP, UDP };
@@ -46,7 +48,6 @@ void _FTL_get_blocking_metadata(union all_addr **addrp, unsigned int *flags, con
 
 #define FTL_CNAME(domain, cpp, id) _FTL_CNAME(domain, cpp, id, __FILE__, __LINE__)
 bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const char* file, const int line);
-int *getCacheInformation(void);
 
 void FTL_dnsmasq_reload(void);
 void FTL_fork_and_bind_sockets(struct passwd *ent_pw);

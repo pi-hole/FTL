@@ -45,6 +45,10 @@ int api_handler(struct mg_connection *conn, void *ignored)
 	{
 		ret = api_dns_somelist(conn, false, false);
 	}
+	else if(startsWith("/api/dns/cacheinfo", request->local_uri))
+	{
+		ret = api_dns_cacheinfo(conn);
+	}
 	/******************************** api/ftl ****************************/
 	else if(startsWith("/api/ftl/clientIP", request->local_uri))
 	{
