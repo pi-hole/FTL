@@ -501,9 +501,37 @@ static int dhcp6_no_relay(struct state *state, int msg_type, void *inbuff, size_
 	   
 	   if (legal_hostname(daemon->dhcp_buff))
 	     {
+	       struct dhcp_match_name *m;
+	       size_t nl = strlen(daemon->dhcp_buff);
+	       
 	       state->client_hostname = daemon->dhcp_buff;
+	       
 	       if (option_bool(OPT_LOG_OPTS))
-		 my_syslog(MS_DHCP | LOG_INFO, _("%u client provides name: %s"), state->xid, state->client_hostname); 
+		 my_syslog(MS_DHCP | LOG_INFO, _("%u client provides name: %s"), state->xid, state->client_hostname);
+	       
+	       for (m = daemon->dhcp_name_match; m; m = m->next)
+		 {
+		   size_t ml = strlen(m->name);
+		   char save = 0;
+		   
+		   if (nl < ml)
+		     continue;
+		   if (nl > ml)
+		     {
+		       save = state->client_hostname[ml];
+		       state->client_hostname[ml] = 0;
+		     }
+		   
+		   if (hostname_isequal(state->client_hostname, m->name) &&
+		       (save == 0 || m->wildcard))
+		     {
+		       m->netid->next = state->tags;
+		       state->tags = m->netid;
+		     }
+		   
+		   if (save != 0)
+		     state->client_hostname[ml] = save;
+		 }
 	     }
 	 }
     }	 
@@ -519,7 +547,7 @@ static int dhcp6_no_relay(struct state *state, int msg_type, void *inbuff, size_
   else if (state->client_hostname)
     {
       state->domain = strip_hostname(state->client_hostname);
-            
+      
       if (strlen(state->client_hostname) != 0)
 	{
 	  state->hostname = state->client_hostname;
@@ -535,37 +563,7 @@ static int dhcp6_no_relay(struct state *state, int msg_type, void *inbuff, size_
 	    }
 	}
     }
-      
-  if (state->hostname)
-    {
-      struct dhcp_match_name *m;
-      size_t nl = strlen(state->hostname);
-      
-      for (m = daemon->dhcp_name_match; m; m = m->next)
-	{
-	  size_t ml = strlen(m->name);
-	  char save = 0;
-	  
-	  if (nl < ml)
-	    continue;
-	  if (nl > ml)
-	    {
-	      save = state->hostname[ml];
-	      state->hostname[ml] = 0;
-	    }
-	  
-	  if (hostname_isequal(state->hostname, m->name) &&
-	      (save == 0 || m->wildcard))
-	    {
-	      m->netid->next = state->tags;
-	      state->tags = m->netid;
-	    }
-	  
-	  if (save != 0)
-	    state->hostname[ml] = save;
-	}
-    }
-    
+
   if (config)
     {
       struct dhcp_netid_list *list;
