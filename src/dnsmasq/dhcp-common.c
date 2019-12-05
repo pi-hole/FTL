@@ -576,6 +576,7 @@ static const struct opttab_t {
   { "sip-server", 120, 0 },
   { "classless-static-route", 121, 0 },
   { "vendor-id-encap", 125, 0 },
+  { "tftp-server-address", 150, OT_ADDR_LIST },
   { "server-ip-address", 255, OT_ADDR_LIST }, /* special, internal only, sets siaddr */
   { NULL, 0, 0 }
 };
