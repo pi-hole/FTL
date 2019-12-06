@@ -111,6 +111,14 @@ int api_handler(struct mg_connection *conn, void *ignored)
 	{
 		ret = api_stats_database_overTime_history(conn);
 	}
+	else if(startsWith("/api/stats/database/top_domains", request->local_uri))
+	{
+		ret = api_stats_database_top_domains(false, conn);
+	}
+	else if(startsWith("/api/stats/database/top_blocked", request->local_uri))
+	{
+		ret = api_stats_database_top_domains(true, conn);
+	}
 	/******************************** api/version ****************************/
 	else if(startsWith("/api/version", request->local_uri))
 	{

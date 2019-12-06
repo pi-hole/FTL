@@ -219,7 +219,6 @@ int api_stats_top_domains(bool blocked, struct mg_connection *conn)
 	// Sort temporary array
 	qsort(temparray, counters->domains, sizeof(int[2]), cmpdesc);
 
-
 	// Get filter
 	const char* filter = read_setupVarsconf("API_QUERY_LOG_SHOW");
 	bool showpermitted = true, showblocked = true;

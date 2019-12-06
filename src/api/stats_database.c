@@ -72,7 +72,7 @@ int api_stats_database_overTime_history(struct mg_connection *conn)
 		     rc, sqlite3_errmsg(FTL_db));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
-		dblose();
+		dbclose();
 
 		// Relock shared memory
 		lock_shm();
@@ -93,7 +93,7 @@ int api_stats_database_overTime_history(struct mg_connection *conn)
 		     rc, sqlite3_errmsg(FTL_db));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
-		dblose();
+		dbclose();
 
 		// Relock shared memory
 		lock_shm();
@@ -114,7 +114,7 @@ int api_stats_database_overTime_history(struct mg_connection *conn)
 		     rc, sqlite3_errmsg(FTL_db));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
-		dblose();
+		dbclose();
 
 		// Relock shared memory
 		lock_shm();
@@ -181,5 +181,163 @@ int api_stats_database_overTime_history(struct mg_connection *conn)
 
 	// Re-lock shared memory before returning back to router subroutine
 	lock_shm();
+	JSON_SEND_OBJECT(json);
+}
+
+int api_stats_database_top_domains(bool blocked, struct mg_connection *conn)
+{
+	int from = 0, until = 0, show = 10;
+	const struct mg_request_info *request = mg_get_request_info(conn);
+	if(request->query_string != NULL)
+	{
+		int num;
+		if((num = get_int_var(request->query_string, "from")) > 0)
+			from = num;
+		if((num = get_int_var(request->query_string, "until")) > 0)
+			until = num;
+
+		// Get blocked queries not only for .../top_blocked
+		// but also for .../top_domains?blocked=true
+		if((num = get_bool_var(request->query_string, "blocked")) > 0)
+			blocked = true;
+
+		// Does the user request a non-default number of replies?
+		// Note: We do not accept zero query requests here
+		if((num = get_int_var(request->query_string, "show")) > 0)
+			show = num;
+	}
+
+	// Check if we received the required information
+	if(from == 0 || until == 0)
+	{
+		cJSON *json = JSON_NEW_OBJ();
+		JSON_OBJ_ADD_NUMBER(json, "from", from);
+		JSON_OBJ_ADD_NUMBER(json, "until", until);
+		return send_json_error(conn, 400,
+		"bad_request",
+		"You need to specify both \"from\" and \"until\" in the request.",
+		json);
+	}
+
+	// Unlock shared memory (DNS resolver can continue to work while we're preforming database queries)
+	unlock_shm();
+
+	// Open the database (this also locks the database)
+	dbopen();
+	// Build SQL string
+	const char *querystr;
+	if(!blocked)
+	{
+		querystr = "SELECT domain,COUNT(*) AS cnt FROM queries "
+		           "WHERE (status == 2 OR status == 3) "
+		           "AND timestamp >= :from AND timestamp <= :until "
+		           "GROUP by domain ORDER by cnt DESC "
+		           "LIMIT :show";
+	}
+	else
+	{
+		querystr = "SELECT domain,COUNT(*) AS cnt FROM queries "
+		           "WHERE status != 0 AND status != 2 AND status != 3 "
+		           "AND timestamp >= :from AND timestamp <= :until "
+		           "GROUP by domain ORDER by cnt DESC "
+		           "LIMIT :show";
+	}
+	
+	// Prepare SQLite statement
+	sqlite3_stmt *stmt;
+	int rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &stmt, NULL);
+	if( rc != SQLITE_OK ){
+		logg("api_stats_database_overTime_history() - SQL error prepare (%i): %s",
+		     rc, sqlite3_errmsg(FTL_db));
+		return false;
+	}
+
+	// Bind from to prepared statement
+	if((rc = sqlite3_bind_int(stmt, 1, from)) != SQLITE_OK)
+	{
+		logg("api_stats_database_overTime_history(): Failed to bind from (error %d) - %s",
+		     rc, sqlite3_errmsg(FTL_db));
+		sqlite3_reset(stmt);
+		sqlite3_finalize(stmt);
+		dbclose();
+
+		// Relock shared memory
+		lock_shm();
+
+		cJSON *json = JSON_NEW_OBJ();
+		JSON_OBJ_ADD_NUMBER(json, "from", from);
+		JSON_OBJ_ADD_NUMBER(json, "until", until);
+		return send_json_error(conn, 500,
+		"internal_error",
+		"Failed to bind from",
+		json);
+	}
+
+	// Bind until to prepared statement
+	if((rc = sqlite3_bind_int(stmt, 2, until)) != SQLITE_OK)
+	{
+		logg("api_stats_database_overTime_history(): Failed to bind until (error %d) - %s",
+		     rc, sqlite3_errmsg(FTL_db));
+		sqlite3_reset(stmt);
+		sqlite3_finalize(stmt);
+		dbclose();
+
+		// Relock shared memory
+		lock_shm();
+
+		cJSON *json = JSON_NEW_OBJ();
+		JSON_OBJ_ADD_NUMBER(json, "from", from);
+		JSON_OBJ_ADD_NUMBER(json, "until", until);
+		return send_json_error(conn, 500,
+		"internal_error",
+		"Failed to bind until",
+		json);
+	}
+
+	// Bind show to prepared statement
+	if((rc = sqlite3_bind_int(stmt, 3, show)) != SQLITE_OK)
+	{
+		logg("api_stats_database_overTime_history(): Failed to bind show (error %d) - %s",
+		     rc, sqlite3_errmsg(FTL_db));
+		sqlite3_reset(stmt);
+		sqlite3_finalize(stmt);
+		dbclose();
+
+		// Relock shared memory
+		lock_shm();
+
+		cJSON *json = JSON_NEW_OBJ();
+		JSON_OBJ_ADD_NUMBER(json, "from", from);
+		JSON_OBJ_ADD_NUMBER(json, "until", until);
+		return send_json_error(conn, 500,
+		"internal_error",
+		"Failed to bind show",
+		json);
+	}
+
+	// Loop over and accumulate results
+	cJSON *top_domains = JSON_NEW_ARRAY();
+	int total = 0;
+	while((rc = sqlite3_step(stmt)) == SQLITE_ROW)
+	{
+		const char* domain = (char*)sqlite3_column_text(stmt, 0);
+		const int count = sqlite3_column_int(stmt, 1);
+		cJSON *domain_item = JSON_NEW_OBJ();
+		JSON_OBJ_COPY_STR(domain_item, "domain", domain);
+		JSON_OBJ_ADD_NUMBER(domain_item, "count", count);
+		JSON_ARRAY_ADD_ITEM(top_domains, domain_item);
+		total += count;
+	}
+
+	// Finalize statement and close (= unlock) database connection
+	sqlite3_finalize(stmt);
+	dbclose();
+
+	// Re-lock shared memory before returning back to router subroutine
+	lock_shm();
+
+	cJSON *json = JSON_NEW_OBJ();
+	JSON_OBJ_ADD_ITEM(json, "top_domains", top_domains);
+	JSON_OBJ_ADD_NUMBER(json, (blocked ? "blocked_queries" : "total_queries"), total);
 	JSON_SEND_OBJECT(json);
 }

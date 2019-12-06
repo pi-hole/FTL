@@ -29,6 +29,7 @@ int api_stats_recentblocked(struct mg_connection *conn);
 
 // Statistics methods (database)
 int api_stats_database_overTime_history(struct mg_connection *conn);
+int api_stats_database_top_domains(bool blocked, struct mg_connection *conn);
 
 // FTL methods
 int api_ftl_clientIP(struct mg_connection *conn);
