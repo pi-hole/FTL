@@ -18,7 +18,15 @@
 #define JSON_ARRAY_ADD_ITEM(array, item) cJSON_AddItemToArray(array, item);
 
 #define JSON_OBJ_COPY_STR(object, key, string){ \
-	cJSON *string_item = cJSON_CreateString((const char*)string); \
+	cJSON *string_item = NULL; \
+	if(string != NULL) \
+	{ \
+		string_item = cJSON_CreateString((const char*)string); \
+	} \
+	else \
+	{ \
+		string_item = cJSON_CreateNull(); \
+	} \
 	if(string_item == NULL) \
 	{ \
 		cJSON_Delete(object); \
@@ -30,7 +38,15 @@
 }
 
 #define JSON_OBJ_REF_STR(object, key, string){ \
-	cJSON *string_item = cJSON_CreateStringReference((const char*)string); \
+	cJSON *string_item = NULL; \
+	if(string != NULL) \
+	{ \
+		string_item = cJSON_CreateStringReference((const char*)string); \
+	} \
+	else \
+	{ \
+		string_item = cJSON_CreateNull(); \
+	} \
 	if(string_item == NULL) \
 	{ \
 		cJSON_Delete(object); \
@@ -86,7 +102,15 @@
 }
 
 #define JSON_ARRAY_REF_STR(array, string){ \
-	cJSON *string_item = cJSON_CreateStringReference((const char*)string); \
+	cJSON *string_item = NULL; \
+	if(string != NULL) \
+	{ \
+		string_item = cJSON_CreateStringReference((const char*)string); \
+	} \
+	else \
+	{ \
+		string_item = cJSON_CreateNull(); \
+	} \
 	if(string_item == NULL) \
 	{ \
 		cJSON_Delete(array); \
@@ -98,7 +122,15 @@
 }
 
 #define JSON_ARRAY_COPY_STR(array, string){ \
-	cJSON *string_item = cJSON_CreateString((const char*)string); \
+	cJSON *string_item = NULL; \
+	if(string != NULL) \
+	{ \
+		string_item = cJSON_CreateString((const char*)string); \
+	} \
+	else \
+	{ \
+		string_item = cJSON_CreateNull(); \
+	} \
 	if(string_item == NULL) \
 	{ \
 		cJSON_Delete(array); \
