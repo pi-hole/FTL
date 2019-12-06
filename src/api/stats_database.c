@@ -22,6 +22,7 @@
 int api_stats_database_overTime_history(struct mg_connection *conn)
 {
 	int from = 0, until = 0;
+	const int interval = 600;
 	const struct mg_request_info *request = mg_get_request_info(conn);
 	if(request->query_string != NULL)
 	{
@@ -49,7 +50,7 @@ int api_stats_database_overTime_history(struct mg_connection *conn)
 
 	// Open the database (this also locks the database)
 	dbopen();
-	const int interval = 600;
+
 	// Build SQL string
 	const char *querystr = "SELECT (timestamp/:interval)*:interval interval,status,COUNT(*) FROM queries "
 	                       "WHERE (status != 0) AND timestamp >= :from AND timestamp <= :until "
@@ -184,7 +185,7 @@ int api_stats_database_overTime_history(struct mg_connection *conn)
 	JSON_SEND_OBJECT(json);
 }
 
-int api_stats_database_top_domains(bool blocked, struct mg_connection *conn)
+int api_stats_database_top_items(bool blocked, bool domains, struct mg_connection *conn)
 {
 	int from = 0, until = 0, show = 10;
 	const struct mg_request_info *request = mg_get_request_info(conn);
@@ -224,24 +225,48 @@ int api_stats_database_top_domains(bool blocked, struct mg_connection *conn)
 
 	// Open the database (this also locks the database)
 	dbopen();
+
 	// Build SQL string
 	const char *querystr;
-	if(!blocked)
+	if(domains)
 	{
-		querystr = "SELECT domain,COUNT(*) AS cnt FROM queries "
-		           "WHERE (status == 2 OR status == 3) "
-		           "AND timestamp >= :from AND timestamp <= :until "
-		           "GROUP by domain ORDER by cnt DESC "
-		           "LIMIT :show";
+		if(!blocked)
+		{
+			querystr = "SELECT domain,COUNT(*) AS cnt FROM queries "
+			           "WHERE (status == 2 OR status == 3) "
+			           "AND timestamp >= :from AND timestamp <= :until "
+			           "GROUP by domain ORDER by cnt DESC "
+			           "LIMIT :show";
+		}
+		else
+		{
+			querystr = "SELECT domain,COUNT(*) AS cnt FROM queries "
+			           "WHERE status != 0 AND status != 2 AND status != 3 "
+			           "AND timestamp >= :from AND timestamp <= :until "
+			           "GROUP by domain ORDER by cnt DESC "
+			           "LIMIT :show";
+		}
 	}
 	else
 	{
-		querystr = "SELECT domain,COUNT(*) AS cnt FROM queries "
-		           "WHERE status != 0 AND status != 2 AND status != 3 "
-		           "AND timestamp >= :from AND timestamp <= :until "
-		           "GROUP by domain ORDER by cnt DESC "
-		           "LIMIT :show";
+		if(!blocked)
+		{
+			querystr = "SELECT client,COUNT(*) AS cnt FROM queries "
+			           "WHERE (status == 2 OR status == 3) "
+			           "AND timestamp >= :from AND timestamp <= :until "
+			           "GROUP by client ORDER by cnt DESC "
+			           "LIMIT :show";
+		}
+		else
+		{
+			querystr = "SELECT client,COUNT(*) AS cnt FROM queries "
+			           "WHERE status != 0 AND status != 2 AND status != 3 "
+			           "AND timestamp >= :from AND timestamp <= :until "
+			           "GROUP by client ORDER by cnt DESC "
+			           "LIMIT :show";
+		}
 	}
+	
 	
 	// Prepare SQLite statement
 	sqlite3_stmt *stmt;
@@ -316,16 +341,19 @@ int api_stats_database_top_domains(bool blocked, struct mg_connection *conn)
 	}
 
 	// Loop over and accumulate results
-	cJSON *top_domains = JSON_NEW_ARRAY();
+	cJSON *top_items = JSON_NEW_ARRAY();
 	int total = 0;
 	while((rc = sqlite3_step(stmt)) == SQLITE_ROW)
 	{
-		const char* domain = (char*)sqlite3_column_text(stmt, 0);
+		const char* string = (char*)sqlite3_column_text(stmt, 0);
 		const int count = sqlite3_column_int(stmt, 1);
-		cJSON *domain_item = JSON_NEW_OBJ();
-		JSON_OBJ_COPY_STR(domain_item, "domain", domain);
-		JSON_OBJ_ADD_NUMBER(domain_item, "count", count);
-		JSON_ARRAY_ADD_ITEM(top_domains, domain_item);
+		cJSON *item = JSON_NEW_OBJ();
+		JSON_OBJ_COPY_STR(item, (domains ? "domain" : "ip"), string);
+		// Add empty name field for top_client requests
+		if(!domains)
+			JSON_OBJ_REF_STR(item, "name", "");
+		JSON_OBJ_ADD_NUMBER(item, "count", count);
+		JSON_ARRAY_ADD_ITEM(top_items, item);
 		total += count;
 	}
 
@@ -337,7 +365,7 @@ int api_stats_database_top_domains(bool blocked, struct mg_connection *conn)
 	lock_shm();
 
 	cJSON *json = JSON_NEW_OBJ();
-	JSON_OBJ_ADD_ITEM(json, "top_domains", top_domains);
+	JSON_OBJ_ADD_ITEM(json, (domains ? "top_domains" : "top_clients"), top_items);
 	JSON_OBJ_ADD_NUMBER(json, (blocked ? "blocked_queries" : "total_queries"), total);
 	JSON_SEND_OBJECT(json);
 }

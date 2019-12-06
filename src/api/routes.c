@@ -113,11 +113,15 @@ int api_handler(struct mg_connection *conn, void *ignored)
 	}
 	else if(startsWith("/api/stats/database/top_domains", request->local_uri))
 	{
-		ret = api_stats_database_top_domains(false, conn);
+		ret = api_stats_database_top_items(false, true, conn);
 	}
 	else if(startsWith("/api/stats/database/top_blocked", request->local_uri))
 	{
-		ret = api_stats_database_top_domains(true, conn);
+		ret = api_stats_database_top_items(true, true, conn);
+	}
+	else if(startsWith("/api/stats/database/top_clients", request->local_uri))
+	{
+		ret = api_stats_database_top_items(false, false, conn);
 	}
 	/******************************** api/version ****************************/
 	else if(startsWith("/api/version", request->local_uri))
