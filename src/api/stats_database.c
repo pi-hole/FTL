@@ -714,3 +714,61 @@ int api_stats_database_overTime_clients(struct mg_connection *conn)
 	JSON_OBJ_ADD_ITEM(json, "clients", clients);
 	JSON_SEND_OBJECT(json);
 }
+
+static const char *querytypes[8] = {"A","AAAA","ANY","SRV","SOA","PTR","TXT","UNKN"};
+int api_stats_database_query_types(struct mg_connection *conn)
+{
+	int from = 0, until = 0;
+	const struct mg_request_info *request = mg_get_request_info(conn);
+	if(request->query_string != NULL)
+	{
+		int num;
+		if((num = get_int_var(request->query_string, "from")) > 0)
+			from = num;
+		if((num = get_int_var(request->query_string, "until")) > 0)
+			until = num;
+	}
+
+	// Check if we received the required information
+	if(from == 0 || until == 0)
+	{
+		cJSON *json = JSON_NEW_OBJ();
+		JSON_OBJ_ADD_NUMBER(json, "from", from);
+		JSON_OBJ_ADD_NUMBER(json, "until", until);
+		return send_json_error(conn, 400,
+		                       "bad_request",
+		                       "You need to specify both \"from\" and \"until\" in the request.",
+		                       json);
+	}
+
+	// Unlock shared memory (DNS resolver can continue to work while we're preforming database queries)
+	unlock_shm();
+
+	// Open the database (this also locks the database)
+	dbopen();
+
+	// Perform SQL queries
+	cJSON *json = JSON_NEW_ARRAY();
+	for(int i=0; i < TYPE_MAX; i++)
+	{
+		const char *querystr = "SELECT COUNT(*) FROM queries "
+		                       "WHERE timestamp >= :from AND timestamp <= :until "
+		                       "AND type = :type";
+		// Add 1 as type is stored one-based in the database for historical reasons
+		int count = db_query_int_from_until_type(querystr, from, until, i+1);
+
+		cJSON *item = JSON_NEW_OBJ();
+		JSON_OBJ_REF_STR(item, "name", querytypes[i]);
+		JSON_OBJ_ADD_NUMBER(item, "count", count);
+		JSON_ARRAY_ADD_ITEM(json, item);
+	}
+
+	// Close (= unlock) database connection
+	dbclose();
+
+	// Re-lock shared memory before returning back to router subroutine
+	lock_shm();
+
+	// Send JSON object
+	JSON_SEND_OBJECT(json);
+}
