@@ -100,6 +100,8 @@ int api_stats_summary(struct mg_connection *conn)
 	JSON_OBJ_ADD_NUMBER(total_queries, "PTR", counters->querytype[TYPE_PTR]);
 	JSON_OBJ_ADD_NUMBER(total_queries, "TXT", counters->querytype[TYPE_TXT]);
 	JSON_OBJ_ADD_ITEM(json, "total_queries", total_queries);
+
+	JSON_OBJ_ADD_NUMBER(json, "sum_queries", counters->queries);
 	
 	cJSON *reply_types = JSON_NEW_OBJ();
 	JSON_OBJ_ADD_NUMBER(reply_types, "NODATA", counters->reply_NODATA);

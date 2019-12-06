@@ -22,6 +22,7 @@ int dbquery(const char *format, ...);
 bool dbopen(void);
 void dbclose(void);
 int db_query_int(const char*);
+int db_query_int_from_until(const char* querystr, const int from, const int until);
 long get_lastID(void);
 void SQLite3LogCallback(void *pArg, int iErrCode, const char *zMsg);
 long int get_max_query_ID(void);

@@ -481,6 +481,53 @@ int db_query_int(const char* querystr)
 	return result;
 }
 
+int db_query_int_from_until(const char* querystr, const int from, const int until)
+{
+	if(!database)
+	{
+		logg("db_query_int_from_until(\"%s\") called but database is not available!", querystr);
+		return DB_FAILED;
+	}
+
+	sqlite3_stmt* stmt;
+	int rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &stmt, NULL);
+	if( rc != SQLITE_OK ){
+		logg("db_query_int_from_until(%s) - SQL error prepare (%i): %s", querystr, rc, sqlite3_errmsg(FTL_db));
+		check_database(rc);
+		return DB_FAILED;
+	}
+
+	// Bind from and until to prepared statement
+	if((rc = sqlite3_bind_int(stmt, 1, from))  != SQLITE_OK ||
+	   (rc = sqlite3_bind_int(stmt, 2, until)) != SQLITE_OK)
+	{
+		logg("db_query_int_from_until(%s) - SQL error bind (%i): %s", querystr, rc, sqlite3_errmsg(FTL_db));
+	}
+
+	rc = sqlite3_step(stmt);
+	int result;
+
+	if( rc == SQLITE_ROW )
+	{
+		result = sqlite3_column_int(stmt, 0);
+	}
+	else if( rc == SQLITE_DONE )
+	{
+		// No rows available
+		result = DB_NODATA;
+	}
+	else
+	{
+		logg("db_query_int_from_until(%s) - SQL error step (%i): %s", querystr, rc, sqlite3_errmsg(FTL_db));
+		check_database(rc);
+		return DB_FAILED;
+	}
+
+	sqlite3_finalize(stmt);
+
+	return result;
+}
+
 long int get_max_query_ID(void)
 {
 	if(!database || FTL_db == NULL)

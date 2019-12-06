@@ -369,3 +369,83 @@ int api_stats_database_top_items(bool blocked, bool domains, struct mg_connectio
 	JSON_OBJ_ADD_NUMBER(json, (blocked ? "blocked_queries" : "total_queries"), total);
 	JSON_SEND_OBJECT(json);
 }
+
+int api_stats_database_summary(struct mg_connection *conn)
+{
+	int from = 0, until = 0;
+	const struct mg_request_info *request = mg_get_request_info(conn);
+	if(request->query_string != NULL)
+	{
+		int num;
+		if((num = get_int_var(request->query_string, "from")) > 0)
+			from = num;
+		if((num = get_int_var(request->query_string, "until")) > 0)
+			until = num;
+	}
+
+	// Check if we received the required information
+	if(from == 0 || until == 0)
+	{
+		cJSON *json = JSON_NEW_OBJ();
+		JSON_OBJ_ADD_NUMBER(json, "from", from);
+		JSON_OBJ_ADD_NUMBER(json, "until", until);
+		return send_json_error(conn, 400,
+		"bad_request",
+		"You need to specify both \"from\" and \"until\" in the request.",
+		json);
+	}
+
+	// Unlock shared memory (DNS resolver can continue to work while we're preforming database queries)
+	unlock_shm();
+
+	// Open the database (this also locks the database)
+	dbopen();
+
+	// Perform SQL queries
+	const char *querystr;
+	querystr = "SELECT COUNT(*) FROM queries "
+	           "WHERE timestamp >= :from AND timestamp <= :until";
+	int sum_queries = db_query_int_from_until(querystr, from, until);
+
+	querystr = "SELECT COUNT(*) FROM queries "
+	           "WHERE timestamp >= :from AND timestamp <= :until "
+		   "AND status != 0 AND status != 2 AND status != 3";
+	int blocked_queries = db_query_int_from_until(querystr, from, until);
+
+	querystr = "SELECT COUNT(DISTINCT client) FROM queries "
+	           "WHERE timestamp >= :from AND timestamp <= :until";
+	int total_clients = db_query_int_from_until(querystr, from, until);
+
+	float percent_blocked = 1e2f*blocked_queries/sum_queries;
+
+	if(sum_queries < 0 || blocked_queries < 0 || total_clients < 0)
+	{
+		// Relock shared memory
+		lock_shm();
+
+		cJSON *json = JSON_NEW_OBJ();
+		JSON_OBJ_ADD_NUMBER(json, "from", from);
+		JSON_OBJ_ADD_NUMBER(json, "until", until);
+		return send_json_error(conn, 500,
+		"internal_error",
+		"Internal server error",
+		json);
+	}
+
+	// Loop over and accumulate results
+	cJSON *json = JSON_NEW_OBJ();
+	JSON_OBJ_REF_STR(json, "gravity_size", "?");
+	JSON_OBJ_ADD_NUMBER(json, "sum_queries", sum_queries);
+	JSON_OBJ_ADD_NUMBER(json, "blocked_queries", blocked_queries);
+	JSON_OBJ_ADD_NUMBER(json, "percent_blocked", percent_blocked);
+	JSON_OBJ_ADD_NUMBER(json, "total_clients", total_clients);
+
+	// Close (= unlock) database connection
+	dbclose();
+
+	// Re-lock shared memory before returning back to router subroutine
+	lock_shm();
+
+	// Send JSON object
+	JSON_SEND_OBJECT(json);
+}
