@@ -73,6 +73,11 @@
 	cJSON_AddItemToArray(object, number_item); \
 }
 
+#define JSON_ARRAY_REPLACE_NUMBER(object, index, number){ \
+	cJSON *number_item = cJSON_CreateNumber((double)number); \
+	cJSON_ReplaceItemInArray(object, index, number_item); \
+}
+
 #define JSON_ARRAY_REF_STR(array, string){ \
 	cJSON *string_item = cJSON_CreateStringReference((const char*)string); \
 	if(string_item == NULL) \

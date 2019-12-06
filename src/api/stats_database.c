@@ -40,9 +40,9 @@ int api_stats_database_overTime_history(struct mg_connection *conn)
 		JSON_OBJ_ADD_NUMBER(json, "from", from);
 		JSON_OBJ_ADD_NUMBER(json, "until", until);
 		return send_json_error(conn, 400,
-		"bad_request",
-		"You need to specify both \"from\" and \"until\" in the request.",
-		json);
+		                       "bad_request",
+		                       "You need to specify both \"from\" and \"until\" in the request.",
+		                       json);
 	}
 
 	// Unlock shared memory (DNS resolver can continue to work while we're preforming database queries)
@@ -82,9 +82,9 @@ int api_stats_database_overTime_history(struct mg_connection *conn)
 		JSON_OBJ_ADD_NUMBER(json, "from", from);
 		JSON_OBJ_ADD_NUMBER(json, "until", until);
 		return send_json_error(conn, 500,
-		"internal_error",
-		"Failed to bind interval",
-		json);
+		                       "internal_error",
+		                       "Failed to bind interval",
+		                       json);
 	}
 
 	// Bind from to prepared statement
@@ -103,9 +103,9 @@ int api_stats_database_overTime_history(struct mg_connection *conn)
 		JSON_OBJ_ADD_NUMBER(json, "from", from);
 		JSON_OBJ_ADD_NUMBER(json, "until", until);
 		return send_json_error(conn, 500,
-		"internal_error",
-		"Failed to bind from",
-		json);
+		                       "internal_error",
+		                       "Failed to bind from",
+		                       json);
 	}
 
 	// Bind until to prepared statement
@@ -124,9 +124,9 @@ int api_stats_database_overTime_history(struct mg_connection *conn)
 		JSON_OBJ_ADD_NUMBER(json, "from", from);
 		JSON_OBJ_ADD_NUMBER(json, "until", until);
 		return send_json_error(conn, 500,
-		"internal_error",
-		"Failed to bind until",
-		json);
+		                       "internal_error",
+		                       "Failed to bind until",
+		                       json);
 	}
 
 	// Loop over and accumulate results
@@ -173,7 +173,6 @@ int api_stats_database_overTime_history(struct mg_connection *conn)
 		default:
 			break;
 		}
-		
 	}
 
 	// Finalize statement and close (= unlock) database connection
@@ -215,9 +214,9 @@ int api_stats_database_top_items(bool blocked, bool domains, struct mg_connectio
 		JSON_OBJ_ADD_NUMBER(json, "from", from);
 		JSON_OBJ_ADD_NUMBER(json, "until", until);
 		return send_json_error(conn, 400,
-		"bad_request",
-		"You need to specify both \"from\" and \"until\" in the request.",
-		json);
+		                       "bad_request",
+		                       "You need to specify both \"from\" and \"until\" in the request.",
+		                       json);
 	}
 
 	// Unlock shared memory (DNS resolver can continue to work while we're preforming database queries)
@@ -293,9 +292,9 @@ int api_stats_database_top_items(bool blocked, bool domains, struct mg_connectio
 		JSON_OBJ_ADD_NUMBER(json, "from", from);
 		JSON_OBJ_ADD_NUMBER(json, "until", until);
 		return send_json_error(conn, 500,
-		"internal_error",
-		"Failed to bind from",
-		json);
+		                       "internal_error",
+		                       "Failed to bind from",
+		                       json);
 	}
 
 	// Bind until to prepared statement
@@ -314,9 +313,9 @@ int api_stats_database_top_items(bool blocked, bool domains, struct mg_connectio
 		JSON_OBJ_ADD_NUMBER(json, "from", from);
 		JSON_OBJ_ADD_NUMBER(json, "until", until);
 		return send_json_error(conn, 500,
-		"internal_error",
-		"Failed to bind until",
-		json);
+		                       "internal_error",
+		                       "Failed to bind until",
+		                       json);
 	}
 
 	// Bind show to prepared statement
@@ -335,9 +334,9 @@ int api_stats_database_top_items(bool blocked, bool domains, struct mg_connectio
 		JSON_OBJ_ADD_NUMBER(json, "from", from);
 		JSON_OBJ_ADD_NUMBER(json, "until", until);
 		return send_json_error(conn, 500,
-		"internal_error",
-		"Failed to bind show",
-		json);
+		                       "internal_error",
+		                       "Failed to bind show",
+		                       json);
 	}
 
 	// Loop over and accumulate results
@@ -390,9 +389,9 @@ int api_stats_database_summary(struct mg_connection *conn)
 		JSON_OBJ_ADD_NUMBER(json, "from", from);
 		JSON_OBJ_ADD_NUMBER(json, "until", until);
 		return send_json_error(conn, 400,
-		"bad_request",
-		"You need to specify both \"from\" and \"until\" in the request.",
-		json);
+		                       "bad_request",
+		                       "You need to specify both \"from\" and \"until\" in the request.",
+		                       json);
 	}
 
 	// Unlock shared memory (DNS resolver can continue to work while we're preforming database queries)
@@ -427,9 +426,9 @@ int api_stats_database_summary(struct mg_connection *conn)
 		JSON_OBJ_ADD_NUMBER(json, "from", from);
 		JSON_OBJ_ADD_NUMBER(json, "until", until);
 		return send_json_error(conn, 500,
-		"internal_error",
-		"Internal server error",
-		json);
+		                       "internal_error",
+		                       "Internal server error",
+		                       json);
 	}
 
 	// Loop over and accumulate results
@@ -447,5 +446,271 @@ int api_stats_database_summary(struct mg_connection *conn)
 	lock_shm();
 
 	// Send JSON object
+	JSON_SEND_OBJECT(json);
+}
+
+int api_stats_database_overTime_clients(struct mg_connection *conn)
+{
+	int from = 0, until = 0;
+	const int interval = 600;
+	const struct mg_request_info *request = mg_get_request_info(conn);
+	if(request->query_string != NULL)
+	{
+		int num;
+		if((num = get_int_var(request->query_string, "from")) > 0)
+			from = num;
+		if((num = get_int_var(request->query_string, "until")) > 0)
+			until = num;
+	}
+
+	// Check if we received the required information
+	if(from == 0 || until == 0)
+	{
+		cJSON *json = JSON_NEW_OBJ();
+		JSON_OBJ_ADD_NUMBER(json, "from", from);
+		JSON_OBJ_ADD_NUMBER(json, "until", until);
+		return send_json_error(conn, 400,
+		                       "bad_request",
+		                       "You need to specify both \"from\" and \"until\" in the request.",
+		                       json);
+	}
+
+	// Unlock shared memory (DNS resolver can continue to work while we're preforming database queries)
+	unlock_shm();
+
+	// Open the database (this also locks the database)
+	dbopen();
+
+	const char *querystr = "SELECT DISTINCT client FROM queries "
+	                       "WHERE timestamp >= :from AND timestamp <= :until "
+	                       "ORDER BY client DESC";
+
+	// Prepare SQLite statement
+	sqlite3_stmt *stmt;
+	int rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &stmt, NULL);
+	if( rc != SQLITE_OK ){
+		logg("api_stats_database_overTime_clients() - SQL error prepare outer (%i): %s",
+		     rc, sqlite3_errmsg(FTL_db));
+
+		// Relock shared memory
+		lock_shm();
+
+		cJSON *json = JSON_NEW_OBJ();
+		JSON_OBJ_ADD_NUMBER(json, "from", from);
+		JSON_OBJ_ADD_NUMBER(json, "until", until);
+		return send_json_error(conn, 500,
+		                       "internal_error",
+		                       "Failed to prepare outer statement",
+		                       json);
+	}
+
+	// Bind from to prepared statement
+	if((rc = sqlite3_bind_int(stmt, 1, from)) != SQLITE_OK)
+	{
+		logg("api_stats_database_overTime_clients(): Failed to bind from (error %d) - %s",
+		     rc, sqlite3_errmsg(FTL_db));
+		sqlite3_reset(stmt);
+		sqlite3_finalize(stmt);
+		dbclose();
+
+		// Relock shared memory
+		lock_shm();
+
+		cJSON *json = JSON_NEW_OBJ();
+		JSON_OBJ_ADD_NUMBER(json, "from", from);
+		JSON_OBJ_ADD_NUMBER(json, "until", until);
+		return send_json_error(conn, 500,
+		                       "internal_error",
+		                       "Failed to bind from",
+		                       json);
+	}
+
+	// Bind until to prepared statement
+	if((rc = sqlite3_bind_int(stmt, 2, until)) != SQLITE_OK)
+	{
+		logg("api_stats_database_overTime_clients(): Failed to bind until (error %d) - %s",
+		     rc, sqlite3_errmsg(FTL_db));
+		sqlite3_reset(stmt);
+		sqlite3_finalize(stmt);
+		dbclose();
+
+		// Relock shared memory
+		lock_shm();
+
+		cJSON *json = JSON_NEW_OBJ();
+		JSON_OBJ_ADD_NUMBER(json, "from", from);
+		JSON_OBJ_ADD_NUMBER(json, "until", until);
+		return send_json_error(conn, 500,
+		                       "internal_error",
+		                       "Failed to bind until",
+		                       json);
+	}
+
+	// Loop over clients and accumulate results
+	cJSON *clients = JSON_NEW_ARRAY();
+	unsigned int num_clients = 0;
+	while((rc = sqlite3_step(stmt)) == SQLITE_ROW)
+	{
+		const char* client = (char*)sqlite3_column_text(stmt, 0);
+		cJSON *item = JSON_NEW_OBJ();
+		JSON_OBJ_COPY_STR(item, "ip", client);
+		JSON_OBJ_REF_STR(item, "name", "");
+		JSON_ARRAY_ADD_ITEM(clients, item);
+		num_clients++;
+	}
+	sqlite3_finalize(stmt);
+
+	// Build SQL string
+	querystr = "SELECT (timestamp/:interval)*:interval interval,client,COUNT(*) FROM queries "
+	           "WHERE timestamp >= :from AND timestamp <= :until "
+	           "GROUP BY interval,client ORDER BY interval DESC, client DESC";
+
+	// Prepare SQLite statement
+	rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &stmt, NULL);
+	if( rc != SQLITE_OK ){
+		logg("api_stats_database_overTime_clients() - SQL error prepare (%i): %s",
+		rc, sqlite3_errmsg(FTL_db));
+
+		// Relock shared memory
+		lock_shm();
+
+		cJSON *json = JSON_NEW_OBJ();
+		JSON_OBJ_ADD_NUMBER(json, "from", from);
+		JSON_OBJ_ADD_NUMBER(json, "until", until);
+		return send_json_error(conn, 500,
+					"internal_error",
+					"Failed to prepare inner statement",
+					json);
+	}
+
+	// Bind interval to prepared statement
+	if((rc = sqlite3_bind_int(stmt, 1, interval)) != SQLITE_OK)
+	{
+		logg("api_stats_database_overTime_clients(): Failed to bind interval (error %d) - %s",
+		rc, sqlite3_errmsg(FTL_db));
+		sqlite3_reset(stmt);
+		sqlite3_finalize(stmt);
+		dbclose();
+
+		// Relock shared memory
+		lock_shm();
+
+		cJSON *json = JSON_NEW_OBJ();
+		JSON_OBJ_ADD_NUMBER(json, "from", from);
+		JSON_OBJ_ADD_NUMBER(json, "until", until);
+		return send_json_error(conn, 500,
+					"internal_error",
+					"Failed to bind interval",
+					json);
+	}
+
+	// Bind from to prepared statement
+	if((rc = sqlite3_bind_int(stmt, 2, from)) != SQLITE_OK)
+	{
+		logg("api_stats_database_overTime_clients(): Failed to bind from (error %d) - %s",
+		rc, sqlite3_errmsg(FTL_db));
+		sqlite3_reset(stmt);
+		sqlite3_finalize(stmt);
+		dbclose();
+
+		// Relock shared memory
+		lock_shm();
+
+		cJSON *json = JSON_NEW_OBJ();
+		JSON_OBJ_ADD_NUMBER(json, "from", from);
+		JSON_OBJ_ADD_NUMBER(json, "until", until);
+		return send_json_error(conn, 500,
+					"internal_error",
+					"Failed to bind from",
+					json);
+	}
+
+	// Bind until to prepared statement
+	if((rc = sqlite3_bind_int(stmt, 3, until)) != SQLITE_OK)
+	{
+		logg("api_stats_database_overTime_clients(): Failed to bind until (error %d) - %s",
+		rc, sqlite3_errmsg(FTL_db));
+		sqlite3_reset(stmt);
+		sqlite3_finalize(stmt);
+		dbclose();
+
+		// Relock shared memory
+		lock_shm();
+
+		cJSON *json = JSON_NEW_OBJ();
+		JSON_OBJ_ADD_NUMBER(json, "from", from);
+		JSON_OBJ_ADD_NUMBER(json, "until", until);
+		return send_json_error(conn, 500,
+					"internal_error",
+					"Failed to bind until",
+					json);
+	}
+
+	cJSON *over_time = JSON_NEW_ARRAY();
+	cJSON *item = NULL;
+	cJSON *data = NULL;
+	int previous_timestamp = 0;
+	while((rc = sqlite3_step(stmt)) == SQLITE_ROW)
+	{
+		const int timestamp = sqlite3_column_int(stmt, 0);
+		// Begin new array item for each new timestamp
+		if(timestamp != previous_timestamp)
+		{
+			previous_timestamp = timestamp;
+			if(item != NULL && data != NULL)
+			{
+				JSON_OBJ_ADD_ITEM(item, "data", data);
+				JSON_ARRAY_ADD_ITEM(over_time, item);
+			}
+
+			item = JSON_NEW_OBJ();
+			data = JSON_NEW_ARRAY();
+			// Prefill data with zeroes
+			// We have to do this as not all clients may have
+			// have been active in any time interval we're
+			// querying
+			for(unsigned int i = 0; i < num_clients; i++)
+			{
+				JSON_ARRAY_ADD_NUMBER(data, 0);
+			}
+			JSON_OBJ_ADD_NUMBER(item, "timestamp", timestamp);
+		}
+
+		const char *client = (char*)sqlite3_column_text(stmt, 1);
+		const int count = sqlite3_column_int(stmt, 2);
+
+		// Find index of this client in known clients...
+		unsigned int idx = 0;
+		for(; idx < num_clients; idx++)
+		{
+			const char *array_client = cJSON_GetStringValue(
+			                              cJSON_GetObjectItem(
+			                                 cJSON_GetArrayItem(clients, idx), "ip"));
+			if(array_client != NULL && 
+			   strcmp(client, array_client) == 0)
+			{
+				break;
+			}
+		}
+
+		if(idx == num_clients)
+		{
+			// Not found
+			continue;
+		}
+
+		// ... and replace corresponding number in data array
+		JSON_ARRAY_REPLACE_NUMBER(data, idx, count);
+	}
+
+	// Finalize statement and close (= unlock) database connection
+	sqlite3_finalize(stmt);
+	dbclose();
+
+	// Re-lock shared memory before returning back to router subroutine
+	lock_shm();
+	cJSON *json = JSON_NEW_OBJ();
+	JSON_OBJ_ADD_ITEM(json, "over_time", over_time);
+	JSON_OBJ_ADD_ITEM(json, "clients", clients);
 	JSON_SEND_OBJECT(json);
 }

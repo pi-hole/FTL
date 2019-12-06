@@ -127,6 +127,10 @@ int api_handler(struct mg_connection *conn, void *ignored)
 	{
 		ret = api_stats_database_summary(conn);
 	}
+	else if(startsWith("/api/stats/database/overTime/clients", request->local_uri))
+	{
+		ret = api_stats_database_overTime_clients(conn);
+	}
 	/******************************** api/version ****************************/
 	else if(startsWith("/api/version", request->local_uri))
 	{
