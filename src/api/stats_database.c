@@ -273,7 +273,20 @@ int api_stats_database_top_items(bool blocked, bool domains, struct mg_connectio
 	if( rc != SQLITE_OK ){
 		logg("api_stats_database_overTime_history() - SQL error prepare (%i): %s",
 		     rc, sqlite3_errmsg(FTL_db));
-		return false;
+
+		dbclose();
+
+		// Relock shared memory
+		lock_shm();
+
+		cJSON *json = JSON_NEW_OBJ();
+		JSON_OBJ_ADD_NUMBER(json, "from", from);
+		JSON_OBJ_ADD_NUMBER(json, "until", until);
+		JSON_OBJ_REF_STR(json, "querystr", querystr);
+		return send_json_error(conn, 500,
+		                       "internal_error",
+		                       "Failed to prepare query string",
+		                       json);
 	}
 
 	// Bind from to prepared statement
@@ -350,7 +363,9 @@ int api_stats_database_top_items(bool blocked, bool domains, struct mg_connectio
 		JSON_OBJ_COPY_STR(item, (domains ? "domain" : "ip"), string);
 		// Add empty name field for top_client requests
 		if(!domains)
+		{
 			JSON_OBJ_REF_STR(item, "name", "");
+		}
 		JSON_OBJ_ADD_NUMBER(item, "count", count);
 		JSON_ARRAY_ADD_ITEM(top_items, item);
 		total += count;
@@ -419,6 +434,10 @@ int api_stats_database_summary(struct mg_connection *conn)
 
 	if(sum_queries < 0 || blocked_queries < 0 || total_clients < 0)
 	{
+
+		// Close (= unlock) database connection
+		dbclose();
+
 		// Relock shared memory
 		lock_shm();
 
@@ -770,5 +789,168 @@ int api_stats_database_query_types(struct mg_connection *conn)
 	lock_shm();
 
 	// Send JSON object
+	JSON_SEND_OBJECT(json);
+}
+
+
+int api_stats_database_upstreams(struct mg_connection *conn)
+{
+	int from = 0, until = 0;
+	const struct mg_request_info *request = mg_get_request_info(conn);
+	if(request->query_string != NULL)
+	{
+		int num;
+		if((num = get_int_var(request->query_string, "from")) > 0)
+			from = num;
+		if((num = get_int_var(request->query_string, "until")) > 0)
+			until = num;
+	}
+
+	// Check if we received the required information
+	if(from == 0 || until == 0)
+	{
+		cJSON *json = JSON_NEW_OBJ();
+		JSON_OBJ_ADD_NUMBER(json, "from", from);
+		JSON_OBJ_ADD_NUMBER(json, "until", until);
+		return send_json_error(conn, 400,
+		                       "bad_request",
+		                       "You need to specify both \"from\" and \"until\" in the request.",
+		                       json);
+	}
+
+	// Unlock shared memory (DNS resolver can continue to work while we're preforming database queries)
+	unlock_shm();
+
+	// Open the database (this also locks the database)
+	dbopen();
+
+	// Perform simple SQL queries
+	unsigned int sum_queries = 0;
+	const char *querystr;
+	querystr = "SELECT COUNT(*) FROM queries "
+	           "WHERE timestamp >= :from AND timestamp <= :until "
+	           "AND status = 2";
+	int forwarded_queries = db_query_int_from_until(querystr, from, until);
+	sum_queries = forwarded_queries;
+
+	querystr = "SELECT COUNT(*) FROM queries "
+	           "WHERE timestamp >= :from AND timestamp <= :until "
+	           "AND status = 3";
+	int cached_queries = db_query_int_from_until(querystr, from, until);
+	sum_queries += cached_queries;
+
+	querystr = "SELECT COUNT(*) FROM queries "
+	           "WHERE timestamp >= :from AND timestamp <= :until "
+		   "AND status != 0 AND status != 2 AND status != 3";
+	int blocked_queries = db_query_int_from_until(querystr, from, until);
+	sum_queries += blocked_queries;
+
+	querystr = "SELECT forward,COUNT(*) FROM queries "
+	           "WHERE timestamp >= :from AND timestamp <= :until "
+		   "AND forward IS NOT NULL "
+	           "GROUP BY forward ORDER BY forward";
+
+	// Prepare SQLite statement
+	sqlite3_stmt *stmt;
+	int rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &stmt, NULL);
+	if( rc != SQLITE_OK ){
+		logg("api_stats_database_overTime_clients() - SQL error prepare (%i): %s",
+		     rc, sqlite3_errmsg(FTL_db));
+
+		// Relock shared memory
+		lock_shm();
+
+		cJSON *json = JSON_NEW_OBJ();
+		JSON_OBJ_ADD_NUMBER(json, "from", from);
+		JSON_OBJ_ADD_NUMBER(json, "until", until);
+		return send_json_error(conn, 500,
+		                       "internal_error",
+		                       "Failed to prepare statement",
+		                       json);
+	}
+
+	// Bind from to prepared statement
+	if((rc = sqlite3_bind_int(stmt, 1, from)) != SQLITE_OK)
+	{
+		logg("api_stats_database_overTime_clients(): Failed to bind from (error %d) - %s",
+		     rc, sqlite3_errmsg(FTL_db));
+		sqlite3_reset(stmt);
+		sqlite3_finalize(stmt);
+		dbclose();
+
+		// Relock shared memory
+		lock_shm();
+
+		cJSON *json = JSON_NEW_OBJ();
+		JSON_OBJ_ADD_NUMBER(json, "from", from);
+		JSON_OBJ_ADD_NUMBER(json, "until", until);
+		return send_json_error(conn, 500,
+		                       "internal_error",
+		                       "Failed to bind from",
+		                       json);
+	}
+
+	// Bind until to prepared statement
+	if((rc = sqlite3_bind_int(stmt, 2, until)) != SQLITE_OK)
+	{
+		logg("api_stats_database_overTime_clients(): Failed to bind until (error %d) - %s",
+		     rc, sqlite3_errmsg(FTL_db));
+		sqlite3_reset(stmt);
+		sqlite3_finalize(stmt);
+		dbclose();
+
+		// Relock shared memory
+		lock_shm();
+
+		cJSON *json = JSON_NEW_OBJ();
+		JSON_OBJ_ADD_NUMBER(json, "from", from);
+		JSON_OBJ_ADD_NUMBER(json, "until", until);
+		return send_json_error(conn, 500,
+		                       "internal_error",
+		                       "Failed to bind until",
+		                       json);
+	}
+
+	// Loop over clients and accumulate results
+	cJSON *upstreams = JSON_NEW_ARRAY();
+	while((rc = sqlite3_step(stmt)) == SQLITE_ROW)
+	{
+		const char* upstream = (char*)sqlite3_column_text(stmt, 0);
+		const int count = sqlite3_column_int(stmt, 1);
+		cJSON *item = JSON_NEW_OBJ();
+		JSON_OBJ_COPY_STR(item, "ip", upstream);
+		JSON_OBJ_REF_STR(item, "name", "");
+		JSON_OBJ_ADD_NUMBER(item, "count", count);
+		JSON_ARRAY_ADD_ITEM(upstreams, item);
+		sum_queries += count;
+	}
+	sqlite3_finalize(stmt);
+
+	// Add cache and blocklist as upstreams
+	cJSON *cached = JSON_NEW_OBJ();
+	JSON_OBJ_REF_STR(cached, "ip", "");
+	JSON_OBJ_REF_STR(cached, "name", "cache");
+	JSON_OBJ_ADD_NUMBER(cached, "count", cached_queries);
+	JSON_ARRAY_ADD_ITEM(upstreams, cached);
+
+	logg("%d / %d / %d", forwarded_queries, cached_queries, blocked_queries);
+
+	cJSON *blocked = JSON_NEW_OBJ();
+	JSON_OBJ_REF_STR(blocked, "ip", "");
+	JSON_OBJ_REF_STR(blocked, "name", "blocklist");
+	JSON_OBJ_ADD_NUMBER(blocked, "count", blocked_queries);
+	JSON_ARRAY_ADD_ITEM(upstreams, blocked);
+
+	// Close (= unlock) database connection
+	dbclose();
+
+	// Re-lock shared memory before returning back to router subroutine
+	lock_shm();
+
+	// Send JSON object
+	cJSON *json = JSON_NEW_OBJ();
+	JSON_OBJ_ADD_ITEM(json, "upstreams", upstreams);
+	JSON_OBJ_ADD_NUMBER(json, "forwarded_queries", forwarded_queries);
+	JSON_OBJ_ADD_NUMBER(json, "total_queries", sum_queries);
 	JSON_SEND_OBJECT(json);
 }

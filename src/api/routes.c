@@ -135,6 +135,10 @@ int api_handler(struct mg_connection *conn, void *ignored)
 	{
 		ret = api_stats_database_query_types(conn);
 	}
+	else if(startsWith("/api/stats/database/upstreams", request->local_uri))
+	{
+		ret = api_stats_database_upstreams(conn);
+	}
 	/******************************** api/version ****************************/
 	else if(startsWith("/api/version", request->local_uri))
 	{

@@ -33,6 +33,7 @@ int api_stats_database_top_items(bool blocked, bool domains, struct mg_connectio
 int api_stats_database_summary(struct mg_connection *conn);
 int api_stats_database_overTime_clients(struct mg_connection *conn);
 int api_stats_database_query_types(struct mg_connection *conn);
+int api_stats_database_upstreams(struct mg_connection *conn);
 
 // FTL methods
 int api_ftl_clientIP(struct mg_connection *conn);

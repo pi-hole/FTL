@@ -252,7 +252,7 @@ void _lock_shm(const char* func, const int line, const char * file) {
 	}
 
 	if(result != 0)
-		logg("Failed to obtain SHM lock: %s", strerror(result));
+		logg("Failed to obtain SHM lock: %s in %s() (%s:%i)", strerror(result), func, file, line);
 }
 
 void _unlock_shm(const char* func, const int line, const char * file) {
@@ -262,7 +262,7 @@ void _unlock_shm(const char* func, const int line, const char * file) {
 		logg("Removed lock in %s() (%s:%i)", func, file, line);
 
 	if(result != 0)
-		logg("Failed to unlock SHM lock: %s", strerror(result));
+		logg("Failed to unlock SHM lock: %s in %s() (%s:%i)", strerror(result), func, file, line);
 }
 
 bool init_shmem(void)

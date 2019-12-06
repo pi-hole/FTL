@@ -141,7 +141,8 @@ int api_auth(struct mg_connection *conn)
 			for(unsigned int i = 0; i < API_MAX_CLIENTS; i++)
 			{
 				// Expired slow, mark as unused
-				if(auth_data[i].valid_until < now)
+				if(auth_data[i].used &&
+				   auth_data[i].valid_until < now)
 				{
 					if(config.debug & DEBUG_API)
 					{
