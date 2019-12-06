@@ -829,12 +829,6 @@ int api_stats_database_upstreams(struct mg_connection *conn)
 	const char *querystr;
 	querystr = "SELECT COUNT(*) FROM queries "
 	           "WHERE timestamp >= :from AND timestamp <= :until "
-	           "AND status = 2";
-	int forwarded_queries = db_query_int_from_until(querystr, from, until);
-	sum_queries = forwarded_queries;
-
-	querystr = "SELECT COUNT(*) FROM queries "
-	           "WHERE timestamp >= :from AND timestamp <= :until "
 	           "AND status = 3";
 	int cached_queries = db_query_int_from_until(querystr, from, until);
 	sum_queries += cached_queries;
@@ -913,6 +907,7 @@ int api_stats_database_upstreams(struct mg_connection *conn)
 
 	// Loop over clients and accumulate results
 	cJSON *upstreams = JSON_NEW_ARRAY();
+	int forwarded_queries = 0;
 	while((rc = sqlite3_step(stmt)) == SQLITE_ROW)
 	{
 		const char* upstream = (char*)sqlite3_column_text(stmt, 0);
@@ -922,9 +917,12 @@ int api_stats_database_upstreams(struct mg_connection *conn)
 		JSON_OBJ_REF_STR(item, "name", "");
 		JSON_OBJ_ADD_NUMBER(item, "count", count);
 		JSON_ARRAY_ADD_ITEM(upstreams, item);
-		sum_queries += count;
+		forwarded_queries += count;
 	}
 	sqlite3_finalize(stmt);
+
+	// Add number of forwarded queries to total query count
+	sum_queries += forwarded_queries;
 
 	// Add cache and blocklist as upstreams
 	cJSON *cached = JSON_NEW_OBJ();
@@ -932,8 +930,6 @@ int api_stats_database_upstreams(struct mg_connection *conn)
 	JSON_OBJ_REF_STR(cached, "name", "cache");
 	JSON_OBJ_ADD_NUMBER(cached, "count", cached_queries);
 	JSON_ARRAY_ADD_ITEM(upstreams, cached);
-
-	logg("%d / %d / %d", forwarded_queries, cached_queries, blocked_queries);
 
 	cJSON *blocked = JSON_NEW_OBJ();
 	JSON_OBJ_REF_STR(blocked, "ip", "");
