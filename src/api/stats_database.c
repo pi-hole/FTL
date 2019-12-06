@@ -47,7 +47,6 @@ int api_stats_database_overTime_history(struct mg_connection *conn)
 	// Unlock shared memory (DNS resolver can continue to work while we're preforming database queries)
 	unlock_shm();
 
-
 	// Open the database (this also locks the database)
 	dbopen();
 	const int interval = 600;
@@ -73,6 +72,10 @@ int api_stats_database_overTime_history(struct mg_connection *conn)
 		     rc, sqlite3_errmsg(FTL_db));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
+		dblose();
+
+		// Relock shared memory
+		lock_shm();
 
 		cJSON *json = JSON_NEW_OBJ();
 		JSON_OBJ_ADD_NUMBER(json, "from", from);
@@ -90,6 +93,10 @@ int api_stats_database_overTime_history(struct mg_connection *conn)
 		     rc, sqlite3_errmsg(FTL_db));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
+		dblose();
+
+		// Relock shared memory
+		lock_shm();
 
 		cJSON *json = JSON_NEW_OBJ();
 		JSON_OBJ_ADD_NUMBER(json, "from", from);
@@ -107,6 +114,10 @@ int api_stats_database_overTime_history(struct mg_connection *conn)
 		     rc, sqlite3_errmsg(FTL_db));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
+		dblose();
+
+		// Relock shared memory
+		lock_shm();
 
 		cJSON *json = JSON_NEW_OBJ();
 		JSON_OBJ_ADD_NUMBER(json, "from", from);
