@@ -24,6 +24,8 @@
 #include <math.h>
 // set_blockingmode_timer()
 #include "timers.h"
+// struct config
+#include "config.h"
 
 int api_dns_status(struct mg_connection *conn)
 {
@@ -113,23 +115,28 @@ int api_dns_status(struct mg_connection *conn)
 	}
 }
 
-static int api_dns_somelist_read(struct mg_connection *conn, bool exact, bool whitelist)
+static int getTableType(bool whitelist, bool exact)
 {
-	int table;
 	if(whitelist)
 		if(exact)
-			table = GRAVITY_DOMAINLIST_EXACT_WHITELIST;
+			return GRAVITY_DOMAINLIST_EXACT_WHITELIST;
 		else
-			table = GRAVITY_DOMAINLIST_REGEX_WHITELIST;
+			return GRAVITY_DOMAINLIST_REGEX_WHITELIST;
 	else
 		if(exact)
-			table = GRAVITY_DOMAINLIST_EXACT_BLACKLIST;
+			return GRAVITY_DOMAINLIST_EXACT_BLACKLIST;
 		else
-			table = GRAVITY_DOMAINLIST_REGEX_BLACKLIST;
+			return GRAVITY_DOMAINLIST_REGEX_BLACKLIST;
+}
 
-	if(!gravityDB_readTable(table))
+static int api_dns_somelist_read(struct mg_connection *conn, bool exact, bool whitelist)
+{
+	int type = getTableType(whitelist, exact);
+	if(!gravityDB_readTable(type))
 	{
 		cJSON *json = JSON_NEW_OBJ();
+		JSON_OBJ_REF_STR(json, "database_location", FTLfiles.gravity_db);
+		JSON_OBJ_ADD_NUMBER(json, "type", type);
 		return send_json_error(conn, 500,
                                        "database_error",
                                        "Could not read domain from database table",
@@ -185,20 +192,9 @@ static int api_dns_somelist_POST(struct mg_connection *conn,
 	}
 	const char *domain = elem->valuestring;
 
-	int table;
-	if(whitelist)
-		if(exact)
-			table = GRAVITY_DOMAINLIST_EXACT_WHITELIST;
-		else
-			table = GRAVITY_DOMAINLIST_REGEX_WHITELIST;
-	else
-		if(exact)
-			table = GRAVITY_DOMAINLIST_EXACT_BLACKLIST;
-		else
-			table = GRAVITY_DOMAINLIST_REGEX_BLACKLIST;
-
 	cJSON *json = JSON_NEW_OBJ();
-	if(gravityDB_addToTable(table, domain))
+	int type = getTableType(whitelist, exact);
+	if(gravityDB_addToTable(type, domain))
 	{
 		JSON_OBJ_REF_STR(json, "key", "added");
 		JSON_OBJ_COPY_STR(json, "domain", domain);
@@ -208,10 +204,12 @@ static int api_dns_somelist_POST(struct mg_connection *conn,
 	else
 	{
 		JSON_OBJ_COPY_STR(json, "domain", domain);
+		JSON_OBJ_REF_STR(json, "database_location", FTLfiles.gravity_db);
+		JSON_OBJ_ADD_NUMBER(json, "type", type);
 		cJSON_Delete(obj);
 		return send_json_error(conn, 500,
                                        "database_error",
-                                       "Could not add domain to database table",
+                                       "Could not add domain to gravity database",
                                        json);
 	}
 }
@@ -228,20 +226,9 @@ static int api_dns_somelist_DELETE(struct mg_connection *conn,
 	// Decode URL (necessar for regular expressions, harmless for domains)
 	mg_url_decode(encoded_uri, strlen(encoded_uri), domain, sizeof(domain)-1u, 0);
 
-	int table;
-	if(whitelist)
-		if(exact)
-			table = GRAVITY_DOMAINLIST_EXACT_WHITELIST;
-		else
-			table = GRAVITY_DOMAINLIST_REGEX_WHITELIST;
-	else
-		if(exact)
-			table = GRAVITY_DOMAINLIST_EXACT_BLACKLIST;
-		else
-			table = GRAVITY_DOMAINLIST_REGEX_BLACKLIST;
-
 	cJSON *json = JSON_NEW_OBJ();
-	if(gravityDB_delFromTable(table, domain))
+	int type = getTableType(whitelist, exact);
+	if(gravityDB_delFromTable(type, domain))
 	{
 		JSON_OBJ_REF_STR(json, "key", "removed");
 		JSON_OBJ_REF_STR(json, "domain", domain);
@@ -250,6 +237,8 @@ static int api_dns_somelist_DELETE(struct mg_connection *conn,
 	else
 	{
 		JSON_OBJ_REF_STR(json, "domain", domain);
+		JSON_OBJ_REF_STR(json, "database_location", FTLfiles.gravity_db);
+		JSON_OBJ_ADD_NUMBER(json, "type", type);
 		return send_json_error(conn, 500,
                                        "database_error",
                                        "Could not remove domain from database table",
