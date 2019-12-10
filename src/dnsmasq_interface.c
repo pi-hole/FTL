@@ -44,6 +44,9 @@ static void detect_blocked_IP(const unsigned short flags, const char* answer, co
 static void query_externally_blocked(const int queryID, const unsigned char status);
 static int findQueryID(const int id);
 
+// Adds debug information to the regular pihole.log file
+char debug_dnsmasq_lines = 0;
+
 unsigned char* pihole_privacylevel = &config.privacylevel;
 const char flagnames[28][12] = {"F_IMMORTAL ", "F_NAMEP ", "F_REVERSE ", "F_FORWARD ", "F_DHCP ", "F_NEG ", "F_HOSTS ", "F_IPV4 ", "F_IPV6 ", "F_BIGNAME ", "F_NXDOMAIN ", "F_CNAME ", "F_DNSKEY ", "F_CONFIG ", "F_DS ", "F_DNSSECOK ", "F_UPSTREAM ", "F_RRNAME ", "F_SERVER ", "F_QUERY ", "F_NOERR ", "F_AUTH ", "F_DNSSEC ", "F_KEYTAG ", "F_SECSTAT ", "F_NO_RR ", "F_IPSET ", "F_NOEXTRA "};
 
