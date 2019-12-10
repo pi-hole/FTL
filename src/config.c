@@ -616,24 +616,30 @@ void read_debuging_settings(FILE *fp)
 	// defaults to: false
 	setDebugOption(fp, "DEBUG_CAPS", DEBUG_CAPS);
 
+	// DEBUG_DNSMASQ_LINES
+	setDebugOption(fp, "DEBUG_DNSMASQ_LINES", DEBUG_DNSMASQ_LINES);
+	extern char debug_dnsmasq_lines;
+	debug_dnsmasq_lines = config.debug & DEBUG_DNSMASQ_LINES ? 1 : 0;
+
 	if(config.debug)
 	{
-		logg("************************");
-		logg("* Debugging enabled    *");
-		logg("* DEBUG_DATABASE   %s *", (config.debug & DEBUG_DATABASE)? "YES":"NO ");
-		logg("* DEBUG_NETWORKING %s *", (config.debug & DEBUG_NETWORKING)? "YES":"NO ");
-		logg("* DEBUG_LOCKS      %s *", (config.debug & DEBUG_LOCKS)? "YES":"NO ");
-		logg("* DEBUG_QUERIES    %s *", (config.debug & DEBUG_QUERIES)? "YES":"NO ");
-		logg("* DEBUG_FLAGS      %s *", (config.debug & DEBUG_FLAGS)? "YES":"NO ");
-		logg("* DEBUG_SHMEM      %s *", (config.debug & DEBUG_SHMEM)? "YES":"NO ");
-		logg("* DEBUG_GC         %s *", (config.debug & DEBUG_GC)? "YES":"NO ");
-		logg("* DEBUG_ARP        %s *", (config.debug & DEBUG_ARP)? "YES":"NO ");
-		logg("* DEBUG_REGEX      %s *", (config.debug & DEBUG_REGEX)? "YES":"NO ");
-		logg("* DEBUG_API        %s *", (config.debug & DEBUG_API)? "YES":"NO ");
-		logg("* DEBUG_OVERTIME   %s *", (config.debug & DEBUG_OVERTIME)? "YES":"NO ");
-		logg("* DEBUG_EXTBLOCKED %s *", (config.debug & DEBUG_EXTBLOCKED)? "YES":"NO ");
-		logg("* DEBUG_CAPS       %s *", (config.debug & DEBUG_CAPS)? "YES":"NO ");
-		logg("************************");
+		logg("*****************************");
+		logg("* Debugging enabled         *");
+		logg("* DEBUG_DATABASE        %s *", (config.debug & DEBUG_DATABASE)? "YES":"NO ");
+		logg("* DEBUG_NETWORKING      %s *", (config.debug & DEBUG_NETWORKING)? "YES":"NO ");
+		logg("* DEBUG_LOCKS           %s *", (config.debug & DEBUG_LOCKS)? "YES":"NO ");
+		logg("* DEBUG_QUERIES         %s *", (config.debug & DEBUG_QUERIES)? "YES":"NO ");
+		logg("* DEBUG_FLAGS           %s *", (config.debug & DEBUG_FLAGS)? "YES":"NO ");
+		logg("* DEBUG_SHMEM           %s *", (config.debug & DEBUG_SHMEM)? "YES":"NO ");
+		logg("* DEBUG_GC              %s *", (config.debug & DEBUG_GC)? "YES":"NO ");
+		logg("* DEBUG_ARP             %s *", (config.debug & DEBUG_ARP)? "YES":"NO ");
+		logg("* DEBUG_REGEX           %s *", (config.debug & DEBUG_REGEX)? "YES":"NO ");
+		logg("* DEBUG_API             %s *", (config.debug & DEBUG_API)? "YES":"NO ");
+		logg("* DEBUG_OVERTIME        %s *", (config.debug & DEBUG_OVERTIME)? "YES":"NO ");
+		logg("* DEBUG_EXTBLOCKED      %s *", (config.debug & DEBUG_EXTBLOCKED)? "YES":"NO ");
+		logg("* DEBUG_CAPS            %s *", (config.debug & DEBUG_CAPS)? "YES":"NO ");
+		logg("* DEBUG_DNSMASQ_LINES   %s *", (config.debug & DEBUG_DNSMASQ_LINES)? "YES":"NO ");
+		logg("*****************************");
 	}
 
 	// Have to close the config file if we opened it
