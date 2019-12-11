@@ -53,19 +53,20 @@ extern ConfigStruct config;
 extern FTLFileNamesStruct FTLfiles;
 
 enum {
-  DEBUG_DATABASE   = (1 << 0),  /* 00000000 00000001 */
-  DEBUG_NETWORKING = (1 << 1),  /* 00000000 00000010 */
-  DEBUG_LOCKS      = (1 << 2),  /* 00000000 00000100 */
-  DEBUG_QUERIES    = (1 << 3),  /* 00000000 00001000 */
-  DEBUG_FLAGS      = (1 << 4),  /* 00000000 00010000 */
-  DEBUG_SHMEM      = (1 << 5),  /* 00000000 00100000 */
-  DEBUG_GC         = (1 << 6),  /* 00000000 01000000 */
-  DEBUG_ARP        = (1 << 7),  /* 00000000 10000000 */
-  DEBUG_REGEX      = (1 << 8),  /* 00000001 00000000 */
-  DEBUG_API        = (1 << 9),  /* 00000010 00000000 */
-  DEBUG_OVERTIME   = (1 << 10), /* 00000100 00000000 */
-  DEBUG_EXTBLOCKED = (1 << 11), /* 00001000 00000000 */
-  DEBUG_CAPS       = (1 << 12), /* 00010000 00000000 */
+  DEBUG_DATABASE      = (1 << 0),  /* 00000000 00000001 */
+  DEBUG_NETWORKING    = (1 << 1),  /* 00000000 00000010 */
+  DEBUG_LOCKS         = (1 << 2),  /* 00000000 00000100 */
+  DEBUG_QUERIES       = (1 << 3),  /* 00000000 00001000 */
+  DEBUG_FLAGS         = (1 << 4),  /* 00000000 00010000 */
+  DEBUG_SHMEM         = (1 << 5),  /* 00000000 00100000 */
+  DEBUG_GC            = (1 << 6),  /* 00000000 01000000 */
+  DEBUG_ARP           = (1 << 7),  /* 00000000 10000000 */
+  DEBUG_REGEX         = (1 << 8),  /* 00000001 00000000 */
+  DEBUG_API           = (1 << 9),  /* 00000010 00000000 */
+  DEBUG_OVERTIME      = (1 << 10), /* 00000100 00000000 */
+  DEBUG_EXTBLOCKED    = (1 << 11), /* 00001000 00000000 */
+  DEBUG_CAPS          = (1 << 12), /* 00010000 00000000 */
+  DEBUG_DNSMASQ_LINES = (1 << 13), /* 00100000 00000000 */
 };
 
 #endif //CONFIG_H
