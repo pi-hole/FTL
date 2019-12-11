@@ -45,4 +45,6 @@ void set_debug_dnsmasq_lines(char enabled);
 
 extern char debug_dnsmasq_lines;
 
+extern char debug_dnsmasq_lines;
+
 #endif // DNSMASQ_INTERFACE_H
