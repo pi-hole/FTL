@@ -55,7 +55,8 @@ void FTL_TCP_worker_terminating(void);
 
 void set_debug_dnsmasq_lines(char enabled);
 extern char debug_dnsmasq_lines;
-
 void FTL_dnsmasq_log(const char *payload, const int length);
+
+int FTL_database_import(int cache_size, struct crec **rhash, int hashsz);
 
 #endif // DNSMASQ_INTERFACE_H

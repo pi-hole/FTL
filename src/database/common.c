@@ -493,7 +493,6 @@ int db_query_int_from_until(const char* querystr, const int from, const int unti
 	int rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK ){
 		logg("db_query_int_from_until(%s) - SQL error prepare (%i): %s", querystr, rc, sqlite3_errmsg(FTL_db));
-		check_database(rc);
 		return DB_FAILED;
 	}
 
@@ -519,7 +518,6 @@ int db_query_int_from_until(const char* querystr, const int from, const int unti
 	else
 	{
 		logg("db_query_int_from_until(%s) - SQL error step (%i): %s", querystr, rc, sqlite3_errmsg(FTL_db));
-		check_database(rc);
 		return DB_FAILED;
 	}
 
@@ -540,7 +538,6 @@ int db_query_int_from_until_type(const char* querystr, const int from, const int
 	int rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK ){
 		logg("db_query_int_from_until(%s) - SQL error prepare (%i): %s", querystr, rc, sqlite3_errmsg(FTL_db));
-		check_database(rc);
 		return DB_FAILED;
 	}
 
@@ -567,7 +564,6 @@ int db_query_int_from_until_type(const char* querystr, const int from, const int
 	else
 	{
 		logg("db_query_int_from_until(%s) - SQL error step (%i): %s", querystr, rc, sqlite3_errmsg(FTL_db));
-		check_database(rc);
 		return DB_FAILED;
 	}
 
