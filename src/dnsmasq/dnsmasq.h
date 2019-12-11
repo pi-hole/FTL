@@ -1147,7 +1147,10 @@ extern struct daemon {
 /* cache.c */
 void cache_init(void);
 void next_uid(struct crec *crecp);
-void log_query(unsigned int flags, char *name, struct all_addr *addr, char *arg); 
+/********************************************* Pi-hole modification ***********************************************/
+#define log_query(flags,name,addr,arg) _log_query(flags, name, addr, arg, __FILE__, __LINE__)
+void _log_query(unsigned int flags, char *name, struct all_addr *addr, char *arg, const char* file, const int line);
+/******************************************************************************************************************/
 char *record_source(unsigned int index);
 char *querystr(char *desc, unsigned short type);
 int cache_find_non_terminal(char *name, time_t now);

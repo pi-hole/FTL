@@ -1752,7 +1752,8 @@ char *querystr(char *desc, unsigned short type)
   return buff ? buff : "";
 }
 
-void log_query(unsigned int flags, char *name, struct all_addr *addr, char *arg)
+// Modified by Pi-hole
+void _log_query(unsigned int flags, char *name, struct all_addr *addr, char *arg, const char* file, const int line)
 {
   char *source, *dest = daemon->addrbuff;
   char *verb = "is";
@@ -1856,7 +1857,10 @@ void log_query(unsigned int flags, char *name, struct all_addr *addr, char *arg)
   
   if (strlen(name) == 0)
     name = ".";
-
+/************************************************************** Pi-hole modification  **************************************************************/
+if(debug_dnsmasq_lines == 0)
+{
+/***************************************************************************************************************************************************/
   if (option_bool(OPT_EXTRALOG))
     {
       int port = prettyprint_addr(daemon->log_source_addr, daemon->addrbuff2);
@@ -1867,6 +1871,22 @@ void log_query(unsigned int flags, char *name, struct all_addr *addr, char *arg)
     }
   else
     my_syslog(LOG_INFO, "%s %s %s %s", source, name, verb, dest);
+/************************************************************** Pi-hole modification  **************************************************************/
+}
+else
+{
+  if (option_bool(OPT_EXTRALOG))
+    {
+      int port = prettyprint_addr(daemon->log_source_addr, daemon->addrbuff2);
+      if (flags & F_NOEXTRA)
+	my_syslog(LOG_INFO, "* %s/%u %s %s %s %s (%s:%d)", daemon->addrbuff2, port, source, name, verb, dest, file, line);
+      else
+	my_syslog(LOG_INFO, "%u %s/%u %s %s %s %s (%s:%d)", daemon->log_display_id, daemon->addrbuff2, port, source, name, verb, dest, file, line);
+    }
+  else
+    my_syslog(LOG_INFO, "%s %s %s %s (%s:%d)", source, name, verb, dest, file, line);
+}
+/***************************************************************************************************************************************************/
 }
 
  
