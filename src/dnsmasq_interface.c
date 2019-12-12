@@ -226,6 +226,12 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 	if(config.privacylevel >= PRIVACY_NOSTATS)
 		return false;
 
+	// Does the user want to skip deep CNAME inspection?
+	if(!config.cname_inspection)
+	{
+		return false;
+	}
+
 	// Lock shared memory
 	lock_shm();
 

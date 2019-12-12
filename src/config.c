@@ -345,6 +345,19 @@ void read_FTLconf(void)
 	else
 		logg("   REGEX_IGNORECASE: Disabled. Regex is case sensitive");
 
+	// CNAME_DEEP_INSPECT
+	// defaults to: true
+	config.cname_inspection = true;
+	buffer = parse_FTLconf(fp, "CNAME_DEEP_INSPECT");
+
+	if(buffer != NULL && strcasecmp(buffer, "false") == 0)
+		config.cname_inspection = false;
+
+	if(config.cname_inspection)
+		logg("   CNAME_DEEP_INSPECT: Active");
+	else
+		logg("   CNAME_DEEP_INSPECT: Inactive");
+
 	// Read DEBUG_... setting from pihole-FTL.conf
 	read_debuging_settings(fp);
 
