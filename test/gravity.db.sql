@@ -172,6 +172,7 @@ INSERT INTO "group" VALUES(2,1,"Second test group","A group associated with clie
 INSERT INTO client_by_group VALUES(2,2);
 INSERT INTO adlist_by_group VALUES(1,2);
 INSERT INTO domainlist_by_group VALUES(6,2);
+DELETE FROM domainlist_by_group VALUES(6,0);
 
 INSERT INTO client VALUES(3,"127.0.0.3");
 INSERT INTO "group" VALUES(3,1,"Third test group","A group associated with client 127.0.0.3");
