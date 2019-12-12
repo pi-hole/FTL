@@ -1473,7 +1473,7 @@ static int parse_dhcp_opt(char *errstr, char *arg, int flags)
 		}
       
 	      /* RFC 3361, enc byte is zero for names */
-	      if (new->opt == OPTION_SIP_SERVER)
+	      if (new->opt == OPTION_SIP_SERVER && m)
 		m[0] = 0;
 	      new->len = (int) len + header_size;
 	      new->val = m;
