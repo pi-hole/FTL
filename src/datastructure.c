@@ -15,6 +15,7 @@
 #include "log.h"
 // enum REGEX
 #include "regex_r.h"
+#include "database/gravity-db.h"
 
 // converts upper to lower case, and leaves other characters unchanged
 void strtolower(char *str)
@@ -79,7 +80,7 @@ int findForwardID(const char * forwardString, const bool count)
 	return forwardID;
 }
 
-int findDomainID(const char *domainString)
+int findDomainID(const char *domainString, const bool count)
 {
 	for(int domainID = 0; domainID < counters->domains; domainID++)
 	{
@@ -97,7 +98,8 @@ int findDomainID(const char *domainString)
 		// If so, compare the full domain using strcmp
 		if(strcmp(getstr(domain->domainpos), domainString) == 0)
 		{
-			domain->count++;
+			if(count)
+				domain->count++;
 			return domainID;
 		}
 	}
@@ -125,8 +127,8 @@ int findDomainID(const char *domainString)
 	domain->blockedcount = 0;
 	// Store domain name - no need to check for NULL here as it doesn't harm
 	domain->domainpos = addstr(domainString);
-	// RegEx needs to be evaluated for this new domain
-	domain->regexmatch = REGEX_UNKNOWN;
+	// Storage for individual client blocking status
+	domain->clientstatus = new_ucharvec(counters->clients);
 	// Increase counter by one
 	counters->domains++;
 
@@ -199,6 +201,16 @@ int findClientID(const char *clientIP, const bool count)
 	// Initialize client-specific overTime data
 	for(int i = 0; i < OVERTIME_SLOTS; i++)
 		client->overTime[i] = 0;
+
+	// Initialize client-specific domain data
+	for(int domainID = 0; domainID < counters->domains; domainID++)
+	{
+		domainsData *domain = getDomain(domainID, true);
+		domain->clientstatus->append(domain->clientstatus, UNKNOWN_BLOCKED);
+	}
+
+	// Allocate regex substructure
+	allocate_regex_client_enabled(client);
 
 	// Increase counter by one
 	counters->clients++;
@@ -282,4 +294,42 @@ const char *getClientNameString(const int queryID)
 	}
 	else
 		return HIDDEN_CLIENT;
+}
+
+void FTL_reset_per_client_domain_data(void)
+{
+	for(int domainID = 0; domainID < counters->domains; domainID++)
+	{
+		domainsData *domain = getDomain(domainID, true);
+		if(domain == NULL)
+			continue;
+
+		for(int clientID = 0; clientID < counters->clients; clientID++)
+		{
+			// Reset all blocking yes/no fields for all domains and clients
+			// This forces a reprocessing of all available filters for any
+			// given domain and client the next time they are seen
+			domain->clientstatus->set(domain->clientstatus, clientID, UNKNOWN_BLOCKED);
+		}
+	}
+}
+
+void FTL_reload_all_domainlists(void)
+{
+	// (Re-)open gravity database connection
+	gravityDB_close();
+	gravityDB_open();
+	// gravityDB_close() has finalized all prepared statements, reinitialize them
+	gravityDB_reload_client_statements();
+
+	// Reset number of blocked domains
+	counters->gravity = gravityDB_count(GRAVITY_TABLE);
+
+	// Read and compile possible regex filters
+	// only after having called gravityDB_open()
+	read_regex_from_database();
+
+	// Reset FTL's internal DNS cache storing whether a specific domain
+	// has already been validated for a specific user
+	FTL_reset_per_client_domain_data();
 }

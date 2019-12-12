@@ -494,19 +494,7 @@ struct crec {
 #define SRC_INTERFACE UID_NONE
 #define SRC_CONFIG    1
 #define SRC_HOSTS     2
-/*------------------------- Pi-hole modification -------------------------*/
-// ID 3 will be used for the regex table
-// ID 4 will be used for the gravity table
-// ID 5 will be used for the blacklist table
-// ID 6 will be used as starting index for any Additional Hosts (AH) files
-#define SRC_REGEX     3
-#define SRC_REGEX_NAME   "regex"
-#define SRC_GRAVITY   4
-#define SRC_GRAVITY_NAME "gravity"
-#define SRC_BLACK     5
-#define SRC_BLACK_NAME   "blacklist"
-#define SRC_AH        6
-/*------------------------------------------------------------------------*/
+#define SRC_AH        3
 
 /* struct sockaddr is not large enough to hold any address,
    and specifically not big enough to hold an IPv6 address.

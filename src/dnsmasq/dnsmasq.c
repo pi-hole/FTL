@@ -1412,6 +1412,7 @@ static void async_event(int pipe, time_t now)
 	   we leave them logging to the old file. */
 	if (daemon->log_file != NULL)
 	  log_reopen(daemon->log_file);
+
 	break;
 
       case EVENT_NEWADDR:

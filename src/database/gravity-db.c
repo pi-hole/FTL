@@ -9,19 +9,21 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
+#include "sqlite3.h"
+#include "datastructure.h"
 #include "gravity-db.h"
 #include "config.h"
 #include "log.h"
 // global variable counters
 #include "memory.h"
-#include "sqlite3.h"
 // match_regex()
 #include "regex_r.h"
+// getstr()
+#include "shmem.h"
 
 // Private variables
 static sqlite3 *gravity_db = NULL;
 static sqlite3_stmt* table_stmt = NULL;
-static sqlite3_stmt* whitelist_stmt = NULL;
 static sqlite3_stmt* auditlist_stmt = NULL;
 bool gravity_database_avail = false;
 
@@ -69,20 +71,6 @@ bool gravityDB_open(void)
 		return false;
 	}
 
-	// Prepare whitelist statement
-	// We use SELECT EXISTS() as this is known to efficiently use the index
-	// We are only interested in whether the domain exists or not in the
-	// list but don't case about duplicates or similar. SELECT EXISTS(...)
-	// returns true as soon as it sees the first row from the query inside
-	// of EXISTS().
-	rc = sqlite3_prepare_v2(gravity_db, "SELECT EXISTS(SELECT domain from vw_whitelist WHERE domain = ?);", -1, &whitelist_stmt, NULL);
-	if( rc != SQLITE_OK )
-	{
-		logg("gravityDB_open(\"SELECT EXISTS(... vw_whitelist ...)\") - SQL error prepare (%i): %s", rc, sqlite3_errmsg(gravity_db));
-		gravityDB_close();
-		return false;
-	}
-
 	// Prepare audit statement
 	rc = sqlite3_prepare_v2(gravity_db, "SELECT EXISTS(SELECT domain from domain_audit WHERE domain = ?);", -1, &auditlist_stmt, NULL);
 	if( rc != SQLITE_OK )
@@ -100,16 +88,193 @@ bool gravityDB_open(void)
 	return true;
 }
 
+static char* get_client_querystr(const char* table, const char* groups)
+{
+	// Build query string
+	char *querystr = NULL;
+	if(groups != NULL)
+	{
+		// Group filtering
+		if(asprintf(&querystr, "SELECT EXISTS(SELECT domain from %s WHERE domain = ? AND group_id IN (%s));", table, groups) < 1)
+		{
+			logg("get_client_querystr(%s, %s) - asprintf() error", table, groups);
+			return NULL;
+		}
+	}
+	else
+	{
+		// No group filtering
+		if(asprintf(&querystr, "SELECT EXISTS(SELECT domain from %s WHERE domain = ?);", table) < 1)
+		{
+			logg("get_client_querystr(%s, %s) - asprintf() error", table, groups);
+			return NULL;
+		}
+	}
+	if(config.debug & DEBUG_DATABASE)
+		logg("get_client_querystr: %s", querystr);
+
+	return querystr;
+}
+
+static bool get_client_groupids(const clientsData* client, char **groups)
+{
+	// Get associated groups for this client (if defined)
+	char *querystr = NULL;
+	const char *ip = getstr(client->ippos);
+
+	// Do not proceed when database is not available
+	if(!gravity_database_avail)
+	{
+		logg("get_client_groupids(): Gravity database not available");
+		return false;
+	}
+
+	// Build query string to get possible group associations for this particular client
+	// The SQL GROUP_CONCAT() function returns a string which is the concatenation of all
+	// non-NULL values of group_id separated by ','. The order of the concatenated elements
+	// is arbitrary, however, is of no relevance for your use case.
+	if(asprintf(&querystr, "SELECT GROUP_CONCAT(group_id) FROM client_by_group WHERE client_id = (SELECT id FROM client WHERE ip = \'%s\');", ip) < 1)
+	{
+		logg("get_client_groupids() - asprintf() error");
+		return false;
+	}
+
+	if(config.debug & DEBUG_DATABASE)
+		logg("Querying gravity database for client %s", ip);
+
+	// Prepare query
+	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &table_stmt, NULL);
+	if(rc != SQLITE_OK){
+		logg("get_client_groupids(%s) - SQL error prepare (%i): %s",
+		     querystr, rc, sqlite3_errmsg(gravity_db));
+		sqlite3_finalize(table_stmt);
+		gravityDB_close();
+		free(querystr);
+		return false;
+	}
+
+	// Perform query
+	rc = sqlite3_step(table_stmt);
+	if(rc == SQLITE_ROW)
+	{
+		// There is a record for this client in the database
+		const char* result = (const char*)sqlite3_column_text(table_stmt, 0);
+		if(result != NULL)
+			*groups = strdup(result);
+	}
+	else if(rc == SQLITE_DONE)
+	{
+		// Found no record for this client in the database
+	}
+	else
+	{
+		logg("get_client_groupids(%s) - SQL error step (%i): %s",
+		     querystr, rc, sqlite3_errmsg(gravity_db));
+		sqlite3_finalize(table_stmt);
+		gravityDB_close();
+		free(querystr);
+		return false;
+	}
+	// Finalize statement
+	gravityDB_finalizeTable();
+	// Free allocated memory and return result
+	free(querystr);
+	return true;
+}
+
+bool gravityDB_prepare_client_statements(clientsData* client)
+{
+	// Return early if gravity database is not available
+	if(!gravity_database_avail)
+		return false;
+
+	if(config.debug & DEBUG_DATABASE)
+		logg("Initializing gravity statements for %s", getstr(client->ippos));
+
+	// Get associated groups for this client (if defined)
+	char *querystr = NULL;
+	char *groups = NULL;
+	if(!get_client_groupids(client, &groups))
+		return false;
+
+	// Prepare whitelist statement
+	// We use SELECT EXISTS() as this is known to efficiently use the index
+	// We are only interested in whether the domain exists or not in the
+	// list but don't case about duplicates or similar. SELECT EXISTS(...)
+	// returns true as soon as it sees the first row from the query inside
+	// of EXISTS().
+	querystr = get_client_querystr("vw_whitelist", groups);
+	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &client->whitelist_stmt, NULL);
+	if( rc != SQLITE_OK )
+	{
+		logg("gravityDB_open(\"SELECT EXISTS(... vw_whitelist ...)\") - SQL error prepare (%i): %s", rc, sqlite3_errmsg(gravity_db));
+		gravityDB_close();
+		return false;
+	}
+	free(querystr);
+
+	// Prepare gravity statement
+	querystr = get_client_querystr("vw_gravity", groups);
+	rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &client->gravity_stmt, NULL);
+	if( rc != SQLITE_OK )
+	{
+		logg("gravityDB_open(\"SELECT EXISTS(... vw_gravity ...)\") - SQL error prepare (%i): %s", rc, sqlite3_errmsg(gravity_db));
+		gravityDB_close();
+		return false;
+	}
+	free(querystr);
+
+	// Prepare blacklist statement
+	querystr = get_client_querystr("vw_blacklist", groups);
+	rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &client->blacklist_stmt, NULL);
+	if( rc != SQLITE_OK )
+	{
+		logg("gravityDB_open(\"SELECT EXISTS(... vw_blacklist ...)\") - SQL error prepare (%i): %s", rc, sqlite3_errmsg(gravity_db));
+		gravityDB_close();
+		return false;
+	}
+	free(querystr);
+
+	// Free groups string is allocated
+	if(groups != NULL)
+	{
+		free(groups);
+		groups = NULL;
+	}
+
+	return true;
+}
+
+inline void gravityDB_finalize_client_statements(clientsData* client)
+{
+	sqlite3_finalize(client->gravity_stmt);
+	sqlite3_finalize(client->blacklist_stmt);
+	sqlite3_finalize(client->whitelist_stmt);
+}
+
+void gravityDB_reload_client_statements(void)
+{
+	for(int i=0; i < counters->clients; i++)
+	{
+		clientsData* client = getClient(i, true);
+		if(client != NULL)
+			gravityDB_prepare_client_statements(client);
+	}
+}
+
 void gravityDB_close(void)
 {
 	// Return early if gravity database is not available
 	if(!gravity_database_avail)
 		return;
 
-	// Finalize whitelist scanning statement
-	sqlite3_finalize(whitelist_stmt);
-
-	// Finalize audit scanning statement
+	// Finalize list statements
+	for(int i=0; i < counters->clients; i++)
+	{
+		clientsData* client = getClient(i, true);
+		if(client != NULL)
+			gravityDB_finalize_client_statements(client);
+	}
 	sqlite3_finalize(auditlist_stmt);
 
 	// Close table
@@ -137,7 +302,7 @@ bool gravityDB_getTable(const unsigned char list)
 
 	char *querystr = NULL;
 	// Build correct query string to be used depending on list to be read
-	if(asprintf(&querystr, "SELECT domain FROM %s", tablename[list]) < 18)
+	if(asprintf(&querystr, "SELECT domain, id FROM %s", tablename[list]) < 18)
 	{
 		logg("readGravity(%u) - asprintf() error", list);
 		return false;
@@ -166,7 +331,7 @@ bool gravityDB_getTable(const unsigned char list)
 // errors). Errors are logged to pihole-FTL.log
 // This function is performance critical as it might
 // be called millions of times for large blocking lists
-inline const char* gravityDB_getDomain(void)
+inline const char* gravityDB_getDomain(int *rowid)
 {
 	// Perform step
 	const int rc = sqlite3_step(table_stmt);
@@ -175,6 +340,7 @@ inline const char* gravityDB_getDomain(void)
 	if(rc == SQLITE_ROW)
 	{
 		const char* domain = (char*)sqlite3_column_text(table_stmt, 0);
+		*rowid = sqlite3_column_int(table_stmt, 1);
 		return domain;
 	}
 
@@ -184,10 +350,12 @@ inline const char* gravityDB_getDomain(void)
 	if(rc != SQLITE_DONE)
 	{
 		logg("gravityDB_getDomain() - SQL error step (%i): %s", rc, sqlite3_errmsg(gravity_db));
+		*rowid = -1;
 		return NULL;
 	}
 
 	// Finished reading, nothing to get here
+	*rowid = -1;
 	return NULL;
 }
 
@@ -221,7 +389,7 @@ int gravityDB_count(const unsigned char list)
 
 	char *querystr = NULL;
 	// Build correct query string to be used depending on list to be read
-	if(asprintf(&querystr, "SELECT count(domain) FROM %s", tablename[list]) < 18)
+	if(asprintf(&querystr, "SELECT count(DISTINCT domain) FROM %s", tablename[list]) < 18)
 	{
 		logg("readGravity(%u) - asprintf() error", list);
 		return false;
@@ -261,7 +429,7 @@ int gravityDB_count(const unsigned char list)
 	return result;
 }
 
-static bool domain_in_list(const char *domain, sqlite3_stmt* stmt)
+static bool domain_in_list(const char *domain, sqlite3_stmt* stmt, const char* listname)
 {
 	// Do not try to bind text to statement when database is not available
 	if(!gravity_database_avail)
@@ -308,7 +476,7 @@ static bool domain_in_list(const char *domain, sqlite3_stmt* stmt)
 	const int result = sqlite3_column_int(stmt, 0);
 
 	if(config.debug & DEBUG_DATABASE)
-		logg("domain_in_list(\"%s\"): %d", domain, result);
+		logg("domain_in_%s(\"%s\"): %d", listname, domain, result);
 
 	// The sqlite3_reset() function is called to reset a prepared
 	// statement object back to its initial state, ready to be
@@ -326,24 +494,101 @@ static bool domain_in_list(const char *domain, sqlite3_stmt* stmt)
 	return (result == 1);
 }
 
-bool in_whitelist(const char *domain)
+inline bool in_whitelist(const char *domain, clientsData* client)
 {
-	if(config.debug & DEBUG_DATABASE)
-		logg("Querying whitelist for %s", domain);
+	if(client->whitelist_stmt == NULL)
+		gravityDB_prepare_client_statements(client);
 	// We have to check both the exact whitelist (using a prepared database statement)
 	// as well the compiled regex whitelist filters to check if the current domain is
 	// whitelisted. Due to short-circuit-evaluation in C, the regex evaluations is executed
 	// only if the exact whitelist lookup does not deliver a positive match. This is an
 	// optimization as the database lookup will most likely hit (a) more domains and (b)
 	// will be faster (given a sufficiently large number of regex whitelisting filters).
-	return domain_in_list(domain, whitelist_stmt) || match_regex(domain, REGEX_WHITELIST);
+	return domain_in_list(domain, client->whitelist_stmt, "whitelist") ||
+	       match_regex(domain, client, REGEX_WHITELIST);
+}
+
+inline bool in_gravity(const char *domain, clientsData* client)
+{
+	if(client->gravity_stmt == NULL)
+		gravityDB_prepare_client_statements(client);
+	return domain_in_list(domain, client->gravity_stmt, "gravity");
+}
+
+inline bool in_blacklist(const char *domain, clientsData* client)
+{
+	if(client->blacklist_stmt == NULL)
+		gravityDB_prepare_client_statements(client);
+	return domain_in_list(domain, client->blacklist_stmt, "blacklist");
 }
 
 bool in_auditlist(const char *domain)
 {
-	if(config.debug & DEBUG_DATABASE)
-		logg("Querying audit list for %s", domain);
 	// We check the domain_audit table for the given domain
-	return domain_in_list(domain, auditlist_stmt);
+	return domain_in_list(domain, auditlist_stmt, "auditlist");
 }
 
+bool gravityDB_get_regex_client_groups(clientsData* client, const int numregex, const int *regexid,
+                                       const unsigned char type, const char* table)
+{
+	char *querystr = NULL;
+	char *groups = NULL;
+	if(!get_client_groupids(client, &groups))
+		return false;
+
+	if(groups != NULL)
+	{
+		// Group filtering
+		if(asprintf(&querystr, "SELECT id from %s WHERE group_id IN (%s);", table, groups) < 1)
+		{
+			logg("gravityDB_get_regex_client_groups(%s, %s) - asprintf() error", table, groups);
+			return false;
+		}
+	}
+	else
+	{
+		// No group filtering, enable all regex for this client
+		for(int i = 0; i < numregex; i++)
+			client->regex_enabled[type][i] = true;
+
+		if(config.debug & DEBUG_DATABASE)
+			logg("No group filtering, enable all regex for this client");
+
+		return true;
+	}
+
+	// Prepare query
+	sqlite3_stmt *query_stmt;
+	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &query_stmt, NULL);
+	if(rc != SQLITE_OK){
+		logg("gravityDB_get_regex_client_groups(): %s - SQL error prepare (%i): %s", querystr, rc, sqlite3_errmsg(gravity_db));
+		sqlite3_finalize(query_stmt);
+		gravityDB_close();
+		free(querystr);
+		return false;
+	}
+
+	// Perform query
+	if(config.debug & DEBUG_DATABASE)
+		logg("Querying regex groups: %s", querystr);
+	while((rc = sqlite3_step(query_stmt)) == SQLITE_ROW)
+	{
+		const int result = sqlite3_column_int(query_stmt, 0);
+		for(int i = 0; i < numregex; i++)
+		{
+			if(regexid[i] == result)
+			{
+				client->regex_enabled[type][i] = true;
+				break;
+			}
+		}
+	}
+
+	// Finalize statement
+	sqlite3_finalize(query_stmt);
+
+	// Free allocated memory and return result
+	free(querystr);
+
+	return true;
+}

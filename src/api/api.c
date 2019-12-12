@@ -313,32 +313,13 @@ void getTopDomains(const char *client_message, const int *sock)
 
 		if(blocked && showblocked && domain->blockedcount > 0)
 		{
-			if(audit && domain->regexmatch == REGEX_BLOCKED)
-			{
-				if(istelnet[*sock])
-					ssend(*sock, "%i %i %s wildcard\n", n, domain->blockedcount, getstr(domain->domainpos));
-				else {
-					char *fancyWildcard = calloc(3 + strlen(getstr(domain->domainpos)), sizeof(char));
-					if(fancyWildcard == NULL) return;
-					sprintf(fancyWildcard, "*.%s", getstr(domain->domainpos));
+			if(istelnet[*sock])
+				ssend(*sock, "%i %i %s\n", n, domain->blockedcount, getstr(domain->domainpos));
+			else {
+				if(!pack_str32(*sock, getstr(domain->domainpos)))
+					return;
 
-					if(!pack_str32(*sock, fancyWildcard))
-						return;
-
-					pack_int32(*sock, domain->blockedcount);
-					free(fancyWildcard);
-				}
-			}
-			else
-			{
-				if(istelnet[*sock])
-					ssend(*sock, "%i %i %s\n", n, domain->blockedcount, getstr(domain->domainpos));
-				else {
-					if(!pack_str32(*sock, getstr(domain->domainpos)))
-						return;
-
-					pack_int32(*sock, domain->blockedcount);
-				}
+				pack_int32(*sock, domain->blockedcount);
 			}
 			n++;
 		}
@@ -1296,11 +1277,12 @@ void getUnknownQueries(const int *sock)
 void getDomainDetails(const char *client_message, const int *sock)
 {
 	// Get domain name
+	bool show_all = false;
 	char domainString[128];
 	if(sscanf(client_message, "%*[^ ] %127s", domainString) < 1)
 	{
-		ssend(*sock, "Need domain for this request\n");
-		return;
+		ssend(*sock, "No domain specified, listing all known (%d)\n", counters->domains);
+		show_all = true;
 	}
 
 	for(int domainID = 0; domainID < counters->domains; domainID++)
@@ -1310,23 +1292,56 @@ void getDomainDetails(const char *client_message, const int *sock)
 		if(domain == NULL)
 			continue;
 
-		if(strcmp(getstr(domain->domainpos), domainString) == 0)
+		if(show_all || strcmp(getstr(domain->domainpos), domainString) == 0)
 		{
-			ssend(*sock,"Domain \"%s\", ID: %i\n", domainString, domainID);
+			ssend(*sock,"Domain \"%s\", ID: %i\n", getstr(domain->domainpos), domainID);
 			ssend(*sock,"Total: %i\n", domain->count);
 			ssend(*sock,"Blocked: %i\n", domain->blockedcount);
-			const char *regexstatus;
-			if(domain->regexmatch == REGEX_BLOCKED)
-				regexstatus = "blocked";
-			else if(domain->regexmatch == REGEX_NOTBLOCKED)
-				regexstatus = "not blocked";
-			else
-				regexstatus = "unknown";
-			ssend(*sock,"Regex status: %s\n", regexstatus);
-			return;
+			ssend(*sock,"Client status:\n");
+			for(int clientID = 0; clientID < counters->clients; clientID++)
+			{
+				clientsData *client = getClient(clientID, true);
+				if(client == NULL)
+				{
+					continue;
+				}
+				const char *str = "N/A";
+				switch(domain->clientstatus->get(domain->clientstatus, clientID))
+				{
+					case UNKNOWN_BLOCKED:
+						str = "unknown";
+						break;
+					case BLACKLIST_BLOCKED:
+						str = "blacklisted";
+						break;
+					case GRAVITY_BLOCKED:
+						str = "gravity";
+						break;
+					case REGEX_BLOCKED:
+						str = "regex";
+						break;
+					case NOT_BLOCKED:
+						str = "not blocked";
+						break;
+					default:
+						str = "this cannot happen";
+						break;
+				}
+				ssend(*sock, " %s (ID %d): %s\n", getstr(client->ippos), clientID, str);
+			}
+			ssend(*sock,"\n");
+
+			// Return early
+			if(!show_all)
+			{
+				return;
+			}
 		}
 	}
 
 	// for loop finished without an exact match
-	ssend(*sock,"Domain \"%s\" is unknown\n", domainString);
+	if(!show_all)
+	{
+		ssend(*sock,"Domain \"%s\" is unknown\n", domainString);
+	}
 }

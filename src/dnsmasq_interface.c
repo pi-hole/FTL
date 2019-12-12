@@ -18,6 +18,7 @@
 #include "memory.h"
 #include "database/common.h"
 #include "database/database-thread.h"
+#include "datastructure.h"
 #include "database/gravity-db.h"
 #include "setupVars.h"
 #include "daemon.h"
@@ -25,7 +26,6 @@
 #include "gc.h"
 #include "api/socket.h"
 #include "regex_r.h"
-#include "datastructure.h"
 #include "config.h"
 #include "capabilities.h"
 #include "resolve.h"
@@ -39,10 +39,16 @@
 static void print_flags(const unsigned int flags);
 static void save_reply_type(const unsigned int flags, queriesData* query, const struct timeval response);
 static unsigned long converttimeval(const struct timeval time) __attribute__((const));
-static void block_single_domain_regex(const char *domain);
 static void detect_blocked_IP(const unsigned short flags, const char* answer, const int queryID);
 static void query_externally_blocked(const int queryID, const unsigned char status);
 static int findQueryID(const int id);
+static void prepare_blocking_metadata(void);
+static void query_blocked(queriesData* query, domainsData* domain, clientsData* client);
+
+// Static blocking metadata (stored precomputed as time-critical)
+static unsigned int blocking_flags = 0;
+static struct all_addr blocking_addrp_v4 = {{{ 0 }}};
+static struct all_addr blocking_addrp_v6 = {{{ 0 }}};
 
 // Adds debug information to the regular pihole.log file
 char debug_dnsmasq_lines = 0;
@@ -50,7 +56,236 @@ char debug_dnsmasq_lines = 0;
 unsigned char* pihole_privacylevel = &config.privacylevel;
 const char flagnames[28][12] = {"F_IMMORTAL ", "F_NAMEP ", "F_REVERSE ", "F_FORWARD ", "F_DHCP ", "F_NEG ", "F_HOSTS ", "F_IPV4 ", "F_IPV6 ", "F_BIGNAME ", "F_NXDOMAIN ", "F_CNAME ", "F_DNSKEY ", "F_CONFIG ", "F_DS ", "F_DNSSECOK ", "F_UPSTREAM ", "F_RRNAME ", "F_SERVER ", "F_QUERY ", "F_NOERR ", "F_AUTH ", "F_DNSSEC ", "F_KEYTAG ", "F_SECSTAT ", "F_NO_RR ", "F_IPSET ", "F_NOEXTRA "};
 
-void _FTL_new_query(const unsigned int flags, const char *name, const struct all_addr *addr,
+static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const char **blockingreason,
+                                const char* file, const int line)
+{
+	// Only check blocking conditions when global blocking is enabled
+	if(blockingstatus == BLOCKING_DISABLED)
+	{
+		return false;
+	}
+
+	// Get query, domain and client pointers
+	queriesData* query  = getQuery(queryID,   true);
+	domainsData* domain = getDomain(domainID, true);
+	clientsData* client = getClient(clientID, true);
+	if(query == NULL || domain == NULL || client == NULL)
+	{
+		// Encountered memory error, skip query
+		return false;
+	}
+
+	// Skip the entire chain of tests if we already know the answer for this
+	// particular client
+	unsigned char blockingStatus = domain->clientstatus->get(domain->clientstatus, clientID);
+	switch(blockingStatus)
+	{
+		case UNKNOWN_BLOCKED:
+			// New domain/client combination.
+			// We have to go through all the tests below
+			if(config.debug & DEBUG_QUERIES)
+			{
+				logg("Domain is not known");
+			}
+
+			break;
+
+		case BLACKLIST_BLOCKED:
+			// Known as exactly blacklistes, we
+			// return this result early, skipping
+			// all the lengthy tests below
+			query_blocked(query, domain, client);
+			query->status = QUERY_BLACKLIST;
+			*blockingreason = "exactly blacklisted";
+
+			if(config.debug & DEBUG_QUERIES)
+			{
+				logg("Domain is known as %s", *blockingreason);
+			}
+
+			return true;
+			break;
+
+		case GRAVITY_BLOCKED:
+			// Known as gravity blocked, we
+			// return this result early, skipping
+			// all the lengthy tests below
+			query_blocked(query, domain, client);
+			query->status = QUERY_GRAVITY;
+			*blockingreason = "gravity blocked";
+
+			if(config.debug & DEBUG_QUERIES)
+			{
+				logg("Domain is known as %s", *blockingreason);
+			}
+
+			return true;
+			break;
+
+		case REGEX_BLOCKED:
+			// Known as regex blacklisted, we
+			// return this result early, skipping
+			// all the lengthy tests below
+			query_blocked(query, domain, client);
+			query->status = QUERY_WILDCARD;
+			*blockingreason = "regex blacklisted";
+
+			if(config.debug & DEBUG_QUERIES)
+			{
+				logg("Domain is known as %s", *blockingreason);
+			}
+
+			return true;
+			break;
+
+		case NOT_BLOCKED:
+			// Known as not blocked, we
+			// return this result early, skipping
+			// all the lengthy tests below
+			if(config.debug & DEBUG_QUERIES)
+			{
+				logg("Domain is known as not to be blocked");
+			}
+
+			return false;
+			break;
+	}
+
+	// We check the user blacklist first as it is typically smaller than gravity
+	// If a domain is on the exact blacklist or gravity but also on the whitelist,
+	// we do NOT block it.
+	// in_whitelist() checks both the exact and the regex whitelist
+	bool blockDomain = false, black = false, gravity = false;
+	unsigned char new_status = QUERY_UNKNOWN;
+	const char *domainString = getstr(domain->domainpos);
+	if(((black = in_blacklist(domainString, client)) ||
+	    (gravity = in_gravity(domainString, client))) &&
+	   !in_whitelist(domainString, client))
+	{
+		blockDomain = true;
+		if(black)
+		{
+			// Mark domain as regex matched for this one client
+			domain->clientstatus->set(domain->clientstatus, clientID, BLACKLIST_BLOCKED);
+			new_status = QUERY_BLACKLIST;
+			*blockingreason = "exactly blacklisted";
+		}
+		else if(gravity)
+		{
+			domain->clientstatus->set(domain->clientstatus, clientID, GRAVITY_BLOCKED);
+			new_status = QUERY_GRAVITY;
+			*blockingreason = "gravity blocked";
+		}
+	}
+
+	// If a regex filter matched, we additionally compare the domain
+	// against all known whitelisted domains to possibly prevent blocking
+	// of a specific domain. The logic herein is:
+	// - Walk regex only if not already exactly matched above
+	// - If matched, then compare against whitelist
+	// - If in whitelist, negate matched so this function returns: not-to-be-blocked
+	if(!blockDomain &&
+	   match_regex(domainString, client, REGEX_BLACKLIST) &&
+	   !in_whitelist(domainString, client))
+	{
+		// Mark domain as regex matched for this one client
+		domain->clientstatus->set(domain->clientstatus, clientID, REGEX_BLOCKED);
+
+		// We have to block this domain
+		blockDomain = true;
+		new_status = QUERY_WILDCARD;
+		*blockingreason = "regex blacklisted";
+	}
+
+	// Common actions regardless what the possible blocking reason is
+	if(blockDomain)
+	{
+		// Adjust counters
+		query_blocked(query, domain, client);
+		query->status = new_status;
+
+		// Debug output
+		if(config.debug & DEBUG_QUERIES)
+			logg("Blocking %s as domain is %s", domainString, *blockingreason);
+	}
+	else
+	{
+		// Explicitly mark as not blocked to skip the entire
+		// gravity/blacklist chain when the same client asks
+		// for the same domain in the future
+		domain->clientstatus->set(domain->clientstatus, clientID, NOT_BLOCKED);
+	}
+
+	return blockDomain;
+}
+
+
+bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const char* file, const int line)
+{
+	// Don't analyze anything if in PRIVACY_NOSTATS mode
+	if(config.privacylevel >= PRIVACY_NOSTATS)
+		return false;
+
+	// Lock shared memory
+	lock_shm();
+
+	// Get CNAME destination and source (if applicable)
+	const char *src = cpp != NULL ? cpp->flags & F_BIGNAME ? cpp->name.bname->name : cpp->name.sname : NULL;
+	const char *dst = domain;
+
+	// Save status and forwardID in corresponding query identified by dnsmasq's ID
+	const int queryID = findQueryID(id);
+	if(queryID < 0)
+	{
+		// This may happen e.g. if the original query was a PTR query
+		// or "pi.hole" and we ignored them altogether
+		unlock_shm();
+		return false;
+	}
+
+	// Get query pointer so we can later extract the client requesting this domain for
+	// the per-client blocking evaluation
+	queriesData* query = getQuery(queryID, true);
+	if(query == NULL)
+	{
+		// Nothing to be done here
+		unlock_shm();
+		return false;
+	}
+
+	// Go through already knows domains and see if it is one of them
+	// As this domain might have been found in the middle of a CNAME-path,
+	// it may be not have been seen by FTL_new_query() before
+	char *domainString = strdup(domain);
+	strtolower(domainString);
+	const int domainID = findDomainID(domainString, false);
+
+	// Get client ID from original query
+	const int clientID = query->clientID;
+
+	// Perform per-client blocking evaluation for this domain. The result for this
+	// domain-client combination will be cached to be immediately available for later
+	// queries of the same domain by the same client
+	const char *blockingreason = NULL;
+	bool block = FTL_check_blocking(queryID, domainID, clientID, &blockingreason);
+
+	if(config.debug & DEBUG_QUERIES)
+	{
+		if(src == NULL)
+			logg("CNAME %s", dst);
+		else
+			logg("CNAME %s ---> %s", src, dst);
+	}
+
+	// Return result
+	free(domainString);
+	unlock_shm();
+	return block;
+}
+
+
+bool _FTL_new_query(const unsigned int flags, const char *name,
+                    const char **blockingreason, const struct all_addr *addr,
                     const char *types, const int id, const char type,
                     const char* file, const int line)
 {
@@ -58,7 +293,7 @@ void _FTL_new_query(const unsigned int flags, const char *name, const struct all
 
 	// Don't analyze anything if in PRIVACY_NOSTATS mode
 	if(config.privacylevel >= PRIVACY_NOSTATS)
-		return;
+		return false;
 
 	// Lock shared memory
 	lock_shm();
@@ -92,7 +327,7 @@ void _FTL_new_query(const unsigned int flags, const char *name, const struct all
 		if(config.debug & DEBUG_QUERIES)
 			logg("Notice: Skipping unknown query type: %s (%i)", types, id);
 		unlock_shm();
-		return;
+		return false;
 	}
 
 	// Skip AAAA queries if user doesn't want to have them analyzed
@@ -101,7 +336,7 @@ void _FTL_new_query(const unsigned int flags, const char *name, const struct all
 		if(config.debug & DEBUG_QUERIES)
 			logg("Not analyzing AAAA query");
 		unlock_shm();
-		return;
+		return false;
 	}
 
 	// Ensure we have enough space in the queries struct
@@ -112,7 +347,7 @@ void _FTL_new_query(const unsigned int flags, const char *name, const struct all
 	if(strcasecmp(name, "pi.hole") == 0)
 	{
 		unlock_shm();
-		return;
+		return false;
 	}
 
 	// Convert domain to lower case
@@ -132,7 +367,7 @@ void _FTL_new_query(const unsigned int flags, const char *name, const struct all
 		free(domainString);
 		free(clientIP);
 		unlock_shm();
-		return;
+		return false;
 	}
 
 	// Log new query if in debug mode
@@ -159,11 +394,11 @@ void _FTL_new_query(const unsigned int flags, const char *name, const struct all
 		free(domainString);
 		free(clientIP);
 		unlock_shm();
-		return;
+		return false;
 	}
 
 	// Go through already knows domains and see if it is one of them
-	const int domainID = findDomainID(domainString);
+	const int domainID = findDomainID(domainString, true);
 
 	// Go through already knows clients and see if it is one of them
 	const int clientID = findClientID(clientIP, true);
@@ -178,7 +413,7 @@ void _FTL_new_query(const unsigned int flags, const char *name, const struct all
 		free(clientIP);
 		// Release thread lock
 		unlock_shm();
-		return;
+		return false;
 	}
 
 	query->magic = MAGICBYTE;
@@ -223,7 +458,7 @@ void _FTL_new_query(const unsigned int flags, const char *name, const struct all
 		free(clientIP);
 		// Release thread lock
 		unlock_shm();
-		return;
+		return false;
 	}
 
 	// Update overTime data structure with the new client
@@ -233,37 +468,7 @@ void _FTL_new_query(const unsigned int flags, const char *name, const struct all
 	client->lastQuery = querytimestamp;
 	client->numQueriesARP++;
 
-	// Get domain pointer
-	domainsData* domain = getDomain(domainID, true);
-
-	// Try blocking regex if configured
-	if(domain->regexmatch == REGEX_UNKNOWN && blockingstatus != BLOCKING_DISABLED)
-	{
-		// For minimal performance impact, we test the regex only when
-		// - regex checking is enabled, and
-		// - this domain has not already been validated against the regex.
-		// This effectively prevents multiple evaluations of the same domain
-		//
-		// If a regex filter matched, we additionally compare the domain
-		// against all known whitelisted domains to possibly prevent blocking
-		// of a specific domain. The logic herein is:
-		// If matched, then compare against whitelist
-		// If in whitelist, negate matched so this function returns: not-to-be-blocked
-		if(match_regex(domainString, REGEX_BLACKLIST) && !in_whitelist(domainString))
-		{
-			// We have to block this domain
-			block_single_domain_regex(domainString);
-			if(domain != NULL)
-				domain->regexmatch = REGEX_BLOCKED;
-		}
-		else
-		{
-			// Explicitly mark as not blocked to skip regex test
-			// next time we see this domain
-			if(domain != NULL)
-				domain->regexmatch = REGEX_NOTBLOCKED;
-		}
-	}
+	bool blockDomain = FTL_check_blocking(queryID, domainID, clientID, blockingreason);
 
 	// Free allocated memory
 	free(domainString);
@@ -271,6 +476,33 @@ void _FTL_new_query(const unsigned int flags, const char *name, const struct all
 
 	// Release thread lock
 	unlock_shm();
+
+	return blockDomain;
+}
+
+void _FTL_get_blocking_metadata(struct all_addr **addrp, unsigned int *flags, const char* file, const int line)
+{
+	// Add flags according to current blocking mode
+	// We bit-add here as flags already contains either F_IPV4 or F_IPV6
+	*flags |= blocking_flags;
+
+	if(*flags & F_IPV6)
+	{
+		if(config.blockingmode == MODE_IP_NODATA_AAAA)
+		{
+			// Overwrite flags in this mode as the response
+			// for IPv4 and IPv6 is different
+			*flags = F_NEG;
+		}
+
+		// Pass blocking IPv6 address (will be :: in most cases)
+		*addrp = &blocking_addrp_v6;
+	}
+	else
+	{
+		// Pass blocking IPv4 address (will be 0.0.0.0 in most cases)
+		*addrp = &blocking_addrp_v4;
+	}
 }
 
 static int findQueryID(const int id)
@@ -429,10 +661,6 @@ void FTL_dnsmasq_reload(void)
 
 	logg("Reloading DNS cache");
 
-	// Called when dnsmasq re-reads its config and hosts files
-	// Reset number of blocked domains
-	counters->gravity = 0;
-
 	// Inspect 01-pihole.conf to see if Pi-hole blocking is enabled,
 	// i.e. if /etc/pihole/gravity.list is sourced as addn-hosts file
 	check_blocking_status();
@@ -443,17 +671,14 @@ void FTL_dnsmasq_reload(void)
 	// Passing NULL to this function means it has to open the config file on
 	// its own behalf (on initial reading, the config file is already opened)
 	get_blocking_mode(NULL);
+	// Update blocking metadata (target IP addresses and DNS header flags)
+	// as the blocking mode might have changed
+	prepare_blocking_metadata();
 
 	// Reread pihole-FTL.conf to see which debugging flags are set
 	read_debuging_settings(NULL);
 
-	// (Re-)open gravity database connection
-	gravityDB_close();
-	gravityDB_open();
-
-	// Read and compile possible regex filters
-	// only after having called gravityDB_open()
-	read_regex_from_database();
+	FTL_reload_all_domainlists();
 
 	// Print current set of capabilities if requested via debug flag
 	if(config.debug & DEBUG_CAPS)
@@ -551,22 +776,25 @@ void _FTL_reply(const unsigned short flags, const char *name, const struct all_a
 		   strcmp(answer, "::") == 0)
 		{
 			// Answered from user-defined blocking rules (dnsmasq config files)
-			counters->blocked++;
-			overTime[timeidx].blocked++;
+			if(query->status == QUERY_UNKNOWN)
+			{
+				counters->blocked++;
+				overTime[timeidx].blocked++;
 
-			// Update domain blocked counter
-			domain->blockedcount++;
+				// Update domain blocked counter
+				domain->blockedcount++;
+
+				// Get client pointer
+				clientsData* client = getClient(query->clientID, true);
+				if(client != NULL)
+				{
+					// Update client blocked counter
+					client->blockedcount++;
+				}
+			}
 
 			// Set query status to wildcard
 			query->status = QUERY_WILDCARD;
-
-			// Get client pointer
-			clientsData* client = getClient(query->clientID, true);
-			if(client != NULL)
-			{
-				// Update client blocked counter
-				client->blockedcount++;
-			}
 		}
 		else
 		{
@@ -776,18 +1004,21 @@ static void query_externally_blocked(const int queryID, const unsigned char stat
 	}
 
 	// Mark query as blocked
-	counters->blocked++;
-	overTime[timeidx].blocked++;
+	if(query->status == QUERY_UNKNOWN)
+	{
+		counters->blocked++;
+		overTime[timeidx].blocked++;
 
-	// Get domain pointer
-	domainsData* domain = getDomain(query->domainID, true);
-	if(domain != NULL)
-		domain->blockedcount++;
+		// Get domain pointer
+		domainsData* domain = getDomain(query->domainID, true);
+		if(domain != NULL)
+			domain->blockedcount++;
 
-	// Get client pointer
-	clientsData* client = getClient(query->clientID, true);
-	if(client != NULL)
-		client->blockedcount++;
+		// Get client pointer
+		clientsData* client = getClient(query->clientID, true);
+		if(client != NULL)
+			client->blockedcount++;
+	}
 
 	// Set query status
 	query->status = status;
@@ -839,37 +1070,26 @@ void _FTL_cache(const unsigned int flags, const char *name, const struct all_add
 	{
 		// Local list: /etc/hosts, /etc/pihole/local.list, etc.
 		// or
-		// blocked domain from gravity database
-		// or
 		// DHCP server reply
-		// or
-		// regex blocked query
 		// or
 		// cached answer to previously forwarded request
 
 		// Determine requesttype
 		unsigned char requesttype = 0;
-		if(flags & F_HOSTS)
+		if((flags & F_HOSTS) || // local.list, hostname.list, /etc/hosts and others
+		  ((flags & F_NAMEP) && (flags & F_DHCP)) || // DHCP server reply
+		   (flags & F_FORWARD) || // cached answer to previously forwarded request
+		   (flags & F_REVERSE) || // cached answer to reverse request (PTR)
+		   (flags & F_RRNAME)) // cached answer to TXT query
 		{
-			if(arg != NULL && strcmp(arg, SRC_GRAVITY_NAME) == 0)
-				requesttype = QUERY_GRAVITY;
-			else if(arg != NULL && strcmp(arg, SRC_BLACK_NAME) == 0)
-				requesttype = QUERY_BLACKLIST;
-			else // local.list, hostname.list, /etc/hosts and others
-				requesttype = QUERY_CACHE;
+			requesttype = QUERY_CACHE;
 		}
-		else if((flags & F_NAMEP) && (flags & F_DHCP)) // DHCP server reply
-			requesttype = QUERY_CACHE;
-		else if(flags & F_FORWARD) // cached answer to previously forwarded request
-			requesttype = QUERY_CACHE;
-		else if(flags & F_REVERSE) // cached answer to reverse request (PTR)
-			requesttype = QUERY_CACHE;
-		else if(flags & F_RRNAME) // cached answer to TXT query
-			requesttype = QUERY_CACHE;
 		else
 		{
 			logg("*************************** unknown CACHE reply (1) ***************************");
 			print_flags(flags);
+			unlock_shm();
+			return;
 		}
 
 		// Search query in FTL's query data
@@ -899,23 +1119,6 @@ void _FTL_cache(const unsigned int flags, const char *name, const struct all_add
 		// Get time index
 		const unsigned int timeidx = query->timeidx;
 
-		// Get domain pointer
-		domainsData* domain = getDomain(query->domainID, true);
-
-		// Get client pointer
-		clientsData* client = getClient(query->clientID, true);
-
-		if(domain == NULL || client == NULL)
-		{
-			// Memory error, skip this cache reply
-			unlock_shm();
-			return;
-		}
-
-		// Mark this query as blocked if domain was matched by a regex
-		if(domain->regexmatch == REGEX_BLOCKED)
-			requesttype = QUERY_WILDCARD;
-
 		query->status = requesttype;
 
 		// Detect if returned IP indicates that this query was blocked
@@ -927,14 +1130,6 @@ void _FTL_cache(const unsigned int flags, const char *name, const struct all_add
 		// Handle counters accordingly
 		switch(requesttype)
 		{
-			case QUERY_GRAVITY: // gravity.list
-			case QUERY_BLACKLIST: // black.list
-			case QUERY_WILDCARD: // regex blocked
-				counters->blocked++;
-				overTime[timeidx].blocked++;
-				domain->blockedcount++;
-				client->blockedcount++;
-				break;
 			case QUERY_CACHE: // cached from one of the lists
 				counters->cached++;
 				overTime[timeidx].cached++;
@@ -959,6 +1154,24 @@ void _FTL_cache(const unsigned int flags, const char *name, const struct all_add
 		print_flags(flags);
 	}
 	unlock_shm();
+}
+
+static void query_blocked(queriesData* query, domainsData* domain, clientsData* client)
+{
+	// Get response time
+	struct timeval response;
+	gettimeofday(&response, 0);
+	save_reply_type(blocking_flags, query, response);
+
+	// Adjust counters
+	if(query->status == QUERY_UNKNOWN)
+	{
+		counters->unknown--;
+		counters->blocked++;
+		overTime[query->timeidx].blocked++;
+		domain->blockedcount++;
+		client->blockedcount++;
+	}
 }
 
 void _FTL_dnssec(const int status, const int id, const char* file, const int line)
@@ -995,8 +1208,10 @@ void _FTL_dnssec(const int status, const int id, const char* file, const int lin
 	{
 		// Get domain pointer
 		const domainsData* domain = getDomain(query->domainID, true);
-
-		logg("**** got DNSSEC details for %s: %i (ID %i, %s:%i)", getstr(domain->domainpos), status, id, file, line);
+		if(domain != NULL)
+		{
+			logg("**** got DNSSEC details for %s: %i (ID %i, %s:%i)", getstr(domain->domainpos), status, id, file, line);
+		}
 	}
 
 	// Iterate through possible values
@@ -1380,9 +1595,19 @@ static unsigned long __attribute__((const)) converttimeval(const struct timeval 
 }
 
 // This subroutine prepares IPv4 and IPv6 addresses for blocking queries depending on the configured blocking mode
-static void prepare_blocking_mode(struct all_addr *addr4, struct all_addr *addr6, bool *has_IPv4, bool *has_IPv6)
+static void prepare_blocking_metadata(void)
 {
-	// Read IPv4 address for host entries from setupVars.conf
+	// Reset all blocking metadata
+	blocking_flags = 0;
+	memset(&blocking_addrp_v4, 0, sizeof(blocking_addrp_v4));
+	memset(&blocking_addrp_v6, 0, sizeof(blocking_addrp_v6));
+
+	// Set blocking_flags to F_HOSTS so dnsmasq logs blocked queries being answered from a specific source
+	// (it would otherwise assume it knew the blocking status from cache which would prevent us from
+	// printing the blocking source (blacklist, regex, gravity) in dnsmasq's log file, our pihole.log)
+	blocking_flags = F_HOSTS;
+
+	// Use the blocking IPv4 address from setupVars.conf only if needed for selected blocking mode
 	char* const IPv4addr = read_setupVarsconf("IPV4_ADDRESS");
 	if((config.blockingmode == MODE_IP || config.blockingmode == MODE_IP_NODATA_AAAA) &&
 	   IPv4addr != NULL && strlen(IPv4addr) > 0)
@@ -1390,18 +1615,26 @@ static void prepare_blocking_mode(struct all_addr *addr4, struct all_addr *addr6
 		// Strip off everything at the end of the IP (CIDR might be there)
 		char* a=IPv4addr; for(;*a;a++) if(*a == '/') *a = 0;
 		// Prepare IPv4 address for records
-		if(inet_pton(AF_INET, IPv4addr, addr4) > 0)
-			*has_IPv4 = true;
-	}
-	else
-	{
-		// Blocking mode will use zero-initialized all_addr struct
-		*has_IPv4 = true;
+		if(inet_pton(AF_INET, IPv4addr, &blocking_addrp_v4) != 1)
+			logg("ERROR: Found invalid IPv4 address in setupVars.conf: %s", IPv4addr);
 	}
 	// Free IPv4addr
 	clearSetupVarsArray();
 
-	// Read IPv6 address for host entries from setupVars.conf
+	if(config.blockingmode == MODE_NX)
+	{
+		// If we block in NXDOMAIN mode, we add the NXDOMAIN flag and make this host record
+		// also valid for AAAA requests
+		 blocking_flags |= F_NEG | F_NXDOMAIN;
+	}
+	else if(config.blockingmode == MODE_NODATA)
+	{
+		// If we block in NODATA mode, we make this host record also valid for AAAA requests
+		// and apply the NEG response flag (but not the NXDOMAIN flag)
+		blocking_flags |= F_NEG;
+	}
+
+	// Use the blocking IPv6 address from setupVars.conf only if needed for selected blocking mode
 	char* const IPv6addr = read_setupVarsconf("IPV6_ADDRESS");
 	if(config.blockingmode == MODE_IP &&
 	   IPv6addr != NULL && strlen(IPv6addr) > 0)
@@ -1409,203 +1642,9 @@ static void prepare_blocking_mode(struct all_addr *addr4, struct all_addr *addr6
 		// Strip off everything at the end of the IP (CIDR might be there)
 		char* a=IPv6addr; for(;*a;a++) if(*a == '/') *a = 0;
 		// Prepare IPv6 address for records
-		if(inet_pton(AF_INET6, IPv6addr, addr6) > 0)
-			*has_IPv6 = true;
-	}
-	else if(config.blockingmode == MODE_IP_NODATA_AAAA)
-	{
-		// Blocking mode will use zero-initialized all_addr struct
-		// This is irrelevant, however, as this blocking mode will
-		// reply with NODATA to AAAA queries. Still, we need to
-		// generate separate IPv4 (IP) and AAAA (NODATA) records
-		*has_IPv6 = true;
-	}
-	else
-	{
-		// Don't create IPv6 cache entries when we don't need them
-		// Also, don't create them if we are in IP blocking mode and
-		// strlen(IPv6addr) == 0
-		*has_IPv6 = false;
+		if(inet_pton(AF_INET6, IPv6addr, &blocking_addrp_v6) != 1)
+			logg("ERROR: Found invalid IPv6 address in setupVars.conf: %s", IPv4addr);
 	}
 	// Free IPv6addr
 	clearSetupVarsArray();
-}
-
-// Prototypes from functions in dnsmasq's source
-void add_hosts_entry(struct crec *cache, struct all_addr *addr, int addrlen, unsigned int index, struct crec **rhash, int hashsz);
-void rehash(int size);
-
-// This routine adds one domain to the resolver's cache. Depending on the configured blocking mode it may create
-// a single entry valid for IPv4 & IPv6 or two entries one for IPv4 and one for IPv6.
-// When IPv6 is not available on the machine, we do not add IPv6 cache entries (likewise for IPv4)
-static int add_blocked_domain(struct all_addr *addr4, struct all_addr *addr6, const bool has_IPv4, const bool has_IPv6,
-                              const char *domain, const int len, struct crec **rhash, int hashsz, const unsigned int index)
-{
-	int name_count = 0;
-	struct crec *cache4,*cache6;
-	// Add IPv4 record, allocate enough space for cache entry including arbitrary domain name length
-	// (the domain name is stored at the end of struct crec)
-	if(has_IPv4 &&
-	   (cache4 = malloc(sizeof(struct crec) + len+1-SMALLDNAME)))
-	{
-		strcpy(cache4->name.sname, domain);
-		cache4->flags = F_HOSTS | F_IMMORTAL | F_FORWARD | F_IPV4;
-		int memorysize = INADDRSZ;
-		if(config.blockingmode == MODE_NX)
-		{
-			// If we block in NXDOMAIN mode, we add the NXDOMAIN flag and make this host record
-			// also valid for AAAA requests
-			 cache4->flags |= F_IPV6 | F_NEG | F_NXDOMAIN;
-		}
-		else if(config.blockingmode == MODE_NULL)
-		{
-			// If we block in NULL mode, we make this host record also valid for AAAA requests
-			// This is okay as the addr structs have been statically zero-initialized
-			cache4->flags |= F_IPV6;
-			memorysize = IN6ADDRSZ;
-		}
-		else if(config.blockingmode == MODE_NODATA)
-		{
-			// If we block in NODATA mode, we make this host record also valid for AAAA requests
-			// and apply the NEG response flag (but not the NXDOMAIN flag)
-			cache4->flags |= F_IPV6 | F_NEG;
-		}
-		cache4->ttd = daemon->local_ttl;
-		add_hosts_entry(cache4, addr4, memorysize, index, rhash, hashsz);
-		name_count++;
-	}
-	// Add IPv6 record only if we respond with a non-NULL IP address to blocked domains
-	if(has_IPv6 && (config.blockingmode == MODE_IP || config.blockingmode == MODE_IP_NODATA_AAAA) &&
-	   (cache6 = malloc(sizeof(struct crec) + len+1-SMALLDNAME)))
-	{
-		strcpy(cache6->name.sname, domain);
-		cache6->flags = F_HOSTS | F_IMMORTAL | F_FORWARD | F_IPV6;
-		if(config.blockingmode == MODE_IP_NODATA_AAAA) cache6->flags |= F_NEG;
-		cache6->ttd = daemon->local_ttl;
-		add_hosts_entry(cache6, addr6, IN6ADDRSZ, index, rhash, hashsz);
-		name_count++;
-	}
-
-	// Return 1 if only one cache slot was allocated (IPv4) or 2 if two slots were allocated (IPv4 + IPv6)
-	return name_count;
-}
-
-// Add a single domain to resolver's cache. This respects the configured blocking mode
-// Note: This routine is meant for adding a single domain at a time. It should not be
-//       invoked for batch processing
-static void block_single_domain_regex(const char *domain)
-{
-	struct all_addr addr4 = {{{ 0 }}}, addr6 = {{{ 0 }}};
-	bool has_IPv4 = false, has_IPv6 = false;
-
-	// Get IPv4/v6 addresses for blocking depending on user configures blocking mode
-	prepare_blocking_mode(&addr4, &addr6, &has_IPv4, &has_IPv6);
-	add_blocked_domain(&addr4, &addr6, has_IPv4, has_IPv6, domain, strlen(domain), NULL, 0, SRC_REGEX);
-
-	if(config.debug & DEBUG_QUERIES)
-		logg("Added %s to cache", domain);
-}
-
-// Import a specified table from the gravity database and
-// add the read domains to the cache using the currently
-// selected blocking mode. This function is used to import
-// both the blacklist and the gravity blocking domains
-static int FTL_table_import(const char *tablename, const unsigned char list, const unsigned int index,
-                             struct all_addr addr4, struct all_addr addr6, bool has_IPv4, bool has_IPv6,
-                             int cache_size, struct crec **rhash, int hashsz)
-{
-	// Variables
-	int name_count = cache_size, added = 0;
-
-	// Start timer for list analysis
-	timer_start(LISTS_TIMER);
-
-	// Get database table handle
-	if(!gravityDB_getTable(list))
-	{
-		logg("FTL_listsfile(): Error getting %s table from database", tablename);
-		return name_count;
-	}
-
-	// Walk database table
-	const char *domain = NULL;
-	while((domain = gravityDB_getDomain()) != NULL)
-	{
-		int len = strlen(domain);
-		// Skip empty database rows
-		if(len == 0)
-			continue;
-
-		// Do not add gravity or blacklist domains that match
-		// a regex-based whitelist filter
-		if(match_regex(domain, REGEX_WHITELIST))
-			continue;
-
-		// As of here we assume the entry to be valid
-		// Rehash every 1000 valid names
-		if(rhash && ((name_count - cache_size) > 1000))
-		{
-			rehash(name_count);
-			cache_size = name_count;
-		}
-
-		// Add domain
-		name_count += add_blocked_domain(&addr4, &addr6, has_IPv4, has_IPv6, domain, len, rhash, hashsz, index);
-
-		// Count added domain
-		added++;
-	}
-
-	// Rehash after having read all entries
-	if(rhash)
-		rehash(name_count);
-
-	// Finalize statement and close gravity database handle
-	gravityDB_finalizeTable();
-
-	// Final logging
-	logg("Database (%s): imported %i domains (took %.1f ms)", tablename, added, timer_elapsed_msec(LISTS_TIMER));
-
-	// Return number of domains added to the cache
-	return added;
-}
-
-// Import blocking domains from the gravity database
-// This function is run whenever dnsmasq reads in HOSTS
-// files (on startup as well as on receipt of SIGHUP)
-int FTL_database_import(int cache_size, struct crec **rhash, int hashsz)
-{
-	struct all_addr addr4 = {{{ 0 }}}, addr6 = {{{ 0 }}};
-	bool has_IPv4 = false, has_IPv6 = false;
-
-	if(blockingstatus == BLOCKING_DISABLED)
-	{
-		logg("Skipping import of database tables because blocking is disabled");
-		return cache_size;
-	}
-
-	// Get IPv4/v6 addresses for blocking depending on user configured blocking mode
-	prepare_blocking_mode(&addr4, &addr6, &has_IPv4, &has_IPv6);
-
-	// If we have neither a valid IPv4 nor a valid IPv6 but the user asked for
-	// blocking modes MODE_IP or MODE_IP_NODATA_AAAA then we cannot add any entries here
-	if(!has_IPv4 && !has_IPv6)
-	{
-		logg("ERROR: Cannot add domains from gravity because pihole-FTL found\n" \
-		     "       neither a valid IPV4_ADDRESS nor IPV6_ADDRESS in setupVars.conf" \
-		     "       This is an impossible configuration. Please contact the Pi-hole" \
-		     "       support if you need assistance.");
-		return cache_size;
-	}
-
-	// Import gravity and exact blacklisted domains
-	int added;
-	added  = FTL_table_import("gravity", GRAVITY_TABLE, SRC_GRAVITY, addr4, addr6, has_IPv4, has_IPv6, cache_size, rhash, hashsz);
-	added += FTL_table_import("blacklist", EXACT_BLACKLIST_TABLE, SRC_BLACK, addr4, addr6, has_IPv4, has_IPv6, cache_size, rhash, hashsz);
-
-	// Update counter of blocked domains
-	counters->gravity = added;
-
-	// Return new cache size which now includes more domains than before
-	return cache_size + added;
 }

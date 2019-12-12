@@ -583,7 +583,8 @@ static int find_soa(struct dns_header *header, size_t qlen, char *name, int *doc
 /* Note that the following code can create CNAME chains that don't point to a real record,
    either because of lack of memory, or lack of SOA records.  These are treated by the cache code as 
    expired and cleaned out that way. 
-   Return 1 if we reject an address because it look like part of dns-rebinding attack. */
+   Return 1 if we reject an address because it look like part of dns-rebinding attack.
+   **** Pi-hole: Return 2 if we reject a part of a CNAME chain **** */
 int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t now, 
 		      char **ipsets, int is_sign, int check_rebind, int no_cache_dnssec,
 		      int secure, int *doctored)
@@ -777,6 +778,14 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 		  if (option_bool(OPT_DNSSEC_VALID) && daemon->rr_status[j])
 		      secflag = F_DNSSECOK;
 #endif		  
+		  // ****************************** Pi-hole modification ******************************
+		  if(FTL_CNAME(name, cpp, daemon->log_display_id))
+		    {
+		      // This query is to be blocked as we found a blocked domain while walking
+		      // the CNAME path.
+		      return 2;
+		    }
+		  // **********************************************************************************
 		  if (aqtype == T_CNAME)
 		    {
 		      if (!cname_count--)
