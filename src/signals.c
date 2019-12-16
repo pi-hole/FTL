@@ -17,6 +17,8 @@
 #include "memory.h"
 // ls_dir()
 #include "files.h"
+// FTL_reload_all_domainlists()
+#include "datastructure.h"
 
 volatile sig_atomic_t killed = 0;
 static time_t FTLstarttime = 0;
@@ -78,6 +80,24 @@ static void __attribute__((noreturn)) SIGSEGV_handler(int sig, siginfo_t *si, vo
 	abort();
 }
 
+static void SIGRT_handler(int signum, siginfo_t *si, void *unused)
+{ 
+	int rtsig = signum - SIGRTMIN;
+	logg("Received: %s (%d -> %d)", strsignal(signum), signum, rtsig);
+
+	if(rtsig == 0)
+	{
+		// Reload
+		// - gravity
+		// - exact whitelist
+		// - regex whitelist
+		// - exact blacklist
+		// - exact blacklist
+		// WITHOUT wiping the DNS cache itself
+		FTL_reload_all_domainlists();
+	}
+} 
+
 void handle_signals(void)
 {
 	struct sigaction old_action;
@@ -92,6 +112,17 @@ void handle_signals(void)
 		sigemptyset(&SEGVaction.sa_mask);
 		SEGVaction.sa_sigaction = &SIGSEGV_handler;
 		sigaction(SIGSEGV, &SEGVaction, NULL);
+	}
+
+	// Catch first five real-time signals
+	for(unsigned int i = 0; i < 5; i++)
+	{
+		struct sigaction SIGACTION;
+		memset(&SIGACTION, 0, sizeof(struct sigaction));
+		SIGACTION.sa_flags = SA_SIGINFO;
+		sigemptyset(&SIGACTION.sa_mask);
+		SIGACTION.sa_sigaction = &SIGRT_handler;
+		sigaction(SIGRTMIN + i, &SIGACTION, NULL);
 	}
 
 	// Log start time of FTL

@@ -1286,10 +1286,6 @@ void cache_reload(void)
     }
   else
     {
-      /*------------------------------- Pi-hole modification -------------------------------*/
-      total_size = FTL_database_import(total_size, (struct crec **)daemon->packet, revhashsz);
-      /*------------------------------------------------------------------------------------*/
-
       if (!option_bool(OPT_NO_HOSTS))
 	total_size = read_hostsfile(HOSTSFILE, SRC_HOSTS, total_size, (struct crec **)daemon->packet, revhashsz);
       
@@ -1797,14 +1793,6 @@ char *record_source(unsigned int index)
     return "config";
   else if (index == SRC_HOSTS)
     return HOSTSFILE;
-  /*----- Pi-hole modification -----*/
-  else if (index == SRC_REGEX)
-    return SRC_REGEX_NAME;
-  else if (index == SRC_GRAVITY)
-    return SRC_GRAVITY_NAME;
-  else if (index == SRC_BLACK)
-    return SRC_BLACK_NAME;
-  /*--------------------------------*/
 
   for (ah = daemon->addn_hosts; ah; ah = ah->next)
     if (ah->index == index)
@@ -1874,7 +1862,8 @@ char *querystr(char *desc, unsigned short type)
   return buff ? buff : "";
 }
 
-void log_query(unsigned int flags, char *name, union all_addr *addr, char *arg)
+// Modified by Pi-hole
+void _log_query(unsigned int flags, char *name, union all_addr *addr, char *arg, const char* file, const int line)
 {
   char *source, *dest = daemon->addrbuff;
   char *verb = "is";
@@ -1975,7 +1964,10 @@ void log_query(unsigned int flags, char *name, union all_addr *addr, char *arg)
   
   if (strlen(name) == 0)
     name = ".";
-
+/************************************************************** Pi-hole modification  **************************************************************/
+if(debug_dnsmasq_lines == 0)
+{
+/***************************************************************************************************************************************************/
   if (option_bool(OPT_EXTRALOG))
     {
       int port = prettyprint_addr(daemon->log_source_addr, daemon->addrbuff2);
@@ -1986,6 +1978,22 @@ void log_query(unsigned int flags, char *name, union all_addr *addr, char *arg)
     }
   else
     my_syslog(LOG_INFO, "%s %s %s %s", source, name, verb, dest);
+/************************************************************** Pi-hole modification  **************************************************************/
+}
+else
+{
+  if (option_bool(OPT_EXTRALOG))
+    {
+      int port = prettyprint_addr(daemon->log_source_addr, daemon->addrbuff2);
+      if (flags & F_NOEXTRA)
+	my_syslog(LOG_INFO, "* %s/%u %s %s %s %s (%s:%d)", daemon->addrbuff2, port, source, name, verb, dest, file, line);
+      else
+	my_syslog(LOG_INFO, "%u %s/%u %s %s %s %s (%s:%d)", daemon->log_display_id, daemon->addrbuff2, port, source, name, verb, dest, file, line);
+    }
+  else
+    my_syslog(LOG_INFO, "%s %s %s %s (%s:%d)", source, name, verb, dest, file, line);
+}
+/***************************************************************************************************************************************************/
 }
 
  

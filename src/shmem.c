@@ -18,7 +18,7 @@
 #include "datastructure.h"
 
 /// The version of shared memory used
-#define SHARED_MEMORY_VERSION 7
+#define SHARED_MEMORY_VERSION 8
 
 /// The name of the shared memory. Use this when connecting to the shared memory.
 #define SHARED_LOCK_NAME "/FTL-lock"

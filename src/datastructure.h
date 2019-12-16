@@ -10,15 +10,23 @@
 #ifndef DATASTRUCTURE_H
 #define DATASTRUCTURE_H
 
+// Definition of sqlite3_stmt
+#include "database/sqlite3.h"
+// struct ucharvec
+#include "vector.h"
+
 void strtolower(char *str);
 int findForwardID(const char * forward, const bool count);
-int findDomainID(const char *domain);
+int findDomainID(const char *domain, const bool count);
 int findClientID(const char *client, const bool count);
 bool isValidIPv4(const char *addr);
 bool isValidIPv6(const char *addr);
 const char *getDomainString(const int queryID);
 const char *getClientIPString(const int queryID);
 const char *getClientNameString(const int queryID);
+
+void FTL_reload_all_domainlists(void);
+void FTL_reset_per_client_domain_data(void);
 
 typedef struct {
 	unsigned char magic;
@@ -57,14 +65,18 @@ typedef struct {
 	int overTime[OVERTIME_SLOTS];
 	unsigned int numQueriesARP;
 	bool new;
+	sqlite3_stmt* whitelist_stmt;
+	sqlite3_stmt* gravity_stmt;
+	sqlite3_stmt* blacklist_stmt;
+	bool *regex_enabled[2];
 } clientsData;
 
 typedef struct {
 	unsigned char magic;
-	unsigned char regexmatch;
 	size_t domainpos;
 	int count;
 	int blockedcount;
+	ucharvec *clientstatus; // FTL-internal cache, not accessible over shared memory!
 } domainsData;
 
 // Pointer getter functions

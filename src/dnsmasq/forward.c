@@ -686,6 +686,7 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
       a.log.rcode = rcode;
       FTL_upstream_error(rcode, daemon->log_display_id);
       log_query(F_UPSTREAM | F_RCODE, "error", &a, NULL);
+      FTL_upstream_error(rcode, daemon->log_display_id);
       
       return resize_packet(header, n, pheader, plen);
     }
@@ -724,13 +725,20 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
 	  SET_RCODE(header, NOERROR);
 	  cache_secure = 0;
 	}
-      
-      if (extract_addresses(header, n, daemon->namebuff, now, sets, is_sign, check_rebind, no_cache, cache_secure, &doctored))
+      /******************************** Pi-hole modification ********************************/
+      int ret = extract_addresses(header, n, daemon->namebuff, now, sets, is_sign, check_rebind, no_cache, cache_secure, &doctored);
+      if (ret == 2)
+	{
+	  munged = 1;
+	  cache_secure = 0;
+	}
+      else if(ret)
 	{
 	  my_syslog(LOG_WARNING, _("possible DNS-rebind attack detected: %s"), daemon->namebuff);
 	  munged = 1;
 	  cache_secure = 0;
 	}
+      /**************************************************************************************/
 
       if (doctored)
 	cache_secure = 0;
@@ -1304,6 +1312,11 @@ void receive_query(struct listener *listen, time_t now)
    /* Can always get recvd interface for IPv6 */
   int check_dst = !option_bool(OPT_NOWILD) || listen->family == AF_INET6;
 
+  /************ Pi-hole modification ************/
+  bool piholeblocked = false;
+  const char* blockingreason = NULL;
+  /**********************************************/
+
   /* packet buffer overwritten */
   daemon->srv_save = NULL;
   
@@ -1521,14 +1534,14 @@ void receive_query(struct listener *listen, time_t now)
       {
 	log_query(F_QUERY | F_IPV4 | F_FORWARD, daemon->namebuff, 
 		  (union all_addr *)&source_addr.in.sin_addr, types);
-	FTL_new_query(F_QUERY | F_IPV4 | F_FORWARD, daemon->namebuff,
+	piholeblocked = FTL_new_query(F_QUERY | F_IPV4 | F_FORWARD, daemon->namebuff, &blockingreason,
 	              (union all_addr *)&source_addr.in.sin_addr, types, daemon->log_display_id, UDP);
       }
       else
       {
-	log_query(F_QUERY | F_IPV6 | F_FORWARD, daemon->namebuff, 
+	log_query(F_QUERY | F_IPV6 | F_FORWARD, daemon->namebuff,
 		  (union all_addr *)&source_addr.in6.sin6_addr, types);
-	FTL_new_query(F_QUERY | F_IPV6 | F_FORWARD, daemon->namebuff,
+	piholeblocked = FTL_new_query(F_QUERY | F_IPV6 | F_FORWARD, daemon->namebuff, &blockingreason,
 	              (union all_addr *)&source_addr.in6.sin6_addr, types, daemon->log_display_id, UDP);
       }
 
@@ -1591,6 +1604,22 @@ void receive_query(struct listener *listen, time_t now)
        /* RFC 6840 5.7 */
       if (header->hb4 & HB4_AD)
 	ad_reqd = 1;
+
+      /************ Pi-hole modification ************/
+      if(piholeblocked)
+	{
+	  size_t plen = n;
+	  union all_addr *addrp = NULL;
+	  unsigned int flags = (listen->family == AF_INET) ? F_IPV4 : F_IPV6;
+	  FTL_get_blocking_metadata(&addrp, &flags);
+	  log_query(flags, daemon->namebuff, addrp, (char*)blockingreason);
+	  plen = setup_reply(header, n, addrp, flags, daemon->local_ttl);
+	  if (find_pseudoheader(header, plen, NULL, NULL, NULL, NULL))
+	    plen = add_pseudoheader(header, plen, ((unsigned char *) header) + PACKETSZ, daemon->edns_pktsz, 0, NULL, 0, do_bit, 0);
+	  send_from(listen->fd, option_bool(OPT_NOWILD) || option_bool(OPT_CLEVERBIND), (char *)header, plen, (union mysockaddr*)&source_addr, &dst_addr, if_index);
+	  return;
+	}
+      /**********************************************/
 
       m = answer_request(header, ((char *) header) + udp_size, (size_t)n, 
 			 dst_addr_4, netmask, now, ad_reqd, do_bit, have_pseudoheader);
@@ -1814,6 +1843,11 @@ unsigned char *tcp_request(int confd, time_t now,
   (void)mark;
   (void)have_mark;
 
+  /************ Pi-hole modification ************/
+  bool piholeblocked = false;
+  const char* blockingreason = NULL;
+  /**********************************************/
+
   if (getpeername(confd, (struct sockaddr *)&peer_addr, &peer_len) == -1)
     return packet;
 
@@ -1900,14 +1934,14 @@ unsigned char *tcp_request(int confd, time_t now,
 	  {
 	    log_query(F_QUERY | F_IPV4 | F_FORWARD, daemon->namebuff, 
 		      (union all_addr *)&peer_addr.in.sin_addr, types);
-	    FTL_new_query(F_QUERY | F_IPV4 | F_FORWARD, daemon->namebuff,
+	    piholeblocked = FTL_new_query(F_QUERY | F_IPV4 | F_FORWARD, daemon->namebuff, &blockingreason,
 	              (union all_addr *)&peer_addr.in.sin_addr, types, daemon->log_display_id, TCP);
 	  }
 	  else
 	  {
-	    log_query(F_QUERY | F_IPV6 | F_FORWARD, daemon->namebuff, 
+	    log_query(F_QUERY | F_IPV6 | F_FORWARD, daemon->namebuff,
 		      (union all_addr *)&peer_addr.in6.sin6_addr, types);
-	    FTL_new_query(F_QUERY | F_IPV6 | F_FORWARD, daemon->namebuff,
+	    piholeblocked = FTL_new_query(F_QUERY | F_IPV6 | F_FORWARD, daemon->namebuff, &blockingreason,
 	              (union all_addr *)&peer_addr.in6.sin6_addr, types, daemon->log_display_id, TCP);
 	  }
 	  
@@ -1954,13 +1988,28 @@ unsigned char *tcp_request(int confd, time_t now,
 	   /* RFC 6840 5.7 */
 	   if (header->hb4 & HB4_AD)
 	     ad_reqd = 1;
+	  
+	  /* Do this by steam now we're not in the select() loop */
+	  check_log_writer(1); 
+	  
+	  /************ Pi-hole modification ************/
+	  if(piholeblocked)
+	    {
+	      union all_addr *addrp = NULL;
+	      unsigned int flags = (peer_addr.sa.sa_family == AF_INET) ? F_IPV4 : F_IPV6;
+	      FTL_get_blocking_metadata(&addrp, &flags);
+	      log_query(flags, daemon->namebuff, addrp, (char*)blockingreason);
+	      m = setup_reply(header, size, addrp, flags, daemon->local_ttl);
+	      if (have_pseudoheader)
+	        m = add_pseudoheader(header, m, ((unsigned char *) header) + 65536, daemon->edns_pktsz, 0, NULL, 0, do_bit, 0);
+	    }
+	  else
+	  {
+	  /**********************************************/
 	   
 	   /* m > 0 if answered from cache */
 	   m = answer_request(header, ((char *) header) + 65536, (size_t)size, 
 			      dst_addr_4, netmask, now, ad_reqd, do_bit, have_pseudoheader);
-	  
-	  /* Do this by steam now we're not in the select() loop */
-	  check_log_writer(1); 
 	  
 	  if (m == 0)
 	    {
@@ -2189,6 +2238,9 @@ unsigned char *tcp_request(int confd, time_t now,
 		    m = add_pseudoheader(header, m, ((unsigned char *) header) + 65536, daemon->edns_pktsz, 0, NULL, 0, do_bit, 0);
 		}
 	    }
+	  /************ Pi-hole modification ************/
+	  }
+	  /**********************************************/
 	}
 	  
       check_log_writer(1);

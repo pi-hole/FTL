@@ -489,19 +489,7 @@ struct crec {
 /* Values of uid in crecs with F_CONFIG bit set. */
 #define SRC_CONFIG    1
 #define SRC_HOSTS     2
-/*------------------------- Pi-hole modification -------------------------*/
-// ID 3 will be used for the regex table
-// ID 4 will be used for the gravity table
-// ID 5 will be used for the blacklist table
-// ID 6 will be used as starting index for any Additional Hosts (AH) files
-#define SRC_REGEX     3
-#define SRC_REGEX_NAME   "regex"
-#define SRC_GRAVITY   4
-#define SRC_GRAVITY_NAME "gravity"
-#define SRC_BLACK     5
-#define SRC_BLACK_NAME   "blacklist"
-#define SRC_AH        6
-/*------------------------------------------------------------------------*/
+#define SRC_AH        3
 
 /* struct sockaddr is not large enough to hold any address,
    and specifically not big enough to hold an IPv6 address.
@@ -1167,7 +1155,10 @@ extern struct daemon {
 /* cache.c */
 void cache_init(void);
 void next_uid(struct crec *crecp);
-void log_query(unsigned int flags, char *name, union all_addr *addr, char *arg); 
+/********************************************* Pi-hole modification ***********************************************/
+#define log_query(flags,name,addr,arg) _log_query(flags, name, addr, arg, __FILE__, __LINE__)
+void _log_query(unsigned int flags, char *name, union all_addr *addr, char *arg, const char* file, const int line);
+/******************************************************************************************************************/
 char *record_source(unsigned int index);
 char *querystr(char *desc, unsigned short type);
 int cache_find_non_terminal(char *name, time_t now);
