@@ -37,7 +37,8 @@
 #include "args.h"
 
 static void print_flags(const unsigned int flags);
-static void save_reply_type(const unsigned int flags, queriesData* query, const struct timeval response);
+static void save_reply_type(const unsigned int flags, const struct all_addr *addr,
+                            queriesData* query, const struct timeval response);
 static unsigned long converttimeval(const struct timeval time) __attribute__((const));
 static void detect_blocked_IP(const unsigned short flags, const char* answer, const int queryID);
 static void query_externally_blocked(const int queryID, const unsigned char status);
@@ -717,6 +718,20 @@ void _FTL_reply(const unsigned short flags, const char *name, const struct all_a
 		answer = "(NXDOMAIN)";
 	else if(flags & F_NEG)
 		answer = "(NODATA)";
+	else if(flags & F_RCODE && addr != NULL)
+	{
+		unsigned int rcode = addr->addr.rcode.rcode;
+		if(rcode == REFUSED)
+		{
+			// This happens, e.g., in a "nowhere to forward to" situation
+			answer = "REFUSED";
+		}
+		else if(rcode == SERVFAIL)
+		{
+			// This happens on upstream destionation errors
+			answer = "SERVFAIL";
+		}
+	}
 
 	// Possible debugging output
 	if(config.debug & DEBUG_QUERIES)
@@ -812,7 +827,7 @@ void _FTL_reply(const unsigned short flags, const char *name, const struct all_a
 		}
 
 		// Save reply type and update individual reply counters
-		save_reply_type(flags, query, response);
+		save_reply_type(flags, addr, query, response);
 
 		// Hereby, this query is now fully determined
 		query->complete = true;
@@ -826,7 +841,7 @@ void _FTL_reply(const unsigned short flags, const char *name, const struct all_a
 		   query->reply != QUERY_EXTERNAL_BLOCKED_NXRA)
 		{
 			// Save reply type and update individual reply counters
-			save_reply_type(flags, query, response);
+			save_reply_type(flags, addr, query, response);
 
 			// Detect if returned IP indicates that this query was blocked
 			detect_blocked_IP(flags, answer, i);
@@ -844,7 +859,7 @@ void _FTL_reply(const unsigned short flags, const char *name, const struct all_a
 		// Hence, isExactMatch is always false
 
 		// Save reply type and update individual reply counters
-		save_reply_type(flags, query, response);
+		save_reply_type(flags, addr, query, response);
 	}
 	else if(isExactMatch && !query->complete)
 	{
@@ -1149,7 +1164,7 @@ void _FTL_cache(const unsigned int flags, const char *name, const struct all_add
 		}
 
 		// Save reply type and update individual reply counters
-		save_reply_type(flags, query, response);
+		save_reply_type(flags, addr, query, response);
 
 		// Hereby, this query is now fully determined
 		query->complete = true;
@@ -1167,7 +1182,7 @@ static void query_blocked(queriesData* query, domainsData* domain, clientsData* 
 	// Get response time
 	struct timeval response;
 	gettimeofday(&response, 0);
-	save_reply_type(blocking_flags, query, response);
+	save_reply_type(blocking_flags, NULL, query, response);
 
 	// Adjust counters
 	if(query->status == QUERY_UNKNOWN)
@@ -1376,7 +1391,7 @@ void _FTL_header_analysis(const unsigned char header4, const unsigned int rcode,
 	query_externally_blocked(queryID, QUERY_EXTERNAL_BLOCKED_NXRA);
 
 	// Store reply type as replied with NXDOMAIN
-	save_reply_type(F_NEG | F_NXDOMAIN, query, response);
+	save_reply_type(F_NEG | F_NXDOMAIN, NULL, query, response);
 
 	// Unlock shared memory
 	unlock_shm();
@@ -1399,7 +1414,8 @@ void print_flags(const unsigned int flags)
 	free(flagstr);
 }
 
-static void save_reply_type(const unsigned int flags, queriesData* query, const struct timeval response)
+static void save_reply_type(const unsigned int flags, const struct all_addr *addr,
+                            queriesData* query, const struct timeval response)
 {
 	// Iterate through possible values
 	if(flags & F_NEG)
@@ -1433,6 +1449,20 @@ static void save_reply_type(const unsigned int flags, queriesData* query, const 
 	{
 		// TXT query
 		query->reply = REPLY_RRNAME;
+	}
+	else if(flags & F_RCODE && addr != NULL)
+	{
+		const unsigned int rcode = addr->addr.rcode.rcode;
+		if(rcode == REFUSED)
+		{
+			// REFUSED query
+			query->reply = REPLY_REFUSED;
+		}
+		else if(rcode == SERVFAIL)
+		{
+			// SERVFAIL query
+			query->reply = REPLY_SERVFAIL;
+		}
 	}
 	else
 	{
