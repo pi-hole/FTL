@@ -90,26 +90,14 @@ bool gravityDB_open(void)
 
 static char* get_client_querystr(const char* table, const char* groups)
 {
-	// Build query string
+	// Build query string with group filtering
 	char *querystr = NULL;
-	if(groups != NULL)
+	if(asprintf(&querystr, "SELECT EXISTS(SELECT domain from %s WHERE domain = ? AND group_id IN (%s));", table, groups) < 1)
 	{
-		// Group filtering
-		if(asprintf(&querystr, "SELECT EXISTS(SELECT domain from %s WHERE domain = ? AND group_id IN (%s));", table, groups) < 1)
-		{
-			logg("get_client_querystr(%s, %s) - asprintf() error", table, groups);
-			return NULL;
-		}
+		logg("get_client_querystr(%s, %s) - asprintf() error", table, groups);
+		return NULL;
 	}
-	else
-	{
-		// No group filtering
-		if(asprintf(&querystr, "SELECT EXISTS(SELECT domain from %s WHERE domain = ?);", table) < 1)
-		{
-			logg("get_client_querystr(%s, %s) - asprintf() error", table, groups);
-			return NULL;
-		}
-	}
+
 	if(config.debug & DEBUG_DATABASE)
 		logg("get_client_querystr: %s", querystr);
 
@@ -161,10 +149,14 @@ static bool get_client_groupids(const clientsData* client, char **groups)
 		const char* result = (const char*)sqlite3_column_text(table_stmt, 0);
 		if(result != NULL)
 			*groups = strdup(result);
+		else
+			*groups = strdup("0");
 	}
 	else if(rc == SQLITE_DONE)
 	{
 		// Found no record for this client in the database
+		// This makes this client qualify for the special "all" group
+		*groups = strdup("0");
 	}
 	else
 	{
@@ -235,12 +227,8 @@ bool gravityDB_prepare_client_statements(clientsData* client)
 	}
 	free(querystr);
 
-	// Free groups string is allocated
-	if(groups != NULL)
-	{
-		free(groups);
-		groups = NULL;
-	}
+	// Free groups
+	free(groups);
 
 	return true;
 }
@@ -536,25 +524,11 @@ bool gravityDB_get_regex_client_groups(clientsData* client, const int numregex, 
 	if(!get_client_groupids(client, &groups))
 		return false;
 
-	if(groups != NULL)
+	// Group filtering
+	if(asprintf(&querystr, "SELECT id from %s WHERE group_id IN (%s);", table, groups) < 1)
 	{
-		// Group filtering
-		if(asprintf(&querystr, "SELECT id from %s WHERE group_id IN (%s);", table, groups) < 1)
-		{
-			logg("gravityDB_get_regex_client_groups(%s, %s) - asprintf() error", table, groups);
-			return false;
-		}
-	}
-	else
-	{
-		// No group filtering, enable all regex for this client
-		for(int i = 0; i < numregex; i++)
-			client->regex_enabled[type][i] = true;
-
-		if(config.debug & DEBUG_DATABASE)
-			logg("No group filtering, enable all regex for this client");
-
-		return true;
+		logg("gravityDB_get_regex_client_groups(%s, %s) - asprintf() error", table, groups);
+		return false;
 	}
 
 	// Prepare query
@@ -565,6 +539,7 @@ bool gravityDB_get_regex_client_groups(clientsData* client, const int numregex, 
 		sqlite3_finalize(query_stmt);
 		gravityDB_close();
 		free(querystr);
+		free(groups);
 		return false;
 	}
 
@@ -589,6 +564,7 @@ bool gravityDB_get_regex_client_groups(clientsData* client, const int numregex, 
 
 	// Free allocated memory and return result
 	free(querystr);
+	free(groups);
 
 	return true;
 }

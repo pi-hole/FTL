@@ -99,6 +99,18 @@
   [[ ${lines[0]} == "0.0.0.0" ]]
 }
 
+@test "Same domain is not blocked for client 1 ..." {
+  run bash -c "dig regex1.test.pi-hole.net @127.0.0.1 +short"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} != "0.0.0.0" ]]
+}
+
+@test "... or client 3" {
+  run bash -c "dig regex1.test.pi-hole.net -b 127.0.0.3  @127.0.0.1 +short"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} != "0.0.0.0" ]]
+}
+
 @test "Client 2: Unassociated blacklist match is not blocked" {
   run bash -c "dig blacklist-blocked.test.pi-hole.net -b 127.0.0.2 @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
@@ -147,19 +159,19 @@
   run bash -c 'echo ">stats >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[1]} == "domains_being_blocked 3" ]]
-  [[ ${lines[2]} == "dns_queries_today 20" ]]
+  [[ ${lines[2]} == "dns_queries_today 22" ]]
   [[ ${lines[3]} == "ads_blocked_today 6" ]]
-  [[ ${lines[4]} == "ads_percentage_today 30.000000" ]]
+  [[ ${lines[4]} == "ads_percentage_today 27.272728" ]]
   [[ ${lines[5]} == "unique_domains 12" ]]
   [[ ${lines[6]} == "queries_forwarded 9" ]]
-  [[ ${lines[7]} == "queries_cached 5" ]]
+  [[ ${lines[7]} == "queries_cached 7" ]]
   [[ ${lines[8]} == "clients_ever_seen 3" ]]
   [[ ${lines[9]} == "unique_clients 3" ]]
-  [[ ${lines[10]} == "dns_queries_all_types 20" ]]
+  [[ ${lines[10]} == "dns_queries_all_types 22" ]]
   [[ ${lines[11]} == "reply_NODATA 0" ]]
   [[ ${lines[12]} == "reply_NXDOMAIN 0" ]]
   [[ ${lines[13]} == "reply_CNAME 0" ]]
-  [[ ${lines[14]} == "reply_IP 18" ]]
+  [[ ${lines[14]} == "reply_IP 20" ]]
   [[ ${lines[15]} == "privacy_level 0" ]]
   [[ ${lines[16]} == "status enabled" ]]
   [[ ${lines[17]} == "" ]]
@@ -174,19 +186,19 @@
 @test "Top Clients" {
   run bash -c 'echo ">top-clients >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "0 14 127.0.0.1 "* ]]
-  [[ ${lines[2]} == "1 3 127.0.0.2 "* ]]
-  [[ ${lines[3]} == "2 3 127.0.0.3 "* ]]
+  [[ ${lines[1]} == "0 15 127.0.0.1 "* ]]
+  [[ ${lines[2]} == "1 4 127.0.0.3 "* ]]
+  [[ ${lines[3]} == "2 3 127.0.0.2 "* ]]
   [[ ${lines[4]} == "" ]]
 }
 
 @test "Top Domains" {
   run bash -c 'echo ">top-domains (20) >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
+  [[ "${lines[@]}" == *" 4 regex1.test.pi-hole.net"* ]]
   [[ "${lines[@]}" == *" 2 google.com"* ]]
   [[ "${lines[@]}" == *" 2 blacklist-blocked.test.pi-hole.net"* ]]
   [[ "${lines[@]}" == *" 2 discourse.pi-hole.net"* ]]
-  [[ "${lines[@]}" == *" 2 regex1.test.pi-hole.net"* ]]
   [[ "${lines[@]}" == *" 1 version.ftl"* ]]
   [[ "${lines[@]}" == *" 1 version.bind"* ]]
   [[ "${lines[@]}" == *" 1 whitelisted.test.pi-hole.net"* ]]
@@ -216,22 +228,22 @@
 @test "Forward Destinations" {
   run bash -c 'echo ">forward-dest >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "-2 30.00 blocklist blocklist" ]]
-  [[ ${lines[2]} == "-1 25.00 cache cache" ]]
-  [[ ${lines[3]} == "0 45.00 "* ]]
+  [[ ${lines[1]} == "-2 27.27 blocklist blocklist" ]]
+  [[ ${lines[2]} == "-1 31.82 cache cache" ]]
+  [[ ${lines[3]} == "0 40.91 "* ]]
   [[ ${lines[4]} == "" ]]
 }
 
 @test "Query Types" {
   run bash -c 'echo ">querytypes >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "A (IPv4): 85.00" ]]
-  [[ ${lines[2]} == "AAAA (IPv6): 5.00" ]]
+  [[ ${lines[1]} == "A (IPv4): 86.36" ]]
+  [[ ${lines[2]} == "AAAA (IPv6): 4.55" ]]
   [[ ${lines[3]} == "ANY: 0.00" ]]
   [[ ${lines[4]} == "SRV: 0.00" ]]
   [[ ${lines[5]} == "SOA: 0.00" ]]
   [[ ${lines[6]} == "PTR: 0.00" ]]
-  [[ ${lines[7]} == "TXT: 10.00" ]]
+  [[ ${lines[7]} == "TXT: 9.09" ]]
   [[ ${lines[8]} == "" ]]
 }
 
@@ -254,14 +266,16 @@
   [[ ${lines[11]} == *"A regex2.test.pi-hole.net "?*" 2 0 4"* ]]
   [[ ${lines[12]} == *"A whitelisted.test.pi-hole.net 127.0.0.2 1 0 4"* ]]
   [[ ${lines[13]} == *"A regex1.test.pi-hole.net 127.0.0.2 4 0 4"* ]]
-  [[ ${lines[14]} == *"A blacklist-blocked.test.pi-hole.net 127.0.0.2 2 0 4"* ]]
-  [[ ${lines[15]} == *"A blacklist-blocked.test.pi-hole.net 127.0.0.3 3 0 4"* ]]
-  [[ ${lines[16]} == *"A regex1.test.pi-hole.net 127.0.0.3 3 0 4"* ]]
-  [[ ${lines[17]} == *"A discourse.pi-hole.net 127.0.0.3 3 0 4"* ]]
-  [[ ${lines[18]} == *"A google.com "?*" 2 0 4"* ]]
-  [[ ${lines[19]} == *"AAAA google.com "?*" 2 0 4"* ]]
-  [[ ${lines[20]} == *"A ftl.pi-hole.net "?*" 2 0 4"* ]]
-  [[ ${lines[21]} == "" ]]
+  [[ ${lines[14]} == *"A regex1.test.pi-hole.net 127.0.0.1 3 0 4"* ]]
+  [[ ${lines[15]} == *"A regex1.test.pi-hole.net 127.0.0.3 3 0 4"* ]]
+  [[ ${lines[16]} == *"A blacklist-blocked.test.pi-hole.net 127.0.0.2 2 0 4"* ]]
+  [[ ${lines[17]} == *"A blacklist-blocked.test.pi-hole.net 127.0.0.3 3 0 4"* ]]
+  [[ ${lines[18]} == *"A regex1.test.pi-hole.net 127.0.0.3 3 0 4"* ]]
+  [[ ${lines[19]} == *"A discourse.pi-hole.net 127.0.0.3 3 0 4"* ]]
+  [[ ${lines[20]} == *"A google.com "?*" 2 0 4"* ]]
+  [[ ${lines[21]} == *"AAAA google.com "?*" 2 0 4"* ]]
+  [[ ${lines[22]} == *"A ftl.pi-hole.net "?*" 2 0 4"* ]]
+  [[ ${lines[23]} == "" ]]
 }
 
 @test "Get all queries (domain filtered)" {
@@ -292,10 +306,11 @@
   [[ ${lines[9]} == *"A regexa.test.pi-hole.net "?*" 2 0 4"* ]]
   [[ ${lines[10]} == *"A regex1.test.pi-hole.net "?*" 2 0 4"* ]]
   [[ ${lines[11]} == *"A regex2.test.pi-hole.net "?*" 2 0 4"* ]]
-  [[ ${lines[12]} == *"A google.com "?*" 2 0 4"* ]]
-  [[ ${lines[13]} == *"AAAA google.com "?*" 2 0 4"* ]]
-  [[ ${lines[14]} == *"A ftl.pi-hole.net "?*" 2 0 4"* ]]
-  [[ ${lines[15]} == "" ]]
+  [[ ${lines[12]} == *"A regex1.test.pi-hole.net "?*" 3 0 4"* ]]
+  [[ ${lines[13]} == *"A google.com "?*" 2 0 4"* ]]
+  [[ ${lines[14]} == *"AAAA google.com "?*" 2 0 4"* ]]
+  [[ ${lines[15]} == *"A ftl.pi-hole.net "?*" 2 0 4"* ]]
+  [[ ${lines[16]} == "" ]]
 }
 
 @test "Get all queries (client + number filtered)" {
