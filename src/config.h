@@ -33,6 +33,7 @@ typedef struct {
 	bool DBimport;
 	bool parse_arp_cache;
 	bool regex_ignorecase;
+	bool cname_inspection;
 } ConfigStruct;
 
 typedef struct {
