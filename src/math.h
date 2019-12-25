@@ -17,9 +17,9 @@
 #define SQRT_PRECISION 1e-5
 
 // Recursive function that returns square root
-double Square(double n, double i, double j);
+double Square(const double n, const double i, const double j) __attribute__((const));
   
 // Function to find the square root of n 
-double my_sqrt(double n); 
+double my_sqrt(const double n) __attribute__((const));
 
 #endif //MATH_H

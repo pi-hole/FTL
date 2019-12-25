@@ -11,8 +11,7 @@
 #include "math.h"
 
 // Recursive function that returns square root
-// of a number with precision upto 5 decimal places
-double Square(double n, double i, double j)
+__attribute__((const)) double Square(const double n, const double i, const double j)
 {
 	double mid = (i + j) / 2;
 	double mul = mid * mid;
@@ -31,8 +30,8 @@ double Square(double n, double i, double j)
 	}
 }
 
-	// Function to find the square root of n 
-double my_sqrt(double n) 
+// Function to find the square root of n
+__attribute__((const)) double my_sqrt(const double n)
 {
 	// While the square root is not found 
 	for(double i = 1.0; true; i++)
@@ -44,7 +43,7 @@ double my_sqrt(double n)
 		}
 		else if (i * i > n)
 		{
-			// Square root will lie in the interval i-1 and i
+			// Square root is in [i-1, i]
 			return Square(n, i - 1, i);
 		}
 		i++;
