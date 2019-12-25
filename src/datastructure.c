@@ -76,6 +76,10 @@ int findUpstreamID(const char * upstreamString, const bool count)
 	// to be done separately to be non-blocking
 	upstream->new = true;
 	upstream->namepos = 0; // 0 -> string with length zero
+	// Initialize response time values
+	upstream->rtime = 0u;
+	upstream->rtuncertainty = 0u;
+	upstream->responses = 0u;
 	// Increase counter by one
 	counters->upstreams++;
 

@@ -26,6 +26,8 @@
 #include "overTime.h"
 // enum REGEX
 #include "regex_r.h"
+// my_sqrt()
+#include "../math.h"
 
 /* qsort comparision function (count field), sort ASC
 static int __attribute__((pure)) cmpasc(const void *a, const void *b)
@@ -471,6 +473,7 @@ int api_stats_upstreams(struct mg_connection *conn)
 	{
 		int count = 0;
 		const char* ip, *name;
+		double responsetime = 0.0, uncertainty = 0.0;
 
 		if(i == -2)
 		{
@@ -503,6 +506,20 @@ int api_stats_upstreams(struct mg_connection *conn)
 
 			// Get percentage
 			count = forward->count;
+
+			// Compute average response time and uncertainty (unit: seconds)
+			if(forward->responses > 0)
+			{
+				// Wehave to multiply runcertainty by 1e-4 to get seconds
+				responsetime = 1e-4 * forward->rtime / forward->responses;
+			}
+			if(forward->responses > 1)
+			{
+				// The actual value will be somewhere in a neighborhood around the mean value.
+				// This neighborhood of values is the uncertainty in the mean.
+				// Wehave to multiply runcertainty by (1e-4)^2 to get seconds
+				uncertainty = my_sqrt(1e-8 * forward->rtuncertainty / forward->responses / (forward->responses-1));
+			}
 		}
 
 		// Send data:
@@ -514,6 +531,8 @@ int api_stats_upstreams(struct mg_connection *conn)
 			JSON_OBJ_REF_STR(upstream, "name", name);
 			JSON_OBJ_REF_STR(upstream, "ip", ip);
 			JSON_OBJ_ADD_NUMBER(upstream, "count", count);
+			JSON_OBJ_ADD_NUMBER(upstream, "responsetime", responsetime);
+			JSON_OBJ_ADD_NUMBER(upstream, "uncertainty", uncertainty);
 			JSON_ARRAY_ADD_ITEM(upstreams, upstream);
 		}
 	}

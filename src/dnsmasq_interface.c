@@ -961,6 +961,14 @@ void _FTL_reply(const unsigned short flags, const char *name, const union all_ad
 	}
 	else if((flags & F_FORWARD) && isExactMatch)
 	{
+		// Save query response time
+		upstreamsData *upstream = getUpstream(query->upstreamID, true);
+		upstream->responses++;
+		unsigned long rtime = converttimeval(response) - query->response;
+		upstream->rtime += rtime;
+		unsigned long mean = upstream->rtime / upstream->responses;
+		upstream->rtuncertainty += (mean - rtime)*(mean - rtime);
+
 		// Only proceed if query is not already known
 		// to have been blocked by Quad9
 		if(query->reply != QUERY_EXTERNAL_BLOCKED_IP &&

@@ -47,6 +47,9 @@ typedef struct {
 typedef struct {
 	unsigned char magic;
 	bool new;
+	unsigned long rtime;
+	unsigned long rtuncertainty;
+	unsigned int responses;
 	int count;
 	int failed;
 	size_t ippos;
