@@ -559,6 +559,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	query->id = id;
 	query->complete = false;
 	query->response = converttimeval(request);
+	query->forwardresponse = 0u;
 	// Initialize reply type
 	query->reply = REPLY_UNKNOWN;
 	// Store DNSSEC result for this domain
@@ -794,6 +795,10 @@ void _FTL_forwarded(const unsigned int flags, const char *name, const union all_
 
 	// Update counter for forwarded queries
 	counters->forwarded++;
+
+	struct timeval request;
+	gettimeofday(&request, 0);
+	query->forwardresponse = converttimeval(request);
 
 	// Release allocated memory
 	free(upstreamIP);
