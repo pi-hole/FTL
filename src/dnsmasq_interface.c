@@ -1531,6 +1531,7 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 		if(database && chown(FTLfiles.FTL_db, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
 			logg("Setting ownership (%i:%i) of %s failed: %s (%i)",
 			     ent_pw->pw_uid, ent_pw->pw_gid, FTLfiles.FTL_db, strerror(errno), errno);
+		chown_all_shmem(ent_pw);
 	}
 }
 

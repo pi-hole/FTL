@@ -74,4 +74,7 @@ void newOverTimeClient(const int clientID);
  */
 void addOverTimeClientSlot(void);
 
+// Change ownership of shared memory objects
+void chown_all_shmem(struct passwd *ent_pw);
+
 #endif //SHARED_MEMORY_SERVER_H
