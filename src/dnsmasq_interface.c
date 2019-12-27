@@ -148,6 +148,8 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 				logg("%s is known as not to be blocked (whitelisted)", domainstr);
 			}
 
+			query->whitelisted = true;
+
 			return false;
 			break;
 
