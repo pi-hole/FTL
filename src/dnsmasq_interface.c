@@ -138,6 +138,18 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			return true;
 			break;
 
+		case WHITELISTED:
+			// Known as whitelisted, we
+			// return this result early, skipping
+			// all the lengthy tests below
+			if(config.debug & DEBUG_QUERIES)
+			{
+				logg("Domain is known as not to be blocked (whitelisted)");
+			}
+
+			return false;
+			break;
+
 		case NOT_BLOCKED:
 			// Known as not blocked, we
 			// return this result early, skipping
@@ -151,16 +163,17 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			break;
 	}
 
-	// We check the user blacklist first as it is typically smaller than gravity
-	// If a domain is on the exact blacklist or gravity but also on the whitelist,
-	// we do NOT block it.
-	// in_whitelist() checks both the exact and the regex whitelist
+	// Check whitelist (exact + regex) for match
+	const char *domainString = getstr(domain->domainpos);
+	bool whitelisted = in_whitelist(domainString, client);
+
+	// Check domains against blacklist and gravity (blacklist is checked first)
+	// Skipped when the domain is whitelisted
 	bool blockDomain = false, black = false, gravity = false;
 	unsigned char new_status = QUERY_UNKNOWN;
-	const char *domainString = getstr(domain->domainpos);
-	if(((black = in_blacklist(domainString, client)) ||
-	    (gravity = in_gravity(domainString, client))) &&
-	   !in_whitelist(domainString, client))
+	if(!whitelisted &&
+	    ((black = in_blacklist(domainString, client)) ||
+	     (gravity = in_gravity(domainString, client)) ))
 	{
 		blockDomain = true;
 		if(black)
@@ -178,15 +191,10 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 		}
 	}
 
-	// If a regex filter matched, we additionally compare the domain
-	// against all known whitelisted domains to possibly prevent blocking
-	// of a specific domain. The logic herein is:
-	// - Walk regex only if not already exactly matched above
-	// - If matched, then compare against whitelist
-	// - If in whitelist, negate matched so this function returns: not-to-be-blocked
-	if(!blockDomain &&
-	   match_regex(domainString, client, REGEX_BLACKLIST) &&
-	   !in_whitelist(domainString, client))
+	// Check domain against regex filters
+	// Skipped when the domain is whitelisted or blocked by blacklist or gravity
+	if(!whitelisted && !blockDomain &&
+	   match_regex(domainString, client, REGEX_BLACKLIST))
 	{
 		// Mark domain as regex matched for this one client
 		domain->clientstatus->set(domain->clientstatus, clientID, REGEX_BLOCKED);
@@ -213,7 +221,9 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 		// Explicitly mark as not blocked to skip the entire
 		// gravity/blacklist chain when the same client asks
 		// for the same domain in the future
-		domain->clientstatus->set(domain->clientstatus, clientID, NOT_BLOCKED);
+		// Explicitly store domain as whitelisted if this is the case
+		const unsigned char status = whitelisted ? WHITELISTED : NOT_BLOCKED;
+		domain->clientstatus->set(domain->clientstatus, clientID, status);
 	}
 
 	return blockDomain;
