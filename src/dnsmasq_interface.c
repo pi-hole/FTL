@@ -78,6 +78,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 	// Skip the entire chain of tests if we already know the answer for this
 	// particular client
 	unsigned char blockingStatus = domain->clientstatus->get(domain->clientstatus, clientID);
+	const char* domainstr = getstr(domain->domainpos);
 	switch(blockingStatus)
 	{
 		case UNKNOWN_BLOCKED:
@@ -85,7 +86,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			// We have to go through all the tests below
 			if(config.debug & DEBUG_QUERIES)
 			{
-				logg("Domain is not known");
+				logg("%s is not known", domainstr);
 			}
 
 			break;
@@ -100,7 +101,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 
 			if(config.debug & DEBUG_QUERIES)
 			{
-				logg("Domain is known as %s", *blockingreason);
+				logg("%s is known as %s", domainstr, *blockingreason);
 			}
 
 			return true;
@@ -116,7 +117,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 
 			if(config.debug & DEBUG_QUERIES)
 			{
-				logg("Domain is known as %s", *blockingreason);
+				logg("%s is known as %s", domainstr, *blockingreason);
 			}
 
 			return true;
@@ -132,7 +133,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 
 			if(config.debug & DEBUG_QUERIES)
 			{
-				logg("Domain is known as %s", *blockingreason);
+				logg("%s is known as %s", domainstr, *blockingreason);
 			}
 
 			return true;
@@ -144,7 +145,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			// all the lengthy tests below
 			if(config.debug & DEBUG_QUERIES)
 			{
-				logg("Domain is known as not to be blocked (whitelisted)");
+				logg("%s is known as not to be blocked (whitelisted)", domainstr);
 			}
 
 			return false;
@@ -156,22 +157,32 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			// all the lengthy tests below
 			if(config.debug & DEBUG_QUERIES)
 			{
-				logg("Domain is known as not to be blocked");
+				logg("%s is known as not to be blocked", domainstr);
 			}
 
 			return false;
 			break;
 	}
 
+	// Skip all checks and continue if we hit already at least one whitelist in the chain
+	if(query->whitelisted)
+	{
+		if(config.debug & DEBUG_QUERIES)
+		{
+			logg("Query is permitted as at least one whitelist entry matched");
+		}
+		return false;
+	}
+
 	// Check whitelist (exact + regex) for match
 	const char *domainString = getstr(domain->domainpos);
-	bool whitelisted = in_whitelist(domainString, client);
+	query->whitelisted = in_whitelist(domainString, client);
 
 	// Check domains against blacklist and gravity (blacklist is checked first)
 	// Skipped when the domain is whitelisted
 	bool blockDomain = false, black = false, gravity = false;
 	unsigned char new_status = QUERY_UNKNOWN;
-	if(!whitelisted &&
+	if(!query->whitelisted &&
 	    ((black = in_blacklist(domainString, client)) ||
 	     (gravity = in_gravity(domainString, client)) ))
 	{
@@ -193,7 +204,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 
 	// Check domain against regex filters
 	// Skipped when the domain is whitelisted or blocked by blacklist or gravity
-	if(!whitelisted && !blockDomain &&
+	if(!query->whitelisted && !blockDomain &&
 	   match_regex(domainString, client, REGEX_BLACKLIST))
 	{
 		// Mark domain as regex matched for this one client
@@ -222,7 +233,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 		// gravity/blacklist chain when the same client asks
 		// for the same domain in the future
 		// Explicitly store domain as whitelisted if this is the case
-		const unsigned char status = whitelisted ? WHITELISTED : NOT_BLOCKED;
+		const unsigned char status = query->whitelisted ? WHITELISTED : NOT_BLOCKED;
 		domain->clientstatus->set(domain->clientstatus, clientID, status);
 	}
 
