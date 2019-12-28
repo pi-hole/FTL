@@ -60,6 +60,44 @@ static unsigned int local_shm_counter = 0;
 
 static size_t get_optimal_object_size(const size_t objsize, const size_t minsize);
 
+// chown_shmem() changes the file ownership of a given shared memory object
+static bool chown_shmem(SharedMemory *sharedMemory, struct passwd *ent_pw)
+{
+	// Open shared memory object
+	const int fd = shm_open(sharedMemory->name, O_RDWR, S_IRUSR | S_IWUSR);
+	if(fd == -1)
+	{
+		logg("FATAL: chown_shmem(): Failed to open shared memory object \"%s\": %s",
+			sharedMemory->name, strerror(errno));
+		exit(EXIT_FAILURE);
+	}
+	if(fchown(fd, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
+	{
+		logg("WARNING: chown_shmem(%d, %d, %d): failed for %s: %s (%d)",
+		     fd, ent_pw->pw_uid, ent_pw->pw_gid, sharedMemory->name,
+		     strerror(errno), errno);
+		return false;
+	}
+	logg("Changing %s (%d) to %d:%d", sharedMemory->name, fd, ent_pw->pw_uid, ent_pw->pw_gid);
+	// Close shared memory object file descriptor as it is no longer
+	// needed after having called ftruncate()
+	close(fd);
+	return true;
+}
+
+void chown_all_shmem(struct passwd *ent_pw)
+{
+	chown_shmem(&shm_lock, ent_pw);
+	chown_shmem(&shm_strings, ent_pw);
+	chown_shmem(&shm_counters, ent_pw);
+	chown_shmem(&shm_domains, ent_pw);
+	chown_shmem(&shm_clients, ent_pw);
+	chown_shmem(&shm_queries, ent_pw);
+	chown_shmem(&shm_forwarded, ent_pw);
+	chown_shmem(&shm_overTime, ent_pw);
+	chown_shmem(&shm_settings, ent_pw);
+}
+
 size_t addstr(const char *str)
 {
 	if(str == NULL)
