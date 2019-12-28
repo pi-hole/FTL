@@ -298,6 +298,21 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 	const char *blockingreason = NULL;
 	bool block = FTL_check_blocking(queryID, domainID, clientID, &blockingreason);
 
+	// If we find during a CNAME inspection that we want to block the entire chain,
+	// the originally queried domain itself was not counted as blocked (but as
+	// (permitted). Later in the chain, when we find that this is a bad guy, we
+	// short-circuit it. We need to correct the domain counter of the domain at the
+	// head of the chain, otherwise, the data for the top lists is misleading.
+	// For this, we go back the entire path and change the original request to blocked
+	// by increasing the blocked count of this domain by one. Fortunately, each CNAME
+	// path can easily be tracked back to the original head in FTL's data so we do not
+	// need to search it. This makes the change able to happen without causing any delay.
+	if(block)
+	{
+		domainsData* head_domain = getDomain(query->domainID, true);
+		head_domain->blockedcount++;
+	}
+
 	if(config.debug & DEBUG_QUERIES)
 	{
 		if(src == NULL)
