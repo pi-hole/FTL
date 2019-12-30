@@ -18,7 +18,7 @@
 #include "datastructure.h"
 
 /// The version of shared memory used
-#define SHARED_MEMORY_VERSION 8
+#define SHARED_MEMORY_VERSION 9
 
 /// The name of the shared memory. Use this when connecting to the shared memory.
 #define SHARED_LOCK_NAME "/FTL-lock"
@@ -30,6 +30,7 @@
 #define SHARED_FORWARDED_NAME "/FTL-forwarded"
 #define SHARED_OVERTIME_NAME "/FTL-overTime"
 #define SHARED_SETTINGS_NAME "/FTL-settings"
+#define SHARED_DNS_CACHE "/FTL-dns-cache"
 
 /// The pointer in shared memory to the shared string buffer
 static SharedMemory shm_lock = { 0 };
@@ -41,12 +42,14 @@ static SharedMemory shm_queries = { 0 };
 static SharedMemory shm_forwarded = { 0 };
 static SharedMemory shm_overTime = { 0 };
 static SharedMemory shm_settings = { 0 };
+static SharedMemory shm_dns_cache = { 0 };
 
 // Variable size array structs
 static queriesData *queries = NULL;
 static clientsData *clients = NULL;
 static domainsData *domains = NULL;
 static forwardedData *forwarded = NULL;
+static DNSCacheData *dns_cache = NULL;
 
 typedef struct {
 	pthread_mutex_t lock;
@@ -96,6 +99,7 @@ void chown_all_shmem(struct passwd *ent_pw)
 	chown_shmem(&shm_forwarded, ent_pw);
 	chown_shmem(&shm_overTime, ent_pw);
 	chown_shmem(&shm_settings, ent_pw);
+	chown_shmem(&shm_dns_cache, ent_pw);
 }
 
 size_t addstr(const char *str)
@@ -185,12 +189,19 @@ static void remap_shm(void)
 	// Remap shared object pointers which might have changed
 	realloc_shm(&shm_queries, counters->queries_MAX*sizeof(queriesData), false);
 	queries = (queriesData*)shm_queries.ptr;
+
 	realloc_shm(&shm_domains, counters->domains_MAX*sizeof(domainsData), false);
 	domains = (domainsData*)shm_domains.ptr;
+
 	realloc_shm(&shm_clients, counters->clients_MAX*sizeof(clientsData), false);
 	clients = (clientsData*)shm_clients.ptr;
+
 	realloc_shm(&shm_forwarded, counters->forwarded_MAX*sizeof(forwardedData), false);
 	forwarded = (forwardedData*)shm_forwarded.ptr;
+
+	realloc_shm(&shm_dns_cache, counters->dns_cache_MAX*sizeof(DNSCacheData), false);
+	dns_cache = (DNSCacheData*)shm_dns_cache.ptr;
+
 	realloc_shm(&shm_strings, counters->strings_MAX, false);
 	// strings are not exposed by a global pointer
 
@@ -310,6 +321,13 @@ bool init_shmem(void)
 	overTime = (overTimeData*)shm_overTime.ptr;
 	initOverTime();
 
+	/****************************** shared DNS cache struct ******************************/
+	size = get_optimal_object_size(sizeof(DNSCacheData), 1);
+	// Try to create shared memory object
+	shm_dns_cache = create_shm(SHARED_DNS_CACHE, size*sizeof(DNSCacheData));
+	dns_cache = (DNSCacheData*)shm_dns_cache.ptr;
+	counters->dns_cache_MAX = size;
+
 	return true;
 }
 
@@ -327,6 +345,7 @@ void destroy_shmem(void)
 	delete_shm(&shm_forwarded);
 	delete_shm(&shm_overTime);
 	delete_shm(&shm_settings);
+	delete_shm(&shm_dns_cache);
 }
 
 SharedMemory create_shm(const char *name, const size_t size)
@@ -424,8 +443,14 @@ void *enlarge_shmem_struct(const char type)
 			sizeofobj = sizeof(forwardedData);
 			counter = &counters->forwarded_MAX;
 			break;
+		case DNS_CACHE:
+			sharedMemory = &shm_dns_cache;
+			allocation_step = get_optimal_object_size(sizeof(DNSCacheData), 1);
+			sizeofobj = sizeof(DNSCacheData);
+			counter = &counters->dns_cache_MAX;
+			break;
 		default:
-			logg("Invalid argument in enlarge_shmem_struct(): %i", type);
+			logg("Invalid argument in enlarge_shmem_struct(%i)", type);
 			return 0;
 	}
 
@@ -623,6 +648,18 @@ void memory_check(int which)
 				}
 			}
 		break;
+		case DNS_CACHE:
+			if(counters->dns_cache_size >= counters->dns_cache_MAX-1)
+			{
+				// Have to reallocate shared memory
+				dns_cache = enlarge_shmem_struct(DNS_CACHE);
+				if(dns_cache == NULL)
+				{
+					logg("FATAL: Memory allocation failed! Exiting");
+					exit(EXIT_FAILURE);
+				}
+			}
+		break;
 		default:
 			/* That cannot happen */
 			logg("Fatal error in memory_check(%i)", which);
@@ -689,6 +726,15 @@ forwardedData* _getForward(int forwardID, bool checkMagic, int line, const char 
 	if(check_range(forwardID, counters->forwarded_MAX, "forward", line, function, file) &&
 	   check_magic(forwardID, checkMagic, forwarded[forwardID].magic, "forward", line, function, file))
 		return &forwarded[forwardID];
+	else
+		return NULL;
+}
+
+DNSCacheData* _getDNSCache(int cacheID, bool checkMagic, int line, const char * function, const char * file)
+{
+	if(check_range(cacheID, counters->dns_cache_MAX, "dns_cache", line, function, file) &&
+	   check_magic(cacheID, checkMagic, dns_cache[cacheID].magic, "dns_cache", line, function, file))
+		return &dns_cache[cacheID];
 	else
 		return NULL;
 }

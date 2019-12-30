@@ -127,8 +127,6 @@ int findDomainID(const char *domainString, const bool count)
 	domain->blockedcount = 0;
 	// Store domain name - no need to check for NULL here as it doesn't harm
 	domain->domainpos = addstr(domainString);
-	// Storage for individual client blocking status
-	domain->clientstatus = new_ucharvec(counters->clients);
 	// Increase counter by one
 	counters->domains++;
 
@@ -202,13 +200,6 @@ int findClientID(const char *clientIP, const bool count)
 	for(int i = 0; i < OVERTIME_SLOTS; i++)
 		client->overTime[i] = 0;
 
-	// Initialize client-specific domain data
-	for(int domainID = 0; domainID < counters->domains; domainID++)
-	{
-		domainsData *domain = getDomain(domainID, true);
-		domain->clientstatus->append(domain->clientstatus, UNKNOWN_BLOCKED);
-	}
-
 	// Allocate regex substructure
 	allocate_regex_client_enabled(client);
 
@@ -216,6 +207,52 @@ int findClientID(const char *clientIP, const bool count)
 	counters->clients++;
 
 	return clientID;
+}
+
+int findCacheID(int domainID, int clientID)
+{
+	// Compare content of client against known client IP addresses
+	for(int cacheID = 0; cacheID < counters->dns_cache_size; cacheID++)
+	{
+		// Get cache pointer
+		DNSCacheData* dns_cache = getDNSCache(cacheID, true);
+
+		// Check if the returned pointer is valid before trying to access it
+		if(dns_cache == NULL)
+			continue;
+
+		if(dns_cache->domainID == domainID &&
+		   dns_cache->clientID == clientID)
+		{
+			return cacheID;
+		}
+	}
+
+	// Get ID of new cache entry
+	const int cacheID = counters->dns_cache_size;
+
+	// Check struct size
+	memory_check(DNS_CACHE);
+
+	// Get client pointer
+	DNSCacheData* dns_cache = getDNSCache(cacheID, false);
+
+	if(dns_cache == NULL)
+	{
+		logg("ERROR: Encountered serious memory error in findCacheID()");
+		return -1;
+	}
+
+	// Initialize cache entry
+	dns_cache->magic = MAGICBYTE;
+	dns_cache->blocking_status = UNKNOWN_BLOCKED;
+	dns_cache->domainID = domainID;
+	dns_cache->clientID = clientID;
+
+	// Increase counter by one
+	counters->dns_cache_size++;
+
+	return cacheID;
 }
 
 bool isValidIPv4(const char *addr)
@@ -304,12 +341,13 @@ void FTL_reset_per_client_domain_data(void)
 		if(domain == NULL)
 			continue;
 
-		for(int clientID = 0; clientID < counters->clients; clientID++)
+		for(int cacheID = 0; cacheID < counters->dns_cache_size; cacheID++)
 		{
 			// Reset all blocking yes/no fields for all domains and clients
 			// This forces a reprocessing of all available filters for any
 			// given domain and client the next time they are seen
-			domain->clientstatus->set(domain->clientstatus, clientID, UNKNOWN_BLOCKED);
+			DNSCacheData *dns_cache = getDNSCache(cacheID, true);
+			dns_cache->blocking_status = UNKNOWN_BLOCKED;
 		}
 	}
 }

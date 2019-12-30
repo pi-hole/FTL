@@ -1306,7 +1306,9 @@ void getDomainDetails(const char *client_message, const int *sock)
 					continue;
 				}
 				const char *str = "N/A";
-				switch(domain->clientstatus->get(domain->clientstatus, clientID))
+				unsigned int cacheID = findCacheID(domainID, clientID);
+				DNSCacheData *dns_cache = getDNSCache(cacheID, true);
+				switch(dns_cache->blocking_status)
 				{
 					case UNKNOWN_BLOCKED:
 						str = "unknown";
