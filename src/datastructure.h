@@ -48,23 +48,23 @@ typedef struct {
 
 typedef struct {
 	unsigned char magic;
-	size_t ippos;
-	size_t namepos;
+	bool new;
 	int count;
 	int failed;
-	bool new;
+	size_t ippos;
+	size_t namepos;
 } forwardedData;
 
 typedef struct {
 	unsigned char magic;
-	size_t ippos;
-	size_t namepos;
-	time_t lastQuery;
+	bool new;
 	int count;
 	int blockedcount;
 	int overTime[OVERTIME_SLOTS];
 	unsigned int numQueriesARP;
-	bool new;
+	size_t ippos;
+	size_t namepos;
+	time_t lastQuery;
 	sqlite3_stmt* whitelist_stmt;
 	sqlite3_stmt* gravity_stmt;
 	sqlite3_stmt* blacklist_stmt;
@@ -75,7 +75,6 @@ typedef struct {
 	size_t domainpos;
 	int count;
 	int blockedcount;
-	unsigned int cache_idx;
 } domainsData;
 
 typedef struct {
