@@ -25,11 +25,11 @@ int gravityDB_count(unsigned char list);
 bool in_auditlist(const char *domain);
 
 bool in_gravity(const char *domain, clientsData* client);
-bool in_whitelist(const char *domain, clientsData* client);
+bool in_whitelist(const char *domain, clientsData* client, const int clientID);
 bool in_blacklist(const char *domain, clientsData* client);
 
 bool gravityDB_get_regex_client_groups(clientsData* client, const int numregex, const int *regexid,
-                                       const unsigned char type, const char* table);
+                                       const unsigned char type, const char* table, const int clientID);
 
 
 #endif //GRAVITY_H

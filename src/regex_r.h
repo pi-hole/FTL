@@ -13,11 +13,11 @@
 // clientsData type
 #include "datastructure.h"
 
-bool match_regex(const char *input, const clientsData *client, const unsigned char regexid);
-void allocate_regex_client_enabled(clientsData *client);
+
+bool match_regex(const char *input, const int clientID, const unsigned char regexid);
+void allocate_regex_client_enabled(clientsData *client, const int clientID);
 void read_regex_from_database(void);
 
-enum { REGEX_BLACKLIST, REGEX_WHITELIST };
 // Blocking status constants used by the domain->clientstatus vector
 // We explicitly force UNKNOWN_BLOCKED to zero on all platforms as this is the
 // default value set initially with calloc

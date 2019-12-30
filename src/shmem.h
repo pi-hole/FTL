@@ -77,4 +77,10 @@ void addOverTimeClientSlot(void);
 // Change ownership of shared memory objects
 void chown_all_shmem(struct passwd *ent_pw);
 
+// Per-client regex buffer storing whether or not a specific regex is enabled for a particular client
+void add_per_client_regex(unsigned int clientID);
+void reset_per_client_regex(const int clientID);
+bool get_per_client_regex(const int clientID, const int regexID);
+void set_per_client_regex(const int clientID, const int regexID, const bool value);
+
 #endif //SHARED_MEMORY_SERVER_H

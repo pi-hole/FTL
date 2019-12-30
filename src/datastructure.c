@@ -200,11 +200,11 @@ int findClientID(const char *clientIP, const bool count)
 	for(int i = 0; i < OVERTIME_SLOTS; i++)
 		client->overTime[i] = 0;
 
-	// Allocate regex substructure
-	allocate_regex_client_enabled(client);
-
 	// Increase counter by one
 	counters->clients++;
+
+	// Allocate regex substructure
+	allocate_regex_client_enabled(client, clientID);
 
 	return clientID;
 }

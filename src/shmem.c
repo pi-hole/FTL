@@ -31,6 +31,7 @@
 #define SHARED_OVERTIME_NAME "/FTL-overTime"
 #define SHARED_SETTINGS_NAME "/FTL-settings"
 #define SHARED_DNS_CACHE "/FTL-dns-cache"
+#define SHARED_PER_CLIENT_REGEX "/FTL-per-client-regex"
 
 /// The pointer in shared memory to the shared string buffer
 static SharedMemory shm_lock = { 0 };
@@ -43,6 +44,7 @@ static SharedMemory shm_forwarded = { 0 };
 static SharedMemory shm_overTime = { 0 };
 static SharedMemory shm_settings = { 0 };
 static SharedMemory shm_dns_cache = { 0 };
+static SharedMemory shm_per_client_regex = { 0 };
 
 // Variable size array structs
 static queriesData *queries = NULL;
@@ -100,6 +102,7 @@ void chown_all_shmem(struct passwd *ent_pw)
 	chown_shmem(&shm_overTime, ent_pw);
 	chown_shmem(&shm_settings, ent_pw);
 	chown_shmem(&shm_dns_cache, ent_pw);
+	chown_shmem(&shm_per_client_regex, ent_pw);
 }
 
 size_t addstr(const char *str)
@@ -328,6 +331,11 @@ bool init_shmem(void)
 	dns_cache = (DNSCacheData*)shm_dns_cache.ptr;
 	counters->dns_cache_MAX = size;
 
+	/****************************** shared per-client regex buffer ******************************/
+	size = get_optimal_object_size(1, 2);
+	// Try to create shared memory object
+	shm_per_client_regex = create_shm(SHARED_PER_CLIENT_REGEX, size);
+
 	return true;
 }
 
@@ -346,6 +354,7 @@ void destroy_shmem(void)
 	delete_shm(&shm_overTime);
 	delete_shm(&shm_settings);
 	delete_shm(&shm_dns_cache);
+	delete_shm(&shm_per_client_regex);
 }
 
 SharedMemory create_shm(const char *name, const size_t size)
@@ -666,6 +675,60 @@ void memory_check(int which)
 			exit(EXIT_FAILURE);
 		break;
 	}
+}
+
+void reset_per_client_regex(const int clientID)
+{
+	const unsigned int num_regex_tot = counters->num_regex[REGEX_BLACKLIST] +
+	                                   counters->num_regex[REGEX_WHITELIST];
+	for(unsigned int i = 0u; i < num_regex_tot; i++)
+	{
+		// Zero-initialize/reset (= false) all regex (white + black)
+		set_per_client_regex(clientID, i, false);
+	}
+}
+
+void add_per_client_regex(unsigned int clientID)
+{
+	const unsigned int num_regex_tot = counters->num_regex[REGEX_BLACKLIST] +
+	                                   counters->num_regex[REGEX_WHITELIST];
+	const size_t size = counters->clients * num_regex_tot;
+	if(size > shm_per_client_regex.size &&
+	   realloc_shm(&shm_per_client_regex, size, true))
+	{
+		reset_per_client_regex(clientID);
+	}
+}
+
+bool get_per_client_regex(const int clientID, const int regexID)
+{
+	const unsigned int num_regex_tot = counters->num_regex[REGEX_BLACKLIST] +
+	                                   counters->num_regex[REGEX_WHITELIST];
+	const unsigned int id = clientID * num_regex_tot + regexID;
+	const unsigned int maxval = counters->clients * num_regex_tot;
+	if(id > maxval)
+	{
+		logg("ERROR: get_per_client_regex(%d,%d): Out of bounds (%d > %d * %d == %d)!",
+		     clientID, regexID, id, counters->clients-1, num_regex_tot, maxval);
+		return false;
+	}
+	return ((bool*) shm_per_client_regex.ptr)[id];
+}
+
+void set_per_client_regex(const int clientID, const int regexID, const bool value)
+{
+	const unsigned int num_regex_tot = counters->num_regex[REGEX_BLACKLIST] +
+	                                   counters->num_regex[REGEX_WHITELIST];
+	const unsigned int id = clientID * num_regex_tot + regexID;
+	const unsigned int maxval = counters->clients * num_regex_tot;
+	if(id > maxval)
+	{
+		logg("ERROR: set_per_client_regex(%d,%d,%s): Out of bounds (%d > %d * %d == %d)!",
+		     clientID, regexID, value ? "true" : "false",
+		     id, counters->clients-1, num_regex_tot, maxval);
+		return;
+	}
+	((bool*) shm_per_client_regex.ptr)[id] = value;
 }
 
 static inline bool check_range(int ID, int MAXID, const char* type, int line, const char * function, const char * file)
