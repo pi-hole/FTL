@@ -6,6 +6,8 @@ CREATE TABLE "group"
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	enabled BOOLEAN NOT NULL DEFAULT 1,
 	name TEXT NOT NULL,
+	date_added INTEGER NOT NULL DEFAULT (cast(strftime('%s', 'now') as int)),
+	date_modified INTEGER NOT NULL DEFAULT (cast(strftime('%s', 'now') as int)),
 	description TEXT
 );
 
@@ -13,6 +15,10 @@ INSERT OR REPLACE INTO "group" (id,enabled,name) VALUES (0,1,'Unassociated');
 CREATE TRIGGER tr_group_zero AFTER DELETE ON "group"
     BEGIN
       INSERT OR REPLACE INTO "group" (id,enabled,name) VALUES (0,1,'Unassociated');
+    END;
+CREATE TRIGGER tr_group_update AFTER UPDATE ON "group"
+    BEGIN
+      UPDATE "group" SET date_modified = (cast(strftime('%s', 'now') as int)) WHERE id = NEW.id;
     END;
 
 CREATE TABLE domainlist
@@ -85,6 +91,11 @@ CREATE TABLE client_by_group
 	group_id INTEGER NOT NULL REFERENCES "group" (id),
 	PRIMARY KEY (client_id, group_id)
 );
+
+CREATE TRIGGER tr_client_add AFTER INSERT ON client
+    BEGIN
+      INSERT INTO client_by_group (client_id, group_id) VALUES (NEW.id, 0);
+    END;
 
 CREATE TABLE domain_audit
 (
@@ -159,7 +170,7 @@ INSERT INTO gravity VALUES('whitelisted.test.pi-hole.net',1);
 INSERT INTO gravity VALUES('gravity-blocked.test.pi-hole.net',1);
 INSERT INTO gravity VALUES('discourse.pi-hole.net',1);
 
-INSERT INTO "group" VALUES(1,0,'Test group','A disabled test group');
+INSERT INTO "group" VALUES(1,0,'Test group',1559928803,1559928803,'A disabled test group');
 INSERT INTO domainlist VALUES(7,1,'blacklisted-group-disabled.com',1,1559928803,1559928803,'Entry disabled by a group');
 INSERT INTO domainlist_by_group VALUES(7,1);
 
@@ -168,15 +179,17 @@ INSERT INTO domain_audit VALUES(1,'google.com',1559928803);
 INSERT INTO client VALUES(1,"127.0.0.1");
 
 INSERT INTO client VALUES(2,"127.0.0.2");
-INSERT INTO "group" VALUES(2,1,"Second test group","A group associated with client 127.0.0.2");
+INSERT INTO "group" VALUES(2,1,"Second test group",1559928803,1559928803,"A group associated with client 127.0.0.2");
+DELETE FROM client_by_group WHERE client_id = 2 AND group_id = 0;
 INSERT INTO client_by_group VALUES(2,2);
 INSERT INTO adlist_by_group VALUES(1,2);
 INSERT INTO domainlist_by_group VALUES(6,2);
 
 INSERT INTO client VALUES(3,"127.0.0.3");
-INSERT INTO "group" VALUES(3,1,"Third test group","A group associated with client 127.0.0.3");
+INSERT INTO "group" VALUES(3,1,"Third test group",1559928803,1559928803,"A group associated with client 127.0.0.3");
+DELETE FROM client_by_group WHERE client_id = 3 AND group_id = 0;
 INSERT INTO client_by_group VALUES(3,3);
 
-INSERT INTO info VALUES("version","7");
+INSERT INTO info VALUES("version","9");
 
 COMMIT;
