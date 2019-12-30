@@ -126,7 +126,9 @@ static unsigned int search_servers(time_t now, union all_addr **addrpp, unsigned
       {
 	unsigned int sflag = serv->addr.sa.sa_family == AF_INET ? F_IPV4 : F_IPV6; 
 	*type = SERV_FOR_NODOTS;
-	if (serv->flags & SERV_NO_ADDR)
+	if ((serv->flags & SERV_NO_REBIND) && norebind)
+	  *norebind = 1;
+	else if (serv->flags & SERV_NO_ADDR)
 	  flags = F_NXDOMAIN;
 	else if (serv->flags & SERV_LITERAL_ADDRESS)
 	  { 
