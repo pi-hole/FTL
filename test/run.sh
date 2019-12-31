@@ -32,7 +32,7 @@ sqlite3 /etc/pihole/gravity.db < test/gravity.db.sql
 echo "BLOCKING_ENABLED=true" > /etc/pihole/setupVars.conf
 
 # Prepare pihole-FTL.conf
-echo "DEBUG_ALL=true\nRESOLVE_IPV4=no\nRESOLVE_IPV6=no" > /etc/pihole/pihole-FTL.conf
+echo -e "DEBUG_ALL=true\nRESOLVE_IPV4=no\nRESOLVE_IPV6=no" > /etc/pihole/pihole-FTL.conf
 
 # Prepare dnsmasq.conf
 echo -e "log-queries\nlog-facility=/var/log/pihole.log" > /etc/dnsmasq.conf
