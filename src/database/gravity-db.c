@@ -109,6 +109,7 @@ static bool get_client_groupids(const clientsData* client, char **groups)
 	// Get associated groups for this client (if defined)
 	char *querystr = NULL;
 	const char *ip = getstr(client->ippos);
+	*groups = NULL;
 
 	// Do not proceed when database is not available
 	if(!gravity_database_avail)
@@ -117,21 +118,75 @@ static bool get_client_groupids(const clientsData* client, char **groups)
 		return false;
 	}
 
+	if(config.debug & DEBUG_DATABASE)
+		logg("Querying gravity database for client %s", ip);
+
+	// Check if client is configured through the client table
+	if(asprintf(&querystr, "SELECT COUNT(*) FROM client WHERE ip = \'%s\';", ip) < 1)
+	{
+		logg("get_client_groupids() - asprintf() error 1");
+		return false;
+	}
+
+	// Prepare query
+	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &table_stmt, NULL);
+	if(rc != SQLITE_OK){
+		logg("get_client_groupids(%s) - SQL error prepare (%i): %s",
+		     querystr, rc, sqlite3_errmsg(gravity_db));
+		sqlite3_finalize(table_stmt);
+		gravityDB_close();
+		free(querystr);
+		return false;
+	}
+
+	// Perform query
+	rc = sqlite3_step(table_stmt);
+	if(rc == SQLITE_ROW)
+	{
+		// There is a record for this client in the database
+		const int result = sqlite3_column_int(table_stmt, 0);
+
+		// Found no record for this client in the database
+		// This makes this client qualify for the special "all" group
+		if(result == 0)
+			*groups = strdup("0");
+	}
+	else if(rc == SQLITE_DONE)
+	{
+		// Found no record for this client in the database
+		// This makes this client qualify for the special "all" group
+		*groups = strdup("0");
+	}
+	else
+	{
+		logg("get_client_groupids(%s) - SQL error step (%i): %s",
+		     querystr, rc, sqlite3_errmsg(gravity_db));
+		sqlite3_finalize(table_stmt);
+		gravityDB_close();
+		free(querystr);
+		return false;
+	}
+	// Finalize statement
+	gravityDB_finalizeTable();
+
+	if(*groups != NULL)
+	{
+		// The client is not configured through the client table, return early
+		return true;
+	}
+
 	// Build query string to get possible group associations for this particular client
 	// The SQL GROUP_CONCAT() function returns a string which is the concatenation of all
 	// non-NULL values of group_id separated by ','. The order of the concatenated elements
 	// is arbitrary, however, is of no relevance for your use case.
 	if(asprintf(&querystr, "SELECT GROUP_CONCAT(group_id) FROM client_by_group WHERE client_id = (SELECT id FROM client WHERE ip = \'%s\');", ip) < 1)
 	{
-		logg("get_client_groupids() - asprintf() error");
+		logg("get_client_groupids() - asprintf() error 2");
 		return false;
 	}
 
-	if(config.debug & DEBUG_DATABASE)
-		logg("Querying gravity database for client %s", ip);
-
 	// Prepare query
-	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &table_stmt, NULL);
+	rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &table_stmt, NULL);
 	if(rc != SQLITE_OK){
 		logg("get_client_groupids(%s) - SQL error prepare (%i): %s",
 		     querystr, rc, sqlite3_errmsg(gravity_db));
@@ -150,13 +205,13 @@ static bool get_client_groupids(const clientsData* client, char **groups)
 		if(result != NULL)
 			*groups = strdup(result);
 		else
-			*groups = strdup("0");
+			*groups = strdup("");
 	}
 	else if(rc == SQLITE_DONE)
 	{
 		// Found no record for this client in the database
-		// This makes this client qualify for the special "all" group
-		*groups = strdup("0");
+		// -> No associated groups
+		*groups = strdup("");
 	}
 	else
 	{
@@ -482,7 +537,7 @@ static bool domain_in_list(const char *domain, sqlite3_stmt* stmt, const char* l
 	return (result == 1);
 }
 
-inline bool in_whitelist(const char *domain, clientsData* client)
+inline bool in_whitelist(const char *domain, clientsData* client, const int clientID)
 {
 	if(client->whitelist_stmt == NULL)
 		gravityDB_prepare_client_statements(client);
@@ -493,7 +548,7 @@ inline bool in_whitelist(const char *domain, clientsData* client)
 	// optimization as the database lookup will most likely hit (a) more domains and (b)
 	// will be faster (given a sufficiently large number of regex whitelisting filters).
 	return domain_in_list(domain, client->whitelist_stmt, "whitelist") ||
-	       match_regex(domain, client, REGEX_WHITELIST);
+	       match_regex(domain, clientID, REGEX_WHITELIST);
 }
 
 inline bool in_gravity(const char *domain, clientsData* client)
@@ -517,7 +572,7 @@ bool in_auditlist(const char *domain)
 }
 
 bool gravityDB_get_regex_client_groups(clientsData* client, const int numregex, const int *regexid,
-                                       const unsigned char type, const char* table)
+                                       const unsigned char type, const char* table, const int clientID)
 {
 	char *querystr = NULL;
 	char *groups = NULL;
@@ -553,7 +608,10 @@ bool gravityDB_get_regex_client_groups(clientsData* client, const int numregex, 
 		{
 			if(regexid[i] == result)
 			{
-				client->regex_enabled[type][i] = true;
+				unsigned int regexID = i;
+				if(type == REGEX_WHITELIST)
+					regexID += counters->num_regex[REGEX_BLACKLIST];
+				set_per_client_regex(clientID, regexID, true);
 				break;
 			}
 		}

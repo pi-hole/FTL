@@ -37,6 +37,9 @@ typedef struct {
 	int reply_CNAME;
 	int reply_IP;
 	int reply_domain;
+	int dns_cache_size;
+	int dns_cache_MAX;
+	int num_regex[2];
 } countersStruct;
 
 extern countersStruct *counters;
