@@ -1111,7 +1111,7 @@ int main_dnsmasq (int argc, char **argv)
 #endif
 
    
-      /* must do this just before select(), when we know no
+      /* must do this just before do_poll(), when we know no
 	 more calls to my_syslog() can occur */
       set_log_writer();
       
@@ -1679,11 +1679,12 @@ static int set_dns_listeners(time_t now)
 #ifdef HAVE_TFTP
   int  tftp = 0;
   struct tftp_transfer *transfer;
-  for (transfer = daemon->tftp_trans; transfer; transfer = transfer->next)
-    {
-      tftp++;
-      poll_listen(transfer->sockfd, POLLIN);
-    }
+  if (!option_bool(OPT_SINGLE_PORT))
+    for (transfer = daemon->tftp_trans; transfer; transfer = transfer->next)
+      {
+	tftp++;
+	poll_listen(transfer->sockfd, POLLIN);
+      }
 #endif
   
   /* will we be able to get memory? */

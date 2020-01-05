@@ -265,7 +265,8 @@ struct event_desc {
 #define OPT_RAPID_COMMIT   57
 #define OPT_UBUS           58
 #define OPT_IGNORE_CLID    59
-#define OPT_LAST           60
+#define OPT_SINGLE_PORT    60
+#define OPT_LAST           61
 
 #define OPTION_BITS (sizeof(unsigned int)*8)
 #define OPTION_SIZE ( (OPT_LAST/OPTION_BITS)+((OPT_LAST%OPTION_BITS)!=0) )
@@ -965,6 +966,8 @@ struct tftp_transfer {
   unsigned int block, blocksize, expansion;
   off_t offset;
   union mysockaddr peer;
+  union all_addr source;
+  int if_index;
   char opt_blocksize, opt_transize, netascii, carrylf;
   struct tftp_file *file;
   struct tftp_transfer *next;
