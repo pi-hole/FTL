@@ -12,13 +12,12 @@
 
 // Definition of sqlite3_stmt
 #include "database/sqlite3.h"
-// struct ucharvec
-#include "vector.h"
 
 void strtolower(char *str);
 int findForwardID(const char * forward, const bool count);
 int findDomainID(const char *domain, const bool count);
 int findClientID(const char *client, const bool count);
+int findCacheID(int domainID, int clientID);
 bool isValidIPv4(const char *addr);
 bool isValidIPv6(const char *addr);
 const char *getDomainString(const int queryID);
@@ -49,27 +48,26 @@ typedef struct {
 
 typedef struct {
 	unsigned char magic;
-	size_t ippos;
-	size_t namepos;
+	bool new;
 	int count;
 	int failed;
-	bool new;
+	size_t ippos;
+	size_t namepos;
 } forwardedData;
 
 typedef struct {
 	unsigned char magic;
-	size_t ippos;
-	size_t namepos;
-	time_t lastQuery;
+	bool new;
 	int count;
 	int blockedcount;
 	int overTime[OVERTIME_SLOTS];
 	unsigned int numQueriesARP;
-	bool new;
+	size_t ippos;
+	size_t namepos;
+	time_t lastQuery;
 	sqlite3_stmt* whitelist_stmt;
 	sqlite3_stmt* gravity_stmt;
 	sqlite3_stmt* blacklist_stmt;
-	bool *regex_enabled[2];
 } clientsData;
 
 typedef struct {
@@ -77,8 +75,14 @@ typedef struct {
 	size_t domainpos;
 	int count;
 	int blockedcount;
-	ucharvec *clientstatus; // FTL-internal cache, not accessible over shared memory!
 } domainsData;
+
+typedef struct {
+	unsigned char magic;
+	unsigned char blocking_status;
+	int domainID;
+	int clientID;
+} DNSCacheData;
 
 // Pointer getter functions
 #define getQuery(queryID, checkMagic) _getQuery(queryID, checkMagic, __LINE__, __FUNCTION__, __FILE__)
@@ -89,5 +93,7 @@ clientsData* _getClient(int clientID, bool checkMagic, int line, const char * fu
 domainsData* _getDomain(int domainID, bool checkMagic, int line, const char * function, const char * file);
 #define getForward(forwardID, checkMagic) _getForward(forwardID, checkMagic, __LINE__, __FUNCTION__, __FILE__)
 forwardedData* _getForward(int forwardID, bool checkMagic, int line, const char * function, const char * file);
+#define getDNSCache(cacheID, checkMagic) _getDNSCache(cacheID, checkMagic, __LINE__, __FUNCTION__, __FILE__)
+DNSCacheData* _getDNSCache(int cacheID, bool checkMagic, int line, const char * function, const char * file);
 
 #endif //DATASTRUCTURE_H
