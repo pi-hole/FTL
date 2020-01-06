@@ -242,23 +242,37 @@ void tftp_request(struct listener *listen, time_t now)
 
   /* data transfer via server listening socket */
   if (option_bool(OPT_SINGLE_PORT))
-    for (transfer = daemon->tftp_trans, up = &daemon->tftp_trans; transfer; up = &transfer->next, transfer = transfer->next)
-      if (sockaddr_isequal(&peer, &transfer->peer))
+    {
+      int tftp_cnt;
+
+      for (tftp_cnt = 0, transfer = daemon->tftp_trans, up = &daemon->tftp_trans; transfer; up = &transfer->next, transfer = transfer->next)
 	{
-	  if (ntohs(*((unsigned short *)packet)) == OP_RRQ)
+	  tftp_cnt++;
+
+	  if (sockaddr_isequal(&peer, &transfer->peer))
 	    {
-	      /* Handle repeated RRQ or abandoned transfer from same host and port 
-		 by unlinking and reusing the struct transfer. */
-	      *up = transfer->next;
-	      break;
-	    }
-	  else
-	    {
-	      handle_tftp(now, transfer, len);
-	      return;
+	      if (ntohs(*((unsigned short *)packet)) == OP_RRQ)
+		{
+		  /* Handle repeated RRQ or abandoned transfer from same host and port 
+		     by unlinking and reusing the struct transfer. */
+		  *up = transfer->next;
+		  break;
+		}
+	      else
+		{
+		  handle_tftp(now, transfer, len);
+		  return;
+		}
 	    }
 	}
- 
+      
+      /* Enforce simultaneous transfer limit. In non-single-port mode
+	 this is doene by not listening on the server socket when
+	 too many transfers are in progress. */
+      if (!transfer && tftp_cnt >= daemon->tftp_max)
+	return;
+    }
+  
   if (name)
     {
       /* check for per-interface prefix */ 
@@ -583,21 +597,28 @@ void check_tftp_listeners(time_t now)
 	  ssize_t len;
 
 	  /* timeout, retransmit */
-	  transfer->timeout += 1 + (1<<transfer->backoff);
+	  transfer->timeout += 1 + (1<<(transfer->backoff/2));
 	  	  
 	  /* we overwrote the buffer... */
 	  daemon->srv_save = NULL;
 	 
-	  if ((len = get_block(daemon->packet, transfer)) == -1)
+	  /* check for wrap of 16 bit block no. */
+	  if (transfer->block == 0x10000)
+	    {
+	      len = tftp_err(ERR_ILL, daemon->packet, _("too many blocks"), NULL);
+	      endcon = 1;
+	    }
+	  else if ((len = get_block(daemon->packet, transfer)) == -1)
 	    {
 	      len = tftp_err_oops(daemon->packet, transfer->file->filename);
 	      endcon = 1;
 	    }
-	  /* don't complain about timeout when we're awaiting the last
-	     ACK, some clients never send it */
-	  else if (++transfer->backoff > 7 && len != 0)
+	  else if (++transfer->backoff > 7)
 	    {
-	      endcon = 1;
+	      /* don't complain about timeout when we're awaiting the last
+		 ACK, some clients never send it */
+	      if (len == transfer->blocksize + 4)
+		endcon = 1;
 	      len = 0;
 	    }
 
@@ -720,7 +741,8 @@ static ssize_t tftp_err(int err, char *packet, char *message, char *file)
   char *errstr = strerror(errno);
   
   memset(packet, 0, daemon->packet_buff_sz);
-  sanitise(file);
+  if (file)
+    sanitise(file);
   
   mess->op = htons(OP_ERR);
   mess->err = htons(err);
