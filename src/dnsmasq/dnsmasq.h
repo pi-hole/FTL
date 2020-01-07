@@ -881,14 +881,6 @@ struct cond_domain {
   struct cond_domain *next;
 }; 
 
-#ifdef OPTION6_PREFIX_CLASS 
-struct prefix_class {
-  int class;
-  struct dhcp_netid tag;
-  struct prefix_class *next;
-};
-#endif
-
 struct ra_interface {
   char *name;
   char *mtu_name;
@@ -1069,9 +1061,6 @@ extern struct daemon {
   int dump_mask;
   unsigned long soa_sn, soa_refresh, soa_retry, soa_expiry;
   u32 metrics[__METRIC_MAX];
-#ifdef OPTION6_PREFIX_CLASS 
-  struct prefix_class *prefix_classes;
-#endif
 #ifdef HAVE_DNSSEC
   struct ds_config *ds;
   char *timestamp_file;

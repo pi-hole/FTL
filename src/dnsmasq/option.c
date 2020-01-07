@@ -133,9 +133,6 @@ struct myoption {
 #define LOPT_AUTHPEER      318
 #define LOPT_IPSET         319
 #define LOPT_SYNTH         320
-#ifdef OPTION6_PREFIX_CLASS 
-#define LOPT_PREF_CLSS     321
-#endif
 #define LOPT_RELAY         323
 #define LOPT_RA_PARAM      324
 #define LOPT_ADD_SBNET     325
@@ -331,9 +328,6 @@ static const struct myoption opts[] =
     { "dnssec-check-unsigned", 2, 0, LOPT_DNSSEC_CHECK },
     { "dnssec-no-timecheck", 0, 0, LOPT_DNSSEC_TIME },
     { "dnssec-timestamp", 1, 0, LOPT_DNSSEC_STAMP },
-#ifdef OPTION6_PREFIX_CLASS 
-    { "dhcp-prefix-class", 1, 0, LOPT_PREF_CLSS },
-#endif
     { "dhcp-relay", 1, 0, LOPT_RELAY },
     { "ra-param", 1, 0, LOPT_RA_PARAM },
     { "quiet-dhcp", 0, 0, LOPT_QUIET_DHCP },
@@ -513,9 +507,6 @@ static struct {
   { LOPT_DNSSEC_CHECK, ARG_DUP, NULL, gettext_noop("Ensure answers without DNSSEC are in unsigned zones."), NULL },
   { LOPT_DNSSEC_TIME, OPT_DNSSEC_TIME, NULL, gettext_noop("Don't check DNSSEC signature timestamps until first cache-reload"), NULL },
   { LOPT_DNSSEC_STAMP, ARG_ONE, "<path>", gettext_noop("Timestamp file to verify system clock for DNSSEC"), NULL },
-#ifdef OPTION6_PREFIX_CLASS 
-  { LOPT_PREF_CLSS, ARG_DUP, "set:tag,<class>", gettext_noop("Specify DHCPv6 prefix class"), NULL },
-#endif
   { LOPT_RA_PARAM, ARG_DUP, "<iface>,[mtu:<value>|<interface>|off,][<prio>,]<intval>[,<lifetime>]", gettext_noop("Set MTU, priority, resend-interval and router-lifetime"), NULL },
   { LOPT_QUIET_DHCP, OPT_QUIET_DHCP, NULL, gettext_noop("Do not log routine DHCP."), NULL },
   { LOPT_QUIET_DHCP6, OPT_QUIET_DHCP6, NULL, gettext_noop("Do not log routine DHCPv6."), NULL },
@@ -3708,24 +3699,6 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	  }
       }
       break;
-
-#ifdef OPTION6_PREFIX_CLASS 
-    case LOPT_PREF_CLSS: /* --dhcp-prefix-class */
-      {
-	struct prefix_class *new = opt_malloc(sizeof(struct prefix_class));
-	
-	if (!(comma = split(arg)) ||
-	    !atoi_check16(comma, &new->class))
-	  ret_err_free(gen_err, new);
-	
-	new->tag.net = opt_string_alloc(set_prefix(arg));
-	new->next = daemon->prefix_classes;
-	daemon->prefix_classes = new;
-	
-	break;
-      }
-#endif
-			      
 
     case 'U':           /* --dhcp-vendorclass */
     case 'j':           /* --dhcp-userclass */
