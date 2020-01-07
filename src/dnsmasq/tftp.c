@@ -602,13 +602,7 @@ void check_tftp_listeners(time_t now)
 	  /* we overwrote the buffer... */
 	  daemon->srv_save = NULL;
 	 
-	  /* check for wrap of 16 bit block no. */
-	  if (transfer->block == 0x10000)
-	    {
-	      len = tftp_err(ERR_ILL, daemon->packet, _("too many blocks"), NULL);
-	      endcon = 1;
-	    }
-	  else if ((len = get_block(daemon->packet, transfer)) == -1)
+	  if ((len = get_block(daemon->packet, transfer)) == -1)
 	    {
 	      len = tftp_err_oops(daemon->packet, transfer->file->filename);
 	      endcon = 1;
@@ -741,8 +735,7 @@ static ssize_t tftp_err(int err, char *packet, char *message, char *file)
   char *errstr = strerror(errno);
   
   memset(packet, 0, daemon->packet_buff_sz);
-  if (file)
-    sanitise(file);
+  sanitise(file);
   
   mess->op = htons(OP_ERR);
   mess->err = htons(err);
