@@ -12,9 +12,7 @@ IDIR = src
 ODIR = build
 
 DNSMASQ_VERSION = "pi-hole-2.80"
-DNSMASQ_OPTS = -DHAVE_DNSSEC -DHAVE_DNSSEC_STATIC
-# Flags for compiling with libidn : -DHAVE_IDN
-# Flags for compiling with libidn2: -DHAVE_LIBIDN2 -DIDN2_VERSION_NUMBER=0x02000003
+DNSMASQ_OPTS = -DHAVE_DNSSEC -DHAVE_DNSSEC_STATIC -DHAVE_IDN
 
 FTL_DEPS = *.h database/*.h api/*.h version.h
 FTL_DB_OBJ = database/common.o database/query-table.o database/network-table.o database/gravity-db.o database/database-thread.o
@@ -106,9 +104,7 @@ CCFLAGS=-std=gnu11 -I$(IDIR) $(WARN_FLAGS) -D_FILE_OFFSET_BITS=64 $(HARDENING_FL
 # for FTL we need the pthread library
 # for dnsmasq we need the nettle crypto library and the gmp maths library
 # We link the two libraries statically. Although this increases the binary file size by about 1 MB, it saves about 5 MB of shared libraries and makes deployment easier
-LIBS=-pthread -lrt -Wl,-Bstatic -L/usr/local/lib -lhogweed -lgmp -lnettle
-# Flags for compiling with libidn : -lidn
-# Flags for compiling with libidn2: -lidn2
+LIBS=-pthread -lrt -Wl,-Bstatic -L/usr/local/lib -lhogweed -lgmp -lnettle -lidn
 
 # Do we want to compile a statically linked musl executable?
 ifeq "$(STATIC)" "true"
