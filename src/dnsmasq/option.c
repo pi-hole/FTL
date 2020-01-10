@@ -1669,9 +1669,9 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	struct dirent *ent;
 	char *directory, *path;
 	struct list {
-	  char *suffix;
+	  char *name;
 	  struct list *next;
-	} *ignore_suffix = NULL, *match_suffix = NULL, *li;
+	} *ignore_suffix = NULL, *match_suffix = NULL, *files = NULL, *li;
 	
 	comma = split(arg);
 	if (!(directory = opt_string_alloc(arg)))
@@ -1693,7 +1693,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 			li->next = match_suffix;
 			match_suffix = li;
 			/* Have to copy: buffer is overwritten */
-			li->suffix = opt_string_alloc(arg+1);
+			li->name = opt_string_alloc(arg+1);
 		      }
 		  }
 		else
@@ -1701,7 +1701,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 		    li->next = ignore_suffix;
 		    ignore_suffix = li;
 		    /* Have to copy: buffer is overwritten */
-		    li->suffix = opt_string_alloc(arg);
+		    li->name = opt_string_alloc(arg);
 		  }
 	      }
 	  }
@@ -1726,9 +1726,9 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 		for (li = match_suffix; li; li = li->next)
 		  {
 		    /* check for required suffices */
-		    size_t ls = strlen(li->suffix);
+		    size_t ls = strlen(li->name);
 		    if (len > ls &&
-			strcmp(li->suffix, &ent->d_name[len - ls]) == 0)
+			strcmp(li->name, &ent->d_name[len - ls]) == 0)
 		      break;
 		  }
 		if (!li)
@@ -1738,9 +1738,9 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	    for (li = ignore_suffix; li; li = li->next)
 	      {
 		/* check for proscribed suffices */
-		size_t ls = strlen(li->suffix);
+		size_t ls = strlen(li->name);
 		if (len > ls &&
-		    strcmp(li->suffix, &ent->d_name[len - ls]) == 0)
+		    strcmp(li->name, &ent->d_name[len - ls]) == 0)
 		  break;
 	      }
 	    if (li)
@@ -1757,24 +1757,43 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	    
 	    /* only reg files allowed. */
 	    if (S_ISREG(buf.st_mode))
-	      one_file(path, 0);
-	    
-	    free(path);
+	      {
+		/* sort files into order. */
+		struct list **up, *new = opt_malloc(sizeof(struct list));
+		new->name = path;
+		
+		for (up = &files, li = files; li; up = &li->next, li = li->next)
+		  if (strcmp(li->name, path) >=0)
+		    break;
+
+		new->next = li;
+		*up = new;
+	      }
+
 	  }
-     
+
+	for (li = files; li; li = li->next)
+	  one_file(li->name, 0);
+      	
 	closedir(dir_stream);
 	free(directory);
 	for(; ignore_suffix; ignore_suffix = li)
 	  {
 	    li = ignore_suffix->next;
-	    free(ignore_suffix->suffix);
+	    free(ignore_suffix->name);
 	    free(ignore_suffix);
 	  }
 	for(; match_suffix; match_suffix = li)
 	  {
 	    li = match_suffix->next;
-	    free(match_suffix->suffix);
+	    free(match_suffix->name);
 	    free(match_suffix);
+	  }
+	for(; files; files = li)
+	  {
+	    li = files->next;
+	    free(files->name);
+	    free(files);
 	  }
 	break;
       }
