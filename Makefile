@@ -101,7 +101,7 @@ EXTRAWARN=-Werror -Waddress -Wlogical-op -Wmissing-field-initializers -Woverleng
 -Wfloat-equal -Wbad-function-cast -Wwrite-strings -Wparentheses -Wlogical-op -Wstrict-prototypes -Wmissing-prototypes -Wredundant-decls -Winline $(EXTRAWARN_GCC8)
 
 # -FILE_OFFSET_BITS=64: used by stat(). Avoids problems with files > 2 GB on 32bit machines
-CCFLAGS=-std=gnu11 -I$(IDIR) $(WARN_FLAGS) -D_FILE_OFFSET_BITS=64 $(HARDENING_FLAGS) $(DEBUG_FLAGS) $(CFLAGS) $(SQLITE_FLAGS)
+CCFLAGS=-std=gnu11 -pipe -I$(IDIR) $(WARN_FLAGS) -D_FILE_OFFSET_BITS=64 $(HARDENING_FLAGS) $(DEBUG_FLAGS) $(CFLAGS) $(SQLITE_FLAGS)
 
 # for FTL we need the pthread library
 # for dnsmasq we need the nettle crypto library and the gmp maths library
