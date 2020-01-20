@@ -1645,7 +1645,8 @@ void receive_query(struct listener *listen, time_t now)
 	{
 	  size_t plen = n;
 	  struct all_addr *addrp = NULL;
-	  unsigned int flags = (listen->family == AF_INET) ? F_IPV4 : F_IPV6;
+	  // DNS resource record type for AAAA is 28 (decimal) following RFC 3596, section 2.1
+	  unsigned int flags = (type == 28u) ? F_IPV6 : F_IPV4;
 	  FTL_get_blocking_metadata(&addrp, &flags);
 	  log_query(flags, daemon->namebuff, addrp, (char*)blockingreason);
 	  plen = setup_reply(header, n, addrp, flags, daemon->local_ttl);
@@ -2021,7 +2022,8 @@ unsigned char *tcp_request(int confd, time_t now,
 	  if(piholeblocked)
 	    {
 	      struct all_addr *addrp = NULL;
-	      unsigned int flags = (peer_addr.sa.sa_family == AF_INET) ? F_IPV4 : F_IPV6;
+	      // DNS resource record type for AAAA is 28 (decimal) following RFC 3596, section 2.1
+	      unsigned int flags = (qtype == 28u) ? F_IPV6 : F_IPV4;
 	      FTL_get_blocking_metadata(&addrp, &flags);
 	      log_query(flags, daemon->namebuff, addrp, (char*)blockingreason);
 	      m = setup_reply(header, size, addrp, flags, daemon->local_ttl);

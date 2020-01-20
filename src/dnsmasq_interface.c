@@ -540,13 +540,6 @@ void _FTL_get_blocking_metadata(struct all_addr **addrp, unsigned int *flags, co
 
 	if(*flags & F_IPV6)
 	{
-		if(config.blockingmode == MODE_IP_NODATA_AAAA)
-		{
-			// Overwrite flags in this mode as the response
-			// for IPv4 and IPv6 is different
-			*flags = F_NEG;
-		}
-
 		// Pass blocking IPv6 address (will be :: in most cases)
 		*addrp = &blocking_addrp_v6;
 	}
@@ -554,6 +547,20 @@ void _FTL_get_blocking_metadata(struct all_addr **addrp, unsigned int *flags, co
 	{
 		// Pass blocking IPv4 address (will be 0.0.0.0 in most cases)
 		*addrp = &blocking_addrp_v4;
+	}
+
+	if(config.blockingmode == MODE_NX)
+	{
+		// If we block in NXDOMAIN mode, we add the NEGATIVE response
+		// and the NXDOMAIN flags
+		*flags = F_NXDOMAIN;
+	}
+	else if(config.blockingmode == MODE_NODATA ||
+	        (config.blockingmode == MODE_IP_NODATA_AAAA && (*flags & F_IPV6)))
+	{
+		// If we block in NODATA mode or NODATA for AAAA queries, we apply
+		// the NOERROR response flag. This ensures we're sending an empty response
+		*flags = F_NOERR;
 	}
 }
 
@@ -1673,19 +1680,6 @@ static void prepare_blocking_metadata(void)
 	}
 	// Free IPv4addr
 	clearSetupVarsArray();
-
-	if(config.blockingmode == MODE_NX)
-	{
-		// If we block in NXDOMAIN mode, we add the NXDOMAIN flag and make this host record
-		// also valid for AAAA requests
-		 blocking_flags |= F_NEG | F_NXDOMAIN;
-	}
-	else if(config.blockingmode == MODE_NODATA)
-	{
-		// If we block in NODATA mode, we make this host record also valid for AAAA requests
-		// and apply the NEG response flag (but not the NXDOMAIN flag)
-		blocking_flags |= F_NEG;
-	}
 
 	// Use the blocking IPv6 address from setupVars.conf only if needed for selected blocking mode
 	char* const IPv6addr = read_setupVarsconf("IPV6_ADDRESS");
