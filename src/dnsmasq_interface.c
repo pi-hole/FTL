@@ -319,6 +319,14 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 	{
 		domainsData* head_domain = getDomain(query->domainID, true);
 		head_domain->blockedcount++;
+
+		// Store query response as CNAME type
+		// The web interface will show this next to the blocking reason to highlight
+		// that blocking hapend during deep CNAME inspection, i.e., the domains shown
+		// does not necessarily need to be on any block- or blacklist itself.
+		struct timeval response;
+		gettimeofday(&response, 0);
+		save_reply_type(F_CNAME, query, response);
 	}
 
 	if(config.debug & DEBUG_QUERIES)
