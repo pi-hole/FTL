@@ -106,7 +106,10 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 				logg("%s is known as %s", domainstr, *blockingreason);
 			}
 
-			return true;
+			// Do not block if the entire query is to be permitted
+			// as sometving along the CNAME path hit the whitelist
+			if(!query->whitelisted)
+				return true;
 			break;
 
 		case GRAVITY_BLOCKED:
@@ -122,7 +125,10 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 				logg("%s is known as %s", domainstr, *blockingreason);
 			}
 
-			return true;
+			// Do not block if the entire query is to be permitted
+			// as sometving along the CNAME path hit the whitelist
+			if(!query->whitelisted)
+				return true;
 			break;
 
 		case REGEX_BLOCKED:
@@ -138,7 +144,10 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 				logg("%s is known as %s", domainstr, *blockingreason);
 			}
 
-			return true;
+			// Do not block if the entire query is to be permitted
+			// as sometving along the CNAME path hit the whitelist
+			if(!query->whitelisted)
+				return true;
 			break;
 
 		case WHITELISTED:
