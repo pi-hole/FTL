@@ -658,7 +658,8 @@ static int construct_worker(struct in6_addr *local, int prefix,
   char ifrn_name[IFNAMSIZ];
   struct in6_addr start6, end6;
   struct dhcp_context *template, *context;
-
+  struct iname *tmp;
+  
   (void)scope;
   (void)flags;
   (void)valid;
@@ -677,9 +678,15 @@ static int construct_worker(struct in6_addr *local, int prefix,
   if (flags & IFACE_DEPRECATED)
     return 1;
 
-  if (!indextoname(daemon->icmp6fd, if_index, ifrn_name))
-    return 0;
+  /* Ignore interfaces where we're not doing RA/DHCP6 */
+  if (!indextoname(daemon->icmp6fd, if_index, ifrn_name) ||
+      !iface_check(AF_LOCAL, NULL, ifrn_name, NULL))
+    return 1;
   
+  for (tmp = daemon->dhcp_except; tmp; tmp = tmp->next)
+    if (tmp->name && wildcard_match(tmp->name, ifrn_name))
+      return 1;
+
   for (template = daemon->dhcp6; template; template = template->next)
     if (!(template->flags & (CONTEXT_TEMPLATE | CONTEXT_CONSTRUCTED)))
       {
@@ -689,7 +696,7 @@ static int construct_worker(struct in6_addr *local, int prefix,
 	    is_same_net6(local, &template->end6, template->prefix))
 	  {
 	    /* First time found, do fast RA. */
-	    if (template->if_index != if_index || !IN6_ARE_ADDR_EQUAL(&template->local6, local))
+	    if (template->if_index == 0)
 	      {
 		ra_start_unsolicited(param->now, template);
 		param->newone = 1;
