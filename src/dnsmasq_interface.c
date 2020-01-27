@@ -97,48 +97,60 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			// Known as exactly blacklistes, we
 			// return this result early, skipping
 			// all the lengthy tests below
-			query_blocked(query, domain, client);
-			query->status = QUERY_BLACKLIST;
 			*blockingreason = "exactly blacklisted";
-
 			if(config.debug & DEBUG_QUERIES)
 			{
 				logg("%s is known as %s", domainstr, *blockingreason);
 			}
 
-			return true;
+			// Do not block if the entire query is to be permitted
+			// as sometving along the CNAME path hit the whitelist
+			if(!query->whitelisted)
+			{
+				query_blocked(query, domain, client);
+				query->status = QUERY_BLACKLIST;
+				return true;
+			}
 			break;
 
 		case GRAVITY_BLOCKED:
 			// Known as gravity blocked, we
 			// return this result early, skipping
 			// all the lengthy tests below
-			query_blocked(query, domain, client);
-			query->status = QUERY_GRAVITY;
 			*blockingreason = "gravity blocked";
-
 			if(config.debug & DEBUG_QUERIES)
 			{
 				logg("%s is known as %s", domainstr, *blockingreason);
 			}
 
-			return true;
+			// Do not block if the entire query is to be permitted
+			// as sometving along the CNAME path hit the whitelist
+			if(!query->whitelisted)
+			{
+				query_blocked(query, domain, client);
+				query->status = QUERY_GRAVITY;
+				return true;
+			}
 			break;
 
 		case REGEX_BLOCKED:
 			// Known as regex blacklisted, we
 			// return this result early, skipping
 			// all the lengthy tests below
-			query_blocked(query, domain, client);
-			query->status = QUERY_WILDCARD;
 			*blockingreason = "regex blacklisted";
-
 			if(config.debug & DEBUG_QUERIES)
 			{
 				logg("%s is known as %s", domainstr, *blockingreason);
 			}
 
-			return true;
+			// Do not block if the entire query is to be permitted
+			// as sometving along the CNAME path hit the whitelist
+			if(!query->whitelisted)
+			{
+				query_blocked(query, domain, client);
+				query->status = QUERY_WILDCARD;
+				return true;
+			}
 			break;
 
 		case WHITELISTED:
