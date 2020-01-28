@@ -439,7 +439,7 @@ int gravityDB_count(const unsigned char list)
 	}
 
 	if(config.debug & DEBUG_DATABASE)
-		logg("Querying gravity database table %s", tablename[list]);
+		logg("Querying count of distinct domains in gravity database table %s", tablename[list]);
 
 	// Prepare query
 	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &table_stmt, NULL);
