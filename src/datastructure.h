@@ -20,9 +20,6 @@ int findClientID(const char *client, const bool count);
 int findCacheID(int domainID, int clientID);
 bool isValidIPv4(const char *addr);
 bool isValidIPv6(const char *addr);
-const char *getDomainString(const int queryID);
-const char *getClientIPString(const int queryID);
-const char *getClientNameString(const int queryID);
 
 void FTL_reload_all_domainlists(void);
 void FTL_reset_per_client_domain_data(void);
@@ -39,6 +36,7 @@ typedef struct {
 	int clientID;
 	int forwardID;
 	int id; // the ID is a (signed) int in dnsmasq, so no need for a long int here
+	int CNAME_domainID; // only valid if query has a CNAME blocking status
 	unsigned long response; // saved in units of 1/10 milliseconds (1 = 0.1ms, 2 = 0.2ms, 2500 = 250.0ms, etc.)
 	int64_t db;
 	unsigned int timeidx;
@@ -83,6 +81,11 @@ typedef struct {
 	int domainID;
 	int clientID;
 } DNSCacheData;
+
+const char *getDomainString(const queriesData* query);
+const char *getCNAMEDomainString(const queriesData* query);
+const char *getClientIPString(const queriesData* query);
+const char *getClientNameString(const queriesData* query);
 
 // Pointer getter functions
 #define getQuery(queryID, checkMagic) _getQuery(queryID, checkMagic, __LINE__, __FUNCTION__, __FILE__)

@@ -802,8 +802,11 @@ void getAllQueries(const char *client_message, const int *sock)
 
 		// 1 = gravity.list, 4 = wildcard, 5 = black.list
 		if((query->status == QUERY_GRAVITY ||
-		    query->status == QUERY_WILDCARD ||
-		    query->status == QUERY_BLACKLIST) && !showblocked)
+		    query->status == QUERY_REGEX ||
+		    query->status == QUERY_BLACKLIST ||
+		    query->status == QUERY_GRAVITY_CNAME ||
+		    query->status == QUERY_REGEX_CNAME ||
+		    query->status == QUERY_BLACKLIST_CNAME) && !showblocked)
 			continue;
 		// 2 = forwarded, 3 = cached
 		if((query->status == QUERY_FORWARDED ||
@@ -830,8 +833,11 @@ void getAllQueries(const char *client_message, const int *sock)
 		{
 			// Does the user want to see queries answered from blocking lists?
 			if(forwarddestid == -2 && query->status != QUERY_GRAVITY
-			                       && query->status != QUERY_WILDCARD
-			                       && query->status != QUERY_BLACKLIST)
+			                       && query->status != QUERY_REGEX
+			                       && query->status != QUERY_BLACKLIST
+			                       && query->status != QUERY_GRAVITY_CNAME
+			                       && query->status != QUERY_REGEX_CNAME
+			                       && query->status != QUERY_BLACKLIST_CNAME)
 				continue;
 			// Does the user want to see queries answered from local cache?
 			else if(forwarddestid == -1 && query->status != QUERY_CACHE)
@@ -843,7 +849,7 @@ void getAllQueries(const char *client_message, const int *sock)
 
 		// Ask subroutine for domain. It may return "hidden" depending on
 		// the privacy settings at the time the query was made
-		const char *domain = getDomainString(queryID);
+		const char *domain = getDomainString(query);
 
 		// Similarly for the client
 		const char *clientIPName = NULL;
@@ -853,18 +859,33 @@ void getAllQueries(const char *client_message, const int *sock)
 			continue;
 
 		if(strlen(getstr(client->namepos)) > 0)
-			clientIPName = getClientNameString(queryID);
+			clientIPName = getClientNameString(query);
 		else
-			clientIPName = getClientIPString(queryID);
+			clientIPName = getClientIPString(query);
 
 		unsigned long delay = query->response;
 		// Check if received (delay should be smaller than 30min)
 		if(delay > 1.8e7)
 			delay = 0;
 
+		const char *CNAME_domain = "N/A";
+		if(query->CNAME_domainID > -1)
+		{
+			CNAME_domain = getCNAMEDomainString(query);
+		}
+
 		if(istelnet[*sock])
 		{
-			ssend(*sock,"%li %s %s %s %i %i %i %lu",query->timestamp,qtype,domain,clientIPName,query->status,query->dnssec,query->reply,delay);
+			ssend(*sock,"%li %s %s %s %i %i %i %lu %s",
+				query->timestamp,
+				qtype,
+				domain,
+				clientIPName,
+				query->status,
+				query->dnssec,
+				query->reply,
+				delay,
+				CNAME_domain);
 			if(config.debug & DEBUG_API)
 				ssend(*sock, " %i", queryID);
 			ssend(*sock, "\n");
@@ -917,14 +938,17 @@ void getRecentBlocked(const char *client_message, const int *sock)
 			continue;
 
 		if(query->status == QUERY_GRAVITY ||
-		   query->status == QUERY_WILDCARD ||
-		   query->status == QUERY_BLACKLIST)
+		   query->status == QUERY_REGEX ||
+		   query->status == QUERY_BLACKLIST ||
+		   query->status == QUERY_GRAVITY_CNAME ||
+		   query->status == QUERY_REGEX_CNAME ||
+		   query->status == QUERY_BLACKLIST_CNAME)
 		{
 			found++;
 
 			// Ask subroutine for domain. It may return "hidden" depending on
 			// the privacy settings at the time the query was made
-			const char *domain = getDomainString(queryID);
+			const char *domain = getDomainString(query);
 			if(domain == NULL)
 				continue;
 
