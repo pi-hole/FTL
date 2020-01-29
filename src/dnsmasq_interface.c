@@ -203,7 +203,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 	{
 		// We block this domain
 		blockDomain = true;
-		new_status = QUERY_BLACKLIST;
+		new_status = QUERY_BLACKLIST_CNAME;
 		*blockingreason = "exactly blacklisted";
 
 		// Mark domain as exactly blacklisted for this client
@@ -217,7 +217,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 	{
 		// We block this domain
 		blockDomain = true;
-		new_status = QUERY_GRAVITY;
+		new_status = QUERY_GRAVITY_CNAME;
 		*blockingreason = "gravity blocked";
 
 		// Mark domain as gravity blocked for this client
@@ -231,7 +231,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 	{
 		// We block this domain
 		blockDomain = true;
-		new_status = QUERY_WILDCARD;
+		new_status = QUERY_REGEX_CNAME;
 		*blockingreason = "regex blacklisted";
 
 		// Mark domain as regex matched for this client
@@ -333,14 +333,23 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 		head_domain->blockedcount++;
 
 		// Store query response as CNAME type
-		// The web interface will show this next to the blocking reason to highlight
-		// that blocking hapend during deep CNAME inspection, i.e., the domains shown
-		// does not necessarily need to be on any block- or blacklist itself.
 		struct timeval response;
 		gettimeofday(&response, 0);
 		save_reply_type(F_CNAME, query, response);
+
+		// Store domain that was the reason for blocking the entire chain
+		query->CNAME_domainID = domainID;
+
+		// Change blocking reason into CNAME-caused blocking
+		if(query->status == QUERY_GRAVITY)
+			query->status = QUERY_GRAVITY_CNAME;
+		else if(query->status == QUERY_WILDCARD)
+			query->status = QUERY_REGEX_CNAME;
+		else if(query->status == QUERY_BLACKLIST)
+			query->status = QUERY_BLACKLIST_CNAME;
 	}
 
+	// Debug logging for deep CNAME inspection (if enabled)
 	if(config.debug & DEBUG_QUERIES)
 	{
 		if(src == NULL)
@@ -504,6 +513,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	query->reply = REPLY_UNKNOWN;
 	// Store DNSSEC result for this domain
 	query->dnssec = DNSSEC_UNSPECIFIED;
+	query->CNAME_domainID = -1;
 
 	// Check and apply possible privacy level rules
 	// The currently set privacy level (at the time the query is

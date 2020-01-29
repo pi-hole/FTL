@@ -121,8 +121,9 @@ int findDomainID(const char *domainString, const bool count)
 
 	// Set magic byte
 	domain->magic = MAGICBYTE;
-	// Set its counter to 1
-	domain->count = 1;
+	// Set its counter to 1 only if this domain is to be counted
+	// Domains only encountered during CNAME inspection are NOT counted here
+	domain->count = count ? 1 : 0;
 	// Set blocked counter to zero
 	domain->blockedcount = 0;
 	// Store domain name - no need to check for NULL here as it doesn't harm
@@ -269,10 +270,8 @@ bool isValidIPv6(const char *addr)
 
 // Privacy-level sensitive subroutine that returns the domain name
 // only when appropriate for the requested query
-const char *getDomainString(const int queryID)
+const char *getDomainString(const queriesData* query)
 {
-	const queriesData* query = getQuery(queryID, true);
-
 	// Check if the returned pointer is valid before trying to access it
 	if(query == NULL)
 		return "";
@@ -289,12 +288,30 @@ const char *getDomainString(const int queryID)
 		return HIDDEN_DOMAIN;
 }
 
+// Privacy-level sensitive subroutine that returns the domain name
+// only when appropriate for the requested query
+const char *getCNAMEDomainString(const queriesData* query)
+{
+	// Check if the returned pointer is valid before trying to access it
+	if(query == NULL)
+		return "";
+
+	if(query->privacylevel < PRIVACY_HIDE_DOMAINS)
+	{
+		// Get domain pointer
+		const domainsData* domain = getDomain(query->CNAME_domainID, true);
+
+		// Return string
+		return getstr(domain->domainpos);
+	}
+	else
+		return HIDDEN_DOMAIN;
+}
+
 // Privacy-level sensitive subroutine that returns the client IP
 // only when appropriate for the requested query
-const char *getClientIPString(const int queryID)
+const char *getClientIPString(const queriesData* query)
 {
-	const queriesData* query = getQuery(queryID, false);
-
 	// Check if the returned pointer is valid before trying to access it
 	if(query == NULL)
 		return "";
@@ -313,10 +330,8 @@ const char *getClientIPString(const int queryID)
 
 // Privacy-level sensitive subroutine that returns the client host name
 // only when appropriate for the requested query
-const char *getClientNameString(const int queryID)
+const char *getClientNameString(const queriesData* query)
 {
-	const queriesData* query = getQuery(queryID, true);
-
 	// Check if the returned pointer is valid before trying to access it
 	if(query == NULL)
 		return "";
