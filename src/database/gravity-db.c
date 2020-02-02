@@ -432,7 +432,15 @@ int gravityDB_count(const unsigned char list)
 
 	char *querystr = NULL;
 	// Build correct query string to be used depending on list to be read
-	if(asprintf(&querystr, "SELECT count(DISTINCT domain) FROM %s", tablename[list]) < 18)
+	if(list != GRAVITY_TABLE && asprintf(&querystr, "SELECT COUNT(DISTINCT domain) FROM %s", tablename[list]) < 18)
+	{
+		logg("readGravity(%u) - asprintf() error", list);
+		return false;
+	}
+	// We get the number of unique gravity domains as counted and stored by gravity. Counting the number
+	// of distinct domains in vw_gravity may take up to several minutes for very large blocking lists on
+	// very low-end devices such as the Raspierry Pi Zero
+	else if(list == GRAVITY_TABLE && asprintf(&querystr, "SELECT value FROM info WHERE property = 'gravity_count';") < 18)
 	{
 		logg("readGravity(%u) - asprintf() error", list);
 		return false;
