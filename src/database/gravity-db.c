@@ -453,7 +453,7 @@ int gravityDB_count(const unsigned char list)
 	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &table_stmt, NULL);
 	if(rc != SQLITE_OK){
 		logg("gravityDB_count(%s) - SQL error prepare (%i): %s", querystr, rc, sqlite3_errmsg(gravity_db));
-		sqlite3_finalize(table_stmt);
+		gravityDB_finalizeTable();
 		gravityDB_close();
 		free(querystr);
 		return DB_FAILED;
@@ -463,8 +463,11 @@ int gravityDB_count(const unsigned char list)
 	rc = sqlite3_step(table_stmt);
 	if(rc != SQLITE_ROW){
 		logg("gravityDB_count(%s) - SQL error step (%i): %s", querystr, rc, sqlite3_errmsg(gravity_db));
-		sqlite3_finalize(table_stmt);
-		gravityDB_close();
+		if(list == GRAVITY_TABLE)
+		{
+			logg("Count of gravity domains not available. Please run pihole -g");
+		}
+		gravityDB_finalizeTable();
 		free(querystr);
 		return DB_FAILED;
 	}
