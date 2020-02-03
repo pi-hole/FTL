@@ -418,14 +418,14 @@ static int complete_context6(struct in6_addr *local,  int prefix,
   return 1;
 }
 
-struct dhcp_config *config_find_by_address6(struct dhcp_config *configs, struct in6_addr *net, int prefix, u64 addr)
+struct dhcp_config *config_find_by_address6(struct dhcp_config *configs, struct in6_addr *net, int prefix,  struct in6_addr *addr)
 {
   struct dhcp_config *config;
   
   for (config = configs; config; config = config->next)
     if ((config->flags & CONFIG_ADDR6) &&
-	is_same_net6(&config->addr6, net, prefix) &&
-	(prefix == 128 || addr6part(&config->addr6) == addr))
+	(!net || is_same_net6(&config->addr6, net, prefix)) &&
+	is_same_net6(&config->addr6, addr, (config->flags & CONFIG_PREFIX) ? config->prefix : 128))
       return config;
   
   return NULL;
@@ -494,16 +494,15 @@ struct dhcp_context *address6_allocate(struct dhcp_context *context,  unsigned c
 	    for (d = context; d; d = d->current)
 	      if (addr == addr6part(&d->local6))
 		break;
+	    
+	    *ans = c->start6;
+	    setaddr6part (ans, addr);
 
 	    if (!d &&
 		!lease6_find_by_addr(&c->start6, c->prefix, addr) && 
-		!config_find_by_address6(daemon->dhcp_conf, &c->start6, c->prefix, addr))
-	      {
-		*ans = c->start6;
-		setaddr6part (ans, addr);
-		return c;
-	      }
-	
+		!config_find_by_address6(daemon->dhcp_conf, &c->start6, c->prefix, ans))
+	      return c;
+	    
 	    addr++;
 	    
 	    if (addr  == addr6part(&c->end6) + 1)
@@ -555,27 +554,6 @@ struct dhcp_context *address6_valid(struct dhcp_context *context,
       return tmp;
 
   return NULL;
-}
-
-int config_valid(struct dhcp_config *config, struct dhcp_context *context, struct in6_addr *addr)
-{
-  if (!config || !(config->flags & CONFIG_ADDR6))
-    return 0;
-
-  if ((config->flags & CONFIG_WILDCARD) && context->prefix == 64)
-    {
-      *addr = context->start6;
-      setaddr6part(addr, addr6part(&config->addr6));
-      return 1;
-    }
-  
-  if (is_same_net6(&context->start6, &config->addr6, context->prefix))
-    {
-      *addr = config->addr6;
-      return 1;
-    }
-  
-  return 0;
 }
 
 void make_duid(time_t now)

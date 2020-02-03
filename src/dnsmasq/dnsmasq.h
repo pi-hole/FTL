@@ -772,6 +772,7 @@ struct dhcp_config {
   struct dhcp_netid_list *netid;
 #ifdef HAVE_DHCP6
   struct in6_addr addr6;
+  int prefix;
 #endif
   struct in_addr addr;
   time_t decline_time;
@@ -795,6 +796,7 @@ struct dhcp_config {
 #define CONFIG_ADDR6          4096
 #define CONFIG_WILDCARD       8192
 #define CONFIG_ADDR6_HOSTS   16384    /* address added by from /etc/hosts */
+#define CONFIG_PREFIX        32768    /* addr6 is a set, size given by prefix */
 
 struct dhcp_opt {
   int opt, len, flags;
@@ -1527,7 +1529,6 @@ void dhcp6_init(void);
 void dhcp6_packet(time_t now);
 struct dhcp_context *address6_allocate(struct dhcp_context *context,  unsigned char *clid, int clid_len, int temp_addr,
 				       unsigned int iaid, int serial, struct dhcp_netid *netids, int plain_range, struct in6_addr *ans);
-int config_valid(struct dhcp_config *config, struct dhcp_context *context, struct in6_addr *addr);
 struct dhcp_context *address6_available(struct dhcp_context *context, 
 					struct in6_addr *taddr,
 					struct dhcp_netid *netids,
@@ -1537,7 +1538,7 @@ struct dhcp_context *address6_valid(struct dhcp_context *context,
 				    struct dhcp_netid *netids,
 				    int plain_range);
 struct dhcp_config *config_find_by_address6(struct dhcp_config *configs, struct in6_addr *net, 
-					    int prefix, u64 addr);
+					    int prefix, struct in6_addr *addr);
 void make_duid(time_t now);
 void dhcp_construct_contexts(time_t now);
 void get_client_mac(struct in6_addr *client, int iface, unsigned char *mac, 

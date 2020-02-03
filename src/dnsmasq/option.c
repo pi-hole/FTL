@@ -3268,8 +3268,11 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 #ifdef HAVE_DHCP6
 	      else if (arg[0] == '[' && arg[strlen(arg)-1] == ']')
 		{
+		  char *pref;
+
 		  arg[strlen(arg)-1] = 0;
 		  arg++;
+		  pref = split_chr(arg, '/');
 		  
 		  if (!inet_pton(AF_INET6, arg, &new->addr6))
 		    {
@@ -3277,6 +3280,21 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 		      ret_err(_("bad IPv6 address"));
 		    }
 
+		  if (pref)
+		    {
+		      u64 addrpart = addr6part(&new->addr6);
+
+		      if (!atoi_check(pref, &new->prefix) ||
+			  new->prefix > 128 ||
+			  (((1<<(128-new->prefix))-1) & addrpart) != 0)
+			{
+			  dhcp_config_free(new);
+			  ret_err(_("bad IPv6 prefix"));
+			}
+		      
+		      new->flags |= CONFIG_PREFIX;
+		    }
+		  
 		  for (i= 0; i < 8; i++)
 		    if (new->addr6.s6_addr[i] != 0)
 		      break;

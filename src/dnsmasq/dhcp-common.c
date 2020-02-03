@@ -424,10 +424,11 @@ void dhcp_update_configs(struct dhcp_config *configs)
 
 #ifdef HAVE_DHCP6
 	    if (prot == AF_INET6 && 
-		(!(conf_tmp = config_find_by_address6(configs, &crec->addr.addr6, 128, 0)) || conf_tmp == config))
+		(!(conf_tmp = config_find_by_address6(configs, NULL, 0, &crec->addr.addr6)) || conf_tmp == config))
 	      {
 		memcpy(&config->addr6, &crec->addr.addr6, IN6ADDRSZ);
 		config->flags |= CONFIG_ADDR6 | CONFIG_ADDR6_HOSTS;
+		config->flags &= ~CONFIG_PREFIX;
 		continue;
 	      }
 #endif
