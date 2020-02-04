@@ -876,7 +876,7 @@ void getAllQueries(const char *client_message, const int *sock)
 		}
 
 		// Get ID of blocking regex, if applicable
-		int regex_idx = 0;
+		int regex_idx = -1;
 		if (query->status == QUERY_REGEX || query->status == QUERY_REGEX_CNAME)
 		{
 			unsigned int cacheID = findCacheID(query->domainID, query->clientID);
