@@ -226,8 +226,9 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 
 	// Check domain against blacklist regex filters
 	// Skipped when the domain is whitelisted or blocked by exact blacklist or gravity
+	int regex_idx = 0;
 	if(!query->whitelisted && !blockDomain &&
-	   match_regex(domainString, clientID, REGEX_BLACKLIST))
+	   (regex_idx = match_regex(domainString, clientID, REGEX_BLACKLIST)) > -1)
 	{
 		// We block this domain
 		blockDomain = true;
@@ -236,6 +237,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 
 		// Mark domain as regex matched for this client
 		dns_cache->blocking_status = REGEX_BLOCKED;
+		dns_cache->black_regex_idx = regex_idx;
 	}
 
 	// Common actions regardless what the possible blocking reason is

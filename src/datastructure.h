@@ -80,6 +80,7 @@ typedef struct {
 	unsigned char blocking_status;
 	int domainID;
 	int clientID;
+	int black_regex_idx;
 } DNSCacheData;
 
 const char *getDomainString(const queriesData* query);

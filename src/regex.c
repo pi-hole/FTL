@@ -64,9 +64,9 @@ static bool compile_regex(const char *regexin, const int index, const unsigned c
 	return true;
 }
 
-bool match_regex(const char *input, const int clientID, const unsigned char regexid)
+int match_regex(const char *input, const int clientID, const unsigned char regexid)
 {
-	bool matched = false;
+	int match_idx = -1;
 
 	// Start matching timer
 	timer_start(REGEX_TIMER);
@@ -100,7 +100,7 @@ bool match_regex(const char *input, const int clientID, const unsigned char rege
 		if (errcode == 0)
 		{
 			// Match, return true
-			matched = true;
+			match_idx = regex_id[regexid][index];
 
 			// Print match message when in regex debug mode
 			if(config.debug & DEBUG_REGEX)
@@ -116,7 +116,7 @@ bool match_regex(const char *input, const int clientID, const unsigned char rege
 		logg("WARN: Regex %s evaluation took %.3f msec", regextype[regexid], elapsed);
 
 	// No match, no error, return false
-	return matched;
+	return match_idx;
 }
 
 static void free_regex(void)

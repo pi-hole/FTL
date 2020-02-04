@@ -868,15 +868,26 @@ void getAllQueries(const char *client_message, const int *sock)
 		if(delay > 1.8e7)
 			delay = 0;
 
+		// Get domain blocked during deep CNAME inspection, if applicable
 		const char *CNAME_domain = "N/A";
 		if(query->CNAME_domainID > -1)
 		{
 			CNAME_domain = getCNAMEDomainString(query);
 		}
 
+		// Get ID of blocking regex, if applicable
+		int regex_idx = 0;
+		if (query->status == QUERY_REGEX || query->status == QUERY_REGEX_CNAME)
+		{
+			unsigned int cacheID = findCacheID(query->domainID, query->clientID);
+			DNSCacheData *dns_cache = getDNSCache(cacheID, true);
+			if(dns_cache != NULL)
+				regex_idx = dns_cache->black_regex_idx;
+		}
+
 		if(istelnet[*sock])
 		{
-			ssend(*sock,"%li %s %s %s %i %i %i %lu %s",
+			ssend(*sock,"%li %s %s %s %i %i %i %lu %s %i",
 				query->timestamp,
 				qtype,
 				domain,
@@ -885,7 +896,8 @@ void getAllQueries(const char *client_message, const int *sock)
 				query->dnssec,
 				query->reply,
 				delay,
-				CNAME_domain);
+				CNAME_domain,
+				regex_idx);
 			if(config.debug & DEBUG_API)
 				ssend(*sock, " %i", queryID);
 			ssend(*sock, "\n");
