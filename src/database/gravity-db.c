@@ -432,7 +432,15 @@ int gravityDB_count(const unsigned char list)
 
 	char *querystr = NULL;
 	// Build correct query string to be used depending on list to be read
-	if(asprintf(&querystr, "SELECT count(DISTINCT domain) FROM %s", tablename[list]) < 18)
+	if(list != GRAVITY_TABLE && asprintf(&querystr, "SELECT COUNT(DISTINCT domain) FROM %s", tablename[list]) < 18)
+	{
+		logg("readGravity(%u) - asprintf() error", list);
+		return false;
+	}
+	// We get the number of unique gravity domains as counted and stored by gravity. Counting the number
+	// of distinct domains in vw_gravity may take up to several minutes for very large blocking lists on
+	// very low-end devices such as the Raspierry Pi Zero
+	else if(list == GRAVITY_TABLE && asprintf(&querystr, "SELECT value FROM info WHERE property = 'gravity_count';") < 18)
 	{
 		logg("readGravity(%u) - asprintf() error", list);
 		return false;
@@ -445,7 +453,7 @@ int gravityDB_count(const unsigned char list)
 	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &table_stmt, NULL);
 	if(rc != SQLITE_OK){
 		logg("gravityDB_count(%s) - SQL error prepare (%i): %s", querystr, rc, sqlite3_errmsg(gravity_db));
-		sqlite3_finalize(table_stmt);
+		gravityDB_finalizeTable();
 		gravityDB_close();
 		free(querystr);
 		return DB_FAILED;
@@ -455,8 +463,11 @@ int gravityDB_count(const unsigned char list)
 	rc = sqlite3_step(table_stmt);
 	if(rc != SQLITE_ROW){
 		logg("gravityDB_count(%s) - SQL error step (%i): %s", querystr, rc, sqlite3_errmsg(gravity_db));
-		sqlite3_finalize(table_stmt);
-		gravityDB_close();
+		if(list == GRAVITY_TABLE)
+		{
+			logg("Count of gravity domains not available. Please run pihole -g");
+		}
+		gravityDB_finalizeTable();
 		free(querystr);
 		return DB_FAILED;
 	}
