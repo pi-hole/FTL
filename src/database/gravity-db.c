@@ -610,8 +610,8 @@ bool gravityDB_get_regex_client_groups(clientsData* client, const int numregex, 
 	}
 
 	// Perform query
-	if(config.debug & DEBUG_DATABASE)
-		logg("Querying regex groups: %s", querystr);
+	if(config.debug & DEBUG_REGEX)
+		logg("Querying regex groups for client %s: \"%s\"", getstr(client->ippos), querystr);
 	while((rc = sqlite3_step(query_stmt)) == SQLITE_ROW)
 	{
 		const int result = sqlite3_column_int(query_stmt, 0);
@@ -623,6 +623,8 @@ bool gravityDB_get_regex_client_groups(clientsData* client, const int numregex, 
 				if(type == REGEX_WHITELIST)
 					regexID += counters->num_regex[REGEX_BLACKLIST];
 				set_per_client_regex(clientID, regexID, true);
+				if(config.debug & DEBUG_REGEX)
+					logg("Setting regex %i (database ID %i) to true (client %s)", i, regexid[i], getstr(client->ippos));
 				break;
 			}
 		}

@@ -88,7 +88,10 @@ bool match_regex(const char *input, const int clientID, const unsigned char rege
 		if(!get_per_client_regex(clientID, regexID))
 		{
 			if(config.debug & DEBUG_REGEX)
-				logg("Regex %s ID %d not enabled for this client", regextype[regexid], index);
+			{
+				clientsData* client = getClient(clientID, true);
+				logg("Regex %s ID %d not enabled for client %s", regextype[regexid], index, getstr(client->ippos));
+			}
 
 			continue;
 		}
