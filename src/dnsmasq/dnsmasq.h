@@ -380,9 +380,11 @@ struct ds_config {
   struct ds_config *next;
 };
 
-#define ADDRLIST_LITERAL 1
-#define ADDRLIST_IPV6    2
-#define ADDRLIST_REVONLY 4
+#define ADDRLIST_LITERAL  1
+#define ADDRLIST_IPV6     2
+#define ADDRLIST_REVONLY  4
+#define ADDRLIST_PREFIX   8
+#define ADDRLIST_WILDCARD 16
 
 struct addrlist {
   union all_addr addr;
@@ -771,8 +773,7 @@ struct dhcp_config {
   char *hostname, *domain;
   struct dhcp_netid_list *netid;
 #ifdef HAVE_DHCP6
-  struct in6_addr addr6;
-  int prefix;
+  struct addrlist *addr6;
 #endif
   struct in_addr addr;
   time_t decline_time;
@@ -794,9 +795,7 @@ struct dhcp_config {
 #define CONFIG_DECLINED       1024    /* address declined by client */
 #define CONFIG_BANK           2048    /* from dhcp hosts file */
 #define CONFIG_ADDR6          4096
-#define CONFIG_WILDCARD       8192
 #define CONFIG_ADDR6_HOSTS   16384    /* address added by from /etc/hosts */
-#define CONFIG_PREFIX        32768    /* addr6 is a set, size given by prefix */
 
 struct dhcp_opt {
   int opt, len, flags;

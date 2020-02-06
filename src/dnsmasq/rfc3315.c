@@ -1671,68 +1671,72 @@ static int config_implies(struct dhcp_config *config, struct dhcp_context *conte
 {
   int prefix;
   struct in6_addr wild_addr;
-
+  struct addrlist *addr_list;
+  
   if (!config || !(config->flags & CONFIG_ADDR6))
     return 0;
   
-  prefix = (config->flags & CONFIG_PREFIX) ? config->prefix : 128;
-  wild_addr = config->addr6;
-    
-  if (!is_same_net6(&context->start6, addr, context->prefix))
-    return 0;
-
-  if ((config->flags & CONFIG_WILDCARD))
+  for (addr_list = config->addr6; addr_list; addr_list = addr_list->next)
     {
-      if (context->prefix != 64)
-	return 0;
+      prefix = (addr_list->flags & ADDRLIST_PREFIX) ? addr_list->prefixlen : 128;
+      wild_addr = addr_list->addr.addr6;
       
-      wild_addr = context->start6;
-      setaddr6part(&wild_addr, addr6part(&config->addr6));
+      if ((addr_list->flags & ADDRLIST_WILDCARD) && context->prefix == 64)
+	{
+	  wild_addr = context->start6;
+	  setaddr6part(&wild_addr, addr6part(&addr_list->addr.addr6));
+	}
+      else if (!is_same_net6(&context->start6, addr, context->prefix))
+	continue;
+      
+      if (is_same_net6(&wild_addr, addr, prefix))
+	return 1;
     }
   
-  if (is_same_net6(&wild_addr, addr, prefix))
-    return 1;
-
   return 0;
 }
 
 static int config_valid(struct dhcp_config *config, struct dhcp_context *context, struct in6_addr *addr, struct state *state)
 {
   u64 addrpart;
-
+  struct addrlist *addr_list;
+  
   if (!config || !(config->flags & CONFIG_ADDR6))
     return 0;
 
-  addrpart  = addr6part(&config->addr6);
-
-  if ((config->flags & CONFIG_WILDCARD))
+  for (addr_list = config->addr6; addr_list; addr_list = addr_list->next)
     {
-      if (context->prefix != 64)
-	return 0;
-      
-      *addr = context->start6;
-      setaddr6part(addr, addrpart);
-    }
-  else if (is_same_net6(&context->start6, &config->addr6, context->prefix))
-    *addr = config->addr6;
-  else
-   return 0;
+      addrpart = addr6part(&addr_list->addr.addr6);
 
-  while(1) {
-    if (check_address(state, addr))
-      return 1;
-    
-    if (!(config->flags & CONFIG_PREFIX))
-      return 0;
-    
-    /* config may specify a set of addresses, return first one not in use
-       by another client */
-    
-    addrpart++;
-    setaddr6part(addr, addrpart);
-    if (!is_same_net6(addr, &config->addr6, config->prefix))
-      return 0;
-  }
+      if ((addr_list->flags & ADDRLIST_WILDCARD))
+	{
+	  if (context->prefix != 64)
+	    continue;
+      
+	  *addr = context->start6;
+	  setaddr6part(addr, addrpart);
+	}
+      else if (is_same_net6(&context->start6, &addr_list->addr.addr6, context->prefix))
+	*addr = addr_list->addr.addr6;
+      else
+	continue;
+      
+      while(1)
+	{
+	  if (check_address(state, addr))
+	    return 1;
+	  
+	  if (!(addr_list->flags & ADDRLIST_PREFIX))
+	    break;
+	  
+	  addrpart++;
+	  setaddr6part(addr, addrpart);
+	  if (!is_same_net6(addr, &addr_list->addr.addr6, addr_list->prefixlen))
+	    break;
+	}
+    }
+
+  return 0;
 }
 
 /* Calculate valid and preferred times to send in leases/renewals. 

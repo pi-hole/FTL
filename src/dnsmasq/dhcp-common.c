@@ -271,26 +271,35 @@ static int is_config_in_context(struct dhcp_context *context, struct dhcp_config
 {
   if (!context) /* called via find_config() from lease_update_from_configs() */
     return 1; 
-
-  if (!(config->flags & (CONFIG_ADDR | CONFIG_ADDR6)))
-    return 1;
   
 #ifdef HAVE_DHCP6
-  if ((context->flags & CONTEXT_V6) && (config->flags & CONFIG_WILDCARD))
-    return 1;
-#endif
+  if (context->flags & CONTEXT_V6)
+    {
+       struct addrlist *addr_list;
 
-  for (; context; context = context->current)
-#ifdef HAVE_DHCP6
-    if (context->flags & CONTEXT_V6) 
-      {
-	if ((config->flags & CONFIG_ADDR6) && is_same_net6(&config->addr6, &context->start6, context->prefix))
-	  return 1;
-      }
-    else 
+       if (!(config->flags & CONFIG_ADDR6))
+	 return 1;
+       
+        for (; context; context = context->current)
+	  for (addr_list = config->addr6; addr_list; addr_list = addr_list->next)
+	    {
+	      if ((addr_list->flags & ADDRLIST_WILDCARD) && context->prefix == 64)
+		return 1;
+	      
+	      if (is_same_net6(&addr_list->addr.addr6, &context->start6, context->prefix))
+		return 1;
+	    }
+    }
+  else
 #endif
-      if ((config->flags & CONFIG_ADDR) && is_same_net(config->addr, context->start, context->netmask))
+    {
+      if (!(config->flags & CONFIG_ADDR))
 	return 1;
+      
+      for (; context; context = context->current)
+	if ((config->flags & CONFIG_ADDR) && is_same_net(config->addr, context->start, context->netmask))
+	  return 1;
+    }
 
   return 0;
 }
@@ -426,9 +435,19 @@ void dhcp_update_configs(struct dhcp_config *configs)
 	    if (prot == AF_INET6 && 
 		(!(conf_tmp = config_find_by_address6(configs, NULL, 0, &crec->addr.addr6)) || conf_tmp == config))
 	      {
-		memcpy(&config->addr6, &crec->addr.addr6, IN6ADDRSZ);
-		config->flags |= CONFIG_ADDR6 | CONFIG_ADDR6_HOSTS;
-		config->flags &= ~CONFIG_PREFIX;
+		/* host must have exactly one address if comming from /etc/hosts. */
+		if (!config->addr6 && (config->addr6 = whine_malloc(sizeof(struct addrlist))))
+		  {
+		    config->addr6->next = NULL;
+		    config->addr6->flags = 0;
+		  }
+
+		if (config->addr6 && !config->addr6->next && !(config->addr6->flags & (ADDRLIST_WILDCARD|ADDRLIST_PREFIX)))
+		  {
+		    memcpy(&config->addr6->addr.addr6, &crec->addr.addr6, IN6ADDRSZ);
+		    config->flags |= CONFIG_ADDR6 | CONFIG_ADDR6_HOSTS;
+		  }
+	    
 		continue;
 	      }
 #endif

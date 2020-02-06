@@ -423,10 +423,15 @@ struct dhcp_config *config_find_by_address6(struct dhcp_config *configs, struct 
   struct dhcp_config *config;
   
   for (config = configs; config; config = config->next)
-    if ((config->flags & CONFIG_ADDR6) &&
-	(!net || is_same_net6(&config->addr6, net, prefix)) &&
-	is_same_net6(&config->addr6, addr, (config->flags & CONFIG_PREFIX) ? config->prefix : 128))
-      return config;
+    if (config->flags & CONFIG_ADDR6)
+      {
+	struct addrlist *addr_list;
+	
+	for (addr_list = config->addr6; addr_list; addr_list = addr_list->next)
+	  if ((!net || is_same_net6(&addr_list->addr.addr6, net, prefix) || ((addr_list->flags & ADDRLIST_WILDCARD) && prefix == 64)) &&
+	      is_same_net6(&addr_list->addr.addr6, addr, (addr_list->flags & ADDRLIST_PREFIX) ? addr_list->prefixlen : 128))
+	    return config;
+      }
   
   return NULL;
 }
