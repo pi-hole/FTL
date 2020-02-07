@@ -526,7 +526,8 @@ static int dhcp6_no_relay(struct state *state, int msg_type, void *inbuff, size_
     }	 
   
   if (state->clid &&
-      (config = find_config(daemon->dhcp_conf, state->context, state->clid, state->clid_len, state->mac, state->mac_len, state->mac_type, NULL)) &&
+      (config = find_config(daemon->dhcp_conf, state->context, state->clid, state->clid_len,
+			    state->mac, state->mac_len, state->mac_type, NULL, run_tag_if(state->tags))) &&
       have_config(config, CONFIG_NAME))
     {
       state->hostname = config->hostname;
@@ -546,7 +547,7 @@ static int dhcp6_no_relay(struct state *state, int msg_type, void *inbuff, size_
 	      /* Search again now we have a hostname. 
 		 Only accept configs without CLID here, (it won't match)
 		 to avoid impersonation by name. */
-	      struct dhcp_config *new = find_config(daemon->dhcp_conf, state->context, NULL, 0, NULL, 0, 0, state->hostname);
+	      struct dhcp_config *new = find_config(daemon->dhcp_conf, state->context, NULL, 0, NULL, 0, 0, state->hostname, run_tag_if(state->tags));
 	      if (new && !have_config(new, CONFIG_CLID) && !new->hwaddr)
 		config = new;
 	    }
@@ -572,7 +573,8 @@ static int dhcp6_no_relay(struct state *state, int msg_type, void *inbuff, size_
 	ignore = 1;
     }
   else if (state->clid &&
-	   find_config(daemon->dhcp_conf, NULL, state->clid, state->clid_len, state->mac, state->mac_len, state->mac_type, NULL))
+	   find_config(daemon->dhcp_conf, NULL, state->clid, state->clid_len,
+		       state->mac, state->mac_len, state->mac_type, NULL, run_tag_if(state->tags)))
     {
       known_id.net = "known-othernet";
       known_id.next = state->tags;
