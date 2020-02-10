@@ -1700,7 +1700,7 @@ static int config_implies(struct dhcp_config *config, struct dhcp_context *conte
 
 static int config_valid(struct dhcp_config *config, struct dhcp_context *context, struct in6_addr *addr, struct state *state)
 {
-  u64 addrpart;
+  u64 addrpart, i, addresses;
   struct addrlist *addr_list;
   
   if (!config || !(config->flags & CONFIG_ADDR6))
@@ -1709,32 +1709,29 @@ static int config_valid(struct dhcp_config *config, struct dhcp_context *context
   for (addr_list = config->addr6; addr_list; addr_list = addr_list->next)
     {
       addrpart = addr6part(&addr_list->addr.addr6);
+      addresses = 1;
 
+      if (addr_list->flags & ADDRLIST_PREFIX)
+	addresses = 1<<(128-addr_list->prefixlen);
+		
       if ((addr_list->flags & ADDRLIST_WILDCARD))
 	{
 	  if (context->prefix != 64)
 	    continue;
       
 	  *addr = context->start6;
-	  setaddr6part(addr, addrpart);
 	}
       else if (is_same_net6(&context->start6, &addr_list->addr.addr6, context->prefix))
 	*addr = addr_list->addr.addr6;
       else
 	continue;
       
-      while(1)
+      for (i = 0 ; i < addresses; i++)
 	{
+	  setaddr6part(addr, addrpart+i);
+
 	  if (check_address(state, addr))
 	    return 1;
-	  
-	  if (!(addr_list->flags & ADDRLIST_PREFIX))
-	    break;
-	  
-	  addrpart++;
-	  setaddr6part(addr, addrpart);
-	  if (!is_same_net6(addr, &addr_list->addr.addr6, addr_list->prefixlen))
-	    break;
 	}
     }
 
