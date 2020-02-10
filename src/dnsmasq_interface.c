@@ -43,7 +43,7 @@ static void detect_blocked_IP(const unsigned short flags, const char* answer, co
 static void query_externally_blocked(const int queryID, const unsigned char status);
 static int findQueryID(const int id);
 static void prepare_blocking_metadata(void);
-static void query_blocked(queriesData* query, domainsData* domain, clientsData* client);
+static void query_blocked(queriesData* query, domainsData* domain, clientsData* client, const unsigned char new_status);
 
 // Static blocking metadata (stored precomputed as time-critical)
 static unsigned int blocking_flags = 0;
@@ -107,8 +107,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			// as sometving along the CNAME path hit the whitelist
 			if(!query->whitelisted)
 			{
-				query_blocked(query, domain, client);
-				query->status = QUERY_BLACKLIST;
+				query_blocked(query, domain, client, QUERY_BLACKLIST);
 				return true;
 			}
 			break;
@@ -127,8 +126,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			// as sometving along the CNAME path hit the whitelist
 			if(!query->whitelisted)
 			{
-				query_blocked(query, domain, client);
-				query->status = QUERY_GRAVITY;
+				query_blocked(query, domain, client, QUERY_GRAVITY);
 				return true;
 			}
 			break;
@@ -147,8 +145,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			// as sometving along the CNAME path hit the whitelist
 			if(!query->whitelisted)
 			{
-				query_blocked(query, domain, client);
-				query->status = QUERY_WILDCARD;
+				query_blocked(query, domain, client, QUERY_WILDCARD);
 				return true;
 			}
 			break;
@@ -242,9 +239,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 	if(blockDomain)
 	{
 		// Adjust counters
-		query_blocked(query, domain, client);
-		// Set status only after calling query_blocked()
-		query->status = new_status;
+		query_blocked(query, domain, client, new_status);
 
 		// Debug output
 		if(config.debug & DEBUG_QUERIES)
@@ -854,26 +849,9 @@ void _FTL_reply(const unsigned short flags, const char *name, const struct all_a
 		   strcmp(answer, "0.0.0.0") == 0 ||
 		   strcmp(answer, "::") == 0)
 		{
-			// Answered from user-defined blocking rules (dnsmasq config files)
-			if(query->status == QUERY_UNKNOWN)
-			{
-				counters->blocked++;
-				overTime[timeidx].blocked++;
-
-				// Update domain blocked counter
-				domain->blockedcount++;
-
-				// Get client pointer
-				clientsData* client = getClient(query->clientID, true);
-				if(client != NULL)
-				{
-					// Update client blocked counter
-					client->blockedcount++;
-				}
-			}
-
-			// Set query status to wildcard
-			query->status = QUERY_WILDCARD;
+			// Mark query as blocked
+			clientsData* client = getClient(query->clientID, true);
+			query_blocked(query, domain, client, QUERY_WILDCARD);
 		}
 		else
 		{
@@ -1083,24 +1061,9 @@ static void query_externally_blocked(const int queryID, const unsigned char stat
 	}
 
 	// Mark query as blocked
-	if(query->status == QUERY_UNKNOWN)
-	{
-		counters->blocked++;
-		overTime[timeidx].blocked++;
-
-		// Get domain pointer
-		domainsData* domain = getDomain(query->domainID, true);
-		if(domain != NULL)
-			domain->blockedcount++;
-
-		// Get client pointer
-		clientsData* client = getClient(query->clientID, true);
-		if(client != NULL)
-			client->blockedcount++;
-	}
-
-	// Set query status
-	query->status = status;
+	domainsData* domain = getDomain(query->domainID, true);
+	clientsData* client = getClient(query->clientID, true);
+	query_blocked(query, domain, client, status);
 }
 
 void _FTL_cache(const unsigned int flags, const char *name, const struct all_addr *addr,
@@ -1235,22 +1198,42 @@ void _FTL_cache(const unsigned int flags, const char *name, const struct all_add
 	unlock_shm();
 }
 
-static void query_blocked(queriesData* query, domainsData* domain, clientsData* client)
+static void query_blocked(queriesData* query, domainsData* domain, clientsData* client, const unsigned char new_status)
 {
 	// Get response time
 	struct timeval response;
 	gettimeofday(&response, 0);
 	save_reply_type(blocking_flags, query, response);
 
-	// Adjust counters
+	// Adjust counters if we recorded a non-blocking status
 	if(query->status == QUERY_UNKNOWN)
 	{
 		counters->unknown--;
-		counters->blocked++;
-		overTime[query->timeidx].blocked++;
-		domain->blockedcount++;
-		client->blockedcount++;
 	}
+	else if(query->status == QUERY_FORWARDED)
+	{
+		counters->forwarded--;
+	}
+	else if(query->status == QUERY_CACHE)
+	{
+		counters->cached--;
+	}
+	else
+	{
+		// Already a blocked query, no need to change anything
+		return;
+	}
+
+	// Count as blocked query
+	counters->blocked++;
+	overTime[query->timeidx].blocked++;
+	if(domain != NULL)
+		domain->blockedcount++;
+	if(client != NULL)
+		client->blockedcount++;
+
+	// Update status
+	query->status = new_status;
 }
 
 void _FTL_dnssec(const int status, const int id, const char* file, const int line)
