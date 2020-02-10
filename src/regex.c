@@ -28,7 +28,7 @@ static bool *regex_available[2] = { NULL };
 static int *regex_id[2] = { NULL };
 static char **regexbuffer[2] = { NULL };
 
-const char *regextype[] = { "blacklist", "whitelist" };
+static const char *regextype[] = { "blacklist", "whitelist" };
 
 static void log_regex_error(const int errcode, const int index, const unsigned char regexid, const char *regexin)
 {
@@ -76,9 +76,7 @@ bool match_regex(const char *input, const int clientID, const unsigned char rege
 		if(!regex_available[regexid][index])
 		{
 			if(config.debug & DEBUG_REGEX)
-				logg("Regex %s (DB ID %d) \"%s\" is NOT AVAILABLE",
-				     regextype[regexid], regex_id[regexid][index],
-					 regexbuffer[regexid][index]);
+				logg("Regex %s ID %d not available", regextype[regexid], index);
 
 			continue;
 		}
@@ -90,12 +88,7 @@ bool match_regex(const char *input, const int clientID, const unsigned char rege
 		if(!get_per_client_regex(clientID, regexID))
 		{
 			if(config.debug & DEBUG_REGEX)
-			{
-				clientsData* client = getClient(clientID, true);
-				logg("Regex %s (DB ID %d) \"%s\" NOT ENABLED for client %s",
-				     regextype[regexid], regex_id[regexid][index],
-				     regexbuffer[regexid][index], getstr(client->ippos));
-			}
+				logg("Regex %s ID %d not enabled for this client", regextype[regexid], index);
 
 			continue;
 		}
@@ -111,20 +104,8 @@ bool match_regex(const char *input, const int clientID, const unsigned char rege
 
 			// Print match message when in regex debug mode
 			if(config.debug & DEBUG_REGEX)
-			{
-				logg("Regex %s (DB ID %i) >> MATCH: \"%s\" vs. \"%s\"",
-				     regextype[regexid], regex_id[regexid][index],
-				     input, regexbuffer[regexid][index]);
-			}
+				logg("Regex %s (ID %i) \"%s\" matches \"%s\"", regextype[regexid], regex_id[regexid][index], regexbuffer[regexid][index], input);
 			break;
-		}
-
-		// Print no match message when in regex debug mode
-		if(config.debug & DEBUG_REGEX && !matched)
-		{
-			logg("Regex %s (DB ID %i) NO match: \"%s\" vs. \"%s\"",
-			     regextype[regexid], regex_id[regexid][index],
-				 input, regexbuffer[regexid][index]);
 		}
 	}
 
@@ -202,11 +183,11 @@ void allocate_regex_client_enabled(clientsData *client, const int clientID)
 
 static void read_regex_table(const unsigned char regexid)
 {
-	// Get table ID
-	unsigned char tableID = (regexid == REGEX_BLACKLIST) ? REGEX_BLACKLIST_TABLE : REGEX_WHITELIST_TABLE;
+	// Get database ID
+	unsigned char databaseID = (regexid == REGEX_BLACKLIST) ? REGEX_BLACKLIST_TABLE : REGEX_WHITELIST_TABLE;
 
 	// Get number of lines in the regex table
-	counters->num_regex[regexid] = gravityDB_count(tableID);
+	counters->num_regex[regexid] = gravityDB_count(databaseID);
 
 	if(counters->num_regex[regexid] == 0)
 	{
@@ -215,7 +196,7 @@ static void read_regex_table(const unsigned char regexid)
 	}
 	else if(counters->num_regex[regexid] == DB_FAILED)
 	{
-		logg("WARN: Database query failed, assuming there are no %s regex entries", regextype[regexid]);
+		logg("WARN: Database query failed, assuming there are no regex %s entries", regextype[regexid]);
 		counters->num_regex[regexid] = 0;
 		return;
 	}
@@ -230,9 +211,9 @@ static void read_regex_table(const unsigned char regexid)
 		regexbuffer[regexid] = calloc(counters->num_regex[regexid], sizeof(char*));
 
 	// Connect to regex table
-	if(!gravityDB_getTable(tableID))
+	if(!gravityDB_getTable(databaseID))
 	{
-		logg("read_regex_from_database(): Error getting %s regex table from database", regextype[regexid]);
+		logg("read_regex_from_database(): Error getting regex %s table from database", regextype[regexid]);
 		return;
 	}
 
@@ -256,10 +237,6 @@ static void read_regex_table(const unsigned char regexid)
 			continue;
 
 		// Compile this regex
-		if(config.debug & DEBUG_REGEX)
-		{
-			logg("Compiling %s regex %i (database ID %i): %s", regextype[regexid], i, rowid, domain);
-		}
 		regex_available[regexid][i] = compile_regex(domain, i, regexid);
 		regex_id[regexid][i] = rowid;
 
