@@ -345,7 +345,9 @@ bool gravityDB_getTable(const unsigned char list)
 
 	char *querystr = NULL;
 	// Build correct query string to be used depending on list to be read
-	if(asprintf(&querystr, "SELECT domain, id FROM %s", tablename[list]) < 18)
+	// We GROUP BY id as the view also includes the group_id leading to possible duplicates
+	// when domains are included in more than one group
+	if(asprintf(&querystr, "SELECT domain, id FROM %s GROUP BY id", tablename[list]) < 18)
 	{
 		logg("readGravity(%u) - asprintf() error", list);
 		return false;
@@ -610,8 +612,8 @@ bool gravityDB_get_regex_client_groups(clientsData* client, const int numregex, 
 	}
 
 	// Perform query
-	if(config.debug & DEBUG_DATABASE)
-		logg("Querying regex groups: %s", querystr);
+	if(config.debug & DEBUG_REGEX)
+		logg("Regex %s: Querying groups for client %s: \"%s\"", regextype[type], getstr(client->ippos), querystr);
 	while((rc = sqlite3_step(query_stmt)) == SQLITE_ROW)
 	{
 		const int result = sqlite3_column_int(query_stmt, 0);
@@ -623,6 +625,8 @@ bool gravityDB_get_regex_client_groups(clientsData* client, const int numregex, 
 				if(type == REGEX_WHITELIST)
 					regexID += counters->num_regex[REGEX_BLACKLIST];
 				set_per_client_regex(clientID, regexID, true);
+				if(config.debug & DEBUG_REGEX)
+					logg("Regex %s: Enabling regex with DB ID %i for client %s", regextype[type], regexid[i], getstr(client->ippos));
 				break;
 			}
 		}
