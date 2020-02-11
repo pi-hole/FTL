@@ -161,7 +161,7 @@ void DB_save_queries(void)
 		total++;
 		if(query->status == QUERY_GRAVITY ||
 		   query->status == QUERY_BLACKLIST ||
-		   query->status == QUERY_WILDCARD ||
+		   query->status == QUERY_REGEX ||
 		   query->status == QUERY_EXTERNAL_BLOCKED_IP ||
 		   query->status == QUERY_EXTERNAL_BLOCKED_NULL ||
 		   query->status == QUERY_EXTERNAL_BLOCKED_NXRA ||
@@ -404,7 +404,7 @@ void DB_read_queries(void)
 				break;
 
 			case QUERY_GRAVITY: // Blocked by gravity
-			case QUERY_WILDCARD: // Blocked by regex blacklist
+			case QUERY_REGEX: // Blocked by regex blacklist
 			case QUERY_BLACKLIST: // Blocked by exact blacklist
 			case QUERY_EXTERNAL_BLOCKED_IP: // Blocked by external provider
 			case QUERY_EXTERNAL_BLOCKED_NULL: // Blocked by external provider

@@ -115,7 +115,7 @@ void *GC_thread(void *val)
 						break;
 					case QUERY_GRAVITY: // Blocked by Pi-hole's blocking lists (fall through)
 					case QUERY_BLACKLIST: // Exact blocked (fall through)
-					case QUERY_WILDCARD: // Regex blocked (fall through)
+					case QUERY_REGEX: // Regex blocked (fall through)
 					case QUERY_EXTERNAL_BLOCKED_IP: // Blocked by upstream provider (fall through)
 					case QUERY_EXTERNAL_BLOCKED_NXRA: // Blocked by upstream provider (fall through)
 					case QUERY_EXTERNAL_BLOCKED_NULL: // Blocked by upstream provider (fall through)

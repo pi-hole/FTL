@@ -148,7 +148,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			if(!query->whitelisted)
 			{
 				query_blocked(query, domain, client);
-				query->status = QUERY_WILDCARD;
+				query->status = QUERY_REGEX;
 				return true;
 			}
 			break;
@@ -203,7 +203,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 	{
 		// We block this domain
 		blockDomain = true;
-		new_status = QUERY_BLACKLIST_CNAME;
+		new_status = QUERY_BLACKLIST;
 		*blockingreason = "exactly blacklisted";
 
 		// Mark domain as exactly blacklisted for this client
@@ -217,7 +217,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 	{
 		// We block this domain
 		blockDomain = true;
-		new_status = QUERY_GRAVITY_CNAME;
+		new_status = QUERY_GRAVITY;
 		*blockingreason = "gravity blocked";
 
 		// Mark domain as gravity blocked for this client
@@ -226,16 +226,18 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 
 	// Check domain against blacklist regex filters
 	// Skipped when the domain is whitelisted or blocked by exact blacklist or gravity
+	int regex_idx = 0;
 	if(!query->whitelisted && !blockDomain &&
-	   match_regex(domainString, clientID, REGEX_BLACKLIST))
+	   (regex_idx = match_regex(domainString, clientID, REGEX_BLACKLIST)) > -1)
 	{
 		// We block this domain
 		blockDomain = true;
-		new_status = QUERY_REGEX_CNAME;
+		new_status = QUERY_REGEX;
 		*blockingreason = "regex blacklisted";
 
 		// Mark domain as regex matched for this client
 		dns_cache->blocking_status = REGEX_BLOCKED;
+		dns_cache->black_regex_idx = regex_idx;
 	}
 
 	// Common actions regardless what the possible blocking reason is
@@ -343,7 +345,7 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 		// Change blocking reason into CNAME-caused blocking
 		if(query->status == QUERY_GRAVITY)
 			query->status = QUERY_GRAVITY_CNAME;
-		else if(query->status == QUERY_WILDCARD)
+		else if(query->status == QUERY_REGEX)
 			query->status = QUERY_REGEX_CNAME;
 		else if(query->status == QUERY_BLACKLIST)
 			query->status = QUERY_BLACKLIST_CNAME;
@@ -883,7 +885,7 @@ void _FTL_reply(const unsigned short flags, const char *name, const struct all_a
 			}
 
 			// Set query status to wildcard
-			query->status = QUERY_WILDCARD;
+			query->status = QUERY_REGEX;
 		}
 		else
 		{

@@ -13,8 +13,7 @@
 // clientsData type
 #include "datastructure.h"
 
-
-bool match_regex(const char *input, const int clientID, const unsigned char regexid);
+int match_regex(const char *input, const int clientID, const unsigned char regexid);
 void allocate_regex_client_enabled(clientsData *client, const int clientID);
 void read_regex_from_database(void);
 
