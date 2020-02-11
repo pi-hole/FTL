@@ -103,7 +103,7 @@ void *GC_thread(void *val)
 					case QUERY_FORWARDED:
 						// Forwarded to an upstream DNS server
 						// Adjust counters
-						counters->forwardedqueries--;
+						counters->forwarded--;
 						if(forward != NULL)
 							forward->count--;
 						overTime[timeidx].forwarded--;

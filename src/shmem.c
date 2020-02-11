@@ -199,7 +199,7 @@ static void remap_shm(void)
 	realloc_shm(&shm_clients, counters->clients_MAX*sizeof(clientsData), false);
 	clients = (clientsData*)shm_clients.ptr;
 
-	realloc_shm(&shm_forwarded, counters->forwarded_MAX*sizeof(forwardedData), false);
+	realloc_shm(&shm_forwarded, counters->upstreams_MAX*sizeof(forwardedData), false);
 	forwarded = (forwardedData*)shm_forwarded.ptr;
 
 	realloc_shm(&shm_dns_cache, counters->dns_cache_MAX*sizeof(DNSCacheData), false);
@@ -309,7 +309,7 @@ bool init_shmem(void)
 	// Try to create shared memory object
 	shm_forwarded = create_shm(SHARED_FORWARDED_NAME, size*sizeof(forwardedData));
 	forwarded = (forwardedData*)shm_forwarded.ptr;
-	counters->forwarded_MAX = size;
+	counters->upstreams_MAX = size;
 
 	/****************************** shared queries struct ******************************/
 	// Try to create shared memory object
@@ -450,7 +450,7 @@ void *enlarge_shmem_struct(const char type)
 			sharedMemory = &shm_forwarded;
 			allocation_step = get_optimal_object_size(sizeof(forwardedData), 1);
 			sizeofobj = sizeof(forwardedData);
-			counter = &counters->forwarded_MAX;
+			counter = &counters->upstreams_MAX;
 			break;
 		case DNS_CACHE:
 			sharedMemory = &shm_dns_cache;
@@ -622,7 +622,7 @@ void memory_check(int which)
 			}
 		break;
 		case FORWARDED:
-			if(counters->forwarded >= counters->forwarded_MAX-1)
+			if(counters->upstreams >= counters->upstreams_MAX-1)
 			{
 				// Have to reallocate shared memory
 				forwarded = enlarge_shmem_struct(FORWARDED);
@@ -786,7 +786,7 @@ domainsData* _getDomain(int domainID, bool checkMagic, int line, const char * fu
 
 forwardedData* _getForward(int forwardID, bool checkMagic, int line, const char * function, const char * file)
 {
-	if(check_range(forwardID, counters->forwarded_MAX, "forward", line, function, file) &&
+	if(check_range(forwardID, counters->upstreams_MAX, "forward", line, function, file) &&
 	   check_magic(forwardID, checkMagic, forwarded[forwardID].magic, "forward", line, function, file))
 		return &forwarded[forwardID];
 	else

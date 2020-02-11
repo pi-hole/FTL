@@ -718,7 +718,7 @@ void _FTL_forwarded(const unsigned int flags, const char *name, const struct all
 	overTime[timeidx].forwarded++;
 
 	// Update counter for forwarded queries
-	counters->forwardedqueries++;
+	counters->forwarded++;
 
 	// Release allocated memory
 	free(forward);
@@ -1051,7 +1051,7 @@ static void query_externally_blocked(const int queryID, const unsigned char stat
 	// Correct counters if necessary ...
 	if(query->status == QUERY_FORWARDED)
 	{
-		counters->forwardedqueries--;
+		counters->forwarded--;
 		overTime[timeidx].forwarded--;
 
 		// Get forward pointer
@@ -1212,7 +1212,7 @@ static void query_blocked(queriesData* query, domainsData* domain, clientsData* 
 	}
 	else if(query->status == QUERY_FORWARDED)
 	{
-		counters->forwardedqueries--;
+		counters->forwarded--;
 	}
 	else if(query->status == QUERY_CACHE)
 	{

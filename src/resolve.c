@@ -165,7 +165,7 @@ void resolveForwardDestinations(const bool onlynew)
 {
 	// Lock counter access here, we use a copy in the following loop
 	lock_shm();
-	int forwardedcount = counters->forwarded;
+	int forwardedcount = counters->upstreams;
 	unlock_shm();
 	for(int forwardID = 0; forwardID < forwardedcount; forwardID++)
 	{

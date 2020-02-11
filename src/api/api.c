@@ -92,7 +92,7 @@ void getStats(const int *sock)
 		ssend(*sock, "dns_queries_today %i\nads_blocked_today %i\nads_percentage_today %f\n",
 		      total, blocked, percentage);
 		ssend(*sock, "unique_domains %i\nqueries_forwarded %i\nqueries_cached %i\n",
-		      counters->domains, counters->forwardedqueries, counters->cached);
+		      counters->domains, counters->forwarded, counters->cached);
 		ssend(*sock, "clients_ever_seen %i\n", counters->clients);
 		ssend(*sock, "unique_clients %i\n", activeclients);
 
@@ -115,7 +115,7 @@ void getStats(const int *sock)
 		pack_int32(*sock, blocked);
 		pack_float(*sock, percentage);
 		pack_int32(*sock, counters->domains);
-		pack_int32(*sock, counters->forwardedqueries);
+		pack_int32(*sock, counters->forwarded);
 		pack_int32(*sock, counters->cached);
 		pack_int32(*sock, counters->clients);
 		pack_int32(*sock, activeclients);
@@ -470,12 +470,12 @@ void getTopClients(const char *client_message, const int *sock)
 void getForwardDestinations(const char *client_message, const int *sock)
 {
 	bool sort = true;
-	int temparray[counters->forwarded][2], totalqueries = 0;
+	int temparray[counters->upstreams][2], totalqueries = 0;
 
 	if(command(client_message, "unsorted"))
 		sort = false;
 
-	for(int forwardID = 0; forwardID < counters->forwarded; forwardID++)
+	for(int forwardID = 0; forwardID < counters->upstreams; forwardID++)
 	{
 		// If we want to print a sorted output, we fill the temporary array with
 		// the values we will use for sorting afterwards
@@ -493,13 +493,13 @@ void getForwardDestinations(const char *client_message, const int *sock)
 	if(sort)
 	{
 		// Sort temporary array in descending order
-		qsort(temparray, counters->forwarded, sizeof(int[2]), cmpdesc);
+		qsort(temparray, counters->upstreams, sizeof(int[2]), cmpdesc);
 	}
 
-	totalqueries = counters->forwardedqueries + counters->cached + counters->blocked;
+	totalqueries = counters->forwarded + counters->cached + counters->blocked;
 
 	// Loop over available forward destinations
-	for(int i = -2; i < min(counters->forwarded, 8); i++)
+	for(int i = -2; i < min(counters->upstreams, 8); i++)
 	{
 		float percentage = 0.0f;
 		const char* ip, *name;
@@ -667,7 +667,7 @@ void getAllQueries(const char *client_message, const int *sock)
 		{
 			// Iterate through all known forward destinations
 			forwarddestid = -3;
-			for(int i = 0; i < counters->forwarded; i++)
+			for(int i = 0; i < counters->upstreams; i++)
 			{
 				// Get forward pointer
 				const forwardedData* forward = getForward(i, true);

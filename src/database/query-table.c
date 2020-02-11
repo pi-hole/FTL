@@ -415,7 +415,7 @@ void DB_read_queries(void)
 				break;
 
 			case QUERY_FORWARDED: // Forwarded
-				counters->forwardedqueries++;
+				counters->forwarded++;
 				// Update overTime data structure
 				overTime[timeidx].forwarded++;
 				break;

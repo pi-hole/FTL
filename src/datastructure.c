@@ -27,7 +27,7 @@ void strtolower(char *str)
 int findForwardID(const char * forwardString, const bool count)
 {
 	// Go through already knows forward servers and see if we used one of those
-	for(int forwardID=0; forwardID < counters->forwarded; forwardID++)
+	for(int forwardID=0; forwardID < counters->upstreams; forwardID++)
 	{
 		// Get forward pointer
 		forwardedData* forward = getForward(forwardID, true);
@@ -44,8 +44,8 @@ int findForwardID(const char * forwardString, const bool count)
 	}
 	// This forward server is not known
 	// Store ID
-	const int forwardID = counters->forwarded;
-	logg("New forward server: %s (%i/%u)", forwardString, forwardID, counters->forwarded_MAX);
+	const int forwardID = counters->upstreams;
+	logg("New forward server: %s (%i/%u)", forwardString, forwardID, counters->upstreams_MAX);
 
 	// Check struct size
 	memory_check(FORWARDED);
@@ -75,7 +75,7 @@ int findForwardID(const char * forwardString, const bool count)
 	forward->new = true;
 	forward->namepos = 0; // 0 -> string with length zero
 	// Increase counter by one
-	counters->forwarded++;
+	counters->upstreams++;
 
 	return forwardID;
 }
