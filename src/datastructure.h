@@ -14,7 +14,7 @@
 #include "database/sqlite3.h"
 
 void strtolower(char *str);
-int findForwardID(const char * forward, const bool count);
+int findUpstreamID(const char * upstream, const bool count);
 int findDomainID(const char *domain, const bool count);
 int findClientID(const char *client, const bool count);
 int findCacheID(int domainID, int clientID);
@@ -37,7 +37,7 @@ typedef struct {
 	time_t timestamp;
 	int domainID;
 	int clientID;
-	int forwardID;
+	int upstreamID;
 	int id; // the ID is a (signed) int in dnsmasq, so no need for a long int here
 	unsigned long response; // saved in units of 1/10 milliseconds (1 = 0.1ms, 2 = 0.2ms, 2500 = 250.0ms, etc.)
 	int64_t db;
@@ -53,7 +53,7 @@ typedef struct {
 	int failed;
 	size_t ippos;
 	size_t namepos;
-} forwardedData;
+} upstreamsData;
 
 typedef struct {
 	unsigned char magic;
@@ -91,8 +91,8 @@ queriesData* _getQuery(int queryID, bool checkMagic, int line, const char * func
 clientsData* _getClient(int clientID, bool checkMagic, int line, const char * function, const char * file);
 #define getDomain(domainID, checkMagic) _getDomain(domainID, checkMagic, __LINE__, __FUNCTION__, __FILE__)
 domainsData* _getDomain(int domainID, bool checkMagic, int line, const char * function, const char * file);
-#define getForward(forwardID, checkMagic) _getForward(forwardID, checkMagic, __LINE__, __FUNCTION__, __FILE__)
-forwardedData* _getForward(int forwardID, bool checkMagic, int line, const char * function, const char * file);
+#define getUpstream(upstreamID, checkMagic) _getUpstream(upstreamID, checkMagic, __LINE__, __FUNCTION__, __FILE__)
+upstreamsData* _getUpstream(int upstreamID, bool checkMagic, int line, const char * function, const char * file);
 #define getDNSCache(cacheID, checkMagic) _getDNSCache(cacheID, checkMagic, __LINE__, __FUNCTION__, __FILE__)
 DNSCacheData* _getDNSCache(int cacheID, bool checkMagic, int line, const char * function, const char * file);
 
