@@ -1212,7 +1212,7 @@ static void query_blocked(queriesData* query, domainsData* domain, clientsData* 
 	}
 	else if(query->status == QUERY_FORWARDED)
 	{
-		counters->forwarded--;
+		counters->forwardedqueries--;
 	}
 	else if(query->status == QUERY_CACHE)
 	{
