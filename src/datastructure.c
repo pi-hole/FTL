@@ -24,60 +24,60 @@ void strtolower(char *str)
 	while(str[i]){ str[i] = tolower(str[i]); i++; }
 }
 
-int findForwardID(const char * forwardString, const bool count)
+int findUpstreamID(const char * upstreamString, const bool count)
 {
-	// Go through already knows forward servers and see if we used one of those
-	for(int forwardID=0; forwardID < counters->upstreams; forwardID++)
+	// Go through already knows upstream servers and see if we used one of those
+	for(int upstreamID=0; upstreamID < counters->upstreams; upstreamID++)
 	{
-		// Get forward pointer
-		forwardedData* forward = getForward(forwardID, true);
+		// Get upstream pointer
+		upstreamsData* upstream = getUpstream(upstreamID, true);
 
 		// Check if the returned pointer is valid before trying to access it
-		if(forward == NULL)
+		if(upstream == NULL)
 			continue;
 
-		if(strcmp(getstr(forward->ippos), forwardString) == 0)
+		if(strcmp(getstr(upstream->ippos), upstreamString) == 0)
 		{
-			if(count) forward->count++;
-			return forwardID;
+			if(count) upstream->count++;
+			return upstreamID;
 		}
 	}
-	// This forward server is not known
+	// This upstream server is not known
 	// Store ID
-	const int forwardID = counters->upstreams;
-	logg("New forward server: %s (%i/%u)", forwardString, forwardID, counters->upstreams_MAX);
+	const int upstreamID = counters->upstreams;
+	logg("New upstream server: %s (%i/%u)", upstreamString, upstreamID, counters->upstreams_MAX);
 
 	// Check struct size
-	memory_check(FORWARDED);
+	memory_check(UPSTREAMS);
 
-	// Get forward pointer
-	forwardedData* forward = getForward(forwardID, false);
-	if(forward == NULL)
+	// Get upstream pointer
+	upstreamsData* upstream = getUpstream(upstreamID, false);
+	if(upstream == NULL)
 	{
-		logg("ERROR: Encountered serious memory error in findForwardID()");
+		logg("ERROR: Encountered serious memory error in findupstreamID()");
 		return -1;
 	}
 
 	// Set magic byte
-	forward->magic = MAGICBYTE;
+	upstream->magic = MAGICBYTE;
 	// Initialize its counter
 	if(count)
-		forward->count = 1;
+		upstream->count = 1;
 	else
-		forward->count = 0;
-	// Save forward destination IP address
-	forward->ippos = addstr(forwardString);
-	forward->failed = 0;
-	// Initialize forward hostname
+		upstream->count = 0;
+	// Save upstream destination IP address
+	upstream->ippos = addstr(upstreamString);
+	upstream->failed = 0;
+	// Initialize upstream hostname
 	// Due to the nature of us being the resolver,
 	// the actual resolving of the host name has
 	// to be done separately to be non-blocking
-	forward->new = true;
-	forward->namepos = 0; // 0 -> string with length zero
+	upstream->new = true;
+	upstream->namepos = 0; // 0 -> string with length zero
 	// Increase counter by one
 	counters->upstreams++;
 
-	return forwardID;
+	return upstreamID;
 }
 
 int findDomainID(const char *domainString, const bool count)

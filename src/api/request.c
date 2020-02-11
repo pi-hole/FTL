@@ -62,14 +62,14 @@ void process_request(const char *client_message, int *sock)
 	{
 		processed = true;
 		lock_shm();
-		getForwardDestinations(client_message, sock);
+		getUpstreamDestinations(client_message, sock);
 		unlock_shm();
 	}
 	else if(command(client_message, ">forward-names"))
 	{
 		processed = true;
 		lock_shm();
-		getForwardDestinations(">forward-dest unsorted", sock);
+		getUpstreamDestinations(">forward-dest unsorted", sock);
 		unlock_shm();
 	}
 	else if(command(client_message, ">querytypes"))

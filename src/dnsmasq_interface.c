@@ -277,7 +277,7 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 	const char *src = cpp != NULL ? cpp->flags & F_BIGNAME ? cpp->name.bname->name : cpp->name.sname : NULL;
 	const char *dst = domain;
 
-	// Save status and forwardID in corresponding query identified by dnsmasq's ID
+	// Save status and upstreamID in corresponding query identified by dnsmasq's ID
 	const int queryID = findQueryID(id);
 	if(queryID < 0)
 	{
@@ -627,20 +627,20 @@ void _FTL_forwarded(const unsigned int flags, const char *name, const struct all
 	if(addr != NULL)
 		inet_ntop((flags & F_IPV4) ? AF_INET : AF_INET6, addr, dest, ADDRSTRLEN);
 
-	// Convert forward to lower case
-	char *forward = strdup(dest);
-	strtolower(forward);
+	// Convert upstreamIP to lower case
+	char *upstreamIP = strdup(dest);
+	strtolower(upstreamIP);
 
 	// Debug logging
-	if(config.debug & DEBUG_QUERIES) logg("**** forwarded %s to %s (ID %i, %s:%i)", name, forward, id, file, line);
+	if(config.debug & DEBUG_QUERIES) logg("**** forwarded %s to %s (ID %i, %s:%i)", name, upstreamIP, id, file, line);
 
-	// Save status and forwardID in corresponding query identified by dnsmasq's ID
+	// Save status and upstreamID in corresponding query identified by dnsmasq's ID
 	const int queryID = findQueryID(id);
 	if(queryID < 0)
 	{
 		// This may happen e.g. if the original query was a PTR query or "pi.hole"
 		// as we ignore them altogether
-		free(forward);
+		free(upstreamIP);
 		unlock_shm();
 		return;
 	}
@@ -657,15 +657,15 @@ void _FTL_forwarded(const unsigned int flags, const char *name, const struct all
 	// Use short-circuit evaluation to check if query is NULL
 	if(query == NULL || (query->complete && query->status != QUERY_CACHE))
 	{
-		free(forward);
+		free(upstreamIP);
 		unlock_shm();
 		return;
 	}
 
-	// Get ID of forward destination, create new forward destination record
+	// Get ID of upstream destination, create new upstream record
 	// if not found in current data structure
-	const int forwardID = findForwardID(forward, true);
-	query->forwardID = forwardID;
+	const int upstreamID = findUpstreamID(upstreamIP, true);
+	query->upstreamID = upstreamID;
 
 	// Get time index for this query
 	const unsigned int timeidx = query->timeidx;
@@ -721,7 +721,7 @@ void _FTL_forwarded(const unsigned int flags, const char *name, const struct all
 	counters->forwarded++;
 
 	// Release allocated memory
-	free(forward);
+	free(upstreamIP);
 
 	// Unlock shared memory
 	unlock_shm();
@@ -1055,9 +1055,9 @@ static void query_externally_blocked(const int queryID, const unsigned char stat
 		overTime[timeidx].forwarded--;
 
 		// Get forward pointer
-		forwardedData* forward = getForward(query->forwardID, true);
-		if(forward != NULL)
-			forward->count--;
+		upstreamsData* upstream = getUpstream(query->upstreamID, true);
+		if(upstream != NULL)
+			upstream->count--;
 	}
 
 	// Mark query as blocked
@@ -1611,7 +1611,7 @@ void getCacheInformation(const int *sock)
 
 void _FTL_forwarding_failed(const struct server *server, const char* file, const int line)
 {
-	// Save that this query got forwarded to an upstream server
+	// Forwarding to upstream server failed
 
 	// Don't analyze anything if in PRIVACY_NOSTATS mode
 	if(config.privacylevel >= PRIVACY_NOSTATS)
@@ -1627,25 +1627,25 @@ void _FTL_forwarding_failed(const struct server *server, const char* file, const
 	else
 		inet_ntop(AF_INET6, &server->addr.in6.sin6_addr, dest, ADDRSTRLEN);
 
-	// Convert forward to lower case
-	char *forwarddest = strdup(dest);
-	strtolower(forwarddest);
+	// Convert upstream to lower case
+	char *upstreamIP = strdup(dest);
+	strtolower(upstreamIP);
 
-	// Get forward ID
-	const int forwardID = findForwardID(forwarddest, false);
+	// Get upstream ID
+	const int upstreamID = findUpstreamID(upstreamIP, false);
 
 	// Possible debugging information
-	if(config.debug & DEBUG_QUERIES) logg("**** forwarding to %s (ID %i, %s:%i) failed", dest, forwardID, file, line);
+	if(config.debug & DEBUG_QUERIES) logg("**** forwarding to %s (ID %i, %s:%i) FAILED", dest, upstreamID, file, line);
 
-	// Get forward pointer
-	forwardedData* forward = getForward(forwardID, true);
+	// Get upstream pointer
+	upstreamsData* upstream = getUpstream(upstreamID, true);
 
 	// Update counter
-	if(forward != NULL)
-		forward->failed++;
+	if(upstream != NULL)
+		upstream->failed++;
 
 	// Clean up and unlock shared memory
-	free(forwarddest);
+	free(upstreamIP);
 	unlock_shm();
 	return;
 }

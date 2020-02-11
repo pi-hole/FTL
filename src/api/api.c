@@ -467,7 +467,7 @@ void getTopClients(const char *client_message, const int *sock)
 }
 
 
-void getForwardDestinations(const char *client_message, const int *sock)
+void getUpstreamDestinations(const char *client_message, const int *sock)
 {
 	bool sort = true;
 	int temparray[counters->upstreams][2], totalqueries = 0;
@@ -475,18 +475,18 @@ void getForwardDestinations(const char *client_message, const int *sock)
 	if(command(client_message, "unsorted"))
 		sort = false;
 
-	for(int forwardID = 0; forwardID < counters->upstreams; forwardID++)
+	for(int upstreamID = 0; upstreamID < counters->upstreams; upstreamID++)
 	{
 		// If we want to print a sorted output, we fill the temporary array with
 		// the values we will use for sorting afterwards
 		if(sort) {
 			// Get forward pointer
-			const forwardedData* forward = getForward(forwardID, true);
+			const upstreamsData* forward = getUpstream(upstreamID, true);
 			if(forward == NULL)
 				continue;
 
-			temparray[forwardID][0] = forwardID;
-			temparray[forwardID][1] = forward->count;
+			temparray[upstreamID][0] = upstreamID;
+			temparray[upstreamID][1] = forward->count;
 		}
 	}
 
@@ -528,14 +528,14 @@ void getForwardDestinations(const char *client_message, const int *sock)
 		{
 			// Regular forward destionation
 			// Get sorted indices
-			int forwardID;
+			int upstreamID;
 			if(sort)
-				forwardID = temparray[i][0];
+				upstreamID = temparray[i][0];
 			else
-				forwardID = i;
+				upstreamID = i;
 
 			// Get forward pointer
-			const forwardedData* forward = getForward(forwardID, true);
+			const upstreamsData* forward = getUpstream(upstreamID, true);
 			if(forward == NULL)
 				continue;
 
@@ -670,7 +670,7 @@ void getAllQueries(const char *client_message, const int *sock)
 			for(int i = 0; i < counters->upstreams; i++)
 			{
 				// Get forward pointer
-				const forwardedData* forward = getForward(i, true);
+				const upstreamsData* forward = getUpstream(i, true);
 				if(forward == NULL)
 					continue;
 
@@ -837,7 +837,7 @@ void getAllQueries(const char *client_message, const int *sock)
 			else if(forwarddestid == -1 && query->status != QUERY_CACHE)
 				continue;
 			// Does the user want to see queries answered by an upstream server?
-			else if(forwarddestid >= 0 && forwarddestid != query->forwardID)
+			else if(forwarddestid >= 0 && forwarddestid != query->upstreamID)
 				continue;
 		}
 

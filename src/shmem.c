@@ -27,7 +27,7 @@
 #define SHARED_DOMAINS_NAME "/FTL-domains"
 #define SHARED_CLIENTS_NAME "/FTL-clients"
 #define SHARED_QUERIES_NAME "/FTL-queries"
-#define SHARED_FORWARDED_NAME "/FTL-forwarded"
+#define SHARED_UPSTREAMS_NAME "/FTL-upstreams"
 #define SHARED_OVERTIME_NAME "/FTL-overTime"
 #define SHARED_SETTINGS_NAME "/FTL-settings"
 #define SHARED_DNS_CACHE "/FTL-dns-cache"
@@ -40,7 +40,7 @@ static SharedMemory shm_counters = { 0 };
 static SharedMemory shm_domains = { 0 };
 static SharedMemory shm_clients = { 0 };
 static SharedMemory shm_queries = { 0 };
-static SharedMemory shm_forwarded = { 0 };
+static SharedMemory shm_upstreams = { 0 };
 static SharedMemory shm_overTime = { 0 };
 static SharedMemory shm_settings = { 0 };
 static SharedMemory shm_dns_cache = { 0 };
@@ -50,7 +50,7 @@ static SharedMemory shm_per_client_regex = { 0 };
 static queriesData *queries = NULL;
 static clientsData *clients = NULL;
 static domainsData *domains = NULL;
-static forwardedData *forwarded = NULL;
+static upstreamsData *upstreams = NULL;
 static DNSCacheData *dns_cache = NULL;
 
 typedef struct {
@@ -98,7 +98,7 @@ void chown_all_shmem(struct passwd *ent_pw)
 	chown_shmem(&shm_domains, ent_pw);
 	chown_shmem(&shm_clients, ent_pw);
 	chown_shmem(&shm_queries, ent_pw);
-	chown_shmem(&shm_forwarded, ent_pw);
+	chown_shmem(&shm_upstreams, ent_pw);
 	chown_shmem(&shm_overTime, ent_pw);
 	chown_shmem(&shm_settings, ent_pw);
 	chown_shmem(&shm_dns_cache, ent_pw);
@@ -199,8 +199,8 @@ static void remap_shm(void)
 	realloc_shm(&shm_clients, counters->clients_MAX*sizeof(clientsData), false);
 	clients = (clientsData*)shm_clients.ptr;
 
-	realloc_shm(&shm_forwarded, counters->upstreams_MAX*sizeof(forwardedData), false);
-	forwarded = (forwardedData*)shm_forwarded.ptr;
+	realloc_shm(&shm_upstreams, counters->upstreams_MAX*sizeof(upstreamsData), false);
+	upstreams = (upstreamsData*)shm_upstreams.ptr;
 
 	realloc_shm(&shm_dns_cache, counters->dns_cache_MAX*sizeof(DNSCacheData), false);
 	dns_cache = (DNSCacheData*)shm_dns_cache.ptr;
@@ -304,11 +304,11 @@ bool init_shmem(void)
 	clients = (clientsData*)shm_clients.ptr;
 	counters->clients_MAX = size;
 
-	/****************************** shared forwarded struct ******************************/
-	size = get_optimal_object_size(sizeof(forwardedData), 1);
+	/****************************** shared upstreams struct ******************************/
+	size = get_optimal_object_size(sizeof(upstreamsData), 1);
 	// Try to create shared memory object
-	shm_forwarded = create_shm(SHARED_FORWARDED_NAME, size*sizeof(forwardedData));
-	forwarded = (forwardedData*)shm_forwarded.ptr;
+	shm_upstreams = create_shm(SHARED_UPSTREAMS_NAME, size*sizeof(upstreamsData));
+	upstreams = (upstreamsData*)shm_upstreams.ptr;
 	counters->upstreams_MAX = size;
 
 	/****************************** shared queries struct ******************************/
@@ -350,7 +350,7 @@ void destroy_shmem(void)
 	delete_shm(&shm_domains);
 	delete_shm(&shm_clients);
 	delete_shm(&shm_queries);
-	delete_shm(&shm_forwarded);
+	delete_shm(&shm_upstreams);
 	delete_shm(&shm_overTime);
 	delete_shm(&shm_settings);
 	delete_shm(&shm_dns_cache);
@@ -446,10 +446,10 @@ void *enlarge_shmem_struct(const char type)
 			sizeofobj = sizeof(domainsData);
 			counter = &counters->domains_MAX;
 			break;
-		case FORWARDED:
-			sharedMemory = &shm_forwarded;
-			allocation_step = get_optimal_object_size(sizeof(forwardedData), 1);
-			sizeofobj = sizeof(forwardedData);
+		case UPSTREAMS:
+			sharedMemory = &shm_upstreams;
+			allocation_step = get_optimal_object_size(sizeof(upstreamsData), 1);
+			sizeofobj = sizeof(upstreamsData);
 			counter = &counters->upstreams_MAX;
 			break;
 		case DNS_CACHE:
@@ -621,12 +621,12 @@ void memory_check(int which)
 				}
 			}
 		break;
-		case FORWARDED:
+		case UPSTREAMS:
 			if(counters->upstreams >= counters->upstreams_MAX-1)
 			{
 				// Have to reallocate shared memory
-				forwarded = enlarge_shmem_struct(FORWARDED);
-				if(forwarded == NULL)
+				upstreams = enlarge_shmem_struct(UPSTREAMS);
+				if(upstreams == NULL)
 				{
 					logg("FATAL: Memory allocation failed! Exiting");
 					exit(EXIT_FAILURE);
@@ -784,11 +784,11 @@ domainsData* _getDomain(int domainID, bool checkMagic, int line, const char * fu
 		return NULL;
 }
 
-forwardedData* _getForward(int forwardID, bool checkMagic, int line, const char * function, const char * file)
+upstreamsData* _getUpstream(int upstreamID, bool checkMagic, int line, const char * function, const char * file)
 {
-	if(check_range(forwardID, counters->upstreams_MAX, "forward", line, function, file) &&
-	   check_magic(forwardID, checkMagic, forwarded[forwardID].magic, "forward", line, function, file))
-		return &forwarded[forwardID];
+	if(check_range(upstreamID, counters->upstreams_MAX, "upstream", line, function, file) &&
+	   check_magic(upstreamID, checkMagic, upstreams[upstreamID].magic, "upstream", line, function, file))
+		return &upstreams[upstreamID];
 	else
 		return NULL;
 }

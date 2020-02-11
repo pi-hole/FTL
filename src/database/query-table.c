@@ -121,11 +121,11 @@ void DB_save_queries(void)
 		sqlite3_bind_text(stmt, 5, client, -1, SQLITE_STATIC);
 
 		// FORWARD
-		if(query->status == QUERY_FORWARDED && query->forwardID > -1)
+		if(query->status == QUERY_FORWARDED && query->upstreamID > -1)
 		{
 			// Get forward pointer
-			const forwardedData* forward = getForward(query->forwardID, true);
-			sqlite3_bind_text(stmt, 6, getstr(forward->ippos), -1, SQLITE_STATIC);
+			const upstreamsData* upstream = getUpstream(query->upstreamID, true);
+			sqlite3_bind_text(stmt, 6, getstr(upstream->ippos), -1, SQLITE_STATIC);
 		}
 		else
 		{
@@ -330,18 +330,18 @@ void DB_read_queries(void)
 			continue;
 		}
 
-		const char *forwarddest = (const char *)sqlite3_column_text(stmt, 6);
-		int forwardID = 0;
-		// Determine forwardID only when status == 2 (forwarded) as the
+		const char *upstream = (const char *)sqlite3_column_text(stmt, 6);
+		int upstreamID = 0;
+		// Determine upstreamID only when status == 2 (forwarded) as the
 		// field need not to be filled for other query status types
 		if(status == QUERY_FORWARDED)
 		{
-			if(forwarddest == NULL)
+			if(upstream == NULL)
 			{
-				logg("FTL_db warn: FORWARD should not be NULL with status QUERY_FORWARDED, %li", queryTimeStamp);
+				logg("WARN (during database import): FORWARD should not be NULL with status QUERY_FORWARDED (timestamp: %li), skipping entry", queryTimeStamp);
 				continue;
 			}
-			forwardID = findForwardID(forwarddest, true);
+			upstreamID = findUpstreamID(upstream, true);
 		}
 
 		// Obtain IDs only after filtering which queries we want to keep
@@ -363,7 +363,7 @@ void DB_read_queries(void)
 		query->status = status;
 		query->domainID = domainID;
 		query->clientID = clientID;
-		query->forwardID = forwardID;
+		query->upstreamID = upstreamID;
 		query->timeidx = timeidx;
 		query->db = dbid;
 		query->id = 0;

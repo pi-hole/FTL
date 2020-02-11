@@ -90,8 +90,8 @@ void *GC_thread(void *val)
 				if(domain != NULL)
 					domain->count--;
 
-				// Get forward pointer
-				forwardedData* forward = getForward(query->forwardID, true);
+				// Get upstream pointer
+				upstreamsData* upstream = getUpstream(query->upstreamID, true);
 
 				// Change other counters according to status of this query
 				switch(query->status)
@@ -104,8 +104,8 @@ void *GC_thread(void *val)
 						// Forwarded to an upstream DNS server
 						// Adjust counters
 						counters->forwarded--;
-						if(forward != NULL)
-							forward->count--;
+						if(upstream != NULL)
+							upstream->count--;
 						overTime[timeidx].forwarded--;
 						break;
 					case QUERY_CACHE:
