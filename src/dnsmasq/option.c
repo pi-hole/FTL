@@ -2622,9 +2622,14 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	struct in6_addr addr6;
  
 	unhide_metas(arg);
-	if (!arg || !(comma=split(arg)) || !(string = split_chr(arg, '/')) || !atoi_check(string, &size))
+	if (!arg)
 	  ret_err(gen_err);
+	
+	comma=split(arg);
 
+	if (!(string = split_chr(arg, '/')) || !atoi_check(string, &size))
+	  ret_err(gen_err);
+	
 	if (inet_pton(AF_INET, arg, &addr4))
 	  {
 	    serv = add_rev4(addr4, size);
