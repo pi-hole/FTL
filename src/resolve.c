@@ -93,6 +93,11 @@ static size_t resolveAndAddHostname(size_t ippos, size_t oldnamepos)
 		free(newname);
 		newname = getDatabaseHostname(ipaddr);
 	}
+	
+	if(config.debug & DEBUG_API)
+	{
+		logg("Resolver: %s ---> \"%s\" (previously \"%s\")", ipaddr, newname, oldname);
+	}
 
 	// Only store new newname if it is valid and differs from oldname
 	// We do not need to check for oldname == NULL as names are
@@ -129,12 +134,18 @@ void resolveClients(const bool onlynew)
 	lock_shm();
 	int clientscount = counters->clients;
 	unlock_shm();
+
+	int skipped = 0;
 	for(int clientID = 0; clientID < clientscount; clientID++)
 	{
 		// Get client pointer
 		clientsData* client = getClient(clientID, true);
 		if(client == NULL)
+		{
+			logg("ERROR: Unable to get client pointer with ID %i, skipping...", clientID);
+			skipped++;
 			continue;
+		}
 
 		// Memory access needs to get locked
 		lock_shm();
@@ -146,7 +157,10 @@ void resolveClients(const bool onlynew)
 		// If onlynew flag is set, we will only resolve new clients
 		// If not, we will try to re-resolve all known clients
 		if(onlynew && !newflag)
+		{
+			skipped++;
 			continue;
+		}
 
 		// Obtain/update hostname of this client
 		size_t newnamepos = resolveAndAddHostname(ippos, oldnamepos);
@@ -158,6 +172,12 @@ void resolveClients(const bool onlynew)
 		client->new = false;
 		unlock_shm();
 	}
+
+	if(config.debug & DEBUG_API)
+	{
+		logg("%i / %i client host names resolved",
+		     clientscount-skipped, clientscount);
+	}
 }
 
 // Resolve upstream destination host names
@@ -167,12 +187,18 @@ void resolveForwardDestinations(const bool onlynew)
 	lock_shm();
 	int upstreams = counters->upstreams;
 	unlock_shm();
+
+	int skipped = 0;
 	for(int upstreamID = 0; upstreamID < upstreams; upstreamID++)
 	{
 		// Get upstream pointer
 		upstreamsData* upstream = getUpstream(upstreamID, true);
 		if(upstream == NULL)
+		{
+			logg("ERROR: Unable to get upstream pointer with ID %i, skipping...", upstreamID);
+			skipped++;
 			continue;
+		}
 
 		// Memory access needs to get locked
 		lock_shm();
@@ -184,7 +210,10 @@ void resolveForwardDestinations(const bool onlynew)
 		// If onlynew flag is set, we will only resolve new upstream destinations
 		// If not, we will try to re-resolve all known upstream destinations
 		if(onlynew && !newflag)
+		{
+			skipped++;
 			continue;
+		}
 
 		// Obtain/update hostname of this client
 		size_t newnamepos = resolveAndAddHostname(ippos, oldnamepos);
@@ -195,6 +224,12 @@ void resolveForwardDestinations(const bool onlynew)
 		// Mark entry as not new
 		upstream->new = false;
 		unlock_shm();
+	}
+
+	if(config.debug & DEBUG_API)
+	{
+		logg("%i / %i upstream server host names resolved",
+		     upstreams-skipped, upstreams);
 	}
 }
 
