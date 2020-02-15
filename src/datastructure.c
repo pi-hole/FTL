@@ -24,60 +24,60 @@ void strtolower(char *str)
 	while(str[i]){ str[i] = tolower(str[i]); i++; }
 }
 
-int findForwardID(const char * forwardString, const bool count)
+int findUpstreamID(const char * upstreamString, const bool count)
 {
-	// Go through already knows forward servers and see if we used one of those
-	for(int forwardID=0; forwardID < counters->forwarded; forwardID++)
+	// Go through already knows upstream servers and see if we used one of those
+	for(int upstreamID=0; upstreamID < counters->upstreams; upstreamID++)
 	{
-		// Get forward pointer
-		forwardedData* forward = getForward(forwardID, true);
+		// Get upstream pointer
+		upstreamsData* upstream = getUpstream(upstreamID, true);
 
 		// Check if the returned pointer is valid before trying to access it
-		if(forward == NULL)
+		if(upstream == NULL)
 			continue;
 
-		if(strcmp(getstr(forward->ippos), forwardString) == 0)
+		if(strcmp(getstr(upstream->ippos), upstreamString) == 0)
 		{
-			if(count) forward->count++;
-			return forwardID;
+			if(count) upstream->count++;
+			return upstreamID;
 		}
 	}
-	// This forward server is not known
+	// This upstream server is not known
 	// Store ID
-	const int forwardID = counters->forwarded;
-	logg("New forward server: %s (%i/%u)", forwardString, forwardID, counters->forwarded_MAX);
+	const int upstreamID = counters->upstreams;
+	logg("New upstream server: %s (%i/%u)", upstreamString, upstreamID, counters->upstreams_MAX);
 
 	// Check struct size
-	memory_check(FORWARDED);
+	memory_check(UPSTREAMS);
 
-	// Get forward pointer
-	forwardedData* forward = getForward(forwardID, false);
-	if(forward == NULL)
+	// Get upstream pointer
+	upstreamsData* upstream = getUpstream(upstreamID, false);
+	if(upstream == NULL)
 	{
-		logg("ERROR: Encountered serious memory error in findForwardID()");
+		logg("ERROR: Encountered serious memory error in findupstreamID()");
 		return -1;
 	}
 
 	// Set magic byte
-	forward->magic = MAGICBYTE;
+	upstream->magic = MAGICBYTE;
 	// Initialize its counter
 	if(count)
-		forward->count = 1;
+		upstream->count = 1;
 	else
-		forward->count = 0;
-	// Save forward destination IP address
-	forward->ippos = addstr(forwardString);
-	forward->failed = 0;
-	// Initialize forward hostname
+		upstream->count = 0;
+	// Save upstream destination IP address
+	upstream->ippos = addstr(upstreamString);
+	upstream->failed = 0;
+	// Initialize upstream hostname
 	// Due to the nature of us being the resolver,
 	// the actual resolving of the host name has
 	// to be done separately to be non-blocking
-	forward->new = true;
-	forward->namepos = 0; // 0 -> string with length zero
+	upstream->new = true;
+	upstream->namepos = 0; // 0 -> string with length zero
 	// Increase counter by one
-	counters->forwarded++;
+	counters->upstreams++;
 
-	return forwardID;
+	return upstreamID;
 }
 
 int findDomainID(const char *domainString, const bool count)
@@ -121,8 +121,9 @@ int findDomainID(const char *domainString, const bool count)
 
 	// Set magic byte
 	domain->magic = MAGICBYTE;
-	// Set its counter to 1
-	domain->count = 1;
+	// Set its counter to 1 only if this domain is to be counted
+	// Domains only encountered during CNAME inspection are NOT counted here
+	domain->count = count ? 1 : 0;
 	// Set blocked counter to zero
 	domain->blockedcount = 0;
 	// Store domain name - no need to check for NULL here as it doesn't harm
@@ -269,10 +270,8 @@ bool isValidIPv6(const char *addr)
 
 // Privacy-level sensitive subroutine that returns the domain name
 // only when appropriate for the requested query
-const char *getDomainString(const int queryID)
+const char *getDomainString(const queriesData* query)
 {
-	const queriesData* query = getQuery(queryID, true);
-
 	// Check if the returned pointer is valid before trying to access it
 	if(query == NULL)
 		return "";
@@ -289,12 +288,30 @@ const char *getDomainString(const int queryID)
 		return HIDDEN_DOMAIN;
 }
 
+// Privacy-level sensitive subroutine that returns the domain name
+// only when appropriate for the requested query
+const char *getCNAMEDomainString(const queriesData* query)
+{
+	// Check if the returned pointer is valid before trying to access it
+	if(query == NULL)
+		return "";
+
+	if(query->privacylevel < PRIVACY_HIDE_DOMAINS)
+	{
+		// Get domain pointer
+		const domainsData* domain = getDomain(query->CNAME_domainID, true);
+
+		// Return string
+		return getstr(domain->domainpos);
+	}
+	else
+		return HIDDEN_DOMAIN;
+}
+
 // Privacy-level sensitive subroutine that returns the client IP
 // only when appropriate for the requested query
-const char *getClientIPString(const int queryID)
+const char *getClientIPString(const queriesData* query)
 {
-	const queriesData* query = getQuery(queryID, false);
-
 	// Check if the returned pointer is valid before trying to access it
 	if(query == NULL)
 		return "";
@@ -313,10 +330,8 @@ const char *getClientIPString(const int queryID)
 
 // Privacy-level sensitive subroutine that returns the client host name
 // only when appropriate for the requested query
-const char *getClientNameString(const int queryID)
+const char *getClientNameString(const queriesData* query)
 {
-	const queriesData* query = getQuery(queryID, true);
-
 	// Check if the returned pointer is valid before trying to access it
 	if(query == NULL)
 		return "";

@@ -165,20 +165,20 @@ void resolveForwardDestinations(const bool onlynew)
 {
 	// Lock counter access here, we use a copy in the following loop
 	lock_shm();
-	int forwardedcount = counters->forwarded;
+	int upstreams = counters->upstreams;
 	unlock_shm();
-	for(int forwardID = 0; forwardID < forwardedcount; forwardID++)
+	for(int upstreamID = 0; upstreamID < upstreams; upstreamID++)
 	{
-		// Get forward pointer
-		forwardedData* forward = getForward(forwardID, true);
-		if(forward == NULL)
+		// Get upstream pointer
+		upstreamsData* upstream = getUpstream(upstreamID, true);
+		if(upstream == NULL)
 			continue;
 
 		// Memory access needs to get locked
 		lock_shm();
-		bool newflag = forward->new;
-		size_t ippos = forward->ippos;
-		size_t oldnamepos = forward->namepos;
+		bool newflag = upstream->new;
+		size_t ippos = upstream->ippos;
+		size_t oldnamepos = upstream->namepos;
 		unlock_shm();
 
 		// If onlynew flag is set, we will only resolve new upstream destinations
@@ -191,9 +191,9 @@ void resolveForwardDestinations(const bool onlynew)
 
 		lock_shm();
 		// Store obtained host name (may be unchanged)
-		forward->namepos = newnamepos;
+		upstream->namepos = newnamepos;
 		// Mark entry as not new
-		forward->new = false;
+		upstream->new = false;
 		unlock_shm();
 	}
 }
