@@ -20,6 +20,8 @@
 #include "signals.h"
 // getDatabaseHostname()
 #include "database/network-table.h"
+// struct _res
+#include <resolv.h>
 
 static char *resolveHostname(const char *addr)
 {
@@ -36,6 +38,12 @@ static char *resolveHostname(const char *addr)
 		//if(hostname == NULL) return NULL;
 		return hostname;
 	}
+
+	// Back up first ns record in _res and ...
+	struct in_addr nsbck;
+	nsbck = _res.nsaddr_list[0].sin_addr;
+	// ... force FTL resolver to 127.0.0.1
+	inet_pton(AF_INET, "127.0.0.1", &_res.nsaddr_list[0].sin_addr);
 
 	// Test if we want to resolve an IPv6 address
 	if(strstr(addr,":") != NULL)
@@ -66,10 +74,16 @@ static char *resolveHostname(const char *addr)
 	{
 		// Return hostname copied to new memory location
 		hostname = strdup(he->h_name);
-		if(hostname == NULL) return NULL;
+
 		// Convert hostname to lower case
-		strtolower(hostname);
+		if(hostname != NULL)
+			strtolower(hostname);
 	}
+
+	// Restore first ns record in _res
+	_res.nsaddr_list[0].sin_addr = nsbck;
+
+	// Return result
 	return hostname;
 }
 
@@ -92,11 +106,6 @@ static size_t resolveAndAddHostname(size_t ippos, size_t oldnamepos)
 	{
 		free(newname);
 		newname = getDatabaseHostname(ipaddr);
-	}
-	
-	if(config.debug & DEBUG_API)
-	{
-		logg("Resolver: %s ---> \"%s\" (previously \"%s\")", ipaddr, newname, oldname);
 	}
 
 	// Only store new newname if it is valid and differs from oldname
