@@ -372,7 +372,7 @@ void DB_read_queries(void)
 		query->id = 0;
 		query->complete = true; // Mark as all information is available
 		query->response = 0;
-		query->dnssec = DNSSEC_UNKNOWN;
+		query->dnssec = DNSSEC_UNSPECIFIED;
 		query->reply = REPLY_UNKNOWN;
 		query->CNAME_domainID = -1;
 
