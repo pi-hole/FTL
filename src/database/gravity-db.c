@@ -294,12 +294,20 @@ inline void gravityDB_finalize_client_statements(clientsData* client)
 
 void gravityDB_reload_client_statements(void)
 {
+	// Set SQLite3 busy timeout to a user-defined value (defaults to 1 second)
+	// to avoid immediate failures when the gravity database is still busy
+	// writing the changes to disk
+	sqlite3_busy_timeout(gravity_db, DATABASE_BUSY_TIMEOUT);
+
 	for(int i=0; i < counters->clients; i++)
 	{
 		clientsData* client = getClient(i, true);
 		if(client != NULL)
 			gravityDB_prepare_client_statements(client);
 	}
+
+	// Reset SQLite3 busy timeout to zero
+	sqlite3_busy_timeout(gravity_db, 0);
 }
 
 void gravityDB_close(void)
