@@ -112,7 +112,7 @@ static bool get_client_groupids(const clientsData* client, char **groups)
 	*groups = NULL;
 
 	// Do not proceed when database is not available
-	if(!gravity_database_avail)
+	if(!gravity_database_avail && !gravityDB_open())
 	{
 		logg("get_client_groupids(): Gravity database not available");
 		return false;
@@ -134,7 +134,6 @@ static bool get_client_groupids(const clientsData* client, char **groups)
 		logg("get_client_groupids(%s) - SQL error prepare (%i): %s",
 		     querystr, rc, sqlite3_errmsg(gravity_db));
 		sqlite3_finalize(table_stmt);
-		gravityDB_close();
 		free(querystr);
 		return false;
 	}
@@ -162,7 +161,6 @@ static bool get_client_groupids(const clientsData* client, char **groups)
 		logg("get_client_groupids(%s) - SQL error step (%i): %s",
 		     querystr, rc, sqlite3_errmsg(gravity_db));
 		sqlite3_finalize(table_stmt);
-		gravityDB_close();
 		free(querystr);
 		return false;
 	}
@@ -191,7 +189,6 @@ static bool get_client_groupids(const clientsData* client, char **groups)
 		logg("get_client_groupids(%s) - SQL error prepare (%i): %s",
 		     querystr, rc, sqlite3_errmsg(gravity_db));
 		sqlite3_finalize(table_stmt);
-		gravityDB_close();
 		free(querystr);
 		return false;
 	}
@@ -218,12 +215,12 @@ static bool get_client_groupids(const clientsData* client, char **groups)
 		logg("get_client_groupids(%s) - SQL error step (%i): %s",
 		     querystr, rc, sqlite3_errmsg(gravity_db));
 		sqlite3_finalize(table_stmt);
-		gravityDB_close();
 		free(querystr);
 		return false;
 	}
 	// Finalize statement
 	gravityDB_finalizeTable();
+
 	// Free allocated memory and return result
 	free(querystr);
 	return true;
@@ -232,7 +229,7 @@ static bool get_client_groupids(const clientsData* client, char **groups)
 bool gravityDB_prepare_client_statements(clientsData* client)
 {
 	// Return early if gravity database is not available
-	if(!gravity_database_avail)
+	if(!gravity_database_avail && !gravityDB_open())
 		return false;
 
 	if(config.debug & DEBUG_DATABASE)
@@ -297,18 +294,26 @@ inline void gravityDB_finalize_client_statements(clientsData* client)
 
 void gravityDB_reload_client_statements(void)
 {
+	// Set SQLite3 busy timeout to a user-defined value (defaults to 1 second)
+	// to avoid immediate failures when the gravity database is still busy
+	// writing the changes to disk
+	sqlite3_busy_timeout(gravity_db, DATABASE_BUSY_TIMEOUT);
+
 	for(int i=0; i < counters->clients; i++)
 	{
 		clientsData* client = getClient(i, true);
 		if(client != NULL)
 			gravityDB_prepare_client_statements(client);
 	}
+
+	// Reset SQLite3 busy timeout to zero
+	sqlite3_busy_timeout(gravity_db, 0);
 }
 
 void gravityDB_close(void)
 {
 	// Return early if gravity database is not available
-	if(!gravity_database_avail)
+	if(!gravity_database_avail && !gravityDB_open())
 		return;
 
 	// Finalize list statements
@@ -330,7 +335,7 @@ void gravityDB_close(void)
 // a table which is specified when calling this function
 bool gravityDB_getTable(const unsigned char list)
 {
-	if(!gravity_database_avail)
+	if(!gravity_database_avail && !gravityDB_open())
 	{
 		logg("gravityDB_getTable(%u): Gravity database not available", list);
 		return false;
@@ -419,7 +424,7 @@ void gravityDB_finalizeTable(void)
 // encounter any error
 int gravityDB_count(const unsigned char list)
 {
-	if(!gravity_database_avail)
+	if(!gravity_database_avail && !gravityDB_open())
 	{
 		logg("gravityDB_count(%d): Gravity database not available", list);
 		return DB_FAILED;
@@ -488,7 +493,7 @@ int gravityDB_count(const unsigned char list)
 static bool domain_in_list(const char *domain, sqlite3_stmt* stmt, const char* listname)
 {
 	// Do not try to bind text to statement when database is not available
-	if(!gravity_database_avail)
+	if(!gravity_database_avail && !gravityDB_open())
 	{
 		logg("domain_in_list(%s): Gravity database not available", domain);
 		return false;
@@ -617,16 +622,18 @@ bool gravityDB_get_regex_client_groups(clientsData* client, const int numregex, 
 	while((rc = sqlite3_step(query_stmt)) == SQLITE_ROW)
 	{
 		const int result = sqlite3_column_int(query_stmt, 0);
-		for(int i = 0; i < numregex; i++)
+		for(int regexID = 0; regexID < numregex; regexID++)
 		{
-			if(regexid[i] == result)
+			if(regexid[regexID] == result)
 			{
-				unsigned int regexID = i;
 				if(type == REGEX_WHITELIST)
 					regexID += counters->num_regex[REGEX_BLACKLIST];
+
 				set_per_client_regex(clientID, regexID, true);
+
 				if(config.debug & DEBUG_REGEX)
-					logg("Regex %s: Enabling regex with DB ID %i for client %s", regextype[type], regexid[i], getstr(client->ippos));
+					logg("Regex %s: Enabling regex with DB ID %i for client %s", regextype[type], regexid[regexID], getstr(client->ippos));
+
 				break;
 			}
 		}
