@@ -170,6 +170,7 @@ struct myoption {
 #define LOPT_SHARED_NET    357
 #define LOPT_IGNORE_CLID   358
 #define LOPT_SINGLE_PORT   359
+#define LOPT_SCRIPT_TIME   360
  
 #ifdef HAVE_GETOPT_LONG
 static const struct option opts[] =  
@@ -249,6 +250,7 @@ static const struct myoption opts[] =
     { "conf-dir", 1, 0, '7' },
     { "log-facility", 1, 0 ,'8' },
     { "leasefile-ro", 0, 0, '9' },
+    { "script-on-renewal", 0, 0, LOPT_SCRIPT_TIME},
     { "dns-forward-max", 1, 0, '0' },
     { "clear-on-reload", 0, 0, LOPT_RELOAD },
     { "dhcp-ignore-names", 2, 0, LOPT_NO_NAMES },
@@ -519,6 +521,7 @@ static struct {
   { LOPT_RAPID_COMMIT, OPT_RAPID_COMMIT, NULL, gettext_noop("Enables DHCPv4 Rapid Commit option."), NULL },
   { LOPT_DUMPFILE, ARG_ONE, "<path>", gettext_noop("Path to debug packet dump file"), NULL },
   { LOPT_DUMPMASK, ARG_ONE, "<hex>", gettext_noop("Mask which packets to dump"), NULL },
+  { LOPT_SCRIPT_TIME, OPT_LEASE_RENEW, NULL, gettext_noop("Call dhcp-script when lease expiry changes."), NULL },
   { 0, 0, NULL, NULL, NULL }
 }; 
 
