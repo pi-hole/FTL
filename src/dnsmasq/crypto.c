@@ -297,9 +297,7 @@ static int dnsmasq_eddsa_verify(struct blockdata *key_data, unsigned int key_len
 {
   unsigned char *p;
    
-  if (key_len != ED25519_KEY_SIZE ||
-      sig_len != ED25519_SIGNATURE_SIZE ||
-      digest_len != sizeof(struct null_hash_digest) ||
+  if (digest_len != sizeof(struct null_hash_digest) ||
       !(p = blockdata_retrieve(key_data, key_len, NULL)))
     return 0;
   
@@ -310,13 +308,27 @@ static int dnsmasq_eddsa_verify(struct blockdata *key_data, unsigned int key_len
   switch (algo)
     {
     case 15:
+      if (key_len != ED25519_KEY_SIZE ||
+	  sig_len != ED25519_SIGNATURE_SIZE)
+	return 0;
+
       return ed25519_sha512_verify(p,
 				   ((struct null_hash_digest *)digest)->len,
 				   ((struct null_hash_digest *)digest)->buff,
 				   sig);
+      
+#if NETTLE_VERSION_MAJOR == 3 && NETTLE_VERSION_MINOR >= 6
     case 16:
-      /* Ed448 when available */
-      return 0;
+      if (key_len != ED448_KEY_SIZE ||
+	  sig_len != ED448_SIGNATURE_SIZE)
+	return 0;
+
+      return ed448_shake256_verify(p,
+				   ((struct null_hash_digest *)digest)->len,
+				   ((struct null_hash_digest *)digest)->buff,
+				   sig);
+#endif
+
     }
 
   return 0;
@@ -396,7 +408,7 @@ char *algo_digest_name(int algo)
     case 13: return "sha256";     /* ECDSAP256SHA256 */
     case 14: return "sha384";     /* ECDSAP384SHA384 */ 	
     case 15: return "null_hash";  /* ED25519 */
-    case 16: return NULL;         /* ED448 */
+    case 16: return "null_hash";  /* ED448 */
     default: return NULL;
     }
 }
