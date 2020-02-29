@@ -170,6 +170,7 @@ struct myoption {
 #define LOPT_UBUS          354
 #define LOPT_NAME_MATCH    355
 #define LOPT_CAA           356
+#define LOPT_FILTER_AAAA   357
  
 #ifdef HAVE_GETOPT_LONG
 static const struct option opts[] =  
@@ -341,6 +342,7 @@ static const struct myoption opts[] =
     { "dhcp-rapid-commit", 0, 0, LOPT_RAPID_COMMIT },
     { "dumpfile", 1, 0, LOPT_DUMPFILE },
     { "dumpmask", 1, 0, LOPT_DUMPMASK },
+    { "filter-aaaa", 0, 0, LOPT_FILTER_AAAA },
     { NULL, 0, 0, 0 }
   };
 
@@ -519,6 +521,7 @@ static struct {
   { LOPT_RAPID_COMMIT, OPT_RAPID_COMMIT, NULL, gettext_noop("Enables DHCPv4 Rapid Commit option."), NULL },
   { LOPT_DUMPFILE, ARG_ONE, "<path>", gettext_noop("Path to debug packet dump file"), NULL },
   { LOPT_DUMPMASK, ARG_ONE, "<hex>", gettext_noop("Mask which packets to dump"), NULL },
+  { LOPT_FILTER_AAAA, OPT_FILTER_AAAA, NULL, gettext_noop("Gracefully filter AAAA requests."), NULL },
   { 0, 0, NULL, NULL, NULL }
 }; 
 

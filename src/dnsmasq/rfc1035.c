@@ -1931,6 +1931,12 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 	    }
 	}
 
+      if (qtype == T_AAAA && option_bool(OPT_FILTER_AAAA) ){
+        ans = 1;
+        if (!dryrun) log_query(F_CONFIG | F_IPV6 | F_NEG, name, &addr, NULL);
+        break;
+      }
+
       if (!ans)
 	return 0; /* failed to answer a question */
     }

@@ -266,7 +266,8 @@ struct event_desc {
 #define OPT_TFTP_APREF_MAC 56
 #define OPT_RAPID_COMMIT   57
 #define OPT_UBUS           58
-#define OPT_LAST           59
+#define OPT_FILTER_AAAA    59
+#define OPT_LAST           60
 
 /* extra flags for my_syslog, we use a couple of facilities since they are known 
    not to occupy the same bits as priorities, no matter how syslog.h is set up. */
