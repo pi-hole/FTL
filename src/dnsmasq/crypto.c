@@ -22,6 +22,9 @@
 #include <nettle/ecdsa.h>
 #include <nettle/ecc-curve.h>
 #include <nettle/eddsa.h>
+#if NETTLE_VERSION_MAJOR == 3 && NETTLE_VERSION_MINOR >= 6
+#  include <nettle/gostdsa.h>
+#endif
 #include <nettle/nettle-meta.h>
 #include <nettle/bignum.h>
 
@@ -291,6 +294,47 @@ static int dnsmasq_ecdsa_verify(struct blockdata *key_data, unsigned int key_len
   return nettle_ecdsa_verify(key, digest_len, digest, sig_struct);
 }
 
+#if NETTLE_VERSION_MAJOR == 3 && NETTLE_VERSION_MINOR >= 6
+static int dnsmasq_gostdsa_verify(struct blockdata *key_data, unsigned int key_len, 
+				  unsigned char *sig, size_t sig_len,
+				  unsigned char *digest, size_t digest_len, int algo)
+{
+  unsigned char *p;
+  
+  static struct ecc_point *gost_key = NULL;
+  static mpz_t x, y;
+  static struct dsa_signature *sig_struct;
+
+  if (algo != 12 ||
+      sig_len != 64 || key_len != 64 ||
+      !(p = blockdata_retrieve(key_data, key_len, NULL)))
+    return 0;
+  
+  if (!sig_struct)
+    {
+      if (!(sig_struct = whine_malloc(sizeof(struct dsa_signature))) ||
+	  !(gost_key = whine_malloc(sizeof(struct ecc_point))))
+	return 0;
+      
+      nettle_dsa_signature_init(sig_struct);
+      nettle_ecc_point_init(gost_key, nettle_get_gost_gc256b());
+      mpz_init(x);
+      mpz_init(y);
+    }
+    
+  mpz_import(x, 32 , 1, 1, 0, 0, p);
+  mpz_import(y, 32 , 1, 1, 0, 0, p + 32);
+
+  if (!ecc_point_set(gost_key, x, y))
+    return 0;
+  
+  mpz_import(sig_struct->r, 32, 1, 1, 0, 0, sig);
+  mpz_import(sig_struct->s, 32, 1, 1, 0, 0, sig + 32);
+  
+  return nettle_gostdsa_verify(gost_key, digest_len, digest, sig_struct);
+}
+#endif
+
 static int dnsmasq_eddsa_verify(struct blockdata *key_data, unsigned int key_len, 
 				unsigned char *sig, size_t sig_len,
 				unsigned char *digest, size_t digest_len, int algo)
@@ -338,7 +382,7 @@ static int (*verify_func(int algo))(struct blockdata *key_data, unsigned int key
 			     unsigned char *digest, size_t digest_len, int algo)
 {
     
-  /* Enure at runtime that we have support for this digest */
+  /* Ensure at runtime that we have support for this digest */
   if (!hash_find(algo_digest_name(algo)))
     return NULL;
   
@@ -347,6 +391,11 @@ static int (*verify_func(int algo))(struct blockdata *key_data, unsigned int key
     {
     case 5: case 7: case 8: case 10:
       return dnsmasq_rsa_verify;
+
+#if NETTLE_VERSION_MAJOR == 3 && NETTLE_VERSION_MINOR >= 6
+    case 12:
+      return dnsmasq_gostdsa_verify;
+#endif
       
     case 13: case 14:
       return dnsmasq_ecdsa_verify;
@@ -404,7 +453,7 @@ char *algo_digest_name(int algo)
     case 7: return "sha1";        /* RSASHA1-NSEC3-SHA1 */
     case 8: return "sha256";      /* RSA/SHA-256 */
     case 10: return "sha512";     /* RSA/SHA-512 */
-    case 12: return NULL;         /* ECC-GOST */
+    case 12: return "gosthash94"; /* ECC-GOST */
     case 13: return "sha256";     /* ECDSAP256SHA256 */
     case 14: return "sha384";     /* ECDSAP384SHA384 */ 	
     case 15: return "null_hash";  /* ED25519 */
