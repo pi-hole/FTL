@@ -705,6 +705,15 @@ int read_write(int fd, unsigned char *packet, int size, int rw)
   return 1;
 }
 
+/* close all fds except STDIN, STDOUT and STDERR, spare1, spare2 and spare3 */
+void close_fds(long max_fd, int spare1, int spare2, int spare3) 
+{
+  for (max_fd--; max_fd >= 0; max_fd--)
+    if (max_fd != STDOUT_FILENO && max_fd != STDERR_FILENO && max_fd != STDIN_FILENO &&
+	max_fd != spare1 && max_fd != spare2 && max_fd != spare3)
+      close(max_fd);
+}
+
 /* Basically match a string value against a wildcard pattern.  */
 int wildcard_match(const char* wildcard, const char* match)
 {
