@@ -731,7 +731,7 @@ void close_fds(long max_fd, int spare1, int spare2, int spare3)
 	      fd == spare1 || fd == spare2 || fd == spare3)
 	    continue;
 	  
-	    close(fd);
+	  close(fd);
 	}
       
       closedir(d);
