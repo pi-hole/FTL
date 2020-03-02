@@ -1040,6 +1040,7 @@ static void dhcp_config_free(struct dhcp_config *config)
       if (config->flags & CONFIG_CLID)
         free(config->clid);
 
+#ifdef HAVE_DHCP6
       if (config->flags & CONFIG_ADDR6)
 	{
 	  struct addrlist *addr, *tmp;
@@ -1050,6 +1051,7 @@ static void dhcp_config_free(struct dhcp_config *config)
 	      free(addr);
 	    }
 	}
+#endif
 
       free(config);
     }
@@ -3231,7 +3233,9 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	new->netid = NULL;
 	new->filter = NULL;
 	new->clid = NULL;
+#ifdef HAVE_DHCP6
 	new->addr6 = NULL;
+#endif
 
 	while (arg)
 	  {
