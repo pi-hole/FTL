@@ -306,9 +306,9 @@ void DB_read_queries(void)
 		}
 
 		const int status = sqlite3_column_int(stmt, 3);
-		if(status < QUERY_UNKNOWN || status > QUERY_EXTERNAL_BLOCKED_NXRA)
+		if(status < QUERY_UNKNOWN || status >= QUERY_STATUS_MAX)
 		{
-			logg("FTL_db warn: STATUS should be within [%i,%i] but is %i", QUERY_UNKNOWN, QUERY_EXTERNAL_BLOCKED_NXRA, status);
+			logg("FTL_db warn: STATUS should be within [%i,%i] but is %i", QUERY_UNKNOWN, QUERY_STATUS_MAX-1, status);
 			continue;
 		}
 
@@ -372,7 +372,7 @@ void DB_read_queries(void)
 		query->id = 0;
 		query->complete = true; // Mark as all information is available
 		query->response = 0;
-		query->dnssec = DNSSEC_UNKNOWN;
+		query->dnssec = DNSSEC_UNSPECIFIED;
 		query->reply = REPLY_UNKNOWN;
 		query->CNAME_domainID = -1;
 

@@ -341,7 +341,21 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 		if(query->status == QUERY_GRAVITY)
 			query->status = QUERY_GRAVITY_CNAME;
 		else if(query->status == QUERY_REGEX)
+		{
+			// Get parent DNS cache entry
+			unsigned int parent_cacheID = findCacheID(domainID, query->clientID);
+			DNSCacheData *parent_dns_cache = getDNSCache(parent_cacheID, true);
+
+			// Get child DNS cache entry
+			unsigned int child_cacheID = findCacheID(query->domainID, query->clientID);
+			DNSCacheData *child_dns_cache = getDNSCache(child_cacheID, true);
+
+			// Propagate ID of responsible regex up from the child to the parent domain
+			if(parent_dns_cache != NULL && child_dns_cache != NULL)
+				child_dns_cache->black_regex_idx = parent_dns_cache->black_regex_idx;
+
 			query->status = QUERY_REGEX_CNAME;
+		}
 		else if(query->status == QUERY_BLACKLIST)
 			query->status = QUERY_BLACKLIST_CNAME;
 	}
