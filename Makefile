@@ -17,7 +17,7 @@ DNSMASQ_OPTS = -DHAVE_DNSSEC -DHAVE_DNSSEC_STATIC
 # Flags for compiling with libidn2: -DHAVE_LIBIDN2 -DIDN2_VERSION_NUMBER=0x02000003
 
 FTL_DEPS = *.h database/*.h api/*.h version.h
-FTL_DB_OBJ = database/common.o database/query-table.o database/network-table.o database/gravity-db.o database/database-thread.o
+FTL_DB_OBJ = database/common.o database/query-table.o database/network-table.o database/gravity-db.o database/database-thread.o database/sqlite3-ext.o
 FTL_API_OBJ = api/socket.o api/request.o api/msgpack.o api/api.o
 FTL_OBJ = $(FTL_DB_OBJ) $(FTL_API_OBJ) main.o memory.o log.o daemon.o datastructure.o signals.o files.o setupVars.o args.o gc.o config.o \
           dnsmasq_interface.o resolve.o regex.o shmem.o capabilities.o overTime.o timers.o
@@ -59,7 +59,7 @@ DEBUG_FLAGS=-rdynamic -fno-omit-frame-pointer
 # -DSQLITE_OMIT_PROGRESS_CALLBACK: The progress handler callback counter must be checked in the inner loop of the bytecode engine. By omitting this interface, a single conditional is removed from the inner loop of the bytecode engine, helping SQL statements to run slightly faster.
 # -DSQLITE_DEFAULT_FOREIGN_KEYS=1: This macro determines whether enforcement of foreign key constraints is enabled or disabled by default for new database connections.
 # -DSQLITE_DQS=0: This setting disables the double-quoted string literal misfeature.
-SQLITE_FLAGS=-DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_DEFAULT_MEMSTATUS=0 -DSQLITE_OMIT_DEPRECATED -DSQLITE_OMIT_PROGRESS_CALLBACK -DSQLITE_OMIT_MEMORYDB -DSQLITE_DEFAULT_FOREIGN_KEYS=1 -DSQLITE_DQS=0
+SQLITE_FLAGS=-DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_DEFAULT_MEMSTATUS=0 -DSQLITE_OMIT_DEPRECATED -DSQLITE_OMIT_PROGRESS_CALLBACK -DSQLITE_OMIT_MEMORYDB -DSQLITE_DEFAULT_FOREIGN_KEYS=1 -DSQLITE_DQS=0 -DSQLITE_CORE
 
 # -Wall: This enables all the warnings about constructions that some users consider questionable, and that are easy to avoid (or modify to prevent the warning), even in conjunction with macros. This also enables some language-specific warnings described in C++ Dialect Options and Objective-C and Objective-C++ Dialect Options.
 # -Wextra: This enables some extra warning flags that are not enabled by -Wall.
