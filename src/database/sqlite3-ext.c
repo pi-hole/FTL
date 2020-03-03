@@ -90,11 +90,11 @@ static void subnet_match_impl(sqlite3_context *context, int argc, sqlite3_value 
 	// Apply bitmask
 	for(int i = 0; i < 16; i++)
 	{
-		saddrDB.__in6_u.__u6_addr8[i] &= bitmask[i];
-		saddrFTL.__in6_u.__u6_addr8[i] &= bitmask[i];
+		saddrDB.s6_addr[i] &= bitmask[i];
+		saddrFTL.s6_addr[i] &= bitmask[i];
 
 		// Are the addresses different given the applied mask?
-		if(saddrDB.__in6_u.__u6_addr8[i] != saddrFTL.__in6_u.__u6_addr8[i])
+		if(saddrDB.s6_addr[i] != saddrFTL.s6_addr[i])
 		{
 			sqlite3_result_int(context, 0);
 			logg("Comparing database %s (extracted CIDR: /%i) to %s - NO MATCH", addrDBcidr, cidr, addrFTL);
