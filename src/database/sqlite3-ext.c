@@ -65,13 +65,17 @@ static void subnet_match_impl(sqlite3_context *context, int argc, sqlite3_value 
 	struct in6_addr saddrDB = {{{ 0 }}}, saddrFTL = {{{ 0 }}};
 	if (inet_pton(isIPv6_DB ? AF_INET6 : AF_INET, addrDB, &saddrDB) == 0)
 	{
-		sqlite3_result_error(context, "Passed a malformed IP address (database)", -1);
+		//sqlite3_result_error(context, "Passed a malformed IP address (database)", -1);
+		logg("Passed a malformed DB IP address: %s (%s) - NO MATCH", addrDB, addrDBcidr);
+		sqlite3_result_int(context, 0);
 		free(addrDB);
 		return;
 	}
 	if (inet_pton(isIPv6_FTL ? AF_INET6 : AF_INET, addrFTL, &saddrFTL) == 0)
 	{
-		sqlite3_result_error(context, "Passed a malformed IP address (FTL)", -1);
+		//sqlite3_result_error(context, "Passed a malformed IP address (FTL)", -1);
+		logg("Passed a malformed FTL IP address: %s - NO MATCH", addrFTL);
+		sqlite3_result_int(context, 0);
 		free(addrDB);
 		return;
 	}
