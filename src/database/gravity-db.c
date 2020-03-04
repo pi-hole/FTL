@@ -119,7 +119,7 @@ static bool get_client_groupids(const clientsData* client, char **groups)
 	}
 
 	if(config.debug & DEBUG_DATABASE)
-		logg("Querying gravity database for client %s", ip);
+		logg("Querying gravity database for client %s (counting)", ip);
 
 	// Check if client is configured through the client table
 	if(asprintf(&querystr, "SELECT COUNT(*) FROM client WHERE subnet_match(ip,'%s') = 1;", ip) < 1)
@@ -184,6 +184,9 @@ static bool get_client_groupids(const clientsData* client, char **groups)
 		logg("get_client_groupids() - asprintf() error 2");
 		return false;
 	}
+
+	if(config.debug & DEBUG_DATABASE)
+		logg("Querying gravity database for client %s (getting groups)", ip);
 
 	// Prepare query
 	rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &table_stmt, NULL);

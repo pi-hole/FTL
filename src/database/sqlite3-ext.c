@@ -22,7 +22,10 @@ SQLITE_EXTENSION_INIT1
 #include <string.h>
 // free()
 #include <stdlib.h>
+// logg()
 #include "log.h"
+// struct config
+#include "config.h"
 
 static void subnet_match_impl(sqlite3_context *context, int argc, sqlite3_value **argv)
 {
@@ -43,7 +46,6 @@ static void subnet_match_impl(sqlite3_context *context, int argc, sqlite3_value 
 	// Analyze input supplied to our SQLite subroutine
 	const char *addrDBcidr = (const char*)sqlite3_value_text(argv[0]);
 	bool isIPv6_DB = strchr(addrDBcidr, ':') != NULL;
-
 	const char *addrFTL = (const char*)sqlite3_value_text(argv[1]);
 	bool isIPv6_FTL = strchr(addrFTL, ':') != NULL;
 
@@ -66,15 +68,8 @@ static void subnet_match_impl(sqlite3_context *context, int argc, sqlite3_value 
 	if (inet_pton(isIPv6_DB ? AF_INET6 : AF_INET, addrDB, &saddrDB) == 0)
 	{
 		//sqlite3_result_error(context, "Passed a malformed IP address (database)", -1);
-		logg("Passed a malformed DB IP address: %s (%s) - NO MATCH", addrDB, addrDBcidr);
-		sqlite3_result_int(context, 0);
-		free(addrDB);
-		return;
-	}
-	if (inet_pton(isIPv6_FTL ? AF_INET6 : AF_INET, addrFTL, &saddrFTL) == 0)
-	{
-		//sqlite3_result_error(context, "Passed a malformed IP address (FTL)", -1);
-		logg("Passed a malformed FTL IP address: %s - NO MATCH", addrFTL);
+		// Return non-fatal "NO MATCH" if address is invalid
+		logg("Passed a malformed DB IP address: %s/%i (%s)", addrDB, cidr, addrDBcidr);
 		sqlite3_result_int(context, 0);
 		free(addrDB);
 		return;
@@ -82,8 +77,19 @@ static void subnet_match_impl(sqlite3_context *context, int argc, sqlite3_value 
 
 	// Free allocated memory
 	free(addrDB);
+	addrDB = NULL;
 
-	// Translate CIDR into a binary masking field
+	// Check and convert client IP address as seen by FTL
+	if (inet_pton(isIPv6_FTL ? AF_INET6 : AF_INET, addrFTL, &saddrFTL) == 0)
+	{
+		//sqlite3_result_error(context, "Passed a malformed IP address (FTL)", -1);
+		// Return non-fatal "NO MATCH" if address is invalid
+		logg("Passed a malformed FTL IP address: %s", addrFTL);
+		sqlite3_result_int(context, 0);
+		return;
+	}
+
+	// Construct binary mask from CIDR field
 	uint8_t bitmask[16] = { 0 };
 	for(int i = 0; i < 128; i++)
 	{
@@ -91,7 +97,9 @@ static void subnet_match_impl(sqlite3_context *context, int argc, sqlite3_value 
 		bitmask[i/8] |= (1 << (i%8));
 	}
 
-	// Apply bitmask
+	// Apply bitmask to both IP addresses
+	// Note: the upper 12 byte of IPv4 addresses are zero
+	int match = 1;
 	for(int i = 0; i < 16; i++)
 	{
 		saddrDB.s6_addr[i] &= bitmask[i];
@@ -101,14 +109,14 @@ static void subnet_match_impl(sqlite3_context *context, int argc, sqlite3_value 
 		if(saddrDB.s6_addr[i] != saddrFTL.s6_addr[i])
 		{
 			sqlite3_result_int(context, 0);
-			logg("Comparing database %s (extracted CIDR: /%i) to %s - NO MATCH", addrDBcidr, cidr, addrFTL);
-			return;
+			match = 0;
+			break;
 		}
 	}
 
 	// Found no difference between the two addresses given a possibly specified mask
-	sqlite3_result_int(context, 1);
-	logg("Comparing database %s (extracted CIDR: /%i) to %s - !!! MATCH !!!", addrDBcidr, cidr, addrFTL);
+	sqlite3_result_int(context, match);
+	logg("SQL: Comparing %s vs. %s (database) - %s", addrFTL, addrDBcidr, match == 1 ? "!! MATCH !!" : "NO MATCH");
 }
 
 int sqlite3_pihole_extensions_init(sqlite3 *db, char **pzErrMsg, const sqlite3_api_routines *pApi)
