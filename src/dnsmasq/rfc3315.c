@@ -49,8 +49,8 @@ static void end_ia(int t1cntr, unsigned int min_time, int do_fuzz);
 static void mark_context_used(struct state *state, struct in6_addr *addr);
 static void mark_config_used(struct dhcp_context *context, struct in6_addr *addr);
 static int check_address(struct state *state, struct in6_addr *addr);
-static int config_valid(struct dhcp_config *config, struct dhcp_context *context, struct in6_addr *addr, struct state *state);
-static int config_implies(struct dhcp_config *config, struct dhcp_context *context, struct in6_addr *addr);
+static int config_valid(struct dhcp_config *config, struct dhcp_context *context, struct in6_addr *addr, struct state *state, time_t now);
+static struct addrlist *config_implies(struct dhcp_config *config, struct dhcp_context *context, struct in6_addr *addr);
 static void add_address(struct state *state, struct dhcp_context *context, unsigned int lease_time, void *ia_option, 
 			unsigned int *min_time, struct in6_addr *addr, time_t now);
 static void update_leases(struct state *state, struct dhcp_context *context, struct in6_addr *addr, unsigned int lease_time, time_t now);
@@ -679,7 +679,7 @@ static int dhcp6_no_relay(struct state *state, int msg_type, void *inbuff, size_
 		    /* If the client asks for an address on the same network as a configured address, 
 		       offer the configured address instead, to make moving to newly-configured
 		       addresses automatic. */
-		    if (!(c->flags & CONTEXT_CONF_USED) && config_valid(config, c, &addr, state))
+		    if (!(c->flags & CONTEXT_CONF_USED) && config_valid(config, c, &addr, state, now))
 		      {
 			req_addr = addr;
 			mark_config_used(c, &addr);
@@ -703,7 +703,7 @@ static int dhcp6_no_relay(struct state *state, int msg_type, void *inbuff, size_
 	    for (c = state->context; c; c = c->current) 
 	      if (!(c->flags & CONTEXT_CONF_USED) &&
 		  match_netid(c->filter, solicit_tags, plain_range) &&
-		  config_valid(config, c, &addr, state))
+		  config_valid(config, c, &addr, state, now))
 		{
 		  mark_config_used(state->context, &addr);
 		  if (have_config(config, CONFIG_TIME))
@@ -847,7 +847,7 @@ static int dhcp6_no_relay(struct state *state, int msg_type, void *inbuff, size_
 		memcpy(&req_addr, opt6_ptr(ia_option, 0), IN6ADDRSZ);
 		
 		if ((c = address6_valid(state->context, &req_addr, tagif, 1)))
-		  config_ok = config_implies(config, c, &req_addr);
+		  config_ok = (config_implies(config, c, &req_addr) != NULL);
 		
 		if ((dynamic = address6_available(state->context, &req_addr, tagif, 1)) || c)
 		  {
@@ -1186,18 +1186,19 @@ static int dhcp6_no_relay(struct state *state, int msg_type, void *inbuff, size_
 	      {
 		struct dhcp_lease *lease;
 		struct in6_addr addr;
-
+		struct addrlist *addr_list;
+		
 		/* align */
 		memcpy(&addr, opt6_ptr(ia_option, 0), IN6ADDRSZ);
 
-		if (have_config(config, CONFIG_ADDR6) && IN6_ARE_ADDR_EQUAL(&config->addr6, &addr))
+		if ((addr_list = config_implies(config, state->context, &addr)))
 		  {
 		    prettyprint_time(daemon->dhcp_buff3, DECLINE_BACKOFF);
 		    inet_ntop(AF_INET6, &addr, daemon->addrbuff, ADDRSTRLEN);
 		    my_syslog(MS_DHCP | LOG_WARNING, _("disabling DHCP static address %s for %s"), 
 			      daemon->addrbuff, daemon->dhcp_buff3);
-		    config->flags |= CONFIG_DECLINED;
-		    config->decline_time = now;
+		    addr_list->flags |= ADDRLIST_DECLINED;
+		    addr_list->decline_time = now;
 		  }
 		else
 		  /* make sure this host gets a different address next time. */
@@ -1669,14 +1670,14 @@ static int check_address(struct state *state, struct in6_addr *addr)
 
 
 /* return true of *addr could have been generated from config. */
-static int config_implies(struct dhcp_config *config, struct dhcp_context *context, struct in6_addr *addr)
+static struct addrlist *config_implies(struct dhcp_config *config, struct dhcp_context *context, struct in6_addr *addr)
 {
   int prefix;
   struct in6_addr wild_addr;
   struct addrlist *addr_list;
   
   if (!config || !(config->flags & CONFIG_ADDR6))
-    return 0;
+    return NULL;
   
   for (addr_list = config->addr6; addr_list; addr_list = addr_list->next)
     {
@@ -1692,13 +1693,13 @@ static int config_implies(struct dhcp_config *config, struct dhcp_context *conte
 	continue;
       
       if (is_same_net6(&wild_addr, addr, prefix))
-	return 1;
+	return addr_list;
     }
   
-  return 0;
+  return NULL;
 }
 
-static int config_valid(struct dhcp_config *config, struct dhcp_context *context, struct in6_addr *addr, struct state *state)
+static int config_valid(struct dhcp_config *config, struct dhcp_context *context, struct in6_addr *addr, struct state *state, time_t now)
 {
   u64 addrpart, i, addresses;
   struct addrlist *addr_list;
@@ -1707,34 +1708,36 @@ static int config_valid(struct dhcp_config *config, struct dhcp_context *context
     return 0;
 
   for (addr_list = config->addr6; addr_list; addr_list = addr_list->next)
-    {
-      addrpart = addr6part(&addr_list->addr.addr6);
-      addresses = 1;
-
-      if (addr_list->flags & ADDRLIST_PREFIX)
-	addresses = 1<<(128-addr_list->prefixlen);
-		
-      if ((addr_list->flags & ADDRLIST_WILDCARD))
-	{
-	  if (context->prefix != 64)
-	    continue;
-      
-	  *addr = context->start6;
-	}
-      else if (is_same_net6(&context->start6, &addr_list->addr.addr6, context->prefix))
-	*addr = addr_list->addr.addr6;
-      else
-	continue;
-      
-      for (i = 0 ; i < addresses; i++)
-	{
-	  setaddr6part(addr, addrpart+i);
-
-	  if (check_address(state, addr))
-	    return 1;
-	}
-    }
-
+    if (!(addr_list->flags && ADDRLIST_DECLINED) ||
+	difftime(now, addr_list->decline_time) >= (float)DECLINE_BACKOFF)
+      {
+	addrpart = addr6part(&addr_list->addr.addr6);
+	addresses = 1;
+	
+	if (addr_list->flags & ADDRLIST_PREFIX)
+	  addresses = 1<<(128-addr_list->prefixlen);
+	
+	if ((addr_list->flags & ADDRLIST_WILDCARD))
+	  {
+	    if (context->prefix != 64)
+	      continue;
+	    
+	    *addr = context->start6;
+	  }
+	else if (is_same_net6(&context->start6, &addr_list->addr.addr6, context->prefix))
+	  *addr = addr_list->addr.addr6;
+	else
+	  continue;
+	
+	for (i = 0 ; i < addresses; i++)
+	  {
+	    setaddr6part(addr, addrpart+i);
+	    
+	    if (check_address(state, addr))
+	      return 1;
+	  }
+      }
+  
   return 0;
 }
 
