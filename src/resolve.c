@@ -39,11 +39,15 @@ static char *resolveHostname(const char *addr)
 		return hostname;
 	}
 
-	// Back up first ns record in _res and ...
-	struct in_addr nsbck;
-	nsbck = _res.nsaddr_list[0].sin_addr;
-	// ... force FTL resolver to 127.0.0.1
-	inet_pton(AF_INET, "127.0.0.1", &_res.nsaddr_list[0].sin_addr);
+	// Force first server used for lookups to 127.0.0.1 (FTL itself)
+	struct in_addr nsbck = { 0 };
+	if(config.force_local_resolver)
+	{
+		// Back up first ns record in _res and ...
+		nsbck = _res.nsaddr_list[0].sin_addr;
+		// ... force FTL resolver to 127.0.0.1
+		inet_pton(AF_INET, "127.0.0.1", &_res.nsaddr_list[0].sin_addr);
+	}
 
 	// Test if we want to resolve an IPv6 address
 	if(strstr(addr,":") != NULL)
@@ -81,7 +85,10 @@ static char *resolveHostname(const char *addr)
 	}
 
 	// Restore first ns record in _res
-	_res.nsaddr_list[0].sin_addr = nsbck;
+	if(config.force_local_resolver)
+	{
+		_res.nsaddr_list[0].sin_addr = nsbck;
+	}
 
 	// Return result
 	return hostname;

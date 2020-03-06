@@ -358,6 +358,19 @@ void read_FTLconf(void)
 	else
 		logg("   CNAME_DEEP_INSPECT: Inactive");
 
+	// FORCE_LOCAL_RESOLVER
+	// defaults to: true
+	config.force_local_resolver = true;
+	buffer = parse_FTLconf(fp, "FORCE_LOCAL_RESOLVER");
+
+	if(buffer != NULL && strcasecmp(buffer, "false") == 0)
+		config.force_local_resolver = false;
+
+	if(config.force_local_resolver)
+		logg("   FORCE_LOCAL_RESOLVER: Active");
+	else
+		logg("   FORCE_LOCAL_RESOLVER: Inactive");
+
 	// Read DEBUG_... setting from pihole-FTL.conf
 	read_debuging_settings(fp);
 
