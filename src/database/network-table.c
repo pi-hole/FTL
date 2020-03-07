@@ -324,7 +324,7 @@ void parse_neighbor_cache(void)
 		{
 			dbquery("INSERT INTO network "\
 			        "(hwaddr,interface,firstSeen,lastQuery,numQueries,name,macVendor) "\
-			        "VALUES (\'ip-%s\',\'N/A\',%lu, %ld, %u, \'%s\', \'N/A\');",\
+			        "VALUES (\'ip-%s\',\'N/A\',%lu, %ld, %u, \'%s\', \'\');",\
 			        ipaddr, now, client->lastQuery, client->numQueriesARP, hostname);
 
 			// Obtain ID which was given to this new entry
