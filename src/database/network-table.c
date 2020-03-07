@@ -322,6 +322,10 @@ void parse_neighbor_cache(void)
 		// Device not in database, add new entry
 		if(dbID == DB_NODATA)
 		{
+			// Do not create record for clients without active queries
+			if(client->numQueriesARP == 0)
+				continue;
+
 			dbquery("INSERT INTO network "\
 			        "(hwaddr,interface,firstSeen,lastQuery,numQueries,name,macVendor) "\
 			        "VALUES (\'ip-%s\',\'N/A\',%lu, %ld, %u, \'%s\', \'\');",\
