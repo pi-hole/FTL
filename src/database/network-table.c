@@ -9,8 +9,8 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
-#include "network-table.h"
-#include "common.h"
+#include "database/network-table.h"
+#include "database/common.h"
 #include "shmem.h"
 #include "memory.h"
 #include "log.h"
@@ -31,7 +31,7 @@ bool create_network_table(void)
 	                                "name TEXT, " \
 	                                "firstSeen INTEGER NOT NULL, " \
 	                                "lastQuery INTEGER NOT NULL, " \
-	                                "numQueries INTEGER NOT NULL," \
+	                                "numQueries INTEGER NOT NULL, " \
 	                                "macVendor TEXT);");
 
 	// Update database version to 3
@@ -132,9 +132,8 @@ void parse_neighbor_cache(void)
 
 	// Prepare buffers
 	char * linebuffer = NULL;
-	size_t linebuffersize = 0;
-	char ip[100], hwaddr[100], iface[100];
-	unsigned int entries = 0;
+	size_t linebuffersize = 0u;
+	unsigned int entries = 0u, additional_entries = 0u;
 	time_t now = time(NULL);
 
 	// Start collecting database commands
@@ -152,9 +151,16 @@ void parse_neighbor_cache(void)
 		return;
 	}
 
+	bool ARP_client[counters->clients];
+	for(int i = 0; i < counters->clients; i++)
+	{
+		ARP_client[i] = false;
+	}
+
 	// Read ARP cache line by line
 	while(getline(&linebuffer, &linebuffersize, arpfp) != -1)
 	{
+		char ip[100], hwaddr[100], iface[100];
 		int num = sscanf(linebuffer, "%99s dev %99s lladdr %99s",
 		                 ip, iface, hwaddr);
 
@@ -177,7 +183,7 @@ void parse_neighbor_cache(void)
 		ret = asprintf(&querystr, "SELECT id FROM network WHERE hwaddr = \'%s\';", hwaddr);
 		if(querystr == NULL || ret < 0)
 		{
-			logg("Memory allocation failed in parse_arp_cache(): %i", ret);
+			logg("Memory allocation failed in parse_arp_cache() [1]: %i", ret);
 			break;
 		}
 
@@ -206,6 +212,7 @@ void parse_neighbor_cache(void)
 		// findClientID() returned a non-negative index
 		if(clientID >= 0)
 		{
+			ARP_client[clientID] = true;
 			client = getClient(clientID, true);
 			hostname = getstr(client->namepos);
 		}
@@ -248,7 +255,7 @@ void parse_neighbor_cache(void)
 			client->numQueriesARP = 0;
 
 			// Store hostname if available
-			if(strlen(hostname) > 0)
+			if(hostname != NULL && strlen(hostname) > 0)
 			{
 				// Store host name
 				dbquery("UPDATE network "\
@@ -265,31 +272,119 @@ void parse_neighbor_cache(void)
 		// this pair already exists, the UNIQUE(network_id,ip) trigger
 		// becomes active and the line is instead REPLACEd, causing the
 		// lastQuery timestamp to be updated
-		dbquery("INSERT OR REPLACE INTO network_addresses "\
+		dbquery("INSERT OR IGNORE INTO network_addresses "\
 		        "(network_id,ip) VALUES(%i,\'%s\');", dbID, ip);
 
 		// Count number of processed ARP cache entries
 		entries++;
 	}
 
-	// Actually update the database
-	if(dbquery("COMMIT") != SQLITE_OK) {
-		logg("ERROR: parse_neighbor_cache() failed!");
-		unlock_shm();
-		return;
+	// Close file handle
+	pclose(arpfp);
+
+	// Finally, loop over all clients known to FTL and ensure we add them
+	// all to the database
+	for(int clientID = 0; clientID < counters->clients; clientID++)
+	{
+		// Skip if already handled above
+		if(ARP_client[clientID])
+			continue;
+
+		// Get client pointer
+		clientsData* client = getClient(clientID, true);
+		if(client == NULL)
+			continue;
+
+		// Get hostname and IP address of this client
+		const char *hostname, *ipaddr;
+		ipaddr = getstr(client->ippos);
+		hostname = getstr(client->namepos);
+
+		// Get device with mock-hardware address (ip-<IP>)
+		char* querystr = NULL;
+		ret = asprintf(&querystr, "SELECT id FROM network WHERE hwaddr = \'ip-%s\';", ipaddr);
+		if(querystr == NULL || ret < 0)
+		{
+			logg("Memory allocation failed in parse_arp_cache() [2]: %i", ret);
+			break;
+		}
+
+		// Perform SQL query
+		int dbID = db_query_int(querystr);
+		free(querystr);
+
+		if(dbID == DB_FAILED)
+		{
+			// SQLite error
+			break;
+		}
+
+		// Device not in database, add new entry
+		if(dbID == DB_NODATA)
+		{
+			dbquery("INSERT INTO network "\
+			        "(hwaddr,interface,firstSeen,lastQuery,numQueries,name,macVendor) "\
+			        "VALUES (\'ip-%s\',\'N/A\',%lu, %ld, %u, \'%s\', \'N/A\');",\
+			        ipaddr, now, client->lastQuery, client->numQueriesARP, hostname);
+
+			// Obtain ID which was given to this new entry
+			dbID = get_lastID();
+		}
+		// Device already in database
+		else
+		{
+			// Update lastQuery. Only use new value if larger
+			// client->lastQuery may be zero if this
+			// client is only known from a database entry but has
+			// not been seen since then
+			dbquery("UPDATE network "\
+			        "SET lastQuery = MAX(lastQuery, %ld) "\
+			        "WHERE id = %i;",\
+			        client->lastQuery, dbID);
+
+			// Update numQueries. Add queries seen since last update
+			// and reset counter afterwards
+			dbquery("UPDATE network "\
+			        "SET numQueries = numQueries + %u "\
+			        "WHERE id = %i;",\
+			        client->numQueriesARP, dbID);
+			client->numQueriesARP = 0;
+
+			// Store hostname if available
+			if(hostname != NULL && strlen(hostname) > 0)
+			{
+				// Store host name
+				dbquery("UPDATE network "\
+				        "SET name = \'%s\' "\
+				        "WHERE id = %i;",\
+				        hostname, dbID);
+			}
+		}
+
+		// Add IP/mock-MAC pair to address database
+		dbquery("INSERT OR IGNORE INTO network_addresses "\
+		        "(network_id,ip) VALUES(%i,\'%s\');", dbID, ipaddr);
+
+		// Add to number of processed ARP cache entries
+		additional_entries++;
 	}
+
+	// Actually update the database
+	if(dbquery("COMMIT") != SQLITE_OK)
+		logg("ERROR: parse_neighbor_cache() failed!");
+
+	// Close database connection
+	// We opened the connection in this function
+	dbclose();
 
 	unlock_shm();
 
 	// Debug logging
 	if(config.debug & DEBUG_ARP)
-		logg("ARP table processing (%i entries) took %.1f ms", entries, timer_elapsed_msec(ARP_TIMER));
-
-	// Close file handle
-	pclose(arpfp);
-
-	// Close database connection
-	dbclose();
+	{
+		logg("ARP table processing (%i entries from ARP, %i from FTL's cache) took %.1f ms",
+		     entries, additional_entries, timer_elapsed_msec(ARP_TIMER));
+	}
 }
 
 // Loop over all entries in network table and unify entries by their hwaddr
@@ -374,9 +469,9 @@ static char* getMACVendor(const char* hwaddr)
 			logg("getMACVenor(%s): %s does not exist", hwaddr, FTLfiles.macvendor_db);
 		return strdup("");
 	}
-	else if(strlen(hwaddr) != 17)
+	else if(strlen(hwaddr) != 17 || strstr(hwaddr, "ip-") != NULL)
 	{
-		// MAC address is incomplete
+		// MAC address is incomplete or mock address (for distant clients)
 		if(config.debug & DEBUG_ARP)
 			logg("getMACVenor(%s): MAC invalid (length %zu)", hwaddr, strlen(hwaddr));
 		return strdup("");

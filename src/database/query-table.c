@@ -376,10 +376,9 @@ void DB_read_queries(void)
 		query->reply = REPLY_UNKNOWN;
 		query->CNAME_domainID = -1;
 
-		// Set lastQuery timer and add one query for network table
+		// Set lastQuery timer for network table
 		clientsData* client = getClient(clientID, true);
 		client->lastQuery = queryTimeStamp;
-		client->numQueriesARP++;
 
 		// Handle type counters
 		if(type >= TYPE_A && type < TYPE_MAX)
