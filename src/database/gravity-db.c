@@ -80,6 +80,9 @@ bool gravityDB_open(void)
 		return false;
 	}
 
+	// Prepare client statements when opening gravity database
+	gravityDB_reload_client_statements();
+
 	// Database connection is now open
 	gravity_database_avail = true;
 	if(config.debug & DEBUG_DATABASE)
@@ -104,9 +107,9 @@ static char* get_client_querystr(const char* table, const char* groups)
 	return querystr;
 }
 
+// Get associated groups for this client (if defined)
 static bool get_client_groupids(const clientsData* client, char **groups)
 {
-	// Get associated groups for this client (if defined)
 	char *querystr = NULL;
 	const char *ip = getstr(client->ippos);
 	*groups = NULL;
@@ -133,7 +136,7 @@ static bool get_client_groupids(const clientsData* client, char **groups)
 	if(rc != SQLITE_OK){
 		logg("get_client_groupids(%s) - SQL error prepare (%i): %s",
 		     querystr, rc, sqlite3_errmsg(gravity_db));
-		sqlite3_finalize(table_stmt);
+		gravityDB_finalizeTable();
 		free(querystr);
 		return false;
 	}
@@ -160,12 +163,15 @@ static bool get_client_groupids(const clientsData* client, char **groups)
 	{
 		logg("get_client_groupids(%s) - SQL error step (%i): %s",
 		     querystr, rc, sqlite3_errmsg(gravity_db));
-		sqlite3_finalize(table_stmt);
+		gravityDB_finalizeTable();
 		free(querystr);
 		return false;
 	}
-	// Finalize statement
+
+	// Finalize statement nad free allocated memory
 	gravityDB_finalizeTable();
+	free(querystr);
+	querystr = NULL;
 
 	if(*groups != NULL)
 	{
@@ -226,6 +232,7 @@ static bool get_client_groupids(const clientsData* client, char **groups)
 	return true;
 }
 
+// Prepare statements for scanning white- and blacklist as well as gravit for one client
 bool gravityDB_prepare_client_statements(clientsData* client)
 {
 	// Return early if gravity database is not available
@@ -507,7 +514,6 @@ static bool domain_in_list(const char *domain, sqlite3_stmt* stmt, const char* l
 	{
 		logg("domain_in_list(\"%s\"): Failed to bind domain (error %d) - %s",
 		     domain, retval, sqlite3_errmsg(gravity_db));
-		sqlite3_reset(stmt);
 		return false;
 	}
 
