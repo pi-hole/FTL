@@ -229,6 +229,7 @@ void parse_neighbor_cache(void)
 			        client != NULL ? client->numQueriesARP : 0u,
 			        hostname,
 			        macVendor);
+			client->numQueriesARP = 0;
 			free(macVendor);
 
 			// Obtain ID which was given to this new entry
@@ -292,7 +293,12 @@ void parse_neighbor_cache(void)
 
 		// Get client pointer
 		clientsData* client = getClient(clientID, true);
-		if(client == NULL)
+		if(client == NULL || client->count < 1)
+			continue;
+
+		// Do not create records or update clients without active queries
+		// This reduces database I/O when nothing would change anyways
+		if(client->numQueriesARP == 0)
 			continue;
 
 		// Get hostname and IP address of this client
@@ -322,14 +328,11 @@ void parse_neighbor_cache(void)
 		// Device not in database, add new entry
 		if(dbID == DB_NODATA)
 		{
-			// Do not create record for clients without active queries
-			if(client->numQueriesARP == 0)
-				continue;
-
 			dbquery("INSERT INTO network "\
 			        "(hwaddr,interface,firstSeen,lastQuery,numQueries,name,macVendor) "\
 			        "VALUES (\'ip-%s\',\'N/A\',%lu, %ld, %u, \'%s\', \'\');",\
 			        ipaddr, now, client->lastQuery, client->numQueriesARP, hostname);
+			client->numQueriesARP = 0;
 
 			// Obtain ID which was given to this new entry
 			dbID = get_lastID();
