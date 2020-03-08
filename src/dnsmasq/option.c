@@ -3326,7 +3326,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 			
 			if (!atoi_check(pref, &new_addr->prefixlen) ||
 			    new_addr->prefixlen > 128 ||
-			    (((1<<(128-new_addr->prefixlen))-1) & addrpart) != 0)
+			    ((((u64)1<<(128-new_addr->prefixlen))-1) & addrpart) != 0)
 			  {
 			    dhcp_config_free(new);
 			    ret_err(_("bad IPv6 prefix"));

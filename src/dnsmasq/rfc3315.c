@@ -1731,7 +1731,7 @@ static int config_valid(struct dhcp_config *config, struct dhcp_context *context
 	addresses = 1;
 	
 	if (addr_list->flags & ADDRLIST_PREFIX)
-	  addresses = 1<<(128-addr_list->prefixlen);
+	  addresses = (u64)1<<(128-addr_list->prefixlen);
 	
 	if ((addr_list->flags & ADDRLIST_WILDCARD))
 	  {
