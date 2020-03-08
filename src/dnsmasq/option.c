@@ -1264,6 +1264,12 @@ static int parse_dhcp_opt(char *errstr, char *arg, int flags)
 
       if (!found_colon)
 	is_addr6 = 0;
+
+#ifdef HAVE_DHCP6
+      /* NTP server option takes hex, addresses or FQDN */
+      if (is6 && new->opt == OPTION6_NTP_SERVER && !is_hex)
+	opt_len |= is_addr6 ? OT_ADDR_LIST : OT_RFC1035_NAME;
+#endif
      
       /* We know that some options take addresses */
       if (opt_len & OT_ADDR_LIST)
@@ -1525,8 +1531,9 @@ static int parse_dhcp_opt(char *errstr, char *arg, int flags)
 	    }
 	  else if (comma && (opt_len & OT_RFC1035_NAME))
 	    {
-	      unsigned char *p = NULL, *newp, *end;
+	      unsigned char *p = NULL, *q, *newp, *end;
 	      int len = 0;
+	      int header_size = (is6 && new->opt == OPTION6_NTP_SERVER) ? 4 : 0;
 	      arg = comma;
 	      comma = split(arg);
 	      
@@ -1536,7 +1543,7 @@ static int parse_dhcp_opt(char *errstr, char *arg, int flags)
 		  if (!dom)
 		    goto_err(_("bad domain in dhcp-option"));
 		    		  
-		  newp = opt_malloc(len + strlen(dom) + 2);
+		  newp = opt_malloc(len + header_size + strlen(dom) + 2);
 		  
 		  if (p)
 		    {
@@ -1545,8 +1552,14 @@ static int parse_dhcp_opt(char *errstr, char *arg, int flags)
 		    }
 		  
 		  p = newp;
-		  end = do_rfc1035_name(p + len, dom, NULL);
+		  q = p + len;
+		  end = do_rfc1035_name(q + header_size, dom, NULL);
 		  *end++ = 0;
+		  if (is6 && new->opt == OPTION6_NTP_SERVER)
+		    {
+		      PUTSHORT(NTP_SUBOPTION_SRV_FQDN, q);
+		      PUTSHORT(end - q - 2, q);
+		    }
 		  len = end - p;
 		  free(dom);
 
