@@ -22,6 +22,12 @@
 #include <linux/netlink.h>
 #include <linux/rtnetlink.h>
 
+/* Blergh. Radv does this, so that's our excuse. */
+#ifndef SOL_NETLINK
+#define SOL_NETLINK 270
+#endif
+
+
 /* linux 2.6.19 buggers up the headers, patch it up here. */ 
 #ifndef IFA_RTA
 #  define IFA_RTA(r)  \
@@ -44,6 +50,7 @@ void netlink_init(void)
 {
   struct sockaddr_nl addr;
   socklen_t slen = sizeof(addr);
+  int opt = 1;
 
   addr.nl_family = AF_NETLINK;
   addr.nl_pad = 0;
@@ -72,6 +79,7 @@ void netlink_init(void)
     }
   
   if (daemon->netlinkfd == -1 || 
+      setsockopt(daemon->netlinkfd, SOL_NETLINK, NETLINK_NO_ENOBUFS, &opt, sizeof(opt)) == -1 ||
       getsockname(daemon->netlinkfd, (struct sockaddr *)&addr, &slen) == -1)
     die(_("cannot create netlink socket: %s"), NULL, EC_MISC);
    
