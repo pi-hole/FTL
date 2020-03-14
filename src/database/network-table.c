@@ -106,6 +106,61 @@ bool create_network_addresses_table(void)
 	return true;
 }
 
+// Try to find device by recent usage of this IP address
+static int find_device_by_recent_ip(const char *ipaddr)
+{
+	char* querystr = NULL;
+	int ret = asprintf(&querystr,
+	                   "SELECT network_id FROM network_addresses "
+	                   "WHERE ip = \'%s\' AND timestamp > (cast(strftime('%%s', 'now') as int)-86400) "
+	                   "ORDER BY lastSeen DESC;",
+	                   ipaddr);
+	if(querystr == NULL || ret < 0)
+	{
+		logg("Memory allocation failed in parse_arp_cache() [3]: %i", ret);
+		return -1;
+	}
+
+	// Perform SQL query
+	int network_id = db_query_int(querystr);
+	free(querystr);
+
+	if(network_id == DB_FAILED)
+	{
+		// SQLite error
+		return -1;
+	}
+	else if(network_id == DB_NODATA)
+	{
+		// No result found
+		return -1;
+	}
+
+	if(config.debug & DEBUG_ARP)
+		logg("APR: Identified device %s using most recently used IP address", ipaddr);
+
+	// Found network_id
+	return network_id;
+}
+
+// Try to find device by mock hardware address (generated from IP address)
+static int find_device_by_mock_hwaddr(const char *ipaddr)
+{
+	char* querystr = NULL;
+	int ret = asprintf(&querystr, "SELECT id FROM network WHERE hwaddr = \'ip-%s\';", ipaddr);
+	if(querystr == NULL || ret < 0)
+	{
+		logg("Memory allocation failed in parse_arp_cache() [4]: %i", ret);
+		return -1;
+	}
+
+	// Perform SQL query
+	int network_id = db_query_int(querystr);
+	free(querystr);
+
+	return network_id;
+}
+
 // Parse kernel's neighbor cache
 void parse_neighbor_cache(void)
 {
@@ -303,7 +358,7 @@ void parse_neighbor_cache(void)
 
 		// Skip if this client was inactive (last query may be older than 24 hours)
 		// This also reduces database I/O when nothing would change anyways
-		if(client->count < 1 || client->numQueriesARP < 1)
+		if(client->count < 1)
 		{
 			if(config.debug & DEBUG_ARP)
 				logg("Network table: Client %s has zero queries (%d, %d)",
@@ -323,18 +378,19 @@ void parse_neighbor_cache(void)
 			logg("Network table: %s NOT known through ARP/neigh cache", ipaddr);
 		}
 
-		// Get device with mock-hardware address (ip-<IP>)
-		char* querystr = NULL;
-		ret = asprintf(&querystr, "SELECT id FROM network WHERE hwaddr = \'ip-%s\';", ipaddr);
-		if(querystr == NULL || ret < 0)
-		{
-			logg("Memory allocation failed in parse_arp_cache() [2]: %i", ret);
-			break;
-		}
+		//
+		// Variant 1: Try to find a device using the same IP address within the last 24 hours
+		//
+		int dbID = -1;
+		dbID = find_device_by_recent_ip(ipaddr);
 
-		// Perform SQL query
-		int dbID = db_query_int(querystr);
-		free(querystr);
+		//
+		// Variant 2: Try to find a device with mock IP address
+		//
+		if(dbID < 0)
+		{
+			dbID = find_device_by_mock_hwaddr(ipaddr);
+		}
 
 		if(dbID == DB_FAILED)
 		{
