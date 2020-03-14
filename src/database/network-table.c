@@ -270,11 +270,10 @@ void parse_neighbor_cache(void)
 
 		// Add unique pair of ID (corresponds to one particular hardware
 		// address) and IP address if it does not exist (INSERT). In case
-		// this pair already exists, the UNIQUE(network_id,ip) trigger
-		// becomes active and the line is instead REPLACEd, causing the
-		// lastQuery timestamp to be updated
-		dbquery("INSERT OR IGNORE INTO network_addresses "\
-		        "(network_id,ip) VALUES(%i,\'%s\');", dbID, ip);
+		// this pair already exists, replace it
+		dbquery("INSERT OR REPLACE INTO network_addresses "\
+		        "(network_id,ip,lastSeen) VALUES(%i,\'%s\',(cast(strftime('%%s', 'now') as int)));",
+			dbID, ip);
 
 		// Count number of processed ARP cache entries
 		entries++;
@@ -287,24 +286,42 @@ void parse_neighbor_cache(void)
 	// all to the database
 	for(int clientID = 0; clientID < counters->clients; clientID++)
 	{
-		// Skip if already handled above
-		if(ARP_client[clientID])
-			continue;
 
 		// Get client pointer
 		clientsData* client = getClient(clientID, true);
-		if(client == NULL || client->count < 1)
+		if(client == NULL)
+		{
+			if(config.debug & DEBUG_ARP)
+				logg("Network table: Client %d returned NULL pointer", clientID);
 			continue;
-
-		// Do not create records or update clients without active queries
-		// This reduces database I/O when nothing would change anyways
-		if(client->numQueriesARP == 0)
-			continue;
+		}
 
 		// Get hostname and IP address of this client
 		const char *hostname, *ipaddr;
 		ipaddr = getstr(client->ippos);
 		hostname = getstr(client->namepos);
+
+		// Skip if this client was inactive (last query may be older than 24 hours)
+		// This also reduces database I/O when nothing would change anyways
+		if(client->count < 1 || client->numQueriesARP < 1)
+		{
+			if(config.debug & DEBUG_ARP)
+				logg("Network table: Client %s has zero queries (%d, %d)",
+				     ipaddr, client->count, client->numQueriesARP);
+			continue;
+		}
+		// Skip if already handled above
+		else if(ARP_client[clientID])
+		{
+			if(config.debug & DEBUG_ARP)
+				logg("Network table: Client %s known through ARP/neigh cache",
+				     ipaddr);
+			continue;
+		}
+		else if(config.debug & DEBUG_ARP)
+		{
+			logg("Network table: %s NOT known through ARP/neigh cache", ipaddr);
+		}
 
 		// Get device with mock-hardware address (ip-<IP>)
 		char* querystr = NULL;
@@ -368,9 +385,10 @@ void parse_neighbor_cache(void)
 			}
 		}
 
-		// Add IP/mock-MAC pair to address database
-		dbquery("INSERT OR IGNORE INTO network_addresses "\
-		        "(network_id,ip) VALUES(%i,\'%s\');", dbID, ipaddr);
+		// Add/replace IP/mock-MAC pair to address database
+		dbquery("INSERT OR REPLACE INTO network_addresses "\
+		        "(network_id,ip,lastSeen) VALUES(%i,\'%s\',(cast(strftime('%%s', 'now') as int)));",
+			dbID, ipaddr);
 
 		// Add to number of processed ARP cache entries
 		additional_entries++;
