@@ -161,6 +161,49 @@ static int find_device_by_mock_hwaddr(const char *ipaddr)
 	return network_id;
 }
 
+// Store hostname of device identified by dbID if neither NULL nor empty
+static void update_hostname(const int dbID, const char *hostname)
+{
+	if(hostname == NULL || strlen(hostname) < 1)
+		return;
+
+	sqlite3_stmt *query_stmt;
+	const char *querystr = "UPDATE network SET name = ? WHERE id = ?;";
+
+	int rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &query_stmt, NULL);
+	if(rc != SQLITE_OK){
+		logg("update_hostname(%i, %s) - SQL error prepare (%i): %s",
+		dbID, hostname, rc, sqlite3_errmsg(FTL_db));
+		return;
+	}
+	if(config.debug & DEBUG_DATABASE)
+	{
+		logg("dbquery: \"%s\" with arguments 1 = \"%s\" and 2 = %i", querystr, hostname, dbID);
+	}
+
+	// Bind hostname to prepared statement
+	// SQLITE_STATIC: Use the string without first duplicating it internally.
+	// We can do this as hostname has dynamic scope that exceeds that of the binding.
+	if((rc = sqlite3_bind_text(query_stmt, 1, hostname, -1, SQLITE_STATIC)) != SQLITE_OK)
+	{
+		logg("update_hostname(%i, %s): Failed to bind hostname (error %d) - %s",
+		     dbID, hostname, rc, sqlite3_errmsg(FTL_db));
+		sqlite3_reset(query_stmt);
+		return;
+	}
+	if((rc = sqlite3_bind_int(query_stmt, 2, dbID)) != SQLITE_OK)
+	{
+		logg("update_hostname(%i, %s): Failed to bind dbID (error %d) - %s",
+		     dbID, hostname, rc, sqlite3_errmsg(FTL_db));
+		sqlite3_reset(query_stmt);
+		return;
+	}
+
+	// Perform step
+	sqlite3_step(query_stmt);
+	sqlite3_finalize(query_stmt);
+}
+
 // Parse kernel's neighbor cache
 void parse_neighbor_cache(void)
 {
@@ -314,15 +357,8 @@ void parse_neighbor_cache(void)
 			        client->numQueriesARP, dbID);
 			client->numQueriesARP = 0;
 
-			// Store hostname if available
-			if(hostname != NULL && strlen(hostname) > 0)
-			{
-				// Store host name
-				dbquery("UPDATE network "\
-				        "SET name = \'%s\' "\
-				        "WHERE id = %i;",\
-				        hostname, dbID);
-			}
+			// Update hostname if available
+			update_hostname(dbID, hostname);
 		}
 		// else:
 		// Device in database but not known to Pi-hole: No action required
@@ -385,25 +421,21 @@ void parse_neighbor_cache(void)
 		//
 		// Variant 1: Try to find a device using the same IP address within the last 24 hours
 		//
-		int dbID = -1;
-		dbID = find_device_by_recent_ip(ipaddr);
+		int dbID = find_device_by_recent_ip(ipaddr);
 
 		//
 		// Variant 2: Try to find a device with mock IP address
 		//
 		if(dbID < 0)
-		{
 			dbID = find_device_by_mock_hwaddr(ipaddr);
-		}
 
 		if(dbID == DB_FAILED)
 		{
 			// SQLite error
 			break;
 		}
-
 		// Device not in database, add new entry
-		if(dbID == DB_NODATA)
+		else if(dbID == DB_NODATA)
 		{
 			dbquery("INSERT INTO network "\
 			        "(hwaddr,interface,firstSeen,lastQuery,numQueries,name,macVendor) "\
@@ -434,15 +466,8 @@ void parse_neighbor_cache(void)
 			        client->numQueriesARP, dbID);
 			client->numQueriesARP = 0;
 
-			// Store hostname if available
-			if(hostname != NULL && strlen(hostname) > 0)
-			{
-				// Store host name
-				dbquery("UPDATE network "\
-				        "SET name = \'%s\' "\
-				        "WHERE id = %i;",\
-				        hostname, dbID);
-			}
+			// Update host name
+			update_hostname(dbID, hostname);
 		}
 
 		// Add/replace IP/mock-MAC pair to address database
