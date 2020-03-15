@@ -112,7 +112,7 @@ static int find_device_by_recent_ip(const char *ipaddr)
 	char* querystr = NULL;
 	int ret = asprintf(&querystr,
 	                   "SELECT network_id FROM network_addresses "
-	                   "WHERE ip = \'%s\' AND timestamp > (cast(strftime('%%s', 'now') as int)-86400) "
+	                   "WHERE ip = \'%s\' AND lastSeen > (cast(strftime('%%s', 'now') as int)-86400) "
 	                   "ORDER BY lastSeen DESC;",
 	                   ipaddr);
 	if(querystr == NULL || ret < 0)
@@ -284,8 +284,12 @@ void parse_neighbor_cache(void)
 			        client != NULL ? client->numQueriesARP : 0u,
 			        hostname,
 			        macVendor);
-			client->numQueriesARP = 0;
 			free(macVendor);
+
+			if(client != NULL)
+			{
+				client->numQueriesARP = 0;
+			}
 
 			// Obtain ID which was given to this new entry
 			dbID = get_lastID();
