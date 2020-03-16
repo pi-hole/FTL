@@ -398,7 +398,7 @@ void parse_neighbor_cache(void)
 
 		// Skip if this client was inactive (last query may be older than 24 hours)
 		// This also reduces database I/O when nothing would change anyways
-		if(client->count < 1)
+		if(client->count < 1 || client->numQueriesARP < 1)
 		{
 			if(config.debug & DEBUG_ARP)
 				logg("Network table: Client %s has zero queries (%d, %d)",
