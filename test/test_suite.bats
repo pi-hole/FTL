@@ -244,7 +244,8 @@
   [[ ${lines[5]} == "SOA: 0.00" ]]
   [[ ${lines[6]} == "PTR: 0.00" ]]
   [[ ${lines[7]} == "TXT: 9.09" ]]
-  [[ ${lines[8]} == "" ]]
+  [[ ${lines[8]} == "NAPTR: 0.00" ]]
+  [[ ${lines[9]} == "" ]]
 }
 
 # Here and below: Acknowledge that there might be a host name after
