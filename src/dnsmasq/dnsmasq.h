@@ -1065,6 +1065,7 @@ extern struct daemon {
   unsigned int duid_enterprise, duid_config_len;
   unsigned char *duid_config;
   char *dbus_name;
+  char *ubus_name;
   char *dump_file;
   int dump_mask;
   unsigned long soa_sn, soa_refresh, soa_retry, soa_expiry;
