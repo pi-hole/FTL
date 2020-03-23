@@ -66,7 +66,10 @@ void DB_save_queries(void)
 	// Get last ID stored in the database
 	long int lastID = get_max_query_ID();
 
-	SQL_void("BEGIN TRANSACTION");
+	if(dbquery("BEGIN TRANSACTION") != SQLITE_OK)
+	{
+		return;
+	}
 
 	int rc = sqlite3_prepare_v2(FTL_db, "INSERT INTO queries VALUES (NULL,?,?,?,?,?,?)", -1, &stmt, NULL);
 	if( rc != SQLITE_OK )
@@ -176,7 +179,12 @@ void DB_save_queries(void)
 	}
 
 	// Finish prepared statement
-	SQL_void("END TRANSACTION");
+	if((rc = dbquery("END TRANSACTION")) != SQLITE_OK)
+	{
+		logg("Storing queries to long-term database failed as %s.",
+		     sqlite3_errstr(rc));
+		saved_error++;
+	}
 	if((rc = sqlite3_finalize(stmt)) != SQLITE_OK)
 	{
 		check_database(rc);
@@ -189,13 +197,7 @@ void DB_save_queries(void)
 	{
 		lastdbindex = queryID;
 		db_set_FTL_property(DB_LASTTIMESTAMP, newlasttimestamp);
-	}
-
-	// Update total counters in FTL_db
-	if(saved > 0 && !db_update_counters(total, blocked))
-	{
-		dbclose();
-		return;
+		db_update_counters(total, blocked);
 	}
 
 	// Close database

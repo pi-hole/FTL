@@ -37,15 +37,23 @@ extern bool DBdeleteoldqueries;
 
 // Database macros
 #define SQL_bool(sql) {\
-	if(dbquery(sql) != SQLITE_OK) {\
-		logg("ERROR: %s() failed!", __FUNCTION__);\
+	int ret;\
+	if((ret = dbquery(sql)) != SQLITE_OK) {\
+		if(ret == SQLITE_BUSY)\
+			logg("WARNING: Database busy in %s()!", __FUNCTION__);\
+		else\
+			logg("ERROR: %s() failed!", __FUNCTION__);\
 		return false;\
 	}\
 }
 
 #define SQL_void(sql) {\
-	if(dbquery(sql) != SQLITE_OK) {\
-		logg("ERROR: %s() failed!", __FUNCTION__);\
+	int ret;\
+	if((ret = dbquery(sql)) != SQLITE_OK) {\
+		if(ret == SQLITE_BUSY)\
+			logg("WARNING: Database busy in %s()!", __FUNCTION__);\
+		else\
+			logg("ERROR: %s() failed!", __FUNCTION__);\
 		return;\
 	}\
 }
