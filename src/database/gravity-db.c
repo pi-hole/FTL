@@ -61,6 +61,9 @@ bool gravityDB_open(void)
 		return false;
 	}
 
+	// Database connection is now open
+	gravityDB_opened = true;
+
 	// Explicitly set busy handler to zero milliseconds
 	if(config.debug & DEBUG_DATABASE)
 		logg("gravityDB_open(): Setting busy timeout to zero");
@@ -100,11 +103,8 @@ bool gravityDB_open(void)
 		logg("gravityDB_open(): Reloading client statements");
 	gravityDB_reload_client_statements();
 
-	// Database connection is now open
-	gravityDB_opened = true;
 	if(config.debug & DEBUG_DATABASE)
 		logg("gravityDB_open(): Successfully opened gravity.db");
-
 	return true;
 }
 
