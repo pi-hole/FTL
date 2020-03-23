@@ -66,12 +66,15 @@ void DB_save_queries(void)
 	// Get last ID stored in the database
 	long int lastID = get_max_query_ID();
 
-	if(dbquery("BEGIN TRANSACTION") != SQLITE_OK)
+	int rc;
+	if((rc = dbquery("BEGIN TRANSACTION IMMEDIATE")) != SQLITE_OK)
 	{
+		logg("BEGIN TRANSACTION IMMEDIATE failed when trying to store queries to long-term database: %s.",
+		     sqlite3_errstr(rc));
 		return;
 	}
 
-	int rc = sqlite3_prepare_v2(FTL_db, "INSERT INTO queries VALUES (NULL,?,?,?,?,?,?)", -1, &stmt, NULL);
+	rc = sqlite3_prepare_v2(FTL_db, "INSERT INTO queries VALUES (NULL,?,?,?,?,?,?)", -1, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
 		logg("DB_save_queries() - error in preparing SQL statement (%i): %s", rc, sqlite3_errmsg(FTL_db));
@@ -181,7 +184,7 @@ void DB_save_queries(void)
 	// Finish prepared statement
 	if((rc = dbquery("END TRANSACTION")) != SQLITE_OK)
 	{
-		logg("Storing queries to long-term database failed as %s.",
+		logg("END TRANSACTION failed when trying to store queries to long-term database: %s.",
 		     sqlite3_errstr(rc));
 		saved_error++;
 	}
