@@ -269,7 +269,18 @@ void parse_neighbor_cache(void)
 
 		// Check if we want to process the line we just read
 		if(num != 3)
+		{
+			if(num == 2)
+			{
+				// This line is incomplete, remember this to skip
+				// mock-device creation after ARP processing
+				int clientID = findClientID(ip, false);
+				if(clientID >= 0)
+					client_status[clientID] = CLIENT_ARP_INCOMPLETE;
+			}
+
 			continue;
+		}
 
 		// Get ID of this device in our network database. If it cannot be
 		// found, then this is a new device. We only use the hardware address
