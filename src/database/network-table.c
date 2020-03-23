@@ -217,16 +217,18 @@ void parse_neighbor_cache(void)
 	// Try to access the kernel's neighbor cache
 	// We are only interested in entries which are in either STALE or REACHABLE state
 	FILE* arpfp = NULL;
-	if((arpfp = popen("ip neigh show nud stale nud reachable", "r")) == NULL)
+	const char *neigh_command = "ip neigh show";
+	if((arpfp = popen(neigh_command, "r")) == NULL)
 	{
-		logg("WARN: Command \"ip neigh show nud stale nud reachable\" failed!");
+		logg("WARN: Command \"%s\" failed!", neigh_command);
 		logg("      Message: %s", strerror(errno));
 		dbclose();
 		return;
 	}
 
 	// Start ARP timer
-	if(config.debug & DEBUG_ARP) timer_start(ARP_TIMER);
+	if(config.debug & DEBUG_ARP)
+		timer_start(ARP_TIMER);
 
 	// Prepare buffers
 	char * linebuffer = NULL;
@@ -249,10 +251,13 @@ void parse_neighbor_cache(void)
 		return;
 	}
 
-	bool ARP_client[counters->clients];
+	// Used to remember the status of a client already seen in the neigh cache
+	enum arp_status { CLIENT_NOT_HANDLED, CLIENT_ARP_COMPLETE, CLIENT_ARP_INCOMPLETE };
+	// Initialize status
+	enum arp_status client_status[counters->clients];
 	for(int i = 0; i < counters->clients; i++)
 	{
-		ARP_client[i] = false;
+		client_status[i] = CLIENT_NOT_HANDLED;
 	}
 
 	// Read ARP cache line by line
@@ -310,7 +315,7 @@ void parse_neighbor_cache(void)
 		// findClientID() returned a non-negative index
 		if(clientID >= 0)
 		{
-			ARP_client[clientID] = true;
+			client_status[clientID] = CLIENT_ARP_COMPLETE;
 			client = getClient(clientID, true);
 			hostname = getstr(client->namepos);
 		}
@@ -406,7 +411,7 @@ void parse_neighbor_cache(void)
 			continue;
 		}
 		// Skip if already handled above
-		else if(ARP_client[clientID])
+		else if(client_status[clientID] != CLIENT_NOT_HANDLED)
 		{
 			if(config.debug & DEBUG_ARP)
 				logg("Network table: Client %s known through ARP/neigh cache",
