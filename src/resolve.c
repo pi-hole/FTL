@@ -23,12 +23,55 @@
 // struct _res
 #include <resolv.h>
 
+// Validate given hostname
+static bool valid_hostname(char* name, const char* clientip)
+{
+	// Check for validity of input
+	if(name == NULL)
+		return false;
+
+	// Check for maximum length of hostname
+	// Truncate if too long (MAXHOSTNAMELEN defaults to 64, see asm-generic/param.h)
+	if(strlen(name) > MAXHOSTNAMELEN)
+	{
+		logg("WARN: Hostname of client %s too long, truncating to %d chars!",
+		     clientip, MAXHOSTNAMELEN);
+		// We can modify the string in-place as the target is
+		// shorter than the source
+		name[MAXHOSTNAMELEN] = '\0';
+	}
+
+	// Iterate over characters in hostname
+	// to check for legal char: A-Z a-z 0-9 - _ .
+	for (char c; (c = *name); name++)
+	{
+		if ((c >= 'A' && c <= 'Z') ||
+		    (c >= 'a' && c <= 'z') ||
+		    (c >= '0' && c <= '9') ||
+			 c == '-' ||
+			 c == '_' ||
+			 c == '.' )
+			continue;
+
+		// Invalid character found, log and return hostname being invalid
+		logg("WARN: Hostname of client %s contains invalid character: %c (char code %d)",
+		     clientip, (unsigned char)c, (unsigned char)c);
+		return false;
+	}
+
+	// No invalid characters found
+	return true;
+}
+
 static char *resolveHostname(const char *addr)
 {
 	// Get host name
 	struct hostent *he = NULL;
 	char *hostname = NULL;;
 	bool IPv6 = false;
+
+	if(config.debug & DEBUG_API)
+		logg("Trying to resolve %s", addr);
 
 	// Check if this is a hidden client
 	// if so, return "hidden" as hostname
@@ -64,13 +107,8 @@ static char *resolveHostname(const char *addr)
 		he = gethostbyaddr(&ipaddr, sizeof ipaddr, AF_INET);
 	}
 
-	if(he == NULL)
-	{
-		// No hostname found
-		hostname = strdup("");
-		//if(hostname == NULL) return NULL;
-	}
-	else
+	// First check for he not being NULL before trying to dereference it
+	if(he != NULL && valid_hostname(he->h_name, addr))
 	{
 		// Return hostname copied to new memory location
 		hostname = strdup(he->h_name);
@@ -78,6 +116,11 @@ static char *resolveHostname(const char *addr)
 		// Convert hostname to lower case
 		if(hostname != NULL)
 			strtolower(hostname);
+	}
+	else
+	{
+		// No (he == NULL) or invalid (valid_hostname returned false) hostname found
+		hostname = strdup("");
 	}
 
 	// Restore first ns record in _res
