@@ -25,7 +25,7 @@
 static sqlite3 *gravity_db = NULL;
 static sqlite3_stmt* table_stmt = NULL;
 static sqlite3_stmt* auditlist_stmt = NULL;
-bool gravity_database_avail = false;
+bool gravityDB_opened = false;
 
 // Table names corresponding to the enum defined in gravity-db.h
 static const char* tablename[] = { "vw_gravity", "vw_blacklist", "vw_whitelist", "vw_regex_blacklist", "vw_regex_whitelist" , ""};
@@ -42,6 +42,13 @@ bool gravityDB_open(void)
 		// File does not exist
 		logg("gravityDB_open(): %s does not exist", FTLfiles.gravity_db);
 		return false;
+	}
+
+	if(gravityDB_opened && gravity_db != NULL)
+	{
+		if(config.debug & DEBUG_DATABASE)
+			logg("gravityDB_open(): Database already connected");
+		return true;
 	}
 
 	if(config.debug & DEBUG_DATABASE)
@@ -94,7 +101,7 @@ bool gravityDB_open(void)
 	gravityDB_reload_client_statements();
 
 	// Database connection is now open
-	gravity_database_avail = true;
+	gravityDB_opened = true;
 	if(config.debug & DEBUG_DATABASE)
 		logg("gravityDB_open(): Successfully opened gravity.db");
 
@@ -125,7 +132,7 @@ static bool get_client_groupids(const clientsData* client, char **groups)
 	*groups = NULL;
 
 	// Do not proceed when database is not available
-	if(!gravity_database_avail && !gravityDB_open())
+	if(!gravityDB_opened && !gravityDB_open())
 	{
 		logg("get_client_groupids(): Gravity database not available");
 		return false;
@@ -246,7 +253,7 @@ static bool get_client_groupids(const clientsData* client, char **groups)
 bool gravityDB_prepare_client_statements(clientsData* client)
 {
 	// Return early if gravity database is not available
-	if(!gravity_database_avail && !gravityDB_open())
+	if(!gravityDB_opened && !gravityDB_open())
 		return false;
 
 	const char *clientip = getstr(client->ippos);
@@ -340,7 +347,7 @@ void gravityDB_reload_client_statements(void)
 void gravityDB_close(void)
 {
 	// Return early if gravity database is not available
-	if(!gravity_database_avail)
+	if(!gravityDB_opened)
 		return;
 
 	// Finalize list statements
@@ -354,7 +361,8 @@ void gravityDB_close(void)
 
 	// Close table
 	sqlite3_close(gravity_db);
-	gravity_database_avail = false;
+	gravity_db = NULL;
+	gravityDB_opened = false;
 }
 
 // Prepare a SQLite3 statement which can be used by
@@ -362,7 +370,7 @@ void gravityDB_close(void)
 // a table which is specified when calling this function
 bool gravityDB_getTable(const unsigned char list)
 {
-	if(!gravity_database_avail && !gravityDB_open())
+	if(!gravityDB_opened && !gravityDB_open())
 	{
 		logg("gravityDB_getTable(%u): Gravity database not available", list);
 		return false;
@@ -439,7 +447,7 @@ inline const char* gravityDB_getDomain(int *rowid)
 // Finalize statement of a gravity database transaction
 void gravityDB_finalizeTable(void)
 {
-	if(!gravity_database_avail)
+	if(!gravityDB_opened)
 		return;
 
 	// Finalize statement
@@ -451,7 +459,7 @@ void gravityDB_finalizeTable(void)
 // encounter any error
 int gravityDB_count(const unsigned char list)
 {
-	if(!gravity_database_avail && !gravityDB_open())
+	if(!gravityDB_opened && !gravityDB_open())
 	{
 		logg("gravityDB_count(%d): Gravity database not available", list);
 		return DB_FAILED;
@@ -520,7 +528,7 @@ int gravityDB_count(const unsigned char list)
 static bool domain_in_list(const char *domain, sqlite3_stmt* stmt, const char* listname)
 {
 	// Do not try to bind text to statement when database is not available
-	if(!gravity_database_avail && !gravityDB_open())
+	if(!gravityDB_opened && !gravityDB_open())
 	{
 		logg("domain_in_list(%s): Gravity database not available", domain);
 		return false;
