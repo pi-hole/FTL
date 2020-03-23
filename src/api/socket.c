@@ -166,8 +166,9 @@ static void bind_to_unix_socket(int *socketdescriptor)
 
 	if(*socketdescriptor < 0)
 	{
-		logg("Error opening Unix socket");
-		exit(EXIT_FAILURE);
+		logg("WARNING: Error opening Unix socket.");
+		logg("         Continuing anyway.");
+		return;
 	}
 
 	// Make sure unix socket file handle does not exist, if it exists, remove it
@@ -187,15 +188,17 @@ static void bind_to_unix_socket(int *socketdescriptor)
 	errno = 0;
 	if(bind(*socketdescriptor, (struct sockaddr *) &address, sizeof (address)) != 0)
 	{
-		logg("Error on binding on Unix socket %s: %s (%i)", FTLfiles.socketfile, strerror(errno), errno);
-		exit(EXIT_FAILURE);
+		logg("WARNING: Cannot bind on Unix socket %s: %s (%i)", FTLfiles.socketfile, strerror(errno), errno);
+		logg("         Continuing anyway.");
+		return;
 	}
 
 	// The listen system call allows the process to listen on the Unix socket for connections
 	if(listen(*socketdescriptor, BACKLOG) == -1)
 	{
-		logg("Error listening on Unix socket: %s (%i)", strerror(errno), errno);
-		exit(EXIT_FAILURE);
+		logg("WARNING: Cannot listen on Unix socket: %s (%i)", strerror(errno), errno);
+		logg("         Continuing anyway.");
+		return;
 	}
 
 	logg("Listening on Unix socket");
