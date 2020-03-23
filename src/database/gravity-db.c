@@ -44,6 +44,8 @@ bool gravityDB_open(void)
 		return false;
 	}
 
+	if(config.debug & DEBUG_DATABASE)
+		logg("gravityDB_open(): Trying to open %s in read-only mode", FTLfiles.gravity_db);
 	int rc = sqlite3_open_v2(FTLfiles.gravity_db, &gravity_db, SQLITE_OPEN_READONLY, NULL);
 	if( rc != SQLITE_OK )
 	{
@@ -53,6 +55,8 @@ bool gravityDB_open(void)
 	}
 
 	// Explicitly set busy handler to zero milliseconds
+	if(config.debug & DEBUG_DATABASE)
+		logg("gravityDB_open(): Setting busy timeout to zero");
 	rc = sqlite3_busy_timeout(gravity_db, 0);
 	if(rc != SQLITE_OK)
 	{
@@ -61,6 +65,8 @@ bool gravityDB_open(void)
 
 	// Tell SQLite3 to store temporary tables in memory. This speeds up read operations on
 	// temporary tables, indices, and views.
+	if(config.debug & DEBUG_DATABASE)
+		logg("gravityDB_open(): Setting location for temporary object to MEMORY");
 	char *zErrMsg = NULL;
 	rc = sqlite3_exec(gravity_db, "PRAGMA temp_store = MEMORY", NULL, NULL, &zErrMsg);
 	if( rc != SQLITE_OK )
@@ -72,6 +78,8 @@ bool gravityDB_open(void)
 	}
 
 	// Prepare audit statement
+	if(config.debug & DEBUG_DATABASE)
+		logg("gravityDB_open(): Preparing audit query");
 	rc = sqlite3_prepare_v2(gravity_db, "SELECT EXISTS(SELECT domain from domain_audit WHERE domain = ?);", -1, &auditlist_stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
@@ -81,6 +89,8 @@ bool gravityDB_open(void)
 	}
 
 	// Prepare client statements when opening gravity database
+	if(config.debug & DEBUG_DATABASE)
+		logg("gravityDB_open(): Reloading client statements");
 	gravityDB_reload_client_statements();
 
 	// Database connection is now open
@@ -239,8 +249,10 @@ bool gravityDB_prepare_client_statements(clientsData* client)
 	if(!gravity_database_avail && !gravityDB_open())
 		return false;
 
+	const char *clientip = getstr(client->ippos);
+
 	if(config.debug & DEBUG_DATABASE)
-		logg("Initializing gravity statements for %s", getstr(client->ippos));
+		logg("Initializing gravity statements for %s", clientip);
 
 	// Get associated groups for this client (if defined)
 	char *querystr = NULL;
@@ -254,6 +266,8 @@ bool gravityDB_prepare_client_statements(clientsData* client)
 	// list but don't case about duplicates or similar. SELECT EXISTS(...)
 	// returns true as soon as it sees the first row from the query inside
 	// of EXISTS().
+	if(config.debug & DEBUG_DATABASE)
+		logg("gravityDB_open(): Preparing vw_whitelist statement for client %s", clientip);
 	querystr = get_client_querystr("vw_whitelist", groups);
 	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &client->whitelist_stmt, NULL);
 	if( rc != SQLITE_OK )
@@ -265,6 +279,8 @@ bool gravityDB_prepare_client_statements(clientsData* client)
 	free(querystr);
 
 	// Prepare gravity statement
+	if(config.debug & DEBUG_DATABASE)
+		logg("gravityDB_open(): Preparing vw_gravity statement for client %s", clientip);
 	querystr = get_client_querystr("vw_gravity", groups);
 	rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &client->gravity_stmt, NULL);
 	if( rc != SQLITE_OK )
@@ -276,6 +292,8 @@ bool gravityDB_prepare_client_statements(clientsData* client)
 	free(querystr);
 
 	// Prepare blacklist statement
+	if(config.debug & DEBUG_DATABASE)
+		logg("gravityDB_open(): Preparing vw_blacklist statement for client %s", clientip);
 	querystr = get_client_querystr("vw_blacklist", groups);
 	rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &client->blacklist_stmt, NULL);
 	if( rc != SQLITE_OK )
@@ -304,6 +322,8 @@ void gravityDB_reload_client_statements(void)
 	// Set SQLite3 busy timeout to a user-defined value (defaults to 1 second)
 	// to avoid immediate failures when the gravity database is still busy
 	// writing the changes to disk
+	if(config.debug & DEBUG_DATABASE)
+		logg("gravityDB_open(): Setting busy timeout to %d", DATABASE_BUSY_TIMEOUT);
 	sqlite3_busy_timeout(gravity_db, DATABASE_BUSY_TIMEOUT);
 
 	for(int i=0; i < counters->clients; i++)
@@ -320,7 +340,7 @@ void gravityDB_reload_client_statements(void)
 void gravityDB_close(void)
 {
 	// Return early if gravity database is not available
-	if(!gravity_database_avail && !gravityDB_open())
+	if(!gravity_database_avail)
 		return;
 
 	// Finalize list statements
