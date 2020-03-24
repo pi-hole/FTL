@@ -32,6 +32,7 @@
 int socketfd, telnetfd4 = 0, telnetfd6 = 0;
 bool dualstack = false;
 bool ipv4telnet = false, ipv6telnet = false;
+bool sock_avail = false;
 bool istelnet[MAXCONNS];
 
 static void saveport(void)
@@ -202,6 +203,7 @@ static void bind_to_unix_socket(int *socketdescriptor)
 	}
 
 	logg("Listening on Unix socket");
+	sock_avail = true;
 }
 
 // Called from main() at graceful shutdown
@@ -374,7 +376,8 @@ static void *socket_connection_handler_thread(void *socket_desc)
 	char threadname[16];
 	sprintf(threadname,"socket-%i",sock);
 	prctl(PR_SET_NAME,threadname,0,0,0);
-	//Receive from client
+
+	// Receive from client
 	ssize_t n;
 	while((n = recv(sock,client_message,SOCKETBUFFERLEN-1, 0)))
 	{
@@ -522,6 +525,10 @@ void *socket_listening_thread(void *args)
 
 	// Set thread name
 	prctl(PR_SET_NAME,"socket listener",0,0,0);
+
+	// Return early to avoid CPU spinning if Unix socket is not available
+	if(!sock_avail)
+		return NULL;
 
 	// Listen as long as FTL is not killed
 	while(!killed)
