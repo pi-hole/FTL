@@ -18,6 +18,8 @@
 #include "main.h"
 // global variable daemonmode
 #include "args.h"
+// global counters variable
+#include "shmem.h"
 
 static pthread_mutex_t lock;
 static FILE *logfile = NULL;

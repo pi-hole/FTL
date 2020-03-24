@@ -13,8 +13,6 @@
 #include "memory.h"
 #include "log.h"
 
-countersStruct *counters = NULL;
-
 // The special memory handling routines have to be the last ones in this source file
 // as we restore the original definition of the strdup, free, calloc, and realloc
 // functions in here, i.e. if anything extra would come below these lines, it would
