@@ -56,7 +56,7 @@ bool gravityDB_open(void)
 	int rc = sqlite3_open_v2(FTLfiles.gravity_db, &gravity_db, SQLITE_OPEN_READONLY, NULL);
 	if( rc != SQLITE_OK )
 	{
-		logg("gravityDB_open() - SQL error (%i): %s", rc, sqlite3_errmsg(gravity_db));
+		logg("gravityDB_open() - SQL error: %s", sqlite3_errstr(rc));
 		gravityDB_close();
 		return false;
 	}
@@ -70,7 +70,7 @@ bool gravityDB_open(void)
 	rc = sqlite3_busy_timeout(gravity_db, 0);
 	if(rc != SQLITE_OK)
 	{
-		logg("gravityDB_open() - Cannot set busy handler (%i): %s", rc, sqlite3_errmsg(gravity_db));
+		logg("gravityDB_open() - Cannot set busy handler: %s", sqlite3_errstr(rc));
 	}
 
 	// Tell SQLite3 to store temporary tables in memory. This speeds up read operations on
@@ -93,7 +93,7 @@ bool gravityDB_open(void)
 	rc = sqlite3_prepare_v2(gravity_db, "SELECT EXISTS(SELECT domain from domain_audit WHERE domain = ?);", -1, &auditlist_stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
-		logg("gravityDB_open(\"SELECT EXISTS(... domain_audit ...)\") - SQL error prepare (%i): %s", rc, sqlite3_errmsg(gravity_db));
+		logg("gravityDB_open(\"SELECT EXISTS(... domain_audit ...)\") - SQL error prepare: %s", sqlite3_errstr(rc));
 		gravityDB_close();
 		return false;
 	}
@@ -151,8 +151,8 @@ static bool get_client_groupids(const clientsData* client, char **groups)
 	// Prepare query
 	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &table_stmt, NULL);
 	if(rc != SQLITE_OK){
-		logg("get_client_groupids(%s) - SQL error prepare (%i): %s",
-		     querystr, rc, sqlite3_errmsg(gravity_db));
+		logg("get_client_groupids(%s) - SQL error prepare: %s",
+		     querystr, sqlite3_errstr(rc));
 		gravityDB_finalizeTable();
 		free(querystr);
 		return false;
@@ -178,8 +178,8 @@ static bool get_client_groupids(const clientsData* client, char **groups)
 	}
 	else
 	{
-		logg("get_client_groupids(%s) - SQL error step (%i): %s",
-		     querystr, rc, sqlite3_errmsg(gravity_db));
+		logg("get_client_groupids(%s) - SQL error step: %s",
+		     querystr, sqlite3_errstr(rc));
 		gravityDB_finalizeTable();
 		free(querystr);
 		return false;
@@ -209,8 +209,8 @@ static bool get_client_groupids(const clientsData* client, char **groups)
 	// Prepare query
 	rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &table_stmt, NULL);
 	if(rc != SQLITE_OK){
-		logg("get_client_groupids(%s) - SQL error prepare (%i): %s",
-		     querystr, rc, sqlite3_errmsg(gravity_db));
+		logg("get_client_groupids(%s) - SQL error prepare: %s",
+		     querystr, sqlite3_errstr(rc));
 		sqlite3_finalize(table_stmt);
 		free(querystr);
 		return false;
@@ -235,8 +235,8 @@ static bool get_client_groupids(const clientsData* client, char **groups)
 	}
 	else
 	{
-		logg("get_client_groupids(%s) - SQL error step (%i): %s",
-		     querystr, rc, sqlite3_errmsg(gravity_db));
+		logg("get_client_groupids(%s) - SQL error step: %s",
+		     querystr, sqlite3_errstr(rc));
 		sqlite3_finalize(table_stmt);
 		free(querystr);
 		return false;
@@ -279,7 +279,7 @@ bool gravityDB_prepare_client_statements(clientsData* client)
 	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &client->whitelist_stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
-		logg("gravityDB_open(\"SELECT EXISTS(... vw_whitelist ...)\") - SQL error prepare (%i): %s", rc, sqlite3_errmsg(gravity_db));
+		logg("gravityDB_open(\"SELECT EXISTS(... vw_whitelist ...)\") - SQL error prepare: %s", sqlite3_errstr(rc));
 		gravityDB_close();
 		return false;
 	}
@@ -292,7 +292,7 @@ bool gravityDB_prepare_client_statements(clientsData* client)
 	rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &client->gravity_stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
-		logg("gravityDB_open(\"SELECT EXISTS(... vw_gravity ...)\") - SQL error prepare (%i): %s", rc, sqlite3_errmsg(gravity_db));
+		logg("gravityDB_open(\"SELECT EXISTS(... vw_gravity ...)\") - SQL error prepare: %s", sqlite3_errstr(rc));
 		gravityDB_close();
 		return false;
 	}
@@ -305,7 +305,7 @@ bool gravityDB_prepare_client_statements(clientsData* client)
 	rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &client->blacklist_stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
-		logg("gravityDB_open(\"SELECT EXISTS(... vw_blacklist ...)\") - SQL error prepare (%i): %s", rc, sqlite3_errmsg(gravity_db));
+		logg("gravityDB_open(\"SELECT EXISTS(... vw_blacklist ...)\") - SQL error prepare: %s", sqlite3_errstr(rc));
 		gravityDB_close();
 		return false;
 	}
@@ -397,7 +397,7 @@ bool gravityDB_getTable(const unsigned char list)
 	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &table_stmt, NULL);
 	if(rc != SQLITE_OK)
 	{
-		logg("readGravity(%s) - SQL error prepare (%i): %s", querystr, rc, sqlite3_errmsg(gravity_db));
+		logg("readGravity(%s) - SQL error prepare: %s", querystr, sqlite3_errstr(rc));
 		gravityDB_close();
 		free(querystr);
 		return false;
@@ -434,7 +434,7 @@ inline const char* gravityDB_getDomain(int *rowid)
 	// SQLITE_DONE (we are finished reading the table)
 	if(rc != SQLITE_DONE)
 	{
-		logg("gravityDB_getDomain() - SQL error step (%i): %s", rc, sqlite3_errmsg(gravity_db));
+		logg("gravityDB_getDomain() - SQL error step: %s", sqlite3_errstr(rc));
 		*rowid = -1;
 		return NULL;
 	}
@@ -494,7 +494,7 @@ int gravityDB_count(const unsigned char list)
 	// Prepare query
 	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &table_stmt, NULL);
 	if(rc != SQLITE_OK){
-		logg("gravityDB_count(%s) - SQL error prepare (%i): %s", querystr, rc, sqlite3_errmsg(gravity_db));
+		logg("gravityDB_count(%s) - SQL error prepare %s", querystr, sqlite3_errstr(rc));
 		gravityDB_finalizeTable();
 		gravityDB_close();
 		free(querystr);
@@ -504,7 +504,7 @@ int gravityDB_count(const unsigned char list)
 	// Perform query
 	rc = sqlite3_step(table_stmt);
 	if(rc != SQLITE_ROW){
-		logg("gravityDB_count(%s) - SQL error step (%i): %s", querystr, rc, sqlite3_errmsg(gravity_db));
+		logg("gravityDB_count(%s) - SQL error step %s", querystr, sqlite3_errstr(rc));
 		if(list == GRAVITY_TABLE)
 		{
 			logg("Count of gravity domains not available. Please run pihole -g");
@@ -534,20 +534,20 @@ static bool domain_in_list(const char *domain, sqlite3_stmt* stmt, const char* l
 		return false;
 	}
 
-	int retval;
+	int rc;
 	// Bind domain to prepared statement
 	// SQLITE_STATIC: Use the string without first duplicating it internally.
 	// We can do this as domain has dynamic scope that exceeds that of the binding.
-	if((retval = sqlite3_bind_text(stmt, 1, domain, -1, SQLITE_STATIC)) != SQLITE_OK)
+	if((rc = sqlite3_bind_text(stmt, 1, domain, -1, SQLITE_STATIC)) != SQLITE_OK)
 	{
-		logg("domain_in_list(\"%s\"): Failed to bind domain (error %d) - %s",
-		     domain, retval, sqlite3_errmsg(gravity_db));
+		logg("domain_in_list(\"%s\"): Failed to bind domain: %s",
+		     domain, sqlite3_errstr(rc));
 		return false;
 	}
 
 	// Perform step
-	retval = sqlite3_step(stmt);
-	if(retval == SQLITE_BUSY)
+	rc = sqlite3_step(stmt);
+	if(rc == SQLITE_BUSY)
 	{
 		// Database is busy
 		logg("domain_in_list(\"%s\"): Database is busy, assuming domain is NOT on list",
@@ -556,12 +556,12 @@ static bool domain_in_list(const char *domain, sqlite3_stmt* stmt, const char* l
 		sqlite3_clear_bindings(stmt);
 		return false;
 	}
-	else if(retval != SQLITE_ROW)
+	else if(rc != SQLITE_ROW)
 	{
 		// Any return code that is neither SQLITE_BUSY not SQLITE_ROW
 		// is a real error we should log
-		logg("domain_in_list(\"%s\"): Failed to perform step (error %d) - %s",
-		     domain, retval, sqlite3_errmsg(gravity_db));
+		logg("domain_in_list(\"%s\"): Failed to perform step: %s",
+		     domain, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_clear_bindings(stmt);
 		return false;
@@ -642,7 +642,7 @@ bool gravityDB_get_regex_client_groups(clientsData* client, const int numregex, 
 	sqlite3_stmt *query_stmt;
 	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &query_stmt, NULL);
 	if(rc != SQLITE_OK){
-		logg("gravityDB_get_regex_client_groups(): %s - SQL error prepare (%i): %s", querystr, rc, sqlite3_errmsg(gravity_db));
+		logg("gravityDB_get_regex_client_groups(): %s - SQL error prepare: %s", querystr, sqlite3_errstr(rc));
 		sqlite3_finalize(query_stmt);
 		gravityDB_close();
 		free(querystr);

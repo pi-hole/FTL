@@ -66,7 +66,7 @@ bool dbopen(void)
 	if( rc != SQLITE_OK )
 	{
 		logg("Encountered error while trying to set busy timeout (%d ms) on database: %s",
-		     DATABASE_BUSY_TIMEOUT, sqlite3_errmsg(FTL_db));
+		     DATABASE_BUSY_TIMEOUT, sqlite3_errstr(rc));
 		database = false;
 		dbclose();
 		return false;

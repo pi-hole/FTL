@@ -91,7 +91,7 @@ void DB_save_queries(void)
 	rc = sqlite3_prepare_v2(FTL_db, "INSERT INTO queries VALUES (NULL,?,?,?,?,?,?)", -1, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
-		logg("DB_save_queries() - error in preparing SQL statement (%i): %s", rc, sqlite3_errmsg(FTL_db));
+		logg("DB_save_queries() - error in preparing SQL statement: %s", sqlite3_errstr(rc));
 		database = false;
 		dbclose();
 		return;
@@ -471,7 +471,7 @@ void DB_read_queries(void)
 	lastdbindex = counters->queries;
 
 	if( rc != SQLITE_DONE ){
-		logg("DB_read_queries() - SQL error step (%i): %s", rc, sqlite3_errmsg(FTL_db));
+		logg("DB_read_queries() - SQL error step: %s", sqlite3_errstr(rc));
 		dbclose();
 		return;
 	}
