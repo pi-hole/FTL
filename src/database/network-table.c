@@ -337,7 +337,7 @@ void parse_neighbor_cache(void)
 			char* macVendor = getMACVendor(hwaddr);
 			dbquery("INSERT INTO network "\
 			        "(hwaddr,interface,firstSeen,lastQuery,numQueries,name,macVendor) "\
-			        "VALUES (\'%s\',\'%s\',%lu, %ld, %u, \'%s\', \'%s\');",\
+			        "VALUES (\'%s\',\'%s\',%lu, %ld, %u, \'%s\', \'%s\');",
 			        hwaddr, iface, now,
 			        client != NULL ? client->lastQuery : 0L,
 			        client != NULL ? client->numQueriesARP : 0u,
@@ -360,16 +360,19 @@ void parse_neighbor_cache(void)
 			// client->lastQuery may be zero if this
 			// client is only known from a database entry but has
 			// not been seen since then
-			dbquery("UPDATE network "\
-			        "SET lastQuery = MAX(lastQuery, %ld) "\
-			        "WHERE id = %i;",\
-			        client->lastQuery, dbID);
+			if(client->lastQuery > 0)
+			{
+				dbquery("UPDATE network "\
+				        "SET lastQuery = MAX(lastQuery, %ld) "\
+				        "WHERE id = %i;",
+				        client->lastQuery, dbID);
+			}
 
 			// Update numQueries. Add queries seen since last update
 			// and reset counter afterwards
 			dbquery("UPDATE network "\
 			        "SET numQueries = numQueries + %u "\
-			        "WHERE id = %i;",\
+			        "WHERE id = %i;",
 			        client->numQueriesARP, dbID);
 			client->numQueriesARP = 0;
 
@@ -384,7 +387,7 @@ void parse_neighbor_cache(void)
 		// this pair already exists, replace it
 		dbquery("INSERT OR REPLACE INTO network_addresses "\
 		        "(network_id,ip,lastSeen) VALUES(%i,\'%s\',(cast(strftime('%%s', 'now') as int)));",
-			dbID, ip);
+		        dbID, ip);
 
 		// Count number of processed ARP cache entries
 		entries++;
@@ -417,7 +420,7 @@ void parse_neighbor_cache(void)
 		if(client->count < 1 || client->numQueriesARP < 1)
 		{
 			if(config.debug & DEBUG_ARP)
-				logg("Network table: Client %s has zero queries (%d, %d)",
+				logg("Network table: Client %s has zero new queries (count: %d, ARPcount: %d)",
 				     ipaddr, client->count, client->numQueriesARP);
 			continue;
 		}
