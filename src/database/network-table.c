@@ -137,20 +137,30 @@ void parse_neighbor_cache(void)
 	unsigned int entries = 0;
 	time_t now = time(NULL);
 
-	// Start collecting database commands
-	lock_shm();
+	const char *sql = "BEGIN TRANSACTION IMMEDIATE";
+	int rc = dbquery(sql);
+	if( rc != SQLITE_OK )
+	{
+		const char *text;
+		if( rc == SQLITE_BUSY )
+		{
+			text = "WARNING";
+		}
+		else
+		{
+			text = "ERROR";
+			// We shall not use the database any longer
+			database = false;
+		}
 
-	int ret = dbquery("BEGIN TRANSACTION");
-
-	if(ret == SQLITE_BUSY) {
-		logg("WARN: parse_neighbor_cache(), database is busy, skipping");
-		unlock_shm();
-		return;
-	} else if(ret != SQLITE_OK) {
-		logg("ERROR: parse_neighbor_cache() failed!");
-		unlock_shm();
+		// dbquery() above already logs the reson for why the query failed
+		logg("%s: Storing devices in network table (%s) failed", text, sql);
+		dbclose();
 		return;
 	}
+
+	// Start collecting database commands
+	lock_shm();
 
 	// Read ARP cache line by line
 	while(getline(&linebuffer, &linebuffersize, arpfp) != -1)
@@ -174,10 +184,10 @@ void parse_neighbor_cache(void)
 		// commitment. Read-only access such as this SELECT command will be
 		// executed immediately on the database.
 		char* querystr = NULL;
-		ret = asprintf(&querystr, "SELECT id FROM network WHERE hwaddr = \'%s\';", hwaddr);
-		if(querystr == NULL || ret < 0)
+		rc = asprintf(&querystr, "SELECT id FROM network WHERE hwaddr = \'%s\';", hwaddr);
+		if(querystr == NULL || rc < 0)
 		{
-			logg("Memory allocation failed in parse_arp_cache(): %i", ret);
+			logg("Memory allocation failed in parse_arp_cache(): %i", rc);
 			break;
 		}
 
@@ -214,15 +224,21 @@ void parse_neighbor_cache(void)
 		if(dbID == DB_NODATA)
 		{
 			char* macVendor = getMACVendor(hwaddr);
-			dbquery("INSERT INTO network "\
-			        "(hwaddr,interface,firstSeen,lastQuery,numQueries,name,macVendor) "\
-			        "VALUES (\'%s\',\'%s\',%lu, %ld, %u, \'%s\', \'%s\');",\
-			        hwaddr, iface, now,
-			        client != NULL ? client->lastQuery : 0L,
-			        client != NULL ? client->numQueriesARP : 0u,
-			        hostname,
-			        macVendor);
+			rc = dbquery("INSERT INTO network "\
+			             "(hwaddr,interface,firstSeen,lastQuery,numQueries,name,macVendor) "\
+			             "VALUES (\'%s\',\'%s\',%lu, %ld, %u, \'%s\', \'%s\');",\
+			             hwaddr, iface, now,
+			             client != NULL ? client->lastQuery : 0L,
+			             client != NULL ? client->numQueriesARP : 0u,
+			             hostname,
+			             macVendor);
 			free(macVendor);
+
+			if(rc != SQLITE_OK)
+			{
+				// SQLite error
+				break;
+			}
 
 			// Obtain ID which was given to this new entry
 			dbID = get_lastID();
@@ -234,27 +250,45 @@ void parse_neighbor_cache(void)
 			// client->lastQuery may be zero if this
 			// client is only known from a database entry but has
 			// not been seen since then
-			dbquery("UPDATE network "\
-			        "SET lastQuery = MAX(lastQuery, %ld) "\
-			        "WHERE id = %i;",\
-			        client->lastQuery, dbID);
+			rc = dbquery("UPDATE network "\
+			             "SET lastQuery = MAX(lastQuery, %ld) "\
+			             "WHERE id = %i;",\
+			             client->lastQuery, dbID);
+
+			if(rc != SQLITE_OK)
+			{
+				// SQLite error
+				break;
+			}
 
 			// Update numQueries. Add queries seen since last update
 			// and reset counter afterwards
-			dbquery("UPDATE network "\
-			        "SET numQueries = numQueries + %u "\
-			        "WHERE id = %i;",\
-			        client->numQueriesARP, dbID);
+			rc = dbquery("UPDATE network "\
+			             "SET numQueries = numQueries + %u "\
+			             "WHERE id = %i;",\
+			             client->numQueriesARP, dbID);
 			client->numQueriesARP = 0;
+
+			if(rc != SQLITE_OK)
+			{
+				// SQLite error
+				break;
+			}
 
 			// Store hostname if available
 			if(strlen(hostname) > 0)
 			{
 				// Store host name
-				dbquery("UPDATE network "\
-				        "SET name = \'%s\' "\
-				        "WHERE id = %i;",\
-				        hostname, dbID);
+				rc = dbquery("UPDATE network "\
+				             "SET name = \'%s\' "\
+				             "WHERE id = %i;",\
+				             hostname, dbID);
+
+				if(rc != SQLITE_OK)
+				{
+					// SQLite error
+					break;
+				}
 			}
 		}
 		// else:
@@ -265,17 +299,59 @@ void parse_neighbor_cache(void)
 		// this pair already exists, the UNIQUE(network_id,ip) trigger
 		// becomes active and the line is instead REPLACEd, causing the
 		// lastQuery timestamp to be updated
-		dbquery("INSERT OR REPLACE INTO network_addresses "\
-		        "(network_id,ip) VALUES(%i,\'%s\');", dbID, ip);
+		rc = dbquery("INSERT OR REPLACE INTO network_addresses "\
+		             "(network_id,ip) VALUES(%i,\'%s\');", dbID, ip);
+
+		if(rc != SQLITE_OK)
+		{
+			// SQLite error
+			break;
+		}
 
 		// Count number of processed ARP cache entries
 		entries++;
 	}
 
-	// Actually update the database
-	if(dbquery("COMMIT") != SQLITE_OK) {
-		logg("ERROR: parse_neighbor_cache() failed!");
+	// Check for possible error in loop
+	if(rc != SQLITE_OK)
+	{
+		const char *text;
+		if( rc == SQLITE_BUSY )
+		{
+			text = "WARNING";
+		}
+		else
+		{
+			text = "ERROR";
+			// We shall not use the database any longer
+			database = false;
+		}
+
+		// dbquery() above already logs the reson for why the query failed
+		logg("%s: Storing devices in network table failed", text);
 		unlock_shm();
+		dbclose();
+		return;
+	}
+
+	// Actually update the database
+	if((rc = dbquery("END TRANSACTION")) != SQLITE_OK) {
+		const char *text;
+		if( rc == SQLITE_BUSY )
+		{
+			text = "WARNING";
+		}
+		else
+		{
+			text = "ERROR";
+			// We shall not use the database any longer
+			database = false;
+		}
+
+		// dbquery() above already logs the reson for why the query failed
+		logg("%s: Storing devices in network table failed", text);
+		unlock_shm();
+		dbclose();
 		return;
 	}
 
@@ -308,20 +384,19 @@ bool unify_hwaddr(void)
 
 	// Perform SQL query
 	sqlite3_stmt* stmt;
-	int ret = sqlite3_prepare_v2(FTL_db, querystr, -1, &stmt, NULL);
-	if( ret != SQLITE_OK ){
-		logg("unify_hwaddr(%s) - SQL error prepare (%i): %s", querystr, ret, sqlite3_errmsg(FTL_db));
-		check_database(ret);
+	int rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &stmt, NULL);
+	if( rc != SQLITE_OK ){
+		logg("unify_hwaddr(\"%s\") - SQL error prepare: %s", querystr, sqlite3_errstr(rc));
 		return false;
 	}
 
 	// Loop until no further (id,hwaddr) sets are available
-	while((ret = sqlite3_step(stmt)) != SQLITE_DONE)
+	while((rc = sqlite3_step(stmt)) != SQLITE_DONE)
 	{
 		// Check if we ran into an error
-		if(ret != SQLITE_ROW)
+		if(rc != SQLITE_ROW)
 		{
-			logg("unify_hwaddr(%s) - SQL error step (%i): %s", querystr, ret, sqlite3_errmsg(FTL_db));
+			logg("unify_hwaddr(\"%s\") - SQL error step: %s", querystr, sqlite3_errstr(rc));
 			dbclose();
 			return false;
 		}
@@ -371,21 +446,21 @@ static char* getMACVendor(const char* hwaddr)
 	{
 		// File does not exist
 		if(config.debug & DEBUG_ARP)
-			logg("getMACVenor(%s): %s does not exist", hwaddr, FTLfiles.macvendor_db);
+			logg("getMACVenor(\"%s\"): %s does not exist", hwaddr, FTLfiles.macvendor_db);
 		return strdup("");
 	}
 	else if(strlen(hwaddr) != 17)
 	{
 		// MAC address is incomplete
 		if(config.debug & DEBUG_ARP)
-			logg("getMACVenor(%s): MAC invalid (length %zu)", hwaddr, strlen(hwaddr));
+			logg("getMACVenor(\"%s\"): MAC invalid (length %zu)", hwaddr, strlen(hwaddr));
 		return strdup("");
 	}
 
 	sqlite3 *macvendor_db = NULL;
 	int rc = sqlite3_open_v2(FTLfiles.macvendor_db, &macvendor_db, SQLITE_OPEN_READONLY, NULL);
 	if( rc != SQLITE_OK ){
-		logg("getMACVendor(%s) - SQL error (%i): %s", hwaddr, rc, sqlite3_errmsg(macvendor_db));
+		logg("getMACVendor(\"%s\") - SQL error: %s", hwaddr, sqlite3_errstr(rc));
 		sqlite3_close(macvendor_db);
 		return strdup("");
 	}
@@ -397,7 +472,7 @@ static char* getMACVendor(const char* hwaddr)
 	rc = asprintf(&querystr, "SELECT vendor FROM macvendor WHERE mac LIKE \'%s\';", hwaddrshort);
 	if(rc < 1)
 	{
-		logg("getMACVendor(%s) - Allocation error (%i)", hwaddr, rc);
+		logg("getMACVendor(\"%s\") - Allocation error (%i)", hwaddr, rc);
 		sqlite3_close(macvendor_db);
 		return strdup("");
 	}
@@ -406,7 +481,7 @@ static char* getMACVendor(const char* hwaddr)
 	sqlite3_stmt* stmt = NULL;
 	rc = sqlite3_prepare_v2(macvendor_db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK ){
-		logg("getMACVendor(%s) - SQL error prepare (%s, %i): %s", hwaddr, querystr, rc, sqlite3_errmsg(macvendor_db));
+		logg("getMACVendor(\"%s\") - SQL error prepare \"%s\": %s", hwaddr, querystr, sqlite3_errstr(rc));
 		sqlite3_close(macvendor_db);
 		return strdup("");
 	}
@@ -427,7 +502,7 @@ static char* getMACVendor(const char* hwaddr)
 	if(rc != SQLITE_DONE && rc != SQLITE_ROW)
 	{
 		// Error
-		logg("getMACVendor(%s) - SQL error step (%i): %s", hwaddr, rc, sqlite3_errmsg(macvendor_db));
+		logg("getMACVendor(\"%s\") - SQL error step: %s", hwaddr, sqlite3_errstr(rc));
 	}
 
 	sqlite3_finalize(stmt);
@@ -454,7 +529,7 @@ void updateMACVendorRecords(void)
 	const char* selectstr = "SELECT id,hwaddr FROM network;";
 	int rc = sqlite3_prepare_v2(FTL_db, selectstr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK ){
-		logg("updateMACVendorRecords() - SQL error prepare (%s, %i): %s", selectstr, rc, sqlite3_errmsg(FTL_db));
+		logg("updateMACVendorRecords() - SQL error prepare \"%s\": %s", selectstr, sqlite3_errstr(rc));
 		dbclose();
 		return;
 	}
@@ -473,7 +548,7 @@ void updateMACVendorRecords(void)
 		char *updatestr = NULL;
 		if(asprintf(&updatestr, "UPDATE network SET macVendor = \'%s\' WHERE id = %i", vendor, id) < 1)
 		{
-			logg("updateMACVendorRecords() - Allocation error 2");
+			logg("updateMACVendorRecords() - Allocation error");
 			free(vendor);
 			break;
 		}
@@ -482,7 +557,7 @@ void updateMACVendorRecords(void)
 		char *zErrMsg = NULL;
 		rc = sqlite3_exec(FTL_db, updatestr, NULL, NULL, &zErrMsg);
 		if( rc != SQLITE_OK ){
-			logg("updateMACVendorRecords() - SQL exec error: %s (%i): %s", updatestr, rc, zErrMsg);
+			logg("updateMACVendorRecords() - SQL exec error: \"%s\": %s", updatestr, zErrMsg);
 			sqlite3_free(zErrMsg);
 			free(updatestr);
 			free(vendor);
@@ -496,7 +571,7 @@ void updateMACVendorRecords(void)
 	if(rc != SQLITE_DONE)
 	{
 		// Error
-		logg("updateMACVendorRecords() - SQL error step (%i): %s", rc, sqlite3_errmsg(FTL_db));
+		logg("updateMACVendorRecords() - SQL error step: %s", sqlite3_errstr(rc));
 	}
 
 	sqlite3_finalize(stmt);
@@ -508,7 +583,7 @@ char* __attribute__((malloc)) getDatabaseHostname(const char* ipaddr)
 	// Open pihole-FTL.db database file
 	if(!dbopen())
 	{
-		logg("getDatabaseHostname(%s) - Failed to open DB", ipaddr);
+		logg("getDatabaseHostname(\"%s\") - Failed to open DB", ipaddr);
 		return strdup("");
 	}
 
@@ -517,16 +592,16 @@ char* __attribute__((malloc)) getDatabaseHostname(const char* ipaddr)
 	const char *querystr = "SELECT name FROM network WHERE id = (SELECT network_id FROM network_addresses WHERE ip = ?);";
 	int rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK ){
-		logg("getDatabaseHostname(%s) - SQL error prepare (%i): %s",
-		     ipaddr, rc, sqlite3_errmsg(FTL_db));
+		logg("getDatabaseHostname(\"%s\") - SQL error prepare: %s",
+		     ipaddr, sqlite3_errstr(rc));
 		return strdup("");
 	}
 
 	// Bind ipaddr to prepared statement
 	if((rc = sqlite3_bind_text(stmt, 1, ipaddr, -1, SQLITE_STATIC)) != SQLITE_OK)
 	{
-		logg("getDatabaseHostname(%s): Failed to bind domain (error %d) - %s",
-		     ipaddr, rc, sqlite3_errmsg(FTL_db));
+		logg("getDatabaseHostname(\"%s\"): Failed to bind domain: %s",
+		     ipaddr, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
 		return strdup("");
