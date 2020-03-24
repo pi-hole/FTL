@@ -252,7 +252,19 @@ void db_init(void)
 
 	// Test FTL_db version and see if we need to upgrade the database file
 	int dbversion = db_get_FTL_property(DB_VERSION);
-	logg("Database version is %i", dbversion);
+	if(dbversion < 1)
+	{
+		logg("Database not available, please ensure the database is unlocked when starting pihole-FTL !");
+		dbclose();
+
+		database = false;
+		return;
+	}
+	else
+	{
+		logg("Database version is %i", dbversion);
+	}
+
 
 	// Update to version 2 if lower
 	if(dbversion < 2)
@@ -403,7 +415,11 @@ int db_query_int(const char* querystr)
 	int rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
-		logg("Encountered prepare error in db_query_int(\"%s\"): %s", querystr, sqlite3_errstr(rc));
+		if( rc != SQLITE_BUSY )
+		{
+			logg("Encountered prepare error in db_query_int(\"%s\"): %s", querystr, sqlite3_errstr(rc));
+			database = false;
+		}
 		return DB_FAILED;
 	}
 
@@ -457,8 +473,11 @@ long int get_max_query_ID(void)
 	int rc = sqlite3_prepare_v2(FTL_db, sql, -1, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
-		logg("Encountered prepare error in get_max_query_ID(): %s", sqlite3_errstr(rc));
-		database = false;
+		if( rc != SQLITE_BUSY )
+		{
+			logg("Encountered prepare error in get_max_query_ID(): %s", sqlite3_errstr(rc));
+			database = false;
+		}
 		dbclose();
 		return DB_FAILED;
 	}

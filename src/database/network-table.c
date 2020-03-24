@@ -197,7 +197,8 @@ void parse_neighbor_cache(void)
 
 		if(dbID == DB_FAILED)
 		{
-			// SQLite error
+			// Get SQLite error code and return early from loop
+			rc = sqlite3_errcode(FTL_db);
 			break;
 		}
 
@@ -235,10 +236,7 @@ void parse_neighbor_cache(void)
 			free(macVendor);
 
 			if(rc != SQLITE_OK)
-			{
-				// SQLite error
 				break;
-			}
 
 			// Obtain ID which was given to this new entry
 			dbID = get_lastID();
@@ -256,10 +254,7 @@ void parse_neighbor_cache(void)
 			             client->lastQuery, dbID);
 
 			if(rc != SQLITE_OK)
-			{
-				// SQLite error
 				break;
-			}
 
 			// Update numQueries. Add queries seen since last update
 			// and reset counter afterwards
@@ -270,10 +265,7 @@ void parse_neighbor_cache(void)
 			client->numQueriesARP = 0;
 
 			if(rc != SQLITE_OK)
-			{
-				// SQLite error
 				break;
-			}
 
 			// Store hostname if available
 			if(strlen(hostname) > 0)
@@ -285,10 +277,7 @@ void parse_neighbor_cache(void)
 				             hostname, dbID);
 
 				if(rc != SQLITE_OK)
-				{
-					// SQLite error
 					break;
-				}
 			}
 		}
 		// else:
@@ -303,10 +292,7 @@ void parse_neighbor_cache(void)
 		             "(network_id,ip) VALUES(%i,\'%s\');", dbID, ip);
 
 		if(rc != SQLITE_OK)
-		{
-			// SQLite error
 			break;
-		}
 
 		// Count number of processed ARP cache entries
 		entries++;
@@ -327,8 +313,7 @@ void parse_neighbor_cache(void)
 			database = false;
 		}
 
-		// dbquery() above already logs the reson for why the query failed
-		logg("%s: Storing devices in network table failed", text);
+		logg("%s: Storing devices in network table failed: %s", text, sqlite3_errstr(rc));
 		unlock_shm();
 		dbclose();
 		return;
@@ -348,8 +333,7 @@ void parse_neighbor_cache(void)
 			database = false;
 		}
 
-		// dbquery() above already logs the reson for why the query failed
-		logg("%s: Storing devices in network table failed", text);
+		logg("%s: Storing devices in network table failed: %s", text, sqlite3_errstr(rc));
 		unlock_shm();
 		dbclose();
 		return;

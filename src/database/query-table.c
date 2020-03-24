@@ -24,6 +24,8 @@
 // getstr()
 #include "shmem.h"
 
+static bool saving_failed_before = false;
+
 int get_number_of_queries_in_DB(void)
 {
 	// This routine is used by the API routines.
@@ -63,11 +65,7 @@ void DB_save_queries(void)
 	bool error = false;
 	sqlite3_stmt* stmt = NULL;
 
-	// Get last ID stored in the database
-	long int lastID = get_max_query_ID();
-
-	const char *sql = "BEGIN TRANSACTION IMMEDIATE;";
-	int rc = dbquery(sql);
+	int rc = dbquery("BEGIN TRANSACTION IMMEDIATE");
 	if( rc != SQLITE_OK )
 	{
 		const char *text;
@@ -82,8 +80,7 @@ void DB_save_queries(void)
 			database = false;
 		}
 
-		// dbquery() above already logs the reson for why the query failed
-		logg("%s: Storing queries in long-term database (%s) failed", text, sql);
+		logg("%s: Storing queries in long-term database failed: %s", text, sqlite3_errstr(rc));
 		dbclose();
 		return;
 	}
@@ -91,11 +88,30 @@ void DB_save_queries(void)
 	rc = sqlite3_prepare_v2(FTL_db, "INSERT INTO queries VALUES (NULL,?,?,?,?,?,?)", -1, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
-		logg("DB_save_queries() - error in preparing SQL statement: %s", sqlite3_errstr(rc));
-		database = false;
+		const char *text, *spaces;
+		if( rc == SQLITE_BUSY )
+		{
+			text   = "WARNING";
+			spaces = "       ";
+		}
+		else
+		{
+			text   = "ERROR";
+			spaces = "     ";
+			// We shall not use the database any longer
+			database = false;
+		}
+
+		// dbquery() above already logs the reson for why the query failed
+		logg("%s: Storing queries in long-term database failed: %s\n", text, sqlite3_errstr(rc));
+		logg("%s  Keeping queries in memory for later new attempt", spaces);
+		saving_failed_before = true;
 		dbclose();
 		return;
 	}
+
+	// Get last ID stored in the database
+	long int lastID = get_max_query_ID();
 
 	int total = 0, blocked = 0;
 	time_t currenttimestamp = time(NULL);
@@ -189,11 +205,18 @@ void DB_save_queries(void)
 
 	if((rc = sqlite3_finalize(stmt)) != SQLITE_OK)
 	{
-		logg("Statement finalization failed when trying to store queries to long-term database: %s.",
+		logg("Statement finalization failed when trying to store queries to long-term database: %s",
 		     sqlite3_errstr(rc));
 
-		if( rc != SQLITE_BUSY )
+		if( rc == SQLITE_BUSY )
+		{
+			logg("Keeping queries in memory for later new attempt");
+			saving_failed_before = true;
+		}
+		else
+		{
 			database = false;
+		}
 
 		dbclose();
 		return;
@@ -202,11 +225,18 @@ void DB_save_queries(void)
 	// Finish prepared statement
 	if((rc = dbquery("END TRANSACTION")) != SQLITE_OK)
 	{
-		logg("END TRANSACTION failed when trying to store queries to long-term database: %s.",
-		     sqlite3_errstr(rc));
+		// No need to log the error string here, dbquery() did that already above
+		logg("END TRANSACTION failed when trying to store queries to long-term database");
 
-		if( rc != SQLITE_BUSY )
+		if( rc == SQLITE_BUSY )
+		{
+			logg("Keeping queries in memory for later new attempt");
+			saving_failed_before = true;
+		}
+		else
+		{
 			database = false;
+		}
 
 		dbclose();
 		return;
@@ -224,11 +254,14 @@ void DB_save_queries(void)
 	// Close database
 	dbclose();
 
-	if(config.debug & DEBUG_DATABASE)
+	if(config.debug & DEBUG_DATABASE || saving_failed_before)
 	{
-		logg("Notice: Queries stored in FTL_db: %u (took %.1f ms, last SQLite ID %li)", saved, timer_elapsed_msec(DATABASE_WRITE_TIMER), lastID);
-		if(error)
-			logg("        There are queries that have not been saved");
+		logg("Notice: Queries stored in long-term database: %u (took %.1f ms, last SQLite ID %li)", saved, timer_elapsed_msec(DATABASE_WRITE_TIMER), lastID);
+		if(saving_failed_before)
+		{
+			logg("        Queries from earlier attempt(s) stored successfully");
+			saving_failed_before = false;
+		}
 	}
 }
 
