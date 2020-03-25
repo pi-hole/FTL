@@ -44,12 +44,15 @@ static void subnet_match_impl(sqlite3_context *context, int argc, sqlite3_value 
 	}
 
 	// Analyze input supplied to our SQLite subroutine
+	// From the DB side (first argument) ...
 	const char *addrDBcidr = (const char*)sqlite3_value_text(argv[0]);
 	bool isIPv6_DB = strchr(addrDBcidr, ':') != NULL;
+	// ... and from FTL's side (second argument)
 	const char *addrFTL = (const char*)sqlite3_value_text(argv[1]);
 	bool isIPv6_FTL = strchr(addrFTL, ':') != NULL;
 
-	// Skip if IP types do not match
+	// Return early (no match) if IP types are different
+	// We can skip all computations in this case
 	if(isIPv6_DB != isIPv6_FTL)
 	{
 		sqlite3_result_int(context, 0);
@@ -59,11 +62,13 @@ static void subnet_match_impl(sqlite3_context *context, int argc, sqlite3_value 
 	// Extract possible CIDR from database IP string
 	int cidr = isIPv6_DB ? 128 : 32;
 	char *addrDB = NULL;
+	// sscanf() will not overwrite the pre-defined CIDR in cidr if
+	// no CIDR is specified in the database
 	sscanf(addrDBcidr, "%m[^/]/%i", &addrDB, &cidr);
 
-	// Converts the Internet host address into binary form in network byte order
+	// Convert the Internet host address into binary form in network byte order
 	// We use in6_addr as variable type here as it is guaranteed to be large enough
-	// for both, IPv4 and IPv6 addresses (128 bits variable size)
+	// for both, IPv4 and IPv6 addresses (128 bits variable size).
 	struct in6_addr saddrDB = {{{ 0 }}}, saddrFTL = {{{ 0 }}};
 	if (inet_pton(isIPv6_DB ? AF_INET6 : AF_INET, addrDB, &saddrDB) == 0)
 	{
@@ -91,9 +96,8 @@ static void subnet_match_impl(sqlite3_context *context, int argc, sqlite3_value 
 
 	// Construct binary mask from CIDR field
 	uint8_t bitmask[16] = { 0 };
-	for(int i = 0; i < 128; i++)
+	for(int i = 0; i < cidr; i++)
 	{
-		if(i >= cidr) break;
 		bitmask[i/8] |= (1 << (i%8));
 	}
 
@@ -108,15 +112,22 @@ static void subnet_match_impl(sqlite3_context *context, int argc, sqlite3_value 
 		// Are the addresses different given the applied mask?
 		if(saddrDB.s6_addr[i] != saddrFTL.s6_addr[i])
 		{
-			sqlite3_result_int(context, 0);
 			match = 0;
 			break;
 		}
 	}
 
-	// Found no difference between the two addresses given a possibly specified mask
+	// Return if we found a match between the two addresses
+	// given a possibly specified mask
 	sqlite3_result_int(context, match);
-	logg("SQL: Comparing %s vs. %s (database) - %s", addrFTL, addrDBcidr, match == 1 ? "!! MATCH !!" : "NO MATCH");
+
+	// Possible debug logging
+	if(config.debug & DEBUG_DATABASE)
+	{
+		logg("SQL: Comparing %s vs. %s (database) - %s",
+		     addrFTL, addrDBcidr,
+			 match == 1 ? "!! MATCH !!" : "NO MATCH");
+	}
 }
 
 int sqlite3_pihole_extensions_init(sqlite3 *db, char **pzErrMsg, const sqlite3_api_routines *pApi)
@@ -124,8 +135,9 @@ int sqlite3_pihole_extensions_init(sqlite3 *db, char **pzErrMsg, const sqlite3_a
 	SQLITE_EXTENSION_INIT2(pApi);
 	(void)pzErrMsg;  /* Unused parameter */
 
-	// Register new sqlite function
-	int rc = sqlite3_create_function(db, "subnet_match", 2, SQLITE_UTF8, 0, subnet_match_impl, 0, 0);
+	// Register new sqlite function subnet_match taking 2 arguments in UTF8 format.
+	// We define a scalar function here so the last two pointers are NULL.
+	int rc = sqlite3_create_function(db, "subnet_match", 2, SQLITE_UTF8, NULL, subnet_match_impl, NULL, NULL);
 
 	return rc;
 }
