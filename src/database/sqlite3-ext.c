@@ -8,8 +8,7 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "database/sqlite3ext.h"
-SQLITE_EXTENSION_INIT1
+#include "database/sqlite3.h"
 #include "database/sqlite3-ext.h"
 
 // inet_pton
@@ -132,12 +131,13 @@ static void subnet_match_impl(sqlite3_context *context, int argc, sqlite3_value 
 
 int sqlite3_pihole_extensions_init(sqlite3 *db, char **pzErrMsg, const sqlite3_api_routines *pApi)
 {
-	SQLITE_EXTENSION_INIT2(pApi);
 	(void)pzErrMsg;  /* Unused parameter */
 
 	// Register new sqlite function subnet_match taking 2 arguments in UTF8 format.
+	// The function is deterministic in the sense of always returning the same output for the same input.
 	// We define a scalar function here so the last two pointers are NULL.
-	int rc = sqlite3_create_function(db, "subnet_match", 2, SQLITE_UTF8, NULL, subnet_match_impl, NULL, NULL);
+	int rc = sqlite3_create_function(db, "subnet_match", 2, SQLITE_UTF8 | SQLITE_DETERMINISTIC, NULL,
+	                                 subnet_match_impl, NULL, NULL);
 
 	return rc;
 }
