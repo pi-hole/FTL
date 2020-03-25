@@ -112,12 +112,14 @@ static int find_device_by_recent_ip(const char *ipaddr)
 	char* querystr = NULL;
 	int ret = asprintf(&querystr,
 	                   "SELECT network_id FROM network_addresses "
-	                   "WHERE ip = \'%s\' AND lastSeen > (cast(strftime('%%s', 'now') as int)-86400) "
-	                   "ORDER BY lastSeen DESC;",
+	                   "WHERE ip = \'%s\' AND "
+					   "lastSeen > (cast(strftime('%%s', 'now') as int)-86400) "
+	                   "ORDER BY lastSeen DESC LIMIT 1;",
 	                   ipaddr);
 	if(querystr == NULL || ret < 0)
 	{
-		logg("Memory allocation failed in parse_arp_cache() [3]: %i", ret);
+		logg("Memory allocation failed in find_device_by_recent_ip(\"%s\"): %i",
+		     ipaddr, ret);
 		return -1;
 	}
 
@@ -150,7 +152,31 @@ static int find_device_by_mock_hwaddr(const char *ipaddr)
 	int ret = asprintf(&querystr, "SELECT id FROM network WHERE hwaddr = \'ip-%s\';", ipaddr);
 	if(querystr == NULL || ret < 0)
 	{
-		logg("Memory allocation failed in parse_arp_cache() [4]: %i", ret);
+		logg("Memory allocation failed in find_device_by_mock_hwaddr(\"%s\"): %i",
+		     ipaddr, ret);
+		return -1;
+	}
+
+	// Perform SQL query
+	int network_id = db_query_int(querystr);
+	free(querystr);
+
+	return network_id;
+}
+
+// Try to find device by RECENT mock hardware address (generated from IP address)
+static int find_recent_device_by_mock_hwaddr(const char *ipaddr)
+{
+	char* querystr = NULL;
+	int ret = asprintf(&querystr,
+	                   "SELECT id FROM network WHERE "
+	                   "hwaddr = \'ip-%s\' AND "
+	                   "firstSeen > (cast(strftime('%%s', 'now') as int)-3600);",
+	                   ipaddr);
+	if(querystr == NULL || ret < 0)
+	{
+		logg("Memory allocation failed in find_device_by_recent_mock_hwaddr(\"%s\"): %i",
+		     ipaddr, ret);
 		return -1;
 	}
 
@@ -334,24 +360,61 @@ void parse_neighbor_cache(void)
 		// Device not in database, add new entry
 		if(dbID == DB_NODATA)
 		{
-			char* macVendor = getMACVendor(hwaddr);
-			dbquery("INSERT INTO network "\
-			        "(hwaddr,interface,firstSeen,lastQuery,numQueries,name,macVendor) "\
-			        "VALUES (\'%s\',\'%s\',%lu, %ld, %u, \'%s\', \'%s\');",
-			        hwaddr, iface, now,
-			        client != NULL ? client->lastQuery : 0L,
-			        client != NULL ? client->numQueriesARP : 0u,
-			        hostname,
-			        macVendor);
-			free(macVendor);
+			// Check if we recently added a mock-device with the same IP address
+			// and the ARP entry just came a bit delayed (reported by at least one user)
+			dbID = find_recent_device_by_mock_hwaddr(ip);
 
-			if(client != NULL)
+			char* macVendor = getMACVendor(hwaddr);
+			if(dbID == DB_NODATA)
 			{
-				client->numQueriesARP = 0;
+				// Device not known AND no recent mock-device found ---> create new device record
+				if(config.debug & DEBUG_ARP)
+				{
+					logg("Device with IP %s not known and "
+					     "no recent mock-device found ---> creating new record", ip);
+				}
+
+				// Create new record (INSERT)
+				dbquery("INSERT INTO network "
+						"(hwaddr,interface,firstSeen,lastQuery,numQueries,name,macVendor) "
+						"VALUES (\'%s\',\'%s\',%lu, %ld, %u, \'%s\', \'%s\');",
+						hwaddr, iface, now,
+						client != NULL ? client->lastQuery : 0L,
+						client != NULL ? client->numQueriesARP : 0u,
+						hostname,
+						macVendor);
+
+				// Reset client ARP counter (we stored the entry in the database)
+				if(client != NULL)
+				{
+					client->numQueriesARP = 0;
+				}
+
+				// Obtain ID which was given to this new entry
+				dbID = get_lastID();
+			}
+			else
+			{
+				// Device is ALREADY KNOWN ---> convert mock-device to a "real" one
+				if(config.debug & DEBUG_ARP)
+				{
+					logg("Device with IP %s already known (mock-device) "
+					     "---> converting mock-record to real record", ip);
+				}
+
+				// Update important device properties
+				dbquery("UPDATE network SET "
+				        "hwaddr = '%s', "
+				        "interface = '%s', "
+				        "macVendor = '%s' "
+				        "WHERE id = %i;",
+				        hwaddr, iface, macVendor, dbID);
+				// Host name, count and last query timestamp will be set in the next
+				// loop interation for the sake of simplicity
 			}
 
-			// Obtain ID which was given to this new entry
-			dbID = get_lastID();
+			// Free allocated mememory
+			free(macVendor);
 		}
 		// Device in database AND client known to Pi-hole
 		else if(client != NULL)
