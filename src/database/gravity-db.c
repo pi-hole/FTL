@@ -535,7 +535,8 @@ static bool domain_in_list(const char *domain, sqlite3_stmt* stmt, const char* l
 	// Do not try to bind text to statement when database is not available
 	if(!gravityDB_opened && !gravityDB_open())
 	{
-		logg("domain_in_list(%s): Gravity database not available", domain);
+		logg("domain_in_list(\"%s\", %p, %s): Gravity database not available",
+		     domain, stmt, listname);
 		return false;
 	}
 
@@ -545,8 +546,8 @@ static bool domain_in_list(const char *domain, sqlite3_stmt* stmt, const char* l
 	// We can do this as domain has dynamic scope that exceeds that of the binding.
 	if((rc = sqlite3_bind_text(stmt, 1, domain, -1, SQLITE_STATIC)) != SQLITE_OK)
 	{
-		logg("domain_in_list(\"%s\"): Failed to bind domain: %s",
-		     domain, sqlite3_errstr(rc));
+		logg("domain_in_list(\"%s\", %p, %s): Failed to bind domain: %s",
+		     domain, stmt, listname, sqlite3_errstr(rc));
 		return false;
 	}
 
@@ -555,8 +556,8 @@ static bool domain_in_list(const char *domain, sqlite3_stmt* stmt, const char* l
 	if(rc == SQLITE_BUSY)
 	{
 		// Database is busy
-		logg("domain_in_list(\"%s\"): Database is busy, assuming domain is NOT on list",
-		     domain);
+		logg("domain_in_list(\"%s\", %p, %s): Database is busy, assuming domain is NOT on list",
+		     domain, stmt, listname);
 		sqlite3_reset(stmt);
 		sqlite3_clear_bindings(stmt);
 		return false;
@@ -565,8 +566,8 @@ static bool domain_in_list(const char *domain, sqlite3_stmt* stmt, const char* l
 	{
 		// Any return code that is neither SQLITE_BUSY not SQLITE_ROW
 		// is a real error we should log
-		logg("domain_in_list(\"%s\"): Failed to perform step: %s",
-		     domain, sqlite3_errstr(rc));
+		logg("domain_in_list(\"%s\", %p, %s): Failed to perform step: %s",
+		     domain, stmt, listname, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_clear_bindings(stmt);
 		return false;
@@ -576,7 +577,7 @@ static bool domain_in_list(const char *domain, sqlite3_stmt* stmt, const char* l
 	const int result = sqlite3_column_int(stmt, 0);
 
 	if(config.debug & DEBUG_DATABASE)
-		logg("domain_in_%s(\"%s\"): %d", listname, domain, result);
+		logg("domain_in_list(\"%s\", %p, %s): %d", domain, stmt, listname, result);
 
 	// The sqlite3_reset() function is called to reset a prepared
 	// statement object back to its initial state, ready to be
@@ -599,7 +600,10 @@ inline bool in_whitelist(const char *domain, clientsData* client, const int clie
 	// If client statement is not ready and cannot be initialized (e.g. no access to
 	// the database), we return false (not in whitelist) to prevent an FTL crash
 	if(client->whitelist_stmt == NULL && !gravityDB_prepare_client_statements(client))
+	{
+		logg("ERROR: Gravity database not available, assuming domain is not whitelisted");
 		return false;
+	}
 
 	// We have to check both the exact whitelist (using a prepared database statement)
 	// as well the compiled regex whitelist filters to check if the current domain is
@@ -616,7 +620,10 @@ inline bool in_gravity(const char *domain, clientsData* client)
 	// If client statement is not ready and cannot be initialized (e.g. no access to
 	// the database), we return false (not in gravity list) to prevent an FTL crash
 	if(client->gravity_stmt == NULL && !gravityDB_prepare_client_statements(client))
+	{
+		logg("ERROR: Gravity database not available, assuming domain is not gravity blocked");
 		return false;
+	}
 
 	return domain_in_list(domain, client->gravity_stmt, "gravity");
 }
@@ -626,7 +633,10 @@ inline bool in_blacklist(const char *domain, clientsData* client)
 	// If client statement is not ready and cannot be initialized (e.g. no access to
 	// the database), we return false (not in blacklist) to prevent an FTL crash
 	if(client->blacklist_stmt == NULL && !gravityDB_prepare_client_statements(client))
+	{
+		logg("ERROR: Gravity database not available, assuming domain is not blacklisted");
 		return false;
+	}
 
 	return domain_in_list(domain, client->blacklist_stmt, "blacklist");
 }
