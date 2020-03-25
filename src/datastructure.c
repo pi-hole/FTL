@@ -204,6 +204,11 @@ int findClientID(const char *clientIP, const bool count)
 	// Increase counter by one
 	counters->clients++;
 
+	// NULL-initialize database client statements
+	client->gravity_stmt = NULL;
+	client->whitelist_stmt = NULL;
+	client->blacklist_stmt = NULL;
+
 	// Allocate regex substructure
 	allocate_regex_client_enabled(client, clientID);
 

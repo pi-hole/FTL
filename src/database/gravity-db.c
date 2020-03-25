@@ -153,7 +153,6 @@ static bool get_client_groupids(const clientsData* client, char **groups)
 	if(rc != SQLITE_OK){
 		logg("get_client_groupids(%s) - SQL error prepare: %s",
 		     querystr, sqlite3_errstr(rc));
-		gravityDB_finalizeTable();
 		free(querystr);
 		return false;
 	}
@@ -237,7 +236,7 @@ static bool get_client_groupids(const clientsData* client, char **groups)
 	{
 		logg("get_client_groupids(%s) - SQL error step: %s",
 		     querystr, sqlite3_errstr(rc));
-		sqlite3_finalize(table_stmt);
+		gravityDB_finalizeTable();
 		free(querystr);
 		return false;
 	}
@@ -320,8 +319,11 @@ bool gravityDB_prepare_client_statements(clientsData* client)
 inline void gravityDB_finalize_client_statements(clientsData* client)
 {
 	sqlite3_finalize(client->gravity_stmt);
+	client->gravity_stmt = NULL;
 	sqlite3_finalize(client->blacklist_stmt);
+	client->blacklist_stmt = NULL;
 	sqlite3_finalize(client->whitelist_stmt);
+	client->whitelist_stmt = NULL;
 }
 
 void gravityDB_reload_client_statements(void)
@@ -358,6 +360,7 @@ void gravityDB_close(void)
 			gravityDB_finalize_client_statements(client);
 	}
 	sqlite3_finalize(auditlist_stmt);
+	auditlist_stmt = NULL;
 
 	// Close table
 	sqlite3_close(gravity_db);
@@ -452,6 +455,7 @@ void gravityDB_finalizeTable(void)
 
 	// Finalize statement
 	sqlite3_finalize(table_stmt);
+	table_stmt = NULL;
 }
 
 // Get number of domains in a specified table of the gravity database
@@ -510,6 +514,7 @@ int gravityDB_count(const unsigned char list)
 			logg("Count of gravity domains not available. Please run pihole -g");
 		}
 		gravityDB_finalizeTable();
+		gravityDB_close();
 		free(querystr);
 		return DB_FAILED;
 	}
@@ -591,8 +596,11 @@ static bool domain_in_list(const char *domain, sqlite3_stmt* stmt, const char* l
 
 inline bool in_whitelist(const char *domain, clientsData* client, const int clientID)
 {
-	if(client->whitelist_stmt == NULL)
-		gravityDB_prepare_client_statements(client);
+	// If client statement is not ready and cannot be initialized (e.g. no access to
+	// the database), we return false (not in whitelist) to prevent an FTL crash
+	if(client->whitelist_stmt == NULL && !gravityDB_prepare_client_statements(client))
+		return false;
+
 	// We have to check both the exact whitelist (using a prepared database statement)
 	// as well the compiled regex whitelist filters to check if the current domain is
 	// whitelisted. Due to short-circuit-evaluation in C, the regex evaluations is executed
@@ -605,20 +613,31 @@ inline bool in_whitelist(const char *domain, clientsData* client, const int clie
 
 inline bool in_gravity(const char *domain, clientsData* client)
 {
-	if(client->gravity_stmt == NULL)
-		gravityDB_prepare_client_statements(client);
+	// If client statement is not ready and cannot be initialized (e.g. no access to
+	// the database), we return false (not in gravity list) to prevent an FTL crash
+	if(client->gravity_stmt == NULL && !gravityDB_prepare_client_statements(client))
+		return false;
+
 	return domain_in_list(domain, client->gravity_stmt, "gravity");
 }
 
 inline bool in_blacklist(const char *domain, clientsData* client)
 {
-	if(client->blacklist_stmt == NULL)
-		gravityDB_prepare_client_statements(client);
+	// If client statement is not ready and cannot be initialized (e.g. no access to
+	// the database), we return false (not in blacklist) to prevent an FTL crash
+	if(client->blacklist_stmt == NULL && !gravityDB_prepare_client_statements(client))
+		return false;
+
 	return domain_in_list(domain, client->blacklist_stmt, "blacklist");
 }
 
 bool in_auditlist(const char *domain)
 {
+	// If audit list statement is not ready and cannot be initialized (e.g. no access
+	// to the database), we return false (not in audit list) to prevent an FTL crash
+	if(auditlist_stmt == NULL)
+		return false;
+
 	// We check the domain_audit table for the given domain
 	return domain_in_list(domain, auditlist_stmt, "auditlist");
 }
@@ -643,7 +662,6 @@ bool gravityDB_get_regex_client_groups(clientsData* client, const int numregex, 
 	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &query_stmt, NULL);
 	if(rc != SQLITE_OK){
 		logg("gravityDB_get_regex_client_groups(): %s - SQL error prepare: %s", querystr, sqlite3_errstr(rc));
-		sqlite3_finalize(query_stmt);
 		gravityDB_close();
 		free(querystr);
 		free(groups);
