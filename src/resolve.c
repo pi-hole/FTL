@@ -82,11 +82,12 @@ static char *resolveHostname(const char *addr)
 		return hostname;
 	}
 
-	// Back up first ns record in _res and ...
-	struct in_addr nsbck;
-	nsbck = _res.nsaddr_list[0].sin_addr;
+	// Force last available (MAXNS-1) server used for lookups to 127.0.0.1 (FTL itself)
+	struct in_addr nsbck = { 0 };
+	// Back up corresponding ns record in _res and ...
+	nsbck = _res.nsaddr_list[MAXNS-1].sin_addr;
 	// ... force FTL resolver to 127.0.0.1
-	inet_pton(AF_INET, "127.0.0.1", &_res.nsaddr_list[0].sin_addr);
+	inet_pton(AF_INET, "127.0.0.1", &_res.nsaddr_list[MAXNS-1].sin_addr);
 
 	// Test if we want to resolve an IPv6 address
 	if(strstr(addr,":") != NULL)
@@ -123,8 +124,8 @@ static char *resolveHostname(const char *addr)
 		hostname = strdup("");
 	}
 
-	// Restore first ns record in _res
-	_res.nsaddr_list[0].sin_addr = nsbck;
+	// Restore ns record in _res
+	_res.nsaddr_list[MAXNS-1].sin_addr = nsbck;
 
 	// Return result
 	return hostname;
