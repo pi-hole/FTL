@@ -17,6 +17,7 @@
 #include "log.h"
 #include "timers.h"
 #include "files.h"
+#include "database/sqlite3-ext.h"
 
 sqlite3 *FTL_db = NULL;
 bool database = true;
@@ -228,6 +229,9 @@ void db_init(void)
 	// We use this to possibly catch even more errors in places we do not
 	// explicitly check for failures to have happened
 	sqlite3_config(SQLITE_CONFIG_LOG, SQLite3LogCallback, NULL);
+
+	// Register Pi-hole provided SQLite3 extensions (see sqlite3-ext.c)
+	sqlite3_auto_extension((void (*)(void))sqlite3_pihole_extensions_init);
 
 	// Check if database exists, if not create empty database
 	if(!file_exists(FTLfiles.FTL_db))
