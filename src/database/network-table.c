@@ -305,6 +305,8 @@ void parse_neighbor_cache(void)
 					client_status[clientID] = CLIENT_ARP_INCOMPLETE;
 			}
 
+			// Skip to the next row in the neigh cache rather when
+			// marking as incomplete client
 			continue;
 		}
 
