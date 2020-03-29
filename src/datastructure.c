@@ -159,10 +159,7 @@ int findClientID(const char *clientIP, const bool count)
 		}
 	}
 
-	// Return -1 (= not found) if count is false ...
-	if(!count)
-		return -1;
-	// ... otherwise proceed with adding a new client entry
+	// Proceed with adding a new client entry
 
 	// If we did not return until here, then this client is definitely new
 	// Store ID
@@ -182,7 +179,7 @@ int findClientID(const char *clientIP, const bool count)
 	// Set magic byte
 	client->magic = MAGICBYTE;
 	// Set its counter to 1
-	client->count = 1;
+	client->count = count ? 1 : 0;
 	// Initialize blocked count to zero
 	client->blockedcount = 0;
 	// Store client IP - no need to check for NULL here as it doesn't harm
@@ -195,7 +192,7 @@ int findClientID(const char *clientIP, const bool count)
 	client->namepos = 0;
 	// No query seen so far
 	client->lastQuery = 0;
-	client->numQueriesARP = 0;
+	client->numQueriesARP = client->count;
 
 	// Initialize client-specific overTime data
 	for(int i = 0; i < OVERTIME_SLOTS; i++)

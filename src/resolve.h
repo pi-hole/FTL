@@ -14,4 +14,11 @@ void *DNSclient_thread(void *val);
 void resolveClients(const bool onlynew);
 void resolveForwardDestinations(const bool onlynew);
 
+// musl does not define MAXHOSTNAMELEN
+// If it is not defined, we set the value
+// found on a x86_64 glibc instance
+#ifndef MAXHOSTNAMELEN
+#define MAXHOSTNAMELEN 64
+#endif
+
 #endif //RESOLVE_H
