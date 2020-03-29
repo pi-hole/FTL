@@ -17,7 +17,7 @@ DNSMASQ_OPTS = -DHAVE_DNSSEC -DHAVE_DNSSEC_STATIC
 # Flags for compiling with libidn2: -DHAVE_LIBIDN2 -DIDN2_VERSION_NUMBER=0x02000003
 
 FTL_DEPS = *.h database/*.h api/*.h version.h
-FTL_DB_OBJ = database/common.o database/query-table.o database/network-table.o database/gravity-db.o database/database-thread.o
+FTL_DB_OBJ = database/common.o database/query-table.o database/network-table.o database/gravity-db.o database/database-thread.o database/sqlite3-ext.o
 FTL_API_OBJ = api/socket.o api/request.o api/msgpack.o api/api.o
 FTL_OBJ = $(FTL_DB_OBJ) $(FTL_API_OBJ) main.o memory.o log.o daemon.o datastructure.o signals.o files.o setupVars.o args.o gc.o config.o \
           dnsmasq_interface.o resolve.o regex.o shmem.o capabilities.o overTime.o timers.o

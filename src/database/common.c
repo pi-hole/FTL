@@ -17,6 +17,7 @@
 #include "log.h"
 #include "timers.h"
 #include "files.h"
+#include "database/sqlite3-ext.h"
 
 sqlite3 *FTL_db;
 // This boolean is set to false once we hit the
@@ -239,6 +240,9 @@ void db_init(void)
 	// explicitly check for failures to have happened
 	sqlite3_config(SQLITE_CONFIG_LOG, SQLite3LogCallback, NULL);
 
+	// Register Pi-hole provided SQLite3 extensions (see sqlite3-ext.c)
+	sqlite3_auto_extension((void (*)(void))sqlite3_pihole_extensions_init);
+
 	// Check if database exists, if not create empty database
 	if(!file_exists(FTLfiles.FTL_db))
 	{
@@ -416,6 +420,11 @@ int db_query_int(const char* querystr)
 	{
 		logg("db_query_int(\"%s\") called but database is not available!", querystr);
 		return DB_FAILED;
+	}
+
+	if(config.debug & DEBUG_DATABASE)
+	{
+		logg("dbquery: \"%s\"", querystr);
 	}
 
 	sqlite3_stmt* stmt;

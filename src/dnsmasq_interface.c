@@ -413,6 +413,8 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		querytype = TYPE_PTR;
 	else if(strcmp(types,"query[TXT]") == 0)
 		querytype = TYPE_TXT;
+	else if(strcmp(types,"query[NAPTR]") == 0)
+		querytype = TYPE_NAPTR;
 	else
 	{
 		// Return early to avoid accessing querytypedata out of bounds
