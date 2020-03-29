@@ -14,5 +14,6 @@ void go_daemon(void);
 void savepid(void);
 char * getUserName(void);
 void removepid(void);
+void delay_startup(void);
 
 #endif //DAEMON_H
