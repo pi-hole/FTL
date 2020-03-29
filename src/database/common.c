@@ -422,6 +422,11 @@ int db_query_int(const char* querystr)
 		return DB_FAILED;
 	}
 
+	if(config.debug & DEBUG_DATABASE)
+	{
+		logg("dbquery: \"%s\"", querystr);
+	}
+
 	sqlite3_stmt* stmt;
 	int rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK ){
