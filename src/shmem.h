@@ -27,6 +27,34 @@ typedef struct {
 	unsigned int next_str_pos;
 } ShmSettings;
 
+typedef struct {
+	int queries;
+	int blocked;
+	int forwarded;
+	int cached;
+	int unknown;
+	int upstreams;
+	int clients;
+	int domains;
+	int queries_MAX;
+	int upstreams_MAX;
+	int clients_MAX;
+	int domains_MAX;
+	int strings_MAX;
+	int gravity;
+	int querytype[TYPE_MAX-1];
+	int reply_NODATA;
+	int reply_NXDOMAIN;
+	int reply_CNAME;
+	int reply_IP;
+	int reply_domain;
+	int dns_cache_size;
+	int dns_cache_MAX;
+	int num_regex[2];
+} countersStruct;
+
+extern countersStruct *counters;
+
 /// Create shared memory
 ///
 /// \param name the name of the shared memory

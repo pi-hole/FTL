@@ -12,7 +12,6 @@
 
 #include "sqlite3.h"
 
-bool check_database(int rc);
 void db_init(void);
 int db_get_FTL_property(const unsigned int ID);
 bool db_set_FTL_property(const unsigned int ID, const int value);
@@ -29,6 +28,7 @@ long int get_max_query_ID(void);
 bool db_set_counter(const unsigned int ID, const int value);
 bool db_update_counters(const int total, const int blocked);
 const char *get_sqlite3_version(void);
+bool use_database(void)  __attribute__ ((pure));
 
 extern sqlite3 *FTL_db;
 extern bool database;
@@ -37,15 +37,23 @@ extern bool DBdeleteoldqueries;
 
 // Database macros
 #define SQL_bool(sql) {\
-	if(dbquery(sql) != SQLITE_OK) {\
-		logg("ERROR: %s() failed!", __FUNCTION__);\
+	int ret;\
+	if((ret = dbquery(sql)) != SQLITE_OK) {\
+		if(ret == SQLITE_BUSY)\
+			logg("WARNING: Database busy in %s()!", __FUNCTION__);\
+		else\
+			logg("ERROR: %s() failed!", __FUNCTION__);\
 		return false;\
 	}\
 }
 
 #define SQL_void(sql) {\
-	if(dbquery(sql) != SQLITE_OK) {\
-		logg("ERROR: %s() failed!", __FUNCTION__);\
+	int ret;\
+	if((ret = dbquery(sql)) != SQLITE_OK) {\
+		if(ret == SQLITE_BUSY)\
+			logg("WARNING: Database busy in %s()!", __FUNCTION__);\
+		else\
+			logg("ERROR: %s() failed!", __FUNCTION__);\
 		return;\
 	}\
 }

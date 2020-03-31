@@ -201,6 +201,11 @@ int findClientID(const char *clientIP, const bool count)
 	// Increase counter by one
 	counters->clients++;
 
+	// NULL-initialize database client statements
+	client->gravity_stmt = NULL;
+	client->whitelist_stmt = NULL;
+	client->blacklist_stmt = NULL;
+
 	// Allocate regex substructure
 	allocate_regex_client_enabled(client, clientID);
 
@@ -369,8 +374,6 @@ void FTL_reload_all_domainlists(void)
 	// (Re-)open gravity database connection
 	gravityDB_close();
 	gravityDB_open();
-	// gravityDB_close() has finalized all prepared statements, reinitialize them
-	gravityDB_reload_client_statements();
 
 	// Reset number of blocked domains
 	counters->gravity = gravityDB_count(GRAVITY_TABLE);
