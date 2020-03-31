@@ -214,13 +214,6 @@ void db_init(void)
 		exit(EXIT_FAILURE);
 	}
 
-	if(!use_database())
-	{
-		logg("Not using the long-term database");
-		database = false;
-		return;
-	}
-
 	// Lock database thread
 	pthread_mutex_lock(&dblock);
 
@@ -232,6 +225,15 @@ void db_init(void)
 
 	// Register Pi-hole provided SQLite3 extensions (see sqlite3-ext.c)
 	sqlite3_auto_extension((void (*)(void))sqlite3_pihole_extensions_init);
+
+	// Only exit early if we already finished the SQLite3 library initialization
+	if(!use_database())
+	{
+		logg("Not using the long-term database");
+		pthread_mutex_unlock(&dblock);
+		database = false;
+		return;
+	}
 
 	// Check if database exists, if not create empty database
 	if(!file_exists(FTLfiles.FTL_db))
