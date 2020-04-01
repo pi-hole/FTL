@@ -36,8 +36,8 @@ static void subnet_match_impl(sqlite3_context *context, int argc, sqlite3_value 
 	}
 
 	// Return NO MATCH if invoked with non-TEXT arguments
-	if (sqlite3_value_type(argv[0]) == SQLITE_TEXT ||
-	    sqlite3_value_type(argv[1]) == SQLITE_TEXT)
+	if (sqlite3_value_type(argv[0]) != SQLITE_TEXT ||
+	    sqlite3_value_type(argv[1]) != SQLITE_TEXT)
 	{
 		logg("Invoked subnet_match() with non-text arguments: %d, %d",
 		     sqlite3_value_type(argv[0]), sqlite3_value_type(argv[1]));
