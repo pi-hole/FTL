@@ -517,8 +517,10 @@ void parse_neighbor_cache(void)
 		entries++;
 	}
 
-	// Close file handle
+	// Close pipe handle and free allocated memory
 	pclose(arpfp);
+	if(linebuffer != NULL)
+		free(linebuffer);
 
 	// Finally, loop over all clients known to FTL and ensure we add them
 	// all to the database
