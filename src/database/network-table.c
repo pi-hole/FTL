@@ -109,11 +109,11 @@ bool create_network_addresses_table(void)
 // Try to find device by recent usage of this IP address
 static int find_device_by_recent_ip(const char *ipaddr)
 {
-	char* querystr = NULL;
+	char *querystr = NULL;
 	int ret = asprintf(&querystr,
 	                   "SELECT network_id FROM network_addresses "
 	                   "WHERE ip = \'%s\' AND "
-					   "lastSeen > (cast(strftime('%%s', 'now') as int)-86400) "
+	                   "lastSeen > (cast(strftime('%%s', 'now') as int)-86400) "
 	                   "ORDER BY lastSeen DESC LIMIT 1;",
 	                   ipaddr);
 	if(querystr == NULL || ret < 0)
@@ -148,7 +148,7 @@ static int find_device_by_recent_ip(const char *ipaddr)
 // Try to find device by mock hardware address (generated from IP address)
 static int find_device_by_mock_hwaddr(const char *ipaddr)
 {
-	char* querystr = NULL;
+	char *querystr = NULL;
 	int ret = asprintf(&querystr, "SELECT id FROM network WHERE hwaddr = \'ip-%s\';", ipaddr);
 	if(querystr == NULL || ret < 0)
 	{
@@ -167,7 +167,7 @@ static int find_device_by_mock_hwaddr(const char *ipaddr)
 // Try to find device by RECENT mock hardware address (generated from IP address)
 static int find_recent_device_by_mock_hwaddr(const char *ipaddr)
 {
-	char* querystr = NULL;
+	char *querystr = NULL;
 	int ret = asprintf(&querystr,
 	                   "SELECT id FROM network WHERE "
 	                   "hwaddr = \'ip-%s\' AND "
@@ -187,39 +187,44 @@ static int find_recent_device_by_mock_hwaddr(const char *ipaddr)
 	return network_id;
 }
 
-// Store hostname of device identified by dbID if neither NULL nor empty
+// Store hostname of device identified by dbID
 static int update_netDB_hostname(const int dbID, const char *hostname)
 {
+	// Skip if hostname is NULL or an empty string (= no result)
 	if(hostname == NULL || strlen(hostname) < 1)
 		return SQLITE_OK;
 
-	sqlite3_stmt *query_stmt;
-	const char *querystr = "UPDATE network SET name = ? WHERE id = ?;";
+	sqlite3_stmt *query_stmt = NULL;
+	const char querystr[] = "UPDATE network SET name = ? WHERE id = ?;";
 
 	int rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &query_stmt, NULL);
-	if(rc != SQLITE_OK){
-		logg("update_netDB_hostname(%i, %s) - SQL error prepare (%i): %s",
+	if(rc != SQLITE_OK)
+	{
+		logg("update_netDB_hostname(%i, \"%s\") - SQL error prepare (%i): %s",
 		dbID, hostname, rc, sqlite3_errmsg(FTL_db));
 		return rc;
 	}
+
 	if(config.debug & DEBUG_DATABASE)
 	{
 		logg("dbquery: \"%s\" with arguments 1 = \"%s\" and 2 = %i", querystr, hostname, dbID);
 	}
 
-	// Bind hostname to prepared statement
+	// Bind hostname to prepared statement (1st argument)
 	// SQLITE_STATIC: Use the string without first duplicating it internally.
 	// We can do this as hostname has dynamic scope that exceeds that of the binding.
 	if((rc = sqlite3_bind_text(query_stmt, 1, hostname, -1, SQLITE_STATIC)) != SQLITE_OK)
 	{
-		logg("update_netDB_hostname(%i, %s): Failed to bind hostname (error %d) - %s",
+		logg("update_netDB_hostname(%i, \"%s\"): Failed to bind hostname (error %d): %s",
 		     dbID, hostname, rc, sqlite3_errmsg(FTL_db));
 		sqlite3_reset(query_stmt);
 		return rc;
 	}
+
+	// Bind dbID to prepared statement (2nd argument)
 	if((rc = sqlite3_bind_int(query_stmt, 2, dbID)) != SQLITE_OK)
 	{
-		logg("update_netDB_hostname(%i, %s): Failed to bind dbID (error %d) - %s",
+		logg("update_netDB_hostname(%i, \"%s\"): Failed to bind dbID (error %d): %s",
 		     dbID, hostname, rc, sqlite3_errmsg(FTL_db));
 		sqlite3_reset(query_stmt);
 		return rc;
@@ -235,8 +240,9 @@ static int update_netDB_hostname(const int dbID, const char *hostname)
 // Updates lastQuery. Only use new value if larger than zero.
 // client->lastQuery may be zero if this client is only known
 // from a database entry but has not been seen since then (skip in this case)
-static int update_netDB_lastQuery(const clientsData* client, const int dbID)
+static int update_netDB_lastQuery(const int dbID, const clientsData* client)
 {
+	// Return early if there is nothing to update
 	if(client->lastQuery < 1)
 		return SQLITE_OK;
 
@@ -249,8 +255,9 @@ static int update_netDB_lastQuery(const clientsData* client, const int dbID)
 
 // Update numQueries.
 // Add queries seen since last update and reset counter afterwards
-static int update_netDB_numQueries(clientsData* client, const int dbID)
+static int update_netDB_numQueries(const int dbID, clientsData* client)
 {
+	// Return early if there is nothing to update
 	if(client->numQueriesARP < 1)
 		return SQLITE_OK;
 
@@ -272,7 +279,7 @@ static int update_netDB_numQueries(clientsData* client, const int dbID)
 static int add_netDB_network_address(const int dbID, const char* ipaddr)
 {
 	return dbquery("INSERT OR REPLACE INTO network_addresses "\
-	               "(network_id,ip,lastSeen) VALUES(%i,\'%s\',(cast(strftime('%%s', 'now') as int)));",
+	               "(network_id,ip,lastSeen) VALUES (%i,\'%s\',(cast(strftime('%%s', 'now') as int)));",
 	               dbID, ipaddr);
 }
 
@@ -288,8 +295,8 @@ void parse_neighbor_cache(void)
 
 	// Try to access the kernel's neighbor cache
 	// We are only interested in entries which are in either STALE or REACHABLE state
-	FILE* arpfp = NULL;
-	const char *neigh_command = "ip neigh show";
+	FILE *arpfp = NULL;
+	const char neigh_command[] = "ip neigh show";
 	if((arpfp = popen(neigh_command, "r")) == NULL)
 	{
 		logg("WARN: Command \"%s\" failed!", neigh_command);
@@ -303,12 +310,13 @@ void parse_neighbor_cache(void)
 		timer_start(ARP_TIMER);
 
 	// Prepare buffers
-	char * linebuffer = NULL;
+	char *linebuffer = NULL;
 	size_t linebuffersize = 0u;
+	char ip[100], hwaddr[100], iface[100];
 	unsigned int entries = 0u, additional_entries = 0u;
 	time_t now = time(NULL);
 
-	const char *sql = "BEGIN TRANSACTION IMMEDIATE";
+	const char sql[] = "BEGIN TRANSACTION IMMEDIATE";
 	int rc = dbquery(sql);
 	if( rc != SQLITE_OK )
 	{
@@ -346,7 +354,10 @@ void parse_neighbor_cache(void)
 	// Read ARP cache line by line
 	while(getline(&linebuffer, &linebuffersize, arpfp) != -1)
 	{
-		char ip[100], hwaddr[100], iface[100];
+		// Skip if line buffer is invalid
+		if(linebuffer == NULL)
+			continue;
+
 		int num = sscanf(linebuffer, "%99s dev %99s lladdr %99s",
 		                 ip, iface, hwaddr);
 
@@ -480,12 +491,12 @@ void parse_neighbor_cache(void)
 		else if(client != NULL)
 		{
 			// Update timestamp of last query if applicable
-			rc = update_netDB_lastQuery(client, dbID);
+			rc = update_netDB_lastQuery(dbID, client);
 			if(rc != SQLITE_OK)
 				break;
 
 			// Update number of queries if applicable
-			rc = update_netDB_numQueries(client, dbID);
+			rc = update_netDB_numQueries(dbID, client);
 			if(rc != SQLITE_OK)
 				break;
 
@@ -587,12 +598,12 @@ void parse_neighbor_cache(void)
 		else
 		{
 			// Update timestamp of last query if applicable
-			rc = update_netDB_lastQuery(client, dbID);
+			rc = update_netDB_lastQuery(dbID, client);
 			if(rc != SQLITE_OK)
 				break;
 
 			// Update number of queries if applicable
-			rc = update_netDB_numQueries(client, dbID);
+			rc = update_netDB_numQueries(dbID, client);
 			if(rc != SQLITE_OK)
 				break;
 
