@@ -90,7 +90,7 @@ bool gravityDB_open(void)
 	// Prepare audit statement
 	if(config.debug & DEBUG_DATABASE)
 		logg("gravityDB_open(): Preparing audit query");
-	rc = sqlite3_prepare_v2(gravity_db, "SELECT EXISTS(SELECT domain from domain_audit WHERE domain = ?);", -1, &auditlist_stmt, NULL);
+	rc = sqlite3_prepare_v2(gravity_db, "SELECT EXISTS(SELECT domain, CASE WHEN substr(domain, 1, 1) = '*' THEN '*' || SUBSTR(?, - length(domain) + 1) ELSE SUBSTR(?, - length(domain)) END matcher FROM domain_audit WHERE matcher = domain);", -1, &auditlist_stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
 		logg("gravityDB_open(\"SELECT EXISTS(... domain_audit ...)\") - SQL error prepare: %s", sqlite3_errstr(rc));
