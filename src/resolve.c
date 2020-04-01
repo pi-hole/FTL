@@ -23,6 +23,8 @@
 // struct _res
 #include <resolv.h>
 
+static bool res_initialized = false;
+
 // Validate given hostname
 static bool valid_hostname(char* name, const char* clientip)
 {
@@ -80,6 +82,16 @@ static char *resolveHostname(const char *addr)
 		hostname = strdup("hidden");
 		//if(hostname == NULL) return NULL;
 		return hostname;
+	}
+
+	// Initialize resolver subroutines if trying to resolve for the first time
+	// res_init() reads resolv.conf to get the default domain name and name server
+	// address(es). If no server is given, the local host is tried. If no domain
+	// is given, that associated with the local host is used.
+	if(!res_initialized)
+	{
+		res_init();
+		res_initialized = true;
 	}
 
 	// Force last available (MAXNS-1) server used for lookups to 127.0.0.1 (FTL itself)
