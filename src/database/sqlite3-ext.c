@@ -139,5 +139,11 @@ int sqlite3_pihole_extensions_init(sqlite3 *db, char **pzErrMsg, const sqlite3_a
 	int rc = sqlite3_create_function(db, "subnet_match", 2, SQLITE_UTF8 | SQLITE_DETERMINISTIC, NULL,
 	                                 subnet_match_impl, NULL, NULL);
 
+	if(rc != SQLITE_OK)
+	{
+		logg("Error while initializing the SQLite3 extension subnet_match: %s",
+		     sqlite3_errstr(rc));
+	}
+
 	return rc;
 }
