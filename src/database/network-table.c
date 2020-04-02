@@ -201,7 +201,7 @@ static int update_netDB_hostname(const int dbID, const char *hostname)
 	if(rc != SQLITE_OK)
 	{
 		logg("update_netDB_hostname(%i, \"%s\") - SQL error prepare (%i): %s",
-		dbID, hostname, rc, sqlite3_errmsg(FTL_db));
+		     dbID, hostname, rc, sqlite3_errmsg(FTL_db));
 		return rc;
 	}
 
@@ -359,6 +359,12 @@ void parse_neighbor_cache(void)
 
 		int num = sscanf(linebuffer, "%99s dev %99s lladdr %99s",
 		                 ip, iface, hwaddr);
+
+		// Ensure strings are null-terminated in case we hit the max.
+		// length limitation
+		ip[sizeof(ip)-1] = '\0';
+		iface[sizeof(iface)-1] = '\0';
+		hwaddr[sizeof(hwaddr)-1] = '\0';
 
 		// Check if we want to process the line we just read
 		if(num != 3)
