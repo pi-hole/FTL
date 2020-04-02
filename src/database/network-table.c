@@ -344,9 +344,8 @@ void parse_neighbor_cache(void)
 	// Initialize array of status for individual clients used to
 	// remember the status of a client already seen in the neigh cache
 	enum arp_status { CLIENT_NOT_HANDLED, CLIENT_ARP_COMPLETE, CLIENT_ARP_INCOMPLETE };
-	int clients_array_size = counters->clients;
-	enum arp_status client_status[clients_array_size];
-	for(int i = 0; i < clients_array_size; i++)
+	enum arp_status client_status[counters->clients];
+	for(int i = 0; i < counters->clients; i++)
 	{
 		client_status[i] = CLIENT_NOT_HANDLED;
 	}
@@ -421,7 +420,7 @@ void parse_neighbor_cache(void)
 
 		// This client is known (by its IP address) to pihole-FTL if
 		// findClientID() returned a non-negative index
-		if(clientID >= 0 && clientID < clients_array_size)
+		if(clientID >= 0)
 		{
 			client_status[clientID] = CLIENT_ARP_COMPLETE;
 			client = getClient(clientID, true);
@@ -552,9 +551,7 @@ void parse_neighbor_cache(void)
 		}
 		// Skip if already handled above (first check against clients_array_size as we might have added
 		// more clients to FTL's memory herein (those known only from the database))
-		else if((clientID < clients_array_size &&
-		         client_status[clientID] != CLIENT_NOT_HANDLED) ||
-			clientID >= clients_array_size)
+		else if(client_status[clientID] != CLIENT_NOT_HANDLED)
 		{
 			if(config.debug & DEBUG_ARP)
 				logg("Network table: Client %s known through ARP/neigh cache",
