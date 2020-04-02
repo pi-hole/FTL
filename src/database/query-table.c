@@ -24,13 +24,14 @@
 // getstr()
 #include "shmem.h"
 
+static bool saving_failed_before = false;
+
 int get_number_of_queries_in_DB(void)
 {
 	// This routine is used by the API routines.
 	// We need to handle opening/closing of the database herein.
 	if(!dbopen())
 	{
-		logg("number_of_queries_in_DB() - Failed to open database.");
 		return DB_FAILED;
 	}
 
@@ -56,25 +57,61 @@ void DB_save_queries(void)
 	// Open database
 	if(!dbopen())
 	{
-		logg("DB_save_queries() - failed to open FTL_db");
+		logg("Failed to open long-term database when trying to store queries");
 		return;
 	}
 
-	unsigned int saved = 0, saved_error = 0;
+	unsigned int saved = 0;
+	bool error = false;
 	sqlite3_stmt* stmt = NULL;
+
+	int rc = dbquery("BEGIN TRANSACTION IMMEDIATE");
+	if( rc != SQLITE_OK )
+	{
+		const char *text;
+		if( rc == SQLITE_BUSY )
+		{
+			text = "WARNING";
+		}
+		else
+		{
+			text = "ERROR";
+			// We shall not use the database any longer
+			database = false;
+		}
+
+		logg("%s: Storing queries in long-term database failed: %s", text, sqlite3_errstr(rc));
+		dbclose();
+		return;
+	}
+
+	rc = sqlite3_prepare_v2(FTL_db, "INSERT INTO queries VALUES (NULL,?,?,?,?,?,?)", -1, &stmt, NULL);
+	if( rc != SQLITE_OK )
+	{
+		const char *text, *spaces;
+		if( rc == SQLITE_BUSY )
+		{
+			text   = "WARNING";
+			spaces = "       ";
+		}
+		else
+		{
+			text   = "ERROR";
+			spaces = "     ";
+			// We shall not use the database any longer
+			database = false;
+		}
+
+		// dbquery() above already logs the reson for why the query failed
+		logg("%s: Storing queries in long-term database failed: %s\n", text, sqlite3_errstr(rc));
+		logg("%s  Keeping queries in memory for later new attempt", spaces);
+		saving_failed_before = true;
+		dbclose();
+		return;
+	}
 
 	// Get last ID stored in the database
 	long int lastID = get_max_query_ID();
-
-	SQL_void("BEGIN TRANSACTION");
-
-	int rc = sqlite3_prepare_v2(FTL_db, "INSERT INTO queries VALUES (NULL,?,?,?,?,?,?)", -1, &stmt, NULL);
-	if( rc != SQLITE_OK )
-	{
-		logg("DB_save_queries() - error in preparing SQL statement (%i): %s", rc, sqlite3_errmsg(FTL_db));
-		check_database(rc);
-		return;
-	}
 
 	int total = 0, blocked = 0;
 	time_t currenttimestamp = time(NULL);
@@ -137,20 +174,11 @@ void DB_save_queries(void)
 		sqlite3_clear_bindings(stmt);
 		sqlite3_reset(stmt);
 
-		if( rc != SQLITE_DONE ){
-			logg("DB_save_queries() - SQL error (%i): %s", rc, sqlite3_errmsg(FTL_db));
-			saved_error++;
-			if(saved_error < 3)
-			{
-				continue;
-			}
-			else
-			{
-				logg("DB_save_queries() - exiting due to too many errors");
-				break;
-			}
-			// Check this error message
-			check_database(rc);
+		if( rc != SQLITE_DONE )
+		{
+			logg("Encountered error while trying to store queries in long-term database: %s", sqlite3_errstr(rc));
+			error = true;
+			break;
 		}
 
 		saved++;
@@ -175,37 +203,65 @@ void DB_save_queries(void)
 			newlasttimestamp = query->timestamp;
 	}
 
-	// Finish prepared statement
-	SQL_void("END TRANSACTION");
 	if((rc = sqlite3_finalize(stmt)) != SQLITE_OK)
 	{
-		check_database(rc);
+		logg("Statement finalization failed when trying to store queries to long-term database: %s",
+		     sqlite3_errstr(rc));
+
+		if( rc == SQLITE_BUSY )
+		{
+			logg("Keeping queries in memory for later new attempt");
+			saving_failed_before = true;
+		}
+		else
+		{
+			database = false;
+		}
+
+		dbclose();
+		return;
+	}
+
+	// Finish prepared statement
+	if((rc = dbquery("END TRANSACTION")) != SQLITE_OK)
+	{
+		// No need to log the error string here, dbquery() did that already above
+		logg("END TRANSACTION failed when trying to store queries to long-term database");
+
+		if( rc == SQLITE_BUSY )
+		{
+			logg("Keeping queries in memory for later new attempt");
+			saving_failed_before = true;
+		}
+		else
+		{
+			database = false;
+		}
+
+		dbclose();
 		return;
 	}
 
 	// Store index for next loop interation round and update last time stamp
 	// in the database only if all queries have been saved successfully
-	if(saved > 0 && saved_error == 0)
+	if(saved > 0 && !error)
 	{
 		lastdbindex = queryID;
 		db_set_FTL_property(DB_LASTTIMESTAMP, newlasttimestamp);
-	}
-
-	// Update total counters in FTL_db
-	if(saved > 0 && !db_update_counters(total, blocked))
-	{
-		dbclose();
-		return;
+		db_update_counters(total, blocked);
 	}
 
 	// Close database
 	dbclose();
 
-	if(config.debug & DEBUG_DATABASE)
+	if(config.debug & DEBUG_DATABASE || saving_failed_before)
 	{
-		logg("Notice: Queries stored in FTL_db: %u (took %.1f ms, last SQLite ID %li)", saved, timer_elapsed_msec(DATABASE_WRITE_TIMER), lastID);
-		if(saved_error > 0)
-			logg("        There are queries that have not been saved");
+		logg("Notice: Queries stored in long-term database: %u (took %.1f ms, last SQLite ID %li)", saved, timer_elapsed_msec(DATABASE_WRITE_TIMER), lastID);
+		if(saving_failed_before)
+		{
+			logg("        Queries from earlier attempt(s) stored successfully");
+			saving_failed_before = false;
+		}
 	}
 }
 
@@ -214,7 +270,7 @@ void delete_old_queries_in_DB(void)
 	// Open database
 	if(!dbopen())
 	{
-		logg("Failed to open FTL_db in delete_old_queries_in_DB()");
+		logg("Failed to open long-term database when trying to delete old queries");
 		return;
 	}
 
@@ -247,7 +303,7 @@ void DB_read_queries(void)
 	// Open database file
 	if(!dbopen())
 	{
-		logg("DB_read_queries() - Failed to open FTL_db");
+		logg("Failed to open long-term database when trying to read queries");
 		return;
 	}
 
@@ -257,9 +313,10 @@ void DB_read_queries(void)
 	const time_t mintime = now - config.maxlogage;
 	char *querystr = NULL;
 	int rc = asprintf(&querystr, "SELECT * FROM queries WHERE timestamp >= %li", mintime);
-	if(rc < 1)
+	if(rc < 42)
 	{
-		logg("DB_read_queries() - Allocation error (%i): %s", rc, sqlite3_errmsg(FTL_db));
+		logg("DB_read_queries() - Memory allocation error: %s", sqlite3_errstr(rc));
+		dbclose();
 		return;
 	}
 	// Log FTL_db query string in debug mode
@@ -270,8 +327,8 @@ void DB_read_queries(void)
 	sqlite3_stmt* stmt = NULL;
 	rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK ){
-		logg("DB_read_queries() - SQL error prepare (%i): %s", rc, sqlite3_errmsg(FTL_db));
-		check_database(rc);
+		logg("DB_read_queries() - SQL error prepare: %s", sqlite3_errstr(rc));
+		dbclose();
 		return;
 	}
 
@@ -446,9 +503,8 @@ void DB_read_queries(void)
 	lastdbindex = counters->queries;
 
 	if( rc != SQLITE_DONE ){
-		logg("DB_read_queries() - SQL error step (%i): %s", rc, sqlite3_errmsg(FTL_db));
+		logg("DB_read_queries() - SQL error step: %s", sqlite3_errstr(rc));
 		dbclose();
-		check_database(rc);
 		return;
 	}
 

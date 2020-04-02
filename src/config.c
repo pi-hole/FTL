@@ -33,6 +33,7 @@ FTLFileNamesStruct FTLfiles = {
 
 // Private global variables
 static char *conflinebuffer = NULL;
+static size_t size = 0;
 
 // Private prototypes
 static char *parse_FTLconf(FILE *fp, const char * key);
@@ -358,6 +359,19 @@ void read_FTLconf(void)
 	else
 		logg("   CNAME_DEEP_INSPECT: Inactive");
 
+	// DELAY_STARTUP
+	// defaults to: zero (seconds)
+	buffer = parse_FTLconf(fp, "DELAY_STARTUP");
+
+	config.delay_startup = 0;
+	if(buffer != NULL && sscanf(buffer, "%u", &config.delay_startup) &&
+	   (config.delay_startup > 0 && config.delay_startup <= 300))
+	{
+		logg("   DELAY_STARTUP: Requested to wait %u seconds during startup.", config.delay_startup);
+	}
+	else
+		logg("   DELAY_STARTUP: No delay requested.");
+
 	// Read DEBUG_... setting from pihole-FTL.conf
 	read_debuging_settings(fp);
 
@@ -421,7 +435,6 @@ static char *parse_FTLconf(FILE *fp, const char * key)
 	// Go to beginning of file
 	fseek(fp, 0L, SEEK_SET);
 
-	size_t size = 0;
 	errno = 0;
 	while(getline(&conflinebuffer, &size, fp) != -1)
 	{

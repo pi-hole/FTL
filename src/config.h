@@ -21,6 +21,7 @@ typedef struct {
 	int DBinterval;
 	int port;
 	int maxlogage;
+	unsigned int delay_startup;
 	int16_t debug;
 	unsigned char privacylevel;
 	unsigned char blockingmode;

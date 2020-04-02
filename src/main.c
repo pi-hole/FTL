@@ -82,7 +82,8 @@ int main (int argc, char* argv[])
 	// immediately before starting the resolver.
 	check_capabilities();
 
-	// Start the resolver
+	// Start the resolver, delay startup if requested
+	delay_startup();
 	startup = false;
 	main_dnsmasq(argc_dnsmasq, argv_dnsmasq);
 

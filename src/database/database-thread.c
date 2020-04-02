@@ -25,14 +25,18 @@
 
 void *DB_thread(void *val)
 {
-	int lastDBsave = 0;
-
 	// Set thread name
 	prctl(PR_SET_NAME,"database",0,0,0);
 
+	// First check if the user doesn't want to use the database.
+	// If this is the case, we terminate the database thread as
+	// there is no point in having it around
+	if(!use_database())
+		return NULL;
+
 	// Save timestamp as we do not want to store immediately
 	// to the database
-	lastDBsave = time(NULL) - time(NULL)%config.DBinterval;
+	time_t lastDBsave = time(NULL) - time(NULL)%config.DBinterval;
 
 	while(!killed && database)
 	{

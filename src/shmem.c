@@ -33,6 +33,9 @@
 #define SHARED_DNS_CACHE "/FTL-dns-cache"
 #define SHARED_PER_CLIENT_REGEX "/FTL-per-client-regex"
 
+// Global counters struct
+countersStruct *counters = NULL;
+
 /// The pointer in shared memory to the shared string buffer
 static SharedMemory shm_lock = { 0 };
 static SharedMemory shm_strings = { 0 };

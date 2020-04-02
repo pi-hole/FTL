@@ -13,6 +13,8 @@
 #include "memory.h"
 #include "config.h"
 #include "log.h"
+// sleepms()
+#include "timers.h"
 
 void go_daemon(void)
 {
@@ -125,4 +127,17 @@ char *getUserName(void)
 	}
 
 	return name;
+}
+
+void delay_startup(void)
+{
+	// Exit early if not sleeping
+	if(config.delay_startup == 0u)
+		return;
+
+	// Sleep if requested by DELAY_STARTUP
+	logg("Sleeping for %d seconds as requested by configuration ...",
+	     config.delay_startup);
+	sleep(config.delay_startup);
+	logg("Done sleeping, continuing startup of resolver...\n");
 }

@@ -23,6 +23,8 @@
 // struct _res
 #include <resolv.h>
 
+static bool res_initialized = false;
+
 // Validate given hostname
 static bool valid_hostname(char* name, const char* clientip)
 {
@@ -82,6 +84,16 @@ static char *resolveHostname(const char *addr)
 		return hostname;
 	}
 
+	// Initialize resolver subroutines if trying to resolve for the first time
+	// res_init() reads resolv.conf to get the default domain name and name server
+	// address(es). If no server is given, the local host is tried. If no domain
+	// is given, that associated with the local host is used.
+	if(!res_initialized)
+	{
+		res_init();
+		res_initialized = true;
+	}
+
 	// Force last available (MAXNS-1) server used for lookups to 127.0.0.1 (FTL itself)
 	struct in_addr nsbck = { 0 };
 	// Back up corresponding ns record in _res and ...
@@ -99,12 +111,14 @@ static char *resolveHostname(const char *addr)
 	{
 		struct in6_addr ipaddr;
 		inet_pton(AF_INET6, addr, &ipaddr);
+		// Known to leak some tiny amounts of memory under certain conditions
 		he = gethostbyaddr(&ipaddr, sizeof ipaddr, AF_INET6);
 	}
 	else if(!IPv6 && config.resolveIPv4) // Resolve IPv4 address only if requested
 	{
 		struct in_addr ipaddr;
 		inet_pton(AF_INET, addr, &ipaddr);
+		// Known to leak some tiny amounts of memory under certain conditions
 		he = gethostbyaddr(&ipaddr, sizeof ipaddr, AF_INET);
 	}
 
@@ -173,6 +187,7 @@ static size_t resolveAndAddHostname(size_t ippos, size_t oldnamepos)
 		logg("Not adding \"%s\" to buffer (unchanged)", oldname);
 	}
 
+	free(newname);
 	free(ipaddr);
 	free(oldname);
 

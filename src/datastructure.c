@@ -159,7 +159,9 @@ int findClientID(const char *clientIP, const bool count)
 		}
 	}
 
-	// Proceed with adding a new client entry
+	// Return -1 (= not found) if count is false because we do not want to create a new client here
+	if(!count)
+		return -1;
 
 	// If we did not return until here, then this client is definitely new
 	// Store ID
@@ -179,7 +181,7 @@ int findClientID(const char *clientIP, const bool count)
 	// Set magic byte
 	client->magic = MAGICBYTE;
 	// Set its counter to 1
-	client->count = count ? 1 : 0;
+	client->count = 1;
 	// Initialize blocked count to zero
 	client->blockedcount = 0;
 	// Store client IP - no need to check for NULL here as it doesn't harm
@@ -200,6 +202,11 @@ int findClientID(const char *clientIP, const bool count)
 
 	// Increase counter by one
 	counters->clients++;
+
+	// NULL-initialize database client statements
+	client->gravity_stmt = NULL;
+	client->whitelist_stmt = NULL;
+	client->blacklist_stmt = NULL;
 
 	// Allocate regex substructure
 	allocate_regex_client_enabled(client, clientID);
@@ -369,8 +376,6 @@ void FTL_reload_all_domainlists(void)
 	// (Re-)open gravity database connection
 	gravityDB_close();
 	gravityDB_open();
-	// gravityDB_close() has finalized all prepared statements, reinitialize them
-	gravityDB_reload_client_statements();
 
 	// Reset number of blocked domains
 	counters->gravity = gravityDB_count(GRAVITY_TABLE);
