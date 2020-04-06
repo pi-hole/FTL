@@ -14,7 +14,6 @@
 // logg()
 #include "log.h"
 
-/********************************* type sqlite3_stmt_vec *********************************/
 sqlite3_stmt_vec *new_sqlite3_stmt_vec(unsigned int initial_size)
 {
 	if(config.debug & DEBUG_VECTORS)
@@ -36,9 +35,9 @@ static void resize_sqlite3_stmt_vec(sqlite3_stmt_vec *v, unsigned int capacity)
 	if(config.debug & DEBUG_VECTORS)
 		logg("Resizing sqlite3_stmt* vector %p from %u to %u", v, v->capacity, capacity);
 
-	// If ptr is NULL, the call to realloc(ptr, size) is
-	// equivalent to malloc(size) so we can use it also for
-	// initializing a vector for the first time.
+	// If ptr is NULL, the call to realloc(ptr, size) is equivalent to
+	// malloc(size) so we can use it also for initializing a vector for the
+	// first time.
 	sqlite3_stmt **items = realloc(v->items, sizeof(sqlite3_stmt *) * capacity);
 	if(!items)
 	{
@@ -73,8 +72,8 @@ void set_sqlite3_stmt_vec(sqlite3_stmt_vec *v, unsigned int index, sqlite3_stmt 
 	if(index >= v->capacity)
 	{
 		// Allocate more memory when trying to set a statement vector entry with
-		// an index larger than the current array size (this makes set an equivalent
-		// alternative to append)
+		// an index larger than the current array size (this makes set an
+		// equivalent alternative to append)
 		resize_sqlite3_stmt_vec(v, index + VEC_ALLOC_STEP);
 	}
 
@@ -82,9 +81,9 @@ void set_sqlite3_stmt_vec(sqlite3_stmt_vec *v, unsigned int index, sqlite3_stmt 
 	v->items[index] = item;
 }
 
-// This function has no effects except to return a value. It can
-// be subject to data flow analysis and might be eliminated.
-// Hence, we add the "pure" attribute to this function.
+// This function has no effects except to return a value. It can be subject to
+// data flow analysis and might be eliminated. Hence, we add the "pure"
+// attribute to this function.
 sqlite3_stmt * __attribute__((pure)) get_sqlite3_stmt_vec(sqlite3_stmt_vec *v, unsigned int index)
 {
 	if(v == NULL)
@@ -114,8 +113,7 @@ void free_sqlite3_stmt_vec(sqlite3_stmt_vec *v)
 
 	// Free elements of the vector...
 	free(v->items);
-	// ...and then then vector itself
+	// ...and then the vector itself
 	free(v);
 	v = NULL;
 }
-/********************************* type sqlite3_stmt_vec *********************************/

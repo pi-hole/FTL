@@ -23,9 +23,9 @@
 // SQLite3 prepared statement vectors
 #include "../vector.h"
 
-// Process-private prepared statements are used to support
-// multiple forks (might be TCP workers) to use the database
-// simultaneously without corrupting the gravity database
+// Process-private prepared statements are used to support multiple forks (might
+// be TCP workers) to use the database simultaneously without corrupting the
+// gravity database
 sqlite3_stmt_vec *whitelist_stmt = NULL;
 sqlite3_stmt_vec *gravity_stmt = NULL;
 sqlite3_stmt_vec *blacklist_stmt = NULL;
@@ -46,9 +46,8 @@ void rehash(int size);
 // Initialize gravity subroutines
 static void gravityDB_check_fork(void)
 {
-	// Memorize main process PID on first call
-	// of this funtion (guaranteed to be the
-	// main dnsmasq thread)
+	// Memorize main process PID on first call of this funtion (guaranteed to be
+	// the main dnsmasq thread)
 	if(main_process == 0)
 	{
 		main_process = getpid();
@@ -58,23 +57,19 @@ static void gravityDB_check_fork(void)
 	if(this_process == getpid())
 		return;
 
-	// If we reach this point, FTL forked to handle
-	// TCP connections with dedicated (forked) workers
-	// SQLite3's mentions that carrying an open database
-	// connection across a fork() can lead to all kinds
-	// of locking problems as SQLite3 was not intended
-	// to work under such circumstances. Doing so may
-	// easily lead to ending up with a corrupted database.
+	// If we reach this point, FTL forked to handle TCP connections with
+	// dedicated (forked) workers SQLite3's mentions that carrying an open
+	// database connection across a fork() can lead to all kinds of locking
+	// problems as SQLite3 was not intended to work under such circumstances.
+	// Doing so may easily lead to ending up with a corrupted database.
 	logg("Note: FTL forked to handle TCP requests");
 
-	// Memorize PID of this thread to avoid re-opening the
-	// gravity database connection multiple times for the
-	// same fork
+	// Memorize PID of this thread to avoid re-opening the gravity database
+	// connection multiple times for the same fork
 	this_process = getpid();
 
-	// Pretend that we did not open the database so far
-	// so it needs to be re-opened, also pretend we have
-	// not yet prepared the list statements
+	// Pretend that we did not open the database so far so it needs to be
+	// re-opened, also pretend we have not yet prepared the list statements
 	gravityDB_opened = false;
 	gravity_db = NULL;
 	whitelist_stmt = NULL;
@@ -327,7 +322,6 @@ bool gravityDB_prepare_client_statements(const int clientID, clientsData *client
 
 	// Get associated groups for this client (if defined)
 	char *querystr = NULL;
-	sqlite3_stmt* prep_stmp = NULL;
 	char *groups = NULL;
 	if(!get_client_groupids(client, &groups))
 		return false;
@@ -341,42 +335,43 @@ bool gravityDB_prepare_client_statements(const int clientID, clientsData *client
 	if(config.debug & DEBUG_DATABASE)
 		logg("gravityDB_open(): Preparing vw_whitelist statement for client %s", clientip);
 	querystr = get_client_querystr("vw_whitelist", groups);
-	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &prep_stmp, NULL);
+	sqlite3_stmt* stmt = NULL;
+	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
 		logg("gravityDB_open(\"SELECT EXISTS(... vw_whitelist ...)\") - SQL error prepare: %s", sqlite3_errstr(rc));
 		gravityDB_close();
 		return false;
 	}
-	whitelist_stmt->set(whitelist_stmt, clientID, prep_stmp);
+	whitelist_stmt->set(whitelist_stmt, clientID, stmt);
 	free(querystr);
 
 	// Prepare gravity statement
 	if(config.debug & DEBUG_DATABASE)
 		logg("gravityDB_open(): Preparing vw_gravity statement for client %s", clientip);
 	querystr = get_client_querystr("vw_gravity", groups);
-	rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &prep_stmp, NULL);
+	rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
 		logg("gravityDB_open(\"SELECT EXISTS(... vw_gravity ...)\") - SQL error prepare: %s", sqlite3_errstr(rc));
 		gravityDB_close();
 		return false;
 	}
-	gravity_stmt->set(gravity_stmt, clientID, prep_stmp);
+	gravity_stmt->set(gravity_stmt, clientID, stmt);
 	free(querystr);
 
 	// Prepare blacklist statement
 	if(config.debug & DEBUG_DATABASE)
 		logg("gravityDB_open(): Preparing vw_blacklist statement for client %s", clientip);
 	querystr = get_client_querystr("vw_blacklist", groups);
-	rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &prep_stmp, NULL);
+	rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
 		logg("gravityDB_open(\"SELECT EXISTS(... vw_blacklist ...)\") - SQL error prepare: %s", sqlite3_errstr(rc));
 		gravityDB_close();
 		return false;
 	}
-	blacklist_stmt->set(blacklist_stmt, clientID, prep_stmp);
+	blacklist_stmt->set(blacklist_stmt, clientID, stmt);
 	free(querystr);
 
 	// Free groups
@@ -385,6 +380,7 @@ bool gravityDB_prepare_client_statements(const int clientID, clientsData *client
 	return true;
 }
 
+// Finalize non-NULL prepared statements and set them to NULL for a given client
 static inline void gravityDB_finalize_client_statements(const int clientID)
 {
 	if(whitelist_stmt->get(whitelist_stmt, clientID) != NULL)
@@ -404,6 +400,7 @@ static inline void gravityDB_finalize_client_statements(const int clientID)
 	}
 }
 
+// Close gravity database connection
 void gravityDB_close(void)
 {
 	// Return early if gravity database is not available
@@ -432,9 +429,8 @@ void gravityDB_close(void)
 	gravityDB_opened = false;
 }
 
-// Prepare a SQLite3 statement which can be used by
-// gravityDB_getDomain() to get blocking domains from
-// a table which is specified when calling this function
+// Prepare a SQLite3 statement which can be used by gravityDB_getDomain() to get
+// blocking domains from a table which is specified when calling this function
 bool gravityDB_getTable(const unsigned char list)
 {
 	// First check if FTL forked to handle TCP connections
@@ -646,15 +642,15 @@ static bool domain_in_list(const char *domain, sqlite3_stmt* stmt, const char* l
 	if(config.debug & DEBUG_DATABASE)
 		logg("domain_in_list(\"%s\", %p, %s): %d", domain, stmt, listname, result);
 
-	// The sqlite3_reset() function is called to reset a prepared
-	// statement object back to its initial state, ready to be
-	// re-executed. Note: Any SQL statement variables that had values
-	// bound to them using the sqlite3_bind_*() API retain their values.
+	// The sqlite3_reset() function is called to reset a prepared statement
+	// object back to its initial state, ready to be re-executed. Note: Any SQL
+	// statement variables that had values bound to them using the
+	// sqlite3_bind_*() API retain their values.
 	sqlite3_reset(stmt);
 
-	// Contrary to the intuition of many, sqlite3_reset() does not reset
-	// the bindings on a prepared statement. Use this routine to reset
-	// all host parameters to NULL.
+	// Contrary to the intuition of many, sqlite3_reset() does not reset the
+	// bindings on a prepared statement. Use this routine to reset all host
+	// parameters to NULL.
 	sqlite3_clear_bindings(stmt);
 
 	// Return if domain was found in current table
