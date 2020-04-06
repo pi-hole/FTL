@@ -1726,3 +1726,18 @@ static void prepare_blocking_metadata(void)
 	// Free IPv6addr
 	clearSetupVarsArray();
 }
+
+// Called when a (forked) TCP worker is terminated by receiving SIGALRM
+// We close the dedicated database connection this client had opened
+// to avoid dangling database locks
+void FTL_TCP_worker_terminating(void)
+{
+	if(config.debug & DEBUG_DATABASE)
+	{
+		logg("TCP worker terminating, "
+		     "closing gravity database connection");
+	}
+
+	// Close dedicated database connection of this fork
+	gravityDB_close();
+}

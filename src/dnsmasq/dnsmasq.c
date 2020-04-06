@@ -1151,7 +1151,13 @@ static void sig_handler(int sig)
     {
       /* alarm is used to kill TCP children after a fixed time. */
       if (sig == SIGALRM)
-	_exit(0);
+        {
+	  /*** Pi-hole modification ***/
+	  // TCP workers ignore all signals except SIGALRM
+	  FTL_TCP_worker_terminating();
+	  /*** Pi-hole modification ***/
+	  _exit(0);
+        }
     }
   else
     {

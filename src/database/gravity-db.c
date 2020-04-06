@@ -26,8 +26,7 @@ static sqlite3 *gravity_db = NULL;
 static sqlite3_stmt* table_stmt = NULL;
 static sqlite3_stmt* auditlist_stmt = NULL;
 bool gravityDB_opened = false;
-static pid_t main_process = 0;
-static pid_t this_process = 0;
+static pid_t main_process = 0, this_process = 0;
 
 // Table names corresponding to the enum defined in gravity-db.h
 static const char* tablename[] = { "vw_gravity", "vw_blacklist", "vw_whitelist", "vw_regex_blacklist", "vw_regex_whitelist" , ""};
@@ -47,7 +46,7 @@ static void gravityDB_check_fork(void)
 		this_process = main_process;
 	}
 
-	if(main_process == getpid())
+	if(this_process == getpid())
 		return;
 
 	// If we reach this point, FTL forked to handle
@@ -57,6 +56,10 @@ static void gravityDB_check_fork(void)
 	// of locking problems as SQLite3 was not intended
 	// to work under such circumstances. Doing so may
 	// easily lead to ending up with a corrupted database.
+
+	// Memorize PID of this thread to avoid re-opening the
+	// gravity database connection multiple times for the
+	// same fork
 	this_process = getpid();
 
 	// Pretend that we did not open the database so far
