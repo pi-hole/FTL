@@ -51,7 +51,7 @@ static void resize_sqlite3_stmt_vec(sqlite3_stmt_vec *v, unsigned int capacity)
 	v->items = items;
 
 	// NULL-initialize newly allocated memory slots
-	for(unsigned int i = capacity - v->capacity; i < capacity; i++)
+	for(unsigned int i = v->capacity; i < capacity; i++)
 		v->items[i] = NULL;
 
 	// Update capacity
