@@ -69,6 +69,7 @@ enum {
   DEBUG_EXTBLOCKED    = (1 << 11), /* 00001000 00000000 */
   DEBUG_CAPS          = (1 << 12), /* 00010000 00000000 */
   DEBUG_DNSMASQ_LINES = (1 << 13), /* 00100000 00000000 */
+  DEBUG_VECTORS       = (1 << 14), /* 01000000 00000000 */
 };
 
 #endif //CONFIG_H

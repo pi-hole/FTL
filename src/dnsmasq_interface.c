@@ -189,14 +189,14 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 
 	// Check whitelist (exact + regex) for match
 	const char *domainString = getstr(domain->domainpos);
-	query->whitelisted = in_whitelist(domainString, client, clientID);
+	query->whitelisted = in_whitelist(domainString, clientID, client);
 
 	// Check domains against exact blacklist
 	// Skipped when the domain is whitelisted
 	bool blockDomain = false;
 	unsigned char new_status = QUERY_UNKNOWN;
 	if(!query->whitelisted &&
-	   in_blacklist(domainString, client))
+	   in_blacklist(domainString, clientID, client))
 	{
 		// We block this domain
 		blockDomain = true;
@@ -210,7 +210,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 	// Check domains against gravity domains
 	// Skipped when the domain is whitelisted or blocked by exact blacklist
 	if(!query->whitelisted && !blockDomain &&
-	   in_gravity(domainString, client))
+	   in_gravity(domainString, clientID, client))
 	{
 		// We block this domain
 		blockDomain = true;
