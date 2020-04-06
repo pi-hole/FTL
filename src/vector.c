@@ -43,7 +43,7 @@ static void resize_sqlite3_stmt_vec(sqlite3_stmt_vec *v, unsigned int capacity)
 	// equivalent to malloc(size) so we can use it also for
 	// initializing a vector for the first time.
 	sqlite3_stmt **items = realloc(v->items, sizeof(sqlite3_stmt *) * capacity);
-	if (!items)
+	if(!items)
 	{
 		logg("ERROR: Memory allocation failed in resize_sqlite3_stmt_vec(%p, %u)",
 		       v, capacity);
@@ -73,7 +73,7 @@ void append_sqlite3_stmt_vec(sqlite3_stmt_vec *v, sqlite3_stmt *item)
 	}
 
 	// Check if vector needs to be resized
-	if (v->capacity == v->size)
+	if(v->capacity == v->size)
 	{
 		resize_sqlite3_stmt_vec(v, v->capacity + VEC_ALLOC_STEP);
 	}
@@ -95,7 +95,7 @@ void set_sqlite3_stmt_vec(sqlite3_stmt_vec *v, unsigned int index, sqlite3_stmt 
 		return;
 	}
 
-	if (index >= v->size)
+	if(index >= v->size)
 	{
 		// Allocate more memory when trying to set a statement vector entry with
 		// an index larger than the current array size (this makes set an equivalent
@@ -119,11 +119,10 @@ sqlite3_stmt * __attribute__((pure)) get_sqlite3_stmt_vec(sqlite3_stmt_vec *v, u
 		return 0;
 	}
 
-	if (index >= v->size)
+	if(index >= v->size)
 	{
-		logg("ERROR: Boundary violation in get_sqlite3_stmt_vec(%p, %u)",
-		       v, index);
-		return 0;
+		// Silently increase size of vector if trying to read out-of-bounds
+		resize_sqlite3_stmt_vec(v, index + VEC_ALLOC_STEP);
 	}
 
 	sqlite3_stmt* item = v->items[index];
@@ -138,7 +137,7 @@ void del_sqlite3_stmt_vec(sqlite3_stmt_vec *v, unsigned int index)
 	if(config.debug & DEBUG_VECTORS)
 		logg("Deleting item at index %u of sqlite3_stmt* vector %p", index, v);
 
-	if (index >= v->size)
+	if(index >= v->size)
 		return;
 
 	// Use memmove to ensure there are no gaps in the vector
@@ -148,7 +147,7 @@ void del_sqlite3_stmt_vec(sqlite3_stmt_vec *v, unsigned int index)
 	v->size--;
 
 	// // Shorten vector to save some space
-	// if (v->size > 0u && v->size == v->capacity / 4)
+	// if(v->size > 0u && v->size == v->capacity / 4)
 	// {
 	// 	vResize(v, v->capacity / 2);
 	// }
