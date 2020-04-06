@@ -10,6 +10,9 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
+// typedef int16_t
+#include <sys/types.h>
+
 void getLogFilePath(void);
 void read_FTLconf(void);
 void get_privacy_level(FILE *fp);
