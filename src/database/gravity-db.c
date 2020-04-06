@@ -26,12 +26,45 @@ static sqlite3 *gravity_db = NULL;
 static sqlite3_stmt* table_stmt = NULL;
 static sqlite3_stmt* auditlist_stmt = NULL;
 bool gravityDB_opened = false;
+static pid_t main_process = 0;
+static pid_t this_process = 0;
 
 // Table names corresponding to the enum defined in gravity-db.h
 static const char* tablename[] = { "vw_gravity", "vw_blacklist", "vw_whitelist", "vw_regex_blacklist", "vw_regex_whitelist" , ""};
 
 // Prototypes from functions in dnsmasq's source
 void rehash(int size);
+
+// Initialize gravity subroutines
+static void gravityDB_check_fork(void)
+{
+	// Memorize main process PID on first call
+	// of this funtion (guaranteed to be the
+	// main dnsmasq thread)
+	if(main_process == 0)
+	{
+		main_process = getpid();
+		this_process = main_process;
+	}
+
+	if(main_process == getpid())
+		return;
+
+	// If we reach this point, FTL forked to handle
+	// TCP connections with dedicated (forked) workers
+	// SQLite3's mentions that carrying an open database
+	// connection across a fork() can lead to all kinds
+	// of locking problems as SQLite3 was not intended
+	// to work under such circumstances. Doing so may
+	// easily lead to ending up with a corrupted database.
+	this_process = getpid();
+
+	// Pretend that we did not open the database so far
+	gravityDB_opened = false;
+	gravity_db = NULL;
+
+	logg("Note: FTL forked to handle TCP requests");
+}
 
 // Open gravity database
 bool gravityDB_open(void)
@@ -378,6 +411,9 @@ void gravityDB_close(void)
 // a table which is specified when calling this function
 bool gravityDB_getTable(const unsigned char list)
 {
+	// First check if FTL forked to handle TCP connections
+	gravityDB_check_fork();
+
 	if(!gravityDB_opened && !gravityDB_open())
 	{
 		logg("gravityDB_getTable(%u): Gravity database not available", list);
@@ -602,6 +638,9 @@ static bool domain_in_list(const char *domain, sqlite3_stmt* stmt, const char* l
 
 inline bool in_whitelist(const char *domain, clientsData* client, const int clientID)
 {
+	// First check if FTL forked to handle TCP connections
+	gravityDB_check_fork();
+
 	// If client statement is not ready and cannot be initialized (e.g. no access to
 	// the database), we return false (not in whitelist) to prevent an FTL crash
 	if(client->whitelist_stmt == NULL && !gravityDB_prepare_client_statements(client))
@@ -622,6 +661,9 @@ inline bool in_whitelist(const char *domain, clientsData* client, const int clie
 
 inline bool in_gravity(const char *domain, clientsData* client)
 {
+	// First check if FTL forked to handle TCP connections
+	gravityDB_check_fork();
+
 	// If client statement is not ready and cannot be initialized (e.g. no access to
 	// the database), we return false (not in gravity list) to prevent an FTL crash
 	if(client->gravity_stmt == NULL && !gravityDB_prepare_client_statements(client))
@@ -635,6 +677,9 @@ inline bool in_gravity(const char *domain, clientsData* client)
 
 inline bool in_blacklist(const char *domain, clientsData* client)
 {
+	// First check if FTL forked to handle TCP connections
+	gravityDB_check_fork();
+
 	// If client statement is not ready and cannot be initialized (e.g. no access to
 	// the database), we return false (not in blacklist) to prevent an FTL crash
 	if(client->blacklist_stmt == NULL && !gravityDB_prepare_client_statements(client))
@@ -648,6 +693,9 @@ inline bool in_blacklist(const char *domain, clientsData* client)
 
 bool in_auditlist(const char *domain)
 {
+	// First check if FTL forked to handle TCP connections
+	gravityDB_check_fork();
+
 	// If audit list statement is not ready and cannot be initialized (e.g. no access
 	// to the database), we return false (not in audit list) to prevent an FTL crash
 	if(auditlist_stmt == NULL)
@@ -660,6 +708,9 @@ bool in_auditlist(const char *domain)
 bool gravityDB_get_regex_client_groups(clientsData* client, const int numregex, const int *regexid,
                                        const unsigned char type, const char* table, const int clientID)
 {
+	// First check if FTL forked to handle TCP connections
+	gravityDB_check_fork();
+
 	char *querystr = NULL;
 	char *groups = NULL;
 	if(!get_client_groupids(client, &groups))
