@@ -1151,7 +1151,13 @@ static void sig_handler(int sig)
     {
       /* alarm is used to kill TCP children after a fixed time. */
       if (sig == SIGALRM)
-	_exit(0);
+        {
+	  /*** Pi-hole modification ***/
+	  // TCP workers ignore all signals except SIGALRM
+	  FTL_TCP_worker_terminating();
+	  /*** Pi-hole modification ***/
+	  _exit(0);
+        }
     }
   else
     {
@@ -1478,8 +1484,10 @@ static void async_event(int pipe, time_t now)
 	
 	my_syslog(LOG_INFO, _("exiting on receipt of SIGTERM"));
 	flush_log();
+	/*** Pi-hole modification ***/
 //	exit(EC_GOOD);
 	terminate = 1;
+	/*** Pi-hole modification ***/
       }
 }
 
@@ -1816,6 +1824,10 @@ static void check_dns_listeners(time_t now)
 #ifndef NO_FORK		   
 	      if (!option_bool(OPT_DEBUG))
 		{
+		  /*** Pi-hole modification ***/
+		  // TCP workers ignore all signals except SIGALRM
+		  FTL_TCP_worker_terminating();
+		  /*** Pi-hole modification ***/
 		  flush_log();
 		  _exit(0);
 		}

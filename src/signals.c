@@ -77,7 +77,7 @@ static void __attribute__((noreturn)) SIGSEGV_handler(int sig, siginfo_t *si, vo
 
 	// Print message and abort
 	logg("FTL terminated!");
-	abort();
+	exit(EXIT_FAILURE);
 }
 
 static void SIGRT_handler(int signum, siginfo_t *si, void *unused)
