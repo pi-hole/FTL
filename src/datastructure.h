@@ -63,9 +63,6 @@ typedef struct {
 	size_t ippos;
 	size_t namepos;
 	time_t lastQuery;
-	sqlite3_stmt* whitelist_stmt;
-	sqlite3_stmt* gravity_stmt;
-	sqlite3_stmt* blacklist_stmt;
 } clientsData;
 
 typedef struct {

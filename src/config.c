@@ -647,6 +647,10 @@ void read_debuging_settings(FILE *fp)
 	extern char debug_dnsmasq_lines;
 	debug_dnsmasq_lines = config.debug & DEBUG_DNSMASQ_LINES ? 1 : 0;
 
+	// DEBUG_VECTORS
+	// defaults to: false
+	setDebugOption(fp, "DEBUG_VECTORS", DEBUG_VECTORS);
+
 	if(config.debug)
 	{
 		logg("*****************************");
@@ -665,6 +669,7 @@ void read_debuging_settings(FILE *fp)
 		logg("* DEBUG_EXTBLOCKED      %s *", (config.debug & DEBUG_EXTBLOCKED)? "YES":"NO ");
 		logg("* DEBUG_CAPS            %s *", (config.debug & DEBUG_CAPS)? "YES":"NO ");
 		logg("* DEBUG_DNSMASQ_LINES   %s *", (config.debug & DEBUG_DNSMASQ_LINES)? "YES":"NO ");
+		logg("* DEBUG_VECTORS         %s *", (config.debug & DEBUG_VECTORS)? "YES":"NO ");
 		logg("*****************************");
 	}
 
