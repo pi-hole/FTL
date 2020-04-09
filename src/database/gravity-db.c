@@ -126,7 +126,27 @@ bool gravityDB_open(void)
 	// Prepare audit statement
 	if(config.debug & DEBUG_DATABASE)
 		logg("gravityDB_open(): Preparing audit query");
-	rc = sqlite3_prepare_v2(gravity_db, "SELECT EXISTS(SELECT domain from domain_audit WHERE domain = ?);", -1, &auditlist_stmt, NULL);
+
+	// We support adding audit domains with a wildcard character (*)
+	// Example 1: google.de
+	//            matches only google.de
+	// Example 2: *.google.de
+	//            matches all subdomains of google.de
+	//            BUT NOT google.de itself
+	// Example 3: *google.de
+	//            matches 'google.de' and all of its subdomains but
+	//            also other domains starting in google.de, like
+	//            abcgoogle.de
+	rc = sqlite3_prepare_v2(gravity_db,
+	        "SELECT EXISTS("
+	          "SELECT domain, "
+	            "CASE WHEN substr(domain, 1, 1) = '*' " // Does the database string start in '*' ?
+	              "THEN '*' || substr(:input, - length(domain) + 1) " // If so: Crop the input domain and prepend '*'
+	              "ELSE :input " // If not: Use input domain directly for comparison
+	            "END matcher "
+	          "FROM domain_audit WHERE matcher = domain" // Match where (modified) domain equals the database domain
+	        ");", -1, &auditlist_stmt, NULL);
+
 	if( rc != SQLITE_OK )
 	{
 		logg("gravityDB_open(\"SELECT EXISTS(... domain_audit ...)\") - SQL error prepare: %s", sqlite3_errstr(rc));
@@ -607,6 +627,10 @@ static bool domain_in_list(const char *domain, sqlite3_stmt* stmt, const char* l
 	// Bind domain to prepared statement
 	// SQLITE_STATIC: Use the string without first duplicating it internally.
 	// We can do this as domain has dynamic scope that exceeds that of the binding.
+	// We need to bind the domain onl once even to the prepared audit statement as:
+	//     When the same named SQL parameter is used more than once, second and
+	//     subsequent occurrences have the same index as the first occurrence.
+	//     (https://www.sqlite.org/c3ref/bind_blob.html)
 	if((rc = sqlite3_bind_text(stmt, 1, domain, -1, SQLITE_STATIC)) != SQLITE_OK)
 	{
 		logg("domain_in_list(\"%s\", %p, %s): Failed to bind domain: %s",
