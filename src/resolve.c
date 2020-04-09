@@ -36,7 +36,7 @@ static bool valid_hostname(char* name, const char* clientip)
 	// Truncate if too long (MAXHOSTNAMELEN defaults to 64, see asm-generic/param.h)
 	if(strlen(name) > MAXHOSTNAMELEN)
 	{
-		logg("WARN: Hostname of client %s too long, truncating to %d chars!",
+		logg("WARNING: Hostname of client %s too long, truncating to %d chars!",
 		     clientip, MAXHOSTNAMELEN);
 		// We can modify the string in-place as the target is
 		// shorter than the source
@@ -69,7 +69,9 @@ static void print_used_resolvers(const char *message)
 {
 	logg("%s", message);
 	for(unsigned int i = 0u; i < MAXNS; i++)
-		logg(" %u: %s", i, inet_ntoa(_res.nsaddr_list[i].sin_addr));
+		logg(" %u: %s:%d", i,
+		     inet_ntoa(_res.nsaddr_list[i].sin_addr),
+		     ntohs(_res.nsaddr_list[i].sin_port));
 }
 
 static char *resolveHostname(const char *addr)
@@ -129,8 +131,14 @@ static char *resolveHostname(const char *addr)
 		_res.nsaddr_list[i].sin_addr.s_addr = 0; // 0.0.0.0
 	}
 	// Step 2: Set 127.0.0.1 (FTL) as the only resolver
-	inet_pton(AF_INET, "127.0.0.1", &_res.nsaddr_list[0].sin_addr);
-	_res.nsaddr_list[0].sin_port = config.dns_port;
+	const char *FTLip = "127.0.0.1";
+	// Set resolver address
+	inet_pton(AF_INET, FTLip, &_res.nsaddr_list[0].sin_addr);
+	// Set resolver port (have to convert from host to network byte order)
+	_res.nsaddr_list[0].sin_port = htons(config.dns_port);
+
+	if(config.debug & DEBUG_RESOLVER)
+		print_used_resolvers("Setting nameservers to:");
 
 	// Step 3: Try to resolve addresses
 	if(IPv6) // Resolve IPv6 address
@@ -140,7 +148,7 @@ static char *resolveHostname(const char *addr)
 		// Known to leak some tiny amounts of memory under certain conditions
 		he = gethostbyaddr(&ipaddr, sizeof ipaddr, AF_INET6);
 	}
-	else if(!IPv6) // Resolve IPv4 address
+	else // Resolve IPv4 address
 	{
 		struct in_addr ipaddr;
 		inet_pton(AF_INET, addr, &ipaddr);
@@ -176,6 +184,8 @@ static char *resolveHostname(const char *addr)
 		_res.nsaddr_list[i].sin_addr = ns_addr_bck[i];
 		_res.nsaddr_list[i].sin_port = ns_port_bck[i];
 	}
+	if(config.debug & DEBUG_RESOLVER)
+		print_used_resolvers("Setting nameservers back to default:");
 
 	// Step 6: If no host name was found before, try again with system-configured
 	// resolvers (necessary for docker and friends)
@@ -195,10 +205,6 @@ static char *resolveHostname(const char *addr)
 			// Known to leak some tiny amounts of memory under certain conditions
 			he = gethostbyaddr(&ipaddr, sizeof ipaddr, AF_INET);
 		}
-
-		// Log used resolvers when in debug mode
-		if(config.debug & DEBUG_RESOLVER)
-			print_used_resolvers("No host name known to FTL, trying other servers as mandated by resolv.conf:");
 
 		// Step 6.1: Check if gethostbyaddr() returned a host name this time
 		// First check for he not being NULL before trying to dereference it
