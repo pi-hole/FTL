@@ -24,6 +24,7 @@ typedef struct {
 	int DBinterval;
 	int port;
 	int maxlogage;
+	int dns_port;
 	unsigned int delay_startup;
 	int16_t debug;
 	unsigned char privacylevel;
@@ -73,6 +74,7 @@ enum {
   DEBUG_CAPS          = (1 << 12), /* 00010000 00000000 */
   DEBUG_DNSMASQ_LINES = (1 << 13), /* 00100000 00000000 */
   DEBUG_VECTORS       = (1 << 14), /* 01000000 00000000 */
+  DEBUG_RESOLVER      = (1 << 15), /* 10000000 00000000 */
 };
 
 #endif //CONFIG_H
