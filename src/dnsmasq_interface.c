@@ -1617,6 +1617,9 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 			     ent_pw->pw_uid, ent_pw->pw_gid, FTLfiles.FTL_db, strerror(errno), errno);
 		chown_all_shmem(ent_pw);
 	}
+
+	// Obtain DNS port from dnsmasq daemon
+	config.dns_port = daemon->port;
 }
 
 // int cache_inserted, cache_live_freed are defined in dnsmasq/cache.c

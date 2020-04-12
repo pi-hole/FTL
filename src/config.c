@@ -651,6 +651,10 @@ void read_debuging_settings(FILE *fp)
 	// defaults to: false
 	setDebugOption(fp, "DEBUG_VECTORS", DEBUG_VECTORS);
 
+	// DEBUG_RESOLVER
+	// defaults to: false
+	setDebugOption(fp, "DEBUG_RESOLVER", DEBUG_RESOLVER);
+
 	if(config.debug)
 	{
 		logg("*****************************");
@@ -670,6 +674,7 @@ void read_debuging_settings(FILE *fp)
 		logg("* DEBUG_CAPS            %s *", (config.debug & DEBUG_CAPS)? "YES":"NO ");
 		logg("* DEBUG_DNSMASQ_LINES   %s *", (config.debug & DEBUG_DNSMASQ_LINES)? "YES":"NO ");
 		logg("* DEBUG_VECTORS         %s *", (config.debug & DEBUG_VECTORS)? "YES":"NO ");
+		logg("* DEBUG_RESOLVER        %s *", (config.debug & DEBUG_RESOLVER)? "YES":"NO ");
 		logg("*****************************");
 	}
 

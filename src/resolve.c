@@ -36,7 +36,7 @@ static bool valid_hostname(char* name, const char* clientip)
 	// Truncate if too long (MAXHOSTNAMELEN defaults to 64, see asm-generic/param.h)
 	if(strlen(name) > MAXHOSTNAMELEN)
 	{
-		logg("WARN: Hostname of client %s too long, truncating to %d chars!",
+		logg("WARNING: Hostname of client %s too long, truncating to %d chars!",
 		     clientip, MAXHOSTNAMELEN);
 		// We can modify the string in-place as the target is
 		// shorter than the source
@@ -65,14 +65,23 @@ static bool valid_hostname(char* name, const char* clientip)
 	return true;
 }
 
+static void print_used_resolvers(const char *message)
+{
+	logg("%s", message);
+	for(unsigned int i = 0u; i < MAXNS; i++)
+		logg(" %u: %s:%d", i,
+		     inet_ntoa(_res.nsaddr_list[i].sin_addr),
+		     ntohs(_res.nsaddr_list[i].sin_port));
+}
+
 static char *resolveHostname(const char *addr)
 {
 	// Get host name
 	struct hostent *he = NULL;
-	char *hostname = NULL;;
+	char *hostname = NULL;
 	bool IPv6 = false;
 
-	if(config.debug & DEBUG_API)
+	if(config.debug & DEBUG_RESOLVER)
 		logg("Trying to resolve %s", addr);
 
 	// Check if this is a hidden client
@@ -80,8 +89,26 @@ static char *resolveHostname(const char *addr)
 	if(strcmp(addr, "0.0.0.0") == 0)
 	{
 		hostname = strdup("hidden");
-		//if(hostname == NULL) return NULL;
+		if(config.debug & DEBUG_RESOLVER)
+			logg("---> \"%s\" (privacy settings)", hostname);
 		return hostname;
+	}
+
+	// Test if we want to resolve an IPv6 address
+	if(strstr(addr,":") != NULL)
+	{
+		IPv6 = true;
+	}
+
+	if( (IPv6 && !config.resolveIPv6) ||
+	   (!IPv6 && !config.resolveIPv4))
+	{
+		if(config.debug & DEBUG_RESOLVER)
+		{
+			logg(" ---> \"\" (configured to not resolve %s host names)",
+			     IPv6 ? "IPv6" : "IPv4");
+			return strdup("");
+		}
 	}
 
 	// Initialize resolver subroutines if trying to resolve for the first time
@@ -94,27 +121,34 @@ static char *resolveHostname(const char *addr)
 		res_initialized = true;
 	}
 
-	// Force last available (MAXNS-1) server used for lookups to 127.0.0.1 (FTL itself)
-	struct in_addr nsbck = { 0 };
-	// Back up corresponding ns record in _res and ...
-	nsbck = _res.nsaddr_list[MAXNS-1].sin_addr;
-	// ... force FTL resolver to 127.0.0.1
-	inet_pton(AF_INET, "127.0.0.1", &_res.nsaddr_list[MAXNS-1].sin_addr);
-
-	// Test if we want to resolve an IPv6 address
-	if(strstr(addr,":") != NULL)
+	// Step 1: Backup configured name servers and invalidate them
+	struct in_addr ns_addr_bck[MAXNS];
+	in_port_t ns_port_bck[MAXNS];
+	for(unsigned int i = 0u; i < MAXNS; i++)
 	{
-		IPv6 = true;
+		ns_addr_bck[i] = _res.nsaddr_list[i].sin_addr;
+		ns_port_bck[i] = _res.nsaddr_list[i].sin_port;
+		_res.nsaddr_list[i].sin_addr.s_addr = 0; // 0.0.0.0
 	}
+	// Step 2: Set 127.0.0.1 (FTL) as the only resolver
+	const char *FTLip = "127.0.0.1";
+	// Set resolver address
+	inet_pton(AF_INET, FTLip, &_res.nsaddr_list[0].sin_addr);
+	// Set resolver port (have to convert from host to network byte order)
+	_res.nsaddr_list[0].sin_port = htons(config.dns_port);
 
-	if(IPv6 && config.resolveIPv6) // Resolve IPv6 address only if requested
+	if(config.debug & DEBUG_RESOLVER)
+		print_used_resolvers("Setting nameservers to:");
+
+	// Step 3: Try to resolve addresses
+	if(IPv6) // Resolve IPv6 address
 	{
 		struct in6_addr ipaddr;
 		inet_pton(AF_INET6, addr, &ipaddr);
 		// Known to leak some tiny amounts of memory under certain conditions
 		he = gethostbyaddr(&ipaddr, sizeof ipaddr, AF_INET6);
 	}
-	else if(!IPv6 && config.resolveIPv4) // Resolve IPv4 address only if requested
+	else // Resolve IPv4 address
 	{
 		struct in_addr ipaddr;
 		inet_pton(AF_INET, addr, &ipaddr);
@@ -122,24 +156,86 @@ static char *resolveHostname(const char *addr)
 		he = gethostbyaddr(&ipaddr, sizeof ipaddr, AF_INET);
 	}
 
+	// Step 4: Check if gethostbyaddr() returned a host name
 	// First check for he not being NULL before trying to dereference it
-	if(he != NULL && valid_hostname(he->h_name, addr))
+	if(he != NULL)
 	{
-		// Return hostname copied to new memory location
-		hostname = strdup(he->h_name);
+		if(valid_hostname(he->h_name, addr))
+		{
+			// Return hostname copied to new memory location
+			hostname = strdup(he->h_name);
 
-		// Convert hostname to lower case
-		if(hostname != NULL)
-			strtolower(hostname);
+			// Convert hostname to lower case
+			if(hostname != NULL)
+				strtolower(hostname);
+		}
+		else
+		{
+			hostname = strdup("[invalid host name]");
+		}
+
+		if(config.debug & DEBUG_RESOLVER)
+			logg(" ---> \"%s\" (found internally)", hostname);
 	}
-	else
+
+	// Step 5: Restore resolvers (without forced FTL)
+	for(unsigned int i = 0u; i < MAXNS; i++)
 	{
-		// No (he == NULL) or invalid (valid_hostname returned false) hostname found
-		hostname = strdup("");
+		_res.nsaddr_list[i].sin_addr = ns_addr_bck[i];
+		_res.nsaddr_list[i].sin_port = ns_port_bck[i];
 	}
+	if(config.debug & DEBUG_RESOLVER)
+		print_used_resolvers("Setting nameservers back to default:");
 
-	// Restore ns record in _res
-	_res.nsaddr_list[MAXNS-1].sin_addr = nsbck;
+	// Step 6: If no host name was found before, try again with system-configured
+	// resolvers (necessary for docker and friends)
+	if(hostname == NULL)
+	{
+		if(IPv6) // Resolve IPv6 address
+		{
+			struct in6_addr ipaddr;
+			inet_pton(AF_INET6, addr, &ipaddr);
+			// Known to leak some tiny amounts of memory under certain conditions
+			he = gethostbyaddr(&ipaddr, sizeof ipaddr, AF_INET6);
+		}
+		else // Resolve IPv4 address
+		{
+			struct in_addr ipaddr;
+			inet_pton(AF_INET, addr, &ipaddr);
+			// Known to leak some tiny amounts of memory under certain conditions
+			he = gethostbyaddr(&ipaddr, sizeof ipaddr, AF_INET);
+		}
+
+		// Step 6.1: Check if gethostbyaddr() returned a host name this time
+		// First check for he not being NULL before trying to dereference it
+		if(he != NULL)
+		{
+			if(valid_hostname(he->h_name, addr))
+			{
+				// Return hostname copied to new memory location
+				hostname = strdup(he->h_name);
+
+				// Convert hostname to lower case
+				if(hostname != NULL)
+					strtolower(hostname);
+			}
+			else
+			{
+				hostname = strdup("[invalid host name]");
+			}
+
+			if(config.debug & DEBUG_RESOLVER)
+				logg(" ---> \"%s\" (found externally)", hostname);
+		}
+		else
+		{
+			// No (he == NULL) or invalid (valid_hostname returned false) hostname found
+			hostname = strdup("");
+
+			if(config.debug & DEBUG_RESOLVER)
+				logg(" ---> \"%s\" (%s)", hostname, he != NULL ? he->h_name : "N/A");
+		}
+	}
 
 	// Return result
 	return hostname;
@@ -241,7 +337,7 @@ void resolveClients(const bool onlynew)
 		unlock_shm();
 	}
 
-	if(config.debug & DEBUG_API)
+	if(config.debug & DEBUG_RESOLVER)
 	{
 		logg("%i / %i client host names resolved",
 		     clientscount-skipped, clientscount);
@@ -294,7 +390,7 @@ void resolveForwardDestinations(const bool onlynew)
 		unlock_shm();
 	}
 
-	if(config.debug & DEBUG_API)
+	if(config.debug & DEBUG_RESOLVER)
 	{
 		logg("%i / %i upstream server host names resolved",
 		     upstreams-skipped, upstreams);
