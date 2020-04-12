@@ -47,14 +47,14 @@ static void query_blocked(queriesData* query, domainsData* domain, clientsData* 
 
 // Static blocking metadata (stored precomputed as time-critical)
 static unsigned int blocking_flags = 0;
-static struct all_addr blocking_addrp_v4 = {{{ 0 }}};
-static struct all_addr blocking_addrp_v6 = {{{ 0 }}};
+static union all_addr blocking_addrp_v4 = {{ 0 }};
+static union all_addr blocking_addrp_v6 = {{ 0 }};
 
 // Adds debug information to the regular pihole.log file
 char debug_dnsmasq_lines = 0;
 
 unsigned char* pihole_privacylevel = &config.privacylevel;
-const char flagnames[28][12] = {"F_IMMORTAL ", "F_NAMEP ", "F_REVERSE ", "F_FORWARD ", "F_DHCP ", "F_NEG ", "F_HOSTS ", "F_IPV4 ", "F_IPV6 ", "F_BIGNAME ", "F_NXDOMAIN ", "F_CNAME ", "F_DNSKEY ", "F_CONFIG ", "F_DS ", "F_DNSSECOK ", "F_UPSTREAM ", "F_RRNAME ", "F_SERVER ", "F_QUERY ", "F_NOERR ", "F_AUTH ", "F_DNSSEC ", "F_KEYTAG ", "F_SECSTAT ", "F_NO_RR ", "F_IPSET ", "F_NOEXTRA "};
+const char flagnames[][12] = {"F_IMMORTAL ", "F_NAMEP ", "F_REVERSE ", "F_FORWARD ", "F_DHCP ", "F_NEG ", "F_HOSTS ", "F_IPV4 ", "F_IPV6 ", "F_BIGNAME ", "F_NXDOMAIN ", "F_CNAME ", "F_DNSKEY ", "F_CONFIG ", "F_DS ", "F_DNSSECOK ", "F_UPSTREAM ", "F_RRNAME ", "F_SERVER ", "F_QUERY ", "F_NOERR ", "F_AUTH ", "F_DNSSEC ", "F_KEYTAG ", "F_SECSTAT ", "F_NO_RR ", "F_IPSET ", "F_NOEXTRA ", "F_SERVFAIL", "F_RCODE"};
 
 static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const char **blockingreason,
                                 const char* file, const int line)
@@ -377,7 +377,7 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 
 
 bool _FTL_new_query(const unsigned int flags, const char *name,
-                    const char **blockingreason, const struct all_addr *addr,
+                    const char **blockingreason, const union all_addr *addr,
                     const char *types, const int id, const char type,
                     const char* file, const int line)
 {
@@ -575,7 +575,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	return blockDomain;
 }
 
-void _FTL_get_blocking_metadata(struct all_addr **addrp, unsigned int *flags, const char* file, const int line)
+void _FTL_get_blocking_metadata(union all_addr **addrp, unsigned int *flags, const char* file, const int line)
 {
 	// Add flags according to current blocking mode
 	// We bit-add here as flags already contains either F_IPV4 or F_IPV6
@@ -636,7 +636,7 @@ static int findQueryID(const int id)
 	return -1;
 }
 
-void _FTL_forwarded(const unsigned int flags, const char *name, const struct all_addr *addr, const int id,
+void _FTL_forwarded(const unsigned int flags, const char *name, const union all_addr *addr, const int id,
                     const char* file, const int line)
 {
 	// Save that this query got forwarded to an upstream server
@@ -787,7 +787,7 @@ void FTL_dnsmasq_reload(void)
 		check_capabilities();
 }
 
-void _FTL_reply(const unsigned short flags, const char *name, const struct all_addr *addr, const int id,
+void _FTL_reply(const unsigned short flags, const char *name, const union all_addr *addr, const int id,
                 const char* file, const int line)
 {
 	// Don't analyze anything if in PRIVACY_NOSTATS mode
@@ -1094,7 +1094,7 @@ static void query_externally_blocked(const int queryID, const unsigned char stat
 	query_blocked(query, domain, client, status);
 }
 
-void _FTL_cache(const unsigned int flags, const char *name, const struct all_addr *addr,
+void _FTL_cache(const unsigned int flags, const char *name, const union all_addr *addr,
                 const char *arg, const int id, const char* file, const int line)
 {
 	// Save that this query got answered from cache

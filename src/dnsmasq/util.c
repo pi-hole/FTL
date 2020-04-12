@@ -1,4 +1,4 @@
-/* dnsmasq is Copyright (c) 2000-2018 Simon Kelley
+/* dnsmasq is Copyright (c) 2000-2020 Simon Kelley
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -28,6 +28,10 @@
 #include <idn2.h>
 #elif defined(HAVE_IDN)
 #include <idna.h>
+#endif
+
+#ifdef HAVE_LINUX_NETWORK
+#include <sys/utsname.h>
 #endif
 
 /* SURF random number generator */
@@ -320,13 +324,12 @@ int sockaddr_isequal(union mysockaddr *s1, union mysockaddr *s2)
 	  s1->in.sin_port == s2->in.sin_port &&
 	  s1->in.sin_addr.s_addr == s2->in.sin_addr.s_addr)
 	return 1;
-#ifdef HAVE_IPV6      
+      
       if (s1->sa.sa_family == AF_INET6 &&
 	  s1->in6.sin6_port == s2->in6.sin6_port &&
 	  s1->in6.sin6_scope_id == s2->in6.sin6_scope_id &&
 	  IN6_ARE_ADDR_EQUAL(&s1->in6.sin6_addr, &s2->in6.sin6_addr))
 	return 1;
-#endif
     }
   return 0;
 }
@@ -336,11 +339,9 @@ int sa_len(union mysockaddr *addr)
 #ifdef HAVE_SOCKADDR_SA_LEN
   return addr->sa.sa_len;
 #else
-#ifdef HAVE_IPV6
   if (addr->sa.sa_family == AF_INET6)
     return sizeof(addr->in6);
   else
-#endif
     return sizeof(addr->in); 
 #endif
 }
@@ -437,7 +438,6 @@ int is_same_net(struct in_addr a, struct in_addr b, struct in_addr mask)
   return (a.s_addr & mask.s_addr) == (b.s_addr & mask.s_addr);
 } 
 
-#ifdef HAVE_IPV6
 int is_same_net6(struct in6_addr *a, struct in6_addr *b, int prefixlen)
 {
   int pfbytes = prefixlen >> 3;
@@ -476,15 +476,12 @@ void setaddr6part(struct in6_addr *addr, u64 host)
     }
 }
 
-#endif
- 
 
 /* returns port number from address */
 int prettyprint_addr(union mysockaddr *addr, char *buf)
 {
   int port = 0;
   
-#ifdef HAVE_IPV6
   if (addr->sa.sa_family == AF_INET)
     {
       inet_ntop(AF_INET, &addr->in.sin_addr, buf, ADDRSTRLEN);
@@ -503,10 +500,6 @@ int prettyprint_addr(union mysockaddr *addr, char *buf)
 	}
       port = ntohs(addr->in6.sin6_port);
     }
-#else
-  strcpy(buf, inet_ntoa(addr->in.sin_addr));
-  port = ntohs(addr->in.sin_port); 
-#endif
   
   return port;
 }
@@ -535,20 +528,20 @@ void prettyprint_time(char *buf, unsigned int t)
 int parse_hex(char *in, unsigned char *out, int maxlen, 
 	      unsigned int *wildcard_mask, int *mac_type)
 {
-  int mask = 0, i = 0;
+  int done = 0, mask = 0, i = 0;
   char *r;
     
   if (mac_type)
     *mac_type = 0;
   
-  while (maxlen == -1 || i < maxlen)
+  while (!done && (maxlen == -1 || i < maxlen))
     {
       for (r = in; *r != 0 && *r != ':' && *r != '-' && *r != ' '; r++)
 	if (*r != '*' && !isxdigit((unsigned char)*r))
 	  return -1;
       
       if (*r == 0)
-	maxlen = i;
+	done = 1;
       
       if (r != in )
 	{
@@ -716,6 +709,47 @@ int read_write(int fd, unsigned char *packet, int size, int rw)
   return 1;
 }
 
+/* close all fds except STDIN, STDOUT and STDERR, spare1, spare2 and spare3 */
+void close_fds(long max_fd, int spare1, int spare2, int spare3) 
+{
+  /* On Linux, use the /proc/ filesystem to find which files
+     are actually open, rather than iterate over the whole space,
+     for efficiency reasons. If this fails we drop back to the dumb code. */
+#ifdef HAVE_LINUX_NETWORK 
+  DIR *d;
+  
+  if ((d = opendir("/proc/self/fd")))
+    {
+      struct dirent *de;
+
+      while ((de = readdir(d)))
+	{
+	  long fd;
+	  char *e = NULL;
+	  
+	  errno = 0;
+	  fd = strtol(de->d_name, &e, 10);
+	  	  
+      	  if (errno != 0 || !e || *e || fd == dirfd(d) ||
+	      fd == STDOUT_FILENO || fd == STDERR_FILENO || fd == STDIN_FILENO ||
+	      fd == spare1 || fd == spare2 || fd == spare3)
+	    continue;
+	  
+	  close(fd);
+	}
+      
+      closedir(d);
+      return;
+  }
+#endif
+
+  /* fallback, dumb code. */
+  for (max_fd--; max_fd >= 0; max_fd--)
+    if (max_fd != STDOUT_FILENO && max_fd != STDERR_FILENO && max_fd != STDIN_FILENO &&
+	max_fd != spare1 && max_fd != spare2 && max_fd != spare3)
+      close(max_fd);
+}
+
 /* Basically match a string value against a wildcard pattern.  */
 int wildcard_match(const char* wildcard, const char* match)
 {
@@ -752,3 +786,22 @@ int wildcard_matchn(const char* wildcard, const char* match, int num)
 
   return (!num) || (*wildcard == *match);
 }
+
+#ifdef HAVE_LINUX_NETWORK
+int kernel_version(void)
+{
+  struct utsname utsname;
+  int version;
+  char *split;
+  
+  if (uname(&utsname) < 0)
+    die(_("failed to find kernel version: %s"), NULL, EC_MISC);
+  
+  split = strtok(utsname.release, ".");
+  version = (split ? atoi(split) : 0);
+  split = strtok(NULL, ".");
+  version = version * 256 + (split ? atoi(split) : 0);
+  split = strtok(NULL, ".");
+  return version * 256 + (split ? atoi(split) : 0);
+}
+#endif

@@ -1,4 +1,4 @@
-/* dnsmasq is Copyright (c) 2000-2018 Simon Kelley
+/* dnsmasq is Copyright (c) 2000-2020 Simon Kelley
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -15,8 +15,6 @@
 */
 
 #include "dnsmasq.h"
-
-#ifdef HAVE_DNSSEC
 
 static struct blockdata *keyblock_free;
 static unsigned int blockdata_count, blockdata_hwm, blockdata_alloced;
@@ -54,14 +52,13 @@ void blockdata_init(void)
 
 void blockdata_report(void)
 {
-  if (option_bool(OPT_DNSSEC_VALID))
-    my_syslog(LOG_INFO, _("DNSSEC memory in use %u, max %u, allocated %u"), 
-	      blockdata_count * sizeof(struct blockdata),  
-	      blockdata_hwm * sizeof(struct blockdata),  
-	      blockdata_alloced * sizeof(struct blockdata));
+  my_syslog(LOG_INFO, _("pool memory in use %u, max %u, allocated %u"), 
+	    blockdata_count * sizeof(struct blockdata),  
+	    blockdata_hwm * sizeof(struct blockdata),  
+	    blockdata_alloced * sizeof(struct blockdata));
 } 
 
-struct blockdata *blockdata_alloc(char *data, size_t len)
+static struct blockdata *blockdata_alloc_real(int fd, char *data, size_t len)
 {
   struct blockdata *block, *ret = NULL;
   struct blockdata **prev = &ret;
@@ -89,8 +86,17 @@ struct blockdata *blockdata_alloc(char *data, size_t len)
 	blockdata_hwm = blockdata_count; 
       
       blen = len > KEYBLOCK_LEN ? KEYBLOCK_LEN : len;
-      memcpy(block->key, data, blen);
-      data += blen;
+      if (data)
+	{
+	  memcpy(block->key, data, blen);
+	  data += blen;
+	}
+      else if (!read_write(fd, block->key, blen, 1))
+	{
+	  /* failed read free partial chain */
+	  blockdata_free(ret);
+	  return NULL;
+	}
       len -= blen;
       *prev = block;
       prev = &block->next;
@@ -100,6 +106,10 @@ struct blockdata *blockdata_alloc(char *data, size_t len)
   return ret;
 }
 
+struct blockdata *blockdata_alloc(char *data, size_t len)
+{
+  return blockdata_alloc_real(0, data, len);
+}
 
 void blockdata_free(struct blockdata *blocks)
 {
@@ -148,5 +158,20 @@ void *blockdata_retrieve(struct blockdata *block, size_t len, void *data)
 
   return data;
 }
- 
-#endif
+
+
+void blockdata_write(struct blockdata *block, size_t len, int fd)
+{
+  for (; len > 0 && block; block = block->next)
+    {
+      size_t blen = len > KEYBLOCK_LEN ? KEYBLOCK_LEN : len;
+      read_write(fd, block->key, blen, 0);
+      len -= blen;
+    }
+}
+
+struct blockdata *blockdata_read(int fd, size_t len)
+{
+  return blockdata_alloc_real(fd, NULL, len);
+}
+
