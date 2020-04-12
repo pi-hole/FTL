@@ -11,7 +11,7 @@
 IDIR = src
 ODIR = build
 
-DNSMASQ_VERSION = "pi-hole-2.80"
+DNSMASQ_VERSION = "pi-hole-2.81"
 DNSMASQ_OPTS = -DHAVE_DNSSEC -DHAVE_DNSSEC_STATIC
 # Flags for compiling with libidn : -DHAVE_IDN
 # Flags for compiling with libidn2: -DHAVE_LIBIDN2 -DIDN2_VERSION_NUMBER=0x02000003
