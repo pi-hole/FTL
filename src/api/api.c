@@ -624,6 +624,8 @@ void getAllQueries(const char *client_message, const int *sock)
 	// Do we want a more specific version of this command (domain/client/time interval filtered)?
 	int from = 0, until = 0;
 
+	bool showpermitted = true, showblocked = true;
+
 	char *domainname = NULL;
 	bool filterdomainname = false;
 	int domainid = -1;
@@ -733,7 +735,15 @@ void getAllQueries(const char *client_message, const int *sock)
 		// Get client name we want to see only (limit length to 255 chars)
 		clientname = calloc(256, sizeof(char));
 		if(clientname == NULL) return;
-		sscanf(client_message, ">getallqueries-client %255s", clientname);
+		if(command(client_message, ">getallqueries-client-blocked"))
+		{
+			showpermitted = false;
+			sscanf(client_message, ">getallqueries-client-blocked %255s", clientname);
+		}
+		else
+		{
+			sscanf(client_message, ">getallqueries-client %255s", clientname);
+		}
 		filterclientname = true;
 
 		// Iterate through all known clients
@@ -760,6 +770,7 @@ void getAllQueries(const char *client_message, const int *sock)
 			free(clientname);
 			return;
 		}
+
 	}
 
 	int ibeg = 0, num;
@@ -775,7 +786,6 @@ void getAllQueries(const char *client_message, const int *sock)
 
 	// Get potentially existing filtering flags
 	char * filter = read_setupVarsconf("API_QUERY_LOG_SHOW");
-	bool showpermitted = true, showblocked = true;
 	if(filter != NULL)
 	{
 		if((strcmp(filter, "permittedonly")) == 0)
