@@ -30,9 +30,9 @@ static char **regexbuffer[2] = { NULL };
 
 const char *regextype[] = { "blacklist", "whitelist" };
 
+// Log Regex failure (most likely a regex syntax error, we include a hint to the error)
 static void log_regex_error(const int errcode, const int index, const unsigned char regexid, const char *regexin)
 {
-	// Regex failed for some reason (probably user syntax error)
 	// Get error string and log it
 	const size_t length = regerror(errcode, &regex[regexid][index], NULL, 0);
 	char *buffer = calloc(length,sizeof(char));
@@ -41,14 +41,13 @@ static void log_regex_error(const int errcode, const int index, const unsigned c
 	free(buffer);
 }
 
+/* Compile regular expressions into data structures that can be used with
+   regexec() to match against a string */
 static bool compile_regex(const char *regexin, const int index, const unsigned char regexid)
 {
-	// compile regular expressions into data structures that
-	// can be used with regexec to match against a string
-	int regflags = REG_EXTENDED;
-	if(config.regex_ignorecase)
-		regflags |= REG_ICASE;
-	const int errcode = regcomp(&regex[regexid][index], regexin, regflags);
+	// We use the extended RegEx flavor (ERE) and specify that matching should
+	// always be case INsensitive
+	const int errcode = regcomp(&regex[regexid][index], regexin, REG_EXTENDED | REG_ICASE);
 	if(errcode != 0)
 	{
 		log_regex_error(errcode, index, regexid, regexin);
