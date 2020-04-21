@@ -248,6 +248,7 @@ int findCacheID(int domainID, int clientID)
 	dns_cache->blocking_status = UNKNOWN_BLOCKED;
 	dns_cache->domainID = domainID;
 	dns_cache->clientID = clientID;
+	dns_cache->force_reply = 0u;
 
 	// Increase counter by one
 	counters->dns_cache_size++;

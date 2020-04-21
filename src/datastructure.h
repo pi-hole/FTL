@@ -75,6 +75,7 @@ typedef struct {
 typedef struct {
 	unsigned char magic;
 	unsigned char blocking_status;
+	unsigned char force_reply;
 	int domainID;
 	int clientID;
 	int black_regex_idx;

@@ -49,12 +49,68 @@ static void query_blocked(queriesData* query, domainsData* domain, clientsData* 
 static unsigned int blocking_flags = 0;
 static union all_addr blocking_addrp_v4 = {{ 0 }};
 static union all_addr blocking_addrp_v6 = {{ 0 }};
+static unsigned char force_next_DNS_reply = 0u;
 
 // Adds debug information to the regular pihole.log file
 char debug_dnsmasq_lines = 0;
 
 unsigned char* pihole_privacylevel = &config.privacylevel;
 const char flagnames[][12] = {"F_IMMORTAL ", "F_NAMEP ", "F_REVERSE ", "F_FORWARD ", "F_DHCP ", "F_NEG ", "F_HOSTS ", "F_IPV4 ", "F_IPV6 ", "F_BIGNAME ", "F_NXDOMAIN ", "F_CNAME ", "F_DNSKEY ", "F_CONFIG ", "F_DS ", "F_DNSSECOK ", "F_UPSTREAM ", "F_RRNAME ", "F_SERVER ", "F_QUERY ", "F_NOERR ", "F_AUTH ", "F_DNSSEC ", "F_KEYTAG ", "F_SECSTAT ", "F_NO_RR ", "F_IPSET ", "F_NOEXTRA ", "F_SERVFAIL", "F_RCODE"};
+
+static bool check_domain_blocked(const char *domainString, const int clientID,
+                                 clientsData *client, queriesData *query, DNSCacheData *dns_cache,
+                                 const char **blockingreason, unsigned char *new_status)
+{
+	// Check domains against exact blacklist
+	// Skipped when the domain is whitelisted
+	bool blockDomain = false;
+	if(in_blacklist(domainString, clientID, client))
+	{
+		// We block this domain
+		blockDomain = true;
+		*new_status = QUERY_BLACKLIST;
+		*blockingreason = "exactly blacklisted";
+
+		// Mark domain as exactly blacklisted for this client
+		dns_cache->blocking_status = BLACKLIST_BLOCKED;
+		return true;
+	}
+
+	// Check domains against gravity domains
+	// Skipped when the domain is whitelisted or blocked by exact blacklist
+	if(!query->whitelisted && !blockDomain &&
+	   in_gravity(domainString, clientID, client))
+	{
+		// We block this domain
+		blockDomain = true;
+		*new_status = QUERY_GRAVITY;
+		*blockingreason = "gravity blocked";
+
+		// Mark domain as gravity blocked for this client
+		dns_cache->blocking_status = GRAVITY_BLOCKED;
+		return true;
+	}
+
+	// Check domain against blacklist regex filters
+	// Skipped when the domain is whitelisted or blocked by exact blacklist or gravity
+	int regex_idx = 0;
+	if(!query->whitelisted && !blockDomain &&
+	   (regex_idx = match_regex(domainString, clientID, REGEX_BLACKLIST)) > -1)
+	{
+		// We block this domain
+		blockDomain = true;
+		*new_status = QUERY_REGEX;
+		*blockingreason = "regex blacklisted";
+
+		// Mark domain as regex matched for this client
+		dns_cache->blocking_status = REGEX_BLOCKED;
+		dns_cache->black_regex_idx = regex_idx;
+		return true;
+	}
+
+	// Not blocked
+	return false;
+}
 
 static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const char **blockingreason,
                                 const char* file, const int line)
@@ -108,6 +164,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			if(!query->whitelisted)
 			{
 				query_blocked(query, domain, client, QUERY_BLACKLIST);
+				force_next_DNS_reply = dns_cache->force_reply;
 				return true;
 			}
 			break;
@@ -127,6 +184,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			if(!query->whitelisted)
 			{
 				query_blocked(query, domain, client, QUERY_GRAVITY);
+				force_next_DNS_reply = dns_cache->force_reply;
 				return true;
 			}
 			break;
@@ -139,6 +197,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			if(config.debug & DEBUG_QUERIES)
 			{
 				logg("%s is known as %s", domainstr, *blockingreason);
+				force_next_DNS_reply = dns_cache->force_reply;
 			}
 
 			// Do not block if the entire query is to be permitted
@@ -189,52 +248,30 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 
 	// Check whitelist (exact + regex) for match
 	const char *domainString = getstr(domain->domainpos);
+	const char *blockedDomain = domainString;
 	query->whitelisted = in_whitelist(domainString, clientID, client);
 
-	// Check domains against exact blacklist
-	// Skipped when the domain is whitelisted
 	bool blockDomain = false;
 	unsigned char new_status = QUERY_UNKNOWN;
-	if(!query->whitelisted &&
-	   in_blacklist(domainString, clientID, client))
+	// Check blacklist (exact + regex) and gravity for queried domain
+	if(!query->whitelisted)
 	{
-		// We block this domain
-		blockDomain = true;
-		new_status = QUERY_BLACKLIST;
-		*blockingreason = "exactly blacklisted";
-
-		// Mark domain as exactly blacklisted for this client
-		dns_cache->blocking_status = BLACKLIST_BLOCKED;
+	    blockDomain = check_domain_blocked(domainString, clientID, client, query, dns_cache, blockingreason, &new_status);
 	}
 
-	// Check domains against gravity domains
-	// Skipped when the domain is whitelisted or blocked by exact blacklist
-	if(!query->whitelisted && !blockDomain &&
-	   in_gravity(domainString, clientID, client))
+	// Check blacklist (exact + regex) and gravity for _esni.domain if enabled (defaulting to true)
+	if(config.block_esni && !query->whitelisted && !blockDomain && strncasecmp(domainString, "_esni.", 6u) == 0)
 	{
-		// We block this domain
-		blockDomain = true;
-		new_status = QUERY_GRAVITY;
-		*blockingreason = "gravity blocked";
+		blockDomain = check_domain_blocked(domainString + 6u, clientID, client, query, dns_cache, blockingreason, &new_status);
 
-		// Mark domain as gravity blocked for this client
-		dns_cache->blocking_status = GRAVITY_BLOCKED;
-	}
-
-	// Check domain against blacklist regex filters
-	// Skipped when the domain is whitelisted or blocked by exact blacklist or gravity
-	int regex_idx = 0;
-	if(!query->whitelisted && !blockDomain &&
-	   (regex_idx = match_regex(domainString, clientID, REGEX_BLACKLIST)) > -1)
-	{
-		// We block this domain
-		blockDomain = true;
-		new_status = QUERY_REGEX;
-		*blockingreason = "regex blacklisted";
-
-		// Mark domain as regex matched for this client
-		dns_cache->blocking_status = REGEX_BLOCKED;
-		dns_cache->black_regex_idx = regex_idx;
+		if(blockDomain)
+		{
+			// Truncate "_esni." from queried domain if the parenting domain was the reason for blocking this query
+			blockedDomain = domainString + 6u;
+			// Force next DNS reply to be NXDOMAIN for _esni.* queries
+			force_next_DNS_reply = NXDOMAIN;
+			dns_cache->force_reply = NXDOMAIN;
+		}
 	}
 
 	// Common actions regardless what the possible blocking reason is
@@ -245,7 +282,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 
 		// Debug output
 		if(config.debug & DEBUG_QUERIES)
-			logg("Blocking %s as domain is %s", domainString, *blockingreason);
+			logg("Blocking %s as %s is %s", domainString, blockedDomain, *blockingreason);
 	}
 	else
 	{
@@ -577,6 +614,20 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 
 void _FTL_get_blocking_metadata(union all_addr **addrp, unsigned int *flags, const char* file, const int line)
 {
+	// Check first if we need to force our reply to something different than the
+	// default/configured blocking mode For instance, we need to force NXDOMAIN
+	// for intercepted _esni.* queries
+	if(force_next_DNS_reply != 0u)
+	{
+		if(force_next_DNS_reply == NXDOMAIN)
+		{
+			*flags = F_NXDOMAIN;
+			// Reset DNS reply forcing
+			force_next_DNS_reply = 0u;
+			return;
+		}
+	}
+
 	// Add flags according to current blocking mode
 	// We bit-add here as flags already contains either F_IPV4 or F_IPV6
 	*flags |= blocking_flags;

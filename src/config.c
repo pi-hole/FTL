@@ -372,6 +372,19 @@ void read_FTLconf(void)
 	else
 		logg("   DELAY_STARTUP: No delay requested.");
 
+	// BLOCK_ESNI
+	// defaults to: true
+	config.block_esni = true;
+	buffer = parse_FTLconf(fp, "BLOCK_ESNI");
+
+	if(buffer != NULL && strcasecmp(buffer, "false") == 0)
+		config.block_esni = false;
+
+	if(config.block_esni)
+		logg("   BLOCK_ESNI: Enabled, blocking _esni.{blocked domain}");
+	else
+		logg("   BLOCK_ESNI: Disabled");
+
 	// Read DEBUG_... setting from pihole-FTL.conf
 	read_debuging_settings(fp);
 
