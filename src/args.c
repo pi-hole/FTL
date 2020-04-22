@@ -22,20 +22,75 @@ bool daemonmode = true;
 int argc_dnsmasq = 0;
 const char** argv_dnsmasq = NULL;
 
+static inline bool strEndsWith(const char *input, const char *end){
+	return strcmp(input + strlen(input) - strlen(end), end) == 0;
+}
+
 void parse_args(int argc, char* argv[])
 {
-	int i;
-
 	// Regardless of any arguments, we always pass "-k" (nofork) to dnsmasq
 	argc_dnsmasq = 2;
 	argv_dnsmasq = calloc(argc_dnsmasq, sizeof(char*));
 	argv_dnsmasq[0] = "";
 	argv_dnsmasq[1] = "-k";
 
-	// start from 1, as argv[0] is the executable name "pihole-FTL"
-	for(i=1; i < argc; i++)
+	bool consume_for_dnsmasq = false;
+	// If the binary name is "dnsmasq" (e.g., symlink /usr/bin/dnsmasq -> /usr/bin/pihole-FTL),
+	// we operate in drop-in mode and consume all arguments for the embedded dnsmasq core
+	if(strEndsWith(argv[0], "dnsmasq"))
+		consume_for_dnsmasq = true;
+
+	// start from 1, as argv[0] is the executable name
+	for(int i = 1; i < argc; i++)
 	{
 		bool ok = false;
+
+		// If we find "--" we collect everything behind that for dnsmasq
+		if(strcmp(argv[i], "--") == 0)
+		{
+			// Remember that the rest is for dnsmasq ...
+			consume_for_dnsmasq = true;
+
+			// ... and skip the current argument ("--")
+			continue;
+		}
+
+		// If consume_for_dnsmasq is true, we collect all remaining options for
+		// dnsmasq
+		if(consume_for_dnsmasq)
+		{
+			argc_dnsmasq = argc - i + 2;
+			if(argv_dnsmasq != NULL)
+				free(argv_dnsmasq);
+
+			argv_dnsmasq = calloc(argc_dnsmasq, sizeof(const char*));
+			argv_dnsmasq[0] = "";
+
+			if(debug)
+				argv_dnsmasq[1] = "-d";
+			else
+				argv_dnsmasq[1] = "-k";
+
+			if(debug)
+			{
+				printf("dnsmasq options: [0]: %s\n", argv_dnsmasq[0]);
+				printf("dnsmasq options: [1]: %s\n", argv_dnsmasq[1]);
+			}
+
+			int j = 2;
+			while(i < argc)
+			{
+				argv_dnsmasq[j++] = strdup(argv[i++]);
+				if(debug)
+					printf("dnsmasq options: [%i]: %s\n", j-1, argv_dnsmasq[j-1]);
+			}
+
+			// Return early: We have consumes all available command line arguments
+			return;
+		}
+
+		// What follows beyond this point are FTL internal command line arguments
+
 		if(strcmp(argv[i], "d") == 0 ||
 		   strcmp(argv[i], "debug") == 0)
 		{
@@ -91,25 +146,6 @@ void parse_args(int argc, char* argv[])
 			arg[1] = "--test";
 			main_dnsmasq(2, arg);
 			ok = true;
-		}
-
-		// If we find "--" we collect everything behind that for dnsmasq
-		if(strcmp(argv[i], "--") == 0)
-		{
-			int j;
-			argc_dnsmasq = argc - i + 1;
-			if(argv_dnsmasq != NULL) free(argv_dnsmasq);
-			argv_dnsmasq = calloc(argc_dnsmasq + 2,sizeof(const char*));
-			argv_dnsmasq[0] = "";
-			if(debug) argv_dnsmasq[1] = "-d";
-			else      argv_dnsmasq[1] = "-k";
-
-			for(j=2; j < argc_dnsmasq; j++)
-			{
-				argv_dnsmasq[j] = strdup(argv[i+j-1]);
-				if(debug) logg("dnsmasq options: [%i]: %s",j,argv_dnsmasq[j]);
-			}
-			return;
 		}
 
 		// List of implemented arguments
