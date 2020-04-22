@@ -45,6 +45,19 @@ void parse_args(int argc, char* argv[])
 	{
 		bool ok = false;
 
+		// Implement dnsmasq's test function, no need to prepare the entire FTL
+		// environment (initialize shared memory, lead queries from long-term
+		// database, ...) when the task is a simple (dnsmasq) syntax check
+		if(strcmp(argv[i], "dnsmasq-test") == 0 ||
+		   strcmp(argv[i], "--test") == 0)
+		{
+			const char *arg[2];
+			arg[0] = "";
+			arg[1] = "--test";
+			main_dnsmasq(2, arg);
+			ok = true;
+		}
+
 		// If we find "--" we collect everything behind that for dnsmasq
 		if(strcmp(argv[i], "--") == 0)
 		{
@@ -135,16 +148,6 @@ void parse_args(int argc, char* argv[])
 		   strcmp(argv[i], "no-daemon") == 0)
 		{
 			daemonmode = false;
-			ok = true;
-		}
-
-		// Implement dnsmasq's test function
-		if(strcmp(argv[i], "dnsmasq-test") == 0)
-		{
-			const char *arg[2];
-			arg[0] = "";
-			arg[1] = "--test";
-			main_dnsmasq(2, arg);
 			ok = true;
 		}
 
