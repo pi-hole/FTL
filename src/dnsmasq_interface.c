@@ -617,15 +617,12 @@ void _FTL_get_blocking_metadata(union all_addr **addrp, unsigned int *flags, con
 	// Check first if we need to force our reply to something different than the
 	// default/configured blocking mode For instance, we need to force NXDOMAIN
 	// for intercepted _esni.* queries
-	if(force_next_DNS_reply != 0u)
+	if(force_next_DNS_reply == NXDOMAIN)
 	{
-		if(force_next_DNS_reply == NXDOMAIN)
-		{
-			*flags = F_NXDOMAIN;
-			// Reset DNS reply forcing
-			force_next_DNS_reply = 0u;
-			return;
-		}
+		*flags = F_NXDOMAIN;
+		// Reset DNS reply forcing
+		force_next_DNS_reply = 0u;
+		return;
 	}
 
 	// Add flags according to current blocking mode
