@@ -1229,7 +1229,7 @@ static int parse_dhcp_opt(char *errstr, char *arg, int flags)
 	  } 
 	else if (c == '.')	
 	  {
-	    is_addr6 = is_dec = is_hex = 0;
+	    is_dec = is_hex = 0;
 	    dots++;
 	  }
 	else if (c == '-')
