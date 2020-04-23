@@ -123,7 +123,7 @@ void getStats(const int *sock)
 
 	// Send status
 	if(istelnet[*sock]) {
-		ssend(*sock, "status %s\n", counters->gravity > 0 ? "enabled" : "disabled");
+		ssend(*sock, "status %s\n", blockingstatus ? "enabled" : "disabled");
 	}
 	else
 		pack_uint8(*sock, blockingstatus);
