@@ -718,7 +718,7 @@ int enumerate_interfaces(int reset)
 	  else if (release_listener(l))
 	    {
 	      *up = tmp;
-		freed = 1;
+	      freed = 1;
 	    }
 	}
 
@@ -1035,15 +1035,20 @@ void create_bound_listeners(int dienow)
 	  }
 	else if ((new = create_listeners(&iface->addr, iface->tftp_ok, dienow)))
 	  {
-	    int port;
-
 	    new->iface = iface;
 	    new->next = daemon->listeners;
 	    daemon->listeners = new;
 	    iface->done = 1;
-	    port = prettyprint_addr(&iface->addr, daemon->addrbuff);
-	    my_syslog(LOG_DEBUG, _("listening on %s(#%d): %s port %d"),
-		      iface->name, iface->index, daemon->addrbuff, port);
+
+	    /* Don't log the initial set of listen addresses created
+               at startup, since this is happening before the logging
+               system is initialised and the sign-on printed. */
+            if (!dienow)
+              {
+		int port = prettyprint_addr(&iface->addr, daemon->addrbuff);
+		my_syslog(LOG_DEBUG, _("listening on %s(#%d): %s port %d"),
+			  iface->name, iface->index, daemon->addrbuff, port);
+	      }
 	  }
       }
 
@@ -1062,12 +1067,14 @@ void create_bound_listeners(int dienow)
     if (!if_tmp->used && 
 	(new = create_listeners(&if_tmp->addr, !!option_bool(OPT_TFTP), dienow)))
       {
-	int port;
-
 	new->next = daemon->listeners;
 	daemon->listeners = new;
-	port = prettyprint_addr(&if_tmp->addr, daemon->addrbuff);
-	my_syslog(LOG_DEBUG, _("listening on %s port %d"), daemon->addrbuff, port);
+
+	if (!dienow)
+	  {
+	    int port = prettyprint_addr(&if_tmp->addr, daemon->addrbuff);
+	    my_syslog(LOG_DEBUG, _("listening on %s port %d"), daemon->addrbuff, port);
+	  }
       }
 }
 
