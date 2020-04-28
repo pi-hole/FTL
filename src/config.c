@@ -333,19 +333,6 @@ void read_FTLconf(void)
 	else
 		logg("   PARSE_ARP_CACHE: Inactive");
 
-	// REGEX_IGNORECASE
-	// defaults to: false
-	config.regex_ignorecase = false;
-	buffer = parse_FTLconf(fp, "REGEX_IGNORECASE");
-
-	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
-		config.regex_ignorecase = true;
-
-	if(config.regex_ignorecase)
-		logg("   REGEX_IGNORECASE: Enabled. Regex is case insensitive");
-	else
-		logg("   REGEX_IGNORECASE: Disabled. Regex is case sensitive");
-
 	// CNAME_DEEP_INSPECT
 	// defaults to: true
 	config.cname_inspection = true;
