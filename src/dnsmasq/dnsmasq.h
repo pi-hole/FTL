@@ -1455,7 +1455,7 @@ void clear_cache_and_reload(time_t now);
 
 /* netlink.c */
 #ifdef HAVE_LINUX_NETWORK
-void netlink_init(void);
+char *netlink_init(void);
 void netlink_multicast(void);
 #endif
 

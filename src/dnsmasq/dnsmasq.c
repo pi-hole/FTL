@@ -60,6 +60,7 @@ int main_dnsmasq (int argc, char **argv)
   char *bound_device = NULL;
   int did_bind = 0;
   struct server *serv;
+  char *netlink_warn;
 #endif 
 #if defined(HAVE_DHCP) || defined(HAVE_DHCP6)
   struct dhcp_context *context;
@@ -329,7 +330,7 @@ int main_dnsmasq (int argc, char **argv)
 #endif
 
 #if  defined(HAVE_LINUX_NETWORK)
-  netlink_init();
+  netlink_warn = netlink_init();
 #elif defined(HAVE_BSD_NETWORK)
   route_init();
 #endif
@@ -950,6 +951,9 @@ int main_dnsmasq (int argc, char **argv)
 #  ifdef HAVE_LINUX_NETWORK
   if (did_bind)
     my_syslog(MS_DHCP | LOG_INFO, _("DHCP, sockets bound exclusively to interface %s"), bound_device);
+
+  if (netlink_warn)
+    my_syslog(LOG_WARNING, netlink_warn);
 #  endif
 
   /* after dhcp_construct_contexts */
