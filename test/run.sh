@@ -15,9 +15,9 @@ fi
 rm -f /etc/pihole/gravity.db /etc/pihole/pihole-FTL.db /var/log/pihole.log /var/log/pihole-FTL.log
 
 # Create necessary directories and files
-mkdir -p /etc/pihole /var/run/pihole /var/log
-touch /var/log/pihole-FTL.log /var/log/pihole.log /var/run/pihole-FTL.pid /var/run/pihole-FTL.port
-chown pihole:pihole /etc/pihole /var/run/pihole /var/log/pihole.log /var/log/pihole-FTL.log /var/run/pihole-FTL.pid /var/run/pihole-FTL.port
+mkdir -p /etc/pihole /run/pihole /var/log
+touch /var/log/pihole-FTL.log /var/log/pihole.log /run/pihole-FTL.pid /run/pihole-FTL.port
+chown pihole:pihole /etc/pihole /run/pihole /var/log/pihole.log /var/log/pihole-FTL.log /run/pihole-FTL.pid /run/pihole-FTL.port
 
 # Copy binary into a location the new user pihole can access
 cp ./pihole-FTL /home/pihole
