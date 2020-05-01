@@ -3,6 +3,9 @@ version: 2
 .job_steps: &job_steps
   steps:
     - checkout
+    - add_ssh_keys:
+        fingerprints:
+          - "25:6c:10:82:c3:70:59:91:50:a2:96:3f:1b:0e:bc:b4"
     - run:
         name: "Setup"
         command: |
@@ -24,7 +27,6 @@ version: 2
           mv pihole-FTL "${BIN_NAME}"
           sha1sum pihole-FTL-* > ${BIN_NAME}.sha1
           mkdir -p ~/.ssh/
-          ssh-keyscan -H $SSH_HOST >> ~/.ssh/known_hosts
           sftp -b - $SSH_USER@$SSH_HOST <<< "-mkdir ${DIR}
           put ${BIN_NAME}* ${DIR}"
           mv "${BIN_NAME}" pihole-FTL
