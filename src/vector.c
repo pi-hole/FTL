@@ -111,9 +111,13 @@ void free_sqlite3_stmt_vec(sqlite3_stmt_vec *v)
 	if(config.debug & DEBUG_VECTORS)
 		logg("Freeing sqlite3_stmt* vector %p", v);
 
+	// This vector was never allocated, invoking free_sqlite3_stmt_vec() on a
+	// NULL pointer should be a harmless no-op.
+	if(v == NULL || v->items == NULL)
+		return;
+
 	// Free elements of the vector...
 	free(v->items);
 	// ...and then the vector itself
 	free(v);
-	v = NULL;
 }

@@ -432,8 +432,6 @@ void gravityDB_close(void)
 	{
 			gravityDB_finalize_client_statements(clientID);
 	}
-	sqlite3_finalize(auditlist_stmt);
-	auditlist_stmt = NULL;
 
 	// Free allocated memory for vectors of prepared client statements
 	free_sqlite3_stmt_vec(whitelist_stmt);
@@ -442,6 +440,10 @@ void gravityDB_close(void)
 	blacklist_stmt = NULL;
 	free_sqlite3_stmt_vec(gravity_stmt);
 	gravity_stmt = NULL;
+
+	// Finalize audit list statement
+	sqlite3_finalize(auditlist_stmt);
+	auditlist_stmt = NULL;
 
 	// Close table
 	sqlite3_close(gravity_db);
