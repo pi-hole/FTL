@@ -403,17 +403,20 @@ bool gravityDB_prepare_client_statements(const int clientID, clientsData *client
 // Finalize non-NULL prepared statements and set them to NULL for a given client
 static inline void gravityDB_finalize_client_statements(const int clientID)
 {
-	if(whitelist_stmt->get(whitelist_stmt, clientID) != NULL)
+	if(whitelist_stmt != NULL &&
+	   whitelist_stmt->get(whitelist_stmt, clientID) != NULL)
 	{
 		sqlite3_finalize(whitelist_stmt->get(whitelist_stmt, clientID));
 		whitelist_stmt->set(whitelist_stmt, clientID, NULL);
 	}
-	if(blacklist_stmt->get(blacklist_stmt, clientID) != NULL)
+	if(blacklist_stmt != NULL &&
+	   blacklist_stmt->get(blacklist_stmt, clientID) != NULL)
 	{
 		sqlite3_finalize(blacklist_stmt->get(blacklist_stmt, clientID));
 		blacklist_stmt->set(blacklist_stmt, clientID, NULL);
 	}
-	if(gravity_stmt->get(gravity_stmt, clientID) != NULL)
+	if(gravity_stmt != NULL &&
+	   gravity_stmt->get(gravity_stmt, clientID) != NULL)
 	{
 		sqlite3_finalize(gravity_stmt->get(gravity_stmt, clientID));
 		gravity_stmt->set(gravity_stmt, clientID, NULL);
@@ -430,10 +433,8 @@ void gravityDB_close(void)
 	// Finalize prepared list statements for all clients
 	for(int clientID = 0; clientID < counters->clients; clientID++)
 	{
-			gravityDB_finalize_client_statements(clientID);
+		gravityDB_finalize_client_statements(clientID);
 	}
-	sqlite3_finalize(auditlist_stmt);
-	auditlist_stmt = NULL;
 
 	// Free allocated memory for vectors of prepared client statements
 	free_sqlite3_stmt_vec(whitelist_stmt);
@@ -442,6 +443,10 @@ void gravityDB_close(void)
 	blacklist_stmt = NULL;
 	free_sqlite3_stmt_vec(gravity_stmt);
 	gravity_stmt = NULL;
+
+	// Finalize audit list statement
+	sqlite3_finalize(auditlist_stmt);
+	auditlist_stmt = NULL;
 
 	// Close table
 	sqlite3_close(gravity_db);
@@ -687,7 +692,12 @@ bool in_whitelist(const char *domain, const int clientID, clientsData* client)
 	// First check if FTL forked to handle TCP connections
 	gravityDB_check_fork();
 
-	// Get whitelist statement from vector of prepared statements
+	// If list statement is not ready and cannot be initialized (e.g. no
+	// access to the database), we return false to prevent an FTL crash
+	if(whitelist_stmt == NULL)
+		return false;
+
+	// Get whitelist statement from vector of prepared statements if available
 	sqlite3_stmt *stmt = whitelist_stmt->get(whitelist_stmt, clientID);
 
 	// If client statement is not ready and cannot be initialized (e.g. no access to
@@ -719,6 +729,11 @@ bool in_gravity(const char *domain, const int clientID, clientsData* client)
 	// First check if FTL forked to handle TCP connections
 	gravityDB_check_fork();
 
+	// If list statement is not ready and cannot be initialized (e.g. no
+	// access to the database), we return false to prevent an FTL crash
+	if(gravity_stmt == NULL)
+		return false;
+
 	// Get whitelist statement from vector of prepared statements
 	sqlite3_stmt *stmt = gravity_stmt->get(gravity_stmt, clientID);
 
@@ -733,7 +748,7 @@ bool in_gravity(const char *domain, const int clientID, clientsData* client)
 	// Update statement if has just been initialized
 	if(stmt == NULL)
 	{
-		stmt = whitelist_stmt->get(whitelist_stmt, clientID);
+		stmt = gravity_stmt->get(gravity_stmt, clientID);
 	}
 
 	return domain_in_list(domain, stmt, "gravity");
@@ -743,6 +758,11 @@ inline bool in_blacklist(const char *domain, const int clientID, clientsData* cl
 {
 	// First check if FTL forked to handle TCP connections
 	gravityDB_check_fork();
+
+	// If list statement is not ready and cannot be initialized (e.g. no
+	// access to the database), we return false to prevent an FTL crash
+	if(blacklist_stmt == NULL)
+		return false;
 
 	// Get whitelist statement from vector of prepared statements
 	sqlite3_stmt *stmt = blacklist_stmt->get(blacklist_stmt, clientID);
@@ -758,7 +778,7 @@ inline bool in_blacklist(const char *domain, const int clientID, clientsData* cl
 	// Update statement if has just been initialized
 	if(stmt == NULL)
 	{
-		stmt = whitelist_stmt->get(whitelist_stmt, clientID);
+		stmt = blacklist_stmt->get(blacklist_stmt, clientID);
 	}
 
 	return domain_in_list(domain, stmt, "blacklist");
