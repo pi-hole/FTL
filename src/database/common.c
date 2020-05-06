@@ -9,9 +9,10 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
-#include "common.h"
+#include "database/common.h"
+#include "database/network-table.h"
+#include "database/message-table.h"
 #include "shmem.h"
-#include "network-table.h"
 #include "memory.h"
 #include "config.h"
 #include "log.h"
@@ -173,16 +174,6 @@ static bool db_create(void)
 	if(dbquery("INSERT INTO ftl (ID,VALUE) VALUES(%i,0);", DB_LASTTIMESTAMP) != SQLITE_OK)
 		return false;
 
-	// Create counter table
-	// Will update FTL_db version to 2
-	if(!create_counter_table())
-		return false;
-
-	// Create network table
-	// Will update FTL_db version to 3
-	if(!create_network_table())
-		return false;
-
 	// Done initializing the database
 	// Close database handle
 	dbclose();
@@ -225,15 +216,6 @@ void db_init(void)
 
 	// Register Pi-hole provided SQLite3 extensions (see sqlite3-ext.c)
 	sqlite3_auto_extension((void (*)(void))sqlite3_pihole_extensions_init);
-
-	// Only exit early if we already finished the SQLite3 library initialization
-	if(!use_database())
-	{
-		logg("Not using the long-term database");
-		pthread_mutex_unlock(&dblock);
-		database = false;
-		return;
-	}
 
 	// Check if database exists, if not create empty database
 	if(!file_exists(FTLfiles.FTL_db))
@@ -340,9 +322,35 @@ void db_init(void)
 		dbversion = db_get_FTL_property(DB_VERSION);
 	}
 
+	// Update to version 6 if lower
+	if(dbversion < 6)
+	{
+		// Update to version 6: Create message table
+		logg("Updating long-term database to version 6");
+		if(!create_message_table())
+		{
+			logg("Message table not initialized, database not available");
+			dbclose();
+
+			database = false;
+			return;
+		}
+		// Get updated version
+		dbversion = db_get_FTL_property(DB_VERSION);
+	}
+
 	// Close database to prevent having it opened all time
 	// We already closed the database when we returned earlier
 	dbclose();
+
+	// Log if users asked us to not use the long-term database for queries
+	// We will still use it to store warnings in it
+	if(!use_database())
+	{
+		logg("Not using the long-term database for storing queries");
+		database = false;
+		return;
+	}
 
 	logg("Database successfully initialized");
 }
