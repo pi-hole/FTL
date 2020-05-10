@@ -13,6 +13,9 @@
 #include "database/common.h"
 #include "log.h"
 
+static const char *message_types[MAX_MESSAGE] =
+	{ "REGEX" };
+
 static unsigned char message_blob_types[MAX_MESSAGE][5] =
 	{
 		{	// REGEX_MESSAGE: The message column contains the regex warning text
@@ -72,7 +75,7 @@ static bool add_message(enum message_type type, const char *message,
 	// Prepare SQLite statement
 	sqlite3_stmt* stmt = NULL;
 	const char *querystr = "INSERT INTO message (timestamp, type, message, blob1, blob2, blob3, blob4, blob5) "
-	                       "VALUES ((cast(strftime('%%s', 'now') as int)),?,?,?,?,?,?,?);";
+	                       "VALUES ((cast(strftime('%s', 'now') as int)),?,?,?,?,?,?,?);";
 	int rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK ){
 		logg("add_message(type=%u, message=%s) - SQL error prepare: %s",
@@ -81,7 +84,7 @@ static bool add_message(enum message_type type, const char *message,
 	}
 
 	// Bind type to prepared statement
-	if((rc = sqlite3_bind_int(stmt, 1, type)) != SQLITE_OK)
+	if((rc = sqlite3_bind_text(stmt, 1, message_types[type], -1, SQLITE_STATIC)) != SQLITE_OK)
 	{
 		logg("add_message(type=%u, message=%s) - Failed to bind type: %s",
 		     type, message, sqlite3_errstr(rc));
@@ -94,7 +97,7 @@ static bool add_message(enum message_type type, const char *message,
 	if((rc = sqlite3_bind_text(stmt, 2, message, -1, SQLITE_STATIC)) != SQLITE_OK)
 	{
 		logg("add_message(type=%u, message=%s) - Failed to bind message: %s",
-		type, message, sqlite3_errstr(rc));
+		     type, message, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
 		return false;
