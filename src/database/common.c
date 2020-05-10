@@ -104,7 +104,7 @@ int dbquery(const char *format, ...)
 
 	// Log generated SQL string when dbquery() is called
 	// although the database connection is not available
-	if(database == false || ( FTL_db == NULL && !dbopen() ))
+	if(FTL_db == NULL && !dbopen())
 	{
 		logg("dbquery(\"%s\") called but database is not available!", query);
 		sqlite3_free(query);

@@ -35,8 +35,6 @@
 #include "api/api.h"
 // global variable daemonmode
 #include "args.h"
-// flush_message_table()
-#include "database/message-table.h"
 
 static void print_flags(const unsigned int flags);
 static void save_reply_type(const unsigned int flags, queriesData* query, const struct timeval response);
@@ -812,9 +810,6 @@ void FTL_dnsmasq_reload(void)
 	// This is the only hook that is not skipped in PRIVACY_NOSTATS mode
 
 	logg("Reloading DNS cache");
-
-	// Flush messages stored in the long-term database
-	flush_message_table();
 
 	// Inspect 01-pihole.conf to see if Pi-hole blocking is enabled,
 	// i.e. if /etc/pihole/gravity.list is sourced as addn-hosts file
