@@ -12,21 +12,31 @@
 #include "database/message-table.h"
 #include "database/common.h"
 #include "log.h"
-// #include "shmem.h"
-// #include "memory.h"
-// #include "timers.h"
-// #include "config.h"
-// #include "datastructure.h"
+
+static unsigned char message_blob_types[MAX_MESSAGE][5] =
+	{
+		{	// REGEX_MESSAGE: The message column contains the regex warning text
+			SQLITE_TEXT, // regex type ("blacklist", "whitelist")
+			SQLITE_TEXT, // regex text (the erroring regex filter itself)
+			SQLITE_INTEGER, // database index of regex (so the dashboard can show a link)
+			SQLITE_NULL, // not used
+			SQLITE_NULL // not used
+		}
+	};
 
 // Create message table in the database
 bool create_message_table(void)
 {
-	SQL_bool("CREATE TABLE message ( id INTEGER PRIMARY KEY AUTOINCREMENT, " \
-	                                "timestamp INTEGER NOT NULL, " \
-	                                "type TEXT NOT NULL, " \
-	                                "message TEXT NOT NULL, " \
-	                                "txt TEXT, "
-	                                "int INTEGER );");
+	// The blob fields can hold arbitrary data. Their type is specified through the type.
+	SQL_bool("CREATE TABLE message ( id INTEGER PRIMARY KEY AUTOINCREMENT, "
+	                                "timestamp INTEGER NOT NULL, "
+	                                "type TEXT NOT NULL, "
+	                                "message TEXT NOT NULL, "
+	                                "blob1 BLOB, "
+	                                "blob2 BLOB, "
+	                                "blob3 BLOB, "
+	                                "blob4 BLOB, "
+	                                "blob5 BLOB );");
 
 	// Update database version to 6
 	if(!db_set_FTL_property(DB_VERSION, 6))
@@ -41,27 +51,40 @@ bool create_message_table(void)
 // Flush message table
 bool flush_message_table(void)
 {
+	// Open database connection
+	dbopen();
+
+	// Flush message table
 	SQL_bool("DELETE FROM message;");
+
+	// Close database connection
+	dbclose();
+
 	return true;
 }
 
-static bool add_message(enum message_type type, const char *message, const char *text, const int integer)
+static bool add_message(enum message_type type, const char *message,
+                        const int count,...)
 {
+	// Open database connection
+	dbopen();
+
 	// Prepare SQLite statement
 	sqlite3_stmt* stmt = NULL;
-	const char *querystr = "INSERT INTO message (timestamp, type, message, txt, int) VALUES ((cast(strftime('%%s', 'now') as int)),?,?,?,?);";
+	const char *querystr = "INSERT INTO message (timestamp, type, message, blob1, blob2, blob3, blob4, blob5) "
+	                       "VALUES ((cast(strftime('%%s', 'now') as int)),?,?,?,?,?,?,?);";
 	int rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK ){
-		logg("add_message(type=%u, message=%s, text=%s, integer=%i) - SQL error prepare: %s",
-		     type, message, text, integer, sqlite3_errstr(rc));
+		logg("add_message(type=%u, message=%s) - SQL error prepare: %s",
+		     type, message, sqlite3_errstr(rc));
 		return false;
 	}
 
 	// Bind type to prepared statement
 	if((rc = sqlite3_bind_int(stmt, 1, type)) != SQLITE_OK)
 	{
-		logg("add_message(type=%u, message=%s, text=%s, integer=%i) - Failed to bind type: %s",
-		     type, message, text, integer, sqlite3_errstr(rc));
+		logg("add_message(type=%u, message=%s) - Failed to bind type: %s",
+		     type, message, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
 		return false;
@@ -70,47 +93,53 @@ static bool add_message(enum message_type type, const char *message, const char 
 	// Bind message to prepared statement
 	if((rc = sqlite3_bind_text(stmt, 2, message, -1, SQLITE_STATIC)) != SQLITE_OK)
 	{
-		logg("add_message(type=%u, message=%s, text=%s, integer=%i) - Failed to bind message: %s",
-		     type, message, text, integer, sqlite3_errstr(rc));
+		logg("add_message(type=%u, message=%s) - Failed to bind message: %s",
+		type, message, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
 		return false;
 	}
 
-	// Bind text to prepared statement
-	if(text != NULL)
-		rc = sqlite3_bind_text(stmt, 3, text, -1, SQLITE_STATIC);
-	else
-		rc = sqlite3_bind_null(stmt, 3);
-
-	if(rc != SQLITE_OK)
+	va_list ap;
+	va_start(ap, count);
+	for (int j = 0; j < count; j++)
 	{
-		logg("add_message(type=%u, message=%s, text=%s, integer=%i) - Failed to bind text: %s",
-		     type, message, text, integer, sqlite3_errstr(rc));
-		sqlite3_reset(stmt);
-		sqlite3_finalize(stmt);
-		return false;
-	}
+		const unsigned char datatype = message_blob_types[type][j];
+		switch (datatype)
+		{
+			case SQLITE_INTEGER:
+				rc = sqlite3_bind_int(stmt, 3 + j, va_arg(ap, int));
+				break;
 
-	// Bind integer to prepared statement
-	if(integer != -1)
-		rc = sqlite3_bind_int(stmt, 4, integer);
-	else
-		rc = sqlite3_bind_null(stmt, 4);
+			case SQLITE_TEXT:
+				rc = sqlite3_bind_text(stmt, 3 + j, va_arg(ap, char*), -1, SQLITE_STATIC);
+				break;
 
-	if(rc != SQLITE_OK)
-	{
-		logg("add_message(type=%u, message=%s, text=%s, integer=%i) - Failed to bind integer: %s",
-		     type, message, text, integer, sqlite3_errstr(rc));
-		sqlite3_reset(stmt);
-		sqlite3_finalize(stmt);
-		return false;
+			case SQLITE_NULL: /* Fall through */
+			default:
+				rc = sqlite3_bind_null(stmt, 3 + j);
+				break;
+		}
+
+		// Bind message to prepared statement
+		if(rc != SQLITE_OK)
+		{
+			logg("add_message(type=%u, message=%s) - Failed to bind argument %u (type %u): %s",
+			     type, message, 3 + j, datatype, sqlite3_errstr(rc));
+			sqlite3_reset(stmt);
+			sqlite3_finalize(stmt);
+			return false;
+		}
 	}
+	va_end(ap);
 
 	// Step and check if successful
 	rc = sqlite3_step(stmt);
 	sqlite3_clear_bindings(stmt);
 	sqlite3_reset(stmt);
+
+	// Close database connection
+	dbclose();
 
 	if(rc != SQLITE_DONE)
 	{
@@ -128,5 +157,5 @@ void logg_regex_warning(const char *type, const char *warning, const int dbindex
 	     type, regex, warning);
 
 	// Log to database
-	add_message(REGEX_MESSAGE, warning, regex, dbindex);
+	add_message(REGEX_MESSAGE, warning, 3, type, regex, dbindex);
 }

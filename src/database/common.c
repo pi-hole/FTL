@@ -44,14 +44,26 @@ void dbclose(void)
 		database = false;
 	}
 
+	if(config.debug & DEBUG_LOCKS)
+		logg("Unlocking database");
+
 	// Unlock mutex on the database
 	pthread_mutex_unlock(&dblock);
+
+	if(config.debug & DEBUG_LOCKS)
+		logg("Unlocking database: Success");
 }
 
 bool dbopen(void)
 {
+	if(config.debug & DEBUG_LOCKS)
+		logg("Locking database");
+
 	// Lock mutex on the database
 	pthread_mutex_lock(&dblock);
+
+	if(config.debug & DEBUG_LOCKS)
+		logg("Locking database: Success");
 
 	// Try to open database
 	int rc = sqlite3_open_v2(FTLfiles.FTL_db, &FTL_db, SQLITE_OPEN_READWRITE, NULL);
