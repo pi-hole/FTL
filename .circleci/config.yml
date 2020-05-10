@@ -1,70 +1,90 @@
 version: 2
 
-.job_template: &job_template
-  docker:
-    - image: pihole/ftl-build:$CIRCLE_JOB
+.job_steps: &job_steps
   steps:
     - checkout
     - run:
         name: "Setup"
         command: |
           make clean
+          if [[ $CIRCLE_JOB == *"qemu"* ]] ; then sudo docker run --rm --privileged multiarch/qemu-user-static:register --reset ; fi
     - run:
         name: "Build"
+        no_output_timeout: 30m
         command: |
           BRANCH=$([ -z "$CIRCLE_TAG" ] && echo "$CIRCLE_BRANCH" || echo "master")
-
-          make GIT_BRANCH="${BRANCH}" GIT_TAG="${CIRCLE_TAG}"
+          [[ $CIRCLE_JOB == *"qemu"* ]] && DOCKERIFNEEDED="docker run --rm -v $(pwd):/workspace -w /workspace pihole/ftl-build:arm-qemu "
+          $DOCKERIFNEEDED make GIT_BRANCH="${BRANCH}" GIT_TAG="${CIRCLE_TAG}" STATIC="${STATIC}"
           file pihole-FTL
     - run:
         name: "Upload"
         command: |
-          FOLDER=$([ -z "$CIRCLE_TAG" ] && echo "$CIRCLE_BRANCH" || echo "$CIRCLE_TAG")
+          [[ "$CIRCLE_PROJECT_REPONAME" == "FTL" && "$CIRCLE_PROJECT_USERNAME" == "pi-hole" ]] || exit 0
+          DIR="${CIRCLE_TAG:-${CIRCLE_BRANCH}}"
           mv pihole-FTL "${BIN_NAME}"
           sha1sum pihole-FTL-* > ${BIN_NAME}.sha1
-          wget https://ftl.pi-hole.net:8080/FTL-client
-          chmod +x ./FTL-client
-          [[ "$CIRCLE_PR_NUMBER" == "" ]] && ./FTL-client "${FOLDER}" "${BIN_NAME}" "${FTL_SECRET}"
-          [[ "$CIRCLE_PR_NUMBER" == "" ]] && ./FTL-client "${FOLDER}" "${BIN_NAME}.sha1" "${FTL_SECRET}"
-          rm ./FTL-client
-          ls -lah .
+          mkdir -p ~/.ssh/
+          ssh-keyscan -H $SSH_HOST >> ~/.ssh/known_hosts
+          sftp -b - $SSH_USER@$SSH_HOST <<< "-mkdir ${DIR}
+          put ${BIN_NAME}* ${DIR}"
+          mv "${BIN_NAME}" pihole-FTL
+    - run:
+        name: "Test"
+        command: |
+          test/run.sh
+
+.docker_template: &docker_template
+  docker:
+    - image: pihole/ftl-build:v1.0-$CIRCLE_JOB
+  <<: *job_steps
 
 jobs:
   arm:
-    <<: *job_template
+    <<: *docker_template
     environment:
       BIN_NAME: "pihole-FTL-arm-linux-gnueabi"
 
   armhf:
-    <<: *job_template
+    <<: *docker_template
     environment:
       BIN_NAME: "pihole-FTL-arm-linux-gnueabihf"
 
   aarch64:
-    <<: *job_template
+    <<: *docker_template
     environment:
       BIN_NAME: "pihole-FTL-aarch64-linux-gnu"
 
   x86_64:
-    <<: *job_template
+    <<: *docker_template
     environment:
       BIN_NAME: "pihole-FTL-linux-x86_64"
 
   x86_64-musl:
-    <<: *job_template
+    <<: *docker_template
     environment:
       BIN_NAME: "pihole-FTL-musl-linux-x86_64"
 
   x86_32:
-    <<: *job_template
+    <<: *docker_template
     environment:
       BIN_NAME: "pihole-FTL-linux-x86_32"
+
+  arm-qemu:
+    machine:
+      enabled: true
+    environment:
+      BIN_NAME: "pihole-FTL-armel-native"
+    <<: *job_steps
 
 workflows:
   version: 2
   build:
     jobs:
       - arm:
+          filters:
+            tags:
+              only: /^v.*/
+      - arm-qemu:
           filters:
             tags:
               only: /^v.*/
@@ -80,7 +100,10 @@ workflows:
           filters:
             tags:
               only: /^v.*/
-#      - x86_64-musl
+      - x86_64-musl:
+          filters:
+            tags:
+              only: /^v.*/
       - x86_32:
           filters:
             tags:
