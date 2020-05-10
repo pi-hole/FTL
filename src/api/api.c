@@ -92,7 +92,7 @@ void getStats(const int *sock)
 		ssend(*sock, "dns_queries_today %i\nads_blocked_today %i\nads_percentage_today %f\n",
 		      total, blocked, percentage);
 		ssend(*sock, "unique_domains %i\nqueries_forwarded %i\nqueries_cached %i\n",
-		      counters->domains, counters->forwardedqueries, counters->cached);
+		      counters->domains, counters->forwarded, counters->cached);
 		ssend(*sock, "clients_ever_seen %i\n", counters->clients);
 		ssend(*sock, "unique_clients %i\n", activeclients);
 
@@ -115,7 +115,7 @@ void getStats(const int *sock)
 		pack_int32(*sock, blocked);
 		pack_float(*sock, percentage);
 		pack_int32(*sock, counters->domains);
-		pack_int32(*sock, counters->forwardedqueries);
+		pack_int32(*sock, counters->forwarded);
 		pack_int32(*sock, counters->cached);
 		pack_int32(*sock, counters->clients);
 		pack_int32(*sock, activeclients);
@@ -123,7 +123,7 @@ void getStats(const int *sock)
 
 	// Send status
 	if(istelnet[*sock]) {
-		ssend(*sock, "status %s\n", counters->gravity > 0 ? "enabled" : "disabled");
+		ssend(*sock, "status %s\n", blockingstatus ? "enabled" : "disabled");
 	}
 	else
 		pack_uint8(*sock, blockingstatus);
@@ -467,39 +467,39 @@ void getTopClients(const char *client_message, const int *sock)
 }
 
 
-void getForwardDestinations(const char *client_message, const int *sock)
+void getUpstreamDestinations(const char *client_message, const int *sock)
 {
 	bool sort = true;
-	int temparray[counters->forwarded][2], totalqueries = 0;
+	int temparray[counters->upstreams][2], totalqueries = 0;
 
 	if(command(client_message, "unsorted"))
 		sort = false;
 
-	for(int forwardID = 0; forwardID < counters->forwarded; forwardID++)
+	for(int upstreamID = 0; upstreamID < counters->upstreams; upstreamID++)
 	{
 		// If we want to print a sorted output, we fill the temporary array with
 		// the values we will use for sorting afterwards
 		if(sort) {
 			// Get forward pointer
-			const forwardedData* forward = getForward(forwardID, true);
+			const upstreamsData* forward = getUpstream(upstreamID, true);
 			if(forward == NULL)
 				continue;
 
-			temparray[forwardID][0] = forwardID;
-			temparray[forwardID][1] = forward->count;
+			temparray[upstreamID][0] = upstreamID;
+			temparray[upstreamID][1] = forward->count;
 		}
 	}
 
 	if(sort)
 	{
 		// Sort temporary array in descending order
-		qsort(temparray, counters->forwarded, sizeof(int[2]), cmpdesc);
+		qsort(temparray, counters->upstreams, sizeof(int[2]), cmpdesc);
 	}
 
-	totalqueries = counters->forwardedqueries + counters->cached + counters->blocked;
+	totalqueries = counters->forwarded + counters->cached + counters->blocked;
 
 	// Loop over available forward destinations
-	for(int i = -2; i < min(counters->forwarded, 8); i++)
+	for(int i = -2; i < min(counters->upstreams, 8); i++)
 	{
 		float percentage = 0.0f;
 		const char* ip, *name;
@@ -528,14 +528,14 @@ void getForwardDestinations(const char *client_message, const int *sock)
 		{
 			// Regular forward destionation
 			// Get sorted indices
-			int forwardID;
+			int upstreamID;
 			if(sort)
-				forwardID = temparray[i][0];
+				upstreamID = temparray[i][0];
 			else
-				forwardID = i;
+				upstreamID = i;
 
 			// Get forward pointer
-			const forwardedData* forward = getForward(forwardID, true);
+			const upstreamsData* forward = getUpstream(upstreamID, true);
 			if(forward == NULL)
 				continue;
 
@@ -587,9 +587,10 @@ void getQueryTypes(const int *sock)
 	}
 
 	if(istelnet[*sock]) {
-		ssend(*sock, "A (IPv4): %.2f\nAAAA (IPv6): %.2f\nANY: %.2f\nSRV: %.2f\nSOA: %.2f\nPTR: %.2f\nTXT: %.2f\n",
+		ssend(*sock, "A (IPv4): %.2f\nAAAA (IPv6): %.2f\nANY: %.2f\nSRV: %.2f\n"
+		             "SOA: %.2f\nPTR: %.2f\nTXT: %.2f\nNAPTR: %.2f\n",
 		      percentage[0], percentage[1], percentage[2], percentage[3],
-		      percentage[4], percentage[5], percentage[6]);
+		      percentage[4], percentage[5], percentage[6], percentage[7]);
 	}
 	else {
 		pack_str32(*sock, "A (IPv4)");
@@ -606,10 +607,12 @@ void getQueryTypes(const int *sock)
 		pack_float(*sock, percentage[5]);
 		pack_str32(*sock, "TXT");
 		pack_float(*sock, percentage[6]);
+		pack_str32(*sock, "NAPTR");
+		pack_float(*sock, percentage[7]);
 	}
 }
 
-const char *querytypes[8] = {"A","AAAA","ANY","SRV","SOA","PTR","TXT","UNKN"};
+const char *querytypes[TYPE_MAX] = {"A","AAAA","ANY","SRV","SOA","PTR","TXT","NAPTR","UNKN"};
 
 void getAllQueries(const char *client_message, const int *sock)
 {
@@ -667,10 +670,10 @@ void getAllQueries(const char *client_message, const int *sock)
 		{
 			// Iterate through all known forward destinations
 			forwarddestid = -3;
-			for(int i = 0; i < counters->forwarded; i++)
+			for(int i = 0; i < counters->upstreams; i++)
 			{
 				// Get forward pointer
-				const forwardedData* forward = getForward(i, true);
+				const upstreamsData* forward = getUpstream(i, true);
 				if(forward == NULL)
 					continue;
 
@@ -802,8 +805,11 @@ void getAllQueries(const char *client_message, const int *sock)
 
 		// 1 = gravity.list, 4 = wildcard, 5 = black.list
 		if((query->status == QUERY_GRAVITY ||
-		    query->status == QUERY_WILDCARD ||
-		    query->status == QUERY_BLACKLIST) && !showblocked)
+		    query->status == QUERY_REGEX ||
+		    query->status == QUERY_BLACKLIST ||
+		    query->status == QUERY_GRAVITY_CNAME ||
+		    query->status == QUERY_REGEX_CNAME ||
+		    query->status == QUERY_BLACKLIST_CNAME) && !showblocked)
 			continue;
 		// 2 = forwarded, 3 = cached
 		if((query->status == QUERY_FORWARDED ||
@@ -830,20 +836,23 @@ void getAllQueries(const char *client_message, const int *sock)
 		{
 			// Does the user want to see queries answered from blocking lists?
 			if(forwarddestid == -2 && query->status != QUERY_GRAVITY
-			                       && query->status != QUERY_WILDCARD
-			                       && query->status != QUERY_BLACKLIST)
+			                       && query->status != QUERY_REGEX
+			                       && query->status != QUERY_BLACKLIST
+			                       && query->status != QUERY_GRAVITY_CNAME
+			                       && query->status != QUERY_REGEX_CNAME
+			                       && query->status != QUERY_BLACKLIST_CNAME)
 				continue;
 			// Does the user want to see queries answered from local cache?
 			else if(forwarddestid == -1 && query->status != QUERY_CACHE)
 				continue;
 			// Does the user want to see queries answered by an upstream server?
-			else if(forwarddestid >= 0 && forwarddestid != query->forwardID)
+			else if(forwarddestid >= 0 && forwarddestid != query->upstreamID)
 				continue;
 		}
 
 		// Ask subroutine for domain. It may return "hidden" depending on
 		// the privacy settings at the time the query was made
-		const char *domain = getDomainString(queryID);
+		const char *domain = getDomainString(query);
 
 		// Similarly for the client
 		const char *clientIPName = NULL;
@@ -853,18 +862,45 @@ void getAllQueries(const char *client_message, const int *sock)
 			continue;
 
 		if(strlen(getstr(client->namepos)) > 0)
-			clientIPName = getClientNameString(queryID);
+			clientIPName = getClientNameString(query);
 		else
-			clientIPName = getClientIPString(queryID);
+			clientIPName = getClientIPString(query);
 
 		unsigned long delay = query->response;
 		// Check if received (delay should be smaller than 30min)
 		if(delay > 1.8e7)
 			delay = 0;
 
+		// Get domain blocked during deep CNAME inspection, if applicable
+		const char *CNAME_domain = "N/A";
+		if(query->CNAME_domainID > -1)
+		{
+			CNAME_domain = getCNAMEDomainString(query);
+		}
+
+		// Get ID of blocking regex, if applicable
+		int regex_idx = -1;
+		if (query->status == QUERY_REGEX || query->status == QUERY_REGEX_CNAME)
+		{
+			unsigned int cacheID = findCacheID(query->domainID, query->clientID);
+			DNSCacheData *dns_cache = getDNSCache(cacheID, true);
+			if(dns_cache != NULL)
+				regex_idx = dns_cache->black_regex_idx;
+		}
+
 		if(istelnet[*sock])
 		{
-			ssend(*sock,"%li %s %s %s %i %i %i %lu",query->timestamp,qtype,domain,clientIPName,query->status,query->dnssec,query->reply,delay);
+			ssend(*sock,"%li %s %s %s %i %i %i %lu %s %i",
+				query->timestamp,
+				qtype,
+				domain,
+				clientIPName,
+				query->status,
+				query->dnssec,
+				query->reply,
+				delay,
+				CNAME_domain,
+				regex_idx);
 			if(config.debug & DEBUG_API)
 				ssend(*sock, " %i", queryID);
 			ssend(*sock, "\n");
@@ -917,14 +953,17 @@ void getRecentBlocked(const char *client_message, const int *sock)
 			continue;
 
 		if(query->status == QUERY_GRAVITY ||
-		   query->status == QUERY_WILDCARD ||
-		   query->status == QUERY_BLACKLIST)
+		   query->status == QUERY_REGEX ||
+		   query->status == QUERY_BLACKLIST ||
+		   query->status == QUERY_GRAVITY_CNAME ||
+		   query->status == QUERY_REGEX_CNAME ||
+		   query->status == QUERY_BLACKLIST_CNAME)
 		{
 			found++;
 
 			// Ask subroutine for domain. It may return "hidden" depending on
 			// the privacy settings at the time the query was made
-			const char *domain = getDomainString(queryID);
+			const char *domain = getDomainString(query);
 			if(domain == NULL)
 				continue;
 

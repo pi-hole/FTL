@@ -16,32 +16,4 @@ void *FTLcalloc(size_t nmemb, size_t size, const char *file, const char *functio
 void *FTLrealloc(void *ptr_in, size_t size, const char *file, const char *function, const int line) __attribute__((alloc_size(2)));
 void FTLfree(void *ptr, const char* file, const char *function, const int line);
 
-typedef struct {
-	int queries;
-	int blocked;
-	int cached;
-	int unknown;
-	int forwarded;
-	int clients;
-	int domains;
-	int queries_MAX;
-	int forwarded_MAX;
-	int clients_MAX;
-	int domains_MAX;
-	int strings_MAX;
-	int gravity;
-	int querytype[TYPE_MAX-1];
-	int forwardedqueries;
-	int reply_NODATA;
-	int reply_NXDOMAIN;
-	int reply_CNAME;
-	int reply_IP;
-	int reply_domain;
-	int dns_cache_size;
-	int dns_cache_MAX;
-	int num_regex[2];
-} countersStruct;
-
-extern countersStruct *counters;
-
 #endif //MEMORY_H

@@ -11,6 +11,7 @@
 #define LOG_H
 
 #include <stdbool.h>
+#include <time.h>
 
 void open_FTL_log(const bool test);
 void logg(const char* format, ...) __attribute__ ((format (gnu_printf, 1, 2)));

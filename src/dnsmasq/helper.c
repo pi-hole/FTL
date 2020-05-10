@@ -1,4 +1,4 @@
-/* dnsmasq is Copyright (c) 2000-2018 Simon Kelley
+/* dnsmasq is Copyright (c) 2000-2020 Simon Kelley
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -64,11 +64,10 @@ struct script_data
 #ifdef HAVE_TFTP
   off_t file_len;
 #endif
-#ifdef HAVE_IPV6
   struct in6_addr addr6;
-#endif
 #ifdef HAVE_DHCP6
-  int iaid, vendorclass_count;
+  int vendorclass_count;
+  unsigned int iaid;
 #endif
   unsigned char hwaddr[DHCP_CHADDR_MAX];
   char interface[IF_NAMESIZE];
@@ -82,7 +81,8 @@ int create_helper(int event_fd, int err_fd, uid_t uid, gid_t gid, long max_fd)
   pid_t pid;
   int i, pipefd[2];
   struct sigaction sigact;
-
+  unsigned char *alloc_buff = NULL;
+  
   /* create the pipe through which the main program sends us commands,
      then fork our process. */
   if (pipe(pipefd) == -1 || !fix_fd(pipefd[1]) || (pid = fork()) == -1)
@@ -131,12 +131,8 @@ int create_helper(int event_fd, int err_fd, uid_t uid, gid_t gid, long max_fd)
      Don't close err_fd, in case the lua-init fails.
      Note that we have to do this before lua init
      so we don't close any lua fds. */
-  for (max_fd--; max_fd >= 0; max_fd--)
-    if (max_fd != STDOUT_FILENO && max_fd != STDERR_FILENO && 
-	max_fd != STDIN_FILENO && max_fd != pipefd[0] && 
-	max_fd != event_fd && max_fd != err_fd)
-      close(max_fd);
-
+  close_fds(max_fd, pipefd[0], event_fd, err_fd);
+  
 #ifdef HAVE_LUASCRIPT
   if (daemon->luascript)
     {
@@ -188,11 +184,16 @@ int create_helper(int event_fd, int err_fd, uid_t uid, gid_t gid, long max_fd)
       struct script_data data;
       char *p, *action_str, *hostname = NULL, *domain = NULL;
       unsigned char *buf = (unsigned char *)daemon->namebuff;
-      unsigned char *end, *extradata, *alloc_buff = NULL;
+      unsigned char *end, *extradata;
       int is6, err = 0;
       int pipeout[2];
 
-      free(alloc_buff);
+      /* Free rarely-allocated memory from previous iteration. */
+      if (alloc_buff)
+	{
+	  free(alloc_buff);
+	  alloc_buff = NULL;
+	}
       
       /* we read zero bytes when pipe closed: this is our signal to exit */ 
       if (!read_write(pipefd[0], (unsigned char *)&data, sizeof(data), 1))
@@ -302,10 +303,8 @@ int create_helper(int event_fd, int err_fd, uid_t uid, gid_t gid, long max_fd)
     
       if (!is6)
 	inet_ntop(AF_INET, &data.addr, daemon->addrbuff, ADDRSTRLEN);
-#ifdef HAVE_IPV6
       else
 	inet_ntop(AF_INET6, &data.addr6, daemon->addrbuff, ADDRSTRLEN);
-#endif
 
 #ifdef HAVE_TFTP
       /* file length */
@@ -826,10 +825,8 @@ void queue_tftp(off_t file_len, char *filename, union mysockaddr *peer)
 
   if ((buf->flags = peer->sa.sa_family) == AF_INET)
     buf->addr = peer->in.sin_addr;
-#ifdef HAVE_IPV6
   else
     buf->addr6 = peer->in6.sin6_addr;
-#endif
 
   memcpy((unsigned char *)(buf+1), filename, filename_len);
   
@@ -837,7 +834,7 @@ void queue_tftp(off_t file_len, char *filename, union mysockaddr *peer)
 }
 #endif
 
-void queue_arp(int action, unsigned char *mac, int maclen, int family, struct all_addr *addr)
+void queue_arp(int action, unsigned char *mac, int maclen, int family, union all_addr *addr)
 {
   /* no script */
   if (daemon->helperfd == -1)
@@ -850,11 +847,9 @@ void queue_arp(int action, unsigned char *mac, int maclen, int family, struct al
   buf->hwaddr_len = maclen;
   buf->hwaddr_type =  ARPHRD_ETHER; 
   if ((buf->flags = family) == AF_INET)
-    buf->addr = addr->addr.addr4;
-#ifdef HAVE_IPV6
+    buf->addr = addr->addr4;
   else
-    buf->addr6 = addr->addr.addr6;
-#endif
+    buf->addr6 = addr->addr6;
   
   memcpy(buf->hwaddr, mac, maclen);
   

@@ -1,4 +1,4 @@
-/* dnsmasq is Copyright (c) 2000-2018 Simon Kelley
+/* dnsmasq is Copyright (c) 2000-2020 Simon Kelley
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -19,10 +19,12 @@
 #ifdef HAVE_DNSSEC
 
 #include <nettle/rsa.h>
-#include <nettle/dsa.h>
 #include <nettle/ecdsa.h>
 #include <nettle/ecc-curve.h>
 #include <nettle/eddsa.h>
+#if NETTLE_VERSION_MAJOR == 3 && NETTLE_VERSION_MINOR >= 6
+#  include <nettle/gostdsa.h>
+#endif
 #include <nettle/nettle-meta.h>
 #include <nettle/bignum.h>
 
@@ -207,8 +209,6 @@ static int dnsmasq_rsa_verify(struct blockdata *key_data, unsigned int key_len, 
   
   switch (algo)
     {
-    case 1:
-      return nettle_rsa_md5_verify_digest(key, digest, sig_mpz);
     case 5: case 7:
       return nettle_rsa_sha1_verify_digest(key, digest, sig_mpz);
     case 8:
@@ -220,50 +220,6 @@ static int dnsmasq_rsa_verify(struct blockdata *key_data, unsigned int key_len, 
   return 0;
 }  
 
-static int dnsmasq_dsa_verify(struct blockdata *key_data, unsigned int key_len, unsigned char *sig, size_t sig_len,
-			      unsigned char *digest, size_t digest_len, int algo)
-{
-  unsigned char *p;
-  unsigned int t;
-
-  static mpz_t y;
-  static struct dsa_params *params = NULL;
-  static struct dsa_signature *sig_struct;
-  
-  (void)digest_len;
-
-  if (params == NULL)
-    {
-      if (!(sig_struct = whine_malloc(sizeof(struct dsa_signature))) || 
-	  !(params = whine_malloc(sizeof(struct dsa_params)))) 
-	return 0;
-      
-      mpz_init(y);
-      nettle_dsa_params_init(params);
-      nettle_dsa_signature_init(sig_struct);
-    }
-  
-  if ((sig_len < 41) || !(p = blockdata_retrieve(key_data, key_len, NULL)))
-    return 0;
-  
-  t = *p++;
-  
-  if (key_len < (213 + (t * 24)))
-    return 0;
-  
-  mpz_import(params->q, 20, 1, 1, 0, 0, p); p += 20;
-  mpz_import(params->p, 64 + (t*8), 1, 1, 0, 0, p); p += 64 + (t*8);
-  mpz_import(params->g, 64 + (t*8), 1, 1, 0, 0, p); p += 64 + (t*8);
-  mpz_import(y, 64 + (t*8), 1, 1, 0, 0, p); p += 64 + (t*8);
-  
-  mpz_import(sig_struct->r, 20, 1, 1, 0, 0, sig+1);
-  mpz_import(sig_struct->s, 20, 1, 1, 0, 0, sig+21);
-  
-  (void)algo;
-  
-  return nettle_dsa_verify(params, y, digest_len, digest, sig_struct);
-} 
- 
 static int dnsmasq_ecdsa_verify(struct blockdata *key_data, unsigned int key_len, 
 				unsigned char *sig, size_t sig_len,
 				unsigned char *digest, size_t digest_len, int algo)
@@ -338,15 +294,54 @@ static int dnsmasq_ecdsa_verify(struct blockdata *key_data, unsigned int key_len
   return nettle_ecdsa_verify(key, digest_len, digest, sig_struct);
 }
 
+#if NETTLE_VERSION_MAJOR == 3 && NETTLE_VERSION_MINOR >= 6
+static int dnsmasq_gostdsa_verify(struct blockdata *key_data, unsigned int key_len, 
+				  unsigned char *sig, size_t sig_len,
+				  unsigned char *digest, size_t digest_len, int algo)
+{
+  unsigned char *p;
+  
+  static struct ecc_point *gost_key = NULL;
+  static mpz_t x, y;
+  static struct dsa_signature *sig_struct;
+
+  if (algo != 12 ||
+      sig_len != 64 || key_len != 64 ||
+      !(p = blockdata_retrieve(key_data, key_len, NULL)))
+    return 0;
+  
+  if (!sig_struct)
+    {
+      if (!(sig_struct = whine_malloc(sizeof(struct dsa_signature))) ||
+	  !(gost_key = whine_malloc(sizeof(struct ecc_point))))
+	return 0;
+      
+      nettle_dsa_signature_init(sig_struct);
+      nettle_ecc_point_init(gost_key, nettle_get_gost_gc256b());
+      mpz_init(x);
+      mpz_init(y);
+    }
+    
+  mpz_import(x, 32 , 1, 1, 0, 0, p);
+  mpz_import(y, 32 , 1, 1, 0, 0, p + 32);
+
+  if (!ecc_point_set(gost_key, x, y))
+    return 0;
+  
+  mpz_import(sig_struct->r, 32, 1, 1, 0, 0, sig);
+  mpz_import(sig_struct->s, 32, 1, 1, 0, 0, sig + 32);
+  
+  return nettle_gostdsa_verify(gost_key, digest_len, digest, sig_struct);
+}
+#endif
+
 static int dnsmasq_eddsa_verify(struct blockdata *key_data, unsigned int key_len, 
 				unsigned char *sig, size_t sig_len,
 				unsigned char *digest, size_t digest_len, int algo)
 {
   unsigned char *p;
    
-  if (key_len != ED25519_KEY_SIZE ||
-      sig_len != ED25519_SIGNATURE_SIZE ||
-      digest_len != sizeof(struct null_hash_digest) ||
+  if (digest_len != sizeof(struct null_hash_digest) ||
       !(p = blockdata_retrieve(key_data, key_len, NULL)))
     return 0;
   
@@ -357,13 +352,27 @@ static int dnsmasq_eddsa_verify(struct blockdata *key_data, unsigned int key_len
   switch (algo)
     {
     case 15:
+      if (key_len != ED25519_KEY_SIZE ||
+	  sig_len != ED25519_SIGNATURE_SIZE)
+	return 0;
+
       return ed25519_sha512_verify(p,
 				   ((struct null_hash_digest *)digest)->len,
 				   ((struct null_hash_digest *)digest)->buff,
 				   sig);
+      
+#if NETTLE_VERSION_MAJOR == 3 && NETTLE_VERSION_MINOR >= 6
     case 16:
-      /* Ed448 when available */
-      return 0;
+      if (key_len != ED448_KEY_SIZE ||
+	  sig_len != ED448_SIGNATURE_SIZE)
+	return 0;
+
+      return ed448_shake256_verify(p,
+				   ((struct null_hash_digest *)digest)->len,
+				   ((struct null_hash_digest *)digest)->buff,
+				   sig);
+#endif
+
     }
 
   return 0;
@@ -373,19 +382,21 @@ static int (*verify_func(int algo))(struct blockdata *key_data, unsigned int key
 			     unsigned char *digest, size_t digest_len, int algo)
 {
     
-  /* Enure at runtime that we have support for this digest */
+  /* Ensure at runtime that we have support for this digest */
   if (!hash_find(algo_digest_name(algo)))
     return NULL;
   
   /* This switch defines which sig algorithms we support, can't introspect Nettle for that. */
   switch (algo)
     {
-    case 1: case 5: case 7: case 8: case 10:
+    case 5: case 7: case 8: case 10:
       return dnsmasq_rsa_verify;
+
+#if NETTLE_VERSION_MAJOR == 3 && NETTLE_VERSION_MINOR >= 6
+    case 12:
+      return dnsmasq_gostdsa_verify;
+#endif
       
-    case 3: case 6: 
-      return dnsmasq_dsa_verify;
-    
     case 13: case 14:
       return dnsmasq_ecdsa_verify;
 
@@ -436,17 +447,17 @@ char *algo_digest_name(int algo)
     {
     case 1: return NULL;          /* RSA/MD5 - Must Not Implement.  RFC 6944 para 2.3. */
     case 2: return NULL;          /* Diffie-Hellman */
-    case 3: return "sha1";        /* DSA/SHA1 */ 
+    case 3: return NULL; ;        /* DSA/SHA1 - Must Not Implement. RFC 8624 section 3.1 */ 
     case 5: return "sha1";        /* RSA/SHA1 */
-    case 6: return "sha1";        /* DSA-NSEC3-SHA1 */
+    case 6: return NULL;          /* DSA-NSEC3-SHA1 - Must Not Implement. RFC 8624 section 3.1 */
     case 7: return "sha1";        /* RSASHA1-NSEC3-SHA1 */
     case 8: return "sha256";      /* RSA/SHA-256 */
     case 10: return "sha512";     /* RSA/SHA-512 */
-    case 12: return NULL;         /* ECC-GOST */
+    case 12: return "gosthash94"; /* ECC-GOST */
     case 13: return "sha256";     /* ECDSAP256SHA256 */
     case 14: return "sha384";     /* ECDSAP384SHA384 */ 	
     case 15: return "null_hash";  /* ED25519 */
-    case 16: return NULL;         /* ED448 */
+    case 16: return "null_hash";  /* ED448 */
     default: return NULL;
     }
 }
