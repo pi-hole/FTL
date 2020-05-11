@@ -21,6 +21,8 @@
 #include <pwd.h>
 // getgrgid()
 #include <grp.h>
+// NAME_MAX
+#include <limits.h>
 
 // chmod_file() changes the file mode bits of a given file (relative
 // to the directory file descriptor) according to mode. mode is an
