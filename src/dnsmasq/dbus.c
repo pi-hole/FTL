@@ -1,4 +1,4 @@
-/* dnsmasq is Copyright (c) 2000-2018 Simon Kelley
+/* dnsmasq is Copyright (c) 2000-2020 Simon Kelley
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -185,9 +185,6 @@ static void dbus_read_servers(DBusMessage *message)
 		}
 	    }
 
-#ifndef HAVE_IPV6
-	  my_syslog(LOG_WARNING, _("attempt to set an IPv6 server address via DBus - no IPv6 support"));
-#else
 	  if (i == sizeof(struct in6_addr))
 	    {
 	      memcpy(&addr.in6.sin6_addr, p, sizeof(struct in6_addr));
@@ -202,7 +199,6 @@ static void dbus_read_servers(DBusMessage *message)
               source_addr.in6.sin6_port = htons(daemon->query_port);
 	      skip = 0;
 	    }
-#endif
 	}
       else
 	/* At the end */
@@ -460,7 +456,7 @@ static DBusMessage *dbus_add_lease(DBusMessage* message)
   int clid_len, hostname_len, hw_len, hw_type;
   dbus_uint32_t expires, ia_id;
   dbus_bool_t is_temporary;
-  struct all_addr addr;
+  union all_addr addr;
   time_t now = dnsmasq_time();
   unsigned char dhcp_chaddr[DHCP_CHADDR_MAX];
 
@@ -530,20 +526,20 @@ static DBusMessage *dbus_add_lease(DBusMessage* message)
 
   dbus_message_iter_get_basic(&iter, &is_temporary);
 
-  if (inet_pton(AF_INET, ipaddr, &addr.addr.addr4))
+  if (inet_pton(AF_INET, ipaddr, &addr.addr4))
     {
       if (ia_id != 0 || is_temporary)
 	return dbus_message_new_error(message, DBUS_ERROR_INVALID_ARGS,
 				      "ia_id and is_temporary must be zero for IPv4 lease");
       
-      if (!(lease = lease_find_by_addr(addr.addr.addr4)))
-    	lease = lease4_allocate(addr.addr.addr4);
+      if (!(lease = lease_find_by_addr(addr.addr4)))
+    	lease = lease4_allocate(addr.addr4);
     }
 #ifdef HAVE_DHCP6
-  else if (inet_pton(AF_INET6, ipaddr, &addr.addr.addr6))
+  else if (inet_pton(AF_INET6, ipaddr, &addr.addr6))
     {
-      if (!(lease = lease6_find_by_addr(&addr.addr.addr6, 128, 0)))
-	lease = lease6_allocate(&addr.addr.addr6,
+      if (!(lease = lease6_find_by_addr(&addr.addr6, 128, 0)))
+	lease = lease6_allocate(&addr.addr6,
 				is_temporary ? LEASE_TA : LEASE_NA);
       lease_set_iaid(lease, ia_id);
     }
@@ -574,7 +570,7 @@ static DBusMessage *dbus_del_lease(DBusMessage* message)
   DBusMessageIter iter;
   const char *ipaddr;
   DBusMessage *reply;
-  struct all_addr addr;
+  union all_addr addr;
   dbus_bool_t ret = 1;
   time_t now = dnsmasq_time();
 
@@ -588,11 +584,11 @@ static DBusMessage *dbus_del_lease(DBusMessage* message)
    
   dbus_message_iter_get_basic(&iter, &ipaddr);
 
-  if (inet_pton(AF_INET, ipaddr, &addr.addr.addr4))
-    lease = lease_find_by_addr(addr.addr.addr4);
+  if (inet_pton(AF_INET, ipaddr, &addr.addr4))
+    lease = lease_find_by_addr(addr.addr4);
 #ifdef HAVE_DHCP6
-  else if (inet_pton(AF_INET6, ipaddr, &addr.addr.addr6))
-    lease = lease6_find_by_addr(&addr.addr.addr6, 128, 0);
+  else if (inet_pton(AF_INET6, ipaddr, &addr.addr6))
+    lease = lease6_find_by_addr(&addr.addr6, 128, 0);
 #endif
   else
     return dbus_message_new_error_printf(message, DBUS_ERROR_INVALID_ARGS,

@@ -10,6 +10,9 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
+// typedef int16_t
+#include <sys/types.h>
+
 void getLogFilePath(void);
 void read_FTLconf(void);
 void get_privacy_level(FILE *fp);
@@ -21,6 +24,8 @@ typedef struct {
 	int DBinterval;
 	int port;
 	int maxlogage;
+	int dns_port;
+	unsigned int delay_startup;
 	int16_t debug;
 	unsigned char privacylevel;
 	unsigned char blockingmode;
@@ -32,8 +37,8 @@ typedef struct {
 	bool analyze_only_A_AAAA;
 	bool DBimport;
 	bool parse_arp_cache;
-	bool regex_ignorecase;
 	bool cname_inspection;
+	bool block_esni;
 } ConfigStruct;
 
 typedef struct {
@@ -68,6 +73,8 @@ enum {
   DEBUG_EXTBLOCKED    = (1 << 11), /* 00001000 00000000 */
   DEBUG_CAPS          = (1 << 12), /* 00010000 00000000 */
   DEBUG_DNSMASQ_LINES = (1 << 13), /* 00100000 00000000 */
+  DEBUG_VECTORS       = (1 << 14), /* 01000000 00000000 */
+  DEBUG_RESOLVER      = (1 << 15), /* 10000000 00000000 */
 };
 
 #endif //CONFIG_H

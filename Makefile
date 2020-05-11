@@ -11,19 +11,19 @@
 IDIR = src
 ODIR = build
 
-DNSMASQ_VERSION = "pi-hole-2.80"
+DNSMASQ_VERSION = "pi-hole-2.81"
 DNSMASQ_OPTS = -DHAVE_DNSSEC -DHAVE_DNSSEC_STATIC -DHAVE_IDN
 
 FTL_DEPS = *.h database/*.h api/*.h version.h
-FTL_DB_OBJ = database/common.o database/query-table.o database/network-table.o database/gravity-db.o database/database-thread.o
+FTL_DB_OBJ = database/common.o database/query-table.o database/network-table.o database/gravity-db.o database/database-thread.o database/sqlite3-ext.o
 FTL_API_OBJ = api/socket.o api/request.o api/msgpack.o api/api.o
 FTL_OBJ = $(FTL_DB_OBJ) $(FTL_API_OBJ) main.o memory.o log.o daemon.o datastructure.o signals.o files.o setupVars.o args.o gc.o config.o \
-          dnsmasq_interface.o resolve.o regex.o shmem.o capabilities.o overTime.o timers.o
+          dnsmasq_interface.o resolve.o regex.o shmem.o capabilities.o overTime.o timers.o vector.o
 
 DNSMASQ_DEPS = config.h dhcp-protocol.h dns-protocol.h radv-protocol.h dhcp6-protocol.h dnsmasq.h ip6addr.h metrics.h ../dnsmasq_interface.h
 DNSMASQ_OBJ = arp.o dbus.o domain.o lease.o outpacket.o rrfilter.o auth.o dhcp6.o edns0.o log.o poll.o slaac.o blockdata.o dhcp.o forward.o \
               loop.o radv.o tables.o bpf.o dhcp-common.o helper.o netlink.o rfc1035.o tftp.o cache.o dnsmasq.o inotify.o network.o rfc2131.o \
-	      util.o conntrack.o dnssec.o ipset.o option.o rfc3315.o crypto.o dump.o ubus.o metrics.o
+              util.o conntrack.o dnssec.o ipset.o option.o rfc3315.o crypto.o dump.o ubus.o metrics.o
 
 # Get git commit version and date
 GIT_BRANCH := $(shell git branch | sed -n 's/^\* //p')
@@ -99,7 +99,8 @@ EXTRAWARN=-Werror -Waddress -Wlogical-op -Wmissing-field-initializers -Woverleng
 -Wfloat-equal -Wbad-function-cast -Wwrite-strings -Wparentheses -Wlogical-op -Wstrict-prototypes -Wmissing-prototypes -Wredundant-decls -Winline $(EXTRAWARN_GCC8)
 
 # -FILE_OFFSET_BITS=64: used by stat(). Avoids problems with files > 2 GB on 32bit machines
-CCFLAGS=-std=gnu11 -I$(IDIR) $(WARN_FLAGS) -D_FILE_OFFSET_BITS=64 $(HARDENING_FLAGS) $(DEBUG_FLAGS) $(CFLAGS) $(SQLITE_FLAGS)
+CCFLAGS=-std=gnu11 -pipe -I$(IDIR) $(WARN_FLAGS) -D_FILE_OFFSET_BITS=64 $(HARDENING_FLAGS) $(DEBUG_FLAGS) $(CFLAGS) $(SQLITE_FLAGS) -DHAVE_POLL_H
+# We define HAVE_POLL_H as this is needed for the musl builds to succeed
 
 # for FTL we need the pthread library
 # for dnsmasq we need the nettle crypto library and the gmp maths library
@@ -137,7 +138,7 @@ $(_DNSMASQ_OBJ): $(DNSMASQ_OBJ_DIR)/%.o: $(IDIR)/dnsmasq/%.c $(_DNSMASQ_DEPS) | 
 	$(CC) -c -o $@ $< -g3 $(CCFLAGS) -DVERSION=\"$(DNSMASQ_VERSION)\" $(DNSMASQ_OPTS)
 
 $(DB_OBJ_DIR)/sqlite3.o: $(IDIR)/database/sqlite3.c | $(DB_OBJ_DIR)
-	$(CC) -c -o $@ $< $(CCFLAGS)
+	$(CC) -c -o $@ $< -g3 $(CCFLAGS)
 
 $(ODIR):
 	mkdir -p $(ODIR)

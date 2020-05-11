@@ -1,4 +1,4 @@
-/* dnsmasq is Copyright (c) 2000-2018 Simon Kelley
+/* dnsmasq is Copyright (c) 2000-2020 Simon Kelley
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -288,7 +288,10 @@ static void send_ra_alias(time_t now, int iface, char *iface_name, struct in6_ad
       context->netid.next = &context->netid;
     }
 
-  if (!iface_enumerate(AF_INET6, &parm, add_prefixes))
+  /* If no link-local address then we can't advertise since source address of
+     advertisement must be link local address: RFC 4861 para 6.1.2. */
+  if (!iface_enumerate(AF_INET6, &parm, add_prefixes) ||
+      parm.link_pref_time == 0)
     return;
 
   /* Find smallest preferred time within address classes,
@@ -412,7 +415,7 @@ static void send_ra_alias(time_t now, int iface, char *iface_name, struct in6_ad
   if (mtu == 0)
     {
       char *mtu_name = ra_param ? ra_param->mtu_name : NULL;
-      sprintf(daemon->namebuff, "/proc/sys/net/ipv6/conf/%s/mtu", mtu_name ? : iface_name);
+      sprintf(daemon->namebuff, "/proc/sys/net/ipv6/conf/%s/mtu", mtu_name ? mtu_name : iface_name);
       if ((f = fopen(daemon->namebuff, "r")))
         {
           if (fgets(daemon->namebuff, MAXDNAME, f))
@@ -888,11 +891,21 @@ static int iface_search(struct in6_addr *local,  int prefix,
 {
   struct search_param *param = vparam;
   struct dhcp_context *context;
-
+  struct iname *tmp;
+  
   (void)scope;
   (void)preferred;
   (void)valid;
- 
+
+  /* ignore interfaces we're not doing DHCP on. */
+  if (!indextoname(daemon->icmp6fd, if_index, param->name) ||
+      !iface_check(AF_LOCAL, NULL, param->name, NULL))
+    return 1;
+
+  for (tmp = daemon->dhcp_except; tmp; tmp = tmp->next)
+    if (tmp->name && wildcard_match(tmp->name, param->name))
+      return 1;
+
   for (context = daemon->dhcp6; context; context = context->next)
     if (!(context->flags & (CONTEXT_TEMPLATE | CONTEXT_OLD)) &&
 	prefix <= context->prefix &&
@@ -904,16 +917,8 @@ static int iface_search(struct in6_addr *local,  int prefix,
 	/* found an interface that's overdue for RA determine new 
 	   timeout value and arrange for RA to be sent unless interface is
 	   still doing DAD.*/
-	
 	if (!(flags & IFACE_TENTATIVE))
 	  param->iface = if_index;
-	
-	/* should never fail */
-	if (!indextoname(daemon->icmp6fd, if_index, param->name))
-	  {
-	    param->iface = 0;
-	    return 0;
-	  }
 	
 	new_timeout(context, param->name, param->now);
 	

@@ -1,4 +1,4 @@
-/* dnsmasq is Copyright (c) 2000-2018 Simon Kelley
+/* dnsmasq is Copyright (c) 2000-2020 Simon Kelley
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -22,6 +22,15 @@
 #include <linux/netlink.h>
 #include <linux/rtnetlink.h>
 
+/* Blergh. Radv does this, so that's our excuse. */
+#ifndef SOL_NETLINK
+#define SOL_NETLINK 270
+#endif
+
+#ifndef NETLINK_NO_ENOBUFS
+#define NETLINK_NO_ENOBUFS 5
+#endif
+
 /* linux 2.6.19 buggers up the headers, patch it up here. */ 
 #ifndef IFA_RTA
 #  define IFA_RTA(r)  \
@@ -40,10 +49,11 @@ static u32 netlink_pid;
 
 static void nl_async(struct nlmsghdr *h);
 
-void netlink_init(void)
+char *netlink_init(void)
 {
   struct sockaddr_nl addr;
   socklen_t slen = sizeof(addr);
+  int opt = 1;
 
   addr.nl_family = AF_NETLINK;
   addr.nl_pad = 0;
@@ -51,11 +61,10 @@ void netlink_init(void)
   addr.nl_groups = RTMGRP_IPV4_ROUTE;
   if (option_bool(OPT_CLEVERBIND))
     addr.nl_groups |= RTMGRP_IPV4_IFADDR;  
-#ifdef HAVE_IPV6
   addr.nl_groups |= RTMGRP_IPV6_ROUTE;
   if (option_bool(OPT_CLEVERBIND))
     addr.nl_groups |= RTMGRP_IPV6_IFADDR;
-#endif
+
 #ifdef HAVE_DHCP6
   if (daemon->doing_ra || daemon->doing_dhcp6)
     addr.nl_groups |= RTMGRP_IPV6_IFADDR;
@@ -75,12 +84,19 @@ void netlink_init(void)
   if (daemon->netlinkfd == -1 || 
       getsockname(daemon->netlinkfd, (struct sockaddr *)&addr, &slen) == -1)
     die(_("cannot create netlink socket: %s"), NULL, EC_MISC);
-   
+  
+  
   /* save pid assigned by bind() and retrieved by getsockname() */ 
   netlink_pid = addr.nl_pid;
   
   iov.iov_len = 100;
   iov.iov_base = safe_malloc(iov.iov_len);
+  
+  if (daemon->kernel_version >= KERNEL_VERSION(2,6,30) &&
+      setsockopt(daemon->netlinkfd, SOL_NETLINK, NETLINK_NO_ENOBUFS, &opt, sizeof(opt)) == -1)
+    return _("warning: failed to set NETLINK_NO_ENOBUFS on netlink socket");
+  
+  return NULL;
 }
 
 static ssize_t netlink_recv(void)
@@ -235,7 +251,6 @@ int iface_enumerate(int family, void *parm, int (*callback)())
 		      if (!((*callback)(addr, ifa->ifa_index, label,  netmask, broadcast, parm)))
 			callback_ok = 0;
 		  }
-#ifdef HAVE_IPV6
 		else if (ifa->ifa_family == AF_INET6)
 		  {
 		    struct in6_addr *addrp = NULL;
@@ -270,7 +285,6 @@ int iface_enumerate(int family, void *parm, int (*callback)())
 					(int) preferred, (int)valid, parm)))
 			callback_ok = 0;
 		  }
-#endif
 	      }
 	  }
 	else if (h->nlmsg_type == RTM_NEWNEIGH && family == AF_UNSPEC)
@@ -363,7 +377,9 @@ static void nl_async(struct nlmsghdr *h)
 	 failing. */ 
       struct rtmsg *rtm = NLMSG_DATA(h);
       
-      if (rtm->rtm_type == RTN_UNICAST && rtm->rtm_scope == RT_SCOPE_LINK)
+      if (rtm->rtm_type == RTN_UNICAST && rtm->rtm_scope == RT_SCOPE_LINK &&
+	  (rtm->rtm_table == RT_TABLE_MAIN ||
+	   rtm->rtm_table == RT_TABLE_LOCAL))
 	queue_event(EVENT_NEWROUTE);
     }
   else if (h->nlmsg_type == RTM_NEWADDR || h->nlmsg_type == RTM_DELADDR) 

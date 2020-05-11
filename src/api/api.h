@@ -15,7 +15,7 @@ void getStats(const int *sock);
 void getOverTime(const int *sock);
 void getTopDomains(const char *client_message, const int *sock);
 void getTopClients(const char *client_message, const int *sock);
-void getForwardDestinations(const char *client_message, const int *sock);
+void getUpstreamDestinations(const char *client_message, const int *sock);
 void getQueryTypes(const int *sock);
 void getAllQueries(const char *client_message, const int *sock);
 void getRecentBlocked(const char *client_message, const int *sock);

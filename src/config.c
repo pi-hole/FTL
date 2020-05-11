@@ -33,6 +33,7 @@ FTLFileNamesStruct FTLfiles = {
 
 // Private global variables
 static char *conflinebuffer = NULL;
+static size_t size = 0;
 
 // Private prototypes
 static char *parse_FTLconf(FILE *fp, const char * key);
@@ -332,19 +333,6 @@ void read_FTLconf(void)
 	else
 		logg("   PARSE_ARP_CACHE: Inactive");
 
-	// REGEX_IGNORECASE
-	// defaults to: false
-	config.regex_ignorecase = false;
-	buffer = parse_FTLconf(fp, "REGEX_IGNORECASE");
-
-	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
-		config.regex_ignorecase = true;
-
-	if(config.regex_ignorecase)
-		logg("   REGEX_IGNORECASE: Enabled. Regex is case insensitive");
-	else
-		logg("   REGEX_IGNORECASE: Disabled. Regex is case sensitive");
-
 	// CNAME_DEEP_INSPECT
 	// defaults to: true
 	config.cname_inspection = true;
@@ -357,6 +345,32 @@ void read_FTLconf(void)
 		logg("   CNAME_DEEP_INSPECT: Active");
 	else
 		logg("   CNAME_DEEP_INSPECT: Inactive");
+
+	// DELAY_STARTUP
+	// defaults to: zero (seconds)
+	buffer = parse_FTLconf(fp, "DELAY_STARTUP");
+
+	config.delay_startup = 0;
+	if(buffer != NULL && sscanf(buffer, "%u", &config.delay_startup) &&
+	   (config.delay_startup > 0 && config.delay_startup <= 300))
+	{
+		logg("   DELAY_STARTUP: Requested to wait %u seconds during startup.", config.delay_startup);
+	}
+	else
+		logg("   DELAY_STARTUP: No delay requested.");
+
+	// BLOCK_ESNI
+	// defaults to: true
+	config.block_esni = true;
+	buffer = parse_FTLconf(fp, "BLOCK_ESNI");
+
+	if(buffer != NULL && strcasecmp(buffer, "false") == 0)
+		config.block_esni = false;
+
+	if(config.block_esni)
+		logg("   BLOCK_ESNI: Enabled, blocking _esni.{blocked domain}");
+	else
+		logg("   BLOCK_ESNI: Disabled");
 
 	// Read DEBUG_... setting from pihole-FTL.conf
 	read_debuging_settings(fp);
@@ -421,7 +435,6 @@ static char *parse_FTLconf(FILE *fp, const char * key)
 	// Go to beginning of file
 	fseek(fp, 0L, SEEK_SET);
 
-	size_t size = 0;
 	errno = 0;
 	while(getline(&conflinebuffer, &size, fp) != -1)
 	{
@@ -634,6 +647,14 @@ void read_debuging_settings(FILE *fp)
 	extern char debug_dnsmasq_lines;
 	debug_dnsmasq_lines = config.debug & DEBUG_DNSMASQ_LINES ? 1 : 0;
 
+	// DEBUG_VECTORS
+	// defaults to: false
+	setDebugOption(fp, "DEBUG_VECTORS", DEBUG_VECTORS);
+
+	// DEBUG_RESOLVER
+	// defaults to: false
+	setDebugOption(fp, "DEBUG_RESOLVER", DEBUG_RESOLVER);
+
 	if(config.debug)
 	{
 		logg("*****************************");
@@ -652,6 +673,8 @@ void read_debuging_settings(FILE *fp)
 		logg("* DEBUG_EXTBLOCKED      %s *", (config.debug & DEBUG_EXTBLOCKED)? "YES":"NO ");
 		logg("* DEBUG_CAPS            %s *", (config.debug & DEBUG_CAPS)? "YES":"NO ");
 		logg("* DEBUG_DNSMASQ_LINES   %s *", (config.debug & DEBUG_DNSMASQ_LINES)? "YES":"NO ");
+		logg("* DEBUG_VECTORS         %s *", (config.debug & DEBUG_VECTORS)? "YES":"NO ");
+		logg("* DEBUG_RESOLVER        %s *", (config.debug & DEBUG_RESOLVER)? "YES":"NO ");
 		logg("*****************************");
 	}
 

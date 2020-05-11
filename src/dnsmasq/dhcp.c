@@ -1,4 +1,4 @@
-/* dnsmasq is Copyright (c) 2000-2018 Simon Kelley
+/* dnsmasq is Copyright (c) 2000-2020 Simon Kelley
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -310,7 +310,7 @@ void dhcp_packet(time_t now, int pxe_fd)
       parm.relay_local.s_addr = 0;
       parm.ind = iface_index;
       
-      if (!iface_check(AF_INET, (struct all_addr *)&iface_addr, ifr.ifr_name, NULL))
+      if (!iface_check(AF_INET, (union all_addr *)&iface_addr, ifr.ifr_name, NULL))
 	{
 	  /* If we failed to match the primary address of the interface, see if we've got a --listen-address
 	     for a secondary */
@@ -401,7 +401,8 @@ void dhcp_packet(time_t now, int pxe_fd)
       pkt = (struct in_pktinfo *)CMSG_DATA(cmptr);
       pkt->ipi_ifindex = rcvd_iface_index;
       pkt->ipi_spec_dst.s_addr = 0;
-      msg.msg_controllen = cmptr->cmsg_len = CMSG_LEN(sizeof(struct in_pktinfo));
+      msg.msg_controllen = CMSG_SPACE(sizeof(struct in_pktinfo));
+      cmptr->cmsg_len = CMSG_LEN(sizeof(struct in_pktinfo));
       cmptr->cmsg_level = IPPROTO_IP;
       cmptr->cmsg_type = IP_PKTINFO;
 
@@ -507,33 +508,83 @@ static int check_listen_addrs(struct in_addr local, int if_index, char *label,
 
    Note that the current chain may be superseded later for configured hosts or those coming via gateways. */
 
-static int complete_context(struct in_addr local, int if_index, char *label,
-			    struct in_addr netmask, struct in_addr broadcast, void *vparam)
+static void guess_range_netmask(struct in_addr addr, struct in_addr netmask)
 {
   struct dhcp_context *context;
-  struct dhcp_relay *relay;
-  struct iface_param *param = vparam;
 
-  (void)label;
-  
   for (context = daemon->dhcp; context; context = context->next)
-    {
-      if (!(context->flags & CONTEXT_NETMASK) &&
-	  (is_same_net(local, context->start, netmask) ||
-	   is_same_net(local, context->end, netmask)))
+    if (!(context->flags & CONTEXT_NETMASK) &&
+	(is_same_net(addr, context->start, netmask) ||
+	 is_same_net(addr, context->end, netmask)))
       { 
 	if (context->netmask.s_addr != netmask.s_addr &&
-	    !(is_same_net(local, context->start, netmask) &&
-	      is_same_net(local, context->end, netmask)))
+	    !(is_same_net(addr, context->start, netmask) &&
+	      is_same_net(addr, context->end, netmask)))
 	  {
 	    strcpy(daemon->dhcp_buff, inet_ntoa(context->start));
 	    strcpy(daemon->dhcp_buff2, inet_ntoa(context->end));
 	    my_syslog(MS_DHCP | LOG_WARNING, _("DHCP range %s -- %s is not consistent with netmask %s"),
 		      daemon->dhcp_buff, daemon->dhcp_buff2, inet_ntoa(netmask));
 	  }	
- 	context->netmask = netmask;
+	context->netmask = netmask;
       }
+}
+
+static int complete_context(struct in_addr local, int if_index, char *label,
+			    struct in_addr netmask, struct in_addr broadcast, void *vparam)
+{
+  struct dhcp_context *context;
+  struct dhcp_relay *relay;
+  struct iface_param *param = vparam;
+  struct shared_network *share;
+  
+  (void)label;
+
+  for (share = daemon->shared_networks; share; share = share->next)
+    {
       
+#ifdef HAVE_DHCP6
+      if (share->shared_addr.s_addr == 0)
+	continue;
+#endif
+      
+      if (share->if_index != 0)
+	{
+	  if (share->if_index != if_index)
+	    continue;
+	}
+      else
+	{
+	  if (share->match_addr.s_addr != local.s_addr)
+	    continue;
+	}
+
+      for (context = daemon->dhcp; context; context = context->next)
+	{
+	  if (context->netmask.s_addr != 0 &&
+	      is_same_net(share->shared_addr, context->start, context->netmask) &&
+	      is_same_net(share->shared_addr, context->end, context->netmask))
+	    {
+	      /* link it onto the current chain if we've not seen it before */
+	      if (context->current == context)
+		{
+		  /* For a shared network, we have no way to guess what the default route should be. */
+		  context->router.s_addr = 0;
+		  context->local = local; /* Use configured address for Server Identifier */
+		  context->current = param->current;
+		  param->current = context;
+		}
+	      
+	      if (!(context->flags & CONTEXT_BRDCAST))
+		context->broadcast.s_addr  = context->start.s_addr | ~context->netmask.s_addr;
+	    }		
+	}
+    }
+
+  guess_range_netmask(local, netmask);
+  
+  for (context = daemon->dhcp; context; context = context->next)
+    {
       if (context->netmask.s_addr != 0 &&
 	  is_same_net(local, context->start, context->netmask) &&
 	  is_same_net(local, context->end, context->netmask))
@@ -558,7 +609,7 @@ static int complete_context(struct in_addr local, int if_index, char *label,
     }
 
   for (relay = daemon->relay4; relay; relay = relay->next)
-    if (if_index == param->ind && relay->local.addr.addr4.s_addr == local.s_addr && relay->current == relay &&
+    if (if_index == param->ind && relay->local.addr4.s_addr == local.s_addr && relay->current == relay &&
 	(param->relay_local.s_addr == 0 || param->relay_local.s_addr == local.s_addr))
       {
 	relay->current = param->relay;
@@ -765,24 +816,33 @@ int address_allocate(struct dhcp_context *context,
 		(!IN_CLASSC(ntohl(addr.s_addr)) || 
 		 ((ntohl(addr.s_addr) & 0xff) != 0xff && ((ntohl(addr.s_addr) & 0xff) != 0x0))))
 	      {
-		struct ping_result *r;
-		
-		if ((r = do_icmp_ping(now, addr, j, loopback)))
- 		  {
-		    /* consec-ip mode: we offered this address for another client
-		       (different hash) recently, don't offer it to this one. */
-		    if (!option_bool(OPT_CONSEC_ADDR) || r->hash == j)
-		      {
-			*addrp = addr;
-			return 1;
-		      }
-		  }
+		/* in consec-ip mode, skip addresses equal to
+		   the number of addresses rejected by clients. This
+		   should avoid the same client being offered the same
+		   address after it has rjected it. */
+		if (option_bool(OPT_CONSEC_ADDR) && c->addr_epoch)
+		  c->addr_epoch--;
 		else
 		  {
-		    /* address in use: perturb address selection so that we are
-		       less likely to try this address again. */
-		    if (!option_bool(OPT_CONSEC_ADDR))
-		      c->addr_epoch++;
+		    struct ping_result *r;
+		    
+		    if ((r = do_icmp_ping(now, addr, j, loopback)))
+		      {
+			/* consec-ip mode: we offered this address for another client
+			   (different hash) recently, don't offer it to this one. */
+			if (!option_bool(OPT_CONSEC_ADDR) || r->hash == j)
+			  {
+			    *addrp = addr;
+			    return 1;
+			  }
+		      }
+		    else
+		      {
+			/* address in use: perturb address selection so that we are
+			   less likely to try this address again. */
+			if (!option_bool(OPT_CONSEC_ADDR))
+			  c->addr_epoch++;
+		      }
 		  }
 	      }
 	    
@@ -971,7 +1031,7 @@ char *host_from_dns(struct in_addr addr)
   if (daemon->port == 0)
     return NULL; /* DNS disabled. */
   
-  lookup = cache_find_by_addr(NULL, (struct all_addr *)&addr, 0, F_IPV4);
+  lookup = cache_find_by_addr(NULL, (union all_addr *)&addr, 0, F_IPV4);
 
   if (lookup && (lookup->flags & F_HOSTS))
     {
@@ -1000,25 +1060,25 @@ char *host_from_dns(struct in_addr addr)
 static int  relay_upstream4(struct dhcp_relay *relay, struct dhcp_packet *mess, size_t sz, int iface_index)
 {
   /* ->local is same value for all relays on ->current chain */
-  struct all_addr from;
+  union all_addr from;
   
   if (mess->op != BOOTREQUEST)
     return 0;
 
   /* source address == relay address */
-  from.addr.addr4 = relay->local.addr.addr4;
+  from.addr4 = relay->local.addr4;
   
   /* already gatewayed ? */
   if (mess->giaddr.s_addr)
     {
       /* if so check if by us, to stomp on loops. */
-      if (mess->giaddr.s_addr == relay->local.addr.addr4.s_addr)
+      if (mess->giaddr.s_addr == relay->local.addr4.s_addr)
 	return 1;
     }
   else
     {
       /* plug in our address */
-      mess->giaddr.s_addr = relay->local.addr.addr4.s_addr;
+      mess->giaddr.s_addr = relay->local.addr4.s_addr;
     }
 
   if ((mess->hops++) > 20)
@@ -1029,7 +1089,7 @@ static int  relay_upstream4(struct dhcp_relay *relay, struct dhcp_packet *mess, 
       union mysockaddr to;
       
       to.sa.sa_family = AF_INET;
-      to.in.sin_addr = relay->server.addr.addr4;
+      to.in.sin_addr = relay->server.addr4;
       to.in.sin_port = htons(daemon->dhcp_server_port);
       
       send_from(daemon->dhcpfd, 0, (char *)mess, sz, &to, &from, 0);
@@ -1037,7 +1097,7 @@ static int  relay_upstream4(struct dhcp_relay *relay, struct dhcp_packet *mess, 
       if (option_bool(OPT_LOG_OPTS))
 	{
 	  inet_ntop(AF_INET, &relay->local, daemon->addrbuff, ADDRSTRLEN);
-	  my_syslog(MS_DHCP | LOG_INFO, _("DHCP relay %s -> %s"), daemon->addrbuff, inet_ntoa(relay->server.addr.addr4));
+	  my_syslog(MS_DHCP | LOG_INFO, _("DHCP relay %s -> %s"), daemon->addrbuff, inet_ntoa(relay->server.addr4));
 	}
       
       /* Save this for replies */
@@ -1057,7 +1117,7 @@ static struct dhcp_relay *relay_reply4(struct dhcp_packet *mess, char *arrival_i
 
   for (relay = daemon->relay4; relay; relay = relay->next)
     {
-      if (mess->giaddr.s_addr == relay->local.addr.addr4.s_addr)
+      if (mess->giaddr.s_addr == relay->local.addr4.s_addr)
 	{
 	  if (!relay->interface || wildcard_match(relay->interface, arrival_interface))
 	    return relay->iface_index != 0 ? relay : NULL;

@@ -18,6 +18,8 @@
 #include "main.h"
 // global variable daemonmode
 #include "args.h"
+// global counters variable
+#include "shmem.h"
 
 static pthread_mutex_t lock;
 static FILE *logfile = NULL;
@@ -137,12 +139,12 @@ void log_counter_info(void)
 {
 	logg(" -> Total DNS queries: %i", counters->queries);
 	logg(" -> Cached DNS queries: %i", counters->cached);
-	logg(" -> Forwarded DNS queries: %i", counters->forwardedqueries);
-	logg(" -> Exactly blocked DNS queries: %i", counters->blocked);
+	logg(" -> Forwarded DNS queries: %i", counters->forwarded);
+	logg(" -> Blocked DNS queries: %i", counters->blocked);
 	logg(" -> Unknown DNS queries: %i", counters->unknown);
 	logg(" -> Unique domains: %i", counters->domains);
 	logg(" -> Unique clients: %i", counters->clients);
-	logg(" -> Known forward destinations: %i", counters->forwarded);
+	logg(" -> Known forward destinations: %i", counters->upstreams);
 }
 
 void log_FTL_version(const bool crashreport)

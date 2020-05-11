@@ -1,4 +1,4 @@
-/* dnsmasq is Copyright (c) 2000-2018 Simon Kelley
+/* dnsmasq is Copyright (c) 2000-2020 Simon Kelley
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -21,19 +21,16 @@
 
 struct state {
   unsigned char *clid;
-  int clid_len, iaid, ia_type, interface, hostname_auth, lease_allocate;
+  int clid_len, ia_type, interface, hostname_auth, lease_allocate;
   char *client_hostname, *hostname, *domain, *send_domain;
   struct dhcp_context *context;
   struct in6_addr *link_address, *fallback, *ll_addr, *ula_addr;
-  unsigned int xid, fqdn_flags;
+  unsigned int xid, fqdn_flags, iaid;
   char *iface_name;
   void *packet_options, *end;
   struct dhcp_netid *tags, *context_tags;
   unsigned char mac[DHCP_CHADDR_MAX];
   unsigned int mac_len, mac_type;
-#ifdef OPTION6_PREFIX_CLASS
-  struct prefix_class *send_prefix_class;
-#endif
 };
 
 static int dhcp6_maybe_relay(struct state *state, void *inbuff, size_t sz, 
@@ -49,12 +46,11 @@ static void get_context_tag(struct state *state, struct dhcp_context *context);
 static int check_ia(struct state *state, void *opt, void **endp, void **ia_option);
 static int build_ia(struct state *state, int *t1cntr);
 static void end_ia(int t1cntr, unsigned int min_time, int do_fuzz);
-#ifdef OPTION6_PREFIX_CLASS
-static struct prefix_class *prefix_class_from_context(struct dhcp_context *context);
-#endif
 static void mark_context_used(struct state *state, struct in6_addr *addr);
 static void mark_config_used(struct dhcp_context *context, struct in6_addr *addr);
 static int check_address(struct state *state, struct in6_addr *addr);
+static int config_valid(struct dhcp_config *config, struct dhcp_context *context, struct in6_addr *addr, struct state *state, time_t now);
+static struct addrlist *config_implies(struct dhcp_config *config, struct dhcp_context *context, struct in6_addr *addr);
 static void add_address(struct state *state, struct dhcp_context *context, unsigned int lease_time, void *ia_option, 
 			unsigned int *min_time, struct in6_addr *addr, time_t now);
 static void update_leases(struct state *state, struct dhcp_context *context, struct in6_addr *addr, unsigned int lease_time, time_t now);
@@ -134,21 +130,41 @@ static int dhcp6_maybe_relay(struct state *state, void *inbuff, size_t sz,
       else
 	{
 	  struct dhcp_context *c;
+	  struct shared_network *share = NULL;
 	  state->context = NULL;
-	   
+
 	  if (!IN6_IS_ADDR_LOOPBACK(state->link_address) &&
 	      !IN6_IS_ADDR_LINKLOCAL(state->link_address) &&
 	      !IN6_IS_ADDR_MULTICAST(state->link_address))
 	    for (c = daemon->dhcp6; c; c = c->next)
-	      if ((c->flags & CONTEXT_DHCP) &&
-		  !(c->flags & (CONTEXT_TEMPLATE | CONTEXT_OLD)) &&
-		  is_same_net6(state->link_address, &c->start6, c->prefix) &&
-		  is_same_net6(state->link_address, &c->end6, c->prefix))
-		{
-		  c->preferred = c->valid = 0xffffffff;
-		  c->current = state->context;
-		  state->context = c;
-		}
+	      {
+		for (share = daemon->shared_networks; share; share = share->next)
+		  {
+		    if (share->shared_addr.s_addr != 0)
+		      continue;
+		    
+		    if (share->if_index != 0 ||
+			!IN6_ARE_ADDR_EQUAL(state->link_address, &share->match_addr6))
+		      continue;
+		    
+		    if ((c->flags & CONTEXT_DHCP) &&
+			!(c->flags & (CONTEXT_TEMPLATE | CONTEXT_OLD)) &&
+			is_same_net6(&share->shared_addr6, &c->start6, c->prefix) &&
+			is_same_net6(&share->shared_addr6, &c->end6, c->prefix))
+		      break;
+		  }
+		
+		if (share ||
+		    ((c->flags & CONTEXT_DHCP) &&
+		     !(c->flags & (CONTEXT_TEMPLATE | CONTEXT_OLD)) &&
+		     is_same_net6(state->link_address, &c->start6, c->prefix) &&
+		     is_same_net6(state->link_address, &c->end6, c->prefix)))
+		  {
+		    c->preferred = c->valid = 0xffffffff;
+		    c->current = state->context;
+		    state->context = c;
+		  }
+	      }
 	  
 	  if (!state->context)
 	    {
@@ -219,21 +235,25 @@ static int dhcp6_maybe_relay(struct state *state, void *inbuff, size_t sz,
       if (opt6_ptr(opt, 0) + opt6_len(opt) > end) 
         return 0;
      
-      int o = new_opt6(opt6_type(opt));
-      if (opt6_type(opt) == OPTION6_RELAY_MSG)
+      /* Don't copy MAC address into reply. */
+      if (opt6_type(opt) != OPTION6_CLIENT_MAC)
 	{
-	  struct in6_addr align;
-	  /* the packet data is unaligned, copy to aligned storage */
-	  memcpy(&align, inbuff + 2, IN6ADDRSZ); 
-	  state->link_address = &align;
-	  /* zero is_unicast since that is now known to refer to the 
-	     relayed packet, not the original sent by the client */
-	  if (!dhcp6_maybe_relay(state, opt6_ptr(opt, 0), opt6_len(opt), client_addr, 0, now))
-	    return 0;
+	  int o = new_opt6(opt6_type(opt));
+	  if (opt6_type(opt) == OPTION6_RELAY_MSG)
+	    {
+	      struct in6_addr align;
+	      /* the packet data is unaligned, copy to aligned storage */
+	      memcpy(&align, inbuff + 2, IN6ADDRSZ); 
+	      state->link_address = &align;
+	      /* zero is_unicast since that is now known to refer to the 
+		 relayed packet, not the original sent by the client */
+	      if (!dhcp6_maybe_relay(state, opt6_ptr(opt, 0), opt6_len(opt), client_addr, 0, now))
+		return 0;
+	    }
+	  else
+	    put_opt6(opt6_ptr(opt, 0), opt6_len(opt));
+	  end_opt6(o);
 	}
-      else if (opt6_type(opt) != OPTION6_CLIENT_MAC)
-	put_opt6(opt6_ptr(opt, 0), opt6_len(opt));
-      end_opt6(o);	    
     }
   
   return 1;
@@ -252,10 +272,6 @@ static int dhcp6_no_relay(struct state *state, int msg_type, void *inbuff, size_
   struct dhcp_context *context_tmp;
   struct dhcp_mac *mac_opt;
   unsigned int ignore = 0;
-#ifdef OPTION6_PREFIX_CLASS
-  struct prefix_class *p;
-  int dump_all_prefix_classes = 0;
-#endif
 
   state->packet_options = inbuff + 4;
   state->end = inbuff + sz;
@@ -269,9 +285,6 @@ static int dhcp6_no_relay(struct state *state, int msg_type, void *inbuff, size_
   state->hostname = NULL;
   state->client_hostname = NULL;
   state->fqdn_flags = 0x01; /* default to send if we receive no FQDN option */
-#ifdef OPTION6_PREFIX_CLASS
-  state->send_prefix_class = NULL;
-#endif
 
   /* set tag with name == interface */
   iface_id.net = state->iface_name;
@@ -477,68 +490,66 @@ static int dhcp6_no_relay(struct state *state, int msg_type, void *inbuff, size_
 	   
 	   if (legal_hostname(daemon->dhcp_buff))
 	     {
+	       struct dhcp_match_name *m;
+	       size_t nl = strlen(daemon->dhcp_buff);
+	       
 	       state->client_hostname = daemon->dhcp_buff;
+	       
 	       if (option_bool(OPT_LOG_OPTS))
-		 my_syslog(MS_DHCP | LOG_INFO, _("%u client provides name: %s"), state->xid, state->client_hostname); 
+		 my_syslog(MS_DHCP | LOG_INFO, _("%u client provides name: %s"), state->xid, state->client_hostname);
+	       
+	       for (m = daemon->dhcp_name_match; m; m = m->next)
+		 {
+		   size_t ml = strlen(m->name);
+		   char save = 0;
+		   
+		   if (nl < ml)
+		     continue;
+		   if (nl > ml)
+		     {
+		       save = state->client_hostname[ml];
+		       state->client_hostname[ml] = 0;
+		     }
+		   
+		   if (hostname_isequal(state->client_hostname, m->name) &&
+		       (save == 0 || m->wildcard))
+		     {
+		       m->netid->next = state->tags;
+		       state->tags = m->netid;
+		     }
+		   
+		   if (save != 0)
+		     state->client_hostname[ml] = save;
+		 }
 	     }
 	 }
     }	 
   
-  if (state->clid)
+  if (state->clid &&
+      (config = find_config(daemon->dhcp_conf, state->context, state->clid, state->clid_len,
+			    state->mac, state->mac_len, state->mac_type, NULL, run_tag_if(state->tags))) &&
+      have_config(config, CONFIG_NAME))
     {
-      config = find_config(daemon->dhcp_conf, state->context, state->clid, state->clid_len, state->mac, state->mac_len, state->mac_type, NULL);
+      state->hostname = config->hostname;
+      state->domain = config->domain;
+      state->hostname_auth = 1;
+    }
+  else if (state->client_hostname)
+    {
+      state->domain = strip_hostname(state->client_hostname);
       
-      if (have_config(config, CONFIG_NAME))
+      if (strlen(state->client_hostname) != 0)
 	{
-	  state->hostname = config->hostname;
-	  state->domain = config->domain;
-	  state->hostname_auth = 1;
-	}
-      else if (state->client_hostname)
-	{
-	  struct dhcp_match_name *m;
-	  size_t nl;
-
-	  state->domain = strip_hostname(state->client_hostname);
-	  nl = strlen(state->client_hostname);
+	  state->hostname = state->client_hostname;
 	  
-	  if (strlen(state->client_hostname) != 0)
+	  if (!config)
 	    {
-	      state->hostname = state->client_hostname;
-	      
-	      if (!config)
-		{
-		  /* Search again now we have a hostname. 
-		     Only accept configs without CLID here, (it won't match)
-		     to avoid impersonation by name. */
-		  struct dhcp_config *new = find_config(daemon->dhcp_conf, state->context, NULL, 0, NULL, 0, 0, state->hostname);
-		  if (new && !have_config(new, CONFIG_CLID) && !new->hwaddr)
-		    config = new;
-		}
-	      
-	      for (m = daemon->dhcp_name_match; m; m = m->next)
-		{
-		  size_t ml = strlen(m->name);
-		  char save = 0;
-		  
-		  if (nl < ml)
-		    continue;
-		  if (nl > ml)
-		    {
-		      save = state->client_hostname[ml];
-		      state->client_hostname[ml] = 0;
-		    }
-		  
-		  if (hostname_isequal(state->client_hostname, m->name) &&
-		      (save == 0 || m->wildcard))
-		    {
-		      m->netid->next = state->tags;
-		      state->tags = m->netid;
-		    }
-		  
-		  if (save != 0)
-		    state->client_hostname[ml] = save;
-		}
+	      /* Search again now we have a hostname. 
+		 Only accept configs without CLID here, (it won't match)
+		 to avoid impersonation by name. */
+	      struct dhcp_config *new = find_config(daemon->dhcp_conf, state->context, NULL, 0, NULL, 0, 0, state->hostname, run_tag_if(state->tags));
+	      if (new && !have_config(new, CONFIG_CLID) && !new->hwaddr)
+		config = new;
 	    }
 	}
     }
@@ -562,38 +573,14 @@ static int dhcp6_no_relay(struct state *state, int msg_type, void *inbuff, size_
 	ignore = 1;
     }
   else if (state->clid &&
-	   find_config(daemon->dhcp_conf, NULL, state->clid, state->clid_len, state->mac, state->mac_len, state->mac_type, NULL))
+	   find_config(daemon->dhcp_conf, NULL, state->clid, state->clid_len,
+		       state->mac, state->mac_len, state->mac_type, NULL, run_tag_if(state->tags)))
     {
       known_id.net = "known-othernet";
       known_id.next = state->tags;
       state->tags = &known_id;
     }
   
-#ifdef OPTION6_PREFIX_CLASS
-  /* OPTION_PREFIX_CLASS in ORO, send addresses in all prefix classes */
-  if (daemon->prefix_classes && (msg_type == DHCP6SOLICIT || msg_type == DHCP6REQUEST))
-    {
-      void *oro;
-      
-      if ((oro = opt6_find(state->packet_options, state->end, OPTION6_ORO, 0)))
-	for (i = 0; i <  opt6_len(oro) - 1; i += 2)
-	  if (opt6_uint(oro, i, 2) == OPTION6_PREFIX_CLASS)
-	    {
-	      dump_all_prefix_classes = 1;
-	      break;
-	    }
-      
-      if (msg_type != DHCP6SOLICIT || dump_all_prefix_classes)
-	/* Add the tags associated with prefix classes so we can use the DHCP ranges.
-	   Not done for SOLICIT as we add them  one-at-time. */
-	for (p = daemon->prefix_classes; p ; p = p->next)
-	  {
-	    p->tag.next = state->tags;
-	    state->tags = &p->tag;
-	  }
-    }    
-#endif
-
   tagif = run_tag_if(state->tags);
   
   /* if all the netids in the ignore list are present, ignore this client */
@@ -677,60 +664,6 @@ static int dhcp6_no_relay(struct state *state, int msg_type, void *inbuff, size_
 	    for (c = state->context; c; c = c->current)
 	      c->flags &= ~CONTEXT_USED;
 
-#ifdef OPTION6_PREFIX_CLASS
-	    if (daemon->prefix_classes && state->ia_type == OPTION6_IA_NA)
-	      {
-		void *prefix_opt;
-		int prefix_class;
-		
-		if (dump_all_prefix_classes)
-		  /* OPTION_PREFIX_CLASS in ORO, send addresses in all prefix classes */
-		  plain_range = 0;
-		else 
-		  { 
-		    if ((prefix_opt = opt6_find(opt6_ptr(opt, 12), ia_end, OPTION6_PREFIX_CLASS, 2)))
-		      {
-			
-			prefix_class = opt6_uint(prefix_opt, 0, 2);
-			
-			for (p = daemon->prefix_classes; p ; p = p->next)
-			  if (p->class == prefix_class)
-			    break;
-			
-			if (!p)
-			  my_syslog(MS_DHCP | LOG_WARNING, _("unknown prefix-class %d"), prefix_class);
-			else
-			  {
-			    /* add tag to list, and exclude undecorated dhcp-ranges */
-			    p->tag.next = state->tags;
-			    solicit_tags = run_tag_if(&p->tag);
-			    plain_range = 0;
-			    state->send_prefix_class = p;
-			  }
-		      }
-		    else
-		      {
-			/* client didn't ask for a prefix class, lets see if we can find one. */
-			for (p = daemon->prefix_classes; p ; p = p->next)
-			  {
-			    p->tag.next = NULL;
-			    if (match_netid(&p->tag, solicit_tags, 1))
-			      break;
-			  }
-			
-			if (p)
-			  {
-			    plain_range = 0;
-			    state->send_prefix_class = p;
-			  }
-		      }
-
-		    if (p && option_bool(OPT_LOG_OPTS))
-		      my_syslog(MS_DHCP | LOG_INFO, "%u prefix class %d tag:%s", state->xid, p->class, p->tag.net); 
-		  }
-	      }
-#endif
-
 	    o = build_ia(state, &t1cntr);
 	    if (address_assigned)
 		address_assigned = 2;
@@ -746,7 +679,7 @@ static int dhcp6_no_relay(struct state *state, int msg_type, void *inbuff, size_
 		    /* If the client asks for an address on the same network as a configured address, 
 		       offer the configured address instead, to make moving to newly-configured
 		       addresses automatic. */
-		    if (!(c->flags & CONTEXT_CONF_USED) && config_valid(config, c, &addr) && check_address(state, &addr))
+		    if (!(c->flags & CONTEXT_CONF_USED) && config_valid(config, c, &addr, state, now))
 		      {
 			req_addr = addr;
 			mark_config_used(c, &addr);
@@ -759,10 +692,6 @@ static int dhcp6_no_relay(struct state *state, int msg_type, void *inbuff, size_
 		      continue; /* address leased elsewhere */
 		    
 		    /* add address to output packet */
-#ifdef OPTION6_PREFIX_CLASS
-		    if (dump_all_prefix_classes && state->ia_type == OPTION6_IA_NA)
-		      state->send_prefix_class = prefix_class_from_context(c);
-#endif		    
 		    add_address(state, c, lease_time, ia_option, &min_time, &req_addr, now);
 		    mark_context_used(state, &req_addr);
 		    get_context_tag(state, c);
@@ -774,19 +703,15 @@ static int dhcp6_no_relay(struct state *state, int msg_type, void *inbuff, size_
 	    for (c = state->context; c; c = c->current) 
 	      if (!(c->flags & CONTEXT_CONF_USED) &&
 		  match_netid(c->filter, solicit_tags, plain_range) &&
-		  config_valid(config, c, &addr) && 
-		  check_address(state, &addr))
+		  config_valid(config, c, &addr, state, now))
 		{
 		  mark_config_used(state->context, &addr);
 		  if (have_config(config, CONFIG_TIME))
 		    lease_time = config->lease_time;
 		  else
 		    lease_time = c->lease_time;
+
 		  /* add address to output packet */
-#ifdef OPTION6_PREFIX_CLASS
-		  if (dump_all_prefix_classes && state->ia_type == OPTION6_IA_NA)
-		    state->send_prefix_class = prefix_class_from_context(c);
-#endif
 		  add_address(state, c, lease_time, NULL, &min_time, &addr, now);
 		  mark_context_used(state, &addr);
 		  get_context_tag(state, c);
@@ -800,10 +725,6 @@ static int dhcp6_no_relay(struct state *state, int msg_type, void *inbuff, size_
 		req_addr = ltmp->addr6;
 		if ((c = address6_available(state->context, &req_addr, solicit_tags, plain_range)))
 		  {
-#ifdef OPTION6_PREFIX_CLASS
-		    if (dump_all_prefix_classes && state->ia_type == OPTION6_IA_NA)
-		      state->send_prefix_class = prefix_class_from_context(c);
-#endif
 		    add_address(state, c, c->lease_time, NULL, &min_time, &req_addr, now);
 		    mark_context_used(state, &req_addr);
 		    get_context_tag(state, c);
@@ -815,10 +736,6 @@ static int dhcp6_no_relay(struct state *state, int msg_type, void *inbuff, size_
 	    while ((c = address6_allocate(state->context, state->clid, state->clid_len, state->ia_type == OPTION6_IA_TA,
 					  state->iaid, ia_counter, solicit_tags, plain_range, &addr)))
 	      {
-#ifdef OPTION6_PREFIX_CLASS
-		if (dump_all_prefix_classes && state->ia_type == OPTION6_IA_NA)
-		  state->send_prefix_class = prefix_class_from_context(c);
-#endif
 		add_address(state, c, c->lease_time, NULL, &min_time, &addr, now);
 		mark_context_used(state, &addr);
 		get_context_tag(state, c);
@@ -924,14 +841,13 @@ static int dhcp6_no_relay(struct state *state, int msg_type, void *inbuff, size_
 		struct in6_addr req_addr;
 		struct dhcp_context *dynamic, *c;
 		unsigned int lease_time;
-		struct in6_addr addr;
 		int config_ok = 0;
 
 		/* align. */
 		memcpy(&req_addr, opt6_ptr(ia_option, 0), IN6ADDRSZ);
 		
 		if ((c = address6_valid(state->context, &req_addr, tagif, 1)))
-		  config_ok = config_valid(config, c, &addr) && IN6_ARE_ADDR_EQUAL(&addr, &req_addr);
+		  config_ok = (config_implies(config, c, &req_addr) != NULL);
 		
 		if ((dynamic = address6_available(state->context, &req_addr, tagif, 1)) || c)
 		  {
@@ -961,10 +877,6 @@ static int dhcp6_no_relay(struct state *state, int msg_type, void *inbuff, size_
 			if (config_ok && have_config(config, CONFIG_TIME))
 			  lease_time = config->lease_time;
 
-#ifdef OPTION6_PREFIX_CLASS
-			if (dump_all_prefix_classes && state->ia_type == OPTION6_IA_NA)
-			  state->send_prefix_class = prefix_class_from_context(c);
-#endif
 			add_address(state, dynamic, lease_time, ia_option, &min_time, &req_addr, now);
 			get_context_tag(state, dynamic);
 			address_assigned = 1;
@@ -1061,12 +973,11 @@ static int dhcp6_no_relay(struct state *state, int msg_type, void *inbuff, size_
 		if ((this_context = address6_available(state->context, &req_addr, tagif, 1)) ||
 		    (this_context = address6_valid(state->context, &req_addr, tagif, 1)))
 		  {
-		    struct in6_addr addr;
 		    unsigned int lease_time;
 
 		    get_context_tag(state, this_context);
 		    
-		    if (config_valid(config, this_context, &addr) && IN6_ARE_ADDR_EQUAL(&addr, &req_addr) && have_config(config, CONFIG_TIME))
+		    if (config_implies(config, this_context, &req_addr) && have_config(config, CONFIG_TIME))
 		      lease_time = config->lease_time;
 		    else 
 		      lease_time = this_context->lease_time;
@@ -1275,18 +1186,19 @@ static int dhcp6_no_relay(struct state *state, int msg_type, void *inbuff, size_
 	      {
 		struct dhcp_lease *lease;
 		struct in6_addr addr;
-
+		struct addrlist *addr_list;
+		
 		/* align */
 		memcpy(&addr, opt6_ptr(ia_option, 0), IN6ADDRSZ);
 
-		if (have_config(config, CONFIG_ADDR6) && IN6_ARE_ADDR_EQUAL(&config->addr6, &addr))
+		if ((addr_list = config_implies(config, state->context, &addr)))
 		  {
 		    prettyprint_time(daemon->dhcp_buff3, DECLINE_BACKOFF);
 		    inet_ntop(AF_INET6, &addr, daemon->addrbuff, ADDRSTRLEN);
 		    my_syslog(MS_DHCP | LOG_WARNING, _("disabling DHCP static address %s for %s"), 
 			      daemon->addrbuff, daemon->dhcp_buff3);
-		    config->flags |= CONFIG_DECLINED;
-		    config->decline_time = now;
+		    addr_list->flags |= ADDRLIST_DECLINED;
+		    addr_list->decline_time = now;
 		  }
 		else
 		  /* make sure this host gets a different address next time. */
@@ -1399,23 +1311,39 @@ static struct dhcp_netid *add_options(struct state *state, int do_refresh)
 	      	  
 	      for (a = (struct in6_addr *)opt_cfg->val, j = 0; j < opt_cfg->len; j+=IN6ADDRSZ, a++)
 		{
+		  struct in6_addr *p = NULL;
+
 		  if (IN6_IS_ADDR_UNSPECIFIED(a))
 		    {
 		      if (!add_local_addrs(state->context))
-			put_opt6(state->fallback, IN6ADDRSZ);
+			p = state->fallback;
 		    }
 		  else if (IN6_IS_ADDR_ULA_ZERO(a))
 		    {
 		      if (!IN6_IS_ADDR_UNSPECIFIED(state->ula_addr))
-			put_opt6(state->ula_addr, IN6ADDRSZ);
+			p = state->ula_addr;
 		    }
 		  else if (IN6_IS_ADDR_LINK_LOCAL_ZERO(a))
 		    {
 		      if (!IN6_IS_ADDR_UNSPECIFIED(state->ll_addr))
-			put_opt6(state->ll_addr, IN6ADDRSZ);
+			p = state->ll_addr;
 		    }
 		  else
-		    put_opt6(a, IN6ADDRSZ);
+		    p = a;
+
+		  if (!p)
+		    continue;
+		  else if (opt_cfg->opt == OPTION6_NTP_SERVER)
+		    {
+		      if (IN6_IS_ADDR_MULTICAST(p))
+			o1 = new_opt6(NTP_SUBOPTION_MC_ADDR);
+		      else
+			o1 = new_opt6(NTP_SUBOPTION_SRV_ADDR);
+		      put_opt6(p, IN6ADDRSZ);
+		      end_opt6(o1);
+		    }
+		  else
+		    put_opt6(p, IN6ADDRSZ);
 		}
 
 	      end_opt6(o);
@@ -1609,21 +1537,6 @@ static void get_context_tag(struct state *state, struct dhcp_context *context)
     }
 } 
 
-#ifdef OPTION6_PREFIX_CLASS
-static struct prefix_class *prefix_class_from_context(struct dhcp_context *context)
-{
-  struct prefix_class *p;
-  struct dhcp_netid *t;
-  
-  for (p = daemon->prefix_classes; p ; p = p->next)
-    for (t = context->filter; t; t = t->next)
-      if (strcmp(p->tag.net, t->net) == 0)
-	return p;
-  
- return NULL;
-}
-#endif
-
 static int check_ia(struct state *state, void *opt, void **endp, void **ia_option)
 {
   state->ia_type = opt6_type(opt);
@@ -1708,16 +1621,6 @@ static void add_address(struct state *state, struct dhcp_context *context, unsig
   put_opt6(addr, sizeof(*addr));
   put_opt6_long(preferred_time);
   put_opt6_long(valid_time); 		    
-  
-#ifdef OPTION6_PREFIX_CLASS
-  if (state->send_prefix_class)
-    {
-      int o1 = new_opt6(OPTION6_PREFIX_CLASS);
-      put_opt6_short(state->send_prefix_class->class);
-      end_opt6(o1);
-    }
-#endif
-
   end_opt6(o);
   
   if (state->lease_allocate)
@@ -1753,16 +1656,9 @@ static void mark_context_used(struct state *state, struct in6_addr *addr)
   struct dhcp_context *context;
 
   /* Mark that we have an address for this prefix. */
-#ifdef OPTION6_PREFIX_CLASS
-  for (context = state->context; context; context = context->current)
-    if (is_same_net6(addr, &context->start6, context->prefix) &&
-	(!state->send_prefix_class || state->send_prefix_class == prefix_class_from_context(context)))
-      context->flags |= CONTEXT_USED;
-#else
   for (context = state->context; context; context = context->current)
     if (is_same_net6(addr, &context->start6, context->prefix))
       context->flags |= CONTEXT_USED;
-#endif
 }
 
 static void mark_config_used(struct dhcp_context *context, struct in6_addr *addr)
@@ -1788,6 +1684,78 @@ static int check_address(struct state *state, struct in6_addr *addr)
   return 1;
 }
 
+
+/* return true of *addr could have been generated from config. */
+static struct addrlist *config_implies(struct dhcp_config *config, struct dhcp_context *context, struct in6_addr *addr)
+{
+  int prefix;
+  struct in6_addr wild_addr;
+  struct addrlist *addr_list;
+  
+  if (!config || !(config->flags & CONFIG_ADDR6))
+    return NULL;
+  
+  for (addr_list = config->addr6; addr_list; addr_list = addr_list->next)
+    {
+      prefix = (addr_list->flags & ADDRLIST_PREFIX) ? addr_list->prefixlen : 128;
+      wild_addr = addr_list->addr.addr6;
+      
+      if ((addr_list->flags & ADDRLIST_WILDCARD) && context->prefix == 64)
+	{
+	  wild_addr = context->start6;
+	  setaddr6part(&wild_addr, addr6part(&addr_list->addr.addr6));
+	}
+      else if (!is_same_net6(&context->start6, addr, context->prefix))
+	continue;
+      
+      if (is_same_net6(&wild_addr, addr, prefix))
+	return addr_list;
+    }
+  
+  return NULL;
+}
+
+static int config_valid(struct dhcp_config *config, struct dhcp_context *context, struct in6_addr *addr, struct state *state, time_t now)
+{
+  u64 addrpart, i, addresses;
+  struct addrlist *addr_list;
+  
+  if (!config || !(config->flags & CONFIG_ADDR6))
+    return 0;
+
+  for (addr_list = config->addr6; addr_list; addr_list = addr_list->next)
+    if (!(addr_list->flags & ADDRLIST_DECLINED) ||
+	difftime(now, addr_list->decline_time) >= (float)DECLINE_BACKOFF)
+      {
+	addrpart = addr6part(&addr_list->addr.addr6);
+	addresses = 1;
+	
+	if (addr_list->flags & ADDRLIST_PREFIX)
+	  addresses = (u64)1<<(128-addr_list->prefixlen);
+	
+	if ((addr_list->flags & ADDRLIST_WILDCARD))
+	  {
+	    if (context->prefix != 64)
+	      continue;
+	    
+	    *addr = context->start6;
+	  }
+	else if (is_same_net6(&context->start6, &addr_list->addr.addr6, context->prefix))
+	  *addr = addr_list->addr.addr6;
+	else
+	  continue;
+	
+	for (i = 0 ; i < addresses; i++)
+	  {
+	    setaddr6part(addr, addrpart+i);
+	    
+	    if (check_address(state, addr))
+	      return 1;
+	  }
+      }
+  
+  return 0;
+}
 
 /* Calculate valid and preferred times to send in leases/renewals. 
 
@@ -1989,13 +1957,6 @@ static void log6_opts(int nest, unsigned int xid, void *start_opts, void *end_op
 	  optname = "iaaddr";
 	  ia_options = opt6_ptr(opt, 24);
 	}
-#ifdef OPTION6_PREFIX_CLASS
-      else if (type == OPTION6_PREFIX_CLASS)
-	{
-	  optname = "prefix-class";
-	  sprintf(daemon->namebuff, "class=%u", opt6_uint(opt, 0, 2));
-	}
-#endif
       else if (type == OPTION6_STATUS_CODE)
 	{
 	  int len = sprintf(daemon->namebuff, "%u ", opt6_uint(opt, 0, 2));
@@ -2120,7 +2081,7 @@ void relay_upstream6(struct dhcp_relay *relay, ssize_t sz,
 {
   /* ->local is same value for all relays on ->current chain */
   
-  struct all_addr from;
+  union all_addr from;
   unsigned char *header;
   unsigned char *inbuff = daemon->dhcp_packet.iov_base;
   int msg_type = *inbuff;
@@ -2133,7 +2094,7 @@ void relay_upstream6(struct dhcp_relay *relay, ssize_t sz,
   get_client_mac(peer_address, scope_id, mac, &maclen, &mactype, now);
 
   /* source address == relay address */
-  from.addr.addr6 = relay->local.addr.addr6;
+  from.addr6 = relay->local.addr6;
     
   /* Get hop count from nested relayed message */ 
   if (msg_type == DHCP6RELAYFORW)
@@ -2153,7 +2114,7 @@ void relay_upstream6(struct dhcp_relay *relay, ssize_t sz,
 
       header[0] = DHCP6RELAYFORW;
       header[1] = hopcount;
-      memcpy(&header[2],  &relay->local.addr.addr6, IN6ADDRSZ);
+      memcpy(&header[2],  &relay->local.addr6, IN6ADDRSZ);
       memcpy(&header[18], peer_address, IN6ADDRSZ);
  
       /* RFC-6939 */
@@ -2174,12 +2135,12 @@ void relay_upstream6(struct dhcp_relay *relay, ssize_t sz,
 	  union mysockaddr to;
 	  
 	  to.sa.sa_family = AF_INET6;
-	  to.in6.sin6_addr = relay->server.addr.addr6;
+	  to.in6.sin6_addr = relay->server.addr6;
 	  to.in6.sin6_port = htons(DHCPV6_SERVER_PORT);
 	  to.in6.sin6_flowinfo = 0;
 	  to.in6.sin6_scope_id = 0;
 
-	  if (IN6_ARE_ADDR_EQUAL(&relay->server.addr.addr6, &multicast))
+	  if (IN6_ARE_ADDR_EQUAL(&relay->server.addr6, &multicast))
 	    {
 	      int multicast_iface;
 	      if (!relay->interface || strchr(relay->interface, '*') ||
@@ -2218,7 +2179,7 @@ unsigned short relay_reply6(struct sockaddr_in6 *peer, ssize_t sz, char *arrival
   memcpy(&link, &inbuff[2], IN6ADDRSZ); 
   
   for (relay = daemon->relay6; relay; relay = relay->next)
-    if (IN6_ARE_ADDR_EQUAL(&link, &relay->local.addr.addr6) &&
+    if (IN6_ARE_ADDR_EQUAL(&link, &relay->local.addr6) &&
 	(!relay->interface || wildcard_match(relay->interface, arrival_interface)))
       break;
       

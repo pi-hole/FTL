@@ -1,4 +1,4 @@
-/* dnsmasq is Copyright (c) 2000-2018 Simon Kelley
+/* dnsmasq is Copyright (c) 2000-2020 Simon Kelley
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -234,7 +234,7 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
 	subnet_addr = option_addr(opt);
       
       /* If there is no client identifier option, use the hardware address */
-      if ((opt = option_find(mess, sz, OPTION_CLIENT_ID, 1)))
+      if (!option_bool(OPT_IGNORE_CLID) && (opt = option_find(mess, sz, OPTION_CLIENT_ID, 1)))
 	{
 	  clid_len = option_len(opt);
 	  clid = option_ptr(opt, 0);
@@ -274,8 +274,9 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
   if (mess->giaddr.s_addr || subnet_addr.s_addr || mess->ciaddr.s_addr)
     {
       struct dhcp_context *context_tmp, *context_new = NULL;
+      struct shared_network *share = NULL;
       struct in_addr addr;
-      int force = 0;
+      int force = 0, via_relay = 0;
       
       if (subnet_addr.s_addr)
 	{
@@ -286,6 +287,7 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
 	{
 	  addr = mess->giaddr;
 	  force = 1;
+	  via_relay = 1;
 	}
       else
 	{
@@ -302,42 +304,65 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
 	} 
 		
       if (!context_new)
-	for (context_tmp = daemon->dhcp; context_tmp; context_tmp = context_tmp->next)
-	  {
-	    struct in_addr netmask = context_tmp->netmask;
+	{
+	  for (context_tmp = daemon->dhcp; context_tmp; context_tmp = context_tmp->next)
+	    {
+	      struct in_addr netmask = context_tmp->netmask;
+	      
+	      /* guess the netmask for relayed networks */
+	      if (!(context_tmp->flags & CONTEXT_NETMASK) && context_tmp->netmask.s_addr == 0)
+		{
+		  if (IN_CLASSA(ntohl(context_tmp->start.s_addr)) && IN_CLASSA(ntohl(context_tmp->end.s_addr)))
+		    netmask.s_addr = htonl(0xff000000);
+		  else if (IN_CLASSB(ntohl(context_tmp->start.s_addr)) && IN_CLASSB(ntohl(context_tmp->end.s_addr)))
+		    netmask.s_addr = htonl(0xffff0000);
+		  else if (IN_CLASSC(ntohl(context_tmp->start.s_addr)) && IN_CLASSC(ntohl(context_tmp->end.s_addr)))
+		    netmask.s_addr = htonl(0xffffff00); 
+		}
 
-	    /* guess the netmask for relayed networks */
-	    if (!(context_tmp->flags & CONTEXT_NETMASK) && context_tmp->netmask.s_addr == 0)
-	      {
-		if (IN_CLASSA(ntohl(context_tmp->start.s_addr)) && IN_CLASSA(ntohl(context_tmp->end.s_addr)))
-		  netmask.s_addr = htonl(0xff000000);
-		else if (IN_CLASSB(ntohl(context_tmp->start.s_addr)) && IN_CLASSB(ntohl(context_tmp->end.s_addr)))
-		  netmask.s_addr = htonl(0xffff0000);
-		else if (IN_CLASSC(ntohl(context_tmp->start.s_addr)) && IN_CLASSC(ntohl(context_tmp->end.s_addr)))
-		  netmask.s_addr = htonl(0xffffff00); 
-	      }
-	    
-	    /* This section fills in context mainly when a client which is on a remote (relayed)
-	       network renews a lease without using the relay, after dnsmasq has restarted. */
-	    if (netmask.s_addr != 0  && 
-		is_same_net(addr, context_tmp->start, netmask) &&
-		is_same_net(addr, context_tmp->end, netmask))
-	      {
-		context_tmp->netmask = netmask;
-		if (context_tmp->local.s_addr == 0)
-		  context_tmp->local = fallback;
-		if (context_tmp->router.s_addr == 0)
-		  context_tmp->router = mess->giaddr;
-	   
-		/* fill in missing broadcast addresses for relayed ranges */
-		if (!(context_tmp->flags & CONTEXT_BRDCAST) && context_tmp->broadcast.s_addr == 0 )
-		  context_tmp->broadcast.s_addr = context_tmp->start.s_addr | ~context_tmp->netmask.s_addr;
-		
-		context_tmp->current = context_new;
-		context_new = context_tmp;
-	      }
-	  }
-      
+	      /* check to see is a context is OK because of a shared address on
+		 the relayed subnet. */
+	      if (via_relay)
+		for (share = daemon->shared_networks; share; share = share->next)
+		  {
+#ifdef HAVE_DHCP6
+		    if (share->shared_addr.s_addr == 0)
+		      continue;
+#endif
+		    if (share->if_index != 0 ||
+			share->match_addr.s_addr != mess->giaddr.s_addr)
+		      continue;
+		    
+		    if (netmask.s_addr != 0  && 
+			is_same_net(share->shared_addr, context_tmp->start, netmask) &&
+			is_same_net(share->shared_addr, context_tmp->end, netmask))
+		      break;
+		  }
+	      
+	      /* This section fills in context mainly when a client which is on a remote (relayed)
+		 network renews a lease without using the relay, after dnsmasq has restarted. */
+	      if (share ||
+		  (netmask.s_addr != 0  && 
+		   is_same_net(addr, context_tmp->start, netmask) &&
+		   is_same_net(addr, context_tmp->end, netmask)))
+		{
+		  context_tmp->netmask = netmask;
+		  if (context_tmp->local.s_addr == 0)
+		    context_tmp->local = fallback;
+		  if (context_tmp->router.s_addr == 0 && !share)
+		    context_tmp->router = mess->giaddr;
+		  
+		  /* fill in missing broadcast addresses for relayed ranges */
+		  if (!(context_tmp->flags & CONTEXT_BRDCAST) && context_tmp->broadcast.s_addr == 0 )
+		    context_tmp->broadcast.s_addr = context_tmp->start.s_addr | ~context_tmp->netmask.s_addr;
+		  
+		  context_tmp->current = context_new;
+		  context_new = context_tmp;
+		}
+	      
+	    }
+	}
+	  
       if (context_new || force)
 	context = context_new; 
     }
@@ -388,7 +413,7 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
 		for (o2 = offset + 5; o2 < offset + len + 5; o2 += elen + 1)
 		  { 
 		    elen = option_uint(opt, o2, 1);
-		    if ((o2 + elen + 1 <= option_len(opt)) &&
+		    if ((o2 + elen + 1 <= (unsigned)option_len(opt)) &&
 			(match = match_bytes(o, option_ptr(opt, o2 + 1), elen)))
 		      break;
 		  }
@@ -479,7 +504,7 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
   mess->op = BOOTREPLY;
   
   config = find_config(daemon->dhcp_conf, context, clid, clid_len, 
-		       mess->chaddr, mess->hlen, mess->htype, NULL);
+		       mess->chaddr, mess->hlen, mess->htype, NULL, run_tag_if(netid));
 
   /* set "known" tag for known hosts */
   if (config)
@@ -489,7 +514,7 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
       netid = &known_id;
     }
   else if (find_config(daemon->dhcp_conf, NULL, clid, clid_len, 
-		       mess->chaddr, mess->hlen, mess->htype, NULL))
+		       mess->chaddr, mess->hlen, mess->htype, NULL, run_tag_if(netid)))
     {
       known_id.net = "known-othernet";
       known_id.next = netid;
@@ -700,9 +725,37 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
 	client_hostname = daemon->dhcp_buff;
     }
 
-  if (client_hostname && option_bool(OPT_LOG_OPTS))
-    my_syslog(MS_DHCP | LOG_INFO, _("%u client provides name: %s"), ntohl(mess->xid), client_hostname);
-
+  if (client_hostname)
+    {
+      struct dhcp_match_name *m;
+      size_t nl = strlen(client_hostname);
+      
+      if (option_bool(OPT_LOG_OPTS))
+	my_syslog(MS_DHCP | LOG_INFO, _("%u client provides name: %s"), ntohl(mess->xid), client_hostname);
+      for (m = daemon->dhcp_name_match; m; m = m->next)
+	{
+	  size_t ml = strlen(m->name);
+	  char save = 0;
+	  
+	  if (nl < ml)
+	    continue;
+	  if (nl > ml)
+	    {
+	      save = client_hostname[ml];
+	      client_hostname[ml] = 0;
+	    }
+	  
+	  if (hostname_isequal(client_hostname, m->name) &&
+	      (save == 0 || m->wildcard))
+	    {
+	      m->netid->next = netid;
+	      netid = m->netid;
+	    }
+	  
+	  if (save != 0)
+	    client_hostname[ml] = save;
+	}
+    }
   
   if (have_config(config, CONFIG_NAME))
     {
@@ -715,12 +768,9 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
     }
   else if (client_hostname)
     {
-      struct dhcp_match_name *m;
-      size_t nl;
-
       domain = strip_hostname(client_hostname);
       
-      if ((nl = strlen(client_hostname)) != 0)
+      if (strlen(client_hostname) != 0)
 	{
 	  hostname = client_hostname;
 	  
@@ -731,7 +781,7 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
 		 to avoid impersonation by name. */
 	      struct dhcp_config *new = find_config(daemon->dhcp_conf, context, NULL, 0,
 						    mess->chaddr, mess->hlen, 
-						    mess->htype, hostname);
+						    mess->htype, hostname, run_tag_if(netid));
 	      if (new && !have_config(new, CONFIG_CLID) && !new->hwaddr)
 		{
 		  config = new;
@@ -740,30 +790,6 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
 		  known_id.next = netid;
 		  netid = &known_id;
 		}
-	    }
-
-	  for (m = daemon->dhcp_name_match; m; m = m->next)
-	    {
-	      size_t ml = strlen(m->name);
-	      char save = 0;
-	      
-	      if (nl < ml)
-		continue;
-	      if (nl > ml)
-		{
-		  save = client_hostname[ml];
-		  client_hostname[ml] = 0;
-		}
-	      
-	      if (hostname_isequal(client_hostname, m->name) &&
-		  (save == 0 || m->wildcard))
-		{
-		  m->netid->next = netid;
-		  netid = m->netid;
-	    }
-	      
-	      if (save != 0)
-		client_hostname[ml] = save;
 	    }
 	}
     }
