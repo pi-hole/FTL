@@ -10,6 +10,11 @@
 #ifndef GRAVITY_H
 #define GRAVITY_H
 
+// global variable counters
+#include "memory.h"
+// clients data structure
+#include "datastructure.h"
+
 // Table indices
 enum { GRAVITY_TABLE, EXACT_BLACKLIST_TABLE, EXACT_WHITELIST_TABLE, REGEX_BLACKLIST_TABLE, REGEX_WHITELIST_TABLE, UNKNOWN_TABLE };
 
@@ -18,6 +23,7 @@ bool gravityDB_prepare_client_statements(const int clientID, clientsData* client
 void gravityDB_close(void);
 bool gravityDB_getTable(unsigned char list);
 const char* gravityDB_getDomain(int *rowid);
+char* get_group_names(const char *group_ids) __attribute__ ((malloc));
 void gravityDB_finalizeTable(void);
 int gravityDB_count(unsigned char list);
 bool in_auditlist(const char *domain);

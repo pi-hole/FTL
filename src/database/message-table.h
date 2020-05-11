@@ -13,7 +13,10 @@
 bool create_message_table(void);
 bool flush_message_table(void);
 void logg_regex_warning(const char *type, const char *warning, const int dbindex, const char *regex);
+void logg_subnet_warning(const char *ip, const int matching_count, const char *matching_ids,
+                         const int matching_bits, const char *chosen_match_text,
+                         const int chosen_match_id);
 
-enum message_type { REGEX_MESSAGE, MAX_MESSAGE };
+enum message_type { REGEX_MESSAGE, SUBNET_MESSAGE, MAX_MESSAGE };
 
 #endif //MESSAGETABLE_H

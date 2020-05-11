@@ -12,9 +12,11 @@
 #include "database/message-table.h"
 #include "database/common.h"
 #include "log.h"
+// get_group_names()
+#include "database/gravity-db.h"
 
 static const char *message_types[MAX_MESSAGE] =
-	{ "REGEX" };
+	{ "REGEX", "SUBNET" };
 
 static unsigned char message_blob_types[MAX_MESSAGE][5] =
 	{
@@ -24,9 +26,15 @@ static unsigned char message_blob_types[MAX_MESSAGE][5] =
 			SQLITE_INTEGER, // database index of regex (so the dashboard can show a link)
 			SQLITE_NULL, // not used
 			SQLITE_NULL // not used
+		},
+		{	// SUBNET_MESSAGE: The message column contains the IP address of the client in question
+			SQLITE_INTEGER, // number of matching
+			SQLITE_TEXT, // comma-separated list of matching subnets (text representation)
+			SQLITE_TEXT, // comma-separated list of matching subnets (database IDs)
+			SQLITE_TEXT, // chosen subnet (text representation)
+			SQLITE_INTEGER // chosen subnet (database ID)
 		}
 	};
-
 // Create message table in the database
 bool create_message_table(void)
 {
@@ -162,4 +170,20 @@ void logg_regex_warning(const char *type, const char *warning, const int dbindex
 
 	// Log to database
 	add_message(REGEX_MESSAGE, warning, 3, type, regex, dbindex);
+}
+
+void logg_subnet_warning(const char *ip, const int matching_count, const char *matching_ids,
+                         const int matching_bits, const char *chosen_match_text,
+                         const int chosen_match_id)
+{
+	// Log to pihole-FTL.log
+	logg("SUBNET WARNING: Client %s is managed by %i groups (IDs %s), all describing /%i subnets. "
+	     "FTL chose the most recent entry %s (ID %i) for this client.",
+	     ip, matching_count, matching_ids, matching_bits,
+	     chosen_match_text, chosen_match_id);
+
+	// Log to database
+	char *names = get_group_names(matching_ids);
+	add_message(SUBNET_MESSAGE, ip, 5, matching_count, names, matching_ids, chosen_match_text, chosen_match_id);
+	free(names);
 }

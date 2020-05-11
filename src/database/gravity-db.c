@@ -10,18 +10,17 @@
 
 #include "FTL.h"
 #include "sqlite3.h"
-#include "datastructure.h"
 #include "gravity-db.h"
 #include "config.h"
 #include "log.h"
-// global variable counters
-#include "memory.h"
 // match_regex()
 #include "regex_r.h"
 // getstr()
 #include "shmem.h"
 // SQLite3 prepared statement vectors
 #include "../vector.h"
+// log_subnet_warning()
+#include "database/message-table.h"
 
 // Process-private prepared statements are used to support multiple forks (might
 // be TCP workers) to use the database simultaneously without corrupting the
@@ -289,10 +288,7 @@ static bool get_client_groupids(clientsData* client)
 		//   Device 10.8.0.22
 		//   Client 1: 10.8.0.0/24
 		//   Client 2: 10.8.1.0/24
-		logg("CLIENT GROUPS WARNING: Client %s is managed by %i groups (IDs %s), all describing /%i subnets. "
-		     "FTL chose the most recent entry %s (ID %i) for this client.",
-		     ip, matching_count, matching_ids, matching_bits,
-		     chosen_match_text, chosen_match_id);
+		logg_subnet_warning(ip, matching_count, matching_ids, matching_bits, chosen_match_text, chosen_match_id);
 	}
 	free(matching_ids);
 	matching_ids = NULL;
@@ -355,6 +351,60 @@ static bool get_client_groupids(clientsData* client)
 	// Free allocated memory and return result
 	free(querystr);
 	return true;
+}
+
+char* __attribute__ ((malloc)) get_group_names(const char *group_ids)
+{
+	// Build query string to get concatenated groups
+	char *querystr = NULL;
+	if(asprintf(&querystr, "SELECT GROUP_CONCAT(ip) FROM client "
+	                       "WHERE id IN (%s);", group_ids) < 1)
+	{
+		logg("group_names(%s) - asprintf() error", group_ids);
+		return false;
+	}
+
+	if(config.debug & DEBUG_DATABASE)
+		logg("Querying group names for IDs (%s)", group_ids);
+
+	// Prepare query
+	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &table_stmt, NULL);
+	if(rc != SQLITE_OK){
+		logg("get_client_groupids(%s) - SQL error prepare: %s",
+		     querystr, sqlite3_errstr(rc));
+		sqlite3_finalize(table_stmt);
+		free(querystr);
+		return strdup("N/A");
+	}
+
+	// Perform query
+	char *result = NULL;
+	rc = sqlite3_step(table_stmt);
+	if(rc == SQLITE_ROW)
+	{
+		// There is a record for this client in the database
+		result = strdup((const char*)sqlite3_column_text(table_stmt, 0));
+		if(result == NULL)
+			result = strdup("N/A");
+	}
+	else if(rc == SQLITE_DONE)
+	{
+		// Found no record for this client in the database
+		// -> No associated groups
+		result = strdup("N/A");
+	}
+	else
+	{
+		logg("group_names(%s) - SQL error step: %s",
+		     querystr, sqlite3_errstr(rc));
+		gravityDB_finalizeTable();
+		free(querystr);
+		return strdup("N/A");
+	}
+	// Finalize statement
+	gravityDB_finalizeTable();
+	free(querystr);
+	return result;
 }
 
 // Prepare statements for scanning white- and blacklist as well as gravit for one client
