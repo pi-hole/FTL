@@ -100,7 +100,7 @@ static void subnet_match_impl(sqlite3_context *context, int argc, sqlite3_value 
 	uint8_t bitmask[16] = { 0 };
 	for(int i = 0; i < cidr; i++)
 	{
-		bitmask[i/8] |= (1 << (i%8));
+		bitmask[i/8] |= (1 << (7-(i%8)));
 	}
 
 	// Apply bitmask to both IP addresses
@@ -122,8 +122,10 @@ static void subnet_match_impl(sqlite3_context *context, int argc, sqlite3_value 
 	// Possible debug logging
 	if(config.debug & DEBUG_DATABASE)
 	{
-		logg("SQL: Comparing %s vs. %s (database) - %s",
-		     addrFTL, addrDBcidr,
+		char subnet[INET6_ADDRSTRLEN];
+		inet_ntop(isIPv6_FTL ? AF_INET6 : AF_INET, &bitmask, subnet, sizeof(subnet));
+		logg("SQL: Comparing %s vs. %s (subnet %s) - %s",
+		     addrFTL, addrDBcidr, subnet,
 			 match == 1 ? "!! MATCH !!" : "NO MATCH");
 	}
 
