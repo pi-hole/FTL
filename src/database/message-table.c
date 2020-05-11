@@ -74,7 +74,7 @@ static bool add_message(enum message_type type, const char *message,
 
 	// Prepare SQLite statement
 	sqlite3_stmt* stmt = NULL;
-	const char *querystr = "INSERT INTO message (timestamp, type, message, blob1, blob2, blob3, blob4, blob5) "
+	const char *querystr = "INSERT INTO message (timestamp,type,message,blob1,blob2,blob3,blob4,blob5) "
 	                       "VALUES ((cast(strftime('%s', 'now') as int)),?,?,?,?,?,?,?);";
 	int rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK ){
@@ -140,15 +140,16 @@ static bool add_message(enum message_type type, const char *message,
 	rc = sqlite3_step(stmt);
 	sqlite3_clear_bindings(stmt);
 	sqlite3_reset(stmt);
-
-	// Close database connection
-	dbclose();
+	sqlite3_finalize(stmt);
 
 	if(rc != SQLITE_DONE)
 	{
 		logg("Encountered error while trying to store message in long-term database: %s", sqlite3_errstr(rc));
 		return false;
 	}
+
+	// Close database connection
+	dbclose();
 
 	return true;
 }
