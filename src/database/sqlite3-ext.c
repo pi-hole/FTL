@@ -130,8 +130,11 @@ static void subnet_match_impl(sqlite3_context *context, int argc, sqlite3_value 
 	}
 
 	// Return if we found a match between the two addresses
-	// given a possibly specified mask
-	sqlite3_result_int(context, match);
+	// given a possibly specified mask. We return the number of
+	// matching bits (cannot be more than the CIDR field specified)
+	// so the algorithm can decide which subnet match is the most
+	// exact one and prefer it (e.g., 10.8.1.0/24 beats 10.0.0.0/8)
+	sqlite3_result_int(context, match ? cidr : 0);
 }
 
 int sqlite3_pihole_extensions_init(sqlite3 *db, const char **pzErrMsg, const struct sqlite3_api_routines *pApi)
