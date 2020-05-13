@@ -314,7 +314,8 @@ static bool get_client_groupids(clientsData* client)
 
 		// Check if client is configured through the client table
 		// This will return nothing if the client is unknown/unconfigured
-		querystr = "SELECT id FROM client WHERE ip = ?;";
+		// We use COLLATE NOCASE to ensure the comparison is done case-insensitive
+		querystr = "SELECT id FROM client WHERE ip = ? COLLATE NOCASE;";
 
 		// Prepare query
 		rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &table_stmt, NULL);
