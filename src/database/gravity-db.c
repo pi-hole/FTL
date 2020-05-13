@@ -354,8 +354,6 @@ static bool get_client_groupids(clientsData* client)
 
 		// Finalize statement and free allocated memory
 		gravityDB_finalizeTable();
-		free(hwaddr);
-		hwaddr = NULL;
 	}
 
 	// We use the default group and return early here
@@ -364,8 +362,17 @@ static bool get_client_groupids(clientsData* client)
 	if(chosen_match_id < 0)
 	{
 		if(config.debug & DEBUG_DATABASE)
-			logg("Gravity database: Client %s not found. Using default group.\n", ip);
+			logg("Gravity database: Client %s not found. Using default group.\n",
+			     hwaddr != NULL ? hwaddr : ip);
+
 		client->groups = strdup("0");
+
+		if(hwaddr != NULL)
+		{
+			free(hwaddr);
+			hwaddr = NULL;
+		}
+
 		return true;
 	}
 
@@ -428,8 +435,14 @@ static bool get_client_groupids(clientsData* client)
 	gravityDB_finalizeTable();
 
 	if(config.debug & DEBUG_DATABASE)
-		logg("Gravity database: Client %s found. Using groups (%s).\n",
-		     ip, client->groups);
+		logg("Gravity database: Client %s found. Using groups [%s].\n",
+		     hwaddr != NULL ? hwaddr : ip, client->groups);
+
+	if(hwaddr != NULL)
+	{
+		free(hwaddr);
+		hwaddr = NULL;
+	}
 
 	// Return success
 	return true;
