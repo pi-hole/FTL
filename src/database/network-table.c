@@ -980,8 +980,12 @@ char* __attribute__((malloc)) getMACfromIP(const char* ipaddr)
 	}
 
 	// Prepare SQLite statement
+	// We request the most recent IP entry in case there an IP appears
+	// multiple times in the network_addresses table
 	sqlite3_stmt* stmt = NULL;
-	const char *querystr = "SELECT hwaddr FROM network WHERE id = (SELECT network_id FROM network_addresses WHERE ip = ?);";
+	const char *querystr = "SELECT hwaddr FROM network WHERE id = "
+	                       "(SELECT network_id FROM network_addresses "
+	                       "WHERE ip = ? GROUP BY ip HAVING max(lastSeen));";
 	int rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK ){
 		logg("getMACfromIP(\"%s\") - SQL error prepare: %s",
