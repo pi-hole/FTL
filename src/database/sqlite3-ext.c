@@ -148,38 +148,6 @@ static void subnet_match_impl(sqlite3_context *context, int argc, sqlite3_value 
 	sqlite3_result_int(context, match ? cidr : 0);
 }
 
-static void isMAC_impl(sqlite3_context *context, int argc, sqlite3_value **argv)
-{
-	// Exactly one argument should be submitted to this routine
-	if(argc != 1)
-	{
-		sqlite3_result_error(context, "Passed an invalid number of arguments", -1);
-		return;
-	}
-
-	// Return FALSE if invoked with non-TEXT arguments
-	if (sqlite3_value_type(argv[0]) != SQLITE_TEXT)
-	{
-		logg("Invoked isMAC() with non-text argument: %d",
-		     sqlite3_value_type(argv[0]));
-		sqlite3_result_int(context, 0);
-		return;
-	}
-
-	// Get input string
-	const char *input = (const char*)sqlite3_value_text(argv[0]);
-
-	if(isMAC(input))
-	{
-		sqlite3_result_int(context, 1);
-		return;
-	}
-
-	// Not a MAC address
-	sqlite3_result_int(context, 0);
-	return;
-}
-
 int sqlite3_pihole_extensions_init(sqlite3 *db, const char **pzErrMsg, const struct sqlite3_api_routines *pApi)
 {
 	(void)pzErrMsg;  /* Unused parameter */
@@ -193,18 +161,6 @@ int sqlite3_pihole_extensions_init(sqlite3 *db, const char **pzErrMsg, const str
 	if(rc != SQLITE_OK)
 	{
 		logg("Error while initializing the SQLite3 extension subnet_match: %s",
-		     sqlite3_errstr(rc));
-	}
-
-	// Register new sqlite function isMAC taking 1 argument in UTF8 format.
-	// The function is deterministic in the sense of always returning the same output for the same input.
-	// We define a scalar function here so the last two pointers are NULL.
-	rc = sqlite3_create_function(db, "isMAC", 1, SQLITE_UTF8 | SQLITE_DETERMINISTIC, NULL,
-	                             isMAC_impl, NULL, NULL);
-
-	if(rc != SQLITE_OK)
-	{
-		logg("Error while initializing the SQLite3 extension isMAC: %s",
 		     sqlite3_errstr(rc));
 	}
 

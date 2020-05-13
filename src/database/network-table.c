@@ -338,6 +338,9 @@ void parse_neighbor_cache(void)
 		return;
 	}
 
+	// Remove IP addresses not seen for more than 24 hours to clean the network table from dead addresses
+	dbquery("DELETE FROM network_addresses WHERE lastSeen < cast(strftime('%%s', 'now') as int)-86400;");
+
 	// Start collecting database commands
 	lock_shm();
 
