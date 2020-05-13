@@ -909,16 +909,18 @@ char* __attribute__((malloc)) getDatabaseHostname(const char* ipaddr)
 	if( rc != SQLITE_OK ){
 		logg("getDatabaseHostname(\"%s\") - SQL error prepare: %s",
 		     ipaddr, sqlite3_errstr(rc));
+		dbclose();
 		return strdup("");
 	}
 
 	// Bind ipaddr to prepared statement
-	if((rc = sqlite3_bind_text(stmt, 0, ipaddr, -1, SQLITE_STATIC)) != SQLITE_OK)
+	if((rc = sqlite3_bind_text(stmt, 1, ipaddr, -1, SQLITE_STATIC)) != SQLITE_OK)
 	{
 		logg("getDatabaseHostname(\"%s\"): Failed to bind ip: %s",
 		     ipaddr, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
+		dbclose();
 		return strdup("");
 	}
 
@@ -990,6 +992,7 @@ char* __attribute__((malloc)) getMACfromIP(const char* ipaddr)
 	if( rc != SQLITE_OK ){
 		logg("getMACfromIP(\"%s\") - SQL error prepare: %s",
 		     ipaddr, sqlite3_errstr(rc));
+		dbclose();
 		return NULL;
 	}
 
@@ -1000,6 +1003,7 @@ char* __attribute__((malloc)) getMACfromIP(const char* ipaddr)
 		     ipaddr, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
+		dbclose();
 		return NULL;
 	}
 
