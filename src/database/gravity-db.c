@@ -21,6 +21,8 @@
 #include "../vector.h"
 // log_subnet_warning()
 #include "database/message-table.h"
+// getMACfromIP()
+#include "database/network-table.h"
 
 // Process-private prepared statements are used to support multiple forks (might
 // be TCP workers) to use the database simultaneously without corrupting the
@@ -201,7 +203,6 @@ static char* get_client_querystr(const char* table, const char* groups)
 // Get associated groups for this client (if defined)
 static bool get_client_groupids(clientsData* client)
 {
-	char *querystr = NULL;
 	const char *ip = getstr(client->ippos);
 	client->groups = NULL;
 
@@ -217,31 +218,37 @@ static bool get_client_groupids(clientsData* client)
 
 	// Check if client is configured through the client table
 	// This will return nothing if the client is unknown/unconfigured
-	if(asprintf(&querystr, "SELECT count(id) matching_count, "
-	                               "max(id) chosen_match_id, "
-	                               "ip chosen_match_text, "
-	                               "group_concat(id) matching_ids, "
-	                               "subnet_match(ip,'%s') matching_bits FROM client "
-	                               "WHERE matching_bits > 0 "
-	                               "GROUP BY matching_bits "
-	                               "ORDER BY matching_bits DESC LIMIT 1;", ip) < 1)
-	{
-		logg("get_client_groupids() - asprintf() error 1");
-		return false;
-	}
+	const char *querystr = "SELECT count(id) matching_count, "
+	                       "max(id) chosen_match_id, "
+	                       "ip chosen_match_text, "
+	                       "group_concat(id) matching_ids, "
+	                       "subnet_match(ip,?) matching_bits FROM client "
+	                       "WHERE matching_bits > 0 "
+	                       "GROUP BY matching_bits "
+	                       "ORDER BY matching_bits DESC LIMIT 1;";
 
 	// Prepare query
 	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &table_stmt, NULL);
-	if(rc != SQLITE_OK){
-		logg("get_client_groupids(%s) - SQL error prepare: %s",
-		     querystr, sqlite3_errstr(rc));
-		free(querystr);
+	if(rc != SQLITE_OK)
+	{
+		logg("get_client_groupids(\"%s\") - SQL error prepare: %s",
+		     ip, sqlite3_errstr(rc));
 		return false;
+	}
+
+	// Bind ipaddr to prepared statement
+	if((rc = sqlite3_bind_text(table_stmt, 1, ip, -1, SQLITE_STATIC)) != SQLITE_OK)
+	{
+		logg("get_client_groupids(\"%s\"): Failed to bind ip: %s",
+		     ip, sqlite3_errstr(rc));
+		sqlite3_reset(table_stmt);
+		sqlite3_finalize(table_stmt);
+		return NULL;
 	}
 
 	// Perform query
 	rc = sqlite3_step(table_stmt);
-	int matching_count = 0, chosen_match_id = 0, matching_bits = 0;
+	int matching_count = 0, chosen_match_id = -1, matching_bits = 0;
 	char *matching_ids = NULL, *chosen_match_text = NULL;
 	if(rc == SQLITE_ROW)
 	{
@@ -253,31 +260,17 @@ static bool get_client_groupids(clientsData* client)
 		matching_ids = strdup((const char*)sqlite3_column_text(table_stmt, 3));
 		matching_bits = sqlite3_column_int(table_stmt, 4);
 	}
-	else if(rc == SQLITE_DONE)
+	else if(rc != SQLITE_DONE)
 	{
-		// Found no record for this client in the database
-		// This makes this client qualify for the special "all" group
-		client->groups = strdup("0");
-	}
-	else
-	{
-		logg("get_client_groupids(%s) - SQL error step: %s",
-		     querystr, sqlite3_errstr(rc));
+		// Error
+		logg("get_client_groupids(\"%s\") - SQL error step: %s",
+		     ip, sqlite3_errstr(rc));
 		gravityDB_finalizeTable();
-		free(querystr);
 		return false;
 	}
 
 	// Finalize statement nad free allocated memory
 	gravityDB_finalizeTable();
-	free(querystr);
-	querystr = NULL;
-
-	if(client->groups != NULL)
-	{
-		// The client is not configured through the client table, return early
-		return true;
-	}
 
 	if(matching_count > 1)
 	{
@@ -290,33 +283,120 @@ static bool get_client_groupids(clientsData* client)
 		//   Client 2: 10.8.1.0/24
 		logg_subnet_warning(ip, matching_count, matching_ids, matching_bits, chosen_match_text, chosen_match_id);
 	}
-	free(matching_ids);
-	matching_ids = NULL;
-	free(chosen_match_text);
-	chosen_match_text = NULL;
+
+	// Free memory if applicable
+	if(matching_ids != NULL)
+	{
+		free(matching_ids);
+		matching_ids = NULL;
+	}
+	if(chosen_match_text != NULL)
+	{
+		free(chosen_match_text);
+		chosen_match_text = NULL;
+	}
+
+	// If we didn't find an IP address match above, try with MAC address matches
+	// 1. Look up MAC address of this client
+	//   1.1. Look up IP address in network_addresses table
+	//   1.2. Get MAC address from this network_id
+	// 2. If found -> Get groups by looking up MAC address in client table
+	char *hwaddr = NULL;
+	if(chosen_match_id < 0)
+		hwaddr = getMACfromIP(ip);
+
+	// Check if we received a valid MAC address
+	// This ensures we skip mock hardware addresses such as "ip-127.0.0.1"
+	if(hwaddr != NULL && isMAC(hwaddr))
+	{
+		if(config.debug & DEBUG_DATABASE)
+			logg("Querying gravity database for client %s (hardware address)", hwaddr);
+
+		// Check if client is configured through the client table
+		// This will return nothing if the client is unknown/unconfigured
+		querystr = "SELECT id FROM client WHERE ip = ?;";
+
+		// Prepare query
+		rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &table_stmt, NULL);
+		if(rc != SQLITE_OK)
+		{
+			logg("get_client_groupids(%s) - SQL error prepare: %s",
+				querystr, sqlite3_errstr(rc));
+			return false;
+		}
+
+		// Bind hwaddr to prepared statement
+		if((rc = sqlite3_bind_text(table_stmt, 1, hwaddr, -1, SQLITE_STATIC)) != SQLITE_OK)
+		{
+			logg("get_client_groupids(\"%s\", \"%s\"): Failed to bind hwaddr: %s",
+				ip, hwaddr, sqlite3_errstr(rc));
+			sqlite3_reset(table_stmt);
+			sqlite3_finalize(table_stmt);
+			return false;
+		}
+
+		// Perform query
+		rc = sqlite3_step(table_stmt);
+		if(rc == SQLITE_ROW)
+		{
+			// There is a record for this client in the database,
+			// extract the result (there can be at most one line)
+			chosen_match_id = sqlite3_column_int(table_stmt, 0);
+		}
+		else if(rc != SQLITE_DONE)
+		{
+			// Error
+			logg("get_client_groupids(\"%s\", \"%s\") - SQL error step: %s",
+				ip, hwaddr, sqlite3_errstr(rc));
+			gravityDB_finalizeTable();
+			return false;
+		}
+
+		// Finalize statement and free allocated memory
+		gravityDB_finalizeTable();
+		free(hwaddr);
+		hwaddr = NULL;
+	}
+
+	// We use the default group and return early here
+	// if aboves lookups didn't return any results
+	// (the client is not configured through the client table)
+	if(chosen_match_id < 0)
+	{
+		if(config.debug & DEBUG_DATABASE)
+			logg("Gravity database: Client %s not found. Using default group.\n", ip);
+		client->groups = strdup("0");
+		return true;
+	}
 
 	// Build query string to get possible group associations for this particular client
 	// The SQL GROUP_CONCAT() function returns a string which is the concatenation of all
 	// non-NULL values of group_id separated by ','. The order of the concatenated elements
 	// is arbitrary, however, is of no relevance for your use case.
 	// We check using a possibly defined subnet and use the first result
-	if(asprintf(&querystr, "SELECT GROUP_CONCAT(group_id) FROM client_by_group "
-	                       "WHERE client_id = %i;", chosen_match_id) < 1)
-	{
-		logg("get_client_groupids() - asprintf() error 2");
-		return false;
-	}
+	querystr = "SELECT GROUP_CONCAT(group_id) FROM client_by_group "
+	           "WHERE client_id = ?;";
 
 	if(config.debug & DEBUG_DATABASE)
 		logg("Querying gravity database for client %s (getting groups)", ip);
 
 	// Prepare query
 	rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &table_stmt, NULL);
-	if(rc != SQLITE_OK){
-		logg("get_client_groupids(%s) - SQL error prepare: %s",
-		     querystr, sqlite3_errstr(rc));
+	if(rc != SQLITE_OK)
+	{
+		logg("get_client_groupids(\"%s\", \"%s\", %d) - SQL error prepare: %s",
+		     ip, hwaddr, chosen_match_id, sqlite3_errstr(rc));
 		sqlite3_finalize(table_stmt);
-		free(querystr);
+		return false;
+	}
+
+	// Bind hwaddr to prepared statement
+	if((rc = sqlite3_bind_int(table_stmt, 1, chosen_match_id)) != SQLITE_OK)
+	{
+		logg("get_client_groupids(\"%s\", \"%s\", %d): Failed to bind chosen_match_id: %s",
+			ip, hwaddr, chosen_match_id, sqlite3_errstr(rc));
+		sqlite3_reset(table_stmt);
+		sqlite3_finalize(table_stmt);
 		return false;
 	}
 
@@ -339,17 +419,19 @@ static bool get_client_groupids(clientsData* client)
 	}
 	else
 	{
-		logg("get_client_groupids(%s) - SQL error step: %s",
-		     querystr, sqlite3_errstr(rc));
+		logg("get_client_groupids(\"%s\", \"%s\", %d) - SQL error step: %s",
+		     ip, hwaddr, chosen_match_id, sqlite3_errstr(rc));
 		gravityDB_finalizeTable();
-		free(querystr);
 		return false;
 	}
 	// Finalize statement
 	gravityDB_finalizeTable();
 
-	// Free allocated memory and return result
-	free(querystr);
+	if(config.debug & DEBUG_DATABASE)
+		logg("Gravity database: Client %s found. Using groups (%s).\n",
+		     ip, client->groups);
+
+	// Return success
 	return true;
 }
 

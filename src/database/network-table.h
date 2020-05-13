@@ -16,5 +16,7 @@ void parse_neighbor_cache(void);
 void updateMACVendorRecords(void);
 bool unify_hwaddr(void);
 char* getDatabaseHostname(const char* ipaddr) __attribute__((malloc));
+bool __attribute__ ((pure)) isMAC(const char *input);
+char* __attribute__((malloc)) getMACfromIP(const char* ipaddr);
 
 #endif //NETWORKTABLE_H

@@ -913,9 +913,9 @@ char* __attribute__((malloc)) getDatabaseHostname(const char* ipaddr)
 	}
 
 	// Bind ipaddr to prepared statement
-	if((rc = sqlite3_bind_text(stmt, 1, ipaddr, -1, SQLITE_STATIC)) != SQLITE_OK)
+	if((rc = sqlite3_bind_text(stmt, 0, ipaddr, -1, SQLITE_STATIC)) != SQLITE_OK)
 	{
-		logg("getDatabaseHostname(\"%s\"): Failed to bind domain: %s",
+		logg("getDatabaseHostname(\"%s\"): Failed to bind ip: %s",
 		     ipaddr, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
@@ -941,4 +941,84 @@ char* __attribute__((malloc)) getDatabaseHostname(const char* ipaddr)
 	dbclose();
 
 	return hostname;
+}
+
+// Counting number of occurrences of a specific char in a string
+static size_t __attribute__ ((pure)) count_char(const char *haystack, const char needle)
+{
+	size_t count = 0u;
+	while(*haystack)
+		if (*haystack++ == needle)
+			++count;
+	return count;
+}
+
+// Identify MAC addresses using a set of suitable criteria
+bool __attribute__ ((pure)) isMAC(const char *input)
+{
+	if(input != NULL &&                // Valid input
+	   strlen(input) == 17u &&         // MAC addresses are always 17 chars long (6 bytes + 5 colons)
+	   count_char(input, ':') == 5u && // MAC addresses always have 5 colons
+	   strstr(input, "::") == NULL)    // No double-colons (IPv6 address abbreviation)
+	   {
+		// This is a MAC address of the form AA:BB:CC:DD:EE:FF
+		return true;
+	   }
+
+	// Not a MAC address
+	return false;
+}
+
+// Get hardware address of device identified by IP address
+char* __attribute__((malloc)) getMACfromIP(const char* ipaddr)
+{
+	// Open pihole-FTL.db database file
+	if(!dbopen())
+	{
+		logg("getMACfromIP(\"%s\") - Failed to open DB", ipaddr);
+		return NULL;
+	}
+
+	// Prepare SQLite statement
+	sqlite3_stmt* stmt = NULL;
+	const char *querystr = "SELECT hwaddr FROM network WHERE id = (SELECT network_id FROM network_addresses WHERE ip = ?);";
+	int rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &stmt, NULL);
+	if( rc != SQLITE_OK ){
+		logg("getMACfromIP(\"%s\") - SQL error prepare: %s",
+		     ipaddr, sqlite3_errstr(rc));
+		return NULL;
+	}
+
+	// Bind ipaddr to prepared statement
+	if((rc = sqlite3_bind_text(stmt, 1, ipaddr, -1, SQLITE_STATIC)) != SQLITE_OK)
+	{
+		logg("getMACfromIP(\"%s\"): Failed to bind ip: %s",
+		     ipaddr, sqlite3_errstr(rc));
+		sqlite3_reset(stmt);
+		sqlite3_finalize(stmt);
+		return NULL;
+	}
+
+	char *hwaddr = NULL;
+	rc = sqlite3_step(stmt);
+	if(rc == SQLITE_ROW)
+	{
+		// Database record found (result might be empty)
+		hwaddr = strdup((char*)sqlite3_column_text(stmt, 0));
+	}
+	else
+	{
+		// Not found or error (will be logged automatically through our SQLite3 hook)
+		hwaddr = NULL;
+	}
+
+	if(config.debug & DEBUG_DATABASE && hwaddr != NULL)
+		logg("Found database hardware address %s => %s", ipaddr, hwaddr);
+
+	// Finalize statement and close database handle
+	sqlite3_reset(stmt);
+	sqlite3_finalize(stmt);
+	dbclose();
+
+	return hwaddr;
 }

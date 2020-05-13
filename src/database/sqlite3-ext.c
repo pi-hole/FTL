@@ -26,31 +26,8 @@
 // struct config
 #include "config.h"
 
-// Counting number of occurrences of a specific char in a string
-static size_t __attribute__ ((pure)) count_char(const char *haystack, const char needle)
-{
-	size_t count = 0u;
-	while(*haystack)
-		if (*haystack++ == needle)
-			++count;
-	return count;
-}
-
-// Identify MAC addresses using a set of suitable criteria
-static bool __attribute__ ((pure)) isMAC(const char *input)
-{
-	if(input != NULL &&                // Valid input
-	   strlen(input) == 17u &&         // MAC addresses are always 17 chars long (6 bytes + 5 colons)
-	   count_char(input, ':') == 5u && // MAC addresses always have 5 colons
-	   strstr(input, "::") == NULL)    // No double-colons (IPv6 address abbreviation)
-	   {
-		// This is a MAC address of the form AA:BB:CC:DD:EE:FF
-		return true;
-	   }
-	
-	// Not a MAC address
-	return false;
-}
+// isMAC()
+#include "database/network-table.h"
 
 static void subnet_match_impl(sqlite3_context *context, int argc, sqlite3_value **argv)
 {
@@ -81,9 +58,6 @@ static void subnet_match_impl(sqlite3_context *context, int argc, sqlite3_value 
 	// We can skip all computations in this case
 	if(isMAC(addrDBcidr))
 	{
-		if(config.debug & DEBUG_DATABASE)
-			logg("SQL: Skipping subnet_match() as %s is a MAC address.", addrDBcidr);
-
 		sqlite3_result_int(context, 0);
 		return;
 	}
