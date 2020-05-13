@@ -23,7 +23,7 @@ bool gravityDB_prepare_client_statements(const int clientID, clientsData* client
 void gravityDB_close(void);
 bool gravityDB_getTable(unsigned char list);
 const char* gravityDB_getDomain(int *rowid);
-char* get_group_names(const char *group_ids) __attribute__ ((malloc));
+char* get_client_names_from_ids(const char *group_ids) __attribute__ ((malloc));
 void gravityDB_finalizeTable(void);
 int gravityDB_count(unsigned char list);
 bool in_auditlist(const char *domain);

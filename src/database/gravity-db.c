@@ -353,7 +353,7 @@ static bool get_client_groupids(clientsData* client)
 	return true;
 }
 
-char* __attribute__ ((malloc)) get_group_names(const char *group_ids)
+char* __attribute__ ((malloc)) get_client_names_from_ids(const char *group_ids)
 {
 	// Build query string to get concatenated groups
 	char *querystr = NULL;
