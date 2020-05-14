@@ -200,6 +200,25 @@ static char* get_client_querystr(const char* table, const char* groups)
 	return querystr;
 }
 
+// Determine whether to show IP or hardware address
+static inline const char *show_real_hwaddr(const char *hwaddr, const char *ip)
+{
+	if(hwaddr == NULL)
+	{
+		// Hardware address not available, display IP address
+		return ip;
+	}
+	else if(strncasecmp(hwaddr, "ip-", 3) == 0)
+	{
+		// Mock-hardware address, display IP address
+		return ip;
+	}
+
+	// Valid hardware address, display it
+	return hwaddr;
+}
+
+
 // Get associated groups for this client (if defined)
 static bool get_client_groupids(clientsData* client)
 {
@@ -364,7 +383,7 @@ static bool get_client_groupids(clientsData* client)
 	{
 		if(config.debug & DEBUG_DATABASE)
 			logg("Gravity database: Client %s not found. Using default group.\n",
-			     hwaddr != NULL ? hwaddr : ip);
+			     show_real_hwaddr(hwaddr, ip));
 
 		client->groups = strdup("0");
 
@@ -437,7 +456,7 @@ static bool get_client_groupids(clientsData* client)
 
 	if(config.debug & DEBUG_DATABASE)
 		logg("Gravity database: Client %s found. Using groups [%s].\n",
-		     hwaddr != NULL ? hwaddr : ip, client->groups);
+		     show_real_hwaddr(hwaddr, ip), client->groups);
 
 	if(hwaddr != NULL)
 	{

@@ -257,9 +257,9 @@ static int update_netDB_hostname(const int dbID, const char *hostname)
 		return SQLITE_OK;
 
 	sqlite3_stmt *query_stmt = NULL;
-	const char querystr[] = "REPLACE network_names (name,lastSeen) "
+	const char querystr[] = "REPLACE INTO network_names (name,lastSeen) "
 	                        "VALUES "
-	                        "(?,(cast(strftime('%%s', 'now') as int)) "
+	                        "(?,(cast(strftime('%%s', 'now') as int))) "
 	                        "WHERE id = ?;";
 
 	int rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &query_stmt, NULL);
