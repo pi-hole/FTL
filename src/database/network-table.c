@@ -404,8 +404,8 @@ void parse_neighbor_cache(void)
 	}
 
 	// Remove IP addresses and host names not seen for more than 24 hours
-	dbquery("DELETE FROM network_addresses WHERE lastSeen < cast(strftime('%%s', 'now') as int)-86400;");
-	dbquery("DELETE FROM network_names     WHERE lastSeen < cast(strftime('%%s', 'now') as int)-86400;");
+	dbquery("DELETE FROM network_addresses WHERE lastSeen < cast(strftime('%%s', 'now') as int)-%u;", config.network_expire);
+	dbquery("DELETE FROM network_names     WHERE lastSeen < cast(strftime('%%s', 'now') as int)-%u;", config.network_expire);
 
 	// Start collecting database commands
 	lock_shm();

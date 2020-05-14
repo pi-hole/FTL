@@ -372,6 +372,21 @@ void read_FTLconf(void)
 	else
 		logg("   BLOCK_ESNI: Disabled");
 
+	// MAXNETAGE
+	// IP addresses and host names older than the specified number of hours are
+	// removed to avoid dead entries in the network overview table
+	// defaults to: 24.0 hours
+	config.network_expire = 86400;
+	buffer = parse_FTLconf(fp, "MAXNETAGE");
+
+	fvalue = 0;
+	if(buffer != NULL &&
+	    sscanf(buffer, "%f", &fvalue) &&
+	   fvalue >= 0.0f && fvalue <= 8760.0f) // 8760 = 24 * 365
+			config.network_expire = (unsigned int)(fvalue * 3600);
+	logg("   MAXNETAGE: Removing IP addresses and host names from network table after %.1f hours",
+	     (float)config.network_expire/3600.0f);
+
 	// Read DEBUG_... setting from pihole-FTL.conf
 	read_debuging_settings(fp);
 

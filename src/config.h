@@ -26,6 +26,7 @@ typedef struct {
 	int maxlogage;
 	int dns_port;
 	unsigned int delay_startup;
+	unsigned int network_expire;
 	int16_t debug;
 	unsigned char privacylevel;
 	unsigned char blockingmode;
