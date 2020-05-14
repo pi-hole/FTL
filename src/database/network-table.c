@@ -773,7 +773,11 @@ bool unify_hwaddr(void)
 	// evaluated once across all rows of a group to ensure the returned
 	// set represents the most recent entry for a given hwaddr
 	// Get only duplicated hwaddrs here (HAVING cnt > 1).
-	const char* querystr = "SELECT id,hwaddr,COUNT(*) AS cnt FROM network GROUP BY hwaddr HAVING MAX(lastQuery) AND cnt > 1;";
+	const char querystr[] = "SELECT id,hwaddr,COUNT(*) cnt "
+	                        "FROM network "
+	                        "GROUP BY hwaddr "
+	                        "HAVING MAX(lastQuery) "
+	                        "AND cnt > 1;";
 
 	// Perform SQL query
 	sqlite3_stmt* stmt;
@@ -858,18 +862,11 @@ static char* getMACVendor(const char* hwaddr)
 		return strdup("");
 	}
 
-	char *querystr = NULL;
 	// Only keep "XX:YY:ZZ" (8 characters)
-	char * hwaddrshort = strdup(hwaddr);
+	char hwaddrshort[9];
+	strncpy(hwaddrshort, hwaddr, 8);
 	hwaddrshort[8] = '\0';
-	rc = asprintf(&querystr, "SELECT vendor FROM macvendor WHERE mac LIKE \'%s\';", hwaddrshort);
-	if(rc < 1)
-	{
-		logg("getMACVendor(\"%s\") - Allocation error (%i)", hwaddr, rc);
-		sqlite3_close(macvendor_db);
-		return strdup("");
-	}
-	free(hwaddrshort);
+	const char querystr[] = "SELECT vendor FROM macvendor WHERE mac LIKE ?;";
 
 	sqlite3_stmt* stmt = NULL;
 	rc = sqlite3_prepare_v2(macvendor_db, querystr, -1, &stmt, NULL);
@@ -878,7 +875,17 @@ static char* getMACVendor(const char* hwaddr)
 		sqlite3_close(macvendor_db);
 		return strdup("");
 	}
-	free(querystr);
+
+	// Bind hwaddrshort to prepared statement
+	if((rc = sqlite3_bind_text(stmt, 1, hwaddrshort, -1, SQLITE_STATIC)) != SQLITE_OK)
+	{
+		logg("getMACVendor(\"%s\" -> \"%s\"): Failed to bind hwaddrshort: %s",
+		     hwaddr, hwaddrshort, sqlite3_errstr(rc));
+		sqlite3_reset(stmt);
+		sqlite3_finalize(stmt);
+		dbclose();
+		return strdup("");
+	}
 
 	char *vendor = NULL;
 	rc = sqlite3_step(stmt);
