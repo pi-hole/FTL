@@ -351,6 +351,23 @@ void db_init(void)
 		dbversion = db_get_FTL_property(DB_VERSION);
 	}
 
+	// Update to version 7 if lower
+	if(dbversion < 7)
+	{
+		// Update to version 7: Create network_names table
+		logg("Updating long-term database to version 7");
+		if(!create_network_names_table())
+		{
+			logg("Network names table not initialized, database not available");
+			dbclose();
+
+			database = false;
+			return;
+		}
+		// Get updated version
+		dbversion = db_get_FTL_property(DB_VERSION);
+	}
+
 	// Close database to prevent having it opened all time
 	// We already closed the database when we returned earlier
 	dbclose();

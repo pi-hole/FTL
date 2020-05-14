@@ -12,6 +12,7 @@
 
 bool create_network_table(void);
 bool create_network_addresses_table(void);
+bool create_network_names_table(void);
 void parse_neighbor_cache(void);
 void updateMACVendorRecords(void);
 bool unify_hwaddr(void);

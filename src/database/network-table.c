@@ -106,6 +106,68 @@ bool create_network_addresses_table(void)
 	return true;
 }
 
+bool create_network_names_table(void)
+{
+	// Disable foreign key enforcement for this transaction
+	// Otherwise, dropping the network table would not be allowed
+	SQL_bool("PRAGMA foreign_keys=OFF");
+
+	// Begin new transaction
+	SQL_bool("BEGIN TRANSACTION");
+
+	// Create network_names table in the database
+	SQL_bool("CREATE TABLE network_names ( network_id INTEGER NOT NULL, "\
+	                                      "name TEXT NOT NULL, "\
+	                                      "lastSeen INTEGER NOT NULL DEFAULT (cast(strftime('%%s', 'now') as int)), "\
+	                                      "UNIQUE(network_id,name), "\
+	                                      "FOREIGN KEY(network_id) REFERENCES network(id));");
+
+	// Create a network_names row for each entry in the network table
+	// Ignore clients without host names (may be either empty or NULL)
+	SQL_bool("INSERT OR IGNORE INTO network_names "
+	         "(network_id,name) SELECT id,name "
+	         "FROM network "
+	         "WHERE name is NOT NULL AND name != '';");
+
+	// Remove name column from network table.
+	// As ALTER TABLE is severely limited, we have to do the column deletion manually.
+	// Step 1: We create a new table without the name column
+	SQL_bool("CREATE TABLE network_bck ( id INTEGER PRIMARY KEY NOT NULL, " \
+	                                    "hwaddr TEXT UNIQUE NOT NULL, " \
+	                                    "interface TEXT NOT NULL, " \
+	                                    "firstSeen INTEGER NOT NULL, " \
+	                                    "lastQuery INTEGER NOT NULL, " \
+	                                    "numQueries INTEGER NOT NULL, " \
+	                                    "macVendor TEXT);");
+
+	// Step 2: Copy data (except name column) from network into network_back
+	SQL_bool("INSERT INTO network_bck "\
+	         "SELECT id, hwaddr, interface, firstSeen, "\
+	                "lastQuery, numQueries, macVendor "\
+	                "FROM network;");
+
+	// Step 3: Drop the network table, the unique index will be automatically dropped
+	SQL_bool("DROP TABLE network;");
+
+	// Step 4: Rename network_bck table to network table as last step
+	SQL_bool("ALTER TABLE network_bck RENAME TO network;");
+
+	// Update database version to 7
+	if(!db_set_FTL_property(DB_VERSION, 7))
+	{
+		logg("create_network_names_table(): Failed to update database version!");
+		return false;
+	}
+
+	// Finish transaction
+	SQL_bool("COMMIT");
+
+	// Re-enable foreign key enforcement
+	SQL_bool("PRAGMA foreign_keys=ON");
+
+	return true;
+}
+
 // Try to find device by recent usage of this IP address
 static int find_device_by_recent_ip(const char *ipaddr)
 {
@@ -195,7 +257,10 @@ static int update_netDB_hostname(const int dbID, const char *hostname)
 		return SQLITE_OK;
 
 	sqlite3_stmt *query_stmt = NULL;
-	const char querystr[] = "UPDATE network SET name = ? WHERE id = ?;";
+	const char querystr[] = "REPLACE network_names (name,lastSeen) "
+	                        "VALUES "
+	                        "(?,(cast(strftime('%%s', 'now') as int)) "
+	                        "WHERE id = ?;";
 
 	int rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &query_stmt, NULL);
 	if(rc != SQLITE_OK)
@@ -455,12 +520,11 @@ void parse_neighbor_cache(void)
 
 				// Create new record (INSERT)
 				dbquery("INSERT INTO network "
-				        "(hwaddr,interface,firstSeen,lastQuery,numQueries,name,macVendor) "
-				        "VALUES (\'%s\',\'%s\',%lu, %ld, %u, \'%s\', \'%s\');",
+				        "(hwaddr,interface,firstSeen,lastQuery,numQueries,macVendor) "
+				        "VALUES (\'%s\',\'%s\',%lu, %ld, %u, \'%s\');",
 				        hwaddr, iface, now,
 				        client != NULL ? client->lastQuery : 0L,
 				        client != NULL ? client->numQueriesARP : 0u,
-				        hostname,
 				        macVendor);
 
 				// Reset client ARP counter (we stored the entry in the database)
@@ -471,6 +535,11 @@ void parse_neighbor_cache(void)
 
 				// Obtain ID which was given to this new entry
 				dbID = get_lastID();
+
+				// Create new name record
+				rc = update_netDB_hostname(dbID, hostname);
+				if(rc != SQLITE_OK)
+					break;
 			}
 			else
 			{
@@ -592,9 +661,9 @@ void parse_neighbor_cache(void)
 		else if(dbID == DB_NODATA)
 		{
 			dbquery("INSERT INTO network "\
-			        "(hwaddr,interface,firstSeen,lastQuery,numQueries,name,macVendor) "\
-			        "VALUES (\'ip-%s\',\'N/A\',%lu, %ld, %u, \'%s\', \'\');",\
-			        ipaddr, now, client->lastQuery, client->numQueriesARP, hostname);
+			        "(hwaddr,interface,firstSeen,lastQuery,numQueries) "\
+			        "VALUES (\'ip-%s\',\'N/A\',%lu, %ld, %u);",\
+			        ipaddr, now, client->lastQuery, client->numQueriesARP);
 			client->numQueriesARP = 0;
 
 			if(rc != SQLITE_OK)
@@ -602,6 +671,11 @@ void parse_neighbor_cache(void)
 
 			// Obtain ID which was given to this new entry
 			dbID = get_lastID();
+
+			// Create new name record
+			rc = update_netDB_hostname(dbID, hostname);
+			if(rc != SQLITE_OK)
+				break;
 		}
 		// Device already in database
 		else
@@ -907,7 +981,9 @@ char* __attribute__((malloc)) getDatabaseHostname(const char* ipaddr)
 
 	// Prepare SQLite statement
 	sqlite3_stmt* stmt = NULL;
-	const char *querystr = "SELECT name FROM network WHERE id = (SELECT network_id FROM network_addresses WHERE ip = ?);";
+	const char *querystr = "SELECT name FROM network_names "
+	                       "WHERE network_id = "
+			       "(SELECT network_id FROM network_addresses WHERE ip = ?);";
 	int rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK ){
 		logg("getDatabaseHostname(\"%s\") - SQL error prepare: %s",
