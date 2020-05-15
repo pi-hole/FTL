@@ -257,10 +257,9 @@ static int update_netDB_hostname(const int dbID, const char *hostname)
 		return SQLITE_OK;
 
 	sqlite3_stmt *query_stmt = NULL;
-	const char querystr[] = "REPLACE INTO network_names (name,lastSeen) "
+	const char querystr[] = "REPLACE INTO network_names (network_id,name,lastSeen) "
 	                        "VALUES "
-	                        "(?,(cast(strftime('%%s', 'now') as int))) "
-	                        "WHERE id = ?;";
+	                        "(?,?,(cast(strftime('%%s', 'now') as int)))";
 
 	int rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &query_stmt, NULL);
 	if(rc != SQLITE_OK)
@@ -272,24 +271,24 @@ static int update_netDB_hostname(const int dbID, const char *hostname)
 
 	if(config.debug & DEBUG_DATABASE)
 	{
-		logg("dbquery: \"%s\" with arguments 1 = \"%s\" and 2 = %i", querystr, hostname, dbID);
+		logg("dbquery: \"%s\" with arguments 1 = %d and 2 = \"%s\"", querystr, dbID, hostname);
 	}
 
-	// Bind hostname to prepared statement (1st argument)
-	// SQLITE_STATIC: Use the string without first duplicating it internally.
-	// We can do this as hostname has dynamic scope that exceeds that of the binding.
-	if((rc = sqlite3_bind_text(query_stmt, 1, hostname, -1, SQLITE_STATIC)) != SQLITE_OK)
+	// Bind dbID to prepared statement (1st argument)
+	if((rc = sqlite3_bind_int(query_stmt, 1, dbID)) != SQLITE_OK)
 	{
-		logg("update_netDB_hostname(%i, \"%s\"): Failed to bind hostname (error %d): %s",
+		logg("update_netDB_hostname(%i, \"%s\"): Failed to bind dbID (error %d): %s",
 		     dbID, hostname, rc, sqlite3_errmsg(FTL_db));
 		sqlite3_reset(query_stmt);
 		return rc;
 	}
 
-	// Bind dbID to prepared statement (2nd argument)
-	if((rc = sqlite3_bind_int(query_stmt, 2, dbID)) != SQLITE_OK)
+	// Bind hostname to prepared statement (2nd argument)
+	// SQLITE_STATIC: Use the string without first duplicating it internally.
+	// We can do this as hostname has dynamic scope that exceeds that of the binding.
+	if((rc = sqlite3_bind_text(query_stmt, 2, hostname, -1, SQLITE_STATIC)) != SQLITE_OK)
 	{
-		logg("update_netDB_hostname(%i, \"%s\"): Failed to bind dbID (error %d): %s",
+		logg("update_netDB_hostname(%i, \"%s\"): Failed to bind hostname (error %d): %s",
 		     dbID, hostname, rc, sqlite3_errmsg(FTL_db));
 		sqlite3_reset(query_stmt);
 		return rc;
