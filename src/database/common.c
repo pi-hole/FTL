@@ -351,14 +351,16 @@ void db_init(void)
 		dbversion = db_get_FTL_property(DB_VERSION);
 	}
 
-	// Update to version 7 if lower
-	if(dbversion < 7)
+	// Version 7 is skipped as it was superseded by version 8
+
+	// Update to version 8 if lower
+	if(dbversion < 8)
 	{
-		// Update to version 7: Create network_names table
-		logg("Updating long-term database to version 7");
-		if(!create_network_names_table())
+		// Update to version 8: Add name field to network_addresses table
+		logg("Updating long-term database to version 8");
+		if(!create_network_addresses_with_names_table())
 		{
-			logg("Network names table not initialized, database not available");
+			logg("Network addresses table not initialized, database not available");
 			dbclose();
 
 			database = false;

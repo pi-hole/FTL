@@ -106,7 +106,7 @@ bool create_network_addresses_table(void)
 	return true;
 }
 
-bool create_network_names_table(void)
+bool create_network_addresses_with_names_table(void)
 {
 	// Disable foreign key enforcement for this transaction
 	// Otherwise, dropping the network table would not be allowed
@@ -115,19 +115,29 @@ bool create_network_names_table(void)
 	// Begin new transaction
 	SQL_bool("BEGIN TRANSACTION");
 
-	// Create network_names table in the database
-	SQL_bool("CREATE TABLE network_names ( network_id INTEGER NOT NULL, "\
-	                                      "name TEXT NOT NULL, "\
-	                                      "lastSeen INTEGER NOT NULL DEFAULT (cast(strftime('%%s', 'now') as int)), "\
-	                                      "UNIQUE(network_id,name), "\
-	                                      "FOREIGN KEY(network_id) REFERENCES network(id));");
+	// Step 1: Create network_addresses table in the database
+	SQL_bool("CREATE TABLE network_addresses_bck ( network_id INTEGER NOT NULL, "
+	                                              "ip TEXT UNIQUE NOT NULL, "
+	                                              "lastSeen INTEGER NOT NULL DEFAULT (cast(strftime('%%s', 'now') as int)), "
+	                                              "name TEXT, "
+	                                              "nameUpdated INTEGER, "
+	                                              "FOREIGN KEY(network_id) REFERENCES network(id));");
 
-	// Create a network_names row for each entry in the network table
-	// Ignore clients without host names (may be either empty or NULL)
-	SQL_bool("INSERT OR IGNORE INTO network_names "
-	         "(network_id,name) SELECT id,name "
-	         "FROM network "
-	         "WHERE name is NOT NULL AND name != '';");
+	// Step 2: Copy data from network_addresses into network_addresses_bck
+	//         name and nameUpdated are NULL at this point
+	SQL_bool("REPLACE INTO network_addresses_bck "
+	         "(network_id,ip,lastSeen) "
+	         "SELECT network_id,ip,lastSeen "
+	                "FROM network_addresses;");
+
+	// Step 3: Drop the network_addresses table
+	SQL_bool("DROP TABLE network_addresses;");
+
+	// Step 4: Drop the network_names table (if exists due to a previous v7 database update)
+	SQL_bool("DROP TABLE IF EXISTS network_names;");
+
+	// Step 5: Rename network_addresses_bck table to network_addresses table as last step
+	SQL_bool("ALTER TABLE network_addresses_bck RENAME TO network_addresses;");
 
 	// Remove name column from network table.
 	// As ALTER TABLE is severely limited, we have to do the column deletion manually.
@@ -152,10 +162,10 @@ bool create_network_names_table(void)
 	// Step 4: Rename network_bck table to network table as last step
 	SQL_bool("ALTER TABLE network_bck RENAME TO network;");
 
-	// Update database version to 7
-	if(!db_set_FTL_property(DB_VERSION, 7))
+	// Update database version to 8
+	if(!db_set_FTL_property(DB_VERSION, 8))
 	{
-		logg("create_network_names_table(): Failed to update database version!");
+		logg("create_network_addresses_with_names_table(): Failed to update database version!");
 		return false;
 	}
 
@@ -250,53 +260,69 @@ static int find_recent_device_by_mock_hwaddr(const char *ipaddr)
 }
 
 // Store hostname of device identified by dbID
-static int update_netDB_hostname(const int dbID, const char *hostname)
+static int update_netDB_name(const char *ip, const char *name)
 {
 	// Skip if hostname is NULL or an empty string (= no result)
-	if(hostname == NULL || strlen(hostname) < 1)
+	if(name == NULL || strlen(name) < 1)
 		return SQLITE_OK;
 
 	sqlite3_stmt *query_stmt = NULL;
-	const char querystr[] = "REPLACE INTO network_names (network_id,name,lastSeen) "
-	                        "VALUES "
-	                        "(?,?,(cast(strftime('%%s', 'now') as int)))";
+	const char querystr[] = "UPDATE network_addresses SET name = ?1, "
+	                               "nameUpdated = (cast(strftime('%s', 'now') as int)) "
+	                               "WHERE ip = ?2";
 
 	int rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &query_stmt, NULL);
 	if(rc != SQLITE_OK)
 	{
-		logg("update_netDB_hostname(%i, \"%s\") - SQL error prepare (%i): %s",
-		     dbID, hostname, rc, sqlite3_errmsg(FTL_db));
+		logg("update_netDB_name(%s, \"%s\") - SQL error prepare (%i): %s",
+		     ip, name, rc, sqlite3_errmsg(FTL_db));
 		return rc;
 	}
 
 	if(config.debug & DEBUG_DATABASE)
 	{
-		logg("dbquery: \"%s\" with arguments 1 = %d and 2 = \"%s\"", querystr, dbID, hostname);
+		logg("dbquery: \"%s\" with arguments 1 = \"%s\" and 2 = \"%s\"",
+		     querystr, name, ip);
 	}
 
-	// Bind dbID to prepared statement (1st argument)
-	if((rc = sqlite3_bind_int(query_stmt, 1, dbID)) != SQLITE_OK)
+	// Bind name to prepared statement (1st argument)
+	// SQLITE_STATIC: Use the string without first duplicating it internally.
+	// We can do this as name has dynamic scope that exceeds that of the binding.
+	if((rc = sqlite3_bind_text(query_stmt, 1, name, -1, SQLITE_STATIC)) != SQLITE_OK)
 	{
-		logg("update_netDB_hostname(%i, \"%s\"): Failed to bind dbID (error %d): %s",
-		     dbID, hostname, rc, sqlite3_errmsg(FTL_db));
+		logg("update_netDB_name(%s, \"%s\"): Failed to bind ip (error %d): %s",
+		     ip, name, rc, sqlite3_errmsg(FTL_db));
 		sqlite3_reset(query_stmt);
 		return rc;
 	}
-
-	// Bind hostname to prepared statement (2nd argument)
+	// Bind ip (unique key) to prepared statement (2nd argument)
 	// SQLITE_STATIC: Use the string without first duplicating it internally.
-	// We can do this as hostname has dynamic scope that exceeds that of the binding.
-	if((rc = sqlite3_bind_text(query_stmt, 2, hostname, -1, SQLITE_STATIC)) != SQLITE_OK)
+	// We can do this as name has dynamic scope that exceeds that of the binding.
+	if((rc = sqlite3_bind_text(query_stmt, 2, ip, -1, SQLITE_STATIC)) != SQLITE_OK)
 	{
-		logg("update_netDB_hostname(%i, \"%s\"): Failed to bind hostname (error %d): %s",
-		     dbID, hostname, rc, sqlite3_errmsg(FTL_db));
+		logg("update_netDB_name(%s, \"%s\"): Failed to bind name (error %d): %s",
+		     ip, name, rc, sqlite3_errmsg(FTL_db));
 		sqlite3_reset(query_stmt);
 		return rc;
 	}
 
 	// Perform step
-	sqlite3_step(query_stmt);
-	sqlite3_finalize(query_stmt);
+	if ((rc = sqlite3_step(query_stmt)) != SQLITE_DONE)
+	{
+		logg("update_netDB_name(%s, \"%s\"): Failed to step (error %d): %s",
+		     ip, name, rc, sqlite3_errmsg(FTL_db));
+		sqlite3_reset(query_stmt);
+		return rc;
+	}
+
+	// Finalize statement
+	if ((rc = sqlite3_finalize(query_stmt)) != SQLITE_OK)
+	{
+		logg("update_netDB_name(%s, \"%s\"): Failed to finalize (error %d): %s",
+		     ip, name, rc, sqlite3_errmsg(FTL_db));
+		sqlite3_reset(query_stmt);
+		return rc;
+	}
 
 	return SQLITE_OK;
 }
@@ -304,7 +330,7 @@ static int update_netDB_hostname(const int dbID, const char *hostname)
 // Updates lastQuery. Only use new value if larger than zero.
 // client->lastQuery may be zero if this client is only known
 // from a database entry but has not been seen since then (skip in this case)
-static int update_netDB_lastQuery(const int dbID, const clientsData* client)
+static int update_netDB_lastQuery(const int network_id, const clientsData* client)
 {
 	// Return early if there is nothing to update
 	if(client->lastQuery < 1)
@@ -313,7 +339,7 @@ static int update_netDB_lastQuery(const int dbID, const clientsData* client)
 	return dbquery("UPDATE network "\
 	               "SET lastQuery = MAX(lastQuery, %ld) "\
 	               "WHERE id = %i;",
-	               client->lastQuery, dbID);
+	               client->lastQuery, network_id);
 }
 
 
@@ -328,23 +354,62 @@ static int update_netDB_numQueries(const int dbID, clientsData* client)
 	int numQueries = client->numQueriesARP;
 	client->numQueriesARP = 0;
 
-	return dbquery("UPDATE network "\
-	              "SET numQueries = numQueries + %u "\
-	              "WHERE id = %i;",
-	              numQueries, dbID);
+	return dbquery("UPDATE network "
+	               "SET numQueries = numQueries + %u "
+	               "WHERE id = %i;",
+	               numQueries, dbID);
 }
 
-
-// Add unique pair of ID (corresponds to one particular hardware
-// address) and IP address if it does not exist (INSERT). In case
-// this pair already exists, the UNIQUE(network_id,ip) trigger
-// becomes active and the line is instead REPLACEd, causing the
-// lastQuery timestamp to be updated
-static int add_netDB_network_address(const int dbID, const char* ipaddr)
+// Add IP address record if it does not exist (INSERT). If it already exists,
+// the UNIQUE(ip) trigger becomes active and the line is instead REPLACEd.
+// We preserve a possibly existing IP -> host name association here
+static int add_netDB_network_address(const int network_id, const char* ip)
 {
-	return dbquery("INSERT OR REPLACE INTO network_addresses "\
-	               "(network_id,ip,lastSeen) VALUES (%i,\'%s\',(cast(strftime('%%s', 'now') as int)));",
-	               dbID, ipaddr);
+	sqlite3_stmt *query_stmt = NULL;
+	const char querystr[] = "INSERT OR REPLACE INTO network_addresses "
+	                        "(network_id,ip,lastSeen,name,nameUpdated) VALUES "
+	                        "(?1,?2,(cast(strftime('%s', 'now') as int)),"
+	                        "(SELECT name FROM network_addresses "
+	                                "WHERE ip = ?2),"
+	                        "(SELECT nameUpdated FROM network_addresses "
+	                                "WHERE ip = ?2));";
+
+	int rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &query_stmt, NULL);
+	if(rc != SQLITE_OK)
+	{
+		logg("add_netDB_network_address(%i, \"%s\") - SQL error prepare (%i): %s",
+		     network_id, ip, rc, sqlite3_errmsg(FTL_db));
+		return rc;
+	}
+
+	if(config.debug & DEBUG_DATABASE)
+	{
+		logg("dbquery: \"%s\" with arguments 1 = %i and 2 = \"%s\"",
+		     querystr, network_id, ip);
+	}
+
+	// Bind network_id to prepared statement (1st argument)
+	if((rc = sqlite3_bind_int(query_stmt, 1, network_id)) != SQLITE_OK)
+	{
+		logg("update_netDB_name(%i, \"%s\"): Failed to bind ip (error %d): %s",
+		     network_id, ip, rc, sqlite3_errmsg(FTL_db));
+		sqlite3_reset(query_stmt);
+		return rc;
+	}
+	// Bind ip to prepared statement (2nd argument)
+	if((rc = sqlite3_bind_text(query_stmt, 2, ip, -1, SQLITE_STATIC)) != SQLITE_OK)
+	{
+		logg("update_netDB_name(%i, \"%s\"): Failed to bind name (error %d): %s",
+		     network_id, ip, rc, sqlite3_errmsg(FTL_db));
+		sqlite3_reset(query_stmt);
+		return rc;
+	}
+
+	// Perform step
+	sqlite3_step(query_stmt);
+	sqlite3_finalize(query_stmt);
+
+	return SQLITE_OK;
 }
 
 // Parse kernel's neighbor cache
@@ -402,9 +467,9 @@ void parse_neighbor_cache(void)
 		return;
 	}
 
-	// Remove IP addresses and host names not seen for more than 24 hours
+	// Remove IP addresses not seen for more than a certain time
 	dbquery("DELETE FROM network_addresses WHERE lastSeen < cast(strftime('%%s', 'now') as int)-%u;", config.network_expire);
-	dbquery("DELETE FROM network_names     WHERE lastSeen < cast(strftime('%%s', 'now') as int)-%u;", config.network_expire);
+	dbquery("UPDATE network_addresses SET name = NULL WHERE nameUpdated < cast(strftime('%%s', 'now') as int)-%u;", config.network_expire);
 
 	// Start collecting database commands
 	lock_shm();
@@ -537,7 +602,7 @@ void parse_neighbor_cache(void)
 				dbID = get_lastID();
 
 				// Create new name record
-				rc = update_netDB_hostname(dbID, hostname);
+				rc = update_netDB_name(ip, hostname);
 				if(rc != SQLITE_OK)
 					break;
 			}
@@ -578,7 +643,7 @@ void parse_neighbor_cache(void)
 				break;
 
 			// Update hostname if available
-			rc = update_netDB_hostname(dbID, hostname);
+			rc = update_netDB_name(ip, hostname);
 			if(rc != SQLITE_OK)
 				break;
 		}
@@ -672,8 +737,13 @@ void parse_neighbor_cache(void)
 			// Obtain ID which was given to this new entry
 			dbID = get_lastID();
 
+			// Add unique IP address / mock-MAC pair to network_addresses table
+			rc = add_netDB_network_address(dbID, ipaddr);
+			if(rc != SQLITE_OK)
+				break;
+
 			// Create new name record
-			rc = update_netDB_hostname(dbID, hostname);
+			rc = update_netDB_name(ipaddr, hostname);
 			if(rc != SQLITE_OK)
 				break;
 		}
@@ -690,16 +760,16 @@ void parse_neighbor_cache(void)
 			if(rc != SQLITE_OK)
 				break;
 
+			// Add unique IP address / mock-MAC pair to network_addresses table
+			rc = add_netDB_network_address(dbID, ipaddr);
+			if(rc != SQLITE_OK)
+				break;
+
 			// Update hostname if available
-			rc = update_netDB_hostname(dbID, hostname);
+			rc = update_netDB_name(ipaddr, hostname);
 			if(rc != SQLITE_OK)
 				break;
 		}
-
-		// Add unique IP address / mock-MAC pair to network_addresses table
-		rc = add_netDB_network_address(dbID, ipaddr);
-		if(rc != SQLITE_OK)
-			break;
 
 		// Add to number of processed ARP cache entries
 		additional_entries++;
@@ -988,9 +1058,8 @@ char* __attribute__((malloc)) getDatabaseHostname(const char* ipaddr)
 
 	// Prepare SQLite statement
 	sqlite3_stmt* stmt = NULL;
-	const char *querystr = "SELECT name FROM network_names "
-	                       "WHERE network_id = "
-			       "(SELECT network_id FROM network_addresses WHERE ip = ?);";
+	const char *querystr = "SELECT name FROM network_addresses "
+	                       "WHERE ip = ?;";
 	int rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK ){
 		logg("getDatabaseHostname(\"%s\") - SQL error prepare: %s",
