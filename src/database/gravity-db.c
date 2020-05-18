@@ -206,7 +206,7 @@ static inline const char *show_client_string(const char *hwaddr, const char *hos
 	if(hostname != NULL && strlen(hostname) > 0)
 	{
 		// Valid hostname address, display it
-		return hwaddr;
+		return hostname;
 	}
 	else if(hwaddr != NULL && strncasecmp(hwaddr, "ip-", 3) != 0)
 	{
@@ -553,10 +553,16 @@ static bool get_client_groupids(clientsData* client)
 		logg("Gravity database: Client %s found. Using groups [%s].\n",
 		     show_client_string(hwaddr, hostname, ip), client->groups);
 
+	// Free possibly allocated memory
 	if(hwaddr != NULL)
 	{
 		free(hwaddr);
 		hwaddr = NULL;
+	}
+	if(hostname != NULL)
+	{
+		free(hostname);
+		hostname = NULL;
 	}
 
 	// Return success
