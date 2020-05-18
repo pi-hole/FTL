@@ -334,8 +334,19 @@ static bool get_client_groupids(clientsData* client)
 	{
 		if(config.debug & DEBUG_DATABASE)
 			logg("Querying gravity database for MAC address of %s...", ip);
-		if((hwaddr = getMACfromIP(ip)) == NULL && config.debug & DEBUG_DATABASE)
+
+		// Do the lookup
+		hwaddr = getMACfromIP(ip);
+
+		if(hwaddr == NULL && config.debug & DEBUG_DATABASE)
 			logg("--> No result.");
+
+		if(hwaddr != NULL && strlen(hwaddr) > 3 && strncasecmp(hwaddr, "ip-", 3) == 0)
+		{
+			free(hwaddr);
+			hwaddr = 0;
+			logg("Skipping mock-device hardware address lookup");
+		}
 	}
 
 	// Check if we received a valid MAC address
@@ -406,9 +417,20 @@ static bool get_client_groupids(clientsData* client)
 	if(chosen_match_id < 0)
 	{
 		if(config.debug & DEBUG_DATABASE)
-			logg("Querying gravity database for host name \"%s\"...", ip);
-		if((hostname = getNameFromIP(ip)) == NULL && config.debug & DEBUG_DATABASE)
+			logg("Querying gravity database for host name %s...", ip);
+
+		// Do the lookup
+		hostname = getNameFromIP(ip);
+
+		if(hostname == NULL && config.debug & DEBUG_DATABASE)
 			logg("--> No result.");
+
+		if(hostname != NULL && strlen(hostname) == 0)
+		{
+			free(hostname);
+			hostname = 0;
+			logg("Skipping empty host name lookup");
+		}
 	}
 
 	// Check if we received a valid MAC address
