@@ -39,7 +39,7 @@
 static void print_flags(const unsigned int flags);
 static void save_reply_type(const unsigned int flags, queriesData* query, const struct timeval response);
 static unsigned long converttimeval(const struct timeval time) __attribute__((const));
-static void detect_blocked_IP(const unsigned short flags, const char* answer, const int queryID);
+static void detect_blocked_IP(const unsigned short flags, const union all_addr *addr, const int queryID);
 static void query_externally_blocked(const int queryID, const unsigned char status);
 static int findQueryID(const int id);
 static void prepare_blocking_metadata(void);
@@ -424,9 +424,6 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	if(config.privacylevel >= PRIVACY_NOSTATS)
 		return false;
 
-	// Lock shared memory
-	lock_shm();
-
 	// Get timestamp
 	const time_t querytimestamp = time(NULL);
 
@@ -457,7 +454,6 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		// Return early to avoid accessing querytypedata out of bounds
 		if(config.debug & DEBUG_QUERIES)
 			logg("Notice: Skipping unknown query type: %s (%i)", types, id);
-		unlock_shm();
 		return false;
 	}
 
@@ -466,9 +462,11 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	{
 		if(config.debug & DEBUG_QUERIES)
 			logg("Not analyzing AAAA query");
-		unlock_shm();
 		return false;
 	}
+
+	// Lock shared memory
+	lock_shm();
 
 	// Ensure we have enough space in the queries struct
 	memory_check(QUERIES);
@@ -568,7 +566,6 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// Check and apply possible privacy level rules
 	// The currently set privacy level (at the time the query is
 	// generated) is stored in the queries structure
-	get_privacy_level(NULL);
 	query->privacylevel = config.privacylevel;
 
 	// Increase DNS queries counter
@@ -811,6 +808,9 @@ void FTL_dnsmasq_reload(void)
 
 	logg("Reloading DNS cache");
 
+	// Reload the privacy level in case the user changed it
+	get_privacy_level(NULL);
+
 	// Inspect 01-pihole.conf to see if Pi-hole blocking is enabled,
 	// i.e. if /etc/pihole/gravity.list is sourced as addn-hosts file
 	check_blocking_status();
@@ -956,7 +956,7 @@ void _FTL_reply(const unsigned short flags, const char *name, const union all_ad
 			save_reply_type(flags, query, response);
 
 			// Detect if returned IP indicates that this query was blocked
-			detect_blocked_IP(flags, answer, i);
+			detect_blocked_IP(flags, addr, i);
 		}
 	}
 	else if(flags & F_REVERSE)
@@ -982,9 +982,14 @@ void _FTL_reply(const unsigned short flags, const char *name, const union all_ad
 	unlock_shm();
 }
 
-static void detect_blocked_IP(const unsigned short flags, const char* answer, const int queryID)
+static void detect_blocked_IP(const unsigned short flags, const union all_addr *addr, const int queryID)
 {
 	// Compare returned IP against list of known blocking splash pages
+
+	if (!addr)
+	{
+		return;
+	}
 
 	// First, we check if we want to skip this result even before comparing against the known IPs
 	if(flags & F_HOSTS || flags & F_REVERSE)
@@ -1006,14 +1011,9 @@ static void detect_blocked_IP(const unsigned short flags, const char* answer, co
 	// (Cisco Umbrella) blocked this query
 	// See https://support.opendns.com/hc/en-us/articles/227986927-What-are-the-Cisco-Umbrella-Block-Page-IP-Addresses-
 	// for a full list of these IP addresses
-	if(flags & F_IPV4 && answer != NULL &&
-		(strcmp("146.112.61.104", answer) == 0 ||
-		 strcmp("146.112.61.105", answer) == 0 ||
-		 strcmp("146.112.61.106", answer) == 0 ||
-		 strcmp("146.112.61.107", answer) == 0 ||
-		 strcmp("146.112.61.108", answer) == 0 ||
-		 strcmp("146.112.61.109", answer) == 0 ||
-		 strcmp("146.112.61.110", answer) == 0 ))
+	in_addr_t ipv4Addr = ntohl(addr->addr4.s_addr);
+	in_addr_t ipv6Addr = ntohl(addr->addr6.s6_addr32[3]);
+	if((flags & F_IPV4) && ipv4Addr >= 0x92703d68 && ipv4Addr <= 0x92703d6e)
 	{
 		if(config.debug & DEBUG_EXTBLOCKED)
 		{
@@ -1023,6 +1023,8 @@ static void detect_blocked_IP(const unsigned short flags, const char* answer, co
 				const domainsData* domain = getDomain(query->domainID, true);
 				if(domain != NULL)
 				{
+					char answer[ADDRSTRLEN]; answer[0] = '\0';
+					inet_ntop(AF_INET, addr, answer, ADDRSTRLEN);
 					logg("Upstream responded with known blocking page (IPv4), ID %i:\n\t\"%s\" -> \"%s\"",
 					     queryID, getstr(domain->domainpos), answer);
 				}
@@ -1032,14 +1034,11 @@ static void detect_blocked_IP(const unsigned short flags, const char* answer, co
 		// Update status
 		query_externally_blocked(queryID, QUERY_EXTERNAL_BLOCKED_IP);
 	}
-	else if(flags & F_IPV6 && answer != NULL &&
-		(strcmp("::ffff:146.112.61.104", answer) == 0 ||
-		 strcmp("::ffff:146.112.61.105", answer) == 0 ||
-		 strcmp("::ffff:146.112.61.106", answer) == 0 ||
-		 strcmp("::ffff:146.112.61.107", answer) == 0 ||
-		 strcmp("::ffff:146.112.61.108", answer) == 0 ||
-		 strcmp("::ffff:146.112.61.109", answer) == 0 ||
-		 strcmp("::ffff:146.112.61.110", answer) == 0 ))
+	else if(flags & F_IPV6 &&
+					addr->addr6.s6_addr32[0] == 0 &&
+					addr->addr6.s6_addr32[1] == 0 &&
+				  addr->addr6.s6_addr32[2] == 0xffff0000 &&
+					ipv6Addr >= 0x92703d68 && ipv6Addr <= 0x92703d6e)
 	{
 		if(config.debug & DEBUG_EXTBLOCKED)
 		{
@@ -1049,6 +1048,8 @@ static void detect_blocked_IP(const unsigned short flags, const char* answer, co
 				const domainsData* domain = getDomain(query->domainID, true);
 				if(domain != NULL)
 				{
+					char answer[ADDRSTRLEN]; answer[0] = '\0';
+					inet_ntop(AF_INET6, addr, answer, ADDRSTRLEN);
 					logg("Upstream responded with known blocking page (IPv6), ID %i:\n\t\"%s\" -> \"%s\"",
 					     queryID, getstr(domain->domainpos), answer);
 				}
@@ -1062,8 +1063,7 @@ static void detect_blocked_IP(const unsigned short flags, const char* answer, co
 	// If upstream replied with 0.0.0.0 or ::,
 	// we assume that it filtered the reply as
 	// nothing is reachable under these addresses
-	else if(flags & F_IPV4 && answer != NULL &&
-		strcmp("0.0.0.0", answer) == 0)
+	else if(flags & F_IPV4 && ipv4Addr == 0)
 	{
 		if(config.debug & DEBUG_EXTBLOCKED)
 		{
@@ -1073,6 +1073,8 @@ static void detect_blocked_IP(const unsigned short flags, const char* answer, co
 				const domainsData* domain = getDomain(query->domainID, true);
 				if(domain != NULL)
 				{
+					char answer[ADDRSTRLEN]; answer[0] = '\0';
+					inet_ntop(AF_INET, addr, answer, ADDRSTRLEN);
 					logg("Upstream responded with 0.0.0.0, ID %i:\n\t\"%s\" -> \"%s\"",
 					     queryID, getstr(domain->domainpos), answer);
 				}
@@ -1082,8 +1084,11 @@ static void detect_blocked_IP(const unsigned short flags, const char* answer, co
 		// Update status
 		query_externally_blocked(queryID, QUERY_EXTERNAL_BLOCKED_NULL);
 	}
-	else if(flags & F_IPV6 && answer != NULL &&
-		strcmp("::", answer) == 0)
+	else if(flags & F_IPV6 &&
+	        addr->addr6.s6_addr32[0] == 0 &&
+					addr->addr6.s6_addr32[1] == 0 &&
+					addr->addr6.s6_addr32[2] == 0 &&
+					addr->addr6.s6_addr32[3] == 0)
 	{
 		if(config.debug & DEBUG_EXTBLOCKED)
 		{
@@ -1093,6 +1098,8 @@ static void detect_blocked_IP(const unsigned short flags, const char* answer, co
 				const domainsData* domain = getDomain(query->domainID, true);
 				if(domain != NULL)
 				{
+					char answer[ADDRSTRLEN]; answer[0] = '\0';
+					inet_ntop(AF_INET6, addr, answer, ADDRSTRLEN);
 					logg("Upstream responded with ::, ID %i:\n\t\"%s\" -> \"%s\"",
 					     queryID, getstr(domain->domainpos), answer);
 				}
@@ -1151,27 +1158,22 @@ void _FTL_cache(const unsigned int flags, const char *name, const union all_addr
 	if(config.privacylevel >= PRIVACY_NOSTATS)
 		return;
 
-	// Lock shared memory
-	lock_shm();
-
-	// Obtain destination IP address if available for this query type
-	char dest[ADDRSTRLEN]; dest[0] = '\0';
-	if(addr)
-	{
-		inet_ntop((flags & F_IPV4) ? AF_INET : AF_INET6, addr, dest, ADDRSTRLEN);
-	}
-
 	// If domain is "pi.hole", we skip this query
 	// We compare case-insensitive here
 	if(strcasecmp(name, "pi.hole") == 0)
 	{
-		unlock_shm();
 		return;
 	}
 
 	// Debug logging
 	if(config.debug & DEBUG_QUERIES)
 	{
+		// Obtain destination IP address if available for this query type
+		char dest[ADDRSTRLEN]; dest[0] = '\0';
+		if(addr)
+		{
+			inet_ntop((flags & F_IPV4) ? AF_INET : AF_INET6, addr, dest, ADDRSTRLEN);
+		}
 		logg("**** got cache answer for %s / %s / %s (ID %i, %s:%i)", name, dest, arg, id, file, line);
 		print_flags(flags);
 	}
@@ -1179,6 +1181,9 @@ void _FTL_cache(const unsigned int flags, const char *name, const union all_addr
 	// Get response time
 	struct timeval response;
 	gettimeofday(&response, 0);
+
+	// Lock shared memory
+	lock_shm();
 
 	if(((flags & F_HOSTS) && (flags & F_IMMORTAL)) ||
 	   ((flags & F_NAMEP) && (flags & F_DHCP)) ||
@@ -1240,7 +1245,7 @@ void _FTL_cache(const unsigned int flags, const char *name, const union all_addr
 		query->status = requesttype;
 
 		// Detect if returned IP indicates that this query was blocked
-		detect_blocked_IP(flags, dest, queryID);
+		detect_blocked_IP(flags, addr, queryID);
 
 		// Re-read requesttype as detect_blocked_IP() might have changed it
 		requesttype = query->status;
