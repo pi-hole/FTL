@@ -232,7 +232,7 @@ static bool get_client_groupids(clientsData* client)
 		return false;
 	}
 
-	if(config.debug & DEBUG_DATABASE)
+	if(config.debug & DEBUG_CLIENTS)
 		logg("Querying gravity database for client with IP %s...", ip);
 
 	// Check if client is configured through the client table
@@ -279,13 +279,13 @@ static bool get_client_groupids(clientsData* client)
 		matching_ids = strdup((const char*)sqlite3_column_text(table_stmt, 3));
 		matching_bits = sqlite3_column_int(table_stmt, 4);
 
-		if(config.debug & DEBUG_DATABASE && matching_count == 1)
+		if(config.debug & DEBUG_CLIENTS && matching_count == 1)
 			// Case matching_count > 1 handled below using logg_subnet_warning()
 			logg("--> Found record for %s in the client (ID %d)", ip, chosen_match_id);
 	}
 	else if(rc == SQLITE_DONE)
 	{
-		if(config.debug & DEBUG_DATABASE)
+		if(config.debug & DEBUG_CLIENTS)
 			logg("--> No record for %s in the client table", ip);
 	}
 	else
@@ -332,13 +332,13 @@ static bool get_client_groupids(clientsData* client)
 	char *hwaddr = NULL;
 	if(chosen_match_id < 0)
 	{
-		if(config.debug & DEBUG_DATABASE)
+		if(config.debug & DEBUG_CLIENTS)
 			logg("Querying gravity database for MAC address of %s...", ip);
 
 		// Do the lookup
 		hwaddr = getMACfromIP(ip);
 
-		if(hwaddr == NULL && config.debug & DEBUG_DATABASE)
+		if(hwaddr == NULL && config.debug & DEBUG_CLIENTS)
 			logg("--> No result.");
 
 		if(hwaddr != NULL && strlen(hwaddr) > 3 && strncasecmp(hwaddr, "ip-", 3) == 0)
@@ -353,7 +353,7 @@ static bool get_client_groupids(clientsData* client)
 	// This ensures we skip mock hardware addresses such as "ip-127.0.0.1"
 	if(hwaddr != NULL)
 	{
-		if(config.debug & DEBUG_DATABASE)
+		if(config.debug & DEBUG_CLIENTS)
 			logg("--> Querying client table for \"%s\"", hwaddr);
 
 		// Check if client is configured through the client table
@@ -388,12 +388,12 @@ static bool get_client_groupids(clientsData* client)
 			// extract the result (there can be at most one line)
 			chosen_match_id = sqlite3_column_int(table_stmt, 0);
 
-			if(config.debug & DEBUG_DATABASE)
+			if(config.debug & DEBUG_CLIENTS)
 				logg("--> Found record for \"%s\" in the client table (ID %d)", hwaddr, chosen_match_id);
 		}
 		else if(rc == SQLITE_DONE)
 		{
-			if(config.debug & DEBUG_DATABASE)
+			if(config.debug & DEBUG_CLIENTS)
 				logg("--> There is no record for \"%s\" in the client table", hwaddr);
 		}
 		else
@@ -416,13 +416,13 @@ static bool get_client_groupids(clientsData* client)
 	char *hostname = NULL;
 	if(chosen_match_id < 0)
 	{
-		if(config.debug & DEBUG_DATABASE)
+		if(config.debug & DEBUG_CLIENTS)
 			logg("Querying gravity database for host name %s...", ip);
 
 		// Do the lookup
 		hostname = getNameFromIP(ip);
 
-		if(hostname == NULL && config.debug & DEBUG_DATABASE)
+		if(hostname == NULL && config.debug & DEBUG_CLIENTS)
 			logg("--> No result.");
 
 		if(hostname != NULL && strlen(hostname) == 0)
@@ -437,7 +437,7 @@ static bool get_client_groupids(clientsData* client)
 	// This ensures we skip mock hardware addresses such as "ip-127.0.0.1"
 	if(hostname != NULL)
 	{
-		if(config.debug & DEBUG_DATABASE)
+		if(config.debug & DEBUG_CLIENTS)
 			logg("--> Querying client table for \"%s\"", hostname);
 
 		// Check if client is configured through the client table
@@ -472,12 +472,12 @@ static bool get_client_groupids(clientsData* client)
 			// extract the result (there can be at most one line)
 			chosen_match_id = sqlite3_column_int(table_stmt, 0);
 
-			if(config.debug & DEBUG_DATABASE)
+			if(config.debug & DEBUG_CLIENTS)
 				logg("--> Found record for \"%s\" in the client table (ID %d)", hostname, chosen_match_id);
 		}
 		else if(rc == SQLITE_DONE)
 		{
-			if(config.debug & DEBUG_DATABASE)
+			if(config.debug & DEBUG_CLIENTS)
 				logg("--> There is no record for \"%s\" in the client table", hostname);
 		}
 		else
@@ -498,7 +498,7 @@ static bool get_client_groupids(clientsData* client)
 	// (the client is not configured through the client table)
 	if(chosen_match_id < 0)
 	{
-		if(config.debug & DEBUG_DATABASE)
+		if(config.debug & DEBUG_CLIENTS)
 			logg("Gravity database: Client %s not found. Using default group.\n",
 			     show_client_string(hwaddr, hostname, ip));
 
@@ -521,7 +521,7 @@ static bool get_client_groupids(clientsData* client)
 	querystr = "SELECT GROUP_CONCAT(group_id) FROM client_by_group "
 	           "WHERE client_id = ?;";
 
-	if(config.debug & DEBUG_DATABASE)
+	if(config.debug & DEBUG_CLIENTS)
 		logg("Querying gravity database for client %s (getting groups)", ip);
 
 	// Prepare query
@@ -571,7 +571,7 @@ static bool get_client_groupids(clientsData* client)
 	// Finalize statement
 	gravityDB_finalizeTable();
 
-	if(config.debug & DEBUG_DATABASE)
+	if(config.debug & DEBUG_CLIENTS)
 		logg("Gravity database: Client %s found. Using groups [%s].\n",
 		     show_client_string(hwaddr, hostname, ip), client->groups);
 

@@ -568,7 +568,7 @@ void get_blocking_mode(FILE *fp)
 }
 
 // Routine for setting the debug flags in the config struct
-static void setDebugOption(FILE* fp, const char* option, int16_t bitmask)
+static void setDebugOption(FILE* fp, const char* option, enum debug_flags bitmask)
 {
 	const char* buffer = parse_FTLconf(fp, option);
 
@@ -670,6 +670,10 @@ void read_debuging_settings(FILE *fp)
 	// defaults to: false
 	setDebugOption(fp, "DEBUG_RESOLVER", DEBUG_RESOLVER);
 
+	// DEBUG_CLIENTS
+	// defaults to: false
+	setDebugOption(fp, "DEBUG_CLIENTS", DEBUG_CLIENTS);
+
 	if(config.debug)
 	{
 		logg("*****************************");
@@ -690,6 +694,7 @@ void read_debuging_settings(FILE *fp)
 		logg("* DEBUG_DNSMASQ_LINES   %s *", (config.debug & DEBUG_DNSMASQ_LINES)? "YES":"NO ");
 		logg("* DEBUG_VECTORS         %s *", (config.debug & DEBUG_VECTORS)? "YES":"NO ");
 		logg("* DEBUG_RESOLVER        %s *", (config.debug & DEBUG_RESOLVER)? "YES":"NO ");
+		logg("* DEBUG_CLIENTS         %s *", (config.debug & DEBUG_CLIENTS)? "YES":"NO ");
 		logg("*****************************");
 	}
 
