@@ -16,4 +16,6 @@ char * getUserName(void);
 void removepid(void);
 void delay_startup(void);
 
+extern bool resolver_ready;
+
 #endif //DAEMON_H

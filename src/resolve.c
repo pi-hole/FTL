@@ -22,6 +22,10 @@
 #include "database/network-table.h"
 // struct _res
 #include <resolv.h>
+// FTL_db
+#include "database/common.h"
+// resolver_ready
+#include "daemon.h"
 
 static bool res_initialized = false;
 
@@ -397,15 +401,143 @@ void resolveForwardDestinations(const bool onlynew)
 	}
 }
 
+// Resolve unknown names of recently seen IP addresses in network table
+static void resolveNetworkTableNames(void)
+{
+	// Open database file
+	if(!dbopen())
+	{
+		logg("resolveNetworkTableNames() - Failed to open DB");
+		return;
+	}
+
+	const char sql[] = "BEGIN TRANSACTION IMMEDIATE";
+	int rc = dbquery(sql);
+	if( rc != SQLITE_OK )
+	{
+		const char *text;
+		if( rc == SQLITE_BUSY )
+		{
+			text = "WARNING";
+		}
+		else
+		{
+			text = "ERROR";
+		}
+
+		// dbquery() above already logs the reson for why the query failed
+		logg("%s: Trying to resolve unknown network table host names (\"%s\") failed", text, sql);
+		dbclose();
+		return;
+	}
+
+	// Get IP addresses seen within the last 24 hours with empty or NULL host names
+	const char querystr[] = "SELECT ip FROM network_addresses "
+	                               "WHERE (name IS NULL OR "
+	                                      "name = '') AND "
+	                                     "lastSeen > cast(strftime('%%s', 'now') as int)-86400;";
+
+	// Prepare query
+	sqlite3_stmt *table_stmt = NULL;
+	rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &table_stmt, NULL);
+	if(rc != SQLITE_OK)
+	{
+		logg("resolveNetworkTableNames() - SQL error prepare: %s",
+		     sqlite3_errstr(rc));
+		sqlite3_finalize(table_stmt);
+		dbclose();
+		return;
+	}
+
+	// Get data
+	while((rc = sqlite3_step(table_stmt)) == SQLITE_ROW)
+	{
+		// Get IP address from database
+		const char* ip = (const char*)sqlite3_column_text(table_stmt, 0);
+
+		// Try to obtain host name
+		char* newname = resolveHostname(ip);
+
+		if(config.debug & DEBUG_RESOLVER)
+			logg("Resolving database IP %s -> %s", ip, newname);
+
+		// Store new host name in database if not empty
+		if(strlen(newname) > 0)
+		{
+			const char updatestr[] = "UPDATE network_addresses "
+			                                "SET name = ?1,"
+			                                    "nameUpdated = cast(strftime('%%s', 'now') as int) "
+			                                "WHERE ip = ?2";
+			sqlite3_stmt *update_stmt = NULL;
+			int rc2 = sqlite3_prepare_v2(FTL_db, updatestr, -1, &update_stmt, NULL);
+			if(rc2 != SQLITE_OK){
+				logg("resolveNetworkTableNames(%s -> %s) - SQL error prepare: %s",
+					ip, newname, sqlite3_errstr(rc2));
+				sqlite3_finalize(update_stmt);
+				break;
+			}
+
+			// Bind newname to prepared statement
+			if((rc2 = sqlite3_bind_text(update_stmt, 1, newname, -1, SQLITE_STATIC)) != SQLITE_OK)
+			{
+				logg("resolveNetworkTableNames(%s -> %s): Failed to bind newname: %s",
+					ip, newname, sqlite3_errstr(rc2));
+				sqlite3_finalize(update_stmt);
+				break;
+			}
+
+			// Bind ip to prepared statement
+			if((rc2 = sqlite3_bind_text(update_stmt, 2, ip, -1, SQLITE_STATIC)) != SQLITE_OK)
+			{
+				logg("resolveNetworkTableNames(%s -> %s): Failed to bind ip: %s",
+					ip, newname, sqlite3_errstr(rc2));
+				sqlite3_finalize(update_stmt);
+				break;
+			}
+			rc2 = sqlite3_step(update_stmt);
+			if(rc2 != SQLITE_BUSY && rc2 != SQLITE_DONE)
+			{
+				// Any return code that is neither SQLITE_BUSY not SQLITE_ROW
+				// is a real error we should log
+				logg("resolveNetworkTableNames(%s -> %s): Failed to perform step: %s",
+					ip, newname, sqlite3_errstr(rc2));
+				sqlite3_finalize(update_stmt);
+				break;
+			}
+
+			// Finalize host name update statement
+			sqlite3_finalize(update_stmt);
+		}
+		free(newname);
+	}
+
+	// Possible error handling and reporting
+	if(rc != SQLITE_DONE)
+	{
+		logg("resolveNetworkTableNames() - SQL error step: %s",
+		     sqlite3_errstr(rc));
+		sqlite3_finalize(table_stmt);
+		dbclose();
+		return;
+	}
+
+	// Close and unlock database connection
+	sqlite3_finalize(table_stmt);
+	dbclose();
+}
+
 void *DNSclient_thread(void *val)
 {
 	// Set thread name
 	prctl(PR_SET_NAME, "DNS client", 0, 0, 0);
 
+	// Initial delay until we first try to resolve anything
+	sleepms(2000);
+
 	while(!killed)
 	{
 		// Run every minute to resolve only new clients and upstream servers
-		if(time(NULL) % RESOLVE_INTERVAL == 0)
+		if(resolver_ready && time(NULL) % RESOLVE_INTERVAL == 0)
 		{
 			// Try to resolve new client host names (onlynew=true)
 			resolveClients(true);
@@ -416,12 +548,15 @@ void *DNSclient_thread(void *val)
 		}
 
 		// Run every hour to update possibly changed client host names
-		if(time(NULL) % RERESOLVE_INTERVAL == 0)
+		if(resolver_ready && time(NULL) % RERESOLVE_INTERVAL == 0)
 		{
 			// Try to resolve all client host names (onlynew=false)
 			resolveClients(false);
 			// Try to resolve all upstream destination host names (onlynew=false)
 			resolveForwardDestinations(false);
+			// Try to resolve host names from clients in the network table
+			// which have empty/undefined host names
+			resolveNetworkTableNames();
 			// Prevent immediate re-run of this routine
 			sleepms(500);
 		}

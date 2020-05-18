@@ -834,6 +834,9 @@ void FTL_dnsmasq_reload(void)
 	// Print current set of capabilities if requested via debug flag
 	if(config.debug & DEBUG_CAPS)
 		check_capabilities();
+
+	// Set resolver as ready
+	resolver_ready = true;
 }
 
 void _FTL_reply(const unsigned short flags, const char *name, const union all_addr *addr, const int id,

@@ -16,6 +16,8 @@
 // sleepms()
 #include "timers.h"
 
+bool resolver_ready = false;
+
 void go_daemon(void)
 {
 	// Create child process
