@@ -78,7 +78,7 @@ static void print_used_resolvers(const char *message)
 		     ntohs(_res.nsaddr_list[i].sin_port));
 }
 
-static char *resolveHostname(const char *addr)
+char *resolveHostname(const char *addr)
 {
 	// Get host name
 	struct hostent *he = NULL;
@@ -433,9 +433,7 @@ static void resolveNetworkTableNames(void)
 
 	// Get IP addresses seen within the last 24 hours with empty or NULL host names
 	const char querystr[] = "SELECT ip FROM network_addresses "
-	                               "WHERE (name IS NULL OR "
-	                                      "name = '') AND "
-	                                     "lastSeen > cast(strftime('%%s', 'now') as int)-86400;";
+	                               "WHERE lastSeen > cast(strftime('%%s', 'now') as int)-86400;";
 
 	// Prepare query
 	sqlite3_stmt *table_stmt = NULL;
@@ -449,29 +447,33 @@ static void resolveNetworkTableNames(void)
 		return;
 	}
 
+
 	// Get data
 	while((rc = sqlite3_step(table_stmt)) == SQLITE_ROW)
 	{
 		// Get IP address from database
 		const char* ip = (const char*)sqlite3_column_text(table_stmt, 0);
 
+		if(config.debug & DEBUG_DATABASE)
+			logg("Resolving database IP %s", ip);
+
 		// Try to obtain host name
 		char* newname = resolveHostname(ip);
 
-		if(config.debug & DEBUG_RESOLVER)
-			logg("Resolving database IP %s -> %s", ip, newname);
+		if(config.debug & DEBUG_DATABASE)
+			logg("---> \"%s\"", newname);
 
 		// Store new host name in database if not empty
-		if(strlen(newname) > 0)
+		if(newname != NULL && strlen(newname) > 0)
 		{
 			const char updatestr[] = "UPDATE network_addresses "
 			                                "SET name = ?1,"
-			                                    "nameUpdated = cast(strftime('%%s', 'now') as int) "
-			                                "WHERE ip = ?2";
+			                                    "nameUpdated = cast(strftime('%s', 'now') as int) "
+			                                "WHERE ip = ?2;";
 			sqlite3_stmt *update_stmt = NULL;
 			int rc2 = sqlite3_prepare_v2(FTL_db, updatestr, -1, &update_stmt, NULL);
 			if(rc2 != SQLITE_OK){
-				logg("resolveNetworkTableNames(%s -> %s) - SQL error prepare: %s",
+				logg("resolveNetworkTableNames(%s -> \"%s\") - SQL error prepare: %s",
 					ip, newname, sqlite3_errstr(rc2));
 				sqlite3_finalize(update_stmt);
 				break;
@@ -480,7 +482,7 @@ static void resolveNetworkTableNames(void)
 			// Bind newname to prepared statement
 			if((rc2 = sqlite3_bind_text(update_stmt, 1, newname, -1, SQLITE_STATIC)) != SQLITE_OK)
 			{
-				logg("resolveNetworkTableNames(%s -> %s): Failed to bind newname: %s",
+				logg("resolveNetworkTableNames(%s -> \"%s\"): Failed to bind newname: %s",
 					ip, newname, sqlite3_errstr(rc2));
 				sqlite3_finalize(update_stmt);
 				break;
@@ -489,22 +491,26 @@ static void resolveNetworkTableNames(void)
 			// Bind ip to prepared statement
 			if((rc2 = sqlite3_bind_text(update_stmt, 2, ip, -1, SQLITE_STATIC)) != SQLITE_OK)
 			{
-				logg("resolveNetworkTableNames(%s -> %s): Failed to bind ip: %s",
-					ip, newname, sqlite3_errstr(rc2));
-				sqlite3_finalize(update_stmt);
-				break;
-			}
-			rc2 = sqlite3_step(update_stmt);
-			if(rc2 != SQLITE_BUSY && rc2 != SQLITE_DONE)
-			{
-				// Any return code that is neither SQLITE_BUSY not SQLITE_ROW
-				// is a real error we should log
-				logg("resolveNetworkTableNames(%s -> %s): Failed to perform step: %s",
+				logg("resolveNetworkTableNames(%s -> \"%s\"): Failed to bind ip: %s",
 					ip, newname, sqlite3_errstr(rc2));
 				sqlite3_finalize(update_stmt);
 				break;
 			}
 
+			if(config.debug & DEBUG_DATABASE)
+				logg("dbquery: \"%s\" with ?1 = \"%s\" and ?2 = \"%s\"", updatestr, newname, ip);
+
+			rc2 = sqlite3_step(update_stmt);
+			if(rc2 != SQLITE_BUSY && rc2 != SQLITE_DONE)
+			{
+				// Any return code that is neither SQLITE_BUSY not SQLITE_ROW
+				// is a real error we should log
+				logg("resolveNetworkTableNames(%s -> \"%s\"): Failed to perform step: %s",
+				     ip, newname, sqlite3_errstr(rc2));
+				sqlite3_finalize(update_stmt);
+				break;
+			}
+			logg("Res: %s", sqlite3_errstr(rc2));
 			// Finalize host name update statement
 			sqlite3_finalize(update_stmt);
 		}
@@ -523,6 +529,8 @@ static void resolveNetworkTableNames(void)
 
 	// Close and unlock database connection
 	sqlite3_finalize(table_stmt);
+
+	dbquery("COMMIT;");
 	dbclose();
 }
 

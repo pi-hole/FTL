@@ -17,6 +17,8 @@
 #include "timers.h"
 #include "config.h"
 #include "datastructure.h"
+// resolveHostname()
+#include "resolve.h"
 
 // Private prototypes
 static char* getMACVendor(const char* hwaddr);
@@ -601,7 +603,15 @@ void parse_neighbor_cache(void)
 				// Obtain ID which was given to this new entry
 				dbID = get_lastID();
 
-				// Create new name record
+				// Add unique IP address / mock-MAC pair to network_addresses table
+				rc = add_netDB_network_address(dbID, ip);
+				if(rc != SQLITE_OK)
+					break;
+
+				// Try to determine host names if this is a new device we don't know a hostname for...
+				if(strlen(hostname) == 0)
+					hostname = resolveHostname(ip);
+				// ... and store it in the appropriate network_address record
 				rc = update_netDB_name(ip, hostname);
 				if(rc != SQLITE_OK)
 					break;
