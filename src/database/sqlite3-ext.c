@@ -99,11 +99,19 @@ static void subnet_match_impl(sqlite3_context *context, int argc, sqlite3_value 
 	}
 
 	// Extract possible CIDR from database IP string
-	int cidr = isIPv6_DB ? 128 : 32;
-	char *addrDB = NULL;
 	// sscanf() will not overwrite the pre-defined CIDR in cidr if
 	// no CIDR is specified in the database
-	sscanf(addrDBcidr, "%m[^/]/%i", &addrDB, &cidr);
+	int cidr = isIPv6_DB ? 128 : 32;
+	char *addrDB = NULL;
+	const int rt = sscanf(addrDBcidr, "%m[^/]/%i", &addrDB, &cidr);
+
+	// Skip if database row seems to be a CIDR but does not contain an address ('/32' is invalid)
+	// Passing an invalid IP address to inet_pton() causes a SEGFAULT
+	if(rt < 1 || addrDB == NULL)
+	{
+		sqlite3_result_int(context, 0);
+		return;
+	}
 
 	// Convert the Internet host address into binary form in network byte order
 	// We use in6_addr as variable type here as it is guaranteed to be large enough
