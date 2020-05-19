@@ -510,7 +510,7 @@ static void resolveNetworkTableNames(void)
 				sqlite3_finalize(update_stmt);
 				break;
 			}
-			logg("Res: %s", sqlite3_errstr(rc2));
+
 			// Finalize host name update statement
 			sqlite3_finalize(update_stmt);
 		}
