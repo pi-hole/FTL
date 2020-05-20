@@ -24,6 +24,9 @@
 // getMACfromIP()
 #include "database/network-table.h"
 
+// Prefix of interface names in the client table
+#define INTERFACE_SEP ":"
+
 // Process-private prepared statements are used to support multiple forks (might
 // be TCP workers) to use the database simultaneously without corrupting the
 // gravity database
@@ -522,13 +525,13 @@ static bool get_client_groupids(clientsData* client)
 	if(interface != NULL)
 	{
 		if(config.debug & DEBUG_CLIENTS)
-			logg("Querying client table for interface \"%s\"", interface);
+			logg("Querying client table for interface \""INTERFACE_SEP"%s\"", interface);
 
 		// Check if client is configured through the client table using its interface
 		// This will return nothing if the client is unknown/unconfigured
 		// We use the SQLite concatenate operator || to prepace the queried interface by ":"
 		// We use COLLATE NOCASE to ensure the comparison is done case-insensitive
-		querystr = "SELECT id FROM client WHERE ip = ':' || ? COLLATE NOCASE;";
+		querystr = "SELECT id FROM client WHERE ip = '"INTERFACE_SEP"' || ? COLLATE NOCASE;";
 
 		// Prepare query
 		rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &table_stmt, NULL);
@@ -558,12 +561,12 @@ static bool get_client_groupids(clientsData* client)
 			chosen_match_id = sqlite3_column_int(table_stmt, 0);
 
 			if(config.debug & DEBUG_CLIENTS)
-				logg("--> Found record for interface \"%s\" in the client table (ID %d)", interface, chosen_match_id);
+				logg("--> Found record for interface \""INTERFACE_SEP"%s\" in the client table (ID %d)", interface, chosen_match_id);
 		}
 		else if(rc == SQLITE_DONE)
 		{
 			if(config.debug & DEBUG_CLIENTS)
-				logg("--> There is no record for interface \"%s\" in the client table", interface);
+				logg("--> There is no record for interface \""INTERFACE_SEP"%s\" in the client table", interface);
 		}
 		else
 		{
