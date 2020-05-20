@@ -25,6 +25,7 @@
 volatile sig_atomic_t killed = 0;
 static time_t FTLstarttime = 0;
 
+#if defined(__GLIBC__)
 static void print_addr2line(const char *symbol, const void *address, const int j, const void *offset)
 {
 	// Only do this analysis for our own binary (skip trying to analyse libc.so, etc.)
@@ -53,10 +54,11 @@ static void print_addr2line(const char *symbol, const void *address, const int j
 		// Strip possible newline at the end of the addr2line output
 		if ((pos=strchr(linebuffer, '\n')) != NULL)
 			*pos = '\0';
-		logg("addr2line [%04i]: %s", j, linebuffer);
+		logg("L[%04i]: %s", j, linebuffer);
 	}
 	pclose(addr2line);
 }
+#endif
 
 static void __attribute__((noreturn)) SIGSEGV_handler(int sig, siginfo_t *si, void *unused)
 {
