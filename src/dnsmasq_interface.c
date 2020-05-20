@@ -1099,10 +1099,8 @@ static void detect_blocked_IP(const unsigned short flags, const union all_addr *
 				const domainsData* domain = getDomain(query->domainID, true);
 				if(domain != NULL)
 				{
-					char answer[ADDRSTRLEN]; answer[0] = '\0';
-					inet_ntop(AF_INET6, addr, answer, ADDRSTRLEN);
-					logg("Upstream responded with ::, ID %i:\n\t\"%s\" -> \"%s\"",
-					     queryID, getstr(domain->domainpos), answer);
+					logg("Upstream responded with ::, ID %i:\n\t\"%s\" -> \"::\"",
+					     queryID, getstr(domain->domainpos));
 				}
 			}
 		}
