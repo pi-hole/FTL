@@ -19,6 +19,7 @@
 #include "files.h"
 // FTL_reload_all_domainlists()
 #include "datastructure.h"
+#include "config.h"
 
 volatile sig_atomic_t killed = 0;
 static time_t FTLstarttime = 0;
@@ -95,6 +96,9 @@ static void SIGRT_handler(int signum, siginfo_t *si, void *unused)
 		// - exact blacklist
 		// WITHOUT wiping the DNS cache itself
 		FTL_reload_all_domainlists();
+
+		// Reload the privacy level in case the user changed it
+		get_privacy_level(NULL);
 	}
 } 
 
