@@ -1035,11 +1035,12 @@ static void detect_blocked_IP(const unsigned short flags, const union all_addr *
 		// Update status
 		query_externally_blocked(queryID, QUERY_EXTERNAL_BLOCKED_IP);
 	}
+	// Check for IP block :ffff:146.112.61.104 - :ffff:146.112.61.110
 	else if(flags & F_IPV6 &&
-					addr->addr6.s6_addr32[0] == 0 &&
-					addr->addr6.s6_addr32[1] == 0 &&
-				  addr->addr6.s6_addr32[2] == 0xffff0000 &&
-					ipv6Addr >= 0x92703d68 && ipv6Addr <= 0x92703d6e)
+	        addr->addr6.s6_addr32[0] == 0 &&
+	        addr->addr6.s6_addr32[1] == 0 &&
+	        addr->addr6.s6_addr32[2] == 0xffff0000 &&
+	        ipv6Addr >= 0x92703d68 && ipv6Addr <= 0x92703d6e)
 	{
 		if(config.debug & DEBUG_EXTBLOCKED)
 		{
