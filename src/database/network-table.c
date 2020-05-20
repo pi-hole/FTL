@@ -438,7 +438,7 @@ static int insert_netDB_device(const char *hwaddr, time_t now, time_t lastQuery,
 {
 	sqlite3_stmt *query_stmt = NULL;
 	const char querystr[] = "INSERT INTO network "\
-	                        "(hwaddr,interface,firstSeen,lastQuery,numQueries,macVencor) "\
+	                        "(hwaddr,interface,firstSeen,lastQuery,numQueries,macVendor) "\
 	                        "VALUES (?1,\'N/A\',?2, ?3, ?4,?5);";
 
 	int rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &query_stmt, NULL);
@@ -522,10 +522,79 @@ static int insert_netDB_device(const char *hwaddr, time_t now, time_t lastQuery,
 	return SQLITE_OK;
 }
 
+// Convert mock-device into a real one by changing the hardware address (and possibly adding a vendor string)
+static int unmock_netDB_device(const char *hwaddr, const char *macVendor, const int dbID)
+{
+	sqlite3_stmt *query_stmt = NULL;
+	const char querystr[] = "UPDATE network SET "\
+	                        "hwaddr = ?1, macVendor=?2 WHERE id = ?3;";
+
+	int rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &query_stmt, NULL);
+	if(rc != SQLITE_OK)
+	{
+		logg("unmock_netDB_device(\"%s\", \"%s\", %i) - SQL error prepare (%i): %s",
+		     hwaddr, macVendor, dbID, rc, sqlite3_errmsg(FTL_db));
+		return rc;
+	}
+
+	if(config.debug & DEBUG_DATABASE)
+	{
+		logg("dbquery: \"%s\" with arguments ?1 = \"%s\", ?2 = \"%s\", ?3 = %i",
+		     querystr, hwaddr, macVendor, dbID);
+	}
+
+	// Bind hwaddr to prepared statement (1st argument)
+	if((rc = sqlite3_bind_text(query_stmt, 1, hwaddr, -1, SQLITE_STATIC)) != SQLITE_OK)
+	{
+		logg("unmock_netDB_device(\"%s\", \"%s\", %i): Failed to bind hwaddr (error %d): %s",
+		     hwaddr, macVendor, dbID, rc, sqlite3_errmsg(FTL_db));
+		sqlite3_reset(query_stmt);
+		return rc;
+	}
+
+	// Bind macVendor to prepared statement (2nd argument)
+	if((macVendor != NULL && (rc = sqlite3_bind_text(query_stmt, 2, macVendor, -1, SQLITE_STATIC)) != SQLITE_OK) ||
+	   (rc = sqlite3_bind_null(query_stmt, 2)) != SQLITE_OK)
+	{
+		logg("unmock_netDB_device(\"%s\", \"%s\", %i): Failed to bind macVendor (error %d): %s",
+		     hwaddr, macVendor, dbID, rc, sqlite3_errmsg(FTL_db));
+		sqlite3_reset(query_stmt);
+		return rc;
+	}
+
+	// Bind now to prepared statement (3rd argument)
+	if((rc = sqlite3_bind_int(query_stmt, 3, dbID)) != SQLITE_OK)
+	{
+		logg("unmock_netDB_device(\"%s\", \"%s\", %i): Failed to bind now (error %d): %s",
+		     hwaddr, macVendor, dbID, rc, sqlite3_errmsg(FTL_db));
+		sqlite3_reset(query_stmt);
+		return rc;
+	}
+
+	// Perform step
+	if ((rc = sqlite3_step(query_stmt)) != SQLITE_DONE)
+	{
+		logg("unmock_netDB_device(\"%s\", \"%s\", %i): Failed to step (error %d): %s",
+		     hwaddr, macVendor, dbID, rc, sqlite3_errmsg(FTL_db));
+		sqlite3_reset(query_stmt);
+		return rc;
+	}
+
+	// Finalize statement
+	if ((rc = sqlite3_finalize(query_stmt)) != SQLITE_OK)
+	{
+		logg("unmock_netDB_device(\"%s\", \"%s\", %i): Failed to finalize (error %d): %s",
+		     hwaddr, macVendor, dbID, rc, sqlite3_errmsg(FTL_db));
+		sqlite3_reset(query_stmt);
+		return rc;
+	}
+
+	return SQLITE_OK;
+}
+
 // Update interface of device
 static int update_netDB_interface(const int network_id, const char *iface)
 {
-	logg("Calling update_netDB_interface(%i, \"%s\")", network_id, iface);
 	// Return early if there is nothing to be done in here
 	if(iface == NULL || strlen(iface) == 0)
 		return SQLITE_OK;
@@ -614,7 +683,7 @@ void parse_neighbor_cache(void)
 	// Prepare buffers
 	char *linebuffer = NULL;
 	size_t linebuffersize = 0u;
-	char ip[100], hwaddr[100], iface[100];
+	char ip[128], hwaddr[128], iface[128];
 	unsigned int entries = 0u, additional_entries = 0u;
 	time_t now = time(NULL);
 
@@ -797,11 +866,7 @@ void parse_neighbor_cache(void)
 				}
 
 				// Update/replace important device properties
-				dbquery("UPDATE network SET "
-				        "hwaddr = '%s', "
-				        "macVendor = '%s' "
-				        "WHERE id = %i;",
-				        hwaddr, iface, macVendor, dbID);
+				unmock_netDB_device(hwaddr, macVendor, dbID);
 
 				// Store interface if available
 				rc = update_netDB_interface(dbID, iface);
@@ -912,9 +977,10 @@ void parse_neighbor_cache(void)
 		// Device not in database, add new entry
 		else if(dbID == DB_NODATA)
 		{
+			// Create mock hardware address in the style of "ip-<IP address>", like "ip-127.0.0.1"
 			strcpy(hwaddr, "ip-");
 			strncpy(hwaddr+3, ipaddr, sizeof(hwaddr)-4);
-			hwaddr[strlen(hwaddr)-1] = '\0';
+			hwaddr[sizeof(hwaddr)-1] = '\0';
 			insert_netDB_device(hwaddr, now, client->lastQuery,
 								client->numQueriesARP, NULL);
 			client->numQueriesARP = 0;
