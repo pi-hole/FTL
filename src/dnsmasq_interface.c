@@ -1087,9 +1087,9 @@ static void detect_blocked_IP(const unsigned short flags, const union all_addr *
 	}
 	else if(flags & F_IPV6 &&
 	        addr->addr6.s6_addr32[0] == 0 &&
-					addr->addr6.s6_addr32[1] == 0 &&
-					addr->addr6.s6_addr32[2] == 0 &&
-					addr->addr6.s6_addr32[3] == 0)
+	        addr->addr6.s6_addr32[1] == 0 &&
+	        addr->addr6.s6_addr32[2] == 0 &&
+	        addr->addr6.s6_addr32[3] == 0)
 	{
 		if(config.debug & DEBUG_EXTBLOCKED)
 		{
