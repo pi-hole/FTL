@@ -1013,6 +1013,7 @@ static void detect_blocked_IP(const unsigned short flags, const union all_addr *
 	// for a full list of these IP addresses
 	in_addr_t ipv4Addr = ntohl(addr->addr4.s_addr);
 	in_addr_t ipv6Addr = ntohl(addr->addr6.s6_addr32[3]);
+	// Check for IP block 146.112.61.104 - 146.112.61.110
 	if((flags & F_IPV4) && ipv4Addr >= 0x92703d68 && ipv4Addr <= 0x92703d6e)
 	{
 		if(config.debug & DEBUG_EXTBLOCKED)
