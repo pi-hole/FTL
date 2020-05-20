@@ -432,6 +432,95 @@ static int add_netDB_network_address(const int network_id, const char* ip)
 	return SQLITE_OK;
 }
 
+// Insert a new record into the network table
+static int insert_netDB_device(const char *hwaddr, time_t now, time_t lastQuery,
+                               unsigned int numQueriesARP, const char *macVendor)
+{
+	sqlite3_stmt *query_stmt = NULL;
+	const char querystr[] = "INSERT INTO network "\
+	                        "(hwaddr,interface,firstSeen,lastQuery,numQueries,macVencor) "\
+	                        "VALUES (?1,\'N/A\',?2, ?3, ?4,?5);";
+
+	int rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &query_stmt, NULL);
+	if(rc != SQLITE_OK)
+	{
+		logg("insert_netDB_device(\"%s\",%lu, %lu, %u, \"%s\") - SQL error prepare (%i): %s",
+		     hwaddr, now, lastQuery, numQueriesARP, macVendor, rc, sqlite3_errmsg(FTL_db));
+		return rc;
+	}
+
+	if(config.debug & DEBUG_DATABASE)
+	{
+		logg("dbquery: \"%s\" with arguments ?1-?5 = (\"%s\",%lu,%lu,%u,\"%s\")",
+		     querystr, hwaddr, now, lastQuery, numQueriesARP, macVendor);
+	}
+
+	// Bind hwaddr to prepared statement (1st argument)
+	if((rc = sqlite3_bind_text(query_stmt, 1, hwaddr, -1, SQLITE_STATIC)) != SQLITE_OK)
+	{
+		logg("insert_netDB_device(\"%s\",%lu, %lu, %u, \"%s\"): Failed to bind hwaddr (error %d): %s",
+		     hwaddr, now, lastQuery, numQueriesARP, macVendor, rc, sqlite3_errmsg(FTL_db));
+		sqlite3_reset(query_stmt);
+		return rc;
+	}
+
+	// Bind now to prepared statement (2nd argument)
+	if((rc = sqlite3_bind_int(query_stmt, 2, now)) != SQLITE_OK)
+	{
+		logg("insert_netDB_device(\"%s\",%lu, %lu, %u, \"%s\"): Failed to bind now (error %d): %s",
+		     hwaddr, now, lastQuery, numQueriesARP, macVendor, rc, sqlite3_errmsg(FTL_db));
+		sqlite3_reset(query_stmt);
+		return rc;
+	}
+
+	// Bind lastQuery to prepared statement (3rd argument)
+	if((rc = sqlite3_bind_int(query_stmt, 3, lastQuery)) != SQLITE_OK)
+	{
+		logg("insert_netDB_device(\"%s\",%lu, %lu, %u, \"%s\"): Failed to bind lastQuery (error %d): %s",
+		     hwaddr, now, lastQuery, numQueriesARP, macVendor, rc, sqlite3_errmsg(FTL_db));
+		sqlite3_reset(query_stmt);
+		return rc;
+	}
+
+	// Bind numQueriesARP to prepared statement (4th argument)
+	if((rc = sqlite3_bind_int(query_stmt, 4, numQueriesARP)) != SQLITE_OK)
+	{
+		logg("insert_netDB_device(\"%s\",%lu, %lu, %u, \"%s\"): Failed to bind numQueriesARP (error %d): %s",
+		     hwaddr, now, lastQuery, numQueriesARP, macVendor, rc, sqlite3_errmsg(FTL_db));
+		sqlite3_reset(query_stmt);
+		return rc;
+	}
+
+	// Bind macVendor to prepared statement (5th argument)
+	if((macVendor != NULL && (rc = sqlite3_bind_text(query_stmt, 5, macVendor, -1, SQLITE_STATIC)) != SQLITE_OK) ||
+	   (rc = sqlite3_bind_null(query_stmt, 5)) != SQLITE_OK)
+	{
+		logg("insert_netDB_device(\"%s\",%lu, %lu, %u, \"%s\"): Failed to bind macVendor (error %d): %s",
+		     hwaddr, now, lastQuery, numQueriesARP, macVendor, rc, sqlite3_errmsg(FTL_db));
+		sqlite3_reset(query_stmt);
+		return rc;
+	}
+
+	// Perform step
+	if ((rc = sqlite3_step(query_stmt)) != SQLITE_DONE)
+	{
+		logg("insert_netDB_device(\"%s\",%lu, %lu, %u, \"%s\"): Failed to step (error %d): %s",
+		     hwaddr, now, lastQuery, numQueriesARP, macVendor, rc, sqlite3_errmsg(FTL_db));
+		sqlite3_reset(query_stmt);
+		return rc;
+	}
+
+	// Finalize statement
+	if ((rc = sqlite3_finalize(query_stmt)) != SQLITE_OK)
+	{
+		logg("insert_netDB_device(\"%s\",%lu, %lu, %u, \"%s\"): Failed to finalize (error %d): %s",
+		     hwaddr, now, lastQuery, numQueriesARP, macVendor, rc, sqlite3_errmsg(FTL_db));
+		sqlite3_reset(query_stmt);
+		return rc;
+	}
+
+	return SQLITE_OK;
+}
 
 // Update interface of device
 static int update_netDB_interface(const int network_id, const char *iface)
@@ -668,13 +757,8 @@ void parse_neighbor_cache(void)
 				}
 
 				// Create new record (INSERT)
-				dbquery("INSERT INTO network "
-				        "(hwaddr,interface,firstSeen,lastQuery,numQueries,macVendor) "
-				        "VALUES (\'%s\',\'N/A\',%lu, %ld, %u, \'%s\');",
-				        hwaddr, now,
-				        client != NULL ? client->lastQuery : 0L,
-				        client != NULL ? client->numQueriesARP : 0u,
-				        macVendor);
+				insert_netDB_device(hwaddr, now, client != NULL ? client->lastQuery : 0L,
+				                    client != NULL ? client->numQueriesARP : 0u, macVendor);
 
 				// Reset client ARP counter (we stored the entry in the database)
 				if(client != NULL)
@@ -828,10 +912,11 @@ void parse_neighbor_cache(void)
 		// Device not in database, add new entry
 		else if(dbID == DB_NODATA)
 		{
-			dbquery("INSERT INTO network "\
-			        "(hwaddr,interface,firstSeen,lastQuery,numQueries) "\
-			        "VALUES (\'ip-%s\',\'N/A\',%lu, %ld, %u);",\
-			        ipaddr, now, client->lastQuery, client->numQueriesARP);
+			strcpy(hwaddr, "ip-");
+			strncpy(hwaddr+3, ipaddr, sizeof(hwaddr)-4);
+			hwaddr[strlen(hwaddr)-1] = '\0';
+			insert_netDB_device(hwaddr, now, client->lastQuery,
+								client->numQueriesARP, NULL);
 			client->numQueriesARP = 0;
 
 			if(rc != SQLITE_OK)
