@@ -416,7 +416,8 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 
 bool _FTL_new_query(const unsigned int flags, const char *name,
                     const char **blockingreason, const union all_addr *addr,
-                    const char *types, const int id, const char type,
+                    const char *types, const int id,
+                    const struct ifreq *ifr, const char type,
                     const char* file, const int line)
 {
 	// Create new query in data structure
@@ -504,10 +505,13 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 
 	// Log new query if in debug mode
 	const char *proto = (type == UDP) ? "UDP" : "TCP";
+	const char *iface = NULL;
+	if(ifr != NULL)
+		iface = ifr->ifr_name;
 	if(config.debug & DEBUG_QUERIES)
 	{
-		logg("**** new %s %s \"%s\" from %s (ID %i, FTL %i, %s:%i)",
-		     proto, types, domainString, clientIP, id, queryID, file, line);
+		logg("**** new %s %s \"%s\" from %s:%s (ID %i, FTL %i, %s:%i)",
+		     proto, types, domainString, iface ? iface : "-", clientIP, id, queryID, file, line);
 	}
 
 	// Update counters
@@ -600,6 +604,10 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// Set lastQuery timer and add one query for network table
 	client->lastQuery = querytimestamp;
 	client->numQueriesARP++;
+
+	// Store interface information in client data (if available)
+	if(client->ifacepos == 0u && iface != NULL)
+		client->ifacepos = addstr(iface);
 
 	bool blockDomain = FTL_check_blocking(queryID, domainID, clientID, blockingreason);
 

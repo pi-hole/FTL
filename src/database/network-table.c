@@ -367,6 +367,10 @@ static int update_netDB_numQueries(const int dbID, clientsData* client)
 // We preserve a possibly existing IP -> host name association here
 static int add_netDB_network_address(const int network_id, const char* ip)
 {
+	// Return early if there is nothing to be done in here
+	if(ip == NULL || strlen(ip) == 0)
+		return SQLITE_OK;
+
 	sqlite3_stmt *query_stmt = NULL;
 	const char querystr[] = "INSERT OR REPLACE INTO network_addresses "
 	                        "(network_id,ip,lastSeen,name,nameUpdated) VALUES "
@@ -386,14 +390,14 @@ static int add_netDB_network_address(const int network_id, const char* ip)
 
 	if(config.debug & DEBUG_DATABASE)
 	{
-		logg("dbquery: \"%s\" with arguments 1 = %i and 2 = \"%s\"",
+		logg("dbquery: \"%s\" with arguments ?1 = %i and ?2 = \"%s\"",
 		     querystr, network_id, ip);
 	}
 
 	// Bind network_id to prepared statement (1st argument)
 	if((rc = sqlite3_bind_int(query_stmt, 1, network_id)) != SQLITE_OK)
 	{
-		logg("update_netDB_name(%i, \"%s\"): Failed to bind ip (error %d): %s",
+		logg("add_netDB_network_address(%i, \"%s\"): Failed to bind network_id (error %d): %s",
 		     network_id, ip, rc, sqlite3_errmsg(FTL_db));
 		sqlite3_reset(query_stmt);
 		return rc;
@@ -401,15 +405,93 @@ static int add_netDB_network_address(const int network_id, const char* ip)
 	// Bind ip to prepared statement (2nd argument)
 	if((rc = sqlite3_bind_text(query_stmt, 2, ip, -1, SQLITE_STATIC)) != SQLITE_OK)
 	{
-		logg("update_netDB_name(%i, \"%s\"): Failed to bind name (error %d): %s",
+		logg("add_netDB_network_address(%i, \"%s\"): Failed to bind name (error %d): %s",
 		     network_id, ip, rc, sqlite3_errmsg(FTL_db));
 		sqlite3_reset(query_stmt);
 		return rc;
 	}
 
 	// Perform step
-	sqlite3_step(query_stmt);
-	sqlite3_finalize(query_stmt);
+	if ((rc = sqlite3_step(query_stmt)) != SQLITE_DONE)
+	{
+		logg("add_netDB_network_address(%i, \"%s\"): Failed to step (error %d): %s",
+		     network_id, ip, rc, sqlite3_errmsg(FTL_db));
+		sqlite3_reset(query_stmt);
+		return rc;
+	}
+
+	// Finalize statement
+	if ((rc = sqlite3_finalize(query_stmt)) != SQLITE_OK)
+	{
+		logg("add_netDB_network_address(%i, \"%s\"): Failed to finalize (error %d): %s",
+		     network_id, ip, rc, sqlite3_errmsg(FTL_db));
+		sqlite3_reset(query_stmt);
+		return rc;
+	}
+
+	return SQLITE_OK;
+}
+
+
+// Update interface of device
+static int update_netDB_interface(const int network_id, const char *iface)
+{
+	logg("Calling update_netDB_interface(%i, \"%s\")", network_id, iface);
+	// Return early if there is nothing to be done in here
+	if(iface == NULL || strlen(iface) == 0)
+		return SQLITE_OK;
+
+	sqlite3_stmt *query_stmt = NULL;
+	const char querystr[] = "UPDATE network SET interface = ?1 WHERE id = ?2";
+
+	int rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &query_stmt, NULL);
+	if(rc != SQLITE_OK)
+	{
+		logg("update_netDB_interface(%i, \"%s\") - SQL error prepare (%i): %s",
+		     network_id, iface, rc, sqlite3_errmsg(FTL_db));
+		return rc;
+	}
+
+	if(config.debug & DEBUG_DATABASE)
+	{
+		logg("dbquery: \"%s\" with arguments ?1 = \"%s\" and ?2 = %i",
+		     querystr, iface, network_id);
+	}
+
+	// Bind iface to prepared statement (1st argument)
+	if((rc = sqlite3_bind_text(query_stmt, 1, iface, -1, SQLITE_STATIC)) != SQLITE_OK)
+	{
+		logg("update_netDB_interface(%i, \"%s\"): Failed to bind iface (error %d): %s",
+		     network_id, iface, rc, sqlite3_errmsg(FTL_db));
+		sqlite3_reset(query_stmt);
+		return rc;
+	}
+	// Bind network_id to prepared statement (2nd argument)
+	if((rc = sqlite3_bind_int(query_stmt, 2, network_id)) != SQLITE_OK)
+	{
+		logg("update_netDB_interface(%i, \"%s\"): Failed to bind name (error %d): %s",
+		     network_id, iface, rc, sqlite3_errmsg(FTL_db));
+		sqlite3_reset(query_stmt);
+		return rc;
+	}
+
+	// Perform step
+	if ((rc = sqlite3_step(query_stmt)) != SQLITE_DONE)
+	{
+		logg("update_netDB_interface(%i, \"%s\"): Failed to step (error %d): %s",
+		     network_id, iface, rc, sqlite3_errmsg(FTL_db));
+		sqlite3_reset(query_stmt);
+		return rc;
+	}
+
+	// Finalize statement
+	if ((rc = sqlite3_finalize(query_stmt)) != SQLITE_OK)
+	{
+		logg("update_netDB_interface(%i, \"%s\"): Failed to finalize (error %d): %s",
+		     network_id, iface, rc, sqlite3_errmsg(FTL_db));
+		sqlite3_reset(query_stmt);
+		return rc;
+	}
 
 	return SQLITE_OK;
 }
@@ -588,8 +670,8 @@ void parse_neighbor_cache(void)
 				// Create new record (INSERT)
 				dbquery("INSERT INTO network "
 				        "(hwaddr,interface,firstSeen,lastQuery,numQueries,macVendor) "
-				        "VALUES (\'%s\',\'%s\',%lu, %ld, %u, \'%s\');",
-				        hwaddr, iface, now,
+				        "VALUES (\'%s\',\'N/A\',%lu, %ld, %u, \'%s\');",
+				        hwaddr, now,
 				        client != NULL ? client->lastQuery : 0L,
 				        client != NULL ? client->numQueriesARP : 0u,
 				        macVendor);
@@ -615,6 +697,11 @@ void parse_neighbor_cache(void)
 				rc = update_netDB_name(ip, hostname);
 				if(rc != SQLITE_OK)
 					break;
+
+				// Store interface if available
+				rc = update_netDB_interface(dbID, iface);
+				if(rc != SQLITE_OK)
+					break;
 			}
 			else
 			{
@@ -628,10 +715,15 @@ void parse_neighbor_cache(void)
 				// Update/replace important device properties
 				dbquery("UPDATE network SET "
 				        "hwaddr = '%s', "
-				        "interface = '%s', "
 				        "macVendor = '%s' "
 				        "WHERE id = %i;",
 				        hwaddr, iface, macVendor, dbID);
+
+				// Store interface if available
+				rc = update_netDB_interface(dbID, iface);
+				if(rc != SQLITE_OK)
+					break;
+
 				// Host name, count and last query timestamp will be set in the next
 				// loop interation for the sake of simplicity
 			}
@@ -689,9 +781,10 @@ void parse_neighbor_cache(void)
 		}
 
 		// Get hostname and IP address of this client
-		const char *hostname, *ipaddr;
+		const char *hostname, *ipaddr, *interface;
 		ipaddr = getstr(client->ippos);
 		hostname = getstr(client->namepos);
+		interface = getstr(client->ifacepos);
 
 		// Skip if this client was inactive (last query may be older than 24 hours)
 		// This also reduces database I/O when nothing would change anyways
@@ -756,6 +849,11 @@ void parse_neighbor_cache(void)
 			rc = update_netDB_name(ipaddr, hostname);
 			if(rc != SQLITE_OK)
 				break;
+
+			// Update interface if available
+			rc = update_netDB_interface(dbID, interface);
+			if(rc != SQLITE_OK)
+				break;
 		}
 		// Device already in database
 		else
@@ -777,6 +875,11 @@ void parse_neighbor_cache(void)
 
 			// Update hostname if available
 			rc = update_netDB_name(ipaddr, hostname);
+			if(rc != SQLITE_OK)
+				break;
+
+			// Update interface if available
+			rc = update_netDB_interface(dbID, interface);
 			if(rc != SQLITE_OK)
 				break;
 		}

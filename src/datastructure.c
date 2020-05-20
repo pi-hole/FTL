@@ -197,8 +197,10 @@ int findClientID(const char *clientIP, const bool count)
 	// No query seen so far
 	client->lastQuery = 0;
 	client->numQueriesARP = client->count;
-	// Coonfigured groups are yet unknown
+	// Configured groups are yet unknown
 	client->groups = NULL;
+	// Interface is not yet known
+	client->ifacepos = 0;
 
 	// Initialize client-specific overTime data
 	for(int i = 0; i < OVERTIME_SLOTS; i++)

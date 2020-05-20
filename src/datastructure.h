@@ -63,6 +63,7 @@ typedef struct {
 	char *groups;
 	size_t ippos;
 	size_t namepos;
+	size_t ifacepos;
 	time_t lastQuery;
 } clientsData;
 
