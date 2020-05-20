@@ -1867,6 +1867,8 @@ static void check_dns_listeners(time_t now)
 		}
 	    }
 	  
+	  FTL_next_iface(iface ? iface->name : NULL);
+
 	  if (!client_ok)
 	    {
 	      shutdown(confd, SHUT_RDWR);

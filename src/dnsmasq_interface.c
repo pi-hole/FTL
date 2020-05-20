@@ -55,8 +55,18 @@ static unsigned char force_next_DNS_reply = 0u;
 // Adds debug information to the regular pihole.log file
 char debug_dnsmasq_lines = 0;
 
+// Fork-private copy of the interface name the most recent query came from
+static char next_iface[IFNAMSIZ] = "-";
+
 unsigned char* pihole_privacylevel = &config.privacylevel;
 const char flagnames[][12] = {"F_IMMORTAL ", "F_NAMEP ", "F_REVERSE ", "F_FORWARD ", "F_DHCP ", "F_NEG ", "F_HOSTS ", "F_IPV4 ", "F_IPV6 ", "F_BIGNAME ", "F_NXDOMAIN ", "F_CNAME ", "F_DNSKEY ", "F_CONFIG ", "F_DS ", "F_DNSSECOK ", "F_UPSTREAM ", "F_RRNAME ", "F_SERVER ", "F_QUERY ", "F_NOERR ", "F_AUTH ", "F_DNSSEC ", "F_KEYTAG ", "F_SECSTAT ", "F_NO_RR ", "F_IPSET ", "F_NOEXTRA ", "F_SERVFAIL", "F_RCODE"};
+
+// Store interface the next query will come from for later usage
+void FTL_next_iface(const char *newiface)
+{
+	strncpy(next_iface, newiface, sizeof(next_iface)-1);
+	next_iface[sizeof(next_iface)-1] = '\0';
+}
 
 static bool check_domain_blocked(const char *domainString, const int clientID,
                                  clientsData *client, queriesData *query, DNSCacheData *dns_cache,
@@ -416,8 +426,7 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 
 bool _FTL_new_query(const unsigned int flags, const char *name,
                     const char **blockingreason, const union all_addr *addr,
-                    const char *types, const int id,
-                    const struct ifreq *ifr, const char type,
+                    const char *types, const int id, const char type,
                     const char* file, const int line)
 {
 	// Create new query in data structure
@@ -505,13 +514,10 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 
 	// Log new query if in debug mode
 	const char *proto = (type == UDP) ? "UDP" : "TCP";
-	const char *iface = NULL;
-	if(ifr != NULL)
-		iface = ifr->ifr_name;
 	if(config.debug & DEBUG_QUERIES)
 	{
 		logg("**** new %s %s \"%s\" from %s:%s (ID %i, FTL %i, %s:%i)",
-		     proto, types, domainString, iface ? iface : "-", clientIP, id, queryID, file, line);
+		     proto, types, domainString, next_iface, clientIP, id, queryID, file, line);
 	}
 
 	// Update counters
@@ -606,8 +612,8 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	client->numQueriesARP++;
 
 	// Store interface information in client data (if available)
-	if(client->ifacepos == 0u && iface != NULL)
-		client->ifacepos = addstr(iface);
+	if(client->ifacepos == 0u && next_iface != NULL)
+		client->ifacepos = addstr(next_iface);
 
 	bool blockDomain = FTL_check_blocking(queryID, domainID, clientID, blockingreason);
 

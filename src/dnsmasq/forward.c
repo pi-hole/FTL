@@ -1415,11 +1415,11 @@ void receive_query(struct listener *listen, time_t now)
 	  return;
 	}
     }
-  /* Pi-hole modification */
-  struct ifreq ifr;
-  /************************/
+
   if (check_dst)
     {
+      struct ifreq ifr;
+
       if (msg.msg_controllen < sizeof(struct cmsghdr))
 	return;
 
@@ -1519,6 +1519,10 @@ void receive_query(struct listener *listen, time_t now)
 	  else
 	    dst_addr_4.s_addr = 0;
 	}
+
+    /*********** Pi-hole modification ***********/
+    FTL_next_iface(ifr.ifr_name);
+    /********************************************/
     }
    
   /* log_query gets called indirectly all over the place, so 
@@ -1542,14 +1546,14 @@ void receive_query(struct listener *listen, time_t now)
 	log_query(F_QUERY | F_IPV4 | F_FORWARD, daemon->namebuff, 
 		  (union all_addr *)&source_addr.in.sin_addr, types);
 	piholeblocked = FTL_new_query(F_QUERY | F_IPV4 | F_FORWARD, daemon->namebuff, &blockingreason,
-	              (union all_addr *)&source_addr.in.sin_addr, types, daemon->log_display_id, check_dst ? &ifr : NULL, UDP);
+	              (union all_addr *)&source_addr.in.sin_addr, types, daemon->log_display_id, UDP);
       }
       else
       {
 	log_query(F_QUERY | F_IPV6 | F_FORWARD, daemon->namebuff,
 		  (union all_addr *)&source_addr.in6.sin6_addr, types);
 	piholeblocked = FTL_new_query(F_QUERY | F_IPV6 | F_FORWARD, daemon->namebuff, &blockingreason,
-	              (union all_addr *)&source_addr.in6.sin6_addr, types, daemon->log_display_id, check_dst ? &ifr : NULL, UDP);
+	              (union all_addr *)&source_addr.in6.sin6_addr, types, daemon->log_display_id, UDP);
       }
 
 #ifdef HAVE_AUTH
@@ -1943,14 +1947,14 @@ unsigned char *tcp_request(int confd, time_t now,
 	    log_query(F_QUERY | F_IPV4 | F_FORWARD, daemon->namebuff, 
 		      (union all_addr *)&peer_addr.in.sin_addr, types);
 	    piholeblocked = FTL_new_query(F_QUERY | F_IPV4 | F_FORWARD, daemon->namebuff, &blockingreason,
-	              (union all_addr *)&peer_addr.in.sin_addr, types, daemon->log_display_id, NULL, TCP);
+	              (union all_addr *)&peer_addr.in.sin_addr, types, daemon->log_display_id, TCP);
 	  }
 	  else
 	  {
 	    log_query(F_QUERY | F_IPV6 | F_FORWARD, daemon->namebuff,
 		      (union all_addr *)&peer_addr.in6.sin6_addr, types);
 	    piholeblocked = FTL_new_query(F_QUERY | F_IPV6 | F_FORWARD, daemon->namebuff, &blockingreason,
-	              (union all_addr *)&peer_addr.in6.sin6_addr, types, daemon->log_display_id, NULL, TCP);
+	              (union all_addr *)&peer_addr.in6.sin6_addr, types, daemon->log_display_id, TCP);
 	  }
 	  
 #ifdef HAVE_AUTH
