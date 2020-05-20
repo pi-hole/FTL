@@ -417,7 +417,7 @@ static bool get_client_groupids(clientsData* client)
 	if(chosen_match_id < 0)
 	{
 		if(config.debug & DEBUG_CLIENTS)
-			logg("Querying gravity database for host name %s...", ip);
+			logg("Querying gravity database for host name of %s...", ip);
 
 		// Do the lookup
 		hostname = getNameFromIP(ip);
@@ -493,6 +493,91 @@ static bool get_client_groupids(clientsData* client)
 		gravityDB_finalizeTable();
 	}
 
+	// If we did neither find an IP nor a MAC address and also no host name
+	// match above, we try to look up the client using its interface
+	// 1. Look up the interface of this client (FTL isn't aware of it
+	//    when creating the client from history data!)
+	// 2. If found -> Get groups by looking up interface in client table
+	char *interface = NULL;
+	if(chosen_match_id < 0)
+	{
+		if(config.debug & DEBUG_CLIENTS)
+			logg("Querying gravity database for interface of %s...", ip);
+
+		// Do the lookup
+		interface = getIfaceFromIP(ip);
+
+		if(interface == NULL && config.debug & DEBUG_CLIENTS)
+			logg("--> No result.");
+
+		if(interface != NULL && strlen(interface) == 0)
+		{
+			free(interface);
+			interface = 0;
+			logg("Skipping empty interface lookup");
+		}
+	}
+
+	// Check if we received a valid interface
+	if(interface != NULL)
+	{
+		if(config.debug & DEBUG_CLIENTS)
+			logg("Querying client table for interface \"%s\"", interface);
+
+		// Check if client is configured through the client table using its interface
+		// This will return nothing if the client is unknown/unconfigured
+		// We use the SQLite concatenate operator || to prepace the queried interface by ":"
+		// We use COLLATE NOCASE to ensure the comparison is done case-insensitive
+		querystr = "SELECT id FROM client WHERE ip = ':' || ? COLLATE NOCASE;";
+
+		// Prepare query
+		rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &table_stmt, NULL);
+		if(rc != SQLITE_OK)
+		{
+			logg("get_client_groupids(%s) - SQL error prepare: %s",
+				querystr, sqlite3_errstr(rc));
+			return false;
+		}
+
+		// Bind interface to prepared statement
+		if((rc = sqlite3_bind_text(table_stmt, 1, interface, -1, SQLITE_STATIC)) != SQLITE_OK)
+		{
+			logg("get_client_groupids(\"%s\", \"%s\"): Failed to bind interface: %s",
+				ip, interface, sqlite3_errstr(rc));
+			sqlite3_reset(table_stmt);
+			sqlite3_finalize(table_stmt);
+			return false;
+		}
+
+		// Perform query
+		rc = sqlite3_step(table_stmt);
+		if(rc == SQLITE_ROW)
+		{
+			// There is a record for this client in the database,
+			// extract the result (there can be at most one line)
+			chosen_match_id = sqlite3_column_int(table_stmt, 0);
+
+			if(config.debug & DEBUG_CLIENTS)
+				logg("--> Found record for interface \"%s\" in the client table (ID %d)", interface, chosen_match_id);
+		}
+		else if(rc == SQLITE_DONE)
+		{
+			if(config.debug & DEBUG_CLIENTS)
+				logg("--> There is no record for interface \"%s\" in the client table", interface);
+		}
+		else
+		{
+			// Error
+			logg("get_client_groupids(\"%s\", \"%s\") - SQL error step: %s",
+				ip, interface, sqlite3_errstr(rc));
+			gravityDB_finalizeTable();
+			return false;
+		}
+
+		// Finalize statement and free allocated memory
+		gravityDB_finalizeTable();
+	}
+
 	// We use the default group and return early here
 	// if aboves lookups didn't return any results
 	// (the client is not configured through the client table)
@@ -508,6 +593,18 @@ static bool get_client_groupids(clientsData* client)
 		{
 			free(hwaddr);
 			hwaddr = NULL;
+		}
+
+		if(hostname != NULL)
+		{
+			free(hostname);
+			hostname = NULL;
+		}
+
+		if(interface != NULL)
+		{
+			free(interface);
+			interface = NULL;
 		}
 
 		return true;
@@ -585,6 +682,11 @@ static bool get_client_groupids(clientsData* client)
 	{
 		free(hostname);
 		hostname = NULL;
+	}
+	if(interface != NULL)
+	{
+		free(interface);
+		interface = NULL;
 	}
 
 	// Return success

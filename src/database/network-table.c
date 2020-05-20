@@ -1479,3 +1479,64 @@ char* __attribute__((malloc)) getNameFromIP(const char* ipaddr)
 
 	return name;
 }
+
+// Get interface of device identified by IP address
+char* __attribute__((malloc)) getIfaceFromIP(const char* ipaddr)
+{
+	// Open pihole-FTL.db database file
+	if(!dbopen())
+	{
+		logg("getIfaceFromIP(\"%s\") - Failed to open DB", ipaddr);
+		return NULL;
+	}
+
+	// Prepare SQLite statement
+	sqlite3_stmt* stmt = NULL;
+	const char *querystr = "SELECT interface FROM network "
+	                               "JOIN network_addresses "
+	                                    "ON network_addresses.network_id = network.id "
+	                               "WHERE network_addresses.ip = ? AND "
+	                                     "interface != 'N/A' AND "
+	                                     "interface IS NOT NULL;";
+	int rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &stmt, NULL);
+	if( rc != SQLITE_OK ){
+		logg("getIfaceFromIP(\"%s\") - SQL error prepare: %s",
+		     ipaddr, sqlite3_errstr(rc));
+		dbclose();
+		return NULL;
+	}
+
+	// Bind ipaddr to prepared statement
+	if((rc = sqlite3_bind_text(stmt, 1, ipaddr, -1, SQLITE_STATIC)) != SQLITE_OK)
+	{
+		logg("getIfaceFromIP(\"%s\"): Failed to bind ip: %s",
+		     ipaddr, sqlite3_errstr(rc));
+		sqlite3_reset(stmt);
+		sqlite3_finalize(stmt);
+		dbclose();
+		return NULL;
+	}
+
+	char *iface = NULL;
+	rc = sqlite3_step(stmt);
+	if(rc == SQLITE_ROW)
+	{
+		// Database record found (result might be empty)
+		iface = strdup((char*)sqlite3_column_text(stmt, 0));
+	}
+	else
+	{
+		// Not found or error (will be logged automatically through our SQLite3 hook)
+		iface = NULL;
+	}
+
+	if(config.debug & DEBUG_DATABASE && iface != NULL)
+		logg("Found database interface %s => %s", ipaddr, iface);
+
+	// Finalize statement and close database handle
+	sqlite3_reset(stmt);
+	sqlite3_finalize(stmt);
+	dbclose();
+
+	return iface;
+}

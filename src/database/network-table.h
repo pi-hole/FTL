@@ -19,5 +19,6 @@ bool unify_hwaddr(void);
 char* getDatabaseHostname(const char* ipaddr) __attribute__((malloc));
 char* __attribute__((malloc)) getMACfromIP(const char* ipaddr);
 char* __attribute__((malloc)) getNameFromIP(const char* ipaddr);
+char* __attribute__((malloc)) getIfaceFromIP(const char* ipaddr);
 
 #endif //NETWORKTABLE_H
