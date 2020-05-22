@@ -709,9 +709,15 @@ void parse_neighbor_cache(void)
 		return;
 	}
 
-	// Remove IP addresses not seen for more than a certain time
-	dbquery("DELETE FROM network_addresses WHERE lastSeen < cast(strftime('%%s', 'now') as int)-%u;", config.network_expire);
-	dbquery("UPDATE network_addresses SET name = NULL WHERE nameUpdated < cast(strftime('%%s', 'now') as int)-%u;", config.network_expire);
+	// Remove all but the most recent IP addresses not seen for more than a certain time
+	if(config.network_expire > 0u)
+	{
+		dbquery("DELETE FROM network_addresses "
+		               "WHERE lastSeen < cast(strftime('%%s', 'now') as int)-%u;",
+		                     config.network_expire);
+		dbquery("UPDATE network_addresses SET name = NULL "
+		               "WHERE nameUpdated < cast(strftime('%%s', 'now') as int)-%u;", config.network_expire);
+	}
 
 	// Start collecting database commands
 	lock_shm();
