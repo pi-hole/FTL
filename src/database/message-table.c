@@ -16,7 +16,7 @@
 #include "database/gravity-db.h"
 
 static const char *message_types[MAX_MESSAGE] =
-	{ "REGEX", "SUBNET" };
+	{ "REGEX", "SUBNET", "HOSTNAME" };
 
 static unsigned char message_blob_types[MAX_MESSAGE][5] =
 	{
@@ -33,6 +33,13 @@ static unsigned char message_blob_types[MAX_MESSAGE][5] =
 			SQLITE_TEXT, // comma-separated list of matching subnets (database IDs)
 			SQLITE_TEXT, // chosen subnet (text representation)
 			SQLITE_INTEGER // chosen subnet (database ID)
+		},
+		{	// HOSTNAME_MESSAGE: The message column contains the IP address of the device
+			SQLITE_TEXT, // Obtained host name
+			SQLITE_INTEGER, // Position of error in string
+			SQLITE_NULL, // not used
+			SQLITE_NULL, // not used
+			SQLITE_NULL // not used
 		}
 	};
 // Create message table in the database
@@ -186,4 +193,14 @@ void logg_subnet_warning(const char *ip, const int matching_count, const char *m
 	char *names = get_group_names(matching_ids);
 	add_message(SUBNET_MESSAGE, ip, 5, matching_count, names, matching_ids, chosen_match_text, chosen_match_id);
 	free(names);
+}
+
+void logg_hostname_warning(const char *ip, const char *name, const unsigned int pos)
+{
+	// Log to pihole-FTL.log
+	logg("HOSTNAME WARNING: Host name of client \"%s\" => \"%s\" contains invalid character at position %d",
+	     ip, name, pos);
+
+	// Log to database
+	add_message(HOSTNAME_MESSAGE, ip, 2, name, (const int)pos);
 }
