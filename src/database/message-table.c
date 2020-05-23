@@ -84,8 +84,14 @@ bool flush_message_table(void)
 static bool add_message(enum message_type type, const char *message,
                         const int count,...)
 {
-	// Open database connection
-	dbopen();
+	bool opened_database = false;
+	// Open database connection (if not already open)
+	if(!FTL_DB_avail())
+	{
+		if(!dbopen())
+			return false;
+		opened_database = true;
+	}
 
 	// Prepare SQLite statement
 	sqlite3_stmt* stmt = NULL;
@@ -163,8 +169,9 @@ static bool add_message(enum message_type type, const char *message,
 		return false;
 	}
 
-	// Close database connection
-	dbclose();
+	// Close database connection (if we opened it)
+	if(opened_database)
+		dbclose();
 
 	return true;
 }

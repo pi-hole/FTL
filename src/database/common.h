@@ -19,6 +19,7 @@ bool db_set_FTL_property(const unsigned int ID, const int value);
 /// Execute a formatted SQL query and get the return code
 int dbquery(const char *format, ...);
 
+bool FTL_DB_avail(void) __attribute__ ((pure));
 bool dbopen(void);
 void dbclose(void);
 int db_query_int(const char*);
