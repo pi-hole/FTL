@@ -205,7 +205,7 @@ void logg_subnet_warning(const char *ip, const int matching_count, const char *m
 void logg_hostname_warning(const char *ip, const char *name, const unsigned int pos)
 {
 	// Log to pihole-FTL.log
-	logg("HOSTNAME WARNING: Host name of client \"%s\" => \"%s\" contains invalid character at position %d",
+	logg("HOSTNAME WARNING: Host name of client \"%s\" => \"%s\" contains (at least) one invalid character at position %d",
 	     ip, name, pos);
 
 	// Log to database
