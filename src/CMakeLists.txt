@@ -155,6 +155,10 @@ find_library(IDN libidn${CMAKE_STATIC_LIBRARY_SUFFIX})
 # We link the two libraries statically. Although this increases the binary file size by about 1 MB, it saves about 5 MB of shared libraries and makes deployment easier
 target_link_libraries(pihole-FTL rt Threads::Threads ${HOGWEED} ${GMP} ${NETTLE} ${IDN})
 
+if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
+    set(CMAKE_INSTALL_PREFIX "/usr" CACHE PATH "..." FORCE)
+endif()
+
 find_program(SETCAP setcap)
 install(TARGETS pihole-FTL
         RUNTIME DESTINATION bin
