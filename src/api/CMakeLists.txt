@@ -11,3 +11,4 @@ set(sources
 add_library(api OBJECT ${sources})
 add_dependencies(api gen_version)
 target_compile_options(api PRIVATE ${EXTRAWARN})
+target_include_directories(api PRIVATE ${PROJECT_SOURCE_DIR}/src)
