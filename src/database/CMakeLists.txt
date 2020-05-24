@@ -15,8 +15,6 @@ set(SQLITE_DEFINES
         )
 
 set(sqlite3_sources
-        sqlite3-ext.c
-        sqlite3-ext.h
         sqlite3.c
         sqlite3.h
         )
@@ -38,6 +36,8 @@ set(database_sources
         network-table.h
         query-table.c
         query-table.h
+        sqlite3-ext.c
+        sqlite3-ext.h
         )
 
 add_library(database OBJECT ${database_sources})
