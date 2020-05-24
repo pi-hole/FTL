@@ -81,30 +81,37 @@ workflows:
   build:
     jobs:
       - arm:
+          context: FTL-BUILD
           filters:
             tags:
               only: /^v.*/
       - arm-qemu:
+          context: FTL-BUILD
           filters:
             tags:
               only: /^v.*/
       - armhf:
+          context: FTL-BUILD
           filters:
             tags:
               only: /^v.*/
       - aarch64:
+          context: FTL-BUILD
           filters:
             tags:
               only: /^v.*/
       - x86_64:
+          context: FTL-BUILD
           filters:
             tags:
               only: /^v.*/
       - x86_64-musl:
+          context: FTL-BUILD
           filters:
             tags:
               only: /^v.*/
       - x86_32:
+          context: FTL-BUILD
           filters:
             tags:
               only: /^v.*/
