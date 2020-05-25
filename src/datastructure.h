@@ -56,6 +56,7 @@ typedef struct {
 typedef struct {
 	unsigned char magic;
 	bool new;
+	bool found_group;
 	int count;
 	int blockedcount;
 	int overTime[OVERTIME_SLOTS];

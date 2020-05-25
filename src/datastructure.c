@@ -197,7 +197,8 @@ int findClientID(const char *clientIP, const bool count)
 	// No query seen so far
 	client->lastQuery = 0;
 	client->numQueriesARP = client->count;
-	// Coonfigured groups are yet unknown
+	// Configured groups are yet unknown
+	client->found_group = false;
 	client->groupspos = 0u;
 
 	// Initialize client-specific overTime data
