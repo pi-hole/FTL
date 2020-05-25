@@ -60,7 +60,7 @@ typedef struct {
 	int blockedcount;
 	int overTime[OVERTIME_SLOTS];
 	unsigned int numQueriesARP;
-	char *groups;
+	size_t groupspos;
 	size_t ippos;
 	size_t namepos;
 	time_t lastQuery;
