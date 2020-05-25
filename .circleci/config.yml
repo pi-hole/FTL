@@ -17,6 +17,9 @@ version: 2
           $DOCKERIFNEEDED make GIT_BRANCH="${BRANCH}" GIT_TAG="${CIRCLE_TAG}" STATIC="${STATIC}"
           file pihole-FTL
     - run:
+        name: "Binary checks"
+        command: bash test/arch_test.sh
+    - run:
         name: "Upload"
         command: |
           [ -z "${CIRCLE_PR_USERNAME}" ] || exit 0
