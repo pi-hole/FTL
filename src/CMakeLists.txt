@@ -74,8 +74,9 @@ set(EXTRAWARN "-Werror -Waddress -Wlogical-op -Wmissing-field-initializers -Wove
 separate_arguments(EXTRAWARN)
 
 # Do we want to compile a statically linked musl executable?
-if(STATIC EQUAL "true")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wl,-Bstatic -static-libgcc -static-pie")
+if(STATIC STREQUAL "true")
+    SET(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
+    SET(BUILD_SHARED_LIBS OFF)
 else()
     # -pie -fPIE: (Dynamic) position independent executable
     set(HARDENING_FLAGS "${HARDENING_FLAGS} -pie -fPIE")
@@ -147,6 +148,9 @@ add_executable(pihole-FTL
         $<TARGET_OBJECTS:dnsmasq>
         $<TARGET_OBJECTS:sqlite3>
         )
+if(STATIC STREQUAL "true")
+    target_link_libraries(pihole-FTL -static-libgcc -static)
+endif()
 target_compile_options(pihole-FTL PRIVATE ${EXTRAWARN})
 target_include_directories(pihole-FTL PRIVATE ${PROJECT_SOURCE_DIR}/src)
 add_dependencies(pihole-FTL gen_version)
