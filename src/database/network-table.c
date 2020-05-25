@@ -1420,7 +1420,7 @@ char* __attribute__((malloc)) getMACfromIP(const char* ipaddr)
 	}
 
 	if(config.debug & DEBUG_DATABASE && hwaddr != NULL)
-		logg("Found database hardware address %s => %s", ipaddr, hwaddr);
+		logg("Found database hardware address %s -> %s", ipaddr, hwaddr);
 
 	// Finalize statement and close database handle
 	sqlite3_reset(stmt);
@@ -1476,7 +1476,7 @@ char* __attribute__((malloc)) getNameFromIP(const char* ipaddr)
 	}
 
 	if(config.debug & DEBUG_DATABASE && name != NULL)
-		logg("Found database host name %s => %s", ipaddr, name);
+		logg("Found database host name %s -> %s", ipaddr, name);
 
 	// Finalize statement and close database handle
 	sqlite3_reset(stmt);
@@ -1537,7 +1537,7 @@ char* __attribute__((malloc)) getIfaceFromIP(const char* ipaddr)
 	}
 
 	if(config.debug & DEBUG_DATABASE && iface != NULL)
-		logg("Found database interface %s => %s", ipaddr, iface);
+		logg("Found database interface %s -> %s", ipaddr, iface);
 
 	// Finalize statement and close database handle
 	sqlite3_reset(stmt);
