@@ -277,7 +277,8 @@ static bool get_client_groupids(clientsData* client)
 
 	if(client->found_group)
 	{
-		// The client is not configured through the client table, return early
+		// The client is not configured through the client table, we
+		// substituted the default group. Return early here.
 		return true;
 	}
 
