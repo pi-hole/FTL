@@ -102,6 +102,8 @@ static bool add_message(enum message_type type, const char *message,
 		if( rc != SQLITE_OK ){
 			logg("add_message(type=%u, message=%s) - SQL error prepare DELETE: %s",
 				type, message, sqlite3_errstr(rc));
+			if(opened_database)
+				dbclose();
 			return false;
 		}
 
@@ -112,6 +114,8 @@ static bool add_message(enum message_type type, const char *message,
 				type, message, sqlite3_errstr(rc));
 			sqlite3_reset(stmt);
 			sqlite3_finalize(stmt);
+			if(opened_database)
+				dbclose();
 			return false;
 		}
 
@@ -122,6 +126,8 @@ static bool add_message(enum message_type type, const char *message,
 				type, message, sqlite3_errstr(rc));
 			sqlite3_reset(stmt);
 			sqlite3_finalize(stmt);
+			if(opened_database)
+				dbclose();
 			return false;
 		}
 
@@ -130,26 +136,13 @@ static bool add_message(enum message_type type, const char *message,
 		{
 			logg("add_message(type=%u, message=%s) - SQL error step DELETE: %s",
 			type, message, sqlite3_errstr(rc));
+			if(opened_database)
+				dbclose();
 			return false;
 		}
-		if((rc = sqlite3_clear_bindings(stmt)) != SQLITE_OK)
-		{
-			logg("add_message(type=%u, message=%s) - SQL error clear DELETE: %s",
-			type, message, sqlite3_errstr(rc));
-			return false;
-		}
-		if((rc = sqlite3_reset(stmt)) != SQLITE_OK)
-		{
-			logg("add_message(type=%u, message=%s) - SQL error reset DELETE: %s",
-			type, message, sqlite3_errstr(rc));
-			return false;
-		}
-		if((rc = sqlite3_finalize(stmt)) != SQLITE_OK)
-		{
-			logg("add_message(type=%u, message=%s) - SQL error finalize DELETE: %s",
-			type, message, sqlite3_errstr(rc));
-			return false;
-		}
+		sqlite3_clear_bindings(stmt);
+		sqlite3_reset(stmt);
+		sqlite3_finalize(stmt);
 	}
 
 	// Prepare SQLite statement
@@ -157,9 +150,12 @@ static bool add_message(enum message_type type, const char *message,
 	const char *querystr = "INSERT INTO message (timestamp,type,message,blob1,blob2,blob3,blob4,blob5) "
 	                       "VALUES ((cast(strftime('%s', 'now') as int)),?,?,?,?,?,?,?);";
 	int rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &stmt, NULL);
-	if( rc != SQLITE_OK ){
+	if( rc != SQLITE_OK )
+	{
 		logg("add_message(type=%u, message=%s) - SQL error prepare: %s",
 		     type, message, sqlite3_errstr(rc));
+		if(opened_database)
+			dbclose();
 		return false;
 	}
 
@@ -170,6 +166,8 @@ static bool add_message(enum message_type type, const char *message,
 		     type, message, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
+		if(opened_database)
+			dbclose();
 		return false;
 	}
 
@@ -180,6 +178,8 @@ static bool add_message(enum message_type type, const char *message,
 		     type, message, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
+		if(opened_database)
+			dbclose();
 		return false;
 	}
 
@@ -211,6 +211,8 @@ static bool add_message(enum message_type type, const char *message,
 			     type, message, 3 + j, datatype, sqlite3_errstr(rc));
 			sqlite3_reset(stmt);
 			sqlite3_finalize(stmt);
+			if(opened_database)
+				dbclose();
 			return false;
 		}
 	}
