@@ -71,7 +71,7 @@ set(WARN_FLAGS "-Wall -Wextra -Wno-unused-parameter")
 # -Wmissing-prototypes: Warn if a global function is defined without a previous prototype declaration
 # -Wredundant-decls: Warn if anything is declared more than once in the same scope
 # -Winline: Warn if a function that is declared as inline cannot be inlined
-if(CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL 8)
+if(CMAKE_C_COMPILER_VERSION VERSION_EQUAL 8 OR CMAKE_C_COMPILER_VERSION VERSION_GREATER 8)
     # -Wduplicated-cond: Warn about duplicated conditions in an if-else-if chain
     # -Wduplicated-branches: Warn when an if-else has identical branches
     # -Wcast-align=strict: Warn whenever a pointer is cast such that the required alignment of the target is increased. For example, warn if a "char *" is cast to an "int *" regardless of the target machine.
