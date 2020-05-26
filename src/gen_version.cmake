@@ -59,8 +59,8 @@ if(NOT DEFINED GIT_TAG)
 endif()
 
 # If CIRCLE_JOB is unset (local compilation), ask uname -m and add locally compiled comment
-if(DEFINED CIRCLE_JOB)
-    set(FTL_ARCH "${CIRCLE_JOB} (compiled on CI)")
+if(DEFINED ENV{CIRCLE_JOB})
+    set(FTL_ARCH "$ENV{CIRCLE_JOB} (compiled on CI)")
 else()
     execute_process(
             COMMAND           uname -m
@@ -79,7 +79,12 @@ execute_process(
         OUTPUT_STRIP_TRAILING_WHITESPACE
 )
 
-message("Making FTL version on branch ${GIT_BRANCH} - ${GIT_VERSION} / ${GIT_TAG} / ${GIT_HASH} (${GIT_DATE})")
+message("Compiling Pi-hole FTL daemon")
+message("   Branch: ${GIT_BRANCH}")
+message("   Architecture: ${FTL_ARCH}")
+message("   Version: ${GIT_VERSION}")
+message("   Tag/Hash: ${GIT_TAG} / ${GIT_HASH}")
+message("   Commit date: ${GIT_DATE}")
 
 # configure the version file, but output to a temporary location
 configure_file(

@@ -161,7 +161,7 @@ add_executable(pihole-FTL
 if(STATIC STREQUAL "true")
     set_target_properties(pihole-FTL PROPERTIES LINK_SEARCH_START_STATIC ON)
     set_target_properties(pihole-FTL PROPERTIES LINK_SEARCH_END_STATIC ON)
-    target_link_libraries(pihole-FTL -static-libgcc -static)
+    target_link_libraries(pihole-FTL -static-libgcc -static -static-pie)
 endif()
 target_compile_options(pihole-FTL PRIVATE ${EXTRAWARN})
 target_include_directories(pihole-FTL PRIVATE ${PROJECT_SOURCE_DIR}/src)
