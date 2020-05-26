@@ -59,8 +59,8 @@ if(NOT DEFINED GIT_TAG)
 endif()
 
 # If CIRCLE_JOB is unset (local compilation), ask uname -m and add locally compiled comment
-if(DEFINED ENV{CIRCLE_JOB})
-    set(FTL_ARCH "$ENV{CIRCLE_JOB} (compiled on CI)")
+if(DEFINED CIRCLE_JOB)
+    set(FTL_ARCH "${CIRCLE_JOB} (compiled on CI)")
 else()
     execute_process(
             COMMAND           uname -m
