@@ -93,6 +93,65 @@ static bool add_message(enum message_type type, const char *message,
 		opened_database = true;
 	}
 
+	// Ensure there are no duplicates when adding host name messages
+	if(type == HOSTNAME_MESSAGE)
+	{
+		sqlite3_stmt* stmt = NULL;
+		const char *querystr = "DELETE FROM message WHERE type = ?1 AND message = ?2";
+		int rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &stmt, NULL);
+		if( rc != SQLITE_OK ){
+			logg("add_message(type=%u, message=%s) - SQL error prepare DELETE: %s",
+				type, message, sqlite3_errstr(rc));
+			return false;
+		}
+
+		// Bind type to prepared statement
+		if((rc = sqlite3_bind_text(stmt, 1, message_types[type], -1, SQLITE_STATIC)) != SQLITE_OK)
+		{
+			logg("add_message(type=%u, message=%s) - Failed to bind type DELETE: %s",
+				type, message, sqlite3_errstr(rc));
+			sqlite3_reset(stmt);
+			sqlite3_finalize(stmt);
+			return false;
+		}
+
+		// Bind message to prepared statement
+		if((rc = sqlite3_bind_text(stmt, 2, message, -1, SQLITE_STATIC)) != SQLITE_OK)
+		{
+			logg("add_message(type=%u, message=%s) - Failed to bind message DELETE: %s",
+				type, message, sqlite3_errstr(rc));
+			sqlite3_reset(stmt);
+			sqlite3_finalize(stmt);
+			return false;
+		}
+
+		// Execute and finalize
+		if((rc = sqlite3_step(stmt)) != SQLITE_OK && rc != SQLITE_DONE)
+		{
+			logg("add_message(type=%u, message=%s) - SQL error step DELETE: %s",
+			type, message, sqlite3_errstr(rc));
+			return false;
+		}
+		if((rc = sqlite3_clear_bindings(stmt)) != SQLITE_OK)
+		{
+			logg("add_message(type=%u, message=%s) - SQL error clear DELETE: %s",
+			type, message, sqlite3_errstr(rc));
+			return false;
+		}
+		if((rc = sqlite3_reset(stmt)) != SQLITE_OK)
+		{
+			logg("add_message(type=%u, message=%s) - SQL error reset DELETE: %s",
+			type, message, sqlite3_errstr(rc));
+			return false;
+		}
+		if((rc = sqlite3_finalize(stmt)) != SQLITE_OK)
+		{
+			logg("add_message(type=%u, message=%s) - SQL error finalize DELETE: %s",
+			type, message, sqlite3_errstr(rc));
+			return false;
+		}
+	}
+
 	// Prepare SQLite statement
 	sqlite3_stmt* stmt = NULL;
 	const char *querystr = "INSERT INTO message (timestamp,type,message,blob1,blob2,blob3,blob4,blob5) "
