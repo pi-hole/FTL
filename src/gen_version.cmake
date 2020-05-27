@@ -1,4 +1,16 @@
-if(NOT DEFINED GIT_BRANCH)
+# Pi-hole: A black hole for Internet advertisements
+# (c) 2020 Pi-hole, LLC (https://pi-hole.net)
+# Network-wide ad blocking via your own hardware.
+#
+# FTL Engine
+# /src/gen_version.cmake
+#
+# This file is copyright under the latest version of the EUPL.
+# Please see LICENSE file for your rights under this license.
+
+if(DEFINED ENV{GIT_BRANCH})
+    set(GIT_BRANCH "$ENV{GIT_BRANCH}")
+else()
     execute_process(
             COMMAND           bash -c "git branch | sed -n 's/^\\* //p'"
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
@@ -8,7 +20,9 @@ if(NOT DEFINED GIT_BRANCH)
     )
 endif()
 
-if(NOT DEFINED GIT_HASH)
+if(DEFINED ENV{GIT_HASH})
+    set(GIT_HASH "$ENV{GIT_HASH}")
+else()
     execute_process(
             COMMAND           git --no-pager describe --always --dirty
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
@@ -18,7 +32,9 @@ if(NOT DEFINED GIT_HASH)
     )
 endif()
 
-if(NOT DEFINED GIT_VERSION)
+if(DEFINED ENV{GIT_VERSION})
+    set(GIT_VERSION "$ENV{GIT_VERSION}")
+else()
     execute_process(
             COMMAND           git --no-pager describe --tags --always --dirty
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
@@ -28,7 +44,9 @@ if(NOT DEFINED GIT_VERSION)
     )
 endif()
 
-if(NOT DEFINED GIT_DATE)
+if(DEFINED ENV{GIT_DATE})
+    set(GIT_DATE "$ENV{GIT_DATE}")
+else()
     execute_process(
             COMMAND           bash -c "git --no-pager show --date=short --format=\"%ai\" --name-only | head -n 1"
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
@@ -38,7 +56,9 @@ if(NOT DEFINED GIT_DATE)
     )
 endif()
 
-if(NOT DEFINED GIT_TAG)
+if(DEFINED ENV{GIT_TAG})
+    set(GIT_TAG "$ENV{GIT_TAG}")
+else()
     execute_process(
             COMMAND           git describe --tags --abbrev=0
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
@@ -49,8 +69,8 @@ if(NOT DEFINED GIT_TAG)
 endif()
 
 # If CIRCLE_JOB is unset (local compilation), ask uname -m and add locally compiled comment
-if(DEFINED CIRCLE_JOB)
-    set(FTL_ARCH "${CIRCLE_JOB} (compiled on CI)")
+if(DEFINED ENV{CIRCLE_JOB})
+    set(FTL_ARCH "$ENV{CIRCLE_JOB} (compiled on CI)")
 else()
     execute_process(
             COMMAND           uname -m
@@ -69,7 +89,13 @@ execute_process(
         OUTPUT_STRIP_TRAILING_WHITESPACE
 )
 
-message("Making FTL version on branch ${GIT_BRANCH} - ${GIT_VERSION} / ${GIT_TAG} / ${GIT_HASH} (${GIT_DATE})")
+message("Building Pi-hole FTL daemon")
+message("   - Branch: ${GIT_BRANCH}")
+message("   - Architecture: ${FTL_ARCH}")
+message("   - Version: ${GIT_VERSION}")
+message("   - Tag: ${GIT_TAG}")
+message("   - Hash: ${GIT_HASH}")
+message("   - Commit date: ${GIT_DATE}")
 
 # configure the version file, but output to a temporary location
 configure_file(

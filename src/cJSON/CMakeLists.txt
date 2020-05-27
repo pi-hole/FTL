@@ -3,14 +3,16 @@
 # Network-wide ad blocking via your own hardware.
 #
 # FTL Engine
-# /CMakeList.txt
+# /src/cJSON/CMakeList.txt
 #
 # This file is copyright under the latest version of the EUPL.
 # Please see LICENSE file for your rights under this license.
 
-cmake_minimum_required(VERSION 2.8.12)
-project(PIHOLE_FTL C)
+set(sources
+        cJSON.c
+        cJSON.h
+        )
 
-set(DNSMASQ_VERSION pi-hole-2.81)
-
-add_subdirectory(src)
+add_library(cJSON OBJECT ${sources})
+target_compile_options(cJSON PRIVATE)
+target_include_directories(cJSON PRIVATE ${PROJECT_SOURCE_DIR}/src)

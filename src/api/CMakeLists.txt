@@ -1,11 +1,28 @@
+# Pi-hole: A black hole for Internet advertisements
+# (c) 2020 Pi-hole, LLC (https://pi-hole.net)
+# Network-wide ad blocking via your own hardware.
+#
+# FTL Engine
+# /src/api/CMakeList.txt
+#
+# This file is copyright under the latest version of the EUPL.
+# Please see LICENSE file for your rights under this license.
+
 set(sources
-        api.c
-        api.h
-        msgpack.c
-        request.c
-        request.h
-        socket.c
-        socket.h
+        auth.c
+        dns.c
+        dns.h
+        ftl.c
+        ftl.h
+        http-common.c
+        http-common.h
+        json_macros.h
+        routes.c
+        routes.h
+        settings.c
+        stats_database.c
+        stats.c
+        version.c
         )
 
 add_library(api OBJECT ${sources})
