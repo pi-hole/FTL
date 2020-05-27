@@ -6,7 +6,6 @@ version: 2
     - run:
         name: "Setup"
         command: |
-          make clean
           if [[ $CIRCLE_JOB == *"qemu"* ]] ; then sudo docker run --rm --privileged multiarch/qemu-user-static:register --reset ; fi
     - run:
         name: "Build"
@@ -14,12 +13,14 @@ version: 2
         command: |
           BRANCH=$([ -z "$CIRCLE_TAG" ] && echo "$CIRCLE_BRANCH" || echo "master")
           [[ $CIRCLE_JOB == *"qemu"* ]] && DOCKERIFNEEDED="docker run --rm -v $(pwd):/workspace -w /workspace pihole/ftl-build:arm-qemu "
-          $DOCKERIFNEEDED make GIT_BRANCH="${BRANCH}" GIT_TAG="${CIRCLE_TAG}" STATIC="${STATIC}"
-          file pihole-FTL
+          $DOCKERIFNEEDED bash .circleci/build-CI.sh "${STATIC}" "${BRANCH}" "${CIRCLE_TAG}" "${CIRCLE_JOB}"
+    - run:
+        name: "Binary checks"
+        command: bash test/arch_test.sh
     - run:
         name: "Upload"
         command: |
-          [[ "$CIRCLE_PROJECT_REPONAME" == "FTL" && "$CIRCLE_PROJECT_USERNAME" == "pi-hole" ]] || exit 0
+          [ -z "${CIRCLE_PR_USERNAME}" ] || exit 0
           DIR="${CIRCLE_TAG:-${CIRCLE_BRANCH}}"
           mv pihole-FTL "${BIN_NAME}"
           sha1sum pihole-FTL-* > ${BIN_NAME}.sha1
@@ -35,7 +36,7 @@ version: 2
 
 .docker_template: &docker_template
   docker:
-    - image: pihole/ftl-build:v1.2-$CIRCLE_JOB
+    - image: pihole/ftl-build:v1.3-$CIRCLE_JOB
   <<: *job_steps
 
 jobs:

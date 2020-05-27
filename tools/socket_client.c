@@ -40,7 +40,7 @@ int main (int argc, char **argv) {
 	address.sun_family = AF_LOCAL;
 
 	char *command = ">stats";
-	strcpy(address.sun_path,"/var/run/pihole/FTL.sock");
+	strcpy(address.sun_path,"/run/pihole/FTL.sock");
 
 	int i;
 	for(i = 1; i < argc; i++) {

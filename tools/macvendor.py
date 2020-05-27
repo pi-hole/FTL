@@ -17,7 +17,11 @@ import sqlite3
 
 # Download raw data from Wireshark's website
 # We use the official URL recommended in the header of this file
+# Thanks to mibere for the update
 print("Downloading...")
+opener = urllib.request.build_opener()
+opener.addheaders = [('User-agent', 'Mozilla/5.0')]
+urllib.request.install_opener(opener)
 urllib.request.urlretrieve("https://code.wireshark.org/review/gitweb?p=wireshark.git;a=blob_plain;f=manuf", "manuf.data")
 print("...done")
 

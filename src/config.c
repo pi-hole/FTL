@@ -303,13 +303,13 @@ void read_FTLconf(void)
 		logg("   DBIMPORT: Not importing history from database");
 
 	// PIDFILE
-	getpath(fp, "PIDFILE", "/var/run/pihole-FTL.pid", &FTLfiles.pid);
+	getpath(fp, "PIDFILE", "/run/pihole-FTL.pid", &FTLfiles.pid);
 
 	// PORTFILE
-	getpath(fp, "PORTFILE", "/var/run/pihole-FTL.port", &FTLfiles.port);
+	getpath(fp, "PORTFILE", "/run/pihole-FTL.port", &FTLfiles.port);
 
 	// SOCKETFILE
-	getpath(fp, "SOCKETFILE", "/var/run/pihole/FTL.sock", &FTLfiles.socketfile);
+	getpath(fp, "SOCKETFILE", "/run/pihole/FTL.sock", &FTLfiles.socketfile);
 
 	// SETUPVARSFILE
 	getpath(fp, "SETUPVARSFILE", "/etc/pihole/setupVars.conf", &FTLfiles.setupVars);
