@@ -895,6 +895,25 @@ void updateMACVendorRecords(void)
 
 char* __attribute__((malloc)) getDatabaseHostname(const char* ipaddr)
 {
+	// Test if this is an IPv6 address
+	bool IPv6 = false;
+	if(ipaddr != NULL && strstr(ipaddr,":") != NULL)
+	{
+		IPv6 = true;
+	}
+
+	// Do we want to resolve IPv4/IPv6 names at all?
+	if( (IPv6 && !config.resolveIPv6) ||
+	   (!IPv6 && !config.resolveIPv4))
+	{
+		if(config.debug & DEBUG_RESOLVER)
+		{
+			logg(" ---> \"\" (configured to not resolve %s host names)",
+			     IPv6 ? "IPv6" : "IPv4");
+		}
+		return strdup("");
+	}
+
 	// Open pihole-FTL.db database file
 	if(!dbopen())
 	{
