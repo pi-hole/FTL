@@ -14,7 +14,6 @@ set(sources
         )
 
 # We can remove the NO_SSL later on. It adds additional constraints to the build system (availablity of libSSL-dev)
-# NO_CGI = no CGI support (we don't need it)
 # NO_SSL_DL NO_SSL = no SSL support (for now)
 # USE_SERVER_STATS = makes a few anonymous statistics available, such as
 #   - Number of connections (currently and total)
@@ -26,5 +25,5 @@ set(CIVETWEB_OPTS
 
 
 add_library(civetweb OBJECT ${sources})
-target_compile_definitions(civetweb PRIVATE NO_CGI NO_SSL_DL NO_SSL USE_SERVER_STATS USE_IPV6)
+target_compile_definitions(civetweb PRIVATE NO_SSL_DL NO_SSL USE_SERVER_STATS USE_IPV6)
 target_include_directories(civetweb PRIVATE ${PROJECT_SOURCE_DIR}/src)

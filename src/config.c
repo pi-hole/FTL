@@ -448,6 +448,17 @@ void read_FTLconf(void)
 	else
 		logg("   API_PRETTY_JSON: Disabled. Compact API output.");
 
+	// PHP-CGI
+	// defaults to: /usr/bin/php-cgi
+	// Path to an executable to use as CGI interpreter for all CGI scripts
+	// regardless of the script file extension. We use this for PHP. It
+	// needs to point at php-cgi. php-cli will not work
+	httpsettings.php_location = "/usr/bin/php-cgi";
+	buffer = parse_FTLconf(fp, "PHP.CGI");
+	if(buffer != NULL)
+		httpsettings.php_location = strdup(buffer);
+	logg("   PHP-CGI: Using %s", httpsettings.php_location);
+
 	// Read DEBUG_... setting from pihole-FTL.conf
 	// This option should be the last one as it causes
 	// some rather verbose output into the log when

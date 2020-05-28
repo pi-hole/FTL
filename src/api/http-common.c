@@ -324,6 +324,9 @@ void http_init(void)
 		                     "X-Xss-Protection: 1; mode=block\r\n"
 		                     "X-Content-Type-Options: nosniff\r\n"
 		                     "Referrer-Policy: same-origin",
+		"cgi_interpreter", httpsettings.php_location,
+		"cgi_pattern", "**.php$", // ** allows the files to by anywhere inside the web root
+		"index_files", "index.html,index.htm,index.php",
 		NULL
 	};
 
