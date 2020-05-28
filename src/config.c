@@ -13,6 +13,8 @@
 #include "memory.h"
 #include "setupVars.h"
 #include "log.h"
+// nice()
+#include <unistd.h>
 
 ConfigStruct config;
 FTLFileNamesStruct FTLfiles = {
@@ -39,6 +41,7 @@ static size_t size = 0;
 static char *parse_FTLconf(FILE *fp, const char * key);
 static void release_config_memory(void);
 static void getpath(FILE* fp, const char *option, const char *defaultloc, char **pointer);
+static void set_nice(const char *buffer, int fallback);
 
 void getLogFilePath(void)
 {
@@ -367,6 +370,20 @@ void read_FTLconf(void)
 	if(buffer != NULL && strcasecmp(buffer, "false") == 0)
 		config.block_esni = false;
 
+	// NICE
+	// Shall we change the nice of the current process?
+	// defaults to: -10 (can be disabled by setting value to -999)
+	//
+	// The nice value is an attribute that can be used to influence the CPU
+	// scheduler to favor or disfavor a process in scheduling decisions.
+	//
+	// The range of the nice value varies across UNIX systems. On modern Linux,
+	// the range is -20 (high priority) to +19 (low priority). On some other
+	// systems, the range is -20..20. Very early Linux kernels (Before Linux
+	// 2.0) had the range -infinity..15.
+	buffer = parse_FTLconf(fp, "NICE");
+	set_nice(buffer, -10);
+
 	if(config.block_esni)
 		logg("   BLOCK_ESNI: Enabled, blocking _esni.{blocked domain}");
 	else
@@ -687,5 +704,47 @@ void read_debuging_settings(FILE *fp)
 		// Otherwise, it may still be needed outside of
 		// this function (initial config parsing)
 		release_config_memory();
+	}
+}
+
+static void set_nice(const char *buffer, const int fallback)
+{
+	int value, nice_set, nice_target = fallback;
+
+	// Try to read niceness value
+	// Attempts to set a nice value outside the range are clamped to the range.
+	if(buffer != NULL && sscanf(buffer, "%i", &value) == 1)
+		nice_target = value;
+
+	// Skip setting niceness if set to -999
+	if(nice_target == -999)
+	{
+		logg("   NICE: Not changing nice value");
+		return;
+	}
+
+	// Adjust if != -999
+	errno = 0;
+	if((nice_set = nice(nice_target)) == -1 &&
+	   errno == EPERM)
+	{
+		// ERROR EPERM: The calling process attempted to increase its priority
+		// by supplying a negative value but has insufficient privileges.
+		// On Linux, the RLIMIT_NICE resource limit can be used to define a limit to
+		// which an unprivileged process's nice value can be raised. We are not
+		// affected by this limit when pihole-FTL is running with CAP_SYS_NICE
+		logg("   NICE: Cannot change niceness to %d (permission denied)",
+		     nice_target);
+		return;
+	}
+	if(nice_set == nice_target)
+	{
+		logg("   NICE: Set process niceness to %d%s",
+		     nice_set, (nice_set == fallback) ? " (default)" : "");
+	}
+	else
+	{
+		logg("   NICE: Set process niceness to %d (asked for %d)",
+		     nice_set, nice_target);
 	}
 }
