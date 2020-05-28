@@ -101,6 +101,7 @@ int api_stats_summary(struct mg_connection *conn)
 	JSON_OBJ_ADD_NUMBER(total_queries, "SOA", counters->querytype[TYPE_SOA]);
 	JSON_OBJ_ADD_NUMBER(total_queries, "PTR", counters->querytype[TYPE_PTR]);
 	JSON_OBJ_ADD_NUMBER(total_queries, "TXT", counters->querytype[TYPE_TXT]);
+	JSON_OBJ_ADD_NUMBER(total_queries, "NAPTR", counters->querytype[TYPE_NAPTR]);
 	JSON_OBJ_ADD_ITEM(json, "total_queries", total_queries);
 
 	JSON_OBJ_ADD_NUMBER(json, "sum_queries", counters->queries);
