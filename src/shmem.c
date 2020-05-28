@@ -353,7 +353,8 @@ bool init_shmem(void)
 
 void destroy_shmem(void)
 {
-	pthread_mutex_destroy(&shmLock->lock);
+	if(&shmLock->lock != NULL)
+		pthread_mutex_destroy(&shmLock->lock);
 	shmLock = NULL;
 
 	delete_shm(&shm_lock);

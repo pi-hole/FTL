@@ -22,8 +22,6 @@
 #include "config.h"
 
 #define BINARY_NAME "pihole-FTL"
-// http_reread_index_html()
-#include "api/http-common.h"
 
 volatile sig_atomic_t killed = 0;
 static time_t FTLstarttime = 0;
@@ -153,13 +151,6 @@ static void SIGRT_handler(int signum, siginfo_t *si, void *unused)
 
 		// Reload the privacy level in case the user changed it
 		get_privacy_level(NULL);
-	}
-	else if(rtsig == 1)
-	{
-		// Re-read index.html
-		// This is necessary when the content of /admin is updated as
-		// the paths of the contained JS/CSS scripts will have changed
-		http_reread_index_html();
 	}
 } 
 

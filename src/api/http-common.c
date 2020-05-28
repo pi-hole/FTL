@@ -159,110 +159,6 @@ static int print_simple(struct mg_connection *conn, void *input)
 	return send_http(conn, "text/plain", input);
 }
 
-static char *indexfile_content = NULL;
-static void prepare_index_html(void)
-{
-	char *index_path = NULL;
-	if(asprintf(&index_path, "%s%sindex.html", httpsettings.webroot, httpsettings.webhome) < 0)
-	{
-		logg("prepare_index_html(): Memory error (1)");
-		return;
-	}
-	char *base_tag = NULL;
-	if(asprintf(&base_tag, "<base href='%s'>", httpsettings.webhome) < 0)
-	{
-		logg("prepare_index_html(): Memory error (2)");
-	}
-	unsigned int base_tag_length = strlen(base_tag);
-
-	FILE *indexfile = fopen(index_path, "r");
-	if(indexfile == NULL)
-	{
-		logg("ERROR: Cannot open \"%s\"", index_path);
-		free(index_path);
-		return;
-	}
-
-	// Get file size by seeking the EOF
-	fseek(indexfile, 0, SEEK_END);
-	size_t fsize = ftell(indexfile);
-
-	// Go back to the beginning
-	fseek(indexfile, 0, SEEK_SET);
-
-	// Allocate memory for the index file
-	indexfile_content = calloc(fsize + base_tag_length + 1, sizeof(char));
-	if(indexfile_content == NULL)
-	{
-		logg("prepare_index_html(): Memory error (3)");
-		free(index_path);
-		free(base_tag);
-	}
-
-	// Read entire file into buffer
-	if(fread(indexfile_content, sizeof(char), fsize, indexfile) != fsize)
-	{
-		logg("WARNING: Filesize of \"%s\" changed during reading.", index_path);
-	}
-
-	// Close file handle
-	fclose(indexfile);
-
-	// Zero-terminate string
-	indexfile_content[fsize] = '\0';
-
-	// Find "<head>"
-	char *head_ptr = strstr(indexfile_content, "<head>");
-	if(head_ptr == NULL)
-	{
-		logg("ERROR: No <head> tag found in \"%s\"", index_path);
-		free(index_path);
-		free(base_tag);
-		return;
-	}
-
-	// Advance beyond the <head> tag
-	head_ptr += 6u; // 6u == strlen("<head>");
-
-	// Make space for <base> tag to be inserted
-	memmove(head_ptr + base_tag_length, head_ptr, base_tag_length);
-
-	// Insert <base> tag into new space
-	memcpy(head_ptr, base_tag, base_tag_length);
-
-	// Free memory
-	free(index_path);
-	free(base_tag);
-}
-
-static int index_handler(struct mg_connection *conn, void *ignored)
-{
-	const struct mg_request_info *request = mg_get_request_info(conn);
-
-	if(strstr(request->local_uri, ".") > strstr(request->local_uri, "/"))
-	{
-		// Found file extension, process as usual
-		return 0;
-	}
-	if(config.debug & DEBUG_API)
-		logg("Received request for %s -> rerouting to index.html", request->local_uri);
-
-	// Plain request found, we serve the index.html file we have in memory
-	if(indexfile_content != NULL)
-	{
-		mg_send_http_ok(conn, "text/html", NULL, strlen(indexfile_content));
-		mg_write(conn, indexfile_content, strlen(indexfile_content));
-		return 200;
-	}
-	else
-	{
-		logg("ERROR: index.html not available, responding with Error 500.");
-		send_http_internal_error(conn);
-		return 500;
-	}
-	
-}
-
 static int log_http_message(const struct mg_connection *conn, const char *message)
 {
 	logg("HTTP info: %s", message);
@@ -356,29 +252,12 @@ void http_init(void)
 		// The request handler URI got duplicated
 		free(api_path);
 	}
-
-	prepare_index_html();
-	mg_set_request_handler(ctx, httpsettings.webhome, index_handler, NULL);
-}
-
-void http_reread_index_html(void)
-{
-	// Release memory for the index.html file
-	if(indexfile_content != NULL)
-		free(indexfile_content);
-
-	// Re-read index.html into memory
-	prepare_index_html();
 }
 
 void http_terminate(void)
 {
 	/* Stop the server */
 	mg_stop(ctx);
-
-	// Release memory for the index.html file
-	free(indexfile_content);
-	indexfile_content = NULL;
 
 	/* Un-initialize the library */
 	mg_exit_library();
