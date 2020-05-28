@@ -23,7 +23,7 @@ chown pihole:pihole /etc/pihole /run/pihole /var/log/pihole.log /var/log/pihole-
 cp ./pihole-FTL /home/pihole
 chmod +x /home/pihole/pihole-FTL
 # Note: We cannot add CAP_NET_RAW and CAP_NET_ADMIN at this point
-setcap CAP_NET_BIND_SERVICE+eip /home/pihole/pihole-FTL
+setcap CAP_NET_BIND_SERVICE,CAP_SYS_NICE+eip /home/pihole/pihole-FTL
 
 # Prepare gravity database
 sqlite3 /etc/pihole/gravity.db < test/gravity.db.sql
