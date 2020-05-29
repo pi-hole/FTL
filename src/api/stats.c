@@ -454,7 +454,7 @@ int api_stats_upstreams(struct mg_connection *conn)
 	{
 		return send_json_unauthorized(conn);
 	}
-	for(int upstreamID = 0; upstreamID < counters->forwarded; upstreamID++)
+	for(int upstreamID = 0; upstreamID < counters->upstreams; upstreamID++)
 	{
 		// Get forward pointer
 		const upstreamsData* forward = getUpstream(upstreamID, true);

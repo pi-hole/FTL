@@ -51,6 +51,9 @@ int check_client_auth(struct mg_connection *conn)
 	                                            strcmp(request->remote_addr, LOCALHOSTv6) == 0))
 		return API_MAX_CLIENTS;
 
+	// FIXME: Generally assume authorization for now while we are working on the dashboard!
+	return API_MAX_CLIENTS;
+
 	// Does the client provide a user_id cookie?
 	int num;
 	if(http_get_cookie_int(conn, "user_id", &num) && num > -1 && num < API_MAX_CLIENTS)
