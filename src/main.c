@@ -24,7 +24,7 @@
 #include "database/gravity-db.h"
 #include "timers.h"
 // http_terminate()
-#include "api/http-common.h"
+#include "api/webserver.h"
 
 char * username;
 bool needGC = false;

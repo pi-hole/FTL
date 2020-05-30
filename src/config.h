@@ -56,7 +56,6 @@ typedef struct {
 typedef struct httpsettings {
 	char *webroot;
 	char *webhome;
-	const char *php_location;
 	const char *acl;
 	bool api_auth_for_localhost;
 	bool prettyJSON;

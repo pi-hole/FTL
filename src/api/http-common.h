@@ -20,9 +20,6 @@
 // FTLfree()
 #include "../memory.h"
 
-void http_init(void);
-void http_terminate(void);
-
 const char* json_formatter(const cJSON *object);
 
 int send_http(struct mg_connection *conn, const char *mime_type, const char *msg);

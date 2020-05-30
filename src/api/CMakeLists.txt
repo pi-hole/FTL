@@ -23,6 +23,8 @@ set(sources
         stats_database.c
         stats.c
         version.c
+        webserver.c
+        ph7.c
         )
 
 add_library(api OBJECT ${sources})

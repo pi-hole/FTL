@@ -158,6 +158,7 @@ add_executable(pihole-FTL
         $<TARGET_OBJECTS:api>
         $<TARGET_OBJECTS:civetweb>
         $<TARGET_OBJECTS:cJSON>
+        $<TARGET_OBJECTS:ph7>
         $<TARGET_OBJECTS:database>
         $<TARGET_OBJECTS:dnsmasq>
         $<TARGET_OBJECTS:sqlite3>
@@ -198,5 +199,6 @@ install(CODE "execute_process(COMMAND ${SETCAP} CAP_NET_BIND_SERVICE,CAP_NET_RAW
 add_subdirectory(api)
 add_subdirectory(civetweb)
 add_subdirectory(cJSON)
+add_subdirectory(ph7)
 add_subdirectory(database)
 add_subdirectory(dnsmasq)
