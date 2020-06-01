@@ -156,6 +156,8 @@ add_custom_target(
 add_executable(pihole-FTL
         ${sources}
         $<TARGET_OBJECTS:api>
+        $<TARGET_OBJECTS:webserver>
+        $<TARGET_OBJECTS:ph7_ext>
         $<TARGET_OBJECTS:civetweb>
         $<TARGET_OBJECTS:cJSON>
         $<TARGET_OBJECTS:ph7>
@@ -197,6 +199,7 @@ install(TARGETS pihole-FTL
 install(CODE "execute_process(COMMAND ${SETCAP} CAP_NET_BIND_SERVICE,CAP_NET_RAW,CAP_NET_ADMIN+eip ${CMAKE_INSTALL_PREFIX}/bin/pihole-FTL)")
 
 add_subdirectory(api)
+add_subdirectory(webserver)
 add_subdirectory(civetweb)
 add_subdirectory(cJSON)
 add_subdirectory(ph7)

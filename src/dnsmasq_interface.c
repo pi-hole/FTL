@@ -33,7 +33,7 @@
 // global variable daemonmode
 #include "args.h"
 // http_init()
-#include "api/webserver.h"
+#include "webserver/webserver.h"
 // add_to_dnsmasq_log_buffer()
 #include "api/ftl.h"
 

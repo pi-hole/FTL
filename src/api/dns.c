@@ -12,11 +12,10 @@
 // counters
 #include "shmem.h"
 #include "dns.h"
-#include "http-common.h"
+#include "../webserver/http-common.h"
+#include "../webserver/json_macros.h"
 #include "routes.h"
-#include "json_macros.h"
 #include "database/gravity-db.h"
-#include "api/http-common.h"
 #include "log.h"
 // {s,g}et_blockingstatus()
 #include "setupVars.h"

@@ -11,8 +11,8 @@
 #include "../FTL.h"
 // struct mg_connection
 #include "../civetweb/civetweb.h"
-#include "http-common.h"
-#include "json_macros.h"
+#include "../webserver/http-common.h"
+#include "../webserver/json_macros.h"
 #include "routes.h"
 #include "../shmem.h"
 

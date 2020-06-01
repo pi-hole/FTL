@@ -9,9 +9,9 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
-#include "http-common.h"
+#include "../webserver/http-common.h"
+#include "../webserver/json_macros.h"
 #include "routes.h"
-#include "json_macros.h"
 #include "log.h"
 #include "config.h"
 // read_setupVarsconf()

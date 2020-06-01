@@ -125,6 +125,9 @@
  * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+/******************************* Pi-hole modification ******************************/
+extern void logg(const char* format, ...) __attribute__ ((format (gnu_printf, 1, 2)));
+/***********************************************************************************/
  /* $SymiscID: ph7.h v2.1 UNIX|WIN32/64 2012-09-15 09:43 stable <chm@symisc.net> $ */
 #include <stdarg.h> /* needed for the definition of va_list */
 /*
@@ -5001,24 +5004,14 @@ static sxi32 VmThrowException(ph7_vm *pVm,ph7_class_instance *pThis);
 /*
  * Consume a generated run-time error message by invoking the VM output
  * consumer callback.
+ * ATTENTION: MODIFIED BY PI-HOLE
  */
 static sxi32 VmCallErrorHandler(ph7_vm *pVm,SyBlob *pMsg)
 {
 	ph7_output_consumer *pCons = &pVm->sVmConsumer;
-	sxi32 rc = SXRET_OK;
-	/* Append a new line */
-#ifdef __WINNT__
-	SyBlobAppend(pMsg,"\r\n",sizeof("\r\n")-1);
-#else
-	SyBlobAppend(pMsg,"\n",sizeof(char));
-#endif
 	/* Invoke the output consumer callback */
-	rc = pCons->xConsumer(SyBlobData(pMsg),SyBlobLength(pMsg),pCons->pUserData);
-	if( pCons->xConsumer != VmObConsumer ){
-		/* Increment output length */
-		pVm->nOutputLen += SyBlobLength(pMsg);
-	}
-	return rc;
+	logg("PH7 Error: %.*s", SyBlobLength(pMsg), SyBlobData(pMsg));
+	return SXRET_OK;
 }
 /*
  * Throw a run-time error and invoke the supplied VM output consumer callback.

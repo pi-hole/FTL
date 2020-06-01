@@ -1,5 +1,5 @@
 /* Pi-hole: A black hole for Internet advertisements
-*  (c) 2019 Pi-hole, LLC (https://pi-hole.net)
+*  (c) 2020 Pi-hole, LLC (https://pi-hole.net)
 *  Network-wide ad blocking via your own hardware.
 *
 *  FTL Engine
@@ -27,6 +27,10 @@
 // open
 #include <fcntl.h>
 
+// Pi-hole PH7 extensions
+#define PH7_CORE
+#include "ph7_ext/extensions.h"
+
 // PH7 virtual machine engine
 static ph7 *pEngine; /* PH7 engine */
 static ph7_vm *pVm;  /* Compiled PHP program */
@@ -34,15 +38,8 @@ static ph7_vm *pVm;  /* Compiled PHP program */
 static char *webroot_with_home = NULL;
 static char *webroot_with_home_and_scripts = NULL;
 
-/*
- * VM output consumer callback.
- * Each time the virtual machine generates some outputs, the following
- * function gets called by the underlying virtual machine to consume
- * the generated output.
- * This function is registered later via a call to ph7_vm_config()
- * with a configuration verb set to: PH7_VM_CONFIG_OUTPUT.
- */
-static int Output_Consumer(const void *pOutput, unsigned int nOutputLen, void *pUserData /* Unused */)
+static int PH7_error_report(const void *pOutput, unsigned int nOutputLen,
+                            void *pUserData /* Unused */)
 {
 	// Log error message, strip trailing newline character if any
 	if(((const char*)pOutput)[nOutputLen-1] == '\n')
@@ -53,10 +50,7 @@ static int Output_Consumer(const void *pOutput, unsigned int nOutputLen, void *p
 
 int ph7_handler(struct mg_connection *conn, void *cbdata)
 {
-
 	int rc;
-	const void *pOut;
-	unsigned int nLen;
 
 	/* Handler may access the request info using mg_get_request_info */
 	const struct mg_request_info * req_info = mg_get_request_info(conn);
@@ -73,14 +67,13 @@ int ph7_handler(struct mg_connection *conn, void *cbdata)
 		logg("Full path of PHP script: %s", full_path);
 
 	// Compile PHP script into byte-code
-	// This usually takes only 1-2 msec even for long scripts
-	// (measrued on a Raspberry Pi 3), so there is little
-	// point in buffering the compiled script somewhere
+	// This usually takes only 1-2 msec even for larger scripts on a Raspberry
+	// Pi 3, so there is little point in buffering the compiled script
 	rc = ph7_compile_file(
-		pEngine, /* PH7 Engine */
+		pEngine,   /* PH7 Engine */
 		full_path, /* Path to the PHP file to compile */
-		&pVm,    /* OUT: Compiled PHP program */
-		0        /* IN: Compile flags */
+		&pVm,      /* OUT: Compiled PHP program */
+		0          /* IN: Compile flags */
 	);
 
 	/* Report script run-time errors */
@@ -93,13 +86,16 @@ int ph7_handler(struct mg_connection *conn, void *cbdata)
 	if( rc != PH7_OK ){ /* Compile error */
 		if( rc == PH7_IO_ERR )
 		{
-			logg("IO error while opening the target file");
+			logg("IO error while opening the target file (%s)", full_path);
+			// Fall back to HTTP server to handle the 404 event
 			return 0;
 		}
 		else if( rc == PH7_VM_ERR )
 		{
 			logg("VM initialization error");
-			return 0;
+			// Mark file as processes - this prevents the HTTP server
+			// from printing the raw PHP source code to the user
+			return 1;
 		}
 		else
 		{
@@ -117,50 +113,46 @@ int ph7_handler(struct mg_connection *conn, void *cbdata)
 				/* zErrLog is null terminated */
 				logg("PH7 compile error: %s", zErrLog);
 			}
+			// Mark file as processes - this prevents the HTTP server
+			// from printing the raw PHP source code to the user
 			return 1;
 		}
 	}
 
+	// Register Pi-hole's PH7 extensions (defined in subdirectory "ph7_ext/")
+	for(unsigned int i = 0; i < sizeof(aFunc)/sizeof(aFunc[0]); i++ )
+	{
+		rc = ph7_create_function(pVm, aFunc[i].zName, aFunc[i].xProc, NULL /* NULL: No private data */);
+		if( rc != PH7_OK ){
+			logg("Error while registering foreign function %s()", aFunc[i].zName);
+		}
+	}
+
+	// Execute virtual machine
 	rc = ph7_vm_exec(pVm,0);
 	if( rc != PH7_OK )
 	{
 		logg("VM execution error");
-		return 0;
+		// Mark file as processes - this prevents the HTTP server
+		// from printing the raw PHP source code to the user
+		return 1;
 	}
 
-	/*
-	* Now we have our script compiled,it's time to configure our VM.
-	* We will install the VM output consumer callback defined above
-	* so that we can consume the VM output and redirect it to STDOUT.
-	*/
-
-	/* Extract the output */
+	// Extract and send the output (if any)
+	const void *pOut = NULL;
+	unsigned int nLen = 0u;
 	rc = ph7_vm_config(pVm, PH7_VM_CONFIG_EXTRACT_OUTPUT, &pOut, &nLen);
-
 	if(nLen > 0)
 	{
 		mg_printf(conn, "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n");
 		mg_write(conn, pOut, nLen);
 	}
 
-#if 0
-	const char *zErrLog;
-	int niLen;
-	/* Extract error log */
-	ph7_config(
-		pEngine,
-		PH7_CONFIG_ERR_LOG,
-		&zErrLog, /* First arg*/
-		&niLen /* Second arg */
-	);
-
-	if( niLen > 0 ){
-		logg("%s", zErrLog); /* Output*/
-	}
-#endif
-
+	// Reset and release the virtual machine
 	ph7_vm_reset(pVm);
+	ph7_vm_release(pVm);
 
+	// Processed the file
 	return 1;
 }
 
@@ -172,24 +164,15 @@ void init_ph7(void)
 		return;
 	}
 
-	/* Set an error log consumer callback. This callback [Output_Consumer()] will
-	* redirect all compile-time error messages to STDOUT.
-	*/
-	ph7_config(pEngine,PH7_VM_CONFIG_OUTPUT,
-		Output_Consumer, // Error log consumer
-		0 // NULL: Callback Private data
-		);
-/*
-	ph7_config(pEngine,PH7_CONFIG_ERR_OUTPUT,
-		Output_Consumer, // Error log consumer
-		0 // NULL: Callback Private data
-		);*/
+	// Set an error log consumer callback. This callback will
+	// receive all compile-time error messages to 
+	ph7_config(pEngine,PH7_VM_CONFIG_OUTPUT, PH7_error_report, NULL /* NULL: No private data */);
 
 	// Prepare include paths
 	// var/www/html/admin (may be different due to user configuration)
 	const size_t webroot_len = strlen(httpsettings.webroot);
 	const size_t webhome_len = strlen(httpsettings.webhome);
-	webroot_with_home = calloc(webroot_len+webhome_len+1, sizeof(char));
+	webroot_with_home = calloc(webroot_len + webhome_len + 1u, sizeof(char));
 	strcpy(webroot_with_home, httpsettings.webroot);
 	strcpy(webroot_with_home + webroot_len, httpsettings.webhome);
 	webroot_with_home[webroot_len + webhome_len] = '\0';
@@ -198,7 +181,7 @@ void init_ph7(void)
 	const char scripts_dir[] = "/scripts/pi-hole/php";
 	size_t scripts_dir_len = sizeof(scripts_dir);
 	size_t webroot_with_home_len = strlen(webroot_with_home);
-	webroot_with_home_and_scripts = calloc(webroot_with_home_len+scripts_dir_len+1, sizeof(char));
+	webroot_with_home_and_scripts = calloc(webroot_with_home_len + scripts_dir_len + 1u, sizeof(char));
 	strcpy(webroot_with_home_and_scripts, webroot_with_home);
 	strcpy(webroot_with_home_and_scripts + webroot_with_home_len, scripts_dir);
 	webroot_with_home_and_scripts[webroot_with_home_len + scripts_dir_len] = '\0';
@@ -206,7 +189,6 @@ void init_ph7(void)
 
 void ph7_terminate(void)
 {
-	ph7_vm_release(pVm);
 	ph7_release(pEngine);
 	free(webroot_with_home);
 	free(webroot_with_home_and_scripts);
