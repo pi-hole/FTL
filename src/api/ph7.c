@@ -44,8 +44,10 @@ static char *webroot_with_home_and_scripts = NULL;
  */
 static int Output_Consumer(const void *pOutput, unsigned int nOutputLen, void *pUserData /* Unused */)
 {
-	logg("PH7 error:");
-	logg("%.*s", nOutputLen, (const char*)pOutput);
+	// Log error message, strip trailing newline character if any
+	if(((const char*)pOutput)[nOutputLen-1] == '\n')
+		nOutputLen--;
+	logg("PH7 error: %.*s", nOutputLen, (const char*)pOutput);
 	return PH7_OK;
 }
 
@@ -61,16 +63,19 @@ int ph7_handler(struct mg_connection *conn, void *cbdata)
 
 	// Build full path of PHP script on our machine
 	const size_t webroot_len = strlen(httpsettings.webroot);
-	const size_t local_uri_len = strlen(req_info->local_uri+1);
+	const size_t local_uri_len = strlen(req_info->local_uri + 1u); // +1 to skip the initial '/'
 	char full_path[webroot_len + local_uri_len + 2];
-	strncpy(full_path, httpsettings.webroot, webroot_len);
+	strcpy(full_path, httpsettings.webroot);
 	full_path[webroot_len] = '/';
-	strncpy(full_path + webroot_len + 1u, req_info->local_uri + 1, local_uri_len);
+	strncpy(full_path + webroot_len + 1u, req_info->local_uri + 1u, local_uri_len);
 	full_path[webroot_len + local_uri_len + 1u] = '\0';
 	if(config.debug & DEBUG_API)
 		logg("Full path of PHP script: %s", full_path);
 
-	/* Now,it's time to compile our PHP file */
+	// Compile PHP script into byte-code
+	// This usually takes only 1-2 msec even for long scripts
+	// (measrued on a Raspberry Pi 3), so there is little
+	// point in buffering the compiled script somewhere
 	rc = ph7_compile_file(
 		pEngine, /* PH7 Engine */
 		full_path, /* Path to the PHP file to compile */
@@ -100,15 +105,19 @@ int ph7_handler(struct mg_connection *conn, void *cbdata)
 		{
 			logg("Compile error (%d)", rc);
 
+			mg_printf(conn, "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n"
+			          "PHP compilation error, check %s for further details.",
+			          FTLfiles.log);
+
 			/* Extract error log */
-			const char *zErrLog;
-			int niLen;
+			const char *zErrLog = NULL;
+			int niLen = 0;
 			ph7_config(pEngine, PH7_CONFIG_ERR_LOG, &zErrLog, &niLen);
 			if( niLen > 0 ){
 				/* zErrLog is null terminated */
-				logg("PH7 error: %s", zErrLog);
+				logg("PH7 compile error: %s", zErrLog);
 			}
-			return 0;
+			return 1;
 		}
 	}
 
@@ -132,7 +141,6 @@ int ph7_handler(struct mg_connection *conn, void *cbdata)
 	{
 		mg_printf(conn, "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n");
 		mg_write(conn, pOut, nLen);
-		logg("Output length: %u", nLen);
 	}
 
 #if 0
@@ -182,17 +190,17 @@ void init_ph7(void)
 	const size_t webroot_len = strlen(httpsettings.webroot);
 	const size_t webhome_len = strlen(httpsettings.webhome);
 	webroot_with_home = calloc(webroot_len+webhome_len+1, sizeof(char));
-	strncpy(webroot_with_home, httpsettings.webroot, webroot_len);
-	strncpy(webroot_with_home + webroot_len, httpsettings.webhome, webhome_len);
+	strcpy(webroot_with_home, httpsettings.webroot);
+	strcpy(webroot_with_home + webroot_len, httpsettings.webhome);
 	webroot_with_home[webroot_len + webhome_len] = '\0';
 
 	// var/www/html/admin/scripts/pi-hole/php (may be different due to user configuration)
 	const char scripts_dir[] = "/scripts/pi-hole/php";
+	size_t scripts_dir_len = sizeof(scripts_dir);
 	size_t webroot_with_home_len = strlen(webroot_with_home);
-	size_t scripts_dir_len = strlen(scripts_dir);
 	webroot_with_home_and_scripts = calloc(webroot_with_home_len+scripts_dir_len+1, sizeof(char));
-	strncpy(webroot_with_home_and_scripts, webroot_with_home, webroot_with_home_len);
-	strncpy(webroot_with_home_and_scripts + webroot_with_home_len, scripts_dir, scripts_dir_len);
+	strcpy(webroot_with_home_and_scripts, webroot_with_home);
+	strcpy(webroot_with_home_and_scripts + webroot_with_home_len, scripts_dir);
 	webroot_with_home_and_scripts[webroot_with_home_len + scripts_dir_len] = '\0';
 }
 
