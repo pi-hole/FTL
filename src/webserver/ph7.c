@@ -53,7 +53,7 @@ int ph7_handler(struct mg_connection *conn, void *cbdata)
 	int rc;
 
 	/* Handler may access the request info using mg_get_request_info */
-	const struct mg_request_info * req_info = mg_get_request_info(conn);
+	const struct mg_request_info *req_info = mg_get_request_info(conn);
 
 	// Build full path of PHP script on our machine
 	const size_t webroot_len = strlen(httpsettings.webroot);
@@ -76,14 +76,8 @@ int ph7_handler(struct mg_connection *conn, void *cbdata)
 		0          /* IN: Compile flags */
 	);
 
-	/* Report script run-time errors */
-	ph7_vm_config(pVm, PH7_VM_CONFIG_ERR_REPORT);
-
-	/* Configure include paths */
-	ph7_vm_config(pVm, PH7_VM_CONFIG_IMPORT_PATH, webroot_with_home);
-	ph7_vm_config(pVm, PH7_VM_CONFIG_IMPORT_PATH, webroot_with_home_and_scripts);
-
-	if( rc != PH7_OK ){ /* Compile error */
+	if( rc != PH7_OK ) // Compile error
+	{
 		if( rc == PH7_IO_ERR )
 		{
 			logg("IO error while opening the target file (%s)", full_path);
@@ -118,6 +112,18 @@ int ph7_handler(struct mg_connection *conn, void *cbdata)
 			return 1;
 		}
 	}
+
+	// Pass raw HTTP request head to PH7 so it can decode the queries and
+	// fill the appropriate arrays such as $_GET, $_POST, $_REQUEST,
+	// $_SERVER, etc. Length -1 means PH7 computes the buffer length itself
+	ph7_vm_config(pVm, PH7_VM_CONFIG_HTTP_REQUEST, req_info->raw_http_head, -1);
+
+	/* Report script run-time errors */
+	ph7_vm_config(pVm, PH7_VM_CONFIG_ERR_REPORT);
+
+	/* Configure include paths */
+	ph7_vm_config(pVm, PH7_VM_CONFIG_IMPORT_PATH, webroot_with_home);
+	ph7_vm_config(pVm, PH7_VM_CONFIG_IMPORT_PATH, webroot_with_home_and_scripts);
 
 	// Register Pi-hole's PH7 extensions (defined in subdirectory "ph7_ext/")
 	for(unsigned int i = 0; i < sizeof(aFunc)/sizeof(aFunc[0]); i++ )

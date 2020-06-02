@@ -174,6 +174,7 @@ struct mg_request_info {
 
 	const char *acceptedWebSocketSubprotocol; /* websocket subprotocol,
 	                                           * accepted during handshake */
+	char raw_http_head[16384]; // <---- Pi-hole addition
 };
 
 

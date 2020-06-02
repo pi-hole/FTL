@@ -123,7 +123,7 @@ void http_init(void)
 		free(api_path);
 	}
 
-	// Register PHP request handler
+	// Initialize PH7 engine and register PHP request handler
 	init_ph7();
 	mg_set_request_handler(ctx, "**.php$", ph7_handler, 0);
 }

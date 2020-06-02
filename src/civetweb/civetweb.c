@@ -4900,6 +4900,7 @@ void my_set_cookie_header(struct mg_connection *conn,
 {
 	conn->cookie_header = mg_strdup(cookie_header);
 }
+
 /********************************************************************************************/
 
 int
@@ -10638,6 +10639,10 @@ parse_http_request(char *buf, int len, struct mg_request_info *ri)
 	ri->remote_user = ri->request_method = ri->request_uri = ri->http_version =
 	    NULL;
 	ri->num_headers = 0;
+
+	/******************** Pi-hole modification ********************/
+	strncpy(ri->raw_http_head, buf, sizeof(ri->raw_http_head));
+	/**************************************************************/
 
 	/* RFC says that all initial whitespaces should be ingored */
 	/* This included all leading \r and \n (isspace) */
@@ -18288,7 +18293,6 @@ consume_socket(struct mg_context *ctx, struct socket *sp, int thread_index)
 
 	return !ctx->stop_flag;
 }
-
 
 /* Master thread adds accepted socket to a queue */
 static void
