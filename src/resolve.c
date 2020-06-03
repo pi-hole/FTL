@@ -256,7 +256,8 @@ static size_t resolveAndAddHostname(size_t ippos, size_t oldnamepos)
 	char* newname = resolveHostname(ipaddr);
 
 	// If no hostname was found, try to obtain hostname from the network table
-	if(strlen(newname) == 0)
+	// This may be disabled due to a user setting
+	if(strlen(newname) == 0 && config.names_from_netdb)
 	{
 		free(newname);
 		newname = getDatabaseHostname(ipaddr);

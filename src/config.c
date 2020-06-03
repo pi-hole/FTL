@@ -372,6 +372,25 @@ void read_FTLconf(void)
 	else
 		logg("   BLOCK_ESNI: Disabled");
 
+	// NAMES_FROM_NETDB
+	// Should we use the fallback option to try to obtain client names from
+	// checking the network table? Assume this is an IPv6 client without a
+	// host names itself but the network table tells us that this is the same
+	// device where we have a host names for its IPv4 address. In this case,
+	// we use the host name associated to the other address as this is the same
+	// device. This behavior can be disabled using NAMES_FROM_NETDB=false
+	// defaults to: true
+	config.names_from_netdb = true;
+	buffer = parse_FTLconf(fp, "NAMES_FROM_NETDB");
+
+	if(buffer != NULL && strcasecmp(buffer, "false") == 0)
+		config.names_from_netdb = false;
+
+	if(config.names_from_netdb)
+		logg("   NAMES_FROM_NETDB: Enabled, trying to get names from network database");
+	else
+		logg("   NAMES_FROM_NETDB: Disabled");
+
 	// Read DEBUG_... setting from pihole-FTL.conf
 	read_debuging_settings(fp);
 
