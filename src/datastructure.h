@@ -56,11 +56,12 @@ typedef struct {
 typedef struct {
 	unsigned char magic;
 	bool new;
+	bool found_group;
 	int count;
 	int blockedcount;
 	int overTime[OVERTIME_SLOTS];
 	unsigned int numQueriesARP;
-	char *groups;
+	size_t groupspos;
 	size_t ippos;
 	size_t namepos;
 	time_t lastQuery;
