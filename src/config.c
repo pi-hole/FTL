@@ -39,6 +39,7 @@ static size_t size = 0;
 static char *parse_FTLconf(FILE *fp, const char * key);
 static void release_config_memory(void);
 static void getpath(FILE* fp, const char *option, const char *defaultloc, char **pointer);
+static bool read_bool(const char *option, const bool fallback);
 
 void getLogFilePath(void)
 {
@@ -113,11 +114,8 @@ void read_FTLconf(void)
 
 	// AAAA_QUERY_ANALYSIS
 	// defaults to: Yes
-	config.analyze_AAAA = true;
 	buffer = parse_FTLconf(fp, "AAAA_QUERY_ANALYSIS");
-
-	if(buffer != NULL && strcasecmp(buffer, "no") == 0)
-		config.analyze_AAAA = false;
+	config.analyze_AAAA = read_bool(buffer, true);
 
 	if(config.analyze_AAAA)
 		logg("   AAAA_QUERY_ANALYSIS: Show AAAA queries");
@@ -141,11 +139,8 @@ void read_FTLconf(void)
 
 	// RESOLVE_IPV6
 	// defaults to: Yes
-	config.resolveIPv6 = true;
 	buffer = parse_FTLconf(fp, "RESOLVE_IPV6");
-
-	if(buffer != NULL && strcasecmp(buffer, "no") == 0)
-		config.resolveIPv6 = false;
+	config.resolveIPv6 = read_bool(buffer, true);
 
 	if(config.resolveIPv6)
 		logg("   RESOLVE_IPV6: Resolve IPv6 addresses");
@@ -154,10 +149,9 @@ void read_FTLconf(void)
 
 	// RESOLVE_IPV4
 	// defaults to: Yes
-	config.resolveIPv4 = true;
 	buffer = parse_FTLconf(fp, "RESOLVE_IPV4");
-	if(buffer != NULL && strcasecmp(buffer, "no") == 0)
-		config.resolveIPv4 = false;
+	config.resolveIPv4 = read_bool(buffer, true);
+
 	if(config.resolveIPv4)
 		logg("   RESOLVE_IPV4: Resolve IPv4 addresses");
 	else
@@ -245,8 +239,8 @@ void read_FTLconf(void)
 
 	// IGNORE_LOCALHOST
 	// defaults to: false
-	config.ignore_localhost = false;
 	buffer = parse_FTLconf(fp, "IGNORE_LOCALHOST");
+	config.ignore_localhost = read_bool(buffer, false);
 
 	if(buffer != NULL && strcasecmp(buffer, "yes") == 0)
 		config.ignore_localhost = true;
@@ -280,8 +274,8 @@ void read_FTLconf(void)
 
 	// ANALYZE_ONLY_A_AND_AAAA
 	// defaults to: false
-	config.analyze_only_A_AAAA = false;
 	buffer = parse_FTLconf(fp, "ANALYZE_ONLY_A_AND_AAAA");
+	config.analyze_only_A_AAAA = read_bool(buffer, false);
 
 	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
 		config.analyze_only_A_AAAA = true;
@@ -293,10 +287,9 @@ void read_FTLconf(void)
 
 	// DBIMPORT
 	// defaults to: Yes
-	config.DBimport = true;
 	buffer = parse_FTLconf(fp, "DBIMPORT");
-	if(buffer != NULL && strcasecmp(buffer, "no") == 0)
-		config.DBimport = false;
+	config.DBimport = read_bool(buffer, true);
+
 	if(config.DBimport)
 		logg("   DBIMPORT: Importing history from database");
 	else
@@ -322,11 +315,8 @@ void read_FTLconf(void)
 
 	// PARSE_ARP_CACHE
 	// defaults to: true
-	config.parse_arp_cache = true;
 	buffer = parse_FTLconf(fp, "PARSE_ARP_CACHE");
-
-	if(buffer != NULL && strcasecmp(buffer, "false") == 0)
-		config.parse_arp_cache = false;
+	config.parse_arp_cache = read_bool(buffer, true);
 
 	if(config.parse_arp_cache)
 		logg("   PARSE_ARP_CACHE: Active");
@@ -335,11 +325,8 @@ void read_FTLconf(void)
 
 	// CNAME_DEEP_INSPECT
 	// defaults to: true
-	config.cname_inspection = true;
 	buffer = parse_FTLconf(fp, "CNAME_DEEP_INSPECT");
-
-	if(buffer != NULL && strcasecmp(buffer, "false") == 0)
-		config.cname_inspection = false;
+	config.cname_inspection = read_bool(buffer, true);
 
 	if(config.cname_inspection)
 		logg("   CNAME_DEEP_INSPECT: Active");
@@ -353,19 +340,14 @@ void read_FTLconf(void)
 	config.delay_startup = 0;
 	if(buffer != NULL && sscanf(buffer, "%u", &config.delay_startup) &&
 	   (config.delay_startup > 0 && config.delay_startup <= 300))
-	{
 		logg("   DELAY_STARTUP: Requested to wait %u seconds during startup.", config.delay_startup);
-	}
 	else
 		logg("   DELAY_STARTUP: No delay requested.");
 
 	// BLOCK_ESNI
 	// defaults to: true
-	config.block_esni = true;
 	buffer = parse_FTLconf(fp, "BLOCK_ESNI");
-
-	if(buffer != NULL && strcasecmp(buffer, "false") == 0)
-		config.block_esni = false;
+	config.block_esni = read_bool(buffer, true);
 
 	if(config.block_esni)
 		logg("   BLOCK_ESNI: Enabled, blocking _esni.{blocked domain}");
@@ -581,7 +563,7 @@ static void setDebugOption(FILE* fp, const char* option, int16_t bitmask)
 		return;
 
 	// Set bit if value equals "true", clear bit otherwise
-	if(strcasecmp(buffer, "true") == 0)
+	if(read_bool(buffer, false))
 		config.debug |= bitmask;
 	else
 		config.debug &= ~bitmask;
@@ -707,4 +689,20 @@ void read_debuging_settings(FILE *fp)
 		// this function (initial config parsing)
 		release_config_memory();
 	}
+}
+
+static bool read_bool(const char *option, const bool fallback)
+{
+	if(option == NULL)
+		return fallback;
+
+	else if(strcasecmp(option, "false") == 0 ||
+	        strcasecmp(option, "no") == 0)
+		return false;
+
+	else if(strcasecmp(option, "true") == 0 ||
+	        strcasecmp(option, "yes") == 0)
+		return true;
+
+	return fallback;
 }
