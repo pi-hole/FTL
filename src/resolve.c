@@ -107,8 +107,8 @@ static char *resolveHostname(const char *addr)
 		{
 			logg(" ---> \"\" (configured to not resolve %s host names)",
 			     IPv6 ? "IPv6" : "IPv4");
-			return strdup("");
 		}
+		return strdup("");
 	}
 
 	// Initialize resolver subroutines if trying to resolve for the first time
