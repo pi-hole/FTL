@@ -100,6 +100,14 @@ bool check_capabilities(void)
 		logg("*************************************************************************");
 		capabilities_okay = false;
 	}
+	if (!(data->permitted & (1 << CAP_SYS_NICE)))
+	{
+		// Necessary for dynamic port binding
+		logg("*************************************************************************");
+		logg("* WARNING: Required Linux capability CAP_SYS_NICE not available         *");
+		logg("*************************************************************************");
+		capabilities_okay = false;
+	}
 
 	// Free allocated memory
 	free(hdr);
