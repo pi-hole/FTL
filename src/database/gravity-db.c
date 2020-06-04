@@ -203,7 +203,8 @@ static bool get_client_groupids(clientsData* client)
 {
 	char *querystr = NULL;
 	const char *ip = getstr(client->ippos);
-	client->groups = NULL;
+	client->found_group = false;
+	client->groupspos = 0u;
 
 	// Do not proceed when database is not available
 	if(!gravityDB_opened && !gravityDB_open())
@@ -257,7 +258,8 @@ static bool get_client_groupids(clientsData* client)
 	{
 		// Found no record for this client in the database
 		// This makes this client qualify for the special "all" group
-		client->groups = strdup("0");
+		client->groupspos = addstr("0");
+		client->found_group = true;
 	}
 	else
 	{
@@ -273,9 +275,10 @@ static bool get_client_groupids(clientsData* client)
 	free(querystr);
 	querystr = NULL;
 
-	if(client->groups != NULL)
+	if(client->found_group)
 	{
-		// The client is not configured through the client table, return early
+		// The client is not configured through the client table, we
+		// substituted the default group. Return early here.
 		return true;
 	}
 
@@ -327,15 +330,17 @@ static bool get_client_groupids(clientsData* client)
 		// There is a record for this client in the database
 		const char* result = (const char*)sqlite3_column_text(table_stmt, 0);
 		if(result != NULL)
-			client->groups = strdup(result);
-		else
-			client->groups = strdup("");
+		{
+			client->groupspos = addstr(result);
+			client->found_group = true;
+		}
 	}
 	else if(rc == SQLITE_DONE)
 	{
 		// Found no record for this client in the database
 		// -> No associated groups
-		client->groups = strdup("");
+		client->groupspos = addstr("");
+		client->found_group = true;
 	}
 	else
 	{
@@ -421,7 +426,7 @@ bool gravityDB_prepare_client_statements(const int clientID, clientsData *client
 
 	// Get associated groups for this client (if defined)
 	char *querystr = NULL;
-	if(client->groups == NULL && !get_client_groupids(client))
+	if(!client->found_group && !get_client_groupids(client))
 		return false;
 
 	// Prepare whitelist statement
@@ -432,7 +437,7 @@ bool gravityDB_prepare_client_statements(const int clientID, clientsData *client
 	// of EXISTS().
 	if(config.debug & DEBUG_DATABASE)
 		logg("gravityDB_open(): Preparing vw_whitelist statement for client %s", clientip);
-	querystr = get_client_querystr("vw_whitelist", client->groups);
+	querystr = get_client_querystr("vw_whitelist", getstr(client->groupspos));
 	sqlite3_stmt* stmt = NULL;
 	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK )
@@ -447,7 +452,7 @@ bool gravityDB_prepare_client_statements(const int clientID, clientsData *client
 	// Prepare gravity statement
 	if(config.debug & DEBUG_DATABASE)
 		logg("gravityDB_open(): Preparing vw_gravity statement for client %s", clientip);
-	querystr = get_client_querystr("vw_gravity", client->groups);
+	querystr = get_client_querystr("vw_gravity", getstr(client->groupspos));
 	rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
@@ -461,7 +466,7 @@ bool gravityDB_prepare_client_statements(const int clientID, clientsData *client
 	// Prepare blacklist statement
 	if(config.debug & DEBUG_DATABASE)
 		logg("gravityDB_open(): Preparing vw_blacklist statement for client %s", clientip);
-	querystr = get_client_querystr("vw_blacklist", client->groups);
+	querystr = get_client_querystr("vw_blacklist", getstr(client->groupspos));
 	rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
@@ -497,12 +502,12 @@ static inline void gravityDB_finalize_client_statements(const int clientID)
 		gravity_stmt->set(gravity_stmt, clientID, NULL);
 	}
 
-	// Free group memory
+	// Unset group found property to trigger a check next time the
+	// client sends a query
 	clientsData* client = getClient(clientID, true);
-	if(client != NULL && client->groups != NULL)
+	if(client != NULL)
 	{
-		free(client->groups);
-		client->groups = NULL;
+		client->found_group = false;
 	}
 }
 
@@ -888,13 +893,14 @@ bool gravityDB_get_regex_client_groups(clientsData* client, const int numregex, 
 	gravityDB_check_fork();
 
 	char *querystr = NULL;
-	if(client->groups == NULL && !get_client_groupids(client))
+	if(!client->found_group && !get_client_groupids(client))
 		return false;
 
 	// Group filtering
-	if(asprintf(&querystr, "SELECT id from %s WHERE group_id IN (%s);", table, client->groups) < 1)
+	const char *groups = getstr(client->groupspos);
+	if(asprintf(&querystr, "SELECT id from %s WHERE group_id IN (%s);", table, groups) < 1)
 	{
-		logg("gravityDB_get_regex_client_groups(%s, %s) - asprintf() error", table, client->groups);
+		logg("gravityDB_get_regex_client_groups(%s, %s) - asprintf() error", table, groups);
 		return false;
 	}
 

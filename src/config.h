@@ -39,6 +39,7 @@ typedef struct {
 	bool parse_arp_cache;
 	bool cname_inspection;
 	bool block_esni;
+	bool names_from_netdb;
 } ConfigStruct;
 
 typedef struct {
