@@ -24,8 +24,14 @@ sqlite3 *FTL_db = NULL;
 bool database = true;
 bool DBdeleteoldqueries = false;
 long int lastdbindex = 0;
+static bool db_avail = false;
 
 static pthread_mutex_t dblock;
+
+__attribute__ ((pure)) bool FTL_DB_avail(void)
+{
+	return db_avail;
+}
 
 void dbclose(void)
 {
@@ -36,6 +42,8 @@ void dbclose(void)
 		rc = sqlite3_close(FTL_db);
 		FTL_db = NULL;
 	}
+
+	db_avail = false;
 
 	// Report any error
 	if( rc != SQLITE_OK )
@@ -85,6 +93,8 @@ bool dbopen(void)
 		dbclose();
 		return false;
 	}
+
+	db_avail = true;
 
 	return true;
 }

@@ -22,6 +22,8 @@
 #include "database/network-table.h"
 // struct _res
 #include <resolv.h>
+// logg_hostname_warning()
+#include "database/message-table.h"
 
 static bool res_initialized = false;
 
@@ -45,8 +47,10 @@ static bool valid_hostname(char* name, const char* clientip)
 
 	// Iterate over characters in hostname
 	// to check for legal char: A-Z a-z 0-9 - _ .
-	for (char c; (c = *name); name++)
+	unsigned int len = strlen(name);
+	for (unsigned int i = 0; i < len; i++)
 	{
+		const char c = name[i];
 		if ((c >= 'A' && c <= 'Z') ||
 		    (c >= 'a' && c <= 'z') ||
 		    (c >= '0' && c <= '9') ||
@@ -56,8 +60,7 @@ static bool valid_hostname(char* name, const char* clientip)
 			continue;
 
 		// Invalid character found, log and return hostname being invalid
-		logg("WARN: Hostname of client %s contains invalid character: %c (char code %d)",
-		     clientip, (unsigned char)c, (unsigned char)c);
+		logg_hostname_warning(clientip, name, i);
 		return false;
 	}
 
