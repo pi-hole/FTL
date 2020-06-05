@@ -1319,6 +1319,25 @@ void updateMACVendorRecords(void)
 
 char* __attribute__((malloc)) getDatabaseHostname(const char* ipaddr)
 {
+	// Test if this is an IPv6 address
+	bool IPv6 = false;
+	if(ipaddr != NULL && strstr(ipaddr,":") != NULL)
+	{
+		IPv6 = true;
+	}
+
+	// Do we want to resolve IPv4/IPv6 names at all?
+	if( (IPv6 && !config.resolveIPv6) ||
+	   (!IPv6 && !config.resolveIPv4))
+	{
+		if(config.debug & DEBUG_RESOLVER)
+		{
+			logg(" ---> \"\" (configured to not resolve %s host names)",
+			     IPv6 ? "IPv6" : "IPv4");
+		}
+		return strdup("");
+	}
+
 	// Open pihole-FTL.db database file
 	if(!dbopen())
 	{
@@ -1545,4 +1564,137 @@ char* __attribute__((malloc)) getIfaceFromIP(const char* ipaddr)
 	dbclose();
 
 	return iface;
+}
+
+// Resolve unknown names of recently seen IP addresses in network table
+void resolveNetworkTableNames(void)
+{
+	// Open database file
+	if(!dbopen())
+	{
+		logg("resolveNetworkTableNames() - Failed to open DB");
+		return;
+	}
+
+	const char sql[] = "BEGIN TRANSACTION IMMEDIATE";
+	int rc = dbquery(sql);
+	if( rc != SQLITE_OK )
+	{
+		const char *text;
+		if( rc == SQLITE_BUSY )
+		{
+			text = "WARNING";
+		}
+		else
+		{
+			text = "ERROR";
+		}
+
+		// dbquery() above already logs the reson for why the query failed
+		logg("%s: Trying to resolve unknown network table host names (\"%s\") failed", text, sql);
+		dbclose();
+		return;
+	}
+
+	// Get IP addresses seen within the last 24 hours with empty or NULL host names
+	const char querystr[] = "SELECT ip FROM network_addresses "
+	                               "WHERE lastSeen > cast(strftime('%%s', 'now') as int)-86400;";
+
+	// Prepare query
+	sqlite3_stmt *table_stmt = NULL;
+	rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &table_stmt, NULL);
+	if(rc != SQLITE_OK)
+	{
+		logg("resolveNetworkTableNames() - SQL error prepare: %s",
+		     sqlite3_errstr(rc));
+		sqlite3_finalize(table_stmt);
+		dbclose();
+		return;
+	}
+
+
+	// Get data
+	while((rc = sqlite3_step(table_stmt)) == SQLITE_ROW)
+	{
+		// Get IP address from database
+		const char* ip = (const char*)sqlite3_column_text(table_stmt, 0);
+
+		if(config.debug & DEBUG_DATABASE)
+			logg("Resolving database IP %s", ip);
+
+		// Try to obtain host name
+		char* newname = resolveHostname(ip);
+
+		if(config.debug & DEBUG_DATABASE)
+			logg("---> \"%s\"", newname);
+
+		// Store new host name in database if not empty
+		if(newname != NULL && strlen(newname) > 0)
+		{
+			const char updatestr[] = "UPDATE network_addresses "
+			                                "SET name = ?1,"
+			                                    "nameUpdated = cast(strftime('%s', 'now') as int) "
+			                                "WHERE ip = ?2;";
+			sqlite3_stmt *update_stmt = NULL;
+			int rc2 = sqlite3_prepare_v2(FTL_db, updatestr, -1, &update_stmt, NULL);
+			if(rc2 != SQLITE_OK){
+				logg("resolveNetworkTableNames(%s -> \"%s\") - SQL error prepare: %s",
+					ip, newname, sqlite3_errstr(rc2));
+				sqlite3_finalize(update_stmt);
+				break;
+			}
+
+			// Bind newname to prepared statement
+			if((rc2 = sqlite3_bind_text(update_stmt, 1, newname, -1, SQLITE_STATIC)) != SQLITE_OK)
+			{
+				logg("resolveNetworkTableNames(%s -> \"%s\"): Failed to bind newname: %s",
+					ip, newname, sqlite3_errstr(rc2));
+				sqlite3_finalize(update_stmt);
+				break;
+			}
+
+			// Bind ip to prepared statement
+			if((rc2 = sqlite3_bind_text(update_stmt, 2, ip, -1, SQLITE_STATIC)) != SQLITE_OK)
+			{
+				logg("resolveNetworkTableNames(%s -> \"%s\"): Failed to bind ip: %s",
+					ip, newname, sqlite3_errstr(rc2));
+				sqlite3_finalize(update_stmt);
+				break;
+			}
+
+			if(config.debug & DEBUG_DATABASE)
+				logg("dbquery: \"%s\" with ?1 = \"%s\" and ?2 = \"%s\"", updatestr, newname, ip);
+
+			rc2 = sqlite3_step(update_stmt);
+			if(rc2 != SQLITE_BUSY && rc2 != SQLITE_DONE)
+			{
+				// Any return code that is neither SQLITE_BUSY not SQLITE_ROW
+				// is a real error we should log
+				logg("resolveNetworkTableNames(%s -> \"%s\"): Failed to perform step: %s",
+				     ip, newname, sqlite3_errstr(rc2));
+				sqlite3_finalize(update_stmt);
+				break;
+			}
+
+			// Finalize host name update statement
+			sqlite3_finalize(update_stmt);
+		}
+		free(newname);
+	}
+
+	// Possible error handling and reporting
+	if(rc != SQLITE_DONE)
+	{
+		logg("resolveNetworkTableNames() - SQL error step: %s",
+		     sqlite3_errstr(rc));
+		sqlite3_finalize(table_stmt);
+		dbclose();
+		return;
+	}
+
+	// Close and unlock database connection
+	sqlite3_finalize(table_stmt);
+
+	dbquery("COMMIT;");
+	dbclose();
 }

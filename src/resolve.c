@@ -22,10 +22,12 @@
 #include "database/network-table.h"
 // struct _res
 #include <resolv.h>
-// FTL_db
-#include "database/common.h"
+// resolveNetworkTableNames()
+#include "database/network-table.h"
 // resolver_ready
 #include "daemon.h"
+// logg_hostname_warning()
+#include "database/message-table.h"
 
 static bool res_initialized = false;
 
@@ -49,8 +51,10 @@ static bool valid_hostname(char* name, const char* clientip)
 
 	// Iterate over characters in hostname
 	// to check for legal char: A-Z a-z 0-9 - _ .
-	for (char c; (c = *name); name++)
+	unsigned int len = strlen(name);
+	for (unsigned int i = 0; i < len; i++)
 	{
+		const char c = name[i];
 		if ((c >= 'A' && c <= 'Z') ||
 		    (c >= 'a' && c <= 'z') ||
 		    (c >= '0' && c <= '9') ||
@@ -60,8 +64,7 @@ static bool valid_hostname(char* name, const char* clientip)
 			continue;
 
 		// Invalid character found, log and return hostname being invalid
-		logg("WARN: Hostname of client %s contains invalid character: %c (char code %d)",
-		     clientip, (unsigned char)c, (unsigned char)c);
+		logg_hostname_warning(clientip, name, i);
 		return false;
 	}
 
@@ -111,8 +114,8 @@ char *resolveHostname(const char *addr)
 		{
 			logg(" ---> \"\" (configured to not resolve %s host names)",
 			     IPv6 ? "IPv6" : "IPv4");
-			return strdup("");
 		}
+		return strdup("");
 	}
 
 	// Initialize resolver subroutines if trying to resolve for the first time
@@ -260,7 +263,8 @@ static size_t resolveAndAddHostname(size_t ippos, size_t oldnamepos)
 	char* newname = resolveHostname(ipaddr);
 
 	// If no hostname was found, try to obtain hostname from the network table
-	if(strlen(newname) == 0)
+	// This may be disabled due to a user setting
+	if(strlen(newname) == 0 && config.names_from_netdb)
 	{
 		free(newname);
 		newname = getDatabaseHostname(ipaddr);
@@ -306,17 +310,17 @@ void resolveClients(const bool onlynew)
 	int skipped = 0;
 	for(int clientID = 0; clientID < clientscount; clientID++)
 	{
-		// Get client pointer
+		// Memory access needs to get locked
+		lock_shm();
+		// Get client pointer for the first time (reading data)
 		clientsData* client = getClient(clientID, true);
 		if(client == NULL)
 		{
-			logg("ERROR: Unable to get client pointer with ID %i, skipping...", clientID);
+			logg("ERROR: Unable to get client pointer (1) with ID %i, skipping...", clientID);
 			skipped++;
 			continue;
 		}
 
-		// Memory access needs to get locked
-		lock_shm();
 		bool newflag = client->new;
 		size_t ippos = client->ippos;
 		size_t oldnamepos = client->namepos;
@@ -334,6 +338,18 @@ void resolveClients(const bool onlynew)
 		size_t newnamepos = resolveAndAddHostname(ippos, oldnamepos);
 
 		lock_shm();
+		// Get client pointer for the second time (writing data)
+		// We cannot use the same pointer again as we released
+		// the lock in between so we cannot know if something
+		// happened to the shared memory object (resize event)
+		client = getClient(clientID, true);
+		if(client == NULL)
+		{
+			logg("ERROR: Unable to get client pointer (2) with ID %i, skipping...", clientID);
+			skipped++;
+			continue;
+		}
+
 		// Store obtained host name (may be unchanged)
 		client->namepos = newnamepos;
 		// Mark entry as not new
@@ -359,7 +375,9 @@ void resolveForwardDestinations(const bool onlynew)
 	int skipped = 0;
 	for(int upstreamID = 0; upstreamID < upstreams; upstreamID++)
 	{
-		// Get upstream pointer
+		// Memory access needs to get locked
+		lock_shm();
+		// Get upstream pointer for the first time (reading data)
 		upstreamsData* upstream = getUpstream(upstreamID, true);
 		if(upstream == NULL)
 		{
@@ -368,8 +386,6 @@ void resolveForwardDestinations(const bool onlynew)
 			continue;
 		}
 
-		// Memory access needs to get locked
-		lock_shm();
 		bool newflag = upstream->new;
 		size_t ippos = upstream->ippos;
 		size_t oldnamepos = upstream->namepos;
@@ -387,6 +403,18 @@ void resolveForwardDestinations(const bool onlynew)
 		size_t newnamepos = resolveAndAddHostname(ippos, oldnamepos);
 
 		lock_shm();
+		// Get upstream pointer for the second time (writing data)
+		// We cannot use the same pointer again as we released
+		// the lock in between so we cannot know if something
+		// happened to the shared memory object (resize event)
+		upstream = getUpstream(upstreamID, true);
+		if(upstream == NULL)
+		{
+			logg("ERROR: Unable to get upstream pointer with ID %i, skipping...", upstreamID);
+			skipped++;
+			continue;
+		}
+
 		// Store obtained host name (may be unchanged)
 		upstream->namepos = newnamepos;
 		// Mark entry as not new
@@ -399,139 +427,6 @@ void resolveForwardDestinations(const bool onlynew)
 		logg("%i / %i upstream server host names resolved",
 		     upstreams-skipped, upstreams);
 	}
-}
-
-// Resolve unknown names of recently seen IP addresses in network table
-static void resolveNetworkTableNames(void)
-{
-	// Open database file
-	if(!dbopen())
-	{
-		logg("resolveNetworkTableNames() - Failed to open DB");
-		return;
-	}
-
-	const char sql[] = "BEGIN TRANSACTION IMMEDIATE";
-	int rc = dbquery(sql);
-	if( rc != SQLITE_OK )
-	{
-		const char *text;
-		if( rc == SQLITE_BUSY )
-		{
-			text = "WARNING";
-		}
-		else
-		{
-			text = "ERROR";
-		}
-
-		// dbquery() above already logs the reson for why the query failed
-		logg("%s: Trying to resolve unknown network table host names (\"%s\") failed", text, sql);
-		dbclose();
-		return;
-	}
-
-	// Get IP addresses seen within the last 24 hours with empty or NULL host names
-	const char querystr[] = "SELECT ip FROM network_addresses "
-	                               "WHERE lastSeen > cast(strftime('%%s', 'now') as int)-86400;";
-
-	// Prepare query
-	sqlite3_stmt *table_stmt = NULL;
-	rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &table_stmt, NULL);
-	if(rc != SQLITE_OK)
-	{
-		logg("resolveNetworkTableNames() - SQL error prepare: %s",
-		     sqlite3_errstr(rc));
-		sqlite3_finalize(table_stmt);
-		dbclose();
-		return;
-	}
-
-
-	// Get data
-	while((rc = sqlite3_step(table_stmt)) == SQLITE_ROW)
-	{
-		// Get IP address from database
-		const char* ip = (const char*)sqlite3_column_text(table_stmt, 0);
-
-		if(config.debug & DEBUG_DATABASE)
-			logg("Resolving database IP %s", ip);
-
-		// Try to obtain host name
-		char* newname = resolveHostname(ip);
-
-		if(config.debug & DEBUG_DATABASE)
-			logg("---> \"%s\"", newname);
-
-		// Store new host name in database if not empty
-		if(newname != NULL && strlen(newname) > 0)
-		{
-			const char updatestr[] = "UPDATE network_addresses "
-			                                "SET name = ?1,"
-			                                    "nameUpdated = cast(strftime('%s', 'now') as int) "
-			                                "WHERE ip = ?2;";
-			sqlite3_stmt *update_stmt = NULL;
-			int rc2 = sqlite3_prepare_v2(FTL_db, updatestr, -1, &update_stmt, NULL);
-			if(rc2 != SQLITE_OK){
-				logg("resolveNetworkTableNames(%s -> \"%s\") - SQL error prepare: %s",
-					ip, newname, sqlite3_errstr(rc2));
-				sqlite3_finalize(update_stmt);
-				break;
-			}
-
-			// Bind newname to prepared statement
-			if((rc2 = sqlite3_bind_text(update_stmt, 1, newname, -1, SQLITE_STATIC)) != SQLITE_OK)
-			{
-				logg("resolveNetworkTableNames(%s -> \"%s\"): Failed to bind newname: %s",
-					ip, newname, sqlite3_errstr(rc2));
-				sqlite3_finalize(update_stmt);
-				break;
-			}
-
-			// Bind ip to prepared statement
-			if((rc2 = sqlite3_bind_text(update_stmt, 2, ip, -1, SQLITE_STATIC)) != SQLITE_OK)
-			{
-				logg("resolveNetworkTableNames(%s -> \"%s\"): Failed to bind ip: %s",
-					ip, newname, sqlite3_errstr(rc2));
-				sqlite3_finalize(update_stmt);
-				break;
-			}
-
-			if(config.debug & DEBUG_DATABASE)
-				logg("dbquery: \"%s\" with ?1 = \"%s\" and ?2 = \"%s\"", updatestr, newname, ip);
-
-			rc2 = sqlite3_step(update_stmt);
-			if(rc2 != SQLITE_BUSY && rc2 != SQLITE_DONE)
-			{
-				// Any return code that is neither SQLITE_BUSY not SQLITE_ROW
-				// is a real error we should log
-				logg("resolveNetworkTableNames(%s -> \"%s\"): Failed to perform step: %s",
-				     ip, newname, sqlite3_errstr(rc2));
-				sqlite3_finalize(update_stmt);
-				break;
-			}
-
-			// Finalize host name update statement
-			sqlite3_finalize(update_stmt);
-		}
-		free(newname);
-	}
-
-	// Possible error handling and reporting
-	if(rc != SQLITE_DONE)
-	{
-		logg("resolveNetworkTableNames() - SQL error step: %s",
-		     sqlite3_errstr(rc));
-		sqlite3_finalize(table_stmt);
-		dbclose();
-		return;
-	}
-
-	// Close and unlock database connection
-	sqlite3_finalize(table_stmt);
-
-	dbquery("COMMIT;");
-	dbclose();
 }
 
 void *DNSclient_thread(void *val)

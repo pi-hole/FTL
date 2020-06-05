@@ -16,7 +16,8 @@ void logg_regex_warning(const char *type, const char *warning, const int dbindex
 void logg_subnet_warning(const char *ip, const int matching_count, const char *matching_ids,
                          const int matching_bits, const char *chosen_match_text,
                          const int chosen_match_id);
+void logg_hostname_warning(const char *ip, const char *name, const unsigned int pos);
 
-enum message_type { REGEX_MESSAGE, SUBNET_MESSAGE, MAX_MESSAGE };
+enum message_type { REGEX_MESSAGE, SUBNET_MESSAGE, HOSTNAME_MESSAGE, MAX_MESSAGE };
 
 #endif //MESSAGETABLE_H

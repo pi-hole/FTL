@@ -198,7 +198,8 @@ int findClientID(const char *clientIP, const bool count)
 	client->lastQuery = 0;
 	client->numQueriesARP = client->count;
 	// Configured groups are yet unknown
-	client->groups = NULL;
+	client->found_group = false;
+	client->groupspos = 0u;
 	// Interface is not yet known
 	client->ifacepos = 0;
 
