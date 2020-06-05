@@ -18,16 +18,14 @@
 #include "datastructure.h"
 #include <regex.h>
 #include "database/gravity-db.h"
-// bool startup
-#include "main.h"
 // add_per_client_regex_client()
 #include "shmem.h"
 #include "database/message-table.h"
 
-static regex_t *regex[2] = { NULL };
-static bool *regex_available[2] = { NULL };
-static int *regex_id[2] = { NULL };
-static char **regexbuffer[2] = { NULL };
+static regex_t *regex[REGEX_MAX] = { NULL };
+static bool *regex_available[REGEX_MAX] = { NULL };
+static int *regex_id[REGEX_MAX] = { NULL };
+static char **regexbuffer[REGEX_MAX] = { NULL };
 
 const char *regextype[] = { "blacklist", "whitelist" };
 
@@ -149,49 +147,52 @@ static void free_regex(void)
 	}
 
 	// Free regex datastructure
-	for(int regexid = 0; regexid < 2; regexid++)
+	for(unsigned int regex_type = 0; regex_type < REGEX_MAX; regex_type++)
 	{
-		for(int index = 0; index < counters->num_regex[regexid]; index++)
+		for(int regex_idx = 0; regex_idx < counters->num_regex[regex_type]; regex_idx++)
 		{
-			if(!regex_available[regexid][index])
+			if(!regex_available[regex_type][regex_idx])
 				continue;
 
-			regfree(&regex[regexid][index]);
+			regfree(&regex[regex_type][regex_idx]);
 
 			// Also free buffered regex strings if in regex debug mode
-			if(config.debug & DEBUG_REGEX && regexbuffer[regexid][index] != NULL)
+			if(config.debug & DEBUG_REGEX && regexbuffer[regex_type][regex_idx] != NULL)
 			{
-				free(regexbuffer[regexid][index]);
-				regexbuffer[regexid][index] = NULL;
+				free(regexbuffer[regex_type][regex_idx]);
+				regexbuffer[regex_type][regex_idx] = NULL;
 			}
 		}
 
 		// Free array with regex datastructure
-		if(regex[regexid] != NULL)
+		if(regex[regex_type] != NULL)
 		{
-			free(regex[regexid]);
-			regex[regexid] = NULL;
+			free(regex[regex_type]);
+			regex[regex_type] = NULL;
 		}
 
 		// Reset counter for number of regex
-		counters->num_regex[regexid] = 0;
+		counters->num_regex[regex_type] = 0;
 	}
 }
 
-void allocate_regex_client_enabled(clientsData *client, const int clientID)
+void reload_per_client_regex(const int clientID, clientsData *client)
 {
+	// Ensure there is enough memory in the shared memory object
 	add_per_client_regex(clientID);
 
-	// Only initialize regex associations when dnsmasq is ready (otherwise, we're still in history reading mode)
-	if(!startup)
-	{
-		gravityDB_get_regex_client_groups(client, counters->num_regex[REGEX_BLACKLIST],
-						regex_id[REGEX_BLACKLIST], REGEX_BLACKLIST,
-						"vw_regex_blacklist", clientID);
-		gravityDB_get_regex_client_groups(client, counters->num_regex[REGEX_WHITELIST],
-						regex_id[REGEX_WHITELIST], REGEX_WHITELIST,
-						"vw_regex_whitelist", clientID);
-	}
+	// Zero-initialize(or wipe previous) regex
+	reset_per_client_regex(clientID);
+
+	// Load regex per-group regex blacklist for this client
+	gravityDB_get_regex_client_groups(client, counters->num_regex[REGEX_BLACKLIST],
+					regex_id[REGEX_BLACKLIST], REGEX_BLACKLIST,
+					"vw_regex_blacklist", clientID);
+
+	// Load regex per-group regex whitelist for this client
+	gravityDB_get_regex_client_groups(client, counters->num_regex[REGEX_WHITELIST],
+					regex_id[REGEX_WHITELIST], REGEX_WHITELIST,
+					"vw_regex_whitelist", clientID);
 }
 
 static void read_regex_table(const unsigned char regexid)
@@ -281,7 +282,8 @@ void read_regex_from_database(void)
 	// Read and compile regex whitelist
 	read_regex_table(REGEX_WHITELIST);
 
-
+	// Load per-client regex data, not all of the regex read and compiled
+	// above will also be used by all clients
 	for(int clientID = 0; clientID < counters->clients; clientID++)
 	{
 		// Get client pointer
@@ -289,7 +291,7 @@ void read_regex_from_database(void)
 		if(client == NULL)
 			continue;
 
-		allocate_regex_client_enabled(client, clientID);
+		reload_per_client_regex(clientID, client);
 	}
 
 	// Print message to FTL's log after reloading regex filters

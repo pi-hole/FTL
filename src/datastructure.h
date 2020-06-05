@@ -57,6 +57,7 @@ typedef struct {
 	unsigned char magic;
 	bool new;
 	bool found_group;
+	bool reread_groups;
 	int count;
 	int blockedcount;
 	int overTime[OVERTIME_SLOTS];
@@ -66,6 +67,7 @@ typedef struct {
 	size_t namepos;
 	size_t ifacepos;
 	time_t lastQuery;
+	time_t firstSeen;
 } clientsData;
 
 typedef struct {

@@ -200,6 +200,11 @@ int findClientID(const char *clientIP, const bool count)
 	// Configured groups are yet unknown
 	client->found_group = false;
 	client->groupspos = 0u;
+	// Store time this client was added, we re-read group settings
+	// some time after adding a client to ensure we pick up possible
+	// group configuration though hostname, MAC address or interface
+	client->reread_groups = false;
+	client->firstSeen = time(NULL);
 	// Interface is not yet known
 	client->ifacepos = 0;
 
@@ -209,9 +214,6 @@ int findClientID(const char *clientIP, const bool count)
 
 	// Increase counter by one
 	counters->clients++;
-
-	// Allocate regex substructure
-	allocate_regex_client_enabled(client, clientID);
 
 	return clientID;
 }

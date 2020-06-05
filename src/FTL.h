@@ -103,6 +103,11 @@
 // Default: 1000 (one second)
 #define DATABASE_BUSY_TIMEOUT 1000
 
+// After how many seconds do we check again if a client can be identified by other means?
+// (e.g., interface, MAC address, hostname)
+// Default: 180 (after three minutes)
+#define RECHECK_DELAY 180
+
 // FTLDNS enums
 enum { QUERIES, UPSTREAMS, CLIENTS, DOMAINS, OVERTIME, WILDCARD, DNS_CACHE };
 enum { DNSSEC_UNSPECIFIED, DNSSEC_SECURE, DNSSEC_INSECURE, DNSSEC_BOGUS, DNSSEC_ABANDONED };
@@ -113,7 +118,7 @@ enum { TYPE_A = 1, TYPE_AAAA, TYPE_ANY, TYPE_SRV, TYPE_SOA, TYPE_PTR, TYPE_TXT, 
 enum { REPLY_UNKNOWN, REPLY_NODATA, REPLY_NXDOMAIN, REPLY_CNAME, REPLY_IP, REPLY_DOMAIN, REPLY_RRNAME, REPLY_SERVFAIL, REPLY_REFUSED, REPLY_NOTIMP, REPLY_OTHER };
 enum { PRIVACY_SHOW_ALL = 0, PRIVACY_HIDE_DOMAINS, PRIVACY_HIDE_DOMAINS_CLIENTS, PRIVACY_MAXIMUM, PRIVACY_NOSTATS };
 enum { MODE_IP, MODE_NX, MODE_NULL, MODE_IP_NODATA_AAAA, MODE_NODATA };
-enum { REGEX_BLACKLIST, REGEX_WHITELIST };
+enum { REGEX_BLACKLIST, REGEX_WHITELIST, REGEX_MAX };
 
 // Use out own memory handling functions that will detect possible errors
 // and report accordingly in the log. This will make debugging FTL crashs
