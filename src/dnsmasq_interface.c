@@ -35,6 +35,8 @@
 #include "api/api.h"
 // global variable daemonmode
 #include "args.h"
+// handle_realtime_signals()
+#include "signals.h"
 
 static void print_flags(const unsigned int flags);
 static void save_reply_type(const unsigned int flags, const union all_addr *addr,
@@ -1628,6 +1630,11 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 		go_daemon();
 	else
 		savepid();
+
+	// Handle real-time signals in this process (and its children)
+	// Helper processes are already split from the main instance
+	// so they will not listen to real-time signals
+	handle_realtime_signals();
 
 	// We will use the attributes object later to start all threads in
 	// detached mode

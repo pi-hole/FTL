@@ -152,9 +152,10 @@ static void SIGRT_handler(int signum, siginfo_t *si, void *unused)
 		// Reload the privacy level in case the user changed it
 		get_privacy_level(NULL);
 	}
-} 
+}
 
-void handle_signals(void)
+// Register SIGSEGV handler
+void handle_SIGSEGV(void)
 {
 	struct sigaction old_action;
 
@@ -170,6 +171,15 @@ void handle_signals(void)
 		sigaction(SIGSEGV, &SEGVaction, NULL);
 	}
 
+	// Log start time of FTL
+	FTLstarttime = time(NULL);
+
+}
+
+// Register real-time signal handler
+void handle_realtime_signals(void)
+{
+	logg("INFO: Handling real-time signals");
 	// Catch first five real-time signals
 	for(unsigned int i = 0; i < 5; i++)
 	{
@@ -180,7 +190,4 @@ void handle_signals(void)
 		SIGACTION.sa_sigaction = &SIGRT_handler;
 		sigaction(SIGRTMIN + i, &SIGACTION, NULL);
 	}
-
-	// Log start time of FTL
-	FTLstarttime = time(NULL);
 }

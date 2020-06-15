@@ -49,9 +49,10 @@ int main (int argc, char* argv[])
 	logg("########## FTL started! ##########");
 	log_FTL_version(false);
 
-	// Catch signals like SIGTERM and SIGINT
-	// Other signals like SIGHUP, SIGUSR1 are handled by the resolver part
-	handle_signals();
+	// Catch SIGSEGV (generate a crash report)
+	// Other signals are handled by dnsmasq
+	// We handle real-time signals later (after dnsmasq has forked)
+	handle_SIGSEGV();
 
 	// Process pihole-FTL.conf
 	read_FTLconf();
