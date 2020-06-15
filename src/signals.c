@@ -24,6 +24,7 @@
 #define BINARY_NAME "pihole-FTL"
 
 volatile sig_atomic_t killed = 0;
+static volatile pid_t pid = 0;
 static time_t FTLstarttime = 0;
 
 #if defined(__GLIBC__)
@@ -135,6 +136,10 @@ static void __attribute__((noreturn)) SIGSEGV_handler(int sig, siginfo_t *si, vo
 
 static void SIGRT_handler(int signum, siginfo_t *si, void *unused)
 { 
+	// Ignore real-time signals outside of the main process (TCP forks)
+	if(pid != getpid())
+		return;
+
 	int rtsig = signum - SIGRTMIN;
 	logg("Received: %s (%d -> %d)", strsignal(signum), signum, rtsig);
 
@@ -179,7 +184,10 @@ void handle_SIGSEGV(void)
 // Register real-time signal handler
 void handle_realtime_signals(void)
 {
-	logg("INFO: Handling real-time signals");
+	// This function is only called once (after forking), store the PID of
+	// the main process
+	pid = getpid();
+
 	// Catch first five real-time signals
 	for(unsigned int i = 0; i < 5; i++)
 	{
