@@ -91,7 +91,7 @@ int ph7_handler(struct mg_connection *conn, void *cbdata)
 		else if( rc == PH7_VM_ERR )
 		{
 			logg_web(PH7_ERROR, "%s: VM initialization error", full_path);
-			// Mark file as processes - this prevents the HTTP server
+			// Mark file as processed - this prevents the HTTP server
 			// from printing the raw PHP source code to the user
 			return 1;
 		}
@@ -111,7 +111,7 @@ int ph7_handler(struct mg_connection *conn, void *cbdata)
 				/* zErrLog is null terminated */
 				logg_web(PH7_ERROR, " ---> %s", zErrLog);
 			}
-			// Mark file as processes - this prevents the HTTP server
+			// Mark file as processed - this prevents the HTTP server
 			// from printing the raw PHP source code to the user
 			return 1;
 		}
@@ -144,7 +144,7 @@ int ph7_handler(struct mg_connection *conn, void *cbdata)
 	if( rc != PH7_OK )
 	{
 		logg_web(PH7_ERROR, "%s: VM execution error", full_path);
-		// Mark file as processes - this prevents the HTTP server
+		// Mark file as processed - this prevents the HTTP server
 		// from printing the raw PHP source code to the user
 		return 1;
 	}
@@ -173,7 +173,7 @@ static int PH7_error_report(const void *pOutput, unsigned int nOutputLen,
 	// Log error message, strip trailing newline character if any
 	if(((const char*)pOutput)[nOutputLen-1] == '\n')
 		nOutputLen--;
-	logg_web(PH7_ERROR, "PH7 error: %.*s", nOutputLen, (const char*)pOutput);
+	logg_web(PH7_ERROR, "%.*s", nOutputLen, (const char*)pOutput);
 	return PH7_OK;
 }
 
