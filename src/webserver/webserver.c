@@ -84,6 +84,7 @@ void http_init(void)
 		"document_root", httpsettings.webroot,
 		"listening_ports", httpsettings.port,
 		"decode_url", "no",
+		"enable_directory_listing", "no",
 		"num_threads", "4",
 		"access_control_list", httpsettings.acl,
 		"additional_header", "Content-Security-Policy: default-src 'self' 'unsafe-inline';\r\n"
