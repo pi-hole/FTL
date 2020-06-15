@@ -44,17 +44,31 @@ int ph7_handler(struct mg_connection *conn, void *cbdata)
 
 	/* Handler may access the request info using mg_get_request_info */
 	const struct mg_request_info *req_info = mg_get_request_info(conn);
+	const char *local_uri = req_info->local_uri + 1u;
 
 	// Build full path of PHP script on our machine
 	const size_t webroot_len = strlen(httpsettings.webroot);
-	const size_t local_uri_len = strlen(req_info->local_uri + 1u); // +1 to skip the initial '/'
-	char full_path[webroot_len + local_uri_len + 2];
-	strcpy(full_path, httpsettings.webroot);
+	const size_t local_uri_len = strlen(local_uri); // +1 to skip the initial '/'
+	size_t buffer_len = webroot_len + local_uri_len + 2;
+
+	// Check if we can serve an index.php file when the user is looking for a directory
+	bool append_index = false;
+	if(local_uri[local_uri_len - 1u] == '/')
+	{
+		append_index = true;
+		buffer_len += 11; // strlen("/index.php")
+	}
+
+	char full_path[buffer_len];
+	strncpy(full_path, httpsettings.webroot, webroot_len);
 	full_path[webroot_len] = '/';
-	strncpy(full_path + webroot_len + 1u, req_info->local_uri + 1u, local_uri_len);
+	strncpy(full_path + webroot_len + 1u, local_uri, local_uri_len);
 	full_path[webroot_len + local_uri_len + 1u] = '\0';
-	if(config.debug & DEBUG_API)
-		logg("Full path of PHP script: %s", full_path);
+	if(append_index)
+	{
+		strcpy(full_path + webroot_len + local_uri_len, "/index.php");
+		full_path[webroot_len + local_uri_len + 11u] = '\0';
+	}
 
 	// Compile PHP script into byte-code
 	// This usually takes only 1-2 msec even for larger scripts on a Raspberry

@@ -127,6 +127,7 @@ void http_init(void)
 
 	// Initialize PH7 engine and register PHP request handler
 	init_ph7();
+	mg_set_request_handler(ctx, "**/$", ph7_handler, 0);
 	mg_set_request_handler(ctx, "**.php$", ph7_handler, 0);
 }
 
