@@ -24,7 +24,7 @@
 static pthread_mutex_t lock;
 static FILE *logfile = NULL;
 
-static void close_FTL_log(void)
+static void close_log(void)
 {
 	if(logfile != NULL)
 		fclose(logfile);
@@ -56,8 +56,28 @@ void open_FTL_log(const bool test)
 			// Return failure
 			exit(EXIT_FAILURE);
 		}
-		close_FTL_log();
+		close_log();
 	}
+}
+
+static void open_web_log(const enum web_code code)
+{
+	// Open the log file in append/create mode
+	char *file = NULL;
+	switch (code)
+	{
+	case HTTP_INFO:
+		file = httpsettings.log_info;
+		break;
+	case PH7_ERROR:
+		file = httpsettings.log_error;
+		break;
+	default:
+		file = httpsettings.log_error;
+		break;
+	}
+
+	logfile = fopen(file, "a+");
 }
 
 void get_timestr(char *timestring, const time_t timein)
@@ -114,7 +134,45 @@ void __attribute__ ((format (gnu_printf, 1, 2))) logg(const char *format, ...)
 	}
 
 	// Close log file
-	close_FTL_log();
+	close_log();
+
+	pthread_mutex_unlock(&lock);
+}
+
+
+void __attribute__ ((format (gnu_printf, 2, 3))) logg_web(enum web_code code, const char *format, ...)
+{
+	char timestring[84] = "";
+	va_list args;
+
+	pthread_mutex_lock(&lock);
+
+	get_timestr(timestring, time(NULL));
+
+	// Get and log PID of current process to avoid ambiguities when more than one
+	// pihole-FTL instance is logging into the same file
+	const long pid = (long)getpid();
+
+	// Open log file
+	open_web_log(code);
+
+	// Write to log file
+	if(logfile != NULL)
+	{
+		fprintf(logfile, "[%s %ld] ", timestring, pid);
+		va_start(args, format);
+		vfprintf(logfile, format, args);
+		va_end(args);
+		fputc('\n',logfile);
+	}
+	else if(!daemonmode)
+	{
+		printf("!!! WARNING: Writing to web log file failed!\n");
+		syslog(LOG_ERR, "Writing to web log file failed!");
+	}
+
+	// Close log file
+	close_log();
 
 	pthread_mutex_unlock(&lock);
 }

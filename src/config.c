@@ -448,6 +448,12 @@ void read_FTLconf(void)
 	else
 		logg("   API_PRETTY_JSON: Disabled. Compact API output.");
 
+	// API_ERROR_LOG
+	getpath(fp, "API_ERROR_LOG", "/var/log/pihole/PH7.log", &httpsettings.log_error);
+
+	// API_INFO_LOG
+	getpath(fp, "API_INFO_LOG", "/var/log/pihole/HTTP_info.log", &httpsettings.log_info);
+
 	// Read DEBUG_... setting from pihole-FTL.conf
 	// This option should be the last one as it causes
 	// some rather verbose output into the log when

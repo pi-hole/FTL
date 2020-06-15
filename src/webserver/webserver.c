@@ -30,7 +30,7 @@ static int print_simple(struct mg_connection *conn, void *input)
 
 static int log_http_message(const struct mg_connection *conn, const char *message)
 {
-	logg("HTTP info: %s", message);
+	logg_web(HTTP_INFO, "HTTP info: %s", message);
 	return 1;
 }
 
@@ -38,14 +38,14 @@ static int log_http_access(const struct mg_connection *conn, const char *message
 {
 	// Only log when in API debugging mode
 	if(config.debug & DEBUG_API)
-		logg("HTTP access: %s", message);
+		logg_web(HTTP_INFO, "ACCESS: %s", message);
 
 	return 1;
 }
 
 void http_init(void)
 {
-	logg("Initializing HTTP server on port %s", httpsettings.port);
+	logg_web(HTTP_INFO, "Initializing HTTP server on port %s", httpsettings.port);
 
 	/* Initialize the library */
 	unsigned int features = MG_FEATURES_FILES |
@@ -53,9 +53,10 @@ void http_init(void)
 	                        MG_FEATURES_IPV6 |
 	                        MG_FEATURES_CACHE |
 	                        MG_FEATURES_STATS;
+
 	if(mg_init_library(features) == 0)
 	{
-		logg("Initializing HTTP library failed!");
+		logg_web(HTTP_INFO, "Initializing HTTP library failed!");
 		return;
 	}
 
@@ -116,7 +117,7 @@ void http_init(void)
 	{
 		if(config.debug & DEBUG_API)
 		{
-			logg("Installing API handler at %s", api_path);
+			logg_web(HTTP_INFO, "Installing API handler at %s", api_path);
 		}
 		mg_set_request_handler(ctx, api_path, api_handler, NULL);
 		// The request handler URI got duplicated

@@ -38,16 +38,6 @@ static ph7_vm *pVm;  /* Compiled PHP program */
 static char *webroot_with_home = NULL;
 static char *webroot_with_home_and_scripts = NULL;
 
-static int PH7_error_report(const void *pOutput, unsigned int nOutputLen,
-                            void *pUserData /* Unused */)
-{
-	// Log error message, strip trailing newline character if any
-	if(((const char*)pOutput)[nOutputLen-1] == '\n')
-		nOutputLen--;
-	logg("PH7 error: %.*s", nOutputLen, (const char*)pOutput);
-	return PH7_OK;
-}
-
 int ph7_handler(struct mg_connection *conn, void *cbdata)
 {
 	int rc;
@@ -80,20 +70,20 @@ int ph7_handler(struct mg_connection *conn, void *cbdata)
 	{
 		if( rc == PH7_IO_ERR )
 		{
-			logg("IO error while opening the target file (%s)", full_path);
+			logg_web(PH7_ERROR, "%s: IO error while opening the target file", full_path);
 			// Fall back to HTTP server to handle the 404 event
 			return 0;
 		}
 		else if( rc == PH7_VM_ERR )
 		{
-			logg("VM initialization error");
+			logg_web(PH7_ERROR, "%s: VM initialization error", full_path);
 			// Mark file as processes - this prevents the HTTP server
 			// from printing the raw PHP source code to the user
 			return 1;
 		}
 		else
 		{
-			logg("Compile error (%d)", rc);
+			logg_web(PH7_ERROR, "%s: Compile error (%d)", full_path, rc);
 
 			mg_printf(conn, "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n"
 			          "PHP compilation error, check %s for further details.",
@@ -105,7 +95,7 @@ int ph7_handler(struct mg_connection *conn, void *cbdata)
 			ph7_config(pEngine, PH7_CONFIG_ERR_LOG, &zErrLog, &niLen);
 			if( niLen > 0 ){
 				/* zErrLog is null terminated */
-				logg("PH7 compile error: %s", zErrLog);
+				logg_web(PH7_ERROR, " ---> %s", zErrLog);
 			}
 			// Mark file as processes - this prevents the HTTP server
 			// from printing the raw PHP source code to the user
@@ -130,7 +120,8 @@ int ph7_handler(struct mg_connection *conn, void *cbdata)
 	{
 		rc = ph7_create_function(pVm, aFunc[i].zName, aFunc[i].xProc, NULL /* NULL: No private data */);
 		if( rc != PH7_OK ){
-			logg("Error while registering foreign function %s()", aFunc[i].zName);
+			logg_web(PH7_ERROR, "%s: Error while registering foreign function %s()",
+			         full_path, aFunc[i].zName);
 		}
 	}
 
@@ -138,7 +129,7 @@ int ph7_handler(struct mg_connection *conn, void *cbdata)
 	rc = ph7_vm_exec(pVm,0);
 	if( rc != PH7_OK )
 	{
-		logg("VM execution error");
+		logg_web(PH7_ERROR, "%s: VM execution error", full_path);
 		// Mark file as processes - this prevents the HTTP server
 		// from printing the raw PHP source code to the user
 		return 1;
@@ -162,20 +153,37 @@ int ph7_handler(struct mg_connection *conn, void *cbdata)
 	return 1;
 }
 
+static int PH7_error_report(const void *pOutput, unsigned int nOutputLen,
+                            void *pUserData /* Unused */)
+{
+	// Log error message, strip trailing newline character if any
+	if(((const char*)pOutput)[nOutputLen-1] == '\n')
+		nOutputLen--;
+	logg_web(PH7_ERROR, "PH7 error: %.*s", nOutputLen, (const char*)pOutput);
+	return PH7_OK;
+}
+
 void init_ph7(void)
 {
 	if(ph7_init(&pEngine) != PH7_OK )
 	{
-		logg("Error while allocating a new PH7 engine instance");
+		logg_web(PH7_ERROR, "Error while initializing a new PH7 engine instance");
 		return;
+	}
+
+	// This should never happen, check nonetheless
+	if(!ph7_lib_is_threadsafe())
+	{
+		logg("FATAL: Recompile FTL with PH7 set to multi-thread mode!");
+		exit(EXIT_FAILURE);
 	}
 
 	// Set an error log consumer callback. This callback will
 	// receive all compile-time error messages to 
-	ph7_config(pEngine,PH7_VM_CONFIG_OUTPUT, PH7_error_report, NULL /* NULL: No private data */);
+	ph7_config(pEngine, PH7_VM_CONFIG_OUTPUT, PH7_error_report, NULL /* NULL: No private data */);
 
 	// Prepare include paths
-	// var/www/html/admin (may be different due to user configuration)
+	// /var/www/html/admin (may be different due to user configuration)
 	const size_t webroot_len = strlen(httpsettings.webroot);
 	const size_t webhome_len = strlen(httpsettings.webhome);
 	webroot_with_home = calloc(webroot_len + webhome_len + 1u, sizeof(char));
@@ -183,7 +191,7 @@ void init_ph7(void)
 	strcpy(webroot_with_home + webroot_len, httpsettings.webhome);
 	webroot_with_home[webroot_len + webhome_len] = '\0';
 
-	// var/www/html/admin/scripts/pi-hole/php (may be different due to user configuration)
+	// /var/www/html/admin/scripts/pi-hole/php (may be different due to user configuration)
 	const char scripts_dir[] = "/scripts/pi-hole/php";
 	size_t scripts_dir_len = sizeof(scripts_dir);
 	size_t webroot_with_home_len = strlen(webroot_with_home);

@@ -13,5 +13,5 @@ set(sources
         )
 
 add_library(ph7 OBJECT ${sources})
-target_compile_options(ph7 PRIVATE -Wno-unused-but-set-parameter -Wno-array-bounds)
+target_compile_options(ph7 PRIVATE -Wno-unused-but-set-parameter -Wno-array-bounds -DPH7_ENABLE_THREADS)
 target_include_directories(ph7 PRIVATE ${PROJECT_SOURCE_DIR}/src)
