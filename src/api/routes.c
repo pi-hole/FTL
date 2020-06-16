@@ -29,25 +29,27 @@ int api_handler(struct mg_connection *conn, void *ignored)
 	{
 		ret = api_dns_status(conn);
 	}
-	else if(startsWith("/api/dns/whitelist/exact", request->local_uri))
-	{
-		ret = api_dns_somelist(conn, true, true);
-	}
-	else if(startsWith("/api/dns/whitelist/regex", request->local_uri))
-	{
-		ret = api_dns_somelist(conn, false, true);
-	}
-	else if(startsWith("/api/dns/blacklist/exact", request->local_uri))
-	{
-		ret = api_dns_somelist(conn, true, false);
-	}
-	else if(startsWith("/api/dns/blacklist/regex", request->local_uri))
-	{
-		ret = api_dns_somelist(conn, false, false);
-	}
 	else if(startsWith("/api/dns/cacheinfo", request->local_uri))
 	{
 		ret = api_dns_cacheinfo(conn);
+	}
+	/******************************** api/whitelist ****************************/
+	else if(startsWith("/api/whitelist/exact", request->local_uri))
+	{
+		ret = api_dns_domainlist(conn, true, true);
+	}
+	else if(startsWith("/api/whitelist/regex", request->local_uri))
+	{
+		ret = api_dns_domainlist(conn, false, true);
+	}
+	/******************************** api/blacklist ****************************/
+	else if(startsWith("/api/blacklist/exact", request->local_uri))
+	{
+		ret = api_dns_domainlist(conn, true, false);
+	}
+	else if(startsWith("/api/blacklist/regex", request->local_uri))
+	{
+		ret = api_dns_domainlist(conn, false, false);
 	}
 	/******************************** api/ftl ****************************/
 	else if(startsWith("/api/ftl/clientIP", request->local_uri))

@@ -42,8 +42,10 @@ int api_ftl_network(struct mg_connection *conn);
 
 // DNS methods
 int api_dns_status(struct mg_connection *conn);
-int api_dns_somelist(struct mg_connection *conn, bool exact, bool whitelist);
 int api_dns_cacheinfo(struct mg_connection *conn);
+
+// White-/Blacklist methods
+int api_dns_domainlist(struct mg_connection *conn, bool exact, bool whitelist);
 
 // Version method
 int api_version(struct mg_connection *conn);
