@@ -940,23 +940,34 @@ bool gravityDB_get_regex_client_groups(clientsData* client, const int numregex, 
 	return true;
 }
 
-bool gravityDB_addToTable(const int type, const char* domain)
+bool gravityDB_addToTable(const int type, const char *domain,
+                          const bool enabled, const char *comment,
+                          const char **message)
 {
+	if(gravity_db == NULL)
+	{
+		*message = "Database not available";
+		return false;
+	}
+
 	// Prepare SQLite statement
 	sqlite3_stmt* stmt = NULL;
-	const char *querystr = "INSERT INTO domainlist (domain,type) VALUES (?,?);";
+	const char *querystr = "INSERT INTO domainlist (domain,type,enabled,comment) VALUES (?,?,?,?);";
 	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &stmt, NULL);
-	if( rc != SQLITE_OK ){
+	if( rc != SQLITE_OK )
+	{
+		*message = sqlite3_errmsg(gravity_db);
 		logg("gravityDB_addToTable(%d, %s) - SQL error prepare (%i): %s",
-		     type, domain, rc, sqlite3_errmsg(gravity_db));
+		     type, domain, rc, *message);
 		return false;
 	}
 
 	// Bind domain string to prepared statement
 	if((rc = sqlite3_bind_text(stmt, 1, domain, -1, SQLITE_STATIC)) != SQLITE_OK)
 	{
+		*message = sqlite3_errmsg(gravity_db);
 		logg("gravityDB_addToTable(%d, %s): Failed to bind domain (error %d) - %s",
-		     type, domain, rc, sqlite3_errmsg(gravity_db));
+		     type, domain, rc, *message);
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
 		return false;
@@ -965,18 +976,46 @@ bool gravityDB_addToTable(const int type, const char* domain)
 	// Bind domain type to prepared statement
 	if((rc = sqlite3_bind_int(stmt, 2, type)) != SQLITE_OK)
 	{
+		*message = sqlite3_errmsg(gravity_db);
 		logg("gravityDB_addToTable(%d, %s): Failed to bind domain (error %d) - %s",
-		     type, domain, rc, sqlite3_errmsg(gravity_db));
+		     type, domain, rc, *message);
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
 		return false;
 	}
 
+	// Bind enabled boolean to prepared statement
+	if((rc = sqlite3_bind_int(stmt, 3, enabled ? 1 : 0)) != SQLITE_OK)
+	{
+		*message = sqlite3_errmsg(gravity_db);
+		logg("gravityDB_addToTable(%d, %s): Failed to bind enabled (error %d) - %s",
+		     type, domain, rc, *message);
+		sqlite3_reset(stmt);
+		sqlite3_finalize(stmt);
+		return false;
+	}
+
+	// Bind enabled boolean to prepared statement
+	if((rc = sqlite3_bind_text(stmt, 4, comment, -1, SQLITE_STATIC)) != SQLITE_OK)
+	{
+		*message = sqlite3_errmsg(gravity_db);
+		logg("gravityDB_addToTable(%d, %s): Failed to bind comment (error %d) - %s",
+		     type, domain, rc, *message);
+		sqlite3_reset(stmt);
+		sqlite3_finalize(stmt);
+		return false;
+	}
+
+	// Perform step
 	bool okay = false;
 	if((rc = sqlite3_step(stmt)) == SQLITE_DONE)
 	{
 		// Domain added
 		okay = true;
+	}
+	else
+	{
+		*message = sqlite3_errmsg(gravity_db);
 	}
 
 	// Finalize statement and close database handle
@@ -986,23 +1025,31 @@ bool gravityDB_addToTable(const int type, const char* domain)
 	return okay;
 }
 
-bool gravityDB_delFromTable(const int type, const char* domain)
+bool gravityDB_delFromTable(const int type, const char* domain, const char **message)
 {
+	if(gravity_db == NULL)
+	{
+		*message = "Database not available";
+		return false;
+	}
 	// Prepare SQLite statement
 	sqlite3_stmt* stmt = NULL;
 	const char *querystr = "DELETE FROM domainlist WHERE domain = ? AND type = ?;";
 	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &stmt, NULL);
-	if( rc != SQLITE_OK ){
+	if( rc != SQLITE_OK )
+	{
+		*message = sqlite3_errmsg(gravity_db);
 		logg("gravityDB_delFromTable(%d, %s) - SQL error prepare (%i): %s",
-		     type, domain, rc, sqlite3_errmsg(gravity_db));
+		     type, domain, rc, *message);
 		return false;
 	}
 
 	// Bind domain to prepared statement
 	if((rc = sqlite3_bind_text(stmt, 1, domain, -1, SQLITE_STATIC)) != SQLITE_OK)
 	{
+		*message = sqlite3_errmsg(gravity_db);
 		logg("gravityDB_delFromTable(%d, %s): Failed to bind domain (error %d) - %s",
-		     type, domain, rc, sqlite3_errmsg(gravity_db));
+		     type, domain, rc, *message);
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
 		return false;
@@ -1011,18 +1058,24 @@ bool gravityDB_delFromTable(const int type, const char* domain)
 	// Bind domain type to prepared statement
 	if((rc = sqlite3_bind_int(stmt, 2, type)) != SQLITE_OK)
 	{
+		*message = sqlite3_errmsg(gravity_db);
 		logg("gravityDB_delFromTable(%d, %s): Failed to bind domain (error %d) - %s",
-		     type, domain, rc, sqlite3_errmsg(gravity_db));
+		     type, domain, rc, *message);
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
 		return false;
 	}
 
+	// Perform step
 	bool okay = false;
 	if((rc = sqlite3_step(stmt)) == SQLITE_DONE)
 	{
 		// Domain removed
 		okay = true;
+	}
+	else
+	{
+		*message = sqlite3_errmsg(gravity_db);
 	}
 
 	// Finalize statement and close database handle
@@ -1033,22 +1086,30 @@ bool gravityDB_delFromTable(const int type, const char* domain)
 }
 
 static sqlite3_stmt* read_stmt = NULL;
-bool gravityDB_readTable(const int type)
+bool gravityDB_readTable(const int type, const char **message)
 {
+	if(gravity_db == NULL)
+	{
+		*message = "Database not available";
+		return false;
+	}
+
 	// Prepare SQLite statement
 	const char *querystr = "SELECT domain,enabled,date_added,date_modified,comment FROM domainlist WHERE type = ?;";
 	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &read_stmt, NULL);
 	if( rc != SQLITE_OK ){
+		*message = sqlite3_errmsg(gravity_db);
 		logg("gravityDB_readTable(%d) - SQL error prepare (%i): %s",
-		     type, rc, sqlite3_errmsg(gravity_db));
+		     type, rc, *message);
 		return false;
 	}
 
 	// Bind domain type to prepared statement
 	if((rc = sqlite3_bind_int(read_stmt, 1, type)) != SQLITE_OK)
 	{
+		*message = sqlite3_errmsg(gravity_db);
 		logg("gravityDB_readTable(%d): Failed to bind domain (error %d) - %s",
-		     type, rc, sqlite3_errmsg(gravity_db));
+		     type, rc, *message);
 		sqlite3_reset(read_stmt);
 		sqlite3_finalize(read_stmt);
 		return false;
@@ -1057,7 +1118,7 @@ bool gravityDB_readTable(const int type)
 	return true;
 }
 
-bool gravityDB_readTableGetDomain(domainrecord *domain)
+bool gravityDB_readTableGetDomain(domainrecord *domain, const char **message)
 {
 	// Perform step
 	const int rc = sqlite3_step(read_stmt);
@@ -1078,7 +1139,9 @@ bool gravityDB_readTableGetDomain(domainrecord *domain)
 	// SQLITE_DONE (we are finished reading the table)
 	if(rc != SQLITE_DONE)
 	{
-		logg("gravityDB_readTableGetDomain() - SQL error step (%i): %s", rc, sqlite3_errmsg(gravity_db));
+		*message = sqlite3_errmsg(gravity_db);
+		logg("gravityDB_readTableGetDomain() - SQL error step (%i): %s",
+		     rc, *message);
 		return false;
 	}
 

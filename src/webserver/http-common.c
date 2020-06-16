@@ -182,6 +182,10 @@ int http_method(struct mg_connection *conn)
 	{
 		return HTTP_DELETE;
 	}
+	else if(strcmp(request->request_method, "PUT") == 0)
+	{
+		return HTTP_PUT;
+	}
 	else if(strcmp(request->request_method, "POST") == 0)
 	{
 		return HTTP_POST;

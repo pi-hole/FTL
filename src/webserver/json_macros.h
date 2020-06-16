@@ -80,7 +80,7 @@
 }
 
 #define JSON_OBJ_ADD_BOOL(object, key, value) {\
-	cJSON *bool_item = cJSON_CreateBool(value); \
+	cJSON *bool_item = cJSON_CreateBool(value ? cJSON_True : cJSON_False); \
 	if(bool_item == NULL) \
 	{ \
 		cJSON_Delete(object); \
@@ -173,7 +173,7 @@
 	} \
 	send_http_code(conn, "application/json; charset=utf-8", code, msg); \
 	cJSON_Delete(object); \
-	return 200; \
+	return code; \
 }
 /*
 #define JSON_SEND_OBJECT_AND_HEADERS(object, additional_headers){ \

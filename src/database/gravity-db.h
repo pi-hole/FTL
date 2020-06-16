@@ -46,10 +46,12 @@ bool in_blacklist(const char *domain, const int clientID, clientsData* client);
 
 bool gravityDB_get_regex_client_groups(clientsData* client, const int numregex, const int *regexid,
                                        const unsigned char type, const char* table, const int clientID);
-bool gravityDB_addToTable(const int type, const char* domain);
-bool gravityDB_delFromTable(const int type, const char* domain);
-bool gravityDB_readTable(const int type);
-bool gravityDB_readTableGetDomain(domainrecord *domain);
+bool gravityDB_addToTable(const int type, const char *domain,
+                          const bool enabled, const char *comment,
+                          const char **message);
+bool gravityDB_delFromTable(const int type, const char* domain, const char **message);
+bool gravityDB_readTable(const int type, const char **message);
+bool gravityDB_readTableGetDomain(domainrecord *domain, const char **message);
 void gravityDB_readTableFinalize(void);
 
 #endif //GRAVITY_H
