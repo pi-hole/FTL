@@ -25,9 +25,9 @@ int api_handler(struct mg_connection *conn, void *ignored)
 
 	const struct mg_request_info *request = mg_get_request_info(conn);
 	/******************************** api/dns ********************************/
-	if(startsWith("/api/dns/status", request->local_uri))
+	if(startsWith("/api/dns/blocking", request->local_uri))
 	{
-		ret = api_dns_status(conn);
+		ret = api_dns_blockingstatus(conn);
 	}
 	else if(startsWith("/api/dns/cacheinfo", request->local_uri))
 	{

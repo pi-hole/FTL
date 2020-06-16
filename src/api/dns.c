@@ -18,14 +18,15 @@
 // set_blockingmode_timer()
 #include "../timers.h"
 
-int api_dns_status(struct mg_connection *conn)
+int api_dns_blockingstatus(struct mg_connection *conn)
 {
 	int method = http_method(conn);
 	if(method == HTTP_GET)
 	{
 		// Return current status
 		cJSON *json = JSON_NEW_OBJ();
-		JSON_OBJ_REF_STR(json, "status", (get_blockingstatus() ? "active" : "inactive"));
+		const char *action = get_blockingstatus() ? "active" : "inactive";
+		JSON_OBJ_REF_STR(json, "status", action);
 		JSON_SEND_OBJECT(json);
 	}
 	else if(method == HTTP_POST)
@@ -61,29 +62,29 @@ int api_dns_status(struct mg_connection *conn)
 			                       "No \"action\" string in body data",
 			                       NULL);
 		}
-		const char *action = elem1->valuestring;
+		char *status = strdup(elem1->valuestring);
 
 		unsigned int delay = -1;
-		cJSON *elem2 = cJSON_GetObjectItemCaseSensitive(obj, "time");
+		cJSON *elem2 = cJSON_GetObjectItemCaseSensitive(obj, "delay");
 		if (cJSON_IsNumber(elem2) && elem2->valuedouble > 0.0)
 		{
 			delay = elem2->valueint;
 		}
 
+		cJSON_Delete(obj);
 		cJSON *json = JSON_NEW_OBJ();
-		if(strcmp(action, "active") == 0)
+		JSON_OBJ_COPY_STR(json, "status", status);
+
+		// Execute requested status
+		if(strcmp(status, "active") == 0)
 		{
-			cJSON_Delete(obj);
-			JSON_OBJ_REF_STR(json, "status", "active");
 			// If no "time" key was present, we call this subroutine with
 			// delay == -1 which will disable all previously set timers
 			set_blockingmode_timer(delay, false);
 			set_blockingstatus(true);
 		}
-		else if(strcmp(action, "inactive") == 0)
+		else if(strcmp(status, "inactive") == 0)
 		{
-			cJSON_Delete(obj);
-			JSON_OBJ_REF_STR(json, "status", "inactive");
 			// If no "time" key was present, we call this subroutine with
 			// delay == -1 which will disable all previously set timers
 			set_blockingmode_timer(delay, true);
@@ -91,12 +92,13 @@ int api_dns_status(struct mg_connection *conn)
 		}
 		else
 		{
-			cJSON_Delete(obj);
+			free(status);
 			return send_json_error(conn, 400,
 			                       "bad_request",
-			                       "Invalid \"action\" requested",
-			                       NULL);
+			                       "Invalid \"status\" requested",
+			                       json);
 		}
+		free(status);
 		JSON_SEND_OBJECT(json);
 	}
 	else

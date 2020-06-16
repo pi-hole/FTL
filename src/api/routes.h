@@ -41,7 +41,7 @@ int api_ftl_dnsmasq_log(struct mg_connection *conn);
 int api_ftl_network(struct mg_connection *conn);
 
 // DNS methods
-int api_dns_status(struct mg_connection *conn);
+int api_dns_blockingstatus(struct mg_connection *conn);
 int api_dns_cacheinfo(struct mg_connection *conn);
 
 // White-/Blacklist methods
