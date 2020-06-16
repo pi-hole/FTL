@@ -13,5 +13,14 @@ set(sources
         )
 
 add_library(ph7 OBJECT ${sources})
-target_compile_options(ph7 PRIVATE -Wno-unused-but-set-parameter -Wno-array-bounds -DPH7_ENABLE_THREADS)
+target_compile_definitions(ph7 PRIVATE PH7_ENABLE_THREADS)
+
+# Accept known warnings in the PH7 engine
+target_compile_options(ph7 PRIVATE -Wno-unused-but-set-parameter
+                                   -Wno-unused-but-set-variable
+                                   -Wno-unused-const-variable
+                                   -Wno-array-bounds
+                                   -Wno-misleading-indentation
+                                   -Wno-sign-compare)
+
 target_include_directories(ph7 PRIVATE ${PROJECT_SOURCE_DIR}/src)

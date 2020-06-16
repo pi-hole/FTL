@@ -11,8 +11,13 @@
 set(sources
         civetweb.c
         civetweb.h
+        handle_form.inl
+        md5.inl
+        sha1.inl
+        timer.inl
         )
 
+add_library(civetweb OBJECT ${sources})
 # We can remove the NO_SSL later on. It adds additional constraints to the build system (availablity of libSSL-dev)
 # NO_CGI = no CGI support (we don't need it)
 # NO_SSL_DL NO_SSL = no SSL support (for now)
@@ -20,11 +25,10 @@ set(sources
 #   - Number of connections (currently and total)
 #   - Amount of data read and written
 # USE_IPV6: add IPv6 support
-set(CIVETWEB_OPTS
-        ""
-        )
+target_compile_definitions(civetweb PRIVATE NO_CGI
+                                            NO_SSL_DL
+                                            NO_SSL
+                                            USE_SERVER_STATS
+                                            USE_IPV6)
 
-
-add_library(civetweb OBJECT ${sources})
-target_compile_definitions(civetweb PRIVATE NO_CGI NO_SSL_DL NO_SSL USE_SERVER_STATS USE_IPV6)
 target_include_directories(civetweb PRIVATE ${PROJECT_SOURCE_DIR}/src)
