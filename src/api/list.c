@@ -30,9 +30,19 @@ static int getTableType(bool whitelist, bool exact)
 
 static int api_dns_domainlist_read(struct mg_connection *conn, bool exact, bool whitelist)
 {
+	const struct mg_request_info *request = mg_get_request_info(conn);
+
+	char domain_filter[1024] = { '\0' };
+	// Advance one character to strip "/"
+	const char *encoded_uri = strrchr(request->local_uri, '/')+1u;
+        logg("'%s'", encoded_uri);
+	// Decode URL (necessary for regular expressions, harmless for domains)
+	if(strlen(encoded_uri) != 0 && strcmp(encoded_uri, "exact") != 0 && strcmp(encoded_uri, "regex") != 0)
+		mg_url_decode(encoded_uri, strlen(encoded_uri), domain_filter, sizeof(domain_filter)-1u, 0);
+
 	int type = getTableType(whitelist, exact);
 	const char *sql_msg = NULL;
-	if(!gravityDB_readTable(type, &sql_msg))
+	if(!gravityDB_readTable(type, domain_filter, &sql_msg))
 	{
 		cJSON *json = JSON_NEW_OBJ();
 

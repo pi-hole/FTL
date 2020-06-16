@@ -59,7 +59,7 @@ int api_dns_blockingstatus(struct mg_connection *conn)
 			cJSON_Delete(obj);
 			return send_json_error(conn, 400,
 			                       "bad_request",
-			                       "No \"action\" string in body data",
+			                       "No \"status\" string in body data",
 			                       NULL);
 		}
 		char *status = strdup(elem1->valuestring);

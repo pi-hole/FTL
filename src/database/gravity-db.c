@@ -1086,7 +1086,7 @@ bool gravityDB_delFromTable(const int type, const char* domain, const char **mes
 }
 
 static sqlite3_stmt* read_stmt = NULL;
-bool gravityDB_readTable(const int type, const char **message)
+bool gravityDB_readTable(const int type, const char *domain, const char **message)
 {
 	if(gravity_db == NULL)
 	{
@@ -1095,7 +1095,11 @@ bool gravityDB_readTable(const int type, const char **message)
 	}
 
 	// Prepare SQLite statement
-	const char *querystr = "SELECT domain,enabled,date_added,date_modified,comment FROM domainlist WHERE type = ?;";
+	const char *querystr;
+	if(domain[0] == '\0')
+		querystr = "SELECT domain,enabled,date_added,date_modified,comment FROM domainlist WHERE type = ?;";
+	else
+		querystr = "SELECT domain,enabled,date_added,date_modified,comment FROM domainlist WHERE type = ? AND domain = ?;";
 	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &read_stmt, NULL);
 	if( rc != SQLITE_OK ){
 		*message = sqlite3_errmsg(gravity_db);
@@ -1106,6 +1110,17 @@ bool gravityDB_readTable(const int type, const char **message)
 
 	// Bind domain type to prepared statement
 	if((rc = sqlite3_bind_int(read_stmt, 1, type)) != SQLITE_OK)
+	{
+		*message = sqlite3_errmsg(gravity_db);
+		logg("gravityDB_readTable(%d): Failed to bind type (error %d) - %s",
+		     type, rc, *message);
+		sqlite3_reset(read_stmt);
+		sqlite3_finalize(read_stmt);
+		return false;
+	}
+
+	// Bind domain to prepared statement
+	if(domain[0] != '\0' && (rc = sqlite3_bind_text(read_stmt, 2, domain, -1, SQLITE_STATIC)) != SQLITE_OK)
 	{
 		*message = sqlite3_errmsg(gravity_db);
 		logg("gravityDB_readTable(%d): Failed to bind domain (error %d) - %s",
