@@ -96,7 +96,7 @@ static int api_dns_domainlist_read(struct mg_connection *conn, bool exact, bool 
 {
 	// Extract domain from path (option for GET)
 	const struct mg_request_info *request = mg_get_request_info(conn);
-	char domain_filter[1024];
+	char domain_filter[1024] = { 0 };
 	// Advance one character to strip "/"
 	const char *encoded_uri = strrchr(request->local_uri, '/')+1u;
 	// Decode URL (necessary for regular expressions, harmless for domains)
@@ -114,12 +114,12 @@ static int api_dns_domainlist_write(struct mg_connection *conn,
                                     const enum http_method method)
 {
 	// Extract payload
-	char buffer[1024];
+	char buffer[1024] = { 0 };
 	int data_len = mg_read(conn, buffer, sizeof(buffer) - 1);
 	if ((data_len < 1) || (data_len >= (int)sizeof(buffer))) {
 		return send_json_error(conn, 400,
-                                       "bad_request", "No request body data",
-                                       NULL);
+		                       "bad_request", "No request body data",
+		                       NULL);
 	}
 	buffer[data_len] = '\0';
 
@@ -205,7 +205,7 @@ static int api_dns_domainlist_remove(struct mg_connection *conn,
 {
 	const struct mg_request_info *request = mg_get_request_info(conn);
 
-	char domain[1024];
+	char domain[1024] = { 0 };
 	// Advance one character to strip "/"
 	const char *encoded_uri = strrchr(request->local_uri, '/')+1u;
 	// Decode URL (necessary for regular expressions, harmless for domains)

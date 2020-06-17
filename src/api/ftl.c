@@ -135,7 +135,8 @@ int api_ftl_database(struct mg_connection *conn)
 	JSON_OBJ_ADD_NUMBER(json, "size", st.st_size); // Total size, in bytes
 
 	// File type
-	char octal[5]; const char *human;
+	char octal[5] = { 0 };
+	const char *human;
 	cJSON *type = JSON_NEW_OBJ();
 	snprintf(octal, sizeof(octal), "%04o", (st.st_mode & S_IFMT) >> 9);
 	JSON_OBJ_COPY_STR(type, "octal", octal);
@@ -152,7 +153,7 @@ int api_ftl_database(struct mg_connection *conn)
 	cJSON *mode = JSON_NEW_OBJ();
 	snprintf(octal, sizeof(octal), "%03o", st.st_mode & 0x1FF);
 	JSON_OBJ_COPY_STR(mode, "octal", octal);
-	char permissions[10];
+	char permissions[10] = { 0 };
 	get_permission_string(permissions, &st);
 	JSON_OBJ_REF_STR(mode, "human", permissions);
 	JSON_OBJ_ADD_ITEM(json, "mode", mode);

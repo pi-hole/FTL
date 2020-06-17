@@ -53,7 +53,7 @@ static int set_blocking(struct mg_connection *conn)
 		return send_json_unauthorized(conn);
 	}
 
-	char buffer[1024];
+	char buffer[1024] = { 0 };
 	const int data_len = mg_read(conn, buffer, sizeof(buffer) - 1);
 	if ((data_len < 1) || (data_len >= (int)sizeof(buffer))) {
 		return send_json_error(conn, 400,
