@@ -82,6 +82,8 @@ int api_stats_summary(struct mg_connection *conn)
 
 	// Send response
 	cJSON *json = JSON_NEW_OBJ();
+	const bool blocking = get_blockingstatus();
+	JSON_OBJ_ADD_BOOL(json, "blocking", blocking); // same reply type as in /api/dns/status
 	JSON_OBJ_ADD_NUMBER(json, "gravity_size", counters->gravity);
 	JSON_OBJ_ADD_NUMBER(json, "blocked_queries", counters->blocked);
 	JSON_OBJ_ADD_NUMBER(json, "percent_blocked", percent_blocked);
@@ -91,7 +93,6 @@ int api_stats_summary(struct mg_connection *conn)
 	JSON_OBJ_ADD_NUMBER(json, "privacy_level", config.privacylevel);
 	JSON_OBJ_ADD_NUMBER(json, "total_clients", counters->clients);
 	JSON_OBJ_ADD_NUMBER(json, "active_clients", activeclients);
-	JSON_OBJ_REF_STR(json, "status", (counters->gravity > 0 ? "enabled" : "disabled"));
 
 	cJSON *total_queries = JSON_NEW_OBJ();
 	JSON_OBJ_ADD_NUMBER(total_queries, "A", counters->querytype[TYPE_A]);
@@ -111,6 +112,7 @@ int api_stats_summary(struct mg_connection *conn)
 	JSON_OBJ_ADD_NUMBER(reply_types, "NXDOMAIN", counters->reply_NXDOMAIN);
 	JSON_OBJ_ADD_NUMBER(reply_types, "CNAME", counters->reply_CNAME);
 	JSON_OBJ_ADD_NUMBER(reply_types, "IP", counters->reply_IP);
+	JSON_OBJ_ADD_NUMBER(reply_types, "domain", counters->reply_domain);
 	JSON_OBJ_ADD_ITEM(json, "reply_types", reply_types);
 
 	JSON_SEND_OBJECT(json);
