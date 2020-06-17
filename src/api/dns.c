@@ -93,9 +93,8 @@ static int set_blocking(struct mg_connection *conn)
 	{
 		// The blocking status does not need to be changed
 
-		// If delay is absent (or -1), we delete a possibly running timer
-		if(delay < 0)
-			set_blockingmode_timer(-1, true);
+		// Delete a possibly running timer
+		set_blockingmode_timer(-1, true);
 	}
 	else
 	{
