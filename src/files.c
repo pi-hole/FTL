@@ -59,15 +59,33 @@ bool file_exists(const char *filename)
 	return stat(filename, &st) == 0;
 }
 
+bool get_database_stat(struct stat *st)
+{
+	return stat(FTLfiles.FTL_db, st) != 0;
+}
+
 unsigned long long get_FTL_db_filesize(void)
 {
 	struct stat st;
-	if(stat(FTLfiles.FTL_db, &st) != 0)
-	{
-		// stat() failed (maybe the DB file does not exist?)
-		return 0;
-	}
-	return st.st_size;
+	if(get_database_stat(&st))
+		return st.st_size;
+	return 0llu;
+}
+
+void get_permission_string(char permissions[10], struct stat *st)
+{
+	// Get human-readable format of permissions as known from ls
+	snprintf(permissions, 10u,
+	         "%s%s%s%s%s%s%s%s%s",
+	         st->st_mode & S_IRUSR ? "r":"-",
+	         st->st_mode & S_IWUSR ? "w":"-",
+	         st->st_mode & S_IXUSR ? "x":"-",
+	         st->st_mode & S_IRGRP ? "r":"-",
+	         st->st_mode & S_IWGRP ? "w":"-",
+	         st->st_mode & S_IXGRP ? "x":"-",
+	         st->st_mode & S_IROTH ? "r":"-",
+	         st->st_mode & S_IWOTH ? "w":"-",
+	         st->st_mode & S_IXOTH ? "x":"-");
 }
 
 void ls_dir(const char* path)
@@ -121,18 +139,7 @@ void ls_dir(const char* path)
 			snprintf(group, sizeof(group), "%d", st.st_gid);
 
 		char permissions[10];
-		// Get human-readable format of permissions as known from ls
-		snprintf(permissions, sizeof(permissions),
-		         "%s%s%s%s%s%s%s%s%s",
-		         st.st_mode & S_IRUSR ? "r":"-",
-		         st.st_mode & S_IWUSR ? "w":"-",
-		         st.st_mode & S_IXUSR ? "x":"-",
-		         st.st_mode & S_IRGRP ? "r":"-",
-		         st.st_mode & S_IWGRP ? "w":"-",
-		         st.st_mode & S_IXGRP ? "x":"-",
-		         st.st_mode & S_IROTH ? "r":"-",
-		         st.st_mode & S_IWOTH ? "w":"-",
-		         st.st_mode & S_IXOTH ? "x":"-");
+		get_permission_string(permissions, &st);
 
 		char prefix[2] = " ";
 		double formated = 0.0;
