@@ -113,22 +113,14 @@ void http_init(void)
 
 	/* Add simple demonstration callbacks */
 	mg_set_request_handler(ctx, "/ping", print_simple, (char*)"pong\n");
-	char *api_path = NULL;
-	if(asprintf(&api_path, "%sapi", httpsettings.webhome) > 4)
-	{
-		if(config.debug & DEBUG_API)
-		{
-			logg_web(HTTP_INFO, "Installing API handler at %s", api_path);
-		}
-		mg_set_request_handler(ctx, api_path, api_handler, NULL);
-		// The request handler URI got duplicated
-		free(api_path);
-	}
+
+	// Register API handler
+	mg_set_request_handler(ctx, "/api", api_handler, NULL);
 
 	// Initialize PH7 engine and register PHP request handler
 	init_ph7();
-	mg_set_request_handler(ctx, "**/$", ph7_handler, 0);
-	mg_set_request_handler(ctx, "**.php$", ph7_handler, 0);
+	mg_set_request_handler(ctx, "**/$", ph7_handler, NULL);
+	mg_set_request_handler(ctx, "**.php$", ph7_handler, NULL);
 }
 
 void http_terminate(void)

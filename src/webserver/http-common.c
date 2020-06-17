@@ -140,24 +140,7 @@ bool get_uint_var(const char *source, const char *var, unsigned int *num)
 
 bool __attribute__((pure)) startsWith(const char *path, const char *uri)
 {
-	// We subtract 1 to include the trailing slash in webhome
-	unsigned int webhome_length = strlen(httpsettings.webhome)-1u;
-	unsigned int uri_length = strlen(uri);
-	if(uri_length > webhome_length)
-	{
-		// Compare strings while skipping any possible webhome
-		// Note: this is not an issue here as the API callback
-		// doesn't even get called when the path does not start in
-		// what is configured by httpsettings.webhome.
-		// In other words: This strips the webhome such that any
-		// request will look like "/api/dns/status" even when the
-		// webhome is configured to something like "/admin"
-		return strncmp(path, uri+webhome_length, strlen(path)) == 0;
-	}
-	else
-	{
-		return false;
-	}
+	return strncmp(path, uri, strlen(path)) == 0;
 }
 
 bool http_get_cookie_int(struct mg_connection *conn, const char *cookieName, int *i)

@@ -271,9 +271,9 @@
 }
 
 @test "HTTP server responds with JSON error 404 to unknown API path" {
-  run bash -c 'curl -s 127.0.0.1:8080/admin/api/undefined'
+  run bash -c 'curl -s 127.0.0.1:8080/api/undefined'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "{\"error\":{\"key\":\"not_found\",\"message\":\"Not found\",\"data\":{\"path\":\"/admin/api/undefined\"}}}" ]]
+  [[ ${lines[0]} == "{\"error\":{\"key\":\"not_found\",\"message\":\"Not found\",\"data\":{\"path\":\"/api/undefined\"}}}" ]]
 }
 
 @test "HTTP server responds with normal error 404 to path outside /admin" {
@@ -290,14 +290,14 @@
 #}
 
 @test "API authorization: Unauthorized for request without password" {
-  run bash -c 'curl -I -s 127.0.0.1:8080/admin/api/auth'
+  run bash -c 'curl -I -s 127.0.0.1:8080/api/auth'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "HTTP/1.1 401 Unauthorized"* ]]
 }
 
 # This test is assuming the user password is empty
 @test "API authorization: Success for request with correct password" {
-  run bash -c 'curl -s -H "X-Pi-hole-Authenticate: cd372fb85148700fa88095e3492d3f9f5beb43e555e5ff26d95f5a6adc36f8e6" 127.0.0.1:8080/admin/api/auth'
+  run bash -c 'curl -s -H "X-Pi-hole-Authenticate: cd372fb85148700fa88095e3492d3f9f5beb43e555e5ff26d95f5a6adc36f8e6" 127.0.0.1:8080/api/auth'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "{\"status\":\"success\"}" ]]
 }

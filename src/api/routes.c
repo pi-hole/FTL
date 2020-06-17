@@ -24,7 +24,7 @@ int api_handler(struct mg_connection *conn, void *ignored)
 	int ret = 0;
 
 	const struct mg_request_info *request = mg_get_request_info(conn);
-	/******************************** api/dns ********************************/
+	/******************************** /api/dns ********************************/
 	if(startsWith("/api/dns/blocking", request->local_uri))
 	{
 		ret = api_dns_blockingstatus(conn);
@@ -33,7 +33,7 @@ int api_handler(struct mg_connection *conn, void *ignored)
 	{
 		ret = api_dns_cacheinfo(conn);
 	}
-	/******************************** api/whitelist ****************************/
+	/******************************** /api/whitelist ****************************/
 	else if(startsWith("/api/whitelist/exact", request->local_uri))
 	{
 		ret = api_dns_domainlist(conn, true, true);
@@ -42,7 +42,7 @@ int api_handler(struct mg_connection *conn, void *ignored)
 	{
 		ret = api_dns_domainlist(conn, false, true);
 	}
-	/******************************** api/blacklist ****************************/
+	/******************************** /api/blacklist ****************************/
 	else if(startsWith("/api/blacklist/exact", request->local_uri))
 	{
 		ret = api_dns_domainlist(conn, true, false);
@@ -51,7 +51,7 @@ int api_handler(struct mg_connection *conn, void *ignored)
 	{
 		ret = api_dns_domainlist(conn, false, false);
 	}
-	/******************************** api/ftl ****************************/
+	/******************************** /api/ftl ****************************/
 	else if(startsWith("/api/ftl/client", request->local_uri))
 	{
 		ret = api_ftl_client(conn);
@@ -64,12 +64,12 @@ int api_handler(struct mg_connection *conn, void *ignored)
 	{
 		ret = api_ftl_database(conn);
 	}
-	/******************************** api/network ****************************/
+	/******************************** /api/network ****************************/
 	else if(startsWith("/api/network", request->local_uri))
 	{
 		ret = api_network(conn);
 	}
-	/******************************** api/stats **************************/
+	/******************************** /api/stats **************************/
 	else if(startsWith("/api/stats/summary", request->local_uri))
 	{
 		ret = api_stats_summary(conn);
@@ -146,12 +146,12 @@ int api_handler(struct mg_connection *conn, void *ignored)
 	{
 		ret = api_stats_database_upstreams(conn);
 	}
-	/******************************** api/version ****************************/
+	/******************************** /api/version ****************************/
 	else if(startsWith("/api/version", request->local_uri))
 	{
 		ret = api_version(conn);
 	}
-	/******************************** api/auth ****************************/
+	/******************************** /api/auth ****************************/
 	else if(startsWith("/api/auth", request->local_uri))
 	{
 		ret = api_auth(conn);
@@ -160,7 +160,7 @@ int api_handler(struct mg_connection *conn, void *ignored)
 	{
 		ret = api_auth_salt(conn);
 	}
-	/******************************** api/settings ****************************/
+	/******************************** /api/settings ****************************/
 	else if(startsWith("/api/settings/web", request->local_uri))
 	{
 		ret = api_settings_web(conn);
