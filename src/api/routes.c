@@ -52,9 +52,9 @@ int api_handler(struct mg_connection *conn, void *ignored)
 		ret = api_dns_domainlist(conn, false, false);
 	}
 	/******************************** api/ftl ****************************/
-	else if(startsWith("/api/ftl/clientIP", request->local_uri))
+	else if(startsWith("/api/ftl/client", request->local_uri))
 	{
-		ret = api_ftl_clientIP(conn);
+		ret = api_ftl_client(conn);
 	}
 	else if(startsWith("/api/ftl/dnsmasq_log", request->local_uri))
 	{

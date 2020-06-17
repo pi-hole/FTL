@@ -36,7 +36,7 @@ int api_stats_database_query_types(struct mg_connection *conn);
 int api_stats_database_upstreams(struct mg_connection *conn);
 
 // FTL methods
-int api_ftl_clientIP(struct mg_connection *conn);
+int api_ftl_client(struct mg_connection *conn);
 int api_ftl_dnsmasq_log(struct mg_connection *conn);
 int api_ftl_network(struct mg_connection *conn);
 

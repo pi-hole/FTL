@@ -25,11 +25,32 @@
 // networkrecord
 #include "../database/network-table.h"
 
-int api_ftl_clientIP(struct mg_connection *conn)
+int api_ftl_client(struct mg_connection *conn)
 {
 	cJSON *json = JSON_NEW_OBJ();
 	const struct mg_request_info *request = mg_get_request_info(conn);
-	JSON_OBJ_REF_STR(json,"remote_addr", request->remote_addr);
+
+	// Add client's IP address
+	JSON_OBJ_REF_STR(json, "remote_addr", request->remote_addr);
+
+	// Add HTTP version
+	JSON_OBJ_REF_STR(json, "http_version", request->http_version);
+
+	// Add request method
+	JSON_OBJ_REF_STR(json, "method", request->request_method);
+
+	// Add HTTP headers
+	cJSON *headers = JSON_NEW_ARRAY();
+	for(int i = 0; i < request->num_headers; i++)
+	{
+		// Add headers
+		cJSON *header = JSON_NEW_OBJ();
+		JSON_OBJ_REF_STR(header, "name", request->http_headers[i].name);
+		JSON_OBJ_REF_STR(header, "value", request->http_headers[i].value);
+		JSON_ARRAY_ADD_ITEM(headers, header);
+	}
+	JSON_OBJ_ADD_ITEM(json, "headers", headers);
+
 	JSON_SEND_OBJECT(json);
 }
 
