@@ -35,7 +35,7 @@
 // http_init()
 #include "webserver/webserver.h"
 // add_to_dnsmasq_log_buffer()
-#include "api/ftl.h"
+#include "fifo.h"
 
 static void print_flags(const unsigned int flags);
 static void save_reply_type(const unsigned int flags, const union all_addr *addr,

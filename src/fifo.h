@@ -3,23 +3,23 @@
 *  Network-wide ad blocking via your own hardware.
 *
 *  FTL Engine
-*  API FTL prototypes
+*  dnsmasq FIFO log prototypes
 *
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 #ifndef API_FTL_H
 #define API_FTL_H
 
+#include "FTL.h"
+
 /* From RFC 3164 */
 #define MAX_MESSAGE 1024
 
 // How many messages do we keep in memory (FIFO message buffer)?
-// The memory required is the set number in kilobytes
-// Defaults to 64 [uses 64 KB of memory]
-#define LOG_SIZE 64
+// This number multiplied by MAX_MESSAGE (see above) gives the total buffer size
+// Defaults to 128 [use 128 KB of memory for the log]
+#define LOG_SIZE 128
 
-void init_dnsmasq_fifo_log(void);
-void free_dnsmasq_fifo_log(void);
 void add_to_dnsmasq_log_fifo_buffer(const char *payload, const int length);
 
 typedef struct {

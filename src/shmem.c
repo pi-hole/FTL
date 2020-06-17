@@ -17,7 +17,7 @@
 // data getter functions
 #include "datastructure.h"
 // fifologData
-#include "api/ftl.h"
+#include "fifo.h"
 
 /// The version of shared memory used
 #define SHARED_MEMORY_VERSION 9

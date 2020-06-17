@@ -114,6 +114,8 @@ set(sources
         datastructure.h
         dnsmasq_interface.c
         dnsmasq_interface.h
+        fifo.c
+        fifo.h
         files.c
         files.h
         FTL.h

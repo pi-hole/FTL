@@ -8,22 +8,21 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "FTL.h"
+#include "../FTL.h"
 #include "../webserver/http-common.h"
 #include "../webserver/json_macros.h"
 #include "routes.h"
-#include "ftl.h"
-#include "datastructure.h"
+#include "../datastructure.h"
 // get_FTL_version()
-#include "log.h"
+#include "../log.h"
 // git constants
-#include "version.h"
+#include "../version.h"
 // config struct
-#include "config.h"
-// {un,}lock_shm()
-#include "../shmem.h"
+#include "../config.h"
 // networkrecord
 #include "../database/network-table.h"
+// struct fifologData
+#include "../fifo.h"
 
 int api_ftl_client(struct mg_connection *conn)
 {
@@ -54,6 +53,7 @@ int api_ftl_client(struct mg_connection *conn)
 	JSON_SEND_OBJECT(json);
 }
 
+// fifologData is allocated in shared memory for cross-fork compatibility
 fifologData *fifo_log = NULL;
 int api_ftl_dnsmasq_log(struct mg_connection *conn)
 {
@@ -115,43 +115,9 @@ int api_ftl_dnsmasq_log(struct mg_connection *conn)
 	}
 	JSON_OBJ_ADD_ITEM(json, "log", log);
 	JSON_OBJ_ADD_NUMBER(json, "nextID", fifo_log->next_id);
+
+	// Send data
 	JSON_SEND_OBJECT(json);
-}
-
-void add_to_dnsmasq_log_fifo_buffer(const char *payload, const int length)
-{
-	// Lock SHM
-	lock_shm();
-
-	unsigned int idx = fifo_log->next_id++;
-	if(idx >= LOG_SIZE)
-	{
-		// Log is full, move everything one slot forward to make space for a new record at the end
-		// This pruges the oldest message from the list (it is overwritten by the second message)
-		memmove(fifo_log->message[0], fifo_log->message[1], (LOG_SIZE - 1u) * MAX_MESSAGE);
-		memmove(&fifo_log->timestamp[0], &fifo_log->timestamp[1], (LOG_SIZE - 1u) * sizeof(time_t));
-		idx = LOG_SIZE - 1u;
-	}
-
-	// Copy relevant string into temporary buffer
-	size_t copybytes = length < MAX_MESSAGE ? length : MAX_MESSAGE;
-	memcpy(fifo_log->message[idx], payload, copybytes);
-
-	// Zero-terminate buffer, truncate newline if found
-	if(fifo_log->message[idx][copybytes - 1u] == '\n')
-	{
-		fifo_log->message[idx][copybytes - 1u] = '\0';
-	}
-	else
-	{
-		fifo_log->message[idx][copybytes] = '\0';
-	}
-
-	// Set timestamp
-	fifo_log->timestamp[idx] = time(NULL);
-
-	// Unlock SHM
-	unlock_shm();
 }
 
 int api_ftl_network(struct mg_connection *conn)
