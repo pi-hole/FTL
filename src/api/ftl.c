@@ -134,16 +134,17 @@ void add_to_dnsmasq_log_fifo_buffer(const char *payload, const int length)
 	}
 
 	// Copy relevant string into temporary buffer
-	memcpy(fifo_log->message[idx], payload, length);
+	size_t copybytes = length < MAX_MESSAGE ? length : MAX_MESSAGE;
+	memcpy(fifo_log->message[idx], payload, copybytes);
 
 	// Zero-terminate buffer, truncate newline if found
-	if(fifo_log->message[idx][length - 1u] == '\n')
+	if(fifo_log->message[idx][copybytes - 1u] == '\n')
 	{
-		fifo_log->message[idx][length - 1u] = '\0';
+		fifo_log->message[idx][copybytes - 1u] = '\0';
 	}
 	else
 	{
-		fifo_log->message[idx][length] = '\0';
+		fifo_log->message[idx][copybytes] = '\0';
 	}
 
 	// Set timestamp
@@ -166,9 +167,9 @@ int api_ftl_network(struct mg_connection *conn)
 	{
 		cJSON *json = JSON_NEW_OBJ();
 		return send_json_error(conn, 500,
-                                       "database_error",
-                                       "Could not read network details from database table",
-                                       json);
+		                       "database_error",
+		                       "Could not read network details from database table",
+		                       json);
 	}
 
 	// Read record for a single device
@@ -192,9 +193,8 @@ int api_ftl_network(struct mg_connection *conn)
 			// Only walk known IP addresses when SELECT query succeeded
 			const char *ipaddr;
 			while((ipaddr = networkTable_readIPsGetRecord()) != NULL)
-			{
 				JSON_ARRAY_COPY_STR(ip, ipaddr);
-			}
+
 			networkTable_readIPsFinalize();
 		}
 		JSON_OBJ_ADD_ITEM(item, "ip", ip);
