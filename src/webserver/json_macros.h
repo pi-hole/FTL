@@ -80,7 +80,7 @@
 }
 
 #define JSON_OBJ_ADD_BOOL(object, key, value) {\
-	cJSON *bool_item = cJSON_CreateBool(value ? cJSON_True : cJSON_False); \
+	cJSON *bool_item = cJSON_CreateBool((cJSON_bool)value); \
 	if(bool_item == NULL) \
 	{ \
 		cJSON_Delete(object); \

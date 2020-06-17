@@ -175,23 +175,15 @@ int http_method(struct mg_connection *conn)
 {
 	const struct mg_request_info *request = mg_get_request_info(conn);
 	if(strcmp(request->request_method, "GET") == 0)
-	{
 		return HTTP_GET;
-	}
 	else if(strcmp(request->request_method, "DELETE") == 0)
-	{
 		return HTTP_DELETE;
-	}
 	else if(strcmp(request->request_method, "PUT") == 0)
-	{
 		return HTTP_PUT;
-	}
 	else if(strcmp(request->request_method, "POST") == 0)
-	{
 		return HTTP_POST;
-	}
+	else if(strcmp(request->request_method, "PATCH") == 0)
+		return HTTP_PATCH;
 	else
-	{
 		return HTTP_UNKNOWN;
-	}
 }

@@ -19,6 +19,7 @@ void timer_start(const int i);
 double timer_elapsed_msec(const int i);
 void sleepms(const int milliseconds);
 void set_blockingmode_timer(int delay, bool blocked);
+void get_blockingmode_timer(int *delay, bool *target_status);
 void *timer(void *val);
 
 #endif //TIMERS_H

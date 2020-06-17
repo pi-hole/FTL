@@ -18,88 +18,109 @@
 // set_blockingmode_timer()
 #include "../timers.h"
 
+static int get_blocking(struct mg_connection *conn)
+{
+	// Return current status
+	cJSON *json = JSON_NEW_OBJ();
+	const bool blocking = get_blockingstatus();
+	JSON_OBJ_ADD_BOOL(json, "blocking", blocking);
+
+	// Get timer information (if applicable)
+	int delay;
+	bool target_status;
+	get_blockingmode_timer(&delay, &target_status);
+	if(delay > -1)
+	{
+		cJSON *timer = JSON_NEW_OBJ();
+		JSON_OBJ_ADD_NUMBER(timer, "delay", delay);
+		JSON_OBJ_ADD_BOOL(timer, "blocking_target", target_status);
+		JSON_OBJ_ADD_ITEM(json, "timer", timer);
+	}
+	else
+	{
+		JSON_OBJ_ADD_NULL(json, "timer");
+	}
+
+	// Send object (HTTP 200 OK)
+	JSON_SEND_OBJECT(json);
+}
+
+static int set_blocking(struct mg_connection *conn)
+{
+	// Verify requesting client is allowed to access this ressource
+	if(check_client_auth(conn) < 0)
+	{
+		return send_json_unauthorized(conn);
+	}
+
+	char buffer[1024];
+	const int data_len = mg_read(conn, buffer, sizeof(buffer) - 1);
+	if ((data_len < 1) || (data_len >= (int)sizeof(buffer))) {
+		return send_json_error(conn, 400,
+		                       "bad_request", "No request body data",
+		                       NULL);
+	}
+	buffer[data_len] = '\0';
+
+	cJSON *obj = cJSON_Parse(buffer);
+	if (obj == NULL) {
+		return send_json_error(conn, 400,
+		                       "bad_request",
+		                       "Invalid request body data",
+		                       NULL);
+	}
+
+	cJSON *elem = cJSON_GetObjectItemCaseSensitive(obj, "blocking");
+	if (!cJSON_IsBool(elem)) {
+		cJSON_Delete(obj);
+		return send_json_error(conn, 400,
+		                       "bad_request",
+		                       "No \"blocking\" boolean in body data",
+		                       NULL);
+	}
+	const bool target_status = cJSON_IsTrue(elem);
+
+	// Get (optional) delay
+	int delay = -1;
+	elem = cJSON_GetObjectItemCaseSensitive(obj, "delay");
+	if (cJSON_IsNumber(elem) && elem->valuedouble > 0.0)
+		delay = elem->valueint;
+
+	// Free memory not needed any longer
+	cJSON_Delete(obj);
+
+	if(target_status == get_blockingstatus())
+	{
+		// The blocking status does not need to be changed
+
+		// If delay is absent (or -1), we delete a possibly running timer
+		if(delay < 0)
+			set_blockingmode_timer(-1, true);
+	}
+	else
+	{
+		// Activate requested status
+		set_blockingstatus(target_status);
+
+		// Start timer (-1 disables all running timers)
+		set_blockingmode_timer(delay, !target_status);
+	}
+
+	// Return GET property as result of POST/PUT/PATCH action
+	// if no error happened above
+	return get_blocking(conn);
+}
+
 int api_dns_blockingstatus(struct mg_connection *conn)
 {
 	int method = http_method(conn);
 	if(method == HTTP_GET)
 	{
-		// Return current status
-		cJSON *json = JSON_NEW_OBJ();
-		const char *action = get_blockingstatus() ? "active" : "inactive";
-		JSON_OBJ_REF_STR(json, "status", action);
-		JSON_SEND_OBJECT(json);
+		return get_blocking(conn);
 	}
-	else if(method == HTTP_POST)
+	else if(method == HTTP_PATCH)
 	{
-		// Verify requesting client is allowed to access this ressource
-		if(check_client_auth(conn) < 0)
-		{
-			return send_json_unauthorized(conn);
-		}
-
-		char buffer[1024];
-		int data_len = mg_read(conn, buffer, sizeof(buffer) - 1);
-		if ((data_len < 1) || (data_len >= (int)sizeof(buffer))) {
-			return send_json_error(conn, 400,
-			                       "bad_request", "No request body data",
-			                       NULL);
-		}
-		buffer[data_len] = '\0';
-
-		cJSON *obj = cJSON_Parse(buffer);
-		if (obj == NULL) {
-			return send_json_error(conn, 400,
-			                       "bad_request",
-			                       "Invalid request body data",
-			                        NULL);
-		}
-
-		cJSON *elem1 = cJSON_GetObjectItemCaseSensitive(obj, "status");
-		if (!cJSON_IsString(elem1)) {
-			cJSON_Delete(obj);
-			return send_json_error(conn, 400,
-			                       "bad_request",
-			                       "No \"status\" string in body data",
-			                       NULL);
-		}
-		char *status = strdup(elem1->valuestring);
-
-		unsigned int delay = -1;
-		cJSON *elem2 = cJSON_GetObjectItemCaseSensitive(obj, "delay");
-		if (cJSON_IsNumber(elem2) && elem2->valuedouble > 0.0)
-		{
-			delay = elem2->valueint;
-		}
-
-		cJSON_Delete(obj);
-		cJSON *json = JSON_NEW_OBJ();
-		JSON_OBJ_COPY_STR(json, "status", status);
-
-		// Execute requested status
-		if(strcmp(status, "active") == 0)
-		{
-			// If no "time" key was present, we call this subroutine with
-			// delay == -1 which will disable all previously set timers
-			set_blockingmode_timer(delay, false);
-			set_blockingstatus(true);
-		}
-		else if(strcmp(status, "inactive") == 0)
-		{
-			// If no "time" key was present, we call this subroutine with
-			// delay == -1 which will disable all previously set timers
-			set_blockingmode_timer(delay, true);
-			set_blockingstatus(false);
-		}
-		else
-		{
-			free(status);
-			return send_json_error(conn, 400,
-			                       "bad_request",
-			                       "Invalid \"status\" requested",
-			                       json);
-		}
-		free(status);
-		JSON_SEND_OBJECT(json);
+		return set_blocking(conn);
 	}
 	else
 	{

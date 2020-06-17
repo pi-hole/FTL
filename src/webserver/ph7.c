@@ -60,9 +60,9 @@ int ph7_handler(struct mg_connection *conn, void *cbdata)
 	}
 
 	char full_path[buffer_len];
-	strncpy(full_path, httpsettings.webroot, webroot_len);
+	memcpy(full_path, httpsettings.webroot, webroot_len);
 	full_path[webroot_len] = '/';
-	strncpy(full_path + webroot_len + 1u, local_uri, local_uri_len);
+	memcpy(full_path + webroot_len + 1u, local_uri, local_uri_len);
 	full_path[webroot_len + local_uri_len + 1u] = '\0';
 	if(append_index)
 	{

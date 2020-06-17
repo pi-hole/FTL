@@ -50,12 +50,18 @@ void sleepms(const int milliseconds)
 }
 
 static int timer_delay = -1;
-static bool timer_targer_state;
+static bool timer_target_status;
 
-void set_blockingmode_timer(int delay, bool blocked)
+void set_blockingmode_timer(int delay, bool target_status)
 {
 	timer_delay = delay;
-	timer_targer_state = blocked;
+	timer_target_status = target_status;
+}
+
+void get_blockingmode_timer(int *delay, bool *target_status)
+{
+	*delay = timer_delay;
+	*target_status = timer_target_status;
 }
 
 void *timer(void *val)
@@ -74,7 +80,7 @@ void *timer(void *val)
 		}
 		else if(timer_delay == 0)
 		{
-			set_blockingstatus(timer_targer_state);
+			set_blockingstatus(timer_target_status);
 			timer_delay = -1;
 		}
 		sleepms(1000);
