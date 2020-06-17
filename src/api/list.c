@@ -60,7 +60,12 @@ static int get_domainlist(struct mg_connection *conn, const int code, const int 
 		JSON_OBJ_ADD_BOOL(item, "enabled", domain.enabled);
 		JSON_OBJ_ADD_NUMBER(item, "date_added", domain.date_added);
 		JSON_OBJ_ADD_NUMBER(item, "date_modified", domain.date_modified);
-		JSON_OBJ_COPY_STR(item, "comment", domain.comment);
+		if(domain.comment != NULL) {
+			JSON_OBJ_COPY_STR(item, "comment", domain.comment);
+		} else {
+			JSON_OBJ_ADD_NULL(item, "comment");
+		}
+
 		JSON_ARRAY_ADD_ITEM(json, item);
 	}
 	gravityDB_readTableFinalize();
@@ -118,7 +123,8 @@ static int api_dns_domainlist_write(struct mg_connection *conn,
 	int data_len = mg_read(conn, buffer, sizeof(buffer) - 1);
 	if ((data_len < 1) || (data_len >= (int)sizeof(buffer))) {
 		return send_json_error(conn, 400,
-		                       "bad_request", "No request body data",
+		                       "bad_request",
+		                       "No request body data",
 		                       NULL);
 	}
 	buffer[data_len] = '\0';

@@ -672,9 +672,9 @@ int api_stats_history(struct mg_connection *conn)
 					free(forwarddest);
 
 					return send_json_error(conn, 400,
-					"bad_request",
-					"Requested upstream not found",
-					json);
+					                       "bad_request",
+					                       "Requested upstream not found",
+					                       json);
 				}
 			}
 		}
@@ -760,9 +760,9 @@ int api_stats_history(struct mg_connection *conn)
 				free(clientname);
 
 				return send_json_error(conn, 400,
-				"bad_request",
-				"Requested client not found",
-				json);
+				                       "bad_request",
+				                       "Requested client not found",
+				                       json);
 			}
 		}
 
@@ -785,9 +785,9 @@ int api_stats_history(struct mg_connection *conn)
 				free(clientname);
 
 				return send_json_error(conn, 400,
-				"bad_request",
-				"Requested cursor larger than number of queries",
-				json);
+				                       "bad_request",
+				                       "Requested cursor larger than number of queries",
+				                       json);
 			}
 			
 		}
