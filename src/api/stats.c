@@ -196,16 +196,14 @@ int api_stats_top_domains(bool blocked, struct mg_connection *conn)
 	if(request->query_string != NULL)
 	{
 		// Should blocked clients be shown?
-		blocked = get_bool_var(request->query_string, "blocked");
+		get_bool_var(request->query_string, "blocked", &blocked);
 
 		// Does the user request a non-default number of replies?
 		// Note: We do not accept zero query requests here
-		int num;
-		if((num = get_int_var(request->query_string, "show")) > 0)
-			show = num;
+		get_int_var(request->query_string, "show", &show);
 
 		// Apply Audit Log filtering?
-		audit = get_bool_var(request->query_string, "audit");
+		get_bool_var(request->query_string, "audit", &audit);
 	}
 
 	for(int domainID=0; domainID < counters->domains; domainID++)
@@ -352,16 +350,14 @@ int api_stats_top_clients(bool blocked, struct mg_connection *conn)
 	if(request->query_string != NULL)
 	{
 		// Should blocked clients be shown?
-		blocked = get_bool_var(request->query_string, "blocked");
+		get_bool_var(request->query_string, "blocked", &blocked);
 
 		// Does the user request a non-default number of replies?
 		// Note: We do not accept zero query requests here
-		int num;
-		if((num = get_int_var(request->query_string, "show")) > 0)
-			show = num;
+		get_int_var(request->query_string, "show", &show);
 
 		// Show also clients which have not been active recently?
-		includezeroclients = get_bool_var(request->query_string, "withzero");
+		get_bool_var(request->query_string, "withzero", &includezeroclients);
 	}
 
 	for(int clientID = 0; clientID < counters->clients; clientID++)
@@ -611,21 +607,18 @@ int api_stats_history(struct mg_connection *conn)
 	const struct mg_request_info *request = mg_get_request_info(conn);
 	if(request->query_string != NULL)
 	{
-		int num;
 		// Time filtering?
-		if((num = get_int_var(request->query_string, "from")) > 0)
-			from = num;
-		if((num = get_int_var(request->query_string, "until")) > 0)
-			until = num;
+		get_uint_var(request->query_string, "from", &from);
+		get_uint_var(request->query_string, "until", &until);
 
 		// Query type filtering?
-		if((num = get_int_var(request->query_string, "querytype")) > 0 && num < TYPE_MAX)
+		int num;
+		if(get_int_var(request->query_string, "querytype", &num) && num < TYPE_MAX)
 			querytype = num;
 
 		// Does the user request a non-default number of replies?
 		// Note: We do not accept zero query requests here
-		if((num = get_int_var(request->query_string, "show")) > 0)
-			show = num;
+		get_uint_var(request->query_string, "show", &show);
 
 		// Forward destination filtering?
 		char buffer[256] = { 0 };
@@ -980,9 +973,7 @@ int api_stats_recentblocked(struct mg_connection *conn)
 	{
 		// Does the user request a non-default number of replies?
 		// Note: We do not accept zero query requests here
-		int num;
-		if((num = get_int_var(request->query_string, "show")) > 0)
-			show = num;
+		get_uint_var(request->query_string, "show", &show);
 	}
 
 	// Find most recently blocked query

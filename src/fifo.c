@@ -12,7 +12,7 @@
 // {un,}lock_shm()
 #include "shmem.h"
 
-void add_to_dnsmasq_log_fifo_buffer(const char *payload, const int length)
+void add_to_dnsmasq_log_fifo_buffer(const char *payload, const size_t length)
 {
 	// Lock SHM
 	lock_shm();

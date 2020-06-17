@@ -38,8 +38,9 @@ bool http_get_cookie_int(struct mg_connection *conn, const char *cookieName, int
 bool http_get_cookie_str(struct mg_connection *conn, const char *cookieName, char *str, size_t str_size);
 
 // HTTP parameter routines
-bool get_bool_var(const char *source, const char *var);
-int get_int_var(const char *source, const char *var);
+bool get_bool_var(const char *source, const char *var, bool *boolean);
+bool get_uint_var(const char *source, const char *var, unsigned int *num);
+bool get_int_var(const char *source, const char *var, int *num);
 
 // HTTP macros
 #define GET_VAR(variable, destination, source) mg_get_var(source, strlen(source), variable, destination, sizeof(destination))

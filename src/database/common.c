@@ -481,7 +481,7 @@ int db_query_int(const char* querystr)
 	return result;
 }
 
-int db_query_int_from_until(const char* querystr, const int from, const int until)
+int db_query_int_from_until(const char* querystr, const unsigned int from, const unsigned int until)
 {
 	if(!database)
 	{
@@ -497,8 +497,8 @@ int db_query_int_from_until(const char* querystr, const int from, const int unti
 	}
 
 	// Bind from and until to prepared statement
-	if((rc = sqlite3_bind_int(stmt, 1, from))  != SQLITE_OK ||
-	   (rc = sqlite3_bind_int(stmt, 2, until)) != SQLITE_OK)
+	if((rc = sqlite3_bind_int64(stmt, 1, from))  != SQLITE_OK ||
+	   (rc = sqlite3_bind_int64(stmt, 2, until)) != SQLITE_OK)
 	{
 		logg("db_query_int_from_until(%s) - SQL error bind (%i): %s", querystr, rc, sqlite3_errmsg(FTL_db));
 	}
@@ -526,7 +526,7 @@ int db_query_int_from_until(const char* querystr, const int from, const int unti
 	return result;
 }
 
-int db_query_int_from_until_type(const char* querystr, const int from, const int until, const int type)
+int db_query_int_from_until_type(const char* querystr, const unsigned int from, const unsigned int until, const int type)
 {
 	if(!database)
 	{
@@ -542,8 +542,8 @@ int db_query_int_from_until_type(const char* querystr, const int from, const int
 	}
 
 	// Bind from and until to prepared statement
-	if((rc = sqlite3_bind_int(stmt, 1, from))  != SQLITE_OK ||
-	   (rc = sqlite3_bind_int(stmt, 2, until)) != SQLITE_OK ||
+	if((rc = sqlite3_bind_int64(stmt, 1, from))  != SQLITE_OK ||
+	   (rc = sqlite3_bind_int64(stmt, 2, until)) != SQLITE_OK ||
 	   (rc = sqlite3_bind_int(stmt, 3, type)) != SQLITE_OK)
 	{
 		logg("db_query_int_from_until(%s) - SQL error bind (%i): %s", querystr, rc, sqlite3_errmsg(FTL_db));

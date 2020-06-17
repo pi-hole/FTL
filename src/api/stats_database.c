@@ -21,27 +21,24 @@
 
 int api_stats_database_overTime_history(struct mg_connection *conn)
 {
-	int from = 0, until = 0;
+	unsigned int from = 0, until = 0;
 	const int interval = 600;
 	const struct mg_request_info *request = mg_get_request_info(conn);
 	if(request->query_string != NULL)
 	{
-		int num;
-		if((num = get_int_var(request->query_string, "from")) > 0)
-			from = num;
-		if((num = get_int_var(request->query_string, "until")) > 0)
-			until = num;
+		get_uint_var(request->query_string, "from", &from);
+		get_uint_var(request->query_string, "until", &until);
 	}
 
 	// Check if we received the required information
-	if(from == 0 || until == 0)
+	if(until == 0)
 	{
 		cJSON *json = JSON_NEW_OBJ();
 		JSON_OBJ_ADD_NUMBER(json, "from", from);
 		JSON_OBJ_ADD_NUMBER(json, "until", until);
 		return send_json_error(conn, 400,
 		                       "bad_request",
-		                       "You need to specify both \"from\" and \"until\" in the request.",
+		                       "You need to specify \"until\" in the request.",
 		                       json);
 	}
 
@@ -186,25 +183,21 @@ int api_stats_database_overTime_history(struct mg_connection *conn)
 
 int api_stats_database_top_items(bool blocked, bool domains, struct mg_connection *conn)
 {
-	int from = 0, until = 0, show = 10;
+	unsigned int from = 0, until = 0, show = 10;
 	const struct mg_request_info *request = mg_get_request_info(conn);
 	if(request->query_string != NULL)
 	{
-		int num;
-		if((num = get_int_var(request->query_string, "from")) > 0)
-			from = num;
-		if((num = get_int_var(request->query_string, "until")) > 0)
-			until = num;
+		get_uint_var(request->query_string, "from", &from);
+		get_uint_var(request->query_string, "until", &until);
 
 		// Get blocked queries not only for .../top_blocked
 		// but also for .../top_domains?blocked=true
-		if((num = get_bool_var(request->query_string, "blocked")) > 0)
-			blocked = true;
+		// Note: this may overwrite the blocked propery from the URL
+		get_bool_var(request->query_string, "blocked", &blocked);
 
 		// Does the user request a non-default number of replies?
 		// Note: We do not accept zero query requests here
-		if((num = get_int_var(request->query_string, "show")) > 0)
-			show = num;
+		get_uint_var(request->query_string, "show", &show);
 	}
 
 	// Check if we received the required information
@@ -386,15 +379,12 @@ int api_stats_database_top_items(bool blocked, bool domains, struct mg_connectio
 
 int api_stats_database_summary(struct mg_connection *conn)
 {
-	int from = 0, until = 0;
+	unsigned int from = 0, until = 0;
 	const struct mg_request_info *request = mg_get_request_info(conn);
 	if(request->query_string != NULL)
 	{
-		int num;
-		if((num = get_int_var(request->query_string, "from")) > 0)
-			from = num;
-		if((num = get_int_var(request->query_string, "until")) > 0)
-			until = num;
+		get_uint_var(request->query_string, "from", &from);
+		get_uint_var(request->query_string, "until", &until);
 	}
 
 	// Check if we received the required information
@@ -470,16 +460,13 @@ int api_stats_database_summary(struct mg_connection *conn)
 
 int api_stats_database_overTime_clients(struct mg_connection *conn)
 {
-	int from = 0, until = 0;
+	unsigned int from = 0, until = 0;
 	const int interval = 600;
 	const struct mg_request_info *request = mg_get_request_info(conn);
 	if(request->query_string != NULL)
 	{
-		int num;
-		if((num = get_int_var(request->query_string, "from")) > 0)
-			from = num;
-		if((num = get_int_var(request->query_string, "until")) > 0)
-			until = num;
+		get_uint_var(request->query_string, "from", &from);
+		get_uint_var(request->query_string, "until", &until);
 	}
 
 	// Check if we received the required information
@@ -737,15 +724,12 @@ int api_stats_database_overTime_clients(struct mg_connection *conn)
 static const char *querytypes[8] = {"A","AAAA","ANY","SRV","SOA","PTR","TXT","UNKN"};
 int api_stats_database_query_types(struct mg_connection *conn)
 {
-	int from = 0, until = 0;
+	unsigned int from = 0, until = 0;
 	const struct mg_request_info *request = mg_get_request_info(conn);
 	if(request->query_string != NULL)
 	{
-		int num;
-		if((num = get_int_var(request->query_string, "from")) > 0)
-			from = num;
-		if((num = get_int_var(request->query_string, "until")) > 0)
-			until = num;
+		get_uint_var(request->query_string, "from", &from);
+		get_uint_var(request->query_string, "until", &until);
 	}
 
 	// Check if we received the required information
@@ -795,15 +779,12 @@ int api_stats_database_query_types(struct mg_connection *conn)
 
 int api_stats_database_upstreams(struct mg_connection *conn)
 {
-	int from = 0, until = 0;
+	unsigned int from = 0, until = 0;
 	const struct mg_request_info *request = mg_get_request_info(conn);
 	if(request->query_string != NULL)
 	{
-		int num;
-		if((num = get_int_var(request->query_string, "from")) > 0)
-			from = num;
-		if((num = get_int_var(request->query_string, "until")) > 0)
-			until = num;
+		get_uint_var(request->query_string, "from", &from);
+		get_uint_var(request->query_string, "until", &until);
 	}
 
 	// Check if we received the required information

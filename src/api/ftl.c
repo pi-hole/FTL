@@ -59,15 +59,15 @@ int api_ftl_dnsmasq_log(struct mg_connection *conn)
 	if(request->query_string != NULL)
 	{
 		// Does the user request an ID to sent from?
-		int num;
-		if((num = get_int_var(request->query_string, "nextID")) > 0)
+		unsigned int nextID;
+		if(get_uint_var(request->query_string, "nextID", &nextID))
 		{
-			if(num >= fifo_log->next_id)
+			if(nextID >= fifo_log->next_id)
 			{
 				// Do not return any data
 				start = LOG_SIZE;
 			}
-			else if(num < max((fifo_log->next_id) - LOG_SIZE, 0))
+			else if((fifo_log->next_id > LOG_SIZE) && nextID < (fifo_log->next_id) - LOG_SIZE)
 			{
 				// Requested an ID smaller than the lowest one we have
 				// We return the entire buffer
@@ -77,13 +77,13 @@ int api_ftl_dnsmasq_log(struct mg_connection *conn)
 			{
 				// Reply with partial buffer, measure from the end
 				// (the log is full)
-				start = LOG_SIZE - (fifo_log->next_id - num);
+				start = LOG_SIZE - (fifo_log->next_id - nextID);
 			}
 			else
 			{
 				// Reply with partial buffer, measure from the start
 				// (the log is not yet full)
-				start = num;
+				start = nextID;
 			}
 		}
 	}

@@ -103,27 +103,39 @@ int send_http_internal_error(struct mg_connection *conn)
 	return mg_send_http_error(conn, 500, "Internal server error");
 }
 
-bool get_bool_var(const char *source, const char *var)
+bool get_bool_var(const char *source, const char *var, bool *boolean)
 {
 	char buffer[16] = { 0 };
 	if(GET_VAR(var, buffer, source))
 	{
-		return (strstr(buffer, "true") != NULL);
+		*boolean = (strcasecmp(buffer, "true") == 0);
+		return true;
 	}
 	return false;
 }
 
-int get_int_var(const char *source, const char *var)
+bool get_int_var(const char *source, const char *var, int *num)
 {
-	int num = -1;
 	char buffer[16] = { 0 };
 	if(GET_VAR(var, buffer, source) &&
-	   sscanf(buffer, "%d", &num) == 1)
+	   sscanf(buffer, "%d", num) == 1)
 	{
-		return num;
+		return true;
 	}
 
-	return -1;
+	return false;
+}
+
+bool get_uint_var(const char *source, const char *var, unsigned int *num)
+{
+	char buffer[16] = { 0 };
+	if(GET_VAR(var, buffer, source) &&
+	   sscanf(buffer, "%u", num) == 1)
+	{
+		return true;
+	}
+
+	return false;
 }
 
 bool __attribute__((pure)) startsWith(const char *path, const char *uri)
