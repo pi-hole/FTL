@@ -14,6 +14,8 @@
 #include "memory.h"
 // clients data structure
 #include "datastructure.h"
+// enum http_method
+#include "webserver/http-common.h"
 
 // Table indices
 enum { GRAVITY_TABLE, EXACT_BLACKLIST_TABLE, EXACT_WHITELIST_TABLE, REGEX_BLACKLIST_TABLE, REGEX_WHITELIST_TABLE, UNKNOWN_TABLE };
@@ -52,7 +54,7 @@ bool gravityDB_readTableGetDomain(domainrecord *domain, const char **message);
 void gravityDB_readTableFinalize(void);
 bool gravityDB_addToTable(const int type, const char *domain,
                           const bool enabled, const char *comment,
-                          const char **message);
+                          const char **message, const enum http_method method);
 bool gravityDB_delFromTable(const int type, const char* domain, const char **message);
 
 #endif //GRAVITY_H

@@ -942,7 +942,7 @@ bool gravityDB_get_regex_client_groups(clientsData* client, const int numregex, 
 
 bool gravityDB_addToTable(const int type, const char *domain,
                           const bool enabled, const char *comment,
-                          const char **message)
+                          const char **message, const enum http_method method)
 {
 	if(gravity_db == NULL)
 	{
@@ -952,7 +952,16 @@ bool gravityDB_addToTable(const int type, const char *domain,
 
 	// Prepare SQLite statement
 	sqlite3_stmt* stmt = NULL;
-	const char *querystr = "INSERT INTO domainlist (domain,type,enabled,comment) VALUES (?,?,?,?);";
+	const char *querystr;
+	if(method == HTTP_POST) // Create NEW entry, error if existing
+		querystr = "INSERT INTO domainlist (domain,type,enabled,comment) VALUES (?1,?2,?3,?4);";
+	else // Create new or replace existing entry, no error if existing
+	     // We have to use a subquery here to avoid violating FOREIGN KEY
+		 // contraints (REPLACE recreates (= new ID) entries instead of updatinging them)
+		querystr = "REPLACE INTO domainlist (domain,type,enabled,comment,id,date_added) "
+		           "VALUES (?1,?2,?3,?4,"
+		                   "(SELECT id FROM domainlist WHERE domain = ?1 and type = ?2),"
+		                   "(SELECT date_added FROM domainlist WHERE domain = ?1 and type = ?2));";
 	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{

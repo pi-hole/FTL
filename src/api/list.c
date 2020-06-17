@@ -28,23 +28,15 @@ static int getTableType(bool whitelist, bool exact)
 			return GRAVITY_DOMAINLIST_REGEX_BLACKLIST;
 }
 
-static int api_dns_domainlist_read(struct mg_connection *conn, bool exact, bool whitelist)
+static int get_domainlist(struct mg_connection *conn, const int code, const int type, const char *domain_filter)
 {
-	const struct mg_request_info *request = mg_get_request_info(conn);
-
-	char domain_filter[1024] = { '\0' };
-	// Advance one character to strip "/"
-	const char *encoded_uri = strrchr(request->local_uri, '/')+1u;
-        logg("'%s'", encoded_uri);
-	// Decode URL (necessary for regular expressions, harmless for domains)
-	if(strlen(encoded_uri) != 0 && strcmp(encoded_uri, "exact") != 0 && strcmp(encoded_uri, "regex") != 0)
-		mg_url_decode(encoded_uri, strlen(encoded_uri), domain_filter, sizeof(domain_filter)-1u, 0);
-
-	int type = getTableType(whitelist, exact);
 	const char *sql_msg = NULL;
 	if(!gravityDB_readTable(type, domain_filter, &sql_msg))
 	{
 		cJSON *json = JSON_NEW_OBJ();
+
+		// Add domain_filter (may be NULL = not available)
+		JSON_OBJ_REF_STR(json, "domain_filter", domain_filter);
 
 		// Add SQL message (may be NULL = not available)
 		if (sql_msg != NULL) {
@@ -75,13 +67,16 @@ static int api_dns_domainlist_read(struct mg_connection *conn, bool exact, bool 
 
 	if(sql_msg == NULL)
 	{
-		// No error
-		JSON_SEND_OBJECT(json);
+		// No error, send requested HTTP code
+		JSON_SEND_OBJECT_CODE(json, code);
 	}
 	else
 	{
 		JSON_DELETE(json);
 		json = JSON_NEW_OBJ();
+
+		// Add domain_filter (may be NULL = not available)
+		JSON_OBJ_REF_STR(json, "domain_filter", domain_filter);
 
 		// Add SQL message (may be NULL = not available)
 		if (sql_msg != NULL) {
@@ -97,10 +92,28 @@ static int api_dns_domainlist_read(struct mg_connection *conn, bool exact, bool 
 	}
 }
 
-static int api_dns_domainlist_POST(struct mg_connection *conn,
-                                   bool exact,
-                                   bool whitelist)
+static int api_dns_domainlist_read(struct mg_connection *conn, bool exact, bool whitelist)
 {
+	// Extract domain from path (option for GET)
+	const struct mg_request_info *request = mg_get_request_info(conn);
+	char domain_filter[1024];
+	// Advance one character to strip "/"
+	const char *encoded_uri = strrchr(request->local_uri, '/')+1u;
+	// Decode URL (necessary for regular expressions, harmless for domains)
+	if(strlen(encoded_uri) != 0 && strcmp(encoded_uri, "exact") != 0 && strcmp(encoded_uri, "regex") != 0)
+		mg_url_decode(encoded_uri, strlen(encoded_uri), domain_filter, sizeof(domain_filter), 0);
+
+	const int type = getTableType(whitelist, exact);
+		// Send GET style reply with code 200 OK
+	return get_domainlist(conn, 200, type, domain_filter);
+}
+
+static int api_dns_domainlist_write(struct mg_connection *conn,
+                                    bool exact,
+                                    bool whitelist,
+                                    const enum http_method method)
+{
+	// Extract payload
 	char buffer[1024];
 	int data_len = mg_read(conn, buffer, sizeof(buffer) - 1);
 	if ((data_len < 1) || (data_len >= (int)sizeof(buffer))) {
@@ -118,57 +131,45 @@ static int api_dns_domainlist_POST(struct mg_connection *conn,
 		                       NULL);
 	}
 
-	cJSON *elem = cJSON_GetObjectItemCaseSensitive(obj, "domain");
-	if (!cJSON_IsString(elem)) {
+	cJSON *elem_domain = cJSON_GetObjectItemCaseSensitive(obj, "domain");
+	if (!cJSON_IsString(elem_domain)) {
 		cJSON_Delete(obj);
 		return send_json_error(conn, 400,
 		                "bad_request",
 		                "No \"domain\" string in body data",
 		                NULL);
 	}
-	char *domain = strdup(elem->valuestring);
+	size_t len = strlen(elem_domain->valuestring);
+	char domain[len];
+	strcpy(domain, elem_domain->valuestring);
 
 	bool enabled = true;
-	elem = cJSON_GetObjectItemCaseSensitive(obj, "enabled");
-	if (cJSON_IsBool(elem)) {
-		enabled = elem->type == cJSON_True;
+	cJSON *elem_enabled = cJSON_GetObjectItemCaseSensitive(obj, "enabled");
+	if (cJSON_IsBool(elem_enabled)) {
+		enabled = cJSON_IsTrue(elem_enabled);
 	}
 
 	char *comment = NULL;
-	elem = cJSON_GetObjectItemCaseSensitive(obj, "comment");
-	if (cJSON_IsString(elem)) {
-		comment = strdup(elem->valuestring);
+	cJSON *elem_comment = cJSON_GetObjectItemCaseSensitive(obj, "comment");
+	if (cJSON_IsString(elem_comment)) {
+		comment = elem_comment->valuestring;
 	}
-	cJSON_Delete(obj);
 
-	cJSON *json = JSON_NEW_OBJ();
-	int type = getTableType(whitelist, exact);
+	// Try to add domain to table
 	const char *sql_msg = NULL;
-	if(gravityDB_addToTable(type, domain, enabled, comment, &sql_msg))
+	int type = getTableType(whitelist, exact);
+	if(gravityDB_addToTable(type, domain, enabled, comment, &sql_msg, method))
 	{
-		// Add domain
-		JSON_OBJ_COPY_STR(json, "domain", domain);
-		free(domain);
-
-		// Add enabled boolean
-		JSON_OBJ_ADD_BOOL(json, "enabled", enabled);
-
-		// Add comment (may be NULL)
-		if (comment != NULL) {
-			JSON_OBJ_COPY_STR(json, "comment", comment);
-			free(comment);
-		} else {
-			JSON_OBJ_ADD_NULL(json, "comment");
-		}
-
-		// Send success reply
-		JSON_SEND_OBJECT_CODE(json, 201); // 201 Created
+		cJSON_Delete(obj);
+		// Send GET style reply with code 201 Created
+		return get_domainlist(conn, 201, type, domain);
 	}
 	else
 	{
+		// Error adding domain, prepare error object
 		// Add domain
+		cJSON *json = JSON_NEW_OBJ();
 		JSON_OBJ_COPY_STR(json, "domain", domain);
-		free(domain);
 
 		// Add enabled boolean
 		JSON_OBJ_ADD_BOOL(json, "enabled", enabled);
@@ -176,10 +177,12 @@ static int api_dns_domainlist_POST(struct mg_connection *conn,
 		// Add comment (may be NULL)
 		if (comment != NULL) {
 			JSON_OBJ_COPY_STR(json, "comment", comment);
-			free(comment);
 		} else {
 			JSON_OBJ_ADD_NULL(json, "comment");
 		}
+
+		// Only delete payload object after having extracted the data
+		cJSON_Delete(obj);
 
 		// Add SQL message (may be NULL = not available)
 		if (sql_msg != NULL) {
@@ -196,9 +199,9 @@ static int api_dns_domainlist_POST(struct mg_connection *conn,
 	}
 }
 
-static int api_dns_domainlist_DELETE(struct mg_connection *conn,
-                                   bool exact,
-                                   bool whitelist)
+static int api_dns_domainlist_remove(struct mg_connection *conn,
+                                     bool exact,
+                                     bool whitelist)
 {
 	const struct mg_request_info *request = mg_get_request_info(conn);
 
@@ -208,14 +211,13 @@ static int api_dns_domainlist_DELETE(struct mg_connection *conn,
 	// Decode URL (necessary for regular expressions, harmless for domains)
 	mg_url_decode(encoded_uri, strlen(encoded_uri), domain, sizeof(domain)-1u, 0);
 
-	cJSON *json = JSON_NEW_OBJ();
-	int type = getTableType(whitelist, exact);
+	cJSON *json = JSON_NEW_OBJ(); 
 	const char *sql_msg = NULL;
+	int type = getTableType(whitelist, exact);
 	if(gravityDB_delFromTable(type, domain, &sql_msg))
 	{
-		JSON_OBJ_REF_STR(json, "key", "removed");
-		JSON_OBJ_REF_STR(json, "domain", domain);
-		JSON_SEND_OBJECT_CODE(json, 200); // 200 OK
+		// Send empty reply with code 204 No Content
+		JSON_SEND_OBJECT_CODE(json, 204);
 	}
 	else
 	{
@@ -245,22 +247,22 @@ int api_dns_domainlist(struct mg_connection *conn, bool exact, bool whitelist)
 		return send_json_unauthorized(conn);
 	}
 
-	int method = http_method(conn);
+	const enum http_method method = http_method(conn);
 	if(method == HTTP_GET)
 	{
 		return api_dns_domainlist_read(conn, exact, whitelist);
 	}
-	else if(method == HTTP_PUT)
+	else if(method == HTTP_POST || method == HTTP_PUT || method == HTTP_PATCH)
 	{
 		// Add domain from exact white-/blacklist when a user sends
 		// the request to the general address /api/dns/{white,black}list
-		return api_dns_domainlist_POST(conn, exact, whitelist);
+		return api_dns_domainlist_write(conn, exact, whitelist, method);
 	}
 	else if(method == HTTP_DELETE)
 	{
 		// Delete domain from exact white-/blacklist when a user sends
 		// the request to the general address /api/dns/{white,black}list
-		return api_dns_domainlist_DELETE(conn, exact, whitelist);
+		return api_dns_domainlist_remove(conn, exact, whitelist);
 	}
 	else
 	{
