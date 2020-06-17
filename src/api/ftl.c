@@ -163,9 +163,16 @@ int api_ftl_network(struct mg_connection *conn)
 	}
 
 	// Connect to database
-	if(!networkTable_readDevices())
+	const char *sql_msg = NULL;
+	if(!networkTable_readDevices(&sql_msg))
 	{
+		// Add SQL message (may be NULL = not available)
 		cJSON *json = JSON_NEW_OBJ();
+		if (sql_msg != NULL) {
+			JSON_OBJ_REF_STR(json, "sql_msg", sql_msg);
+		} else {
+			JSON_OBJ_ADD_NULL(json, "sql_msg");
+		}
 		return send_json_error(conn, 500,
 		                       "database_error",
 		                       "Could not read network details from database table",
@@ -173,9 +180,9 @@ int api_ftl_network(struct mg_connection *conn)
 	}
 
 	// Read record for a single device
-	networkrecord network;
 	cJSON *json = JSON_NEW_ARRAY();
-	while(networkTable_readDevicesGetRecord(&network))
+	networkrecord network;
+	while(networkTable_readDevicesGetRecord(&network, &sql_msg))
 	{
 		cJSON *item = JSON_NEW_OBJ();
 		JSON_OBJ_COPY_STR(item, "hwaddr", network.hwaddr);
@@ -201,6 +208,19 @@ int api_ftl_network(struct mg_connection *conn)
 
 		JSON_ARRAY_ADD_ITEM(json, item);
 	}
+
+	if(sql_msg != NULL)
+	{
+		// Add SQL message (may be NULL = not available)
+		cJSON_Delete(json);
+		json = JSON_NEW_OBJ();
+		JSON_OBJ_REF_STR(json, "sql_msg", sql_msg);
+		return send_json_error(conn, 500,
+		                       "database_error",
+		                       "Could not read network details from database table (step)",
+		                       json);
+	}
+
 	networkTable_readDevicesFinalize();
 
 	JSON_SEND_OBJECT(json);

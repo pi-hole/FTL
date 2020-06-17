@@ -944,7 +944,7 @@ char* __attribute__((malloc)) getDatabaseHostname(const char* ipaddr)
 }
 
 static sqlite3_stmt* read_stmt = NULL;
-bool networkTable_readDevices(void)
+bool networkTable_readDevices(const char **message)
 {
 	// Open pihole-FTL.db database file
 	if(!dbopen())
@@ -957,15 +957,16 @@ bool networkTable_readDevices(void)
 	const char *querystr = "SELECT id,hwaddr,interface,name,firstSeen,lastQuery,numQueries,macVendor FROM network;";
 	int rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &read_stmt, NULL);
 	if( rc != SQLITE_OK ){
+		*message = sqlite3_errmsg(FTL_db);
 		logg("networkTable_readDevices() - SQL error prepare (%i): %s",
-		      rc, sqlite3_errmsg(FTL_db));
+		      rc, *message);
 		return false;
 	}
 
 	return true;
 }
 
-bool networkTable_readDevicesGetRecord(networkrecord *network)
+bool networkTable_readDevicesGetRecord(networkrecord *network, const char **message)
 {
 	// Perform step
 	const int rc = sqlite3_step(read_stmt);
@@ -989,8 +990,9 @@ bool networkTable_readDevicesGetRecord(networkrecord *network)
 	// SQLITE_DONE (we are finished reading the table)
 	if(rc != SQLITE_DONE)
 	{
+		*message = sqlite3_errmsg(FTL_db);
 		logg("networkTable_readDevicesGetRecord() - SQL error step (%i): %s",
-		     rc, sqlite3_errmsg(FTL_db));
+		     rc, *message);
 		return false;
 	}
 

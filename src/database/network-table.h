@@ -28,8 +28,8 @@ typedef struct networkrecord {
         time_t lastQuery;
 } networkrecord;
 
-bool networkTable_readDevices(void);
-bool networkTable_readDevicesGetRecord(networkrecord *network);
+bool networkTable_readDevices(const char **message);
+bool networkTable_readDevicesGetRecord(networkrecord *network, const char **message);
 void networkTable_readDevicesFinalize(void);
 
 bool networkTable_readIPs(const int id);
