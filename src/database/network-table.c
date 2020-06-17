@@ -8,15 +8,16 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "FTL.h"
-#include "database/network-table.h"
-#include "database/common.h"
-#include "shmem.h"
-#include "memory.h"
-#include "log.h"
-#include "timers.h"
-#include "config.h"
-#include "datastructure.h"
+#include "../FTL.h"
+#include "network-table.h"
+#include "common.h"
+#include "../shmem.h"
+#include "../memory.h"
+#include "../log.h"
+// timer_elapsed_msec()
+#include "../timers.h"
+#include "../config.h"
+#include "../datastructure.h"
 
 // Private prototypes
 static char* getMACVendor(const char* hwaddr);
@@ -966,7 +967,7 @@ bool networkTable_readDevices(const char **message)
 	return true;
 }
 
-bool networkTable_readDevicesGetRecord(networkrecord *network, const char **message)
+bool networkTable_readDevicesGetRecord(network_record *network, const char **message)
 {
 	// Perform step
 	const int rc = sqlite3_step(read_stmt);
@@ -976,7 +977,7 @@ bool networkTable_readDevicesGetRecord(networkrecord *network, const char **mess
 	{
 		network->id = sqlite3_column_int(read_stmt, 0);
 		network->hwaddr = (char*)sqlite3_column_text(read_stmt, 1);
-		network->interface = (char*)sqlite3_column_text(read_stmt, 2);
+		network->iface = (char*)sqlite3_column_text(read_stmt, 2);
 		network->name = (char*)sqlite3_column_text(read_stmt, 3);
 		network->firstSeen = sqlite3_column_int(read_stmt, 4);
 		network->lastQuery = sqlite3_column_int(read_stmt, 5);
@@ -1011,22 +1012,24 @@ void networkTable_readDevicesFinalize(void)
 }
 
 static sqlite3_stmt* read_stmt_ip = NULL;
-bool networkTable_readIPs(const int id)
+bool networkTable_readIPs(const int id, const char **message)
 {
 	// Prepare SQLite statement
 	const char *querystr = "SELECT ip FROM network_addresses WHERE network_id = ? ORDER BY lastSeen DESC;";
 	int rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &read_stmt_ip, NULL);
 	if( rc != SQLITE_OK ){
+		*message = sqlite3_errmsg(FTL_db);
 		logg("networkTable_readIPs(%i) - SQL error prepare (%i): %s",
-		      id, rc, sqlite3_errmsg(FTL_db));
+		      id, rc, *message);
 		return false;
 	}
 
 	// Bind ipaddr to prepared statement
 	if((rc = sqlite3_bind_int(read_stmt_ip, 1, id)) != SQLITE_OK)
 	{
+		*message = sqlite3_errmsg(FTL_db);
 		logg("networkTable_readIPs(%i): Failed to bind domain (error %d) - %s",
-		     id, rc, sqlite3_errmsg(FTL_db));
+		     id, rc, *message);
 		sqlite3_reset(read_stmt_ip);
 		sqlite3_finalize(read_stmt_ip);
 		return false;
@@ -1035,7 +1038,7 @@ bool networkTable_readIPs(const int id)
 	return true;
 }
 
-const char *networkTable_readIPsGetRecord(void)
+bool networkTable_readIPsGetRecord(network_addresses_record *network_addresses, const char **message)
 {
 	// Perform step
 	const int rc = sqlite3_step(read_stmt_ip);
@@ -1043,7 +1046,8 @@ const char *networkTable_readIPsGetRecord(void)
 	// Valid row
 	if(rc == SQLITE_ROW)
 	{
-		return (char*)sqlite3_column_text(read_stmt_ip, 0);
+		network_addresses->ip = (char*)sqlite3_column_text(read_stmt_ip, 0);
+		return true;
 	}
 
 	// Check for error. An error happened when the result is neither
@@ -1051,13 +1055,14 @@ const char *networkTable_readIPsGetRecord(void)
 	// SQLITE_DONE (we are finished reading the table)
 	if(rc != SQLITE_DONE)
 	{
+		*message = sqlite3_errmsg(FTL_db);
 		logg("networkTable_readDevicesGetIP() - SQL error step (%i): %s",
-		     rc, sqlite3_errmsg(FTL_db));
-		return NULL;
+		     rc, *message);
+		return false;
 	}
 
 	// Finished reading, nothing to get here
-	return NULL;
+	return false;
 }
 
 // Finalize statement of a gravity database transaction

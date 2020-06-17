@@ -17,23 +17,27 @@ void updateMACVendorRecords(void);
 bool unify_hwaddr(void);
 char* getDatabaseHostname(const char* ipaddr) __attribute__((malloc));
 
-typedef struct networkrecord {
-        unsigned int id;
+typedef struct {
+	unsigned int id;
 	const char *hwaddr;
-        const char* interface;
-        const char *name;
-        const char *macVendor;
-        unsigned long numQueries;
-        time_t firstSeen;
-        time_t lastQuery;
-} networkrecord;
+	const char *iface;
+	const char *name;
+	const char *macVendor;
+	unsigned long numQueries;
+	time_t firstSeen;
+	time_t lastQuery;
+} network_record;
 
 bool networkTable_readDevices(const char **message);
-bool networkTable_readDevicesGetRecord(networkrecord *network, const char **message);
+bool networkTable_readDevicesGetRecord(network_record *network, const char **message);
 void networkTable_readDevicesFinalize(void);
 
-bool networkTable_readIPs(const int id);
-const char *networkTable_readIPsGetRecord(void);
+typedef struct {
+	const char *ip;
+} network_addresses_record;
+
+bool networkTable_readIPs(const int id, const char **message);
+bool networkTable_readIPsGetRecord(network_addresses_record *network_addresses, const char **message);
 void networkTable_readIPsFinalize(void);
 
 #endif //NETWORKTABLE_H

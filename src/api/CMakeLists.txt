@@ -14,6 +14,7 @@ set(sources
         dns.c
         dns.h
         ftl.c
+        network.c
         routes.c
         routes.h
         settings.c

@@ -12,15 +12,6 @@
 #include "../webserver/http-common.h"
 #include "../webserver/json_macros.h"
 #include "routes.h"
-#include "../datastructure.h"
-// get_FTL_version()
-#include "../log.h"
-// git constants
-#include "../version.h"
-// config struct
-#include "../config.h"
-// networkrecord
-#include "../database/network-table.h"
 // struct fifologData
 #include "../fifo.h"
 
@@ -117,77 +108,5 @@ int api_ftl_dnsmasq_log(struct mg_connection *conn)
 	JSON_OBJ_ADD_NUMBER(json, "nextID", fifo_log->next_id);
 
 	// Send data
-	JSON_SEND_OBJECT(json);
-}
-
-int api_ftl_network(struct mg_connection *conn)
-{
-	// Verify requesting client is allowed to see this ressource
-	if(check_client_auth(conn) < 0)
-	{
-		return send_json_unauthorized(conn);
-	}
-
-	// Connect to database
-	const char *sql_msg = NULL;
-	if(!networkTable_readDevices(&sql_msg))
-	{
-		// Add SQL message (may be NULL = not available)
-		cJSON *json = JSON_NEW_OBJ();
-		if (sql_msg != NULL) {
-			JSON_OBJ_REF_STR(json, "sql_msg", sql_msg);
-		} else {
-			JSON_OBJ_ADD_NULL(json, "sql_msg");
-		}
-		return send_json_error(conn, 500,
-		                       "database_error",
-		                       "Could not read network details from database table",
-		                       json);
-	}
-
-	// Read record for a single device
-	cJSON *json = JSON_NEW_ARRAY();
-	networkrecord network;
-	while(networkTable_readDevicesGetRecord(&network, &sql_msg))
-	{
-		cJSON *item = JSON_NEW_OBJ();
-		JSON_OBJ_COPY_STR(item, "hwaddr", network.hwaddr);
-		JSON_OBJ_COPY_STR(item, "interface", network.interface);
-		JSON_OBJ_COPY_STR(item, "name", network.name);
-		JSON_OBJ_ADD_NUMBER(item, "firstSeen", network.firstSeen);
-		JSON_OBJ_ADD_NUMBER(item, "lastQuery", network.lastQuery);
-		JSON_OBJ_ADD_NUMBER(item, "numQueries", network.numQueries);
-		JSON_OBJ_COPY_STR(item, "macVendor", network.macVendor);
-
-		// Build array of all IP addresses known associated to this client
-		cJSON *ip = JSON_NEW_ARRAY();
-		if(networkTable_readIPs(network.id))
-		{
-			// Only walk known IP addresses when SELECT query succeeded
-			const char *ipaddr;
-			while((ipaddr = networkTable_readIPsGetRecord()) != NULL)
-				JSON_ARRAY_COPY_STR(ip, ipaddr);
-
-			networkTable_readIPsFinalize();
-		}
-		JSON_OBJ_ADD_ITEM(item, "ip", ip);
-
-		JSON_ARRAY_ADD_ITEM(json, item);
-	}
-
-	if(sql_msg != NULL)
-	{
-		// Add SQL message (may be NULL = not available)
-		cJSON_Delete(json);
-		json = JSON_NEW_OBJ();
-		JSON_OBJ_REF_STR(json, "sql_msg", sql_msg);
-		return send_json_error(conn, 500,
-		                       "database_error",
-		                       "Could not read network details from database table (step)",
-		                       json);
-	}
-
-	networkTable_readDevicesFinalize();
-
 	JSON_SEND_OBJECT(json);
 }

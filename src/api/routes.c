@@ -60,9 +60,10 @@ int api_handler(struct mg_connection *conn, void *ignored)
 	{
 		ret = api_ftl_dnsmasq_log(conn);
 	}
-	else if(startsWith("/api/ftl/network", request->local_uri))
+	/******************************** api/network ****************************/
+	else if(startsWith("/api/network", request->local_uri))
 	{
-		ret = api_ftl_network(conn);
+		ret = api_network(conn);
 	}
 	/******************************** api/stats **************************/
 	else if(startsWith("/api/stats/summary", request->local_uri))
