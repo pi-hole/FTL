@@ -1137,11 +1137,14 @@ static bool domain_in_list(const char *domain, sqlite3_stmt* stmt, const char* l
 static void gravityDB_client_check_again(const int clientID, clientsData* client)
 {
 	const time_t diff = time(NULL) - client->firstSeen;
-	if(!client->reread_groups && diff > RECHECK_DELAY)
+	const unsigned char check_count = client->reread_groups + 1u;
+	if(check_count <= NUM_RECHECKS && diff > check_count * RECHECK_DELAY)
 	{
+		const char *ord = get_ordinal_suffix(check_count);
 		if(config.debug & DEBUG_CLIENTS)
-			logg("Reloading clinet groups after %u seconds", (unsigned int)diff);
-		client->reread_groups = true;
+			logg("Reloading client groups after %u seconds (%u%s check)",
+			     (unsigned int)diff, check_count, ord);
+		client->reread_groups++;
 
 		// Rebuild client table statements (possibly from a different group set)
 		gravityDB_finalize_client_statements(clientID, client);

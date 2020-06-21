@@ -203,7 +203,7 @@ int findClientID(const char *clientIP, const bool count)
 	// Store time this client was added, we re-read group settings
 	// some time after adding a client to ensure we pick up possible
 	// group configuration though hostname, MAC address or interface
-	client->reread_groups = false;
+	client->reread_groups = 0u;
 	client->firstSeen = time(NULL);
 	// Interface is not yet known
 	client->ifacepos = 0;

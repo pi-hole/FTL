@@ -180,3 +180,27 @@ const char __attribute__ ((malloc)) *get_FTL_version(void)
 
 	return FTLversion;
 }
+
+const char *get_ordinal_suffix(unsigned int number)
+{
+	if((number % 100) > 9 && (number % 100) < 20)
+	{
+		// If the tens digit of a number is 1, then "th" is written
+		// after the number. For example: 13th, 19th, 112th, 9,311th.
+		return "th";
+	}
+
+	// If the tens digit is not equal to 1, then the following table could be used:
+	switch (number % 10)
+	{
+	case 1: // If the units digit is 1: This is written after the number "st"
+		return "st";
+	case 2: // If the units digit is 2: This is written after the number "nd"
+		return "nd";
+	case 3: // If the units digit is 3: This is written after the number "rd"
+		return "rd";
+	default: // If the units digit is 0 or 4-9: This is written after the number "th"
+		return "th";
+	}
+	// For example: 2nd, 7th, 20th, 23rd, 52nd, 135th, 301st BUT 311th (covered above)
+}

@@ -55,9 +55,9 @@ typedef struct {
 
 typedef struct {
 	unsigned char magic;
+	unsigned char reread_groups;
 	bool new;
 	bool found_group;
-	bool reread_groups;
 	int count;
 	int blockedcount;
 	int overTime[OVERTIME_SLOTS];

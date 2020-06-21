@@ -105,8 +105,14 @@
 
 // After how many seconds do we check again if a client can be identified by other means?
 // (e.g., interface, MAC address, hostname)
-// Default: 180 (after three minutes)
-#define RECHECK_DELAY 180
+// Default: 60 (after one minutee)
+#define RECHECK_DELAY 60
+
+// How often should we check again if a client can be identified by other means?
+// (e.g., interface, MAC address, hostname)
+// Default: 3 (once after RECHECK_DELAY seconds, then again after 2*RECHECK_DELAY and 3*RECHECK_DELAY)
+// Important: This number has to be smaller than 256 for this mechanism to work
+#define NUM_RECHECKS 3
 
 // FTLDNS enums
 enum { QUERIES, UPSTREAMS, CLIENTS, DOMAINS, OVERTIME, WILDCARD, DNS_CACHE };
