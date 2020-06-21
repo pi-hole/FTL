@@ -20,5 +20,6 @@ void format_memory_size(char *prefix, unsigned long long int bytes, double *form
 const char *get_FTL_version(void) __attribute__ ((malloc));
 void log_FTL_version(bool crashreport);
 void get_timestr(char *timestring, const time_t timein);
+void silent_log(bool vlog, bool vstdout);
 
 #endif //LOG_H

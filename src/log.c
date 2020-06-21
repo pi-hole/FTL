@@ -26,6 +26,13 @@
 
 static pthread_mutex_t lock;
 static FILE *logfile = NULL;
+static bool silence_log = false, silence_stdout = false;
+
+void silent_log(bool vlog, bool vstdout)
+{
+	silence_log = vlog;
+	silence_stdout = vstdout;
+}
 
 static void close_FTL_log(void)
 {
@@ -80,6 +87,10 @@ void __attribute__ ((format (gnu_printf, 1, 2))) logg(const char *format, ...)
 	char timestring[84] = "";
 	va_list args;
 
+	// We have been explicitly asked to not print anything to the log
+	if(silence_log && silence_stdout)
+		return;
+
 	pthread_mutex_lock(&lock);
 
 	get_timestr(timestring, time(NULL));
@@ -108,35 +119,39 @@ void __attribute__ ((format (gnu_printf, 1, 2))) logg(const char *format, ...)
 			snprintf(idstr, sizeof(idstr)-1, "%i/T%i", pid, tid);
 
 	// Print to stdout before writing to file
-	if(!daemonmode)
+	if((!daemonmode || cli_mode) && !silence_stdout)
 	{
-		printf("[%s %s] ", timestring, idstr);
+		if(!cli_mode)
+			printf("[%s %s] ", timestring, idstr);
 		va_start(args, format);
 		vprintf(format, args);
 		va_end(args);
 		printf("\n");
 	}
 
-	// Open log file
-	open_FTL_log(false);
-
-	// Write to log file
-	if(logfile != NULL)
+	if(!silence_log)
 	{
-		fprintf(logfile, "[%s %s] ", timestring, idstr);
-		va_start(args, format);
-		vfprintf(logfile, format, args);
-		va_end(args);
-		fputc('\n',logfile);
-	}
-	else if(!daemonmode)
-	{
-		printf("!!! WARNING: Writing to FTL\'s log file failed!\n");
-		syslog(LOG_ERR, "Writing to FTL\'s log file failed!");
-	}
+		// Open log file
+		open_FTL_log(false);
 
-	// Close log file
-	close_FTL_log();
+		// Write to log file
+		if(logfile != NULL)
+		{
+			fprintf(logfile, "[%s %s] ", timestring, idstr);
+			va_start(args, format);
+			vfprintf(logfile, format, args);
+			va_end(args);
+			fputc('\n',logfile);
+		}
+		else if(!daemonmode)
+		{
+			printf("!!! WARNING: Writing to FTL\'s log file failed!\n");
+			syslog(LOG_ERR, "Writing to FTL\'s log file failed!");
+		}
+
+		// Close log file
+		close_FTL_log();
+	}
 
 	pthread_mutex_unlock(&lock);
 }

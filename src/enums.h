@@ -72,9 +72,11 @@ enum blocking_mode {
 	MODE_NODATA
 } __attribute__ ((packed));
 
-enum regex_id {
+enum regex_type {
 	REGEX_BLACKLIST,
-	REGEX_WHITELIST
+	REGEX_WHITELIST,
+	REGEX_CLI,
+	REGEX_MAX
 } __attribute__ ((packed));
 
 enum query_types {

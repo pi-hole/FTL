@@ -14,6 +14,8 @@
 #include "log.h"
 // get_group_names()
 #include "database/gravity-db.h"
+// cli_mode
+#include "../args.h"
 
 static const char *message_types[MAX_MESSAGE] =
 	{ "REGEX", "SUBNET", "HOSTNAME" };
@@ -243,8 +245,9 @@ void logg_regex_warning(const char *type, const char *warning, const int dbindex
 	logg("REGEX WARNING: Invalid regex %s filter \"%s\": %s",
 	     type, regex, warning);
 
-	// Log to database
-	add_message(REGEX_MESSAGE, warning, 3, type, regex, dbindex);
+	// Log to database only if not in CLI mode
+	if(!cli_mode)
+		add_message(REGEX_MESSAGE, warning, 3, type, regex, dbindex);
 }
 
 void logg_subnet_warning(const char *ip, const int matching_count, const char *matching_ids,

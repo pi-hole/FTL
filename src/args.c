@@ -22,7 +22,7 @@
 #include "shmem.h"
 
 static bool debug = false;
-bool daemonmode = true;
+bool daemonmode = true, cli_mode = false;
 int argc_dnsmasq = 0;
 const char** argv_dnsmasq = NULL;
 
@@ -155,11 +155,20 @@ void parse_args(int argc, char* argv[])
 			ok = true;
 		}
 
-		// Don't go into background
-		if(strcmp(argv[i], "regex-speedtest") == 0)
+		// Regex test mode
+		if(strcmp(argv[i], "regex-test") == 0)
 		{
-			regex_speedtest();
-			exit(EXIT_SUCCESS);
+			// Enable stdout printing
+			cli_mode = true;
+			if(argc == i + 2)
+				exit(regex_test(argv[i + 1], NULL));
+			else if(argc == i + 3)
+				exit(regex_test(argv[i + 1], argv[i + 2]));
+			else
+			{
+				printf("pihole-FTL: invalid option -- '%s' need either one or two parameters\nTry '%s --help' for more information\n", argv[i], argv[0]);
+				exit(EXIT_FAILURE);
+			}
 		}
 
 		// List of implemented arguments
@@ -169,17 +178,21 @@ void parse_args(int argc, char* argv[])
 			printf("Usage:    sudo service pihole-FTL <action>\n");
 			printf("where '<action>' is one of start / stop / restart\n\n");
 			printf("Available arguments:\n");
-			printf("\t    debug         More verbose logging,\n");
-			printf("\t                  don't go into daemon mode\n");
-			printf("\t    test          Don't start pihole-FTL but\n");
-			printf("\t                  instead quit immediately\n");
-			printf("\t-v, version       Return version\n");
-			printf("\t-t, tag           Return git tag\n");
-			printf("\t-b, branch        Return git branch\n");
-			printf("\t-f, no-daemon     Don't go into daemon mode\n");
-			printf("\t-h, help          Display this help and exit\n");
-			printf("\tdnsmasq-test      Test syntax of dnsmasq's\n");
-			printf("\t                  config files and exit\n");
+			printf("\t    debug           More verbose logging,\n");
+			printf("\t                    don't go into daemon mode\n");
+			printf("\t    test            Don't start pihole-FTL but\n");
+			printf("\t                    instead quit immediately\n");
+			printf("\t-v, version         Return version\n");
+			printf("\t-t, tag             Return git tag\n");
+			printf("\t-b, branch          Return git branch\n");
+			printf("\t-f, no-daemon       Don't go into daemon mode\n");
+			printf("\t-h, help            Display this help and exit\n");
+			printf("\tdnsmasq-test        Test syntax of dnsmasq's\n");
+			printf("\t                    config files and exit\n");
+			printf("\tregex-test str      Test str against all regular\n");
+			printf("\t                    expressions in the database\n");
+			printf("\tregex-test str rgx  Test str against regular expression\n");
+			printf("\t                    given by rgx\n");
 			printf("\n\nOnline help: https://github.com/pi-hole/FTL\n");
 			exit(EXIT_SUCCESS);
 		}

@@ -12,7 +12,7 @@
 
 void parse_args(int argc, char* argv[]);
 
-extern bool daemonmode;
+extern bool daemonmode, cli_mode;
 extern int argc_dnsmasq;
 extern const char ** argv_dnsmasq;
 
