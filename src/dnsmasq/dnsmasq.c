@@ -1903,7 +1903,7 @@ static void check_dns_listeners(time_t now)
 			   single byte comes back up the pipe, which
 			   is sent by the child after it has closed the
 			   netlink socket. */
-			retry_send(read(pipefd[0], &a, 1));
+			while (retry_send(read(pipefd[0], &a, 1)));
 #endif
 			break;
 		      }
@@ -1944,7 +1944,7 @@ static void check_dns_listeners(time_t now)
 #ifdef HAVE_LINUX_NETWORK
 		  /* See comment above re netlink socket. */
 		  close(daemon->netlinkfd);
-		  retry_send(write(pipefd[1], &a, 1));
+		  while (retry_send(write(pipefd[1], &a, 1)));
 #endif
 		}
 
