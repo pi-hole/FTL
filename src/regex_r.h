@@ -15,8 +15,10 @@
 
 extern const char *regextype[];
 
-int match_regex(const char *input, const int clientID, const unsigned char regexid);
+int match_regex(const char *input, const int clientID, const unsigned char regexid, void *match_params);
 void allocate_regex_client_enabled(clientsData *client, const int clientID);
 void read_regex_from_database(void);
+
+int regex_speedtest(void);
 
 #endif //REGEX_H

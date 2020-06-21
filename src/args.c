@@ -16,6 +16,10 @@
 #include "log.h"
 // global variable killed
 #include "signals.h"
+// regex_speedtest()
+#include "regex_r.h"
+// init_shmem()
+#include "shmem.h"
 
 static bool debug = false;
 bool daemonmode = true;
@@ -149,6 +153,13 @@ void parse_args(int argc, char* argv[])
 		{
 			daemonmode = false;
 			ok = true;
+		}
+
+		// Don't go into background
+		if(strcmp(argv[i], "regex-speedtest") == 0)
+		{
+			regex_speedtest();
+			exit(EXIT_SUCCESS);
 		}
 
 		// List of implemented arguments

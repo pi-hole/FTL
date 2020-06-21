@@ -544,15 +544,20 @@ bool gravityDB_getTable(const unsigned char list)
 		return false;
 	}
 
-	char *querystr = NULL;
+	const char *querystr = NULL;
 	// Build correct query string to be used depending on list to be read
 	// We GROUP BY id as the view also includes the group_id leading to possible duplicates
 	// when domains are included in more than one group
-	if(asprintf(&querystr, "SELECT domain, id FROM %s GROUP BY id", tablename[list]) < 18)
-	{
-		logg("readGravity(%u) - asprintf() error", list);
-		return false;
-	}
+	if(list == GRAVITY_TABLE)
+		querystr = "SELECT DISTINCT domain FROM vw_gravity";
+	else if(list == EXACT_BLACKLIST_TABLE)
+		querystr = "SELECT domain, id FROM vw_blacklist GROUP BY id";
+	else if(list == EXACT_WHITELIST_TABLE)
+		querystr = "SELECT domain, id FROM vw_whitelist GROUP BY id";
+	else if(list == REGEX_BLACKLIST_TABLE)
+		querystr = "SELECT domain, id FROM vw_regex_blacklist GROUP BY id";
+	else if(list == REGEX_WHITELIST_TABLE)
+		querystr = "SELECT domain, id FROM vw_regex_whitelist GROUP BY id";
 
 	// Prepare SQLite3 statement
 	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &table_stmt, NULL);
@@ -560,12 +565,10 @@ bool gravityDB_getTable(const unsigned char list)
 	{
 		logg("readGravity(%s) - SQL error prepare: %s", querystr, sqlite3_errstr(rc));
 		gravityDB_close();
-		free(querystr);
 		return false;
 	}
 
 	// Free allocated memory and return success
-	free(querystr);
 	return true;
 }
 
@@ -586,7 +589,8 @@ inline const char* gravityDB_getDomain(int *rowid)
 	if(rc == SQLITE_ROW)
 	{
 		const char* domain = (char*)sqlite3_column_text(table_stmt, 0);
-		*rowid = sqlite3_column_int(table_stmt, 1);
+		if(rowid != NULL)
+			*rowid = sqlite3_column_int(table_stmt, 1);
 		return domain;
 	}
 
@@ -596,12 +600,14 @@ inline const char* gravityDB_getDomain(int *rowid)
 	if(rc != SQLITE_DONE)
 	{
 		logg("gravityDB_getDomain() - SQL error step: %s", sqlite3_errstr(rc));
-		*rowid = -1;
+		if(rowid != NULL)
+			*rowid = -1;
 		return NULL;
 	}
 
 	// Finished reading, nothing to get here
-	*rowid = -1;
+	if(rowid != NULL)
+		*rowid = -1;
 	return NULL;
 }
 
@@ -791,7 +797,7 @@ bool in_whitelist(const char *domain, const int clientID, clientsData* client)
 	// optimization as the database lookup will most likely hit (a) more domains and (b)
 	// will be faster (given a sufficiently large number of regex whitelisting filters).
 	return domain_in_list(domain, stmt, "whitelist") ||
-	       match_regex(domain, clientID, REGEX_WHITELIST) != -1;
+	       match_regex(domain, clientID, REGEX_WHITELIST, NULL) != -1;
 }
 
 bool in_gravity(const char *domain, const int clientID, clientsData* client)

@@ -25,6 +25,8 @@ enum timers {
 
 void timer_start(const enum timers i);
 double timer_elapsed_msec(const enum timers i);
+unsigned long timer_elapsed_usec(const enum timers i);
+unsigned long long timer_elapsed_nsec(const enum timers i);
 void sleepms(const int milliseconds);
 
 #endif //TIMERS_H
