@@ -26,18 +26,28 @@
 
 static pthread_mutex_t lock;
 static FILE *logfile = NULL;
-static bool silence_log = false, silence_stdout = false;
+static bool print_log = true, print_stdout = true;
 
-void silent_log(bool vlog, bool vstdout)
+void log_ctrl(bool plog, bool pstdout)
 {
-	silence_log = vlog;
-	silence_stdout = vstdout;
+	print_log = plog;
+	print_stdout = pstdout;
 }
 
 static void close_FTL_log(void)
 {
 	if(logfile != NULL)
 		fclose(logfile);
+}
+
+void init_FTL_log(void)
+{
+	if (pthread_mutex_init(&lock, NULL) != 0)
+	{
+		printf("FATAL: Log mutex init failed\n");
+		// Return failure
+		exit(EXIT_FAILURE);
+	}
 }
 
 void open_FTL_log(const bool test)
@@ -60,12 +70,6 @@ void open_FTL_log(const bool test)
 
 	if(test)
 	{
-		if (pthread_mutex_init(&lock, NULL) != 0)
-		{
-			printf("FATAL: Log mutex init failed\n");
-			// Return failure
-			exit(EXIT_FAILURE);
-		}
 		close_FTL_log();
 	}
 }
@@ -88,7 +92,7 @@ void __attribute__ ((format (gnu_printf, 1, 2))) logg(const char *format, ...)
 	va_list args;
 
 	// We have been explicitly asked to not print anything to the log
-	if(silence_log && silence_stdout)
+	if(!print_log && !print_stdout)
 		return;
 
 	pthread_mutex_lock(&lock);
@@ -119,7 +123,7 @@ void __attribute__ ((format (gnu_printf, 1, 2))) logg(const char *format, ...)
 			snprintf(idstr, sizeof(idstr)-1, "%i/T%i", pid, tid);
 
 	// Print to stdout before writing to file
-	if((!daemonmode || cli_mode) && !silence_stdout)
+	if((!daemonmode || cli_mode) && print_stdout)
 	{
 		if(!cli_mode)
 			printf("[%s %s] ", timestring, idstr);
@@ -129,7 +133,7 @@ void __attribute__ ((format (gnu_printf, 1, 2))) logg(const char *format, ...)
 		printf("\n");
 	}
 
-	if(!silence_log)
+	if(print_log)
 	{
 		// Open log file
 		open_FTL_log(false);

@@ -344,21 +344,22 @@ void read_regex_from_database(void)
 
 int regex_test(const char *domainin, const char *regexin)
 {
-	// Open log file
-	silent_log(true, true);
-	open_FTL_log(true);
-
 	// Prepare counters and regex memories
-	if(!init_shmem())
-		return EXIT_FAILURE;
+	counters = calloc(1, sizeof(countersStruct));
+	// Disable terminal output during config config file parsing
+	log_ctrl(false, false);
 	// Process pihole-FTL.conf to get gravity.db
 	read_FTLconf();
-	silent_log(true, false);
+	// Re-enable terminal output
+	log_ctrl(false, true);
 
 	// Start actual config after preparation is done
 	logg("FTL Regex test:");
 	logg("  Domain: \"%s\"", domainin);
-	logg("   Regex: \"%s\"", regexin == NULL ? "(from database)" : regexin);
+	if(regexin == NULL)
+		logg("   Regex: [loading all from gravity database]");
+	else
+		logg("   Regex: \"%s\"", regexin);
 
 	int match;
 	if(regexin == NULL)
