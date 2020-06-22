@@ -69,14 +69,11 @@ static bool compile_regex(const char *regexin, const int index, const enum regex
 	return true;
 }
 
-int match_regex(const char *input, const int clientID, const enum regex_type regexid, void *match_params)
+int match_regex(const char *input, const int clientID, const enum regex_type regexid)
 {
 	int match_idx = -1;
 #ifdef USE_TRE_REGEX
-	regaparams_t mp = { 0 }; // Setting all costs to zero -> exact matching
-	if(match_params != NULL)
-		memcpy(&mp, match_params, sizeof(regaparams_t));
-	regamatch_t amatch = { 0 }; // This also disables any sub-matching
+	regmatch_t match = { 0 }; // This also disables any sub-matching
 #endif
 
 	// Loop over all configured regex filters of this type
@@ -120,7 +117,7 @@ int match_regex(const char *input, const int clientID, const enum regex_type reg
 		// Try to match the compiled regular expression against input
 		int errcode;
 #ifdef USE_TRE_REGEX
-		errcode = tre_regaexec(&regex[regexid][index], input, &amatch, mp, 0);
+		errcode = tre_regexec(&regex[regexid][index], input, 0, &match, 0);
 #else
 		errcode = regexec(&regex[regexid][index], input, 0, NULL, 0);
 #endif
@@ -138,13 +135,6 @@ int match_regex(const char *input, const int clientID, const enum regex_type reg
 				logg("Regex %s (%u, DB ID %i) >> MATCH: \"%s\" vs. \"%s\"",
 				     regextype[regexid], index, regex_id[regexid][index],
 				     input, regexbuffer[regexid][index]);
-#ifdef USE_TRE_REGEX
-				if(amatch.cost > 0)
-				{
-					logg("Regex costs: %i (ins: %i, del: %i sub: %i)",
-					     amatch.cost, amatch.num_ins, amatch.num_del, amatch.num_subst);
-				}
-#endif
 			}
 
 			// Always check all regular expressions for clientID = -1
@@ -377,7 +367,7 @@ int regex_test(const char *domainin, const char *regexin)
 		// Check user-provided domain against all loaded regular expressions
 		logg("Step 2: Checking domain...");
 		timer_start(REGEX_TIMER);
-		match = match_regex(domainin, -1, REGEX_BLACKLIST, NULL);
+		match = match_regex(domainin, -1, REGEX_BLACKLIST);
 	}
 	else
 	{
@@ -404,7 +394,7 @@ int regex_test(const char *domainin, const char *regexin)
 		// Check user-provided domain against user-provided regular expression
 		logg("Step 2: Checking domain...");
 		timer_start(REGEX_TIMER);
-		match = match_regex(domainin, -1, REGEX_CLI, NULL);
+		match = match_regex(domainin, -1, REGEX_CLI);
 	}
 
 	logg("        Done in %.3f msec\n", timer_elapsed_msec(REGEX_TIMER));
