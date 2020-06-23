@@ -161,9 +161,9 @@ void parse_args(int argc, char* argv[])
 			// Enable stdout printing
 			cli_mode = true;
 			if(argc == i + 2)
-				exit(regex_test(argv[i + 1], NULL));
+				exit(regex_test(debug, argv[i + 1], NULL));
 			else if(argc == i + 3)
-				exit(regex_test(argv[i + 1], argv[i + 2]));
+				exit(regex_test(debug, argv[i + 1], argv[i + 2]));
 			else
 			{
 				printf("pihole-FTL: invalid option -- '%s' need either one or two parameters\nTry '%s --help' for more information\n", argv[i], argv[0]);
@@ -211,4 +211,66 @@ void parse_args(int argc, char* argv[])
 			exit(EXIT_FAILURE);
 		}
 	}
+}
+
+// Extended SGR sequence:
+//
+// "\x1b[%dm"
+//
+// where %d is one of the following values for commonly supported colors:
+//
+// 0: reset colors/style
+// 1: bold
+// 4: underline
+// 30 - 37: black, red, green, yellow, blue, magenta, cyan, and white text
+// 40 - 47: black, red, green, yellow, blue, magenta, cyan, and white background
+//
+// https://en.wikipedia.org/wiki/ANSI_escape_code#SGR
+//
+#define COL_NC		"\x1b[0m"  // normal font
+#define COL_BOLD	"\x1b[1m"  // bold font
+#define COL_ITALIC	"\x1b[3m"  // italic font
+#define COL_ULINE	"\x1b[4m"  // underline font
+#define COL_GREEN	"\x1b[32m" // normal foreground color
+#define COL_YELLOW	"\x1b[33m" // normal foreground color
+#define COL_GRAY	"\x1b[90m" // bright foreground color
+#define COL_RED		"\x1b[91m" // bright foreground color
+#define COL_BLUE	"\x1b[94m" // bright foreground color
+#define COL_PURPLE	"\x1b[95m" // bright foreground color
+#define COL_CYAN	"\x1b[96m" // bright foreground color
+
+static inline bool is_term(void)
+{
+	// test whether STDOUT refers to a terminal
+	return isatty(fileno(stdout)) == 1;
+}
+
+// Returns green [✓]
+const char *cli_tick(void)
+{
+	return is_term() ? "["COL_GREEN"✓"COL_NC"]" : "[✓]";
+}
+
+// Returns red [✗]
+const char *cli_cross(void)
+{
+	return is_term() ? "["COL_RED"✗"COL_NC"]" : "[✗]";
+}
+
+// Returns [!]
+const char *cli_info(void)
+{
+	return "[i]";
+}
+
+// Returns [?]
+const char *cli_qst(void)
+{
+	return "[?]";
+}
+
+// Returns green "done!""
+const char *cli_done(void)
+{
+	return is_term() ? COL_GREEN"done!"COL_NC : "done!";
 }

@@ -29,6 +29,8 @@
 #include "shmem.h"
 // read_FTL_config()
 #include "config.h"
+// cli_stuff()
+#include "args.h"
 
 #ifdef USE_TRE_REGEX
 #include "tre-regex/regex.h"
@@ -60,11 +62,8 @@ static bool compile_regex(const char *regexin, const int index, const enum regex
 		return false;
 	}
 
-	// Store compiled regex string in buffer if in regex debug mode
-	if(config.debug & DEBUG_REGEX)
-	{
-		regexbuffer[regexid][index] = strdup(regexin);
-	}
+	// Store compiled regex string in buffer
+	regexbuffer[regexid][index] = strdup(regexin);
 
 	return true;
 }
@@ -182,8 +181,8 @@ static void free_regex(void)
 
 			regfree(&regex[regexid][index]);
 
-			// Also free buffered regex strings if in regex debug mode
-			if(config.debug & DEBUG_REGEX && regexbuffer[regexid][index] != NULL)
+			// Also free buffered regex strings
+			if(regexbuffer[regexid][index] != NULL)
 			{
 				free(regexbuffer[regexid][index]);
 				regexbuffer[regexid][index] = NULL;
@@ -229,7 +228,6 @@ static void read_regex_table(const enum regex_type regexid)
 
 	if(count == 0)
 	{
-		logg("INFO: No regex %s entries found", regextype[regexid]);
 		return;
 	}
 	else if(count < 0)
@@ -246,9 +244,8 @@ static void read_regex_table(const enum regex_type regexid)
 	regex_id[regexid] = calloc(counters->num_regex[regexid], sizeof(int));
 	regex_available[regexid] = calloc(counters->num_regex[regexid], sizeof(bool));
 
-	// Buffer strings if in regex debug mode
-	if(config.debug & DEBUG_REGEX)
-		regexbuffer[regexid] = calloc(counters->num_regex[regexid], sizeof(char*));
+	// Buffer strings
+	regexbuffer[regexid] = calloc(counters->num_regex[regexid], sizeof(char*));
 
 	// Connect to regex table
 	if(!gravityDB_getTable(tableID))
@@ -332,7 +329,18 @@ void read_regex_from_database(void)
 	     counters->clients, timer_elapsed_msec(REGEX_TIMER));
 }
 
-int regex_test(const char *domainin, const char *regexin)
+static const char *get_regex_from_rowid(const enum regex_type regexid, const int matchid)
+{
+	unsigned int index;
+	for(index = 0; index < counters->num_regex[regexid]; index++)
+	{
+		if(regex_id[regexid][index] == matchid)
+			break;
+	}
+	return regexbuffer[regexid][index];
+}
+
+int regex_test(const bool debug_mode, const char *domainin, const char *regexin)
 {
 	// Prepare counters and regex memories
 	counters = calloc(1, sizeof(countersStruct));
@@ -340,39 +348,66 @@ int regex_test(const char *domainin, const char *regexin)
 	log_ctrl(false, false);
 	// Process pihole-FTL.conf to get gravity.db
 	read_FTLconf();
+
+	// Disable all debugging output if not explicitly in debug mode (CLI argument "d")
+	if(!debug_mode)
+		config.debug = 0;
 	// Re-enable terminal output
 	log_ctrl(false, true);
 
-	// Start actual config after preparation is done
-	logg("FTL Regex test:");
-	logg("  Domain: \"%s\"", domainin);
-	if(regexin == NULL)
-		logg("   Regex: [loading all from gravity database]");
-	else
-		logg("   Regex: \"%s\"", regexin);
-
-	int match;
+	bool matched = false;
+	int matchidx;
 	if(regexin == NULL)
 	{
-		// Read and compile regex lists
-		logg("Step 1: Loading & Compiling regex filters from database");
+		// Read and compile regex lists from database
+		logg("%s Loading regex filters from database...", cli_info());
 		timer_start(REGEX_TIMER);
 		read_regex_table(REGEX_BLACKLIST);
 		read_regex_table(REGEX_WHITELIST);
-		logg("        Compiled %i black- and %i whitelist regex filters in %.3f msec",
+		logg("      Compiled %i black- and %i whitelist regex filters in %.3f msec",
 		     counters->num_regex[REGEX_BLACKLIST],
 		     counters->num_regex[REGEX_WHITELIST],
 		     timer_elapsed_msec(REGEX_TIMER));
 
-		// Check user-provided domain against all loaded regular expressions
-		logg("Step 2: Checking domain...");
+		// Check user-provided domain against all loaded regular blacklist expressions
+		logg("%s Checking domain against blacklist...", cli_info());
 		timer_start(REGEX_TIMER);
-		match = match_regex(domainin, -1, REGEX_BLACKLIST);
+		matchidx = match_regex(domainin, -1, REGEX_BLACKLIST);
+		logg("      Time: %.3f msec\n", timer_elapsed_msec(REGEX_TIMER));
+
+		if(matchidx > -1)
+		{
+			matched = true;
+			logg("%s \"%s\" matched by \"%s\"\n", cli_tick(),
+			     domainin, get_regex_from_rowid(REGEX_BLACKLIST, matchidx));
+		}
+		else
+		{
+			logg("%s No result for \"%s\"\n", cli_cross(), domainin);
+		}
+
+		// Check user-provided domain against all loaded regular whitelist expressions
+		logg("%s Checking domain against whitelist...", cli_tick());
+		timer_start(REGEX_TIMER);
+		matchidx = match_regex(domainin, -1, REGEX_WHITELIST);
+		logg("      Time: %.3f msec\n", timer_elapsed_msec(REGEX_TIMER));
+
+		if(matchidx > -1)
+		{
+			matched = true;
+			logg("%s \"%s\" matched by \"%s\"\n", cli_tick(),
+			     domainin, get_regex_from_rowid(REGEX_WHITELIST, matchidx));
+		}
+		else
+		{
+			logg("%s No result for \"%s\"\n", cli_cross(), domainin);
+		}
+
 	}
 	else
 	{
 		// Compile CLI regex
-		logg("Step 1: Compiling regex filter...");
+		logg("%s Compiling regex filter...", cli_info());
 		counters->num_regex[REGEX_BLACKLIST] = counters->num_regex[REGEX_WHITELIST] = 0;
 		counters->num_regex[REGEX_CLI] = 1;
 
@@ -380,8 +415,7 @@ int regex_test(const char *domainin, const char *regexin)
 		regex[REGEX_CLI] = calloc(counters->num_regex[REGEX_CLI], sizeof(regex_t));
 		regex_id[REGEX_CLI] = calloc(counters->num_regex[REGEX_CLI], sizeof(int));
 		regex_available[REGEX_CLI] = calloc(counters->num_regex[REGEX_CLI], sizeof(bool));
-		if(config.debug & DEBUG_REGEX)
-			regexbuffer[REGEX_CLI] = calloc(counters->num_regex[REGEX_CLI], sizeof(char*));
+		regexbuffer[REGEX_CLI] = calloc(counters->num_regex[REGEX_CLI], sizeof(char*));
 
 		// Compile CLI regex
 		timer_start(REGEX_TIMER);
@@ -389,23 +423,26 @@ int regex_test(const char *domainin, const char *regexin)
 			regex_available[REGEX_CLI][0] = true;
 		else
 			return EXIT_FAILURE;
-		logg("        Compiled regex filter in %.3f msec", timer_elapsed_msec(REGEX_TIMER));
+		logg("      Compiled regex filter in %.3f msec", timer_elapsed_msec(REGEX_TIMER));
 
 		// Check user-provided domain against user-provided regular expression
-		logg("Step 2: Checking domain...");
+		logg("%s Checking domain...", cli_info());
 		timer_start(REGEX_TIMER);
-		match = match_regex(domainin, -1, REGEX_CLI);
+		matchidx = match_regex(domainin, -1, REGEX_CLI);
+		logg("      Time: %.3f msec\n", timer_elapsed_msec(REGEX_TIMER));
+
+		if(matchidx > -1)
+		{
+			matched = true;
+			logg("%s \"%s\" matched by \"%s\"\n",
+			     cli_tick(), domainin, get_regex_from_rowid(REGEX_CLI, matchidx));
+		}
+		else
+		{
+			logg("%s No result for \"%s\"\n", cli_cross(), domainin);
+		}
 	}
 
-	logg("        Done in %.3f msec\n", timer_elapsed_msec(REGEX_TIMER));
-	if(match > -1)
-	{
-		logg("MATCH");
-		return EXIT_SUCCESS;
-	}
-	else
-	{
-		logg("NO MATCH");
-		return EXIT_FAILURE;
-	}
+	// Return status 0 = MATCH, 1 = ERROR, 2 = NO MATCH
+	return matched ? EXIT_SUCCESS : 2;
 }

@@ -16,4 +16,10 @@ extern bool daemonmode, cli_mode;
 extern int argc_dnsmasq;
 extern const char ** argv_dnsmasq;
 
+const char *cli_tick(void);
+const char *cli_cross(void);
+const char *cli_info(void);
+const char *cli_qst(void);
+const char *cli_done(void);
+
 #endif //ARGS_H
