@@ -266,7 +266,7 @@
   [[ ${lines[4]} == "ads_percentage_today 24.000000" ]]
   [[ ${lines[5]} == "unique_domains 12" ]]
   [[ ${lines[6]} == "queries_forwarded 9" ]]
-  [[ ${lines[7]} == "queries_cached 7" ]]
+  [[ ${lines[7]} == "queries_cached 10" ]]
   # Clients ever seen is commented out as CircleCI may have
   # more devices in its ARP cache so testing against a fixed
   # number of clients may not work in all cases
@@ -336,9 +336,9 @@
 @test "Upstream Destinations reported correctly" {
   run bash -c 'echo ">forward-dest >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "-2 27.27 blocklist blocklist" ]]
-  [[ ${lines[2]} == "-1 31.82 cache cache" ]]
-  [[ ${lines[3]} == "0 40.91 "* ]]
+  [[ ${lines[1]} == "-2 24.00 blocklist blocklist" ]]
+  [[ ${lines[2]} == "-1 40.00 cache cache" ]]
+  [[ ${lines[3]} == "0 36.00 "* ]]
   [[ ${lines[4]} == "" ]]
 }
 
