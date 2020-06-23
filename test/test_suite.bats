@@ -404,161 +404,161 @@
 @test "Regex Test 1: \"regex7.test.pi-hole.net\" vs. [database regex]: MATCH" {
   run bash -c './pihole-FTL regex-test "regex7.test.pi-hole.net"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[5]} == "[✓]"* ]]
+  [[ ${lines[4]} == "[✓]"* ]]
   [[ $status == 0 ]]
 }
 
 @test "Regex Test 2: \"a\" vs. \"a\": MATCH" {
   run bash -c './pihole-FTL regex-test "a" "a"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[5]} == "[✓]"* ]]
+  [[ ${lines[4]} == "[✓]"* ]]
   [[ $status == 0 ]]
 }
 
 @test "Regex Test 3: \"aa\" vs. \"^[a-z]{1,3}$\": MATCH" {
   run bash -c './pihole-FTL regex-test "aa" "^[a-z]{1,3}$"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[5]} == "[✓]"* ]]
+  [[ ${lines[4]} == "[✓]"* ]]
   [[ $status == 0 ]]
 }
 
 @test "Regex Test 4: \"aaaa\" vs. \"^[a-z]{1,3}$\": NO MATCH" {
   run bash -c './pihole-FTL regex-test "aaaa" "^[a-z]{1,3}$"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[5]} == "[✗]"* ]]
+  [[ ${lines[4]} == "[✗]"* ]]
   [[ $status == 2 ]]
 }
 
 @test "Regex Test 5: \"aa\" vs. \"^a(?#some comment)a$\": MATCH (comments)" {
   run bash -c './pihole-FTL regex-test "aa" "^a(?#some comment)a$"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[5]} == "[✓]"* ]]
+  [[ ${lines[4]} == "[✓]"* ]]
   [[ $status == 0 ]]
 }
 
 @test "Regex Test 6: \"abc.abc\" vs. \"([a-z]*)\.\1\": MATCH" {
   run bash -c './pihole-FTL regex-test "abc.abc" "([a-z]*)\.\1"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[5]} == "[✓]"* ]]
+  [[ ${lines[4]} == "[✓]"* ]]
   [[ $status == 0 ]]
 }
 
 @test "Regex Test 7: Complex character set: MATCH" {
   run bash -c './pihole-FTL regex-test "__abc#LMN012$x%yz789*" "[[:digit:]a-z#$%]+"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[5]} == "[✓]"* ]]
+  [[ ${lines[4]} == "[✓]"* ]]
   [[ $status == 0 ]]
 }
 
 @test "Regex Test 8: Range expression: MATCH" {
   run bash -c './pihole-FTL regex-test "!ABC-./XYZ~" "[--Z]+"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[5]} == "[✓]"* ]]
+  [[ ${lines[4]} == "[✓]"* ]]
   [[ $status == 0 ]]
 }
 
 @test "Regex Test 9: Back reference: \"aabc\" vs. \"(a)\1{1,2}\": MATCH" {
   run bash -c './pihole-FTL regex-test "aabc" "(a)\1{1,2}"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[5]} == "[✓]"* ]]
+  [[ ${lines[4]} == "[✓]"* ]]
   [[ $status == 0 ]]
 }
 
 @test "Regex Test 10: Back reference: \"foo\" vs. \"(.)\1$\": MATCH" {
   run bash -c './pihole-FTL regex-test "foo" "(.)\1$"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[5]} == "[✓]"* ]]
+  [[ ${lines[4]} == "[✓]"* ]]
   [[ $status == 0 ]]
 }
 
 @test "Regex Test 11: Back reference: \"foox\" vs. \"(.)\1$\": NO MATCH" {
   run bash -c './pihole-FTL regex-test "foox" "(.)\1$"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[5]} == "[✗]"* ]]
+  [[ ${lines[4]} == "[✗]"* ]]
   [[ $status == 2 ]]
 }
 
 @test "Regex Test 12: Back reference: \"1234512345\" vs. \"([0-9]{5})\1\": MATCH" {
   run bash -c './pihole-FTL regex-test "1234512345" "([0-9]{5})\1"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[5]} == "[✓]"* ]]
+  [[ ${lines[4]} == "[✓]"* ]]
   [[ $status == 0 ]]
 }
 
 @test "Regex Test 13: Back reference: \"12345\" vs. \"([0-9]{5})\1\": NO MATCH" {
   run bash -c './pihole-FTL regex-test "12345" "([0-9]{5})\1"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[5]} == "[✗]"* ]]
+  [[ ${lines[4]} == "[✗]"* ]]
   [[ $status == 2 ]]
 }
 
 @test "Regex Test 14: Complex back reference: MATCH" {
   run bash -c './pihole-FTL regex-test "cat.foo.dog---cat%dog!foo" "(cat)\.(foo)\.(dog)---\1%\3!\2"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[5]} == "[✓]"* ]]
+  [[ ${lines[4]} == "[✓]"* ]]
   [[ $status == 0 ]]
 }
 
 @test "Regex Test 15: Approximate matching, 0 errors: MATCH" {
   run bash -c './pihole-FTL regex-test "foobarzap" "foo(bar){~1}zap"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[5]} == "[✓]"* ]]
+  [[ ${lines[4]} == "[✓]"* ]]
   [[ $status == 0 ]]
 }
 
 @test "Regex Test 16: Approximate matching, 1 error (inside fault-tolerant area): MATCH" {
   run bash -c './pihole-FTL regex-test "foobrzap" "foo(bar){~1}zap"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[5]} == "[✓]"* ]]
+  [[ ${lines[4]} == "[✓]"* ]]
   [[ $status == 0 ]]
 }
 
 @test "Regex Test 17: Approximate matching, 1 error (outside fault-tolert area): NO MATCH" {
   run bash -c './pihole-FTL regex-test "foxbrazap" "foo(bar){~1}zap"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[5]} == "[✗]"* ]]
+  [[ ${lines[4]} == "[✗]"* ]]
   [[ $status == 2 ]]
 }
 
 @test "Regex Test 18: Approximate matching, 0 global errors: MATCH" {
   run bash -c './pihole-FTL regex-test "foobar" "^(foobar){~1}$"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[5]} == "[✓]"* ]]
+  [[ ${lines[4]} == "[✓]"* ]]
   [[ $status == 0 ]]
 }
 
 @test "Regex Test 19: Approximate matching, 1 global error: MATCH" {
   run bash -c './pihole-FTL regex-test "cfoobar" "^(foobar){~1}$"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[5]} == "[✓]"* ]]
+  [[ ${lines[4]} == "[✓]"* ]]
   [[ $status == 0 ]]
 }
 
 @test "Regex Test 20: Approximate matching, 2 global errors: NO MATCH" {
   run bash -c './pihole-FTL regex-test "ccfoobar" "^(foobar){~1}$"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[5]} == "[✗]"* ]]
+  [[ ${lines[4]} == "[✗]"* ]]
   [[ $status == 2 ]]
 }
 
 @test "Regex Test 21: Approximate matching, insert + substitute: MATCH" {
   run bash -c './pihole-FTL regex-test "oobargoobaploowap" "(foobar){+2#2~2}"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[5]} == "[✓]"* ]]
+  [[ ${lines[4]} == "[✓]"* ]]
   [[ $status == 0 ]]
 }
 
 @test "Regex Test 22: Approximate matching, insert + delete: MATCH" {
   run bash -c './pihole-FTL regex-test "3oifaowefbaoraofuiebofasebfaobfaorfeoaro" "(foobar){+1 -2}"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[5]} == "[✓]"* ]]
+  [[ ${lines[4]} == "[✓]"* ]]
   [[ $status == 0 ]]
 }
 
 @test "Regex Test 23: Approximate matching, insert + delete (insufficient): NO MATCH" {
   run bash -c './pihole-FTL regex-test "3oifaowefbaoraofuiebofasebfaobfaorfeoaro" "(foobar){+1 -1}"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[5]} == "[✗]"* ]]
+  [[ ${lines[4]} == "[✗]"* ]]
   [[ $status == 2 ]]
 }
 
