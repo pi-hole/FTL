@@ -680,12 +680,12 @@ static bool get_client_groupids(clientsData* client)
 	{
 		if(interface != NULL)
 		{
-			logg("Gravity database: Client %s found (identified by interface %s). Using groups [%s]\n",
+			logg("Gravity database: Client %s found (identified by interface %s). Using groups (%s)\n",
 			     show_client_string(hwaddr, hostname, ip), interface, getstr(client->groupspos));
 		}
 		else
 		{
-			logg("Gravity database: Client %s found. Using groups [%s]\n",
+			logg("Gravity database: Client %s found. Using groups (%s)\n",
 			     show_client_string(hwaddr, hostname, ip), getstr(client->groupspos));
 		}
 	}
