@@ -177,20 +177,30 @@ INSERT INTO domainlist_by_group VALUES(7,1);
 
 INSERT INTO domain_audit VALUES(1,'google.com',1559928803);
 
-INSERT INTO client VALUES(1,"127.0.0.1");
+INSERT INTO client VALUES(1,'127.0.0.1');
 
-INSERT INTO client VALUES(2,"127.0.0.2");
-INSERT INTO "group" VALUES(2,1,"Second test group",1559928803,1559928803,"A group associated with client 127.0.0.2");
+INSERT INTO client VALUES(2,'127.0.0.2');
+INSERT INTO "group" VALUES(2,1,'Second test group',1559928803,1559928803,'A group associated with client IP 127.0.0.2');
 DELETE FROM client_by_group WHERE client_id = 2 AND group_id = 0;
 INSERT INTO client_by_group VALUES(2,2);
 INSERT INTO adlist_by_group VALUES(1,2);
 INSERT INTO domainlist_by_group VALUES(6,2);
 
-INSERT INTO client VALUES(3,"127.0.0.3");
-INSERT INTO "group" VALUES(3,1,"Third test group",1559928803,1559928803,"A group associated with client 127.0.0.3");
+INSERT INTO client VALUES(3,'127.0.0.3');
+INSERT INTO "group" VALUES(3,1,'Third test group',1559928803,1559928803,'A group associated with client IP 127.0.0.3');
 DELETE FROM client_by_group WHERE client_id = 3 AND group_id = 0;
 INSERT INTO client_by_group VALUES(3,3);
 
-INSERT INTO info VALUES("version","9");
+INSERT INTO client VALUES(4,'aa:bb:cc:dd:ee:ff'); /* 127.0.0.4 and 127.0.0.5 */
+INSERT INTO "group" VALUES(4,1,'MAC client test group',1559928803,1559928803,'A group associated with client MAC aa:bb:cc:dd:ee:ff');
+DELETE FROM client_by_group WHERE client_id = 4 AND group_id = 0;
+INSERT INTO client_by_group VALUES(4,4);
+
+INSERT INTO client VALUES(5,':enp0s123'); /* 127.0.0.6 */
+INSERT INTO "group" VALUES(5,1,'Interface client test group',1559928803,1559928803,'A group associated with client interface enp0s123');
+DELETE FROM client_by_group WHERE client_id = 5 AND group_id = 0;
+INSERT INTO client_by_group VALUES(5,5);
+
+INSERT INTO info VALUES('version', 9);
 
 COMMIT;

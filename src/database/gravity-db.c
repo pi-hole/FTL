@@ -204,7 +204,8 @@ static char* get_client_querystr(const char* table, const char* groups)
 }
 
 // Determine whether to show IP or hardware address
-static inline const char *show_client_string(const char *hwaddr, const char *hostname, const char *ip)
+static inline const char *show_client_string(const char *hwaddr, const char *hostname,
+                                             const char *ip)
 {
 	if(hostname != NULL && strlen(hostname) > 0)
 	{
@@ -358,7 +359,7 @@ static bool get_client_groupids(clientsData* client)
 	if(hwaddr != NULL)
 	{
 		if(config.debug & DEBUG_CLIENTS)
-			logg("--> Querying client table for \"%s\"", hwaddr);
+			logg("--> Querying client table for %s", hwaddr);
 
 		// Check if client is configured through the client table
 		// This will return nothing if the client is unknown/unconfigured
@@ -393,12 +394,12 @@ static bool get_client_groupids(clientsData* client)
 			chosen_match_id = sqlite3_column_int(table_stmt, 0);
 
 			if(config.debug & DEBUG_CLIENTS)
-				logg("--> Found record for \"%s\" in the client table (group ID %d)", hwaddr, chosen_match_id);
+				logg("--> Found record for %s in the client table (group ID %d)", hwaddr, chosen_match_id);
 		}
 		else if(rc == SQLITE_DONE)
 		{
 			if(config.debug & DEBUG_CLIENTS)
-				logg("--> There is no record for \"%s\" in the client table", hwaddr);
+				logg("--> There is no record for %s in the client table", hwaddr);
 		}
 		else
 		{
@@ -442,7 +443,7 @@ static bool get_client_groupids(clientsData* client)
 	if(hostname != NULL)
 	{
 		if(config.debug & DEBUG_CLIENTS)
-			logg("--> Querying client table for \"%s\"", hostname);
+			logg("--> Querying client table for %s", hostname);
 
 		// Check if client is configured through the client table
 		// This will return nothing if the client is unknown/unconfigured
@@ -477,12 +478,12 @@ static bool get_client_groupids(clientsData* client)
 			chosen_match_id = sqlite3_column_int(table_stmt, 0);
 
 			if(config.debug & DEBUG_CLIENTS)
-				logg("--> Found record for \"%s\" in the client table (group ID %d)", hostname, chosen_match_id);
+				logg("--> Found record for %s in the client table (group ID %d)", hostname, chosen_match_id);
 		}
 		else if(rc == SQLITE_DONE)
 		{
 			if(config.debug & DEBUG_CLIENTS)
-				logg("--> There is no record for \"%s\" in the client table", hostname);
+				logg("--> There is no record for %s in the client table", hostname);
 		}
 		else
 		{
@@ -526,7 +527,7 @@ static bool get_client_groupids(clientsData* client)
 	if(interface != NULL)
 	{
 		if(config.debug & DEBUG_CLIENTS)
-			logg("Querying client table for interface \""INTERFACE_SEP"%s\"", interface);
+			logg("Querying client table for interface "INTERFACE_SEP"%s", interface);
 
 		// Check if client is configured through the client table using its interface
 		// This will return nothing if the client is unknown/unconfigured
@@ -562,12 +563,12 @@ static bool get_client_groupids(clientsData* client)
 			chosen_match_id = sqlite3_column_int(table_stmt, 0);
 
 			if(config.debug & DEBUG_CLIENTS)
-				logg("--> Found record for interface \""INTERFACE_SEP"%s\" in the client table (group ID %d)", interface, chosen_match_id);
+				logg("--> Found record for interface "INTERFACE_SEP"%s in the client table (group ID %d)", interface, chosen_match_id);
 		}
 		else if(rc == SQLITE_DONE)
 		{
 			if(config.debug & DEBUG_CLIENTS)
-				logg("--> There is no record for interface \""INTERFACE_SEP"%s\" in the client table", interface);
+				logg("--> There is no record for interface "INTERFACE_SEP"%s in the client table", interface);
 		}
 		else
 		{
@@ -676,8 +677,18 @@ static bool get_client_groupids(clientsData* client)
 	gravityDB_finalizeTable();
 
 	if(config.debug & DEBUG_CLIENTS)
-		logg("Gravity database: Client %s found. Using groups [%s].\n",
-		     show_client_string(hwaddr, hostname, ip), getstr(client->groupspos));
+	{
+		if(interface != NULL)
+		{
+			logg("Gravity database: Client %s found (identified by interface %s). Using groups [%s]\n",
+			     show_client_string(hwaddr, hostname, ip), interface, getstr(client->groupspos));
+		}
+		else
+		{
+			logg("Gravity database: Client %s found. Using groups [%s]\n",
+			     show_client_string(hwaddr, hostname, ip), getstr(client->groupspos));
+		}
+	}
 
 	// Free possibly allocated memory
 	if(hwaddr != NULL)
