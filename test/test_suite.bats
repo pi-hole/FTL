@@ -270,7 +270,7 @@
   [[ ${lines[@]} != *"google.com"* ]]
 }
 
-@test "Forward Destinations" {
+@test "Upstream Destinations reported correctly" {
   run bash -c 'echo ">forward-dest >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[1]} == "-2 27.27 blocklist blocklist" ]]
@@ -279,7 +279,7 @@
   [[ ${lines[4]} == "" ]]
 }
 
-@test "Query Types" {
+@test "Query Types reported correctly" {
   run bash -c 'echo ">querytypes >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[1]} == "A (IPv4): 76.00" ]]
@@ -296,7 +296,7 @@
 # Here and below: Acknowledge that there might be a host name after
 # the IP address of the client (..."*"...)
 
-@test "Get all queries" {
+@test "Get all queries shows expected content" {
   run bash -c 'echo ">getallqueries >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[1]} == *"TXT version.ftl 127.0.0.1 3 0 6"* ]]
@@ -327,21 +327,21 @@
   [[ ${lines[26]} == "" ]]
 }
 
-@test "Get all queries (domain filtered)" {
+@test "Get all queries (domain filtered) shows expected content" {
   run bash -c 'echo ">getallqueries-domain regexa.test.pi-hole.net >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[1]} == *"A regexa.test.pi-hole.net "?*" 2 0 4"* ]]
   [[ ${lines[2]} == "" ]]
 }
 
-@test "Get all queries (domain + number filtered)" {
+@test "Get all queries (domain + number filtered) shows expected content" {
   run bash -c 'echo ">getallqueries-domain regexa.test.pi-hole.net (20) >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[1]} == *"A regexa.test.pi-hole.net "?*" 2 0 4"* ]]
   [[ ${lines[2]} == "" ]]
 }
 
-@test "Get all queries (client filtered)" {
+@test "Get all queries (client filtered) shows expected content" {
   run bash -c 'echo ">getallqueries-client 127.0.0.1 >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[1]} == *"TXT version.ftl 127.0.0.1 3 0 6"* ]]
@@ -362,7 +362,7 @@
   [[ ${lines[16]} == "" ]]
 }
 
-@test "Get all queries (client + number filtered)" {
+@test "Get all queries (client + number filtered) shows expected content" {
   run bash -c 'echo ">getallqueries-client 127.0.0.1 (2) >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[1]} == *"AAAA google.com 127.0.0.1 2 0 4"* ]]
@@ -370,14 +370,14 @@
   [[ ${lines[3]} == "" ]]
 }
 
-@test "Recent blocked" {
+@test "Recent blocked shows expected content" {
   run bash -c 'echo ">recentBlocked >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[1]} == "regex1.test.pi-hole.net" ]]
   [[ ${lines[2]} == "" ]]
 }
 
-@test "pihole-FTL.db schema as expected" {
+@test "pihole-FTL.db schema is as expected" {
   run bash -c 'sqlite3 /etc/pihole/pihole-FTL.db .dump'
   printf "%s\n" "${lines[@]}"
   [[ "${lines[@]}" == *"CREATE TABLE queries ( id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL, type INTEGER NOT NULL, status INTEGER NOT NULL, domain TEXT NOT NULL, client TEXT NOT NULL, forward TEXT );"* ]]
@@ -387,17 +387,28 @@
   [[ "${lines[@]}" == *"CREATE TABLE IF NOT EXISTS \"network_addresses\" ( network_id INTEGER NOT NULL, ip TEXT UNIQUE NOT NULL, lastSeen INTEGER NOT NULL DEFAULT (cast(strftime('%s', 'now') as int)), name TEXT, nameUpdated INTEGER, FOREIGN KEY(network_id) REFERENCES network(id));"* ]]
   [[ "${lines[@]}" == *"CREATE INDEX idx_queries_timestamps ON queries (timestamp);"* ]]
   # Depending on the version of sqlite3, ftl can be enquoted or not...
-  [[ "${lines[@]}" == *"INSERT INTO "?*"ftl"?*" VALUES(0,8);"* ]]
+  [[ "${lines[@]}" == *"INSERT INTO"?*"ftl"?*"VALUES(0,8);"* ]]
 }
 
-@test "Fail on invalid argument" {
+@test "Ownership, permissions and type of pihole-FTL.db correct" {
+  run bash -c 'ls -l /etc/pihole/pihole-FTL.db'
+  printf "%s\n" "${lines[@]}"
+  # Depending on the shell (x86_64-musl is built on busybox) there can be one or multiple spaces between user and group
+  [[ ${lines[0]} == *"pihole"?*"pihole"* ]]
+  [[ ${lines[0]} == "-rw-r--r--"* ]]
+  run bash -c 'file /etc/pihole/pihole-FTL.db'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "/etc/pihole/pihole-FTL.db: SQLite 3.x database"* ]]
+}
+
+@test "Test fail on invalid CLI argument" {
   run bash -c '/home/pihole/pihole-FTL abc'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "pihole-FTL: invalid option -- 'abc'" ]]
   [[ ${lines[1]} == "Try '/home/pihole/pihole-FTL --help' for more information" ]]
 }
 
-@test "Help argument return help text" {
+@test "Help CLI argument return help text" {
   run bash -c '/home/pihole/pihole-FTL help'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "pihole-FTL - The Pi-hole FTL engine" ]]
@@ -405,13 +416,13 @@
 }
 
 @test "No WARNING messages in pihole-FTL.log (besides known capability issues)" {
-  run bash -c 'grep "WARNING:" /var/log/pihole-FTL.log | grep -c -v -E "CAP_NET_ADMIN|CAP_NET_RAW|CAP_SYS_NICE"'
+  run bash -c 'grep "WARNING" /var/log/pihole-FTL.log | grep -c -v -E "CAP_NET_ADMIN|CAP_NET_RAW|CAP_SYS_NICE"'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0" ]]
 }
 
 @test "No ERROR messages in pihole-FTL.log" {
-  run bash -c 'grep -c "ERROR:" /var/log/pihole-FTL.log'
+  run bash -c 'grep -c "ERROR" /var/log/pihole-FTL.log'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0" ]]
 }
@@ -420,18 +431,6 @@
   run bash -c 'grep -c "FATAL:" /var/log/pihole-FTL.log'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0" ]]
-}
-
-# x86_64-musl is built on busybox which has a slightly different
-# variant of ls displaying three, instead of one, spaces between the
-# user and group names.
-
-@test "Ownership and permissions of pihole-FTL.db correct" {
-  run bash -c 'ls -l /etc/pihole/pihole-FTL.db'
-  printf "%s\n" "${lines[@]}"
-  # Depending on the shell there can be one or multiple spaces between user and group
-  [[ ${lines[0]} == *"pihole "?*"pihole"* ]]
-  [[ ${lines[0]} == "-rw-r--r--"* ]]
 }
 
 # "ldd" prints library dependencies and the used interpreter for a given program
