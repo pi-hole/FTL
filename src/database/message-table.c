@@ -227,6 +227,8 @@ static bool add_message(enum message_type type, const char *message,
 	if(rc != SQLITE_DONE)
 	{
 		logg("Encountered error while trying to store message in long-term database: %s", sqlite3_errstr(rc));
+		if(opened_database)
+			dbclose();
 		return false;
 	}
 

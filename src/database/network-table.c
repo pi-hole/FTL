@@ -1261,15 +1261,21 @@ void updateMACVendorRecords(void)
 		return;
 	}
 
-	// Open database connection
-	dbopen();
+	// Open pihole-FTL.db database file if needed
+	const bool db_already_open = FTL_DB_avail();
+	if(!db_already_open && !dbopen())
+	{
+		logg("updateMACVendorRecords() - Failed to open DB");
+		return;
+	}
 
 	sqlite3_stmt* stmt;
 	const char* selectstr = "SELECT id,hwaddr FROM network;";
 	int rc = sqlite3_prepare_v2(FTL_db, selectstr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK ){
 		logg("updateMACVendorRecords() - SQL error prepare \"%s\": %s", selectstr, sqlite3_errstr(rc));
-		dbclose();
+		if(!db_already_open)
+			dbclose();
 		return;
 	}
 
@@ -1314,7 +1320,8 @@ void updateMACVendorRecords(void)
 	}
 
 	sqlite3_finalize(stmt);
-	dbclose();
+	if(!db_already_open)
+		dbclose();
 }
 
 char* __attribute__((malloc)) getDatabaseHostname(const char* ipaddr)
@@ -1338,11 +1345,12 @@ char* __attribute__((malloc)) getDatabaseHostname(const char* ipaddr)
 		return strdup("");
 	}
 
-	// Open pihole-FTL.db database file
-	if(!dbopen())
+	// Open pihole-FTL.db database file if needed
+	const bool db_already_open = FTL_DB_avail();
+	if(!db_already_open && !dbopen())
 	{
 		logg("getDatabaseHostname(\"%s\") - Failed to open DB", ipaddr);
-		return strdup("");
+		return NULL;
 	}
 
 	// Prepare SQLite statement
@@ -1353,7 +1361,8 @@ char* __attribute__((malloc)) getDatabaseHostname(const char* ipaddr)
 	if( rc != SQLITE_OK ){
 		logg("getDatabaseHostname(\"%s\") - SQL error prepare: %s",
 		     ipaddr, sqlite3_errstr(rc));
-		dbclose();
+		if(!db_already_open)
+			dbclose();
 		return strdup("");
 	}
 
@@ -1364,7 +1373,8 @@ char* __attribute__((malloc)) getDatabaseHostname(const char* ipaddr)
 		     ipaddr, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
-		dbclose();
+		if(!db_already_open)
+			dbclose();
 		return strdup("");
 	}
 
@@ -1384,7 +1394,8 @@ char* __attribute__((malloc)) getDatabaseHostname(const char* ipaddr)
 	// Finalize statement and close database handle
 	sqlite3_reset(stmt);
 	sqlite3_finalize(stmt);
-	dbclose();
+	if(!db_already_open)
+		dbclose();
 
 	return hostname;
 }
@@ -1392,8 +1403,9 @@ char* __attribute__((malloc)) getDatabaseHostname(const char* ipaddr)
 // Get hardware address of device identified by IP address
 char* __attribute__((malloc)) getMACfromIP(const char* ipaddr)
 {
-	// Open pihole-FTL.db database file
-	if(!dbopen())
+	// Open pihole-FTL.db database file if needed
+	const bool db_already_open = FTL_DB_avail();
+	if(!db_already_open && !dbopen())
 	{
 		logg("getMACfromIP(\"%s\") - Failed to open DB", ipaddr);
 		return NULL;
@@ -1410,7 +1422,8 @@ char* __attribute__((malloc)) getMACfromIP(const char* ipaddr)
 	if( rc != SQLITE_OK ){
 		logg("getMACfromIP(\"%s\") - SQL error prepare: %s",
 		     ipaddr, sqlite3_errstr(rc));
-		dbclose();
+		if(!db_already_open)
+			dbclose();
 		return NULL;
 	}
 
@@ -1421,7 +1434,8 @@ char* __attribute__((malloc)) getMACfromIP(const char* ipaddr)
 		     ipaddr, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
-		dbclose();
+		if(!db_already_open)
+			dbclose();
 		return NULL;
 	}
 
@@ -1444,7 +1458,8 @@ char* __attribute__((malloc)) getMACfromIP(const char* ipaddr)
 	// Finalize statement and close database handle
 	sqlite3_reset(stmt);
 	sqlite3_finalize(stmt);
-	dbclose();
+	if(!db_already_open)
+		dbclose();
 
 	return hwaddr;
 }
@@ -1452,8 +1467,9 @@ char* __attribute__((malloc)) getMACfromIP(const char* ipaddr)
 // Get host name of device identified by IP address
 char* __attribute__((malloc)) getNameFromIP(const char* ipaddr)
 {
-	// Open pihole-FTL.db database file
-	if(!dbopen())
+	// Open pihole-FTL.db database file if needed
+	const bool db_already_open = FTL_DB_avail();
+	if(!db_already_open && !dbopen())
 	{
 		logg("getNameFromIP(\"%s\") - Failed to open DB", ipaddr);
 		return NULL;
@@ -1466,7 +1482,8 @@ char* __attribute__((malloc)) getNameFromIP(const char* ipaddr)
 	if( rc != SQLITE_OK ){
 		logg("getNameFromIP(\"%s\") - SQL error prepare: %s",
 		     ipaddr, sqlite3_errstr(rc));
-		dbclose();
+		if(!db_already_open)
+			dbclose();
 		return NULL;
 	}
 
@@ -1477,7 +1494,8 @@ char* __attribute__((malloc)) getNameFromIP(const char* ipaddr)
 		     ipaddr, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
-		dbclose();
+		if(!db_already_open)
+			dbclose();
 		return NULL;
 	}
 
@@ -1500,7 +1518,8 @@ char* __attribute__((malloc)) getNameFromIP(const char* ipaddr)
 	// Finalize statement and close database handle
 	sqlite3_reset(stmt);
 	sqlite3_finalize(stmt);
-	dbclose();
+	if(!db_already_open)
+		dbclose();
 
 	return name;
 }
@@ -1508,8 +1527,9 @@ char* __attribute__((malloc)) getNameFromIP(const char* ipaddr)
 // Get interface of device identified by IP address
 char* __attribute__((malloc)) getIfaceFromIP(const char* ipaddr)
 {
-	// Open pihole-FTL.db database file
-	if(!dbopen())
+	// Open pihole-FTL.db database file if needed
+	const bool db_already_open = FTL_DB_avail();
+	if(!db_already_open && !dbopen())
 	{
 		logg("getIfaceFromIP(\"%s\") - Failed to open DB", ipaddr);
 		return NULL;
@@ -1527,7 +1547,8 @@ char* __attribute__((malloc)) getIfaceFromIP(const char* ipaddr)
 	if( rc != SQLITE_OK ){
 		logg("getIfaceFromIP(\"%s\") - SQL error prepare: %s",
 		     ipaddr, sqlite3_errstr(rc));
-		dbclose();
+		if(!db_already_open)
+			dbclose();
 		return NULL;
 	}
 
@@ -1538,7 +1559,8 @@ char* __attribute__((malloc)) getIfaceFromIP(const char* ipaddr)
 		     ipaddr, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
-		dbclose();
+		if(!db_already_open)
+			dbclose();
 		return NULL;
 	}
 
@@ -1561,7 +1583,8 @@ char* __attribute__((malloc)) getIfaceFromIP(const char* ipaddr)
 	// Finalize statement and close database handle
 	sqlite3_reset(stmt);
 	sqlite3_finalize(stmt);
-	dbclose();
+	if(!db_already_open)
+		dbclose();
 
 	return iface;
 }
@@ -1569,8 +1592,9 @@ char* __attribute__((malloc)) getIfaceFromIP(const char* ipaddr)
 // Resolve unknown names of recently seen IP addresses in network table
 void resolveNetworkTableNames(void)
 {
-	// Open database file
-	if(!dbopen())
+	// Open pihole-FTL.db database file if needed
+	const bool db_already_open = FTL_DB_avail();
+	if(!db_already_open && !dbopen())
 	{
 		logg("resolveNetworkTableNames() - Failed to open DB");
 		return;
@@ -1592,7 +1616,8 @@ void resolveNetworkTableNames(void)
 
 		// dbquery() above already logs the reson for why the query failed
 		logg("%s: Trying to resolve unknown network table host names (\"%s\") failed", text, sql);
-		dbclose();
+		if(!db_already_open)
+			dbclose();
 		return;
 	}
 
@@ -1608,7 +1633,8 @@ void resolveNetworkTableNames(void)
 		logg("resolveNetworkTableNames() - SQL error prepare: %s",
 		     sqlite3_errstr(rc));
 		sqlite3_finalize(table_stmt);
-		dbclose();
+		if(!db_already_open)
+			dbclose();
 		return;
 	}
 
@@ -1688,13 +1714,15 @@ void resolveNetworkTableNames(void)
 		logg("resolveNetworkTableNames() - SQL error step: %s",
 		     sqlite3_errstr(rc));
 		sqlite3_finalize(table_stmt);
-		dbclose();
+		if(!db_already_open)
+			dbclose();
 		return;
 	}
 
 	// Close and unlock database connection
 	sqlite3_finalize(table_stmt);
 
-	dbquery("COMMIT;");
-	dbclose();
+	dbquery("COMMIT");
+	if(!db_already_open)
+		dbclose();
 }
