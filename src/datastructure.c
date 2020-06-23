@@ -19,6 +19,8 @@
 #include "database/gravity-db.h"
 // flush_message_table()
 #include "database/message-table.h"
+// bool startup
+#include "main.h"
 
 // converts upper to lower case, and leaves other characters unchanged
 void strtolower(char *str)
@@ -217,10 +219,15 @@ int findClientID(const char *clientIP, const bool count)
 	counters->clients++;
 
 	// Get groups for this client and set enabled regex filters
-	// Note: We do this only after increasing the clients counter
-	//       to ensure sufficient shared memory is available in
-	//       the pre_client_regex object
-	reload_per_client_regex(clientID, client);
+	// Note 1: We do this only after increasing the clients counter to
+	//         ensure sufficient shared memory is available in the
+	//         pre_client_regex object.
+	// Note 2: We don't do this before starting up is done as the gravity
+	//         database may not be available. All clients initialized
+	//         during history reading get their enabled regexs reloaded
+	//         in the initial call to FTL_reload_all_domainlists()
+	if(!startup)
+		reload_per_client_regex(clientID, client);
 
 	return clientID;
 }

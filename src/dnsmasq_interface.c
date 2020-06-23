@@ -843,6 +843,11 @@ void FTL_dnsmasq_reload(void)
 	// Reread pihole-FTL.conf to see which debugging flags are set
 	read_debuging_settings(NULL);
 
+	// Gravity database updates
+	// - (Re-)open gravity database connection
+	// - Get number of blocked domains
+	// - Read and compile regex filters (incl. per-client)
+	// - Flush FTL's DNS cache
 	FTL_reload_all_domainlists();
 
 	// Print current set of capabilities if requested via debug flag
