@@ -364,7 +364,7 @@ int regex_test(const bool debug_mode, const char *domainin, const char *regexin)
 		timer_start(REGEX_TIMER);
 		read_regex_table(REGEX_BLACKLIST);
 		read_regex_table(REGEX_WHITELIST);
-		logg("      Compiled %i black- and %i whitelist regex filters in %.3f msec",
+		logg("      Compiled %i black- and %i whitelist regex filters in %.3f msec\n",
 		     counters->num_regex[REGEX_BLACKLIST],
 		     counters->num_regex[REGEX_WHITELIST],
 		     timer_elapsed_msec(REGEX_TIMER));
@@ -373,7 +373,7 @@ int regex_test(const bool debug_mode, const char *domainin, const char *regexin)
 		logg("%s Checking domain against blacklist...", cli_info());
 		timer_start(REGEX_TIMER);
 		matchidx = match_regex(domainin, -1, REGEX_BLACKLIST);
-		logg("      Time: %.3f msec\n", timer_elapsed_msec(REGEX_TIMER));
+		logg("      Time: %.3f msec", timer_elapsed_msec(REGEX_TIMER));
 
 		if(matchidx > -1)
 		{
@@ -390,7 +390,7 @@ int regex_test(const bool debug_mode, const char *domainin, const char *regexin)
 		logg("%s Checking domain against whitelist...", cli_info());
 		timer_start(REGEX_TIMER);
 		matchidx = match_regex(domainin, -1, REGEX_WHITELIST);
-		logg("      Time: %.3f msec\n", timer_elapsed_msec(REGEX_TIMER));
+		logg("      Time: %.3f msec", timer_elapsed_msec(REGEX_TIMER));
 
 		if(matchidx > -1)
 		{
@@ -423,13 +423,13 @@ int regex_test(const bool debug_mode, const char *domainin, const char *regexin)
 			regex_available[REGEX_CLI][0] = true;
 		else
 			return EXIT_FAILURE;
-		logg("      Compiled regex filter in %.3f msec", timer_elapsed_msec(REGEX_TIMER));
+		logg("      Compiled regex filter in %.3f msec\n", timer_elapsed_msec(REGEX_TIMER));
 
 		// Check user-provided domain against user-provided regular expression
 		logg("%s Checking domain...", cli_info());
 		timer_start(REGEX_TIMER);
 		matchidx = match_regex(domainin, -1, REGEX_CLI);
-		logg("      Time: %.3f msec\n", timer_elapsed_msec(REGEX_TIMER));
+		logg("      Time: %.3f msec", timer_elapsed_msec(REGEX_TIMER));
 
 		if(matchidx > -1)
 		{
