@@ -379,6 +379,189 @@
   [[ ${lines[0]} == "0" ]]
 }
 
+# Regex tests
+@test "Compiled blacklist regex as expected" {
+  run bash -c 'grep -c "Compiling blacklist regex 0 (DB ID 6): regex\[0-9\].test.pi-hole.net" /var/log/pihole-FTL.log'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "1" ]]
+}
+
+@test "Compiled whitelist regex as expected" {
+  run bash -c 'grep -c "Compiling whitelist regex 0 (DB ID 3): regex2" /var/log/pihole-FTL.log'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "1" ]]
+  run bash -c 'grep -c "Compiling whitelist regex 1 (DB ID 4): discourse" /var/log/pihole-FTL.log'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "1" ]]
+}
+
+@test "Number of compiled regex as expected" {
+  run bash -c 'grep -c "Compiled 2 whitelist and 1 blacklist regex filters in" /var/log/pihole-FTL.log'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "1" ]]
+}
+
+@test "Regex Test 1: \"regex7.test.pi-hole.net\" vs. [database regex]: MATCH" {
+  run bash -c './pihole-FTL regex-test "regex7.test.pi-hole.net"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[8]} == "MATCH" ]]
+  [[ $status == 0 ]]
+}
+
+@test "Regex Test 2: \"a\" vs. \"a\": MATCH" {
+  run bash -c './pihole-FTL regex-test "a" "a"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[8]} == "MATCH" ]]
+  [[ $status == 0 ]]
+}
+
+@test "Regex Test 3: \"aa\" vs. \"^[a-z]{1,3}$\": MATCH" {
+  run bash -c './pihole-FTL regex-test "aa" "^[a-z]{1,3}$"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[8]} == "MATCH" ]]
+  [[ $status == 0 ]]
+}
+
+@test "Regex Test 4: \"aaaa\" vs. \"^[a-z]{1,3}$\": NO MATCH" {
+  run bash -c './pihole-FTL regex-test "aaaa" "^[a-z]{1,3}$"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[8]} == "NO MATCH" ]]
+  [[ $status == 1 ]]
+}
+
+@test "Regex Test 5: \"aa\" vs. \"^a(?#some comment)a$\": MATCH (comments)" {
+  run bash -c './pihole-FTL regex-test "aa" "^a(?#some comment)a$"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[8]} == "MATCH" ]]
+  [[ $status == 0 ]]
+}
+
+@test "Regex Test 6: \"abc.abc\" vs. \"([a-z]*)\.\1\": MATCH" {
+  run bash -c './pihole-FTL regex-test "abc.abc" "([a-z]*)\.\1"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[8]} == "MATCH" ]]
+  [[ $status == 0 ]]
+}
+
+@test "Regex Test 7: Complex character set: MATCH" {
+  run bash -c './pihole-FTL regex-test "__abc#LMN012$x%yz789*" "[[:digit:]a-z#$%]+"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[8]} == "MATCH" ]]
+  [[ $status == 0 ]]
+}
+
+@test "Regex Test 8: Range expression: MATCH" {
+  run bash -c './pihole-FTL regex-test "!ABC-./XYZ~" "[--Z]+"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[8]} == "MATCH" ]]
+  [[ $status == 0 ]]
+}
+
+@test "Regex Test 9: Back reference: \"aabc\" vs. \"(a)\1{1,2}\": MATCH" {
+  run bash -c './pihole-FTL regex-test "aabc" "(a)\1{1,2}"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[8]} == "MATCH" ]]
+  [[ $status == 0 ]]
+}
+
+@test "Regex Test 10: Back reference: \"foo\" vs. \"(.)\1$\": MATCH" {
+  run bash -c './pihole-FTL regex-test "foo" "(.)\1$"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[8]} == "MATCH" ]]
+  [[ $status == 0 ]]
+}
+
+@test "Regex Test 11: Back reference: \"foox\" vs. \"(.)\1$\": NO MATCH" {
+  run bash -c './pihole-FTL regex-test "foox" "(.)\1$"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[8]} == "NO MATCH" ]]
+  [[ $status == 1 ]]
+}
+
+@test "Regex Test 12: Back reference: \"1234512345\" vs. \"([0-9]{5})\1\": MATCH" {
+  run bash -c './pihole-FTL regex-test "1234512345" "([0-9]{5})\1"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[8]} == "MATCH" ]]
+  [[ $status == 0 ]]
+}
+
+@test "Regex Test 13: Back reference: \"12345\" vs. \"([0-9]{5})\1\": NO MATCH" {
+  run bash -c './pihole-FTL regex-test "12345" "([0-9]{5})\1"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[8]} == "NO MATCH" ]]
+  [[ $status == 1 ]]
+}
+
+@test "Regex Test 14: Complex back reference: MATCH" {
+  run bash -c './pihole-FTL regex-test "cat.foo.dog---cat%dog!foo" "(cat)\.(foo)\.(dog)---\1%\3!\2"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[8]} == "MATCH" ]]
+  [[ $status == 0 ]]
+}
+
+@test "Regex Test 15: Approximate matching, 0 errors: MATCH" {
+  run bash -c './pihole-FTL regex-test "foobarzap" "foo(bar){~1}zap"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[8]} == "MATCH" ]]
+  [[ $status == 0 ]]
+}
+
+@test "Regex Test 16: Approximate matching, 1 error (inside fault-tolerant area): MATCH" {
+  run bash -c './pihole-FTL regex-test "foobrzap" "foo(bar){~1}zap"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[8]} == "MATCH" ]]
+  [[ $status == 0 ]]
+}
+
+@test "Regex Test 17: Approximate matching, 1 error (outside fault-tolert area): NO MATCH" {
+  run bash -c './pihole-FTL regex-test "foxbrazap" "foo(bar){~1}zap"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[8]} == "NO MATCH" ]]
+  [[ $status == 1 ]]
+}
+
+@test "Regex Test 18: Approximate matching, 0 global errors: MATCH" {
+  run bash -c './pihole-FTL regex-test "foobar" "^(foobar){~1}$"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[8]} == "MATCH" ]]
+  [[ $status == 0 ]]
+}
+
+@test "Regex Test 19: Approximate matching, 1 global error: MATCH" {
+  run bash -c './pihole-FTL regex-test "cfoobar" "^(foobar){~1}$"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[8]} == "MATCH" ]]
+  [[ $status == 0 ]]
+}
+
+@test "Regex Test 20: Approximate matching, 2 global errors: NO MATCH" {
+  run bash -c './pihole-FTL regex-test "ccfoobar" "^(foobar){~1}$"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[8]} == "NO MATCH" ]]
+  [[ $status == 1 ]]
+}
+
+@test "Regex Test 21: Approximate matching, insert + substitute: MATCH" {
+  run bash -c './pihole-FTL regex-test "oobargoobaploowap" "(foobar){+2#2~2}"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[8]} == "MATCH" ]]
+  [[ $status == 0 ]]
+}
+
+@test "Regex Test 22: Approximate matching, insert + delete: MATCH" {
+  run bash -c './pihole-FTL regex-test "3oifaowefbaoraofuiebofasebfaobfaorfeoaro" "(foobar){+1 -2}"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[8]} == "MATCH" ]]
+  [[ $status == 0 ]]
+}
+
+@test "Regex Test 23: Approximate matching, insert + delete (insufficient): NO MATCH" {
+  run bash -c './pihole-FTL regex-test "3oifaowefbaoraofuiebofasebfaobfaorfeoaro" "(foobar){+1 -1}"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[8]} == "NO MATCH" ]]
+  [[ $status == 1 ]]
+}
+
 # x86_64-musl is built on busybox which has a slightly different
 # variant of ls displaying three, instead of one, spaces between the
 # user and group names.
