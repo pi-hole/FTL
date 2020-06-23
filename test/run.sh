@@ -69,8 +69,8 @@ echo -n "Contained dnsmasq version: "
 dig TXT CHAOS version.bind @127.0.0.1 +short
 
 # Print content of pihole.log and pihole-FTL.log
-cat /var/log/pihole.log
-cat /var/log/pihole-FTL.log
+#cat /var/log/pihole.log
+#cat /var/log/pihole-FTL.log
 
 # Run tests
 test/libs/bats/bin/bats "test/test_suite.bats"

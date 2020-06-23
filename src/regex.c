@@ -329,7 +329,8 @@ void read_regex_from_database(void)
 	     counters->clients, timer_elapsed_msec(REGEX_TIMER));
 }
 
-static const char *get_regex_from_rowid(const enum regex_type regexid, const int matchid)
+// Get regex string from rowid in database
+static const char __attribute__ ((pure)) *get_regex_from_rowid(const enum regex_type regexid, const int matchid)
 {
 	unsigned int index;
 	for(index = 0; index < counters->num_regex[regexid]; index++)
@@ -337,7 +338,10 @@ static const char *get_regex_from_rowid(const enum regex_type regexid, const int
 		if(regex_id[regexid][index] == matchid)
 			break;
 	}
-	return regexbuffer[regexid][index];
+	if(index < counters->num_regex[regexid])
+		return regexbuffer[regexid][index];
+	else
+		return "[not available]";
 }
 
 int regex_test(const bool debug_mode, const char *domainin, const char *regexin)
