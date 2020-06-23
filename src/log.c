@@ -181,7 +181,7 @@ const char __attribute__ ((malloc)) *get_FTL_version(void)
 	return FTLversion;
 }
 
-const char *get_ordinal_suffix(unsigned int number)
+const char __attribute__ ((const)) *get_ordinal_suffix(unsigned int number)
 {
 	if((number % 100) > 9 && (number % 100) < 20)
 	{
