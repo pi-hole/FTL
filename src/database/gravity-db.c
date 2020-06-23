@@ -285,17 +285,12 @@ static bool get_client_groupids(clientsData* client)
 
 		if(config.debug & DEBUG_CLIENTS && matching_count == 1)
 			// Case matching_count > 1 handled below using logg_subnet_warning()
-			logg("--> Found record for %s in the client (ID %d)", ip, chosen_match_id);
+			logg("--> Found record for %s in the client table (group ID %d)", ip, chosen_match_id);
 	}
 	else if(rc == SQLITE_DONE)
 	{
 		if(config.debug & DEBUG_CLIENTS)
 			logg("--> No record for %s in the client table", ip);
-
-		// Found no record for this client in the database
-		// This makes this client qualify for the special "all" group
-		client->groupspos = addstr("0");
-		client->found_group = true;
 	}
 	else
 	{
@@ -308,13 +303,6 @@ static bool get_client_groupids(clientsData* client)
 
 	// Finalize statement
 	gravityDB_finalizeTable();
-
-	if(client->found_group)
-	{
-		// The client is not configured through the client table, we
-		// substituted the default group. Return early here.
-		return true;
-	}
 
 	if(matching_count > 1)
 	{
@@ -405,7 +393,7 @@ static bool get_client_groupids(clientsData* client)
 			chosen_match_id = sqlite3_column_int(table_stmt, 0);
 
 			if(config.debug & DEBUG_CLIENTS)
-				logg("--> Found record for \"%s\" in the client table (ID %d)", hwaddr, chosen_match_id);
+				logg("--> Found record for \"%s\" in the client table (group ID %d)", hwaddr, chosen_match_id);
 		}
 		else if(rc == SQLITE_DONE)
 		{
@@ -489,7 +477,7 @@ static bool get_client_groupids(clientsData* client)
 			chosen_match_id = sqlite3_column_int(table_stmt, 0);
 
 			if(config.debug & DEBUG_CLIENTS)
-				logg("--> Found record for \"%s\" in the client table (ID %d)", hostname, chosen_match_id);
+				logg("--> Found record for \"%s\" in the client table (group ID %d)", hostname, chosen_match_id);
 		}
 		else if(rc == SQLITE_DONE)
 		{
@@ -574,7 +562,7 @@ static bool get_client_groupids(clientsData* client)
 			chosen_match_id = sqlite3_column_int(table_stmt, 0);
 
 			if(config.debug & DEBUG_CLIENTS)
-				logg("--> Found record for interface \""INTERFACE_SEP"%s\" in the client table (ID %d)", interface, chosen_match_id);
+				logg("--> Found record for interface \""INTERFACE_SEP"%s\" in the client table (group ID %d)", interface, chosen_match_id);
 		}
 		else if(rc == SQLITE_DONE)
 		{
