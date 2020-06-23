@@ -387,7 +387,7 @@ int regex_test(const bool debug_mode, const char *domainin, const char *regexin)
 		}
 
 		// Check user-provided domain against all loaded regular whitelist expressions
-		logg("%s Checking domain against whitelist...", cli_tick());
+		logg("%s Checking domain against whitelist...", cli_info());
 		timer_start(REGEX_TIMER);
 		matchidx = match_regex(domainin, -1, REGEX_WHITELIST);
 		logg("      Time: %.3f msec\n", timer_elapsed_msec(REGEX_TIMER));
