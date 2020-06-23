@@ -15,6 +15,7 @@
 #include "log.h"
 // enum REGEX
 #include "regex_r.h"
+// reload_per_client_regex()
 #include "database/gravity-db.h"
 // flush_message_table()
 #include "database/message-table.h"
@@ -214,6 +215,12 @@ int findClientID(const char *clientIP, const bool count)
 
 	// Increase counter by one
 	counters->clients++;
+
+	// Get groups for this client and set enabled regex filters
+	// Note: We do this only after increasing the clients counter
+	//       to ensure sufficient shared memory is available in
+	//       the pre_client_regex object
+	reload_per_client_regex(clientID, client);
 
 	return clientID;
 }
