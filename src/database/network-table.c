@@ -439,7 +439,7 @@ static int insert_netDB_device(const char *hwaddr, time_t now, time_t lastQuery,
 	sqlite3_stmt *query_stmt = NULL;
 	const char querystr[] = "INSERT INTO network "\
 	                        "(hwaddr,interface,firstSeen,lastQuery,numQueries,macVendor) "\
-	                        "VALUES (?1,\'N/A\',?2, ?3, ?4,?5);";
+	                        "VALUES (?1,\'N/A\',?2,?3,?4,?5);";
 
 	int rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &query_stmt, NULL);
 	if(rc != SQLITE_OK)
@@ -1246,6 +1246,9 @@ static char* getMACVendor(const char* hwaddr)
 
 	sqlite3_finalize(stmt);
 	sqlite3_close(macvendor_db);
+
+	if(config.debug & DEBUG_DATABASE)
+		logg("DEBUG: MAC Vendor lookup for %s returned \"%s\"", hwaddr, vendor);
 
 	return vendor;
 }
