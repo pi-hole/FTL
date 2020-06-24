@@ -30,7 +30,6 @@ typedef struct {
 	unsigned char privacylevel;
 	unsigned char blockingmode;
 	bool socket_listenlocal;
-	bool analyze_AAAA;
 	bool resolveIPv6;
 	bool resolveIPv4;
 	bool ignore_localhost;

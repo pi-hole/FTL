@@ -115,16 +115,6 @@ void read_FTLconf(void)
 	else
 		logg("   SOCKET_LISTENING: all destinations");
 
-	// AAAA_QUERY_ANALYSIS
-	// defaults to: Yes
-	buffer = parse_FTLconf(fp, "AAAA_QUERY_ANALYSIS");
-	config.analyze_AAAA = read_bool(buffer, true);
-
-	if(config.analyze_AAAA)
-		logg("   AAAA_QUERY_ANALYSIS: Show AAAA queries");
-	else
-		logg("   AAAA_QUERY_ANALYSIS: Hide AAAA queries");
-
 	// MAXDBDAYS
 	// defaults to: 365 days
 	config.maxDBdays = 365;

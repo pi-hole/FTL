@@ -460,14 +460,6 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		return false;
 	}
 
-	// Skip AAAA queries if user doesn't want to have them analyzed
-	if(!config.analyze_AAAA && querytype == TYPE_AAAA)
-	{
-		if(config.debug & DEBUG_QUERIES)
-			logg("Not analyzing AAAA query");
-		return false;
-	}
-
 	// Lock shared memory
 	lock_shm();
 
