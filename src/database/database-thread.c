@@ -40,7 +40,8 @@ void *DB_thread(void *val)
 
 	while(!killed && database)
 	{
-		if(time(NULL) - lastDBsave >= config.DBinterval)
+		time_t now = time(NULL);
+		if(now - lastDBsave >= config.DBinterval)
 		{
 			// Update lastDBsave timer
 			lastDBsave = time(NULL) - time(NULL)%config.DBinterval;
@@ -67,6 +68,12 @@ void *DB_thread(void *val)
 			if (config.parse_arp_cache)
 				parse_neighbor_cache();
 		}
+
+		// Update MAC vendor strings once a month (the MAC vendor
+		// database is not updated very often)
+		if(now % 2592000L == 0)
+			updateMACVendorRecords();
+
 		sleepms(100);
 	}
 
