@@ -136,7 +136,7 @@ static void __attribute__((noreturn)) SIGSEGV_handler(int sig, siginfo_t *si, vo
 	{
 		// This is a forked process
 		logg("Asking parent pihole-FTL (PID %i) to shut down", (int)pid);
-		kill(pid, SIGTERM);
+		kill(pid, SIGRTMIN+2);
 		logg("FTL fork terminated!");
 	}
 	else
@@ -146,8 +146,7 @@ static void __attribute__((noreturn)) SIGSEGV_handler(int sig, siginfo_t *si, vo
 	}
 
 	// Terminate process indicating failure
-	exit_code = EXIT_FAILURE;
-	exit(exit_code);
+	exit(EXIT_FAILURE);
 }
 
 static void SIGRT_handler(int signum, siginfo_t *si, void *unused)
@@ -172,6 +171,12 @@ static void SIGRT_handler(int signum, siginfo_t *si, void *unused)
 
 		// Reload the privacy level in case the user changed it
 		get_privacy_level(NULL);
+	}
+	else if(rtsig == 2)
+	{
+		// Terminate FTL indicating failure
+		exit_code = EXIT_FAILURE;
+		kill(0, SIGTERM);
 	}
 }
 
