@@ -29,6 +29,7 @@ char * username;
 bool needGC = false;
 bool needDBGC = false;
 bool startup = true;
+volatile int exit_code = EXIT_SUCCESS;
 
 int main (int argc, char* argv[])
 {
@@ -123,5 +124,5 @@ int main (int argc, char* argv[])
 	//Remove PID file
 	removepid();
 	logg("########## FTL terminated after %e s! ##########", 1e-3*timer_elapsed_msec(EXIT_TIMER));
-	return EXIT_SUCCESS;
+	return exit_code;
 }

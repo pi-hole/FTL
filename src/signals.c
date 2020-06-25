@@ -26,6 +26,7 @@
 volatile sig_atomic_t killed = 0;
 static volatile pid_t pid = 0;
 static time_t FTLstarttime = 0;
+extern volatile int exit_code;
 
 #if defined(__GLIBC__)
 static void print_addr2line(const char *symbol, const void *address, const int j, const void *offset)
@@ -127,10 +128,24 @@ static void __attribute__((noreturn)) SIGSEGV_handler(int sig, siginfo_t *si, vo
 	// Print content of /dev/shm
 	ls_dir("/dev/shm");
 
+
 	logg("Thank you for helping us to improve our FTL engine!");
 
-	// Print message and abort
-	logg("FTL terminated!");
+	// Terminate main process if crash happened in a TCP worker
+	if(pid != getpid())
+	{
+		// This is a forked process
+		logg("Asking parent pihole-FTL (PID %i) to shut down", (int)pid);
+		kill(pid, SIGRTMIN+2);
+		logg("FTL fork terminated!");
+	}
+	else
+	{
+		// This is the main process
+		logg("FTL terminated!");
+	}
+
+	// Terminate process indicating failure
 	exit(EXIT_FAILURE);
 }
 
@@ -156,6 +171,12 @@ static void SIGRT_handler(int signum, siginfo_t *si, void *unused)
 
 		// Reload the privacy level in case the user changed it
 		get_privacy_level(NULL);
+	}
+	else if(rtsig == 2)
+	{
+		// Terminate FTL indicating failure
+		exit_code = EXIT_FAILURE;
+		kill(0, SIGTERM);
 	}
 }
 
