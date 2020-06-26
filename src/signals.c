@@ -20,6 +20,8 @@
 // FTL_reload_all_domainlists()
 #include "datastructure.h"
 #include "config.h"
+// gettid()
+#include "daemon.h"
 
 #define BINARY_NAME "pihole-FTL"
 
@@ -65,8 +67,15 @@ static void print_addr2line(const char *symbol, const void *address, const int j
 		// Strip possible newline at the end of the addr2line output
 		if ((pos=strchr(linebuffer, '\n')) != NULL)
 			*pos = '\0';
-		logg("L[%04i]: %s", j, linebuffer);
 	}
+	else
+	{
+		snprintf(linebuffer, sizeof(linebuffer), "N/A (%p)", addr);
+	}
+	// Log result
+	logg("L[%04i]: %s", j, linebuffer);
+
+	// Close pipe
 	pclose(addr2line);
 }
 #endif
@@ -127,7 +136,7 @@ static void __attribute__((noreturn)) SIGSEGV_handler(int sig, siginfo_t *si, vo
 
 	for(int j = 0; j < calls; j++)
 	{
-		logg("B[%04i]: %p, %s", j, buffer[j],
+		logg("B[%04i]: %s", j,
 		     bcktrace != NULL ? bcktrace[j] : "---");
 
 		if(bcktrace != NULL)
