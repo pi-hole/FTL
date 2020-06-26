@@ -31,8 +31,7 @@
 // File descriptors
 int socketfd, telnetfd4 = 0, telnetfd6 = 0;
 bool dualstack = false;
-bool ipv4telnet = false, ipv6telnet = false;
-bool sock_avail = false;
+bool ipv4telnet = false, ipv6telnet = false, sock_avail = false;
 bool istelnet[MAXCONNS];
 
 static void saveport(void)
@@ -95,6 +94,7 @@ static bool bind_to_telnet_port_IPv4(int *socketdescriptor)
 		return false;
 	}
 
+	saveport();
 	logg("Listening on port %i for incoming IPv4 telnet connections", config.port);
 	return true;
 }
@@ -157,11 +157,12 @@ static bool bind_to_telnet_port_IPv6(int *socketdescriptor)
 		return false;
 	}
 
+	saveport();
 	logg("Listening on port %i for incoming IPv6 telnet connections", config.port);
 	return true;
 }
 
-static void bind_to_unix_socket(int *socketdescriptor)
+static bool bind_to_unix_socket(int *socketdescriptor)
 {
 	*socketdescriptor = socket(AF_LOCAL, SOCK_STREAM, 0);
 
@@ -169,7 +170,7 @@ static void bind_to_unix_socket(int *socketdescriptor)
 	{
 		logg("WARNING: Error opening Unix socket.");
 		logg("         Continuing anyway.");
-		return;
+		return false;
 	}
 
 	// Make sure unix socket file handle does not exist, if it exists, remove it
@@ -191,7 +192,7 @@ static void bind_to_unix_socket(int *socketdescriptor)
 	{
 		logg("WARNING: Cannot bind on Unix socket %s: %s (%i)", FTLfiles.socketfile, strerror(errno), errno);
 		logg("         Continuing anyway.");
-		return;
+		return false;
 	}
 
 	// The listen system call allows the process to listen on the Unix socket for connections
@@ -199,11 +200,11 @@ static void bind_to_unix_socket(int *socketdescriptor)
 	{
 		logg("WARNING: Cannot listen on Unix socket: %s (%i)", strerror(errno), errno);
 		logg("         Continuing anyway.");
-		return;
+		return false;
 	}
 
 	logg("Listening on Unix socket");
-	sock_avail = true;
+	return true;
 }
 
 // Called from main() at graceful shutdown
@@ -413,24 +414,6 @@ static void *socket_connection_handler_thread(void *socket_desc)
 	return false;
 }
 
-void bind_sockets(void)
-{
-	// Initialize IPv4 telnet socket
-	if(bind_to_telnet_port_IPv4(&telnetfd4))
-		ipv4telnet = true;
-
-	// Initialize IPv6 telnet socket
-	// only if IPv6 interfaces are available
-	if(ipv6_available())
-		if(bind_to_telnet_port_IPv6(&telnetfd6))
-			ipv6telnet = true;
-
-	saveport();
-
-	// Initialize Unix socket
-	bind_to_unix_socket(&socketfd);
-}
-
 void *telnet_listening_thread_IPv4(void *args)
 {
 	// We will use the attributes object later to start all threads in detached mode
@@ -443,6 +426,11 @@ void *telnet_listening_thread_IPv4(void *args)
 
 	// Set thread name
 	prctl(PR_SET_NAME,"telnet-IPv4",0,0,0);
+
+	// Initialize IPv4 telnet socket
+	if(!bind_to_telnet_port_IPv4(&telnetfd4))
+		return NULL;
+	ipv4telnet = true;
 
 	// Listen as long as FTL is not killed
 	while(!killed)
@@ -484,6 +472,12 @@ void *telnet_listening_thread_IPv6(void *args)
 
 	// Set thread name
 	prctl(PR_SET_NAME,"telnet-IPv6",0,0,0);
+
+	// Initialize IPv6 telnet socket
+	// only if IPv6 interfaces are available
+	if(!ipv6_available() || !bind_to_telnet_port_IPv6(&telnetfd6))
+		return NULL;
+	ipv6telnet = true;
 
 	// Listen as long as FTL is not killed
 	while(!killed)
@@ -527,8 +521,9 @@ void *socket_listening_thread(void *args)
 	prctl(PR_SET_NAME,"socket listener",0,0,0);
 
 	// Return early to avoid CPU spinning if Unix socket is not available
-	if(!sock_avail)
+	if(!bind_to_unix_socket(&socketfd))
 		return NULL;
+	sock_avail = true;
 
 	// Listen as long as FTL is not killed
 	while(!killed)

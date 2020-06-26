@@ -1910,6 +1910,8 @@ static void check_dns_listeners(time_t now)
 		}
 	      close(confd);
 
+        FTL_TCP_worker_created();
+
 	      /* The child can use up to TCP_MAX_QUERIES ids, so skip that many. */
 	      daemon->log_id += TCP_MAX_QUERIES;
 	    }

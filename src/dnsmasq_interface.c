@@ -1646,18 +1646,15 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 	// join with the terminated thread
 	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
-	// Bind to sockets
-	bind_sockets();
-
 	// Start TELNET IPv4 thread
-	if(ipv4telnet && pthread_create( &telnet_listenthreadv4, &attr, telnet_listening_thread_IPv4, NULL ) != 0)
+	if(pthread_create( &telnet_listenthreadv4, &attr, telnet_listening_thread_IPv4, NULL ) != 0)
 	{
 		logg("Unable to open IPv4 telnet listening thread. Exiting...");
 		exit(EXIT_FAILURE);
 	}
 
 	// Start TELNET IPv6 thread
-	if(ipv6telnet &&  pthread_create( &telnet_listenthreadv6, &attr, telnet_listening_thread_IPv6, NULL ) != 0)
+	if(pthread_create( &telnet_listenthreadv6, &attr, telnet_listening_thread_IPv6, NULL ) != 0)
 	{
 		logg("Unable to open IPv6 telnet listening thread. Exiting...");
 		exit(EXIT_FAILURE);
@@ -1831,4 +1828,14 @@ void FTL_TCP_worker_terminating(void)
 
 	// Close dedicated database connection of this fork
 	gravityDB_close();
+}
+
+// Called when a (forked) TCP worker is created
+void FTL_TCP_worker_created(void)
+{
+	if(config.debug != 0)
+	{
+		// Print this if any debug setting is enabled
+		logg("TCP worker forked");
+	}
 }
