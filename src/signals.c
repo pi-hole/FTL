@@ -28,6 +28,14 @@ static volatile pid_t mpid = -1;
 static time_t FTLstarttime = 0;
 extern volatile int exit_code;
 
+// Return the (null-terminated) name of the calling thread
+// The name is stored in the buffer as well as returned for convenience
+static char * __attribute__ ((nonnull (1))) getthread_name(char buffer[16])
+{
+	prctl(PR_GET_NAME, buffer, 0, 0, 0);
+	return buffer;
+}
+
 #if defined(__GLIBC__)
 static void print_addr2line(const char *symbol, const void *address, const int j, const void *offset)
 {
@@ -70,25 +78,28 @@ static void __attribute__((noreturn)) SIGSEGV_handler(int sig, siginfo_t *si, vo
 	logg("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
 	logg("Please report a bug at https://github.com/pi-hole/FTL/issues");
 	logg("and include in your report already the following details:");
-	logg("Process details: PID: %i, MID: %i, TID: %i",
-	     getpid(), mpid, gettid());
 
 	if(FTLstarttime != 0)
 	{
 		logg("FTL has been running for %li seconds", time(NULL)-FTLstarttime);
 	}
 	log_FTL_version(true);
+	char namebuf[16];
+	logg("Process details: MID: %i",mpid);
+	logg("                 PID: %i", getpid());
+	logg("                 TID: %i", gettid());
+	logg("                 Name: %s", getthread_name(namebuf));
 
 	logg("Received signal: %s", strsignal(sig));
 	logg("     at address: %p", si->si_addr);
 	switch (si->si_code)
 	{
-		case SEGV_MAPERR: logg("     with code: SEGV_MAPERR (Address not mapped to object)"); break;
-		case SEGV_ACCERR: logg("     with code: SEGV_ACCERR (Invalid permissions for mapped object)"); break;
+		case SEGV_MAPERR: logg("     with code:  SEGV_MAPERR (Address not mapped to object)"); break;
+		case SEGV_ACCERR: logg("     with code:  SEGV_ACCERR (Invalid permissions for mapped object)"); break;
 #if defined(SEGV_BNDERR)
-		case SEGV_BNDERR: logg("     with code: SEGV_BNDERR (Failed address bound checks)"); break;
+		case SEGV_BNDERR: logg("     with code:  SEGV_BNDERR (Failed address bound checks)"); break;
 #endif
-		default: logg("     with code: Unknown (%i)", si->si_code); break;
+		default: logg("     with code:  Unknown (%i)", si->si_code); break;
 	}
 
 // Check GLIBC availability as MUSL does not support live backtrace generation
