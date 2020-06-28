@@ -1838,4 +1838,8 @@ void FTL_TCP_worker_created(void)
 		// Print this if any debug setting is enabled
 		logg("TCP worker forked");
 	}
+
+	// Reopen gravity database handle in this fork as the main process's
+	// handle isn't valid here
+	gravityDB_forked();
 }

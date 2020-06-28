@@ -18,6 +18,7 @@
 // Table indices
 enum { GRAVITY_TABLE, EXACT_BLACKLIST_TABLE, EXACT_WHITELIST_TABLE, REGEX_BLACKLIST_TABLE, REGEX_WHITELIST_TABLE, UNKNOWN_TABLE };
 
+void gravityDB_forked(void);
 bool gravityDB_open(void);
 bool gravityDB_prepare_client_statements(const int clientID, clientsData* client);
 void gravityDB_close(void);
