@@ -646,7 +646,7 @@ void getAllQueries(const char *client_message, const int *sock)
 	bool filterclientname = false;
 	int clientid = -1;
 
-	enum query_type querytype = 0;
+	unsigned char querytype = 0;
 
 	char *forwarddest = NULL;
 	bool filterforwarddest = false;

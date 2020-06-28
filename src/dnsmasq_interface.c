@@ -435,7 +435,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	gettimeofday(&request, 0);
 
 	// Determine query type
-	enum query_type querytype;
+	unsigned char querytype;
 	if(qtype == 1)
 		querytype = TYPE_A;
 	else if(qtype == 28)
