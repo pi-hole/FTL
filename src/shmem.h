@@ -15,6 +15,9 @@
 #include <fcntl.h>           /* For O_* constants */
 #include <stdbool.h>
 
+// TYPE_MAX
+#include "datastructure.h"
+
 typedef struct {
     const char *name;
     size_t size;
