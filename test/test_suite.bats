@@ -248,7 +248,12 @@
   [[ ${lines[6]} == "PTR: 0.00" ]]
   [[ ${lines[7]} == "TXT: 9.09" ]]
   [[ ${lines[8]} == "NAPTR: 0.00" ]]
-  [[ ${lines[9]} == "" ]]
+  [[ ${lines[9]} == "MX: 0.00" ]]
+  [[ ${lines[10]} == "DS: 0.00" ]]
+  [[ ${lines[11]} == "RRSIG: 0.00" ]]
+  [[ ${lines[12]} == "DNSKEY: 0.00" ]]
+  [[ ${lines[13]} == "OTHER: 0.00" ]]
+  [[ ${lines[14]} == "" ]]
 }
 
 # Here and below: Acknowledge that there might be a host name after
