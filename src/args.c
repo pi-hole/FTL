@@ -32,6 +32,7 @@ static inline bool strEndsWith(const char *input, const char *end){
 
 void parse_args(int argc, char* argv[])
 {
+	bool quiet = false;
 	// Regardless of any arguments, we always pass "-k" (nofork) to dnsmasq
 	argc_dnsmasq = 2;
 	argv_dnsmasq = calloc(argc_dnsmasq, sizeof(char*));
@@ -155,15 +156,22 @@ void parse_args(int argc, char* argv[])
 			ok = true;
 		}
 
+		// Quiet mode
+		if(strcmp(argv[i], "-q") == 0)
+		{
+			quiet = true;
+			ok = true;
+		}
+
 		// Regex test mode
 		if(strcmp(argv[i], "regex-test") == 0)
 		{
 			// Enable stdout printing
 			cli_mode = true;
 			if(argc == i + 2)
-				exit(regex_test(debug, argv[i + 1], NULL));
+				exit(regex_test(debug, quiet, argv[i + 1], NULL));
 			else if(argc == i + 3)
-				exit(regex_test(debug, argv[i + 1], argv[i + 2]));
+				exit(regex_test(debug, quiet, argv[i + 1], argv[i + 2]));
 			else
 			{
 				printf("pihole-FTL: invalid option -- '%s' need either one or two parameters\nTry '%s --help' for more information\n", argv[i], argv[0]);
@@ -257,10 +265,10 @@ const char __attribute__ ((const)) *cli_cross(void)
 	return is_term() ? "["COL_RED"✗"COL_NC"]" : "[✗]";
 }
 
-// Returns [!]
+// Returns [i]
 const char __attribute__ ((const)) *cli_info(void)
 {
-	return "[i]";
+	return is_term() ? COL_BOLD"[i]"COL_NC : "[i]";
 }
 
 // Returns [?]
