@@ -418,8 +418,8 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 
 bool _FTL_new_query(const unsigned int flags, const char *name,
                     const char **blockingreason, const union all_addr *addr,
-                    const char *types, const int id, const char type,
-                    const char* file, const int line)
+                    const char *types, const unsigned short qtype, const int id,
+                    const enum protocol proto, const char* file, const int line)
 {
 	// Create new query in data structure
 
@@ -435,30 +435,33 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	gettimeofday(&request, 0);
 
 	// Determine query type
-	unsigned char querytype = 0;
-	if(strcmp(types,"query[A]") == 0)
+	unsigned char querytype;
+	if(qtype == 1)
 		querytype = TYPE_A;
-	else if(strcmp(types,"query[AAAA]") == 0)
+	else if(qtype == 28)
 		querytype = TYPE_AAAA;
-	else if(strcmp(types,"query[ANY]") == 0)
+	else if(qtype == 255)
 		querytype = TYPE_ANY;
-	else if(strcmp(types,"query[SRV]") == 0)
+	else if(qtype == 33)
 		querytype = TYPE_SRV;
-	else if(strcmp(types,"query[SOA]") == 0)
+	else if(qtype == 6)
 		querytype = TYPE_SOA;
-	else if(strcmp(types,"query[PTR]") == 0)
+	else if(qtype == 12)
 		querytype = TYPE_PTR;
-	else if(strcmp(types,"query[TXT]") == 0)
+	else if(qtype == 16)
 		querytype = TYPE_TXT;
-	else if(strcmp(types,"query[NAPTR]") == 0)
+	else if(qtype == 35)
 		querytype = TYPE_NAPTR;
+	else if(qtype == 15)
+		querytype = TYPE_MX;
+	else if(qtype == 43)
+		querytype = TYPE_DS;
+	else if(qtype == 46)
+		querytype = TYPE_RRSIG;
+	else if(qtype == 48)
+		querytype = TYPE_DNSKEY;
 	else
-	{
-		// Return early to avoid accessing querytypedata out of bounds
-		if(config.debug & DEBUG_QUERIES)
-			logg("Notice: Skipping unknown query type: %s (%i)", types, id);
-		return false;
-	}
+		querytype = TYPE_OTHER;
 
 	// Skip AAAA queries if user doesn't want to have them analyzed
 	if(!config.analyze_AAAA && querytype == TYPE_AAAA)
@@ -503,11 +506,11 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	}
 
 	// Log new query if in debug mode
-	const char *proto = (type == UDP) ? "UDP" : "TCP";
 	if(config.debug & DEBUG_QUERIES)
 	{
+		const char *protostr = (proto == UDP) ? "UDP" : "TCP";
 		logg("**** new %s %s \"%s\" from %s (ID %i, FTL %i, %s:%i)",
-		     proto, types, domainString, clientIP, id, queryID, file, line);
+		     protostr, types, domainString, clientIP, id, queryID, file, line);
 	}
 
 	// Update counters

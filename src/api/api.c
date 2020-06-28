@@ -566,6 +566,8 @@ void getUpstreamDestinations(const char *client_message, const int *sock)
 	}
 }
 
+const char *querytypes[TYPE_MAX] = {"A", "AAAA", "ANY", "SRV", "SOA", "PTR", "TXT", "NAPTR",
+                                    "MX", "DS", "RRSIG", "DNSKEY", "OTHER", "UNKNOWN"};
 
 void getQueryTypes(const int *sock)
 {
@@ -588,9 +590,13 @@ void getQueryTypes(const int *sock)
 
 	if(istelnet[*sock]) {
 		ssend(*sock, "A (IPv4): %.2f\nAAAA (IPv6): %.2f\nANY: %.2f\nSRV: %.2f\n"
-		             "SOA: %.2f\nPTR: %.2f\nTXT: %.2f\nNAPTR: %.2f\n",
+		             "SOA: %.2f\nPTR: %.2f\nTXT: %.2f\nNAPTR: %.2f\n"
+		             "MX: %.2f\nDS: %.2f\nRRSIG: %.2f\nDNSKEY: %.2f\n"
+		             "OTHER: %.2f\n",
 		      percentage[0], percentage[1], percentage[2], percentage[3],
-		      percentage[4], percentage[5], percentage[6], percentage[7]);
+		      percentage[4], percentage[5], percentage[6], percentage[7],
+		      percentage[8], percentage[9], percentage[10], percentage[11],
+		      percentage[12]);
 	}
 	else {
 		pack_str32(*sock, "A (IPv4)");
@@ -609,10 +615,18 @@ void getQueryTypes(const int *sock)
 		pack_float(*sock, percentage[6]);
 		pack_str32(*sock, "NAPTR");
 		pack_float(*sock, percentage[7]);
+		pack_str32(*sock, "MX");
+		pack_float(*sock, percentage[8]);
+		pack_str32(*sock, "DS");
+		pack_float(*sock, percentage[9]);
+		pack_str32(*sock, "RRSIG");
+		pack_float(*sock, percentage[10]);
+		pack_str32(*sock, "DNSKEY");
+		pack_float(*sock, percentage[11]);
+		pack_str32(*sock, "OTHER");
+		pack_float(*sock, percentage[12]);
 	}
 }
-
-const char *querytypes[TYPE_MAX] = {"A","AAAA","ANY","SRV","SOA","PTR","TXT","NAPTR","UNKN"};
 
 void getAllQueries(const char *client_message, const int *sock)
 {
@@ -632,7 +646,7 @@ void getAllQueries(const char *client_message, const int *sock)
 	bool filterclientname = false;
 	int clientid = -1;
 
-	int querytype = 0;
+	unsigned char querytype = 0;
 
 	char *forwarddest = NULL;
 	bool filterforwarddest = false;
@@ -646,12 +660,14 @@ void getAllQueries(const char *client_message, const int *sock)
 	// Query type filtering?
 	if(command(client_message, ">getallqueries-qtype")) {
 		// Get query type we want to see only
-		sscanf(client_message, ">getallqueries-qtype %i", &querytype);
-		if(querytype < 1 || querytype >= TYPE_MAX)
+		unsigned int qtype;
+		sscanf(client_message, ">getallqueries-qtype %u", &qtype);
+		if(qtype < 1 || qtype >= TYPE_MAX)
 		{
 			// Invalid query type requested
 			return;
 		}
+		querytype = qtype;
 	}
 
 	// Forward destination filtering?

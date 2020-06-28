@@ -15,10 +15,10 @@
 
 extern int socketfd, telnetfd4, telnetfd6;
 extern unsigned char* pihole_privacylevel;
-enum { TCP, UDP };
+enum protocol { TCP, UDP };
 
-#define FTL_new_query(flags, name, blockingreason, addr, types, id, type) _FTL_new_query(flags, name, blockingreason, addr, types, id, type, __FILE__, __LINE__)
-bool _FTL_new_query(const unsigned int flags, const char *name, const char** blockingreason, const union all_addr *addr, const char *types, const int id, const char type, const char* file, const int line);
+#define FTL_new_query(flags, name, blockingreason, addr, types, qtype, id, proto) _FTL_new_query(flags, name, blockingreason, addr, types, qtype, id, proto, __FILE__, __LINE__)
+bool _FTL_new_query(const unsigned int flags, const char *name, const char** blockingreason, const union all_addr *addr, const char *types, const unsigned short qtype, const int id, enum protocol proto, const char* file, const int line);
 
 #define FTL_forwarded(flags, name, addr, id) _FTL_forwarded(flags, name, addr, id, __FILE__, __LINE__)
 void _FTL_forwarded(const unsigned int flags, const char *name, const union all_addr *addr, const int id, const char* file, const int line);
