@@ -101,7 +101,7 @@ static bool check_domain_blocked(const char *domain, const int clientID,
 	// Skipped when the domain is whitelisted or blocked by exact blacklist or gravity
 	int regex_idx = 0;
 	if(!query->whitelisted && !blockDomain &&
-	   (regex_idx = match_regex(domain, clientID, REGEX_BLACKLIST)) > -1)
+	   (regex_idx = match_regex(domain, clientID, REGEX_BLACKLIST, false)) > -1)
 	{
 		// We block this domain
 		blockDomain = true;

@@ -274,3 +274,15 @@ const char __attribute__ ((const)) *cli_done(void)
 {
 	return is_term() ? COL_GREEN"done!"COL_NC : "done!";
 }
+
+// Sets font to bold
+const char __attribute__ ((const)) *cli_bold(void)
+{
+	return is_term() ? COL_BOLD : "";
+}
+
+// Resets font to normal
+const char __attribute__ ((const)) *cli_normal(void)
+{
+	return is_term() ? COL_NC : "";
+}

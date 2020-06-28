@@ -68,7 +68,7 @@ static bool compile_regex(const char *regexin, const int index, const enum regex
 	return true;
 }
 
-int match_regex(const char *input, const int clientID, const enum regex_type regexid)
+int match_regex(const char *input, const int clientID, const enum regex_type regexid, const bool regextest)
 {
 	int match_idx = -1;
 #ifdef USE_TRE_REGEX
@@ -136,9 +136,31 @@ int match_regex(const char *input, const int clientID, const enum regex_type reg
 				     input, regexbuffer[regexid][index]);
 			}
 
-			// Always check all regular expressions for clientID = -1
-			if(clientID >= 0)
+			if(regextest && regexid == REGEX_CLI)
+			{
+				// CLI provided regular expression
+				logg("   %s%s%s matches",
+				     cli_bold(), regexbuffer[regexid][index], cli_normal());
+			}
+			else if(regextest && regexid == REGEX_BLACKLIST)
+			{
+				// Database-sourced regular expression
+				logg("   %s%s%s matches (regex blacklist, DB ID %i)",
+				     cli_bold(), regexbuffer[regexid][index], cli_normal(),
+				     regex_id[regexid][index]);
+			}
+			else if(regextest && regexid == REGEX_WHITELIST)
+			{
+				// Database-sourced regular expression
+				logg("   %s%s%s matches (regex whitelist, DB ID %i)",
+				     cli_bold(), regexbuffer[regexid][index], cli_normal(),
+				     regex_id[regexid][index]);
+			}
+			else
+			{
+				// Only check the first match when not in regex-test mode
 				break;
+			}
 		}
 
 		// Print no match message when in regex debug mode
@@ -329,21 +351,6 @@ void read_regex_from_database(void)
 	     counters->clients, timer_elapsed_msec(REGEX_TIMER));
 }
 
-// Get regex string from rowid in database
-static const char __attribute__ ((pure)) *get_regex_from_rowid(const enum regex_type regexid, const int matchid)
-{
-	unsigned int index;
-	for(index = 0; index < counters->num_regex[regexid]; index++)
-	{
-		if(regex_id[regexid][index] == matchid)
-			break;
-	}
-	if(index < counters->num_regex[regexid])
-		return regexbuffer[regexid][index];
-	else
-		return "[not available]";
-}
-
 int regex_test(const bool debug_mode, const char *domainin, const char *regexin)
 {
 	// Prepare counters and regex memories
@@ -359,59 +366,23 @@ int regex_test(const bool debug_mode, const char *domainin, const char *regexin)
 	// Re-enable terminal output
 	log_ctrl(false, true);
 
-	bool matched = false;
-	int matchidx;
+	int matchidx = -1;
 	if(regexin == NULL)
 	{
 		// Read and compile regex lists from database
-		logg("%s Loading regex filters from database...", cli_info());
-		timer_start(REGEX_TIMER);
 		read_regex_table(REGEX_BLACKLIST);
 		read_regex_table(REGEX_WHITELIST);
-		logg("      Compiled %i black- and %i whitelist regex filters in %.3f msec\n",
-		     counters->num_regex[REGEX_BLACKLIST],
-		     counters->num_regex[REGEX_WHITELIST],
-		     timer_elapsed_msec(REGEX_TIMER));
 
 		// Check user-provided domain against all loaded regular blacklist expressions
-		logg("%s Checking domain against blacklist...", cli_info());
-		timer_start(REGEX_TIMER);
-		matchidx = match_regex(domainin, -1, REGEX_BLACKLIST);
-		logg("      Time: %.3f msec", timer_elapsed_msec(REGEX_TIMER));
-
-		if(matchidx > -1)
-		{
-			matched = true;
-			logg("%s \"%s\" matched by \"%s\"\n", cli_tick(),
-			     domainin, get_regex_from_rowid(REGEX_BLACKLIST, matchidx));
-		}
-		else
-		{
-			logg("%s No result for \"%s\"\n", cli_cross(), domainin);
-		}
+		matchidx = match_regex(domainin, -1, REGEX_BLACKLIST, true);
 
 		// Check user-provided domain against all loaded regular whitelist expressions
-		logg("%s Checking domain against whitelist...", cli_info());
-		timer_start(REGEX_TIMER);
-		matchidx = match_regex(domainin, -1, REGEX_WHITELIST);
-		logg("      Time: %.3f msec", timer_elapsed_msec(REGEX_TIMER));
-
-		if(matchidx > -1)
-		{
-			matched = true;
-			logg("%s \"%s\" matched by \"%s\"\n", cli_tick(),
-			     domainin, get_regex_from_rowid(REGEX_WHITELIST, matchidx));
-		}
-		else
-		{
-			logg("%s No result for \"%s\"\n", cli_cross(), domainin);
-		}
+		matchidx = match_regex(domainin, -1, REGEX_WHITELIST, true);
 
 	}
 	else
 	{
 		// Compile CLI regex
-		logg("%s Compiling regex filter...", cli_info());
 		counters->num_regex[REGEX_BLACKLIST] = counters->num_regex[REGEX_WHITELIST] = 0;
 		counters->num_regex[REGEX_CLI] = 1;
 
@@ -427,26 +398,11 @@ int regex_test(const bool debug_mode, const char *domainin, const char *regexin)
 			regex_available[REGEX_CLI][0] = true;
 		else
 			return EXIT_FAILURE;
-		logg("      Compiled regex filter in %.3f msec\n", timer_elapsed_msec(REGEX_TIMER));
 
 		// Check user-provided domain against user-provided regular expression
-		logg("%s Checking domain...", cli_info());
-		timer_start(REGEX_TIMER);
-		matchidx = match_regex(domainin, -1, REGEX_CLI);
-		logg("      Time: %.3f msec", timer_elapsed_msec(REGEX_TIMER));
-
-		if(matchidx > -1)
-		{
-			matched = true;
-			logg("%s \"%s\" matched by \"%s\"\n",
-			     cli_tick(), domainin, get_regex_from_rowid(REGEX_CLI, matchidx));
-		}
-		else
-		{
-			logg("%s No result for \"%s\"\n", cli_cross(), domainin);
-		}
+		matchidx = match_regex(domainin, -1, REGEX_CLI, true);
 	}
 
 	// Return status 0 = MATCH, 1 = ERROR, 2 = NO MATCH
-	return matched ? EXIT_SUCCESS : 2;
+	return matchidx > -1 ? EXIT_SUCCESS : 2;
 }

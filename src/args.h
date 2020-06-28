@@ -21,5 +21,7 @@ const char *cli_cross(void) __attribute__ ((const));
 const char *cli_info(void) __attribute__ ((const));
 const char *cli_qst(void) __attribute__ ((const));
 const char *cli_done(void) __attribute__ ((const));
+const char *cli_bold(void) __attribute__ ((const));
+const char *cli_normal(void) __attribute__ ((const));
 
 #endif //ARGS_H

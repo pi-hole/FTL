@@ -15,7 +15,7 @@
 
 extern const char *regextype[];
 
-int match_regex(const char *input, const int clientID, const enum regex_type);
+int match_regex(const char *input, const int clientID, const enum regex_type, const bool regextest);
 void allocate_regex_client_enabled(clientsData *client, const int clientID);
 void read_regex_from_database(void);
 

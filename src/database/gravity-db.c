@@ -797,7 +797,7 @@ bool in_whitelist(const char *domain, const int clientID, clientsData* client)
 	// optimization as the database lookup will most likely hit (a) more domains and (b)
 	// will be faster (given a sufficiently large number of regex whitelisting filters).
 	return domain_in_list(domain, stmt, "whitelist") ||
-	       match_regex(domain, clientID, REGEX_WHITELIST) != -1;
+	       match_regex(domain, clientID, REGEX_WHITELIST, false) != -1;
 }
 
 bool in_gravity(const char *domain, const int clientID, clientsData* client)
