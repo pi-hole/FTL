@@ -1842,4 +1842,9 @@ void FTL_TCP_worker_created(void)
 	// Reopen gravity database handle in this fork as the main process's
 	// handle isn't valid here
 	gravityDB_forked();
+
+	// Children inherit file descriptors from their parents
+	// We don't need them in the forks, so we clean them up
+	close_telnet_socket();
+	close_unix_socket(false);
 }

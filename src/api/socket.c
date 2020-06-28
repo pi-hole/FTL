@@ -29,7 +29,7 @@
 #define BACKLOG 5
 
 // File descriptors
-int socketfd, telnetfd4 = 0, telnetfd6 = 0;
+int socketfd = 0, telnetfd4 = 0, telnetfd6 = 0;
 bool dualstack = false;
 bool ipv4telnet = false, ipv6telnet = false, sock_avail = false;
 bool istelnet[MAXCONNS];
@@ -271,12 +271,17 @@ void close_telnet_socket(void)
 		close(telnetfd6);
 }
 
-void close_unix_socket(void)
+void close_unix_socket(bool unlink_file)
 {
-	// The process has to take care of unlinking the socket file description on exit
-	unlink(FTLfiles.socketfile);
+	if(unlink_file)
+	{
+		// The process has to take care of unlinking the socket file description on exit
+		unlink(FTLfiles.socketfile);
+	}
+
 	// Using global variable here
-	close(socketfd);
+	if(sock_avail)
+		close(socketfd);
 }
 
 static void *telnet_connection_handler_thread(void *socket_desc)
@@ -395,9 +400,9 @@ void *telnet_listening_thread_IPv4(void *args)
 	prctl(PR_SET_NAME,"telnet-IPv4",0,0,0);
 
 	// Initialize IPv4 telnet socket
-	if(!bind_to_telnet_port_IPv4(&telnetfd4))
+	ipv4telnet = bind_to_telnet_port_IPv4(&telnetfd4);
+	if(!ipv4telnet)
 		return NULL;
-	ipv4telnet = true;
 
 	// Listen as long as FTL is not killed
 	while(!killed)
@@ -440,11 +445,13 @@ void *telnet_listening_thread_IPv6(void *args)
 	// Set thread name
 	prctl(PR_SET_NAME,"telnet-IPv6",0,0,0);
 
-	// Initialize IPv6 telnet socket
-	// only if IPv6 interfaces are available
-	if(!ipv6_available() || !bind_to_telnet_port_IPv6(&telnetfd6))
+	// Initialize IPv6 telnet socket but only if IPv6 interfaces are available
+	if(!ipv6_available())
 		return NULL;
-	ipv6telnet = true;
+
+	ipv6telnet = bind_to_telnet_port_IPv6(&telnetfd6);
+	if(!ipv6telnet)
+		return NULL;
 
 	// Listen as long as FTL is not killed
 	while(!killed)
@@ -488,9 +495,9 @@ void *socket_listening_thread(void *args)
 	prctl(PR_SET_NAME,"socket listener",0,0,0);
 
 	// Return early to avoid CPU spinning if Unix socket is not available
-	if(!bind_to_unix_socket(&socketfd))
+	sock_avail = bind_to_unix_socket(&socketfd);
+	if(sock_avail)
 		return NULL;
-	sock_avail = true;
 
 	// Listen as long as FTL is not killed
 	while(!killed)
@@ -520,6 +527,7 @@ void *socket_listening_thread(void *args)
 bool ipv6_available(void)
 {
 	struct ifaddrs *allInterfaces;
+	enum { IPv4, IPv6 };
 	int iface[2] = { 0 };
 
 	// Get all interfaces
@@ -535,7 +543,7 @@ bool ipv6_available(void)
 			// Check only for up and running IPv4, IPv6 interfaces
 			if ((flags & (IFF_UP|IFF_RUNNING)) && addr != NULL)
 			{
-				iface[addr->sa_family == AF_INET6 ? 1 : 0]++;
+				iface[addr->sa_family == AF_INET6 ? IPv6 : IPv4]++;
 
 				if(config.debug & DEBUG_NETWORKING)
 					logg("Interface %s is %s", interface->ifa_name, addr->sa_family == AF_INET6 ? "IPv6" : "IPv4");
@@ -546,8 +554,8 @@ bool ipv6_available(void)
 
 	if(config.debug & DEBUG_NETWORKING)
 	{
-		logg("Found %i IPv4 and %i IPv6 capable interfaces", iface[0], iface[1]);
+		logg("Found %i IPv4 and %i IPv6 capable interfaces", iface[IPv4], iface[IPv6]);
 	}
 
-	return (iface[1] > 0);
+	return (iface[IPv6] > 0);
 }

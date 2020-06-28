@@ -108,9 +108,9 @@ int main (int argc, char* argv[])
 		logg("Finished final database update");
 	}
 
-	// Close sockets
+	// Close sockets and delete Unix socket file handle
 	close_telnet_socket();
-	close_unix_socket();
+	close_unix_socket(true);
 
 	// Close gravity database connection
 	gravityDB_close();
