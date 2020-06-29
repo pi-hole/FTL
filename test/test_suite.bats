@@ -609,11 +609,23 @@
   [[ $status == 1 ]]
 }
 
-@test "Regex Test 34: Quiet mode gives only one line as result" {
+@test "Regex Test 34: Quiet mode: Match = Return code 0, nothing else" {
   run bash -c './pihole-FTL -q regex-test "fbcdn.net" "f"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "    f matches" ]]
   [[ $status == 0 ]]
+}
+
+@test "Regex Test 35: Quiet mode: Invalid regex = Return code 1, with error message" {
+  run bash -c './pihole-FTL -q regex-test "fbcdn.net" "g{x}"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "REGEX WARNING: Invalid regex CLI filter \"g{x}\": Invalid contents of {}" ]]
+  [[ $status == 1 ]]
+}
+
+@test "Regex Test 36: Quiet mode: No Match = Return code 2, nothing else" {
+  run bash -c './pihole-FTL -q regex-test "fbcdn.net" "g"'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 2 ]]
 }
 
 # x86_64-musl is built on busybox which has a slightly different
