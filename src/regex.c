@@ -364,54 +364,41 @@ int regex_test(const bool debug_mode, const bool quiet, const char *domainin, co
 	if(!debug_mode)
 		config.debug = 0;
 	// Re-enable terminal output
-	log_ctrl(false, true);
+	log_ctrl(false, !quiet);
 
 	int matchidx = -1;
 	if(regexin == NULL)
 	{
 		// Read and compile regex lists from database
-		if(!quiet)
-		{
-			logg("%s Loading regex filters from database...", cli_info());
-			timer_start(REGEX_TIMER);
-		}
+		logg("%s Loading regex filters from database...", cli_info());
+		timer_start(REGEX_TIMER);
+		log_ctrl(false, true); // Temporarily re-enable terminal output for error logging
 		read_regex_table(REGEX_BLACKLIST);
 		read_regex_table(REGEX_WHITELIST);
-		if(!quiet)
-		{
-			logg("    Compiled %i black- and %i whitelist regex filters in %.3f msec\n",
-			     counters->num_regex[REGEX_BLACKLIST],
-			     counters->num_regex[REGEX_WHITELIST],
-			     timer_elapsed_msec(REGEX_TIMER));
-		}
+		log_ctrl(false, !quiet); // Re-apply quiet option after compilation
+		logg("    Compiled %i black- and %i whitelist regex filters in %.3f msec\n",
+			counters->num_regex[REGEX_BLACKLIST],
+			counters->num_regex[REGEX_WHITELIST],
+			timer_elapsed_msec(REGEX_TIMER));
 
 		// Check user-provided domain against all loaded regular blacklist expressions
-		if(!quiet)
-		{
-			logg("%s Checking domain against blacklist...", cli_info());
-			timer_start(REGEX_TIMER);
-		}
+		logg("%s Checking domain against blacklist...", cli_info());
+		timer_start(REGEX_TIMER);
 		int matchidx1 = match_regex(domainin, -1, REGEX_BLACKLIST, true);
-		if(!quiet)
-			logg("    Time: %.3f msec", timer_elapsed_msec(REGEX_TIMER));
+		logg("    Time: %.3f msec", timer_elapsed_msec(REGEX_TIMER));
 
 		// Check user-provided domain against all loaded regular whitelist expressions
-		if(!quiet)
-		{
-			logg("%s Checking domain against whitelist...", cli_info());
-			timer_start(REGEX_TIMER);
-		}
+		logg("%s Checking domain against whitelist...", cli_info());
+		timer_start(REGEX_TIMER);
 		int matchidx2 = match_regex(domainin, -1, REGEX_WHITELIST, true);
-		if(!quiet)
-			logg("    Time: %.3f msec", timer_elapsed_msec(REGEX_TIMER));
+		logg("    Time: %.3f msec", timer_elapsed_msec(REGEX_TIMER));
 		matchidx = MAX(matchidx1, matchidx2);
 
 	}
 	else
 	{
 		// Compile CLI regex
-		if(!quiet)
-			logg("%s Compiling regex filter...", cli_info());
+		logg("%s Compiling regex filter...", cli_info());
 		counters->num_regex[REGEX_BLACKLIST] = counters->num_regex[REGEX_WHITELIST] = 0;
 		counters->num_regex[REGEX_CLI] = 1;
 
@@ -422,28 +409,22 @@ int regex_test(const bool debug_mode, const bool quiet, const char *domainin, co
 		regexbuffer[REGEX_CLI] = calloc(counters->num_regex[REGEX_CLI], sizeof(char*));
 
 		// Compile CLI regex
-		if(!quiet)
-			timer_start(REGEX_TIMER);
+		timer_start(REGEX_TIMER);
+		log_ctrl(false, true); // Temporarily re-enable terminal output for error logging
 		if(compile_regex(regexin, 0, REGEX_CLI, -1))
 			regex_available[REGEX_CLI][0] = true;
 		else
 			return EXIT_FAILURE;
-		if(!quiet)
-			logg("    Compiled regex filter in %.3f msec\n", timer_elapsed_msec(REGEX_TIMER));
+		log_ctrl(false, !quiet); // Re-apply quiet option after compilation
+		logg("    Compiled regex filter in %.3f msec\n", timer_elapsed_msec(REGEX_TIMER));
 
 		// Check user-provided domain against user-provided regular expression
-		if(!quiet)
-		{
-			logg("Checking domain...");
-			timer_start(REGEX_TIMER);
-		}
+		logg("Checking domain...");
+		timer_start(REGEX_TIMER);
 		matchidx = match_regex(domainin, -1, REGEX_CLI, true);
-		if(!quiet)
-		{
-			if(matchidx == -1)
-				logg("    NO MATCH!");
-			logg("   Time: %.3f msec", timer_elapsed_msec(REGEX_TIMER));
-		}
+		if(matchidx == -1)
+			logg("    NO MATCH!");
+		logg("   Time: %.3f msec", timer_elapsed_msec(REGEX_TIMER));
 	}
 
 	// Return status 0 = MATCH, 1 = ERROR, 2 = NO MATCH
