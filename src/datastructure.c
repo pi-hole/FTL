@@ -355,20 +355,13 @@ const char *getClientNameString(const queriesData* query)
 
 void FTL_reset_per_client_domain_data(void)
 {
-	for(int domainID = 0; domainID < counters->domains; domainID++)
+	for(int cacheID = 0; cacheID < counters->dns_cache_size; cacheID++)
 	{
-		domainsData *domain = getDomain(domainID, true);
-		if(domain == NULL)
-			continue;
-
-		for(int cacheID = 0; cacheID < counters->dns_cache_size; cacheID++)
-		{
-			// Reset all blocking yes/no fields for all domains and clients
-			// This forces a reprocessing of all available filters for any
-			// given domain and client the next time they are seen
-			DNSCacheData *dns_cache = getDNSCache(cacheID, true);
-			dns_cache->blocking_status = UNKNOWN_BLOCKED;
-		}
+		// Reset all blocking yes/no fields for all domains and clients
+		// This forces a reprocessing of all available filters for any
+		// given domain and client the next time they are seen
+		DNSCacheData *dns_cache = getDNSCache(cacheID, true);
+		dns_cache->blocking_status = UNKNOWN_BLOCKED;
 	}
 }
 
