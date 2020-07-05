@@ -44,13 +44,6 @@ void rehash(int size);
 // Initialize gravity subroutines
 void gravityDB_forked(void)
 {
-	// FTL forked to handle TCP connections with dedicated (forked) workers
-	// SQLite3's mentions that carrying an open database connection across a
-	// fork() can lead to all kinds of locking problems as SQLite3 was not
-	// intended to work under such circumstances. Doing so may easily lead
-	// to ending up with a corrupted database.
-	logg("Note: FTL forked to handle TCP requests");
-
 	// Pretend that we did not open the database so far so it needs to be
 	// re-opened, also pretend we have not yet prepared the list statements
 	gravityDB_opened = false;

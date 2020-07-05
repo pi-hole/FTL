@@ -24,10 +24,13 @@ bool isValidIPv6(const char *addr);
 void FTL_reload_all_domainlists(void);
 void FTL_reset_per_client_domain_data(void);
 
+enum { TYPE_A = 1, TYPE_AAAA, TYPE_ANY, TYPE_SRV, TYPE_SOA, TYPE_PTR, TYPE_TXT, TYPE_NAPTR,
+       TYPE_MX, TYPE_DS, TYPE_RRSIG, TYPE_DNSKEY, TYPE_OTHER, TYPE_MAX };
+
 typedef struct {
 	unsigned char magic;
-	unsigned char type;
 	unsigned char status;
+	unsigned char type;
 	unsigned char privacylevel;
 	unsigned char reply;
 	unsigned char dnssec;

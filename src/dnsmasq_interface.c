@@ -418,8 +418,8 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 
 bool _FTL_new_query(const unsigned int flags, const char *name,
                     const char **blockingreason, const union all_addr *addr,
-                    const char *types, const int id, const char type,
-                    const char* file, const int line)
+                    const char *types, const unsigned short qtype, const int id,
+                    const enum protocol proto, const char* file, const int line)
 {
 	// Create new query in data structure
 
@@ -435,30 +435,33 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	gettimeofday(&request, 0);
 
 	// Determine query type
-	unsigned char querytype = 0;
-	if(strcmp(types,"query[A]") == 0)
+	unsigned char querytype;
+	if(qtype == 1)
 		querytype = TYPE_A;
-	else if(strcmp(types,"query[AAAA]") == 0)
+	else if(qtype == 28)
 		querytype = TYPE_AAAA;
-	else if(strcmp(types,"query[ANY]") == 0)
+	else if(qtype == 255)
 		querytype = TYPE_ANY;
-	else if(strcmp(types,"query[SRV]") == 0)
+	else if(qtype == 33)
 		querytype = TYPE_SRV;
-	else if(strcmp(types,"query[SOA]") == 0)
+	else if(qtype == 6)
 		querytype = TYPE_SOA;
-	else if(strcmp(types,"query[PTR]") == 0)
+	else if(qtype == 12)
 		querytype = TYPE_PTR;
-	else if(strcmp(types,"query[TXT]") == 0)
+	else if(qtype == 16)
 		querytype = TYPE_TXT;
-	else if(strcmp(types,"query[NAPTR]") == 0)
+	else if(qtype == 35)
 		querytype = TYPE_NAPTR;
+	else if(qtype == 15)
+		querytype = TYPE_MX;
+	else if(qtype == 43)
+		querytype = TYPE_DS;
+	else if(qtype == 46)
+		querytype = TYPE_RRSIG;
+	else if(qtype == 48)
+		querytype = TYPE_DNSKEY;
 	else
-	{
-		// Return early to avoid accessing querytypedata out of bounds
-		if(config.debug & DEBUG_QUERIES)
-			logg("Notice: Skipping unknown query type: %s (%i)", types, id);
-		return false;
-	}
+		querytype = TYPE_OTHER;
 
 	// Skip AAAA queries if user doesn't want to have them analyzed
 	if(!config.analyze_AAAA && querytype == TYPE_AAAA)
@@ -503,11 +506,11 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	}
 
 	// Log new query if in debug mode
-	const char *proto = (type == UDP) ? "UDP" : "TCP";
 	if(config.debug & DEBUG_QUERIES)
 	{
+		const char *protostr = (proto == UDP) ? "UDP" : "TCP";
 		logg("**** new %s %s \"%s\" from %s (ID %i, FTL %i, %s:%i)",
-		     proto, types, domainString, clientIP, id, queryID, file, line);
+		     protostr, types, domainString, clientIP, id, queryID, file, line);
 	}
 
 	// Update counters
@@ -1823,7 +1826,14 @@ void FTL_TCP_worker_terminating(bool finished)
 	if(config.debug != 0)
 	{
 		const char *reason = finished ? "client disconnected" : "timeout";
-		logg("Note: TCP worker terminating (%s)", reason);
+		logg("TCP worker terminating (%s)", reason);
+	}
+
+	if(main_pid() == getpid())
+	{
+		// If this is not really a fork (e.g. in debug mode), we don't
+		// actually close gravity here
+		return;
 	}
 
 	// Close dedicated database connection of this fork
@@ -1831,12 +1841,24 @@ void FTL_TCP_worker_terminating(bool finished)
 }
 
 // Called when a (forked) TCP worker is created
+// FTL forked to handle TCP connections with dedicated (forked) workers
+// SQLite3's mentions that carrying an open database connection across a
+// fork() can lead to all kinds of locking problems as SQLite3 was not
+// intended to work under such circumstances. Doing so may easily lead
+// to ending up with a corrupted database.
 void FTL_TCP_worker_created(void)
 {
 	if(config.debug != 0)
 	{
 		// Print this if any debug setting is enabled
 		logg("TCP worker forked");
+	}
+
+	if(main_pid() == getpid())
+	{
+		// If this is not really a fork (e.g. in debug mode), we don't
+		// actually re-open gravity or close sockets here
+		return;
 	}
 
 	// Reopen gravity database handle in this fork as the main process's
