@@ -197,7 +197,7 @@ void allocate_regex_client_enabled(clientsData *client, const int clientID)
 static void read_regex_table(const unsigned char regexid)
 {
 	// Get table ID
-	unsigned char tableID = (regexid == REGEX_BLACKLIST) ? REGEX_BLACKLIST_TABLE : REGEX_WHITELIST_TABLE;
+	const enum gravity_tables tableID = (regexid == REGEX_BLACKLIST) ? REGEX_BLACKLIST_TABLE : REGEX_WHITELIST_TABLE;
 
 	// Get number of lines in the regex table
 	counters->num_regex[regexid] = gravityDB_count(tableID);
@@ -293,7 +293,7 @@ void read_regex_from_database(void)
 	}
 
 	// Print message to FTL's log after reloading regex filters
-	logg("Compiled %i whitelist and %i blacklist regex filters in %.1f msec",
+	logg("Compiled %i whitelist and %i blacklist regex filters for %i clients in %.1f msec",
 	     counters->num_regex[REGEX_WHITELIST], counters->num_regex[REGEX_BLACKLIST],
-	     timer_elapsed_msec(REGEX_TIMER));
+	     counters->clients, timer_elapsed_msec(REGEX_TIMER));
 }
