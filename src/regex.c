@@ -77,21 +77,21 @@ static bool compile_regex(const char *regexin, const enum regex_type regexid)
 			char *extra;
 			if(sscanf(part, "querytype=%4ms", &extra))
 			{
-				if(strcmp(extra, "A") == 0)
+				if(strcasecmp(extra, "A") == 0)
 					regex[index].query_type = TYPE_A;
-				else if(strcmp(extra, "AAAA") == 0)
+				else if(strcasecmp(extra, "AAAA") == 0)
 					regex[index].query_type = TYPE_AAAA;
-				else if(strcmp(extra, "ANY") == 0)
+				else if(strcasecmp(extra, "ANY") == 0)
 					regex[index].query_type = TYPE_ANY;
-				else if(strcmp(extra, "SRV") == 0)
+				else if(strcasecmp(extra, "SRV") == 0)
 					regex[index].query_type = TYPE_SRV;
-				else if(strcmp(extra, "SOA") == 0)
+				else if(strcasecmp(extra, "SOA") == 0)
 					regex[index].query_type = TYPE_SOA;
-				else if(strcmp(extra, "PTR") == 0)
+				else if(strcasecmp(extra, "PTR") == 0)
 					regex[index].query_type = TYPE_PTR;
-				else if(strcmp(extra, "TXT") == 0)
+				else if(strcasecmp(extra, "TXT") == 0)
 					regex[index].query_type = TYPE_TXT;
-				else if(strcmp(extra, "NAPTR") == 0)
+				else if(strcasecmp(extra, "NAPTR") == 0)
 					regex[index].query_type = TYPE_NAPTR;
 				else
 					logg("WARNING: Unknown query type: \"%s\"", extra);
