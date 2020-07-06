@@ -177,7 +177,7 @@ void DB_save_queries(void)
 		else if(query->status == QUERY_REGEX)
 		{
 			// Restore regex ID if applicable
-			const int cacheID = findCacheID(query->domainID, query->clientID);
+			const int cacheID = findCacheID(query->domainID, query->clientID, query->type);
 			DNSCacheData *cache = getDNSCache(cacheID, true);
 			if(cache != NULL)
 				sqlite3_bind_int(stmt, 7, cache->black_regex_idx);
@@ -489,7 +489,7 @@ void DB_read_queries(void)
 		else if(status == QUERY_REGEX)
 		{
 			// QUERY_REGEX: Set ID regex which was the reson for blocking
-			const int cacheID = findCacheID(query->domainID, query->clientID);
+			const int cacheID = findCacheID(query->domainID, query->clientID, query->type);
 			DNSCacheData *cache = getDNSCache(cacheID, true);
 			// Only load if
 			//  a) we have a chace entry

@@ -8,9 +8,6 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-// Use TRE instead of GNU regex library (compiled into FTL itself)
-#define USE_TRE_REGEX
-
 #include "FTL.h"
 #include "regex_r.h"
 #include "timers.h"
@@ -34,12 +31,12 @@
 
 const char *regextype[REGEX_MAX] = { "blacklist", "whitelist", "CLI" };
 
-static struct regex_data *white_regex = NULL;
-static struct regex_data *black_regex = NULL;
-static struct regex_data   *cli_regex = NULL;
+static regex_data *white_regex = NULL;
+static regex_data *black_regex = NULL;
+static regex_data   *cli_regex = NULL;
 
-struct regex_data *get_regex_from_type(const enum regex_type regexid);
-inline struct regex_data *get_regex_from_type(const enum regex_type regexid)
+regex_data *get_regex_from_type(const enum regex_type regexid);
+inline regex_data *get_regex_from_type(const enum regex_type regexid)
 {
 	switch (regexid)
 	{
@@ -55,15 +52,64 @@ inline struct regex_data *get_regex_from_type(const enum regex_type regexid)
 	}
 }
 
+#define FTL_REGEX_SEP ";"
 /* Compile regular expressions into data structures that can be used with
    regexec() to match against a string */
 static bool compile_regex(const char *regexin, const enum regex_type regexid)
 {
-	struct regex_data *regex = get_regex_from_type(regexid);
+	regex_data *regex = get_regex_from_type(regexid);
+	int index = counters->num_regex[regexid]++;
+
+	// Extract possible Pi-hole extensions
+	char rgxbuf[strlen(regexin) + 1u];
+	// Parse special FTL syntax if present
+	if(strstr(regexin, FTL_REGEX_SEP) != NULL)
+	{
+		char *buf = strdup(regexin);
+		// Extract regular expression pattern in front of FTL-specific syntax
+		char *saveptr = NULL;
+		char *part = strtok_r(buf, FTL_REGEX_SEP, &saveptr);
+		strncpy(rgxbuf, part, sizeof(rgxbuf));
+
+		// Analyze FTL-specific parts
+		while((part = strtok_r(NULL, FTL_REGEX_SEP, &saveptr)) != NULL)
+		{
+			char *extra;
+			if(sscanf(part, "querytype=%4ms", &extra))
+			{
+				if(strcmp(extra, "A") == 0)
+					regex[index].query_type = TYPE_A;
+				else if(strcmp(extra, "AAAA") == 0)
+					regex[index].query_type = TYPE_AAAA;
+				else if(strcmp(extra, "ANY") == 0)
+					regex[index].query_type = TYPE_ANY;
+				else if(strcmp(extra, "SRV") == 0)
+					regex[index].query_type = TYPE_SRV;
+				else if(strcmp(extra, "SOA") == 0)
+					regex[index].query_type = TYPE_SOA;
+				else if(strcmp(extra, "PTR") == 0)
+					regex[index].query_type = TYPE_PTR;
+				else if(strcmp(extra, "TXT") == 0)
+					regex[index].query_type = TYPE_TXT;
+				else if(strcmp(extra, "NAPTR") == 0)
+					regex[index].query_type = TYPE_NAPTR;
+				else
+					logg("WARNING: Unknown query type: \"%s\"", extra);
+				free(extra);
+				extra = NULL;
+			}
+		}
+		free(buf);
+	}
+	else
+	{
+		// Copy entire input string into buffer
+		strcpy(rgxbuf, regexin);
+	}
+
 	// We use the extended RegEx flavor (ERE) and specify that matching should
 	// always be case INsensitive
-	int index = counters->num_regex[regexid]++;
-	const int errcode = regcomp(&regex[index].regex, regexin, REG_EXTENDED | REG_ICASE | REG_NOSUB);
+	const int errcode = regcomp(&regex[index].regex, rgxbuf, REG_EXTENDED | REG_ICASE | REG_NOSUB);
 	if(errcode != 0)
 	{
 		// Get error string and log it
@@ -72,19 +118,22 @@ static bool compile_regex(const char *regexin, const enum regex_type regexid)
 		(void) regerror (errcode, &regex[index].regex, buffer, length);
 		logg_regex_warning(regextype[regexid], buffer, regex[index].database_id, regexin);
 		free(buffer);
+		regex[index].available = false;
 		return false;
 	}
 
 	// Store compiled regex string in buffer
 	regex[index].string = strdup(regexin);
+	regex[index].available = true;
 
 	return true;
 }
 
-int match_regex(const char *input, const int clientID, const enum regex_type regexid, const bool regextest)
+int match_regex(const char *input, const DNSCacheData* dns_cache, const int clientID,
+                const enum regex_type regexid, const bool regextest)
 {
 	int match_idx = -1;
-	struct regex_data *regex = get_regex_from_type(regexid);
+	regex_data *regex = get_regex_from_type(regexid);
 #ifdef USE_TRE_REGEX
 	regmatch_t match = { 0 }; // This also disables any sub-matching
 #endif
@@ -129,16 +178,32 @@ int match_regex(const char *input, const int clientID, const enum regex_type reg
 		}
 
 		// Try to match the compiled regular expression against input
-		int errcode;
 #ifdef USE_TRE_REGEX
-		errcode = tre_regexec(&regex[index].regex, input, 0, &match, 0);
+		int errcode = tre_regexec(&regex[index].regex, input, 0, &match, 0);
 #else
-		errcode = regexec(&regex[index].regex, input, 0, NULL, 0);
+		int errcode = regexec(&regex[index].regex, input, 0, NULL, 0);
 #endif
 		// regexec() returns zero for a successful match or REG_NOMATCH for failure.
 		// We are only interested in the matching case here.
 		if (errcode == 0)
 		{
+			// Check possible additional regex settings
+			logg("match-regex: dns_cache: %p", dns_cache);
+			if(dns_cache != NULL)
+			{
+				// Check query type filtering
+				if(regex[index].query_type != 0 && regex[index].query_type != dns_cache->query_type)
+				{
+					if(config.debug & DEBUG_REGEX)
+					{
+						logg("Regex %s (%u, DB ID %i) NO match: \"%s\" vs. \"%s\""
+						     " (skipped because of query type mismatch)",
+						regextype[regexid], index, regex[index].database_id,
+						input, regex[index].string);
+					}
+					continue;
+				}
+			}
 			// Match, return true
 			match_idx = regex[index].database_id;
 
@@ -212,7 +277,7 @@ static void free_regex(void)
 	// Loop over regex types
 	for(unsigned char regexid = 0; regexid < REGEX_MAX; regexid++)
 	{
-		struct regex_data *regex = get_regex_from_type(regexid);
+		regex_data *regex = get_regex_from_type(regexid);
 		// Loop over entries with this regex type
 		for(unsigned int index = 0; index < counters->num_regex[regexid]; index++)
 		{
@@ -248,12 +313,16 @@ void allocate_regex_client_enabled(clientsData *client, const int clientID)
 	// Only initialize regex associations when dnsmasq is ready (otherwise, we're still in history reading mode)
 	if(!startup)
 	{
-		gravityDB_get_regex_client_groups(client, counters->num_regex[REGEX_BLACKLIST],
-		                                  black_regex, REGEX_BLACKLIST,
-		                                  "vw_regex_blacklist", clientID);
-		gravityDB_get_regex_client_groups(client, counters->num_regex[REGEX_WHITELIST],
-		                                  white_regex, REGEX_WHITELIST,
-		                                  "vw_regex_whitelist", clientID);
+		logg("Blacklist: %p (%i)", black_regex, counters->num_regex[REGEX_BLACKLIST]);
+		logg("Whitelist: %p (%i)", white_regex, counters->num_regex[REGEX_WHITELIST]);
+		if(counters->num_regex[REGEX_BLACKLIST] > 0)
+			gravityDB_get_regex_client_groups(client, counters->num_regex[REGEX_BLACKLIST],
+			                                  black_regex, REGEX_BLACKLIST,
+			                                  "vw_regex_blacklist", clientID);
+		if(counters->num_regex[REGEX_WHITELIST] > 0)
+			gravityDB_get_regex_client_groups(client, counters->num_regex[REGEX_WHITELIST],
+			                                  white_regex, REGEX_WHITELIST,
+			                                  "vw_regex_whitelist", clientID);
 	}
 }
 
@@ -277,15 +346,15 @@ static void read_regex_table(const enum regex_type regexid)
 	}
 
 	// Allocate memory for regex
-	struct regex_data *regex = NULL;
+	regex_data *regex = NULL;
 	if(regexid == REGEX_BLACKLIST)
 	{
-		black_regex = calloc(count, sizeof(struct regex_data));
+		black_regex = calloc(count, sizeof(regex_data));
 		regex = black_regex;
 	}
 	else
 	{
-		white_regex = calloc(count, sizeof(struct regex_data));
+		white_regex = calloc(count, sizeof(regex_data));
 		regex = white_regex;
 	}
 
@@ -324,7 +393,7 @@ static void read_regex_table(const enum regex_type regexid)
 		if(config.debug & DEBUG_REGEX)
 		{
 			logg("Compiling %s regex %i (DB ID %i): %s",
-			     regextype[regexid], counters->num_regex[regexid]-1, rowid, domain);
+			     regextype[regexid], counters->num_regex[regexid], rowid, domain);
 		}
 
 		compile_regex(domain, regexid);
@@ -401,13 +470,13 @@ int regex_test(const bool debug_mode, const bool quiet, const char *domainin, co
 		// Check user-provided domain against all loaded regular blacklist expressions
 		logg("%s Checking domain against blacklist...", cli_info());
 		timer_start(REGEX_TIMER);
-		int matchidx1 = match_regex(domainin, -1, REGEX_BLACKLIST, true);
+		int matchidx1 = match_regex(domainin, NULL, -1, REGEX_BLACKLIST, true);
 		logg("    Time: %.3f msec", timer_elapsed_msec(REGEX_TIMER));
 
 		// Check user-provided domain against all loaded regular whitelist expressions
 		logg("%s Checking domain against whitelist...", cli_info());
 		timer_start(REGEX_TIMER);
-		int matchidx2 = match_regex(domainin, -1, REGEX_WHITELIST, true);
+		int matchidx2 = match_regex(domainin, NULL, -1, REGEX_WHITELIST, true);
 		logg("    Time: %.3f msec", timer_elapsed_msec(REGEX_TIMER));
 		matchidx = MAX(matchidx1, matchidx2);
 
@@ -416,8 +485,7 @@ int regex_test(const bool debug_mode, const bool quiet, const char *domainin, co
 	{
 		// Compile CLI regex
 		logg("%s Compiling regex filter...", cli_info());
-		counters->num_regex[REGEX_CLI] = 1;
-		cli_regex = calloc(1, sizeof(struct regex_data));
+		cli_regex = calloc(1, sizeof(regex_data));
 
 		// Compile CLI regex
 		timer_start(REGEX_TIMER);
@@ -430,7 +498,7 @@ int regex_test(const bool debug_mode, const bool quiet, const char *domainin, co
 		// Check user-provided domain against user-provided regular expression
 		logg("Checking domain...");
 		timer_start(REGEX_TIMER);
-		matchidx = match_regex(domainin, -1, REGEX_CLI, true);
+		matchidx = match_regex(domainin, NULL, -1, REGEX_CLI, true);
 		if(matchidx == -1)
 			logg("    NO MATCH!");
 		logg("   Time: %.3f msec", timer_elapsed_msec(REGEX_TIMER));

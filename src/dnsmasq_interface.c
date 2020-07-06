@@ -101,7 +101,7 @@ static bool check_domain_blocked(const char *domain, const int clientID,
 	// Skipped when the domain is whitelisted or blocked by exact blacklist or gravity
 	int regex_idx = 0;
 	if(!query->whitelisted && !blockDomain &&
-	   (regex_idx = match_regex(domain, clientID, REGEX_BLACKLIST, false)) > -1)
+	   (regex_idx = match_regex(domain, dns_cache, clientID, REGEX_BLACKLIST, false)) > -1)
 	{
 		// We block this domain
 		blockDomain = true;
@@ -131,7 +131,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 	queriesData* query  = getQuery(queryID,   true);
 	domainsData* domain = getDomain(domainID, true);
 	clientsData* client = getClient(clientID, true);
-	unsigned int cacheID = findCacheID(domainID, clientID);
+	unsigned int cacheID = findCacheID(domainID, clientID, query->type);
 	DNSCacheData *dns_cache = getDNSCache(cacheID, true);
 	if(query == NULL || domain == NULL || client == NULL || dns_cache == NULL)
 	{
@@ -259,7 +259,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 	const char *blockedDomain = domainstr;
 
 	// Check whitelist (exact + regex) for match
-	query->whitelisted = in_whitelist(domainstr, clientID, client);
+	query->whitelisted = in_whitelist(domainstr, dns_cache, clientID, client);
 
 	bool blockDomain = false;
 	unsigned char new_status = QUERY_UNKNOWN;
@@ -395,8 +395,8 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 		else if(query->status == QUERY_REGEX)
 		{
 			// Get parent and child DNS cache entries
-			const int parent_cacheID = findCacheID(parent_domainID, clientID);
-			const int child_cacheID = findCacheID(child_domainID, clientID);
+			const int parent_cacheID = findCacheID(parent_domainID, clientID, query->type);
+			const int child_cacheID = findCacheID(child_domainID, clientID, query->type);
 
 			// Get cache pointers
 			DNSCacheData *parent_cache = getDNSCache(parent_cacheID, true);

@@ -899,7 +899,7 @@ void getAllQueries(const char *client_message, const int *sock)
 		int regex_idx = -1;
 		if (query->status == QUERY_REGEX || query->status == QUERY_REGEX_CNAME)
 		{
-			unsigned int cacheID = findCacheID(query->domainID, query->clientID);
+			unsigned int cacheID = findCacheID(query->domainID, query->clientID, query->type);
 			DNSCacheData *dns_cache = getDNSCache(cacheID, true);
 			if(dns_cache != NULL)
 				regex_idx = dns_cache->black_regex_idx;
@@ -1327,82 +1327,5 @@ void getUnknownQueries(const int *sock)
 			pack_uint8(*sock, query->status);
 			pack_bool(*sock, query->complete);
 		}
-	}
-}
-
-void getDomainDetails(const char *client_message, const int *sock)
-{
-	// Get domain name
-	bool show_all = false;
-	char domainString[128];
-	if(sscanf(client_message, "%*[^ ] %127s", domainString) < 1)
-	{
-		ssend(*sock, "No domain specified, listing all known (%d)\n", counters->domains);
-		show_all = true;
-	}
-
-	for(int domainID = 0; domainID < counters->domains; domainID++)
-	{
-		// Get domain pointer
-		const domainsData* domain = getDomain(domainID, true);
-		if(domain == NULL)
-			continue;
-
-		if(show_all || strcmp(getstr(domain->domainpos), domainString) == 0)
-		{
-			ssend(*sock,"Domain \"%s\", ID: %i\n", getstr(domain->domainpos), domainID);
-			ssend(*sock,"Total: %i\n", domain->count);
-			ssend(*sock,"Blocked: %i\n", domain->blockedcount);
-			ssend(*sock,"Client status:\n");
-			for(int clientID = 0; clientID < counters->clients; clientID++)
-			{
-				clientsData *client = getClient(clientID, true);
-				if(client == NULL)
-				{
-					continue;
-				}
-				const char *str = "N/A";
-				unsigned int cacheID = findCacheID(domainID, clientID);
-				DNSCacheData *dns_cache = getDNSCache(cacheID, true);
-				switch(dns_cache->blocking_status)
-				{
-					case UNKNOWN_BLOCKED:
-						str = "unknown";
-						break;
-					case GRAVITY_BLOCKED:
-						str = "gravity";
-						break;
-					case BLACKLIST_BLOCKED:
-						str = "blacklisted";
-						break;
-					case REGEX_BLOCKED:
-						str = "regex";
-						break;
-					case WHITELISTED:
-						str = "whitelisted";
-						break;
-					case NOT_BLOCKED:
-						str = "not blocked";
-						break;
-					default:
-						str = "this cannot happen";
-						break;
-				}
-				ssend(*sock, " %s (ID %d): %s\n", getstr(client->ippos), clientID, str);
-			}
-			ssend(*sock,"\n");
-
-			// Return early
-			if(!show_all)
-			{
-				return;
-			}
-		}
-	}
-
-	// for loop finished without an exact match
-	if(!show_all)
-	{
-		ssend(*sock,"Domain \"%s\" is unknown\n", domainString);
 	}
 }

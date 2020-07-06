@@ -34,10 +34,10 @@ int gravityDB_count(const enum gravity_tables list);
 bool in_auditlist(const char *domain);
 
 bool in_gravity(const char *domain, const int clientID, clientsData* client);
-bool in_whitelist(const char *domain, const int clientID, clientsData* client);
 bool in_blacklist(const char *domain, const int clientID, clientsData* client);
+bool in_whitelist(const char *domain, const DNSCacheData *dns_cache, const int clientID, clientsData* client);
 
-bool gravityDB_get_regex_client_groups(clientsData* client, const unsigned int numregex, const struct regex_data *regex,
+bool gravityDB_get_regex_client_groups(clientsData* client, const unsigned int numregex, const regex_data *regex,
                                        const unsigned char type, const char* table, const int clientID);
 
 #endif //GRAVITY_H
