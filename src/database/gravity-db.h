@@ -15,6 +15,9 @@
 // clients data structure
 #include "datastructure.h"
 
+// Definition of struct regex_data
+#include "../regex_r.h"
+
 // Table indices
 enum gravity_tables { GRAVITY_TABLE, EXACT_BLACKLIST_TABLE, EXACT_WHITELIST_TABLE, REGEX_BLACKLIST_TABLE, REGEX_WHITELIST_TABLE, UNKNOWN_TABLE } __attribute__ ((packed));
 
@@ -34,7 +37,7 @@ bool in_gravity(const char *domain, const int clientID, clientsData* client);
 bool in_whitelist(const char *domain, const int clientID, clientsData* client);
 bool in_blacklist(const char *domain, const int clientID, clientsData* client);
 
-bool gravityDB_get_regex_client_groups(clientsData* client, const int numregex, const int *regexid,
+bool gravityDB_get_regex_client_groups(clientsData* client, const unsigned int numregex, const struct regex_data *regex,
                                        const unsigned char type, const char* table, const int clientID);
 
 #endif //GRAVITY_H

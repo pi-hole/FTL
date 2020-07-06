@@ -32,38 +32,51 @@
 // cli_stuff()
 #include "args.h"
 
-#ifdef USE_TRE_REGEX
-#include "tre-regex/regex.h"
-#else
-#include <regex.h>
-#endif
-
 const char *regextype[REGEX_MAX] = { "blacklist", "whitelist", "CLI" };
-static regex_t *regex[REGEX_MAX] = { NULL };
-static bool *regex_available[REGEX_MAX] = { NULL };
-static int *regex_id[REGEX_MAX] = { NULL };
-static char **regexbuffer[REGEX_MAX] = { NULL };
+
+static struct regex_data *white_regex = NULL;
+static struct regex_data *black_regex = NULL;
+static struct regex_data   *cli_regex = NULL;
+
+struct regex_data *get_regex_from_type(const enum regex_type regexid);
+inline struct regex_data *get_regex_from_type(const enum regex_type regexid)
+{
+	switch (regexid)
+	{
+		case REGEX_BLACKLIST:
+			return black_regex;
+		case REGEX_WHITELIST:
+			return white_regex;
+		case REGEX_CLI:
+			return cli_regex;
+		case REGEX_MAX: // Fall through
+		default: // This is not possible
+			return NULL;
+	}
+}
 
 /* Compile regular expressions into data structures that can be used with
    regexec() to match against a string */
-static bool compile_regex(const char *regexin, const int index, const enum regex_type regexid, const int dbindex)
+static bool compile_regex(const char *regexin, const enum regex_type regexid)
 {
+	struct regex_data *regex = get_regex_from_type(regexid);
 	// We use the extended RegEx flavor (ERE) and specify that matching should
 	// always be case INsensitive
-	const int errcode = regcomp(&regex[regexid][index], regexin, REG_EXTENDED | REG_ICASE | REG_NOSUB);
+	int index = counters->num_regex[regexid]++;
+	const int errcode = regcomp(&regex[index].regex, regexin, REG_EXTENDED | REG_ICASE | REG_NOSUB);
 	if(errcode != 0)
 	{
 		// Get error string and log it
-		const size_t length = regerror(errcode, &regex[regexid][index], NULL, 0);
+		const size_t length = regerror(errcode, &regex[index].regex, NULL, 0);
 		char *buffer = calloc(length, sizeof(char));
-		(void) regerror (errcode, &regex[regexid][index], buffer, length);
-		logg_regex_warning(regextype[regexid], buffer, dbindex, regexin);
+		(void) regerror (errcode, &regex[index].regex, buffer, length);
+		logg_regex_warning(regextype[regexid], buffer, regex[index].database_id, regexin);
 		free(buffer);
 		return false;
 	}
 
 	// Store compiled regex string in buffer
-	regexbuffer[regexid][index] = strdup(regexin);
+	regex[index].string = strdup(regexin);
 
 	return true;
 }
@@ -71,6 +84,7 @@ static bool compile_regex(const char *regexin, const int index, const enum regex
 int match_regex(const char *input, const int clientID, const enum regex_type regexid, const bool regextest)
 {
 	int match_idx = -1;
+	struct regex_data *regex = get_regex_from_type(regexid);
 #ifdef USE_TRE_REGEX
 	regmatch_t match = { 0 }; // This also disables any sub-matching
 #endif
@@ -79,13 +93,14 @@ int match_regex(const char *input, const int clientID, const enum regex_type reg
 	for(unsigned int index = 0; index < counters->num_regex[regexid]; index++)
 	{
 		// Only check regex which have been successfully compiled ...
-		if(!regex_available[regexid][index])
+		if(!regex[index].available)
 		{
 			if(config.debug & DEBUG_REGEX)
+			{
 				logg("Regex %s (%u, DB ID %d) \"%s\" is NOT AVAILABLE",
-				     regextype[regexid], index, regex_id[regexid][index],
-					 regexbuffer[regexid][index]);
-
+				     regextype[regexid], index, regex[index].database_id,
+				     regex[index].string);
+			}
 			continue;
 		}
 		// ... and are enabled for this client
@@ -106,8 +121,8 @@ int match_regex(const char *input, const int clientID, const enum regex_type reg
 				if(client != NULL)
 				{
 					logg("Regex %s (%u, DB ID %d) \"%s\" NOT ENABLED for client %s",
-					     regextype[regexid], index, regex_id[regexid][index],
-					     regexbuffer[regexid][index], getstr(client->ippos));
+					     regextype[regexid], index, regex[index].database_id,
+					     regex[index].string, getstr(client->ippos));
 				}
 			}
 			continue;
@@ -116,45 +131,45 @@ int match_regex(const char *input, const int clientID, const enum regex_type reg
 		// Try to match the compiled regular expression against input
 		int errcode;
 #ifdef USE_TRE_REGEX
-		errcode = tre_regexec(&regex[regexid][index], input, 0, &match, 0);
+		errcode = tre_regexec(&regex[index].regex, input, 0, &match, 0);
 #else
-		errcode = regexec(&regex[regexid][index], input, 0, NULL, 0);
+		errcode = regexec(&regex[index].regex, input, 0, NULL, 0);
 #endif
 		// regexec() returns zero for a successful match or REG_NOMATCH for failure.
 		// We are only interested in the matching case here.
 		if (errcode == 0)
 		{
 			// Match, return true
-			match_idx = regex_id[regexid][index];
+			match_idx = regex[index].database_id;
 
 			// Print match message when in regex debug mode
 			if(config.debug & DEBUG_REGEX)
 			{
 				// Approximate regex matching mode
 				logg("Regex %s (%u, DB ID %i) >> MATCH: \"%s\" vs. \"%s\"",
-				     regextype[regexid], index, regex_id[regexid][index],
-				     input, regexbuffer[regexid][index]);
+				     regextype[regexid], index, regex[index].database_id,
+				     input, regex[index].string);
 			}
 
 			if(regextest && regexid == REGEX_CLI)
 			{
 				// CLI provided regular expression
 				logg("    %s%s%s matches",
-				     cli_bold(), regexbuffer[regexid][index], cli_normal());
+				     cli_bold(), regex[index].string, cli_normal());
 			}
 			else if(regextest && regexid == REGEX_BLACKLIST)
 			{
 				// Database-sourced regular expression
 				logg("    %s%s%s matches (regex blacklist, DB ID %i)",
-				     cli_bold(), regexbuffer[regexid][index], cli_normal(),
-				     regex_id[regexid][index]);
+				     cli_bold(), regex[index].string, cli_normal(),
+				     regex[index].database_id);
 			}
 			else if(regextest && regexid == REGEX_WHITELIST)
 			{
 				// Database-sourced regular expression
 				logg("    %s%s%s matches (regex whitelist, DB ID %i)",
-				     cli_bold(), regexbuffer[regexid][index], cli_normal(),
-				     regex_id[regexid][index]);
+				     cli_bold(), regex[index].string, cli_normal(),
+				     regex[index].database_id);
 			}
 			else
 			{
@@ -167,8 +182,8 @@ int match_regex(const char *input, const int clientID, const enum regex_type reg
 		if(config.debug & DEBUG_REGEX && match_idx == -1)
 		{
 			logg("Regex %s (%u, DB ID %i) NO match: \"%s\" vs. \"%s\"",
-			     regextype[regexid], index, regex_id[regexid][index],
-			     input, regexbuffer[regexid][index]);
+			     regextype[regexid], index, regex[index].database_id,
+			     input, regex[index].string);
 		}
 	}
 
@@ -182,9 +197,9 @@ static void free_regex(void)
 	FTL_reset_per_client_domain_data();
 
 	// Return early if we don't use any regex filters
-	if(regex[REGEX_WHITELIST] == NULL &&
-	   regex[REGEX_BLACKLIST] == NULL &&
-	   regex[REGEX_CLI] == NULL)
+	if(white_regex == NULL &&
+	   black_regex == NULL &&
+	     cli_regex == NULL)
 		return;
 
 	// Reset client configuration
@@ -194,28 +209,31 @@ static void free_regex(void)
 	}
 
 	// Free regex datastructure
+	// Loop over regex types
 	for(unsigned char regexid = 0; regexid < REGEX_MAX; regexid++)
 	{
+		struct regex_data *regex = get_regex_from_type(regexid);
+		// Loop over entries with this regex type
 		for(unsigned int index = 0; index < counters->num_regex[regexid]; index++)
 		{
-			if(!regex_available[regexid][index])
+			if(!regex[index].available)
 				continue;
 
-			regfree(&regex[regexid][index]);
+			regfree(&regex[index].regex);
 
 			// Also free buffered regex strings
-			if(regexbuffer[regexid][index] != NULL)
+			if(regex[index].string != NULL)
 			{
-				free(regexbuffer[regexid][index]);
-				regexbuffer[regexid][index] = NULL;
+				free(regex[index].string);
+				regex[index].string = NULL;
 			}
 		}
 
 		// Free array with regex datastructure
-		if(regex[regexid] != NULL)
+		if(regex != NULL)
 		{
-			free(regex[regexid]);
-			regex[regexid] = NULL;
+			free(regex);
+			regex = NULL;
 		}
 
 		// Reset counter for number of regex
@@ -231,10 +249,10 @@ void allocate_regex_client_enabled(clientsData *client, const int clientID)
 	if(!startup)
 	{
 		gravityDB_get_regex_client_groups(client, counters->num_regex[REGEX_BLACKLIST],
-		                                  regex_id[REGEX_BLACKLIST], REGEX_BLACKLIST,
+		                                  black_regex, REGEX_BLACKLIST,
 		                                  "vw_regex_blacklist", clientID);
 		gravityDB_get_regex_client_groups(client, counters->num_regex[REGEX_WHITELIST],
-		                                  regex_id[REGEX_WHITELIST], REGEX_WHITELIST,
+		                                  white_regex, REGEX_WHITELIST,
 		                                  "vw_regex_whitelist", clientID);
 	}
 }
@@ -258,16 +276,18 @@ static void read_regex_table(const enum regex_type regexid)
 		return;
 	}
 
-	// Store number of regex domains of this type
-	counters->num_regex[regexid] = count;
-
 	// Allocate memory for regex
-	regex[regexid] = calloc(counters->num_regex[regexid], sizeof(regex_t));
-	regex_id[regexid] = calloc(counters->num_regex[regexid], sizeof(int));
-	regex_available[regexid] = calloc(counters->num_regex[regexid], sizeof(bool));
-
-	// Buffer strings
-	regexbuffer[regexid] = calloc(counters->num_regex[regexid], sizeof(char*));
+	struct regex_data *regex = NULL;
+	if(regexid == REGEX_BLACKLIST)
+	{
+		black_regex = calloc(count, sizeof(struct regex_data));
+		regex = black_regex;
+	}
+	else
+	{
+		white_regex = calloc(count, sizeof(struct regex_data));
+		regex = white_regex;
+	}
 
 	// Connect to regex table
 	if(!gravityDB_getTable(tableID))
@@ -280,15 +300,14 @@ static void read_regex_table(const enum regex_type regexid)
 	// Walk database table
 	const char *domain = NULL;
 	int rowid = 0;
-	unsigned int i = 0;
 	while((domain = gravityDB_getDomain(&rowid)) != NULL)
 	{
 		// Avoid buffer overflow if database table changed
 		// since we counted its entries
-		if(i >= counters->num_regex[regexid])
+		if(counters->num_regex[regexid] >= (unsigned int)count)
 		{
-			logg("INFO: read_regex_table(%s) exiting early to avoid overflow.",
-			     regexid == REGEX_BLACKLIST ? "black" : "white");
+			logg("INFO: read_regex_table(%s) exiting early to avoid overflow (%d/%d).",
+			     regextype[regexid], counters->num_regex[regexid], count);
 			break;
 		}
 
@@ -305,13 +324,11 @@ static void read_regex_table(const enum regex_type regexid)
 		if(config.debug & DEBUG_REGEX)
 		{
 			logg("Compiling %s regex %i (DB ID %i): %s",
-			     regextype[regexid], i, rowid, domain);
+			     regextype[regexid], counters->num_regex[regexid]-1, rowid, domain);
 		}
-		regex_available[regexid][i] = compile_regex(domain, i, regexid, rowid);
-		regex_id[regexid][i] = rowid;
 
-		// Increase counter
-		i++;
+		compile_regex(domain, regexid);
+		regex[counters->num_regex[regexid]-1].database_id = rowid;
 	}
 
 	// Finalize statement and close gravity database handle
@@ -377,9 +394,9 @@ int regex_test(const bool debug_mode, const bool quiet, const char *domainin, co
 		read_regex_table(REGEX_WHITELIST);
 		log_ctrl(false, !quiet); // Re-apply quiet option after compilation
 		logg("    Compiled %i black- and %i whitelist regex filters in %.3f msec\n",
-			counters->num_regex[REGEX_BLACKLIST],
-			counters->num_regex[REGEX_WHITELIST],
-			timer_elapsed_msec(REGEX_TIMER));
+		     counters->num_regex[REGEX_BLACKLIST],
+		     counters->num_regex[REGEX_WHITELIST],
+		     timer_elapsed_msec(REGEX_TIMER));
 
 		// Check user-provided domain against all loaded regular blacklist expressions
 		logg("%s Checking domain against blacklist...", cli_info());
@@ -399,21 +416,13 @@ int regex_test(const bool debug_mode, const bool quiet, const char *domainin, co
 	{
 		// Compile CLI regex
 		logg("%s Compiling regex filter...", cli_info());
-		counters->num_regex[REGEX_BLACKLIST] = counters->num_regex[REGEX_WHITELIST] = 0;
 		counters->num_regex[REGEX_CLI] = 1;
-
-		// Allocate memory for regex
-		regex[REGEX_CLI] = calloc(counters->num_regex[REGEX_CLI], sizeof(regex_t));
-		regex_id[REGEX_CLI] = calloc(counters->num_regex[REGEX_CLI], sizeof(int));
-		regex_available[REGEX_CLI] = calloc(counters->num_regex[REGEX_CLI], sizeof(bool));
-		regexbuffer[REGEX_CLI] = calloc(counters->num_regex[REGEX_CLI], sizeof(char*));
+		cli_regex = calloc(1, sizeof(struct regex_data));
 
 		// Compile CLI regex
 		timer_start(REGEX_TIMER);
 		log_ctrl(false, true); // Temporarily re-enable terminal output for error logging
-		if(compile_regex(regexin, 0, REGEX_CLI, -1))
-			regex_available[REGEX_CLI][0] = true;
-		else
+		if(!compile_regex(regexin, REGEX_CLI))
 			return EXIT_FAILURE;
 		log_ctrl(false, !quiet); // Re-apply quiet option after compilation
 		logg("    Compiled regex filter in %.3f msec\n", timer_elapsed_msec(REGEX_TIMER));

@@ -15,6 +15,19 @@
 
 extern const char *regextype[];
 
+#ifdef USE_TRE_REGEX
+#include "tre-regex/regex.h"
+#else
+#include <regex.h>
+#endif
+
+struct regex_data {
+	regex_t regex;
+	char *string;
+	int database_id;
+	bool available;
+};
+
 int match_regex(const char *input, const int clientID, const enum regex_type, const bool regextest);
 void allocate_regex_client_enabled(clientsData *client, const int clientID);
 void read_regex_from_database(void);

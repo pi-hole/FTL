@@ -103,6 +103,8 @@ enum blocking_status {
 } __attribute__ ((packed));
 
 // Blocking status constants used by the dns_cache->blocking_status vector
+// We explicitly force UNKNOWN_BLOCKED to zero on all platforms as this is the
+// default value set initially with calloc
 enum domain_client_status {
 	UNKNOWN_BLOCKED = 0,
 	GRAVITY_BLOCKED,

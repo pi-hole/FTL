@@ -865,7 +865,7 @@ bool in_auditlist(const char *domain)
 	return domain_in_list(domain, auditlist_stmt, "auditlist");
 }
 
-bool gravityDB_get_regex_client_groups(clientsData* client, const int numregex, const int *regexid,
+bool gravityDB_get_regex_client_groups(clientsData* client, const unsigned int numregex, const struct regex_data *regex,
                                        const unsigned char type, const char* table, const int clientID)
 {
 	char *querystr = NULL;
@@ -896,17 +896,17 @@ bool gravityDB_get_regex_client_groups(clientsData* client, const int numregex, 
 	while((rc = sqlite3_step(query_stmt)) == SQLITE_ROW)
 	{
 		const int result = sqlite3_column_int(query_stmt, 0);
-		for(int regexID = 0; regexID < numregex; regexID++)
+		for(unsigned int regexID = 0; regexID < numregex; regexID++)
 		{
-			if(regexid[regexID] == result)
+			if(regex[regexID].database_id == result)
 			{
+				// Regular expressions are stored in one array
 				if(type == REGEX_WHITELIST)
 					regexID += counters->num_regex[REGEX_BLACKLIST];
-
 				set_per_client_regex(clientID, regexID, true);
 
 				if(config.debug & DEBUG_REGEX)
-					logg("Regex %s: Enabling regex with DB ID %i for client %s", regextype[type], regexid[regexID], getstr(client->ippos));
+					logg("Regex %s: Enabling regex with DB ID %i for client %s", regextype[type], result, getstr(client->ippos));
 
 				break;
 			}
