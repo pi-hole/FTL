@@ -98,6 +98,10 @@ static bool compile_regex(const char *regexin, const enum regex_type regexid)
 				free(extra);
 				extra = NULL;
 			}
+			else if(strcasecmp(part, "invert") == 0)
+			{
+				regex[index].inverted = true;
+			}
 		}
 		free(buf);
 	}
@@ -179,16 +183,15 @@ int match_regex(const char *input, const DNSCacheData* dns_cache, const int clie
 
 		// Try to match the compiled regular expression against input
 #ifdef USE_TRE_REGEX
-		int errcode = tre_regexec(&regex[index].regex, input, 0, &match, 0);
+		int retval = tre_regexec(&regex[index].regex, input, 0, &match, 0);
 #else
-		int errcode = regexec(&regex[index].regex, input, 0, NULL, 0);
+		int retval = regexec(&regex[index].regex, input, 0, NULL, 0);
 #endif
-		// regexec() returns zero for a successful match or REG_NOMATCH for failure.
-		// We are only interested in the matching case here.
-		if (errcode == 0)
+		// regexec() returns REG_OK for a successful match or REG_NOMATCH for failure.
+		if ((retval == REG_OK && !regex[index].inverted) ||
+		    (retval == REG_NOMATCH && regex[index].inverted))
 		{
 			// Check possible additional regex settings
-			logg("match-regex: dns_cache: %p", dns_cache);
 			if(dns_cache != NULL)
 			{
 				// Check query type filtering
@@ -204,6 +207,7 @@ int match_regex(const char *input, const DNSCacheData* dns_cache, const int clie
 					continue;
 				}
 			}
+
 			// Match, return true
 			match_idx = regex[index].database_id;
 
