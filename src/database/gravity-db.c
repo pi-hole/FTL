@@ -36,7 +36,7 @@ static sqlite3_stmt* auditlist_stmt = NULL;
 bool gravityDB_opened = false;
 
 // Table names corresponding to the enum defined in gravity-db.h
-static const char* tablename[] = { "vw_gravity", "vw_blacklist", "vw_whitelist", "vw_regex_blacklist", "vw_regex_whitelist" , ""};
+static const char* tablename[] = { "vw_gravity", "vw_blacklist", "vw_whitelist", "vw_regex_blacklist", "vw_regex_whitelist" , "" };
 
 // Prototypes from functions in dnsmasq's source
 void rehash(int size);
@@ -611,7 +611,7 @@ void gravityDB_finalizeTable(void)
 // Get number of domains in a specified table of the gravity database
 // We return the constant DB_FAILED and log to pihole-FTL.log if we
 // encounter any error
-int gravityDB_count(const unsigned char list)
+int gravityDB_count(const enum gravity_tables list)
 {
 	if(!gravityDB_opened && !gravityDB_open())
 	{
@@ -619,31 +619,37 @@ int gravityDB_count(const unsigned char list)
 		return DB_FAILED;
 	}
 
-	// Checking for smaller than GRAVITY_LIST is omitted due to list being unsigned
-	if(list >= UNKNOWN_TABLE)
+	const char *querystr = NULL;
+	// Build query string to be used depending on list to be read
+	switch (list)
 	{
-		logg("gravityDB_getTable(%u): Requested list is not known!", list);
-		return false;
-	}
-
-	char *querystr = NULL;
-	// Build correct query string to be used depending on list to be read
-	if(list != GRAVITY_TABLE && asprintf(&querystr, "SELECT COUNT(DISTINCT domain) FROM %s", tablename[list]) < 18)
-	{
-		logg("readGravity(%u) - asprintf() error", list);
-		return false;
-	}
-	// We get the number of unique gravity domains as counted and stored by gravity. Counting the number
-	// of distinct domains in vw_gravity may take up to several minutes for very large blocking lists on
-	// very low-end devices such as the Raspierry Pi Zero
-	else if(list == GRAVITY_TABLE && asprintf(&querystr, "SELECT value FROM info WHERE property = 'gravity_count';") < 18)
-	{
-		logg("readGravity(%u) - asprintf() error", list);
-		return false;
+		case GRAVITY_TABLE:
+			// We get the number of unique gravity domains as counted and stored by gravity. Counting the number
+			// of distinct domains in vw_gravity may take up to several minutes for very large blocking lists on
+			// very low-end devices such as the Raspierry Pi Zero
+			querystr = "SELECT value FROM info WHERE property = 'gravity_count';";
+			break;
+		case EXACT_BLACKLIST_TABLE:
+			querystr = "SELECT COUNT(DISTINCT domain) FROM vw_blacklist";
+			break;
+		case EXACT_WHITELIST_TABLE:
+			querystr = "SELECT COUNT(DISTINCT domain) FROM vw_whitelist";
+			break;
+		case REGEX_BLACKLIST_TABLE:
+			querystr = "SELECT COUNT(DISTINCT domain) FROM vw_regex_blacklist";
+			break;
+		case REGEX_WHITELIST_TABLE:
+			querystr = "SELECT COUNT(DISTINCT domain) FROM vw_regex_whitelist";
+			break;
+		case UNKNOWN_TABLE:
+			logg("Error: List type %u unknown!", list);
+			gravityDB_close();
+			return DB_FAILED;
 	}
 
 	if(config.debug & DEBUG_DATABASE)
-		logg("Querying count of distinct domains in gravity database table %s", tablename[list]);
+		logg("Querying count of distinct domains in gravity database table %s: %s",
+		     tablename[list], querystr);
 
 	// Prepare query
 	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &table_stmt, NULL);
@@ -651,7 +657,6 @@ int gravityDB_count(const unsigned char list)
 		logg("gravityDB_count(%s) - SQL error prepare %s", querystr, sqlite3_errstr(rc));
 		gravityDB_finalizeTable();
 		gravityDB_close();
-		free(querystr);
 		return DB_FAILED;
 	}
 
@@ -665,7 +670,6 @@ int gravityDB_count(const unsigned char list)
 		}
 		gravityDB_finalizeTable();
 		gravityDB_close();
-		free(querystr);
 		return DB_FAILED;
 	}
 
@@ -675,8 +679,7 @@ int gravityDB_count(const unsigned char list)
 	// Finalize statement
 	gravityDB_finalizeTable();
 
-	// Free allocated memory and return result
-	free(querystr);
+	// Return result
 	return result;
 }
 
