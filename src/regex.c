@@ -99,11 +99,29 @@ static bool compile_regex(const char *regexin, const enum regex_type regexid)
 				// Nothing found
 				if(regex[index].query_type == 0)
 					logg("WARNING: Unknown query type: \"%s\"", extra);
+
+				// Debug output
+				else if(config.debug & DEBUG_REGEX)
+				{
+					logg("   This regex will %s match query type %s",
+					     regex[index].query_type_inverted ? "NOT" : "ONLY",
+					     querytypes[regex[index].query_type]);
+				}
 			}
 			// option: ";invert"
 			else if(strcasecmp(part, "invert") == 0)
 			{
 				regex[index].inverted = true;
+
+				// Debug output
+				if(config.debug & DEBUG_REGEX)
+				{
+					logg("   This regex will match in inverted mode.");
+				}
+			}
+			else
+			{
+				logg("   Option \"%s\" not known, ignoring it.", part);
 			}
 		}
 		free(buf);

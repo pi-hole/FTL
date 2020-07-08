@@ -628,6 +628,57 @@
   [[ $status == 2 ]]
 }
 
+@test "Regex Test 37: Option \"^localhost$;querytype=A\" working as expected (ONLY matching A queries)" {
+  run bash -c 'sqlite3 /etc/pihole/gravity.db "INSERT INTO domainlist (type,domain) VALUES (3,\"^localhost$;querytype=A\");"'
+  printf "sqlite3 INSERT: %s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+  run bash -c 'kill -RTMIN $(pidof -s pihole-FTL)'
+  printf "reload: %s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+  run bash -c 'dig A localhost @127.0.0.1 +short'
+  printf "dig A: %s\n" "${lines[@]}"
+  [[ ${lines[0]} == "0.0.0.0" ]]
+  run bash -c 'dig AAAA localhost @127.0.0.1 +short'
+  printf "dig AAAA: %s\n" "${lines[@]}"
+  [[ ${lines[0]} != "::" ]]
+  run bash -c 'sqlite3 /etc/pihole/gravity.db "DELETE FROM domainlist WHERE domain = \"^localhost$;querytype=A\";"'
+  printf "sqlite3 DELETE: %s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+  run bash -c 'kill -RTMIN $(pidof -s pihole-FTL)'
+  printf "reload: %s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+}
+
+@test "Regex Test 38: Option \"^localhost$;querytype=!A\" working as expected (NOT matching A queries)" {
+  run bash -c 'sqlite3 /etc/pihole/gravity.db "INSERT INTO domainlist (type,domain) VALUES (3,\"^localhost$;querytype=!A\");"'
+  printf "sqlite3 INSERT: %s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+  run bash -c 'kill -RTMIN $(pidof -s pihole-FTL)'
+  printf "reload: %s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+  run bash -c 'dig A localhost @127.0.0.1 +short'
+  printf "dig A: %s\n" "${lines[@]}"
+  [[ ${lines[0]} != "0.0.0.0" ]]
+  run bash -c 'dig AAAA localhost @127.0.0.1 +short'
+  printf "dig AAAA: %s\n" "${lines[@]}"
+  [[ ${lines[0]} == "::" ]]
+  run bash -c 'sqlite3 /etc/pihole/gravity.db "DELETE FROM domainlist WHERE domain = \"^localhost$;querytype=!A\";"'
+  printf "sqlite3 DELETE: %s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+  run bash -c 'kill -RTMIN $(pidof -s pihole-FTL)'
+  printf "reload: %s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+}
+
+@test "Regex Test 39: Option \";invert\" working as expected (match is inverted)" {
+  run bash -c './pihole-FTL -q regex-test "f" "g;invert"'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+  run bash -c './pihole-FTL -q regex-test "g" "g;invert"'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 2 ]]
+}
+
 # x86_64-musl is built on busybox which has a slightly different
 # variant of ls displaying three, instead of one, spaces between the
 # user and group names.

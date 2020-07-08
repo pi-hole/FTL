@@ -92,6 +92,7 @@ enum query_types {
 	TYPE_DS,
 	TYPE_RRSIG,
 	TYPE_DNSKEY,
+	TYPE_NS,
 	TYPE_OTHER,
 	TYPE_MAX
 } __attribute__ ((packed));

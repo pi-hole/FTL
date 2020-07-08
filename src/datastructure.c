@@ -20,7 +20,7 @@
 #include "database/message-table.h"
 
 const char *querytypes[TYPE_MAX] = {"UNKNOWN", "A", "AAAA", "ANY", "SRV", "SOA", "PTR", "TXT",
-                                    "NAPTR", "MX", "DS", "RRSIG", "DNSKEY", "OTHER"};
+                                    "NAPTR", "MX", "DS", "RRSIG", "DNSKEY", "NS", "OTHER"};
 
 // converts upper to lower case, and leaves other characters unchanged
 void strtolower(char *str)
