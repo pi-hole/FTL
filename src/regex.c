@@ -74,29 +74,19 @@ static bool compile_regex(const char *regexin, const enum regex_type regexid)
 		// Analyze FTL-specific parts
 		while((part = strtok_r(NULL, FTL_REGEX_SEP, &saveptr)) != NULL)
 		{
-			char *extra;
-			if(sscanf(part, "querytype=%4ms", &extra))
+			char extra[5] = { 0 };
+			if(sscanf(part, "querytype=%4s", extra))
 			{
-				if(strcasecmp(extra, "A") == 0)
-					regex[index].query_type = TYPE_A;
-				else if(strcasecmp(extra, "AAAA") == 0)
-					regex[index].query_type = TYPE_AAAA;
-				else if(strcasecmp(extra, "ANY") == 0)
-					regex[index].query_type = TYPE_ANY;
-				else if(strcasecmp(extra, "SRV") == 0)
-					regex[index].query_type = TYPE_SRV;
-				else if(strcasecmp(extra, "SOA") == 0)
-					regex[index].query_type = TYPE_SOA;
-				else if(strcasecmp(extra, "PTR") == 0)
-					regex[index].query_type = TYPE_PTR;
-				else if(strcasecmp(extra, "TXT") == 0)
-					regex[index].query_type = TYPE_TXT;
-				else if(strcasecmp(extra, "NAPTR") == 0)
-					regex[index].query_type = TYPE_NAPTR;
-				else
+				for(enum query_types type = TYPE_A; type < TYPE_MAX; type++)
+				{
+					if(strcasecmp(extra, querytypes[type]) == 0)
+					{
+						regex[index].query_type = type;
+						break;
+					}
+				}
+				if(regex[index].query_type != 0)
 					logg("WARNING: Unknown query type: \"%s\"", extra);
-				free(extra);
-				extra = NULL;
 			}
 			else if(strcasecmp(part, "invert") == 0)
 			{
