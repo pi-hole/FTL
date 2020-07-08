@@ -572,7 +572,7 @@ void getQueryTypes(const int *sock)
 	int total = 0;
 	for(enum query_types type = TYPE_A; type < TYPE_MAX; type++)
 	{
-		total += counters->querytype[type];
+		total += counters->querytype[type - 1];
 	}
 
 	float percentage[TYPE_MAX] = { 0.0 };
@@ -582,7 +582,7 @@ void getQueryTypes(const int *sock)
 	{
 		for(enum query_types type = TYPE_A; type < TYPE_MAX; type++)
 		{
-			percentage[type] = 1e2f*counters->querytype[type-1]/total;
+			percentage[type] = 1e2f*counters->querytype[type - 1]/total;
 		}
 	}
 
