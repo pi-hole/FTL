@@ -98,7 +98,8 @@ static bool compile_regex(const char *regexin, const enum regex_type regexid)
 				}
 				// Nothing found
 				if(regex[index].query_type == 0)
-					logg("WARNING: Unknown query type: \"%s\"", extra);
+					logg_regex_warning(regextype[regexid], "Unknown querytype",
+					                   regex[index].database_id, regexin);
 
 				// Debug output
 				else if(config.debug & DEBUG_REGEX)
