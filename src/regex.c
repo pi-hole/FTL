@@ -74,20 +74,33 @@ static bool compile_regex(const char *regexin, const enum regex_type regexid)
 		// Analyze FTL-specific parts
 		while((part = strtok_r(NULL, FTL_REGEX_SEP, &saveptr)) != NULL)
 		{
-			char extra[5] = { 0 };
-			if(sscanf(part, "querytype=%4s", extra))
+			char extra[17] = { 0 };
+			// options ";querytype=!AAAA" and ";querytype=AAAA"
+			if(sscanf(part, "querytype=%16s", extra))
 			{
+				// Test input string against all implemented query types
 				for(enum query_types type = TYPE_A; type < TYPE_MAX; type++)
 				{
+					// Check for querytype
 					if(strcasecmp(extra, querytypes[type]) == 0)
 					{
 						regex[index].query_type = type;
+						regex[index].query_type_inverted = false;
+						break;
+					}
+					// Check for INVERTED querytype
+					else if(extra[0] == '!' && strcasecmp(extra + 1u, querytypes[type]) == 0)
+					{
+						regex[index].query_type = type;
+						regex[index].query_type_inverted = true;
 						break;
 					}
 				}
-				if(regex[index].query_type != 0)
+				// Nothing found
+				if(regex[index].query_type == 0)
 					logg("WARNING: Unknown query type: \"%s\"", extra);
 			}
+			// option: ";invert"
 			else if(strcasecmp(part, "invert") == 0)
 			{
 				regex[index].inverted = true;
@@ -184,17 +197,22 @@ int match_regex(const char *input, const DNSCacheData* dns_cache, const int clie
 			// Check possible additional regex settings
 			if(dns_cache != NULL)
 			{
+				logg("%d %d",regex[index].query_type,dns_cache->query_type);
 				// Check query type filtering
-				if(regex[index].query_type != 0 && regex[index].query_type != dns_cache->query_type)
+				if(regex[index].query_type != 0)
 				{
-					if(config.debug & DEBUG_REGEX)
+					if((!regex[index].query_type_inverted && regex[index].query_type != dns_cache->query_type) ||
+					    (regex[index].query_type_inverted && regex[index].query_type == dns_cache->query_type))
 					{
-						logg("Regex %s (%u, DB ID %i) NO match: \"%s\" vs. \"%s\""
-						     " (skipped because of query type mismatch)",
-						regextype[regexid], index, regex[index].database_id,
-						input, regex[index].string);
+						if(config.debug & DEBUG_REGEX)
+						{
+							logg("Regex %s (%u, DB ID %i) NO match: \"%s\" vs. \"%s\""
+								" (skipped because of query type %smatch)",
+							regextype[regexid], index, regex[index].database_id,
+							input, regex[index].string, regex[index].query_type_inverted ? "inversion " : "mis");
+						}
+						continue;
 					}
-					continue;
 				}
 			}
 

@@ -19,8 +19,8 @@
 // flush_message_table()
 #include "database/message-table.h"
 
-const char *querytypes[TYPE_MAX] = {"A", "AAAA", "ANY", "SRV", "SOA", "PTR", "TXT", "NAPTR",
-                                    "MX", "DS", "RRSIG", "DNSKEY", "OTHER", "UNKNOWN"};
+const char *querytypes[TYPE_MAX] = {"UNKNOWN", "A", "AAAA", "ANY", "SRV", "SOA", "PTR", "TXT",
+                                    "NAPTR", "MX", "DS", "RRSIG", "DNSKEY", "OTHER"};
 
 // converts upper to lower case, and leaves other characters unchanged
 void strtolower(char *str)

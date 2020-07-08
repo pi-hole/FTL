@@ -25,12 +25,13 @@ extern const char *regextype[];
 #endif
 
 typedef struct regex_data {
-	regex_t regex;
-	char *string;
-	int database_id;
 	bool available;
 	bool inverted;
+	bool query_type_inverted;
+	char *string;
+	int database_id;
 	enum query_types query_type;
+	regex_t regex;
 } regex_data;
 
 struct query_details {
