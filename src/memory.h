@@ -10,7 +10,8 @@
 #ifndef MEMORY_H
 #define MEMORY_H
 
-void memory_check(const int which);
+#include "enums.h"
+
 char *FTLstrdup(const char *src, const char *file, const char *function, const int line) __attribute__((malloc));
 void *FTLcalloc(size_t nmemb, size_t size, const char *file, const char *function, const int line) __attribute__((malloc)) __attribute__((alloc_size(1,2)));
 void *FTLrealloc(void *ptr_in, size_t size, const char *file, const char *function, const int line) __attribute__((alloc_size(2)));
