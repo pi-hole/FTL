@@ -49,6 +49,13 @@ echo -e "log-queries\nlog-facility=/var/log/pihole.log" > /etc/dnsmasq.conf
 OLDUMASK=$(umask)
 umask 0022
 
+# Terminate running FTL instance (if any)
+if pidof pihole-FTL &> /dev/null; then
+  echo "Terminating running pihole-FTL instance"
+  killall pihole-FTL
+  sleep 2
+fi
+
 # Start FTL
 if ! su pihole -s /bin/sh -c /home/pihole/pihole-FTL; then
   echo "pihole-FTL failed to start"
