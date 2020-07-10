@@ -12,9 +12,22 @@
 
 #include "sqlite3.h"
 
+// Database table "ftl"
+enum ftl_table_props {
+	DB_VERSION,
+	DB_LASTTIMESTAMP,
+	DB_FIRSTCOUNTERTIMESTAMP
+} __attribute__ ((packed));
+
+// Database table "counters"
+enum counters_table_props {
+	DB_TOTALQUERIES,
+	DB_BLOCKEDQUERIES
+} __attribute__ ((packed));
+
 void db_init(void);
-int db_get_FTL_property(const unsigned int ID);
-bool db_set_FTL_property(const unsigned int ID, const int value);
+int db_get_FTL_property(const enum ftl_table_props ID);
+bool db_set_FTL_property(const enum ftl_table_props ID, const int value);
 
 /// Execute a formatted SQL query and get the return code
 int dbquery(const char *format, ...);
@@ -26,7 +39,7 @@ int db_query_int(const char*);
 long get_lastID(void);
 void SQLite3LogCallback(void *pArg, int iErrCode, const char *zMsg);
 long int get_max_query_ID(void);
-bool db_set_counter(const unsigned int ID, const int value);
+bool db_set_counter(const enum counters_table_props ID, const int value);
 bool db_update_counters(const int total, const int blocked);
 const char *get_sqlite3_version(void);
 bool use_database(void)  __attribute__ ((pure));
@@ -58,10 +71,5 @@ extern bool DBdeleteoldqueries;
 		return;\
 	}\
 }
-
-// Database table "ftl"
-enum { DB_VERSION, DB_LASTTIMESTAMP, DB_FIRSTCOUNTERTIMESTAMP };
-// Database table "counters"
-enum { DB_TOTALQUERIES, DB_BLOCKEDQUERIES };
 
 #endif //DATABASE_COMMON_H

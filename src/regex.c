@@ -194,7 +194,7 @@ void allocate_regex_client_enabled(clientsData *client, const int clientID)
 	}
 }
 
-static void read_regex_table(const unsigned char regexid)
+static void read_regex_table(const enum regex_id regexid)
 {
 	// Get table ID
 	const enum gravity_tables tableID = (regexid == REGEX_BLACKLIST) ? REGEX_BLACKLIST_TABLE : REGEX_WHITELIST_TABLE;

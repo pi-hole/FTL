@@ -9,6 +9,7 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
+#include "enums.h"
 #include "memory.h"
 #include "shmem.h"
 #include "datastructure.h"
@@ -1368,14 +1369,17 @@ void getDomainDetails(const char *client_message, const int *sock)
 					case UNKNOWN_BLOCKED:
 						str = "unknown";
 						break;
-					case BLACKLIST_BLOCKED:
-						str = "blacklisted";
-						break;
 					case GRAVITY_BLOCKED:
 						str = "gravity";
 						break;
+					case BLACKLIST_BLOCKED:
+						str = "blacklisted";
+						break;
 					case REGEX_BLOCKED:
 						str = "regex";
+						break;
+					case WHITELISTED:
+						str = "whitelisted";
 						break;
 					case NOT_BLOCKED:
 						str = "not blocked";
