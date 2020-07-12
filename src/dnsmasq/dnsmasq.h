@@ -944,6 +944,7 @@ struct shared_network {
 #define CONTEXT_OLD            (1u<<16)
 #define CONTEXT_V6             (1u<<17)
 #define CONTEXT_RA_OFF_LINK    (1u<<18)
+#define CONTEXT_SETLEASE       (1u<<19)
 
 struct ping_result {
   struct in_addr addr;
