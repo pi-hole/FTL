@@ -163,7 +163,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			}
 
 			// Do not block if the entire query is to be permitted
-			// as sometving along the CNAME path hit the whitelist
+			// as something along the CNAME path hit the whitelist
 			if(!query->whitelisted)
 			{
 				query_blocked(query, domain, client, QUERY_BLACKLIST);
@@ -357,7 +357,7 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 
 	// If we find during a CNAME inspection that we want to block the entire chain,
 	// the originally queried domain itself was not counted as blocked (but as
-	// (permitted). Later in the chain, when we find that this is a bad guy, we
+	// permitted). Later in the chain, when we find that this is a bad guy, we
 	// short-circuit it. We need to correct the domain counter of the domain at the
 	// head of the chain, otherwise, the data for the top lists is misleading.
 	// For this, we go back the entire path and change the original request to blocked

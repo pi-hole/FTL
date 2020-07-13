@@ -85,7 +85,7 @@ void DB_save_queries(void)
 		return;
 	}
 
-	rc = sqlite3_prepare_v2(FTL_db, "INSERT INTO queries VALUES (NULL,?,?,?,?,?,?)", -1, &stmt, NULL);
+	rc = sqlite3_prepare_v2(FTL_db, "INSERT INTO queries VALUES (NULL,?,?,?,?,?,?,?)", -1, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
 		const char *text, *spaces;
@@ -167,6 +167,21 @@ void DB_save_queries(void)
 		else
 		{
 			sqlite3_bind_null(stmt, 6);
+		}
+
+		// Fill additional information column
+		if(query->status == QUERY_GRAVITY_CNAME ||
+		   query->status == QUERY_REGEX_CNAME ||
+		   query->status == QUERY_BLACKLIST_CNAME)
+		{
+			// Get domain blocked during deep CNAME inspection, if applicable
+			const char* cname = getCNAMEDomainString(query);
+			sqlite3_bind_text(stmt, 7, cname, -1, SQLITE_STATIC);
+		}
+		else
+		{
+			// Nothing to add here
+			sqlite3_bind_null(stmt, 7);
 		}
 
 		// Step and check if successful
