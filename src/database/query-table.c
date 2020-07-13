@@ -474,15 +474,28 @@ void DB_read_queries(void)
 				counters->unknown++;
 				break;
 
+			case QUERY_GRAVITY_CNAME: // Blocked by gravity (inside CNAME path)
+			case QUERY_REGEX_CNAME: // Blocked by regex blacklist (inside CNAME path)
+			case QUERY_BLACKLIST_CNAME: // Blocked by exact blacklist (inside CNAME path)
+			{
+				// Load domain actually causing the blocking from the database
+				const char *CNAMEdomain = (const char *)sqlite3_column_text(stmt, 7);
+				if(CNAMEdomain != NULL && strlen(CNAMEdomain) > 0)
+				{
+					// Add domain to FTL's memory but do not count it. Seeing a
+					// domain in the middle of a CNAME trajectory does not mean
+					// it was queried intentionally.
+					const int CNAMEdomainID = findDomainID(CNAMEdomain, false);
+					query->CNAME_domainID = CNAMEdomainID;
+				}
+			}
+			// fall through
 			case QUERY_GRAVITY: // Blocked by gravity
 			case QUERY_REGEX: // Blocked by regex blacklist
 			case QUERY_BLACKLIST: // Blocked by exact blacklist
 			case QUERY_EXTERNAL_BLOCKED_IP: // Blocked by external provider
 			case QUERY_EXTERNAL_BLOCKED_NULL: // Blocked by external provider
 			case QUERY_EXTERNAL_BLOCKED_NXRA: // Blocked by external provider
-			case QUERY_GRAVITY_CNAME: // Blocked by gravity
-			case QUERY_REGEX_CNAME: // Blocked by regex blacklist
-			case QUERY_BLACKLIST_CNAME: // Blocked by exact blacklist
 				counters->blocked++;
 				// Get domain pointer
 				domainsData* domain = getDomain(domainID, true);
