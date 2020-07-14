@@ -1819,6 +1819,15 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 				FTL_cache(crecp->flags & ~F_REVERSE, name, &crecp->addr,
 				          record_source(crecp->uid),
 				          daemon->log_display_id);
+				// ****************************** Pi-hole modification ******************************
+				if(FTL_CNAME(name, crecp, daemon->log_display_id))
+		  		  {
+		  		    // This query is to be blocked as we found a blocked domain while walking the CNAME path.
+		  		    // Log to pihole.log: "cached domainabc.com is blocked (Pi-hole CNAME inspection)"
+		  		    log_query(F_UPSTREAM, name, NULL, "blocked during CNAME inspection");
+		  		    break;
+		  		  }
+				// **********************************************************************************
 				
 				if (add_resource_record(header, limit, &trunc, nameoffset, &ansp, 
 							crec_ttl(crecp, now), NULL, type, C_IN, 
