@@ -477,12 +477,12 @@ struct crec *cache_insert(char *name, union all_addr *addr, unsigned short class
   if (flags & (F_IPV4 | F_IPV6 | F_CNAME | F_SRV))
     {
       log_query(flags | F_UPSTREAM, name, addr, NULL);
+      FTL_reply(flags, name, addr, daemon->log_display_id);
       /* Don't mess with TTL for DNSSEC records. */
       if (daemon->max_cache_ttl != 0 && daemon->max_cache_ttl < ttl)
 	ttl = daemon->max_cache_ttl;
       if (daemon->min_cache_ttl != 0 && daemon->min_cache_ttl > ttl)
 	ttl = daemon->min_cache_ttl;
-      FTL_reply(flags, name, addr, daemon->log_display_id);
     }
   
   return really_insert(name, addr, class, now, ttl, flags);

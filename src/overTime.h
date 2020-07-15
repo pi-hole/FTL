@@ -11,6 +11,9 @@
 #ifndef OVERTIME_H
 #define OVERTIME_H
 
+// TYPE_MAX
+#include "datastructure.h"
+
 void initOverTime(void);
 unsigned int getOverTimeID(const time_t timestamp);
 

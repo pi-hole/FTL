@@ -248,7 +248,12 @@
   [[ ${lines[6]} == "PTR: 0.00" ]]
   [[ ${lines[7]} == "TXT: 9.09" ]]
   [[ ${lines[8]} == "NAPTR: 0.00" ]]
-  [[ ${lines[9]} == "" ]]
+  [[ ${lines[9]} == "MX: 0.00" ]]
+  [[ ${lines[10]} == "DS: 0.00" ]]
+  [[ ${lines[11]} == "RRSIG: 0.00" ]]
+  [[ ${lines[12]} == "DNSKEY: 0.00" ]]
+  [[ ${lines[13]} == "OTHER: 0.00" ]]
+  [[ ${lines[14]} == "" ]]
 }
 
 # Here and below: Acknowledge that there might be a host name after
@@ -358,7 +363,7 @@
 }
 
 @test "No WARNING messages in pihole-FTL.log (besides known capability issues)" {
-  run bash -c 'grep "WARNING:" /var/log/pihole-FTL.log | grep -c -v -E "CAP_NET_ADMIN|CAP_NET_RAW"'
+  run bash -c 'grep "WARNING:" /var/log/pihole-FTL.log | grep -c -v -E "CAP_NET_ADMIN|CAP_NET_RAW|CAP_SYS_NICE"'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0" ]]
 }

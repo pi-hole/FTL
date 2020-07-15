@@ -22,6 +22,8 @@
 #include "database/network-table.h"
 // struct _res
 #include <resolv.h>
+// logg_hostname_warning()
+#include "database/message-table.h"
 
 static bool res_initialized = false;
 
@@ -45,8 +47,10 @@ static bool valid_hostname(char* name, const char* clientip)
 
 	// Iterate over characters in hostname
 	// to check for legal char: A-Z a-z 0-9 - _ .
-	for (char c; (c = *name); name++)
+	unsigned int len = strlen(name);
+	for (unsigned int i = 0; i < len; i++)
 	{
+		const char c = name[i];
 		if ((c >= 'A' && c <= 'Z') ||
 		    (c >= 'a' && c <= 'z') ||
 		    (c >= '0' && c <= '9') ||
@@ -56,8 +60,7 @@ static bool valid_hostname(char* name, const char* clientip)
 			continue;
 
 		// Invalid character found, log and return hostname being invalid
-		logg("WARN: Hostname of client %s contains invalid character: %c (char code %d)",
-		     clientip, (unsigned char)c, (unsigned char)c);
+		logg_hostname_warning(clientip, name, i);
 		return false;
 	}
 
@@ -107,8 +110,8 @@ static char *resolveHostname(const char *addr)
 		{
 			logg(" ---> \"\" (configured to not resolve %s host names)",
 			     IPv6 ? "IPv6" : "IPv4");
-			return strdup("");
 		}
+		return strdup("");
 	}
 
 	// Initialize resolver subroutines if trying to resolve for the first time
@@ -256,7 +259,8 @@ static size_t resolveAndAddHostname(size_t ippos, size_t oldnamepos)
 	char* newname = resolveHostname(ipaddr);
 
 	// If no hostname was found, try to obtain hostname from the network table
-	if(strlen(newname) == 0)
+	// This may be disabled due to a user setting
+	if(strlen(newname) == 0 && config.names_from_netdb)
 	{
 		free(newname);
 		newname = getDatabaseHostname(ipaddr);
@@ -302,17 +306,17 @@ void resolveClients(const bool onlynew)
 	int skipped = 0;
 	for(int clientID = 0; clientID < clientscount; clientID++)
 	{
-		// Get client pointer
+		// Memory access needs to get locked
+		lock_shm();
+		// Get client pointer for the first time (reading data)
 		clientsData* client = getClient(clientID, true);
 		if(client == NULL)
 		{
-			logg("ERROR: Unable to get client pointer with ID %i, skipping...", clientID);
+			logg("ERROR: Unable to get client pointer (1) with ID %i, skipping...", clientID);
 			skipped++;
 			continue;
 		}
 
-		// Memory access needs to get locked
-		lock_shm();
 		bool newflag = client->new;
 		size_t ippos = client->ippos;
 		size_t oldnamepos = client->namepos;
@@ -330,6 +334,18 @@ void resolveClients(const bool onlynew)
 		size_t newnamepos = resolveAndAddHostname(ippos, oldnamepos);
 
 		lock_shm();
+		// Get client pointer for the second time (writing data)
+		// We cannot use the same pointer again as we released
+		// the lock in between so we cannot know if something
+		// happened to the shared memory object (resize event)
+		client = getClient(clientID, true);
+		if(client == NULL)
+		{
+			logg("ERROR: Unable to get client pointer (2) with ID %i, skipping...", clientID);
+			skipped++;
+			continue;
+		}
+
 		// Store obtained host name (may be unchanged)
 		client->namepos = newnamepos;
 		// Mark entry as not new
@@ -355,7 +371,9 @@ void resolveForwardDestinations(const bool onlynew)
 	int skipped = 0;
 	for(int upstreamID = 0; upstreamID < upstreams; upstreamID++)
 	{
-		// Get upstream pointer
+		// Memory access needs to get locked
+		lock_shm();
+		// Get upstream pointer for the first time (reading data)
 		upstreamsData* upstream = getUpstream(upstreamID, true);
 		if(upstream == NULL)
 		{
@@ -364,8 +382,6 @@ void resolveForwardDestinations(const bool onlynew)
 			continue;
 		}
 
-		// Memory access needs to get locked
-		lock_shm();
 		bool newflag = upstream->new;
 		size_t ippos = upstream->ippos;
 		size_t oldnamepos = upstream->namepos;
@@ -383,6 +399,18 @@ void resolveForwardDestinations(const bool onlynew)
 		size_t newnamepos = resolveAndAddHostname(ippos, oldnamepos);
 
 		lock_shm();
+		// Get upstream pointer for the second time (writing data)
+		// We cannot use the same pointer again as we released
+		// the lock in between so we cannot know if something
+		// happened to the shared memory object (resize event)
+		upstream = getUpstream(upstreamID, true);
+		if(upstream == NULL)
+		{
+			logg("ERROR: Unable to get upstream pointer with ID %i, skipping...", upstreamID);
+			skipped++;
+			continue;
+		}
+
 		// Store obtained host name (may be unchanged)
 		upstream->namepos = newnamepos;
 		// Mark entry as not new

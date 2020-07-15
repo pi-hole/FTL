@@ -1010,6 +1010,7 @@ size_t setup_reply(struct dns_header *header, size_t qlen,
       union all_addr a;
       a.log.rcode = SERVFAIL;
       log_query(F_CONFIG | F_RCODE, "error", &a, NULL);
+      FTL_reply(flags, "error", &a, daemon->log_display_id);
       SET_RCODE(header, SERVFAIL);
     }
   else if (flags & ( F_IPV4 | F_IPV6))
@@ -1035,6 +1036,7 @@ size_t setup_reply(struct dns_header *header, size_t qlen,
       union all_addr a;
       a.log.rcode = REFUSED;
       log_query(F_CONFIG | F_RCODE, "error", &a, NULL);
+      FTL_reply(flags, "error", &a, daemon->log_display_id);
       SET_RCODE(header, REFUSED);
     }
   
@@ -1939,12 +1941,16 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 			    if (crecp->flags & F_NXDOMAIN)
 			      nxdomain = 1;
 			    if (!dryrun)
+			    {
 			      log_query(crecp->flags, name, NULL, NULL);
+			      FTL_cache(crecp->flags, name, NULL, NULL, daemon->log_display_id);
+			    }
 			  }
 			else if (!dryrun)
 			  {
 			    char *target = blockdata_retrieve(crecp->addr.srv.target, crecp->addr.srv.targetlen, NULL);
 			    log_query(crecp->flags, name, NULL, 0);
+			    FTL_cache(crecp->flags, name, NULL, NULL, daemon->log_display_id);
 			    
 			    if (add_resource_record(header, limit, &trunc, nameoffset, &ansp, 
 						    crec_ttl(crecp, now), NULL, T_SRV, C_IN, "sssd",

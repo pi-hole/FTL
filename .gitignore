@@ -8,8 +8,8 @@ pihole-FTL
 version*
 
 # CMake files
-/CMakeLists.txt
 /cmake-build-debug/
+/cmake-build-release/
 
 # IDE files
 .idea/

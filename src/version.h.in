@@ -1,0 +1,12 @@
+#ifndef VERSION_H
+#define VERSION_H
+
+#define GIT_VERSION "@GIT_VERSION@"
+#define GIT_DATE "@GIT_DATE@"
+#define GIT_BRANCH "@GIT_BRANCH@"
+#define GIT_TAG "@GIT_TAG@"
+#define GIT_HASH "@GIT_HASH@"
+#define FTL_ARCH "@FTL_ARCH@"
+#define FTL_CC "@FTL_CC@"
+
+#endif // VERSION_H

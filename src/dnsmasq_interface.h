@@ -15,10 +15,10 @@
 
 extern int socketfd, telnetfd4, telnetfd6;
 extern unsigned char* pihole_privacylevel;
-enum { TCP, UDP };
+enum protocol { TCP, UDP };
 
-#define FTL_new_query(flags, name, blockingreason, addr, types, id, type) _FTL_new_query(flags, name, blockingreason, addr, types, id, type, __FILE__, __LINE__)
-bool _FTL_new_query(const unsigned int flags, const char *name, const char** blockingreason, const union all_addr *addr, const char *types, const int id, const char type, const char* file, const int line);
+#define FTL_new_query(flags, name, blockingreason, addr, types, qtype, id, proto) _FTL_new_query(flags, name, blockingreason, addr, types, qtype, id, proto, __FILE__, __LINE__)
+bool _FTL_new_query(const unsigned int flags, const char *name, const char** blockingreason, const union all_addr *addr, const char *types, const unsigned short qtype, const int id, enum protocol proto, const char* file, const int line);
 
 #define FTL_forwarded(flags, name, addr, id) _FTL_forwarded(flags, name, addr, id, __FILE__, __LINE__)
 void _FTL_forwarded(const unsigned int flags, const char *name, const union all_addr *addr, const int id, const char* file, const int line);
@@ -51,7 +51,8 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 
 void FTL_dnsmasq_reload(void);
 void FTL_fork_and_bind_sockets(struct passwd *ent_pw);
-void FTL_TCP_worker_terminating(void);
+void FTL_TCP_worker_created(void);
+void FTL_TCP_worker_terminating(bool finished);
 
 void set_debug_dnsmasq_lines(char enabled);
 extern char debug_dnsmasq_lines;

@@ -16,6 +16,8 @@
 // enum REGEX
 #include "regex_r.h"
 #include "database/gravity-db.h"
+// flush_message_table()
+#include "database/message-table.h"
 
 // converts upper to lower case, and leaves other characters unchanged
 void strtolower(char *str)
@@ -195,6 +197,9 @@ int findClientID(const char *clientIP, const bool count)
 	// No query seen so far
 	client->lastQuery = 0;
 	client->numQueriesARP = client->count;
+	// Configured groups are yet unknown
+	client->found_group = false;
+	client->groupspos = 0u;
 
 	// Initialize client-specific overTime data
 	for(int i = 0; i < OVERTIME_SLOTS; i++)
@@ -369,6 +374,9 @@ void FTL_reset_per_client_domain_data(void)
 
 void FTL_reload_all_domainlists(void)
 {
+	// Flush messages stored in the long-term database
+	flush_message_table();
+
 	// (Re-)open gravity database connection
 	gravityDB_close();
 	gravityDB_open();

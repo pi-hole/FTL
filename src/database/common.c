@@ -9,9 +9,10 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
-#include "common.h"
+#include "database/common.h"
+#include "database/network-table.h"
+#include "database/message-table.h"
 #include "shmem.h"
-#include "network-table.h"
 #include "memory.h"
 #include "config.h"
 #include "log.h"
@@ -23,8 +24,14 @@ sqlite3 *FTL_db = NULL;
 bool database = true;
 bool DBdeleteoldqueries = false;
 long int lastdbindex = 0;
+static bool db_avail = false;
 
 static pthread_mutex_t dblock;
+
+__attribute__ ((pure)) bool FTL_DB_avail(void)
+{
+	return db_avail;
+}
 
 void dbclose(void)
 {
@@ -36,6 +43,8 @@ void dbclose(void)
 		FTL_db = NULL;
 	}
 
+	db_avail = false;
+
 	// Report any error
 	if( rc != SQLITE_OK )
 	{
@@ -43,14 +52,26 @@ void dbclose(void)
 		database = false;
 	}
 
+	if(config.debug & DEBUG_LOCKS)
+		logg("Unlocking database");
+
 	// Unlock mutex on the database
 	pthread_mutex_unlock(&dblock);
+
+	if(config.debug & DEBUG_LOCKS)
+		logg("Unlocking database: Success");
 }
 
 bool dbopen(void)
 {
+	if(config.debug & DEBUG_LOCKS)
+		logg("Locking database");
+
 	// Lock mutex on the database
 	pthread_mutex_lock(&dblock);
+
+	if(config.debug & DEBUG_LOCKS)
+		logg("Locking database: Success");
 
 	// Try to open database
 	int rc = sqlite3_open_v2(FTLfiles.FTL_db, &FTL_db, SQLITE_OPEN_READWRITE, NULL);
@@ -73,6 +94,8 @@ bool dbopen(void)
 		return false;
 	}
 
+	db_avail = true;
+
 	return true;
 }
 
@@ -91,7 +114,7 @@ int dbquery(const char *format, ...)
 
 	// Log generated SQL string when dbquery() is called
 	// although the database connection is not available
-	if(database == false || ( FTL_db == NULL && !dbopen() ))
+	if(FTL_db == NULL && !dbopen())
 	{
 		logg("dbquery(\"%s\") called but database is not available!", query);
 		sqlite3_free(query);
@@ -173,16 +196,6 @@ static bool db_create(void)
 	if(dbquery("INSERT INTO ftl (ID,VALUE) VALUES(%i,0);", DB_LASTTIMESTAMP) != SQLITE_OK)
 		return false;
 
-	// Create counter table
-	// Will update FTL_db version to 2
-	if(!create_counter_table())
-		return false;
-
-	// Create network table
-	// Will update FTL_db version to 3
-	if(!create_network_table())
-		return false;
-
 	// Done initializing the database
 	// Close database handle
 	dbclose();
@@ -225,15 +238,6 @@ void db_init(void)
 
 	// Register Pi-hole provided SQLite3 extensions (see sqlite3-ext.c)
 	sqlite3_auto_extension((void (*)(void))sqlite3_pihole_extensions_init);
-
-	// Only exit early if we already finished the SQLite3 library initialization
-	if(!use_database())
-	{
-		logg("Not using the long-term database");
-		pthread_mutex_unlock(&dblock);
-		database = false;
-		return;
-	}
 
 	// Check if database exists, if not create empty database
 	if(!file_exists(FTLfiles.FTL_db))
@@ -340,14 +344,40 @@ void db_init(void)
 		dbversion = db_get_FTL_property(DB_VERSION);
 	}
 
+	// Update to version 6 if lower
+	if(dbversion < 6)
+	{
+		// Update to version 6: Create message table
+		logg("Updating long-term database to version 6");
+		if(!create_message_table())
+		{
+			logg("Message table not initialized, database not available");
+			dbclose();
+
+			database = false;
+			return;
+		}
+		// Get updated version
+		dbversion = db_get_FTL_property(DB_VERSION);
+	}
+
 	// Close database to prevent having it opened all time
 	// We already closed the database when we returned earlier
 	dbclose();
 
+	// Log if users asked us to not use the long-term database for queries
+	// We will still use it to store warnings in it
+	if(!use_database())
+	{
+		logg("Not using the long-term database for storing queries");
+		database = false;
+		return;
+	}
+
 	logg("Database successfully initialized");
 }
 
-int db_get_FTL_property(const unsigned int ID)
+int db_get_FTL_property(const enum ftl_table_props ID)
 {
 	if(!database || FTL_db == NULL)
 	{
@@ -370,7 +400,7 @@ int db_get_FTL_property(const unsigned int ID)
 	return value;
 }
 
-bool db_set_FTL_property(const unsigned int ID, const int value)
+bool db_set_FTL_property(const enum ftl_table_props ID, const int value)
 {
 	if(!database || FTL_db == NULL)
 	{
@@ -380,7 +410,7 @@ bool db_set_FTL_property(const unsigned int ID, const int value)
 	return dbquery("INSERT OR REPLACE INTO ftl (id, value) VALUES ( %u, %i );", ID, value) == SQLITE_OK;
 }
 
-bool db_set_counter(const unsigned int ID, const int value)
+bool db_set_counter(const enum counters_table_props ID, const int value)
 {
 	if(!database || FTL_db == NULL)
 	{

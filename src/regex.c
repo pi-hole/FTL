@@ -22,6 +22,7 @@
 #include "main.h"
 // add_per_client_regex_client()
 #include "shmem.h"
+#include "database/message-table.h"
 
 static regex_t *regex[2] = { NULL };
 static bool *regex_available[2] = { NULL };
@@ -30,27 +31,21 @@ static char **regexbuffer[2] = { NULL };
 
 const char *regextype[] = { "blacklist", "whitelist" };
 
-// Log Regex failure (most likely a regex syntax error, we include a hint to the error)
-static void log_regex_error(const int errcode, const int index, const unsigned char regexid, const char *regexin)
-{
-	// Get error string and log it
-	const size_t length = regerror(errcode, &regex[regexid][index], NULL, 0);
-	char *buffer = calloc(length,sizeof(char));
-	(void) regerror (errcode, &regex[regexid][index], buffer, length);
-	logg("Warning: Invalid regex %s filter \"%s\": %s (error code %i)", regextype[regexid], regexin, buffer, errcode);
-	free(buffer);
-}
-
 /* Compile regular expressions into data structures that can be used with
    regexec() to match against a string */
-static bool compile_regex(const char *regexin, const int index, const unsigned char regexid)
+static bool compile_regex(const char *regexin, const int index, const unsigned char regexid, const int dbindex)
 {
 	// We use the extended RegEx flavor (ERE) and specify that matching should
 	// always be case INsensitive
 	const int errcode = regcomp(&regex[regexid][index], regexin, REG_EXTENDED | REG_ICASE);
 	if(errcode != 0)
 	{
-		log_regex_error(errcode, index, regexid, regexin);
+		// Get error string and log it
+		const size_t length = regerror(errcode, &regex[regexid][index], NULL, 0);
+		char *buffer = calloc(length, sizeof(char));
+		(void) regerror (errcode, &regex[regexid][index], buffer, length);
+		logg_regex_warning(regextype[regexid], buffer, dbindex, regexin);
+		free(buffer);
 		return false;
 	}
 
@@ -199,10 +194,10 @@ void allocate_regex_client_enabled(clientsData *client, const int clientID)
 	}
 }
 
-static void read_regex_table(const unsigned char regexid)
+static void read_regex_table(const enum regex_id regexid)
 {
 	// Get table ID
-	unsigned char tableID = (regexid == REGEX_BLACKLIST) ? REGEX_BLACKLIST_TABLE : REGEX_WHITELIST_TABLE;
+	const enum gravity_tables tableID = (regexid == REGEX_BLACKLIST) ? REGEX_BLACKLIST_TABLE : REGEX_WHITELIST_TABLE;
 
 	// Get number of lines in the regex table
 	counters->num_regex[regexid] = gravityDB_count(tableID);
@@ -259,7 +254,7 @@ static void read_regex_table(const unsigned char regexid)
 		{
 			logg("Compiling %s regex %i (database ID %i): %s", regextype[regexid], i, rowid, domain);
 		}
-		regex_available[regexid][i] = compile_regex(domain, i, regexid);
+		regex_available[regexid][i] = compile_regex(domain, i, regexid, rowid);
 		regex_id[regexid][i] = rowid;
 
 		// Increase counter
@@ -298,7 +293,7 @@ void read_regex_from_database(void)
 	}
 
 	// Print message to FTL's log after reloading regex filters
-	logg("Compiled %i whitelist and %i blacklist regex filters in %.1f msec",
+	logg("Compiled %i whitelist and %i blacklist regex filters for %i clients in %.1f msec",
 	     counters->num_regex[REGEX_WHITELIST], counters->num_regex[REGEX_BLACKLIST],
-	     timer_elapsed_msec(REGEX_TIMER));
+	     counters->clients, timer_elapsed_msec(REGEX_TIMER));
 }

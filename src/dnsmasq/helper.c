@@ -15,6 +15,7 @@
 */
 
 #include "dnsmasq.h"
+#include "../log.h"
 
 #ifdef HAVE_SCRIPT
 
@@ -96,6 +97,10 @@ int create_helper(int event_fd, int err_fd, uid_t uid, gid_t gid, long max_fd)
       close(pipefd[0]); /* close reader side */
       return pipefd[1];
     }
+
+  /**** Pi-hole modification ****/
+  logg("Started dnsmasq helper");
+  /******************************/
 
   /* ignore SIGTERM and SIGINT, so that we can clean up when the main process gets hit
      and SIGALRM so that we can use sleep() */

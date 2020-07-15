@@ -11,7 +11,7 @@
 #define SOCKET_H
 
 void close_telnet_socket(void);
-void close_unix_socket(void);
+void close_unix_socket(bool unlink_file);
 void seom(const int sock);
 void ssend(const int sock, const char *format, ...) __attribute__ ((format (gnu_printf, 2, 3)));
 void swrite(const int sock, const void* value, const size_t size);

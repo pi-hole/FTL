@@ -10,18 +10,17 @@
 
 #include "FTL.h"
 #include "sqlite3.h"
-#include "datastructure.h"
 #include "gravity-db.h"
 #include "config.h"
 #include "log.h"
-// global variable counters
-#include "memory.h"
 // match_regex()
 #include "regex_r.h"
 // getstr()
 #include "shmem.h"
 // SQLite3 prepared statement vectors
 #include "../vector.h"
+// log_subnet_warning()
+#include "database/message-table.h"
 
 // Process-private prepared statements are used to support multiple forks (might
 // be TCP workers) to use the database simultaneously without corrupting the
@@ -35,39 +34,16 @@ static sqlite3 *gravity_db = NULL;
 static sqlite3_stmt* table_stmt = NULL;
 static sqlite3_stmt* auditlist_stmt = NULL;
 bool gravityDB_opened = false;
-static pid_t main_process = 0, this_process = 0;
 
 // Table names corresponding to the enum defined in gravity-db.h
-static const char* tablename[] = { "vw_gravity", "vw_blacklist", "vw_whitelist", "vw_regex_blacklist", "vw_regex_whitelist" , ""};
+static const char* tablename[] = { "vw_gravity", "vw_blacklist", "vw_whitelist", "vw_regex_blacklist", "vw_regex_whitelist" , "" };
 
 // Prototypes from functions in dnsmasq's source
 void rehash(int size);
 
 // Initialize gravity subroutines
-static void gravityDB_check_fork(void)
+void gravityDB_forked(void)
 {
-	// Memorize main process PID on first call of this funtion (guaranteed to be
-	// the main dnsmasq thread)
-	if(main_process == 0)
-	{
-		main_process = getpid();
-		this_process = main_process;
-	}
-
-	if(this_process == getpid())
-		return;
-
-	// If we reach this point, FTL forked to handle TCP connections with
-	// dedicated (forked) workers SQLite3's mentions that carrying an open
-	// database connection across a fork() can lead to all kinds of locking
-	// problems as SQLite3 was not intended to work under such circumstances.
-	// Doing so may easily lead to ending up with a corrupted database.
-	logg("Note: FTL forked to handle TCP requests");
-
-	// Memorize PID of this thread to avoid re-opening the gravity database
-	// connection multiple times for the same fork
-	this_process = getpid();
-
 	// Pretend that we did not open the database so far so it needs to be
 	// re-opened, also pretend we have not yet prepared the list statements
 	gravityDB_opened = false;
@@ -200,11 +176,12 @@ static char* get_client_querystr(const char* table, const char* groups)
 }
 
 // Get associated groups for this client (if defined)
-static bool get_client_groupids(const clientsData* client, char **groups)
+static bool get_client_groupids(clientsData* client)
 {
 	char *querystr = NULL;
 	const char *ip = getstr(client->ippos);
-	*groups = NULL;
+	client->found_group = false;
+	client->groupspos = 0u;
 
 	// Do not proceed when database is not available
 	if(!gravityDB_opened && !gravityDB_open())
@@ -214,10 +191,18 @@ static bool get_client_groupids(const clientsData* client, char **groups)
 	}
 
 	if(config.debug & DEBUG_DATABASE)
-		logg("Querying gravity database for client %s (counting)", ip);
+		logg("Querying gravity database for client %s (getting best match)", ip);
 
 	// Check if client is configured through the client table
-	if(asprintf(&querystr, "SELECT COUNT(*) FROM client WHERE subnet_match(ip,'%s') = 1;", ip) < 1)
+	// This will return nothing if the client is unknown/unconfigured
+	if(asprintf(&querystr, "SELECT count(id) matching_count, "
+	                               "max(id) chosen_match_id, "
+	                               "ip chosen_match_text, "
+	                               "group_concat(id) matching_ids, "
+	                               "subnet_match(ip,'%s') matching_bits FROM client "
+	                               "WHERE matching_bits > 0 "
+	                               "GROUP BY matching_bits "
+	                               "ORDER BY matching_bits DESC LIMIT 1;", ip) < 1)
 	{
 		logg("get_client_groupids() - asprintf() error 1");
 		return false;
@@ -234,21 +219,24 @@ static bool get_client_groupids(const clientsData* client, char **groups)
 
 	// Perform query
 	rc = sqlite3_step(table_stmt);
+	int matching_count = 0, chosen_match_id = 0, matching_bits = 0;
+	char *matching_ids = NULL, *chosen_match_text = NULL;
 	if(rc == SQLITE_ROW)
 	{
-		// There is a record for this client in the database
-		const int result = sqlite3_column_int(table_stmt, 0);
-
-		// Found no record for this client in the database
-		// This makes this client qualify for the special "all" group
-		if(result == 0)
-			*groups = strdup("0");
+		// There is a record for this client in the database,
+		// extract the result (there can be at most one line)
+		matching_count = sqlite3_column_int(table_stmt, 0);
+		chosen_match_id = sqlite3_column_int(table_stmt, 1);
+		chosen_match_text = strdup((const char*)sqlite3_column_text(table_stmt, 2));
+		matching_ids = strdup((const char*)sqlite3_column_text(table_stmt, 3));
+		matching_bits = sqlite3_column_int(table_stmt, 4);
 	}
 	else if(rc == SQLITE_DONE)
 	{
 		// Found no record for this client in the database
 		// This makes this client qualify for the special "all" group
-		*groups = strdup("0");
+		client->groupspos = addstr("0");
+		client->found_group = true;
 	}
 	else
 	{
@@ -264,19 +252,36 @@ static bool get_client_groupids(const clientsData* client, char **groups)
 	free(querystr);
 	querystr = NULL;
 
-	if(*groups != NULL)
+	if(client->found_group)
 	{
-		// The client is not configured through the client table, return early
+		// The client is not configured through the client table, we
+		// substituted the default group. Return early here.
 		return true;
 	}
+
+	if(matching_count > 1)
+	{
+		// There is more than one configured subnet that matches to current device
+		// with the same number of subnet mask bits. This is likely unintended by
+		// the user so we issue a warning so they can address it.
+		// Example:
+		//   Device 10.8.0.22
+		//   Client 1: 10.8.0.0/24
+		//   Client 2: 10.8.1.0/24
+		logg_subnet_warning(ip, matching_count, matching_ids, matching_bits, chosen_match_text, chosen_match_id);
+	}
+	free(matching_ids);
+	matching_ids = NULL;
+	free(chosen_match_text);
+	chosen_match_text = NULL;
 
 	// Build query string to get possible group associations for this particular client
 	// The SQL GROUP_CONCAT() function returns a string which is the concatenation of all
 	// non-NULL values of group_id separated by ','. The order of the concatenated elements
 	// is arbitrary, however, is of no relevance for your use case.
 	// We check using a possibly defined subnet and use the first result
-	if(asprintf(&querystr, "SELECT GROUP_CONCAT(group_id) FROM client_by_group WHERE client_id = "
-	                       "(SELECT id FROM client WHERE subnet_match(ip,'%s') = 1 LIMIT 1);", ip) < 1)
+	if(asprintf(&querystr, "SELECT GROUP_CONCAT(group_id) FROM client_by_group "
+	                       "WHERE client_id = %i;", chosen_match_id) < 1)
 	{
 		logg("get_client_groupids() - asprintf() error 2");
 		return false;
@@ -302,15 +307,17 @@ static bool get_client_groupids(const clientsData* client, char **groups)
 		// There is a record for this client in the database
 		const char* result = (const char*)sqlite3_column_text(table_stmt, 0);
 		if(result != NULL)
-			*groups = strdup(result);
-		else
-			*groups = strdup("");
+		{
+			client->groupspos = addstr(result);
+			client->found_group = true;
+		}
 	}
 	else if(rc == SQLITE_DONE)
 	{
 		// Found no record for this client in the database
 		// -> No associated groups
-		*groups = strdup("");
+		client->groupspos = addstr("");
+		client->found_group = true;
 	}
 	else
 	{
@@ -328,6 +335,60 @@ static bool get_client_groupids(const clientsData* client, char **groups)
 	return true;
 }
 
+char* __attribute__ ((malloc)) get_group_names(const char *group_ids)
+{
+	// Build query string to get concatenated groups
+	char *querystr = NULL;
+	if(asprintf(&querystr, "SELECT GROUP_CONCAT(ip) FROM client "
+	                       "WHERE id IN (%s);", group_ids) < 1)
+	{
+		logg("group_names(%s) - asprintf() error", group_ids);
+		return false;
+	}
+
+	if(config.debug & DEBUG_DATABASE)
+		logg("Querying group names for IDs (%s)", group_ids);
+
+	// Prepare query
+	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &table_stmt, NULL);
+	if(rc != SQLITE_OK){
+		logg("get_client_groupids(%s) - SQL error prepare: %s",
+		     querystr, sqlite3_errstr(rc));
+		sqlite3_finalize(table_stmt);
+		free(querystr);
+		return strdup("N/A");
+	}
+
+	// Perform query
+	char *result = NULL;
+	rc = sqlite3_step(table_stmt);
+	if(rc == SQLITE_ROW)
+	{
+		// There is a record for this client in the database
+		result = strdup((const char*)sqlite3_column_text(table_stmt, 0));
+		if(result == NULL)
+			result = strdup("N/A");
+	}
+	else if(rc == SQLITE_DONE)
+	{
+		// Found no record for this client in the database
+		// -> No associated groups
+		result = strdup("N/A");
+	}
+	else
+	{
+		logg("group_names(%s) - SQL error step: %s",
+		     querystr, sqlite3_errstr(rc));
+		gravityDB_finalizeTable();
+		free(querystr);
+		return strdup("N/A");
+	}
+	// Finalize statement
+	gravityDB_finalizeTable();
+	free(querystr);
+	return result;
+}
+
 // Prepare statements for scanning white- and blacklist as well as gravit for one client
 bool gravityDB_prepare_client_statements(const int clientID, clientsData *client)
 {
@@ -342,8 +403,7 @@ bool gravityDB_prepare_client_statements(const int clientID, clientsData *client
 
 	// Get associated groups for this client (if defined)
 	char *querystr = NULL;
-	char *groups = NULL;
-	if(!get_client_groupids(client, &groups))
+	if(!client->found_group && !get_client_groupids(client))
 		return false;
 
 	// Prepare whitelist statement
@@ -354,7 +414,7 @@ bool gravityDB_prepare_client_statements(const int clientID, clientsData *client
 	// of EXISTS().
 	if(config.debug & DEBUG_DATABASE)
 		logg("gravityDB_open(): Preparing vw_whitelist statement for client %s", clientip);
-	querystr = get_client_querystr("vw_whitelist", groups);
+	querystr = get_client_querystr("vw_whitelist", getstr(client->groupspos));
 	sqlite3_stmt* stmt = NULL;
 	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK )
@@ -369,7 +429,7 @@ bool gravityDB_prepare_client_statements(const int clientID, clientsData *client
 	// Prepare gravity statement
 	if(config.debug & DEBUG_DATABASE)
 		logg("gravityDB_open(): Preparing vw_gravity statement for client %s", clientip);
-	querystr = get_client_querystr("vw_gravity", groups);
+	querystr = get_client_querystr("vw_gravity", getstr(client->groupspos));
 	rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
@@ -383,7 +443,7 @@ bool gravityDB_prepare_client_statements(const int clientID, clientsData *client
 	// Prepare blacklist statement
 	if(config.debug & DEBUG_DATABASE)
 		logg("gravityDB_open(): Preparing vw_blacklist statement for client %s", clientip);
-	querystr = get_client_querystr("vw_blacklist", groups);
+	querystr = get_client_querystr("vw_blacklist", getstr(client->groupspos));
 	rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
@@ -393,9 +453,6 @@ bool gravityDB_prepare_client_statements(const int clientID, clientsData *client
 	}
 	blacklist_stmt->set(blacklist_stmt, clientID, stmt);
 	free(querystr);
-
-	// Free groups
-	free(groups);
 
 	return true;
 }
@@ -420,6 +477,14 @@ static inline void gravityDB_finalize_client_statements(const int clientID)
 	{
 		sqlite3_finalize(gravity_stmt->get(gravity_stmt, clientID));
 		gravity_stmt->set(gravity_stmt, clientID, NULL);
+	}
+
+	// Unset group found property to trigger a check next time the
+	// client sends a query
+	clientsData* client = getClient(clientID, true);
+	if(client != NULL)
+	{
+		client->found_group = false;
 	}
 }
 
@@ -458,9 +523,6 @@ void gravityDB_close(void)
 // blocking domains from a table which is specified when calling this function
 bool gravityDB_getTable(const unsigned char list)
 {
-	// First check if FTL forked to handle TCP connections
-	gravityDB_check_fork();
-
 	if(!gravityDB_opened && !gravityDB_open())
 	{
 		logg("gravityDB_getTable(%u): Gravity database not available", list);
@@ -549,7 +611,7 @@ void gravityDB_finalizeTable(void)
 // Get number of domains in a specified table of the gravity database
 // We return the constant DB_FAILED and log to pihole-FTL.log if we
 // encounter any error
-int gravityDB_count(const unsigned char list)
+int gravityDB_count(const enum gravity_tables list)
 {
 	if(!gravityDB_opened && !gravityDB_open())
 	{
@@ -557,31 +619,37 @@ int gravityDB_count(const unsigned char list)
 		return DB_FAILED;
 	}
 
-	// Checking for smaller than GRAVITY_LIST is omitted due to list being unsigned
-	if(list >= UNKNOWN_TABLE)
+	const char *querystr = NULL;
+	// Build query string to be used depending on list to be read
+	switch (list)
 	{
-		logg("gravityDB_getTable(%u): Requested list is not known!", list);
-		return false;
-	}
-
-	char *querystr = NULL;
-	// Build correct query string to be used depending on list to be read
-	if(list != GRAVITY_TABLE && asprintf(&querystr, "SELECT COUNT(DISTINCT domain) FROM %s", tablename[list]) < 18)
-	{
-		logg("readGravity(%u) - asprintf() error", list);
-		return false;
-	}
-	// We get the number of unique gravity domains as counted and stored by gravity. Counting the number
-	// of distinct domains in vw_gravity may take up to several minutes for very large blocking lists on
-	// very low-end devices such as the Raspierry Pi Zero
-	else if(list == GRAVITY_TABLE && asprintf(&querystr, "SELECT value FROM info WHERE property = 'gravity_count';") < 18)
-	{
-		logg("readGravity(%u) - asprintf() error", list);
-		return false;
+		case GRAVITY_TABLE:
+			// We get the number of unique gravity domains as counted and stored by gravity. Counting the number
+			// of distinct domains in vw_gravity may take up to several minutes for very large blocking lists on
+			// very low-end devices such as the Raspierry Pi Zero
+			querystr = "SELECT value FROM info WHERE property = 'gravity_count';";
+			break;
+		case EXACT_BLACKLIST_TABLE:
+			querystr = "SELECT COUNT(DISTINCT domain) FROM vw_blacklist";
+			break;
+		case EXACT_WHITELIST_TABLE:
+			querystr = "SELECT COUNT(DISTINCT domain) FROM vw_whitelist";
+			break;
+		case REGEX_BLACKLIST_TABLE:
+			querystr = "SELECT COUNT(DISTINCT domain) FROM vw_regex_blacklist";
+			break;
+		case REGEX_WHITELIST_TABLE:
+			querystr = "SELECT COUNT(DISTINCT domain) FROM vw_regex_whitelist";
+			break;
+		case UNKNOWN_TABLE:
+			logg("Error: List type %u unknown!", list);
+			gravityDB_close();
+			return DB_FAILED;
 	}
 
 	if(config.debug & DEBUG_DATABASE)
-		logg("Querying count of distinct domains in gravity database table %s", tablename[list]);
+		logg("Querying count of distinct domains in gravity database table %s: %s",
+		     tablename[list], querystr);
 
 	// Prepare query
 	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &table_stmt, NULL);
@@ -589,7 +657,6 @@ int gravityDB_count(const unsigned char list)
 		logg("gravityDB_count(%s) - SQL error prepare %s", querystr, sqlite3_errstr(rc));
 		gravityDB_finalizeTable();
 		gravityDB_close();
-		free(querystr);
 		return DB_FAILED;
 	}
 
@@ -603,7 +670,6 @@ int gravityDB_count(const unsigned char list)
 		}
 		gravityDB_finalizeTable();
 		gravityDB_close();
-		free(querystr);
 		return DB_FAILED;
 	}
 
@@ -613,8 +679,7 @@ int gravityDB_count(const unsigned char list)
 	// Finalize statement
 	gravityDB_finalizeTable();
 
-	// Free allocated memory and return result
-	free(querystr);
+	// Return result
 	return result;
 }
 
@@ -689,9 +754,6 @@ static bool domain_in_list(const char *domain, sqlite3_stmt* stmt, const char* l
 
 bool in_whitelist(const char *domain, const int clientID, clientsData* client)
 {
-	// First check if FTL forked to handle TCP connections
-	gravityDB_check_fork();
-
 	// If list statement is not ready and cannot be initialized (e.g. no
 	// access to the database), we return false to prevent an FTL crash
 	if(whitelist_stmt == NULL)
@@ -726,9 +788,6 @@ bool in_whitelist(const char *domain, const int clientID, clientsData* client)
 
 bool in_gravity(const char *domain, const int clientID, clientsData* client)
 {
-	// First check if FTL forked to handle TCP connections
-	gravityDB_check_fork();
-
 	// If list statement is not ready and cannot be initialized (e.g. no
 	// access to the database), we return false to prevent an FTL crash
 	if(gravity_stmt == NULL)
@@ -756,9 +815,6 @@ bool in_gravity(const char *domain, const int clientID, clientsData* client)
 
 inline bool in_blacklist(const char *domain, const int clientID, clientsData* client)
 {
-	// First check if FTL forked to handle TCP connections
-	gravityDB_check_fork();
-
 	// If list statement is not ready and cannot be initialized (e.g. no
 	// access to the database), we return false to prevent an FTL crash
 	if(blacklist_stmt == NULL)
@@ -786,9 +842,6 @@ inline bool in_blacklist(const char *domain, const int clientID, clientsData* cl
 
 bool in_auditlist(const char *domain)
 {
-	// First check if FTL forked to handle TCP connections
-	gravityDB_check_fork();
-
 	// If audit list statement is not ready and cannot be initialized (e.g. no access
 	// to the database), we return false (not in audit list) to prevent an FTL crash
 	if(auditlist_stmt == NULL)
@@ -801,15 +854,12 @@ bool in_auditlist(const char *domain)
 bool gravityDB_get_regex_client_groups(clientsData* client, const int numregex, const int *regexid,
                                        const unsigned char type, const char* table, const int clientID)
 {
-	// First check if FTL forked to handle TCP connections
-	gravityDB_check_fork();
-
 	char *querystr = NULL;
-	char *groups = NULL;
-	if(!get_client_groupids(client, &groups))
+	if(!client->found_group && !get_client_groupids(client))
 		return false;
 
 	// Group filtering
+	const char *groups = getstr(client->groupspos);
 	if(asprintf(&querystr, "SELECT id from %s WHERE group_id IN (%s);", table, groups) < 1)
 	{
 		logg("gravityDB_get_regex_client_groups(%s, %s) - asprintf() error", table, groups);
@@ -823,7 +873,6 @@ bool gravityDB_get_regex_client_groups(clientsData* client, const int numregex, 
 		logg("gravityDB_get_regex_client_groups(): %s - SQL error prepare: %s", querystr, sqlite3_errstr(rc));
 		gravityDB_close();
 		free(querystr);
-		free(groups);
 		return false;
 	}
 
@@ -855,7 +904,6 @@ bool gravityDB_get_regex_client_groups(clientsData* client, const int numregex, 
 
 	// Free allocated memory and return result
 	free(querystr);
-	free(groups);
 
 	return true;
 }
