@@ -29,6 +29,7 @@ FTLFileNamesStruct FTLfiles = {
 	NULL,
 	NULL,
 	NULL,
+	NULL,
 	NULL
 };
 
@@ -299,6 +300,9 @@ void read_FTLconf(void)
 
 	// PIDFILE
 	getpath(fp, "PIDFILE", "/run/pihole-FTL.pid", &FTLfiles.pid);
+
+	// PORTFILE
+	getpath(fp, "PORTFILE", "/run/pihole-FTL.port", &FTLfiles.port);
 
 	// SOCKETFILE
 	getpath(fp, "SOCKETFILE", "/run/pihole/FTL.sock", &FTLfiles.socketfile);
