@@ -1819,12 +1819,41 @@ void FTL_TCP_worker_terminating(bool finished)
 // fork() can lead to all kinds of locking problems as SQLite3 was not
 // intended to work under such circumstances. Doing so may easily lead
 // to ending up with a corrupted database.
-void FTL_TCP_worker_created(void)
+void FTL_TCP_worker_created(const int confd, const char *iface_name)
 {
+	// Print this if any debug setting is enabled
 	if(config.debug != 0)
 	{
-		// Print this if any debug setting is enabled
-		logg("TCP worker forked");
+		// Get peer IP address (client)
+		char peer_ip[ADDRSTRLEN] = { 0 };
+		union mysockaddr peer_sockaddr = {{ 0 }};
+		socklen_t peer_len = sizeof(union mysockaddr);
+		if (getpeername(confd, (struct sockaddr *)&peer_sockaddr, &peer_len) != -1)
+		{
+			union all_addr peer_addr = {{ 0 }};
+			if (peer_sockaddr.sa.sa_family == AF_INET6)
+				peer_addr.addr6 = peer_sockaddr.in6.sin6_addr;
+			else
+				peer_addr.addr4 = peer_sockaddr.in.sin_addr;
+			inet_ntop(peer_sockaddr.sa.sa_family, &peer_addr, peer_ip, ADDRSTRLEN);
+		}
+
+		// Get local IP address (interface)
+		char local_ip[ADDRSTRLEN] = { 0 };
+		union mysockaddr iface_sockaddr = {{ 0 }};
+		socklen_t iface_len = sizeof(union mysockaddr);
+		if(getsockname(confd, (struct sockaddr *)&iface_sockaddr, &iface_len) != -1)
+		{
+			union all_addr iface_addr = {{ 0 }};
+			if (iface_sockaddr.sa.sa_family == AF_INET6)
+				iface_addr.addr6 = iface_sockaddr.in6.sin6_addr;
+			else
+				iface_addr.addr4 = iface_sockaddr.in.sin_addr;
+			inet_ntop(iface_sockaddr.sa.sa_family, &iface_addr, local_ip, ADDRSTRLEN);
+		}
+
+		// Print log
+		logg("TCP worker forked for client %s on interface %s (%s)", peer_ip, iface_name, local_ip);
 	}
 
 	if(main_pid() == getpid())
