@@ -12,6 +12,7 @@
 #include "dnsmasq/dnsmasq.h"
 #undef __USE_XOPEN
 #include "FTL.h"
+#include "enums.h"
 #include "dnsmasq_interface.h"
 #include "shmem.h"
 #include "overTime.h"
@@ -302,10 +303,6 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 
 bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const char* file, const int line)
 {
-	// Don't analyze anything if in PRIVACY_NOSTATS mode
-	if(config.privacylevel >= PRIVACY_NOSTATS)
-		return false;
-
 	// Does the user want to skip deep CNAME inspection?
 	if(!config.cname_inspection)
 	{
@@ -422,10 +419,6 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
                     const enum protocol proto, const char* file, const int line)
 {
 	// Create new query in data structure
-
-	// Don't analyze anything if in PRIVACY_NOSTATS mode
-	if(config.privacylevel >= PRIVACY_NOSTATS)
-		return false;
 
 	// Get timestamp
 	const time_t querytimestamp = time(NULL);
@@ -692,10 +685,6 @@ void _FTL_forwarded(const unsigned int flags, const char *name, const union all_
 {
 	// Save that this query got forwarded to an upstream server
 
-	// Don't analyze anything if in PRIVACY_NOSTATS mode
-	if(config.privacylevel >= PRIVACY_NOSTATS)
-		return;
-
 	// Lock shared memory
 	lock_shm();
 
@@ -810,7 +799,6 @@ void FTL_dnsmasq_reload(void)
 {
 	// This function is called by the dnsmasq code on receive of SIGHUP
 	// *before* clearing the cache and rereading the lists
-	// This is the only hook that is not skipped in PRIVACY_NOSTATS mode
 
 	logg("Reloading DNS cache");
 
@@ -844,10 +832,6 @@ void FTL_dnsmasq_reload(void)
 void _FTL_reply(const unsigned short flags, const char *name, const union all_addr *addr, const int id,
                 const char* file, const int line)
 {
-	// Don't analyze anything if in PRIVACY_NOSTATS mode
-	if(config.privacylevel >= PRIVACY_NOSTATS)
-		return;
-
 	// Lock shared memory
 	lock_shm();
 
@@ -968,9 +952,9 @@ void _FTL_reply(const unsigned short flags, const char *name, const union all_ad
 	{
 		// Only proceed if query is not already known
 		// to have been blocked by Quad9
-		if(query->reply != QUERY_EXTERNAL_BLOCKED_IP &&
-		   query->reply != QUERY_EXTERNAL_BLOCKED_NULL &&
-		   query->reply != QUERY_EXTERNAL_BLOCKED_NXRA)
+		if(query->status != QUERY_EXTERNAL_BLOCKED_IP &&
+		   query->status != QUERY_EXTERNAL_BLOCKED_NULL &&
+		   query->status != QUERY_EXTERNAL_BLOCKED_NXRA)
 		{
 			// Save reply type and update individual reply counters
 			save_reply_type(flags, addr, query, response);
@@ -1129,7 +1113,7 @@ static void detect_blocked_IP(const unsigned short flags, const union all_addr *
 	}
 }
 
-static void query_externally_blocked(const int queryID, const unsigned char status)
+static void query_externally_blocked(const int queryID, const enum query_status status)
 {
 	// Get query pointer
 	queriesData* query = getQuery(queryID, true);
@@ -1171,10 +1155,6 @@ void _FTL_cache(const unsigned int flags, const char *name, const union all_addr
                 const char *arg, const int id, const char* file, const int line)
 {
 	// Save that this query got answered from cache
-
-	// Don't analyze anything if in PRIVACY_NOSTATS mode
-	if(config.privacylevel >= PRIVACY_NOSTATS)
-		return;
 
 	// If domain is "pi.hole", we skip this query
 	// We compare case-insensitive here
@@ -1339,10 +1319,6 @@ void _FTL_dnssec(const int status, const int id, const char* file, const int lin
 {
 	// Process DNSSEC result for a domain
 
-	// Don't analyze anything if in PRIVACY_NOSTATS mode
-	if(config.privacylevel >= PRIVACY_NOSTATS)
-		return;
-
 	// Lock shared memory
 	lock_shm();
 
@@ -1392,10 +1368,6 @@ void _FTL_upstream_error(const unsigned int rcode, const int id, const char* fil
 	// Process upstream errors
 	// Queries with error are those where the RCODE
 	// in the DNS header is neither NOERROR nor NXDOMAIN.
-
-	// Don't analyze anything if in PRIVACY_NOSTATS mode
-	if(config.privacylevel >= PRIVACY_NOSTATS)
-		return;
 
 	// Lock shared memory
 	lock_shm();
@@ -1468,10 +1440,6 @@ void _FTL_upstream_error(const unsigned int rcode, const int id, const char* fil
 void _FTL_header_analysis(const unsigned char header4, const unsigned int rcode, const int id, const char* file, const int line)
 {
 	// Analyze DNS header bits
-
-	// Don't analyze anything if in PRIVACY_NOSTATS mode
-	if(config.privacylevel >= PRIVACY_NOSTATS)
-		return;
 
 	// Check if RA bit is unset in DNS header and rcode is NXDOMAIN
 	// If the response code (rcode) is NXDOMAIN, we may be seeing a response from
@@ -1649,18 +1617,15 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 	// join with the terminated thread
 	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
-	// Bind to sockets
-	bind_sockets();
-
 	// Start TELNET IPv4 thread
-	if(ipv4telnet && pthread_create( &telnet_listenthreadv4, &attr, telnet_listening_thread_IPv4, NULL ) != 0)
+	if(pthread_create( &telnet_listenthreadv4, &attr, telnet_listening_thread_IPv4, NULL ) != 0)
 	{
 		logg("Unable to open IPv4 telnet listening thread. Exiting...");
 		exit(EXIT_FAILURE);
 	}
 
 	// Start TELNET IPv6 thread
-	if(ipv6telnet &&  pthread_create( &telnet_listenthreadv6, &attr, telnet_listening_thread_IPv6, NULL ) != 0)
+	if(pthread_create( &telnet_listenthreadv6, &attr, telnet_listening_thread_IPv6, NULL ) != 0)
 	{
 		logg("Unable to open IPv6 telnet listening thread. Exiting...");
 		exit(EXIT_FAILURE);
@@ -1734,10 +1699,6 @@ void getCacheInformation(const int *sock)
 void _FTL_forwarding_failed(const struct server *server, const char* file, const int line)
 {
 	// Forwarding to upstream server failed
-
-	// Don't analyze anything if in PRIVACY_NOSTATS mode
-	if(config.privacylevel >= PRIVACY_NOSTATS)
-		return;
 
 	// Lock shared memory
 	lock_shm();
@@ -1824,14 +1785,52 @@ static void prepare_blocking_metadata(void)
 // Called when a (forked) TCP worker is terminated by receiving SIGALRM
 // We close the dedicated database connection this client had opened
 // to avoid dangling database locks
-void FTL_TCP_worker_terminating(void)
+void FTL_TCP_worker_terminating(bool finished)
 {
-	if(config.debug & DEBUG_DATABASE)
+	if(config.debug != 0)
 	{
-		logg("TCP worker terminating, "
-		     "closing gravity database connection");
+		const char *reason = finished ? "client disconnected" : "timeout";
+		logg("TCP worker terminating (%s)", reason);
+	}
+
+	if(main_pid() == getpid())
+	{
+		// If this is not really a fork (e.g. in debug mode), we don't
+		// actually close gravity here
+		return;
 	}
 
 	// Close dedicated database connection of this fork
 	gravityDB_close();
+}
+
+// Called when a (forked) TCP worker is created
+// FTL forked to handle TCP connections with dedicated (forked) workers
+// SQLite3's mentions that carrying an open database connection across a
+// fork() can lead to all kinds of locking problems as SQLite3 was not
+// intended to work under such circumstances. Doing so may easily lead
+// to ending up with a corrupted database.
+void FTL_TCP_worker_created(void)
+{
+	if(config.debug != 0)
+	{
+		// Print this if any debug setting is enabled
+		logg("TCP worker forked");
+	}
+
+	if(main_pid() == getpid())
+	{
+		// If this is not really a fork (e.g. in debug mode), we don't
+		// actually re-open gravity or close sockets here
+		return;
+	}
+
+	// Reopen gravity database handle in this fork as the main process's
+	// handle isn't valid here
+	gravityDB_forked();
+
+	// Children inherit file descriptors from their parents
+	// We don't need them in the forks, so we clean them up
+	close_telnet_socket();
+	close_unix_socket(false);
 }

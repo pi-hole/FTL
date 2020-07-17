@@ -13,6 +13,9 @@
 // Definition of sqlite3_stmt
 #include "database/sqlite3.h"
 
+// enum privacy_level
+#include "enums.h"
+
 void strtolower(char *str);
 int findUpstreamID(const char * upstream, const bool count);
 int findDomainID(const char *domain, const bool count);
@@ -24,16 +27,13 @@ bool isValidIPv6(const char *addr);
 void FTL_reload_all_domainlists(void);
 void FTL_reset_per_client_domain_data(void);
 
-enum { TYPE_A = 1, TYPE_AAAA, TYPE_ANY, TYPE_SRV, TYPE_SOA, TYPE_PTR, TYPE_TXT, TYPE_NAPTR,
-       TYPE_MX, TYPE_DS, TYPE_RRSIG, TYPE_DNSKEY, TYPE_OTHER, TYPE_MAX };
-
 typedef struct {
 	unsigned char magic;
-	unsigned char status;
-	unsigned char type;
-	unsigned char privacylevel;
-	unsigned char reply;
-	unsigned char dnssec;
+	enum query_status status;
+	enum query_types type;
+	enum privacy_level privacylevel;
+	enum reply_type reply;
+	enum dnssec_status dnssec;
 	time_t timestamp;
 	int domainID;
 	int clientID;
@@ -79,7 +79,7 @@ typedef struct {
 
 typedef struct {
 	unsigned char magic;
-	unsigned char blocking_status;
+	enum domain_client_status blocking_status;
 	unsigned char force_reply;
 	int domainID;
 	int clientID;

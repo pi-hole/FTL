@@ -1249,7 +1249,7 @@ static void sig_handler(int sig)
         {
 	  /*** Pi-hole modification ***/
 	  // TCP workers ignore all signals except SIGALRM
-	  FTL_TCP_worker_terminating();
+	  FTL_TCP_worker_terminating(false);
 	  /*** Pi-hole modification ***/
 	  _exit(0);
         }
@@ -1957,8 +1957,16 @@ static void check_dns_listeners(time_t now)
 	      if ((flags = fcntl(confd, F_GETFL, 0)) != -1)
 		fcntl(confd, F_SETFL, flags & ~O_NONBLOCK);
 	      
+	      /******* Pi-hole modification *******/
+	      FTL_TCP_worker_created();
+	      /************************************/
+
 	      buff = tcp_request(confd, now, &tcp_addr, netmask, auth_dns);
 	       
+	      /******* Pi-hole modification *******/
+	      FTL_TCP_worker_terminating(true);
+	      /************************************/
+
 	      shutdown(confd, SHUT_RDWR);
 	      close(confd);
 	      
@@ -1974,10 +1982,6 @@ static void check_dns_listeners(time_t now)
 	      
 	      if (!option_bool(OPT_DEBUG))
 		{
-		  /*** Pi-hole modification ***/
-		  // TCP workers ignore all signals except SIGALRM
-		  FTL_TCP_worker_terminating();
-		  /****************************/
 		  close(daemon->pipe_to_parent);
 		  flush_log();
 		  _exit(0);

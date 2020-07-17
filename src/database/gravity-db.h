@@ -16,8 +16,9 @@
 #include "datastructure.h"
 
 // Table indices
-enum { GRAVITY_TABLE, EXACT_BLACKLIST_TABLE, EXACT_WHITELIST_TABLE, REGEX_BLACKLIST_TABLE, REGEX_WHITELIST_TABLE, UNKNOWN_TABLE };
+enum gravity_tables { GRAVITY_TABLE, EXACT_BLACKLIST_TABLE, EXACT_WHITELIST_TABLE, REGEX_BLACKLIST_TABLE, REGEX_WHITELIST_TABLE, UNKNOWN_TABLE } __attribute__ ((packed));
 
+void gravityDB_forked(void);
 bool gravityDB_open(void);
 bool gravityDB_prepare_client_statements(const int clientID, clientsData* client);
 void gravityDB_close(void);
@@ -25,7 +26,7 @@ bool gravityDB_getTable(unsigned char list);
 const char* gravityDB_getDomain(int *rowid);
 char* get_group_names(const char *group_ids) __attribute__ ((malloc));
 void gravityDB_finalizeTable(void);
-int gravityDB_count(unsigned char list);
+int gravityDB_count(const enum gravity_tables list);
 bool in_auditlist(const char *domain);
 
 bool in_gravity(const char *domain, const int clientID, clientsData* client);

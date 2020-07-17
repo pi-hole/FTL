@@ -12,6 +12,7 @@
 
 void handle_SIGSEGV(void);
 void handle_realtime_signals(void);
+pid_t main_pid(void);
 
 extern volatile sig_atomic_t killed;
 

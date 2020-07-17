@@ -20,13 +20,23 @@
 // FTL_reload_all_domainlists()
 #include "datastructure.h"
 #include "config.h"
+// gettid()
+#include "daemon.h"
 
 #define BINARY_NAME "pihole-FTL"
 
 volatile sig_atomic_t killed = 0;
-static volatile pid_t pid = 0;
+static volatile pid_t mpid = -1;
 static time_t FTLstarttime = 0;
 extern volatile int exit_code;
+
+// Return the (null-terminated) name of the calling thread
+// The name is stored in the buffer as well as returned for convenience
+static char * __attribute__ ((nonnull (1))) getthread_name(char buffer[16])
+{
+	prctl(PR_GET_NAME, buffer, 0, 0, 0);
+	return buffer;
+}
 
 #if defined(__GLIBC__)
 static void print_addr2line(const char *symbol, const void *address, const int j, const void *offset)
@@ -57,8 +67,15 @@ static void print_addr2line(const char *symbol, const void *address, const int j
 		// Strip possible newline at the end of the addr2line output
 		if ((pos=strchr(linebuffer, '\n')) != NULL)
 			*pos = '\0';
-		logg("L[%04i]: %s", j, linebuffer);
 	}
+	else
+	{
+		snprintf(linebuffer, sizeof(linebuffer), "N/A (%p)", addr);
+	}
+	// Log result
+	logg("L[%04i]: %s", j, linebuffer);
+
+	// Close pipe
 	pclose(addr2line);
 }
 #endif
@@ -76,17 +93,22 @@ static void __attribute__((noreturn)) SIGSEGV_handler(int sig, siginfo_t *si, vo
 		logg("FTL has been running for %li seconds", time(NULL)-FTLstarttime);
 	}
 	log_FTL_version(true);
+	char namebuf[16];
+	logg("Process details: MID: %i",mpid);
+	logg("                 PID: %i", getpid());
+	logg("                 TID: %i", gettid());
+	logg("                 Name: %s", getthread_name(namebuf));
 
 	logg("Received signal: %s", strsignal(sig));
 	logg("     at address: %p", si->si_addr);
 	switch (si->si_code)
 	{
-		case SEGV_MAPERR: logg("     with code: SEGV_MAPERR (Address not mapped to object)"); break;
-		case SEGV_ACCERR: logg("     with code: SEGV_ACCERR (Invalid permissions for mapped object)"); break;
+		case SEGV_MAPERR: logg("     with code:  SEGV_MAPERR (Address not mapped to object)"); break;
+		case SEGV_ACCERR: logg("     with code:  SEGV_ACCERR (Invalid permissions for mapped object)"); break;
 #if defined(SEGV_BNDERR)
-		case SEGV_BNDERR: logg("     with code: SEGV_BNDERR (Failed address bound checks)"); break;
+		case SEGV_BNDERR: logg("     with code:  SEGV_BNDERR (Failed address bound checks)"); break;
 #endif
-		default: logg("     with code: Unknown (%i)", si->si_code); break;
+		default: logg("     with code:  Unknown (%i)", si->si_code); break;
 	}
 
 // Check GLIBC availability as MUSL does not support live backtrace generation
@@ -114,7 +136,7 @@ static void __attribute__((noreturn)) SIGSEGV_handler(int sig, siginfo_t *si, vo
 
 	for(int j = 0; j < calls; j++)
 	{
-		logg("B[%04i]: %p, %s", j, buffer[j],
+		logg("B[%04i]: %s", j,
 		     bcktrace != NULL ? bcktrace[j] : "---");
 
 		if(bcktrace != NULL)
@@ -132,11 +154,11 @@ static void __attribute__((noreturn)) SIGSEGV_handler(int sig, siginfo_t *si, vo
 	logg("Thank you for helping us to improve our FTL engine!");
 
 	// Terminate main process if crash happened in a TCP worker
-	if(pid != getpid())
+	if(mpid != getpid())
 	{
 		// This is a forked process
-		logg("Asking parent pihole-FTL (PID %i) to shut down", (int)pid);
-		kill(pid, SIGRTMIN+2);
+		logg("Asking parent pihole-FTL (PID %i) to shut down", (int)mpid);
+		kill(mpid, SIGRTMIN+2);
 		logg("FTL fork terminated!");
 	}
 	else
@@ -152,7 +174,7 @@ static void __attribute__((noreturn)) SIGSEGV_handler(int sig, siginfo_t *si, vo
 static void SIGRT_handler(int signum, siginfo_t *si, void *unused)
 { 
 	// Ignore real-time signals outside of the main process (TCP forks)
-	if(pid != getpid())
+	if(mpid != getpid())
 		return;
 
 	int rtsig = signum - SIGRTMIN;
@@ -207,7 +229,7 @@ void handle_realtime_signals(void)
 {
 	// This function is only called once (after forking), store the PID of
 	// the main process
-	pid = getpid();
+	mpid = getpid();
 
 	// Catch first five real-time signals
 	for(unsigned int i = 0; i < 5; i++)
@@ -219,4 +241,10 @@ void handle_realtime_signals(void)
 		SIGACTION.sa_sigaction = &SIGRT_handler;
 		sigaction(SIGRTMIN + i, &SIGACTION, NULL);
 	}
+}
+
+// Return PID of the main FTL process
+pid_t main_pid(void)
+{
+	return mpid;
 }

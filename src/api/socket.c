@@ -29,26 +29,10 @@
 #define BACKLOG 5
 
 // File descriptors
-int socketfd, telnetfd4 = 0, telnetfd6 = 0;
+int socketfd = 0, telnetfd4 = 0, telnetfd6 = 0;
 bool dualstack = false;
-bool ipv4telnet = false, ipv6telnet = false;
-bool sock_avail = false;
+bool ipv4telnet = false, ipv6telnet = false, sock_avail = false;
 bool istelnet[MAXCONNS];
-
-static void saveport(void)
-{
-	FILE *f;
-	if((f = fopen(FTLfiles.port, "w+")) == NULL)
-	{
-		logg("WARNING: Unable to write used port to file.");
-		logg("         Continuing anyway (API might not find the port).");
-	}
-	else
-	{
-		fprintf(f, "%i", config.port);
-		fclose(f);
-	}
-}
 
 static bool bind_to_telnet_port_IPv4(int *socketdescriptor)
 {
@@ -161,15 +145,14 @@ static bool bind_to_telnet_port_IPv6(int *socketdescriptor)
 	return true;
 }
 
-static void bind_to_unix_socket(int *socketdescriptor)
+static bool bind_to_unix_socket(int *socketdescriptor)
 {
 	*socketdescriptor = socket(AF_LOCAL, SOCK_STREAM, 0);
 
 	if(*socketdescriptor < 0)
 	{
 		logg("WARNING: Error opening Unix socket.");
-		logg("         Continuing anyway.");
-		return;
+		return false;
 	}
 
 	// Make sure unix socket file handle does not exist, if it exists, remove it
@@ -190,32 +173,18 @@ static void bind_to_unix_socket(int *socketdescriptor)
 	if(bind(*socketdescriptor, (struct sockaddr *) &address, sizeof (address)) != 0)
 	{
 		logg("WARNING: Cannot bind on Unix socket %s: %s (%i)", FTLfiles.socketfile, strerror(errno), errno);
-		logg("         Continuing anyway.");
-		return;
+		return false;
 	}
 
 	// The listen system call allows the process to listen on the Unix socket for connections
 	if(listen(*socketdescriptor, BACKLOG) == -1)
 	{
 		logg("WARNING: Cannot listen on Unix socket: %s (%i)", strerror(errno), errno);
-		logg("         Continuing anyway.");
-		return;
+		return false;
 	}
 
 	logg("Listening on Unix socket");
-	sock_avail = true;
-}
-
-// Called from main() at graceful shutdown
-static void removeport(void)
-{
-	FILE *f;
-	if((f = fopen(FTLfiles.port, "w+")) == NULL)
-	{
-		logg("WARNING: Unable to empty port file");
-		return;
-	}
-	fclose(f);
+	return true;
 }
 
 void seom(const int sock)
@@ -295,7 +264,6 @@ static int listener(const int sockfd, const char type)
 
 void close_telnet_socket(void)
 {
-	removeport();
 	// Using global variable here
 	if(telnetfd4)
 		close(telnetfd4);
@@ -303,12 +271,17 @@ void close_telnet_socket(void)
 		close(telnetfd6);
 }
 
-void close_unix_socket(void)
+void close_unix_socket(bool unlink_file)
 {
-	// The process has to take care of unlinking the socket file description on exit
-	unlink(FTLfiles.socketfile);
+	if(unlink_file)
+	{
+		// The process has to take care of unlinking the socket file description on exit
+		unlink(FTLfiles.socketfile);
+	}
+
 	// Using global variable here
-	close(socketfd);
+	if(sock_avail)
+		close(socketfd);
 }
 
 static void *telnet_connection_handler_thread(void *socket_desc)
@@ -413,24 +386,6 @@ static void *socket_connection_handler_thread(void *socket_desc)
 	return false;
 }
 
-void bind_sockets(void)
-{
-	// Initialize IPv4 telnet socket
-	if(bind_to_telnet_port_IPv4(&telnetfd4))
-		ipv4telnet = true;
-
-	// Initialize IPv6 telnet socket
-	// only if IPv6 interfaces are available
-	if(ipv6_available())
-		if(bind_to_telnet_port_IPv6(&telnetfd6))
-			ipv6telnet = true;
-
-	saveport();
-
-	// Initialize Unix socket
-	bind_to_unix_socket(&socketfd);
-}
-
 void *telnet_listening_thread_IPv4(void *args)
 {
 	// We will use the attributes object later to start all threads in detached mode
@@ -443,6 +398,11 @@ void *telnet_listening_thread_IPv4(void *args)
 
 	// Set thread name
 	prctl(PR_SET_NAME,"telnet-IPv4",0,0,0);
+
+	// Initialize IPv4 telnet socket
+	ipv4telnet = bind_to_telnet_port_IPv4(&telnetfd4);
+	if(!ipv4telnet)
+		return NULL;
 
 	// Listen as long as FTL is not killed
 	while(!killed)
@@ -466,7 +426,7 @@ void *telnet_listening_thread_IPv4(void *args)
 		if(pthread_create( &telnet_connection_thread, &attr, telnet_connection_handler_thread, (void*) newsock ) != 0)
 		{
 			// Log the error code description
-			logg("WARNING: Unable to open telnet processing thread, error: %s", strerror(errno));
+			logg("WARNING: Unable to open telnet processing thread: %s", strerror(errno));
 		}
 	}
 	return false;
@@ -484,6 +444,14 @@ void *telnet_listening_thread_IPv6(void *args)
 
 	// Set thread name
 	prctl(PR_SET_NAME,"telnet-IPv6",0,0,0);
+
+	// Initialize IPv6 telnet socket but only if IPv6 interfaces are available
+	if(!ipv6_available())
+		return NULL;
+
+	ipv6telnet = bind_to_telnet_port_IPv6(&telnetfd6);
+	if(!ipv6telnet)
+		return NULL;
 
 	// Listen as long as FTL is not killed
 	while(!killed)
@@ -507,7 +475,7 @@ void *telnet_listening_thread_IPv6(void *args)
 		if(pthread_create( &telnet_connection_thread, &attr, telnet_connection_handler_thread, (void*) newsock ) != 0)
 		{
 			// Log the error code description
-			logg("WARNING: Unable to open telnet processing thread, error: %s", strerror(errno));
+			logg("WARNING: Unable to open telnet processing thread: %s", strerror(errno));
 		}
 	}
 	return false;
@@ -527,7 +495,8 @@ void *socket_listening_thread(void *args)
 	prctl(PR_SET_NAME,"socket listener",0,0,0);
 
 	// Return early to avoid CPU spinning if Unix socket is not available
-	if(!sock_avail)
+	sock_avail = bind_to_unix_socket(&socketfd);
+	if(sock_avail)
 		return NULL;
 
 	// Listen as long as FTL is not killed
@@ -535,7 +504,8 @@ void *socket_listening_thread(void *args)
 	{
 		// Look for new clients that want to connect
 		const int csck = listener(socketfd, 0);
-		if(csck < 0) continue;
+		if(csck < 0)
+			continue;
 
 		// Allocate memory used to transport client socket ID to client listening thread
 		int *newsock;
@@ -548,7 +518,7 @@ void *socket_listening_thread(void *args)
 		if(pthread_create( &socket_connection_thread, &attr, socket_connection_handler_thread, (void*) newsock ) != 0)
 		{
 			// Log the error code description
-			logg("WARNING: Unable to open socket processing thread, error: %s", strerror(errno));
+			logg("WARNING: Unable to open socket processing thread: %s", strerror(errno));
 		}
 	}
 	return false;
@@ -557,6 +527,7 @@ void *socket_listening_thread(void *args)
 bool ipv6_available(void)
 {
 	struct ifaddrs *allInterfaces;
+	enum { IPv4, IPv6 };
 	int iface[2] = { 0 };
 
 	// Get all interfaces
@@ -572,7 +543,7 @@ bool ipv6_available(void)
 			// Check only for up and running IPv4, IPv6 interfaces
 			if ((flags & (IFF_UP|IFF_RUNNING)) && addr != NULL)
 			{
-				iface[addr->sa_family == AF_INET6 ? 1 : 0]++;
+				iface[addr->sa_family == AF_INET6 ? IPv6 : IPv4]++;
 
 				if(config.debug & DEBUG_NETWORKING)
 					logg("Interface %s is %s", interface->ifa_name, addr->sa_family == AF_INET6 ? "IPv6" : "IPv4");
@@ -583,8 +554,8 @@ bool ipv6_available(void)
 
 	if(config.debug & DEBUG_NETWORKING)
 	{
-		logg("Found %i IPv4 and %i IPv6 capable interfaces", iface[0], iface[1]);
+		logg("Found %i IPv4 and %i IPv6 capable interfaces", iface[IPv4], iface[IPv6]);
 	}
 
-	return (iface[1] > 0);
+	return (iface[IPv6] > 0);
 }

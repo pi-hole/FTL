@@ -114,4 +114,6 @@ void reset_per_client_regex(const int clientID);
 bool get_per_client_regex(const int clientID, const int regexID);
 void set_per_client_regex(const int clientID, const int regexID, const bool value);
 
+void memory_check(const enum memory_type which);
+
 #endif //SHARED_MEMORY_SERVER_H

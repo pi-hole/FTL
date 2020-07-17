@@ -22,6 +22,4 @@ void check_blocking_status(void);
 
 extern unsigned char blockingstatus;
 
-enum { BLOCKING_DISABLED, BLOCKING_ENABLED, BLOCKING_UNKNOWN };
-
 #endif //SETUPVARS_H

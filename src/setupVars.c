@@ -232,7 +232,7 @@ bool __attribute__((pure)) getSetupVarsBool(const char * input)
 }
 
 // Global variable showing current blocking status
-unsigned char blockingstatus = BLOCKING_UNKNOWN;
+enum blocking_status blockingstatus = BLOCKING_UNKNOWN;
 
 void check_blocking_status(void)
 {

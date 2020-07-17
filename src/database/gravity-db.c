@@ -34,39 +34,16 @@ static sqlite3 *gravity_db = NULL;
 static sqlite3_stmt* table_stmt = NULL;
 static sqlite3_stmt* auditlist_stmt = NULL;
 bool gravityDB_opened = false;
-static pid_t main_process = 0, this_process = 0;
 
 // Table names corresponding to the enum defined in gravity-db.h
-static const char* tablename[] = { "vw_gravity", "vw_blacklist", "vw_whitelist", "vw_regex_blacklist", "vw_regex_whitelist" , ""};
+static const char* tablename[] = { "vw_gravity", "vw_blacklist", "vw_whitelist", "vw_regex_blacklist", "vw_regex_whitelist" , "" };
 
 // Prototypes from functions in dnsmasq's source
 void rehash(int size);
 
 // Initialize gravity subroutines
-static void gravityDB_check_fork(void)
+void gravityDB_forked(void)
 {
-	// Memorize main process PID on first call of this funtion (guaranteed to be
-	// the main dnsmasq thread)
-	if(main_process == 0)
-	{
-		main_process = getpid();
-		this_process = main_process;
-	}
-
-	if(this_process == getpid())
-		return;
-
-	// If we reach this point, FTL forked to handle TCP connections with
-	// dedicated (forked) workers SQLite3's mentions that carrying an open
-	// database connection across a fork() can lead to all kinds of locking
-	// problems as SQLite3 was not intended to work under such circumstances.
-	// Doing so may easily lead to ending up with a corrupted database.
-	logg("Note: FTL forked to handle TCP requests");
-
-	// Memorize PID of this thread to avoid re-opening the gravity database
-	// connection multiple times for the same fork
-	this_process = getpid();
-
 	// Pretend that we did not open the database so far so it needs to be
 	// re-opened, also pretend we have not yet prepared the list statements
 	gravityDB_opened = false;
@@ -546,9 +523,6 @@ void gravityDB_close(void)
 // blocking domains from a table which is specified when calling this function
 bool gravityDB_getTable(const unsigned char list)
 {
-	// First check if FTL forked to handle TCP connections
-	gravityDB_check_fork();
-
 	if(!gravityDB_opened && !gravityDB_open())
 	{
 		logg("gravityDB_getTable(%u): Gravity database not available", list);
@@ -637,7 +611,7 @@ void gravityDB_finalizeTable(void)
 // Get number of domains in a specified table of the gravity database
 // We return the constant DB_FAILED and log to pihole-FTL.log if we
 // encounter any error
-int gravityDB_count(const unsigned char list)
+int gravityDB_count(const enum gravity_tables list)
 {
 	if(!gravityDB_opened && !gravityDB_open())
 	{
@@ -645,31 +619,37 @@ int gravityDB_count(const unsigned char list)
 		return DB_FAILED;
 	}
 
-	// Checking for smaller than GRAVITY_LIST is omitted due to list being unsigned
-	if(list >= UNKNOWN_TABLE)
+	const char *querystr = NULL;
+	// Build query string to be used depending on list to be read
+	switch (list)
 	{
-		logg("gravityDB_getTable(%u): Requested list is not known!", list);
-		return false;
-	}
-
-	char *querystr = NULL;
-	// Build correct query string to be used depending on list to be read
-	if(list != GRAVITY_TABLE && asprintf(&querystr, "SELECT COUNT(DISTINCT domain) FROM %s", tablename[list]) < 18)
-	{
-		logg("readGravity(%u) - asprintf() error", list);
-		return false;
-	}
-	// We get the number of unique gravity domains as counted and stored by gravity. Counting the number
-	// of distinct domains in vw_gravity may take up to several minutes for very large blocking lists on
-	// very low-end devices such as the Raspierry Pi Zero
-	else if(list == GRAVITY_TABLE && asprintf(&querystr, "SELECT value FROM info WHERE property = 'gravity_count';") < 18)
-	{
-		logg("readGravity(%u) - asprintf() error", list);
-		return false;
+		case GRAVITY_TABLE:
+			// We get the number of unique gravity domains as counted and stored by gravity. Counting the number
+			// of distinct domains in vw_gravity may take up to several minutes for very large blocking lists on
+			// very low-end devices such as the Raspierry Pi Zero
+			querystr = "SELECT value FROM info WHERE property = 'gravity_count';";
+			break;
+		case EXACT_BLACKLIST_TABLE:
+			querystr = "SELECT COUNT(DISTINCT domain) FROM vw_blacklist";
+			break;
+		case EXACT_WHITELIST_TABLE:
+			querystr = "SELECT COUNT(DISTINCT domain) FROM vw_whitelist";
+			break;
+		case REGEX_BLACKLIST_TABLE:
+			querystr = "SELECT COUNT(DISTINCT domain) FROM vw_regex_blacklist";
+			break;
+		case REGEX_WHITELIST_TABLE:
+			querystr = "SELECT COUNT(DISTINCT domain) FROM vw_regex_whitelist";
+			break;
+		case UNKNOWN_TABLE:
+			logg("Error: List type %u unknown!", list);
+			gravityDB_close();
+			return DB_FAILED;
 	}
 
 	if(config.debug & DEBUG_DATABASE)
-		logg("Querying count of distinct domains in gravity database table %s", tablename[list]);
+		logg("Querying count of distinct domains in gravity database table %s: %s",
+		     tablename[list], querystr);
 
 	// Prepare query
 	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &table_stmt, NULL);
@@ -677,7 +657,6 @@ int gravityDB_count(const unsigned char list)
 		logg("gravityDB_count(%s) - SQL error prepare %s", querystr, sqlite3_errstr(rc));
 		gravityDB_finalizeTable();
 		gravityDB_close();
-		free(querystr);
 		return DB_FAILED;
 	}
 
@@ -691,7 +670,6 @@ int gravityDB_count(const unsigned char list)
 		}
 		gravityDB_finalizeTable();
 		gravityDB_close();
-		free(querystr);
 		return DB_FAILED;
 	}
 
@@ -701,8 +679,7 @@ int gravityDB_count(const unsigned char list)
 	// Finalize statement
 	gravityDB_finalizeTable();
 
-	// Free allocated memory and return result
-	free(querystr);
+	// Return result
 	return result;
 }
 
@@ -777,9 +754,6 @@ static bool domain_in_list(const char *domain, sqlite3_stmt* stmt, const char* l
 
 bool in_whitelist(const char *domain, const int clientID, clientsData* client)
 {
-	// First check if FTL forked to handle TCP connections
-	gravityDB_check_fork();
-
 	// If list statement is not ready and cannot be initialized (e.g. no
 	// access to the database), we return false to prevent an FTL crash
 	if(whitelist_stmt == NULL)
@@ -814,9 +788,6 @@ bool in_whitelist(const char *domain, const int clientID, clientsData* client)
 
 bool in_gravity(const char *domain, const int clientID, clientsData* client)
 {
-	// First check if FTL forked to handle TCP connections
-	gravityDB_check_fork();
-
 	// If list statement is not ready and cannot be initialized (e.g. no
 	// access to the database), we return false to prevent an FTL crash
 	if(gravity_stmt == NULL)
@@ -844,9 +815,6 @@ bool in_gravity(const char *domain, const int clientID, clientsData* client)
 
 inline bool in_blacklist(const char *domain, const int clientID, clientsData* client)
 {
-	// First check if FTL forked to handle TCP connections
-	gravityDB_check_fork();
-
 	// If list statement is not ready and cannot be initialized (e.g. no
 	// access to the database), we return false to prevent an FTL crash
 	if(blacklist_stmt == NULL)
@@ -874,9 +842,6 @@ inline bool in_blacklist(const char *domain, const int clientID, clientsData* cl
 
 bool in_auditlist(const char *domain)
 {
-	// First check if FTL forked to handle TCP connections
-	gravityDB_check_fork();
-
 	// If audit list statement is not ready and cannot be initialized (e.g. no access
 	// to the database), we return false (not in audit list) to prevent an FTL crash
 	if(auditlist_stmt == NULL)
@@ -889,9 +854,6 @@ bool in_auditlist(const char *domain)
 bool gravityDB_get_regex_client_groups(clientsData* client, const int numregex, const int *regexid,
                                        const unsigned char type, const char* table, const int clientID)
 {
-	// First check if FTL forked to handle TCP connections
-	gravityDB_check_fork();
-
 	char *querystr = NULL;
 	if(!client->found_group && !get_client_groupids(client))
 		return false;

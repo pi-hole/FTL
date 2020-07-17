@@ -15,7 +15,7 @@
 
 struct timeval t0[NUMTIMERS];
 
-void timer_start(const int i)
+void timer_start(enum timers i)
 {
 	if(i >= NUMTIMERS)
 	{
@@ -25,7 +25,7 @@ void timer_start(const int i)
 	gettimeofday(&t0[i], 0);
 }
 
-double timer_elapsed_msec(const int i)
+double timer_elapsed_msec(enum timers i)
 {
 	if(i >= NUMTIMERS)
 	{
