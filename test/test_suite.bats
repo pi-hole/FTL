@@ -145,7 +145,6 @@
   run bash -c "dig AAAA google.com @127.0.0.1 +short +tcp"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} != "::" ]]
-  [[ ${lines[1]} == "" ]]
 }
 
 @test "Known host is resolved as expected" {
