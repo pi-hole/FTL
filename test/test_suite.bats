@@ -456,3 +456,9 @@
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "2" ]]
 }
+
+@test "Port file exists and contains expected API port" {
+  run bash -c 'cat /run/pihole-FTL.port'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "4711" ]]
+}
