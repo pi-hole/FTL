@@ -34,17 +34,25 @@ bool dualstack = false;
 bool ipv4telnet = false, ipv6telnet = false, sock_avail = false;
 bool istelnet[MAXCONNS];
 
-static void saveport(void)
+void saveport(int port)
 {
 	FILE *f;
-	if((f = fopen(FTLfiles.port, "w+")) == NULL)
+	// Open "w" for truncation/creating file
+	if((f = fopen(FTLfiles.port, "w")) == NULL)
 	{
-		logg("WARNING: Unable to write used port to file.");
-		logg("         Continuing anyway (API might not find the port).");
+		// Opening failed (permissions, path does not exist, etc.)
+		logg("WARNING: Unable to write used port to file");
+		logg("         (API might not find the port)");
+	}
+	else if(port > 0)
+	{
+		// Save port to file
+		fprintf(f, "%i", port);
+		fclose(f);
 	}
 	else
 	{
-		fprintf(f, "%i", config.port);
+		// FTL is terminating: Leave file truncated
 		fclose(f);
 	}
 }
@@ -94,7 +102,6 @@ static bool bind_to_telnet_port_IPv4(int *socketdescriptor)
 		return false;
 	}
 
-	saveport();
 	logg("Listening on port %i for incoming IPv4 telnet connections", config.port);
 	return true;
 }
@@ -157,7 +164,6 @@ static bool bind_to_telnet_port_IPv6(int *socketdescriptor)
 		return false;
 	}
 
-	saveport();
 	logg("Listening on port %i for incoming IPv6 telnet connections", config.port);
 	return true;
 }
@@ -169,7 +175,6 @@ static bool bind_to_unix_socket(int *socketdescriptor)
 	if(*socketdescriptor < 0)
 	{
 		logg("WARNING: Error opening Unix socket.");
-		logg("         Continuing anyway.");
 		return false;
 	}
 
@@ -191,7 +196,6 @@ static bool bind_to_unix_socket(int *socketdescriptor)
 	if(bind(*socketdescriptor, (struct sockaddr *) &address, sizeof (address)) != 0)
 	{
 		logg("WARNING: Cannot bind on Unix socket %s: %s (%i)", FTLfiles.socketfile, strerror(errno), errno);
-		logg("         Continuing anyway.");
 		return false;
 	}
 
@@ -199,24 +203,11 @@ static bool bind_to_unix_socket(int *socketdescriptor)
 	if(listen(*socketdescriptor, BACKLOG) == -1)
 	{
 		logg("WARNING: Cannot listen on Unix socket: %s (%i)", strerror(errno), errno);
-		logg("         Continuing anyway.");
 		return false;
 	}
 
 	logg("Listening on Unix socket");
 	return true;
-}
-
-// Called from main() at graceful shutdown
-static void removeport(void)
-{
-	FILE *f;
-	if((f = fopen(FTLfiles.port, "w+")) == NULL)
-	{
-		logg("WARNING: Unable to empty port file");
-		return;
-	}
-	fclose(f);
 }
 
 void seom(const int sock)
@@ -296,7 +287,6 @@ static int listener(const int sockfd, const char type)
 
 void close_telnet_socket(void)
 {
-	removeport();
 	// Using global variable here
 	if(telnetfd4)
 		close(telnetfd4);
@@ -459,7 +449,7 @@ void *telnet_listening_thread_IPv4(void *args)
 		if(pthread_create( &telnet_connection_thread, &attr, telnet_connection_handler_thread, (void*) newsock ) != 0)
 		{
 			// Log the error code description
-			logg("WARNING: Unable to open telnet processing thread, error: %s", strerror(errno));
+			logg("WARNING: Unable to open telnet processing thread: %s", strerror(errno));
 		}
 	}
 	return false;
@@ -508,7 +498,7 @@ void *telnet_listening_thread_IPv6(void *args)
 		if(pthread_create( &telnet_connection_thread, &attr, telnet_connection_handler_thread, (void*) newsock ) != 0)
 		{
 			// Log the error code description
-			logg("WARNING: Unable to open telnet processing thread, error: %s", strerror(errno));
+			logg("WARNING: Unable to open telnet processing thread: %s", strerror(errno));
 		}
 	}
 	return false;
@@ -537,7 +527,8 @@ void *socket_listening_thread(void *args)
 	{
 		// Look for new clients that want to connect
 		const int csck = listener(socketfd, 0);
-		if(csck < 0) continue;
+		if(csck < 0)
+			continue;
 
 		// Allocate memory used to transport client socket ID to client listening thread
 		int *newsock;
@@ -550,7 +541,7 @@ void *socket_listening_thread(void *args)
 		if(pthread_create( &socket_connection_thread, &attr, socket_connection_handler_thread, (void*) newsock ) != 0)
 		{
 			// Log the error code description
-			logg("WARNING: Unable to open socket processing thread, error: %s", strerror(errno));
+			logg("WARNING: Unable to open socket processing thread: %s", strerror(errno));
 		}
 	}
 	return false;

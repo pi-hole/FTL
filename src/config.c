@@ -15,6 +15,8 @@
 #include "log.h"
 // nice()
 #include <unistd.h>
+// saveport()
+#include "api/socket.h"
 
 ConfigStruct config;
 FTLFileNamesStruct FTLfiles = {
@@ -303,6 +305,7 @@ void read_FTLconf(void)
 
 	// PORTFILE
 	getpath(fp, "PORTFILE", "/run/pihole-FTL.port", &FTLfiles.port);
+	saveport(config.port);
 
 	// SOCKETFILE
 	getpath(fp, "SOCKETFILE", "/run/pihole/FTL.sock", &FTLfiles.socketfile);
