@@ -11,8 +11,16 @@ if ! id -u pihole &> /dev/null; then
   useradd -m -s /usr/sbin/nologin pihole
 fi
 
+# Kill possibly running pihole-FTL process
+while pidof -s pihole-FTL > /dev/null; do
+  pid="$(pidof -s pihole-FTL)"
+  echo "Terminating running pihole-FTL process with PID ${pid}"
+  kill $pid
+  sleep 1
+done
+
 # Clean up possible old files from earlier test runs
-rm -f /etc/pihole/gravity.db /etc/pihole/pihole-FTL.db /var/log/pihole.log /var/log/pihole-FTL.log
+rm -f /etc/pihole/gravity.db /etc/pihole/pihole-FTL.db /var/log/pihole.log /var/log/pihole-FTL.log /dev/shm/FTL-*
 
 # Create necessary directories and files
 mkdir -p /etc/pihole /run/pihole /var/log
