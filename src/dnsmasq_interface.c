@@ -1785,8 +1785,17 @@ static void prepare_blocking_metadata(void)
 // Called when a (forked) TCP worker is terminated by receiving SIGALRM
 // We close the dedicated database connection this client had opened
 // to avoid dangling database locks
+static volatile bool worker_already_terminating = false;
 void FTL_TCP_worker_terminating(bool finished)
 {
+	if(worker_already_terminating)
+	{
+		logg("TCP worker already terminating!");
+		return;
+	}
+	worker_already_terminating = true;
+
+	// Possible debug logging
 	if(config.debug != 0)
 	{
 		const char *reason = finished ? "client disconnected" : "timeout";
