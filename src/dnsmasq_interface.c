@@ -38,6 +38,8 @@
 #include "args.h"
 // handle_realtime_signals()
 #include "signals.h"
+// atomic_flag_test_and_set()
+#include <stdatomic.h>
 
 static void print_flags(const unsigned int flags);
 static void save_reply_type(const unsigned int flags, const union all_addr *addr,
@@ -1785,15 +1787,14 @@ static void prepare_blocking_metadata(void)
 // Called when a (forked) TCP worker is terminated by receiving SIGALRM
 // We close the dedicated database connection this client had opened
 // to avoid dangling database locks
-static volatile bool worker_already_terminating = false;
+volatile atomic_flag worker_already_terminating = ATOMIC_FLAG_INIT;
 void FTL_TCP_worker_terminating(bool finished)
 {
-	if(worker_already_terminating)
+	if(atomic_flag_test_and_set(&worker_already_terminating))
 	{
 		logg("TCP worker already terminating!");
 		return;
 	}
-	worker_already_terminating = true;
 
 	// Possible debug logging
 	if(config.debug != 0)
