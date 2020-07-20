@@ -139,7 +139,7 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 		// Debug logging
 		if(config.debug & DEBUG_EDNS0)
 			logg("EDNS0: code %u, optlen %u (i = %u)", code, optlen, i);
-		if (code == 0x08)
+		if (code == 0x08 && config.edns0_ecs)
 		{
 		// RFC 7871              Client Subnet in DNS Queries              6.  Option Format
 		//   This protocol uses an EDNS0 [RFC6891] option to include client

@@ -43,6 +43,7 @@ typedef struct {
 	bool cname_inspection;
 	bool block_esni;
 	bool names_from_netdb;
+	bool edns0_ecs;
 } ConfigStruct;
 
 typedef struct {
