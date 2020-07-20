@@ -51,7 +51,7 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 
 void FTL_dnsmasq_reload(void);
 void FTL_fork_and_bind_sockets(struct passwd *ent_pw);
-void FTL_TCP_worker_created(void);
+void FTL_TCP_worker_created(const int confd, const char *iface_name);
 void FTL_TCP_worker_terminating(bool finished);
 
 void set_debug_dnsmasq_lines(char enabled);
