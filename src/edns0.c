@@ -23,7 +23,7 @@
 
 #define EDNS0_COOKIE 10
 
-void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockaddr *peer, const int id)
+void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockaddr *peer, struct edns_data *edns)
 {
 	int is_sign;
 	size_t plen; 
@@ -184,37 +184,10 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 			   !(family == 2 && source_netmask == 128))
 				continue;
 
-			// Lock shared memory
-			lock_shm();
-
-			// Save status and upstreamID in corresponding query identified by dnsmasq's ID
-			const int queryID = findQueryID(id);
-			if(queryID < 0)
-			{
-				// This may happen e.g. if the original query was a PTR query
-				// or "pi.hole" and we ignored them altogether
-				unlock_shm();
-				continue;
-			}
-
-			// Get query pointer so we can later extract the client requesting this domain for
-			// the per-client blocking evaluation
-			queriesData *query = getQuery(queryID, true);
-			if(query == NULL)
-			{
-				unlock_shm();
-				continue;
-			}
-/*
-			clientsData *client = getClient(query->clientID, true);
-			if(client == NULL)
-			{
-				unlock_shm();
-				continue;
-			}
-*/
-			logg("EDNS0: Originally recorded client was %s", getClientIPString(query));
-			unlock_shm();
+			// Copy data to edns struct
+			edns->edns0_client = true;
+			strncpy(edns->client, ipaddr, ADDRSTRLEN);
+			edns->client[ADDRSTRLEN-1] = '\0';
 		}
 		else if(code == 0x0a)
 		{

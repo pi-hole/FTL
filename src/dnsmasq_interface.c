@@ -436,7 +436,8 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 bool _FTL_new_query(const unsigned int flags, const char *name,
                     const char **blockingreason, const union all_addr *addr,
                     const char *types, const unsigned short qtype, const int id,
-                    const enum protocol proto, const char* file, const int line)
+                    const struct edns_data *edns, const enum protocol proto,
+                    const char* file, const int line)
 {
 	// Create new query in data structure
 
@@ -502,18 +503,25 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	char *domainString = strdup(name);
 	strtolower(domainString);
 
-	// Get client IP address
-	char dest[ADDRSTRLEN];
-	inet_ntop((flags & F_IPV4) ? AF_INET : AF_INET6, addr, dest, ADDRSTRLEN);
-	char *clientIP = strdup(dest);
-	strtolower(clientIP);
+	// Get client IP address (can be overwritten by EDNS(0) client subnet (ECS) data)
+	char clientIP[ADDRSTRLEN] = { 0 };
+	if(edns->edns0_client)
+	{
+		// Use ECS provided client
+		strncpy(clientIP, edns->client, ADDRSTRLEN);
+		clientIP[ADDRSTRLEN-1] = '\0';
+	}
+	else
+	{
+		// Use original requestor
+		inet_ntop((flags & F_IPV4) ? AF_INET : AF_INET6, addr, clientIP, ADDRSTRLEN);
+	}
 
 	// Check if user wants to skip queries coming from localhost
 	if(config.ignore_localhost &&
 	   (strcmp(clientIP, "127.0.0.1") == 0 || strcmp(clientIP, "::1") == 0))
 	{
 		free(domainString);
-		free(clientIP);
 		unlock_shm();
 		return false;
 	}
@@ -540,7 +548,6 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		// Don't process this query further here, we already counted it
 		if(config.debug & DEBUG_QUERIES) logg("Notice: Skipping new query: %s (%i)", types, id);
 		free(domainString);
-		free(clientIP);
 		unlock_shm();
 		return false;
 	}
@@ -558,7 +565,6 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		// Encountered memory error, skip query
 		// Free allocated memory
 		free(domainString);
-		free(clientIP);
 		// Release thread lock
 		unlock_shm();
 		return false;
@@ -603,7 +609,6 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		// Encountered memory error, skip query
 		// Free allocated memory
 		free(domainString);
-		free(clientIP);
 		// Release thread lock
 		unlock_shm();
 		return false;
@@ -620,7 +625,6 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 
 	// Free allocated memory
 	free(domainString);
-	free(clientIP);
 
 	// Release thread lock
 	unlock_shm();
@@ -663,7 +667,7 @@ void _FTL_get_blocking_metadata(union all_addr **addrp, unsigned int *flags, con
 		*flags = F_NXDOMAIN;
 	}
 	else if(config.blockingmode == MODE_NODATA ||
-	        (config.blockingmode == MODE_IP_NODATA_AAAA && (*flags & F_IPV6)))
+	       (config.blockingmode == MODE_IP_NODATA_AAAA && (*flags & F_IPV6)))
 	{
 		// If we block in NODATA mode or NODATA for AAAA queries, we apply
 		// the NOERROR response flag. This ensures we're sending an empty response

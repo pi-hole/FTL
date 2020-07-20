@@ -1530,7 +1530,13 @@ void receive_query(struct listener *listen, time_t now)
 #ifdef HAVE_DUMPFILE
   dump_packet(DUMP_QUERY, daemon->packet, (size_t)n, &source_addr, NULL);
 #endif
-	  
+
+  //********************** Pi-hole modification **********************//
+  struct edns_data edns = { 0 };
+  if (find_pseudoheader(header, (size_t)n, NULL, &pheader, NULL, NULL))
+    FTL_parse_pseudoheaders(header, n, &source_addr, &edns);
+  //******************************************************************//
+
   if (extract_request(header, (size_t)n, daemon->namebuff, &type))
     {
 #ifdef HAVE_AUTH
@@ -1543,14 +1549,14 @@ void receive_query(struct listener *listen, time_t now)
 	log_query(F_QUERY | F_IPV4 | F_FORWARD, daemon->namebuff, 
 		  (union all_addr *)&source_addr.in.sin_addr, types);
 	piholeblocked = FTL_new_query(F_QUERY | F_IPV4 | F_FORWARD, daemon->namebuff, &blockingreason,
-	              (union all_addr *)&source_addr.in.sin_addr, types, type, daemon->log_display_id, UDP);
+	              (union all_addr *)&source_addr.in.sin_addr, types, type, daemon->log_display_id, &edns, UDP);
       }
       else
       {
 	log_query(F_QUERY | F_IPV6 | F_FORWARD, daemon->namebuff,
 		  (union all_addr *)&source_addr.in6.sin6_addr, types);
 	piholeblocked = FTL_new_query(F_QUERY | F_IPV6 | F_FORWARD, daemon->namebuff, &blockingreason,
-	              (union all_addr *)&source_addr.in6.sin6_addr, types, type, daemon->log_display_id, UDP);
+	              (union all_addr *)&source_addr.in6.sin6_addr, types, type, daemon->log_display_id, &edns, UDP);
       }
 
 #ifdef HAVE_AUTH
@@ -1591,10 +1597,6 @@ void receive_query(struct listener *listen, time_t now)
 	udp_size = daemon->edns_pktsz;
       else if (udp_size < PACKETSZ)
 	udp_size = PACKETSZ; /* Sanity check - can't reduce below default. RFC 6891 6.2.3 */
-
-      //********************** Pi-hole modification **********************//
-      FTL_parse_pseudoheaders(header, n, &source_addr, daemon->log_display_id);
-      //******************************************************************//
     }
 
 #ifdef HAVE_AUTH
@@ -1935,6 +1937,12 @@ unsigned char *tcp_request(int confd, time_t now,
       /* save state of "cd" flag in query */
       if ((checking_disabled = header->hb4 & HB4_CD))
 	no_cache_dnssec = 1;
+
+      //********************** Pi-hole modification **********************//
+      struct edns_data edns = { 0 };
+      if (find_pseudoheader(header, (size_t)size, NULL, &pheader, NULL, NULL))
+        FTL_parse_pseudoheaders(header, size, &peer_addr, &edns);
+      //******************************************************************//
        
       if ((gotname = extract_request(header, (unsigned int)size, daemon->namebuff, &qtype)))
 	{
@@ -1948,14 +1956,14 @@ unsigned char *tcp_request(int confd, time_t now,
 	    log_query(F_QUERY | F_IPV4 | F_FORWARD, daemon->namebuff, 
 		      (union all_addr *)&peer_addr.in.sin_addr, types);
 	    piholeblocked = FTL_new_query(F_QUERY | F_IPV4 | F_FORWARD, daemon->namebuff, &blockingreason,
-	              (union all_addr *)&peer_addr.in.sin_addr, types, qtype, daemon->log_display_id, TCP);
+	              (union all_addr *)&peer_addr.in.sin_addr, types, qtype, daemon->log_display_id, &edns, TCP);
 	  }
 	  else
 	  {
 	    log_query(F_QUERY | F_IPV6 | F_FORWARD, daemon->namebuff,
 		      (union all_addr *)&peer_addr.in6.sin6_addr, types);
 	    piholeblocked = FTL_new_query(F_QUERY | F_IPV6 | F_FORWARD, daemon->namebuff, &blockingreason,
-	              (union all_addr *)&peer_addr.in6.sin6_addr, types, qtype, daemon->log_display_id, TCP);
+	              (union all_addr *)&peer_addr.in6.sin6_addr, types, qtype, daemon->log_display_id, &edns, TCP);
 	  }
 	  
 #ifdef HAVE_AUTH
@@ -1988,10 +1996,6 @@ unsigned char *tcp_request(int confd, time_t now,
       
 	  if (flags & 0x8000)
 	    do_bit = 1; /* do bit */ 
-
-        //********************** Pi-hole modification **********************//
-        FTL_parse_pseudoheaders(header, size, &peer_addr, daemon->log_display_id);
-        //******************************************************************//
 	}
 
 #ifdef HAVE_AUTH

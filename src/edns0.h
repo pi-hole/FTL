@@ -12,6 +12,11 @@
 
 #include "edns0.h"
 
-void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockaddr *peer, const int id);
+struct edns_data {
+	bool edns0_client;
+	char client[ADDRSTRLEN];
+};
+
+void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockaddr *peer, struct edns_data *edns);
 
 #endif // EDNS0_HEADER
