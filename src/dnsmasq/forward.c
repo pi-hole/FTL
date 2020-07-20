@@ -1592,8 +1592,9 @@ void receive_query(struct listener *listen, time_t now)
       else if (udp_size < PACKETSZ)
 	udp_size = PACKETSZ; /* Sanity check - can't reduce below default. RFC 6891 6.2.3 */
 
-      // Pi-hole
-      FTL_parse_pseudoheaders(header, n, &source_addr);
+      //********************** Pi-hole modification **********************//
+      FTL_parse_pseudoheaders(header, n, &source_addr, daemon->log_display_id);
+      //******************************************************************//
     }
 
 #ifdef HAVE_AUTH
@@ -1987,6 +1988,10 @@ unsigned char *tcp_request(int confd, time_t now,
       
 	  if (flags & 0x8000)
 	    do_bit = 1; /* do bit */ 
+
+        //********************** Pi-hole modification **********************//
+        FTL_parse_pseudoheaders(header, size, &peer_addr, daemon->log_display_id);
+        //******************************************************************//
 	}
 
 #ifdef HAVE_AUTH

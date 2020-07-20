@@ -15,13 +15,15 @@
 #include "log.h"
 #include "edns0.h"
 #include "config.h"
+#include "datastructure.h"
+#include "shmem.h"
 
 #define LEN(header, pp, plen, len) \
     ((size_t)((pp) - (unsigned char *)(header) + (len)))
 
 #define EDNS0_COOKIE 10
 
-void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockaddr *peer)
+void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockaddr *peer, const int id)
 {
 	int is_sign;
 	size_t plen; 
@@ -170,12 +172,49 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 			else
 				continue;
 
-			// Advance working pointer
+			// Advance working pointer (we already walked 4 bytes above)
 			p += optlen - 4;
 			
 			char ipaddr[ADDRSTRLEN] = { 0 };
 			inet_ntop(family == 1 ? AF_INET : AF_INET6, &addr.addr4.s_addr, ipaddr, sizeof(ipaddr));
-			logg("EDNS0: Identified option CLIENT SUBNET (%s/%i)", ipaddr, source_netmask);
+			logg("EDNS0: Identified option CLIENT SUBNET %s/%i", ipaddr, source_netmask);
+
+			// Only use /32 (IPv4) and /128 (IPv6) addresses
+			if(!(family == 1 && source_netmask == 32) &&
+			   !(family == 2 && source_netmask == 128))
+				continue;
+
+			// Lock shared memory
+			lock_shm();
+
+			// Save status and upstreamID in corresponding query identified by dnsmasq's ID
+			const int queryID = findQueryID(id);
+			if(queryID < 0)
+			{
+				// This may happen e.g. if the original query was a PTR query
+				// or "pi.hole" and we ignored them altogether
+				unlock_shm();
+				continue;
+			}
+
+			// Get query pointer so we can later extract the client requesting this domain for
+			// the per-client blocking evaluation
+			queriesData *query = getQuery(queryID, true);
+			if(query == NULL)
+			{
+				unlock_shm();
+				continue;
+			}
+/*
+			clientsData *client = getClient(query->clientID, true);
+			if(client == NULL)
+			{
+				unlock_shm();
+				continue;
+			}
+*/
+			logg("EDNS0: Originally recorded client was %s", getClientIPString(query));
+			unlock_shm();
 		}
 		else if(code == 0x0a)
 		{

@@ -47,7 +47,6 @@ static void save_reply_type(const unsigned int flags, const union all_addr *addr
 static unsigned long converttimeval(const struct timeval time) __attribute__((const));
 static void detect_blocked_IP(const unsigned short flags, const union all_addr *addr, const int queryID);
 static void query_externally_blocked(const int queryID, const unsigned char status);
-static int findQueryID(const int id);
 static void prepare_blocking_metadata(void);
 static void query_blocked(queriesData* query, domainsData* domain, clientsData* client, const unsigned char new_status);
 
@@ -670,35 +669,6 @@ void _FTL_get_blocking_metadata(union all_addr **addrp, unsigned int *flags, con
 		// the NOERROR response flag. This ensures we're sending an empty response
 		*flags = F_NOERR;
 	}
-}
-
-static int findQueryID(const int id)
-{
-	// Loop over all queries - we loop in reverse order (start from the most recent query and
-	// continuously walk older queries while trying to find a match. Ideally, we should always
-	// find the correct query with zero iterations, but it may happen that queries are processed
-	// asynchronously, e.g. for slow upstream relies to a huge amount of requests.
-	// We iterate from the most recent query down to at most MAXITER queries in the past to avoid
-	// iterating through the entire array of queries
-	// MAX(0, a) is used to return 0 in case a is negative (negative array indices are harmful)
-	const int until = MAX(0, counters->queries-MAXITER);
-	const int start = MAX(0, counters->queries-1);
-
-	// Check UUIDs of queries
-	for(int i = start; i >= until; i--)
-	{
-		const queriesData* query = getQuery(i, true);
-
-		// Check if the returned pointer is valid before trying to access it
-		if(query == NULL)
-			continue;
-
-		if(query->id == id)
-			return i;
-	}
-
-	// If not found
-	return -1;
 }
 
 void _FTL_forwarded(const unsigned int flags, const char *name, const union all_addr *addr, const int id,
