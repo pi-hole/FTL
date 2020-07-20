@@ -29,7 +29,7 @@ typedef struct {
 	int maxlogage;
 	int dns_port;
 	unsigned int delay_startup;
-	int16_t debug;
+	enum debug_mode debug;
 	enum privacy_level privacylevel;
 	enum blocking_mode blockingmode;
 	bool socket_listenlocal;
