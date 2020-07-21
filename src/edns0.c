@@ -18,10 +18,28 @@
 #include "datastructure.h"
 #include "shmem.h"
 
-#define LEN(header, pp, plen, len) \
-    ((size_t)((pp) - (unsigned char *)(header) + (len)))
+// EDNS(0) Client Subnet [Optional, RFC7871]
+#define EDNS0_ECS EDNS0_OPTION_CLIENT_SUBNET
 
+// EDN(0) COOKIE [Standard, RFC7873]
 #define EDNS0_COOKIE 10
+
+// EDNS(0) MAC address [NOT STANDARDIZED]
+//
+// BYTE encoding, payload size: 6 bytes
+// dnsmasq option: --add-mac
+#define EDNS0_MAC_ADDR_BYTE EDNS0_OPTION_MAC
+// TEXT encoding, payload size: 17 bytes
+// dnsmasq option: --add-mac=text
+#define EDNS0_MAC_ADDR_TEXT EDNS0_OPTION_NOMDEVICEID
+// BASE64 encoding, payload size: 8 bytes
+// dnsmasq option: --add-mac=base64
+#define EDNS0_MAC_ADDR_BASE64 EDNS0_MAC_ADDR_TEXT
+
+// EDNS(0) CPE-ID (Common Platform Enumeration Identifier) [NOT STANDARDIZED]
+// Payload: String of any length (can be zero)
+// dnsmasq option: --add-cpe-id=...
+#define EDNS0_CPE_ID EDNS0_OPTION_NOMCPEID
 
 void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockaddr *peer, struct edns_data *edns)
 {
@@ -150,7 +168,7 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 		// Debug logging
 		if(config.debug & DEBUG_EDNS0)
 			logg("EDNS(0): code %u, optlen %u (offset = %lu)", code, optlen, offset);
-		if (code == 8 && config.edns0_ecs)
+		if (code == EDNS0_ECS && config.edns0_ecs)
 		{
 			if(config.debug & DEBUG_EDNS0)
 				logg("EDNS(0): Identified option CLIENT SUBNET");
@@ -202,14 +220,14 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 			strncpy(edns->client, ipaddr, ADDRSTRLEN);
 			edns->client[ADDRSTRLEN-1] = '\0';
 		}
-		else if(code == 10)
+		else if(code == EDNS0_COOKIE)
 		{
 			if(config.debug & DEBUG_EDNS0)
 				logg("EDNS(0): Identified option COOKIE");
 			// Not implemented, skip this record
 			p += optlen;
 		}
-		else if(code == 65001 && optlen == 6)
+		else if(code == EDNS0_MAC_ADDR_BYTE && optlen == 6)
 		{
 			if(config.debug & DEBUG_EDNS0)
 				logg("EDNS(0): Identified option MAC ADDRESS (BYTE format)");
@@ -223,7 +241,7 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 			}
 			p += optlen;
 		}
-		else if(code == 65073 && optlen == 17)
+		else if(code == EDNS0_MAC_ADDR_TEXT && optlen == 17)
 		{
 			if(config.debug & DEBUG_EDNS0)
 				logg("EDNS(0): Identified option MAC ADDRESS (TEXT format)");
@@ -234,7 +252,7 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 				logg("         Received MAC address: %s", payload);
 			p += optlen;
 		}
-		else if(code == 65073 && optlen == 8)
+		else if(code == EDNS0_MAC_ADDR_BASE64 && optlen == 8)
 		{
 			if(config.debug & DEBUG_EDNS0)
 				logg("EDNS(0): Identified option MAC ADDRESS (BASE64 format)");
@@ -242,7 +260,7 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 				logg("         NOT IMPLEMENTED");
 			p += optlen;
 		}
-		else if(code == 65074)
+		else if(code == EDNS0_CPE_ID)
 		{
 			if(config.debug & DEBUG_EDNS0)
 				logg("EDNS(0): Identified option CPE-ID (payload size %u)", optlen);
