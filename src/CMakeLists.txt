@@ -176,19 +176,25 @@ set(THREADS_PREFER_PTHREAD_FLAG TRUE)
 find_package(Threads REQUIRED)
 
 # for DNSSEC we need the nettle (+ hogweed) crypto and the gmp math libraries
-find_library(HOGWEED libhogweed${CMAKE_STATIC_LIBRARY_SUFFIX})
-find_library(GMP libgmp${CMAKE_STATIC_LIBRARY_SUFFIX})
-find_library(NETTLE libnettle${CMAKE_STATIC_LIBRARY_SUFFIX})
-find_library(IDN libidn${CMAKE_STATIC_LIBRARY_SUFFIX})
+find_library(LIBHOGWEED libhogweed${CMAKE_STATIC_LIBRARY_SUFFIX})
+find_library(LIBGMP libgmp${CMAKE_STATIC_LIBRARY_SUFFIX})
+find_library(LIBNETTLE libnettle${CMAKE_STATIC_LIBRARY_SUFFIX})
+find_library(LIBIDN libidn${CMAKE_STATIC_LIBRARY_SUFFIX})
 # for LUA we need libdl (lookforfunc) and libm (linking libm and libdl statically is discouraged)
-find_library(MATH m)
+find_library(LIBMATH m)
 
-target_link_libraries(pihole-FTL rt Threads::Threads ${HOGWEED} ${GMP} ${NETTLE} ${IDN} ${MATH})
+target_link_libraries(pihole-FTL rt Threads::Threads ${LIBHOGWEED} ${LIBGMP} ${LIBNETTLE} ${LIBIDN} ${LIBMATH})
 
-# for LUA we need can add libdl (lookforfunc) if we really want to
 if(LUA_DL STREQUAL "true")
-    find_library(DL dl)
-    target_link_libraries(pihole-FTL ${DL})
+    find_library(LIBDL dl)
+    target_link_libraries(pihole-FTL ${LIBDL})
+endif()
+
+if(LUA_READLINE STREQUAL "true")
+    find_library(LIBREADLINE libreadline${CMAKE_STATIC_LIBRARY_SUFFIX})
+    find_library(LIBHISTORY libhistory${CMAKE_STATIC_LIBRARY_SUFFIX})
+    find_library(LIBTERMCAP libtermcap${CMAKE_STATIC_LIBRARY_SUFFIX})
+    target_link_libraries(pihole-FTL ${LIBREADLINE} ${LIBHISTORY} ${LIBTERMCAP})
 endif()
 
 if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)

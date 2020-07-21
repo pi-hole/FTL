@@ -71,7 +71,10 @@ target_compile_definitions(lua PRIVATE LUA_USE_POSIX)
 
 if(LUA_DL STREQUAL "true")
     target_compile_definitions(lua PRIVATE LUA_USE_DLOPEN)
-    find_library(DL dl)
-    target_link_libraries(pihole-FTL ${DL})
 endif()
+
+if(LUA_READLINE STREQUAL "true")
+    target_compile_definitions(lua PRIVATE LUA_USE_READLINE)
+endif()
+
 target_include_directories(lua PRIVATE ${PROJECT_SOURCE_DIR}/src)
