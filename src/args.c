@@ -188,6 +188,7 @@ void parse_args(int argc, char* argv[])
 			printf("\t-h, help          Display this help and exit\n");
 			printf("\tdnsmasq-test      Test syntax of dnsmasq's\n");
 			printf("\t                  config files and exit\n");
+			printf("\t--lua, lua        FTL's LUA interpreter\n");
 			printf("\n\nOnline help: https://github.com/pi-hole/FTL\n");
 			exit(EXIT_SUCCESS);
 		}
@@ -197,6 +198,24 @@ void parse_args(int argc, char* argv[])
 		{
 			printf("True\n");
 			exit(EXIT_SUCCESS);
+		}
+
+		// Expose internal LUA interpreter
+		if(strcmp(argv[i], "lua") == 0 ||
+		   strcmp(argv[i], "--lua") == 0)
+		{
+			if(argc == i + 1) // No arguments after this one
+				printf("Pi-hole FTL %s\n", get_FTL_version());
+			exit(lua_main(argc - i, &argv[i]));
+		}
+
+		// Expose internal LUA compiler
+		if(strcmp(argv[i], "luac") == 0 ||
+		   strcmp(argv[i], "--luac") == 0)
+		{
+			if(argc == i + 1) // No arguments after this one
+				printf("Pi-hole FTL %s\n", get_FTL_version());
+			exit(luac_main(argc - i, &argv[i]));
 		}
 
 		// Complain if invalid options have been found
