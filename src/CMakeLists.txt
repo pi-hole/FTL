@@ -165,6 +165,7 @@ if(STATIC STREQUAL "true")
     target_link_libraries(pihole-FTL -static-libgcc -static -static-pie)
 endif()
 target_compile_options(pihole-FTL PRIVATE ${EXTRAWARN})
+target_compile_definitions(pihole-FTL PRIVATE DNSMASQ_VERSION=\"${DNSMASQ_VERSION}\")
 target_include_directories(pihole-FTL PRIVATE ${PROJECT_SOURCE_DIR}/src)
 add_dependencies(pihole-FTL gen_version)
 
@@ -184,6 +185,7 @@ target_link_libraries(pihole-FTL rt Threads::Threads ${HOGWEED} ${GMP} ${NETTLE}
 # for LUASCRIPT support we add liblua, libdl (lookforfunc) and libm
 # Only liblua is linked statically as linking libm and libdl statically is discouraged
 if(FTL_LUA STREQUAL "true")
+    target_compile_definitions(pihole-FTL PRIVATE FTL_LUA)
     find_library(LUA liblua${CMAKE_STATIC_LIBRARY_SUFFIX})
     find_library(DL dl)
     find_library(MATH m)

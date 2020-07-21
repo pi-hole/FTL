@@ -8,6 +8,11 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
+// DNSMASQ COPYRIGHT
+#define FTLDNS
+#include "dnsmasq/dnsmasq.h"
+#undef __USE_XOPEN
+
 #include "FTL.h"
 #include "args.h"
 #include "version.h"
@@ -16,6 +21,11 @@
 #include "log.h"
 // global variable killed
 #include "signals.h"
+
+// LUA version
+#ifdef FTL_LUA
+#include <lua.h>
+#endif
 
 static bool debug = false;
 bool daemonmode = true;
@@ -129,6 +139,18 @@ void parse_args(int argc, char* argv[])
 			exit(EXIT_SUCCESS);
 		}
 
+		if(strcmp(argv[i], "-vv") == 0) // Extended version
+		{
+			printf("Pi-hole FTL: %s\n", get_FTL_version());
+			printf("dnsmasq: "DNSMASQ_VERSION"  "COPYRIGHT"\n");
+#ifdef FTL_LUA
+			printf("LUA: "LUA_COPYRIGHT"\n");
+#else
+			printf("LUA: --- (no LUA embedded)\n");
+#endif
+			exit(EXIT_SUCCESS);
+		}
+
 		if(strcmp(argv[i], "-t") == 0 ||
 		   strcmp(argv[i], "tag") == 0)
 		{
@@ -163,6 +185,7 @@ void parse_args(int argc, char* argv[])
 			printf("\t    test          Don't start pihole-FTL but\n");
 			printf("\t                  instead quit immediately\n");
 			printf("\t-v, version       Return version\n");
+			printf("\t-vv               Return extended version\n");
 			printf("\t-t, tag           Return git tag\n");
 			printf("\t-b, branch        Return git branch\n");
 			printf("\t-f, no-daemon     Don't go into daemon mode\n");
