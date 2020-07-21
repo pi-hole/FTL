@@ -220,7 +220,7 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 				continue;
 
 			// Copy data to edns struct
-			edns->edns0_client = true;
+			edns->client_set = true;
 			strncpy(edns->client, ipaddr, ADDRSTRLEN);
 			edns->client[ADDRSTRLEN-1] = '\0';
 		}
@@ -232,7 +232,7 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 			memcpy(client_cookie, p, 8);
 			if(config.debug & DEBUG_EDNS0)
 			{
-				char pretty_client_cookie[8*2 + 1u];
+				char pretty_client_cookie[8*2 + 1]; // client: fixed length
 				char *pp = pretty_client_cookie;
 				for(unsigned int j = 0; j < 8; j++)
 					pp += sprintf(pp, "%02X", client_cookie[j]);
@@ -254,12 +254,12 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 			memcpy(server_cookie, p + 8u, server_cookie_len);
 			if(config.debug & DEBUG_EDNS0)
 			{
-				char pretty_client_cookie[8*2 + 1u];
+				char pretty_client_cookie[8*2 + 1]; // client: fixed length
 				char *pp = pretty_client_cookie;
 				for(unsigned int j = 0; j < 8; j++)
 					pp += sprintf(pp, "%02X", client_cookie[j]);
 				logg("         Received cookie: %s", pretty_client_cookie);
-				char pretty_server_cookie[server_cookie_len*2 + 1u];
+				char pretty_server_cookie[server_cookie_len*2 + 1u]; // server: variable length
 				pp = pretty_server_cookie;
 				for(unsigned int j = 0; j < server_cookie_len; j++)
 					pp += sprintf(pp, "%02X", server_cookie[j]);
@@ -274,14 +274,11 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 		{
 			if(config.debug & DEBUG_EDNS0)
 				logg("EDNS(0): Identified option MAC ADDRESS (BYTE format)");
-			unsigned char payload[optlen];
-			memcpy(payload, p, optlen);
+			memcpy(edns->mac_byte, p, sizeof(edns->mac_byte));
+			print_mac(edns->mac_text, (unsigned char*)edns->mac_byte, sizeof(edns->mac_byte));
+			edns->mac_set = true;
 			if(config.debug & DEBUG_EDNS0)
-			{
-				char pretty_mac[18];
-				print_mac(pretty_mac, payload, optlen);
-				logg("         Received MAC address: %s", pretty_mac);
-			}
+				logg("         Received MAC address: %s", edns->mac_text);
 
 			// Advance working pointer
 			p += 6;
@@ -290,11 +287,24 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 		{
 			if(config.debug & DEBUG_EDNS0)
 				logg("EDNS(0): Identified option MAC ADDRESS (TEXT format)");
-			unsigned char payload[optlen + 1u];
-			memcpy(payload, p, optlen);
-			payload[optlen] = '\0';
-			if(config.debug & DEBUG_EDNS0)
-				logg("         Received MAC address: %s", payload);
+			memcpy(edns->mac_text, p, 17);
+			edns->mac_text[17] = '\0';
+			if(sscanf(edns->mac_text, "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
+			          &edns->mac_byte[0],
+			          &edns->mac_byte[1],
+			          &edns->mac_byte[2],
+			          &edns->mac_byte[3],
+			          &edns->mac_byte[4],
+			          &edns->mac_byte[5]) == 6)
+			{
+				edns->mac_set = true;
+				if(config.debug & DEBUG_EDNS0)
+					logg("         Received MAC address: %s", edns->mac_text);
+			}
+			else if(config.debug & DEBUG_EDNS0)
+			{
+				logg("         Received MAC address has invalid format!");
+			}
 
 			// Advance working pointer
 			p += 17;
@@ -313,7 +323,7 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 		{
 			if(config.debug & DEBUG_EDNS0)
 				logg("EDNS(0): Identified option CPE-ID (payload size %u)", optlen);
-			unsigned char payload[optlen+1u];
+			unsigned char payload[optlen + 1u]; // variable length
 			memcpy(payload, p, optlen);
 			payload[optlen] = '\0';
 			if(config.debug & DEBUG_EDNS0)
@@ -322,7 +332,7 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 				char *pp = pretty_payload;
 				for(unsigned int j = 0; j < optlen; j++)
 					pp += sprintf(pp, "0x%02X ", payload[j]);
-				pretty_payload[optlen*5-1] = '\0';
+				pretty_payload[optlen*5 - 1] = '\0'; // Truncate away the trailing whitespace
 				logg("         Received CPE-ID: \"%s\" (%s)", payload, pretty_payload);
 			}
 
