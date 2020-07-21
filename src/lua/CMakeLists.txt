@@ -1,4 +1,5 @@
 set(sources
+        ftl_lua.c
         ftl_lua.h
         lapi.c
         lapi.h
