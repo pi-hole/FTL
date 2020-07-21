@@ -158,6 +158,7 @@ add_executable(pihole-FTL
         $<TARGET_OBJECTS:database>
         $<TARGET_OBJECTS:dnsmasq>
         $<TARGET_OBJECTS:sqlite3>
+        $<TARGET_OBJECTS:lua>
         )
 if(STATIC STREQUAL "true")
     set_target_properties(pihole-FTL PROPERTIES LINK_SEARCH_START_STATIC ON)
@@ -169,27 +170,25 @@ target_compile_definitions(pihole-FTL PRIVATE DNSMASQ_VERSION=\"${DNSMASQ_VERSIO
 target_include_directories(pihole-FTL PRIVATE ${PROJECT_SOURCE_DIR}/src)
 add_dependencies(pihole-FTL gen_version)
 
+# for FTL we need the pthread library
 set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
 set(THREADS_PREFER_PTHREAD_FLAG TRUE)
 find_package(Threads REQUIRED)
 
+# for DNSSEC we need the nettle (+ hogweed) crypto and the gmp math libraries
 find_library(HOGWEED libhogweed${CMAKE_STATIC_LIBRARY_SUFFIX})
 find_library(GMP libgmp${CMAKE_STATIC_LIBRARY_SUFFIX})
 find_library(NETTLE libnettle${CMAKE_STATIC_LIBRARY_SUFFIX})
 find_library(IDN libidn${CMAKE_STATIC_LIBRARY_SUFFIX})
+# for LUA we need libdl (lookforfunc) and libm (linking libm and libdl statically is discouraged)
+find_library(MATH m)
 
-# for FTL we need the pthread library
-# for DNSSEC we need the nettle (+ hogweed) crypto and the gmp math libraries
-target_link_libraries(pihole-FTL rt Threads::Threads ${HOGWEED} ${GMP} ${NETTLE} ${IDN})
+target_link_libraries(pihole-FTL rt Threads::Threads ${HOGWEED} ${GMP} ${NETTLE} ${IDN} ${MATH})
 
-# for LUASCRIPT support we add liblua, libdl (lookforfunc) and libm
-# Only liblua is linked statically as linking libm and libdl statically is discouraged
-if(FTL_LUA STREQUAL "true")
-    target_compile_definitions(pihole-FTL PRIVATE FTL_LUA)
-    find_library(LUA liblua${CMAKE_STATIC_LIBRARY_SUFFIX})
+# for LUA we need can add libdl (lookforfunc) if we really want to
+if(LUA_DL STREQUAL "true")
     find_library(DL dl)
-    find_library(MATH m)
-    target_link_libraries(pihole-FTL ${LUA} ${DL} ${MATH})
+    target_link_libraries(pihole-FTL ${DL})
 endif()
 
 if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
@@ -205,3 +204,4 @@ install(CODE "execute_process(COMMAND ${SETCAP} CAP_NET_BIND_SERVICE,CAP_NET_RAW
 add_subdirectory(api)
 add_subdirectory(database)
 add_subdirectory(dnsmasq)
+add_subdirectory(lua)

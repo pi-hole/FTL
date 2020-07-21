@@ -21,11 +21,7 @@
 #include "log.h"
 // global variable killed
 #include "signals.h"
-
-// LUA version
-#ifdef FTL_LUA
-#include <lua.h>
-#endif
+#include "lua/ftl_lua.h"
 
 static bool debug = false;
 bool daemonmode = true;

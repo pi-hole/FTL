@@ -49,9 +49,6 @@ set(sources
         )
 
 add_library(dnsmasq OBJECT ${sources})
-target_compile_definitions(dnsmasq PRIVATE VERSION=\"${DNSMASQ_VERSION}\" HAVE_DNSSEC HAVE_DNSSEC_STATIC HAVE_IDN)
-if(FTL_LUA STREQUAL "true")
-        target_compile_definitions(dnsmasq PRIVATE HAVE_LUASCRIPT)
-endif()
+target_compile_definitions(dnsmasq PRIVATE VERSION=\"${DNSMASQ_VERSION}\" HAVE_DNSSEC HAVE_DNSSEC_STATIC HAVE_IDN HAVE_LUASCRIPT)
 target_compile_options(dnsmasq PRIVATE -Wno-maybe-uninitialized)
 target_include_directories(dnsmasq PRIVATE ${PROJECT_SOURCE_DIR}/src)
