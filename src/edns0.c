@@ -222,6 +222,16 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 			}
 			p += optlen;
 		}
+		else if(code == 65073 && optlen == 17)
+		{
+			logg("EDNS0: Identified option MAC ADDRESS (TEXT format)");
+			unsigned char payload[optlen + 1u];
+			memcpy(payload, p, optlen);
+			payload[optlen] = '\0';
+			if(config.debug & DEBUG_EDNS0)
+				logg("       Received MAC address: %s", payload);
+			p += optlen;
+		}
 		else if(code == 65074)
 		{
 			logg("EDNS0: Identified option CPE-ID (payload size %u)", optlen);
