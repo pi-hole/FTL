@@ -137,6 +137,16 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 		GETSHORT(code, p);
 		GETSHORT(optlen, p);
 
+		// Avoid buffer overflow due to an malicious packet
+		// We add 4 to the offset as we have already read 4 bytes since
+		// determining the offset above
+		if(optlen > rdlen - (offset + 4))
+		{
+			if(config.debug & DEBUG_EDNS0)
+				logg("EDNS(0): Received malicious EDNS payload. Skipping.");
+			break;
+		}
+
 		// Debug logging
 		if(config.debug & DEBUG_EDNS0)
 			logg("EDNS0: code %u, optlen %u (offset = %lu)", code, optlen, offset);
@@ -213,6 +223,7 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 				char *pp = pretty_payload;
 				for(unsigned int j = 0; j < optlen; j++)
 					pp += sprintf(pp, "0x%02X ", payload[j]);
+				pretty_payload[optlen*5-1] = '\0';
 				logg("       Received payload: %s", pretty_payload);
 			}
 			p += optlen;
@@ -224,5 +235,4 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 			p += optlen;
 		}
 	}
-	logg("offset: %li, rdlen: %u", offset, rdlen);
 }
