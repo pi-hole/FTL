@@ -467,8 +467,8 @@
   before="$(grep -c ^ /var/log/pihole-FTL.log)"
 
   # Run test command
-  #                                  CLIENT SUBNET          MAC HEX                     MAC TEXT                                          CPE-ID                      COOKIE
-  run bash -c 'dig localhost +short +subnet=192.168.1.1/32 +ednsopt=65001:000102030405 +ednsopt=65073:41413A42423A43433A44443A45453A4646 +ednsopt=65074:414243444546 +cookie=1122334455667788'
+  #                                  CLIENT SUBNET          COOKIE                       MAC HEX                     MAC TEXT                                          CPE-ID
+  run bash -c 'dig localhost +short +subnet=192.168.1.1/32 +ednsopt=10:1122334455667788 +ednsopt=65001:000102030405 +ednsopt=65073:41413A42423A43433A44443A45453A4646 +ednsopt=65074:414243444546 @127.0.0.1'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "127.0.0.1" ]]
   [[ $status == 0 ]]
@@ -503,7 +503,7 @@
   before="$(grep -c ^ /var/log/pihole-FTL.log)"
 
   # Run test command
-  run bash -c 'dig localhost +short +subnet=192.168.47.97/32'
+  run bash -c 'dig localhost +short +subnet=192.168.47.97/32 @127.0.0.1'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "127.0.0.1" ]]
   [[ $status == 0 ]]
@@ -526,7 +526,7 @@
   before="$(grep -c ^ /var/log/pihole-FTL.log)"
 
   # Run test command
-  run bash -c 'dig localhost +short +subnet=fe80::b167:af1e:968b:dead/128'
+  run bash -c 'dig localhost +short +subnet=fe80::b167:af1e:968b:dead/128 @127.0.0.1'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "127.0.0.1" ]]
   [[ $status == 0 ]]
