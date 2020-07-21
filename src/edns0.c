@@ -83,7 +83,10 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 		return;
 //        +------------+--------------+------------------------------+
 //        | CLASS      | u_int16_t    | requestor's UDP payload size |
-	/* GETSHORT(class, p); */ p += 2;
+	unsigned short class;
+	GETSHORT(class, p);
+	if(config.debug & DEBUG_EDNS0)
+		logg("EDNS(0): Requestor's UDP payload size: %u bytes", class);
 //        +------------+--------------+------------------------------+
 //        | TTL        | u_int32_t    | extended RCODE and flags     |
 	unsigned long ttl;
@@ -146,7 +149,8 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 //      implementation level of a responder as a side effect of every
 //      response, including error responses and including RCODE=BADVERS.
 	unsigned char edns0_version = (ttl >> 16) % 0xFF;
-	if(edns0_version != 0x00) return;	
+	if(edns0_version != 0x00)
+		return;
 
 	size_t offset; // The header is 11 bytes before the beginning of OPTION-DATA
 	while ((offset = (p - pheader - 11u)) < rdlen)
@@ -154,11 +158,10 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 		unsigned short code, optlen;
 		GETSHORT(code, p);
 		GETSHORT(optlen, p);
+		offset += 4;
 
 		// Avoid buffer overflow due to an malicious packet
-		// We add 4 to the offset as we have already read 4 bytes since
-		// determining the offset above
-		if(optlen > rdlen - (offset + 4))
+		if(offset + optlen > rdlen)
 		{
 			if(config.debug & DEBUG_EDNS0)
 				logg("EDNS(0): Received malicious EDNS payload. Skipping.");
@@ -167,7 +170,8 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 
 		// Debug logging
 		if(config.debug & DEBUG_EDNS0)
-			logg("EDNS(0): code %u, optlen %u (offset = %lu)", code, optlen, offset);
+			logg("EDNS(0): code %u, optlen %u (bytes %lu-%lu of %u)",
+			     code, optlen, offset, offset + optlen, rdlen);
 		if (code == EDNS0_ECS && config.edns0_ecs)
 		{
 			if(config.debug & DEBUG_EDNS0)
@@ -220,11 +224,50 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 			strncpy(edns->client, ipaddr, ADDRSTRLEN);
 			edns->client[ADDRSTRLEN-1] = '\0';
 		}
-		else if(code == EDNS0_COOKIE)
+		else if(code == EDNS0_COOKIE && optlen == 8)
 		{
 			if(config.debug & DEBUG_EDNS0)
-				logg("EDNS(0): Identified option COOKIE");
-			// Not implemented, skip this record
+				logg("EDNS(0): Identified option COOKIE (client-only)");
+			unsigned char client_cookie[8];
+			memcpy(client_cookie, p, 8);
+			if(config.debug & DEBUG_EDNS0)
+			{
+				char pretty_client_cookie[8*2 + 1u];
+				char *pp = pretty_client_cookie;
+				for(unsigned int j = 0; j < 8; j++)
+					pp += sprintf(pp, "%02X", client_cookie[j]);
+				logg("         Received cookie: %s", pretty_client_cookie);
+			}
+
+			// Advance working pointer
+			p += 8;
+		}
+		else if(code == EDNS0_COOKIE && optlen >= 16 && optlen <= 40)
+		{
+			if(config.debug & DEBUG_EDNS0)
+				logg("EDNS(0): Identified option COOKIE (client + server)");
+			unsigned char client_cookie[8];
+			memcpy(client_cookie, p, 8);
+
+			unsigned short server_cookie_len = optlen - 8;
+			unsigned char server_cookie[server_cookie_len];
+			memcpy(server_cookie, p + 8u, server_cookie_len);
+			if(config.debug & DEBUG_EDNS0)
+			{
+				char pretty_client_cookie[8*2 + 1u];
+				char *pp = pretty_client_cookie;
+				for(unsigned int j = 0; j < 8; j++)
+					pp += sprintf(pp, "%02X", client_cookie[j]);
+				logg("         Received cookie: %s", pretty_client_cookie);
+				char pretty_server_cookie[server_cookie_len*2 + 1u];
+				pp = pretty_server_cookie;
+				for(unsigned int j = 0; j < server_cookie_len; j++)
+					pp += sprintf(pp, "%02X", server_cookie[j]);
+				logg("         Received server cookie: %s (%u bytes)",
+				     pretty_server_cookie, server_cookie_len);
+			}
+
+			// Advance working pointer
 			p += optlen;
 		}
 		else if(code == EDNS0_MAC_ADDR_BYTE && optlen == 6)
@@ -239,7 +282,9 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 				print_mac(pretty_mac, payload, optlen);
 				logg("         Received MAC address: %s", pretty_mac);
 			}
-			p += optlen;
+
+			// Advance working pointer
+			p += 6;
 		}
 		else if(code == EDNS0_MAC_ADDR_TEXT && optlen == 17)
 		{
@@ -250,7 +295,9 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 			payload[optlen] = '\0';
 			if(config.debug & DEBUG_EDNS0)
 				logg("         Received MAC address: %s", payload);
-			p += optlen;
+
+			// Advance working pointer
+			p += 17;
 		}
 		else if(code == EDNS0_MAC_ADDR_BASE64 && optlen == 8)
 		{
@@ -258,7 +305,9 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 				logg("EDNS(0): Identified option MAC ADDRESS (BASE64 format)");
 			if(config.debug & DEBUG_EDNS0)
 				logg("         NOT IMPLEMENTED");
-			p += optlen;
+
+			// Advance working pointer
+			p += 8;
 		}
 		else if(code == EDNS0_CPE_ID)
 		{
@@ -276,6 +325,8 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 				pretty_payload[optlen*5-1] = '\0';
 				logg("         Received CPE-ID: \"%s\" (%s)", payload, pretty_payload);
 			}
+
+			// Advance working pointer
 			p += optlen;
 		}
 		else
@@ -283,6 +334,8 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 			if(config.debug & DEBUG_EDNS0)
 				logg("EDNS(0): Identified unknown option %u with length %u", code, optlen);
 			// Not implemented, skip this record
+
+			// Advance working pointer
 			p += optlen;
 		}
 	}
