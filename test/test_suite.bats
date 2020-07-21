@@ -481,34 +481,19 @@
   printf "%s\n" "${log}"
 
   # Start actual test
-  run bash -c "grep -c \"Identified option CLIENT SUBNET\"" <<< "${log}"
+  run bash -c "grep -c \"EDNS(0) CLIENT SUBNET: 192.168.1.1/32\"" <<< "${log}"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
-  run bash -c "grep -c \"Received IP address: 192.168.1.1/32\"" <<< "${log}"
+  run bash -c "grep -c \"EDNS(0) COOKIE (client-only): 1122334455667788\"" <<< "${log}"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
-  run bash -c "grep -c \"Identified option COOKIE (client-only)\"" <<< "${log}"
+  run bash -c "grep -c \"EDNS(0) MAC address (BYTE format): 00:01:02:03:04:05\"" <<< "${log}"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
-  run bash -c "grep -c \"Received cookie: 1122334455667788\"" <<< "${log}"
+  run bash -c "grep -c \"EDNS(0) MAC address (TEXT format): AA:BB:CC:DD:EE:FF\"" <<< "${log}"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
-  run bash -c "grep -c \"Identified option MAC ADDRESS (BYTE format)\"" <<< "${log}"
-  printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "1" ]]
-  run bash -c "grep -c \"Received MAC address: 00:01:02:03:04:05\"" <<< "${log}"
-  printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "1" ]]
-  run bash -c "grep -c \"Identified option MAC ADDRESS (TEXT format)\"" <<< "${log}"
-  printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "1" ]]
-  run bash -c "grep -c \"Received MAC address: AA:BB:CC:DD:EE:FF\"" <<< "${log}"
-  printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "1" ]]
-  run bash -c "grep -c \"Identified option CPE-ID (payload size 6)\"" <<< "${log}"
-  printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "1" ]]
-  run bash -c "grep -c \"Received CPE-ID: \\\"ABCDEF\\\" (0x41 0x42 0x43 0x44 0x45 0x46)\"" <<< "${log}"
+  run bash -c "grep -c \"EDNS(0) CPE-ID (payload size 6): \\\"ABCDEF\\\" (0x41 0x42 0x43 0x44 0x45 0x46)\"" <<< "${log}"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
 }
