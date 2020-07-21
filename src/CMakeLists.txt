@@ -178,9 +178,17 @@ find_library(NETTLE libnettle${CMAKE_STATIC_LIBRARY_SUFFIX})
 find_library(IDN libidn${CMAKE_STATIC_LIBRARY_SUFFIX})
 
 # for FTL we need the pthread library
-# for dnsmasq we need the nettle crypto library and the gmp maths library
-# We link the two libraries statically. Although this increases the binary file size by about 1 MB, it saves about 5 MB of shared libraries and makes deployment easier
+# for DNSSEC we need the nettle (+ hogweed) crypto and the gmp math libraries
 target_link_libraries(pihole-FTL rt Threads::Threads ${HOGWEED} ${GMP} ${NETTLE} ${IDN})
+
+# for LUASCRIPT support we add liblua, libdl (lookforfunc) and libm
+# Only liblua is linked statically as linking libm and libdl statically is discouraged
+if(FTL_LUA STREQUAL "true")
+    find_library(LUA liblua${CMAKE_STATIC_LIBRARY_SUFFIX})
+    find_library(DL dl)
+    find_library(MATH m)
+    target_link_libraries(pihole-FTL ${LUA} ${DL} ${MATH})
+endif()
 
 if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
     set(CMAKE_INSTALL_PREFIX "/usr" CACHE PATH "..." FORCE)
