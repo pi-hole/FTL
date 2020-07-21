@@ -22,6 +22,8 @@
 // global variable killed
 #include "signals.h"
 #include "lua/ftl_lua.h"
+#include <readline/history.h>
+#include <wordexp.h>
 
 static bool debug = false;
 bool daemonmode = true;
@@ -139,11 +141,7 @@ void parse_args(int argc, char* argv[])
 		{
 			printf("Pi-hole FTL: %s\n", get_FTL_version());
 			printf("dnsmasq: "DNSMASQ_VERSION"  "COPYRIGHT"\n");
-#ifdef FTL_LUA
 			printf("LUA: "LUA_COPYRIGHT"\n");
-#else
-			printf("LUA: --- (no LUA embedded)\n");
-#endif
 			exit(EXIT_SUCCESS);
 		}
 
@@ -188,7 +186,8 @@ void parse_args(int argc, char* argv[])
 			printf("\t-h, help          Display this help and exit\n");
 			printf("\tdnsmasq-test      Test syntax of dnsmasq's\n");
 			printf("\t                  config files and exit\n");
-			printf("\t--lua, lua        FTL's LUA interpreter\n");
+			printf("\t--lua, lua        FTL's lua interpreter\n");
+			printf("\t--luac, luac      FTL's lua compiler\n");
 			printf("\n\nOnline help: https://github.com/pi-hole/FTL\n");
 			exit(EXIT_SUCCESS);
 		}
@@ -200,16 +199,47 @@ void parse_args(int argc, char* argv[])
 			exit(EXIT_SUCCESS);
 		}
 
-		// Expose internal LUA interpreter
+		// Expose internal lua interpreter
 		if(strcmp(argv[i], "lua") == 0 ||
 		   strcmp(argv[i], "--lua") == 0)
 		{
 			if(argc == i + 1) // No arguments after this one
 				printf("Pi-hole FTL %s\n", get_FTL_version());
-			exit(lua_main(argc - i, &argv[i]));
+#if defined(LUA_USE_READLINE)
+			wordexp_t word;
+			wordexp(LUA_HISTORY_FILE, &word, WRDE_NOCMD);
+			const char *history_file = NULL;
+			if(word.we_wordc == 1)
+			{
+				history_file = word.we_wordv[0];
+				const int ret_r = read_history(history_file);
+				if(debug)
+					printf("FTL hint: Reading history: %s = %i (%s)\n", history_file, ret_r, ret_r == 0 ? "success" : strerror(ret_r));
+
+				// The history file may not exist, try to create an empty one in this case
+				if(ret_r == ENOENT)
+				{
+					printf("FTL hint: Creating new history: %s\n", history_file);
+					FILE *history = fopen(history_file, "w");
+					if(history != NULL)
+						fclose(history);
+				}
+			}
+#endif
+			const int ret = lua_main(argc - i, &argv[i]);
+#if defined(LUA_USE_READLINE)
+			if(history_file != NULL)
+			{
+				const int ret_w = write_history(history_file);
+				if(debug)
+					printf("FTL hint: Writing history: %s = %i (%s)\n", history_file, ret_w, ret_w == 0 ? "success" : strerror(ret_w));
+				wordfree(&word);
+			}
+#endif
+			exit(ret);
 		}
 
-		// Expose internal LUA compiler
+		// Expose internal lua compiler
 		if(strcmp(argv[i], "luac") == 0 ||
 		   strcmp(argv[i], "--luac") == 0)
 		{

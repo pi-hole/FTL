@@ -12,6 +12,8 @@
 
 #include "lua.h"
 
+#define LUA_HISTORY_FILE "~/.pihole_lua_history"
+
 int lua_main (int argc, char **argv);
 int luac_main (int argc, char **argv);
 
