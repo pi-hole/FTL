@@ -170,7 +170,7 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 
 		// Debug logging
 		if(config.debug & DEBUG_EDNS0)
-			logg("EDNS(0) code %u, optlen %u (bytes %lu-%lu of %u)",
+			logg("EDNS(0) code %u, optlen %u (bytes %zu - %zu of %u)",
 			     code, optlen, offset, offset + optlen, rdlen);
 
 		if (code == EDNS0_ECS && config.edns0_ecs)
@@ -203,7 +203,7 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 			if(family == 1 && optlen > 4) // IPv4
 				memcpy(&addr.addr4.s_addr, p, optlen - 4);
 			else if(family == 2 && optlen > 4) // IPv6
-				memcpy(addr.addr6.__in6_u.__u6_addr8, p, optlen - 4);
+				memcpy(addr.addr6.s6_addr, p, optlen - 4);
 			else
 				continue;
 
@@ -214,7 +214,7 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 			inet_ntop(family == 1 ? AF_INET : AF_INET6, &addr.addr4.s_addr, ipaddr, sizeof(ipaddr));
 
 			if(config.debug & DEBUG_EDNS0)
-				logg("EDNS(0) CLIENT SUBNET: %s/%i", ipaddr, source_netmask);
+				logg("EDNS(0) CLIENT SUBNET: %s/%u", ipaddr, source_netmask);
 
 			// Only use /32 (IPv4) and /128 (IPv6) addresses
 			if(!(family == 1 && source_netmask == 32) &&
