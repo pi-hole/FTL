@@ -130,16 +130,17 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 	unsigned char edns0_version = (ttl >> 16) % 0xFF;
 	if(edns0_version != 0x00) return;	
 
-	unsigned short optlen = 0;
-	for (unsigned int i = 0; i + 4 < rdlen; i += 4 + optlen) // increment: two shorts (code, optlen) + payload
+	size_t offset; // The header is 11 bytes before the beginning of OPTION-DATA
+	while ((offset = (p - pheader - 11u)) < rdlen)
 	{
-		unsigned short code;
+		unsigned short code, optlen;
 		GETSHORT(code, p);
 		GETSHORT(optlen, p);
+
 		// Debug logging
 		if(config.debug & DEBUG_EDNS0)
-			logg("EDNS0: code %u, optlen %u (i = %u)", code, optlen, i);
-		if (code == 0x08 && config.edns0_ecs)
+			logg("EDNS0: code %u, optlen %u (offset = %lu)", code, optlen, offset);
+		if (code == 8 && config.edns0_ecs)
 		{
 		// RFC 7871              Client Subnet in DNS Queries              6.  Option Format
 		//   This protocol uses an EDNS0 [RFC6891] option to include client
@@ -189,22 +190,39 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 			strncpy(edns->client, ipaddr, ADDRSTRLEN);
 			edns->client[ADDRSTRLEN-1] = '\0';
 		}
-		else if(code == 0x0a)
+		else if(code == 10)
 		{
 			logg("EDNS0: Identified option COOKIE");
 			// Not implemented, skip this record
 			p += optlen;
 		}
-		else if(code == 0xfde9)
+		else if(code == 65001)
 		{
 			logg("EDNS0: Identified option MAC ADDRESS");
 			// Not implemented, skip this record
 			p += optlen;
 		}
+		else if(code == 65074)
+		{
+			unsigned char payload[optlen];
+			memcpy(payload, p, optlen);
+			logg("EDNS0: Identified option CPE-ID (payload size %u)", optlen);
+			if(config.debug & DEBUG_EDNS0)
+			{
+				char pretty_payload[optlen*5];
+				char *pp = pretty_payload;
+				for(unsigned int j = 0; j < optlen; j++)
+					pp += sprintf(pp, "0x%02X ", payload[j]);
+				logg("       Received payload: %s", pretty_payload);
+			}
+			p += optlen;
+		}
 		else
 		{
+			logg("EDNS0: Identified unknown option %u with length %u", code, optlen);
 			// Not implemented, skip this record
 			p += optlen;
 		}
 	}
+	logg("offset: %li, rdlen: %u", offset, rdlen);
 }
