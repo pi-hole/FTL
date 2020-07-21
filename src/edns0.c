@@ -206,20 +206,30 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 			// Not implemented, skip this record
 			p += optlen;
 		}
-		else if(code == 65001)
+		else if(code == 65001 && optlen == 6)
 		{
-			logg("EDNS0: Identified option MAC ADDRESS");
-			// Not implemented, skip this record
+			logg("EDNS0: Identified option MAC ADDRESS (BYTE format)");
+			unsigned char payload[optlen];
+			memcpy(payload, p, optlen);
+			if(config.debug & DEBUG_EDNS0)
+			{
+				char pretty_payload[optlen*5u];
+				char *pp = pretty_payload;
+				for(unsigned int j = 0; j < optlen; j++)
+					pp += sprintf(pp, "0x%02X%s", payload[j], (j + 1u < optlen) ? ":" : "");
+				pretty_payload[optlen*5-1] = '\0';
+				logg("       Received MAC address: %s", pretty_payload);
+			}
 			p += optlen;
 		}
 		else if(code == 65074)
 		{
+			logg("EDNS0: Identified option CPE-ID (payload size %u)", optlen);
 			unsigned char payload[optlen];
 			memcpy(payload, p, optlen);
-			logg("EDNS0: Identified option CPE-ID (payload size %u)", optlen);
 			if(config.debug & DEBUG_EDNS0)
 			{
-				char pretty_payload[optlen*5];
+				char pretty_payload[optlen*5 + 1u];
 				char *pp = pretty_payload;
 				for(unsigned int j = 0; j < optlen; j++)
 					pp += sprintf(pp, "0x%02X ", payload[j]);
