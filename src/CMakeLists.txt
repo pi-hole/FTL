@@ -194,6 +194,7 @@ if(LUA_READLINE STREQUAL "true")
     find_library(LIBREADLINE libreadline${CMAKE_STATIC_LIBRARY_SUFFIX})
     find_library(LIBHISTORY libhistory${CMAKE_STATIC_LIBRARY_SUFFIX})
     find_library(LIBTERMCAP libtermcap${CMAKE_STATIC_LIBRARY_SUFFIX})
+    target_compile_definitions(pihole-FTL PRIVATE LUA_USE_READLINE)
     target_link_libraries(pihole-FTL ${LIBREADLINE} ${LIBHISTORY} ${LIBTERMCAP})
 endif()
 

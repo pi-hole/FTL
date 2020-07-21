@@ -78,4 +78,4 @@ if(LUA_READLINE STREQUAL "true")
     target_compile_definitions(lua PRIVATE LUA_USE_READLINE)
 endif()
 
-target_include_directories(lua PRIVATE ${PROJECT_SOURCE_DIR}/src)
+target_include_directories(lua PRIVATE ${PROJECT_SOURCE_DIR}/src ${PROJECT_SOURCE_DIR}/src/lua)
