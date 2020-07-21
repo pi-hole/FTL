@@ -505,7 +505,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 
 	// Get client IP address (can be overwritten by EDNS(0) client subnet (ECS) data)
 	char clientIP[ADDRSTRLEN] = { 0 };
-	if(edns->edns0_client)
+	if(config.edns0_ecs && edns->edns0_client)
 	{
 		// Use ECS provided client
 		strncpy(clientIP, edns->client, ADDRSTRLEN);

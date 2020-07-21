@@ -212,7 +212,7 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 			
 			char ipaddr[ADDRSTRLEN] = { 0 };
 			inet_ntop(family == 1 ? AF_INET : AF_INET6, &addr.addr4.s_addr, ipaddr, sizeof(ipaddr));
-			logg("         Received IP address:  %s/%i", ipaddr, source_netmask);
+			logg("         Received IP address: %s/%i", ipaddr, source_netmask);
 
 			// Only use /32 (IPv4) and /128 (IPv6) addresses
 			if(!(family == 1 && source_netmask == 32) &&

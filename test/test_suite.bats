@@ -461,3 +461,100 @@
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "4711" ]]
 }
+
+@test "EDNS(0) analysis working as expected" {
+  # Get number of lines in the log before the test
+  before="$(grep -c ^ /var/log/pihole-FTL.log)"
+
+  # Run test command
+  #                                  CLIENT SUBNET          MAC HEX                     MAC TEXT                                          CPE-ID                      COOKIE
+  run bash -c 'dig localhost +short +subnet=192.168.1.1/32 +ednsopt=65001:000102030405 +ednsopt=65073:41413A42423A43433A44443A45453A4646 +ednsopt=65074:414243444546 +cookie=1122334455667788'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "127.0.0.1" ]]
+  [[ $status == 0 ]]
+
+  # Get number of lines in the log after the test
+  after="$(grep -c ^ /var/log/pihole-FTL.log)"
+
+  # Extract relevant log lines
+  log="$(sed -n "${before},${after}p" /var/log/pihole-FTL.log)"
+  printf "%s\n" "${log}"
+
+  # Start actual test
+  run bash -c "grep -c \"Identified option CLIENT SUBNET\"" <<< "${log}"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "1" ]]
+  run bash -c "grep -c \"Received IP address: 192.168.1.1/32\"" <<< "${log}"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "1" ]]
+  run bash -c "grep -c \"Identified option COOKIE (client-only)\"" <<< "${log}"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "1" ]]
+  run bash -c "grep -c \"Received cookie: 1122334455667788\"" <<< "${log}"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "1" ]]
+  run bash -c "grep -c \"Identified option MAC ADDRESS (BYTE format)\"" <<< "${log}"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "1" ]]
+  run bash -c "grep -c \"Received MAC address: 00:01:02:03:04:05\"" <<< "${log}"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "1" ]]
+  run bash -c "grep -c \"Identified option MAC ADDRESS (TEXT format)\"" <<< "${log}"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "1" ]]
+  run bash -c "grep -c \"Received MAC address: AA:BB:CC:DD:EE:FF\"" <<< "${log}"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "1" ]]
+  run bash -c "grep -c \"Identified option CPE-ID (payload size 6)\"" <<< "${log}"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "1" ]]
+  run bash -c "grep -c \"Received CPE-ID: \\\"ABCDEF\\\" (0x41 0x42 0x43 0x44 0x45 0x46)\"" <<< "${log}"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "1" ]]
+}
+
+@test "EDNS(0) ECS can overwrite client address (IPv4)" {
+  # Get number of lines in the log before the test
+  before="$(grep -c ^ /var/log/pihole-FTL.log)"
+
+  # Run test command
+  run bash -c 'dig localhost +short +subnet=192.168.47.97/32'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "127.0.0.1" ]]
+  [[ $status == 0 ]]
+
+  # Get number of lines in the log after the test
+  after="$(grep -c ^ /var/log/pihole-FTL.log)"
+
+  # Extract relevant log lines
+  log="$(sed -n "${before},${after}p" /var/log/pihole-FTL.log)"
+  printf "%s\n" "${log}"
+
+  # Start actual test
+  run bash -c "grep -c \"\*\*\*\* new UDP query\[A\] \\\"localhost\\\" from 192.168.47.97\"" <<< "${log}"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "1" ]]
+}
+
+@test "EDNS(0) ECS can overwrite client address (IPv6)" {
+  # Get number of lines in the log before the test
+  before="$(grep -c ^ /var/log/pihole-FTL.log)"
+
+  # Run test command
+  run bash -c 'dig localhost +short +subnet=fe80::b167:af1e:968b:dead/128'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "127.0.0.1" ]]
+  [[ $status == 0 ]]
+
+  # Get number of lines in the log after the test
+  after="$(grep -c ^ /var/log/pihole-FTL.log)"
+
+  # Extract relevant log lines
+  log="$(sed -n "${before},${after}p" /var/log/pihole-FTL.log)"
+  printf "%s\n" "${log}"
+
+  # Start actual test
+  run bash -c "grep -c \"\*\*\*\* new UDP query\[A\] \\\"localhost\\\" from fe80::b167:af1e:968b:dead\"" <<< "${log}"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "1" ]]
+}
