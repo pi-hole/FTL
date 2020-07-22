@@ -165,7 +165,7 @@ if(STATIC STREQUAL "true")
     set_target_properties(pihole-FTL PROPERTIES LINK_SEARCH_END_STATIC ON)
     target_link_libraries(pihole-FTL -static-libgcc -static -static-pie)
 else()
-    find_library(LIBMATH m${CMAKE_STATIC_LIBRARY_SUFFIX})
+    find_library(LIBMATH m)
     target_link_libraries(pihole-FTL ${LIBMATH})
 endif()
 
