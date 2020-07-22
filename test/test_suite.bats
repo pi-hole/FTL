@@ -465,5 +465,5 @@
 @test "LUA: Interpreter returns FTL version" {
   run bash -c './pihole-FTL lua -e "print(pihole.ftl_version())"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "v"* ]]
+  [[ ${lines[0]} == "v"* || ${lines[1]} == "v"* ]]
 }
