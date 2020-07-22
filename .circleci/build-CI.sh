@@ -12,6 +12,6 @@
 rm -rf cmake/ && \
 mkdir cmake && \
 cd cmake && \
-cmake "${1}" .. && \
+cmake ${1} .. && \
 cmake --build . -- GIT_BRANCH="${2}" GIT_TAG="${3}" CIRCLE_JOB="${4}" -j 4 && \
 mv pihole-FTL ../

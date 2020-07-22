@@ -67,7 +67,7 @@ check_file() {
 if [[ "${CIRCLE_JOB}" == "x86_64" ]]; then
 
   check_machine "ELF64" "Advanced Micro Devices X86-64"
-  check_libs "[librt.so.1] [libpthread.so.0] [libc.so.6]"
+  check_libs "[librt.so.1] [libm.so.6] [libpthread.so.0] [libc.so.6]"
   check_file "ELF 64-bit LSB shared object, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, for GNU/Linux 2.6.32, not stripped"
 
 elif [[ "${CIRCLE_JOB}" == "x86_64-musl" ]]; then
@@ -79,19 +79,19 @@ elif [[ "${CIRCLE_JOB}" == "x86_64-musl" ]]; then
 elif [[ "${CIRCLE_JOB}" == "x86_32" ]]; then
 
   check_machine "ELF32" "Intel 80386"
-  check_libs "[librt.so.1] [libpthread.so.0] [libc.so.6]"
+  check_libs "[librt.so.1] [libm.so.6] [libpthread.so.0] [libc.so.6]"
   check_file "ELF 32-bit LSB shared object, Intel 80386, version 1 (SYSV), dynamically linked, interpreter /lib/ld-linux.so.2, for GNU/Linux 2.6.32, not stripped"
 
 elif [[ "${CIRCLE_JOB}" == "aarch64" ]]; then
 
   check_machine "ELF64" "AArch64"
-  check_libs "[librt.so.1] [libpthread.so.0] [libc.so.6] [ld-linux-aarch64.so.1]"
+  check_libs "[librt.so.1] [libm.so.6] [libpthread.so.0] [libc.so.6] [ld-linux-aarch64.so.1]"
   check_file "ELF 64-bit LSB shared object, ARM aarch64, version 1 (SYSV), dynamically linked, interpreter /lib/ld-linux-aarch64.so.1, for GNU/Linux 3.7.0, not stripped"
 
 elif [[ "${CIRCLE_JOB}" == "arm" ]]; then
 
   check_machine "ELF32" "ARM"
-  check_libs "[librt.so.1] [libgcc_s.so.1] [libpthread.so.0] [libc.so.6] [ld-linux-armhf.so.3]"
+  check_libs "[librt.so.1] [libm.so.6] [libgcc_s.so.1] [libpthread.so.0] [libc.so.6] [ld-linux-armhf.so.3]"
   check_file "ELF 32-bit LSB shared object, ARM, EABI5 version 1 (SYSV), dynamically linked, interpreter /lib/ld-linux-armhf.so.3, for GNU/Linux 2.6.32, not stripped"
 
   check_CPU_arch "v6"
@@ -100,7 +100,7 @@ elif [[ "${CIRCLE_JOB}" == "arm" ]]; then
 elif [[ "${CIRCLE_JOB}" == "armhf" ]]; then
 
   check_machine "ELF32" "ARM"
-  check_libs "[librt.so.1] [libgcc_s.so.1] [libpthread.so.0] [libc.so.6] [ld-linux-armhf.so.3]"
+  check_libs "[librt.so.1] [libm.so.6] [libgcc_s.so.1] [libpthread.so.0] [libc.so.6] [ld-linux-armhf.so.3]"
   check_file "ELF 32-bit LSB shared object, ARM, EABI5 version 1 (SYSV), dynamically linked, interpreter /lib/ld-linux-armhf.so.3, for GNU/Linux 3.2.0, not stripped"
 
   check_CPU_arch "v7"
@@ -109,7 +109,7 @@ elif [[ "${CIRCLE_JOB}" == "armhf" ]]; then
 elif [[ "${CIRCLE_JOB}" == "arm-qemu" ]]; then
 
   check_machine "ELF32" "ARM"
-  check_libs "[librt.so.1] [libgcc_s.so.1] [libpthread.so.0] [libc.so.6] [ld-linux.so.3]"
+  check_libs "[librt.so.1] [libm.so.6] [libgcc_s.so.1] [libpthread.so.0] [libc.so.6] [ld-linux.so.3]"
   check_file "ELF 32-bit LSB  shared object, ARM, EABI5 version 1 (SYSV), dynamically linked (uses shared libs), for GNU/Linux 3.2.0, not stripped"
 
   check_CPU_arch "v6"

@@ -13,7 +13,7 @@ version: 2
         command: |
           BRANCH=$([ -z "$CIRCLE_TAG" ] && echo "$CIRCLE_BRANCH" || echo "master")
           [[ $CIRCLE_JOB == *"qemu"* ]] && DOCKERIFNEEDED="docker run --rm -v $(pwd):/workspace -w /workspace pihole/ftl-build:arm-qemu "
-          $DOCKERIFNEEDED bash .circleci/build-CI.sh "-DSTATIC=${STATIC}" "${BRANCH}" "${CIRCLE_TAG}" "${CIRCLE_JOB} -DLUA_READLINE=true"
+          $DOCKERIFNEEDED bash .circleci/build-CI.sh "-DSTATIC=${STATIC} -DLUA_READLINE=true" "${BRANCH}" "${CIRCLE_TAG}" "${CIRCLE_JOB}"
     - run:
         name: "Binary checks"
         command: bash test/arch_test.sh
