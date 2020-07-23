@@ -371,8 +371,7 @@ void FTL_reload_all_domainlists(void)
 	flush_message_table();
 
 	// (Re-)open gravity database connection
-	gravityDB_close();
-	gravityDB_open();
+	gravityDB_reopen();
 
 	// Reset number of blocked domains
 	counters->gravity = gravityDB_count(GRAVITY_TABLE);
