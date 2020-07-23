@@ -1965,22 +1965,7 @@ void _log_query(unsigned int flags, char *name, union all_addr *addr, char *arg,
   if (strlen(name) == 0)
     name = ".";
 /************************************************************** Pi-hole modification  **************************************************************/
-if(debug_dnsmasq_lines == 0)
-{
-/***************************************************************************************************************************************************/
-  if (option_bool(OPT_EXTRALOG))
-    {
-      int port = prettyprint_addr(daemon->log_source_addr, daemon->addrbuff2);
-      if (flags & F_NOEXTRA)
-	my_syslog(LOG_INFO, "* %s/%u %s %s %s %s", daemon->addrbuff2, port, source, name, verb, dest);
-      else
-	my_syslog(LOG_INFO, "%u %s/%u %s %s %s %s", daemon->log_display_id, daemon->addrbuff2, port, source, name, verb, dest);
-    }
-  else
-    my_syslog(LOG_INFO, "%s %s %s %s", source, name, verb, dest);
-/************************************************************** Pi-hole modification  **************************************************************/
-}
-else
+if(debug_dnsmasq_lines != 0)
 {
   if (option_bool(OPT_EXTRALOG))
     {
@@ -1992,8 +1977,20 @@ else
     }
   else
     my_syslog(LOG_INFO, "%s %s %s %s (%s:%d)", source, name, verb, dest, file, line);
+
+  return;
 }
 /***************************************************************************************************************************************************/
+  if (option_bool(OPT_EXTRALOG))
+    {
+      int port = prettyprint_addr(daemon->log_source_addr, daemon->addrbuff2);
+      if (flags & F_NOEXTRA)
+	my_syslog(LOG_INFO, "* %s/%u %s %s %s %s", daemon->addrbuff2, port, source, name, verb, dest);
+      else
+	my_syslog(LOG_INFO, "%u %s/%u %s %s %s %s", daemon->log_display_id, daemon->addrbuff2, port, source, name, verb, dest);
+    }
+  else
+    my_syslog(LOG_INFO, "%s %s %s %s", source, name, verb, dest);
 }
 
  
