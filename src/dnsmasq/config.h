@@ -40,9 +40,11 @@
 #define DHCP_PACKET_MAX 16384 /* hard limit on DHCP packet size */
 #define SMALLDNAME 50 /* most domain names are smaller than this */
 #define CNAME_CHAIN 10 /* chains longer than this atr dropped for loop protection */
+#define DNSSEC_MIN_TTL 60 /* DNSKEY and DS records in cache last at least this long */
 #define HOSTSFILE "/etc/hosts"
 #define ETHERSFILE "/etc/ethers"
-#define DEFLEASE 3600 /* default lease time, 1 hour */
+#define DEFLEASE 3600 /* default DHCPv4 lease time, one hour */
+#define DEFLEASE6 (3600*24) /* default lease time for DHCPv6. One day. */
 /**** Pi-hole modification ****/
 #define CHUSER "root"
 #define CHGRP "root"
