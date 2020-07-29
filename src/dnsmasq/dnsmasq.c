@@ -1249,7 +1249,7 @@ static void sig_handler(int sig)
         {
 	  /*** Pi-hole modification ***/
 	  // TCP workers ignore all signals except SIGALRM
-	  FTL_TCP_worker_terminating();
+	  FTL_TCP_worker_terminating(false);
 	  /*** Pi-hole modification ***/
 	  _exit(0);
         }
@@ -1841,7 +1841,8 @@ static void check_dns_listeners(time_t now)
 		    addr.addr4 = tcp_addr.in.sin_addr;
 		  
 		  for (iface = daemon->interfaces; iface; iface = iface->next)
-		    if (iface->index == if_index)
+		    if (iface->index == if_index &&
+		        iface->addr.sa.sa_family == tcp_addr.sa.sa_family)
 		      break;
 		  
 		  if (!iface && !loopback_exception(listener->tcpfd, tcp_addr.sa.sa_family, &addr, intr_name))
@@ -1882,31 +1883,30 @@ static void check_dns_listeners(time_t now)
 	      else
 		{
 		  int i;
+#ifdef HAVE_LINUX_NETWORK
+		  /* The child process inherits the netlink socket, 
+		     which it never uses, but when the parent (us) 
+		     uses it in the future, the answer may go to the 
+		     child, resulting in the parent blocking
+		     forever awaiting the result. To avoid this
+		     the child closes the netlink socket, but there's
+		     a nasty race, since the parent may use netlink
+		     before the child has done the close.
+		     
+		     To avoid this, the parent blocks here until a 
+		     single byte comes back up the pipe, which
+		     is sent by the child after it has closed the
+		     netlink socket. */
+		  
+		  unsigned char a;
+		  read_write(pipefd[0], &a, 1, 1);
+#endif
 
 		  for (i = 0; i < MAX_PROCS; i++)
 		    if (daemon->tcp_pids[i] == 0 && daemon->tcp_pipes[i] == -1)
 		      {
-			char a;
-			(void)a; /* suppress potential unused warning */
-
 			daemon->tcp_pids[i] = p;
 			daemon->tcp_pipes[i] = pipefd[0];
-#ifdef HAVE_LINUX_NETWORK
-			/* The child process inherits the netlink socket, 
-			   which it never uses, but when the parent (us) 
-			   uses it in the future, the answer may go to the 
-			   child, resulting in the parent blocking
-			   forever awaiting the result. To avoid this
-			   the child closes the netlink socket, but there's
-			   a nasty race, since the parent may use netlink
-			   before the child has done the close.
-
-			   To avoid this, the parent blocks here until a 
-			   single byte comes back up the pipe, which
-			   is sent by the child after it has closed the
-			   netlink socket. */
-			while (retry_send(read(pipefd[0], &a, 1)));
-#endif
 			break;
 		      }
 		}
@@ -1938,16 +1938,16 @@ static void check_dns_listeners(time_t now)
 		 terminate the process. */
 	      if (!option_bool(OPT_DEBUG))
 		{
-		  char a = 0;
-		  (void)a; /* suppress potential unused warning */
+#ifdef HAVE_LINUX_NETWORK
+		  /* See comment above re: netlink socket. */
+		  unsigned char a = 0;
+
+		  close(daemon->netlinkfd);
+		  read_write(pipefd[1], &a, 1, 0);
+#endif		  
 		  alarm(CHILD_LIFETIME);
 		  close(pipefd[0]); /* close read end in child. */
 		  daemon->pipe_to_parent = pipefd[1];
-#ifdef HAVE_LINUX_NETWORK
-		  /* See comment above re netlink socket. */
-		  close(daemon->netlinkfd);
-		  while (retry_send(write(pipefd[1], &a, 1)));
-#endif
 		}
 
 	      /* start with no upstream connections. */
@@ -1960,8 +1960,16 @@ static void check_dns_listeners(time_t now)
 	      if ((flags = fcntl(confd, F_GETFL, 0)) != -1)
 		fcntl(confd, F_SETFL, flags & ~O_NONBLOCK);
 	      
+	      /******* Pi-hole modification *******/
+	      FTL_TCP_worker_created(confd, iface->name);
+	      /************************************/
+
 	      buff = tcp_request(confd, now, &tcp_addr, netmask, auth_dns);
 	       
+	      /******* Pi-hole modification *******/
+	      FTL_TCP_worker_terminating(true);
+	      /************************************/
+
 	      shutdown(confd, SHUT_RDWR);
 	      close(confd);
 	      
@@ -1974,12 +1982,10 @@ static void check_dns_listeners(time_t now)
 		    shutdown(s->tcpfd, SHUT_RDWR);
 		    close(s->tcpfd);
 		  }
+	      
 	      if (!option_bool(OPT_DEBUG))
 		{
-		  /*** Pi-hole modification ***/
-		  // TCP workers ignore all signals except SIGALRM
-		  FTL_TCP_worker_terminating();
-		  /*** Pi-hole modification ***/
+		  close(daemon->pipe_to_parent);
 		  flush_log();
 		  _exit(0);
 		}

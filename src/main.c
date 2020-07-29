@@ -29,6 +29,7 @@ char * username;
 bool needGC = false;
 bool needDBGC = false;
 bool startup = true;
+volatile int exit_code = EXIT_SUCCESS;
 
 int main (int argc, char* argv[])
 {
@@ -49,9 +50,10 @@ int main (int argc, char* argv[])
 	logg("########## FTL started! ##########");
 	log_FTL_version(false);
 
-	// Catch signals like SIGTERM and SIGINT
-	// Other signals like SIGHUP, SIGUSR1 are handled by the resolver part
-	handle_signals();
+	// Catch SIGSEGV (generate a crash report)
+	// Other signals are handled by dnsmasq
+	// We handle real-time signals later (after dnsmasq has forked)
+	handle_SIGSEGV();
 
 	// Process pihole-FTL.conf
 	read_FTLconf();
@@ -106,9 +108,12 @@ int main (int argc, char* argv[])
 		logg("Finished final database update");
 	}
 
-	// Close sockets
+	// Close sockets and delete Unix socket file handle
 	close_telnet_socket();
-	close_unix_socket();
+	close_unix_socket(true);
+
+	// Empty API port file, port 0 = truncate file
+	saveport(0);
 
 	// Close gravity database connection
 	gravityDB_close();
@@ -122,5 +127,5 @@ int main (int argc, char* argv[])
 	//Remove PID file
 	removepid();
 	logg("########## FTL terminated after %e s! ##########", 1e-3*timer_elapsed_msec(EXIT_TIMER));
-	return EXIT_SUCCESS;
+	return exit_code;
 }

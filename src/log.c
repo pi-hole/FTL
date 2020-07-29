@@ -11,6 +11,7 @@
 #include "FTL.h"
 #include "version.h"
 #include "memory.h"
+// is_fork()
 #include "daemon.h"
 #include "config.h"
 #include "log.h"
@@ -20,6 +21,8 @@
 #include "args.h"
 // global counters variable
 #include "shmem.h"
+// main_pid()
+#include "signals.h"
 
 static pthread_mutex_t lock;
 static FILE *logfile = NULL;
@@ -87,12 +90,31 @@ void _FTL_log(const bool newline, const char *format, ...)
 
 	// Get and log PID of current process to avoid ambiguities when more than one
 	// pihole-FTL instance is logging into the same file
-	const long pid = (long)getpid();
+	char idstr[42];
+	const int pid = getpid(); // Get the process ID of the calling process
+	const int mpid = main_pid(); // Get the process ID of the main FTL process
+	const int tid = gettid(); // Get the thread ID of the callig process
+
+	// There are four cases we have to differentiate here:
+	if(pid == tid)
+		if(is_fork(mpid, pid))
+			// Fork of the main process
+			snprintf(idstr, sizeof(idstr)-1, "%i/F%i", pid, mpid);
+		else
+			// Main process
+			snprintf(idstr, sizeof(idstr)-1, "%iM", pid);
+	else
+		if(is_fork(mpid, pid))
+			// Thread of a fork of the main process
+			snprintf(idstr, sizeof(idstr)-1, "%i/F%i/T%i", pid, mpid, tid);
+		else
+			// Thread of the main process
+			snprintf(idstr, sizeof(idstr)-1, "%i/T%i", pid, tid);
 
 	// Print to stdout before writing to file
 	if(!daemonmode)
 	{
-		printf("[%s %ld] ", timestring, pid);
+		printf("[%s %s] ", timestring, idstr);
 		va_start(args, format);
 		vprintf(format, args);
 		va_end(args);
@@ -106,7 +128,7 @@ void _FTL_log(const bool newline, const char *format, ...)
 	// Write to log file
 	if(logfile != NULL)
 	{
-		fprintf(logfile, "[%s %ld] ", timestring, pid);
+		fprintf(logfile, "[%s %s] ", timestring, idstr);
 		va_start(args, format);
 		vfprintf(logfile, format, args);
 		va_end(args);

@@ -608,7 +608,7 @@ static size_t get_optimal_object_size(const size_t objsize, const size_t minsize
 	}
 }
 
-void memory_check(int which)
+void memory_check(const enum memory_type which)
 {
 	switch(which)
 	{
@@ -623,7 +623,7 @@ void memory_check(int which)
 					exit(EXIT_FAILURE);
 				}
 			}
-		break;
+			break;
 		case UPSTREAMS:
 			if(counters->upstreams >= counters->upstreams_MAX-1)
 			{
@@ -635,7 +635,7 @@ void memory_check(int which)
 					exit(EXIT_FAILURE);
 				}
 			}
-		break;
+			break;
 		case CLIENTS:
 			if(counters->clients >= counters->clients_MAX-1)
 			{
@@ -647,7 +647,7 @@ void memory_check(int which)
 					exit(EXIT_FAILURE);
 				}
 			}
-		break;
+			break;
 		case DOMAINS:
 			if(counters->domains >= counters->domains_MAX-1)
 			{
@@ -659,7 +659,7 @@ void memory_check(int which)
 					exit(EXIT_FAILURE);
 				}
 			}
-		break;
+			break;
 		case DNS_CACHE:
 			if(counters->dns_cache_size >= counters->dns_cache_MAX-1)
 			{
@@ -671,12 +671,13 @@ void memory_check(int which)
 					exit(EXIT_FAILURE);
 				}
 			}
-		break;
+			break;
+		case OVERTIME: // fall through
 		default:
 			/* That cannot happen */
 			logg("Fatal error in memory_check(%i)", which);
 			exit(EXIT_FAILURE);
-		break;
+			break;
 	}
 }
 

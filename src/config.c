@@ -15,6 +15,8 @@
 #include "log.h"
 // nice()
 #include <unistd.h>
+// saveport()
+#include "api/socket.h"
 
 ConfigStruct config;
 FTLFileNamesStruct FTLfiles = {
@@ -303,6 +305,7 @@ void read_FTLconf(void)
 
 	// PORTFILE
 	getpath(fp, "PORTFILE", "/run/pihole-FTL.port", &FTLfiles.port);
+	saveport(config.port);
 
 	// SOCKETFILE
 	getpath(fp, "SOCKETFILE", "/run/pihole/FTL.sock", &FTLfiles.socketfile);
@@ -529,7 +532,7 @@ void get_privacy_level(FILE *fp)
 	{
 		// Check for change and validity of privacy level (set in FTL.h)
 		if(value >= PRIVACY_SHOW_ALL &&
-		   value <= PRIVACY_NOSTATS &&
+		   value <= PRIVACY_MAXIMUM &&
 		   value > config.privacylevel)
 		{
 			logg("Notice: Increasing privacy level from %i to %i", config.privacylevel, value);

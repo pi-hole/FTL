@@ -27,11 +27,11 @@ static bool *regex_available[REGEX_MAX] = { NULL };
 static int *regex_id[REGEX_MAX] = { NULL };
 static char **regexbuffer[REGEX_MAX] = { NULL };
 
-const char *regextype[] = { "blacklist", "whitelist" };
+const char *regextype[REGEX_MAX] = { "blacklist", "whitelist" };
 
 /* Compile regular expressions into data structures that can be used with
    regexec() to match against a string */
-static bool compile_regex(const char *regexin, const int index, const unsigned char regexid, const int dbindex)
+static bool compile_regex(const char *regexin, const int index, const enum regex_id regexid, const int dbindex)
 {
 	// We use the extended RegEx flavor (ERE) and specify that matching should
 	// always be case INsensitive
@@ -56,7 +56,7 @@ static bool compile_regex(const char *regexin, const int index, const unsigned c
 	return true;
 }
 
-int match_regex(const char *input, const int clientID, const unsigned char regexid)
+int match_regex(const char *input, const int clientID, const enum regex_id regexid)
 {
 	int match_idx = -1;
 
@@ -195,10 +195,10 @@ void reload_per_client_regex(const int clientID, clientsData *client)
 					"vw_regex_whitelist", clientID);
 }
 
-static void read_regex_table(const unsigned char regexid)
+static void read_regex_table(const enum regex_id regexid)
 {
 	// Get table ID
-	unsigned char tableID = (regexid == REGEX_BLACKLIST) ? REGEX_BLACKLIST_TABLE : REGEX_WHITELIST_TABLE;
+	const enum gravity_tables tableID = (regexid == REGEX_BLACKLIST) ? REGEX_BLACKLIST_TABLE : REGEX_WHITELIST_TABLE;
 
 	// Get number of lines in the regex table
 	counters->num_regex[regexid] = gravityDB_count(tableID);
@@ -295,7 +295,7 @@ void read_regex_from_database(void)
 	}
 
 	// Print message to FTL's log after reloading regex filters
-	logg("Compiled %i whitelist and %i blacklist regex filters in %.1f msec",
+	logg("Compiled %i whitelist and %i blacklist regex filters for %i clients in %.1f msec",
 	     counters->num_regex[REGEX_WHITELIST], counters->num_regex[REGEX_BLACKLIST],
-	     timer_elapsed_msec(REGEX_TIMER));
+	     counters->clients, timer_elapsed_msec(REGEX_TIMER));
 }
