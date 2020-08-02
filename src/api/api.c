@@ -813,6 +813,10 @@ void getAllQueries(const char *client_message, const int *sock)
 		// Get query type
 		const char *qtype = querytypes[query->type - TYPE_A];
 
+		// Hide UNKNOWN queries when not requesting both query status types
+		if(query->status == QUERY_UNKNOWN && !(showpermitted && showblocked))
+			continue;
+
 		// 1 = gravity.list, 4 = wildcard, 5 = black.list
 		if((query->status == QUERY_GRAVITY ||
 		    query->status == QUERY_REGEX ||
