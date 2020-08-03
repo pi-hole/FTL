@@ -463,13 +463,13 @@
 }
 
 @test "LUA: Interpreter returns FTL version" {
-  run bash -c 'sudo -u pihole ./pihole-FTL lua -e "print(pihole.ftl_version())" | grep -v 'FTL hint''
+  run bash -c './pihole-FTL lua -e "print(pihole.ftl_version())" | grep -v 'FTL hint''
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "v"* ]]
 }
 
 @test "LUA: Interpreter loads and enabled bundled library \"inspect\"" {
-  run bash -c 'sudo -u pihole ./pihole-FTL lua -e "print(inspect(inspect))" | grep -v 'FTL hint''
+  run bash -c './pihole-FTL lua -e "print(inspect(inspect))" | grep -v 'FTL hint''
   printf "%s\n" "${lines[@]}"
   [[ ${lines[@]} == *'_DESCRIPTION = "human-readable representations of tables"'* ]]
 }
@@ -478,20 +478,4 @@
   run bash -c 'ls -1 /etc/pihole/lua-libs | grep -c ^'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} != 0 ]]
-}
-
-@test "LUA: pihole.query(0) returns details of the first query" {
-  run bash -c 'sudo -u pihole ./pihole-FTL lua -e "print(inspect(pihole.query(0)))" | grep -v 'FTL hint''
-  printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == '{' ]]
-  [[ ${lines[1]} == '  clientIP = "127.0.0.1",' ]]
-  [[ ${lines[2]} == '  clientName = "127.0.0.1",' ]]
-  [[ ${lines[3]} == '  complete = true,' ]]
-  [[ ${lines[4]} == '  domain = "version.ftl",' ]]
-  [[ ${lines[5]} == '  index = 0,' ]]
-  [[ ${lines[6]} == '  status = 3,' ]]
-  [[ ${lines[7]} == '  timestamp = '* ]]
-  [[ ${lines[8]} == '  type = 7,' ]]
-  [[ ${lines[9]} == '  typeStr = "TXT"' ]]
-  [[ ${lines[10]} == '}' ]]
 }
