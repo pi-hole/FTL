@@ -58,8 +58,8 @@ int main (int argc, char* argv[])
 	// Process pihole-FTL.conf
 	read_FTLconf();
 
-	// Initialize shared memory
-	if(!init_shmem())
+	// Initialize shared memory - replace possibly existing files
+	if(!init_shmem(true))
 	{
 		logg("Initialization of shared memory failed.");
 		return EXIT_FAILURE;

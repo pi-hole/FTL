@@ -65,8 +65,16 @@ static ShmSettings *shmSettings = NULL;
 
 static int pagesize;
 static unsigned int local_shm_counter = 0;
-
 static size_t get_optimal_object_size(const size_t objsize, const size_t minsize);
+
+/// Create shared memory
+///
+/// \param name the name of the shared memory
+/// \param size the size to allocate
+/// \param create_new true = delete old file, create new, false = connect to existing object or fail
+/// \return a structure with a pointer to the mounted shared memory. The pointer
+/// will always be valid, because if it failed FTL will have exited.
+static SharedMemory create_shm(const char *name, const size_t size, bool create_new);
 
 // chown_shmem() changes the file ownership of a given shared memory object
 static bool chown_shmem(SharedMemory *sharedMemory, struct passwd *ent_pw)
@@ -169,6 +177,7 @@ const char *getstr(const size_t pos)
 
 /// Create a mutex for shared memory
 static pthread_mutex_t create_mutex(void) {
+	logg("Creating mutex");
 	pthread_mutexattr_t lock_attr = {};
 	pthread_mutex_t lock = {};
 
@@ -261,83 +270,109 @@ void _unlock_shm(const char* func, const int line, const char * file) {
 		logg("Failed to unlock SHM lock: %s", strerror(result));
 }
 
-bool init_shmem(void)
+bool init_shmem(bool create_new)
 {
 	// Get kernel's page size
 	pagesize = getpagesize();
 
 	/****************************** shared memory lock ******************************/
 	// Try to create shared memory object
-	shm_lock = create_shm(SHARED_LOCK_NAME, sizeof(ShmLock));
+	shm_lock = create_shm(SHARED_LOCK_NAME, sizeof(ShmLock), create_new);
 	shmLock = (ShmLock*) shm_lock.ptr;
-	shmLock->lock = create_mutex();
-	shmLock->waitingForLock = false;
+	if(create_new)
+	{
+		shmLock->lock = create_mutex();
+		shmLock->waitingForLock = false;
+	}
 
 	/****************************** shared counters struct ******************************/
 	// Try to create shared memory object
-	shm_counters = create_shm(SHARED_COUNTERS_NAME, sizeof(countersStruct));
+	shm_counters = create_shm(SHARED_COUNTERS_NAME, sizeof(countersStruct), create_new);
 	counters = (countersStruct*)shm_counters.ptr;
 
 	/****************************** shared settings struct ******************************/
 	// Try to create shared memory object
-	shm_settings = create_shm(SHARED_SETTINGS_NAME, sizeof(ShmSettings));
+	shm_settings = create_shm(SHARED_SETTINGS_NAME, sizeof(ShmSettings), create_new);
 	shmSettings = (ShmSettings*)shm_settings.ptr;
-	shmSettings->version = SHARED_MEMORY_VERSION;
-	shmSettings->global_shm_counter = 0;
+	if(create_new)
+	{
+		shmSettings->version = SHARED_MEMORY_VERSION;
+		shmSettings->global_shm_counter = 0;
+	}
+	else
+	{
+		if(shmSettings->version != SHARED_MEMORY_VERSION)
+		{
+			logg("Shared memory version mismatch!");
+			return false;
+		}
+	}
+	
 
 	/****************************** shared strings buffer ******************************/
 	// Try to create shared memory object
-	shm_strings = create_shm(SHARED_STRINGS_NAME, pagesize);
-	counters->strings_MAX = pagesize;
+	shm_strings = create_shm(SHARED_STRINGS_NAME, pagesize, create_new);
+	if(create_new)
+	{
+		counters->strings_MAX = pagesize;
 
-	// Initialize shared string object with an empty string at position zero
-	((char*)shm_strings.ptr)[0] = '\0';
-	shmSettings->next_str_pos = 1;
+		// Initialize shared string object with an empty string at position zero
+		((char*)shm_strings.ptr)[0] = '\0';
+		shmSettings->next_str_pos = 1;
+	}
 
 	/****************************** shared domains struct ******************************/
 	// Try to create shared memory object
-	shm_domains = create_shm(SHARED_DOMAINS_NAME, pagesize*sizeof(domainsData));
+	shm_domains = create_shm(SHARED_DOMAINS_NAME, pagesize*sizeof(domainsData), create_new);
 	domains = (domainsData*)shm_domains.ptr;
-	counters->domains_MAX = pagesize;
+	if(create_new)
+		counters->domains_MAX = pagesize;
 
 	/****************************** shared clients struct ******************************/
 	size_t size = get_optimal_object_size(sizeof(clientsData), 1);
 	// Try to create shared memory object
-	shm_clients = create_shm(SHARED_CLIENTS_NAME, size*sizeof(clientsData));
+	shm_clients = create_shm(SHARED_CLIENTS_NAME, size*sizeof(clientsData), create_new);
 	clients = (clientsData*)shm_clients.ptr;
-	counters->clients_MAX = size;
+	if(create_new)
+		counters->clients_MAX = size;
 
 	/****************************** shared upstreams struct ******************************/
 	size = get_optimal_object_size(sizeof(upstreamsData), 1);
 	// Try to create shared memory object
-	shm_upstreams = create_shm(SHARED_UPSTREAMS_NAME, size*sizeof(upstreamsData));
+	shm_upstreams = create_shm(SHARED_UPSTREAMS_NAME, size*sizeof(upstreamsData), create_new);
 	upstreams = (upstreamsData*)shm_upstreams.ptr;
-	counters->upstreams_MAX = size;
+	if(create_new)
+		counters->upstreams_MAX = size;
 
 	/****************************** shared queries struct ******************************/
 	// Try to create shared memory object
-	shm_queries = create_shm(SHARED_QUERIES_NAME, pagesize*sizeof(queriesData));
+	shm_queries = create_shm(SHARED_QUERIES_NAME, pagesize*sizeof(queriesData), create_new);
 	queries = (queriesData*)shm_queries.ptr;
-	counters->queries_MAX = pagesize;
+	if(create_new)
+		counters->queries_MAX = pagesize;
 
 	/****************************** shared overTime struct ******************************/
 	size = get_optimal_object_size(sizeof(overTimeData), OVERTIME_SLOTS);
 	// Try to create shared memory object
-	shm_overTime = create_shm(SHARED_OVERTIME_NAME, size*sizeof(overTimeData));
-	overTime = (overTimeData*)shm_overTime.ptr;
-	initOverTime();
+	shm_overTime = create_shm(SHARED_OVERTIME_NAME, size*sizeof(overTimeData), create_new);
+	if(create_new)
+	{
+		overTime = (overTimeData*)shm_overTime.ptr;
+		initOverTime();
+	}
 
 	/****************************** shared DNS cache struct ******************************/
 	size = get_optimal_object_size(sizeof(DNSCacheData), 1);
 	// Try to create shared memory object
-	shm_dns_cache = create_shm(SHARED_DNS_CACHE, size*sizeof(DNSCacheData));
+	shm_dns_cache = create_shm(SHARED_DNS_CACHE, size*sizeof(DNSCacheData), create_new);
 	dns_cache = (DNSCacheData*)shm_dns_cache.ptr;
-	counters->dns_cache_MAX = size;
+	if(create_new)
+		counters->dns_cache_MAX = size;
 
 	/****************************** shared per-client regex buffer ******************************/
 	size = get_optimal_object_size(1, 2);
 	// Try to create shared memory object
-	shm_per_client_regex = create_shm(SHARED_PER_CLIENT_REGEX, size);
+	shm_per_client_regex = create_shm(SHARED_PER_CLIENT_REGEX, size, create_new);
 
 	return true;
 }
@@ -360,7 +395,7 @@ void destroy_shmem(void)
 	delete_shm(&shm_per_client_regex);
 }
 
-SharedMemory create_shm(const char *name, const size_t size)
+SharedMemory create_shm(const char *name, const size_t size, bool create_new)
 {
 	if(config.debug & DEBUG_SHMEM)
 		logg("Creating shared memory with name \"%s\" and size %zu", name, size);
@@ -371,18 +406,31 @@ SharedMemory create_shm(const char *name, const size_t size)
 		.ptr = NULL
 	};
 
-	// Try unlinking the shared memory object before creating a new one.
-	// If the object is still existing, e.g., due to a past unclean exit
-	// of FTL, shm_open() would fail with error "File exists"
-	int ret = shm_unlink(name);
-	// Check return code. shm_unlink() returns -1 on error and sets errno
-	// We specifically ignore ENOENT (No such file or directory) as this is not an
-	// error in our use case (we only want the file to be deleted when existing)
-	if(ret != 0 && errno != ENOENT)
-		logg("create_shm(): shm_unlink(\"%s\") failed: %s (%i)", name, strerror(errno), errno);
+	// O_RDONLY: Open the object for read access.
+	// A shared memory objectopened in this way can be mmap(2)ed only for read (PROT_READ) access.
+	int shm_oflags = O_RDONLY;
+	if(create_new)
+	{
+		// Try unlinking the shared memory object before creating a new one.
+		// If the object is still existing, e.g., due to a past unclean exit
+		// of FTL, shm_open() would fail with error "File exists"
+		int ret = shm_unlink(name);
+		// Check return code. shm_unlink() returns -1 on error and sets errno
+		// We specifically ignore ENOENT (No such file or directory) as this is not an
+		// error in our use case (we only want the file to be deleted when existing)
+		if(ret != 0 && errno != ENOENT)
+			logg("create_shm(): shm_unlink(\"%s\") failed: %s (%i)", name, strerror(errno), errno);
+
+		// Replace shm_oflags
+		// O_CREAT: Create the shared memory object if it does not exist.
+		// O_EXCL: Return an error if a shared memory object with the given name already exists.
+		// O_TRUNC: If the shared memory object already exists, truncate it to zero bytes.
+		// O_RDWR: Open the object for read-write access.
+		shm_oflags = O_CREAT | O_EXCL | O_TRUNC | O_RDWR;
+	}
 
 	// Create the shared memory file in read/write mode with 600 permissions
-	int fd = shm_open(sharedMemory.name, O_CREAT | O_EXCL | O_TRUNC | O_RDWR, S_IRUSR | S_IWUSR);
+	int fd = shm_open(sharedMemory.name, shm_oflags, S_IRUSR | S_IWUSR);
 
 	// Check for `shm_open` error
 	if(fd == -1)
@@ -392,19 +440,23 @@ SharedMemory create_shm(const char *name, const size_t size)
 		exit(EXIT_FAILURE);
 	}
 
-	// Resize shared memory file
-	ret = ftruncate(fd, size);
-
-	// Check for `ftruncate` error
-	if(ret == -1)
+	if(create_new)
 	{
-		logg("FATAL: create_shm(): ftruncate(%i, %zu): Failed to resize shared memory object \"%s\": %s",
-		     fd, size, sharedMemory.name, strerror(errno));
-		exit(EXIT_FAILURE);
+		// Resize shared memory file
+		int ret = ftruncate(fd, size);
+
+		// Check for `ftruncate` error
+		if(ret == -1)
+		{
+			logg("FATAL: create_shm(): ftruncate(%i, %zu): Failed to resize shared memory object \"%s\": %s",
+				fd, size, sharedMemory.name, strerror(errno));
+			exit(EXIT_FAILURE);
+		}
 	}
 
 	// Create shared memory mapping
-	void *shm = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+	int prot = create_new ? PROT_READ | PROT_WRITE : PROT_READ;
+	void *shm = mmap(NULL, size, prot, MAP_SHARED, fd, 0);
 
 	// Check for `mmap` error
 	if(shm == MAP_FAILED)
