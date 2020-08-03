@@ -455,8 +455,8 @@ SharedMemory create_shm(const char *name, const size_t size, bool create_new)
 	// Check for `shm_open` error
 	if(fd == -1)
 	{
-		logg("FATAL: create_shm(): Failed to create_shm shared memory object \"%s\": %s",
-		     name, strerror(errno));
+		logg("FATAL: create_shm(): Failed to %s shared memory object \"%s\": %s",
+		     create_new ? "create" : "open", name, strerror(errno));
 		return sharedMemory;
 	}
 
