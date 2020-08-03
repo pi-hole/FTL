@@ -278,6 +278,8 @@ bool init_shmem(bool create_new)
 	/****************************** shared memory lock ******************************/
 	// Try to create shared memory object
 	shm_lock = create_shm(SHARED_LOCK_NAME, sizeof(ShmLock), create_new);
+	if(shm_lock.ptr == NULL)
+		return false;
 	shmLock = (ShmLock*) shm_lock.ptr;
 	if(create_new)
 	{
@@ -288,11 +290,15 @@ bool init_shmem(bool create_new)
 	/****************************** shared counters struct ******************************/
 	// Try to create shared memory object
 	shm_counters = create_shm(SHARED_COUNTERS_NAME, sizeof(countersStruct), create_new);
+	if(shm_counters.ptr == NULL)
+		return false;
 	counters = (countersStruct*)shm_counters.ptr;
 
 	/****************************** shared settings struct ******************************/
 	// Try to create shared memory object
 	shm_settings = create_shm(SHARED_SETTINGS_NAME, sizeof(ShmSettings), create_new);
+	if(shm_settings.ptr == NULL)
+		return false;
 	shmSettings = (ShmSettings*)shm_settings.ptr;
 	if(create_new)
 	{
@@ -312,6 +318,8 @@ bool init_shmem(bool create_new)
 	/****************************** shared strings buffer ******************************/
 	// Try to create shared memory object
 	shm_strings = create_shm(SHARED_STRINGS_NAME, pagesize, create_new);
+	if(shm_strings.ptr == NULL)
+		return false;
 	if(create_new)
 	{
 		counters->strings_MAX = pagesize;
@@ -324,6 +332,8 @@ bool init_shmem(bool create_new)
 	/****************************** shared domains struct ******************************/
 	// Try to create shared memory object
 	shm_domains = create_shm(SHARED_DOMAINS_NAME, pagesize*sizeof(domainsData), create_new);
+	if(shm_domains.ptr == NULL)
+		return false;
 	domains = (domainsData*)shm_domains.ptr;
 	if(create_new)
 		counters->domains_MAX = pagesize;
@@ -332,6 +342,8 @@ bool init_shmem(bool create_new)
 	size_t size = get_optimal_object_size(sizeof(clientsData), 1);
 	// Try to create shared memory object
 	shm_clients = create_shm(SHARED_CLIENTS_NAME, size*sizeof(clientsData), create_new);
+	if(shm_clients.ptr == NULL)
+		return false;
 	clients = (clientsData*)shm_clients.ptr;
 	if(create_new)
 		counters->clients_MAX = size;
@@ -340,6 +352,8 @@ bool init_shmem(bool create_new)
 	size = get_optimal_object_size(sizeof(upstreamsData), 1);
 	// Try to create shared memory object
 	shm_upstreams = create_shm(SHARED_UPSTREAMS_NAME, size*sizeof(upstreamsData), create_new);
+	if(shm_upstreams.ptr == NULL)
+		return false;
 	upstreams = (upstreamsData*)shm_upstreams.ptr;
 	if(create_new)
 		counters->upstreams_MAX = size;
@@ -347,6 +361,8 @@ bool init_shmem(bool create_new)
 	/****************************** shared queries struct ******************************/
 	// Try to create shared memory object
 	shm_queries = create_shm(SHARED_QUERIES_NAME, pagesize*sizeof(queriesData), create_new);
+	if(shm_queries.ptr == NULL)
+		return false;
 	queries = (queriesData*)shm_queries.ptr;
 	if(create_new)
 		counters->queries_MAX = pagesize;
@@ -355,6 +371,8 @@ bool init_shmem(bool create_new)
 	size = get_optimal_object_size(sizeof(overTimeData), OVERTIME_SLOTS);
 	// Try to create shared memory object
 	shm_overTime = create_shm(SHARED_OVERTIME_NAME, size*sizeof(overTimeData), create_new);
+	if(shm_overTime.ptr == NULL)
+		return false;
 	if(create_new)
 	{
 		overTime = (overTimeData*)shm_overTime.ptr;
@@ -365,6 +383,8 @@ bool init_shmem(bool create_new)
 	size = get_optimal_object_size(sizeof(DNSCacheData), 1);
 	// Try to create shared memory object
 	shm_dns_cache = create_shm(SHARED_DNS_CACHE, size*sizeof(DNSCacheData), create_new);
+	if(shm_dns_cache.ptr == NULL)
+		return false;
 	dns_cache = (DNSCacheData*)shm_dns_cache.ptr;
 	if(create_new)
 		counters->dns_cache_MAX = size;
@@ -373,6 +393,8 @@ bool init_shmem(bool create_new)
 	size = get_optimal_object_size(1, 2);
 	// Try to create shared memory object
 	shm_per_client_regex = create_shm(SHARED_PER_CLIENT_REGEX, size, create_new);
+	if(shm_per_client_regex.ptr == NULL)
+		return false;
 
 	return true;
 }
@@ -406,9 +428,8 @@ SharedMemory create_shm(const char *name, const size_t size, bool create_new)
 		.ptr = NULL
 	};
 
-	// O_RDONLY: Open the object for read access.
-	// A shared memory objectopened in this way can be mmap(2)ed only for read (PROT_READ) access.
-	int shm_oflags = O_RDONLY;
+	// O_RDWR: Open the object for read-write access (we need to be able to modify the locks)
+	int shm_oflags = O_RDWR;
 	if(create_new)
 	{
 		// Try unlinking the shared memory object before creating a new one.
@@ -425,8 +446,7 @@ SharedMemory create_shm(const char *name, const size_t size, bool create_new)
 		// O_CREAT: Create the shared memory object if it does not exist.
 		// O_EXCL: Return an error if a shared memory object with the given name already exists.
 		// O_TRUNC: If the shared memory object already exists, truncate it to zero bytes.
-		// O_RDWR: Open the object for read-write access.
-		shm_oflags = O_CREAT | O_EXCL | O_TRUNC | O_RDWR;
+		shm_oflags |= O_CREAT | O_EXCL | O_TRUNC;
 	}
 
 	// Create the shared memory file in read/write mode with 600 permissions
@@ -437,7 +457,7 @@ SharedMemory create_shm(const char *name, const size_t size, bool create_new)
 	{
 		logg("FATAL: create_shm(): Failed to create_shm shared memory object \"%s\": %s",
 		     name, strerror(errno));
-		exit(EXIT_FAILURE);
+		return sharedMemory;
 	}
 
 	if(create_new)
@@ -450,20 +470,19 @@ SharedMemory create_shm(const char *name, const size_t size, bool create_new)
 		{
 			logg("FATAL: create_shm(): ftruncate(%i, %zu): Failed to resize shared memory object \"%s\": %s",
 				fd, size, sharedMemory.name, strerror(errno));
-			exit(EXIT_FAILURE);
+			return sharedMemory;
 		}
 	}
 
 	// Create shared memory mapping
-	int prot = create_new ? PROT_READ | PROT_WRITE : PROT_READ;
-	void *shm = mmap(NULL, size, prot, MAP_SHARED, fd, 0);
+	void *shm = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
 
 	// Check for `mmap` error
 	if(shm == MAP_FAILED)
 	{
 		logg("FATAL: create_shm(): Failed to map shared memory object \"%s\" (%i): %s",
 		     sharedMemory.name, fd, strerror(errno));
-		exit(EXIT_FAILURE);
+		return sharedMemory;
 	}
 
 	// Close shared memory object file descriptor as it is no longer

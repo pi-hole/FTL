@@ -74,6 +74,7 @@ static int pihole_counters(lua_State *L) {
 			return ret;
 	}
 	lua_newtable(L);  /* table to collect results */
+	lock_shm();
 	settabsi(L, "queries", counters->queries);
 	settabsi(L, "blocked", counters->blocked);
 	settabsi(L, "cached", counters->cached);
@@ -86,6 +87,50 @@ static int pihole_counters(lua_State *L) {
 	settabsi(L, "unknown", counters->unknown);
 	settabsi(L, "upstreams", counters->upstreams);
 	settabsi(L, "unknown", counters->unknown);
+	unlock_shm();
+	return LUA_YIELD;
+}
+
+// pihole.query()
+extern const char *querytypes[TYPE_MAX]; // api/api.c
+static int pihole_query(lua_State *L) {
+	if(!shm_connected)
+	{
+		int ret = _pihole_connect(L);
+		if(ret != LUA_OK)
+			return ret;
+	}
+	// Can be an index or -1 (all)
+	lua_Integer index = luaL_optinteger(L, 1, 0);
+
+	if(index > counters->queries)
+	{
+		luaL_pushfail(L);
+		lua_insert(L, -2);
+		lua_pushliteral(L, "Index cannot be larger than total number of queries");
+		return LUA_ERRRUN;
+	}
+	else if(index < 0)
+	{
+		luaL_pushfail(L);
+		lua_insert(L, -2);
+		lua_pushliteral(L, "Index cannot be negative");
+		return LUA_ERRRUN;
+	}
+
+	lua_newtable(L);  /* table to collect results */
+	lock_shm();
+	const queriesData *query = getQuery(index, true);
+	settabsi(L, "index", index);
+	settabss(L, "domain", getDomainString(query));
+	settabss(L, "clientIP", getClientIPString(query));
+	settabss(L, "clientName", getClientIPString(query));
+	settabsi(L, "timestamp", query->timestamp);
+	settabsi(L, "type", query->type);
+	settabss(L, "typeStr", querytypes[query->type - 1]);
+	settabsi(L, "status", query->status);
+	settabsb(L, "complete", query->complete);
+	unlock_shm();
 	return LUA_YIELD;
 }
 
@@ -93,6 +138,7 @@ static const luaL_Reg piholelib[] = {
 	{"ftl_version", pihole_ftl_version},
 	{"connect", pihole_connect},
 	{"counters", pihole_counters},
+	{"query", pihole_query},
 	{NULL, NULL}
 };
 
