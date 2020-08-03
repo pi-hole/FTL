@@ -467,3 +467,15 @@
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "v"* || ${lines[1]} == "v"* ]]
 }
+
+@test "LUA: Interpreter loads and enabled bundled library \"inspect\"" {
+  run bash -c './pihole-FTL lua -e "print(inspect(inspect))"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[@]} == *'_DESCRIPTION = "human-readable representations of tables"'* ]]
+}
+
+@test "LUA: Bundled libraries are installed into /etc/pihole/lua-libs" {
+  run bash -c 'ls -1 /etc/pihole/lua-libs | grep -c ^'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} != 0 ]]
+}
