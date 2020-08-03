@@ -190,7 +190,7 @@ static int dostring (lua_State *L, const char *s, const char *name) {
 ** Calls 'require(name)' and stores the result in a global variable
 ** with the given name.
 */
-static int dolibrary (lua_State *L, const char *name) {
+int dolibrary (lua_State *L, const char *name) {
   int status;
   lua_getglobal(L, "require");
   lua_pushstring(L, name);
@@ -597,6 +597,10 @@ static int pmain (lua_State *L) {
     if (handle_luainit(L) != LUA_OK)  /* run LUA_INIT */
       return 0;  /* error running LUA_INIT */
   }
+
+  // Load and enable libraries bundled with Pi-hole
+  ftl_lua_init(L);
+
   if (!runargs(L, argv, script))  /* execute arguments -e and -l */
     return 0;  /* something failed */
   if (script < argc &&  /* execute main script (if there is one) */

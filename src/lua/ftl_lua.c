@@ -23,6 +23,7 @@
 ** from 'lua_getinfo' into result table. Key is always a string;
 ** value can be a string, an int, or a boolean.
 */
+
 static void settabss (lua_State *L, const char *k, const char *v) {
   lua_pushstring(L, v);
   lua_setfield(L, -2, k);
@@ -40,6 +41,7 @@ static void settabsb (lua_State *L, const char *k, int v) {
 
 static bool shm_connected = false;
 
+// pihole.ftl_version()
 static int pihole_ftl_version(lua_State *L) {
 	lua_pushstring(L, get_FTL_version());
 	return 1;
@@ -58,10 +60,12 @@ static int _pihole_connect(lua_State *L) {
 	return LUA_OK;
 }
 
+// pihole.connect()
 static int pihole_connect(lua_State *L) {
 	return _pihole_connect(L);
 }
 
+// pihole.counters()
 static int pihole_counters(lua_State *L) {
 	if(!shm_connected)
 	{
@@ -92,7 +96,14 @@ static const luaL_Reg piholelib[] = {
 	{NULL, NULL}
 };
 
+// Register pihole library
 LUAMOD_API int luaopen_pihole(lua_State *L) {
 	luaL_newlib(L, piholelib);
 	return LUA_YIELD;
+}
+
+// Load bundled libraries and make the available globally
+void ftl_lua_init(lua_State *L)
+{
+	dolibrary(L, "inspect");
 }

@@ -17,4 +17,8 @@
 int lua_main (int argc, char **argv);
 int luac_main (int argc, char **argv);
 
+extern int dolibrary (lua_State *L, const char *name);
+
+void ftl_lua_init(lua_State *L);
+
 #endif //LUA_H
