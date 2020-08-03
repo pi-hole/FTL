@@ -79,3 +79,5 @@ if(LUA_READLINE STREQUAL "true")
 endif()
 
 target_include_directories(lua PRIVATE ${PROJECT_SOURCE_DIR}/src ${PROJECT_SOURCE_DIR}/src/lua)
+
+add_subdirectory(libs)
