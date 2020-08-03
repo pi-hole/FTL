@@ -20,6 +20,8 @@
 #include "lauxlib.h"
 #include "lualib.h"
 
+#include "ftl_lua.h"
+
 
 #if !defined(LUA_PROGNAME)
 #define LUA_PROGNAME		"lua"
