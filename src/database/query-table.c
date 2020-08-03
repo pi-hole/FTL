@@ -328,23 +328,24 @@ void DB_read_queries(void)
 	// Get time stamp 24 hours in the past
 	const time_t now = time(NULL);
 	const time_t mintime = now - config.maxlogage;
-	char *querystr = NULL;
-	int rc = asprintf(&querystr, "SELECT * FROM queries WHERE timestamp >= %li", mintime);
-	if(rc < 42)
-	{
-		logg("DB_read_queries() - Memory allocation error: %s", sqlite3_errstr(rc));
-		dbclose();
-		return;
-	}
+	const char *querystr = "SELECT * FROM queries WHERE timestamp >= ?";
 	// Log FTL_db query string in debug mode
 	if(config.debug & DEBUG_DATABASE)
-		logg("DB_read_queries(): \"%s\"", querystr);
+		logg("DB_read_queries(): \"%s\" with ? = %li", querystr, mintime);
 
 	// Prepare SQLite3 statement
 	sqlite3_stmt* stmt = NULL;
-	rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &stmt, NULL);
+	int rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK ){
 		logg("DB_read_queries() - SQL error prepare: %s", sqlite3_errstr(rc));
+		dbclose();
+		return;
+	}
+
+	// Bind limit
+	if((rc = sqlite3_bind_int(stmt, 1, mintime)) != SQLITE_OK)
+	{
+		logg("DB_read_queries() - Failed to bind type mintime: %s", sqlite3_errstr(rc));
 		dbclose();
 		return;
 	}
@@ -489,11 +490,12 @@ void DB_read_queries(void)
 		{
 			// QUERY_REGEX: Set ID regex which was the reson for blocking
 			const int cacheID = findCacheID(query->domainID, query->clientID);
-			const DNSCacheData *cache = getDNSCache(cacheID, true);
-			if(cache != NULL)
-				sqlite3_bind_int(stmt, 7, cache->black_regex_idx);
-			else
-				sqlite3_bind_null(stmt, 7);
+			DNSCacheData *cache = getDNSCache(cacheID, true);
+			// Only load if
+			//  a) we have a chace entry
+			//  b) the value of additional_info is not NULL (0 bytes storage size)
+			if(cache != NULL && sqlite3_column_bytes(stmt, 7) != 0)
+				cache->black_regex_idx = sqlite3_column_int(stmt, 7);
 		}
 
 		// Increment status counters
@@ -555,5 +557,4 @@ void DB_read_queries(void)
 	// Finalize SQLite3 statement
 	sqlite3_finalize(stmt);
 	dbclose();
-	free(querystr);
 }
