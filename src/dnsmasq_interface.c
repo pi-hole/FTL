@@ -142,7 +142,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 	// Skip the entire chain of tests if we already know the answer for this
 	// particular client
 	unsigned char blockingStatus = dns_cache->blocking_status;
-	const char* domainstr = getstr(domain->domainpos);
+	char *domainstr = (char*)getstr(domain->domainpos);
 	switch(blockingStatus)
 	{
 		case UNKNOWN_BLOCKED:
@@ -252,8 +252,13 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 		return false;
 	}
 
-	// Check whitelist (exact + regex) for match
+	// Make a local copy of the domain string. The  string memory may get
+	// reorganized in the following. We cannot expect domainstr to remain
+	// valid for all time.
+	domainstr = strdup(domainstr);
 	const char *blockedDomain = domainstr;
+
+	// Check whitelist (exact + regex) for match
 	query->whitelisted = in_whitelist(domainstr, clientID, client);
 
 	bool blockDomain = false;
@@ -299,6 +304,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 		dns_cache->blocking_status = query->whitelisted ? WHITELISTED : NOT_BLOCKED;
 	}
 
+	free(domainstr);
 	return blockDomain;
 }
 
