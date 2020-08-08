@@ -534,6 +534,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	strtolower(domainString);
 
 	// Get client IP address (can be overwritten by EDNS(0) client subnet (ECS) data)
+	const sa_family_t family = (flags & F_IPV4) ? AF_INET : AF_INET6;
 	char clientIP[ADDRSTRLEN] = { 0 };
 	if(config.edns0_ecs && edns->client_set)
 	{
@@ -544,7 +545,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	else
 	{
 		// Use original requestor
-		inet_ntop((flags & F_IPV4) ? AF_INET : AF_INET6, addr, clientIP, ADDRSTRLEN);
+		inet_ntop(family, addr, clientIP, ADDRSTRLEN);
 	}
 
 	// Check if user wants to skip queries coming from localhost
@@ -661,7 +662,6 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	if(client->hwlen < 1)
 	{
 		union mysockaddr hwaddr = {{ 0 }};
-		const sa_family_t family = (flags & F_IPV4) ? AF_INET : AF_INET6;
 		hwaddr.sa.sa_family = family;
 		if(family == AF_INET)
 		{
