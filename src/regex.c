@@ -100,6 +100,12 @@ static bool compile_regex(const char *regexin, const enum regex_type regexid)
 				if(regex[index].query_type == 0)
 					logg_regex_warning(regextype[regexid], "Unknown querytype",
 					                   regex[index].database_id, regexin);
+				// Blocking PTR requests may have been done unintentionally, print a warning about this
+				else if((regex[index].query_type == TYPE_PTR && !regex[index].query_type_inverted) ||
+				        (regex[index].query_type != TYPE_PTR &&  regex[index].query_type_inverted))
+					logg_regex_warning(regextype[regexid],
+					                   "This regex may cause name resolution issues (blocking PTR requests)",
+					                   regex[index].database_id, regexin);
 
 				// Debug output
 				else if(config.debug & DEBUG_REGEX)
