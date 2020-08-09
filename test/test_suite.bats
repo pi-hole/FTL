@@ -679,6 +679,14 @@
   [[ $status == 2 ]]
 }
 
+@test "Regex Test 40: Option \";querytype\" sanity checks" {
+  run bash -c './pihole-FTL regex-test "f" g\;querytype=!A\;querytype=A'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 2 ]]
+  [[ ${lines[1]} == *"This regex may cause name resolution issues (blocking PTR requests)" ]]
+  [[ ${lines[2]} == *"Overwriting previous querytype setting" ]]
+}
+
 # x86_64-musl is built on busybox which has a slightly different
 # variant of ls displaying three, instead of one, spaces between the
 # user and group names.
