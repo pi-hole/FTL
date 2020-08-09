@@ -215,6 +215,8 @@ static bool get_client_groupids(clientsData* client)
 	client->found_group = false;
 	client->groupspos = 0u;
 
+	logg("A");
+
 	// Do not proceed when database is not available
 	if(!gravityDB_opened && !gravityDB_open())
 	{
@@ -334,8 +336,19 @@ static bool get_client_groupids(clientsData* client)
 		if(hwaddr != NULL && strlen(hwaddr) > 3 && strncasecmp(hwaddr, "ip-", 3) == 0)
 		{
 			free(hwaddr);
-			hwaddr = 0;
+			hwaddr = NULL;
 			logg("Skipping mock-device hardware address lookup");
+		}
+
+		// MAC address fallback: Try to synthesize MAC address from internal buffer
+		if(hwaddr == NULL && client->hwlen == 6)
+		{
+			const size_t strlen = sizeof("AA:BB:CC:DD:EE:FF");
+			hwaddr = calloc(18, strlen);
+			snprintf(hwaddr, strlen, "%02X:%02X:%02X:%02X:%02X:%02X",
+			         client->hwaddr[0], client->hwaddr[1], client->hwaddr[2],
+			         client->hwaddr[3], client->hwaddr[4], client->hwaddr[5]);
+			logg("--> Obtained %s from internal ARP cache", hwaddr);
 		}
 	}
 
@@ -418,7 +431,7 @@ static bool get_client_groupids(clientsData* client)
 		if(hostname != NULL && strlen(hostname) == 0)
 		{
 			free(hostname);
-			hostname = 0;
+			hostname = NULL;
 			logg("Skipping empty host name lookup");
 		}
 	}

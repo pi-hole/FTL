@@ -59,6 +59,8 @@ typedef struct {
 typedef struct {
 	unsigned char magic;
 	unsigned char reread_groups;
+	char hwlen;
+	unsigned char hwaddr[16]; // See DHCP_CHADDR_MAX in dnsmasq/dhcp-protocol.h
 	bool new;
 	bool found_group;
 	int count;

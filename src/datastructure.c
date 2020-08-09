@@ -210,6 +210,9 @@ int findClientID(const char *clientIP, const bool count)
 	client->firstSeen = time(NULL);
 	// Interface is not yet known
 	client->ifacepos = 0;
+	// Set all MAC address bytes to zero
+	client->hwlen = -1;
+	memset(client->hwaddr, 0, sizeof(client->hwaddr));
 
 	// Initialize client-specific overTime data
 	for(int i = 0; i < OVERTIME_SLOTS; i++)
