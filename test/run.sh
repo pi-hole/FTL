@@ -83,6 +83,10 @@ dig TXT CHAOS version.bind @127.0.0.1 +short
 test/libs/bats/bin/bats "test/test_suite.bats"
 RET=$?
 
+if [[ $RET != 0 ]]; then
+  cat /var/log/pihole-FTL.log
+fi
+
 # Kill pihole-FTL after having completed tests
 kill $(pidof pihole-FTL)
 

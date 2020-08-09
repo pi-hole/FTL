@@ -24,9 +24,9 @@
 }
 
 @test "Number of compiled regex filters as expected" {
-  run bash -c 'grep -c "Compiled 2 whitelist and 1 blacklist regex filters" /var/log/pihole-FTL.log'
+  run bash -c 'grep "Compiled [0-9]* whitelist" /var/log/pihole-FTL.log'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "1" ]]
+  [[ ${lines[0]} == *"Compiled 2 whitelist and 1 blacklist regex filters"* ]]
 }
 
 @test "Blacklisted domain is blocked" {
@@ -395,12 +395,6 @@
   [[ ${lines[0]} == "1" ]]
 }
 
-@test "Number of compiled regex as expected" {
-  run bash -c 'grep -c "Compiled 2 whitelist and 1 blacklist regex filters in" /var/log/pihole-FTL.log'
-  printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "1" ]]
-}
-
 @test "Regex Test 1: \"regex7.test.pi-hole.net\" vs. [database regex]: MATCH" {
   run bash -c './pihole-FTL regex-test "regex7.test.pi-hole.net"'
   printf "%s\n" "${lines[@]}"
@@ -683,8 +677,7 @@
   run bash -c './pihole-FTL regex-test "f" g\;querytype=!A\;querytype=A'
   printf "%s\n" "${lines[@]}"
   [[ $status == 2 ]]
-  [[ ${lines[1]} == *"This regex may cause name resolution issues (blocking PTR requests)" ]]
-  [[ ${lines[2]} == *"Overwriting previous querytype setting" ]]
+  [[ ${lines[1]} == *"Overwriting previous querytype setting" ]]
 }
 
 # x86_64-musl is built on busybox which has a slightly different
