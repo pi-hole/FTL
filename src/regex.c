@@ -78,6 +78,12 @@ static bool compile_regex(const char *regexin, const enum regex_type regexid)
 			// options ";querytype=!AAAA" and ";querytype=AAAA"
 			if(sscanf(part, "querytype=%16s", extra))
 			{
+				// Warn if specified more than one querytype option
+				if(regex[index].query_type != 0)
+					logg_regex_warning(regextype[regexid],
+					                   "Overwriting previous querytype setting",
+					                   regex[index].database_id, regexin);
+
 				// Test input string against all implemented query types
 				for(enum query_types type = TYPE_A; type < TYPE_MAX; type++)
 				{
