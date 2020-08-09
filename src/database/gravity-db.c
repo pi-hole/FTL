@@ -54,6 +54,14 @@ void gravityDB_forked(void)
 	gravityDB_open();
 }
 
+void gravityDB_reopen(void)
+{
+	lock_shm();
+	gravityDB_close();
+	gravityDB_open();
+	unlock_shm();
+}
+
 // Open gravity database
 bool gravityDB_open(void)
 {
