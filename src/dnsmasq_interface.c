@@ -145,6 +145,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 	if(query == NULL || domain == NULL || client == NULL || dns_cache == NULL)
 	{
 		// Encountered memory error, skip query
+		logg("WARN: No memory available, skipping query analysis");
 		return false;
 	}
 
@@ -637,6 +638,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	if(client == NULL)
 	{
 		// Encountered memory error, skip query
+		logg("WARN: No memory available, skipping query analysis");
 		// Free allocated memory
 		free(domainString);
 		// Release thread lock

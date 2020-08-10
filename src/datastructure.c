@@ -245,6 +245,8 @@ int findClientID(const char *clientIP, const bool count)
 	// Set all MAC address bytes to zero
 	client->hwlen = -1;
 	memset(client->hwaddr, 0, sizeof(client->hwaddr));
+	// This is not a super-client
+	client->super_client_id = -1;
 
 	// Initialize client-specific overTime data
 	for(int i = 0; i < OVERTIME_SLOTS; i++)

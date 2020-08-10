@@ -386,7 +386,8 @@ void getTopClients(const char *client_message, const int *sock)
 	{
 		// Get client pointer
 		const clientsData* client = getClient(clientID, true);
-		if(client == NULL)
+		// Skip invalid clients and also those managed by super clients
+		if(client == NULL || client->super_client_id >= 0)
 			continue;
 		temparray[clientID][0] = clientID;
 		// Use either blocked or total count based on request string
@@ -426,7 +427,8 @@ void getTopClients(const char *client_message, const int *sock)
 		const int ccount = temparray[i][1];
 		// Get client pointer
 		const clientsData* client = getClient(clientID, true);
-		if(client == NULL)
+		// Skip invalid clients and also those managed by super clients
+		if(client == NULL || client->super_client_id >= 0)
 			continue;
 
 		// Skip this client if there is a filter on it
@@ -755,7 +757,8 @@ void getAllQueries(const char *client_message, const int *sock)
 		{
 			// Get client pointer
 			const clientsData* client = getClient(i, true);
-			if(client == NULL)
+			// Skip invalid clients and also those managed by super clients
+			if(client == NULL || client->super_client_id >= 0)
 				continue;
 
 			// Try to match the requested string
@@ -1167,7 +1170,8 @@ void getClientsOverTime(const int *sock)
 		{
 			// Get client pointer
 			const clientsData* client = getClient(clientID, true);
-			if(client == NULL)
+			// Skip invalid clients and also those managed by super clients
+			if(client == NULL || client->super_client_id >= 0)
 				continue;
 			// Check if this client should be skipped
 			if(insetupVarsArray(getstr(client->ippos)) ||
@@ -1192,7 +1196,8 @@ void getClientsOverTime(const int *sock)
 
 			// Get client pointer
 			const clientsData* client = getClient(clientID, true);
-			if(client == NULL)
+			// Skip invalid clients and also those managed by super clients
+			if(client == NULL || client->super_client_id >= 0)
 				continue;
 			const int thisclient = client->overTime[slot];
 
@@ -1235,7 +1240,8 @@ void getClientNames(const int *sock)
 		{
 			// Get client pointer
 			const clientsData* client = getClient(clientID, true);
-			if(client == NULL)
+			// Skip invalid clients and also those managed by super clients
+			if(client == NULL || client->super_client_id >= 0)
 				continue;
 
 			// Check if this client should be skipped

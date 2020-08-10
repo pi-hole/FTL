@@ -56,6 +56,7 @@ typedef struct {
 	bool found_group;
 	int count;
 	int blockedcount;
+	int super_client_id;
 	int overTime[OVERTIME_SLOTS];
 	unsigned int numQueriesARP;
 	size_t groupspos;
