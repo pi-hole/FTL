@@ -17,6 +17,8 @@
 #include "../config.h"
 // logg()
 #include "../log.h"
+// calloc()
+#include "../memory.h"
 
 bool create_superclients_table(void)
 {
@@ -197,7 +199,7 @@ static void recompute_superclient(const int superclientID)
 		// Debug logging
 		if(config.debug & DEBUG_SUPERCLIENTS)
 		{
-			logg("Client \"%s\" (%s) IS managed by this super-client, adding counts",
+			logg("Client \"%s\" (%s) IS  managed by this super-client, adding counts",
 					getstr(superclient->namepos), getstr(superclient->ippos));
 		}
 
@@ -225,4 +227,40 @@ void reset_superclient(clientsData *client)
 	
 	// Recompute all values for this super-client
 	recompute_superclient(client->super_client_id);
+}
+
+// Return a list of clients linked to the current super-client
+// The first element contains the number of following IDs
+int *get_superclient_list(const int superclientID)
+{
+	int count = 0;
+	// Loop over all existing clients to count associated clients
+	for(int clientID = 0; clientID < counters->clients; clientID++)
+	{
+		// Get pointer to client candidate
+		const clientsData *client = getClient(clientID, true);
+		// Skip invalid clients and those that are not managed by this superclient
+		if(client == NULL || client->super_client_id != superclientID)
+			continue;
+
+		count++;
+	}
+
+	int *list = calloc(count + 1, sizeof(int));
+	list[0] = count;
+
+	// Loop over all existing clients to fill list of clients
+	count = 0;
+	for(int clientID = 0; clientID < counters->clients; clientID++)
+	{
+		// Get pointer to client candidate
+		const clientsData *client = getClient(clientID, true);
+		// Skip invalid clients and those that are not managed by this superclient
+		if(client == NULL || client->super_client_id != superclientID)
+			continue;
+
+		list[++count] = clientID;
+	}
+
+	return list;
 }

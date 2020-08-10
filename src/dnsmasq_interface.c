@@ -648,7 +648,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	}
 
 	// Update overTime data structure with the new client
-	client->overTime[timeidx]++;
+	change_clientcount(client, 0, 0, timeidx, 1);
 
 	// Set lastQuery timer and add one query for network table
 	client->lastQuery = querytimestamp;
@@ -1379,7 +1379,7 @@ static void query_blocked(queriesData* query, domainsData* domain, clientsData* 
 	if(domain != NULL)
 		domain->blockedcount++;
 	if(client != NULL)
-		client->blockedcount++;
+		change_clientcount(client, 0, 1, -1, 0);
 
 	// Update status
 	query->status = new_status;

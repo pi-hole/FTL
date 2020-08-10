@@ -191,7 +191,7 @@ int findClientID(const char *clientIP, const bool count)
 		if(strcmp(getstr(client->ippos), clientIP) == 0)
 		{
 			// Add one if count == true (do not add one, e.g., during ARP table processing)
-			if(count) client->count++;
+			if(count) change_clientcount(client, 1, 0, -1, 0);
 			return clientID;
 		}
 	}
@@ -267,6 +267,24 @@ int findClientID(const char *clientIP, const bool count)
 		reload_per_client_regex(clientID, client);
 
 	return clientID;
+}
+
+void change_clientcount(clientsData *client, int total, int blocked, int overTimeIdx, int overTimeMod)
+{
+		client->count += total;
+		client->blockedcount += blocked;
+		if(overTimeIdx > -1 && overTimeIdx < OVERTIME_SLOTS)
+			client->overTime[overTimeIdx] += overTimeMod;
+
+		// Also add counts to the conencted super-client (if any)
+		if(client->super_client_id > -1)
+		{
+			clientsData *superclient = getClient(client->super_client_id, true);
+			superclient->count += total;
+			superclient->blockedcount += blocked;
+			if(overTimeIdx > -1 && overTimeIdx < OVERTIME_SLOTS)
+				superclient->overTime[overTimeIdx] += overTimeMod;
+		}
 }
 
 int findCacheID(int domainID, int clientID, enum query_types query_type)

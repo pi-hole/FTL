@@ -18,4 +18,6 @@ void reset_superclient(clientsData *client);
 bool create_superclients_table(void);
 bool import_superclients(void);
 
+int *get_superclient_list(const int superclientID);
+
 #endif //SUPERCLIENTS_TABLE_H

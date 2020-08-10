@@ -77,13 +77,13 @@ void *GC_thread(void *val)
 				// Adjust client counter
 				clientsData* client = getClient(query->clientID, true);
 				if(client != NULL)
-					client->count--;
+					change_clientcount(client, -1, 0, 0, 0);
 
 				// Adjust total counters and total over time data
 				const int timeidx = query->timeidx;
 				overTime[timeidx].total--;
 				if(client != NULL)
-					client->overTime[timeidx]--;
+					change_clientcount(client, 0, 0, timeidx, -1);
 
 				// Adjust domain counter (no overTime information)
 				domainsData* domain = getDomain(query->domainID, true);
@@ -127,7 +127,7 @@ void *GC_thread(void *val)
 						if(domain != NULL)
 							domain->blockedcount--;
 						if(client != NULL)
-							client->blockedcount--;
+							change_clientcount(client, 0, -1, -1, 0);
 						break;
 					case QUERY_STATUS_MAX: // fall through
 					default:

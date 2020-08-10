@@ -28,6 +28,8 @@
 #include "version.h"
 // enum REGEX
 #include "regex_r.h"
+// get_superclient_list()
+#include "../database/superclients.h"
 
 #define min(a,b) ({ __typeof__ (a) _a = (a); __typeof__ (b) _b = (b); _a < _b ? _a : _b; })
 
@@ -645,6 +647,7 @@ void getAllQueries(const char *client_message, const int *sock)
 	char *clientname = NULL;
 	bool filterclientname = false;
 	int clientid = -1;
+	int *clientid_list = NULL;
 
 	unsigned char querytype = 0;
 
@@ -767,10 +770,15 @@ void getAllQueries(const char *client_message, const int *sock)
 			    strcmp(getstr(client->namepos), clientname) == 0))
 			{
 				clientid = i;
+
+				// Is this a super-client?
+				if(client->super_client_id == -2)
+					clientid_list = get_superclient_list(i);
+
 				break;
 			}
 		}
-		if(clientid < 0)
+		if(clientid == -1)
 		{
 			// Requested client has not been found, we directly
 			// exit here as there is no data to be returned
@@ -842,8 +850,22 @@ void getAllQueries(const char *client_message, const int *sock)
 			continue;
 
 		// Skip if client name and IP are not identical with what the user wants to see
-		if(filterclientname && query->clientID != clientid)
-			continue;
+		if(filterclientname)
+		{
+			// Normal clients
+			if(clientid_list == NULL && query->clientID != clientid)
+				continue;
+			// Super-clients (we have to check for all clients managed by this super-client)
+			else if(clientid_list != NULL)
+			{
+				bool found = false;
+				for(int i = 0; i < clientid_list[0]; i++)
+					if(query->clientID == clientid_list[i + 1])
+						found = true;
+				if(!found)
+					continue;
+			}
+		}
 
 		// Skip if query type is not identical with what the user wants to see
 		if(querytype != 0 && querytype != query->type)
@@ -948,6 +970,9 @@ void getAllQueries(const char *client_message, const int *sock)
 
 	if(filterforwarddest)
 		free(forwarddest);
+
+	if(clientid_list != NULL)
+		free(clientid_list);
 }
 
 void getRecentBlocked(const char *client_message, const int *sock)

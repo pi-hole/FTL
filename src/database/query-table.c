@@ -465,7 +465,7 @@ void DB_read_queries(void)
 		// Update overTime data
 		overTime[timeidx].total++;
 		// Update overTime data structure with the new client
-		client->overTime[timeidx]++;
+		change_clientcount(client, 0, 0, timeidx, 1);
 
 		// Increase DNS queries counter
 		counters->queries++;
@@ -518,7 +518,7 @@ void DB_read_queries(void)
 				// Get domain pointer
 				domainsData* domain = getDomain(domainID, true);
 				domain->blockedcount++;
-				client->blockedcount++;
+				change_clientcount(client, 0, 1, -1, 0);
 				// Update overTime data structure
 				overTime[timeidx].blocked++;
 				break;

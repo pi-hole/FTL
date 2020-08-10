@@ -920,7 +920,7 @@ void parse_neighbor_cache(void)
 		free(linebuffer);
 
 	// Finally, loop over all clients known to FTL and ensure we add them
-	// all to the database
+	// all to the database, skip super-clients as they do not exist
 	for(int clientID = 0; clientID < counters->clients; clientID++)
 	{
 
@@ -932,6 +932,10 @@ void parse_neighbor_cache(void)
 				logg("Network table: Client %d returned NULL pointer", clientID);
 			continue;
 		}
+
+		// Silently skip suer-clients - they do not really exist
+		if(client->super_client_id == -2)
+			continue;
 
 		// Get hostname and IP address of this client
 		const char *hostname, *ipaddr, *interface;
