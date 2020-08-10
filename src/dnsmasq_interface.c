@@ -47,7 +47,6 @@ static void save_reply_type(const unsigned int flags, const union all_addr *addr
 static unsigned long converttimeval(const struct timeval time) __attribute__((const));
 static void detect_blocked_IP(const unsigned short flags, const union all_addr *addr, const int queryID);
 static void query_externally_blocked(const int queryID, const unsigned char status);
-static int findQueryID(const int id);
 static void prepare_blocking_metadata(void);
 static void query_blocked(queriesData* query, domainsData* domain, clientsData* client, const unsigned char new_status);
 
@@ -152,7 +151,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 	// Skip the entire chain of tests if we already know the answer for this
 	// particular client
 	unsigned char blockingStatus = dns_cache->blocking_status;
-	const char* domainstr = getstr(domain->domainpos);
+	char *domainstr = (char*)getstr(domain->domainpos);
 	switch(blockingStatus)
 	{
 		case UNKNOWN_BLOCKED:
@@ -262,8 +261,13 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 		return false;
 	}
 
-	// Check whitelist (exact + regex) for match
+	// Make a local copy of the domain string. The  string memory may get
+	// reorganized in the following. We cannot expect domainstr to remain
+	// valid for all time.
+	domainstr = strdup(domainstr);
 	const char *blockedDomain = domainstr;
+
+	// Check whitelist (exact + regex) for match
 	query->whitelisted = in_whitelist(domainstr, clientID, client);
 
 	bool blockDomain = false;
@@ -309,6 +313,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 		dns_cache->blocking_status = query->whitelisted ? WHITELISTED : NOT_BLOCKED;
 	}
 
+	free(domainstr);
 	return blockDomain;
 }
 
@@ -441,7 +446,8 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 bool _FTL_new_query(const unsigned int flags, const char *name,
                     const char **blockingreason, const union all_addr *addr,
                     const char *types, const unsigned short qtype, const int id,
-                    const enum protocol proto, const char* file, const int line)
+                    const struct edns_data *edns, const enum protocol proto,
+                    const char* file, const int line)
 {
 	// Create new query in data structure
 
@@ -507,19 +513,25 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	char *domainString = strdup(name);
 	strtolower(domainString);
 
-	// Get client IP address
-	char dest[ADDRSTRLEN];
-	const unsigned char family = (flags & F_IPV4) ? AF_INET : AF_INET6;
-	inet_ntop(family, addr, dest, ADDRSTRLEN);
-	char *clientIP = strdup(dest);
-	strtolower(clientIP);
+	// Get client IP address (can be overwritten by EDNS(0) client subnet (ECS) data)
+	char clientIP[ADDRSTRLEN] = { 0 };
+	if(config.edns0_ecs && edns->client_set)
+	{
+		// Use ECS provided client
+		strncpy(clientIP, edns->client, ADDRSTRLEN);
+		clientIP[ADDRSTRLEN-1] = '\0';
+	}
+	else
+	{
+		// Use original requestor
+		inet_ntop((flags & F_IPV4) ? AF_INET : AF_INET6, addr, clientIP, ADDRSTRLEN);
+	}
 
 	// Check if user wants to skip queries coming from localhost
 	if(config.ignore_localhost &&
 	   (strcmp(clientIP, "127.0.0.1") == 0 || strcmp(clientIP, "::1") == 0))
 	{
 		free(domainString);
-		free(clientIP);
 		unlock_shm();
 		return false;
 	}
@@ -546,7 +558,6 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		// Don't process this query further here, we already counted it
 		if(config.debug & DEBUG_QUERIES) logg("Notice: Skipping new query: %s (%i)", types, id);
 		free(domainString);
-		free(clientIP);
 		unlock_shm();
 		return false;
 	}
@@ -565,7 +576,6 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		logg("WARN: No memory available, skipping query analysis");
 		// Free allocated memory
 		free(domainString);
-		free(clientIP);
 		// Release thread lock
 		unlock_shm();
 		return false;
@@ -610,7 +620,6 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		// Encountered memory error, skip query
 		// Free allocated memory
 		free(domainString);
-		free(clientIP);
 		// Release thread lock
 		unlock_shm();
 		return false;
@@ -631,6 +640,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	if(client->hwlen < 1)
 	{
 		union mysockaddr hwaddr = {{ 0 }};
+		const sa_family_t family = (flags & F_IPV4) ? AF_INET : AF_INET6;
 		hwaddr.sa.sa_family = family;
 		if(family == AF_INET)
 		{
@@ -661,7 +671,6 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 
 	// Free allocated memory
 	free(domainString);
-	free(clientIP);
 
 	// Release thread lock
 	unlock_shm();
@@ -704,41 +713,12 @@ void _FTL_get_blocking_metadata(union all_addr **addrp, unsigned int *flags, con
 		*flags = F_NXDOMAIN;
 	}
 	else if(config.blockingmode == MODE_NODATA ||
-	        (config.blockingmode == MODE_IP_NODATA_AAAA && (*flags & F_IPV6)))
+	       (config.blockingmode == MODE_IP_NODATA_AAAA && (*flags & F_IPV6)))
 	{
 		// If we block in NODATA mode or NODATA for AAAA queries, we apply
 		// the NOERROR response flag. This ensures we're sending an empty response
 		*flags = F_NOERR;
 	}
-}
-
-static int findQueryID(const int id)
-{
-	// Loop over all queries - we loop in reverse order (start from the most recent query and
-	// continuously walk older queries while trying to find a match. Ideally, we should always
-	// find the correct query with zero iterations, but it may happen that queries are processed
-	// asynchronously, e.g. for slow upstream relies to a huge amount of requests.
-	// We iterate from the most recent query down to at most MAXITER queries in the past to avoid
-	// iterating through the entire array of queries
-	// MAX(0, a) is used to return 0 in case a is negative (negative array indices are harmful)
-	const int until = MAX(0, counters->queries-MAXITER);
-	const int start = MAX(0, counters->queries-1);
-
-	// Check UUIDs of queries
-	for(int i = start; i >= until; i--)
-	{
-		const queriesData* query = getQuery(i, true);
-
-		// Check if the returned pointer is valid before trying to access it
-		if(query == NULL)
-			continue;
-
-		if(query->id == id)
-			return i;
-	}
-
-	// If not found
-	return -1;
 }
 
 void _FTL_forwarded(const unsigned int flags, const char *name, const union all_addr *addr, const int id,
