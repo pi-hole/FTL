@@ -140,8 +140,6 @@ set(sources
         shmem.h
         signals.c
         signals.h
-        superclients.c
-        superclients.h
         timers.c
         timers.h
         vector.c

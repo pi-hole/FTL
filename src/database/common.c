@@ -8,17 +8,18 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "FTL.h"
-#include "database/common.h"
-#include "database/network-table.h"
-#include "database/message-table.h"
-#include "shmem.h"
-#include "memory.h"
-#include "config.h"
-#include "log.h"
-#include "timers.h"
-#include "files.h"
-#include "database/sqlite3-ext.h"
+#include "../FTL.h"
+#include "common.h"
+#include "network-table.h"
+#include "message-table.h"
+#include "../shmem.h"
+#include "../memory.h"
+#include "../config.h"
+#include "../log.h"
+#include "../timers.h"
+#include "../files.h"
+#include "sqlite3-ext.h"
+#include "superclients.h"
 
 sqlite3 *FTL_db = NULL;
 bool database = true;
@@ -395,6 +396,23 @@ void db_init(void)
 		if(!create_network_addresses_with_names_table())
 		{
 			logg("Network addresses table not initialized, database not available");
+			dbclose();
+
+			database = false;
+			return;
+		}
+		// Get updated version
+		dbversion = db_get_FTL_property(DB_VERSION);
+	}
+
+	// Update to version 9 if lower
+	if(dbversion < 9)
+	{
+		// Update to version 9: Add superclients table
+		logg("Updating long-term database to version 9");
+		if(!create_superclients_table())
+		{
+			logg("Superclients table not initialized, database not available");
 			dbclose();
 
 			database = false;

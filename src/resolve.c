@@ -321,6 +321,12 @@ void resolveClients(const bool onlynew)
 			continue;
 		}
 
+		// Skip super-clients
+		if(client->super_client_id == -2)
+		{
+			continue;
+		}
+
 		bool newflag = client->new;
 		size_t ippos = client->ippos;
 		size_t oldnamepos = client->namepos;
