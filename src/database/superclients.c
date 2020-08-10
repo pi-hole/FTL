@@ -21,10 +21,10 @@
 bool create_superclients_table(void)
 {
 	// Create network table in the database
-	SQL_bool("CREATE TABLE superclients ( id INTEGER PRIMARY KEY NOT NULL, " \
-	                                     "hwaddr TEXT NOT NULL, " \
-	                                     "name TEXT NOT NULL, " \
-	                                     "comment TEXT);");
+	SQL_bool("CREATE TABLE superclients (id INTEGER PRIMARY KEY NOT NULL, " \
+	                                    "hwaddr TEXT NOT NULL, " \
+	                                    "name TEXT NOT NULL, " \
+	                                    "comment TEXT);");
 
 	// Update database version to 9
 	if(!db_set_FTL_property(DB_VERSION, 9))
@@ -96,6 +96,13 @@ bool import_superclients(void)
 		// This is a superclient
 		client->super_client_id = -2;
 
+		// Debug logging
+		if(config.debug & DEBUG_SUPERCLIENTS)
+		{
+			logg("Added super-client \"%s\" (%s)",
+				getstr(client->namepos), getstr(client->ippos));
+		}
+
 		imported++;
 	}
 
@@ -106,13 +113,19 @@ bool import_superclients(void)
 		return false;
 	}
 
-	logg("Imported %d super-clients", imported);
+	logg("Imported %d super-client%s", imported, (imported != 1) ? "s":"");
 
 	return true;
 }
 
 static int get_superclient_ID(const clientsData *client)
 {
+	if(config.debug & DEBUG_SUPERCLIENTS)
+	{
+		logg("Looking for the super-client for client \"%s\" (%s)...",
+		     getstr(client->namepos), getstr(client->ippos));
+	}
+
 	for(int superclientID = 0; superclientID < counters->clients; superclientID++)
 	{
 		// Get pointer to super client candidate
@@ -125,8 +138,23 @@ static int get_superclient_ID(const clientsData *client)
 		// Compare MAC address of the current client to the
 		// super client candidate's MAC address
 		if(memcmp(client->hwaddr, super_client->hwaddr, client->hwlen) == 0)
+		{
+			if(config.debug & DEBUG_SUPERCLIENTS)
+			{
+				logg("... FOUND \"%s\" (%s)",
+				     getstr(super_client->namepos),
+				     getstr(super_client->ippos));
+			}
+
 			return superclientID;
+		}
 	}
+
+	if(config.debug & DEBUG_SUPERCLIENTS)
+	{
+		logg("... not found");
+	}
+
 
 	// Not found
 	return -1;

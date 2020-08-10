@@ -422,6 +422,8 @@ void db_init(void)
 		dbversion = db_get_FTL_property(DB_VERSION);
 	}
 
+	import_superclients();
+
 	// Close database to prevent having it opened all time
 	// We already closed the database when we returned earlier
 	dbclose();

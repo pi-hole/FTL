@@ -712,6 +712,10 @@ void read_debuging_settings(FILE *fp)
 	// defaults to: false
 	setDebugOption(fp, "DEBUG_CLIENTS", DEBUG_CLIENTS);
 
+	// DEBUG_SUPERCLIENTS
+	// defaults to: false
+	setDebugOption(fp, "DEBUG_SUPERCLIENTS", DEBUG_SUPERCLIENTS);
+
 	if(config.debug)
 	{
 		logg("*****************************");
@@ -734,6 +738,7 @@ void read_debuging_settings(FILE *fp)
 		logg("* DEBUG_RESOLVER        %s *", (config.debug & DEBUG_RESOLVER)? "YES":"NO ");
 		logg("* DEBUG_EDNS0           %s *", (config.debug & DEBUG_EDNS0)? "YES":"NO ");
 		logg("* DEBUG_CLIENTS         %s *", (config.debug & DEBUG_CLIENTS)? "YES":"NO ");
+		logg("* DEBUG_SUPERCLIENTS    %s *", (config.debug & DEBUG_SUPERCLIENTS)? "YES":"NO ");
 		logg("*****************************");
 	}
 
