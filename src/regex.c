@@ -222,7 +222,6 @@ int match_regex(const char *input, const DNSCacheData* dns_cache, const int clie
 			// Check possible additional regex settings
 			if(dns_cache != NULL)
 			{
-				logg("%d %d",regex[index].query_type,dns_cache->query_type);
 				// Check query type filtering
 				if(regex[index].query_type != 0)
 				{

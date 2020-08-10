@@ -898,8 +898,6 @@ bool gravityDB_get_regex_client_groups(clientsData* client, const unsigned int n
 	while((rc = sqlite3_step(query_stmt)) == SQLITE_ROW)
 	{
 		const int result = sqlite3_column_int(query_stmt, 0);
-		if(config.debug & DEBUG_REGEX)
-			logg("   %i", result);
 		for(unsigned int regexID = 0; regexID < numregex; regexID++)
 		{
 			if(regex[regexID].database_id == result)
