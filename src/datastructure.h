@@ -79,6 +79,7 @@ typedef struct {
 } DNSCacheData;
 
 void strtolower(char *str);
+int findQueryID(const int id);
 int findUpstreamID(const char * upstream, const bool count);
 int findDomainID(const char *domain, const bool count);
 int findClientID(const char *client, const bool count);

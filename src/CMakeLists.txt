@@ -114,6 +114,8 @@ set(sources
         datastructure.h
         dnsmasq_interface.c
         dnsmasq_interface.h
+        edns0.c
+        edns0.h
         enums.h
         files.c
         files.h
