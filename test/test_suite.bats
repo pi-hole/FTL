@@ -622,13 +622,9 @@
   after="$(grep -c ^ /var/log/pihole-FTL.log)"
 
   # Extract relevant log lines
-  log="$(sed -n "${before},${after}p" /var/log/pihole-FTL.log)"
-  printf "%s\n" "${log}"
-
-  # Start actual test
-  run bash -c "grep -c \"\*\*\*\* new UDP query\[A\] \\\"localhost\\\" from 192.168.47.97\"" <<< "${log}"
+  run bash -c "sed -n \"${before},${after}p\" /var/log/pihole-FTL.log"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "1" ]]
+  [[ "${lines[@]}" == *"**** new UDP query[A] query \"localhost\" from lo:192.168.47.97 "* ]]
 }
 
 @test "EDNS(0) ECS can overwrite client address (IPv6)" {
@@ -645,11 +641,7 @@
   after="$(grep -c ^ /var/log/pihole-FTL.log)"
 
   # Extract relevant log lines
-  log="$(sed -n "${before},${after}p" /var/log/pihole-FTL.log)"
-  printf "%s\n" "${log}"
-
-  # Start actual test
-  run bash -c "grep -c \"\*\*\*\* new UDP query\[A\] \\\"localhost\\\" from fe80::b167:af1e:968b:dead\"" <<< "${log}"
+  run bash -c "sed -n \"${before},${after}p\" /var/log/pihole-FTL.log"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "1" ]]
+  [[ "${lines[@]}" == *"**** new UDP query[A] query \"localhost\" from lo:fe80::b167:af1e:968b:dead "* ]]
 }
