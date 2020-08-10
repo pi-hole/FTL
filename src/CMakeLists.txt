@@ -152,8 +152,14 @@ add_custom_target(
         COMMAND ${CMAKE_COMMAND} -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER} -P ${CMAKE_CURRENT_SOURCE_DIR}/gen_version.cmake
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
+add_library(FTL OBJECT ${sources})
+target_compile_options(FTL PRIVATE ${EXTRAWARN})
+target_include_directories(FTL PRIVATE ${PROJECT_SOURCE_DIR}/src)
+add_dependencies(FTL gen_version)
+
+
 add_executable(pihole-FTL
-        ${sources}
+        $<TARGET_OBJECTS:FTL>
         $<TARGET_OBJECTS:api>
         $<TARGET_OBJECTS:database>
         $<TARGET_OBJECTS:dnsmasq>
@@ -164,10 +170,6 @@ if(STATIC STREQUAL "true")
     set_target_properties(pihole-FTL PROPERTIES LINK_SEARCH_END_STATIC ON)
     target_link_libraries(pihole-FTL -static-libgcc -static -static-pie)
 endif()
-target_compile_options(pihole-FTL PRIVATE ${EXTRAWARN})
-target_include_directories(pihole-FTL PRIVATE ${PROJECT_SOURCE_DIR}/src)
-add_dependencies(pihole-FTL gen_version)
-
 set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
 set(THREADS_PREFER_PTHREAD_FLAG TRUE)
 find_package(Threads REQUIRED)

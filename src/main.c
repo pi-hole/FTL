@@ -112,6 +112,9 @@ int main (int argc, char* argv[])
 	close_telnet_socket();
 	close_unix_socket(true);
 
+	// Empty API port file, port 0 = truncate file
+	saveport(0);
+
 	// Close gravity database connection
 	gravityDB_close();
 

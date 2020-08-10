@@ -34,6 +34,29 @@ bool dualstack = false;
 bool ipv4telnet = false, ipv6telnet = false, sock_avail = false;
 bool istelnet[MAXCONNS];
 
+void saveport(int port)
+{
+	FILE *f;
+	// Open "w" for truncation/creating file
+	if((f = fopen(FTLfiles.port, "w")) == NULL)
+	{
+		// Opening failed (permissions, path does not exist, etc.)
+		logg("WARNING: Unable to write used port to file");
+		logg("         (API might not find the port)");
+	}
+	else if(port > 0)
+	{
+		// Save port to file
+		fprintf(f, "%i", port);
+		fclose(f);
+	}
+	else
+	{
+		// FTL is terminating: Leave file truncated
+		fclose(f);
+	}
+}
+
 static bool bind_to_telnet_port_IPv4(int *socketdescriptor)
 {
 	// IPv4 socket

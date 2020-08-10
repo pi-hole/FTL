@@ -1841,7 +1841,8 @@ static void check_dns_listeners(time_t now)
 		    addr.addr4 = tcp_addr.in.sin_addr;
 		  
 		  for (iface = daemon->interfaces; iface; iface = iface->next)
-		    if (iface->index == if_index)
+		    if (iface->index == if_index &&
+		        iface->addr.sa.sa_family == tcp_addr.sa.sa_family)
 		      break;
 		  
 		  if (!iface && !loopback_exception(listener->tcpfd, tcp_addr.sa.sa_family, &addr, intr_name))
@@ -1958,7 +1959,7 @@ static void check_dns_listeners(time_t now)
 		fcntl(confd, F_SETFL, flags & ~O_NONBLOCK);
 	      
 	      /******* Pi-hole modification *******/
-	      FTL_TCP_worker_created();
+	      FTL_TCP_worker_created(confd, iface->name);
 	      /************************************/
 
 	      buff = tcp_request(confd, now, &tcp_addr, netmask, auth_dns);

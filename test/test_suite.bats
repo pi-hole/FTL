@@ -339,7 +339,7 @@
 @test "pihole-FTL.db schema as expected" {
   run bash -c 'sqlite3 /etc/pihole/pihole-FTL.db .dump'
   printf "%s\n" "${lines[@]}"
-  [[ "${lines[@]}" == *"CREATE TABLE queries ( id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL, type INTEGER NOT NULL, status INTEGER NOT NULL, domain TEXT NOT NULL, client TEXT NOT NULL, forward TEXT );"* ]]
+  [[ "${lines[@]}" == *"CREATE TABLE queries ( id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL, type INTEGER NOT NULL, status INTEGER NOT NULL, domain TEXT NOT NULL, client TEXT NOT NULL, forward TEXT , additional_info TEXT);"* ]]
   [[ "${lines[@]}" == *"CREATE TABLE ftl ( id INTEGER PRIMARY KEY NOT NULL, value BLOB NOT NULL );"* ]]
   [[ "${lines[@]}" == *"CREATE TABLE counters ( id INTEGER PRIMARY KEY NOT NULL, value INTEGER NOT NULL );"* ]]
   [[ "${lines[@]}" == *"CREATE TABLE IF NOT EXISTS \"network\" ( id INTEGER PRIMARY KEY NOT NULL, hwaddr TEXT UNIQUE NOT NULL, interface TEXT NOT NULL, name TEXT, firstSeen INTEGER NOT NULL, lastQuery INTEGER NOT NULL, numQueries INTEGER NOT NULL, macVendor TEXT);"* ]]
@@ -454,4 +454,10 @@
   run bash -c 'grep -c "gravity blocked gravity-blocked.test.pi-hole.net is 0.0.0.0" /var/log/pihole.log'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "2" ]]
+}
+
+@test "Port file exists and contains expected API port" {
+  run bash -c 'cat /run/pihole-FTL.port'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "4711" ]]
 }
