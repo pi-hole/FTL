@@ -382,16 +382,25 @@ void read_FTLconf(void)
 	// we use the host name associated to the other address as this is the same
 	// device. This behavior can be disabled using NAMES_FROM_NETDB=false
 	// defaults to: true
-	config.names_from_netdb = true;
 	buffer = parse_FTLconf(fp, "NAMES_FROM_NETDB");
-
-	if(buffer != NULL && strcasecmp(buffer, "false") == 0)
-		config.names_from_netdb = false;
+	config.names_from_netdb = read_bool(buffer, true);
 
 	if(config.names_from_netdb)
 		logg("   NAMES_FROM_NETDB: Enabled, trying to get names from network database");
 	else
 		logg("   NAMES_FROM_NETDB: Disabled");
+
+	// EDNS0_ECS
+	// Should we overwrite the query source when client information is
+	// provided through EDNS0 client subnet (ECS) information?
+	// defaults to: true
+	buffer = parse_FTLconf(fp, "EDNS0_ECS");
+	config.edns0_ecs = read_bool(buffer, true);
+
+	if(config.edns0_ecs)
+		logg("   EDNS0_ECS: Overwrite client from ECS information");
+	else
+		logg("   EDNS0_ECS: Don't use ECS information");
 
 	// Read DEBUG_... setting from pihole-FTL.conf
 	read_debuging_settings(fp);
@@ -574,7 +583,7 @@ void get_blocking_mode(FILE *fp)
 }
 
 // Routine for setting the debug flags in the config struct
-static void setDebugOption(FILE* fp, const char* option, int16_t bitmask)
+static void setDebugOption(FILE* fp, const char* option, enum debug_mode bitmask)
 {
 	const char* buffer = parse_FTLconf(fp, option);
 
@@ -676,6 +685,10 @@ void read_debuging_settings(FILE *fp)
 	// defaults to: false
 	setDebugOption(fp, "DEBUG_RESOLVER", DEBUG_RESOLVER);
 
+	// DEBUG_EDNS0
+	// defaults to: false
+	setDebugOption(fp, "DEBUG_EDNS0", DEBUG_EDNS0);
+
 	if(config.debug)
 	{
 		logg("*****************************");
@@ -696,6 +709,7 @@ void read_debuging_settings(FILE *fp)
 		logg("* DEBUG_DNSMASQ_LINES   %s *", (config.debug & DEBUG_DNSMASQ_LINES)? "YES":"NO ");
 		logg("* DEBUG_VECTORS         %s *", (config.debug & DEBUG_VECTORS)? "YES":"NO ");
 		logg("* DEBUG_RESOLVER        %s *", (config.debug & DEBUG_RESOLVER)? "YES":"NO ");
+		logg("* DEBUG_EDNS0           %s *", (config.debug & DEBUG_EDNS0)? "YES":"NO ");
 		logg("*****************************");
 	}
 
