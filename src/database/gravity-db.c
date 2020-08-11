@@ -23,6 +23,8 @@
 #include "database/message-table.h"
 // getMACfromIP()
 #include "database/network-table.h"
+// struct DNSCacheData
+#include "../datastructure.h"
 
 // Prefix of interface names in the client table
 #define INTERFACE_SEP ":"
@@ -913,15 +915,20 @@ bool gravityDB_getTable(const unsigned char list)
 		return false;
 	}
 
-	char *querystr = NULL;
+	const char *querystr = NULL;
 	// Build correct query string to be used depending on list to be read
 	// We GROUP BY id as the view also includes the group_id leading to possible duplicates
 	// when domains are included in more than one group
-	if(asprintf(&querystr, "SELECT domain, id FROM %s GROUP BY id", tablename[list]) < 18)
-	{
-		logg("readGravity(%u) - asprintf() error", list);
-		return false;
-	}
+	if(list == GRAVITY_TABLE)
+		querystr = "SELECT DISTINCT domain FROM vw_gravity";
+	else if(list == EXACT_BLACKLIST_TABLE)
+		querystr = "SELECT domain, id FROM vw_blacklist GROUP BY id";
+	else if(list == EXACT_WHITELIST_TABLE)
+		querystr = "SELECT domain, id FROM vw_whitelist GROUP BY id";
+	else if(list == REGEX_BLACKLIST_TABLE)
+		querystr = "SELECT domain, id FROM vw_regex_blacklist GROUP BY id";
+	else if(list == REGEX_WHITELIST_TABLE)
+		querystr = "SELECT domain, id FROM vw_regex_whitelist GROUP BY id";
 
 	// Prepare SQLite3 statement
 	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &table_stmt, NULL);
@@ -929,12 +936,10 @@ bool gravityDB_getTable(const unsigned char list)
 	{
 		logg("readGravity(%s) - SQL error prepare: %s", querystr, sqlite3_errstr(rc));
 		gravityDB_close();
-		free(querystr);
 		return false;
 	}
 
 	// Free allocated memory and return success
-	free(querystr);
 	return true;
 }
 
@@ -955,7 +960,8 @@ inline const char* gravityDB_getDomain(int *rowid)
 	if(rc == SQLITE_ROW)
 	{
 		const char* domain = (char*)sqlite3_column_text(table_stmt, 0);
-		*rowid = sqlite3_column_int(table_stmt, 1);
+		if(rowid != NULL)
+			*rowid = sqlite3_column_int(table_stmt, 1);
 		return domain;
 	}
 
@@ -965,12 +971,14 @@ inline const char* gravityDB_getDomain(int *rowid)
 	if(rc != SQLITE_DONE)
 	{
 		logg("gravityDB_getDomain() - SQL error step: %s", sqlite3_errstr(rc));
-		*rowid = -1;
+		if(rowid != NULL)
+			*rowid = -1;
 		return NULL;
 	}
 
 	// Finished reading, nothing to get here
-	*rowid = -1;
+	if(rowid != NULL)
+		*rowid = -1;
 	return NULL;
 }
 
@@ -1152,7 +1160,7 @@ static void gravityDB_client_check_again(const int clientID, clientsData* client
 	}
 }
 
-bool in_whitelist(const char *domain, const int clientID, clientsData* client)
+bool in_whitelist(const char *domain, const DNSCacheData *dns_cache, const int clientID, clientsData* client)
 {
 	// If list statement is not ready and cannot be initialized (e.g. no
 	// access to the database), we return false to prevent an FTL crash
@@ -1186,7 +1194,7 @@ bool in_whitelist(const char *domain, const int clientID, clientsData* client)
 	// optimization as the database lookup will most likely hit (a) more domains and (b)
 	// will be faster (given a sufficiently large number of regex whitelisting filters).
 	return domain_in_list(domain, stmt, "whitelist") ||
-	       match_regex(domain, clientID, REGEX_WHITELIST) != -1;
+	       match_regex(domain, dns_cache, clientID, REGEX_WHITELIST, false) != -1;
 }
 
 bool in_gravity(const char *domain, const int clientID, clientsData* client)
@@ -1260,7 +1268,7 @@ bool in_auditlist(const char *domain)
 	return domain_in_list(domain, auditlist_stmt, "auditlist");
 }
 
-bool gravityDB_get_regex_client_groups(clientsData* client, const int numregex, const int *regexid,
+bool gravityDB_get_regex_client_groups(clientsData* client, const unsigned int numregex, const regex_data *regex,
                                        const unsigned char type, const char* table, const int clientID)
 {
 	char *querystr = NULL;
@@ -1291,17 +1299,17 @@ bool gravityDB_get_regex_client_groups(clientsData* client, const int numregex, 
 	while((rc = sqlite3_step(query_stmt)) == SQLITE_ROW)
 	{
 		const int result = sqlite3_column_int(query_stmt, 0);
-		for(int regexID = 0; regexID < numregex; regexID++)
+		for(unsigned int regexID = 0; regexID < numregex; regexID++)
 		{
-			if(regexid[regexID] == result)
+			if(regex[regexID].database_id == result)
 			{
+				// Regular expressions are stored in one array
 				if(type == REGEX_WHITELIST)
 					regexID += counters->num_regex[REGEX_BLACKLIST];
-
 				set_per_client_regex(clientID, regexID, true);
 
 				if(config.debug & DEBUG_REGEX)
-					logg("Regex %s: Enabling regex with DB ID %i for client %s", regextype[type], regexid[regexID], getstr(client->ippos));
+					logg("Regex %s: Enabling regex with DB ID %i for client %s", regextype[type], result, getstr(client->ippos));
 
 				break;
 			}

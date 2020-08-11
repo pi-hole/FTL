@@ -16,9 +16,13 @@
 #include "log.h"
 // global variable killed
 #include "signals.h"
+// regex_speedtest()
+#include "regex_r.h"
+// init_shmem()
+#include "shmem.h"
 
 static bool debug = false;
-bool daemonmode = true;
+bool daemonmode = true, cli_mode = false;
 int argc_dnsmasq = 0;
 const char** argv_dnsmasq = NULL;
 
@@ -28,6 +32,7 @@ static inline bool strEndsWith(const char *input, const char *end){
 
 void parse_args(int argc, char* argv[])
 {
+	bool quiet = false;
 	// Regardless of any arguments, we always pass "-k" (nofork) to dnsmasq
 	argc_dnsmasq = 2;
 	argv_dnsmasq = calloc(argc_dnsmasq, sizeof(char*));
@@ -151,6 +156,29 @@ void parse_args(int argc, char* argv[])
 			ok = true;
 		}
 
+		// Quiet mode
+		if(strcmp(argv[i], "-q") == 0)
+		{
+			quiet = true;
+			ok = true;
+		}
+
+		// Regex test mode
+		if(strcmp(argv[i], "regex-test") == 0)
+		{
+			// Enable stdout printing
+			cli_mode = true;
+			if(argc == i + 2)
+				exit(regex_test(debug, quiet, argv[i + 1], NULL));
+			else if(argc == i + 3)
+				exit(regex_test(debug, quiet, argv[i + 1], argv[i + 2]));
+			else
+			{
+				printf("pihole-FTL: invalid option -- '%s' need either one or two parameters\nTry '%s --help' for more information\n", argv[i], argv[0]);
+				exit(EXIT_FAILURE);
+			}
+		}
+
 		// List of implemented arguments
 		if(strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "help") == 0 || strcmp(argv[i], "--help") == 0)
 		{
@@ -158,17 +186,21 @@ void parse_args(int argc, char* argv[])
 			printf("Usage:    sudo service pihole-FTL <action>\n");
 			printf("where '<action>' is one of start / stop / restart\n\n");
 			printf("Available arguments:\n");
-			printf("\t    debug         More verbose logging,\n");
-			printf("\t                  don't go into daemon mode\n");
-			printf("\t    test          Don't start pihole-FTL but\n");
-			printf("\t                  instead quit immediately\n");
-			printf("\t-v, version       Return version\n");
-			printf("\t-t, tag           Return git tag\n");
-			printf("\t-b, branch        Return git branch\n");
-			printf("\t-f, no-daemon     Don't go into daemon mode\n");
-			printf("\t-h, help          Display this help and exit\n");
-			printf("\tdnsmasq-test      Test syntax of dnsmasq's\n");
-			printf("\t                  config files and exit\n");
+			printf("\t    debug           More verbose logging,\n");
+			printf("\t                    don't go into daemon mode\n");
+			printf("\t    test            Don't start pihole-FTL but\n");
+			printf("\t                    instead quit immediately\n");
+			printf("\t-v, version         Return version\n");
+			printf("\t-t, tag             Return git tag\n");
+			printf("\t-b, branch          Return git branch\n");
+			printf("\t-f, no-daemon       Don't go into daemon mode\n");
+			printf("\t-h, help            Display this help and exit\n");
+			printf("\tdnsmasq-test        Test syntax of dnsmasq's\n");
+			printf("\t                    config files and exit\n");
+			printf("\tregex-test str      Test str against all regular\n");
+			printf("\t                    expressions in the database\n");
+			printf("\tregex-test str rgx  Test str against regular expression\n");
+			printf("\t                    given by rgx\n");
 			printf("\n\nOnline help: https://github.com/pi-hole/FTL\n");
 			exit(EXIT_SUCCESS);
 		}
@@ -187,4 +219,78 @@ void parse_args(int argc, char* argv[])
 			exit(EXIT_FAILURE);
 		}
 	}
+}
+
+// Extended SGR sequence:
+//
+// "\x1b[%dm"
+//
+// where %d is one of the following values for commonly supported colors:
+//
+// 0: reset colors/style
+// 1: bold
+// 4: underline
+// 30 - 37: black, red, green, yellow, blue, magenta, cyan, and white text
+// 40 - 47: black, red, green, yellow, blue, magenta, cyan, and white background
+//
+// https://en.wikipedia.org/wiki/ANSI_escape_code#SGR
+//
+#define COL_NC		"\x1b[0m"  // normal font
+#define COL_BOLD	"\x1b[1m"  // bold font
+#define COL_ITALIC	"\x1b[3m"  // italic font
+#define COL_ULINE	"\x1b[4m"  // underline font
+#define COL_GREEN	"\x1b[32m" // normal foreground color
+#define COL_YELLOW	"\x1b[33m" // normal foreground color
+#define COL_GRAY	"\x1b[90m" // bright foreground color
+#define COL_RED		"\x1b[91m" // bright foreground color
+#define COL_BLUE	"\x1b[94m" // bright foreground color
+#define COL_PURPLE	"\x1b[95m" // bright foreground color
+#define COL_CYAN	"\x1b[96m" // bright foreground color
+
+static inline bool __attribute__ ((const)) is_term(void)
+{
+	// test whether STDOUT refers to a terminal
+	return isatty(fileno(stdout)) == 1;
+}
+
+// Returns green [✓]
+const char __attribute__ ((const)) *cli_tick(void)
+{
+	return is_term() ? "["COL_GREEN"✓"COL_NC"]" : "[✓]";
+}
+
+// Returns red [✗]
+const char __attribute__ ((const)) *cli_cross(void)
+{
+	return is_term() ? "["COL_RED"✗"COL_NC"]" : "[✗]";
+}
+
+// Returns [i]
+const char __attribute__ ((const)) *cli_info(void)
+{
+	return is_term() ? COL_BOLD"[i]"COL_NC : "[i]";
+}
+
+// Returns [?]
+const char __attribute__ ((const)) *cli_qst(void)
+{
+	return "[?]";
+}
+
+// Returns green "done!""
+const char __attribute__ ((const)) *cli_done(void)
+{
+	return is_term() ? COL_GREEN"done!"COL_NC : "done!";
+}
+
+// Sets font to bold
+const char __attribute__ ((const)) *cli_bold(void)
+{
+	return is_term() ? COL_BOLD : "";
+}
+
+// Resets font to normal
+const char __attribute__ ((const)) *cli_normal(void)
+{
+	return is_term() ? COL_NC : "";
 }

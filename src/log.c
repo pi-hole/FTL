@@ -26,11 +26,28 @@
 
 static pthread_mutex_t lock;
 static FILE *logfile = NULL;
+static bool print_log = true, print_stdout = true;
+
+void log_ctrl(bool plog, bool pstdout)
+{
+	print_log = plog;
+	print_stdout = pstdout;
+}
 
 static void close_FTL_log(void)
 {
 	if(logfile != NULL)
 		fclose(logfile);
+}
+
+void init_FTL_log(void)
+{
+	if (pthread_mutex_init(&lock, NULL) != 0)
+	{
+		printf("FATAL: Log mutex init failed\n");
+		// Return failure
+		exit(EXIT_FAILURE);
+	}
 }
 
 void open_FTL_log(const bool test)
@@ -53,12 +70,6 @@ void open_FTL_log(const bool test)
 
 	if(test)
 	{
-		if (pthread_mutex_init(&lock, NULL) != 0)
-		{
-			printf("FATAL: Log mutex init failed\n");
-			// Return failure
-			exit(EXIT_FAILURE);
-		}
 		close_FTL_log();
 	}
 }
@@ -83,6 +94,10 @@ void _FTL_log(const bool newline, const char *format, ...)
 {
 	char timestring[84] = "";
 	va_list args;
+
+	// We have been explicitly asked to not print anything to the log
+	if(!print_log && !print_stdout)
+		return;
 
 	pthread_mutex_lock(&lock);
 
@@ -112,9 +127,11 @@ void _FTL_log(const bool newline, const char *format, ...)
 			snprintf(idstr, sizeof(idstr)-1, "%i/T%i", pid, tid);
 
 	// Print to stdout before writing to file
-	if(!daemonmode)
+	if((!daemonmode || cli_mode) && print_stdout)
 	{
-		printf("[%s %s] ", timestring, idstr);
+		// Only print time/ID string when not in direct user interaction (CLI mode)
+		if(!cli_mode)
+			printf("[%s %s] ", timestring, idstr);
 		va_start(args, format);
 		vprintf(format, args);
 		va_end(args);
@@ -122,27 +139,29 @@ void _FTL_log(const bool newline, const char *format, ...)
 			printf("\n");
 	}
 
-	// Open log file
-	open_FTL_log(false);
-
-	// Write to log file
-	if(logfile != NULL)
+	if(print_log)
 	{
-		fprintf(logfile, "[%s %s] ", timestring, idstr);
-		va_start(args, format);
-		vfprintf(logfile, format, args);
-		va_end(args);
-			if(newline)
-				fputc('\n',logfile);
-	}
-	else if(!daemonmode)
-	{
-		printf("!!! WARNING: Writing to FTL\'s log file failed!\n");
-		syslog(LOG_ERR, "Writing to FTL\'s log file failed!");
-	}
+		// Open log file
+		open_FTL_log(false);
 
-	// Close log file
-	close_FTL_log();
+		// Write to log file
+		if(logfile != NULL)
+		{
+			fprintf(logfile, "[%s %s] ", timestring, idstr);
+			va_start(args, format);
+			vfprintf(logfile, format, args);
+			va_end(args);
+			fputc('\n',logfile);
+		}
+		else if(!daemonmode)
+		{
+			printf("!!! WARNING: Writing to FTL\'s log file failed!\n");
+			syslog(LOG_ERR, "Writing to FTL\'s log file failed!");
+		}
+
+		// Close log file
+		close_FTL_log();
+	}
 
 	pthread_mutex_unlock(&lock);
 }

@@ -13,6 +13,7 @@
 #include <stdbool.h>
 #include <time.h>
 
+void init_FTL_log(void);
 void open_FTL_log(const bool test);
 void log_counter_info(void);
 void format_memory_size(char * const prefix, unsigned long long int bytes,
@@ -27,5 +28,6 @@ const char *get_ordinal_suffix(unsigned int number) __attribute__ ((const));
 #define logg(format, ...) _FTL_log(true, format, ## __VA_ARGS__)
 #define logg_sameline(format, ...) _FTL_log(false, format, ## __VA_ARGS__)
 void _FTL_log(const bool newline, const char* format, ...) __attribute__ ((format (gnu_printf, 2, 3)));
+void log_ctrl(bool vlog, bool vstdout);
 
 #endif //LOG_H

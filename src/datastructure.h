@@ -16,17 +16,7 @@
 // enum privacy_level
 #include "enums.h"
 
-void strtolower(char *str);
-int findQueryID(const int id);
-int findUpstreamID(const char * upstream, const bool count);
-int findDomainID(const char *domain, const bool count);
-int findClientID(const char *client, const bool count);
-int findCacheID(int domainID, int clientID);
-bool isValidIPv4(const char *addr);
-bool isValidIPv6(const char *addr);
-
-void FTL_reload_all_domainlists(void);
-void FTL_reset_per_client_domain_data(void);
+const char *querytypes[TYPE_MAX];
 
 typedef struct {
 	unsigned char magic;
@@ -87,10 +77,23 @@ typedef struct {
 	unsigned char magic;
 	enum domain_client_status blocking_status;
 	unsigned char force_reply;
+	enum query_types query_type;
 	int domainID;
 	int clientID;
 	int black_regex_idx;
 } DNSCacheData;
+
+void strtolower(char *str);
+int findQueryID(const int id);
+int findUpstreamID(const char * upstream, const bool count);
+int findDomainID(const char *domain, const bool count);
+int findClientID(const char *client, const bool count);
+int findCacheID(int domainID, int clientID, enum query_types query_type);
+bool isValidIPv4(const char *addr);
+bool isValidIPv6(const char *addr);
+
+void FTL_reload_all_domainlists(void);
+void FTL_reset_per_client_domain_data(void);
 
 const char *getDomainString(const queriesData* query);
 const char *getCNAMEDomainString(const queriesData* query);

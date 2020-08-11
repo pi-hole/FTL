@@ -24,9 +24,9 @@
 }
 
 @test "Number of compiled regex filters as expected" {
-  run bash -c 'grep -c "Compiled 2 whitelist and 1 blacklist regex filters" /var/log/pihole-FTL.log'
+  run bash -c 'grep "Compiled [0-9]* whitelist" /var/log/pihole-FTL.log'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "1" ]]
+  [[ ${lines[0]} == *"Compiled 2 whitelist and 1 blacklist regex filters"* ]]
 }
 
 @test "Blacklisted domain is blocked" {
@@ -498,6 +498,318 @@
   run bash -c 'grep -c "FATAL:" /var/log/pihole-FTL.log'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0" ]]
+}
+
+# Regex tests
+@test "Compiled blacklist regex as expected" {
+  run bash -c 'grep -c "Compiling blacklist regex 0 (DB ID 6): regex\[0-9\].test.pi-hole.net" /var/log/pihole-FTL.log'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "1" ]]
+}
+
+@test "Compiled whitelist regex as expected" {
+  run bash -c 'grep -c "Compiling whitelist regex 0 (DB ID 3): regex2" /var/log/pihole-FTL.log'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "1" ]]
+  run bash -c 'grep -c "Compiling whitelist regex 1 (DB ID 4): discourse" /var/log/pihole-FTL.log'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "1" ]]
+}
+
+@test "Regex Test 1: \"regex7.test.pi-hole.net\" vs. [database regex]: MATCH" {
+  run bash -c './pihole-FTL regex-test "regex7.test.pi-hole.net"'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+}
+
+@test "Regex Test 2: \"a\" vs. \"a\": MATCH" {
+  run bash -c './pihole-FTL regex-test "a" "a"'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+}
+
+@test "Regex Test 3: \"aa\" vs. \"^[a-z]{1,3}$\": MATCH" {
+  run bash -c './pihole-FTL regex-test "aa" "^[a-z]{1,3}$"'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+}
+
+@test "Regex Test 4: \"aaaa\" vs. \"^[a-z]{1,3}$\": NO MATCH" {
+  run bash -c './pihole-FTL regex-test "aaaa" "^[a-z]{1,3}$"'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 2 ]]
+}
+
+@test "Regex Test 5: \"aa\" vs. \"^a(?#some comment)a$\": MATCH (comments)" {
+  run bash -c './pihole-FTL regex-test "aa" "^a(?#some comment)a$"'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+}
+
+@test "Regex Test 6: \"abc.abc\" vs. \"([a-z]*)\.\1\": MATCH" {
+  run bash -c './pihole-FTL regex-test "abc.abc" "([a-z]*)\.\1"'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+}
+
+@test "Regex Test 7: Complex character set: MATCH" {
+  run bash -c './pihole-FTL regex-test "__abc#LMN012$x%yz789*" "[[:digit:]a-z#$%]+"'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+}
+
+@test "Regex Test 8: Range expression: MATCH" {
+  run bash -c './pihole-FTL regex-test "!ABC-./XYZ~" "[--Z]+"'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+}
+
+@test "Regex Test 9: Back reference: \"aabc\" vs. \"(a)\1{1,2}\": MATCH" {
+  run bash -c './pihole-FTL regex-test "aabc" "(a)\1{1,2}"'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+}
+
+@test "Regex Test 10: Back reference: \"foo\" vs. \"(.)\1$\": MATCH" {
+  run bash -c './pihole-FTL regex-test "foo" "(.)\1$"'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+}
+
+@test "Regex Test 11: Back reference: \"foox\" vs. \"(.)\1$\": NO MATCH" {
+  run bash -c './pihole-FTL regex-test "foox" "(.)\1$"'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 2 ]]
+}
+
+@test "Regex Test 12: Back reference: \"1234512345\" vs. \"([0-9]{5})\1\": MATCH" {
+  run bash -c './pihole-FTL regex-test "1234512345" "([0-9]{5})\1"'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+}
+
+@test "Regex Test 13: Back reference: \"12345\" vs. \"([0-9]{5})\1\": NO MATCH" {
+  run bash -c './pihole-FTL regex-test "12345" "([0-9]{5})\1"'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 2 ]]
+}
+
+@test "Regex Test 14: Complex back reference: MATCH" {
+  run bash -c './pihole-FTL regex-test "cat.foo.dog---cat%dog!foo" "(cat)\.(foo)\.(dog)---\1%\3!\2"'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+}
+
+@test "Regex Test 15: Approximate matching, 0 errors: MATCH" {
+  run bash -c './pihole-FTL regex-test "foobarzap" "foo(bar){~1}zap"'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+}
+
+@test "Regex Test 16: Approximate matching, 1 error (inside fault-tolerant area): MATCH" {
+  run bash -c './pihole-FTL regex-test "foobrzap" "foo(bar){~1}zap"'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+}
+
+@test "Regex Test 17: Approximate matching, 1 error (outside fault-tolert area): NO MATCH" {
+  run bash -c './pihole-FTL regex-test "foxbrazap" "foo(bar){~1}zap"'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 2 ]]
+}
+
+@test "Regex Test 18: Approximate matching, 0 global errors: MATCH" {
+  run bash -c './pihole-FTL regex-test "foobar" "^(foobar){~1}$"'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+}
+
+@test "Regex Test 19: Approximate matching, 1 global error: MATCH" {
+  run bash -c './pihole-FTL regex-test "cfoobar" "^(foobar){~1}$"'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+}
+
+@test "Regex Test 20: Approximate matching, 2 global errors: NO MATCH" {
+  run bash -c './pihole-FTL regex-test "ccfoobar" "^(foobar){~1}$"'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 2 ]]
+}
+
+@test "Regex Test 21: Approximate matching, insert + substitute: MATCH" {
+  run bash -c './pihole-FTL regex-test "oobargoobaploowap" "(foobar){+2#2~2}"'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+}
+
+@test "Regex Test 22: Approximate matching, insert + delete: MATCH" {
+  run bash -c './pihole-FTL regex-test "3oifaowefbaoraofuiebofasebfaobfaorfeoaro" "(foobar){+1 -2}"'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+}
+
+@test "Regex Test 23: Approximate matching, insert + delete (insufficient): NO MATCH" {
+  run bash -c './pihole-FTL regex-test "3oifaowefbaoraofuiebofasebfaobfaorfeoaro" "(foobar){+1 -1}"'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 2 ]]
+}
+
+@test "Regex Test 24: Useful hint for invalid regular expression \"f{x}\": Invalid contents of {}" {
+  run bash -c './pihole-FTL regex-test "fbcdn.net" "f{x}"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[1]} == "REGEX WARNING: Invalid regex CLI filter \"f{x}\": Invalid contents of {}" ]]
+  [[ $status == 1 ]]
+}
+
+@test "Regex Test 25: Useful hint for invalid regular expression \"a**\": Invalid use of repetition operators" {
+  run bash -c './pihole-FTL regex-test "fbcdn.net" "a**"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[1]} == "REGEX WARNING: Invalid regex CLI filter \"a**\": Invalid use of repetition operators" ]]
+  [[ $status == 1 ]]
+}
+
+@test "Regex Test 26: Useful hint for invalid regular expression \"x\\\": Trailing backslash" {
+  run bash -c './pihole-FTL regex-test "fbcdn.net" "x\\"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[1]} == "REGEX WARNING: Invalid regex CLI filter \"x\\\": Trailing backslash" ]]
+  [[ $status == 1 ]]
+}
+
+@test "Regex Test 27: Useful hint for invalid regular expression \"[\": Missing ']'" {
+  run bash -c './pihole-FTL regex-test "fbcdn.net" "["'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[1]} == "REGEX WARNING: Invalid regex CLI filter \"[\": Missing ']'" ]]
+  [[ $status == 1 ]]
+}
+
+@test "Regex Test 28: Useful hint for invalid regular expression \"(\": Missing ')'" {
+  run bash -c './pihole-FTL regex-test "fbcdn.net" "("'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[1]} == "REGEX WARNING: Invalid regex CLI filter \"(\": Missing ')'" ]]
+  [[ $status == 1 ]]
+}
+
+@test "Regex Test 29: Useful hint for invalid regular expression \"{1\": Missing '}'" {
+  run bash -c './pihole-FTL regex-test "fbcdn.net" "{1"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[1]} == "REGEX WARNING: Invalid regex CLI filter \"{1\": Missing '}'" ]]
+  [[ $status == 1 ]]
+}
+
+@test "Regex Test 30: Useful hint for invalid regular expression \"[[.foo.]]\": Unknown collating element" {
+  run bash -c './pihole-FTL regex-test "fbcdn.net" "[[.foo.]]"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[1]} == "REGEX WARNING: Invalid regex CLI filter \"[[.foo.]]\": Unknown collating element" ]]
+  [[ $status == 1 ]]
+}
+
+@test "Regex Test 31: Useful hint for invalid regular expression \"[[:foobar:]]\": Unknown character class name" {
+  run bash -c './pihole-FTL regex-test "fbcdn.net" "[[:foobar:]]"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[1]} == "REGEX WARNING: Invalid regex CLI filter \"[[:foobar:]]\": Unknown character class name" ]]
+  [[ $status == 1 ]]
+}
+
+@test "Regex Test 32: Useful hint for invalid regular expression \"(a)\\2\": Invalid back reference" {
+  run bash -c './pihole-FTL regex-test "fbcdn.net" "(a)\\2"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[1]} == "REGEX WARNING: Invalid regex CLI filter \"(a)\\2\": Invalid back reference" ]]
+  [[ $status == 1 ]]
+}
+
+@test "Regex Test 33: Useful hint for invalid regular expression \"[g-1]\": Invalid character range" {
+  run bash -c './pihole-FTL regex-test "fbcdn.net" "[g-1]"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[1]} == "REGEX WARNING: Invalid regex CLI filter \"[g-1]\": Invalid character range" ]]
+  [[ $status == 1 ]]
+}
+
+@test "Regex Test 34: Quiet mode: Match = Return code 0, nothing else" {
+  run bash -c './pihole-FTL -q regex-test "fbcdn.net" "f"'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+}
+
+@test "Regex Test 35: Quiet mode: Invalid regex = Return code 1, with error message" {
+  run bash -c './pihole-FTL -q regex-test "fbcdn.net" "g{x}"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "REGEX WARNING: Invalid regex CLI filter \"g{x}\": Invalid contents of {}" ]]
+  [[ $status == 1 ]]
+}
+
+@test "Regex Test 36: Quiet mode: No Match = Return code 2, nothing else" {
+  run bash -c './pihole-FTL -q regex-test "fbcdn.net" "g"'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 2 ]]
+}
+
+@test "Regex Test 37: Option \"^localhost$;querytype=A\" working as expected (ONLY matching A queries)" {
+  run bash -c 'sqlite3 /etc/pihole/gravity.db "INSERT INTO domainlist (type,domain) VALUES (3,\"^localhost$;querytype=A\");"'
+  printf "sqlite3 INSERT: %s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+  run bash -c 'kill -RTMIN $(pidof -s pihole-FTL)'
+  printf "reload: %s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+  run bash -c 'dig A localhost @127.0.0.1 +short'
+  printf "dig A: %s\n" "${lines[@]}"
+  [[ ${lines[0]} == "0.0.0.0" ]]
+  run bash -c 'dig AAAA localhost @127.0.0.1 +short'
+  printf "dig AAAA: %s\n" "${lines[@]}"
+  [[ ${lines[0]} != "::" ]]
+  run bash -c 'sqlite3 /etc/pihole/gravity.db "DELETE FROM domainlist WHERE domain = \"^localhost$;querytype=A\";"'
+  printf "sqlite3 DELETE: %s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+  run bash -c 'kill -RTMIN $(pidof -s pihole-FTL)'
+  printf "reload: %s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+}
+
+@test "Regex Test 38: Option \"^localhost$;querytype=!A\" working as expected (NOT matching A queries)" {
+  run bash -c 'sqlite3 /etc/pihole/gravity.db "INSERT INTO domainlist (type,domain) VALUES (3,\"^localhost$;querytype=!A\");"'
+  printf "sqlite3 INSERT: %s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+  run bash -c 'kill -RTMIN $(pidof -s pihole-FTL)'
+  printf "reload: %s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+  run bash -c 'dig A localhost @127.0.0.1 +short'
+  printf "dig A: %s\n" "${lines[@]}"
+  [[ ${lines[0]} != "0.0.0.0" ]]
+  run bash -c 'dig AAAA localhost @127.0.0.1 +short'
+  printf "dig AAAA: %s\n" "${lines[@]}"
+  [[ ${lines[0]} == "::" ]]
+  run bash -c 'sqlite3 /etc/pihole/gravity.db "DELETE FROM domainlist WHERE domain = \"^localhost$;querytype=!A\";"'
+  printf "sqlite3 DELETE: %s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+  run bash -c 'kill -RTMIN $(pidof -s pihole-FTL)'
+  printf "reload: %s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+}
+
+@test "Regex Test 39: Option \";invert\" working as expected (match is inverted)" {
+  run bash -c './pihole-FTL -q regex-test "f" "g;invert"'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+  run bash -c './pihole-FTL -q regex-test "g" "g;invert"'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 2 ]]
+}
+
+@test "Regex Test 40: Option \";querytype\" sanity checks" {
+  run bash -c './pihole-FTL regex-test "f" g\;querytype=!A\;querytype=A'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 2 ]]
+  [[ ${lines[1]} == *"Overwriting previous querytype setting" ]]
+}
+
+# x86_64-musl is built on busybox which has a slightly different
+# variant of ls displaying three, instead of one, spaces between the
+# user and group names.
+
+@test "Ownership and permissions of pihole-FTL.db correct" {
+  run bash -c 'ls -l /etc/pihole/pihole-FTL.db'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == *"pihole pihole"* || ${lines[0]} == *"pihole   pihole"* ]]
+  [[ ${lines[0]} == "-rw-r--r--"* ]]
 }
 
 # "ldd" prints library dependencies and the used interpreter for a given program

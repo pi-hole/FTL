@@ -55,6 +55,13 @@ echo -e "log-queries\nlog-facility=/var/log/pihole.log" > /etc/dnsmasq.conf
 OLDUMASK=$(umask)
 umask 0022
 
+# Terminate running FTL instance (if any)
+if pidof pihole-FTL &> /dev/null; then
+  echo "Terminating running pihole-FTL instance"
+  killall pihole-FTL
+  sleep 2
+fi
+
 # Start FTL
 if ! su pihole -s /bin/sh -c /home/pihole/pihole-FTL; then
   echo "pihole-FTL failed to start"
@@ -75,12 +82,16 @@ echo -n "Contained dnsmasq version: "
 dig TXT CHAOS version.bind @127.0.0.1 +short
 
 # Print content of pihole.log and pihole-FTL.log
-cat /var/log/pihole.log
-cat /var/log/pihole-FTL.log
+#cat /var/log/pihole.log
+#cat /var/log/pihole-FTL.log
 
 # Run tests
 test/libs/bats/bin/bats "test/test_suite.bats"
 RET=$?
+
+if [[ $RET != 0 ]]; then
+  cat /var/log/pihole-FTL.log
+fi
 
 # Kill pihole-FTL after having completed tests
 kill $(pidof pihole-FTL)
