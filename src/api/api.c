@@ -390,7 +390,10 @@ void getTopClients(const char *client_message, const int *sock)
 		const clientsData* client = getClient(clientID, true);
 		// Skip invalid clients and also those managed by super clients
 		if(client == NULL || client->super_client_id >= 0)
+		{
+			temparray[clientID][0] = -1;
 			continue;
+		}
 		temparray[clientID][0] = clientID;
 		// Use either blocked or total count based on request string
 		temparray[clientID][1] = blockedonly ? client->blockedcount : client->count;
@@ -427,6 +430,11 @@ void getTopClients(const char *client_message, const int *sock)
 		// Get sorted indices and counter values (may be either total or blocked count)
 		const int clientID = temparray[i][0];
 		const int ccount = temparray[i][1];
+
+		// clientID -1 means this client is to be skipped (managed by a super-client)
+		if(clientID < 0)
+			continue;
+
 		// Get client pointer
 		const clientsData* client = getClient(clientID, true);
 		// Skip invalid clients and also those managed by super clients

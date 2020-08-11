@@ -22,11 +22,10 @@
 
 bool create_superclients_table(void)
 {
-	// Create network table in the database
-	SQL_bool("CREATE TABLE superclients (id INTEGER PRIMARY KEY NOT NULL, " \
-	                                    "hwaddr TEXT NOT NULL, " \
-	                                    "name TEXT NOT NULL, " \
-	                                    "comment TEXT);");
+	// Create superclient table in the database
+	SQL_bool("CREATE TABLE superclient (hwaddr TEXT PRIMARY KEY NOT NULL, " \
+	                                   "name TEXT NOT NULL, " \
+	                                   "comment TEXT);");
 
 	// Update database version to 9
 	if(!db_set_FTL_property(DB_VERSION, 9))
@@ -43,7 +42,7 @@ bool create_superclients_table(void)
 bool import_superclients(void)
 {
 	sqlite3_stmt *stmt = NULL;
-	const char querystr[] = "SELECT id,hwaddr,name FROM superclients";
+	const char querystr[] = "SELECT hwaddr,name FROM superclient";
 
 	int rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &stmt, NULL);
 	if(rc != SQLITE_OK)
@@ -64,7 +63,7 @@ bool import_superclients(void)
 		}
 
 		// Get hardware address from database and store it as IP + MAC address of this client
-		const char *hwaddr = (char*)sqlite3_column_text(stmt, 1);
+		const char *hwaddr = (char*)sqlite3_column_text(stmt, 0);
 
 		// MAC address parsing
 		unsigned char data[6];
@@ -75,7 +74,7 @@ bool import_superclients(void)
 		// Set hwlen only if we got data
 		if(n != 6)
 		{
-			logg("Skipping invalid super-client with ID %d", sqlite3_column_int(stmt, 0));
+			logg("Skipping invalid super-client \"%s\"", hwaddr);
 			continue;
 		}
 
@@ -92,7 +91,7 @@ bool import_superclients(void)
 		client->hwlen = sizeof(data);
 
 		// Store intended name
-		const char *name = (char*)sqlite3_column_text(stmt, 2);
+		const char *name = (char*)sqlite3_column_text(stmt, 1);
 		client->namepos = addstr(name);
 
 		// This is a superclient
