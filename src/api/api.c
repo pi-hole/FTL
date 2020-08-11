@@ -567,25 +567,22 @@ void getUpstreamDestinations(const char *client_message, const int *sock)
 	}
 }
 
-const char *querytypes[TYPE_MAX] = {"A", "AAAA", "ANY", "SRV", "SOA", "PTR", "TXT", "NAPTR",
-                                    "MX", "DS", "RRSIG", "DNSKEY", "OTHER", "UNKNOWN"};
-
 void getQueryTypes(const int *sock)
 {
 	int total = 0;
-	for(int i=0; i < TYPE_MAX-1; i++)
+	for(enum query_types type = TYPE_A; type < TYPE_MAX; type++)
 	{
-		total += counters->querytype[i];
+		total += counters->querytype[type - 1];
 	}
 
-	float percentage[TYPE_MAX-1] = { 0.0 };
+	float percentage[TYPE_MAX] = { 0.0 };
 
 	// Prevent floating point exceptions by checking if the divisor is != 0
 	if(total > 0)
 	{
-		for(int i=0; i < TYPE_MAX-1; i++)
+		for(enum query_types type = TYPE_A; type < TYPE_MAX; type++)
 		{
-			percentage[i] = 1e2f*counters->querytype[i]/total;
+			percentage[type] = 1e2f*counters->querytype[type - 1]/total;
 		}
 	}
 
@@ -594,38 +591,38 @@ void getQueryTypes(const int *sock)
 		             "SOA: %.2f\nPTR: %.2f\nTXT: %.2f\nNAPTR: %.2f\n"
 		             "MX: %.2f\nDS: %.2f\nRRSIG: %.2f\nDNSKEY: %.2f\n"
 		             "OTHER: %.2f\n",
-		      percentage[0], percentage[1], percentage[2], percentage[3],
-		      percentage[4], percentage[5], percentage[6], percentage[7],
-		      percentage[8], percentage[9], percentage[10], percentage[11],
-		      percentage[12]);
+		      percentage[TYPE_A], percentage[TYPE_AAAA], percentage[TYPE_ANY], percentage[TYPE_SRV],
+		      percentage[TYPE_SOA], percentage[TYPE_PTR], percentage[TYPE_TXT], percentage[TYPE_NAPTR],
+		      percentage[TYPE_MX], percentage[TYPE_DS], percentage[TYPE_RRSIG], percentage[TYPE_DNSKEY],
+		      percentage[TYPE_OTHER]);
 	}
 	else {
 		pack_str32(*sock, "A (IPv4)");
-		pack_float(*sock, percentage[0]);
+		pack_float(*sock, percentage[TYPE_A]);
 		pack_str32(*sock, "AAAA (IPv6)");
-		pack_float(*sock, percentage[1]);
+		pack_float(*sock, percentage[TYPE_AAAA]);
 		pack_str32(*sock, "ANY");
-		pack_float(*sock, percentage[2]);
+		pack_float(*sock, percentage[TYPE_ANY]);
 		pack_str32(*sock, "SRV");
-		pack_float(*sock, percentage[3]);
+		pack_float(*sock, percentage[TYPE_SRV]);
 		pack_str32(*sock, "SOA");
-		pack_float(*sock, percentage[4]);
+		pack_float(*sock, percentage[TYPE_SOA]);
 		pack_str32(*sock, "PTR");
-		pack_float(*sock, percentage[5]);
+		pack_float(*sock, percentage[TYPE_PTR]);
 		pack_str32(*sock, "TXT");
-		pack_float(*sock, percentage[6]);
+		pack_float(*sock, percentage[TYPE_TXT]);
 		pack_str32(*sock, "NAPTR");
-		pack_float(*sock, percentage[7]);
+		pack_float(*sock, percentage[TYPE_NAPTR]);
 		pack_str32(*sock, "MX");
-		pack_float(*sock, percentage[8]);
+		pack_float(*sock, percentage[TYPE_MX]);
 		pack_str32(*sock, "DS");
-		pack_float(*sock, percentage[9]);
+		pack_float(*sock, percentage[TYPE_DS]);
 		pack_str32(*sock, "RRSIG");
-		pack_float(*sock, percentage[10]);
+		pack_float(*sock, percentage[TYPE_RRSIG]);
 		pack_str32(*sock, "DNSKEY");
-		pack_float(*sock, percentage[11]);
+		pack_float(*sock, percentage[TYPE_DNSKEY]);
 		pack_str32(*sock, "OTHER");
-		pack_float(*sock, percentage[12]);
+		pack_float(*sock, percentage[TYPE_OTHER]);
 	}
 }
 
@@ -818,7 +815,7 @@ void getAllQueries(const char *client_message, const int *sock)
 		if(query->type > TYPE_MAX-1)
 			continue;
 		// Get query type
-		const char *qtype = querytypes[query->type - TYPE_A];
+		const char *qtype = querytypes[query->type];
 
 		// 1 = gravity.list, 4 = wildcard, 5 = black.list
 		if((query->status == QUERY_GRAVITY ||
@@ -899,7 +896,7 @@ void getAllQueries(const char *client_message, const int *sock)
 		int regex_idx = -1;
 		if (query->status == QUERY_REGEX || query->status == QUERY_REGEX_CNAME)
 		{
-			unsigned int cacheID = findCacheID(query->domainID, query->clientID);
+			unsigned int cacheID = findCacheID(query->domainID, query->clientID, query->type);
 			DNSCacheData *dns_cache = getDNSCache(cacheID, true);
 			if(dns_cache != NULL)
 				regex_idx = dns_cache->black_regex_idx;
@@ -1327,82 +1324,5 @@ void getUnknownQueries(const int *sock)
 			pack_uint8(*sock, query->status);
 			pack_bool(*sock, query->complete);
 		}
-	}
-}
-
-void getDomainDetails(const char *client_message, const int *sock)
-{
-	// Get domain name
-	bool show_all = false;
-	char domainString[128];
-	if(sscanf(client_message, "%*[^ ] %127s", domainString) < 1)
-	{
-		ssend(*sock, "No domain specified, listing all known (%d)\n", counters->domains);
-		show_all = true;
-	}
-
-	for(int domainID = 0; domainID < counters->domains; domainID++)
-	{
-		// Get domain pointer
-		const domainsData* domain = getDomain(domainID, true);
-		if(domain == NULL)
-			continue;
-
-		if(show_all || strcmp(getstr(domain->domainpos), domainString) == 0)
-		{
-			ssend(*sock,"Domain \"%s\", ID: %i\n", getstr(domain->domainpos), domainID);
-			ssend(*sock,"Total: %i\n", domain->count);
-			ssend(*sock,"Blocked: %i\n", domain->blockedcount);
-			ssend(*sock,"Client status:\n");
-			for(int clientID = 0; clientID < counters->clients; clientID++)
-			{
-				clientsData *client = getClient(clientID, true);
-				if(client == NULL)
-				{
-					continue;
-				}
-				const char *str = "N/A";
-				unsigned int cacheID = findCacheID(domainID, clientID);
-				DNSCacheData *dns_cache = getDNSCache(cacheID, true);
-				switch(dns_cache->blocking_status)
-				{
-					case UNKNOWN_BLOCKED:
-						str = "unknown";
-						break;
-					case GRAVITY_BLOCKED:
-						str = "gravity";
-						break;
-					case BLACKLIST_BLOCKED:
-						str = "blacklisted";
-						break;
-					case REGEX_BLOCKED:
-						str = "regex";
-						break;
-					case WHITELISTED:
-						str = "whitelisted";
-						break;
-					case NOT_BLOCKED:
-						str = "not blocked";
-						break;
-					default:
-						str = "this cannot happen";
-						break;
-				}
-				ssend(*sock, " %s (ID %d): %s\n", getstr(client->ippos), clientID, str);
-			}
-			ssend(*sock,"\n");
-
-			// Return early
-			if(!show_all)
-			{
-				return;
-			}
-		}
-	}
-
-	// for loop finished without an exact match
-	if(!show_all)
-	{
-		ssend(*sock,"Domain \"%s\" is unknown\n", domainString);
 	}
 }

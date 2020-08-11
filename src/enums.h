@@ -72,9 +72,11 @@ enum blocking_mode {
 	MODE_NODATA
 } __attribute__ ((packed));
 
-enum regex_id {
+enum regex_type {
 	REGEX_BLACKLIST,
-	REGEX_WHITELIST
+	REGEX_WHITELIST,
+	REGEX_CLI,
+	REGEX_MAX
 } __attribute__ ((packed));
 
 enum query_types {
@@ -90,6 +92,7 @@ enum query_types {
 	TYPE_DS,
 	TYPE_RRSIG,
 	TYPE_DNSKEY,
+	TYPE_NS,
 	TYPE_OTHER,
 	TYPE_MAX
 } __attribute__ ((packed));
@@ -101,6 +104,8 @@ enum blocking_status {
 } __attribute__ ((packed));
 
 // Blocking status constants used by the dns_cache->blocking_status vector
+// We explicitly force UNKNOWN_BLOCKED to zero on all platforms as this is the
+// default value set initially with calloc
 enum domain_client_status {
 	UNKNOWN_BLOCKED = 0,
 	GRAVITY_BLOCKED,

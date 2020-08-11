@@ -13,6 +13,7 @@
 #include <stdbool.h>
 #include <time.h>
 
+void init_FTL_log(void);
 void open_FTL_log(const bool test);
 void logg(const char* format, ...) __attribute__ ((format (gnu_printf, 1, 2)));
 void log_counter_info(void);
@@ -20,5 +21,6 @@ void format_memory_size(char *prefix, unsigned long long int bytes, double *form
 const char *get_FTL_version(void) __attribute__ ((malloc));
 void log_FTL_version(bool crashreport);
 void get_timestr(char *timestring, const time_t timein);
+void log_ctrl(bool vlog, bool vstdout);
 
 #endif //LOG_H

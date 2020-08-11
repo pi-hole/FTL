@@ -19,6 +19,9 @@
 // flush_message_table()
 #include "database/message-table.h"
 
+const char *querytypes[TYPE_MAX] = {"UNKNOWN", "A", "AAAA", "ANY", "SRV", "SOA", "PTR", "TXT",
+                                    "NAPTR", "MX", "DS", "RRSIG", "DNSKEY", "NS", "OTHER"};
+
 // converts upper to lower case, and leaves other characters unchanged
 void strtolower(char *str)
 {
@@ -243,7 +246,7 @@ int findClientID(const char *clientIP, const bool count)
 	return clientID;
 }
 
-int findCacheID(int domainID, int clientID)
+int findCacheID(int domainID, int clientID, enum query_types query_type)
 {
 	// Compare content of client against known client IP addresses
 	for(int cacheID = 0; cacheID < counters->dns_cache_size; cacheID++)
@@ -256,7 +259,8 @@ int findCacheID(int domainID, int clientID)
 			continue;
 
 		if(dns_cache->domainID == domainID &&
-		   dns_cache->clientID == clientID)
+		   dns_cache->clientID == clientID &&
+		   dns_cache->query_type == query_type)
 		{
 			return cacheID;
 		}
@@ -282,6 +286,7 @@ int findCacheID(int domainID, int clientID)
 	dns_cache->blocking_status = UNKNOWN_BLOCKED;
 	dns_cache->domainID = domainID;
 	dns_cache->clientID = clientID;
+	dns_cache->query_type = query_type;
 	dns_cache->force_reply = 0u;
 
 	// Increase counter by one

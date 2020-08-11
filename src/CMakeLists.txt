@@ -166,6 +166,7 @@ add_executable(pihole-FTL
         $<TARGET_OBJECTS:database>
         $<TARGET_OBJECTS:dnsmasq>
         $<TARGET_OBJECTS:sqlite3>
+        $<TARGET_OBJECTS:tre-regex>
         )
 if(STATIC STREQUAL "true")
     set_target_properties(pihole-FTL PROPERTIES LINK_SEARCH_START_STATIC ON)
@@ -199,3 +200,4 @@ install(CODE "execute_process(COMMAND ${SETCAP} CAP_NET_BIND_SERVICE,CAP_NET_RAW
 add_subdirectory(api)
 add_subdirectory(database)
 add_subdirectory(dnsmasq)
+add_subdirectory(tre-regex)

@@ -141,13 +141,6 @@ void process_request(const char *client_message, int *sock)
 		getUnknownQueries(sock);
 		unlock_shm();
 	}
-	else if(command(client_message, ">domain"))
-	{
-		processed = true;
-		lock_shm();
-		getDomainDetails(client_message, sock);
-		unlock_shm();
-	}
 	else if(command(client_message, ">cacheinfo"))
 	{
 		processed = true;

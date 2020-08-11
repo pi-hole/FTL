@@ -100,7 +100,7 @@ static bool check_domain_blocked(const char *domain, const int clientID,
 	// Skipped when the domain is whitelisted or blocked by exact blacklist or gravity
 	int regex_idx = 0;
 	if(!query->whitelisted && !blockDomain &&
-	   (regex_idx = match_regex(domain, clientID, REGEX_BLACKLIST)) > -1)
+	   (regex_idx = match_regex(domain, dns_cache, clientID, REGEX_BLACKLIST, false)) > -1)
 	{
 		// We block this domain
 		blockDomain = true;
@@ -130,7 +130,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 	queriesData* query  = getQuery(queryID,   true);
 	domainsData* domain = getDomain(domainID, true);
 	clientsData* client = getClient(clientID, true);
-	unsigned int cacheID = findCacheID(domainID, clientID);
+	unsigned int cacheID = findCacheID(domainID, clientID, query->type);
 	DNSCacheData *dns_cache = getDNSCache(cacheID, true);
 	if(query == NULL || domain == NULL || client == NULL || dns_cache == NULL)
 	{
@@ -258,7 +258,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 	const char *blockedDomain = domainstr;
 
 	// Check whitelist (exact + regex) for match
-	query->whitelisted = in_whitelist(domainstr, clientID, client);
+	query->whitelisted = in_whitelist(domainstr, dns_cache, clientID, client);
 
 	bool blockDomain = false;
 	unsigned char new_status = QUERY_UNKNOWN;
@@ -394,8 +394,8 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 		else if(query->status == QUERY_REGEX)
 		{
 			// Get parent and child DNS cache entries
-			const int parent_cacheID = findCacheID(parent_domainID, clientID);
-			const int child_cacheID = findCacheID(child_domainID, clientID);
+			const int parent_cacheID = findCacheID(parent_domainID, clientID, query->type);
+			const int child_cacheID = findCacheID(child_domainID, clientID, query->type);
 
 			// Get cache pointers
 			DNSCacheData *parent_cache = getDNSCache(parent_cacheID, true);
@@ -449,33 +449,52 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	gettimeofday(&request, 0);
 
 	// Determine query type
-	unsigned char querytype;
-	if(qtype == 1)
-		querytype = TYPE_A;
-	else if(qtype == 28)
-		querytype = TYPE_AAAA;
-	else if(qtype == 255)
-		querytype = TYPE_ANY;
-	else if(qtype == 33)
-		querytype = TYPE_SRV;
-	else if(qtype == 6)
-		querytype = TYPE_SOA;
-	else if(qtype == 12)
-		querytype = TYPE_PTR;
-	else if(qtype == 16)
-		querytype = TYPE_TXT;
-	else if(qtype == 35)
-		querytype = TYPE_NAPTR;
-	else if(qtype == 15)
-		querytype = TYPE_MX;
-	else if(qtype == 43)
-		querytype = TYPE_DS;
-	else if(qtype == 46)
-		querytype = TYPE_RRSIG;
-	else if(qtype == 48)
-		querytype = TYPE_DNSKEY;
-	else
-		querytype = TYPE_OTHER;
+	enum query_types querytype;
+	switch(qtype)
+	{
+		case T_A:
+			querytype = TYPE_A;
+			break;
+		case T_AAAA:
+			querytype = TYPE_AAAA;
+			break;
+		case T_ANY:
+			querytype = TYPE_ANY;
+			break;
+		case T_SRV:
+			querytype = TYPE_SRV;
+			break;
+		case T_SOA:
+			querytype = TYPE_SOA;
+			break;
+		case T_PTR:
+			querytype = TYPE_PTR;
+			break;
+		case T_TXT:
+			querytype = TYPE_TXT;
+			break;
+		case T_NAPTR:
+			querytype = TYPE_NAPTR;
+			break;
+		case T_MX:
+			querytype = TYPE_MX;
+			break;
+		case T_DS:
+			querytype = TYPE_DS;
+			break;
+		case T_RRSIG:
+			querytype = TYPE_RRSIG;
+			break;
+		case T_DNSKEY:
+			querytype = TYPE_DNSKEY;
+			break;
+		case T_NS:
+			querytype = TYPE_NS;
+			break;
+		default:
+			querytype = TYPE_OTHER;
+			break;
+	}
 
 	// Skip AAAA queries if user doesn't want to have them analyzed
 	if(!config.analyze_AAAA && querytype == TYPE_AAAA)
