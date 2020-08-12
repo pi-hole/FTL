@@ -587,7 +587,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	const int domainID = findDomainID(domainString, true);
 
 	// Go through already knows clients and see if it is one of them
-	const int clientID = findClientID(clientIP, true);
+	const int clientID = findClientID(clientIP, true, false);
 
 	// Save everything
 	queriesData* query = getQuery(queryID, false);

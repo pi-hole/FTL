@@ -21,6 +21,8 @@
 #include "database/message-table.h"
 // bool startup
 #include "main.h"
+// reset_superclient()
+#include "database/superclients.h"
 
 const char *querytypes[TYPE_MAX] = {"UNKNOWN", "A", "AAAA", "ANY", "SRV", "SOA", "PTR", "TXT",
                                     "NAPTR", "MX", "DS", "RRSIG", "DNSKEY", "NS", "OTHER"};
@@ -171,7 +173,7 @@ int findDomainID(const char *domainString, const bool count)
 	return domainID;
 }
 
-int findClientID(const char *clientIP, const bool count)
+int findClientID(const char *clientIP, const bool count, const bool superclient)
 {
 	// Compare content of client against known client IP addresses
 	for(int clientID=0; clientID < counters->clients; clientID++)
@@ -191,13 +193,14 @@ int findClientID(const char *clientIP, const bool count)
 		if(strcmp(getstr(client->ippos), clientIP) == 0)
 		{
 			// Add one if count == true (do not add one, e.g., during ARP table processing)
-			if(count) change_clientcount(client, 1, 0, -1, 0);
+			if(count && !superclient) change_clientcount(client, 1, 0, -1, 0);
 			return clientID;
 		}
 	}
 
 	// Return -1 (= not found) if count is false because we do not want to create a new client here
-	if(!count)
+	// Proceed if we are looking for a super-client because we want to create a new record
+	if(!count && !superclient)
 		return -1;
 
 	// If we did not return until here, then this client is definitely new
@@ -218,7 +221,7 @@ int findClientID(const char *clientIP, const bool count)
 	// Set magic byte
 	client->magic = MAGICBYTE;
 	// Set its counter to 1
-	client->count = 1;
+	client->count = (count && !superclient)? 1 : 0;
 	// Initialize blocked count to zero
 	client->blockedcount = 0;
 	// Store client IP - no need to check for NULL here as it doesn't harm
@@ -245,12 +248,12 @@ int findClientID(const char *clientIP, const bool count)
 	// Set all MAC address bytes to zero
 	client->hwlen = -1;
 	memset(client->hwaddr, 0, sizeof(client->hwaddr));
-	// This is not a super-client
-	client->super_client_id = -1;
+	// This may be a super-client, the ID is set elsewhere
+	client->superclient = superclient;
+	client->superclient_id = -1;
 
 	// Initialize client-specific overTime data
-	for(int i = 0; i < OVERTIME_SLOTS; i++)
-		client->overTime[i] = 0;
+	memset(client->overTime, 0, sizeof(client->overTime));
 
 	// Increase counter by one
 	counters->clients++;
@@ -263,8 +266,12 @@ int findClientID(const char *clientIP, const bool count)
 	//         database may not be available. All clients initialized
 	//         during history reading get their enabled regexs reloaded
 	//         in the initial call to FTL_reload_all_domainlists()
-	if(!startup)
+	if(!startup && !superclient)
 		reload_per_client_regex(clientID, client);
+
+	// Check if this client is managed by a super-client
+	if(!superclient)
+		reset_superclient(client);
 
 	return clientID;
 }
@@ -277,9 +284,15 @@ void change_clientcount(clientsData *client, int total, int blocked, int overTim
 			client->overTime[overTimeIdx] += overTimeMod;
 
 		// Also add counts to the conencted super-client (if any)
-		if(client->super_client_id > -1)
+		if(client->superclient)
 		{
-			clientsData *superclient = getClient(client->super_client_id, true);
+			logg("WARN: Should not add to super-client directly (client \"%s\" (%s))!",
+			     getstr(client->namepos), getstr(client->ippos));
+			return;
+		}
+		if(client->superclient_id > -1)
+		{
+			clientsData *superclient = getClient(client->superclient_id, true);
 			superclient->count += total;
 			superclient->blockedcount += blocked;
 			if(overTimeIdx > -1 && overTimeIdx < OVERTIME_SLOTS)

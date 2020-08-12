@@ -356,7 +356,6 @@ static bool get_client_groupids(clientsData* client)
 			{
 				memcpy(client->hwaddr, data, sizeof(data));
 				client->hwlen = sizeof(data);
-				reset_superclient(client);
 			}
 		}
 

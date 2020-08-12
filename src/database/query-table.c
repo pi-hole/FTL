@@ -425,7 +425,7 @@ void DB_read_queries(void)
 		// Obtain IDs only after filtering which queries we want to keep
 		const int timeidx = getOverTimeID(queryTimeStamp);
 		const int domainID = findDomainID(domainname, true);
-		const int clientID = findClientID(clientIP, true);
+		const int clientID = findClientID(clientIP, true, false);
 
 		// Ensure we have enough space in the queries struct
 		memory_check(QUERIES);

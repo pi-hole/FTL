@@ -322,7 +322,7 @@ void resolveClients(const bool onlynew)
 		}
 
 		// Skip super-clients
-		if(client->super_client_id == -2)
+		if(client->superclient)
 		{
 			unlock_shm();
 			continue;

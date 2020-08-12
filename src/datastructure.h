@@ -54,9 +54,10 @@ typedef struct {
 	unsigned char hwaddr[16]; // See DHCP_CHADDR_MAX in dnsmasq/dhcp-protocol.h
 	bool new;
 	bool found_group;
+	bool superclient;
 	int count;
 	int blockedcount;
-	int super_client_id;
+	int superclient_id;
 	int overTime[OVERTIME_SLOTS];
 	unsigned int numQueriesARP;
 	size_t groupspos;
@@ -88,7 +89,7 @@ void strtolower(char *str);
 int findQueryID(const int id);
 int findUpstreamID(const char * upstream, const bool count);
 int findDomainID(const char *domain, const bool count);
-int findClientID(const char *client, const bool count);
+int findClientID(const char *client, const bool count, const bool superclient);
 int findCacheID(int domainID, int clientID, enum query_types query_type);
 bool isValidIPv4(const char *addr);
 bool isValidIPv6(const char *addr);

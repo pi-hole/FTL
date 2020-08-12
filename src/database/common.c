@@ -269,6 +269,8 @@ void db_init(void)
 		return;
 	}
 
+	db_avail = true;
+
 	// Test FTL_db version and see if we need to upgrade the database file
 	int dbversion = db_get_FTL_property(DB_VERSION);
 	if(dbversion < 1)

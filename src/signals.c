@@ -22,6 +22,8 @@
 #include "config.h"
 // gettid()
 #include "daemon.h"
+// reimport_superclients()
+#include "database/superclients.h"
 
 #define BINARY_NAME "pihole-FTL"
 
@@ -199,6 +201,11 @@ static void SIGRT_handler(int signum, siginfo_t *si, void *unused)
 		// Terminate FTL indicating failure
 		exit_code = EXIT_FAILURE;
 		kill(0, SIGTERM);
+	}
+	else if(rtsig == 3)
+	{
+		// Reimport super-clients from database
+		reimport_superclients();
 	}
 }
 
