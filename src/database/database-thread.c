@@ -105,6 +105,7 @@ void *DB_thread(void *val)
 		if(want_to_reimport_superclients)
 		{
 			want_to_reimport_superclients = false;
+
 			lock_shm();
 			reimport_superclients();
 			unlock_shm();

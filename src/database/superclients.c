@@ -277,8 +277,6 @@ int *get_superclient_list(const int superclientID)
 // removed by nulling them before importing new clients
 void reimport_superclients(void)
 {
-	lock_shm();
-
 	// Open pihole-FTL.db database file if needed
 	const bool db_already_open = FTL_DB_avail();
 	if(!db_already_open && !dbopen())
@@ -318,6 +316,4 @@ void reimport_superclients(void)
 
 		reset_superclient(client);
 	}
-
-	unlock_shm();
 }
