@@ -30,7 +30,7 @@ bool create_superclients_table(void)
 	                                   "comment TEXT);");
 
 	// Add superclient_id to network table
-	SQL_bool("ALTER TABLE network ADD COLUMN superclient_id INTEGER DEFAULT NULL;");
+	SQL_bool("ALTER TABLE network ADD COLUMN superclient_id INTEGER;");
 
 	// Update database version to 9
 	if(!db_set_FTL_property(DB_VERSION, 9))

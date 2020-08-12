@@ -389,7 +389,7 @@ void getTopClients(const char *client_message, const int *sock)
 		// Get client pointer
 		const clientsData* client = getClient(clientID, true);
 		// Skip invalid clients and also those managed by super clients
-		if(client == NULL || client->superclient_id >= 0)
+		if(client == NULL || (!client->superclient && client->superclient_id >= 0))
 		{
 			temparray[clientID][0] = -1;
 			continue;
@@ -437,8 +437,9 @@ void getTopClients(const char *client_message, const int *sock)
 
 		// Get client pointer
 		const clientsData* client = getClient(clientID, true);
-		// Skip invalid clients and also those managed by super clients
-		if(client == NULL || client->superclient_id >= 0)
+
+		// Skip invalid clients
+		if(client == NULL)
 			continue;
 
 		// Skip this client if there is a filter on it
@@ -1203,12 +1204,14 @@ void getClientsOverTime(const int *sock)
 		{
 			// Get client pointer
 			const clientsData* client = getClient(clientID, true);
-			// Skip invalid clients and also those managed by super clients
-			if(client == NULL || client->superclient_id >= 0)
+			// Skip invalid clients
+			if(client == NULL)
 				continue;
+
 			// Check if this client should be skipped
 			if(insetupVarsArray(getstr(client->ippos)) ||
-			   insetupVarsArray(getstr(client->namepos)))
+			   insetupVarsArray(getstr(client->namepos)) ||
+			   (!client->superclient && client->superclient_id > -1))
 				skipclient[clientID] = true;
 		}
 	}
@@ -1273,13 +1276,14 @@ void getClientNames(const int *sock)
 		{
 			// Get client pointer
 			const clientsData* client = getClient(clientID, true);
-			// Skip invalid clients and also those managed by super clients
-			if(client == NULL || client->superclient_id >= 0)
+			// Skip invalid clients
+			if(client == NULL)
 				continue;
 
 			// Check if this client should be skipped
 			if(insetupVarsArray(getstr(client->ippos)) ||
-			   insetupVarsArray(getstr(client->namepos)))
+			   insetupVarsArray(getstr(client->namepos)) ||
+			   (!client->superclient && client->superclient_id > -1))
 				skipclient[clientID] = true;
 		}
 	}
