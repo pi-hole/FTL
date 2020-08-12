@@ -22,6 +22,8 @@
 #include "timers.h"
 // global variable killed
 #include "signals.h"
+// reimport_superclients()
+#include "database/superclients.h"
 
 void *DB_thread(void *val)
 {
@@ -73,6 +75,40 @@ void *DB_thread(void *val)
 		// database is not updated very often)
 		if(now % 2592000L == 0)
 			updateMACVendorRecords();
+
+		// Reload all FTL-related lists on request
+		if(want_to_reload_lists)
+		{
+			want_to_reload_lists = false;
+
+			lock_shm();
+
+			// Reload
+			// - gravity
+			// - exact whitelist
+			// - regex whitelist
+			// - exact blacklist
+			// - exact blacklist
+			// WITHOUT wiping the DNS cache itself
+			FTL_reload_all_domainlists();
+
+			// Reload the privacy level in case the user changed it
+			get_privacy_level(NULL);
+
+			unlock_shm();
+		}
+
+		// Re-import super-clients on request
+		// We do this in the database thread to avoid lock-clashing
+		// when a signal arrives in the middle of another (locked)
+		// operation
+		if(want_to_reimport_superclients)
+		{
+			want_to_reimport_superclients = false;
+			lock_shm();
+			reimport_superclients();
+			unlock_shm();
+		}
 
 		sleepms(100);
 	}

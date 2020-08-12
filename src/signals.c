@@ -22,12 +22,12 @@
 #include "config.h"
 // gettid()
 #include "daemon.h"
-// reimport_superclients()
-#include "database/superclients.h"
 
 #define BINARY_NAME "pihole-FTL"
 
 volatile sig_atomic_t killed = 0;
+volatile sig_atomic_t want_to_reimport_superclients = 0;
+volatile sig_atomic_t want_to_reload_lists = 0;
 static volatile pid_t mpid = -1;
 static time_t FTLstarttime = 0;
 extern volatile int exit_code;
@@ -96,7 +96,7 @@ static void __attribute__((noreturn)) SIGSEGV_handler(int sig, siginfo_t *si, vo
 	}
 	log_FTL_version(true);
 	char namebuf[16];
-	logg("Process details: MID: %i",mpid);
+	logg("Process details: MID: %i", mpid);
 	logg("                 PID: %i", getpid());
 	logg("                 TID: %i", gettid());
 	logg("                 Name: %s", getthread_name(namebuf));
@@ -110,7 +110,7 @@ static void __attribute__((noreturn)) SIGSEGV_handler(int sig, siginfo_t *si, vo
 #if defined(SEGV_BNDERR)
 		case SEGV_BNDERR: logg("     with code:  SEGV_BNDERR (Failed address bound checks)"); break;
 #endif
-		default: logg("     with code:  Unknown (%i)", si->si_code); break;
+		default:          logg("     with code:  Unknown (%i)", si->si_code); break;
 	}
 
 // Check GLIBC availability as MUSL does not support live backtrace generation
@@ -184,17 +184,8 @@ static void SIGRT_handler(int signum, siginfo_t *si, void *unused)
 
 	if(rtsig == 0)
 	{
-		// Reload
-		// - gravity
-		// - exact whitelist
-		// - regex whitelist
-		// - exact blacklist
-		// - exact blacklist
-		// WITHOUT wiping the DNS cache itself
-		FTL_reload_all_domainlists();
-
-		// Reload the privacy level in case the user changed it
-		get_privacy_level(NULL);
+		// Want to reload the cache without purging the dnsmasq cache
+		want_to_reload_lists = true;
 	}
 	else if(rtsig == 2)
 	{
@@ -205,7 +196,7 @@ static void SIGRT_handler(int signum, siginfo_t *si, void *unused)
 	else if(rtsig == 3)
 	{
 		// Reimport super-clients from database
-		reimport_superclients();
+		want_to_reimport_superclients = true;
 	}
 }
 
