@@ -331,7 +331,7 @@ void DB_read_queries(void)
 	const char *querystr = "SELECT * FROM queries WHERE timestamp >= ?";
 	// Log FTL_db query string in debug mode
 	if(config.debug & DEBUG_DATABASE)
-		logg("DB_read_queries(): \"%s\" with ? = %li", querystr, mintime);
+		logg("DB_read_queries(): \"%s\" with ? = %lli", querystr, (long long)mintime);
 
 	// Prepare SQLite3 statement
 	sqlite3_stmt* stmt = NULL;
@@ -358,12 +358,12 @@ void DB_read_queries(void)
 		// 1483228800 = 01/01/2017 @ 12:00am (UTC)
 		if(queryTimeStamp < 1483228800)
 		{
-			logg("FTL_db warn: TIMESTAMP should be larger than 01/01/2017 but is %li", queryTimeStamp);
+			logg("FTL_db warn: TIMESTAMP should be larger than 01/01/2017 but is %lli", (long long)queryTimeStamp);
 			continue;
 		}
 		if(queryTimeStamp > now)
 		{
-			if(config.debug & DEBUG_DATABASE) logg("FTL_db warn: Skipping query logged in the future (%li)", queryTimeStamp);
+			if(config.debug & DEBUG_DATABASE) logg("FTL_db warn: Skipping query logged in the future (%lli)", (long long)queryTimeStamp);
 			continue;
 		}
 
@@ -390,14 +390,14 @@ void DB_read_queries(void)
 		const char * domainname = (const char *)sqlite3_column_text(stmt, 4);
 		if(domainname == NULL)
 		{
-			logg("FTL_db warn: DOMAIN should never be NULL, %li", queryTimeStamp);
+			logg("FTL_db warn: DOMAIN should never be NULL, %lli", (long long)queryTimeStamp);
 			continue;
 		}
 
 		const char * clientIP = (const char *)sqlite3_column_text(stmt, 5);
 		if(clientIP == NULL)
 		{
-			logg("FTL_db warn: CLIENT should never be NULL, %li", queryTimeStamp);
+			logg("FTL_db warn: CLIENT should never be NULL, %lli", (long long)queryTimeStamp);
 			continue;
 		}
 
@@ -416,7 +416,8 @@ void DB_read_queries(void)
 		{
 			if(upstream == NULL)
 			{
-				logg("WARN (during database import): FORWARD should not be NULL with status QUERY_FORWARDED (timestamp: %li), skipping entry", queryTimeStamp);
+				logg("WARN (during database import): FORWARD should not be NULL with status QUERY_FORWARDED (timestamp: %lli), skipping entry",
+				     (long long)queryTimeStamp);
 				continue;
 			}
 			upstreamID = findUpstreamID(upstream, true);
@@ -537,7 +538,7 @@ void DB_read_queries(void)
 
 			default:
 				logg("Error: Found unknown status %i in long term database!", status);
-				logg("       Timestamp: %li", queryTimeStamp);
+				logg("       Timestamp: %lli", (long long)queryTimeStamp);
 				logg("       Continuing anyway...");
 				break;
 		}

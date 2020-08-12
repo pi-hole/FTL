@@ -180,7 +180,7 @@ void read_FTLconf(void)
 	if(config.DBinterval == 60)
 		logg("   DBINTERVAL: saving to DB file every minute");
 	else
-		logg("   DBINTERVAL: saving to DB file every %i seconds", config.DBinterval);
+		logg("   DBINTERVAL: saving to DB file every %lli seconds", (long long)config.DBinterval);
 
 	// DBFILE
 	// defaults to: "/etc/pihole/pihole-FTL.db"
