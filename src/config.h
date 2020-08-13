@@ -24,7 +24,6 @@ void read_debuging_settings(FILE *fp);
 
 typedef struct {
 	int maxDBdays;
-	int DBinterval;
 	int port;
 	int maxlogage;
 	int dns_port;
@@ -44,6 +43,7 @@ typedef struct {
 	bool block_esni;
 	bool names_from_netdb;
 	bool edns0_ecs;
+	time_t DBinterval;
 } ConfigStruct;
 
 typedef struct {
