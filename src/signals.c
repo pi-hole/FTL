@@ -28,6 +28,7 @@
 
 volatile sig_atomic_t killed = 0;
 volatile sig_atomic_t want_reresolve = 0;
+volatile sig_atomic_t want_neighbor_parsing = 0;
 static volatile pid_t mpid = -1;
 static time_t FTLstarttime = 0;
 extern volatile int exit_code;
@@ -207,6 +208,11 @@ static void SIGRT_handler(int signum, siginfo_t *si, void *unused)
 	{
 		// Re-resolve all clients and forward destinations
 		want_reresolve = true;
+	}
+	else if(rtsig == 5)
+	{
+		// Parse neighbor cache
+		want_neighbor_parsing = true;
 	}
 }
 
