@@ -70,7 +70,7 @@ void *DB_thread(void *val)
 
 				// Parse neighbor cache (fill network table) if enabled
 				if (config.parse_arp_cache)
-					parse_neighbor_cache();
+					set_event(PARSE_NEIGHBOR_CACHE);
 			}
 
 			// Update MAC vendor strings once a month (the MAC vendor
@@ -85,6 +85,9 @@ void *DB_thread(void *val)
 
 		if(get_and_clear_event(RELOAD_PRIVACY_LEVEL))
 			get_privacy_level(NULL);
+
+		if(get_and_clear_event(PARSE_NEIGHBOR_CACHE))
+			parse_neighbor_cache();
 
 		// Sleep 0.1 seconds
 		sleepms(100);
