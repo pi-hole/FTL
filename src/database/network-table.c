@@ -1317,7 +1317,7 @@ void parse_neighbor_cache(void)
 
 		// Skip if already handled above (first check against clients_array_size as we might have added
 		// more clients to FTL's memory herein (those known only from the database))
-		if(client_status[clientID] != CLIENT_NOT_HANDLED)
+			if(client_status[clientID] != CLIENT_NOT_HANDLED)
 		{
 			if(config.debug & DEBUG_ARP)
 				logg("Network table: Client %s known through ARP/neigh cache",
