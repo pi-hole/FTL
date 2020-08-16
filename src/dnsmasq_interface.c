@@ -655,6 +655,13 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	if(client->ifacepos == 0u && next_iface != NULL)
 		client->ifacepos = addstr(next_iface);
 
+	// Set client MAC address from EDNS(0) information (if available)
+	if(config.edns0_ecs && edns->mac_set)
+	{
+		memcpy(client->hwaddr, edns->mac_byte, 6);
+		client->hwlen = 6;
+	}
+
 	// Try to obtain MAC address from dnsmasq's cache (also asks the kernel)
 	if(client->hwlen < 1)
 	{

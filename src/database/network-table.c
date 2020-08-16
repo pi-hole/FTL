@@ -238,6 +238,25 @@ static int find_device_by_mock_hwaddr(const char *ipaddr)
 	return network_id;
 }
 
+// Try to find device by EDNS(0)-provided hardware address
+static int find_device_by_edns0_hwaddr(const char hwaddr[])
+{
+	char *querystr = NULL;
+	int ret = asprintf(&querystr, "SELECT id FROM network WHERE hwaddr = \'%s\' COLLATE NOCASE;", hwaddr);
+	if(querystr == NULL || ret < 0)
+	{
+		logg("Memory allocation failed in find_device_by_edns0_hwaddr(\"%s\"): %i",
+		     hwaddr, ret);
+		return -1;
+	}
+
+	// Perform SQL query
+	int network_id = db_query_int(querystr);
+	free(querystr);
+
+	return network_id;
+}
+
 // Try to find device by RECENT mock hardware address (generated from IP address)
 static int find_recent_device_by_mock_hwaddr(const char *ipaddr)
 {
@@ -923,7 +942,6 @@ void parse_neighbor_cache(void)
 	// all to the database
 	for(int clientID = 0; clientID < counters->clients; clientID++)
 	{
-
 		// Get client pointer
 		clientsData *client = getClient(clientID, true);
 		if(client == NULL)
@@ -963,15 +981,34 @@ void parse_neighbor_cache(void)
 		}
 
 		//
-		// Variant 1: Try to find a device using the same IP address within the last 24 hours
+		// Variant 2: Try to find a device with an EDNS(0)-provided hardware address
 		//
-		int dbID = find_device_by_recent_ip(ipaddr);
+		int dbID = DB_NODATA;
+		if(client->hwlen == 6)
+		{
+			snprintf(hwaddr, sizeof(hwaddr), "%02X:%02X:%02X:%02X:%02X:%02X",
+			         client->hwaddr[0], client->hwaddr[1],
+			         client->hwaddr[2], client->hwaddr[3],
+			         client->hwaddr[4], client->hwaddr[5]);
+			hwaddr[6*2+5] = '\0';
+			dbID = find_device_by_edns0_hwaddr(hwaddr);
+		}
 
 		//
-		// Variant 2: Try to find a device with mock IP address
+		// Variant 1: Try to find a device using the same IP address within the last 24 hours
 		//
 		if(dbID < 0)
+		{
+			dbID = find_device_by_recent_ip(ipaddr);
+		}
+
+		//
+		// Variant 3: Try to find a device with mock IP address
+		//
+		if(dbID < 0)
+		{
 			dbID = find_device_by_mock_hwaddr(ipaddr);
+		}
 
 		if(dbID == DB_FAILED)
 		{
@@ -981,13 +1018,31 @@ void parse_neighbor_cache(void)
 		// Device not in database, add new entry
 		else if(dbID == DB_NODATA)
 		{
-			// Create mock hardware address in the style of "ip-<IP address>", like "ip-127.0.0.1"
-			strcpy(hwaddr, "ip-");
-			strncpy(hwaddr+3, ipaddr, sizeof(hwaddr)-4);
-			hwaddr[sizeof(hwaddr)-1] = '\0';
+			char *macVendor = NULL;
+			if(client->hwlen == 6)
+			{
+				// Normal client, MAC was likely obtained from EDNS(0) data
+				macVendor = getMACVendor(hwaddr);
+			}
+			else
+			{
+				// Create mock hardware address in the style of "ip-<IP address>", like "ip-127.0.0.1"
+				strcpy(hwaddr, "ip-");
+				strncpy(hwaddr+3, ipaddr, sizeof(hwaddr)-4);
+				hwaddr[sizeof(hwaddr)-1] = '\0';
+			}
+
+			// Add new device to database
 			insert_netDB_device(hwaddr, now, client->lastQuery,
-								client->numQueriesARP, NULL);
+			                    client->numQueriesARP, macVendor);
 			client->numQueriesARP = 0;
+
+			//Free allocated memory
+			if(macVendor != NULL)
+			{
+				free(macVendor);
+				macVendor = NULL;
+			}
 
 			if(rc != SQLITE_OK)
 				break;
