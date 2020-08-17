@@ -844,7 +844,7 @@ void parse_neighbor_cache(void)
 				// Device not known AND no recent mock-device found ---> create new device record
 				if(config.debug & DEBUG_ARP)
 				{
-					logg("Device with IP %s not known and "
+					logg("Network table: Device with IP %s not known and "
 					     "no recent mock-device found ---> creating new record", ip);
 				}
 
@@ -884,7 +884,7 @@ void parse_neighbor_cache(void)
 				// Device is ALREADY KNOWN ---> convert mock-device to a "real" one
 				if(config.debug & DEBUG_ARP)
 				{
-					logg("Device with IP %s already known (mock-device) "
+					logg("Network table: Device with IP %s already known (mock-device) "
 					     "---> converting mock-record to real record", ip);
 				}
 
@@ -992,6 +992,9 @@ void parse_neighbor_cache(void)
 			         client->hwaddr[4], client->hwaddr[5]);
 			hwaddr[6*2+5] = '\0';
 			dbID = find_device_by_edns0_hwaddr(hwaddr);
+
+			if(config.debug & DEBUG_ARP && dbID >= 0)
+				logg("Network table: Client with MAC %s is network ID %i", hwaddr, dbID);
 		}
 		else
 		{
@@ -1002,6 +1005,9 @@ void parse_neighbor_cache(void)
 			if(dbID < 0)
 			{
 				dbID = find_device_by_recent_ip(ipaddr);
+				if(config.debug & DEBUG_ARP && dbID >= 0)
+					logg("Network table: Client with IP %s has recently be seen for network ID %i",
+					     ipaddr, dbID);
 			}
 
 			//
@@ -1011,6 +1017,9 @@ void parse_neighbor_cache(void)
 			if(dbID < 0)
 			{
 				dbID = find_device_by_mock_hwaddr(ipaddr);
+				if(config.debug & DEBUG_ARP && dbID >= 0)
+					logg("Network table: Client with IP %s is known as mock-hwaddr client with network ID %i",
+					     ipaddr, dbID);
 			}
 		}
 
@@ -1035,6 +1044,9 @@ void parse_neighbor_cache(void)
 				strncpy(hwaddr+3, ipaddr, sizeof(hwaddr)-4);
 				hwaddr[sizeof(hwaddr)-1] = '\0';
 			}
+
+			if(config.debug & DEBUG_ARP)
+				logg("Network table: Adding new record for client with IP %s and hwaddr %s", ipaddr, hwaddr);
 
 			// Add new device to database
 			insert_netDB_device(hwaddr, now, client->lastQuery,
