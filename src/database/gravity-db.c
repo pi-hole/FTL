@@ -217,8 +217,6 @@ static bool get_client_groupids(clientsData* client)
 	client->found_group = false;
 	client->groupspos = 0u;
 
-	logg("A");
-
 	// Do not proceed when database is not available
 	if(!gravityDB_opened && !gravityDB_open())
 	{

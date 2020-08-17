@@ -981,7 +981,7 @@ void parse_neighbor_cache(void)
 		}
 
 		//
-		// Variant 2: Try to find a device with an EDNS(0)-provided hardware address
+		// Variant 1: Try to find a device with an EDNS(0)-provided hardware address
 		//
 		int dbID = DB_NODATA;
 		if(client->hwlen == 6)
@@ -993,21 +993,25 @@ void parse_neighbor_cache(void)
 			hwaddr[6*2+5] = '\0';
 			dbID = find_device_by_edns0_hwaddr(hwaddr);
 		}
-
-		//
-		// Variant 1: Try to find a device using the same IP address within the last 24 hours
-		//
-		if(dbID < 0)
+		else
 		{
-			dbID = find_device_by_recent_ip(ipaddr);
-		}
+			//
+			// Variant 2: Try to find a device using the same IP address within the last 24 hours
+			// Only try this when there is no EDNS(0) MAC address available
+			//
+			if(dbID < 0)
+			{
+				dbID = find_device_by_recent_ip(ipaddr);
+			}
 
-		//
-		// Variant 3: Try to find a device with mock IP address
-		//
-		if(dbID < 0)
-		{
-			dbID = find_device_by_mock_hwaddr(ipaddr);
+			//
+			// Variant 3: Try to find a device with mock IP address
+			// Only try this when there is no EDNS(0) MAC address available
+			//
+			if(dbID < 0)
+			{
+				dbID = find_device_by_mock_hwaddr(ipaddr);
+			}
 		}
 
 		if(dbID == DB_FAILED)
