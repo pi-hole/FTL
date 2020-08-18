@@ -861,21 +861,13 @@ void parse_neighbor_cache(void)
 				// Obtain ID which was given to this new entry
 				dbID = get_lastID();
 
-				// Add unique IP address / mock-MAC pair to network_addresses table
-				rc = add_netDB_network_address(dbID, ip);
-				if(rc != SQLITE_OK)
-					break;
-
 				// Try to determine host names if this is a new device we don't know a hostname for...
+				unlock_shm();
 				if(strlen(hostname) == 0)
 					hostname = resolveHostname(ip);
+				lock_shm();
 				// ... and store it in the appropriate network_address record
 				rc = update_netDB_name(ip, hostname);
-				if(rc != SQLITE_OK)
-					break;
-
-				// Store interface if available
-				rc = update_netDB_interface(dbID, iface);
 				if(rc != SQLITE_OK)
 					break;
 			}
@@ -890,11 +882,6 @@ void parse_neighbor_cache(void)
 
 				// Update/replace important device properties
 				unmock_netDB_device(hwaddr, macVendor, dbID);
-
-				// Store interface if available
-				rc = update_netDB_interface(dbID, iface);
-				if(rc != SQLITE_OK)
-					break;
 
 				// Host name, count and last query timestamp will be set in the next
 				// loop interation for the sake of simplicity
@@ -921,8 +908,12 @@ void parse_neighbor_cache(void)
 			if(rc != SQLITE_OK)
 				break;
 		}
-		// else:
-		// Device in database but not known to Pi-hole: No action required
+		// else: Device in database but not known to Pi-hole
+
+		// Store interface if available
+		rc = update_netDB_interface(dbID, iface);
+		if(rc != SQLITE_OK)
+			break;
 
 		// Add unique IP address / mock-MAC pair to network_addresses table
 		rc = add_netDB_network_address(dbID, ip);
@@ -1065,24 +1056,8 @@ void parse_neighbor_cache(void)
 
 			// Obtain ID which was given to this new entry
 			dbID = get_lastID();
-
-			// Add unique IP address / mock-MAC pair to network_addresses table
-			rc = add_netDB_network_address(dbID, ipaddr);
-			if(rc != SQLITE_OK)
-				break;
-
-			// Create new name record
-			rc = update_netDB_name(ipaddr, hostname);
-			if(rc != SQLITE_OK)
-				break;
-
-			// Update interface if available
-			rc = update_netDB_interface(dbID, interface);
-			if(rc != SQLITE_OK)
-				break;
 		}
-		// Device already in database
-		else
+		else	// Device already in database
 		{
 			// Update timestamp of last query if applicable
 			rc = update_netDB_lastQuery(dbID, client);
@@ -1093,22 +1068,22 @@ void parse_neighbor_cache(void)
 			rc = update_netDB_numQueries(dbID, client);
 			if(rc != SQLITE_OK)
 				break;
-
-			// Add unique IP address / mock-MAC pair to network_addresses table
-			rc = add_netDB_network_address(dbID, ipaddr);
-			if(rc != SQLITE_OK)
-				break;
-
-			// Update hostname if available
-			rc = update_netDB_name(ipaddr, hostname);
-			if(rc != SQLITE_OK)
-				break;
-
-			// Update interface if available
-			rc = update_netDB_interface(dbID, interface);
-			if(rc != SQLITE_OK)
-				break;
 		}
+
+		// Add unique IP address / mock-MAC pair to network_addresses table
+		rc = add_netDB_network_address(dbID, ipaddr);
+		if(rc != SQLITE_OK)
+			break;
+
+		// Update hostname if available
+		rc = update_netDB_name(ipaddr, hostname);
+		if(rc != SQLITE_OK)
+			break;
+
+		// Update interface if available
+		rc = update_netDB_interface(dbID, interface);
+		if(rc != SQLITE_OK)
+			break;
 
 		// Add to number of processed ARP cache entries
 		additional_entries++;

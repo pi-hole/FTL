@@ -1863,6 +1863,12 @@ static void prepare_blocking_metadata(void)
 volatile atomic_flag worker_already_terminating = ATOMIC_FLAG_INIT;
 void FTL_TCP_worker_terminating(bool finished)
 {
+	if(dnsmasq_debug)
+	{
+		// Nothing to be done here, forking does not happen in debug mode
+		return;
+	}
+
 	if(atomic_flag_test_and_set(&worker_already_terminating))
 	{
 		logg("TCP worker already terminating!");
@@ -1934,6 +1940,12 @@ void FTL_TCP_worker_created(const int confd, const char *iface_name)
 	{
 		// If this is not really a fork (e.g. in debug mode), we don't
 		// actually re-open gravity or close sockets here
+		return;
+	}
+
+	if(dnsmasq_debug)
+	{
+		// Nothing to be done here, forking does not happen in debug mode
 		return;
 	}
 
