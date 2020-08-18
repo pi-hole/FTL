@@ -844,8 +844,8 @@ void parse_neighbor_cache(void)
 				// Device not known AND no recent mock-device found ---> create new device record
 				if(config.debug & DEBUG_ARP)
 				{
-					logg("Network table: Device with IP %s not known and "
-					     "no recent mock-device found ---> creating new record", ip);
+					logg("Network table: Creating new ARP device MAC = %s, IP = %s, hostname = \"%s\", vendor = \"%s\"",
+					     hwaddr, ip, hostname, macVendor);
 				}
 
 				// Create new record (INSERT)
@@ -854,9 +854,7 @@ void parse_neighbor_cache(void)
 
 				// Reset client ARP counter (we stored the entry in the database)
 				if(client != NULL)
-				{
 					client->numQueriesARP = 0;
-				}
 
 				// Obtain ID which was given to this new entry
 				dbID = get_lastID();
@@ -876,8 +874,8 @@ void parse_neighbor_cache(void)
 				// Device is ALREADY KNOWN ---> convert mock-device to a "real" one
 				if(config.debug & DEBUG_ARP)
 				{
-					logg("Network table: Device with IP %s already known (mock-device) "
-					     "---> converting mock-record to real record", ip);
+					logg("Network table: Un-mocking ARP device MAC = %s, IP = %s, hostname = \"%s\", vendor = \"%s\"",
+					     hwaddr, ip, hostname, macVendor);
 				}
 
 				// Update/replace important device properties
@@ -893,6 +891,12 @@ void parse_neighbor_cache(void)
 		// Device in database AND client known to Pi-hole
 		else if(client != NULL)
 		{
+			if(config.debug & DEBUG_ARP)
+			{
+				logg("Network table: Updating existing ARP device MAC = %s, IP = %s, hostname = \"%s\"",
+				     hwaddr, ip, hostname);
+			}
+
 			// Update timestamp of last query if applicable
 			rc = update_netDB_lastQuery(dbID, client);
 			if(rc != SQLITE_OK)
@@ -948,18 +952,9 @@ void parse_neighbor_cache(void)
 		hostname = getstr(client->namepos);
 		interface = getstr(client->ifacepos);
 
-		// Skip if this client was inactive (last query may be older than 24 hours)
-		// This also reduces database I/O when nothing would change anyways
-		if(client->count < 1 || client->numQueriesARP < 1)
-		{
-			if(config.debug & DEBUG_ARP)
-				logg("Network table: Client %s has zero new queries (count: %d, ARPcount: %d)",
-				     ipaddr, client->count, client->numQueriesARP);
-			continue;
-		}
 		// Skip if already handled above (first check against clients_array_size as we might have added
 		// more clients to FTL's memory herein (those known only from the database))
-		else if(client_status[clientID] != CLIENT_NOT_HANDLED)
+		if(client_status[clientID] != CLIENT_NOT_HANDLED)
 		{
 			if(config.debug & DEBUG_ARP)
 				logg("Network table: Client %s known through ARP/neigh cache",
@@ -997,7 +992,7 @@ void parse_neighbor_cache(void)
 			{
 				dbID = find_device_by_recent_ip(ipaddr);
 				if(config.debug & DEBUG_ARP && dbID >= 0)
-					logg("Network table: Client with IP %s has recently be seen for network ID %i",
+					logg("Network table: Client with IP %s has no MAC info but was recently be seen for network ID %i",
 					     ipaddr, dbID);
 			}
 
@@ -1009,7 +1004,7 @@ void parse_neighbor_cache(void)
 			{
 				dbID = find_device_by_mock_hwaddr(ipaddr);
 				if(config.debug & DEBUG_ARP && dbID >= 0)
-					logg("Network table: Client with IP %s is known as mock-hwaddr client with network ID %i",
+					logg("Network table: Client with IP %s has no MAC info but is known as mock-hwaddr client with network ID %i",
 					     ipaddr, dbID);
 			}
 		}
@@ -1037,7 +1032,10 @@ void parse_neighbor_cache(void)
 			}
 
 			if(config.debug & DEBUG_ARP)
-				logg("Network table: Adding new record for client with IP %s and hwaddr %s", ipaddr, hwaddr);
+			{
+				logg("Network table: Creating new FTL device MAC = %s, IP = %s, hostname = \"%s\", vendor = \"%s\", interface = \"%s\"",
+					hwaddr, ip, hostname, macVendor, interface);
+			}
 
 			// Add new device to database
 			insert_netDB_device(hwaddr, now, client->lastQuery,
@@ -1059,6 +1057,12 @@ void parse_neighbor_cache(void)
 		}
 		else	// Device already in database
 		{
+			if(config.debug & DEBUG_ARP)
+			{
+				logg("Network table: Updating existing FTL device MAC = %s, IP = %s, hostname = \"%s\", interface = \"%s\"",
+				     hwaddr, ip, hostname, interface);
+			}
+
 			// Update timestamp of last query if applicable
 			rc = update_netDB_lastQuery(dbID, client);
 			if(rc != SQLITE_OK)
