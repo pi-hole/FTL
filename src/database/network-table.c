@@ -1135,6 +1135,12 @@ void parse_neighbor_cache(void)
 		return;
 	}
 
+	// Ensure mock-devices which are not assigned to any addresses any more
+	// (they have been converted to "real" devices), are removed at this point
+	dbquery("DELETE FROM network WHERE id NOT IN "
+	                                  "(SELECT network_id from network_addresses) "
+	                              "AND hwaddr LIKE 'ip-%%';");
+
 	// Actually update the database
 	if((rc = dbquery("END TRANSACTION")) != SQLITE_OK) {
 		const char *text;
