@@ -22,6 +22,7 @@
 
 // Private prototypes
 static char *getMACVendor(const char *hwaddr);
+enum arp_status { CLIENT_NOT_HANDLED, CLIENT_ARP_COMPLETE, CLIENT_ARP_INCOMPLETE };
 
 bool create_network_table(void)
 {
@@ -238,14 +239,14 @@ static int find_device_by_mock_hwaddr(const char *ipaddr)
 	return network_id;
 }
 
-// Try to find device by EDNS(0)-provided hardware address
-static int find_device_by_edns0_hwaddr(const char hwaddr[])
+// Try to find device by hardware address
+static int find_device_by_hwaddr(const char hwaddr[])
 {
 	char *querystr = NULL;
 	int ret = asprintf(&querystr, "SELECT id FROM network WHERE hwaddr = \'%s\' COLLATE NOCASE;", hwaddr);
 	if(querystr == NULL || ret < 0)
 	{
-		logg("Memory allocation failed in find_device_by_edns0_hwaddr(\"%s\"): %i",
+		logg("Memory allocation failed in find_device_by_hwaddr(\"%s\"): %i",
 		     hwaddr, ret);
 		return -1;
 	}
@@ -671,6 +672,377 @@ static int update_netDB_interface(const int network_id, const char *iface)
 	return SQLITE_OK;
 }
 
+// Loop over all clients known to FTL and ensure we add them all to the database
+static bool add_FTL_clients_to_network_table(enum arp_status *client_status, time_t now, unsigned int *additional_entries)
+{
+	int rc = SQLITE_OK;
+	char hwaddr[128];
+	for(int clientID = 0; clientID < counters->clients; clientID++)
+	{
+		// Get client pointer
+		clientsData *client = getClient(clientID, true);
+		if(client == NULL)
+		{
+			if(config.debug & DEBUG_ARP)
+				logg("Network table: Client %d returned NULL pointer", clientID);
+			continue;
+		}
+
+		// Get hostname and IP address of this client
+		const char *hostname, *ipaddr, *interface;
+		ipaddr = getstr(client->ippos);
+		hostname = getstr(client->namepos);
+		interface = getstr(client->ifacepos);
+
+		// Skip if already handled above (first check against clients_array_size as we might have added
+		// more clients to FTL's memory herein (those known only from the database))
+		if(client_status[clientID] != CLIENT_NOT_HANDLED)
+		{
+			if(config.debug & DEBUG_ARP)
+				logg("Network table: Client %s known through ARP/neigh cache",
+				     ipaddr);
+			continue;
+		}
+		else if(config.debug & DEBUG_ARP)
+		{
+			logg("Network table: %s NOT known through ARP/neigh cache", ipaddr);
+		}
+
+		//
+		// Variant 1: Try to find a device with an EDNS(0)-provided hardware address
+		//
+		int dbID = DB_NODATA;
+		if(client->hwlen == 6)
+		{
+			snprintf(hwaddr, sizeof(hwaddr), "%02X:%02X:%02X:%02X:%02X:%02X",
+			         client->hwaddr[0], client->hwaddr[1],
+			         client->hwaddr[2], client->hwaddr[3],
+			         client->hwaddr[4], client->hwaddr[5]);
+			hwaddr[6*2+5] = '\0';
+			dbID = find_device_by_hwaddr(hwaddr);
+
+			if(config.debug & DEBUG_ARP && dbID >= 0)
+				logg("Network table: Client with MAC %s is network ID %i", hwaddr, dbID);
+		}
+		else
+		{
+			//
+			// Variant 2: Try to find a device using the same IP address within the last 24 hours
+			// Only try this when there is no EDNS(0) MAC address available
+			//
+			if(dbID < 0)
+			{
+				dbID = find_device_by_recent_ip(ipaddr);
+				if(config.debug & DEBUG_ARP && dbID >= 0)
+					logg("Network table: Client with IP %s has no MAC info but was recently be seen for network ID %i",
+					     ipaddr, dbID);
+			}
+
+			//
+			// Variant 3: Try to find a device with mock IP address
+			// Only try this when there is no EDNS(0) MAC address available
+			//
+			if(dbID < 0)
+			{
+				dbID = find_device_by_mock_hwaddr(ipaddr);
+				if(config.debug & DEBUG_ARP && dbID >= 0)
+					logg("Network table: Client with IP %s has no MAC info but is known as mock-hwaddr client with network ID %i",
+					     ipaddr, dbID);
+			}
+
+			// Create mock hardware address in the style of "ip-<IP address>", like "ip-127.0.0.1"
+			strcpy(hwaddr, "ip-");
+			strncpy(hwaddr+3, ipaddr, sizeof(hwaddr)-4);
+			hwaddr[sizeof(hwaddr)-1] = '\0';
+		}
+
+		if(dbID == DB_FAILED)
+		{
+			// SQLite error
+			break;
+		}
+		// Device not in database, add new entry
+		else if(dbID == DB_NODATA)
+		{
+			char *macVendor = NULL;
+			if(client->hwlen == 6)
+			{
+				// Normal client, MAC was likely obtained from EDNS(0) data
+				macVendor = getMACVendor(hwaddr);
+			}
+
+			if(config.debug & DEBUG_ARP)
+			{
+				logg("Network table: Creating new FTL device MAC = %s, IP = %s, hostname = \"%s\", vendor = \"%s\", interface = \"%s\"",
+					hwaddr, ipaddr, hostname, macVendor, interface);
+			}
+
+			// Add new device to database
+			insert_netDB_device(hwaddr, now, client->lastQuery,
+			                    client->numQueriesARP, macVendor);
+			client->numQueriesARP = 0;
+
+			//Free allocated memory
+			if(macVendor != NULL)
+			{
+				free(macVendor);
+				macVendor = NULL;
+			}
+
+			// Obtain ID which was given to this new entry
+			dbID = get_lastID();
+		}
+		else	// Device already in database
+		{
+			if(config.debug & DEBUG_ARP)
+			{
+				logg("Network table: Updating existing FTL device MAC = %s, IP = %s, hostname = \"%s\", interface = \"%s\"",
+				     hwaddr, ipaddr, hostname, interface);
+			}
+
+			// Update timestamp of last query if applicable
+			rc = update_netDB_lastQuery(dbID, client);
+			if(rc != SQLITE_OK)
+				break;
+
+			// Update number of queries if applicable
+			rc = update_netDB_numQueries(dbID, client);
+			if(rc != SQLITE_OK)
+				break;
+		}
+
+		// Add unique IP address / mock-MAC pair to network_addresses table
+		rc = add_netDB_network_address(dbID, ipaddr);
+		if(rc != SQLITE_OK)
+			break;
+
+		// Update hostname if available
+		rc = update_netDB_name(ipaddr, hostname);
+		if(rc != SQLITE_OK)
+			break;
+
+		// Update interface if available
+		rc = update_netDB_interface(dbID, interface);
+		if(rc != SQLITE_OK)
+			break;
+
+		// Add to number of processed ARP cache entries
+		(*additional_entries)++;
+	}
+
+	// Check for possible error in loop
+	if(rc != SQLITE_OK)
+	{
+		const char *text;
+		if( rc == SQLITE_BUSY )
+		{
+			text = "WARNING";
+		}
+		else
+		{
+			text = "ERROR";
+			// We shall not use the database any longer
+			database = false;
+		}
+
+		logg("%s: Storing devices in network table failed: %s", text, sqlite3_errstr(rc));
+		unlock_shm();
+		dbclose();
+		return false;
+	}
+
+	return true;
+}
+
+static bool add_local_interfaces_to_network_table(time_t now, unsigned int *additional_entries)
+{
+	// Try to access the kernel's Internet protocol address management
+	FILE *ip_pipe = NULL;
+	const char ip_command[] = "ip address show";
+	if((ip_pipe = popen(ip_command, "r")) == NULL)
+	{
+		logg("WARN: Command \"%s\" failed!", ip_command);
+		logg("      Message: %s", strerror(errno));
+		dbclose();
+		return false;
+	}
+
+	// Buffers
+	char *linebuffer = NULL;
+	size_t linebuffersize = 0u;
+	int iface_no, rc;
+	bool has_iface = false, has_hwaddr = false;
+	char ipaddr[128], hwaddr[128], iface[128];
+
+	// Read response line by line
+	while(getline(&linebuffer, &linebuffersize, ip_pipe) != -1)
+	{
+		// Skip if line buffer is invalid
+		if(linebuffer == NULL)
+			continue;
+
+		if(sscanf(linebuffer, "%i: %99[^:]", &iface_no, iface) == 2)
+		{
+			// Obtained an interface, continue to the next line
+			has_iface = true;
+			has_hwaddr = false;
+			iface[sizeof(iface)-1] = '\0';
+			continue;
+		}
+
+		// Do not try to read IP addresses when the information above is incomplete
+		if(!has_iface)
+			continue;
+
+		// Try to read hardware address
+		// We skip lines with "link/none" (virtual, e.g., wireguard interfaces)
+		if(sscanf(linebuffer, "    link/ether %99s", hwaddr) == 1)
+		{
+			// Obtained an Ethernet hardware address, continue to the next line
+			has_hwaddr = true;
+			hwaddr[sizeof(hwaddr)-1] = '\0';
+			continue;
+		}
+		else if(sscanf(linebuffer, "    link/loopback %99s", hwaddr) == 1)
+		{
+			// Obtained a loopback hardware address, continue to the next line
+			has_hwaddr = true;
+			hwaddr[sizeof(hwaddr)-1] = '\0';
+			continue;
+		}
+
+		// Do not try to read IP addresses when the information above is incomplete
+		if(!has_hwaddr)
+			continue;
+
+		// Try to read IPv4 address
+		// We need a special rule here to avoid "inet6 ..." being accepted as IPv4 address
+		if(sscanf(linebuffer, "    inet%*[ ]%[0-9.] brd", ipaddr) == 1)
+		{
+			// Obtained an IPv4 address
+			ipaddr[sizeof(ipaddr)-1] = '\0';
+		}
+		else
+		{
+			// Try to read IPv6 address
+			if(sscanf(linebuffer, "    inet6%*[ ]%[0-9a-fA-F:] scope", ipaddr) == 1)
+			{
+				// Obtained an IPv6 address
+				ipaddr[sizeof(ipaddr)-1] = '\0';
+			}
+			else
+			{
+				// No address data, continue to next line
+				continue;
+			}
+		}
+
+		if(config.debug & DEBUG_ARP)
+		{
+			logg("Network table: read interface details for interface %s (%s) with address %s",
+			     iface, hwaddr, ipaddr);
+		}
+
+		// Try to find the device we parsed above
+		int dbID = find_device_by_hwaddr(hwaddr);
+		if(config.debug & DEBUG_ARP && dbID >= 0)
+		{
+			logg("Network table (ip a): Client with MAC %s was recently be seen for network ID %i",
+			     hwaddr, dbID);
+		}
+
+		// Break on SQLite error
+		if(dbID == DB_FAILED)
+		{
+			// SQLite error
+			break;
+		}
+
+		// Get vendor
+		char *macVendor = NULL;
+		// Special rule to catch and handle the loopback interface correctly
+		if(strcasecmp(hwaddr, "00:00:00:00:00:00") == 0)
+			macVendor = strdup("virtual interface");
+		else
+			macVendor = getMACVendor(hwaddr);
+
+		// Device not in database, add new entry
+		if(dbID == DB_NODATA)
+		{
+
+			if(config.debug & DEBUG_ARP)
+			{
+				logg("Network table: Creating new ip a device MAC = %s, IP = %s, vendor = \"%s\", interface = \"%s\"",
+					hwaddr, ipaddr, macVendor, iface);
+			}
+
+
+			// Try to import query data from a possibly previously existing mock-device
+			int mockID = find_device_by_mock_hwaddr(ipaddr);
+			int lastQuery = 0, firstSeen = now, numQueries = 0;
+			if(mockID >= 0)
+			{
+				char *querystr = NULL;
+				if(asprintf(&querystr, "SELECT lastQuery from network where id = %i", mockID) < 10)
+					return false;
+				lastQuery = db_query_int(querystr);
+				free(querystr);
+
+				if(asprintf(&querystr, "SELECT firstSeen from network where id = %i", mockID) < 10)
+					return false;
+				firstSeen = db_query_int(querystr);
+				free(querystr);
+
+				if(asprintf(&querystr, "SELECT numQueries from network where id = %i", mockID) < 10)
+					return false;
+				numQueries = db_query_int(querystr);
+				free(querystr);
+			}
+
+			// Add new device to database
+			insert_netDB_device(hwaddr, firstSeen, lastQuery, numQueries, macVendor);
+
+			// Obtain ID which was given to this new entry
+			dbID = get_lastID();
+		}
+		else	// Device already in database
+		{
+			if(config.debug & DEBUG_ARP)
+			{
+				logg("Network table: Updating existing ip a device MAC = %s, IP = %s, interface = \"%s\"",
+				     hwaddr, ipaddr, iface);
+			}
+		}
+
+		//Free allocated memory
+		if(macVendor != NULL)
+		{
+			free(macVendor);
+			macVendor = NULL;
+		}
+
+		// Add unique IP address / mock-MAC pair to network_addresses table
+		rc = add_netDB_network_address(dbID, ipaddr);
+		if(rc != SQLITE_OK)
+			break;
+
+		// Update interface if available
+		rc = update_netDB_interface(dbID, iface);
+		if(rc != SQLITE_OK)
+			break;
+
+		// Add to number of processed ARP cache entries
+		(*additional_entries)++;
+	}
+
+	// Close pipe handle and free allocated memory
+	pclose(ip_pipe);
+	if(linebuffer != NULL)
+		free(linebuffer);
+
+	return true;
+}
+
 // Parse kernel's neighbor cache
 void parse_neighbor_cache(void)
 {
@@ -682,7 +1054,6 @@ void parse_neighbor_cache(void)
 	}
 
 	// Try to access the kernel's neighbor cache
-	// We are only interested in entries which are in either STALE or REACHABLE state
 	FILE *arpfp = NULL;
 	const char neigh_command[] = "ip neigh show";
 	if((arpfp = popen(neigh_command, "r")) == NULL)
@@ -741,7 +1112,6 @@ void parse_neighbor_cache(void)
 
 	// Initialize array of status for individual clients used to
 	// remember the status of a client already seen in the neigh cache
-	enum arp_status { CLIENT_NOT_HANDLED, CLIENT_ARP_COMPLETE, CLIENT_ARP_INCOMPLETE };
 	enum arp_status client_status[counters->clients];
 	for(int i = 0; i < counters->clients; i++)
 	{
@@ -933,186 +1303,16 @@ void parse_neighbor_cache(void)
 	if(linebuffer != NULL)
 		free(linebuffer);
 
-	// Finally, loop over all clients known to FTL and ensure we add them
-	// all to the database
-	for(int clientID = 0; clientID < counters->clients; clientID++)
-	{
-		// Get client pointer
-		clientsData *client = getClient(clientID, true);
-		if(client == NULL)
-		{
-			if(config.debug & DEBUG_ARP)
-				logg("Network table: Client %d returned NULL pointer", clientID);
-			continue;
-		}
-
-		// Get hostname and IP address of this client
-		const char *hostname, *ipaddr, *interface;
-		ipaddr = getstr(client->ippos);
-		hostname = getstr(client->namepos);
-		interface = getstr(client->ifacepos);
-
-		// Skip if already handled above (first check against clients_array_size as we might have added
-		// more clients to FTL's memory herein (those known only from the database))
-		if(client_status[clientID] != CLIENT_NOT_HANDLED)
-		{
-			if(config.debug & DEBUG_ARP)
-				logg("Network table: Client %s known through ARP/neigh cache",
-				     ipaddr);
-			continue;
-		}
-		else if(config.debug & DEBUG_ARP)
-		{
-			logg("Network table: %s NOT known through ARP/neigh cache", ipaddr);
-		}
-
-		//
-		// Variant 1: Try to find a device with an EDNS(0)-provided hardware address
-		//
-		int dbID = DB_NODATA;
-		if(client->hwlen == 6)
-		{
-			snprintf(hwaddr, sizeof(hwaddr), "%02X:%02X:%02X:%02X:%02X:%02X",
-			         client->hwaddr[0], client->hwaddr[1],
-			         client->hwaddr[2], client->hwaddr[3],
-			         client->hwaddr[4], client->hwaddr[5]);
-			hwaddr[6*2+5] = '\0';
-			dbID = find_device_by_edns0_hwaddr(hwaddr);
-
-			if(config.debug & DEBUG_ARP && dbID >= 0)
-				logg("Network table: Client with MAC %s is network ID %i", hwaddr, dbID);
-		}
-		else
-		{
-			//
-			// Variant 2: Try to find a device using the same IP address within the last 24 hours
-			// Only try this when there is no EDNS(0) MAC address available
-			//
-			if(dbID < 0)
-			{
-				dbID = find_device_by_recent_ip(ipaddr);
-				if(config.debug & DEBUG_ARP && dbID >= 0)
-					logg("Network table: Client with IP %s has no MAC info but was recently be seen for network ID %i",
-					     ipaddr, dbID);
-			}
-
-			//
-			// Variant 3: Try to find a device with mock IP address
-			// Only try this when there is no EDNS(0) MAC address available
-			//
-			if(dbID < 0)
-			{
-				dbID = find_device_by_mock_hwaddr(ipaddr);
-				if(config.debug & DEBUG_ARP && dbID >= 0)
-					logg("Network table: Client with IP %s has no MAC info but is known as mock-hwaddr client with network ID %i",
-					     ipaddr, dbID);
-			}
-		}
-
-		if(dbID == DB_FAILED)
-		{
-			// SQLite error
-			break;
-		}
-		// Device not in database, add new entry
-		else if(dbID == DB_NODATA)
-		{
-			char *macVendor = NULL;
-			if(client->hwlen == 6)
-			{
-				// Normal client, MAC was likely obtained from EDNS(0) data
-				macVendor = getMACVendor(hwaddr);
-			}
-			else
-			{
-				// Create mock hardware address in the style of "ip-<IP address>", like "ip-127.0.0.1"
-				strcpy(hwaddr, "ip-");
-				strncpy(hwaddr+3, ipaddr, sizeof(hwaddr)-4);
-				hwaddr[sizeof(hwaddr)-1] = '\0';
-			}
-
-			if(config.debug & DEBUG_ARP)
-			{
-				logg("Network table: Creating new FTL device MAC = %s, IP = %s, hostname = \"%s\", vendor = \"%s\", interface = \"%s\"",
-					hwaddr, ip, hostname, macVendor, interface);
-			}
-
-			// Add new device to database
-			insert_netDB_device(hwaddr, now, client->lastQuery,
-			                    client->numQueriesARP, macVendor);
-			client->numQueriesARP = 0;
-
-			//Free allocated memory
-			if(macVendor != NULL)
-			{
-				free(macVendor);
-				macVendor = NULL;
-			}
-
-			if(rc != SQLITE_OK)
-				break;
-
-			// Obtain ID which was given to this new entry
-			dbID = get_lastID();
-		}
-		else	// Device already in database
-		{
-			if(config.debug & DEBUG_ARP)
-			{
-				logg("Network table: Updating existing FTL device MAC = %s, IP = %s, hostname = \"%s\", interface = \"%s\"",
-				     hwaddr, ip, hostname, interface);
-			}
-
-			// Update timestamp of last query if applicable
-			rc = update_netDB_lastQuery(dbID, client);
-			if(rc != SQLITE_OK)
-				break;
-
-			// Update number of queries if applicable
-			rc = update_netDB_numQueries(dbID, client);
-			if(rc != SQLITE_OK)
-				break;
-		}
-
-		// Add unique IP address / mock-MAC pair to network_addresses table
-		rc = add_netDB_network_address(dbID, ipaddr);
-		if(rc != SQLITE_OK)
-			break;
-
-		// Update hostname if available
-		rc = update_netDB_name(ipaddr, hostname);
-		if(rc != SQLITE_OK)
-			break;
-
-		// Update interface if available
-		rc = update_netDB_interface(dbID, interface);
-		if(rc != SQLITE_OK)
-			break;
-
-		// Add to number of processed ARP cache entries
-		additional_entries++;
-	}
-
-	// Check for possible error in loop
-	if(rc != SQLITE_OK)
-	{
-		const char *text;
-		if( rc == SQLITE_BUSY )
-		{
-			text = "WARNING";
-		}
-		else
-		{
-			text = "ERROR";
-			// We shall not use the database any longer
-			database = false;
-		}
-
-		logg("%s: Storing devices in network table failed: %s", text, sqlite3_errstr(rc));
-		unlock_shm();
-		dbclose();
+	// Loop over all clients known to FTL and ensure we add them all to the
+	// database
+	if(!add_FTL_clients_to_network_table(client_status, now, &additional_entries))
 		return;
-	}
+
+	// Finally, loop over the available interfaces to ensure we list the
+	// IP addresses correctly (local addresses are NOT contained in the
+	// ARP/neighor cache).
+	if(!add_local_interfaces_to_network_table(now, &additional_entries))
+		return;
 
 	// Ensure mock-devices which are not assigned to any addresses any more
 	// (they have been converted to "real" devices), are removed at this point
