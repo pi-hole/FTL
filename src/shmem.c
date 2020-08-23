@@ -769,11 +769,12 @@ bool get_per_client_regex(const int clientID, const int regexID)
 	const unsigned int num_regex_tot = counters->num_regex[REGEX_BLACKLIST] +
 	                                   counters->num_regex[REGEX_WHITELIST];
 	const unsigned int id = clientID * num_regex_tot + regexID;
-	const unsigned int maxval = counters->clients * num_regex_tot;
+	const size_t maxval = shm_per_client_regex.size / sizeof(bool);
 	if(id > maxval)
 	{
-		logg("ERROR: get_per_client_regex(%d,%d): Out of bounds (%d > %d * %d == %d)!",
-		     clientID, regexID, id, counters->clients-1, num_regex_tot, maxval);
+		logg("ERROR: get_per_client_regex(%d, %d): Out of bounds (%d > %d * %d, shm_per_client_regex.size = %zd)!",
+		     clientID, regexID,
+		     id, counters->clients, num_regex_tot, maxval);
 		return false;
 	}
 	return ((bool*) shm_per_client_regex.ptr)[id];
@@ -784,12 +785,12 @@ void set_per_client_regex(const int clientID, const int regexID, const bool valu
 	const unsigned int num_regex_tot = counters->num_regex[REGEX_BLACKLIST] +
 	                                   counters->num_regex[REGEX_WHITELIST];
 	const unsigned int id = clientID * num_regex_tot + regexID;
-	const unsigned int maxval = counters->clients * num_regex_tot;
+	const size_t maxval = shm_per_client_regex.size / sizeof(bool);
 	if(id > maxval)
 	{
-		logg("ERROR: set_per_client_regex(%d,%d,%s): Out of bounds (%d > %d * %d == %d)!",
+		logg("ERROR: set_per_client_regex(%d, %d, %s): Out of bounds (%d > %d * %d, shm_per_client_regex.size = %zd)!",
 		     clientID, regexID, value ? "true" : "false",
-		     id, counters->clients-1, num_regex_tot, maxval);
+		     id, counters->clients, num_regex_tot, maxval);
 		return;
 	}
 	((bool*) shm_per_client_regex.ptr)[id] = value;
