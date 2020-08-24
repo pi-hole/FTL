@@ -878,7 +878,7 @@ void _FTL_reply(const unsigned short flags, const char *name, const union all_ad
 		if(rcode == REFUSED)
 		{
 			// This happens, e.g., in a "nowhere to forward to" situation
-			answer = "REFUSED";
+			answer = "REFUSED (nowhere to forward to)";
 		}
 		else if(rcode == SERVFAIL)
 		{
