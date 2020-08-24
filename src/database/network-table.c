@@ -1320,6 +1320,9 @@ void parse_neighbor_cache(void)
 	                                  "(SELECT network_id from network_addresses) "
 	                              "AND hwaddr LIKE 'ip-%%';");
 
+	// Delete addresses from network_addresses table which have not be seen for 7 days
+	dbquery("DELETE FROM network_addresses WHERE lastSeen < cast(strftime('%%s', 'now') as int)-604800;");
+
 	// Actually update the database
 	if((rc = dbquery("END TRANSACTION")) != SQLITE_OK) {
 		const char *text;
