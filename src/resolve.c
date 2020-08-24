@@ -302,6 +302,7 @@ static size_t resolveAndAddHostname(size_t ippos, size_t oldnamepos)
 // Resolve client host names
 void resolveClients(const bool onlynew)
 {
+	const time_t now = time(NULL);
 	// Lock counter access here, we use a copy in the following loop
 	lock_shm();
 	int clientscount = counters->clients;
@@ -324,6 +325,19 @@ void resolveClients(const bool onlynew)
 		bool newflag = client->new;
 		size_t ippos = client->ippos;
 		size_t oldnamepos = client->namepos;
+
+		// Only try to resolve host names of clients which were recently active
+		// Limit for a "recently active" client is two hours ago
+		if(client->lastQuery < now - 2*60*60)
+		{
+			if(config.debug & DEBUG_RESOLVER)
+			{
+				logg("Skipping client %s (%s) because it was inactive for %i seconds",
+				     getstr(ippos), getstr(oldnamepos), (int)(now - client->lastQuery));
+			}
+			continue;
+		}
+
 		unlock_shm();
 
 		// If onlynew flag is set, we will only resolve new clients
@@ -367,6 +381,7 @@ void resolveClients(const bool onlynew)
 // Resolve upstream destination host names
 void resolveForwardDestinations(const bool onlynew)
 {
+	const time_t now = time(NULL);
 	// Lock counter access here, we use a copy in the following loop
 	lock_shm();
 	int upstreams = counters->upstreams;
@@ -389,6 +404,18 @@ void resolveForwardDestinations(const bool onlynew)
 		bool newflag = upstream->new;
 		size_t ippos = upstream->ippos;
 		size_t oldnamepos = upstream->namepos;
+
+		// Only try to resolve host names of upstream servers which were recently active
+		// Limit for a "recently active" upstream server is two hours ago
+		if(upstream->lastQuery < now - 2*60*60)
+		{
+			if(config.debug & DEBUG_RESOLVER)
+			{
+				logg("Skipping upstream %s (%s) because it was inactive for %i seconds",
+				     getstr(ippos), getstr(oldnamepos), (int)(now - upstream->lastQuery));
+			}
+			continue;
+		}
 		unlock_shm();
 
 		// If onlynew flag is set, we will only resolve new upstream destinations
