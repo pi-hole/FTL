@@ -23,18 +23,24 @@ done
 rm -f /etc/pihole/gravity.db /etc/pihole/pihole-FTL.db /var/log/pihole.log /var/log/pihole-FTL.log /dev/shm/FTL-*
 
 # Create necessary directories and files
-mkdir -p /etc/pihole /run/pihole /var/log
+mkdir -p /home/pihole /etc/pihole /run/pihole /var/log
 touch /var/log/pihole-FTL.log /var/log/pihole.log /run/pihole-FTL.pid /run/pihole-FTL.port
 chown pihole:pihole /etc/pihole /run/pihole /var/log/pihole.log /var/log/pihole-FTL.log /run/pihole-FTL.pid /run/pihole-FTL.port
 
 # Copy binary into a location the new user pihole can access
-cp ./pihole-FTL /home/pihole
+cp ./pihole-FTL /home/pihole/pihole-FTL
 chmod +x /home/pihole/pihole-FTL
 # Note: We cannot add CAP_NET_RAW and CAP_NET_ADMIN at this point
 setcap CAP_NET_BIND_SERVICE+eip /home/pihole/pihole-FTL
 
 # Prepare gravity database
 sqlite3 /etc/pihole/gravity.db < test/gravity.db.sql
+chown pihole:pihole /etc/pihole/gravity.db
+
+# Prepare pihole-FTL database
+rm -rf /etc/pihole/pihole-FTL.db
+sqlite3 /etc/pihole/pihole-FTL.db < test/pihole-FTL.db.sql
+chown pihole:pihole /etc/pihole/pihole-FTL.db
 
 # Prepare setupVars.conf
 echo "BLOCKING_ENABLED=true" > /etc/pihole/setupVars.conf

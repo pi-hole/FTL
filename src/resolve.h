@@ -11,6 +11,7 @@
 #define RESOLVE_H
 
 void *DNSclient_thread(void *val);
+char *resolveHostname(const char *addr);
 void resolveClients(const bool onlynew);
 void resolveForwardDestinations(const bool onlynew);
 

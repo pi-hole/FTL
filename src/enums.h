@@ -115,7 +115,7 @@ enum domain_client_status {
 	NOT_BLOCKED
 } __attribute__ ((packed));
 
-enum debug_mode {
+enum debug_flags {
 	DEBUG_DATABASE      = (1 << 0),  /* 00000000 00000000 00000000 00000001 */
 	DEBUG_NETWORKING    = (1 << 1),  /* 00000000 00000000 00000000 00000010 */
 	DEBUG_LOCKS         = (1 << 2),  /* 00000000 00000000 00000000 00000100 */
@@ -132,7 +132,8 @@ enum debug_mode {
 	DEBUG_DNSMASQ_LINES = (1 << 13), /* 00000000 00000000 00100000 00000000 */
 	DEBUG_VECTORS       = (1 << 14), /* 00000000 00000000 01000000 00000000 */
 	DEBUG_RESOLVER      = (1 << 15), /* 00000000 00000000 10000000 00000000 */
-	DEBUG_EDNS0         = (1 << 16)  /* 00000000 00000001 00000000 00000000 */
+	DEBUG_EDNS0         = (1 << 16), /* 00000000 00000001 00000000 00000000 */
+	DEBUG_CLIENTS       = (1 << 17)  /* 00000000 00000010 00000000 00000000 */
 } __attribute__ ((packed));
 
 #endif // ENUMS_H

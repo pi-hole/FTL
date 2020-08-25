@@ -17,8 +17,6 @@
 // data getter functions
 #include "datastructure.h"
 #include "database/gravity-db.h"
-// bool startup
-#include "main.h"
 // add_per_client_regex_client()
 #include "shmem.h"
 #include "database/message-table.h"
@@ -342,24 +340,25 @@ static void free_regex(void)
 	}
 }
 
-void allocate_regex_client_enabled(clientsData *client, const int clientID)
+void reload_per_client_regex(const int clientID, clientsData *client)
 {
+	// Ensure there is enough memory in the shared memory object
 	add_per_client_regex(clientID);
 
-	// Only initialize regex associations when dnsmasq is ready (otherwise, we're still in history reading mode)
-	if(!startup)
-	{
-		logg("Blacklist: %p (%i)", black_regex, counters->num_regex[REGEX_BLACKLIST]);
-		logg("Whitelist: %p (%i)", white_regex, counters->num_regex[REGEX_WHITELIST]);
-		if(counters->num_regex[REGEX_BLACKLIST] > 0)
-			gravityDB_get_regex_client_groups(client, counters->num_regex[REGEX_BLACKLIST],
-			                                  black_regex, REGEX_BLACKLIST,
-			                                  "vw_regex_blacklist", clientID);
-		if(counters->num_regex[REGEX_WHITELIST] > 0)
-			gravityDB_get_regex_client_groups(client, counters->num_regex[REGEX_WHITELIST],
-			                                  white_regex, REGEX_WHITELIST,
-			                                  "vw_regex_whitelist", clientID);
-	}
+	// Zero-initialize(or wipe previous) regex
+	reset_per_client_regex(clientID);
+
+	// Load regex per-group regex blacklist for this client
+	if(counters->num_regex[REGEX_BLACKLIST] > 0)
+		gravityDB_get_regex_client_groups(client, counters->num_regex[REGEX_BLACKLIST],
+		                                  black_regex, REGEX_BLACKLIST,
+		                                  "vw_regex_blacklist", clientID);
+
+	// Load regex per-group regex whitelist for this client
+	if(counters->num_regex[REGEX_WHITELIST] > 0)
+		gravityDB_get_regex_client_groups(client, counters->num_regex[REGEX_WHITELIST],
+		                                  white_regex, REGEX_WHITELIST,
+		                                  "vw_regex_whitelist", clientID);
 }
 
 static void read_regex_table(const enum regex_type regexid)
@@ -456,7 +455,8 @@ void read_regex_from_database(void)
 	// Read and compile regex whitelist
 	read_regex_table(REGEX_WHITELIST);
 
-
+	// Load per-client regex data, not all of the regex read and compiled
+	// above will also be used by all clients
 	for(int clientID = 0; clientID < counters->clients; clientID++)
 	{
 		// Get client pointer
@@ -464,7 +464,7 @@ void read_regex_from_database(void)
 		if(client == NULL)
 			continue;
 
-		allocate_regex_client_enabled(client, clientID);
+		reload_per_client_regex(clientID, client);
 	}
 
 	// Print message to FTL's log after reloading regex filters

@@ -64,6 +64,14 @@ void dbclose(void)
 
 bool dbopen(void)
 {
+	// Skip subroutine altogether when database is already open
+	if(FTL_db != NULL && db_avail)
+	{
+		if(config.debug & DEBUG_LOCKS)
+			logg("Not locking database (already open)");
+		return true;
+	}
+
 	if(config.debug & DEBUG_LOCKS)
 		logg("Locking database");
 
@@ -370,6 +378,23 @@ void db_init(void)
 		   !db_set_FTL_property(DB_VERSION, 7))
 		{
 			logg("Column additional_info not initialized, database not available");
+			dbclose();
+
+			database = false;
+			return;
+		}
+		// Get updated version
+		dbversion = db_get_FTL_property(DB_VERSION);
+	}
+
+	// Update to version 8 if lower
+	if(dbversion < 8)
+	{
+		// Update to version 8: Add name field to network_addresses table
+		logg("Updating long-term database to version 8");
+		if(!create_network_addresses_with_names_table())
+		{
+			logg("Network addresses table not initialized, database not available");
 			dbclose();
 
 			database = false;

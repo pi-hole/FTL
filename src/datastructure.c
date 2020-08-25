@@ -15,9 +15,12 @@
 #include "log.h"
 // enum REGEX
 #include "regex_r.h"
+// reload_per_client_regex()
 #include "database/gravity-db.h"
 // flush_message_table()
 #include "database/message-table.h"
+// bool startup
+#include "main.h"
 
 const char *querytypes[TYPE_MAX] = {"UNKNOWN", "A", "AAAA", "ANY", "SRV", "SOA", "PTR", "TXT",
                                     "NAPTR", "MX", "DS", "RRSIG", "DNSKEY", "NS", "OTHER"};
@@ -232,6 +235,16 @@ int findClientID(const char *clientIP, const bool count)
 	// Configured groups are yet unknown
 	client->found_group = false;
 	client->groupspos = 0u;
+	// Store time this client was added, we re-read group settings
+	// some time after adding a client to ensure we pick up possible
+	// group configuration though hostname, MAC address or interface
+	client->reread_groups = 0u;
+	client->firstSeen = time(NULL);
+	// Interface is not yet known
+	client->ifacepos = 0;
+	// Set all MAC address bytes to zero
+	client->hwlen = -1;
+	memset(client->hwaddr, 0, sizeof(client->hwaddr));
 
 	// Initialize client-specific overTime data
 	for(int i = 0; i < OVERTIME_SLOTS; i++)
@@ -240,8 +253,16 @@ int findClientID(const char *clientIP, const bool count)
 	// Increase counter by one
 	counters->clients++;
 
-	// Allocate regex substructure
-	allocate_regex_client_enabled(client, clientID);
+	// Get groups for this client and set enabled regex filters
+	// Note 1: We do this only after increasing the clients counter to
+	//         ensure sufficient shared memory is available in the
+	//         pre_client_regex object.
+	// Note 2: We don't do this before starting up is done as the gravity
+	//         database may not be available. All clients initialized
+	//         during history reading get their enabled regexs reloaded
+	//         in the initial call to FTL_reload_all_domainlists()
+	if(!startup)
+		reload_per_client_regex(clientID, client);
 
 	return clientID;
 }

@@ -355,6 +355,11 @@ void read_FTLconf(void)
 	buffer = parse_FTLconf(fp, "BLOCK_ESNI");
 	config.block_esni = read_bool(buffer, true);
 
+	if(config.block_esni)
+		logg("   BLOCK_ESNI: Enabled, blocking _esni.{blocked domain}");
+	else
+		logg("   BLOCK_ESNI: Disabled");
+
 	// NICE
 	// Shall we change the nice of the current process?
 	// defaults to: -10 (can be disabled by setting value to -999)
@@ -369,10 +374,24 @@ void read_FTLconf(void)
 	buffer = parse_FTLconf(fp, "NICE");
 	set_nice(buffer, -10);
 
-	if(config.block_esni)
-		logg("   BLOCK_ESNI: Enabled, blocking _esni.{blocked domain}");
+	// MAXNETAGE
+	// IP addresses (and associated host names) older than the specified number
+	// of hours are removed to avoid dead entries in the network overview table
+	// defaults to: disabled (0.0 hours)
+	config.network_expire = 0u;
+	buffer = parse_FTLconf(fp, "MAXNETAGE");
+
+	fvalue = 0;
+	if(buffer != NULL &&
+	    sscanf(buffer, "%f", &fvalue) &&
+	   fvalue >= 0.0f && fvalue <= 8760.0f) // 8760 = 24 * 365
+			config.network_expire = (unsigned int)(fvalue * 3600);
+
+	if(config.network_expire > 0u)
+		logg("   MAXNETAGE: Removing IP addresses and host names from network table after %.1f hours",
+		     (float)config.network_expire/3600.0f);
 	else
-		logg("   BLOCK_ESNI: Disabled");
+		logg("   MAXNETAGE: No automated removal of IP addresses and host names from the network table");
 
 	// NAMES_FROM_NETDB
 	// Should we use the fallback option to try to obtain client names from
@@ -583,7 +602,7 @@ void get_blocking_mode(FILE *fp)
 }
 
 // Routine for setting the debug flags in the config struct
-static void setDebugOption(FILE* fp, const char* option, enum debug_mode bitmask)
+static void setDebugOption(FILE* fp, const char* option, enum debug_flags bitmask)
 {
 	const char* buffer = parse_FTLconf(fp, option);
 
@@ -689,6 +708,10 @@ void read_debuging_settings(FILE *fp)
 	// defaults to: false
 	setDebugOption(fp, "DEBUG_EDNS0", DEBUG_EDNS0);
 
+	// DEBUG_CLIENTS
+	// defaults to: false
+	setDebugOption(fp, "DEBUG_CLIENTS", DEBUG_CLIENTS);
+
 	if(config.debug)
 	{
 		logg("*****************************");
@@ -710,6 +733,7 @@ void read_debuging_settings(FILE *fp)
 		logg("* DEBUG_VECTORS         %s *", (config.debug & DEBUG_VECTORS)? "YES":"NO ");
 		logg("* DEBUG_RESOLVER        %s *", (config.debug & DEBUG_RESOLVER)? "YES":"NO ");
 		logg("* DEBUG_EDNS0           %s *", (config.debug & DEBUG_EDNS0)? "YES":"NO ");
+		logg("* DEBUG_CLIENTS         %s *", (config.debug & DEBUG_CLIENTS)? "YES":"NO ");
 		logg("*****************************");
 	}
 

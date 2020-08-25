@@ -103,6 +103,17 @@
 // Default: 1000 (one second)
 #define DATABASE_BUSY_TIMEOUT 1000
 
+// After how many seconds do we check again if a client can be identified by other means?
+// (e.g., interface, MAC address, hostname)
+// Default: 60 (after one minutee)
+#define RECHECK_DELAY 60
+
+// How often should we check again if a client can be identified by other means?
+// (e.g., interface, MAC address, hostname)
+// Default: 3 (once after RECHECK_DELAY seconds, then again after 2*RECHECK_DELAY and 3*RECHECK_DELAY)
+// Important: This number has to be smaller than 256 for this mechanism to work
+#define NUM_RECHECKS 3
+
 // Use out own memory handling functions that will detect possible errors
 // and report accordingly in the log. This will make debugging FTL crashs
 // caused by insufficient memory or by code bugs (not properly dealing

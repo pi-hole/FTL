@@ -229,6 +229,8 @@ static bool add_message(enum message_type type, const char *message,
 	if(rc != SQLITE_DONE)
 	{
 		logg("Encountered error while trying to store message in long-term database: %s", sqlite3_errstr(rc));
+		if(opened_database)
+			dbclose();
 		return false;
 	}
 
@@ -261,7 +263,7 @@ void logg_subnet_warning(const char *ip, const int matching_count, const char *m
 	     chosen_match_text, chosen_match_id);
 
 	// Log to database
-	char *names = get_group_names(matching_ids);
+	char *names = get_client_names_from_ids(matching_ids);
 	add_message(SUBNET_MESSAGE, ip, 5, matching_count, names, matching_ids, chosen_match_text, chosen_match_id);
 	free(names);
 }

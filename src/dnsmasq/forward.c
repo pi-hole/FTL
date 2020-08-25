@@ -1416,7 +1416,7 @@ void receive_query(struct listener *listen, time_t now)
 	  return;
 	}
     }
-		
+
   if (check_dst)
     {
       struct ifreq ifr;
@@ -1520,6 +1520,10 @@ void receive_query(struct listener *listen, time_t now)
 	  else
 	    dst_addr_4.s_addr = 0;
 	}
+
+    /*********** Pi-hole modification ***********/
+    FTL_next_iface(ifr.ifr_name);
+    /********************************************/
     }
    
   /* log_query gets called indirectly all over the place, so 

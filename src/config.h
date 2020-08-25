@@ -15,6 +15,8 @@
 
 // typedef int16_t
 #include <sys/types.h>
+// typedef uni32_t
+#include <idn-int.h>
 
 void getLogFilePath(void);
 void read_FTLconf(void);
@@ -28,7 +30,8 @@ typedef struct {
 	int maxlogage;
 	int dns_port;
 	unsigned int delay_startup;
-	enum debug_mode debug;
+	enum debug_flags debug;
+	unsigned int network_expire;
 	enum privacy_level privacylevel;
 	enum blocking_mode blockingmode;
 	bool socket_listenlocal;

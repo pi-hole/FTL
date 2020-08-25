@@ -22,6 +22,10 @@
 #include "database/network-table.h"
 // struct _res
 #include <resolv.h>
+// resolveNetworkTableNames()
+#include "database/network-table.h"
+// resolver_ready
+#include "daemon.h"
 // logg_hostname_warning()
 #include "database/message-table.h"
 
@@ -104,7 +108,7 @@ static void print_used_resolvers(const char *message)
 	}
 }
 
-static char *resolveHostname(const char *addr)
+char *resolveHostname(const char *addr)
 {
 	// Get host name
 	struct hostent *he = NULL;
@@ -457,10 +461,13 @@ void *DNSclient_thread(void *val)
 	// Set thread name
 	prctl(PR_SET_NAME, "DNS client", 0, 0, 0);
 
+	// Initial delay until we first try to resolve anything
+	sleepms(2000);
+
 	while(!killed)
 	{
 		// Run every minute to resolve only new clients and upstream servers
-		if(time(NULL) % RESOLVE_INTERVAL == 0)
+		if(resolver_ready && time(NULL) % RESOLVE_INTERVAL == 0)
 		{
 			// Try to resolve new client host names (onlynew=true)
 			resolveClients(true);
@@ -471,12 +478,15 @@ void *DNSclient_thread(void *val)
 		}
 
 		// Run every hour to update possibly changed client host names
-		if(time(NULL) % RERESOLVE_INTERVAL == 0)
+		if(resolver_ready && time(NULL) % RERESOLVE_INTERVAL == 0)
 		{
 			// Try to resolve all client host names (onlynew=false)
 			resolveClients(false);
 			// Try to resolve all upstream destination host names (onlynew=false)
 			resolveForwardDestinations(false);
+			// Try to resolve host names from clients in the network table
+			// which have empty/undefined host names
+			resolveNetworkTableNames();
 			// Prevent immediate re-run of this routine
 			sleepms(500);
 		}

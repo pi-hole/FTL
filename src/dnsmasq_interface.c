@@ -59,8 +59,18 @@ static unsigned char force_next_DNS_reply = 0u;
 // Adds debug information to the regular pihole.log file
 char debug_dnsmasq_lines = 0;
 
+// Fork-private copy of the interface name the most recent query came from
+static char next_iface[IFNAMSIZ] = "";
+
 unsigned char* pihole_privacylevel = &config.privacylevel;
 const char flagnames[][12] = {"F_IMMORTAL ", "F_NAMEP ", "F_REVERSE ", "F_FORWARD ", "F_DHCP ", "F_NEG ", "F_HOSTS ", "F_IPV4 ", "F_IPV6 ", "F_BIGNAME ", "F_NXDOMAIN ", "F_CNAME ", "F_DNSKEY ", "F_CONFIG ", "F_DS ", "F_DNSSECOK ", "F_UPSTREAM ", "F_RRNAME ", "F_SERVER ", "F_QUERY ", "F_NOERR ", "F_AUTH ", "F_DNSSEC ", "F_KEYTAG ", "F_SECSTAT ", "F_NO_RR ", "F_IPSET ", "F_NOEXTRA ", "F_SERVFAIL", "F_RCODE"};
+
+// Store interface the next query will come from for later usage
+void FTL_next_iface(const char *newiface)
+{
+	strncpy(next_iface, newiface, sizeof(next_iface)-1);
+	next_iface[sizeof(next_iface)-1] = '\0';
+}
 
 static bool check_domain_blocked(const char *domain, const int clientID,
                                  clientsData *client, queriesData *query, DNSCacheData *dns_cache,
@@ -548,9 +558,9 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// Log new query if in debug mode
 	if(config.debug & DEBUG_QUERIES)
 	{
-		const char *protostr = (proto == UDP) ? "UDP" : "TCP";
-		logg("**** new %s %s \"%s\" from %s (ID %i, FTL %i, %s:%i)",
-		     protostr, types, domainString, clientIP, id, queryID, file, line);
+		logg("**** new %s %s query \"%s\" from %s:%s (ID %i, FTL %i, %s:%i)",
+		     proto == TCP ? "TCP" : "UDP",
+		     types, domainString, next_iface, clientIP, id, queryID, file, line);
 	}
 
 	// Update counters
@@ -582,6 +592,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	if(query == NULL)
 	{
 		// Encountered memory error, skip query
+		logg("WARN: No memory available, skipping query analysis");
 		// Free allocated memory
 		free(domainString);
 		// Release thread lock
@@ -639,6 +650,48 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// Set lastQuery timer and add one query for network table
 	client->lastQuery = querytimestamp;
 	client->numQueriesARP++;
+
+	// Store interface information in client data (if available)
+	if(client->ifacepos == 0u && next_iface != NULL)
+		client->ifacepos = addstr(next_iface);
+
+	// Set client MAC address from EDNS(0) information (if available)
+	if(config.edns0_ecs && edns->mac_set)
+	{
+		memcpy(client->hwaddr, edns->mac_byte, 6);
+		client->hwlen = 6;
+	}
+
+	// Try to obtain MAC address from dnsmasq's cache (also asks the kernel)
+	if(client->hwlen < 1)
+	{
+		union mysockaddr hwaddr = {{ 0 }};
+		const sa_family_t family = (flags & F_IPV4) ? AF_INET : AF_INET6;
+		hwaddr.sa.sa_family = family;
+		if(family == AF_INET)
+		{
+			hwaddr.sa.sa_family = AF_INET;
+			hwaddr.in.sin_addr.s_addr = addr->addr4.s_addr;
+		}
+		else // AF_INET6
+		{
+			hwaddr.sa.sa_family = AF_INET6;
+			memcpy(&hwaddr.in6.sin6_addr, &addr->addr6, sizeof(addr->addr6));
+			hwaddr.in.sin_addr.s_addr = addr->addr4.s_addr;
+		}
+		client->hwlen = find_mac(&hwaddr, client->hwaddr, 1, time(NULL));
+		if(config.debug & DEBUG_ARP)
+		{
+			if(client->hwlen == 6)
+				logg("find_mac(\"%s\") returned hardware address "
+				     "%02X:%02X:%02X:%02X:%02X:%02X", clientIP,
+				     client->hwaddr[0], client->hwaddr[1], client->hwaddr[2],
+				     client->hwaddr[3], client->hwaddr[4], client->hwaddr[5]);
+			else
+				logg("find_mac(\"%s\") returned %i bytes of data",
+				     clientIP, client->hwlen);
+		}
+	}
 
 	bool blockDomain = FTL_check_blocking(queryID, domainID, clientID, blockingreason);
 
@@ -836,11 +889,19 @@ void FTL_dnsmasq_reload(void)
 	// Reread pihole-FTL.conf to see which debugging flags are set
 	read_debuging_settings(NULL);
 
+	// Gravity database updates
+	// - (Re-)open gravity database connection
+	// - Get number of blocked domains
+	// - Read and compile regex filters (incl. per-client)
+	// - Flush FTL's DNS cache
 	FTL_reload_all_domainlists();
 
 	// Print current set of capabilities if requested via debug flag
 	if(config.debug & DEBUG_CAPS)
 		check_capabilities();
+
+	// Set resolver as ready
+	resolver_ready = true;
 }
 
 void _FTL_reply(const unsigned short flags, const char *name, const union all_addr *addr, const int id,
@@ -1802,6 +1863,12 @@ static void prepare_blocking_metadata(void)
 volatile atomic_flag worker_already_terminating = ATOMIC_FLAG_INIT;
 void FTL_TCP_worker_terminating(bool finished)
 {
+	if(dnsmasq_debug)
+	{
+		// Nothing to be done here, forking does not happen in debug mode
+		return;
+	}
+
 	if(atomic_flag_test_and_set(&worker_already_terminating))
 	{
 		logg("TCP worker already terminating!");
@@ -1834,6 +1901,13 @@ void FTL_TCP_worker_terminating(bool finished)
 // to ending up with a corrupted database.
 void FTL_TCP_worker_created(const int confd, const char *iface_name)
 {
+	if(dnsmasq_debug)
+	{
+		// Nothing to be done here, TCP worker forking does not happen
+		// in debug mode
+		return;
+	}
+
 	// Print this if any debug setting is enabled
 	if(config.debug != 0)
 	{
