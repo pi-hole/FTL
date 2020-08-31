@@ -168,8 +168,8 @@ void getOverTime(const int *sock)
 	{
 		for(int slot = from; slot < until; slot++)
 		{
-			ssend(*sock,"%li %i %i\n",
-			      overTime[slot].timestamp,
+			ssend(*sock,"%lli %i %i\n",
+			      (long long)overTime[slot].timestamp,
 			      overTime[slot].total,
 			      overTime[slot].blocked);
 		}
@@ -182,14 +182,14 @@ void getOverTime(const int *sock)
 		// Send domains over time
 		pack_map16_start(*sock, (uint16_t) (until - from));
 		for(int slot = from; slot < until; slot++) {
-			pack_int32(*sock, overTime[slot].timestamp);
+			pack_int32(*sock, (int32_t)overTime[slot].timestamp);
 			pack_int32(*sock, overTime[slot].total);
 		}
 
 		// Send ads over time
 		pack_map16_start(*sock, (uint16_t) (until - from));
 		for(int slot = from; slot < until; slot++) {
-			pack_int32(*sock, overTime[slot].timestamp);
+			pack_int32(*sock, (int32_t)overTime[slot].timestamp);
 			pack_int32(*sock, overTime[slot].blocked);
 		}
 	}
@@ -649,6 +649,8 @@ void getAllQueries(const char *client_message, const int *sock)
 	// Do we want a more specific version of this command (domain/client/time interval filtered)?
 	int from = 0, until = 0;
 
+	bool showpermitted = true, showblocked = true;
+
 	char *domainname = NULL;
 	bool filterdomainname = false;
 	int domainid = -1;
@@ -761,7 +763,15 @@ void getAllQueries(const char *client_message, const int *sock)
 		// Get client name we want to see only (limit length to 255 chars)
 		clientname = calloc(256, sizeof(char));
 		if(clientname == NULL) return;
-		sscanf(client_message, ">getallqueries-client %255s", clientname);
+		if(command(client_message, ">getallqueries-client-blocked"))
+		{
+			showpermitted = false;
+			sscanf(client_message, ">getallqueries-client-blocked %255s", clientname);
+		}
+		else
+		{
+			sscanf(client_message, ">getallqueries-client %255s", clientname);
+		}
 		filterclientname = true;
 
 		// Iterate through all known clients
@@ -794,6 +804,7 @@ void getAllQueries(const char *client_message, const int *sock)
 			free(clientname);
 			return;
 		}
+
 	}
 
 	int ibeg = 0, num;
@@ -809,7 +820,6 @@ void getAllQueries(const char *client_message, const int *sock)
 
 	// Get potentially existing filtering flags
 	char * filter = read_setupVarsconf("API_QUERY_LOG_SHOW");
-	bool showpermitted = true, showblocked = true;
 	if(filter != NULL)
 	{
 		if((strcmp(filter, "permittedonly")) == 0)
@@ -836,6 +846,10 @@ void getAllQueries(const char *client_message, const int *sock)
 			continue;
 		// Get query type
 		const char *qtype = querytypes[query->type];
+
+		// Hide UNKNOWN queries when not requesting both query status types
+		if(query->status == QUERY_UNKNOWN && !(showpermitted && showblocked))
+			continue;
 
 		// 1 = gravity.list, 4 = wildcard, 5 = black.list
 		if((query->status == QUERY_GRAVITY ||
@@ -938,8 +952,8 @@ void getAllQueries(const char *client_message, const int *sock)
 
 		if(istelnet[*sock])
 		{
-			ssend(*sock,"%li %s %s %s %i %i %i %lu %s %i",
-				query->timestamp,
+			ssend(*sock,"%lli %s %s %s %i %i %i %lu %s %i",
+				(long long)query->timestamp,
 				qtype,
 				domain,
 				clientIPName,
@@ -955,7 +969,7 @@ void getAllQueries(const char *client_message, const int *sock)
 		}
 		else
 		{
-			pack_int32(*sock, query->timestamp);
+			pack_int32(*sock, (int32_t)query->timestamp);
 
 			// Use a fixstr because the length of qtype is always 4 (max is 31 for fixstr)
 			if(!pack_fixstr(*sock, qtype))
@@ -1076,7 +1090,7 @@ void getQueryTypesOverTime(const int *sock)
 		}
 
 		if(istelnet[*sock])
-			ssend(*sock, "%li %.2f %.2f\n", overTime[slot].timestamp, percentageIPv4, percentageIPv6);
+			ssend(*sock, "%lli %.2f %.2f\n", (long long)overTime[slot].timestamp, percentageIPv4, percentageIPv6);
 		else {
 			pack_int32(*sock, overTime[slot].timestamp);
 			pack_float(*sock, percentageIPv4);
@@ -1220,9 +1234,9 @@ void getClientsOverTime(const int *sock)
 	for(int slot = sendit; slot < until; slot++)
 	{
 		if(istelnet[*sock])
-			ssend(*sock, "%li", overTime[slot].timestamp);
+			ssend(*sock, "%lli", (long long)overTime[slot].timestamp);
 		else
-			pack_int32(*sock, overTime[slot].timestamp);
+			pack_int32(*sock, (int32_t)overTime[slot].timestamp);
 
 		// Loop over forward destinations to generate output to be sent to the client
 		for(int clientID = 0; clientID < counters->clients; clientID++)
@@ -1351,9 +1365,9 @@ void getUnknownQueries(const int *sock)
 		const char *clientIP = getstr(client->ippos);
 
 		if(istelnet[*sock])
-			ssend(*sock, "%li %i %i %s %s %s %i %s\n", query->timestamp, queryID, query->id, type, getstr(domain->domainpos), clientIP, query->status, query->complete ? "true" : "false");
+			ssend(*sock, "%lli %i %i %s %s %s %i %s\n", (long long)query->timestamp, queryID, query->id, type, getstr(domain->domainpos), clientIP, query->status, query->complete ? "true" : "false");
 		else {
-			pack_int32(*sock, query->timestamp);
+			pack_int32(*sock, (int32_t)query->timestamp);
 			pack_int32(*sock, query->id);
 
 			// Use a fixstr because the length of qtype is always 4 (max is 31 for fixstr)

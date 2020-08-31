@@ -75,10 +75,37 @@ static bool valid_hostname(char* name, const char* clientip)
 static void print_used_resolvers(const char *message)
 {
 	logg("%s", message);
-	for(unsigned int i = 0u; i < MAXNS; i++)
-		logg(" %u: %s:%d", i,
-		     inet_ntoa(_res.nsaddr_list[i].sin_addr),
-		     ntohs(_res.nsaddr_list[i].sin_port));
+	for(unsigned int i = 0u; i < 2*MAXNS; i++)
+	{
+		int family;
+		in_port_t port;
+		void *addr = NULL;
+		if(i < MAXNS)
+		{
+			// IPv4 name servers
+			addr = &_res.nsaddr_list[i].sin_addr;
+			port = ntohs(_res.nsaddr_list[i].sin_port);
+			family = AF_INET;
+		}
+		else
+		{
+			// Extension name servers (typically IPv6)
+
+			// Some of the entries may not be configured
+			if(_res._u._ext.nsaddrs[i - MAXNS] == NULL)
+				continue;
+			addr = &_res._u._ext.nsaddrs[i - MAXNS]->sin6_addr;
+			port = ntohs(_res._u._ext.nsaddrs[i - MAXNS]->sin6_port);
+			family = _res._u._ext.nsaddrs[i - MAXNS]->sin6_family;
+		}
+
+		// Convert nameserver information to human-readable form
+		char nsname[INET6_ADDRSTRLEN];
+		inet_ntop(family, addr, nsname, INET6_ADDRSTRLEN);
+
+		logg(" %u: %s:%d (IPv%i)", i, nsname, port,
+		     family == AF_INET ? 4 : 6);
+	}
 }
 
 char *resolveHostname(const char *addr)

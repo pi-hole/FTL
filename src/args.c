@@ -21,7 +21,7 @@
 // init_shmem()
 #include "shmem.h"
 
-static bool debug = false;
+bool dnsmasq_debug = false;
 bool daemonmode = true, cli_mode = false;
 int argc_dnsmasq = 0;
 const char** argv_dnsmasq = NULL;
@@ -84,12 +84,12 @@ void parse_args(int argc, char* argv[])
 			argv_dnsmasq = calloc(argc_dnsmasq, sizeof(const char*));
 			argv_dnsmasq[0] = "";
 
-			if(debug)
+			if(dnsmasq_debug)
 				argv_dnsmasq[1] = "-d";
 			else
 				argv_dnsmasq[1] = "-k";
 
-			if(debug)
+			if(dnsmasq_debug)
 			{
 				printf("dnsmasq options: [0]: %s\n", argv_dnsmasq[0]);
 				printf("dnsmasq options: [1]: %s\n", argv_dnsmasq[1]);
@@ -99,7 +99,7 @@ void parse_args(int argc, char* argv[])
 			while(i < argc)
 			{
 				argv_dnsmasq[j++] = strdup(argv[i++]);
-				if(debug)
+				if(dnsmasq_debug)
 					printf("dnsmasq options: [%i]: %s\n", j-1, argv_dnsmasq[j-1]);
 			}
 
@@ -112,11 +112,11 @@ void parse_args(int argc, char* argv[])
 		if(strcmp(argv[i], "d") == 0 ||
 		   strcmp(argv[i], "debug") == 0)
 		{
-			debug = true;
+			dnsmasq_debug = true;
 			daemonmode = false;
 			ok = true;
 
-			// Replace "-k" by "-d" (debug mode implies nofork)
+			// Replace "-k" by "-d" (dnsmasq_debug mode implies nofork)
 			argv_dnsmasq[1] = "-d";
 		}
 
@@ -169,9 +169,9 @@ void parse_args(int argc, char* argv[])
 			// Enable stdout printing
 			cli_mode = true;
 			if(argc == i + 2)
-				exit(regex_test(debug, quiet, argv[i + 1], NULL));
+				exit(regex_test(dnsmasq_debug, quiet, argv[i + 1], NULL));
 			else if(argc == i + 3)
-				exit(regex_test(debug, quiet, argv[i + 1], argv[i + 2]));
+				exit(regex_test(dnsmasq_debug, quiet, argv[i + 1], argv[i + 2]));
 			else
 			{
 				printf("pihole-FTL: invalid option -- '%s' need either one or two parameters\nTry '%s --help' for more information\n", argv[i], argv[0]);

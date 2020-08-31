@@ -31,7 +31,7 @@ static void initSlot(const unsigned int index, const time_t timestamp)
 	// Possible debug printing
 	if(config.debug & DEBUG_OVERTIME)
 	{
-		logg("initSlot(%u, %lu): Zeroing overTime slot", index, timestamp);
+		logg("initSlot(%u, %llu): Zeroing overTime slot", index, (long long)timestamp);
 	}
 
 	// Initialize overTime entry
@@ -71,7 +71,10 @@ void initOverTime(void)
 	time_t timestamp = now - now % 3600 + 3600 - (OVERTIME_INTERVAL / 2);
 
 	if(config.debug & DEBUG_OVERTIME)
-		logg("initOverTime(): Initializing %i slots from %lu to %lu", OVERTIME_SLOTS, timestamp-OVERTIME_SLOTS*OVERTIME_INTERVAL, timestamp);
+		logg("initOverTime(): Initializing %i slots from %llu to %llu",
+		     OVERTIME_SLOTS,
+		     (long long)timestamp-OVERTIME_SLOTS*OVERTIME_INTERVAL,
+		     (long long)timestamp);
 
 	// Iterate over overTime
 	for(int i = OVERTIME_SLOTS-1; i >= 0 ; i--)
@@ -98,13 +101,13 @@ unsigned int getOverTimeID(time_t timestamp)
 	// Check bounds manually
 	if(id < 0)
 	{
-		logg("WARN: getOverTimeID(%lu): %u is negative: %lu", timestamp, id, firstTimestamp);
+		logg("WARN: getOverTimeID(%llu): %u is negative: %llu", (long long)timestamp, id, (long long)firstTimestamp);
 		// Return first timestamp in case negative timestamp was determined
 		return 0;
 	}
 	else if(id > OVERTIME_SLOTS-1)
 	{
-		logg("WARN: getOverTimeID(%lu): %i is too large: %lu", timestamp, id, firstTimestamp);
+		logg("WARN: getOverTimeID(%llu): %i is too large: %llu", (long long)timestamp, id, (long long)firstTimestamp);
 		// Return last timestamp in case a too large timestamp was determined
 		return OVERTIME_SLOTS-1;
 	}
@@ -112,7 +115,7 @@ unsigned int getOverTimeID(time_t timestamp)
 	if(config.debug & DEBUG_OVERTIME)
 	{
 		// Debug output
-		logg("getOverTimeID(%lu): %i", timestamp, id);
+		logg("getOverTimeID(%llu): %i", (long long)timestamp, id);
 	}
 
 	return (unsigned int) id;
@@ -138,8 +141,8 @@ void moveOverTimeMemory(const time_t mintime)
 
 	if(config.debug & DEBUG_OVERTIME)
 	{
-		logg("moveOverTimeMemory(): IS: %lu, SHOULD: %lu, MOVING: %u",
-		     oldestOverTimeIS, oldestOverTimeSHOULD, moveOverTime);
+		logg("moveOverTimeMemory(): IS: %llu, SHOULD: %llu, MOVING: %u",
+		     (long long)oldestOverTimeIS, (long long)oldestOverTimeSHOULD, moveOverTime);
 	}
 
 	// Check if the move over amount is valid. This prevents errors if the

@@ -60,7 +60,7 @@ static unsigned char force_next_DNS_reply = 0u;
 char debug_dnsmasq_lines = 0;
 
 // Fork-private copy of the interface name the most recent query came from
-static char next_iface[IFNAMSIZ] = "-";
+static char next_iface[IFNAMSIZ] = "";
 
 unsigned char* pihole_privacylevel = &config.privacylevel;
 const char flagnames[][12] = {"F_IMMORTAL ", "F_NAMEP ", "F_REVERSE ", "F_FORWARD ", "F_DHCP ", "F_NEG ", "F_HOSTS ", "F_IPV4 ", "F_IPV6 ", "F_BIGNAME ", "F_NXDOMAIN ", "F_CNAME ", "F_DNSKEY ", "F_CONFIG ", "F_DS ", "F_DNSSECOK ", "F_UPSTREAM ", "F_RRNAME ", "F_SERVER ", "F_QUERY ", "F_NOERR ", "F_AUTH ", "F_DNSSEC ", "F_KEYTAG ", "F_SECSTAT ", "F_NO_RR ", "F_IPSET ", "F_NOEXTRA ", "F_SERVFAIL", "F_RCODE"};
@@ -657,6 +657,13 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// Store interface information in client data (if available)
 	if(client->ifacepos == 0u && next_iface != NULL)
 		client->ifacepos = addstr(next_iface);
+
+	// Set client MAC address from EDNS(0) information (if available)
+	if(config.edns0_ecs && edns->mac_set)
+	{
+		memcpy(client->hwaddr, edns->mac_byte, 6);
+		client->hwlen = 6;
+	}
 
 	// Try to obtain MAC address from dnsmasq's cache (also asks the kernel)
 	if(client->hwlen < 1)
@@ -1858,6 +1865,12 @@ static void prepare_blocking_metadata(void)
 volatile atomic_flag worker_already_terminating = ATOMIC_FLAG_INIT;
 void FTL_TCP_worker_terminating(bool finished)
 {
+	if(dnsmasq_debug)
+	{
+		// Nothing to be done here, forking does not happen in debug mode
+		return;
+	}
+
 	if(atomic_flag_test_and_set(&worker_already_terminating))
 	{
 		logg("TCP worker already terminating!");
@@ -1890,6 +1903,13 @@ void FTL_TCP_worker_terminating(bool finished)
 // to ending up with a corrupted database.
 void FTL_TCP_worker_created(const int confd, const char *iface_name)
 {
+	if(dnsmasq_debug)
+	{
+		// Nothing to be done here, TCP worker forking does not happen
+		// in debug mode
+		return;
+	}
+
 	// Print this if any debug setting is enabled
 	if(config.debug != 0)
 	{

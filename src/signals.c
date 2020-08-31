@@ -92,7 +92,7 @@ static void __attribute__((noreturn)) SIGSEGV_handler(int sig, siginfo_t *si, vo
 
 	if(FTLstarttime != 0)
 	{
-		logg("FTL has been running for %li seconds", time(NULL)-FTLstarttime);
+		logg("FTL has been running for %lli seconds", (long long)time(NULL) - FTLstarttime);
 	}
 	log_FTL_version(true);
 	char namebuf[16];
