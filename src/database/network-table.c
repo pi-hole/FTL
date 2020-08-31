@@ -1100,11 +1100,11 @@ void parse_neighbor_cache(void)
 	// Remove all but the most recent IP addresses not seen for more than a certain time
 	if(config.network_expire > 0u)
 	{
+		const time_t limit = time(NULL)-24*3600*config.network_expire;
 		dbquery("DELETE FROM network_addresses "
-		               "WHERE lastSeen < cast(strftime('%%s', 'now') as int)-%u;",
-		                     config.network_expire);
+		               "WHERE lastSeen < %u;", limit);
 		dbquery("UPDATE network_addresses SET name = NULL "
-		               "WHERE nameUpdated < cast(strftime('%%s', 'now') as int)-%u;", config.network_expire);
+		               "WHERE nameUpdated < %u;", limit);
 	}
 
 	// Start collecting database commands
@@ -1319,9 +1319,6 @@ void parse_neighbor_cache(void)
 	dbquery("DELETE FROM network WHERE id NOT IN "
 	                                  "(SELECT network_id from network_addresses) "
 	                              "AND hwaddr LIKE 'ip-%%';");
-
-	// Delete addresses from network_addresses table which have not be seen for 7 days
-	dbquery("DELETE FROM network_addresses WHERE lastSeen < cast(strftime('%%s', 'now') as int)-604800;");
 
 	// Actually update the database
 	if((rc = dbquery("END TRANSACTION")) != SQLITE_OK) {
