@@ -1732,7 +1732,7 @@ char *__attribute__((malloc)) getNameFromIP(const char *ipaddr)
 		return NULL;
 	}
 
-	// Prepare SQLite statement
+	// Check for a host name associated with the same IP address
 	sqlite3_stmt *stmt = NULL;
 	const char *querystr = "SELECT name FROM network_addresses WHERE name IS NOT NULL AND ip = ?;";
 	int rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &stmt, NULL);
@@ -1762,16 +1762,70 @@ char *__attribute__((malloc)) getNameFromIP(const char *ipaddr)
 	{
 		// Database record found (result might be empty)
 		name = strdup((char*)sqlite3_column_text(stmt, 0));
+
+		if(config.debug & DEBUG_DATABASE)
+			logg("Found database host name (same address) %s -> %s", ipaddr, name);
+	}
+	else
+	{
+		// Not found or error (will be logged automatically through our SQLite3 hook)
+	}
+
+	// Finalize statement
+	sqlite3_reset(stmt);
+	sqlite3_finalize(stmt);
+
+	// Return here if we found the name
+	if(name != NULL)
+	{
+		if(!db_already_open)
+			dbclose();
+
+		return name;
+	}
+
+	// Nothing found for the exact IP address
+	// Check for a host name associated with the same device (but another IP address)
+	querystr = "SELECT name FROM network_addresses "
+	                       "WHERE name IS NOT NULL AND "
+	                             "network_id = (SELECT network_id FROM network_addresses"
+	                                                             "WHERE ip = ?) "
+	                       "ORDER BY lastSeen DESC LIMIT 1";
+	rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &stmt, NULL);
+	if( rc != SQLITE_OK ){
+		logg("getNameFromIP(\"%s\") - SQL error prepare: %s",
+		ipaddr, sqlite3_errstr(rc));
+		if(!db_already_open)
+			dbclose();
+		return NULL;
+	}
+
+	// Bind ipaddr to prepared statement
+	if((rc = sqlite3_bind_text(stmt, 1, ipaddr, -1, SQLITE_STATIC)) != SQLITE_OK)
+	{
+		logg("getNameFromIP(\"%s\"): Failed to bind ip: %s",
+		ipaddr, sqlite3_errstr(rc));
+		sqlite3_reset(stmt);
+		sqlite3_finalize(stmt);
+		if(!db_already_open)
+			dbclose();
+		return NULL;
+	}
+
+	rc = sqlite3_step(stmt);
+	if(rc == SQLITE_ROW)
+	{
+		// Database record found (result might be empty)
+		name = strdup((char*)sqlite3_column_text(stmt, 0));
+
+		if(config.debug & DEBUG_DATABASE)
+			logg("Found database host name (same device) %s -> %s", ipaddr, name);
 	}
 	else
 	{
 		// Not found or error (will be logged automatically through our SQLite3 hook)
 		name = NULL;
 	}
-
-	if(config.debug & DEBUG_DATABASE && name != NULL)
-		logg("Found database host name %s -> %s", ipaddr, name);
-
 	// Finalize statement and close database handle
 	sqlite3_reset(stmt);
 	sqlite3_finalize(stmt);
