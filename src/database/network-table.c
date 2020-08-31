@@ -1788,7 +1788,7 @@ char *__attribute__((malloc)) getNameFromIP(const char *ipaddr)
 	// Check for a host name associated with the same device (but another IP address)
 	querystr = "SELECT name FROM network_addresses "
 	                       "WHERE name IS NOT NULL AND "
-	                             "network_id = (SELECT network_id FROM network_addresses"
+	                             "network_id = (SELECT network_id FROM network_addresses "
 	                                                             "WHERE ip = ?) "
 	                       "ORDER BY lastSeen DESC LIMIT 1";
 	rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &stmt, NULL);
