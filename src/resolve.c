@@ -9,12 +9,14 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
+#include "resolve.h"
 #include "shmem.h"
 #include "memory.h"
-#include "datastructure.h"
-#include "resolve.h"
+// struct config
 #include "config.h"
+// sleepms()
 #include "timers.h"
+// logg()
 #include "log.h"
 // global variable killed
 #include "signals.h"

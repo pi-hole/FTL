@@ -12,12 +12,12 @@
 #include "FTL.h"
 // public prototypes
 #include "events.h"
+// atomic_flag_test_and_set()
+#include <stdatomic.h>
 // struct config
 #include "config.h"
 // logg()
 #include "log.h"
-// atomic_flag_test_and_set()
-#include <stdatomic.h>
 
 // Private prototypes
 static const char *eventtext(const enum events event);

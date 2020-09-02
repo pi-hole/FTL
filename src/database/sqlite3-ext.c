@@ -8,8 +8,8 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "database/sqlite3.h"
-#include "database/sqlite3-ext.h"
+#include "sqlite3.h"
+#include "sqlite3-ext.h"
 
 // inet_pton
 #include <arpa/inet.h>
@@ -22,12 +22,12 @@
 // free()
 #include <stdlib.h>
 // logg()
-#include "log.h"
+#include "../log.h"
 // struct config
-#include "config.h"
+#include "../config.h"
 
 // isMAC()
-#include "database/network-table.h"
+#include "network-table.h"
 
 // Counting number of occurrences of a specific char in a string
 static size_t __attribute__ ((pure)) count_char(const char *haystack, const char needle)

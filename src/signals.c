@@ -13,11 +13,12 @@
 #include <execinfo.h>
 #endif
 #include "signals.h"
+// logg()
 #include "log.h"
+// free()
 #include "memory.h"
 // ls_dir()
 #include "files.h"
-#include "config.h"
 // gettid()
 #include "daemon.h"
 // Eventqueue routines
