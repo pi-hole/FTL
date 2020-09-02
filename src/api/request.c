@@ -8,16 +8,19 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "FTL.h"
+#include "../FTL.h"
 #include "api.h"
-#include "shmem.h"
-#include "timers.h"
+#include "../shmem.h"
+#include "../timers.h"
 #include "request.h"
 #include "socket.h"
-#include "resolve.h"
-#include "regex_r.h"
-#include "database/network-table.h"
-#include "log.h"
+#include "../resolve.h"
+#include "../regex_r.h"
+#include "../database/network-table.h"
+#include "../log.h"
+#include "../signals.h"
+// Eventqueue routines
+#include "../events.h"
 
 bool __attribute__((pure)) command(const char *client_message, const char* cmd) {
 	return strstr(client_message, cmd) != NULL;
@@ -155,8 +158,7 @@ void process_request(const char *client_message, int *sock)
 		// Important: Don't obtain a lock for this request
 		//            Locking will be done internally when needed
 		// onlynew=false -> reresolve all host names
-		resolveClients(false);
-		resolveForwardDestinations(false);
+		set_event(RELOAD_PRIVACY_LEVEL);
 		logg("Done re-resolving host names");
 	}
 	else if(command(client_message, ">recompile-regex"))

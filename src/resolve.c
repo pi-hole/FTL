@@ -28,6 +28,8 @@
 #include "daemon.h"
 // logg_hostname_warning()
 #include "database/message-table.h"
+// Eventqueue routines
+#include "events.h"
 
 static bool res_initialized = false;
 
@@ -467,7 +469,7 @@ void *DNSclient_thread(void *val)
 	while(!killed)
 	{
 		// Run every minute to resolve only new clients and upstream servers
-		if(resolver_ready && time(NULL) % RESOLVE_INTERVAL == 0)
+		if(resolver_ready && (time(NULL) % RESOLVE_INTERVAL == 0))
 		{
 			// Try to resolve new client host names (onlynew=true)
 			resolveClients(true);
@@ -478,7 +480,11 @@ void *DNSclient_thread(void *val)
 		}
 
 		// Run every hour to update possibly changed client host names
-		if(resolver_ready && time(NULL) % RERESOLVE_INTERVAL == 0)
+		if(resolver_ready && (time(NULL) % RERESOLVE_INTERVAL == 0))
+			set_event(RERESOLVE_HOSTNAMES);
+
+		// Process resolver related event queue elements
+		if(get_and_clear_event(RERESOLVE_HOSTNAMES))
 		{
 			// Try to resolve all client host names (onlynew=false)
 			resolveClients(false);
@@ -491,8 +497,8 @@ void *DNSclient_thread(void *val)
 			sleepms(500);
 		}
 
-		// Idle for 0.5 sec before checking again the time criteria
-		sleepms(500);
+		// Idle for 0.1 sec before checking again the time criteria
+		sleepms(100);
 	}
 
 	return NULL;

@@ -17,11 +17,11 @@
 #include "memory.h"
 // ls_dir()
 #include "files.h"
-// FTL_reload_all_domainlists()
-#include "datastructure.h"
 #include "config.h"
 // gettid()
 #include "daemon.h"
+// Eventqueue routines
+#include "events.h"
 
 #define BINARY_NAME "pihole-FTL"
 
@@ -171,6 +171,7 @@ static void __attribute__((noreturn)) SIGSEGV_handler(int sig, siginfo_t *si, vo
 	exit(EXIT_FAILURE);
 }
 
+#define RTSIG_MAX 2
 static void SIGRT_handler(int signum, siginfo_t *si, void *unused)
 { 
 	// Ignore real-time signals outside of the main process (TCP forks)
@@ -189,10 +190,10 @@ static void SIGRT_handler(int signum, siginfo_t *si, void *unused)
 		// - exact blacklist
 		// - exact blacklist
 		// WITHOUT wiping the DNS cache itself
-		FTL_reload_all_domainlists();
+		set_event(RELOAD_GRAVITY);
 
 		// Reload the privacy level in case the user changed it
-		get_privacy_level(NULL);
+		set_event(RELOAD_PRIVACY_LEVEL);
 	}
 	else if(rtsig == 2)
 	{
@@ -232,7 +233,7 @@ void handle_realtime_signals(void)
 	mpid = getpid();
 
 	// Catch first five real-time signals
-	for(unsigned int i = 0; i < 5; i++)
+	for(unsigned char i = 0; i < (RTSIG_MAX+1); i++)
 	{
 		struct sigaction SIGACTION;
 		memset(&SIGACTION, 0, sizeof(struct sigaction));

@@ -117,6 +117,8 @@ set(sources
         edns0.c
         edns0.h
         enums.h
+        events.c
+        events.h
         files.c
         files.h
         FTL.h
