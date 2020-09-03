@@ -81,7 +81,7 @@ void DB_save_queries(void)
 		return;
 	}
 
-	rc = sqlite3_prepare_v2(FTL_db, "INSERT INTO queries VALUES (NULL,?,?,?,?,?,?)", -1, &stmt, NULL);
+	rc = sqlite3_prepare_v2(FTL_db, "INSERT INTO queries VALUES (NULL,?,?,?,?,?,?,?)", -1, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
 		const char *text, *spaces;
@@ -163,6 +163,31 @@ void DB_save_queries(void)
 		else
 		{
 			sqlite3_bind_null(stmt, 6);
+		}
+
+		// ADDITIONAL_INFO
+		if(query->status == QUERY_GRAVITY_CNAME ||
+		   query->status == QUERY_REGEX_CNAME ||
+		   query->status == QUERY_BLACKLIST_CNAME)
+		{
+			// Restore domain blocked during deep CNAME inspection if applicable
+			const char* cname = getCNAMEDomainString(query);
+			sqlite3_bind_text(stmt, 7, cname, -1, SQLITE_STATIC);
+		}
+		else if(query->status == QUERY_REGEX)
+		{
+			// Restore regex ID if applicable
+			const int cacheID = findCacheID(query->domainID, query->clientID, query->type);
+			DNSCacheData *cache = getDNSCache(cacheID, true);
+			if(cache != NULL)
+				sqlite3_bind_int(stmt, 7, cache->black_regex_idx);
+			else
+				sqlite3_bind_null(stmt, 7);
+		}
+		else
+		{
+			// Nothing to add here
+			sqlite3_bind_null(stmt, 7);
 		}
 
 		// Step and check if successful
@@ -303,23 +328,24 @@ void DB_read_queries(void)
 	// Get time stamp 24 hours in the past
 	const time_t now = time(NULL);
 	const time_t mintime = now - config.maxlogage;
-	char *querystr = NULL;
-	int rc = asprintf(&querystr, "SELECT * FROM queries WHERE timestamp >= %li", mintime);
-	if(rc < 42)
-	{
-		logg("DB_read_queries() - Memory allocation error: %s", sqlite3_errstr(rc));
-		dbclose();
-		return;
-	}
+	const char *querystr = "SELECT * FROM queries WHERE timestamp >= ?";
 	// Log FTL_db query string in debug mode
 	if(config.debug & DEBUG_DATABASE)
-		logg("DB_read_queries(): \"%s\"", querystr);
+		logg("DB_read_queries(): \"%s\" with ? = %lli", querystr, (long long)mintime);
 
 	// Prepare SQLite3 statement
 	sqlite3_stmt* stmt = NULL;
-	rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &stmt, NULL);
+	int rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK ){
 		logg("DB_read_queries() - SQL error prepare: %s", sqlite3_errstr(rc));
+		dbclose();
+		return;
+	}
+
+	// Bind limit
+	if((rc = sqlite3_bind_int(stmt, 1, mintime)) != SQLITE_OK)
+	{
+		logg("DB_read_queries() - Failed to bind type mintime: %s", sqlite3_errstr(rc));
 		dbclose();
 		return;
 	}
@@ -332,12 +358,12 @@ void DB_read_queries(void)
 		// 1483228800 = 01/01/2017 @ 12:00am (UTC)
 		if(queryTimeStamp < 1483228800)
 		{
-			logg("FTL_db warn: TIMESTAMP should be larger than 01/01/2017 but is %li", queryTimeStamp);
+			logg("FTL_db warn: TIMESTAMP should be larger than 01/01/2017 but is %lli", (long long)queryTimeStamp);
 			continue;
 		}
 		if(queryTimeStamp > now)
 		{
-			if(config.debug & DEBUG_DATABASE) logg("FTL_db warn: Skipping query logged in the future (%li)", queryTimeStamp);
+			if(config.debug & DEBUG_DATABASE) logg("FTL_db warn: Skipping query logged in the future (%lli)", (long long)queryTimeStamp);
 			continue;
 		}
 
@@ -364,14 +390,14 @@ void DB_read_queries(void)
 		const char * domainname = (const char *)sqlite3_column_text(stmt, 4);
 		if(domainname == NULL)
 		{
-			logg("FTL_db warn: DOMAIN should never be NULL, %li", queryTimeStamp);
+			logg("FTL_db warn: DOMAIN should never be NULL, %lli", (long long)queryTimeStamp);
 			continue;
 		}
 
 		const char * clientIP = (const char *)sqlite3_column_text(stmt, 5);
 		if(clientIP == NULL)
 		{
-			logg("FTL_db warn: CLIENT should never be NULL, %li", queryTimeStamp);
+			logg("FTL_db warn: CLIENT should never be NULL, %lli", (long long)queryTimeStamp);
 			continue;
 		}
 
@@ -390,7 +416,8 @@ void DB_read_queries(void)
 		{
 			if(upstream == NULL)
 			{
-				logg("WARN (during database import): FORWARD should not be NULL with status QUERY_FORWARDED (timestamp: %li), skipping entry", queryTimeStamp);
+				logg("WARN (during database import): FORWARD should not be NULL with status QUERY_FORWARDED (timestamp: %lli), skipping entry",
+				     (long long)queryTimeStamp);
 				continue;
 			}
 			upstreamID = findUpstreamID(upstream, true);
@@ -444,6 +471,34 @@ void DB_read_queries(void)
 		// Increase DNS queries counter
 		counters->queries++;
 
+		// Get additional information from the additional_info column if applicable
+		if(status == QUERY_GRAVITY_CNAME ||
+		   status == QUERY_REGEX_CNAME ||
+		   status == QUERY_BLACKLIST_CNAME)
+		{
+			// QUERY_*_CNAME: Getdomain causing the blocking
+			const char *CNAMEdomain = (const char *)sqlite3_column_text(stmt, 7);
+			if(CNAMEdomain != NULL && strlen(CNAMEdomain) > 0)
+			{
+				// Add domain to FTL's memory but do not count it. Seeing a
+				// domain in the middle of a CNAME trajectory does not mean
+				// it was queried intentionally.
+				const int CNAMEdomainID = findDomainID(CNAMEdomain, false);
+				query->CNAME_domainID = CNAMEdomainID;
+			}
+		}
+		else if(status == QUERY_REGEX)
+		{
+			// QUERY_REGEX: Set ID regex which was the reson for blocking
+			const int cacheID = findCacheID(query->domainID, query->clientID, query->type);
+			DNSCacheData *cache = getDNSCache(cacheID, true);
+			// Only load if
+			//  a) we have a chace entry
+			//  b) the value of additional_info is not NULL (0 bytes storage size)
+			if(cache != NULL && sqlite3_column_bytes(stmt, 7) != 0)
+				cache->black_regex_idx = sqlite3_column_int(stmt, 7);
+		}
+
 		// Increment status counters
 		switch(status)
 		{
@@ -457,9 +512,9 @@ void DB_read_queries(void)
 			case QUERY_EXTERNAL_BLOCKED_IP: // Blocked by external provider
 			case QUERY_EXTERNAL_BLOCKED_NULL: // Blocked by external provider
 			case QUERY_EXTERNAL_BLOCKED_NXRA: // Blocked by external provider
-			case QUERY_GRAVITY_CNAME: // Blocked by gravity
-			case QUERY_REGEX_CNAME: // Blocked by regex blacklist
-			case QUERY_BLACKLIST_CNAME: // Blocked by exact blacklist
+			case QUERY_GRAVITY_CNAME: // Blocked by gravity (inside CNAME path)
+			case QUERY_REGEX_CNAME: // Blocked by regex blacklist (inside CNAME path)
+			case QUERY_BLACKLIST_CNAME: // Blocked by exact blacklist (inside CNAME path)
 				counters->blocked++;
 				// Get domain pointer
 				domainsData* domain = getDomain(domainID, true);
@@ -483,7 +538,7 @@ void DB_read_queries(void)
 
 			default:
 				logg("Error: Found unknown status %i in long term database!", status);
-				logg("       Timestamp: %li", queryTimeStamp);
+				logg("       Timestamp: %lli", (long long)queryTimeStamp);
 				logg("       Continuing anyway...");
 				break;
 		}
@@ -503,5 +558,4 @@ void DB_read_queries(void)
 	// Finalize SQLite3 statement
 	sqlite3_finalize(stmt);
 	dbclose();
-	free(querystr);
 }

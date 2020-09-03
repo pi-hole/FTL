@@ -11,6 +11,7 @@ version*
 /cmake/
 /cmake-build-debug/
 /cmake-build-release/
+/cmake/
 
 # IDE files
 .idea/

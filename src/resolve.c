@@ -22,6 +22,10 @@
 #include "database/network-table.h"
 // struct _res
 #include <resolv.h>
+// resolveNetworkTableNames()
+#include "database/network-table.h"
+// resolver_ready
+#include "daemon.h"
 // logg_hostname_warning()
 #include "database/message-table.h"
 
@@ -71,13 +75,40 @@ static bool valid_hostname(char* name, const char* clientip)
 static void print_used_resolvers(const char *message)
 {
 	logg("%s", message);
-	for(unsigned int i = 0u; i < MAXNS; i++)
-		logg(" %u: %s:%d", i,
-		     inet_ntoa(_res.nsaddr_list[i].sin_addr),
-		     ntohs(_res.nsaddr_list[i].sin_port));
+	for(unsigned int i = 0u; i < 2*MAXNS; i++)
+	{
+		int family;
+		in_port_t port;
+		void *addr = NULL;
+		if(i < MAXNS)
+		{
+			// IPv4 name servers
+			addr = &_res.nsaddr_list[i].sin_addr;
+			port = ntohs(_res.nsaddr_list[i].sin_port);
+			family = AF_INET;
+		}
+		else
+		{
+			// Extension name servers (typically IPv6)
+
+			// Some of the entries may not be configured
+			if(_res._u._ext.nsaddrs[i - MAXNS] == NULL)
+				continue;
+			addr = &_res._u._ext.nsaddrs[i - MAXNS]->sin6_addr;
+			port = ntohs(_res._u._ext.nsaddrs[i - MAXNS]->sin6_port);
+			family = _res._u._ext.nsaddrs[i - MAXNS]->sin6_family;
+		}
+
+		// Convert nameserver information to human-readable form
+		char nsname[INET6_ADDRSTRLEN];
+		inet_ntop(family, addr, nsname, INET6_ADDRSTRLEN);
+
+		logg(" %u: %s:%d (IPv%i)", i, nsname, port,
+		     family == AF_INET ? 4 : 6);
+	}
 }
 
-static char *resolveHostname(const char *addr)
+char *resolveHostname(const char *addr)
 {
 	// Get host name
 	struct hostent *he = NULL;
@@ -430,10 +461,13 @@ void *DNSclient_thread(void *val)
 	// Set thread name
 	prctl(PR_SET_NAME, "DNS client", 0, 0, 0);
 
+	// Initial delay until we first try to resolve anything
+	sleepms(2000);
+
 	while(!killed)
 	{
 		// Run every minute to resolve only new clients and upstream servers
-		if(time(NULL) % RESOLVE_INTERVAL == 0)
+		if(resolver_ready && time(NULL) % RESOLVE_INTERVAL == 0)
 		{
 			// Try to resolve new client host names (onlynew=true)
 			resolveClients(true);
@@ -444,12 +478,15 @@ void *DNSclient_thread(void *val)
 		}
 
 		// Run every hour to update possibly changed client host names
-		if(time(NULL) % RERESOLVE_INTERVAL == 0)
+		if(resolver_ready && time(NULL) % RERESOLVE_INTERVAL == 0)
 		{
 			// Try to resolve all client host names (onlynew=false)
 			resolveClients(false);
 			// Try to resolve all upstream destination host names (onlynew=false)
 			resolveForwardDestinations(false);
+			// Try to resolve host names from clients in the network table
+			// which have empty/undefined host names
+			resolveNetworkTableNames();
 			// Prevent immediate re-run of this routine
 			sleepms(500);
 		}

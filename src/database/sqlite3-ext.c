@@ -26,6 +26,35 @@
 // struct config
 #include "config.h"
 
+// isMAC()
+#include "database/network-table.h"
+
+// Counting number of occurrences of a specific char in a string
+static size_t __attribute__ ((pure)) count_char(const char *haystack, const char needle)
+{
+	size_t count = 0u;
+	while(*haystack)
+		if (*haystack++ == needle)
+			++count;
+	return count;
+}
+
+// Identify MAC addresses using a set of suitable criteria
+static bool __attribute__ ((pure)) isMAC(const char *input)
+{
+	if(input != NULL &&                // Valid input
+	   strlen(input) == 17u &&         // MAC addresses are always 17 chars long (6 bytes + 5 colons)
+	   count_char(input, ':') == 5u && // MAC addresses always have 5 colons
+	   strstr(input, "::") == NULL)    // No double-colons (IPv6 address abbreviation)
+	   {
+		// This is a MAC address of the form AA:BB:CC:DD:EE:FF
+		return true;
+	   }
+
+	// Not a MAC address
+	return false;
+}
+
 static void subnet_match_impl(sqlite3_context *context, int argc, sqlite3_value **argv)
 {
 	// Exactly two arguments should be submitted to this routine
@@ -39,7 +68,7 @@ static void subnet_match_impl(sqlite3_context *context, int argc, sqlite3_value 
 	if (sqlite3_value_type(argv[0]) != SQLITE_TEXT ||
 	    sqlite3_value_type(argv[1]) != SQLITE_TEXT)
 	{
-		logg("Invoked subnet_match() with non-text arguments: %d, %d",
+		logg("SQL: Invoked subnet_match() with non-text arguments: %d, %d",
 		     sqlite3_value_type(argv[0]), sqlite3_value_type(argv[1]));
 		sqlite3_result_int(context, 0);
 		return;
@@ -48,13 +77,21 @@ static void subnet_match_impl(sqlite3_context *context, int argc, sqlite3_value 
 	// Analyze input supplied to our SQLite subroutine
 	// From the DB side (first argument) ...
 	const char *addrDBcidr = (const char*)sqlite3_value_text(argv[0]);
-	bool isIPv6_DB = strchr(addrDBcidr, ':') != NULL;
 	// ... and from FTL's side (second argument)
 	const char *addrFTL = (const char*)sqlite3_value_text(argv[1]);
-	bool isIPv6_FTL = strchr(addrFTL, ':') != NULL;
+
+	// Return early (no match) if database entry is a MAC address
+	// We can skip all computations in this case
+	if(isMAC(addrDBcidr))
+	{
+		sqlite3_result_int(context, 0);
+		return;
+	}
 
 	// Return early (no match) if IP types are different
 	// We can skip all computations in this case
+	bool isIPv6_DB = strchr(addrDBcidr, ':') != NULL;
+	bool isIPv6_FTL = strchr(addrFTL, ':') != NULL;
 	if(isIPv6_DB != isIPv6_FTL)
 	{
 		sqlite3_result_int(context, 0);
@@ -62,11 +99,19 @@ static void subnet_match_impl(sqlite3_context *context, int argc, sqlite3_value 
 	}
 
 	// Extract possible CIDR from database IP string
-	int cidr = isIPv6_DB ? 128 : 32;
-	char *addrDB = NULL;
 	// sscanf() will not overwrite the pre-defined CIDR in cidr if
 	// no CIDR is specified in the database
-	sscanf(addrDBcidr, "%m[^/]/%i", &addrDB, &cidr);
+	int cidr = isIPv6_DB ? 128 : 32;
+	char *addrDB = NULL;
+	const int rt = sscanf(addrDBcidr, "%m[^/]/%i", &addrDB, &cidr);
+
+	// Skip if database row seems to be a CIDR but does not contain an address ('/32' is invalid)
+	// Passing an invalid IP address to inet_pton() causes a SEGFAULT
+	if(rt < 1 || addrDB == NULL)
+	{
+		sqlite3_result_int(context, 0);
+		return;
+	}
 
 	// Convert the Internet host address into binary form in network byte order
 	// We use in6_addr as variable type here as it is guaranteed to be large enough
@@ -74,9 +119,7 @@ static void subnet_match_impl(sqlite3_context *context, int argc, sqlite3_value 
 	struct in6_addr saddrDB = {{{ 0 }}}, saddrFTL = {{{ 0 }}};
 	if (inet_pton(isIPv6_DB ? AF_INET6 : AF_INET, addrDB, &saddrDB) == 0)
 	{
-		//sqlite3_result_error(context, "Passed a malformed IP address (database)", -1);
-		// Return non-fatal "NO MATCH" if address is invalid
-		logg("Passed a malformed DB IP address: %s/%i (%s)", addrDB, cidr, addrDBcidr);
+		// This may happen when trying to analyze a hostname, skip this entry and return NO MATCH (= 0)
 		free(addrDB);
 		sqlite3_result_int(context, 0);
 		return;
@@ -91,7 +134,7 @@ static void subnet_match_impl(sqlite3_context *context, int argc, sqlite3_value 
 	{
 		//sqlite3_result_error(context, "Passed a malformed IP address (FTL)", -1);
 		// Return non-fatal "NO MATCH" if address is invalid
-		logg("Passed a malformed FTL IP address: %s", addrFTL);
+		logg("Malformed FTL IP address: %s", addrFTL);
 		sqlite3_result_int(context, 0);
 		return;
 	}

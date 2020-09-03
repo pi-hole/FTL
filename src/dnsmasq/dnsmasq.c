@@ -1841,7 +1841,8 @@ static void check_dns_listeners(time_t now)
 		    addr.addr4 = tcp_addr.in.sin_addr;
 		  
 		  for (iface = daemon->interfaces; iface; iface = iface->next)
-		    if (iface->index == if_index)
+		    if (iface->index == if_index &&
+		        iface->addr.sa.sa_family == tcp_addr.sa.sa_family)
 		      break;
 		  
 		  if (!iface && !loopback_exception(listener->tcpfd, tcp_addr.sa.sa_family, &addr, intr_name))
@@ -1867,6 +1868,8 @@ static void check_dns_listeners(time_t now)
 		}
 	    }
 	  
+	  FTL_next_iface(iface ? iface->name : NULL);
+
 	  if (!client_ok)
 	    {
 	      shutdown(confd, SHUT_RDWR);

@@ -700,7 +700,7 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
   if (!(header->hb4 & HB4_RA) && rcode == NOERROR &&
       server && !(server->flags & SERV_WARNED_RECURSIVE))
     {
-      prettyprint_addr(&server->addr, daemon->namebuff);
+      (void)prettyprint_addr(&server->addr, daemon->namebuff);
       my_syslog(LOG_WARNING, _("nameserver %s refused to do a recursive query"), daemon->namebuff);
       if (!option_bool(OPT_LOG))
 	server->flags |= SERV_WARNED_RECURSIVE;
@@ -991,7 +991,7 @@ void reply_query(int fd, int family, time_t now)
     {
       forward->sentto->edns_pktsz = SAFE_PKTSZ;
       forward->sentto->pktsz_reduced = now;
-      prettyprint_addr(&forward->sentto->addr, daemon->addrbuff);
+      (void)prettyprint_addr(&forward->sentto->addr, daemon->addrbuff);
       my_syslog(LOG_WARNING, _("reducing DNS packet size for nameserver %s to %d"), daemon->addrbuff, SAFE_PKTSZ);
     }
 
@@ -1316,8 +1316,9 @@ void receive_query(struct listener *listen, time_t now)
 		 CMSG_SPACE(sizeof(struct sockaddr_dl))];
 #endif
   } control_u;
+  int family = listen->addr.sa.sa_family;
    /* Can always get recvd interface for IPv6 */
-  int check_dst = !option_bool(OPT_NOWILD) || listen->family == AF_INET6;
+  int check_dst = !option_bool(OPT_NOWILD) || family == AF_INET6;
 
   /************ Pi-hole modification ************/
   bool piholeblocked = false;
@@ -1334,7 +1335,7 @@ void receive_query(struct listener *listen, time_t now)
     {
       auth_dns = listen->iface->dns_auth;
      
-      if (listen->family == AF_INET)
+      if (family == AF_INET)
 	{
 	  dst_addr_4 = dst_addr.addr4 = listen->iface->addr.in.sin_addr;
 	  netmask = listen->iface->netmask;
@@ -1364,9 +1365,9 @@ void receive_query(struct listener *listen, time_t now)
      information disclosure. */
   memset(daemon->packet + n, 0, daemon->edns_pktsz - n);
   
-  source_addr.sa.sa_family = listen->family;
+  source_addr.sa.sa_family = family;
   
-  if (listen->family == AF_INET)
+  if (family == AF_INET)
     {
        /* Source-port == 0 is an error, we can't send back to that. 
 	  http://www.ietf.org/mail-archive/web/dnsop/current/msg11441.html */
@@ -1386,7 +1387,7 @@ void receive_query(struct listener *listen, time_t now)
     {
       struct addrlist *addr;
 
-      if (listen->family == AF_INET6) 
+      if (family == AF_INET6) 
 	{
 	  for (addr = daemon->interface_addrs; addr; addr = addr->next)
 	    if ((addr->flags & ADDRLIST_IPV6) &&
@@ -1415,7 +1416,7 @@ void receive_query(struct listener *listen, time_t now)
 	  return;
 	}
     }
-		
+
   if (check_dst)
     {
       struct ifreq ifr;
@@ -1424,7 +1425,7 @@ void receive_query(struct listener *listen, time_t now)
 	return;
 
 #if defined(HAVE_LINUX_NETWORK)
-      if (listen->family == AF_INET)
+      if (family == AF_INET)
 	for (cmptr = CMSG_FIRSTHDR(&msg); cmptr; cmptr = CMSG_NXTHDR(&msg, cmptr))
 	  if (cmptr->cmsg_level == IPPROTO_IP && cmptr->cmsg_type == IP_PKTINFO)
 	    {
@@ -1437,7 +1438,7 @@ void receive_query(struct listener *listen, time_t now)
 	      if_index = p.p->ipi_ifindex;
 	    }
 #elif defined(IP_RECVDSTADDR) && defined(IP_RECVIF)
-      if (listen->family == AF_INET)
+      if (family == AF_INET)
 	{
 	  for (cmptr = CMSG_FIRSTHDR(&msg); cmptr; cmptr = CMSG_NXTHDR(&msg, cmptr))
 	    {
@@ -1462,7 +1463,7 @@ void receive_query(struct listener *listen, time_t now)
 	}
 #endif
       
-      if (listen->family == AF_INET6)
+      if (family == AF_INET6)
 	{
 	  for (cmptr = CMSG_FIRSTHDR(&msg); cmptr; cmptr = CMSG_NXTHDR(&msg, cmptr))
 	    if (cmptr->cmsg_level == IPPROTO_IPV6 && cmptr->cmsg_type == daemon->v6pktinfo)
@@ -1483,16 +1484,16 @@ void receive_query(struct listener *listen, time_t now)
       if (!indextoname(listen->fd, if_index, ifr.ifr_name))
 	return;
       
-      if (!iface_check(listen->family, &dst_addr, ifr.ifr_name, &auth_dns))
+      if (!iface_check(family, &dst_addr, ifr.ifr_name, &auth_dns))
 	{
 	   if (!option_bool(OPT_CLEVERBIND))
 	     enumerate_interfaces(0); 
-	   if (!loopback_exception(listen->fd, listen->family, &dst_addr, ifr.ifr_name) &&
-	       !label_exception(if_index, listen->family, &dst_addr))
+	   if (!loopback_exception(listen->fd, family, &dst_addr, ifr.ifr_name) &&
+	       !label_exception(if_index, family, &dst_addr))
 	     return;
 	}
 
-      if (listen->family == AF_INET && option_bool(OPT_LOCALISE))
+      if (family == AF_INET && option_bool(OPT_LOCALISE))
 	{
 	  struct irec *iface;
 	  
@@ -1519,6 +1520,10 @@ void receive_query(struct listener *listen, time_t now)
 	  else
 	    dst_addr_4.s_addr = 0;
 	}
+
+    /*********** Pi-hole modification ***********/
+    FTL_next_iface(ifr.ifr_name);
+    /********************************************/
     }
    
   /* log_query gets called indirectly all over the place, so 
@@ -1529,7 +1534,13 @@ void receive_query(struct listener *listen, time_t now)
 #ifdef HAVE_DUMPFILE
   dump_packet(DUMP_QUERY, daemon->packet, (size_t)n, &source_addr, NULL);
 #endif
-	  
+
+  //********************** Pi-hole modification **********************//
+  struct edns_data edns = { 0 };
+  if (find_pseudoheader(header, (size_t)n, NULL, &pheader, NULL, NULL))
+    FTL_parse_pseudoheaders(header, n, &source_addr, &edns);
+  //******************************************************************//
+
   if (extract_request(header, (size_t)n, daemon->namebuff, &type))
     {
 #ifdef HAVE_AUTH
@@ -1537,19 +1548,19 @@ void receive_query(struct listener *listen, time_t now)
 #endif
       char *types = querystr(auth_dns ? "auth" : "query", type);
       
-      if (listen->family == AF_INET) 
+      if (family == AF_INET) 
       {
 	log_query(F_QUERY | F_IPV4 | F_FORWARD, daemon->namebuff, 
 		  (union all_addr *)&source_addr.in.sin_addr, types);
 	piholeblocked = FTL_new_query(F_QUERY | F_IPV4 | F_FORWARD, daemon->namebuff, &blockingreason,
-	              (union all_addr *)&source_addr.in.sin_addr, types, type, daemon->log_display_id, UDP);
+	              (union all_addr *)&source_addr.in.sin_addr, types, type, daemon->log_display_id, &edns, UDP);
       }
       else
       {
 	log_query(F_QUERY | F_IPV6 | F_FORWARD, daemon->namebuff,
 		  (union all_addr *)&source_addr.in6.sin6_addr, types);
 	piholeblocked = FTL_new_query(F_QUERY | F_IPV6 | F_FORWARD, daemon->namebuff, &blockingreason,
-	              (union all_addr *)&source_addr.in6.sin6_addr, types, type, daemon->log_display_id, UDP);
+	              (union all_addr *)&source_addr.in6.sin6_addr, types, type, daemon->log_display_id, &edns, UDP);
       }
 
 #ifdef HAVE_AUTH
@@ -1930,6 +1941,12 @@ unsigned char *tcp_request(int confd, time_t now,
       /* save state of "cd" flag in query */
       if ((checking_disabled = header->hb4 & HB4_CD))
 	no_cache_dnssec = 1;
+
+      //********************** Pi-hole modification **********************//
+      struct edns_data edns = { 0 };
+      if (find_pseudoheader(header, (size_t)size, NULL, &pheader, NULL, NULL))
+        FTL_parse_pseudoheaders(header, size, &peer_addr, &edns);
+      //******************************************************************//
        
       if ((gotname = extract_request(header, (unsigned int)size, daemon->namebuff, &qtype)))
 	{
@@ -1943,14 +1960,14 @@ unsigned char *tcp_request(int confd, time_t now,
 	    log_query(F_QUERY | F_IPV4 | F_FORWARD, daemon->namebuff, 
 		      (union all_addr *)&peer_addr.in.sin_addr, types);
 	    piholeblocked = FTL_new_query(F_QUERY | F_IPV4 | F_FORWARD, daemon->namebuff, &blockingreason,
-	              (union all_addr *)&peer_addr.in.sin_addr, types, qtype, daemon->log_display_id, TCP);
+	              (union all_addr *)&peer_addr.in.sin_addr, types, qtype, daemon->log_display_id, &edns, TCP);
 	  }
 	  else
 	  {
 	    log_query(F_QUERY | F_IPV6 | F_FORWARD, daemon->namebuff,
 		      (union all_addr *)&peer_addr.in6.sin6_addr, types);
 	    piholeblocked = FTL_new_query(F_QUERY | F_IPV6 | F_FORWARD, daemon->namebuff, &blockingreason,
-	              (union all_addr *)&peer_addr.in6.sin6_addr, types, qtype, daemon->log_display_id, TCP);
+	              (union all_addr *)&peer_addr.in6.sin6_addr, types, qtype, daemon->log_display_id, &edns, TCP);
 	  }
 	  
 #ifdef HAVE_AUTH

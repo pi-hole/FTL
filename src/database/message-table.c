@@ -14,6 +14,8 @@
 #include "log.h"
 // get_group_names()
 #include "database/gravity-db.h"
+// cli_mode
+#include "../args.h"
 
 static const char *message_types[MAX_MESSAGE] =
 	{ "REGEX", "SUBNET", "HOSTNAME" };
@@ -227,6 +229,8 @@ static bool add_message(enum message_type type, const char *message,
 	if(rc != SQLITE_DONE)
 	{
 		logg("Encountered error while trying to store message in long-term database: %s", sqlite3_errstr(rc));
+		if(opened_database)
+			dbclose();
 		return false;
 	}
 
@@ -243,8 +247,9 @@ void logg_regex_warning(const char *type, const char *warning, const int dbindex
 	logg("REGEX WARNING: Invalid regex %s filter \"%s\": %s",
 	     type, regex, warning);
 
-	// Log to database
-	add_message(REGEX_MESSAGE, warning, 3, type, regex, dbindex);
+	// Log to database only if not in CLI mode
+	if(!cli_mode)
+		add_message(REGEX_MESSAGE, warning, 3, type, regex, dbindex);
 }
 
 void logg_subnet_warning(const char *ip, const int matching_count, const char *matching_ids,
@@ -258,7 +263,7 @@ void logg_subnet_warning(const char *ip, const int matching_count, const char *m
 	     chosen_match_text, chosen_match_id);
 
 	// Log to database
-	char *names = get_group_names(matching_ids);
+	char *names = get_client_names_from_ids(matching_ids);
 	add_message(SUBNET_MESSAGE, ip, 5, matching_count, names, matching_ids, chosen_match_text, chosen_match_id);
 	free(names);
 }

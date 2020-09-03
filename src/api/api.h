@@ -22,7 +22,6 @@ void getRecentBlocked(const char *client_message, const int *sock);
 void getQueryTypesOverTime(const int *sock);
 void getClientsOverTime(const int *sock);
 void getClientNames(const int *sock);
-void getDomainDetails(const char *client_message, const int *sock);
 
 // FTL methods
 void getClientID(const int *sock);
