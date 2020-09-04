@@ -112,6 +112,8 @@ set(sources
         daemon.h
         datastructure.c
         datastructure.h
+        dhcp-discover.c
+        dhcp-discover.h
         dnsmasq_interface.c
         dnsmasq_interface.h
         edns0.c
