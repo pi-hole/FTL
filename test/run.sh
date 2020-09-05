@@ -20,12 +20,12 @@ while pidof -s pihole-FTL > /dev/null; do
 done
 
 # Clean up possible old files from earlier test runs
-rm -f /etc/pihole/gravity.db /etc/pihole/pihole-FTL.db /var/log/pihole.log /var/log/pihole-FTL.log /dev/shm/FTL-*
+rm -f /etc/pihole/gravity.db /etc/pihole/pihole-FTL.db /var/log/pihole/pihole.log /var/log/pihole/pihole-FTL.log /dev/shm/FTL-*
 
 # Create necessary directories and files
 mkdir -p /home/pihole /etc/pihole /run/pihole /var/log
-touch /var/log/pihole-FTL.log /var/log/pihole.log /run/pihole-FTL.pid /run/pihole-FTL.port
-chown pihole:pihole /etc/pihole /run/pihole /var/log/pihole.log /var/log/pihole-FTL.log /run/pihole-FTL.pid /run/pihole-FTL.port
+touch /var/log/pihole/pihole-FTL.log /var/log/pihole/pihole.log /run/pihole-FTL.pid /run/pihole-FTL.port
+chown pihole:pihole /etc/pihole /run/pihole /var/log/pihole/pihole.log /var/log/pihole/pihole-FTL.log /run/pihole-FTL.pid /run/pihole-FTL.port
 
 # Copy binary into a location the new user pihole can access
 cp ./pihole-FTL /home/pihole/pihole-FTL
@@ -49,7 +49,7 @@ echo "BLOCKING_ENABLED=true" > /etc/pihole/setupVars.conf
 echo -e "DEBUG_ALL=true\nRESOLVE_IPV4=no\nRESOLVE_IPV6=no" > /etc/pihole/pihole-FTL.conf
 
 # Prepare dnsmasq.conf
-echo -e "log-queries\nlog-facility=/var/log/pihole.log" > /etc/dnsmasq.conf
+echo -e "log-queries\nlog-facility=/var/log/pihole/pihole.log" > /etc/dnsmasq.conf
 
 # Set restrictive umask
 OLDUMASK=$(umask)
@@ -82,15 +82,15 @@ echo -n "Contained dnsmasq version: "
 dig TXT CHAOS version.bind @127.0.0.1 +short
 
 # Print content of pihole.log and pihole-FTL.log
-#cat /var/log/pihole.log
-#cat /var/log/pihole-FTL.log
+#cat /var/log/pihole/pihole.log
+#cat /var/log/pihole/pihole-FTL.log
 
 # Run tests
 test/libs/bats/bin/bats "test/test_suite.bats"
 RET=$?
 
 if [[ $RET != 0 ]]; then
-  cat /var/log/pihole-FTL.log
+  cat /var/log/pihole/pihole-FTL.log
 fi
 
 # Kill pihole-FTL after having completed tests
