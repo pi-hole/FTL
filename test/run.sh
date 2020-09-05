@@ -23,7 +23,7 @@ done
 rm -f /etc/pihole/gravity.db /etc/pihole/pihole-FTL.db /var/log/pihole/pihole.log /var/log/pihole/pihole-FTL.log /dev/shm/FTL-*
 
 # Create necessary directories and files
-mkdir -p /home/pihole /etc/pihole /run/pihole /var/log
+mkdir -p /home/pihole /etc/pihole /run/pihole /var/log/pihole
 touch /var/log/pihole/pihole-FTL.log /var/log/pihole/pihole.log /run/pihole-FTL.pid /run/pihole-FTL.port
 chown pihole:pihole /etc/pihole /run/pihole /var/log/pihole/pihole.log /var/log/pihole/pihole-FTL.log /run/pihole-FTL.pid /run/pihole-FTL.port
 
