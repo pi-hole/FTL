@@ -50,8 +50,7 @@
 // Probe DHCP servers responding to the broadcast address
 #define PROBE_BCAST
 
-// Global variables of this unit
-static unsigned char client_hardware_address[MAX_DHCP_CHADDR_LENGTH]="";
+// Global lock used by all threads
 static pthread_mutex_t lock;
 
 // creates a socket for DHCP communication
@@ -111,7 +110,7 @@ static int create_dhcp_socket(const char *interface_name)
 }
 
 // determines hardware address on client machine
-static int get_hardware_address(const int sock, const char *interface_name)
+static int get_hardware_address(const int sock, const char *interface_name, unsigned char *mac)
 {
 	struct ifreq ifr;
 	strncpy((char *)&ifr.ifr_name, interface_name, sizeof(ifr.ifr_name)-1);
@@ -122,11 +121,11 @@ static int get_hardware_address(const int sock, const char *interface_name)
 		logg(" Error: Could not get hardware address of interface '%s' (socket %d, error: %s)", interface_name, sock, strerror(errno));
 		return false;
 	}
-	memcpy(&client_hardware_address[0], &ifr.ifr_hwaddr.sa_data, 6);
+	memcpy(&mac[0], &ifr.ifr_hwaddr.sa_data, 6);
 #ifdef DEBUG
 	logg_sameline("Hardware address of this interface: ");
 	for (uint8_t i = 0; i < 6; ++i)
-		logg_sameline("%2.2x%s", client_hardware_address[i], i < 5 ? ":" : "");
+		logg_sameline("%02x%s", mac[i], i < 5 ? ":" : "");
 	logg("");
 #endif
 	return true;
@@ -155,7 +154,7 @@ typedef struct dhcp_packet_struct
 #define BOOTREPLY       2
 
 // sends a DHCPDISCOVER message to the specified in an attempt to find DHCP servers
-static bool send_dhcp_discover(const int sock, const long xid, const char *iface, const in_addr_t addr)
+static bool send_dhcp_discover(const int sock, const long xid, const char *iface, unsigned char *mac, const in_addr_t addr)
 {
 	dhcp_packet discover_packet;
 
@@ -181,7 +180,7 @@ static bool send_dhcp_discover(const int sock, const long xid, const char *iface
 	discover_packet.flags = htons(32768); // DHCP_BROADCAST_FLAG
 
 	// our hardware address
-	memcpy(discover_packet.chaddr,client_hardware_address, 6);
+	memcpy(discover_packet.chaddr, mac, 6);
 
 	// first four bytes of options field is magic cookie (as per RFC 2132)
 	discover_packet.options[0] = '\x63';
@@ -469,11 +468,10 @@ static bool receive_dhcp_packet(void *buffer, int buffer_size, const char *iface
 }
 
 // waits for a DHCPOFFER message from one or more DHCP servers
-static bool get_dhcp_offer(const int sock, const long xid, const char *iface)
+static bool get_dhcp_offer(const int sock, const long xid, const char *iface, unsigned char *mac)
 {
 	dhcp_packet offer_packet;
 	struct sockaddr_in source;
-	bool result;
 #ifdef DEBUG
 	unsigned int responses = 0;
 #endif
@@ -509,24 +507,21 @@ static bool get_dhcp_offer(const int sock, const long xid, const char *iface)
 		}
 
 		// check hardware address
-		result = true;
-#if DEBUG
-		logg_sameline("  DHCPOFFER chaddr: ");
-#endif
-		for(uint8_t x = 0; x < 6; x++)
+		if(memcmp(offer_packet.chaddr, mac, 6) != 0)
 		{
-#if DEBUG
-			logg_sameline("%02X",(unsigned char)offer_packet.chaddr[x]);
-#endif
-			if(offer_packet.chaddr[x]!=client_hardware_address[x])
-				result = false;
-		}
-#if DEBUG
-		logg(" (client MAC address)");
-#endif
-		if(!result)
-		{
-			logg("  DHCPOFFER hardware address did not match our own - ignoring packet (not for us)\n");
+			logg("  DHCPOFFER hardware address did not match our own - ignoring packet (not for us)");
+
+			logg_sameline("  DHCPREQUEST chaddr: ");
+			for(uint8_t x = 0; x < 6; x++)
+				logg_sameline("%02x%s", mac[x], x < 5 ? ":" : "");
+			logg(" (our MAC address)");
+
+			logg_sameline("  DHCPOFFER   chaddr: ");
+			for(uint8_t x = 0; x < 6; x++)
+				logg_sameline("%02x%s", offer_packet.chaddr[x], x < 5 ? ":" : "");
+			logg(" (response MAC address)");
+
+			pthread_mutex_unlock(&lock);
 			continue;
 		}
 
@@ -578,7 +573,8 @@ static void *dhcp_discover_iface(void *args)
 		pthread_exit(NULL);
 
 	// get hardware address of client machine
-	get_hardware_address(dhcp_socket, iface);
+	unsigned char mac[MAX_DHCP_CHADDR_LENGTH] = { 0 };
+	get_hardware_address(dhcp_socket, iface, mac);
 
 	// Generate pseudo-random transaction ID
 	srand(time(NULL));
@@ -595,11 +591,11 @@ static void *dhcp_discover_iface(void *args)
 #ifdef PROBE_BCAST
 	// Probe distant servers
 	// send DHCPDISCOVER packet to broadcast address
-	send_dhcp_discover(dhcp_socket, xid, iface, INADDR_BROADCAST);
+	send_dhcp_discover(dhcp_socket, xid, iface, mac, INADDR_BROADCAST);
 #endif
 
 	// wait for a DHCPOFFER packet
-	get_dhcp_offer(dhcp_socket, xid, iface);
+	get_dhcp_offer(dhcp_socket, xid, iface, mac);
 
 	// close socket we created
 	close(dhcp_socket);
@@ -617,7 +613,7 @@ int run_dhcp_discover(void)
 	log_ctrl(false, true);
 
 	logg("Scanning all your interfaces for DHCP servers");
-	logg("We will wait %d seconds for any packets to arrive\n", DHCPOFFER_TIMEOUT);
+	logg("Timeout: %d seconds\n", DHCPOFFER_TIMEOUT);
 
 	// Get interface names for available interfaces on this machine
 	// and launch a thread for each one
@@ -644,8 +640,13 @@ int run_dhcp_discover(void)
 	int tid = 0;
 	while(tmp != NULL && tid < MAXTHREADS)
 	{
+#ifdef PROBE_LOCAL
 		// Create a thread for interfaces of type AF_INET (IPv4 sockets)
 		if(tmp->ifa_addr && tmp->ifa_addr->sa_family == AF_INET)
+#else
+		// Create a thread for interfaces of type AF_PACKET
+		if(tmp->ifa_addr && tmp->ifa_addr->sa_family == AF_PACKET)
+#endif
 		{
 			if(pthread_create(&scanthread[tid], &attr, dhcp_discover_iface, tmp ) != 0)
 			{
