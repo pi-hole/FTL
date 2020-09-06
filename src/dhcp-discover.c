@@ -225,14 +225,17 @@ static void nice_time(char *buffer, unsigned long seconds)
 	seconds -= hours * (60 * 60);
 	unsigned int minutes = seconds / 60;
 	seconds %= 60;
+
+	buffer[0] = ' ';
+	buffer[1] = '\0';
 	if(days > 0)
-		sprintf(buffer, "%ud %uh %um %lus", days, hours, minutes, seconds);
-	else if(hours > 0)
-		sprintf(buffer, "%uh %um %lus", hours, minutes, seconds);
-	else if(minutes > 0)
-		sprintf(buffer, "%um %lus", minutes, seconds);
-	else
-		sprintf(buffer, "%lus", seconds);
+		sprintf(buffer, "%s%ud ", buffer, days);
+	if(hours > 0)
+		sprintf(buffer, "%s%uh ", buffer, hours);
+	if(minutes > 0)
+		sprintf(buffer, "%s%um ", buffer, minutes);
+	if(seconds > 0)
+		sprintf(buffer, "%s%lus ", buffer, seconds);
 }
 
 // adds a DHCP OFFER to list in memory
@@ -328,6 +331,15 @@ static void print_dhcp_offer(struct in_addr source, dhcp_packet *offer_packet)
 			memcpy(&bc_addr.s_addr, &offer_packet->options[x], sizeof(bc_addr.s_addr));
 			logg("Broadcast address: %s", inet_ntoa(bc_addr));
 		}
+		else if(opttype == 44) // NetBIOS name server
+		{
+			for(unsigned int n = 0; n < optlen/4; n++)
+			{
+				struct in_addr NB_name_server;
+				memcpy(&NB_name_server.s_addr, &offer_packet->options[x+n*4], sizeof(NB_name_server.s_addr));
+				logg("NetBIOS name server %u: %s", n+1, inet_ntoa(NB_name_server));
+			}
+		}
 		else if(opttype == 51) // LEASE_TIME
 		{
 			uint32_t lease_time = 0;
@@ -340,7 +352,7 @@ static void print_dhcp_offer(struct in_addr source, dhcp_packet *offer_packet)
 			{
 				char buffer[32] = { 0 };
 				nice_time(buffer, lease_time);
-				logg(" %lu (%s)", (unsigned long)lease_time, buffer);
+				logg("%s(%lu seconds)", buffer, (unsigned long)lease_time);
 			}
 		}
 		else if(opttype == 53) // DHCP MESSAGE TYPE
@@ -394,7 +406,7 @@ static void print_dhcp_offer(struct in_addr source, dhcp_packet *offer_packet)
 			{
 				char buffer[32] = { 0 };
 				nice_time(buffer, renewal_time);
-				logg(" %lu (%s)", (unsigned long)renewal_time, buffer);
+				logg("%s(%lu seconds)", buffer, (unsigned long)renewal_time);
 			}
 		}
 		else if(opttype == 59) // REBINDING_TIME
@@ -402,15 +414,23 @@ static void print_dhcp_offer(struct in_addr source, dhcp_packet *offer_packet)
 			uint32_t rebinding_time = 0;
 			memcpy(&rebinding_time, &offer_packet->options[x], sizeof(rebinding_time));
 			rebinding_time = ntohl(rebinding_time);
-			logg_sameline("Rebindung time:");
+			logg_sameline("Rebinding time:");
 			if(rebinding_time == 0xFFFFFFFF)
 				logg("Infinite");
 			else
 			{
 				char buffer[32] = { 0 };
 				nice_time(buffer, rebinding_time);
-				logg(" %lu (%s)", (unsigned long)rebinding_time, buffer);
+				logg("%s(%lu seconds)", buffer, (unsigned long)rebinding_time);
 			}
+		}
+		else if(opttype == 252) // WPAD configuration (this is a non-standard extension)
+		{                       // see INTERNET-DRAFT Web Proxy Auto-Discovery Protocol
+		                        // https://tools.ietf.org/html/draft-ietf-wrec-wpad-01
+			char wpad_server[optlen+1];
+			memcpy(&wpad_server, &offer_packet->options[x], optlen);
+			wpad_server[optlen] = '\0';
+			logg("WPAD server: \"%s\"", wpad_server);
 		}
 		else if(opttype == 255) // END OF OPTIONS
 		{
