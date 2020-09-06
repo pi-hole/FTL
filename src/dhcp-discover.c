@@ -97,13 +97,13 @@ static int create_dhcp_socket(const char *interface_name)
 	strncpy(interface.ifr_ifrn.ifrn_name, interface_name, IFNAMSIZ-1);
 	if(setsockopt(sock,SOL_SOCKET, SO_BINDTODEVICE, (char *)&interface, sizeof(interface)) < 0)
 	{
-		logg("Error: Could not bind socket to interface %s.\n       ---> Check your privileges (run with sudo)!\n", interface_name);
+		logg("Error: Could not bind socket to interface %s (%s)\n       ---> Check your privileges (run with sudo)!\n", interface_name, strerror(errno));
 		return -1;
 	}
 
 	// bind the socket
 	if(bind(sock, (struct sockaddr *)&dhcp_socket, sizeof(dhcp_socket)) < 0){
-		logg("Error: Could not bind to DHCP socket (port %d)!\n       ---> Check your privileges (run with sudo)!\n", DHCP_CLIENT_PORT);
+		logg("Error: Could not bind to DHCP socket (port %d, %s\n       ---> Check your privileges (run with sudo)!\n", DHCP_CLIENT_PORT, strerror(errno));
 		return -1;
 	}
 
