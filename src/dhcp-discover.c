@@ -154,7 +154,7 @@ typedef struct dhcp_packet_struct
 #define BOOTREPLY       2
 
 // sends a DHCPDISCOVER message to the specified in an attempt to find DHCP servers
-static bool send_dhcp_discover(const int sock, const long xid, const char *iface, unsigned char *mac, const in_addr_t addr)
+static bool send_dhcp_discover(const int sock, const uint32_t xid, const char *iface, unsigned char *mac, const in_addr_t addr)
 {
 	dhcp_packet discover_packet;
 
@@ -468,7 +468,7 @@ static bool receive_dhcp_packet(void *buffer, int buffer_size, const char *iface
 }
 
 // waits for a DHCPOFFER message from one or more DHCP servers
-static bool get_dhcp_offer(const int sock, const long xid, const char *iface, unsigned char *mac)
+static bool get_dhcp_offer(const int sock, const uint32_t xid, const char *iface, unsigned char *mac)
 {
 	dhcp_packet offer_packet;
 	struct sockaddr_in source;
@@ -578,7 +578,7 @@ static void *dhcp_discover_iface(void *args)
 
 	// Generate pseudo-random transaction ID
 	srand(time(NULL));
-	const long xid = random();
+	const uint32_t xid = random();
 
 #ifdef PROBE_LOCAL
 	// Probe a local server listining on this interface
