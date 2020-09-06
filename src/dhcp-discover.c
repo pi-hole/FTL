@@ -40,14 +40,19 @@
 
 // Maximum time we wait for incoming DHCPOFFERs
 // (seconds)
-#define DHCPOFFER_TIMEOUT 5
+#define DHCPOFFER_TIMEOUT 10
 
 // How many threads do we spawn at maximum?
 // This is also the limit for interfaces
 // we scan for DHCP activity.
 #define MAXTHREADS 32
 
-unsigned char client_hardware_address[MAX_DHCP_CHADDR_LENGTH]="";
+// Probe DHCP servers responding to the broadcast address
+#define PROBE_BCAST
+
+// Global variables of this unit
+static unsigned char client_hardware_address[MAX_DHCP_CHADDR_LENGTH]="";
+static pthread_mutex_t lock;
 
 // creates a socket for DHCP communication
 static int create_dhcp_socket(const char *interface_name)
@@ -146,16 +151,13 @@ typedef struct dhcp_packet_struct
 	char options[MAX_DHCP_OPTIONS_LENGTH];  // options
 } dhcp_packet;
 
-unsigned int packet_xid;
-
 #define BOOTREQUEST     1
 #define BOOTREPLY       2
 
-// sends a DHCPDISCOVER broadcast message in an attempt to find DHCP servers
-static bool send_dhcp_discover(int sock, const char *iface)
+// sends a DHCPDISCOVER message to the specified in an attempt to find DHCP servers
+static bool send_dhcp_discover(const int sock, const long xid, const char *iface, const in_addr_t addr)
 {
 	dhcp_packet discover_packet;
-	struct sockaddr_in sockaddr_broadcast;
 
 	// clear the packet data structure
 	memset(&discover_packet, 0, sizeof(discover_packet));
@@ -171,9 +173,7 @@ static bool send_dhcp_discover(int sock, const char *iface)
 	discover_packet.hops = 0;
 
 	// transaction id is supposed to be random
-	srand(time(NULL));
-	packet_xid = random();
-	discover_packet.xid = htonl(packet_xid);
+	discover_packet.xid = htonl(xid);
 	ntohl(discover_packet.xid);
 	discover_packet.secs = 0xFF;
 
@@ -194,23 +194,23 @@ static bool send_dhcp_discover(int sock, const char *iface)
 	discover_packet.options[5] = '\x01'; // DHCP message option length in bytes
 	discover_packet.options[6] = 1;
 
-	// send the DHCPDISCOVER packet to broadcast address
-	sockaddr_broadcast.sin_family = AF_INET;
-	sockaddr_broadcast.sin_port = htons(DHCP_SERVER_PORT);
-	sockaddr_broadcast.sin_addr.s_addr = INADDR_BROADCAST;
-	memset(&sockaddr_broadcast.sin_zero, 0, sizeof(sockaddr_broadcast.sin_zero));
+	// send the DHCPDISCOVER packet to the specified address
+	struct sockaddr_in target;
+	target.sin_family = AF_INET;
+	target.sin_port = htons(DHCP_SERVER_PORT);
+	target.sin_addr.s_addr = addr;
+	memset(&target.sin_zero, 0, sizeof(target.sin_zero));
 
-	logg("Sending DHCPDISCOVER on interface %s ... ", iface);
 #ifdef DEBUG
+	logg("Sending DHCPDISCOVER on interface %s:%s ... ", iface, inet_ntoa(target.sin_addr));
 	logg("DHCPDISCOVER XID: %lu (0x%X)", (unsigned long) ntohl(discover_packet.xid), ntohl(discover_packet.xid));
 	logg("DHCDISCOVER ciaddr:  %s", inet_ntoa(discover_packet.ciaddr));
 	logg("DHCDISCOVER yiaddr:  %s", inet_ntoa(discover_packet.yiaddr));
 	logg("DHCDISCOVER siaddr:  %s", inet_ntoa(discover_packet.siaddr));
 	logg("DHCDISCOVER giaddr:  %s", inet_ntoa(discover_packet.giaddr));
 #endif
-	// send the DHCPDISCOVER packet out
-	//send_dhcp_packet(&discover_packet,sizeof(discover_packet),sock,&sockaddr_broadcast);
-	const int bytes = sendto(sock, (char *)&discover_packet, sizeof(discover_packet), 0, (struct sockaddr *)&sockaddr_broadcast,sizeof(sockaddr_broadcast));
+	// send the DHCPDISCOVER packet
+	const int bytes = sendto(sock, (char *)&discover_packet, sizeof(discover_packet), 0, (struct sockaddr *)&target,sizeof(target));
 #ifdef DEBUG
 	logg("Sent %d bytes", bytes);
 #endif
@@ -426,78 +426,71 @@ static void print_dhcp_offer(struct in_addr source, dhcp_packet *offer_packet)
 		// Advance option pointer index
 		x += optlen;
 	}
+
+	// Add one empty line for readability
+	logg(" ");
 }
 
 // receives a DHCP packet
-static bool receive_dhcp_packet(void *buffer, int buffer_size, int sock, int timeout, struct sockaddr_in *address)
+static bool receive_dhcp_packet(void *buffer, int buffer_size, const char *iface, int sock, const time_t start_time, struct sockaddr_in *address)
 {
 	struct timeval tv;
 	fd_set readfds;
 	int recv_result;
 	socklen_t address_size;
-	struct sockaddr_in source_address;
 
-	// Wait for data to arrive (up time timeout)
-	tv.tv_sec=timeout;
-	tv.tv_usec=0;
+	// Wait for data to arrive
+	tv.tv_sec = 0;
+	tv.tv_usec = 100000;
 	FD_ZERO(&readfds);
 	FD_SET(sock, &readfds);
-	select(sock+1, &readfds, NULL, NULL, &tv);
+	// see "man select" for the "sock + 1"
+	select(sock + 1, &readfds, NULL, NULL, &tv);
 
 	// make sure some data has arrived
-	if(!FD_ISSET(sock,&readfds))
+	if(!FD_ISSET(sock, &readfds))
 		return false;
 
-	memset(&source_address, 0, sizeof(source_address));
-	address_size=sizeof(source_address);
-	recv_result=recvfrom(sock, (char *)buffer, buffer_size, 0, (struct sockaddr *)&source_address, &address_size);
-	logg(" Received %d bytes from %s", recv_result, inet_ntoa(source_address.sin_addr));
+	address_size = sizeof(struct sockaddr_in);
+	recv_result = recvfrom(sock, (char *)buffer, buffer_size, 0, (struct sockaddr *)address, &address_size);
 
+	pthread_mutex_lock(&lock);
+	logg("* Received %d bytes from %s:%s", recv_result, iface, inet_ntoa(address->sin_addr));
+#ifdef DEBUG
+	logg("  after waiting for %f seconds", difftime(time(NULL), start_time));
+#endif
+	// Return on error
 	if(recv_result == -1){
 		logg(" recvfrom() failed, error: %s", strerror(errno));
 		return false;
 	}
 
-	memcpy(address, &source_address, sizeof(source_address));
 	return true;
 }
 
-static bool received_something;
 // waits for a DHCPOFFER message from one or more DHCP servers
-static bool get_dhcp_offer(int sock)
+static bool get_dhcp_offer(const int sock, const long xid, const char *iface)
 {
 	dhcp_packet offer_packet;
 	struct sockaddr_in source;
 	bool result;
 #ifdef DEBUG
 	unsigned int responses = 0;
-	unsigned int valid_responses = 0;
 #endif
+	unsigned int valid_responses = 0;
 	time_t start_time;
 	time_t current_time;
 
 	time(&start_time);
 
 	// receive as many responses as we can
-	while(true)
+	while(time(&current_time) && (current_time-start_time) < DHCPOFFER_TIMEOUT)
 	{
-
-		time(&current_time);
-		if((current_time-start_time) >= DHCPOFFER_TIMEOUT)
-			break;
-
 		memset(&source, 0, sizeof(source));
 		memset(&offer_packet, 0, sizeof(offer_packet));
 
-		if(!receive_dhcp_packet(&offer_packet, sizeof(offer_packet), sock, DHCPOFFER_TIMEOUT, &source))
-		{
-			if(!received_something)
-				logg(" Nobody replied to our request on this interface\n");
+		if(!receive_dhcp_packet(&offer_packet, sizeof(offer_packet), iface, sock, start_time, &source))
 			continue;
-		}
-
-		received_something = true;
-
 #if DEBUG
 		else
 			responses++;
@@ -508,10 +501,10 @@ static bool get_dhcp_offer(int sock)
 #endif
 
 		// check packet xid to see if its the same as the one we used in the discover packet
-		if(ntohl(offer_packet.xid) != packet_xid)
+		if(ntohl(offer_packet.xid) != xid)
 		{
 			logg("  DHCPOFFER XID (%lu) does not match our DHCPDISCOVER XID (%lu) - ignoring packet (not for us)\n",
-			     (unsigned long) ntohl(offer_packet.xid), (unsigned long) packet_xid);
+			     (unsigned long) ntohl(offer_packet.xid), (unsigned long) xid);
 			continue;
 		}
 
@@ -557,14 +550,15 @@ static bool get_dhcp_offer(int sock)
 
 		logg("  DHCP options:");
 		print_dhcp_offer(source.sin_addr, &offer_packet);
-#ifdef DEBUG
+		pthread_mutex_unlock(&lock);
+
 		valid_responses++;
-#endif
 	}
 #ifdef DEBUG
 	logg(" Responses seen while scanning:    %d", responses);
 	logg(" Responses meant for this machine: %d\n", valid_responses);
 #endif
+	logg("DHCP packets received on interface %s: %u", iface, valid_responses);
 	return true;
 }
 
@@ -586,12 +580,26 @@ static void *dhcp_discover_iface(void *args)
 	// get hardware address of client machine
 	get_hardware_address(dhcp_socket, iface);
 
-	// send DHCPDISCOVER packet
-	send_dhcp_discover(dhcp_socket, iface);
+	// Generate pseudo-random transaction ID
+	srand(time(NULL));
+	const long xid = random();
+
+#ifdef PROBE_LOCAL
+	// Probe a local server listining on this interface
+	// send DHCPDISCOVER packet to interface address
+	struct sockaddr_in ifaddr = { 0 };
+	memcpy(&ifaddr, ((struct ifaddrs*)args)->ifa_addr, sizeof(ifaddr));
+	send_dhcp_discover(dhcp_socket, xid, iface, ifaddr.sin_addr.s_addr);
+#endif
+
+#ifdef PROBE_BCAST
+	// Probe distant servers
+	// send DHCPDISCOVER packet to broadcast address
+	send_dhcp_discover(dhcp_socket, xid, iface, INADDR_BROADCAST);
+#endif
 
 	// wait for a DHCPOFFER packet
-	received_something = false;
-	get_dhcp_offer(dhcp_socket);
+	get_dhcp_offer(dhcp_socket, xid, iface);
 
 	// close socket we created
 	close(dhcp_socket);
@@ -608,12 +616,24 @@ int run_dhcp_discover(void)
 	// Only print to terminal, disable log file
 	log_ctrl(false, true);
 
+	logg("Scanning all your interfaces for DHCP servers");
+	logg("We will wait %d seconds for any packets to arrive\n", DHCPOFFER_TIMEOUT);
+
 	// Get interface names for available interfaces on this machine
 	// and launch a thread for each one
 	pthread_t scanthread[MAXTHREADS];
 	pthread_attr_t attr;
 	// Initialize thread attributes object with default attribute values
 	pthread_attr_init(&attr);
+
+	// Create processing/logging lock
+	pthread_mutexattr_t lock_attr = {};
+	// Initialize the lock attributes
+	pthread_mutexattr_init(&lock_attr);
+	// Initialize the lock
+	pthread_mutex_init(&lock, &lock_attr);
+	// Destroy the lock attributes since we're done with it
+	pthread_mutexattr_destroy(&lock_attr);
 
 	struct ifaddrs *addrs, *tmp;
 	getifaddrs(&addrs);
