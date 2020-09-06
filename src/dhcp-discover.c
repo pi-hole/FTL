@@ -38,7 +38,14 @@
 #define DHCP_SERVER_PORT   67
 #define DHCP_CLIENT_PORT   68
 
-#define DHCPOFFER_TIMEOUT 2
+// Maximum time we wait for incoming DHCPOFFERs
+// (seconds)
+#define DHCPOFFER_TIMEOUT 5
+
+// How many threads do we spawn at maximum?
+// This is also the limit for interfaces
+// we scan for DHCP activity.
+#define MAXTHREADS 32
 
 unsigned char client_hardware_address[MAX_DHCP_CHADDR_LENGTH]="";
 
@@ -82,7 +89,7 @@ static int create_dhcp_socket(const char *interface_name)
 	}
 
 	// bind socket to interface
-	strncpy(interface.ifr_ifrn.ifrn_name, interface_name, IFNAMSIZ);
+	strncpy(interface.ifr_ifrn.ifrn_name, interface_name, IFNAMSIZ-1);
 	if(setsockopt(sock,SOL_SOCKET, SO_BINDTODEVICE, (char *)&interface, sizeof(interface)) < 0)
 	{
 		logg("Error: Could not bind socket to interface %s.\n       ---> Check your privileges (run with sudo)!\n", interface_name);
@@ -102,8 +109,7 @@ static int create_dhcp_socket(const char *interface_name)
 static int get_hardware_address(const int sock, const char *interface_name)
 {
 	struct ifreq ifr;
-
-	strncpy((char *)&ifr.ifr_name, interface_name, sizeof(ifr.ifr_name));
+	strncpy((char *)&ifr.ifr_name, interface_name, sizeof(ifr.ifr_name)-1);
 
 	// try and grab hardware address of requested interface
 	int ret = 0;
@@ -562,14 +568,20 @@ static bool get_dhcp_offer(int sock)
 	return true;
 }
 
-static bool dhcp_discover_iface(const char *iface)
+static void *dhcp_discover_iface(void *args)
 {
+	// Get interface details
+	const char *iface = ((struct ifaddrs*)args)->ifa_name;
+
+	// Set interface name as thread name
+	prctl(PR_SET_NAME, iface, 0, 0, 0);
+
 	// create socket for DHCP communications
 	const int dhcp_socket = create_dhcp_socket(iface);
 
 	// Cannot create socket, likely a permission error
 	if(dhcp_socket < 0)
-		return false;
+		pthread_exit(NULL);
 
 	// get hardware address of client machine
 	get_hardware_address(dhcp_socket, iface);
@@ -584,7 +596,7 @@ static bool dhcp_discover_iface(const char *iface)
 	// close socket we created
 	close(dhcp_socket);
 
-	return true;
+	pthread_exit(NULL);
 }
 
 int run_dhcp_discover(void)
@@ -597,17 +609,44 @@ int run_dhcp_discover(void)
 	log_ctrl(false, true);
 
 	// Get interface names for available interfaces on this machine
-	struct ifaddrs *addrs,*tmp;
+	// and launch a thread for each one
+	pthread_t scanthread[MAXTHREADS];
+	pthread_attr_t attr;
+	// Initialize thread attributes object with default attribute values
+	pthread_attr_init(&attr);
+
+	struct ifaddrs *addrs, *tmp;
 	getifaddrs(&addrs);
 	tmp = addrs;
-	while (tmp != NULL)
-	{
-		if (tmp->ifa_addr && tmp->ifa_addr->sa_family == AF_PACKET)
-			dhcp_discover_iface(tmp->ifa_name);
 
+	// Loop until there are no more interfaces available
+	// or we reached the maximum number of threads
+	int tid = 0;
+	while(tmp != NULL && tid < MAXTHREADS)
+	{
+		// Create a thread for interfaces of type AF_INET (IPv4 sockets)
+		if(tmp->ifa_addr && tmp->ifa_addr->sa_family == AF_INET)
+		{
+			if(pthread_create(&scanthread[tid], &attr, dhcp_discover_iface, tmp ) != 0)
+			{
+				logg("Unable to launch thread for interface %s, skipping...",
+				     tmp->ifa_name);
+				continue;
+			}
+
+			// Increase thread ID
+			tid++;
+		}
+
+		// Advance to the next interface
 		tmp = tmp->ifa_next;
 	}
 
+	// Wait for all threads to join back with us
+	for(tid--; tid > -1; tid--)
+		pthread_join(scanthread[tid], NULL);
+
+	// Free linked-list of interfaces on this client
 	freeifaddrs(addrs);
 
 	return EXIT_SUCCESS;
