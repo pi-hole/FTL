@@ -20,6 +20,8 @@
 #include "regex_r.h"
 // init_shmem()
 #include "shmem.h"
+// run_dhcp_discover()
+#include "dhcp-discover.h"
 
 bool dnsmasq_debug = false;
 bool daemonmode = true, cli_mode = false;
@@ -179,6 +181,14 @@ void parse_args(int argc, char* argv[])
 			}
 		}
 
+		// Regex test mode
+		if(strcmp(argv[i], "dhcp-discover") == 0)
+		{
+			// Enable stdout printing
+			cli_mode = true;
+			exit(run_dhcp_discover());
+		}
+
 		// List of implemented arguments
 		if(strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "help") == 0 || strcmp(argv[i], "--help") == 0)
 		{
@@ -201,6 +211,8 @@ void parse_args(int argc, char* argv[])
 			printf("\t                    expressions in the database\n");
 			printf("\tregex-test str rgx  Test str against regular expression\n");
 			printf("\t                    given by rgx\n");
+			printf("\tdhcp-discover       Discover DHCP servers in the local\n");
+			printf("\t                    network\n");
 			printf("\n\nOnline help: https://github.com/pi-hole/FTL\n");
 			exit(EXIT_SUCCESS);
 		}
