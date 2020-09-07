@@ -430,7 +430,10 @@ static void print_dhcp_offer(struct in_addr source, dhcp_packet *offer_packet)
 			char wpad_server[optlen+1];
 			memcpy(&wpad_server, &offer_packet->options[x], optlen);
 			wpad_server[optlen] = '\0';
-			logg("WPAD server: \"%s\"", wpad_server);
+			if(iscntrl(wpad_server[0]))
+				logg("WPAD server: <cntrl sequence> (length %u)", optlen);
+			else
+				logg("WPAD server: \"%s\"", wpad_server);
 		}
 		else if(opttype == 255) // END OF OPTIONS
 		{
