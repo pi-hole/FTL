@@ -229,13 +229,13 @@ static void nice_time(char *buffer, unsigned long seconds)
 	buffer[0] = ' ';
 	buffer[1] = '\0';
 	if(days > 0)
-		sprintf(buffer, "%s%ud ", buffer, days);
+		sprintf(buffer + strlen(buffer), "%ud ", days);
 	if(hours > 0)
-		sprintf(buffer, "%s%uh ", buffer, hours);
+		sprintf(buffer + strlen(buffer), "%uh ", hours);
 	if(minutes > 0)
-		sprintf(buffer, "%s%um ", buffer, minutes);
+		sprintf(buffer + strlen(buffer), "%um ", minutes);
 	if(seconds > 0)
-		sprintf(buffer, "%s%lus ", buffer, seconds);
+		sprintf(buffer + strlen(buffer), "%lus ", seconds);
 }
 
 // adds a DHCP OFFER to list in memory
