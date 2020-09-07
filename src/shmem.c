@@ -746,22 +746,29 @@ void memory_check(const enum memory_type which)
 
 void reset_per_client_regex(const int clientID)
 {
+	// Total number of regex filters
 	const unsigned int num_regex_tot = counters->num_regex[REGEX_BLACKLIST] +
 	                                   counters->num_regex[REGEX_WHITELIST];
+
+	// Zero-initialize/reset (= false) all regex (white + black)
 	for(unsigned int i = 0u; i < num_regex_tot; i++)
 	{
-		// Zero-initialize/reset (= false) all regex (white + black)
 		set_per_client_regex(clientID, i, false);
 	}
 }
 
 void add_per_client_regex(unsigned int clientID)
 {
+	// Total number of regex filters
 	const unsigned int num_regex_tot = counters->num_regex[REGEX_BLACKLIST] +
 	                                   counters->num_regex[REGEX_WHITELIST];
+
+	// Needed size to store all regex filters for all clients
 	const size_t size = counters->clients * num_regex_tot;
-	if(size > shm_per_client_regex.size &&
-	   realloc_shm(&shm_per_client_regex, counters->clients, num_regex_tot, true))
+
+	// Resize the shared memory object if necessary
+	if(size > shm_per_client_regex.size / sizeof(bool) &&
+	   realloc_shm(&shm_per_client_regex, counters->clients, num_regex_tot * sizeof(bool), true))
 	{
 		reset_per_client_regex(clientID);
 	}
@@ -769,15 +776,20 @@ void add_per_client_regex(unsigned int clientID)
 
 bool get_per_client_regex(const int clientID, const int regexID)
 {
+	// Total number of regex filters
 	const unsigned int num_regex_tot = counters->num_regex[REGEX_BLACKLIST] +
 	                                   counters->num_regex[REGEX_WHITELIST];
+
+	// Get ID of the slot corresponding to this client and regex ID
 	const unsigned int id = clientID * num_regex_tot + regexID;
+
+	// Get maximum index we are allowed to check
 	const size_t maxval = shm_per_client_regex.size / sizeof(bool);
 	if(id > maxval)
 	{
-		logg("ERROR: get_per_client_regex(%d, %d): Out of bounds (%d > %d * %d, shm_per_client_regex.size = %zd)!",
-		     clientID, regexID,
-		     id, counters->clients, num_regex_tot, maxval);
+		logg("ERROR: get_per_client_regex(%d, %d): Out of bounds (%d > %zd, %d * %d = %zd)!",
+		     clientID, regexID, id, maxval, counters->clients, num_regex_tot,
+		     (size_t)counters->clients * num_regex_tot);
 		return false;
 	}
 	return ((bool*) shm_per_client_regex.ptr)[id];
@@ -785,15 +797,21 @@ bool get_per_client_regex(const int clientID, const int regexID)
 
 void set_per_client_regex(const int clientID, const int regexID, const bool value)
 {
+	// Total number of regex filters
 	const unsigned int num_regex_tot = counters->num_regex[REGEX_BLACKLIST] +
 	                                   counters->num_regex[REGEX_WHITELIST];
+
+	// Get ID of the slot corresponding to this client and regex ID
 	const unsigned int id = clientID * num_regex_tot + regexID;
+
+	// Get maximum index we are allowed to check
 	const size_t maxval = shm_per_client_regex.size / sizeof(bool);
 	if(id > maxval)
 	{
-		logg("ERROR: set_per_client_regex(%d, %d, %s): Out of bounds (%d > %d * %d, shm_per_client_regex.size = %zd)!",
+		logg("ERROR: set_per_client_regex(%d, %d, %s): Out of bounds (%d > %zd, %d * %d = %zd)!",
 		     clientID, regexID, value ? "true" : "false",
-		     id, counters->clients, num_regex_tot, maxval);
+		     id, maxval, counters->clients, num_regex_tot,
+		     (size_t)counters->clients * num_regex_tot);
 		return;
 	}
 	((bool*) shm_per_client_regex.ptr)[id] = value;
