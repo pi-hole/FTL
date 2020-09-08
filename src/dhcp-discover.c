@@ -174,7 +174,7 @@ static bool send_dhcp_discover(const int sock, const uint32_t xid, const char *i
 	// transaction id is supposed to be random
 	discover_packet.xid = htonl(xid);
 	ntohl(discover_packet.xid);
-	discover_packet.secs = 0xFF;
+	discover_packet.secs = 0x00;
 
 	// tell server it should broadcast its response
 	discover_packet.flags = htons(32768); // DHCP_BROADCAST_FLAG
@@ -191,7 +191,16 @@ static bool send_dhcp_discover(const int sock, const uint32_t xid, const char *i
 	// DHCP message type is embedded in options field
 	discover_packet.options[4] = 53;     // DHCP message type option identifier
 	discover_packet.options[5] = '\x01'; // DHCP message option length in bytes
-	discover_packet.options[6] = 1;
+	discover_packet.options[6] = 1;      // DHCP message type code for DHCPDISCOVER
+
+	// Request a lease with validity of 1 second
+	discover_packet.options[7] = 51;     // Lease time type option identifier
+	discover_packet.options[8] = '\x04'; // DHCP message option length in bytes
+	const uint32_t lease_time = htonl(1);
+	memcpy(&discover_packet.options[9], &lease_time, sizeof(lease_time));
+
+	// Place end option at the end of the options
+	discover_packet.options[13] = 255;
 
 	// send the DHCPDISCOVER packet to the specified address
 	struct sockaddr_in target;
