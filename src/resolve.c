@@ -325,7 +325,8 @@ static size_t resolveAndAddHostname(size_t ippos, size_t oldnamepos)
 		logg("Not adding \"%s\" to buffer (unchanged)", oldname);
 	}
 
-	free(newname);
+	if(newname != NULL)
+		free(newname);
 	free(ipaddr);
 	free(oldname);
 
