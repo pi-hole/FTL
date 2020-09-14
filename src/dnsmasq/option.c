@@ -171,6 +171,7 @@ struct myoption {
 #define LOPT_IGNORE_CLID   358
 #define LOPT_SINGLE_PORT   359
 #define LOPT_SCRIPT_TIME   360
+#define LOPT_NO_ID         361
  
 #ifdef HAVE_GETOPT_LONG
 static const struct option opts[] =  
@@ -183,6 +184,7 @@ static const struct myoption opts[] =
     { "no-poll", 0, 0, 'n' },
     { "help", 0, 0, 'w' },
     { "no-daemon", 0, 0, 'd' },
+    { "no-id", 0, 0, LOPT_NO_ID },
     { "log-queries", 2, 0, 'q' },
     { "user", 2, 0, 'u' },
     { "group", 2, 0, 'g' },
@@ -366,6 +368,7 @@ static struct {
   { 'c', ARG_ONE, "<integer>", gettext_noop("Specify the size of the cache in entries (defaults to %s)."), "$" },
   { 'C', ARG_DUP, "<path>", gettext_noop("Specify configuration file (defaults to %s)."), CONFFILE },
   { 'd', OPT_DEBUG, NULL, gettext_noop("Do NOT fork into the background: run in debug mode."), NULL },
+  { LOPT_NO_ID, OPT_NO_ID, NULL, gettext_noop("Do not send identifying info for *.info requests"), NULL },
   { 'D', OPT_NODOTS_LOCAL, NULL, gettext_noop("Do NOT forward queries with no domain part."), NULL }, 
   { 'e', OPT_SELFMX, NULL, gettext_noop("Return self-pointing MX records for local hosts."), NULL },
   { 'E', OPT_EXPAND, NULL, gettext_noop("Expand simple names in /etc/hosts with domain-suffix."), NULL },
@@ -5025,27 +5028,6 @@ void read_opts(int argc, char **argv, char *compile_opts)
   daemon->max_port = MAX_PORT;
   daemon->min_port = MIN_PORT;
 
-#ifndef NO_ID
-  add_txt("version.bind", "dnsmasq-" VERSION, 0 );
-  add_txt("authors.bind", "Simon Kelley", 0);
-  add_txt("copyright.bind", COPYRIGHT, 0);
-  add_txt("cachesize.bind", NULL, TXT_STAT_CACHESIZE);
-  add_txt("insertions.bind", NULL, TXT_STAT_INSERTS);
-  add_txt("evictions.bind", NULL, TXT_STAT_EVICTIONS);
-  add_txt("misses.bind", NULL, TXT_STAT_MISSES);
-  add_txt("hits.bind", NULL, TXT_STAT_HITS);
-#ifdef HAVE_AUTH
-  add_txt("auth.bind", NULL, TXT_STAT_AUTH);
-#endif
-  add_txt("servers.bind", NULL, TXT_STAT_SERVERS);
-  /* Pi-hole modification */
-  add_txt("privacylevel.pihole", NULL, TXT_PRIVACYLEVEL);
-  /************************/
-#endif
-  /******** Pi-hole modification ********/
-  add_txt("version.FTL", get_FTL_version(), 0 );
-  /**************************************/
-
   while (1) 
     {
 #ifdef HAVE_GETOPT_LONG
@@ -5139,6 +5121,30 @@ void read_opts(int argc, char **argv, char *compile_opts)
     }
   else
     one_file(CONFFILE, '7');
+
+#ifndef NO_ID
+  if (!option_bool(OPT_NO_ID))
+    {
+      add_txt("version.bind", "dnsmasq-" VERSION, 0 );
+      add_txt("authors.bind", "Simon Kelley", 0);
+      add_txt("copyright.bind", COPYRIGHT, 0);
+      add_txt("cachesize.bind", NULL, TXT_STAT_CACHESIZE);
+      add_txt("insertions.bind", NULL, TXT_STAT_INSERTS);
+      add_txt("evictions.bind", NULL, TXT_STAT_EVICTIONS);
+      add_txt("misses.bind", NULL, TXT_STAT_MISSES);
+      add_txt("hits.bind", NULL, TXT_STAT_HITS);
+#ifdef HAVE_AUTH
+      add_txt("auth.bind", NULL, TXT_STAT_AUTH);
+#endif
+      add_txt("servers.bind", NULL, TXT_STAT_SERVERS);
+      /* Pi-hole modification */
+      add_txt("privacylevel.pihole", NULL, TXT_PRIVACYLEVEL);
+      /************************/
+      /******** Pi-hole modification ********/
+      add_txt("version.FTL", get_FTL_version(), 0 );
+      /**************************************/
+    }
+#endif
 
   /* port might not be known when the address is parsed - fill in here */
   if (daemon->servers)
