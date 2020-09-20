@@ -849,8 +849,29 @@ void getAllQueries(const char *client_message, const int *sock)
 			continue;
 
 		// Skip if domain is not identical with what the user wants to see
-		if(filterdomainname && query->domainID != domainid)
-			continue;
+		if(filterdomainname)
+		{
+			// Check direct match
+			if(query->domainID == domainid)
+			{
+				// Get this query
+			}
+			// If the domain of this query did not match, the CNAME
+			// domain may still match - we have to check it in
+			// addition if this query is of CNAME blocked type
+			else if((query->status == QUERY_GRAVITY_CNAME ||
+				query->status == QUERY_BLACKLIST_CNAME ||
+				query->status == QUERY_REGEX_CNAME) &&
+				query->CNAME_domainID == domainid)
+			{
+				// Get this query
+			}
+			else
+			{
+				// Skip this query
+				continue;
+			}
+		}
 
 		// Skip if client name and IP are not identical with what the user wants to see
 		if(filterclientname && query->clientID != clientid)
