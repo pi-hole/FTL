@@ -16,10 +16,9 @@ bool create_network_addresses_with_names_table(void);
 void parse_neighbor_cache(void);
 void updateMACVendorRecords(void);
 bool unify_hwaddr(void);
-char* getDatabaseHostname(const char* ipaddr) __attribute__((malloc));
-char* __attribute__((malloc)) getMACfromIP(const char* ipaddr);
-char* __attribute__((malloc)) getNameFromIP(const char* ipaddr);
-char* __attribute__((malloc)) getIfaceFromIP(const char* ipaddr);
+char *getMACfromIP(const char* ipaddr) __attribute__((malloc));
+char *getNameFromIP(const char* ipaddr) __attribute__((malloc));
+char *getIfaceFromIP(const char* ipaddr) __attribute__((malloc));
 void resolveNetworkTableNames(void);
 
 #endif //NETWORKTABLE_H

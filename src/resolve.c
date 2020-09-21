@@ -134,17 +134,6 @@ char *resolveHostname(const char *addr)
 		IPv6 = true;
 	}
 
-	if( (IPv6 && !config.resolveIPv6) ||
-	   (!IPv6 && !config.resolveIPv4))
-	{
-		if(config.debug & DEBUG_RESOLVER)
-		{
-			logg(" ---> \"\" (configured to not resolve %s host names)",
-			     IPv6 ? "IPv6" : "IPv4");
-		}
-		return strdup("");
-	}
-
 	// Initialize resolver subroutines if trying to resolve for the first time
 	// res_init() reads resolv.conf to get the default domain name and name server
 	// address(es). If no server is given, the local host is tried. If no domain
@@ -285,6 +274,24 @@ static size_t resolveAndAddHostname(size_t ippos, size_t oldnamepos)
 	char* oldname = strdup(getstr(oldnamepos));
 	unlock_shm();
 
+	// Test if we want to resolve an IPv6 address
+	bool IPv6 = false;
+	if(strstr(ipaddr,":") != NULL)
+	{
+		IPv6 = true;
+	}
+
+	if( (IPv6 && !config.resolveIPv6) ||
+	   (!IPv6 && !config.resolveIPv4))
+	{
+		if(config.debug & DEBUG_RESOLVER)
+		{
+			logg(" ---> \"\" (configured to not resolve %s host names)",
+			     IPv6 ? "IPv6" : "IPv4");
+		}
+		return 0;
+	}
+
 	// Important: Don't hold a lock while resolving as the main thread
 	// (dnsmasq) needs to be operable during the call to resolveHostname()
 	char* newname = resolveHostname(ipaddr);
@@ -294,7 +301,7 @@ static size_t resolveAndAddHostname(size_t ippos, size_t oldnamepos)
 	if(strlen(newname) == 0 && config.names_from_netdb)
 	{
 		free(newname);
-		newname = getDatabaseHostname(ipaddr);
+		newname = getNameFromIP(ipaddr);
 	}
 
 	// Only store new newname if it is valid and differs from oldname
@@ -318,7 +325,8 @@ static size_t resolveAndAddHostname(size_t ippos, size_t oldnamepos)
 		logg("Not adding \"%s\" to buffer (unchanged)", oldname);
 	}
 
-	free(newname);
+	if(newname != NULL)
+		free(newname);
 	free(ipaddr);
 	free(oldname);
 
