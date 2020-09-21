@@ -8,26 +8,32 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "FTL.h"
-#include "enums.h"
-#include "memory.h"
-#include "shmem.h"
-#include "datastructure.h"
-#include "setupVars.h"
-#include "socket.h"
-#include "files.h"
-#include "log.h"
-#include "request.h"
-#include "config.h"
-#include "database/common.h"
-#include "database/query-table.h"
-// in_auditlist()
-#include "database/gravity-db.h"
-#include "overTime.h"
+#include "../FTL.h"
 #include "api.h"
-#include "version.h"
-// enum REGEX
-#include "regex_r.h"
+#include "../enums.h"
+// getstr()
+#include "../shmem.h"
+// read_setupVarsconf()
+#include "../setupVars.h"
+// istelnet()
+#include "socket.h"
+// get_FTL_db_filesize()
+#include "../files.h"
+// logg()
+#include "../log.h"
+#include "request.h"
+// struct config
+#include "../config.h"
+// get_sqlite3_version()
+#include "../database/common.h"
+// get_number_of_queries_in_DB()
+#include "../database/query-table.h"
+// in_auditlist()
+#include "../database/gravity-db.h"
+// struct overTime
+#include "../overTime.h"
+// Version information
+#include "../version.h"
 
 #define min(a,b) ({ __typeof__ (a) _a = (a); __typeof__ (b) _b = (b); _a < _b ? _a : _b; })
 

@@ -8,21 +8,23 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "FTL.h"
+#include "../FTL.h"
 #include "sqlite3.h"
 #include "gravity-db.h"
-#include "config.h"
-#include "log.h"
+// struct config
+#include "../config.h"
+// logg()
+#include "../log.h"
 // match_regex()
-#include "regex_r.h"
+#include "../regex_r.h"
 // getstr()
-#include "shmem.h"
+#include "../shmem.h"
 // SQLite3 prepared statement vectors
 #include "../vector.h"
 // log_subnet_warning()
-#include "database/message-table.h"
+#include "message-table.h"
 // getMACfromIP()
-#include "database/network-table.h"
+#include "network-table.h"
 // struct DNSCacheData
 #include "../datastructure.h"
 

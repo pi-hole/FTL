@@ -40,6 +40,8 @@
 #include "signals.h"
 // atomic_flag_test_and_set()
 #include <stdatomic.h>
+// Eventqueue routines
+#include "events.h"
 
 static void print_flags(const unsigned int flags);
 static void save_reply_type(const unsigned int flags, const union all_addr *addr,
@@ -869,8 +871,8 @@ void FTL_dnsmasq_reload(void)
 
 	logg("Reloading DNS cache");
 
-	// Reload the privacy level in case the user changed it
-	get_privacy_level(NULL);
+	// Request reload the privacy level
+	set_event(RELOAD_PRIVACY_LEVEL);
 
 	// Inspect 01-pihole.conf to see if Pi-hole blocking is enabled,
 	// i.e. if /etc/pihole/gravity.list is sourced as addn-hosts file
@@ -894,7 +896,7 @@ void FTL_dnsmasq_reload(void)
 	// - Get number of blocked domains
 	// - Read and compile regex filters (incl. per-client)
 	// - Flush FTL's DNS cache
-	FTL_reload_all_domainlists();
+	set_event(RELOAD_GRAVITY);
 
 	// Print current set of capabilities if requested via debug flag
 	if(config.debug & DEBUG_CAPS)
@@ -904,7 +906,7 @@ void FTL_dnsmasq_reload(void)
 	resolver_ready = true;
 }
 
-void _FTL_reply(const unsigned short flags, const char *name, const union all_addr *addr, const int id,
+void _FTL_reply(const unsigned int flags, const char *name, const union all_addr *addr, const int id,
                 const char* file, const int line)
 {
 	// Lock shared memory

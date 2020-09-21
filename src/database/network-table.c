@@ -8,17 +8,20 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "FTL.h"
-#include "database/network-table.h"
-#include "database/common.h"
-#include "shmem.h"
-#include "memory.h"
-#include "log.h"
-#include "timers.h"
-#include "config.h"
-#include "datastructure.h"
+#include "../FTL.h"
+#include "network-table.h"
+#include "common.h"
+#include "../shmem.h"
+// strdup()
+#include "../memory.h"
+#include "../log.h"
+// timer_elapsed_msec()
+#include "../timers.h"
+// struct config
+#include "../config.h"
+//#include "../datastructure.h"
 // resolveHostname()
-#include "resolve.h"
+#include "../resolve.h"
 
 // Private prototypes
 static char *getMACVendor(const char *hwaddr);
