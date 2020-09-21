@@ -45,6 +45,7 @@ typedef struct {
 	int failed;
 	size_t ippos;
 	size_t namepos;
+	time_t lastQuery;
 } upstreamsData;
 
 typedef struct {

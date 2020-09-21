@@ -8,17 +8,20 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "FTL.h"
-#include "database/network-table.h"
-#include "database/common.h"
-#include "shmem.h"
-#include "memory.h"
-#include "log.h"
-#include "timers.h"
-#include "config.h"
-#include "datastructure.h"
+#include "../FTL.h"
+#include "network-table.h"
+#include "common.h"
+#include "../shmem.h"
+// strdup()
+#include "../memory.h"
+#include "../log.h"
+// timer_elapsed_msec()
+#include "../timers.h"
+// struct config
+#include "../config.h"
+//#include "../datastructure.h"
 // resolveHostname()
-#include "resolve.h"
+#include "../resolve.h"
 
 // Private prototypes
 static char *getMACVendor(const char *hwaddr);
@@ -1585,82 +1588,6 @@ void updateMACVendorRecords(void)
 		dbclose();
 }
 
-char *__attribute__((malloc)) getDatabaseHostname(const char *ipaddr)
-{
-	// Test if this is an IPv6 address
-	bool IPv6 = false;
-	if(ipaddr != NULL && strstr(ipaddr,":") != NULL)
-	{
-		IPv6 = true;
-	}
-
-	// Do we want to resolve IPv4/IPv6 names at all?
-	if( (IPv6 && !config.resolveIPv6) ||
-	   (!IPv6 && !config.resolveIPv4))
-	{
-		if(config.debug & DEBUG_RESOLVER)
-		{
-			logg(" ---> \"\" (configured to not resolve %s host names)",
-			     IPv6 ? "IPv6" : "IPv4");
-		}
-		return strdup("");
-	}
-
-	// Open pihole-FTL.db database file if needed
-	const bool db_already_open = FTL_DB_avail();
-	if(!db_already_open && !dbopen())
-	{
-		logg("getDatabaseHostname(\"%s\") - Failed to open DB", ipaddr);
-		return NULL;
-	}
-
-	// Prepare SQLite statement
-	sqlite3_stmt *stmt = NULL;
-	const char *querystr = "SELECT name FROM network_addresses "
-	                       "WHERE name IS NOT NULL AND ip = ?;";
-	int rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &stmt, NULL);
-	if( rc != SQLITE_OK ){
-		logg("getDatabaseHostname(\"%s\") - SQL error prepare: %s",
-		     ipaddr, sqlite3_errstr(rc));
-		if(!db_already_open)
-			dbclose();
-		return strdup("");
-	}
-
-	// Bind ipaddr to prepared statement
-	if((rc = sqlite3_bind_text(stmt, 1, ipaddr, -1, SQLITE_STATIC)) != SQLITE_OK)
-	{
-		logg("getDatabaseHostname(\"%s\"): Failed to bind ip: %s",
-		     ipaddr, sqlite3_errstr(rc));
-		sqlite3_reset(stmt);
-		sqlite3_finalize(stmt);
-		if(!db_already_open)
-			dbclose();
-		return strdup("");
-	}
-
-	char *hostname = NULL;
-	rc = sqlite3_step(stmt);
-	if(rc == SQLITE_ROW)
-	{
-		// Database record found (result might be empty)
-		hostname = strdup((char*)sqlite3_column_text(stmt, 0));
-	}
-	else
-	{
-		// Not found or error (will be logged automatically through our SQLite3 hook)
-		hostname = strdup("");
-	}
-
-	// Finalize statement and close database handle
-	sqlite3_reset(stmt);
-	sqlite3_finalize(stmt);
-	if(!db_already_open)
-		dbclose();
-
-	return hostname;
-}
-
 // Get hardware address of device identified by IP address
 char *__attribute__((malloc)) getMACfromIP(const char *ipaddr)
 {
@@ -1798,7 +1725,7 @@ char *__attribute__((malloc)) getNameFromIP(const char *ipaddr)
 		return NULL;
 	}
 
-	// Prepare SQLite statement
+	// Check for a host name associated with the same IP address
 	sqlite3_stmt *stmt = NULL;
 	const char *querystr = "SELECT name FROM network_addresses WHERE name IS NOT NULL AND ip = ?;";
 	int rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &stmt, NULL);
@@ -1828,16 +1755,70 @@ char *__attribute__((malloc)) getNameFromIP(const char *ipaddr)
 	{
 		// Database record found (result might be empty)
 		name = strdup((char*)sqlite3_column_text(stmt, 0));
+
+		if(config.debug & DEBUG_DATABASE)
+			logg("Found database host name (same address) %s -> %s", ipaddr, name);
+	}
+	else
+	{
+		// Not found or error (will be logged automatically through our SQLite3 hook)
+	}
+
+	// Finalize statement
+	sqlite3_reset(stmt);
+	sqlite3_finalize(stmt);
+
+	// Return here if we found the name
+	if(name != NULL)
+	{
+		if(!db_already_open)
+			dbclose();
+
+		return name;
+	}
+
+	// Nothing found for the exact IP address
+	// Check for a host name associated with the same device (but another IP address)
+	querystr = "SELECT name FROM network_addresses "
+	                       "WHERE name IS NOT NULL AND "
+	                             "network_id = (SELECT network_id FROM network_addresses "
+	                                                             "WHERE ip = ?) "
+	                       "ORDER BY lastSeen DESC LIMIT 1";
+	rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &stmt, NULL);
+	if( rc != SQLITE_OK ){
+		logg("getNameFromIP(\"%s\") - SQL error prepare: %s",
+		ipaddr, sqlite3_errstr(rc));
+		if(!db_already_open)
+			dbclose();
+		return NULL;
+	}
+
+	// Bind ipaddr to prepared statement
+	if((rc = sqlite3_bind_text(stmt, 1, ipaddr, -1, SQLITE_STATIC)) != SQLITE_OK)
+	{
+		logg("getNameFromIP(\"%s\"): Failed to bind ip: %s",
+		ipaddr, sqlite3_errstr(rc));
+		sqlite3_reset(stmt);
+		sqlite3_finalize(stmt);
+		if(!db_already_open)
+			dbclose();
+		return NULL;
+	}
+
+	rc = sqlite3_step(stmt);
+	if(rc == SQLITE_ROW)
+	{
+		// Database record found (result might be empty)
+		name = strdup((char*)sqlite3_column_text(stmt, 0));
+
+		if(config.debug & DEBUG_DATABASE)
+			logg("Found database host name (same device) %s -> %s", ipaddr, name);
 	}
 	else
 	{
 		// Not found or error (will be logged automatically through our SQLite3 hook)
 		name = NULL;
 	}
-
-	if(config.debug & DEBUG_DATABASE && name != NULL)
-		logg("Found database host name %s -> %s", ipaddr, name);
-
 	// Finalize statement and close database handle
 	sqlite3_reset(stmt);
 	sqlite3_finalize(stmt);

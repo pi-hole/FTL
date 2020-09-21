@@ -14,11 +14,15 @@
 #include "message-table.h"
 #include "../shmem.h"
 #include "../memory.h"
+// struct config
 #include "../config.h"
+// logg()
 #include "../log.h"
 #include "../timers.h"
+// file_exists()
 #include "../files.h"
 #include "sqlite3-ext.h"
+// import_superclients()
 #include "superclients.h"
 
 sqlite3 *FTL_db = NULL;

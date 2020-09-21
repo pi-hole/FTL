@@ -8,21 +8,23 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "FTL.h"
+#include "../FTL.h"
 #include "query-table.h"
 #include "common.h"
 // get[Domain,ClientIP,Forward]String(), etc.
-#include "datastructure.h"
+#include "../datastructure.h"
 // getOverTimeID()
-#include "overTime.h"
+#include "../overTime.h"
 // get_FTL_db_filesize()
-#include "files.h"
-#include "memory.h"
-#include "timers.h"
-#include "log.h"
-#include "config.h"
+#include "../files.h"
+// timer_elapsed_msec()
+#include "../timers.h"
+// logg()
+#include "../log.h"
+// struct config
+#include "../config.h"
 // getstr()
-#include "shmem.h"
+#include "../shmem.h"
 
 static bool saving_failed_before = false;
 

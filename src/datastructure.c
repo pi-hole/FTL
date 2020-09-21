@@ -77,7 +77,11 @@ int findUpstreamID(const char * upstreamString, const bool count)
 
 		if(strcmp(getstr(upstream->ippos), upstreamString) == 0)
 		{
-			if(count) upstream->count++;
+			if(count)
+			{
+				upstream->count++;
+				upstream->lastQuery = time(NULL);
+			}
 			return upstreamID;
 		}
 	}
@@ -113,6 +117,8 @@ int findUpstreamID(const char * upstreamString, const bool count)
 	// to be done separately to be non-blocking
 	upstream->new = true;
 	upstream->namepos = 0; // 0 -> string with length zero
+	// This is a new upstream server
+	upstream->lastQuery = time(NULL);
 	// Increase counter by one
 	counters->upstreams++;
 
