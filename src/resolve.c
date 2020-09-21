@@ -374,6 +374,7 @@ void resolveClients(const bool onlynew)
 				logg("Skipping client %s (%s) because it was inactive for %i seconds",
 				     getstr(ippos), getstr(oldnamepos), (int)(now - client->lastQuery));
 			}
+			unlock_shm();
 			continue;
 		}
 
