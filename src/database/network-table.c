@@ -1103,11 +1103,11 @@ void parse_neighbor_cache(void)
 	// Remove all but the most recent IP addresses not seen for more than a certain time
 	if(config.network_expire > 0u)
 	{
+		const time_t limit = time(NULL)-24*3600*config.network_expire;
 		dbquery("DELETE FROM network_addresses "
-		               "WHERE lastSeen < cast(strftime('%%s', 'now') as int)-%u;",
-		                     config.network_expire);
+		               "WHERE lastSeen < %u;", limit);
 		dbquery("UPDATE network_addresses SET name = NULL "
-		               "WHERE nameUpdated < cast(strftime('%%s', 'now') as int)-%u;", config.network_expire);
+		               "WHERE nameUpdated < %u;", limit);
 	}
 
 	// Start collecting database commands
