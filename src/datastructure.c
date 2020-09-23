@@ -26,6 +26,8 @@
 #include "database/common.h"
 // config struct
 #include "config.h"
+// set_event(RESOLVE_NEW_HOSTNAMES)
+#include "events.h"
 
 const char *querytypes[TYPE_MAX] = {"UNKNOWN", "A", "AAAA", "ANY", "SRV", "SOA", "PTR", "TXT",
                                     "NAPTR", "MX", "DS", "RRSIG", "DNSKEY", "NS", "OTHER"};
@@ -120,6 +122,7 @@ int findUpstreamID(const char * upstreamString, const in_port_t port, const bool
 	// to be done separately to be non-blocking
 	upstream->new = true;
 	upstream->namepos = 0; // 0 -> string with length zero
+	set_event(RESOLVE_NEW_HOSTNAMES);
 	// This is a new upstream server
 	upstream->lastQuery = time(NULL);
 	// Store port
@@ -243,6 +246,7 @@ int findClientID(const char *clientIP, const bool count, const bool aliasclient)
 	// to be done separately to be non-blocking
 	client->new = true;
 	client->namepos = 0;
+	set_event(RESOLVE_NEW_HOSTNAMES);
 	// No query seen so far
 	client->lastQuery = 0;
 	client->numQueriesARP = client->count;
