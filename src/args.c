@@ -22,6 +22,8 @@
 #include "shmem.h"
 // run_dhcp_discover()
 #include "dhcp-discover.h"
+// defined in dnsmasq.c
+extern void print_dnsmasq_version(void);
 
 bool dnsmasq_debug = false;
 bool daemonmode = true, cli_mode = false;
@@ -136,6 +138,32 @@ void parse_args(int argc, char* argv[])
 			exit(EXIT_SUCCESS);
 		}
 
+		// Extended version output
+		if(strcmp(argv[i], "-vv") == 0)
+		{
+			// Print FTL version
+			printf("****************************** FTL **********************************\n");
+			printf("Version:         %s\n\n", get_FTL_version());
+
+			// Print dnsmasq version and compile time options
+			print_dnsmasq_version();
+
+			// Print SQLite3 version and compile time options
+			printf("****************************** SQLite3 ******************************\n");
+			printf("Version:         %s\n", sqlite3_libversion());
+			printf("Compile options: ");
+			unsigned int o = 0;
+			const char *opt = NULL;
+			while((opt = sqlite3_compileoption_get(o++)) != NULL)
+			{
+				if(o != 1)
+					printf(" ");
+				printf("%s", opt);
+			}
+			printf("\n");
+			exit(EXIT_SUCCESS);
+		}
+
 		if(strcmp(argv[i], "-t") == 0 ||
 		   strcmp(argv[i], "tag") == 0)
 		{
@@ -200,7 +228,8 @@ void parse_args(int argc, char* argv[])
 			printf("\t                    don't go into daemon mode\n");
 			printf("\t    test            Don't start pihole-FTL but\n");
 			printf("\t                    instead quit immediately\n");
-			printf("\t-v, version         Return version\n");
+			printf("\t-v, version         Return FTL version\n");
+			printf("\t-vv                 Return more version information\n");
 			printf("\t-t, tag             Return git tag\n");
 			printf("\t-b, branch          Return git branch\n");
 			printf("\t-f, no-daemon       Don't go into daemon mode\n");

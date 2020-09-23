@@ -2146,3 +2146,12 @@ int delay_dhcp(time_t start, int sec, int fd, uint32_t addr, unsigned short id)
   return 0;
 }
 #endif /* HAVE_DHCP */
+
+/******************************** Pi-hole modification ********************************/
+void print_dnsmasq_version(void)
+{
+  printf("****************************** dnsmasq ******************************\n");
+  printf(_("Version:         %s\n"), VERSION);
+  printf(_("Compile options: %s\n\n"), compile_opts);
+}
+/**************************************************************************************/
