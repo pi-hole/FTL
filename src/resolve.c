@@ -358,6 +358,7 @@ void resolveClients(const bool onlynew)
 		{
 			logg("ERROR: Unable to get client pointer (1) with ID %i, skipping...", clientID);
 			skipped++;
+			unlock_shm();
 			continue;
 		}
 
@@ -401,6 +402,7 @@ void resolveClients(const bool onlynew)
 		{
 			logg("ERROR: Unable to get client pointer (2) with ID %i, skipping...", clientID);
 			skipped++;
+			unlock_shm();
 			continue;
 		}
 
@@ -438,6 +440,7 @@ void resolveForwardDestinations(const bool onlynew)
 		{
 			logg("ERROR: Unable to get upstream pointer with ID %i, skipping...", upstreamID);
 			skipped++;
+			unlock_shm();
 			continue;
 		}
 
@@ -454,6 +457,7 @@ void resolveForwardDestinations(const bool onlynew)
 				logg("Skipping upstream %s (%s) because it was inactive for %i seconds",
 				     getstr(ippos), getstr(oldnamepos), (int)(now - upstream->lastQuery));
 			}
+			unlock_shm();
 			continue;
 		}
 		unlock_shm();
@@ -479,6 +483,7 @@ void resolveForwardDestinations(const bool onlynew)
 		{
 			logg("ERROR: Unable to get upstream pointer with ID %i, skipping...", upstreamID);
 			skipped++;
+			unlock_shm();
 			continue;
 		}
 
