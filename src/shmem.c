@@ -36,6 +36,10 @@
 #define SHARED_DNS_CACHE "FTL-dns-cache"
 #define SHARED_PER_CLIENT_REGEX "FTL-per-client-regex"
 
+// Limit from which on we warn users about space running out in SHMEM_PATH
+// default: 90%
+#define SHMEM_WARN_LIMIT 90
+
 // Global counters struct
 countersStruct *counters = NULL;
 
@@ -91,7 +95,10 @@ static int get_dev_shm_usage(char buffer[64])
 	format_memory_size(prefix_used, used, &formated_used);
 
 	// Print result into buffer passed to this subroutine
-	return snprintf(buffer, 64, SHMEM_PATH": %.1f%sB used, %.1f%sB total", formated_used, prefix_used, formated_size, prefix_size);
+	snprintf(buffer, 64, SHMEM_PATH": %.1f%sB used, %.1f%sB total", formated_used, prefix_used, formated_size, prefix_size);
+
+	// Return percentage of used shared memory
+	return (used*100)/size;
 }
 
 // chown_shmem() changes the file ownership of a given shared memory object
@@ -388,12 +395,14 @@ void destroy_shmem(void)
 
 SharedMemory create_shm(const char *name, const size_t size)
 {
-	if(config.debug & DEBUG_SHMEM)
+	char df[64] =  { 0 };
+	const int percentage = get_dev_shm_usage(df);
+	if(config.debug & DEBUG_SHMEM || percentage > SHMEM_WARN_LIMIT)
 	{
-		char df[64] =  { 0 };
-		get_dev_shm_usage(df);
 		logg("Creating shared memory with name \"%s\" and size %zu (%s)", name, size, df);
 	}
+	if(percentage > SHMEM_WARN_LIMIT)
+		logg("WARNING: More than %u%% of "SHMEM_PATH" is used", SHMEM_WARN_LIMIT);
 
 	SharedMemory sharedMemory = {
 		.name = name,
@@ -514,16 +523,18 @@ bool realloc_shm(SharedMemory *sharedMemory, const size_t size, const bool resiz
 		return true;
 
 	// Log that we are doing something here
+	char df[64] =  { 0 };
+	const int percentage = get_dev_shm_usage(df);
 	if(resize)
 	{
-		char df[64] =  { 0 };
-		get_dev_shm_usage(df);
 		logg("Resizing \"%s\" from %zu to %zu (%s)", sharedMemory->name, sharedMemory->size, size, df);
 	}
 	else
 	{
 		logg("Remapping \"%s\" from %zu to %zu", sharedMemory->name, sharedMemory->size, size);
 	}
+	if(percentage > SHMEM_WARN_LIMIT)
+		logg("WARNING: More than %u%% of "SHMEM_PATH" is used", SHMEM_WARN_LIMIT);
 
 	// Resize shard memory object if requested
 	// If not, we only remap a shared memory object which might have changed
