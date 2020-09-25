@@ -79,7 +79,14 @@ static int get_dev_shm_usage(char buffer[64])
 {
 	// Get filesystem information about /dev/shm (typically a tmpfs)
 	struct statvfs f;
-	statvfs(SHMEM_PATH, &f);
+	if(statvfs(SHMEM_PATH, &f) != 0)
+	{
+		// If statvfs() failed, we return the error instead
+		strncpy(buffer, strerror(errno), 64);
+		buffer[63] = '\0';
+		return 0;
+	}
+
 	const unsigned long size = f.f_blocks * f.f_frsize;
 	const unsigned long free = f.f_bavail * f.f_bsize;
 	const unsigned long used = size - free;
@@ -98,7 +105,8 @@ static int get_dev_shm_usage(char buffer[64])
 	snprintf(buffer, 64, SHMEM_PATH": %.1f%sB used, %.1f%sB total", formated_used, prefix_used, formated_size, prefix_size);
 
 	// Return percentage of used shared memory
-	return (used*100)/size;
+	// Adding 1 avoids FPE if the size turns out to be zero
+	return (used*100)/(size + 1);
 }
 
 // chown_shmem() changes the file ownership of a given shared memory object
