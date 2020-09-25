@@ -16,22 +16,25 @@
 #include "config.h"
 // data getter functions
 #include "datastructure.h"
+// statvfs()
+#include <sys/statvfs.h>
 
 /// The version of shared memory used
 #define SHARED_MEMORY_VERSION 10
 
 /// The name of the shared memory. Use this when connecting to the shared memory.
-#define SHARED_LOCK_NAME "/FTL-lock"
-#define SHARED_STRINGS_NAME "/FTL-strings"
-#define SHARED_COUNTERS_NAME "/FTL-counters"
-#define SHARED_DOMAINS_NAME "/FTL-domains"
-#define SHARED_CLIENTS_NAME "/FTL-clients"
-#define SHARED_QUERIES_NAME "/FTL-queries"
-#define SHARED_UPSTREAMS_NAME "/FTL-upstreams"
-#define SHARED_OVERTIME_NAME "/FTL-overTime"
-#define SHARED_SETTINGS_NAME "/FTL-settings"
-#define SHARED_DNS_CACHE "/FTL-dns-cache"
-#define SHARED_PER_CLIENT_REGEX "/FTL-per-client-regex"
+#define SHMEM_PATH "/dev/shm"
+#define SHARED_LOCK_NAME "FTL-lock"
+#define SHARED_STRINGS_NAME "FTL-strings"
+#define SHARED_COUNTERS_NAME "FTL-counters"
+#define SHARED_DOMAINS_NAME "FTL-domains"
+#define SHARED_CLIENTS_NAME "FTL-clients"
+#define SHARED_QUERIES_NAME "FTL-queries"
+#define SHARED_UPSTREAMS_NAME "FTL-upstreams"
+#define SHARED_OVERTIME_NAME "FTL-overTime"
+#define SHARED_SETTINGS_NAME "FTL-settings"
+#define SHARED_DNS_CACHE "FTL-dns-cache"
+#define SHARED_PER_CLIENT_REGEX "FTL-per-client-regex"
 
 // Global counters struct
 countersStruct *counters = NULL;
@@ -67,6 +70,29 @@ static int pagesize;
 static unsigned int local_shm_counter = 0;
 
 static size_t get_optimal_object_size(const size_t objsize, const size_t minsize);
+
+static int get_dev_shm_usage(char buffer[64])
+{
+	// Get filesystem information about /dev/shm (typically a tmpfs)
+	struct statvfs f;
+	statvfs(SHMEM_PATH, &f);
+	const unsigned long size = f.f_blocks * f.f_frsize;
+	const unsigned long free = f.f_bavail * f.f_bsize;
+	const unsigned long used = size - free;
+
+	// Create human-readable total size
+	char prefix_size[2] = { 0 };
+	double formated_size = 0.0;
+	format_memory_size(prefix_size, size, &formated_size);
+
+	// Generate human-readable used size
+	char prefix_used[2] = { 0 };
+	double formated_used = 0.0;
+	format_memory_size(prefix_used, used, &formated_used);
+
+	// Print result into buffer passed to this subroutine
+	return snprintf(buffer, 64, SHMEM_PATH": %.1f%sB used, %.1f%sB total", formated_used, prefix_used, formated_size, prefix_size);
+}
 
 // chown_shmem() changes the file ownership of a given shared memory object
 static bool chown_shmem(SharedMemory *sharedMemory, struct passwd *ent_pw)
@@ -363,7 +389,11 @@ void destroy_shmem(void)
 SharedMemory create_shm(const char *name, const size_t size)
 {
 	if(config.debug & DEBUG_SHMEM)
-		logg("Creating shared memory with name \"%s\" and size %zu", name, size);
+	{
+		char df[64] =  { 0 };
+		get_dev_shm_usage(df);
+		logg("Creating shared memory with name \"%s\" and size %zu (%s)", name, size, df);
+	}
 
 	SharedMemory sharedMemory = {
 		.name = name,
@@ -484,7 +514,16 @@ bool realloc_shm(SharedMemory *sharedMemory, const size_t size, const bool resiz
 		return true;
 
 	// Log that we are doing something here
-	logg("%s \"%s\" from %zu to %zu", resize ? "Resizing" : "Remapping", sharedMemory->name, sharedMemory->size, size);
+	if(resize)
+	{
+		char df[64] =  { 0 };
+		get_dev_shm_usage(df);
+		logg("Resizing \"%s\" from %zu to %zu (%s)", sharedMemory->name, sharedMemory->size, size, df);
+	}
+	else
+	{
+		logg("Remapping \"%s\" from %zu to %zu", sharedMemory->name, sharedMemory->size, size);
+	}
 
 	// Resize shard memory object if requested
 	// If not, we only remap a shared memory object which might have changed
