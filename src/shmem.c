@@ -87,9 +87,11 @@ static int get_dev_shm_usage(char buffer[64])
 		return 0;
 	}
 
-	const unsigned long size = f.f_blocks * f.f_frsize;
-	const unsigned long free = f.f_bavail * f.f_bsize;
-	const unsigned long used = size - free;
+	// Explicitly cast the block counts to unsigned long long to avoid
+	// overflowing with drives larger than 4 GB on 32bit systems
+	const unsigned long long size = (unsigned long long)f.f_blocks * f.f_frsize;
+	const unsigned long long free = (unsigned long long)f.f_bavail * f.f_bsize;
+	const unsigned long long used = size - free;
 
 	// Create human-readable total size
 	char prefix_size[2] = { 0 };
