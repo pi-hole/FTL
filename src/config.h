@@ -41,6 +41,7 @@ typedef struct {
 	bool ignore_localhost;
 	bool analyze_only_A_AAAA;
 	bool DBimport;
+	bool DBexport;
 	bool parse_arp_cache;
 	bool cname_inspection;
 	bool block_esni;

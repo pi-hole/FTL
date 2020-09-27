@@ -21,6 +21,8 @@
 #include "database/message-table.h"
 // bool startup
 #include "main.h"
+// piholeFTLDB_reopen()
+#include "database/common.h"
 
 const char *querytypes[TYPE_MAX] = {"UNKNOWN", "A", "AAAA", "ANY", "SRV", "SOA", "PTR", "TXT",
                                     "NAPTR", "MX", "DS", "RRSIG", "DNSKEY", "NS", "OTHER"};
@@ -428,6 +430,11 @@ void FTL_reset_per_client_domain_data(void)
 
 void FTL_reload_all_domainlists(void)
 {
+	lock_shm();
+
+	// (Re-)open FTL database connection
+	piholeFTLDB_reopen();
+
 	// Flush messages stored in the long-term database
 	flush_message_table();
 
@@ -444,4 +451,6 @@ void FTL_reload_all_domainlists(void)
 	// Reset FTL's internal DNS cache storing whether a specific domain
 	// has already been validated for a specific user
 	FTL_reset_per_client_domain_data();
+
+	unlock_shm();
 }

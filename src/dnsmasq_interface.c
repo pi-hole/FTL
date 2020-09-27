@@ -871,6 +871,9 @@ void FTL_dnsmasq_reload(void)
 
 	logg("Reloading DNS cache");
 
+	// (Re-)open FTL database connection
+	piholeFTLDB_reopen();
+
 	// Request reload the privacy level
 	set_event(RELOAD_PRIVACY_LEVEL);
 
@@ -1716,7 +1719,7 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 	}
 
 	// Start database thread if database is used
-	if(database && pthread_create( &DBthread, &attr, DB_thread, NULL ) != 0)
+	if(pthread_create( &DBthread, &attr, DB_thread, NULL ) != 0)
 	{
 		logg("Unable to open database thread. Exiting...");
 		exit(EXIT_FAILURE);
@@ -1745,7 +1748,7 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 		if(chown(FTLfiles.log, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
 			logg("Setting ownership (%i:%i) of %s failed: %s (%i)",
 			     ent_pw->pw_uid, ent_pw->pw_gid, FTLfiles.log, strerror(errno), errno);
-		if(database && chown(FTLfiles.FTL_db, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
+		if(chown(FTLfiles.FTL_db, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
 			logg("Setting ownership (%i:%i) of %s failed: %s (%i)",
 			     ent_pw->pw_uid, ent_pw->pw_gid, FTLfiles.FTL_db, strerror(errno), errno);
 		chown_all_shmem(ent_pw);
