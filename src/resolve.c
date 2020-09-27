@@ -339,7 +339,7 @@ static size_t resolveAndAddHostname(size_t ippos, size_t oldnamepos)
 }
 
 // Resolve client host names
-void resolveClients(const bool onlynew)
+static void resolveClients(const bool onlynew)
 {
 	const time_t now = time(NULL);
 	// Lock counter access here, we use a copy in the following loop
@@ -358,6 +358,7 @@ void resolveClients(const bool onlynew)
 		{
 			logg("ERROR: Unable to get client pointer (1) with ID %i, skipping...", clientID);
 			skipped++;
+			unlock_shm();
 			continue;
 		}
 
@@ -408,6 +409,7 @@ void resolveClients(const bool onlynew)
 		{
 			logg("ERROR: Unable to get client pointer (2) with ID %i, skipping...", clientID);
 			skipped++;
+			unlock_shm();
 			continue;
 		}
 
@@ -426,7 +428,7 @@ void resolveClients(const bool onlynew)
 }
 
 // Resolve upstream destination host names
-void resolveForwardDestinations(const bool onlynew)
+static void resolveUpstreams(const bool onlynew)
 {
 	const time_t now = time(NULL);
 	// Lock counter access here, we use a copy in the following loop
@@ -445,6 +447,7 @@ void resolveForwardDestinations(const bool onlynew)
 		{
 			logg("ERROR: Unable to get upstream pointer with ID %i, skipping...", upstreamID);
 			skipped++;
+			unlock_shm();
 			continue;
 		}
 
@@ -461,6 +464,7 @@ void resolveForwardDestinations(const bool onlynew)
 				logg("Skipping upstream %s (%s) because it was inactive for %i seconds",
 				     getstr(ippos), getstr(oldnamepos), (int)(now - upstream->lastQuery));
 			}
+			unlock_shm();
 			continue;
 		}
 		unlock_shm();
@@ -486,6 +490,7 @@ void resolveForwardDestinations(const bool onlynew)
 		{
 			logg("ERROR: Unable to get upstream pointer with ID %i, skipping...", upstreamID);
 			skipped++;
+			unlock_shm();
 			continue;
 		}
 
@@ -519,7 +524,7 @@ void *DNSclient_thread(void *val)
 			// Try to resolve new client host names (onlynew=true)
 			resolveClients(true);
 			// Try to resolve new upstream destination host names (onlynew=true)
-			resolveForwardDestinations(true);
+			resolveUpstreams(true);
 			// Prevent immediate re-run of this routine
 			sleepms(500);
 		}
@@ -534,7 +539,7 @@ void *DNSclient_thread(void *val)
 			// Try to resolve all client host names (onlynew=false)
 			resolveClients(false);
 			// Try to resolve all upstream destination host names (onlynew=false)
-			resolveForwardDestinations(false);
+			resolveUpstreams(false);
 			// Try to resolve host names from clients in the network table
 			// which have empty/undefined host names
 			resolveNetworkTableNames();

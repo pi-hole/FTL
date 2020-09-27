@@ -1107,11 +1107,11 @@ void parse_neighbor_cache(void)
 	// Remove all but the most recent IP addresses not seen for more than a certain time
 	if(config.network_expire > 0u)
 	{
+		const time_t limit = time(NULL)-24*3600*config.network_expire;
 		dbquery("DELETE FROM network_addresses "
-		               "WHERE lastSeen < cast(strftime('%%s', 'now') as int)-%u;",
-		                     config.network_expire);
+		               "WHERE lastSeen < %u;", limit);
 		dbquery("UPDATE network_addresses SET name = NULL "
-		               "WHERE nameUpdated < cast(strftime('%%s', 'now') as int)-%u;", config.network_expire);
+		               "WHERE nameUpdated < %u;", limit);
 	}
 
 	// Start collecting database commands
@@ -1811,13 +1811,16 @@ char *__attribute__((malloc)) getNameFromIP(const char *ipaddr)
 		// Database record found (result might be empty)
 		name = strdup((char*)sqlite3_column_text(stmt, 0));
 
-		if(config.debug & DEBUG_DATABASE)
+		if(config.debug & (DEBUG_DATABASE | DEBUG_RESOLVER))
 			logg("Found database host name (same device) %s -> %s", ipaddr, name);
 	}
 	else
 	{
 		// Not found or error (will be logged automatically through our SQLite3 hook)
 		name = NULL;
+
+		if(config.debug & (DEBUG_DATABASE | DEBUG_RESOLVER))
+			logg(" ---> not found");
 	}
 	// Finalize statement and close database handle
 	sqlite3_reset(stmt);
@@ -1854,6 +1857,12 @@ char *__attribute__((malloc)) getIfaceFromIP(const char *ipaddr)
 		if(!db_already_open)
 			dbclose();
 		return NULL;
+	}
+
+	if(config.debug & (DEBUG_DATABASE | DEBUG_RESOLVER))
+	{
+		logg("getDatabaseHostname(): \"%s\" with ? = \"%s\"",
+		     querystr, ipaddr);
 	}
 
 	// Bind ipaddr to prepared statement

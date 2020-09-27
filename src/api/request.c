@@ -18,7 +18,6 @@
 #include "../regex_r.h"
 #include "../database/network-table.h"
 #include "../log.h"
-#include "../signals.h"
 // Eventqueue routines
 #include "../events.h"
 
@@ -155,11 +154,7 @@ void process_request(const char *client_message, int *sock)
 	{
 		processed = true;
 		logg("Received API request to re-resolve host names");
-		// Important: Don't obtain a lock for this request
-		//            Locking will be done internally when needed
-		// onlynew=false -> reresolve all host names
 		set_event(RELOAD_PRIVACY_LEVEL);
-		logg("Done re-resolving host names");
 	}
 	else if(command(client_message, ">recompile-regex"))
 	{
