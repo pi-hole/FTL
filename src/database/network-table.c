@@ -1745,13 +1745,16 @@ char *__attribute__((malloc)) getNameFromIP(const char *ipaddr)
 		// Database record found (result might be empty)
 		name = strdup((char*)sqlite3_column_text(stmt, 0));
 
-		if(config.debug & DEBUG_DATABASE)
+		if(config.debug & (DEBUG_DATABASE | DEBUG_RESOLVER))
 			logg("Found database host name (same device) %s -> %s", ipaddr, name);
 	}
 	else
 	{
 		// Not found or error (will be logged automatically through our SQLite3 hook)
 		name = NULL;
+
+		if(config.debug & (DEBUG_DATABASE | DEBUG_RESOLVER))
+			logg(" ---> not found");
 	}
 	// Finalize statement and close database handle
 	sqlite3_reset(stmt);
@@ -1788,6 +1791,12 @@ char *__attribute__((malloc)) getIfaceFromIP(const char *ipaddr)
 		if(!db_already_open)
 			dbclose();
 		return NULL;
+	}
+
+	if(config.debug & (DEBUG_DATABASE | DEBUG_RESOLVER))
+	{
+		logg("getDatabaseHostname(): \"%s\" with ? = \"%s\"",
+		     querystr, ipaddr);
 	}
 
 	// Bind ipaddr to prepared statement

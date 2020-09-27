@@ -276,6 +276,16 @@ static void SIGRT_handler(int signum, siginfo_t *si, void *unused)
 		exit_code = EXIT_FAILURE;
 		kill(0, SIGTERM);
 	}
+	else if(rtsig == 4)
+	{
+		// Re-resolve all clients and forward destinations
+		set_event(RERESOLVE_HOSTNAMES);
+	}
+	else if(rtsig == 5)
+	{
+		// Parse neighbor cache
+		set_event(PARSE_NEIGHBOR_CACHE);
+	}
 }
 
 // Register SIGSEGV handler
