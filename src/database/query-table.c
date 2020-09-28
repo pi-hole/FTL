@@ -289,6 +289,10 @@ void delete_old_queries_in_DB(void)
 // Get most recent 24 hours data from long-term database
 void DB_read_queries(void)
 {
+	// Open database
+	if(!dbopen())
+		return;
+
 	// Prepare request
 	// Get time stamp 24 hours in the past
 	const time_t now = time(NULL);
@@ -522,4 +526,7 @@ void DB_read_queries(void)
 
 	// Finalize SQLite3 statement
 	sqlite3_finalize(stmt);
+
+	// Close database here, we have to reopen it later (after forking)
+	dbclose();
 }
