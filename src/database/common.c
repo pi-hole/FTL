@@ -8,17 +8,20 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "FTL.h"
-#include "database/common.h"
-#include "database/network-table.h"
-#include "database/message-table.h"
-#include "shmem.h"
-#include "memory.h"
-#include "config.h"
-#include "log.h"
-#include "timers.h"
-#include "files.h"
-#include "database/sqlite3-ext.h"
+#include "../FTL.h"
+#include "common.h"
+#include "network-table.h"
+#include "message-table.h"
+#include "../shmem.h"
+#include "../memory.h"
+// struct config
+#include "../config.h"
+// logg()
+#include "../log.h"
+#include "../timers.h"
+// file_exists()
+#include "../files.h"
+#include "sqlite3-ext.h"
 
 sqlite3 *FTL_db = NULL;
 bool database = true;

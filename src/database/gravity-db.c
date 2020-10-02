@@ -8,21 +8,23 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "FTL.h"
+#include "../FTL.h"
 #include "sqlite3.h"
 #include "gravity-db.h"
-#include "config.h"
-#include "log.h"
+// struct config
+#include "../config.h"
+// logg()
+#include "../log.h"
 // match_regex()
-#include "regex_r.h"
+#include "../regex_r.h"
 // getstr()
-#include "shmem.h"
+#include "../shmem.h"
 // SQLite3 prepared statement vectors
 #include "../vector.h"
 // log_subnet_warning()
-#include "database/message-table.h"
+#include "message-table.h"
 // getMACfromIP()
-#include "database/network-table.h"
+#include "network-table.h"
 // struct DNSCacheData
 #include "../datastructure.h"
 
@@ -337,7 +339,9 @@ static bool get_client_groupids(clientsData* client)
 		{
 			free(hwaddr);
 			hwaddr = NULL;
-			logg("Skipping mock-device hardware address lookup");
+
+			if(config.debug & DEBUG_CLIENTS)
+				logg("Skipping mock-device hardware address lookup");
 		}
 
 		// MAC address fallback: Try to synthesize MAC address from internal buffer
@@ -348,7 +352,9 @@ static bool get_client_groupids(clientsData* client)
 			snprintf(hwaddr, strlen, "%02X:%02X:%02X:%02X:%02X:%02X",
 			         client->hwaddr[0], client->hwaddr[1], client->hwaddr[2],
 			         client->hwaddr[3], client->hwaddr[4], client->hwaddr[5]);
-			logg("--> Obtained %s from internal ARP cache", hwaddr);
+
+			if(config.debug & DEBUG_CLIENTS)
+				logg("--> Obtained %s from internal ARP cache", hwaddr);
 		}
 	}
 
@@ -432,7 +438,8 @@ static bool get_client_groupids(clientsData* client)
 		{
 			free(hostname);
 			hostname = NULL;
-			logg("Skipping empty host name lookup");
+			if(config.debug & DEBUG_CLIENTS)
+				logg("Skipping empty host name lookup");
 		}
 	}
 
@@ -517,7 +524,8 @@ static bool get_client_groupids(clientsData* client)
 		{
 			free(interface);
 			interface = 0;
-			logg("Skipping empty interface lookup");
+			if(config.debug & DEBUG_CLIENTS)
+				logg("Skipping empty interface lookup");
 		}
 	}
 

@@ -112,11 +112,15 @@ set(sources
         daemon.h
         datastructure.c
         datastructure.h
+        dhcp-discover.c
+        dhcp-discover.h
         dnsmasq_interface.c
         dnsmasq_interface.h
         edns0.c
         edns0.h
         enums.h
+        events.c
+        events.h
         files.c
         files.h
         FTL.h

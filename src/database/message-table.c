@@ -8,12 +8,13 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "FTL.h"
-#include "database/message-table.h"
-#include "database/common.h"
-#include "log.h"
+#include "../FTL.h"
+#include "message-table.h"
+#include "common.h"
+// logg()
+#include "../log.h"
 // get_group_names()
-#include "database/gravity-db.h"
+#include "gravity-db.h"
 // cli_mode
 #include "../args.h"
 

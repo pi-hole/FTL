@@ -750,6 +750,7 @@
   run bash -c 'kill -RTMIN $(pidof -s pihole-FTL)'
   printf "reload: %s\n" "${lines[@]}"
   [[ $status == 0 ]]
+  run sleep 2
   run bash -c 'dig A localhost @127.0.0.1 +short'
   printf "dig A: %s\n" "${lines[@]}"
   [[ ${lines[0]} == "0.0.0.0" ]]
@@ -762,6 +763,7 @@
   run bash -c 'kill -RTMIN $(pidof -s pihole-FTL)'
   printf "reload: %s\n" "${lines[@]}"
   [[ $status == 0 ]]
+  run sleep 2
 }
 
 @test "Regex Test 38: Option \"^localhost$;querytype=!A\" working as expected (NOT matching A queries)" {
@@ -771,6 +773,7 @@
   run bash -c 'kill -RTMIN $(pidof -s pihole-FTL)'
   printf "reload: %s\n" "${lines[@]}"
   [[ $status == 0 ]]
+  run sleep 2
   run bash -c 'dig A localhost @127.0.0.1 +short'
   printf "dig A: %s\n" "${lines[@]}"
   [[ ${lines[0]} != "0.0.0.0" ]]
@@ -783,6 +786,7 @@
   run bash -c 'kill -RTMIN $(pidof -s pihole-FTL)'
   printf "reload: %s\n" "${lines[@]}"
   [[ $status == 0 ]]
+  run sleep 2
 }
 
 @test "Regex Test 39: Option \";invert\" working as expected (match is inverted)" {
