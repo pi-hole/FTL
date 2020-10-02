@@ -559,7 +559,7 @@ bool realloc_shm(SharedMemory *sharedMemory, const size_t size, const bool resiz
 		{
 			logg("FATAL: realloc_shm(): Failed to open shared memory object \"%s\": %s",
 			     sharedMemory->name, strerror(errno));
-			return false;
+			exit(EXIT_FAILURE);
 		}
 
 		// Allocate shared memory object to specified size
@@ -571,7 +571,7 @@ bool realloc_shm(SharedMemory *sharedMemory, const size_t size, const bool resiz
 		{
 			logg("FATAL: realloc_shm(): Failed to resize \"%s\" (%i) to %zu: %s (%i)",
 			     sharedMemory->name, fd, size, strerror(errno), ret);
-			return false;
+			exit(EXIT_FAILURE);
 		}
 
 		// Close shared memory object file descriptor as it is no longer
@@ -589,7 +589,7 @@ bool realloc_shm(SharedMemory *sharedMemory, const size_t size, const bool resiz
 		logg("FATAL: realloc_shm(): mremap(%p, %zu, %zu, MREMAP_MAYMOVE): Failed to reallocate \"%s\": %s",
 		     sharedMemory->ptr, sharedMemory->size, size, sharedMemory->name,
 		     strerror(errno));
-		return false;
+		exit(EXIT_FAILURE);
 	}
 
 	sharedMemory->ptr = new_ptr;
