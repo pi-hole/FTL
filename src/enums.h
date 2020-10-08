@@ -40,6 +40,7 @@ enum query_status {
 	QUERY_GRAVITY_CNAME,
 	QUERY_REGEX_CNAME,
 	QUERY_BLACKLIST_CNAME,
+	QUERY_RETRIED,
 	QUERY_STATUS_MAX
 } __attribute__ ((packed));
 

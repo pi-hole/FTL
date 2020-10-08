@@ -347,7 +347,7 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	start = daemon->servers; /* at end of list, recycle */
       header->id = htons(forward->new_id);
 
-      FTL_forwarding_failed(forward->sentto);
+      FTL_forwarding_retried(forward->sentto, forward->log_id, daemon->log_id);
     }
   else 
     {

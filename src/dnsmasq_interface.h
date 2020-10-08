@@ -39,8 +39,7 @@ void _FTL_dnssec(const int status, const int id, const char* file, const int lin
 #define FTL_header_analysis(header4, rcode, id) _FTL_header_analysis(header4, rcode, id, __FILE__, __LINE__)
 void _FTL_header_analysis(const unsigned char header4, const unsigned int rcode, const int id, const char* file, const int line);
 
-#define FTL_forwarding_failed(server) _FTL_forwarding_failed(server, __FILE__, __LINE__)
-void _FTL_forwarding_failed(const struct server *server, const char* file, const int line);
+void FTL_forwarding_retried(const struct server *server, const int oldID, const int newID);
 
 #define FTL_upstream_error(rcode, id) _FTL_upstream_error(rcode, id, __FILE__, __LINE__)
 void _FTL_upstream_error(const unsigned int rcode, const int id, const char* file, const int line);

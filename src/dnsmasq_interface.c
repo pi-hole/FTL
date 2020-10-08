@@ -1773,7 +1773,7 @@ void getCacheInformation(const int *sock)
 	// looked up for the longest time is evicted.
 }
 
-void _FTL_forwarding_failed(const struct server *server, const char* file, const int line)
+void FTL_forwarding_retried(const struct server *server, const int oldID, const int newID)
 {
 	// Forwarding to upstream server failed
 
@@ -1795,7 +1795,11 @@ void _FTL_forwarding_failed(const struct server *server, const char* file, const
 	const int upstreamID = findUpstreamID(upstreamIP, false);
 
 	// Possible debugging information
-	if(config.debug & DEBUG_QUERIES) logg("**** forwarding to %s (ID %i, %s:%i) FAILED", dest, upstreamID, file, line);
+	if(config.debug & DEBUG_QUERIES)
+	{
+		logg("**** RETRIED query %i as %i to %s (ID %i)",
+		     oldID, newID, dest, upstreamID);
+	}
 
 	// Get upstream pointer
 	upstreamsData* upstream = getUpstream(upstreamID, true);
@@ -1803,6 +1807,18 @@ void _FTL_forwarding_failed(const struct server *server, const char* file, const
 	// Update counter
 	if(upstream != NULL)
 		upstream->failed++;
+
+	// Search for corresponding query identified by ID
+	const int queryID = findQueryID(oldID);
+	if(queryID >= 0)
+	{
+		// Get query pointer
+		queriesData* query = getQuery(queryID, true);
+
+		// Set retried status
+		if(query != NULL)
+			query->status = QUERY_RETRIED;
+	}
 
 	// Clean up and unlock shared memory
 	free(upstreamIP);
