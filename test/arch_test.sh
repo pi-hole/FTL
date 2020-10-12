@@ -112,7 +112,7 @@ elif [[ "${CIRCLE_JOB}" == "arm-qemu" ]]; then
   check_libs "[librt.so.1] [libgcc_s.so.1] [libpthread.so.0] [libc.so.6] [ld-linux.so.3]"
   check_file "ELF 32-bit LSB  shared object, ARM, EABI5 version 1 (SYSV), dynamically linked (uses shared libs), for GNU/Linux 3.2.0, not stripped"
 
-  check_CPU_arch "v6"
+  check_CPU_arch "v4T"
   check_FP_arch "" # No specified FP arch
 
 else
