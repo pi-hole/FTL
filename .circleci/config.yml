@@ -36,7 +36,7 @@ version: 2
 
 .docker_template: &docker_template
   docker:
-    - image: pihole/ftl-build:v1.3-$CIRCLE_JOB
+    - image: pihole/ftl-build:v1.5-$CIRCLE_JOB
   <<: *job_steps
 
 jobs:
