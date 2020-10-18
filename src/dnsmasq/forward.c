@@ -311,6 +311,7 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	  else
 	    log_query(F_NOEXTRA | F_DNSSEC | F_IPV6, "retry", (union all_addr *)&forward->sentto->addr.in6.sin6_addr, "dnssec");
 
+	  FTL_forwarding_retried(forward->sentto, forward->log_id, daemon->log_id, true);
   
 	  if (forward->sentto->sfd)
 	    fd = forward->sentto->sfd->fd;
@@ -347,7 +348,7 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	start = daemon->servers; /* at end of list, recycle */
       header->id = htons(forward->new_id);
 
-      FTL_forwarding_retried(forward->sentto, forward->log_id, daemon->log_id);
+      FTL_forwarding_retried(forward->sentto, forward->log_id, daemon->log_id, false);
     }
   else 
     {

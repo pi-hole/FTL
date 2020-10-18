@@ -1773,7 +1773,7 @@ void getCacheInformation(const int *sock)
 	// looked up for the longest time is evicted.
 }
 
-void FTL_forwarding_retried(const struct server *server, const int oldID, const int newID)
+void FTL_forwarding_retried(const struct server *server, const int oldID, const int newID, const bool dnssec)
 {
 	// Forwarding to upstream server failed
 
@@ -1817,7 +1817,23 @@ void FTL_forwarding_retried(const struct server *server, const int oldID, const 
 
 		// Set retried status
 		if(query != NULL)
-			query->status = QUERY_RETRIED;
+		{
+			if(dnssec)
+			{
+				// There is point in retrying the query when
+				// we've already got an answer to this query,
+				// but we're awaiting keys for DNSSEC
+				// validation. We're retrying the DNSSEC query
+				// instead
+				query->status = QUERY_RETRIED_DNSSEC;
+			}
+			else
+			{
+				// Normal query retry due to answer not arriving
+				// soon enough at the requestor
+				query->status = QUERY_RETRIED;
+			}
+		}
 	}
 
 	// Clean up and unlock shared memory

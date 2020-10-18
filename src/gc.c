@@ -101,7 +101,8 @@ void *GC_thread(void *val)
 						counters->unknown--;
 						break;
 					case QUERY_FORWARDED: // (fall through)
-					case QUERY_RETRIED:
+					case QUERY_RETRIED: // (fall through)
+					case QUERY_RETRIED_DNSSEC:
 						// Forwarded to an upstream DNS server
 						// Adjust counters
 						counters->forwarded--;

@@ -41,6 +41,7 @@ enum query_status {
 	QUERY_REGEX_CNAME,
 	QUERY_BLACKLIST_CNAME,
 	QUERY_RETRIED,
+	QUERY_RETRIED_DNSSEC,
 	QUERY_STATUS_MAX
 } __attribute__ ((packed));
 
