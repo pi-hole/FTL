@@ -87,6 +87,13 @@ void *DB_thread(void *val)
 		if(get_and_clear_event(RELOAD_PRIVACY_LEVEL))
 			get_privacy_level(NULL);
 
+		if(get_and_clear_event(RERESOLVE_DATABASE_NAMES))
+		{
+			// Try to resolve host names from clients in the network table
+			// which have empty/undefined host names
+			resolveNetworkTableNames();
+		}
+
 		// Sleep 0.1 seconds
 		sleepms(100);
 	}

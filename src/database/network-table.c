@@ -1788,7 +1788,7 @@ void resolveNetworkTableNames(void)
 {
 	if(!FTL_DB_avail())
 	{
-		logg("updateMACVendorRecords() - Database not available");
+		logg("resolveNetworkTableNames() - Database not available");
 		return;
 	}
 
