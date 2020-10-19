@@ -1809,7 +1809,9 @@ void FTL_forwarding_retried(const struct server *server, const int oldID, const 
 		upstream->failed++;
 
 	// Search for corresponding query identified by ID
-	const int queryID = findQueryID(oldID);
+	// Retried DNSSEC queries are ignored, we have to flag themselves (newID)
+	// Retried normal queries take over, we have to flat the original query (oldID)
+	const int queryID = findQueryID(dnssec ? newID : oldID);
 	if(queryID >= 0)
 	{
 		// Get query pointer
