@@ -441,14 +441,15 @@ SharedMemory create_shm(const char *name, const size_t size)
 		exit(EXIT_FAILURE);
 	}
 
-	// Resize shared memory file
-	ret = ftruncate(fd, size);
-
-	// Check for `ftruncate` error
-	if(ret == -1)
+	// Allocate shared memory object to specified size
+	// Using fallocate() will ensure that there's actually space for
+	// this file. Otherwise we end up with a sparse file that can give
+	// SIGBUS if we run out of space while writing to it.
+	ret = fallocate(fd, 0, 0U, size);
+	if(ret != 0)
 	{
-		logg("FATAL: create_shm(): ftruncate(%i, %zu): Failed to resize shared memory object \"%s\": %s",
-		     fd, size, sharedMemory.name, strerror(errno));
+		logg("FATAL: create_shm(): Failed to resize \"%s\" (%i) to %zu: %s (%i)",
+		     sharedMemory.name, fd, size, strerror(errno), ret);
 		exit(EXIT_FAILURE);
 	}
 
@@ -561,16 +562,20 @@ bool realloc_shm(SharedMemory *sharedMemory, const size_t size, const bool resiz
 			exit(EXIT_FAILURE);
 		}
 
-		// Truncate shared memory object to specified size
-		const int result = ftruncate(fd, size);
-		if(result == -1) {
-			logg("FATAL: realloc_shm(): ftruncate(%i, %zu): Failed to resize \"%s\": %s",
-			     fd, size, sharedMemory->name, strerror(errno));
+		// Allocate shared memory object to specified size
+		// Using fallocate() will ensure that there's actually space for
+		// this file. Otherwise we end up with a sparse file that can give
+		// SIGBUS if we run out of space while writing to it.
+		const int ret = fallocate(fd, 0, 0U, size);
+		if(ret != 0)
+		{
+			logg("FATAL: realloc_shm(): Failed to resize \"%s\" (%i) to %zu: %s (%i)",
+			     sharedMemory->name, fd, size, strerror(errno), ret);
 			exit(EXIT_FAILURE);
 		}
 
 		// Close shared memory object file descriptor as it is no longer
-		// needed after having called ftruncate()
+		// needed after having called fallocate()
 		close(fd);
 
 		// Update shm counters to indicate that at least one shared memory object changed

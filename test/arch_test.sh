@@ -64,31 +64,59 @@ check_file() {
   echo "Binary classification checks: OK (${1})"
 }
 
+check_static() {
+  if readelf -l ./pihole-FTL | grep -q INTERP; then
+    echo "Not a static executable, depends on dynamic interpreter"
+    ldd ./pihole-FTL
+    exit 1
+  fi
+  echo "Static executable check: OK"
+}
+
 if [[ "${CIRCLE_JOB}" == "x86_64" ]]; then
 
   check_machine "ELF64" "Advanced Micro Devices X86-64"
   check_libs "[librt.so.1] [libpthread.so.0] [libc.so.6]"
-  check_file "ELF 64-bit LSB shared object, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, for GNU/Linux 2.6.32, not stripped"
+  check_file "ELF 64-bit LSB shared object, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, for GNU/Linux 3.2.0, with debug_info, not stripped"
 
 elif [[ "${CIRCLE_JOB}" == "x86_64-musl" ]]; then
 
   check_machine "ELF64" "Advanced Micro Devices X86-64"
   check_libs "" # No dependency on any shared library is intended
-  check_file "ELF 64-bit LSB pie executable, x86-64, version 1 (SYSV), dynamically linked, with debug_info, not stripped"
+  check_static # Binary should not rely on any dynamic interpreter
+  check_file "ELF 64-bit LSB shared object, x86-64, version 1 (SYSV), statically linked, with debug_info, not stripped"
 
 elif [[ "${CIRCLE_JOB}" == "x86_32" ]]; then
 
   check_machine "ELF32" "Intel 80386"
   check_libs "[librt.so.1] [libpthread.so.0] [libc.so.6]"
-  check_file "ELF 32-bit LSB shared object, Intel 80386, version 1 (SYSV), dynamically linked, interpreter /lib/ld-linux.so.2, for GNU/Linux 2.6.32, not stripped"
+  check_file "ELF 32-bit LSB shared object, Intel 80386, version 1 (SYSV), dynamically linked, interpreter /lib/ld-linux.so.2, for GNU/Linux 3.2.0, with debug_info, not stripped"
 
 elif [[ "${CIRCLE_JOB}" == "aarch64" ]]; then
 
   check_machine "ELF64" "AArch64"
   check_libs "[librt.so.1] [libpthread.so.0] [libc.so.6] [ld-linux-aarch64.so.1]"
-  check_file "ELF 64-bit LSB shared object, ARM aarch64, version 1 (SYSV), dynamically linked, interpreter /lib/ld-linux-aarch64.so.1, for GNU/Linux 3.7.0, not stripped"
+  check_file "ELF 64-bit LSB shared object, ARM aarch64, version 1 (SYSV), dynamically linked, interpreter /lib/ld-linux-aarch64.so.1, for GNU/Linux 3.7.0, with debug_info, not stripped"
 
-elif [[ "${CIRCLE_JOB}" == "arm" ]]; then
+elif [[ "${CIRCLE_JOB}" == "armv4t" ]]; then
+
+  check_machine "ELF32" "ARM"
+  check_libs "[librt.so.1] [libgcc_s.so.1] [libpthread.so.0] [libc.so.6] [ld-linux.so.3]"
+  check_file "ELF 32-bit LSB shared object, ARM, EABI5 version 1 (SYSV), dynamically linked, interpreter /lib/ld-linux.so.3, for GNU/Linux 3.2.0, not stripped"
+
+  check_CPU_arch "v4T"
+  check_FP_arch "" # No specified FP arch
+
+elif [[ "${CIRCLE_JOB}" == "armv5te" ]]; then
+
+  check_machine "ELF32" "ARM"
+  check_libs "[librt.so.1] [libgcc_s.so.1] [libpthread.so.0] [libc.so.6] [ld-linux.so.3]"
+  check_file "ELF 32-bit LSB shared object, ARM, EABI5 version 1 (SYSV), dynamically linked, interpreter /lib/ld-linux.so.3, for GNU/Linux 3.2.0, with debug_info, not stripped"
+
+  check_CPU_arch "v5TE"
+  check_FP_arch "" # No specified FP arch
+
+elif [[ "${CIRCLE_JOB}" == "armv6hf" ]]; then
 
   check_machine "ELF32" "ARM"
   check_libs "[librt.so.1] [libgcc_s.so.1] [libpthread.so.0] [libc.so.6] [ld-linux-armhf.so.3]"
@@ -97,27 +125,29 @@ elif [[ "${CIRCLE_JOB}" == "arm" ]]; then
   check_CPU_arch "v6"
   check_FP_arch "VFPv2"
 
-elif [[ "${CIRCLE_JOB}" == "armhf" ]]; then
+elif [[ "${CIRCLE_JOB}" == "armv7hf" ]]; then
 
   check_machine "ELF32" "ARM"
   check_libs "[librt.so.1] [libgcc_s.so.1] [libpthread.so.0] [libc.so.6] [ld-linux-armhf.so.3]"
-  check_file "ELF 32-bit LSB shared object, ARM, EABI5 version 1 (SYSV), dynamically linked, interpreter /lib/ld-linux-armhf.so.3, for GNU/Linux 3.2.0, not stripped"
+  check_file "ELF 32-bit LSB shared object, ARM, EABI5 version 1 (SYSV), dynamically linked, interpreter /lib/ld-linux-armhf.so.3, for GNU/Linux 3.2.0, with debug_info, not stripped"
 
   check_CPU_arch "v7"
   check_FP_arch "VFPv3-D16"
 
-elif [[ "${CIRCLE_JOB}" == "arm-qemu" ]]; then
+elif [[ "${CIRCLE_JOB}" == "armv8a" ]]; then
 
   check_machine "ELF32" "ARM"
-  check_libs "[librt.so.1] [libgcc_s.so.1] [libpthread.so.0] [libc.so.6] [ld-linux.so.3]"
-  check_file "ELF 32-bit LSB  shared object, ARM, EABI5 version 1 (SYSV), dynamically linked (uses shared libs), for GNU/Linux 3.2.0, not stripped"
+  check_libs "[librt.so.1] [libgcc_s.so.1] [libpthread.so.0] [libc.so.6] [ld-linux-armhf.so.3]"
+  check_file "ELF 32-bit LSB shared object, ARM, EABI5 version 1 (SYSV), dynamically linked, interpreter /lib/ld-linux-armhf.so.3, for GNU/Linux 3.2.0, with debug_info, not stripped"
 
-  check_CPU_arch "v6"
-  check_FP_arch "" # No specified FP arch
+  check_CPU_arch "v8"
+  check_FP_arch "VFPv3-D16"
 
 else
+
   echo "Invalid job ${CIRCLE_JOB}"
   exit 1
+
 fi
 
 exit 0
