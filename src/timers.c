@@ -22,7 +22,7 @@ void timer_start(const enum timers i)
 		logg("Code error: Timer %i not defined in timer_start().", i);
 		exit(EXIT_FAILURE);
 	}
-	clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &t0[i]);
+	clock_gettime(CLOCK_REALTIME, &t0[i]);
 }
 
 static struct timespec diff(struct timespec start, struct timespec end)
@@ -31,7 +31,7 @@ static struct timespec diff(struct timespec start, struct timespec end)
 	if(end.tv_nsec-start.tv_nsec < 0L)
 	{
 		diff.tv_sec = end.tv_sec - start.tv_sec - 1; // subtract one second here...
-		diff.tv_nsec = 1000000000 + end.tv_nsec - start.tv_nsec; // ...we have to add it here
+		diff.tv_nsec = end.tv_nsec - start.tv_nsec + 1000000000L; // ...we have to add it here
 	}
 	else
 	{
@@ -49,25 +49,9 @@ double timer_elapsed_msec(const enum timers i)
 		exit(EXIT_FAILURE);
 	}
 	struct timespec t1, td;
-	clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &t1);
+	clock_gettime(CLOCK_REALTIME, &t1);
 	td = diff(t0[i], t1);
 	return td.tv_sec * 1e3 + td.tv_nsec * 1e-6;
-}
-
-unsigned long timer_elapsed_usec(const enum timers i)
-{
-	struct timespec t1, td;
-	clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &t1);
-	td = diff(t0[i], t1);
-	return td.tv_sec * 1000000L + td.tv_nsec / 1000;
-}
-
-unsigned long long timer_elapsed_nsec(const enum timers i)
-{
-	struct timespec t1, td;
-	clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &t1);
-	td = diff(t0[i], t1);
-	return td.tv_sec * 1000000000LL + td.tv_nsec;
 }
 
 void sleepms(const int milliseconds)
