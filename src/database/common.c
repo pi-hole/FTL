@@ -195,6 +195,10 @@ static bool db_create(void)
 		logg("Encountered error while trying to create database in rw-mode: %s", sqlite3_errstr(rc));
 		return false;
 	}
+
+	// Mark database as being available so dbquery() doesn't error out
+	db_avail = true;
+
 	// Create Queries table in the database
 	SQL_bool("CREATE TABLE queries ( id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL, type INTEGER NOT NULL, status INTEGER NOT NULL, domain TEXT NOT NULL, client TEXT NOT NULL, forward TEXT );");
 
