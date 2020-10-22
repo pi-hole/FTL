@@ -132,6 +132,9 @@ int main (int argc, char* argv[])
 
 	//Remove PID file
 	removepid();
-	logg("########## FTL terminated after %e s! ##########", 1e-3*timer_elapsed_msec(EXIT_TIMER));
+
+	char buffer[42] = { 0 };
+	format_time(buffer, 0, timer_elapsed_msec(EXIT_TIMER));
+	logg("########## FTL terminated after%s! ##########", buffer);
 	return exit_code;
 }

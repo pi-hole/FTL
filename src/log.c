@@ -183,6 +183,38 @@ void format_memory_size(char * const prefix, const unsigned long long int bytes,
 	strcpy(prefix, prefixes[i]);
 }
 
+// Human-readable time
+void format_time(char buffer[42], unsigned long seconds, double milliseconds)
+{
+	unsigned long umilliseconds = 0;
+	if(milliseconds > 0)
+	{
+		seconds = milliseconds / 1000;
+		umilliseconds = (unsigned long)milliseconds % 1000;
+	}
+	const unsigned int days = seconds / (60 * 60 * 24);
+	seconds -= days * (60 * 60 * 24);
+	const unsigned int hours = seconds / (60 * 60);
+	seconds -= hours * (60 * 60);
+	const unsigned int minutes = seconds / 60;
+	seconds %= 60;
+
+	buffer[0] = ' ';
+	buffer[1] = '\0';
+	if(days > 0)
+		sprintf(buffer + strlen(buffer), "%ud ", days);
+	if(hours > 0)
+		sprintf(buffer + strlen(buffer), "%uh ", hours);
+	if(minutes > 0)
+		sprintf(buffer + strlen(buffer), "%um ", minutes);
+	if(seconds > 0)
+		sprintf(buffer + strlen(buffer), "%lus ", seconds);
+
+	// Only append milliseconds when the timer value is less than 10 seconds
+	if((days + hours + minutes) == 0 && seconds < 10 && umilliseconds > 0)
+		sprintf(buffer + strlen(buffer), "%lums ", umilliseconds);
+}
+
 void log_counter_info(void)
 {
 	logg(" -> Total DNS queries: %i", counters->queries);
