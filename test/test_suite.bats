@@ -961,3 +961,41 @@
   printf "%s\n" "${lines[@]}"
   [[ "${lines[@]}" == *"**** new UDP query[A] query \"localhost\" from lo:fe80::b167:af1e:968b:dead "* ]]
 }
+
+@test "EDNS(0) ECS skipped for loopback address (IPv4)" {
+  # Get number of lines in the log before the test
+  before="$(grep -c ^ /var/log/pihole-FTL.log)"
+
+  # Run test command
+  run bash -c 'dig localhost +short +subnet=127.0.0.1/32 @127.0.0.1'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "127.0.0.1" ]]
+  [[ $status == 0 ]]
+
+  # Get number of lines in the log after the test
+  after="$(grep -c ^ /var/log/pihole-FTL.log)"
+
+  # Extract relevant log lines
+  run bash -c "sed -n \"${before},${after}p\" /var/log/pihole-FTL.log"
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[@]}" == *"EDNS(0) CLIENT SUBNET: Skipped 127.0.0.1/32 (IPv4 loopback address)"* ]]
+}
+
+@test "EDNS(0) ECS skipped for loopback address (IPv6)" {
+  # Get number of lines in the log before the test
+  before="$(grep -c ^ /var/log/pihole-FTL.log)"
+
+  # Run test command
+  run bash -c 'dig localhost +short +subnet=::1/128 @127.0.0.1'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "127.0.0.1" ]]
+  [[ $status == 0 ]]
+
+  # Get number of lines in the log after the test
+  after="$(grep -c ^ /var/log/pihole-FTL.log)"
+
+  # Extract relevant log lines
+  run bash -c "sed -n \"${before},${after}p\" /var/log/pihole-FTL.log"
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[@]}" == *"EDNS(0) CLIENT SUBNET: Skipped ::1/128 (IPv6 loopback address)"* ]]
+}
