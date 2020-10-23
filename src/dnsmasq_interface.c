@@ -70,8 +70,18 @@ const char flagnames[][12] = {"F_IMMORTAL ", "F_NAMEP ", "F_REVERSE ", "F_FORWAR
 // Store interface the next query will come from for later usage
 void FTL_next_iface(const char *newiface)
 {
-	strncpy(next_iface, newiface, sizeof(next_iface)-1);
-	next_iface[sizeof(next_iface)-1] = '\0';
+	if(newiface != NULL)
+	{
+		// Copy interface name if available
+		strncpy(next_iface, newiface, sizeof(next_iface)-1);
+		next_iface[sizeof(next_iface)-1] = '\0';
+	}
+	else
+	{
+		// Use dummy when interface record is not available
+		next_iface[0] = '-';
+		next_iface[1] = '\0';
+	}
 }
 
 static bool check_domain_blocked(const char *domain, const int clientID,
