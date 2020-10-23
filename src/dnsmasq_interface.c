@@ -534,7 +534,11 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	char *domainString = strdup(name);
 	strtolower(domainString);
 
-	// Get client IP address (can be overwritten by EDNS(0) client subnet (ECS) data)
+	// Get client IP address
+	// The requestor's IP address can be rewritten using EDNS(0) client
+	// subnet (ECS) data), however, we do not rewrite the IPs ::1 and
+	// 127.0.0.1 to avoid queries originating from localhost of the
+	// *distant* machine as queries coming from the *local* machine
 	char clientIP[ADDRSTRLEN] = { 0 };
 	if(config.edns0_ecs && edns->client_set)
 	{
