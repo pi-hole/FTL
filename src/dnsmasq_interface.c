@@ -70,8 +70,18 @@ const char flagnames[][12] = {"F_IMMORTAL ", "F_NAMEP ", "F_REVERSE ", "F_FORWAR
 // Store interface the next query will come from for later usage
 void FTL_next_iface(const char *newiface)
 {
-	strncpy(next_iface, newiface, sizeof(next_iface)-1);
-	next_iface[sizeof(next_iface)-1] = '\0';
+	if(newiface != NULL)
+	{
+		// Copy interface name if available
+		strncpy(next_iface, newiface, sizeof(next_iface)-1);
+		next_iface[sizeof(next_iface)-1] = '\0';
+	}
+	else
+	{
+		// Use dummy when interface record is not available
+		next_iface[0] = '-';
+		next_iface[1] = '\0';
+	}
 }
 
 static bool check_domain_blocked(const char *domain, const int clientID,
@@ -534,7 +544,11 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	char *domainString = strdup(name);
 	strtolower(domainString);
 
-	// Get client IP address (can be overwritten by EDNS(0) client subnet (ECS) data)
+	// Get client IP address
+	// The requestor's IP address can be rewritten using EDNS(0) client
+	// subnet (ECS) data), however, we do not rewrite the IPs ::1 and
+	// 127.0.0.1 to avoid queries originating from localhost of the
+	// *distant* machine as queries coming from the *local* machine
 	char clientIP[ADDRSTRLEN] = { 0 };
 	if(config.edns0_ecs && edns->client_set)
 	{
