@@ -13,20 +13,34 @@ version: 2
         name: "Binary checks"
         command: bash test/arch_test.sh
     - run:
-        name: "Upload"
+        name: "Compute checksum"
+        command: |
+          mv pihole-FTL "${BIN_NAME}"
+          sha1sum pihole-FTL-* > ${BIN_NAME}.sha1
+    - run:
+        name: "Upload binary to binary bucket"
         command: |
           [ -z "${CIRCLE_PR_USERNAME}" ] || exit 0
           DIR="${CIRCLE_TAG:-${CIRCLE_BRANCH}}"
-          mv pihole-FTL "${BIN_NAME}"
-          sha1sum pihole-FTL-* > ${BIN_NAME}.sha1
           mkdir -p ~/.ssh/
           ssh-keyscan -H $SSH_HOST >> ~/.ssh/known_hosts
-          sftp -b - $SSH_USER@$SSH_HOST <<< "-mkdir ${DIR}
-          put ${BIN_NAME}* ${DIR}"
-          mv "${BIN_NAME}" pihole-FTL
+          sftp -b - $SSH_USER@$SSH_HOST <<< "-mkdir html/${DIR}
+          put ${BIN_NAME}* html/${DIR}"
+    - run:
+        name: "Verify uploaded binary"
+        command: |
+          [ -z "${CIRCLE_PR_USERNAME}" ] || exit 0
+          DIR="${CIRCLE_TAG:-${CIRCLE_BRANCH}}"
+          mkdir download
+          cd download
+          wget "https://ftl.pi-hole.net/${DIR}/${BIN_NAME}"
+          wget "https://ftl.pi-hole.net/${DIR}/${BIN_NAME}.sha1"
+          sha1sum -c "${BIN_NAME}.sha1"
+          cd ..
     - run:
         name: "Test"
         command: |
+          mv "${BIN_NAME}" pihole-FTL
           test/run.sh
 
 .docker_template: &docker_template
