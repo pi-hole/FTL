@@ -16,13 +16,8 @@
 #include "datastructure.h"
 // enum http_method
 #include "webserver/http-common.h"
-
-// Table indices
-enum { GRAVITY_TABLE, EXACT_BLACKLIST_TABLE, EXACT_WHITELIST_TABLE, REGEX_BLACKLIST_TABLE, REGEX_WHITELIST_TABLE, UNKNOWN_TABLE };
-enum { GRAVITY_DOMAINLIST_EXACT_WHITELIST = 0,
-       GRAVITY_DOMAINLIST_EXACT_BLACKLIST = 1,
-       GRAVITY_DOMAINLIST_REGEX_WHITELIST = 2,
-       GRAVITY_DOMAINLIST_REGEX_BLACKLIST = 3 };
+// Definition of struct regex_data
+#include "../regex_r.h"
 
 typedef struct domainrecord {
 	const char *domain;
@@ -32,21 +27,23 @@ typedef struct domainrecord {
 	bool enabled;
 } domainrecord;
 
+void gravityDB_forked(void);
+void gravityDB_reopen(void);
 bool gravityDB_open(void);
 bool gravityDB_prepare_client_statements(const int clientID, clientsData* client);
 void gravityDB_close(void);
 bool gravityDB_getTable(unsigned char list);
 const char* gravityDB_getDomain(int *rowid);
-char* get_group_names(const char *group_ids) __attribute__ ((malloc));
+char* get_client_names_from_ids(const char *group_ids) __attribute__ ((malloc));
 void gravityDB_finalizeTable(void);
-int gravityDB_count(unsigned char list);
+int gravityDB_count(const enum gravity_tables list);
 bool in_auditlist(const char *domain);
 
 bool in_gravity(const char *domain, const int clientID, clientsData* client);
-bool in_whitelist(const char *domain, const int clientID, clientsData* client);
 bool in_blacklist(const char *domain, const int clientID, clientsData* client);
+bool in_whitelist(const char *domain, const DNSCacheData *dns_cache, const int clientID, clientsData* client);
 
-bool gravityDB_get_regex_client_groups(clientsData* client, const int numregex, const int *regexid,
+bool gravityDB_get_regex_client_groups(clientsData* client, const unsigned int numregex, const regex_data *regex,
                                        const unsigned char type, const char* table, const int clientID);
 
 bool gravityDB_readTable(const int type, const char *domain, const char **message);

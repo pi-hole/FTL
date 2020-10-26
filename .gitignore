@@ -8,9 +8,11 @@ pihole-FTL
 version.h
 version~
 
-# CMake files
+# CMake files generated during compilation
+/cmake/
 /cmake-build-debug/
 /cmake-build-release/
+/cmake/
 
 # IDE files
 .idea/

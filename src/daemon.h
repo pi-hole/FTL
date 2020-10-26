@@ -15,5 +15,24 @@ void savepid(void);
 char * getUserName(void);
 void removepid(void);
 void delay_startup(void);
+bool is_fork(const pid_t mpid, const pid_t pid) __attribute__ ((const));
+
+
+#include <sys/syscall.h>
+#include <unistd.h>
+// Get ID of current thread (incorrectly shown as "PID" in, e.g., htop)
+// We define this wrapper ourselves as the GNU C Library only added it
+// in 2019 meaning that, while we're writing this, it will not be widely
+// available. It was only added even later (end of 2019) to musl libc.
+// https://sourceware.org/git/gitweb.cgi?p=glibc.git;h=1d0fc213824eaa2a8f8c4385daaa698ee8fb7c92
+// https://www.openwall.com/lists/musl/2019/08/01/11
+// To avoid any conflicts, also in the future, we use our own macro for this
+#if !defined(SYS_gettid) && defined(__NR_gettid)
+#define SYS_gettid __NR_gettid
+#endif // !SYS_gettid && __NR_gettid
+pid_t FTL_gettid(void);
+#define gettid FTL_gettid
+
+extern bool resolver_ready;
 
 #endif //DAEMON_H

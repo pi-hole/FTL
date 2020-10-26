@@ -112,10 +112,17 @@ set(sources
         daemon.h
         datastructure.c
         datastructure.h
+        dhcp-discover.c
+        dhcp-discover.h
         dnsmasq_interface.c
         dnsmasq_interface.h
         fifo.c
         fifo.h
+        edns0.c
+        edns0.h
+        enums.h
+        events.c
+        events.h
         files.c
         files.h
         FTL.h
@@ -155,8 +162,14 @@ add_custom_target(
         COMMAND ${CMAKE_COMMAND} -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER} -P ${CMAKE_CURRENT_SOURCE_DIR}/gen_version.cmake
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
+add_library(FTL OBJECT ${sources})
+target_compile_options(FTL PRIVATE ${EXTRAWARN})
+target_include_directories(FTL PRIVATE ${PROJECT_SOURCE_DIR}/src)
+add_dependencies(FTL gen_version)
+
+
 add_executable(pihole-FTL
-        ${sources}
+        $<TARGET_OBJECTS:FTL>
         $<TARGET_OBJECTS:api>
         $<TARGET_OBJECTS:webserver>
         $<TARGET_OBJECTS:ph7_ext>
@@ -166,16 +179,13 @@ add_executable(pihole-FTL
         $<TARGET_OBJECTS:database>
         $<TARGET_OBJECTS:dnsmasq>
         $<TARGET_OBJECTS:sqlite3>
+        $<TARGET_OBJECTS:tre-regex>
         )
 if(STATIC STREQUAL "true")
     set_target_properties(pihole-FTL PROPERTIES LINK_SEARCH_START_STATIC ON)
     set_target_properties(pihole-FTL PROPERTIES LINK_SEARCH_END_STATIC ON)
     target_link_libraries(pihole-FTL -static-libgcc -static -static-pie)
 endif()
-target_compile_options(pihole-FTL PRIVATE ${EXTRAWARN})
-target_include_directories(pihole-FTL PRIVATE ${PROJECT_SOURCE_DIR}/src)
-add_dependencies(pihole-FTL gen_version)
-
 set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
 set(THREADS_PREFER_PTHREAD_FLAG TRUE)
 find_package(Threads REQUIRED)
@@ -198,7 +208,7 @@ find_program(SETCAP setcap)
 install(TARGETS pihole-FTL
         RUNTIME DESTINATION bin
         PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
-install(CODE "execute_process(COMMAND ${SETCAP} CAP_NET_BIND_SERVICE,CAP_NET_RAW,CAP_NET_ADMIN+eip ${CMAKE_INSTALL_PREFIX}/bin/pihole-FTL)")
+install(CODE "execute_process(COMMAND ${SETCAP} CAP_NET_BIND_SERVICE,CAP_NET_RAW,CAP_NET_ADMIN+eip \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/bin/pihole-FTL)")
 
 add_subdirectory(api)
 add_subdirectory(webserver)
@@ -207,3 +217,4 @@ add_subdirectory(cJSON)
 add_subdirectory(ph7)
 add_subdirectory(database)
 add_subdirectory(dnsmasq)
+add_subdirectory(tre-regex)

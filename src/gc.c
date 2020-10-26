@@ -59,7 +59,7 @@ void *GC_thread(void *val)
 				timer_start(GC_TIMER);
 				char timestring[84] = "";
 				get_timestr(timestring, mintime);
-				logg("GC starting, mintime: %s (%lu)", timestring, mintime);
+				logg("GC starting, mintime: %s (%llu)", timestring, (long long)mintime);
 			}
 
 			// Process all queries
@@ -100,7 +100,9 @@ void *GC_thread(void *val)
 						// Unknown (?)
 						counters->unknown--;
 						break;
-					case QUERY_FORWARDED:
+					case QUERY_FORWARDED: // (fall through)
+					case QUERY_RETRIED: // (fall through)
+					case QUERY_RETRIED_DNSSEC:
 						// Forwarded to an upstream DNS server
 						// Adjust counters
 						counters->forwarded--;
@@ -129,6 +131,7 @@ void *GC_thread(void *val)
 						if(client != NULL)
 							client->blockedcount--;
 						break;
+					case QUERY_STATUS_MAX: // fall through
 					default:
 						/* That cannot happen */
 						break;
@@ -138,27 +141,33 @@ void *GC_thread(void *val)
 				switch(query->reply)
 				{
 					case REPLY_NODATA: // NODATA(-IPv6)
-					counters->reply_NODATA--;
-					break;
+						counters->reply_NODATA--;
+						break;
 
 					case REPLY_NXDOMAIN: // NXDOMAIN
-					counters->reply_NXDOMAIN--;
-					break;
+						counters->reply_NXDOMAIN--;
+						break;
 
 					case REPLY_CNAME: // <CNAME>
-					counters->reply_CNAME--;
-					break;
+						counters->reply_CNAME--;
+						break;
 
 					case REPLY_IP: // valid IP
-					counters->reply_IP--;
-					break;
+						counters->reply_IP--;
+						break;
 
 					case REPLY_DOMAIN: // reverse lookup
-					counters->reply_domain--;
-					break;
+						counters->reply_domain--;
+						break;
 
-					default: // Incomplete query or TXT, do nothing
-					break;
+					case REPLY_RRNAME: // fall through
+					case REPLY_SERVFAIL: // fall through
+					case REPLY_REFUSED: // fall through
+					case REPLY_NOTIMP: // fall through
+					case REPLY_OTHER: // fall through
+					case REPLY_UNKNOWN: // fall through
+					default:
+						break;
 				}
 
 				// Update type counters

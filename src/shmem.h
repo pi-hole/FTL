@@ -15,6 +15,9 @@
 #include <fcntl.h>           /* For O_* constants */
 #include <stdbool.h>
 
+// TYPE_MAX
+#include "datastructure.h"
+
 typedef struct {
     const char *name;
     size_t size;
@@ -50,7 +53,7 @@ typedef struct {
 	int reply_domain;
 	int dns_cache_size;
 	int dns_cache_MAX;
-	int num_regex[2];
+	unsigned int num_regex[REGEX_MAX];
 } countersStruct;
 
 extern countersStruct *counters;
@@ -66,10 +69,11 @@ SharedMemory create_shm(const char *name, const size_t size);
 /// Reallocate shared memory
 ///
 /// \param sharedMemory the shared memory struct
-/// \param size the new size
+/// \param size1 the new size (factor 1)
+/// \param size2 the new size (factor 2)
 /// \param resize whether the object should be resized or only remapped
 /// \return if reallocation was successful
-bool realloc_shm(SharedMemory *sharedMemory, const size_t size, const bool resize);
+bool realloc_shm(SharedMemory *sharedMemory, const size_t size1, const size_t size2, const bool resize);
 
 /// Disconnect from shared memory. If there are no other connections to shared memory, it will be deleted.
 ///
@@ -110,5 +114,7 @@ void add_per_client_regex(unsigned int clientID);
 void reset_per_client_regex(const int clientID);
 bool get_per_client_regex(const int clientID, const int regexID);
 void set_per_client_regex(const int clientID, const int regexID, const bool value);
+
+void memory_check(const enum memory_type which);
 
 #endif //SHARED_MEMORY_SERVER_H

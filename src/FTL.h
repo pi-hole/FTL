@@ -108,17 +108,16 @@
 // How many authenticated API clients are allowed simultaneously? [.]
 #define API_MAX_CLIENTS 16
 
-// FTLDNS enums
-enum { QUERIES, UPSTREAMS, CLIENTS, DOMAINS, OVERTIME, WILDCARD, DNS_CACHE };
-enum { DNSSEC_UNSPECIFIED, DNSSEC_SECURE, DNSSEC_INSECURE, DNSSEC_BOGUS, DNSSEC_ABANDONED };
-enum { QUERY_UNKNOWN, QUERY_GRAVITY, QUERY_FORWARDED, QUERY_CACHE, QUERY_REGEX, QUERY_BLACKLIST, \
-       QUERY_EXTERNAL_BLOCKED_IP, QUERY_EXTERNAL_BLOCKED_NULL, QUERY_EXTERNAL_BLOCKED_NXRA, \
-       QUERY_GRAVITY_CNAME, QUERY_REGEX_CNAME, QUERY_BLACKLIST_CNAME, QUERY_STATUS_MAX };
-enum { TYPE_A = 0, TYPE_AAAA, TYPE_ANY, TYPE_SRV, TYPE_SOA, TYPE_PTR, TYPE_TXT, TYPE_NAPTR, TYPE_UNKN, TYPE_MAX };
-enum { REPLY_UNKNOWN, REPLY_NODATA, REPLY_NXDOMAIN, REPLY_CNAME, REPLY_IP, REPLY_DOMAIN, REPLY_RRNAME, REPLY_SERVFAIL, REPLY_REFUSED, REPLY_NOTIMP, REPLY_OTHER };
-enum { PRIVACY_SHOW_ALL = 0, PRIVACY_HIDE_DOMAINS, PRIVACY_HIDE_DOMAINS_CLIENTS, PRIVACY_MAXIMUM, PRIVACY_NOSTATS };
-enum { MODE_IP, MODE_NX, MODE_NULL, MODE_IP_NODATA_AAAA, MODE_NODATA };
-enum { REGEX_BLACKLIST, REGEX_WHITELIST };
+// After how many seconds do we check again if a client can be identified by other means?
+// (e.g., interface, MAC address, hostname)
+// Default: 60 (after one minutee)
+#define RECHECK_DELAY 60
+
+// How often should we check again if a client can be identified by other means?
+// (e.g., interface, MAC address, hostname)
+// Default: 3 (once after RECHECK_DELAY seconds, then again after 2*RECHECK_DELAY and 3*RECHECK_DELAY)
+// Important: This number has to be smaller than 256 for this mechanism to work
+#define NUM_RECHECKS 3
 
 // Use out own memory handling functions that will detect possible errors
 // and report accordingly in the log. This will make debugging FTL crashs

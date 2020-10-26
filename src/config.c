@@ -13,6 +13,8 @@
 #include "memory.h"
 #include "setupVars.h"
 #include "log.h"
+// nice()
+#include <unistd.h>
 
 ConfigStruct config;
 FTLFileNamesStruct FTLfiles = {
@@ -39,6 +41,8 @@ static size_t size = 0;
 static char *parse_FTLconf(FILE *fp, const char * key);
 static void release_config_memory(void);
 static void getpath(FILE* fp, const char *option, const char *defaultloc, char **pointer);
+static void set_nice(const char *buffer, int fallback);
+static bool read_bool(const char *option, const bool fallback);
 
 void getLogFilePath(void)
 {
@@ -113,11 +117,8 @@ void read_FTLconf(void)
 
 	// AAAA_QUERY_ANALYSIS
 	// defaults to: Yes
-	config.analyze_AAAA = true;
 	buffer = parse_FTLconf(fp, "AAAA_QUERY_ANALYSIS");
-
-	if(buffer != NULL && strcasecmp(buffer, "no") == 0)
-		config.analyze_AAAA = false;
+	config.analyze_AAAA = read_bool(buffer, true);
 
 	if(config.analyze_AAAA)
 		logg("   AAAA_QUERY_ANALYSIS: Show AAAA queries");
@@ -141,11 +142,8 @@ void read_FTLconf(void)
 
 	// RESOLVE_IPV6
 	// defaults to: Yes
-	config.resolveIPv6 = true;
 	buffer = parse_FTLconf(fp, "RESOLVE_IPV6");
-
-	if(buffer != NULL && strcasecmp(buffer, "no") == 0)
-		config.resolveIPv6 = false;
+	config.resolveIPv6 = read_bool(buffer, true);
 
 	if(config.resolveIPv6)
 		logg("   RESOLVE_IPV6: Resolve IPv6 addresses");
@@ -154,10 +152,9 @@ void read_FTLconf(void)
 
 	// RESOLVE_IPV4
 	// defaults to: Yes
-	config.resolveIPv4 = true;
 	buffer = parse_FTLconf(fp, "RESOLVE_IPV4");
-	if(buffer != NULL && strcasecmp(buffer, "no") == 0)
-		config.resolveIPv4 = false;
+	config.resolveIPv4 = read_bool(buffer, true);
+
 	if(config.resolveIPv4)
 		logg("   RESOLVE_IPV4: Resolve IPv4 addresses");
 	else
@@ -181,7 +178,7 @@ void read_FTLconf(void)
 	if(config.DBinterval == 60)
 		logg("   DBINTERVAL: saving to DB file every minute");
 	else
-		logg("   DBINTERVAL: saving to DB file every %i seconds", config.DBinterval);
+		logg("   DBINTERVAL: saving to DB file every %lli seconds", (long long)config.DBinterval);
 
 	// DBFILE
 	// defaults to: "/etc/pihole/pihole-FTL.db"
@@ -234,8 +231,8 @@ void read_FTLconf(void)
 
 	// IGNORE_LOCALHOST
 	// defaults to: false
-	config.ignore_localhost = false;
 	buffer = parse_FTLconf(fp, "IGNORE_LOCALHOST");
+	config.ignore_localhost = read_bool(buffer, false);
 
 	if(buffer != NULL && strcasecmp(buffer, "yes") == 0)
 		config.ignore_localhost = true;
@@ -269,8 +266,8 @@ void read_FTLconf(void)
 
 	// ANALYZE_ONLY_A_AND_AAAA
 	// defaults to: false
-	config.analyze_only_A_AAAA = false;
 	buffer = parse_FTLconf(fp, "ANALYZE_ONLY_A_AND_AAAA");
+	config.analyze_only_A_AAAA = read_bool(buffer, false);
 
 	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
 		config.analyze_only_A_AAAA = true;
@@ -282,10 +279,9 @@ void read_FTLconf(void)
 
 	// DBIMPORT
 	// defaults to: Yes
-	config.DBimport = true;
 	buffer = parse_FTLconf(fp, "DBIMPORT");
-	if(buffer != NULL && strcasecmp(buffer, "no") == 0)
-		config.DBimport = false;
+	config.DBimport = read_bool(buffer, true);
+
 	if(config.DBimport)
 		logg("   DBIMPORT: Importing history from database");
 	else
@@ -305,11 +301,8 @@ void read_FTLconf(void)
 
 	// PARSE_ARP_CACHE
 	// defaults to: true
-	config.parse_arp_cache = true;
 	buffer = parse_FTLconf(fp, "PARSE_ARP_CACHE");
-
-	if(buffer != NULL && strcasecmp(buffer, "false") == 0)
-		config.parse_arp_cache = false;
+	config.parse_arp_cache = read_bool(buffer, true);
 
 	if(config.parse_arp_cache)
 		logg("   PARSE_ARP_CACHE: Active");
@@ -318,11 +311,8 @@ void read_FTLconf(void)
 
 	// CNAME_DEEP_INSPECT
 	// defaults to: true
-	config.cname_inspection = true;
 	buffer = parse_FTLconf(fp, "CNAME_DEEP_INSPECT");
-
-	if(buffer != NULL && strcasecmp(buffer, "false") == 0)
-		config.cname_inspection = false;
+	config.cname_inspection = read_bool(buffer, true);
 
 	if(config.cname_inspection)
 		logg("   CNAME_DEEP_INSPECT: Active");
@@ -336,19 +326,14 @@ void read_FTLconf(void)
 	config.delay_startup = 0;
 	if(buffer != NULL && sscanf(buffer, "%u", &config.delay_startup) &&
 	   (config.delay_startup > 0 && config.delay_startup <= 300))
-	{
 		logg("   DELAY_STARTUP: Requested to wait %u seconds during startup.", config.delay_startup);
-	}
 	else
 		logg("   DELAY_STARTUP: No delay requested.");
 
 	// BLOCK_ESNI
 	// defaults to: true
-	config.block_esni = true;
 	buffer = parse_FTLconf(fp, "BLOCK_ESNI");
-
-	if(buffer != NULL && strcasecmp(buffer, "false") == 0)
-		config.block_esni = false;
+	config.block_esni = read_bool(buffer, true);
 
 	if(config.block_esni)
 		logg("   BLOCK_ESNI: Enabled, blocking _esni.{blocked domain}");
@@ -453,6 +438,67 @@ void read_FTLconf(void)
 
 	// API_INFO_LOG
 	getpath(fp, "API_INFO_LOG", "/var/log/pihole/HTTP_info.log", &httpsettings.log_info);
+
+	// NICE
+	// Shall we change the nice of the current process?
+	// defaults to: -10 (can be disabled by setting value to -999)
+	//
+	// The nice value is an attribute that can be used to influence the CPU
+	// scheduler to favor or disfavor a process in scheduling decisions.
+	//
+	// The range of the nice value varies across UNIX systems. On modern Linux,
+	// the range is -20 (high priority) to +19 (low priority). On some other
+	// systems, the range is -20..20. Very early Linux kernels (Before Linux
+	// 2.0) had the range -infinity..15.
+	buffer = parse_FTLconf(fp, "NICE");
+	set_nice(buffer, -10);
+
+	// MAXNETAGE
+	// IP addresses (and associated host names) older than the specified number
+	// of days are removed to avoid dead entries in the network overview table
+	// defaults to: the same value as MAXDBDAYS
+	config.network_expire = config.maxDBdays;
+	buffer = parse_FTLconf(fp, "MAXNETAGE");
+
+	int ivalue = 0;
+	if(buffer != NULL &&
+	    sscanf(buffer, "%i", &ivalue) &&
+	    ivalue > 0 && ivalue <= 8760) // 8760 days = 24 years
+			config.network_expire = ivalue;
+
+	if(config.network_expire > 0u)
+		logg("   MAXNETAGE: Removing IP addresses and host names from network table after %u days",
+		     config.network_expire);
+	else
+		logg("   MAXNETAGE: No automated removal of IP addresses and host names from the network table");
+
+	// NAMES_FROM_NETDB
+	// Should we use the fallback option to try to obtain client names from
+	// checking the network table? Assume this is an IPv6 client without a
+	// host names itself but the network table tells us that this is the same
+	// device where we have a host names for its IPv4 address. In this case,
+	// we use the host name associated to the other address as this is the same
+	// device. This behavior can be disabled using NAMES_FROM_NETDB=false
+	// defaults to: true
+	buffer = parse_FTLconf(fp, "NAMES_FROM_NETDB");
+	config.names_from_netdb = read_bool(buffer, true);
+
+	if(config.names_from_netdb)
+		logg("   NAMES_FROM_NETDB: Enabled, trying to get names from network database");
+	else
+		logg("   NAMES_FROM_NETDB: Disabled");
+
+	// EDNS0_ECS
+	// Should we overwrite the query source when client information is
+	// provided through EDNS0 client subnet (ECS) information?
+	// defaults to: true
+	buffer = parse_FTLconf(fp, "EDNS0_ECS");
+	config.edns0_ecs = read_bool(buffer, true);
+
+	if(config.edns0_ecs)
+		logg("   EDNS0_ECS: Overwrite client from ECS information");
+	else
+		logg("   EDNS0_ECS: Don't use ECS information");
 
 	// Read DEBUG_... setting from pihole-FTL.conf
 	// This option should be the last one as it causes
@@ -579,7 +625,7 @@ void get_privacy_level(FILE *fp)
 	{
 		// Check for change and validity of privacy level (set in FTL.h)
 		if(value >= PRIVACY_SHOW_ALL &&
-		   value <= PRIVACY_NOSTATS &&
+		   value <= PRIVACY_MAXIMUM &&
 		   value > config.privacylevel)
 		{
 			logg("Notice: Increasing privacy level from %i to %i", config.privacylevel, value);
@@ -638,7 +684,7 @@ void get_blocking_mode(FILE *fp)
 }
 
 // Routine for setting the debug flags in the config struct
-static void setDebugOption(FILE* fp, const char* option, int16_t bitmask)
+static void setDebugOption(FILE* fp, const char* option, enum debug_flags bitmask)
 {
 	const char* buffer = parse_FTLconf(fp, option);
 
@@ -647,7 +693,7 @@ static void setDebugOption(FILE* fp, const char* option, int16_t bitmask)
 		return;
 
 	// Set bit if value equals "true", clear bit otherwise
-	if(strcasecmp(buffer, "true") == 0)
+	if(read_bool(buffer, false))
 		config.debug |= bitmask;
 	else
 		config.debug &= ~bitmask;
@@ -740,6 +786,18 @@ void read_debuging_settings(FILE *fp)
 	// defaults to: false
 	setDebugOption(fp, "DEBUG_RESOLVER", DEBUG_RESOLVER);
 
+	// DEBUG_EDNS0
+	// defaults to: false
+	setDebugOption(fp, "DEBUG_EDNS0", DEBUG_EDNS0);
+
+	// DEBUG_CLIENTS
+	// defaults to: false
+	setDebugOption(fp, "DEBUG_CLIENTS", DEBUG_CLIENTS);
+
+	// DEBUG_EVENTS
+	// defaults to: false
+	setDebugOption(fp, "DEBUG_EVENTS", DEBUG_EVENTS);
+
 	if(config.debug)
 	{
 		logg("*****************************");
@@ -760,6 +818,9 @@ void read_debuging_settings(FILE *fp)
 		logg("* DEBUG_DNSMASQ_LINES   %s *", (config.debug & DEBUG_DNSMASQ_LINES)? "YES":"NO ");
 		logg("* DEBUG_VECTORS         %s *", (config.debug & DEBUG_VECTORS)? "YES":"NO ");
 		logg("* DEBUG_RESOLVER        %s *", (config.debug & DEBUG_RESOLVER)? "YES":"NO ");
+		logg("* DEBUG_EDNS0           %s *", (config.debug & DEBUG_EDNS0)? "YES":"NO ");
+		logg("* DEBUG_CLIENTS         %s *", (config.debug & DEBUG_CLIENTS)? "YES":"NO ");
+		logg("* DEBUG_EVENTS          %s *", (config.debug & DEBUG_EVENTS)? "YES":"NO ");
 		logg("*****************************");
 	}
 
@@ -773,4 +834,63 @@ void read_debuging_settings(FILE *fp)
 		// this function (initial config parsing)
 		release_config_memory();
 	}
+}
+
+
+static void set_nice(const char *buffer, const int fallback)
+{
+	int value, nice_set, nice_target = fallback;
+
+	// Try to read niceness value
+	// Attempts to set a nice value outside the range are clamped to the range.
+	if(buffer != NULL && sscanf(buffer, "%i", &value) == 1)
+		nice_target = value;
+
+	// Skip setting niceness if set to -999
+	if(nice_target == -999)
+	{
+		logg("   NICE: Not changing nice value");
+		return;
+	}
+
+	// Adjust if != -999
+	errno = 0;
+	if((nice_set = nice(nice_target)) == -1 &&
+	   errno == EPERM)
+	{
+		// ERROR EPERM: The calling process attempted to increase its priority
+		// by supplying a negative value but has insufficient privileges.
+		// On Linux, the RLIMIT_NICE resource limit can be used to define a limit to
+		// which an unprivileged process's nice value can be raised. We are not
+		// affected by this limit when pihole-FTL is running with CAP_SYS_NICE
+		logg("   NICE: Cannot change niceness to %d (permission denied)",
+		     nice_target);
+		return;
+	}
+	if(nice_set == nice_target)
+	{
+		logg("   NICE: Set process niceness to %d%s",
+		     nice_set, (nice_set == fallback) ? " (default)" : "");
+	}
+	else
+	{
+		logg("   NICE: Set process niceness to %d (asked for %d)",
+		     nice_set, nice_target);
+	}
+}
+
+static bool read_bool(const char *option, const bool fallback)
+{
+	if(option == NULL)
+		return fallback;
+
+	else if(strcasecmp(option, "false") == 0 ||
+	        strcasecmp(option, "no") == 0)
+		return false;
+
+	else if(strcasecmp(option, "true") == 0 ||
+	        strcasecmp(option, "yes") == 0)
+		return true;
+
+	return fallback;
 }

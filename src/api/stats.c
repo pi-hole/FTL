@@ -543,12 +543,10 @@ int api_stats_upstreams(struct mg_connection *conn)
 	JSON_SEND_OBJECT(json);
 }
 
-static const char *querytypes[TYPE_MAX] = {"A","AAAA","ANY","SRV","SOA","PTR","TXT","NAPTR","UNKN"};
-
 int api_stats_query_types(struct mg_connection *conn)
 {
 	cJSON *json = JSON_NEW_ARRAY();
-	for(int i=0; i < TYPE_MAX; i++)
+	for(int i = TYPE_A; i < TYPE_MAX; i++)
 	{
 		cJSON *item = JSON_NEW_OBJ();
 		JSON_OBJ_REF_STR(item, "name", querytypes[i]);
@@ -849,6 +847,29 @@ int api_stats_history(struct mg_connection *conn)
 		// Skip if domain is not identical with what the user wants to see
 		if(filterdomainname && query->domainID != domainid)
 			continue;
+		if(filterdomainname)
+		{
+			// Check direct match
+			if(query->domainID == domainid)
+			{
+				// Get this query
+			}
+			// If the domain of this query did not match, the CNAME
+			// domain may still match - we have to check it in
+			// addition if this query is of CNAME blocked type
+			else if((query->status == QUERY_GRAVITY_CNAME ||
+			         query->status == QUERY_BLACKLIST_CNAME ||
+			         query->status == QUERY_REGEX_CNAME) &&
+			         query->CNAME_domainID == domainid)
+			{
+				// Get this query
+			}
+			else
+			{
+				// Skip this query
+				continue;
+			}
+		}
 
 		// Skip if client name and IP are not identical with what the user wants to see
 		if(filterclientname && query->clientID != clientid)
@@ -897,6 +918,23 @@ int api_stats_history(struct mg_connection *conn)
 		if(delay > 1.8e7)
 			delay = 0;
 
+		// Get domain blocked during deep CNAME inspection, if applicable
+		const char *CNAME_domain = "N/A";
+		if(query->CNAME_domainID > -1)
+		{
+			CNAME_domain = getCNAMEDomainString(query);
+		}
+
+		// Get ID of blocking regex, if applicable
+		int regex_idx = -1;
+		if (query->status == QUERY_REGEX || query->status == QUERY_REGEX_CNAME)
+		{
+			unsigned int cacheID = findCacheID(query->domainID, query->clientID, query->type);
+			DNSCacheData *dns_cache = getDNSCache(cacheID, true);
+			if(dns_cache != NULL)
+				regex_idx = dns_cache->black_regex_idx;
+		}
+
 		cJSON *item = JSON_NEW_OBJ();
 		JSON_OBJ_ADD_NUMBER(item, "timestamp", query->timestamp);
 		JSON_OBJ_ADD_NUMBER(item, "type", query->type);
@@ -906,6 +944,8 @@ int api_stats_history(struct mg_connection *conn)
 		JSON_OBJ_ADD_NUMBER(item, "dnssec", query->dnssec);
 		JSON_OBJ_ADD_NUMBER(item, "reply", query->reply);
 		JSON_OBJ_ADD_NUMBER(item, "response_time", delay);
+		JSON_OBJ_COPY_STR(item, "CNAME_domain", CNAME_domain);
+		JSON_OBJ_ADD_NUMBER(item, "regex_idx", regex_idx);
 		if(config.debug & DEBUG_API)
 			JSON_OBJ_ADD_NUMBER(item, "queryID", queryID);
 		JSON_ARRAY_ADD_ITEM(history, item);

@@ -8,12 +8,13 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "FTL.h"
+#include "../FTL.h"
 #include "../webserver/http-common.h"
 #include "../webserver/json_macros.h"
 #include "routes.h"
-#include "shmem.h"
-#include "datastructure.h"
+#include "../shmem.h"
+// querytypes[]
+#include "../datastructure.h"
 // logg()
 #include "log.h"
 // FTL_db
@@ -721,7 +722,6 @@ int api_stats_database_overTime_clients(struct mg_connection *conn)
 	JSON_SEND_OBJECT(json);
 }
 
-static const char *querytypes[8] = {"A","AAAA","ANY","SRV","SOA","PTR","TXT","UNKN"};
 int api_stats_database_query_types(struct mg_connection *conn)
 {
 	unsigned int from = 0, until = 0;
@@ -752,7 +752,7 @@ int api_stats_database_query_types(struct mg_connection *conn)
 
 	// Perform SQL queries
 	cJSON *json = JSON_NEW_ARRAY();
-	for(int i=0; i < TYPE_MAX; i++)
+	for(int i = TYPE_A; i < TYPE_MAX; i++)
 	{
 		const char *querystr = "SELECT COUNT(*) FROM queries "
 		                       "WHERE timestamp >= :from AND timestamp <= :until "

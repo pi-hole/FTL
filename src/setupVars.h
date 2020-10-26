@@ -22,6 +22,4 @@ void check_blocking_status(void);
 bool get_blockingstatus(void) __attribute__((pure));
 void set_blockingstatus(bool enabled);
 
-enum { BLOCKING_DISABLED, BLOCKING_ENABLED, BLOCKING_UNKNOWN };
-
 #endif //SETUPVARS_H

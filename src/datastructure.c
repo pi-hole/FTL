@@ -15,15 +15,52 @@
 #include "log.h"
 // enum REGEX
 #include "regex_r.h"
+// reload_per_client_regex()
 #include "database/gravity-db.h"
 // flush_message_table()
 #include "database/message-table.h"
+// bool startup
+#include "main.h"
+// piholeFTLDB_reopen()
+#include "database/common.h"
+
+const char *querytypes[TYPE_MAX] = {"UNKNOWN", "A", "AAAA", "ANY", "SRV", "SOA", "PTR", "TXT",
+                                    "NAPTR", "MX", "DS", "RRSIG", "DNSKEY", "NS", "OTHER"};
 
 // converts upper to lower case, and leaves other characters unchanged
 void strtolower(char *str)
 {
 	int i = 0;
 	while(str[i]){ str[i] = tolower(str[i]); i++; }
+}
+
+int findQueryID(const int id)
+{
+	// Loop over all queries - we loop in reverse order (start from the most recent query and
+	// continuously walk older queries while trying to find a match. Ideally, we should always
+	// find the correct query with zero iterations, but it may happen that queries are processed
+	// asynchronously, e.g. for slow upstream relies to a huge amount of requests.
+	// We iterate from the most recent query down to at most MAXITER queries in the past to avoid
+	// iterating through the entire array of queries
+	// MAX(0, a) is used to return 0 in case a is negative (negative array indices are harmful)
+	const int until = MAX(0, counters->queries-MAXITER);
+	const int start = MAX(0, counters->queries-1);
+
+	// Check UUIDs of queries
+	for(int i = start; i >= until; i--)
+	{
+		const queriesData* query = getQuery(i, true);
+
+		// Check if the returned pointer is valid before trying to access it
+		if(query == NULL)
+			continue;
+
+		if(query->id == id)
+			return i;
+	}
+
+	// If not found
+	return -1;
 }
 
 int findUpstreamID(const char * upstreamString, const bool count)
@@ -40,7 +77,11 @@ int findUpstreamID(const char * upstreamString, const bool count)
 
 		if(strcmp(getstr(upstream->ippos), upstreamString) == 0)
 		{
-			if(count) upstream->count++;
+			if(count)
+			{
+				upstream->count++;
+				upstream->lastQuery = time(NULL);
+			}
 			return upstreamID;
 		}
 	}
@@ -80,6 +121,8 @@ int findUpstreamID(const char * upstreamString, const bool count)
 	upstream->rtime = 0u;
 	upstream->rtuncertainty = 0u;
 	upstream->responses = 0u;
+	// This is a new upstream server
+	upstream->lastQuery = time(NULL);
 	// Increase counter by one
 	counters->upstreams++;
 
@@ -201,8 +244,19 @@ int findClientID(const char *clientIP, const bool count)
 	// No query seen so far
 	client->lastQuery = 0;
 	client->numQueriesARP = client->count;
-	// Coonfigured groups are yet unknown
-	client->groups = NULL;
+	// Configured groups are yet unknown
+	client->found_group = false;
+	client->groupspos = 0u;
+	// Store time this client was added, we re-read group settings
+	// some time after adding a client to ensure we pick up possible
+	// group configuration though hostname, MAC address or interface
+	client->reread_groups = 0u;
+	client->firstSeen = time(NULL);
+	// Interface is not yet known
+	client->ifacepos = 0;
+	// Set all MAC address bytes to zero
+	client->hwlen = -1;
+	memset(client->hwaddr, 0, sizeof(client->hwaddr));
 
 	// Initialize client-specific overTime data
 	for(int i = 0; i < OVERTIME_SLOTS; i++)
@@ -211,13 +265,21 @@ int findClientID(const char *clientIP, const bool count)
 	// Increase counter by one
 	counters->clients++;
 
-	// Allocate regex substructure
-	allocate_regex_client_enabled(client, clientID);
+	// Get groups for this client and set enabled regex filters
+	// Note 1: We do this only after increasing the clients counter to
+	//         ensure sufficient shared memory is available in the
+	//         pre_client_regex object.
+	// Note 2: We don't do this before starting up is done as the gravity
+	//         database may not be available. All clients initialized
+	//         during history reading get their enabled regexs reloaded
+	//         in the initial call to FTL_reload_all_domainlists()
+	if(!startup)
+		reload_per_client_regex(clientID, client);
 
 	return clientID;
 }
 
-int findCacheID(int domainID, int clientID)
+int findCacheID(int domainID, int clientID, enum query_types query_type)
 {
 	// Compare content of client against known client IP addresses
 	for(int cacheID = 0; cacheID < counters->dns_cache_size; cacheID++)
@@ -230,7 +292,8 @@ int findCacheID(int domainID, int clientID)
 			continue;
 
 		if(dns_cache->domainID == domainID &&
-		   dns_cache->clientID == clientID)
+		   dns_cache->clientID == clientID &&
+		   dns_cache->query_type == query_type)
 		{
 			return cacheID;
 		}
@@ -256,6 +319,7 @@ int findCacheID(int domainID, int clientID)
 	dns_cache->blocking_status = UNKNOWN_BLOCKED;
 	dns_cache->domainID = domainID;
 	dns_cache->clientID = clientID;
+	dns_cache->query_type = query_type;
 	dns_cache->force_reply = 0u;
 
 	// Increase counter by one
@@ -358,31 +422,28 @@ const char *getClientNameString(const queriesData* query)
 
 void FTL_reset_per_client_domain_data(void)
 {
-	for(int domainID = 0; domainID < counters->domains; domainID++)
+	for(int cacheID = 0; cacheID < counters->dns_cache_size; cacheID++)
 	{
-		domainsData *domain = getDomain(domainID, true);
-		if(domain == NULL)
-			continue;
-
-		for(int cacheID = 0; cacheID < counters->dns_cache_size; cacheID++)
-		{
-			// Reset all blocking yes/no fields for all domains and clients
-			// This forces a reprocessing of all available filters for any
-			// given domain and client the next time they are seen
-			DNSCacheData *dns_cache = getDNSCache(cacheID, true);
-			dns_cache->blocking_status = UNKNOWN_BLOCKED;
-		}
+		// Reset all blocking yes/no fields for all domains and clients
+		// This forces a reprocessing of all available filters for any
+		// given domain and client the next time they are seen
+		DNSCacheData *dns_cache = getDNSCache(cacheID, true);
+		dns_cache->blocking_status = UNKNOWN_BLOCKED;
 	}
 }
 
 void FTL_reload_all_domainlists(void)
 {
+	lock_shm();
+
+	// (Re-)open FTL database connection
+	piholeFTLDB_reopen();
+
 	// Flush messages stored in the long-term database
 	flush_message_table();
 
 	// (Re-)open gravity database connection
-	gravityDB_close();
-	gravityDB_open();
+	gravityDB_reopen();
 
 	// Reset number of blocked domains
 	counters->gravity = gravityDB_count(GRAVITY_TABLE);
@@ -394,4 +455,6 @@ void FTL_reload_all_domainlists(void)
 	// Reset FTL's internal DNS cache storing whether a specific domain
 	// has already been validated for a specific user
 	FTL_reset_per_client_domain_data();
+
+	unlock_shm();
 }

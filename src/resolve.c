@@ -9,12 +9,14 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
+#include "resolve.h"
 #include "shmem.h"
 #include "memory.h"
-#include "datastructure.h"
-#include "resolve.h"
+// struct config
 #include "config.h"
+// sleepms()
 #include "timers.h"
+// logg()
 #include "log.h"
 // global variable killed
 #include "signals.h"
@@ -22,6 +24,14 @@
 #include "database/network-table.h"
 // struct _res
 #include <resolv.h>
+// resolveNetworkTableNames()
+#include "database/network-table.h"
+// resolver_ready
+#include "daemon.h"
+// logg_hostname_warning()
+#include "database/message-table.h"
+// Eventqueue routines
+#include "events.h"
 
 static bool res_initialized = false;
 
@@ -45,8 +55,10 @@ static bool valid_hostname(char* name, const char* clientip)
 
 	// Iterate over characters in hostname
 	// to check for legal char: A-Z a-z 0-9 - _ .
-	for (char c; (c = *name); name++)
+	unsigned int len = strlen(name);
+	for (unsigned int i = 0; i < len; i++)
 	{
+		const char c = name[i];
 		if ((c >= 'A' && c <= 'Z') ||
 		    (c >= 'a' && c <= 'z') ||
 		    (c >= '0' && c <= '9') ||
@@ -56,8 +68,7 @@ static bool valid_hostname(char* name, const char* clientip)
 			continue;
 
 		// Invalid character found, log and return hostname being invalid
-		logg("WARN: Hostname of client %s contains invalid character: %c (char code %d)",
-		     clientip, (unsigned char)c, (unsigned char)c);
+		logg_hostname_warning(clientip, name, i);
 		return false;
 	}
 
@@ -68,13 +79,40 @@ static bool valid_hostname(char* name, const char* clientip)
 static void print_used_resolvers(const char *message)
 {
 	logg("%s", message);
-	for(unsigned int i = 0u; i < MAXNS; i++)
-		logg(" %u: %s:%d", i,
-		     inet_ntoa(_res.nsaddr_list[i].sin_addr),
-		     ntohs(_res.nsaddr_list[i].sin_port));
+	for(unsigned int i = 0u; i < 2*MAXNS; i++)
+	{
+		int family;
+		in_port_t port;
+		void *addr = NULL;
+		if(i < MAXNS)
+		{
+			// IPv4 name servers
+			addr = &_res.nsaddr_list[i].sin_addr;
+			port = ntohs(_res.nsaddr_list[i].sin_port);
+			family = AF_INET;
+		}
+		else
+		{
+			// Extension name servers (typically IPv6)
+
+			// Some of the entries may not be configured
+			if(_res._u._ext.nsaddrs[i - MAXNS] == NULL)
+				continue;
+			addr = &_res._u._ext.nsaddrs[i - MAXNS]->sin6_addr;
+			port = ntohs(_res._u._ext.nsaddrs[i - MAXNS]->sin6_port);
+			family = _res._u._ext.nsaddrs[i - MAXNS]->sin6_family;
+		}
+
+		// Convert nameserver information to human-readable form
+		char nsname[INET6_ADDRSTRLEN];
+		inet_ntop(family, addr, nsname, INET6_ADDRSTRLEN);
+
+		logg(" %u: %s:%d (IPv%i)", i, nsname, port,
+		     family == AF_INET ? 4 : 6);
+	}
 }
 
-static char *resolveHostname(const char *addr)
+char *resolveHostname(const char *addr)
 {
 	// Get host name
 	struct hostent *he = NULL;
@@ -98,17 +136,6 @@ static char *resolveHostname(const char *addr)
 	if(strstr(addr,":") != NULL)
 	{
 		IPv6 = true;
-	}
-
-	if( (IPv6 && !config.resolveIPv6) ||
-	   (!IPv6 && !config.resolveIPv4))
-	{
-		if(config.debug & DEBUG_RESOLVER)
-		{
-			logg(" ---> \"\" (configured to not resolve %s host names)",
-			     IPv6 ? "IPv6" : "IPv4");
-			return strdup("");
-		}
 	}
 
 	// Initialize resolver subroutines if trying to resolve for the first time
@@ -251,15 +278,34 @@ static size_t resolveAndAddHostname(size_t ippos, size_t oldnamepos)
 	char* oldname = strdup(getstr(oldnamepos));
 	unlock_shm();
 
+	// Test if we want to resolve an IPv6 address
+	bool IPv6 = false;
+	if(strstr(ipaddr,":") != NULL)
+	{
+		IPv6 = true;
+	}
+
+	if( (IPv6 && !config.resolveIPv6) ||
+	   (!IPv6 && !config.resolveIPv4))
+	{
+		if(config.debug & DEBUG_RESOLVER)
+		{
+			logg(" ---> \"\" (configured to not resolve %s host names)",
+			     IPv6 ? "IPv6" : "IPv4");
+		}
+		return 0;
+	}
+
 	// Important: Don't hold a lock while resolving as the main thread
 	// (dnsmasq) needs to be operable during the call to resolveHostname()
 	char* newname = resolveHostname(ipaddr);
 
 	// If no hostname was found, try to obtain hostname from the network table
-	if(strlen(newname) == 0)
+	// This may be disabled due to a user setting
+	if(strlen(newname) == 0 && config.names_from_netdb)
 	{
 		free(newname);
-		newname = getDatabaseHostname(ipaddr);
+		newname = getNameFromIP(ipaddr);
 	}
 
 	// Only store new newname if it is valid and differs from oldname
@@ -283,7 +329,8 @@ static size_t resolveAndAddHostname(size_t ippos, size_t oldnamepos)
 		logg("Not adding \"%s\" to buffer (unchanged)", oldname);
 	}
 
-	free(newname);
+	if(newname != NULL)
+		free(newname);
 	free(ipaddr);
 	free(oldname);
 
@@ -292,8 +339,9 @@ static size_t resolveAndAddHostname(size_t ippos, size_t oldnamepos)
 }
 
 // Resolve client host names
-void resolveClients(const bool onlynew)
+static void resolveClients(const bool onlynew)
 {
+	const time_t now = time(NULL);
 	// Lock counter access here, we use a copy in the following loop
 	lock_shm();
 	int clientscount = counters->clients;
@@ -302,20 +350,35 @@ void resolveClients(const bool onlynew)
 	int skipped = 0;
 	for(int clientID = 0; clientID < clientscount; clientID++)
 	{
-		// Get client pointer
+		// Memory access needs to get locked
+		lock_shm();
+		// Get client pointer for the first time (reading data)
 		clientsData* client = getClient(clientID, true);
 		if(client == NULL)
 		{
-			logg("ERROR: Unable to get client pointer with ID %i, skipping...", clientID);
+			logg("ERROR: Unable to get client pointer (1) with ID %i, skipping...", clientID);
 			skipped++;
+			unlock_shm();
 			continue;
 		}
 
-		// Memory access needs to get locked
-		lock_shm();
 		bool newflag = client->new;
 		size_t ippos = client->ippos;
 		size_t oldnamepos = client->namepos;
+
+		// Only try to resolve host names of clients which were recently active
+		// Limit for a "recently active" client is two hours ago
+		if(client->lastQuery < now - 2*60*60)
+		{
+			if(config.debug & DEBUG_RESOLVER)
+			{
+				logg("Skipping client %s (%s) because it was inactive for %i seconds",
+				     getstr(ippos), getstr(oldnamepos), (int)(now - client->lastQuery));
+			}
+			unlock_shm();
+			continue;
+		}
+
 		unlock_shm();
 
 		// If onlynew flag is set, we will only resolve new clients
@@ -330,6 +393,19 @@ void resolveClients(const bool onlynew)
 		size_t newnamepos = resolveAndAddHostname(ippos, oldnamepos);
 
 		lock_shm();
+		// Get client pointer for the second time (writing data)
+		// We cannot use the same pointer again as we released
+		// the lock in between so we cannot know if something
+		// happened to the shared memory object (resize event)
+		client = getClient(clientID, true);
+		if(client == NULL)
+		{
+			logg("ERROR: Unable to get client pointer (2) with ID %i, skipping...", clientID);
+			skipped++;
+			unlock_shm();
+			continue;
+		}
+
 		// Store obtained host name (may be unchanged)
 		client->namepos = newnamepos;
 		// Mark entry as not new
@@ -345,8 +421,9 @@ void resolveClients(const bool onlynew)
 }
 
 // Resolve upstream destination host names
-void resolveForwardDestinations(const bool onlynew)
+static void resolveUpstreams(const bool onlynew)
 {
+	const time_t now = time(NULL);
 	// Lock counter access here, we use a copy in the following loop
 	lock_shm();
 	int upstreams = counters->upstreams;
@@ -355,20 +432,34 @@ void resolveForwardDestinations(const bool onlynew)
 	int skipped = 0;
 	for(int upstreamID = 0; upstreamID < upstreams; upstreamID++)
 	{
-		// Get upstream pointer
+		// Memory access needs to get locked
+		lock_shm();
+		// Get upstream pointer for the first time (reading data)
 		upstreamsData* upstream = getUpstream(upstreamID, true);
 		if(upstream == NULL)
 		{
 			logg("ERROR: Unable to get upstream pointer with ID %i, skipping...", upstreamID);
 			skipped++;
+			unlock_shm();
 			continue;
 		}
 
-		// Memory access needs to get locked
-		lock_shm();
 		bool newflag = upstream->new;
 		size_t ippos = upstream->ippos;
 		size_t oldnamepos = upstream->namepos;
+
+		// Only try to resolve host names of upstream servers which were recently active
+		// Limit for a "recently active" upstream server is two hours ago
+		if(upstream->lastQuery < now - 2*60*60)
+		{
+			if(config.debug & DEBUG_RESOLVER)
+			{
+				logg("Skipping upstream %s (%s) because it was inactive for %i seconds",
+				     getstr(ippos), getstr(oldnamepos), (int)(now - upstream->lastQuery));
+			}
+			unlock_shm();
+			continue;
+		}
 		unlock_shm();
 
 		// If onlynew flag is set, we will only resolve new upstream destinations
@@ -383,6 +474,19 @@ void resolveForwardDestinations(const bool onlynew)
 		size_t newnamepos = resolveAndAddHostname(ippos, oldnamepos);
 
 		lock_shm();
+		// Get upstream pointer for the second time (writing data)
+		// We cannot use the same pointer again as we released
+		// the lock in between so we cannot know if something
+		// happened to the shared memory object (resize event)
+		upstream = getUpstream(upstreamID, true);
+		if(upstream == NULL)
+		{
+			logg("ERROR: Unable to get upstream pointer with ID %i, skipping...", upstreamID);
+			skipped++;
+			unlock_shm();
+			continue;
+		}
+
 		// Store obtained host name (may be unchanged)
 		upstream->namepos = newnamepos;
 		// Mark entry as not new
@@ -402,32 +506,42 @@ void *DNSclient_thread(void *val)
 	// Set thread name
 	prctl(PR_SET_NAME, "DNS client", 0, 0, 0);
 
+	// Initial delay until we first try to resolve anything
+	sleepms(2000);
+
 	while(!killed)
 	{
 		// Run every minute to resolve only new clients and upstream servers
-		if(time(NULL) % RESOLVE_INTERVAL == 0)
+		if(resolver_ready && (time(NULL) % RESOLVE_INTERVAL == 0))
 		{
 			// Try to resolve new client host names (onlynew=true)
 			resolveClients(true);
 			// Try to resolve new upstream destination host names (onlynew=true)
-			resolveForwardDestinations(true);
+			resolveUpstreams(true);
 			// Prevent immediate re-run of this routine
 			sleepms(500);
 		}
 
 		// Run every hour to update possibly changed client host names
-		if(time(NULL) % RERESOLVE_INTERVAL == 0)
+		if(resolver_ready && (time(NULL) % RERESOLVE_INTERVAL == 0))
+		{
+			set_event(RERESOLVE_HOSTNAMES);      // done below
+			set_event(RERESOLVE_DATABASE_NAMES); // done in database thread
+		}
+
+		// Process resolver related event queue elements
+		if(get_and_clear_event(RERESOLVE_HOSTNAMES))
 		{
 			// Try to resolve all client host names (onlynew=false)
 			resolveClients(false);
 			// Try to resolve all upstream destination host names (onlynew=false)
-			resolveForwardDestinations(false);
+			resolveUpstreams(false);
 			// Prevent immediate re-run of this routine
 			sleepms(500);
 		}
 
-		// Idle for 0.5 sec before checking again the time criteria
-		sleepms(500);
+		// Idle for 0.1 sec before checking again the time criteria
+		sleepms(100);
 	}
 
 	return NULL;

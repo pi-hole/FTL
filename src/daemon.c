@@ -16,6 +16,8 @@
 // sleepms()
 #include "timers.h"
 
+bool resolver_ready = false;
+
 void go_daemon(void)
 {
 	// Create child process
@@ -140,4 +142,20 @@ void delay_startup(void)
 	     config.delay_startup);
 	sleep(config.delay_startup);
 	logg("Done sleeping, continuing startup of resolver...\n");
+}
+
+// Is this a fork?
+bool __attribute__ ((const)) is_fork(const pid_t mpid, const pid_t pid)
+{
+	return mpid > -1 && mpid != pid;
+}
+
+pid_t FTL_gettid(void)
+{
+#ifdef SYS_gettid
+	return (pid_t)syscall(SYS_gettid);
+#else
+#warning SYS_gettid is not available on this system
+	return -1;
+#endif // SYS_gettid
 }

@@ -11,6 +11,7 @@
 #include "FTL.h"
 #include "version.h"
 #include "memory.h"
+// is_fork()
 #include "daemon.h"
 #include "config.h"
 #include "log.h"
@@ -20,14 +21,33 @@
 #include "args.h"
 // global counters variable
 #include "shmem.h"
+// main_pid()
+#include "signals.h"
 
 static pthread_mutex_t lock;
 static FILE *logfile = NULL;
+static bool print_log = true, print_stdout = true;
 
-static void close_log(void)
+void log_ctrl(bool plog, bool pstdout)
+{
+	print_log = plog;
+	print_stdout = pstdout;
+}
+
+static void close_FTL_log(void)
 {
 	if(logfile != NULL)
 		fclose(logfile);
+}
+
+void init_FTL_log(void)
+{
+	if (pthread_mutex_init(&lock, NULL) != 0)
+	{
+		printf("FATAL: Log mutex init failed\n");
+		// Return failure
+		exit(EXIT_FAILURE);
+	}
 }
 
 void open_FTL_log(const bool test)
@@ -50,14 +70,24 @@ void open_FTL_log(const bool test)
 
 	if(test)
 	{
-		if (pthread_mutex_init(&lock, NULL) != 0)
-		{
-			printf("FATAL: Log mutex init failed\n");
-			// Return failure
-			exit(EXIT_FAILURE);
-		}
-		close_log();
+		close_FTL_log();
 	}
+}
+
+// The size of 84 bytes has been carefully selected for all possible timestamps
+// to always fit into the available space without buffer overflows
+void get_timestr(char * const timestring, const time_t timein)
+{
+	struct tm tm;
+	localtime_r(&timein, &tm);
+
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+	const int millisec = tv.tv_usec/1000;
+
+	sprintf(timestring,"%d-%02d-%02d %02d:%02d:%02d.%03i",
+	        tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
+	        tm.tm_hour, tm.tm_min, tm.tm_sec, millisec);
 }
 
 static void open_web_log(const enum web_code code)
@@ -80,22 +110,14 @@ static void open_web_log(const enum web_code code)
 	logfile = fopen(file, "a+");
 }
 
-void get_timestr(char *timestring, const time_t timein)
-{
-	struct tm tm;
-	localtime_r(&timein, &tm);
-
-	struct timeval tv;
-	gettimeofday(&tv, NULL);
-	const int millisec = tv.tv_usec/1000;
-
-	sprintf(timestring,"%d-%02d-%02d %02d:%02d:%02d.%03i", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, millisec);
-}
-
-void __attribute__ ((format (gnu_printf, 1, 2))) logg(const char *format, ...)
+void _FTL_log(const bool newline, const char *format, ...)
 {
 	char timestring[84] = "";
 	va_list args;
+
+	// We have been explicitly asked to not print anything to the log
+	if(!print_log && !print_stdout)
+		return;
 
 	pthread_mutex_lock(&lock);
 
@@ -103,42 +125,65 @@ void __attribute__ ((format (gnu_printf, 1, 2))) logg(const char *format, ...)
 
 	// Get and log PID of current process to avoid ambiguities when more than one
 	// pihole-FTL instance is logging into the same file
-	const long pid = (long)getpid();
+	char idstr[42];
+	const int pid = getpid(); // Get the process ID of the calling process
+	const int mpid = main_pid(); // Get the process ID of the main FTL process
+	const int tid = gettid(); // Get the thread ID of the callig process
+
+	// There are four cases we have to differentiate here:
+	if(pid == tid)
+		if(is_fork(mpid, pid))
+			// Fork of the main process
+			snprintf(idstr, sizeof(idstr)-1, "%i/F%i", pid, mpid);
+		else
+			// Main process
+			snprintf(idstr, sizeof(idstr)-1, "%iM", pid);
+	else
+		if(is_fork(mpid, pid))
+			// Thread of a fork of the main process
+			snprintf(idstr, sizeof(idstr)-1, "%i/F%i/T%i", pid, mpid, tid);
+		else
+			// Thread of the main process
+			snprintf(idstr, sizeof(idstr)-1, "%i/T%i", pid, tid);
 
 	// Print to stdout before writing to file
-	if(!daemonmode)
+	if((!daemonmode || cli_mode) && print_stdout)
 	{
-		printf("[%s %ld] ", timestring, pid);
+		// Only print time/ID string when not in direct user interaction (CLI mode)
+		if(!cli_mode)
+			printf("[%s %s] ", timestring, idstr);
 		va_start(args, format);
 		vprintf(format, args);
 		va_end(args);
-		printf("\n");
+		if(newline)
+			printf("\n");
 	}
 
-	// Open log file
-	open_FTL_log(false);
+	if(print_log)
+	{
+		// Open log file
+		open_FTL_log(false);
 
-	// Write to log file
-	if(logfile != NULL)
-	{
-		fprintf(logfile, "[%s %ld] ", timestring, pid);
-		va_start(args, format);
-		vfprintf(logfile, format, args);
-		va_end(args);
-		fputc('\n',logfile);
-	}
-	else if(!daemonmode)
-	{
-		printf("!!! WARNING: Writing to FTL\'s log file failed!\n");
-		syslog(LOG_ERR, "Writing to FTL\'s log file failed!");
+		// Write to log file
+		if(logfile != NULL)
+		{
+			fprintf(logfile, "[%s %s] ", timestring, idstr);
+			va_start(args, format);
+			vfprintf(logfile, format, args);
+			va_end(args);
+			fputc('\n',logfile);
+		}
+		else if(!daemonmode)
+		{
+			printf("!!! WARNING: Writing to FTL\'s log file failed!\n");
+			syslog(LOG_ERR, "Writing to FTL\'s log file failed!");
+		}
 	}
 
 	// Close log file
-	close_log();
-
+	close_FTL_log();
 	pthread_mutex_unlock(&lock);
 }
-
 
 void __attribute__ ((format (gnu_printf, 2, 3))) logg_web(enum web_code code, const char *format, ...)
 {
@@ -171,18 +216,18 @@ void __attribute__ ((format (gnu_printf, 2, 3))) logg_web(enum web_code code, co
 		syslog(LOG_ERR, "Writing to web log file failed!");
 	}
 
-	// Close log file
-	close_log();
-
+	// Close FTL log file
+	close_FTL_log();
 	pthread_mutex_unlock(&lock);
 }
 
-void format_memory_size(char *prefix, const unsigned long long int bytes, double *formated)
+void format_memory_size(char * const prefix, const unsigned long long int bytes,
+                        double * const formated)
 {
-	int i;
+	unsigned int i;
 	*formated = bytes;
 	// Determine exponent for human-readable display
-	for(i=0; i < 7; i++)
+	for(i = 0; i < 7; i++)
 	{
 		if(*formated <= 1e3)
 			break;
@@ -191,6 +236,38 @@ void format_memory_size(char *prefix, const unsigned long long int bytes, double
 	const char* prefixes[8] = { "", "K", "M", "G", "T", "P", "E", "?" };
 	// Chose matching SI prefix
 	strcpy(prefix, prefixes[i]);
+}
+
+// Human-readable time
+void format_time(char buffer[42], unsigned long seconds, double milliseconds)
+{
+	unsigned long umilliseconds = 0;
+	if(milliseconds > 0)
+	{
+		seconds = milliseconds / 1000;
+		umilliseconds = (unsigned long)milliseconds % 1000;
+	}
+	const unsigned int days = seconds / (60 * 60 * 24);
+	seconds -= days * (60 * 60 * 24);
+	const unsigned int hours = seconds / (60 * 60);
+	seconds -= hours * (60 * 60);
+	const unsigned int minutes = seconds / 60;
+	seconds %= 60;
+
+	buffer[0] = ' ';
+	buffer[1] = '\0';
+	if(days > 0)
+		sprintf(buffer + strlen(buffer), "%ud ", days);
+	if(hours > 0)
+		sprintf(buffer + strlen(buffer), "%uh ", hours);
+	if(minutes > 0)
+		sprintf(buffer + strlen(buffer), "%um ", minutes);
+	if(seconds > 0)
+		sprintf(buffer + strlen(buffer), "%lus ", seconds);
+
+	// Only append milliseconds when the timer value is less than 10 seconds
+	if((days + hours + minutes) == 0 && seconds < 10 && umilliseconds > 0)
+		sprintf(buffer + strlen(buffer), "%lums ", umilliseconds);
 }
 
 void log_counter_info(void)
@@ -219,7 +296,7 @@ void log_FTL_version(const bool crashreport)
 }
 
 static char *FTLversion = NULL;
-char __attribute__ ((malloc)) *get_FTL_version(void)
+const char __attribute__ ((malloc)) *get_FTL_version(void)
 {
 	// Obtain FTL version if not already determined
 	if(FTLversion == NULL)
@@ -237,4 +314,28 @@ char __attribute__ ((malloc)) *get_FTL_version(void)
 	}
 
 	return FTLversion;
+}
+
+const char __attribute__ ((const)) *get_ordinal_suffix(unsigned int number)
+{
+	if((number % 100) > 9 && (number % 100) < 20)
+	{
+		// If the tens digit of a number is 1, then "th" is written
+		// after the number. For example: 13th, 19th, 112th, 9,311th.
+		return "th";
+	}
+
+	// If the tens digit is not equal to 1, then the following table could be used:
+	switch (number % 10)
+	{
+	case 1: // If the units digit is 1: This is written after the number "st"
+		return "st";
+	case 2: // If the units digit is 2: This is written after the number "nd"
+		return "nd";
+	case 3: // If the units digit is 3: This is written after the number "rd"
+		return "rd";
+	default: // If the units digit is 0 or 4-9: This is written after the number "th"
+		return "th";
+	}
+	// For example: 2nd, 7th, 20th, 23rd, 52nd, 135th, 301st BUT 311th (covered above)
 }
