@@ -968,6 +968,7 @@ void my_send_http_error_headers(struct mg_connection *conn,
 //                              const char *additional_headers,
                                 long long content_length);
 void my_set_cookie_header(struct mg_connection *conn, const char *cookie_header);
+void redirect_elsewhere(struct mg_connection *conn, const char *target);
 /********************************************************************************************/
 
 

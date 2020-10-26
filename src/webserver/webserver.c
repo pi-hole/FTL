@@ -28,6 +28,12 @@ static int print_simple(struct mg_connection *conn, void *input)
 	return send_http(conn, "text/plain", input);
 }
 
+static int redirect_handler(struct mg_connection *conn, void *input)
+{
+	redirect_elsewhere(conn, (const char*)input);
+	return 1;
+}
+
 static int log_http_message(const struct mg_connection *conn, const char *message)
 {
 	logg_web(HTTP_INFO, "HTTP info: %s", message);
@@ -106,8 +112,9 @@ void http_init(void)
 	/* Start the server */
 	if((ctx = mg_start(&callbacks, NULL, options)) == NULL)
 	{
-		logg("ERROR: Initializing HTTP library failed!\n"
-		     "       Web interface will not be available!");
+		logg("ERROR: Start of webserver failed!. Web interface will not be available!");
+		logg("       Check webroot %s and listening ports %s",
+		     httpsettings.webroot, httpsettings.port);
 		return;
 	}
 
@@ -116,6 +123,9 @@ void http_init(void)
 
 	// Register API handler
 	mg_set_request_handler(ctx, "/api", api_handler, NULL);
+
+	// Register / -> /admin handler
+	mg_set_request_handler(ctx, "/$", redirect_handler, httpsettings.webhome);
 
 	// Initialize PH7 engine and register PHP request handler
 	init_ph7();
