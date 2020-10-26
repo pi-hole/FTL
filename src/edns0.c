@@ -176,34 +176,34 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 		if (code == EDNS0_ECS && config.edns0_ecs)
 		{
 			// EDNS(0) CLIENT SUBNET
-		// RFC 7871              Client Subnet in DNS Queries              6.  Option Format
-		//   This protocol uses an EDNS0 [RFC6891] option to include client
-		//   address information in DNS messages.  The option is structured as
-		//   follows:
-		//
-		//                +0 (MSB)                            +1 (LSB)
-		//      +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
-		//   0: |                          OPTION-CODE                          |
-		//      +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
-		//   2: |                         OPTION-LENGTH                         |
-		//      +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
-		//   4: |                            FAMILY                             |
-		//      +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+			// RFC 7871              Client Subnet in DNS Queries              6.  Option Format
+			//   This protocol uses an EDNS0 [RFC6891] option to include client
+			//   address information in DNS messages.  The option is structured as
+			//   follows:
+			//
+			//                +0 (MSB)                            +1 (LSB)
+			//      +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+			//   0: |                          OPTION-CODE                          |
+			//      +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+			//   2: |                         OPTION-LENGTH                         |
+			//      +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+			//   4: |                            FAMILY                             |
+			//      +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
 			short family;
 			GETSHORT(family, p);
-		//      +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
-		//   6: |     SOURCE PREFIX-LENGTH      |     SCOPE PREFIX-LENGTH       |
-		//      +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+			//      +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+			//   6: |     SOURCE PREFIX-LENGTH      |     SCOPE PREFIX-LENGTH       |
+			//      +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
 			unsigned char source_netmask = *p++;
 			p++; // We are not interested in the scope prefix-length. It MUST be 0 in queries
-		//      +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
-		//   8: |                           ADDRESS...                          /
-		//      +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+			//      +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+			//   8: |                           ADDRESS...                          /
+			//      +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
 			union all_addr addr = {{ 0 }};
-			if(family == 1 && optlen > 4) // IPv4
-				memcpy(&addr.addr4.s_addr, p, optlen - 4);
-			else if(family == 2 && optlen > 4) // IPv6
-				memcpy(addr.addr6.s6_addr, p, optlen - 4);
+			if(family == 1 && optlen == 4 + sizeof(addr.addr4.s_addr)) // IPv4
+				memcpy(&addr.addr4.s_addr, p, sizeof(addr.addr4.s_addr));
+			else if(family == 2 && optlen == 4 + sizeof(addr.addr6.s6_addr)) // IPv6
+				memcpy(addr.addr6.s6_addr, p, sizeof(addr.addr6.s6_addr));
 			else
 				continue;
 
@@ -213,18 +213,31 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 			char ipaddr[ADDRSTRLEN] = { 0 };
 			inet_ntop(family == 1 ? AF_INET : AF_INET6, &addr.addr4.s_addr, ipaddr, sizeof(ipaddr));
 
-			if(config.debug & DEBUG_EDNS0)
-				logg("EDNS(0) CLIENT SUBNET: %s/%u", ipaddr, source_netmask);
-
 			// Only use /32 (IPv4) and /128 (IPv6) addresses
 			if(!(family == 1 && source_netmask == 32) &&
 			   !(family == 2 && source_netmask == 128))
 				continue;
 
 			// Copy data to edns struct
-			edns->client_set = true;
 			strncpy(edns->client, ipaddr, ADDRSTRLEN);
 			edns->client[ADDRSTRLEN-1] = '\0';
+
+			// Only set the address as useful when it is not the
+			// loopback address of the distant machine (127.0.0.0/8 or ::1)
+			if((family == 1 && (ntohl(addr.addr4.s_addr) & 0xFF000000) == 0x7F000000) ||
+			   (family == 2 && IN6_IS_ADDR_LOOPBACK(&addr.addr6)))
+			{
+				if(config.debug & DEBUG_EDNS0)
+					logg("EDNS(0) CLIENT SUBNET: Skipped %s/%u (IPv%u loopback address)",
+					     ipaddr, source_netmask, family == 1 ? 4 : 6);
+			}
+			else
+			{
+				edns->client_set = true;
+				if(config.debug & DEBUG_EDNS0)
+					logg("EDNS(0) CLIENT SUBNET: %s/%u - OK (IPv%u)",
+					     ipaddr, source_netmask, family == 1 ? 4 : 6);
+			}
 		}
 		else if(code == EDNS0_COOKIE && optlen == 8)
 		{

@@ -376,20 +376,20 @@ void read_FTLconf(void)
 
 	// MAXNETAGE
 	// IP addresses (and associated host names) older than the specified number
-	// of hours are removed to avoid dead entries in the network overview table
-	// defaults to: disabled (0.0 hours)
-	config.network_expire = 0u;
+	// of days are removed to avoid dead entries in the network overview table
+	// defaults to: the same value as MAXDBDAYS
+	config.network_expire = config.maxDBdays;
 	buffer = parse_FTLconf(fp, "MAXNETAGE");
 
-	fvalue = 0;
+	int ivalue = 0;
 	if(buffer != NULL &&
-	    sscanf(buffer, "%f", &fvalue) &&
-	   fvalue >= 0.0f && fvalue <= 8760.0f) // 8760 = 24 * 365
-			config.network_expire = (unsigned int)(fvalue * 3600);
+	    sscanf(buffer, "%i", &ivalue) &&
+	    ivalue > 0 && ivalue <= 8760) // 8760 days = 24 years
+			config.network_expire = ivalue;
 
 	if(config.network_expire > 0u)
-		logg("   MAXNETAGE: Removing IP addresses and host names from network table after %.1f hours",
-		     (float)config.network_expire/3600.0f);
+		logg("   MAXNETAGE: Removing IP addresses and host names from network table after %u days",
+		     config.network_expire);
 	else
 		logg("   MAXNETAGE: No automated removal of IP addresses and host names from the network table");
 
@@ -712,6 +712,10 @@ void read_debuging_settings(FILE *fp)
 	// defaults to: false
 	setDebugOption(fp, "DEBUG_CLIENTS", DEBUG_CLIENTS);
 
+	// DEBUG_EVENTS
+	// defaults to: false
+	setDebugOption(fp, "DEBUG_EVENTS", DEBUG_EVENTS);
+
 	if(config.debug)
 	{
 		logg("*****************************");
@@ -734,6 +738,7 @@ void read_debuging_settings(FILE *fp)
 		logg("* DEBUG_RESOLVER        %s *", (config.debug & DEBUG_RESOLVER)? "YES":"NO ");
 		logg("* DEBUG_EDNS0           %s *", (config.debug & DEBUG_EDNS0)? "YES":"NO ");
 		logg("* DEBUG_CLIENTS         %s *", (config.debug & DEBUG_CLIENTS)? "YES":"NO ");
+		logg("* DEBUG_EVENTS          %s *", (config.debug & DEBUG_EVENTS)? "YES":"NO ");
 		logg("*****************************");
 	}
 

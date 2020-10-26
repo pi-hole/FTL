@@ -8,12 +8,13 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "FTL.h"
-#include "database/message-table.h"
-#include "database/common.h"
-#include "log.h"
+#include "../FTL.h"
+#include "message-table.h"
+#include "common.h"
+// logg()
+#include "../log.h"
 // get_group_names()
-#include "database/gravity-db.h"
+#include "gravity-db.h"
 // cli_mode
 #include "../args.h"
 
@@ -71,14 +72,8 @@ bool create_message_table(void)
 // Flush message table
 bool flush_message_table(void)
 {
-	// Open database connection
-	dbopen();
-
 	// Flush message table
 	SQL_bool("DELETE FROM message;");
-
-	// Close database connection
-	dbclose();
 
 	return true;
 }
@@ -86,13 +81,9 @@ bool flush_message_table(void)
 static bool add_message(enum message_type type, const char *message,
                         const int count,...)
 {
-	bool opened_database = false;
-	// Open database connection (if not already open)
 	if(!FTL_DB_avail())
 	{
-		if(!dbopen())
-			return false;
-		opened_database = true;
+		return false;
 	}
 
 	// Ensure there are no duplicates when adding host name messages
@@ -104,8 +95,7 @@ static bool add_message(enum message_type type, const char *message,
 		if( rc != SQLITE_OK ){
 			logg("add_message(type=%u, message=%s) - SQL error prepare DELETE: %s",
 				type, message, sqlite3_errstr(rc));
-			if(opened_database)
-				dbclose();
+			dbclose();
 			return false;
 		}
 
@@ -116,8 +106,7 @@ static bool add_message(enum message_type type, const char *message,
 				type, message, sqlite3_errstr(rc));
 			sqlite3_reset(stmt);
 			sqlite3_finalize(stmt);
-			if(opened_database)
-				dbclose();
+			dbclose();
 			return false;
 		}
 
@@ -128,8 +117,7 @@ static bool add_message(enum message_type type, const char *message,
 				type, message, sqlite3_errstr(rc));
 			sqlite3_reset(stmt);
 			sqlite3_finalize(stmt);
-			if(opened_database)
-				dbclose();
+			dbclose();
 			return false;
 		}
 
@@ -138,8 +126,7 @@ static bool add_message(enum message_type type, const char *message,
 		{
 			logg("add_message(type=%u, message=%s) - SQL error step DELETE: %s",
 			type, message, sqlite3_errstr(rc));
-			if(opened_database)
-				dbclose();
+			dbclose();
 			return false;
 		}
 		sqlite3_clear_bindings(stmt);
@@ -156,8 +143,7 @@ static bool add_message(enum message_type type, const char *message,
 	{
 		logg("add_message(type=%u, message=%s) - SQL error prepare: %s",
 		     type, message, sqlite3_errstr(rc));
-		if(opened_database)
-			dbclose();
+		dbclose();
 		return false;
 	}
 
@@ -168,8 +154,7 @@ static bool add_message(enum message_type type, const char *message,
 		     type, message, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
-		if(opened_database)
-			dbclose();
+		dbclose();
 		return false;
 	}
 
@@ -180,8 +165,7 @@ static bool add_message(enum message_type type, const char *message,
 		     type, message, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
-		if(opened_database)
-			dbclose();
+		dbclose();
 		return false;
 	}
 
@@ -213,8 +197,7 @@ static bool add_message(enum message_type type, const char *message,
 			     type, message, 3 + j, datatype, sqlite3_errstr(rc));
 			sqlite3_reset(stmt);
 			sqlite3_finalize(stmt);
-			if(opened_database)
-				dbclose();
+			dbclose();
 			return false;
 		}
 	}
@@ -229,14 +212,9 @@ static bool add_message(enum message_type type, const char *message,
 	if(rc != SQLITE_DONE)
 	{
 		logg("Encountered error while trying to store message in long-term database: %s", sqlite3_errstr(rc));
-		if(opened_database)
-			dbclose();
+		dbclose();
 		return false;
 	}
-
-	// Close database connection (if we opened it)
-	if(opened_database)
-		dbclose();
 
 	return true;
 }

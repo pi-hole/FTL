@@ -28,7 +28,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name, const char** blo
 void _FTL_forwarded(const unsigned int flags, const char *name, const union all_addr *addr, const int id, const char* file, const int line);
 
 #define FTL_reply(flags, name, addr, id) _FTL_reply(flags, name, addr, id, __FILE__, __LINE__)
-void _FTL_reply(const unsigned short flags, const char *name, const union all_addr *addr, const int id, const char* file, const int line);
+void _FTL_reply(const unsigned int flags, const char *name, const union all_addr *addr, const int id, const char* file, const int line);
 
 #define FTL_cache(flags, name, addr, arg, id) _FTL_cache(flags, name, addr, arg, id, __FILE__, __LINE__)
 void _FTL_cache(const unsigned int flags, const char *name, const union all_addr *addr, const char * arg, const int id, const char* file, const int line);
@@ -39,8 +39,7 @@ void _FTL_dnssec(const int status, const int id, const char* file, const int lin
 #define FTL_header_analysis(header4, rcode, id) _FTL_header_analysis(header4, rcode, id, __FILE__, __LINE__)
 void _FTL_header_analysis(const unsigned char header4, const unsigned int rcode, const int id, const char* file, const int line);
 
-#define FTL_forwarding_failed(server) _FTL_forwarding_failed(server, __FILE__, __LINE__)
-void _FTL_forwarding_failed(const struct server *server, const char* file, const int line);
+void FTL_forwarding_retried(const struct server *server, const int oldID, const int newID, const bool dnssec);
 
 #define FTL_upstream_error(rcode, id) _FTL_upstream_error(rcode, id, __FILE__, __LINE__)
 void _FTL_upstream_error(const unsigned int rcode, const int id, const char* file, const int line);

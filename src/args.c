@@ -29,6 +29,10 @@
 #include "lua/ftl_lua.h"
 #include <readline/history.h>
 #include <wordexp.h>
+// run_dhcp_discover()
+#include "dhcp-discover.h"
+// defined in dnsmasq.c
+extern void print_dnsmasq_version(void);
 
 bool dnsmasq_debug = false;
 bool daemonmode = true, cli_mode = false;
@@ -143,11 +147,31 @@ void parse_args(int argc, char* argv[])
 			exit(EXIT_SUCCESS);
 		}
 
-		if(strcmp(argv[i], "-vv") == 0) // Extended version
+		// Extended version output
+		if(strcmp(argv[i], "-vv") == 0)
 		{
-			printf("Pi-hole FTL: %s\n", get_FTL_version());
-			printf("dnsmasq: "DNSMASQ_VERSION"  "COPYRIGHT"\n");
-			printf("LUA: "LUA_COPYRIGHT"\n");
+			// Print FTL version
+			printf("****************************** FTL **********************************\n");
+			printf("Version:         %s\n\n", get_FTL_version());
+
+			// Print dnsmasq version and compile time options
+			print_dnsmasq_version();
+
+			// Print SQLite3 version and compile time options
+			printf("****************************** SQLite3 ******************************\n");
+			printf("Version:         %s\n", sqlite3_libversion());
+			printf("Compile options: ");
+			unsigned int o = 0;
+			const char *opt = NULL;
+			while((opt = sqlite3_compileoption_get(o++)) != NULL)
+			{
+				if(o != 1)
+					printf(" ");
+				printf("%s", opt);
+			}
+			printf("\n");
+			printf("******************************** LUA ********************************\n");
+			printf(LUA_COPYRIGHT"\n");
 			exit(EXIT_SUCCESS);
 		}
 
@@ -196,6 +220,14 @@ void parse_args(int argc, char* argv[])
 			}
 		}
 
+		// Regex test mode
+		if(strcmp(argv[i], "dhcp-discover") == 0)
+		{
+			// Enable stdout printing
+			cli_mode = true;
+			exit(run_dhcp_discover());
+		}
+
 		// List of implemented arguments
 		if(strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "help") == 0 || strcmp(argv[i], "--help") == 0)
 		{
@@ -207,7 +239,8 @@ void parse_args(int argc, char* argv[])
 			printf("\t                    don't go into daemon mode\n");
 			printf("\t    test            Don't start pihole-FTL but\n");
 			printf("\t                    instead quit immediately\n");
-			printf("\t-v, version         Return version\n");
+			printf("\t-v, version         Return FTL version\n");
+			printf("\t-vv                 Return more version information\n");
 			printf("\t-t, tag             Return git tag\n");
 			printf("\t-b, branch          Return git branch\n");
 			printf("\t-f, no-daemon       Don't go into daemon mode\n");
@@ -220,6 +253,8 @@ void parse_args(int argc, char* argv[])
 			printf("\t                    given by rgx\n");
 			printf("\t--lua, lua          FTL's lua interpreter\n");
 			printf("\t--luac, luac        FTL's lua compiler\n");
+			printf("\tdhcp-discover       Discover DHCP servers in the local\n");
+			printf("\t                    network\n");
 			printf("\n\nOnline help: https://github.com/pi-hole/FTL\n");
 			exit(EXIT_SUCCESS);
 		}

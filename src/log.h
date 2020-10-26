@@ -18,6 +18,7 @@ void open_FTL_log(const bool test);
 void log_counter_info(void);
 void format_memory_size(char * const prefix, unsigned long long int bytes,
                         double * const formated);
+void format_time(char buffer[42], unsigned long seconds, double milliseconds);
 const char *get_FTL_version(void) __attribute__ ((malloc));
 void log_FTL_version(bool crashreport);
 void get_timestr(char * const timestring, const time_t timein);

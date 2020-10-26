@@ -40,6 +40,8 @@
 #include "signals.h"
 // atomic_flag_test_and_set()
 #include <stdatomic.h>
+// Eventqueue routines
+#include "events.h"
 
 static void print_flags(const unsigned int flags);
 static void save_reply_type(const unsigned int flags, const union all_addr *addr,
@@ -68,8 +70,18 @@ const char flagnames[][12] = {"F_IMMORTAL ", "F_NAMEP ", "F_REVERSE ", "F_FORWAR
 // Store interface the next query will come from for later usage
 void FTL_next_iface(const char *newiface)
 {
-	strncpy(next_iface, newiface, sizeof(next_iface)-1);
-	next_iface[sizeof(next_iface)-1] = '\0';
+	if(newiface != NULL)
+	{
+		// Copy interface name if available
+		strncpy(next_iface, newiface, sizeof(next_iface)-1);
+		next_iface[sizeof(next_iface)-1] = '\0';
+	}
+	else
+	{
+		// Use dummy when interface record is not available
+		next_iface[0] = '-';
+		next_iface[1] = '\0';
+	}
 }
 
 static bool check_domain_blocked(const char *domain, const int clientID,
@@ -532,7 +544,11 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	char *domainString = strdup(name);
 	strtolower(domainString);
 
-	// Get client IP address (can be overwritten by EDNS(0) client subnet (ECS) data)
+	// Get client IP address
+	// The requestor's IP address can be rewritten using EDNS(0) client
+	// subnet (ECS) data), however, we do not rewrite the IPs ::1 and
+	// 127.0.0.1 to avoid queries originating from localhost of the
+	// *distant* machine as queries coming from the *local* machine
 	char clientIP[ADDRSTRLEN] = { 0 };
 	if(config.edns0_ecs && edns->client_set)
 	{
@@ -869,8 +885,11 @@ void FTL_dnsmasq_reload(void)
 
 	logg("Reloading DNS cache");
 
-	// Reload the privacy level in case the user changed it
-	get_privacy_level(NULL);
+	// (Re-)open FTL database connection
+	piholeFTLDB_reopen();
+
+	// Request reload the privacy level
+	set_event(RELOAD_PRIVACY_LEVEL);
 
 	// Inspect 01-pihole.conf to see if Pi-hole blocking is enabled,
 	// i.e. if /etc/pihole/gravity.list is sourced as addn-hosts file
@@ -894,7 +913,7 @@ void FTL_dnsmasq_reload(void)
 	// - Get number of blocked domains
 	// - Read and compile regex filters (incl. per-client)
 	// - Flush FTL's DNS cache
-	FTL_reload_all_domainlists();
+	set_event(RELOAD_GRAVITY);
 
 	// Print current set of capabilities if requested via debug flag
 	if(config.debug & DEBUG_CAPS)
@@ -904,7 +923,7 @@ void FTL_dnsmasq_reload(void)
 	resolver_ready = true;
 }
 
-void _FTL_reply(const unsigned short flags, const char *name, const union all_addr *addr, const int id,
+void _FTL_reply(const unsigned int flags, const char *name, const union all_addr *addr, const int id,
                 const char* file, const int line)
 {
 	// Lock shared memory
@@ -1714,7 +1733,7 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 	}
 
 	// Start database thread if database is used
-	if(database && pthread_create( &DBthread, &attr, DB_thread, NULL ) != 0)
+	if(pthread_create( &DBthread, &attr, DB_thread, NULL ) != 0)
 	{
 		logg("Unable to open database thread. Exiting...");
 		exit(EXIT_FAILURE);
@@ -1743,7 +1762,7 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 		if(chown(FTLfiles.log, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
 			logg("Setting ownership (%i:%i) of %s failed: %s (%i)",
 			     ent_pw->pw_uid, ent_pw->pw_gid, FTLfiles.log, strerror(errno), errno);
-		if(database && chown(FTLfiles.FTL_db, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
+		if(chown(FTLfiles.FTL_db, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
 			logg("Setting ownership (%i:%i) of %s failed: %s (%i)",
 			     ent_pw->pw_uid, ent_pw->pw_gid, FTLfiles.FTL_db, strerror(errno), errno);
 		chown_all_shmem(ent_pw);
@@ -1771,7 +1790,7 @@ void getCacheInformation(const int *sock)
 	// looked up for the longest time is evicted.
 }
 
-void _FTL_forwarding_failed(const struct server *server, const char* file, const int line)
+void FTL_forwarding_retried(const struct server *server, const int oldID, const int newID, const bool dnssec)
 {
 	// Forwarding to upstream server failed
 
@@ -1793,7 +1812,11 @@ void _FTL_forwarding_failed(const struct server *server, const char* file, const
 	const int upstreamID = findUpstreamID(upstreamIP, false);
 
 	// Possible debugging information
-	if(config.debug & DEBUG_QUERIES) logg("**** forwarding to %s (ID %i, %s:%i) FAILED", dest, upstreamID, file, line);
+	if(config.debug & DEBUG_QUERIES)
+	{
+		logg("**** RETRIED query %i as %i to %s (ID %i)",
+		     oldID, newID, dest, upstreamID);
+	}
 
 	// Get upstream pointer
 	upstreamsData* upstream = getUpstream(upstreamID, true);
@@ -1801,6 +1824,36 @@ void _FTL_forwarding_failed(const struct server *server, const char* file, const
 	// Update counter
 	if(upstream != NULL)
 		upstream->failed++;
+
+	// Search for corresponding query identified by ID
+	// Retried DNSSEC queries are ignored, we have to flag themselves (newID)
+	// Retried normal queries take over, we have to flat the original query (oldID)
+	const int queryID = findQueryID(dnssec ? newID : oldID);
+	if(queryID >= 0)
+	{
+		// Get query pointer
+		queriesData* query = getQuery(queryID, true);
+
+		// Set retried status
+		if(query != NULL)
+		{
+			if(dnssec)
+			{
+				// There is point in retrying the query when
+				// we've already got an answer to this query,
+				// but we're awaiting keys for DNSSEC
+				// validation. We're retrying the DNSSEC query
+				// instead
+				query->status = QUERY_RETRIED_DNSSEC;
+			}
+			else
+			{
+				// Normal query retry due to answer not arriving
+				// soon enough at the requestor
+				query->status = QUERY_RETRIED;
+			}
+		}
+	}
 
 	// Clean up and unlock shared memory
 	free(upstreamIP);
