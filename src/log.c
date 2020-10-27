@@ -166,6 +166,44 @@ void _FTL_log(const bool newline, const char *format, ...)
 	pthread_mutex_unlock(&lock);
 }
 
+// Log helper activity (may be script or lua)
+void FTL_log_helper(const unsigned char n, ...)
+{
+	// Only log helper debug messages if enabled
+	if(!(config.debug & DEBUG_HELPER))
+		return;
+
+	// Extract all variable arguments
+	va_list args;
+	char *arg[n];
+	va_start(args, n);
+	for(unsigned char i = 0; i < n; i++)
+		arg[i] = strdup(va_arg(args, char*));
+	va_end(args);
+
+	// Select appropriate logging format
+	switch (n)
+	{
+		case 1:
+			logg("Script: Starting helper for action \"%s\"", arg[0]);
+			break;
+		case 2:
+			logg("Script: FAILED to execute \"%s\": %s", arg[0], arg[1]);
+			break;
+		case 5:
+			logg("Script: Executing \"%s\" with arguments: \"%s %s %s %s\"",
+			     arg[0], arg[1], arg[2], arg[3], arg[4]);
+			break;
+		default:
+			logg("ERROR: Unsupported number of arguments passed to FTL_log_helper(): %u", n);
+			break;
+	}
+
+	// Free allocated memory
+	for(unsigned char i = 0; i < n; i++)
+		free(arg[i]);
+}
+
 void format_memory_size(char * const prefix, const unsigned long long int bytes,
                         double * const formated)
 {
