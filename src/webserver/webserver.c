@@ -124,7 +124,7 @@ void http_init(void)
 	// Register API handler
 	mg_set_request_handler(ctx, "/api", api_handler, NULL);
 
-	// Register / -> /admin handler
+	// Register / -> /admin redirect handler
 	mg_set_request_handler(ctx, "/$", redirect_handler, httpsettings.webhome);
 
 	// Initialize PH7 engine and register PHP request handler

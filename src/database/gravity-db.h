@@ -11,11 +11,11 @@
 #define GRAVITY_H
 
 // global variable counters
-#include "memory.h"
+#include "../memory.h"
 // clients data structure
-#include "datastructure.h"
+#include "../datastructure.h"
 // enum http_method
-#include "webserver/http-common.h"
+#include "../webserver/http-common.h"
 // Definition of struct regex_data
 #include "../regex_r.h"
 

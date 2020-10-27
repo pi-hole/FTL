@@ -8,24 +8,24 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "FTL.h"
+#include "../FTL.h"
 #include "../webserver/http-common.h"
 #include "../webserver/json_macros.h"
 #include "routes.h"
-#include "shmem.h"
-#include "datastructure.h"
+#include "../shmem.h"
+#include "../datastructure.h"
 // read_setupVarsconf()
-#include "setupVars.h"
+#include "../setupVars.h"
 // logg()
-#include "log.h"
+#include "../log.h"
 // config struct
-#include "config.h"
+#include "../config.h"
 // in_auditlist()
-#include "database/gravity-db.h"
+#include "../database/gravity-db.h"
 // overTime data
-#include "overTime.h"
+#include "../overTime.h"
 // enum REGEX
-#include "regex_r.h"
+#include "../regex_r.h"
 // my_sqrt()
 #include "../math.h"
 
@@ -183,6 +183,10 @@ int api_stats_top_domains(bool blocked, struct mg_connection *conn)
 	get_privacy_level(NULL);
 	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS)
 	{
+		if(config.debug & DEBUG_API)
+			logg("Not returning top domains: Privacy level is set to %i",
+			     config.privacylevel);
+
 		// Minimum structure is
 		// {"top_domains":[]}
 		cJSON *json = JSON_NEW_OBJ();
@@ -337,6 +341,10 @@ int api_stats_top_clients(bool blocked, struct mg_connection *conn)
 	get_privacy_level(NULL);
 	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS_CLIENTS)
 	{
+		if(config.debug & DEBUG_API)
+			logg("Not returning top clients: Privacy level is set to %i",
+			     config.privacylevel);
+
 		// Minimum structure is
 		// {"top_clients":[]}
 		cJSON *json = JSON_NEW_OBJ();
