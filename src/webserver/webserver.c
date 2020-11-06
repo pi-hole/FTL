@@ -8,7 +8,7 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "FTL.h"
+#include "../FTL.h"
 #include "../api/routes.h"
 // send_http()
 #include "http-common.h"
@@ -28,10 +28,63 @@ static int print_simple(struct mg_connection *conn, void *input)
 	return send_http(conn, "text/plain", input);
 }
 
-static int redirect_handler(struct mg_connection *conn, void *input)
+static int redirect_root_handler(struct mg_connection *conn, void *input)
 {
-	redirect_elsewhere(conn, (const char*)input);
-	return 1;
+	// Get requested host
+	const char *host = mg_get_header(conn, "Host");
+	size_t host_len = 0;
+	if (host != NULL)
+	{
+		// If the "Host" is an IPv6 address, like [::1], parse until ] is found.
+		if (*host == '[')
+		{
+			char *pos = strchr(host, ']');
+			if (!pos)
+			{
+				// Malformed hostname starts with '[', but no ']' found
+				logg("ERROR: Host name format error '[' without ']'");
+				return 0;
+			}
+			/* terminate after ']' */
+			host_len = (size_t)(pos + 1 - host);
+		}
+		else
+		{
+			char *pos = strchr(host, ':');
+			if (pos != NULL)
+			{
+				// A ':' separates hostname and port number
+				host_len = (size_t)(pos - host);
+			}
+			else
+			{
+				// Host header only contains the host name iteself
+				host_len = strlen(host);
+			}
+		}
+	}
+
+	// API debug logging
+	if(config.debug & DEBUG_API)
+	{
+		logg("Host header: \"%s\", extracted host: \"%.*s\"", host, (int)host_len, host);
+
+		// Get requested URI
+		const struct mg_request_info *request = mg_get_request_info(conn);
+		const char *uri = request->local_uri;
+
+		logg("URI: %s", uri);
+	}
+
+	// 308 Permanent Redirect from http://pi.hole -> http://pi.hole/admin
+	if(host != NULL && strncmp(host, "pi.hole", host_len) == 0)
+	{
+		mg_send_http_redirect(conn, httpsettings.webhome, 308);
+		return 1;
+	}
+
+	// else: Not redirecting
+	return 0;
 }
 
 static int log_http_message(const struct mg_connection *conn, const char *message)
@@ -125,7 +178,7 @@ void http_init(void)
 	mg_set_request_handler(ctx, "/api", api_handler, NULL);
 
 	// Register / -> /admin redirect handler
-	mg_set_request_handler(ctx, "/$", redirect_handler, httpsettings.webhome);
+	mg_set_request_handler(ctx, "/$", redirect_root_handler, NULL);
 
 	// Initialize PH7 engine and register PHP request handler
 	init_ph7();

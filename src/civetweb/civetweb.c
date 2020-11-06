@@ -13504,41 +13504,6 @@ redirect_to_https_port(struct mg_connection *conn, int ssl_index)
 	}
 }
 
-/**************************** Pi-hole modification ****************************/
-void redirect_elsewhere(struct mg_connection *conn, const char *target)
-{
-	char target_url[MG_BUF_LEN];
-	int truncated = 0;
-
-	conn->must_close = 1;
-
-	/* Only redirect when the host is pi.hole */
-	if (conn->host && strcmp(conn->host, "pi.hole") == 0) {
-
-		/* Use "308 Permanent Redirect" */
-		int redirect_code = 308;
-
-		/* Create target URL */
-		mg_snprintf(
-		    conn,
-		    &truncated,
-		    target_url,
-		    sizeof(target_url),
-		    "%s",
-		    target);
-
-		/* Check overflow in location buffer (will not occur if MG_BUF_LEN
-		 * is used as buffer size) */
-		if (truncated) {
-			mg_send_http_error(conn, 500, "%s", "Redirect URL too long");
-			return;
-		}
-
-		/* Use redirect helper function */
-		mg_send_http_redirect(conn, target_url, redirect_code);
-	}
-}
-/******************************************************************************/
 
 static void
 handler_info_acquire(struct mg_handler_info *handler_info)
