@@ -8,14 +8,14 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "FTL.h"
+#include "../FTL.h"
 #include "../webserver/http-common.h"
 #include "../webserver/json_macros.h"
 #include "routes.h"
-#include "log.h"
-#include "config.h"
-// read_setupVarsconf()
-#include "setupVars.h"
+#include "../log.h"
+#include "../config.h"
+// read_se../tupVarsconf()
+#include "../setupVars.h"
 
 static struct {
 	bool used;
@@ -77,15 +77,12 @@ int check_client_auth(struct mg_connection *conn)
 			auth_data[num].valid_until = now + httpsettings.session_timeout;
 
 			// Update user cookie
-			char *buffer = NULL;
-			if(asprintf(&buffer,
-				"Set-Cookie: user_id=%u; Path=/; Max-Age=%u\r\n",
-				num, httpsettings.session_timeout) < 0)
+			if(snprintf(pi_hole_extra_headers, sizeof(pi_hole_extra_headers),
+			            "Set-Cookie: user_id=%u; Path=/; Max-Age=%u\r\n",
+			            num, httpsettings.session_timeout) < 0)
 			{
 				return send_json_error(conn, 500, "internal_error", "Internal server error", NULL);
 			}
-			my_set_cookie_header(conn, buffer);
-			free(buffer);
 
 			if(config.debug & DEBUG_API)
 			{
@@ -201,15 +198,12 @@ int api_auth(struct mg_connection *conn)
 		if(config.debug & DEBUG_API)
 			logg("API Authentification: OK, localhost does not need auth.");
 		// We still have to send a cookie for the web interface to be happy
-		char *buffer = NULL;
-		if(asprintf(&buffer,
+		if(snprintf(pi_hole_extra_headers, sizeof(pi_hole_extra_headers),
 		            "Set-Cookie: user_id=%u; Path=/; Max-Age=%u\r\n",
 		            API_MAX_CLIENTS, API_SESSION_EXPIRE) < 0)
 		{
 			return send_json_error(conn, 500, "internal_error", "Internal server error", NULL);
 		}
-		my_set_cookie_header(conn, buffer);
-		free(buffer);
 	}
 	if(user_id > -1 && method == HTTP_GET)
 	{
@@ -219,15 +213,12 @@ int api_auth(struct mg_connection *conn)
 		cJSON *json = JSON_NEW_OBJ();
 		JSON_OBJ_REF_STR(json, "status", "success");
 		// Ten minutes validity
-		char *buffer = NULL;
-		if(asprintf(&buffer,
+		if(snprintf(pi_hole_extra_headers, sizeof(pi_hole_extra_headers),
 		            "Set-Cookie: user_id=%u; Path=/; Max-Age=%u\r\n",
 		            user_id, API_SESSION_EXPIRE) < 0)
 		{
 			return send_json_error(conn, 500, "internal_error", "Internal server error", NULL);
 		}
-		my_set_cookie_header(conn, buffer);
-		free(buffer);
 	
 		return send_json_success(conn);
 	}
@@ -242,14 +233,12 @@ int api_auth(struct mg_connection *conn)
 		free(auth_data[user_id].remote_addr);
 		auth_data[user_id].remote_addr = NULL;
 
-		const char *buffer = "Set-Cookie: user_id=deleted; Path=/; Max-Age=-1\r\n";
-		my_set_cookie_header(conn, buffer);
+		strncpy(pi_hole_extra_headers, "Set-Cookie: user_id=deleted; Path=/; Max-Age=-1\r\n", sizeof(pi_hole_extra_headers));
 		return send_json_success(conn);
 	}
 	else
 	{
-		const char *buffer = "Set-Cookie: user_id=deleted; Path=/; Max-Age=-1\r\n";
-		my_set_cookie_header(conn, buffer);
+		strncpy(pi_hole_extra_headers, "Set-Cookie: user_id=deleted; Path=/; Max-Age=-1\r\n", sizeof(pi_hole_extra_headers));
 		return send_json_unauthorized(conn);
 	}
 }

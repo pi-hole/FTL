@@ -8,13 +8,13 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "FTL.h"
+#include "../FTL.h"
 #include "../webserver/http-common.h"
 #include "../webserver/json_macros.h"
 #include "routes.h"
 // get_FTL_version()
-#include "log.h"
-#include "version.h"
+#include "../log.h"
+#include "../version.h"
 
 int api_version(struct mg_connection *conn)
 {

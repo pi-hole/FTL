@@ -14,6 +14,8 @@
 #include "../log.h"
 #include "json_macros.h"
 
+char pi_hole_extra_headers[PIHOLE_HEADERS_MAXLEN] = { 0 };
+
 // Provides a compile-time flag for JSON formatting
 // This should never be needed as all modern browsers
 // tyoically contain a JSON explorer
