@@ -943,9 +943,25 @@ void getAllQueries(const char *client_message, const int *sock)
 				regex_idx = dns_cache->black_regex_idx;
 		}
 
+		// Get IP of upstream destination, if applicable
+		const char *upstream_name = "N/A";
+		if(query->status == QUERY_FORWARDED)
+		{
+			const upstreamsData *upstream = getUpstream(query->upstreamID, true);
+			if(upstream != NULL)
+			{
+				if(upstream->namepos != 0)
+					// Get upstream destination name if possible
+					upstream_name = getstr(upstream->namepos);
+				else
+					// If we have no name, get the IP address
+					upstream_name = getstr(upstream->ippos);
+			}
+		}
+
 		if(istelnet[*sock])
 		{
-			ssend(*sock,"%lli %s %s %s %i %i %i %lu %s %i",
+			ssend(*sock,"%lli %s %s %s %i %i %i %lu %s %i %s",
 				(long long)query->timestamp,
 				qtype,
 				domain,
@@ -955,7 +971,8 @@ void getAllQueries(const char *client_message, const int *sock)
 				query->reply,
 				delay,
 				CNAME_domain,
-				regex_idx);
+				regex_idx,
+				upstream_name);
 			if(config.debug & DEBUG_API)
 				ssend(*sock, " %i", queryID);
 			ssend(*sock, "\n");
