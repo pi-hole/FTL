@@ -1757,15 +1757,34 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 
 	// Chown files if FTL started as user root but a dnsmasq config
 	// option states to run as a different user/group (e.g. "nobody")
-	if(ent_pw != NULL && getuid() == 0)
+	if(getuid() == 0)
 	{
-		if(chown(FTLfiles.log, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
-			logg("Setting ownership (%i:%i) of %s failed: %s (%i)",
-			     ent_pw->pw_uid, ent_pw->pw_gid, FTLfiles.log, strerror(errno), errno);
-		if(chown(FTLfiles.FTL_db, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
-			logg("Setting ownership (%i:%i) of %s failed: %s (%i)",
-			     ent_pw->pw_uid, ent_pw->pw_gid, FTLfiles.FTL_db, strerror(errno), errno);
-		chown_all_shmem(ent_pw);
+		if(ent_pw != NULL)
+		{
+			logg("INFO: FTL is going to drop from root to user %s (UID %d)",
+			     ent_pw->pw_name, (int)ent_pw->pw_uid);
+			if(chown(FTLfiles.log, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
+				logg("Setting ownership (%i:%i) of %s failed: %s (%i)",
+				ent_pw->pw_uid, ent_pw->pw_gid, FTLfiles.log, strerror(errno), errno);
+			if(chown(FTLfiles.FTL_db, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
+				logg("Setting ownership (%i:%i) of %s failed: %s (%i)",
+				ent_pw->pw_uid, ent_pw->pw_gid, FTLfiles.FTL_db, strerror(errno), errno);
+			chown_all_shmem(ent_pw);
+		}
+		else
+		{
+			logg("INFO: FTL is running as root");
+		}
+	}
+	else
+	{
+		uid_t uid;
+		struct passwd *current_user;
+		if ((current_user = getpwuid(uid = geteuid())) != NULL)
+			logg("INFO: FTL is running as user %s (UID %d)",
+			     current_user->pw_name, (int)current_user->pw_uid);
+		else
+			logg("INFO: Failed to obtain information about FTL user");
 	}
 
 	// Obtain DNS port from dnsmasq daemon
