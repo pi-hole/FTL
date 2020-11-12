@@ -25,6 +25,8 @@
 #include "../config.h"
 // getstr()
 #include "../shmem.h"
+// free()
+#include "../memory.h"
 
 static bool saving_failed_before = false;
 
@@ -143,7 +145,14 @@ void DB_save_queries(void)
 		{
 			// Get forward pointer
 			const upstreamsData* upstream = getUpstream(query->upstreamID, true);
-			sqlite3_bind_text(stmt, 6, getstr(upstream->ippos), -1, SQLITE_STATIC);
+			char *buffer = NULL;
+			if(asprintf(&buffer, "%s#%u", getstr(upstream->ippos), upstream->port) > 0)
+				sqlite3_bind_text(stmt, 6, buffer, -1, SQLITE_TRANSIENT);
+			else
+				sqlite3_bind_null(stmt, 6);
+
+			if(buffer != NULL)
+				free(buffer);
 		}
 		else
 		{
@@ -389,7 +398,16 @@ void DB_read_queries(void)
 				     (long long)queryTimeStamp);
 				continue;
 			}
-			upstreamID = findUpstreamID(upstream, true);
+
+			// Get IP address and port of upstream destination
+			char serv_addr[INET6_ADDRSTRLEN] = { 0 };
+			unsigned int serv_port = 53;
+			// We limit the number of bytes written into the serv_addr buffer
+			// to prevent buffer overflows. If there is no port available in
+			// the database, we skip extracting them and use the default port
+			sscanf(upstream, "%"xstr(INET6_ADDRSTRLEN)"[^#]#%u", serv_addr, &serv_port);
+			serv_addr[INET6_ADDRSTRLEN-1] = '\0';
+			upstreamID = findUpstreamID(serv_addr, (in_port_t)serv_port, true);
 		}
 
 		// Obtain IDs only after filtering which queries we want to keep
