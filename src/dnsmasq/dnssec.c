@@ -579,7 +579,7 @@ static int validate_rrset(time_t now, struct dns_header *header, size_t plen, in
       hash->update(ctx, (unsigned int)wire_len, (unsigned char*)keyname);
       from_wire(keyname);
 
-#define RRBUFLEN 300 /* Most RRs are smaller than this. */
+#define RRBUFLEN 128 /* Most RRs are smaller than this. */
       
       for (i = 0; i < rrsetidx; ++i)
 	{
@@ -617,50 +617,66 @@ static int validate_rrset(time_t now, struct dns_header *header, size_t plen, in
 	  hash->update(ctx, (unsigned int)wire_len, (unsigned char *)name_start);
 	  hash->update(ctx, 4, p); /* class and type */
 	  hash->update(ctx, 4, (unsigned char *)&nsigttl);
-	  
-	  p += 8; /* skip class, type, ttl */
+
+	  p += 8; /* skip type, class, ttl */
 	  GETSHORT(rdlen, p);
 	  if (!CHECK_LEN(header, p, plen, rdlen))
 	    return STAT_BOGUS; 
-	  
-	  /* canonicalise rdata and calculate length of same, use 
-	     name buffer as workspace for get_rdata. */
-	  state.ip = p;
-	  state.op = NULL;
-	  state.desc = rr_desc;
-	  state.buff = name;
-	  state.end = p + rdlen;
-	  
-	  for (j = 0; get_rdata(header, plen, &state); j++)
-	    if (j < RRBUFLEN)
-	      rrbuf[j] = *state.op;
 
-	  len = htons((u16)j);
-	  hash->update(ctx, 2, (unsigned char *)&len); 
-
-	  /* If the RR is shorter than RRBUFLEN (most of them, in practice)
-	     then we can just digest it now. If it exceeds RRBUFLEN we have to
-	     go back to the start and do it in chunks. */
-	  if (j >= RRBUFLEN)
+	  /* Optimisation for RR types which need no cannonicalisation.
+	     This includes DNSKEY DS NSEC and NSEC3, which are also long, so
+	     it saves lots of calls to get_rdata, and avoids the pessimal
+	     segmented insertion, even with a small rrbuf[].
+	     
+	     If canonicalisation is not needed, a simple insertion into the hash works.
+	  */
+	  if (*rr_desc == (u16)-1)
 	    {
+	      len = htons(rdlen);
+	      hash->update(ctx, 2, (unsigned char *)&len);
+	      hash->update(ctx, rdlen, p);
+	    }
+	  else
+	    {
+	      /* canonicalise rdata and calculate length of same, use 
+		 name buffer as workspace for get_rdata. */
 	      state.ip = p;
 	      state.op = NULL;
 	      state.desc = rr_desc;
-
+	      state.buff = name;
+	      state.end = p + rdlen;
+	      
 	      for (j = 0; get_rdata(header, plen, &state); j++)
+		if (j < RRBUFLEN)
+		  rrbuf[j] = *state.op;
+	      
+	      len = htons((u16)j);
+	      hash->update(ctx, 2, (unsigned char *)&len); 
+	      
+	      /* If the RR is shorter than RRBUFLEN (most of them, in practice)
+		 then we can just digest it now. If it exceeds RRBUFLEN we have to
+		 go back to the start and do it in chunks. */
+	      if (j >= RRBUFLEN)
 		{
-		   rrbuf[j] = *state.op;
-
-		   if (j == RRBUFLEN - 1)
-		     {
-		       hash->update(ctx, RRBUFLEN, rrbuf);
-		       j = -1;
-		     }
+		  state.ip = p;
+		  state.op = NULL;
+		  state.desc = rr_desc;
+		  
+		  for (j = 0; get_rdata(header, plen, &state); j++)
+		    {
+		      rrbuf[j] = *state.op;
+		      
+		      if (j == RRBUFLEN - 1)
+			{
+			  hash->update(ctx, RRBUFLEN, rrbuf);
+			  j = -1;
+			}
+		    }
 		}
+	      
+	      if (j != 0)
+		hash->update(ctx, j, rrbuf);
 	    }
-	  
-	  if (j != 0)
-	    hash->update(ctx, j, rrbuf);
 	}
      
       hash->digest(ctx, hash->digest_size, digest);
