@@ -657,11 +657,7 @@ struct hostsfile {
 #define FREC_TEST_PKTSZ       256
 #define FREC_HAS_EXTRADATA    512        
 
-#ifdef HAVE_DNSSEC
-#define HASH_SIZE 20 /* SHA-1 digest size */
-#else
-#define HASH_SIZE sizeof(int)
-#endif
+#define HASH_SIZE 32 /* SHA-256 digest size */
 
 struct frec {
   union mysockaddr source;
@@ -1234,7 +1230,6 @@ int check_for_bogus_wildcard(struct dns_header *header, size_t qlen, char *name,
 			     struct bogus_addr *baddr, time_t now);
 int check_for_ignored_address(struct dns_header *header, size_t qlen, struct bogus_addr *baddr);
 int check_for_local_domain(char *name, time_t now);
-unsigned int questions_crc(struct dns_header *header, size_t plen, char *name);
 size_t resize_packet(struct dns_header *header, size_t plen, 
 		  unsigned char *pheader, size_t hlen);
 int add_resource_record(struct dns_header *header, char *limit, int *truncp,
@@ -1259,8 +1254,10 @@ int dnssec_validate_reply(time_t now, struct dns_header *header, size_t plen, ch
 			  int check_unsigned, int *neganswer, int *nons, int *nsec_ttl);
 int dnskey_keytag(int alg, int flags, unsigned char *key, int keylen);
 size_t filter_rrsigs(struct dns_header *header, size_t plen);
-unsigned char* hash_questions(struct dns_header *header, size_t plen, char *name);
 int setup_timestamp(void);
+
+/* hash_questions.c */
+unsigned char *hash_questions(struct dns_header *header, size_t plen, char *name);
 
 /* crypto.c */
 const struct nettle_hash *hash_find(char *name);

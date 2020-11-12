@@ -266,19 +266,16 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
   union all_addr *addrp = NULL;
   unsigned int flags = 0;
   struct server *start = NULL;
-#ifdef HAVE_DNSSEC
   void *hash = hash_questions(header, plen, daemon->namebuff);
+#ifdef HAVE_DNSSEC
   int do_dnssec = 0;
-#else
-  unsigned int crc = questions_crc(header, plen, daemon->namebuff);
-  void *hash = &crc;
 #endif
   unsigned int gotname = extract_request(header, plen, daemon->namebuff, NULL);
   unsigned char *oph = find_pseudoheader(header, plen, NULL, NULL, NULL, NULL);
   (void)do_bit;
 
   /* may be no servers available. */
-  if (forward || (hash && (forward = lookup_frec_by_sender(ntohs(header->id), udpaddr, hash))))
+  if (forward || (forward = lookup_frec_by_sender(ntohs(header->id), udpaddr, hash)))
     {
       /* If we didn't get an answer advertising a maximal packet in EDNS,
 	 fall back to 1280, which should work everywhere on IPv6.
@@ -805,9 +802,6 @@ void reply_query(int fd, int family, time_t now)
   size_t nn;
   struct server *server;
   void *hash;
-#ifndef HAVE_DNSSEC
-  unsigned int crc;
-#endif
 
   /* packet buffer overwritten */
   daemon->srv_save = NULL;
@@ -834,12 +828,7 @@ void reply_query(int fd, int family, time_t now)
   if (difftime(now, server->pktsz_reduced) > UDP_TEST_TIME)
     server->edns_pktsz = daemon->edns_pktsz;
 
-#ifdef HAVE_DNSSEC
   hash = hash_questions(header, n, daemon->namebuff);
-#else
-  hash = &crc;
-  crc = questions_crc(header, n, daemon->namebuff);
-#endif
   
   if (!(forward = lookup_frec(ntohs(header->id), fd, family, hash)))
     return;
@@ -1151,8 +1140,7 @@ void reply_query(int fd, int family, time_t now)
 			log_query(F_NOEXTRA | F_DNSSEC | F_IPV6, daemon->keyname, (union all_addr *)&(server->addr.in6.sin6_addr),
 				  querystr("dnssec-query", querytype));
   
-		      if ((hash = hash_questions(header, nn, daemon->namebuff)))
-			memcpy(new->hash, hash, HASH_SIZE);
+		      memcpy(new->hash, hash_questions(header, nn, daemon->namebuff), HASH_SIZE);
 		      new->new_id = get_id();
 		      header->id = htons(new->new_id);
 		      /* Save query for retransmission */
@@ -2077,15 +2065,9 @@ unsigned char *tcp_request(int confd, time_t now,
 	      if (!flags && last_server)
 		{
 		  struct server *firstsendto = NULL;
-#ifdef HAVE_DNSSEC
-		  unsigned char *newhash, hash[HASH_SIZE];
-		  if ((newhash = hash_questions(header, (unsigned int)size, daemon->namebuff)))
-		    memcpy(hash, newhash, HASH_SIZE);
-		  else
-		    memset(hash, 0, HASH_SIZE);
-#else
-		  unsigned int crc = questions_crc(header, (unsigned int)size, daemon->namebuff);
-#endif		  
+		  unsigned char hash[HASH_SIZE];
+		  memcpy(hash, hash_questions(header, (unsigned int)size, daemon->namebuff), HASH_SIZE);
+
 		  /* Loop round available servers until we succeed in connecting to one.
 		     Note that this code subtly ensures that consecutive queries on this connection
 		     which can go to the same server, do so. */
@@ -2233,20 +2215,11 @@ unsigned char *tcp_request(int confd, time_t now,
 		      /* If the crc of the question section doesn't match the crc we sent, then
 			 someone might be attempting to insert bogus values into the cache by 
 			 sending replies containing questions and bogus answers. */
-#ifdef HAVE_DNSSEC
-		      newhash = hash_questions(header, (unsigned int)m, daemon->namebuff);
-		      if (!newhash || memcmp(hash, newhash, HASH_SIZE) != 0)
+		      if (memcmp(hash, hash_questions(header, (unsigned int)m, daemon->namebuff), HASH_SIZE) != 0)
 			{ 
 			  m = 0;
 			  break;
 			}
-#else			  
-		      if (crc != questions_crc(header, (unsigned int)m, daemon->namebuff))
-			{
-			  m = 0;
-			  break;
-			}
-#endif
 
 		      m = process_reply(header, now, last_server, (unsigned int)m, 
 					option_bool(OPT_NO_REBIND) && !norebind, no_cache_dnssec, cache_secure, bogusanswer,
@@ -2464,7 +2437,7 @@ static struct frec *lookup_frec(unsigned short id, int fd, int family, void *has
 
   for(f = daemon->frec_list; f; f = f->next)
     if (f->sentto && f->new_id == id && 
-	(!hash || memcmp(hash, f->hash, HASH_SIZE) == 0))
+	(memcmp(hash, f->hash, HASH_SIZE) == 0))
       {
 	/* sent from random port */
 	if (family == AF_INET && f->rfd4 && f->rfd4->fd == fd)
