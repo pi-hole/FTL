@@ -41,6 +41,7 @@ typedef struct {
 typedef struct {
 	unsigned char magic;
 	bool new;
+	in_addr_t port;
 	int count;
 	int failed;
 	size_t ippos;
@@ -88,7 +89,7 @@ typedef struct {
 
 void strtolower(char *str);
 int findQueryID(const int id);
-int findUpstreamID(const char * upstream, const bool count);
+int findUpstreamID(const char * upstream, const in_port_t port, const bool count);
 int findDomainID(const char *domain, const bool count);
 int findClientID(const char *client, const bool count, const bool superclient);
 int findCacheID(int domainID, int clientID, enum query_types query_type);

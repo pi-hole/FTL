@@ -525,6 +525,7 @@ void getUpstreamDestinations(const char *client_message, const int *sock)
 	{
 		float percentage = 0.0f;
 		const char* ip, *name;
+		in_port_t upstream_port = 0;
 
 		if(i == -2)
 		{
@@ -548,7 +549,7 @@ void getUpstreamDestinations(const char *client_message, const int *sock)
 		}
 		else
 		{
-			// Regular forward destionation
+			// Regular upstream destination
 			// Get sorted indices
 			int upstreamID;
 			if(sort)
@@ -556,18 +557,22 @@ void getUpstreamDestinations(const char *client_message, const int *sock)
 			else
 				upstreamID = i;
 
-			// Get forward pointer
-			const upstreamsData* forward = getUpstream(upstreamID, true);
-			if(forward == NULL)
+			// Get upstream pointer
+			const upstreamsData* upstream = getUpstream(upstreamID, true);
+			if(upstream == NULL)
 				continue;
 
-			// Get IP and host name of forward destination if available
-			ip = getstr(forward->ippos);
-			name = getstr(forward->namepos);
+			// Get IP and host name of upstream destination if available
+			ip = getstr(upstream->ippos);
+			if(upstream->namepos != 0)
+				name = getstr(upstream->namepos);
+			else
+				name = getstr(upstream->ippos);
+			upstream_port = upstream->port;
 
 			// Get percentage
 			if(totalqueries > 0)
-				percentage = 1e2f * forward->count / totalqueries;
+				percentage = 1e2f * upstream->count / totalqueries;
 		}
 
 		// Send data:
@@ -576,7 +581,11 @@ void getUpstreamDestinations(const char *client_message, const int *sock)
 		if(percentage > 0.0f || i < 0)
 		{
 			if(istelnet[*sock])
-				ssend(*sock, "%i %.2f %s %s\n", i, percentage, ip, name);
+				if(upstream_port != 0)
+					ssend(*sock, "%i %.2f %s#%u %s#%u\n", i, percentage,
+					      ip, upstream_port, name, upstream_port);
+				else
+					ssend(*sock, "%i %.2f %s %s\n", i, percentage, ip, name);
 			else
 			{
 				if(!pack_str32(*sock, name) || !pack_str32(*sock, ip))
@@ -706,6 +715,15 @@ void getAllQueries(const char *client_message, const int *sock)
 			forwarddestid = -2;
 		else
 		{
+			// Extract address/name and port
+			char serv_addr[INET6_ADDRSTRLEN] = { 0 };
+			unsigned int serv_port = 53;
+			// We limit the number of bytes written into the serv_addr buffer
+			// to prevent buffer overflows. If there is no port available in
+			// the database, we skip extracting them and use the default port
+			sscanf(forwarddest, "%"xstr(INET6_ADDRSTRLEN)"[^#]#%u", serv_addr, &serv_port);
+			serv_addr[INET6_ADDRSTRLEN-1] = '\0';
+
 			// Iterate through all known forward destinations
 			forwarddestid = -3;
 			for(int i = 0; i < counters->upstreams; i++)
@@ -717,9 +735,9 @@ void getAllQueries(const char *client_message, const int *sock)
 
 				// Try to match the requested string against their IP addresses and
 				// (if available) their host names
-				if(strcmp(getstr(forward->ippos), forwarddest) == 0 ||
+				if((strcmp(getstr(forward->ippos), serv_addr) == 0 ||
 				   (forward->namepos != 0 &&
-				    strcmp(getstr(forward->namepos), forwarddest) == 0))
+				    strcmp(getstr(forward->namepos), serv_addr) == 0)) && forward->port == serv_port)
 				{
 					forwarddestid = i;
 					break;
@@ -979,9 +997,28 @@ void getAllQueries(const char *client_message, const int *sock)
 				regex_idx = dns_cache->black_regex_idx;
 		}
 
+		// Get IP of upstream destination, if applicable
+		in_port_t upstream_port = 0;
+		const char *upstream_name = "N/A";
+		if(query->status == QUERY_FORWARDED)
+		{
+			const upstreamsData *upstream = getUpstream(query->upstreamID, true);
+			if(upstream != NULL)
+			{
+				if(upstream->namepos != 0)
+					// Get upstream destination name if possible
+					upstream_name = getstr(upstream->namepos);
+				else
+					// If we have no name, get the IP address
+					upstream_name = getstr(upstream->ippos);
+
+				upstream_port = upstream->port;
+			}
+		}
+
 		if(istelnet[*sock])
 		{
-			ssend(*sock,"%lli %s %s %s %i %i %i %lu %s %i",
+			ssend(*sock,"%lli %s %s %s %i %i %i %lu %s %i %s",
 				(long long)query->timestamp,
 				qtype,
 				domain,
@@ -991,7 +1028,11 @@ void getAllQueries(const char *client_message, const int *sock)
 				query->reply,
 				delay,
 				CNAME_domain,
-				regex_idx);
+				regex_idx,
+				upstream_name);
+			if(upstream_port != 0)
+				ssend(*sock, "#%u", upstream_port);
+
 			if(config.debug & DEBUG_API)
 				ssend(*sock, " %i", queryID);
 			ssend(*sock, "\n");

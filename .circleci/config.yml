@@ -4,51 +4,75 @@ version: 2
   steps:
     - checkout
     - run:
-        name: "Setup"
-        command: |
-          if [[ $CIRCLE_JOB == *"qemu"* ]] ; then sudo docker run --rm --privileged multiarch/qemu-user-static:register --reset ; fi
-    - run:
         name: "Build"
         no_output_timeout: 30m
         command: |
           BRANCH=$([ -z "$CIRCLE_TAG" ] && echo "$CIRCLE_BRANCH" || echo "master")
-          [[ $CIRCLE_JOB == *"qemu"* ]] && DOCKERIFNEEDED="docker run --rm -v $(pwd):/workspace -w /workspace pihole/ftl-build:arm-qemu "
-          $DOCKERIFNEEDED bash .circleci/build-CI.sh "${STATIC}" "${BRANCH}" "${CIRCLE_TAG}" "${CIRCLE_JOB}"
+          bash .circleci/build-CI.sh "${STATIC}" "${BRANCH}" "${CIRCLE_TAG}" "${CIRCLE_JOB}"
     - run:
         name: "Binary checks"
         command: bash test/arch_test.sh
     - run:
-        name: "Upload"
+        name: "Compute checksum"
+        command: |
+          mv pihole-FTL "${BIN_NAME}"
+          sha1sum pihole-FTL-* > ${BIN_NAME}.sha1
+    - run:
+        name: "Upload binary to binary bucket"
         command: |
           [ -z "${CIRCLE_PR_USERNAME}" ] || exit 0
           DIR="${CIRCLE_TAG:-${CIRCLE_BRANCH}}"
-          mv pihole-FTL "${BIN_NAME}"
-          sha1sum pihole-FTL-* > ${BIN_NAME}.sha1
           mkdir -p ~/.ssh/
           ssh-keyscan -H $SSH_HOST >> ~/.ssh/known_hosts
-          sftp -b - $SSH_USER@$SSH_HOST <<< "-mkdir ${DIR}
-          put ${BIN_NAME}* ${DIR}"
-          mv "${BIN_NAME}" pihole-FTL
+          sftp -b - $SSH_USER@$SSH_HOST <<< "-mkdir html/${DIR}
+          put ${BIN_NAME}* html/${DIR}"
+    - run:
+        name: "Verify uploaded binary"
+        command: |
+          [ -z "${CIRCLE_PR_USERNAME}" ] || exit 0
+          DIR="${CIRCLE_TAG:-${CIRCLE_BRANCH}}"
+          mkdir download
+          cd download
+          wget "https://ftl.pi-hole.net/${DIR}/${BIN_NAME}"
+          wget "https://ftl.pi-hole.net/${DIR}/${BIN_NAME}.sha1"
+          sha1sum -c "${BIN_NAME}.sha1"
+          cd ..
     - run:
         name: "Test"
         command: |
+          mv "${BIN_NAME}" pihole-FTL
           test/run.sh
 
 .docker_template: &docker_template
   docker:
-    - image: pihole/ftl-build:v1.3-$CIRCLE_JOB
+    - image: pihole/ftl-build:v1.7-$CIRCLE_JOB
   <<: *job_steps
 
 jobs:
-  arm:
+  armv4t:
     <<: *docker_template
     environment:
-      BIN_NAME: "pihole-FTL-arm-linux-gnueabi"
+      BIN_NAME: "pihole-FTL-armv4-linux-gnueabi"
 
-  armhf:
+  armv5te:
     <<: *docker_template
     environment:
-      BIN_NAME: "pihole-FTL-arm-linux-gnueabihf"
+      BIN_NAME: "pihole-FTL-armv5-linux-gnueabi"
+
+  armv6hf:
+    <<: *docker_template
+    environment:
+      BIN_NAME: "pihole-FTL-armv6-linux-gnueabihf"
+
+  armv7hf:
+    <<: *docker_template
+    environment:
+      BIN_NAME: "pihole-FTL-armv7-linux-gnueabihf"
+
+  armv8a:
+    <<: *docker_template
+    environment:
+      BIN_NAME: "pihole-FTL-armv8-linux-gnueabihf"
 
   aarch64:
     <<: *docker_template
@@ -70,26 +94,27 @@ jobs:
     environment:
       BIN_NAME: "pihole-FTL-linux-x86_32"
 
-  arm-qemu:
-    machine:
-      enabled: true
-    environment:
-      BIN_NAME: "pihole-FTL-armel-native"
-    <<: *job_steps
-
 workflows:
   version: 2
   build:
     jobs:
-      - arm:
+      - armv4t:
           filters:
             tags:
               only: /^v.*/
-      - arm-qemu:
+      - armv5te:
           filters:
             tags:
               only: /^v.*/
-      - armhf:
+      - armv6hf:
+          filters:
+            tags:
+              only: /^v.*/
+      - armv7hf:
+          filters:
+            tags:
+              only: /^v.*/
+      - armv8a:
           filters:
             tags:
               only: /^v.*/

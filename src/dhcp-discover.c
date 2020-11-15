@@ -10,7 +10,7 @@
 
 #include "FTL.h"
 #include "dhcp-discover.h"
-// logg()
+// logg(), format_time()
 #include "log.h"
 // read_FTLconf()
 #include "config.h"
@@ -226,27 +226,6 @@ static bool send_dhcp_discover(const int sock, const uint32_t xid, const char *i
 	return bytes > 0;
 }
 
-static void nice_time(char *buffer, unsigned long seconds)
-{
-	unsigned int days = seconds / (60 * 60 * 24);
-	seconds -= days * (60 * 60 * 24);
-	unsigned int hours = seconds / (60 * 60);
-	seconds -= hours * (60 * 60);
-	unsigned int minutes = seconds / 60;
-	seconds %= 60;
-
-	buffer[0] = ' ';
-	buffer[1] = '\0';
-	if(days > 0)
-		sprintf(buffer + strlen(buffer), "%ud ", days);
-	if(hours > 0)
-		sprintf(buffer + strlen(buffer), "%uh ", hours);
-	if(minutes > 0)
-		sprintf(buffer + strlen(buffer), "%um ", minutes);
-	if(seconds > 0)
-		sprintf(buffer + strlen(buffer), "%lus ", seconds);
-}
-
 // adds a DHCP OFFER to list in memory
 static void print_dhcp_offer(struct in_addr source, dhcp_packet *offer_packet)
 {
@@ -360,7 +339,7 @@ static void print_dhcp_offer(struct in_addr source, dhcp_packet *offer_packet)
 			else
 			{
 				char buffer[32] = { 0 };
-				nice_time(buffer, lease_time);
+				format_time(buffer, lease_time, 0.0);
 				logg("%s(%lu seconds)", buffer, (unsigned long)lease_time);
 			}
 		}
@@ -414,7 +393,7 @@ static void print_dhcp_offer(struct in_addr source, dhcp_packet *offer_packet)
 			else
 			{
 				char buffer[32] = { 0 };
-				nice_time(buffer, renewal_time);
+				format_time(buffer, renewal_time, 0.0);
 				logg("%s(%lu seconds)", buffer, (unsigned long)renewal_time);
 			}
 		}
@@ -429,7 +408,7 @@ static void print_dhcp_offer(struct in_addr source, dhcp_packet *offer_packet)
 			else
 			{
 				char buffer[32] = { 0 };
-				nice_time(buffer, rebinding_time);
+				format_time(buffer, rebinding_time, 0.0);
 				logg("%s(%lu seconds)", buffer, (unsigned long)rebinding_time);
 			}
 		}

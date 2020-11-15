@@ -23,6 +23,8 @@
 #include "main.h"
 // reset_superclient()
 #include "database/superclients.h"
+// piholeFTLDB_reopen()
+#include "database/common.h"
 
 const char *querytypes[TYPE_MAX] = {"UNKNOWN", "A", "AAAA", "ANY", "SRV", "SOA", "PTR", "TXT",
                                     "NAPTR", "MX", "DS", "RRSIG", "DNSKEY", "NS", "OTHER"};
@@ -63,7 +65,7 @@ int findQueryID(const int id)
 	return -1;
 }
 
-int findUpstreamID(const char * upstreamString, const bool count)
+int findUpstreamID(const char * upstreamString, const in_port_t port, const bool count)
 {
 	// Go through already knows upstream servers and see if we used one of those
 	for(int upstreamID=0; upstreamID < counters->upstreams; upstreamID++)
@@ -75,7 +77,7 @@ int findUpstreamID(const char * upstreamString, const bool count)
 		if(upstream == NULL)
 			continue;
 
-		if(strcmp(getstr(upstream->ippos), upstreamString) == 0)
+		if(strcmp(getstr(upstream->ippos), upstreamString) == 0 && upstream->port == port)
 		{
 			if(count)
 			{
@@ -88,7 +90,7 @@ int findUpstreamID(const char * upstreamString, const bool count)
 	// This upstream server is not known
 	// Store ID
 	const int upstreamID = counters->upstreams;
-	logg("New upstream server: %s (%i/%u)", upstreamString, upstreamID, counters->upstreams_MAX);
+	logg("New upstream server: %s:%u (%i/%u)", upstreamString, port, upstreamID, counters->upstreams_MAX);
 
 	// Check struct size
 	memory_check(UPSTREAMS);
@@ -119,6 +121,8 @@ int findUpstreamID(const char * upstreamString, const bool count)
 	upstream->namepos = 0; // 0 -> string with length zero
 	// This is a new upstream server
 	upstream->lastQuery = time(NULL);
+	// Store port
+	upstream->port = port;
 	// Increase counter by one
 	counters->upstreams++;
 
@@ -461,6 +465,11 @@ void FTL_reset_per_client_domain_data(void)
 
 void FTL_reload_all_domainlists(void)
 {
+	lock_shm();
+
+	// (Re-)open FTL database connection
+	piholeFTLDB_reopen();
+
 	// Flush messages stored in the long-term database
 	flush_message_table();
 
@@ -477,4 +486,6 @@ void FTL_reload_all_domainlists(void)
 	// Reset FTL's internal DNS cache storing whether a specific domain
 	// has already been validated for a specific user
 	FTL_reset_per_client_domain_data();
+
+	unlock_shm();
 }

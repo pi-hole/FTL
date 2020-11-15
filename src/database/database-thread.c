@@ -44,7 +44,7 @@ void *DB_thread(void *val)
 
 	while(!killed)
 	{
-		if(database)
+		if(FTL_DB_avail())
 		{
 			time_t now = time(NULL);
 			if(now - lastDBsave >= config.DBinterval)
@@ -52,15 +52,13 @@ void *DB_thread(void *val)
 				// Update lastDBsave timer
 				lastDBsave = time(NULL) - time(NULL)%config.DBinterval;
 
-				// Lock FTL's data structures, since it is
-				// likely that they will be changed here
-				lock_shm();
-
 				// Save data to database
-				DB_save_queries();
-
-				// Release data lock
-				unlock_shm();
+				if(config.DBexport)
+				{
+					lock_shm();
+					DB_save_queries();
+					unlock_shm();
+				}
 
 				// Check if GC should be done on the database
 				if(DBdeleteoldqueries)
@@ -79,6 +77,9 @@ void *DB_thread(void *val)
 			// database is not updated very often)
 			if(now % 2592000L == 0)
 				updateMACVendorRecords();
+
+			if(get_and_clear_event(PARSE_NEIGHBOR_CACHE))
+				parse_neighbor_cache();
 		}
 
 		// Process database related event queue elements
@@ -88,8 +89,12 @@ void *DB_thread(void *val)
 		if(get_and_clear_event(RELOAD_PRIVACY_LEVEL))
 			get_privacy_level(NULL);
 
-		if(get_and_clear_event(PARSE_NEIGHBOR_CACHE))
-			parse_neighbor_cache();
+		if(get_and_clear_event(RERESOLVE_DATABASE_NAMES))
+		{
+			// Try to resolve host names from clients in the network table
+			// which have empty/undefined host names
+			resolveNetworkTableNames();
+		}
 
 		if(get_and_clear_event(REIMPORT_SUPERCLIENTS))
 		{

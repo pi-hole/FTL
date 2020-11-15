@@ -340,6 +340,10 @@ static void free_regex(void)
 	}
 }
 
+// This function does three things:
+//   1. Allocate additional memory if required
+//   2. Reset all regex to false for this client
+//   3. Load regex enabled/disabled state
 void reload_per_client_regex(const int clientID, clientsData *client)
 {
 	// Ensure there is enough memory in the shared memory object
@@ -455,8 +459,9 @@ void read_regex_from_database(void)
 	// Read and compile regex whitelist
 	read_regex_table(REGEX_WHITELIST);
 
-	// Load per-client regex data, not all of the regex read and compiled
-	// above will also be used by all clients
+	// Loop over all clients and ensure we have enough space and load
+	// per-client regex data, not all of the regex read and compiled above
+	// will also be used by all clients
 	for(int clientID = 0; clientID < counters->clients; clientID++)
 	{
 		// Get client pointer

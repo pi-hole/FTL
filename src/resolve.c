@@ -531,7 +531,10 @@ void *DNSclient_thread(void *val)
 
 		// Run every hour to update possibly changed client host names
 		if(resolver_ready && (time(NULL) % RERESOLVE_INTERVAL == 0))
-			set_event(RERESOLVE_HOSTNAMES);
+		{
+			set_event(RERESOLVE_HOSTNAMES);      // done below
+			set_event(RERESOLVE_DATABASE_NAMES); // done in database thread
+		}
 
 		// Process resolver related event queue elements
 		if(get_and_clear_event(RERESOLVE_HOSTNAMES))
@@ -540,9 +543,6 @@ void *DNSclient_thread(void *val)
 			resolveClients(false);
 			// Try to resolve all upstream destination host names (onlynew=false)
 			resolveUpstreams(false);
-			// Try to resolve host names from clients in the network table
-			// which have empty/undefined host names
-			resolveNetworkTableNames();
 			// Prevent immediate re-run of this routine
 			sleepms(500);
 		}

@@ -842,19 +842,15 @@ static bool add_FTL_clients_to_network_table(enum arp_status *client_status, tim
 	{
 		const char *text;
 		if( rc == SQLITE_BUSY )
-		{
 			text = "WARNING";
-		}
 		else
 		{
 			text = "ERROR";
-			// We shall not use the database any longer
-			database = false;
+			dbclose();
 		}
 
 		logg("%s: Storing devices in network table failed: %s", text, sqlite3_errstr(rc));
 		unlock_shm();
-		dbclose();
 		return false;
 	}
 
@@ -1054,9 +1050,9 @@ static bool add_local_interfaces_to_network_table(time_t now, unsigned int *addi
 void parse_neighbor_cache(void)
 {
 	// Open database file
-	if(!dbopen())
+	if(!FTL_DB_avail())
 	{
-		logg("parse_neighbor_cache() - Failed to open DB");
+		logg("parse_neighbor_cache() - Database is not available");
 		return;
 	}
 
@@ -1088,19 +1084,15 @@ void parse_neighbor_cache(void)
 	{
 		const char *text;
 		if( rc == SQLITE_BUSY )
-		{
 			text = "WARNING";
-		}
 		else
 		{
 			text = "ERROR";
-			// We shall not use the database any longer
-			database = false;
+			dbclose();
 		}
 
 		// dbquery() above already logs the reson for why the query failed
 		logg("%s: Storing devices in network table (\"%s\") failed", text, sql);
-		dbclose();
 		return;
 	}
 
@@ -1331,25 +1323,19 @@ void parse_neighbor_cache(void)
 	if((rc = dbquery("END TRANSACTION")) != SQLITE_OK) {
 		const char *text;
 		if( rc == SQLITE_BUSY )
-		{
 			text = "WARNING";
-		}
 		else
 		{
 			text = "ERROR";
-			// We shall not use the database any longer
-			database = false;
+			dbclose();
 		}
 
 		logg("%s: Storing devices in network table failed: %s", text, sqlite3_errstr(rc));
 		unlock_shm();
-		dbclose();
+
+		// Return okay if the database is busy
 		return;
 	}
-
-	// Close database connection
-	// We opened the connection in this function
-	dbclose();
 
 	unlock_shm();
 
@@ -1483,7 +1469,7 @@ static char *getMACVendor(const char *hwaddr)
 		     hwaddr, hwaddrshort, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
-		dbclose();
+		sqlite3_close(macvendor_db);
 		return strdup("");
 	}
 
@@ -1525,11 +1511,9 @@ void updateMACVendorRecords(void)
 		return;
 	}
 
-	// Open pihole-FTL.db database file if needed
-	const bool db_already_open = FTL_DB_avail();
-	if(!db_already_open && !dbopen())
+	if(!FTL_DB_avail())
 	{
-		logg("updateMACVendorRecords() - Failed to open DB");
+		logg("updateMACVendorRecords() - Database not available");
 		return;
 	}
 
@@ -1538,8 +1522,6 @@ void updateMACVendorRecords(void)
 	int rc = sqlite3_prepare_v2(FTL_db, selectstr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK ){
 		logg("updateMACVendorRecords() - SQL error prepare \"%s\": %s", selectstr, sqlite3_errstr(rc));
-		if(!db_already_open)
-			dbclose();
 		return;
 	}
 
@@ -1584,18 +1566,14 @@ void updateMACVendorRecords(void)
 	}
 
 	sqlite3_finalize(stmt);
-	if(!db_already_open)
-		dbclose();
 }
 
 // Get hardware address of device identified by IP address
 char *__attribute__((malloc)) getMACfromIP(const char *ipaddr)
 {
-	// Open pihole-FTL.db database file if needed
-	const bool db_already_open = FTL_DB_avail();
-	if(!db_already_open && !dbopen())
+	if(!FTL_DB_avail())
 	{
-		logg("getMACfromIP(\"%s\") - Failed to open DB", ipaddr);
+		logg("getMACfromIP(\"%s\") - Database not available", ipaddr);
 		return NULL;
 	}
 
@@ -1610,8 +1588,6 @@ char *__attribute__((malloc)) getMACfromIP(const char *ipaddr)
 	if( rc != SQLITE_OK ){
 		logg("getMACfromIP(\"%s\") - SQL error prepare: %s",
 		     ipaddr, sqlite3_errstr(rc));
-		if(!db_already_open)
-			dbclose();
 		return NULL;
 	}
 
@@ -1622,8 +1598,6 @@ char *__attribute__((malloc)) getMACfromIP(const char *ipaddr)
 		     ipaddr, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
-		if(!db_already_open)
-			dbclose();
 		return NULL;
 	}
 
@@ -1646,8 +1620,6 @@ char *__attribute__((malloc)) getMACfromIP(const char *ipaddr)
 	// Finalize statement and close database handle
 	sqlite3_reset(stmt);
 	sqlite3_finalize(stmt);
-	if(!db_already_open)
-		dbclose();
 
 	return hwaddr;
 }
@@ -1717,11 +1689,9 @@ int getSuperclientIDfromIP(const char *ipaddr)
 // Get host name of device identified by IP address
 char *__attribute__((malloc)) getNameFromIP(const char *ipaddr)
 {
-	// Open pihole-FTL.db database file if needed
-	const bool db_already_open = FTL_DB_avail();
-	if(!db_already_open && !dbopen())
+	if(!FTL_DB_avail())
 	{
-		logg("getNameFromIP(\"%s\") - Failed to open DB", ipaddr);
+		logg("getNameFromIP(\"%s\") - Database not available", ipaddr);
 		return NULL;
 	}
 
@@ -1732,8 +1702,6 @@ char *__attribute__((malloc)) getNameFromIP(const char *ipaddr)
 	if( rc != SQLITE_OK ){
 		logg("getNameFromIP(\"%s\") - SQL error prepare: %s",
 		     ipaddr, sqlite3_errstr(rc));
-		if(!db_already_open)
-			dbclose();
 		return NULL;
 	}
 
@@ -1744,8 +1712,6 @@ char *__attribute__((malloc)) getNameFromIP(const char *ipaddr)
 		     ipaddr, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
-		if(!db_already_open)
-			dbclose();
 		return NULL;
 	}
 
@@ -1770,12 +1736,7 @@ char *__attribute__((malloc)) getNameFromIP(const char *ipaddr)
 
 	// Return here if we found the name
 	if(name != NULL)
-	{
-		if(!db_already_open)
-			dbclose();
-
 		return name;
-	}
 
 	// Nothing found for the exact IP address
 	// Check for a host name associated with the same device (but another IP address)
@@ -1788,8 +1749,6 @@ char *__attribute__((malloc)) getNameFromIP(const char *ipaddr)
 	if( rc != SQLITE_OK ){
 		logg("getNameFromIP(\"%s\") - SQL error prepare: %s",
 		ipaddr, sqlite3_errstr(rc));
-		if(!db_already_open)
-			dbclose();
 		return NULL;
 	}
 
@@ -1800,8 +1759,6 @@ char *__attribute__((malloc)) getNameFromIP(const char *ipaddr)
 		ipaddr, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
-		if(!db_already_open)
-			dbclose();
 		return NULL;
 	}
 
@@ -1825,8 +1782,6 @@ char *__attribute__((malloc)) getNameFromIP(const char *ipaddr)
 	// Finalize statement and close database handle
 	sqlite3_reset(stmt);
 	sqlite3_finalize(stmt);
-	if(!db_already_open)
-		dbclose();
 
 	return name;
 }
@@ -1834,11 +1789,9 @@ char *__attribute__((malloc)) getNameFromIP(const char *ipaddr)
 // Get interface of device identified by IP address
 char *__attribute__((malloc)) getIfaceFromIP(const char *ipaddr)
 {
-	// Open pihole-FTL.db database file if needed
-	const bool db_already_open = FTL_DB_avail();
-	if(!db_already_open && !dbopen())
+	if(!FTL_DB_avail())
 	{
-		logg("getIfaceFromIP(\"%s\") - Failed to open DB", ipaddr);
+		logg("getIfaceFromIP(\"%s\") - Database not available", ipaddr);
 		return NULL;
 	}
 
@@ -1854,8 +1807,6 @@ char *__attribute__((malloc)) getIfaceFromIP(const char *ipaddr)
 	if( rc != SQLITE_OK ){
 		logg("getIfaceFromIP(\"%s\") - SQL error prepare: %s",
 		     ipaddr, sqlite3_errstr(rc));
-		if(!db_already_open)
-			dbclose();
 		return NULL;
 	}
 
@@ -1872,8 +1823,6 @@ char *__attribute__((malloc)) getIfaceFromIP(const char *ipaddr)
 		     ipaddr, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
-		if(!db_already_open)
-			dbclose();
 		return NULL;
 	}
 
@@ -1896,8 +1845,6 @@ char *__attribute__((malloc)) getIfaceFromIP(const char *ipaddr)
 	// Finalize statement and close database handle
 	sqlite3_reset(stmt);
 	sqlite3_finalize(stmt);
-	if(!db_already_open)
-		dbclose();
 
 	return iface;
 }
@@ -1905,11 +1852,9 @@ char *__attribute__((malloc)) getIfaceFromIP(const char *ipaddr)
 // Resolve unknown names of recently seen IP addresses in network table
 void resolveNetworkTableNames(void)
 {
-	// Open pihole-FTL.db database file if needed
-	const bool db_already_open = FTL_DB_avail();
-	if(!db_already_open && !dbopen())
+	if(!FTL_DB_avail())
 	{
-		logg("resolveNetworkTableNames() - Failed to open DB");
+		logg("resolveNetworkTableNames() - Database not available");
 		return;
 	}
 
@@ -1929,8 +1874,7 @@ void resolveNetworkTableNames(void)
 
 		// dbquery() above already logs the reson for why the query failed
 		logg("%s: Trying to resolve unknown network table host names (\"%s\") failed", text, sql);
-		if(!db_already_open)
-			dbclose();
+
 		return;
 	}
 
@@ -1946,11 +1890,8 @@ void resolveNetworkTableNames(void)
 		logg("resolveNetworkTableNames() - SQL error prepare: %s",
 		     sqlite3_errstr(rc));
 		sqlite3_finalize(table_stmt);
-		if(!db_already_open)
-			dbclose();
 		return;
 	}
-
 
 	// Get data
 	while((rc = sqlite3_step(table_stmt)) == SQLITE_ROW)
@@ -2027,8 +1968,6 @@ void resolveNetworkTableNames(void)
 		logg("resolveNetworkTableNames() - SQL error step: %s",
 		     sqlite3_errstr(rc));
 		sqlite3_finalize(table_stmt);
-		if(!db_already_open)
-			dbclose();
 		return;
 	}
 
@@ -2036,6 +1975,4 @@ void resolveNetworkTableNames(void)
 	sqlite3_finalize(table_stmt);
 
 	dbquery("COMMIT");
-	if(!db_already_open)
-		dbclose();
 }

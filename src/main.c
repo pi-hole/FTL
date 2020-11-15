@@ -80,7 +80,7 @@ int main (int argc, char* argv[])
 	db_init();
 
 	// Try to import queries from long-term database if available
-	if(database && config.DBimport)
+	if(config.DBimport)
 		DB_read_queries();
 
 	log_counter_info();
@@ -107,8 +107,8 @@ int main (int argc, char* argv[])
 	if(ipv6telnet) pthread_cancel(telnet_listenthreadv6);
 	pthread_cancel(socket_listenthread);
 
-	// Save new queries to database
-	if(database)
+	// Save new queries to database (if database is used)
+	if(use_database())
 	{
 		DB_save_queries();
 		logg("Finished final database update");
@@ -132,6 +132,9 @@ int main (int argc, char* argv[])
 
 	//Remove PID file
 	removepid();
-	logg("########## FTL terminated after %e s! ##########", 1e-3*timer_elapsed_msec(EXIT_TIMER));
+
+	char buffer[42] = { 0 };
+	format_time(buffer, 0, timer_elapsed_msec(EXIT_TIMER));
+	logg("########## FTL terminated after%s! ##########", buffer);
 	return exit_code;
 }

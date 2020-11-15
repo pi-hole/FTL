@@ -241,6 +241,9 @@ int create_helper(int event_fd, int err_fd, uid_t uid, gid_t gid, long max_fd)
        else 
 	continue;
 
+      /************************** Pi-hole modification **************************/
+      FTL_log_helper(1, action_str);
+      /**************************************************************************/
       	
       /* stringify MAC into dhcp_buff */
       p = daemon->dhcp_buff;
@@ -640,6 +643,12 @@ int create_helper(int event_fd, int err_fd, uid_t uid, gid_t gid, long max_fd)
 	fcntl(event_fd, F_SETFD, i | FD_CLOEXEC);
       close(pipefd[0]);
 
+      /**************************** Pi-hole modification ****************************/
+      FTL_log_helper(5, daemon->lease_change_command, action_str,
+		     (is6 && data.action != ACTION_ARP) ? daemon->packet : daemon->dhcp_buff,
+		     daemon->addrbuff, hostname);
+      /******************************************************************************/
+
       p =  strrchr(daemon->lease_change_command, '/');
       if (err == 0)
 	{
@@ -650,6 +659,9 @@ int create_helper(int event_fd, int err_fd, uid_t uid, gid_t gid, long max_fd)
 	  err = errno;
 	}
       /* failed, send event so the main process logs the problem */
+      /**************************** Pi-hole modification ****************************/
+      FTL_log_helper(2, daemon->lease_change_command, strerror(err));
+      /******************************************************************************/
       send_event(event_fd, EVENT_EXEC_ERR, err, NULL);
       _exit(0); 
     }

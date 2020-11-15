@@ -96,6 +96,8 @@ static const char *eventtext(const enum events event)
 			return "REIMPORT_SUPERCLIENTS";
 		case PARSE_NEIGHBOR_CACHE:
 			return "PARSE_NEIGHBOR_CACHE";
+		case RERESOLVE_DATABASE_NAMES:
+			return "RERESOLVE_DATABASE_NAMES";
 		case EVENTS_MAX: // fall through
 		default:
 			return "UNKNOWN";

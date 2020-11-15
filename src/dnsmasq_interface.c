@@ -70,8 +70,18 @@ const char flagnames[][12] = {"F_IMMORTAL ", "F_NAMEP ", "F_REVERSE ", "F_FORWAR
 // Store interface the next query will come from for later usage
 void FTL_next_iface(const char *newiface)
 {
-	strncpy(next_iface, newiface, sizeof(next_iface)-1);
-	next_iface[sizeof(next_iface)-1] = '\0';
+	if(newiface != NULL)
+	{
+		// Copy interface name if available
+		strncpy(next_iface, newiface, sizeof(next_iface)-1);
+		next_iface[sizeof(next_iface)-1] = '\0';
+	}
+	else
+	{
+		// Use dummy when interface record is not available
+		next_iface[0] = '-';
+		next_iface[1] = '\0';
+	}
 }
 
 static bool check_domain_blocked(const char *domain, const int clientID,
@@ -535,7 +545,11 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	char *domainString = strdup(name);
 	strtolower(domainString);
 
-	// Get client IP address (can be overwritten by EDNS(0) client subnet (ECS) data)
+	// Get client IP address
+	// The requestor's IP address can be rewritten using EDNS(0) client
+	// subnet (ECS) data), however, we do not rewrite the IPs ::1 and
+	// 127.0.0.1 to avoid queries originating from localhost of the
+	// *distant* machine as queries coming from the *local* machine
 	const sa_family_t family = (flags & F_IPV4) ? AF_INET : AF_INET6;
 	char clientIP[ADDRSTRLEN] = { 0 };
 	if(config.edns0_ecs && edns->client_set)
@@ -751,7 +765,7 @@ void _FTL_get_blocking_metadata(union all_addr **addrp, unsigned int *flags, con
 	}
 }
 
-void _FTL_forwarded(const unsigned int flags, const char *name, const union all_addr *addr, const int id,
+void _FTL_forwarded(const unsigned int flags, const char *name, const struct server *serv, const int id,
                     const char* file, const int line)
 {
 	// Save that this query got forwarded to an upstream server
@@ -759,19 +773,33 @@ void _FTL_forwarded(const unsigned int flags, const char *name, const union all_
 	// Lock shared memory
 	lock_shm();
 
-	// Get forward destination IP address
+	// Get forward destination IP address and port
+	in_port_t upstreamPort = 53;
 	char dest[ADDRSTRLEN];
 	// If addr == NULL, we will only duplicate an empty string instead of uninitialized memory
 	dest[0] = '\0';
-	if(addr != NULL)
-		inet_ntop((flags & F_IPV4) ? AF_INET : AF_INET6, addr, dest, ADDRSTRLEN);
+	if(serv != NULL)
+	{
+		if(serv->addr.sa.sa_family == AF_INET)
+		{
+			inet_ntop(AF_INET, &serv->addr.in.sin_addr, dest, ADDRSTRLEN);
+			upstreamPort = ntohs(serv->addr.in.sin_port);
+		}
+		else
+		{
+			inet_ntop(AF_INET6, &serv->addr.in6.sin6_addr, dest, ADDRSTRLEN);
+			upstreamPort = ntohs(serv->addr.in6.sin6_port);
+		}
+	}
 
 	// Convert upstreamIP to lower case
 	char *upstreamIP = strdup(dest);
 	strtolower(upstreamIP);
 
 	// Debug logging
-	if(config.debug & DEBUG_QUERIES) logg("**** forwarded %s to %s (ID %i, %s:%i)", name, upstreamIP, id, file, line);
+	if(config.debug & DEBUG_QUERIES)
+		logg("**** forwarded %s to %s#%u (ID %i, %s:%i)",
+		     name, upstreamIP, upstreamPort, id, file, line);
 
 	// Save status and upstreamID in corresponding query identified by dnsmasq's ID
 	const int queryID = findQueryID(id);
@@ -803,7 +831,7 @@ void _FTL_forwarded(const unsigned int flags, const char *name, const union all_
 
 	// Get ID of upstream destination, create new upstream record
 	// if not found in current data structure
-	const int upstreamID = findUpstreamID(upstreamIP, true);
+	const int upstreamID = findUpstreamID(upstreamIP, upstreamPort, true);
 	query->upstreamID = upstreamID;
 
 	// Get time index for this query
@@ -872,6 +900,9 @@ void FTL_dnsmasq_reload(void)
 	// *before* clearing the cache and rereading the lists
 
 	logg("Reloading DNS cache");
+
+	// (Re-)open FTL database connection
+	piholeFTLDB_reopen();
 
 	// Request reload the privacy level
 	set_event(RELOAD_PRIVACY_LEVEL);
@@ -1718,7 +1749,7 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 	}
 
 	// Start database thread if database is used
-	if(database && pthread_create( &DBthread, &attr, DB_thread, NULL ) != 0)
+	if(pthread_create( &DBthread, &attr, DB_thread, NULL ) != 0)
 	{
 		logg("Unable to open database thread. Exiting...");
 		exit(EXIT_FAILURE);
@@ -1742,15 +1773,34 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 
 	// Chown files if FTL started as user root but a dnsmasq config
 	// option states to run as a different user/group (e.g. "nobody")
-	if(ent_pw != NULL && getuid() == 0)
+	if(getuid() == 0)
 	{
-		if(chown(FTLfiles.log, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
-			logg("Setting ownership (%i:%i) of %s failed: %s (%i)",
-			     ent_pw->pw_uid, ent_pw->pw_gid, FTLfiles.log, strerror(errno), errno);
-		if(database && chown(FTLfiles.FTL_db, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
-			logg("Setting ownership (%i:%i) of %s failed: %s (%i)",
-			     ent_pw->pw_uid, ent_pw->pw_gid, FTLfiles.FTL_db, strerror(errno), errno);
-		chown_all_shmem(ent_pw);
+		if(ent_pw != NULL)
+		{
+			logg("INFO: FTL is going to drop from root to user %s (UID %d)",
+			     ent_pw->pw_name, (int)ent_pw->pw_uid);
+			if(chown(FTLfiles.log, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
+				logg("Setting ownership (%i:%i) of %s failed: %s (%i)",
+				ent_pw->pw_uid, ent_pw->pw_gid, FTLfiles.log, strerror(errno), errno);
+			if(chown(FTLfiles.FTL_db, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
+				logg("Setting ownership (%i:%i) of %s failed: %s (%i)",
+				ent_pw->pw_uid, ent_pw->pw_gid, FTLfiles.FTL_db, strerror(errno), errno);
+			chown_all_shmem(ent_pw);
+		}
+		else
+		{
+			logg("INFO: FTL is running as root");
+		}
+	}
+	else
+	{
+		uid_t uid;
+		struct passwd *current_user;
+		if ((current_user = getpwuid(uid = geteuid())) != NULL)
+			logg("INFO: FTL is running as user %s (UID %d)",
+			     current_user->pw_name, (int)current_user->pw_uid);
+		else
+			logg("INFO: Failed to obtain information about FTL user");
 	}
 
 	// Obtain DNS port from dnsmasq daemon
@@ -1775,7 +1825,7 @@ void getCacheInformation(const int *sock)
 	// looked up for the longest time is evicted.
 }
 
-void _FTL_forwarding_failed(const struct server *server, const char* file, const int line)
+void FTL_forwarding_retried(const struct server *serv, const int oldID, const int newID, const bool dnssec)
 {
 	// Forwarding to upstream server failed
 
@@ -1784,20 +1834,35 @@ void _FTL_forwarding_failed(const struct server *server, const char* file, const
 
 	// Try to obtain destination IP address if available
 	char dest[ADDRSTRLEN];
-	if(server->addr.sa.sa_family == AF_INET)
-		inet_ntop(AF_INET, &server->addr.in.sin_addr, dest, ADDRSTRLEN);
-	else
-		inet_ntop(AF_INET6, &server->addr.in6.sin6_addr, dest, ADDRSTRLEN);
+	in_port_t upstreamPort = 53;
+	dest[0] = '\0';
+	if(serv != NULL)
+	{
+		if(serv->addr.sa.sa_family == AF_INET)
+		{
+			inet_ntop(AF_INET, &serv->addr.in.sin_addr, dest, ADDRSTRLEN);
+			upstreamPort = ntohs(serv->addr.in.sin_port);
+		}
+		else
+		{
+			inet_ntop(AF_INET6, &serv->addr.in6.sin6_addr, dest, ADDRSTRLEN);
+			upstreamPort = ntohs(serv->addr.in6.sin6_port);
+		}
+	}
 
 	// Convert upstream to lower case
 	char *upstreamIP = strdup(dest);
 	strtolower(upstreamIP);
 
 	// Get upstream ID
-	const int upstreamID = findUpstreamID(upstreamIP, false);
+	const int upstreamID = findUpstreamID(upstreamIP, upstreamPort, false);
 
 	// Possible debugging information
-	if(config.debug & DEBUG_QUERIES) logg("**** forwarding to %s (ID %i, %s:%i) FAILED", dest, upstreamID, file, line);
+	if(config.debug & DEBUG_QUERIES)
+	{
+		logg("**** RETRIED query %i as %i to %s (ID %i)",
+		     oldID, newID, dest, upstreamID);
+	}
 
 	// Get upstream pointer
 	upstreamsData* upstream = getUpstream(upstreamID, true);
@@ -1805,6 +1870,36 @@ void _FTL_forwarding_failed(const struct server *server, const char* file, const
 	// Update counter
 	if(upstream != NULL)
 		upstream->failed++;
+
+	// Search for corresponding query identified by ID
+	// Retried DNSSEC queries are ignored, we have to flag themselves (newID)
+	// Retried normal queries take over, we have to flat the original query (oldID)
+	const int queryID = findQueryID(dnssec ? newID : oldID);
+	if(queryID >= 0)
+	{
+		// Get query pointer
+		queriesData* query = getQuery(queryID, true);
+
+		// Set retried status
+		if(query != NULL)
+		{
+			if(dnssec)
+			{
+				// There is point in retrying the query when
+				// we've already got an answer to this query,
+				// but we're awaiting keys for DNSSEC
+				// validation. We're retrying the DNSSEC query
+				// instead
+				query->status = QUERY_RETRIED_DNSSEC;
+			}
+			else
+			{
+				// Normal query retry due to answer not arriving
+				// soon enough at the requestor
+				query->status = QUERY_RETRIED;
+			}
+		}
+	}
 
 	// Clean up and unlock shared memory
 	free(upstreamIP);

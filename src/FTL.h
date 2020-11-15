@@ -125,6 +125,10 @@
 #define calloc(numer_of_elements, element_size) FTLcalloc(numer_of_elements, element_size, __FILE__,  __FUNCTION__,  __LINE__)
 #define realloc(ptr, new_size) FTLrealloc(ptr, new_size, __FILE__,  __FUNCTION__,  __LINE__)
 
+// Preprocessor help functions
+#define str(x) # x
+#define xstr(x) str(x)
+
 extern pthread_t telnet_listenthreadv4;
 extern pthread_t telnet_listenthreadv6;
 extern pthread_t socket_listenthread;

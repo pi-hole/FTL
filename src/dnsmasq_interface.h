@@ -24,8 +24,8 @@ void FTL_next_iface(const char *newiface);
 #define FTL_new_query(flags, name, blockingreason, addr, types, qtype, id, edns, proto) _FTL_new_query(flags, name, blockingreason, addr, types, qtype, id, edns, proto, __FILE__, __LINE__)
 bool _FTL_new_query(const unsigned int flags, const char *name, const char** blockingreason, const union all_addr *addr, const char *types, const unsigned short qtype, const int id, const struct edns_data *edns, enum protocol proto, const char* file, const int line);
 
-#define FTL_forwarded(flags, name, addr, id) _FTL_forwarded(flags, name, addr, id, __FILE__, __LINE__)
-void _FTL_forwarded(const unsigned int flags, const char *name, const union all_addr *addr, const int id, const char* file, const int line);
+#define FTL_forwarded(flags, name, serv, id) _FTL_forwarded(flags, name, serv, id, __FILE__, __LINE__)
+void _FTL_forwarded(const unsigned int flags, const char *name, const struct server *serv, const int id, const char* file, const int line);
 
 #define FTL_reply(flags, name, addr, id) _FTL_reply(flags, name, addr, id, __FILE__, __LINE__)
 void _FTL_reply(const unsigned int flags, const char *name, const union all_addr *addr, const int id, const char* file, const int line);
@@ -39,8 +39,7 @@ void _FTL_dnssec(const int status, const int id, const char* file, const int lin
 #define FTL_header_analysis(header4, rcode, id) _FTL_header_analysis(header4, rcode, id, __FILE__, __LINE__)
 void _FTL_header_analysis(const unsigned char header4, const unsigned int rcode, const int id, const char* file, const int line);
 
-#define FTL_forwarding_failed(server) _FTL_forwarding_failed(server, __FILE__, __LINE__)
-void _FTL_forwarding_failed(const struct server *server, const char* file, const int line);
+void FTL_forwarding_retried(const struct server *server, const int oldID, const int newID, const bool dnssec);
 
 #define FTL_upstream_error(rcode, id) _FTL_upstream_error(rcode, id, __FILE__, __LINE__)
 void _FTL_upstream_error(const unsigned int rcode, const int id, const char* file, const int line);

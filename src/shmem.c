@@ -181,7 +181,7 @@ size_t addstr(const char *str)
 
 	// Reserve additional memory if necessary
 	if(shmSettings->next_str_pos + len > shm_strings.size &&
-	   !realloc_shm(&shm_strings, shm_strings.size + pagesize, true))
+	   !realloc_shm(&shm_strings, shm_strings.size + pagesize, sizeof(char), true))
 		return 0;
 
 	// Store new string buffer size in corresponding counters entry
@@ -236,22 +236,22 @@ static pthread_mutex_t create_mutex(void) {
 static void remap_shm(void)
 {
 	// Remap shared object pointers which might have changed
-	realloc_shm(&shm_queries, counters->queries_MAX*sizeof(queriesData), false);
+	realloc_shm(&shm_queries, counters->queries_MAX, sizeof(queriesData), false);
 	queries = (queriesData*)shm_queries.ptr;
 
-	realloc_shm(&shm_domains, counters->domains_MAX*sizeof(domainsData), false);
+	realloc_shm(&shm_domains, counters->domains_MAX, sizeof(domainsData), false);
 	domains = (domainsData*)shm_domains.ptr;
 
-	realloc_shm(&shm_clients, counters->clients_MAX*sizeof(clientsData), false);
+	realloc_shm(&shm_clients, counters->clients_MAX, sizeof(clientsData), false);
 	clients = (clientsData*)shm_clients.ptr;
 
-	realloc_shm(&shm_upstreams, counters->upstreams_MAX*sizeof(upstreamsData), false);
+	realloc_shm(&shm_upstreams, counters->upstreams_MAX, sizeof(upstreamsData), false);
 	upstreams = (upstreamsData*)shm_upstreams.ptr;
 
-	realloc_shm(&shm_dns_cache, counters->dns_cache_MAX*sizeof(DNSCacheData), false);
+	realloc_shm(&shm_dns_cache, counters->dns_cache_MAX, sizeof(DNSCacheData), false);
 	dns_cache = (DNSCacheData*)shm_dns_cache.ptr;
 
-	realloc_shm(&shm_strings, counters->strings_MAX, false);
+	realloc_shm(&shm_strings, counters->strings_MAX, sizeof(char), false);
 	// strings are not exposed by a global pointer
 
 	// Update local counter to reflect that we absorbed this change
@@ -441,14 +441,15 @@ SharedMemory create_shm(const char *name, const size_t size)
 		exit(EXIT_FAILURE);
 	}
 
-	// Resize shared memory file
-	ret = ftruncate(fd, size);
-
-	// Check for `ftruncate` error
-	if(ret == -1)
+	// Allocate shared memory object to specified size
+	// Using fallocate() will ensure that there's actually space for
+	// this file. Otherwise we end up with a sparse file that can give
+	// SIGBUS if we run out of space while writing to it.
+	ret = fallocate(fd, 0, 0U, size);
+	if(ret != 0)
 	{
-		logg("FATAL: create_shm(): ftruncate(%i, %zu): Failed to resize shared memory object \"%s\": %s",
-		     fd, size, sharedMemory.name, strerror(errno));
+		logg("FATAL: create_shm(): Failed to resize \"%s\" (%i) to %zu: %s (%i)",
+		     sharedMemory.name, fd, size, strerror(errno), ret);
 		exit(EXIT_FAILURE);
 	}
 
@@ -515,8 +516,8 @@ void *enlarge_shmem_struct(const char type)
 			return 0;
 	}
 
-	// Reallocate enough space for 4096 instances of requested object
-	realloc_shm(sharedMemory, sharedMemory->size + allocation_step*sizeofobj, true);
+	// Reallocate enough space for requested object
+	realloc_shm(sharedMemory, sharedMemory->size/sizeofobj + allocation_step, sizeofobj, true);
 
 	// Add allocated memory to corresponding counter
 	*counter += allocation_step;
@@ -524,8 +525,10 @@ void *enlarge_shmem_struct(const char type)
 	return sharedMemory->ptr;
 }
 
-bool realloc_shm(SharedMemory *sharedMemory, const size_t size, const bool resize)
+bool realloc_shm(SharedMemory *sharedMemory, const size_t size1, const size_t size2, const bool resize)
 {
+	// Absolute target size
+	const size_t size = size1 * size2;
 	// Check if we can skip this routine as nothing is to be done
 	// when an object is not to be resized and its size didn't
 	// change elsewhere
@@ -535,14 +538,15 @@ bool realloc_shm(SharedMemory *sharedMemory, const size_t size, const bool resiz
 	// Log that we are doing something here
 	char df[64] =  { 0 };
 	const int percentage = get_dev_shm_usage(df);
+
+	// Log output
 	if(resize)
-	{
-		logg("Resizing \"%s\" from %zu to %zu (%s)", sharedMemory->name, sharedMemory->size, size, df);
-	}
+		logg("Resizing \"%s\" from %zu to (%zu * %zu) == %zu (%s)",
+		     sharedMemory->name, sharedMemory->size, size1, size2, size, df);
 	else
-	{
-		logg("Remapping \"%s\" from %zu to %zu", sharedMemory->name, sharedMemory->size, size);
-	}
+		logg("Remapping \"%s\" from %zu to (%zu * %zu) == %zu",
+		     sharedMemory->name, sharedMemory->size, size1, size2, size);
+
 	if(percentage > SHMEM_WARN_LIMIT)
 		logg("WARNING: More than %u%% of "SHMEM_PATH" is used", SHMEM_WARN_LIMIT);
 
@@ -561,16 +565,20 @@ bool realloc_shm(SharedMemory *sharedMemory, const size_t size, const bool resiz
 			exit(EXIT_FAILURE);
 		}
 
-		// Truncate shared memory object to specified size
-		const int result = ftruncate(fd, size);
-		if(result == -1) {
-			logg("FATAL: realloc_shm(): ftruncate(%i, %zu): Failed to resize \"%s\": %s",
-			     fd, size, sharedMemory->name, strerror(errno));
+		// Allocate shared memory object to specified size
+		// Using fallocate() will ensure that there's actually space for
+		// this file. Otherwise we end up with a sparse file that can give
+		// SIGBUS if we run out of space while writing to it.
+		const int ret = fallocate(fd, 0, 0U, size);
+		if(ret != 0)
+		{
+			logg("FATAL: realloc_shm(): Failed to resize \"%s\" (%i) to %zu: %s (%i)",
+			     sharedMemory->name, fd, size, strerror(errno), ret);
 			exit(EXIT_FAILURE);
 		}
 
 		// Close shared memory object file descriptor as it is no longer
-		// needed after having called ftruncate()
+		// needed after having called fallocate()
 		close(fd);
 
 		// Update shm counters to indicate that at least one shared memory object changed
@@ -758,7 +766,7 @@ void add_per_client_regex(unsigned int clientID)
 	                                   counters->num_regex[REGEX_WHITELIST];
 	const size_t size = counters->clients * num_regex_tot;
 	if(size > shm_per_client_regex.size &&
-	   realloc_shm(&shm_per_client_regex, size, true))
+	   realloc_shm(&shm_per_client_regex, counters->clients, num_regex_tot, true))
 	{
 		reset_per_client_regex(clientID);
 	}
@@ -769,11 +777,12 @@ bool get_per_client_regex(const int clientID, const int regexID)
 	const unsigned int num_regex_tot = counters->num_regex[REGEX_BLACKLIST] +
 	                                   counters->num_regex[REGEX_WHITELIST];
 	const unsigned int id = clientID * num_regex_tot + regexID;
-	const unsigned int maxval = counters->clients * num_regex_tot;
+	const size_t maxval = shm_per_client_regex.size / sizeof(bool);
 	if(id > maxval)
 	{
-		logg("ERROR: get_per_client_regex(%d,%d): Out of bounds (%d > %d * %d == %d)!",
-		     clientID, regexID, id, counters->clients-1, num_regex_tot, maxval);
+		logg("ERROR: get_per_client_regex(%d, %d): Out of bounds (%d > %d * %d, shm_per_client_regex.size = %zd)!",
+		     clientID, regexID,
+		     id, counters->clients, num_regex_tot, maxval);
 		return false;
 	}
 	return ((bool*) shm_per_client_regex.ptr)[id];
@@ -784,12 +793,12 @@ void set_per_client_regex(const int clientID, const int regexID, const bool valu
 	const unsigned int num_regex_tot = counters->num_regex[REGEX_BLACKLIST] +
 	                                   counters->num_regex[REGEX_WHITELIST];
 	const unsigned int id = clientID * num_regex_tot + regexID;
-	const unsigned int maxval = counters->clients * num_regex_tot;
+	const size_t maxval = shm_per_client_regex.size / sizeof(bool);
 	if(id > maxval)
 	{
-		logg("ERROR: set_per_client_regex(%d,%d,%s): Out of bounds (%d > %d * %d == %d)!",
+		logg("ERROR: set_per_client_regex(%d, %d, %s): Out of bounds (%d > %d * %d, shm_per_client_regex.size = %zd)!",
 		     clientID, regexID, value ? "true" : "false",
-		     id, counters->clients-1, num_regex_tot, maxval);
+		     id, counters->clients, num_regex_tot, maxval);
 		return;
 	}
 	((bool*) shm_per_client_regex.ptr)[id] = value;
