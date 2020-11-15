@@ -859,7 +859,6 @@ void reply_query(int fd, int family, time_t now)
       int is_sign;
 
 #ifdef HAVE_DNSSEC
-      /* For DNSSEC originated queries, just retry the query to the same server. */
       if (forward->flags & (FREC_DNSKEY_QUERY | FREC_DS_QUERY))
 	{
 	  struct server *start;
@@ -885,6 +884,8 @@ void reply_query(int fd, int family, time_t now)
 	      }
 	    
 	  
+	  fd = -1;
+
 	  if (start->sfd)
 	    fd = start->sfd->fd;
 	  else
@@ -892,19 +893,21 @@ void reply_query(int fd, int family, time_t now)
 	      if (start->addr.sa.sa_family == AF_INET6)
 		{
 		  /* may have changed family */
-		  if (!forward->rfd6)
-		    forward->rfd6 = allocate_rfd(AF_INET6);
-		  fd = forward->rfd6->fd;
+		  if (forward->rfd6 || (forward->rfd6 = allocate_rfd(AF_INET6)))
+		    fd = forward->rfd6->fd;
 		}
 	      else
 		{
 		  /* may have changed family */
-		  if (!forward->rfd4)
-		    forward->rfd4 = allocate_rfd(AF_INET);
-		  fd = forward->rfd4->fd;
+		  if (forward->rfd4 || (forward->rfd4 = allocate_rfd(AF_INET)))
+		    fd = forward->rfd4->fd;
 		}
 	    }
 
+	  /* Can't get socket. */
+	  if (fd == -1)
+	    return;
+	  
 #ifdef HAVE_DUMPFILE
 	  dump_packet(DUMP_SEC_QUERY, (void *)header, (size_t)plen, NULL, &start->addr);
 #endif
@@ -2430,7 +2433,6 @@ struct frec *get_new_frec(time_t now, int *wait, struct frec *force)
   return f; /* OK if malloc fails and this is NULL */
 }
 
-/* crc is all-ones if not known. */
 static struct frec *lookup_frec(unsigned short id, int fd, int family, void *hash)
 {
   struct frec *f;
