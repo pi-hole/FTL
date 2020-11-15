@@ -22,8 +22,8 @@
 #include "../timers.h"
 // global variable killed
 #include "../signals.h"
-// reimport_superclients()
-#include "superclients.h"
+// reimport_aliasclients()
+#include "aliasclients.h"
 // Eventqueue routines
 #include "../events.h"
 
@@ -96,10 +96,10 @@ void *DB_thread(void *val)
 			resolveNetworkTableNames();
 		}
 
-		if(get_and_clear_event(REIMPORT_SUPERCLIENTS))
+		if(get_and_clear_event(REIMPORT_ALIASCLIENTS))
 		{
 			lock_shm();
-			reimport_superclients();
+			reimport_aliasclients();
 			unlock_shm();
 		}
 

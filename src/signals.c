@@ -278,8 +278,8 @@ static void SIGRT_handler(int signum, siginfo_t *si, void *unused)
 	}
 	else if(rtsig == 3)
 	{
-		// Reimport super-clients from database
-		set_event(REIMPORT_SUPERCLIENTS);
+		// Reimport alias-clients from database
+		set_event(REIMPORT_ALIASCLIENTS);
 	}
 	else if(rtsig == 4)
 	{

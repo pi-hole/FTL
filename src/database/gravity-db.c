@@ -27,8 +27,8 @@
 #include "network-table.h"
 // struct DNSCacheData
 #include "../datastructure.h"
-// reset_superclient()
-#include "superclients.h"
+// reset_aliasclient()
+#include "aliasclients.h"
 
 // Prefix of interface names in the client table
 #define INTERFACE_SEP ":"

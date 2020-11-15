@@ -22,8 +22,8 @@
 // file_exists()
 #include "../files.h"
 #include "sqlite3-ext.h"
-// import_superclients()
-#include "superclients.h"
+// import_aliasclients()
+#include "aliasclients.h"
 
 sqlite3 *FTL_db = NULL;
 bool DBdeleteoldqueries = false;
@@ -399,11 +399,11 @@ void db_init(void)
 	// Update to version 9 if lower
 	if(dbversion < 9)
 	{
-		// Update to version 9: Add superclients table
+		// Update to version 9: Add aliasclients table
 		logg("Updating long-term database to version 9");
-		if(!create_superclients_table())
+		if(!create_aliasclients_table())
 		{
-			logg("Superclients table not initialized, database not available");
+			logg("Aliasclients table not initialized, database not available");
 			dbclose();
 			return;
 		}
@@ -411,7 +411,7 @@ void db_init(void)
 		dbversion = db_get_FTL_property(DB_VERSION);
 	}
 
-	import_superclients();
+	import_aliasclients();
 
 	// Close database to prevent having it opened all time
 	// We already closed the database when we returned earlier

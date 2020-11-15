@@ -36,8 +36,8 @@
 #include "../version.h"
 // enum REGEX
 #include "../regex_r.h"
-// get_superclient_list()
-#include "../database/superclients.h"
+// get_aliasclient_list()
+#include "../database/aliasclients.h"
 
 #define min(a,b) ({ __typeof__ (a) _a = (a); __typeof__ (b) _b = (b); _a < _b ? _a : _b; })
 
@@ -396,8 +396,8 @@ void getTopClients(const char *client_message, const int *sock)
 	{
 		// Get client pointer
 		const clientsData* client = getClient(clientID, true);
-		// Skip invalid clients and also those managed by super clients
-		if(client == NULL || (!client->superclient && client->superclient_id >= 0))
+		// Skip invalid clients and also those managed by alias clients
+		if(client == NULL || (!client->aliasclient && client->aliasclient_id >= 0))
 		{
 			temparray[clientID][0] = -1;
 			continue;
@@ -439,7 +439,7 @@ void getTopClients(const char *client_message, const int *sock)
 		const int clientID = temparray[i][0];
 		const int ccount = temparray[i][1];
 
-		// clientID -1 means this client is to be skipped (managed by a super-client)
+		// clientID -1 means this client is to be skipped (managed by a alias-client)
 		if(clientID < 0)
 			continue;
 
@@ -805,8 +805,8 @@ void getAllQueries(const char *client_message, const int *sock)
 		{
 			// Get client pointer
 			const clientsData* client = getClient(i, true);
-			// Skip invalid clients and also those managed by super clients
-			if(client == NULL || client->superclient_id >= 0)
+			// Skip invalid clients and also those managed by alias clients
+			if(client == NULL || client->aliasclient_id >= 0)
 				continue;
 
 			// Try to match the requested string
@@ -816,9 +816,9 @@ void getAllQueries(const char *client_message, const int *sock)
 			{
 				clientid = i;
 
-				// Is this a super-client?
-				if(client->superclient)
-					clientid_list = get_superclient_list(i);
+				// Is this a alias-client?
+				if(client->aliasclient)
+					clientid_list = get_aliasclient_list(i);
 
 				break;
 			}
@@ -925,7 +925,7 @@ void getAllQueries(const char *client_message, const int *sock)
 			// Normal clients
 			if(clientid_list == NULL && query->clientID != clientid)
 				continue;
-			// Super-clients (we have to check for all clients managed by this super-client)
+			// Alias-clients (we have to check for all clients managed by this alias-client)
 			else if(clientid_list != NULL)
 			{
 				bool found = false;
@@ -1295,7 +1295,7 @@ void getClientsOverTime(const int *sock)
 			// Check if this client should be skipped
 			if(insetupVarsArray(getstr(client->ippos)) ||
 			   insetupVarsArray(getstr(client->namepos)) ||
-			   (!client->superclient && client->superclient_id > -1))
+			   (!client->aliasclient && client->aliasclient_id > -1))
 				skipclient[clientID] = true;
 		}
 	}
@@ -1316,8 +1316,8 @@ void getClientsOverTime(const int *sock)
 
 			// Get client pointer
 			const clientsData* client = getClient(clientID, true);
-			// Skip invalid clients and also those managed by super clients
-			if(client == NULL || client->superclient_id >= 0)
+			// Skip invalid clients and also those managed by alias clients
+			if(client == NULL || client->aliasclient_id >= 0)
 				continue;
 			const int thisclient = client->overTime[slot];
 
@@ -1367,7 +1367,7 @@ void getClientNames(const int *sock)
 			// Check if this client should be skipped
 			if(insetupVarsArray(getstr(client->ippos)) ||
 			   insetupVarsArray(getstr(client->namepos)) ||
-			   (!client->superclient && client->superclient_id > -1))
+			   (!client->aliasclient && client->aliasclient_id > -1))
 				skipclient[clientID] = true;
 		}
 	}

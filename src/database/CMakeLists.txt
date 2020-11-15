@@ -35,8 +35,8 @@ set(database_sources
         sqlite3.h
         sqlite3-ext.c
         sqlite3-ext.h
-        superclients.c
-        superclients.h
+        aliasclients.c
+        aliasclients.h
         )
 
 add_library(database OBJECT ${database_sources})

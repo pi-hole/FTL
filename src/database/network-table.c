@@ -691,8 +691,8 @@ static bool add_FTL_clients_to_network_table(enum arp_status *client_status, tim
 			continue;
 		}
 
-		// Silently skip super-clients - they do not really exist
-		if(client->superclient)
+		// Silently skip alias-clients - they do not really exist
+		if(client->aliasclient)
 			continue;
 
 		// Get hostname and IP address of this client
@@ -1624,14 +1624,14 @@ char *__attribute__((malloc)) getMACfromIP(const char *ipaddr)
 	return hwaddr;
 }
 
-// Get superclient ID of device identified by IP address (if available)
-int getSuperclientIDfromIP(const char *ipaddr)
+// Get aliasclient ID of device identified by IP address (if available)
+int getAliasclientIDfromIP(const char *ipaddr)
 {
 	// Open pihole-FTL.db database file if needed
 	const bool db_already_open = FTL_DB_avail();
 	if(!db_already_open && !dbopen())
 	{
-		logg("getSuperclientIDfromIP(\"%s\") - Failed to open DB", ipaddr);
+		logg("getAliasclientIDfromIP(\"%s\") - Failed to open DB", ipaddr);
 		return -1;
 	}
 
@@ -1639,14 +1639,14 @@ int getSuperclientIDfromIP(const char *ipaddr)
 	// We request the most recent IP entry in case there an IP appears
 	// multiple times in the network_addresses table
 	sqlite3_stmt *stmt = NULL;
-	const char *querystr = "SELECT superclient_id FROM network WHERE id = "
+	const char *querystr = "SELECT aliasclient_id FROM network WHERE id = "
 	                       "(SELECT network_id FROM network_addresses "
 	                       "WHERE ip = ? "
-	                             "AND superclient_id IS NOT NULL "
+	                             "AND aliasclient_id IS NOT NULL "
 	                       "GROUP BY ip HAVING max(lastSeen));";
 	int rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK ){
-		logg("getSuperclientIDfromIP(\"%s\") - SQL error prepare: %s",
+		logg("getAliasclientIDfromIP(\"%s\") - SQL error prepare: %s",
 		     ipaddr, sqlite3_errstr(rc));
 		if(!db_already_open)
 			dbclose();
@@ -1656,7 +1656,7 @@ int getSuperclientIDfromIP(const char *ipaddr)
 	// Bind ipaddr to prepared statement
 	if((rc = sqlite3_bind_text(stmt, 1, ipaddr, -1, SQLITE_STATIC)) != SQLITE_OK)
 	{
-		logg("getSuperclientIDfromIP(\"%s\"): Failed to bind ip: %s",
+		logg("getAliasclientIDfromIP(\"%s\"): Failed to bind ip: %s",
 		     ipaddr, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
@@ -1665,17 +1665,17 @@ int getSuperclientIDfromIP(const char *ipaddr)
 		return -1;
 	}
 
-	int superclient_id = -1;
+	int aliasclient_id = -1;
 	rc = sqlite3_step(stmt);
 	if(rc == SQLITE_ROW)
 	{
 		// Database record found
-		superclient_id = sqlite3_column_int(stmt, 0);
+		aliasclient_id = sqlite3_column_int(stmt, 0);
 	}
 
-	if(config.debug & DEBUG_SUPERCLIENTS)
-		logg("   Superclient ID %s -> %i%s", ipaddr, superclient_id,
-		     (superclient_id == -1) ? " (NOT FOUND)" : "");
+	if(config.debug & DEBUG_ALIASCLIENTS)
+		logg("   Aliasclient ID %s -> %i%s", ipaddr, aliasclient_id,
+		     (aliasclient_id == -1) ? " (NOT FOUND)" : "");
 
 	// Finalize statement and close database handle
 	sqlite3_reset(stmt);
@@ -1683,7 +1683,7 @@ int getSuperclientIDfromIP(const char *ipaddr)
 	if(!db_already_open)
 		dbclose();
 
-	return superclient_id;
+	return aliasclient_id;
 }
 
 // Get host name of device identified by IP address

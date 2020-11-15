@@ -3,22 +3,22 @@
 *  Network-wide ad blocking via your own hardware.
 *
 *  FTL Engine
-*  pihole-FTL.db -> super-clients tables prototypes
+*  pihole-FTL.db -> alias-clients tables prototypes
 *
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
-#ifndef SUPERCLIENTS_TABLE_H
-#define SUPERCLIENTS_TABLE_H
+#ifndef ALIASCLIENTS_TABLE_H
+#define ALIASCLIENTS_TABLE_H
 
 // type clientsData
 #include "../datastructure.h"
 
-void reset_superclient(clientsData *client);
+void reset_aliasclient(clientsData *client);
 
-bool create_superclients_table(void);
-bool import_superclients(void);
-void reimport_superclients(void);
+bool create_aliasclients_table(void);
+bool import_aliasclients(void);
+void reimport_aliasclients(void);
 
-int *get_superclient_list(const int superclientID);
+int *get_aliasclient_list(const int aliasclientID);
 
-#endif //SUPERCLIENTS_TABLE_H
+#endif //ALIASCLIENTS_TABLE_H

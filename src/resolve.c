@@ -362,8 +362,8 @@ static void resolveClients(const bool onlynew)
 			continue;
 		}
 
-		// Skip super-clients
-		if(client->superclient)
+		// Skip alias-clients
+		if(client->aliasclient)
 		{
 			unlock_shm();
 			continue;

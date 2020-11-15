@@ -21,8 +21,8 @@
 #include "database/message-table.h"
 // bool startup
 #include "main.h"
-// reset_superclient()
-#include "database/superclients.h"
+// reset_aliasclient()
+#include "database/aliasclients.h"
 // piholeFTLDB_reopen()
 #include "database/common.h"
 
@@ -183,7 +183,7 @@ int findDomainID(const char *domainString, const bool count)
 	return domainID;
 }
 
-int findClientID(const char *clientIP, const bool count, const bool superclient)
+int findClientID(const char *clientIP, const bool count, const bool aliasclient)
 {
 	// Compare content of client against known client IP addresses
 	for(int clientID=0; clientID < counters->clients; clientID++)
@@ -203,14 +203,14 @@ int findClientID(const char *clientIP, const bool count, const bool superclient)
 		if(strcmp(getstr(client->ippos), clientIP) == 0)
 		{
 			// Add one if count == true (do not add one, e.g., during ARP table processing)
-			if(count && !superclient) change_clientcount(client, 1, 0, -1, 0);
+			if(count && !aliasclient) change_clientcount(client, 1, 0, -1, 0);
 			return clientID;
 		}
 	}
 
 	// Return -1 (= not found) if count is false because we do not want to create a new client here
-	// Proceed if we are looking for a super-client because we want to create a new record
-	if(!count && !superclient)
+	// Proceed if we are looking for a alias-client because we want to create a new record
+	if(!count && !aliasclient)
 		return -1;
 
 	// If we did not return until here, then this client is definitely new
@@ -231,7 +231,7 @@ int findClientID(const char *clientIP, const bool count, const bool superclient)
 	// Set magic byte
 	client->magic = MAGICBYTE;
 	// Set its counter to 1
-	client->count = (count && !superclient)? 1 : 0;
+	client->count = (count && !aliasclient)? 1 : 0;
 	// Initialize blocked count to zero
 	client->blockedcount = 0;
 	// Store client IP - no need to check for NULL here as it doesn't harm
@@ -258,9 +258,9 @@ int findClientID(const char *clientIP, const bool count, const bool superclient)
 	// Set all MAC address bytes to zero
 	client->hwlen = -1;
 	memset(client->hwaddr, 0, sizeof(client->hwaddr));
-	// This may be a super-client, the ID is set elsewhere
-	client->superclient = superclient;
-	client->superclient_id = -1;
+	// This may be a alias-client, the ID is set elsewhere
+	client->aliasclient = aliasclient;
+	client->aliasclient_id = -1;
 
 	// Initialize client-specific overTime data
 	memset(client->overTime, 0, sizeof(client->overTime));
@@ -276,12 +276,12 @@ int findClientID(const char *clientIP, const bool count, const bool superclient)
 	//         database may not be available. All clients initialized
 	//         during history reading get their enabled regexs reloaded
 	//         in the initial call to FTL_reload_all_domainlists()
-	if(!startup && !superclient)
+	if(!startup && !aliasclient)
 		reload_per_client_regex(clientID, client);
 
-	// Check if this client is managed by a super-client
-	if(!superclient)
-		reset_superclient(client);
+	// Check if this client is managed by a alias-client
+	if(!aliasclient)
+		reset_aliasclient(client);
 
 	return clientID;
 }
@@ -293,20 +293,20 @@ void change_clientcount(clientsData *client, int total, int blocked, int overTim
 		if(overTimeIdx > -1 && overTimeIdx < OVERTIME_SLOTS)
 			client->overTime[overTimeIdx] += overTimeMod;
 
-		// Also add counts to the conencted super-client (if any)
-		if(client->superclient)
+		// Also add counts to the conencted alias-client (if any)
+		if(client->aliasclient)
 		{
-			logg("WARN: Should not add to super-client directly (client \"%s\" (%s))!",
+			logg("WARN: Should not add to alias-client directly (client \"%s\" (%s))!",
 			     getstr(client->namepos), getstr(client->ippos));
 			return;
 		}
-		if(client->superclient_id > -1)
+		if(client->aliasclient_id > -1)
 		{
-			clientsData *superclient = getClient(client->superclient_id, true);
-			superclient->count += total;
-			superclient->blockedcount += blocked;
+			clientsData *aliasclient = getClient(client->aliasclient_id, true);
+			aliasclient->count += total;
+			aliasclient->blockedcount += blocked;
 			if(overTimeIdx > -1 && overTimeIdx < OVERTIME_SLOTS)
-				superclient->overTime[overTimeIdx] += overTimeMod;
+				aliasclient->overTime[overTimeIdx] += overTimeMod;
 		}
 }
 
