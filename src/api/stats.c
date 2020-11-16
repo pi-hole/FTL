@@ -480,6 +480,7 @@ int api_stats_upstreams(struct mg_connection *conn)
 	{
 		int count = 0;
 		const char* ip, *name;
+		unsigned short port = 53;
 		double responsetime = 0.0, uncertainty = 0.0;
 
 		if(i == -2)
@@ -498,34 +499,35 @@ int api_stats_upstreams(struct mg_connection *conn)
 		}
 		else
 		{
-			// Regular forward destionation
+			// Regular upstream destionation
 			// Get sorted indices
 			const int upstreamID = temparray[i][0];
 
-			// Get forward pointer
-			const upstreamsData* forward = getUpstream(upstreamID, true);
-			if(forward == NULL)
+			// Get upstream pointer
+			const upstreamsData* upstream = getUpstream(upstreamID, true);
+			if(upstream == NULL)
 				continue;
 
-			// Get IP and host name of forward destination if available
-			ip = getstr(forward->ippos);
-			name = getstr(forward->namepos);
+			// Get IP and host name of upstream destination if available
+			ip = getstr(upstream->ippos);
+			name = getstr(upstream->namepos);
+			port = upstream->port;
 
 			// Get percentage
-			count = forward->count;
+			count = upstream->count;
 
 			// Compute average response time and uncertainty (unit: seconds)
-			if(forward->responses > 0)
+			if(upstream->responses > 0)
 			{
 				// Wehave to multiply runcertainty by 1e-4 to get seconds
-				responsetime = 1e-4 * forward->rtime / forward->responses;
+				responsetime = 1e-4 * upstream->rtime / upstream->responses;
 			}
-			if(forward->responses > 1)
+			if(upstream->responses > 1)
 			{
 				// The actual value will be somewhere in a neighborhood around the mean value.
 				// This neighborhood of values is the uncertainty in the mean.
 				// Wehave to multiply runcertainty by (1e-4)^2 to get seconds
-				uncertainty = my_sqrt(1e-8 * forward->rtuncertainty / forward->responses / (forward->responses-1));
+				uncertainty = my_sqrt(1e-8 * upstream->rtuncertainty / upstream->responses / (upstream->responses-1));
 			}
 		}
 
@@ -537,6 +539,7 @@ int api_stats_upstreams(struct mg_connection *conn)
 			cJSON *upstream = JSON_NEW_OBJ();
 			JSON_OBJ_REF_STR(upstream, "name", name);
 			JSON_OBJ_REF_STR(upstream, "ip", ip);
+			JSON_OBJ_ADD_NUMBER(upstream, "port", port);
 			JSON_OBJ_ADD_NUMBER(upstream, "count", count);
 			JSON_OBJ_ADD_NUMBER(upstream, "responsetime", responsetime);
 			JSON_OBJ_ADD_NUMBER(upstream, "uncertainty", uncertainty);
@@ -648,22 +651,32 @@ int api_stats_history(struct mg_connection *conn)
 			}
 			else
 			{
+				// Extract address/name and port
+				char serv_addr[256] = { 0 };
+				unsigned int serv_port = 53;
+				// We limit the number of bytes written into the serv_addr buffer
+				// to prevent buffer overflows. If there is no port available in
+				// the database, we skip extracting them and use the default port
+				sscanf(forwarddest, "%255[^#]#%u", serv_addr, &serv_port);
+				serv_addr[INET6_ADDRSTRLEN-1] = '\0';
+
 				// Iterate through all known forward destinations
 				forwarddestid = -3;
 				for(int i = 0; i < counters->forwarded; i++)
 				{
 					// Get forward pointer
-					const upstreamsData* forward = getUpstream(i, true);
-					if(forward == NULL)
+					const upstreamsData* upstream = getUpstream(i, true);
+					if(upstream == NULL)
 					{
 						continue;
 					}
 
 					// Try to match the requested string against their IP addresses and
-					// (if available) their host names
-					if(strcmp(getstr(forward->ippos), forwarddest) == 0 ||
-					   (forward->namepos != 0 &&
-					    strcmp(getstr(forward->namepos), forwarddest) == 0))
+					// (if available) their host names + port
+					if((strcmp(getstr(upstream->ippos), serv_addr) == 0 ||
+					   (upstream->namepos != 0 &&
+					    strcmp(getstr(upstream->namepos), serv_addr) == 0)) &&
+					   serv_port == upstream->port)
 					{
 						forwarddestid = i;
 						break;
@@ -943,6 +956,25 @@ int api_stats_history(struct mg_connection *conn)
 				regex_idx = dns_cache->black_regex_idx;
 		}
 
+		// Get IP of upstream destination, if applicable
+		in_port_t upstream_port = 0;
+		const char *upstream_name = "N/A";
+		if(query->status == QUERY_FORWARDED)
+		{
+			const upstreamsData *upstream = getUpstream(query->upstreamID, true);
+			if(upstream != NULL)
+			{
+				if(upstream->namepos != 0)
+					// Get upstream destination name if possible
+					upstream_name = getstr(upstream->namepos);
+				else
+					// If we have no name, get the IP address
+					upstream_name = getstr(upstream->ippos);
+
+				upstream_port = upstream->port;
+			}
+		}
+
 		cJSON *item = JSON_NEW_OBJ();
 		JSON_OBJ_ADD_NUMBER(item, "timestamp", query->timestamp);
 		JSON_OBJ_ADD_NUMBER(item, "type", query->type);
@@ -954,6 +986,8 @@ int api_stats_history(struct mg_connection *conn)
 		JSON_OBJ_ADD_NUMBER(item, "response_time", delay);
 		JSON_OBJ_COPY_STR(item, "CNAME_domain", CNAME_domain);
 		JSON_OBJ_ADD_NUMBER(item, "regex_idx", regex_idx);
+		JSON_OBJ_COPY_STR(item, "upstream_name", upstream_name);
+		JSON_OBJ_ADD_NUMBER(item, "upstream_port", upstream_port);
 		if(config.debug & DEBUG_API)
 			JSON_OBJ_ADD_NUMBER(item, "queryID", queryID);
 		JSON_ARRAY_ADD_ITEM(history, item);

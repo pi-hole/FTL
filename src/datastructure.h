@@ -42,11 +42,12 @@ typedef struct {
 typedef struct {
 	unsigned char magic;
 	bool new;
-	unsigned long rtime;
-	unsigned long rtuncertainty;
-	unsigned int responses;
 	int count;
 	int failed;
+	unsigned int responses;
+	in_addr_t port;
+	unsigned long rtime;
+	unsigned long rtuncertainty;
 	size_t ippos;
 	size_t namepos;
 	time_t lastQuery;
@@ -90,7 +91,7 @@ typedef struct {
 
 void strtolower(char *str);
 int findQueryID(const int id);
-int findUpstreamID(const char * upstream, const bool count);
+int findUpstreamID(const char * upstream, const in_port_t port, const bool count);
 int findDomainID(const char *domain, const bool count);
 int findClientID(const char *client, const bool count);
 int findCacheID(int domainID, int clientID, enum query_types query_type);

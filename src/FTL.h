@@ -130,6 +130,10 @@
 #define calloc(p1,p2) FTLcalloc(p1,p2, __FILE__,  __FUNCTION__,  __LINE__)
 #define realloc(p1,p2) FTLrealloc(p1,p2, __FILE__,  __FUNCTION__,  __LINE__)
 
+// Preprocessor help functions
+#define str(x) # x
+#define xstr(x) str(x)
+
 extern pthread_t DBthread;
 extern pthread_t GCthread;
 extern pthread_t DNSclientthread;

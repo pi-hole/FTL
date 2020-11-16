@@ -547,14 +547,14 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 		    log_query(F_SERVER | F_IPV4 | F_FORWARD, daemon->namebuff, 
 			      (union all_addr *)&start->addr.in.sin_addr, NULL); 
 		    FTL_forwarded(F_SERVER | F_IPV4 | F_FORWARD, daemon->namebuff,
-		                  (union all_addr *)&start->addr.in.sin_addr, daemon->log_display_id);
+		                  start, daemon->log_display_id);
 		  }
 		  else
 		  {
 		    log_query(F_SERVER | F_IPV6 | F_FORWARD, daemon->namebuff, 
 			      (union  all_addr *)&start->addr.in6.sin6_addr, NULL);
 		    FTL_forwarded(F_SERVER | F_IPV6 | F_FORWARD, daemon->namebuff,
-		                  (union all_addr *)&start->addr.in6.sin6_addr, daemon->log_display_id);
+		                  start, daemon->log_display_id);
 		  }
 		  start->queries++;
 		  forwarded = 1;
@@ -2179,14 +2179,14 @@ unsigned char *tcp_request(int confd, time_t now,
 			log_query(F_SERVER | F_IPV4 | F_FORWARD, daemon->namebuff, 
 				  (union all_addr *)&last_server->addr.in.sin_addr, NULL); 
 			FTL_forwarded(F_SERVER | F_IPV4 | F_FORWARD, daemon->namebuff,
-			              (union all_addr *)&last_server->addr.in.sin_addr, daemon->log_display_id);
+			              last_server, daemon->log_display_id);
 		      }
 		      else
 		      {
 			log_query(F_SERVER | F_IPV6 | F_FORWARD, daemon->namebuff, 
 				  (union all_addr *)&last_server->addr.in6.sin6_addr, NULL);
 			FTL_forwarded(F_SERVER | F_IPV6 | F_FORWARD, daemon->namebuff,
-			              (union all_addr *)&last_server->addr.in6.sin6_addr, daemon->log_display_id);
+			              last_server, daemon->log_display_id);
 		      }
 
 #ifdef HAVE_DNSSEC
