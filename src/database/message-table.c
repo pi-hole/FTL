@@ -90,7 +90,6 @@ static bool add_message(enum message_type type, const char *message,
 {
 	if(!FTL_DB_avail())
 	{
-		logg("No database!");
 		return false;
 	}
 
