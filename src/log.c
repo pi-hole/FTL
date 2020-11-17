@@ -23,6 +23,8 @@
 #include "shmem.h"
 // main_pid()
 #include "signals.h"
+// logg_fatal_dnsmasq_message()
+#include "database/message-table.h"
 
 static pthread_mutex_t lock;
 static FILE *logfile = NULL;
@@ -263,8 +265,8 @@ void FTL_log_dnsmasq_fatal(const char *format, ...)
 	va_end(args);
 	message[255] = '\0';
 
-	// Log error into FTL's log
-	logg("FATAL ERROR: %s", message);
+	// Log error into FTL's log + message table
+	logg_fatal_dnsmasq_message(message);
 }
 
 void log_counter_info(void)

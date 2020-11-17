@@ -19,7 +19,7 @@
 #include "../args.h"
 
 static const char *message_types[MAX_MESSAGE] =
-	{ "REGEX", "SUBNET", "HOSTNAME" };
+	{ "REGEX", "SUBNET", "HOSTNAME", "DNSMASQ_CONFIG" };
 
 static unsigned char message_blob_types[MAX_MESSAGE][5] =
 	{
@@ -43,7 +43,14 @@ static unsigned char message_blob_types[MAX_MESSAGE][5] =
 			SQLITE_NULL, // not used
 			SQLITE_NULL, // not used
 			SQLITE_NULL // not used
-		}
+		},
+		{	// DNSMASQ_CONFIG_MESSAGE: The message column contains the full message itself
+			SQLITE_NULL, // Not used
+			SQLITE_NULL, // Not used
+			SQLITE_NULL, // Not used
+			SQLITE_NULL, // Not used
+			SQLITE_NULL  // Not used
+		},
 	};
 // Create message table in the database
 bool create_message_table(void)
@@ -83,6 +90,7 @@ static bool add_message(enum message_type type, const char *message,
 {
 	if(!FTL_DB_avail())
 	{
+		logg("No database!");
 		return false;
 	}
 
@@ -254,4 +262,14 @@ void logg_hostname_warning(const char *ip, const char *name, const unsigned int 
 
 	// Log to database
 	add_message(HOSTNAME_MESSAGE, ip, 2, name, (const int)pos);
+}
+
+void logg_fatal_dnsmasq_message(const char *message)
+{
+	// Log to pihole-FTL.log
+	logg("FATAL ERROR in dnsmasq core: %s", message);
+
+	// Log to database (we have to open the database at this point)
+	dbopen();
+	add_message(DNSMASQ_CONFIG_MESSAGE, message, 0);
 }

@@ -65,7 +65,7 @@ void dbclose(void)
 bool dbopen(void)
 {
 	// Skip subroutine altogether when database is already open
-	if(FTL_db != NULL && db_avail)
+	if(FTL_db != NULL && FTL_DB_avail())
 	{
 		if(config.debug & DEBUG_LOCKS)
 			logg("Not locking FTL database (already open)");
