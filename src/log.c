@@ -253,6 +253,20 @@ void format_time(char buffer[42], unsigned long seconds, double milliseconds)
 		sprintf(buffer + strlen(buffer), "%lums ", umilliseconds);
 }
 
+void FTL_log_dnsmasq_fatal(const char *format, ...)
+{
+	// Build a complete string from possible multi-part string passed from dnsmasq
+	char message[256] = { 0 };
+	va_list args;
+	va_start(args, format);
+	vsnprintf(message, sizeof(message), format, args);
+	va_end(args);
+	message[255] = '\0';
+
+	// Log error into FTL's log
+	logg("FATAL ERROR: %s", message);
+}
+
 void log_counter_info(void)
 {
 	logg(" -> Total DNS queries: %i", counters->queries);
