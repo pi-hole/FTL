@@ -35,5 +35,6 @@ LUAMOD_API int luaopen_pihole(lua_State *L) {
 // Load bundled libraries and make the available globally
 void ftl_lua_init(lua_State *L)
 {
-	dolibrary(L, "inspect");
+	if(dolibrary(L, "inspect") != LUA_OK)
+		printf("Failed to load library inspect.lua\n");
 }

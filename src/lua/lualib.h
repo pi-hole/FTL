@@ -44,9 +44,10 @@ LUAMOD_API int (luaopen_debug) (lua_State *L);
 #define LUA_LOADLIBNAME	"package"
 LUAMOD_API int (luaopen_package) (lua_State *L);
 
+/************** Pi-hole modification ***************/
 #define LUA_PIHOLELIBNAME	"pihole"
 LUAMOD_API int (luaopen_pihole) (lua_State *L);
-
+/***************************************************/
 
 /* open all previous libraries */
 LUALIB_API void (luaL_openlibs) (lua_State *L);
