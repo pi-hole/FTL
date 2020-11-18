@@ -716,6 +716,10 @@ void read_debuging_settings(FILE *fp)
 	// defaults to: false
 	setDebugOption(fp, "DEBUG_EVENTS", DEBUG_EVENTS);
 
+	// DEBUG_HELPER
+	// defaults to: false
+	setDebugOption(fp, "DEBUG_HELPER", DEBUG_HELPER);
+
 	if(config.debug)
 	{
 		logg("*****************************");
@@ -739,6 +743,7 @@ void read_debuging_settings(FILE *fp)
 		logg("* DEBUG_EDNS0           %s *", (config.debug & DEBUG_EDNS0)? "YES":"NO ");
 		logg("* DEBUG_CLIENTS         %s *", (config.debug & DEBUG_CLIENTS)? "YES":"NO ");
 		logg("* DEBUG_EVENTS          %s *", (config.debug & DEBUG_EVENTS)? "YES":"NO ");
+		logg("* DEBUG_HELPER          %s *", (config.debug & DEBUG_HELPER)? "YES":"NO ");
 		logg("*****************************");
 	}
 
