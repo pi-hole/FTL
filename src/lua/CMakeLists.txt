@@ -70,14 +70,18 @@ add_library(lua OBJECT ${sources})
 #                (partially obsoleted) standard C functions
 target_compile_definitions(lua PRIVATE LUA_USE_POSIX)
 
+# Set the default path that Lua uses to look for Lua libraries.
+target_compile_definitions(lua PRIVATE LUA_PATH_DEFAULT="/opt/pihole/libs/?.lua")
+
 if(LUA_DL STREQUAL "true")
     target_compile_definitions(lua PRIVATE LUA_USE_DLOPEN)
 endif()
 
-if(LUA_READLINE STREQUAL "true")
+if(LIBREADLINE AND LIBHISTORY AND LIBTERMCAP)
+    message(STATUS "Embedded LUA will use readline for history: YES")
     target_compile_definitions(lua PRIVATE LUA_USE_READLINE)
+else()
+    message(STATUS "Embedded LUA will use readline for history: NO")
 endif()
 
 target_include_directories(lua PRIVATE ${PROJECT_SOURCE_DIR}/src ${PROJECT_SOURCE_DIR}/src/lua)
-
-add_subdirectory(libs)

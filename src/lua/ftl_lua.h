@@ -7,8 +7,8 @@
 *
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
-#ifndef LUA_H
-#define LUA_H
+#ifndef FTL_LUA_H
+#define FTL_LUA_H
 
 #include "lua.h"
 
@@ -21,4 +21,4 @@ extern int dolibrary (lua_State *L, const char *name);
 
 void ftl_lua_init(lua_State *L);
 
-#endif //LUA_H
+#endif //FTL_LUA_H

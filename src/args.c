@@ -280,26 +280,28 @@ void parse_args(int argc, char* argv[])
 			{
 				history_file = word.we_wordv[0];
 				const int ret_r = read_history(history_file);
-				if(debug)
-					printf("FTL hint: Reading history: %s = %i (%s)\n", history_file, ret_r, ret_r == 0 ? "success" : strerror(ret_r));
+				if(dnsmasq_debug)
+					printf("Reading history: %s = %i (%s)\n", history_file, ret_r, ret_r == 0 ? "success" : strerror(ret_r));
 
 				// The history file may not exist, try to create an empty one in this case
 				if(ret_r == ENOENT)
 				{
-					printf("FTL hint: Creating new history: %s\n", history_file);
+					printf("Creating new history: %s\n", history_file);
 					FILE *history = fopen(history_file, "w");
 					if(history != NULL)
 						fclose(history);
 				}
 			}
+#else
+		printf("No readline!\n");
 #endif
 			const int ret = lua_main(argc - i, &argv[i]);
 #if defined(LUA_USE_READLINE)
 			if(history_file != NULL)
 			{
 				const int ret_w = write_history(history_file);
-				if(debug)
-					printf("FTL hint: Writing history: %s = %i (%s)\n", history_file, ret_w, ret_w == 0 ? "success" : strerror(ret_w));
+				if(dnsmasq_debug)
+					printf("Writing history: %s = %i (%s)\n", history_file, ret_w, ret_w == 0 ? "success" : strerror(ret_w));
 				wordfree(&word);
 			}
 #endif

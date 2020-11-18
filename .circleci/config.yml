@@ -8,7 +8,7 @@ version: 2
         no_output_timeout: 30m
         command: |
           BRANCH=$([ -z "$CIRCLE_TAG" ] && echo "$CIRCLE_BRANCH" || echo "master")
-          bash .circleci/build-CI.sh "-DSTATIC=${STATIC} -DLUA_READLINE=true" "${BRANCH}" "${CIRCLE_TAG}" "${CIRCLE_JOB}"
+          bash .circleci/build-CI.sh "-DSTATIC=${STATIC}" "${BRANCH}" "${CIRCLE_TAG}" "${CIRCLE_JOB}"
     - run:
         name: "Binary checks"
         command: bash test/arch_test.sh
