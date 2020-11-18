@@ -281,19 +281,28 @@ void parse_args(int argc, char* argv[])
 				history_file = word.we_wordv[0];
 				const int ret_r = read_history(history_file);
 				if(dnsmasq_debug)
-					printf("Reading history: %s = %i (%s)\n", history_file, ret_r, ret_r == 0 ? "success" : strerror(ret_r));
+				{
+					printf("Reading history ... ");
+					if(ret_r == 0)
+						printf("success\n");
+					else
+						printf("error - %s: %s\n", history_file, strerror(ret_r));
+				}
 
 				// The history file may not exist, try to create an empty one in this case
 				if(ret_r == ENOENT)
 				{
-					printf("Creating new history: %s\n", history_file);
+					if(dnsmasq_debug)
+					{
+						printf("Creating new history file: %s\n", history_file);
+					}
 					FILE *history = fopen(history_file, "w");
 					if(history != NULL)
 						fclose(history);
 				}
 			}
 #else
-		printf("No readline!\n");
+			printf("No readline available!\n");
 #endif
 			const int ret = lua_main(argc - i, &argv[i]);
 #if defined(LUA_USE_READLINE)
@@ -301,7 +310,14 @@ void parse_args(int argc, char* argv[])
 			{
 				const int ret_w = write_history(history_file);
 				if(dnsmasq_debug)
-					printf("Writing history: %s = %i (%s)\n", history_file, ret_w, ret_w == 0 ? "success" : strerror(ret_w));
+				{
+					printf("Writing history ... ");
+					if(ret_w == 0)
+						printf("success\n");
+					else
+						printf("error - %s: %s\n", history_file, strerror(ret_w));
+				}
+
 				wordfree(&word);
 			}
 #endif

@@ -889,21 +889,16 @@
 }
 
 @test "LUA: Interpreter returns FTL version" {
-  run bash -c './pihole-FTL lua -e "print(pihole.ftl_version())" | grep -v 'FTL hint''
+  run bash -c './pihole-FTL lua -e "print(pihole.ftl_version())"'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "v"* ]]
 }
 
 @test "LUA: Interpreter loads and enabled bundled library \"inspect\"" {
-  run bash -c './pihole-FTL lua -e "print(inspect(inspect))" | grep -v 'FTL hint''
+  run bash -c './pihole-FTL lua -e "print(inspect(inspect))"'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[@]} == *'_DESCRIPTION = "human-readable representations of tables"'* ]]
-}
-
-@test "LUA: Bundled libraries are installed into /etc/pihole/lua-libs" {
-  run bash -c 'ls -1 /etc/pihole/lua-libs | grep -c ^'
-  printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} != 0 ]]
+  [[ ${lines[@]} == *'_VERSION = "inspect.lua 3.1.0"'* ]]
 }
 
 @test "EDNS(0) analysis working as expected" {
