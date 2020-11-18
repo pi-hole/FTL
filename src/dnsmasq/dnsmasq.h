@@ -655,19 +655,24 @@ struct hostsfile {
 #define FREC_DO_QUESTION       64
 #define FREC_ADDED_PHEADER    128
 #define FREC_TEST_PKTSZ       256
-#define FREC_HAS_EXTRADATA    512        
+#define FREC_HAS_EXTRADATA    512
+#define FREC_HAS_PHEADER     1024
 
 #define HASH_SIZE 32 /* SHA-256 digest size */
 
 struct frec {
-  union mysockaddr source;
-  union all_addr dest;
+  struct frec_src {
+    union mysockaddr source;
+    union all_addr dest;
+    unsigned int iface, log_id;
+    unsigned short orig_id;
+    struct frec_src *next;
+  } frec_src;
   struct server *sentto; /* NULL means free */
   struct randfd *rfd4;
   struct randfd *rfd6;
-  unsigned int iface;
-  unsigned short orig_id, new_id;
-  int log_id, fd, forwardall, flags;
+  unsigned short new_id;
+  int fd, forwardall, flags;
   time_t time;
   unsigned char *hash[HASH_SIZE];
 #ifdef HAVE_DNSSEC 
@@ -1095,6 +1100,8 @@ extern struct daemon {
   int back_to_the_future;
 #endif
   struct frec *frec_list;
+  struct frec_src *free_frec_src;
+  int frec_src_count;
   struct serverfd *sfds;
   struct irec *interfaces;
   struct listener *listeners;
