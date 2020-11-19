@@ -62,9 +62,10 @@ extern countersStruct *counters;
 ///
 /// \param name the name of the shared memory
 /// \param size the size to allocate
+/// \param create_new true = delete old file, create new, false = connect to existing object or fail
 /// \return a structure with a pointer to the mounted shared memory. The pointer
 /// will always be valid, because if it failed FTL will have exited.
-SharedMemory create_shm(const char *name, const size_t size);
+SharedMemory create_shm(const char *name, const size_t size, bool create_new);
 
 /// Reallocate shared memory
 ///
@@ -88,7 +89,7 @@ void _lock_shm(const char* func, const int line, const char* file);
 #define unlock_shm() _unlock_shm(__FUNCTION__, __LINE__, __FILE__)
 void _unlock_shm(const char* func, const int line, const char* file);
 
-bool init_shmem(void);
+bool init_shmem(bool create_new);
 void destroy_shmem(void);
 size_t addstr(const char *str);
 const char *getstr(const size_t pos);

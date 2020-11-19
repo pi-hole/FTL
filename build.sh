@@ -18,17 +18,23 @@ if [[ "${1}" == "clean" ]]; then
     exit 0
 fi
 
-# Configure build
+# Configure build, pass CMake CACHE entries if present
+# Wrap multiple options in "" as first argument to ./build.sh:
+#     ./build.sh "-DA=1 -DB=2" install
 mkdir -p cmake
 cd cmake
-cmake ..
+if [[ "${1}" == "-D"* ]]; then
+    cmake "${1}" ..
+else
+    cmake ..
+fi
 
 # Build the sources
 cmake --build . -- -j $(nproc)
 
 # If we are asked to install, we do this here
 # Otherwise, we simply copy the binary one level up
-if [[ "${1}" == "install" ]]; then
+if [[ "${1}" == "install" || "${2}" == "install" ]]; then
     sudo make install
 else
     cp pihole-FTL ../

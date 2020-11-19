@@ -888,6 +888,19 @@
   [[ ${lines[0]} == "4711" ]]
 }
 
+@test "LUA: Interpreter returns FTL version" {
+  run bash -c './pihole-FTL lua -e "print(pihole.ftl_version())"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "v"* ]]
+}
+
+@test "LUA: Interpreter loads and enabled bundled library \"inspect\"" {
+  run bash -c './pihole-FTL lua -e "print(inspect(inspect))"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[@]} == *'_DESCRIPTION = "human-readable representations of tables"'* ]]
+  [[ ${lines[@]} == *'_VERSION = "inspect.lua 3.1.0"'* ]]
+}
+
 @test "EDNS(0) analysis working as expected" {
   # Get number of lines in the log before the test
   before="$(grep -c ^ /var/log/pihole-FTL.log)"
