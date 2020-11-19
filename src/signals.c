@@ -95,7 +95,7 @@ static void __attribute__((noreturn)) signal_handler(int sig, siginfo_t *si, voi
 	}
 	log_FTL_version(true);
 	char namebuf[16];
-	logg("Process details: MID: %i",mpid);
+	logg("Process details: MID: %i", mpid);
 	logg("                 PID: %i", getpid());
 	logg("                 TID: %i", gettid());
 	logg("                 Name: %s", getthread_name(namebuf));
@@ -275,6 +275,11 @@ static void SIGRT_handler(int signum, siginfo_t *si, void *unused)
 		// Terminate FTL indicating failure
 		exit_code = EXIT_FAILURE;
 		kill(0, SIGTERM);
+	}
+	else if(rtsig == 3)
+	{
+		// Reimport alias-clients from database
+		set_event(REIMPORT_ALIASCLIENTS);
 	}
 	else if(rtsig == 4)
 	{

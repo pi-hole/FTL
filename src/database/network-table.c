@@ -691,6 +691,10 @@ static bool add_FTL_clients_to_network_table(enum arp_status *client_status, tim
 			continue;
 		}
 
+		// Silently skip alias-clients - they do not really exist
+		if(client->aliasclient)
+			continue;
+
 		// Get hostname and IP address of this client
 		const char *hostname, *ipaddr, *interface;
 		ipaddr = getstr(client->ippos);
@@ -1136,7 +1140,7 @@ void parse_neighbor_cache(void)
 			{
 				// This line is incomplete, remember this to skip
 				// mock-device creation after ARP processing
-				int clientID = findClientID(ip, false);
+				int clientID = findClientID(ip, false, false);
 				if(clientID >= 0)
 					client_status[clientID] = CLIENT_ARP_INCOMPLETE;
 			}
@@ -1180,7 +1184,7 @@ void parse_neighbor_cache(void)
 		// is known to pihole-FTL
 		// false = do not create a new record if the client is
 		//         unknown (only DNS requesting clients do this)
-		int clientID = findClientID(ip, false);
+		int clientID = findClientID(ip, false, false);
 
 		// Get hostname of this client if the client is known
 		const char *hostname = "";
@@ -1618,6 +1622,68 @@ char *__attribute__((malloc)) getMACfromIP(const char *ipaddr)
 	sqlite3_finalize(stmt);
 
 	return hwaddr;
+}
+
+// Get aliasclient ID of device identified by IP address (if available)
+int getAliasclientIDfromIP(const char *ipaddr)
+{
+	// Open pihole-FTL.db database file if needed
+	const bool db_already_open = FTL_DB_avail();
+	if(!db_already_open && !dbopen())
+	{
+		logg("getAliasclientIDfromIP(\"%s\") - Failed to open DB", ipaddr);
+		return -1;
+	}
+
+	// Prepare SQLite statement
+	// We request the most recent IP entry in case there an IP appears
+	// multiple times in the network_addresses table
+	sqlite3_stmt *stmt = NULL;
+	const char *querystr = "SELECT aliasclient_id FROM network WHERE id = "
+	                       "(SELECT network_id FROM network_addresses "
+	                       "WHERE ip = ? "
+	                             "AND aliasclient_id IS NOT NULL "
+	                       "GROUP BY ip HAVING max(lastSeen));";
+	int rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &stmt, NULL);
+	if( rc != SQLITE_OK ){
+		logg("getAliasclientIDfromIP(\"%s\") - SQL error prepare: %s",
+		     ipaddr, sqlite3_errstr(rc));
+		if(!db_already_open)
+			dbclose();
+		return -1;
+	}
+
+	// Bind ipaddr to prepared statement
+	if((rc = sqlite3_bind_text(stmt, 1, ipaddr, -1, SQLITE_STATIC)) != SQLITE_OK)
+	{
+		logg("getAliasclientIDfromIP(\"%s\"): Failed to bind ip: %s",
+		     ipaddr, sqlite3_errstr(rc));
+		sqlite3_reset(stmt);
+		sqlite3_finalize(stmt);
+		if(!db_already_open)
+			dbclose();
+		return -1;
+	}
+
+	int aliasclient_id = -1;
+	rc = sqlite3_step(stmt);
+	if(rc == SQLITE_ROW)
+	{
+		// Database record found
+		aliasclient_id = sqlite3_column_int(stmt, 0);
+	}
+
+	if(config.debug & DEBUG_ALIASCLIENTS)
+		logg("   Aliasclient ID %s -> %i%s", ipaddr, aliasclient_id,
+		     (aliasclient_id == -1) ? " (NOT FOUND)" : "");
+
+	// Finalize statement and close database handle
+	sqlite3_reset(stmt);
+	sqlite3_finalize(stmt);
+	if(!db_already_open)
+		dbclose();
+
+	return aliasclient_id;
 }
 
 // Get host name of device identified by IP address

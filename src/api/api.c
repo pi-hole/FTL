@@ -34,6 +34,10 @@
 #include "../overTime.h"
 // Version information
 #include "../version.h"
+// enum REGEX
+#include "../regex_r.h"
+// get_aliasclient_list()
+#include "../database/aliasclients.h"
 
 #define min(a,b) ({ __typeof__ (a) _a = (a); __typeof__ (b) _b = (b); _a < _b ? _a : _b; })
 
@@ -392,8 +396,12 @@ void getTopClients(const char *client_message, const int *sock)
 	{
 		// Get client pointer
 		const clientsData* client = getClient(clientID, true);
-		if(client == NULL)
+		// Skip invalid clients and also those managed by alias clients
+		if(client == NULL || (!client->aliasclient && client->aliasclient_id >= 0))
+		{
+			temparray[clientID][0] = -1;
 			continue;
+		}
 		temparray[clientID][0] = clientID;
 		// Use either blocked or total count based on request string
 		temparray[clientID][1] = blockedonly ? client->blockedcount : client->count;
@@ -430,8 +438,15 @@ void getTopClients(const char *client_message, const int *sock)
 		// Get sorted indices and counter values (may be either total or blocked count)
 		const int clientID = temparray[i][0];
 		const int ccount = temparray[i][1];
+
+		// clientID -1 means this client is to be skipped (managed by a alias-client)
+		if(clientID < 0)
+			continue;
+
 		// Get client pointer
 		const clientsData* client = getClient(clientID, true);
+
+		// Skip invalid clients
 		if(client == NULL)
 			continue;
 
@@ -660,6 +675,7 @@ void getAllQueries(const char *client_message, const int *sock)
 	char *clientname = NULL;
 	bool filterclientname = false;
 	int clientid = -1;
+	int *clientid_list = NULL;
 
 	unsigned char querytype = 0;
 
@@ -789,7 +805,8 @@ void getAllQueries(const char *client_message, const int *sock)
 		{
 			// Get client pointer
 			const clientsData* client = getClient(i, true);
-			if(client == NULL)
+			// Skip invalid clients and also those managed by alias clients
+			if(client == NULL || client->aliasclient_id >= 0)
 				continue;
 
 			// Try to match the requested string
@@ -798,10 +815,15 @@ void getAllQueries(const char *client_message, const int *sock)
 			    strcmp(getstr(client->namepos), clientname) == 0))
 			{
 				clientid = i;
+
+				// Is this a alias-client?
+				if(client->aliasclient)
+					clientid_list = get_aliasclient_list(i);
+
 				break;
 			}
 		}
-		if(clientid < 0)
+		if(clientid == -1)
 		{
 			// Requested client has not been found, we directly
 			// exit here as there is no data to be returned
@@ -898,8 +920,22 @@ void getAllQueries(const char *client_message, const int *sock)
 		}
 
 		// Skip if client name and IP are not identical with what the user wants to see
-		if(filterclientname && query->clientID != clientid)
-			continue;
+		if(filterclientname)
+		{
+			// Normal clients
+			if(clientid_list == NULL && query->clientID != clientid)
+				continue;
+			// Alias-clients (we have to check for all clients managed by this alias-client)
+			else if(clientid_list != NULL)
+			{
+				bool found = false;
+				for(int i = 0; i < clientid_list[0]; i++)
+					if(query->clientID == clientid_list[i + 1])
+						found = true;
+				if(!found)
+					continue;
+			}
+		}
 
 		// Skip if query type is not identical with what the user wants to see
 		if(querytype != 0 && querytype != query->type)
@@ -1027,6 +1063,9 @@ void getAllQueries(const char *client_message, const int *sock)
 
 	if(filterforwarddest)
 		free(forwarddest);
+
+	if(clientid_list != NULL)
+		free(clientid_list);
 }
 
 void getRecentBlocked(const char *client_message, const int *sock)
@@ -1249,11 +1288,14 @@ void getClientsOverTime(const int *sock)
 		{
 			// Get client pointer
 			const clientsData* client = getClient(clientID, true);
+			// Skip invalid clients
 			if(client == NULL)
 				continue;
+
 			// Check if this client should be skipped
 			if(insetupVarsArray(getstr(client->ippos)) ||
-			   insetupVarsArray(getstr(client->namepos)))
+			   insetupVarsArray(getstr(client->namepos)) ||
+			   (!client->aliasclient && client->aliasclient_id > -1))
 				skipclient[clientID] = true;
 		}
 	}
@@ -1274,7 +1316,8 @@ void getClientsOverTime(const int *sock)
 
 			// Get client pointer
 			const clientsData* client = getClient(clientID, true);
-			if(client == NULL)
+			// Skip invalid clients and also those managed by alias clients
+			if(client == NULL || client->aliasclient_id >= 0)
 				continue;
 			const int thisclient = client->overTime[slot];
 
@@ -1317,12 +1360,14 @@ void getClientNames(const int *sock)
 		{
 			// Get client pointer
 			const clientsData* client = getClient(clientID, true);
+			// Skip invalid clients
 			if(client == NULL)
 				continue;
 
 			// Check if this client should be skipped
 			if(insetupVarsArray(getstr(client->ippos)) ||
-			   insetupVarsArray(getstr(client->namepos)))
+			   insetupVarsArray(getstr(client->namepos)) ||
+			   (!client->aliasclient && client->aliasclient_id > -1))
 				skipclient[clientID] = true;
 		}
 	}

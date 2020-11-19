@@ -466,7 +466,8 @@ void read_regex_from_database(void)
 	{
 		// Get client pointer
 		clientsData *client = getClient(clientID, true);
-		if(client == NULL)
+		// Skip invalid and alias-clients
+		if(client == NULL || client->aliasclient)
 			continue;
 
 		reload_per_client_regex(clientID, client);

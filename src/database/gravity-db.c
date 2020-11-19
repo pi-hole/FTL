@@ -27,6 +27,8 @@
 #include "network-table.h"
 // struct DNSCacheData
 #include "../datastructure.h"
+// reset_aliasclient()
+#include "aliasclients.h"
 
 // Prefix of interface names in the client table
 #define INTERFACE_SEP ":"
@@ -331,15 +333,32 @@ static bool get_client_groupids(clientsData* client)
 		hwaddr = getMACfromIP(ip);
 
 		if(hwaddr == NULL && config.debug & DEBUG_CLIENTS)
+		{
 			logg("--> No result.");
-
-		if(hwaddr != NULL && strlen(hwaddr) > 3 && strncasecmp(hwaddr, "ip-", 3) == 0)
+		}
+		else if(hwaddr != NULL && strlen(hwaddr) > 3 && strncasecmp(hwaddr, "ip-", 3) == 0)
 		{
 			free(hwaddr);
 			hwaddr = NULL;
 
 			if(config.debug & DEBUG_CLIENTS)
 				logg("Skipping mock-device hardware address lookup");
+		}
+		// Set MAC address from database information if available and the MAC address is not already set
+		else if(hwaddr != NULL && client->hwlen != 6)
+		{
+			// Proper MAC parsing
+			unsigned char data[6];
+			const int n = sscanf(hwaddr, "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
+			                     &data[0], &data[1], &data[2],
+			                     &data[3], &data[4], &data[5]);
+
+			// Set hwlen only if we got data
+			if(n == 6)
+			{
+				memcpy(client->hwaddr, data, sizeof(data));
+				client->hwlen = sizeof(data);
+			}
 		}
 
 		// MAC address fallback: Try to synthesize MAC address from internal buffer

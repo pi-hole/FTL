@@ -362,6 +362,13 @@ static void resolveClients(const bool onlynew)
 			continue;
 		}
 
+		// Skip alias-clients
+		if(client->aliasclient)
+		{
+			unlock_shm();
+			continue;
+		}
+
 		bool newflag = client->new;
 		size_t ippos = client->ippos;
 		size_t oldnamepos = client->namepos;

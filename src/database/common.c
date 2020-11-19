@@ -22,6 +22,8 @@
 // file_exists()
 #include "../files.h"
 #include "sqlite3-ext.h"
+// import_aliasclients()
+#include "aliasclients.h"
 
 sqlite3 *FTL_db = NULL;
 bool DBdeleteoldqueries = false;
@@ -272,6 +274,8 @@ void db_init(void)
 	// Open database
 	dbopen();
 
+	db_avail = true;
+
 	// Test FTL_db version and see if we need to upgrade the database file
 	int dbversion = db_get_FTL_property(DB_VERSION);
 	if(dbversion < 1)
@@ -391,6 +395,27 @@ void db_init(void)
 		// Get updated version
 		dbversion = db_get_FTL_property(DB_VERSION);
 	}
+
+	// Update to version 9 if lower
+	if(dbversion < 9)
+	{
+		// Update to version 9: Add aliasclients table
+		logg("Updating long-term database to version 9");
+		if(!create_aliasclients_table())
+		{
+			logg("Aliasclients table not initialized, database not available");
+			dbclose();
+			return;
+		}
+		// Get updated version
+		dbversion = db_get_FTL_property(DB_VERSION);
+	}
+
+	import_aliasclients();
+
+	// Close database to prevent having it opened all time
+	// We already closed the database when we returned earlier
+	dbclose();
 
 	// Log if users asked us to not use the long-term database for queries
 	// We will still use it to store warnings in it

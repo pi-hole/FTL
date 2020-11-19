@@ -157,6 +157,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 	if(query == NULL || domain == NULL || client == NULL || dns_cache == NULL)
 	{
 		// Encountered memory error, skip query
+		logg("WARN: No memory available, skipping query analysis");
 		return false;
 	}
 
@@ -549,7 +550,8 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// subnet (ECS) data), however, we do not rewrite the IPs ::1 and
 	// 127.0.0.1 to avoid queries originating from localhost of the
 	// *distant* machine as queries coming from the *local* machine
-	char clientIP[INET6_ADDRSTRLEN] = { 0 };
+	const sa_family_t family = (flags & F_IPV4) ? AF_INET : AF_INET6;
+	char clientIP[ADDRSTRLEN] = { 0 };
 	if(config.edns0_ecs && edns->client_set)
 	{
 		// Use ECS provided client
@@ -559,7 +561,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	else
 	{
 		// Use original requestor
-		inet_ntop((flags & F_IPV4) ? AF_INET : AF_INET6, addr, clientIP, ADDRSTRLEN);
+		inet_ntop(family, addr, clientIP, ADDRSTRLEN);
 	}
 
 	// Check if user wants to skip queries coming from localhost
@@ -601,7 +603,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	const int domainID = findDomainID(domainString, true);
 
 	// Go through already knows clients and see if it is one of them
-	const int clientID = findClientID(clientIP, true);
+	const int clientID = findClientID(clientIP, true, false);
 
 	// Save everything
 	queriesData* query = getQuery(queryID, false);
@@ -653,6 +655,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	if(client == NULL)
 	{
 		// Encountered memory error, skip query
+		logg("WARN: No memory available, skipping query analysis");
 		// Free allocated memory
 		free(domainString);
 		// Release thread lock
@@ -661,7 +664,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	}
 
 	// Update overTime data structure with the new client
-	client->overTime[timeidx]++;
+	change_clientcount(client, 0, 0, timeidx, 1);
 
 	// Set lastQuery timer and add one query for network table
 	client->lastQuery = querytimestamp;
@@ -682,7 +685,6 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	if(client->hwlen < 1)
 	{
 		union mysockaddr hwaddr = {{ 0 }};
-		const sa_family_t family = (flags & F_IPV4) ? AF_INET : AF_INET6;
 		hwaddr.sa.sa_family = family;
 		if(family == AF_INET)
 		{
@@ -1417,7 +1419,7 @@ static void query_blocked(queriesData* query, domainsData* domain, clientsData* 
 	if(domain != NULL)
 		domain->blockedcount++;
 	if(client != NULL)
-		client->blockedcount++;
+		change_clientcount(client, 0, 1, -1, 0);
 
 	// Update status
 	query->status = new_status;
