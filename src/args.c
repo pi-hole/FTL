@@ -302,7 +302,8 @@ void parse_args(int argc, char* argv[])
 				}
 			}
 #else
-			printf("No readline available!\n");
+			if(dnsmasq_debug)
+				printf("No readline available!\n");
 #endif
 			const int ret = lua_main(argc - i, &argv[i]);
 #if defined(LUA_USE_READLINE)
