@@ -172,6 +172,11 @@ void process_request(const char *client_message, int *sock)
 		logg("Received API request to update vendors in network table");
 		updateMACVendorRecords();
 	}
+	else if(command(client_message, ">delete-lease"))
+	{
+		processed = true;
+		delete_lease(client_message, sock);
+	}
 
 	// Test only at the end if we want to quit or kill
 	// so things can be processed before
