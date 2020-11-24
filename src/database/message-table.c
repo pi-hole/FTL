@@ -19,7 +19,7 @@
 #include "../args.h"
 
 static const char *message_types[MAX_MESSAGE] =
-	{ "REGEX", "SUBNET", "HOSTNAME" };
+	{ "REGEX", "SUBNET", "HOSTNAME", "QUERY LOOP" };
 
 static unsigned char message_blob_types[MAX_MESSAGE][5] =
 	{
@@ -40,6 +40,13 @@ static unsigned char message_blob_types[MAX_MESSAGE][5] =
 		{	// HOSTNAME_MESSAGE: The message column contains the IP address of the device
 			SQLITE_TEXT, // Obtained host name
 			SQLITE_INTEGER, // Position of error in string
+			SQLITE_NULL, // not used
+			SQLITE_NULL, // not used
+			SQLITE_NULL // not used
+		},
+		{	// QUERYLOOP_MESSAGE: The message column contains the IP address of the upstream server
+			SQLITE_INTEGER, // Port of upstream server
+			SQLITE_NULL, // not used
 			SQLITE_NULL, // not used
 			SQLITE_NULL, // not used
 			SQLITE_NULL // not used
@@ -254,4 +261,14 @@ void logg_hostname_warning(const char *ip, const char *name, const unsigned int 
 
 	// Log to database
 	add_message(HOSTNAME_MESSAGE, ip, 2, name, (const int)pos);
+}
+
+void logg_query_loop_warning(const char *server, const int port)
+{
+	// Log to pihole-FTL.log
+	logg("QUERY LOOP WARNING: Disabled upstream server %s#%d as we detected a query loop!",
+	     server, port);
+
+	// Log to database
+	add_message(QUERYLOOP_MESSAGE, server, 1, port);
 }

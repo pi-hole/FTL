@@ -42,6 +42,8 @@
 #include <stdatomic.h>
 // Eventqueue routines
 #include "events.h"
+// logg_server_loop_warning()
+#include "database/message-table.h"
 
 static void print_flags(const unsigned int flags);
 static void save_reply_type(const unsigned int flags, const union all_addr *addr,
@@ -2057,4 +2059,12 @@ void FTL_TCP_worker_created(const int confd, const char *iface_name)
 	// We don't need them in the forks, so we clean them up
 	close_telnet_socket();
 	close_unix_socket(false);
+}
+
+// Log detection of a query loop - the corresponding server is disabled for
+// further use unless the list of servers is refreshed or FTL is restarted
+void FTL_log_server_loop(const char *server, const int port)
+{
+	// This will add both to the FTL log as well as to the message table
+	logg_query_loop_warning(server, port);
 }

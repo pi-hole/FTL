@@ -1657,7 +1657,10 @@ void check_servers(void)
 	    }
 #ifdef HAVE_LOOP
 	  else if (serv->flags & SERV_LOOP)
+	  {
 	    my_syslog(LOG_INFO, _("NOT using nameserver %s#%d - query loop detected"), daemon->namebuff, port); 
+	    FTL_log_server_loop(daemon->namebuff, port);
+	  }
 #endif
 	  else if (serv->interface[0] != 0)
 	    my_syslog(LOG_INFO, _("using nameserver %s#%d(via %s)"), daemon->namebuff, port, serv->interface); 

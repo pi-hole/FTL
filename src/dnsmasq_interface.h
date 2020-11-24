@@ -56,6 +56,7 @@ void FTL_dnsmasq_reload(void);
 void FTL_fork_and_bind_sockets(struct passwd *ent_pw);
 void FTL_TCP_worker_created(const int confd, const char *iface_name);
 void FTL_TCP_worker_terminating(bool finished);
+void FTL_log_server_loop(const char *server, const int port);
 
 void set_debug_dnsmasq_lines(char enabled);
 extern char debug_dnsmasq_lines;
