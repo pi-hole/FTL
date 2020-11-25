@@ -1319,6 +1319,9 @@ void getClientsOverTime(const int *sock)
 			// Skip invalid clients and also those managed by alias clients
 			if(client == NULL || client->aliasclient_id >= 0)
 				continue;
+			// Also skip clients with no active counts at all (may be old IPv6 addresses)
+			if(client->count == 0)
+				continue;
 			const int thisclient = client->overTime[slot];
 
 			if(istelnet[*sock])
@@ -1380,7 +1383,11 @@ void getClientNames(const int *sock)
 
 		// Get client pointer
 		const clientsData* client = getClient(clientID, true);
-		if(client == NULL)
+		// Skip invalid clients and also those managed by alias clients
+		if(client == NULL || client->aliasclient_id >= 0)
+			continue;
+		// Skip clients with no active counts at all (may be old IPv6 addresses)
+		if(client->count == 0)
 			continue;
 
 		const char *client_ip = getstr(client->ippos);
