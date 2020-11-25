@@ -365,13 +365,10 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
     {
       /* Query from new source, but the same query may be in progress
 	 from another source. If so, just add this client to the
-	 list that will get the reply.
+	 list that will get the reply.*/
 	 
-	 Note that is the EDNS client subnet option is in use, we can't do this,
-	 as the clients (and therefore query EDNS options) will be different
-	 for each query. The EDNS subnet code has checks to avoid
-	 attacks in this case. */
-      if (!option_bool(OPT_CLIENT_SUBNET) && (forward = lookup_frec_by_query(hash, fwd_flags)))
+      if (!option_bool(OPT_ADD_MAC) && !option_bool(OPT_MAC_B64) &&
+	  (forward = lookup_frec_by_query(hash, fwd_flags)))
 	{
 	  /* Note whine_malloc() zeros memory. */
 	  if (!daemon->free_frec_src &&
@@ -468,18 +465,21 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
   if (!flags && forward)
     {
       struct server *firstsentto = start;
-      int subnet, forwarded = 0;
+      int subnet, cacheable, forwarded = 0;
       size_t edns0_len;
       unsigned char *pheader;
       
       /* If a query is retried, use the log_id for the retry when logging the answer. */
       forward->frec_src.log_id = daemon->log_id;
       
-      plen = add_edns0_config(header, plen, ((unsigned char *)header) + PACKETSZ, &forward->frec_src.source, now, &subnet);
+      plen = add_edns0_config(header, plen, ((unsigned char *)header) + PACKETSZ, &forward->frec_src.source, now, &subnet, &cacheable);
       
       if (subnet)
 	forward->flags |= FREC_HAS_SUBNET;
-      
+
+      if (!cacheable)
+	forward->flags |= FREC_NO_CACHE;
+
 #ifdef HAVE_DNSSEC
       if (option_bool(OPT_DNSSEC_VALID) && do_dnssec)
 	{
@@ -671,7 +671,7 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
 	}
     }
 #endif
-  
+
   if ((pheader = find_pseudoheader(header, n, &plen, &sizep, &is_sign, NULL)))
     {
       /* Get extended RCODE. */
@@ -1297,6 +1297,11 @@ void reply_query(int fd, int family, time_t now)
 	header->hb4 |= HB4_CD;
       else
 	header->hb4 &= ~HB4_CD;
+
+      /* Never cache answers which are contingent on the source or MAC address EDSN0 option,
+	 since the cache is ignorant of such things. */
+      if (forward->flags & FREC_NO_CACHE)
+	no_cache_dnssec = 1;
       
       if ((nn = process_reply(header, now, forward->sentto, (size_t)n, check_rebind, no_cache_dnssec, cache_secure, bogusanswer, 
 			      forward->flags & FREC_AD_QUESTION, forward->flags & FREC_DO_QUESTION, 
@@ -1895,7 +1900,7 @@ unsigned char *tcp_request(int confd, time_t now,
   int local_auth = 0;
 #endif
   int checking_disabled, do_bit, added_pheader = 0, have_pseudoheader = 0;
-  int check_subnet, no_cache_dnssec = 0, cache_secure = 0, bogusanswer = 0;
+  int check_subnet, cacheable, no_cache_dnssec = 0, cache_secure = 0, bogusanswer = 0;
   size_t m;
   unsigned short qtype;
   unsigned int gotname;
@@ -2099,7 +2104,7 @@ unsigned char *tcp_request(int confd, time_t now,
 	      char *domain = NULL;
 	      unsigned char *oph = find_pseudoheader(header, size, NULL, NULL, NULL, NULL);
 
-	      size = add_edns0_config(header, size, ((unsigned char *) header) + 65536, &peer_addr, now, &check_subnet);
+	      size = add_edns0_config(header, size, ((unsigned char *) header) + 65536, &peer_addr, now, &check_subnet, &cacheable);
 
 	      if (gotname)
 		flags = search_servers(now, &addrp, gotname, daemon->namebuff, &type, &domain, &norebind);
@@ -2287,6 +2292,11 @@ unsigned char *tcp_request(int confd, time_t now,
 			  break;
 			}
 
+		      /* Never cache answers which are contingent on the source or MAC address EDSN0 option,
+			 since the cache is ignorant of such things. */
+		      if (!cacheable)
+			no_cache_dnssec = 1;
+		      
 		      m = process_reply(header, now, last_server, (unsigned int)m, 
 					option_bool(OPT_NO_REBIND) && !norebind, no_cache_dnssec, cache_secure, bogusanswer,
 					ad_reqd, do_bit, added_pheader, check_subnet, &peer_addr); 
@@ -2554,10 +2564,13 @@ static struct frec *lookup_frec_by_query(void *hash, unsigned int flags)
   struct frec *f;
 
   /* FREC_DNSKEY and FREC_DS_QUERY are never set in flags, so the test below 
-     ensures that no frec created for internal DNSSEC query can be returned here. */
+     ensures that no frec created for internal DNSSEC query can be returned here.
+     
+     Similarly FREC_NO_CACHE is never set in flags, so a query which is
+     contigent on a particular source address EDNS0 option will never be matched. */
 
 #define FLAGMASK (FREC_CHECKING_DISABLED | FREC_AD_QUESTION | FREC_DO_QUESTION \
-		  | FREC_HAS_PHEADER | FREC_DNSKEY_QUERY | FREC_DS_QUERY)
+		  | FREC_HAS_PHEADER | FREC_DNSKEY_QUERY | FREC_DS_QUERY | FREC_NO_CACHE)
   
   for(f = daemon->frec_list; f; f = f->next)
     if (f->sentto &&

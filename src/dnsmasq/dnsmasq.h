@@ -657,6 +657,7 @@ struct hostsfile {
 #define FREC_TEST_PKTSZ       256
 #define FREC_HAS_EXTRADATA    512
 #define FREC_HAS_PHEADER     1024
+#define FREC_NO_CACHE        2048
 
 #define HASH_SIZE 32 /* SHA-256 digest size */
 
@@ -1674,7 +1675,7 @@ size_t add_pseudoheader(struct dns_header *header, size_t plen, unsigned char *l
 			unsigned short udp_sz, int optno, unsigned char *opt, size_t optlen, int set_do, int replace);
 size_t add_do_bit(struct dns_header *header, size_t plen, unsigned char *limit);
 size_t add_edns0_config(struct dns_header *header, size_t plen, unsigned char *limit, 
-			union mysockaddr *source, time_t now, int *check_subnet);
+			union mysockaddr *source, time_t now, int *check_subnet, int *cacheable);
 int check_source(struct dns_header *header, size_t plen, unsigned char *pseudoheader, union mysockaddr *peer);
 
 /* arp.c */
