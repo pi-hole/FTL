@@ -2068,3 +2068,20 @@ void FTL_log_server_loop(const char *server, const int port)
 	// This will add both to the FTL log as well as to the message table
 	logg_query_loop_warning(server, port);
 }
+
+// Send probing queries to known servers
+#ifdef HAVE_LOOP
+void FTL_probe_server_loop(void)
+{
+	struct server *serv;
+	// Unmark all servers as looping to give them another chance
+	for (serv = daemon->servers; serv; serv = serv->next)
+		serv->flags &= ~SERV_LOOP;
+
+	// Loop through all upstream servers and send a query to that server
+	// which is identifiable, via their uid. We exclude servers which are
+	// configured for particular domains only. If we see that query back
+	// again, then the server is looping.
+	loop_send_probes();
+}
+#endif

@@ -21,6 +21,9 @@
 // Eventqueue routines
 #include "../events.h"
 
+// Prototypes
+extern void FTL_probe_server_loop(void);
+
 bool __attribute__((pure)) command(const char *client_message, const char* cmd) {
 	return strstr(client_message, cmd) != NULL;
 }
@@ -171,6 +174,12 @@ void process_request(const char *client_message, int *sock)
 		processed = true;
 		logg("Received API request to update vendors in network table");
 		updateMACVendorRecords();
+	}
+	else if(command(client_message, ">probe-query-loops"))
+	{
+		processed = true;
+		logg("Received API request to check all known servers for query loops");
+		FTL_probe_server_loop();
 	}
 
 	// Test only at the end if we want to quit or kill
