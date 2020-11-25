@@ -295,7 +295,11 @@ void read_FTLconf(void)
 	config.DBimport = read_bool(buffer, true);
 
 	if(config.DBimport)
+	{
 		logg("   DBIMPORT: Importing history from database");
+		if(config.maxDBdays == 0)
+			logg("      Hint: Exporting queries has been disabled (MAXDBDAYS=0)!");
+	}
 	else
 		logg("   DBIMPORT: Not importing history from database");
 
