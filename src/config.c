@@ -186,7 +186,6 @@ void read_FTLconf(void)
 	// defaults to: "/etc/pihole/pihole-FTL.db"
 	buffer = parse_FTLconf(fp, "DBFILE");
 
-	errno = 0;
 	// Use sscanf() to obtain filename from config file parameter only if buffer != NULL
 	if(!(buffer != NULL && sscanf(buffer, "%127ms", &FTLfiles.FTL_db)))
 	{
@@ -194,16 +193,16 @@ void read_FTLconf(void)
 		FTLfiles.FTL_db = strdup("/etc/pihole/pihole-FTL.db");
 	}
 
-	// Test if memory allocation was successful
-	if(FTLfiles.FTL_db == NULL && errno != 0)
-	{
-		logg("FATAL: Allocating memory for FTLfiles.FTL_db failed (%s, %i). Exiting.", strerror(errno), errno);
-		exit(EXIT_FAILURE);
-	}
-	else if(FTLfiles.FTL_db != NULL && strlen(FTLfiles.FTL_db) > 0)
+	if(FTLfiles.FTL_db != NULL && strlen(FTLfiles.FTL_db) > 0)
 		logg("   DBFILE: Using %s", FTLfiles.FTL_db);
 	else
-		logg("   DBFILE: Not using database due to empty filename");
+	{
+		// Use standard path if path was set to zero but override
+		// MAXDBDAYS=0 to ensure no queries are stored in the database
+		FTLfiles.FTL_db = strdup("/etc/pihole/pihole-FTL.db");
+		config.maxDBdays = 0;
+		logg("   DBFILE: Using %s (not storing queries)", FTLfiles.FTL_db);
+	}
 
 	// FTLPORT
 	// On which port should FTL be listening?

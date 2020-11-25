@@ -74,10 +74,6 @@ bool dbopen(void)
 		return true;
 	}
 
-	// Do not open database if it is not to be used
-	if(!use_database())
-		return false;
-
 	if(config.debug & DEBUG_LOCKS)
 		logg("Locking FTL database");
 
@@ -419,16 +415,12 @@ void db_init(void)
 
 	// Log if users asked us to not use the long-term database for queries
 	// We will still use it to store warnings in it
-	if(!use_database())
-	{
-		logg("Not using the long-term database for storing queries");
-		config.DBexport = false;
-		return;
-	}
 	config.DBexport = true;
-
-	// Close database here, we have to reopen it later (after forking)
-	dbclose();
+	if(config.maxDBdays == 0)
+	{
+		logg("Not using the database for storing queries");
+		config.DBexport = false;
+	}
 
 	logg("Database successfully initialized");
 }
@@ -622,20 +614,4 @@ long get_lastID(void)
 const char *get_sqlite3_version(void)
 {
 	return sqlite3_libversion();
-}
-
-// Should the long-term database be used?
-__attribute__ ((pure)) bool use_database()
-{
-	// Check if the user doesn't want to use the database and set an
-	// empty string as file name in FTL's config file or configured
-	// a maximum history of zero days.
-	if(FTLfiles.FTL_db == NULL ||
-	   strlen(FTLfiles.FTL_db) == 0 ||
-	   config.maxDBdays == 0)
-	{
-		return false;
-	}
-
-	return true;
 }

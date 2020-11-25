@@ -108,7 +108,7 @@ int main (int argc, char* argv[])
 	pthread_cancel(socket_listenthread);
 
 	// Save new queries to database (if database is used)
-	if(use_database())
+	if(config.DBexport)
 	{
 		DB_save_queries();
 		logg("Finished final database update");
