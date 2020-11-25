@@ -157,7 +157,7 @@ extern int capget(cap_user_header_t header, cap_user_data_t data);
 #include <priv.h>
 #endif
 
-#ifdef HAVE_DNSSEC
+#if defined(HAVE_DNSSEC) || defined(HAVE_NETTLEHASH)
 #  include <nettle/nettle-meta.h>
 #endif
 

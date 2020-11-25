@@ -28,7 +28,7 @@
 
 #include "dnsmasq.h"
 
-#ifdef HAVE_DNSSEC
+#if defined(HAVE_DNSSEC) || defined(HAVE_NETTLEHASH)
 unsigned char *hash_questions(struct dns_header *header, size_t plen, char *name)
 {
   int q;
