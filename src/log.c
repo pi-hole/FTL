@@ -178,7 +178,13 @@ void FTL_log_helper(const unsigned char n, ...)
 	char *arg[n];
 	va_start(args, n);
 	for(unsigned char i = 0; i < n; i++)
-		arg[i] = strdup(va_arg(args, char*));
+	{
+		const char *argin = va_arg(args, char*);
+		if(argin == NULL)
+			arg[i] = NULL;
+		else
+			arg[i] = strdup(argin);
+	}
 	va_end(args);
 
 	// Select appropriate logging format
@@ -201,7 +207,8 @@ void FTL_log_helper(const unsigned char n, ...)
 
 	// Free allocated memory
 	for(unsigned char i = 0; i < n; i++)
-		free(arg[i]);
+		if(arg[i] != NULL)
+			free(arg[i]);
 }
 
 void format_memory_size(char * const prefix, const unsigned long long int bytes,
