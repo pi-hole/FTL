@@ -191,10 +191,6 @@ char *resolveHostname(const char *addr)
 		{
 			// Return hostname copied to new memory location
 			hostname = strdup(he->h_name);
-
-			// Convert hostname to lower case
-			if(hostname != NULL)
-				strtolower(hostname);
 		}
 		else
 		{
@@ -241,10 +237,6 @@ char *resolveHostname(const char *addr)
 			{
 				// Return hostname copied to new memory location
 				hostname = strdup(he->h_name);
-
-				// Convert hostname to lower case
-				if(hostname != NULL)
-					strtolower(hostname);
 			}
 			else
 			{

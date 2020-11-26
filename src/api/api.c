@@ -737,7 +737,7 @@ void getAllQueries(const char *client_message, const int *sock)
 				// (if available) their host names
 				if((strcmp(getstr(forward->ippos), serv_addr) == 0 ||
 				   (forward->namepos != 0 &&
-				    strcmp(getstr(forward->namepos), serv_addr) == 0)) && forward->port == serv_port)
+				    strcasecmp(getstr(forward->namepos), serv_addr) == 0)) && forward->port == serv_port)
 				{
 					forwarddestid = i;
 					break;
@@ -812,7 +812,7 @@ void getAllQueries(const char *client_message, const int *sock)
 			// Try to match the requested string
 			if(strcmp(getstr(client->ippos), clientname) == 0 ||
 			   (client->namepos != 0 &&
-			    strcmp(getstr(client->namepos), clientname) == 0))
+			    strcasecmp(getstr(client->namepos), clientname) == 0))
 			{
 				clientid = i;
 
