@@ -8,6 +8,9 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
+#define FTLDNS
+#include "dnsmasq/dnsmasq.h"
+#undef __USE_XOPEN
 #include "FTL.h"
 #include "dhcp-discover.h"
 // logg(), format_time()
@@ -52,6 +55,11 @@
 
 // Global lock used by all threads
 static pthread_mutex_t lock;
+
+extern const struct opttab_t {
+  char *name;
+  u16 val, size;
+} opttab[];
 
 // creates a socket for DHCP communication
 static int create_dhcp_socket(const char *interface_name)
@@ -148,7 +156,7 @@ typedef struct dhcp_packet_struct
 	char sname [MAX_DHCP_SNAME_LENGTH];    // name of DHCP server
 	char file [MAX_DHCP_FILE_LENGTH];      // boot file name (used for diskless booting?)
 	char options[MAX_DHCP_OPTIONS_LENGTH];  // options
-} dhcp_packet;
+} dhcp_packet_data;
 
 #define BOOTREQUEST     1
 #define BOOTREPLY       2
@@ -156,7 +164,7 @@ typedef struct dhcp_packet_struct
 // sends a DHCPDISCOVER message to the specified in an attempt to find DHCP servers
 static bool send_dhcp_discover(const int sock, const uint32_t xid, const char *iface, unsigned char *mac, const in_addr_t addr)
 {
-	dhcp_packet discover_packet;
+	dhcp_packet_data discover_packet;
 
 	// clear the packet data structure
 	memset(&discover_packet, 0, sizeof(discover_packet));
@@ -227,7 +235,7 @@ static bool send_dhcp_discover(const int sock, const uint32_t xid, const char *i
 }
 
 // adds a DHCP OFFER to list in memory
-static void print_dhcp_offer(struct in_addr source, dhcp_packet *offer_packet)
+static void print_dhcp_offer(struct in_addr source, dhcp_packet_data *offer_packet)
 {
 	if(offer_packet == NULL)
 		return;
@@ -250,187 +258,127 @@ static void print_dhcp_offer(struct in_addr source, dhcp_packet *offer_packet)
 
 		// Interpret option data, see RFC 1497 and RFC 2132, Section 3 for further details
 		// A nice summary can be found in https://tools.ietf.org/html/rfc2132#section-3
-		if(opttype == 1) // SUBNET_MASK
+		bool found = false;
+		for (unsigned int i = 0; opttab[i].name != NULL; i++)
 		{
-			struct in_addr subnet;
-			memcpy(&subnet.s_addr, &offer_packet->options[x], sizeof(subnet.s_addr));
-			logg("Subnet mask: %s", inet_ntoa(subnet));
-		}
-		else if(opttype == 3) // ROUTER
-		{
-			for(unsigned int n = 0; n < optlen/4; n++)
+			if(opttab[i].val != opttype)
+				continue;
+
+			found = true;
+			if(opttab[i].size & OT_ADDR_LIST)
 			{
-				struct in_addr router;
-				memcpy(&router.s_addr, &offer_packet->options[x+n*4], sizeof(router.s_addr));
-				logg("Router %u: %s", n+1, inet_ntoa(router));
+				for(unsigned int n = 0; n < optlen/4; n++)
+				{
+					struct in_addr addr_list = { 0 };
+					memcpy(&addr_list.s_addr, &offer_packet->options[x+n*4], sizeof(addr_list.s_addr));
+					if(n > 0)
+						logg_sameline("   ");
+
+					logg("%s: %s", opttab[i].name, inet_ntoa(addr_list));
+				}
+			}
+			else if(opttab[i].size & OT_NAME)
+			{
+				char name[optlen+1];
+				memcpy(&name, &offer_packet->options[x], optlen);
+				name[optlen] = '\0';
+
+				if(iscntrl(name[0]))
+					logg("%s: <cntrl sequence> (length %u)", opttab[i].name, optlen);
+				else
+					logg("%s: \"%s\"", opttab[i].name, name);
+			}
+			else if(opttab[i].size & OT_TIME)
+			{
+				uint32_t time = 0;
+				memcpy(&time, &offer_packet->options[x], sizeof(time));
+				time = ntohl(time);
+				const char *optname = opttab[i].name;
+				// Some timers deserve a more user-friedly name
+				if(opttype == 58)
+					optname = "renewal-time"; // "T1" in dnsmasq-notation
+				else if(opttype == 59)
+					optname = "rebinding-time"; // "T2" in dnsmasq-notation
+
+				if(time == 0xFFFFFFFF)
+					logg("%s: Infinite", optname);
+				else
+				{
+					char buffer[32] = { 0 };
+					format_time(buffer, time, 0.0);
+					logg("%s: %lu (%s)", optname, (unsigned long)time, buffer);
+				}
+			}
+			else if(opttab[i].size & OT_DEC)
+			{
+				if(opttype == 53) // DHCP MESSAGE TYPE
+				{
+					switch(offer_packet->options[x])
+					{
+						case 1:
+							logg("Message type: DHCPDISCOVER (1)");
+							break;
+						case 2:
+							logg("Message type: DHCPOFFER (2)");
+							break;
+						case 3:
+							logg("Message type: DHCPREQUEST (3)");
+							break;
+						case 4:
+							logg("Message type: DHCPDECLINE (4)");
+							break;
+						case 5:
+							logg("Message type: DHCPACK (5)");
+							break;
+						case 6:
+							logg("Message type: DHCPNAK (6)");
+							break;
+						case 7:
+							logg("Message type: DHCPRELEASE (7)");
+							break;
+						case 8:
+							logg("Message type: DHCPINFORM (8)");
+							break;
+						default:
+							logg("Message type: UNKNOWN (%u)", offer_packet->options[x]);
+							break;
+					}
+				}
+				else
+				{
+					unsigned long number = 0;
+					if(optlen <= 4)
+					{
+						memcpy(&number, &offer_packet->options[x], optlen);
+						logg("%s: %lu", opttab[i].name, number);
+					}
+				}
 			}
 		}
-		else if(opttype == 4) // TIME SERVER
+
+		// Log some special messages that are not handled by dnsmasq
+		if(!found)
 		{
-			for(unsigned int n = 0; n < optlen/4; n++)
-			{
-				struct in_addr time_server;
-				memcpy(&time_server.s_addr, &offer_packet->options[x+n*4], sizeof(time_server.s_addr));
-				logg("Time server %u: %s", n+1, inet_ntoa(time_server));
+			if(opttype == 252) // WPAD configuration (this is a non-standard extension)
+			{                       // see INTERNET-DRAFT Web Proxy Auto-Discovery Protocol
+			                        // https://tools.ietf.org/html/draft-ietf-wrec-wpad-01
+				char wpad_server[optlen+1];
+				memcpy(&wpad_server, &offer_packet->options[x], optlen);
+				wpad_server[optlen] = '\0';
+				if(iscntrl(wpad_server[0]))
+					logg("wpad-server: <cntrl sequence> (length %u)", optlen);
+				else
+					logg("wpad-server: \"%s\"", wpad_server);
 			}
-		}
-		else if(opttype == 5) // NAME SERVER
-		{
-			for(unsigned int n = 0; n < optlen/4; n++)
+			else if(opttype == 255) // END OF OPTIONS
 			{
-				struct in_addr name_server;
-				memcpy(&name_server.s_addr, &offer_packet->options[x+n*4], sizeof(name_server.s_addr));
-				logg("Name server %u: %s", n+1, inet_ntoa(name_server));
+				logg("--- end of options ---");
+				break;
 			}
-		}
-		else if(opttype == 6) // DNS SERVER
-		{
-			for(unsigned int n = 0; n < optlen/4; n++)
-			{
-				struct in_addr dns_server;
-				memcpy(&dns_server.s_addr, &offer_packet->options[x+n*4], sizeof(dns_server.s_addr));
-				logg("DNS server %u: %s", n+1, inet_ntoa(dns_server));
-			}
-		}
-		else if(opttype == 13) // HOST NAME
-		{
-			char host_name[optlen+1];
-			memcpy(&host_name, &offer_packet->options[x], optlen);
-			host_name[optlen] = '\0';
-			logg("Host name: \"%s\"", host_name);
-		}
-		else if(opttype == 15) // DOMAIN NAME
-		{
-			char domain_name[optlen+1];
-			memcpy(&domain_name, &offer_packet->options[x], optlen);
-			domain_name[optlen] = '\0';
-			logg("Domain name: \"%s\"", domain_name);
-		}
-		else if(opttype == 18) // EXTENSION PATH
-		{
-			char extension_path[optlen+1];
-			memcpy(&extension_path, &offer_packet->options[x], optlen);
-			extension_path[optlen] = '\0';
-			logg("Extension path (TFTP): \"%s\"", extension_path);
-		}
-		else if(opttype == 28) // BROADCAST ADDRESS
-		{
-			struct in_addr bc_addr;
-			memcpy(&bc_addr.s_addr, &offer_packet->options[x], sizeof(bc_addr.s_addr));
-			logg("Broadcast address: %s", inet_ntoa(bc_addr));
-		}
-		else if(opttype == 44) // NetBIOS name server
-		{
-			for(unsigned int n = 0; n < optlen/4; n++)
-			{
-				struct in_addr NB_name_server;
-				memcpy(&NB_name_server.s_addr, &offer_packet->options[x+n*4], sizeof(NB_name_server.s_addr));
-				logg("NetBIOS name server %u: %s", n+1, inet_ntoa(NB_name_server));
-			}
-		}
-		else if(opttype == 51) // LEASE_TIME
-		{
-			uint32_t lease_time = 0;
-			memcpy(&lease_time, &offer_packet->options[x], sizeof(lease_time));
-			lease_time = ntohl(lease_time);
-			logg_sameline("Lease time:");
-			if(lease_time == 0xFFFFFFFF)
-				logg("Infinite");
 			else
 			{
-				char buffer[32] = { 0 };
-				format_time(buffer, lease_time, 0.0);
-				logg("%s(%lu seconds)", buffer, (unsigned long)lease_time);
+				logg("Unknown option %d with length %d", opttype, optlen);
 			}
-		}
-		else if(opttype == 53) // DHCP MESSAGE TYPE
-		{
-			switch(offer_packet->options[x])
-			{
-				case 1:
-					logg("Message type: DHCPDISCOVER");
-					break;
-				case 2:
-					logg("Message type: DHCPOFFER");
-					break;
-				case 3:
-					logg("Message type: DHCPREQUEST");
-					break;
-				case 4:
-					logg("Message type: DHCPDECLINE");
-					break;
-				case 5:
-					logg("Message type: DHCPACK");
-					break;
-				case 6:
-					logg("Message type: DHCPNAK");
-					break;
-				case 7:
-					logg("Message type: DHCPRELEASE");
-					break;
-				case 8:
-					logg("Message type: DHCPINFORM");
-					break;
-				default:
-					logg("Message type: UNKNOWN (%u)", offer_packet->options[x]);
-					break;
-			}
-		}
-		else if(opttype == 54) // SERVER IDENTIFICATION
-		{
-			struct in_addr server_id;
-			memcpy(&server_id.s_addr, &offer_packet->options[x], sizeof(server_id.s_addr));
-			logg("Server identification: %s", inet_ntoa(server_id));
-		}
-		else if(opttype == 58) // RENEWAL_TIME
-		{
-			uint32_t renewal_time = 0;
-			memcpy(&renewal_time, &offer_packet->options[x], sizeof(renewal_time));
-			renewal_time = ntohl(renewal_time);
-			logg_sameline("Renewal time:");
-			if(renewal_time == 0xFFFFFFFF)
-				logg("Infinite");
-			else
-			{
-				char buffer[32] = { 0 };
-				format_time(buffer, renewal_time, 0.0);
-				logg("%s(%lu seconds)", buffer, (unsigned long)renewal_time);
-			}
-		}
-		else if(opttype == 59) // REBINDING_TIME
-		{
-			uint32_t rebinding_time = 0;
-			memcpy(&rebinding_time, &offer_packet->options[x], sizeof(rebinding_time));
-			rebinding_time = ntohl(rebinding_time);
-			logg_sameline("Rebinding time:");
-			if(rebinding_time == 0xFFFFFFFF)
-				logg("Infinite");
-			else
-			{
-				char buffer[32] = { 0 };
-				format_time(buffer, rebinding_time, 0.0);
-				logg("%s(%lu seconds)", buffer, (unsigned long)rebinding_time);
-			}
-		}
-		else if(opttype == 252) // WPAD configuration (this is a non-standard extension)
-		{                       // see INTERNET-DRAFT Web Proxy Auto-Discovery Protocol
-		                        // https://tools.ietf.org/html/draft-ietf-wrec-wpad-01
-			char wpad_server[optlen+1];
-			memcpy(&wpad_server, &offer_packet->options[x], optlen);
-			wpad_server[optlen] = '\0';
-			if(iscntrl(wpad_server[0]))
-				logg("WPAD server: <cntrl sequence> (length %u)", optlen);
-			else
-				logg("WPAD server: \"%s\"", wpad_server);
-		}
-		else if(opttype == 255) // END OF OPTIONS
-		{
-			logg("--- end of options ---");
-			break;
-		}
-		else
-		{
-			logg("Unknown option %d with length %d", opttype, optlen);
 		}
 
 		// Advance option pointer index
@@ -481,7 +429,7 @@ static bool receive_dhcp_packet(void *buffer, int buffer_size, const char *iface
 // waits for a DHCPOFFER message from one or more DHCP servers
 static bool get_dhcp_offer(const int sock, const uint32_t xid, const char *iface, unsigned char *mac)
 {
-	dhcp_packet offer_packet;
+	dhcp_packet_data offer_packet;
 	struct sockaddr_in source;
 #ifdef DEBUG
 	unsigned int responses = 0;

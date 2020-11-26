@@ -552,7 +552,7 @@ void  bindtodevice(char *device, int fd)
 }
 #endif
 
-static const struct opttab_t {
+const struct opttab_t {
   char *name;
   u16 val, size;
 } opttab[] = {
