@@ -82,6 +82,19 @@ void parse_args(int argc, char* argv[])
 			// Remember that the rest is for dnsmasq ...
 			consume_for_dnsmasq = true;
 
+			// Special command interpretation for "pihole-FTL -- --help dhcp"
+			if(argc > 1 && strcmp(argv[argc-2], "--help") == 0 && strcmp(argv[argc-1], "dhcp") == 0)
+			{
+				display_opts();
+				exit(EXIT_SUCCESS);
+			}
+			// and "pihole-FTL -- --help dhcp6"
+			if(argc > 1 && strcmp(argv[argc-2], "--help") == 0 && strcmp(argv[argc-1], "dhcp6") == 0)
+			{
+				display_opts6();
+				exit(EXIT_SUCCESS);
+			}
+
 			// ... and skip the current argument ("--")
 			continue;
 		}
