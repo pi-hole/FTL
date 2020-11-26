@@ -276,6 +276,10 @@ static void print_dhcp_offer(struct in_addr source, dhcp_packet_data *offer_pack
 
 					logg("%s: %s", opttab[i].name, inet_ntoa(addr_list));
 				}
+
+				// Special case: optlen == 0
+				if(optlen == 0)
+					logg("--- end of options ---");
 			}
 			else if(opttab[i].size & OT_NAME)
 			{
@@ -346,11 +350,16 @@ static void print_dhcp_offer(struct in_addr source, dhcp_packet_data *offer_pack
 				}
 				else
 				{
-					unsigned long number = 0;
+					// Log generic (unsigned) number
+					uint32_t number = 0;
 					if(optlen <= 4)
 					{
 						memcpy(&number, &offer_packet->options[x], optlen);
-						logg("%s: %lu", opttab[i].name, number);
+						if(optlen == 2)
+							number = ntohs(number);
+						else if(optlen == 4)
+							number = ntohl(number);
+						logg("%s: %u", opttab[i].name, number);
 					}
 				}
 			}
@@ -369,11 +378,6 @@ static void print_dhcp_offer(struct in_addr source, dhcp_packet_data *offer_pack
 					logg("wpad-server: <cntrl sequence> (length %u)", optlen);
 				else
 					logg("wpad-server: \"%s\"", wpad_server);
-			}
-			else if(opttype == 255) // END OF OPTIONS
-			{
-				logg("--- end of options ---");
-				break;
 			}
 			else
 			{
