@@ -59,7 +59,7 @@ void *GC_thread(void *val)
 				timer_start(GC_TIMER);
 				char timestring[84] = "";
 				get_timestr(timestring, mintime);
-				logg("GC starting, mintime: %s (%lu)", timestring, mintime);
+				logg("GC starting, mintime: %s (%llu)", timestring, (long long)mintime);
 			}
 
 			// Process all queries
@@ -77,13 +77,13 @@ void *GC_thread(void *val)
 				// Adjust client counter
 				clientsData* client = getClient(query->clientID, true);
 				if(client != NULL)
-					client->count--;
+					change_clientcount(client, -1, 0, 0, 0);
 
 				// Adjust total counters and total over time data
 				const int timeidx = query->timeidx;
 				overTime[timeidx].total--;
 				if(client != NULL)
-					client->overTime[timeidx]--;
+					change_clientcount(client, 0, 0, timeidx, -1);
 
 				// Adjust domain counter (no overTime information)
 				domainsData* domain = getDomain(query->domainID, true);
@@ -100,7 +100,9 @@ void *GC_thread(void *val)
 						// Unknown (?)
 						counters->unknown--;
 						break;
-					case QUERY_FORWARDED:
+					case QUERY_FORWARDED: // (fall through)
+					case QUERY_RETRIED: // (fall through)
+					case QUERY_RETRIED_DNSSEC:
 						// Forwarded to an upstream DNS server
 						// Adjust counters
 						counters->forwarded--;
@@ -127,7 +129,7 @@ void *GC_thread(void *val)
 						if(domain != NULL)
 							domain->blockedcount--;
 						if(client != NULL)
-							client->blockedcount--;
+							change_clientcount(client, 0, -1, -1, 0);
 						break;
 					case QUERY_STATUS_MAX: // fall through
 					default:

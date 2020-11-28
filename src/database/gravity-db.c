@@ -8,19 +8,30 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "FTL.h"
+#include "../FTL.h"
 #include "sqlite3.h"
 #include "gravity-db.h"
-#include "config.h"
-#include "log.h"
+// struct config
+#include "../config.h"
+// logg()
+#include "../log.h"
 // match_regex()
-#include "regex_r.h"
+#include "../regex_r.h"
 // getstr()
-#include "shmem.h"
+#include "../shmem.h"
 // SQLite3 prepared statement vectors
 #include "../vector.h"
 // log_subnet_warning()
-#include "database/message-table.h"
+#include "message-table.h"
+// getMACfromIP()
+#include "network-table.h"
+// struct DNSCacheData
+#include "../datastructure.h"
+// reset_aliasclient()
+#include "aliasclients.h"
+
+// Prefix of interface names in the client table
+#define INTERFACE_SEP ":"
 
 // Process-private prepared statements are used to support multiple forks (might
 // be TCP workers) to use the database simultaneously without corrupting the
@@ -56,10 +67,8 @@ void gravityDB_forked(void)
 
 void gravityDB_reopen(void)
 {
-	lock_shm();
 	gravityDB_close();
 	gravityDB_open();
-	unlock_shm();
 }
 
 // Open gravity database
@@ -183,10 +192,29 @@ static char* get_client_querystr(const char* table, const char* groups)
 	return querystr;
 }
 
+// Determine whether to show IP or hardware address
+static inline const char *show_client_string(const char *hwaddr, const char *hostname,
+                                             const char *ip)
+{
+	if(hostname != NULL && strlen(hostname) > 0)
+	{
+		// Valid hostname address, display it
+		return hostname;
+	}
+	else if(hwaddr != NULL && strncasecmp(hwaddr, "ip-", 3) != 0)
+	{
+		// Valid hardware address and not a mock-device
+		return hwaddr;
+	}
+
+	// Fallback: display IP address
+	return ip;
+}
+
+
 // Get associated groups for this client (if defined)
 static bool get_client_groupids(clientsData* client)
 {
-	char *querystr = NULL;
 	const char *ip = getstr(client->ippos);
 	client->found_group = false;
 	client->groupspos = 0u;
@@ -198,36 +226,42 @@ static bool get_client_groupids(clientsData* client)
 		return false;
 	}
 
-	if(config.debug & DEBUG_DATABASE)
-		logg("Querying gravity database for client %s (getting best match)", ip);
+	if(config.debug & DEBUG_CLIENTS)
+		logg("Querying gravity database for client with IP %s...", ip);
 
 	// Check if client is configured through the client table
 	// This will return nothing if the client is unknown/unconfigured
-	if(asprintf(&querystr, "SELECT count(id) matching_count, "
-	                               "max(id) chosen_match_id, "
-	                               "ip chosen_match_text, "
-	                               "group_concat(id) matching_ids, "
-	                               "subnet_match(ip,'%s') matching_bits FROM client "
-	                               "WHERE matching_bits > 0 "
-	                               "GROUP BY matching_bits "
-	                               "ORDER BY matching_bits DESC LIMIT 1;", ip) < 1)
-	{
-		logg("get_client_groupids() - asprintf() error 1");
-		return false;
-	}
+	const char *querystr = "SELECT count(id) matching_count, "
+	                       "max(id) chosen_match_id, "
+	                       "ip chosen_match_text, "
+	                       "group_concat(id) matching_ids, "
+	                       "subnet_match(ip,?) matching_bits FROM client "
+	                       "WHERE matching_bits > 0 "
+	                       "GROUP BY matching_bits "
+	                       "ORDER BY matching_bits DESC LIMIT 1;";
 
 	// Prepare query
 	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &table_stmt, NULL);
-	if(rc != SQLITE_OK){
-		logg("get_client_groupids(%s) - SQL error prepare: %s",
-		     querystr, sqlite3_errstr(rc));
-		free(querystr);
+	if(rc != SQLITE_OK)
+	{
+		logg("get_client_groupids(\"%s\") - SQL error prepare: %s",
+		     ip, sqlite3_errstr(rc));
 		return false;
+	}
+
+	// Bind ipaddr to prepared statement
+	if((rc = sqlite3_bind_text(table_stmt, 1, ip, -1, SQLITE_STATIC)) != SQLITE_OK)
+	{
+		logg("get_client_groupids(\"%s\"): Failed to bind ip: %s",
+		     ip, sqlite3_errstr(rc));
+		sqlite3_reset(table_stmt);
+		sqlite3_finalize(table_stmt);
+		return NULL;
 	}
 
 	// Perform query
 	rc = sqlite3_step(table_stmt);
-	int matching_count = 0, chosen_match_id = 0, matching_bits = 0;
+	int matching_count = 0, chosen_match_id = -1, matching_bits = 0;
 	char *matching_ids = NULL, *chosen_match_text = NULL;
 	if(rc == SQLITE_ROW)
 	{
@@ -238,34 +272,27 @@ static bool get_client_groupids(clientsData* client)
 		chosen_match_text = strdup((const char*)sqlite3_column_text(table_stmt, 2));
 		matching_ids = strdup((const char*)sqlite3_column_text(table_stmt, 3));
 		matching_bits = sqlite3_column_int(table_stmt, 4);
+
+		if(config.debug & DEBUG_CLIENTS && matching_count == 1)
+			// Case matching_count > 1 handled below using logg_subnet_warning()
+			logg("--> Found record for %s in the client table (group ID %d)", ip, chosen_match_id);
 	}
 	else if(rc == SQLITE_DONE)
 	{
-		// Found no record for this client in the database
-		// This makes this client qualify for the special "all" group
-		client->groupspos = addstr("0");
-		client->found_group = true;
+		if(config.debug & DEBUG_CLIENTS)
+			logg("--> No record for %s in the client table", ip);
 	}
 	else
 	{
-		logg("get_client_groupids(%s) - SQL error step: %s",
-		     querystr, sqlite3_errstr(rc));
+		// Error
+		logg("get_client_groupids(\"%s\") - SQL error step: %s",
+		     ip, sqlite3_errstr(rc));
 		gravityDB_finalizeTable();
-		free(querystr);
 		return false;
 	}
 
-	// Finalize statement nad free allocated memory
+	// Finalize statement
 	gravityDB_finalizeTable();
-	free(querystr);
-	querystr = NULL;
-
-	if(client->found_group)
-	{
-		// The client is not configured through the client table, we
-		// substituted the default group. Return early here.
-		return true;
-	}
 
 	if(matching_count > 1)
 	{
@@ -278,33 +305,368 @@ static bool get_client_groupids(clientsData* client)
 		//   Client 2: 10.8.1.0/24
 		logg_subnet_warning(ip, matching_count, matching_ids, matching_bits, chosen_match_text, chosen_match_id);
 	}
-	free(matching_ids);
-	matching_ids = NULL;
-	free(chosen_match_text);
-	chosen_match_text = NULL;
+
+	// Free memory if applicable
+	if(matching_ids != NULL)
+	{
+		free(matching_ids);
+		matching_ids = NULL;
+	}
+	if(chosen_match_text != NULL)
+	{
+		free(chosen_match_text);
+		chosen_match_text = NULL;
+	}
+
+	// If we didn't find an IP address match above, try with MAC address matches
+	// 1. Look up MAC address of this client
+	//   1.1. Look up IP address in network_addresses table
+	//   1.2. Get MAC address from this network_id
+	// 2. If found -> Get groups by looking up MAC address in client table
+	char *hwaddr = NULL;
+	if(chosen_match_id < 0)
+	{
+		if(config.debug & DEBUG_CLIENTS)
+			logg("Querying gravity database for MAC address of %s...", ip);
+
+		// Do the lookup
+		hwaddr = getMACfromIP(ip);
+
+		if(hwaddr == NULL && config.debug & DEBUG_CLIENTS)
+		{
+			logg("--> No result.");
+		}
+		else if(hwaddr != NULL && strlen(hwaddr) > 3 && strncasecmp(hwaddr, "ip-", 3) == 0)
+		{
+			free(hwaddr);
+			hwaddr = NULL;
+
+			if(config.debug & DEBUG_CLIENTS)
+				logg("Skipping mock-device hardware address lookup");
+		}
+		// Set MAC address from database information if available and the MAC address is not already set
+		else if(hwaddr != NULL && client->hwlen != 6)
+		{
+			// Proper MAC parsing
+			unsigned char data[6];
+			const int n = sscanf(hwaddr, "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
+			                     &data[0], &data[1], &data[2],
+			                     &data[3], &data[4], &data[5]);
+
+			// Set hwlen only if we got data
+			if(n == 6)
+			{
+				memcpy(client->hwaddr, data, sizeof(data));
+				client->hwlen = sizeof(data);
+			}
+		}
+
+		// MAC address fallback: Try to synthesize MAC address from internal buffer
+		if(hwaddr == NULL && client->hwlen == 6)
+		{
+			const size_t strlen = sizeof("AA:BB:CC:DD:EE:FF");
+			hwaddr = calloc(18, strlen);
+			snprintf(hwaddr, strlen, "%02X:%02X:%02X:%02X:%02X:%02X",
+			         client->hwaddr[0], client->hwaddr[1], client->hwaddr[2],
+			         client->hwaddr[3], client->hwaddr[4], client->hwaddr[5]);
+
+			if(config.debug & DEBUG_CLIENTS)
+				logg("--> Obtained %s from internal ARP cache", hwaddr);
+		}
+	}
+
+	// Check if we received a valid MAC address
+	// This ensures we skip mock hardware addresses such as "ip-127.0.0.1"
+	if(hwaddr != NULL)
+	{
+		if(config.debug & DEBUG_CLIENTS)
+			logg("--> Querying client table for %s", hwaddr);
+
+		// Check if client is configured through the client table
+		// This will return nothing if the client is unknown/unconfigured
+		// We use COLLATE NOCASE to ensure the comparison is done case-insensitive
+		querystr = "SELECT id FROM client WHERE ip = ? COLLATE NOCASE;";
+
+		// Prepare query
+		rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &table_stmt, NULL);
+		if(rc != SQLITE_OK)
+		{
+			logg("get_client_groupids(%s) - SQL error prepare: %s",
+				querystr, sqlite3_errstr(rc));
+			return false;
+		}
+
+		// Bind hwaddr to prepared statement
+		if((rc = sqlite3_bind_text(table_stmt, 1, hwaddr, -1, SQLITE_STATIC)) != SQLITE_OK)
+		{
+			logg("get_client_groupids(\"%s\", \"%s\"): Failed to bind hwaddr: %s",
+				ip, hwaddr, sqlite3_errstr(rc));
+			sqlite3_reset(table_stmt);
+			sqlite3_finalize(table_stmt);
+			return false;
+		}
+
+		// Perform query
+		rc = sqlite3_step(table_stmt);
+		if(rc == SQLITE_ROW)
+		{
+			// There is a record for this client in the database,
+			// extract the result (there can be at most one line)
+			chosen_match_id = sqlite3_column_int(table_stmt, 0);
+
+			if(config.debug & DEBUG_CLIENTS)
+				logg("--> Found record for %s in the client table (group ID %d)", hwaddr, chosen_match_id);
+		}
+		else if(rc == SQLITE_DONE)
+		{
+			if(config.debug & DEBUG_CLIENTS)
+				logg("--> There is no record for %s in the client table", hwaddr);
+		}
+		else
+		{
+			// Error
+			logg("get_client_groupids(\"%s\", \"%s\") - SQL error step: %s",
+				ip, hwaddr, sqlite3_errstr(rc));
+			gravityDB_finalizeTable();
+			return false;
+		}
+
+		// Finalize statement and free allocated memory
+		gravityDB_finalizeTable();
+	}
+
+	// If we did neither find an IP nor a MAC address match above, we try to look
+	// up the client using its host name
+	// 1. Look up host name address of this client
+	// 2. If found -> Get groups by looking up host name in client table
+	char *hostname = NULL;
+	if(chosen_match_id < 0)
+	{
+		if(config.debug & DEBUG_CLIENTS)
+			logg("Querying gravity database for host name of %s...", ip);
+
+		// Do the lookup
+		hostname = getNameFromIP(ip);
+
+		if(hostname == NULL && config.debug & DEBUG_CLIENTS)
+			logg("--> No result.");
+
+		if(hostname != NULL && strlen(hostname) == 0)
+		{
+			free(hostname);
+			hostname = NULL;
+			if(config.debug & DEBUG_CLIENTS)
+				logg("Skipping empty host name lookup");
+		}
+	}
+
+	// Check if we received a valid MAC address
+	// This ensures we skip mock hardware addresses such as "ip-127.0.0.1"
+	if(hostname != NULL)
+	{
+		if(config.debug & DEBUG_CLIENTS)
+			logg("--> Querying client table for %s", hostname);
+
+		// Check if client is configured through the client table
+		// This will return nothing if the client is unknown/unconfigured
+		// We use COLLATE NOCASE to ensure the comparison is done case-insensitive
+		querystr = "SELECT id FROM client WHERE ip = ? COLLATE NOCASE;";
+
+		// Prepare query
+		rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &table_stmt, NULL);
+		if(rc != SQLITE_OK)
+		{
+			logg("get_client_groupids(%s) - SQL error prepare: %s",
+				querystr, sqlite3_errstr(rc));
+			return false;
+		}
+
+		// Bind hostname to prepared statement
+		if((rc = sqlite3_bind_text(table_stmt, 1, hostname, -1, SQLITE_STATIC)) != SQLITE_OK)
+		{
+			logg("get_client_groupids(\"%s\", \"%s\"): Failed to bind hostname: %s",
+				ip, hostname, sqlite3_errstr(rc));
+			sqlite3_reset(table_stmt);
+			sqlite3_finalize(table_stmt);
+			return false;
+		}
+
+		// Perform query
+		rc = sqlite3_step(table_stmt);
+		if(rc == SQLITE_ROW)
+		{
+			// There is a record for this client in the database,
+			// extract the result (there can be at most one line)
+			chosen_match_id = sqlite3_column_int(table_stmt, 0);
+
+			if(config.debug & DEBUG_CLIENTS)
+				logg("--> Found record for %s in the client table (group ID %d)", hostname, chosen_match_id);
+		}
+		else if(rc == SQLITE_DONE)
+		{
+			if(config.debug & DEBUG_CLIENTS)
+				logg("--> There is no record for %s in the client table", hostname);
+		}
+		else
+		{
+			// Error
+			logg("get_client_groupids(\"%s\", \"%s\") - SQL error step: %s",
+				ip, hostname, sqlite3_errstr(rc));
+			gravityDB_finalizeTable();
+			return false;
+		}
+
+		// Finalize statement and free allocated memory
+		gravityDB_finalizeTable();
+	}
+
+	// If we did neither find an IP nor a MAC address and also no host name
+	// match above, we try to look up the client using its interface
+	// 1. Look up the interface of this client (FTL isn't aware of it
+	//    when creating the client from history data!)
+	// 2. If found -> Get groups by looking up interface in client table
+	char *interface = NULL;
+	if(chosen_match_id < 0)
+	{
+		if(config.debug & DEBUG_CLIENTS)
+			logg("Querying gravity database for interface of %s...", ip);
+
+		// Do the lookup
+		interface = getIfaceFromIP(ip);
+
+		if(interface == NULL && config.debug & DEBUG_CLIENTS)
+			logg("--> No result.");
+
+		if(interface != NULL && strlen(interface) == 0)
+		{
+			free(interface);
+			interface = 0;
+			if(config.debug & DEBUG_CLIENTS)
+				logg("Skipping empty interface lookup");
+		}
+	}
+
+	// Check if we received a valid interface
+	if(interface != NULL)
+	{
+		if(config.debug & DEBUG_CLIENTS)
+			logg("Querying client table for interface "INTERFACE_SEP"%s", interface);
+
+		// Check if client is configured through the client table using its interface
+		// This will return nothing if the client is unknown/unconfigured
+		// We use the SQLite concatenate operator || to prepace the queried interface by ":"
+		// We use COLLATE NOCASE to ensure the comparison is done case-insensitive
+		querystr = "SELECT id FROM client WHERE ip = '"INTERFACE_SEP"' || ? COLLATE NOCASE;";
+
+		// Prepare query
+		rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &table_stmt, NULL);
+		if(rc != SQLITE_OK)
+		{
+			logg("get_client_groupids(%s) - SQL error prepare: %s",
+				querystr, sqlite3_errstr(rc));
+			return false;
+		}
+
+		// Bind interface to prepared statement
+		if((rc = sqlite3_bind_text(table_stmt, 1, interface, -1, SQLITE_STATIC)) != SQLITE_OK)
+		{
+			logg("get_client_groupids(\"%s\", \"%s\"): Failed to bind interface: %s",
+				ip, interface, sqlite3_errstr(rc));
+			sqlite3_reset(table_stmt);
+			sqlite3_finalize(table_stmt);
+			return false;
+		}
+
+		// Perform query
+		rc = sqlite3_step(table_stmt);
+		if(rc == SQLITE_ROW)
+		{
+			// There is a record for this client in the database,
+			// extract the result (there can be at most one line)
+			chosen_match_id = sqlite3_column_int(table_stmt, 0);
+
+			if(config.debug & DEBUG_CLIENTS)
+				logg("--> Found record for interface "INTERFACE_SEP"%s in the client table (group ID %d)", interface, chosen_match_id);
+		}
+		else if(rc == SQLITE_DONE)
+		{
+			if(config.debug & DEBUG_CLIENTS)
+				logg("--> There is no record for interface "INTERFACE_SEP"%s in the client table", interface);
+		}
+		else
+		{
+			// Error
+			logg("get_client_groupids(\"%s\", \"%s\") - SQL error step: %s",
+				ip, interface, sqlite3_errstr(rc));
+			gravityDB_finalizeTable();
+			return false;
+		}
+
+		// Finalize statement and free allocated memory
+		gravityDB_finalizeTable();
+	}
+
+	// We use the default group and return early here
+	// if aboves lookups didn't return any results
+	// (the client is not configured through the client table)
+	if(chosen_match_id < 0)
+	{
+		if(config.debug & DEBUG_CLIENTS)
+			logg("Gravity database: Client %s not found. Using default group.\n",
+			     show_client_string(hwaddr, hostname, ip));
+
+		client->groupspos = addstr("0");
+		client->found_group = true;
+
+		if(hwaddr != NULL)
+		{
+			free(hwaddr);
+			hwaddr = NULL;
+		}
+
+		if(hostname != NULL)
+		{
+			free(hostname);
+			hostname = NULL;
+		}
+
+		if(interface != NULL)
+		{
+			free(interface);
+			interface = NULL;
+		}
+
+		return true;
+	}
 
 	// Build query string to get possible group associations for this particular client
 	// The SQL GROUP_CONCAT() function returns a string which is the concatenation of all
 	// non-NULL values of group_id separated by ','. The order of the concatenated elements
 	// is arbitrary, however, is of no relevance for your use case.
 	// We check using a possibly defined subnet and use the first result
-	if(asprintf(&querystr, "SELECT GROUP_CONCAT(group_id) FROM client_by_group "
-	                       "WHERE client_id = %i;", chosen_match_id) < 1)
-	{
-		logg("get_client_groupids() - asprintf() error 2");
-		return false;
-	}
+	querystr = "SELECT GROUP_CONCAT(group_id) FROM client_by_group "
+	           "WHERE client_id = ?;";
 
-	if(config.debug & DEBUG_DATABASE)
+	if(config.debug & DEBUG_CLIENTS)
 		logg("Querying gravity database for client %s (getting groups)", ip);
 
 	// Prepare query
 	rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &table_stmt, NULL);
-	if(rc != SQLITE_OK){
-		logg("get_client_groupids(%s) - SQL error prepare: %s",
-		     querystr, sqlite3_errstr(rc));
+	if(rc != SQLITE_OK)
+	{
+		logg("get_client_groupids(\"%s\", \"%s\", %d) - SQL error prepare: %s",
+		     ip, hwaddr, chosen_match_id, sqlite3_errstr(rc));
 		sqlite3_finalize(table_stmt);
-		free(querystr);
+		return false;
+	}
+
+	// Bind hwaddr to prepared statement
+	if((rc = sqlite3_bind_int(table_stmt, 1, chosen_match_id)) != SQLITE_OK)
+	{
+		logg("get_client_groupids(\"%s\", \"%s\", %d): Failed to bind chosen_match_id: %s",
+			ip, hwaddr, chosen_match_id, sqlite3_errstr(rc));
+		sqlite3_reset(table_stmt);
+		sqlite3_finalize(table_stmt);
 		return false;
 	}
 
@@ -329,21 +691,50 @@ static bool get_client_groupids(clientsData* client)
 	}
 	else
 	{
-		logg("get_client_groupids(%s) - SQL error step: %s",
-		     querystr, sqlite3_errstr(rc));
+		logg("get_client_groupids(\"%s\", \"%s\", %d) - SQL error step: %s",
+		     ip, hwaddr, chosen_match_id, sqlite3_errstr(rc));
 		gravityDB_finalizeTable();
-		free(querystr);
 		return false;
 	}
 	// Finalize statement
 	gravityDB_finalizeTable();
 
-	// Free allocated memory and return result
-	free(querystr);
+	if(config.debug & DEBUG_CLIENTS)
+	{
+		if(interface != NULL)
+		{
+			logg("Gravity database: Client %s found (identified by interface %s). Using groups (%s)\n",
+			     show_client_string(hwaddr, hostname, ip), interface, getstr(client->groupspos));
+		}
+		else
+		{
+			logg("Gravity database: Client %s found. Using groups (%s)\n",
+			     show_client_string(hwaddr, hostname, ip), getstr(client->groupspos));
+		}
+	}
+
+	// Free possibly allocated memory
+	if(hwaddr != NULL)
+	{
+		free(hwaddr);
+		hwaddr = NULL;
+	}
+	if(hostname != NULL)
+	{
+		free(hostname);
+		hostname = NULL;
+	}
+	if(interface != NULL)
+	{
+		free(interface);
+		interface = NULL;
+	}
+
+	// Return success
 	return true;
 }
 
-char* __attribute__ ((malloc)) get_group_names(const char *group_ids)
+char* __attribute__ ((malloc)) get_client_names_from_ids(const char *group_ids)
 {
 	// Build query string to get concatenated groups
 	char *querystr = NULL;
@@ -466,8 +857,11 @@ bool gravityDB_prepare_client_statements(const int clientID, clientsData *client
 }
 
 // Finalize non-NULL prepared statements and set them to NULL for a given client
-static inline void gravityDB_finalize_client_statements(const int clientID)
+static inline void gravityDB_finalize_client_statements(const int clientID, clientsData *client)
 {
+	if(config.debug & DEBUG_DATABASE)
+		logg("Finalizing gravity statements for %s", getstr(client->ippos));
+
 	if(whitelist_stmt != NULL &&
 	   whitelist_stmt->get(whitelist_stmt, clientID) != NULL)
 	{
@@ -489,7 +883,6 @@ static inline void gravityDB_finalize_client_statements(const int clientID)
 
 	// Unset group found property to trigger a check next time the
 	// client sends a query
-	clientsData* client = getClient(clientID, true);
 	if(client != NULL)
 	{
 		client->found_group = false;
@@ -506,7 +899,8 @@ void gravityDB_close(void)
 	// Finalize prepared list statements for all clients
 	for(int clientID = 0; clientID < counters->clients; clientID++)
 	{
-		gravityDB_finalize_client_statements(clientID);
+		clientsData *client = getClient(clientID, true);
+		gravityDB_finalize_client_statements(clientID, client);
 	}
 
 	// Free allocated memory for vectors of prepared client statements
@@ -544,15 +938,20 @@ bool gravityDB_getTable(const unsigned char list)
 		return false;
 	}
 
-	char *querystr = NULL;
+	const char *querystr = NULL;
 	// Build correct query string to be used depending on list to be read
 	// We GROUP BY id as the view also includes the group_id leading to possible duplicates
 	// when domains are included in more than one group
-	if(asprintf(&querystr, "SELECT domain, id FROM %s GROUP BY id", tablename[list]) < 18)
-	{
-		logg("readGravity(%u) - asprintf() error", list);
-		return false;
-	}
+	if(list == GRAVITY_TABLE)
+		querystr = "SELECT DISTINCT domain FROM vw_gravity";
+	else if(list == EXACT_BLACKLIST_TABLE)
+		querystr = "SELECT domain, id FROM vw_blacklist GROUP BY id";
+	else if(list == EXACT_WHITELIST_TABLE)
+		querystr = "SELECT domain, id FROM vw_whitelist GROUP BY id";
+	else if(list == REGEX_BLACKLIST_TABLE)
+		querystr = "SELECT domain, id FROM vw_regex_blacklist GROUP BY id";
+	else if(list == REGEX_WHITELIST_TABLE)
+		querystr = "SELECT domain, id FROM vw_regex_whitelist GROUP BY id";
 
 	// Prepare SQLite3 statement
 	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &table_stmt, NULL);
@@ -560,12 +959,10 @@ bool gravityDB_getTable(const unsigned char list)
 	{
 		logg("readGravity(%s) - SQL error prepare: %s", querystr, sqlite3_errstr(rc));
 		gravityDB_close();
-		free(querystr);
 		return false;
 	}
 
 	// Free allocated memory and return success
-	free(querystr);
 	return true;
 }
 
@@ -586,7 +983,8 @@ inline const char* gravityDB_getDomain(int *rowid)
 	if(rc == SQLITE_ROW)
 	{
 		const char* domain = (char*)sqlite3_column_text(table_stmt, 0);
-		*rowid = sqlite3_column_int(table_stmt, 1);
+		if(rowid != NULL)
+			*rowid = sqlite3_column_int(table_stmt, 1);
 		return domain;
 	}
 
@@ -596,12 +994,14 @@ inline const char* gravityDB_getDomain(int *rowid)
 	if(rc != SQLITE_DONE)
 	{
 		logg("gravityDB_getDomain() - SQL error step: %s", sqlite3_errstr(rc));
-		*rowid = -1;
+		if(rowid != NULL)
+			*rowid = -1;
 		return NULL;
 	}
 
 	// Finished reading, nothing to get here
-	*rowid = -1;
+	if(rowid != NULL)
+		*rowid = -1;
 	return NULL;
 }
 
@@ -760,12 +1160,38 @@ static bool domain_in_list(const char *domain, sqlite3_stmt* stmt, const char* l
 	return (result == 1);
 }
 
-bool in_whitelist(const char *domain, const int clientID, clientsData* client)
+// Check if this client needs a rechecking of group membership
+// This client may be identified by something that wasn't there on its first query (hostname, MAC address, interface)
+static void gravityDB_client_check_again(const int clientID, clientsData* client)
+{
+	const time_t diff = time(NULL) - client->firstSeen;
+	const unsigned char check_count = client->reread_groups + 1u;
+	if(check_count <= NUM_RECHECKS && diff > check_count * RECHECK_DELAY)
+	{
+		const char *ord = get_ordinal_suffix(check_count);
+		if(config.debug & DEBUG_CLIENTS)
+			logg("Reloading client groups after %u seconds (%u%s check)",
+			     (unsigned int)diff, check_count, ord);
+		client->reread_groups++;
+
+		// Rebuild client table statements (possibly from a different group set)
+		gravityDB_finalize_client_statements(clientID, client);
+		gravityDB_prepare_client_statements(clientID, client);
+
+		// Reload regex for this client (possibly from a different group set)
+		reload_per_client_regex(clientID, client);
+	}
+}
+
+bool in_whitelist(const char *domain, const DNSCacheData *dns_cache, const int clientID, clientsData* client)
 {
 	// If list statement is not ready and cannot be initialized (e.g. no
 	// access to the database), we return false to prevent an FTL crash
 	if(whitelist_stmt == NULL)
 		return false;
+
+	// Check if this client needs a rechecking of group membership
+	gravityDB_client_check_again(clientID, client);
 
 	// Get whitelist statement from vector of prepared statements if available
 	sqlite3_stmt *stmt = whitelist_stmt->get(whitelist_stmt, clientID);
@@ -791,7 +1217,7 @@ bool in_whitelist(const char *domain, const int clientID, clientsData* client)
 	// optimization as the database lookup will most likely hit (a) more domains and (b)
 	// will be faster (given a sufficiently large number of regex whitelisting filters).
 	return domain_in_list(domain, stmt, "whitelist") ||
-	       match_regex(domain, clientID, REGEX_WHITELIST) != -1;
+	       match_regex(domain, dns_cache, clientID, REGEX_WHITELIST, false) != -1;
 }
 
 bool in_gravity(const char *domain, const int clientID, clientsData* client)
@@ -800,6 +1226,9 @@ bool in_gravity(const char *domain, const int clientID, clientsData* client)
 	// access to the database), we return false to prevent an FTL crash
 	if(gravity_stmt == NULL)
 		return false;
+
+	// Check if this client needs a rechecking of group membership
+	gravityDB_client_check_again(clientID, client);
 
 	// Get whitelist statement from vector of prepared statements
 	sqlite3_stmt *stmt = gravity_stmt->get(gravity_stmt, clientID);
@@ -827,6 +1256,9 @@ inline bool in_blacklist(const char *domain, const int clientID, clientsData* cl
 	// access to the database), we return false to prevent an FTL crash
 	if(blacklist_stmt == NULL)
 		return false;
+
+	// Check if this client needs a rechecking of group membership
+	gravityDB_client_check_again(clientID, client);
 
 	// Get whitelist statement from vector of prepared statements
 	sqlite3_stmt *stmt = blacklist_stmt->get(blacklist_stmt, clientID);
@@ -859,7 +1291,7 @@ bool in_auditlist(const char *domain)
 	return domain_in_list(domain, auditlist_stmt, "auditlist");
 }
 
-bool gravityDB_get_regex_client_groups(clientsData* client, const int numregex, const int *regexid,
+bool gravityDB_get_regex_client_groups(clientsData* client, const unsigned int numregex, const regex_data *regex,
                                        const unsigned char type, const char* table, const int clientID)
 {
 	char *querystr = NULL;
@@ -890,17 +1322,17 @@ bool gravityDB_get_regex_client_groups(clientsData* client, const int numregex, 
 	while((rc = sqlite3_step(query_stmt)) == SQLITE_ROW)
 	{
 		const int result = sqlite3_column_int(query_stmt, 0);
-		for(int regexID = 0; regexID < numregex; regexID++)
+		for(unsigned int regexID = 0; regexID < numregex; regexID++)
 		{
-			if(regexid[regexID] == result)
+			if(regex[regexID].database_id == result)
 			{
+				// Regular expressions are stored in one array
 				if(type == REGEX_WHITELIST)
 					regexID += counters->num_regex[REGEX_BLACKLIST];
-
 				set_per_client_regex(clientID, regexID, true);
 
 				if(config.debug & DEBUG_REGEX)
-					logg("Regex %s: Enabling regex with DB ID %i for client %s", regextype[type], regexid[regexID], getstr(client->ippos));
+					logg("Regex %s: Enabling regex with DB ID %i for client %s", regextype[type], result, getstr(client->ippos));
 
 				break;
 			}

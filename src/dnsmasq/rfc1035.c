@@ -1012,7 +1012,7 @@ size_t setup_reply(struct dns_header *header, size_t qlen,
       union all_addr a;
       a.log.rcode = SERVFAIL;
       log_query(F_CONFIG | F_RCODE, "error", &a, NULL);
-      FTL_reply(flags, "error", &a, daemon->log_display_id);
+      FTL_reply(F_CONFIG | F_RCODE, "error", &a, daemon->log_display_id);
       SET_RCODE(header, SERVFAIL);
     }
   else if (flags & ( F_IPV4 | F_IPV6))
@@ -1038,7 +1038,7 @@ size_t setup_reply(struct dns_header *header, size_t qlen,
       union all_addr a;
       a.log.rcode = REFUSED;
       log_query(F_CONFIG | F_RCODE, "error", &a, NULL);
-      FTL_reply(flags, "error", &a, daemon->log_display_id);
+      FTL_reply(F_CONFIG | F_RCODE, "error", &a, daemon->log_display_id);
       SET_RCODE(header, REFUSED);
     }
   

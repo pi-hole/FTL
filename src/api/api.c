@@ -8,26 +8,36 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "FTL.h"
-#include "enums.h"
-#include "memory.h"
-#include "shmem.h"
-#include "datastructure.h"
-#include "setupVars.h"
-#include "socket.h"
-#include "files.h"
-#include "log.h"
-#include "request.h"
-#include "config.h"
-#include "database/common.h"
-#include "database/query-table.h"
-// in_auditlist()
-#include "database/gravity-db.h"
-#include "overTime.h"
+#include "../FTL.h"
 #include "api.h"
-#include "version.h"
+#include "../enums.h"
+// getstr()
+#include "../shmem.h"
+// read_setupVarsconf()
+#include "../setupVars.h"
+// istelnet()
+#include "socket.h"
+// get_FTL_db_filesize()
+#include "../files.h"
+// logg()
+#include "../log.h"
+#include "request.h"
+// struct config
+#include "../config.h"
+// get_sqlite3_version()
+#include "../database/common.h"
+// get_number_of_queries_in_DB()
+#include "../database/query-table.h"
+// in_auditlist()
+#include "../database/gravity-db.h"
+// struct overTime
+#include "../overTime.h"
+// Version information
+#include "../version.h"
 // enum REGEX
-#include "regex_r.h"
+#include "../regex_r.h"
+// get_aliasclient_list()
+#include "../database/aliasclients.h"
 
 #define min(a,b) ({ __typeof__ (a) _a = (a); __typeof__ (b) _b = (b); _a < _b ? _a : _b; })
 
@@ -166,8 +176,8 @@ void getOverTime(const int *sock)
 	{
 		for(int slot = from; slot < until; slot++)
 		{
-			ssend(*sock,"%li %i %i\n",
-			      overTime[slot].timestamp,
+			ssend(*sock,"%lli %i %i\n",
+			      (long long)overTime[slot].timestamp,
 			      overTime[slot].total,
 			      overTime[slot].blocked);
 		}
@@ -180,14 +190,14 @@ void getOverTime(const int *sock)
 		// Send domains over time
 		pack_map16_start(*sock, (uint16_t) (until - from));
 		for(int slot = from; slot < until; slot++) {
-			pack_int32(*sock, overTime[slot].timestamp);
+			pack_int32(*sock, (int32_t)overTime[slot].timestamp);
 			pack_int32(*sock, overTime[slot].total);
 		}
 
 		// Send ads over time
 		pack_map16_start(*sock, (uint16_t) (until - from));
 		for(int slot = from; slot < until; slot++) {
-			pack_int32(*sock, overTime[slot].timestamp);
+			pack_int32(*sock, (int32_t)overTime[slot].timestamp);
 			pack_int32(*sock, overTime[slot].blocked);
 		}
 	}
@@ -386,8 +396,12 @@ void getTopClients(const char *client_message, const int *sock)
 	{
 		// Get client pointer
 		const clientsData* client = getClient(clientID, true);
-		if(client == NULL)
+		// Skip invalid clients and also those managed by alias clients
+		if(client == NULL || (!client->aliasclient && client->aliasclient_id >= 0))
+		{
+			temparray[clientID][0] = -1;
 			continue;
+		}
 		temparray[clientID][0] = clientID;
 		// Use either blocked or total count based on request string
 		temparray[clientID][1] = blockedonly ? client->blockedcount : client->count;
@@ -424,8 +438,15 @@ void getTopClients(const char *client_message, const int *sock)
 		// Get sorted indices and counter values (may be either total or blocked count)
 		const int clientID = temparray[i][0];
 		const int ccount = temparray[i][1];
+
+		// clientID -1 means this client is to be skipped (managed by a alias-client)
+		if(clientID < 0)
+			continue;
+
 		// Get client pointer
 		const clientsData* client = getClient(clientID, true);
+
+		// Skip invalid clients
 		if(client == NULL)
 			continue;
 
@@ -504,6 +525,7 @@ void getUpstreamDestinations(const char *client_message, const int *sock)
 	{
 		float percentage = 0.0f;
 		const char* ip, *name;
+		in_port_t upstream_port = 0;
 
 		if(i == -2)
 		{
@@ -527,7 +549,7 @@ void getUpstreamDestinations(const char *client_message, const int *sock)
 		}
 		else
 		{
-			// Regular forward destionation
+			// Regular upstream destination
 			// Get sorted indices
 			int upstreamID;
 			if(sort)
@@ -535,18 +557,22 @@ void getUpstreamDestinations(const char *client_message, const int *sock)
 			else
 				upstreamID = i;
 
-			// Get forward pointer
-			const upstreamsData* forward = getUpstream(upstreamID, true);
-			if(forward == NULL)
+			// Get upstream pointer
+			const upstreamsData* upstream = getUpstream(upstreamID, true);
+			if(upstream == NULL)
 				continue;
 
-			// Get IP and host name of forward destination if available
-			ip = getstr(forward->ippos);
-			name = getstr(forward->namepos);
+			// Get IP and host name of upstream destination if available
+			ip = getstr(upstream->ippos);
+			if(upstream->namepos != 0)
+				name = getstr(upstream->namepos);
+			else
+				name = getstr(upstream->ippos);
+			upstream_port = upstream->port;
 
 			// Get percentage
 			if(totalqueries > 0)
-				percentage = 1e2f * forward->count / totalqueries;
+				percentage = 1e2f * upstream->count / totalqueries;
 		}
 
 		// Send data:
@@ -555,7 +581,11 @@ void getUpstreamDestinations(const char *client_message, const int *sock)
 		if(percentage > 0.0f || i < 0)
 		{
 			if(istelnet[*sock])
-				ssend(*sock, "%i %.2f %s %s\n", i, percentage, ip, name);
+				if(upstream_port != 0)
+					ssend(*sock, "%i %.2f %s#%u %s#%u\n", i, percentage,
+					      ip, upstream_port, name, upstream_port);
+				else
+					ssend(*sock, "%i %.2f %s %s\n", i, percentage, ip, name);
 			else
 			{
 				if(!pack_str32(*sock, name) || !pack_str32(*sock, ip))
@@ -567,25 +597,22 @@ void getUpstreamDestinations(const char *client_message, const int *sock)
 	}
 }
 
-const char *querytypes[TYPE_MAX] = {"A", "AAAA", "ANY", "SRV", "SOA", "PTR", "TXT", "NAPTR",
-                                    "MX", "DS", "RRSIG", "DNSKEY", "OTHER", "UNKNOWN"};
-
 void getQueryTypes(const int *sock)
 {
 	int total = 0;
-	for(int i=0; i < TYPE_MAX-1; i++)
+	for(enum query_types type = TYPE_A; type < TYPE_MAX; type++)
 	{
-		total += counters->querytype[i];
+		total += counters->querytype[type - 1];
 	}
 
-	float percentage[TYPE_MAX-1] = { 0.0 };
+	float percentage[TYPE_MAX] = { 0.0 };
 
 	// Prevent floating point exceptions by checking if the divisor is != 0
 	if(total > 0)
 	{
-		for(int i=0; i < TYPE_MAX-1; i++)
+		for(enum query_types type = TYPE_A; type < TYPE_MAX; type++)
 		{
-			percentage[i] = 1e2f*counters->querytype[i]/total;
+			percentage[type] = 1e2f*counters->querytype[type - 1]/total;
 		}
 	}
 
@@ -594,38 +621,38 @@ void getQueryTypes(const int *sock)
 		             "SOA: %.2f\nPTR: %.2f\nTXT: %.2f\nNAPTR: %.2f\n"
 		             "MX: %.2f\nDS: %.2f\nRRSIG: %.2f\nDNSKEY: %.2f\n"
 		             "OTHER: %.2f\n",
-		      percentage[0], percentage[1], percentage[2], percentage[3],
-		      percentage[4], percentage[5], percentage[6], percentage[7],
-		      percentage[8], percentage[9], percentage[10], percentage[11],
-		      percentage[12]);
+		      percentage[TYPE_A], percentage[TYPE_AAAA], percentage[TYPE_ANY], percentage[TYPE_SRV],
+		      percentage[TYPE_SOA], percentage[TYPE_PTR], percentage[TYPE_TXT], percentage[TYPE_NAPTR],
+		      percentage[TYPE_MX], percentage[TYPE_DS], percentage[TYPE_RRSIG], percentage[TYPE_DNSKEY],
+		      percentage[TYPE_OTHER]);
 	}
 	else {
 		pack_str32(*sock, "A (IPv4)");
-		pack_float(*sock, percentage[0]);
+		pack_float(*sock, percentage[TYPE_A]);
 		pack_str32(*sock, "AAAA (IPv6)");
-		pack_float(*sock, percentage[1]);
+		pack_float(*sock, percentage[TYPE_AAAA]);
 		pack_str32(*sock, "ANY");
-		pack_float(*sock, percentage[2]);
+		pack_float(*sock, percentage[TYPE_ANY]);
 		pack_str32(*sock, "SRV");
-		pack_float(*sock, percentage[3]);
+		pack_float(*sock, percentage[TYPE_SRV]);
 		pack_str32(*sock, "SOA");
-		pack_float(*sock, percentage[4]);
+		pack_float(*sock, percentage[TYPE_SOA]);
 		pack_str32(*sock, "PTR");
-		pack_float(*sock, percentage[5]);
+		pack_float(*sock, percentage[TYPE_PTR]);
 		pack_str32(*sock, "TXT");
-		pack_float(*sock, percentage[6]);
+		pack_float(*sock, percentage[TYPE_TXT]);
 		pack_str32(*sock, "NAPTR");
-		pack_float(*sock, percentage[7]);
+		pack_float(*sock, percentage[TYPE_NAPTR]);
 		pack_str32(*sock, "MX");
-		pack_float(*sock, percentage[8]);
+		pack_float(*sock, percentage[TYPE_MX]);
 		pack_str32(*sock, "DS");
-		pack_float(*sock, percentage[9]);
+		pack_float(*sock, percentage[TYPE_DS]);
 		pack_str32(*sock, "RRSIG");
-		pack_float(*sock, percentage[10]);
+		pack_float(*sock, percentage[TYPE_RRSIG]);
 		pack_str32(*sock, "DNSKEY");
-		pack_float(*sock, percentage[11]);
+		pack_float(*sock, percentage[TYPE_DNSKEY]);
 		pack_str32(*sock, "OTHER");
-		pack_float(*sock, percentage[12]);
+		pack_float(*sock, percentage[TYPE_OTHER]);
 	}
 }
 
@@ -639,6 +666,8 @@ void getAllQueries(const char *client_message, const int *sock)
 	// Do we want a more specific version of this command (domain/client/time interval filtered)?
 	int from = 0, until = 0;
 
+	bool showpermitted = true, showblocked = true;
+
 	char *domainname = NULL;
 	bool filterdomainname = false;
 	int domainid = -1;
@@ -646,6 +675,7 @@ void getAllQueries(const char *client_message, const int *sock)
 	char *clientname = NULL;
 	bool filterclientname = false;
 	int clientid = -1;
+	int *clientid_list = NULL;
 
 	unsigned char querytype = 0;
 
@@ -685,6 +715,15 @@ void getAllQueries(const char *client_message, const int *sock)
 			forwarddestid = -2;
 		else
 		{
+			// Extract address/name and port
+			char serv_addr[INET6_ADDRSTRLEN] = { 0 };
+			unsigned int serv_port = 53;
+			// We limit the number of bytes written into the serv_addr buffer
+			// to prevent buffer overflows. If there is no port available in
+			// the database, we skip extracting them and use the default port
+			sscanf(forwarddest, "%"xstr(INET6_ADDRSTRLEN)"[^#]#%u", serv_addr, &serv_port);
+			serv_addr[INET6_ADDRSTRLEN-1] = '\0';
+
 			// Iterate through all known forward destinations
 			forwarddestid = -3;
 			for(int i = 0; i < counters->upstreams; i++)
@@ -696,9 +735,9 @@ void getAllQueries(const char *client_message, const int *sock)
 
 				// Try to match the requested string against their IP addresses and
 				// (if available) their host names
-				if(strcmp(getstr(forward->ippos), forwarddest) == 0 ||
+				if((strcmp(getstr(forward->ippos), serv_addr) == 0 ||
 				   (forward->namepos != 0 &&
-				    strcmp(getstr(forward->namepos), forwarddest) == 0))
+				    strcasecmp(getstr(forward->namepos), serv_addr) == 0)) && forward->port == serv_port)
 				{
 					forwarddestid = i;
 					break;
@@ -750,7 +789,15 @@ void getAllQueries(const char *client_message, const int *sock)
 		// Get client name we want to see only (limit length to 255 chars)
 		clientname = calloc(256, sizeof(char));
 		if(clientname == NULL) return;
-		sscanf(client_message, ">getallqueries-client %255s", clientname);
+		if(command(client_message, ">getallqueries-client-blocked"))
+		{
+			showpermitted = false;
+			sscanf(client_message, ">getallqueries-client-blocked %255s", clientname);
+		}
+		else
+		{
+			sscanf(client_message, ">getallqueries-client %255s", clientname);
+		}
 		filterclientname = true;
 
 		// Iterate through all known clients
@@ -758,25 +805,32 @@ void getAllQueries(const char *client_message, const int *sock)
 		{
 			// Get client pointer
 			const clientsData* client = getClient(i, true);
-			if(client == NULL)
+			// Skip invalid clients and also those managed by alias clients
+			if(client == NULL || client->aliasclient_id >= 0)
 				continue;
 
 			// Try to match the requested string
 			if(strcmp(getstr(client->ippos), clientname) == 0 ||
 			   (client->namepos != 0 &&
-			    strcmp(getstr(client->namepos), clientname) == 0))
+			    strcasecmp(getstr(client->namepos), clientname) == 0))
 			{
 				clientid = i;
+
+				// Is this a alias-client?
+				if(client->aliasclient)
+					clientid_list = get_aliasclient_list(i);
+
 				break;
 			}
 		}
-		if(clientid < 0)
+		if(clientid == -1)
 		{
 			// Requested client has not been found, we directly
 			// exit here as there is no data to be returned
 			free(clientname);
 			return;
 		}
+
 	}
 
 	int ibeg = 0, num;
@@ -792,7 +846,6 @@ void getAllQueries(const char *client_message, const int *sock)
 
 	// Get potentially existing filtering flags
 	char * filter = read_setupVarsconf("API_QUERY_LOG_SHOW");
-	bool showpermitted = true, showblocked = true;
 	if(filter != NULL)
 	{
 		if((strcmp(filter, "permittedonly")) == 0)
@@ -818,7 +871,11 @@ void getAllQueries(const char *client_message, const int *sock)
 		if(query->type > TYPE_MAX-1)
 			continue;
 		// Get query type
-		const char *qtype = querytypes[query->type - TYPE_A];
+		const char *qtype = querytypes[query->type];
+
+		// Hide UNKNOWN queries when not requesting both query status types
+		if(query->status == QUERY_UNKNOWN && !(showpermitted && showblocked))
+			continue;
 
 		// 1 = gravity.list, 4 = wildcard, 5 = black.list
 		if((query->status == QUERY_GRAVITY ||
@@ -838,12 +895,47 @@ void getAllQueries(const char *client_message, const int *sock)
 			continue;
 
 		// Skip if domain is not identical with what the user wants to see
-		if(filterdomainname && query->domainID != domainid)
-			continue;
+		if(filterdomainname)
+		{
+			// Check direct match
+			if(query->domainID == domainid)
+			{
+				// Get this query
+			}
+			// If the domain of this query did not match, the CNAME
+			// domain may still match - we have to check it in
+			// addition if this query is of CNAME blocked type
+			else if((query->status == QUERY_GRAVITY_CNAME ||
+				query->status == QUERY_BLACKLIST_CNAME ||
+				query->status == QUERY_REGEX_CNAME) &&
+				query->CNAME_domainID == domainid)
+			{
+				// Get this query
+			}
+			else
+			{
+				// Skip this query
+				continue;
+			}
+		}
 
 		// Skip if client name and IP are not identical with what the user wants to see
-		if(filterclientname && query->clientID != clientid)
-			continue;
+		if(filterclientname)
+		{
+			// Normal clients
+			if(clientid_list == NULL && query->clientID != clientid)
+				continue;
+			// Alias-clients (we have to check for all clients managed by this alias-client)
+			else if(clientid_list != NULL)
+			{
+				bool found = false;
+				for(int i = 0; i < clientid_list[0]; i++)
+					if(query->clientID == clientid_list[i + 1])
+						found = true;
+				if(!found)
+					continue;
+			}
+		}
 
 		// Skip if query type is not identical with what the user wants to see
 		if(querytype != 0 && querytype != query->type)
@@ -899,16 +991,35 @@ void getAllQueries(const char *client_message, const int *sock)
 		int regex_idx = -1;
 		if (query->status == QUERY_REGEX || query->status == QUERY_REGEX_CNAME)
 		{
-			unsigned int cacheID = findCacheID(query->domainID, query->clientID);
+			unsigned int cacheID = findCacheID(query->domainID, query->clientID, query->type);
 			DNSCacheData *dns_cache = getDNSCache(cacheID, true);
 			if(dns_cache != NULL)
 				regex_idx = dns_cache->black_regex_idx;
 		}
 
+		// Get IP of upstream destination, if applicable
+		in_port_t upstream_port = 0;
+		const char *upstream_name = "N/A";
+		if(query->status == QUERY_FORWARDED)
+		{
+			const upstreamsData *upstream = getUpstream(query->upstreamID, true);
+			if(upstream != NULL)
+			{
+				if(upstream->namepos != 0)
+					// Get upstream destination name if possible
+					upstream_name = getstr(upstream->namepos);
+				else
+					// If we have no name, get the IP address
+					upstream_name = getstr(upstream->ippos);
+
+				upstream_port = upstream->port;
+			}
+		}
+
 		if(istelnet[*sock])
 		{
-			ssend(*sock,"%li %s %s %s %i %i %i %lu %s %i",
-				query->timestamp,
+			ssend(*sock,"%lli %s %s %s %i %i %i %lu %s %i %s",
+				(long long)query->timestamp,
 				qtype,
 				domain,
 				clientIPName,
@@ -917,14 +1028,18 @@ void getAllQueries(const char *client_message, const int *sock)
 				query->reply,
 				delay,
 				CNAME_domain,
-				regex_idx);
+				regex_idx,
+				upstream_name);
+			if(upstream_port != 0)
+				ssend(*sock, "#%u", upstream_port);
+
 			if(config.debug & DEBUG_API)
 				ssend(*sock, " %i", queryID);
 			ssend(*sock, "\n");
 		}
 		else
 		{
-			pack_int32(*sock, query->timestamp);
+			pack_int32(*sock, (int32_t)query->timestamp);
 
 			// Use a fixstr because the length of qtype is always 4 (max is 31 for fixstr)
 			if(!pack_fixstr(*sock, qtype))
@@ -948,6 +1063,9 @@ void getAllQueries(const char *client_message, const int *sock)
 
 	if(filterforwarddest)
 		free(forwarddest);
+
+	if(clientid_list != NULL)
+		free(clientid_list);
 }
 
 void getRecentBlocked(const char *client_message, const int *sock)
@@ -1042,7 +1160,7 @@ void getQueryTypesOverTime(const int *sock)
 		}
 
 		if(istelnet[*sock])
-			ssend(*sock, "%li %.2f %.2f\n", overTime[slot].timestamp, percentageIPv4, percentageIPv6);
+			ssend(*sock, "%lli %.2f %.2f\n", (long long)overTime[slot].timestamp, percentageIPv4, percentageIPv6);
 		else {
 			pack_int32(*sock, overTime[slot].timestamp);
 			pack_float(*sock, percentageIPv4);
@@ -1170,11 +1288,14 @@ void getClientsOverTime(const int *sock)
 		{
 			// Get client pointer
 			const clientsData* client = getClient(clientID, true);
+			// Skip invalid clients
 			if(client == NULL)
 				continue;
+
 			// Check if this client should be skipped
 			if(insetupVarsArray(getstr(client->ippos)) ||
-			   insetupVarsArray(getstr(client->namepos)))
+			   insetupVarsArray(getstr(client->namepos)) ||
+			   (!client->aliasclient && client->aliasclient_id > -1))
 				skipclient[clientID] = true;
 		}
 	}
@@ -1183,9 +1304,9 @@ void getClientsOverTime(const int *sock)
 	for(int slot = sendit; slot < until; slot++)
 	{
 		if(istelnet[*sock])
-			ssend(*sock, "%li", overTime[slot].timestamp);
+			ssend(*sock, "%lli", (long long)overTime[slot].timestamp);
 		else
-			pack_int32(*sock, overTime[slot].timestamp);
+			pack_int32(*sock, (int32_t)overTime[slot].timestamp);
 
 		// Loop over forward destinations to generate output to be sent to the client
 		for(int clientID = 0; clientID < counters->clients; clientID++)
@@ -1195,7 +1316,11 @@ void getClientsOverTime(const int *sock)
 
 			// Get client pointer
 			const clientsData* client = getClient(clientID, true);
-			if(client == NULL)
+			// Skip invalid clients and also those managed by alias clients
+			if(client == NULL || client->aliasclient_id >= 0)
+				continue;
+			// Also skip clients with no active counts at all (may be old IPv6 addresses)
+			if(client->count == 0)
 				continue;
 			const int thisclient = client->overTime[slot];
 
@@ -1238,12 +1363,14 @@ void getClientNames(const int *sock)
 		{
 			// Get client pointer
 			const clientsData* client = getClient(clientID, true);
+			// Skip invalid clients
 			if(client == NULL)
 				continue;
 
 			// Check if this client should be skipped
 			if(insetupVarsArray(getstr(client->ippos)) ||
-			   insetupVarsArray(getstr(client->namepos)))
+			   insetupVarsArray(getstr(client->namepos)) ||
+			   (!client->aliasclient && client->aliasclient_id > -1))
 				skipclient[clientID] = true;
 		}
 	}
@@ -1256,7 +1383,11 @@ void getClientNames(const int *sock)
 
 		// Get client pointer
 		const clientsData* client = getClient(clientID, true);
-		if(client == NULL)
+		// Skip invalid clients and also those managed by alias clients
+		if(client == NULL || client->aliasclient_id >= 0)
+			continue;
+		// Skip clients with no active counts at all (may be old IPv6 addresses)
+		if(client->count == 0)
 			continue;
 
 		const char *client_ip = getstr(client->ippos);
@@ -1311,9 +1442,9 @@ void getUnknownQueries(const int *sock)
 		const char *clientIP = getstr(client->ippos);
 
 		if(istelnet[*sock])
-			ssend(*sock, "%li %i %i %s %s %s %i %s\n", query->timestamp, queryID, query->id, type, getstr(domain->domainpos), clientIP, query->status, query->complete ? "true" : "false");
+			ssend(*sock, "%lli %i %i %s %s %s %i %s\n", (long long)query->timestamp, queryID, query->id, type, getstr(domain->domainpos), clientIP, query->status, query->complete ? "true" : "false");
 		else {
-			pack_int32(*sock, query->timestamp);
+			pack_int32(*sock, (int32_t)query->timestamp);
 			pack_int32(*sock, query->id);
 
 			// Use a fixstr because the length of qtype is always 4 (max is 31 for fixstr)
@@ -1330,79 +1461,27 @@ void getUnknownQueries(const int *sock)
 	}
 }
 
-void getDomainDetails(const char *client_message, const int *sock)
+// FTL_unlink_DHCP_lease()
+extern bool FTL_unlink_DHCP_lease(const char *ipaddr);
+
+void delete_lease(const char *client_message, const int *sock)
 {
-	// Get domain name
-	bool show_all = false;
-	char domainString[128];
-	if(sscanf(client_message, "%*[^ ] %127s", domainString) < 1)
-	{
-		ssend(*sock, "No domain specified, listing all known (%d)\n", counters->domains);
-		show_all = true;
+	// Extract IP address from request
+	char ipaddr[INET6_ADDRSTRLEN] = { 0 };
+	if(sscanf(client_message, ">delete-lease %"xstr(INET6_ADDRSTRLEN)"s", ipaddr) < 1) {
+		ssend(*sock, "ERROR: No IP address specified!\n");
+		return;
 	}
+	ipaddr[sizeof(ipaddr) - 1] = '\0';
 
-	for(int domainID = 0; domainID < counters->domains; domainID++)
-	{
-		// Get domain pointer
-		const domainsData* domain = getDomain(domainID, true);
-		if(domain == NULL)
-			continue;
+	if(config.debug & DEBUG_API)
+		logg("Received request to delete lease for %s", ipaddr);
 
-		if(show_all || strcmp(getstr(domain->domainpos), domainString) == 0)
-		{
-			ssend(*sock,"Domain \"%s\", ID: %i\n", getstr(domain->domainpos), domainID);
-			ssend(*sock,"Total: %i\n", domain->count);
-			ssend(*sock,"Blocked: %i\n", domain->blockedcount);
-			ssend(*sock,"Client status:\n");
-			for(int clientID = 0; clientID < counters->clients; clientID++)
-			{
-				clientsData *client = getClient(clientID, true);
-				if(client == NULL)
-				{
-					continue;
-				}
-				const char *str = "N/A";
-				unsigned int cacheID = findCacheID(domainID, clientID);
-				DNSCacheData *dns_cache = getDNSCache(cacheID, true);
-				switch(dns_cache->blocking_status)
-				{
-					case UNKNOWN_BLOCKED:
-						str = "unknown";
-						break;
-					case GRAVITY_BLOCKED:
-						str = "gravity";
-						break;
-					case BLACKLIST_BLOCKED:
-						str = "blacklisted";
-						break;
-					case REGEX_BLOCKED:
-						str = "regex";
-						break;
-					case WHITELISTED:
-						str = "whitelisted";
-						break;
-					case NOT_BLOCKED:
-						str = "not blocked";
-						break;
-					default:
-						str = "this cannot happen";
-						break;
-				}
-				ssend(*sock, " %s (ID %d): %s\n", getstr(client->ippos), clientID, str);
-			}
-			ssend(*sock,"\n");
+	if(FTL_unlink_DHCP_lease(ipaddr))
+		ssend(*sock, "OK: Removed specified lease\n");
+	else
+		ssend(*sock, "ERROR: Specified IP address invalid!\n");
 
-			// Return early
-			if(!show_all)
-			{
-				return;
-			}
-		}
-	}
-
-	// for loop finished without an exact match
-	if(!show_all)
-	{
-		ssend(*sock,"Domain \"%s\" is unknown\n", domainString);
-	}
+	if(config.debug & DEBUG_API)
+		logg("...done");
 }

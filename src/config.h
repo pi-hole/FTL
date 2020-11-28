@@ -15,6 +15,8 @@
 
 // typedef int16_t
 #include <sys/types.h>
+// typedef uni32_t
+#include <idn-int.h>
 
 void getLogFilePath(void);
 void read_FTLconf(void);
@@ -24,12 +26,12 @@ void read_debuging_settings(FILE *fp);
 
 typedef struct {
 	int maxDBdays;
-	int DBinterval;
 	int port;
 	int maxlogage;
 	int dns_port;
 	unsigned int delay_startup;
-	int16_t debug;
+	enum debug_flags debug;
+	unsigned int network_expire;
 	enum privacy_level privacylevel;
 	enum blocking_mode blockingmode;
 	bool socket_listenlocal;
@@ -39,10 +41,13 @@ typedef struct {
 	bool ignore_localhost;
 	bool analyze_only_A_AAAA;
 	bool DBimport;
+	bool DBexport;
 	bool parse_arp_cache;
 	bool cname_inspection;
 	bool block_esni;
 	bool names_from_netdb;
+	bool edns0_ecs;
+	time_t DBinterval;
 } ConfigStruct;
 
 typedef struct {

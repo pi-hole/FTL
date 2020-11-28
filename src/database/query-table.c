@@ -8,38 +8,38 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "FTL.h"
+#include "../FTL.h"
 #include "query-table.h"
 #include "common.h"
 // get[Domain,ClientIP,Forward]String(), etc.
-#include "datastructure.h"
+#include "../datastructure.h"
 // getOverTimeID()
-#include "overTime.h"
+#include "../overTime.h"
 // get_FTL_db_filesize()
-#include "files.h"
-#include "memory.h"
-#include "timers.h"
-#include "log.h"
-#include "config.h"
+#include "../files.h"
+// timer_elapsed_msec()
+#include "../timers.h"
+// logg()
+#include "../log.h"
+// struct config
+#include "../config.h"
 // getstr()
-#include "shmem.h"
+#include "../shmem.h"
+// free()
+#include "../memory.h"
 
 static bool saving_failed_before = false;
 
 int get_number_of_queries_in_DB(void)
 {
 	// This routine is used by the API routines.
-	// We need to handle opening/closing of the database herein.
-	if(!dbopen())
+	if(!FTL_DB_avail())
 	{
 		return DB_FAILED;
 	}
 
 	// Count number of rows using the index timestamp is faster than select(*)
 	int result = db_query_int("SELECT COUNT(timestamp) FROM queries");
-
-	// Close pihole-FTL.db database connection
-	dbclose();
 
 	return result;
 }
@@ -50,13 +50,6 @@ void DB_save_queries(void)
 	if(config.debug & DEBUG_DATABASE)
 		timer_start(DATABASE_WRITE_TIMER);
 
-	// Open database
-	if(!dbopen())
-	{
-		logg("Failed to open long-term database when trying to store queries");
-		return;
-	}
-
 	unsigned int saved = 0;
 	bool error = false;
 	sqlite3_stmt* stmt = NULL;
@@ -66,18 +59,14 @@ void DB_save_queries(void)
 	{
 		const char *text;
 		if( rc == SQLITE_BUSY )
-		{
 			text = "WARNING";
-		}
 		else
 		{
 			text = "ERROR";
-			// We shall not use the database any longer
-			database = false;
+			dbclose();
 		}
 
 		logg("%s: Storing queries in long-term database failed: %s", text, sqlite3_errstr(rc));
-		dbclose();
 		return;
 	}
 
@@ -94,15 +83,13 @@ void DB_save_queries(void)
 		{
 			text   = "ERROR";
 			spaces = "     ";
-			// We shall not use the database any longer
-			database = false;
+			dbclose();
 		}
 
 		// dbquery() above already logs the reson for why the query failed
 		logg("%s: Storing queries in long-term database failed: %s\n", text, sqlite3_errstr(rc));
 		logg("%s  Keeping queries in memory for later new attempt", spaces);
 		saving_failed_before = true;
-		dbclose();
 		return;
 	}
 
@@ -158,7 +145,14 @@ void DB_save_queries(void)
 		{
 			// Get forward pointer
 			const upstreamsData* upstream = getUpstream(query->upstreamID, true);
-			sqlite3_bind_text(stmt, 6, getstr(upstream->ippos), -1, SQLITE_STATIC);
+			char *buffer = NULL;
+			if(asprintf(&buffer, "%s#%u", getstr(upstream->ippos), upstream->port) > 0)
+				sqlite3_bind_text(stmt, 6, buffer, -1, SQLITE_TRANSIENT);
+			else
+				sqlite3_bind_null(stmt, 6);
+
+			if(buffer != NULL)
+				free(buffer);
 		}
 		else
 		{
@@ -177,7 +171,7 @@ void DB_save_queries(void)
 		else if(query->status == QUERY_REGEX)
 		{
 			// Restore regex ID if applicable
-			const int cacheID = findCacheID(query->domainID, query->clientID);
+			const int cacheID = findCacheID(query->domainID, query->clientID, query->type);
 			DNSCacheData *cache = getDNSCache(cacheID, true);
 			if(cache != NULL)
 				sqlite3_bind_int(stmt, 7, cache->black_regex_idx);
@@ -235,11 +229,8 @@ void DB_save_queries(void)
 			saving_failed_before = true;
 		}
 		else
-		{
-			database = false;
-		}
+			dbclose();
 
-		dbclose();
 		return;
 	}
 
@@ -255,11 +246,8 @@ void DB_save_queries(void)
 			saving_failed_before = true;
 		}
 		else
-		{
-			database = false;
-		}
+			dbclose();
 
-		dbclose();
 		return;
 	}
 
@@ -271,9 +259,6 @@ void DB_save_queries(void)
 		db_set_FTL_property(DB_LASTTIMESTAMP, newlasttimestamp);
 		db_update_counters(total, blocked);
 	}
-
-	// Close database
-	dbclose();
 
 	if(config.debug & DEBUG_DATABASE || saving_failed_before)
 	{
@@ -289,9 +274,8 @@ void DB_save_queries(void)
 void delete_old_queries_in_DB(void)
 {
 	// Open database
-	if(!dbopen())
+	if(!FTL_DB_avail())
 	{
-		logg("Failed to open long-term database when trying to delete old queries");
 		return;
 	}
 
@@ -309,20 +293,14 @@ void delete_old_queries_in_DB(void)
 	// Print final message only if there is a difference
 	if((config.debug & DEBUG_DATABASE) || affected)
 		logg("Notice: Database size is %.2f MB, deleted %i rows", 1e-6*get_FTL_db_filesize(), affected);
-
-	// Close database
-	dbclose();
 }
 
 // Get most recent 24 hours data from long-term database
 void DB_read_queries(void)
 {
-	// Open database file
+	// Open database
 	if(!dbopen())
-	{
-		logg("Failed to open long-term database when trying to read queries");
 		return;
-	}
 
 	// Prepare request
 	// Get time stamp 24 hours in the past
@@ -331,7 +309,7 @@ void DB_read_queries(void)
 	const char *querystr = "SELECT * FROM queries WHERE timestamp >= ?";
 	// Log FTL_db query string in debug mode
 	if(config.debug & DEBUG_DATABASE)
-		logg("DB_read_queries(): \"%s\" with ? = %li", querystr, mintime);
+		logg("DB_read_queries(): \"%s\" with ? = %lli", querystr, (long long)mintime);
 
 	// Prepare SQLite3 statement
 	sqlite3_stmt* stmt = NULL;
@@ -358,12 +336,12 @@ void DB_read_queries(void)
 		// 1483228800 = 01/01/2017 @ 12:00am (UTC)
 		if(queryTimeStamp < 1483228800)
 		{
-			logg("FTL_db warn: TIMESTAMP should be larger than 01/01/2017 but is %li", queryTimeStamp);
+			logg("FTL_db warn: TIMESTAMP should be larger than 01/01/2017 but is %lli", (long long)queryTimeStamp);
 			continue;
 		}
 		if(queryTimeStamp > now)
 		{
-			if(config.debug & DEBUG_DATABASE) logg("FTL_db warn: Skipping query logged in the future (%li)", queryTimeStamp);
+			if(config.debug & DEBUG_DATABASE) logg("FTL_db warn: Skipping query logged in the future (%lli)", (long long)queryTimeStamp);
 			continue;
 		}
 
@@ -390,14 +368,14 @@ void DB_read_queries(void)
 		const char * domainname = (const char *)sqlite3_column_text(stmt, 4);
 		if(domainname == NULL)
 		{
-			logg("FTL_db warn: DOMAIN should never be NULL, %li", queryTimeStamp);
+			logg("FTL_db warn: DOMAIN should never be NULL, %lli", (long long)queryTimeStamp);
 			continue;
 		}
 
 		const char * clientIP = (const char *)sqlite3_column_text(stmt, 5);
 		if(clientIP == NULL)
 		{
-			logg("FTL_db warn: CLIENT should never be NULL, %li", queryTimeStamp);
+			logg("FTL_db warn: CLIENT should never be NULL, %lli", (long long)queryTimeStamp);
 			continue;
 		}
 
@@ -416,16 +394,26 @@ void DB_read_queries(void)
 		{
 			if(upstream == NULL)
 			{
-				logg("WARN (during database import): FORWARD should not be NULL with status QUERY_FORWARDED (timestamp: %li), skipping entry", queryTimeStamp);
+				logg("WARN (during database import): FORWARD should not be NULL with status QUERY_FORWARDED (timestamp: %lli), skipping entry",
+				     (long long)queryTimeStamp);
 				continue;
 			}
-			upstreamID = findUpstreamID(upstream, true);
+
+			// Get IP address and port of upstream destination
+			char serv_addr[INET6_ADDRSTRLEN] = { 0 };
+			unsigned int serv_port = 53;
+			// We limit the number of bytes written into the serv_addr buffer
+			// to prevent buffer overflows. If there is no port available in
+			// the database, we skip extracting them and use the default port
+			sscanf(upstream, "%"xstr(INET6_ADDRSTRLEN)"[^#]#%u", serv_addr, &serv_port);
+			serv_addr[INET6_ADDRSTRLEN-1] = '\0';
+			upstreamID = findUpstreamID(serv_addr, (in_port_t)serv_port, true);
 		}
 
 		// Obtain IDs only after filtering which queries we want to keep
 		const int timeidx = getOverTimeID(queryTimeStamp);
 		const int domainID = findDomainID(domainname, true);
-		const int clientID = findClientID(clientIP, true);
+		const int clientID = findClientID(clientIP, true, false);
 
 		// Ensure we have enough space in the queries struct
 		memory_check(QUERIES);
@@ -465,7 +453,7 @@ void DB_read_queries(void)
 		// Update overTime data
 		overTime[timeidx].total++;
 		// Update overTime data structure with the new client
-		client->overTime[timeidx]++;
+		change_clientcount(client, 0, 0, timeidx, 1);
 
 		// Increase DNS queries counter
 		counters->queries++;
@@ -489,7 +477,7 @@ void DB_read_queries(void)
 		else if(status == QUERY_REGEX)
 		{
 			// QUERY_REGEX: Set ID regex which was the reson for blocking
-			const int cacheID = findCacheID(query->domainID, query->clientID);
+			const int cacheID = findCacheID(query->domainID, query->clientID, query->type);
 			DNSCacheData *cache = getDNSCache(cacheID, true);
 			// Only load if
 			//  a) we have a chace entry
@@ -518,7 +506,7 @@ void DB_read_queries(void)
 				// Get domain pointer
 				domainsData* domain = getDomain(domainID, true);
 				domain->blockedcount++;
-				client->blockedcount++;
+				change_clientcount(client, 0, 1, -1, 0);
 				// Update overTime data structure
 				overTime[timeidx].blocked++;
 				break;
@@ -537,7 +525,7 @@ void DB_read_queries(void)
 
 			default:
 				logg("Error: Found unknown status %i in long term database!", status);
-				logg("       Timestamp: %li", queryTimeStamp);
+				logg("       Timestamp: %lli", (long long)queryTimeStamp);
 				logg("       Continuing anyway...");
 				break;
 		}
@@ -556,5 +544,7 @@ void DB_read_queries(void)
 
 	// Finalize SQLite3 statement
 	sqlite3_finalize(stmt);
+
+	// Close database here, we have to reopen it later (after forking)
 	dbclose();
 }

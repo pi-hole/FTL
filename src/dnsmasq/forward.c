@@ -311,6 +311,7 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	  else
 	    log_query(F_NOEXTRA | F_DNSSEC | F_IPV6, "retry", (union all_addr *)&forward->sentto->addr.in6.sin6_addr, "dnssec");
 
+	  FTL_forwarding_retried(forward->sentto, forward->log_id, daemon->log_id, true);
   
 	  if (forward->sentto->sfd)
 	    fd = forward->sentto->sfd->fd;
@@ -347,7 +348,7 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	start = daemon->servers; /* at end of list, recycle */
       header->id = htons(forward->new_id);
 
-      FTL_forwarding_failed(forward->sentto);
+      FTL_forwarding_retried(forward->sentto, forward->log_id, daemon->log_id, false);
     }
   else 
     {
@@ -546,14 +547,14 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 		    log_query(F_SERVER | F_IPV4 | F_FORWARD, daemon->namebuff, 
 			      (union all_addr *)&start->addr.in.sin_addr, NULL); 
 		    FTL_forwarded(F_SERVER | F_IPV4 | F_FORWARD, daemon->namebuff,
-		                  (union all_addr *)&start->addr.in.sin_addr, daemon->log_display_id);
+		                  start, daemon->log_display_id);
 		  }
 		  else
 		  {
 		    log_query(F_SERVER | F_IPV6 | F_FORWARD, daemon->namebuff, 
 			      (union  all_addr *)&start->addr.in6.sin6_addr, NULL);
 		    FTL_forwarded(F_SERVER | F_IPV6 | F_FORWARD, daemon->namebuff,
-		                  (union all_addr *)&start->addr.in6.sin6_addr, daemon->log_display_id);
+		                  start, daemon->log_display_id);
 		  }
 		  start->queries++;
 		  forwarded = 1;
@@ -1416,7 +1417,7 @@ void receive_query(struct listener *listen, time_t now)
 	  return;
 	}
     }
-		
+
   if (check_dst)
     {
       struct ifreq ifr;
@@ -1520,6 +1521,10 @@ void receive_query(struct listener *listen, time_t now)
 	  else
 	    dst_addr_4.s_addr = 0;
 	}
+
+    /*********** Pi-hole modification ***********/
+    FTL_next_iface(ifr.ifr_name);
+    /********************************************/
     }
    
   /* log_query gets called indirectly all over the place, so 
@@ -1530,7 +1535,13 @@ void receive_query(struct listener *listen, time_t now)
 #ifdef HAVE_DUMPFILE
   dump_packet(DUMP_QUERY, daemon->packet, (size_t)n, &source_addr, NULL);
 #endif
-	  
+
+  //********************** Pi-hole modification **********************//
+  struct edns_data edns = { 0 };
+  if (find_pseudoheader(header, (size_t)n, NULL, &pheader, NULL, NULL))
+    FTL_parse_pseudoheaders(header, n, &source_addr, &edns);
+  //******************************************************************//
+
   if (extract_request(header, (size_t)n, daemon->namebuff, &type))
     {
 #ifdef HAVE_AUTH
@@ -1543,14 +1554,14 @@ void receive_query(struct listener *listen, time_t now)
 	log_query(F_QUERY | F_IPV4 | F_FORWARD, daemon->namebuff, 
 		  (union all_addr *)&source_addr.in.sin_addr, types);
 	piholeblocked = FTL_new_query(F_QUERY | F_IPV4 | F_FORWARD, daemon->namebuff, &blockingreason,
-	              (union all_addr *)&source_addr.in.sin_addr, types, type, daemon->log_display_id, UDP);
+	              (union all_addr *)&source_addr.in.sin_addr, types, type, daemon->log_display_id, &edns, UDP);
       }
       else
       {
 	log_query(F_QUERY | F_IPV6 | F_FORWARD, daemon->namebuff,
 		  (union all_addr *)&source_addr.in6.sin6_addr, types);
 	piholeblocked = FTL_new_query(F_QUERY | F_IPV6 | F_FORWARD, daemon->namebuff, &blockingreason,
-	              (union all_addr *)&source_addr.in6.sin6_addr, types, type, daemon->log_display_id, UDP);
+	              (union all_addr *)&source_addr.in6.sin6_addr, types, type, daemon->log_display_id, &edns, UDP);
       }
 
 #ifdef HAVE_AUTH
@@ -1931,6 +1942,12 @@ unsigned char *tcp_request(int confd, time_t now,
       /* save state of "cd" flag in query */
       if ((checking_disabled = header->hb4 & HB4_CD))
 	no_cache_dnssec = 1;
+
+      //********************** Pi-hole modification **********************//
+      struct edns_data edns = { 0 };
+      if (find_pseudoheader(header, (size_t)size, NULL, &pheader, NULL, NULL))
+        FTL_parse_pseudoheaders(header, size, &peer_addr, &edns);
+      //******************************************************************//
        
       if ((gotname = extract_request(header, (unsigned int)size, daemon->namebuff, &qtype)))
 	{
@@ -1944,14 +1961,14 @@ unsigned char *tcp_request(int confd, time_t now,
 	    log_query(F_QUERY | F_IPV4 | F_FORWARD, daemon->namebuff, 
 		      (union all_addr *)&peer_addr.in.sin_addr, types);
 	    piholeblocked = FTL_new_query(F_QUERY | F_IPV4 | F_FORWARD, daemon->namebuff, &blockingreason,
-	              (union all_addr *)&peer_addr.in.sin_addr, types, qtype, daemon->log_display_id, TCP);
+	              (union all_addr *)&peer_addr.in.sin_addr, types, qtype, daemon->log_display_id, &edns, TCP);
 	  }
 	  else
 	  {
 	    log_query(F_QUERY | F_IPV6 | F_FORWARD, daemon->namebuff,
 		      (union all_addr *)&peer_addr.in6.sin6_addr, types);
 	    piholeblocked = FTL_new_query(F_QUERY | F_IPV6 | F_FORWARD, daemon->namebuff, &blockingreason,
-	              (union all_addr *)&peer_addr.in6.sin6_addr, types, qtype, daemon->log_display_id, TCP);
+	              (union all_addr *)&peer_addr.in6.sin6_addr, types, qtype, daemon->log_display_id, &edns, TCP);
 	  }
 	  
 #ifdef HAVE_AUTH
@@ -2162,14 +2179,14 @@ unsigned char *tcp_request(int confd, time_t now,
 			log_query(F_SERVER | F_IPV4 | F_FORWARD, daemon->namebuff, 
 				  (union all_addr *)&last_server->addr.in.sin_addr, NULL); 
 			FTL_forwarded(F_SERVER | F_IPV4 | F_FORWARD, daemon->namebuff,
-			              (union all_addr *)&last_server->addr.in.sin_addr, daemon->log_display_id);
+			              last_server, daemon->log_display_id);
 		      }
 		      else
 		      {
 			log_query(F_SERVER | F_IPV6 | F_FORWARD, daemon->namebuff, 
 				  (union all_addr *)&last_server->addr.in6.sin6_addr, NULL);
 			FTL_forwarded(F_SERVER | F_IPV6 | F_FORWARD, daemon->namebuff,
-			              (union all_addr *)&last_server->addr.in6.sin6_addr, daemon->log_display_id);
+			              last_server, daemon->log_display_id);
 		      }
 
 #ifdef HAVE_DNSSEC

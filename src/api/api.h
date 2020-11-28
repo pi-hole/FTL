@@ -22,7 +22,6 @@ void getRecentBlocked(const char *client_message, const int *sock);
 void getQueryTypesOverTime(const int *sock);
 void getClientsOverTime(const int *sock);
 void getClientNames(const int *sock);
-void getDomainDetails(const char *client_message, const int *sock);
 
 // FTL methods
 void getClientID(const int *sock);
@@ -44,5 +43,8 @@ void pack_float(const int sock, const float value);
 bool pack_fixstr(const int sock, const char *string);
 bool pack_str32(const int sock, const char *string);
 void pack_map16_start(const int sock, const uint16_t length);
+
+// DHCP lease management
+void delete_lease(const char *client_message, const int *sock);
 
 #endif // API_H

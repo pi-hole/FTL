@@ -180,13 +180,12 @@ void read_FTLconf(void)
 	if(config.DBinterval == 60)
 		logg("   DBINTERVAL: saving to DB file every minute");
 	else
-		logg("   DBINTERVAL: saving to DB file every %i seconds", config.DBinterval);
+		logg("   DBINTERVAL: saving to DB file every %lli seconds", (long long)config.DBinterval);
 
 	// DBFILE
 	// defaults to: "/etc/pihole/pihole-FTL.db"
 	buffer = parse_FTLconf(fp, "DBFILE");
 
-	errno = 0;
 	// Use sscanf() to obtain filename from config file parameter only if buffer != NULL
 	if(!(buffer != NULL && sscanf(buffer, "%127ms", &FTLfiles.FTL_db)))
 	{
@@ -194,16 +193,16 @@ void read_FTLconf(void)
 		FTLfiles.FTL_db = strdup("/etc/pihole/pihole-FTL.db");
 	}
 
-	// Test if memory allocation was successful
-	if(FTLfiles.FTL_db == NULL && errno != 0)
-	{
-		logg("FATAL: Allocating memory for FTLfiles.FTL_db failed (%s, %i). Exiting.", strerror(errno), errno);
-		exit(EXIT_FAILURE);
-	}
-	else if(FTLfiles.FTL_db != NULL && strlen(FTLfiles.FTL_db) > 0)
+	if(FTLfiles.FTL_db != NULL && strlen(FTLfiles.FTL_db) > 0)
 		logg("   DBFILE: Using %s", FTLfiles.FTL_db);
 	else
-		logg("   DBFILE: Not using database due to empty filename");
+	{
+		// Use standard path if path was set to zero but override
+		// MAXDBDAYS=0 to ensure no queries are stored in the database
+		FTLfiles.FTL_db = strdup("/etc/pihole/pihole-FTL.db");
+		config.maxDBdays = 0;
+		logg("   DBFILE: Using %s (not storing queries)", FTLfiles.FTL_db);
+	}
 
 	// FTLPORT
 	// On which port should FTL be listening?
@@ -296,7 +295,11 @@ void read_FTLconf(void)
 	config.DBimport = read_bool(buffer, true);
 
 	if(config.DBimport)
+	{
 		logg("   DBIMPORT: Importing history from database");
+		if(config.maxDBdays == 0)
+			logg("      Hint: Exporting queries has been disabled (MAXDBDAYS=0)!");
+	}
 	else
 		logg("   DBIMPORT: Not importing history from database");
 
@@ -355,6 +358,11 @@ void read_FTLconf(void)
 	buffer = parse_FTLconf(fp, "BLOCK_ESNI");
 	config.block_esni = read_bool(buffer, true);
 
+	if(config.block_esni)
+		logg("   BLOCK_ESNI: Enabled, blocking _esni.{blocked domain}");
+	else
+		logg("   BLOCK_ESNI: Disabled");
+
 	// NICE
 	// Shall we change the nice of the current process?
 	// defaults to: -10 (can be disabled by setting value to -999)
@@ -369,10 +377,24 @@ void read_FTLconf(void)
 	buffer = parse_FTLconf(fp, "NICE");
 	set_nice(buffer, -10);
 
-	if(config.block_esni)
-		logg("   BLOCK_ESNI: Enabled, blocking _esni.{blocked domain}");
+	// MAXNETAGE
+	// IP addresses (and associated host names) older than the specified number
+	// of days are removed to avoid dead entries in the network overview table
+	// defaults to: the same value as MAXDBDAYS
+	config.network_expire = config.maxDBdays;
+	buffer = parse_FTLconf(fp, "MAXNETAGE");
+
+	int ivalue = 0;
+	if(buffer != NULL &&
+	    sscanf(buffer, "%i", &ivalue) &&
+	    ivalue > 0 && ivalue <= 8760) // 8760 days = 24 years
+			config.network_expire = ivalue;
+
+	if(config.network_expire > 0u)
+		logg("   MAXNETAGE: Removing IP addresses and host names from network table after %u days",
+		     config.network_expire);
 	else
-		logg("   BLOCK_ESNI: Disabled");
+		logg("   MAXNETAGE: No automated removal of IP addresses and host names from the network table");
 
 	// NAMES_FROM_NETDB
 	// Should we use the fallback option to try to obtain client names from
@@ -382,16 +404,25 @@ void read_FTLconf(void)
 	// we use the host name associated to the other address as this is the same
 	// device. This behavior can be disabled using NAMES_FROM_NETDB=false
 	// defaults to: true
-	config.names_from_netdb = true;
 	buffer = parse_FTLconf(fp, "NAMES_FROM_NETDB");
-
-	if(buffer != NULL && strcasecmp(buffer, "false") == 0)
-		config.names_from_netdb = false;
+	config.names_from_netdb = read_bool(buffer, true);
 
 	if(config.names_from_netdb)
 		logg("   NAMES_FROM_NETDB: Enabled, trying to get names from network database");
 	else
 		logg("   NAMES_FROM_NETDB: Disabled");
+
+	// EDNS0_ECS
+	// Should we overwrite the query source when client information is
+	// provided through EDNS0 client subnet (ECS) information?
+	// defaults to: true
+	buffer = parse_FTLconf(fp, "EDNS0_ECS");
+	config.edns0_ecs = read_bool(buffer, true);
+
+	if(config.edns0_ecs)
+		logg("   EDNS0_ECS: Overwrite client from ECS information");
+	else
+		logg("   EDNS0_ECS: Don't use ECS information");
 
 	// Read DEBUG_... setting from pihole-FTL.conf
 	read_debuging_settings(fp);
@@ -574,7 +605,7 @@ void get_blocking_mode(FILE *fp)
 }
 
 // Routine for setting the debug flags in the config struct
-static void setDebugOption(FILE* fp, const char* option, int16_t bitmask)
+static void setDebugOption(FILE* fp, const char* option, enum debug_flags bitmask)
 {
 	const char* buffer = parse_FTLconf(fp, option);
 
@@ -676,6 +707,26 @@ void read_debuging_settings(FILE *fp)
 	// defaults to: false
 	setDebugOption(fp, "DEBUG_RESOLVER", DEBUG_RESOLVER);
 
+	// DEBUG_EDNS0
+	// defaults to: false
+	setDebugOption(fp, "DEBUG_EDNS0", DEBUG_EDNS0);
+
+	// DEBUG_CLIENTS
+	// defaults to: false
+	setDebugOption(fp, "DEBUG_CLIENTS", DEBUG_CLIENTS);
+
+	// DEBUG_ALIASCLIENTS
+	// defaults to: false
+	setDebugOption(fp, "DEBUG_ALIASCLIENTS", DEBUG_ALIASCLIENTS);
+
+	// DEBUG_EVENTS
+	// defaults to: false
+	setDebugOption(fp, "DEBUG_EVENTS", DEBUG_EVENTS);
+
+	// DEBUG_HELPER
+	// defaults to: false
+	setDebugOption(fp, "DEBUG_HELPER", DEBUG_HELPER);
+
 	if(config.debug)
 	{
 		logg("*****************************");
@@ -696,6 +747,11 @@ void read_debuging_settings(FILE *fp)
 		logg("* DEBUG_DNSMASQ_LINES   %s *", (config.debug & DEBUG_DNSMASQ_LINES)? "YES":"NO ");
 		logg("* DEBUG_VECTORS         %s *", (config.debug & DEBUG_VECTORS)? "YES":"NO ");
 		logg("* DEBUG_RESOLVER        %s *", (config.debug & DEBUG_RESOLVER)? "YES":"NO ");
+		logg("* DEBUG_EDNS0           %s *", (config.debug & DEBUG_EDNS0)? "YES":"NO ");
+		logg("* DEBUG_CLIENTS         %s *", (config.debug & DEBUG_CLIENTS)? "YES":"NO ");
+		logg("* DEBUG_ALIASCLIENTS    %s *", (config.debug & DEBUG_ALIASCLIENTS)? "YES":"NO ");
+		logg("* DEBUG_EVENTS          %s *", (config.debug & DEBUG_EVENTS)? "YES":"NO ");
+		logg("* DEBUG_HELPER          %s *", (config.debug & DEBUG_HELPER)? "YES":"NO ");
 		logg("*****************************");
 	}
 

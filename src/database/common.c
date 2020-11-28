@@ -8,20 +8,24 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "FTL.h"
-#include "database/common.h"
-#include "database/network-table.h"
-#include "database/message-table.h"
-#include "shmem.h"
-#include "memory.h"
-#include "config.h"
-#include "log.h"
-#include "timers.h"
-#include "files.h"
-#include "database/sqlite3-ext.h"
+#include "../FTL.h"
+#include "common.h"
+#include "network-table.h"
+#include "message-table.h"
+#include "../shmem.h"
+#include "../memory.h"
+// struct config
+#include "../config.h"
+// logg()
+#include "../log.h"
+#include "../timers.h"
+// file_exists()
+#include "../files.h"
+#include "sqlite3-ext.h"
+// import_aliasclients()
+#include "aliasclients.h"
 
 sqlite3 *FTL_db = NULL;
-bool database = true;
 bool DBdeleteoldqueries = false;
 long int lastdbindex = 0;
 static bool db_avail = false;
@@ -35,50 +39,55 @@ __attribute__ ((pure)) bool FTL_DB_avail(void)
 
 void dbclose(void)
 {
+	// Mark database as being closed
+	db_avail = false;
+
+	if(config.debug & DEBUG_LOCKS)
+		logg("Unlocking FTL database");
+
 	// Only try to close an existing database connection
 	int rc = SQLITE_OK;
 	if( FTL_db != NULL )
 	{
-		rc = sqlite3_close(FTL_db);
+		if((rc = sqlite3_close(FTL_db)) != SQLITE_OK)
+			logg("Encountered error while trying to close database: %s", sqlite3_errstr(rc));
+
 		FTL_db = NULL;
 	}
-
-	db_avail = false;
-
-	// Report any error
-	if( rc != SQLITE_OK )
-	{
-		logg("Encountered error while trying to close database: %s", sqlite3_errstr(rc));
-		database = false;
-	}
-
-	if(config.debug & DEBUG_LOCKS)
-		logg("Unlocking database");
+	else if(config.debug & DEBUG_LOCKS)
+		logg("Unlocking FTL database: already NULL");
 
 	// Unlock mutex on the database
 	pthread_mutex_unlock(&dblock);
 
 	if(config.debug & DEBUG_LOCKS)
-		logg("Unlocking database: Success");
+		logg("Unlocking FTL database: Success");
 }
 
 bool dbopen(void)
 {
+	// Skip subroutine altogether when database is already open
+	if(FTL_db != NULL && FTL_DB_avail())
+	{
+		if(config.debug & DEBUG_LOCKS)
+			logg("Not locking FTL database (already open)");
+		return true;
+	}
+
 	if(config.debug & DEBUG_LOCKS)
-		logg("Locking database");
+		logg("Locking FTL database");
 
 	// Lock mutex on the database
 	pthread_mutex_lock(&dblock);
 
 	if(config.debug & DEBUG_LOCKS)
-		logg("Locking database: Success");
+		logg("Locking FTL database: Success");
 
 	// Try to open database
 	int rc = sqlite3_open_v2(FTLfiles.FTL_db, &FTL_db, SQLITE_OPEN_READWRITE, NULL);
 	if( rc != SQLITE_OK )
 	{
 		logg("Encountered error while trying to open database: %s", sqlite3_errstr(rc));
-		database = false;
 		pthread_mutex_unlock(&dblock);
 		return false;
 	}
@@ -89,7 +98,6 @@ bool dbopen(void)
 	{
 		logg("Encountered error while trying to set busy timeout (%d ms) on database: %s",
 		     DATABASE_BUSY_TIMEOUT, sqlite3_errstr(rc));
-		database = false;
 		dbclose();
 		return false;
 	}
@@ -97,6 +105,13 @@ bool dbopen(void)
 	db_avail = true;
 
 	return true;
+}
+
+// (Re-)Open pihole-FTL database connection
+void piholeFTLDB_reopen(void)
+{
+	dbclose();
+	dbopen();
 }
 
 int dbquery(const char *format, ...)
@@ -114,7 +129,7 @@ int dbquery(const char *format, ...)
 
 	// Log generated SQL string when dbquery() is called
 	// although the database connection is not available
-	if(FTL_db == NULL && !dbopen())
+	if(!FTL_DB_avail())
 	{
 		logg("dbquery(\"%s\") called but database is not available!", query);
 		sqlite3_free(query);
@@ -153,19 +168,19 @@ static bool create_counter_table(void)
 
 	// ID 0 = total queries
 	if(!db_set_counter(DB_TOTALQUERIES, 0))
-	{ dbclose(); return false; }
+		return false;
 
 	// ID 1 = total blocked queries
 	if(!db_set_counter(DB_BLOCKEDQUERIES, 0))
-	{ dbclose(); return false; }
+		return false;
 
 	// Time stamp of creation of the counters database
 	if(!db_set_FTL_property(DB_FIRSTCOUNTERTIMESTAMP, time(NULL)))
-	{ dbclose(); return false; }
+		return false;
 
 	// Update database version to 2
 	if(!db_set_FTL_property(DB_VERSION, 2))
-	{ dbclose(); return false; }
+		return false;
 
 	return true;
 }
@@ -178,6 +193,10 @@ static bool db_create(void)
 		logg("Encountered error while trying to create database in rw-mode: %s", sqlite3_errstr(rc));
 		return false;
 	}
+
+	// Mark database as being available so dbquery() doesn't error out
+	db_avail = true;
+
 	// Create Queries table in the database
 	SQL_bool("CREATE TABLE queries ( id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL, type INTEGER NOT NULL, status INTEGER NOT NULL, domain TEXT NOT NULL, client TEXT NOT NULL, forward TEXT );");
 
@@ -197,7 +216,7 @@ static bool db_create(void)
 		return false;
 
 	// Done initializing the database
-	// Close database handle
+	// Close database handle, it will be reopened in db_init()
 	dbclose();
 
 	// Explicitly set permissions to 0644
@@ -227,9 +246,6 @@ void db_init(void)
 		exit(EXIT_FAILURE);
 	}
 
-	// Lock database thread
-	pthread_mutex_lock(&dblock);
-
 	// Initialize SQLite3 logging callback
 	// This ensures SQLite3 errors and warnings are logged to pihole-FTL.log
 	// We use this to possibly catch even more errors in places we do not
@@ -247,18 +263,14 @@ void db_init(void)
 		{
 			logg("Creation of database failed, database is not available");
 			pthread_mutex_unlock(&dblock);
-			database = false;
 			return;
 		}
 	}
 
-	// Try to open the database connection
-	rc = sqlite3_open_v2(FTLfiles.FTL_db, &FTL_db, SQLITE_OPEN_READWRITE, NULL);
-	if( rc != SQLITE_OK ){
-		logg("Cannot initialize (open) long-term database: %s", sqlite3_errstr(rc));
-		database = false;
-		return;
-	}
+	// Open database
+	dbopen();
+
+	db_avail = true;
 
 	// Test FTL_db version and see if we need to upgrade the database file
 	int dbversion = db_get_FTL_property(DB_VERSION);
@@ -266,8 +278,6 @@ void db_init(void)
 	{
 		logg("Database not available, please ensure the database is unlocked when starting pihole-FTL !");
 		dbclose();
-
-		database = false;
 		return;
 	}
 	else
@@ -285,8 +295,6 @@ void db_init(void)
 		{
 			logg("Counter table not initialized, database not available");
 			dbclose();
-
-			database = false;
 			return;
 		}
 		// Get updated version
@@ -302,8 +310,6 @@ void db_init(void)
 		{
 			logg("Network table not initialized, database not available");
 			dbclose();
-
-			database = false;
 			return;
 		}
 		// Get updated version
@@ -319,8 +325,6 @@ void db_init(void)
 		{
 			logg("Unable to unify clients in network table, database not available");
 			dbclose();
-
-			database = false;
 			return;
 		}
 		// Get updated version
@@ -336,8 +340,6 @@ void db_init(void)
 		{
 			logg("Network-addresses table not initialized, database not available");
 			dbclose();
-
-			database = false;
 			return;
 		}
 		// Get updated version
@@ -353,8 +355,6 @@ void db_init(void)
 		{
 			logg("Message table not initialized, database not available");
 			dbclose();
-
-			database = false;
 			return;
 		}
 		// Get updated version
@@ -371,13 +371,43 @@ void db_init(void)
 		{
 			logg("Column additional_info not initialized, database not available");
 			dbclose();
-
-			database = false;
 			return;
 		}
 		// Get updated version
 		dbversion = db_get_FTL_property(DB_VERSION);
 	}
+
+	// Update to version 8 if lower
+	if(dbversion < 8)
+	{
+		// Update to version 8: Add name field to network_addresses table
+		logg("Updating long-term database to version 8");
+		if(!create_network_addresses_with_names_table())
+		{
+			logg("Network addresses table not initialized, database not available");
+			dbclose();
+			return;
+		}
+		// Get updated version
+		dbversion = db_get_FTL_property(DB_VERSION);
+	}
+
+	// Update to version 9 if lower
+	if(dbversion < 9)
+	{
+		// Update to version 9: Add aliasclients table
+		logg("Updating long-term database to version 9");
+		if(!create_aliasclients_table())
+		{
+			logg("Aliasclients table not initialized, database not available");
+			dbclose();
+			return;
+		}
+		// Get updated version
+		dbversion = db_get_FTL_property(DB_VERSION);
+	}
+
+	import_aliasclients();
 
 	// Close database to prevent having it opened all time
 	// We already closed the database when we returned earlier
@@ -385,11 +415,11 @@ void db_init(void)
 
 	// Log if users asked us to not use the long-term database for queries
 	// We will still use it to store warnings in it
-	if(!use_database())
+	config.DBexport = true;
+	if(config.maxDBdays == 0)
 	{
-		logg("Not using the long-term database for storing queries");
-		database = false;
-		return;
+		logg("Not using the database for storing queries");
+		config.DBexport = false;
 	}
 
 	logg("Database successfully initialized");
@@ -397,7 +427,7 @@ void db_init(void)
 
 int db_get_FTL_property(const enum ftl_table_props ID)
 {
-	if(!database || FTL_db == NULL)
+	if(!FTL_DB_avail())
 	{
 		logg("db_get_FTL_property(%u) called but database is not available!", ID);
 		return DB_FAILED;
@@ -420,7 +450,7 @@ int db_get_FTL_property(const enum ftl_table_props ID)
 
 bool db_set_FTL_property(const enum ftl_table_props ID, const int value)
 {
-	if(!database || FTL_db == NULL)
+	if(!FTL_DB_avail())
 	{
 		logg("db_set_FTL_property(%u, %i) called but database is not available!", ID, value);
 		return false;
@@ -430,31 +460,48 @@ bool db_set_FTL_property(const enum ftl_table_props ID, const int value)
 
 bool db_set_counter(const enum counters_table_props ID, const int value)
 {
-	if(!database || FTL_db == NULL)
+	if(!FTL_DB_avail())
 	{
 		logg("db_set_counter(%u, %i) called but database is not available!", ID, value);
 		return false;
 	}
-	return dbquery("INSERT OR REPLACE INTO counters (id, value) VALUES ( %u, %i );", ID, value) == SQLITE_OK;
+
+	if(dbquery("INSERT OR REPLACE INTO counters (id, value) VALUES ( %u, %i );", ID, value) != SQLITE_OK)
+	{
+		dbclose();
+		return false;
+	}
+
+	return true;
 }
 
 bool db_update_counters(const int total, const int blocked)
 {
-	if(!database || FTL_db == NULL)
+	if(!FTL_DB_avail())
 	{
 		logg("db_update_counters(%i, %i) called but database is not available!", total, blocked);
+		dbclose();
 		return false;
 	}
+
 	if(dbquery("UPDATE counters SET value = value + %i WHERE id = %i;", total, DB_TOTALQUERIES) != SQLITE_OK)
+	{
+		dbclose();
 		return false;
+	}
+
 	if(dbquery("UPDATE counters SET value = value + %i WHERE id = %i;", blocked, DB_BLOCKEDQUERIES) != SQLITE_OK)
+	{
+		dbclose();
 		return false;
+	}
+
 	return true;
 }
 
 int db_query_int(const char* querystr)
 {
-	if(!database || FTL_db == NULL)
+	if(!FTL_DB_avail())
 	{
 		logg("db_query_int(\"%s\") called but database is not available!", querystr);
 		return DB_FAILED;
@@ -470,10 +517,8 @@ int db_query_int(const char* querystr)
 	if( rc != SQLITE_OK )
 	{
 		if( rc != SQLITE_BUSY )
-		{
 			logg("Encountered prepare error in db_query_int(\"%s\"): %s", querystr, sqlite3_errstr(rc));
-			database = false;
-		}
+
 		return DB_FAILED;
 	}
 
@@ -511,7 +556,7 @@ int db_query_int(const char* querystr)
 
 long int get_max_query_ID(void)
 {
-	if(!database || FTL_db == NULL)
+	if(!FTL_DB_avail())
 	{
 		logg("get_max_query_ID() called but database is not available!");
 		return DB_FAILED;
@@ -530,9 +575,10 @@ long int get_max_query_ID(void)
 		if( rc != SQLITE_BUSY )
 		{
 			logg("Encountered prepare error in get_max_query_ID(): %s", sqlite3_errstr(rc));
-			database = false;
+			dbclose();
 		}
-		dbclose();
+
+		// Return okay if the database is busy
 		return DB_FAILED;
 	}
 
@@ -540,7 +586,6 @@ long int get_max_query_ID(void)
 	if( rc != SQLITE_ROW )
 	{
 		logg("Encountered step error in get_max_query_ID(): %s", sqlite3_errstr(rc));
-		database = false;
 		dbclose();
 		return DB_FAILED;
 	}
@@ -557,7 +602,7 @@ long int get_max_query_ID(void)
 // Returns ID of the most recent successful INSERT.
 long get_lastID(void)
 {
-	if(!database || FTL_db == NULL)
+	if(!FTL_DB_avail())
 	{
 		logg("get_lastID() called but database is not available!");
 		return DB_FAILED;
@@ -569,20 +614,4 @@ long get_lastID(void)
 const char *get_sqlite3_version(void)
 {
 	return sqlite3_libversion();
-}
-
-// Should the long-term database be used?
-__attribute__ ((pure)) bool use_database()
-{
-	// Check if the user doesn't want to use the database and set an
-	// empty string as file name in FTL's config file or configured
-	// a maximum history of zero days.
-	if(FTLfiles.FTL_db == NULL ||
-	   strlen(FTLfiles.FTL_db) == 0 ||
-	   config.maxDBdays == 0)
-	{
-		return false;
-	}
-
-	return true;
 }

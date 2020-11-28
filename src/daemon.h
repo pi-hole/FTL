@@ -33,4 +33,6 @@ bool is_fork(const pid_t mpid, const pid_t pid) __attribute__ ((const));
 pid_t FTL_gettid(void);
 #define gettid FTL_gettid
 
+extern bool resolver_ready;
+
 #endif //DAEMON_H

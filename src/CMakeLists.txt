@@ -76,7 +76,7 @@ if(CMAKE_C_COMPILER_VERSION VERSION_EQUAL 8 OR CMAKE_C_COMPILER_VERSION VERSION_
     # -Wduplicated-branches: Warn when an if-else has identical branches
     # -Wcast-align=strict: Warn whenever a pointer is cast such that the required alignment of the target is increased. For example, warn if a "char *" is cast to an "int *" regardless of the target machine.
     # -Wlogical-not-parentheses: Warn about logical not used on the left hand side operand of a comparison
-    set(EXTRAWARN_GCC8 "-Wduplicated-cond -Wduplicated-branches -Wcast-align=strict -Wlogical-not-parentheses -Wsuggest-attribute=pure -Wsuggest-attribute=const -Wsuggest-attribute=noreturn -Wsuggest-attribute=malloc -Wsuggest-attribute=format -Wsuggest-attribute=cold")
+    set(EXTRAWARN_GCC8 "-Wduplicated-cond -Wduplicated-branches -Wcast-align=strict -Wlogical-not-parentheses -Wsuggest-attribute=pure -Wsuggest-attribute=const -Wsuggest-attribute=malloc -Wsuggest-attribute=format -Wsuggest-attribute=cold")
 else()
     set(EXTRAWARN_GCC8 "")
 endif()
@@ -112,9 +112,15 @@ set(sources
         daemon.h
         datastructure.c
         datastructure.h
+        dhcp-discover.c
+        dhcp-discover.h
         dnsmasq_interface.c
         dnsmasq_interface.h
+        edns0.c
+        edns0.h
         enums.h
+        events.c
+        events.h
         files.c
         files.h
         FTL.h
@@ -154,6 +160,7 @@ add_custom_target(
 
 add_library(FTL OBJECT ${sources})
 target_compile_options(FTL PRIVATE ${EXTRAWARN})
+target_compile_definitions(FTL PRIVATE DNSMASQ_VERSION=\"${DNSMASQ_VERSION}\")
 target_include_directories(FTL PRIVATE ${PROJECT_SOURCE_DIR}/src)
 add_dependencies(FTL gen_version)
 
@@ -164,25 +171,46 @@ add_executable(pihole-FTL
         $<TARGET_OBJECTS:database>
         $<TARGET_OBJECTS:dnsmasq>
         $<TARGET_OBJECTS:sqlite3>
+        $<TARGET_OBJECTS:lua>
+        $<TARGET_OBJECTS:tre-regex>
         )
 if(STATIC STREQUAL "true")
     set_target_properties(pihole-FTL PROPERTIES LINK_SEARCH_START_STATIC ON)
     set_target_properties(pihole-FTL PROPERTIES LINK_SEARCH_END_STATIC ON)
     target_link_libraries(pihole-FTL -static-libgcc -static -static-pie)
+else()
+    find_library(LIBMATH m)
+    target_link_libraries(pihole-FTL ${LIBMATH})
 endif()
+target_compile_definitions(pihole-FTL PRIVATE DNSMASQ_VERSION=\"${DNSMASQ_VERSION}\")
 set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
 set(THREADS_PREFER_PTHREAD_FLAG TRUE)
 find_package(Threads REQUIRED)
 
-find_library(HOGWEED libhogweed${CMAKE_STATIC_LIBRARY_SUFFIX})
-find_library(GMP libgmp${CMAKE_STATIC_LIBRARY_SUFFIX})
-find_library(NETTLE libnettle${CMAKE_STATIC_LIBRARY_SUFFIX})
-find_library(IDN libidn${CMAKE_STATIC_LIBRARY_SUFFIX})
+# for DNSSEC we need the nettle (+ hogweed) crypto and the gmp math libraries
+find_library(LIBHOGWEED libhogweed${CMAKE_STATIC_LIBRARY_SUFFIX})
+find_library(LIBGMP libgmp${CMAKE_STATIC_LIBRARY_SUFFIX})
+find_library(LIBNETTLE libnettle${CMAKE_STATIC_LIBRARY_SUFFIX})
+find_library(LIBIDN libidn${CMAKE_STATIC_LIBRARY_SUFFIX})
 
-# for FTL we need the pthread library
-# for dnsmasq we need the nettle crypto library and the gmp maths library
-# We link the two libraries statically. Although this increases the binary file size by about 1 MB, it saves about 5 MB of shared libraries and makes deployment easier
-target_link_libraries(pihole-FTL rt Threads::Threads ${HOGWEED} ${GMP} ${NETTLE} ${IDN})
+target_link_libraries(pihole-FTL rt Threads::Threads ${LIBHOGWEED} ${LIBGMP} ${LIBNETTLE} ${LIBIDN})
+
+if(LUA_DL STREQUAL "true")
+    find_library(LIBDL dl)
+    target_link_libraries(pihole-FTL ${LIBDL})
+endif()
+
+find_library(LIBREADLINE libreadline${CMAKE_STATIC_LIBRARY_SUFFIX})
+find_library(LIBHISTORY libhistory${CMAKE_STATIC_LIBRARY_SUFFIX})
+find_library(LIBTERMCAP libtermcap${CMAKE_STATIC_LIBRARY_SUFFIX})
+if(LIBREADLINE AND LIBHISTORY AND LIBTERMCAP)
+    message(STATUS "Building FTL with readline support: YES")
+    target_compile_definitions(FTL PRIVATE LUA_USE_READLINE)
+    target_compile_definitions(pihole-FTL PRIVATE LUA_USE_READLINE)
+    target_link_libraries(pihole-FTL ${LIBREADLINE} ${LIBHISTORY} ${LIBTERMCAP})
+else()
+    message(STATUS "Building FTL with readline support: NO")
+endif()
 
 if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
     set(CMAKE_INSTALL_PREFIX "/usr" CACHE PATH "..." FORCE)
@@ -192,8 +220,10 @@ find_program(SETCAP setcap)
 install(TARGETS pihole-FTL
         RUNTIME DESTINATION bin
         PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
-install(CODE "execute_process(COMMAND ${SETCAP} CAP_NET_BIND_SERVICE,CAP_NET_RAW,CAP_NET_ADMIN+eip ${CMAKE_INSTALL_PREFIX}/bin/pihole-FTL)")
+install(CODE "execute_process(COMMAND ${SETCAP} CAP_NET_BIND_SERVICE,CAP_NET_RAW,CAP_NET_ADMIN,CAP_SYS_NICE+eip \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/bin/pihole-FTL)")
 
 add_subdirectory(api)
 add_subdirectory(database)
 add_subdirectory(dnsmasq)
+add_subdirectory(lua)
+add_subdirectory(tre-regex)

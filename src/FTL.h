@@ -103,16 +103,31 @@
 // Default: 1000 (one second)
 #define DATABASE_BUSY_TIMEOUT 1000
 
+// After how many seconds do we check again if a client can be identified by other means?
+// (e.g., interface, MAC address, hostname)
+// Default: 60 (after one minutee)
+#define RECHECK_DELAY 60
+
+// How often should we check again if a client can be identified by other means?
+// (e.g., interface, MAC address, hostname)
+// Default: 3 (once after RECHECK_DELAY seconds, then again after 2*RECHECK_DELAY and 3*RECHECK_DELAY)
+// Important: This number has to be smaller than 256 for this mechanism to work
+#define NUM_RECHECKS 3
+
 // Use out own memory handling functions that will detect possible errors
 // and report accordingly in the log. This will make debugging FTL crashs
 // caused by insufficient memory or by code bugs (not properly dealing
 // with NULL pointers) much easier.
-#define free(param) FTLfree(param, __FILE__,  __FUNCTION__,  __LINE__)
+#define free(ptr) FTLfree(ptr, __FILE__,  __FUNCTION__,  __LINE__)
 #define lib_strdup() strdup()
 #undef strdup
-#define strdup(param) FTLstrdup(param, __FILE__,  __FUNCTION__,  __LINE__)
-#define calloc(p1,p2) FTLcalloc(p1,p2, __FILE__,  __FUNCTION__,  __LINE__)
-#define realloc(p1,p2) FTLrealloc(p1,p2, __FILE__,  __FUNCTION__,  __LINE__)
+#define strdup(str_in) FTLstrdup(str_in, __FILE__,  __FUNCTION__,  __LINE__)
+#define calloc(numer_of_elements, element_size) FTLcalloc(numer_of_elements, element_size, __FILE__,  __FUNCTION__,  __LINE__)
+#define realloc(ptr, new_size) FTLrealloc(ptr, new_size, __FILE__,  __FUNCTION__,  __LINE__)
+
+// Preprocessor help functions
+#define str(x) # x
+#define xstr(x) str(x)
 
 extern pthread_t telnet_listenthreadv4;
 extern pthread_t telnet_listenthreadv6;

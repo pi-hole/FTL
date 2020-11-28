@@ -1782,6 +1782,11 @@ static void check_dns_listeners(time_t now)
 	
   for (listener = daemon->listeners; listener; listener = listener->next)
     {
+
+      /******************** Pi-hole modification *******************/
+      FTL_next_iface(listener->iface ? listener->iface->name : NULL);
+      /*************************************************************/
+
       if (listener->fd != -1 && poll_check(listener->fd, POLLIN))
 	receive_query(listener, now); 
       
@@ -1868,6 +1873,8 @@ static void check_dns_listeners(time_t now)
 		}
 	    }
 	  
+	  FTL_next_iface(iface ? iface->name : NULL);
+
 	  if (!client_ok)
 	    {
 	      shutdown(confd, SHUT_RDWR);
@@ -2144,3 +2151,12 @@ int delay_dhcp(time_t start, int sec, int fd, uint32_t addr, unsigned short id)
   return 0;
 }
 #endif /* HAVE_DHCP */
+
+/******************************** Pi-hole modification ********************************/
+void print_dnsmasq_version(void)
+{
+  printf("****************************** dnsmasq ******************************\n");
+  printf(_("Version:         %s\n"), VERSION);
+  printf(_("Compile options: %s\n\n"), compile_opts);
+}
+/**************************************************************************************/

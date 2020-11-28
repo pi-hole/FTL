@@ -35,6 +35,7 @@ int dbquery(const char *format, ...);
 bool FTL_DB_avail(void) __attribute__ ((pure));
 bool dbopen(void);
 void dbclose(void);
+void piholeFTLDB_reopen(void);
 int db_query_int(const char*);
 long get_lastID(void);
 void SQLite3LogCallback(void *pArg, int iErrCode, const char *zMsg);
@@ -42,10 +43,8 @@ long int get_max_query_ID(void);
 bool db_set_counter(const enum counters_table_props ID, const int value);
 bool db_update_counters(const int total, const int blocked);
 const char *get_sqlite3_version(void);
-bool use_database(void)  __attribute__ ((pure));
 
 extern sqlite3 *FTL_db;
-extern bool database;
 extern long int lastdbindex;
 extern bool DBdeleteoldqueries;
 

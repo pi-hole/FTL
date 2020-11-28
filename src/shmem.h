@@ -53,7 +53,7 @@ typedef struct {
 	int reply_domain;
 	int dns_cache_size;
 	int dns_cache_MAX;
-	int num_regex[2];
+	unsigned int num_regex[REGEX_MAX];
 } countersStruct;
 
 extern countersStruct *counters;
@@ -62,17 +62,19 @@ extern countersStruct *counters;
 ///
 /// \param name the name of the shared memory
 /// \param size the size to allocate
+/// \param create_new true = delete old file, create new, false = connect to existing object or fail
 /// \return a structure with a pointer to the mounted shared memory. The pointer
 /// will always be valid, because if it failed FTL will have exited.
-SharedMemory create_shm(const char *name, const size_t size);
+SharedMemory create_shm(const char *name, const size_t size, bool create_new);
 
 /// Reallocate shared memory
 ///
 /// \param sharedMemory the shared memory struct
-/// \param size the new size
+/// \param size1 the new size (factor 1)
+/// \param size2 the new size (factor 2)
 /// \param resize whether the object should be resized or only remapped
 /// \return if reallocation was successful
-bool realloc_shm(SharedMemory *sharedMemory, const size_t size, const bool resize);
+bool realloc_shm(SharedMemory *sharedMemory, const size_t size1, const size_t size2, const bool resize);
 
 /// Disconnect from shared memory. If there are no other connections to shared memory, it will be deleted.
 ///
@@ -87,7 +89,7 @@ void _lock_shm(const char* func, const int line, const char* file);
 #define unlock_shm() _unlock_shm(__FUNCTION__, __LINE__, __FILE__)
 void _unlock_shm(const char* func, const int line, const char* file);
 
-bool init_shmem(void);
+bool init_shmem(bool create_new);
 void destroy_shmem(void);
 size_t addstr(const char *str);
 const char *getstr(const size_t pos);

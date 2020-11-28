@@ -13,15 +13,16 @@
 #include <execinfo.h>
 #endif
 #include "signals.h"
+// logg()
 #include "log.h"
+// free()
 #include "memory.h"
 // ls_dir()
 #include "files.h"
-// FTL_reload_all_domainlists()
-#include "datastructure.h"
-#include "config.h"
 // gettid()
 #include "daemon.h"
+// Eventqueue routines
+#include "events.h"
 
 #define BINARY_NAME "pihole-FTL"
 
@@ -80,7 +81,7 @@ static void print_addr2line(const char *symbol, const void *address, const int j
 }
 #endif
 
-static void __attribute__((noreturn)) SIGSEGV_handler(int sig, siginfo_t *si, void *unused)
+static void __attribute__((noreturn)) signal_handler(int sig, siginfo_t *si, void *unused)
 {
 	logg("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
 	logg("---------------------------->  FTL crashed!  <----------------------------");
@@ -90,25 +91,99 @@ static void __attribute__((noreturn)) SIGSEGV_handler(int sig, siginfo_t *si, vo
 
 	if(FTLstarttime != 0)
 	{
-		logg("FTL has been running for %li seconds", time(NULL)-FTLstarttime);
+		logg("FTL has been running for %lli seconds", (long long)time(NULL) - FTLstarttime);
 	}
 	log_FTL_version(true);
 	char namebuf[16];
-	logg("Process details: MID: %i",mpid);
+	logg("Process details: MID: %i", mpid);
 	logg("                 PID: %i", getpid());
 	logg("                 TID: %i", gettid());
 	logg("                 Name: %s", getthread_name(namebuf));
 
 	logg("Received signal: %s", strsignal(sig));
 	logg("     at address: %p", si->si_addr);
-	switch (si->si_code)
+
+	// Segmentation fault - program crashed
+	if(sig == SIGSEGV)
 	{
-		case SEGV_MAPERR: logg("     with code:  SEGV_MAPERR (Address not mapped to object)"); break;
-		case SEGV_ACCERR: logg("     with code:  SEGV_ACCERR (Invalid permissions for mapped object)"); break;
-#if defined(SEGV_BNDERR)
-		case SEGV_BNDERR: logg("     with code:  SEGV_BNDERR (Failed address bound checks)"); break;
+		switch (si->si_code)
+		{
+			case SEGV_MAPERR:  logg("     with code:  SEGV_MAPERR (Address not mapped to object)"); break;
+			case SEGV_ACCERR:  logg("     with code:  SEGV_ACCERR (Invalid permissions for mapped object)"); break;
+#ifdef SEGV_BNDERR
+			case SEGV_BNDERR:  logg("     with code:  SEGV_BNDERR (Failed address bound checks)"); break;
 #endif
-		default: logg("     with code:  Unknown (%i)", si->si_code); break;
+#ifdef SEGV_PKUERR
+			case SEGV_PKUERR:  logg("     with code:  SEGV_PKUERR (Protection key checking failure)"); break;
+#endif
+#ifdef SEGV_ACCADI
+			case SEGV_ACCADI:  logg("     with code:  SEGV_ACCADI (ADI not enabled for mapped object)"); break;
+#endif
+#ifdef SEGV_ADIDERR
+			case SEGV_ADIDERR: logg("     with code:  SEGV_ADIDERR (Disrupting MCD error)"); break;
+#endif
+#ifdef SEGV_ADIPERR
+			case SEGV_ADIPERR: logg("     with code:  SEGV_ADIPERR (Precise MCD exception)"); break;
+#endif
+			default:           logg("     with code:  Unknown (%i)", si->si_code); break;
+		}
+	}
+
+	// Bus error - memory manager problem
+	else if(sig == SIGBUS)
+	{
+		switch (si->si_code)
+		{
+			case BUS_ADRALN:    logg("     with code:  BUS_ADRALN (Invalid address alignment)"); break;
+			case BUS_ADRERR:    logg("     with code:  BUS_ADRERR (Non-existant physical address)"); break;
+			case BUS_OBJERR:    logg("     with code:  BUS_OBJERR (Object specific hardware error)"); break;
+			case BUS_MCEERR_AR: logg("     with code:  BUS_MCEERR_AR (Hardware memory error: action required)"); break;
+			case BUS_MCEERR_AO: logg("     with code:  BUS_MCEERR_AO (Hardware memory error: action optional)"); break;
+			default:            logg("     with code:  Unknown (%i)", si->si_code); break;
+		}
+	}
+
+	// Illegal error - Illegal instruction detected
+	else if(sig == SIGILL)
+	{
+		switch (si->si_code)
+		{
+			case ILL_ILLOPC:   logg("     with code:  ILL_ILLOPC (Illegal opcode)"); break;
+			case ILL_ILLOPN:   logg("     with code:  ILL_ILLOPN (Illegal operand)"); break;
+			case ILL_ILLADR:   logg("     with code:  ILL_ILLADR (Illegal addressing mode)"); break;
+			case ILL_ILLTRP:   logg("     with code:  ILL_ILLTRP (Illegal trap)"); break;
+			case ILL_PRVOPC:   logg("     with code:  ILL_PRVOPC (Privileged opcode)"); break;
+			case ILL_PRVREG:   logg("     with code:  ILL_PRVREG (Privileged register)"); break;
+			case ILL_COPROC:   logg("     with code:  ILL_COPROC (Coprocessor error)"); break;
+			case ILL_BADSTK:   logg("     with code:  ILL_BADSTK (Internal stack error)"); break;
+#ifdef ILL_BADIADDR
+			case ILL_BADIADDR: logg("     with code:  ILL_BADIADDR (Unimplemented instruction address)"); break;
+#endif
+			default:           logg("     with code:  Unknown (%i)", si->si_code); break;
+		}
+	}
+
+	// Floating point exception error
+	else if(sig == SIGFPE)
+	{
+		switch (si->si_code)
+		{
+			case FPE_INTDIV:   logg("     with code:  FPE_INTDIV (Integer divide by zero)"); break;
+			case FPE_INTOVF:   logg("     with code:  FPE_INTOVF (Integer overflow)"); break;
+			case FPE_FLTDIV:   logg("     with code:  FPE_FLTDIV (Floating point divide by zero)"); break;
+			case FPE_FLTOVF:   logg("     with code:  FPE_FLTOVF (Floating point overflow)"); break;
+			case FPE_FLTUND:   logg("     with code:  FPE_FLTUND (Floating point underflow)"); break;
+			case FPE_FLTRES:   logg("     with code:  FPE_FLTRES (Floating point inexact result)"); break;
+			case FPE_FLTINV:   logg("     with code:  FPE_FLTINV (Floating point invalid operation)"); break;
+			case FPE_FLTSUB:   logg("     with code:  FPE_FLTSUB (Subscript out of range)"); break;
+#ifdef FPE_FLTUNK
+			case FPE_FLTUNK:   logg("     with code:  FPE_FLTUNK (Undiagnosed floating-point exception)"); break;
+#endif
+#ifdef FPE_CONDTRAP
+			case FPE_CONDTRAP: logg("     with code:  FPE_CONDTRAP (Trap on condition)"); break;
+#endif
+			default:           logg("     with code:  Unknown (%i)", si->si_code); break;
+		}
 	}
 
 // Check GLIBC availability as MUSL does not support live backtrace generation
@@ -171,6 +246,7 @@ static void __attribute__((noreturn)) SIGSEGV_handler(int sig, siginfo_t *si, vo
 	exit(EXIT_FAILURE);
 }
 
+#define RTSIG_MAX 2
 static void SIGRT_handler(int signum, siginfo_t *si, void *unused)
 { 
 	// Ignore real-time signals outside of the main process (TCP forks)
@@ -189,16 +265,31 @@ static void SIGRT_handler(int signum, siginfo_t *si, void *unused)
 		// - exact blacklist
 		// - exact blacklist
 		// WITHOUT wiping the DNS cache itself
-		FTL_reload_all_domainlists();
+		set_event(RELOAD_GRAVITY);
 
 		// Reload the privacy level in case the user changed it
-		get_privacy_level(NULL);
+		set_event(RELOAD_PRIVACY_LEVEL);
 	}
 	else if(rtsig == 2)
 	{
 		// Terminate FTL indicating failure
 		exit_code = EXIT_FAILURE;
 		kill(0, SIGTERM);
+	}
+	else if(rtsig == 3)
+	{
+		// Reimport alias-clients from database
+		set_event(REIMPORT_ALIASCLIENTS);
+	}
+	else if(rtsig == 4)
+	{
+		// Re-resolve all clients and forward destinations
+		set_event(RERESOLVE_HOSTNAMES);
+	}
+	else if(rtsig == 5)
+	{
+		// Parse neighbor cache
+		set_event(PARSE_NEIGHBOR_CACHE);
 	}
 }
 
@@ -215,8 +306,44 @@ void handle_SIGSEGV(void)
 		memset(&SEGVaction, 0, sizeof(struct sigaction));
 		SEGVaction.sa_flags = SA_SIGINFO;
 		sigemptyset(&SEGVaction.sa_mask);
-		SEGVaction.sa_sigaction = &SIGSEGV_handler;
+		SEGVaction.sa_sigaction = &signal_handler;
 		sigaction(SIGSEGV, &SEGVaction, NULL);
+	}
+
+	// Catch SIGBUS
+	sigaction (SIGBUS, NULL, &old_action);
+	if(old_action.sa_handler != SIG_IGN)
+	{
+		struct sigaction SBUGaction;
+		memset(&SBUGaction, 0, sizeof(struct sigaction));
+		SBUGaction.sa_flags = SA_SIGINFO;
+		sigemptyset(&SBUGaction.sa_mask);
+		SBUGaction.sa_sigaction = &signal_handler;
+		sigaction(SIGBUS, &SBUGaction, NULL);
+	}
+
+	// Catch SIGILL
+	sigaction (SIGILL, NULL, &old_action);
+	if(old_action.sa_handler != SIG_IGN)
+	{
+		struct sigaction SBUGaction;
+		memset(&SBUGaction, 0, sizeof(struct sigaction));
+		SBUGaction.sa_flags = SA_SIGINFO;
+		sigemptyset(&SBUGaction.sa_mask);
+		SBUGaction.sa_sigaction = &signal_handler;
+		sigaction(SIGILL, &SBUGaction, NULL);
+	}
+
+	// Catch SIGFPE
+	sigaction (SIGFPE, NULL, &old_action);
+	if(old_action.sa_handler != SIG_IGN)
+	{
+		struct sigaction SBUGaction;
+		memset(&SBUGaction, 0, sizeof(struct sigaction));
+		SBUGaction.sa_flags = SA_SIGINFO;
+		sigemptyset(&SBUGaction.sa_mask);
+		SBUGaction.sa_sigaction = &signal_handler;
+		sigaction(SIGFPE, &SBUGaction, NULL);
 	}
 
 	// Log start time of FTL
@@ -232,7 +359,7 @@ void handle_realtime_signals(void)
 	mpid = getpid();
 
 	// Catch first five real-time signals
-	for(unsigned int i = 0; i < 5; i++)
+	for(unsigned char i = 0; i < (RTSIG_MAX+1); i++)
 	{
 		struct sigaction SIGACTION;
 		memset(&SIGACTION, 0, sizeof(struct sigaction));

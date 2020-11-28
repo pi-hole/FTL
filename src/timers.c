@@ -13,28 +13,45 @@
 #include "memory.h"
 #include "log.h"
 
-struct timeval t0[NUMTIMERS];
+struct timespec t0[NUMTIMERS];
 
-void timer_start(enum timers i)
+void timer_start(const enum timers i)
 {
 	if(i >= NUMTIMERS)
 	{
 		logg("Code error: Timer %i not defined in timer_start().", i);
 		exit(EXIT_FAILURE);
 	}
-	gettimeofday(&t0[i], 0);
+	clock_gettime(CLOCK_REALTIME, &t0[i]);
 }
 
-double timer_elapsed_msec(enum timers i)
+static struct timespec diff(struct timespec start, struct timespec end)
+{
+	struct timespec diff;
+	if(end.tv_nsec-start.tv_nsec < 0L)
+	{
+		diff.tv_sec = end.tv_sec - start.tv_sec - 1; // subtract one second here...
+		diff.tv_nsec = end.tv_nsec - start.tv_nsec + 1000000000L; // ...we have to add it here
+	}
+	else
+	{
+		diff.tv_sec = end.tv_sec - start.tv_sec;
+		diff.tv_nsec = end.tv_nsec - start.tv_nsec;
+	}
+	return diff;
+}
+
+double timer_elapsed_msec(const enum timers i)
 {
 	if(i >= NUMTIMERS)
 	{
 		logg("Code error: Timer %i not defined in timer_elapsed_msec().", i);
 		exit(EXIT_FAILURE);
 	}
-	struct timeval t1;
-	gettimeofday(&t1, 0);
-	return (t1.tv_sec - t0[i].tv_sec) * 1000.0f + (t1.tv_usec - t0[i].tv_usec) / 1000.0f;
+	struct timespec t1, td;
+	clock_gettime(CLOCK_REALTIME, &t1);
+	td = diff(t0[i], t1);
+	return td.tv_sec * 1e3 + td.tv_nsec * 1e-6;
 }
 
 void sleepms(const int milliseconds)
