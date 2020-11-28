@@ -77,20 +77,20 @@ if [[ "${CIRCLE_JOB}" == "x86_64" ]]; then
 
   check_machine "ELF64" "Advanced Micro Devices X86-64"
   check_libs "[libm.so.6] [librt.so.1] [libpthread.so.0] [libc.so.6]"
-  check_file "ELF 64-bit LSB shared object, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, for GNU/Linux 3.2.0, not stripped"
+  check_file "ELF 64-bit LSB shared object, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, for GNU/Linux 2.6.32, not stripped"
 
 elif [[ "${CIRCLE_JOB}" == "x86_64-musl" ]]; then
 
   check_machine "ELF64" "Advanced Micro Devices X86-64"
-  check_libs "" # No dependency on any shared library is intended
   check_static # Binary should not rely on any dynamic interpreter
+  check_libs "" # No dependency on any shared library is intended
   check_file "ELF 64-bit LSB shared object, x86-64, version 1 (SYSV), statically linked, not stripped"
 
 elif [[ "${CIRCLE_JOB}" == "x86_32" ]]; then
 
   check_machine "ELF32" "Intel 80386"
   check_libs "[libm.so.6] [librt.so.1] [libpthread.so.0] [libc.so.6]"
-  check_file "ELF 32-bit LSB shared object, Intel 80386, version 1 (SYSV), dynamically linked, interpreter /lib/ld-linux.so.2, for GNU/Linux 3.2.0, not stripped"
+  check_file "ELF 32-bit LSB shared object, Intel 80386, version 1 (SYSV), dynamically linked, interpreter /lib/ld-linux.so.2, for GNU/Linux 2.6.32, not stripped"
 
 elif [[ "${CIRCLE_JOB}" == "aarch64" ]]; then
 
@@ -113,7 +113,7 @@ elif [[ "${CIRCLE_JOB}" == "armv5te" ]]; then
   check_libs "[libm.so.6] [librt.so.1] [libgcc_s.so.1] [libpthread.so.0] [libc.so.6] [ld-linux.so.3]"
   check_file "ELF 32-bit LSB shared object, ARM, EABI5 version 1 (SYSV), dynamically linked, interpreter /lib/ld-linux.so.3, for GNU/Linux 3.2.0, not stripped"
 
-  check_CPU_arch "v5TE"
+  check_CPU_arch "v4T"
   check_FP_arch "" # No specified FP arch
 
 elif [[ "${CIRCLE_JOB}" == "armv6hf" ]]; then
