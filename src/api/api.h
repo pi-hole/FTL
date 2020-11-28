@@ -44,4 +44,7 @@ bool pack_fixstr(const int sock, const char *string);
 bool pack_str32(const int sock, const char *string);
 void pack_map16_start(const int sock, const uint16_t length);
 
+// DHCP lease management
+void delete_lease(const char *client_message, const int *sock);
+
 #endif // API_H

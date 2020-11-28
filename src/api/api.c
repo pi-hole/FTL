@@ -1453,3 +1453,28 @@ void getUnknownQueries(const int *sock)
 		}
 	}
 }
+
+// FTL_unlink_DHCP_lease()
+extern bool FTL_unlink_DHCP_lease(const char *ipaddr);
+
+void delete_lease(const char *client_message, const int *sock)
+{
+	// Extract IP address from request
+	char ipaddr[INET6_ADDRSTRLEN] = { 0 };
+	if(sscanf(client_message, ">delete-lease %"xstr(INET6_ADDRSTRLEN)"s", ipaddr) < 1) {
+		ssend(*sock, "ERROR: No IP address specified!\n");
+		return;
+	}
+	ipaddr[sizeof(ipaddr) - 1] = '\0';
+
+	if(config.debug & DEBUG_API)
+		logg("Received request to delete lease for %s", ipaddr);
+
+	if(FTL_unlink_DHCP_lease(ipaddr))
+		ssend(*sock, "OK: Removed specified lease\n");
+	else
+		ssend(*sock, "ERROR: Specified IP address invalid!\n");
+
+	if(config.debug & DEBUG_API)
+		logg("...done");
+}

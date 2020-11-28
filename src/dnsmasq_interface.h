@@ -60,4 +60,6 @@ void FTL_TCP_worker_terminating(bool finished);
 void set_debug_dnsmasq_lines(char enabled);
 extern char debug_dnsmasq_lines;
 
+bool FTL_unlink_DHCP_lease(const char *ipaddr);
+
 #endif // DNSMASQ_INTERFACE_H
