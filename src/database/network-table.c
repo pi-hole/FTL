@@ -1695,6 +1695,15 @@ char *__attribute__((malloc)) getNameFromIP(const char *ipaddr)
 		return NULL;
 	}
 
+	// Check if we want to resolve host names
+	if(!resolve_this_name(ipaddr))
+	{
+		if(config.debug & DEBUG_DATABASE)
+			logg("getNameFromIP(\"%s\") - configured to not resolve host name", ipaddr);
+		
+		return NULL;
+	}
+
 	// Check for a host name associated with the same IP address
 	sqlite3_stmt *stmt = NULL;
 	const char *querystr = "SELECT name FROM network_addresses WHERE name IS NOT NULL AND ip = ?;";
@@ -1855,6 +1864,14 @@ void resolveNetworkTableNames(void)
 	if(!FTL_DB_avail())
 	{
 		logg("resolveNetworkTableNames() - Database not available");
+		return;
+	}
+
+	// Check if we want to resolve host names
+	if(!resolve_names())
+	{
+		if(config.debug & DEBUG_DATABASE)
+			logg("resolveNetworkTableNames() - configured to not resolve host names");
 		return;
 	}
 
