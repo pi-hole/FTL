@@ -16,7 +16,7 @@
 // enum privacy_level
 #include "enums.h"
 
-const char *querytypes[TYPE_MAX];
+extern const char *querytypes[TYPE_MAX];
 
 typedef struct {
 	unsigned char magic;
