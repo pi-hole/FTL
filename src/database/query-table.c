@@ -523,10 +523,13 @@ void DB_read_queries(void)
 				overTime[timeidx].cached++;
 				break;
 
+			case QUERY_RETRIED: // Retried query
+			case QUERY_RETRIED_DNSSEC: // fall through
+				// Nothing to be done here
+				break;
+
 			default:
-				logg("Error: Found unknown status %i in long term database!", status);
-				logg("       Timestamp: %lli", (long long)queryTimeStamp);
-				logg("       Continuing anyway...");
+				logg("Warning: Found unknown status %i in long term database!", status);
 				break;
 		}
 	}
