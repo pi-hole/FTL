@@ -490,6 +490,10 @@ static char *parse_FTLconf(FILE *fp, const char * key)
 	errno = 0;
 	while(getline(&conflinebuffer, &size, fp) != -1)
 	{
+		// Check if memory allocation failed
+		if(conflinebuffer == NULL)
+			break;
+
 		// Skip comment lines
 		if(conflinebuffer[0] == '#' || conflinebuffer[0] == ';')
 			continue;
@@ -512,7 +516,7 @@ static char *parse_FTLconf(FILE *fp, const char * key)
 	if(errno == ENOMEM)
 		logg("WARN: parse_FTLconf failed: could not allocate memory for getline");
 
-	// Key not found -> return NULL
+	// Key not found or memory error -> return NULL
 	free(keystr);
 
 	return NULL;
