@@ -225,7 +225,7 @@ static void __attribute__((noreturn)) signal_handler(int sig, siginfo_t *si, voi
 	// Print content of /dev/shm
 	ls_dir("/dev/shm");
 
-
+	logg("Please also include some lines from above the !!!!!!!!! header.");
 	logg("Thank you for helping us to improve our FTL engine!");
 
 	// Terminate main process if crash happened in a TCP worker
@@ -246,7 +246,6 @@ static void __attribute__((noreturn)) signal_handler(int sig, siginfo_t *si, voi
 	exit(EXIT_FAILURE);
 }
 
-#define RTSIG_MAX 2
 static void SIGRT_handler(int signum, siginfo_t *si, void *unused)
 { 
 	// Ignore real-time signals outside of the main process (TCP forks)
@@ -358,15 +357,15 @@ void handle_realtime_signals(void)
 	// the main process
 	mpid = getpid();
 
-	// Catch first five real-time signals
-	for(unsigned char i = 0; i < (RTSIG_MAX+1); i++)
+	// Catch all real-time signals
+	for(int signum = SIGRTMIN; signum <= SIGRTMAX; signum++)
 	{
 		struct sigaction SIGACTION;
 		memset(&SIGACTION, 0, sizeof(struct sigaction));
 		SIGACTION.sa_flags = SA_SIGINFO;
 		sigemptyset(&SIGACTION.sa_mask);
 		SIGACTION.sa_sigaction = &SIGRT_handler;
-		sigaction(SIGRTMIN + i, &SIGACTION, NULL);
+		sigaction(signum, &SIGACTION, NULL);
 	}
 }
 
