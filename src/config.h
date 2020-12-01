@@ -34,6 +34,7 @@ typedef struct {
 	unsigned int network_expire;
 	enum privacy_level privacylevel;
 	enum blocking_mode blockingmode;
+	enum refresh_hostnames refresh_hostnames;
 	bool socket_listenlocal;
 	bool analyze_AAAA;
 	bool resolveIPv6;

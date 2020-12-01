@@ -407,6 +407,21 @@ static void resolveClients(const bool onlynew)
 			continue;
 		}
 
+		// Check if we want to resolve an IPv6 address
+		bool IPv6 = false;
+		const char *ipaddr = NULL;
+		if((ipaddr = getstr(ippos)) != NULL && strstr(ipaddr,":") != NULL)
+			IPv6 = true;
+
+		// If we're in refreshing mode (onlynew == false), we skip clients if
+		// either IPv4-only or none is selected
+		if(config.refresh_hostnames == REFRESH_NONE ||
+		  (config.refresh_hostnames == REFRESH_IPV4_ONLY && IPv6))
+		{
+			skipped++;
+			continue;
+		}
+
 		// Obtain/update hostname of this client
 		size_t newnamepos = resolveAndAddHostname(ippos, oldnamepos);
 
