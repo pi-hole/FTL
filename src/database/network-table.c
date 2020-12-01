@@ -1161,17 +1161,7 @@ void parse_neighbor_cache(void)
 		// only the changed to the database are collected for latter
 		// commitment. Read-only access such as this SELECT command will be
 		// executed immediately on the database.
-		char *querystr = NULL;
-		rc = asprintf(&querystr, "SELECT id FROM network WHERE hwaddr = \'%s\';", hwaddr);
-		if(querystr == NULL || rc < 0)
-		{
-			logg("Memory allocation failed in parse_arp_cache(): %i", rc);
-			break;
-		}
-
-		// Perform SQL query
-		int dbID = db_query_int(querystr);
-		free(querystr);
+		int dbID = find_device_by_hwaddr(hwaddr);
 
 		if(dbID == DB_FAILED)
 		{
@@ -1393,19 +1383,19 @@ bool unify_hwaddr(void)
 
 		// Update firstSeen with lowest value across all rows with the same hwaddr
 		dbquery("UPDATE network "\
-		        "SET firstSeen = (SELECT MIN(firstSeen) FROM network WHERE hwaddr = \'%s\') "\
+		        "SET firstSeen = (SELECT MIN(firstSeen) FROM network WHERE hwaddr = \'%s\' COLLATE NOCASE) "\
 		        "WHERE id = %i;",\
 		        hwaddr, id);
 
 		// Update numQueries with sum of all rows with the same hwaddr
 		dbquery("UPDATE network "\
-		        "SET numQueries = (SELECT SUM(numQueries) FROM network WHERE hwaddr = \'%s\') "\
+		        "SET numQueries = (SELECT SUM(numQueries) FROM network WHERE hwaddr = \'%s\' COLLATE NOCASE) "\
 		        "WHERE id = %i;",\
 		        hwaddr, id);
 
 		// Remove all other lines with the same hwaddr but a different id
 		dbquery("DELETE FROM network "\
-		        "WHERE hwaddr = \'%s\' "\
+		        "WHERE hwaddr = \'%s\' COLLATE NOCASE "\
 		        "AND id != %i;",\
 		        hwaddr, id);
 
