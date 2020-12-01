@@ -544,7 +544,6 @@ void *DNSclient_thread(void *val)
 		if(resolver_ready && (time(NULL) % RERESOLVE_INTERVAL == 0))
 		{
 			set_event(RERESOLVE_HOSTNAMES);      // done below
-			set_event(RERESOLVE_DATABASE_NAMES); // done in database thread
 		}
 
 		// Process resolver related event queue elements

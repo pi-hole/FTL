@@ -84,11 +84,6 @@ void *DB_thread(void *val)
 		if(get_and_clear_event(RELOAD_PRIVACY_LEVEL))
 			get_privacy_level(NULL);
 
-		// Try to resolve host names from clients in the network table
-		// which have empty/undefined host names
-		if(get_and_clear_event(RERESOLVE_DATABASE_NAMES))
-			resolveNetworkTableNames();
-
 		// Import alias-clients
 		if(get_and_clear_event(REIMPORT_ALIASCLIENTS))
 		{
