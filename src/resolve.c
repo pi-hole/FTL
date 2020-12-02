@@ -384,9 +384,9 @@ static void resolveClients(const bool onlynew)
 		size_t ippos = client->ippos;
 		size_t oldnamepos = client->namepos;
 
-		// Only try to resolve host names of clients which were recently active
+		// Only try to resolve host names of clients which were recently active if we are re-resolving
 		// Limit for a "recently active" client is two hours ago
-		if(client->lastQuery < now - 2*60*60)
+		if(onlynew == false && client->lastQuery < now - 2*60*60)
 		{
 			if(config.debug & DEBUG_RESOLVER)
 			{
@@ -403,6 +403,11 @@ static void resolveClients(const bool onlynew)
 		// If not, we will try to re-resolve all known clients
 		if(onlynew && !newflag)
 		{
+			if(config.debug & DEBUG_RESOLVER)
+			{
+				logg("Skipping client %s (%s) because it is not new",
+				     getstr(ippos), getstr(oldnamepos));
+			}
 			skipped++;
 			continue;
 		}
@@ -415,9 +420,15 @@ static void resolveClients(const bool onlynew)
 
 		// If we're in refreshing mode (onlynew == false), we skip clients if
 		// either IPv4-only or none is selected
-		if(config.refresh_hostnames == REFRESH_NONE ||
-		  (config.refresh_hostnames == REFRESH_IPV4_ONLY && IPv6))
+		if(onlynew == false &&
+		       (config.refresh_hostnames == REFRESH_NONE ||
+		       (config.refresh_hostnames == REFRESH_IPV4_ONLY && IPv6)))
 		{
+			if(config.debug & DEBUG_RESOLVER)
+			{
+				logg("Skipping client %s (%s) because it should not be refreshed",
+				     getstr(ippos), getstr(oldnamepos));
+			}
 			skipped++;
 			continue;
 		}
