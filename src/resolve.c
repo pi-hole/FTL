@@ -112,12 +112,39 @@ static void print_used_resolvers(const char *message)
 	}
 }
 
+// Return if we want to resolve address to names at all
+// (may be disabled due to config settings)
+bool __attribute__((pure)) resolve_names(void)
+{
+	if(!config.resolveIPv4 && !config.resolveIPv6)
+		return false;
+	return true;
+}
+
+// Return if we want to resolve this type of address to a name
+bool __attribute__((pure)) resolve_this_name(const char *ipaddr)
+{
+	if(!config.resolveIPv4 ||
+	  (!config.resolveIPv6 && strstr(ipaddr,":") != NULL))
+		return false;
+	return true;
+}
+
 char *resolveHostname(const char *addr)
 {
 	// Get host name
 	struct hostent *he = NULL;
 	char *hostname = NULL;
-	bool IPv6 = false;
+
+	// Check if we want to resolve host names
+	if(!resolve_this_name(addr))
+	{
+		if(config.debug & DEBUG_RESOLVER)
+			logg("Configured to not resolve host name for %s", addr);
+		
+		// Return an empty host name
+		return strdup("");
+	}
 
 	if(config.debug & DEBUG_RESOLVER)
 		logg("Trying to resolve %s", addr);
@@ -133,10 +160,9 @@ char *resolveHostname(const char *addr)
 	}
 
 	// Test if we want to resolve an IPv6 address
+	bool IPv6 = false;
 	if(strstr(addr,":") != NULL)
-	{
 		IPv6 = true;
-	}
 
 	// Initialize resolver subroutines if trying to resolve for the first time
 	// res_init() reads resolv.conf to get the default domain name and name server
@@ -248,7 +274,7 @@ char *resolveHostname(const char *addr)
 		}
 		else
 		{
-			// No (he == NULL) or invalid (valid_hostname returned false) hostname found
+			// No hostname found (empty PTR)
 			hostname = strdup("");
 
 			if(config.debug & DEBUG_RESOLVER)
@@ -270,21 +296,14 @@ static size_t resolveAndAddHostname(size_t ippos, size_t oldnamepos)
 	char* oldname = strdup(getstr(oldnamepos));
 	unlock_shm();
 
-	// Test if we want to resolve an IPv6 address
-	bool IPv6 = false;
-	if(strstr(ipaddr,":") != NULL)
-	{
-		IPv6 = true;
-	}
-
-	if( (IPv6 && !config.resolveIPv6) ||
-	   (!IPv6 && !config.resolveIPv4))
+	// Test if we want to resolve host names, otherwise all calls to resolveHostname()
+	// and getNameFromIP() can be skipped as they will all return empty names (= no records)
+	if(!resolve_this_name(ipaddr))
 	{
 		if(config.debug & DEBUG_RESOLVER)
-		{
-			logg(" ---> \"\" (configured to not resolve %s host names)",
-			     IPv6 ? "IPv6" : "IPv4");
-		}
+			logg(" ---> \"\" (configured to not resolve host name)");
+
+		// Return fixed position of empty string
 		return 0;
 	}
 
@@ -365,9 +384,9 @@ static void resolveClients(const bool onlynew)
 		size_t ippos = client->ippos;
 		size_t oldnamepos = client->namepos;
 
-		// Only try to resolve host names of clients which were recently active
+		// Only try to resolve host names of clients which were recently active if we are re-resolving
 		// Limit for a "recently active" client is two hours ago
-		if(client->lastQuery < now - 2*60*60)
+		if(onlynew == false && client->lastQuery < now - 2*60*60)
 		{
 			if(config.debug & DEBUG_RESOLVER)
 			{
@@ -384,6 +403,32 @@ static void resolveClients(const bool onlynew)
 		// If not, we will try to re-resolve all known clients
 		if(onlynew && !newflag)
 		{
+			if(config.debug & DEBUG_RESOLVER)
+			{
+				logg("Skipping client %s (%s) because it is not new",
+				     getstr(ippos), getstr(oldnamepos));
+			}
+			skipped++;
+			continue;
+		}
+
+		// Check if we want to resolve an IPv6 address
+		bool IPv6 = false;
+		const char *ipaddr = NULL;
+		if((ipaddr = getstr(ippos)) != NULL && strstr(ipaddr,":") != NULL)
+			IPv6 = true;
+
+		// If we're in refreshing mode (onlynew == false), we skip clients if
+		// either IPv4-only or none is selected
+		if(onlynew == false &&
+		       (config.refresh_hostnames == REFRESH_NONE ||
+		       (config.refresh_hostnames == REFRESH_IPV4_ONLY && IPv6)))
+		{
+			if(config.debug & DEBUG_RESOLVER)
+			{
+				logg("Skipping client %s (%s) because it should not be refreshed",
+				     getstr(ippos), getstr(oldnamepos));
+			}
 			skipped++;
 			continue;
 		}
@@ -525,7 +570,6 @@ void *DNSclient_thread(void *val)
 		if(resolver_ready && (time(NULL) % RERESOLVE_INTERVAL == 0))
 		{
 			set_event(RERESOLVE_HOSTNAMES);      // done below
-			set_event(RERESOLVE_DATABASE_NAMES); // done in database thread
 		}
 
 		// Process resolver related event queue elements

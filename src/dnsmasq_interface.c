@@ -551,12 +551,12 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// 127.0.0.1 to avoid queries originating from localhost of the
 	// *distant* machine as queries coming from the *local* machine
 	const sa_family_t family = (flags & F_IPV4) ? AF_INET : AF_INET6;
-	char clientIP[ADDRSTRLEN] = { 0 };
+	char clientIP[ADDRSTRLEN+1] = { 0 };
 	if(config.edns0_ecs && edns->client_set)
 	{
 		// Use ECS provided client
 		strncpy(clientIP, edns->client, ADDRSTRLEN);
-		clientIP[ADDRSTRLEN-1] = '\0';
+		clientIP[ADDRSTRLEN] = '\0';
 	}
 	else
 	{
