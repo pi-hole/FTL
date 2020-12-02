@@ -384,9 +384,9 @@ static void resolveClients(const bool onlynew)
 		size_t ippos = client->ippos;
 		size_t oldnamepos = client->namepos;
 
-		// Only try to resolve host names of clients which were recently active
+		// Only try to resolve host names of clients which were recently active if we are re-resolving
 		// Limit for a "recently active" client is two hours ago
-		if(client->lastQuery < now - 2*60*60)
+		if(onlynew == false && client->lastQuery < now - 2*60*60)
 		{
 			if(config.debug & DEBUG_RESOLVER)
 			{
