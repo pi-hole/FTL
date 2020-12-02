@@ -19,7 +19,6 @@
 #include "../timers.h"
 // struct config
 #include "../config.h"
-//#include "../datastructure.h"
 // resolveHostname()
 #include "../resolve.h"
 
@@ -1161,17 +1160,7 @@ void parse_neighbor_cache(void)
 		// only the changed to the database are collected for latter
 		// commitment. Read-only access such as this SELECT command will be
 		// executed immediately on the database.
-		char *querystr = NULL;
-		rc = asprintf(&querystr, "SELECT id FROM network WHERE hwaddr = \'%s\';", hwaddr);
-		if(querystr == NULL || rc < 0)
-		{
-			logg("Memory allocation failed in parse_arp_cache(): %i", rc);
-			break;
-		}
-
-		// Perform SQL query
-		int dbID = db_query_int(querystr);
-		free(querystr);
+		int dbID = find_device_by_hwaddr(hwaddr);
 
 		if(dbID == DB_FAILED)
 		{
@@ -1393,19 +1382,19 @@ bool unify_hwaddr(void)
 
 		// Update firstSeen with lowest value across all rows with the same hwaddr
 		dbquery("UPDATE network "\
-		        "SET firstSeen = (SELECT MIN(firstSeen) FROM network WHERE hwaddr = \'%s\') "\
+		        "SET firstSeen = (SELECT MIN(firstSeen) FROM network WHERE hwaddr = \'%s\' COLLATE NOCASE) "\
 		        "WHERE id = %i;",\
 		        hwaddr, id);
 
 		// Update numQueries with sum of all rows with the same hwaddr
 		dbquery("UPDATE network "\
-		        "SET numQueries = (SELECT SUM(numQueries) FROM network WHERE hwaddr = \'%s\') "\
+		        "SET numQueries = (SELECT SUM(numQueries) FROM network WHERE hwaddr = \'%s\' COLLATE NOCASE) "\
 		        "WHERE id = %i;",\
 		        hwaddr, id);
 
 		// Remove all other lines with the same hwaddr but a different id
 		dbquery("DELETE FROM network "\
-		        "WHERE hwaddr = \'%s\' "\
+		        "WHERE hwaddr = \'%s\' COLLATE NOCASE "\
 		        "AND id != %i;",\
 		        hwaddr, id);
 
@@ -1695,6 +1684,15 @@ char *__attribute__((malloc)) getNameFromIP(const char *ipaddr)
 		return NULL;
 	}
 
+	// Check if we want to resolve host names
+	if(!resolve_this_name(ipaddr))
+	{
+		if(config.debug & DEBUG_DATABASE)
+			logg("getNameFromIP(\"%s\") - configured to not resolve host name", ipaddr);
+		
+		return NULL;
+	}
+
 	// Check for a host name associated with the same IP address
 	sqlite3_stmt *stmt = NULL;
 	const char *querystr = "SELECT name FROM network_addresses WHERE name IS NOT NULL AND ip = ?;";
@@ -1847,132 +1845,4 @@ char *__attribute__((malloc)) getIfaceFromIP(const char *ipaddr)
 	sqlite3_finalize(stmt);
 
 	return iface;
-}
-
-// Resolve unknown names of recently seen IP addresses in network table
-void resolveNetworkTableNames(void)
-{
-	if(!FTL_DB_avail())
-	{
-		logg("resolveNetworkTableNames() - Database not available");
-		return;
-	}
-
-	const char sql[] = "BEGIN TRANSACTION IMMEDIATE";
-	int rc = dbquery(sql);
-	if( rc != SQLITE_OK )
-	{
-		const char *text;
-		if( rc == SQLITE_BUSY )
-		{
-			text = "WARNING";
-		}
-		else
-		{
-			text = "ERROR";
-		}
-
-		// dbquery() above already logs the reson for why the query failed
-		logg("%s: Trying to resolve unknown network table host names (\"%s\") failed", text, sql);
-
-		return;
-	}
-
-	// Get IP addresses seen within the last 24 hours with empty or NULL host names
-	const char querystr[] = "SELECT ip FROM network_addresses "
-	                               "WHERE lastSeen > cast(strftime('%%s', 'now') as int)-86400;";
-
-	// Prepare query
-	sqlite3_stmt *table_stmt = NULL;
-	rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &table_stmt, NULL);
-	if(rc != SQLITE_OK)
-	{
-		logg("resolveNetworkTableNames() - SQL error prepare: %s",
-		     sqlite3_errstr(rc));
-		sqlite3_finalize(table_stmt);
-		return;
-	}
-
-	// Get data
-	while((rc = sqlite3_step(table_stmt)) == SQLITE_ROW)
-	{
-		// Get IP address from database
-		const char *ip = (const char*)sqlite3_column_text(table_stmt, 0);
-
-		if(config.debug & DEBUG_DATABASE)
-			logg("Resolving database IP %s", ip);
-
-		// Try to obtain host name
-		char *newname = resolveHostname(ip);
-
-		if(config.debug & DEBUG_DATABASE)
-			logg("---> \"%s\"", newname);
-
-		// Store new host name in database if not empty
-		if(newname != NULL && strlen(newname) > 0)
-		{
-			const char updatestr[] = "UPDATE network_addresses "
-			                                "SET name = ?1,"
-			                                    "nameUpdated = cast(strftime('%s', 'now') as int) "
-			                                "WHERE ip = ?2;";
-			sqlite3_stmt *update_stmt = NULL;
-			int rc2 = sqlite3_prepare_v2(FTL_db, updatestr, -1, &update_stmt, NULL);
-			if(rc2 != SQLITE_OK){
-				logg("resolveNetworkTableNames(%s -> \"%s\") - SQL error prepare: %s",
-					ip, newname, sqlite3_errstr(rc2));
-				sqlite3_finalize(update_stmt);
-				break;
-			}
-
-			// Bind newname to prepared statement
-			if((rc2 = sqlite3_bind_text(update_stmt, 1, newname, -1, SQLITE_STATIC)) != SQLITE_OK)
-			{
-				logg("resolveNetworkTableNames(%s -> \"%s\"): Failed to bind newname: %s",
-					ip, newname, sqlite3_errstr(rc2));
-				sqlite3_finalize(update_stmt);
-				break;
-			}
-
-			// Bind ip to prepared statement
-			if((rc2 = sqlite3_bind_text(update_stmt, 2, ip, -1, SQLITE_STATIC)) != SQLITE_OK)
-			{
-				logg("resolveNetworkTableNames(%s -> \"%s\"): Failed to bind ip: %s",
-					ip, newname, sqlite3_errstr(rc2));
-				sqlite3_finalize(update_stmt);
-				break;
-			}
-
-			if(config.debug & DEBUG_DATABASE)
-				logg("dbquery: \"%s\" with ?1 = \"%s\" and ?2 = \"%s\"", updatestr, newname, ip);
-
-			rc2 = sqlite3_step(update_stmt);
-			if(rc2 != SQLITE_BUSY && rc2 != SQLITE_DONE)
-			{
-				// Any return code that is neither SQLITE_BUSY not SQLITE_ROW
-				// is a real error we should log
-				logg("resolveNetworkTableNames(%s -> \"%s\"): Failed to perform step: %s",
-				     ip, newname, sqlite3_errstr(rc2));
-				sqlite3_finalize(update_stmt);
-				break;
-			}
-
-			// Finalize host name update statement
-			sqlite3_finalize(update_stmt);
-		}
-		free(newname);
-	}
-
-	// Possible error handling and reporting
-	if(rc != SQLITE_DONE)
-	{
-		logg("resolveNetworkTableNames() - SQL error step: %s",
-		     sqlite3_errstr(rc));
-		sqlite3_finalize(table_stmt);
-		return;
-	}
-
-	// Close and unlock database connection
-	sqlite3_finalize(table_stmt);
-
-	dbquery("COMMIT");
 }

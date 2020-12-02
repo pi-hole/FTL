@@ -424,6 +424,26 @@ void read_FTLconf(void)
 	else
 		logg("   EDNS0_ECS: Don't use ECS information");
 
+	// REFRESH_HOSTNAMES
+	// defaults to: IPV4
+	buffer = parse_FTLconf(fp, "REFRESH_HOSTNAMES");
+
+	if(buffer != NULL && strcasecmp(buffer, "ALL") == 0)
+	{
+		config.refresh_hostnames = REFRESH_ALL;
+		logg("   REFRESH_HOSTNAMES: Periodically refreshing all names");
+	}
+	else if(buffer != NULL && strcasecmp(buffer, "NONE") == 0)
+	{
+		config.refresh_hostnames = REFRESH_NONE;
+		logg("   REFRESH_HOSTNAMES: Not periodically refreshing names");
+	}
+	else
+	{
+		config.refresh_hostnames = REFRESH_IPV4_ONLY;
+		logg("   REFRESH_HOSTNAMES: Periodically refreshing IPv4 names");
+	}
+
 	// Read DEBUG_... setting from pihole-FTL.conf
 	read_debuging_settings(fp);
 
@@ -490,6 +510,10 @@ static char *parse_FTLconf(FILE *fp, const char * key)
 	errno = 0;
 	while(getline(&conflinebuffer, &size, fp) != -1)
 	{
+		// Check if memory allocation failed
+		if(conflinebuffer == NULL)
+			break;
+
 		// Skip comment lines
 		if(conflinebuffer[0] == '#' || conflinebuffer[0] == ';')
 			continue;
@@ -512,7 +536,7 @@ static char *parse_FTLconf(FILE *fp, const char * key)
 	if(errno == ENOMEM)
 		logg("WARN: parse_FTLconf failed: could not allocate memory for getline");
 
-	// Key not found -> return NULL
+	// Key not found or memory error -> return NULL
 	free(keystr);
 
 	return NULL;
