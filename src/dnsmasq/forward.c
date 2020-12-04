@@ -374,7 +374,10 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	  if (!daemon->free_frec_src &&
 	      daemon->frec_src_count < daemon->ftabsize &&
 	      (daemon->free_frec_src = whine_malloc(sizeof(struct frec_src))))
-	    daemon->frec_src_count++;
+	    {
+	      daemon->frec_src_count++;
+	      daemon->free_frec_src->next = NULL;
+	    }
 	  
 	  /* If we've been spammed with many duplicates, just drop the query. */
 	  if (daemon->free_frec_src)
@@ -411,6 +414,7 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	  forward->frec_src.orig_id = ntohs(header->id);
 	  forward->frec_src.dest = *dst_addr;
 	  forward->frec_src.iface = dst_iface;
+	  forward->frec_src.next = NULL;
 	  forward->new_id = get_id();
 	  forward->fd = udpfd;
 	  memcpy(forward->hash, hash, HASH_SIZE);
@@ -2394,16 +2398,16 @@ void free_rfd(struct randfd *rfd)
 
 static void free_frec(struct frec *f)
 {
-  struct frec_src *src, *tmp;
-
-   /* add back to freelist of not the record builtin to every frec. */
-  for (src = f->frec_src.next; src; src = tmp)
-    {
-      tmp = src->next;
-      src->next = daemon->free_frec_src;
-      daemon->free_frec_src = src;
-    }
+  struct frec_src *last;
   
+  /* add back to freelist if not the record builtin to every frec. */
+  for (last = f->frec_src.next; last && last->next; last = last->next) ;
+  if (last)
+    {
+      last->next = daemon->free_frec_src;
+      daemon->free_frec_src = f->frec_src.next;
+    }
+    
   f->frec_src.next = NULL;    
   free_rfd(f->rfd4);
   f->rfd4 = NULL;
