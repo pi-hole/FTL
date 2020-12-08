@@ -51,7 +51,7 @@ static void query_externally_blocked(const int queryID, const unsigned char stat
 static void query_blocked(queriesData* query, domainsData* domain, clientsData* client, const unsigned char new_status);
 
 // Static blocking metadata
-static union all_addr blocking_addrp = {{ 0 }};
+static union all_addr null_addrp = {{ 0 }};
 static unsigned char force_next_DNS_reply = 0u;
 
 // Adds debug information to the regular pihole.log file
@@ -59,37 +59,94 @@ char debug_dnsmasq_lines = 0;
 
 // Fork-private copy of the interface name the most recent query came from
 static char next_iface[IFNAMSIZ] = "";
-union all_addr next_iface_addr = {{ 0 }};
+union all_addr next_iface_addrv4 = {{ 0 }};
+union all_addr next_iface_addrv6 = {{ 0 }};
 
 unsigned char* pihole_privacylevel = &config.privacylevel;
 const char flagnames[][12] = {"F_IMMORTAL ", "F_NAMEP ", "F_REVERSE ", "F_FORWARD ", "F_DHCP ", "F_NEG ", "F_HOSTS ", "F_IPV4 ", "F_IPV6 ", "F_BIGNAME ", "F_NXDOMAIN ", "F_CNAME ", "F_DNSKEY ", "F_CONFIG ", "F_DS ", "F_DNSSECOK ", "F_UPSTREAM ", "F_RRNAME ", "F_SERVER ", "F_QUERY ", "F_NOERR ", "F_AUTH ", "F_DNSSEC ", "F_KEYTAG ", "F_SECSTAT ", "F_NO_RR ", "F_IPSET ", "F_NOEXTRA ", "F_SERVFAIL", "F_RCODE"};
 
 // Store interface the next query will come from for later usage
-void FTL_next_iface(const char *newiface, const union mysockaddr addr)
+void FTL_next_iface(const int ifidx, const struct listener *listeners)
 {
-	if(newiface != NULL)
+	// First, invalidate data we have from the last interface/query
+	// Set addresses to 0.0.0.0 and ::1, respectively
+	memset(&next_iface_addrv4, 0, sizeof(next_iface_addrv4));
+	memset(&next_iface_addrv6, 0, sizeof(next_iface_addrv6));
+	// Dummy interface
+	next_iface[0] = '-';
+	next_iface[1] = '\0';
+
+	if(ifidx < 0)
 	{
-		// Copy interface name if available
-		strncpy(next_iface, newiface, sizeof(next_iface)-1);
-		next_iface[sizeof(next_iface)-1] = '\0';
-	}
-	else
-	{
-		// Use dummy when interface record is not available
-		next_iface[0] = '-';
-		next_iface[1] = '\0';
+		// No interface data available at this point, return early
+		if(config.debug & DEBUG_NETWORKING)
+			logg("No interface data available at this point");
 	}
 
-	// Copy address of interface
-	if (addr.sa.sa_family == AF_INET6)
+	// Mark beginning of interface loop if debugging
+	if(config.debug & DEBUG_NETWORKING)
 	{
-		next_iface_addr.addr6 = addr.in6.sin6_addr;
-		memcpy(&next_iface_addr.addr6, &addr.in6.sin6_addr, sizeof(addr.in6.sin6_addr));
+		logg(" ");
 	}
-	else
+
+	// Loop over all known local interfaces to find IPv4 and IPv6 addresses (if available)
+	for (const struct listener *listener = listeners; listener; listener = listener->next)
 	{
-		next_iface_addr.addr4 = addr.in.sin_addr;
-		memcpy(&next_iface_addr.addr4.s_addr, &addr.in.sin_addr, sizeof(addr.in.sin_addr));
+		// We cannot extract interface information if there is none
+		if(listener->iface == NULL)
+		{
+			if(config.debug & DEBUG_NETWORKING)
+				logg("Skipping NULL interface pointer");
+			continue;
+		}
+
+		const char *highlight = "";
+
+		// Check if this is an interface we care about. If so, copy its address(es)
+		if(listener->iface->index == ifidx)
+		{
+			// Extract address of this interface
+			const union mysockaddr *addr = &listener->addr;
+			if (addr->sa.sa_family == AF_INET6)
+			{
+				next_iface_addrv6.addr6 = addr->in6.sin6_addr;
+				memcpy(&next_iface_addrv6.addr6, &addr->in6.sin6_addr, sizeof(addr->in6.sin6_addr));
+			}
+			else
+			{
+				next_iface_addrv4.addr4 = addr->in.sin_addr;
+				memcpy(&next_iface_addrv4.addr4, &addr->in.sin_addr, sizeof(addr->in.sin_addr));
+			}
+
+			// Copy name of the interface
+			strncpy(next_iface, listener->iface->name, sizeof(next_iface)-1);
+			next_iface[sizeof(next_iface)-1] = '\0';
+
+			highlight = ">>> ";
+		}
+
+		// Log interface data for debugging if requested to
+		if(config.debug & DEBUG_NETWORKING)
+		{
+			struct irec *iface = listener->iface;
+			logg("%sinterface idx: %d, label: %d, name: \"%s\", dad: %d, mtu: %d, dhcp_ok: %i, tftp_ok: %i",
+			     highlight, iface->index, iface->label, iface->name, iface->dad, iface->mtu,
+			     iface->dhcp_ok, iface->tftp_ok);
+
+			const int family = iface->addr.sa.sa_family;
+			char buffer[ADDRSTRLEN+1]  = { 0 };
+			if(family == AF_INET)
+				inet_ntop(family, &next_iface_addrv4.addr4, buffer, ADDRSTRLEN);
+			else if(family == AF_INET6)
+				inet_ntop(family, &next_iface_addrv6.addr6, buffer, ADDRSTRLEN);
+
+			logg("%sIPv%d address: %s", highlight, family == AF_INET6 ? 6 : 4, buffer);
+		}
+	}
+	// Mark end of interface loop if debugging
+	if(config.debug & DEBUG_NETWORKING)
+	{
+		logg(" ");
 	}
 }
 
@@ -811,17 +868,17 @@ void _FTL_get_blocking_metadata(union all_addr **addrp, unsigned int *flags, con
 	{
 		// Pass blocking IPv6 address
 		if(config.blockingmode == MODE_IP)
-			*addrp = &next_iface_addr;
+			*addrp = &next_iface_addrv6;
 		else
-			*addrp = &blocking_addrp;
+			*addrp = &null_addrp;
 	}
 	else
 	{
 		// Pass blocking IPv4 address
 		if(config.blockingmode == MODE_IP || config.blockingmode == MODE_IP_NODATA_AAAA)
-			*addrp = &next_iface_addr;
+			*addrp = &next_iface_addrv4;
 		else
-			*addrp = &blocking_addrp;
+			*addrp = &null_addrp;
 	}
 
 	if(config.blockingmode == MODE_NX)
