@@ -184,7 +184,6 @@ void read_FTLconf(void)
 	// defaults to: "/etc/pihole/pihole-FTL.db"
 	buffer = parse_FTLconf(fp, "DBFILE");
 
-	errno = 0;
 	// Use sscanf() to obtain filename from config file parameter only if buffer != NULL
 	if(!(buffer != NULL && sscanf(buffer, "%127ms", &FTLfiles.FTL_db)))
 	{
@@ -192,16 +191,16 @@ void read_FTLconf(void)
 		FTLfiles.FTL_db = strdup("/etc/pihole/pihole-FTL.db");
 	}
 
-	// Test if memory allocation was successful
-	if(FTLfiles.FTL_db == NULL && errno != 0)
-	{
-		logg("FATAL: Allocating memory for FTLfiles.FTL_db failed (%s, %i). Exiting.", strerror(errno), errno);
-		exit(EXIT_FAILURE);
-	}
-	else if(FTLfiles.FTL_db != NULL && strlen(FTLfiles.FTL_db) > 0)
+	if(FTLfiles.FTL_db != NULL && strlen(FTLfiles.FTL_db) > 0)
 		logg("   DBFILE: Using %s", FTLfiles.FTL_db);
 	else
-		logg("   DBFILE: Not using database due to empty filename");
+	{
+		// Use standard path if path was set to zero but override
+		// MAXDBDAYS=0 to ensure no queries are stored in the database
+		FTLfiles.FTL_db = strdup("/etc/pihole/pihole-FTL.db");
+		config.maxDBdays = 0;
+		logg("   DBFILE: Using %s (not storing queries)", FTLfiles.FTL_db);
+	}
 
 	// MAXLOGAGE
 	// Up to how many hours in the past should queries be imported from the database?
@@ -283,7 +282,11 @@ void read_FTLconf(void)
 	config.DBimport = read_bool(buffer, true);
 
 	if(config.DBimport)
+	{
 		logg("   DBIMPORT: Importing history from database");
+		if(config.maxDBdays == 0)
+			logg("      Hint: Exporting queries has been disabled (MAXDBDAYS=0)!");
+	}
 	else
 		logg("   DBIMPORT: Not importing history from database");
 
@@ -500,6 +503,26 @@ void read_FTLconf(void)
 	else
 		logg("   EDNS0_ECS: Don't use ECS information");
 
+	// REFRESH_HOSTNAMES
+	// defaults to: IPV4
+	buffer = parse_FTLconf(fp, "REFRESH_HOSTNAMES");
+
+	if(buffer != NULL && strcasecmp(buffer, "ALL") == 0)
+	{
+		config.refresh_hostnames = REFRESH_ALL;
+		logg("   REFRESH_HOSTNAMES: Periodically refreshing all names");
+	}
+	else if(buffer != NULL && strcasecmp(buffer, "NONE") == 0)
+	{
+		config.refresh_hostnames = REFRESH_NONE;
+		logg("   REFRESH_HOSTNAMES: Not periodically refreshing names");
+	}
+	else
+	{
+		config.refresh_hostnames = REFRESH_IPV4_ONLY;
+		logg("   REFRESH_HOSTNAMES: Periodically refreshing IPv4 names");
+	}
+
 	// Read DEBUG_... setting from pihole-FTL.conf
 	// This option should be the last one as it causes
 	// some rather verbose output into the log when
@@ -569,6 +592,10 @@ static char *parse_FTLconf(FILE *fp, const char * key)
 	errno = 0;
 	while(getline(&conflinebuffer, &size, fp) != -1)
 	{
+		// Check if memory allocation failed
+		if(conflinebuffer == NULL)
+			break;
+
 		// Skip comment lines
 		if(conflinebuffer[0] == '#' || conflinebuffer[0] == ';')
 			continue;
@@ -591,7 +618,7 @@ static char *parse_FTLconf(FILE *fp, const char * key)
 	if(errno == ENOMEM)
 		logg("WARN: parse_FTLconf failed: could not allocate memory for getline");
 
-	// Key not found -> return NULL
+	// Key not found or memory error -> return NULL
 	free(keystr);
 
 	return NULL;
@@ -794,6 +821,10 @@ void read_debuging_settings(FILE *fp)
 	// defaults to: false
 	setDebugOption(fp, "DEBUG_CLIENTS", DEBUG_CLIENTS);
 
+	// DEBUG_ALIASCLIENTS
+	// defaults to: false
+	setDebugOption(fp, "DEBUG_ALIASCLIENTS", DEBUG_ALIASCLIENTS);
+
 	// DEBUG_EVENTS
 	// defaults to: false
 	setDebugOption(fp, "DEBUG_EVENTS", DEBUG_EVENTS);
@@ -824,6 +855,7 @@ void read_debuging_settings(FILE *fp)
 		logg("* DEBUG_RESOLVER        %s *", (config.debug & DEBUG_RESOLVER)? "YES":"NO ");
 		logg("* DEBUG_EDNS0           %s *", (config.debug & DEBUG_EDNS0)? "YES":"NO ");
 		logg("* DEBUG_CLIENTS         %s *", (config.debug & DEBUG_CLIENTS)? "YES":"NO ");
+		logg("* DEBUG_ALIASCLIENTS    %s *", (config.debug & DEBUG_ALIASCLIENTS)? "YES":"NO ");
 		logg("* DEBUG_EVENTS          %s *", (config.debug & DEBUG_EVENTS)? "YES":"NO ");
 		logg("* DEBUG_HELPER          %s *", (config.debug & DEBUG_HELPER)? "YES":"NO ");
 		logg("*****************************");

@@ -23,6 +23,8 @@
 #include "shmem.h"
 // main_pid()
 #include "signals.h"
+// logg_fatal_dnsmasq_message()
+#include "database/message-table.h"
 
 static pthread_mutex_t lock;
 static FILE *logfile = NULL;
@@ -233,7 +235,13 @@ void FTL_log_helper(const unsigned char n, ...)
 	char *arg[n];
 	va_start(args, n);
 	for(unsigned char i = 0; i < n; i++)
-		arg[i] = strdup(va_arg(args, char*));
+	{
+		const char *argin = va_arg(args, char*);
+		if(argin == NULL)
+			arg[i] = NULL;
+		else
+			arg[i] = strdup(argin);
+	}
 	va_end(args);
 
 	// Select appropriate logging format
@@ -256,7 +264,8 @@ void FTL_log_helper(const unsigned char n, ...)
 
 	// Free allocated memory
 	for(unsigned char i = 0; i < n; i++)
-		free(arg[i]);
+		if(arg[i] != NULL)
+			free(arg[i]);
 }
 
 void format_memory_size(char * const prefix, const unsigned long long int bytes,
@@ -306,6 +315,20 @@ void format_time(char buffer[42], unsigned long seconds, double milliseconds)
 	// Only append milliseconds when the timer value is less than 10 seconds
 	if((days + hours + minutes) == 0 && seconds < 10 && umilliseconds > 0)
 		sprintf(buffer + strlen(buffer), "%lums ", umilliseconds);
+}
+
+void FTL_log_dnsmasq_fatal(const char *format, ...)
+{
+	// Build a complete string from possible multi-part string passed from dnsmasq
+	char message[256] = { 0 };
+	va_list args;
+	va_start(args, format);
+	vsnprintf(message, sizeof(message), format, args);
+	va_end(args);
+	message[255] = '\0';
+
+	// Log error into FTL's log + message table
+	logg_fatal_dnsmasq_message(message);
 }
 
 void log_counter_info(void)

@@ -26,8 +26,9 @@
 #include "../overTime.h"
 // enum REGEX
 #include "../regex_r.h"
-// my_sqrt()
-#include "../math.h"
+
+// sqrt()
+#include <math.h>
 
 /* qsort comparision function (count field), sort ASC
 static int __attribute__((pure)) cmpasc(const void *a, const void *b)
@@ -527,7 +528,7 @@ int api_stats_upstreams(struct mg_connection *conn)
 				// The actual value will be somewhere in a neighborhood around the mean value.
 				// This neighborhood of values is the uncertainty in the mean.
 				// Wehave to multiply runcertainty by (1e-4)^2 to get seconds
-				uncertainty = my_sqrt(1e-8 * upstream->rtuncertainty / upstream->responses / (upstream->responses-1));
+				uncertainty = sqrt(1e-8 * upstream->rtuncertainty / upstream->responses / (upstream->responses-1));
 			}
 		}
 

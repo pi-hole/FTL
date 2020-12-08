@@ -22,6 +22,8 @@
 // file_exists()
 #include "../files.h"
 #include "sqlite3-ext.h"
+// import_aliasclients()
+#include "aliasclients.h"
 
 sqlite3 *FTL_db = NULL;
 bool DBdeleteoldqueries = false;
@@ -65,16 +67,12 @@ void dbclose(void)
 bool dbopen(void)
 {
 	// Skip subroutine altogether when database is already open
-	if(FTL_db != NULL && db_avail)
+	if(FTL_db != NULL && FTL_DB_avail())
 	{
 		if(config.debug & DEBUG_LOCKS)
 			logg("Not locking FTL database (already open)");
 		return true;
 	}
-
-	// Do not open database if it is not to be used
-	if(!use_database())
-		return false;
 
 	if(config.debug & DEBUG_LOCKS)
 		logg("Locking FTL database");
@@ -272,6 +270,8 @@ void db_init(void)
 	// Open database
 	dbopen();
 
+	db_avail = true;
+
 	// Test FTL_db version and see if we need to upgrade the database file
 	int dbversion = db_get_FTL_property(DB_VERSION);
 	if(dbversion < 1)
@@ -392,18 +392,35 @@ void db_init(void)
 		dbversion = db_get_FTL_property(DB_VERSION);
 	}
 
+	// Update to version 9 if lower
+	if(dbversion < 9)
+	{
+		// Update to version 9: Add aliasclients table
+		logg("Updating long-term database to version 9");
+		if(!create_aliasclients_table())
+		{
+			logg("Aliasclients table not initialized, database not available");
+			dbclose();
+			return;
+		}
+		// Get updated version
+		dbversion = db_get_FTL_property(DB_VERSION);
+	}
+
+	import_aliasclients();
+
+	// Close database to prevent having it opened all time
+	// We already closed the database when we returned earlier
+	dbclose();
+
 	// Log if users asked us to not use the long-term database for queries
 	// We will still use it to store warnings in it
-	if(!use_database())
-	{
-		logg("Not using the long-term database for storing queries");
-		config.DBexport = false;
-		return;
-	}
 	config.DBexport = true;
-
-	// Close database here, we have to reopen it later (after forking)
-	dbclose();
+	if(config.maxDBdays == 0)
+	{
+		logg("Not using the database for storing queries");
+		config.DBexport = false;
+	}
 
 	logg("Database successfully initialized");
 }
@@ -688,20 +705,4 @@ long get_lastID(void)
 const char *get_sqlite3_version(void)
 {
 	return sqlite3_libversion();
-}
-
-// Should the long-term database be used?
-__attribute__ ((pure)) bool use_database()
-{
-	// Check if the user doesn't want to use the database and set an
-	// empty string as file name in FTL's config file or configured
-	// a maximum history of zero days.
-	if(FTLfiles.FTL_db == NULL ||
-	   strlen(FTLfiles.FTL_db) == 0 ||
-	   config.maxDBdays == 0)
-	{
-		return false;
-	}
-
-	return true;
 }

@@ -21,6 +21,8 @@
 #include "database/message-table.h"
 // bool startup
 #include "main.h"
+// reset_aliasclient()
+#include "database/aliasclients.h"
 // piholeFTLDB_reopen()
 #include "database/common.h"
 
@@ -185,7 +187,7 @@ int findDomainID(const char *domainString, const bool count)
 	return domainID;
 }
 
-int findClientID(const char *clientIP, const bool count)
+int findClientID(const char *clientIP, const bool count, const bool aliasclient)
 {
 	// Compare content of client against known client IP addresses
 	for(int clientID=0; clientID < counters->clients; clientID++)
@@ -205,13 +207,14 @@ int findClientID(const char *clientIP, const bool count)
 		if(strcmp(getstr(client->ippos), clientIP) == 0)
 		{
 			// Add one if count == true (do not add one, e.g., during ARP table processing)
-			if(count) client->count++;
+			if(count && !aliasclient) change_clientcount(client, 1, 0, -1, 0);
 			return clientID;
 		}
 	}
 
 	// Return -1 (= not found) if count is false because we do not want to create a new client here
-	if(!count)
+	// Proceed if we are looking for a alias-client because we want to create a new record
+	if(!count && !aliasclient)
 		return -1;
 
 	// If we did not return until here, then this client is definitely new
@@ -232,7 +235,7 @@ int findClientID(const char *clientIP, const bool count)
 	// Set magic byte
 	client->magic = MAGICBYTE;
 	// Set its counter to 1
-	client->count = 1;
+	client->count = (count && !aliasclient)? 1 : 0;
 	// Initialize blocked count to zero
 	client->blockedcount = 0;
 	// Store client IP - no need to check for NULL here as it doesn't harm
@@ -259,10 +262,12 @@ int findClientID(const char *clientIP, const bool count)
 	// Set all MAC address bytes to zero
 	client->hwlen = -1;
 	memset(client->hwaddr, 0, sizeof(client->hwaddr));
+	// This may be a alias-client, the ID is set elsewhere
+	client->aliasclient = aliasclient;
+	client->aliasclient_id = -1;
 
 	// Initialize client-specific overTime data
-	for(int i = 0; i < OVERTIME_SLOTS; i++)
-		client->overTime[i] = 0;
+	memset(client->overTime, 0, sizeof(client->overTime));
 
 	// Increase counter by one
 	counters->clients++;
@@ -275,10 +280,38 @@ int findClientID(const char *clientIP, const bool count)
 	//         database may not be available. All clients initialized
 	//         during history reading get their enabled regexs reloaded
 	//         in the initial call to FTL_reload_all_domainlists()
-	if(!startup)
+	if(!startup && !aliasclient)
 		reload_per_client_regex(clientID, client);
 
+	// Check if this client is managed by a alias-client
+	if(!aliasclient)
+		reset_aliasclient(client);
+
 	return clientID;
+}
+
+void change_clientcount(clientsData *client, int total, int blocked, int overTimeIdx, int overTimeMod)
+{
+		client->count += total;
+		client->blockedcount += blocked;
+		if(overTimeIdx > -1 && overTimeIdx < OVERTIME_SLOTS)
+			client->overTime[overTimeIdx] += overTimeMod;
+
+		// Also add counts to the conencted alias-client (if any)
+		if(client->aliasclient)
+		{
+			logg("WARN: Should not add to alias-client directly (client \"%s\" (%s))!",
+			     getstr(client->namepos), getstr(client->ippos));
+			return;
+		}
+		if(client->aliasclient_id > -1)
+		{
+			clientsData *aliasclient = getClient(client->aliasclient_id, true);
+			aliasclient->count += total;
+			aliasclient->blockedcount += blocked;
+			if(overTimeIdx > -1 && overTimeIdx < OVERTIME_SLOTS)
+				aliasclient->overTime[overTimeIdx] += overTimeMod;
+		}
 }
 
 int findCacheID(int domainID, int clientID, enum query_types query_type)

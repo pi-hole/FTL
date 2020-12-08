@@ -158,6 +158,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 	if(query == NULL || domain == NULL || client == NULL || dns_cache == NULL)
 	{
 		// Encountered memory error, skip query
+		logg("WARN: No memory available, skipping query analysis");
 		return false;
 	}
 
@@ -550,17 +551,18 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// subnet (ECS) data), however, we do not rewrite the IPs ::1 and
 	// 127.0.0.1 to avoid queries originating from localhost of the
 	// *distant* machine as queries coming from the *local* machine
-	char clientIP[INET6_ADDRSTRLEN] = { 0 };
+	const sa_family_t family = (flags & F_IPV4) ? AF_INET : AF_INET6;
+	char clientIP[ADDRSTRLEN+1] = { 0 };
 	if(config.edns0_ecs && edns->client_set)
 	{
 		// Use ECS provided client
 		strncpy(clientIP, edns->client, ADDRSTRLEN);
-		clientIP[ADDRSTRLEN-1] = '\0';
+		clientIP[ADDRSTRLEN] = '\0';
 	}
 	else
 	{
 		// Use original requestor
-		inet_ntop((flags & F_IPV4) ? AF_INET : AF_INET6, addr, clientIP, ADDRSTRLEN);
+		inet_ntop(family, addr, clientIP, ADDRSTRLEN);
 	}
 
 	// Check if user wants to skip queries coming from localhost
@@ -602,7 +604,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	const int domainID = findDomainID(domainString, true);
 
 	// Go through already knows clients and see if it is one of them
-	const int clientID = findClientID(clientIP, true);
+	const int clientID = findClientID(clientIP, true, false);
 
 	// Save everything
 	queriesData* query = getQuery(queryID, false);
@@ -655,6 +657,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	if(client == NULL)
 	{
 		// Encountered memory error, skip query
+		logg("WARN: No memory available, skipping query analysis");
 		// Free allocated memory
 		free(domainString);
 		// Release thread lock
@@ -663,7 +666,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	}
 
 	// Update overTime data structure with the new client
-	client->overTime[timeidx]++;
+	change_clientcount(client, 0, 0, timeidx, 1);
 
 	// Set lastQuery timer and add one query for network table
 	client->lastQuery = querytimestamp;
@@ -684,7 +687,6 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	if(client->hwlen < 1)
 	{
 		union mysockaddr hwaddr = {{ 0 }};
-		const sa_family_t family = (flags & F_IPV4) ? AF_INET : AF_INET6;
 		hwaddr.sa.sa_family = family;
 		if(family == AF_INET)
 		{
@@ -1430,7 +1432,7 @@ static void query_blocked(queriesData* query, domainsData* domain, clientsData* 
 	if(domain != NULL)
 		domain->blockedcount++;
 	if(client != NULL)
-		client->blockedcount++;
+		change_clientcount(client, 0, 1, -1, 0);
 
 	// Update status
 	query->status = new_status;
@@ -2059,4 +2061,45 @@ void FTL_TCP_worker_created(const int confd, const char *iface_name)
 	// Reopen gravity database handle in this fork as the main process's
 	// handle isn't valid here
 	gravityDB_forked();
+}
+
+bool FTL_unlink_DHCP_lease(const char *ipaddr)
+{
+	struct dhcp_lease *lease;
+	union all_addr addr;
+	const time_t now = dnsmasq_time();
+
+	// Try to extract IP address
+	if (inet_pton(AF_INET, ipaddr, &addr.addr4) > 0)
+	{
+		lease = lease_find_by_addr(addr.addr4);
+	}
+#ifdef HAVE_DHCP6
+	else if (inet_pton(AF_INET6, ipaddr, &addr.addr6) > 0)
+	{
+		lease = lease6_find_by_addr(&addr.addr6, 128, 0);
+	}
+#endif
+	else
+	{
+		return false;
+	}
+
+	// If a lease exists for this IP address, we unlink it and immediately
+	// update the lease file to reflect the removal of this lease
+	if (lease)
+	{
+		// Unlink the lease for dnsmasq's database
+		lease_prune(lease, now);
+		// Update the lease file
+		lease_update_file(now);
+		// Argument force == 0 ensures the DNS records are only updated
+		// when unlinking the lease above actually changed something
+		// (variable lease.c:dns_dirty is used here)
+		lease_update_dns(0);
+	}
+
+	// Return success
+	return true;
+	
 }

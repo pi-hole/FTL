@@ -413,7 +413,7 @@ void DB_read_queries(void)
 		// Obtain IDs only after filtering which queries we want to keep
 		const int timeidx = getOverTimeID(queryTimeStamp);
 		const int domainID = findDomainID(domainname, true);
-		const int clientID = findClientID(clientIP, true);
+		const int clientID = findClientID(clientIP, true, false);
 
 		// Ensure we have enough space in the queries struct
 		memory_check(QUERIES);
@@ -453,7 +453,7 @@ void DB_read_queries(void)
 		// Update overTime data
 		overTime[timeidx].total++;
 		// Update overTime data structure with the new client
-		client->overTime[timeidx]++;
+		change_clientcount(client, 0, 0, timeidx, 1);
 
 		// Increase DNS queries counter
 		counters->queries++;
@@ -506,7 +506,7 @@ void DB_read_queries(void)
 				// Get domain pointer
 				domainsData* domain = getDomain(domainID, true);
 				domain->blockedcount++;
-				client->blockedcount++;
+				change_clientcount(client, 0, 1, -1, 0);
 				// Update overTime data structure
 				overTime[timeidx].blocked++;
 				break;
@@ -523,10 +523,13 @@ void DB_read_queries(void)
 				overTime[timeidx].cached++;
 				break;
 
+			case QUERY_RETRIED: // Retried query
+			case QUERY_RETRIED_DNSSEC: // fall through
+				// Nothing to be done here
+				break;
+
 			default:
-				logg("Error: Found unknown status %i in long term database!", status);
-				logg("       Timestamp: %lli", (long long)queryTimeStamp);
-				logg("       Continuing anyway...");
+				logg("Warning: Found unknown status %i in long term database!", status);
 				break;
 		}
 	}

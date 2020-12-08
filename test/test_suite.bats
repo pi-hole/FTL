@@ -251,11 +251,12 @@
   [[ "${lines[@]}" == *"CREATE TABLE queries (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL, type INTEGER NOT NULL, status INTEGER NOT NULL, domain TEXT NOT NULL, client TEXT NOT NULL, forward TEXT, additional_info TEXT);"* ]]
   [[ "${lines[@]}" == *"CREATE TABLE ftl (id INTEGER PRIMARY KEY NOT NULL, value BLOB NOT NULL);"* ]]
   [[ "${lines[@]}" == *"CREATE TABLE counters (id INTEGER PRIMARY KEY NOT NULL, value INTEGER NOT NULL);"* ]]
-  [[ "${lines[@]}" == *"CREATE TABLE IF NOT EXISTS \"network\" (id INTEGER PRIMARY KEY NOT NULL, hwaddr TEXT UNIQUE NOT NULL, interface TEXT NOT NULL, firstSeen INTEGER NOT NULL, lastQuery INTEGER NOT NULL, numQueries INTEGER NOT NULL, macVendor TEXT);"* ]]
+  [[ "${lines[@]}" == *"CREATE TABLE IF NOT EXISTS \"network\" (id INTEGER PRIMARY KEY NOT NULL, hwaddr TEXT UNIQUE NOT NULL, interface TEXT NOT NULL, firstSeen INTEGER NOT NULL, lastQuery INTEGER NOT NULL, numQueries INTEGER NOT NULL, macVendor TEXT, aliasclient_id INTEGER);"* ]]
   [[ "${lines[@]}" == *"CREATE TABLE IF NOT EXISTS \"network_addresses\" (network_id INTEGER NOT NULL, ip TEXT UNIQUE NOT NULL, lastSeen INTEGER NOT NULL DEFAULT (cast(strftime('%s', 'now') as int)), name TEXT, nameUpdated INTEGER, FOREIGN KEY(network_id) REFERENCES network(id));"* ]]
   [[ "${lines[@]}" == *"CREATE INDEX idx_queries_timestamps ON queries (timestamp);"* ]]
+  [[ "${lines[@]}" == *"CREATE TABLE aliasclient (id INTEGER PRIMARY KEY NOT NULL, name TEXT NOT NULL, comment TEXT);"* ]]
   # Depending on the version of sqlite3, ftl can be enquoted or not...
-  [[ "${lines[@]}" == *"INSERT INTO"?*"ftl"?*"VALUES(0,8);"* ]]
+  [[ "${lines[@]}" == *"INSERT INTO"?*"ftl"?*"VALUES(0,9);"* ]]
 }
 
 @test "Ownership, permissions and type of pihole-FTL.db correct" {
@@ -548,7 +549,7 @@
   run bash -c 'sqlite3 /etc/pihole/gravity.db "INSERT INTO domainlist (type,domain) VALUES (3,\"^localhost$;querytype=A\");"'
   printf "sqlite3 INSERT: %s\n" "${lines[@]}"
   [[ $status == 0 ]]
-  run bash -c 'kill -RTMIN $(pidof -s pihole-FTL)'
+  run bash -c 'kill -RTMIN $(pidof -s pihole-FTL); sleep 1'
   printf "reload: %s\n" "${lines[@]}"
   [[ $status == 0 ]]
   run sleep 2
@@ -571,7 +572,7 @@
   run bash -c 'sqlite3 /etc/pihole/gravity.db "INSERT INTO domainlist (type,domain) VALUES (3,\"^localhost$;querytype=!A\");"'
   printf "sqlite3 INSERT: %s\n" "${lines[@]}"
   [[ $status == 0 ]]
-  run bash -c 'kill -RTMIN $(pidof -s pihole-FTL)'
+  run bash -c 'kill -RTMIN $(pidof -s pihole-FTL); sleep 1'
   printf "reload: %s\n" "${lines[@]}"
   [[ $status == 0 ]]
   run sleep 2
@@ -721,6 +722,19 @@
   [[ ${lines[0]} == "{\"status\":\"success\"}" ]]
 }
 
+@test "LUA: Interpreter returns FTL version" {
+  run bash -c './pihole-FTL lua -e "print(pihole.ftl_version())"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "v"* ]]
+}
+
+@test "LUA: Interpreter loads and enabled bundled library \"inspect\"" {
+  run bash -c './pihole-FTL lua -e "print(inspect(inspect))"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[@]} == *'_DESCRIPTION = "human-readable representations of tables"'* ]]
+  [[ ${lines[@]} == *'_VERSION = "inspect.lua 3.1.0"'* ]]
+}
+
 @test "EDNS(0) analysis working as expected" {
   # Get number of lines in the log before the test
   before="$(grep -c ^ /var/log/pihole-FTL.log)"
@@ -793,6 +807,18 @@
   run bash -c "sed -n \"${before},${after}p\" /var/log/pihole-FTL.log"
   printf "%s\n" "${lines[@]}"
   [[ "${lines[@]}" == *"**** new UDP query[A] query \"localhost\" from lo:fe80::b167:af1e:968b:dead "* ]]
+}
+
+@test "alias-client is imported and used for configured client" {
+  run bash -c 'grep -c "Added alias-client \"some-aliasclient\" (aliasclient-0) with FTL ID 0" /var/log/pihole-FTL.log'
+  printf "Added: %s\n" "${lines[@]}"
+  [[ ${lines[0]} == "1" ]]
+  run bash -c 'grep -c "Aliasclient ID 127.0.0.6 -> 0" /var/log/pihole-FTL.log'
+  printf "Found ID: %s\n" "${lines[@]}"
+  [[ ${lines[0]} == "1" ]]
+  run bash -c 'grep -c "Client .* (127.0.0.6) IS  managed by this alias-client, adding counts" /var/log/pihole-FTL.log'
+  printf "Adding counts: %s\n" "${lines[@]}"
+  [[ ${lines[0]} == "1" ]]
 }
 
 @test "EDNS(0) ECS skipped for loopback address (IPv4)" {

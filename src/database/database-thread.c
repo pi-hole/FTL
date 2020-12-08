@@ -22,6 +22,8 @@
 #include "../timers.h"
 // global variable killed
 #include "../signals.h"
+// reimport_aliasclients()
+#include "aliasclients.h"
 // Eventqueue routines
 #include "../events.h"
 
@@ -29,12 +31,6 @@ void *DB_thread(void *val)
 {
 	// Set thread name
 	prctl(PR_SET_NAME,"database",0,0,0);
-
-	// First check if the user doesn't want to use the database.
-	// If this is the case, we terminate the database thread as
-	// there is no point in having it around
-	if(!use_database())
-		return NULL;
 
 	// Save timestamp as we do not want to store immediately
 	// to the database
@@ -50,20 +46,20 @@ void *DB_thread(void *val)
 				// Update lastDBsave timer
 				lastDBsave = time(NULL) - time(NULL)%config.DBinterval;
 
-				// Save data to database
+				// Save data to database (if enabled)
 				if(config.DBexport)
 				{
 					lock_shm();
 					DB_save_queries();
 					unlock_shm();
-				}
 
-				// Check if GC should be done on the database
-				if(DBdeleteoldqueries)
-				{
-					// No thread locks needed
-					delete_old_queries_in_DB();
-					DBdeleteoldqueries = false;
+					// Check if GC should be done on the database
+					if(DBdeleteoldqueries)
+					{
+						// No thread locks needed
+						delete_old_queries_in_DB();
+						DBdeleteoldqueries = false;
+					}
 				}
 
 				// Parse neighbor cache (fill network table) if enabled
@@ -84,14 +80,16 @@ void *DB_thread(void *val)
 		if(get_and_clear_event(RELOAD_GRAVITY))
 			FTL_reload_all_domainlists();
 
+		// Reload privacy level from pihole-FTL.conf
 		if(get_and_clear_event(RELOAD_PRIVACY_LEVEL))
 			get_privacy_level(NULL);
 
-		if(get_and_clear_event(RERESOLVE_DATABASE_NAMES))
+		// Import alias-clients
+		if(get_and_clear_event(REIMPORT_ALIASCLIENTS))
 		{
-			// Try to resolve host names from clients in the network table
-			// which have empty/undefined host names
-			resolveNetworkTableNames();
+			lock_shm();
+			reimport_aliasclients();
+			unlock_shm();
 		}
 
 		// Sleep 0.1 seconds

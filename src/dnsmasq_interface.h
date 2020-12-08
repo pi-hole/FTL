@@ -63,4 +63,6 @@ void FTL_dnsmasq_log(const char *payload, const int length);
 
 int FTL_database_import(int cache_size, struct crec **rhash, int hashsz);
 
+bool FTL_unlink_DHCP_lease(const char *ipaddr);
+
 #endif // DNSMASQ_INTERFACE_H

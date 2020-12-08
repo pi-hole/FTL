@@ -15,7 +15,7 @@
 */
 
 #include "dnsmasq.h"
-#include "../dnsmasq_interface.h"
+#include "../log.h"
 
 #ifdef __ANDROID__
 #  include <android/log.h>
@@ -479,6 +479,10 @@ void die(char *message, char *arg1, int exit_code)
   echo_stderr = 0;
   my_syslog(LOG_CRIT, _("FAILED to start up"));
   flush_log();
+
+  /********** Pi-hole modification *************/
+  FTL_log_dnsmasq_fatal(message, arg1, errmess);
+  /*********************************************/
   
   exit(exit_code);
 }

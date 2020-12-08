@@ -21,7 +21,6 @@
 #include "../datastructure.h"
 // struct config
 #include "../config.h"
-//#include "../datastructure.h"
 // resolveHostname()
 #include "../resolve.h"
 
@@ -693,6 +692,10 @@ static bool add_FTL_clients_to_network_table(enum arp_status *client_status, tim
 			continue;
 		}
 
+		// Silently skip alias-clients - they do not really exist
+		if(client->aliasclient)
+			continue;
+
 		// Get hostname and IP address of this client
 		const char *hostname, *ipaddr, *interface;
 		ipaddr = getstr(client->ippos);
@@ -1138,7 +1141,7 @@ void parse_neighbor_cache(void)
 			{
 				// This line is incomplete, remember this to skip
 				// mock-device creation after ARP processing
-				int clientID = findClientID(ip, false);
+				int clientID = findClientID(ip, false, false);
 				if(clientID >= 0)
 					client_status[clientID] = CLIENT_ARP_INCOMPLETE;
 			}
@@ -1159,17 +1162,7 @@ void parse_neighbor_cache(void)
 		// only the changed to the database are collected for latter
 		// commitment. Read-only access such as this SELECT command will be
 		// executed immediately on the database.
-		char *querystr = NULL;
-		rc = asprintf(&querystr, "SELECT id FROM network WHERE hwaddr = \'%s\';", hwaddr);
-		if(querystr == NULL || rc < 0)
-		{
-			logg("Memory allocation failed in parse_arp_cache(): %i", rc);
-			break;
-		}
-
-		// Perform SQL query
-		int dbID = db_query_int(querystr);
-		free(querystr);
+		int dbID = find_device_by_hwaddr(hwaddr);
 
 		if(dbID == DB_FAILED)
 		{
@@ -1182,7 +1175,7 @@ void parse_neighbor_cache(void)
 		// is known to pihole-FTL
 		// false = do not create a new record if the client is
 		//         unknown (only DNS requesting clients do this)
-		int clientID = findClientID(ip, false);
+		int clientID = findClientID(ip, false, false);
 
 		// Get hostname of this client if the client is known
 		const char *hostname = "";
@@ -1391,19 +1384,19 @@ bool unify_hwaddr(void)
 
 		// Update firstSeen with lowest value across all rows with the same hwaddr
 		dbquery("UPDATE network "\
-		        "SET firstSeen = (SELECT MIN(firstSeen) FROM network WHERE hwaddr = \'%s\') "\
+		        "SET firstSeen = (SELECT MIN(firstSeen) FROM network WHERE hwaddr = \'%s\' COLLATE NOCASE) "\
 		        "WHERE id = %i;",\
 		        hwaddr, id);
 
 		// Update numQueries with sum of all rows with the same hwaddr
 		dbquery("UPDATE network "\
-		        "SET numQueries = (SELECT SUM(numQueries) FROM network WHERE hwaddr = \'%s\') "\
+		        "SET numQueries = (SELECT SUM(numQueries) FROM network WHERE hwaddr = \'%s\' COLLATE NOCASE) "\
 		        "WHERE id = %i;",\
 		        hwaddr, id);
 
 		// Remove all other lines with the same hwaddr but a different id
 		dbquery("DELETE FROM network "\
-		        "WHERE hwaddr = \'%s\' "\
+		        "WHERE hwaddr = \'%s\' COLLATE NOCASE "\
 		        "AND id != %i;",\
 		        hwaddr, id);
 
@@ -1622,12 +1615,83 @@ char *__attribute__((malloc)) getMACfromIP(const char *ipaddr)
 	return hwaddr;
 }
 
+// Get aliasclient ID of device identified by IP address (if available)
+int getAliasclientIDfromIP(const char *ipaddr)
+{
+	// Open pihole-FTL.db database file if needed
+	const bool db_already_open = FTL_DB_avail();
+	if(!db_already_open && !dbopen())
+	{
+		logg("getAliasclientIDfromIP(\"%s\") - Failed to open DB", ipaddr);
+		return -1;
+	}
+
+	// Prepare SQLite statement
+	// We request the most recent IP entry in case there an IP appears
+	// multiple times in the network_addresses table
+	sqlite3_stmt *stmt = NULL;
+	const char *querystr = "SELECT aliasclient_id FROM network WHERE id = "
+	                       "(SELECT network_id FROM network_addresses "
+	                       "WHERE ip = ? "
+	                             "AND aliasclient_id IS NOT NULL "
+	                       "GROUP BY ip HAVING max(lastSeen));";
+	int rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &stmt, NULL);
+	if( rc != SQLITE_OK ){
+		logg("getAliasclientIDfromIP(\"%s\") - SQL error prepare: %s",
+		     ipaddr, sqlite3_errstr(rc));
+		if(!db_already_open)
+			dbclose();
+		return -1;
+	}
+
+	// Bind ipaddr to prepared statement
+	if((rc = sqlite3_bind_text(stmt, 1, ipaddr, -1, SQLITE_STATIC)) != SQLITE_OK)
+	{
+		logg("getAliasclientIDfromIP(\"%s\"): Failed to bind ip: %s",
+		     ipaddr, sqlite3_errstr(rc));
+		sqlite3_reset(stmt);
+		sqlite3_finalize(stmt);
+		if(!db_already_open)
+			dbclose();
+		return -1;
+	}
+
+	int aliasclient_id = -1;
+	rc = sqlite3_step(stmt);
+	if(rc == SQLITE_ROW)
+	{
+		// Database record found
+		aliasclient_id = sqlite3_column_int(stmt, 0);
+	}
+
+	if(config.debug & DEBUG_ALIASCLIENTS)
+		logg("   Aliasclient ID %s -> %i%s", ipaddr, aliasclient_id,
+		     (aliasclient_id == -1) ? " (NOT FOUND)" : "");
+
+	// Finalize statement and close database handle
+	sqlite3_reset(stmt);
+	sqlite3_finalize(stmt);
+	if(!db_already_open)
+		dbclose();
+
+	return aliasclient_id;
+}
+
 // Get host name of device identified by IP address
 char *__attribute__((malloc)) getNameFromIP(const char *ipaddr)
 {
 	if(!FTL_DB_avail())
 	{
 		logg("getNameFromIP(\"%s\") - Database not available", ipaddr);
+		return NULL;
+	}
+
+	// Check if we want to resolve host names
+	if(!resolve_this_name(ipaddr))
+	{
+		if(config.debug & DEBUG_DATABASE)
+			logg("getNameFromIP(\"%s\") - configured to not resolve host name", ipaddr);
+		
 		return NULL;
 	}
 
@@ -1783,134 +1847,6 @@ char *__attribute__((malloc)) getIfaceFromIP(const char *ipaddr)
 	sqlite3_finalize(stmt);
 
 	return iface;
-}
-
-// Resolve unknown names of recently seen IP addresses in network table
-void resolveNetworkTableNames(void)
-{
-	if(!FTL_DB_avail())
-	{
-		logg("resolveNetworkTableNames() - Database not available");
-		return;
-	}
-
-	const char sql[] = "BEGIN TRANSACTION IMMEDIATE";
-	int rc = dbquery(sql);
-	if( rc != SQLITE_OK )
-	{
-		const char *text;
-		if( rc == SQLITE_BUSY )
-		{
-			text = "WARNING";
-		}
-		else
-		{
-			text = "ERROR";
-		}
-
-		// dbquery() above already logs the reson for why the query failed
-		logg("%s: Trying to resolve unknown network table host names (\"%s\") failed", text, sql);
-
-		return;
-	}
-
-	// Get IP addresses seen within the last 24 hours with empty or NULL host names
-	const char querystr[] = "SELECT ip FROM network_addresses "
-	                               "WHERE lastSeen > cast(strftime('%%s', 'now') as int)-86400;";
-
-	// Prepare query
-	sqlite3_stmt *table_stmt = NULL;
-	rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &table_stmt, NULL);
-	if(rc != SQLITE_OK)
-	{
-		logg("resolveNetworkTableNames() - SQL error prepare: %s",
-		     sqlite3_errstr(rc));
-		sqlite3_finalize(table_stmt);
-		return;
-	}
-
-	// Get data
-	while((rc = sqlite3_step(table_stmt)) == SQLITE_ROW)
-	{
-		// Get IP address from database
-		const char *ip = (const char*)sqlite3_column_text(table_stmt, 0);
-
-		if(config.debug & DEBUG_DATABASE)
-			logg("Resolving database IP %s", ip);
-
-		// Try to obtain host name
-		char *newname = resolveHostname(ip);
-
-		if(config.debug & DEBUG_DATABASE)
-			logg("---> \"%s\"", newname);
-
-		// Store new host name in database if not empty
-		if(newname != NULL && strlen(newname) > 0)
-		{
-			const char updatestr[] = "UPDATE network_addresses "
-			                                "SET name = ?1,"
-			                                    "nameUpdated = cast(strftime('%s', 'now') as int) "
-			                                "WHERE ip = ?2;";
-			sqlite3_stmt *update_stmt = NULL;
-			int rc2 = sqlite3_prepare_v2(FTL_db, updatestr, -1, &update_stmt, NULL);
-			if(rc2 != SQLITE_OK){
-				logg("resolveNetworkTableNames(%s -> \"%s\") - SQL error prepare: %s",
-					ip, newname, sqlite3_errstr(rc2));
-				sqlite3_finalize(update_stmt);
-				break;
-			}
-
-			// Bind newname to prepared statement
-			if((rc2 = sqlite3_bind_text(update_stmt, 1, newname, -1, SQLITE_STATIC)) != SQLITE_OK)
-			{
-				logg("resolveNetworkTableNames(%s -> \"%s\"): Failed to bind newname: %s",
-					ip, newname, sqlite3_errstr(rc2));
-				sqlite3_finalize(update_stmt);
-				break;
-			}
-
-			// Bind ip to prepared statement
-			if((rc2 = sqlite3_bind_text(update_stmt, 2, ip, -1, SQLITE_STATIC)) != SQLITE_OK)
-			{
-				logg("resolveNetworkTableNames(%s -> \"%s\"): Failed to bind ip: %s",
-					ip, newname, sqlite3_errstr(rc2));
-				sqlite3_finalize(update_stmt);
-				break;
-			}
-
-			if(config.debug & DEBUG_DATABASE)
-				logg("dbquery: \"%s\" with ?1 = \"%s\" and ?2 = \"%s\"", updatestr, newname, ip);
-
-			rc2 = sqlite3_step(update_stmt);
-			if(rc2 != SQLITE_BUSY && rc2 != SQLITE_DONE)
-			{
-				// Any return code that is neither SQLITE_BUSY not SQLITE_ROW
-				// is a real error we should log
-				logg("resolveNetworkTableNames(%s -> \"%s\"): Failed to perform step: %s",
-				     ip, newname, sqlite3_errstr(rc2));
-				sqlite3_finalize(update_stmt);
-				break;
-			}
-
-			// Finalize host name update statement
-			sqlite3_finalize(update_stmt);
-		}
-		free(newname);
-	}
-
-	// Possible error handling and reporting
-	if(rc != SQLITE_DONE)
-	{
-		logg("resolveNetworkTableNames() - SQL error step: %s",
-		     sqlite3_errstr(rc));
-		sqlite3_finalize(table_stmt);
-		return;
-	}
-
-	// Close and unlock database connection
-	sqlite3_finalize(table_stmt);
-
-	dbquery("COMMIT");
 }
 
 static sqlite3_stmt* read_stmt = NULL;

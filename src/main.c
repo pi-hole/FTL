@@ -65,8 +65,8 @@ int main (int argc, char* argv[])
 	// Process pihole-FTL.conf
 	read_FTLconf();
 
-	// Initialize shared memory
-	if(!init_shmem())
+	// Initialize shared memory - replace possibly existing files
+	if(!init_shmem(true))
 	{
 		logg("Initialization of shared memory failed.");
 		return EXIT_FAILURE;
@@ -108,7 +108,7 @@ int main (int argc, char* argv[])
 	logg("Shutting down...");
 
 	// Save new queries to database (if database is used)
-	if(use_database())
+	if(config.DBexport)
 	{
 		DB_save_queries();
 		logg("Finished final database update");
