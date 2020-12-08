@@ -48,13 +48,10 @@ static void save_reply_type(const unsigned int flags, const union all_addr *addr
 static unsigned long converttimeval(const struct timeval time) __attribute__((const));
 static void detect_blocked_IP(const unsigned short flags, const union all_addr *addr, const int queryID);
 static void query_externally_blocked(const int queryID, const unsigned char status);
-static void prepare_blocking_metadata(void);
 static void query_blocked(queriesData* query, domainsData* domain, clientsData* client, const unsigned char new_status);
 
-// Static blocking metadata (stored precomputed as time-critical)
-static unsigned int blocking_flags = 0;
-static union all_addr blocking_addrp_v4 = {{ 0 }};
-static union all_addr blocking_addrp_v6 = {{ 0 }};
+// Static blocking metadata
+static union all_addr blocking_addrp = {{ 0 }};
 static unsigned char force_next_DNS_reply = 0u;
 
 // Adds debug information to the regular pihole.log file
@@ -62,12 +59,13 @@ char debug_dnsmasq_lines = 0;
 
 // Fork-private copy of the interface name the most recent query came from
 static char next_iface[IFNAMSIZ] = "";
+union all_addr next_iface_addr = {{ 0 }};
 
 unsigned char* pihole_privacylevel = &config.privacylevel;
 const char flagnames[][12] = {"F_IMMORTAL ", "F_NAMEP ", "F_REVERSE ", "F_FORWARD ", "F_DHCP ", "F_NEG ", "F_HOSTS ", "F_IPV4 ", "F_IPV6 ", "F_BIGNAME ", "F_NXDOMAIN ", "F_CNAME ", "F_DNSKEY ", "F_CONFIG ", "F_DS ", "F_DNSSECOK ", "F_UPSTREAM ", "F_RRNAME ", "F_SERVER ", "F_QUERY ", "F_NOERR ", "F_AUTH ", "F_DNSSEC ", "F_KEYTAG ", "F_SECSTAT ", "F_NO_RR ", "F_IPSET ", "F_NOEXTRA ", "F_SERVFAIL", "F_RCODE"};
 
 // Store interface the next query will come from for later usage
-void FTL_next_iface(const char *newiface)
+void FTL_next_iface(const char *newiface, const union mysockaddr addr)
 {
 	if(newiface != NULL)
 	{
@@ -80,6 +78,18 @@ void FTL_next_iface(const char *newiface)
 		// Use dummy when interface record is not available
 		next_iface[0] = '-';
 		next_iface[1] = '\0';
+	}
+
+	// Copy address of interface
+	if (addr.sa.sa_family == AF_INET6)
+	{
+		next_iface_addr.addr6 = addr.in6.sin6_addr;
+		memcpy(&next_iface_addr.addr6, &addr.in6.sin6_addr, sizeof(addr.in6.sin6_addr));
+	}
+	else
+	{
+		next_iface_addr.addr4 = addr.in.sin_addr;
+		memcpy(&next_iface_addr.addr4.s_addr, &addr.in.sin_addr, sizeof(addr.in.sin_addr));
 	}
 }
 
@@ -792,17 +802,26 @@ void _FTL_get_blocking_metadata(union all_addr **addrp, unsigned int *flags, con
 
 	// Add flags according to current blocking mode
 	// We bit-add here as flags already contains either F_IPV4 or F_IPV6
-	*flags |= blocking_flags;
+	// Set blocking_flags to F_HOSTS so dnsmasq logs blocked queries being answered from a specific source
+	// (it would otherwise assume it knew the blocking status from cache which would prevent us from
+	// printing the blocking source (blacklist, regex, gravity) in dnsmasq's log file, our pihole.log)
+	*flags |= F_HOSTS;
 
 	if(*flags & F_IPV6)
 	{
-		// Pass blocking IPv6 address (will be :: in most cases)
-		*addrp = &blocking_addrp_v6;
+		// Pass blocking IPv6 address
+		if(config.blockingmode == MODE_IP)
+			*addrp = &next_iface_addr;
+		else
+			*addrp = &blocking_addrp;
 	}
 	else
 	{
-		// Pass blocking IPv4 address (will be 0.0.0.0 in most cases)
-		*addrp = &blocking_addrp_v4;
+		// Pass blocking IPv4 address
+		if(config.blockingmode == MODE_IP || config.blockingmode == MODE_IP_NODATA_AAAA)
+			*addrp = &next_iface_addr;
+		else
+			*addrp = &blocking_addrp;
 	}
 
 	if(config.blockingmode == MODE_NX)
@@ -979,9 +998,6 @@ void FTL_dnsmasq_reload(void)
 	// Passing NULL to this function means it has to open the config file on
 	// its own behalf (on initial reading, the config file is already opened)
 	get_blocking_mode(NULL);
-	// Update blocking metadata (target IP addresses and DNS header flags)
-	// as the blocking mode might have changed
-	prepare_blocking_metadata();
 
 	// Reread pihole-FTL.conf to see which debugging flags are set
 	read_debuging_settings(NULL);
@@ -1428,6 +1444,7 @@ static void query_blocked(queriesData* query, domainsData* domain, clientsData* 
 	// Get response time
 	struct timeval response;
 	gettimeofday(&response, 0);
+	int blocking_flags = 0;
 	save_reply_type(blocking_flags, NULL, query, response);
 
 	// Adjust counters if we recorded a non-blocking status
@@ -1953,48 +1970,6 @@ static unsigned long __attribute__((const)) converttimeval(const struct timeval 
 	// Convert time from struct timeval into units
 	// of 10*milliseconds
 	return time.tv_sec*10000 + time.tv_usec/100;
-}
-
-// This subroutine prepares IPv4 and IPv6 addresses for blocking queries depending on the configured blocking mode
-static void prepare_blocking_metadata(void)
-{
-	// Reset all blocking metadata
-	blocking_flags = 0;
-	memset(&blocking_addrp_v4, 0, sizeof(blocking_addrp_v4));
-	memset(&blocking_addrp_v6, 0, sizeof(blocking_addrp_v6));
-
-	// Set blocking_flags to F_HOSTS so dnsmasq logs blocked queries being answered from a specific source
-	// (it would otherwise assume it knew the blocking status from cache which would prevent us from
-	// printing the blocking source (blacklist, regex, gravity) in dnsmasq's log file, our pihole.log)
-	blocking_flags = F_HOSTS;
-
-	// Use the blocking IPv4 address from setupVars.conf only if needed for selected blocking mode
-	char* const IPv4addr = read_setupVarsconf("IPV4_ADDRESS");
-	if((config.blockingmode == MODE_IP || config.blockingmode == MODE_IP_NODATA_AAAA) &&
-	   IPv4addr != NULL && strlen(IPv4addr) > 0)
-	{
-		// Strip off everything at the end of the IP (CIDR might be there)
-		char* a=IPv4addr; for(;*a;a++) if(*a == '/') *a = 0;
-		// Prepare IPv4 address for records
-		if(inet_pton(AF_INET, IPv4addr, &blocking_addrp_v4) != 1)
-			logg("ERROR: Found invalid IPv4 address in setupVars.conf: %s", IPv4addr);
-	}
-	// Free IPv4addr
-	clearSetupVarsArray();
-
-	// Use the blocking IPv6 address from setupVars.conf only if needed for selected blocking mode
-	char* const IPv6addr = read_setupVarsconf("IPV6_ADDRESS");
-	if(config.blockingmode == MODE_IP &&
-	   IPv6addr != NULL && strlen(IPv6addr) > 0)
-	{
-		// Strip off everything at the end of the IP (CIDR might be there)
-		char* a=IPv6addr; for(;*a;a++) if(*a == '/') *a = 0;
-		// Prepare IPv6 address for records
-		if(inet_pton(AF_INET6, IPv6addr, &blocking_addrp_v6) != 1)
-			logg("ERROR: Found invalid IPv6 address in setupVars.conf: %s", IPv4addr);
-	}
-	// Free IPv6addr
-	clearSetupVarsArray();
 }
 
 unsigned int FTL_extract_question_flags(struct dns_header *header, const size_t qlen)

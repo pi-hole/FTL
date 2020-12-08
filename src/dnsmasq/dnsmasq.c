@@ -1789,9 +1789,9 @@ static void check_dns_listeners(time_t now)
   for (listener = daemon->listeners; listener; listener = listener->next)
     {
 
-      /******************** Pi-hole modification *******************/
-      FTL_next_iface(listener->iface ? listener->iface->name : NULL);
-      /*************************************************************/
+      /**************************** Pi-hole modification ***************************/
+      FTL_next_iface(listener->iface ? listener->iface->name : NULL, listener->addr);
+      /*****************************************************************************/
 
       if (listener->fd != -1 && poll_check(listener->fd, POLLIN))
 	receive_query(listener, now); 
@@ -1879,7 +1879,7 @@ static void check_dns_listeners(time_t now)
 		}
 	    }
 	  
-	  FTL_next_iface(iface ? iface->name : NULL);
+	  FTL_next_iface(iface ? iface->name : NULL, listener->addr);
 
 	  if (!client_ok)
 	    {
