@@ -548,6 +548,7 @@ void release_config_memory(void)
 	{
 		free(conflinebuffer);
 		conflinebuffer = NULL;
+		size = 0;
 	}
 }
 
