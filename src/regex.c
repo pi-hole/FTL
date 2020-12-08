@@ -32,6 +32,8 @@ const char *regextype[REGEX_MAX] = { "blacklist", "whitelist", "CLI" };
 static regex_data *white_regex = NULL;
 static regex_data *black_regex = NULL;
 static regex_data   *cli_regex = NULL;
+static unsigned int num_regex[REGEX_MAX] = { 0 };
+unsigned int regex_change = 0;
 
 regex_data *get_regex_from_type(const enum regex_type regexid);
 inline regex_data *get_regex_from_type(const enum regex_type regexid)
@@ -56,7 +58,11 @@ inline regex_data *get_regex_from_type(const enum regex_type regexid)
 static bool compile_regex(const char *regexin, const enum regex_type regexid)
 {
 	regex_data *regex = get_regex_from_type(regexid);
-	int index = counters->num_regex[regexid]++;
+	int index = num_regex[regexid]++;
+
+	// Update global counter from private counter
+	// This is safe her because we're (fork-wide) locked
+	counters->num_regex[regexid] = num_regex[regexid];
 
 	// Extract possible Pi-hole extensions
 	char rgxbuf[strlen(regexin) + 1u];
@@ -168,8 +174,20 @@ int match_regex(const char *input, const DNSCacheData* dns_cache, const int clie
 	regmatch_t match = { 0 }; // This also disables any sub-matching
 #endif
 
+	// Check if we need to recompile regex because they were changed in
+	// another fork. If this is the case, reload everything (regex
+	// themselves as well as per-client enabled/disabled state)
+	if(regex_change != counters->regex_change)
+	{
+		logg("Reloading externally changed regular expressions");
+		read_regex_from_database();
+		// Update regex pointer as it will have changed (free_regex has
+		// been called)
+		regex = get_regex_from_type(regexid);
+	}
+
 	// Loop over all configured regex filters of this type
-	for(unsigned int index = 0; index < counters->num_regex[regexid]; index++)
+	for(unsigned int index = 0; index < num_regex[regexid]; index++)
 	{
 		// Only check regex which have been successfully compiled ...
 		if(!regex[index].available)
@@ -185,10 +203,10 @@ int match_regex(const char *input, const DNSCacheData* dns_cache, const int clie
 		// ... and are enabled for this client
 		int regexID = index;
 		if(regexid == REGEX_WHITELIST)
-			regexID += counters->num_regex[REGEX_BLACKLIST];
+			regexID += num_regex[REGEX_BLACKLIST];
 		else if(regexid == REGEX_CLI)
-			regexID += counters->num_regex[REGEX_BLACKLIST] +
-			           counters->num_regex[REGEX_WHITELIST];
+			regexID += num_regex[REGEX_BLACKLIST] +
+			           num_regex[REGEX_WHITELIST];
 
 		// Only use regular expressions enabled for this client
 		// We allow clientID = -1 to get all regex (for testing)
@@ -208,6 +226,9 @@ int match_regex(const char *input, const DNSCacheData* dns_cache, const int clie
 		}
 
 		// Try to match the compiled regular expression against input
+		if(config.debug & DEBUG_REGEX)
+			logg("Executing: index = %d, preg = %p, str = \"%s\", pmatch = %p", index, &regex[index].regex, input, &match);
+		sync();
 #ifdef USE_TRE_REGEX
 		int retval = tre_regexec(&regex[index].regex, input, 0, &match, 0);
 #else
@@ -313,7 +334,7 @@ static void free_regex(void)
 	{
 		regex_data *regex = get_regex_from_type(regexid);
 		// Loop over entries with this regex type
-		for(unsigned int index = 0; index < counters->num_regex[regexid]; index++)
+		for(unsigned int index = 0; index < num_regex[regexid]; index++)
 		{
 			if(!regex[index].available)
 				continue;
@@ -336,7 +357,7 @@ static void free_regex(void)
 		}
 
 		// Reset counter for number of regex
-		counters->num_regex[regexid] = 0;
+		num_regex[regexid] = 0;
 	}
 }
 
@@ -353,14 +374,14 @@ void reload_per_client_regex(const int clientID, clientsData *client)
 	reset_per_client_regex(clientID);
 
 	// Load regex per-group regex blacklist for this client
-	if(counters->num_regex[REGEX_BLACKLIST] > 0)
-		gravityDB_get_regex_client_groups(client, counters->num_regex[REGEX_BLACKLIST],
+	if(num_regex[REGEX_BLACKLIST] > 0)
+		gravityDB_get_regex_client_groups(client, num_regex[REGEX_BLACKLIST],
 		                                  black_regex, REGEX_BLACKLIST,
 		                                  "vw_regex_blacklist", clientID);
 
 	// Load regex per-group regex whitelist for this client
-	if(counters->num_regex[REGEX_WHITELIST] > 0)
-		gravityDB_get_regex_client_groups(client, counters->num_regex[REGEX_WHITELIST],
+	if(num_regex[REGEX_WHITELIST] > 0)
+		gravityDB_get_regex_client_groups(client, num_regex[REGEX_WHITELIST],
 		                                  white_regex, REGEX_WHITELIST,
 		                                  "vw_regex_whitelist", clientID);
 }
@@ -371,7 +392,7 @@ static void read_regex_table(const enum regex_type regexid)
 	const enum gravity_tables tableID = (regexid == REGEX_BLACKLIST) ? REGEX_BLACKLIST_TABLE : REGEX_WHITELIST_TABLE;
 
 	// Get number of lines in the regex table
-	counters->num_regex[regexid] = 0;
+	num_regex[regexid] = 0;
 	int count = gravityDB_count(tableID);
 
 	if(count == 0)
@@ -412,10 +433,10 @@ static void read_regex_table(const enum regex_type regexid)
 	{
 		// Avoid buffer overflow if database table changed
 		// since we counted its entries
-		if(counters->num_regex[regexid] >= (unsigned int)count)
+		if(num_regex[regexid] >= (unsigned int)count)
 		{
 			logg("INFO: read_regex_table(%s) exiting early to avoid overflow (%d/%d).",
-			     regextype[regexid], counters->num_regex[regexid], count);
+			     regextype[regexid], num_regex[regexid], count);
 			break;
 		}
 
@@ -432,11 +453,14 @@ static void read_regex_table(const enum regex_type regexid)
 		if(config.debug & DEBUG_REGEX)
 		{
 			logg("Compiling %s regex %i (DB ID %i): %s",
-			     regextype[regexid], counters->num_regex[regexid], rowid, domain);
+			     regextype[regexid], num_regex[regexid], rowid, domain);
 		}
 
 		compile_regex(domain, regexid);
-		regex[counters->num_regex[regexid]-1].database_id = rowid;
+		regex[num_regex[regexid]-1].database_id = rowid;
+
+		// Signal other forks that the regex data has changed and should be updated
+		regex_change = ++counters->regex_change;
 	}
 
 	// Finalize statement and close gravity database handle
@@ -475,7 +499,7 @@ void read_regex_from_database(void)
 
 	// Print message to FTL's log after reloading regex filters
 	logg("Compiled %i whitelist and %i blacklist regex filters for %i clients in %.1f msec",
-	     counters->num_regex[REGEX_WHITELIST], counters->num_regex[REGEX_BLACKLIST],
+	     num_regex[REGEX_WHITELIST], num_regex[REGEX_BLACKLIST],
 	     counters->clients, timer_elapsed_msec(REGEX_TIMER));
 }
 
@@ -505,8 +529,8 @@ int regex_test(const bool debug_mode, const bool quiet, const char *domainin, co
 		read_regex_table(REGEX_WHITELIST);
 		log_ctrl(false, !quiet); // Re-apply quiet option after compilation
 		logg("    Compiled %i black- and %i whitelist regex filters in %.3f msec\n",
-		     counters->num_regex[REGEX_BLACKLIST],
-		     counters->num_regex[REGEX_WHITELIST],
+		     num_regex[REGEX_BLACKLIST],
+		     num_regex[REGEX_WHITELIST],
 		     timer_elapsed_msec(REGEX_TIMER));
 
 		// Check user-provided domain against all loaded regular blacklist expressions
