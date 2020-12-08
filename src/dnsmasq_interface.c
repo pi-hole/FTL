@@ -66,27 +66,42 @@ unsigned char* pihole_privacylevel = &config.privacylevel;
 const char flagnames[][12] = {"F_IMMORTAL ", "F_NAMEP ", "F_REVERSE ", "F_FORWARD ", "F_DHCP ", "F_NEG ", "F_HOSTS ", "F_IPV4 ", "F_IPV6 ", "F_BIGNAME ", "F_NXDOMAIN ", "F_CNAME ", "F_DNSKEY ", "F_CONFIG ", "F_DS ", "F_DNSSECOK ", "F_UPSTREAM ", "F_RRNAME ", "F_SERVER ", "F_QUERY ", "F_NOERR ", "F_AUTH ", "F_DNSSEC ", "F_KEYTAG ", "F_SECSTAT ", "F_NO_RR ", "F_IPSET ", "F_NOEXTRA ", "F_SERVFAIL", "F_RCODE"};
 
 // Store interface the next query will come from for later usage
-void FTL_next_iface(const int ifidx, const struct listener *listeners)
+void FTL_next_iface(const char *newiface, const int ifidx, const struct listener *listeners)
 {
-	// First, invalidate data we have from the last interface/query
-	// Set addresses to 0.0.0.0 and ::1, respectively
+	// Invalidate data we have from the last interface/query
+	// Set addresses to 0.0.0.0 and ::, respectively
 	memset(&next_iface_addrv4, 0, sizeof(next_iface_addrv4));
 	memset(&next_iface_addrv6, 0, sizeof(next_iface_addrv6));
-	// Dummy interface
-	next_iface[0] = '-';
-	next_iface[1] = '\0';
+
+	// Already set interface name here in case we have no additional data
+	// available below, this will still give us the interface a query arrived
+	// on. Typically, this should not be needed, however, some special docker
+	// environments won't reveal all interface details and use this fallback
+	if(newiface != NULL)
+	{
+		// Copy interface name if available
+		strncpy(next_iface, newiface, sizeof(next_iface)-1);
+		next_iface[sizeof(next_iface)-1] = '\0';
+	}
+	else
+	{
+		// Use dummy when interface record is not available
+		next_iface[0] = '-';
+		next_iface[1] = '\0';
+	}
 
 	if(ifidx < 0)
 	{
 		// No interface data available at this point, return early
 		if(config.debug & DEBUG_NETWORKING)
-			logg("No interface data available at this point");
+			logg("No interface data available at this point (interface is \"%s\")",
+			     next_iface);
 	}
 
 	// Mark beginning of interface loop if debugging
 	if(config.debug & DEBUG_NETWORKING)
 	{
-		logg(" ");
+		logg("v---- interface scan starting, reported interface is %s", next_iface);
 	}
 
 	// Loop over all known local interfaces to find IPv4 and IPv6 addresses (if available)
@@ -125,12 +140,12 @@ void FTL_next_iface(const int ifidx, const struct listener *listeners)
 			highlight = ">>> ";
 		}
 
-		// Log interface data for debugging if requested to
+		// Log interface data for debugging (if enabled)
 		if(config.debug & DEBUG_NETWORKING)
 		{
 			struct irec *iface = listener->iface;
-			logg("%sinterface idx: %d, label: %d, name: \"%s\", dad: %d, mtu: %d, dhcp_ok: %i, tftp_ok: %i",
-			     highlight, iface->index, iface->label, iface->name, iface->dad, iface->mtu,
+			logg(" %sinterface idx: %d, label: %d, name: \"%s\", mtu: %d, dhcp: %i, tftp: %i",
+			     highlight, iface->index, iface->label, iface->name, iface->mtu,
 			     iface->dhcp_ok, iface->tftp_ok);
 
 			const int family = iface->addr.sa.sa_family;
@@ -140,12 +155,13 @@ void FTL_next_iface(const int ifidx, const struct listener *listeners)
 			else if(family == AF_INET6)
 				inet_ntop(family, &next_iface_addrv6.addr6, buffer, ADDRSTRLEN);
 
-			logg("%sIPv%d address: %s", highlight, family == AF_INET6 ? 6 : 4, buffer);
+			logg(" %sIPv%d address: %s", highlight, family == AF_INET6 ? 6 : 4, buffer);
 		}
 	}
 	// Mark end of interface loop if debugging
 	if(config.debug & DEBUG_NETWORKING)
 	{
+		logg("^---- interface scanning done");
 		logg(" ");
 	}
 }

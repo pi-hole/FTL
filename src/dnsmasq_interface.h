@@ -19,7 +19,7 @@ extern int socketfd, telnetfd4, telnetfd6;
 extern unsigned char* pihole_privacylevel;
 enum protocol { TCP, UDP };
 
-void FTL_next_iface(const int ifidx, const struct listener *listeners);
+void FTL_next_iface(const char *newiface, const int ifidx, const struct listener *listeners);
 
 #define FTL_new_query(flags, name, blockingreason, addr, types, qtype, id, edns, proto) _FTL_new_query(flags, name, blockingreason, addr, types, qtype, id, edns, proto, __FILE__, __LINE__)
 bool _FTL_new_query(const unsigned int flags, const char *name, const char** blockingreason, const union all_addr *addr, const char *types, const unsigned short qtype, const int id, const ednsData *edns, enum protocol proto, const char* file, const int line);
