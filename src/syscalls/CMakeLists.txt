@@ -16,6 +16,7 @@ set(sources
         strdup.c
         syscalls.h
         vfprintf.c
+        write.c
         )
 
 add_library(syscalls OBJECT ${sources})
