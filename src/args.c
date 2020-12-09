@@ -56,7 +56,7 @@ void parse_args(int argc, char* argv[])
 	if(strEndsWith(argv[0], "dnsmasq"))
 		consume_for_dnsmasq = true;
 
-	if(strEndsWith(argv[0], "pihole-lua"))
+	if(strEndsWith(argv[0], "lua"))
 		exit(run_lua_interpreter(argc, argv, false));
 
 	// start from 1, as argv[0] is the executable name
