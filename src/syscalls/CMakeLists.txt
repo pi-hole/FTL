@@ -19,6 +19,7 @@ set(sources
         recv.c
         recvfrom.c
         select.c
+        sendto.c
         strdup.c
         syscalls.h
         vfprintf.c
