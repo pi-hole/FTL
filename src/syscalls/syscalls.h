@@ -17,5 +17,6 @@ void FTLfree(void *ptr, const char* file, const char *function, const int line);
 int FTLfprintf(FILE *stream, const char *format, ...) __attribute__ ((format (gnu_printf, 2, 3)));
 int FTLvfprintf(FILE *stream, const char *format, va_list args) __attribute__ ((format (gnu_printf, 2, 0)));
 ssize_t FTLwrite(int fd, const void *buf, size_t total, const char * file, const char * function, const int line);
+int FTLaccept(int sockfd, struct sockaddr *addr, socklen_t *addrlen, const char * file, const char * function, const int line);
 
 #endif //SYSCALLS_H

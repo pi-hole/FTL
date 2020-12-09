@@ -9,6 +9,7 @@
 # Please see LICENSE file for your rights under this license.
 
 set(sources
+        accept.c
         calloc.c
         fprintf.c
         free.c

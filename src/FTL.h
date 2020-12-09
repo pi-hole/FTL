@@ -129,6 +129,7 @@
 #define vprintf(format, args) FTLvfprintf(stdout, format, args)
 #define vfprintf(stream, format, args) FTLvfprintf(stream, format, args)
 #define write(fd, buf, n) FTLwrite(fd, buf, n, __FILE__,  __FUNCTION__,  __LINE__)
+#define accept(sockfd, addr, addrlen) FTLaccept(sockfd, addr, addrlen, __FILE__,  __FUNCTION__,  __LINE__)
 #include "syscalls/syscalls.h"
 
 // Preprocessor help functions
