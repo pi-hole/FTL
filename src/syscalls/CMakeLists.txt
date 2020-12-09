@@ -15,6 +15,7 @@ set(sources
         free.c
         realloc.c
         recv.c
+        recvfrom.c
         strdup.c
         syscalls.h
         vfprintf.c
