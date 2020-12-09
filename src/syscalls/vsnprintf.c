@@ -13,7 +13,7 @@
 #include "../log.h"
 
 #undef vsnprintf
-int FTLvsnprintf(const char* file, const char *func, const int line, char *__restrict__ buffer, size_t maxlen, const char *format, va_list args)
+int FTLvsnprintf(const char* file, const char *func, const int line, char *__restrict__ buffer, const size_t maxlen, const char *format, va_list args)
 {
 	// Sanity check
 	if(buffer == NULL)
