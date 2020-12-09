@@ -124,7 +124,7 @@
 #define strdup(str_in) FTLstrdup(str_in, __FILE__,  __FUNCTION__,  __LINE__)
 #define calloc(numer_of_elements, element_size) FTLcalloc(numer_of_elements, element_size, __FILE__,  __FUNCTION__,  __LINE__)
 #define realloc(ptr, new_size) FTLrealloc(ptr, new_size, __FILE__,  __FUNCTION__,  __LINE__)
-#include "syscalls.h"
+#include "syscalls/syscalls.h"
 
 // Preprocessor help functions
 #define str(x) # x
