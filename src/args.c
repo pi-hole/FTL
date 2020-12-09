@@ -350,7 +350,15 @@ void parse_args(int argc, char* argv[])
 		// Complain if invalid options have been found
 		if(!ok)
 		{
-			printf("pihole-FTL: invalid option -- '%s'\nTry '%s --help' for more information\n", argv[i], argv[0]);
+			printf("pihole-FTL: invalid option -- '%s'\n", argv[i]);
+			printf("Command: \"");
+			for(int j = 0; j < argc; j++)
+			{
+				printf("%s", argv[j]);
+				if(j < argc - 1)
+					printf(" ");
+			}
+			printf("\"\n\nTry '%s --help' for more information\n", argv[0]);
 			exit(EXIT_FAILURE);
 		}
 	}
