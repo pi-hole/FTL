@@ -12,7 +12,7 @@
 //#include "syscalls.h" is implicitly done in FTL.h
 #include "../log.h"
 
-int FTLsnprintf(const char* file, const char *func, const int line, char *__restrict__ buffer, const size_t maxlen, const char *format, ...)
+int FTLsnprintf(const char *file, const char *func, const int line, char *__restrict__ buffer, const size_t maxlen, const char *format, ...)
 {
 	va_list args;
 	va_start(args, format);

@@ -3,7 +3,7 @@
 *  Network-wide ad blocking via your own hardware.
 *
 *  FTL Engine
-*  Pi-hole syscall implementation for vsnprintf
+*  Pi-hole syscall implementation for vsprintf
 *
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
@@ -12,13 +12,13 @@
 //#include "syscalls.h" is implicitly done in FTL.h
 #include "../log.h"
 
-#undef vsnprintf
-int FTLvsnprintf(const char *file, const char *func, const int line, char *__restrict__ buffer, const size_t maxlen, const char *format, va_list args)
+#undef vsprintf
+int FTLvsprintf(const char *file, const char *func, const int line, char *__restrict__ buffer, const char *format, va_list args)
 {
 	// Sanity check
 	if(buffer == NULL)
 	{
-		syscalls_report_error("vsnprintf() called with NULL buffer",
+		syscalls_report_error("vsprintf() called with NULL buffer",
 		                      stdout, 0, format, func, file, line);
 		return 0;
 	}
@@ -38,7 +38,7 @@ int FTLvsnprintf(const char *file, const char *func, const int line, char *__res
 		// Reset errno before trying to get the string
 		errno = 0;
 		// Do the actual string transformation
-		length = vsnprintf(buffer, maxlen, format, _args);
+		length = vsprintf(buffer, format, _args);
 		// Copy errno into buffer before calling va_end()
 		_errno = errno;
 		va_end(_args);
@@ -50,7 +50,7 @@ int FTLvsnprintf(const char *file, const char *func, const int line, char *__res
 	// Handle other errors than EINTR
 	if(length < 0)
 	{
-		syscalls_report_error("vsnprintf() failed to print into buffer",
+		syscalls_report_error("vsprintf() failed to print into buffer",
 		                      stdout, _errno, format, func, file, line);
 	}
 

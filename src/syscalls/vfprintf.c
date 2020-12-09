@@ -96,7 +96,7 @@ void syscalls_report_error(const char *error, FILE *stream, const int _errno, co
 }
 
 // The actual vfprintf() routine
-int FTLvfprintf(FILE *stream, const char* file, const char *func, const int line, const char *format, va_list args)
+int FTLvfprintf(FILE *stream, const char *file, const char *func, const int line, const char *format, va_list args)
 {
 	// Print into dynamically allocated memory
 	char *buffer = NULL;
