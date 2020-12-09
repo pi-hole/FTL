@@ -13,6 +13,7 @@ set(sources
         calloc.c
         fprintf.c
         free.c
+        pthread_mutex_lock.c
         realloc.c
         recv.c
         recvfrom.c
