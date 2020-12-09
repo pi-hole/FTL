@@ -12,11 +12,11 @@
 //#include "syscalls.h" is implicitly done in FTL.h
 #include "../log.h"
 
-int FTLfprintf(FILE *stream, const char *format, ...)
+int FTLfprintf(FILE *stream, const char* file, const char *func, const int line, const char *format, ...)
 {
 	va_list args;
 	va_start(args, format);
-	const int length = FTLvfprintf(stream, format, args);
+	const int length = FTLvfprintf(stream, file, func, line, format, args);
 	va_end(args);
 
 	return length;

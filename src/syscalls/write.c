@@ -12,11 +12,11 @@
 //#include "syscalls.h" is implicitly done in FTL.h
 #include "../log.h"
 
-ssize_t FTLwrite(int fd, const void *buf, size_t total, const char * file, const char * function, const int line)
+ssize_t FTLwrite(int fd, const void *buf, size_t total, const char *file, const char *func, const int line)
 {
 	if(buf == NULL)
 	{
-		logg("ERROR: Trying to write a NULL string in %s() (%s:%i)", function, file, line);
+		logg("ERROR: Trying to write a NULL string in %s() (%s:%i)", func, file, line);
 		return 0;
 	}
 
@@ -38,8 +38,8 @@ ssize_t FTLwrite(int fd, const void *buf, size_t total, const char * file, const
 	// Final error checking (may have faild for some other reason then an
 	// EINTR = interrupted system call)
 	if(written < total)
-		logg("WARN: Could not write() everything in %s() (%s:%i): %s",
-             function, file, line, strerror(errno));
+		logg("WARN: Could not write() everything in %s() [%s:%i]: %s",
+             func, file, line, strerror(errno));
 
     return written;
 }

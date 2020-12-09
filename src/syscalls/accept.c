@@ -12,7 +12,7 @@
 //#include "syscalls.h" is implicitly done in FTL.h
 #include "../log.h"
 
-int FTLaccept(int sockfd, struct sockaddr *addr, socklen_t *addrlen, const char * file, const char * function, const int line)
+int FTLaccept(int sockfd, struct sockaddr *addr, socklen_t *addrlen, const char *file, const char *func, const int line)
 {
     int ret = 0;
 	do
@@ -29,7 +29,7 @@ int FTLaccept(int sockfd, struct sockaddr *addr, socklen_t *addrlen, const char 
 	// EINTR = interrupted system call)
 	if(ret < 0)
 		logg("WARN: Could not accept() in %s() (%s:%i): %s",
-             function, file, line, strerror(errno));
+             func, file, line, strerror(errno));
 
     return ret;
 }

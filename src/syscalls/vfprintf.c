@@ -12,7 +12,90 @@
 //#include "syscalls.h" is implicitly done in FTL.h
 #include "../log.h"
 
-int FTLvfprintf(FILE *stream, const char *format, va_list args)
+// itoa implementation using only static memory
+// taken from Kernighan and Ritchie's "The C Programming Language"
+// see https://clc-wiki.net/wiki/K&R2_solutions:Chapter_3:Exercise_4
+// This implementation has its drawbacks, however, we only use it for
+// automated conversion of code line numbers to strings so we're not
+// interested in its performance outside the range of [1, 10'000]
+static void itoa(int n, char s[])
+{
+	int i = 0, sign = n;
+
+	// Make n positive if negative
+	if (sign < 0)
+		n = -n;
+
+	// Generate digits in reverse order
+	do
+	{
+		s[i++] = n % 10 + '0';   /* get next digit */
+	} while ((n /= 10) > 0);     /* delete it */
+
+	// Add sign (if needed)
+	if (sign < 0)
+		s[i++] = '-';
+
+	// Rero-terminate string
+	s[i] = '\0';
+
+	// Reverse string s in place
+	int j;
+	char c;
+	int len = strlen(s);
+	for (i = 0, j = len-1; i<j; i++, j--) {
+		c = s[i];
+		s[i] = s[j];
+		s[j] = c;
+	}
+}
+
+// Variant of fputs that prints newline characters as "\n"
+static int fputs_convert_newline(const char *string, FILE *stream)
+{
+	int pos = 0;
+	while(string[pos] != '\0')
+	{
+		if(string[pos] == '\n')
+		{
+			fputc('\\', stream);
+			fputc('n', stream);
+		}
+		else
+		{
+			fputc(string[pos], stream);
+		}
+
+		pos++;
+	}
+
+	return pos;
+}
+
+// Special error reporting for our own vfprintf()
+// Since we cannot rely on (heap) being available (allocation may have failed
+// earlier), we do the reporting entirely manually, writing one string at a time
+static void report_error(const char *error, FILE *stream, const char *format, const char *func, const char *file, const int line)
+{
+	fputs("WARN: ", stream);
+	fputs(error, stream);
+	fputs(": ", stream);
+	fputs(strerror(errno), stream);
+	fputs("\n      Not processing string \"", stream);
+	fputs_convert_newline(format, stream);
+	fputs("\" in ", stream);
+	fputs(func, stream);
+	fputs("() [", stream);
+	fputs(file, stream);
+	fputs(":", stream);
+	char linestr[16] = { 0 };
+	itoa(line, linestr);
+	fputs(linestr, stream);
+	fputs("]\n", stream);
+}
+
+// The actual vfprintf() routine
+int FTLvfprintf(FILE *stream, const char* file, const char *func, const int line, const char *format, va_list args)
 {
 	// Print into dynamically allocated memory
 	char *buffer = NULL;
@@ -43,12 +126,8 @@ int FTLvfprintf(FILE *stream, const char *format, va_list args)
 	// Handle other errors than EINTR
 	if(length < 0 || buffer == NULL)
 	{
-		fputs("WARN: fprintf() failed to allocate memory: ", stream);
-		fputs(strerror(errno), stream);
-		fputs("\n", stream);
-		fputs("Not processing string: ", stream);
-		fputs(format, stream);
-		fputs("\n", stream);
+		report_error("vfprintf() failed to allocate memory",
+		             stream, format, func, file, line);
 
         // Free the buffer in case anything got allocated
         if(buffer != NULL)
@@ -76,12 +155,8 @@ int FTLvfprintf(FILE *stream, const char *format, va_list args)
 	// EINTR = interrupted system call)
 	if(_buffer < buffer)
 	{
-		fputs("WARN: fprintf() did not print all characters: ", stream);
-		fputs(strerror(errno), stream);
-		fputs("\n", stream);
-		fputs("Not processing string: ", stream);
-		fputs(format, stream);
-		fputs("\n", stream);
+		report_error("vfprintf() did not print all characters",
+		             stream, format, func, file, line);
 	}
 
 	// Free allocated memory

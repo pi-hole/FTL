@@ -12,18 +12,18 @@
 //#include "syscalls.h" is implicitly done in FTL.h
 #include "../log.h"
 
-char* __attribute__((malloc)) FTLstrdup(const char *src, const char * file, const char * function, const int line)
+char* __attribute__((malloc)) FTLstrdup(const char *src, const char *file, const char *func, const int line)
 {
 	// The FTLstrdup() function returns a pointer to a new string which is a
 	// duplicate of the string s. Memory for the new string is obtained with
 	// calloc(3), and can be freed with free(3).
 	if(src == NULL)
 	{
-		logg("WARN: Trying to copy a NULL string in %s() (%s:%i)", function, file, line);
+		logg("WARN: Trying to copy a NULL string in %s() (%s:%i)", func, file, line);
 		return NULL;
 	}
 	const size_t len = strlen(src);
-	char *dest = FTLcalloc(len+1, sizeof(char), file, function, line);
+	char *dest = FTLcalloc(len+1, sizeof(char), file, func, line);
 
 	// Return early in case of an unrecoverable error, error reporting has
 	// already been done in FTLcalloc()

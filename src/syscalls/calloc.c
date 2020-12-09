@@ -13,9 +13,9 @@
 #include "../log.h"
 
 #undef calloc
-void* __attribute__((malloc)) __attribute__((alloc_size(1,2))) FTLcalloc(const size_t nmemb, const size_t size, const char * file, const char * function, const int line)
+void* __attribute__((malloc)) __attribute__((alloc_size(1,2))) FTLcalloc(const size_t nmemb, const size_t size, const char *file, const char *func, const int line)
 {
-	// The FTLcalloc() function allocates memory for an array of nmemb elements
+	// The FTLcalloc() func allocates memory for an array of nmemb elements
 	// of size bytes each and returns a pointer to the allocated memory. The
 	// memory is set to zero. If nmemb or size is 0, then calloc() returns
 	// either NULL, or a unique pointer value that can later be successfully
@@ -33,7 +33,7 @@ void* __attribute__((malloc)) __attribute__((alloc_size(1,2))) FTLcalloc(const s
 	// Handle other errors than EINTR
 	if(ptr == NULL)
 		logg("FATAL: Memory allocation (%zu x %zu) failed in %s() (%s:%i)",
-		     nmemb, size, function, file, line);
+		     nmemb, size, func, file, line);
 
 	return ptr;
 }
