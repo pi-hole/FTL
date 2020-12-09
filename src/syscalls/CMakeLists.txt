@@ -11,6 +11,7 @@
 set(sources
         accept.c
         calloc.c
+        fopen.c
         fprintf.c
         free.c
         pthread_mutex_lock.c

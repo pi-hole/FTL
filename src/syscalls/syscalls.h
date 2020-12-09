@@ -32,4 +32,7 @@ int FTLselect(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, st
 // Interrupt-safe thread routines
 int FTLpthread_mutex_lock(pthread_mutex_t *__mutex, const char *file, const char *func, const int line);
 
+// Interrupt-safe file routines
+FILE *FTLfopen(const char *pathname, const char *mode, const char *file, const char *func, const int line);
+
 #endif //SYSCALLS_H
