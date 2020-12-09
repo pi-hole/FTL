@@ -21,6 +21,7 @@ void FTLfree(void *ptr, const char*file, const char *func, const int line);
 int FTLfprintf(FILE *stream, const char*file, const char *func, const int line, const char *format, ...) __attribute__ ((format (gnu_printf, 5, 6)));
 // vprintf() is derived from vfprintf(stdout, ...)
 int FTLvfprintf(FILE *stream, const char*file, const char *func, const int line, const char *format, va_list args) __attribute__ ((format (gnu_printf, 5, 0)));
+int FTLvsnprintf(const char* file, const char *func, const int line, char *__restrict__ buffer, size_t maxlen, const char *format, va_list args) __attribute__ ((format (gnu_printf, 6, 0)));
 
 // Interrupt-safe socket routines
 ssize_t FTLwrite(int fd, const void *buf, size_t total, const char *file, const char *func, const int line);
@@ -35,5 +36,8 @@ int FTLpthread_mutex_lock(pthread_mutex_t *__mutex, const char *file, const char
 
 // Interrupt-safe file routines
 FILE *FTLfopen(const char *pathname, const char *mode, const char *file, const char *func, const int line);
+
+// Syscall helpers
+void syscalls_report_error(const char *error, FILE *stream, const int _errno, const char *format, const char *func, const char *file, const int line);
 
 #endif //SYSCALLS_H

@@ -12,6 +12,7 @@
 //#include "syscalls.h" is implicitly done in FTL.h
 #include "../log.h"
 
+#undef write
 ssize_t FTLwrite(int fd, const void *buf, size_t total, const char *file, const char *func, const int line)
 {
 	if(buf == NULL)

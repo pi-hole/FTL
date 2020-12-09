@@ -75,12 +75,15 @@ static int fputs_convert_newline(const char *string, FILE *stream)
 // Special error reporting for our own vfprintf()
 // Since we cannot rely on (heap) being available (allocation may have failed
 // earlier), we do the reporting entirely manually, writing one string at a time
-static void report_error(const char *error, FILE *stream, const char *format, const char *func, const char *file, const int line)
+void syscalls_report_error(const char *error, FILE *stream, const int _errno, const char *format, const char *func, const char *file, const int line)
 {
+	char linestr[16] = { 0 };
+	itoa(line, linestr);
+
 	fputs("WARN: ", stream);
 	fputs(error, stream);
 	fputs(": ", stream);
-	fputs(strerror(errno), stream);
+	fputs(strerror(_errno), stream);
 	fputs("\n      Not processing string \"", stream);
 	fputs_convert_newline(format, stream);
 	fputs("\" in ", stream);
@@ -88,8 +91,6 @@ static void report_error(const char *error, FILE *stream, const char *format, co
 	fputs("() [", stream);
 	fputs(file, stream);
 	fputs(":", stream);
-	char linestr[16] = { 0 };
-	itoa(line, linestr);
 	fputs(linestr, stream);
 	fputs("]\n", stream);
 }
@@ -102,22 +103,22 @@ int FTLvfprintf(FILE *stream, const char* file, const char *func, const int line
 	int _errno, length = 0;
 	do
 	{
-        // The va_copy() macro copies the (previously initialized) variable
-        // argument list args to the local _args. The behavior is as if
-        // va_start() were applied to _args with the same last argument,
-        // followed by the same number of va_arg() invocations that was used to
-        // reach the current state of args. We do this to be able to reuse the
-        // arguments in args when we need to redo the string preparation
-        // procedure
-        va_list _args;
-        va_copy(_args, args);
+		// The va_copy() macro copies the (previously initialized) variable
+		// argument list args to the local _args. The behavior is as if
+		// va_start() were applied to _args with the same last argument,
+		// followed by the same number of va_arg() invocations that was used to
+		// reach the current state of args. We do this to be able to reuse the
+		// arguments in args when we need to redo the string preparation
+		// procedure
+		va_list _args;
+		va_copy(_args, args);
 		// Reset errno before trying to get the string
 		errno = 0;
-        // Do the actual string transformation
+		// Do the actual string transformation
 		length = vasprintf(&buffer, format, _args);
-        // Copy errno into buffer before calling va_end()
-        _errno = errno;
-        va_end(_args);
+		// Copy errno into buffer before calling va_end()
+		_errno = errno;
+		va_end(_args);
 	}
 	// Try again to allocate memory if this failed due to an interruption by
 	// an incoming signal
@@ -126,12 +127,12 @@ int FTLvfprintf(FILE *stream, const char* file, const char *func, const int line
 	// Handle other errors than EINTR
 	if(length < 0 || buffer == NULL)
 	{
-		report_error("vfprintf() failed to allocate memory",
-		             stream, format, func, file, line);
+		syscalls_report_error("vfprintf() failed to allocate memory",
+		                      stream, _errno, format, func, file, line);
 
-        // Free the buffer in case anything got allocated
-        if(buffer != NULL)
-            free(buffer);
+		// Free the buffer in case anything got allocated
+		if(buffer != NULL)
+			free(buffer);
 
 		// Return early, there isn't anything we can do here
 		return length;
@@ -155,8 +156,8 @@ int FTLvfprintf(FILE *stream, const char* file, const char *func, const int line
 	// EINTR = interrupted system call)
 	if(_buffer < buffer)
 	{
-		report_error("vfprintf() did not print all characters",
-		             stream, format, func, file, line);
+		syscalls_report_error("vfprintf() did not print all characters",
+		                      stream, errno, format, func, file, line);
 	}
 
 	// Free allocated memory

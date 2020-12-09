@@ -15,6 +15,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 
+#undef recvfrom
 ssize_t FTLrecvfrom(int sockfd, void *buf, size_t len, int flags, struct sockaddr *src_addr, socklen_t *addrlen, const char *file, const char *func, const int line)
 {
     ssize_t ret = 0;

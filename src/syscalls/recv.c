@@ -14,6 +14,7 @@
 
 #include <sys/socket.h>
 
+#undef recv
 ssize_t FTLrecv(int sockfd, void *buf, size_t len, int flags, const char *file, const char *func, const int line)
 {
     ssize_t ret = 0;

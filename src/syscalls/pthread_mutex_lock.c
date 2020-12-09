@@ -14,6 +14,7 @@
 
 #include <pthread.h>
 
+#undef pthread_mutex_lock
 int FTLpthread_mutex_lock(pthread_mutex_t *__mutex, const char *file, const char *func, const int line)
 {
     ssize_t ret = 0;

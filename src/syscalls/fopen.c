@@ -12,6 +12,7 @@
 //#include "syscalls.h" is implicitly done in FTL.h
 #include "../log.h"
 
+#undef fopen
 FILE *FTLfopen(const char *pathname, const char *mode, const char *file, const char *func, const int line)
 {
     FILE *file_ptr = 0;

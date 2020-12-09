@@ -15,6 +15,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 
+#undef sendto
 ssize_t FTLsendto(int sockfd, void *buf, size_t len, int flags, const struct sockaddr *dest_addr, socklen_t addrlen, const char *file, const char *func, const int line)
 {
     ssize_t ret = 0;

@@ -14,6 +14,7 @@
 
 #include <sys/select.h>
 
+#undef select
 int FTLselect(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timeout, const char *file, const char *func, const int line)
 {
     int ret = 0;

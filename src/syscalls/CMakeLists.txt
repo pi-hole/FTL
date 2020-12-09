@@ -23,6 +23,7 @@ set(sources
         strdup.c
         syscalls.h
         vfprintf.c
+        vsnprintf.c
         write.c
         )
 
