@@ -17,7 +17,9 @@ void *FTLrealloc(void *ptr_in, size_t size, const char *file, const char *func, 
 void FTLfree(void *ptr, const char*file, const char *func, const int line);
 
 // Interrupt-safe printing routines
+// printf() is derived from fprintf(stdout, ...)
 int FTLfprintf(FILE *stream, const char*file, const char *func, const int line, const char *format, ...) __attribute__ ((format (gnu_printf, 5, 6)));
+// vprintf() is derived from vfprintf(stdout, ...)
 int FTLvfprintf(FILE *stream, const char*file, const char *func, const int line, const char *format, va_list args) __attribute__ ((format (gnu_printf, 5, 0)));
 
 // Interrupt-safe socket routines
@@ -25,6 +27,7 @@ ssize_t FTLwrite(int fd, const void *buf, size_t total, const char *file, const 
 int FTLaccept(int sockfd, struct sockaddr *addr, socklen_t *addrlen, const char *file, const char *func, const int line);
 ssize_t FTLrecv(int sockfd, void *buf, size_t len, int flags, const char *file, const char *func, const int line);
 ssize_t FTLrecvfrom(int sockfd, void *buf, size_t len, int flags, struct sockaddr *src_addr, socklen_t *addrlen, const char *file, const char *func, const int line);
+int FTLselect(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timeout, const char *file, const char *func, const int line);
 
 // Interrupt-safe thread routines
 int FTLpthread_mutex_lock(pthread_mutex_t *__mutex, const char *file, const char *func, const int line);
