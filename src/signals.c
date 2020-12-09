@@ -245,10 +245,17 @@ static void __attribute__((noreturn)) signal_handler(int sig, siginfo_t *si, voi
 }
 
 static void SIGRT_handler(int signum, siginfo_t *si, void *unused)
-{ 
+{
+	// Backup errno
+	const int _errno = errno;
+
 	// Ignore real-time signals outside of the main process (TCP forks)
 	if(mpid != getpid())
+	{
+		// Restore errno before returning
+		errno = _errno;
 		return;
+	}
 
 	int rtsig = signum - SIGRTMIN;
 	logg("Received: %s (%d -> %d)", strsignal(signum), signum, rtsig);
@@ -288,6 +295,9 @@ static void SIGRT_handler(int signum, siginfo_t *si, void *unused)
 		// Parse neighbor cache
 		set_event(PARSE_NEIGHBOR_CACHE);
 	}
+
+	// Restore errno before returning back to previous context
+	errno = _errno;
 }
 
 // Register SIGSEGV handler
