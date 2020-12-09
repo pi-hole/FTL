@@ -22,6 +22,5 @@ void FTLfree(void *ptr, const char * file, const char * function, const int line
 	if(ptr == NULL)
 		logg("FATAL: Trying to free NULL pointer in %s() (%s:%i)", function, file, line);
 
-	// We intentionally run free() nevertheless to see the crash in the debugger
 	free(ptr);
 }

@@ -12,7 +12,6 @@
 //#include "syscalls.h" is implicitly done in FTL.h
 #include "../log.h"
 
-#undef strdup
 char* __attribute__((malloc)) FTLstrdup(const char *src, const char * file, const char * function, const int line)
 {
 	// The FTLstrdup() function returns a pointer to a new string which is a
@@ -24,12 +23,13 @@ char* __attribute__((malloc)) FTLstrdup(const char *src, const char * file, cons
 		return NULL;
 	}
 	const size_t len = strlen(src);
-	char *dest = calloc(len+1, sizeof(char));
+	char *dest = FTLcalloc(len+1, sizeof(char), file, function, line);
+
+	// Return early in case of an unrecoverable error, error reporting has
+	// already been done in FTLcalloc()
 	if(dest == NULL)
-	{
-		logg("FATAL: Memory allocation failed in %s() (%s:%i)", function, file, line);
 		return NULL;
-	}
+
 	// Use memcpy as memory areas cannot overlap
 	memcpy(dest, src, len);
 	dest[len] = '\0';

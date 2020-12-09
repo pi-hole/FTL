@@ -25,7 +25,17 @@ void __attribute__((alloc_size(2))) *FTLrealloc(void *ptr_in, const size_t size,
 	// NULL, it must have been returned by an earlier call to malloc(), cal‐
 	// loc() or realloc(). If the area pointed to was moved, a free(ptr) is
 	// done.
-	void *ptr_out = realloc(ptr_in, size);
+	void *ptr_out = NULL;
+	do
+	{
+		errno = 0;
+		ptr_out = realloc(ptr_in, size);
+	}
+	// Try again to allocate memory if this failed due to an interruption by
+	// an incoming signal
+	while(ptr_out == NULL && errno == EINTR);
+
+	// Handle other errors than EINTR
 	if(ptr_out == NULL)
 		logg("FATAL: Memory reallocation (%p -> %zu) failed in %s() (%s:%i)",
 		     ptr_in, size, function, file, line);

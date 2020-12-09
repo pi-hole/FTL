@@ -20,7 +20,17 @@ void* __attribute__((malloc)) __attribute__((alloc_size(1,2))) FTLcalloc(const s
 	// memory is set to zero. If nmemb or size is 0, then calloc() returns
 	// either NULL, or a unique pointer value that can later be successfully
 	// passed to free().
-	void *ptr = calloc(nmemb, size);
+	void *ptr = NULL;
+	do
+	{
+		errno = 0;
+		ptr = calloc(nmemb, size);
+	}
+	// Try again to allocate memory if this failed due to an interruption by
+	// an incoming signal
+	while(ptr == NULL && errno == EINTR);
+
+	// Handle other errors than EINTR
 	if(ptr == NULL)
 		logg("FATAL: Memory allocation (%zu x %zu) failed in %s() (%s:%i)",
 		     nmemb, size, function, file, line);
