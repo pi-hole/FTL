@@ -27,8 +27,6 @@
 #include "shmem.h"
 // LUA dependencies
 #include "lua/ftl_lua.h"
-#include <readline/history.h>
-#include <wordexp.h>
 // run_dhcp_discover()
 #include "dhcp-discover.h"
 // defined in dnsmasq.c
@@ -58,10 +56,29 @@ void parse_args(int argc, char* argv[])
 	if(strEndsWith(argv[0], "dnsmasq"))
 		consume_for_dnsmasq = true;
 
+	if(strEndsWith(argv[0], "pihole-lua"))
+		exit(run_lua_interpreter(argc, argv, false));
+
 	// start from 1, as argv[0] is the executable name
 	for(int i = 1; i < argc; i++)
 	{
 		bool ok = false;
+
+		// Expose internal lua interpreter
+		if(strcmp(argv[i], "lua") == 0 ||
+		   strcmp(argv[i], "--lua") == 0)
+		{
+			exit(run_lua_interpreter(argc - i, &argv[i], dnsmasq_debug));
+		}
+
+		// Expose internal lua compiler
+		if(strcmp(argv[i], "luac") == 0 ||
+		   strcmp(argv[i], "--luac") == 0)
+		{
+			if(argc == i + 1) // No arguments after this one
+				printf("Pi-hole FTL %s\n", get_FTL_version());
+			exit(luac_main(argc - i, &argv[i]));
+		}
 
 		// Implement dnsmasq's test function, no need to prepare the entire FTL
 		// environment (initialize shared memory, lead queries from long-term
@@ -277,74 +294,6 @@ void parse_args(int argc, char* argv[])
 		{
 			printf("True\n");
 			exit(EXIT_SUCCESS);
-		}
-
-		// Expose internal lua interpreter
-		if(strcmp(argv[i], "lua") == 0 ||
-		   strcmp(argv[i], "--lua") == 0)
-		{
-			if(argc == i + 1) // No arguments after this one
-				printf("Pi-hole FTL %s\n", get_FTL_version());
-#if defined(LUA_USE_READLINE)
-			wordexp_t word;
-			wordexp(LUA_HISTORY_FILE, &word, WRDE_NOCMD);
-			const char *history_file = NULL;
-			if(word.we_wordc == 1)
-			{
-				history_file = word.we_wordv[0];
-				const int ret_r = read_history(history_file);
-				if(dnsmasq_debug)
-				{
-					printf("Reading history ... ");
-					if(ret_r == 0)
-						printf("success\n");
-					else
-						printf("error - %s: %s\n", history_file, strerror(ret_r));
-				}
-
-				// The history file may not exist, try to create an empty one in this case
-				if(ret_r == ENOENT)
-				{
-					if(dnsmasq_debug)
-					{
-						printf("Creating new history file: %s\n", history_file);
-					}
-					FILE *history = fopen(history_file, "w");
-					if(history != NULL)
-						fclose(history);
-				}
-			}
-#else
-			if(dnsmasq_debug)
-				printf("No readline available!\n");
-#endif
-			const int ret = lua_main(argc - i, &argv[i]);
-#if defined(LUA_USE_READLINE)
-			if(history_file != NULL)
-			{
-				const int ret_w = write_history(history_file);
-				if(dnsmasq_debug)
-				{
-					printf("Writing history ... ");
-					if(ret_w == 0)
-						printf("success\n");
-					else
-						printf("error - %s: %s\n", history_file, strerror(ret_w));
-				}
-
-				wordfree(&word);
-			}
-#endif
-			exit(ret);
-		}
-
-		// Expose internal lua compiler
-		if(strcmp(argv[i], "luac") == 0 ||
-		   strcmp(argv[i], "--luac") == 0)
-		{
-			if(argc == i + 1) // No arguments after this one
-				printf("Pi-hole FTL %s\n", get_FTL_version());
-			exit(luac_main(argc - i, &argv[i]));
 		}
 
 		// Complain if invalid options have been found

@@ -11,8 +11,11 @@
 #define FTL_LUA_H
 
 #include "lua.h"
+#include <stdbool.h>
 
 #define LUA_HISTORY_FILE "~/.pihole_lua_history"
+
+int run_lua_interpreter(const int argc, char **argv, bool dnsmasq_debug);
 
 int lua_main (int argc, char **argv);
 int luac_main (int argc, char **argv);
