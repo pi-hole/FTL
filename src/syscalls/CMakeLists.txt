@@ -21,10 +21,12 @@ set(sources
         select.c
         sendto.c
         snprintf.c
+        sprintf.c
         strdup.c
         syscalls.h
         vfprintf.c
         vsnprintf.c
+        vsprintf.c
         write.c
         )
 

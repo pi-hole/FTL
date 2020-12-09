@@ -18,10 +18,13 @@ void FTLfree(void *ptr, const char*file, const char *func, const int line);
 
 // Interrupt-safe printing routines
 // printf() is derived from fprintf(stdout, ...)
-int FTLfprintf(FILE *stream, const char*file, const char *func, const int line, const char *format, ...) __attribute__ ((format (gnu_printf, 5, 6)));
 // vprintf() is derived from vfprintf(stdout, ...)
+int FTLfprintf(FILE *stream, const char*file, const char *func, const int line, const char *format, ...) __attribute__ ((format (gnu_printf, 5, 6)));
 int FTLvfprintf(FILE *stream, const char*file, const char *func, const int line, const char *format, va_list args) __attribute__ ((format (gnu_printf, 5, 0)));
+
+int FTLsprintf(const char *file, const char *func, const int line, char *__restrict__ buffer, const char *format, ...) __attribute__ ((format (gnu_printf, 5, 6)));
 int FTLvsprintf(const char *file, const char *func, const int line, char *__restrict__ buffer, const char *format, va_list args) __attribute__ ((format (gnu_printf, 5, 0)));
+
 int FTLsnprintf(const char *file, const char *func, const int line, char *__restrict__ buffer, const size_t maxlen, const char *format, ...) __attribute__ ((format (gnu_printf, 6, 7)));
 int FTLvsnprintf(const char *file, const char *func, const int line, char *__restrict__ buffer, const size_t maxlen, const char *format, va_list args) __attribute__ ((format (gnu_printf, 6, 0)));
 
