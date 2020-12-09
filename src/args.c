@@ -59,6 +59,9 @@ void parse_args(int argc, char* argv[])
 	if(strEndsWith(argv[0], "lua"))
 		exit(run_lua_interpreter(argc, argv, false));
 
+	if(strEndsWith(argv[0], "luac"))
+		exit(run_luac(argc, argv));
+
 	// start from 1, as argv[0] is the executable name
 	for(int i = 1; i < argc; i++)
 	{
@@ -75,8 +78,6 @@ void parse_args(int argc, char* argv[])
 		if(strcmp(argv[i], "luac") == 0 ||
 		   strcmp(argv[i], "--luac") == 0)
 		{
-			if(argc == i + 1) // No arguments after this one
-				printf("Pi-hole FTL %s\n", get_FTL_version());
 			exit(luac_main(argc - i, &argv[i]));
 		}
 

@@ -74,6 +74,13 @@ int run_lua_interpreter(const int argc, char **argv, bool dnsmasq_debug)
 	return ret;
 }
 
+int run_luac(const int argc, char **argv)
+{
+	if(argc == 1) // No arguments after this one
+		printf("Pi-hole FTL %s\n", get_FTL_version());
+	return luac_main(argc, argv);
+}
+
 // pihole.ftl_version()
 static int pihole_ftl_version(lua_State *L) {
 	lua_pushstring(L, get_FTL_version());
