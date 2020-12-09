@@ -16,12 +16,12 @@
 void pack_eom(const int sock) {
 	// This byte is explicitly never used in the MessagePack spec, so it is perfect to use as an EOM for this API.
 	uint8_t eom = 0xc1;
-	swrite(sock, &eom, sizeof(eom));
+	write(sock, &eom, sizeof(eom));
 }
 
 static void pack_basic(const int sock, const uint8_t format, const void *value, const size_t size) {
-	swrite(sock, &format, sizeof(format));
-	swrite(sock, value, size);
+	write(sock, &format, sizeof(format));
+	write(sock, value, size);
 }
 
 static uint64_t __attribute__((const)) leToBe64(const uint64_t value) {
@@ -42,7 +42,7 @@ static uint64_t __attribute__((const)) leToBe64(const uint64_t value) {
 
 void pack_bool(const int sock, const bool value) {
 	uint8_t packed = (uint8_t) (value ? 0xc3 : 0xc2);
-	swrite(sock, &packed, sizeof(packed));
+	write(sock, &packed, sizeof(packed));
 }
 
 void pack_uint8(const int sock, const uint8_t value) {
@@ -87,8 +87,8 @@ bool pack_fixstr(const int sock, const char *string) {
 	}
 
 	const uint8_t format = (uint8_t) (0xA0 | length);
-	swrite(sock, &format, sizeof(format));
-	swrite(sock, string, length);
+	write(sock, &format, sizeof(format));
+	write(sock, string, length);
 
 	return true;
 }
@@ -104,17 +104,17 @@ bool pack_str32(const int sock, const char *string) {
 	}
 
 	const uint8_t format = 0xdb;
-	swrite(sock, &format, sizeof(format));
+	write(sock, &format, sizeof(format));
 	const uint32_t bigELength = htonl((uint32_t) length);
-	swrite(sock, &bigELength, sizeof(bigELength));
-	swrite(sock, string, length);
+	write(sock, &bigELength, sizeof(bigELength));
+	write(sock, string, length);
 
 	return true;
 }
 
 void pack_map16_start(const int sock, const uint16_t length) {
 	const uint8_t format = 0xde;
-	swrite(sock, &format, sizeof(format));
+	write(sock, &format, sizeof(format));
 	const uint16_t bigELength = htons(length);
-	swrite(sock, &bigELength, sizeof(bigELength));
+	write(sock, &bigELength, sizeof(bigELength));
 }

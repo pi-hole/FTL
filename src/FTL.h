@@ -119,8 +119,6 @@
 // caused by insufficient memory or by code bugs (not properly dealing
 // with NULL pointers) much easier.
 #define free(ptr) FTLfree(ptr, __FILE__,  __FUNCTION__,  __LINE__)
-#define lib_strdup() strdup()
-#undef strdup
 #define strdup(str_in) FTLstrdup(str_in, __FILE__,  __FUNCTION__,  __LINE__)
 #define calloc(numer_of_elements, element_size) FTLcalloc(numer_of_elements, element_size, __FILE__,  __FUNCTION__,  __LINE__)
 #define realloc(ptr, new_size) FTLrealloc(ptr, new_size, __FILE__,  __FUNCTION__,  __LINE__)

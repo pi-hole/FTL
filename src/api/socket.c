@@ -222,19 +222,13 @@ void __attribute__ ((format (gnu_printf, 2, 3))) ssend(const int sock, const cha
 	char *buffer;
 	va_list args;
 	va_start(args, format);
-	int ret = vasprintf(&buffer, format, args);
+	int bytes = vasprintf(&buffer, format, args);
 	va_end(args);
-	if(ret > 0)
+	if(bytes > 0 && buffer != NULL)
 	{
-		if(!write(sock, buffer, strlen(buffer)))
-			logg("WARNING: Socket write returned error %s (%i)", strerror(errno), errno);
+		write(sock, buffer, bytes);
 		free(buffer);
 	}
-}
-
-void swrite(const int sock, const void *value, size_t size) {
-	if(write(sock, value, size) == -1)
-		logg("WARNING: Socket write returned error code %i", errno);
 }
 
 static inline int checkClientLimit(const int socket) {
