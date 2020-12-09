@@ -15,5 +15,6 @@ void *FTLcalloc(size_t n, size_t size, const char *file, const char *function, c
 void *FTLrealloc(void *ptr_in, size_t size, const char *file, const char *function, const int line) __attribute__((alloc_size(2)));
 void FTLfree(void *ptr, const char* file, const char *function, const int line);
 int FTLfprintf(FILE *stream, const char *format, ...) __attribute__ ((format (gnu_printf, 2, 3)));
+int FTLvfprintf(FILE *stream, const char *format, va_list args) __attribute__ ((format (gnu_printf, 2, 0)));
 
 #endif //SYSCALLS_H

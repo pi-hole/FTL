@@ -12,10 +12,10 @@ set(sources
         calloc.c
         fprintf.c
         free.c
-        printf.c
         realloc.c
         strdup.c
         syscalls.h
+        vfprintf.c
         )
 
 add_library(syscalls OBJECT ${sources})
