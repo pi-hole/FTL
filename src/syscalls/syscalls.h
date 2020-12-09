@@ -23,5 +23,6 @@ int FTLvfprintf(FILE *stream, const char*file, const char *func, const int line,
 // Interrupt-safe socket routines
 ssize_t FTLwrite(int fd, const void *buf, size_t total, const char *file, const char *func, const int line);
 int FTLaccept(int sockfd, struct sockaddr *addr, socklen_t *addrlen, const char *file, const char *func, const int line);
+int FTLrecv(int sockfd, void *buf, size_t len, int flags, const char *file, const char *func, const int line);
 
 #endif //SYSCALLS_H

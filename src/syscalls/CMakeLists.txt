@@ -14,6 +14,7 @@ set(sources
         fprintf.c
         free.c
         realloc.c
+        recv.c
         strdup.c
         syscalls.h
         vfprintf.c
