@@ -114,7 +114,7 @@
 // Important: This number has to be smaller than 256 for this mechanism to work
 #define NUM_RECHECKS 3
 
-// Use out own memory handling functions that will detect possible errors
+// Use out own syscalls handling functions that will detect possible errors
 // and report accordingly in the log. This will make debugging FTL crashs
 // caused by insufficient memory or by code bugs (not properly dealing
 // with NULL pointers) much easier.
@@ -124,6 +124,7 @@
 #define strdup(str_in) FTLstrdup(str_in, __FILE__,  __FUNCTION__,  __LINE__)
 #define calloc(numer_of_elements, element_size) FTLcalloc(numer_of_elements, element_size, __FILE__,  __FUNCTION__,  __LINE__)
 #define realloc(ptr, new_size) FTLrealloc(ptr, new_size, __FILE__,  __FUNCTION__,  __LINE__)
+#include "syscalls.h"
 
 // Preprocessor help functions
 #define str(x) # x

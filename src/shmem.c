@@ -12,7 +12,6 @@
 #include "shmem.h"
 #include "overTime.h"
 #include "log.h"
-#include "memory.h"
 #include "config.h"
 // data getter functions
 #include "datastructure.h"

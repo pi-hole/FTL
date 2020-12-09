@@ -11,7 +11,6 @@
 #include "FTL.h"
 #include "resolve.h"
 #include "shmem.h"
-#include "memory.h"
 // struct config
 #include "config.h"
 // sleepms()

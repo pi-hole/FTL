@@ -10,7 +10,7 @@
 
 #include "FTL.h"
 #include "shmem.h"
-#include "memory.h"
+#include "syscalls.h"
 #include "log.h"
 
 // The special memory handling routines have to be the last ones in this source file

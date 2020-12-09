@@ -10,7 +10,6 @@
 
 #include "FTL.h"
 #include "timers.h"
-#include "memory.h"
 #include "log.h"
 
 struct timespec t0[NUMTIMERS];

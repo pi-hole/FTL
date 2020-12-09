@@ -10,7 +10,6 @@
 
 #include "FTL.h"
 #include "datastructure.h"
-#include "memory.h"
 #include "shmem.h"
 #include "log.h"
 // enum REGEX

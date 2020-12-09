@@ -10,7 +10,6 @@
 
 #include "FTL.h"
 #include "version.h"
-#include "memory.h"
 // is_fork()
 #include "daemon.h"
 #include "config.h"

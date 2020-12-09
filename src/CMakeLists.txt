@@ -131,8 +131,8 @@ set(sources
         log.h
         main.c
         main.h
-        memory.c
-        memory.h
+        syscalls.c
+        syscalls.h
         overTime.c
         overTime.h
         regex.c

@@ -10,13 +10,12 @@
 
 #include "FTL.h"
 #include "api.h"
-#include "log.h"
+#include "../log.h"
 #include "socket.h"
 #include "request.h"
-#include "config.h"
-#include "memory.h"
+#include "../config.h"
 // global variable killed
-#include "signals.h"
+#include "../signals.h"
 
 // The backlog argument defines the maximum length
 // to which the queue of pending connections for

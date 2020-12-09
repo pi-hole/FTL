@@ -30,6 +30,9 @@
 // reset_aliasclient()
 #include "aliasclients.h"
 
+// Definition of struct regex_data
+#include "../regex_r.h"
+
 // Prefix of interface names in the client table
 #define INTERFACE_SEP ":"
 

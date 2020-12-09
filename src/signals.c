@@ -15,8 +15,6 @@
 #include "signals.h"
 // logg()
 #include "log.h"
-// free()
-#include "memory.h"
 // ls_dir()
 #include "files.h"
 // gettid()

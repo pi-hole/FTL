@@ -16,7 +16,6 @@
 #include "dnsmasq_interface.h"
 #include "shmem.h"
 #include "overTime.h"
-#include "memory.h"
 #include "database/common.h"
 #include "database/database-thread.h"
 #include "datastructure.h"
