@@ -351,14 +351,14 @@ void parse_args(int argc, char* argv[])
 		if(!ok)
 		{
 			printf("pihole-FTL: invalid option -- '%s'\n", argv[i]);
-			printf("Command: \"");
+			printf("Command: '");
 			for(int j = 0; j < argc; j++)
 			{
 				printf("%s", argv[j]);
 				if(j < argc - 1)
 					printf(" ");
 			}
-			printf("\"\n\nTry '%s --help' for more information\n", argv[0]);
+			printf("'\nTry '%s --help' for more information\n", argv[0]);
 			exit(EXIT_FAILURE);
 		}
 	}
