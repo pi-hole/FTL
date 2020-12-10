@@ -473,7 +473,8 @@
   run bash -c '/home/pihole/pihole-FTL abc'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "pihole-FTL: invalid option -- 'abc'" ]]
-  [[ ${lines[1]} == "Try '/home/pihole/pihole-FTL --help' for more information" ]]
+  [[ ${lines[1]} == "Command: '/home/pihole/pihole-FTL abc'" ]]
+  [[ ${lines[2]} == "Try '/home/pihole/pihole-FTL --help' for more information" ]]
 }
 
 @test "Help CLI argument return help text" {
