@@ -33,8 +33,7 @@ static regex_data *white_regex = NULL;
 static regex_data *black_regex = NULL;
 static regex_data   *cli_regex = NULL;
 
-regex_data *get_regex_from_type(const enum regex_type regexid);
-inline regex_data *get_regex_from_type(const enum regex_type regexid)
+static inline regex_data *get_regex_ptr(const enum regex_type regexid)
 {
 	switch (regexid)
 	{
@@ -50,12 +49,39 @@ inline regex_data *get_regex_from_type(const enum regex_type regexid)
 	}
 }
 
+static inline void free_regex_ptr(const enum regex_type regexid)
+{
+	regex_data **regex;
+	switch (regexid)
+	{
+		case REGEX_BLACKLIST:
+			regex = &black_regex;
+			break;
+		case REGEX_WHITELIST:
+			regex = &white_regex;
+			break;
+		case REGEX_CLI:
+			regex = &cli_regex;
+			break;
+		case REGEX_MAX: // Fall through
+		default: // This is not possible
+			return;
+	}
+
+	// Free pointer (if not already NULL)
+	if(*regex != NULL)
+	{
+		free(*regex);
+		*regex = NULL;
+	}
+}
+
 #define FTL_REGEX_SEP ";"
 /* Compile regular expressions into data structures that can be used with
    regexec() to match against a string */
 static bool compile_regex(const char *regexin, const enum regex_type regexid)
 {
-	regex_data *regex = get_regex_from_type(regexid);
+	regex_data *regex = get_regex_ptr(regexid);
 	int index = counters->num_regex[regexid]++;
 
 	// Extract possible Pi-hole extensions
@@ -163,7 +189,7 @@ int match_regex(const char *input, const DNSCacheData* dns_cache, const int clie
                 const enum regex_type regexid, const bool regextest)
 {
 	int match_idx = -1;
-	regex_data *regex = get_regex_from_type(regexid);
+	regex_data *regex = get_regex_ptr(regexid);
 #ifdef USE_TRE_REGEX
 	regmatch_t match = { 0 }; // This also disables any sub-matching
 #endif
@@ -309,11 +335,20 @@ static void free_regex(void)
 
 	// Free regex datastructure
 	// Loop over regex types
-	for(unsigned char regexid = 0; regexid < REGEX_MAX; regexid++)
+	for(enum regex_type regexid = REGEX_BLACKLIST; regexid < REGEX_MAX; regexid++)
 	{
-		regex_data *regex = get_regex_from_type(regexid);
+		regex_data *regex = get_regex_ptr(regexid);
+
+		// Reset counter for number of regex
+		const unsigned int oldcount = counters->num_regex[regexid];
+		counters->num_regex[regexid] = 0;
+
+		// Exit early if the regex has already been freed (or has never been used)
+		if(regex == NULL)
+			continue;
+
 		// Loop over entries with this regex type
-		for(unsigned int index = 0; index < counters->num_regex[regexid]; index++)
+		for(unsigned int index = 0; index < oldcount; index++)
 		{
 			if(!regex[index].available)
 				continue;
@@ -329,14 +364,7 @@ static void free_regex(void)
 		}
 
 		// Free array with regex datastructure
-		if(regex != NULL)
-		{
-			free(regex);
-			regex = NULL;
-		}
-
-		// Reset counter for number of regex
-		counters->num_regex[regexid] = 0;
+		free_regex_ptr(regexid);
 	}
 }
 
