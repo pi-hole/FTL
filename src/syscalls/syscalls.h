@@ -25,6 +25,9 @@ int FTLvfprintf(FILE *stream, const char*file, const char *func, const int line,
 int FTLsprintf(const char *file, const char *func, const int line, char *__restrict__ buffer, const char *format, ...) __attribute__ ((format (gnu_printf, 5, 6)));
 int FTLvsprintf(const char *file, const char *func, const int line, char *__restrict__ buffer, const char *format, va_list args) __attribute__ ((format (gnu_printf, 5, 0)));
 
+int FTLasprintf(const char *file, const char *func, const int line, char **buffer, const char *format, ...) __attribute__ ((format (gnu_printf, 5, 6)));
+int FTLvasprintf(const char *file, const char *func, const int line, char **buffer, const char *format, va_list args) __attribute__ ((format (gnu_printf, 5, 0)));
+
 int FTLsnprintf(const char *file, const char *func, const int line, char *__restrict__ buffer, const size_t maxlen, const char *format, ...) __attribute__ ((format (gnu_printf, 6, 7)));
 int FTLvsnprintf(const char *file, const char *func, const int line, char *__restrict__ buffer, const size_t maxlen, const char *format, va_list args) __attribute__ ((format (gnu_printf, 6, 0)));
 

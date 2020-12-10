@@ -129,6 +129,8 @@
 #define vfprintf(stream, format, args) FTLvfprintf(stream, __FILE__, __FUNCTION__,  __LINE__, format, args)
 #define sprintf(buffer, format, ...) FTLsprintf(__FILE__, __FUNCTION__,  __LINE__, buffer, format, ##__VA_ARGS__)
 #define vsprintf(buffer, format, args) FTLvsprintf(__FILE__, __FUNCTION__,  __LINE__, buffer, format, args)
+#define asprintf(buffer, format, ...) FTLasprintf(__FILE__, __FUNCTION__,  __LINE__, buffer, format, ##__VA_ARGS__)
+#define vasprintf(buffer, format, args) FTLvasprintf(__FILE__, __FUNCTION__,  __LINE__, buffer, format, args)
 #define snprintf(buffer, maxlen, format, ...) FTLsnprintf(__FILE__, __FUNCTION__,  __LINE__, buffer, maxlen, format, ##__VA_ARGS__)
 #define vsnprintf(buffer, maxlen, format, args) FTLvsnprintf(__FILE__, __FUNCTION__,  __LINE__, buffer, maxlen, format, args)
 #define write(fd, buf, n) FTLwrite(fd, buf, n, __FILE__,  __FUNCTION__,  __LINE__)

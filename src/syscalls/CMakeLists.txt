@@ -10,6 +10,7 @@
 
 set(sources
         accept.c
+        asprintf.c
         calloc.c
         fopen.c
         fprintf.c
@@ -24,6 +25,7 @@ set(sources
         sprintf.c
         strdup.c
         syscalls.h
+        vasprintf.c
         vfprintf.c
         vsnprintf.c
         vsprintf.c
