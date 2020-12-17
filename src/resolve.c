@@ -419,10 +419,14 @@ static void resolveClients(const bool onlynew)
 			IPv6 = true;
 
 		// If we're in refreshing mode (onlynew == false), we skip clients if
-		// either IPv4-only or none is selected
+		// 1. We should not refresh any hostnames
+		// 2. We should only refresh IPv4 client, but this client is IPv6
+		// 3. We should only refresh unknown hostnames, but leave
+		//    existing ones as they are
 		if(onlynew == false &&
-		       (config.refresh_hostnames == REFRESH_NONE ||
-		       (config.refresh_hostnames == REFRESH_IPV4_ONLY && IPv6)))
+		   (config.refresh_hostnames == REFRESH_NONE ||
+		   (config.refresh_hostnames == REFRESH_IPV4_ONLY && IPv6) ||
+		   (config.refresh_hostnames == REFRESH_UNKNOWN && oldnamepos != 0)))
 		{
 			if(config.debug & DEBUG_RESOLVER)
 			{

@@ -438,6 +438,11 @@ void read_FTLconf(void)
 		config.refresh_hostnames = REFRESH_NONE;
 		logg("   REFRESH_HOSTNAMES: Not periodically refreshing names");
 	}
+	else if(buffer != NULL && strcasecmp(buffer, "UNKNOWN") == 0)
+	{
+		config.refresh_hostnames = REFRESH_NONE;
+		logg("   REFRESH_HOSTNAMES: Only refreshing recently active clients with unknown hostnames");
+	}
 	else
 	{
 		config.refresh_hostnames = REFRESH_IPV4_ONLY;

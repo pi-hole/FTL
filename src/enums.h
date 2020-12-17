@@ -153,6 +153,7 @@ enum events {
 enum refresh_hostnames {
 	REFRESH_ALL,
 	REFRESH_IPV4_ONLY,
+	REFRESH_UNKNOWN,
 	REFRESH_NONE
 } __attribute__ ((packed));
 
