@@ -18,6 +18,8 @@
 #include "datastructure.h"
 // statvfs()
 #include <sys/statvfs.h>
+// get_num_regex()
+#include "regex_r.h"
 
 /// The version of shared memory used
 #define SHARED_MEMORY_VERSION 10
@@ -817,8 +819,7 @@ void memory_check(const enum memory_type which)
 
 void reset_per_client_regex(const int clientID)
 {
-	const unsigned int num_regex_tot = counters->num_regex[REGEX_BLACKLIST] +
-	                                   counters->num_regex[REGEX_WHITELIST];
+	const unsigned int num_regex_tot = get_num_regex(REGEX_MAX); // total number
 	for(unsigned int i = 0u; i < num_regex_tot; i++)
 	{
 		// Zero-initialize/reset (= false) all regex (white + black)
@@ -828,8 +829,7 @@ void reset_per_client_regex(const int clientID)
 
 void add_per_client_regex(unsigned int clientID)
 {
-	const unsigned int num_regex_tot = counters->num_regex[REGEX_BLACKLIST] +
-	                                   counters->num_regex[REGEX_WHITELIST];
+	const unsigned int num_regex_tot = get_num_regex(REGEX_MAX); // total number
 	const size_t size = counters->clients * num_regex_tot;
 	if(size > shm_per_client_regex.size &&
 	   realloc_shm(&shm_per_client_regex, counters->clients, num_regex_tot, true))
@@ -840,8 +840,7 @@ void add_per_client_regex(unsigned int clientID)
 
 bool get_per_client_regex(const int clientID, const int regexID)
 {
-	const unsigned int num_regex_tot = counters->num_regex[REGEX_BLACKLIST] +
-	                                   counters->num_regex[REGEX_WHITELIST];
+	const unsigned int num_regex_tot = get_num_regex(REGEX_MAX); // total number
 	const unsigned int id = clientID * num_regex_tot + regexID;
 	const size_t maxval = shm_per_client_regex.size / sizeof(bool);
 	if(id > maxval)
@@ -856,8 +855,7 @@ bool get_per_client_regex(const int clientID, const int regexID)
 
 void set_per_client_regex(const int clientID, const int regexID, const bool value)
 {
-	const unsigned int num_regex_tot = counters->num_regex[REGEX_BLACKLIST] +
-	                                   counters->num_regex[REGEX_WHITELIST];
+	const unsigned int num_regex_tot = get_num_regex(REGEX_MAX); // total number
 	const unsigned int id = clientID * num_regex_tot + regexID;
 	const size_t maxval = shm_per_client_regex.size / sizeof(bool);
 	if(id > maxval)

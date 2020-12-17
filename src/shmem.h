@@ -53,7 +53,6 @@ typedef struct {
 	int reply_domain;
 	int dns_cache_size;
 	int dns_cache_MAX;
-	unsigned int num_regex[REGEX_MAX];
 	unsigned int regex_change;
 } countersStruct;
 

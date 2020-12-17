@@ -1328,7 +1328,7 @@ bool gravityDB_get_regex_client_groups(clientsData* client, const unsigned int n
 			{
 				// Regular expressions are stored in one array
 				if(type == REGEX_WHITELIST)
-					regexID += counters->num_regex[REGEX_BLACKLIST];
+					regexID += get_num_regex(REGEX_BLACKLIST);
 				set_per_client_regex(clientID, regexID, true);
 
 				if(config.debug & DEBUG_REGEX)
