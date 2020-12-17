@@ -430,8 +430,16 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 		{
 			if(config.debug & DEBUG_RESOLVER)
 			{
-				logg("Skipping client %s (%s) because it should not be refreshed",
-				     getstr(ippos), getstr(oldnamepos));
+				const char *reason = "N/A";
+				if(config.refresh_hostnames == REFRESH_NONE)
+					reason = "Not refreshing any hostnames";
+				else if(config.refresh_hostnames == REFRESH_IPV4_ONLY)
+					reason = "Only refreshing IPv4 names";
+				else if(config.refresh_hostnames == REFRESH_UNKNOWN)
+					reason = "Looking only for unknown hostnames";
+				
+				logg("Skipping client %s (%s) because it should not be refreshed: %s",
+				     getstr(ippos), getstr(oldnamepos), reason);
 			}
 			skipped++;
 			continue;

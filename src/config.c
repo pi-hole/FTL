@@ -440,7 +440,7 @@ void read_FTLconf(void)
 	}
 	else if(buffer != NULL && strcasecmp(buffer, "UNKNOWN") == 0)
 	{
-		config.refresh_hostnames = REFRESH_NONE;
+		config.refresh_hostnames = REFRESH_UNKNOWN;
 		logg("   REFRESH_HOSTNAMES: Only refreshing recently active clients with unknown hostnames");
 	}
 	else
