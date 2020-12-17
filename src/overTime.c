@@ -13,8 +13,6 @@
 #include "shmem.h"
 #include "config.h"
 #include "log.h"
-// global variable counters
-#include "memory.h"
 // data getter functions
 #include "datastructure.h"
 

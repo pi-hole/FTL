@@ -131,8 +131,6 @@ set(sources
         log.h
         main.c
         main.h
-        memory.c
-        memory.h
         overTime.c
         overTime.h
         regex.c
@@ -174,6 +172,7 @@ add_executable(pihole-FTL
         $<TARGET_OBJECTS:sqlite3>
         $<TARGET_OBJECTS:lua>
         $<TARGET_OBJECTS:tre-regex>
+        $<TARGET_OBJECTS:syscalls>
         )
 if(STATIC STREQUAL "true")
     set_target_properties(pihole-FTL PROPERTIES LINK_SEARCH_START_STATIC ON)
@@ -228,3 +227,4 @@ add_subdirectory(database)
 add_subdirectory(dnsmasq)
 add_subdirectory(lua)
 add_subdirectory(tre-regex)
+add_subdirectory(syscalls)

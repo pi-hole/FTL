@@ -114,16 +114,34 @@
 // Important: This number has to be smaller than 256 for this mechanism to work
 #define NUM_RECHECKS 3
 
-// Use out own memory handling functions that will detect possible errors
+// Use out own syscalls handling functions that will detect possible errors
 // and report accordingly in the log. This will make debugging FTL crashs
 // caused by insufficient memory or by code bugs (not properly dealing
 // with NULL pointers) much easier.
+#undef strdup // strdup() is a macro in itself, it needs special handling
 #define free(ptr) FTLfree(ptr, __FILE__,  __FUNCTION__,  __LINE__)
-#define lib_strdup() strdup()
-#undef strdup
 #define strdup(str_in) FTLstrdup(str_in, __FILE__,  __FUNCTION__,  __LINE__)
 #define calloc(numer_of_elements, element_size) FTLcalloc(numer_of_elements, element_size, __FILE__,  __FUNCTION__,  __LINE__)
 #define realloc(ptr, new_size) FTLrealloc(ptr, new_size, __FILE__,  __FUNCTION__,  __LINE__)
+#define printf(format, ...) FTLfprintf(stdout, __FILE__, __FUNCTION__,  __LINE__, format, ##__VA_ARGS__)
+#define fprintf(stream, format, ...) FTLfprintf(stream, __FILE__, __FUNCTION__,  __LINE__, format, ##__VA_ARGS__)
+#define vprintf(format, args) FTLvfprintf(stdout, __FILE__, __FUNCTION__,  __LINE__, format, args)
+#define vfprintf(stream, format, args) FTLvfprintf(stream, __FILE__, __FUNCTION__,  __LINE__, format, args)
+#define sprintf(buffer, format, ...) FTLsprintf(__FILE__, __FUNCTION__,  __LINE__, buffer, format, ##__VA_ARGS__)
+#define vsprintf(buffer, format, args) FTLvsprintf(__FILE__, __FUNCTION__,  __LINE__, buffer, format, args)
+#define asprintf(buffer, format, ...) FTLasprintf(__FILE__, __FUNCTION__,  __LINE__, buffer, format, ##__VA_ARGS__)
+#define vasprintf(buffer, format, args) FTLvasprintf(__FILE__, __FUNCTION__,  __LINE__, buffer, format, args)
+#define snprintf(buffer, maxlen, format, ...) FTLsnprintf(__FILE__, __FUNCTION__,  __LINE__, buffer, maxlen, format, ##__VA_ARGS__)
+#define vsnprintf(buffer, maxlen, format, args) FTLvsnprintf(__FILE__, __FUNCTION__,  __LINE__, buffer, maxlen, format, args)
+#define write(fd, buf, n) FTLwrite(fd, buf, n, __FILE__,  __FUNCTION__,  __LINE__)
+#define accept(sockfd, addr, addrlen) FTLaccept(sockfd, addr, addrlen, __FILE__,  __FUNCTION__,  __LINE__)
+#define recv(sockfd, buf, len, flags) FTLrecv(sockfd, buf, len, flags, __FILE__,  __FUNCTION__,  __LINE__)
+#define recvfrom(sockfd, buf, len, flags, src_addr, addrlen) FTLrecvfrom(sockfd, buf, len, flags, src_addr, addrlen, __FILE__,  __FUNCTION__,  __LINE__)
+#define sendto(sockfd, buf, len, flags, dest_addr, addrlen) FTLsendto(sockfd, buf, len, flags, dest_addr, addrlen, __FILE__,  __FUNCTION__,  __LINE__)
+#define select(nfds, readfds, writefds, exceptfds, timeout) FTLselect(nfds, readfds, writefds, exceptfds, timeout, __FILE__,  __FUNCTION__,  __LINE__)
+#define pthread_mutex_lock(mutex) FTLpthread_mutex_lock(mutex, __FILE__,  __FUNCTION__,  __LINE__)
+#define fopen(pathname, mode) FTLfopen(pathname, mode, __FILE__,  __FUNCTION__,  __LINE__)
+#include "syscalls/syscalls.h"
 
 // Preprocessor help functions
 #define str(x) # x

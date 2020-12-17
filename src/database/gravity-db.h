@@ -10,12 +10,9 @@
 #ifndef GRAVITY_H
 #define GRAVITY_H
 
-// global variable counters
-#include "memory.h"
-// clients data structure
-#include "datastructure.h"
-
-// Definition of struct regex_data
+// clientsData
+#include "../datastructure.h"
+// regex_data
 #include "../regex_r.h"
 
 // Table indices

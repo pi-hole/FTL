@@ -16,7 +16,6 @@
 #include "FTL.h"
 #include "args.h"
 #include "version.h"
-#include "memory.h"
 #include "main.h"
 #include "log.h"
 // global variable killed
