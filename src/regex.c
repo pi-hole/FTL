@@ -528,7 +528,7 @@ static void read_regex_table(const enum regex_type regexid)
 	if(config.debug & DEBUG_DATABASE)
 	{
 		logg("Read %i %s regex entries",
-		     counters->num_regex[regexid],
+		     num_regex[regexid],
 		     regextype[regexid]);
 	}
 }
