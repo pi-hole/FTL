@@ -25,6 +25,8 @@
 #include "database/aliasclients.h"
 // piholeFTLDB_reopen()
 #include "database/common.h"
+// config struct
+#include "config.h"
 
 const char *querytypes[TYPE_MAX] = {"UNKNOWN", "A", "AAAA", "ANY", "SRV", "SOA", "PTR", "TXT",
                                     "NAPTR", "MX", "DS", "RRSIG", "DNSKEY", "NS", "OTHER"};
@@ -453,13 +455,17 @@ const char *getClientNameString(const queriesData* query)
 
 void FTL_reset_per_client_domain_data(void)
 {
+	if(config.debug & DEBUG_DATABASE)
+		logg("Resetting per-client DNS cache, size is %i", counters->dns_cache_size);
+
 	for(int cacheID = 0; cacheID < counters->dns_cache_size; cacheID++)
 	{
 		// Reset all blocking yes/no fields for all domains and clients
 		// This forces a reprocessing of all available filters for any
 		// given domain and client the next time they are seen
 		DNSCacheData *dns_cache = getDNSCache(cacheID, true);
-		dns_cache->blocking_status = UNKNOWN_BLOCKED;
+		if(dns_cache != NULL)
+			dns_cache->blocking_status = UNKNOWN_BLOCKED;
 	}
 }
 

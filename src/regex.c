@@ -354,16 +354,19 @@ int match_regex(const char *input, const DNSCacheData* dns_cache, const int clie
 
 static void free_regex(void)
 {
-	// Reset FTL's DNS cache
-	FTL_reset_per_client_domain_data();
-
 	// Return early if we don't use any regex filters
 	if(white_regex == NULL &&
 	   black_regex == NULL &&
 	     cli_regex == NULL)
+	{
+		if(config.debug & DEBUG_DATABASE)
+			logg("Not using any regex filters, nothing to free or reset");
 		return;
+	}
 
 	// Reset client configuration
+	if(config.debug & DEBUG_DATABASE)
+		logg("Resetting per-client regex settings");
 	for(int clientID = 0; clientID < counters->clients; clientID++)
 	{
 		reset_per_client_regex(clientID);
@@ -383,6 +386,12 @@ static void free_regex(void)
 		if(regex == NULL)
 			continue;
 
+		if(config.debug & DEBUG_DATABASE)
+		{
+			logg("Going to free %i entries in %s regex struct",
+			     oldcount, regextype[regexid]);
+		}
+
 		// Loop over entries with this regex type
 		for(unsigned int index = 0; index < oldcount; index++)
 		{
@@ -399,6 +408,11 @@ static void free_regex(void)
 			}
 		}
 
+		if(config.debug & DEBUG_DATABASE)
+		{
+			logg("Loop done, freeing regex pointer (%p)", regex);
+		}
+
 		// Free array with regex datastructure
 		free_regex_ptr(regexid);
 	}
@@ -413,7 +427,7 @@ void reload_per_client_regex(const int clientID, clientsData *client)
 	// Ensure there is enough memory in the shared memory object
 	add_per_client_regex(clientID);
 
-	// Zero-initialize(or wipe previous) regex
+	// Zero-initialize (or wipe previous) regex
 	reset_per_client_regex(clientID);
 
 	// Load regex per-group regex blacklist for this client
@@ -433,6 +447,9 @@ static void read_regex_table(const enum regex_type regexid)
 {
 	// Get table ID
 	const enum gravity_tables tableID = (regexid == REGEX_BLACKLIST) ? REGEX_BLACKLIST_TABLE : REGEX_WHITELIST_TABLE;
+
+	if(config.debug & DEBUG_DATABASE)
+		logg("Reading regex %s from database", regextype[regexid]);
 
 	// Get number of lines in the regex table
 	num_regex[regexid] = 0;
@@ -508,6 +525,13 @@ static void read_regex_table(const enum regex_type regexid)
 
 	// Finalize statement and close gravity database handle
 	gravityDB_finalizeTable();
+
+	if(config.debug & DEBUG_DATABASE)
+	{
+		logg("Read %i %s regex entries",
+		     counters->num_regex[regexid],
+		     regextype[regexid]);
+	}
 }
 
 void read_regex_from_database(void)
@@ -529,6 +553,8 @@ void read_regex_from_database(void)
 	// Loop over all clients and ensure we have enough space and load
 	// per-client regex data, not all of the regex read and compiled above
 	// will also be used by all clients
+	if(config.debug & DEBUG_DATABASE)
+		logg("Loading per-client regex data");
 	for(int clientID = 0; clientID < counters->clients; clientID++)
 	{
 		// Get client pointer

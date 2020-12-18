@@ -1087,6 +1087,12 @@ int gravityDB_count(const enum gravity_tables list)
 	// Finalize statement
 	gravityDB_finalizeTable();
 
+	if(config.debug & DEBUG_DATABASE)
+	{
+		logg("gravityDB_count(%d): %i entries in %s",
+		     list, result, tablename[list]);
+	}
+
 	// Return result
 	return result;
 }
@@ -1294,6 +1300,9 @@ bool in_auditlist(const char *domain)
 bool gravityDB_get_regex_client_groups(clientsData* client, const unsigned int numregex, const regex_data *regex,
                                        const unsigned char type, const char* table, const int clientID)
 {
+	if(config.debug & DEBUG_REGEX)
+		logg("Getting regex client groups for client with ID %i", clientID);
+
 	char *querystr = NULL;
 	if(!client->found_group && !get_client_groupids(client))
 		return false;
