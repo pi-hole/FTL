@@ -506,7 +506,8 @@ static char *parse_FTLconf(FILE *fp, const char * key)
 	// Go to beginning of file
 	fseek(fp, 0L, SEEK_SET);
 	
-	logg("initial: conflinebuffer = %p, keystr = %p, size = %zu", conflinebuffer, keystr, size);
+	if(config.debug & DEBUG_EXTRA)
+		logg("initial: conflinebuffer = %p, keystr = %p, size = %zu", conflinebuffer, keystr, size);
 
 	errno = 0;
 	while(getline(&conflinebuffer, &size, fp) != -1)
