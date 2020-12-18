@@ -38,6 +38,7 @@ struct query_details {
 	enum query_types query_type;
 };
 
+unsigned int get_num_regex(const enum regex_type regexid) __attribute__((pure));
 int match_regex(const char *input, const DNSCacheData* dns_cache, const int clientID,
                 const enum regex_type regexid, const bool regextest);
 void allocate_regex_client_enabled(clientsData *client, const int clientID);
