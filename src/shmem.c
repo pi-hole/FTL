@@ -512,12 +512,35 @@ SharedMemory create_shm(const char *name, const size_t size, bool create_new)
 	// Using fallocate() will ensure that there's actually space for
 	// this file. Otherwise we end up with a sparse file that can give
 	// SIGBUS if we run out of space while writing to it.
-	const int ret = fallocate(fd, 0, 0U, size);
+	int ret = fallocate(fd, 0, 0U, size);
+	const int fallocate_errno = errno;
 	if(ret != 0)
 	{
-		logg("FATAL: create_shm(): Failed to resize \"%s\" (%i) to %zu: %s (%i)",
-		     sharedMemory.name, fd, size, strerror(errno), ret);
-		exit(EXIT_FAILURE);
+		// Try again with ftruncate() if fallocate() failed with
+		// "Operation not supported"
+		if(errno == ENOTSUP)
+		{
+			ret = ftruncate(fd, size);
+
+			// Report info that space has only been reserved, not
+			// really allocated
+			if(ret == 0)
+			{
+				logg("INFO: create_shm(): Failed to allocate %zu bytes for \"%s\" (%s, %i), "\
+				     "space has only been reserved.",
+				     size, sharedMemory.name, strerror(errno), errno);
+			}
+		}
+		if(ret != 0)
+		{
+			logg("FATAL: create_shm(): Failed to resize \"%s\" (%i) to %zu:",
+			sharedMemory.name, fd, size);
+			logg("       fallocate returned: %s (%i)",
+				strerror(fallocate_errno), fallocate_errno);
+			logg("       ftruncate returned: %s (%i)",
+				strerror(errno), errno);
+			exit(EXIT_FAILURE);
+		}
 	}
 
 	// Create shared memory mapping
@@ -636,12 +659,35 @@ bool realloc_shm(SharedMemory *sharedMemory, const size_t size1, const size_t si
 		// Using fallocate() will ensure that there's actually space for
 		// this file. Otherwise we end up with a sparse file that can give
 		// SIGBUS if we run out of space while writing to it.
-		const int ret = fallocate(fd, 0, 0U, size);
-		if(ret != 0)
+		int ret = fallocate(fd, 0, 0U, size);
+		const int fallocate_errno = errno;
+		if(ret == -1)
 		{
-			logg("FATAL: realloc_shm(): Failed to resize \"%s\" (%i) to %zu: %s (%i)",
-			     sharedMemory->name, fd, size, strerror(errno), ret);
-			exit(EXIT_FAILURE);
+			// Try again with ftruncate() if fallocate() failed with
+			// "Operation not supported"
+			if(errno == ENOTSUP)
+			{
+				ret = ftruncate(fd, size);
+
+				// Report info that space has only been reserved, not
+				// really allocated
+				if(ret == 0)
+				{
+					logg("INFO: realloc_shm(): Failed to allocate %zu bytes for \"%s\" (%s), "\
+					     "space has only been reserved.",
+					     size, sharedMemory->name, strerror(errno));
+				}
+			}
+			if(ret == -1)
+			{
+				logg("FATAL: realloc_shm(): Failed to resize \"%s\" (%i) to %zu:",
+				     sharedMemory->name, fd, size);
+				logg("       fallocate returned: %s (%i)",
+				     strerror(fallocate_errno), fallocate_errno);
+				logg("       ftruncate returned: %s (%i)",
+				     strerror(errno), errno);
+				exit(EXIT_FAILURE);
+			}
 		}
 
 		// Close shared memory object file descriptor as it is no longer
