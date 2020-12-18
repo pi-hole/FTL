@@ -386,7 +386,7 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 
 		// Only try to resolve host names of clients which were recently active if we are re-resolving
 		// Limit for a "recently active" client is two hours ago
-		if(!force_refreshing && onlynew == false && client->lastQuery < now - 2*60*60)
+		if(!force_refreshing && !onlynew && client->lastQuery < now - 2*60*60)
 		{
 			if(config.debug & DEBUG_RESOLVER)
 			{
