@@ -20,7 +20,10 @@ void FTLfree(void *ptr, const char *file, const char *func, const int line)
 	// realloc().  Otherwise, or if free(ptr) has already been called  before,
 	// undefined behavior occurs.  If ptr is NULL, no operation is performed.
 	if(ptr == NULL)
-		logg("FATAL: Trying to free NULL pointer in %s() (%s:%i)", func, file, line);
+	{
+		logg("WARN: Trying to free NULL pointer in %s() (%s:%i)", func, file, line);
+		return;
+	}
 
 	free(ptr);
 }
