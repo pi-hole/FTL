@@ -692,7 +692,6 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
       a.log.rcode = rcode;
       FTL_upstream_error(rcode, daemon->log_display_id);
       log_query(F_UPSTREAM | F_RCODE, "error", &a, NULL);
-      FTL_upstream_error(rcode, daemon->log_display_id);
       
       return resize_packet(header, n, pheader, plen);
     }
@@ -735,8 +734,12 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
       int ret = extract_addresses(header, n, daemon->namebuff, now, sets, is_sign, check_rebind, no_cache, cache_secure, &doctored);
       if (ret == 2)
 	{
-	  munged = 1;
 	  cache_secure = 0;
+	  union all_addr *addrp = NULL;
+	  // Pretend this is an A type reply
+	  unsigned int flags = F_IPV4;
+	  FTL_get_blocking_metadata(&addrp, &flags);
+	  n = setup_reply(header, n, addrp, flags, daemon->local_ttl);
 	}
       else if(ret)
 	{
@@ -1627,16 +1630,13 @@ void receive_query(struct listener *listen, time_t now)
       /************ Pi-hole modification ************/
       if(piholeblocked)
 	{
-	  size_t plen = n;
 	  union all_addr *addrp = NULL;
 	  // DNS resource record type for AAAA is 28 (decimal) following RFC 3596, section 2.1
 	  unsigned int flags = (type == 28u) ? F_IPV6 : F_IPV4;
 	  FTL_get_blocking_metadata(&addrp, &flags);
 	  log_query(flags, daemon->namebuff, addrp, (char*)blockingreason);
-	  plen = setup_reply(header, n, addrp, flags, daemon->local_ttl);
-	  if (find_pseudoheader(header, plen, NULL, NULL, NULL, NULL))
-	    plen = add_pseudoheader(header, plen, ((unsigned char *) header) + PACKETSZ, daemon->edns_pktsz, 0, NULL, 0, do_bit, 0);
-	  send_from(listen->fd, option_bool(OPT_NOWILD) || option_bool(OPT_CLEVERBIND), (char *)header, plen, (union mysockaddr*)&source_addr, &dst_addr, if_index);
+	  n = setup_reply(header, n, addrp, flags, daemon->local_ttl);
+	  send_from(listen->fd, option_bool(OPT_NOWILD) || option_bool(OPT_CLEVERBIND), (char *)header, n, (union mysockaddr*)&source_addr, &dst_addr, if_index);
 	  return;
 	}
       /**********************************************/
@@ -2027,8 +2027,6 @@ unsigned char *tcp_request(int confd, time_t now,
 	      FTL_get_blocking_metadata(&addrp, &flags);
 	      log_query(flags, daemon->namebuff, addrp, (char*)blockingreason);
 	      m = setup_reply(header, size, addrp, flags, daemon->local_ttl);
-	      if (have_pseudoheader)
-	        m = add_pseudoheader(header, m, ((unsigned char *) header) + 65536, daemon->edns_pktsz, 0, NULL, 0, do_bit, 0);
 	    }
 	  else
 	  {
