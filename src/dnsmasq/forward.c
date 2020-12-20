@@ -736,8 +736,9 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
 	{
 	  cache_secure = 0;
 	  union all_addr *addrp = NULL;
-	  // Pretend this is an A type reply
-	  unsigned int flags = F_IPV4;
+	  // Extract IPv4/IPv6 information from the original question in the DNS
+	  // header
+	  unsigned int flags = FTL_extract_question_flags(header, n);
 	  FTL_get_blocking_metadata(&addrp, &flags);
 	  n = setup_reply(header, n, addrp, flags, daemon->local_ttl);
 	}

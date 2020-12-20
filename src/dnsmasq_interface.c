@@ -1956,6 +1956,56 @@ static void prepare_blocking_metadata(void)
 	clearSetupVarsArray();
 }
 
+unsigned int FTL_extract_question_flags(struct dns_header *header, const size_t qlen)
+{
+	// Create working pointer
+	unsigned char *p = (unsigned char *)(header+1);
+	uint16_t qtype, qclass;
+
+	// Go through the questions
+	for (uint16_t i = ntohs(header->qdcount); i != 0; i--)
+	{
+		// Prime dnsmasq flags
+		int flags = RCODE(header) == NXDOMAIN ? F_NXDOMAIN : 0;
+
+		// Extract name from this question
+		char name[MAXDNAME];
+		if (!extract_name(header, qlen, &p, name, 1, 4))
+			break; // bad packet, go to fallback solution
+
+		// Extract query type
+		GETSHORT(qtype, p);
+		GETSHORT(qclass, p);
+
+		// Only further analyze IN questions here (not CHAOS, etc.)
+		if (qclass != C_IN)
+			continue;
+
+		// Very simple decision: If the question is AAAA, the reply
+		// should be IPv6. We use IPv4 in all other cases
+		if(qtype == T_AAAA)
+			flags |= F_IPV6;
+		else
+			flags |= F_IPV4;
+
+		// Debug logging if enabled
+		if(config.debug & DEBUG_QUERIES)
+		{
+			char *qtype_str = querystr(NULL, qtype);
+			logg("CNAME header: Question was <IN> %s %s", qtype_str, name);
+		}
+
+		return flags;
+	}
+
+	// Fall back to IPv4 (type A) when for the unlikely event that we cannot
+	// find any questions in this header
+	if(config.debug & DEBUG_QUERIES)
+		logg("CNAME header: No valid IN question found in header");
+
+	return F_IPV4;
+}
+
 // Called when a (forked) TCP worker is terminated by receiving SIGALRM
 // We close the dedicated database connection this client had opened
 // to avoid dangling database locks
