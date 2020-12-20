@@ -1774,7 +1774,9 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 	// option states to run as a different user/group (e.g. "nobody")
 	if(getuid() == 0)
 	{
-		if(ent_pw != NULL)
+		// Only print this and change ownership of shmem objects when
+		// we're actually dropping root (user/group my be set to root)
+		if(ent_pw != NULL && ent_pw->pw_uid != 0)
 		{
 			logg("INFO: FTL is going to drop from root to user %s (UID %d)",
 			     ent_pw->pw_name, (int)ent_pw->pw_uid);

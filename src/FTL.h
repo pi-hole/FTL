@@ -141,6 +141,7 @@
 #define select(nfds, readfds, writefds, exceptfds, timeout) FTLselect(nfds, readfds, writefds, exceptfds, timeout, __FILE__,  __FUNCTION__,  __LINE__)
 #define pthread_mutex_lock(mutex) FTLpthread_mutex_lock(mutex, __FILE__,  __FUNCTION__,  __LINE__)
 #define fopen(pathname, mode) FTLfopen(pathname, mode, __FILE__,  __FUNCTION__,  __LINE__)
+#define ftlallocate(fd, offset, len) FTLfallocate(fd, offset, len, __FILE__,  __FUNCTION__,  __LINE__)
 #include "syscalls/syscalls.h"
 
 // Preprocessor help functions

@@ -29,7 +29,7 @@ FILE *FTLfopen(const char *pathname, const char *mode, const char *file, const c
 	// Final error checking (may have faild for some other reason then an
 	// EINTR = interrupted system call)
 	if(file_ptr == NULL)
-		logg("WARN: Could not fopen(%s, %s) in %s() (%s:%i): %s",
+		logg("WARN: Could not fopen(\"%s\", \"%s\") in %s() (%s:%i): %s",
              pathname, mode, func, file, line, strerror(errno));
 
     return file_ptr;

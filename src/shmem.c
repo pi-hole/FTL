@@ -509,10 +509,10 @@ SharedMemory create_shm(const char *name, const size_t size, bool create_new)
 	}
 
 	// Allocate shared memory object to specified size
-	// Using fallocate() will ensure that there's actually space for
+	// Using f[tl]allocate() will ensure that there's actually space for
 	// this file. Otherwise we end up with a sparse file that can give
 	// SIGBUS if we run out of space while writing to it.
-	int ret = fallocate(fd, 0, 0U, size);
+	int ret = ftlallocate(fd, 0U, size);
 	const int fallocate_errno = errno;
 	if(ret != 0)
 	{
@@ -656,10 +656,10 @@ bool realloc_shm(SharedMemory *sharedMemory, const size_t size1, const size_t si
 		}
 
 		// Allocate shared memory object to specified size
-		// Using fallocate() will ensure that there's actually space for
+		// Using f[tl]allocate() will ensure that there's actually space for
 		// this file. Otherwise we end up with a sparse file that can give
 		// SIGBUS if we run out of space while writing to it.
-		int ret = fallocate(fd, 0, 0U, size);
+		int ret = ftlallocate(fd, 0U, size);
 		const int fallocate_errno = errno;
 		if(ret == -1)
 		{
@@ -691,7 +691,7 @@ bool realloc_shm(SharedMemory *sharedMemory, const size_t size1, const size_t si
 		}
 
 		// Close shared memory object file descriptor as it is no longer
-		// needed after having called fallocate()
+		// needed after having called f[tl]allocate()
 		close(fd);
 
 		// Update shm counters to indicate that at least one shared memory object changed
