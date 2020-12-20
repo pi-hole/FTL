@@ -15,6 +15,8 @@ char *FTLstrdup(const char *src, const char *file, const char *func, const int l
 void *FTLcalloc(size_t n, size_t size, const char *file, const char *func, const int line) __attribute__((malloc)) __attribute__((alloc_size(1,2)));
 void *FTLrealloc(void *ptr_in, size_t size, const char *file, const char *func, const int line) __attribute__((alloc_size(2)));
 void FTLfree(void *ptr, const char*file, const char *func, const int line);
+int FTLfallocate(const int fd, const off_t offset, const off_t len, const char *file, const char *func, const int line);
+
 
 // Interrupt-safe printing routines
 // printf() is derived from fprintf(stdout, ...)

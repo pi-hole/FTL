@@ -12,6 +12,7 @@ set(sources
         accept.c
         asprintf.c
         calloc.c
+        ftlallocate.c
         fopen.c
         fprintf.c
         free.c
