@@ -512,8 +512,11 @@ void *socket_listening_thread(void *args)
 
 	// Return early to avoid CPU spinning if Unix socket is not available
 	sock_avail = bind_to_unix_socket(&socketfd);
-	if(sock_avail)
+	if(!sock_avail)
+	{
+		logg("INFO: Unix socket will not be available");
 		return NULL;
+	}
 
 	// Listen as long as FTL is not killed
 	while(!killed)
