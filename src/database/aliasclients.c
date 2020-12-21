@@ -17,8 +17,6 @@
 #include "../config.h"
 // logg()
 #include "../log.h"
-// calloc()
-#include "../memory.h"
 // getAliasclientIDfromIP()
 #include "network-table.h"
 

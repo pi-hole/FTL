@@ -25,8 +25,6 @@
 #include "../config.h"
 // getstr()
 #include "../shmem.h"
-// free()
-#include "../memory.h"
 
 static bool saving_failed_before = false;
 

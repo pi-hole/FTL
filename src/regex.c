@@ -11,7 +11,6 @@
 #include "FTL.h"
 #include "regex_r.h"
 #include "timers.h"
-#include "memory.h"
 #include "log.h"
 #include "config.h"
 // data getter functions

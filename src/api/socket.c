@@ -10,13 +10,12 @@
 
 #include "FTL.h"
 #include "api.h"
-#include "log.h"
+#include "../log.h"
 #include "socket.h"
 #include "request.h"
-#include "config.h"
-#include "memory.h"
+#include "../config.h"
 // global variable killed
-#include "signals.h"
+#include "../signals.h"
 
 // The backlog argument defines the maximum length
 // to which the queue of pending connections for
@@ -223,19 +222,13 @@ void __attribute__ ((format (gnu_printf, 2, 3))) ssend(const int sock, const cha
 	char *buffer;
 	va_list args;
 	va_start(args, format);
-	int ret = vasprintf(&buffer, format, args);
+	int bytes = vasprintf(&buffer, format, args);
 	va_end(args);
-	if(ret > 0)
+	if(bytes > 0 && buffer != NULL)
 	{
-		if(!write(sock, buffer, strlen(buffer)))
-			logg("WARNING: Socket write returned error %s (%i)", strerror(errno), errno);
+		write(sock, buffer, bytes);
 		free(buffer);
 	}
-}
-
-void swrite(const int sock, const void *value, size_t size) {
-	if(write(sock, value, size) == -1)
-		logg("WARNING: Socket write returned error code %i", errno);
 }
 
 static inline int checkClientLimit(const int socket) {
@@ -519,8 +512,11 @@ void *socket_listening_thread(void *args)
 
 	// Return early to avoid CPU spinning if Unix socket is not available
 	sock_avail = bind_to_unix_socket(&socketfd);
-	if(sock_avail)
+	if(!sock_avail)
+	{
+		logg("INFO: Unix socket will not be available");
 		return NULL;
+	}
 
 	// Listen as long as FTL is not killed
 	while(!killed)

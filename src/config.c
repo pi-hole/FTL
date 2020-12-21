@@ -10,7 +10,6 @@
 
 #include "FTL.h"
 #include "config.h"
-#include "memory.h"
 #include "setupVars.h"
 #include "log.h"
 // nice()

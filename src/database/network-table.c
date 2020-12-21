@@ -12,8 +12,6 @@
 #include "network-table.h"
 #include "common.h"
 #include "../shmem.h"
-// strdup()
-#include "../memory.h"
 #include "../log.h"
 // timer_elapsed_msec()
 #include "../timers.h"
