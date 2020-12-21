@@ -29,6 +29,8 @@
 #include "../datastructure.h"
 // reset_aliasclient()
 #include "aliasclients.h"
+// sqlite3_pihole_extensions_init()
+#include "sqlite3-ext.h"
 
 // Definition of struct regex_data
 #include "../regex_r.h"
@@ -92,6 +94,9 @@ bool gravityDB_open(void)
 		return true;
 	}
 
+	// Register Pi-hole provided SQLite3 extensions (see sqlite3-ext.c)
+	sqlite3_auto_extension((void (*)(void))sqlite3_pihole_extensions_init);
+
 	if(config.debug & DEBUG_DATABASE)
 		logg("gravityDB_open(): Trying to open %s in read-only mode", FTLfiles.gravity_db);
 	int rc = sqlite3_open_v2(FTLfiles.gravity_db, &gravity_db, SQLITE_OPEN_READONLY, NULL);
@@ -135,12 +140,8 @@ bool gravityDB_open(void)
 	//            abcgoogle.de
 	rc = sqlite3_prepare_v2(gravity_db,
 	        "SELECT EXISTS("
-	          "SELECT domain, "
-	            "CASE WHEN substr(domain, 1, 1) = '*' " // Does the database string start in '*' ?
-	              "THEN '*' || substr(:input, - length(domain) + 1) " // If so: Crop the input domain and prepend '*'
-	              "ELSE :input " // If not: Use input domain directly for comparison
-	            "END matcher "
-	          "FROM domain_audit WHERE matcher = domain" // Match where (modified) domain equals the database domain
+	          "SELECT domain FROM domain_audit WHERE wildcard_match(domain, :input) == 1 "
+		  "LIMIT 1"
 	        ");", -1, &auditlist_stmt, NULL);
 
 	if( rc != SQLITE_OK )

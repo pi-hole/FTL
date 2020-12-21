@@ -180,19 +180,109 @@ static void subnet_match_impl(sqlite3_context *context, int argc, sqlite3_value 
 	sqlite3_result_int(context, match ? cidr : 0);
 }
 
+static void wildcard_match_impl(sqlite3_context *context, int argc, sqlite3_value **argv)
+{
+	// Exactly two arguments should be submitted to this routine
+	if(argc != 2)
+	{
+		sqlite3_result_error(context, "Passed an invalid number of arguments", -1);
+		return;
+	}
+
+	// Return NO MATCH if invoked with non-TEXT arguments
+	if (sqlite3_value_type(argv[0]) != SQLITE_TEXT ||
+	    sqlite3_value_type(argv[1]) != SQLITE_TEXT)
+	{
+		logg("SQL: Invoked wildcard_match() with non-text arguments: %d, %d",
+		     sqlite3_value_type(argv[0]), sqlite3_value_type(argv[1]));
+		sqlite3_result_int(context, 0);
+		return;
+	}
+
+	// Analyze input supplied to our SQLite subroutine
+	const char *domain_db = (const char*)sqlite3_value_text(argv[0]);
+	const char *domain_in = (const char*)sqlite3_value_text(argv[1]);
+
+	if(domain_db[0] != '*')
+	{
+		// This is not a wildcard, we can directly compare the match and
+		// return early afterwards
+		// e.g. "google.com" vs. "google.com"
+		const bool match = (strcasecmp(domain_db, domain_in) == 0);
+		if(config.debug & DEBUG_DATABASE)
+		{
+			logg("wildcard_match(\"%s\", \"%s\") - "\
+			     "comparing input exactly: %s",
+			     domain_db, domain_in, match ? "MATCH" : "no match");
+		}
+		sqlite3_result_int(context, match ? 1 : 0);
+		return;
+	}
+
+	// else: Wildcard matching
+	const size_t domain_db_len = strlen(domain_db);
+	const size_t domain_in_len = strlen(domain_in);
+	// Copy only the part after the initial "*"" from the database
+	// domain and crop the inout domain to the same length as the wildcard
+	// domain to be compared against.
+	// Example:
+	// Database domain: "*.com"
+	// Input domain: "something.com"
+	// This algorithm crops from the right:
+	//     "*.com" to ".com" and "something.com" to ".com"
+	// These cropped strings are then compared against each other
+
+	// Crop database domain (may be a wildcard)
+	char domain_db_c[domain_db_len];
+	strncpy(domain_db_c, domain_db + 1, domain_db_len - 1);
+	domain_db_c[domain_db_len-1] = '\0';
+
+	// Crop input domain to the matching length
+	char domain_in_c[domain_db_len];
+	strncpy(domain_in_c, domain_in + (domain_in_len - domain_db_len) + 1, domain_db_len - 1);
+	domain_in_c[domain_db_len-1] = '\0';
+
+	// Compare cropped domains against each other
+	const bool match = (strcasecmp(domain_db_c, domain_in_c) == 0);
+	if(config.debug & DEBUG_DATABASE)
+	{
+		logg("wildcard_match(\"%s\", \"%s\") - "\
+			"comparing \"%s\" vs. \"%s\": %s",
+			domain_db, domain_in, domain_db_c, domain_in_c,
+			match ? "MATCH" : "no match");
+	}
+	sqlite3_result_int(context, match ? 1 : 0);
+	return;
+}
+
 int sqlite3_pihole_extensions_init(sqlite3 *db, const char **pzErrMsg, const struct sqlite3_api_routines *pApi)
 {
+	int rc;
 	(void)pzErrMsg;  /* Unused parameter */
 
-	// Register new sqlite function subnet_match taking 2 arguments in UTF8 format.
-	// The function is deterministic in the sense of always returning the same output for the same input.
-	// We define a scalar function here so the last two pointers are NULL.
-	int rc = sqlite3_create_function(db, "subnet_match", 2, SQLITE_UTF8 | SQLITE_DETERMINISTIC, NULL,
-	                                 subnet_match_impl, NULL, NULL);
-
+	// Register new sqlite function subnet_match taking 2 arguments in UTF8
+	// format. The function is deterministic in the sense of always
+	// returning the same output for the same input. We define a scalar
+	// function here so the last two pointers are NULL.
+	rc = sqlite3_create_function(db, "subnet_match", 2,
+	                             SQLITE_UTF8 | SQLITE_DETERMINISTIC, NULL,
+	                             subnet_match_impl, NULL, NULL);
 	if(rc != SQLITE_OK)
 	{
 		logg("Error while initializing the SQLite3 extension subnet_match: %s",
+		     sqlite3_errstr(rc));
+	}
+
+	// Register new sqlite function wildcard_match taking 2 arguments in
+	// UTF8 format. The function is deterministic in the sense of always
+	// returning the same output for the same input. We define a scalar
+	// function here so the last two pointers are NULL.
+	rc = sqlite3_create_function(db, "wildcard_match", 2,
+	                              SQLITE_UTF8 | SQLITE_DETERMINISTIC, NULL, 
+	                              wildcard_match_impl, NULL, NULL);
+	if(rc != SQLITE_OK)
+	{
+		logg("Error while initializing the SQLite3 extension wildcard_match: %s",
 		     sqlite3_errstr(rc));
 	}
 
