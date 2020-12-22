@@ -79,6 +79,9 @@ void *DB_thread(void *val)
 		// Process database related event queue elements
 		if(get_and_clear_event(RELOAD_GRAVITY))
 			FTL_reload_all_domainlists();
+		
+		if(get_and_clear_event(REOPEN_FTL_DATABASE))
+			piholeFTLDB_reopen();
 
 		// Reload privacy level from pihole-FTL.conf
 		if(get_and_clear_event(RELOAD_PRIVACY_LEVEL))

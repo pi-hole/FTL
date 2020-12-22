@@ -1046,6 +1046,10 @@ static bool add_local_interfaces_to_network_table(time_t now, unsigned int *addi
 // Parse kernel's neighbor cache
 void parse_neighbor_cache(void)
 {
+	// Add lock before doing anything in here to make sure a signal cannot
+	// interrupt us!
+	lock_shm();
+
 	// Open database file
 	if(!FTL_DB_avail())
 	{
@@ -1075,9 +1079,6 @@ void parse_neighbor_cache(void)
 	unsigned int entries = 0u, additional_entries = 0u;
 	time_t now = time(NULL);
 
-	// Start collecting database commands
-	lock_shm();
-
 	const char sql[] = "BEGIN TRANSACTION IMMEDIATE";
 	int rc = dbquery(sql);
 	if( rc != SQLITE_OK )
@@ -1093,6 +1094,7 @@ void parse_neighbor_cache(void)
 
 		// dbquery() above already logs the reson for why the query failed
 		logg("%s: Storing devices in parse_neighbor_cache() failed (cannot start transaction)", text);
+		unlock_shm();
 		return;
 	}
 

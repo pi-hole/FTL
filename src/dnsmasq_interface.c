@@ -901,7 +901,7 @@ void FTL_dnsmasq_reload(void)
 	logg("Reloading DNS cache");
 
 	// (Re-)open FTL database connection
-	piholeFTLDB_reopen();
+	set_event(REOPEN_FTL_DATABASE);
 
 	// Request reload the privacy level
 	set_event(RELOAD_PRIVACY_LEVEL);
