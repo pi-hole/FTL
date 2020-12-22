@@ -182,12 +182,9 @@ static bool bind_to_unix_socket(int *socketdescriptor)
 
 	struct sockaddr_un address;
 	address.sun_family = AF_LOCAL;
-	// The sockaddr_un.sum_path may be shorter than the size of the FTLfiles.socketfile
-	// buffer. Ensure that the string is null-terminated even when the string is too large.
-	// In case strlen(FTLfiles.socketfile) < sizeof(address.sun_path) [this will virtually
-	// always be the case], the explicit setting of the last byte to zero is a no-op as
-	// strncpy() writes additional null bytes to ensure that a total of n bytes are written.
-	strncpy(address.sun_path, FTLfiles.socketfile, sizeof(address.sun_path));
+	// The sockaddr_un.sum_path may be shorter than the size of the
+	// FTLfiles.socketfile buffer
+	strncpy(address.sun_path, FTLfiles.socketfile, sizeof(address.sun_path)-1);
 	address.sun_path[sizeof(address.sun_path)-1] = '\0';
 
 	// Bind to Unix socket handle

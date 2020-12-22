@@ -846,7 +846,7 @@ static bool add_FTL_clients_to_network_table(enum arp_status *client_status, tim
 			dbclose();
 		}
 
-		logg("%s: Storing devices in network table failed: %s", text, sqlite3_errstr(rc));
+		logg("%s: Storing devices in add_FTL_clients_to_network_table() failed: %s", text, sqlite3_errstr(rc));
 		unlock_shm();
 		return false;
 	}
@@ -1075,6 +1075,9 @@ void parse_neighbor_cache(void)
 	unsigned int entries = 0u, additional_entries = 0u;
 	time_t now = time(NULL);
 
+	// Start collecting database commands
+	lock_shm();
+
 	const char sql[] = "BEGIN TRANSACTION IMMEDIATE";
 	int rc = dbquery(sql);
 	if( rc != SQLITE_OK )
@@ -1089,7 +1092,7 @@ void parse_neighbor_cache(void)
 		}
 
 		// dbquery() above already logs the reson for why the query failed
-		logg("%s: Storing devices in network table (\"%s\") failed", text, sql);
+		logg("%s: Storing devices in parse_neighbor_cache() failed (cannot start transaction)", text);
 		return;
 	}
 
@@ -1102,9 +1105,6 @@ void parse_neighbor_cache(void)
 		dbquery("UPDATE network_addresses SET name = NULL "
 		               "WHERE nameUpdated < %u;", limit);
 	}
-
-	// Start collecting database commands
-	lock_shm();
 
 	// Initialize array of status for individual clients used to
 	// remember the status of a client already seen in the neigh cache
@@ -1317,7 +1317,7 @@ void parse_neighbor_cache(void)
 			dbclose();
 		}
 
-		logg("%s: Storing devices in network table failed: %s", text, sqlite3_errstr(rc));
+		logg("%s: Storing devices in network table failed: %s (cannot end transaction)", text, sqlite3_errstr(rc));
 		unlock_shm();
 
 		// Return okay if the database is busy
