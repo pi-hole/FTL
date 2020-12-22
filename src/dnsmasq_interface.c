@@ -16,13 +16,15 @@
 #include "dnsmasq_interface.h"
 #include "shmem.h"
 #include "overTime.h"
-#include "database/common.h"
+// Database thread handle for starting
 #include "database/database-thread.h"
 #include "datastructure.h"
+// in_blacklist(), etc.
 #include "database/gravity-db.h"
 #include "setupVars.h"
 #include "daemon.h"
 #include "timers.h"
+// GC thread handle for starting
 #include "gc.h"
 #include "api/socket.h"
 #include "regex_r.h"
@@ -900,14 +902,18 @@ void FTL_dnsmasq_reload(void)
 
 	logg("Reloading DNS cache");
 
-	// (Re-)open FTL database connection
-	set_event(REOPEN_FTL_DATABASE);
-
 	// Request reload the privacy level
 	set_event(RELOAD_PRIVACY_LEVEL);
 
+	// Request gravity database update
+	// - (Re-)open gravity database connection
+	// - Get number of blocked domains
+	// - Read and compile regex filters (incl. per-client)
+	// - Flush FTL's DNS cache
+	set_event(RELOAD_GRAVITY);
+
 	// Inspect 01-pihole.conf to see if Pi-hole blocking is enabled,
-	// i.e. if /etc/pihole/gravity.list is sourced as addn-hosts file
+	// i.e. if BLOCKING_ENABLED is set to true
 	check_blocking_status();
 
 	// Reread pihole-FTL.conf to see which blocking mode the user wants to use
@@ -922,13 +928,6 @@ void FTL_dnsmasq_reload(void)
 
 	// Reread pihole-FTL.conf to see which debugging flags are set
 	read_debuging_settings(NULL);
-
-	// Gravity database updates
-	// - (Re-)open gravity database connection
-	// - Get number of blocked domains
-	// - Read and compile regex filters (incl. per-client)
-	// - Flush FTL's DNS cache
-	set_event(RELOAD_GRAVITY);
 
 	// Print current set of capabilities if requested via debug flag
 	if(config.debug & DEBUG_CAPS)
