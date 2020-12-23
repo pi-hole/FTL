@@ -94,6 +94,7 @@ void destroy_shmem(void);
 size_t addstr(const char *str);
 const char *getstr(const size_t pos);
 void *enlarge_shmem_struct(const char type);
+void remap_shm(void);
 
 /**
  * Create a new overTime client shared memory block.

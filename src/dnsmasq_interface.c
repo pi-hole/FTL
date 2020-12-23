@@ -2000,12 +2000,14 @@ void FTL_TCP_worker_terminating(bool finished)
 // to ending up with a corrupted database.
 void FTL_TCP_worker_created(const int confd, const char *iface_name)
 {
-	if(dnsmasq_debug)
+	if(main_pid() == getpid())
 	{
-		// Nothing to be done here, TCP worker forking does not happen
-		// in debug mode
+		// Nothing to be done here, forking didn't happen
 		return;
 	}
+
+	// Lock memory
+	lock_shm();
 
 	// Print this if any debug setting is enabled
 	if(config.debug != 0)
@@ -2042,21 +2044,20 @@ void FTL_TCP_worker_created(const int confd, const char *iface_name)
 		logg("TCP worker forked for client %s on interface %s (%s)", peer_ip, iface_name, local_ip);
 	}
 
-	if(main_pid() == getpid())
-	{
-		// If this is not really a fork (e.g. in debug mode), we don't
-		// actually re-open gravity or close sockets here
-		return;
-	}
-
 	// Reopen gravity database handle in this fork as the main process's
 	// handle isn't valid here
 	gravityDB_forked();
+
+	// Remap shared memory objects for this fork
+	remap_shm();
 
 	// Children inherit file descriptors from their parents
 	// We don't need them in the forks, so we clean them up
 	close_telnet_socket();
 	close_unix_socket(false);
+
+	// Unlock memory
+	unlock_shm();
 }
 
 bool FTL_unlink_DHCP_lease(const char *ipaddr)

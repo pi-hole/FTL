@@ -234,7 +234,7 @@ static pthread_mutex_t create_mutex(void) {
 	return lock;
 }
 
-static void remap_shm(void)
+void remap_shm(void)
 {
 	// Remap shared object pointers which might have changed
 	realloc_shm(&shm_queries, counters->queries_MAX, sizeof(queriesData), false);
@@ -596,11 +596,6 @@ bool realloc_shm(SharedMemory *sharedMemory, const size_t size1, const size_t si
 {
 	// Absolute target size
 	const size_t size = size1 * size2;
-	// Check if we can skip this routine as nothing is to be done
-	// when an object is not to be resized and its size didn't
-	// change elsewhere
-	if(!resize && size == sharedMemory->size)
-		return true;
 
 	// Log that we are doing something here
 	char df[64] =  { 0 };
@@ -608,11 +603,15 @@ bool realloc_shm(SharedMemory *sharedMemory, const size_t size1, const size_t si
 
 	// Log output
 	if(resize)
+	{
 		logg("Resizing \"%s\" from %zu to (%zu * %zu) == %zu (%s)",
-		     sharedMemory->name, sharedMemory->size, size1, size2, size, df);
-	else
+		sharedMemory->name, sharedMemory->size, size1, size2, size, df);
+	}
+	else if(config.debug & DEBUG_SHMEM)
+	{
 		logg("Remapping \"%s\" from %zu to (%zu * %zu) == %zu",
-		     sharedMemory->name, sharedMemory->size, size1, size2, size);
+		sharedMemory->name, sharedMemory->size, size1, size2, size);
+	}
 
 	if(percentage > SHMEM_WARN_LIMIT)
 		logg("WARNING: More than %u%% of "SHMEM_PATH" is used", SHMEM_WARN_LIMIT);
@@ -660,6 +659,14 @@ bool realloc_shm(SharedMemory *sharedMemory, const size_t size1, const size_t si
 		     sharedMemory->ptr, sharedMemory->size, size, sharedMemory->name,
 		     strerror(errno));
 		exit(EXIT_FAILURE);
+	}
+
+	if(config.debug & DEBUG_SHMEM)
+	{
+		if(sharedMemory->ptr == new_ptr)
+			logg("SHMEM pointer not updated: %p", sharedMemory->ptr);
+		else
+			logg("SHMEM pointer updated: %p -> %p", sharedMemory->ptr, new_ptr);
 	}
 
 	sharedMemory->ptr = new_ptr;
