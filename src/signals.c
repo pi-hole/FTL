@@ -288,7 +288,9 @@ static void SIGRT_handler(int signum, siginfo_t *si, void *unused)
 	else if(rtsig == 4)
 	{
 		// Re-resolve all clients and forward destinations
-		set_event(RERESOLVE_HOSTNAMES);
+		// Force refreshing hostnames according to
+		// REFRESH_HOSTNAMES config option
+		set_event(RERESOLVE_HOSTNAMES_FORCE);
 	}
 	else if(rtsig == 5)
 	{

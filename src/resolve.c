@@ -349,7 +349,7 @@ static size_t resolveAndAddHostname(size_t ippos, size_t oldnamepos)
 }
 
 // Resolve client host names
-static void resolveClients(const bool onlynew)
+static void resolveClients(const bool onlynew, const bool force_refreshing)
 {
 	const time_t now = time(NULL);
 	// Lock counter access here, we use a copy in the following loop
@@ -385,7 +385,7 @@ static void resolveClients(const bool onlynew)
 
 		// Only try to resolve host names of clients which were recently active if we are re-resolving
 		// Limit for a "recently active" client is two hours ago
-		if(onlynew == false && client->lastQuery < now - 2*60*60)
+		if(!force_refreshing && !onlynew && client->lastQuery < now - 2*60*60)
 		{
 			if(config.debug & DEBUG_RESOLVER)
 			{
@@ -400,7 +400,7 @@ static void resolveClients(const bool onlynew)
 
 		// If onlynew flag is set, we will only resolve new clients
 		// If not, we will try to re-resolve all known clients
-		if(onlynew && !newflag)
+		if(!force_refreshing && onlynew && !newflag)
 		{
 			if(config.debug & DEBUG_RESOLVER)
 			{
@@ -418,15 +418,27 @@ static void resolveClients(const bool onlynew)
 			IPv6 = true;
 
 		// If we're in refreshing mode (onlynew == false), we skip clients if
-		// either IPv4-only or none is selected
+		// 1. We should not refresh any hostnames
+		// 2. We should only refresh IPv4 client, but this client is IPv6
+		// 3. We should only refresh unknown hostnames, but leave
+		//    existing ones as they are
 		if(onlynew == false &&
-		       (config.refresh_hostnames == REFRESH_NONE ||
-		       (config.refresh_hostnames == REFRESH_IPV4_ONLY && IPv6)))
+		   (config.refresh_hostnames == REFRESH_NONE ||
+		   (config.refresh_hostnames == REFRESH_IPV4_ONLY && IPv6) ||
+		   (config.refresh_hostnames == REFRESH_UNKNOWN && oldnamepos != 0)))
 		{
 			if(config.debug & DEBUG_RESOLVER)
 			{
-				logg("Skipping client %s (%s) because it should not be refreshed",
-				     getstr(ippos), getstr(oldnamepos));
+				const char *reason = "N/A";
+				if(config.refresh_hostnames == REFRESH_NONE)
+					reason = "Not refreshing any hostnames";
+				else if(config.refresh_hostnames == REFRESH_IPV4_ONLY)
+					reason = "Only refreshing IPv4 names";
+				else if(config.refresh_hostnames == REFRESH_UNKNOWN)
+					reason = "Looking only for unknown hostnames";
+				
+				logg("Skipping client %s (%s) because it should not be refreshed: %s",
+				     getstr(ippos), getstr(oldnamepos), reason);
 			}
 			skipped++;
 			continue;
@@ -558,7 +570,8 @@ void *DNSclient_thread(void *val)
 		if(resolver_ready && (time(NULL) % RESOLVE_INTERVAL == 0))
 		{
 			// Try to resolve new client host names (onlynew=true)
-			resolveClients(true);
+			// We're not forcing refreshing here
+			resolveClients(true, false);
 			// Try to resolve new upstream destination host names (onlynew=true)
 			resolveUpstreams(true);
 			// Prevent immediate re-run of this routine
@@ -571,11 +584,18 @@ void *DNSclient_thread(void *val)
 			set_event(RERESOLVE_HOSTNAMES);      // done below
 		}
 
+		bool force_refreshing = false;
+		if(get_and_clear_event(RERESOLVE_HOSTNAMES_FORCE))
+		{
+			set_event(RERESOLVE_HOSTNAMES);      // done below
+			force_refreshing = true;
+		}
+
 		// Process resolver related event queue elements
 		if(get_and_clear_event(RERESOLVE_HOSTNAMES))
 		{
 			// Try to resolve all client host names (onlynew=false)
-			resolveClients(false);
+			resolveClients(false, force_refreshing);
 			// Try to resolve all upstream destination host names (onlynew=false)
 			resolveUpstreams(false);
 			// Prevent immediate re-run of this routine
