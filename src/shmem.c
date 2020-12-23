@@ -151,22 +151,81 @@ void chown_all_shmem(struct passwd *ent_pw)
 	chown_shmem(&shm_per_client_regex, ent_pw);
 }
 
-size_t addstr(const char *str)
+// A function that duplicates a string and replaces all characters "s" by "r"
+static char *__attribute__ ((malloc)) str_replace(const char *input,
+                                                  const char s,
+                                                  const char r,
+                                                  unsigned int *N)
 {
-	if(str == NULL)
+	// Duplicate string
+	char *copy = strdup(input);
+	if(copy == NULL)
+		return NULL;
+
+	// Woring pointer
+	char *ix = copy;
+	// Loop over string until there are no further "s" chars in the string
+	while((ix = strchr(ix, s)) != NULL)
+	{
+		*ix++ = r;
+		(*N)++;
+	}
+
+	return copy;
+}
+
+char *str_escape(const char *input, unsigned int *N)
+{
+	// If no escaping is done, this routine returns the original pointer
+	// and N stays 0
+	*N = 0;
+	char *out = (char *)input;
+	if(strchr(input, ' ') != NULL)
+	{
+		// Replace any spaces by ~ if we find them in the domain name
+		// This is necessary as our telnet API uses space delimiters
+		out = str_replace(out, ' ', '~', N);
+	}
+	return out;
+}
+
+bool strcmp_escaped(const char *a, const char *b)
+{
+	if(a == NULL || b == NULL)
+		return false;
+
+	unsigned int Na, Nb;
+	char *aa = str_escape(a, &Na);
+	char *bb = str_escape(b, &Nb);
+
+	const char result = strcasecmp(aa, bb) == 0;
+
+	if(Na > 0)
+		free(aa);
+	if(Nb > 0)
+		free(bb);
+	
+	return result;
+}
+
+
+size_t addstr(const char *input)
+{
+	if(input == NULL)
 	{
 		logg("WARN: Called addstr() with NULL pointer");
 		return 0;
 	}
 
 	// Get string length, add terminating character
-	size_t len = strlen(str) + 1;
+	size_t len = strlen(input) + 1;
 
 	// If this is an empty string (only the terminating character is present),
 	// use the shared memory string at position zero instead of creating a new
 	// entry here. We also ensure that the given string is not too long to
 	// prevent possible memory corruption caused by strncpy() further down
-	if(len == 1) {
+	if(len == 1)
+	{
 		return 0;
 	}
 	else if(len > (size_t)(pagesize-1))
@@ -175,6 +234,12 @@ size_t addstr(const char *str)
 		len = pagesize;
 	}
 
+	unsigned int N = 0;
+	char *str = str_escape(input, &N);
+
+	if(N > 0)
+		logg("INFO: FTL escaped %ui characters in \"%s\"", N, str);
+
 	// Debugging output
 	if(config.debug & DEBUG_SHMEM)
 		logg("Adding \"%s\" (len %zu) to buffer. next_str_pos is %u", str, len, shmSettings->next_str_pos);
@@ -182,7 +247,11 @@ size_t addstr(const char *str)
 	// Reserve additional memory if necessary
 	if(shmSettings->next_str_pos + len > shm_strings.size &&
 	   !realloc_shm(&shm_strings, shm_strings.size + pagesize, sizeof(char), true))
+	{
+		if(N > 0)
+			free(str);
 		return 0;
+	}
 
 	// Store new string buffer size in corresponding counters entry
 	// for re-using when we need to re-map shared memory objects
@@ -190,6 +259,8 @@ size_t addstr(const char *str)
 
 	// Copy the C string pointed by str into the shared string buffer
 	strncpy(&((char*)shm_strings.ptr)[shmSettings->next_str_pos], str, len);
+	if(N > 0)
+		free(str);
 
 	// Increment string length counter
 	shmSettings->next_str_pos += len;
