@@ -21,7 +21,8 @@ enum gravity_tables { GRAVITY_TABLE, EXACT_BLACKLIST_TABLE, EXACT_WHITELIST_TABL
 void gravityDB_forked(void);
 void gravityDB_reopen(void);
 bool gravityDB_open(void);
-bool gravityDB_prepare_client_statements(const int clientID, clientsData* client);
+void gravityDB_reload_groups(clientsData* client);
+bool gravityDB_prepare_client_statements(clientsData* client);
 void gravityDB_close(void);
 bool gravityDB_getTable(unsigned char list);
 const char* gravityDB_getDomain(int *rowid);
@@ -30,11 +31,11 @@ void gravityDB_finalizeTable(void);
 int gravityDB_count(const enum gravity_tables list);
 bool in_auditlist(const char *domain);
 
-bool in_gravity(const char *domain, const int clientID, clientsData* client);
-bool in_blacklist(const char *domain, const int clientID, clientsData* client);
-bool in_whitelist(const char *domain, const DNSCacheData *dns_cache, const int clientID, clientsData* client);
+bool in_gravity(const char *domain, clientsData* client);
+bool in_blacklist(const char *domain, clientsData* client);
+bool in_whitelist(const char *domain, const DNSCacheData *dns_cache, clientsData* client);
 
 bool gravityDB_get_regex_client_groups(clientsData* client, const unsigned int numregex, const regex_data *regex,
-                                       const unsigned char type, const char* table, const int clientID);
+                                       const unsigned char type, const char* table);
 
 #endif //GRAVITY_H

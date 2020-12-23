@@ -90,7 +90,7 @@ static bool check_domain_blocked(const char *domain, const int clientID,
 	// Check domains against exact blacklist
 	// Skipped when the domain is whitelisted
 	bool blockDomain = false;
-	if(in_blacklist(domain, clientID, client))
+	if(in_blacklist(domain, client))
 	{
 		// We block this domain
 		blockDomain = true;
@@ -105,7 +105,7 @@ static bool check_domain_blocked(const char *domain, const int clientID,
 	// Check domains against gravity domains
 	// Skipped when the domain is whitelisted or blocked by exact blacklist
 	if(!query->whitelisted && !blockDomain &&
-	   in_gravity(domain, clientID, client))
+	   in_gravity(domain, client))
 	{
 		// We block this domain
 		blockDomain = true;
@@ -121,7 +121,7 @@ static bool check_domain_blocked(const char *domain, const int clientID,
 	// Skipped when the domain is whitelisted or blocked by exact blacklist or gravity
 	int regex_idx = 0;
 	if(!query->whitelisted && !blockDomain &&
-	   (regex_idx = match_regex(domain, dns_cache, clientID, REGEX_BLACKLIST, false)) > -1)
+	   (regex_idx = match_regex(domain, dns_cache, client->id, REGEX_BLACKLIST, false)) > -1)
 	{
 		// We block this domain
 		blockDomain = true;
@@ -280,7 +280,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 	const char *blockedDomain = domainstr;
 
 	// Check whitelist (exact + regex) for match
-	query->whitelisted = in_whitelist(domainstr, dns_cache, clientID, client);
+	query->whitelisted = in_whitelist(domainstr, dns_cache, client);
 
 	bool blockDomain = false;
 	unsigned char new_status = QUERY_UNKNOWN;
@@ -669,9 +669,33 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	client->lastQuery = querytimestamp;
 	client->numQueriesARP++;
 
-	// Store interface information in client data (if available)
-	if(client->ifacepos == 0u && next_iface != NULL)
-		client->ifacepos = addstr(next_iface);
+	// Preocess interface information of client (if available)
+	if(next_iface != NULL)
+	{
+		if(client->ifacepos == 0u)
+		{
+			// Store in the client data if unknown so far
+			client->ifacepos = addstr(next_iface);
+		}
+		else
+		{
+			// Check if this is still the same interface or
+			// if the client moved to another interface
+			// (may require group re-processing)
+			const char *oldiface = getstr(client->ifacepos);
+			if(strcasecmp(oldiface, next_iface) != 0)
+			{
+				if(config.debug & DEBUG_CLIENTS)
+				{
+					const char *clientName = getstr(client->namepos);
+					logg("Client %s (%s) changed interface: %s -> %s",
+					     clientIP, clientName, oldiface, next_iface);
+				}
+
+				gravityDB_reload_groups(client);
+			}
+		}
+	}
 
 	// Set client MAC address from EDNS(0) information (if available)
 	if(config.edns0_ecs && edns->mac_set)

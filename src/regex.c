@@ -421,25 +421,25 @@ static void free_regex(void)
 //   1. Allocate additional memory if required
 //   2. Reset all regex to false for this client
 //   3. Load regex enabled/disabled state
-void reload_per_client_regex(const int clientID, clientsData *client)
+void reload_per_client_regex(clientsData *client)
 {
 	// Ensure there is enough memory in the shared memory object
-	add_per_client_regex(clientID);
+	add_per_client_regex(client->id);
 
 	// Zero-initialize (or wipe previous) regex
-	reset_per_client_regex(clientID);
+	reset_per_client_regex(client->id);
 
 	// Load regex per-group regex blacklist for this client
 	if(num_regex[REGEX_BLACKLIST] > 0)
 		gravityDB_get_regex_client_groups(client, num_regex[REGEX_BLACKLIST],
 		                                  black_regex, REGEX_BLACKLIST,
-		                                  "vw_regex_blacklist", clientID);
+		                                  "vw_regex_blacklist");
 
 	// Load regex per-group regex whitelist for this client
 	if(num_regex[REGEX_WHITELIST] > 0)
 		gravityDB_get_regex_client_groups(client, num_regex[REGEX_WHITELIST],
 		                                  white_regex, REGEX_WHITELIST,
-		                                  "vw_regex_whitelist", clientID);
+		                                  "vw_regex_whitelist");
 }
 
 static void read_regex_table(const enum regex_type regexid)
@@ -562,7 +562,7 @@ void read_regex_from_database(void)
 		if(client == NULL || client->aliasclient)
 			continue;
 
-		reload_per_client_regex(clientID, client);
+		reload_per_client_regex(client);
 	}
 
 	// Print message to FTL's log after reloading regex filters

@@ -61,6 +61,7 @@ typedef struct {
 	int blockedcount;
 	int aliasclient_id;
 	int overTime[OVERTIME_SLOTS];
+	unsigned int id;
 	unsigned int numQueriesARP;
 	size_t groupspos;
 	size_t ippos;
