@@ -1022,7 +1022,7 @@ void _FTL_reply(const unsigned int flags, const char *name, const union all_addr
 	}
 
 	// Check if this domain matches exactly
-	const bool isExactMatch = (name != NULL && strcasecmp(getstr(domain->domainpos), name) == 0);
+	const bool isExactMatch = strcmp_escaped(name, getstr(domain->domainpos));
 
 	if((flags & F_CONFIG) && isExactMatch && !query->complete)
 	{
