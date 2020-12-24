@@ -53,7 +53,7 @@ typedef struct {
 	int reply_domain;
 	int dns_cache_size;
 	int dns_cache_MAX;
-	unsigned int num_regex[REGEX_MAX];
+	unsigned int regex_change;
 } countersStruct;
 
 extern countersStruct *counters;
@@ -94,6 +94,16 @@ void destroy_shmem(void);
 size_t addstr(const char *str);
 const char *getstr(const size_t pos);
 void *enlarge_shmem_struct(const char type);
+
+/**
+ * Escapes a string by replacing special characters, such as spaces
+ */
+char *str_escape(const char *input, unsigned int *N);
+
+/**
+ * Compare two strings. Escape them if needed
+ */
+bool strcmp_escaped(const char *a, const char *b);
 
 /**
  * Create a new overTime client shared memory block.

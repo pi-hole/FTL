@@ -13,7 +13,6 @@
 #include "network-table.h"
 #include "message-table.h"
 #include "../shmem.h"
-#include "../memory.h"
 // struct config
 #include "../config.h"
 // logg()

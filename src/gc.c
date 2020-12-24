@@ -16,8 +16,6 @@
 #include "overTime.h"
 #include "database/common.h"
 #include "log.h"
-// global variable counters
-#include "memory.h"
 // global variable killed
 #include "signals.h"
 // data getter functions

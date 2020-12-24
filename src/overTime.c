@@ -13,8 +13,6 @@
 #include "shmem.h"
 #include "config.h"
 #include "log.h"
-// global variable counters
-#include "memory.h"
 // data getter functions
 #include "datastructure.h"
 
@@ -125,7 +123,7 @@ unsigned int getOverTimeID(time_t timestamp)
 void moveOverTimeMemory(const time_t mintime)
 {
 	const time_t oldestOverTimeIS = overTime[0].timestamp;
-	// Shift SHOULD timestemp into the future by the amount GC is running earlier
+	// Shift SHOULD timestamp into the future by the amount GC is running earlier
 	time_t oldestOverTimeSHOULD = mintime;
 
 	// Center in interval
