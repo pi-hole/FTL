@@ -100,10 +100,6 @@ static bool compile_regex(const char *regexin, const enum regex_type regexid)
 	regex_data *regex = get_regex_ptr(regexid);
 	int index = num_regex[regexid]++;
 
-	// Update global counter from private counter
-	// This is safe her because we're (fork-wide) locked
-	num_regex[regexid] = num_regex[regexid];
-
 	// Extract possible Pi-hole extensions
 	char rgxbuf[strlen(regexin) + 1u];
 	// Parse special FTL syntax if present
@@ -268,7 +264,6 @@ int match_regex(const char *input, const DNSCacheData* dns_cache, const int clie
 		// Try to match the compiled regular expression against input
 		if(config.debug & DEBUG_REGEX)
 			logg("Executing: index = %d, preg = %p, str = \"%s\", pmatch = %p", index, &regex[index].regex, input, &match);
-		sync();
 #ifdef USE_TRE_REGEX
 		int retval = tre_regexec(&regex[index].regex, input, 0, &match, 0);
 #else
