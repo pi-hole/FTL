@@ -31,6 +31,9 @@
 // defined in dnsmasq.c
 extern void print_dnsmasq_version(void);
 
+// defined in database/shell.c
+extern int sqlite3_shell_main(int argc, char **argv);
+
 bool dnsmasq_debug = false;
 bool daemonmode = true, cli_mode = false;
 int argc_dnsmasq = 0;
@@ -61,6 +64,13 @@ void parse_args(int argc, char* argv[])
 	if(strEndsWith(argv[0], "luac"))
 		exit(run_luac(argc, argv));
 
+	if(strEndsWith(argv[0], "sqlite3"))
+	{
+		if(argc == 1) // No arguments after this one
+			printf("Pi-hole FTL %s\n", get_FTL_version());
+		exit(sqlite3_shell_main(argc, argv));
+	}
+
 	// start from 1, as argv[0] is the executable name
 	for(int i = 1; i < argc; i++)
 	{
@@ -78,6 +88,16 @@ void parse_args(int argc, char* argv[])
 		   strcmp(argv[i], "--luac") == 0)
 		{
 			exit(luac_main(argc - i, &argv[i]));
+		}
+
+		// Expose embedded SQLite3 engine
+		if(strcmp(argv[i], "sql") == 0 ||
+		   strcmp(argv[i], "sqlite3") == 0 ||
+		   strcmp(argv[i], "--sqlite3") == 0)
+		{
+			if(argc == i+1) // No arguments after this one
+				printf("Pi-hole FTL %s\n", get_FTL_version());
+			exit(sqlite3_shell_main(argc - i, &argv[i]));
 		}
 
 		// Implement dnsmasq's test function, no need to prepare the entire FTL
@@ -285,6 +305,7 @@ void parse_args(int argc, char* argv[])
 			printf("\t--luac, luac        FTL's lua compiler\n");
 			printf("\tdhcp-discover       Discover DHCP servers in the local\n");
 			printf("\t                    network\n");
+			printf("\tsqlite3             FTL's SQLite3 shell\n");
 			printf("\n\nOnline help: https://github.com/pi-hole/FTL\n");
 			exit(EXIT_SUCCESS);
 		}
