@@ -620,11 +620,11 @@ void getQueryTypes(const int *sock)
 		ssend(*sock, "A (IPv4): %.2f\nAAAA (IPv6): %.2f\nANY: %.2f\nSRV: %.2f\n"
 		             "SOA: %.2f\nPTR: %.2f\nTXT: %.2f\nNAPTR: %.2f\n"
 		             "MX: %.2f\nDS: %.2f\nRRSIG: %.2f\nDNSKEY: %.2f\n"
-		             "OTHER: %.2f\n",
+		             "NS: %.2f\n" "OTHER: %.2f\n",
 		      percentage[TYPE_A], percentage[TYPE_AAAA], percentage[TYPE_ANY], percentage[TYPE_SRV],
 		      percentage[TYPE_SOA], percentage[TYPE_PTR], percentage[TYPE_TXT], percentage[TYPE_NAPTR],
 		      percentage[TYPE_MX], percentage[TYPE_DS], percentage[TYPE_RRSIG], percentage[TYPE_DNSKEY],
-		      percentage[TYPE_OTHER]);
+		      percentage[TYPE_NS], percentage[TYPE_OTHER]);
 	}
 	else {
 		pack_str32(*sock, "A (IPv4)");
@@ -651,6 +651,8 @@ void getQueryTypes(const int *sock)
 		pack_float(*sock, percentage[TYPE_RRSIG]);
 		pack_str32(*sock, "DNSKEY");
 		pack_float(*sock, percentage[TYPE_DNSKEY]);
+		pack_str32(*sock, "NS");
+		pack_float(*sock, percentage[TYPE_NS]);
 		pack_str32(*sock, "OTHER");
 		pack_float(*sock, percentage[TYPE_OTHER]);
 	}
