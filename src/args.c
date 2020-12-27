@@ -43,6 +43,11 @@ static inline bool strEndsWith(const char *input, const char *end){
 	return strcmp(input + strlen(input) - strlen(end), end) == 0;
 }
 
+static void print_FTL_version(void)
+{
+	printf("Pi-hole FTL %s %s\n", get_FTL_version(), GIT_DATE);
+}
+
 void parse_args(int argc, char* argv[])
 {
 	bool quiet = false;
@@ -67,7 +72,7 @@ void parse_args(int argc, char* argv[])
 	if(strEndsWith(argv[0], "sqlite3"))
 	{
 		if(argc == 1) // No arguments after this one
-			printf("Pi-hole FTL %s\n", get_FTL_version());
+			print_FTL_version();
 		exit(sqlite3_shell_main(argc, argv));
 	}
 
@@ -96,7 +101,7 @@ void parse_args(int argc, char* argv[])
 		   strcmp(argv[i], "--sqlite3") == 0)
 		{
 			if(argc == i+1) // No arguments after this one
-				printf("Pi-hole FTL %s\n", get_FTL_version());
+				print_FTL_version();
 			exit(sqlite3_shell_main(argc - i, &argv[i]));
 		}
 
