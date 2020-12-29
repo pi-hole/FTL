@@ -19,19 +19,21 @@ int FTLfallocate(const int fd, const off_t offset, const off_t len, const char *
 	int ret = 0;
 	do
 	{
-		// Reset errno before trying to write
-		errno = 0;
+		// posix_fallocate directly returns errno and doesn't set the
+		// actual errno system global
 		ret = posix_fallocate(fd, offset, len);
 	}
 	// Try again if the last posix_fallocate() call failed due to an
 	// interruption by an incoming signal
-	while(ret < 0 && errno == EINTR);
+	while(ret == EINTR);
 
 	// Final error checking (may have faild for some other reason then an
 	// EINTR = interrupted system call)
-	if(ret < 0)
+	if(ret > 0)
 		logg("WARN: Could not fallocate() in %s() (%s:%i): %s",
-             func, file, line, strerror(errno));
+		     func, file, line, strerror(ret));
 
-    return ret;
+	// Set errno ourselves as posix_fallocate doesn't do it
+	errno = ret;
+	return ret;
 }
