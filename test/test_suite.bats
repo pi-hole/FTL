@@ -358,7 +358,9 @@
   [[ ${lines[12]} == "DNSKEY: 0.00" ]]
   [[ ${lines[13]} == "NS: 0.00" ]]
   [[ ${lines[14]} == "OTHER: 0.00" ]]
-  [[ ${lines[15]} == "" ]]
+  [[ ${lines[15]} == "SVCB: 0.00" ]]
+  [[ ${lines[16]} == "HTTPS: 0.00" ]]
+  [[ ${lines[17]} == "" ]]
 }
 
 # Here and below: Acknowledge that there might be a host name after
