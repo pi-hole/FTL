@@ -10,8 +10,6 @@
 #ifndef GRAVITY_H
 #define GRAVITY_H
 
-// global variable counters
-#include "../memory.h"
 // clients data structure
 #include "../datastructure.h"
 // enum http_method

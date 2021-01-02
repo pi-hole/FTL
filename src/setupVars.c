@@ -10,7 +10,6 @@
 
 #include "FTL.h"
 #include "log.h"
-#include "memory.h"
 #include "config.h"
 #include "setupVars.h"
 

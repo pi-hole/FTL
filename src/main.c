@@ -40,12 +40,6 @@ int main (int argc, char* argv[])
 	// it if needed
 	username = getUserName();
 
-	// This only prepares the log file lock, we
-	// do not want to log already here (parsing
-	// args may bring up something we want to do
-	// separated from the log in foreground)
-	init_FTL_log();
-
 	// Parse arguments
 	// We run this also for no direct arguments
 	// to have arg{c,v}_dnsmasq initialized

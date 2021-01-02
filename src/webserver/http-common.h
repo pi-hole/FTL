@@ -17,9 +17,6 @@
 // strlen()
 #include <string.h>
 
-// FTLfree()
-#include "../memory.h"
-
 const char* json_formatter(const cJSON *object);
 
 int send_http(struct mg_connection *conn, const char *mime_type, const char *msg);

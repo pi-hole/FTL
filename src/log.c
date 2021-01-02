@@ -10,7 +10,6 @@
 
 #include "FTL.h"
 #include "version.h"
-#include "memory.h"
 // is_fork()
 #include "daemon.h"
 #include "config.h"
@@ -28,6 +27,7 @@
 
 static pthread_mutex_t lock;
 static FILE *logfile = NULL;
+static bool FTL_log_ready = false;
 static bool print_log = true, print_stdout = true;
 
 void log_ctrl(bool plog, bool pstdout)
@@ -42,27 +42,25 @@ static void close_FTL_log(void)
 		fclose(logfile);
 }
 
-void init_FTL_log(void)
+void open_FTL_log(const bool init)
 {
-	if (pthread_mutex_init(&lock, NULL) != 0)
+	if(init)
 	{
-		printf("FATAL: Log mutex init failed\n");
-		// Return failure
-		exit(EXIT_FAILURE);
-	}
-}
+		// Initialize logging mutex
+		if (pthread_mutex_init(&lock, NULL) != 0)
+		{
+			printf("FATAL: Log mutex init failed\n");
+			// Return failure
+			exit(EXIT_FAILURE);
+		}
 
-void open_FTL_log(const bool test)
-{
-	if(test)
-	{
 		// Obtain log file location
 		getLogFilePath();
 	}
 
 	// Open the log file in append/create mode
 	logfile = fopen(FTLfiles.log, "a+");
-	if((logfile == NULL) && test){
+	if((logfile == NULL) && init){
 		syslog(LOG_ERR, "Opening of FTL\'s log file failed!");
 		printf("FATAL: Opening of FTL log (%s) failed!\n",FTLfiles.log);
 		printf("       Make sure it exists and is writeable by user %s\n", username);
@@ -70,7 +68,10 @@ void open_FTL_log(const bool test)
 		exit(EXIT_FAILURE);
 	}
 
-	if(test)
+	// Set log as ready (we were able to open it)
+	FTL_log_ready = true;
+
+	if(init)
 	{
 		close_FTL_log();
 	}
@@ -161,7 +162,7 @@ void _FTL_log(const bool newline, const char *format, ...)
 			printf("\n");
 	}
 
-	if(print_log)
+	if(print_log && FTL_log_ready)
 	{
 		// Open log file
 		open_FTL_log(false);

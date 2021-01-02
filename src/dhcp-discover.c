@@ -506,6 +506,18 @@ static bool get_dhcp_offer(const int sock, const uint32_t xid, const char *iface
 		else
 			logg("N/A");
 
+		logg_sameline("  BOOTP server: ");
+		if(offer_packet.sname[0] != 0)
+			logg("%s", offer_packet.sname);
+		else
+			logg("(empty)");
+
+		logg_sameline("  BOOTP file: ");
+		if(offer_packet.file[0] != 0)
+			logg("%s", offer_packet.file);
+		else
+			logg("(empty)");
+
 		logg("  DHCP options:");
 		print_dhcp_offer(source.sin_addr, &offer_packet);
 		pthread_mutex_unlock(&lock);

@@ -14,7 +14,6 @@
 #undef __USE_XOPEN
 #include "FTL.h"
 #include "capabilities.h"
-#include "memory.h"
 #include "config.h"
 #include "log.h"
 

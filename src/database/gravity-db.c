@@ -30,6 +30,9 @@
 // reset_aliasclient()
 #include "aliasclients.h"
 
+// Definition of struct regex_data
+#include "../regex_r.h"
+
 // Prefix of interface names in the client table
 #define INTERFACE_SEP ":"
 
@@ -1087,6 +1090,12 @@ int gravityDB_count(const enum gravity_tables list)
 	// Finalize statement
 	gravityDB_finalizeTable();
 
+	if(config.debug & DEBUG_DATABASE)
+	{
+		logg("gravityDB_count(%d): %i entries in %s",
+		     list, result, tablename[list]);
+	}
+
 	// Return result
 	return result;
 }
@@ -1294,6 +1303,9 @@ bool in_auditlist(const char *domain)
 bool gravityDB_get_regex_client_groups(clientsData* client, const unsigned int numregex, const regex_data *regex,
                                        const unsigned char type, const char* table, const int clientID)
 {
+	if(config.debug & DEBUG_REGEX)
+		logg("Getting regex client groups for client with ID %i", clientID);
+
 	char *querystr = NULL;
 	if(!client->found_group && !get_client_groupids(client))
 		return false;
@@ -1328,7 +1340,7 @@ bool gravityDB_get_regex_client_groups(clientsData* client, const unsigned int n
 			{
 				// Regular expressions are stored in one array
 				if(type == REGEX_WHITELIST)
-					regexID += counters->num_regex[REGEX_BLACKLIST];
+					regexID += get_num_regex(REGEX_BLACKLIST);
 				set_per_client_regex(clientID, regexID, true);
 
 				if(config.debug & DEBUG_REGEX)

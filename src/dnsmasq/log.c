@@ -15,7 +15,10 @@
 */
 
 #include "dnsmasq.h"
+/******* Pi-hole modification *******/
 #include "../log.h"
+#include "../dnsmasq_interface.h"
+/************************************/
 
 #ifdef __ANDROID__
 #  include <android/log.h>
