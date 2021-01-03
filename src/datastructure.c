@@ -30,7 +30,8 @@
 #include "events.h"
 
 const char *querytypes[TYPE_MAX] = {"UNKNOWN", "A", "AAAA", "ANY", "SRV", "SOA", "PTR", "TXT",
-                                    "NAPTR", "MX", "DS", "RRSIG", "DNSKEY", "NS", "OTHER"};
+                                    "NAPTR", "MX", "DS", "RRSIG", "DNSKEY", "NS", "OTHER", "SVCB",
+                                    "HTTPS"};
 
 // converts upper to lower case, and leaves other characters unchanged
 void strtolower(char *str)

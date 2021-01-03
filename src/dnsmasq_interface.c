@@ -513,6 +513,12 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		case T_NS:
 			querytype = TYPE_NS;
 			break;
+		case 64: // Scn. 2 of https://datatracker.ietf.org/doc/draft-ietf-dnsop-svcb-https/
+			querytype = TYPE_SVCB;
+			break;
+		case 65: // Scn. 2 of https://datatracker.ietf.org/doc/draft-ietf-dnsop-svcb-https/
+			querytype = TYPE_HTTPS;
+			break;
 		default:
 			querytype = TYPE_OTHER;
 			break;
