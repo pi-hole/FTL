@@ -1039,7 +1039,9 @@ void _FTL_reply(const unsigned int flags, const char *name, const union all_addr
 		// Get time index
 		const unsigned int timeidx = query->timeidx;
 
-		// Answered from a custom (user provided) cache file
+		// Answered from a custom (user provided) cache file or because
+		// we're the authorative DNS server (e.g. DHCP server and this
+		// is our own domain)
 		counters->cached++;
 		overTime[timeidx].cached++;
 		query->status = QUERY_CACHE;
