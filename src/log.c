@@ -25,7 +25,8 @@
 // logg_fatal_dnsmasq_message()
 #include "database/message-table.h"
 
-static pthread_mutex_t lock;
+static bool locks_initialized = false;
+static pthread_mutex_t FTL_log_lock, web_log_lock;
 static FILE *logfile = NULL;
 static bool FTL_log_ready = false;
 static bool print_log = true, print_stdout = true;
@@ -42,21 +43,32 @@ static void close_FTL_log(void)
 		fclose(logfile);
 }
 
+static void initialize_locks(void)
+{
+	// Initialize logging mutex
+	if (pthread_mutex_init(&FTL_log_lock, NULL) != 0)
+	{
+		printf("FATAL: Log mutex init for FTL failed\n");
+		// Return failure
+		exit(EXIT_FAILURE);
+	}
+
+	if (pthread_mutex_init(&web_log_lock, NULL) != 0)
+	{
+		printf("FATAL: Log mutex init for web failed\n");
+		// Return failure
+		exit(EXIT_FAILURE);
+	}
+}
+
 void open_FTL_log(const bool init)
 {
-	if(init)
-	{
-		// Initialize logging mutex
-		if (pthread_mutex_init(&lock, NULL) != 0)
-		{
-			printf("FATAL: Log mutex init failed\n");
-			// Return failure
-			exit(EXIT_FAILURE);
-		}
+	if(!locks_initialized)
+		initialize_locks();
 
+	if(init)
 		// Obtain log file location
 		getLogFilePath();
-	}
 
 	// Open the log file in append/create mode
 	logfile = fopen(FTLfiles.log, "a+");
@@ -95,6 +107,9 @@ void get_timestr(char * const timestring, const time_t timein)
 
 static void open_web_log(const enum web_code code)
 {
+	if(!locks_initialized)
+		initialize_locks();
+
 	// Open the log file in append/create mode
 	char *file = NULL;
 	switch (code)
@@ -122,7 +137,7 @@ void _FTL_log(const bool newline, const char *format, ...)
 	if(!print_log && !print_stdout)
 		return;
 
-	pthread_mutex_lock(&lock);
+	pthread_mutex_lock(&FTL_log_lock);
 
 	get_timestr(timestring, time(NULL));
 
@@ -185,7 +200,7 @@ void _FTL_log(const bool newline, const char *format, ...)
 
 	// Close log file
 	close_FTL_log();
-	pthread_mutex_unlock(&lock);
+	pthread_mutex_unlock(&FTL_log_lock);
 }
 
 void __attribute__ ((format (gnu_printf, 2, 3))) logg_web(enum web_code code, const char *format, ...)
@@ -193,7 +208,7 @@ void __attribute__ ((format (gnu_printf, 2, 3))) logg_web(enum web_code code, co
 	char timestring[84] = "";
 	va_list args;
 
-	pthread_mutex_lock(&lock);
+	pthread_mutex_lock(&web_log_lock);
 
 	get_timestr(timestring, time(NULL));
 
@@ -221,7 +236,7 @@ void __attribute__ ((format (gnu_printf, 2, 3))) logg_web(enum web_code code, co
 
 	// Close FTL log file
 	close_FTL_log();
-	pthread_mutex_unlock(&lock);
+	pthread_mutex_unlock(&web_log_lock);
 }
 
 // Log helper activity (may be script or lua)
