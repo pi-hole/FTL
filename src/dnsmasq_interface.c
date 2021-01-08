@@ -514,6 +514,12 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		case T_NS:
 			querytype = TYPE_NS;
 			break;
+		case 64: // Scn. 2 of https://datatracker.ietf.org/doc/draft-ietf-dnsop-svcb-https/
+			querytype = TYPE_SVCB;
+			break;
+		case 65: // Scn. 2 of https://datatracker.ietf.org/doc/draft-ietf-dnsop-svcb-https/
+			querytype = TYPE_HTTPS;
+			break;
 		default:
 			querytype = TYPE_OTHER;
 			break;
@@ -1038,23 +1044,12 @@ void _FTL_reply(const unsigned int flags, const char *name, const union all_addr
 		// Get time index
 		const unsigned int timeidx = query->timeidx;
 
-		// Check whether this query was blocked
-		if(strcmp(answer, "(NXDOMAIN)") == 0 ||
-		   strcmp(answer, "0.0.0.0") == 0 ||
-		   strcmp(answer, "::") == 0)
-		{
-			// Mark query as blocked
-			clientsData* client = getClient(query->clientID, true);
-			query_blocked(query, domain, client, QUERY_REGEX);
-		}
-		else
-		{
-			// Answered from a custom (user provided) cache file
-			counters->cached++;
-			overTime[timeidx].cached++;
-
-			query->status = QUERY_CACHE;
-		}
+		// Answered from a custom (user provided) cache file or because
+		// we're the authorative DNS server (e.g. DHCP server and this
+		// is our own domain)
+		counters->cached++;
+		overTime[timeidx].cached++;
+		query->status = QUERY_CACHE;
 
 		// Save reply type and update individual reply counters
 		save_reply_type(flags, addr, query, response);
