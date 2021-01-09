@@ -1966,7 +1966,7 @@ static void check_dns_listeners(time_t now)
 		fcntl(confd, F_SETFL, flags & ~O_NONBLOCK);
 	      
 	      /******* Pi-hole modification *******/
-	      FTL_TCP_worker_created(confd, iface->name);
+	      FTL_TCP_worker_created(confd, iface != NULL ? iface->name : NULL);
 	      /************************************/
 
 	      buff = tcp_request(confd, now, &tcp_addr, netmask, auth_dns);
