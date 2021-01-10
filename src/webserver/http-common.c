@@ -184,3 +184,18 @@ int http_method(struct mg_connection *conn)
 	else
 		return HTTP_UNKNOWN;
 }
+
+cJSON *get_POST_JSON(struct mg_connection *conn)
+{
+	// Extract payload
+	char buffer[1024] = { 0 };
+	int data_len = mg_read(conn, buffer, sizeof(buffer) - 1);
+	if ((data_len < 1) || (data_len >= (int)sizeof(buffer)))
+		return NULL;
+
+	buffer[data_len] = '\0';
+
+	// Parse JSON
+	cJSON *obj = cJSON_Parse(buffer);
+	return obj;
+}

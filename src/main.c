@@ -85,6 +85,9 @@ int main (int argc, char* argv[])
 	// immediately before starting the resolver.
 	check_capabilities();
 
+	// Initialize pseudo-random number generator
+	srand(time(NULL));
+
 	// Start the resolver, delay startup if requested
 	delay_startup();
 	startup = false;

@@ -104,6 +104,12 @@
 // How many authenticated API clients are allowed simultaneously? [.]
 #define API_MAX_CLIENTS 16
 
+// How many challenges are valid simultaneously? [.]
+#define API_MAX_CHALLENGES 8
+
+// How long are challenges considered valid? [seconds]
+#define API_CHALLENGE_TIMEOUT 10
+
 // After how many seconds do we check again if a client can be identified by other means?
 // (e.g., interface, MAC address, hostname)
 // Default: 60 (after one minutee)

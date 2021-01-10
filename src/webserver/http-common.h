@@ -38,6 +38,7 @@ bool http_get_cookie_str(struct mg_connection *conn, const char *cookieName, cha
 bool get_bool_var(const char *source, const char *var, bool *boolean);
 bool get_uint_var(const char *source, const char *var, unsigned int *num);
 bool get_int_var(const char *source, const char *var, int *num);
+cJSON *get_POST_JSON(struct mg_connection *conn);
 
 // HTTP macros
 #define GET_VAR(variable, destination, source) mg_get_var(source, strlen(source), variable, destination, sizeof(destination))
