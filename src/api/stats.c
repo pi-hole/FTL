@@ -557,6 +557,13 @@ int api_stats_upstreams(struct mg_connection *conn)
 
 int api_stats_query_types(struct mg_connection *conn)
 {
+	// Verify requesting client is allowed to see this ressource
+	if(check_client_auth(conn) < 0)
+	{
+		return send_json_unauthorized(conn);
+	}
+
+	// Send response
 	cJSON *json = JSON_NEW_ARRAY();
 	for(int i = TYPE_A; i < TYPE_MAX; i++)
 	{
