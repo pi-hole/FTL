@@ -144,7 +144,7 @@ void http_init(void)
 		"listening_ports", httpsettings.port,
 		"decode_url", "no",
 		"enable_directory_listing", "no",
-		"num_threads", "4",
+		"num_threads", "16",
 		"access_control_list", httpsettings.acl,
 		"additional_header", "Content-Security-Policy: default-src 'self' 'unsafe-inline';\r\n"
 		                     "X-Frame-Options: SAMEORIGIN\r\n"
