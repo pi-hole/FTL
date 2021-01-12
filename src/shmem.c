@@ -295,10 +295,27 @@ static pthread_mutex_t create_mutex(void) {
 	pthread_mutexattr_init(&lock_attr);
 
 	// Allow the lock to be used by other processes
+	// Mutexes created with this attributes object can be shared between any
+	// threads that have access to the memory containing the object,
+	// including threads in different processes.
 	pthread_mutexattr_setpshared(&lock_attr, PTHREAD_PROCESS_SHARED);
 
-	// Make the lock robust against process death
+	// Make the lock robust against thread death
+	// If a mutex is initialized with the PTHREAD_MUTEX_ROBUST attribute and
+	// its owner dies without unlocking it, any future attempts to call
+	// pthread_mutex_lock(3) on this mutex will succeed and return
+	// EOWNERDEAD to indicate that the original owner no longer exists and
+	// the mutex is in an inconsistent state.
 	pthread_mutexattr_setrobust(&lock_attr, PTHREAD_MUTEX_ROBUST);
+
+	// Enabled pthread error checking
+	// - A thread attempting to relock this mutex without first unlocking it
+	//   shall return with an error (EDEADLK).
+	// - A thread attempting to unlock a mutex which another thread has
+	//   locked shall return with an error (EPERM).
+	// - A thread attempting to unlock an unlocked mutex shall return with
+	//   an error (EPERM).
+	pthread_mutexattr_settype(&lock_attr, PTHREAD_MUTEX_ERRORCHECK);
 
 	// Initialize the lock
 	pthread_mutex_init(&lock, &lock_attr);
@@ -372,11 +389,10 @@ void _lock_shm(const char* func, const int line, const char * file) {
 void _unlock_shm(const char* func, const int line, const char * file) {
 	int result = pthread_mutex_unlock(&shmLock->lock);
 
-	if(config.debug & DEBUG_LOCKS)
-		logg("Removed lock in %s() (%s:%i)", func, file, line);
-
 	if(result != 0)
 		logg("Failed to unlock SHM lock: %s in %s() (%s:%i)", strerror(result), func, file, line);
+	else if(config.debug & DEBUG_LOCKS)
+		logg("Removed lock in %s() (%s:%i)", func, file, line);
 }
 
 bool init_shmem(bool create_new)
