@@ -343,7 +343,9 @@ void _lock_shm(const char* func, const int line, const char * file) {
 
 	int result = pthread_mutex_lock(&shmLock->lock);
 
-	if(config.debug & DEBUG_LOCKS)
+	if(result != 0)
+		logg("Failed to obtain SHM lock: %s in %s() (%s:%i)", strerror(result), func, file, line);
+	else if(config.debug & DEBUG_LOCKS)
 		logg("Obtained lock for %s() (%s:%i)", func, file, line);
 
 	// Check if this process needs to remap the shared memory objects
@@ -365,9 +367,6 @@ void _lock_shm(const char* func, const int line, const char * file) {
 		// holding the lock
 		result = pthread_mutex_consistent(&shmLock->lock);
 	}
-
-	if(result != 0)
-		logg("Failed to obtain SHM lock: %s in %s() (%s:%i)", strerror(result), func, file, line);
 }
 
 void _unlock_shm(const char* func, const int line, const char * file) {
