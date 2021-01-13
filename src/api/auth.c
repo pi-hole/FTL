@@ -53,6 +53,9 @@ static void sha256_hex(uint8_t *data, char *buffer)
 // Returns >= 0 for any valid authentication
 #define LOCALHOSTv4 "127.0.0.1"
 #define LOCALHOSTv6 "::1"
+#define API_AUTH_UNUSED -1
+#define API_AUTH_LOCALHOST -2
+#define API_AUTH_EMPTYPASS -3
 int check_client_auth(struct mg_connection *conn)
 {
 	int user_id = -1;
@@ -61,7 +64,14 @@ int check_client_auth(struct mg_connection *conn)
 	// Is the user requesting from localhost?
 	if(!httpsettings.api_auth_for_localhost && (strcmp(request->remote_addr, LOCALHOSTv4) == 0 ||
 	                                            strcmp(request->remote_addr, LOCALHOSTv6) == 0))
-		return API_MAX_CLIENTS;
+		return API_AUTH_LOCALHOST;
+
+	// Check if there is a password hash
+	char *password_hash = get_password_hash();
+	const bool empty_password = (strlen(password_hash) == 0u);
+	free(password_hash);
+	if(empty_password)
+		return API_AUTH_EMPTYPASS;
 
 	// Does the client provide a session cookie?
 	char sid[SID_SIZE];
@@ -91,7 +101,7 @@ int check_client_auth(struct mg_connection *conn)
 				break;
 			}
 		}
-		if(user_id > -1)
+		if(user_id > API_AUTH_UNUSED)
 		{
 			// Authentication succesful:
 			// - We know this client
@@ -153,7 +163,7 @@ static bool check_response(const char *response)
 
 static int send_api_auth_status(struct mg_connection *conn, const int user_id, const int method)
 {
-	if(user_id == API_MAX_CLIENTS)
+	if(user_id == API_AUTH_LOCALHOST)
 	{
 		if(config.debug & DEBUG_API)
 			logg("API Authentification: OK (localhost does not need auth)");
@@ -163,7 +173,19 @@ static int send_api_auth_status(struct mg_connection *conn, const int user_id, c
 		JSON_OBJ_ADD_NULL(json, "sid");
 		JSON_SEND_OBJECT(json);
 	}
-	if(user_id > -1 && method == HTTP_GET)
+
+	if(user_id == API_AUTH_EMPTYPASS)
+	{
+		if(config.debug & DEBUG_API)
+			logg("API Authentification: OK (empty password)");
+
+		cJSON *json = JSON_NEW_OBJ();
+		JSON_OBJ_REF_STR(json, "status", "success");
+		JSON_OBJ_ADD_NULL(json, "sid");
+		JSON_SEND_OBJECT(json);
+	}
+
+	if(user_id > API_AUTH_UNUSED && method == HTTP_GET)
 	{
 		if(config.debug & DEBUG_API)
 			logg("API Authentification: OK");
@@ -182,7 +204,7 @@ static int send_api_auth_status(struct mg_connection *conn, const int user_id, c
 
 		JSON_SEND_OBJECT(json);
 	}
-	else if(user_id > -1 && method == HTTP_DELETE)
+	else if(user_id > API_AUTH_UNUSED && method == HTTP_DELETE)
 	{
 		if(config.debug & DEBUG_API)
 			logg("API Authentification: Revoking");
@@ -280,18 +302,20 @@ int api_auth_login(struct mg_connection *conn)
 	if(method != HTTP_GET)
 		return 0; // error 404
 
-	int user_id = -1;
 	char *password_hash = get_password_hash();
+	const bool empty_password = (strlen(password_hash) == 0u);
+
+	int user_id = API_AUTH_UNUSED;
 	const struct mg_request_info *request = mg_get_request_info(conn);
 
 	char response[256] = { 0 };
 	const bool reponse_set = request->query_string != NULL && GET_VAR("response", response, request->query_string) > 0;
-	const bool empty_password = (strlen(password_hash) == 0u);
-	if(reponse_set || empty_password )
+	if(reponse_set || empty_password)
 	{
 		// - Client tries to authenticate using a challenge response, or
 		// - There no password on this machine
-		if(check_response(response) || empty_password)
+		const bool response_correct = check_response(response);
+		if(response_correct || empty_password)
 		{
 			// Accepted
 			time_t now = time(NULL);
@@ -326,16 +350,17 @@ int api_auth_login(struct mg_connection *conn)
 			}
 
 			// Debug logging
-			if(config.debug & DEBUG_API && user_id > -1)
+			if(config.debug & DEBUG_API && user_id > API_AUTH_UNUSED)
 			{
 				char timestr[128];
 				get_timestr(timestr, auth_data[user_id].valid_until);
-				logg("API: Registered new user: user_id %i valid_until: %s remote_addr %s",
-				     user_id, timestr, auth_data[user_id].remote_addr);
+				logg("API: Registered new user: user_id %i valid_until: %s remote_addr %s (%s)",
+				     user_id, timestr, auth_data[user_id].remote_addr,
+				     response_correct ? "correct response" : "empty password");
 			}
-			if(user_id == -1)
+			if(user_id == API_AUTH_UNUSED)
 			{
-				logg("WARNING: No free API slots available, not authenticating user");
+				logg("WARNING: No free API seats available, not authenticating user");
 			}
 		}
 		else if(config.debug & DEBUG_API)
