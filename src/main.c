@@ -45,8 +45,8 @@ int main (int argc, char* argv[])
 	// to have arg{c,v}_dnsmasq initialized
 	parse_args(argc, argv);
 
-	// Try to open FTL log
-	open_FTL_log(true);
+	// Initialize FTL log
+	init_FTL_log();
 	timer_start(EXIT_TIMER);
 	logg("########## FTL started! ##########");
 	log_FTL_version(false);

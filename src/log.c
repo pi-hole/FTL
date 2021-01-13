@@ -27,7 +27,6 @@
 
 static bool locks_initialized = false;
 static pthread_mutex_t FTL_log_lock, web_log_lock;
-static FILE *logfile = NULL;
 static bool FTL_log_ready = false;
 static bool print_log = true, print_stdout = true;
 
@@ -37,42 +36,54 @@ void log_ctrl(bool plog, bool pstdout)
 	print_stdout = pstdout;
 }
 
-static void close_FTL_log(void)
-{
-	if(logfile != NULL)
-		fclose(logfile);
-}
-
 static void initialize_locks(void)
 {
+	// Initialize the lock attributes
+	pthread_mutexattr_t lock_attr = {};
+	pthread_mutexattr_init(&lock_attr);
+
+	// Make the lock robust against thread death
+	// If a mutex is initialized with the PTHREAD_MUTEX_ROBUST attribute and
+	// its owner dies without unlocking it, any future attempts to call
+	// pthread_mutex_lock(3) on this mutex will succeed and return
+	// EOWNERDEAD to indicate that the original owner no longer exists and
+	// the mutex is in an inconsistent state.
+	pthread_mutexattr_setrobust(&lock_attr, PTHREAD_MUTEX_ROBUST);
+
+	// Enabled pthread error checking
+	// - A thread attempting to relock this mutex without first unlocking it
+	//   shall return with an error (EDEADLK).
+	// - A thread attempting to unlock a mutex which another thread has
+	//   locked shall return with an error (EPERM).
+	// - A thread attempting to unlock an unlocked mutex shall return with
+	//   an error (EPERM).
+	pthread_mutexattr_settype(&lock_attr, PTHREAD_MUTEX_ERRORCHECK);
+
 	// Initialize logging mutex
-	if (pthread_mutex_init(&FTL_log_lock, NULL) != 0)
+	if (pthread_mutex_init(&FTL_log_lock, &lock_attr) != 0)
 	{
 		printf("FATAL: Log mutex init for FTL failed\n");
 		// Return failure
 		exit(EXIT_FAILURE);
 	}
 
-	if (pthread_mutex_init(&web_log_lock, NULL) != 0)
+	if (pthread_mutex_init(&web_log_lock, &lock_attr) != 0)
 	{
 		printf("FATAL: Log mutex init for web failed\n");
 		// Return failure
 		exit(EXIT_FAILURE);
 	}
+
+	locks_initialized = true;
 }
 
-void open_FTL_log(const bool init)
+void init_FTL_log(void)
 {
-	if(!locks_initialized)
-		initialize_locks();
+	getLogFilePath();
 
-	if(init)
-		// Obtain log file location
-		getLogFilePath();
-
-	// Open the log file in append/create mode
-	logfile = fopen(FTLfiles.log, "a+");
-	if((logfile == NULL) && init){
+	// Try to open the log file in append/create mode
+	FILE *logfile = fopen(FTLfiles.log, "a+");
+	if(logfile == NULL){
 		syslog(LOG_ERR, "Opening of FTL\'s log file failed!");
 		printf("FATAL: Opening of FTL log (%s) failed!\n",FTLfiles.log);
 		printf("       Make sure it exists and is writeable by user %s\n", username);
@@ -83,10 +94,8 @@ void open_FTL_log(const bool init)
 	// Set log as ready (we were able to open it)
 	FTL_log_ready = true;
 
-	if(init)
-	{
-		close_FTL_log();
-	}
+	// Close log file
+	fclose(logfile);
 }
 
 // The size of 84 bytes has been carefully selected for all possible timestamps
@@ -105,31 +114,11 @@ void get_timestr(char * const timestring, const time_t timein)
 	        tm.tm_hour, tm.tm_min, tm.tm_sec, millisec);
 }
 
-static void open_web_log(const enum web_code code)
+void _FTL_log(const bool newline, const char *func, const char *file, const int line, const char *format, ...)
 {
 	if(!locks_initialized)
 		initialize_locks();
 
-	// Open the log file in append/create mode
-	char *file = NULL;
-	switch (code)
-	{
-	case HTTP_INFO:
-		file = httpsettings.log_info;
-		break;
-	case PH7_ERROR:
-		file = httpsettings.log_error;
-		break;
-	default:
-		file = httpsettings.log_error;
-		break;
-	}
-
-	logfile = fopen(file, "a+");
-}
-
-void _FTL_log(const bool newline, const char *format, ...)
-{
 	char timestring[84] = "";
 	va_list args;
 
@@ -137,8 +126,10 @@ void _FTL_log(const bool newline, const char *format, ...)
 	if(!print_log && !print_stdout)
 		return;
 
+	// Lock mutex
 	pthread_mutex_lock(&FTL_log_lock);
 
+	// Get human-readable time
 	get_timestr(timestring, time(NULL));
 
 	// Get and log PID of current process to avoid ambiguities when more than one
@@ -177,10 +168,11 @@ void _FTL_log(const bool newline, const char *format, ...)
 			printf("\n");
 	}
 
+	// Write to file if ready
 	if(print_log && FTL_log_ready)
 	{
 		// Open log file
-		open_FTL_log(false);
+		FILE *logfile = fopen(FTLfiles.log, "a+");
 
 		// Write to log file
 		if(logfile != NULL)
@@ -190,6 +182,9 @@ void _FTL_log(const bool newline, const char *format, ...)
 			vfprintf(logfile, format, args);
 			va_end(args);
 			fputc('\n',logfile);
+
+			// Close file after writing
+			fclose(logfile);
 		}
 		else if(!daemonmode)
 		{
@@ -198,9 +193,28 @@ void _FTL_log(const bool newline, const char *format, ...)
 		}
 	}
 
-	// Close log file
-	close_FTL_log();
+	// Unlock mutex
 	pthread_mutex_unlock(&FTL_log_lock);
+}
+
+static FILE *open_web_log(const enum web_code code)
+{
+	// Open the log file in append/create mode
+	char *file = NULL;
+	switch (code)
+	{
+	case HTTP_INFO:
+		file = httpsettings.log_info;
+		break;
+	case PH7_ERROR:
+		file = httpsettings.log_error;
+		break;
+	default:
+		file = httpsettings.log_error;
+		break;
+	}
+
+	return fopen(file, "a+");
 }
 
 void __attribute__ ((format (gnu_printf, 2, 3))) logg_web(enum web_code code, const char *format, ...)
@@ -208,25 +222,31 @@ void __attribute__ ((format (gnu_printf, 2, 3))) logg_web(enum web_code code, co
 	char timestring[84] = "";
 	va_list args;
 
+	if(!locks_initialized)
+		initialize_locks();
+
+	// Lock mutex
 	pthread_mutex_lock(&web_log_lock);
 
+	// Get human-readable time
 	get_timestr(timestring, time(NULL));
 
 	// Get and log PID of current process to avoid ambiguities when more than one
 	// pihole-FTL instance is logging into the same file
 	const long pid = (long)getpid();
 
-	// Open log file
-	open_web_log(code);
+	// Open web log file
+	FILE *weblog = open_web_log(code);
 
-	// Write to log file
-	if(logfile != NULL)
+	// Write to web log file
+	if(weblog != NULL)
 	{
-		fprintf(logfile, "[%s %ld] ", timestring, pid);
+		fprintf(weblog, "[%s %ld] ", timestring, pid);
 		va_start(args, format);
-		vfprintf(logfile, format, args);
+		vfprintf(weblog, format, args);
 		va_end(args);
-		fputc('\n',logfile);
+		fputc('\n',weblog);
+		fclose(weblog);
 	}
 	else if(!daemonmode)
 	{
@@ -234,8 +254,7 @@ void __attribute__ ((format (gnu_printf, 2, 3))) logg_web(enum web_code code, co
 		syslog(LOG_ERR, "Writing to web log file failed!");
 	}
 
-	// Close FTL log file
-	close_FTL_log();
+	// Unlock mutex
 	pthread_mutex_unlock(&web_log_lock);
 }
 
@@ -245,6 +264,9 @@ void FTL_log_helper(const unsigned char n, ...)
 	// Only log helper debug messages if enabled
 	if(!(config.debug & DEBUG_HELPER))
 		return;
+
+	if(!locks_initialized)
+		initialize_locks();
 
 	// Extract all variable arguments
 	va_list args;

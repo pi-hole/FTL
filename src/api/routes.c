@@ -15,6 +15,7 @@
 #include "../webserver/json_macros.h"
 #include "routes.h"
 #include "../shmem.h"
+#include "../config.h"
 
 int api_handler(struct mg_connection *conn, void *ignored)
 {
@@ -24,6 +25,9 @@ int api_handler(struct mg_connection *conn, void *ignored)
 	int ret = 0;
 
 	const struct mg_request_info *request = mg_get_request_info(conn);
+	if(config.debug & DEBUG_API)
+		logg("Requested API URI: %s", request->local_uri);
+
 	/******************************** /api/dns ********************************/
 	if(startsWith("/api/dns/blocking", request->local_uri))
 	{

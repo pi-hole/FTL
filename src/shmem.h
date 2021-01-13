@@ -56,6 +56,14 @@ typedef struct {
 	unsigned int regex_change;
 } countersStruct;
 
+typedef struct {
+	const char *func;
+	pid_t pid;
+	int tid;
+} lockInfoStruct;
+
+#define INIT_LOCK_INFO {"", -1, -1}
+
 extern countersStruct *counters;
 
 /// Create shared memory

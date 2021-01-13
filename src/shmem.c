@@ -21,6 +21,10 @@
 #include <sys/statvfs.h>
 // get_num_regex()
 #include "regex_r.h"
+// sleepms()
+#include "timers.h"
+// FTL_gettid
+#include "daemon.h"
 
 /// The version of shared memory used
 #define SHARED_MEMORY_VERSION 10
@@ -286,10 +290,9 @@ const char *getstr(const size_t pos)
 }
 
 /// Create a mutex for shared memory
-static pthread_mutex_t create_mutex(void) {
-	logg("Creating mutex");
+static void create_mutex(pthread_mutex_t *lock) {
+	logg("Creating SHM mutex lock");
 	pthread_mutexattr_t lock_attr = {};
-	pthread_mutex_t lock = {};
 
 	// Initialize the lock attributes
 	pthread_mutexattr_init(&lock_attr);
@@ -318,12 +321,10 @@ static pthread_mutex_t create_mutex(void) {
 	pthread_mutexattr_settype(&lock_attr, PTHREAD_MUTEX_ERRORCHECK);
 
 	// Initialize the lock
-	pthread_mutex_init(&lock, &lock_attr);
+	pthread_mutex_init(lock, &lock_attr);
 
 	// Destroy the lock attributes since we're done with it
 	pthread_mutexattr_destroy(&lock_attr);
-
-	return lock;
 }
 
 static void remap_shm(void)
@@ -351,19 +352,37 @@ static void remap_shm(void)
 	local_shm_counter = shmSettings->global_shm_counter;
 }
 
+static lockInfoStruct shm_lockInfo = INIT_LOCK_INFO;
 void _lock_shm(const char* func, const int line, const char * file) {
 	// Signal that FTL is waiting for a lock
 	shmLock->waitingForLock = true;
 
 	if(config.debug & DEBUG_LOCKS)
-		logg("Waiting for lock in %s() (%s:%i)", func, file, line);
+	{
+		logg("Waiting for SHM lock in %s() (%s:%i)\n"
+		     "    -> currently lock by %i/%i in %s()",
+		     func, file, line,
+		     shm_lockInfo.pid,
+		     shm_lockInfo.tid,
+		     shm_lockInfo.func);
+	}
 
-	int result = pthread_mutex_lock(&shmLock->lock);
+	int result;
+	while((result = pthread_mutex_trylock(&shmLock->lock)) == EBUSY)
+		sleepms(10);
 
 	if(result != 0)
 		logg("Failed to obtain SHM lock: %s in %s() (%s:%i)", strerror(result), func, file, line);
 	else if(config.debug & DEBUG_LOCKS)
 		logg("Obtained lock for %s() (%s:%i)", func, file, line);
+
+	// Store lock info in debug mode
+	if(config.debug & DEBUG_LOCKS)
+	{
+		shm_lockInfo.func = func;
+		shm_lockInfo.pid = getpid();
+		shm_lockInfo.tid = gettid();
+	}
 
 	// Check if this process needs to remap the shared memory objects
 	if(shmSettings != NULL &&
@@ -392,7 +411,7 @@ void _unlock_shm(const char* func, const int line, const char * file) {
 	if(result != 0)
 		logg("Failed to unlock SHM lock: %s in %s() (%s:%i)", strerror(result), func, file, line);
 	else if(config.debug & DEBUG_LOCKS)
-		logg("Removed lock in %s() (%s:%i)", func, file, line);
+		logg("Removed SHM lock in %s() (%s:%i)", func, file, line);
 }
 
 bool init_shmem(bool create_new)
@@ -408,7 +427,7 @@ bool init_shmem(bool create_new)
 	shmLock = (ShmLock*) shm_lock.ptr;
 	if(create_new)
 	{
-		shmLock->lock = create_mutex();
+		create_mutex(&shmLock->lock);
 		shmLock->waitingForLock = false;
 	}
 
