@@ -207,11 +207,13 @@ static int send_api_auth_status(struct mg_connection *conn, const int user_id, c
 static void generateChallenge(const unsigned int idx, const time_t now)
 {
 	uint8_t raw_challenge[SHA256_DIGEST_SIZE];
-	for(unsigned i = 0; i < SHA256_DIGEST_SIZE; i+= 2)
+	for(unsigned i = 0; i < SHA256_DIGEST_SIZE; i+= 4)
 	{
-		const int rval = rand();
+		const long rval = random();
 		raw_challenge[i] = rval & 0xFF;
 		raw_challenge[i+1] = (rval >> 8) & 0xFF;
+		raw_challenge[i+2] = (rval >> 16) & 0xFF;
+		raw_challenge[i+3] = (rval >> 24) & 0xFF;
 	}
 	sha256_hex(raw_challenge, challenges[idx].challenge);
 	challenges[idx].valid_until = now + API_CHALLENGE_TIMEOUT;
@@ -258,11 +260,13 @@ int api_auth(struct mg_connection *conn)
 static void generateSID(char *sid)
 {
 	uint8_t raw_sid[SID_SIZE];
-	for(unsigned i = 0; i < (SID_BITSIZE/8); i+= 2)
+	for(unsigned i = 0; i < (SID_BITSIZE/8); i+= 4)
 	{
-		const int rval = rand();
+		const long rval = random();
 		raw_sid[i] = rval & 0xFF;
 		raw_sid[i+1] = (rval >> 8) & 0xFF;
+		raw_sid[i+2] = (rval >> 16) & 0xFF;
+		raw_sid[i+3] = (rval >> 24) & 0xFF;
 	}
 	base64_encode_raw(sid, SID_BITSIZE/8, raw_sid);
 	sid[SID_SIZE-1] = '\0';
