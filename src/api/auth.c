@@ -127,27 +127,6 @@ int check_client_auth(struct mg_connection *conn)
 	return user_id;
 }
 
-// Source password hash from setupVars.conf
-static __attribute__((malloc)) char *get_password_hash(void)
-{
-	// Try to obtain password from setupVars.conf
-	const char* password = read_setupVarsconf("WEBPASSWORD");
-
-	// If the value was not set (or we couldn't open the file for reading),
-	// we hand an empty string back to the caller
-	if(password == NULL || (password != NULL && strlen(password) == 0u))
-	{
-		password = "";
-	}
-
-	char *hash = strdup(password);
-
-	// Free memory, harmless to call if read_setupVarsconf() didn't return a result
-	clearSetupVarsArray();
-
-	return hash;
-}
-
 // Check received response
 static bool check_response(const char *response)
 {
@@ -178,7 +157,11 @@ static int send_api_auth_status(struct mg_connection *conn, const int user_id, c
 	{
 		if(config.debug & DEBUG_API)
 			logg("API Authentification: OK (localhost does not need auth)");
-		return send_json_success(conn);
+
+		cJSON *json = JSON_NEW_OBJ();
+		JSON_OBJ_REF_STR(json, "status", "success");
+		JSON_OBJ_ADD_NULL(json, "sid");
+		JSON_SEND_OBJECT(json);
 	}
 	if(user_id > -1 && method == HTTP_GET)
 	{
@@ -187,6 +170,8 @@ static int send_api_auth_status(struct mg_connection *conn, const int user_id, c
 
 		cJSON *json = JSON_NEW_OBJ();
 		JSON_OBJ_REF_STR(json, "status", "success");
+		JSON_OBJ_REF_STR(json, "sid", auth_data[user_id].sid);
+
 		// Ten minutes validity
 		if(snprintf(pi_hole_extra_headers, sizeof(pi_hole_extra_headers),
 		            "Set-Cookie: sid=%s; Path=/; Max-Age=%u\r\n",
@@ -194,8 +179,8 @@ static int send_api_auth_status(struct mg_connection *conn, const int user_id, c
 		{
 			return send_json_error(conn, 500, "internal_error", "Internal server error", NULL);
 		}
-	
-		return send_json_success(conn);
+
+		JSON_SEND_OBJECT(json);
 	}
 	else if(user_id > -1 && method == HTTP_DELETE)
 	{
@@ -217,6 +202,45 @@ static int send_api_auth_status(struct mg_connection *conn, const int user_id, c
 		strncpy(pi_hole_extra_headers, "Set-Cookie: sid=deleted; Path=/; Max-Age=-1\r\n", sizeof(pi_hole_extra_headers));
 		return send_json_unauthorized(conn);
 	}
+}
+
+static void generateChallenge(const unsigned int idx, const time_t now)
+{
+	uint8_t raw_challenge[SHA256_DIGEST_SIZE];
+	for(unsigned i = 0; i < SHA256_DIGEST_SIZE; i+= 2)
+	{
+		const int rval = rand();
+		raw_challenge[i] = rval & 0xFF;
+		raw_challenge[i+1] = (rval >> 8) & 0xFF;
+	}
+	sha256_hex(raw_challenge, challenges[idx].challenge);
+	challenges[idx].valid_until = now + API_CHALLENGE_TIMEOUT;
+}
+
+static void generateResponse(const unsigned int idx)
+{
+	uint8_t raw_response[SHA256_DIGEST_SIZE];
+	struct sha256_ctx ctx;
+	sha256_init(&ctx);
+
+	// Add challenge in hex representation
+	sha256_update(&ctx,
+	              sizeof(challenges[idx].challenge)-1,
+	              (uint8_t*)challenges[idx].challenge);
+
+	// Add separator
+	sha256_update(&ctx, 1, (uint8_t*)":");
+
+	// Get and add password hash from setupVars.conf
+	char *password_hash = get_password_hash();
+	sha256_update(&ctx,
+			strlen(password_hash),
+			(uint8_t*)password_hash);
+	free(password_hash);
+	password_hash = NULL;
+
+	sha256_digest(&ctx, SHA256_DIGEST_SIZE, raw_response);
+	sha256_hex(raw_response, challenges[idx].response);
 }
 
 int api_auth(struct mg_connection *conn)
@@ -256,12 +280,13 @@ int api_auth_login(struct mg_connection *conn)
 	char *password_hash = get_password_hash();
 	const struct mg_request_info *request = mg_get_request_info(conn);
 
-	// Does the client try to authenticate using challenge-response or is there no password on this machine?
 	char response[256] = { 0 };
 	const bool reponse_set = request->query_string != NULL && GET_VAR("response", response, request->query_string) > 0;
 	const bool empty_password = (strlen(password_hash) == 0u);
 	if(reponse_set || empty_password )
 	{
+		// - Client tries to authenticate using a challenge response, or
+		// - There no password on this machine
 		if(check_response(response) || empty_password)
 		{
 			// Accepted
@@ -314,11 +339,56 @@ int api_auth_login(struct mg_connection *conn)
 			logg("API: Response incorrect. Response=%s, setupVars=%s", response, password_hash);
 		}
 
+		// Free allocated memory
+		free(password_hash);
+		password_hash = NULL;
+		return send_api_auth_status(conn, user_id, HTTP_GET);
 	}
-	free(password_hash);
-	password_hash = NULL;
+	else
+	{
+		// Client wants to get a challenge
+		// Generate a challenge
+		unsigned int i;
+		const time_t now = time(NULL);
 
-	return send_api_auth_status(conn, user_id, HTTP_GET);
+		// Get an empty/expired slot
+		for(i = 0; i < API_MAX_CHALLENGES; i++)
+			if(challenges[i].valid_until < now)
+				break;
+
+		// If there are no empty/expired slots, then find the oldest challenge
+		// and replace it
+		if(i == API_MAX_CHALLENGES)
+		{
+			unsigned int minidx = 0;
+			time_t minval = now;
+			for(i = 0; i < API_MAX_CHALLENGES; i++)
+			{
+				if(challenges[i].valid_until < minval)
+				{
+					minval = challenges[i].valid_until;
+					minidx = i;
+				}
+			}
+			i = minidx;
+		}
+
+		// Generate and store new challenge
+		generateChallenge(i, now);
+
+		// Compute and store expected response for this challenge (SHA-256)
+		generateResponse(i);
+
+		// Free allocated memory
+		free(password_hash);
+		password_hash = NULL;
+
+		// Return to user
+		cJSON *json = JSON_NEW_OBJ();
+		JSON_OBJ_REF_STR(json, "challenge", challenges[i].challenge);
+		JSON_OBJ_ADD_NUMBER(json, "valid_until", challenges[i].valid_until);
+		JSON_SEND_OBJECT(json);
+	}
 }
 
 int api_auth_logout(struct mg_connection *conn)
@@ -331,97 +401,4 @@ int api_auth_logout(struct mg_connection *conn)
 	// Did the client authenticate before and we can validate this?
 	int user_id = check_client_auth(conn);
 	return send_api_auth_status(conn, user_id, HTTP_DELETE);
-}
-
-/*
-// All printable ASCII characters, c.f., https://www.asciitable.com/
-// Inspired by https://codereview.stackexchange.com/a/194388
-// Randomness: rougly 6 Bit per Byte
-// Challenge "strength": (0x7E-0x20)/256*8*44 = 129.25 Bit
-#define ASCII_BEG 0x20
-#define ASCII_END 0x7E
-static void generateRandomString(char *str, size_t size)
-{
-	for(size_t i = 0u; i < size-1u; i++)
-		str[i] = (char) (rand()%(ASCII_END-ASCII_BEG))+ASCII_BEG;
-
-	str[size-1] = '\0';
-}
-*/
-
-static void generateChallenge(const unsigned int idx, const time_t now)
-{
-	uint8_t raw_challenge[SHA256_DIGEST_SIZE];
-	for(unsigned i = 0; i < SHA256_DIGEST_SIZE; i+= 2)
-	{
-		const int rval = rand();
-		raw_challenge[i] = rval & 0xFF;
-		raw_challenge[i+1] = (rval >> 8) & 0xFF;
-	}
-	sha256_hex(raw_challenge, challenges[idx].challenge);
-	challenges[idx].valid_until = now + API_CHALLENGE_TIMEOUT;
-}
-
-static void generateResponse(const unsigned int idx)
-{
-	uint8_t raw_response[SHA256_DIGEST_SIZE];
-	struct sha256_ctx ctx;
-	sha256_init(&ctx);
-
-	// Add challenge in hex representation
-	sha256_update(&ctx,
-	              sizeof(challenges[idx].challenge)-1,
-	              (uint8_t*)challenges[idx].challenge);
-
-	// Get and add password hash from setupVars.conf
-	char *password_hash = get_password_hash();
-	sha256_update(&ctx,
-			strlen(password_hash),
-			(uint8_t*)password_hash);
-	free(password_hash);
-	password_hash = NULL;
-
-	sha256_digest(&ctx, SHA256_DIGEST_SIZE, raw_response);
-	sha256_hex(raw_response, challenges[idx].response);
-}
-
-int api_auth_challenge(struct mg_connection *conn)
-{
-	// Generate a challenge
-	unsigned int i;
-	const time_t now = time(NULL);
-
-	// Get an empty/expired slot
-	for(i = 0; i < API_MAX_CHALLENGES; i++)
-		if(challenges[i].valid_until < now)
-			break;
-
-	// If there are no empty/expired slots, then find the oldest challenge
-	// and replace it
-	if(i == API_MAX_CHALLENGES)
-	{
-		unsigned int minidx = 0;
-		time_t minval = now;
-		for(i = 0; i < API_MAX_CHALLENGES; i++)
-		{
-			if(challenges[i].valid_until < minval)
-			{
-				minval = challenges[i].valid_until;
-				minidx = i;
-			}
-		}
-		i = minidx;
-	}
-
-	// Generate and store new challenge
-	generateChallenge(i, now);
-
-	// Compute and store expected response for this challenge (SHA-256)
-	generateResponse(i);
-
-	// Return to user
-	cJSON *json = JSON_NEW_OBJ();
-	JSON_OBJ_REF_STR(json, "challenge", challenges[i].challenge);
-	JSON_OBJ_ADD_NUMBER(json, "valid_until", challenges[i].valid_until);
-	JSON_SEND_OBJECT(json);
 }

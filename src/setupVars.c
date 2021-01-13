@@ -266,3 +266,24 @@ void set_blockingstatus(bool enabled)
 	blockingstatus = enabled;
 	raise(SIGHUP);
 }
+
+// Source password hash from setupVars.conf
+__attribute__((malloc)) char *get_password_hash(void)
+{
+	// Try to obtain password from setupVars.conf
+	const char* password = read_setupVarsconf("WEBPASSWORD");
+
+	// If the value was not set (or we couldn't open the file for reading),
+	// we hand an empty string back to the caller
+	if(password == NULL || (password != NULL && strlen(password) == 0u))
+	{
+		password = "";
+	}
+
+	char *hash = strdup(password);
+
+	// Free memory, harmless to call if read_setupVarsconf() didn't return a result
+	clearSetupVarsArray();
+
+	return hash;
+}

@@ -160,10 +160,6 @@ int api_handler(struct mg_connection *conn, void *ignored)
 	{
 		ret = api_auth_login(conn);
 	}
-	else if(startsWith("/api/auth/challenge", request->local_uri))
-	{
-		ret = api_auth_challenge(conn);
-	}
 	else if(startsWith("/api/auth/logout", request->local_uri))
 	{
 		ret = api_auth_logout(conn);
@@ -177,8 +173,8 @@ int api_handler(struct mg_connection *conn, void *ignored)
 	{
 		ret = api_settings_web(conn);
 	}
-	/******************************** not found ******************************/
-	else
+	/******************************** not found or invalid request**************/
+	if(ret == 0)
 	{
 		cJSON *json = JSON_NEW_OBJ();
 		JSON_OBJ_REF_STR(json, "path", request->local_uri);

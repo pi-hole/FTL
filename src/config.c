@@ -395,19 +395,15 @@ void read_FTLconf(void)
 		logg("   WEBACL: Allowing all access.");
 	}
 
-	// API_AUTH_FOR_LOALHOST
+	// API_AUTH_FOR_LOCALHOST
 	// defaults to: false
-	httpsettings.api_auth_for_localhost = false;
-	buffer = parse_FTLconf(fp, "API_AUTH_FOR_LOALHOST");
-
-	if(buffer != NULL && (strcasecmp(buffer, "yes") == 0 ||
-	                      strcasecmp(buffer, "true") == 0))
-		httpsettings.api_auth_for_localhost = true;
+	buffer = parse_FTLconf(fp, "API_AUTH_FOR_LOCALHOST");
+	httpsettings.api_auth_for_localhost = read_bool(buffer, true);
 
 	if(httpsettings.api_auth_for_localhost)
-		logg("   API_AUTH_FOR_LOCALHOST: Active");
+		logg("   API_AUTH_FOR_LOCALHOST: Local devices need to login");
 	else
-		logg("   API_AUTH_FOR_LOCALHOST: Inactive");
+		logg("   API_AUTH_FOR_LOCALHOST: Local devices do not need to login");
 
 	// API_SESSION_TIMEOUT
 	// How long should a session be considered valid after login?
@@ -424,11 +420,8 @@ void read_FTLconf(void)
 
 	// API_PRETTY_JSON
 	// defaults to: false
-	httpsettings.prettyJSON = false;
 	buffer = parse_FTLconf(fp, "API_PRETTY_JSON");
-
-	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
-		httpsettings.prettyJSON = true;
+	httpsettings.prettyJSON = read_bool(buffer, false);
 
 	if(httpsettings.prettyJSON)
 		logg("   API_PRETTY_JSON: Enabled. Using additional formatting in API output.");

@@ -21,5 +21,6 @@ void trim_whitespace(char *string);
 void check_blocking_status(void);
 bool get_blockingstatus(void) __attribute__((pure));
 void set_blockingstatus(bool enabled);
+char *get_password_hash(void) __attribute__((malloc));
 
 #endif //SETUPVARS_H
