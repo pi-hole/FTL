@@ -1440,7 +1440,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, const tablerow 
 	}
 
 	// Bind domain to prepared statement (if requested)
-	int idx = sqlite3_bind_parameter_index(stmt, "domain");
+	int idx = sqlite3_bind_parameter_index(stmt, ":domain");
 	if(idx > 0 && (rc = sqlite3_bind_text(stmt, idx, row.domain, -1, SQLITE_STATIC)) != SQLITE_OK)
 	{
 		*message = sqlite3_errmsg(gravity_db);
@@ -1452,7 +1452,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, const tablerow 
 	}
 
 	// Bind name to prepared statement (if requested)
-	idx = sqlite3_bind_parameter_index(stmt, "name");
+	idx = sqlite3_bind_parameter_index(stmt, ":name");
 	if(idx > 0 && (rc = sqlite3_bind_text(stmt, idx, row.name, -1, SQLITE_STATIC)) != SQLITE_OK)
 	{
 		*message = sqlite3_errmsg(gravity_db);
@@ -1464,7 +1464,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, const tablerow 
 	}
 
 	// Bind type to prepared statement (if requested)
-	idx = sqlite3_bind_parameter_index(stmt, "type");
+	idx = sqlite3_bind_parameter_index(stmt, ":type");
 	if(idx > 0 && (rc = sqlite3_bind_int(stmt, idx, type)) != SQLITE_OK)
 	{
 		*message = sqlite3_errmsg(gravity_db);
@@ -1476,7 +1476,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, const tablerow 
 	}
 
 	// Bind enabled boolean to prepared statement (if requested)
-	idx = sqlite3_bind_parameter_index(stmt, "enabled");
+	idx = sqlite3_bind_parameter_index(stmt, ":enabled");
 	if(idx > 0 && (rc = sqlite3_bind_int(stmt, idx, row.enabled ? 1 : 0)) != SQLITE_OK)
 	{
 		*message = sqlite3_errmsg(gravity_db);
@@ -1488,7 +1488,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, const tablerow 
 	}
 
 	// Bind comment string to prepared statement (if requested)
-	idx = sqlite3_bind_parameter_index(stmt, "comment");
+	idx = sqlite3_bind_parameter_index(stmt, ":comment");
 	if(idx > 0 && (rc = sqlite3_bind_text(stmt, idx, row.comment, -1, SQLITE_STATIC)) != SQLITE_OK)
 	{
 		*message = sqlite3_errmsg(gravity_db);
@@ -1500,7 +1500,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, const tablerow 
 	}
 
 	// Bind description string to prepared statement (if requested)
-	idx = sqlite3_bind_parameter_index(stmt, "description");
+	idx = sqlite3_bind_parameter_index(stmt, ":description");
 	if(idx > 0 && (rc = sqlite3_bind_text(stmt, idx, row.description, -1, SQLITE_STATIC)) != SQLITE_OK)
 	{
 		*message = sqlite3_errmsg(gravity_db);
@@ -1512,7 +1512,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, const tablerow 
 	}
 
 	// Bind address string to prepared statement (if requested)
-	idx = sqlite3_bind_parameter_index(stmt, "address");
+	idx = sqlite3_bind_parameter_index(stmt, ":address");
 	if(idx > 0 && (rc = sqlite3_bind_text(stmt, idx, row.address, -1, SQLITE_STATIC)) != SQLITE_OK)
 	{
 		*message = sqlite3_errmsg(gravity_db);
@@ -1750,7 +1750,6 @@ bool gravityDB_readTableGetRow(tablerow *row, const char **message)
 		for(int c = 0; c < cols; c++)
 		{
 			const char *cname = sqlite3_column_name(read_stmt, c);
-			logg("API: %d = %s", c, cname);
 			if(strcasecmp(cname, "id") == 0)
 				row->id = sqlite3_column_int(read_stmt, c);
 

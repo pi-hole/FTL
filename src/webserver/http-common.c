@@ -108,7 +108,7 @@ int send_http_internal_error(struct mg_connection *conn)
 bool get_bool_var(const char *source, const char *var, bool *boolean)
 {
 	char buffer[16] = { 0 };
-	if(GET_VAR(var, buffer, source))
+	if(GET_VAR(var, buffer, source) > 0)
 	{
 		*boolean = (strcasecmp(buffer, "true") == 0);
 		return true;
@@ -119,7 +119,7 @@ bool get_bool_var(const char *source, const char *var, bool *boolean)
 bool get_int_var(const char *source, const char *var, int *num)
 {
 	char buffer[16] = { 0 };
-	if(GET_VAR(var, buffer, source) &&
+	if(GET_VAR(var, buffer, source) > 0 &&
 	   sscanf(buffer, "%d", num) == 1)
 	{
 		return true;
@@ -131,7 +131,7 @@ bool get_int_var(const char *source, const char *var, int *num)
 bool get_uint_var(const char *source, const char *var, unsigned int *num)
 {
 	char buffer[16] = { 0 };
-	if(GET_VAR(var, buffer, source) &&
+	if(GET_VAR(var, buffer, source) > 0 &&
 	   sscanf(buffer, "%u", num) == 1)
 	{
 		return true;

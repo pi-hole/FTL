@@ -192,90 +192,73 @@ static int api_list_write(struct mg_connection *conn,
 	}
 
 	// Extract payload
-	char buffer[1024] = { 0 };
-	int data_len = mg_read(conn, buffer, sizeof(buffer) - 1);
-	if ((data_len < 1) || (data_len >= (int)sizeof(buffer))) {
-		return send_json_error(conn, 400,
-		                       "bad_request",
-		                       "No request body data",
-		                       NULL);
-	}
-	buffer[data_len] = '\0';
+	char payload[1024] = { 0 };
+	const char *argument = NULL;
+	http_get_payload(conn, payload, sizeof(payload));
 
-	cJSON *obj = cJSON_Parse(buffer);
-	if (obj == NULL) {
-		return send_json_error(conn, 400,
-		                       "bad_request",
-		                       "Invalid request body data",
-		                       NULL);
-	}
-
-	const char *argument = "";
-	cJSON *elem_domain = cJSON_GetObjectItemCaseSensitive(obj, "domain");
+	// Try to extract data from payload
+	char domain[256] = { 0 };
 	if(need_domain)
 	{
-		if (!cJSON_IsString(elem_domain)) {
-			cJSON_Delete(obj);
+		if(GET_VAR("domain", domain, payload) < 1)
+		{
 			return send_json_error(conn, 400,
 							"bad_request",
 							"No \"domain\" string in body data",
 							NULL);
 		}
-		row.domain = elem_domain->valuestring;
-		argument = row.domain;
+		row.domain = domain;
+		argument = domain;
 	}
 
-	cJSON *elem_name = cJSON_GetObjectItemCaseSensitive(obj, "name");
+	char name[256] = { 0 };
 	if(need_name)
 	{
-		if (!cJSON_IsString(elem_name)) {
-			cJSON_Delete(obj);
+		if(GET_VAR("name", name, payload) < 1)
+		{
 			return send_json_error(conn, 400,
 							"bad_request",
 							"No \"name\" string in body data",
 							NULL);
 		}
-		row.name = elem_name->valuestring;
-		argument = row.name;
+		row.name = name;
+		argument = name;
 	}
 
-	cJSON *elem_address = cJSON_GetObjectItemCaseSensitive(obj, "address");
+	char address[256] = { 0 };
 	if(need_address)
 	{
-		if (!cJSON_IsString(elem_address)) {
-			cJSON_Delete(obj);
+		if(GET_VAR("address", address, payload) < 1)
+		{
 			return send_json_error(conn, 400,
 							"bad_request",
 							"No \"address\" string in body data",
 							NULL);
 		}
-		row.address = elem_address->valuestring;
-		argument = row.address;
+		row.address = address;
+		argument = address;
 	}
 
 	row.enabled = true;
-	cJSON *elem_enabled = cJSON_GetObjectItemCaseSensitive(obj, "enabled");
-	if (cJSON_IsBool(elem_enabled)) {
-		row.enabled = cJSON_IsTrue(elem_enabled);
-	}
+	get_bool_var(payload, "enabled", &row.enabled);
 
-	row.comment = NULL;
-	cJSON *elem_comment = cJSON_GetObjectItemCaseSensitive(obj, "comment");
-	if (cJSON_IsString(elem_comment)) {
-		row.comment = elem_comment->valuestring;
-	}
+	char comment[256] = { 0 };
+	GET_VAR("comment", comment, payload);
+	if(GET_VAR("comment", comment, payload) > 0)
+		row.comment = comment;
+	else
+		row.description = NULL;
 
-	row.description = NULL;
-	cJSON *elem_description = cJSON_GetObjectItemCaseSensitive(obj, "description");
-	if (cJSON_IsString(elem_description)) {
-		row.description = elem_description->valuestring;
-	}
+	char description[256] = { 0 };
+	if(GET_VAR("description", description, payload) > 0)
+		row.description = description;
+	else
+		row.description = NULL;
 
 	// Try to add domain to table
 	const char *sql_msg = NULL;
 	if(gravityDB_addToTable(listtype, row, &sql_msg, method))
 	{
-		cJSON_Delete(obj);
 		// Send GET style reply with code 201 Created
 		return get_list(conn, 201, listtype, argument);
 	}
@@ -284,9 +267,6 @@ static int api_list_write(struct mg_connection *conn,
 		// Error adding domain, prepare error object
 		cJSON *json = JSON_NEW_OBJ();
 		JSON_OBJ_COPY_STR(json, "argument", argument);
-
-		// Only delete payload object after having extracted the data
-		cJSON_Delete(obj);
 
 		// Add SQL message (may be NULL = not available)
 		if (sql_msg != NULL) {

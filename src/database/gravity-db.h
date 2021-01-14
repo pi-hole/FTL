@@ -29,6 +29,7 @@ typedef struct {
 	const char *comment;
 	const char *group_ids;
 	const char *description;
+	int type_int;
 	long id;
 	time_t date_added;
 	time_t date_modified;
