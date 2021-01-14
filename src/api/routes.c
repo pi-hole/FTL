@@ -37,10 +37,14 @@ int api_handler(struct mg_connection *conn, void *ignored)
 	{
 		ret = api_dns_cacheinfo(conn);
 	}
-	/******************************** /api/allowlist ****************************/
+	/******************************** /api/list, /api/group ****************************/
 	else if(startsWith("/api/list", request->local_uri))
 	{
-		ret = api_dns_domainlist(conn);
+		ret = api_list(conn);
+	}
+	else if(startsWith("/api/group", request->local_uri))
+	{
+		ret = api_list(conn);
 	}
 	/******************************** /api/ftl ****************************/
 	else if(startsWith("/api/ftl/client", request->local_uri))

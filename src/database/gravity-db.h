@@ -17,16 +17,21 @@
 // Definition of struct regex_data
 #include "../regex_r.h"
 
-typedef struct domainrecord {
+// Table row record, not all fields are used by all tables
+typedef struct {
 	bool enabled;
+	bool comment_null;
+	bool description_null;
+	const char *name;
 	const char *domain;
+	const char *type;
 	const char *comment;
 	const char *group_ids;
-	const char *type;
+	const char *description;
 	long id;
 	time_t date_added;
 	time_t date_modified;
-} domainrecord;
+} tablerow;
 
 void gravityDB_forked(void);
 void gravityDB_reopen(void);
@@ -47,11 +52,11 @@ bool in_whitelist(const char *domain, const DNSCacheData *dns_cache, const int c
 bool gravityDB_get_regex_client_groups(clientsData* client, const unsigned int numregex, const regex_data *regex,
                                        const unsigned char type, const char* table, const int clientID);
 
-bool gravityDB_readTable(const enum domainlist_type listtype, const char *domain, const char **message);
-bool gravityDB_readTableGetDomain(domainrecord *domain, const char **message);
+bool gravityDB_readTable(const enum gravity_list_type listtype, const char *filter, const char **message);
+bool gravityDB_readTableGetRow(tablerow *row, const char **message);
 void gravityDB_readTableFinalize(void);
-bool gravityDB_addToTable(const enum domainlist_type listtype, const domainrecord domain,
+bool gravityDB_addToTable(const enum gravity_list_type listtype, const tablerow row,
                           const char **message, const enum http_method method);
-bool gravityDB_delFromTable(const enum domainlist_type listtype, const char* domain, const char **message);
+bool gravityDB_delFromTable(const enum gravity_list_type listtype, const char* domain_name, const char **message);
 
 #endif //GRAVITY_H

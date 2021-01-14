@@ -49,7 +49,8 @@ int api_dns_blockingstatus(struct mg_connection *conn);
 int api_dns_cacheinfo(struct mg_connection *conn);
 
 // List methods
-int api_dns_domainlist(struct mg_connection *conn);
+int api_list(struct mg_connection *conn);
+int api_group(struct mg_connection *conn);
 
 // Version method
 int api_version(struct mg_connection *conn);

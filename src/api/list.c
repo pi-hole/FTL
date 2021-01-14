@@ -14,18 +14,18 @@
 #include "routes.h"
 #include "../database/gravity-db.h"
 
-static int get_domainlist(struct mg_connection *conn,
-                          const int code,
-                          const enum domainlist_type listtype,
-                          const char *domain_filter)
+static int get_list(struct mg_connection *conn,
+                    const int code,
+                    const enum gravity_list_type listtype,
+                    const char *filter)
 {
 	const char *sql_msg = NULL;
-	if(!gravityDB_readTable(listtype, domain_filter, &sql_msg))
+	if(!gravityDB_readTable(listtype, filter, &sql_msg))
 	{
 		cJSON *json = JSON_NEW_OBJ();
 
-		// Add domain_filter (may be NULL = not available)
-		JSON_OBJ_REF_STR(json, "domain_filter", domain_filter);
+		// Add filter (may be NULL = not available)
+		JSON_OBJ_REF_STR(json, "filter", filter);
 
 		// Add SQL message (may be NULL = not available)
 		if (sql_msg != NULL) {
@@ -40,58 +40,78 @@ static int get_domainlist(struct mg_connection *conn,
 		                       json);
 	}
 
-	domainrecord domain;
-	cJSON *domains = JSON_NEW_ARRAY();
-	while(gravityDB_readTableGetDomain(&domain, &sql_msg))
+	tablerow row;
+	cJSON *items = JSON_NEW_ARRAY();
+	while(gravityDB_readTableGetRow(&row, &sql_msg))
 	{
 		cJSON *item = JSON_NEW_OBJ();
-		JSON_OBJ_ADD_NUMBER(item, "id", domain.id);
-		JSON_OBJ_REF_STR(item, "type", domain.type);
-		JSON_OBJ_COPY_STR(item, "domain", domain.domain);
-		JSON_OBJ_ADD_BOOL(item, "enabled", domain.enabled);
-		JSON_OBJ_ADD_NUMBER(item, "date_added", domain.date_added);
-		JSON_OBJ_ADD_NUMBER(item, "date_modified", domain.date_modified);
-		if(domain.comment != NULL) {
-			JSON_OBJ_COPY_STR(item, "comment", domain.comment);
-		} else {
-			JSON_OBJ_ADD_NULL(item, "comment");
-		}
-		if(domain.group_ids != NULL) {
-			// Black JSON magic at work here:
-			// We build a JSON array from the group_concat
-			// result delivered SQLite3, parse it as valid
-			// array and append it as item to the data
-			char group_ids_str[strlen(domain.group_ids)+3u];
-			group_ids_str[0] = '[';
-			strcpy(group_ids_str+1u , domain.group_ids);
-			group_ids_str[sizeof(group_ids_str)-2u] = ']';
-			group_ids_str[sizeof(group_ids_str)-1u] = '\0';
-			cJSON * group_ids = cJSON_Parse(group_ids_str);
-			JSON_OBJ_ADD_ITEM(item, "group_ids", group_ids);
-		} else {
-			// Empty group set
-			cJSON *group_ids = JSON_NEW_ARRAY();
-			JSON_OBJ_ADD_ITEM(item, "group_ids", group_ids);
-		}
+		JSON_OBJ_ADD_NUMBER(item, "id", row.id);
+		JSON_OBJ_ADD_BOOL(item, "enabled", row.enabled);
 
-		JSON_ARRAY_ADD_ITEM(domains, item);
+		// Special fields
+		if(listtype == GRAVITY_GROUPS)
+		{
+			JSON_OBJ_COPY_STR(item, "name", row.name);
+			if(row.description != NULL) {
+				JSON_OBJ_COPY_STR(item, "description", row.description);
+			} else {
+				JSON_OBJ_ADD_NULL(item, "description");
+			}
+		}
+		else // domainlists
+		{
+			JSON_OBJ_REF_STR(item, "type", row.type);
+			JSON_OBJ_COPY_STR(item, "domain", row.domain);
+			if(row.comment != NULL) {
+				JSON_OBJ_COPY_STR(item, "comment", row.comment);
+			} else {
+				JSON_OBJ_ADD_NULL(item, "comment");
+			}
+			if(row.group_ids != NULL) {
+				// Black JSON magic at work here:
+				// We build a JSON array from the group_concat
+				// result delivered SQLite3, parse it as valid
+				// array and append it as item to the data
+				char group_ids_str[strlen(row.group_ids)+3u];
+				group_ids_str[0] = '[';
+				strcpy(group_ids_str+1u , row.group_ids);
+				group_ids_str[sizeof(group_ids_str)-2u] = ']';
+				group_ids_str[sizeof(group_ids_str)-1u] = '\0';
+				cJSON * group_ids = cJSON_Parse(group_ids_str);
+				JSON_OBJ_ADD_ITEM(item, "group_ids", group_ids);
+			} else {
+				// Empty group set
+				cJSON *group_ids = JSON_NEW_ARRAY();
+				JSON_OBJ_ADD_ITEM(item, "group_ids", group_ids);
+			}
+		}
+		
+		JSON_OBJ_ADD_NUMBER(item, "date_added", row.date_added);
+		JSON_OBJ_ADD_NUMBER(item, "date_modified", row.date_modified);
+
+		JSON_ARRAY_ADD_ITEM(items, item);
 	}
 	gravityDB_readTableFinalize();
 
 	if(sql_msg == NULL)
 	{
-		// No error, send requested HTTP code
+		// No error, send domains array
+		const char *objname;
 		cJSON *json = JSON_NEW_OBJ();
-		JSON_OBJ_ADD_ITEM(json, "domains", domains);
+		if(listtype == GRAVITY_GROUPS)
+			objname = "groups";
+		else // domainlists
+			objname = "domains";
+		JSON_OBJ_ADD_ITEM(json, objname, items);
 		JSON_SEND_OBJECT_CODE(json, code);
 	}
 	else
 	{
-		JSON_DELETE(domains);
+		JSON_DELETE(items);
 		cJSON *json = JSON_NEW_OBJ();
 
-		// Add domain_filter (may be NULL = not available)
-		JSON_OBJ_REF_STR(json, "domain_filter", domain_filter);
+		// Add filter (may be NULL = not available)
+		JSON_OBJ_REF_STR(json, "filter", filter);
 
 		// Add SQL message (may be NULL = not available)
 		if (sql_msg != NULL) {
@@ -107,8 +127,8 @@ static int get_domainlist(struct mg_connection *conn,
 	}
 }
 
-static int api_dns_domainlist_read(struct mg_connection *conn,
-                                   const enum domainlist_type listtype)
+static int api_list_read(struct mg_connection *conn,
+                         const enum gravity_list_type listtype)
 {
 	// Extract domain from path (option for GET)
 	const struct mg_request_info *request = mg_get_request_info(conn);
@@ -123,17 +143,18 @@ static int api_dns_domainlist_read(struct mg_connection *conn,
 	   strcmp(encoded_uri, "regex") != 0 &&
 	   strcmp(encoded_uri, "allow") != 0 &&
 	   strcmp(encoded_uri, "deny") != 0 &&
-	   strcmp(encoded_uri, "list") != 0)
+	   strcmp(encoded_uri, "list") != 0 &&
+	   strcmp(encoded_uri, "group") != 0)
 		mg_url_decode(encoded_uri, strlen(encoded_uri), domain_filter, sizeof(domain_filter), 0);
 
-	return get_domainlist(conn, 200, listtype, domain_filter);
+	return get_list(conn, 200, listtype, domain_filter);
 }
 
-static int api_dns_domainlist_write(struct mg_connection *conn,
-                                    const enum domainlist_type listtype,
-                                    const enum http_method method)
+static int api_list_write(struct mg_connection *conn,
+                          const enum gravity_list_type listtype,
+                          const enum http_method method)
 {
-	domainrecord domain;
+	tablerow domain;
 
 	// Extract payload
 	char buffer[1024] = { 0 };
@@ -182,7 +203,7 @@ static int api_dns_domainlist_write(struct mg_connection *conn,
 	{
 		cJSON_Delete(obj);
 		// Send GET style reply with code 201 Created
-		return get_domainlist(conn, 201, listtype, domain.domain);
+		return get_list(conn, 201, listtype, domain.domain);
 	}
 	else
 	{
@@ -219,8 +240,8 @@ static int api_dns_domainlist_write(struct mg_connection *conn,
 	}
 }
 
-static int api_dns_domainlist_remove(struct mg_connection *conn,
-                                     const enum domainlist_type listtype)
+static int api_list_remove(struct mg_connection *conn,
+                                     const enum gravity_list_type listtype)
 {
 	const struct mg_request_info *request = mg_get_request_info(conn);
 
@@ -257,7 +278,7 @@ static int api_dns_domainlist_remove(struct mg_connection *conn,
 	}
 }
 
-int api_dns_domainlist(struct mg_connection *conn)
+int api_list(struct mg_connection *conn)
 {
 	// Verify requesting client is allowed to see this ressource
 	if(check_client_auth(conn) == API_AUTH_UNAUTHORIZED)
@@ -265,10 +286,15 @@ int api_dns_domainlist(struct mg_connection *conn)
 		return send_json_unauthorized(conn);
 	}
 
-	enum domainlist_type listtype;
+	enum gravity_list_type listtype;
 	bool can_modify = false;
 	const struct mg_request_info *request = mg_get_request_info(conn);
-	if(startsWith("/api/list/allow", request->local_uri))
+	if(startsWith("/api/group", request->local_uri))
+	{
+		listtype = GRAVITY_GROUPS;
+		can_modify = true;
+	}
+	else if(startsWith("/api/list/allow", request->local_uri))
 	{
 		if(startsWith("/api/list/allow/exact", request->local_uri))
 		{
@@ -311,19 +337,17 @@ int api_dns_domainlist(struct mg_connection *conn)
 	const enum http_method method = http_method(conn);
 	if(method == HTTP_GET)
 	{
-		return api_dns_domainlist_read(conn, listtype);
+		return api_list_read(conn, listtype);
 	}
 	else if(can_modify && (method == HTTP_POST || method == HTTP_PUT || method == HTTP_PATCH))
 	{
-		// Add domain from exact allow-/denylist when a user sends
-		// the request to the general address /api/dns/{allow,deny}list
-		return api_dns_domainlist_write(conn, listtype, method);
+		// Add item from list
+		return api_list_write(conn, listtype, method);
 	}
 	else if(can_modify && method == HTTP_DELETE)
 	{
-		// Delete domain from exact allow-/denylist when a user sends
-		// the request to the general address /api/dns/{allow,deny}list
-		return api_dns_domainlist_remove(conn, listtype);
+		// Delete item from list
+		return api_list_remove(conn, listtype);
 	}
 	else if(!can_modify)
 	{

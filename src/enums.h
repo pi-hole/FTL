@@ -156,7 +156,7 @@ enum events {
 } __attribute__ ((packed));
 
 
-enum domainlist_type {
+enum gravity_list_type {
 	GRAVITY_DOMAINLIST_ALLOW_EXACT,
 	GRAVITY_DOMAINLIST_ALLOW_REGEX,
 	GRAVITY_DOMAINLIST_ALLOW_ALL,
@@ -165,7 +165,8 @@ enum domainlist_type {
 	GRAVITY_DOMAINLIST_DENY_ALL,
 	GRAVITY_DOMAINLIST_ALL_EXACT,
 	GRAVITY_DOMAINLIST_ALL_REGEX,
-	GRAVITY_DOMAINLIST_ALL_ALL
+	GRAVITY_DOMAINLIST_ALL_ALL,
+	GRAVITY_GROUPS
 } __attribute__ ((packed));
 
 enum gravity_tables {
