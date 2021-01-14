@@ -26,7 +26,7 @@ int api_handler(struct mg_connection *conn, void *ignored)
 
 	const struct mg_request_info *request = mg_get_request_info(conn);
 	if(config.debug & DEBUG_API)
-		logg("Requested API URI: %s", request->local_uri);
+		logg("Requested API URI: %s %s", request->request_method, request->local_uri);
 
 	/******************************** /api/dns ********************************/
 	if(startsWith("/api/dns/blocking", request->local_uri))
@@ -37,23 +37,10 @@ int api_handler(struct mg_connection *conn, void *ignored)
 	{
 		ret = api_dns_cacheinfo(conn);
 	}
-	/******************************** /api/whitelist ****************************/
-	else if(startsWith("/api/whitelist/exact", request->local_uri))
+	/******************************** /api/allowlist ****************************/
+	else if(startsWith("/api/list", request->local_uri))
 	{
-		ret = api_dns_domainlist(conn, true, true);
-	}
-	else if(startsWith("/api/whitelist/regex", request->local_uri))
-	{
-		ret = api_dns_domainlist(conn, false, true);
-	}
-	/******************************** /api/blacklist ****************************/
-	else if(startsWith("/api/blacklist/exact", request->local_uri))
-	{
-		ret = api_dns_domainlist(conn, true, false);
-	}
-	else if(startsWith("/api/blacklist/regex", request->local_uri))
-	{
-		ret = api_dns_domainlist(conn, false, false);
+		ret = api_dns_domainlist(conn);
 	}
 	/******************************** /api/ftl ****************************/
 	else if(startsWith("/api/ftl/client", request->local_uri))

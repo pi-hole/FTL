@@ -48,8 +48,8 @@ int api_network(struct mg_connection *conn);
 int api_dns_blockingstatus(struct mg_connection *conn);
 int api_dns_cacheinfo(struct mg_connection *conn);
 
-// White-/Blacklist methods
-int api_dns_domainlist(struct mg_connection *conn, bool exact, bool whitelist);
+// List methods
+int api_dns_domainlist(struct mg_connection *conn);
 
 // Version method
 int api_version(struct mg_connection *conn);

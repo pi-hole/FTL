@@ -44,12 +44,11 @@ bool in_whitelist(const char *domain, const DNSCacheData *dns_cache, const int c
 bool gravityDB_get_regex_client_groups(clientsData* client, const unsigned int numregex, const regex_data *regex,
                                        const unsigned char type, const char* table, const int clientID);
 
-bool gravityDB_readTable(const int type, const char *domain, const char **message);
+bool gravityDB_readTable(const enum domainlist_type listtype, const char *domain, const char **message);
 bool gravityDB_readTableGetDomain(domainrecord *domain, const char **message);
 void gravityDB_readTableFinalize(void);
-bool gravityDB_addToTable(const int type, const char *domain,
-                          const bool enabled, const char *comment,
+bool gravityDB_addToTable(const enum domainlist_type listtype, const domainrecord domain,
                           const char **message, const enum http_method method);
-bool gravityDB_delFromTable(const int type, const char* domain, const char **message);
+bool gravityDB_delFromTable(const enum domainlist_type listtype, const char* domain, const char **message);
 
 #endif //GRAVITY_H
