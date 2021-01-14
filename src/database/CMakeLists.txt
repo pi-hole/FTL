@@ -13,6 +13,7 @@
 # headers in the build command and thus does not need to be rebuilt when headers
 # are modified.
 set(sqlite3_sources
+        shell.c
         sqlite3.c
         )
 

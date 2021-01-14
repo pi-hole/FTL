@@ -1029,3 +1029,9 @@
   printf "%s\n" "${lines[@]}"
   [[ "${lines[@]}" == *"EDNS(0) CLIENT SUBNET: Skipped ::1/128 (IPv6 loopback address)"* ]]
 }
+
+@test "Embedded SQLite3 shell available and functional" {
+  run bash -c './pihole-FTL sqlite3 -help'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "Usage: sqlite3 [OPTIONS] FILENAME [SQL]" ]]
+}
