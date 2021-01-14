@@ -24,6 +24,7 @@ typedef struct {
 	bool description_null;
 	const char *name;
 	const char *domain;
+	const char *address;
 	const char *type;
 	const char *comment;
 	const char *group_ids;

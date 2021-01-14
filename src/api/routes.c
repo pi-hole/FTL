@@ -37,12 +37,16 @@ int api_handler(struct mg_connection *conn, void *ignored)
 	{
 		ret = api_dns_cacheinfo(conn);
 	}
-	/******************************** /api/list, /api/group ****************************/
+	/******************************** /api/list, /api/group, /api/adlist ****************************/
 	else if(startsWith("/api/list", request->local_uri))
 	{
 		ret = api_list(conn);
 	}
 	else if(startsWith("/api/group", request->local_uri))
+	{
+		ret = api_list(conn);
+	}
+	else if(startsWith("/api/adlist", request->local_uri))
 	{
 		ret = api_list(conn);
 	}
