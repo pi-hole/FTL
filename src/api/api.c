@@ -993,9 +993,10 @@ void getAllQueries(const char *client_message, const int *sock)
 			CNAME_domain = getCNAMEDomainString(query);
 		}
 
-		// Get ID of blocking regex, if applicable
+		// Get ID of blocking regex, if applicable and permitted by privacy settings
 		int regex_idx = -1;
-		if (query->status == QUERY_REGEX || query->status == QUERY_REGEX_CNAME)
+		if ((query->status == QUERY_REGEX || query->status == QUERY_REGEX_CNAME) &&
+		    config.privacylevel < PRIVACY_HIDE_DOMAINS)
 		{
 			unsigned int cacheID = findCacheID(query->domainID, query->clientID, query->type);
 			DNSCacheData *dns_cache = getDNSCache(cacheID, true);
