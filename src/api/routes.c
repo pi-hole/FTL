@@ -68,6 +68,10 @@ int api_handler(struct mg_connection *conn, void *ignored)
 	{
 		ret = api_ftl_database(conn);
 	}
+	else if(startsWith("/api/ftl/system", request->local_uri))
+	{
+		ret = api_ftl_system(conn);
+	}
 	/******************************** /api/network ****************************/
 	else if(startsWith("/api/network", request->local_uri))
 	{

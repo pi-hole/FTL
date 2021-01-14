@@ -39,6 +39,7 @@ int api_stats_database_upstreams(struct mg_connection *conn);
 int api_ftl_client(struct mg_connection *conn);
 int api_ftl_dnsmasq_log(struct mg_connection *conn);
 int api_ftl_database(struct mg_connection *conn);
+int api_ftl_system(struct mg_connection *conn);
 
 // Network methods
 int api_network(struct mg_connection *conn);

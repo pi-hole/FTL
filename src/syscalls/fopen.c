@@ -28,7 +28,8 @@ FILE *FTLfopen(const char *pathname, const char *mode, const char *file, const c
 
 	// Final error checking (may have faild for some other reason then an
 	// EINTR = interrupted system call)
-	if(file_ptr == NULL)
+	// We accept "No such file or directory" as this is something we'll deal with elsewhere
+	if(file_ptr == NULL && errno != ENOENT)
 		logg("WARN: Could not fopen(\"%s\", \"%s\") in %s() (%s:%i): %s",
              pathname, mode, func, file, line, strerror(errno));
 

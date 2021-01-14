@@ -22,6 +22,8 @@
 #include "database/query-table.h"
 // getgrgid()
 #include <grp.h>
+// sysinfo()
+#include <sys/sysinfo.h>
 
 int api_ftl_client(struct mg_connection *conn)
 {
@@ -191,5 +193,130 @@ int api_ftl_database(struct mg_connection *conn)
 	JSON_OBJ_REF_STR(json, "sqlite_version", get_sqlite3_version());
 
 	// Send reply to user
+	JSON_SEND_OBJECT(json);
+}
+
+int api_ftl_system(struct mg_connection *conn)
+{
+	cJSON *json = JSON_NEW_OBJ();
+
+	const int nprocs = get_nprocs();
+	struct sysinfo info;
+	if(sysinfo(&info) != 0)
+		return send_json_error(conn, 500, "error", strerror(errno), NULL);
+
+	// Seconds since boot
+	JSON_OBJ_ADD_NUMBER(json, "uptime", info.uptime);
+
+	cJSON *ram = JSON_NEW_OBJ();
+	// Total usable main memory size
+	JSON_OBJ_ADD_NUMBER(ram, "total", info.totalram * info.mem_unit);
+	// Available memory size
+	JSON_OBJ_ADD_NUMBER(ram, "free", info.freeram * info.mem_unit);
+	// Amount of shared memory
+	JSON_OBJ_ADD_NUMBER(ram, "shared", info.sharedram * info.mem_unit);
+	// Memory used by buffers
+	JSON_OBJ_ADD_NUMBER(ram, "buffer", info.bufferram * info.mem_unit);
+	unsigned long used = info.totalram - info.freeram;
+	// The following is a fall-back from procps code for lxc containers
+	// messing around with memory information
+	if(info.sharedram + info.bufferram < used)
+		used -= info.sharedram + info.bufferram;
+	JSON_OBJ_ADD_NUMBER(ram, "used", used * info.mem_unit);
+
+	cJSON *swap = JSON_NEW_OBJ();
+	// Total swap space size
+	JSON_OBJ_ADD_NUMBER(swap, "total", info.totalswap * info.mem_unit);
+	// Swap space still available
+	JSON_OBJ_ADD_NUMBER(swap, "free", info.freeswap * info.mem_unit);
+
+	cJSON *high = JSON_NEW_OBJ();
+	// Total high memory size
+	JSON_OBJ_ADD_NUMBER(high, "total", info.totalhigh * info.mem_unit);
+	// High memory still available
+	JSON_OBJ_ADD_NUMBER(high, "free", info.freehigh * info.mem_unit);
+
+	cJSON *memory = JSON_NEW_OBJ();
+	JSON_OBJ_ADD_ITEM(memory, "ram", ram);
+	JSON_OBJ_ADD_ITEM(memory, "swap", swap);
+	JSON_OBJ_ADD_ITEM(memory, "high", high);
+	JSON_OBJ_ADD_ITEM(json, "memory", memory);
+
+	// Number of current processes
+	JSON_OBJ_ADD_NUMBER(json, "procs", info.procs);
+
+	cJSON *cpu = JSON_NEW_OBJ();
+	// Number of available processors
+	JSON_OBJ_ADD_NUMBER(cpu, "nprocs", nprocs);
+
+	// 1, 5, and 15 minute load averages (we need to convert them)
+	cJSON *load = JSON_NEW_ARRAY();
+	cJSON *percent = JSON_NEW_ARRAY();
+	float load_f[3] = { 0.f };
+	const float longfloat = 1.f / (1 << SI_LOAD_SHIFT);
+	for(unsigned int i = 0; i < 3; i++)
+	{
+		load_f[i] = longfloat * info.loads[i];
+		JSON_ARRAY_ADD_NUMBER(load, load_f[i]);
+		JSON_ARRAY_ADD_NUMBER(percent, (100.f*load_f[i]/nprocs));
+	}
+
+	// Averaged CPU usage in percent
+	JSON_OBJ_ADD_ITEM(cpu, "load", load);
+	JSON_OBJ_ADD_ITEM(cpu, "percent", percent);
+	JSON_OBJ_ADD_ITEM(json, "cpu", cpu);
+
+	// Source available temperatures
+	cJSON *sensors = JSON_NEW_ARRAY();
+	char buffer[256];
+	for(int i = 0; i < nprocs; i++)
+	{
+		FILE *f_label = NULL, *f_value = NULL;
+		// Try /sys/class/thermal/thermal_zoneX/{type,temp}
+		sprintf(buffer, "/sys/class/thermal/thermal_zone%d/type", i);
+		f_label = fopen(buffer, "r");
+		sprintf(buffer, "/sys/class/thermal/thermal_zone%d/temp", i);
+		f_value = fopen(buffer, "r");
+		if(f_label != NULL && f_value != NULL)
+		{
+			int temp = 0;
+			char label[1024];
+			if(fread(label, sizeof(label)-1, 1, f_label) > 0 && fscanf(f_value, "%d", &temp) == 1)
+			{
+				cJSON *item = JSON_NEW_OBJ();
+				JSON_OBJ_COPY_STR(item, "label", label);
+				JSON_OBJ_ADD_NUMBER(item, "value", temp < 1000 ? temp : 1e-3f*temp);
+				JSON_ARRAY_ADD_ITEM(sensors, item);
+			}
+		}
+		if(f_label != NULL)
+			fclose(f_label);
+		if(f_value != NULL)
+			fclose(f_value);
+
+		// Try /sys/class/hwmon/hwmon0X/tempX_{label,input}
+		sprintf(buffer, "/sys/class/hwmon/hwmon0/temp%d_label", i);
+		f_label = fopen(buffer, "r");
+		sprintf(buffer, "/sys/class/hwmon/hwmon0/temp%d_input", i);
+		f_value = fopen(buffer, "r");
+		if(f_label != NULL && f_value != NULL)
+		{
+			int temp = 0;
+			char label[1024];
+			if(fread(label, sizeof(label)-1, 1, f_label) > 0 && fscanf(f_value, "%d", &temp) == 1)
+			{
+				cJSON *item = JSON_NEW_OBJ();
+				JSON_OBJ_COPY_STR(item, "label", label);
+				JSON_OBJ_ADD_NUMBER(item, "value", temp < 1000 ? temp : 1e-3f*temp);
+				JSON_ARRAY_ADD_ITEM(sensors, item);
+			}
+		}
+		if(f_label != NULL)
+			fclose(f_label);
+		if(f_value != NULL)
+			fclose(f_value);
+	}
+	JSON_OBJ_ADD_ITEM(json, "sensors", sensors);
+	
 	JSON_SEND_OBJECT(json);
 }
