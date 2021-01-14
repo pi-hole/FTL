@@ -156,14 +156,6 @@ int api_handler(struct mg_connection *conn, void *ignored)
 		ret = api_version(conn);
 	}
 	/******************************** /api/auth ****************************/
-	else if(startsWith("/api/auth/login", request->local_uri))
-	{
-		ret = api_auth_login(conn);
-	}
-	else if(startsWith("/api/auth/logout", request->local_uri))
-	{
-		ret = api_auth_logout(conn);
-	}
 	else if(startsWith("/api/auth", request->local_uri))
 	{
 		ret = api_auth(conn);

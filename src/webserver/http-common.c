@@ -140,6 +140,31 @@ bool get_uint_var(const char *source, const char *var, unsigned int *num)
 	return false;
 }
 
+// Extract payload either from GET or POST data
+bool http_get_payload(struct mg_connection *conn, char *payload, const size_t size)
+{
+	const enum http_method method = http_method(conn);
+	const struct mg_request_info *request = mg_get_request_info(conn);
+	if(method == HTTP_GET && request->query_string != NULL)
+	{
+		strncpy(payload, request->query_string, size-1);
+		return true;
+	}
+
+	if(method == HTTP_POST)
+	{
+		int data_len = mg_read(conn, payload, size - 1);
+		if ((data_len < 1) || (data_len >= (int)size))
+			return false;
+
+		payload[data_len] = '\0';
+		return true;
+	}
+
+	// Everything else
+	return false;
+}
+
 bool __attribute__((pure)) startsWith(const char *path, const char *uri)
 {
 	return strncmp(path, uri, strlen(path)) == 0;

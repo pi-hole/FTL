@@ -56,8 +56,6 @@ int api_version(struct mg_connection *conn);
 // Auth method
 int check_client_auth(struct mg_connection *conn);
 int api_auth(struct mg_connection *conn);
-int api_auth_login(struct mg_connection *conn);
-int api_auth_logout(struct mg_connection *conn);
 
 // Settings methods
 int api_settings_web(struct mg_connection *conn);

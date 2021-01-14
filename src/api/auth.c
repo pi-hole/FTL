@@ -31,9 +31,10 @@ static struct {
 	char sid[SID_SIZE];
 } auth_data[API_MAX_CLIENTS] = {{false, 0, {0}, {0}}};
 
+#define CHALLENGE_SIZE (2*SHA256_DIGEST_SIZE)
 static struct {
-	char challenge[2*SHA256_DIGEST_SIZE + 1];
-	char response[2*SHA256_DIGEST_SIZE + 1];
+	char challenge[CHALLENGE_SIZE + 1];
+	char response[CHALLENGE_SIZE + 1];
 	time_t valid_until;
 } challenges[API_MAX_CHALLENGES] = {{{0}, {0}, 0}};
 
@@ -79,18 +80,28 @@ int check_client_auth(struct mg_connection *conn)
 	char sid[SID_SIZE];
 	bool sid_avail = http_get_cookie_str(conn, "sid", sid, SID_SIZE);
 
-	// If not, does the client provide a session ID via GET?
-	if(!sid_avail && request->query_string != NULL)
+	// If not, does the client provide a session ID via GET/POST?
+	char payload[1024] = { 0 };
+	bool sid_payload = false;
+	if(!sid_avail && http_get_payload(conn, payload, sizeof(payload)))
 	{
-		sid_avail = GET_VAR("forward", sid, request->query_string) > 0;
+		sid_avail = GET_VAR("sid", sid, payload) > 0;
+
+		// "+" may have been replaced by " ", undo this here
+		for(unsigned int i = 0; i < SID_SIZE; i++)
+			if(sid[i] == ' ')
+				sid[i] = '+';
+
+		// Zero terminate
 		sid[SID_SIZE-1] = '\0';
+		sid_payload = true;
 	}
 
 	if(sid_avail)
 	{
 		const time_t now = time(NULL);
 		if(config.debug & DEBUG_API)
-			logg("API: Read sid=%s", sid);
+			logg("API: Read sid=\"%s\" from %s", sid, sid_payload ? "payload" : "cookie");
 
 		for(unsigned int i = 0; i < API_MAX_CLIENTS; i++)
 		{
@@ -229,7 +240,7 @@ static int send_api_auth_status(struct mg_connection *conn, const int user_id, c
 		JSON_SEND_OBJECT(json);
 	}
 
-	if(user_id > API_AUTH_UNUSED && method == HTTP_GET)
+	if(user_id > API_AUTH_UNUSED && (method == HTTP_GET || method == HTTP_POST))
 	{
 		if(config.debug & DEBUG_API)
 			logg("API Auth status: OK");
@@ -249,7 +260,7 @@ static int send_api_auth_status(struct mg_connection *conn, const int user_id, c
 	else if(user_id > API_AUTH_UNUSED && method == HTTP_DELETE)
 	{
 		if(config.debug & DEBUG_API)
-			logg("API Auth status: Revoking, asking to delete cookie");
+			logg("API Auth status: Logout, asking to delete cookie");
 
 		// Revoke client authentication. This slot can be used by a new client afterwards.
 		delete_session(user_id);
@@ -312,21 +323,6 @@ static void generateResponse(const unsigned int idx)
 	sha256_hex(raw_response, challenges[idx].response);
 }
 
-int api_auth(struct mg_connection *conn)
-{
-	// Check HTTP method
-	const enum http_method method = http_method(conn);
-	if(method != HTTP_GET)
-		return 0; // error 404
-
-	// Did the client authenticate before and we can validate this?
-	int user_id = check_client_auth(conn);
-
-	// Send back status, extending validity of the session
-	const time_t now = time(NULL);
-	return send_api_auth_status(conn, user_id, method, now);
-}
-
 static void generateSID(char *sid)
 {
 	uint8_t raw_sid[SID_SIZE];
@@ -342,14 +338,14 @@ static void generateSID(char *sid)
 	sid[SID_SIZE-1] = '\0';
 }
 
-// Login action
-int api_auth_login(struct mg_connection *conn)
+// api/auth
+//  GET: Check authentication and obtain a challenge
+//  POST: Login
+//  DELETE: Logout
+int api_auth(struct mg_connection *conn)
 {
 	// Check HTTP method
 	const enum http_method method = http_method(conn);
-	if(method != HTTP_GET)
-		return 0; // error 404
-
 	const time_t now = time(NULL);
 
 	char *password_hash = get_password_hash();
@@ -358,8 +354,47 @@ int api_auth_login(struct mg_connection *conn)
 	int user_id = API_AUTH_UNUSED;
 	const struct mg_request_info *request = mg_get_request_info(conn);
 
+	bool reponse_set = false;
 	char response[256] = { 0 };
-	const bool reponse_set = request->query_string != NULL && GET_VAR("response", response, request->query_string) > 0;
+
+	// Login attempt, extract response
+	if(method == HTTP_POST)
+	{
+		// Extract payload
+		char payload[1024] = { 0 };
+		http_get_payload(conn, payload, sizeof(payload));
+
+		// Try to extract response from payload
+		int len = 0;
+		if((len = GET_VAR("response", response, payload)) != CHALLENGE_SIZE)
+		{
+			const char *message = len < 0 ? "No response found" : "Invalid response length";
+			if(config.debug & DEBUG_API)
+				logg("API auth error: %s", message);
+			return send_json_error(conn, 400,
+			                      "bad_request",
+			                      message,
+			                      NULL);
+		}
+		reponse_set = true;
+	}
+
+	// Did the client authenticate before and we can validate this?
+	user_id = check_client_auth(conn);
+
+	// Logout attempt
+	if(method == HTTP_DELETE)
+	{
+		if(config.debug & DEBUG_API)
+			logg("API Auth: User with ID %i wants to log out", user_id);
+		return send_api_auth_status(conn, user_id, method, now);
+	}
+
+	// If this is a valid session, we can exit early at this point
+	if(user_id != API_AUTH_UNUSED)
+		return send_api_auth_status(conn, user_id, method, now);
+
+	// Login attempt and/or auth check
 	if(reponse_set || empty_password)
 	{
 		// - Client tries to authenticate using a challenge response, or
@@ -407,7 +442,7 @@ int api_auth_login(struct mg_connection *conn)
 			}
 			if(user_id == API_AUTH_UNUSED)
 			{
-				logg("WARNING: No free API seats available, not authenticating user");
+				logg("WARNING: No free API seats available, not authenticating client");
 			}
 		}
 		else if(config.debug & DEBUG_API)
@@ -458,25 +493,16 @@ int api_auth_login(struct mg_connection *conn)
 		free(password_hash);
 		password_hash = NULL;
 
+		if(config.debug & DEBUG_API)
+		{
+			logg("API: Sending challenge=%s, expecting response=%s",
+			     challenges[i].challenge, challenges[i].response);
+		}
+
 		// Return to user
 		cJSON *json = JSON_NEW_OBJ();
 		JSON_OBJ_REF_STR(json, "challenge", challenges[i].challenge);
-		cJSON *validity = JSON_NEW_OBJ();
-		JSON_OBJ_ADD_NUMBER(validity, "from", now);
-		JSON_OBJ_ADD_NUMBER(validity, "until", challenges[i].valid_until);
-		JSON_OBJ_ADD_ITEM(json, "validity", validity);
+		get_session_object(conn, json, -1, now);
 		JSON_SEND_OBJECT(json);
 	}
-}
-
-int api_auth_logout(struct mg_connection *conn)
-{
-	// Check HTTP method
-	const enum http_method method = http_method(conn);
-	if(method != HTTP_DELETE)
-		return 0; // error 404
-
-	// Did the client authenticate before and we can validate this?
-	int user_id = check_client_auth(conn);
-	return send_api_auth_status(conn, user_id, HTTP_DELETE, time(NULL));
 }
