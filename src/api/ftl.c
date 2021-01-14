@@ -24,6 +24,10 @@
 #include <grp.h>
 // sysinfo()
 #include <sys/sysinfo.h>
+// get_blockingstatus()
+#include "../setupVars.h"
+// counters
+#include "../shmem.h"
 
 int api_ftl_client(struct mg_connection *conn)
 {
@@ -196,6 +200,33 @@ int api_ftl_database(struct mg_connection *conn)
 	JSON_SEND_OBJECT(json);
 }
 
+static int read_temp_sensor(struct mg_connection *conn,
+                            const char *label_path,
+                            const char *value_path,
+                            cJSON *object)
+{
+	FILE *f_label = fopen(label_path, "r");
+	FILE *f_value = fopen(value_path, "r");
+	if(f_label != NULL && f_value != NULL)
+	{
+		int temp = 0;
+		char label[1024];
+		if(fread(label, sizeof(label)-1, 1, f_label) > 0 && fscanf(f_value, "%d", &temp) == 1)
+		{
+			cJSON *item = JSON_NEW_OBJ();
+			JSON_OBJ_COPY_STR(item, "label", label);
+			JSON_OBJ_ADD_NUMBER(item, "value", temp < 1000 ? temp : 1e-3f*temp);
+			JSON_ARRAY_ADD_ITEM(object, item);
+		}
+	}
+	if(f_label != NULL)
+		fclose(f_label);
+	if(f_value != NULL)
+		fclose(f_value);
+
+	return 0;
+}
+
 int api_ftl_system(struct mg_connection *conn)
 {
 	cJSON *json = JSON_NEW_OBJ();
@@ -205,41 +236,58 @@ int api_ftl_system(struct mg_connection *conn)
 	if(sysinfo(&info) != 0)
 		return send_json_error(conn, 500, "error", strerror(errno), NULL);
 
+	// Extract payload
+	char payload[1024] = { 0 };
+	bool full_info = false;
+	if(http_get_payload(conn, payload, sizeof(payload)))
+		get_bool_var(payload, "full", &full_info);
+
 	// Seconds since boot
 	JSON_OBJ_ADD_NUMBER(json, "uptime", info.uptime);
 
+	cJSON *memory = JSON_NEW_OBJ();
 	cJSON *ram = JSON_NEW_OBJ();
 	// Total usable main memory size
 	JSON_OBJ_ADD_NUMBER(ram, "total", info.totalram * info.mem_unit);
-	// Available memory size
-	JSON_OBJ_ADD_NUMBER(ram, "free", info.freeram * info.mem_unit);
-	// Amount of shared memory
-	JSON_OBJ_ADD_NUMBER(ram, "shared", info.sharedram * info.mem_unit);
-	// Memory used by buffers
-	JSON_OBJ_ADD_NUMBER(ram, "buffer", info.bufferram * info.mem_unit);
+	if(full_info)
+	{
+		// Available memory size
+		JSON_OBJ_ADD_NUMBER(ram, "free", info.freeram * info.mem_unit);
+		// Amount of shared memory
+		JSON_OBJ_ADD_NUMBER(ram, "shared", info.sharedram * info.mem_unit);
+		// Memory used by buffers
+		JSON_OBJ_ADD_NUMBER(ram, "buffer", info.bufferram * info.mem_unit);
+	}
 	unsigned long used = info.totalram - info.freeram;
 	// The following is a fall-back from procps code for lxc containers
 	// messing around with memory information
 	if(info.sharedram + info.bufferram < used)
 		used -= info.sharedram + info.bufferram;
 	JSON_OBJ_ADD_NUMBER(ram, "used", used * info.mem_unit);
+	JSON_OBJ_ADD_ITEM(memory, "ram", ram);
 
 	cJSON *swap = JSON_NEW_OBJ();
 	// Total swap space size
 	JSON_OBJ_ADD_NUMBER(swap, "total", info.totalswap * info.mem_unit);
-	// Swap space still available
-	JSON_OBJ_ADD_NUMBER(swap, "free", info.freeswap * info.mem_unit);
-
-	cJSON *high = JSON_NEW_OBJ();
-	// Total high memory size
-	JSON_OBJ_ADD_NUMBER(high, "total", info.totalhigh * info.mem_unit);
-	// High memory still available
-	JSON_OBJ_ADD_NUMBER(high, "free", info.freehigh * info.mem_unit);
-
-	cJSON *memory = JSON_NEW_OBJ();
-	JSON_OBJ_ADD_ITEM(memory, "ram", ram);
+	if(full_info)
+	{
+		// Swap space still available
+		JSON_OBJ_ADD_NUMBER(swap, "free", info.freeswap * info.mem_unit);
+	}
+	// Used swap space
+	JSON_OBJ_ADD_NUMBER(swap, "used", (info.totalswap - info.freeswap) * info.mem_unit);
 	JSON_OBJ_ADD_ITEM(memory, "swap", swap);
-	JSON_OBJ_ADD_ITEM(memory, "high", high);
+
+	if(full_info)
+	{
+		cJSON *high = JSON_NEW_OBJ();
+		// Total high memory size
+		JSON_OBJ_ADD_NUMBER(high, "total", info.totalhigh * info.mem_unit);
+		// High memory still available
+		JSON_OBJ_ADD_NUMBER(high, "free", info.freehigh * info.mem_unit);
+		JSON_OBJ_ADD_ITEM(memory, "high", high);
+	}
+
 	JSON_OBJ_ADD_ITEM(json, "memory", memory);
 
 	// Number of current processes
@@ -266,57 +314,36 @@ int api_ftl_system(struct mg_connection *conn)
 	JSON_OBJ_ADD_ITEM(cpu, "percent", percent);
 	JSON_OBJ_ADD_ITEM(json, "cpu", cpu);
 
-	// Source available temperatures
+	// Source available temperatures, we try to read as many
+	// temperature sensors as there are cores on this system
 	cJSON *sensors = JSON_NEW_ARRAY();
-	char buffer[256];
+	char label_path[256], value_path[256];
+	int ret;
 	for(int i = 0; i < nprocs; i++)
 	{
-		FILE *f_label = NULL, *f_value = NULL;
 		// Try /sys/class/thermal/thermal_zoneX/{type,temp}
-		sprintf(buffer, "/sys/class/thermal/thermal_zone%d/type", i);
-		f_label = fopen(buffer, "r");
-		sprintf(buffer, "/sys/class/thermal/thermal_zone%d/temp", i);
-		f_value = fopen(buffer, "r");
-		if(f_label != NULL && f_value != NULL)
-		{
-			int temp = 0;
-			char label[1024];
-			if(fread(label, sizeof(label)-1, 1, f_label) > 0 && fscanf(f_value, "%d", &temp) == 1)
-			{
-				cJSON *item = JSON_NEW_OBJ();
-				JSON_OBJ_COPY_STR(item, "label", label);
-				JSON_OBJ_ADD_NUMBER(item, "value", temp < 1000 ? temp : 1e-3f*temp);
-				JSON_ARRAY_ADD_ITEM(sensors, item);
-			}
-		}
-		if(f_label != NULL)
-			fclose(f_label);
-		if(f_value != NULL)
-			fclose(f_value);
+		sprintf(label_path, "/sys/class/thermal/thermal_zone%d/type", i);
+		sprintf(value_path, "/sys/class/thermal/thermal_zone%d/temp", i);
+		ret = read_temp_sensor(conn, label_path, value_path, sensors);
+		// Error handling
+		if(ret != 0)
+			return ret;
 
 		// Try /sys/class/hwmon/hwmon0X/tempX_{label,input}
-		sprintf(buffer, "/sys/class/hwmon/hwmon0/temp%d_label", i);
-		f_label = fopen(buffer, "r");
-		sprintf(buffer, "/sys/class/hwmon/hwmon0/temp%d_input", i);
-		f_value = fopen(buffer, "r");
-		if(f_label != NULL && f_value != NULL)
-		{
-			int temp = 0;
-			char label[1024];
-			if(fread(label, sizeof(label)-1, 1, f_label) > 0 && fscanf(f_value, "%d", &temp) == 1)
-			{
-				cJSON *item = JSON_NEW_OBJ();
-				JSON_OBJ_COPY_STR(item, "label", label);
-				JSON_OBJ_ADD_NUMBER(item, "value", temp < 1000 ? temp : 1e-3f*temp);
-				JSON_ARRAY_ADD_ITEM(sensors, item);
-			}
-		}
-		if(f_label != NULL)
-			fclose(f_label);
-		if(f_value != NULL)
-			fclose(f_value);
+		sprintf(label_path, "/sys/class/hwmon/hwmon0/temp%d_label", i);
+		sprintf(value_path, "/sys/class/hwmon/hwmon0/temp%d_input", i);
+		ret = read_temp_sensor(conn, label_path, value_path, sensors);
+		// Error handling
+		if(ret != 0)
+			return ret;
 	}
 	JSON_OBJ_ADD_ITEM(json, "sensors", sensors);
+
+	cJSON *dns = JSON_NEW_OBJ();
+	const bool blocking = get_blockingstatus();
+	JSON_OBJ_ADD_BOOL(dns, "blocking", blocking); // same reply type as in /api/dns/status
+	JSON_OBJ_ADD_NUMBER(dns, "gravity_size", counters->gravity);
+	JSON_OBJ_ADD_ITEM(json, "dns", dns);
 	
 	JSON_SEND_OBJECT(json);
 }
