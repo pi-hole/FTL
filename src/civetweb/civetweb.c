@@ -5093,32 +5093,43 @@ mg_send_http_error_impl(struct mg_connection *conn,
 
 
 /************************************** Pi-hole method **************************************/
-void my_send_http_error_headers(struct mg_connection *conn,
-                                int status, const char* mime_type,
-                                long long content_length)
+int my_send_http_error_headers(struct mg_connection *conn,
+                               int status, const char* mime_type,
+                               long long content_length)
 {
-	/* Set status (for log) */
-	conn->status_code = status;
-	const char *status_text = mg_get_response_code_text(conn, status);
-	mg_printf(conn, "HTTP/1.1 %d %s\r\n", status, status_text);
+	if ((mime_type == NULL) || (*mime_type == 0)) {
+		/* No content type defined: default to text/html */
+		mime_type = "text/html";
+	}
 
 	mg_response_header_start(conn, status);
 	send_no_cache_header(conn);
 	send_additional_header(conn);
+	mg_response_header_add(conn, "Content-Type", mime_type, -1);
+	if (content_length < 0) {
+		/* Size not known. Use chunked encoding (HTTP/1.x) */
+		if (conn->protocol_type == PROTOCOL_TYPE_HTTP1) {
+			/* Only HTTP/1.x defines "chunked" encoding, HTTP/2 does not*/
+			mg_response_header_add(conn, "Transfer-Encoding", "chunked", -1);
+		}
+	} else {
+		char len[32];
+		int trunc = 0;
+		mg_snprintf(conn,
+		            &trunc,
+		            len,
+		            sizeof(len),
+		            "%" UINT64_FMT,
+		            (uint64_t)content_length);
+		if (!trunc) {
+			/* Since 32 bytes is enough to hold any 64 bit decimal number,
+			 * !trunc is always true */
+			mg_response_header_add(conn, "Content-Length", len, -1);
+		}
+	}
 	mg_response_header_send(conn);
-	conn->must_close = 1;
 
-	char date[64];
-	time_t curtime = time(NULL);
-	gmt_time_string(date, sizeof(date), &curtime);
-	mg_printf(conn, "Content-Type: %s\r\n"
-			"Date: %s\r\n"
-			"Connection: close\r\n",
-			mime_type,
-			date);
-
-	mg_printf(conn, "Content-Length: %" UINT64_FMT "\r\n\r\n",
-			(uint64_t)content_length);
+	return 0;
 }
 
 /********************************************************************************************/

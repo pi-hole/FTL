@@ -27,9 +27,9 @@
 static struct {
 	bool used;
 	time_t valid_until;
-	char *remote_addr;
+	char remote_addr[48]; // Large enough for IPv4 and IPv6 addresses, hard-coded in civetweb.h as mg_request_info.remote_addr
 	char sid[SID_SIZE];
-} auth_data[API_MAX_CLIENTS] = {{false, 0, NULL, {0}}};
+} auth_data[API_MAX_CLIENTS] = {{false, 0, {0}, {0}}};
 
 static struct {
 	char challenge[2*SHA256_DIGEST_SIZE + 1];
@@ -64,7 +64,9 @@ int check_client_auth(struct mg_connection *conn)
 	// Is the user requesting from localhost?
 	if(!httpsettings.api_auth_for_localhost && (strcmp(request->remote_addr, LOCALHOSTv4) == 0 ||
 	                                            strcmp(request->remote_addr, LOCALHOSTv6) == 0))
+	{
 		return API_AUTH_LOCALHOST;
+	}
 
 	// Check if there is a password hash
 	char *password_hash = get_password_hash();
@@ -86,7 +88,7 @@ int check_client_auth(struct mg_connection *conn)
 
 	if(sid_avail)
 	{
-		time_t now = time(NULL);
+		const time_t now = time(NULL);
 		if(config.debug & DEBUG_API)
 			logg("API: Read sid=%s", sid);
 
@@ -125,23 +127,22 @@ int check_client_auth(struct mg_connection *conn)
 				char timestr[128];
 				get_timestr(timestr, auth_data[user_id].valid_until);
 				logg("API: Recognized known user: user_id %i valid_until: %s remote_addr %s",
-					user_id, timestr, auth_data[user_id].remote_addr);
+				     user_id, timestr, auth_data[user_id].remote_addr);
 			}
 		}
 		else if(config.debug & DEBUG_API)
-			logg("API Authentification: FAIL (cookie invalid/expired)");
+			logg("API Authentification: FAIL (SID invalid/expired)");
 	}
 	else if(config.debug & DEBUG_API)
-		logg("API Authentification: FAIL (no cookie provided)");
+		logg("API Authentification: FAIL (no SID provided)");
 
 	return user_id;
 }
 
 // Check received response
-static bool check_response(const char *response)
+static bool check_response(const char *response, const time_t now)
 {
 	// Loop over all responses and try to validate response
-	time_t now = time(NULL);
 	for(unsigned int i = 0; i < API_MAX_CHALLENGES; i++)
 	{
 		// Skip expired entries
@@ -161,38 +162,77 @@ static bool check_response(const char *response)
 	return false;
 }
 
-static int send_api_auth_status(struct mg_connection *conn, const int user_id, const int method)
+static int get_session_object(struct mg_connection *conn, cJSON *json, const int user_id, const time_t now)
+{
+	// Authentication not needed
+	if(user_id == API_AUTH_LOCALHOST || user_id == API_AUTH_EMPTYPASS)
+	{
+		cJSON *session = JSON_NEW_OBJ();
+		JSON_OBJ_ADD_BOOL(session, "valid", true);
+		JSON_OBJ_ADD_NULL(session, "sid");
+		JSON_OBJ_ADD_NULL(session, "validity");
+		JSON_OBJ_ADD_ITEM(json, "session", session);
+		return 0;
+	}
+
+	// Valid session
+	if(user_id > API_AUTH_UNUSED && auth_data[user_id].used)
+	{
+		cJSON *session = JSON_NEW_OBJ();
+		JSON_OBJ_ADD_BOOL(session, "valid", true);
+		JSON_OBJ_REF_STR(session, "sid", auth_data[user_id].sid);
+		JSON_OBJ_ADD_NUMBER(session, "validity", auth_data[user_id].valid_until - now);
+		JSON_OBJ_ADD_ITEM(json, "session", session);
+		return 0;
+	}
+
+	// No valid session
+	cJSON *session = JSON_NEW_OBJ();
+	JSON_OBJ_ADD_BOOL(session, "valid", false);
+	JSON_OBJ_ADD_NULL(session, "sid");
+	JSON_OBJ_ADD_NULL(session, "validity");
+	JSON_OBJ_ADD_ITEM(json, "session", session);
+	return 0;
+}
+
+static void delete_session(const int user_id)
+{
+	// Skip if nothing to be done here
+	if(user_id < 0)
+		return;
+
+	auth_data[user_id].used = false;
+	auth_data[user_id].valid_until = 0;
+	memset(auth_data[user_id].sid, 0, sizeof(auth_data[user_id].sid));
+	memset(auth_data[user_id].remote_addr, 0, sizeof(auth_data[user_id].remote_addr));
+}
+
+static int send_api_auth_status(struct mg_connection *conn, const int user_id, const int method, const time_t now)
 {
 	if(user_id == API_AUTH_LOCALHOST)
 	{
 		if(config.debug & DEBUG_API)
-			logg("API Authentification: OK (localhost does not need auth)");
+			logg("API Auth status: OK (localhost does not need auth)");
 
 		cJSON *json = JSON_NEW_OBJ();
-		JSON_OBJ_REF_STR(json, "status", "success");
-		JSON_OBJ_ADD_NULL(json, "sid");
+		get_session_object(conn, json, user_id, now);
 		JSON_SEND_OBJECT(json);
 	}
 
 	if(user_id == API_AUTH_EMPTYPASS)
 	{
 		if(config.debug & DEBUG_API)
-			logg("API Authentification: OK (empty password)");
+			logg("API Auth status: OK (empty password)");
 
 		cJSON *json = JSON_NEW_OBJ();
-		JSON_OBJ_REF_STR(json, "status", "success");
-		JSON_OBJ_ADD_NULL(json, "sid");
+		get_session_object(conn, json, user_id, now);
 		JSON_SEND_OBJECT(json);
 	}
 
 	if(user_id > API_AUTH_UNUSED && method == HTTP_GET)
 	{
 		if(config.debug & DEBUG_API)
-			logg("API Authentification: OK");
-
-		cJSON *json = JSON_NEW_OBJ();
-		JSON_OBJ_REF_STR(json, "status", "success");
-		JSON_OBJ_REF_STR(json, "sid", auth_data[user_id].sid);
+			logg("API Auth status: OK");
 
 		// Ten minutes validity
 		if(snprintf(pi_hole_extra_headers, sizeof(pi_hole_extra_headers),
@@ -202,27 +242,32 @@ static int send_api_auth_status(struct mg_connection *conn, const int user_id, c
 			return send_json_error(conn, 500, "internal_error", "Internal server error", NULL);
 		}
 
+		cJSON *json = JSON_NEW_OBJ();
+		get_session_object(conn, json, user_id, now);
 		JSON_SEND_OBJECT(json);
 	}
 	else if(user_id > API_AUTH_UNUSED && method == HTTP_DELETE)
 	{
 		if(config.debug & DEBUG_API)
-			logg("API Authentification: Revoking");
+			logg("API Auth status: Revoking, asking to delete cookie");
 
-		// Revoke client authentication. This slot can be used by a new client, afterwards.
-		auth_data[user_id].used = false;
-		auth_data[user_id].valid_until = 0;
-		free(auth_data[user_id].remote_addr);
-		auth_data[user_id].remote_addr = NULL;
-		// We leave the old SID, it will be replaced next time the slot is used
+		// Revoke client authentication. This slot can be used by a new client afterwards.
+		delete_session(user_id);
 
 		strncpy(pi_hole_extra_headers, "Set-Cookie: sid=deleted; Path=/; Max-Age=-1\r\n", sizeof(pi_hole_extra_headers));
-		return send_json_success(conn);
+		cJSON *json = JSON_NEW_OBJ();
+		get_session_object(conn, json, user_id, now);
+		JSON_SEND_OBJECT_CODE(json, 410); // 410 Gone
 	}
 	else
 	{
+		if(config.debug & DEBUG_API)
+			logg("API Auth status: Invalid, asking to delete cookie");
+
 		strncpy(pi_hole_extra_headers, "Set-Cookie: sid=deleted; Path=/; Max-Age=-1\r\n", sizeof(pi_hole_extra_headers));
-		return send_json_unauthorized(conn);
+		cJSON *json = JSON_NEW_OBJ();
+		get_session_object(conn, json, user_id, now);
+		JSON_SEND_OBJECT_CODE(json, 401); // 401 Unauthorized
 	}
 }
 
@@ -276,7 +321,10 @@ int api_auth(struct mg_connection *conn)
 
 	// Did the client authenticate before and we can validate this?
 	int user_id = check_client_auth(conn);
-	return send_api_auth_status(conn, user_id, HTTP_GET);
+
+	// Send back status, extending validity of the session
+	const time_t now = time(NULL);
+	return send_api_auth_status(conn, user_id, method, now);
 }
 
 static void generateSID(char *sid)
@@ -302,6 +350,8 @@ int api_auth_login(struct mg_connection *conn)
 	if(method != HTTP_GET)
 		return 0; // error 404
 
+	const time_t now = time(NULL);
+
 	char *password_hash = get_password_hash();
 	const bool empty_password = (strlen(password_hash) == 0u);
 
@@ -314,11 +364,10 @@ int api_auth_login(struct mg_connection *conn)
 	{
 		// - Client tries to authenticate using a challenge response, or
 		// - There no password on this machine
-		const bool response_correct = check_response(response);
+		const bool response_correct = check_response(response, now);
 		if(response_correct || empty_password)
 		{
 			// Accepted
-			time_t now = time(NULL);
 			for(unsigned int i = 0; i < API_MAX_CLIENTS; i++)
 			{
 				// Expired slow, mark as unused
@@ -330,10 +379,7 @@ int api_auth_login(struct mg_connection *conn)
 						logg("API: Session of client %u (%s) expired, freeing...",
 						     i, auth_data[i].remote_addr);
 					}
-					auth_data[i].used = false;
-					auth_data[i].valid_until = 0;
-					free(auth_data[i].remote_addr);
-					auth_data[i].remote_addr = NULL;
+					delete_session(user_id);
 				}
 
 				// Found unused authentication slot (might have been freed before)
@@ -341,7 +387,8 @@ int api_auth_login(struct mg_connection *conn)
 				{
 					auth_data[i].used = true;
 					auth_data[i].valid_until = now + httpsettings.session_timeout;
-					auth_data[i].remote_addr = strdup(request->remote_addr);
+					strncpy(auth_data[i].remote_addr, request->remote_addr, sizeof(auth_data[i].remote_addr));
+					auth_data[i].remote_addr[sizeof(auth_data[i].remote_addr)-1] = '\0';
 					generateSID(auth_data[i].sid);
 
 					user_id = i;
@@ -354,7 +401,7 @@ int api_auth_login(struct mg_connection *conn)
 			{
 				char timestr[128];
 				get_timestr(timestr, auth_data[user_id].valid_until);
-				logg("API: Registered new user: user_id %i valid_until: %s remote_addr %s (%s)",
+				logg("API: Registered new user: user_id %i valid_until: %s remote_addr %s (accepted due to %s)",
 				     user_id, timestr, auth_data[user_id].remote_addr,
 				     response_correct ? "correct response" : "empty password");
 			}
@@ -371,14 +418,13 @@ int api_auth_login(struct mg_connection *conn)
 		// Free allocated memory
 		free(password_hash);
 		password_hash = NULL;
-		return send_api_auth_status(conn, user_id, HTTP_GET);
+		return send_api_auth_status(conn, user_id, method, now);
 	}
 	else
 	{
 		// Client wants to get a challenge
 		// Generate a challenge
 		unsigned int i;
-		const time_t now = time(NULL);
 
 		// Get an empty/expired slot
 		for(i = 0; i < API_MAX_CHALLENGES; i++)
@@ -415,7 +461,10 @@ int api_auth_login(struct mg_connection *conn)
 		// Return to user
 		cJSON *json = JSON_NEW_OBJ();
 		JSON_OBJ_REF_STR(json, "challenge", challenges[i].challenge);
-		JSON_OBJ_ADD_NUMBER(json, "valid_until", challenges[i].valid_until);
+		cJSON *validity = JSON_NEW_OBJ();
+		JSON_OBJ_ADD_NUMBER(validity, "from", now);
+		JSON_OBJ_ADD_NUMBER(validity, "until", challenges[i].valid_until);
+		JSON_OBJ_ADD_ITEM(json, "validity", validity);
 		JSON_SEND_OBJECT(json);
 	}
 }
@@ -429,5 +478,5 @@ int api_auth_logout(struct mg_connection *conn)
 
 	// Did the client authenticate before and we can validate this?
 	int user_id = check_client_auth(conn);
-	return send_api_auth_status(conn, user_id, HTTP_DELETE);
+	return send_api_auth_status(conn, user_id, HTTP_DELETE, time(NULL));
 }
