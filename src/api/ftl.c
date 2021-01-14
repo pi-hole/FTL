@@ -63,7 +63,7 @@ fifologData *fifo_log = NULL;
 int api_ftl_dnsmasq_log(struct mg_connection *conn)
 {
 	// Verify requesting client is allowed to see this ressource
-	if(check_client_auth(conn) < 0)
+	if(check_client_auth(conn) == API_AUTH_UNAUTHORIZED)
 	{
 		return send_json_unauthorized(conn);
 	}
@@ -128,7 +128,7 @@ int api_ftl_dnsmasq_log(struct mg_connection *conn)
 int api_ftl_database(struct mg_connection *conn)
 {
 	// Verify requesting client is allowed to see this ressource
-	if(check_client_auth(conn) < 0)
+	if(check_client_auth(conn) == API_AUTH_UNAUTHORIZED)
 	{
 		send_json_unauthorized(conn);
 	}

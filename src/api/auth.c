@@ -54,9 +54,6 @@ static void sha256_hex(uint8_t *data, char *buffer)
 // Returns >= 0 for any valid authentication
 #define LOCALHOSTv4 "127.0.0.1"
 #define LOCALHOSTv6 "::1"
-#define API_AUTH_UNUSED -1
-#define API_AUTH_LOCALHOST -2
-#define API_AUTH_EMPTYPASS -3
 int check_client_auth(struct mg_connection *conn)
 {
 	int user_id = -1;
@@ -114,7 +111,7 @@ int check_client_auth(struct mg_connection *conn)
 				break;
 			}
 		}
-		if(user_id > API_AUTH_UNUSED)
+		if(user_id > API_AUTH_UNAUTHORIZED)
 		{
 			// Authentication succesful:
 			// - We know this client
@@ -187,7 +184,7 @@ static int get_session_object(struct mg_connection *conn, cJSON *json, const int
 	}
 
 	// Valid session
-	if(user_id > API_AUTH_UNUSED && auth_data[user_id].used)
+	if(user_id > API_AUTH_UNAUTHORIZED && auth_data[user_id].used)
 	{
 		cJSON *session = JSON_NEW_OBJ();
 		JSON_OBJ_ADD_BOOL(session, "valid", true);
@@ -240,7 +237,7 @@ static int send_api_auth_status(struct mg_connection *conn, const int user_id, c
 		JSON_SEND_OBJECT(json);
 	}
 
-	if(user_id > API_AUTH_UNUSED && (method == HTTP_GET || method == HTTP_POST))
+	if(user_id > API_AUTH_UNAUTHORIZED && (method == HTTP_GET || method == HTTP_POST))
 	{
 		if(config.debug & DEBUG_API)
 			logg("API Auth status: OK");
@@ -257,7 +254,7 @@ static int send_api_auth_status(struct mg_connection *conn, const int user_id, c
 		get_session_object(conn, json, user_id, now);
 		JSON_SEND_OBJECT(json);
 	}
-	else if(user_id > API_AUTH_UNUSED && method == HTTP_DELETE)
+	else if(user_id > API_AUTH_UNAUTHORIZED && method == HTTP_DELETE)
 	{
 		if(config.debug & DEBUG_API)
 			logg("API Auth status: Logout, asking to delete cookie");
@@ -351,7 +348,7 @@ int api_auth(struct mg_connection *conn)
 	char *password_hash = get_password_hash();
 	const bool empty_password = (strlen(password_hash) == 0u);
 
-	int user_id = API_AUTH_UNUSED;
+	int user_id = API_AUTH_UNAUTHORIZED;
 	const struct mg_request_info *request = mg_get_request_info(conn);
 
 	bool reponse_set = false;
@@ -391,7 +388,7 @@ int api_auth(struct mg_connection *conn)
 	}
 
 	// If this is a valid session, we can exit early at this point
-	if(user_id != API_AUTH_UNUSED)
+	if(user_id != API_AUTH_UNAUTHORIZED)
 		return send_api_auth_status(conn, user_id, method, now);
 
 	// Login attempt and/or auth check
@@ -432,7 +429,7 @@ int api_auth(struct mg_connection *conn)
 			}
 
 			// Debug logging
-			if(config.debug & DEBUG_API && user_id > API_AUTH_UNUSED)
+			if(config.debug & DEBUG_API && user_id > API_AUTH_UNAUTHORIZED)
 			{
 				char timestr[128];
 				get_timestr(timestr, auth_data[user_id].valid_until);
@@ -440,7 +437,7 @@ int api_auth(struct mg_connection *conn)
 				     user_id, timestr, auth_data[user_id].remote_addr,
 				     response_correct ? "correct response" : "empty password");
 			}
-			if(user_id == API_AUTH_UNUSED)
+			if(user_id == API_AUTH_UNAUTHORIZED)
 			{
 				logg("WARNING: No free API seats available, not authenticating client");
 			}

@@ -175,7 +175,7 @@ int api_stats_top_domains(bool blocked, struct mg_connection *conn)
 	bool audit = false;
 
 	// Verify requesting client is allowed to see this ressource
-	if(check_client_auth(conn) < 0)
+	if(check_client_auth(conn) == API_AUTH_UNAUTHORIZED)
 	{
 		return send_json_unauthorized(conn);
 	}
@@ -333,7 +333,7 @@ int api_stats_top_clients(bool blocked, struct mg_connection *conn)
 	bool includezeroclients = false;
 
 	// Verify requesting client is allowed to see this ressource
-	if(check_client_auth(conn) < 0)
+	if(check_client_auth(conn) == API_AUTH_UNAUTHORIZED)
 	{
 		return send_json_unauthorized(conn);
 	}
@@ -457,7 +457,7 @@ int api_stats_upstreams(struct mg_connection *conn)
 	int temparray[counters->forwarded][2];
 
 	// Verify requesting client is allowed to see this ressource
-	if(check_client_auth(conn) < 0)
+	if(check_client_auth(conn) == API_AUTH_UNAUTHORIZED)
 	{
 		return send_json_unauthorized(conn);
 	}
@@ -558,7 +558,7 @@ int api_stats_upstreams(struct mg_connection *conn)
 int api_stats_query_types(struct mg_connection *conn)
 {
 	// Verify requesting client is allowed to see this ressource
-	if(check_client_auth(conn) < 0)
+	if(check_client_auth(conn) == API_AUTH_UNAUTHORIZED)
 	{
 		return send_json_unauthorized(conn);
 	}
@@ -594,7 +594,7 @@ int api_stats_history(struct mg_connection *conn)
 	}
 
 	// Verify requesting client is allowed to see this ressource
-	if(check_client_auth(conn) < 0)
+	if(check_client_auth(conn) == API_AUTH_UNAUTHORIZED)
 	{
 		return send_json_unauthorized(conn);
 	}
@@ -1042,7 +1042,7 @@ int api_stats_recentblocked(struct mg_connection *conn)
 	unsigned int show = 1;
 
 	// Verify requesting client is allowed to see this ressource
-	if(check_client_auth(conn) < 0)
+	if(check_client_auth(conn) == API_AUTH_UNAUTHORIZED)
 	{
 		return send_json_unauthorized(conn);
 	}
@@ -1113,7 +1113,7 @@ int api_stats_overTime_clients(struct mg_connection *conn)
 	int sendit = -1, until = OVERTIME_SLOTS;
 
 	// Verify requesting client is allowed to see this ressource
-	if(check_client_auth(conn) < 0)
+	if(check_client_auth(conn) == API_AUTH_UNAUTHORIZED)
 	{
 		return send_json_unauthorized(conn);
 	}

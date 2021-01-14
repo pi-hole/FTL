@@ -18,7 +18,7 @@
 int api_network(struct mg_connection *conn)
 {
 	// Verify requesting client is allowed to see this ressource
-	if(check_client_auth(conn) < 0)
+	if(check_client_auth(conn) == API_AUTH_UNAUTHORIZED)
 	{
 		return send_json_unauthorized(conn);
 	}
