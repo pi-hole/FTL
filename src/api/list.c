@@ -45,6 +45,8 @@ static int get_domainlist(struct mg_connection *conn,
 	while(gravityDB_readTableGetDomain(&domain, &sql_msg))
 	{
 		cJSON *item = JSON_NEW_OBJ();
+		JSON_OBJ_ADD_NUMBER(item, "id", domain.id);
+		JSON_OBJ_REF_STR(item, "type", domain.type);
 		JSON_OBJ_COPY_STR(item, "domain", domain.domain);
 		JSON_OBJ_ADD_BOOL(item, "enabled", domain.enabled);
 		JSON_OBJ_ADD_NUMBER(item, "date_added", domain.date_added);
@@ -53,6 +55,23 @@ static int get_domainlist(struct mg_connection *conn,
 			JSON_OBJ_COPY_STR(item, "comment", domain.comment);
 		} else {
 			JSON_OBJ_ADD_NULL(item, "comment");
+		}
+		if(domain.group_ids != NULL) {
+			// Black JSON magic at work here:
+			// We build a JSON array from the group_concat
+			// result delivered SQLite3, parse it as valid
+			// array and append it as item to the data
+			char group_ids_str[strlen(domain.group_ids)+3u];
+			group_ids_str[0] = '[';
+			strcpy(group_ids_str+1u , domain.group_ids);
+			group_ids_str[sizeof(group_ids_str)-2u] = ']';
+			group_ids_str[sizeof(group_ids_str)-1u] = '\0';
+			cJSON * group_ids = cJSON_Parse(group_ids_str);
+			JSON_OBJ_ADD_ITEM(item, "group_ids", group_ids);
+		} else {
+			// Empty group set
+			cJSON *group_ids = JSON_NEW_ARRAY();
+			JSON_OBJ_ADD_ITEM(item, "group_ids", group_ids);
 		}
 
 		JSON_ARRAY_ADD_ITEM(domains, item);

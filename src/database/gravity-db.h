@@ -18,11 +18,14 @@
 #include "../regex_r.h"
 
 typedef struct domainrecord {
+	bool enabled;
 	const char *domain;
+	const char *comment;
+	const char *group_ids;
+	const char *type;
+	long id;
 	time_t date_added;
 	time_t date_modified;
-	const char *comment;
-	bool enabled;
 } domainrecord;
 
 void gravityDB_forked(void);

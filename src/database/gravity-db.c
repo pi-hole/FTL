@@ -1611,12 +1611,13 @@ bool gravityDB_readTable(const enum domainlist_type listtype, const char *domain
 	// Build query statement. We have to do it this way
 	// as binding a sequence of ints via a prepared
 	// statement isn't possible in SQLite3
-	char querystr[128];
+	char querystr[200];
 	const char *extra = "";
 	if(domain[0] != '\0')
 		extra = " AND domain = ?;";
-	sprintf(querystr, "SELECT domain,enabled,date_added,date_modified,comment FROM domainlist WHERE type IN (%s)%s;", type, extra);
-	logg("%s", querystr);
+	sprintf(querystr, "SELECT id,type,domain,enabled,date_added,date_modified,comment,"
+	                         "(SELECT GROUP_CONCAT(group_id) FROM domainlist_by_group g WHERE g.domainlist_id = d.id) "
+	                         "FROM domainlist d WHERE d.type IN (%s)%s;", type, extra);
 
 	// Prepare SQLite statement
 	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &read_stmt, NULL);
@@ -1649,11 +1650,31 @@ bool gravityDB_readTableGetDomain(domainrecord *domain, const char **message)
 	// Valid row
 	if(rc == SQLITE_ROW)
 	{
-		domain->domain = (char*)sqlite3_column_text(read_stmt, 0);
-		domain->enabled = sqlite3_column_int(read_stmt, 1) != 0;
-		domain->date_added = sqlite3_column_int(read_stmt, 2);
-		domain->date_modified = sqlite3_column_int(read_stmt, 3);
-		domain->comment = (char*)sqlite3_column_text(read_stmt, 4);
+		domain->id = sqlite3_column_int(read_stmt, 0);
+		switch(sqlite3_column_int(read_stmt, 1))
+		{
+			case 0:
+				domain->type = "allow/exact";
+				break;
+			case 1:
+				domain->type = "deny/exact";
+				break;
+			case 2:
+				domain->type = "allow/regex";
+				break;
+			case 3:
+				domain->type = "deny/regex";
+				break;
+			default:
+				domain->type = "unknown";
+				break;
+		}
+		domain->domain = (char*)sqlite3_column_text(read_stmt, 2);
+		domain->enabled = sqlite3_column_int(read_stmt, 3) != 0;
+		domain->date_added = sqlite3_column_int(read_stmt, 4);
+		domain->date_modified = sqlite3_column_int(read_stmt, 5);
+		domain->comment = (char*)sqlite3_column_text(read_stmt, 6);
+		domain->group_ids = (char*)sqlite3_column_text(read_stmt, 7);
 		return true;
 	}
 
