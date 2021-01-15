@@ -551,7 +551,7 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 		  if (option_bool(OPT_CONNTRACK))
 		    {
 		      unsigned int mark;
-		      if (get_incoming_mark(&forward->source, &forward->dest, 0, &mark))
+		      if (get_incoming_mark(&forward->frec_src.source, &forward->frec_src.dest, 0, &mark))
 			setsockopt(fd, SOL_SOCKET, SO_MARK, &mark, sizeof(unsigned int));
 		    }
 #endif
@@ -1229,7 +1229,7 @@ void reply_query(int fd, int family, time_t now)
 			  if (option_bool(OPT_CONNTRACK))
 			    {
 			      unsigned int mark;
-			      if (get_incoming_mark(&orig->source, &orig->dest, 0, &mark))
+			      if (get_incoming_mark(&orig->frec_src.source, &orig->frec_src.dest, 0, &mark))
 				setsockopt(fd, SOL_SOCKET, SO_MARK, &mark, sizeof(unsigned int));
 			    }
 #endif
