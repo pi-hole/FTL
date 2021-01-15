@@ -893,7 +893,9 @@ void getAllQueries(const char *client_message, const int *sock)
 			continue;
 		// 2 = forwarded, 3 = cached
 		if((query->status == QUERY_FORWARDED ||
-		    query->status == QUERY_CACHE) && !showpermitted)
+		    query->status == QUERY_CACHE ||
+		    query->status == QUERY_RETRIED ||
+		    query->status == QUERY_RETRIED_DNSSEC) && !showpermitted)
 			continue;
 
 		// Skip those entries which so not meet the requested timeframe
