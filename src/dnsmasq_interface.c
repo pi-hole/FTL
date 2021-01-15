@@ -2108,8 +2108,11 @@ void FTL_TCP_worker_created(const int confd, const char *iface_name)
 			inet_ntop(iface_sockaddr.sa.sa_family, &iface_addr, local_ip, ADDRSTRLEN);
 		}
 
+		// Substitute interface name if not available
+		if(iface_name == NULL)
+			iface_name = "N/A (iface is NULL)";
 		// Print log
-		logg("TCP worker forked for client %s on interface %s (%s)", peer_ip, iface_name, local_ip);
+		logg("TCP worker forked for client %s on interface %s with IP %s", peer_ip, iface_name, local_ip);
 	}
 
 	if(main_pid() == getpid())
