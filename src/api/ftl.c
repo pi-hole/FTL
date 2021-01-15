@@ -203,18 +203,26 @@ int api_ftl_database(struct mg_connection *conn)
 static int read_temp_sensor(struct mg_connection *conn,
                             const char *label_path,
                             const char *value_path,
+                            const char *fallback_label,
                             cJSON *object)
 {
 	FILE *f_label = fopen(label_path, "r");
 	FILE *f_value = fopen(value_path, "r");
-	if(f_label != NULL && f_value != NULL)
+	if(f_value != NULL)
 	{
 		int temp = 0;
 		char label[1024];
-		if(fread(label, sizeof(label)-1, 1, f_label) > 0 && fscanf(f_value, "%d", &temp) == 1)
+		if(fscanf(f_value, "%d", &temp) == 1)
 		{
 			cJSON *item = JSON_NEW_OBJ();
-			JSON_OBJ_COPY_STR(item, "label", label);
+			if(f_label != NULL && fread(label, sizeof(label)-1, 1, f_label) > 0)
+			{
+				JSON_OBJ_COPY_STR(item, "name", label);
+			}
+			else
+			{
+				JSON_OBJ_COPY_STR(item, "name", fallback_label);
+			}
 			JSON_OBJ_ADD_NUMBER(item, "value", temp < 1000 ? temp : 1e-3f*temp);
 			JSON_ARRAY_ADD_ITEM(object, item);
 		}
@@ -317,14 +325,15 @@ int api_ftl_system(struct mg_connection *conn)
 	// Source available temperatures, we try to read as many
 	// temperature sensors as there are cores on this system
 	cJSON *sensors = JSON_NEW_ARRAY();
-	char label_path[256], value_path[256];
+	char label_path[256], value_path[256], fallback_label[64];
 	int ret;
 	for(int i = 0; i < nprocs; i++)
 	{
 		// Try /sys/class/thermal/thermal_zoneX/{type,temp}
 		sprintf(label_path, "/sys/class/thermal/thermal_zone%d/type", i);
 		sprintf(value_path, "/sys/class/thermal/thermal_zone%d/temp", i);
-		ret = read_temp_sensor(conn, label_path, value_path, sensors);
+		sprintf(fallback_label, "thermal_zone%d/temp", i);
+		ret = read_temp_sensor(conn, label_path, value_path, fallback_label, sensors);
 		// Error handling
 		if(ret != 0)
 			return ret;
@@ -332,7 +341,8 @@ int api_ftl_system(struct mg_connection *conn)
 		// Try /sys/class/hwmon/hwmon0X/tempX_{label,input}
 		sprintf(label_path, "/sys/class/hwmon/hwmon0/temp%d_label", i);
 		sprintf(value_path, "/sys/class/hwmon/hwmon0/temp%d_input", i);
-		ret = read_temp_sensor(conn, label_path, value_path, sensors);
+		sprintf(fallback_label, "hwmon0/temp%d", i);
+		ret = read_temp_sensor(conn, label_path, value_path, fallback_label, sensors);
 		// Error handling
 		if(ret != 0)
 			return ret;
