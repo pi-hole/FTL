@@ -27,7 +27,7 @@
 #include "daemon.h"
 
 /// The version of shared memory used
-#define SHARED_MEMORY_VERSION 10
+#define SHARED_MEMORY_VERSION 11
 
 /// The name of the shared memory. Use this when connecting to the shared memory.
 #define SHMEM_PATH "/dev/shm"
