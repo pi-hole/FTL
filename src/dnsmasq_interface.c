@@ -626,6 +626,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	query->magic = MAGICBYTE;
 	query->timestamp = querytimestamp;
 	query->type = querytype;
+	query->qtype = qtype;
 	query->status = QUERY_UNKNOWN;
 	query->domainID = domainID;
 	query->clientID = clientID;

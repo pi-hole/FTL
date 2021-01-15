@@ -878,6 +878,14 @@ void getAllQueries(const char *client_message, const int *sock)
 			continue;
 		// Get query type
 		const char *qtype = querytypes[query->type];
+		char othertype[12] = { 0 }; // Maximum is "TYPE65535" = 10 bytes
+		if(query->type == TYPE_OTHER)
+		{
+			// Format custom type into buffer
+			sprintf(othertype, "TYPE%u", query->qtype);
+			// Replace qtype pointer
+			qtype = othertype;
+		}
 
 		// Hide UNKNOWN queries when not requesting both query status types
 		if(query->status == QUERY_UNKNOWN && !(showpermitted && showblocked))
