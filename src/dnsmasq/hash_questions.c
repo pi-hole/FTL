@@ -43,7 +43,7 @@ unsigned char *hash_questions(struct dns_header *header, size_t plen, char *name
       static unsigned char dummy[HASH_SIZE];
       static int warned = 0;
 
-      if (warned)
+      if (!warned)
 	my_syslog(LOG_ERR, _("Failed to create SHA-256 hash object"));
       warned = 1;
      
