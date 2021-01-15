@@ -30,7 +30,8 @@
 #include "events.h"
 
 const char *querytypes[TYPE_MAX] = {"UNKNOWN", "A", "AAAA", "ANY", "SRV", "SOA", "PTR", "TXT",
-                                    "NAPTR", "MX", "DS", "RRSIG", "DNSKEY", "NS", "OTHER"};
+                                    "NAPTR", "MX", "DS", "RRSIG", "DNSKEY", "NS", "OTHER", "SVCB",
+                                    "HTTPS"};
 
 // converts upper to lower case, and leaves other characters unchanged
 void strtolower(char *str)
@@ -270,6 +271,9 @@ int findClientID(const char *clientIP, const bool count, const bool aliasclient)
 	// Initialize client-specific overTime data
 	memset(client->overTime, 0, sizeof(client->overTime));
 
+	// Store client ID
+	client->id = clientID;
+
 	// Increase counter by one
 	counters->clients++;
 
@@ -282,7 +286,7 @@ int findClientID(const char *clientIP, const bool count, const bool aliasclient)
 	//         during history reading get their enabled regexs reloaded
 	//         in the initial call to FTL_reload_all_domainlists()
 	if(!startup && !aliasclient)
-		reload_per_client_regex(clientID, client);
+		reload_per_client_regex(client);
 
 	// Check if this client is managed by a alias-client
 	if(!aliasclient)

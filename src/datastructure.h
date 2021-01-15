@@ -25,15 +25,16 @@ typedef struct {
 	enum privacy_level privacylevel;
 	enum reply_type reply;
 	enum dnssec_status dnssec;
-	time_t timestamp;
+	uint16_t qtype;
 	int domainID;
 	int clientID;
 	int upstreamID;
 	int id; // the ID is a (signed) int in dnsmasq, so no need for a long int here
 	int CNAME_domainID; // only valid if query has a CNAME blocking status
-	unsigned long response; // saved in units of 1/10 milliseconds (1 = 0.1ms, 2 = 0.2ms, 2500 = 250.0ms, etc.)
-	int64_t db;
 	unsigned int timeidx;
+	unsigned long response; // saved in units of 1/10 milliseconds (1 = 0.1ms, 2 = 0.2ms, 2500 = 250.0ms, etc.)
+	time_t timestamp;
+	int64_t db;
 	bool whitelisted;
 	bool complete;
 } queriesData;
@@ -61,6 +62,7 @@ typedef struct {
 	int blockedcount;
 	int aliasclient_id;
 	int overTime[OVERTIME_SLOTS];
+	unsigned int id;
 	unsigned int numQueriesARP;
 	size_t groupspos;
 	size_t ippos;

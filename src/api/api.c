@@ -620,11 +620,11 @@ void getQueryTypes(const int *sock)
 		ssend(*sock, "A (IPv4): %.2f\nAAAA (IPv6): %.2f\nANY: %.2f\nSRV: %.2f\n"
 		             "SOA: %.2f\nPTR: %.2f\nTXT: %.2f\nNAPTR: %.2f\n"
 		             "MX: %.2f\nDS: %.2f\nRRSIG: %.2f\nDNSKEY: %.2f\n"
-		             "OTHER: %.2f\n",
+		             "NS: %.2f\n" "OTHER: %.2f\n\nSVCB: %.2f\nHTTPS: %.2f\n",
 		      percentage[TYPE_A], percentage[TYPE_AAAA], percentage[TYPE_ANY], percentage[TYPE_SRV],
 		      percentage[TYPE_SOA], percentage[TYPE_PTR], percentage[TYPE_TXT], percentage[TYPE_NAPTR],
 		      percentage[TYPE_MX], percentage[TYPE_DS], percentage[TYPE_RRSIG], percentage[TYPE_DNSKEY],
-		      percentage[TYPE_OTHER]);
+		      percentage[TYPE_NS], percentage[TYPE_OTHER], percentage[TYPE_SVCB], percentage[TYPE_HTTPS]);
 	}
 	else {
 		pack_str32(*sock, "A (IPv4)");
@@ -651,8 +651,14 @@ void getQueryTypes(const int *sock)
 		pack_float(*sock, percentage[TYPE_RRSIG]);
 		pack_str32(*sock, "DNSKEY");
 		pack_float(*sock, percentage[TYPE_DNSKEY]);
+		pack_str32(*sock, "NS");
+		pack_float(*sock, percentage[TYPE_NS]);
 		pack_str32(*sock, "OTHER");
 		pack_float(*sock, percentage[TYPE_OTHER]);
+		pack_str32(*sock, "SVCB");
+		pack_float(*sock, percentage[TYPE_SVCB]);
+		pack_str32(*sock, "HTTPS");
+		pack_float(*sock, percentage[TYPE_HTTPS]);
 	}
 }
 
@@ -691,9 +697,9 @@ void getAllQueries(const char *client_message, const int *sock)
 	// Query type filtering?
 	if(command(client_message, ">getallqueries-qtype")) {
 		// Get query type we want to see only
-		unsigned int qtype;
+		unsigned int qtype = 0;
 		sscanf(client_message, ">getallqueries-qtype %u", &qtype);
-		if(qtype < 1 || qtype >= TYPE_MAX)
+		if(qtype < TYPE_A || qtype >= TYPE_MAX)
 		{
 			// Invalid query type requested
 			return;
@@ -868,10 +874,18 @@ void getAllQueries(const char *client_message, const int *sock)
 			continue;
 
 		// Verify query type
-		if(query->type > TYPE_MAX-1)
+		if(query->type >= TYPE_MAX)
 			continue;
 		// Get query type
 		const char *qtype = querytypes[query->type];
+		char othertype[12] = { 0 }; // Maximum is "TYPE65535" = 10 bytes
+		if(query->type == TYPE_OTHER)
+		{
+			// Format custom type into buffer
+			sprintf(othertype, "TYPE%u", query->qtype);
+			// Replace qtype pointer
+			qtype = othertype;
+		}
 
 		// Hide UNKNOWN queries when not requesting both query status types
 		if(query->status == QUERY_UNKNOWN && !(showpermitted && showblocked))
@@ -887,7 +901,9 @@ void getAllQueries(const char *client_message, const int *sock)
 			continue;
 		// 2 = forwarded, 3 = cached
 		if((query->status == QUERY_FORWARDED ||
-		    query->status == QUERY_CACHE) && !showpermitted)
+		    query->status == QUERY_CACHE ||
+		    query->status == QUERY_RETRIED ||
+		    query->status == QUERY_RETRIED_DNSSEC) && !showpermitted)
 			continue;
 
 		// Skip those entries which so not meet the requested timeframe
@@ -987,9 +1003,10 @@ void getAllQueries(const char *client_message, const int *sock)
 			CNAME_domain = getCNAMEDomainString(query);
 		}
 
-		// Get ID of blocking regex, if applicable
+		// Get ID of blocking regex, if applicable and permitted by privacy settings
 		int regex_idx = -1;
-		if (query->status == QUERY_REGEX || query->status == QUERY_REGEX_CNAME)
+		if ((query->status == QUERY_REGEX || query->status == QUERY_REGEX_CNAME) &&
+		    config.privacylevel < PRIVACY_HIDE_DOMAINS)
 		{
 			unsigned int cacheID = findCacheID(query->domainID, query->clientID, query->type);
 			DNSCacheData *dns_cache = getDNSCache(cacheID, true);

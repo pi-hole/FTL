@@ -356,8 +356,11 @@
   [[ ${lines[10]} == "DS: 0.00" ]]
   [[ ${lines[11]} == "RRSIG: 0.00" ]]
   [[ ${lines[12]} == "DNSKEY: 0.00" ]]
-  [[ ${lines[13]} == "OTHER: 0.00" ]]
-  [[ ${lines[14]} == "" ]]
+  [[ ${lines[13]} == "NS: 0.00" ]]
+  [[ ${lines[14]} == "OTHER: 0.00" ]]
+  [[ ${lines[15]} == "SVCB: 0.00" ]]
+  [[ ${lines[16]} == "HTTPS: 0.00" ]]
+  [[ ${lines[17]} == "" ]]
 }
 
 # Here and below: Acknowledge that there might be a host name after
@@ -1025,4 +1028,10 @@
   run bash -c "sed -n \"${before},${after}p\" /var/log/pihole-FTL.log"
   printf "%s\n" "${lines[@]}"
   [[ "${lines[@]}" == *"EDNS(0) CLIENT SUBNET: Skipped ::1/128 (IPv6 loopback address)"* ]]
+}
+
+@test "Embedded SQLite3 shell available and functional" {
+  run bash -c './pihole-FTL sqlite3 -help'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "Usage: sqlite3 [OPTIONS] FILENAME [SQL]" ]]
 }
