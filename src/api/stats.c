@@ -157,15 +157,19 @@ int api_stats_overTime_history(struct mg_connection *conn)
 		JSON_SEND_OBJECT(json);
 	}
 
-	cJSON *json = JSON_NEW_ARRAY();
+	// Minimum structure is
+	// {"data":[]}
+	cJSON *json = JSON_NEW_OBJ();
+	cJSON *data = JSON_NEW_ARRAY();
 	for(int slot = from; slot < until; slot++)
 	{
 		cJSON *item = JSON_NEW_OBJ();
 		JSON_OBJ_ADD_NUMBER(item, "timestamp", overTime[slot].timestamp);
 		JSON_OBJ_ADD_NUMBER(item, "total_queries", overTime[slot].total);
 		JSON_OBJ_ADD_NUMBER(item, "blocked_queries", overTime[slot].blocked);
-		JSON_ARRAY_ADD_ITEM(json, item);
+		JSON_ARRAY_ADD_ITEM(data, item);
 	}
+	JSON_OBJ_ADD_ITEM(json, "data", data);
 	JSON_SEND_OBJECT(json);
 }
 
@@ -1118,20 +1122,6 @@ int api_stats_overTime_clients(struct mg_connection *conn)
 		return send_json_unauthorized(conn);
 	}
 
-	// Exit before processing any data if requested via config setting
-	get_privacy_level(NULL);
-	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS_CLIENTS)
-	{
-		// Minimum structure is
-		// {"over_time":[], "clients":[]}
-		cJSON *json = JSON_NEW_OBJ();
-		cJSON *over_time = JSON_NEW_ARRAY();
-		JSON_OBJ_ADD_ITEM(json, "over_time", over_time);
-		cJSON *clients = JSON_NEW_ARRAY();
-		JSON_OBJ_ADD_ITEM(json, "clients", clients);
-		JSON_SEND_OBJECT(json);
-	}
-
 	// Find minimum ID to send
 	for(int slot = 0; slot < OVERTIME_SLOTS; slot++)
 	{
@@ -1142,13 +1132,16 @@ int api_stats_overTime_clients(struct mg_connection *conn)
 			break;
 		}
 	}
-	if(sendit < 0)
+
+	// Exit before processing any data if requested via config setting
+	get_privacy_level(NULL);
+	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS_CLIENTS || sendit < 0)
 	{
 		// Minimum structure is
-		// {"over_time":[], "clients":[]}
+		// {"data":[], "clients":[]}
 		cJSON *json = JSON_NEW_OBJ();
-		cJSON *over_time = JSON_NEW_ARRAY();
-		JSON_OBJ_ADD_ITEM(json, "over_time", over_time);
+		cJSON *data = JSON_NEW_ARRAY();
+		JSON_OBJ_ADD_ITEM(json, "data", data);
 		cJSON *clients = JSON_NEW_ARRAY();
 		JSON_OBJ_ADD_ITEM(json, "clients", clients);
 		JSON_SEND_OBJECT(json);
@@ -1189,7 +1182,7 @@ int api_stats_overTime_clients(struct mg_connection *conn)
 		}
 	}
 
-	cJSON *over_time = JSON_NEW_ARRAY();
+	cJSON *data = JSON_NEW_ARRAY();
 	// Main return loop
 	for(int slot = sendit; slot < until; slot++)
 	{
@@ -1197,7 +1190,7 @@ int api_stats_overTime_clients(struct mg_connection *conn)
 		JSON_OBJ_ADD_NUMBER(item, "timestamp", overTime[slot].timestamp);
 
 		// Loop over clients to generate output to be sent to the client
-		cJSON *data = JSON_NEW_ARRAY();
+		cJSON *data2 = JSON_NEW_ARRAY();
 		for(int clientID = 0; clientID < counters->clients; clientID++)
 		{
 			if(skipclient[clientID])
@@ -1209,13 +1202,13 @@ int api_stats_overTime_clients(struct mg_connection *conn)
 				continue;
 			const int thisclient = client->overTime[slot];
 
-			JSON_ARRAY_ADD_NUMBER(data, thisclient);
+			JSON_ARRAY_ADD_NUMBER(data2, thisclient);
 		}
-		JSON_OBJ_ADD_ITEM(item, "data", data);
-		JSON_ARRAY_ADD_ITEM(over_time, item);
+		JSON_OBJ_ADD_ITEM(item, "data", data2);
+		JSON_ARRAY_ADD_ITEM(data, item);
 	}
 	cJSON *json = JSON_NEW_OBJ();
-	JSON_OBJ_ADD_ITEM(json, "over_time", over_time);
+	JSON_OBJ_ADD_ITEM(json, "data", data);
 
 	cJSON *clients = JSON_NEW_ARRAY();
 	// Loop over clients to generate output to be sent to the client
