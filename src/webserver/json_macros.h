@@ -21,7 +21,7 @@
 	cJSON *string_item = NULL; \
 	if(string != NULL) \
 	{ \
-		string_item = cJSON_CreateString((const char*)string); \
+		string_item = cJSON_CreateString((const char*)(string)); \
 	} \
 	else \
 	{ \
@@ -41,7 +41,7 @@
 	cJSON *string_item = NULL; \
 	if(string != NULL) \
 	{ \
-		string_item = cJSON_CreateStringReference((const char*)string); \
+		string_item = cJSON_CreateStringReference((const char*)(string)); \
 	} \
 	else \
 	{ \
@@ -58,7 +58,7 @@
 }
 
 #define JSON_OBJ_ADD_NUMBER(object, key, number){ \
-	if(cJSON_AddNumberToObject(object, key, (double)number) == NULL) \
+	if(cJSON_AddNumberToObject(object, key, (double)(number)) == NULL) \
 	{ \
 		cJSON_Delete(object); \
 		send_http_internal_error(conn); \
@@ -80,7 +80,7 @@
 }
 
 #define JSON_OBJ_ADD_BOOL(object, key, value) {\
-	cJSON *bool_item = cJSON_CreateBool((cJSON_bool)value); \
+	cJSON *bool_item = cJSON_CreateBool((cJSON_bool)(value)); \
 	if(bool_item == NULL) \
 	{ \
 		cJSON_Delete(object); \
@@ -92,12 +92,12 @@
 }
 
 #define JSON_ARRAY_ADD_NUMBER(object, number){ \
-	cJSON *number_item = cJSON_CreateNumber((double)number); \
+	cJSON *number_item = cJSON_CreateNumber((double)(number)); \
 	cJSON_AddItemToArray(object, number_item); \
 }
 
 #define JSON_ARRAY_REPLACE_NUMBER(object, index, number){ \
-	cJSON *number_item = cJSON_CreateNumber((double)number); \
+	cJSON *number_item = cJSON_CreateNumber((double)(number)); \
 	cJSON_ReplaceItemInArray(object, index, number_item); \
 }
 
@@ -105,7 +105,7 @@
 	cJSON *string_item = NULL; \
 	if(string != NULL) \
 	{ \
-		string_item = cJSON_CreateStringReference((const char*)string); \
+		string_item = cJSON_CreateStringReference((const char*)(string)); \
 	} \
 	else \
 	{ \
@@ -125,7 +125,7 @@
 	cJSON *string_item = NULL; \
 	if(string != NULL) \
 	{ \
-		string_item = cJSON_CreateString((const char*)string); \
+		string_item = cJSON_CreateString((const char*)(string)); \
 	} \
 	else \
 	{ \

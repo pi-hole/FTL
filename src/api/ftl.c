@@ -235,6 +235,47 @@ static int read_temp_sensor(struct mg_connection *conn,
 	return 0;
 }
 
+// Get RAM information in units of kB
+// This is implemented similar to how free (procps) does it
+static bool GetRamInKB(long *mem_total, long *mem_used, long *mem_free, long *mem_avail)
+{
+	long page_cached = -1, buffers = -1, slab_reclaimable = -1;
+	FILE *meminfo = fopen("/proc/meminfo", "r");
+	if(meminfo == NULL)
+		return false;
+
+	char line[256];
+	while(fgets(line, sizeof(line), meminfo))
+	{
+		sscanf(line, "MemTotal: %ld kB", mem_total);
+		sscanf(line, "MemFree: %ld kB", mem_free);
+		sscanf(line, "MemAvailable: %ld kB", mem_avail);
+		sscanf(line, "Cached: %ld kB", &page_cached);
+		sscanf(line, "Buffers: %ld kB", &buffers);
+		sscanf(line, "SReclaimable: %ld kB", &slab_reclaimable);
+
+		// Exit if we have them all
+		if(*mem_total > -1 && *mem_avail > -1 && *mem_free > -1 &&
+		   buffers > -1 && slab_reclaimable > -1)
+			break;
+	}
+	fclose(meminfo);
+
+	// Compute actual memory numbers
+	const long mem_cached = page_cached + slab_reclaimable;
+	// if mem_avail is greater than mem_total or our calculation of used
+	// overflows, that's symptomatic of running within a lxc container where
+	// such values will be dramatically distorted over those of the host.
+	if (*mem_avail > *mem_total)
+		*mem_avail = *mem_free;
+	*mem_used = *mem_total - *mem_free - mem_cached - buffers;
+	if (*mem_used < 0)
+		*mem_used = *mem_total - *mem_free;
+
+	// Return success
+	return true;
+}
+
 int api_ftl_system(struct mg_connection *conn)
 {
 	cJSON *json = JSON_NEW_OBJ();
@@ -255,46 +296,45 @@ int api_ftl_system(struct mg_connection *conn)
 
 	cJSON *memory = JSON_NEW_OBJ();
 	cJSON *ram = JSON_NEW_OBJ();
+	// We cannot use the memory information available through sysinfo() as
+	// this is not what we want. It is worth noting that freeram in sysinfo
+	// is not what most people would call "free RAM". freeram excludes
+	// memory used by cached filesystem metadata ("buffers") and contents
+	// ("cache"). Both of these can be a significant portion of RAM but are
+	// freed by the OS when programs need that memory. sysinfo does contain
+	// size used by buffers (sysinfo.bufferram), but not cache. The best
+	// option is to use the MemAvailable (as opposed to MemFree) entry in
+	// /proc/meminfo instead.
+	long mem_total = -1, mem_used = -1, mem_free = -1, mem_avail = -1;
+	GetRamInKB(&mem_total, &mem_used, &mem_free, &mem_avail);	
 	// Total usable main memory size
-	JSON_OBJ_ADD_NUMBER(ram, "total", info.totalram * info.mem_unit);
-	if(full_info)
-	{
-		// Available memory size
-		JSON_OBJ_ADD_NUMBER(ram, "free", info.freeram * info.mem_unit);
-		// Amount of shared memory
-		JSON_OBJ_ADD_NUMBER(ram, "shared", info.sharedram * info.mem_unit);
-		// Memory used by buffers
-		JSON_OBJ_ADD_NUMBER(ram, "buffer", info.bufferram * info.mem_unit);
-	}
-	unsigned long used = info.totalram - info.freeram;
-	// The following is a fall-back from procps code for lxc containers
-	// messing around with memory information
-	if(info.sharedram + info.bufferram < used)
-		used -= info.sharedram + info.bufferram;
-	JSON_OBJ_ADD_NUMBER(ram, "used", used * info.mem_unit);
+	JSON_OBJ_ADD_NUMBER(ram, "total", mem_total);
+	// Used memory size
+	JSON_OBJ_ADD_NUMBER(ram, "used", mem_used);
+	// Free memory size
+	JSON_OBJ_ADD_NUMBER(ram, "free", mem_free);
+	// Available memory size
+	// See https://git.kernel.org/cgit/linux/kernel/git/torvalds/linux.git/commit/?id=34e431b0ae398fc54ea69ff85ec700722c9da773
+	// This Linux kernel commit message explains there are more nuances. It
+	// says: "Many programs check /proc/meminfo to estimate how much free
+	// memory is available. They generally do this by adding up "free" and
+	// "cached", which was fine ten years ago, but is pretty much guaranteed
+	// to be wrong today." 
+	JSON_OBJ_ADD_NUMBER(ram, "available", mem_avail);
 	JSON_OBJ_ADD_ITEM(memory, "ram", ram);
 
 	cJSON *swap = JSON_NEW_OBJ();
 	// Total swap space size
 	JSON_OBJ_ADD_NUMBER(swap, "total", info.totalswap * info.mem_unit);
-	if(full_info)
-	{
-		// Swap space still available
-		JSON_OBJ_ADD_NUMBER(swap, "free", info.freeswap * info.mem_unit);
-	}
+	// Swap space still available
+	JSON_OBJ_ADD_NUMBER(swap, "free", info.freeswap * info.mem_unit);
 	// Used swap space
 	JSON_OBJ_ADD_NUMBER(swap, "used", (info.totalswap - info.freeswap) * info.mem_unit);
 	JSON_OBJ_ADD_ITEM(memory, "swap", swap);
 
-	if(full_info)
-	{
-		cJSON *high = JSON_NEW_OBJ();
-		// Total high memory size
-		JSON_OBJ_ADD_NUMBER(high, "total", info.totalhigh * info.mem_unit);
-		// High memory still available
-		JSON_OBJ_ADD_NUMBER(high, "free", info.freehigh * info.mem_unit);
-		JSON_OBJ_ADD_ITEM(memory, "high", high);
-	}
+	// Number of current processes
+	JSON_OBJ_ADD_NUMBER(memory, "ftotal", (sysconf(_SC_PHYS_PAGES) * sysconf(_SC_PAGESIZE)));
+	JSON_OBJ_ADD_NUMBER(memory, "ffree", (sysconf(_SC_AVPHYS_PAGES) * sysconf(_SC_PAGESIZE)));
 
 	JSON_OBJ_ADD_ITEM(json, "memory", memory);
 
