@@ -703,7 +703,15 @@
   [[ ${lines[0]} == "Error 404: Not Found" ]]
 }
 
-@test "API authorization: Getting challenge" {
+@test "API authorization (without password): No login required" {
+  run bash -c 'curl -s 127.0.0.1:8080/api/auth'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == '{"session":{"valid":true,"sid":null,"validity":null}}' ]]
+}
+
+@test "API authorization (with password): FTL challenges us" {
+  # Password: ABC
+  echo "WEBPASSWORD=183c1b634da0078fcf5b0af84bdcbb3e817708c3f22b329be84165f4bad1ae48" >> /etc/pihole/setupVars.conf
   run bash -c 'curl -s 127.0.0.1:8080/api/auth'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "{\"challenge\":\""* ]]
