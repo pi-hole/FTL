@@ -360,7 +360,7 @@ void _lock_shm(const char* func, const int line, const char * file) {
 	if(config.debug & DEBUG_LOCKS)
 	{
 		logg("Waiting for SHM lock in %s() (%s:%i)\n"
-		     "    -> currently lock by %i/%i in %s()",
+		     "    -> last lock by %i/%i in %s()",
 		     func, file, line,
 		     shm_lockInfo.pid,
 		     shm_lockInfo.tid,

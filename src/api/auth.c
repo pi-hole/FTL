@@ -20,6 +20,19 @@
 // crypto library
 #include <nettle/sha2.h>
 #include <nettle/base64.h>
+#include <nettle/version.h>
+
+// On 2017-08-27 (after v3.3, before v3.4), nettle changed the type of
+// destination from uint_8t* to char* in all base64 and base16 functions
+// (armor-signedness branch). This is a breaking change as this is a change in
+// signedness causing issues when compiling FTL against older versions of
+// nettle. We create this constant here to have a conversion if necessary.
+// See https://github.com/gnutls/nettle/commit/f2da403135e2b2f641cf0f8219ad5b72083b7dfd
+#if NETTLE_VERSION_MAJOR == 3 && NETTLE_VERSION_MINOR < 4
+#define NETTLE_SIGN (uint8_t*)
+#else
+#define NETTLE_SIGN
+#endif
 
 // How many bits should the SID use?
 #define SID_BITSIZE 128
@@ -331,7 +344,7 @@ static void generateSID(char *sid)
 		raw_sid[i+2] = (rval >> 16) & 0xFF;
 		raw_sid[i+3] = (rval >> 24) & 0xFF;
 	}
-	base64_encode_raw(sid, SID_BITSIZE/8, raw_sid);
+	base64_encode_raw(NETTLE_SIGN sid, SID_BITSIZE/8, raw_sid);
 	sid[SID_SIZE-1] = '\0';
 }
 
