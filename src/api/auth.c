@@ -37,6 +37,14 @@
 // How many bits should the SID use?
 #define SID_BITSIZE 128
 #define SID_SIZE BASE64_ENCODE_RAW_LENGTH(SID_BITSIZE/8) + 1
+
+// Use SameSite=Strict as defense against some classes of cross-site request
+// forgery (CSRF) attacks. This ensures the session cookie will only be sent in
+// a first-party (i.e., Pi-hole) context and NOT be sent along with requests
+// initiated by third party websites.
+#define FTL_SET_COOKIE "Set-Cookie: sid=%s; SameSite=Strict; Path=/; Max-Age=%u\r\n"
+#define FTL_DELETE_COOKIE "Set-Cookie: sid=deleted; SameSite=Strict; Path=/; Max-Age=-1\r\n"
+
 static struct {
 	bool used;
 	time_t valid_until;
@@ -137,7 +145,7 @@ int check_client_auth(struct mg_connection *conn)
 
 			// Update user cookie
 			if(snprintf(pi_hole_extra_headers, sizeof(pi_hole_extra_headers),
-			            "Set-Cookie: sid=%s; Path=/; Max-Age=%u\r\n",
+			            FTL_SET_COOKIE,
 			            auth_data[user_id].sid, httpsettings.session_timeout) < 0)
 			{
 				return send_json_error(conn, 500, "internal_error", "Internal server error", NULL);
@@ -257,7 +265,7 @@ static int send_api_auth_status(struct mg_connection *conn, const int user_id, c
 
 		// Ten minutes validity
 		if(snprintf(pi_hole_extra_headers, sizeof(pi_hole_extra_headers),
-		            "Set-Cookie: sid=%s; Path=/; Max-Age=%u\r\n",
+		            FTL_SET_COOKIE,
 		            auth_data[user_id].sid, API_SESSION_EXPIRE) < 0)
 		{
 			return send_json_error(conn, 500, "internal_error", "Internal server error", NULL);
@@ -275,7 +283,7 @@ static int send_api_auth_status(struct mg_connection *conn, const int user_id, c
 		// Revoke client authentication. This slot can be used by a new client afterwards.
 		delete_session(user_id);
 
-		strncpy(pi_hole_extra_headers, "Set-Cookie: sid=deleted; Path=/; Max-Age=-1\r\n", sizeof(pi_hole_extra_headers));
+		strncpy(pi_hole_extra_headers, FTL_DELETE_COOKIE, sizeof(pi_hole_extra_headers));
 		cJSON *json = JSON_NEW_OBJ();
 		get_session_object(conn, json, user_id, now);
 		JSON_SEND_OBJECT_CODE(json, 410); // 410 Gone
@@ -285,7 +293,7 @@ static int send_api_auth_status(struct mg_connection *conn, const int user_id, c
 		if(config.debug & DEBUG_API)
 			logg("API Auth status: Invalid, asking to delete cookie");
 
-		strncpy(pi_hole_extra_headers, "Set-Cookie: sid=deleted; Path=/; Max-Age=-1\r\n", sizeof(pi_hole_extra_headers));
+		strncpy(pi_hole_extra_headers, FTL_DELETE_COOKIE, sizeof(pi_hole_extra_headers));
 		cJSON *json = JSON_NEW_OBJ();
 		get_session_object(conn, json, user_id, now);
 		JSON_SEND_OBJECT_CODE(json, 401); // 401 Unauthorized
