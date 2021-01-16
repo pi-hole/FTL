@@ -703,24 +703,10 @@
   [[ ${lines[0]} == "Error 404: Not Found" ]]
 }
 
-# This test does not work without actually hosting the web interface
-#@test "HTTP server responds without error to undefined path inside /admin (rerouted to index.html)" {
-#  run bash -c 'curl -I -s 127.0.0.1:8080/admin/undefined'
-#  printf "%s\n" "${lines[@]}"
-#  [[ ${lines[0]} == "HTTP/1.1 200 OK"* ]]
-#}
-
-@test "API authorization: Unauthorized for request without password" {
-  run bash -c 'curl -I -s 127.0.0.1:8080/api/auth'
+@test "API authorization: Getting challenge" {
+  run bash -c 'curl -s 127.0.0.1:8080/api/auth'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "HTTP/1.1 401 Unauthorized"* ]]
-}
-
-# This test is assuming the user password is empty
-@test "API authorization: Success for request with correct password" {
-  run bash -c 'curl -s -H "X-Pi-hole-Authenticate: cd372fb85148700fa88095e3492d3f9f5beb43e555e5ff26d95f5a6adc36f8e6" 127.0.0.1:8080/api/auth'
-  printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "{\"status\":\"success\"}" ]]
+  [[ ${lines[0]} == "{\"challenge\":\""* ]]
 }
 
 @test "LUA: Interpreter returns FTL version" {
