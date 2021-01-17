@@ -107,7 +107,7 @@ void DB_save_queries(void)
 			continue;
 		}
 
-		if(!query->complete && query->timestamp > currenttimestamp-2)
+		if(!query->flags.complete && query->timestamp > currenttimestamp-2)
 		{
 			// Break if a brand new query (age < 2 seconds) is not yet completed
 			// giving it a chance to be stored next time
@@ -453,7 +453,7 @@ void DB_read_queries(void)
 		query->timeidx = timeidx;
 		query->db = dbid;
 		query->id = 0;
-		query->complete = true; // Mark as all information is available
+		query->flags.complete = true; // Mark as all information is available
 		query->response = 0;
 		query->dnssec = DNSSEC_UNSPECIFIED;
 		query->reply = REPLY_UNKNOWN;

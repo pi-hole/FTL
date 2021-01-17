@@ -1541,7 +1541,7 @@ void receive_query(struct listener *listen, time_t now)
 #endif
 
   //********************** Pi-hole modification **********************//
-  struct edns_data edns = { 0 };
+  ednsData edns = { 0 };
   if (find_pseudoheader(header, (size_t)n, NULL, &pheader, NULL, NULL))
     FTL_parse_pseudoheaders(header, n, &source_addr, &edns);
   //******************************************************************//
@@ -1945,7 +1945,7 @@ unsigned char *tcp_request(int confd, time_t now,
 	no_cache_dnssec = 1;
 
       //********************** Pi-hole modification **********************//
-      struct edns_data edns = { 0 };
+      ednsData edns = { 0 };
       if (find_pseudoheader(header, (size_t)size, NULL, &pheader, NULL, NULL))
         FTL_parse_pseudoheaders(header, size, &peer_addr, &edns);
       //******************************************************************//

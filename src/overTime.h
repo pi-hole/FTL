@@ -27,11 +27,11 @@ void moveOverTimeMemory(const time_t mintime);
 
 typedef struct {
 	unsigned char magic;
-	time_t timestamp;
 	int total;
 	int blocked;
 	int cached;
 	int forwarded;
+	time_t timestamp;
 	int querytypedata[TYPE_MAX-1];
 } overTimeData;
 

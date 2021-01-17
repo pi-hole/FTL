@@ -397,7 +397,7 @@ void getTopClients(const char *client_message, const int *sock)
 		// Get client pointer
 		const clientsData* client = getClient(clientID, true);
 		// Skip invalid clients and also those managed by alias clients
-		if(client == NULL || (!client->aliasclient && client->aliasclient_id >= 0))
+		if(client == NULL || (!client->flags.aliasclient && client->aliasclient_id >= 0))
 		{
 			temparray[clientID][0] = -1;
 			continue;
@@ -823,7 +823,7 @@ void getAllQueries(const char *client_message, const int *sock)
 				clientid = i;
 
 				// Is this a alias-client?
-				if(client->aliasclient)
+				if(client->flags.aliasclient)
 					clientid_list = get_aliasclient_list(i);
 
 				break;
@@ -1312,7 +1312,7 @@ void getClientsOverTime(const int *sock)
 			// Check if this client should be skipped
 			if(insetupVarsArray(getstr(client->ippos)) ||
 			   insetupVarsArray(getstr(client->namepos)) ||
-			   (!client->aliasclient && client->aliasclient_id > -1))
+			   (!client->flags.aliasclient && client->aliasclient_id > -1))
 				skipclient[clientID] = true;
 		}
 	}
@@ -1387,7 +1387,7 @@ void getClientNames(const int *sock)
 			// Check if this client should be skipped
 			if(insetupVarsArray(getstr(client->ippos)) ||
 			   insetupVarsArray(getstr(client->namepos)) ||
-			   (!client->aliasclient && client->aliasclient_id > -1))
+			   (!client->flags.aliasclient && client->aliasclient_id > -1))
 				skipclient[clientID] = true;
 		}
 	}
@@ -1434,7 +1434,7 @@ void getUnknownQueries(const int *sock)
 		const queriesData* query = getQuery(queryID, true);
 
 		if(query == NULL ||
-		  (query->status != QUERY_UNKNOWN && query->complete))
+		  (query->status != QUERY_UNKNOWN && query->flags.complete))
 			continue;
 
 		char type[5];
@@ -1459,7 +1459,7 @@ void getUnknownQueries(const int *sock)
 		const char *clientIP = getstr(client->ippos);
 
 		if(istelnet[*sock])
-			ssend(*sock, "%lli %i %i %s %s %s %i %s\n", (long long)query->timestamp, queryID, query->id, type, getstr(domain->domainpos), clientIP, query->status, query->complete ? "true" : "false");
+			ssend(*sock, "%lli %i %i %s %s %s %i %s\n", (long long)query->timestamp, queryID, query->id, type, getstr(domain->domainpos), clientIP, query->status, query->flags.complete ? "true" : "false");
 		else {
 			pack_int32(*sock, (int32_t)query->timestamp);
 			pack_int32(*sock, query->id);
@@ -1473,7 +1473,7 @@ void getUnknownQueries(const int *sock)
 				return;
 
 			pack_uint8(*sock, query->status);
-			pack_bool(*sock, query->complete);
+			pack_bool(*sock, query->flags.complete);
 		}
 	}
 }

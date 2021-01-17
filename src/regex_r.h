@@ -24,19 +24,15 @@ extern const char *regextype[];
 #include <regex.h>
 #endif
 
-typedef struct regex_data {
+typedef struct {
 	bool available;
 	bool inverted;
 	bool query_type_inverted;
-	char *string;
+	enum query_types query_type;
 	int database_id;
-	enum query_types query_type;
+	char *string;
 	regex_t regex;
-} regex_data;
-
-struct query_details {
-	enum query_types query_type;
-};
+} regexData;
 
 unsigned int get_num_regex(const enum regex_type regexid) __attribute__((pure));
 int match_regex(const char *input, const DNSCacheData* dns_cache, const int clientID,

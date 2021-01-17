@@ -35,16 +35,24 @@ typedef struct {
 	unsigned long response; // saved in units of 1/10 milliseconds (1 = 0.1ms, 2 = 0.2ms, 2500 = 250.0ms, etc.)
 	time_t timestamp;
 	int64_t db;
-	bool whitelisted;
-	bool complete;
+	// Adjacent bit field members in the struct flags may be packed to share
+	// and straddle the individual bytes. It is useful to pack the memory as
+	// tightly as possible as there may be dozens of thousands of these
+	// objects in memory (one per query).
+	// C99 guarentees that bit-fields will be packed as tightly as possible,
+	// provided they don’t cross storageau unit boundaries (6.7.2.1 #10).
+	struct query_flags {
+		bool whitelisted :1;
+		bool complete :1;
+	} flags;
 } queriesData;
 
 typedef struct {
 	unsigned char magic;
 	bool new;
-	in_addr_t port;
 	int count;
 	int failed;
+	in_addr_t port;
 	size_t ippos;
 	size_t namepos;
 	time_t lastQuery;
@@ -55,15 +63,17 @@ typedef struct {
 	unsigned char reread_groups;
 	char hwlen;
 	unsigned char hwaddr[16]; // See DHCP_CHADDR_MAX in dnsmasq/dhcp-protocol.h
-	bool new;
-	bool found_group;
-	bool aliasclient;
+	struct client_flags {
+		bool new:1;
+		bool found_group:1;
+		bool aliasclient:1;
+	} flags;
 	int count;
 	int blockedcount;
 	int aliasclient_id;
-	int overTime[OVERTIME_SLOTS];
 	unsigned int id;
 	unsigned int numQueriesARP;
+	int overTime[OVERTIME_SLOTS];
 	size_t groupspos;
 	size_t ippos;
 	size_t namepos;
@@ -74,9 +84,9 @@ typedef struct {
 
 typedef struct {
 	unsigned char magic;
-	size_t domainpos;
 	int count;
 	int blockedcount;
+	size_t domainpos;
 } domainsData;
 
 typedef struct {
