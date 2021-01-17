@@ -24,6 +24,9 @@ extern const char *regextype[];
 #include <regex.h>
 #endif
 
+// assert_sizeof
+#include "static_assert.h"
+
 typedef struct {
 	bool available;
 	bool inverted;
@@ -33,6 +36,7 @@ typedef struct {
 	char *string;
 	regex_t regex;
 } regexData;
+ASSERT_SIZEOF(regexData, 32, 20, 20);
 
 unsigned int get_num_regex(const enum regex_type regexid) __attribute__((pure));
 int match_regex(const char *input, const DNSCacheData* dns_cache, const int clientID,

@@ -15,6 +15,8 @@
 
 // enum privacy_level
 #include "enums.h"
+// assert_sizeof
+#include "static_assert.h"
 
 extern const char *querytypes[TYPE_MAX];
 
@@ -47,6 +49,9 @@ typedef struct {
 	} flags;
 } queriesData;
 
+// ARM needs extra padding at the end
+ASSERT_SIZEOF(queriesData, 64, 52, 56);
+
 typedef struct {
 	unsigned char magic;
 	bool new;
@@ -57,6 +62,7 @@ typedef struct {
 	size_t namepos;
 	time_t lastQuery;
 } upstreamsData;
+ASSERT_SIZEOF(upstreamsData, 40, 28, 28);
 
 typedef struct {
 	unsigned char magic;
@@ -81,6 +87,7 @@ typedef struct {
 	time_t lastQuery;
 	time_t firstSeen;
 } clientsData;
+ASSERT_SIZEOF(clientsData, 688, 664, 664);
 
 typedef struct {
 	unsigned char magic;
@@ -88,6 +95,7 @@ typedef struct {
 	int blockedcount;
 	size_t domainpos;
 } domainsData;
+ASSERT_SIZEOF(domainsData, 24, 16, 16);
 
 typedef struct {
 	unsigned char magic;
@@ -98,6 +106,7 @@ typedef struct {
 	int clientID;
 	int black_regex_idx;
 } DNSCacheData;
+ASSERT_SIZEOF(DNSCacheData, 16, 16, 16);
 
 void strtolower(char *str);
 int findQueryID(const int id);

@@ -143,7 +143,6 @@
 // Preprocessor help functions
 #define str(x) # x
 #define xstr(x) str(x)
-#define STATIC_ASSERT(COND,MSG) typedef char static_assertion_##MSG[(COND)?1:-1]
 
 extern pthread_t telnet_listenthreadv4;
 extern pthread_t telnet_listenthreadv6;

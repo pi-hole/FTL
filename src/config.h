@@ -17,6 +17,8 @@
 #include <sys/types.h>
 // typedef uni32_t
 #include <idn-int.h>
+// assert_sizeof
+#include "static_assert.h"
 
 void getLogFilePath(void);
 void read_FTLconf(void);
@@ -54,6 +56,7 @@ typedef struct {
 	enum debug_flags debug;
 	time_t DBinterval;
 } ConfigStruct;
+ASSERT_SIZEOF(ConfigStruct, 56, 48, 48);
 
 typedef struct {
 	const char* conf;
