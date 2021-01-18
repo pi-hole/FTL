@@ -891,19 +891,12 @@ void getAllQueries(const char *client_message, const int *sock)
 		if(query->status == QUERY_UNKNOWN && !(showpermitted && showblocked))
 			continue;
 
-		// 1 = gravity.list, 4 = wildcard, 5 = black.list
-		if((query->status == QUERY_GRAVITY ||
-		    query->status == QUERY_REGEX ||
-		    query->status == QUERY_BLACKLIST ||
-		    query->status == QUERY_GRAVITY_CNAME ||
-		    query->status == QUERY_REGEX_CNAME ||
-		    query->status == QUERY_BLACKLIST_CNAME) && !showblocked)
+		// Skip blocked queries when asked to
+		if(query->flags.blocked && !showblocked)
 			continue;
-		// 2 = forwarded, 3 = cached
-		if((query->status == QUERY_FORWARDED ||
-		    query->status == QUERY_CACHE ||
-		    query->status == QUERY_RETRIED ||
-		    query->status == QUERY_RETRIED_DNSSEC) && !showpermitted)
+
+		// Skip permitted queries when asked to
+		if(!query->flags.blocked && !showpermitted)
 			continue;
 
 		// Skip those entries which so not meet the requested timeframe
@@ -921,10 +914,7 @@ void getAllQueries(const char *client_message, const int *sock)
 			// If the domain of this query did not match, the CNAME
 			// domain may still match - we have to check it in
 			// addition if this query is of CNAME blocked type
-			else if((query->status == QUERY_GRAVITY_CNAME ||
-				query->status == QUERY_BLACKLIST_CNAME ||
-				query->status == QUERY_REGEX_CNAME) &&
-				query->CNAME_domainID == domainid)
+			else if(query->CNAME_domainID > -1)
 			{
 				// Get this query
 			}
@@ -959,13 +949,8 @@ void getAllQueries(const char *client_message, const int *sock)
 
 		if(filterforwarddest)
 		{
-			// Does the user want to see queries answered from blocking lists?
-			if(forwarddestid == -2 && query->status != QUERY_GRAVITY
-			                       && query->status != QUERY_REGEX
-			                       && query->status != QUERY_BLACKLIST
-			                       && query->status != QUERY_GRAVITY_CNAME
-			                       && query->status != QUERY_REGEX_CNAME
-			                       && query->status != QUERY_BLACKLIST_CNAME)
+			// Skip if not from the virtual blocking "upstream" server
+			if(forwarddestid == -2 && !query->flags.blocked)
 				continue;
 			// Does the user want to see queries answered from local cache?
 			else if(forwarddestid == -1 && query->status != QUERY_CACHE)
@@ -1017,7 +1002,7 @@ void getAllQueries(const char *client_message, const int *sock)
 		// Get IP of upstream destination, if applicable
 		in_port_t upstream_port = 0;
 		const char *upstream_name = "N/A";
-		if(query->status == QUERY_FORWARDED)
+		if(query->upstreamID > -1)
 		{
 			const upstreamsData *upstream = getUpstream(query->upstreamID, true);
 			if(upstream != NULL)
@@ -1104,15 +1089,8 @@ void getRecentBlocked(const char *client_message, const int *sock)
 		if(query == NULL)
 			continue;
 
-		if(query->status == QUERY_GRAVITY ||
-		   query->status == QUERY_REGEX ||
-		   query->status == QUERY_BLACKLIST ||
-		   query->status == QUERY_GRAVITY_CNAME ||
-		   query->status == QUERY_REGEX_CNAME ||
-		   query->status == QUERY_BLACKLIST_CNAME)
+		if(query->flags.blocked)
 		{
-			found++;
-
 			// Ask subroutine for domain. It may return "hidden" depending on
 			// the privacy settings at the time the query was made
 			const char *domain = getDomainString(query);
@@ -1123,6 +1101,9 @@ void getRecentBlocked(const char *client_message, const int *sock)
 				ssend(*sock,"%s\n", domain);
 			else if(!pack_str32(*sock, domain))
 				return;
+
+			// Only count when sent succesfully
+			found++;
 		}
 
 		if(found >= num)

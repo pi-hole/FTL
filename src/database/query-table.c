@@ -148,7 +148,7 @@ void DB_save_queries(void)
 		sqlite3_bind_text(stmt, 5, client, -1, SQLITE_STATIC);
 
 		// FORWARD
-		if(query->flags.forwarded && query->upstreamID > -1)
+		if(query->upstreamID > -1)
 		{
 			// Get forward pointer
 			const upstreamsData* upstream = getUpstream(query->upstreamID, true);
@@ -387,19 +387,13 @@ void DB_read_queries(void)
 			continue;
 		}
 
-		const char *upstream = (const char *)sqlite3_column_text(stmt, 6);
-		int upstreamID = 0;
+		const char *upstream = NULL;
+		int upstreamID = -1; // Default if not forwarded
 		// Determine upstreamID only when status == 2 (forwarded) as the
 		// field need not to be filled for other query status types
-		if(status == QUERY_FORWARDED)
+		if(sqlite3_column_bytes(stmt, 6) > 0 &&
+		   (upstream = (const char *)sqlite3_column_text(stmt, 6)) != NULL)
 		{
-			if(upstream == NULL)
-			{
-				logg("WARN (during database import): FORWARD should not be NULL with status QUERY_FORWARDED (timestamp: %lli), skipping entry",
-				     (long long)queryTimeStamp);
-				continue;
-			}
-
 			// Get IP address and port of upstream destination
 			char serv_addr[INET6_ADDRSTRLEN] = { 0 };
 			unsigned int serv_port = 53;
@@ -452,7 +446,6 @@ void DB_read_queries(void)
 		// Initialize flags
 		query->flags.complete = true; // Mark as all information is available
 		query->flags.blocked = false;
-		query->flags.forwarded = false;
 		query->flags.whitelisted = false;
 
 		// Set lastQuery timer for network table
@@ -479,7 +472,7 @@ void DB_read_queries(void)
 		   status == QUERY_REGEX_CNAME ||
 		   status == QUERY_BLACKLIST_CNAME)
 		{
-			// QUERY_*_CNAME: Getdomain causing the blocking
+			// QUERY_*_CNAME: Get domain causing the blocking
 			const char *CNAMEdomain = (const char *)sqlite3_column_text(stmt, 7);
 			if(CNAMEdomain != NULL && strlen(CNAMEdomain) > 0)
 			{
@@ -530,7 +523,6 @@ void DB_read_queries(void)
 
 			case QUERY_FORWARDED: // Forwarded
 				counters->forwarded++;
-				query->flags.forwarded = true;
 				// Update overTime data structure
 				overTime[timeidx].forwarded++;
 				break;
