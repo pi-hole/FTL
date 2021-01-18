@@ -46,6 +46,8 @@ typedef struct {
 	struct query_flags {
 		bool whitelisted :1;
 		bool complete :1;
+		bool blocked :1;
+		bool forwarded :1;
 	} flags;
 } queriesData;
 

@@ -148,7 +148,7 @@ void DB_save_queries(void)
 		sqlite3_bind_text(stmt, 5, client, -1, SQLITE_STATIC);
 
 		// FORWARD
-		if(query->status == QUERY_FORWARDED && query->upstreamID > -1)
+		if(query->flags.forwarded && query->upstreamID > -1)
 		{
 			// Get forward pointer
 			const upstreamsData* upstream = getUpstream(query->upstreamID, true);
@@ -209,15 +209,7 @@ void DB_save_queries(void)
 
 		// Total counter information (delta computation)
 		total++;
-		if(query->status == QUERY_GRAVITY ||
-		   query->status == QUERY_BLACKLIST ||
-		   query->status == QUERY_REGEX ||
-		   query->status == QUERY_EXTERNAL_BLOCKED_IP ||
-		   query->status == QUERY_EXTERNAL_BLOCKED_NULL ||
-		   query->status == QUERY_EXTERNAL_BLOCKED_NXRA ||
-		   query->status == QUERY_GRAVITY_CNAME ||
-		   query->status == QUERY_REGEX_CNAME ||
-		   query->status == QUERY_BLACKLIST_CNAME)
+		if(query->flags.blocked)
 			blocked++;
 
 		// Update lasttimestamp variable with timestamp of the latest stored query
@@ -453,11 +445,15 @@ void DB_read_queries(void)
 		query->timeidx = timeidx;
 		query->db = dbid;
 		query->id = 0;
-		query->flags.complete = true; // Mark as all information is available
 		query->response = 0;
 		query->dnssec = DNSSEC_UNSPECIFIED;
 		query->reply = REPLY_UNKNOWN;
 		query->CNAME_domainID = -1;
+		// Initialize flags
+		query->flags.complete = true; // Mark as all information is available
+		query->flags.blocked = false;
+		query->flags.forwarded = false;
+		query->flags.whitelisted = false;
 
 		// Set lastQuery timer for network table
 		clientsData* client = getClient(clientID, true);
@@ -523,6 +519,7 @@ void DB_read_queries(void)
 			case QUERY_REGEX_CNAME: // Blocked by regex blacklist (inside CNAME path)
 			case QUERY_BLACKLIST_CNAME: // Blocked by exact blacklist (inside CNAME path)
 				counters->blocked++;
+				query->flags.blocked = true;
 				// Get domain pointer
 				domainsData* domain = getDomain(domainID, true);
 				domain->blockedcount++;
@@ -533,6 +530,7 @@ void DB_read_queries(void)
 
 			case QUERY_FORWARDED: // Forwarded
 				counters->forwarded++;
+				query->flags.forwarded = true;
 				// Update overTime data structure
 				overTime[timeidx].forwarded++;
 				break;

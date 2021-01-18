@@ -641,6 +641,10 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// Store DNSSEC result for this domain
 	query->dnssec = DNSSEC_UNSPECIFIED;
 	query->CNAME_domainID = -1;
+	// This query is not yet known ad forwarded or blocked
+	query->flags.blocked = false;
+	query->flags.forwarded = false;
+	query->flags.whitelisted = false;
 
 	// Check and apply possible privacy level rules
 	// The currently set privacy level (at the time the query is
@@ -910,6 +914,7 @@ void _FTL_forwarded(const unsigned int flags, const char *name, const struct ser
 	// from above as otherwise this check will always
 	// be negative
 	query->status = QUERY_FORWARDED;
+	query->flags.forwarded = true;
 
 	// Update overTime data
 	overTime[timeidx].forwarded++;
@@ -1442,6 +1447,7 @@ static void query_blocked(queriesData* query, domainsData* domain, clientsData* 
 
 	// Update status
 	query->status = new_status;
+	query->flags.blocked = true;
 }
 
 void _FTL_dnssec(const int status, const int id, const char* file, const int line)
