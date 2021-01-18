@@ -14,6 +14,9 @@
 // TYPE_MAX
 #include "datastructure.h"
 
+// assert_sizeof
+#include "static_assert.h"
+
 void initOverTime(void);
 unsigned int getOverTimeID(const time_t timestamp);
 
@@ -27,13 +30,14 @@ void moveOverTimeMemory(const time_t mintime);
 
 typedef struct {
 	unsigned char magic;
-	time_t timestamp;
 	int total;
 	int blocked;
 	int cached;
 	int forwarded;
+	time_t timestamp;
 	int querytypedata[TYPE_MAX-1];
 } overTimeData;
+ASSERT_SIZEOF(overTimeData, 96, 88, 88);
 
 extern overTimeData *overTime;
 

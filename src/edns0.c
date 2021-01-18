@@ -41,7 +41,7 @@
 // dnsmasq option: --add-cpe-id=...
 #define EDNS0_CPE_ID EDNS0_OPTION_NOMCPEID
 
-void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockaddr *peer, struct edns_data *edns)
+void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockaddr *peer, ednsData *edns)
 {
 	int is_sign;
 	size_t plen; 

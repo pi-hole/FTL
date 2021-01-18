@@ -17,6 +17,8 @@
 #include <sys/types.h>
 // typedef uni32_t
 #include <idn-int.h>
+// assert_sizeof
+#include "static_assert.h"
 
 void getLogFilePath(void);
 void read_FTLconf(void);
@@ -24,17 +26,11 @@ void get_privacy_level(FILE *fp);
 void get_blocking_mode(FILE *fp);
 void read_debuging_settings(FILE *fp);
 
+// We do not use bitfields in here as this struct exists only once in memory.
+// Accessing bitfields may produce slightly more inefficient code on some
+// architectures (such as ARM) and savng a few bit of RAM but bloating up the
+// rest of the application each time these fields are accessed is bad.
 typedef struct {
-	int maxDBdays;
-	int port;
-	int maxlogage;
-	int dns_port;
-	unsigned int delay_startup;
-	enum debug_flags debug;
-	unsigned int network_expire;
-	enum privacy_level privacylevel;
-	enum blocking_mode blockingmode;
-	enum refresh_hostnames refresh_hostnames;
 	bool socket_listenlocal;
 	bool analyze_AAAA;
 	bool resolveIPv6;
@@ -48,8 +44,19 @@ typedef struct {
 	bool block_esni;
 	bool names_from_netdb;
 	bool edns0_ecs;
+	enum privacy_level privacylevel;
+	enum blocking_mode blockingmode;
+	enum refresh_hostnames refresh_hostnames;
+	int maxDBdays;
+	int port;
+	int maxlogage;
+	int dns_port;
+	unsigned int delay_startup;
+	unsigned int network_expire;
+	enum debug_flags debug;
 	time_t DBinterval;
 } ConfigStruct;
+ASSERT_SIZEOF(ConfigStruct, 56, 48, 48);
 
 typedef struct {
 	const char* conf;

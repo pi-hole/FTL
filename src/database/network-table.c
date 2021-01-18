@@ -689,7 +689,7 @@ static bool add_FTL_clients_to_network_table(enum arp_status *client_status, tim
 		}
 
 		// Silently skip alias-clients - they do not really exist
-		if(client->aliasclient)
+		if(client->flags.aliasclient)
 			continue;
 
 		// Get hostname and IP address of this client
