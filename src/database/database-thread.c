@@ -54,7 +54,7 @@ void *DB_thread(void *val)
 					unlock_shm();
 
 					// Check if GC should be done on the database
-					if(DBdeleteoldqueries)
+					if(DBdeleteoldqueries && config.maxDBdays != -1)
 					{
 						// No thread locks needed
 						delete_old_queries_in_DB();
