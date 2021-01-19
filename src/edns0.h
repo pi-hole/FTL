@@ -10,16 +10,18 @@
 #ifndef EDNS0_HEADER
 #define EDNS0_HEADER
 
-#include "edns0.h"
+// assert_sizeof
+#include "static_assert.h"
 
-struct edns_data {
+typedef struct {
 	bool client_set;
-	char client[ADDRSTRLEN];
 	bool mac_set;
+	char client[ADDRSTRLEN];
 	char mac_byte[6];
 	char mac_text[18];
-};
+} ednsData;
+ASSERT_SIZEOF(ednsData, 72, 72, 72);
 
-void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockaddr *peer, struct edns_data *edns);
+void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockaddr *peer, ednsData *edns);
 
 #endif // EDNS0_HEADER

@@ -121,7 +121,7 @@ int findUpstreamID(const char * upstreamString, const in_port_t port, const bool
 	// Due to the nature of us being the resolver,
 	// the actual resolving of the host name has
 	// to be done separately to be non-blocking
-	upstream->new = true;
+	upstream->flags.new = true;
 	upstream->namepos = 0; // 0 -> string with length zero
 	// Initialize response time values
 	upstream->rtime = 0u;
@@ -249,14 +249,14 @@ int findClientID(const char *clientIP, const bool count, const bool aliasclient)
 	// Due to the nature of us being the resolver,
 	// the actual resolving of the host name has
 	// to be done separately to be non-blocking
-	client->new = true;
+	client->flags.new = true;
 	client->namepos = 0;
 	set_event(RESOLVE_NEW_HOSTNAMES);
 	// No query seen so far
 	client->lastQuery = 0;
 	client->numQueriesARP = client->count;
 	// Configured groups are yet unknown
-	client->found_group = false;
+	client->flags.found_group = false;
 	client->groupspos = 0u;
 	// Store time this client was added, we re-read group settings
 	// some time after adding a client to ensure we pick up possible
@@ -269,7 +269,7 @@ int findClientID(const char *clientIP, const bool count, const bool aliasclient)
 	client->hwlen = -1;
 	memset(client->hwaddr, 0, sizeof(client->hwaddr));
 	// This may be a alias-client, the ID is set elsewhere
-	client->aliasclient = aliasclient;
+	client->flags.aliasclient = aliasclient;
 	client->aliasclient_id = -1;
 
 	// Initialize client-specific overTime data
@@ -307,7 +307,7 @@ void change_clientcount(clientsData *client, int total, int blocked, int overTim
 			client->overTime[overTimeIdx] += overTimeMod;
 
 		// Also add counts to the conencted alias-client (if any)
-		if(client->aliasclient)
+		if(client->flags.aliasclient)
 		{
 			logg("WARN: Should not add to alias-client directly (client \"%s\" (%s))!",
 			     getstr(client->namepos), getstr(client->ippos));

@@ -26,9 +26,10 @@
 #include "../overTime.h"
 // enum REGEX
 #include "../regex_r.h"
-
 // sqrt()
 #include <math.h>
+// get_aliasclient_list()
+#include "../database/aliasclients.h"
 
 /* qsort comparision function (count field), sort ASC
 static int __attribute__((pure)) cmpasc(const void *a, const void *b)
@@ -377,8 +378,11 @@ int api_stats_top_clients(bool blocked, struct mg_connection *conn)
 	{
 		// Get client pointer
 		const clientsData* client = getClient(clientID, true);
-		if(client == NULL)
+
+		// Skip invalid clients and also those managed by alias clients
+		if(client == NULL || (!client->flags.aliasclient && client->aliasclient_id >= 0))
 			continue;
+
 		temparray[clientID][0] = clientID;
 		// Use either blocked or total count based on request string
 		temparray[clientID][1] = blocked ? client->blockedcount : client->count;
@@ -613,6 +617,7 @@ int api_stats_history(struct mg_connection *conn)
 	char *clientname = NULL;
 	bool filterclientname = false;
 	int clientid = -1;
+	int *clientid_list = NULL;
 
 	int querytype = 0;
 
@@ -768,10 +773,10 @@ int api_stats_history(struct mg_connection *conn)
 			{
 				// Get client pointer
 				const clientsData* client = getClient(i, true);
-				if(client == NULL)
-				{
+
+				// Skip invalid clients and also those managed by alias clients
+				if(client == NULL || client->aliasclient_id >= 0)
 					continue;
-				}
 
 				// Try to match the requested string
 				if(strcmp(getstr(client->ippos), clientname) == 0 ||
@@ -779,6 +784,11 @@ int api_stats_history(struct mg_connection *conn)
 				    strcmp(getstr(client->namepos), clientname) == 0))
 				{
 					clientid = i;
+
+					// Is this an alias-client?
+					if(client->flags.aliasclient)
+						clientid_list = get_aliasclient_list(i);
+
 					break;
 				}
 			}
@@ -860,17 +870,12 @@ int api_stats_history(struct mg_connection *conn)
 		if(query->type >= TYPE_MAX)
 			continue;
 
-		// 1 = gravity.list, 4 = wildcard, 5 = black.list
-		if((query->status == QUERY_GRAVITY ||
-		    query->status == QUERY_REGEX ||
-		    query->status == QUERY_BLACKLIST ||
-		    query->status == QUERY_GRAVITY_CNAME ||
-		    query->status == QUERY_REGEX_CNAME ||
-		    query->status == QUERY_BLACKLIST_CNAME) && !showblocked)
+		// Skip blocked queries when asked to
+		if(query->flags.blocked && !showblocked)
 			continue;
-		// 2 = forwarded, 3 = cached
-		if((query->status == QUERY_FORWARDED ||
-		    query->status == QUERY_CACHE) && !showpermitted)
+
+		// Skip permitted queries when asked to
+		if(!query->flags.blocked && !showpermitted)
 			continue;
 
 		// Skip those entries which so not meet the requested timeframe
@@ -890,10 +895,7 @@ int api_stats_history(struct mg_connection *conn)
 			// If the domain of this query did not match, the CNAME
 			// domain may still match - we have to check it in
 			// addition if this query is of CNAME blocked type
-			else if((query->status == QUERY_GRAVITY_CNAME ||
-			         query->status == QUERY_BLACKLIST_CNAME ||
-			         query->status == QUERY_REGEX_CNAME) &&
-			         query->CNAME_domainID == domainid)
+			else if(query->CNAME_domainID > -1)
 			{
 				// Get this query
 			}
@@ -905,8 +907,22 @@ int api_stats_history(struct mg_connection *conn)
 		}
 
 		// Skip if client name and IP are not identical with what the user wants to see
-		if(filterclientname && query->clientID != clientid)
-			continue;
+		if(filterclientname)
+		{
+			// Normal clients
+			if(clientid_list == NULL && query->clientID != clientid)
+				continue;
+			// Alias-clients (we have to check for all clients managed by this alias-client)
+			else if(clientid_list != NULL)
+			{
+				bool found = false;
+				for(int j = 0; j < clientid_list[0]; j++)
+					if(query->clientID == clientid_list[j + 1])
+						found = true;
+				if(!found)
+					continue;
+			}
+		}
 
 		// Skip if query type is not identical with what the user wants to see
 		if(querytype != 0 && querytype != query->type)
@@ -915,12 +931,7 @@ int api_stats_history(struct mg_connection *conn)
 		if(filterforwarddest)
 		{
 			// Does the user want to see queries answered from blocking lists?
-			if(forwarddestid == -2 && query->status != QUERY_GRAVITY
-			                       && query->status != QUERY_REGEX
-			                       && query->status != QUERY_BLACKLIST
-			                       && query->status != QUERY_GRAVITY_CNAME
-			                       && query->status != QUERY_REGEX_CNAME
-			                       && query->status != QUERY_BLACKLIST_CNAME)
+			if(forwarddestid == -2 && !query->flags.blocked)
 				continue;
 			// Does the user want to see queries answered from local cache?
 			else if(forwarddestid == -1 && query->status != QUERY_CACHE)
@@ -971,7 +982,7 @@ int api_stats_history(struct mg_connection *conn)
 		// Get IP of upstream destination, if applicable
 		in_port_t upstream_port = 0;
 		const char *upstream_name = "N/A";
-		if(query->status == QUERY_FORWARDED)
+		if(query->upstreamID > -1)
 		{
 			const upstreamsData *upstream = getUpstream(query->upstreamID, true);
 			if(upstream != NULL)
@@ -1021,6 +1032,9 @@ int api_stats_history(struct mg_connection *conn)
 
 	if(filterforwarddest)
 		free(forwarddest);
+
+	if(clientid_list != NULL)
+		free(clientid_list);
 
 	cJSON *json = JSON_NEW_OBJ();
 	JSON_OBJ_ADD_ITEM(json, "history", history);
@@ -1081,18 +1095,8 @@ int api_stats_recentblocked(struct mg_connection *conn)
 			continue;
 		}
 
-		if(query->status == QUERY_GRAVITY ||
-		   query->status == QUERY_REGEX ||
-		   query->status == QUERY_BLACKLIST ||
-		   query->status == QUERY_EXTERNAL_BLOCKED_IP ||
-		   query->status == QUERY_EXTERNAL_BLOCKED_NULL ||
-		   query->status == QUERY_EXTERNAL_BLOCKED_NXRA ||
-		   query->status == QUERY_GRAVITY_CNAME ||
-		   query->status == QUERY_REGEX_CNAME ||
-		   query->status == QUERY_BLACKLIST_CNAME)
+		if(query->flags.blocked)
 		{
-			found++;
-
 			// Ask subroutine for domain. It may return "hidden" depending on
 			// the privacy settings at the time the query was made
 			const char *domain = getDomainString(query);
@@ -1102,6 +1106,9 @@ int api_stats_recentblocked(struct mg_connection *conn)
 			}
 
 			JSON_ARRAY_REF_STR(blocked, domain);
+
+			// Only count when added succesfully
+			found++;
 		}
 
 		if(found >= show)
@@ -1177,7 +1184,8 @@ int api_stats_overTime_clients(struct mg_connection *conn)
 				continue;
 			// Check if this client should be skipped
 			if(insetupVarsArray(getstr(client->ippos)) ||
-			   insetupVarsArray(getstr(client->namepos)))
+			   insetupVarsArray(getstr(client->namepos)) ||
+			   (!client->flags.aliasclient && client->aliasclient_id > -1))
 				skipclient[clientID] = true;
 		}
 	}
@@ -1198,8 +1206,11 @@ int api_stats_overTime_clients(struct mg_connection *conn)
 
 			// Get client pointer
 			const clientsData* client = getClient(clientID, true);
-			if(client == NULL)
+
+			// Skip invalid clients and also those managed by alias clients
+			if(client == NULL || client->aliasclient_id >= 0)
 				continue;
+
 			const int thisclient = client->overTime[slot];
 
 			JSON_ARRAY_ADD_NUMBER(data2, thisclient);

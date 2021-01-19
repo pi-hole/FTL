@@ -15,6 +15,8 @@
 
 // enum privacy_level
 #include "enums.h"
+// assert_sizeof
+#include "static_assert.h"
 
 extern const char *querytypes[TYPE_MAX];
 
@@ -36,38 +38,55 @@ typedef struct {
 	unsigned long forwardresponse; // saved in units of 1/10 milliseconds (1 = 0.1ms, 2 = 0.2ms, 2500 = 250.0ms, etc.)
 	time_t timestamp;
 	int64_t db;
-	bool whitelisted;
-	bool complete;
+	// Adjacent bit field members in the struct flags may be packed to share
+	// and straddle the individual bytes. It is useful to pack the memory as
+	// tightly as possible as there may be dozens of thousands of these
+	// objects in memory (one per query).
+	// C99 guarentees that bit-fields will be packed as tightly as possible,
+	// provided they don’t cross storageau unit boundaries (6.7.2.1 #10).
+	struct query_flags {
+		bool whitelisted :1;
+		bool complete :1;
+		bool blocked :1;
+	} flags;
 } queriesData;
+
+// ARM uses special padding at the end to enforce alignment
+ASSERT_SIZEOF(queriesData, 72, 56, 64);
 
 typedef struct {
 	unsigned char magic;
-	bool new;
+	struct upstream_flags {
+		bool new:1;
+	} flags;
+	in_port_t port;
 	int count;
 	int failed;
 	unsigned int responses;
-	in_addr_t port;
 	unsigned long rtime;
 	unsigned long rtuncertainty;
 	size_t ippos;
 	size_t namepos;
 	time_t lastQuery;
 } upstreamsData;
+ASSERT_SIZEOF(upstreamsData, 56, 36, 36);
 
 typedef struct {
 	unsigned char magic;
 	unsigned char reread_groups;
 	char hwlen;
 	unsigned char hwaddr[16]; // See DHCP_CHADDR_MAX in dnsmasq/dhcp-protocol.h
-	bool new;
-	bool found_group;
-	bool aliasclient;
+	struct client_flags {
+		bool new:1;
+		bool found_group:1;
+		bool aliasclient:1;
+	} flags;
 	int count;
 	int blockedcount;
 	int aliasclient_id;
-	int overTime[OVERTIME_SLOTS];
 	unsigned int id;
 	unsigned int numQueriesARP;
+	int overTime[OVERTIME_SLOTS];
 	size_t groupspos;
 	size_t ippos;
 	size_t namepos;
@@ -75,13 +94,15 @@ typedef struct {
 	time_t lastQuery;
 	time_t firstSeen;
 } clientsData;
+ASSERT_SIZEOF(clientsData, 688, 664, 664);
 
 typedef struct {
 	unsigned char magic;
-	size_t domainpos;
 	int count;
 	int blockedcount;
+	size_t domainpos;
 } domainsData;
+ASSERT_SIZEOF(domainsData, 24, 16, 16);
 
 typedef struct {
 	unsigned char magic;
@@ -92,6 +113,7 @@ typedef struct {
 	int clientID;
 	int black_regex_idx;
 } DNSCacheData;
+ASSERT_SIZEOF(DNSCacheData, 16, 16, 16);
 
 void strtolower(char *str);
 int findQueryID(const int id);

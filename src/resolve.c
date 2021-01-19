@@ -373,13 +373,13 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 		}
 
 		// Skip alias-clients
-		if(client->aliasclient)
+		if(client->flags.aliasclient)
 		{
 			unlock_shm();
 			continue;
 		}
 
-		bool newflag = client->new;
+		bool newflag = client->flags.new;
 		size_t ippos = client->ippos;
 		size_t oldnamepos = client->namepos;
 
@@ -470,7 +470,7 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 		// Store obtained host name (may be unchanged)
 		client->namepos = newnamepos;
 		// Mark entry as not new
-		client->new = false;
+		client->flags.new = false;
 
 		if(config.debug & DEBUG_RESOLVER)
 			logg("Client %s -> \"%s\" is new", getstr(ippos), getstr(newnamepos));
@@ -509,7 +509,7 @@ static void resolveUpstreams(const bool onlynew)
 			continue;
 		}
 
-		bool newflag = upstream->new;
+		bool newflag = upstream->flags.new;
 		size_t ippos = upstream->ippos;
 		size_t oldnamepos = upstream->namepos;
 
@@ -561,7 +561,7 @@ static void resolveUpstreams(const bool onlynew)
 		// Store obtained host name (may be unchanged)
 		upstream->namepos = newnamepos;
 		// Mark entry as not new
-		upstream->new = false;
+		upstream->flags.new = false;
 
 		if(config.debug & DEBUG_RESOLVER)
 			logg("Upstream %s -> \"%s\" is new", getstr(ippos), getstr(newnamepos));

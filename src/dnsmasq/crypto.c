@@ -25,6 +25,9 @@
 #if NETTLE_VERSION_MAJOR == 3 && NETTLE_VERSION_MINOR >= 6
 #  include <nettle/gostdsa.h>
 #endif
+#endif
+
+#if defined(HAVE_DNSSEC) || defined(HAVE_NETTLEHASH)
 #include <nettle/nettle-meta.h>
 #include <nettle/bignum.h>
 
@@ -167,6 +170,10 @@ int hash_init(const struct nettle_hash *hash, void **ctxp, unsigned char **diges
 
   return 1;
 }
+
+#endif
+
+#ifdef HAVE_DNSSEC
   
 static int dnsmasq_rsa_verify(struct blockdata *key_data, unsigned int key_len, unsigned char *sig, size_t sig_len,
 			      unsigned char *digest, size_t digest_len, int algo)

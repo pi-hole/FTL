@@ -30,7 +30,7 @@
 // reset_aliasclient()
 #include "aliasclients.h"
 
-// Definition of struct regex_data
+// Definition of struct regexData
 #include "../regex_r.h"
 
 // Prefix of interface names in the client table
@@ -219,7 +219,7 @@ static inline const char *show_client_string(const char *hwaddr, const char *hos
 static bool get_client_groupids(clientsData* client)
 {
 	const char *ip = getstr(client->ippos);
-	client->found_group = false;
+	client->flags.found_group = false;
 	client->groupspos = 0u;
 
 	// Do not proceed when database is not available
@@ -619,7 +619,7 @@ static bool get_client_groupids(clientsData* client)
 			     show_client_string(hwaddr, hostname, ip));
 
 		client->groupspos = addstr("0");
-		client->found_group = true;
+		client->flags.found_group = true;
 
 		if(hwaddr != NULL)
 		{
@@ -682,7 +682,7 @@ static bool get_client_groupids(clientsData* client)
 		if(result != NULL)
 		{
 			client->groupspos = addstr(result);
-			client->found_group = true;
+			client->flags.found_group = true;
 		}
 	}
 	else if(rc == SQLITE_DONE)
@@ -690,7 +690,7 @@ static bool get_client_groupids(clientsData* client)
 		// Found no record for this client in the database
 		// -> No associated groups
 		client->groupspos = addstr("");
-		client->found_group = true;
+		client->flags.found_group = true;
 	}
 	else
 	{
@@ -805,7 +805,7 @@ bool gravityDB_prepare_client_statements(clientsData *client)
 
 	// Get associated groups for this client (if defined)
 	char *querystr = NULL;
-	if(!client->found_group && !get_client_groupids(client))
+	if(!client->flags.found_group && !get_client_groupids(client))
 		return false;
 
 	// Prepare whitelist statement
@@ -888,7 +888,7 @@ static inline void gravityDB_finalize_client_statements(clientsData *client)
 	// client sends a query
 	if(client != NULL)
 	{
-		client->found_group = false;
+		client->flags.found_group = false;
 	}
 }
 
@@ -1304,14 +1304,14 @@ bool in_auditlist(const char *domain)
 	return domain_in_list(domain, auditlist_stmt, "auditlist");
 }
 
-bool gravityDB_get_regex_client_groups(clientsData* client, const unsigned int numregex, const regex_data *regex,
+bool gravityDB_get_regex_client_groups(clientsData* client, const unsigned int numregex, const regexData *regex,
                                        const unsigned char type, const char* table)
 {
 	if(config.debug & DEBUG_REGEX)
 		logg("Getting regex client groups for client with ID %i", client->id);
 
 	char *querystr = NULL;
-	if(!client->found_group && !get_client_groupids(client))
+	if(!client->flags.found_group && !get_client_groupids(client))
 		return false;
 
 	// Group filtering

@@ -14,14 +14,13 @@
 #include "../datastructure.h"
 // enum http_method
 #include "../webserver/http-common.h"
-// Definition of struct regex_data
+// Definition of struct regexData
 #include "../regex_r.h"
 
 // Table row record, not all fields are used by all tables
 typedef struct {
 	bool enabled;
-	bool comment_null;
-	bool description_null;
+	int type_int;
 	const char *name;
 	const char *domain;
 	const char *address;
@@ -29,7 +28,6 @@ typedef struct {
 	const char *comment;
 	const char *group_ids;
 	const char *description;
-	int type_int;
 	long id;
 	time_t date_added;
 	time_t date_modified;
@@ -52,7 +50,7 @@ bool in_gravity(const char *domain, clientsData* client);
 bool in_blacklist(const char *domain, clientsData* client);
 bool in_whitelist(const char *domain, const DNSCacheData *dns_cache, clientsData* client);
 
-bool gravityDB_get_regex_client_groups(clientsData* client, const unsigned int numregex, const regex_data *regex,
+bool gravityDB_get_regex_client_groups(clientsData* client, const unsigned int numregex, const regexData *regex,
                                        const unsigned char type, const char* table);
 
 bool gravityDB_readTable(const enum gravity_list_type listtype, const char *filter, const char **message);

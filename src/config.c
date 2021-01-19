@@ -15,6 +15,9 @@
 // nice()
 #include <unistd.h>
 
+// INT_MAX
+#include <limits.h>
+
 ConfigStruct config;
 FTLFileNamesStruct FTLfiles = {
 	// Default path for config file (regular installations)
@@ -130,12 +133,22 @@ void read_FTLconf(void)
 	buffer = parse_FTLconf(fp, "MAXDBDAYS");
 
 	int value = 0;
+	const int maxdbdays_max = INT_MAX / 24 / 60 / 60;
 	if(buffer != NULL && sscanf(buffer, "%i", &value))
-		if(value >= 0)
+	{
+		// Prevent possible overflow
+		if(value > maxdbdays_max)
+			value = maxdbdays_max;
+
+		// Only use valid values
+		if(value == -1 || value >= 0)
 			config.maxDBdays = value;
+	}
 
 	if(config.maxDBdays == 0)
 		logg("   MAXDBDAYS: --- (DB disabled)");
+	else if(config.maxDBdays == -1)
+		logg("   MAXDBDAYS: --- (cleaning disabled)");
 	else
 		logg("   MAXDBDAYS: max age for stored queries is %i days", config.maxDBdays);
 

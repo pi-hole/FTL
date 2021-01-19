@@ -63,7 +63,7 @@ static void recompute_aliasclient(const int aliasclientID)
 		// Get pointer to client candidate
 		const clientsData *client = getClient(clientID, true);
 		// Skip invalid clients and alias-clients
-		if(client == NULL || client->aliasclient)
+		if(client == NULL || client->flags.aliasclient)
 			continue;
 
 		// Skip clients that are not managed by this aliasclient
@@ -131,7 +131,7 @@ bool import_aliasclients(void)
 		const int clientID = findClientID(aliasclient_str, false, true);
 
 		clientsData *client = getClient(clientID, true);
-		client->new = false;
+		client->flags.new = false;
 
 		// Reset counter
 		client->count = 0;
@@ -141,7 +141,7 @@ bool import_aliasclients(void)
 		client->namepos = addstr(name);
 
 		// This is a aliasclient
-		client->aliasclient = true;
+		client->flags.aliasclient = true;
 		client->aliasclient_id = aliasclient_id;
 
 		// Debug logging
@@ -169,7 +169,7 @@ bool import_aliasclients(void)
 static int get_aliasclient_ID(const clientsData *client)
 {
 	// Skip alias-clients themselves
-	if(client->aliasclient)
+	if(client->flags.aliasclient)
 		return -1;
 
 	const char *clientIP = getstr(client->ippos);
@@ -190,7 +190,7 @@ static int get_aliasclient_ID(const clientsData *client)
 		const clientsData *alias_client = getClient(aliasclientID, true);
 
 		// Skip clients that are not alias-clients
-		if(!alias_client->aliasclient)
+		if(!alias_client->flags.aliasclient)
 			continue;
 
 		// Compare MAC address of the current client to the
@@ -220,7 +220,7 @@ static int get_aliasclient_ID(const clientsData *client)
 void reset_aliasclient(clientsData *client)
 {
 	// Skip alias-clients themselves
-	if(client->aliasclient)
+	if(client->flags.aliasclient)
 		return;
 
 	// Find corresponding alias-client (if any)
@@ -288,7 +288,7 @@ void reimport_aliasclients(void)
 		// Get pointer to client candidate
 		clientsData *client = getClient(clientID, true);
 		// Skip invalid and non-alias-clients
-		if(client == NULL || !client->aliasclient)
+		if(client == NULL || !client->flags.aliasclient)
 			continue;
 
 		// Reset this alias-client
@@ -309,7 +309,7 @@ void reimport_aliasclients(void)
 		// Get pointer to client candidate
 		clientsData *client = getClient(clientID, true);
 		// Skip invalid and alias-clients
-		if(client == NULL || client->aliasclient)
+		if(client == NULL || client->flags.aliasclient)
 			continue;
 
 		reset_aliasclient(client);

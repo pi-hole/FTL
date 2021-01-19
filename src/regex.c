@@ -28,13 +28,13 @@
 
 const char *regextype[REGEX_MAX] = { "blacklist", "whitelist", "CLI" };
 
-static regex_data *white_regex = NULL;
-static regex_data *black_regex = NULL;
-static regex_data   *cli_regex = NULL;
+static regexData *white_regex = NULL;
+static regexData *black_regex = NULL;
+static regexData   *cli_regex = NULL;
 static unsigned int num_regex[REGEX_MAX] = { 0 };
 unsigned int regex_change = 0;
 
-static inline regex_data *get_regex_ptr(const enum regex_type regexid)
+static inline regexData *get_regex_ptr(const enum regex_type regexid)
 {
 	switch (regexid)
 	{
@@ -52,7 +52,7 @@ static inline regex_data *get_regex_ptr(const enum regex_type regexid)
 
 static inline void free_regex_ptr(const enum regex_type regexid)
 {
-	regex_data **regex;
+	regexData **regex;
 	switch (regexid)
 	{
 		case REGEX_BLACKLIST:
@@ -97,7 +97,7 @@ unsigned int __attribute__((pure)) get_num_regex(const enum regex_type regexid)
    regexec() to match against a string */
 static bool compile_regex(const char *regexin, const enum regex_type regexid)
 {
-	regex_data *regex = get_regex_ptr(regexid);
+	regexData *regex = get_regex_ptr(regexid);
 	int index = num_regex[regexid]++;
 
 	// Extract possible Pi-hole extensions
@@ -205,7 +205,7 @@ int match_regex(const char *input, const DNSCacheData* dns_cache, const int clie
                 const enum regex_type regexid, const bool regextest)
 {
 	int match_idx = -1;
-	regex_data *regex = get_regex_ptr(regexid);
+	regexData *regex = get_regex_ptr(regexid);
 #ifdef USE_TRE_REGEX
 	regmatch_t match = { 0 }; // This also disables any sub-matching
 #endif
@@ -370,7 +370,7 @@ static void free_regex(void)
 	// Loop over regex types
 	for(enum regex_type regexid = REGEX_BLACKLIST; regexid < REGEX_MAX; regexid++)
 	{
-		regex_data *regex = get_regex_ptr(regexid);
+		regexData *regex = get_regex_ptr(regexid);
 
 		// Reset counter for number of regex
 		const unsigned int oldcount = num_regex[regexid];
@@ -460,15 +460,15 @@ static void read_regex_table(const enum regex_type regexid)
 	}
 
 	// Allocate memory for regex
-	regex_data *regex = NULL;
+	regexData *regex = NULL;
 	if(regexid == REGEX_BLACKLIST)
 	{
-		black_regex = calloc(count, sizeof(regex_data));
+		black_regex = calloc(count, sizeof(regexData));
 		regex = black_regex;
 	}
 	else
 	{
-		white_regex = calloc(count, sizeof(regex_data));
+		white_regex = calloc(count, sizeof(regexData));
 		regex = white_regex;
 	}
 
@@ -554,7 +554,7 @@ void read_regex_from_database(void)
 		// Get client pointer
 		clientsData *client = getClient(clientID, true);
 		// Skip invalid and alias-clients
-		if(client == NULL || client->aliasclient)
+		if(client == NULL || client->flags.aliasclient)
 			continue;
 
 		reload_per_client_regex(client);
@@ -614,7 +614,7 @@ int regex_test(const bool debug_mode, const bool quiet, const char *domainin, co
 	{
 		// Compile CLI regex
 		logg("%s Compiling regex filter...", cli_info());
-		cli_regex = calloc(1, sizeof(regex_data));
+		cli_regex = calloc(1, sizeof(regexData));
 
 		// Compile CLI regex
 		timer_start(REGEX_TIMER);

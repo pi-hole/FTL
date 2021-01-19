@@ -107,7 +107,7 @@ void DB_save_queries(void)
 			continue;
 		}
 
-		if(!query->complete && query->timestamp > currenttimestamp-2)
+		if(!query->flags.complete && query->timestamp > currenttimestamp-2)
 		{
 			// Break if a brand new query (age < 2 seconds) is not yet completed
 			// giving it a chance to be stored next time
@@ -148,7 +148,7 @@ void DB_save_queries(void)
 		sqlite3_bind_text(stmt, 5, client, -1, SQLITE_STATIC);
 
 		// FORWARD
-		if(query->status == QUERY_FORWARDED && query->upstreamID > -1)
+		if(query->upstreamID > -1)
 		{
 			// Get forward pointer
 			const upstreamsData* upstream = getUpstream(query->upstreamID, true);
@@ -209,15 +209,7 @@ void DB_save_queries(void)
 
 		// Total counter information (delta computation)
 		total++;
-		if(query->status == QUERY_GRAVITY ||
-		   query->status == QUERY_BLACKLIST ||
-		   query->status == QUERY_REGEX ||
-		   query->status == QUERY_EXTERNAL_BLOCKED_IP ||
-		   query->status == QUERY_EXTERNAL_BLOCKED_NULL ||
-		   query->status == QUERY_EXTERNAL_BLOCKED_NXRA ||
-		   query->status == QUERY_GRAVITY_CNAME ||
-		   query->status == QUERY_REGEX_CNAME ||
-		   query->status == QUERY_BLACKLIST_CNAME)
+		if(query->flags.blocked)
 			blocked++;
 
 		// Update lasttimestamp variable with timestamp of the latest stored query
@@ -395,19 +387,13 @@ void DB_read_queries(void)
 			continue;
 		}
 
-		const char *upstream = (const char *)sqlite3_column_text(stmt, 6);
-		int upstreamID = 0;
+		const char *upstream = NULL;
+		int upstreamID = -1; // Default if not forwarded
 		// Determine upstreamID only when status == 2 (forwarded) as the
 		// field need not to be filled for other query status types
-		if(status == QUERY_FORWARDED)
+		if(sqlite3_column_bytes(stmt, 6) > 0 &&
+		   (upstream = (const char *)sqlite3_column_text(stmt, 6)) != NULL)
 		{
-			if(upstream == NULL)
-			{
-				logg("WARN (during database import): FORWARD should not be NULL with status QUERY_FORWARDED (timestamp: %lli), skipping entry",
-				     (long long)queryTimeStamp);
-				continue;
-			}
-
 			// Get IP address and port of upstream destination
 			char serv_addr[INET6_ADDRSTRLEN] = { 0 };
 			unsigned int serv_port = 53;
@@ -453,11 +439,14 @@ void DB_read_queries(void)
 		query->timeidx = timeidx;
 		query->db = dbid;
 		query->id = 0;
-		query->complete = true; // Mark as all information is available
 		query->response = 0;
 		query->dnssec = DNSSEC_UNSPECIFIED;
 		query->reply = REPLY_UNKNOWN;
 		query->CNAME_domainID = -1;
+		// Initialize flags
+		query->flags.complete = true; // Mark as all information is available
+		query->flags.blocked = false;
+		query->flags.whitelisted = false;
 
 		// Set lastQuery timer for network table
 		clientsData* client = getClient(clientID, true);
@@ -483,7 +472,7 @@ void DB_read_queries(void)
 		   status == QUERY_REGEX_CNAME ||
 		   status == QUERY_BLACKLIST_CNAME)
 		{
-			// QUERY_*_CNAME: Getdomain causing the blocking
+			// QUERY_*_CNAME: Get domain causing the blocking
 			const char *CNAMEdomain = (const char *)sqlite3_column_text(stmt, 7);
 			if(CNAMEdomain != NULL && strlen(CNAMEdomain) > 0)
 			{
@@ -523,6 +512,7 @@ void DB_read_queries(void)
 			case QUERY_REGEX_CNAME: // Blocked by regex blacklist (inside CNAME path)
 			case QUERY_BLACKLIST_CNAME: // Blocked by exact blacklist (inside CNAME path)
 				counters->blocked++;
+				query->flags.blocked = true;
 				// Get domain pointer
 				domainsData* domain = getDomain(domainID, true);
 				domain->blockedcount++;
