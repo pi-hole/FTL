@@ -104,7 +104,7 @@ static bool check_domain_blocked(const char *domain, const int clientID,
 
 	// Check domains against gravity domains
 	// Skipped when the domain is whitelisted or blocked by exact blacklist
-	if(!query->whitelisted && !blockDomain &&
+	if(!query->flags.whitelisted && !blockDomain &&
 	   in_gravity(domain, client))
 	{
 		// We block this domain
@@ -120,7 +120,7 @@ static bool check_domain_blocked(const char *domain, const int clientID,
 	// Check domain against blacklist regex filters
 	// Skipped when the domain is whitelisted or blocked by exact blacklist or gravity
 	int regex_idx = 0;
-	if(!query->whitelisted && !blockDomain &&
+	if(!query->flags.whitelisted && !blockDomain &&
 	   (regex_idx = match_regex(domain, dns_cache, client->id, REGEX_BLACKLIST, false)) > -1)
 	{
 		// We block this domain
@@ -188,7 +188,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 
 			// Do not block if the entire query is to be permitted
 			// as something along the CNAME path hit the whitelist
-			if(!query->whitelisted)
+			if(!query->flags.whitelisted)
 			{
 				query_blocked(query, domain, client, QUERY_BLACKLIST);
 				force_next_DNS_reply = dns_cache->force_reply;
@@ -208,7 +208,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 
 			// Do not block if the entire query is to be permitted
 			// as sometving along the CNAME path hit the whitelist
-			if(!query->whitelisted)
+			if(!query->flags.whitelisted)
 			{
 				query_blocked(query, domain, client, QUERY_GRAVITY);
 				force_next_DNS_reply = dns_cache->force_reply;
@@ -229,7 +229,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 
 			// Do not block if the entire query is to be permitted
 			// as sometving along the CNAME path hit the whitelist
-			if(!query->whitelisted)
+			if(!query->flags.whitelisted)
 			{
 				query_blocked(query, domain, client, QUERY_REGEX);
 				return true;
@@ -245,7 +245,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 				logg("%s is known as not to be blocked (whitelisted)", domainstr);
 			}
 
-			query->whitelisted = true;
+			query->flags.whitelisted = true;
 
 			return false;
 			break;
@@ -264,7 +264,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 	}
 
 	// Skip all checks and continue if we hit already at least one whitelist in the chain
-	if(query->whitelisted)
+	if(query->flags.whitelisted)
 	{
 		if(config.debug & DEBUG_QUERIES)
 		{
@@ -280,19 +280,19 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 	const char *blockedDomain = domainstr;
 
 	// Check whitelist (exact + regex) for match
-	query->whitelisted = in_whitelist(domainstr, dns_cache, client);
+	query->flags.whitelisted = in_whitelist(domainstr, dns_cache, client);
 
 	bool blockDomain = false;
 	unsigned char new_status = QUERY_UNKNOWN;
 
 	// Check blacklist (exact + regex) and gravity for queried domain
-	if(!query->whitelisted)
+	if(!query->flags.whitelisted)
 	{
 		blockDomain = check_domain_blocked(domainstr, clientID, client, query, dns_cache, blockingreason, &new_status);
 	}
 
 	// Check blacklist (exact + regex) and gravity for _esni.domain if enabled (defaulting to true)
-	if(config.block_esni && !query->whitelisted && !blockDomain && strncasecmp(domainstr, "_esni.", 6u) == 0)
+	if(config.block_esni && !query->flags.whitelisted && !blockDomain && strncasecmp(domainstr, "_esni.", 6u) == 0)
 	{
 		blockDomain = check_domain_blocked(domainstr + 6u, clientID, client, query, dns_cache, blockingreason, &new_status);
 
@@ -322,7 +322,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 		// gravity/blacklist chain when the same client asks
 		// for the same domain in the future. Explicitly store
 		// domain as whitelisted if this is the case
-		dns_cache->blocking_status = query->whitelisted ? WHITELISTED : NOT_BLOCKED;
+		dns_cache->blocking_status = query->flags.whitelisted ? WHITELISTED : NOT_BLOCKED;
 	}
 
 	free(domainstr);
@@ -458,7 +458,7 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 bool _FTL_new_query(const unsigned int flags, const char *name,
                     const char **blockingreason, const union all_addr *addr,
                     const char *types, const unsigned short qtype, const int id,
-                    const struct edns_data *edns, const enum protocol proto,
+                    const ednsData *edns, const enum protocol proto,
                     const char* file, const int line)
 {
 	// Create new query in data structure
@@ -634,13 +634,19 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// Initialize database rowID with zero, will be set when the query is stored in the long-term DB
 	query->db = 0;
 	query->id = id;
-	query->complete = false;
+	query->flags.complete = false;
 	query->response = converttimeval(request);
 	// Initialize reply type
 	query->reply = REPLY_UNKNOWN;
 	// Store DNSSEC result for this domain
 	query->dnssec = DNSSEC_UNSPECIFIED;
 	query->CNAME_domainID = -1;
+	// This query is not yet known ad forwarded or blocked
+	query->flags.blocked = false;
+	query->flags.whitelisted = false;
+
+	// Indicator that this query was not forwarded so far
+	query->upstreamID = -1;
 
 	// Check and apply possible privacy level rules
 	// The currently set privacy level (at the time the query is
@@ -852,7 +858,7 @@ void _FTL_forwarded(const unsigned int flags, const char *name, const struct ser
 	// - the query was formally known as cached but had to be forwarded
 	//   (this is a special case further described below)
 	// Use short-circuit evaluation to check if query is NULL
-	if(query == NULL || (query->complete && query->status != QUERY_CACHE))
+	if(query == NULL || (query->flags.complete && query->status != QUERY_CACHE))
 	{
 		free(upstreamIP);
 		unlock_shm();
@@ -902,7 +908,7 @@ void _FTL_forwarded(const unsigned int flags, const char *name, const struct ser
 		// Query is no longer unknown
 		counters->unknown--;
 		// Hereby, this query is now fully determined
-		query->complete = true;
+		query->flags.complete = true;
 	}
 
 	// Set query status to forwarded only after the
@@ -1055,7 +1061,7 @@ void _FTL_reply(const unsigned int flags, const char *name, const union all_addr
 	// Check if this domain matches exactly
 	const bool isExactMatch = strcmp_escaped(name, getstr(domain->domainpos));
 
-	if((flags & F_CONFIG) && isExactMatch && !query->complete)
+	if((flags & F_CONFIG) && isExactMatch && !query->flags.complete)
 	{
 		// Answered from local configuration, might be a wildcard or user-provided
 		// This query is no longer unknown
@@ -1075,7 +1081,7 @@ void _FTL_reply(const unsigned int flags, const char *name, const union all_addr
 		save_reply_type(flags, addr, query, response);
 
 		// Hereby, this query is now fully determined
-		query->complete = true;
+		query->flags.complete = true;
 	}
 	else if((flags & F_FORWARD) && isExactMatch)
 	{
@@ -1106,7 +1112,7 @@ void _FTL_reply(const unsigned int flags, const char *name, const union all_addr
 		// Save reply type and update individual reply counters
 		save_reply_type(flags, addr, query, response);
 	}
-	else if(isExactMatch && !query->complete)
+	else if(isExactMatch && !query->flags.complete)
 	{
 		logg("*************************** unknown REPLY ***************************");
 		print_flags(flags);
@@ -1357,7 +1363,7 @@ void _FTL_cache(const unsigned int flags, const char *name, const union all_addr
 
 		// Skip this query if already marked as complete
 		// Use short-circuit evaluation to check query if query is NULL
-		if(query == NULL || query->complete)
+		if(query == NULL || query->flags.complete)
 		{
 			unlock_shm();
 			return;
@@ -1396,7 +1402,7 @@ void _FTL_cache(const unsigned int flags, const char *name, const union all_addr
 		save_reply_type(flags, addr, query, response);
 
 		// Hereby, this query is now fully determined
-		query->complete = true;
+		query->flags.complete = true;
 	}
 	else
 	{
@@ -1442,6 +1448,7 @@ static void query_blocked(queriesData* query, domainsData* domain, clientsData* 
 
 	// Update status
 	query->status = new_status;
+	query->flags.blocked = true;
 }
 
 void _FTL_dnssec(const int status, const int id, const char* file, const int line)

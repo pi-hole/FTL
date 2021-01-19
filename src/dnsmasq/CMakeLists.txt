@@ -21,6 +21,7 @@ set(sources
         dump.c
         edns0.c
         forward.c
+        hash_questions.c
         helper.c
         inotify.c
         ip6addr.h

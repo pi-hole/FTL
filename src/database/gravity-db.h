@@ -12,7 +12,7 @@
 
 // clientsData
 #include "../datastructure.h"
-// regex_data
+// regexData
 #include "../regex_r.h"
 
 // Table indices
@@ -35,7 +35,7 @@ bool in_gravity(const char *domain, clientsData* client);
 bool in_blacklist(const char *domain, clientsData* client);
 bool in_whitelist(const char *domain, const DNSCacheData *dns_cache, clientsData* client);
 
-bool gravityDB_get_regex_client_groups(clientsData* client, const unsigned int numregex, const regex_data *regex,
+bool gravityDB_get_regex_client_groups(clientsData* client, const unsigned int numregex, const regexData *regex,
                                        const unsigned char type, const char* table);
 
 #endif //GRAVITY_H
