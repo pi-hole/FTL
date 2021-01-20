@@ -34,7 +34,7 @@ static int get_list(struct mg_connection *conn,
 			JSON_OBJ_ADD_NULL(json, "sql_msg");
 		}
 
-		return send_json_error(conn, 402, // 402 Request Failed
+		return send_json_error(conn, 400, // 400 Bad Request
 		                       "database_error",
 		                       "Could not read domains from database table",
 		                       json);
@@ -131,7 +131,7 @@ static int get_list(struct mg_connection *conn,
 			JSON_OBJ_ADD_NULL(json, "sql_msg");
 		}
 
-		return send_json_error(conn, 402, // 402 Request Failed
+		return send_json_error(conn, 400, // 400 Bad Request
 		                       "database_error",
 		                       "Could not read from gravity database",
 		                       json);
@@ -276,7 +276,7 @@ static int api_list_write(struct mg_connection *conn,
 		}
 
 		// Send error reply
-		return send_json_error(conn, 402, // 402 Request Failed
+		return send_json_error(conn, 400, // 400 Bad Request
 		                       "database_error",
 		                       "Could not add to gravity database",
 		                       json);
@@ -314,7 +314,7 @@ static int api_list_remove(struct mg_connection *conn,
 		}
 
 		// Send error reply
-		return send_json_error(conn, 402,
+		return send_json_error(conn, 400,
 		                       "database_error",
 		                       "Could not remove domain from database table",
 		                       json);

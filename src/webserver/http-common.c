@@ -150,8 +150,7 @@ bool http_get_payload(struct mg_connection *conn, char *payload, const size_t si
 		strncpy(payload, request->query_string, size-1);
 		return true;
 	}
-
-	if(method == HTTP_POST)
+	else // POST, PUT, PATCH
 	{
 		int data_len = mg_read(conn, payload, size - 1);
 		if ((data_len < 1) || (data_len >= (int)size))
