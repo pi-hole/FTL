@@ -243,11 +243,10 @@ static int api_list_write(struct mg_connection *conn,
 	get_bool_var(payload, "enabled", &row.enabled);
 
 	char comment[256] = { 0 };
-	GET_VAR("comment", comment, payload);
 	if(GET_VAR("comment", comment, payload) > 0)
 		row.comment = comment;
 	else
-		row.description = NULL;
+		row.comment = NULL;
 
 	char description[256] = { 0 };
 	if(GET_VAR("description", description, payload) > 0)

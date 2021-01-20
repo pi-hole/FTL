@@ -1531,7 +1531,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, const tablerow 
 	bool okay = false;
 	if((rc = sqlite3_step(stmt)) == SQLITE_DONE)
 	{
-		// Domain added
+		// Domain added/modified
 		okay = true;
 	}
 	else
@@ -1604,7 +1604,7 @@ bool gravityDB_delFromTable(const enum gravity_list_type listtype, const char* a
 	}
 
 	// Bind domain to prepared statement (if requested)
-	int idx = sqlite3_bind_parameter_index(stmt, "argument");
+	int idx = sqlite3_bind_parameter_index(stmt, ":argument");
 	if(idx > 0 && (rc = sqlite3_bind_text(stmt, idx, argument, -1, SQLITE_STATIC)) != SQLITE_OK)
 	{
 		*message = sqlite3_errmsg(gravity_db);
@@ -1616,7 +1616,7 @@ bool gravityDB_delFromTable(const enum gravity_list_type listtype, const char* a
 	}
 
 	// Bind type to prepared statement (if requested)
-	idx = sqlite3_bind_parameter_index(stmt, "type");
+	idx = sqlite3_bind_parameter_index(stmt, ":type");
 	if(idx > 0 && (rc = sqlite3_bind_int(stmt, idx, type)) != SQLITE_OK)
 	{
 		*message = sqlite3_errmsg(gravity_db);
