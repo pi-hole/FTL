@@ -117,6 +117,11 @@ int api_stats_summary(struct mg_connection *conn)
 	JSON_OBJ_ADD_NUMBER(reply_types, "domain", counters->reply_domain);
 	JSON_OBJ_ADD_ITEM(json, "reply_types", reply_types);
 
+	cJSON *system = JSON_NEW_OBJ();
+	const int ret = get_system_obj(conn, system);
+	if(ret != 0) return ret;
+	JSON_OBJ_ADD_ITEM(json, "system", system);
+
 	JSON_SEND_OBJECT(json);
 }
 

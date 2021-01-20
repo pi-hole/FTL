@@ -276,23 +276,15 @@ static bool GetRamInKB(long *mem_total, long *mem_used, long *mem_free, long *me
 	return true;
 }
 
-int api_ftl_system(struct mg_connection *conn)
+int get_system_obj(struct mg_connection *conn, cJSON *system)
 {
-	cJSON *json = JSON_NEW_OBJ();
-
 	const int nprocs = get_nprocs();
 	struct sysinfo info;
 	if(sysinfo(&info) != 0)
 		return send_json_error(conn, 500, "error", strerror(errno), NULL);
 
-	// Extract payload
-	char payload[1024] = { 0 };
-	bool full_info = false;
-	if(http_get_payload(conn, payload, sizeof(payload)))
-		get_bool_var(payload, "full", &full_info);
-
 	// Seconds since boot
-	JSON_OBJ_ADD_NUMBER(json, "uptime", info.uptime);
+	JSON_OBJ_ADD_NUMBER(system, "uptime", info.uptime);
 
 	cJSON *memory = JSON_NEW_OBJ();
 	cJSON *ram = JSON_NEW_OBJ();
@@ -331,36 +323,33 @@ int api_ftl_system(struct mg_connection *conn)
 	// Used swap space
 	JSON_OBJ_ADD_NUMBER(swap, "used", (info.totalswap - info.freeswap) * info.mem_unit);
 	JSON_OBJ_ADD_ITEM(memory, "swap", swap);
+	JSON_OBJ_ADD_ITEM(system, "memory", memory);
 
 	// Number of current processes
-	JSON_OBJ_ADD_NUMBER(memory, "ftotal", (sysconf(_SC_PHYS_PAGES) * sysconf(_SC_PAGESIZE)));
-	JSON_OBJ_ADD_NUMBER(memory, "ffree", (sysconf(_SC_AVPHYS_PAGES) * sysconf(_SC_PAGESIZE)));
-
-	JSON_OBJ_ADD_ITEM(json, "memory", memory);
-
-	// Number of current processes
-	JSON_OBJ_ADD_NUMBER(json, "procs", info.procs);
+	JSON_OBJ_ADD_NUMBER(system, "procs", info.procs);
 
 	cJSON *cpu = JSON_NEW_OBJ();
 	// Number of available processors
 	JSON_OBJ_ADD_NUMBER(cpu, "nprocs", nprocs);
 
 	// 1, 5, and 15 minute load averages (we need to convert them)
-	cJSON *load = JSON_NEW_ARRAY();
+	cJSON *raw = JSON_NEW_ARRAY();
 	cJSON *percent = JSON_NEW_ARRAY();
 	float load_f[3] = { 0.f };
 	const float longfloat = 1.f / (1 << SI_LOAD_SHIFT);
 	for(unsigned int i = 0; i < 3; i++)
 	{
 		load_f[i] = longfloat * info.loads[i];
-		JSON_ARRAY_ADD_NUMBER(load, load_f[i]);
+		JSON_ARRAY_ADD_NUMBER(raw, load_f[i]);
 		JSON_ARRAY_ADD_NUMBER(percent, (100.f*load_f[i]/nprocs));
 	}
 
 	// Averaged CPU usage in percent
+	cJSON *load = JSON_NEW_OBJ();
+	JSON_OBJ_ADD_ITEM(load, "raw", raw);
+	JSON_OBJ_ADD_ITEM(load, "percent", percent);
 	JSON_OBJ_ADD_ITEM(cpu, "load", load);
-	JSON_OBJ_ADD_ITEM(cpu, "percent", percent);
-	JSON_OBJ_ADD_ITEM(json, "cpu", cpu);
+	JSON_OBJ_ADD_ITEM(system, "cpu", cpu);
 
 	// Source available temperatures, we try to read as many
 	// temperature sensors as there are cores on this system
@@ -387,13 +376,27 @@ int api_ftl_system(struct mg_connection *conn)
 		if(ret != 0)
 			return ret;
 	}
-	JSON_OBJ_ADD_ITEM(json, "sensors", sensors);
+	JSON_OBJ_ADD_ITEM(system, "sensors", sensors);
 
 	cJSON *dns = JSON_NEW_OBJ();
 	const bool blocking = get_blockingstatus();
 	JSON_OBJ_ADD_BOOL(dns, "blocking", blocking); // same reply type as in /api/dns/status
 	JSON_OBJ_ADD_NUMBER(dns, "gravity_size", counters->gravity);
-	JSON_OBJ_ADD_ITEM(json, "dns", dns);
-	
+	JSON_OBJ_ADD_ITEM(system, "dns", dns);
+
+	return 0;
+}
+
+int api_ftl_system(struct mg_connection *conn)
+{
+	cJSON *json = JSON_NEW_OBJ();
+	cJSON *system = JSON_NEW_OBJ();
+
+	// Get system object
+	const int ret = get_system_obj(conn, system);
+	if (ret != 0)
+		return ret;
+
+	JSON_OBJ_ADD_ITEM(json, "system", system);
 	JSON_SEND_OBJECT(json);
 }

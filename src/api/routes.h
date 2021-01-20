@@ -12,6 +12,8 @@
 
 // struct mg_connection
 #include "../civetweb/civetweb.h"
+// type cJSON
+#include "../cJSON/cJSON.h"
 
 // API router
 int api_handler(struct mg_connection *conn, void *ignored);
@@ -40,6 +42,7 @@ int api_ftl_client(struct mg_connection *conn);
 int api_ftl_dnsmasq_log(struct mg_connection *conn);
 int api_ftl_database(struct mg_connection *conn);
 int api_ftl_system(struct mg_connection *conn);
+int get_system_obj(struct mg_connection *conn, cJSON *system);
 
 // Network methods
 int api_network(struct mg_connection *conn);
