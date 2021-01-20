@@ -28,6 +28,8 @@ typedef struct {
 	const char *comment;
 	const char *group_ids;
 	const char *description;
+	const char *argument;
+	const char *oldtype;
 	long id;
 	time_t date_added;
 	time_t date_modified;
@@ -56,8 +58,10 @@ bool gravityDB_get_regex_client_groups(clientsData* client, const unsigned int n
 bool gravityDB_readTable(const enum gravity_list_type listtype, const char *filter, const char **message);
 bool gravityDB_readTableGetRow(tablerow *row, const char **message);
 void gravityDB_readTableFinalize(void);
-bool gravityDB_addToTable(const enum gravity_list_type listtype, const tablerow row,
+bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
                           const char **message, const enum http_method method);
 bool gravityDB_delFromTable(const enum gravity_list_type listtype, const char* domain_name, const char **message);
+bool gravityDB_edit_groups(const enum gravity_list_type listtype, cJSON *groups,
+                           const tablerow *row, const char **message);
 
 #endif //GRAVITY_H

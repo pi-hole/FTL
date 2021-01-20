@@ -167,7 +167,8 @@ enum gravity_list_type {
 	GRAVITY_DOMAINLIST_ALL_REGEX,
 	GRAVITY_DOMAINLIST_ALL_ALL,
 	GRAVITY_GROUPS,
-	GRAVITY_ADLISTS
+	GRAVITY_ADLISTS,
+	GRAVITY_CLIENTS
 } __attribute__ ((packed));
 
 enum gravity_tables {

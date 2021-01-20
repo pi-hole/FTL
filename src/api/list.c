@@ -14,18 +14,18 @@
 #include "routes.h"
 #include "../database/gravity-db.h"
 
-static int get_list(struct mg_connection *conn,
-                    const int code,
-                    const enum gravity_list_type listtype,
-                    const char *filter)
+static int api_list_read(struct mg_connection *conn,
+                         const int code,
+                         const enum gravity_list_type listtype,
+                         const char *argument)
 {
 	const char *sql_msg = NULL;
-	if(!gravityDB_readTable(listtype, filter, &sql_msg))
+	if(!gravityDB_readTable(listtype, argument, &sql_msg))
 	{
 		cJSON *json = JSON_NEW_OBJ();
 
-		// Add filter (may be NULL = not available)
-		JSON_OBJ_REF_STR(json, "filter", filter);
+		// Add argument (may be NULL = not available)
+		JSON_OBJ_REF_STR(json, "argument", argument);
 
 		// Add SQL message (may be NULL = not available)
 		if (sql_msg != NULL) {
@@ -121,8 +121,8 @@ static int get_list(struct mg_connection *conn,
 		JSON_DELETE(items);
 		cJSON *json = JSON_NEW_OBJ();
 
-		// Add filter (may be NULL = not available)
-		JSON_OBJ_REF_STR(json, "filter", filter);
+		// Add argument (may be NULL = not available)
+		JSON_OBJ_REF_STR(json, "argument", argument);
 
 		// Add SQL message (may be NULL = not available)
 		if (sql_msg != NULL) {
@@ -138,134 +138,85 @@ static int get_list(struct mg_connection *conn,
 	}
 }
 
-static int api_list_read(struct mg_connection *conn,
-                         const enum gravity_list_type listtype)
-{
-	// Extract domain from path (option for GET)
-	const struct mg_request_info *request = mg_get_request_info(conn);
-	char domain_filter[1024] = { 0 };
-
-	// Advance one character to strip "/"
-	const char *encoded_uri = strrchr(request->local_uri, '/')+1u;
-
-	// Decode URL (necessary for regular expressions, harmless for domains)
-	if(strlen(encoded_uri) != 0 &&
-	   strcmp(encoded_uri, "exact") != 0 &&
-	   strcmp(encoded_uri, "regex") != 0 &&
-	   strcmp(encoded_uri, "allow") != 0 &&
-	   strcmp(encoded_uri, "deny") != 0 &&
-	   strcmp(encoded_uri, "list") != 0 &&
-	   strcmp(encoded_uri, "group") != 0 &&
-	   strcmp(encoded_uri, "adlist") != 0)
-		mg_url_decode(encoded_uri, strlen(encoded_uri), domain_filter, sizeof(domain_filter), 0);
-
-	return get_list(conn, 200, listtype, domain_filter);
-}
-
 static int api_list_write(struct mg_connection *conn,
                           const enum gravity_list_type listtype,
-                          const enum http_method method)
+                          const enum http_method method,
+                          const char *argument)
 {
-	tablerow row;
-	bool need_domain = false, need_name = false, need_address = false;
-	switch (listtype)
-	{
-		case GRAVITY_GROUPS:
-			need_name = true;
-			break;
+	tablerow row = { 0 };
 
-		case GRAVITY_ADLISTS:
-			need_address = true;
-			break;
-
-		case GRAVITY_DOMAINLIST_ALLOW_EXACT:
-		case GRAVITY_DOMAINLIST_DENY_EXACT:
-		case GRAVITY_DOMAINLIST_ALLOW_REGEX:
-		case GRAVITY_DOMAINLIST_DENY_REGEX:
-		case GRAVITY_DOMAINLIST_ALLOW_ALL:
-		case GRAVITY_DOMAINLIST_DENY_ALL:
-		case GRAVITY_DOMAINLIST_ALL_EXACT:
-		case GRAVITY_DOMAINLIST_ALL_REGEX:
-		case GRAVITY_DOMAINLIST_ALL_ALL:
-			need_domain = true;
-			break;
-	}
+	// Set argument
+	row.argument = argument;
 
 	// Extract payload
 	char payload[1024] = { 0 };
-	const char *argument = NULL;
 	http_get_payload(conn, payload, sizeof(payload));
 
-	// Try to extract data from payload
-	char domain[256] = { 0 };
-	if(need_domain)
-	{
-		if(GET_VAR("domain", domain, payload) < 1)
-		{
-			return send_json_error(conn, 400,
-							"bad_request",
-							"No \"domain\" string in body data",
-							NULL);
-		}
-		row.domain = domain;
-		argument = domain;
+	cJSON *obj = cJSON_Parse(payload);
+	if (obj == NULL) {
+		return send_json_error(conn, 400,
+		                       "bad_request",
+		                       "Invalid request body data",
+		                       NULL);
 	}
 
-	char name[256] = { 0 };
-	if(need_name)
-	{
-		if(GET_VAR("name", name, payload) < 1)
-		{
-			return send_json_error(conn, 400,
-							"bad_request",
-							"No \"name\" string in body data",
-							NULL);
-		}
-		row.name = name;
-		argument = name;
+	cJSON *json_enabled = cJSON_GetObjectItemCaseSensitive(obj, "enabled");
+	if (!cJSON_IsBool(json_enabled)) {
+		cJSON_Delete(obj);
+		return send_json_error(conn, 400,
+		                       "bad_request",
+		                       "No \"enabled\" boolean in body data",
+		                       NULL);
 	}
+	row.enabled = cJSON_IsTrue(json_enabled);
 
-	char address[256] = { 0 };
-	if(need_address)
-	{
-		if(GET_VAR("address", address, payload) < 1)
-		{
-			return send_json_error(conn, 400,
-							"bad_request",
-							"No \"address\" string in body data",
-							NULL);
-		}
-		row.address = address;
-		argument = address;
-	}
-
-	row.enabled = true;
-	get_bool_var(payload, "enabled", &row.enabled);
-
-	char comment[256] = { 0 };
-	if(GET_VAR("comment", comment, payload) > 0)
-		row.comment = comment;
+	cJSON *json_comment = cJSON_GetObjectItemCaseSensitive(obj, "comment");
+	if(cJSON_IsString(json_comment))
+		row.comment = json_comment->valuestring;
 	else
 		row.comment = NULL;
 
-	char description[256] = { 0 };
-	if(GET_VAR("description", description, payload) > 0)
-		row.description = description;
+	cJSON *json_description = cJSON_GetObjectItemCaseSensitive(obj, "description");
+	if(cJSON_IsString(json_description))
+		row.description = json_description->valuestring;
 	else
 		row.description = NULL;
 
+	cJSON *json_name = cJSON_GetObjectItemCaseSensitive(obj, "name");
+	if(cJSON_IsString(json_name))
+		row.name = json_name->valuestring;
+	else
+		row.name = NULL;
+
+	cJSON *json_oldtype = cJSON_GetObjectItemCaseSensitive(obj, "oldtype");
+	if(cJSON_IsString(json_oldtype))
+		row.oldtype = json_oldtype->valuestring;
+	else
+		row.oldtype = NULL;
+
 	// Try to add domain to table
 	const char *sql_msg = NULL;
-	if(gravityDB_addToTable(listtype, row, &sql_msg, method))
+	bool okay = false;
+	if(gravityDB_addToTable(listtype, &row, &sql_msg, method))
 	{
-		// Send GET style reply with code 201 Created
-		return get_list(conn, 201, listtype, argument);
+		cJSON *groups = cJSON_GetObjectItemCaseSensitive(obj, "groups");
+		if(groups != NULL)
+			okay = gravityDB_edit_groups(listtype, groups, &row, &sql_msg);
 	}
-	else
+	if(!okay)
 	{
 		// Error adding domain, prepare error object
 		cJSON *json = JSON_NEW_OBJ();
-		JSON_OBJ_COPY_STR(json, "argument", argument);
+		JSON_OBJ_REF_STR(json, "argument", argument);
+		JSON_OBJ_ADD_BOOL(json, "enabled", row.enabled);
+		if(row.comment != NULL)
+			JSON_OBJ_REF_STR(json, "comment", row.comment);
+		if(row.description != NULL)
+			JSON_OBJ_REF_STR(json, "description", row.description);
+		if(row.name != NULL)
+			JSON_OBJ_REF_STR(json, "name", row.name);
+		if(row.oldtype != NULL)
+			JSON_OBJ_REF_STR(json, "oldtype", row.oldtype);
 
 		// Add SQL message (may be NULL = not available)
 		if (sql_msg != NULL) {
@@ -274,25 +225,28 @@ static int api_list_write(struct mg_connection *conn,
 			JSON_OBJ_ADD_NULL(json, "sql_msg");
 		}
 
+		// Free memory not needed any longer
+		cJSON_Delete(obj);
+
 		// Send error reply
 		return send_json_error(conn, 400, // 400 Bad Request
 		                       "database_error",
 		                       "Could not add to gravity database",
 		                       json);
 	}
+	// else: everything is okay
+
+	// Free memory not needed any longer
+	cJSON_Delete(obj);
+
+	// Send GET style reply with code 201 Created
+	return api_list_read(conn, 201, listtype, argument);
 }
 
 static int api_list_remove(struct mg_connection *conn,
-                           const enum gravity_list_type listtype)
+                           const enum gravity_list_type listtype,
+                           const char *argument)
 {
-	const struct mg_request_info *request = mg_get_request_info(conn);
-
-	char argument[1024] = { 0 };
-	// Advance one character to strip "/"
-	const char *encoded_uri = strrchr(request->local_uri, '/')+1u;
-	// Decode URL (necessary for regular expressions, harmless for domains)
-	mg_url_decode(encoded_uri, strlen(encoded_uri), argument, sizeof(argument)-1u, 0);
-
 	cJSON *json = JSON_NEW_OBJ(); 
 	const char *sql_msg = NULL;
 	if(gravityDB_delFromTable(listtype, argument, &sql_msg))
@@ -331,24 +285,25 @@ int api_list(struct mg_connection *conn)
 	enum gravity_list_type listtype;
 	bool can_modify = false;
 	const struct mg_request_info *request = mg_get_request_info(conn);
-	if(startsWith("/api/group", request->local_uri))
+	const char *argument = NULL;
+	if((argument = startsWith("/api/group", request->local_uri)) != NULL)
 	{
 		listtype = GRAVITY_GROUPS;
 		can_modify = true;
 	}
-	else if(startsWith("/api/adlist", request->local_uri))
+	else if((argument = startsWith("/api/adlist", request->local_uri)) != NULL)
 	{
 		listtype = GRAVITY_ADLISTS;
 		can_modify = true;
 	}
-	else if(startsWith("/api/list/allow", request->local_uri))
+	else if((argument = startsWith("/api/list/allow", request->local_uri)) != NULL)
 	{
-		if(startsWith("/api/list/allow/exact", request->local_uri))
+		if((argument = startsWith("/api/list/allow/exact", request->local_uri)) != NULL)
 		{
 			listtype = GRAVITY_DOMAINLIST_ALLOW_EXACT;
 			can_modify = true;
 		}
-		else if(startsWith("/api/list/allow/regex", request->local_uri))
+		else if((argument = startsWith("/api/list/allow/regex", request->local_uri)) != NULL)
 		{
 			listtype = GRAVITY_DOMAINLIST_ALLOW_REGEX;
 			can_modify = true;
@@ -356,14 +311,14 @@ int api_list(struct mg_connection *conn)
 		else
 			listtype = GRAVITY_DOMAINLIST_ALLOW_ALL;
 	}
-	else if(startsWith("/api/list/deny", request->local_uri))
+	else if((argument = startsWith("/api/list/deny", request->local_uri)) != NULL)
 	{
-		if(startsWith("/api/list/deny/exact", request->local_uri))
+		if((argument = startsWith("/api/list/deny/exact", request->local_uri)) != NULL)
 		{
 			listtype = GRAVITY_DOMAINLIST_DENY_EXACT;
 			can_modify = true;
 		}
-		else if(startsWith("/api/list/deny/regex", request->local_uri))
+		else if((argument = startsWith("/api/list/deny/regex", request->local_uri)) != NULL)
 		{
 			listtype = GRAVITY_DOMAINLIST_DENY_REGEX;
 			can_modify = true;
@@ -373,28 +328,31 @@ int api_list(struct mg_connection *conn)
 	}
 	else
 	{
-		if(startsWith("/api/list/exact", request->local_uri))
+		if((argument = startsWith("/api/list/exact", request->local_uri)) != NULL)
 			listtype = GRAVITY_DOMAINLIST_ALL_EXACT;
-		else if(startsWith("/api/list/regex", request->local_uri))
+		else if((argument = startsWith("/api/list/regex", request->local_uri)) != NULL)
 			listtype = GRAVITY_DOMAINLIST_ALL_REGEX;
 		else
+		{
+			argument = startsWith("/api/list", request->local_uri);
 			listtype = GRAVITY_DOMAINLIST_ALL_ALL;
+		}
 	}
 
 	const enum http_method method = http_method(conn);
 	if(method == HTTP_GET)
 	{
-		return api_list_read(conn, listtype);
+		return api_list_read(conn, 200, listtype, argument);
 	}
 	else if(can_modify && (method == HTTP_POST || method == HTTP_PUT || method == HTTP_PATCH))
 	{
 		// Add item from list
-		return api_list_write(conn, listtype, method);
+		return api_list_write(conn, listtype, method, argument);
 	}
 	else if(can_modify && method == HTTP_DELETE)
 	{
 		// Delete item from list
-		return api_list_remove(conn, listtype);
+		return api_list_remove(conn, listtype, argument);
 	}
 	else if(!can_modify)
 	{

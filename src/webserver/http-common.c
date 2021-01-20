@@ -164,9 +164,18 @@ bool http_get_payload(struct mg_connection *conn, char *payload, const size_t si
 	return false;
 }
 
-bool __attribute__((pure)) startsWith(const char *path, const char *uri)
+const char* __attribute__((pure)) startsWith(const char *path, const char *uri)
 {
-	return strncmp(path, uri, strlen(path)) == 0;
+	if(strncmp(path, uri, strlen(path)) == 0)
+		if(uri[strlen(path)] == '/')
+			// Path match with argument after ".../"
+			return uri + strlen(path) + 1u;
+		else
+			// Path match without argument
+			return "";
+	else
+		// Path does not match
+		return NULL;
 }
 
 bool http_get_cookie_int(struct mg_connection *conn, const char *cookieName, int *i)
