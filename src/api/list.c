@@ -171,25 +171,25 @@ static int api_list_write(struct mg_connection *conn,
 	row.enabled = cJSON_IsTrue(json_enabled);
 
 	cJSON *json_comment = cJSON_GetObjectItemCaseSensitive(obj, "comment");
-	if(cJSON_IsString(json_comment))
+	if(cJSON_IsString(json_comment) && strlen(json_comment->valuestring) > 0)
 		row.comment = json_comment->valuestring;
 	else
 		row.comment = NULL;
 
 	cJSON *json_description = cJSON_GetObjectItemCaseSensitive(obj, "description");
-	if(cJSON_IsString(json_description))
+	if(cJSON_IsString(json_description) && strlen(json_description->valuestring) > 0)
 		row.description = json_description->valuestring;
 	else
 		row.description = NULL;
 
 	cJSON *json_name = cJSON_GetObjectItemCaseSensitive(obj, "name");
-	if(cJSON_IsString(json_name))
+	if(cJSON_IsString(json_name) && strlen(json_name->valuestring) > 0)
 		row.name = json_name->valuestring;
 	else
 		row.name = NULL;
 
 	cJSON *json_oldtype = cJSON_GetObjectItemCaseSensitive(obj, "oldtype");
-	if(cJSON_IsString(json_oldtype))
+	if(cJSON_IsString(json_oldtype) && strlen(json_oldtype->valuestring) > 0)
 		row.oldtype = json_oldtype->valuestring;
 	else
 		row.oldtype = NULL;
@@ -202,6 +202,10 @@ static int api_list_write(struct mg_connection *conn,
 		cJSON *groups = cJSON_GetObjectItemCaseSensitive(obj, "groups");
 		if(groups != NULL)
 			okay = gravityDB_edit_groups(listtype, groups, &row, &sql_msg);
+		else
+			// The groups array is optional, we still succeed if it
+			// is omitted (groups stay as they are)
+			okay = true;
 	}
 	if(!okay)
 	{
