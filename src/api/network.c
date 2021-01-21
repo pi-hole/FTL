@@ -15,15 +15,15 @@
 // networkrecord
 #include "../database/network-table.h"
 
-int api_network(struct mg_connection *conn)
+int api_network(struct ftl_conn *api)
 {
 	// Verify requesting client is allowed to see this ressource
-	if(check_client_auth(conn, NULL) == API_AUTH_UNAUTHORIZED)
+	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
 	{
-		return send_json_unauthorized(conn);
+		return send_json_unauthorized(api);
 	}
 
-	// Connect to database
+	// apiect to database
 	const char *sql_msg = NULL;
 	if(!networkTable_readDevices(&sql_msg))
 	{
@@ -34,7 +34,7 @@ int api_network(struct mg_connection *conn)
 		} else {
 			JSON_OBJ_ADD_NULL(json, "sql_msg");
 		}
-		return send_json_error(conn, 500,
+		return send_json_error(api, 500,
 		                       "database_error",
 		                       "Could not read network details from database table",
 		                       json);
@@ -73,7 +73,7 @@ int api_network(struct mg_connection *conn)
 				JSON_OBJ_ADD_ITEM(json, "last_item", item);
 				// Add SQL message
 				JSON_OBJ_REF_STR(json, "sql_msg", sql_msg);
-				return send_json_error(conn, 500,
+				return send_json_error(api, 500,
 				                       "database_error",
 				                       "Could not read network details from database table (getting IP records)",
 				                       json);
@@ -96,7 +96,7 @@ int api_network(struct mg_connection *conn)
 		json = JSON_NEW_OBJ();
 		// Add SQL message
 		JSON_OBJ_REF_STR(json, "sql_msg", sql_msg);
-		return send_json_error(conn, 500,
+		return send_json_error(api, 500,
 		                       "database_error",
 		                       "Could not read network details from database table (step)",
 		                       json);

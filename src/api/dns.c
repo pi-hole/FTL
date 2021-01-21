@@ -18,7 +18,7 @@
 // set_blockingmode_timer()
 #include "../timers.h"
 
-static int get_blocking(struct mg_connection *conn)
+static int get_blocking(struct ftl_conn *api)
 {
 	// Return current status
 	cJSON *json = JSON_NEW_OBJ();
@@ -45,35 +45,24 @@ static int get_blocking(struct mg_connection *conn)
 	JSON_SEND_OBJECT(json);
 }
 
-static int set_blocking(struct mg_connection *conn)
+static int set_blocking(struct ftl_conn *api)
 {
 	// Verify requesting client is allowed to access this ressource
-	if(check_client_auth(conn, NULL) == API_AUTH_UNAUTHORIZED)
+	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
 	{
-		return send_json_unauthorized(conn);
+		return send_json_unauthorized(api);
 	}
 
-	char buffer[1024] = { 0 };
-	const int data_len = mg_read(conn, buffer, sizeof(buffer) - 1);
-	if ((data_len < 1) || (data_len >= (int)sizeof(buffer))) {
-		return send_json_error(conn, 400,
-		                       "bad_request", "No request body data",
-		                       NULL);
-	}
-	buffer[data_len] = '\0';
-
-	cJSON *obj = cJSON_Parse(buffer);
-	if (obj == NULL) {
-		return send_json_error(conn, 400,
+	if (api->payload.json == NULL) {
+		return send_json_error(api, 400,
 		                       "bad_request",
 		                       "Invalid request body data",
 		                       NULL);
 	}
 
-	cJSON *elem = cJSON_GetObjectItemCaseSensitive(obj, "blocking");
+	cJSON *elem = cJSON_GetObjectItemCaseSensitive(api->payload.json, "blocking");
 	if (!cJSON_IsBool(elem)) {
-		cJSON_Delete(obj);
-		return send_json_error(conn, 400,
+		return send_json_error(api, 400,
 		                       "bad_request",
 		                       "No \"blocking\" boolean in body data",
 		                       NULL);
@@ -82,12 +71,9 @@ static int set_blocking(struct mg_connection *conn)
 
 	// Get (optional) delay
 	int delay = -1;
-	elem = cJSON_GetObjectItemCaseSensitive(obj, "delay");
+	elem = cJSON_GetObjectItemCaseSensitive(api->payload.json, "delay");
 	if (cJSON_IsNumber(elem) && elem->valuedouble > 0.0)
 		delay = elem->valueint;
-
-	// Free memory not needed any longer
-	cJSON_Delete(obj);
 
 	if(target_status == get_blockingstatus())
 	{
@@ -107,19 +93,18 @@ static int set_blocking(struct mg_connection *conn)
 
 	// Return GET property as result of POST/PUT/PATCH action
 	// if no error happened above
-	return get_blocking(conn);
+	return get_blocking(api);
 }
 
-int api_dns_blockingstatus(struct mg_connection *conn)
+int api_dns_blockingstatus(struct ftl_conn *api)
 {
-	int method = http_method(conn);
-	if(method == HTTP_GET)
+	if(api->method == HTTP_GET)
 	{
-		return get_blocking(conn);
+		return get_blocking(api);
 	}
-	else if(method == HTTP_PUT)
+	else if(api->method == HTTP_PUT)
 	{
-		return set_blocking(conn);
+		return set_blocking(api);
 	}
 	else
 	{
@@ -128,12 +113,12 @@ int api_dns_blockingstatus(struct mg_connection *conn)
 	}
 }
 
-int api_dns_cacheinfo(struct mg_connection *conn)
+int api_dns_cacheinfo(struct ftl_conn *api)
 {
 	// Verify requesting client is allowed to access this ressource
-	if(check_client_auth(conn, NULL) == API_AUTH_UNAUTHORIZED)
+	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
 	{
-		return send_json_unauthorized(conn);
+		return send_json_unauthorized(api);
 	}
 
 	cacheinforecord cacheinfo;

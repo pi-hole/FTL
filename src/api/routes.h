@@ -19,51 +19,52 @@
 // API router
 int api_handler(struct mg_connection *conn, void *ignored);
 
+
 // Statistic methods
-int api_stats_summary(struct mg_connection *conn);
-int api_stats_overTime_history(struct mg_connection *conn);
-int api_stats_overTime_clients(struct mg_connection *conn);
-int api_stats_query_types(struct mg_connection *conn);
-int api_stats_upstreams(struct mg_connection *conn);
-int api_stats_top_domains(bool blocked, struct mg_connection *conn);
-int api_stats_top_clients(bool blocked, struct mg_connection *conn);
-int api_stats_history(struct mg_connection *conn);
-int api_stats_recentblocked(struct mg_connection *conn);
+int api_stats_summary(struct ftl_conn *api);
+int api_stats_overTime_history(struct ftl_conn *api);
+int api_stats_overTime_clients(struct ftl_conn *api);
+int api_stats_query_types(struct ftl_conn *api);
+int api_stats_upstreams(struct ftl_conn *api);
+int api_stats_top_domains(bool blocked, struct ftl_conn *api);
+int api_stats_top_clients(bool blocked, struct ftl_conn *api);
+int api_stats_history(struct ftl_conn *api);
+int api_stats_recentblocked(struct ftl_conn *api);
 
 // Statistics methods (database)
-int api_stats_database_overTime_history(struct mg_connection *conn);
-int api_stats_database_top_items(bool blocked, bool domains, struct mg_connection *conn);
-int api_stats_database_summary(struct mg_connection *conn);
-int api_stats_database_overTime_clients(struct mg_connection *conn);
-int api_stats_database_query_types(struct mg_connection *conn);
-int api_stats_database_upstreams(struct mg_connection *conn);
+int api_stats_database_overTime_history(struct ftl_conn *api);
+int api_stats_database_top_items(bool blocked, bool domains, struct ftl_conn *api);
+int api_stats_database_summary(struct ftl_conn *api);
+int api_stats_database_overTime_clients(struct ftl_conn *api);
+int api_stats_database_query_types(struct ftl_conn *api);
+int api_stats_database_upstreams(struct ftl_conn *api);
 
 // FTL methods
-int api_ftl_client(struct mg_connection *conn);
-int api_ftl_dnsmasq_log(struct mg_connection *conn);
-int api_ftl_database(struct mg_connection *conn);
-int api_ftl_system(struct mg_connection *conn);
-int get_system_obj(struct mg_connection *conn, cJSON *system);
+int api_ftl_client(struct ftl_conn *api);
+int api_ftl_dnsmasq_log(struct ftl_conn *api);
+int api_ftl_database(struct ftl_conn *api);
+int api_ftl_system(struct ftl_conn *api);
+int get_system_obj(struct ftl_conn *api, cJSON *system);
 
 // Network methods
-int api_network(struct mg_connection *conn);
+int api_network(struct ftl_conn *api);
 
 // DNS methods
-int api_dns_blockingstatus(struct mg_connection *conn);
-int api_dns_cacheinfo(struct mg_connection *conn);
+int api_dns_blockingstatus(struct ftl_conn *api);
+int api_dns_cacheinfo(struct ftl_conn *api);
 
 // List methods
-int api_list(struct mg_connection *conn);
-int api_group(struct mg_connection *conn);
+int api_list(struct ftl_conn *api);
+int api_group(struct ftl_conn *api);
 
 // Version method
-int api_version(struct mg_connection *conn);
+int api_version(struct ftl_conn *api);
 
 // Auth method
-int check_client_auth(struct mg_connection *conn, char payload[MAX_PAYLOAD_BYTES]);
-int api_auth(struct mg_connection *conn);
+int check_client_auth(struct ftl_conn *api);
+int api_auth(struct ftl_conn *api);
 
 // Settings methods
-int api_settings_web(struct mg_connection *conn);
+int api_settings_web(struct ftl_conn *api);
 
 #endif // ROUTES_H

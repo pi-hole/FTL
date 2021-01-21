@@ -41,35 +41,35 @@ const char* json_formatter(const cJSON *object)
 	}
 }
 
-int send_http(struct mg_connection *conn, const char *mime_type,
+int send_http(struct ftl_conn *api, const char *mime_type,
               const char *msg)
 {
-	mg_send_http_ok(conn, mime_type, NULL, strlen(msg));
-	return mg_write(conn, msg, strlen(msg));
+	mg_send_http_ok(api->conn, mime_type, NULL, strlen(msg));
+	return mg_write(api->conn, msg, strlen(msg));
 }
 
-int send_http_code(struct mg_connection *conn, const char *mime_type,
+int send_http_code(struct ftl_conn *api, const char *mime_type,
                    int code, const char *msg)
 {
 	// Payload will be sent with text/plain encoding due to
 	// the first line being "Error <code>" by definition
 	//return mg_send_http_error(conn, code, "%s", msg);
-	my_send_http_error_headers(conn, code,
+	my_send_http_error_headers(api->conn, code,
 	                           mime_type,
 	                           strlen(msg));
 
-	return mg_write(conn, msg, strlen(msg));
+	return mg_write(api->conn, msg, strlen(msg));
 }
 
-int send_json_unauthorized(struct mg_connection *conn)
+int send_json_unauthorized(struct ftl_conn *api)
 {
-	return send_json_error(conn, 401,
+	return send_json_error(api, 401,
                                "unauthorized",
                                "Unauthorized",
                                NULL);
 }
 
-int send_json_error(struct mg_connection *conn, const int code,
+int send_json_error(struct ftl_conn *api, const int code,
                     const char *key, const char* message,
                     cJSON *data)
 {
@@ -93,16 +93,16 @@ int send_json_error(struct mg_connection *conn, const int code,
 	JSON_SEND_OBJECT_CODE(json, code);
 }
 
-int send_json_success(struct mg_connection *conn)
+int send_json_success(struct ftl_conn *api)
 {
 	cJSON *json = JSON_NEW_OBJ();
 	JSON_OBJ_REF_STR(json, "status", "success");
 	JSON_SEND_OBJECT(json);
 }
 
-int send_http_internal_error(struct mg_connection *conn)
+int send_http_internal_error(struct ftl_conn *api)
 {
-	return mg_send_http_error(conn, 500, "Internal server error");
+	return mg_send_http_error(api->conn, 500, "Internal server error");
 }
 
 bool get_bool_var(const char *source, const char *var, bool *boolean)
@@ -140,40 +140,12 @@ bool get_uint_var(const char *source, const char *var, unsigned int *num)
 	return false;
 }
 
-// Extract payload either from GET or POST data
-bool http_get_payload(struct mg_connection *conn, char *payload)
+const char* __attribute__((pure)) startsWith(const char *path, const struct ftl_conn *api)
 {
-	// We do not want to extract any payload here
-	if(payload == NULL)
-		return false;
-
-	const enum http_method method = http_method(conn);
-	const struct mg_request_info *request = mg_get_request_info(conn);
-	if(method == HTTP_GET && request->query_string != NULL)
-	{
-		strncpy(payload, request->query_string, MAX_PAYLOAD_BYTES-1);
-		return true;
-	}
-	else // POST, PUT, PATCH
-	{
-		int data_len = mg_read(conn, payload, MAX_PAYLOAD_BYTES - 1);
-		if ((data_len < 1) || (data_len >= MAX_PAYLOAD_BYTES))
-			return false;
-
-		payload[data_len] = '\0';
-		return true;
-	}
-
-	// Everything else
-	return false;
-}
-
-const char* __attribute__((pure)) startsWith(const char *path, const char *uri)
-{
-	if(strncmp(path, uri, strlen(path)) == 0)
-		if(uri[strlen(path)] == '/')
+	if(strncmp(path, api->request->local_uri, strlen(path)) == 0)
+		if(api->request->local_uri[strlen(path)] == '/')
 			// Path match with argument after ".../"
-			return uri + strlen(path) + 1u;
+			return api->request->local_uri + strlen(path) + 1u;
 		else
 			// Path match without argument
 			return "";
@@ -182,11 +154,11 @@ const char* __attribute__((pure)) startsWith(const char *path, const char *uri)
 		return NULL;
 }
 
-bool http_get_cookie_int(struct mg_connection *conn, const char *cookieName, int *i)
+bool http_get_cookie_int(struct ftl_conn *api, const char *cookieName, int *i)
 {
 	// Maximum cookie length is 4KB
 	char cookieValue[4096];
-	const char *cookie = mg_get_header(conn, "Cookie");
+	const char *cookie = mg_get_header(api->conn, "Cookie");
 	if(mg_get_cookie(cookie, cookieName, cookieValue, sizeof(cookieValue)) > 0)
 	{
 		*i = atoi(cookieValue);
@@ -195,9 +167,9 @@ bool http_get_cookie_int(struct mg_connection *conn, const char *cookieName, int
 	return false;
 }
 
-bool http_get_cookie_str(struct mg_connection *conn, const char *cookieName, char *str, size_t str_size)
+bool http_get_cookie_str(struct ftl_conn *api, const char *cookieName, char *str, size_t str_size)
 {
-	const char *cookie = mg_get_header(conn, "Cookie");
+	const char *cookie = mg_get_header(api->conn, "Cookie");
 	if(mg_get_cookie(cookie, cookieName, str, str_size) > 0)
 	{
 		return true;
@@ -205,7 +177,7 @@ bool http_get_cookie_str(struct mg_connection *conn, const char *cookieName, cha
 	return false;
 }
 
-int http_method(struct mg_connection *conn)
+enum http_method __attribute__((pure)) http_method(struct mg_connection *conn)
 {
 	const struct mg_request_info *request = mg_get_request_info(conn);
 	if(strcmp(request->request_method, "GET") == 0)
@@ -220,17 +192,25 @@ int http_method(struct mg_connection *conn)
 		return HTTP_UNKNOWN;
 }
 
-cJSON *get_POST_JSON(struct mg_connection *conn)
+void read_and_parse_payload(struct ftl_conn *api)
 {
-	// Extract payload
-	char buffer[1024] = { 0 };
-	int data_len = mg_read(conn, buffer, sizeof(buffer) - 1);
-	if ((data_len < 1) || (data_len >= (int)sizeof(buffer)))
-		return NULL;
+	// Try to extract payload from GET request
+	if(api->method == HTTP_GET && api->request->query_string != NULL)
+	{
+		strncpy(api->payload.raw, api->request->query_string, MAX_PAYLOAD_BYTES-1);
+		api->payload.avail = true;
+	}
+	else // POST, PUT
+	{
+		int data_len = mg_read(api->conn, api->payload.raw, MAX_PAYLOAD_BYTES - 1);
+		logg("Received payload with size: %d", data_len);
+		if ((data_len < 1) || (data_len >= MAX_PAYLOAD_BYTES))
+			return;
 
-	buffer[data_len] = '\0';
+		api->payload.raw[data_len] = '\0';
+		api->payload.avail = true;
 
-	// Parse JSON
-	cJSON *obj = cJSON_Parse(buffer);
-	return obj;
+		// Try to parse possibly existing JSON payload
+		api->payload.json = cJSON_Parse(api->payload.raw);
+	}
 }

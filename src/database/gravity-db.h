@@ -30,6 +30,7 @@ typedef struct {
 	const char *description;
 	const char *argument;
 	const char *oldtype;
+	const char *ip;
 	long id;
 	time_t date_added;
 	time_t date_modified;

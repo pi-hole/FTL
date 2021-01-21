@@ -22,12 +22,6 @@
 // Server context handle
 static struct mg_context *ctx = NULL;
 
-// Print passed string directly
-static int print_simple(struct mg_connection *conn, void *input)
-{
-	return send_http(conn, "text/plain", input);
-}
-
 static int redirect_root_handler(struct mg_connection *conn, void *input)
 {
 	// Get requested host
@@ -142,7 +136,7 @@ void http_init(void)
 	const char *options[] = {
 		"document_root", httpsettings.webroot,
 		"listening_ports", httpsettings.port,
-		"decode_url", "no",
+		"decode_url", "yes",
 		"enable_directory_listing", "no",
 		"num_threads", "16",
 		"access_control_list", httpsettings.acl,
@@ -170,9 +164,6 @@ void http_init(void)
 		     httpsettings.webroot, httpsettings.port);
 		return;
 	}
-
-	/* Add simple demonstration callbacks */
-	mg_set_request_handler(ctx, "/ping", print_simple, (char*)"pong\n");
 
 	// Register API handler
 	mg_set_request_handler(ctx, "/api", api_handler, NULL);

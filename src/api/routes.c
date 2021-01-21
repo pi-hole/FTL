@@ -24,159 +24,175 @@ int api_handler(struct mg_connection *conn, void *ignored)
 
 	int ret = 0;
 
-	const struct mg_request_info *request = mg_get_request_info(conn);
+	// Prepare API info struct
+	struct ftl_conn api = {
+		conn,
+		mg_get_request_info(conn),
+		http_method(conn),
+		{ 0 }
+	};
+	read_and_parse_payload(&api);
+
 	if(config.debug & DEBUG_API)
-		logg("Requested API URI: %s %s", request->request_method, request->local_uri);
+		logg("Requested API URI: %s %s", api.request->request_method, api.request->local_uri);
 
 	/******************************** /api/dns ********************************/
-	if(startsWith("/api/dns/blocking", request->local_uri))
+	if(startsWith("/api/dns/blocking", &api))
 	{
-		ret = api_dns_blockingstatus(conn);
+		ret = api_dns_blockingstatus(&api);
 	}
-	else if(startsWith("/api/dns/cacheinfo", request->local_uri))
+	else if(startsWith("/api/dns/cacheinfo", &api))
 	{
-		ret = api_dns_cacheinfo(conn);
+		ret = api_dns_cacheinfo(&api);
 	}
 	/*********** /api/domains, /api/groups, /api/adlists, /api/clients *******/
-	else if(startsWith("/api/domains", request->local_uri))
+	else if(startsWith("/api/domains", &api))
 	{
-		ret = api_list(conn);
+		ret = api_list(&api);
 	}
-	else if(startsWith("/api/groups", request->local_uri))
+	else if(startsWith("/api/groups", &api))
 	{
-		ret = api_list(conn);
+		ret = api_list(&api);
 	}
-	else if(startsWith("/api/adlists", request->local_uri))
+	else if(startsWith("/api/adlists", &api))
 	{
-		ret = api_list(conn);
+		ret = api_list(&api);
 	}
-	else if(startsWith("/api/clients", request->local_uri))
+	else if(startsWith("/api/clients", &api))
 	{
-		ret = api_list(conn);
+		ret = api_list(&api);
 	}
 	/******************************** /api/ftl ****************************/
-	else if(startsWith("/api/ftl/client", request->local_uri))
+	else if(startsWith("/api/ftl/client", &api))
 	{
-		ret = api_ftl_client(conn);
+		ret = api_ftl_client(&api);
 	}
-	else if(startsWith("/api/ftl/dnsmasq_log", request->local_uri))
+	else if(startsWith("/api/ftl/dnsmasq_log", &api))
 	{
-		ret = api_ftl_dnsmasq_log(conn);
+		ret = api_ftl_dnsmasq_log(&api);
 	}
-	else if(startsWith("/api/ftl/database", request->local_uri))
+	else if(startsWith("/api/ftl/database", &api))
 	{
-		ret = api_ftl_database(conn);
+		ret = api_ftl_database(&api);
 	}
-	else if(startsWith("/api/ftl/system", request->local_uri))
+	else if(startsWith("/api/ftl/system", &api))
 	{
-		ret = api_ftl_system(conn);
+		ret = api_ftl_system(&api);
 	}
 	/******************************** /api/network ****************************/
-	else if(startsWith("/api/network", request->local_uri))
+	else if(startsWith("/api/network", &api))
 	{
-		ret = api_network(conn);
+		ret = api_network(&api);
 	}
 	/******************************** /api/stats **************************/
-	else if(startsWith("/api/stats/summary", request->local_uri))
+	else if(startsWith("/api/stats/summary", &api))
 	{
-		ret = api_stats_summary(conn);
+		ret = api_stats_summary(&api);
 	}
-	else if(startsWith("/api/stats/overTime/history", request->local_uri))
+	else if(startsWith("/api/stats/overTime/history", &api))
 	{
-		ret = api_stats_overTime_history(conn);
+		ret = api_stats_overTime_history(&api);
 	}
-	else if(startsWith("/api/stats/overTime/clients", request->local_uri))
+	else if(startsWith("/api/stats/overTime/clients", &api))
 	{
-		ret = api_stats_overTime_clients(conn);
+		ret = api_stats_overTime_clients(&api);
 	}
-	else if(startsWith("/api/stats/query_types", request->local_uri))
+	else if(startsWith("/api/stats/query_types", &api))
 	{
-		ret = api_stats_query_types(conn);
+		ret = api_stats_query_types(&api);
 	}
-	else if(startsWith("/api/stats/upstreams", request->local_uri))
+	else if(startsWith("/api/stats/upstreams", &api))
 	{
-		ret = api_stats_upstreams(conn);
+		ret = api_stats_upstreams(&api);
 	}
-	else if(startsWith("/api/stats/top_domains", request->local_uri))
+	else if(startsWith("/api/stats/top_domains", &api))
 	{
-		ret = api_stats_top_domains(false, conn);
+		ret = api_stats_top_domains(false, &api);
 	}
-	else if(startsWith("/api/stats/top_blocked", request->local_uri))
+	else if(startsWith("/api/stats/top_blocked", &api))
 	{
-		ret = api_stats_top_domains(true, conn);
+		ret = api_stats_top_domains(true, &api);
 	}
-	else if(startsWith("/api/stats/top_clients", request->local_uri))
+	else if(startsWith("/api/stats/top_clients", &api))
 	{
-		ret = api_stats_top_clients(false, conn);
+		ret = api_stats_top_clients(false, &api);
 	}
-	else if(startsWith("/api/stats/top_blocked_clients", request->local_uri))
+	else if(startsWith("/api/stats/top_blocked_clients", &api))
 	{
-		ret = api_stats_top_clients(true, conn);
+		ret = api_stats_top_clients(true, &api);
 	}
-	else if(startsWith("/api/stats/history", request->local_uri))
+	else if(startsWith("/api/stats/history", &api))
 	{
-		ret = api_stats_history(conn);
+		ret = api_stats_history(&api);
 	}
-	else if(startsWith("/api/stats/recent_blocked", request->local_uri))
+	else if(startsWith("/api/stats/recent_blocked", &api))
 	{
-		ret = api_stats_recentblocked(conn);
+		ret = api_stats_recentblocked(&api);
 	}
-	else if(startsWith("/api/stats/database/overTime/history", request->local_uri))
+	else if(startsWith("/api/stats/database/overTime/history", &api))
 	{
-		ret = api_stats_database_overTime_history(conn);
+		ret = api_stats_database_overTime_history(&api);
 	}
-	else if(startsWith("/api/stats/database/top_domains", request->local_uri))
+	else if(startsWith("/api/stats/database/top_domains", &api))
 	{
-		ret = api_stats_database_top_items(false, true, conn);
+		ret = api_stats_database_top_items(false, true, &api);
 	}
-	else if(startsWith("/api/stats/database/top_blocked", request->local_uri))
+	else if(startsWith("/api/stats/database/top_blocked", &api))
 	{
-		ret = api_stats_database_top_items(true, true, conn);
+		ret = api_stats_database_top_items(true, true, &api);
 	}
-	else if(startsWith("/api/stats/database/top_clients", request->local_uri))
+	else if(startsWith("/api/stats/database/top_clients", &api))
 	{
-		ret = api_stats_database_top_items(false, false, conn);
+		ret = api_stats_database_top_items(false, false, &api);
 	}
-	else if(startsWith("/api/stats/database/summary", request->local_uri))
+	else if(startsWith("/api/stats/database/summary", &api))
 	{
-		ret = api_stats_database_summary(conn);
+		ret = api_stats_database_summary(&api);
 	}
-	else if(startsWith("/api/stats/database/overTime/clients", request->local_uri))
+	else if(startsWith("/api/stats/database/overTime/clients", &api))
 	{
-		ret = api_stats_database_overTime_clients(conn);
+		ret = api_stats_database_overTime_clients(&api);
 	}
-	else if(startsWith("/api/stats/database/query_types", request->local_uri))
+	else if(startsWith("/api/stats/database/query_types", &api))
 	{
-		ret = api_stats_database_query_types(conn);
+		ret = api_stats_database_query_types(&api);
 	}
-	else if(startsWith("/api/stats/database/upstreams", request->local_uri))
+	else if(startsWith("/api/stats/database/upstreams", &api))
 	{
-		ret = api_stats_database_upstreams(conn);
+		ret = api_stats_database_upstreams(&api);
 	}
 	/******************************** /api/version ****************************/
-	else if(startsWith("/api/version", request->local_uri))
+	else if(startsWith("/api/version", &api))
 	{
-		ret = api_version(conn);
+		ret = api_version(&api);
 	}
 	/******************************** /api/auth ****************************/
-	else if(startsWith("/api/auth", request->local_uri))
+	else if(startsWith("/api/auth", &api))
 	{
-		ret = api_auth(conn);
+		ret = api_auth(&api);
 	}
 	/******************************** /api/settings ****************************/
-	else if(startsWith("/api/settings/web", request->local_uri))
+	else if(startsWith("/api/settings/web", &api))
 	{
-		ret = api_settings_web(conn);
+		ret = api_settings_web(&api);
 	}
 	/******************************** not found or invalid request**************/
 	if(ret == 0)
 	{
 		cJSON *json = JSON_NEW_OBJ();
-		JSON_OBJ_REF_STR(json, "path", request->local_uri);
-		ret = send_json_error(conn, 404,
+		cJSON *string_item = cJSON_CreateStringReference((const char*)api.request->local_uri);
+		cJSON_AddItemToObject(json, "path", string_item);
+		ret = send_json_error(&api, 404,
 		                      "not_found",
 		                      "Not found",
 		                      json);
+	}
+
+	// Free JSON-parsed payload memory (if allocated)
+	if(api.payload.json != NULL)
+	{
+		cJSON_Delete(api.payload.json);
+		api.payload.json = NULL;
 	}
 
 	// Unlock after API access

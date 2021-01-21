@@ -20,15 +20,14 @@
 // FTL_db
 #include "../database/common.h"
 
-int api_stats_database_overTime_history(struct mg_connection *conn)
+int api_stats_database_overTime_history(struct ftl_conn *api)
 {
 	unsigned int from = 0, until = 0;
 	const int interval = 600;
-	const struct mg_request_info *request = mg_get_request_info(conn);
-	if(request->query_string != NULL)
+	if(api->request->query_string != NULL)
 	{
-		get_uint_var(request->query_string, "from", &from);
-		get_uint_var(request->query_string, "until", &until);
+		get_uint_var(api->request->query_string, "from", &from);
+		get_uint_var(api->request->query_string, "until", &until);
 	}
 
 	// Check if we received the required information
@@ -37,7 +36,7 @@ int api_stats_database_overTime_history(struct mg_connection *conn)
 		cJSON *json = JSON_NEW_OBJ();
 		JSON_OBJ_ADD_NUMBER(json, "from", from);
 		JSON_OBJ_ADD_NUMBER(json, "until", until);
-		return send_json_error(conn, 400,
+		return send_json_error(api, 400,
 		                       "bad_request",
 		                       "You need to specify \"until\" in the request.",
 		                       json);
@@ -79,7 +78,7 @@ int api_stats_database_overTime_history(struct mg_connection *conn)
 		cJSON *json = JSON_NEW_OBJ();
 		JSON_OBJ_ADD_NUMBER(json, "from", from);
 		JSON_OBJ_ADD_NUMBER(json, "until", until);
-		return send_json_error(conn, 500,
+		return send_json_error(api, 500,
 		                       "internal_error",
 		                       "Failed to bind interval",
 		                       json);
@@ -100,7 +99,7 @@ int api_stats_database_overTime_history(struct mg_connection *conn)
 		cJSON *json = JSON_NEW_OBJ();
 		JSON_OBJ_ADD_NUMBER(json, "from", from);
 		JSON_OBJ_ADD_NUMBER(json, "until", until);
-		return send_json_error(conn, 500,
+		return send_json_error(api, 500,
 		                       "internal_error",
 		                       "Failed to bind from",
 		                       json);
@@ -121,7 +120,7 @@ int api_stats_database_overTime_history(struct mg_connection *conn)
 		cJSON *json = JSON_NEW_OBJ();
 		JSON_OBJ_ADD_NUMBER(json, "from", from);
 		JSON_OBJ_ADD_NUMBER(json, "until", until);
-		return send_json_error(conn, 500,
+		return send_json_error(api, 500,
 		                       "internal_error",
 		                       "Failed to bind until",
 		                       json);
@@ -182,23 +181,22 @@ int api_stats_database_overTime_history(struct mg_connection *conn)
 	JSON_SEND_OBJECT(json);
 }
 
-int api_stats_database_top_items(bool blocked, bool domains, struct mg_connection *conn)
+int api_stats_database_top_items(bool blocked, bool domains, struct ftl_conn *api)
 {
 	unsigned int from = 0, until = 0, show = 10;
-	const struct mg_request_info *request = mg_get_request_info(conn);
-	if(request->query_string != NULL)
+	if(api->request->query_string != NULL)
 	{
-		get_uint_var(request->query_string, "from", &from);
-		get_uint_var(request->query_string, "until", &until);
+		get_uint_var(api->request->query_string, "from", &from);
+		get_uint_var(api->request->query_string, "until", &until);
 
 		// Get blocked queries not only for .../top_blocked
 		// but also for .../top_domains?blocked=true
 		// Note: this may overwrite the blocked propery from the URL
-		get_bool_var(request->query_string, "blocked", &blocked);
+		get_bool_var(api->request->query_string, "blocked", &blocked);
 
 		// Does the user request a non-default number of replies?
 		// Note: We do not accept zero query requests here
-		get_uint_var(request->query_string, "show", &show);
+		get_uint_var(api->request->query_string, "show", &show);
 	}
 
 	// Check if we received the required information
@@ -207,7 +205,7 @@ int api_stats_database_top_items(bool blocked, bool domains, struct mg_connectio
 		cJSON *json = JSON_NEW_OBJ();
 		JSON_OBJ_ADD_NUMBER(json, "from", from);
 		JSON_OBJ_ADD_NUMBER(json, "until", until);
-		return send_json_error(conn, 400,
+		return send_json_error(api, 400,
 		                       "bad_request",
 		                       "You need to specify both \"from\" and \"until\" in the request.",
 		                       json);
@@ -277,7 +275,7 @@ int api_stats_database_top_items(bool blocked, bool domains, struct mg_connectio
 		JSON_OBJ_ADD_NUMBER(json, "from", from);
 		JSON_OBJ_ADD_NUMBER(json, "until", until);
 		JSON_OBJ_REF_STR(json, "querystr", querystr);
-		return send_json_error(conn, 500,
+		return send_json_error(api, 500,
 		                       "internal_error",
 		                       "Failed to prepare query string",
 		                       json);
@@ -298,7 +296,7 @@ int api_stats_database_top_items(bool blocked, bool domains, struct mg_connectio
 		cJSON *json = JSON_NEW_OBJ();
 		JSON_OBJ_ADD_NUMBER(json, "from", from);
 		JSON_OBJ_ADD_NUMBER(json, "until", until);
-		return send_json_error(conn, 500,
+		return send_json_error(api, 500,
 		                       "internal_error",
 		                       "Failed to bind from",
 		                       json);
@@ -319,7 +317,7 @@ int api_stats_database_top_items(bool blocked, bool domains, struct mg_connectio
 		cJSON *json = JSON_NEW_OBJ();
 		JSON_OBJ_ADD_NUMBER(json, "from", from);
 		JSON_OBJ_ADD_NUMBER(json, "until", until);
-		return send_json_error(conn, 500,
+		return send_json_error(api, 500,
 		                       "internal_error",
 		                       "Failed to bind until",
 		                       json);
@@ -340,7 +338,7 @@ int api_stats_database_top_items(bool blocked, bool domains, struct mg_connectio
 		cJSON *json = JSON_NEW_OBJ();
 		JSON_OBJ_ADD_NUMBER(json, "from", from);
 		JSON_OBJ_ADD_NUMBER(json, "until", until);
-		return send_json_error(conn, 500,
+		return send_json_error(api, 500,
 		                       "internal_error",
 		                       "Failed to bind show",
 		                       json);
@@ -378,14 +376,13 @@ int api_stats_database_top_items(bool blocked, bool domains, struct mg_connectio
 	JSON_SEND_OBJECT(json);
 }
 
-int api_stats_database_summary(struct mg_connection *conn)
+int api_stats_database_summary(struct ftl_conn *api)
 {
 	unsigned int from = 0, until = 0;
-	const struct mg_request_info *request = mg_get_request_info(conn);
-	if(request->query_string != NULL)
+	if(api->request->query_string != NULL)
 	{
-		get_uint_var(request->query_string, "from", &from);
-		get_uint_var(request->query_string, "until", &until);
+		get_uint_var(api->request->query_string, "from", &from);
+		get_uint_var(api->request->query_string, "until", &until);
 	}
 
 	// Check if we received the required information
@@ -394,7 +391,7 @@ int api_stats_database_summary(struct mg_connection *conn)
 		cJSON *json = JSON_NEW_OBJ();
 		JSON_OBJ_ADD_NUMBER(json, "from", from);
 		JSON_OBJ_ADD_NUMBER(json, "until", until);
-		return send_json_error(conn, 400,
+		return send_json_error(api, 400,
 		                       "bad_request",
 		                       "You need to specify both \"from\" and \"until\" in the request.",
 		                       json);
@@ -435,7 +432,7 @@ int api_stats_database_summary(struct mg_connection *conn)
 		cJSON *json = JSON_NEW_OBJ();
 		JSON_OBJ_ADD_NUMBER(json, "from", from);
 		JSON_OBJ_ADD_NUMBER(json, "until", until);
-		return send_json_error(conn, 500,
+		return send_json_error(api, 500,
 		                       "internal_error",
 		                       "Internal server error",
 		                       json);
@@ -459,15 +456,14 @@ int api_stats_database_summary(struct mg_connection *conn)
 	JSON_SEND_OBJECT(json);
 }
 
-int api_stats_database_overTime_clients(struct mg_connection *conn)
+int api_stats_database_overTime_clients(struct ftl_conn *api)
 {
 	unsigned int from = 0, until = 0;
 	const int interval = 600;
-	const struct mg_request_info *request = mg_get_request_info(conn);
-	if(request->query_string != NULL)
+	if(api->request->query_string != NULL)
 	{
-		get_uint_var(request->query_string, "from", &from);
-		get_uint_var(request->query_string, "until", &until);
+		get_uint_var(api->request->query_string, "from", &from);
+		get_uint_var(api->request->query_string, "until", &until);
 	}
 
 	// Check if we received the required information
@@ -476,7 +472,7 @@ int api_stats_database_overTime_clients(struct mg_connection *conn)
 		cJSON *json = JSON_NEW_OBJ();
 		JSON_OBJ_ADD_NUMBER(json, "from", from);
 		JSON_OBJ_ADD_NUMBER(json, "until", until);
-		return send_json_error(conn, 400,
+		return send_json_error(api, 400,
 		                       "bad_request",
 		                       "You need to specify both \"from\" and \"until\" in the request.",
 		                       json);
@@ -505,7 +501,7 @@ int api_stats_database_overTime_clients(struct mg_connection *conn)
 		cJSON *json = JSON_NEW_OBJ();
 		JSON_OBJ_ADD_NUMBER(json, "from", from);
 		JSON_OBJ_ADD_NUMBER(json, "until", until);
-		return send_json_error(conn, 500,
+		return send_json_error(api, 500,
 		                       "internal_error",
 		                       "Failed to prepare outer statement",
 		                       json);
@@ -526,7 +522,7 @@ int api_stats_database_overTime_clients(struct mg_connection *conn)
 		cJSON *json = JSON_NEW_OBJ();
 		JSON_OBJ_ADD_NUMBER(json, "from", from);
 		JSON_OBJ_ADD_NUMBER(json, "until", until);
-		return send_json_error(conn, 500,
+		return send_json_error(api, 500,
 		                       "internal_error",
 		                       "Failed to bind from",
 		                       json);
@@ -547,7 +543,7 @@ int api_stats_database_overTime_clients(struct mg_connection *conn)
 		cJSON *json = JSON_NEW_OBJ();
 		JSON_OBJ_ADD_NUMBER(json, "from", from);
 		JSON_OBJ_ADD_NUMBER(json, "until", until);
-		return send_json_error(conn, 500,
+		return send_json_error(api, 500,
 		                       "internal_error",
 		                       "Failed to bind until",
 		                       json);
@@ -584,7 +580,7 @@ int api_stats_database_overTime_clients(struct mg_connection *conn)
 		cJSON *json = JSON_NEW_OBJ();
 		JSON_OBJ_ADD_NUMBER(json, "from", from);
 		JSON_OBJ_ADD_NUMBER(json, "until", until);
-		return send_json_error(conn, 500,
+		return send_json_error(api, 500,
 					"internal_error",
 					"Failed to prepare inner statement",
 					json);
@@ -605,7 +601,7 @@ int api_stats_database_overTime_clients(struct mg_connection *conn)
 		cJSON *json = JSON_NEW_OBJ();
 		JSON_OBJ_ADD_NUMBER(json, "from", from);
 		JSON_OBJ_ADD_NUMBER(json, "until", until);
-		return send_json_error(conn, 500,
+		return send_json_error(api, 500,
 					"internal_error",
 					"Failed to bind interval",
 					json);
@@ -626,7 +622,7 @@ int api_stats_database_overTime_clients(struct mg_connection *conn)
 		cJSON *json = JSON_NEW_OBJ();
 		JSON_OBJ_ADD_NUMBER(json, "from", from);
 		JSON_OBJ_ADD_NUMBER(json, "until", until);
-		return send_json_error(conn, 500,
+		return send_json_error(api, 500,
 					"internal_error",
 					"Failed to bind from",
 					json);
@@ -647,7 +643,7 @@ int api_stats_database_overTime_clients(struct mg_connection *conn)
 		cJSON *json = JSON_NEW_OBJ();
 		JSON_OBJ_ADD_NUMBER(json, "from", from);
 		JSON_OBJ_ADD_NUMBER(json, "until", until);
-		return send_json_error(conn, 500,
+		return send_json_error(api, 500,
 					"internal_error",
 					"Failed to bind until",
 					json);
@@ -722,14 +718,13 @@ int api_stats_database_overTime_clients(struct mg_connection *conn)
 	JSON_SEND_OBJECT(json);
 }
 
-int api_stats_database_query_types(struct mg_connection *conn)
+int api_stats_database_query_types(struct ftl_conn *api)
 {
 	unsigned int from = 0, until = 0;
-	const struct mg_request_info *request = mg_get_request_info(conn);
-	if(request->query_string != NULL)
+	if(api->request->query_string != NULL)
 	{
-		get_uint_var(request->query_string, "from", &from);
-		get_uint_var(request->query_string, "until", &until);
+		get_uint_var(api->request->query_string, "from", &from);
+		get_uint_var(api->request->query_string, "until", &until);
 	}
 
 	// Check if we received the required information
@@ -738,7 +733,7 @@ int api_stats_database_query_types(struct mg_connection *conn)
 		cJSON *json = JSON_NEW_OBJ();
 		JSON_OBJ_ADD_NUMBER(json, "from", from);
 		JSON_OBJ_ADD_NUMBER(json, "until", until);
-		return send_json_error(conn, 400,
+		return send_json_error(api, 400,
 		                       "bad_request",
 		                       "You need to specify both \"from\" and \"until\" in the request.",
 		                       json);
@@ -777,14 +772,13 @@ int api_stats_database_query_types(struct mg_connection *conn)
 }
 
 
-int api_stats_database_upstreams(struct mg_connection *conn)
+int api_stats_database_upstreams(struct ftl_conn *api)
 {
 	unsigned int from = 0, until = 0;
-	const struct mg_request_info *request = mg_get_request_info(conn);
-	if(request->query_string != NULL)
+	if(api->request->query_string != NULL)
 	{
-		get_uint_var(request->query_string, "from", &from);
-		get_uint_var(request->query_string, "until", &until);
+		get_uint_var(api->request->query_string, "from", &from);
+		get_uint_var(api->request->query_string, "until", &until);
 	}
 
 	// Check if we received the required information
@@ -793,7 +787,7 @@ int api_stats_database_upstreams(struct mg_connection *conn)
 		cJSON *json = JSON_NEW_OBJ();
 		JSON_OBJ_ADD_NUMBER(json, "from", from);
 		JSON_OBJ_ADD_NUMBER(json, "until", until);
-		return send_json_error(conn, 400,
+		return send_json_error(api, 400,
 		                       "bad_request",
 		                       "You need to specify both \"from\" and \"until\" in the request.",
 		                       json);
@@ -838,7 +832,7 @@ int api_stats_database_upstreams(struct mg_connection *conn)
 		cJSON *json = JSON_NEW_OBJ();
 		JSON_OBJ_ADD_NUMBER(json, "from", from);
 		JSON_OBJ_ADD_NUMBER(json, "until", until);
-		return send_json_error(conn, 500,
+		return send_json_error(api, 500,
 		                       "internal_error",
 		                       "Failed to prepare statement",
 		                       json);
@@ -859,7 +853,7 @@ int api_stats_database_upstreams(struct mg_connection *conn)
 		cJSON *json = JSON_NEW_OBJ();
 		JSON_OBJ_ADD_NUMBER(json, "from", from);
 		JSON_OBJ_ADD_NUMBER(json, "until", until);
-		return send_json_error(conn, 500,
+		return send_json_error(api, 500,
 		                       "internal_error",
 		                       "Failed to bind from",
 		                       json);
@@ -880,7 +874,7 @@ int api_stats_database_upstreams(struct mg_connection *conn)
 		cJSON *json = JSON_NEW_OBJ();
 		JSON_OBJ_ADD_NUMBER(json, "from", from);
 		JSON_OBJ_ADD_NUMBER(json, "until", until);
-		return send_json_error(conn, 500,
+		return send_json_error(api, 500,
 		                       "internal_error",
 		                       "Failed to bind until",
 		                       json);

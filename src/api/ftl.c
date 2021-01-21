@@ -29,28 +29,26 @@
 // counters
 #include "../shmem.h"
 
-int api_ftl_client(struct mg_connection *conn)
+int api_ftl_client(struct ftl_conn *api)
 {
 	cJSON *json = JSON_NEW_OBJ();
-	const struct mg_request_info *request = mg_get_request_info(conn);
-
 	// Add client's IP address
-	JSON_OBJ_REF_STR(json, "remote_addr", request->remote_addr);
+	JSON_OBJ_REF_STR(json, "remote_addr", api->request->remote_addr);
 
 	// Add HTTP version
-	JSON_OBJ_REF_STR(json, "http_version", request->http_version);
+	JSON_OBJ_REF_STR(json, "http_version", api->request->http_version);
 
 	// Add request method
-	JSON_OBJ_REF_STR(json, "method", request->request_method);
+	JSON_OBJ_REF_STR(json, "method", api->request->request_method);
 
 	// Add HTTP headers
 	cJSON *headers = JSON_NEW_ARRAY();
-	for(int i = 0; i < request->num_headers; i++)
+	for(int i = 0; i < api->request->num_headers; i++)
 	{
 		// Add headers
 		cJSON *header = JSON_NEW_OBJ();
-		JSON_OBJ_REF_STR(header, "name", request->http_headers[i].name);
-		JSON_OBJ_REF_STR(header, "value", request->http_headers[i].value);
+		JSON_OBJ_REF_STR(header, "name", api->request->http_headers[i].name);
+		JSON_OBJ_REF_STR(header, "value", api->request->http_headers[i].value);
 		JSON_ARRAY_ADD_ITEM(headers, header);
 	}
 	JSON_OBJ_ADD_ITEM(json, "headers", headers);
@@ -60,21 +58,20 @@ int api_ftl_client(struct mg_connection *conn)
 
 // fifologData is allocated in shared memory for cross-fork compatibility
 fifologData *fifo_log = NULL;
-int api_ftl_dnsmasq_log(struct mg_connection *conn)
+int api_ftl_dnsmasq_log(struct ftl_conn *api)
 {
 	// Verify requesting client is allowed to see this ressource
-	if(check_client_auth(conn, NULL) == API_AUTH_UNAUTHORIZED)
+	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
 	{
-		return send_json_unauthorized(conn);
+		return send_json_unauthorized(api);
 	}
 
 	unsigned int start = 0u;
-	const struct mg_request_info *request = mg_get_request_info(conn);
-	if(request->query_string != NULL)
+	if(api->request->query_string != NULL)
 	{
 		// Does the user request an ID to sent from?
 		unsigned int nextID;
-		if(get_uint_var(request->query_string, "nextID", &nextID))
+		if(get_uint_var(api->request->query_string, "nextID", &nextID))
 		{
 			if(nextID >= fifo_log->next_id)
 			{
@@ -125,12 +122,12 @@ int api_ftl_dnsmasq_log(struct mg_connection *conn)
 	JSON_SEND_OBJECT(json);
 }
 
-int api_ftl_database(struct mg_connection *conn)
+int api_ftl_database(struct ftl_conn *api)
 {
 	// Verify requesting client is allowed to see this ressource
-	if(check_client_auth(conn, NULL) == API_AUTH_UNAUTHORIZED)
+	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
 	{
-		send_json_unauthorized(conn);
+		send_json_unauthorized(api);
 	}
 
 	cJSON *json = JSON_NEW_OBJ();
@@ -200,7 +197,7 @@ int api_ftl_database(struct mg_connection *conn)
 	JSON_SEND_OBJECT(json);
 }
 
-static int read_temp_sensor(struct mg_connection *conn,
+static int read_temp_sensor(struct ftl_conn *api,
                             const char *label_path,
                             const char *value_path,
                             const char *fallback_label,
@@ -276,12 +273,12 @@ static bool GetRamInKB(long *mem_total, long *mem_used, long *mem_free, long *me
 	return true;
 }
 
-int get_system_obj(struct mg_connection *conn, cJSON *system)
+int get_system_obj(struct ftl_conn *api, cJSON *system)
 {
 	const int nprocs = get_nprocs();
 	struct sysinfo info;
 	if(sysinfo(&info) != 0)
-		return send_json_error(conn, 500, "error", strerror(errno), NULL);
+		return send_json_error(api, 500, "error", strerror(errno), NULL);
 
 	// Seconds since boot
 	JSON_OBJ_ADD_NUMBER(system, "uptime", info.uptime);
@@ -362,7 +359,7 @@ int get_system_obj(struct mg_connection *conn, cJSON *system)
 		sprintf(label_path, "/sys/class/thermal/thermal_zone%d/type", i);
 		sprintf(value_path, "/sys/class/thermal/thermal_zone%d/temp", i);
 		sprintf(fallback_label, "thermal_zone%d/temp", i);
-		ret = read_temp_sensor(conn, label_path, value_path, fallback_label, sensors);
+		ret = read_temp_sensor(api, label_path, value_path, fallback_label, sensors);
 		// Error handling
 		if(ret != 0)
 			return ret;
@@ -371,7 +368,7 @@ int get_system_obj(struct mg_connection *conn, cJSON *system)
 		sprintf(label_path, "/sys/class/hwmon/hwmon0/temp%d_label", i);
 		sprintf(value_path, "/sys/class/hwmon/hwmon0/temp%d_input", i);
 		sprintf(fallback_label, "hwmon0/temp%d", i);
-		ret = read_temp_sensor(conn, label_path, value_path, fallback_label, sensors);
+		ret = read_temp_sensor(api, label_path, value_path, fallback_label, sensors);
 		// Error handling
 		if(ret != 0)
 			return ret;
@@ -387,13 +384,13 @@ int get_system_obj(struct mg_connection *conn, cJSON *system)
 	return 0;
 }
 
-int api_ftl_system(struct mg_connection *conn)
+int api_ftl_system(struct ftl_conn *api)
 {
 	cJSON *json = JSON_NEW_OBJ();
 	cJSON *system = JSON_NEW_OBJ();
 
 	// Get system object
-	const int ret = get_system_obj(conn, system);
+	const int ret = get_system_obj(api, system);
 	if (ret != 0)
 		return ret;
 

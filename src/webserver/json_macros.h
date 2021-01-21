@@ -30,7 +30,7 @@
 	if(string_item == NULL) \
 	{ \
 		cJSON_Delete(object); \
-		send_http_internal_error(conn); \
+		send_http_internal_error(api); \
 		logg("JSON_OBJ_COPY_STR FAILED (key: \"%s\", string: \"%s\")!", key, string); \
 		return 500; \
 	} \
@@ -50,7 +50,7 @@
 	if(string_item == NULL) \
 	{ \
 		cJSON_Delete(object); \
-		send_http_internal_error(conn); \
+		send_http_internal_error(api); \
 		logg("JSON_OBJ_REF_STR FAILED (key: \"%s\", string: \"%s\")!", key, string); \
 		return 500; \
 	} \
@@ -61,7 +61,7 @@
 	if(cJSON_AddNumberToObject(object, key, (double)(number)) == NULL) \
 	{ \
 		cJSON_Delete(object); \
-		send_http_internal_error(conn); \
+		send_http_internal_error(api); \
 		logg("JSON_OBJ_ADD_NUMBER FAILED!"); \
 		return 500; \
 	} \
@@ -72,7 +72,7 @@
 	if(null_item == NULL) \
 	{ \
 		cJSON_Delete(object); \
-		send_http_internal_error(conn); \
+		send_http_internal_error(api); \
 		logg("JSON_OBJ_ADD_NULL FAILED!"); \
 		return 500; \
 	} \
@@ -84,7 +84,7 @@
 	if(bool_item == NULL) \
 	{ \
 		cJSON_Delete(object); \
-		send_http_internal_error(conn); \
+		send_http_internal_error(api); \
 		logg("JSON_OBJ_ADD_BOOL FAILED!"); \
 		return 500; \
 	} \
@@ -114,7 +114,7 @@
 	if(string_item == NULL) \
 	{ \
 		cJSON_Delete(array); \
-		send_http_internal_error(conn); \
+		send_http_internal_error(api); \
 		logg("JSON_ARRAY_REF_STR FAILED!"); \
 		return 500; \
 	} \
@@ -134,7 +134,7 @@
 	if(string_item == NULL) \
 	{ \
 		cJSON_Delete(array); \
-		send_http_internal_error(conn); \
+		send_http_internal_error(api); \
 		logg("JSON_ARRAY_COPY_STR FAILED!"); \
 		return 500; \
 	} \
@@ -153,11 +153,11 @@
 	if(msg == NULL) \
 	{ \
 		cJSON_Delete(object); \
-		send_http_internal_error(conn); \
+		send_http_internal_error(api); \
 		logg("JSON_SEND_OBJECT FAILED!"); \
 		return 500; \
 	} \
-	send_http(conn, "application/json; charset=utf-8", msg); \
+	send_http(api, "application/json; charset=utf-8", msg); \
 	cJSON_Delete(object); \
 	return 200; \
 }
@@ -167,11 +167,11 @@
 	if(msg == NULL) \
 	{ \
 		cJSON_Delete(object); \
-		send_http_internal_error(conn); \
+		send_http_internal_error(api); \
 		logg("JSON_SEND_OBJECT_CODE FAILED!"); \
 		return 500; \
 	} \
-	send_http_code(conn, "application/json; charset=utf-8", code, msg); \
+	send_http_code(api, "application/json; charset=utf-8", code, msg); \
 	cJSON_Delete(object); \
 	return code; \
 }
@@ -181,11 +181,11 @@
 	if(msg == NULL) \
 	{ \
 		cJSON_Delete(object); \
-		send_http_internal_error(conn); \
+		send_http_internal_error(api); \
 		logg("JSON_SEND_OBJECT_AND_HEADERS FAILED!"); \
 		return 500; \
 	} \
-	send_http(conn, "application/json; charset=utf-8", additional_headers, msg); \
+	send_http(api, "application/json; charset=utf-8", additional_headers, msg); \
 	cJSON_Delete(object); \
 	free(additional_headers); \
 	return 200; \
@@ -196,11 +196,11 @@
 	if(msg == NULL) \
 	{ \
 		cJSON_Delete(object); \
-		send_http_internal_error(conn); \
+		send_http_internal_error(api); \
 		logg("JSON_SEND_OBJECT_AND_HEADERS_CODE FAILED!"); \
 		return 500; \
 	} \
-	send_http_code(conn, "application/json; charset=utf-8", additional_headers, code, msg); \
+	send_http_code(api, "application/json; charset=utf-8", additional_headers, code, msg); \
 	cJSON_Delete(object); \
 	free(additional_headers); \
 	return code; \

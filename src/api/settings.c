@@ -13,7 +13,7 @@
 #include "../webserver/json_macros.h"
 #include "routes.h"
 
-int api_settings_web(struct mg_connection *conn)
+int api_settings_web(struct ftl_conn *api)
 {
 	cJSON *json = JSON_NEW_OBJ();
 	JSON_OBJ_REF_STR(json, "layout", "boxed");

@@ -59,7 +59,7 @@ static int __attribute__((pure)) cmpdesc(const void *a, const void *b)
 		return 0;
 }
 
-int api_stats_summary(struct mg_connection *conn)
+int api_stats_summary(struct ftl_conn *api)
 {
 	const int blocked = counters->blocked;
 	const int total = counters->queries;
@@ -118,14 +118,14 @@ int api_stats_summary(struct mg_connection *conn)
 	JSON_OBJ_ADD_ITEM(json, "reply_types", reply_types);
 
 	cJSON *system = JSON_NEW_OBJ();
-	const int ret = get_system_obj(conn, system);
+	const int ret = get_system_obj(api, system);
 	if(ret != 0) return ret;
 	JSON_OBJ_ADD_ITEM(json, "system", system);
 
 	JSON_SEND_OBJECT(json);
 }
 
-int api_stats_overTime_history(struct mg_connection *conn)
+int api_stats_overTime_history(struct ftl_conn *api)
 {
 	int from = 0, until = OVERTIME_SLOTS;
 	bool found = false;
@@ -179,15 +179,15 @@ int api_stats_overTime_history(struct mg_connection *conn)
 	JSON_SEND_OBJECT(json);
 }
 
-int api_stats_top_domains(bool blocked, struct mg_connection *conn)
+int api_stats_top_domains(bool blocked, struct ftl_conn *api)
 {
 	int temparray[counters->domains][2], show = 10;
 	bool audit = false;
 
 	// Verify requesting client is allowed to see this ressource
-	if(check_client_auth(conn, NULL) == API_AUTH_UNAUTHORIZED)
+	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
 	{
-		return send_json_unauthorized(conn);
+		return send_json_unauthorized(api);
 	}
 
 	// Exit before processing any data if requested via config setting
@@ -207,18 +207,17 @@ int api_stats_top_domains(bool blocked, struct mg_connection *conn)
 	}
 
 	// /api/stats/top_domains?blocked=true is allowed as well
-	const struct mg_request_info *request = mg_get_request_info(conn);
-	if(request->query_string != NULL)
+	if(api->request->query_string != NULL)
 	{
 		// Should blocked clients be shown?
-		get_bool_var(request->query_string, "blocked", &blocked);
+		get_bool_var(api->request->query_string, "blocked", &blocked);
 
 		// Does the user request a non-default number of replies?
 		// Note: We do not accept zero query requests here
-		get_int_var(request->query_string, "show", &show);
+		get_int_var(api->request->query_string, "show", &show);
 
 		// Apply Audit Log filtering?
-		get_bool_var(request->query_string, "audit", &audit);
+		get_bool_var(api->request->query_string, "audit", &audit);
 	}
 
 	for(int domainID=0; domainID < counters->domains; domainID++)
@@ -337,15 +336,15 @@ int api_stats_top_domains(bool blocked, struct mg_connection *conn)
 	JSON_SEND_OBJECT(json);
 }
 
-int api_stats_top_clients(bool blocked, struct mg_connection *conn)
+int api_stats_top_clients(bool blocked, struct ftl_conn *api)
 {
 	int temparray[counters->clients][2], show = 10;
 	bool includezeroclients = false;
 
 	// Verify requesting client is allowed to see this ressource
-	if(check_client_auth(conn, NULL) == API_AUTH_UNAUTHORIZED)
+	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
 	{
-		return send_json_unauthorized(conn);
+		return send_json_unauthorized(api);
 	}
 
 	// Exit before processing any data if requested via config setting
@@ -365,18 +364,17 @@ int api_stats_top_clients(bool blocked, struct mg_connection *conn)
 	}
 
 	// /api/stats/top_clients9?blocked=true is allowed as well
-	const struct mg_request_info *request = mg_get_request_info(conn);
-	if(request->query_string != NULL)
+	if(api->request->query_string != NULL)
 	{
 		// Should blocked clients be shown?
-		get_bool_var(request->query_string, "blocked", &blocked);
+		get_bool_var(api->request->query_string, "blocked", &blocked);
 
 		// Does the user request a non-default number of replies?
 		// Note: We do not accept zero query requests here
-		get_int_var(request->query_string, "show", &show);
+		get_int_var(api->request->query_string, "show", &show);
 
 		// Show also clients which have not been active recently?
-		get_bool_var(request->query_string, "withzero", &includezeroclients);
+		get_bool_var(api->request->query_string, "withzero", &includezeroclients);
 	}
 
 	for(int clientID = 0; clientID < counters->clients; clientID++)
@@ -465,14 +463,14 @@ int api_stats_top_clients(bool blocked, struct mg_connection *conn)
 }
 
 
-int api_stats_upstreams(struct mg_connection *conn)
+int api_stats_upstreams(struct ftl_conn *api)
 {
 	int temparray[counters->forwarded][2];
 
 	// Verify requesting client is allowed to see this ressource
-	if(check_client_auth(conn, NULL) == API_AUTH_UNAUTHORIZED)
+	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
 	{
-		return send_json_unauthorized(conn);
+		return send_json_unauthorized(api);
 	}
 	for(int upstreamID = 0; upstreamID < counters->upstreams; upstreamID++)
 	{
@@ -568,12 +566,12 @@ int api_stats_upstreams(struct mg_connection *conn)
 	JSON_SEND_OBJECT(json);
 }
 
-int api_stats_query_types(struct mg_connection *conn)
+int api_stats_query_types(struct ftl_conn *api)
 {
 	// Verify requesting client is allowed to see this ressource
-	if(check_client_auth(conn, NULL) == API_AUTH_UNAUTHORIZED)
+	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
 	{
-		return send_json_unauthorized(conn);
+		return send_json_unauthorized(api);
 	}
 
 	// Send response
@@ -588,7 +586,7 @@ int api_stats_query_types(struct mg_connection *conn)
 	JSON_SEND_OBJECT(json);
 }
 
-int api_stats_history(struct mg_connection *conn)
+int api_stats_history(struct ftl_conn *api)
 {
 	// Exit before processing any data if requested via config setting
 	get_privacy_level(NULL);
@@ -607,9 +605,9 @@ int api_stats_history(struct mg_connection *conn)
 	}
 
 	// Verify requesting client is allowed to see this ressource
-	if(check_client_auth(conn, NULL) == API_AUTH_UNAUTHORIZED)
+	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
 	{
-		return send_json_unauthorized(conn);
+		return send_json_unauthorized(api);
 	}
 
 	// Do we want a more specific version of this command (domain/client/time interval filtered)?
@@ -635,25 +633,24 @@ int api_stats_history(struct mg_connection *conn)
 	// We send 200 queries (until the API is asked for a different limit)
 	unsigned int show = 200u;
 
-	const struct mg_request_info *request = mg_get_request_info(conn);
-	if(request->query_string != NULL)
+	if(api->request->query_string != NULL)
 	{
 		// Time filtering?
-		get_uint_var(request->query_string, "from", &from);
-		get_uint_var(request->query_string, "until", &until);
+		get_uint_var(api->request->query_string, "from", &from);
+		get_uint_var(api->request->query_string, "until", &until);
 
 		// Query type filtering?
 		int num;
-		if(get_int_var(request->query_string, "querytype", &num) && num < TYPE_MAX)
+		if(get_int_var(api->request->query_string, "querytype", &num) && num < TYPE_MAX)
 			querytype = num;
 
 		// Does the user request a non-default number of replies?
 		// Note: We do not accept zero query requests here
-		get_uint_var(request->query_string, "show", &show);
+		get_uint_var(api->request->query_string, "show", &show);
 
 		// Forward destination filtering?
 		char buffer[256] = { 0 };
-		if(GET_VAR("forward", buffer, request->query_string) > 0)
+		if(GET_VAR("forward", buffer, api->request->query_string) > 0)
 		{
 			forwarddest = calloc(256, sizeof(char));
 			if(forwarddest == NULL)
@@ -712,7 +709,7 @@ int api_stats_history(struct mg_connection *conn)
 					JSON_OBJ_COPY_STR(json, "upstream", forwarddest);
 					free(forwarddest);
 
-					return send_json_error(conn, 400,
+					return send_json_error(api, 400,
 					                       "bad_request",
 					                       "Requested upstream not found",
 					                       json);
@@ -721,7 +718,7 @@ int api_stats_history(struct mg_connection *conn)
 		}
 
 		// Domain filtering?
-		if(GET_VAR("domain", buffer, request->query_string) > 0)
+		if(GET_VAR("domain", buffer, api->request->query_string) > 0)
 		{
 			domainname = calloc(512, sizeof(char));
 			if(domainname == NULL)
@@ -755,7 +752,7 @@ int api_stats_history(struct mg_connection *conn)
 				JSON_OBJ_COPY_STR(json, "domain", domainname);
 				free(domainname);
 
-				return send_json_error(conn, 400,
+				return send_json_error(api, 400,
 				                       "bad_request",
 				                       "Requested domain not found",
 				                       json);
@@ -763,7 +760,7 @@ int api_stats_history(struct mg_connection *conn)
 		}
 
 		// Client filtering?
-		if(GET_VAR("client", buffer, request->query_string) > 0)
+		if(GET_VAR("client", buffer, api->request->query_string) > 0)
 		{
 			clientname = calloc(512, sizeof(char));
 			if(clientname == NULL)
@@ -805,7 +802,7 @@ int api_stats_history(struct mg_connection *conn)
 				JSON_OBJ_COPY_STR(json, "client", clientname);
 				free(clientname);
 
-				return send_json_error(conn, 400,
+				return send_json_error(api, 400,
 				                       "bad_request",
 				                       "Requested client not found",
 				                       json);
@@ -813,7 +810,7 @@ int api_stats_history(struct mg_connection *conn)
 		}
 
 		unsigned int unum = 0u;
-		if(GET_VAR("cursor", buffer, request->query_string) > 0 &&
+		if(GET_VAR("cursor", buffer, api->request->query_string) > 0 &&
 		   sscanf(buffer, "%u", &unum) > 0)
 		{
 			// Do not start at the most recent, but at an older query
@@ -830,7 +827,7 @@ int api_stats_history(struct mg_connection *conn)
 				JSON_OBJ_ADD_NUMBER(json, "maxval", counters->queries);
 				free(clientname);
 
-				return send_json_error(conn, 400,
+				return send_json_error(api, 400,
 				                       "bad_request",
 				                       "Requested cursor larger than number of queries",
 				                       json);
@@ -1060,14 +1057,14 @@ int api_stats_history(struct mg_connection *conn)
 	JSON_SEND_OBJECT(json);
 }
 
-int api_stats_recentblocked(struct mg_connection *conn)
+int api_stats_recentblocked(struct ftl_conn *api)
 {
 	unsigned int show = 1;
 
 	// Verify requesting client is allowed to see this ressource
-	if(check_client_auth(conn, NULL) == API_AUTH_UNAUTHORIZED)
+	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
 	{
-		return send_json_unauthorized(conn);
+		return send_json_unauthorized(api);
 	}
 
 	// Exit before processing any data if requested via config setting
@@ -1081,12 +1078,11 @@ int api_stats_recentblocked(struct mg_connection *conn)
 		JSON_SEND_OBJECT(json);
 	}
 
-	const struct mg_request_info *request = mg_get_request_info(conn);
-	if(request->query_string != NULL)
+	if(api->request->query_string != NULL)
 	{
 		// Does the user request a non-default number of replies?
 		// Note: We do not accept zero query requests here
-		get_uint_var(request->query_string, "show", &show);
+		get_uint_var(api->request->query_string, "show", &show);
 	}
 
 	// Find most recently blocked query
@@ -1124,14 +1120,14 @@ int api_stats_recentblocked(struct mg_connection *conn)
 	JSON_SEND_OBJECT(json);
 }
 
-int api_stats_overTime_clients(struct mg_connection *conn)
+int api_stats_overTime_clients(struct ftl_conn *api)
 {
 	int sendit = -1, until = OVERTIME_SLOTS;
 
 	// Verify requesting client is allowed to see this ressource
-	if(check_client_auth(conn, NULL) == API_AUTH_UNAUTHORIZED)
+	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
 	{
-		return send_json_unauthorized(conn);
+		return send_json_unauthorized(api);
 	}
 
 	// Find minimum ID to send

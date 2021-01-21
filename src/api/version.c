@@ -16,7 +16,7 @@
 #include "../log.h"
 #include "../version.h"
 
-int api_version(struct mg_connection *conn)
+int api_version(struct ftl_conn *api)
 {
 	cJSON *json = JSON_NEW_OBJ();
 
