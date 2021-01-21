@@ -48,7 +48,7 @@ static int get_blocking(struct mg_connection *conn)
 static int set_blocking(struct mg_connection *conn)
 {
 	// Verify requesting client is allowed to access this ressource
-	if(check_client_auth(conn) == API_AUTH_UNAUTHORIZED)
+	if(check_client_auth(conn, NULL) == API_AUTH_UNAUTHORIZED)
 	{
 		return send_json_unauthorized(conn);
 	}
@@ -117,7 +117,7 @@ int api_dns_blockingstatus(struct mg_connection *conn)
 	{
 		return get_blocking(conn);
 	}
-	else if(method == HTTP_PATCH)
+	else if(method == HTTP_PUT)
 	{
 		return set_blocking(conn);
 	}
@@ -131,7 +131,7 @@ int api_dns_blockingstatus(struct mg_connection *conn)
 int api_dns_cacheinfo(struct mg_connection *conn)
 {
 	// Verify requesting client is allowed to access this ressource
-	if(check_client_auth(conn) == API_AUTH_UNAUTHORIZED)
+	if(check_client_auth(conn, NULL) == API_AUTH_UNAUTHORIZED)
 	{
 		return send_json_unauthorized(conn);
 	}

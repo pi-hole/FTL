@@ -75,7 +75,7 @@ static void sha256_hex(uint8_t *data, char *buffer)
 // Returns >= 0 for any valid authentication
 #define LOCALHOSTv4 "127.0.0.1"
 #define LOCALHOSTv6 "::1"
-int check_client_auth(struct mg_connection *conn)
+int check_client_auth(struct mg_connection *conn, char payload[MAX_PAYLOAD_BYTES])
 {
 	int user_id = -1;
 	const struct mg_request_info *request = mg_get_request_info(conn);
@@ -96,30 +96,48 @@ int check_client_auth(struct mg_connection *conn)
 
 	// Does the client provide a session cookie?
 	char sid[SID_SIZE];
+	const char *sid_source = "cookie";
 	bool sid_avail = http_get_cookie_str(conn, "sid", sid, SID_SIZE);
 
 	// If not, does the client provide a session ID via GET/POST?
-	char payload[1024] = { 0 };
-	bool sid_payload = false;
-	if(!sid_avail && http_get_payload(conn, payload, sizeof(payload)))
+	bool sid_raw_payload = false, sid_json_payload = false;
+	cJSON *json;
+	if(!sid_avail && http_get_payload(conn, payload))
 	{
-		sid_avail = GET_VAR("sid", sid, payload) > 0;
+		// Try to extract SID from form-encoded payload
+		if(GET_VAR("sid", sid, payload) > 0)
+		{
+			// "+" may have been replaced by " ", undo this here
+			for(unsigned int i = 0; i < SID_SIZE; i++)
+				if(sid[i] == ' ')
+					sid[i] = '+';
 
-		// "+" may have been replaced by " ", undo this here
-		for(unsigned int i = 0; i < SID_SIZE; i++)
-			if(sid[i] == ' ')
-				sid[i] = '+';
-
-		// Zero terminate
-		sid[SID_SIZE-1] = '\0';
-		sid_payload = true;
+			// Zero terminate
+			sid[SID_SIZE-1] = '\0';
+			sid_source = "payload (form-data)";
+			sid_avail = true;
+		}
+		// Try to extract SID from root of a possibly included JSON payload
+		else if((json = cJSON_Parse(payload)) != NULL)
+		{
+			cJSON *sid_obj = cJSON_GetObjectItem(json, "sid");
+			if(cJSON_IsString(sid_obj))
+			{
+				strncpy(sid, sid_obj->valuestring, SID_SIZE - 1u);
+				sid_source = "payload (JSON)";
+				sid_avail = true;
+			}
+		}
 	}
 
-	if(sid_avail)
+	logg("payload: \"%s\"", payload);
+	logg("sid: \"%s\"", sid);
+
+	if(sid_avail || sid_raw_payload || sid_json_payload)
 	{
 		const time_t now = time(NULL);
 		if(config.debug & DEBUG_API)
-			logg("API: Read sid=\"%s\" from %s", sid, sid_payload ? "payload" : "cookie");
+			logg("API: Read sid=\"%s\" from %s", sid, sid_source);
 
 		for(unsigned int i = 0; i < API_MAX_CLIENTS; i++)
 		{
@@ -374,14 +392,18 @@ int api_auth(struct mg_connection *conn)
 
 	bool reponse_set = false;
 	char response[256] = { 0 };
+	char payload[MAX_PAYLOAD_BYTES];
+
+	// Did the client authenticate before and we can validate this?
+	user_id = check_client_auth(conn, payload);
+
+	// If this is a valid session, we can exit early at this point
+	if(user_id != API_AUTH_UNAUTHORIZED)
+		return send_api_auth_status(conn, user_id, method, now);
 
 	// Login attempt, extract response
 	if(method == HTTP_POST)
 	{
-		// Extract payload
-		char payload[1024] = { 0 };
-		http_get_payload(conn, payload, sizeof(payload));
-
 		// Try to extract response from payload
 		int len = 0;
 		if((len = GET_VAR("response", response, payload)) != CHALLENGE_SIZE)
@@ -397,9 +419,6 @@ int api_auth(struct mg_connection *conn)
 		reponse_set = true;
 	}
 
-	// Did the client authenticate before and we can validate this?
-	user_id = check_client_auth(conn);
-
 	// Logout attempt
 	if(method == HTTP_DELETE)
 	{
@@ -407,10 +426,6 @@ int api_auth(struct mg_connection *conn)
 			logg("API Auth: User with ID %i wants to log out", user_id);
 		return send_api_auth_status(conn, user_id, method, now);
 	}
-
-	// If this is a valid session, we can exit early at this point
-	if(user_id != API_AUTH_UNAUTHORIZED)
-		return send_api_auth_status(conn, user_id, method, now);
 
 	// Login attempt and/or auth check
 	if(reponse_set || empty_password)
@@ -513,8 +528,7 @@ int api_auth(struct mg_connection *conn)
 
 		if(config.debug & DEBUG_API)
 		{
-			logg("API: Sending challenge=%s, expecting response=%s",
-			     challenges[i].challenge, challenges[i].response);
+			logg("API: Sending challenge=%s", challenges[i].challenge);
 		}
 
 		// Return to user

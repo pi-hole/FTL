@@ -14,6 +14,7 @@
 #include "../civetweb/civetweb.h"
 // type cJSON
 #include "../cJSON/cJSON.h"
+#include "../webserver/http-common.h"
 
 // API router
 int api_handler(struct mg_connection *conn, void *ignored);
@@ -59,7 +60,7 @@ int api_group(struct mg_connection *conn);
 int api_version(struct mg_connection *conn);
 
 // Auth method
-int check_client_auth(struct mg_connection *conn);
+int check_client_auth(struct mg_connection *conn, char payload[MAX_PAYLOAD_BYTES]);
 int api_auth(struct mg_connection *conn);
 
 // Settings methods

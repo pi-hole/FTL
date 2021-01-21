@@ -141,7 +141,8 @@ static int api_list_read(struct mg_connection *conn,
 static int api_list_write(struct mg_connection *conn,
                           const enum gravity_list_type listtype,
                           const enum http_method method,
-                          const char *argument)
+                          const char *argument,
+                          char payload[MAX_PAYLOAD_BYTES])
 {
 	tablerow row = { 0 };
 
@@ -149,9 +150,6 @@ static int api_list_write(struct mg_connection *conn,
 	row.argument = argument;
 
 	// Extract payload
-	char payload[1024] = { 0 };
-	http_get_payload(conn, payload, sizeof(payload));
-
 	cJSON *obj = cJSON_Parse(payload);
 	if (obj == NULL) {
 		return send_json_error(conn, 400,
@@ -281,7 +279,8 @@ static int api_list_remove(struct mg_connection *conn,
 int api_list(struct mg_connection *conn)
 {
 	// Verify requesting client is allowed to see this ressource
-	if(check_client_auth(conn) == API_AUTH_UNAUTHORIZED)
+	char payload[MAX_PAYLOAD_BYTES] = { 0 };
+	if(check_client_auth(conn, payload) == API_AUTH_UNAUTHORIZED)
 	{
 		return send_json_unauthorized(conn);
 	}
@@ -353,10 +352,10 @@ int api_list(struct mg_connection *conn)
 	{
 		return api_list_read(conn, 200, listtype, argument);
 	}
-	else if(can_modify && (method == HTTP_POST || method == HTTP_PUT || method == HTTP_PATCH))
+	else if(can_modify && (method == HTTP_POST || method == HTTP_PUT))
 	{
 		// Add item from list
-		return api_list_write(conn, listtype, method, argument);
+		return api_list_write(conn, listtype, method, argument, payload);
 	}
 	else if(can_modify && method == HTTP_DELETE)
 	{

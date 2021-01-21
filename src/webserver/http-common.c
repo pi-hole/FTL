@@ -141,19 +141,23 @@ bool get_uint_var(const char *source, const char *var, unsigned int *num)
 }
 
 // Extract payload either from GET or POST data
-bool http_get_payload(struct mg_connection *conn, char *payload, const size_t size)
+bool http_get_payload(struct mg_connection *conn, char *payload)
 {
+	// We do not want to extract any payload here
+	if(payload == NULL)
+		return false;
+
 	const enum http_method method = http_method(conn);
 	const struct mg_request_info *request = mg_get_request_info(conn);
 	if(method == HTTP_GET && request->query_string != NULL)
 	{
-		strncpy(payload, request->query_string, size-1);
+		strncpy(payload, request->query_string, MAX_PAYLOAD_BYTES-1);
 		return true;
 	}
 	else // POST, PUT, PATCH
 	{
-		int data_len = mg_read(conn, payload, size - 1);
-		if ((data_len < 1) || (data_len >= (int)size))
+		int data_len = mg_read(conn, payload, MAX_PAYLOAD_BYTES - 1);
+		if ((data_len < 1) || (data_len >= MAX_PAYLOAD_BYTES))
 			return false;
 
 		payload[data_len] = '\0';
@@ -212,8 +216,6 @@ int http_method(struct mg_connection *conn)
 		return HTTP_PUT;
 	else if(strcmp(request->request_method, "POST") == 0)
 		return HTTP_POST;
-	else if(strcmp(request->request_method, "PATCH") == 0)
-		return HTTP_PATCH;
 	else
 		return HTTP_UNKNOWN;
 }
