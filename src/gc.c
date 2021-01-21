@@ -72,16 +72,12 @@ void *GC_thread(void *val)
 				if(query->timestamp > mintime)
 					break;
 
-				// Adjust client counter
+				// Adjust client counter (total and overTime)
 				clientsData* client = getClient(query->clientID, true);
-				if(client != NULL)
-					change_clientcount(client, -1, 0, 0, 0);
-
-				// Adjust total counters and total over time data
 				const int timeidx = query->timeidx;
 				overTime[timeidx].total--;
 				if(client != NULL)
-					change_clientcount(client, 0, 0, timeidx, -1);
+					change_clientcount(client, -1, 0, timeidx, -1);
 
 				// Adjust domain counter (no overTime information)
 				domainsData* domain = getDomain(query->domainID, true);
@@ -89,7 +85,6 @@ void *GC_thread(void *val)
 					domain->count--;
 
 				// Get upstream pointer
-				upstreamsData* upstream = getUpstream(query->upstreamID, true);
 
 				// Change other counters according to status of this query
 				switch(query->status)
@@ -104,8 +99,12 @@ void *GC_thread(void *val)
 						// Forwarded to an upstream DNS server
 						// Adjust counters
 						counters->forwarded--;
-						if(upstream != NULL)
-							upstream->count--;
+						if(query->upstreamID > -1)
+						{
+							upstreamsData* upstream = getUpstream(query->upstreamID, true);
+							if(upstream != NULL)
+								upstream->count--;
+						}
 						overTime[timeidx].forwarded--;
 						break;
 					case QUERY_CACHE:
