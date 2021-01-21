@@ -290,24 +290,29 @@ int api_list(struct mg_connection *conn)
 	bool can_modify = false;
 	const struct mg_request_info *request = mg_get_request_info(conn);
 	const char *argument = NULL;
-	if((argument = startsWith("/api/group", request->local_uri)) != NULL)
+	if((argument = startsWith("/api/groups", request->local_uri)) != NULL)
 	{
 		listtype = GRAVITY_GROUPS;
 		can_modify = true;
 	}
-	else if((argument = startsWith("/api/adlist", request->local_uri)) != NULL)
+	else if((argument = startsWith("/api/adlists", request->local_uri)) != NULL)
 	{
 		listtype = GRAVITY_ADLISTS;
 		can_modify = true;
 	}
-	else if((argument = startsWith("/api/list/allow", request->local_uri)) != NULL)
+	else if((argument = startsWith("/api/clients", request->local_uri)) != NULL)
 	{
-		if((argument = startsWith("/api/list/allow/exact", request->local_uri)) != NULL)
+		listtype = GRAVITY_CLIENTS;
+		can_modify = true;
+	}
+	else if((argument = startsWith("/api/domains/allow", request->local_uri)) != NULL)
+	{
+		if((argument = startsWith("/api/domains/allow/exact", request->local_uri)) != NULL)
 		{
 			listtype = GRAVITY_DOMAINLIST_ALLOW_EXACT;
 			can_modify = true;
 		}
-		else if((argument = startsWith("/api/list/allow/regex", request->local_uri)) != NULL)
+		else if((argument = startsWith("/api/domains/allow/regex", request->local_uri)) != NULL)
 		{
 			listtype = GRAVITY_DOMAINLIST_ALLOW_REGEX;
 			can_modify = true;
@@ -315,14 +320,14 @@ int api_list(struct mg_connection *conn)
 		else
 			listtype = GRAVITY_DOMAINLIST_ALLOW_ALL;
 	}
-	else if((argument = startsWith("/api/list/deny", request->local_uri)) != NULL)
+	else if((argument = startsWith("/api/domains/deny", request->local_uri)) != NULL)
 	{
-		if((argument = startsWith("/api/list/deny/exact", request->local_uri)) != NULL)
+		if((argument = startsWith("/api/domains/deny/exact", request->local_uri)) != NULL)
 		{
 			listtype = GRAVITY_DOMAINLIST_DENY_EXACT;
 			can_modify = true;
 		}
-		else if((argument = startsWith("/api/list/deny/regex", request->local_uri)) != NULL)
+		else if((argument = startsWith("/api/domains/deny/regex", request->local_uri)) != NULL)
 		{
 			listtype = GRAVITY_DOMAINLIST_DENY_REGEX;
 			can_modify = true;
@@ -332,13 +337,13 @@ int api_list(struct mg_connection *conn)
 	}
 	else
 	{
-		if((argument = startsWith("/api/list/exact", request->local_uri)) != NULL)
+		if((argument = startsWith("/api/domains/exact", request->local_uri)) != NULL)
 			listtype = GRAVITY_DOMAINLIST_ALL_EXACT;
-		else if((argument = startsWith("/api/list/regex", request->local_uri)) != NULL)
+		else if((argument = startsWith("/api/domains/regex", request->local_uri)) != NULL)
 			listtype = GRAVITY_DOMAINLIST_ALL_REGEX;
 		else
 		{
-			argument = startsWith("/api/list", request->local_uri);
+			argument = startsWith("/api/domains", request->local_uri);
 			listtype = GRAVITY_DOMAINLIST_ALL_ALL;
 		}
 	}
