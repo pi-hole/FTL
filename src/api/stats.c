@@ -171,8 +171,9 @@ int api_stats_overTime_history(struct ftl_conn *api)
 	{
 		cJSON *item = JSON_NEW_OBJ();
 		JSON_OBJ_ADD_NUMBER(item, "timestamp", overTime[slot].timestamp);
-		JSON_OBJ_ADD_NUMBER(item, "total_queries", overTime[slot].total);
-		JSON_OBJ_ADD_NUMBER(item, "blocked_queries", overTime[slot].blocked);
+		JSON_OBJ_ADD_NUMBER(item, "total", overTime[slot].total);
+		JSON_OBJ_ADD_NUMBER(item, "cached", overTime[slot].cached);
+		JSON_OBJ_ADD_NUMBER(item, "blocked", overTime[slot].blocked);
 		JSON_ARRAY_ADD_ITEM(data, item);
 	}
 	JSON_OBJ_ADD_ITEM(json, "data", data);
