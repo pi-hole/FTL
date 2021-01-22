@@ -14,6 +14,8 @@
 #include "routes.h"
 #include "../database/gravity-db.h"
 #include "../events.h"
+// getNameFromIP()
+#include "../database/network-table.h"
 
 static int api_list_read(struct ftl_conn *api,
                          const int code,
@@ -67,6 +69,34 @@ static int api_list_read(struct ftl_conn *api,
 				JSON_OBJ_ADD_NULL(item, "comment");
 			}
 		}
+		else if(listtype == GRAVITY_CLIENTS)
+		{
+			if(row.ip != NULL)
+			{
+				JSON_OBJ_COPY_STR(item, "ip", row.ip);
+				char *name = getNameFromIP(row.ip);
+				if(name != NULL)
+				{
+					JSON_OBJ_COPY_STR(item, "name", name);
+					free(name);
+				}
+				else
+				{
+					JSON_OBJ_ADD_NULL(item, "name");
+				}
+			}
+			else
+			{
+				JSON_OBJ_ADD_NULL(item, "ip");
+				JSON_OBJ_ADD_NULL(item, "name");
+			}
+
+			if(row.comment != NULL) {
+				JSON_OBJ_COPY_STR(item, "comment", row.comment);
+			} else {
+				JSON_OBJ_ADD_NULL(item, "comment");
+			}
+		}
 		else // domainlists
 		{
 			JSON_OBJ_COPY_STR(item, "domain", row.domain);
@@ -76,26 +106,30 @@ static int api_list_read(struct ftl_conn *api,
 			} else {
 				JSON_OBJ_ADD_NULL(item, "comment");
 			}
-			if(row.group_ids != NULL) {
-				// Black JSON magic at work here:
-				// We build a JSON array from the group_concat
-				// result delivered SQLite3, parse it as valid
-				// array and append it as item to the data
-				char group_ids_str[strlen(row.group_ids)+3u];
-				group_ids_str[0] = '[';
-				strcpy(group_ids_str+1u , row.group_ids);
-				group_ids_str[sizeof(group_ids_str)-2u] = ']';
-				group_ids_str[sizeof(group_ids_str)-1u] = '\0';
-				cJSON * group_ids = cJSON_Parse(group_ids_str);
-				JSON_OBJ_ADD_ITEM(item, "groups", group_ids);
-			} else {
-				// Empty group set
-				cJSON *group_ids = JSON_NEW_ARRAY();
-				JSON_OBJ_ADD_ITEM(item, "groups", group_ids);
-			}
 		}
 
-		JSON_OBJ_ADD_BOOL(item, "enabled", row.enabled);
+		if(row.group_ids != NULL) {
+			// Black magic at work here: We build a JSON array from
+			// the group_concat result delivered from the database,
+			// parse it as valid array and append it as item to the
+			// data
+			logg("row.group_ids = %p \"%s\"", row.group_ids, row.group_ids);
+			char group_ids_str[strlen(row.group_ids)+3u];
+			group_ids_str[0] = '[';
+			strcpy(group_ids_str+1u , row.group_ids);
+			group_ids_str[sizeof(group_ids_str)-2u] = ']';
+			group_ids_str[sizeof(group_ids_str)-1u] = '\0';
+			cJSON * group_ids = cJSON_Parse(group_ids_str);
+			JSON_OBJ_ADD_ITEM(item, "groups", group_ids);
+		} else {
+			// Empty group set
+			cJSON *group_ids = JSON_NEW_ARRAY();
+			JSON_OBJ_ADD_ITEM(item, "groups", group_ids);
+		}
+
+		// Clients don't have the enabled property
+		if(listtype != GRAVITY_CLIENTS)
+			JSON_OBJ_ADD_BOOL(item, "enabled", row.enabled);
 		JSON_OBJ_ADD_NUMBER(item, "date_added", row.date_added);
 		JSON_OBJ_ADD_NUMBER(item, "date_modified", row.date_modified);
 
@@ -112,6 +146,8 @@ static int api_list_read(struct ftl_conn *api,
 			objname = "groups";
 		else if(listtype == GRAVITY_ADLISTS)
 			objname = "adlists";
+		else if(listtype == GRAVITY_CLIENTS)
+			objname = "clients";
 		else // domainlists
 			objname = "domains";
 		JSON_OBJ_ADD_ITEM(json, objname, items);
@@ -149,6 +185,14 @@ static int api_list_write(struct ftl_conn *api,
 	// Set argument
 	row.argument = argument;
 
+	// Check argument is not empty
+	if (strlen(argument) < 1) {
+		return send_json_error(api, 400,
+		                       "bad_request",
+		                       "Missing argument, check URI",
+		                       NULL);
+	}
+
 	// Check if valid JSON payload is available
 	if (api->payload.json == NULL) {
 		return send_json_error(api, 400,
@@ -157,14 +201,18 @@ static int api_list_write(struct ftl_conn *api,
 		                       NULL);
 	}
 
-	cJSON *json_enabled = cJSON_GetObjectItemCaseSensitive(api->payload.json, "enabled");
-	if (!cJSON_IsBool(json_enabled)) {
-		return send_json_error(api, 400,
-		                       "bad_request",
-		                       "No \"enabled\" boolean in body data",
-		                       NULL);
+	// Clients don't have the enabled property
+	if(listtype != GRAVITY_CLIENTS)
+	{
+		cJSON *json_enabled = cJSON_GetObjectItemCaseSensitive(api->payload.json, "enabled");
+		if (!cJSON_IsBool(json_enabled)) {
+			return send_json_error(api, 400,
+					"bad_request",
+					"No \"enabled\" boolean in body data",
+					NULL);
+		}
+		row.enabled = cJSON_IsTrue(json_enabled);
 	}
-	row.enabled = cJSON_IsTrue(json_enabled);
 
 	cJSON *json_comment = cJSON_GetObjectItemCaseSensitive(api->payload.json, "comment");
 	if(cJSON_IsString(json_comment) && strlen(json_comment->valuestring) > 0)
@@ -184,22 +232,30 @@ static int api_list_write(struct ftl_conn *api,
 	else
 		row.oldtype = NULL;
 
-	// Try to add domain to table
+	// Try to add item to table
 	const char *sql_msg = NULL;
 	bool okay = false;
 	if(gravityDB_addToTable(listtype, &row, &sql_msg, api->method))
 	{
-		cJSON *groups = cJSON_GetObjectItemCaseSensitive(api->payload.json, "groups");
-		if(groups != NULL)
-			okay = gravityDB_edit_groups(listtype, groups, &row, &sql_msg);
+		if(listtype != GRAVITY_GROUPS)
+		{
+			cJSON *groups = cJSON_GetObjectItemCaseSensitive(api->payload.json, "groups");
+			if(groups != NULL)
+				okay = gravityDB_edit_groups(listtype, groups, &row, &sql_msg);
+			else
+				// The groups array is optional, we still succeed if it
+				// is omitted (groups stay as they are)
+				okay = true;
+		}
 		else
-			// The groups array is optional, we still succeed if it
-			// is omitted (groups stay as they are)
+		{
+			// Groups cannot be assigned to groups
 			okay = true;
+		}
 	}
 	if(!okay)
 	{
-		// Error adding domain, prepare error object
+		// Error adding item, prepare error object
 		cJSON *json = JSON_NEW_OBJ();
 		JSON_OBJ_REF_STR(json, "argument", argument);
 		JSON_OBJ_ADD_BOOL(json, "enabled", row.enabled);
@@ -229,7 +285,6 @@ static int api_list_write(struct ftl_conn *api,
 
 	// Inform the resolver that it needs to reload the domainlists
 	set_event(RELOAD_GRAVITY);
-	logg("Setting event");
 
 	int response_code = 201; // 201 - Created
 	if(api->method == HTTP_PUT)

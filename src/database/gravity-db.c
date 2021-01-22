@@ -1430,6 +1430,8 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 			querystr = "INSERT INTO \"group\" (name,enabled,description) VALUES (:argument,:enabled,:description);";
 		else if(listtype == GRAVITY_ADLISTS)
 			querystr = "INSERT INTO adlist (address,enabled,description) VALUES (:argument,:enabled,:description);";
+		else if(listtype == GRAVITY_CLIENTS)
+			querystr = "INSERT INTO client (ip,comment) VALUES (:argument,:comment);";
 		else // domainlist
 			querystr = "INSERT INTO domainlist (domain,type,enabled,comment) VALUES (:argument,:type,:enabled,:comment);";
 	}
@@ -1446,6 +1448,11 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 			           "VALUES (:argument,:enabled,:description,"
 			                   "(SELECT id FROM adlist WHERE address = :argument),"
 			                   "(SELECT date_added FROM adlist WHERE address = :argument));";
+		else if(listtype == GRAVITY_CLIENTS)
+			querystr = "REPLACE INTO client (ip,comment,id,date_added) "
+			           "VALUES (:argument,:comment,"
+			                   "(SELECT id FROM client WHERE ip = :argument),"
+			                   "(SELECT date_added FROM client WHERE ip = :argument));";
 		else // domainlist
 			querystr = "REPLACE INTO domainlist (domain,type,enabled,comment,id,date_added) "
 			           "VALUES (:argument,:type,:enabled,:comment,"
@@ -1628,6 +1635,8 @@ bool gravityDB_delFromTable(const enum gravity_list_type listtype, const char* a
 		querystr = "DELETE FROM \"group\" WHERE name = :argument;";
 	else if(listtype == GRAVITY_ADLISTS)
 		querystr = "DELETE FROM adlist WHERE address = :argument;";
+	else if(listtype == GRAVITY_CLIENTS)
+		querystr = "DELETE FROM client WHERE ip = :argument;";
 	else // domainlist
 		querystr = "DELETE FROM domainlist WHERE domain = :argument AND type = :type;";
 	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &stmt, NULL);
@@ -1752,7 +1761,17 @@ bool gravityDB_readTable(const enum gravity_list_type listtype, const char *argu
 	{
 		if(argument != NULL && argument[0] != '\0')
 			extra = " WHERE address = :argument;";
-		sprintf(querystr, "SELECT id,address,enabled,date_added,date_modified,comment FROM adlist%s;", extra);
+		sprintf(querystr, "SELECT id,address,enabled,date_added,date_modified,comment,"
+		                         "(SELECT GROUP_CONCAT(group_id) FROM adlist_by_group g WHERE g.adlist_id = a.id) AS group_ids "
+		                         "FROM adlist a%s;", extra);
+	}
+	else if(listtype == GRAVITY_CLIENTS)
+	{
+		if(argument != NULL && argument[0] != '\0')
+			extra = " WHERE ip = :argument;";
+		sprintf(querystr, "SELECT id,ip,date_added,date_modified,comment,"
+		                         "(SELECT GROUP_CONCAT(group_id) FROM client_by_group g WHERE g.client_id = c.id) AS group_ids "
+		                         "FROM client c%s;", extra);
 	}
 	else // domainlist
 	{
@@ -1798,6 +1817,9 @@ bool gravityDB_readTableGetRow(tablerow *row, const char **message)
 {
 	// Perform step
 	const int rc = sqlite3_step(read_stmt);
+
+	// Ensure no old data stayed in here
+	memset(row, 0, sizeof(*row));
 
 	// Valid row
 	if(rc == SQLITE_ROW)
@@ -1857,6 +1879,10 @@ bool gravityDB_readTableGetRow(tablerow *row, const char **message)
 
 			else if(strcasecmp(cname, "description") == 0)
 				row->description = (char*)sqlite3_column_text(read_stmt, c);
+
+			else if(strcasecmp(cname, "ip") == 0)
+				row->ip = (char*)sqlite3_column_text(read_stmt, c);
+
 			else
 				logg("Internal API error: Encountered unknown column %s", cname);
 		}
@@ -1900,8 +1926,8 @@ bool gravityDB_edit_groups(const enum gravity_list_type listtype, cJSON *groups,
 		return false;
 	else if(listtype == GRAVITY_CLIENTS)
 	{
-		get_querystr = "SELECT id FROM client WHERE name = :argument";
-		del_querystr = "DELETE FROM client_by_group WHERE client_id = :id);";
+		get_querystr = "SELECT id FROM client WHERE ip = :argument";
+		del_querystr = "DELETE FROM client_by_group WHERE client_id = :id;";
 		add_querystr = "INSERT INTO client_by_group (client_id,group_id) VALUES (:id,:gid);";
 	}
 	else if(listtype == GRAVITY_ADLISTS)
@@ -1965,7 +1991,6 @@ bool gravityDB_edit_groups(const enum gravity_list_type listtype, cJSON *groups,
 	{
 		*message = sqlite3_errmsg(gravity_db);
 	}
-	logg("SELECT: %i -> %i", rc, id);
 
 	// Debug output
 	if(config.debug & DEBUG_API)
@@ -2015,7 +2040,6 @@ bool gravityDB_edit_groups(const enum gravity_list_type listtype, cJSON *groups,
 		okay = false;
 		*message = sqlite3_errmsg(gravity_db);
 	}
-	logg("DELETE: %i", rc);
 
 	// Debug output
 	if(config.debug & DEBUG_API)
