@@ -415,8 +415,8 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	  forward->frec_src.dest = *dst_addr;
 	  forward->frec_src.iface = dst_iface;
 	  forward->frec_src.next = NULL;
+	  forward->frec_src.fd = udpfd;
 	  forward->new_id = get_id();
-	  forward->fd = udpfd;
 	  memcpy(forward->hash, hash, HASH_SIZE);
 	  forward->forwardall = 0;
 	  forward->flags = fwd_flags;
@@ -1337,7 +1337,7 @@ void reply_query(int fd, int family, time_t now)
 	      dump_packet(DUMP_REPLY, daemon->packet, (size_t)nn, NULL, &src->source);
 #endif
 	      
-	      send_from(forward->fd, option_bool(OPT_NOWILD) || option_bool (OPT_CLEVERBIND), daemon->packet, nn, 
+	      send_from(src->fd, option_bool(OPT_NOWILD) || option_bool (OPT_CLEVERBIND), daemon->packet, nn, 
 			&src->source, &src->dest, src->iface);
 
 	      if (option_bool(OPT_EXTRALOG) && src != &forward->frec_src)

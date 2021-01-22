@@ -666,6 +666,7 @@ struct frec {
     union mysockaddr source;
     union all_addr dest;
     unsigned int iface, log_id;
+    int fd;
     unsigned short orig_id;
     struct frec_src *next;
   } frec_src;
@@ -673,7 +674,7 @@ struct frec {
   struct randfd *rfd4;
   struct randfd *rfd6;
   unsigned short new_id;
-  int fd, forwardall, flags;
+  int forwardall, flags;
   time_t time;
   unsigned char *hash[HASH_SIZE];
 #ifdef HAVE_DNSSEC 
