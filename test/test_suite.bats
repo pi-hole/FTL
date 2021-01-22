@@ -685,12 +685,6 @@
   [[ ${lines[0]} == "2" ]]
 }
 
-@test "HTTP server responds correctly to ping" {
-  run bash -c 'curl -s 127.0.0.1:8080/ping'
-  printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "pong" ]]
-}
-
 @test "HTTP server responds with JSON error 404 to unknown API path" {
   run bash -c 'curl -s 127.0.0.1:8080/api/undefined'
   printf "%s\n" "${lines[@]}"
