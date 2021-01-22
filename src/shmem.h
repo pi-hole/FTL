@@ -59,6 +59,15 @@ typedef struct {
 	int dns_cache_size;
 	int dns_cache_MAX;
 	unsigned int regex_change;
+	struct {
+		int clients;
+		int groups;
+		int adlists;
+		struct{
+			int allowed;
+			int denied;
+		} domains;
+	} database;
 } countersStruct;
 
 typedef struct {

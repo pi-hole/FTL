@@ -117,10 +117,19 @@ int api_stats_summary(struct ftl_conn *api)
 	JSON_OBJ_ADD_NUMBER(reply_types, "domain", counters->reply_domain);
 	JSON_OBJ_ADD_ITEM(json, "reply_types", reply_types);
 
+	// Get system object
 	cJSON *system = JSON_NEW_OBJ();
-	const int ret = get_system_obj(api, system);
-	if(ret != 0) return ret;
+	int ret = get_system_obj(api, system);
+	if(ret != 0)
+		return ret;
 	JSON_OBJ_ADD_ITEM(json, "system", system);
+
+	// Get FTL object
+	cJSON *ftl = JSON_NEW_OBJ();
+	ret = get_ftl_obj(api, ftl);
+	if(ret != 0)
+		return ret;
+	JSON_OBJ_ADD_ITEM(json, "ftl", ftl);
 
 	JSON_SEND_OBJECT(json);
 }

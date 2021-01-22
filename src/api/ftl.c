@@ -384,16 +384,37 @@ int get_system_obj(struct ftl_conn *api, cJSON *system)
 	return 0;
 }
 
+int get_ftl_obj(struct ftl_conn *api, cJSON *ftl)
+{
+	JSON_OBJ_ADD_NUMBER(ftl, "groups", counters->database.groups);
+	JSON_OBJ_ADD_NUMBER(ftl, "adlists", counters->database.adlists);
+	JSON_OBJ_ADD_NUMBER(ftl, "clients", counters->database.clients);
+	cJSON *domains = JSON_NEW_OBJ();
+	JSON_OBJ_ADD_NUMBER(domains, "allowed", counters->database.domains.allowed);
+	JSON_OBJ_ADD_NUMBER(domains, "denied", counters->database.domains.denied);
+	JSON_OBJ_ADD_ITEM(ftl, "domains", domains);
+
+	return 0;
+}
+
 int api_ftl_system(struct ftl_conn *api)
 {
 	cJSON *json = JSON_NEW_OBJ();
-	cJSON *system = JSON_NEW_OBJ();
 
 	// Get system object
-	const int ret = get_system_obj(api, system);
+	cJSON *system = JSON_NEW_OBJ();
+	int ret = get_system_obj(api, system);
 	if (ret != 0)
 		return ret;
 
 	JSON_OBJ_ADD_ITEM(json, "system", system);
+
+	// Get FTL object
+	cJSON *ftl = JSON_NEW_OBJ();
+	ret = get_ftl_obj(api, ftl);
+	if(ret != 0)
+		return ret;
+
+	JSON_OBJ_ADD_ITEM(json, "ftl", ftl);
 	JSON_SEND_OBJECT(json);
 }

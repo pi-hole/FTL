@@ -1052,6 +1052,21 @@ int gravityDB_count(const enum gravity_tables list)
 		case REGEX_WHITELIST_TABLE:
 			querystr = "SELECT COUNT(DISTINCT domain) FROM vw_regex_whitelist";
 			break;
+		case CLIENTS_TABLE:
+			querystr = "SELECT COUNT(1) FROM client";
+			break;
+		case GROUPS_TABLE:
+			querystr = "SELECT COUNT(1) FROM \"group\" WHERE enabled != 0";
+			break;
+		case ADLISTS_TABLE:
+			querystr = "SELECT COUNT(1) FROM adlist WHERE enabled != 0";
+			break;
+		case DENIED_DOMAINS_TABLE:
+			querystr = "SELECT COUNT(1) FROM domainlist WHERE (type = 0 OR type = 2) AND enabled != 0";
+			break;
+		case ALLOWED_DOMAINS_TABLE:
+			querystr = "SELECT COUNT(1) FROM domainlist WHERE (type = 1 OR type = 3) AND enabled != 0";
+			break;
 		case UNKNOWN_TABLE:
 			logg("Error: List type %u unknown!", list);
 			gravityDB_close();

@@ -495,6 +495,11 @@ void FTL_reload_all_domainlists(void)
 
 	// Reset number of blocked domains
 	counters->gravity = gravityDB_count(GRAVITY_TABLE);
+	counters->database.groups = gravityDB_count(GROUPS_TABLE);
+	counters->database.clients = gravityDB_count(CLIENTS_TABLE);
+	counters->database.adlists = gravityDB_count(ADLISTS_TABLE);
+	counters->database.domains.allowed = gravityDB_count(DENIED_DOMAINS_TABLE);
+	counters->database.domains.denied = gravityDB_count(ALLOWED_DOMAINS_TABLE);
 
 	// Read and compile possible regex filters
 	// only after having called gravityDB_open()
