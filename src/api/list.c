@@ -13,6 +13,7 @@
 #include "../webserver/json_macros.h"
 #include "routes.h"
 #include "../database/gravity-db.h"
+#include "../events.h"
 
 static int api_list_read(struct ftl_conn *api,
                          const int code,
@@ -226,6 +227,10 @@ static int api_list_write(struct ftl_conn *api,
 	}
 	// else: everything is okay
 
+	// Inform the resolver that it needs to reload the domainlists
+	set_event(RELOAD_GRAVITY);
+	logg("Setting event");
+
 	int response_code = 201; // 201 - Created
 	if(api->method == HTTP_PUT)
 		response_code = 200; // 200 - OK
@@ -241,6 +246,9 @@ static int api_list_remove(struct ftl_conn *api,
 	const char *sql_msg = NULL;
 	if(gravityDB_delFromTable(listtype, argument, &sql_msg))
 	{
+		// Inform the resolver that it needs to reload the domainlists
+		set_event(RELOAD_GRAVITY);
+
 		// Send empty reply with code 204 No Content
 		JSON_SEND_OBJECT_CODE(json, 204);
 	}
