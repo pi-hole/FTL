@@ -1266,6 +1266,7 @@ size_t filter_rrsigs(struct dns_header *header, size_t plen);
 int setup_timestamp(void);
 
 /* hash_questions.c */
+void hash_questions_init(void);
 unsigned char *hash_questions(struct dns_header *header, size_t plen, char *name);
 
 /* crypto.c */
