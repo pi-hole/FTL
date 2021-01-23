@@ -378,7 +378,6 @@ int get_system_obj(struct ftl_conn *api, cJSON *system)
 	cJSON *dns = JSON_NEW_OBJ();
 	const bool blocking = get_blockingstatus();
 	JSON_OBJ_ADD_BOOL(dns, "blocking", blocking); // same reply type as in /api/dns/status
-	JSON_OBJ_ADD_NUMBER(dns, "gravity_size", counters->gravity);
 	JSON_OBJ_ADD_ITEM(system, "dns", dns);
 
 	return 0;
@@ -386,8 +385,9 @@ int get_system_obj(struct ftl_conn *api, cJSON *system)
 
 int get_ftl_obj(struct ftl_conn *api, cJSON *ftl)
 {
+	JSON_OBJ_ADD_NUMBER(ftl, "gravity", counters->database.gravity);
 	JSON_OBJ_ADD_NUMBER(ftl, "groups", counters->database.groups);
-	JSON_OBJ_ADD_NUMBER(ftl, "adlists", counters->database.adlists);
+	JSON_OBJ_ADD_NUMBER(ftl, "lists", counters->database.lists);
 	JSON_OBJ_ADD_NUMBER(ftl, "clients", counters->database.clients);
 	cJSON *domains = JSON_NEW_OBJ();
 	JSON_OBJ_ADD_NUMBER(domains, "allowed", counters->database.domains.allowed);

@@ -145,7 +145,7 @@ static int api_list_read(struct ftl_conn *api,
 		if(listtype == GRAVITY_GROUPS)
 			objname = "groups";
 		else if(listtype == GRAVITY_ADLISTS)
-			objname = "adlists";
+			objname = "lists";
 		else if(listtype == GRAVITY_CLIENTS)
 			objname = "clients";
 		else // domainlists
@@ -344,7 +344,7 @@ int api_list(struct ftl_conn *api)
 		listtype = GRAVITY_GROUPS;
 		can_modify = true;
 	}
-	else if((argument = startsWith("/api/adlists", api)) != NULL)
+	else if((argument = startsWith("/api/lists", api)) != NULL)
 	{
 		listtype = GRAVITY_ADLISTS;
 		can_modify = true;

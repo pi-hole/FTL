@@ -493,11 +493,11 @@ void FTL_reload_all_domainlists(void)
 	// (Re-)open gravity database connection
 	gravityDB_reopen();
 
-	// Reset number of blocked domains
-	counters->gravity = gravityDB_count(GRAVITY_TABLE);
+	// Get size of gravity, number of domains, groups, clients, and lists
+	counters->database.gravity = gravityDB_count(GRAVITY_TABLE);
 	counters->database.groups = gravityDB_count(GROUPS_TABLE);
 	counters->database.clients = gravityDB_count(CLIENTS_TABLE);
-	counters->database.adlists = gravityDB_count(ADLISTS_TABLE);
+	counters->database.lists = gravityDB_count(ADLISTS_TABLE);
 	counters->database.domains.allowed = gravityDB_count(DENIED_DOMAINS_TABLE);
 	counters->database.domains.denied = gravityDB_count(ALLOWED_DOMAINS_TABLE);
 

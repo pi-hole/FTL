@@ -86,7 +86,6 @@ int api_stats_summary(struct ftl_conn *api)
 	cJSON *json = JSON_NEW_OBJ();
 	const bool blocking = get_blockingstatus();
 	JSON_OBJ_ADD_BOOL(json, "blocking", blocking); // same reply type as in /api/dns/status
-	JSON_OBJ_ADD_NUMBER(json, "gravity_size", counters->gravity);
 	JSON_OBJ_ADD_NUMBER(json, "blocked_queries", counters->blocked);
 	JSON_OBJ_ADD_NUMBER(json, "percent_blocked", percent_blocked);
 	JSON_OBJ_ADD_NUMBER(json, "unique_domains", counters->domains);

@@ -49,7 +49,6 @@ typedef struct {
 	int clients_MAX;
 	int domains_MAX;
 	int strings_MAX;
-	int gravity;
 	int querytype[TYPE_MAX];
 	int reply_NODATA;
 	int reply_NXDOMAIN;
@@ -60,9 +59,10 @@ typedef struct {
 	int dns_cache_MAX;
 	unsigned int regex_change;
 	struct {
+		int gravity;
 		int clients;
 		int groups;
-		int adlists;
+		int lists;
 		struct{
 			int allowed;
 			int denied;

@@ -45,7 +45,7 @@ int api_handler(struct mg_connection *conn, void *ignored)
 	{
 		ret = api_dns_cacheinfo(&api);
 	}
-	/*********** /api/domains, /api/groups, /api/adlists, /api/clients *******/
+	/************ /api/domains, /api/groups, /api/lists, /api/clients ********/
 	else if(startsWith("/api/domains", &api))
 	{
 		ret = api_list(&api);
@@ -54,7 +54,7 @@ int api_handler(struct mg_connection *conn, void *ignored)
 	{
 		ret = api_list(&api);
 	}
-	else if(startsWith("/api/adlists", &api))
+	else if(startsWith("/api/lists", &api))
 	{
 		ret = api_list(&api);
 	}
