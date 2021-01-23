@@ -914,7 +914,7 @@ void getAllQueries(const char *client_message, const int *sock)
 			// If the domain of this query did not match, the CNAME
 			// domain may still match - we have to check it in
 			// addition if this query is of CNAME blocked type
-			else if(query->CNAME_domainID > -1)
+			else if(query->CNAME_domainID == domainid)
 			{
 				// Get this query
 			}
