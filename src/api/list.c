@@ -232,10 +232,18 @@ static int api_list_write(struct ftl_conn *api,
 	else
 		row.oldtype = NULL;
 
+	bool okay = true;
+	char *regex_msg = NULL;
+	if(listtype == GRAVITY_DOMAINLIST_ALLOW_REGEX || listtype == GRAVITY_DOMAINLIST_DENY_REGEX)
+	{
+		// Test validity of this regex
+		regexData regex = { 0 };
+		okay = compile_regex(argument, &regex, &regex_msg);
+	}
+
 	// Try to add item to table
 	const char *sql_msg = NULL;
-	bool okay = false;
-	if(gravityDB_addToTable(listtype, &row, &sql_msg, api->method))
+	if(okay && gravityDB_addToTable(listtype, &row, &sql_msg, api->method))
 	{
 		if(listtype != GRAVITY_GROUPS)
 		{
@@ -273,6 +281,15 @@ static int api_list_write(struct ftl_conn *api,
 			JSON_OBJ_REF_STR(json, "sql_msg", sql_msg);
 		} else {
 			JSON_OBJ_ADD_NULL(json, "sql_msg");
+		}
+
+		// Add regex error (may not be available)
+		if (regex_msg != NULL) {
+			JSON_OBJ_COPY_STR(json, "regex_msg", regex_msg);
+			free(regex_msg);
+			regex_msg = NULL;
+		} else {
+			JSON_OBJ_ADD_NULL(json, "regex_msg");
 		}
 
 		// Send error reply

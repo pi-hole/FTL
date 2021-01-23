@@ -228,6 +228,9 @@ static bool add_message(enum message_type type, const char *message,
 
 void logg_regex_warning(const char *type, const char *warning, const int dbindex, const char *regex)
 {
+	if(warning == NULL)
+		warning = "No further info available";
+
 	// Log to pihole-FTL.log
 	logg("REGEX WARNING: Invalid regex %s filter \"%s\": %s",
 	     type, regex, warning);

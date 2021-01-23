@@ -38,6 +38,7 @@ typedef struct {
 } regexData;
 ASSERT_SIZEOF(regexData, 32, 20, 20);
 
+bool compile_regex(const char *regexin, regexData *regex, char **message);
 unsigned int get_num_regex(const enum regex_type regexid) __attribute__((pure));
 int match_regex(const char *input, const DNSCacheData* dns_cache, const int clientID,
                 const enum regex_type regexid, const bool regextest);

@@ -95,11 +95,8 @@ unsigned int __attribute__((pure)) get_num_regex(const enum regex_type regexid)
 #define FTL_REGEX_SEP ";"
 /* Compile regular expressions into data structures that can be used with
    regexec() to match against a string */
-static bool compile_regex(const char *regexin, const enum regex_type regexid)
+bool compile_regex(const char *regexin, regexData *regex, char **message)
 {
-	regexData *regex = get_regex_ptr(regexid);
-	int index = num_regex[regexid]++;
-
 	// Extract possible Pi-hole extensions
 	char rgxbuf[strlen(regexin) + 1u];
 	// Parse special FTL syntax if present
@@ -119,46 +116,49 @@ static bool compile_regex(const char *regexin, const enum regex_type regexid)
 			if(sscanf(part, "querytype=%16s", extra))
 			{
 				// Warn if specified more than one querytype option
-				if(regex[index].query_type != 0)
-					logg_regex_warning(regextype[regexid],
-					                   "Overwriting previous querytype setting",
-					                   regex[index].database_id, regexin);
+				if(regex->query_type != 0)
+				{
+					*message = strdup("Overwriting previous querytype setting");
+					return false;
+				}
 
 				// Test input string against all implemented query types
-				for(enum query_types type = TYPE_A; type < TYPE_MAX; type++)
+				for(enum query_types qtype = TYPE_A; qtype < TYPE_MAX; qtype++)
 				{
 					// Check for querytype
-					if(strcasecmp(extra, querytypes[type]) == 0)
+					if(strcasecmp(extra, querytypes[qtype]) == 0)
 					{
-						regex[index].query_type = type;
-						regex[index].query_type_inverted = false;
+						regex->query_type = qtype;
+						regex->query_type_inverted = false;
 						break;
 					}
 					// Check for INVERTED querytype
-					else if(extra[0] == '!' && strcasecmp(extra + 1u, querytypes[type]) == 0)
+					else if(extra[0] == '!' && strcasecmp(extra + 1u, querytypes[qtype]) == 0)
 					{
-						regex[index].query_type = type;
-						regex[index].query_type_inverted = true;
+						regex->query_type = qtype;
+						regex->query_type_inverted = true;
 						break;
 					}
 				}
 				// Nothing found
-				if(regex[index].query_type == 0)
-					logg_regex_warning(regextype[regexid], "Unknown querytype",
-					                   regex[index].database_id, regexin);
+				if(regex->query_type == 0)
+				{
+					*message = strdup("Unknown querytype");
+					return false;
+				}
 
 				// Debug output
 				else if(config.debug & DEBUG_REGEX)
 				{
 					logg("   This regex will %s match query type %s",
-					     regex[index].query_type_inverted ? "NOT" : "ONLY",
-					     querytypes[regex[index].query_type]);
+					     regex->query_type_inverted ? "NOT" : "ONLY",
+					     querytypes[regex->query_type]);
 				}
 			}
 			// option: ";invert"
 			else if(strcasecmp(part, "invert") == 0)
 			{
-				regex[index].inverted = true;
+				regex->inverted = true;
 
 				// Debug output
 				if(config.debug & DEBUG_REGEX)
@@ -181,22 +181,20 @@ static bool compile_regex(const char *regexin, const enum regex_type regexid)
 
 	// We use the extended RegEx flavor (ERE) and specify that matching should
 	// always be case INsensitive
-	const int errcode = regcomp(&regex[index].regex, rgxbuf, REG_EXTENDED | REG_ICASE | REG_NOSUB);
+	const int errcode = regcomp(&regex->regex, rgxbuf, REG_EXTENDED | REG_ICASE | REG_NOSUB);
 	if(errcode != 0)
 	{
 		// Get error string and log it
-		const size_t length = regerror(errcode, &regex[index].regex, NULL, 0);
-		char *buffer = calloc(length, sizeof(char));
-		(void) regerror (errcode, &regex[index].regex, buffer, length);
-		logg_regex_warning(regextype[regexid], buffer, regex[index].database_id, regexin);
-		free(buffer);
-		regex[index].available = false;
+		const size_t length = regerror(errcode, &regex->regex, NULL, 0);
+		*message = calloc(length, sizeof(char));
+		(void) regerror (errcode, &regex->regex, *message, length);
+		regex->available = false;
 		return false;
 	}
 
 	// Store compiled regex string in buffer
-	regex[index].string = strdup(regexin);
-	regex[index].available = true;
+	regex->string = strdup(regexin);
+	regex->available = true;
 
 	return true;
 }
@@ -510,7 +508,16 @@ static void read_regex_table(const enum regex_type regexid)
 			     regextype[regexid], num_regex[regexid], rowid, domain);
 		}
 
-		compile_regex(domain, regexid);
+		regexData *this_regex = get_regex_ptr(regexid);
+		const int index = num_regex[regexid]++;
+		char *message = NULL;
+		if(!compile_regex(domain, &this_regex[index], &message) && message != NULL)
+		{
+			logg_regex_warning(regextype[regexid], message,
+			                   regex->database_id, domain);
+			free(message);
+		}
+
 		regex[num_regex[regexid]-1].database_id = rowid;
 
 		// Signal other forks that the regex data has changed and should be updated
@@ -614,13 +621,18 @@ int regex_test(const bool debug_mode, const bool quiet, const char *domainin, co
 	{
 		// Compile CLI regex
 		logg("%s Compiling regex filter...", cli_info());
-		cli_regex = calloc(1, sizeof(regexData));
+		regexData regex = { 0 };
 
 		// Compile CLI regex
 		timer_start(REGEX_TIMER);
 		log_ctrl(false, true); // Temporarily re-enable terminal output for error logging
-		if(!compile_regex(regexin, REGEX_CLI))
+		char *message = NULL;
+		if(!compile_regex(regexin, &regex, &message) && message != NULL)
+		{
+			logg_regex_warning("CLI", message, 0, regexin);
+			free(message);
 			return EXIT_FAILURE;
+		}
 		log_ctrl(false, !quiet); // Re-apply quiet option after compilation
 		logg("    Compiled regex filter in %.3f msec\n", timer_elapsed_msec(REGEX_TIMER));
 
