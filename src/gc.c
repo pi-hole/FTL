@@ -128,6 +128,11 @@ void *GC_thread(void *val)
 						if(client != NULL)
 							change_clientcount(client, 0, -1, -1, 0);
 						break;
+					case QUERY_IN_PROGRESS:
+						// Nothing to be done here, this was a duplicated query. It
+						// wasn't forwarded on its own to save some traffic (and
+						// reduce the attack surface for cache spoofing)
+						break;
 					case QUERY_STATUS_MAX: // fall through
 					default:
 						/* That cannot happen */

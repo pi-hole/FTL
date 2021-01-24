@@ -394,6 +394,9 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	      new->fd = udpfd;
 	    }
 	  
+	  // Pi-hole modification
+	  FTL_query_in_progress(daemon->log_id);
+
 	  return 1;
 	}
 	
@@ -1330,6 +1333,9 @@ void reply_query(int fd, int family, time_t now)
 	    }
 #endif
 
+	  // Pi-hole modification
+	  int first_ID = -1;
+
 	  for (src = &forward->frec_src; src; src = src->next)
 	    {
 	      header->id = htons(src->orig_id);
@@ -1347,6 +1353,8 @@ void reply_query(int fd, int family, time_t now)
 		  daemon->log_source_addr = &src->source;
 		  log_query(F_UPSTREAM, "query", NULL, "duplicate");
 		}
+	      /* Pi-hole modification */
+	      FTL_duplicate_reply(src->log_id, &first_ID);
 	    }
 	}
 
