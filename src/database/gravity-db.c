@@ -1426,6 +1426,8 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 	const char *querystr;
 	if(method == HTTP_POST) // Create NEW entry, error if existing
 	{
+		// The item is the argument for all POST requests
+		row->argument = row->item;
 		if(listtype == GRAVITY_GROUPS)
 			querystr = "INSERT INTO \"group\" (name,enabled,description) VALUES (:argument,:enabled,:description);";
 		else if(listtype == GRAVITY_ADLISTS)
@@ -1435,9 +1437,10 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 		else // domainlist
 			querystr = "INSERT INTO domainlist (domain,type,enabled,comment) VALUES (:argument,:type,:enabled,:comment);";
 	}
-	else // Create new or replace existing entry, no error if existing
-	     // We have to use a subquery here to avoid violating FOREIGN KEY
-		 // contraints (REPLACE recreates (= new ID) entries instead of updating them)
+	else
+	{	// Create new or replace existing entry, no error if existing
+		// We have to use a subquery here to avoid violating FOREIGN KEY
+		// contraints (REPLACE recreates (= new ID) entries instead of updating them)
 		if(listtype == GRAVITY_GROUPS)
 			querystr = "REPLACE INTO \"group\" (name,enabled,description,id,date_added) "
 			           "VALUES (:argument,:enabled,:description,"
@@ -1458,6 +1461,8 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 			           "VALUES (:argument,:type,:enabled,:comment,"
 			                   "(SELECT id FROM domainlist WHERE domain = :argument and type = :oldtype),"
 			                   "(SELECT date_added FROM domainlist WHERE domain = :argument and type = :oldtype));";
+	}
+
 	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{

@@ -186,7 +186,7 @@ static int api_list_write(struct ftl_conn *api,
 	row.argument = argument;
 
 	// Check argument is not empty
-	if (strlen(argument) < 1) {
+	if (api->method == HTTP_PUT && strlen(argument) < 1) {
 		return send_json_error(api, 400,
 		                       "bad_request",
 		                       "Missing argument, check URI",
@@ -212,6 +212,19 @@ static int api_list_write(struct ftl_conn *api,
 					NULL);
 		}
 		row.enabled = cJSON_IsTrue(json_enabled);
+	}
+
+	cJSON *json_item = cJSON_GetObjectItemCaseSensitive(api->payload.json, "item");
+	if(cJSON_IsString(json_item) && strlen(json_item->valuestring) > 0)
+		row.item = json_item->valuestring;
+	else if(api->method == HTTP_PUT)
+		row.item = NULL;
+	else
+	{
+		return send_json_error(api, 400,
+		                       "bad_request",
+		                       "No \"item\" string in body data",
+		                       NULL);
 	}
 
 	cJSON *json_comment = cJSON_GetObjectItemCaseSensitive(api->payload.json, "comment");
@@ -416,12 +429,28 @@ int api_list(struct ftl_conn *api)
 
 	if(api->method == HTTP_GET)
 	{
+		// Read list item identified by URI (or read them all)
 		return api_list_read(api, 200, listtype, argument);
 	}
-	else if(can_modify && (api->method == HTTP_POST || api->method == HTTP_PUT))
+	else if(can_modify && api->method == HTTP_PUT)
 	{
-		// Add item from list
+		// Add/update item identified by URI
 		return api_list_write(api, listtype, argument, payload);
+	}
+	else if(can_modify && api->method == HTTP_POST)
+	{
+		// Add item to list identified by payload
+		if(strlen(argument) != 0)
+		{
+			cJSON *json = JSON_NEW_OBJ();
+			JSON_OBJ_REF_STR(json, "uri_param", argument);
+			return send_json_error(api, 400,
+			                       "bad_request",
+			                       "Invalid request: Specify item in payload, not as URI parameter",
+			                       json);
+		}
+		else
+			return api_list_write(api, listtype, argument, payload);
 	}
 	else if(can_modify && api->method == HTTP_DELETE)
 	{
