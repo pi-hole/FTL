@@ -28,7 +28,7 @@
 
 #include "dnsmasq.h"
 
-#if defined(HAVE_DNSSEC) || defined(HAVE_NETTLEHASH)
+#if defined(HAVE_DNSSEC) || defined(HAVE_CRYPTOHASH)
 
 static const struct nettle_hash *hash;
 static void *ctx;
@@ -71,7 +71,7 @@ unsigned char *hash_questions(struct dns_header *header, size_t plen, char *name
   return digest;
 }
 
-#else /* HAVE_DNSSEC */
+#else /* HAVE_DNSSEC  || HAVE_CRYPTOHASH */
 
 #define SHA256_BLOCK_SIZE 32            // SHA256 outputs a 32 byte digest
 typedef unsigned char BYTE;             // 8-bit byte

@@ -27,7 +27,7 @@
 #endif
 #endif
 
-#if defined(HAVE_DNSSEC) || defined(HAVE_NETTLEHASH)
+#if defined(HAVE_DNSSEC) || defined(HAVE_CRYPTOHASH)
 #include <nettle/nettle-meta.h>
 #include <nettle/bignum.h>
 
