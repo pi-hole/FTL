@@ -2278,6 +2278,12 @@ void FTL_duplicate_reply(const int id, int *firstID)
 	duplicated_query->dnssec = source_query->dnssec;
 	duplicated_query->flags.complete = true;
 
+	// The original query may have been blocked during CNAME inspection,
+	// correct status in this case
+	if(duplicated_query->status != QUERY_FORWARDED)
+		duplicated_query->status = source_query->status;
+	duplicated_query->CNAME_domainID = source_query->CNAME_domainID;
+
 	// Unlock shared memory
 	unlock_shm();
 }
