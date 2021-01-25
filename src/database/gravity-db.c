@@ -1458,8 +1458,8 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 		else // domainlist
 			querystr = "REPLACE INTO domainlist (domain,type,enabled,comment,id,date_added) "
 			           "VALUES (:argument,:type,:enabled,:comment,"
-			                   "(SELECT id FROM domainlist WHERE domain = :argument and type = :oldtype),"
-			                   "(SELECT date_added FROM domainlist WHERE domain = :argument and type = :oldtype));";
+			                   "(SELECT id FROM domainlist WHERE domain = :argument AND type = :oldtype),"
+			                   "(SELECT date_added FROM domainlist WHERE domain = :argument AND type = :oldtype));";
 	}
 
 	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &stmt, NULL);
@@ -1499,38 +1499,63 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 	idx = sqlite3_bind_parameter_index(stmt, ":oldtype");
 	if(idx > 0)
 	{
-		if(row->oldtype == NULL)
+		int oldtype = -1;
+		if(row->oldtype == NULL && row->oldkind == NULL)
 		{
-			*message = "Field oldtype missing from request.";
+			// User didn't specify oldtype/oldkind, just replace without moving
+			oldtype = type;
+		}
+		else if(row->oldtype == NULL)
+		{
+			// Error, one is not meaningful without the other
+			*message = "Field oldtype missing from request";
 			logg("gravityDB_addToTable(%d, %s): Oldtype missing",
 			     type, row->domain);
 			sqlite3_reset(stmt);
 			sqlite3_finalize(stmt);
 			return false;
 		}
-		int oldtype = -1;
-		if(strcasecmp("allow/exact", row->oldtype) == 0)
-			oldtype = 0;
-		else if(strcasecmp("deny/exact", row->oldtype) == 0)
-			oldtype = 1;
-		else if(strcasecmp("allow/regex", row->oldtype) == 0)
-			oldtype = 2;
-		else if(strcasecmp("deny/regex", row->oldtype) == 0)
-			oldtype = 3;
-		else
+		else if(row->oldkind == NULL)
 		{
-			*message = "Cannot interpret oldtype field.";
-			logg("gravityDB_addToTable(%d, %s): Failed to identify oldtype \"%s\"",
-			     type, row->domain, row->oldtype);
+			// Error, one is not meaningful without the other
+			*message = "Field oldkind missing from request";
+			logg("gravityDB_addToTable(%d, %s): Oldkind missing",
+			     type, row->domain);
 			sqlite3_reset(stmt);
 			sqlite3_finalize(stmt);
 			return false;
 		}
+		else
+		{
+			if(strcasecmp("allow", row->oldtype) == 0 &&
+			strcasecmp("exact", row->oldkind) == 0)
+				oldtype = 0;
+			else if(strcasecmp("deny", row->oldtype) == 0 &&
+					strcasecmp("exact", row->oldkind) == 0)
+				oldtype = 1;
+			else if(strcasecmp("allow", row->oldtype) == 0 &&
+					strcasecmp("regex", row->oldkind) == 0)
+				oldtype = 2;
+			else if(strcasecmp("deny", row->oldtype) == 0 &&
+					strcasecmp("regex", row->oldkind) == 0)
+				oldtype = 3;
+			else
+			{
+				*message = "Cannot interpret oldtype/oldkind";
+				logg("gravityDB_addToTable(%d, %s): Failed to identify oldtype=\"%s\", oldkind=\"%s\"",
+					type, row->domain, row->oldtype, row->oldkind);
+				sqlite3_reset(stmt);
+				sqlite3_finalize(stmt);
+				return false;
+			}
+		}
+
+		// Bind oldtype to database statement
 		if((rc = sqlite3_bind_int(stmt, idx, oldtype)) != SQLITE_OK)
 		{
 			*message = sqlite3_errmsg(gravity_db);
 			logg("gravityDB_addToTable(%d, %s): Failed to bind oldtype (error %d) - %s",
-			     type, row->domain, rc, *message);
+				type, row->domain, rc, *message);
 			sqlite3_reset(stmt);
 			sqlite3_finalize(stmt);
 			return false;

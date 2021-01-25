@@ -25,11 +25,13 @@ typedef struct {
 	const char *domain;
 	const char *address;
 	const char *type;
+	const char *oldtype;
+	const char *kind;
+	const char *oldkind;
 	const char *comment;
 	const char *group_ids;
 	const char *description;
 	const char *argument;
-	const char *oldtype;
 	const char *ip;
 	long id;
 	time_t date_added;

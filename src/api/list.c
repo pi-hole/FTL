@@ -72,7 +72,7 @@ static int api_list_read(struct ftl_conn *api,
 		{
 			if(row.ip != NULL)
 			{
-				JSON_OBJ_COPY_STR(item, "ip", row.ip);
+				JSON_OBJ_COPY_STR(item, "client", row.ip);
 				char *name = getNameFromIP(row.ip);
 				if(name != NULL)
 				{
@@ -100,6 +100,7 @@ static int api_list_read(struct ftl_conn *api,
 		{
 			JSON_OBJ_COPY_STR(item, "domain", row.domain);
 			JSON_OBJ_REF_STR(item, "type", row.type);
+			JSON_OBJ_REF_STR(item, "kind", row.kind);
 			if(row.comment != NULL) {
 				JSON_OBJ_COPY_STR(item, "comment", row.comment);
 			} else {
@@ -130,11 +131,10 @@ static int api_list_read(struct ftl_conn *api,
 		if(listtype != GRAVITY_CLIENTS)
 			JSON_OBJ_ADD_BOOL(item, "enabled", row.enabled);
 
-		cJSON *database = JSON_NEW_OBJ();
-		JSON_OBJ_ADD_NUMBER(database, "id", row.id);
-		JSON_OBJ_ADD_NUMBER(database, "date_added", row.date_added);
-		JSON_OBJ_ADD_NUMBER(database, "date_modified", row.date_modified);
-		JSON_OBJ_ADD_ITEM(item, "database", database);
+		// Add read-only database parameters
+		JSON_OBJ_ADD_NUMBER(item, "id", row.id);
+		JSON_OBJ_ADD_NUMBER(item, "date_added", row.date_added);
+		JSON_OBJ_ADD_NUMBER(item, "date_modified", row.date_modified);
 
 		JSON_ARRAY_ADD_ITEM(items, item);
 	}
@@ -188,14 +188,6 @@ static int api_list_write(struct ftl_conn *api,
 	// Set argument
 	row.argument = argument;
 
-	// Check argument is not empty
-	if (api->method == HTTP_PUT && strlen(argument) < 1) {
-		return send_json_error(api, 400,
-		                       "bad_request",
-		                       "Missing argument, check URI",
-		                       NULL);
-	}
-
 	// Check if valid JSON payload is available
 	if (api->payload.json == NULL) {
 		return send_json_error(api, 400,
@@ -240,13 +232,19 @@ static int api_list_write(struct ftl_conn *api,
 	else
 		row.oldtype = NULL; // Default value
 
+	cJSON *json_oldkind = cJSON_GetObjectItemCaseSensitive(api->payload.json, "oldkind");
+	if(cJSON_IsString(json_oldkind) && strlen(json_oldkind->valuestring) > 0)
+		row.oldkind = json_oldkind->valuestring;
+	else
+		row.oldkind = NULL; // Default value
+
 	bool okay = true;
 	char *regex_msg = NULL;
 	if(listtype == GRAVITY_DOMAINLIST_ALLOW_REGEX || listtype == GRAVITY_DOMAINLIST_DENY_REGEX)
 	{
 		// Test validity of this regex
 		regexData regex = { 0 };
-		okay = compile_regex(argument, &regex, &regex_msg);
+		okay = compile_regex(row.argument, &regex, &regex_msg);
 	}
 
 	// Try to add item to table
@@ -292,18 +290,22 @@ static int api_list_write(struct ftl_conn *api,
 		}
 
 		// Add regex error (may not be available)
+		const char *errortype = "database_error";
+		const char *errormsg  = "Could not add to gravity database";
 		if (regex_msg != NULL) {
 			JSON_OBJ_COPY_STR(json, "regex_msg", regex_msg);
 			free(regex_msg);
 			regex_msg = NULL;
+			errortype = "regex_error";
+			errormsg = "Regex validation failed";
 		} else {
 			JSON_OBJ_ADD_NULL(json, "regex_msg");
 		}
 
 		// Send error reply
 		return send_json_error(api, 400, // 400 Bad Request
-		                       "database_error",
-		                       "Could not add to gravity database",
+		                       errortype,
+		                       errormsg,
 		                       json);
 	}
 	// else: everything is okay
@@ -450,7 +452,7 @@ int api_list(struct ftl_conn *api)
 			}
 			JSON_OBJ_REF_STR(uri, "item", argument);
 			return send_json_error(api, 400,
-			                       "bad_request",
+			                       "uri_error",
 			                       "Invalid request: Specify item in URI",
 			                       uri);
 		}
@@ -473,7 +475,7 @@ int api_list(struct ftl_conn *api)
 			}
 			JSON_OBJ_REF_STR(uri, "item", argument);
 			return send_json_error(api, 400,
-			                       "bad_request",
+			                       "uri_error",
 			                       "Invalid request: Specify item in payload, not as URI parameter",
 			                       uri);
 		}
@@ -498,12 +500,10 @@ int api_list(struct ftl_conn *api)
 			JSON_OBJ_ADD_NULL(uri, "path");
 		}
 		JSON_OBJ_REF_STR(uri, "item", argument);
-		cJSON *data = JSON_NEW_OBJ();
-		JSON_OBJ_ADD_ITEM(data, "uri", uri);
 		return send_json_error(api, 400,
-		                       "bad_request",
+		                       "uri_error",
 		                       "Invalid request: Specify list to modify more precisely",
-		                       data);
+		                       uri);
 	}
 	else
 	{
