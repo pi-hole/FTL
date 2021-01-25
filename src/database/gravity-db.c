@@ -1388,53 +1388,58 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 		return false;
 	}
 
-	int type = -1;
 	switch (listtype)
 	{
 		case GRAVITY_DOMAINLIST_ALLOW_EXACT:
-			type = 0;
+			row->type_int = 0;
 			break;
 		case GRAVITY_DOMAINLIST_DENY_EXACT:
-			type = 1;
+			row->type_int = 1;
 			break;
 		case GRAVITY_DOMAINLIST_ALLOW_REGEX:
-			type = 2;
+			row->type_int = 2;
 			break;
 		case GRAVITY_DOMAINLIST_DENY_REGEX:
-			type = 3;
+			row->type_int = 3;
 			break;
 
+		// Nothing to be done for these tables
 		case GRAVITY_GROUPS:
 		case GRAVITY_ADLISTS:
 		case GRAVITY_CLIENTS:
-			// No type required for these tables
 			break;
 
-		// Aggregate types cannot be handled by this routine
+		// Aggregate types are not handled by this routine
 		case GRAVITY_DOMAINLIST_ALLOW_ALL:
 		case GRAVITY_DOMAINLIST_DENY_ALL:
 		case GRAVITY_DOMAINLIST_ALL_EXACT:
 		case GRAVITY_DOMAINLIST_ALL_REGEX:
 		case GRAVITY_DOMAINLIST_ALL_ALL:
-		default:
 			return false;
 	}
-	row->type_int = type;
 
 	// Prepare SQLite statement
 	sqlite3_stmt* stmt = NULL;
 	const char *querystr;
 	if(method == HTTP_POST) // Create NEW entry, error if existing
 	{
-		// The item is the argument for all POST requests
+		// The item is the item for all POST requests
 		if(listtype == GRAVITY_GROUPS)
-			querystr = "INSERT INTO \"group\" (name,enabled,description) VALUES (:argument,:enabled,:description);";
+		{
+			querystr = "INSERT INTO \"group\" (name,enabled,description) VALUES (:item,:enabled,:description);";
+		}
 		else if(listtype == GRAVITY_ADLISTS)
-			querystr = "INSERT INTO adlist (address,enabled,comment) VALUES (:argument,:enabled,:comment);";
+		{
+			querystr = "INSERT INTO adlist (address,enabled,comment) VALUES (:item,:enabled,:comment);";
+		}
 		else if(listtype == GRAVITY_CLIENTS)
-			querystr = "INSERT INTO client (ip,comment) VALUES (:argument,:comment);";
-		else // domainlist
-			querystr = "INSERT INTO domainlist (domain,type,enabled,comment) VALUES (:argument,:type,:enabled,:comment);";
+		{
+			querystr = "INSERT INTO client (ip,comment) VALUES (:item,:comment);";
+		}
+		else // domainlis
+		{
+			querystr = "INSERT INTO domainlist (domain,type,enabled,comment) VALUES (:item,:type,:enabled,:comment);";
+		}
 	}
 	else
 	{	// Create new or replace existing entry, no error if existing
@@ -1442,24 +1447,24 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 		// contraints (REPLACE recreates (= new ID) entries instead of updating them)
 		if(listtype == GRAVITY_GROUPS)
 			querystr = "REPLACE INTO \"group\" (name,enabled,description,id,date_added) "
-			           "VALUES (:argument,:enabled,:description,"
-			                   "(SELECT id FROM \"group\" WHERE name = :argument),"
-			                   "(SELECT date_added FROM \"group\" WHERE name = :argument));";
+			           "VALUES (:item,:enabled,:description,"
+			                   "(SELECT id FROM \"group\" WHERE name = :item),"
+			                   "(SELECT date_added FROM \"group\" WHERE name = :item));";
 		else if(listtype == GRAVITY_ADLISTS)
 			querystr = "REPLACE INTO adlist (address,enabled,comment,id,date_added) "
-			           "VALUES (:argument,:enabled,:comment,"
-			                   "(SELECT id FROM adlist WHERE address = :argument),"
-			                   "(SELECT date_added FROM adlist WHERE address = :argument));";
+			           "VALUES (:item,:enabled,:comment,"
+			                   "(SELECT id FROM adlist WHERE address = :item),"
+			                   "(SELECT date_added FROM adlist WHERE address = :item));";
 		else if(listtype == GRAVITY_CLIENTS)
 			querystr = "REPLACE INTO client (ip,comment,id,date_added) "
-			           "VALUES (:argument,:comment,"
-			                   "(SELECT id FROM client WHERE ip = :argument),"
-			                   "(SELECT date_added FROM client WHERE ip = :argument));";
+			           "VALUES (:item,:comment,"
+			                   "(SELECT id FROM client WHERE ip = :item),"
+			                   "(SELECT date_added FROM client WHERE ip = :item));";
 		else // domainlist
 			querystr = "REPLACE INTO domainlist (domain,type,enabled,comment,id,date_added) "
-			           "VALUES (:argument,:type,:enabled,:comment,"
-			                   "(SELECT id FROM domainlist WHERE domain = :argument AND type = :oldtype),"
-			                   "(SELECT date_added FROM domainlist WHERE domain = :argument AND type = :oldtype));";
+			           "VALUES (:item,:type,:enabled,:comment,"
+			                   "(SELECT id FROM domainlist WHERE domain = :item AND type = :oldtype),"
+			                   "(SELECT date_added FROM domainlist WHERE domain = :item AND type = :oldtype));";
 	}
 
 	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &stmt, NULL);
@@ -1467,17 +1472,17 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 	{
 		*message = sqlite3_errmsg(gravity_db);
 		logg("gravityDB_addToTable(%d, %s) - SQL error prepare (%i): %s",
-		     type, row->domain, rc, *message);
+		     row->type_int, row->domain, rc, *message);
 		return false;
 	}
 
-	// Bind argument to prepared statement (if requested)
-	int idx = sqlite3_bind_parameter_index(stmt, ":argument");
-	if(idx > 0 && (rc = sqlite3_bind_text(stmt, idx, row->argument, -1, SQLITE_STATIC)) != SQLITE_OK)
+	// Bind item to prepared statement (if requested)
+	int idx = sqlite3_bind_parameter_index(stmt, ":item");
+	if(idx > 0 && (rc = sqlite3_bind_text(stmt, idx, row->item, -1, SQLITE_STATIC)) != SQLITE_OK)
 	{
 		*message = sqlite3_errmsg(gravity_db);
-		logg("gravityDB_addToTable(%d, %s): Failed to bind argument (error %d) - %s",
-		     type, row->argument, rc, *message);
+		logg("gravityDB_addToTable(%d, %s): Failed to bind item (error %d) - %s",
+		     row->type_int, row->item, rc, *message);
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
 		return false;
@@ -1485,11 +1490,11 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 
 	// Bind type to prepared statement (if requested)
 	idx = sqlite3_bind_parameter_index(stmt, ":type");
-	if(idx > 0 && (rc = sqlite3_bind_int(stmt, idx, type)) != SQLITE_OK)
+	if(idx > 0 && (rc = sqlite3_bind_int(stmt, idx, row->type_int)) != SQLITE_OK)
 	{
 		*message = sqlite3_errmsg(gravity_db);
 		logg("gravityDB_addToTable(%d, %s): Failed to bind type (error %d) - %s",
-		     type, row->domain, rc, *message);
+		     row->type_int, row->domain, rc, *message);
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
 		return false;
@@ -1503,14 +1508,14 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 		if(row->oldtype == NULL && row->oldkind == NULL)
 		{
 			// User didn't specify oldtype/oldkind, just replace without moving
-			oldtype = type;
+			oldtype = row->type_int;
 		}
 		else if(row->oldtype == NULL)
 		{
 			// Error, one is not meaningful without the other
 			*message = "Field oldtype missing from request";
 			logg("gravityDB_addToTable(%d, %s): Oldtype missing",
-			     type, row->domain);
+			     row->type_int, row->domain);
 			sqlite3_reset(stmt);
 			sqlite3_finalize(stmt);
 			return false;
@@ -1520,7 +1525,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 			// Error, one is not meaningful without the other
 			*message = "Field oldkind missing from request";
 			logg("gravityDB_addToTable(%d, %s): Oldkind missing",
-			     type, row->domain);
+			     row->type_int, row->domain);
 			sqlite3_reset(stmt);
 			sqlite3_finalize(stmt);
 			return false;
@@ -1543,7 +1548,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 			{
 				*message = "Cannot interpret oldtype/oldkind";
 				logg("gravityDB_addToTable(%d, %s): Failed to identify oldtype=\"%s\", oldkind=\"%s\"",
-					type, row->domain, row->oldtype, row->oldkind);
+				     row->type_int, row->domain, row->oldtype, row->oldkind);
 				sqlite3_reset(stmt);
 				sqlite3_finalize(stmt);
 				return false;
@@ -1555,7 +1560,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 		{
 			*message = sqlite3_errmsg(gravity_db);
 			logg("gravityDB_addToTable(%d, %s): Failed to bind oldtype (error %d) - %s",
-				type, row->domain, rc, *message);
+			     row->type_int, row->domain, rc, *message);
 			sqlite3_reset(stmt);
 			sqlite3_finalize(stmt);
 			return false;
@@ -1568,7 +1573,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 	{
 		*message = sqlite3_errmsg(gravity_db);
 		logg("gravityDB_addToTable(%d, %s): Failed to bind enabled (error %d) - %s",
-			type, row->domain, rc, *message);
+		     row->type_int, row->domain, rc, *message);
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
 		return false;
@@ -1580,19 +1585,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 	{
 		*message = sqlite3_errmsg(gravity_db);
 		logg("gravityDB_addToTable(%d, %s): Failed to bind comment (error %d) - %s",
-		     type, row->domain, rc, *message);
-		sqlite3_reset(stmt);
-		sqlite3_finalize(stmt);
-		return false;
-	}
-
-	// Bind description string to prepared statement (if requested)
-	idx = sqlite3_bind_parameter_index(stmt, ":description");
-	if(idx > 0 && (rc = sqlite3_bind_text(stmt, idx, row->description, -1, SQLITE_STATIC)) != SQLITE_OK)
-	{
-		*message = sqlite3_errmsg(gravity_db);
-		logg("gravityDB_addToTable(%d, %s): Failed to bind description (error %d) - %s",
-		     type, row->domain, rc, *message);
+		     row->type_int, row->domain, rc, *message);
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
 		return false;
@@ -1799,7 +1792,7 @@ bool gravityDB_delFromTable(const enum gravity_list_type listtype, const char* a
 }
 
 static sqlite3_stmt* read_stmt = NULL;
-bool gravityDB_readTable(const enum gravity_list_type listtype, const char *argument, const char **message)
+bool gravityDB_readTable(const enum gravity_list_type listtype, const char *item, const char **message)
 {
 	if(gravity_db == NULL)
 	{
@@ -1852,30 +1845,30 @@ bool gravityDB_readTable(const enum gravity_list_type listtype, const char *argu
 	const char *extra = "";
 	if(listtype == GRAVITY_GROUPS)
 	{
-		if(argument != NULL && argument[0] != '\0')
-			extra = " WHERE name = :argument;";
-		sprintf(querystr, "SELECT id,name,enabled,date_added,date_modified,description FROM \"group\"%s;", extra);
+		if(item != NULL && item[0] != '\0')
+			extra = " WHERE name = :item;";
+		sprintf(querystr, "SELECT id,name,enabled,date_added,date_modified,description AS comment FROM \"group\"%s;", extra);
 	}
 	else if(listtype == GRAVITY_ADLISTS)
 	{
-		if(argument != NULL && argument[0] != '\0')
-			extra = " WHERE address = :argument;";
+		if(item != NULL && item[0] != '\0')
+			extra = " WHERE address = :item;";
 		sprintf(querystr, "SELECT id,address,enabled,date_added,date_modified,comment,"
 		                         "(SELECT GROUP_CONCAT(group_id) FROM adlist_by_group g WHERE g.adlist_id = a.id) AS group_ids "
 		                         "FROM adlist a%s;", extra);
 	}
 	else if(listtype == GRAVITY_CLIENTS)
 	{
-		if(argument != NULL && argument[0] != '\0')
-			extra = " WHERE ip = :argument;";
-		sprintf(querystr, "SELECT id,ip,date_added,date_modified,comment,"
+		if(item != NULL && item[0] != '\0')
+			extra = " WHERE ip = :item;";
+		sprintf(querystr, "SELECT id,ip AS client,date_added,date_modified,comment,"
 		                         "(SELECT GROUP_CONCAT(group_id) FROM client_by_group g WHERE g.client_id = c.id) AS group_ids "
 		                         "FROM client c%s;", extra);
 	}
 	else // domainlist
 	{
-		if(argument != NULL && argument[0] != '\0')
-			extra = " AND domain = :argument;";
+		if(item != NULL && item[0] != '\0')
+			extra = " AND domain = :item;";
 		sprintf(querystr, "SELECT id,type,domain,enabled,date_added,date_modified,comment,"
 		                         "(SELECT GROUP_CONCAT(group_id) FROM domainlist_by_group g WHERE g.domainlist_id = d.id) AS group_ids "
 		                         "FROM domainlist d WHERE d.type IN (%s)%s;", type, extra);
@@ -1890,13 +1883,13 @@ bool gravityDB_readTable(const enum gravity_list_type listtype, const char *argu
 		return false;
 	}
 
-	// Bind argument to prepared statement (if requested)
-	int idx = sqlite3_bind_parameter_index(read_stmt, ":argument");
-	if(idx > 0 && (rc = sqlite3_bind_text(read_stmt, idx, argument, -1, SQLITE_STATIC)) != SQLITE_OK)
+	// Bind item to prepared statement (if requested)
+	int idx = sqlite3_bind_parameter_index(read_stmt, ":item");
+	if(idx > 0 && (rc = sqlite3_bind_text(read_stmt, idx, item, -1, SQLITE_STATIC)) != SQLITE_OK)
 	{
 		*message = sqlite3_errmsg(gravity_db);
-		logg("gravityDB_readTable(%d => (%s), %s): Failed to bind argument (error %d) - %s",
-			listtype, type, argument, rc, *message);
+		logg("gravityDB_readTable(%d => (%s), %s): Failed to bind item (error %d) - %s",
+			listtype, type, item, rc, *message);
 		sqlite3_reset(read_stmt);
 		sqlite3_finalize(read_stmt);
 		return false;
@@ -1906,7 +1899,7 @@ bool gravityDB_readTable(const enum gravity_list_type listtype, const char *argu
 	if(config.debug & DEBUG_API)
 	{
 		logg("SQL: %s", querystr);
-		logg("     :argument = \"%s\"", argument);
+		logg("     :item = \"%s\"", item);
 	}
 
 	return true;
@@ -1976,11 +1969,8 @@ bool gravityDB_readTableGetRow(tablerow *row, const char **message)
 			else if(strcasecmp(cname, "name") == 0)
 				row->name = (char*)sqlite3_column_text(read_stmt, c);
 
-			else if(strcasecmp(cname, "description") == 0)
-				row->description = (char*)sqlite3_column_text(read_stmt, c);
-
-			else if(strcasecmp(cname, "ip") == 0)
-				row->ip = (char*)sqlite3_column_text(read_stmt, c);
+			else if(strcasecmp(cname, "client") == 0)
+				row->client = (char*)sqlite3_column_text(read_stmt, c);
 
 			else
 				logg("Internal API error: Encountered unknown column %s", cname);
@@ -2025,19 +2015,19 @@ bool gravityDB_edit_groups(const enum gravity_list_type listtype, cJSON *groups,
 		return false;
 	else if(listtype == GRAVITY_CLIENTS)
 	{
-		get_querystr = "SELECT id FROM client WHERE ip = :argument";
+		get_querystr = "SELECT id FROM client WHERE ip = :item";
 		del_querystr = "DELETE FROM client_by_group WHERE client_id = :id;";
 		add_querystr = "INSERT INTO client_by_group (client_id,group_id) VALUES (:id,:gid);";
 	}
 	else if(listtype == GRAVITY_ADLISTS)
 	{
-		get_querystr = "SELECT id FROM adlist WHERE address = :argument";
+		get_querystr = "SELECT id FROM adlist WHERE address = :item";
 		del_querystr = "DELETE FROM adlist_by_group WHERE adlist_id = :id;";
 		add_querystr = "INSERT INTO adlist_by_group (adlist_id,group_id) VALUES (:id,:gid);";
 	}
 	else // domainlist
 	{
-		get_querystr = "SELECT id FROM domainlist WHERE domain = :argument AND type = :type";
+		get_querystr = "SELECT id FROM domainlist WHERE domain = :item AND type = :type";
 		del_querystr = "DELETE FROM domainlist_by_group WHERE domainlist_id = :id;";
 		add_querystr = "INSERT INTO domainlist_by_group (domainlist_id,group_id) VALUES (:id,:gid);";
 	}
@@ -2053,12 +2043,12 @@ bool gravityDB_edit_groups(const enum gravity_list_type listtype, cJSON *groups,
 		return false;
 	}
 
-	// Bind argument string to prepared statement (if requested)
-	int idx = sqlite3_bind_parameter_index(stmt, ":argument");
-	if(idx > 0 && (rc = sqlite3_bind_text(stmt, idx, row->argument, -1, SQLITE_STATIC)) != SQLITE_OK)
+	// Bind item string to prepared statement (if requested)
+	int idx = sqlite3_bind_parameter_index(stmt, ":item");
+	if(idx > 0 && (rc = sqlite3_bind_text(stmt, idx, row->item, -1, SQLITE_STATIC)) != SQLITE_OK)
 	{
 		*message = sqlite3_errmsg(gravity_db);
-		logg("gravityDB_edit_groups(%d): Failed to bind argument SELECT (error %d) - %s",
+		logg("gravityDB_edit_groups(%d): Failed to bind item SELECT (error %d) - %s",
 		     listtype, rc, *message);
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
@@ -2095,7 +2085,7 @@ bool gravityDB_edit_groups(const enum gravity_list_type listtype, cJSON *groups,
 	if(config.debug & DEBUG_API)
 	{
 		logg("SQL: %s", get_querystr);
-		logg("     :argument = \"%s\"", row->argument);
+		logg("     :item = \"%s\"", row->item);
 		logg("     :type = \"%d\"", row->type_int);
 	}
 

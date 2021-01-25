@@ -20,15 +20,15 @@
 static int api_list_read(struct ftl_conn *api,
                          const int code,
                          const enum gravity_list_type listtype,
-                         const char *argument)
+                         const char *item)
 {
 	const char *sql_msg = NULL;
-	if(!gravityDB_readTable(listtype, argument, &sql_msg))
+	if(!gravityDB_readTable(listtype, item, &sql_msg))
 	{
 		cJSON *json = JSON_NEW_OBJ();
 
-		// Add argument (may be NULL = not available)
-		JSON_OBJ_REF_STR(json, "argument", argument);
+		// Add item (may be NULL = not available)
+		JSON_OBJ_REF_STR(json, "item", item);
 
 		// Add SQL message (may be NULL = not available)
 		if (sql_msg != NULL) {
@@ -43,100 +43,100 @@ static int api_list_read(struct ftl_conn *api,
 		                       json);
 	}
 
-	tablerow row;
-	cJSON *items = JSON_NEW_ARRAY();
-	while(gravityDB_readTableGetRow(&row, &sql_msg))
+	tablerow table;
+	cJSON *rows = JSON_NEW_ARRAY();
+	while(gravityDB_readTableGetRow(&table, &sql_msg))
 	{
-		cJSON *item = JSON_NEW_OBJ();
+		cJSON *row = JSON_NEW_OBJ();
 
 		// Special fields
 		if(listtype == GRAVITY_GROUPS)
 		{
-			JSON_OBJ_COPY_STR(item, "name", row.name);
-			if(row.description != NULL) {
-				JSON_OBJ_COPY_STR(item, "description", row.description);
+			JSON_OBJ_COPY_STR(row, "name", table.name);
+			if(table.comment != NULL) {
+				JSON_OBJ_COPY_STR(row, "comment", table.comment);
 			} else {
-				JSON_OBJ_ADD_NULL(item, "description");
+				JSON_OBJ_ADD_NULL(row, "comment");
 			}
 		}
 		else if(listtype == GRAVITY_ADLISTS)
 		{
-			JSON_OBJ_COPY_STR(item, "address", row.address);
-			if(row.comment != NULL) {
-				JSON_OBJ_COPY_STR(item, "comment", row.comment);
+			JSON_OBJ_COPY_STR(row, "address", table.address);
+			if(table.comment != NULL) {
+				JSON_OBJ_COPY_STR(row, "comment", table.comment);
 			} else {
-				JSON_OBJ_ADD_NULL(item, "comment");
+				JSON_OBJ_ADD_NULL(row, "comment");
 			}
 		}
 		else if(listtype == GRAVITY_CLIENTS)
 		{
-			if(row.ip != NULL)
+			if(table.client != NULL)
 			{
-				JSON_OBJ_COPY_STR(item, "client", row.ip);
-				char *name = getNameFromIP(row.ip);
+				JSON_OBJ_COPY_STR(row, "client", table.client);
+				char *name = getNameFromIP(table.client);
 				if(name != NULL)
 				{
-					JSON_OBJ_COPY_STR(item, "name", name);
+					JSON_OBJ_COPY_STR(row, "name", name);
 					free(name);
 				}
 				else
 				{
-					JSON_OBJ_ADD_NULL(item, "name");
+					JSON_OBJ_ADD_NULL(row, "name");
 				}
 			}
 			else
 			{
-				JSON_OBJ_ADD_NULL(item, "ip");
-				JSON_OBJ_ADD_NULL(item, "name");
+				JSON_OBJ_ADD_NULL(row, "ip");
+				JSON_OBJ_ADD_NULL(row, "name");
 			}
 
-			if(row.comment != NULL) {
-				JSON_OBJ_COPY_STR(item, "comment", row.comment);
+			if(table.comment != NULL) {
+				JSON_OBJ_COPY_STR(row, "comment", table.comment);
 			} else {
-				JSON_OBJ_ADD_NULL(item, "comment");
+				JSON_OBJ_ADD_NULL(row, "comment");
 			}
 		}
 		else // domainlists
 		{
-			JSON_OBJ_COPY_STR(item, "domain", row.domain);
-			JSON_OBJ_REF_STR(item, "type", row.type);
-			JSON_OBJ_REF_STR(item, "kind", row.kind);
-			if(row.comment != NULL) {
-				JSON_OBJ_COPY_STR(item, "comment", row.comment);
+			JSON_OBJ_COPY_STR(row, "domain", table.domain);
+			JSON_OBJ_REF_STR(row, "type", table.type);
+			JSON_OBJ_REF_STR(row, "kind", table.kind);
+			if(table.comment != NULL) {
+				JSON_OBJ_COPY_STR(row, "comment", table.comment);
 			} else {
-				JSON_OBJ_ADD_NULL(item, "comment");
+				JSON_OBJ_ADD_NULL(row, "comment");
 			}
 		}
 
-		if(row.group_ids != NULL) {
+		if(table.group_ids != NULL) {
 			// Black magic at work here: We build a JSON array from
 			// the group_concat result delivered from the database,
-			// parse it as valid array and append it as item to the
+			// parse it as valid array and append it as row to the
 			// data
-			logg("row.group_ids = %p \"%s\"", row.group_ids, row.group_ids);
-			char group_ids_str[strlen(row.group_ids)+3u];
+			logg("table.group_ids = %p \"%s\"", table.group_ids, table.group_ids);
+			char group_ids_str[strlen(table.group_ids)+3u];
 			group_ids_str[0] = '[';
-			strcpy(group_ids_str+1u , row.group_ids);
+			strcpy(group_ids_str+1u , table.group_ids);
 			group_ids_str[sizeof(group_ids_str)-2u] = ']';
 			group_ids_str[sizeof(group_ids_str)-1u] = '\0';
 			cJSON * group_ids = cJSON_Parse(group_ids_str);
-			JSON_OBJ_ADD_ITEM(item, "groups", group_ids);
+			JSON_OBJ_ADD_ITEM(row, "groups", group_ids);
 		} else {
 			// Empty group set
 			cJSON *group_ids = JSON_NEW_ARRAY();
-			JSON_OBJ_ADD_ITEM(item, "groups", group_ids);
+			JSON_OBJ_ADD_ITEM(row, "groups", group_ids);
 		}
 
 		// Clients don't have the enabled property
 		if(listtype != GRAVITY_CLIENTS)
-			JSON_OBJ_ADD_BOOL(item, "enabled", row.enabled);
+			JSON_OBJ_ADD_BOOL(row, "enabled", table.enabled);
 
 		// Add read-only database parameters
-		JSON_OBJ_ADD_NUMBER(item, "id", row.id);
-		JSON_OBJ_ADD_NUMBER(item, "date_added", row.date_added);
-		JSON_OBJ_ADD_NUMBER(item, "date_modified", row.date_modified);
+		JSON_OBJ_ADD_NUMBER(row, "id", table.id);
+		JSON_OBJ_ADD_NUMBER(row, "date_added", table.date_added);
+		JSON_OBJ_ADD_NUMBER(row, "date_modified", table.date_modified);
 
-		JSON_ARRAY_ADD_ITEM(items, item);
+		JSON_ARRAY_ADD_ITEM(rows, row);
 	}
 	gravityDB_readTableFinalize();
 
@@ -153,16 +153,16 @@ static int api_list_read(struct ftl_conn *api,
 			objname = "clients";
 		else // domainlists
 			objname = "domains";
-		JSON_OBJ_ADD_ITEM(json, objname, items);
+		JSON_OBJ_ADD_ITEM(json, objname, rows);
 		JSON_SEND_OBJECT_CODE(json, code);
 	}
 	else
 	{
-		JSON_DELETE(items);
+		JSON_DELETE(rows);
 		cJSON *json = JSON_NEW_OBJ();
 
-		// Add argument (may be NULL = not available)
-		JSON_OBJ_REF_STR(json, "argument", argument);
+		// Add item (may be NULL = not available)
+		JSON_OBJ_REF_STR(json, "item", item);
 
 		// Add SQL message (may be NULL = not available)
 		if (sql_msg != NULL) {
@@ -180,13 +180,10 @@ static int api_list_read(struct ftl_conn *api,
 
 static int api_list_write(struct ftl_conn *api,
                           const enum gravity_list_type listtype,
-                          const char *argument,
+                          const char *item,
                           char payload[MAX_PAYLOAD_BYTES])
 {
 	tablerow row = { 0 };
-
-	// Set argument
-	row.argument = argument;
 
 	// Check if valid JSON payload is available
 	if (api->payload.json == NULL) {
@@ -196,35 +193,103 @@ static int api_list_write(struct ftl_conn *api,
 		                       NULL);
 	}
 
-	// Clients don't have the enabled property
-	cJSON *json_enabled = cJSON_GetObjectItemCaseSensitive(api->payload.json, "enabled");
-	if (cJSON_IsBool(json_enabled))
-		row.enabled = cJSON_IsTrue(json_enabled);
-	else
-		row.enabled = true; // Default value
-
-	cJSON *json_item = cJSON_GetObjectItemCaseSensitive(api->payload.json, "item");
-	if(cJSON_IsString(json_item) && strlen(json_item->valuestring) > 0)
-		row.argument = json_item->valuestring;
-	else if (api->method != HTTP_PUT) // PUT uses the URI argument
+	if(api->method == HTTP_POST)
 	{
-		return send_json_error(api, 400,
-		                       "bad_request",
-		                       "No \"item\" string in body data",
-		                       NULL);
+		// Extract domain/name/client/address from payload whe using POST, all
+		// others specify it as URI-component
+		cJSON *json_domain, *json_name, *json_address, *json_client;
+		switch(listtype)
+		{
+			case GRAVITY_DOMAINLIST_ALLOW_EXACT:
+			case GRAVITY_DOMAINLIST_ALLOW_REGEX:
+			case GRAVITY_DOMAINLIST_DENY_EXACT:
+			case GRAVITY_DOMAINLIST_DENY_REGEX:
+				json_domain = cJSON_GetObjectItemCaseSensitive(api->payload.json, "domain");
+				if(cJSON_IsString(json_domain) && strlen(json_domain->valuestring) > 0)
+				{
+					row.item = json_domain->valuestring;
+				}
+				else
+				{
+					cJSON *uri = JSON_NEW_OBJ();
+					JSON_OBJ_REF_STR(uri, "path", api->action_path);
+					JSON_OBJ_REF_STR(uri, "item", item);
+					return send_json_error(api, 400,
+					                       "uri_error",
+					                       "Invalid request: No item \"domain\" in payload",
+					                       uri);
+				}
+				break;
+
+			case GRAVITY_GROUPS:
+				json_name = cJSON_GetObjectItemCaseSensitive(api->payload.json, "name");
+				if(cJSON_IsString(json_name) && strlen(json_name->valuestring) > 0)
+					row.item = json_name->valuestring;
+				else
+				{
+					cJSON *uri = JSON_NEW_OBJ();
+					JSON_OBJ_REF_STR(uri, "path", api->action_path);
+					JSON_OBJ_REF_STR(uri, "item", item);
+					return send_json_error(api, 400,
+					                       "uri_error",
+					                       "Invalid request: No item \"name\" in payload",
+					                       uri);
+				}
+				break;
+
+			case GRAVITY_CLIENTS:
+				json_client = cJSON_GetObjectItemCaseSensitive(api->payload.json, "client");
+				if(cJSON_IsString(json_client) && strlen(json_client->valuestring) > 0)
+					row.item = json_client->valuestring;
+				else
+				{
+					cJSON *uri = JSON_NEW_OBJ();
+					JSON_OBJ_REF_STR(uri, "path", api->action_path);
+					JSON_OBJ_REF_STR(uri, "item", item);
+					return send_json_error(api, 400,
+					                       "uri_error",
+					                       "Invalid request: No item \"client\" in payload",
+					                       uri);
+				}
+				break;
+
+			case GRAVITY_ADLISTS:
+				json_address = cJSON_GetObjectItemCaseSensitive(api->payload.json, "address");
+				if(cJSON_IsString(json_address) && strlen(json_address->valuestring) > 0)
+					row.item = json_address->valuestring;
+				else
+				{
+					cJSON *uri = JSON_NEW_OBJ();
+					JSON_OBJ_REF_STR(uri, "path", api->action_path);
+					JSON_OBJ_REF_STR(uri, "item", item);
+					return send_json_error(api, 400,
+					                       "uri_error",
+					                       "Invalid request: No item \"address\" in payload",
+					                       uri);
+				}
+				break;
+			
+			// Aggregate types are not handled by this routine
+			case GRAVITY_DOMAINLIST_ALL_ALL:
+			case GRAVITY_DOMAINLIST_ALL_EXACT:
+			case GRAVITY_DOMAINLIST_ALL_REGEX:
+			case GRAVITY_DOMAINLIST_ALLOW_ALL:
+			case GRAVITY_DOMAINLIST_DENY_ALL:
+				return 500;
+		}
 	}
+	else
+	{
+		// PUT = Use URI item
+		row.item = item;
+	}
+	
 
 	cJSON *json_comment = cJSON_GetObjectItemCaseSensitive(api->payload.json, "comment");
 	if(cJSON_IsString(json_comment) && strlen(json_comment->valuestring) > 0)
 		row.comment = json_comment->valuestring;
 	else
 		row.comment = NULL; // Default value
-
-	cJSON *json_description = cJSON_GetObjectItemCaseSensitive(api->payload.json, "description");
-	if(cJSON_IsString(json_description) && strlen(json_description->valuestring) > 0)
-		row.description = json_description->valuestring;
-	else
-		row.description = NULL; // Default value
 
 	cJSON *json_oldtype = cJSON_GetObjectItemCaseSensitive(api->payload.json, "oldtype");
 	if(cJSON_IsString(json_oldtype) && strlen(json_oldtype->valuestring) > 0)
@@ -238,13 +303,19 @@ static int api_list_write(struct ftl_conn *api,
 	else
 		row.oldkind = NULL; // Default value
 
+	cJSON *json_enabled = cJSON_GetObjectItemCaseSensitive(api->payload.json, "enabled");
+	if (cJSON_IsBool(json_enabled))
+		row.enabled = cJSON_IsTrue(json_enabled);
+	else
+		row.enabled = true; // Default value
+
 	bool okay = true;
 	char *regex_msg = NULL;
 	if(listtype == GRAVITY_DOMAINLIST_ALLOW_REGEX || listtype == GRAVITY_DOMAINLIST_DENY_REGEX)
 	{
 		// Test validity of this regex
 		regexData regex = { 0 };
-		okay = compile_regex(row.argument, &regex, &regex_msg);
+		okay = compile_regex(row.domain, &regex, &regex_msg);
 	}
 
 	// Try to add item to table
@@ -271,12 +342,10 @@ static int api_list_write(struct ftl_conn *api,
 	{
 		// Error adding item, prepare error object
 		cJSON *json = JSON_NEW_OBJ();
-		JSON_OBJ_REF_STR(json, "item", row.argument);
+		JSON_OBJ_REF_STR(json, "item", item);
 		JSON_OBJ_ADD_BOOL(json, "enabled", row.enabled);
 		if(row.comment != NULL)
 			JSON_OBJ_REF_STR(json, "comment", row.comment);
-		if(row.description != NULL)
-			JSON_OBJ_REF_STR(json, "description", row.description);
 		if(row.name != NULL)
 			JSON_OBJ_REF_STR(json, "name", row.name);
 		if(row.oldtype != NULL)
@@ -317,16 +386,16 @@ static int api_list_write(struct ftl_conn *api,
 	if(api->method == HTTP_PUT)
 		response_code = 200; // 200 - OK
 	// Send GET style reply
-	return api_list_read(api, response_code, listtype, row.argument);
+	return api_list_read(api, response_code, listtype, row.item);
 }
 
 static int api_list_remove(struct ftl_conn *api,
                            const enum gravity_list_type listtype,
-                           const char *argument)
+                           const char *item)
 {
 	cJSON *json = JSON_NEW_OBJ(); 
 	const char *sql_msg = NULL;
-	if(gravityDB_delFromTable(listtype, argument, &sql_msg))
+	if(gravityDB_delFromTable(listtype, item, &sql_msg))
 	{
 		// Inform the resolver that it needs to reload the domainlists
 		set_event(RELOAD_GRAVITY);
@@ -336,8 +405,8 @@ static int api_list_remove(struct ftl_conn *api,
 	}
 	else
 	{
-		// Add argument
-		JSON_OBJ_REF_STR(json, "argument", argument);
+		// Add item
+		JSON_OBJ_REF_STR(json, "item", item);
 
 		// Add SQL message (may be NULL = not available)
 		if (sql_msg != NULL) {
@@ -365,59 +434,58 @@ int api_list(struct ftl_conn *api)
 
 	enum gravity_list_type listtype;
 	bool can_modify = false;
-	const char *argument = NULL;
-	if((argument = startsWith("/api/groups", api)) != NULL)
+	if((api->item = startsWith("/api/groups", api)) != NULL)
 	{
 		listtype = GRAVITY_GROUPS;
 		can_modify = true;
 	}
-	else if((argument = startsWith("/api/lists", api)) != NULL)
+	else if((api->item = startsWith("/api/lists", api)) != NULL)
 	{
 		listtype = GRAVITY_ADLISTS;
 		can_modify = true;
 	}
-	else if((argument = startsWith("/api/clients", api)) != NULL)
+	else if((api->item = startsWith("/api/clients", api)) != NULL)
 	{
 		listtype = GRAVITY_CLIENTS;
 		can_modify = true;
 	}
-	else if((argument = startsWith("/api/domains/allow/exact", api)) != NULL)
+	else if((api->item = startsWith("/api/domains/allow/exact", api)) != NULL)
 	{
 		listtype = GRAVITY_DOMAINLIST_ALLOW_EXACT;
 		can_modify = true;
 	}
-	else if((argument = startsWith("/api/domains/allow/regex", api)) != NULL)
+	else if((api->item = startsWith("/api/domains/allow/regex", api)) != NULL)
 	{
 		listtype = GRAVITY_DOMAINLIST_ALLOW_REGEX;
 		can_modify = true;
 	}
-	else if((argument = startsWith("/api/domains/allow", api)) != NULL)
+	else if((api->item = startsWith("/api/domains/allow", api)) != NULL)
 	{
 			listtype = GRAVITY_DOMAINLIST_ALLOW_ALL;
 	}
-	else if((argument = startsWith("/api/domains/deny/exact", api)) != NULL)
+	else if((api->item = startsWith("/api/domains/deny/exact", api)) != NULL)
 	{
 		listtype = GRAVITY_DOMAINLIST_DENY_EXACT;
 		can_modify = true;
 	}
-	else if((argument = startsWith("/api/domains/deny/regex", api)) != NULL)
+	else if((api->item = startsWith("/api/domains/deny/regex", api)) != NULL)
 	{
 		listtype = GRAVITY_DOMAINLIST_DENY_REGEX;
 		can_modify = true;
 	}
-	else if((argument = startsWith("/api/domains/deny", api)) != NULL)
+	else if((api->item = startsWith("/api/domains/deny", api)) != NULL)
 	{
 		listtype = GRAVITY_DOMAINLIST_DENY_ALL;
 	}
-	else if((argument = startsWith("/api/domains/exact", api)) != NULL)
+	else if((api->item = startsWith("/api/domains/exact", api)) != NULL)
 	{
 		listtype = GRAVITY_DOMAINLIST_ALL_EXACT;
 	}
-	else if((argument = startsWith("/api/domains/regex", api)) != NULL)
+	else if((api->item = startsWith("/api/domains/regex", api)) != NULL)
 	{
 		listtype = GRAVITY_DOMAINLIST_ALL_REGEX;
 	}
-	else if((argument = startsWith("/api/domains", api)) != NULL)
+	else if((api->item = startsWith("/api/domains", api)) != NULL)
 	{
 		listtype = GRAVITY_DOMAINLIST_ALL_ALL;
 	}
@@ -434,12 +502,12 @@ int api_list(struct ftl_conn *api)
 	if(api->method == HTTP_GET)
 	{
 		// Read list item identified by URI (or read them all)
-		return api_list_read(api, 200, listtype, argument);
+		return api_list_read(api, 200, listtype, api->item);
 	}
 	else if(can_modify && api->method == HTTP_PUT)
 	{
 		// Add/update item identified by URI
-		if(strlen(argument) == 0)
+		if(api->item != NULL && strlen(api->item) == 0)
 		{
 			cJSON *uri = JSON_NEW_OBJ();
 			if(api->action_path != NULL)
@@ -450,19 +518,19 @@ int api_list(struct ftl_conn *api)
 			{
 				JSON_OBJ_ADD_NULL(uri, "path");
 			}
-			JSON_OBJ_REF_STR(uri, "item", argument);
+			JSON_OBJ_REF_STR(uri, "item", api->item);
 			return send_json_error(api, 400,
 			                       "uri_error",
 			                       "Invalid request: Specify item in URI",
 			                       uri);
 		}
 		else
-		return api_list_write(api, listtype, argument, payload);
+			return api_list_write(api, listtype, api->item, payload);
 	}
 	else if(can_modify && api->method == HTTP_POST)
 	{
 		// Add item to list identified by payload
-		if(strlen(argument) != 0)
+		if(api->item != NULL && strlen(api->item) != 0)
 		{
 			cJSON *uri = JSON_NEW_OBJ();
 			if(api->action_path != NULL)
@@ -473,19 +541,19 @@ int api_list(struct ftl_conn *api)
 			{
 				JSON_OBJ_ADD_NULL(uri, "path");
 			}
-			JSON_OBJ_REF_STR(uri, "item", argument);
+			JSON_OBJ_REF_STR(uri, "item", api->item);
 			return send_json_error(api, 400,
 			                       "uri_error",
 			                       "Invalid request: Specify item in payload, not as URI parameter",
 			                       uri);
 		}
 		else
-			return api_list_write(api, listtype, argument, payload);
+			return api_list_write(api, listtype, api->item, payload);
 	}
 	else if(can_modify && api->method == HTTP_DELETE)
 	{
 		// Delete item from list
-		return api_list_remove(api, listtype, argument);
+		return api_list_remove(api, listtype, api->item);
 	}
 	else if(!can_modify)
 	{
@@ -499,7 +567,7 @@ int api_list(struct ftl_conn *api)
 		{
 			JSON_OBJ_ADD_NULL(uri, "path");
 		}
-		JSON_OBJ_REF_STR(uri, "item", argument);
+		JSON_OBJ_REF_STR(uri, "item", api->item);
 		return send_json_error(api, 400,
 		                       "uri_error",
 		                       "Invalid request: Specify list to modify more precisely",

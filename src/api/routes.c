@@ -30,6 +30,7 @@ int api_handler(struct mg_connection *conn, void *ignored)
 		mg_get_request_info(conn),
 		http_method(conn),
 		NULL,
+		NULL,
 		{ 0 }
 	};
 	read_and_parse_payload(&api);

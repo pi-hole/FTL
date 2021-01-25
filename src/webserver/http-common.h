@@ -25,6 +25,7 @@ struct ftl_conn {
 	const struct mg_request_info *request;
 	const enum http_method method;
 	char *action_path;
+	const char *item;
 	struct {
 		bool avail :1;
 		char raw[MAX_PAYLOAD_BYTES];

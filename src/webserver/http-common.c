@@ -146,6 +146,8 @@ const char* __attribute__((pure)) startsWith(const char *path, struct ftl_conn *
 		if(api->request->local_uri[strlen(path)] == '/')
 		{
 			// Path match with argument after ".../"
+			if(api->action_path != NULL)
+				free(api->action_path);
 			api->action_path = strdup(api->request->local_uri);
 			api->action_path[strlen(path)] = '\0';
 			return api->request->local_uri + strlen(path) + 1u;
@@ -153,6 +155,8 @@ const char* __attribute__((pure)) startsWith(const char *path, struct ftl_conn *
 		else if(strlen(path) == strlen(api->request->local_uri))
 		{
 			// Path match directly, no argument
+			if(api->action_path != NULL)
+				free(api->action_path);
 			api->action_path = strdup(api->request->local_uri);
 			return "";
 		}

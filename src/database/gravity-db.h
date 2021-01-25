@@ -30,9 +30,8 @@ typedef struct {
 	const char *oldkind;
 	const char *comment;
 	const char *group_ids;
-	const char *description;
-	const char *argument;
-	const char *ip;
+	const char *client;
+	const char *item;
 	long id;
 	time_t date_added;
 	time_t date_modified;
