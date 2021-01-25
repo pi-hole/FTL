@@ -334,19 +334,16 @@ static int api_list_write(struct ftl_conn *api,
 			JSON_OBJ_REF_STR(json, "oldtype", row.oldtype);
 
 		// Add SQL message (may be NULL = not available)
-		if (sql_msg != NULL) {
-			JSON_OBJ_REF_STR(json, "sql_msg", sql_msg);
-		} else {
-			JSON_OBJ_ADD_NULL(json, "sql_msg");
-		}
-
-		// Add regex error (may not be available)
 		const char *errortype = "database_error";
 		const char *errormsg  = "Could not add to gravity database";
+		JSON_OBJ_REF_STR(json, "sql_msg", sql_msg);
+
+		// Add regex error (may not be available)
+		JSON_OBJ_COPY_STR(json, "regex_msg", regex_msg);
 		if (regex_msg != NULL) {
-			JSON_OBJ_COPY_STR(json, "regex_msg", regex_msg);
 			free(regex_msg);
 			regex_msg = NULL;
+			// Change error type and message
 			errortype = "regex_error";
 			errormsg = "Regex validation failed";
 		} else {
@@ -391,11 +388,7 @@ static int api_list_remove(struct ftl_conn *api,
 		JSON_OBJ_REF_STR(json, "item", item);
 
 		// Add SQL message (may be NULL = not available)
-		if (sql_msg != NULL) {
-			JSON_OBJ_REF_STR(json, "sql_msg", sql_msg);
-		} else {
-			JSON_OBJ_ADD_NULL(json, "sql_msg");
-		}
+		JSON_OBJ_REF_STR(json, "sql_msg", sql_msg);
 
 		// Send error reply
 		return send_json_error(api, 400,
@@ -493,13 +486,7 @@ int api_list(struct ftl_conn *api)
 		{
 			cJSON *uri = JSON_NEW_OBJ();
 			if(api->action_path != NULL)
-			{
-				JSON_OBJ_REF_STR(uri, "path", api->action_path);
-			}
-			else
-			{
-				JSON_OBJ_ADD_NULL(uri, "path");
-			}
+			JSON_OBJ_REF_STR(uri, "path", api->action_path);
 			JSON_OBJ_REF_STR(uri, "item", api->item);
 			return send_json_error(api, 400,
 			                       "uri_error",
@@ -515,14 +502,7 @@ int api_list(struct ftl_conn *api)
 		if(api->item != NULL && strlen(api->item) != 0)
 		{
 			cJSON *uri = JSON_NEW_OBJ();
-			if(api->action_path != NULL)
-			{
-				JSON_OBJ_REF_STR(uri, "path", api->action_path);
-			}
-			else
-			{
-				JSON_OBJ_ADD_NULL(uri, "path");
-			}
+			JSON_OBJ_REF_STR(uri, "path", api->action_path);
 			JSON_OBJ_REF_STR(uri, "item", api->item);
 			return send_json_error(api, 400,
 			                       "uri_error",
@@ -541,14 +521,7 @@ int api_list(struct ftl_conn *api)
 	{
 		// This list type cannot be modified (e.g., ALL_ALL)
 		cJSON *uri = JSON_NEW_OBJ();
-		if(api->action_path != NULL)
-		{
-			JSON_OBJ_REF_STR(uri, "path", api->action_path);
-		}
-		else
-		{
-			JSON_OBJ_ADD_NULL(uri, "path");
-		}
+		JSON_OBJ_REF_STR(uri, "path", api->action_path);
 		JSON_OBJ_REF_STR(uri, "item", api->item);
 		return send_json_error(api, 400,
 		                       "uri_error",
