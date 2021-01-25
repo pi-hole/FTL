@@ -31,7 +31,6 @@ typedef struct {
 	const char *argument;
 	const char *oldtype;
 	const char *ip;
-	const char *item;
 	long id;
 	time_t date_added;
 	time_t date_modified;

@@ -146,9 +146,13 @@ const char* __attribute__((pure)) startsWith(const char *path, const struct ftl_
 		if(api->request->local_uri[strlen(path)] == '/')
 			// Path match with argument after ".../"
 			return api->request->local_uri + strlen(path) + 1u;
-		else
-			// Path match without argument
+		else if(strlen(path) == strlen(api->request->local_uri))
+			// Path match directly, no argument
 			return "";
+		else
+			// Further components in URL, assume this did't match, e.g.
+			// /api/domains/regex[123].com
+			return NULL;
 	else
 		// Path does not match
 		return NULL;

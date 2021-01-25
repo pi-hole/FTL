@@ -1427,7 +1427,6 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 	if(method == HTTP_POST) // Create NEW entry, error if existing
 	{
 		// The item is the argument for all POST requests
-		row->argument = row->item;
 		if(listtype == GRAVITY_GROUPS)
 			querystr = "INSERT INTO \"group\" (name,enabled,description) VALUES (:argument,:enabled,:description);";
 		else if(listtype == GRAVITY_ADLISTS)

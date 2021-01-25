@@ -205,24 +205,16 @@ static int api_list_write(struct ftl_conn *api,
 	}
 
 	// Clients don't have the enabled property
-	if(listtype != GRAVITY_CLIENTS)
-	{
-		cJSON *json_enabled = cJSON_GetObjectItemCaseSensitive(api->payload.json, "enabled");
-		if (!cJSON_IsBool(json_enabled)) {
-			return send_json_error(api, 400,
-					"bad_request",
-					"No \"enabled\" boolean in body data",
-					NULL);
-		}
+	cJSON *json_enabled = cJSON_GetObjectItemCaseSensitive(api->payload.json, "enabled");
+	if (cJSON_IsBool(json_enabled))
 		row.enabled = cJSON_IsTrue(json_enabled);
-	}
+	else
+		row.enabled = true; // Default value
 
 	cJSON *json_item = cJSON_GetObjectItemCaseSensitive(api->payload.json, "item");
 	if(cJSON_IsString(json_item) && strlen(json_item->valuestring) > 0)
-		row.item = json_item->valuestring;
-	else if(api->method == HTTP_PUT)
-		row.item = NULL;
-	else
+		row.argument = json_item->valuestring;
+	else if (api->method != HTTP_PUT) // PUT uses the URI argument
 	{
 		return send_json_error(api, 400,
 		                       "bad_request",
@@ -234,19 +226,19 @@ static int api_list_write(struct ftl_conn *api,
 	if(cJSON_IsString(json_comment) && strlen(json_comment->valuestring) > 0)
 		row.comment = json_comment->valuestring;
 	else
-		row.comment = NULL;
+		row.comment = NULL; // Default value
 
 	cJSON *json_description = cJSON_GetObjectItemCaseSensitive(api->payload.json, "description");
 	if(cJSON_IsString(json_description) && strlen(json_description->valuestring) > 0)
 		row.description = json_description->valuestring;
 	else
-		row.description = NULL;
+		row.description = NULL; // Default value
 
 	cJSON *json_oldtype = cJSON_GetObjectItemCaseSensitive(api->payload.json, "oldtype");
 	if(cJSON_IsString(json_oldtype) && strlen(json_oldtype->valuestring) > 0)
 		row.oldtype = json_oldtype->valuestring;
 	else
-		row.oldtype = NULL;
+		row.oldtype = NULL; // Default value
 
 	bool okay = true;
 	char *regex_msg = NULL;
@@ -387,47 +379,54 @@ int api_list(struct ftl_conn *api)
 		listtype = GRAVITY_CLIENTS;
 		can_modify = true;
 	}
+	else if((argument = startsWith("/api/domains/allow/exact", api)) != NULL)
+	{
+		listtype = GRAVITY_DOMAINLIST_ALLOW_EXACT;
+		can_modify = true;
+	}
+	else if((argument = startsWith("/api/domains/allow/regex", api)) != NULL)
+	{
+		listtype = GRAVITY_DOMAINLIST_ALLOW_REGEX;
+		can_modify = true;
+	}
 	else if((argument = startsWith("/api/domains/allow", api)) != NULL)
 	{
-		if((argument = startsWith("/api/domains/allow/exact", api)) != NULL)
-		{
-			listtype = GRAVITY_DOMAINLIST_ALLOW_EXACT;
-			can_modify = true;
-		}
-		else if((argument = startsWith("/api/domains/allow/regex", api)) != NULL)
-		{
-			listtype = GRAVITY_DOMAINLIST_ALLOW_REGEX;
-			can_modify = true;
-		}
-		else
 			listtype = GRAVITY_DOMAINLIST_ALLOW_ALL;
+	}
+	else if((argument = startsWith("/api/domains/deny/exact", api)) != NULL)
+	{
+		listtype = GRAVITY_DOMAINLIST_DENY_EXACT;
+		can_modify = true;
+	}
+	else if((argument = startsWith("/api/domains/deny/regex", api)) != NULL)
+	{
+		listtype = GRAVITY_DOMAINLIST_DENY_REGEX;
+		can_modify = true;
 	}
 	else if((argument = startsWith("/api/domains/deny", api)) != NULL)
 	{
-		if((argument = startsWith("/api/domains/deny/exact", api)) != NULL)
-		{
-			listtype = GRAVITY_DOMAINLIST_DENY_EXACT;
-			can_modify = true;
-		}
-		else if((argument = startsWith("/api/domains/deny/regex", api)) != NULL)
-		{
-			listtype = GRAVITY_DOMAINLIST_DENY_REGEX;
-			can_modify = true;
-		}
-		else
-			listtype = GRAVITY_DOMAINLIST_DENY_ALL;
+		listtype = GRAVITY_DOMAINLIST_DENY_ALL;
+	}
+	else if((argument = startsWith("/api/domains/exact", api)) != NULL)
+	{
+		listtype = GRAVITY_DOMAINLIST_ALL_EXACT;
+	}
+	else if((argument = startsWith("/api/domains/regex", api)) != NULL)
+	{
+		listtype = GRAVITY_DOMAINLIST_ALL_REGEX;
+	}
+	else if((argument = startsWith("/api/domains", api)) != NULL)
+	{
+		listtype = GRAVITY_DOMAINLIST_ALL_ALL;
 	}
 	else
 	{
-		if((argument = startsWith("/api/domains/exact", api)) != NULL)
-			listtype = GRAVITY_DOMAINLIST_ALL_EXACT;
-		else if((argument = startsWith("/api/domains/regex", api)) != NULL)
-			listtype = GRAVITY_DOMAINLIST_ALL_REGEX;
-		else
-		{
-			argument = startsWith("/api/domains", api);
-			listtype = GRAVITY_DOMAINLIST_ALL_ALL;
-		}
+			cJSON *json = JSON_NEW_OBJ();
+			JSON_OBJ_REF_STR(json, "uri", api->request->local_uri);
+			return send_json_error(api, 400,
+			                       "bad_request",
+			                       "Invalid request: Specified endpoint not available",
+			                       json);
 	}
 
 	if(api->method == HTTP_GET)
