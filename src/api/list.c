@@ -200,7 +200,7 @@ static int api_list_write(struct ftl_conn *api,
 	if (api->payload.json == NULL) {
 		return send_json_error(api, 400,
 		                       "bad_request",
-		                       "Invalid request body data",
+		                       "Invalid request body data (no valid JSON)",
 		                       NULL);
 	}
 
@@ -251,7 +251,7 @@ static int api_list_write(struct ftl_conn *api,
 
 	// Try to add item to table
 	const char *sql_msg = NULL;
-	if(okay && gravityDB_addToTable(listtype, &row, &sql_msg, api->method))
+	if(okay && (okay = gravityDB_addToTable(listtype, &row, &sql_msg, api->method)))
 	{
 		if(listtype != GRAVITY_GROUPS)
 		{
@@ -273,7 +273,7 @@ static int api_list_write(struct ftl_conn *api,
 	{
 		// Error adding item, prepare error object
 		cJSON *json = JSON_NEW_OBJ();
-		JSON_OBJ_REF_STR(json, "argument", argument);
+		JSON_OBJ_REF_STR(json, "item", row.argument);
 		JSON_OBJ_ADD_BOOL(json, "enabled", row.enabled);
 		if(row.comment != NULL)
 			JSON_OBJ_REF_STR(json, "comment", row.comment);
@@ -315,7 +315,7 @@ static int api_list_write(struct ftl_conn *api,
 	if(api->method == HTTP_PUT)
 		response_code = 200; // 200 - OK
 	// Send GET style reply
-	return api_list_read(api, response_code, listtype, argument);
+	return api_list_read(api, response_code, listtype, row.argument);
 }
 
 static int api_list_remove(struct ftl_conn *api,
@@ -437,6 +437,24 @@ int api_list(struct ftl_conn *api)
 	else if(can_modify && api->method == HTTP_PUT)
 	{
 		// Add/update item identified by URI
+		if(strlen(argument) == 0)
+		{
+			cJSON *uri = JSON_NEW_OBJ();
+			if(api->action_path != NULL)
+			{
+				JSON_OBJ_REF_STR(uri, "path", api->action_path);
+			}
+			else
+			{
+				JSON_OBJ_ADD_NULL(uri, "path");
+			}
+			JSON_OBJ_REF_STR(uri, "item", argument);
+			return send_json_error(api, 400,
+			                       "bad_request",
+			                       "Invalid request: Specify item in URI",
+			                       uri);
+		}
+		else
 		return api_list_write(api, listtype, argument, payload);
 	}
 	else if(can_modify && api->method == HTTP_POST)
@@ -444,12 +462,20 @@ int api_list(struct ftl_conn *api)
 		// Add item to list identified by payload
 		if(strlen(argument) != 0)
 		{
-			cJSON *json = JSON_NEW_OBJ();
-			JSON_OBJ_REF_STR(json, "uri_param", argument);
+			cJSON *uri = JSON_NEW_OBJ();
+			if(api->action_path != NULL)
+			{
+				JSON_OBJ_REF_STR(uri, "path", api->action_path);
+			}
+			else
+			{
+				JSON_OBJ_ADD_NULL(uri, "path");
+			}
+			JSON_OBJ_REF_STR(uri, "item", argument);
 			return send_json_error(api, 400,
 			                       "bad_request",
 			                       "Invalid request: Specify item in payload, not as URI parameter",
-			                       json);
+			                       uri);
 		}
 		else
 			return api_list_write(api, listtype, argument, payload);
@@ -462,10 +488,22 @@ int api_list(struct ftl_conn *api)
 	else if(!can_modify)
 	{
 		// This list type cannot be modified (e.g., ALL_ALL)
+		cJSON *uri = JSON_NEW_OBJ();
+		if(api->action_path != NULL)
+		{
+			JSON_OBJ_REF_STR(uri, "path", api->action_path);
+		}
+		else
+		{
+			JSON_OBJ_ADD_NULL(uri, "path");
+		}
+		JSON_OBJ_REF_STR(uri, "item", argument);
+		cJSON *data = JSON_NEW_OBJ();
+		JSON_OBJ_ADD_ITEM(data, "uri", uri);
 		return send_json_error(api, 400,
 		                       "bad_request",
-		                       "Invalid request: Specify list to modify",
-		                       NULL);
+		                       "Invalid request: Specify list to modify more precisely",
+		                       data);
 	}
 	else
 	{

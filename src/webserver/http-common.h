@@ -24,6 +24,7 @@ struct ftl_conn {
 	struct mg_connection *conn;
 	const struct mg_request_info *request;
 	const enum http_method method;
+	char *action_path;
 	struct {
 		bool avail :1;
 		char raw[MAX_PAYLOAD_BYTES];
@@ -59,7 +60,7 @@ bool get_int_var(const char *source, const char *var, int *num);
 
 // Utils
 enum http_method __attribute__((pure)) http_method(struct mg_connection *conn);
-const char* __attribute__((pure)) startsWith(const char *path, const struct ftl_conn *api);
+const char* __attribute__((pure)) startsWith(const char *path, struct ftl_conn *api);
 void read_and_parse_payload(struct ftl_conn *api);
 
 #endif // HTTP_H

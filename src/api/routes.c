@@ -29,6 +29,7 @@ int api_handler(struct mg_connection *conn, void *ignored)
 		conn,
 		mg_get_request_info(conn),
 		http_method(conn),
+		NULL,
 		{ 0 }
 	};
 	read_and_parse_payload(&api);
@@ -193,6 +194,13 @@ int api_handler(struct mg_connection *conn, void *ignored)
 	{
 		cJSON_Delete(api.payload.json);
 		api.payload.json = NULL;
+	}
+
+	// Free action path (if allocated)
+	if(api.action_path != NULL)
+	{
+		free(api.action_path);
+		api.action_path = NULL;
 	}
 
 	// Unlock after API access
