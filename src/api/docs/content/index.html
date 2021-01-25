@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width,minimum-scale=1,initial-scale=1,user-scalable=yes">
+        <title>Pi-hole API documentation</title>
+        <!--<link href="https://fonts.googleapis.com/css?family=Open+Sans:300,600&display=swap" rel="stylesheet">-->
+        <link rel="stylesheet" href="external/highlight_default.min.css">
+        <script src="external/highlight.min.js"></script>
+        <script type='text/javascript' src='external/rapidoc-min.js'></script>
+        <link href='index.css' rel='stylesheet'>
+    </head>
+    <body>
+        <rapi-doc id = "thedoc"
+          spec-url = "specs/main.yaml"
+          allow-server-selection = "true"
+          allow-authentication = "false"
+          allow-spec-url-load = "false"
+          allow-spec-file-load = "false"
+          show-header = "true"
+          show-info = "true"
+          theme = "dark"
+          allow-try = "true"
+          sort-endpoints-by = "path"
+          default-schema-tab = 'example'
+          schema-style = "tree"
+          render-style = "view"
+          primary-color = "#2d87e2"
+          header-color = "#2d87e2">
+            <img slot="logo" style="padding-left: 10px;" src="images/logo.svg" width="20px" />
+            <div slot="header" style="font-weight:700; font-size:32px">Pi-hole API Documentation</div>
+                
+            <!-- content at the bottom -->
+            <div slot="footer" style="margin:0; padding:16px 36px; background-color:#2d87e2; color:#fff; text-align:center;"> 
+                <button class='btn large' onclick="document.getElementById('thedoc').setAttribute('render-style', 'view')" >Default</button>
+                <button class='btn large' onclick="document.getElementById('thedoc').setAttribute('render-style', 'read')" >Reader</button>
+                <button class='btn large' onclick="document.getElementById('thedoc').setAttribute('render-style', 'focused')" >Focused reader</button>
+            </div>
+        </rapi-doc>
+    </body>
+</html>

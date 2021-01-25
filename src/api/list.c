@@ -62,21 +62,21 @@ static int api_list_read(struct ftl_conn *api,
 		}
 		else if(listtype == GRAVITY_CLIENTS)
 		{
+			char *name = NULL;
 			if(table.client != NULL)
 			{
-				JSON_OBJ_COPY_STR(row, "client", table.client);
-				char *name = getNameFromIP(table.client);
-				JSON_OBJ_COPY_STR(row, "name", name);
-				if(name != NULL)
-					free(name);
+				// Try to obtain hostname if this is a valid IP address
+				if(isValidIPv4(table.client) || isValidIPv6(table.client))
+					name = getNameFromIP(table.client);
 			}
-			else
-			{
-				JSON_OBJ_ADD_NULL(row, "ip");
-				JSON_OBJ_ADD_NULL(row, "name");
-			}
-
+			
+			JSON_OBJ_COPY_STR(row, "client", table.client);
+			JSON_OBJ_COPY_STR(row, "name", name);
 			JSON_OBJ_COPY_STR(row, "comment", table.comment);
+
+			// Free allocated memory (if applicable)
+			if(name != NULL)
+				free(name);
 		}
 		else // domainlists
 		{
@@ -94,7 +94,6 @@ static int api_list_read(struct ftl_conn *api,
 				// the group_concat result delivered from the database,
 				// parse it as valid array and append it as row to the
 				// data
-				logg("table.group_ids = %p \"%s\"", table.group_ids, table.group_ids);
 				char group_ids_str[strlen(table.group_ids)+3u];
 				group_ids_str[0] = '[';
 				strcpy(group_ids_str+1u , table.group_ids);
@@ -324,7 +323,7 @@ static int api_list_write(struct ftl_conn *api,
 	{
 		// Error adding item, prepare error object
 		cJSON *json = JSON_NEW_OBJ();
-		JSON_OBJ_REF_STR(json, "item", item);
+		JSON_OBJ_REF_STR(json, "item", row.item);
 		JSON_OBJ_ADD_BOOL(json, "enabled", row.enabled);
 		if(row.comment != NULL)
 			JSON_OBJ_REF_STR(json, "comment", row.comment);

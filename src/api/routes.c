@@ -178,6 +178,11 @@ int api_handler(struct mg_connection *conn, void *ignored)
 	{
 		ret = api_settings_web(&api);
 	}
+	/******************************** /api/settings ****************************/
+	else if((api.item = startsWith("/api/docs", &api)) != NULL)
+	{
+		ret = api_docs(&api);
+	}
 	/******************************** not found or invalid request**************/
 	if(ret == 0)
 	{

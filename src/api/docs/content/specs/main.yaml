@@ -1,0 +1,42 @@
+openapi: 3.0.2
+info:
+  title: Pi-hole API
+  version: "6.0"
+  description: >
+    The Pi-hole API is organized around [REST](http://en.wikipedia.org/wiki/Representational_State_Transfer). Our API has predictable resource-oriented URLs, accepts and returns reliable UTF-8 [JavaScript Object Notation (JSON)-encoded](http://www.json.org/) data for all API responses, and uses standard HTTP response codes and verbs.
+    Most (but not all) endpoints require authentication. API endpoints requiring authentication will fail with code `401 Unauthorized` if no key is supplied.
+servers:
+  - url: http://127.0.0.1/api/
+  - url: 'http://{url}:{port}/api/'
+    variables:
+      url:
+        description: URL or address of your Pi-hole
+        default: pi.hole
+      port:
+        description: Port of your Pi-hole's API
+        default: 8080
+
+paths:
+  /domains/{type}/{kind}/{domain}:
+    $ref: 'domains.yaml#/components/paths/type_kind_domain'
+
+  /domains/{type}/{kind}:
+    $ref: 'domains.yaml#/components/paths/type_kind'
+
+  /groups/{name}:
+    $ref: 'groups.yaml#/components/paths/name'
+
+  /groups:
+    $ref: 'groups.yaml#/components/paths/direct'
+
+  /clients/{client}:
+    $ref: 'clients.yaml#/components/paths/client'
+
+  /clients:
+    $ref: 'clients.yaml#/components/paths/direct'
+
+  /lists/{list}:
+    $ref: 'lists.yaml#/components/paths/list'
+
+  /lists:
+    $ref: 'lists.yaml#/components/paths/direct'

@@ -1,0 +1,257 @@
+openapi: 3.0.2
+components:
+  paths:
+    name:
+      summary: Modify group
+      parameters:
+        - $ref: '#/components/parameters/name'
+      get:
+        summary: Get groups
+        description: |
+          `{name}` is optional. Specifying it will result in only the requested group being returned.
+
+          Valid combinations are:
+          - `/api/groups` (all groups)
+          - `/api/groups/my_group` (group identical to `my_group`)
+        responses:
+          '200':
+            description: Successful operation
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: '#/components/schemas/name'
+                    - $ref: '#/components/schemas/comment'
+                    - $ref: '#/components/schemas/enabled'
+                    - $ref: '#/components/schemas/readonly'
+      put:
+        summary: Replace group
+        description: |
+          Items may be updated by replacing them. `{type}`, `{kind}`, and `{item}` are required.
+          
+          Ensure to send all the required parameters (such as `description`) to ensure these properties are retained.
+          The read-only fields `id` and `date_added` are preserved, `date_modified` is automatically updated on success.
+
+          You can move existing items to another list type/kind by `PUT`ting the item to the new destination by specifying the optional fields `oldtype` and `oldkind`. Example:
+          You can use `PUT allow/exact/abc.com` with `oldtype="deny", oldkind="exact"` to change `abc.com` from exact denied to exact allowed. Make sure to always specify *both* values.
+
+          When replacing a regular expression, ensure that `{item}` body is properly URI-escaped.
+        requestBody:
+          description: Callback payload
+          content: 
+            'application/json':
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/comment'
+                  - $ref: '#/components/schemas/enabled'
+        responses:
+          '201':
+            description: Created item
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: '#/components/schemas/name'
+                    - $ref: '#/components/schemas/comment'
+                    - $ref: '#/components/schemas/enabled'
+                    - $ref: '#/components/schemas/readonly'
+          '400':
+            description: Bad request
+            content:
+              application/json:
+                schema:
+                  oneOf:
+                  - $ref: '#/components/schemas/errors/no_payload'
+                  - $ref: '#/components/schemas/errors/item_missing'
+      delete:
+        summary: Delete group
+        description: |
+          *Note:* There will be no content on success.
+        responses:
+          '204':
+            description: Item deleted
+          '400':
+            description: Bad request
+            content:
+              application/json:
+                schema:
+                  oneOf:
+                  - $ref: '#/components/schemas/errors/item_missing'
+    direct:
+      parameters:
+        - $ref: '#/components/parameters/type'
+        - $ref: '#/components/parameters/kind'
+      post:
+        summary: Add new group
+        description: |
+          Creates a new group in the `groups` object. The `{group}` itself is specified in the request body (POST JSON).
+
+          On success, a new ressource is created at `/groups/{name}`.
+
+          The `database_error` with message `UNIQUE contraint failed` error indicates that a group with the same name already exists.
+        parameters:
+          - $ref: '#/components/schemas/name'
+        requestBody:
+          description: Callback payload
+          content: 
+            'application/json':
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/name'
+                  - $ref: '#/components/schemas/comment'
+                  - $ref: '#/components/schemas/enabled'
+        responses:
+          '201':
+            description: Created item
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: '#/components/schemas/name'
+                    - $ref: '#/components/schemas/comment'
+                    - $ref: '#/components/schemas/enabled'
+                    - $ref: '#/components/schemas/readonly'
+          '400':
+            description: Bad request
+            content:
+              application/json:
+                schema:
+                  oneOf:
+                  - $ref: '#/components/schemas/errors/no_payload'
+                  - $ref: '#/components/schemas/errors/duplicate'
+  schemas:
+    name:
+      type: object
+      properties:
+        name:
+          description: Group name
+          type: string
+          required: true
+          example: test_group
+    comment:
+      type: object
+      properties:
+        comment:
+          description: User-provided free-text comment for this group (may be `null` if not specified)
+          type: string
+          required: false
+          x-nullable: true
+          default: null
+          example: Some comment for this group
+    enabled:
+      type: object
+      properties:
+        enabled:
+          description: Status of item
+          type: boolean
+          required: false
+          default: true
+          example: true
+    readonly:
+      type: object
+      summary: Readonly properties of a single group
+      properties:
+        id:
+          description: Database ID
+          type: integer
+          readOnly: true
+          example: 1
+        date_added:
+          description: Unix timestamp of item addition
+          type: integer
+          readOnly: true
+          example: 1611239095
+        date_modified:
+          description: Unix timestamp of last item modification
+          type: integer
+          readOnly: true
+          example: 1611239099
+    errors:
+      item_missing:
+        type: object
+        description: Item to be modified is missing
+        properties:
+          error:
+            type: object
+            properties:
+              key:
+                type: string
+                description: "Machine-readable error type"
+                example: "uri_error"
+              message:
+                type: string
+                description: "Human-readable error message"
+                example: "Invalid request: Specify item in URI"
+              data:
+                type: object
+                properties:
+                  action:
+                    type: string
+                    description: Action as received by the API
+                    example: "/api/groups"
+                  item:
+                    type: string
+                    description: Item as received by the API
+                    example: ""
+      no_payload:
+        type: object
+        description: No JSON payload found
+        properties:
+          error:
+            type: object
+            properties:
+              key:
+                type: string
+                description: "Machine-readable error type"
+                example: "bad_request"
+              message:
+                type: string
+                description: "Human-readable error message"
+                example: "Invalid request body data (no valid JSON)"
+              data:
+                type: null
+                description: "Additional data (if available)"
+                example: null
+      duplicate:
+        type: object
+        description: Database error
+        properties:
+          error:
+            type: object
+            properties:
+              key:
+                type: string
+                description: "Machine-readable error type"
+                example: "database_error"
+              message:
+                type: string
+                description: "Human-readable error message"
+                example: "Could not add to gravity database"
+              data:
+                type: object
+                properties:
+                  item:
+                    type: string
+                    description: Item as received by the API
+                    example: test_group
+                  enabled:
+                    type: boolean
+                    description: Enabled property as received by the API
+                    example: true
+                  comment:
+                    type: string
+                    description: Comment property as received by the API
+                    example: Some comment for this group
+                  sql_msg:
+                    type: string
+                    description: Error returned by the database engine
+                    example: "UNIQUE constraint failed: grouplist.group"
+  parameters:
+    name:
+      in: path
+      name: name
+      schema:
+        type: string
+      required: true
+      description: Group name
+      example: test_group

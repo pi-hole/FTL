@@ -18,6 +18,9 @@ if [[ "${1}" == "clean" ]]; then
     exit 0
 fi
 
+# Remove possibly generated api/docs elements
+rm -rf src/api/docs/hex
+
 # Configure build, pass CMake CACHE entries if present
 # Wrap multiple options in "" as first argument to ./build.sh:
 #     ./build.sh "-DA=1 -DB=2" install
@@ -29,13 +32,12 @@ else
     cmake ..
 fi
 
-# Build the sources
-cmake --build . -- -j $(nproc)
-
 # If we are asked to install, we do this here
-# Otherwise, we simply copy the binary one level up
+# Otherwise, we simply build the sources and copy the binary one level up
 if [[ "${1}" == "install" || "${2}" == "install" ]]; then
-    sudo make install
+    sudo make install -j $(nproc)
 else
+    # Build the sources
+    make -j $(nproc)
     cp pihole-FTL ../
 fi

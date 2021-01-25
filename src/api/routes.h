@@ -68,4 +68,7 @@ int api_auth(struct ftl_conn *api);
 // Settings methods
 int api_settings_web(struct ftl_conn *api);
 
+// Documentation methods
+int api_docs(struct ftl_conn *api);
+
 #endif // ROUTES_H

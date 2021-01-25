@@ -170,6 +170,7 @@ add_dependencies(FTL gen_version)
 add_executable(pihole-FTL
         $<TARGET_OBJECTS:FTL>
         $<TARGET_OBJECTS:api>
+        $<TARGET_OBJECTS:api_docs>
         $<TARGET_OBJECTS:webserver>
         $<TARGET_OBJECTS:ph7_ext>
         $<TARGET_OBJECTS:civetweb>

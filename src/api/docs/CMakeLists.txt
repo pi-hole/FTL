@@ -1,0 +1,48 @@
+# Pi-hole: A black hole for Internet advertisements
+# (c) 2021 Pi-hole, LLC (https://pi-hole.net)
+# Network-wide ad blocking via your own hardware.
+#
+# FTL Engine
+# /src/api/docs/CMakeList.txt
+#
+# This file is copyright under the latest version of the EUPL.
+# Please see LICENSE file for your rights under this license.
+
+set(sources
+        hex/index.html
+        hex/index.css
+        hex/external/rapidoc-min.js
+        hex/external/rapidoc-min.js.map
+        hex/external/highlight.min.js
+        hex/external/highlight-default.min.css
+        hex/images/logo.svg
+        hex/specs/main.yaml
+        hex/specs/domains.yaml
+        hex/specs/groups.yaml
+        hex/specs/clients.yaml
+        hex/specs/lists.yaml
+        docs.c
+        )
+
+# Create relevant directories for processed content
+file(MAKE_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/hex)
+file(MAKE_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/hex/specs)
+file(MAKE_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/hex/images)
+file(MAKE_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/hex/external)
+
+find_program(RESOURCE_COMPILER xxd)
+file(GLOB_RECURSE COMPILED_RESOURCES RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}/content" "content/*")
+foreach(INPUT_FILE ${COMPILED_RESOURCES})
+    set(IN ${CMAKE_CURRENT_SOURCE_DIR}/content/${INPUT_FILE})
+    set(OUTPUT_FILE ${CMAKE_CURRENT_SOURCE_DIR}/hex/${INPUT_FILE})
+    add_custom_command(
+        OUTPUT hex/${INPUT_FILE}
+        COMMAND ${RESOURCE_COMPILER} -i < ${IN} > ${OUTPUT_FILE}
+        COMMENT "Compiling ${INPUT_FILE} to binary"
+        VERBATIM)
+    list(APPEND COMPILED_RESOURCES ${OUTPUT_FILE})
+endforeach()
+
+add_library(api_docs OBJECT ${sources})
+#target_compile_options(api_docs PRIVATE ${EXTRAWARN})
+target_include_directories(api_docs PRIVATE ${PROJECT_SOURCE_DIR}/src)

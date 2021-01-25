@@ -1,0 +1,279 @@
+openapi: 3.0.2
+components:
+  paths:
+    client:
+      summary: Modify client
+      parameters:
+        - $ref: '#/components/parameters/client'
+      get:
+        summary: Get clients
+        description: |
+          `{client}` is optional. Specifying it will result in only the requested client being returned.
+
+          Valid combinations are:
+          - `/api/clients` (all clients)
+          - `/api/clients/my_client` (client identical to `my_client`)
+        responses:
+          '200':
+            description: Successful operation
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: '#/components/schemas/client'
+                    - $ref: '#/components/schemas/name'
+                    - $ref: '#/components/schemas/comment'
+                    - $ref: '#/components/schemas/groups'
+                    - $ref: '#/components/schemas/readonly'
+      put:
+        summary: Replace client
+        description: |
+          Items may be updated by replacing them. `{type}`, `{kind}`, and `{item}` are required.
+          
+          Ensure to send all the required parameters (such as `description`) to ensure these properties are retained.
+          The read-only fields `id` and `date_added` are preserved, `date_modified` is automatically updated on success.
+
+          You can move existing items to another list type/kind by `PUT`ting the item to the new destination by specifying the optional fields `oldtype` and `oldkind`. Example:
+          You can use `PUT allow/exact/abc.com` with `oldtype="deny", oldkind="exact"` to change `abc.com` from exact denied to exact allowed. Make sure to always specify *both* values.
+
+          When replacing a regular expression, ensure that `{item}` body is properly URI-escaped.
+        requestBody:
+          description: Callback payload
+          content: 
+            'application/json':
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/comment'
+                  - $ref: '#/components/schemas/groups'
+        responses:
+          '201':
+            description: Created item
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: '#/components/schemas/client'
+                    - $ref: '#/components/schemas/name'
+                    - $ref: '#/components/schemas/comment'
+                    - $ref: '#/components/schemas/groups'
+                    - $ref: '#/components/schemas/readonly'
+          '400':
+            description: Bad request
+            content:
+              application/json:
+                schema:
+                  oneOf:
+                  - $ref: '#/components/schemas/errors/no_payload'
+                  - $ref: '#/components/schemas/errors/item_missing'
+      delete:
+        summary: Delete client
+        description: |
+          *Note:* There will be no content on success.
+        responses:
+          '204':
+            description: Item deleted
+          '400':
+            description: Bad request
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/errors/item_missing'
+    direct:
+      parameters:
+        - $ref: '#/components/parameters/type'
+        - $ref: '#/components/parameters/kind'
+      post:
+        summary: Add new client
+        description: |
+          Creates a new client in the `clients` object. The `{client}` itself is specified in the request body (POST JSON).
+
+          Clients may be described either by their IP addresses (IPv4 and IPv6 are supported),
+          IP subnets (CIDR notation, like `192.168.2.0/24`), their MAC addresses (like `12:34:56:78:9A:BC`), by their hostnames (like `localhost`), or by the interface they are connected to (prefaced with a colon, like `:eth0`).</p>
+
+          Note that client recognition by IP addresses (incl. subnet ranges) is prefered over MAC address, host name or interface recognition as the two latter will only be available after some time.
+          Furthermore, MAC address recognition only works for devices at most one networking hop away from your Pi-hole.
+
+          On success, a new ressource is created at `/clients/{client}`.
+
+          The `database_error` with message `UNIQUE contraint failed` error indicates that this client already exists.
+        parameters:
+          - $ref: '#/components/schemas/client'
+        requestBody:
+          description: Callback payload
+          content: 
+            'application/json':
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/client'
+                  - $ref: '#/components/schemas/comment'
+                  - $ref: '#/components/schemas/groups'
+        responses:
+          '201':
+            description: Created item
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: '#/components/schemas/client'
+                    - $ref: '#/components/schemas/name'
+                    - $ref: '#/components/schemas/comment'
+                    - $ref: '#/components/schemas/groups'
+                    - $ref: '#/components/schemas/readonly'
+          '400':
+            description: Bad request
+            content:
+              application/json:
+                schema:
+                  oneOf:
+                  - $ref: '#/components/schemas/errors/no_payload'
+                  - $ref: '#/components/schemas/errors/duplicate'
+  schemas:
+    client:
+      type: object
+      properties:
+        client:
+          description: client IP / MAC / hostname / interface
+          type: string
+          required: true
+          example: 127.0.0.1
+    comment:
+      type: object
+      properties:
+        comment:
+          description: User-provided free-text comment for this client (may be `null` if not specified)
+          type: string
+          required: false
+          x-nullable: true
+          default: null
+          example: Some comment for this client
+    name:
+      type: object
+      properties:
+        name:
+          description: hostname (only available when {client} is an IP address)
+          type: string
+          readOnly: true
+          example: localhost
+    groups:
+      type: object
+      properties:
+        groups:
+          description: Array of group IDs
+          type: array
+          default: [0]
+          required: false
+          items:
+            type: integer
+    enabled:
+      type: object
+      properties:
+        enabled:
+          description: Status of domain
+          type: boolean
+          required: false
+          default: true
+          example: true
+    readonly:
+      type: object
+      summary: Readonly properties of a single client
+      properties:
+        id:
+          description: Database ID
+          type: integer
+          readOnly: true
+          example: 1
+        date_added:
+          description: Unix timestamp of item addition
+          type: integer
+          readOnly: true
+          example: 1611239095
+        date_modified:
+          description: Unix timestamp of last item modification
+          type: integer
+          readOnly: true
+          example: 1611239099
+    errors:
+      item_missing:
+        type: object
+        description: Item to be modified is missing
+        properties:
+          error:
+            type: object
+            properties:
+              key:
+                type: string
+                description: "Machine-readable error type"
+                example: "uri_error"
+              message:
+                type: string
+                description: "Human-readable error message"
+                example: "Invalid request: Specify item in URI"
+              data:
+                type: object
+                properties:
+                  action:
+                    type: string
+                    description: Action as received by the API
+                    example: "/api/clients"
+                  item:
+                    type: string
+                    description: Item as received by the API
+                    example: ""
+      no_payload:
+        type: object
+        description: No JSON payload found
+        properties:
+          error:
+            type: object
+            properties:
+              key:
+                type: string
+                description: "Machine-readable error type"
+                example: "bad_request"
+              message:
+                type: string
+                description: "Human-readable error message"
+                example: "Invalid request body data (no valid JSON)"
+              data:
+                type: null
+                description: "Additional data (if available)"
+                example: null
+      duplicate:
+        type: object
+        description: Database error
+        properties:
+          error:
+            type: object
+            properties:
+              key:
+                type: string
+                description: "Machine-readable error type"
+                example: "database_error"
+              message:
+                type: string
+                description: "Human-readable error message"
+                example: "Could not add to gravity database"
+              data:
+                type: object
+                properties:
+                  item:
+                    type: string
+                    description: Item as received by the API
+                    example: 127.0.0.1
+                  comment:
+                    type: string
+                    description: Comment property as received by the API
+                    example: Some comment for this client
+                  sql_msg:
+                    type: string
+                    description: Error returned by the database engine
+                    example: "UNIQUE constraint failed: clientlist.client"
+  parameters:
+    client:
+      in: path
+      name: client
+      schema:
+        type: string
+      required: true
+      description: client IP / MAC / hostname / interface
+      example: 127.0.0.1
