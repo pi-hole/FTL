@@ -108,23 +108,27 @@ static int api_list_read(struct ftl_conn *api,
 			}
 		}
 
-		if(table.group_ids != NULL) {
-			// Black magic at work here: We build a JSON array from
-			// the group_concat result delivered from the database,
-			// parse it as valid array and append it as row to the
-			// data
-			logg("table.group_ids = %p \"%s\"", table.group_ids, table.group_ids);
-			char group_ids_str[strlen(table.group_ids)+3u];
-			group_ids_str[0] = '[';
-			strcpy(group_ids_str+1u , table.group_ids);
-			group_ids_str[sizeof(group_ids_str)-2u] = ']';
-			group_ids_str[sizeof(group_ids_str)-1u] = '\0';
-			cJSON * group_ids = cJSON_Parse(group_ids_str);
-			JSON_OBJ_ADD_ITEM(row, "groups", group_ids);
-		} else {
-			// Empty group set
-			cJSON *group_ids = JSON_NEW_ARRAY();
-			JSON_OBJ_ADD_ITEM(row, "groups", group_ids);
+		// Groups don't have the groups property
+		if(listtype != GRAVITY_GROUPS)
+		{
+			if(table.group_ids != NULL) {
+				// Black magic at work here: We build a JSON array from
+				// the group_concat result delivered from the database,
+				// parse it as valid array and append it as row to the
+				// data
+				logg("table.group_ids = %p \"%s\"", table.group_ids, table.group_ids);
+				char group_ids_str[strlen(table.group_ids)+3u];
+				group_ids_str[0] = '[';
+				strcpy(group_ids_str+1u , table.group_ids);
+				group_ids_str[sizeof(group_ids_str)-2u] = ']';
+				group_ids_str[sizeof(group_ids_str)-1u] = '\0';
+				cJSON * group_ids = cJSON_Parse(group_ids_str);
+				JSON_OBJ_ADD_ITEM(row, "groups", group_ids);
+			} else {
+				// Empty group set
+				cJSON *group_ids = JSON_NEW_ARRAY();
+				JSON_OBJ_ADD_ITEM(row, "groups", group_ids);
+			}
 		}
 
 		// Clients don't have the enabled property
