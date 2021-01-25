@@ -53,20 +53,12 @@ static int api_list_read(struct ftl_conn *api,
 		if(listtype == GRAVITY_GROUPS)
 		{
 			JSON_OBJ_COPY_STR(row, "name", table.name);
-			if(table.comment != NULL) {
-				JSON_OBJ_COPY_STR(row, "comment", table.comment);
-			} else {
-				JSON_OBJ_ADD_NULL(row, "comment");
-			}
+			JSON_OBJ_COPY_STR(row, "comment", table.comment);
 		}
 		else if(listtype == GRAVITY_ADLISTS)
 		{
 			JSON_OBJ_COPY_STR(row, "address", table.address);
-			if(table.comment != NULL) {
-				JSON_OBJ_COPY_STR(row, "comment", table.comment);
-			} else {
-				JSON_OBJ_ADD_NULL(row, "comment");
-			}
+			JSON_OBJ_COPY_STR(row, "comment", table.comment);
 		}
 		else if(listtype == GRAVITY_CLIENTS)
 		{
@@ -74,15 +66,9 @@ static int api_list_read(struct ftl_conn *api,
 			{
 				JSON_OBJ_COPY_STR(row, "client", table.client);
 				char *name = getNameFromIP(table.client);
+				JSON_OBJ_COPY_STR(row, "name", name);
 				if(name != NULL)
-				{
-					JSON_OBJ_COPY_STR(row, "name", name);
 					free(name);
-				}
-				else
-				{
-					JSON_OBJ_ADD_NULL(row, "name");
-				}
 			}
 			else
 			{
@@ -90,22 +76,14 @@ static int api_list_read(struct ftl_conn *api,
 				JSON_OBJ_ADD_NULL(row, "name");
 			}
 
-			if(table.comment != NULL) {
-				JSON_OBJ_COPY_STR(row, "comment", table.comment);
-			} else {
-				JSON_OBJ_ADD_NULL(row, "comment");
-			}
+			JSON_OBJ_COPY_STR(row, "comment", table.comment);
 		}
 		else // domainlists
 		{
 			JSON_OBJ_COPY_STR(row, "domain", table.domain);
 			JSON_OBJ_REF_STR(row, "type", table.type);
 			JSON_OBJ_REF_STR(row, "kind", table.kind);
-			if(table.comment != NULL) {
-				JSON_OBJ_COPY_STR(row, "comment", table.comment);
-			} else {
-				JSON_OBJ_ADD_NULL(row, "comment");
-			}
+			JSON_OBJ_COPY_STR(row, "comment", table.comment);
 		}
 
 		// Groups don't have the groups property

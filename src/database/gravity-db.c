@@ -1447,7 +1447,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 		// contraints (REPLACE recreates (= new ID) entries instead of updating them)
 		if(listtype == GRAVITY_GROUPS)
 			querystr = "REPLACE INTO \"group\" (name,enabled,description,id,date_added) "
-			           "VALUES (:item,:enabled,:description,"
+			           "VALUES (:item,:enabled,:comment,"
 			                   "(SELECT id FROM \"group\" WHERE name = :item),"
 			                   "(SELECT date_added FROM \"group\" WHERE name = :item));";
 		else if(listtype == GRAVITY_ADLISTS)
