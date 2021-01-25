@@ -48,7 +48,6 @@ static int api_list_read(struct ftl_conn *api,
 	while(gravityDB_readTableGetRow(&row, &sql_msg))
 	{
 		cJSON *item = JSON_NEW_OBJ();
-		JSON_OBJ_ADD_NUMBER(item, "id", row.id);
 
 		// Special fields
 		if(listtype == GRAVITY_GROUPS)
@@ -130,8 +129,12 @@ static int api_list_read(struct ftl_conn *api,
 		// Clients don't have the enabled property
 		if(listtype != GRAVITY_CLIENTS)
 			JSON_OBJ_ADD_BOOL(item, "enabled", row.enabled);
-		JSON_OBJ_ADD_NUMBER(item, "date_added", row.date_added);
-		JSON_OBJ_ADD_NUMBER(item, "date_modified", row.date_modified);
+
+		cJSON *database = JSON_NEW_OBJ();
+		JSON_OBJ_ADD_NUMBER(database, "id", row.id);
+		JSON_OBJ_ADD_NUMBER(database, "date_added", row.date_added);
+		JSON_OBJ_ADD_NUMBER(database, "date_modified", row.date_modified);
+		JSON_OBJ_ADD_ITEM(item, "database", database);
 
 		JSON_ARRAY_ADD_ITEM(items, item);
 	}
