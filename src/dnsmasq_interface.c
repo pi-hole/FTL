@@ -2280,7 +2280,7 @@ void FTL_duplicate_reply(const int id, int *firstID)
 
 	// The original query may have been blocked during CNAME inspection,
 	// correct status in this case
-	if(duplicated_query->status != QUERY_FORWARDED)
+	if(source_query->status != QUERY_FORWARDED)
 		duplicated_query->status = source_query->status;
 	duplicated_query->CNAME_domainID = source_query->CNAME_domainID;
 
