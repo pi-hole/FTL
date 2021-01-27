@@ -334,37 +334,64 @@ static int sort_rrset(struct dns_header *header, size_t plen, u16 *rr_desc, int 
 	  if (!CHECK_LEN(header, state2.ip, plen, rdlen2))
 	    return rrsetidx; /* short packet */
 	  state2.end = state2.ip + rdlen2; 
-	  	  
-	  while (1)
-	    {
-	      int ok1, ok2;
-	      
-	      ok1 = get_rdata(header, plen, &state1);
-	      ok2 = get_rdata(header, plen, &state2);
 
-	      if (!ok1 && !ok2)
+	  /* If the RR has no names in it then canonicalisation
+	     is the identity function and we can compare
+	     the RRs directly. If not we compare the 
+	     canonicalised RRs one byte at a time. */
+	  if (*rr_desc == (u16)-1)	  
+	    {
+	      int rdmin = rdlen1 > rdlen2 ? rdlen2 : rdlen1;
+	      int cmp = memcmp(state1.ip, state2.ip, rdmin);
+	      
+	      if (cmp > 0 || (cmp == 0 && rdlen1 > rdmin))
+		{
+		  unsigned char *tmp = rrset[i+1];
+		  rrset[i+1] = rrset[i];
+		  rrset[i] = tmp;
+		  swap = 1;
+		}
+	      else if (cmp == 0 && (rdlen1 == rdlen2))
 		{
 		  /* Two RRs are equal, remove one copy. RFC 4034, para 6.3 */
 		  for (j = i+1; j < rrsetidx-1; j++)
 		    rrset[j] = rrset[j+1];
 		  rrsetidx--;
 		  i--;
-		  break;
 		}
-	      else if (ok1 && (!ok2 || *state1.op > *state2.op)) 
-		{
-		  unsigned char *tmp = rrset[i+1];
-		  rrset[i+1] = rrset[i];
-		  rrset[i] = tmp;
-		  swap = 1;
-		  break;
-		}
-	      else if (ok2 && (!ok1 || *state2.op > *state1.op))
-		break;
-	      
-	      /* arrive here when bytes are equal, go round the loop again
-		 and compare the next ones. */
 	    }
+	  else
+	    /* Comparing canonicalised RRs, byte-at-a-time. */
+	    while (1)
+	      {
+		int ok1, ok2;
+		
+		ok1 = get_rdata(header, plen, &state1);
+		ok2 = get_rdata(header, plen, &state2);
+		
+		if (!ok1 && !ok2)
+		  {
+		    /* Two RRs are equal, remove one copy. RFC 4034, para 6.3 */
+		    for (j = i+1; j < rrsetidx-1; j++)
+		      rrset[j] = rrset[j+1];
+		    rrsetidx--;
+		    i--;
+		    break;
+		  }
+		else if (ok1 && (!ok2 || *state1.op > *state2.op)) 
+		  {
+		    unsigned char *tmp = rrset[i+1];
+		    rrset[i+1] = rrset[i];
+		    rrset[i] = tmp;
+		    swap = 1;
+		    break;
+		  }
+		else if (ok2 && (!ok1 || *state2.op > *state1.op))
+		  break;
+		
+		/* arrive here when bytes are equal, go round the loop again
+		   and compare the next ones. */
+	      }
 	}
     } while (swap);
 

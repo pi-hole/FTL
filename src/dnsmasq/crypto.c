@@ -1,4 +1,4 @@
-/* dnsmasq is Copyright (c) 2000-2020 Simon Kelley
+/* dnsmasq is Copyright (c) 2000-2021 Simon Kelley
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -27,7 +27,7 @@
 #endif
 #endif
 
-#if defined(HAVE_DNSSEC) || defined(HAVE_NETTLEHASH)
+#if defined(HAVE_DNSSEC) || defined(HAVE_CRYPTOHASH)
 #include <nettle/nettle-meta.h>
 #include <nettle/bignum.h>
 
