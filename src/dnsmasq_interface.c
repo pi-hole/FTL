@@ -2180,3 +2180,110 @@ bool FTL_unlink_DHCP_lease(const char *ipaddr)
 	return true;
 	
 }
+
+void FTL_query_in_progress(const int id)
+{
+	// Query (possibly from new source), but the same query may be in
+	// progress from another source.
+
+	// Lock shared memory
+	lock_shm();
+
+	// Search for corresponding query identified by ID
+	const int queryID = findQueryID(id);
+	if(queryID < 0)
+	{
+		// This may happen e.g. if the original query was an unhandled query type
+		unlock_shm();
+		return;
+	}
+
+	// Get query pointer
+	queriesData* query = getQuery(queryID, true);
+	if(query == NULL)
+	{
+		// Memory error, skip this DNSSEC details
+		unlock_shm();
+		return;
+	}
+
+	// Debug logging
+	if(config.debug & DEBUG_QUERIES)
+	{
+		// Get domain pointer
+		const domainsData* domain = getDomain(query->domainID, true);
+		if(domain != NULL)
+		{
+			logg("**** query for %s is already in progress (ID %i)", getstr(domain->domainpos), id);
+		}
+	}
+
+	// Store status
+	query->status = QUERY_IN_PROGRESS;
+
+	// Unlock shared memory
+	unlock_shm();
+}
+
+void FTL_duplicate_reply(const int id, int *firstID)
+{
+	// Reply to duplicated query
+
+	// Check if we can process thes duplicated queries at all
+	if(*firstID == -2)
+		return;
+
+	// Lock shared memory
+	lock_shm();
+
+	// Search for corresponding query identified by ID
+	const int queryID = findQueryID(id);
+	if(queryID < 0)
+	{
+		// This may happen e.g. if the original query was an unhandled query type
+		unlock_shm();
+		*firstID = -2;
+		return;
+	}
+
+	if(*firstID == -1)
+	{
+		// This is not yet a duplicate, we just store the ID
+		// of the successful reply here so we can get it quicker
+		// during the next loop iterations
+		unlock_shm();
+		*firstID = queryID;
+		return;
+	}
+
+	// Get query pointer of duplicate reply
+	queriesData* duplicated_query = getQuery(queryID, true);
+	const queriesData* source_query = getQuery(*firstID, true);
+
+	if(duplicated_query == NULL || source_query == NULL)
+	{
+		// Memory error, skip this duplicate
+		unlock_shm();
+		return;
+	}
+
+	// Debug logging
+	if(config.debug & DEBUG_QUERIES)
+	{
+		logg("**** query %d is duplicate of %d", queryID, *firstID);
+	}
+
+	// Copy relevant information over
+	duplicated_query->reply = source_query->reply;
+	duplicated_query->dnssec = source_query->dnssec;
+	duplicated_query->flags.complete = true;
+
+	// The original query may have been blocked during CNAME inspection,
+	// correct status in this case
+	if(source_query->status != QUERY_FORWARDED)
+		duplicated_query->status = source_query->status;
+	duplicated_query->CNAME_domainID = source_query->CNAME_domainID;
+
+	// Unlock shared memory
+	unlock_shm();
+}
