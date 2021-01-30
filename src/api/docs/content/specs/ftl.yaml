@@ -277,33 +277,51 @@ components:
         ftl:
           type: object
           properties:
-            gravity:
-              type: integer
-              description: Number of collected exact domains on lists
-              example: 67906
-            groups:
-              type: integer
-              description: Number of groups
-              example: 6
-            lists:
-              type: integer
-              description: Number of lists
-              example: 1
-            clients:
-              type: integer
-              description: Number of configured clients
-              example: 5
-            domains:
+            database:
               type: object
               properties:
-                allowed:
+                gravity:
                   type: integer
-                  description: Number of allowed domains
+                  description: Number of collected exact domains on lists
+                  example: 67906
+                groups:
+                  type: integer
+                  description: Number of groups
+                  example: 6
+                lists:
+                  type: integer
+                  description: Number of lists
+                  example: 1
+                clients:
+                  type: integer
+                  description: Number of configured clients
+                  example: 5
+                domains:
+                  type: object
+                  properties:
+                    allowed:
+                      type: integer
+                      description: Number of allowed domains
+                      example: 10
+                    denied:
+                      type: integer
+                      description: Number of denied domains
+                      example: 3
+            privacy_level:
+              type: integer
+              description: Currently used privacy level
+              example: 0
+            clients:
+              type: object
+              properties:
+                total:
+                  type: integer
+                  description: Number of clients FTL has seen in its lfetime
                   example: 10
-                denied:
+                active:
                   type: integer
-                  description: Number of denied domains
-                  example: 3
+                  description: Number of clients actively using FTL
+                  example: 8
     database:
       type: object
       properties:

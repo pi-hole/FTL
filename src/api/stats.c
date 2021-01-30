@@ -69,52 +69,36 @@ int api_stats_summary(struct ftl_conn *api)
 	if(total > 0)
 		percent_blocked = 1e2f*blocked/total;
 
-	// unique_clients: count only clients that have been active within the most recent 24 hours
-	int activeclients = 0;
-	for(int clientID=0; clientID < counters->clients; clientID++)
+	cJSON *queries = JSON_NEW_OBJ();
+	JSON_OBJ_ADD_NUMBER(queries, "blocked", counters->blocked);
+	JSON_OBJ_ADD_NUMBER(queries, "percent_blocked", percent_blocked);
+	JSON_OBJ_ADD_NUMBER(queries, "unique_domains", counters->domains);
+	JSON_OBJ_ADD_NUMBER(queries, "forwarded", counters->forwarded);
+	JSON_OBJ_ADD_NUMBER(queries, "cached", counters->cached);
+
+	cJSON *types = JSON_NEW_OBJ();
+	for(unsigned int i = TYPE_A; i < TYPE_MAX; i++)
 	{
-		// Get client pointer
-		const clientsData* client = getClient(clientID, true);
-		if(client == NULL)
+		// We add the collective OTHER type at the end
+		if(i == TYPE_OTHER)
 			continue;
-
-		if(client->count > 0)
-			activeclients++;
+		JSON_OBJ_ADD_NUMBER(types, querytypes[i], counters->querytype[i]);
 	}
+	JSON_OBJ_ADD_NUMBER(types, "OTHER", counters->querytype[TYPE_OTHER]);
+	JSON_OBJ_ADD_ITEM(queries, "types", types);
 
-	// Send response
-	cJSON *json = JSON_NEW_OBJ();
-	const bool blocking = get_blockingstatus();
-	JSON_OBJ_ADD_BOOL(json, "blocking", blocking); // same reply type as in /api/dns/status
-	JSON_OBJ_ADD_NUMBER(json, "blocked_queries", counters->blocked);
-	JSON_OBJ_ADD_NUMBER(json, "percent_blocked", percent_blocked);
-	JSON_OBJ_ADD_NUMBER(json, "unique_domains", counters->domains);
-	JSON_OBJ_ADD_NUMBER(json, "forwarded_queries", counters->forwarded);
-	JSON_OBJ_ADD_NUMBER(json, "cached_queries", counters->cached);
-	JSON_OBJ_ADD_NUMBER(json, "privacy_level", config.privacylevel);
-	JSON_OBJ_ADD_NUMBER(json, "total_clients", counters->clients);
-	JSON_OBJ_ADD_NUMBER(json, "active_clients", activeclients);
-
-	cJSON *total_queries = JSON_NEW_OBJ();
-	JSON_OBJ_ADD_NUMBER(total_queries, "A", counters->querytype[TYPE_A]);
-	JSON_OBJ_ADD_NUMBER(total_queries, "AAAA", counters->querytype[TYPE_AAAA]);
-	JSON_OBJ_ADD_NUMBER(total_queries, "ANY", counters->querytype[TYPE_ANY]);
-	JSON_OBJ_ADD_NUMBER(total_queries, "SRV", counters->querytype[TYPE_SRV]);
-	JSON_OBJ_ADD_NUMBER(total_queries, "SOA", counters->querytype[TYPE_SOA]);
-	JSON_OBJ_ADD_NUMBER(total_queries, "PTR", counters->querytype[TYPE_PTR]);
-	JSON_OBJ_ADD_NUMBER(total_queries, "TXT", counters->querytype[TYPE_TXT]);
-	JSON_OBJ_ADD_NUMBER(total_queries, "NAPTR", counters->querytype[TYPE_NAPTR]);
-	JSON_OBJ_ADD_ITEM(json, "total_queries", total_queries);
-
-	JSON_OBJ_ADD_NUMBER(json, "sum_queries", counters->queries);
+	JSON_OBJ_ADD_NUMBER(queries, "sum", counters->queries);
 	
-	cJSON *reply_types = JSON_NEW_OBJ();
-	JSON_OBJ_ADD_NUMBER(reply_types, "NODATA", counters->reply_NODATA);
-	JSON_OBJ_ADD_NUMBER(reply_types, "NXDOMAIN", counters->reply_NXDOMAIN);
-	JSON_OBJ_ADD_NUMBER(reply_types, "CNAME", counters->reply_CNAME);
-	JSON_OBJ_ADD_NUMBER(reply_types, "IP", counters->reply_IP);
-	JSON_OBJ_ADD_NUMBER(reply_types, "domain", counters->reply_domain);
-	JSON_OBJ_ADD_ITEM(json, "reply_types", reply_types);
+	cJSON *replies = JSON_NEW_OBJ();
+	JSON_OBJ_ADD_NUMBER(replies, "NODATA", counters->reply_NODATA);
+	JSON_OBJ_ADD_NUMBER(replies, "NXDOMAIN", counters->reply_NXDOMAIN);
+	JSON_OBJ_ADD_NUMBER(replies, "CNAME", counters->reply_CNAME);
+	JSON_OBJ_ADD_NUMBER(replies, "IP", counters->reply_IP);
+	JSON_OBJ_ADD_NUMBER(replies, "text", counters->reply_domain);
+	JSON_OBJ_ADD_ITEM(queries, "replies", replies);
+
+	cJSON *json = JSON_NEW_OBJ();
+	JSON_OBJ_ADD_ITEM(json, "queries", queries);
 
 	// Get system object
 	cJSON *system = JSON_NEW_OBJ();

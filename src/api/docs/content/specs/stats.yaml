@@ -1,0 +1,142 @@
+openapi: 3.0.2
+components:
+  paths:
+    summary:
+      get:
+        summary: Get overview of Pi-hole activity
+        description: |
+          Request various query, system ,and FTL properties
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: '#/components/schemas/queries'
+                    - $ref: 'ftl.yaml#/components/schemas/system'
+                    - $ref: 'ftl.yaml#/components/schemas/ftl'
+
+  schemas:
+    queries:
+      type: object
+      properties:
+        queries:
+          type: object
+          properties:
+            blocked:
+              type: integer
+              description: Number of blocked queries
+              example: 3465
+            percent_blocked:
+              type: float
+              description: Percent of blocked queries
+              example: 34.5
+            unique_domains:
+              type: integer
+              description: Number of unique domains FTL knows
+              example: 445
+            forwarded:
+              type: integer
+              description: Number of queries that have been forwarded upstream
+              example: 4574
+            cached:
+              type: integer
+              description: Number of queries replied to from cache or local configuration
+              example: 9765
+            types:
+              type: object
+              description: Number of individual queries
+              properties:
+                A:
+                  type: integer
+                  description: Type A queries
+                  example: 3643
+                AAAA:
+                  type: integer
+                  description: Type AAAA queries
+                  example: 123
+                ANY:
+                  type: integer
+                  description: Type ANY queries
+                  example: 3423
+                SRV:
+                  type: integer
+                  description: Type SRV queries
+                  example: 345
+                SOA:
+                  type: integer
+                  description: Type SOA queries
+                  example: 7567
+                PTR:
+                  type: integer
+                  description: Type PTR queries
+                  example: 456
+                TXT:
+                  type: integer
+                  description: Type TXT queries
+                  example: 85
+                NAPTR:
+                  type: integer
+                  description: Type NAPTR queries
+                  example: 346
+                MX:
+                  type: integer
+                  description: Type MX queries
+                  example: 457
+                DS:
+                  type: integer
+                  description: Type DS queries
+                  example: 456
+                RRSIG:
+                  type: integer
+                  description: Type RRSIG queries
+                  example: 345
+                DNSKEY:
+                  type: integer
+                  description: Type DNSKEY queries
+                  example: 55
+                NS:
+                  type: integer
+                  description: Type NS queries
+                  example: 868
+                SVCB:
+                  type: integer
+                  description: Type SVCB queries
+                  example: 645
+                HTTPS:
+                  type: integer
+                  description: Type HTTPS queries
+                  example: 4
+                OTHER:
+                  type: integer
+                  description: Queries of remaining types
+                  example: 845
+            sum:
+              type: integer
+              description: Total number of queries
+              example: 7497
+            replies:
+              type: object
+              description: Number of individual replies
+              properties:
+                NODATA:
+                  type: integer
+                  description: NODATA responses
+                  example: 14
+                NXDOMAIN:
+                  type: integer
+                  description: NXDOMAIN responses
+                  example: 45
+                CNAME:
+                  type: integer
+                  description: CNAME responses
+                  example: 76
+                IP:
+                  type: integer
+                  description: IP responses
+                  example: 85
+                text:
+                  type: integer
+                  description: text responses
+                  example: 16

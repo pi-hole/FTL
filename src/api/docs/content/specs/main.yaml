@@ -20,23 +20,14 @@ paths:
   /auth:
     $ref: 'auth.yaml#/components/paths/auth'
 
+  /stats/summary:
+    $ref: 'stats.yaml#/components/paths/summary'
+
   /dns/blocking:
     $ref: 'dns.yaml#/components/paths/blocking'
 
   /dns/cache:
     $ref: 'dns.yaml#/components/paths/cache'
-
-  /ftl/client:
-    $ref: 'ftl.yaml#/components/paths/client'
-
-  /ftl/logs/dns:
-    $ref: 'ftl.yaml#/components/paths/logs/dns'
-
-  /ftl/sysinfo:
-    $ref: 'ftl.yaml#/components/paths/sysinfo'
-
-  /ftl/dbinfo:
-    $ref: 'ftl.yaml#/components/paths/dbinfo'
 
   /database/info:
     $ref: 'database.yaml#/components/paths/info'
@@ -64,6 +55,18 @@ paths:
 
   /lists:
     $ref: 'lists.yaml#/components/paths/direct'
+
+  /ftl/client:
+    $ref: 'ftl.yaml#/components/paths/client'
+
+  /ftl/logs/dns:
+    $ref: 'ftl.yaml#/components/paths/logs/dns'
+
+  /ftl/sysinfo:
+    $ref: 'ftl.yaml#/components/paths/sysinfo'
+
+  /ftl/dbinfo:
+    $ref: 'ftl.yaml#/components/paths/dbinfo'
 
   /version:
     $ref: 'version.yaml#/components/paths/version'

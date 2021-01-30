@@ -28,6 +28,8 @@
 #include "../database/query-table.h"
 // getgrgid()
 #include <grp.h>
+// config struct
+#include "../config.h"
 
 int api_ftl_client(struct ftl_conn *api)
 {
@@ -387,14 +389,37 @@ int get_system_obj(struct ftl_conn *api, cJSON *system)
 
 int get_ftl_obj(struct ftl_conn *api, cJSON *ftl)
 {
-	JSON_OBJ_ADD_NUMBER(ftl, "gravity", counters->database.gravity);
-	JSON_OBJ_ADD_NUMBER(ftl, "groups", counters->database.groups);
-	JSON_OBJ_ADD_NUMBER(ftl, "lists", counters->database.lists);
-	JSON_OBJ_ADD_NUMBER(ftl, "clients", counters->database.clients);
+	cJSON *database = JSON_NEW_OBJ();
+	JSON_OBJ_ADD_NUMBER(database, "gravity", counters->database.gravity);
+	JSON_OBJ_ADD_NUMBER(database, "groups", counters->database.groups);
+	JSON_OBJ_ADD_NUMBER(database, "lists", counters->database.lists);
+	JSON_OBJ_ADD_NUMBER(database, "clients", counters->database.clients);
+
 	cJSON *domains = JSON_NEW_OBJ();
 	JSON_OBJ_ADD_NUMBER(domains, "allowed", counters->database.domains.allowed);
 	JSON_OBJ_ADD_NUMBER(domains, "denied", counters->database.domains.denied);
-	JSON_OBJ_ADD_ITEM(ftl, "domains", domains);
+	JSON_OBJ_ADD_ITEM(database, "domains", domains);
+	JSON_OBJ_ADD_ITEM(ftl, "database", database);
+
+	JSON_OBJ_ADD_NUMBER(ftl, "privacy_level", config.privacylevel);
+
+	// unique_clients: count only clients that have been active within the most recent 24 hours
+	int activeclients = 0;
+	for(int clientID=0; clientID < counters->clients; clientID++)
+	{
+		// Get client pointer
+		const clientsData* client = getClient(clientID, true);
+		if(client == NULL)
+			continue;
+
+		if(client->count > 0)
+			activeclients++;
+	}
+
+	cJSON *clients = JSON_NEW_OBJ();
+	JSON_OBJ_ADD_NUMBER(clients, "total", counters->clients);
+	JSON_OBJ_ADD_NUMBER(clients, "active", activeclients);
+	JSON_OBJ_ADD_ITEM(ftl, "clients", clients);
 
 	return 0;
 }
