@@ -17,11 +17,29 @@ servers:
         default: 8080
 
 paths:
+  /auth:
+    $ref: 'auth.yaml#/components/paths/auth'
+
   /dns/blocking:
     $ref: 'dns.yaml#/components/paths/blocking'
 
   /dns/cache:
     $ref: 'dns.yaml#/components/paths/cache'
+
+  /ftl/client:
+    $ref: 'ftl.yaml#/components/paths/client'
+
+  /ftl/logs/dns:
+    $ref: 'ftl.yaml#/components/paths/logs/dns'
+
+  /ftl/sysinfo:
+    $ref: 'ftl.yaml#/components/paths/sysinfo'
+
+  /ftl/dbinfo:
+    $ref: 'ftl.yaml#/components/paths/dbinfo'
+
+  /database/info:
+    $ref: 'database.yaml#/components/paths/info'
 
   /domains/{type}/{kind}/{domain}:
     $ref: 'domains.yaml#/components/paths/type_kind_domain'

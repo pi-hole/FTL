@@ -1,0 +1,403 @@
+openapi: 3.0.2
+components:
+  paths:
+    client:
+      get:
+        summary: Get information about requesting client
+        description: |
+          The property `timer` may contain additional details concerning a temporary en-/disabling.
+          It is `null` when no timer is active (the current status is permanent).
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: '#/components/schemas/client/remote_addr'
+                    - $ref: '#/components/schemas/client/http_version'
+                    - $ref: '#/components/schemas/client/method'
+                    - $ref: '#/components/schemas/client/headers'
+    logs:
+      dns:
+        get:
+          summary: Get DNS log content
+          description: |
+            This API hook returns content from the log of the embedded DNS resolver `dnsmasq`.
+
+            Every successful request will return a `nextID`.
+            This ID can be used on the next request to only get lines which were added *after* the last request.
+            This makes periodic polling for new log lines easy as no check for duplicated log lines is necessary.
+            The expected behavior for an immediate re-request of a log line with the same ID is an empty response.
+            As soon as the next message arrived, this will be included in your request and `nextID` is incremented by one.
+          parameters:
+            - $ref: '#/components/parameters/logs/dns/nextID'
+          responses:
+            '200':
+              description: OK
+              content:
+                application/json:
+                  schema:
+                    allOf:
+                      - $ref: '#/components/schemas/logs/dns/log'
+                      - $ref: '#/components/schemas/logs/dns/nextID'
+            '401':
+              description: Unauthorized
+              content:
+                application/json:
+                  schema:
+                    oneOf:
+                    - $ref: '#/components/errors/unauthorized'
+    sysinfo:
+      get:
+        summary: Get info about various system parameters
+        description: |
+          This API hook returns a collection of various system infos.
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: '#/components/schemas/system'
+                    - $ref: '#/components/schemas/ftl'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  oneOf:
+                  - $ref: '#/components/errors/unauthorized'
+    dbinfo:
+      get:
+        summary: Get info about various long-term database properties (`pihole-FTL.db`)
+        description: |
+          This API hook returns a collection of various long-term database properties infos.
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: '#/components/schemas/database'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  oneOf:
+                  - $ref: '#/components/errors/unauthorized'
+  schemas:
+    client:
+      remote_addr:
+        type: object
+        properties:
+          remote_addr:
+            type: string
+            description: Address of requesting client
+            example: "127.0.0.1"
+      http_version:
+        type: object
+        properties:
+          http_version:
+            type: string
+            description: HTTP version of request
+            example: "1.1"
+      method:
+        type: object
+        properties:
+          method:
+            type: string
+            description: Request method
+            example: "GET"
+      headers:
+        type: object
+        properties:
+          headers:
+            type: array
+            description: Request headers
+            items:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: Header name
+                value:
+                  type: string
+                  description: Header value
+            example:
+              - name: "Accept"
+                value: "application/json"
+              - name: "Connection"
+                value: "keep-alive"
+              - name: "Pragma"
+                value: "no-cache"
+    logs:
+      dns:
+        log:
+          type: object
+          properties:
+            log:
+              type: array
+              description: Request headers
+              items:
+                type: object
+                properties:
+                  timestamp:
+                    type: integer
+                    readonly: true
+                    description: Unix timestamp of log line creation (server time)
+                  message:
+                    type: string
+                    readonly: true
+                    description: Log line content
+              example:
+                - timestamp: "1611729969"
+                  message: "started, version pi-hole-2.84 cachesize 10000"
+                - timestamp: "1611729969"
+                  message: "reading /etc/resolv.conf"
+                - timestamp: "1611729969"
+                  message: "read /etc/hosts - 7 addresses"
+                - timestamp: "1611729969"
+                  message: "query[A] connectivity-check.ubuntu.com from 127.0.0.1"
+        nextID:
+          type: object
+          properties:
+            nextID:
+              type: integer
+              description: next ID to query if checking for new log lines
+              example: 229
+    system:
+      type: object
+      properties:
+        system:
+          type: object
+          properties:
+            uptime:
+              type: integer
+              description: How long the system has been running (seconds)
+              example: 67906
+            memory:
+              type: object
+              description: Memory info given in kilobytes
+              properties:
+                ram:
+                  type: object
+                  description: RAM memory
+                  properties:
+                    total:
+                      type: integer
+                      description: Total RAM
+                      example: 10317877
+                    free:
+                      type: integer
+                      description: Total free RAM memory
+                      example: 308736
+                    used:
+                      type: integer
+                      description: Used RAM
+                      example: 8920416
+                    available:
+                      type: integer
+                      description: Total available RAM memory
+                      example: 972304
+                swap:
+                  type: object
+                  description: swap memory
+                  properties:
+                    total:
+                      type: integer
+                      description: Total swap
+                      example: 10317877
+                    used:
+                      type: integer
+                      description: Used swap
+                      example: 8920416
+                    free:
+                      type: integer
+                      description: Total free swap memory
+                      example: 308736
+            procs:
+              type: integer
+              description: Number of current processes
+              example: 1452
+            cpu:
+              type: object
+              description: CPU info
+              properties:
+                nprocs:
+                  type: integer
+                  description: Number of available processors
+                  example: 8
+                load:
+                  type: object
+                  description: 1, 5, and 15 minute load averages
+                  properties:
+                    raw:
+                      type: array
+                      description: raw values
+                      items:
+                        type: float
+                      example: [0.58837890625, 0.64990234375, 0.66748046875]
+                    percent:
+                      type: array
+                      description: raw values
+                      items:
+                        type: float
+                      example: [4.903157711029053, 5.415853023529053, 5.562337398529053]
+            sensors:
+              type: array
+              description: Sensor information (temperature)
+              items:
+                type: object
+                properties:
+                  name:
+                    type: string
+                    readonly: true
+                    description: Description of temperature sensor (if available, `null` otherwise)
+                  path:
+                    type: string
+                    readonly: true
+                    description: Short path of temperature sensor
+                  value:
+                    type: float
+                    readonly: true
+                    description: Sensor value
+              example:
+                - name: "case 1"
+                  path: "hwmon0/temp0"
+                  value: 30.4
+            dns:
+              $ref: 'dns.yaml#/components/schemas/blocking'
+    ftl:
+      type: object
+      properties:
+        ftl:
+          type: object
+          properties:
+            gravity:
+              type: integer
+              description: Number of collected exact domains on lists
+              example: 67906
+            groups:
+              type: integer
+              description: Number of groups
+              example: 6
+            lists:
+              type: integer
+              description: Number of lists
+              example: 1
+            clients:
+              type: integer
+              description: Number of configured clients
+              example: 5
+            domains:
+              type: object
+              properties:
+                allowed:
+                  type: integer
+                  description: Number of allowed domains
+                  example: 10
+                denied:
+                  type: integer
+                  description: Number of denied domains
+                  example: 3
+    database:
+      type: object
+      properties:
+        size:
+          type: integer
+          description: Database size in bytes
+          example: 3690496
+        type:
+          type: string
+          description: Database file type
+          example: "Regular file"
+        mode:
+          type: string
+          description: Database file mode
+          example: "rw-r--r--"
+        atime:
+          type: integer
+          description: Timestamp of last access
+          example: 1611742120
+        mtime:
+          type: integer
+          description: Timestamp of last modification
+          example: 1611742120
+        ctime:
+          type: integer
+          description: Timestamp of last status change
+          example: 1611742120
+        owner:
+          type: object
+          properties:
+            user:
+              type: object
+              properties:
+                uid:
+                  type: integer
+                  description: UID of database owner
+                  example: 998
+                name:
+                  type: string
+                  description: Name of database owner (user)
+                  example: "pihole"
+                info:
+                  type: string
+                  description: User info
+                  example: ""
+            group:
+              type: object
+              properties:
+                gid:
+                  type: integer
+                  description: GID of database owner
+                  example: 998
+                name:
+                  type: string
+                  description: Name of database owner (group)
+                  example: "pihole"
+        queries:
+          type: integer
+          description: Number of queries in long-term database
+          example: 536956
+        sqlite_version:
+          type: string
+          description: Version of embedded SQLite3 engine
+          example: "3.34.0"
+
+
+  errors:
+    unauthorized:
+      type: object
+      description: Authentication required
+      properties:
+        error:
+          type: object
+          properties:
+            key:
+              type: string
+              description: "Machine-readable error type"
+              example: "unauthorized"
+            message:
+              type: string
+              description: "Human-readable error message"
+              example: "Unauthorized"
+            data:
+              type: null
+              description: "Additional data (if available)"
+              example: null
+  parameters:
+    logs:
+      dns:
+        nextID:
+          in: query
+          description: (Optional) ID of next line to return
+          name: nextID
+          schema:
+            type: integer
+          required: false
+          example: 219

@@ -69,17 +69,17 @@ int api_handler(struct mg_connection *conn, void *ignored)
 	{
 		ret = api_ftl_client(&api);
 	}
-	else if(startsWith("/api/ftl/dnsmasq_log", &api))
+	else if(startsWith("/api/ftl/logs/dns", &api))
 	{
-		ret = api_ftl_dnsmasq_log(&api);
+		ret = api_ftl_logs_dns(&api);
 	}
-	else if(startsWith("/api/ftl/database", &api))
+	else if(startsWith("/api/ftl/sysinfo", &api))
 	{
-		ret = api_ftl_database(&api);
+		ret = api_ftl_sysinfo(&api);
 	}
-	else if(startsWith("/api/ftl/system", &api))
+	else if(startsWith("/api/ftl/dbinfo", &api))
 	{
-		ret = api_ftl_system(&api);
+		ret = api_ftl_dbinfo(&api);
 	}
 	/******************************** /api/network ****************************/
 	else if(startsWith("/api/network", &api))

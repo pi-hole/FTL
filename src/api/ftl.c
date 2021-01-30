@@ -14,20 +14,20 @@
 #include "routes.h"
 // struct fifologData
 #include "../fifo.h"
-// get_FTL_db_filesize()
-#include "files.h"
-// get_sqlite3_version()
-#include "database/common.h"
-// get_number_of_queries_in_DB()
-#include "database/query-table.h"
-// getgrgid()
-#include <grp.h>
 // sysinfo()
 #include <sys/sysinfo.h>
 // get_blockingstatus()
 #include "../setupVars.h"
 // counters
 #include "../shmem.h"
+// get_FTL_db_filesize()
+#include "../files.h"
+// get_sqlite3_version()
+#include "../database/common.h"
+// get_number_of_queries_in_DB()
+#include "../database/query-table.h"
+// getgrgid()
+#include <grp.h>
 
 int api_ftl_client(struct ftl_conn *api)
 {
@@ -58,7 +58,7 @@ int api_ftl_client(struct ftl_conn *api)
 
 // fifologData is allocated in shared memory for cross-fork compatibility
 fifologData *fifo_log = NULL;
-int api_ftl_dnsmasq_log(struct ftl_conn *api)
+int api_ftl_logs_dns(struct ftl_conn *api)
 {
 	// Verify requesting client is allowed to see this ressource
 	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
@@ -122,7 +122,7 @@ int api_ftl_dnsmasq_log(struct ftl_conn *api)
 	JSON_SEND_OBJECT(json);
 }
 
-int api_ftl_database(struct ftl_conn *api)
+int api_ftl_dbinfo(struct ftl_conn *api)
 {
 	// Verify requesting client is allowed to see this ressource
 	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
@@ -138,28 +138,19 @@ int api_ftl_database(struct ftl_conn *api)
 	JSON_OBJ_ADD_NUMBER(json, "size", st.st_size); // Total size, in bytes
 
 	// File type
-	char octal[5] = { 0 };
-	const char *human;
-	cJSON *type = JSON_NEW_OBJ();
-	snprintf(octal, sizeof(octal), "%04o", (st.st_mode & S_IFMT) >> 9);
-	JSON_OBJ_COPY_STR(type, "octal", octal);
+	const char *filetype;
 	if((st.st_mode & S_IFMT) == S_IFREG)
-		human = "Regular file";
+		filetype = "Regular file";
 	else if((st.st_mode & S_IFMT) == S_IFLNK)
-		human = "Symbolic link";
+		filetype = "Symbolic link";
 	else
-		human = "Unknown";
-	JSON_OBJ_REF_STR(type, "human", human);
-	JSON_OBJ_ADD_ITEM(json, "type", type);
+		filetype = "Unknown";
+	JSON_OBJ_REF_STR(json, "type", filetype);
 
 	// File mode
-	cJSON *mode = JSON_NEW_OBJ();
-	snprintf(octal, sizeof(octal), "%03o", st.st_mode & 0x1FF);
-	JSON_OBJ_COPY_STR(mode, "octal", octal);
 	char permissions[10] = { 0 };
 	get_permission_string(permissions, &st);
-	JSON_OBJ_REF_STR(mode, "human", permissions);
-	JSON_OBJ_ADD_ITEM(json, "mode", mode);
+	JSON_OBJ_REF_STR(json, "mode", permissions);
 
 	JSON_OBJ_ADD_NUMBER(json, "atime", st.st_atime); // Time of last access
 	JSON_OBJ_ADD_NUMBER(json, "mtime", st.st_mtime); // Time of last modification
@@ -174,12 +165,22 @@ int api_ftl_database(struct ftl_conn *api)
 		JSON_OBJ_COPY_STR(user, "name", pw->pw_name); // User name
 		JSON_OBJ_COPY_STR(user, "info", pw->pw_gecos); // User information
 	}
+	else
+	{
+		JSON_OBJ_ADD_NULL(user, "name");
+		JSON_OBJ_ADD_NULL(user, "info");
+	}
+	
 	cJSON *group = JSON_NEW_OBJ();
 	JSON_OBJ_ADD_NUMBER(group, "gid", st.st_gid); // GID
 	const struct group *gr = getgrgid(st.st_uid);
 	if(gr != NULL)
 	{
 		JSON_OBJ_COPY_STR(group, "name", gr->gr_name); // Group name
+	}
+	else
+	{
+		JSON_OBJ_ADD_NULL(group, "name");
 	}
 	cJSON *owner = JSON_NEW_OBJ();
 	JSON_OBJ_ADD_ITEM(owner, "user", user);
@@ -200,7 +201,7 @@ int api_ftl_database(struct ftl_conn *api)
 static int read_temp_sensor(struct ftl_conn *api,
                             const char *label_path,
                             const char *value_path,
-                            const char *fallback_label,
+                            const char *short_path,
                             cJSON *object)
 {
 	FILE *f_label = fopen(label_path, "r");
@@ -218,8 +219,9 @@ static int read_temp_sensor(struct ftl_conn *api,
 			}
 			else
 			{
-				JSON_OBJ_COPY_STR(item, "name", fallback_label);
+				JSON_OBJ_ADD_NULL(item, "name");
 			}
+			JSON_OBJ_COPY_STR(item, "path", short_path);
 			JSON_OBJ_ADD_NUMBER(item, "value", temp < 1000 ? temp : 1e-3f*temp);
 			JSON_ARRAY_ADD_ITEM(object, item);
 		}
@@ -298,10 +300,10 @@ int get_system_obj(struct ftl_conn *api, cJSON *system)
 	GetRamInKB(&mem_total, &mem_used, &mem_free, &mem_avail);	
 	// Total usable main memory size
 	JSON_OBJ_ADD_NUMBER(ram, "total", mem_total);
-	// Used memory size
-	JSON_OBJ_ADD_NUMBER(ram, "used", mem_used);
 	// Free memory size
 	JSON_OBJ_ADD_NUMBER(ram, "free", mem_free);
+	// Used memory size
+	JSON_OBJ_ADD_NUMBER(ram, "used", mem_used);
 	// Available memory size
 	// See https://git.kernel.org/cgit/linux/kernel/git/torvalds/linux.git/commit/?id=34e431b0ae398fc54ea69ff85ec700722c9da773
 	// This Linux kernel commit message explains there are more nuances. It
@@ -397,7 +399,7 @@ int get_ftl_obj(struct ftl_conn *api, cJSON *ftl)
 	return 0;
 }
 
-int api_ftl_system(struct ftl_conn *api)
+int api_ftl_sysinfo(struct ftl_conn *api)
 {
 	cJSON *json = JSON_NEW_OBJ();
 

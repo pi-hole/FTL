@@ -65,7 +65,7 @@ components:
           This API hook returns live information about the DNS cache usage.
         responses:
           '200':
-            description: Created item
+            description: OK
             content:
               application/json:
                 schema:

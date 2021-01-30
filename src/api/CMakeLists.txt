@@ -10,10 +10,10 @@
 
 set(sources
         auth.c
-        list.c
         dns.c
         dns.h
         ftl.c
+        list.c
         network.c
         routes.c
         routes.h

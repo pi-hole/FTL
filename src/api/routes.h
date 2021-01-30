@@ -40,9 +40,9 @@ int api_stats_database_upstreams(struct ftl_conn *api);
 
 // FTL methods
 int api_ftl_client(struct ftl_conn *api);
-int api_ftl_dnsmasq_log(struct ftl_conn *api);
-int api_ftl_database(struct ftl_conn *api);
-int api_ftl_system(struct ftl_conn *api);
+int api_ftl_logs_dns(struct ftl_conn *api);
+int api_ftl_dbinfo(struct ftl_conn *api);
+int api_ftl_sysinfo(struct ftl_conn *api);
 int get_ftl_obj(struct ftl_conn *api, cJSON *ftl);
 int get_system_obj(struct ftl_conn *api, cJSON *system);
 
