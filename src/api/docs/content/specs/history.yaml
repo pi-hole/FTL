@@ -12,8 +12,7 @@ components:
             content:
               application/json:
                 schema:
-                  allOf:
-                    - $ref: '#/components/schemas/total_history'
+                  $ref: '#/components/schemas/total_history'
     clients:
       get:
         summary: Get per-client activity graph data
@@ -25,8 +24,82 @@ components:
             content:
               application/json:
                 schema:
-                  allOf:
-                    - $ref: '#/components/schemas/client_history'
+                  $ref: '#/components/schemas/client_history'
+    queries:
+      get:
+        summary: Get queries
+        description: |
+          Request query details.
+          Query parameters may be used to limit the number of results.
+
+          By default, this API callback returns the most recent 100 queries.
+          This can be changed using the parameter `n`.
+
+          This callback allows for fine-grained filtering by various parameters.
+          All query parameters are all optional and can be combined in any way:
+
+          - Only show queries *from* a given timestamp on: Use parameter `from`
+          - Only show queries *until* a given timestamp: Use parameter `until`
+          - Only show queries sent to a specific upstream destination (may also be `cache` or `blocklist`): Use parameter `upstream`
+          - Only show queries for specific domains: Use parameter `domain`
+          - Only show queries for specific clients: Use parameter `client`
+          
+          By default, the returned queries always start at the most recent query.
+          This can be changed by supplying the parameter `cursor`.
+          Each result of this API callback contains a `cursor` pointing the beginning of the next `n` queries chunk.
+          This provides a very fast and lightweight server-side pagination implementation.
+        parameters:
+          - in: query
+            name: from
+            description: Get queries from...
+            required: false
+            schema:
+              type: integer
+          - in: query
+            name: until
+            description: Get queries until...
+            required: false
+            schema:
+              type: integer
+          - in: query
+            name: n
+            description: Number of results to return
+            required: false
+            schema:
+              type: integer
+            default: 100
+          - in: query
+            name: upstream
+            description: Filter by specific upstream
+            required: false
+            schema:
+              type: string
+          - in: query
+            name: domain
+            description: Filter by specific domain
+            required: false
+            schema:
+              type: string
+          - in: query
+            name: client
+            description: Filter by specific client
+            required: false
+            schema:
+              type: string
+          - in: query
+            name: cursor
+            description: |
+              Do not start at the most recent, but at an older query.
+            required: false
+            schema:
+              type: integer
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/queries'
 
   schemas:
     total_history:
@@ -105,3 +178,61 @@ components:
               ip: "::1"
             - name: null
               ip: "192.168.1.1"
+    queries:
+      type: object
+      properties:
+        history:
+          type: array
+          description: Data array
+          items:
+            type: object
+            properties:
+              timestamp:
+                type: integer
+                description: Timestamp
+              type:
+                type: string
+                description: Type
+              domain:
+                type: string
+                description: Queried domain
+              CNAME_domain:
+                type: string
+                description: Domain blocked during deep CNAME inspection (may be `null`)
+              status:
+                type: string
+                description: Status (may be `null`)
+              client:
+                type: string
+                description: Requesting client (may be an IP address or a hostname)
+              dnssec:
+                type: string
+                description: DNSSEC status (may be `null`)
+              reply:
+                type: string
+                description: Reply type (may be `null`)
+              response_time:
+                type: integer
+                description: Time until the response was sent back to the client (may be `null`)
+              regex_idx:
+                type: integer
+                description: ID of blocking regex (`-1` if N/A)
+              upstream:
+                type: string
+                description: IP/name + port of upstream server (may be `null`)
+          example:
+            - timestamp: 1581907871
+              type: "AAAA"
+              domain: "incoming.telemetry.mozilla.org"
+              CNAME_domain: null
+              status: "FORWARDED"
+              client: "127.0.0.3"
+              dnssec: "UNKNOWN"
+              reply: "UNKNOWN"
+              response_time: 0
+              regex_idx: -1
+              upstream: "127.0.0.1#5353"
+        cursor:
+          type: integer
+          description: Cursor pointing to the head of the next data block (may be `-1` if no more data is available)
+          example: 1234

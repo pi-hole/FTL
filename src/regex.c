@@ -123,17 +123,20 @@ bool compile_regex(const char *regexin, regexData *regex, char **message)
 				}
 
 				// Test input string against all implemented query types
+				queriesData q = {};
 				for(enum query_types qtype = TYPE_A; qtype < TYPE_MAX; qtype++)
 				{
 					// Check for querytype
-					if(strcasecmp(extra, querytypes[qtype]) == 0)
+					q.type = qtype;
+					const char *qtypestr = get_query_type_str(&q, NULL);
+					if(strcasecmp(extra, qtypestr) == 0)
 					{
 						regex->query_type = qtype;
 						regex->query_type_inverted = false;
 						break;
 					}
 					// Check for INVERTED querytype
-					else if(extra[0] == '!' && strcasecmp(extra + 1u, querytypes[qtype]) == 0)
+					else if(extra[0] == '!' && strcasecmp(extra + 1u, qtypestr) == 0)
 					{
 						regex->query_type = qtype;
 						regex->query_type_inverted = true;
@@ -150,9 +153,11 @@ bool compile_regex(const char *regexin, regexData *regex, char **message)
 				// Debug output
 				else if(config.debug & DEBUG_REGEX)
 				{
+					q.type = regex->query_type;
+					const char *qtypestr = get_query_type_str(&q, NULL);
 					logg("   This regex will %s match query type %s",
 					     regex->query_type_inverted ? "NOT" : "ONLY",
-					     querytypes[regex->query_type]);
+					     qtypestr);
 				}
 			}
 			// option: ";invert"

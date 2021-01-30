@@ -746,7 +746,8 @@ int api_stats_database_query_types(struct ftl_conn *api)
 	dbopen();
 
 	// Perform SQL queries
-	cJSON *json = JSON_NEW_ARRAY();
+	cJSON *types = JSON_NEW_ARRAY();
+	queriesData q = { 0 };
 	for(int i = TYPE_A; i < TYPE_MAX; i++)
 	{
 		const char *querystr = "SELECT COUNT(*) FROM queries "
@@ -754,11 +755,8 @@ int api_stats_database_query_types(struct ftl_conn *api)
 		                       "AND type = :type";
 		// Add 1 as type is stored one-based in the database for historical reasons
 		int count = db_query_int_from_until_type(querystr, from, until, i+1);
-
-		cJSON *item = JSON_NEW_OBJ();
-		JSON_OBJ_REF_STR(item, "name", querytypes[i]);
-		JSON_OBJ_ADD_NUMBER(item, "count", count);
-		JSON_ARRAY_ADD_ITEM(json, item);
+		q.type = i;
+		JSON_OBJ_ADD_NUMBER(types, get_query_type_str(&q, NULL), count);
 	}
 
 	// Close (= unlock) database connection
@@ -768,6 +766,8 @@ int api_stats_database_query_types(struct ftl_conn *api)
 	lock_shm();
 
 	// Send JSON object
+	cJSON *json = JSON_NEW_OBJ();
+	JSON_OBJ_ADD_ITEM(json, "types", types);
 	JSON_SEND_OBJECT(json);
 }
 

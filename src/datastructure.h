@@ -18,8 +18,6 @@
 // assert_sizeof
 #include "static_assert.h"
 
-extern const char *querytypes[TYPE_MAX];
-
 typedef struct {
 	unsigned char magic;
 	enum query_status status;
@@ -111,7 +109,7 @@ typedef struct {
 	enum query_types query_type;
 	int domainID;
 	int clientID;
-	int black_regex_idx;
+	int deny_regex_id;
 } DNSCacheData;
 ASSERT_SIZEOF(DNSCacheData, 16, 16, 16);
 
@@ -133,6 +131,10 @@ const char *getClientIPString(const queriesData* query);
 const char *getClientNameString(const queriesData* query);
 
 void change_clientcount(clientsData *client, int total, int blocked, int overTimeIdx, int overTimeMod);
+const char *get_query_type_str(const queriesData *query, char *buffer);
+const char *get_query_status_str(const queriesData *query) __attribute__ ((pure));
+const char *get_query_dnssec_str(const queriesData *query) __attribute__ ((pure));
+const char *get_query_reply_str(const queriesData *query) __attribute__ ((pure));
 
 // Pointer getter functions
 #define getQuery(queryID, checkMagic) _getQuery(queryID, checkMagic, __LINE__, __FUNCTION__, __FILE__)

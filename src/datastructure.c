@@ -29,10 +29,6 @@
 // set_event(RESOLVE_NEW_HOSTNAMES)
 #include "events.h"
 
-const char *querytypes[TYPE_MAX] = {"UNKNOWN", "A", "AAAA", "ANY", "SRV", "SOA", "PTR", "TXT",
-                                    "NAPTR", "MX", "DS", "RRSIG", "DNSKEY", "NS", "OTHER", "SVCB",
-                                    "HTTPS"};
-
 // converts upper to lower case, and leaves other characters unchanged
 void strtolower(char *str)
 {
@@ -510,4 +506,144 @@ void FTL_reload_all_domainlists(void)
 	FTL_reset_per_client_domain_data();
 
 	unlock_shm();
+}
+
+const char *get_query_type_str(const queriesData *query, char *buffer)
+{
+	switch (query->type)
+	{
+		case TYPE_A:
+			return "A";
+		case TYPE_AAAA:
+			return "AAAA";
+		case TYPE_ANY:
+			return "ANY";
+		case TYPE_SRV:
+			return "SRV";
+		case TYPE_SOA:
+			return "SOA";
+		case TYPE_PTR:
+			return "PTR";
+		case TYPE_TXT:
+			return "TXT";
+		case TYPE_NAPTR:
+			return "NAPTR";
+		case TYPE_MX:
+			return "MX";
+		case TYPE_DS:
+			return "DS";
+		case TYPE_RRSIG:
+			return "RRSIG";
+		case TYPE_DNSKEY:
+			return "DNSKEY";
+		case TYPE_NS:
+			return "NS";
+		case TYPE_OTHER:
+			if(buffer != NULL)
+			{
+				// Build custom query type string in buffer
+				sprintf(buffer, "TYPE%d", query->qtype);
+				return buffer;
+			}
+			else
+			{
+				// Used, e.g., for regex type matching
+				return "OTHER";
+			}
+		case TYPE_SVCB:
+			return "SVCB";
+		case TYPE_HTTPS:
+			return "HTTPS";
+		case TYPE_MAX:
+		default:
+			return "N/A";
+	}
+}
+
+const char * __attribute__ ((pure)) get_query_status_str(const queriesData *query)
+{
+	switch (query->status)
+	{
+		case QUERY_UNKNOWN:
+			return "UNKNOWN";
+		case QUERY_GRAVITY:
+			return "GRAVITY";
+		case QUERY_FORWARDED:
+			return "FORWARDED";
+		case QUERY_CACHE:
+			return "CACHE";
+		case QUERY_REGEX:
+			return "REGEX";
+		case QUERY_BLACKLIST:
+			return "BLACKLIST";
+		case QUERY_EXTERNAL_BLOCKED_IP:
+			return "EXTERNAL_BLOCKED_IP";
+		case QUERY_EXTERNAL_BLOCKED_NULL:
+			return "EXTERNAL_BLOCKED_NULL";
+		case QUERY_EXTERNAL_BLOCKED_NXRA:
+			return "EXTERNAL_BLOCKED_NXRA";
+		case QUERY_GRAVITY_CNAME:
+			return "GRAVITY_CNAME";
+		case QUERY_REGEX_CNAME:
+			return "REGEX_CNAME";
+		case QUERY_BLACKLIST_CNAME:
+			return "BLACKLIST_CNAME";
+		case QUERY_RETRIED:
+			return "RETRIED";
+		case QUERY_RETRIED_DNSSEC:
+			return "RETRIED_DNSSEC";
+		case QUERY_STATUS_MAX:
+		default:
+			return "STATUS_MAX";
+	}
+}
+
+const char * __attribute__ ((pure)) get_query_reply_str(const queriesData *query)
+{
+	switch (query->reply)
+	{
+		case REPLY_UNKNOWN:
+			return "UNKNOWN";
+		case REPLY_NODATA:
+			return "NODATA";
+		case REPLY_NXDOMAIN:
+			return "NXDOMAIN";
+		case REPLY_CNAME:
+			return "CNAME";
+		case REPLY_IP:
+			return "IP";
+		case REPLY_DOMAIN:
+			return "DOMAIN";
+		case REPLY_RRNAME:
+			return "RRNAME";
+		case REPLY_SERVFAIL:
+			return "SERVFAIL";
+		case REPLY_REFUSED:
+			return "REFUSED";
+		case REPLY_NOTIMP:
+			return "NOTIMP";
+		case REPLY_OTHER:
+			return "OTHER";
+		default:
+			return "N/A";
+	}
+}
+
+const char * __attribute__ ((pure)) get_query_dnssec_str(const queriesData *query)
+{
+	switch (query->dnssec)
+	{
+		case DNSSEC_UNKNOWN:
+			return "UNKNOWN";
+		case DNSSEC_SECURE:
+			return "SECURE";
+		case DNSSEC_INSECURE:
+			return "INSECURE";
+		case DNSSEC_BOGUS:
+			return "BOGUS";
+		case DNSSEC_ABANDONED:
+			return "ABANDONED";
+		default:
+			return "N/A";
+	}
 }

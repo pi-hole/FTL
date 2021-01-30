@@ -36,7 +36,10 @@ int api_handler(struct mg_connection *conn, void *ignored)
 	read_and_parse_payload(&api);
 
 	if(config.debug & DEBUG_API)
-		logg("Requested API URI: %s %s", api.request->request_method, api.request->local_uri);
+		logg("Requested API URI: %s %s ? %s",
+		     api.request->request_method,
+		     api.request->local_uri,
+		     api.request->query_string);
 
 	/******************************** /api/dns ********************************/
 	if(startsWith("/api/dns/blocking", &api))
@@ -91,6 +94,10 @@ int api_handler(struct mg_connection *conn, void *ignored)
 	{
 		ret = api_history_clients(&api);
 	}
+	else if(startsWith("/api/history/queries", &api))
+	{
+		ret = api_history_queries(&api);
+	}
 	else if(startsWith("/api/history", &api))
 	{
 		ret = api_history(&api);
@@ -123,10 +130,6 @@ int api_handler(struct mg_connection *conn, void *ignored)
 	else if(startsWith("/api/stats/top_blocked_clients", &api))
 	{
 		ret = api_stats_top_clients(true, &api);
-	}
-	else if(startsWith("/api/stats/history", &api))
-	{
-		ret = api_stats_history(&api);
 	}
 	else if(startsWith("/api/stats/recent_blocked", &api))
 	{

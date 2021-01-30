@@ -20,7 +20,7 @@ enum memory_type {
 } __attribute__ ((packed));
 
 enum dnssec_status {
-	DNSSEC_UNSPECIFIED,
+	DNSSEC_UNKNOWN,
 	DNSSEC_SECURE,
 	DNSSEC_INSECURE,
 	DNSSEC_BOGUS,

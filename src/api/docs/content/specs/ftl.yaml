@@ -71,7 +71,7 @@ components:
                   - $ref: '#/components/errors/unauthorized'
     dbinfo:
       get:
-        summary: Get info about various long-term database properties (`pihole-FTL.db`)
+        summary: Get info about long-term database
         description: |
           This API hook returns a collection of various long-term database properties infos.
         responses:

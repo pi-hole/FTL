@@ -44,26 +44,49 @@ static const char images_logo_svg[] = {
 #include "hex/images/logo.svg"
 };
 
-static const char specs_main_yaml[] = {
-#include "hex/specs/main.yaml"
-};
-
-static const char specs_domains_yaml[] = {
-#include "hex/specs/domains.yaml"
-};
-
-static const char specs_groups_yaml[] = {
-#include "hex/specs/groups.yaml"
+static const char specs_auth_yaml[] = {
+#include "hex/specs/auth.yaml"
 };
 
 static const char specs_clients_yaml[] = {
 #include "hex/specs/clients.yaml"
 };
 
+static const char specs_dns_yaml[] = {
+#include "hex/specs/dns.yaml"
+};
+
+static const char specs_domains_yaml[] = {
+#include "hex/specs/domains.yaml"
+};
+
+static const char specs_ftl_yaml[] = {
+#include "hex/specs/ftl.yaml"
+};
+
+static const char specs_groups_yaml[] = {
+#include "hex/specs/groups.yaml"
+};
+
+static const char specs_history_yaml[] = {
+#include "hex/specs/history.yaml"
+};
+
 static const char specs_lists_yaml[] = {
 #include "hex/specs/lists.yaml"
 };
 
+static const char specs_main_yaml[] = {
+#include "hex/specs/main.yaml"
+};
+
+static const char specs_stats_yaml[] = {
+#include "hex/specs/stats.yaml"
+};
+
+static const char specs_version_yaml[] = {
+#include "hex/specs/version.yaml"
+};
 struct {
     const char *path;
     const char *mime_type;
@@ -76,15 +99,19 @@ struct {
     {"external/rapidoc-min.js", "application/javascript", rapidoc_min_js, sizeof(rapidoc_min_js)},
     {"external/rapidoc-min.map.js", "text/plain", rapidoc_min_map_js, sizeof(rapidoc_min_map_js)},
     {"external/highlight-default.min.css", "text/css", highlight_default_min_css, sizeof(highlight_default_min_css)},
-    {"external/highlight.min.js", "text/css", highlight_min_js, sizeof(highlight_min_js)},
+    {"external/highlight.min.js", "application/javascript", highlight_min_js, sizeof(highlight_min_js)},
     {"images/logo.svg", "image/svg+xml", images_logo_svg, sizeof(images_logo_svg)},
-    {"specs/main.yaml", "text/plain", specs_main_yaml, sizeof(specs_main_yaml)},
-    {"specs/domains.yaml", "text/plain", specs_domains_yaml, sizeof(specs_domains_yaml)},
-    {"specs/groups.yaml", "text/plain", specs_groups_yaml, sizeof(specs_groups_yaml)},
+    {"specs/auth.yaml", "text/plain", specs_auth_yaml, sizeof(specs_auth_yaml)},
     {"specs/clients.yaml", "text/plain", specs_clients_yaml, sizeof(specs_clients_yaml)},
+    {"specs/dns.yaml", "text/plain", specs_dns_yaml, sizeof(specs_dns_yaml)},
+    {"specs/domains.yaml", "text/plain", specs_domains_yaml, sizeof(specs_domains_yaml)},
+    {"specs/ftl.yaml", "text/plain", specs_ftl_yaml, sizeof(specs_ftl_yaml)},
+    {"specs/groups.yaml", "text/plain", specs_groups_yaml, sizeof(specs_groups_yaml)},
+    {"specs/history.yaml", "text/plain", specs_history_yaml, sizeof(specs_history_yaml)},
     {"specs/lists.yaml", "text/plain", specs_lists_yaml, sizeof(specs_lists_yaml)},
+    {"specs/main.yaml", "text/plain", specs_main_yaml, sizeof(specs_main_yaml)},
+    {"specs/stats.yaml", "text/plain", specs_stats_yaml, sizeof(specs_stats_yaml)},
+    {"specs/version.yaml", "text/plain", specs_version_yaml, sizeof(specs_version_yaml)},
 };
-
-
 
 #endif // API_DOCS_H

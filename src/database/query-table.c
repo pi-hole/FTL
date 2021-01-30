@@ -181,7 +181,7 @@ void DB_save_queries(void)
 			const int cacheID = findCacheID(query->domainID, query->clientID, query->type);
 			DNSCacheData *cache = getDNSCache(cacheID, true);
 			if(cache != NULL)
-				sqlite3_bind_int(stmt, 7, cache->black_regex_idx);
+				sqlite3_bind_int(stmt, 7, cache->deny_regex_id);
 			else
 				sqlite3_bind_null(stmt, 7);
 		}
@@ -440,7 +440,7 @@ void DB_read_queries(void)
 		query->db = dbid;
 		query->id = 0;
 		query->response = 0;
-		query->dnssec = DNSSEC_UNSPECIFIED;
+		query->dnssec = DNSSEC_UNKNOWN;
 		query->reply = REPLY_UNKNOWN;
 		query->CNAME_domainID = -1;
 		// Initialize flags
@@ -492,7 +492,7 @@ void DB_read_queries(void)
 			//  a) we have a chace entry
 			//  b) the value of additional_info is not NULL (0 bytes storage size)
 			if(cache != NULL && sqlite3_column_bytes(stmt, 7) != 0)
-				cache->black_regex_idx = sqlite3_column_int(stmt, 7);
+				cache->deny_regex_id = sqlite3_column_int(stmt, 7);
 		}
 
 		// Increment status counters

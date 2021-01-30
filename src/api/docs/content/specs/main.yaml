@@ -3,11 +3,14 @@ info:
   title: Pi-hole API
   version: "6.0"
   description: >
-    The Pi-hole API is organized around [REST](http://en.wikipedia.org/wiki/Representational_State_Transfer). Our API has predictable resource-oriented URLs, accepts and returns reliable UTF-8 [JavaScript Object Notation (JSON)-encoded](http://www.json.org/) data for all API responses, and uses standard HTTP response codes and verbs.
-    Most (but not all) endpoints require authentication. API endpoints requiring authentication will fail with code `401 Unauthorized` if no key is supplied.
+    The Pi-hole API is organized around [REST](http://en.wikipedia.org/wiki/Representational_State_Transfer).
+    Our API has predictable resource-oriented URLs, accepts and returns reliable UTF-8 [JavaScript Object Notation (JSON)-encoded](http://www.json.org/) data for all API responses, and uses standard HTTP response codes and verbs.
+
+    Most (but not all) endpoints require authentication.
+    API endpoints requiring authentication will fail with code `401 Unauthorized` when used outside a valid session.
 servers:
-  - url: http://127.0.0.1/api/
-  - url: 'http://{url}:{port}/api/'
+  - url: http://pi.hole:8080/api/
+  - url: 'http://{url}:{port}/{path}/'
     variables:
       url:
         description: URL or address of your Pi-hole
@@ -15,6 +18,9 @@ servers:
       port:
         description: Port of your Pi-hole's API
         default: 8080
+      path:
+        description: Path where your Pi-hole's API is hosted
+        default: api
 
 paths:
   /auth:
@@ -23,20 +29,20 @@ paths:
   /stats/summary:
     $ref: 'stats.yaml#/components/paths/summary'
 
-  /history/:
+  /history:
     $ref: 'history.yaml#/components/paths/history'
 
   /history/clients:
     $ref: 'history.yaml#/components/paths/clients'
+
+  /history/queries:
+    $ref: 'history.yaml#/components/paths/queries'
 
   /dns/blocking:
     $ref: 'dns.yaml#/components/paths/blocking'
 
   /dns/cache:
     $ref: 'dns.yaml#/components/paths/cache'
-
-  /database/info:
-    $ref: 'database.yaml#/components/paths/info'
 
   /domains/{type}/{kind}/{domain}:
     $ref: 'domains.yaml#/components/paths/type_kind_domain'

@@ -13,6 +13,7 @@
 #include "../config.h"
 #include "../log.h"
 #include "json_macros.h"
+#include <limits.h>
 
 char pi_hole_extra_headers[PIHOLE_HEADERS_MAXLEN] = { 0 };
 
@@ -116,28 +117,94 @@ bool get_bool_var(const char *source, const char *var, bool *boolean)
 	return false;
 }
 
-bool get_int_var(const char *source, const char *var, int *num)
+static bool get_long_var_msg(const char *source, const char *var, long *num, const char **msg)
 {
-	char buffer[16] = { 0 };
-	if(GET_VAR(var, buffer, source) > 0 &&
-	   sscanf(buffer, "%d", num) == 1)
+	char buffer[128] = { 0 };
+	if(GET_VAR(var, buffer, source) < 1)
 	{
-		return true;
+		// Parameter not found
+		*msg = NULL;
+		return false;
 	}
 
+	// Try to get the value
+	char *endptr = NULL;
+	errno = 0;
+	const long val = strtol(buffer, &endptr, 10);
+
+	// Error checking
+	if ((errno == ERANGE && (val == LONG_MAX || val == LONG_MIN)) ||
+	    (errno != 0 && val == 0))
+	{
+		*msg = strerror(errno);
+		return false;
+	}
+
+	if (endptr == buffer)
+	{
+		*msg = "No digits were found";
+		return false;
+	}
+
+	// Otherwise: success
+	*num = val;
+	return true;
+}
+
+bool get_int_var_msg(const char *source, const char *var, int *num, const char **msg)
+{
+	long val = 0;
+	if(!get_long_var_msg(source, var, &val, msg))
+		return false;
+
+	if(val > INT_MAX)
+	{
+		*msg = "Specified integer too large, maximum allowed number is "  xstr(INT_MAX);
+		return false;
+	}
+
+	if(val < INT_MIN)
+	{
+		*msg = "Specified integer too negative, minimum allowed number is "  xstr(INT_MIN);
+		return false;
+	}
+
+	*num = (int)val;
+	return false;
+}
+
+bool get_int_var(const char *source, const char *var, int *num)
+{
+	const char *msg = NULL;
+	return get_int_var_msg(source, var, num, &msg);
+}
+
+bool get_uint_var_msg(const char *source, const char *var, unsigned int *num, const char **msg)
+{
+	long val = 0;
+	if(!get_long_var_msg(source, var, &val, msg))
+		return false;
+
+	if(val > UINT_MAX)
+	{
+		*msg = "Specified integer too large, maximum allowed number is "  xstr(UINT_MAX);
+		return false;
+	}
+
+	if(val < 0)
+	{
+		*msg = "Specified integer negavtive, this is not allowed";
+		return false;
+	}
+
+	*num = (unsigned int)val;
 	return false;
 }
 
 bool get_uint_var(const char *source, const char *var, unsigned int *num)
 {
-	char buffer[16] = { 0 };
-	if(GET_VAR(var, buffer, source) > 0 &&
-	   sscanf(buffer, "%u", num) == 1)
-	{
-		return true;
-	}
-
-	return false;
+	const char *msg = NULL;
+	return get_uint_var_msg(source, var, num, &msg);
 }
 
 const char* __attribute__((pure)) startsWith(const char *path, struct ftl_conn *api)

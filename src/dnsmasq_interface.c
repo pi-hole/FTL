@@ -131,7 +131,7 @@ static bool check_domain_blocked(const char *domain, const int clientID,
 
 		// Mark domain as regex matched for this client
 		dns_cache->blocking_status = REGEX_BLOCKED;
-		dns_cache->black_regex_idx = regex_idx;
+		dns_cache->deny_regex_id = regex_idx;
 		return true;
 	}
 
@@ -427,7 +427,7 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 			// Propagate ID of responsible regex up from the child to the parent domain
 			if(parent_cache != NULL && child_cache != NULL)
 			{
-				child_cache->black_regex_idx = parent_cache->black_regex_idx;
+				child_cache->deny_regex_id = parent_cache->deny_regex_id;
 			}
 
 			// Set status
@@ -641,7 +641,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// Initialize reply type
 	query->reply = REPLY_UNKNOWN;
 	// Store DNSSEC result for this domain
-	query->dnssec = DNSSEC_UNSPECIFIED;
+	query->dnssec = DNSSEC_UNKNOWN;
 	query->CNAME_domainID = -1;
 	// This query is not yet known ad forwarded or blocked
 	query->flags.blocked = false;

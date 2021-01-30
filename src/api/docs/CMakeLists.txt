@@ -16,11 +16,17 @@ set(sources
         hex/external/highlight.min.js
         hex/external/highlight-default.min.css
         hex/images/logo.svg
-        hex/specs/main.yaml
-        hex/specs/domains.yaml
-        hex/specs/groups.yaml
+        hex/specs/auth.yaml
         hex/specs/clients.yaml
+        hex/specs/dns.yaml
+        hex/specs/domains.yaml
+        hex/specs/ftl.yaml
+        hex/specs/groups.yaml
+        hex/specs/history.yaml
         hex/specs/lists.yaml
+        hex/specs/main.yaml
+        hex/specs/stats.yaml
+        hex/specs/version.yaml
         docs.c
         )
 
@@ -30,6 +36,7 @@ file(MAKE_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/hex/specs)
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/hex/images)
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/hex/external)
 
+# Compile files from content/ into hex/
 find_program(RESOURCE_COMPILER xxd)
 file(GLOB_RECURSE COMPILED_RESOURCES RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}/content" "content/*")
 foreach(INPUT_FILE ${COMPILED_RESOURCES})
@@ -44,5 +51,5 @@ foreach(INPUT_FILE ${COMPILED_RESOURCES})
 endforeach()
 
 add_library(api_docs OBJECT ${sources})
-#target_compile_options(api_docs PRIVATE ${EXTRAWARN})
+target_compile_options(api_docs PRIVATE ${EXTRAWARN})
 target_include_directories(api_docs PRIVATE ${PROJECT_SOURCE_DIR}/src)
