@@ -13,6 +13,7 @@ set(sources
         dns.c
         dns.h
         ftl.c
+        history.c
         list.c
         network.c
         routes.c

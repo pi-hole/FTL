@@ -21,14 +21,16 @@ int api_handler(struct mg_connection *conn, void *ignored);
 
 // Statistic methods
 int api_stats_summary(struct ftl_conn *api);
-int api_stats_overTime_history(struct ftl_conn *api);
-int api_stats_overTime_clients(struct ftl_conn *api);
 int api_stats_query_types(struct ftl_conn *api);
 int api_stats_upstreams(struct ftl_conn *api);
 int api_stats_top_domains(bool blocked, struct ftl_conn *api);
 int api_stats_top_clients(bool blocked, struct ftl_conn *api);
 int api_stats_history(struct ftl_conn *api);
 int api_stats_recentblocked(struct ftl_conn *api);
+
+// History methods
+int api_history(struct ftl_conn *api);
+int api_history_clients(struct ftl_conn *api);
 
 // Statistics methods (database)
 int api_stats_database_overTime_history(struct ftl_conn *api);

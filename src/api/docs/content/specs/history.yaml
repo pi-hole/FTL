@@ -1,0 +1,107 @@
+openapi: 3.0.2
+components:
+  paths:
+    history:
+      get:
+        summary: Get activity graph data
+        description: |
+          Request data needed to generate the \"Query over last 24 hours\" graph
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: '#/components/schemas/total_history'
+    clients:
+      get:
+        summary: Get per-client activity graph data
+        description: |
+          Request data needed to generate the \"Client activity over last 24 hours\" graph
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: '#/components/schemas/client_history'
+
+  schemas:
+    total_history:
+      type: object
+      properties:
+        history:
+          type: array
+          description: Data array
+          items:
+            type: object
+            properties:
+              timestamp:
+                type: integer
+                description: Timestamp
+              total:
+                type: integer
+                description: Total number of queries
+              cached:
+                type: integer
+                description: Total number of cached
+              blocked:
+                type: integer
+          example:
+            - timestamp: 1511819900
+              total: 2134
+              cached: 525
+              blocked: 413
+            - timestamp: 1511820500
+              total: 2014
+              cached: 52
+              blocked: 43
+    client_history:
+      type: object
+      properties:
+        history:
+          type: array
+          description: Data array
+          items:
+            type: object
+            properties:
+              timestamp:
+                type: integer
+                description: Timestamp
+              data:
+                type: array
+                description: Data corresponding to the individual clients
+                items:
+                  type: integer
+          example:
+            - timestamp: 1511819900
+              data:
+                - 12
+                - 65
+                - 67
+            - timestamp: 1511820500
+              data:
+                - 1
+                - 35
+                - 63
+        clients:
+          type: array
+          description: Data array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+                description: Client name (may be `null`)
+              ip:
+                type: string
+                description: Client IP address
+          example:
+            - name: localhost
+              ip: "127.0.0.1"
+            - name: ip6-localnet
+              ip: "::1"
+            - name: null
+              ip: "192.168.1.1"

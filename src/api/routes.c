@@ -86,18 +86,19 @@ int api_handler(struct mg_connection *conn, void *ignored)
 	{
 		ret = api_network(&api);
 	}
+	/******************************** /api/history **************************/
+	else if(startsWith("/api/history/clients", &api))
+	{
+		ret = api_history_clients(&api);
+	}
+	else if(startsWith("/api/history", &api))
+	{
+		ret = api_history(&api);
+	}
 	/******************************** /api/stats **************************/
 	else if(startsWith("/api/stats/summary", &api))
 	{
 		ret = api_stats_summary(&api);
-	}
-	else if(startsWith("/api/stats/overTime/history", &api))
-	{
-		ret = api_stats_overTime_history(&api);
-	}
-	else if(startsWith("/api/stats/overTime/clients", &api))
-	{
-		ret = api_stats_overTime_clients(&api);
 	}
 	else if(startsWith("/api/stats/query_types", &api))
 	{

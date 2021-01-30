@@ -37,14 +37,19 @@ components:
             content:
               application/json:
                 schema:
-                  allOf:
-                    - $ref: '#/components/schemas/domain'
-                    - $ref: '#/components/schemas/oldtype'
-                    - $ref: '#/components/schemas/oldkind'
-                    - $ref: '#/components/schemas/comment'
-                    - $ref: '#/components/schemas/groups'
-                    - $ref: '#/components/schemas/enabled'
-                    - $ref: '#/components/schemas/readonly'
+                  type: object
+                  properties:
+                    domains:
+                      type: array
+                      items:
+                        allOf:
+                          - $ref: '#/components/schemas/domain'
+                          - $ref: '#/components/schemas/oldtype'
+                          - $ref: '#/components/schemas/oldkind'
+                          - $ref: '#/components/schemas/comment'
+                          - $ref: '#/components/schemas/groups'
+                          - $ref: '#/components/schemas/enabled'
+                          - $ref: '#/components/schemas/readonly'
       put:
         summary: Replace domain
         description: |
@@ -74,14 +79,19 @@ components:
             content:
               application/json:
                 schema:
-                  allOf:
-                    - $ref: '#/components/schemas/domain'
-                    - $ref: '#/components/schemas/oldtype'
-                    - $ref: '#/components/schemas/oldkind'
-                    - $ref: '#/components/schemas/comment'
-                    - $ref: '#/components/schemas/groups'
-                    - $ref: '#/components/schemas/enabled'
-                    - $ref: '#/components/schemas/readonly'
+                  type: object
+                  properties:
+                    domains:
+                      type: array
+                      items:
+                        allOf:
+                          - $ref: '#/components/schemas/domain'
+                          - $ref: '#/components/schemas/oldtype'
+                          - $ref: '#/components/schemas/oldkind'
+                          - $ref: '#/components/schemas/comment'
+                          - $ref: '#/components/schemas/groups'
+                          - $ref: '#/components/schemas/enabled'
+                          - $ref: '#/components/schemas/readonly'
           '400':
             description: Bad request
             content:
@@ -128,7 +138,7 @@ components:
         requestBody:
           description: Callback payload
           content: 
-            'application/json':
+            application/json:
               schema:
                 allOf:
                   - $ref: '#/components/schemas/domain'
@@ -143,14 +153,19 @@ components:
             content:
               application/json:
                 schema:
-                  allOf:
-                    - $ref: '#/components/schemas/domain'
-                    - $ref: '#/components/schemas/type'
-                    - $ref: '#/components/schemas/kind'
-                    - $ref: '#/components/schemas/comment'
-                    - $ref: '#/components/schemas/groups'
-                    - $ref: '#/components/schemas/enabled'
-                    - $ref: '#/components/schemas/readonly'
+                  type: object
+                  properties:
+                    domains:
+                      type: array
+                      items:
+                        allOf:
+                          - $ref: '#/components/schemas/domain'
+                          - $ref: '#/components/schemas/type'
+                          - $ref: '#/components/schemas/kind'
+                          - $ref: '#/components/schemas/comment'
+                          - $ref: '#/components/schemas/groups'
+                          - $ref: '#/components/schemas/enabled'
+                          - $ref: '#/components/schemas/readonly'
           '400':
             description: Bad request
             content:

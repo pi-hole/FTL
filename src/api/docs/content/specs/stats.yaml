@@ -5,7 +5,7 @@ components:
       get:
         summary: Get overview of Pi-hole activity
         description: |
-          Request various query, system ,and FTL properties
+          Request various query, system, and FTL properties
         responses:
           '200':
             description: OK

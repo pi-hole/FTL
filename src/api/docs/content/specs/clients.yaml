@@ -19,12 +19,17 @@ components:
             content:
               application/json:
                 schema:
-                  allOf:
-                    - $ref: '#/components/schemas/client'
-                    - $ref: '#/components/schemas/name'
-                    - $ref: '#/components/schemas/comment'
-                    - $ref: '#/components/schemas/groups'
-                    - $ref: '#/components/schemas/readonly'
+                  type: object
+                  properties:
+                    clients:
+                      type: array
+                      items:
+                        allOf:
+                          - $ref: '#/components/schemas/client'
+                          - $ref: '#/components/schemas/name'
+                          - $ref: '#/components/schemas/comment'
+                          - $ref: '#/components/schemas/groups'
+                          - $ref: '#/components/schemas/readonly'
       put:
         summary: Replace client
         description: |
@@ -51,12 +56,17 @@ components:
             content:
               application/json:
                 schema:
-                  allOf:
-                    - $ref: '#/components/schemas/client'
-                    - $ref: '#/components/schemas/name'
-                    - $ref: '#/components/schemas/comment'
-                    - $ref: '#/components/schemas/groups'
-                    - $ref: '#/components/schemas/readonly'
+                  type: object
+                  properties:
+                    clients:
+                      type: array
+                      items:
+                        allOf:
+                          - $ref: '#/components/schemas/client'
+                          - $ref: '#/components/schemas/name'
+                          - $ref: '#/components/schemas/comment'
+                          - $ref: '#/components/schemas/groups'
+                          - $ref: '#/components/schemas/readonly'
           '400':
             description: Bad request
             content:
@@ -113,12 +123,17 @@ components:
             content:
               application/json:
                 schema:
-                  allOf:
-                    - $ref: '#/components/schemas/client'
-                    - $ref: '#/components/schemas/name'
-                    - $ref: '#/components/schemas/comment'
-                    - $ref: '#/components/schemas/groups'
-                    - $ref: '#/components/schemas/readonly'
+                  type: object
+                  properties:
+                    clients:
+                      type: array
+                      items:
+                        allOf:
+                          - $ref: '#/components/schemas/client'
+                          - $ref: '#/components/schemas/name'
+                          - $ref: '#/components/schemas/comment'
+                          - $ref: '#/components/schemas/groups'
+                          - $ref: '#/components/schemas/readonly'
           '400':
             description: Bad request
             content:

@@ -23,6 +23,12 @@ paths:
   /stats/summary:
     $ref: 'stats.yaml#/components/paths/summary'
 
+  /history/:
+    $ref: 'history.yaml#/components/paths/history'
+
+  /history/clients:
+    $ref: 'history.yaml#/components/paths/clients'
+
   /dns/blocking:
     $ref: 'dns.yaml#/components/paths/blocking'
 

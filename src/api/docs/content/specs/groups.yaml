@@ -19,11 +19,16 @@ components:
             content:
               application/json:
                 schema:
-                  allOf:
-                    - $ref: '#/components/schemas/name'
-                    - $ref: '#/components/schemas/comment'
-                    - $ref: '#/components/schemas/enabled'
-                    - $ref: '#/components/schemas/readonly'
+                  type: object
+                  properties:
+                    groups:
+                      type: array
+                      items:
+                        allOf:
+                          - $ref: '#/components/schemas/name'
+                          - $ref: '#/components/schemas/comment'
+                          - $ref: '#/components/schemas/enabled'
+                          - $ref: '#/components/schemas/readonly'
       put:
         summary: Replace group
         description: |
@@ -50,11 +55,16 @@ components:
             content:
               application/json:
                 schema:
-                  allOf:
-                    - $ref: '#/components/schemas/name'
-                    - $ref: '#/components/schemas/comment'
-                    - $ref: '#/components/schemas/enabled'
-                    - $ref: '#/components/schemas/readonly'
+                  type: object
+                  properties:
+                    groups:
+                      type: array
+                      items:
+                        allOf:
+                          - $ref: '#/components/schemas/name'
+                          - $ref: '#/components/schemas/comment'
+                          - $ref: '#/components/schemas/enabled'
+                          - $ref: '#/components/schemas/readonly'
           '400':
             description: Bad request
             content:
@@ -106,11 +116,16 @@ components:
             content:
               application/json:
                 schema:
-                  allOf:
-                    - $ref: '#/components/schemas/name'
-                    - $ref: '#/components/schemas/comment'
-                    - $ref: '#/components/schemas/enabled'
-                    - $ref: '#/components/schemas/readonly'
+                  type: object
+                  properties:
+                    groups:
+                      type: array
+                      items:
+                        allOf:
+                          - $ref: '#/components/schemas/name'
+                          - $ref: '#/components/schemas/comment'
+                          - $ref: '#/components/schemas/enabled'
+                          - $ref: '#/components/schemas/readonly'
           '400':
             description: Bad request
             content:
