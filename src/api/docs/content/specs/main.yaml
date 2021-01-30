@@ -64,3 +64,6 @@ paths:
 
   /lists:
     $ref: 'lists.yaml#/components/paths/direct'
+
+  /version:
+    $ref: 'version.yaml#/components/paths/version'

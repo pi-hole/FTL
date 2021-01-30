@@ -254,14 +254,3 @@ components:
               type: null
               description: "Additional data (if available)"
               example: null
-  parameters:
-    logs:
-      dns:
-        nextID:
-          in: query
-          description: (Optional) ID of next line to return
-          name: nextID
-          schema:
-            type: integer
-          required: false
-          example: 219

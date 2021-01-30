@@ -1,0 +1,58 @@
+openapi: 3.0.2
+components:
+  paths:
+    version:
+      get:
+        summary: Get Pi-hole version
+        description: |
+          Request versions of the individual Pi-hole components
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  oneOf:
+                    - $ref: '#/components/schemas/version'
+
+  schemas:
+    version:
+      type: object
+      properties:
+        web:
+          type: object
+          properties:
+            branch:
+              type: string
+              description: web branch
+              example: "master"
+            tag:
+              type: string
+              description: web tag
+              example: "v6.0"
+        core:
+          type: object
+          properties:
+            branch:
+              type: string
+              description: core branch
+              example: "master"
+            tag:
+              type: string
+              description: core tag
+              example: "v6.0"
+        ftl:
+          type: object
+          properties:
+            branch:
+              type: string
+              description: FTL branch
+              example: "master"
+            tag:
+              type: string
+              description: FTL tag
+              example: "v6.0"
+            date:
+              type: string
+              description: FTL build time
+              example: "2021-05-12 21:04:55 +0200"
