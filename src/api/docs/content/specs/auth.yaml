@@ -1,0 +1,267 @@
+openapi: 3.0.2
+components:
+  paths:
+    auth:
+      get:
+        summary: Request challenge for login
+        description: |
+          Request challenge for digest-access challenge-response authentication.
+
+          The API may chose to reply with a valid session if no authentation is needed for this server.
+
+          Note that challenges are only valid for a very short time, use them to immediately compute a response. There is no need to get a challenge before users have finished entering their passwords.
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  oneOf:
+                    - $ref: '#/components/schemas/session/login_okay'
+                    - $ref: '#/components/schemas/session/no_login_required'
+                    - $ref: '#/components/schemas/session/login_required'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/session/login_failed'
+      post:
+        summery: Submit response for login
+        description: |
+          Submit computed response
+        requestBody:
+          description: Callback payload
+          content: 
+            'application/json':
+              schema:
+                $ref: '#/components/schemas/response'
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  oneOf:
+                    - $ref: '#/components/schemas/session/login_okay'
+                    - $ref: '#/components/schemas/session/no_login_required'
+          '400':
+            description: Bad Request
+            content:
+              application/json:
+                schema:
+                  oneOf:
+                    - $ref: '#/components/errors/no_payload'
+                    - $ref: '#/components/errors/no_response'
+                    - $ref: '#/components/errors/response_inval'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/session/login_failed'
+      delete:
+        summary: Delete session
+        description: |
+          A logout attempt without a valid session will result in a `401 Unauthorized` error.
+
+          A session that was not created due to a login cannot be deleted (e.g., empty API password).
+        responses:
+          '200':
+            description: OK (session not deletable)
+            content:
+              application/json:
+                schema:
+                  oneOf:
+                    - $ref: '#/components/schemas/session/no_login_required'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/session/login_failed'
+          '410':
+            description: Gone
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/session/login_failed'
+
+  schemas:
+    session:
+      no_login_required:
+        type: object
+        description: No login required for this client
+        properties:
+          challenge:
+            type: string
+            description: Challenge to be used for computing response
+            example: null
+          session:
+            type: object
+            description: Session object
+            properties:
+              valid:
+                type: boolean
+                description: Valid session indicator (client is authenticated)
+                example: true
+              sid:
+                type: string
+                description: Session ID (may be `null`)
+                example: null
+              validity:
+                type: integer
+                description: Remaining lifetime of this session unless refreshed (seconds)
+                example: null
+      login_required:
+        type: object
+        description: Login required
+        properties:
+          challenge:
+            type: string
+            description: Challenge to be used for computing response
+            example: "a2926b025bcc8618c632f81cd6cf7c37ee051c08aab74b565fd5126350fcd056"
+          session:
+            type: object
+            description: Session object
+            properties:
+              valid:
+                type: boolean
+                description: Valid session indicator (client is authenticated)
+                example: false
+              sid:
+                type: string
+                description: Session ID (may be `null`)
+                example: null
+              validity:
+                type: integer
+                description: Remaining lifetime of this session unless refreshed (seconds)
+                example: null
+      login_failed:
+        type: object
+        description: Login failed for this client
+        properties:
+          challenge:
+            type: string
+            description: Challenge to be used for computing response
+            example: null
+          session:
+            type: object
+            description: Session object
+            properties:
+              valid:
+                type: boolean
+                description: Valid session indicator (client is authenticated)
+                example: false
+              sid:
+                type: string
+                description: Session ID (may be `null`)
+                example: null
+              validity:
+                type: integer
+                description: Remaining lifetime of this session unless refreshed (seconds)
+                example: null
+      login_okay:
+        type: object
+        description: Login okay for this client
+        properties:
+          challenge:
+            type: string
+            description: Challenge to be used for computing response
+            example: null
+          session:
+            type: object
+            description: Session object
+            properties:
+              valid:
+                type: boolean
+                description: Valid session indicator (client is authenticated)
+                example: true
+              sid:
+                type: string
+                description: Session ID (may be `null`)
+                example: "XwrWDU7EDg64dX0sxmURDA=="
+              validity:
+                type: integer
+                description: Remaining lifetime of this session unless refreshed (seconds)
+                example: 300
+    response:
+      type: object
+      description: Response to be sent to the API
+      properties:
+        response:
+          type: string
+          description: Response to previous challenge
+          example: abcdef
+
+
+
+  errors:
+    no_payload:
+      type: object
+      description: Bad request (no valid JSON payload)
+      properties:
+        error:
+          type: object
+          properties:
+            key:
+              type: string
+              description: "Machine-readable error type"
+              example: "bad_request"
+            message:
+              type: string
+              description: "Human-readable error message"
+              example: "No valid JSON payload found"
+            data:
+              type: null
+              description: "Additional data (if available)"
+              example: null
+    no_response:
+      type: object
+      description: Bad request (no response)
+      properties:
+        error:
+          type: object
+          properties:
+            key:
+              type: string
+              description: "Machine-readable error type"
+              example: "bad_request"
+            message:
+              type: string
+              description: "Human-readable error message"
+              example: "No response found in JSON payload"
+            data:
+              type: null
+              description: "Additional data (if available)"
+              example: null
+    response_inval:
+      type: object
+      description: Bad request (invalid response)
+      properties:
+        error:
+          type: object
+          properties:
+            key:
+              type: string
+              description: "Machine-readable error type"
+              example: "bad_request"
+            message:
+              type: string
+              description: "Human-readable error message"
+              example: "Invalid response length"
+            data:
+              type: null
+              description: "Additional data (if available)"
+              example: null
+  parameters:
+    logs:
+      dns:
+        nextID:
+          in: query
+          description: (Optional) ID of next line to return
+          name: nextID
+          schema:
+            type: integer
+          required: false
+          example: 219

@@ -260,6 +260,7 @@ static int send_api_auth_status(struct ftl_conn *api, const int user_id, const t
 			logg("API Auth status: OK (localhost does not need auth)");
 
 		cJSON *json = JSON_NEW_OBJ();
+		JSON_OBJ_ADD_NULL(json, "challenge");
 		get_session_object(api, json, user_id, now);
 		JSON_SEND_OBJECT(json);
 	}
@@ -270,6 +271,7 @@ static int send_api_auth_status(struct ftl_conn *api, const int user_id, const t
 			logg("API Auth status: OK (empty password)");
 
 		cJSON *json = JSON_NEW_OBJ();
+		JSON_OBJ_ADD_NULL(json, "challenge");
 		get_session_object(api, json, user_id, now);
 		JSON_SEND_OBJECT(json);
 	}
@@ -288,6 +290,7 @@ static int send_api_auth_status(struct ftl_conn *api, const int user_id, const t
 		}
 
 		cJSON *json = JSON_NEW_OBJ();
+		JSON_OBJ_ADD_NULL(json, "challenge");
 		get_session_object(api, json, user_id, now);
 		JSON_SEND_OBJECT(json);
 	}
@@ -301,6 +304,7 @@ static int send_api_auth_status(struct ftl_conn *api, const int user_id, const t
 
 		strncpy(pi_hole_extra_headers, FTL_DELETE_COOKIE, sizeof(pi_hole_extra_headers));
 		cJSON *json = JSON_NEW_OBJ();
+		JSON_OBJ_ADD_NULL(json, "challenge");
 		get_session_object(api, json, user_id, now);
 		JSON_SEND_OBJECT_CODE(json, 410); // 410 Gone
 	}
@@ -311,6 +315,7 @@ static int send_api_auth_status(struct ftl_conn *api, const int user_id, const t
 
 		strncpy(pi_hole_extra_headers, FTL_DELETE_COOKIE, sizeof(pi_hole_extra_headers));
 		cJSON *json = JSON_NEW_OBJ();
+		JSON_OBJ_ADD_NULL(json, "challenge");
 		get_session_object(api, json, user_id, now);
 		JSON_SEND_OBJECT_CODE(json, 401); // 401 Unauthorized
 	}
@@ -387,7 +392,7 @@ int api_auth(struct ftl_conn *api)
 	int user_id = API_AUTH_UNAUTHORIZED;
 
 	bool reponse_set = false;
-	char response[256] = { 0 };
+	char response[CHALLENGE_SIZE+1u] = { 0 };
 
 	// Did the client authenticate before and we can validate this?
 	user_id = check_client_auth(api);
@@ -400,17 +405,45 @@ int api_auth(struct ftl_conn *api)
 	if(api->method == HTTP_POST)
 	{
 		// Try to extract response from payload
-		int len = 0;
-		if((len = GET_VAR("response", response, api->payload.raw)) != CHALLENGE_SIZE)
+		if(api->payload.json == NULL)
 		{
-			const char *message = len < 0 ? "No response found" : "Invalid response length";
+			const char *message = "No valid JSON payload found";
 			if(config.debug & DEBUG_API)
 				logg("API auth error: %s", message);
 			return send_json_error(api, 400,
-			                      "bad_request",
-			                      message,
-			                      NULL);
+			                       "bad_request",
+			                       message,
+			                       NULL);
 		}
+
+		// Check if response is available
+		cJSON *json_response;
+		if((json_response = cJSON_GetObjectItemCaseSensitive(api->payload.json, "response")) == NULL)
+		{
+			const char *message = "No response found in JSON payload";
+			if(config.debug & DEBUG_API)
+				logg("API auth error: %s", message);
+			return send_json_error(api, 400,
+			                       "bad_request",
+			                       message,
+			                       NULL);
+		}
+
+		// Check response length
+		if(strlen(json_response->valuestring) != CHALLENGE_SIZE)
+		{
+			const char *message = "Invalid response length";
+			if(config.debug & DEBUG_API)
+				logg("API auth error: %s", message);
+			return send_json_error(api, 400,
+			                       "bad_request",
+			                       message,
+			                       NULL);
+		}
+
+		// Accept challenge
+		strncpy(response, json_response->valuestring, CHALLENGE_SIZE);
+		// response is already null-terminated
 		reponse_set = true;
 	}
 
