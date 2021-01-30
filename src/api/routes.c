@@ -41,11 +41,11 @@ int api_handler(struct mg_connection *conn, void *ignored)
 	/******************************** /api/dns ********************************/
 	if(startsWith("/api/dns/blocking", &api))
 	{
-		ret = api_dns_blockingstatus(&api);
+		ret = api_dns_blocking(&api);
 	}
-	else if(startsWith("/api/dns/cacheinfo", &api))
+	else if(startsWith("/api/dns/cache", &api))
 	{
-		ret = api_dns_cacheinfo(&api);
+		ret = api_dns_cache(&api);
 	}
 	/************ /api/domains, /api/groups, /api/lists, /api/clients ********/
 	else if(startsWith("/api/domains", &api))

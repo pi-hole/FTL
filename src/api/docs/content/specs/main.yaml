@@ -17,6 +17,12 @@ servers:
         default: 8080
 
 paths:
+  /dns/blocking:
+    $ref: 'dns.yaml#/components/paths/blocking'
+
+  /dns/cache:
+    $ref: 'dns.yaml#/components/paths/cache'
+
   /domains/{type}/{kind}/{domain}:
     $ref: 'domains.yaml#/components/paths/type_kind_domain'
 

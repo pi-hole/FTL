@@ -19,7 +19,6 @@
 // API router
 int api_handler(struct mg_connection *conn, void *ignored);
 
-
 // Statistic methods
 int api_stats_summary(struct ftl_conn *api);
 int api_stats_overTime_history(struct ftl_conn *api);
@@ -51,8 +50,8 @@ int get_system_obj(struct ftl_conn *api, cJSON *system);
 int api_network(struct ftl_conn *api);
 
 // DNS methods
-int api_dns_blockingstatus(struct ftl_conn *api);
-int api_dns_cacheinfo(struct ftl_conn *api);
+int api_dns_blocking(struct ftl_conn *api);
+int api_dns_cache(struct ftl_conn *api);
 
 // List methods
 int api_list(struct ftl_conn *api);

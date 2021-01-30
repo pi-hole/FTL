@@ -15,7 +15,7 @@ components:
           - `/api/clients/my_client` (client identical to `my_client`)
         responses:
           '200':
-            description: Successful operation
+            description: OK
             content:
               application/json:
                 schema:

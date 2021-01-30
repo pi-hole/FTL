@@ -15,7 +15,7 @@ components:
           - `/api/lists/my_list` (list identical to `my_list`)
         responses:
           '200':
-            description: Successful operation
+            description: OK
             content:
               application/json:
                 schema:

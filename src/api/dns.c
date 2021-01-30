@@ -31,10 +31,7 @@ static int get_blocking(struct ftl_conn *api)
 	get_blockingmode_timer(&delay, &target_status);
 	if(delay > -1)
 	{
-		cJSON *timer = JSON_NEW_OBJ();
-		JSON_OBJ_ADD_NUMBER(timer, "delay", delay);
-		JSON_OBJ_ADD_BOOL(timer, "blocking_target", target_status);
-		JSON_OBJ_ADD_ITEM(json, "timer", timer);
+		JSON_OBJ_ADD_NUMBER(json, "timer", delay);
 	}
 	else
 	{
@@ -56,24 +53,24 @@ static int set_blocking(struct ftl_conn *api)
 	if (api->payload.json == NULL) {
 		return send_json_error(api, 400,
 		                       "bad_request",
-		                       "Invalid request body data",
+		                       "Invalid request body data (no valid JSON)",
 		                       NULL);
 	}
 
 	cJSON *elem = cJSON_GetObjectItemCaseSensitive(api->payload.json, "blocking");
 	if (!cJSON_IsBool(elem)) {
 		return send_json_error(api, 400,
-		                       "bad_request",
+		                       "body_error",
 		                       "No \"blocking\" boolean in body data",
 		                       NULL);
 	}
 	const bool target_status = cJSON_IsTrue(elem);
 
-	// Get (optional) delay
-	int delay = -1;
-	elem = cJSON_GetObjectItemCaseSensitive(api->payload.json, "delay");
+	// Get (optional) timer
+	int timer = -1;
+	elem = cJSON_GetObjectItemCaseSensitive(api->payload.json, "timer");
 	if (cJSON_IsNumber(elem) && elem->valuedouble > 0.0)
-		delay = elem->valueint;
+		timer = elem->valueint;
 
 	if(target_status == get_blockingstatus())
 	{
@@ -88,7 +85,7 @@ static int set_blocking(struct ftl_conn *api)
 		set_blockingstatus(target_status);
 
 		// Start timer (-1 disables all running timers)
-		set_blockingmode_timer(delay, !target_status);
+		set_blockingmode_timer(timer, !target_status);
 	}
 
 	// Return GET property as result of POST/PUT/PATCH action
@@ -96,13 +93,13 @@ static int set_blocking(struct ftl_conn *api)
 	return get_blocking(api);
 }
 
-int api_dns_blockingstatus(struct ftl_conn *api)
+int api_dns_blocking(struct ftl_conn *api)
 {
 	if(api->method == HTTP_GET)
 	{
 		return get_blocking(api);
 	}
-	else if(api->method == HTTP_PUT)
+	else if(api->method == HTTP_POST)
 	{
 		return set_blocking(api);
 	}
@@ -113,7 +110,7 @@ int api_dns_blockingstatus(struct ftl_conn *api)
 	}
 }
 
-int api_dns_cacheinfo(struct ftl_conn *api)
+int api_dns_cache(struct ftl_conn *api)
 {
 	// Verify requesting client is allowed to access this ressource
 	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
@@ -124,8 +121,8 @@ int api_dns_cacheinfo(struct ftl_conn *api)
 	cacheinforecord cacheinfo;
 	getCacheInformation(&cacheinfo);
 	cJSON *json = JSON_NEW_OBJ();
-	JSON_OBJ_ADD_NUMBER(json, "cache_size", cacheinfo.cache_size);
-	JSON_OBJ_ADD_NUMBER(json, "cache_inserted", cacheinfo.cache_inserted);
-	JSON_OBJ_ADD_NUMBER(json, "cache_evicted", cacheinfo.cache_live_freed);
+	JSON_OBJ_ADD_NUMBER(json, "size", cacheinfo.cache_size);
+	JSON_OBJ_ADD_NUMBER(json, "inserted", cacheinfo.cache_inserted);
+	JSON_OBJ_ADD_NUMBER(json, "evicted", cacheinfo.cache_live_freed);
 	JSON_SEND_OBJECT(json);
 }

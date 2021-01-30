@@ -33,7 +33,7 @@ components:
           - `/api/domains/regex/abc.com` (allowed and denied regex domains identical to `abc.com`)
         responses:
           '200':
-            description: Successful operation
+            description: OK
             content:
               application/json:
                 schema:

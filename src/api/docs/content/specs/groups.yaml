@@ -15,7 +15,7 @@ components:
           - `/api/groups/my_group` (group identical to `my_group`)
         responses:
           '200':
-            description: Successful operation
+            description: OK
             content:
               application/json:
                 schema:
