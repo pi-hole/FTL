@@ -157,13 +157,13 @@ bool get_int_var_msg(const char *source, const char *var, int *num, const char *
 	if(!get_long_var_msg(source, var, &val, msg))
 		return false;
 
-	if(val > INT_MAX)
+	if(val > (long)INT_MAX)
 	{
 		*msg = "Specified integer too large, maximum allowed number is "  xstr(INT_MAX);
 		return false;
 	}
 
-	if(val < INT_MIN)
+	if(val < (long)INT_MIN)
 	{
 		*msg = "Specified integer too negative, minimum allowed number is "  xstr(INT_MIN);
 		return false;
@@ -185,7 +185,7 @@ bool get_uint_var_msg(const char *source, const char *var, unsigned int *num, co
 	if(!get_long_var_msg(source, var, &val, msg))
 		return false;
 
-	if(val > UINT_MAX)
+	if(val > (long)UINT_MAX)
 	{
 		*msg = "Specified integer too large, maximum allowed number is "  xstr(UINT_MAX);
 		return false;

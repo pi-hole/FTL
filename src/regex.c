@@ -627,6 +627,8 @@ int regex_test(const bool debug_mode, const bool quiet, const char *domainin, co
 		// Compile CLI regex
 		logg("%s Compiling regex filter...", cli_info());
 		regexData regex = { 0 };
+		cli_regex = &regex;
+		num_regex[REGEX_CLI] = 1;
 
 		// Compile CLI regex
 		timer_start(REGEX_TIMER);
@@ -636,7 +638,7 @@ int regex_test(const bool debug_mode, const bool quiet, const char *domainin, co
 		{
 			logg_regex_warning("CLI", message, 0, regexin);
 			free(message);
-			return EXIT_FAILURE;
+			return 1;
 		}
 		log_ctrl(false, !quiet); // Re-apply quiet option after compilation
 		logg("    Compiled regex filter in %.3f msec\n", timer_elapsed_msec(REGEX_TIMER));

@@ -604,7 +604,7 @@
 @test "Regex Test 40: Option \";querytype\" sanity checks" {
   run bash -c './pihole-FTL regex-test "f" g\;querytype=!A\;querytype=A'
   printf "%s\n" "${lines[@]}"
-  [[ $status == 2 ]]
+  [[ $status == 1 ]]
   [[ ${lines[1]} == *"Overwriting previous querytype setting" ]]
 }
 
@@ -700,7 +700,7 @@
 @test "API authorization (without password): No login required" {
   run bash -c 'curl -s 127.0.0.1:8080/api/auth'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == '{"session":{"valid":true,"sid":null,"validity":null}}' ]]
+  [[ ${lines[0]} == '{"challenge":null,"session":{"valid":true,"sid":null,"validity":null}}' ]]
 }
 
 @test "API authorization (with password): FTL challenges us" {
