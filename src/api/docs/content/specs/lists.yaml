@@ -26,7 +26,6 @@ components:
                       items:
                         allOf:
                           - $ref: '#/components/schemas/list'
-                          - $ref: '#/components/schemas/name'
                           - $ref: '#/components/schemas/comment'
                           - $ref: '#/components/schemas/groups'
                           - $ref: '#/components/schemas/enabled'
@@ -34,15 +33,10 @@ components:
       put:
         summary: Replace list
         description: |
-          Items may be updated by replacing them. `{type}`, `{kind}`, and `{item}` are required.
+          Items may be updated by replacing them. `{list}` is required.
           
-          Ensure to send all the required parameters (such as `description`) to ensure these properties are retained.
+          Ensure to send all the required parameters (such as `comment`) to ensure these properties are retained.
           The read-only fields `id` and `date_added` are preserved, `date_modified` is automatically updated on success.
-
-          You can move existing items to another list type/kind by `PUT`ting the item to the new destination by specifying the optional fields `oldtype` and `oldkind`. Example:
-          You can use `PUT allow/exact/abc.com` with `oldtype="deny", oldkind="exact"` to change `abc.com` from exact denied to exact allowed. Make sure to always specify *both* values.
-
-          When replacing a regular expression, ensure that `{item}` body is properly URI-escaped.
         requestBody:
           description: Callback payload
           content: 
@@ -65,7 +59,6 @@ components:
                       items:
                         allOf:
                           - $ref: '#/components/schemas/list'
-                          - $ref: '#/components/schemas/name'
                           - $ref: '#/components/schemas/comment'
                           - $ref: '#/components/schemas/groups'
                           - $ref: '#/components/schemas/enabled'
@@ -92,9 +85,6 @@ components:
                 schema:
                   $ref: '#/components/schemas/errors/item_missing'
     direct:
-      parameters:
-        - $ref: '#/components/parameters/type'
-        - $ref: '#/components/parameters/kind'
       post:
         summary: Add new list
         description: |
@@ -134,7 +124,6 @@ components:
                       items:
                         allOf:
                           - $ref: '#/components/schemas/list'
-                          - $ref: '#/components/schemas/name'
                           - $ref: '#/components/schemas/comment'
                           - $ref: '#/components/schemas/groups'
                           - $ref: '#/components/schemas/enabled'
