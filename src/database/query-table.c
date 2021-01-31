@@ -359,12 +359,13 @@ void DB_read_queries(void)
 			continue;
 		}
 
-		const int status = sqlite3_column_int(stmt, 3);
-		if(status < QUERY_UNKNOWN || status >= QUERY_STATUS_MAX)
+		const int status_int = sqlite3_column_int(stmt, 3);
+		if(status_int < QUERY_UNKNOWN || status_int >= QUERY_STATUS_MAX)
 		{
-			logg("FTL_db warn: STATUS should be within [%i,%i] but is %i", QUERY_UNKNOWN, QUERY_STATUS_MAX-1, status);
+			logg("FTL_db warn: STATUS should be within [%i,%i] but is %i", QUERY_UNKNOWN, QUERY_STATUS_MAX-1, status_int);
 			continue;
 		}
+		const enum query_status status = status_int;
 
 		const char * domainname = (const char *)sqlite3_column_text(stmt, 4);
 		if(domainname == NULL)
@@ -535,9 +536,11 @@ void DB_read_queries(void)
 
 			case QUERY_RETRIED: // Retried query
 			case QUERY_RETRIED_DNSSEC: // fall through
+			case QUERY_IN_PROGRESS:
 				// Nothing to be done here
 				break;
 
+			case QUERY_STATUS_MAX:
 			default:
 				logg("Warning: Found unknown status %i in long term database!", status);
 				break;
