@@ -11,10 +11,12 @@
 set(sources
         hex/index.html
         hex/index.css
+        hex/pi-hole.js
         hex/external/rapidoc-min.js
         hex/external/rapidoc-min.js.map
         hex/external/highlight.min.js
         hex/external/highlight-default.min.css
+        hex/external/geraintluff-sha256.min.js
         hex/images/logo.svg
         hex/specs/auth.yaml
         hex/specs/clients.yaml

@@ -7,7 +7,9 @@
         <!--<link href="https://fonts.googleapis.com/css?family=Open+Sans:300,600&display=swap" rel="stylesheet">-->
         <link rel="stylesheet" href="external/highlight-default.min.css">
         <script src="external/highlight.min.js"></script>
+        <script src="external/geraintluff-sha256.min.js"></script>
         <script type='text/javascript' src='external/rapidoc-min.js'></script>
+        <script type="text/javascript" src="pi-hole.js"></script>
         <link href='index.css' rel='stylesheet'>
         <link rel="apple-touch-icon" href="../../admin/img/favicons/apple-touch-icon.png" sizes="180x180">
         <link rel="icon" href="../../admin/img/favicons/favicon-32x32.png" sizes="32x32" type="image/png">
@@ -36,15 +38,25 @@
           render-style = "view"
           primary-color = "#2d87e2"
           header-color = "#2d87e2"
+          api-key-name = "sid"
+          api-key-location = "header"
+          api-key-value = "-"
+          allow-search = "false"
           schema-expand-level= "2">
-            <img slot="logo" style="padding-left: 10px;" src="images/logo.svg" width="20px" />
-            <div slot="header" style="font-weight:700; font-size:32px">Pi-hole API Documentation</div>
+            <img slot="logo" style="padding-left: 10px;" src="images/logo.svg" width="40px" />
+            <div slot='header' style="font-weight:700; font-size:32px">
+              <div>Pi-hole API Documentation</div>
+              <div>
+                <input id='loginpw' type='password' size="4">
+                <button class='btn' id='loginbtn' onclick='login()'>Login</button>
+              </div>
+            </div>
                 
             <!-- content at the bottom -->
             <div slot="footer" style="margin:0; padding:16px 36px; background-color:#2d87e2; color:#fff; text-align:center;"> 
-                <button class='btn large' onclick="document.getElementById('thedoc').setAttribute('render-style', 'view')" >Default</button>
-                <button class='btn large' onclick="document.getElementById('thedoc').setAttribute('render-style', 'read')" >Reader</button>
-                <button class='btn large' onclick="document.getElementById('thedoc').setAttribute('render-style', 'focused')" >Focused reader</button>
+                <button class='btn large' onclick="setStyle('view')" >Default</button>
+                <button class='btn large' onclick="setStyle('read')" >Reader</button>
+                <button class='btn large' onclick="setStyle('focused')" >Focused reader</button>
             </div>
         </rapi-doc>
     </body>

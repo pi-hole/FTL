@@ -24,6 +24,10 @@ static const char index_css[] = {
 #include "hex/index.css"
 };
 
+static const char pi_hole_js[] = {
+#include "hex/pi-hole.js"
+};
+
 static const char rapidoc_min_js[] = {
 #include "hex/external/rapidoc-min.js"
 };
@@ -34,6 +38,10 @@ static const char rapidoc_min_map_js[] = {
 
 static const char highlight_default_min_css[] = {
 #include "hex/external/highlight-default.min.css"
+};
+
+static const char geraintluff_sha256_min_js[] = {
+#include "hex/external/geraintluff-sha256.min.js"
 };
 
 static const char highlight_min_js[] = {
@@ -96,10 +104,12 @@ struct {
 {
     {"index.html", "text/html", index_html, sizeof(index_html)},
     {"index.css", "text/css", index_css, sizeof(index_css)},
+    {"pi-hole.js", "application/javascript", pi_hole_js, sizeof(pi_hole_js)},
     {"external/rapidoc-min.js", "application/javascript", rapidoc_min_js, sizeof(rapidoc_min_js)},
     {"external/rapidoc-min.map.js", "text/plain", rapidoc_min_map_js, sizeof(rapidoc_min_map_js)},
     {"external/highlight-default.min.css", "text/css", highlight_default_min_css, sizeof(highlight_default_min_css)},
     {"external/highlight.min.js", "application/javascript", highlight_min_js, sizeof(highlight_min_js)},
+    {"external/geraintluff-sha256.min.js", "application/javascript", geraintluff_sha256_min_js, sizeof(geraintluff_sha256_min_js)},
     {"images/logo.svg", "image/svg+xml", images_logo_svg, sizeof(images_logo_svg)},
     {"specs/auth.yaml", "text/plain", specs_auth_yaml, sizeof(specs_auth_yaml)},
     {"specs/clients.yaml", "text/plain", specs_clients_yaml, sizeof(specs_clients_yaml)},

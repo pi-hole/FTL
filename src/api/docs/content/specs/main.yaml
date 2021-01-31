@@ -82,3 +82,11 @@ paths:
 
   /version:
     $ref: 'version.yaml#/components/paths/version'
+
+components:
+  securitySchemes:
+    sid:
+      type: apiKey
+      name: sid
+      description: SID used for secured endpoints
+      in: header

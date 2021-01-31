@@ -24,3 +24,9 @@
   width: 60px;
   height: 24px
 }
+.btn.green {
+  background-color: #228b22;
+}
+.btn.red {
+  background-color: #ff4500;
+}
