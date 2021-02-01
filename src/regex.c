@@ -119,7 +119,7 @@ bool compile_regex(const char *regexin, regexData *regex, const char **message)
 				// Warn if specified more than one querytype option
 				if(regex->query_type != 0)
 				{
-					*message = "Overwriting previous querytype setting (multiple \"querytype=...\")";
+					*message = "Overwriting previous querytype setting (multiple \"querytype=...\" found)";
 					return false;
 				}
 

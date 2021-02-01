@@ -605,7 +605,7 @@
   run bash -c './pihole-FTL regex-test "f" g\;querytype=!A\;querytype=A'
   printf "%s\n" "${lines[@]}"
   [[ $status == 1 ]]
-  [[ ${lines[1]} == *"Overwriting previous querytype setting" ]]
+  [[ ${lines[1]} == *"Overwriting previous querytype setting (multiple \"querytype=...\" found)" ]]
 }
 
 # x86_64-musl is built on busybox which has a slightly different
@@ -688,7 +688,7 @@
 @test "HTTP server responds with JSON error 404 to unknown API path" {
   run bash -c 'curl -s 127.0.0.1:8080/api/undefined'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "{\"error\":{\"key\":\"not_found\",\"message\":\"Not found\",\"data\":{\"path\":\"/api/undefined\"}}}" ]]
+  [[ ${lines[0]} == "{\"error\":{\"key\":\"not_found\",\"message\":\"Not found\",\"hint\":\"/api/undefined\"}}" ]]
 }
 
 @test "HTTP server responds with normal error 404 to path outside /admin" {
@@ -700,15 +700,38 @@
 @test "API authorization (without password): No login required" {
   run bash -c 'curl -s 127.0.0.1:8080/api/auth'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == '{"challenge":null,"session":{"valid":true,"sid":null,"validity":null}}' ]]
+  [[ ${lines[0]} == '{"challenge":null,"session":{"valid":true,"sid":null,"validity":-1}}' ]]
 }
 
 @test "API authorization (with password): FTL challenges us" {
   # Password: ABC
   echo "WEBPASSWORD=183c1b634da0078fcf5b0af84bdcbb3e817708c3f22b329be84165f4bad1ae48" >> /etc/pihole/setupVars.conf
-  run bash -c 'curl -s 127.0.0.1:8080/api/auth'
+  run bash -c 'curl -s 127.0.0.1:8080/api/auth | jq ".challenge | length"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "{\"challenge\":\""* ]]
+  [[ ${lines[0]} == "64" ]]
+}
+
+@test "API authorization (with password): Incorrect response is rejected" {
+  run bash -c 'curl -s -X POST 127.0.0.1:8080/api/auth -d "{\"response\":\"0123456789012345678901234567890123456789012345678901234567890123\"} | jq .session.valid'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "false" ]]
+}
+
+@test "API authorization (with password): Correct password is accepted" {
+  computeResponse() {
+      local pwhash challenge response
+      pwhash="${1}"
+      challenge="${2}"
+      response=$(echo -n "${challenge}:${pwhash}" | sha256sum | sed 's/\s.*$//')
+      echo "${response}"
+  }
+  pwhash="183c1b634da0078fcf5b0af84bdcbb3e817708c3f22b329be84165f4bad1ae48"
+  challenge="$(curl -s -X GET 127.0.0.1:8080/api/auth | jq --raw-output .challenge)"
+  response="$(computeResponse "$pwhash" "$challenge")"
+  session="$(curl -s -X POST 127.0.0.1:8080/api/auth -d "{\"response\":\"$response\"}" http://pi.hole/api/auth)"
+  run bash -c 'jq .session.valid <<< "${session}"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "true" ]]
 }
 
 @test "LUA: Interpreter returns FTL version" {
