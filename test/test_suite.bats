@@ -712,7 +712,7 @@
 }
 
 @test "API authorization (with password): Incorrect response is rejected" {
-  run bash -c 'curl -s -X POST 127.0.0.1:8080/api/auth -d "{\"response\":\"0123456789012345678901234567890123456789012345678901234567890123\"} | jq .session.valid'
+  run bash -c 'curl -s -X POST 127.0.0.1:8080/api/auth -d "{\"response\":\"0123456789012345678901234567890123456789012345678901234567890123\"}" | jq .session.valid'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "false" ]]
 }
@@ -728,7 +728,7 @@
   pwhash="183c1b634da0078fcf5b0af84bdcbb3e817708c3f22b329be84165f4bad1ae48"
   challenge="$(curl -s -X GET 127.0.0.1:8080/api/auth | jq --raw-output .challenge)"
   response="$(computeResponse "$pwhash" "$challenge")"
-  session="$(curl -s -X POST 127.0.0.1:8080/api/auth -d "{\"response\":\"$response\"}" http://pi.hole/api/auth)"
+  session="$(curl -s -X POST 127.0.0.1:8080/api/auth -d "{\"response\":\"$response\"}")"
   run bash -c 'jq .session.valid <<< "${session}"'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "true" ]]

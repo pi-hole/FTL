@@ -1,13 +1,6 @@
 name: API validation
 
-on:
-  push:
-    branches:
-      - devel
-      - master
-  pull_request:
-    branches:
-      - "**"
+on: [push]
 
 env:
   CI: true
