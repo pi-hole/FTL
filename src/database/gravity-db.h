@@ -25,9 +25,7 @@ typedef struct {
 	const char *domain;
 	const char *address;
 	const char *type;
-	const char *oldtype;
 	const char *kind;
-	const char *oldkind;
 	const char *comment;
 	const char *group_ids;
 	const char *client;

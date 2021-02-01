@@ -320,13 +320,10 @@ int api_history_queries(struct ftl_conn *api)
 				{
 					// Requested upstream has not been found, we directly
 					// tell the user here as there is no data to be returned
-					cJSON *json = JSON_NEW_OBJ();
-					JSON_OBJ_REF_STR(json, "upstream", forwarddest);
-
 					return send_json_error(api, 400,
 					                       "bad_request",
 					                       "Requested upstream not found",
-					                       json);
+					                       forwarddest);
 				}
 			}
 		}
@@ -357,13 +354,10 @@ int api_history_queries(struct ftl_conn *api)
 			{
 				// Requested domain has not been found, we directly
 				// tell the user here as there is no data to be returned
-				cJSON *json = JSON_NEW_OBJ();
-				JSON_OBJ_REF_STR(json, "domain", domainname);
-
 				return send_json_error(api, 400,
 				                       "bad_request",
 				                       "Requested domain not found",
-				                       json);
+				                       domainname);
 			}
 		}
 
@@ -401,13 +395,10 @@ int api_history_queries(struct ftl_conn *api)
 			{
 				// Requested client has not been found, we directly
 				// tell the user here as there is no data to be returned
-				cJSON *json = JSON_NEW_OBJ();
-				JSON_OBJ_REF_STR(json, "client", clientname);
-
 				return send_json_error(api, 400,
 				                       "bad_request",
 				                       "Requested client not found",
-				                       json);
+				                       clientname);
 			}
 		}
 
@@ -423,19 +414,15 @@ int api_history_queries(struct ftl_conn *api)
 			}
 			else
 			{
+				if(msg == NULL)
+					msg = "Cursor larger than total number of queries";
 				// Cursors larger than the current known number
 				// of queries are invalid
-				cJSON *json = JSON_NEW_OBJ();
-				JSON_OBJ_ADD_NUMBER(json, "cursor", unum);
-				JSON_OBJ_ADD_NUMBER(json, "maxval", counters->queries);
-				JSON_OBJ_REF_STR(json, "message", msg);
-
 				return send_json_error(api, 400,
 				                       "bad_request",
 				                       "Requested cursor is invalid",
-				                       json);
+				                       msg);
 			}
-			
 		}
 	}
 
@@ -565,7 +552,7 @@ int api_history_queries(struct ftl_conn *api)
 		unsigned long delay = query->response;
 		// Check if received (delay should be smaller than 30min)
 		if(delay > 1.8e7)
-			delay = 0;
+			delay = -1;
 
 		// Get domain blocked during deep CNAME inspection, if applicable
 		const char *CNAME_domain = NULL;

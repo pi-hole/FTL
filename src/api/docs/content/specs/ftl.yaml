@@ -4,6 +4,9 @@ components:
     client:
       get:
         summary: Get information about requesting client
+        tags:
+          - "FTL information"
+        operationId: "get_client"
         description: |
           The property `timer` may contain additional details concerning a temporary en-/disabling.
           It is `null` when no timer is active (the current status is permanent).
@@ -22,6 +25,9 @@ components:
       dns:
         get:
           summary: Get DNS log content
+          tags:
+            - "FTL information"
+          operationId: "get_dns_log"
           description: |
             This API hook returns content from the log of the embedded DNS resolver `dnsmasq`.
 
@@ -46,11 +52,13 @@ components:
               content:
                 application/json:
                   schema:
-                    oneOf:
-                    - $ref: '#/components/errors/unauthorized'
+                    $ref: 'common.yaml#/components/errors/unauthorized'
     sysinfo:
       get:
         summary: Get info about various system parameters
+        tags:
+          - "FTL information"
+        operationId: "get_sysinfo"
         description: |
           This API hook returns a collection of various system infos.
         responses:
@@ -67,11 +75,13 @@ components:
             content:
               application/json:
                 schema:
-                  oneOf:
-                  - $ref: '#/components/errors/unauthorized'
+                  $ref: 'common.yaml#/components/errors/unauthorized'
     dbinfo:
       get:
         summary: Get info about long-term database
+        tags:
+          - "FTL information"
+        operationId: "get_dbinfo"
         description: |
           This API hook returns a collection of various long-term database properties infos.
         responses:
@@ -87,8 +97,7 @@ components:
             content:
               application/json:
                 schema:
-                  oneOf:
-                  - $ref: '#/components/errors/unauthorized'
+                  $ref: 'common.yaml#/components/errors/unauthorized'
   schemas:
     client:
       remote_addr:
@@ -154,13 +163,13 @@ components:
                     readonly: true
                     description: Log line content
               example:
-                - timestamp: "1611729969"
+                - timestamp: 1611729969
                   message: "started, version pi-hole-2.84 cachesize 10000"
-                - timestamp: "1611729969"
+                - timestamp: 1611729969
                   message: "reading /etc/resolv.conf"
-                - timestamp: "1611729969"
+                - timestamp: 1611729969
                   message: "read /etc/hosts - 7 addresses"
-                - timestamp: "1611729969"
+                - timestamp: 1611729969
                   message: "query[A] connectivity-check.ubuntu.com from 127.0.0.1"
         nextID:
           type: object
@@ -256,6 +265,7 @@ components:
                   name:
                     type: string
                     readonly: true
+                    nullable: true
                     description: Description of temperature sensor (if available, `null` otherwise)
                   path:
                     type: string
@@ -266,8 +276,8 @@ components:
                     readonly: true
                     description: Sensor value
               example:
-                - name: "case 1"
-                  path: "hwmon0/temp0"
+                - name: null
+                  path: "hwmon0/temp1"
                   value: 30.4
             dns:
               $ref: 'dns.yaml#/components/schemas/blocking'
@@ -387,27 +397,6 @@ components:
           description: Version of embedded SQLite3 engine
           example: "3.34.0"
 
-
-  errors:
-    unauthorized:
-      type: object
-      description: Authentication required
-      properties:
-        error:
-          type: object
-          properties:
-            key:
-              type: string
-              description: "Machine-readable error type"
-              example: "unauthorized"
-            message:
-              type: string
-              description: "Human-readable error message"
-              example: "Unauthorized"
-            data:
-              type: null
-              description: "Additional data (if available)"
-              example: null
   parameters:
     logs:
       dns:

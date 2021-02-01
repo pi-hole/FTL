@@ -72,25 +72,16 @@ int send_json_unauthorized(struct ftl_conn *api)
 
 int send_json_error(struct ftl_conn *api, const int code,
                     const char *key, const char* message,
-                    cJSON *data)
+                    const char *hint)
 {
 	cJSON *json = JSON_NEW_OBJ();
+
 	cJSON *error = JSON_NEW_OBJ();
 	JSON_OBJ_REF_STR(error, "key", key);
 	JSON_OBJ_REF_STR(error, "message", message);
+	JSON_OBJ_REF_STR(error, "hint", hint);
 
-	// Add data if available
-	if(data == NULL)
-	{
-		JSON_OBJ_ADD_NULL(error, "data");
-	}
-	else
-	{
-		JSON_OBJ_ADD_ITEM(error, "data", data);
-	}
-		
 	JSON_OBJ_ADD_ITEM(json, "error", error);
-
 	JSON_SEND_OBJECT_CODE(json, code);
 }
 

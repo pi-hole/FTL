@@ -1,0 +1,39 @@
+openapi: 3.0.2
+components:
+  errors:
+    bad_request:
+      type: object
+      description: Bad request
+      properties:
+        error:
+          type: object
+          properties:
+            key:
+              type: string
+              description: "Machine-readable error type"
+            message:
+              type: string
+              description: "Human-readable error message"
+            hint:
+              type: string
+              description: "Further details (may be `null`)"
+              nullable: true
+    unauthorized:
+      type: object
+      description: Authentication required
+      properties:
+        error:
+          type: object
+          properties:
+            key:
+              type: string
+              description: "Machine-readable error type"
+              example: "unauthorized"
+            message:
+              type: string
+              description: "Human-readable error message"
+              example: "Unauthorized"
+            hint:
+              type: 'null'
+              description: "No additional data available"
+              example: null

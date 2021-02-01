@@ -33,13 +33,10 @@ int api_stats_database_overTime_history(struct ftl_conn *api)
 	// Check if we received the required information
 	if(until == 0)
 	{
-		cJSON *json = JSON_NEW_OBJ();
-		JSON_OBJ_ADD_NUMBER(json, "from", from);
-		JSON_OBJ_ADD_NUMBER(json, "until", until);
 		return send_json_error(api, 400,
 		                       "bad_request",
 		                       "You need to specify \"until\" in the request.",
-		                       json);
+		                       NULL);
 	}
 
 	// Unlock shared memory (DNS resolver can continue to work while we're preforming database queries)
@@ -75,13 +72,10 @@ int api_stats_database_overTime_history(struct ftl_conn *api)
 		// Relock shared memory
 		lock_shm();
 
-		cJSON *json = JSON_NEW_OBJ();
-		JSON_OBJ_ADD_NUMBER(json, "from", from);
-		JSON_OBJ_ADD_NUMBER(json, "until", until);
 		return send_json_error(api, 500,
 		                       "internal_error",
 		                       "Failed to bind interval",
-		                       json);
+		                       NULL);
 	}
 
 	// Bind from to prepared statement
@@ -96,13 +90,10 @@ int api_stats_database_overTime_history(struct ftl_conn *api)
 		// Relock shared memory
 		lock_shm();
 
-		cJSON *json = JSON_NEW_OBJ();
-		JSON_OBJ_ADD_NUMBER(json, "from", from);
-		JSON_OBJ_ADD_NUMBER(json, "until", until);
 		return send_json_error(api, 500,
 		                       "internal_error",
 		                       "Failed to bind from",
-		                       json);
+		                       NULL);
 	}
 
 	// Bind until to prepared statement
@@ -117,13 +108,10 @@ int api_stats_database_overTime_history(struct ftl_conn *api)
 		// Relock shared memory
 		lock_shm();
 
-		cJSON *json = JSON_NEW_OBJ();
-		JSON_OBJ_ADD_NUMBER(json, "from", from);
-		JSON_OBJ_ADD_NUMBER(json, "until", until);
 		return send_json_error(api, 500,
 		                       "internal_error",
 		                       "Failed to bind until",
-		                       json);
+		                       NULL);
 	}
 
 	// Loop over and accumulate results
@@ -166,7 +154,7 @@ int api_stats_database_overTime_history(struct ftl_conn *api)
 		case QUERY_EXTERNAL_BLOCKED_NXRA:
 			blocked += count;
 			break;
-		
+
 		default:
 			break;
 		}
@@ -202,13 +190,10 @@ int api_stats_database_top_items(bool blocked, bool domains, struct ftl_conn *ap
 	// Check if we received the required information
 	if(from == 0 || until == 0)
 	{
-		cJSON *json = JSON_NEW_OBJ();
-		JSON_OBJ_ADD_NUMBER(json, "from", from);
-		JSON_OBJ_ADD_NUMBER(json, "until", until);
 		return send_json_error(api, 400,
 		                       "bad_request",
 		                       "You need to specify both \"from\" and \"until\" in the request.",
-		                       json);
+		                       NULL);
 	}
 
 	// Unlock shared memory (DNS resolver can continue to work while we're preforming database queries)
@@ -257,8 +242,8 @@ int api_stats_database_top_items(bool blocked, bool domains, struct ftl_conn *ap
 			           "LIMIT :show";
 		}
 	}
-	
-	
+
+
 	// Prepare SQLite statement
 	sqlite3_stmt *stmt;
 	int rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &stmt, NULL);
@@ -271,14 +256,10 @@ int api_stats_database_top_items(bool blocked, bool domains, struct ftl_conn *ap
 		// Relock shared memory
 		lock_shm();
 
-		cJSON *json = JSON_NEW_OBJ();
-		JSON_OBJ_ADD_NUMBER(json, "from", from);
-		JSON_OBJ_ADD_NUMBER(json, "until", until);
-		JSON_OBJ_REF_STR(json, "querystr", querystr);
 		return send_json_error(api, 500,
 		                       "internal_error",
 		                       "Failed to prepare query string",
-		                       json);
+		                       querystr);
 	}
 
 	// Bind from to prepared statement
@@ -293,13 +274,10 @@ int api_stats_database_top_items(bool blocked, bool domains, struct ftl_conn *ap
 		// Relock shared memory
 		lock_shm();
 
-		cJSON *json = JSON_NEW_OBJ();
-		JSON_OBJ_ADD_NUMBER(json, "from", from);
-		JSON_OBJ_ADD_NUMBER(json, "until", until);
 		return send_json_error(api, 500,
 		                       "internal_error",
 		                       "Failed to bind from",
-		                       json);
+		                       NULL);
 	}
 
 	// Bind until to prepared statement
@@ -314,13 +292,10 @@ int api_stats_database_top_items(bool blocked, bool domains, struct ftl_conn *ap
 		// Relock shared memory
 		lock_shm();
 
-		cJSON *json = JSON_NEW_OBJ();
-		JSON_OBJ_ADD_NUMBER(json, "from", from);
-		JSON_OBJ_ADD_NUMBER(json, "until", until);
 		return send_json_error(api, 500,
 		                       "internal_error",
 		                       "Failed to bind until",
-		                       json);
+		                       NULL);
 	}
 
 	// Bind show to prepared statement
@@ -335,13 +310,10 @@ int api_stats_database_top_items(bool blocked, bool domains, struct ftl_conn *ap
 		// Relock shared memory
 		lock_shm();
 
-		cJSON *json = JSON_NEW_OBJ();
-		JSON_OBJ_ADD_NUMBER(json, "from", from);
-		JSON_OBJ_ADD_NUMBER(json, "until", until);
 		return send_json_error(api, 500,
 		                       "internal_error",
 		                       "Failed to bind show",
-		                       json);
+		                       NULL);
 	}
 
 	// Loop over and accumulate results
@@ -388,13 +360,10 @@ int api_stats_database_summary(struct ftl_conn *api)
 	// Check if we received the required information
 	if(from == 0 || until == 0)
 	{
-		cJSON *json = JSON_NEW_OBJ();
-		JSON_OBJ_ADD_NUMBER(json, "from", from);
-		JSON_OBJ_ADD_NUMBER(json, "until", until);
 		return send_json_error(api, 400,
 		                       "bad_request",
 		                       "You need to specify both \"from\" and \"until\" in the request.",
-		                       json);
+		                       NULL);
 	}
 
 	// Unlock shared memory (DNS resolver can continue to work while we're preforming database queries)
@@ -429,13 +398,10 @@ int api_stats_database_summary(struct ftl_conn *api)
 		// Relock shared memory
 		lock_shm();
 
-		cJSON *json = JSON_NEW_OBJ();
-		JSON_OBJ_ADD_NUMBER(json, "from", from);
-		JSON_OBJ_ADD_NUMBER(json, "until", until);
 		return send_json_error(api, 500,
 		                       "internal_error",
 		                       "Internal server error",
-		                       json);
+		                       NULL);
 	}
 
 	// Loop over and accumulate results
@@ -469,13 +435,10 @@ int api_stats_database_overTime_clients(struct ftl_conn *api)
 	// Check if we received the required information
 	if(from == 0 || until == 0)
 	{
-		cJSON *json = JSON_NEW_OBJ();
-		JSON_OBJ_ADD_NUMBER(json, "from", from);
-		JSON_OBJ_ADD_NUMBER(json, "until", until);
 		return send_json_error(api, 400,
 		                       "bad_request",
 		                       "You need to specify both \"from\" and \"until\" in the request.",
-		                       json);
+		                       NULL);
 	}
 
 	// Unlock shared memory (DNS resolver can continue to work while we're preforming database queries)
@@ -498,13 +461,10 @@ int api_stats_database_overTime_clients(struct ftl_conn *api)
 		// Relock shared memory
 		lock_shm();
 
-		cJSON *json = JSON_NEW_OBJ();
-		JSON_OBJ_ADD_NUMBER(json, "from", from);
-		JSON_OBJ_ADD_NUMBER(json, "until", until);
 		return send_json_error(api, 500,
 		                       "internal_error",
 		                       "Failed to prepare outer statement",
-		                       json);
+		                       NULL);
 	}
 
 	// Bind from to prepared statement
@@ -519,13 +479,10 @@ int api_stats_database_overTime_clients(struct ftl_conn *api)
 		// Relock shared memory
 		lock_shm();
 
-		cJSON *json = JSON_NEW_OBJ();
-		JSON_OBJ_ADD_NUMBER(json, "from", from);
-		JSON_OBJ_ADD_NUMBER(json, "until", until);
 		return send_json_error(api, 500,
 		                       "internal_error",
 		                       "Failed to bind from",
-		                       json);
+		                       NULL);
 	}
 
 	// Bind until to prepared statement
@@ -540,13 +497,10 @@ int api_stats_database_overTime_clients(struct ftl_conn *api)
 		// Relock shared memory
 		lock_shm();
 
-		cJSON *json = JSON_NEW_OBJ();
-		JSON_OBJ_ADD_NUMBER(json, "from", from);
-		JSON_OBJ_ADD_NUMBER(json, "until", until);
 		return send_json_error(api, 500,
 		                       "internal_error",
 		                       "Failed to bind until",
-		                       json);
+		                       NULL);
 	}
 
 	// Loop over clients and accumulate results
@@ -577,13 +531,10 @@ int api_stats_database_overTime_clients(struct ftl_conn *api)
 		// Relock shared memory
 		lock_shm();
 
-		cJSON *json = JSON_NEW_OBJ();
-		JSON_OBJ_ADD_NUMBER(json, "from", from);
-		JSON_OBJ_ADD_NUMBER(json, "until", until);
 		return send_json_error(api, 500,
-					"internal_error",
-					"Failed to prepare inner statement",
-					json);
+		                       "internal_error",
+		                       "Failed to prepare inner statement",
+		                       NULL);
 	}
 
 	// Bind interval to prepared statement
@@ -598,13 +549,10 @@ int api_stats_database_overTime_clients(struct ftl_conn *api)
 		// Relock shared memory
 		lock_shm();
 
-		cJSON *json = JSON_NEW_OBJ();
-		JSON_OBJ_ADD_NUMBER(json, "from", from);
-		JSON_OBJ_ADD_NUMBER(json, "until", until);
 		return send_json_error(api, 500,
-					"internal_error",
-					"Failed to bind interval",
-					json);
+		                       "internal_error",
+		                       "Failed to bind interval",
+		                       NULL);
 	}
 
 	// Bind from to prepared statement
@@ -619,13 +567,10 @@ int api_stats_database_overTime_clients(struct ftl_conn *api)
 		// Relock shared memory
 		lock_shm();
 
-		cJSON *json = JSON_NEW_OBJ();
-		JSON_OBJ_ADD_NUMBER(json, "from", from);
-		JSON_OBJ_ADD_NUMBER(json, "until", until);
 		return send_json_error(api, 500,
-					"internal_error",
-					"Failed to bind from",
-					json);
+		                       "internal_error",
+		                       "Failed to bind from",
+		                       NULL);
 	}
 
 	// Bind until to prepared statement
@@ -640,13 +585,10 @@ int api_stats_database_overTime_clients(struct ftl_conn *api)
 		// Relock shared memory
 		lock_shm();
 
-		cJSON *json = JSON_NEW_OBJ();
-		JSON_OBJ_ADD_NUMBER(json, "from", from);
-		JSON_OBJ_ADD_NUMBER(json, "until", until);
 		return send_json_error(api, 500,
-					"internal_error",
-					"Failed to bind until",
-					json);
+		                       "internal_error",
+		                       "Failed to bind until",
+		                       NULL);
 	}
 
 	cJSON *over_time = JSON_NEW_ARRAY();
@@ -686,10 +628,8 @@ int api_stats_database_overTime_clients(struct ftl_conn *api)
 		unsigned int idx = 0;
 		for(; idx < num_clients; idx++)
 		{
-			const char *array_client = cJSON_GetStringValue(
-			                              cJSON_GetObjectItem(
-			                                 cJSON_GetArrayItem(clients, idx), "ip"));
-			if(array_client != NULL && 
+			const char *array_client = cJSON_GetStringValue(cJSON_GetObjectItem(cJSON_GetArrayItem(clients, idx), "ip"));
+			if(array_client != NULL &&
 			   strcmp(client, array_client) == 0)
 			{
 				break;
@@ -730,13 +670,10 @@ int api_stats_database_query_types(struct ftl_conn *api)
 	// Check if we received the required information
 	if(from == 0 || until == 0)
 	{
-		cJSON *json = JSON_NEW_OBJ();
-		JSON_OBJ_ADD_NUMBER(json, "from", from);
-		JSON_OBJ_ADD_NUMBER(json, "until", until);
 		return send_json_error(api, 400,
 		                       "bad_request",
 		                       "You need to specify both \"from\" and \"until\" in the request.",
-		                       json);
+		                       NULL);
 	}
 
 	// Unlock shared memory (DNS resolver can continue to work while we're preforming database queries)
@@ -784,13 +721,10 @@ int api_stats_database_upstreams(struct ftl_conn *api)
 	// Check if we received the required information
 	if(from == 0 || until == 0)
 	{
-		cJSON *json = JSON_NEW_OBJ();
-		JSON_OBJ_ADD_NUMBER(json, "from", from);
-		JSON_OBJ_ADD_NUMBER(json, "until", until);
 		return send_json_error(api, 400,
 		                       "bad_request",
 		                       "You need to specify both \"from\" and \"until\" in the request.",
-		                       json);
+		                       NULL);
 	}
 
 	// Unlock shared memory (DNS resolver can continue to work while we're preforming database queries)
@@ -829,13 +763,10 @@ int api_stats_database_upstreams(struct ftl_conn *api)
 		// Relock shared memory
 		lock_shm();
 
-		cJSON *json = JSON_NEW_OBJ();
-		JSON_OBJ_ADD_NUMBER(json, "from", from);
-		JSON_OBJ_ADD_NUMBER(json, "until", until);
 		return send_json_error(api, 500,
 		                       "internal_error",
 		                       "Failed to prepare statement",
-		                       json);
+		                       NULL);
 	}
 
 	// Bind from to prepared statement
@@ -850,13 +781,10 @@ int api_stats_database_upstreams(struct ftl_conn *api)
 		// Relock shared memory
 		lock_shm();
 
-		cJSON *json = JSON_NEW_OBJ();
-		JSON_OBJ_ADD_NUMBER(json, "from", from);
-		JSON_OBJ_ADD_NUMBER(json, "until", until);
 		return send_json_error(api, 500,
 		                       "internal_error",
 		                       "Failed to bind from",
-		                       json);
+		                       NULL);
 	}
 
 	// Bind until to prepared statement
@@ -871,13 +799,10 @@ int api_stats_database_upstreams(struct ftl_conn *api)
 		// Relock shared memory
 		lock_shm();
 
-		cJSON *json = JSON_NEW_OBJ();
-		JSON_OBJ_ADD_NUMBER(json, "from", from);
-		JSON_OBJ_ADD_NUMBER(json, "until", until);
 		return send_json_error(api, 500,
 		                       "internal_error",
 		                       "Failed to bind until",
-		                       json);
+		                       NULL);
 	}
 
 	// Loop over clients and accumulate results

@@ -4,6 +4,9 @@ components:
     history:
       get:
         summary: Get activity graph data
+        tags:
+          - Metrics
+        operationId: "get_activity_metrics"
         description: |
           Request data needed to generate the \"Query over last 24 hours\" graph
         responses:
@@ -16,6 +19,9 @@ components:
     clients:
       get:
         summary: Get per-client activity graph data
+        tags:
+          - Metrics
+        operationId: "get_client_metrics"
         description: |
           Request data needed to generate the \"Client activity over last 24 hours\" graph
         responses:
@@ -25,9 +31,18 @@ components:
               application/json:
                 schema:
                   $ref: '#/components/schemas/client_history'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/errors/unauthorized'
     queries:
       get:
         summary: Get queries
+        tags:
+          - Metrics
+        operationId: "get_queries"
         description: |
           Request query details.
           Query parameters may be used to limit the number of results.
@@ -43,7 +58,7 @@ components:
           - Only show queries sent to a specific upstream destination (may also be `cache` or `blocklist`): Use parameter `upstream`
           - Only show queries for specific domains: Use parameter `domain`
           - Only show queries for specific clients: Use parameter `client`
-          
+
           By default, the returned queries always start at the most recent query.
           This can be changed by supplying the parameter `cursor`.
           Each result of this API callback contains a `cursor` pointing the beginning of the next `n` queries chunk.
@@ -100,6 +115,12 @@ components:
               application/json:
                 schema:
                   $ref: '#/components/schemas/queries'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/errors/unauthorized'
 
   schemas:
     total_history:
@@ -167,6 +188,7 @@ components:
             properties:
               name:
                 type: string
+                nullable: true
                 description: Client name (may be `null`)
               ip:
                 type: string
@@ -192,46 +214,62 @@ components:
                 description: Timestamp
               type:
                 type: string
-                description: Type
+                description: Query type
               domain:
                 type: string
                 description: Queried domain
               CNAME_domain:
                 type: string
                 description: Domain blocked during deep CNAME inspection (may be `null`)
+                nullable: true
               status:
                 type: string
-                description: Status (may be `null`)
+                description: Query status (may be `null`)
+                nullable: true
               client:
                 type: string
                 description: Requesting client (may be an IP address or a hostname)
               dnssec:
                 type: string
                 description: DNSSEC status (may be `null`)
+                nullable: true
               reply:
                 type: string
                 description: Reply type (may be `null`)
+                nullable: true
               response_time:
                 type: integer
-                description: Time until the response was sent back to the client (may be `null`)
+                description: Time until the response was sent back to the client (`-1` if N/A)
               regex_idx:
                 type: integer
                 description: ID of blocking regex (`-1` if N/A)
               upstream:
                 type: string
-                description: IP/name + port of upstream server (may be `null`)
+                description: IP or name + port of upstream server (may be `null`)
+                nullable: true
           example:
-            - timestamp: 1581907871
-              type: "AAAA"
-              domain: "incoming.telemetry.mozilla.org"
+            - timestamp: 1581907991
+              type: "A"
+              domain: "community.stoplight.io"
               CNAME_domain: null
               status: "FORWARDED"
-              client: "127.0.0.3"
-              dnssec: "UNKNOWN"
-              reply: "UNKNOWN"
-              response_time: 0
+              client: "desktop.lan"
+              dnssec: "INSECURE"
+              reply: "IP"
+              response_time: 19
               regex_idx: -1
-              upstream: "127.0.0.1#5353"
+              upstream: "localhost#5353"
+            - timestamp: 1581907871
+              type: "AAAA"
+              domain: "api.github.com"
+              CNAME_domain: null
+              status: "FORWARDED"
+              client: "localhost"
+              dnssec: "UNKNOWN"
+              reply: "IP"
+              response_time: 7
+              regex_idx: -1
+              upstream: "localhost#5353"
         cursor:
           type: integer
           description: Cursor pointing to the head of the next data block (may be `-1` if no more data is available)

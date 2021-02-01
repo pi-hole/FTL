@@ -2,6 +2,12 @@ openapi: 3.0.2
 info:
   title: Pi-hole API
   version: "6.0"
+  contact:
+    name: Pi-hole API Support
+    url: https://discourse.pi-hole.net
+  license:
+    name: European Union Public Licence (EUPL)
+    url: https://joinup.ec.europa.eu/community/eupl/og_page/eupl
   description: >
     The Pi-hole API is organized around [REST](http://en.wikipedia.org/wiki/Representational_State_Transfer).
     Our API has predictable resource-oriented URLs, accepts and returns reliable UTF-8 [JavaScript Object Notation (JSON)-encoded](http://www.json.org/) data for all API responses, and uses standard HTTP response codes and verbs.
@@ -9,8 +15,8 @@ info:
     Most (but not all) endpoints require authentication.
     API endpoints requiring authentication will fail with code `401 Unauthorized` when used outside a valid session.
 servers:
-  - url: http://pi.hole:8080/api/
-  - url: 'http://{url}:{port}/{path}/'
+  - url: http://pi.hole:8080/api
+  - url: 'http://{url}:{port}/{path}'
     variables:
       url:
         description: URL or address of your Pi-hole
@@ -21,6 +27,24 @@ servers:
       path:
         description: Path where your Pi-hole's API is hosted
         default: api
+
+tags:
+  - name: "Authentication"
+    description: Methods used to authentaticate with the API
+  - name: "Metrics"
+    description: Methods used to get usage data from your Pi-hole
+  - name: "DNS control"
+    description: Methods used to control the behavior of your Pi-hole
+  - name: "Group management"
+    description: Methods used to manage groups on your Pi-hole
+  - name: "Domain management"
+    description: Methods used to manage domains on your Pi-hole
+  - name: "Client management"
+    description: Methods used to manage clients on your Pi-hole
+  - name: "List management"
+    description: Methods used to manage lists on your Pi-hole
+  - name: "FTL information"
+    description: Methods used to gather advanced data from your Pi-hole
 
 paths:
   /auth:
@@ -85,7 +109,7 @@ paths:
 
 components:
   securitySchemes:
-    sid:
+    sidHeader:
       type: apiKey
       name: sid
       description: SID used for secured endpoints

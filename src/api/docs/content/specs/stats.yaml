@@ -4,6 +4,9 @@ components:
     summary:
       get:
         summary: Get overview of Pi-hole activity
+        tags:
+          - Metrics
+        operationId: "get_metrics_summary"
         description: |
           Request various query, system, and FTL properties
         responses:

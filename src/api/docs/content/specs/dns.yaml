@@ -5,6 +5,11 @@ components:
       summary: Modify blocking
       get:
         summary: Get current blocking status
+        tags:
+          - DNS control
+        operationId: "get_blocking"
+        security:
+          - sidHeader: []
         description: |
           The property `timer` may contain additional details concerning a temporary en-/disabling.
           It is `null` when no timer is active (the current status is permanent).
@@ -19,6 +24,9 @@ components:
                     - $ref: '#/components/schemas/timer'
       post:
         summary: Change current blocking status
+        tags:
+          - DNS control
+        operationId: "set_blocking"
         description: |
           Change the current blocking mode by setting `blocking` to the desired value.
           The optional `timer` object may used to set a timer. Once this timer elapsed, the opposite blocking mode is automatically set.
@@ -28,7 +36,7 @@ components:
           You can terminate a possibly running timer by setting `timer` to `null` (the set mode becomes permanent).
         requestBody:
           description: Callback payload
-          content: 
+          content:
             'application/json':
               schema:
                 allOf:
@@ -56,11 +64,13 @@ components:
             content:
               application/json:
                 schema:
-                  oneOf:
-                  - $ref: '#/components/schemas/errors/unauthorized'
+                  $ref: 'common.yaml#/components/errors/unauthorized'
     cache:
       get:
         summary: Get cache info
+        tags:
+          - Metrics
+        operationId: "get_cacheinfo"
         description: |
           This API hook returns live information about the DNS cache usage.
         responses:
@@ -78,8 +88,7 @@ components:
             content:
               application/json:
                 schema:
-                  oneOf:
-                  - $ref: '#/components/schemas/errors/unauthorized'
+                  $ref: 'common.yaml#/components/errors/unauthorized'
   schemas:
     blocking:
       type: object
@@ -96,7 +105,7 @@ components:
           type: integer
           description: Remaining seconds until blocking mode is automatically changed
           required: false
-          x-nullable: true
+          nullable: true
           default: null
           example: 15
     cache_size:
@@ -155,25 +164,6 @@ components:
                 type: string
                 description: "Human-readable error message"
                 example: "Invalid request body data (no valid JSON)"
-              data:
-                type: null
-                description: "Additional data (if available)"
-                example: null
-      unauthorized:
-        type: object
-        description: Authentication required
-        properties:
-          error:
-            type: object
-            properties:
-              key:
-                type: string
-                description: "Machine-readable error type"
-                example: "unauthorized"
-              message:
-                type: string
-                description: "Human-readable error message"
-                example: "Unauthorized"
               data:
                 type: null
                 description: "Additional data (if available)"

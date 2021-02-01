@@ -33,6 +33,7 @@ static regexData *black_regex = NULL;
 static regexData   *cli_regex = NULL;
 static unsigned int num_regex[REGEX_MAX] = { 0 };
 unsigned int regex_change = 0;
+static char regex_msg[REGEX_MSG_LEN] = { 0 };
 
 static inline regexData *get_regex_ptr(const enum regex_type regexid)
 {
@@ -95,7 +96,7 @@ unsigned int __attribute__((pure)) get_num_regex(const enum regex_type regexid)
 #define FTL_REGEX_SEP ";"
 /* Compile regular expressions into data structures that can be used with
    regexec() to match against a string */
-bool compile_regex(const char *regexin, regexData *regex, char **message)
+bool compile_regex(const char *regexin, regexData *regex, const char **message)
 {
 	// Extract possible Pi-hole extensions
 	char rgxbuf[strlen(regexin) + 1u];
@@ -118,12 +119,12 @@ bool compile_regex(const char *regexin, regexData *regex, char **message)
 				// Warn if specified more than one querytype option
 				if(regex->query_type != 0)
 				{
-					*message = strdup("Overwriting previous querytype setting");
+					*message = "Overwriting previous querytype setting (multiple \"querytype=...\")";
 					return false;
 				}
 
 				// Test input string against all implemented query types
-				queriesData q = {};
+				queriesData q = { 0 };
 				for(enum query_types qtype = TYPE_A; qtype < TYPE_MAX; qtype++)
 				{
 					// Check for querytype
@@ -146,7 +147,7 @@ bool compile_regex(const char *regexin, regexData *regex, char **message)
 				// Nothing found
 				if(regex->query_type == 0)
 				{
-					*message = strdup("Unknown querytype");
+					*message = "Unknown querytype";
 					return false;
 				}
 
@@ -190,9 +191,8 @@ bool compile_regex(const char *regexin, regexData *regex, char **message)
 	if(errcode != 0)
 	{
 		// Get error string and log it
-		const size_t length = regerror(errcode, &regex->regex, NULL, 0);
-		*message = calloc(length, sizeof(char));
-		(void) regerror (errcode, &regex->regex, *message, length);
+		(void) regerror (errcode, &regex->regex, regex_msg, sizeof(regex_msg));
+		*message = regex_msg;
 		regex->available = false;
 		return false;
 	}
@@ -515,12 +515,11 @@ static void read_regex_table(const enum regex_type regexid)
 
 		regexData *this_regex = get_regex_ptr(regexid);
 		const int index = num_regex[regexid]++;
-		char *message = NULL;
+		const char *message = NULL;
 		if(!compile_regex(domain, &this_regex[index], &message) && message != NULL)
 		{
 			logg_regex_warning(regextype[regexid], message,
 			                   regex->database_id, domain);
-			free(message);
 		}
 
 		regex[num_regex[regexid]-1].database_id = rowid;
@@ -633,11 +632,10 @@ int regex_test(const bool debug_mode, const bool quiet, const char *domainin, co
 		// Compile CLI regex
 		timer_start(REGEX_TIMER);
 		log_ctrl(false, true); // Temporarily re-enable terminal output for error logging
-		char *message = NULL;
+		const char *message = NULL;
 		if(!compile_regex(regexin, &regex, &message) && message != NULL)
 		{
 			logg_regex_warning("CLI", message, 0, regexin);
-			free(message);
 			return 1;
 		}
 		log_ctrl(false, !quiet); // Re-apply quiet option after compilation

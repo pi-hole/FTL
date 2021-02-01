@@ -4,6 +4,9 @@ components:
     version:
       get:
         summary: Get Pi-hole version
+        tags:
+          - "FTL information"
+        operationId: "get_version"
         description: |
           Request versions of the individual Pi-hole components
         responses:
@@ -12,8 +15,7 @@ components:
             content:
               application/json:
                 schema:
-                  oneOf:
-                    - $ref: '#/components/schemas/version'
+                  $ref: '#/components/schemas/version'
 
   schemas:
     version:

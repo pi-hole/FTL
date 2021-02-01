@@ -215,7 +215,7 @@ static int get_session_object(struct ftl_conn *api, cJSON *json, const int user_
 		cJSON *session = JSON_NEW_OBJ();
 		JSON_OBJ_ADD_BOOL(session, "valid", true);
 		JSON_OBJ_ADD_NULL(session, "sid");
-		JSON_OBJ_ADD_NULL(session, "validity");
+		JSON_OBJ_ADD_NUMBER(session, "validity", -1);
 		JSON_OBJ_ADD_ITEM(json, "session", session);
 		return 0;
 	}
@@ -235,7 +235,7 @@ static int get_session_object(struct ftl_conn *api, cJSON *json, const int user_
 	cJSON *session = JSON_NEW_OBJ();
 	JSON_OBJ_ADD_BOOL(session, "valid", false);
 	JSON_OBJ_ADD_NULL(session, "sid");
-	JSON_OBJ_ADD_NULL(session, "validity");
+	JSON_OBJ_ADD_NUMBER(session, "validity", -1);
 	JSON_OBJ_ADD_ITEM(json, "session", session);
 	return 0;
 }

@@ -25,22 +25,10 @@ static int api_list_read(struct ftl_conn *api,
 	const char *sql_msg = NULL;
 	if(!gravityDB_readTable(listtype, item, &sql_msg))
 	{
-		cJSON *json = JSON_NEW_OBJ();
-
-		// Add item (may be NULL = not available)
-		JSON_OBJ_REF_STR(json, "item", item);
-
-		// Add SQL message (may be NULL = not available)
-		if (sql_msg != NULL) {
-			JSON_OBJ_REF_STR(json, "sql_msg", sql_msg);
-		} else {
-			JSON_OBJ_ADD_NULL(json, "sql_msg");
-		}
-
 		return send_json_error(api, 400, // 400 Bad Request
 		                       "database_error",
 		                       "Could not read domains from database table",
-		                       json);
+		                       sql_msg);
 	}
 
 	tablerow table;
@@ -69,7 +57,7 @@ static int api_list_read(struct ftl_conn *api,
 				if(isValidIPv4(table.client) || isValidIPv6(table.client))
 					name = getNameFromIP(table.client);
 			}
-			
+
 			JSON_OBJ_COPY_STR(row, "client", table.client);
 			JSON_OBJ_COPY_STR(row, "name", name);
 			JSON_OBJ_COPY_STR(row, "comment", table.comment);
@@ -140,22 +128,10 @@ static int api_list_read(struct ftl_conn *api,
 	else
 	{
 		JSON_DELETE(rows);
-		cJSON *json = JSON_NEW_OBJ();
-
-		// Add item (may be NULL = not available)
-		JSON_OBJ_REF_STR(json, "item", item);
-
-		// Add SQL message (may be NULL = not available)
-		if (sql_msg != NULL) {
-			JSON_OBJ_REF_STR(json, "sql_msg", sql_msg);
-		} else {
-			JSON_OBJ_ADD_NULL(json, "sql_msg");
-		}
-
 		return send_json_error(api, 400, // 400 Bad Request
 		                       "database_error",
 		                       "Could not read from gravity database",
-		                       json);
+		                       sql_msg);
 	}
 }
 
@@ -192,13 +168,10 @@ static int api_list_write(struct ftl_conn *api,
 				}
 				else
 				{
-					cJSON *uri = JSON_NEW_OBJ();
-					JSON_OBJ_REF_STR(uri, "path", api->action_path);
-					JSON_OBJ_REF_STR(uri, "item", item);
 					return send_json_error(api, 400,
 					                       "uri_error",
 					                       "Invalid request: No item \"domain\" in payload",
-					                       uri);
+					                       NULL);
 				}
 				break;
 
@@ -208,13 +181,10 @@ static int api_list_write(struct ftl_conn *api,
 					row.item = json_name->valuestring;
 				else
 				{
-					cJSON *uri = JSON_NEW_OBJ();
-					JSON_OBJ_REF_STR(uri, "path", api->action_path);
-					JSON_OBJ_REF_STR(uri, "item", item);
 					return send_json_error(api, 400,
 					                       "uri_error",
 					                       "Invalid request: No item \"name\" in payload",
-					                       uri);
+					                       NULL);
 				}
 				break;
 
@@ -224,13 +194,10 @@ static int api_list_write(struct ftl_conn *api,
 					row.item = json_client->valuestring;
 				else
 				{
-					cJSON *uri = JSON_NEW_OBJ();
-					JSON_OBJ_REF_STR(uri, "path", api->action_path);
-					JSON_OBJ_REF_STR(uri, "item", item);
 					return send_json_error(api, 400,
 					                       "uri_error",
 					                       "Invalid request: No item \"client\" in payload",
-					                       uri);
+					                       NULL);
 				}
 				break;
 
@@ -240,16 +207,13 @@ static int api_list_write(struct ftl_conn *api,
 					row.item = json_address->valuestring;
 				else
 				{
-					cJSON *uri = JSON_NEW_OBJ();
-					JSON_OBJ_REF_STR(uri, "path", api->action_path);
-					JSON_OBJ_REF_STR(uri, "item", item);
 					return send_json_error(api, 400,
 					                       "uri_error",
 					                       "Invalid request: No item \"address\" in payload",
-					                       uri);
+					                       NULL);
 				}
 				break;
-			
+
 			// Aggregate types are not handled by this routine
 			case GRAVITY_DOMAINLIST_ALL_ALL:
 			case GRAVITY_DOMAINLIST_ALL_EXACT:
@@ -264,7 +228,6 @@ static int api_list_write(struct ftl_conn *api,
 		// PUT = Use URI item
 		row.item = item;
 	}
-	
 
 	cJSON *json_comment = cJSON_GetObjectItemCaseSensitive(api->payload.json, "comment");
 	if(cJSON_IsString(json_comment) && strlen(json_comment->valuestring) > 0)
@@ -272,17 +235,17 @@ static int api_list_write(struct ftl_conn *api,
 	else
 		row.comment = NULL; // Default value
 
-	cJSON *json_oldtype = cJSON_GetObjectItemCaseSensitive(api->payload.json, "oldtype");
-	if(cJSON_IsString(json_oldtype) && strlen(json_oldtype->valuestring) > 0)
-		row.oldtype = json_oldtype->valuestring;
+	cJSON *json_type = cJSON_GetObjectItemCaseSensitive(api->payload.json, "type");
+	if(cJSON_IsString(json_type) && strlen(json_type->valuestring) > 0)
+		row.type = json_type->valuestring;
 	else
-		row.oldtype = NULL; // Default value
+		row.type = NULL; // Default value
 
-	cJSON *json_oldkind = cJSON_GetObjectItemCaseSensitive(api->payload.json, "oldkind");
-	if(cJSON_IsString(json_oldkind) && strlen(json_oldkind->valuestring) > 0)
-		row.oldkind = json_oldkind->valuestring;
+	cJSON *json_kind = cJSON_GetObjectItemCaseSensitive(api->payload.json, "kind");
+	if(cJSON_IsString(json_kind) && strlen(json_kind->valuestring) > 0)
+		row.kind = json_kind->valuestring;
 	else
-		row.oldkind = NULL; // Default value
+		row.kind = NULL; // Default value
 
 	cJSON *json_enabled = cJSON_GetObjectItemCaseSensitive(api->payload.json, "enabled");
 	if (cJSON_IsBool(json_enabled))
@@ -291,12 +254,12 @@ static int api_list_write(struct ftl_conn *api,
 		row.enabled = true; // Default value
 
 	bool okay = true;
-	char *regex_msg = NULL;
+	const char *regex_msg = NULL;
 	if(listtype == GRAVITY_DOMAINLIST_ALLOW_REGEX || listtype == GRAVITY_DOMAINLIST_DENY_REGEX)
 	{
 		// Test validity of this regex
 		regexData regex = { 0 };
-		okay = compile_regex(row.domain, &regex, &regex_msg);
+		okay = compile_regex(row.item, &regex, &regex_msg);
 	}
 
 	// Try to add item to table
@@ -322,38 +285,22 @@ static int api_list_write(struct ftl_conn *api,
 	if(!okay)
 	{
 		// Error adding item, prepare error object
-		cJSON *json = JSON_NEW_OBJ();
-		JSON_OBJ_REF_STR(json, "item", row.item);
-		JSON_OBJ_ADD_BOOL(json, "enabled", row.enabled);
-		if(row.comment != NULL)
-			JSON_OBJ_REF_STR(json, "comment", row.comment);
-		if(row.name != NULL)
-			JSON_OBJ_REF_STR(json, "name", row.name);
-		if(row.oldtype != NULL)
-			JSON_OBJ_REF_STR(json, "oldtype", row.oldtype);
-
-		// Add SQL message (may be NULL = not available)
 		const char *errortype = "database_error";
 		const char *errormsg  = "Could not add to gravity database";
-		JSON_OBJ_REF_STR(json, "sql_msg", sql_msg);
-
-		// Add regex error (may not be available)
-		JSON_OBJ_COPY_STR(json, "regex_msg", regex_msg);
-		if (regex_msg != NULL) {
-			free(regex_msg);
-			regex_msg = NULL;
+		const char *hint = sql_msg;
+		if (regex_msg != NULL)
+		{
 			// Change error type and message
 			errortype = "regex_error";
 			errormsg = "Regex validation failed";
-		} else {
-			JSON_OBJ_ADD_NULL(json, "regex_msg");
+			hint = regex_msg;
 		}
 
 		// Send error reply
 		return send_json_error(api, 400, // 400 Bad Request
 		                       errortype,
 		                       errormsg,
-		                       json);
+		                       hint);
 	}
 	// else: everything is okay
 
@@ -371,7 +318,6 @@ static int api_list_remove(struct ftl_conn *api,
                            const enum gravity_list_type listtype,
                            const char *item)
 {
-	cJSON *json = JSON_NEW_OBJ(); 
 	const char *sql_msg = NULL;
 	if(gravityDB_delFromTable(listtype, item, &sql_msg))
 	{
@@ -379,21 +325,16 @@ static int api_list_remove(struct ftl_conn *api,
 		set_event(RELOAD_GRAVITY);
 
 		// Send empty reply with code 204 No Content
+		cJSON *json = JSON_NEW_OBJ();
 		JSON_SEND_OBJECT_CODE(json, 204);
 	}
 	else
 	{
-		// Add item
-		JSON_OBJ_REF_STR(json, "item", item);
-
-		// Add SQL message (may be NULL = not available)
-		JSON_OBJ_REF_STR(json, "sql_msg", sql_msg);
-
 		// Send error reply
 		return send_json_error(api, 400,
 		                       "database_error",
 		                       "Could not remove domain from database table",
-		                       json);
+		                       sql_msg);
 	}
 }
 
@@ -465,12 +406,10 @@ int api_list(struct ftl_conn *api)
 	}
 	else
 	{
-			cJSON *json = JSON_NEW_OBJ();
-			JSON_OBJ_REF_STR(json, "uri", api->request->local_uri);
 			return send_json_error(api, 400,
 			                       "bad_request",
 			                       "Invalid request: Specified endpoint not available",
-			                       json);
+			                       api->request->local_uri);
 	}
 
 	if(api->method == HTTP_GET)
@@ -483,14 +422,10 @@ int api_list(struct ftl_conn *api)
 		// Add/update item identified by URI
 		if(api->item != NULL && strlen(api->item) == 0)
 		{
-			cJSON *uri = JSON_NEW_OBJ();
-			if(api->action_path != NULL)
-			JSON_OBJ_REF_STR(uri, "path", api->action_path);
-			JSON_OBJ_REF_STR(uri, "item", api->item);
 			return send_json_error(api, 400,
 			                       "uri_error",
 			                       "Invalid request: Specify item in URI",
-			                       uri);
+			                       NULL);
 		}
 		else
 			return api_list_write(api, listtype, api->item, payload);
@@ -500,13 +435,10 @@ int api_list(struct ftl_conn *api)
 		// Add item to list identified by payload
 		if(api->item != NULL && strlen(api->item) != 0)
 		{
-			cJSON *uri = JSON_NEW_OBJ();
-			JSON_OBJ_REF_STR(uri, "path", api->action_path);
-			JSON_OBJ_REF_STR(uri, "item", api->item);
 			return send_json_error(api, 400,
 			                       "uri_error",
 			                       "Invalid request: Specify item in payload, not as URI parameter",
-			                       uri);
+			                       NULL);
 		}
 		else
 			return api_list_write(api, listtype, api->item, payload);
@@ -519,13 +451,10 @@ int api_list(struct ftl_conn *api)
 	else if(!can_modify)
 	{
 		// This list type cannot be modified (e.g., ALL_ALL)
-		cJSON *uri = JSON_NEW_OBJ();
-		JSON_OBJ_REF_STR(uri, "path", api->action_path);
-		JSON_OBJ_REF_STR(uri, "item", api->item);
 		return send_json_error(api, 400,
 		                       "uri_error",
 		                       "Invalid request: Specify list to modify more precisely",
-		                       uri);
+		                       NULL);
 	}
 	else
 	{

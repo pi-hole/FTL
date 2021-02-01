@@ -7,6 +7,9 @@ components:
         - $ref: '#/components/parameters/list'
       get:
         summary: Get lists
+        tags:
+          - "List management"
+        operationId: "get_lists"
         description: |
           `{list}` is optional. Specifying it will result in only the requested list being returned.
 
@@ -19,60 +22,58 @@ components:
             content:
               application/json:
                 schema:
-                  type: object
-                  properties:
-                    lists:
-                      type: array
-                      items:
-                        allOf:
-                          - $ref: '#/components/schemas/list'
-                          - $ref: '#/components/schemas/comment'
-                          - $ref: '#/components/schemas/groups'
-                          - $ref: '#/components/schemas/enabled'
-                          - $ref: '#/components/schemas/readonly'
+                  $ref: '#/components/schemas/lists/get'
+                examples:
+                  - $ref: '#/components/examples/lists'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/errors/unauthorized'
       put:
         summary: Replace list
+        tags:
+          - "List management"
+        operationId: "replace_lists"
         description: |
           Items may be updated by replacing them. `{list}` is required.
-          
+
           Ensure to send all the required parameters (such as `comment`) to ensure these properties are retained.
           The read-only fields `id` and `date_added` are preserved, `date_modified` is automatically updated on success.
         requestBody:
           description: Callback payload
-          content: 
-            'application/json':
+          content:
+            application/json:
               schema:
-                allOf:
-                  - $ref: '#/components/schemas/comment'
-                  - $ref: '#/components/schemas/groups'
-                  - $ref: '#/components/schemas/enabled'
+                $ref: '#/components/schemas/lists/put'
         responses:
           '201':
             description: Created item
             content:
               application/json:
                 schema:
-                  type: object
-                  properties:
-                    lists:
-                      type: array
-                      items:
-                        allOf:
-                          - $ref: '#/components/schemas/list'
-                          - $ref: '#/components/schemas/comment'
-                          - $ref: '#/components/schemas/groups'
-                          - $ref: '#/components/schemas/enabled'
-                          - $ref: '#/components/schemas/readonly'
+                  $ref: '#/components/schemas/lists/get' # identical to GET
           '400':
             description: Bad request
             content:
               application/json:
                 schema:
-                  oneOf:
-                  - $ref: '#/components/schemas/errors/no_payload'
-                  - $ref: '#/components/schemas/errors/item_missing'
+                  $ref: 'common.yaml#/components/errors/bad_request'
+                examples:
+                  - $ref: '#/components/examples/errors/uri_error/item_missing'
+                  - $ref: '#/components/examples/errors/bad_request/no_payload'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/errors/unauthorized'
       delete:
         summary: Delete list
+        tags:
+          - "List management"
+        operationId: "delete_lists"
         description: |
           *Note:* There will be no content on success.
         responses:
@@ -83,10 +84,21 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: '#/components/schemas/errors/item_missing'
+                  $ref: 'common.yaml#/components/errors/bad_request'
+                examples:
+                  - $ref: '#/components/examples/errors/uri_error/item_missing'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/errors/unauthorized'
     direct:
       post:
         summary: Add new list
+        tags:
+          - "List management"
+        operationId: "add_list"
         description: |
           Creates a new list in the `lists` object. The `{list}` itself is specified in the request body (POST JSON).
 
@@ -99,44 +111,59 @@ components:
           On success, a new ressource is created at `/lists/{list}`.
 
           The `database_error` with message `UNIQUE contraint failed` error indicates that this list already exists.
-        parameters:
-          - $ref: '#/components/schemas/list'
         requestBody:
           description: Callback payload
-          content: 
+          content:
             application/json:
               schema:
-                allOf:
-                  - $ref: '#/components/schemas/list'
-                  - $ref: '#/components/schemas/comment'
-                  - $ref: '#/components/schemas/groups'
-                  - $ref: '#/components/schemas/enabled'
+                $ref: '#/components/schemas/lists/post'
         responses:
           '201':
             description: Created item
             content:
               application/json:
                 schema:
-                  type: object
-                  properties:
-                    lists:
-                      type: array
-                      items:
-                        allOf:
-                          - $ref: '#/components/schemas/list'
-                          - $ref: '#/components/schemas/comment'
-                          - $ref: '#/components/schemas/groups'
-                          - $ref: '#/components/schemas/enabled'
-                          - $ref: '#/components/schemas/readonly'
+                  $ref: '#/components/schemas/lists/get'
           '400':
             description: Bad request
             content:
               application/json:
                 schema:
-                  oneOf:
-                  - $ref: '#/components/schemas/errors/no_payload'
-                  - $ref: '#/components/schemas/errors/duplicate'
+                  $ref: 'common.yaml#/components/errors/bad_request'
+                examples:
+                  - $ref: '#/components/examples/errors/bad_request/no_payload'
+                  - $ref: '#/components/examples/errors/database_error/duplicate'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/errors/unauthorized'
   schemas:
+    lists:
+      get:
+        type: object
+        properties:
+          lists:
+            type: array
+            items:
+              allOf:
+                - $ref: '#/components/schemas/list'
+                - $ref: '#/components/schemas/comment'
+                - $ref: '#/components/schemas/groups'
+                - $ref: '#/components/schemas/enabled'
+                - $ref: '#/components/schemas/readonly'
+      put:
+        allOf:
+          - $ref: '#/components/schemas/comment'
+          - $ref: '#/components/schemas/groups'
+          - $ref: '#/components/schemas/enabled'
+      post:
+        allOf:
+          - $ref: '#/components/schemas/list'
+          - $ref: '#/components/schemas/comment'
+          - $ref: '#/components/schemas/groups'
+          - $ref: '#/components/schemas/enabled'
     list:
       type: object
       properties:
@@ -152,7 +179,7 @@ components:
           description: User-provided free-text comment for this list (may be `null` if not specified)
           type: string
           required: false
-          x-nullable: true
+          nullable: true
           default: null
           example: Some comment for this list
     groups:
@@ -193,86 +220,52 @@ components:
           type: integer
           readOnly: true
           example: 1611239099
+  examples:
+    lists:
+      name: Example lists
+      value:
+        lists:
+          - address: "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
+            comment: "Migrated from /etc/pihole/adlists.list"
+            groups:
+              - 0
+            enabled: true
+            id: 1
+            date_added: 1594670974
+            date_modified: 1595279300
+          - address: "https://mirror1.malwaredomains.com/files/justdomains"
+            comment: "Migrated from /etc/pihole/adlists.list"
+            groups:
+              - 0
+            enabled: true
+            id: 2
+            date_added: 1594670974
+            date_modified: 1594670974
     errors:
-      item_missing:
-        type: object
-        description: Item to be modified is missing
-        properties:
-          error:
-            type: object
-            properties:
-              key:
-                type: string
-                description: "Machine-readable error type"
-                example: "uri_error"
-              message:
-                type: string
-                description: "Human-readable error message"
-                example: "Invalid request: Specify item in URI"
-              data:
-                type: object
-                properties:
-                  action:
-                    type: string
-                    description: Action as received by the API
-                    example: "/api/lists"
-                  item:
-                    type: string
-                    description: Item as received by the API
-                    example: ""
-      no_payload:
-        type: object
-        description: No JSON payload found
-        properties:
-          error:
-            type: object
-            properties:
-              key:
-                type: string
-                description: "Machine-readable error type"
-                example: "bad_request"
-              message:
-                type: string
-                description: "Human-readable error message"
-                example: "Invalid request body data (no valid JSON)"
-              data:
-                type: null
-                description: "Additional data (if available)"
-                example: null
-      duplicate:
-        type: object
-        description: Database error
-        properties:
-          error:
-            type: object
-            properties:
-              key:
-                type: string
-                description: "Machine-readable error type"
-                example: "database_error"
-              message:
-                type: string
-                description: "Human-readable error message"
-                example: "Could not add to gravity database"
-              data:
-                type: object
-                properties:
-                  item:
-                    type: string
-                    description: Item as received by the API
-                    example: "https://hosts-file.net/ad_servers.txt"
-                  enabled:
-                    type: boolean
-                    description: Enabled property as received by the API
-                    example: true
-                  comment:
-                    type: string
-                    description: Comment property as received by the API
-                    example: Some comment for this list
-                  sql_msg:
-                    type: string
-                    description: Error returned by the database engine
-                    example: "UNIQUE constraint failed: listlist.list"
+      uri_error:
+        item_missing:
+          summary: List to be modified is missing
+          value:
+            error:
+              key: "uri_error"
+              message: "Invalid request: Specify item in URI"
+              hint: null
+      bad_request:
+        no_payload:
+          summary: No JSON payload found
+          value:
+            error:
+              key: "bad_request"
+              message: "Invalid request body data (no valid JSON)"
+              hint: null
+      database_error:
+        duplicate:
+          summary: Database error
+          value:
+            error:
+              key: "database_error"
+              message: "Could not add to gravity database"
+              hint: "UNIQUE constraint failed: listlist.list"
   parameters:
     list:
       in: path

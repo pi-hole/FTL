@@ -60,6 +60,10 @@ static const char specs_clients_yaml[] = {
 #include "hex/specs/clients.yaml"
 };
 
+static const char specs_common_yaml[] = {
+#include "hex/specs/common.yaml"
+};
+
 static const char specs_dns_yaml[] = {
 #include "hex/specs/dns.yaml"
 };
@@ -113,6 +117,7 @@ struct {
     {"images/logo.svg", "image/svg+xml", images_logo_svg, sizeof(images_logo_svg)},
     {"specs/auth.yaml", "text/plain", specs_auth_yaml, sizeof(specs_auth_yaml)},
     {"specs/clients.yaml", "text/plain", specs_clients_yaml, sizeof(specs_clients_yaml)},
+    {"specs/common.yaml", "text/plain", specs_common_yaml, sizeof(specs_common_yaml)},
     {"specs/dns.yaml", "text/plain", specs_dns_yaml, sizeof(specs_dns_yaml)},
     {"specs/domains.yaml", "text/plain", specs_domains_yaml, sizeof(specs_domains_yaml)},
     {"specs/ftl.yaml", "text/plain", specs_ftl_yaml, sizeof(specs_ftl_yaml)},

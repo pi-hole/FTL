@@ -42,7 +42,7 @@ int send_http_internal_error(struct ftl_conn *api);
 int send_json_unauthorized(struct ftl_conn *api);
 int send_json_error(struct ftl_conn *api, const int code,
                     const char *key, const char* message,
-                    cJSON *data);
+                    const char *hint);
 int send_json_success(struct ftl_conn *api);
 
 void http_reread_index_html(void);

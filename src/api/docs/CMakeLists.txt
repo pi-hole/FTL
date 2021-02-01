@@ -20,6 +20,7 @@ set(sources
         hex/images/logo.svg
         hex/specs/auth.yaml
         hex/specs/clients.yaml
+        hex/specs/common.yaml
         hex/specs/dns.yaml
         hex/specs/domains.yaml
         hex/specs/ftl.yaml

@@ -1,0 +1,26 @@
+{
+  "name": "pihole-ftl",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Source of the Pi-hole FTL daemon",
+  "main": "",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pi-hole/FTL.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "EUPL-1.2",
+  "bugs": {
+    "url": "https://github.com/pi-hole/FTL/issues"
+  },
+  "scripts": {
+    "set-threshold": "echo '{\"warnings\": 0}' > .thresholdrc",
+    "delete-threshold": "rm .thresholdrc",
+    "openapi-validator": "lint-openapi -p -c test/ibm-openapi-validator.rc src/api/docs/content/specs/main.yaml 2> /dev/null",
+    "test": "npm run set-threshold && npm run openapi-validator && npm run delete-threshold"
+  },
+  "devDependencies": {
+    "ibm-openapi-validator": "^0.34.1"
+  }
+}

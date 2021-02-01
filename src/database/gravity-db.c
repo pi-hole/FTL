@@ -1477,8 +1477,8 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 	}
 
 	// Bind item to prepared statement (if requested)
-	int idx = sqlite3_bind_parameter_index(stmt, ":item");
-	if(idx > 0 && (rc = sqlite3_bind_text(stmt, idx, row->item, -1, SQLITE_STATIC)) != SQLITE_OK)
+	const int item_idx = sqlite3_bind_parameter_index(stmt, ":item");
+	if(item_idx > 0 && (rc = sqlite3_bind_text(stmt, item_idx, row->item, -1, SQLITE_STATIC)) != SQLITE_OK)
 	{
 		*message = sqlite3_errmsg(gravity_db);
 		logg("gravityDB_addToTable(%d, %s): Failed to bind item (error %d) - %s",
@@ -1489,8 +1489,8 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 	}
 
 	// Bind type to prepared statement (if requested)
-	idx = sqlite3_bind_parameter_index(stmt, ":type");
-	if(idx > 0 && (rc = sqlite3_bind_int(stmt, idx, row->type_int)) != SQLITE_OK)
+	const int type_idx = sqlite3_bind_parameter_index(stmt, ":type");
+	if(type_idx > 0 && (rc = sqlite3_bind_int(stmt, type_idx, row->type_int)) != SQLITE_OK)
 	{
 		*message = sqlite3_errmsg(gravity_db);
 		logg("gravityDB_addToTable(%d, %s): Failed to bind type (error %d) - %s",
@@ -1501,26 +1501,26 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 	}
 
 	// Bind oldtype to prepared statement (if requested)
-	idx = sqlite3_bind_parameter_index(stmt, ":oldtype");
-	if(idx > 0)
+	const int oldtype_idx = sqlite3_bind_parameter_index(stmt, ":oldtype");
+	int oldtype = -1;
+	if(oldtype_idx > 0)
 	{
-		int oldtype = -1;
-		if(row->oldtype == NULL && row->oldkind == NULL)
+		if(row->type == NULL && row->kind == NULL)
 		{
 			// User didn't specify oldtype/oldkind, just replace without moving
 			oldtype = row->type_int;
 		}
-		else if(row->oldtype == NULL)
+		else if(row->type == NULL)
 		{
 			// Error, one is not meaningful without the other
-			*message = "Field oldtype missing from request";
-			logg("gravityDB_addToTable(%d, %s): Oldtype missing",
+			*message = "Field type missing from request";
+			logg("gravityDB_addToTable(%d, %s): type missing",
 			     row->type_int, row->domain);
 			sqlite3_reset(stmt);
 			sqlite3_finalize(stmt);
 			return false;
 		}
-		else if(row->oldkind == NULL)
+		else if(row->kind == NULL)
 		{
 			// Error, one is not meaningful without the other
 			*message = "Field oldkind missing from request";
@@ -1532,23 +1532,23 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 		}
 		else
 		{
-			if(strcasecmp("allow", row->oldtype) == 0 &&
-			strcasecmp("exact", row->oldkind) == 0)
+			if(strcasecmp("allow", row->type) == 0 &&
+			strcasecmp("exact", row->kind) == 0)
 				oldtype = 0;
-			else if(strcasecmp("deny", row->oldtype) == 0 &&
-					strcasecmp("exact", row->oldkind) == 0)
+			else if(strcasecmp("deny", row->type) == 0 &&
+					strcasecmp("exact", row->kind) == 0)
 				oldtype = 1;
-			else if(strcasecmp("allow", row->oldtype) == 0 &&
-					strcasecmp("regex", row->oldkind) == 0)
+			else if(strcasecmp("allow", row->type) == 0 &&
+					strcasecmp("regex", row->kind) == 0)
 				oldtype = 2;
-			else if(strcasecmp("deny", row->oldtype) == 0 &&
-					strcasecmp("regex", row->oldkind) == 0)
+			else if(strcasecmp("deny", row->type) == 0 &&
+					strcasecmp("regex", row->kind) == 0)
 				oldtype = 3;
 			else
 			{
-				*message = "Cannot interpret oldtype/oldkind";
-				logg("gravityDB_addToTable(%d, %s): Failed to identify oldtype=\"%s\", oldkind=\"%s\"",
-				     row->type_int, row->domain, row->oldtype, row->oldkind);
+				*message = "Cannot interpret type/kind";
+				logg("gravityDB_addToTable(%d, %s): Failed to identify type=\"%s\", kind=\"%s\"",
+				     row->type_int, row->domain, row->type, row->kind);
 				sqlite3_reset(stmt);
 				sqlite3_finalize(stmt);
 				return false;
@@ -1556,7 +1556,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 		}
 
 		// Bind oldtype to database statement
-		if((rc = sqlite3_bind_int(stmt, idx, oldtype)) != SQLITE_OK)
+		if((rc = sqlite3_bind_int(stmt, oldtype_idx, oldtype)) != SQLITE_OK)
 		{
 			*message = sqlite3_errmsg(gravity_db);
 			logg("gravityDB_addToTable(%d, %s): Failed to bind oldtype (error %d) - %s",
@@ -1568,8 +1568,8 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 	}
 
 	// Bind enabled boolean to prepared statement (if requested)
-	idx = sqlite3_bind_parameter_index(stmt, ":enabled");
-	if(idx > 0 && (rc = sqlite3_bind_int(stmt, idx, row->enabled ? 1 : 0)) != SQLITE_OK)
+	const int enabled_idx = sqlite3_bind_parameter_index(stmt, ":enabled");
+	if(enabled_idx > 0 && (rc = sqlite3_bind_int(stmt, enabled_idx, row->enabled ? 1 : 0)) != SQLITE_OK)
 	{
 		*message = sqlite3_errmsg(gravity_db);
 		logg("gravityDB_addToTable(%d, %s): Failed to bind enabled (error %d) - %s",
@@ -1580,8 +1580,8 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 	}
 
 	// Bind comment string to prepared statement (if requested)
-	idx = sqlite3_bind_parameter_index(stmt, ":comment");
-	if(idx > 0 && (rc = sqlite3_bind_text(stmt, idx, row->comment, -1, SQLITE_STATIC)) != SQLITE_OK)
+	const int comment_idx = sqlite3_bind_parameter_index(stmt, ":comment");
+	if(comment_idx > 0 && (rc = sqlite3_bind_text(stmt, comment_idx, row->comment, -1, SQLITE_STATIC)) != SQLITE_OK)
 	{
 		*message = sqlite3_errmsg(gravity_db);
 		logg("gravityDB_addToTable(%d, %s): Failed to bind comment (error %d) - %s",
@@ -1606,6 +1606,22 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 	// Finalize statement and close database handle
 	sqlite3_reset(stmt);
 	sqlite3_finalize(stmt);
+
+	// Debug output
+	if(config.debug & DEBUG_API)
+	{
+		logg("SQL: %s", querystr);
+		if(item_idx > 0)
+			logg("     :item = \"%s\"", row->item);
+		if(type_idx > 0)
+			logg("     :type = \"%i\"", row->type_int);
+		if(oldtype_idx > 0)
+			logg("     :oldtype = \"%i\"", oldtype);
+		if(comment_idx > 0)
+			logg("     :comment = \"%s\"", row->comment);
+		if(enabled_idx > 0)
+			logg("     :enabled = \"%s\"", row->enabled ? "true" : "false");
+	}
 
 	return okay;
 }
@@ -1639,7 +1655,7 @@ bool gravityDB_delFromTable(const enum gravity_list_type listtype, const char* a
 		case GRAVITY_CLIENTS:
 			// No type required for these tables
 			break;
-		
+
 		// Aggregate types cannot be handled by this routine
 		case GRAVITY_DOMAINLIST_ALLOW_ALL:
 		case GRAVITY_DOMAINLIST_DENY_ALL:
@@ -1928,19 +1944,24 @@ bool gravityDB_readTableGetRow(tablerow *row, const char **message)
 				switch(sqlite3_column_int(read_stmt, c))
 				{
 					case 0:
-						row->type = "allow/exact";
+						row->type = "allow";
+						row->kind = "exact";
 						break;
 					case 1:
-						row->type = "deny/exact";
+						row->type = "deny";
+						row->kind = "exact";
 						break;
 					case 2:
-						row->type = "allow/regex";
+						row->type = "allow";
+						row->kind = "regex";
 						break;
 					case 3:
-						row->type = "deny/regex";
+						row->type = "deny";
+						row->kind = "regex";
 						break;
 					default:
 						row->type = "unknown";
+						row->kind = "unknown";
 						break;
 				}
 			}

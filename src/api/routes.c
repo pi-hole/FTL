@@ -190,13 +190,10 @@ int api_handler(struct mg_connection *conn, void *ignored)
 	/******************************** not found or invalid request**************/
 	if(ret == 0)
 	{
-		cJSON *json = JSON_NEW_OBJ();
-		cJSON *string_item = cJSON_CreateStringReference((const char*)api.request->local_uri);
-		cJSON_AddItemToObject(json, "path", string_item);
 		ret = send_json_error(&api, 404,
 		                      "not_found",
 		                      "Not found",
-		                      json);
+		                      api.request->local_uri);
 	}
 
 	// Free JSON-parsed payload memory (if allocated)

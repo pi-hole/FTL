@@ -28,16 +28,10 @@ int api_network(struct ftl_conn *api)
 	if(!networkTable_readDevices(&sql_msg))
 	{
 		// Add SQL message (may be NULL = not available)
-		cJSON *json = JSON_NEW_OBJ();
-		if (sql_msg != NULL) {
-			JSON_OBJ_REF_STR(json, "sql_msg", sql_msg);
-		} else {
-			JSON_OBJ_ADD_NULL(json, "sql_msg");
-		}
 		return send_json_error(api, 500,
 		                       "database_error",
 		                       "Could not read network details from database table",
-		                       json);
+		                       sql_msg);
 	}
 
 	// Read record for a single device
@@ -68,15 +62,10 @@ int api_network(struct ftl_conn *api)
 			if(sql_msg != NULL)
 			{
 				cJSON_Delete(json);
-				json = JSON_NEW_OBJ();
-				// Add item leading to the error when generating the error message
-				JSON_OBJ_ADD_ITEM(json, "last_item", item);
-				// Add SQL message
-				JSON_OBJ_REF_STR(json, "sql_msg", sql_msg);
 				return send_json_error(api, 500,
 				                       "database_error",
 				                       "Could not read network details from database table (getting IP records)",
-				                       json);
+				                       sql_msg);
 			}
 
 			// Finalize sub-query
@@ -93,13 +82,10 @@ int api_network(struct ftl_conn *api)
 	if(sql_msg != NULL)
 	{
 		cJSON_Delete(json);
-		json = JSON_NEW_OBJ();
-		// Add SQL message
-		JSON_OBJ_REF_STR(json, "sql_msg", sql_msg);
 		return send_json_error(api, 500,
 		                       "database_error",
 		                       "Could not read network details from database table (step)",
-		                       json);
+		                       sql_msg);
 	}
 
 	// Finalize query
