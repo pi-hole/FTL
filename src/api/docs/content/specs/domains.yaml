@@ -42,7 +42,8 @@ components:
                 schema:
                   $ref: '#/components/schemas/domains/get'
                 examples:
-                  - $ref: '#/components/examples/domains'
+                  domains:
+                    $ref: '#/components/examples/domains'
           '401':
             description: Unauthorized
             content:
@@ -79,7 +80,8 @@ components:
                 schema:
                   $ref: '#/components/schemas/domains/get'
                 examples:
-                  - $ref: '#/components/examples/domains'
+                  domains:
+                    $ref: '#/components/examples/domains'
           '400':
             description: Bad request
             content:
@@ -87,11 +89,16 @@ components:
                 schema:
                   $ref: 'common.yaml#/components/errors/bad_request'
                 examples:
-                  - $ref: '#/components/examples/errors/uri_error/list_imprecise'
-                  - $ref: '#/components/examples/errors/uri_error/item_missing'
-                  - $ref: '#/components/examples/errors/bad_request/no_payload'
-                  - $ref: '#/components/examples/errors/database_error/duplicate'
-                  - $ref: '#/components/examples/errors/regex_error/invalid_regex'
+                  list_imprecise:
+                    $ref: '#/components/examples/errors/uri_error/list_imprecise'
+                  item_missing:
+                    $ref: '#/components/examples/errors/uri_error/item_missing'
+                  no_payload:
+                    $ref: '#/components/examples/errors/bad_request/no_payload'
+                  duplicate:
+                    $ref: '#/components/examples/errors/database_error/duplicate'
+                  invalid_regex:
+                    $ref: '#/components/examples/errors/regex_error/invalid_regex'
           '401':
             description: Unauthorized
             content:
@@ -115,8 +122,10 @@ components:
                 schema:
                   $ref: 'common.yaml#/components/errors/bad_request'
                 examples:
-                  - $ref: '#/components/examples/errors/uri_error/list_imprecise'
-                  - $ref: '#/components/examples/errors/uri_error/item_missing'
+                  list_imprecise:
+                    $ref: '#/components/examples/errors/uri_error/list_imprecise'
+                  item_missing:
+                    $ref: '#/components/examples/errors/uri_error/item_missing'
           '401':
             description: Unauthorized
             content:
@@ -155,6 +164,9 @@ components:
               application/json:
                 schema:
                   $ref: '#/components/schemas/domains/get'
+            headers:
+              Location:
+                $ref: 'common.yaml#/components/headers/Location'
           '400':
             description: Bad request
             content:
@@ -162,10 +174,14 @@ components:
                 schema:
                   $ref: 'common.yaml#/components/errors/bad_request'
                 examples:
-                  - $ref: '#/components/examples/errors/uri_error/list_imprecise'
-                  - $ref: '#/components/examples/errors/bad_request/no_payload'
-                  - $ref: '#/components/examples/errors/database_error/duplicate'
-                  - $ref: '#/components/examples/errors/regex_error/invalid_regex'
+                  list_imprecise:
+                    $ref: '#/components/examples/errors/uri_error/list_imprecise'
+                  no_payload:
+                    $ref: '#/components/examples/errors/bad_request/no_payload'
+                  duplicate:
+                    $ref: '#/components/examples/errors/database_error/duplicate'
+                  invalid_regex:
+                    $ref: '#/components/examples/errors/regex_error/invalid_regex'
           '401':
             description: Unauthorized
             content:
@@ -207,37 +223,33 @@ components:
         domain:
           description: Domain
           type: string
-          required: true
           example: testdomain.com
     type:
       type: object
       properties:
         type:
           description: String specifying domain type
-          type: enum
-          required: true
+          type: string
           enum:
-            - allow
-            - deny
-          example: allow
+            - "allow"
+            - "deny"
+          example: "allow"
     kind:
       type: object
       properties:
         kind:
           description: String specifying domain kind
-          type: enum
-          required: true
+          type: string
           enum:
-            - exact
-            - regex
-          example: exact
+            - "exact"
+            - "regex"
+          example: "exact"
     comment:
       type: object
       properties:
         comment:
           description: User-provided free-text comment for this domain (may be `null` if not specified)
           type: string
-          required: false
           nullable: true
           default: null
           example: Some comment describing this domain
@@ -247,7 +259,6 @@ components:
         groups:
           description: Array of group IDs
           type: array
-          required: false
           items:
             type: integer
     enabled:
@@ -256,11 +267,9 @@ components:
         enabled:
           description: Status of domain
           type: boolean
-          required: false
           default: true
     readonly:
       type: object
-      summary: Readonly properties of a domain
       properties:
         id:
           description: Database ID
@@ -276,7 +285,7 @@ components:
           readOnly: true
   examples:
     domains:
-      name: Example domains
+      summary: Example domains
       value:
         domains:
           - domain: "allowed.com"

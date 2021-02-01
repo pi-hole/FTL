@@ -156,11 +156,9 @@ components:
                 properties:
                   timestamp:
                     type: integer
-                    readonly: true
                     description: Unix timestamp of log line creation (server time)
                   message:
                     type: string
-                    readonly: true
                     description: Log line content
               example:
                 - timestamp: 1611729969
@@ -248,13 +246,13 @@ components:
                       type: array
                       description: raw values
                       items:
-                        type: float
+                        type: number
                       example: [0.58837890625, 0.64990234375, 0.66748046875]
                     percent:
                       type: array
                       description: raw values
                       items:
-                        type: float
+                        type: number
                       example: [4.903157711029053, 5.415853023529053, 5.562337398529053]
             sensors:
               type: array
@@ -264,16 +262,13 @@ components:
                 properties:
                   name:
                     type: string
-                    readonly: true
                     nullable: true
                     description: Description of temperature sensor (if available, `null` otherwise)
                   path:
                     type: string
-                    readonly: true
                     description: Short path of temperature sensor
                   value:
-                    type: float
-                    readonly: true
+                    type: number
                     description: Sensor value
               example:
                 - name: null

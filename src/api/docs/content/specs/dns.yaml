@@ -94,9 +94,8 @@ components:
       type: object
       properties:
         blocking:
-          type: bool
+          type: boolean
           description: Blocking status
-          required: true
           example: true
     timer:
       type: object
@@ -104,9 +103,7 @@ components:
         timer:
           type: integer
           description: Remaining seconds until blocking mode is automatically changed
-          required: false
           nullable: true
-          default: null
           example: 15
     cache_size:
       type: object
@@ -145,8 +142,9 @@ components:
                 type: string
                 description: "Human-readable error message"
                 example: "No \\\"blocking\\\" boolean in body data"
-              data:
-                type: null
+              hint:
+                type: string
+                nullable: true
                 description: "Additional data (if available)"
                 example: null
       no_payload:
@@ -164,7 +162,8 @@ components:
                 type: string
                 description: "Human-readable error message"
                 example: "Invalid request body data (no valid JSON)"
-              data:
-                type: null
+              hint:
+                type: string
+                nullable: true
                 description: "Additional data (if available)"
                 example: null

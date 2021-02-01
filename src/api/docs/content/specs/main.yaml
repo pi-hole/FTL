@@ -23,7 +23,7 @@ servers:
         default: pi.hole
       port:
         description: Port of your Pi-hole's API
-        default: 8080
+        default: "8080"
       path:
         description: Path where your Pi-hole's API is hosted
         default: api

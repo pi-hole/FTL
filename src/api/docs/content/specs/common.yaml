@@ -34,6 +34,12 @@ components:
               description: "Human-readable error message"
               example: "Unauthorized"
             hint:
-              type: 'null'
+              type: string
+              nullable: true
               description: "No additional data available"
               example: null
+  headers:
+    Location:
+      description: Location of created resource
+      schema:
+        type: string

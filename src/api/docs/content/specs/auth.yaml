@@ -21,9 +21,12 @@ components:
                 schema:
                   $ref: '#/components/schemas/session'
                 examples:
-                  - $ref: '#/components/examples/login_okay'
-                  - $ref: '#/components/examples/no_login_required'
-                  - $ref: '#/components/examples/login_required'
+                  login_okay:
+                    $ref: '#/components/examples/login_okay'
+                  no_login_required:
+                    $ref: '#/components/examples/no_login_required'
+                  login_required:
+                    $ref: '#/components/examples/login_required'
 
           '401':
             description: Unauthorized
@@ -52,8 +55,10 @@ components:
                 schema:
                   $ref: '#/components/schemas/session'
                 examples:
-                  - $ref: '#/components/examples/login_okay'
-                  - $ref: '#/components/examples/no_login_required'
+                  login_okay:
+                    $ref: '#/components/examples/login_okay'
+                  no_login_required:
+                    $ref: '#/components/examples/no_login_required'
           '400':
             description: Bad Request
             content:
@@ -61,9 +66,12 @@ components:
                 schema:
                   $ref: '#/components/errors/bad_request'
                 examples:
-                    - $ref: '#/components/examples/errors/no_payload'
-                    - $ref: '#/components/examples/errors/no_response'
-                    - $ref: '#/components/examples/errors/response_inval'
+                  no_payload:
+                    $ref: '#/components/examples/errors/no_payload'
+                  no_response:
+                    $ref: '#/components/examples/errors/no_response'
+                  response_inval:
+                    $ref: '#/components/examples/errors/response_inval'
           '401':
             description: Unauthorized
             content:
@@ -87,7 +95,8 @@ components:
                 schema:
                   $ref: '#/components/schemas/session'
                 examples:
-                  - $ref: '#/components/examples/no_login_required'
+                  no_login_required:
+                    $ref: '#/components/examples/no_login_required'
           '401':
             description: Unauthorized
             content:
@@ -101,7 +110,8 @@ components:
                 schema:
                   $ref: '#/components/schemas/session'
                 examples:
-                    - $ref: '#/components/examples/login_failed'
+                  login_failed:
+                    $ref: '#/components/examples/login_failed'
 
   schemas:
     session:
@@ -193,18 +203,18 @@ components:
           error:
             key: "bad_request"
             message: "No valid JSON payload found"
-            data: null
+            hint: null
       no_response:
         summary: Bad request (no response)
         value:
           error:
             key: "bad_request"
             message: "No response found in JSON payload"
-            data: null
+            hint: null
       response_inval:
         summary: Bad request (invalid response)
         value:
           error:
             key: "bad_request"
             message: "Invalid response length"
-            data: null
+            hint: null

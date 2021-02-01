@@ -82,7 +82,6 @@ components:
             required: false
             schema:
               type: integer
-            default: 100
           - in: query
             name: upstream
             description: Filter by specific upstream

@@ -24,7 +24,8 @@ components:
                 schema:
                   $ref: '#/components/schemas/clients/get'
                 examples:
-                  - $ref: '#/components/examples/clients'
+                  clients:
+                    $ref: '#/components/examples/clients'
           '401':
             description: Unauthorized
             content:
@@ -61,8 +62,10 @@ components:
                 schema:
                   $ref: 'common.yaml#/components/errors/bad_request'
                 examples:
-                  - $ref: '#/components/examples/errors/uri_error/item_missing'
-                  - $ref: '#/components/examples/errors/bad_request/no_payload'
+                  item_missing:
+                    $ref: '#/components/examples/errors/uri_error/item_missing'
+                  no_payload:
+                    $ref: '#/components/examples/errors/bad_request/no_payload'
           '401':
             description: Unauthorized
             content:
@@ -86,7 +89,8 @@ components:
                 schema:
                   $ref: 'common.yaml#/components/errors/bad_request'
                 examples:
-                  - $ref: '#/components/examples/errors/uri_error/item_missing'
+                  item_missing:
+                    $ref: '#/components/examples/errors/uri_error/item_missing'
           '401':
             description: Unauthorized
             content:
@@ -124,6 +128,9 @@ components:
               application/json:
                 schema:
                   $ref: '#/components/schemas/clients/get' # identical to GET
+            headers:
+              Location:
+                $ref: 'common.yaml#/components/headers/Location'
           '400':
             description: Bad request
             content:
@@ -131,8 +138,10 @@ components:
                 schema:
                   $ref: 'common.yaml#/components/errors/bad_request'
                 examples:
-                  - $ref: '#/components/examples/errors/bad_request/no_payload'
-                  - $ref: '#/components/examples/errors/database_error/duplicate'
+                  no_payload:
+                    $ref: '#/components/examples/errors/bad_request/no_payload'
+                  duplicate:
+                    $ref: '#/components/examples/errors/database_error/duplicate'
           '401':
             description: Unauthorized
             content:
@@ -167,7 +176,6 @@ components:
         client:
           description: client IP / MAC / hostname / interface
           type: string
-          required: true
           example: 127.0.0.1
     comment:
       type: object
@@ -175,7 +183,6 @@ components:
         comment:
           description: User-provided free-text comment for this client (may be `null` if not specified)
           type: string
-          required: false
           nullable: true
           default: null
           example: Some comment for this client
@@ -194,12 +201,10 @@ components:
           description: Array of group IDs
           type: array
           default: [0]
-          required: false
           items:
             type: integer
     readonly:
       type: object
-      summary: Readonly properties of a single client
       properties:
         id:
           description: Database ID
@@ -218,7 +223,6 @@ components:
           example: 1611239099
   examples:
     clients:
-      name: Example clients
       value:
         clients:
           - client: "127.0.0.1"

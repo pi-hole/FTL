@@ -32,7 +32,7 @@ components:
               description: Number of blocked queries
               example: 3465
             percent_blocked:
-              type: float
+              type: number
               description: Percent of blocked queries
               example: 34.5
             unique_domains:

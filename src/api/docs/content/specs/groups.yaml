@@ -24,7 +24,8 @@ components:
                 schema:
                   $ref: '#/components/schemas/groups/get'
                 examples:
-                  - $ref: '#/components/examples/groups'
+                  groups:
+                    $ref: '#/components/examples/groups'
           '401':
             description: Unauthorized
             content:
@@ -61,8 +62,10 @@ components:
                 schema:
                   $ref: 'common.yaml#/components/errors/bad_request'
                 examples:
-                  - $ref: '#/components/examples/errors/uri_error/item_missing'
-                  - $ref: '#/components/examples/errors/bad_request/no_payload'
+                  item_missing:
+                    $ref: '#/components/examples/errors/uri_error/item_missing'
+                  no_payload:
+                    $ref: '#/components/examples/errors/bad_request/no_payload'
           '401':
             description: Unauthorized
             content:
@@ -86,7 +89,8 @@ components:
                 schema:
                   $ref: 'common.yaml#/components/errors/bad_request'
                 examples:
-                  - $ref: '#/components/examples/errors/uri_error/item_missing'
+                  item_missing:
+                    $ref: '#/components/examples/errors/uri_error/item_missing'
           '401':
             description: Unauthorized
             content:
@@ -118,6 +122,9 @@ components:
               application/json:
                 schema:
                   $ref: '#/components/schemas/groups/get'
+            headers:
+              Location:
+                $ref: 'common.yaml#/components/headers/Location'
           '400':
             description: Bad request
             content:
@@ -125,8 +132,10 @@ components:
                 schema:
                   $ref: 'common.yaml#/components/errors/bad_request'
                 examples:
-                  - $ref: '#/components/examples/errors/bad_request/no_payload'
-                  - $ref: '#/components/examples/errors/database_error/duplicate'
+                  no_payload:
+                    $ref: '#/components/examples/errors/bad_request/no_payload'
+                  duplicate:
+                    $ref: '#/components/examples/errors/database_error/duplicate'
           '401':
             description: Unauthorized
             content:
@@ -161,7 +170,6 @@ components:
         name:
           description: Group name
           type: string
-          required: true
           example: test_group
     comment:
       type: object
@@ -169,7 +177,6 @@ components:
         comment:
           description: User-provided free-text comment for this group (may be `null` if not specified)
           type: string
-          required: false
           nullable: true
           default: null
           example: Some comment for this group
@@ -179,12 +186,10 @@ components:
         enabled:
           description: Status of item
           type: boolean
-          required: false
           default: true
           example: true
     readonly:
       type: object
-      summary: Readonly properties of a single group
       properties:
         id:
           description: Database ID
@@ -203,7 +208,6 @@ components:
           example: 1611239099
   examples:
     groups:
-      name: Example groups
       value:
         groups:
           - name: "Default"
