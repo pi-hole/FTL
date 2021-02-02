@@ -14,7 +14,7 @@
 #include "../../civetweb/civetweb.h"
 #include "../../webserver/http-common.h"
 #include "../../webserver/json_macros.h"
-#include "../routes.h"
+#include "../api.h"
 
 static const char index_html[] = {
 #include "hex/index.html"

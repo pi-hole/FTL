@@ -11,8 +11,7 @@
 #include "../FTL.h"
 #include "../webserver/http-common.h"
 #include "../webserver/json_macros.h"
-#include "routes.h"
-#include "../shmem.h"
+#include "api.h"
 // querytypes[]
 #include "../datastructure.h"
 // logg()
@@ -38,9 +37,6 @@ int api_stats_database_overTime_history(struct ftl_conn *api)
 		                       "You need to specify \"until\" in the request.",
 		                       NULL);
 	}
-
-	// Unlock shared memory (DNS resolver can continue to work while we're preforming database queries)
-	unlock_shm();
 
 	// Open the database (this also locks the database)
 	dbopen();
@@ -69,9 +65,6 @@ int api_stats_database_overTime_history(struct ftl_conn *api)
 		sqlite3_finalize(stmt);
 		dbclose();
 
-		// Relock shared memory
-		lock_shm();
-
 		return send_json_error(api, 500,
 		                       "internal_error",
 		                       "Failed to bind interval",
@@ -87,9 +80,6 @@ int api_stats_database_overTime_history(struct ftl_conn *api)
 		sqlite3_finalize(stmt);
 		dbclose();
 
-		// Relock shared memory
-		lock_shm();
-
 		return send_json_error(api, 500,
 		                       "internal_error",
 		                       "Failed to bind from",
@@ -104,9 +94,6 @@ int api_stats_database_overTime_history(struct ftl_conn *api)
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
 		dbclose();
-
-		// Relock shared memory
-		lock_shm();
 
 		return send_json_error(api, 500,
 		                       "internal_error",
@@ -164,8 +151,6 @@ int api_stats_database_overTime_history(struct ftl_conn *api)
 	sqlite3_finalize(stmt);
 	dbclose();
 
-	// Re-lock shared memory before returning back to router subroutine
-	lock_shm();
 	JSON_SEND_OBJECT(json);
 }
 
@@ -195,9 +180,6 @@ int api_stats_database_top_items(bool blocked, bool domains, struct ftl_conn *ap
 		                       "You need to specify both \"from\" and \"until\" in the request.",
 		                       NULL);
 	}
-
-	// Unlock shared memory (DNS resolver can continue to work while we're preforming database queries)
-	unlock_shm();
 
 	// Open the database (this also locks the database)
 	dbopen();
@@ -253,9 +235,6 @@ int api_stats_database_top_items(bool blocked, bool domains, struct ftl_conn *ap
 
 		dbclose();
 
-		// Relock shared memory
-		lock_shm();
-
 		return send_json_error(api, 500,
 		                       "internal_error",
 		                       "Failed to prepare query string",
@@ -270,9 +249,6 @@ int api_stats_database_top_items(bool blocked, bool domains, struct ftl_conn *ap
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
 		dbclose();
-
-		// Relock shared memory
-		lock_shm();
 
 		return send_json_error(api, 500,
 		                       "internal_error",
@@ -289,9 +265,6 @@ int api_stats_database_top_items(bool blocked, bool domains, struct ftl_conn *ap
 		sqlite3_finalize(stmt);
 		dbclose();
 
-		// Relock shared memory
-		lock_shm();
-
 		return send_json_error(api, 500,
 		                       "internal_error",
 		                       "Failed to bind until",
@@ -306,9 +279,6 @@ int api_stats_database_top_items(bool blocked, bool domains, struct ftl_conn *ap
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
 		dbclose();
-
-		// Relock shared memory
-		lock_shm();
 
 		return send_json_error(api, 500,
 		                       "internal_error",
@@ -339,9 +309,6 @@ int api_stats_database_top_items(bool blocked, bool domains, struct ftl_conn *ap
 	sqlite3_finalize(stmt);
 	dbclose();
 
-	// Re-lock shared memory before returning back to router subroutine
-	lock_shm();
-
 	cJSON *json = JSON_NEW_OBJ();
 	JSON_OBJ_ADD_ITEM(json, (domains ? "top_domains" : "top_clients"), top_items);
 	JSON_OBJ_ADD_NUMBER(json, (blocked ? "blocked_queries" : "total_queries"), total);
@@ -365,9 +332,6 @@ int api_stats_database_summary(struct ftl_conn *api)
 		                       "You need to specify both \"from\" and \"until\" in the request.",
 		                       NULL);
 	}
-
-	// Unlock shared memory (DNS resolver can continue to work while we're preforming database queries)
-	unlock_shm();
 
 	// Open the database (this also locks the database)
 	dbopen();
@@ -395,9 +359,6 @@ int api_stats_database_summary(struct ftl_conn *api)
 		// Close (= unlock) database connection
 		dbclose();
 
-		// Relock shared memory
-		lock_shm();
-
 		return send_json_error(api, 500,
 		                       "internal_error",
 		                       "Internal server error",
@@ -414,9 +375,6 @@ int api_stats_database_summary(struct ftl_conn *api)
 
 	// Close (= unlock) database connection
 	dbclose();
-
-	// Re-lock shared memory before returning back to router subroutine
-	lock_shm();
 
 	// Send JSON object
 	JSON_SEND_OBJECT(json);
@@ -441,9 +399,6 @@ int api_stats_database_overTime_clients(struct ftl_conn *api)
 		                       NULL);
 	}
 
-	// Unlock shared memory (DNS resolver can continue to work while we're preforming database queries)
-	unlock_shm();
-
 	// Open the database (this also locks the database)
 	dbopen();
 
@@ -457,9 +412,6 @@ int api_stats_database_overTime_clients(struct ftl_conn *api)
 	if( rc != SQLITE_OK ){
 		logg("api_stats_database_overTime_clients() - SQL error prepare outer (%i): %s",
 		     rc, sqlite3_errmsg(FTL_db));
-
-		// Relock shared memory
-		lock_shm();
 
 		return send_json_error(api, 500,
 		                       "internal_error",
@@ -476,9 +428,6 @@ int api_stats_database_overTime_clients(struct ftl_conn *api)
 		sqlite3_finalize(stmt);
 		dbclose();
 
-		// Relock shared memory
-		lock_shm();
-
 		return send_json_error(api, 500,
 		                       "internal_error",
 		                       "Failed to bind from",
@@ -493,9 +442,6 @@ int api_stats_database_overTime_clients(struct ftl_conn *api)
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
 		dbclose();
-
-		// Relock shared memory
-		lock_shm();
 
 		return send_json_error(api, 500,
 		                       "internal_error",
@@ -528,9 +474,6 @@ int api_stats_database_overTime_clients(struct ftl_conn *api)
 		logg("api_stats_database_overTime_clients() - SQL error prepare (%i): %s",
 		rc, sqlite3_errmsg(FTL_db));
 
-		// Relock shared memory
-		lock_shm();
-
 		return send_json_error(api, 500,
 		                       "internal_error",
 		                       "Failed to prepare inner statement",
@@ -545,9 +488,6 @@ int api_stats_database_overTime_clients(struct ftl_conn *api)
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
 		dbclose();
-
-		// Relock shared memory
-		lock_shm();
 
 		return send_json_error(api, 500,
 		                       "internal_error",
@@ -564,9 +504,6 @@ int api_stats_database_overTime_clients(struct ftl_conn *api)
 		sqlite3_finalize(stmt);
 		dbclose();
 
-		// Relock shared memory
-		lock_shm();
-
 		return send_json_error(api, 500,
 		                       "internal_error",
 		                       "Failed to bind from",
@@ -581,9 +518,6 @@ int api_stats_database_overTime_clients(struct ftl_conn *api)
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
 		dbclose();
-
-		// Relock shared memory
-		lock_shm();
 
 		return send_json_error(api, 500,
 		                       "internal_error",
@@ -650,8 +584,6 @@ int api_stats_database_overTime_clients(struct ftl_conn *api)
 	sqlite3_finalize(stmt);
 	dbclose();
 
-	// Re-lock shared memory before returning back to router subroutine
-	lock_shm();
 	cJSON *json = JSON_NEW_OBJ();
 	JSON_OBJ_ADD_ITEM(json, "over_time", over_time);
 	JSON_OBJ_ADD_ITEM(json, "clients", clients);
@@ -676,9 +608,6 @@ int api_stats_database_query_types(struct ftl_conn *api)
 		                       NULL);
 	}
 
-	// Unlock shared memory (DNS resolver can continue to work while we're preforming database queries)
-	unlock_shm();
-
 	// Open the database (this also locks the database)
 	dbopen();
 
@@ -698,9 +627,6 @@ int api_stats_database_query_types(struct ftl_conn *api)
 
 	// Close (= unlock) database connection
 	dbclose();
-
-	// Re-lock shared memory before returning back to router subroutine
-	lock_shm();
 
 	// Send JSON object
 	cJSON *json = JSON_NEW_OBJ();
@@ -726,9 +652,6 @@ int api_stats_database_upstreams(struct ftl_conn *api)
 		                       "You need to specify both \"from\" and \"until\" in the request.",
 		                       NULL);
 	}
-
-	// Unlock shared memory (DNS resolver can continue to work while we're preforming database queries)
-	unlock_shm();
 
 	// Open the database (this also locks the database)
 	dbopen();
@@ -760,9 +683,6 @@ int api_stats_database_upstreams(struct ftl_conn *api)
 		logg("api_stats_database_overTime_clients() - SQL error prepare (%i): %s",
 		     rc, sqlite3_errmsg(FTL_db));
 
-		// Relock shared memory
-		lock_shm();
-
 		return send_json_error(api, 500,
 		                       "internal_error",
 		                       "Failed to prepare statement",
@@ -778,9 +698,6 @@ int api_stats_database_upstreams(struct ftl_conn *api)
 		sqlite3_finalize(stmt);
 		dbclose();
 
-		// Relock shared memory
-		lock_shm();
-
 		return send_json_error(api, 500,
 		                       "internal_error",
 		                       "Failed to bind from",
@@ -795,9 +712,6 @@ int api_stats_database_upstreams(struct ftl_conn *api)
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
 		dbclose();
-
-		// Relock shared memory
-		lock_shm();
 
 		return send_json_error(api, 500,
 		                       "internal_error",
@@ -839,9 +753,6 @@ int api_stats_database_upstreams(struct ftl_conn *api)
 
 	// Close (= unlock) database connection
 	dbclose();
-
-	// Re-lock shared memory before returning back to router subroutine
-	lock_shm();
 
 	// Send JSON object
 	cJSON *json = JSON_NEW_OBJ();

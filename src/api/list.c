@@ -11,9 +11,10 @@
 #include "../FTL.h"
 #include "../webserver/http-common.h"
 #include "../webserver/json_macros.h"
-#include "routes.h"
+#include "api.h"
 #include "../database/gravity-db.h"
 #include "../events.h"
+#include "../shmem.h"
 // getNameFromIP()
 #include "../database/network-table.h"
 
@@ -415,7 +416,13 @@ int api_list(struct ftl_conn *api)
 	if(api->method == HTTP_GET)
 	{
 		// Read list item identified by URI (or read them all)
-		return api_list_read(api, 200, listtype, api->item);
+		// We would not actually need the SHM lock here, however, we do
+		// this for simplicity to ensure nobody else is editing the
+		// lists while we're doing this here
+		lock_shm();
+		const int ret = api_list_read(api, 200, listtype, api->item);
+		unlock_shm();
+		return ret;
 	}
 	else if(can_modify && api->method == HTTP_PUT)
 	{
@@ -428,7 +435,15 @@ int api_list(struct ftl_conn *api)
 			                       NULL);
 		}
 		else
-			return api_list_write(api, listtype, api->item, payload);
+		{
+			// We would not actually need the SHM lock here,
+			// however, we do this for simplicity to ensure nobody
+			// else is editing the lists while we're doing this here
+			lock_shm();
+			const int ret = api_list_write(api, listtype, api->item, payload);
+			unlock_shm();
+			return ret;
+		}
 	}
 	else if(can_modify && api->method == HTTP_POST)
 	{
@@ -441,12 +456,26 @@ int api_list(struct ftl_conn *api)
 			                       NULL);
 		}
 		else
-			return api_list_write(api, listtype, api->item, payload);
+		{
+			// We would not actually need the SHM lock here,
+			// however, we do this for simplicity to ensure nobody
+			// else is editing the lists while we're doing this here
+			lock_shm();
+			const int ret = api_list_write(api, listtype, api->item, payload);
+			unlock_shm();
+			return ret;
+		}
 	}
 	else if(can_modify && api->method == HTTP_DELETE)
 	{
 		// Delete item from list
-		return api_list_remove(api, listtype, api->item);
+		// We would not actually need the SHM lock here, however, we do
+		// this for simplicity to ensure nobody else is editing the
+		// lists while we're doing this here
+		lock_shm();
+		const int ret = api_list_remove(api, listtype, api->item);
+		unlock_shm();
+		return ret;
 	}
 	else if(!can_modify)
 	{

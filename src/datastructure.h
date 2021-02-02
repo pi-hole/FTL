@@ -15,6 +15,7 @@
 
 // enum privacy_level
 #include "enums.h"
+
 // assert_sizeof
 #include "static_assert.h"
 

@@ -11,7 +11,7 @@
 #include "../FTL.h"
 #include "../webserver/http-common.h"
 #include "../webserver/json_macros.h"
-#include "routes.h"
+#include "api.h"
 
 int api_settings_web(struct ftl_conn *api)
 {

@@ -11,7 +11,7 @@
 #include "../FTL.h"
 #include "../webserver/http-common.h"
 #include "../webserver/json_macros.h"
-#include "routes.h"
+#include "api.h"
 // struct fifologData
 #include "../fifo.h"
 // sysinfo()
@@ -299,7 +299,7 @@ int get_system_obj(struct ftl_conn *api, cJSON *system)
 	// option is to use the MemAvailable (as opposed to MemFree) entry in
 	// /proc/meminfo instead.
 	long mem_total = -1, mem_used = -1, mem_free = -1, mem_avail = -1;
-	GetRamInKB(&mem_total, &mem_used, &mem_free, &mem_avail);	
+	GetRamInKB(&mem_total, &mem_used, &mem_free, &mem_avail);
 	// Total usable main memory size
 	JSON_OBJ_ADD_NUMBER(ram, "total", mem_total);
 	// Free memory size
@@ -312,7 +312,7 @@ int get_system_obj(struct ftl_conn *api, cJSON *system)
 	// says: "Many programs check /proc/meminfo to estimate how much free
 	// memory is available. They generally do this by adding up "free" and
 	// "cached", which was fine ten years ago, but is pretty much guaranteed
-	// to be wrong today." 
+	// to be wrong today."
 	JSON_OBJ_ADD_NUMBER(ram, "available", mem_avail);
 	JSON_OBJ_ADD_ITEM(memory, "ram", ram);
 
@@ -390,18 +390,17 @@ int get_system_obj(struct ftl_conn *api, cJSON *system)
 int get_ftl_obj(struct ftl_conn *api, cJSON *ftl)
 {
 	cJSON *database = JSON_NEW_OBJ();
-	JSON_OBJ_ADD_NUMBER(database, "gravity", counters->database.gravity);
-	JSON_OBJ_ADD_NUMBER(database, "groups", counters->database.groups);
-	JSON_OBJ_ADD_NUMBER(database, "lists", counters->database.lists);
-	JSON_OBJ_ADD_NUMBER(database, "clients", counters->database.clients);
 
-	cJSON *domains = JSON_NEW_OBJ();
-	JSON_OBJ_ADD_NUMBER(domains, "allowed", counters->database.domains.allowed);
-	JSON_OBJ_ADD_NUMBER(domains, "denied", counters->database.domains.denied);
-	JSON_OBJ_ADD_ITEM(database, "domains", domains);
-	JSON_OBJ_ADD_ITEM(ftl, "database", database);
-
-	JSON_OBJ_ADD_NUMBER(ftl, "privacy_level", config.privacylevel);
+	// Source from shared objects within lock
+	lock_shm();
+	const int db_gravity = counters->database.gravity;
+	const int db_groups = counters->database.groups;
+	const int db_lists = counters->database.lists;
+	const int db_clients = counters->database.clients;
+	const int db_allowed = counters->database.domains.allowed;
+	const int db_denied = counters->database.domains.denied;
+	const int clients_total = counters->clients;
+	const int privacylevel = config.privacylevel;
 
 	// unique_clients: count only clients that have been active within the most recent 24 hours
 	int activeclients = 0;
@@ -415,9 +414,23 @@ int get_ftl_obj(struct ftl_conn *api, cJSON *ftl)
 		if(client->count > 0)
 			activeclients++;
 	}
+	unlock_shm();
+
+	JSON_OBJ_ADD_NUMBER(database, "gravity", db_gravity);
+	JSON_OBJ_ADD_NUMBER(database, "groups", db_groups);
+	JSON_OBJ_ADD_NUMBER(database, "lists", db_lists);
+	JSON_OBJ_ADD_NUMBER(database, "clients", db_clients);
+
+	cJSON *domains = JSON_NEW_OBJ();
+	JSON_OBJ_ADD_NUMBER(domains, "allowed", db_allowed);
+	JSON_OBJ_ADD_NUMBER(domains, "denied", db_denied);
+	JSON_OBJ_ADD_ITEM(database, "domains", domains);
+	JSON_OBJ_ADD_ITEM(ftl, "database", database);
+
+	JSON_OBJ_ADD_NUMBER(ftl, "privacy_level", privacylevel);
 
 	cJSON *clients = JSON_NEW_OBJ();
-	JSON_OBJ_ADD_NUMBER(clients, "total", counters->clients);
+	JSON_OBJ_ADD_NUMBER(clients, "total",clients_total);
 	JSON_OBJ_ADD_NUMBER(clients, "active", activeclients);
 	JSON_OBJ_ADD_ITEM(ftl, "clients", clients);
 

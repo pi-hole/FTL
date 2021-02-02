@@ -9,6 +9,8 @@
 # Please see LICENSE file for your rights under this license.
 
 set(sources
+        api.h
+        api.c
         auth.c
         dns.c
         dns.h
@@ -16,8 +18,6 @@ set(sources
         history.c
         list.c
         network.c
-        routes.c
-        routes.h
         settings.c
         stats_database.c
         stats.c

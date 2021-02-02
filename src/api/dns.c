@@ -12,11 +12,12 @@
 #include "dns.h"
 #include "../webserver/http-common.h"
 #include "../webserver/json_macros.h"
-#include "routes.h"
+#include "api.h"
 // {s,g}et_blockingstatus()
 #include "../setupVars.h"
 // set_blockingmode_timer()
 #include "../timers.h"
+#include "../shmem.h"
 
 static int get_blocking(struct ftl_conn *api)
 {
@@ -97,11 +98,17 @@ int api_dns_blocking(struct ftl_conn *api)
 {
 	if(api->method == HTTP_GET)
 	{
-		return get_blocking(api);
+		lock_shm();
+		const int ret = get_blocking(api);
+		unlock_shm();
+		return ret;
 	}
 	else if(api->method == HTTP_POST)
 	{
-		return set_blocking(api);
+		lock_shm();
+		const int ret = set_blocking(api);
+		unlock_shm();
+		return ret;
 	}
 	else
 	{
