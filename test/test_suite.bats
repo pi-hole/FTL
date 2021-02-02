@@ -727,9 +727,12 @@
   }
   pwhash="183c1b634da0078fcf5b0af84bdcbb3e817708c3f22b329be84165f4bad1ae48"
   challenge="$(curl -s -X GET 127.0.0.1:8080/api/auth | jq --raw-output .challenge)"
+  printf "Challenge: %s\n" "${challenge}"
   response="$(computeResponse "$pwhash" "$challenge")"
+  printf "Response: %s\n" "${response}"
   session="$(curl -s -X POST 127.0.0.1:8080/api/auth -d "{\"response\":\"$response\"}")"
-  run bash -c 'jq .session.valid <<< "${session}"'
+  printf "Session: %s\n" "${session}"
+  run bash -c "jq .session.valid <<< \"${session}\""
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "true" ]]
 }

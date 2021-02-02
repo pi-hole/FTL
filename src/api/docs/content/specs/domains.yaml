@@ -352,8 +352,8 @@ components:
   parameters:
     type:
       in: path
-      description: Type (allowed or denied domain)
       name: type
+      description: Type (allowed or denied domain)
       schema:
         type: string
         enum:
@@ -364,19 +364,19 @@ components:
     kind:
       in: path
       name: kind
+      description: Kind (exact domain or regular expression)
       schema:
         type: string
         enum:
           - exact
           - regex
       required: true
-      description: Kind (exact domain or regular expression)
       example: exact
     domain:
       in: path
       name: domain
+      description: Domain
       schema:
         type: string
       required: true
-      description: Domain
       example: testdomain.com
