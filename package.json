@@ -17,12 +17,15 @@
   "scripts": {
     "set-threshold": "echo '{\"warnings\": 0}' > .thresholdrc",
     "delete-threshold": "rm .thresholdrc",
-    "openapi-validator": "lint-openapi -p -c test/api/ibm-openapi-validator.rc src/api/docs/content/specs/main.yaml 2> /dev/null",
+    "lint-openapi": "lint-openapi -p -c test/api/ibm-openapi-validator.rc src/api/docs/content/specs/main.yaml 2> /dev/null",
+    "openapi-validator": "npm run set-threshold && npm run lint-openapi && npm run delete-threshold",
     "openapi-enforcer": "node test/api/openapi-enforcer.js",
-    "test": "npm run set-threshold && npm run openapi-validator && npm run openapi-enforcer && npm run delete-threshold"
+    "validate-examples": "openapi-examples-validator src/api/docs/content/specs/main.yaml",
+    "test": "npm run openapi-enforcer && npm run openapi-validator && npm run validate-examples"
   },
   "devDependencies": {
     "ibm-openapi-validator": "^0.34.1",
-    "openapi-enforcer": "^1.13.1"
+    "openapi-enforcer": "^1.13.1",
+    "openapi-examples-validator": "^4.2.1"
   }
 }
