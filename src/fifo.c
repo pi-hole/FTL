@@ -11,6 +11,8 @@
 #include "fifo.h"
 // {un,}lock_shm()
 #include "shmem.h"
+// double_time()
+#include "log.h"
 
 void add_to_dnsmasq_log_fifo_buffer(const char *payload, const size_t length)
 {
@@ -23,7 +25,7 @@ void add_to_dnsmasq_log_fifo_buffer(const char *payload, const size_t length)
 		// Log is full, move everything one slot forward to make space for a new record at the end
 		// This pruges the oldest message from the list (it is overwritten by the second message)
 		memmove(fifo_log->message[0], fifo_log->message[1], (LOG_SIZE - 1u) * MAX_MESSAGE);
-		memmove(&fifo_log->timestamp[0], &fifo_log->timestamp[1], (LOG_SIZE - 1u) * sizeof(time_t));
+		memmove(&fifo_log->timestamp[0], &fifo_log->timestamp[1], (LOG_SIZE - 1u) * sizeof(fifo_log->timestamp[0]));
 		idx = LOG_SIZE - 1u;
 	}
 
@@ -42,7 +44,7 @@ void add_to_dnsmasq_log_fifo_buffer(const char *payload, const size_t length)
 	}
 
 	// Set timestamp
-	fifo_log->timestamp[idx] = time(NULL);
+	fifo_log->timestamp[idx] = double_time();
 
 	// Unlock SHM
 	unlock_shm();

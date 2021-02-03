@@ -732,7 +732,7 @@
   printf "Response: %s\n" "${response}"
   session="$(curl -s -X POST 127.0.0.1:8080/api/auth -d "{\"response\":\"$response\"}")"
   printf "Session: %s\n" "${session}"
-  run bash -c "jq .session.valid <<< \"${session}\""
+  run jq .session.valid <<< "${session}"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "true" ]]
 }

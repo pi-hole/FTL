@@ -489,7 +489,7 @@ int api_auth(struct ftl_conn *api)
 						logg("API: Session of client %u (%s) expired, freeing...",
 						     i, auth_data[i].remote_addr);
 					}
-					delete_session(user_id);
+					delete_session(i);
 				}
 
 				// Found unused authentication slot (might have been freed before)

@@ -465,7 +465,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// Create new query in data structure
 
 	// Get timestamp
-	const time_t querytimestamp = time(NULL);
+	const double querytimestamp = double_time();
 
 	// Save request time
 	struct timeval request;
@@ -871,6 +871,10 @@ void _FTL_forwarded(const unsigned int flags, const char *name, const struct ser
 	// if not found in current data structure
 	const int upstreamID = findUpstreamID(upstreamIP, upstreamPort, true);
 	query->upstreamID = upstreamID;
+
+	upstreamsData *upstream = getUpstream(upstreamID, true);
+	if(upstream != NULL)
+		upstream->lastQuery = double_time();
 
 	// Get time index for this query
 	const unsigned int timeidx = query->timeidx;

@@ -231,7 +231,7 @@ int api_history_queries(struct ftl_conn *api)
 	}
 
 	// Do we want a more specific version of this command (domain/client/time interval filtered)?
-	unsigned int from = 0, until = 0;
+	double from = 0.0, until = 0.0;
 
 	char domainname[512] = { 0 };
 	bool filterdomainname = false;
@@ -256,8 +256,8 @@ int api_history_queries(struct ftl_conn *api)
 	if(api->request->query_string != NULL)
 	{
 		// Time filtering?
-		get_uint_var(api->request->query_string, "from", &from);
-		get_uint_var(api->request->query_string, "until", &until);
+		get_double_var(api->request->query_string, "from", &from);
+		get_double_var(api->request->query_string, "until", &until);
 
 		// Query type filtering?
 		int num;
@@ -471,7 +471,7 @@ int api_history_queries(struct ftl_conn *api)
 			continue;
 
 		// Skip those entries which so not meet the requested timeframe
-		if((from > (unsigned int)query->timestamp && from != 0) || ((unsigned int)query->timestamp > until && until != 0))
+		if((from > query->timestamp && from > 0.0) || (query->timestamp > until && until > 0.0))
 			continue;
 
 		// Skip if domain is not identical with what the user wants to see

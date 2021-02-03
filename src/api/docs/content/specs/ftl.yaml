@@ -92,12 +92,6 @@ components:
                 schema:
                   allOf:
                     - $ref: '#/components/schemas/database'
-          '401':
-            description: Unauthorized
-            content:
-              application/json:
-                schema:
-                  $ref: 'common.yaml#/components/errors/unauthorized'
   schemas:
     client:
       remote_addr:
@@ -155,19 +149,19 @@ components:
                 type: object
                 properties:
                   timestamp:
-                    type: integer
+                    type: number
                     description: Unix timestamp of log line creation (server time)
                   message:
                     type: string
                     description: Log line content
               example:
-                - timestamp: 1611729969
+                - timestamp: 1611729969.0
                   message: "started, version pi-hole-2.84 cachesize 10000"
-                - timestamp: 1611729969
+                - timestamp: 1611729969.0
                   message: "reading /etc/resolv.conf"
-                - timestamp: 1611729969
+                - timestamp: 1611729969.0
                   message: "read /etc/hosts - 7 addresses"
-                - timestamp: 1611729969
+                - timestamp: 1611729969.0
                   message: "query[A] connectivity-check.ubuntu.com from 127.0.0.1"
         nextID:
           type: object

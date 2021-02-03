@@ -69,13 +69,13 @@ components:
             description: Get queries from...
             required: false
             schema:
-              type: integer
+              type: number
           - in: query
             name: until
             description: Get queries until...
             required: false
             schema:
-              type: integer
+              type: number
           - in: query
             name: n
             description: Number of results to return
@@ -132,7 +132,7 @@ components:
             type: object
             properties:
               timestamp:
-                type: integer
+                type: number
                 description: Timestamp
               total:
                 type: integer
@@ -143,11 +143,11 @@ components:
               blocked:
                 type: integer
           example:
-            - timestamp: 1511819900
+            - timestamp: 1511819900.539157
               total: 2134
               cached: 525
               blocked: 413
-            - timestamp: 1511820500
+            - timestamp: 1511820500.583821
               total: 2014
               cached: 52
               blocked: 43
@@ -161,7 +161,7 @@ components:
             type: object
             properties:
               timestamp:
-                type: integer
+                type: number
                 description: Timestamp
               data:
                 type: array
@@ -169,12 +169,12 @@ components:
                 items:
                   type: integer
           example:
-            - timestamp: 1511819900
+            - timestamp: 1511819900.539157
               data:
                 - 12
                 - 65
                 - 67
-            - timestamp: 1511820500
+            - timestamp: 1511820500.583821
               data:
                 - 1
                 - 35
@@ -209,7 +209,7 @@ components:
             type: object
             properties:
               timestamp:
-                type: integer
+                type: number
                 description: Timestamp
               type:
                 type: string
@@ -247,7 +247,7 @@ components:
                 description: IP or name + port of upstream server (may be `null`)
                 nullable: true
           example:
-            - timestamp: 1581907991
+            - timestamp: 1581907991.539157
               type: "A"
               domain: "community.stoplight.io"
               CNAME_domain: null
@@ -258,7 +258,7 @@ components:
               response_time: 19
               regex_idx: -1
               upstream: "localhost#5353"
-            - timestamp: 1581907871
+            - timestamp: 1581907871.583821
               type: "AAAA"
               domain: "api.github.com"
               CNAME_domain: null

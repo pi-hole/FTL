@@ -447,6 +447,29 @@ int db_get_FTL_property(const enum ftl_table_props ID)
 	return value;
 }
 
+double db_get_FTL_property_double(const enum ftl_table_props ID)
+{
+	if(!FTL_DB_avail())
+	{
+		logg("db_get_FTL_property(%u) called but database is not available!", ID);
+		return DB_FAILED;
+	}
+	// Prepare SQL statement
+	char* querystr = NULL;
+	int ret = asprintf(&querystr, "SELECT VALUE FROM ftl WHERE id = %u;", ID);
+
+	if(querystr == NULL || ret < 0)
+	{
+		logg("Memory allocation failed in db_get_FTL_property with ID = %u (%i)", ID, ret);
+		return DB_FAILED;
+	}
+
+	double value = db_query_double(querystr);
+	free(querystr);
+
+	return value;
+}
+
 bool db_set_FTL_property(const enum ftl_table_props ID, const int value)
 {
 	if(!FTL_DB_avail())
@@ -455,6 +478,16 @@ bool db_set_FTL_property(const enum ftl_table_props ID, const int value)
 		return false;
 	}
 	return dbquery("INSERT OR REPLACE INTO ftl (id, value) VALUES ( %u, %i );", ID, value) == SQLITE_OK;
+}
+
+bool db_set_FTL_property_double(const enum ftl_table_props ID, const double value)
+{
+	if(!FTL_DB_avail())
+	{
+		logg("db_set_FTL_property(%u, %f) called but database is not available!", ID, value);
+		return false;
+	}
+	return dbquery("INSERT OR REPLACE INTO ftl (id, value) VALUES ( %u, %f );", ID, value) == SQLITE_OK;
 }
 
 bool db_set_counter(const enum counters_table_props ID, const int value)
@@ -553,7 +586,62 @@ int db_query_int(const char* querystr)
 	return result;
 }
 
-int db_query_int_from_until(const char* querystr, const unsigned int from, const unsigned int until)
+double db_query_double(const char* querystr)
+{
+	if(!FTL_DB_avail())
+	{
+		logg("db_query_double(\"%s\") called but database is not available!", querystr);
+		return DB_FAILED;
+	}
+
+	if(config.debug & DEBUG_DATABASE)
+	{
+		logg("dbquery: \"%s\"", querystr);
+	}
+
+	sqlite3_stmt* stmt;
+	int rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &stmt, NULL);
+	if( rc != SQLITE_OK )
+	{
+		if( rc != SQLITE_BUSY )
+			logg("Encountered prepare error in db_query_double(\"%s\"): %s", querystr, sqlite3_errstr(rc));
+
+		return DB_FAILED;
+	}
+
+	rc = sqlite3_step(stmt);
+	double result;
+
+	if( rc == SQLITE_ROW )
+	{
+		result = sqlite3_column_double(stmt, 0);
+
+		if(config.debug & DEBUG_DATABASE)
+		{
+			logg("         ---> Result %f (double)", result);
+		}
+	}
+	else if( rc == SQLITE_DONE )
+	{
+		// No rows available
+		result = DB_NODATA;
+
+		if(config.debug & DEBUG_DATABASE)
+		{
+			logg("         ---> No data");
+		}
+	}
+	else
+	{
+		logg("Encountered step error in db_query_double(\"%s\"): %s", querystr, sqlite3_errstr(rc));
+		return DB_FAILED;
+	}
+
+	sqlite3_finalize(stmt);
+	return result;
+}
+
+int db_query_int_from_until(const char* querystr, const double from, const double until)
 {
 	if(!FTL_DB_avail())
 	{
@@ -569,8 +657,8 @@ int db_query_int_from_until(const char* querystr, const unsigned int from, const
 	}
 
 	// Bind from and until to prepared statement
-	if((rc = sqlite3_bind_int64(stmt, 1, from))  != SQLITE_OK ||
-	   (rc = sqlite3_bind_int64(stmt, 2, until)) != SQLITE_OK)
+	if((rc = sqlite3_bind_double(stmt, 1, from))  != SQLITE_OK ||
+	   (rc = sqlite3_bind_double(stmt, 2, until)) != SQLITE_OK)
 	{
 		logg("db_query_int_from_until(%s) - SQL error bind (%i): %s", querystr, rc, sqlite3_errmsg(FTL_db));
 	}
@@ -598,7 +686,7 @@ int db_query_int_from_until(const char* querystr, const unsigned int from, const
 	return result;
 }
 
-int db_query_int_from_until_type(const char* querystr, const unsigned int from, const unsigned int until, const int type)
+int db_query_int_from_until_type(const char* querystr, const double from, const double until, const int type)
 {
 	if(!FTL_DB_avail())
 	{
@@ -614,8 +702,8 @@ int db_query_int_from_until_type(const char* querystr, const unsigned int from, 
 	}
 
 	// Bind from and until to prepared statement
-	if((rc = sqlite3_bind_int64(stmt, 1, from))  != SQLITE_OK ||
-	   (rc = sqlite3_bind_int64(stmt, 2, until)) != SQLITE_OK ||
+	if((rc = sqlite3_bind_double(stmt, 1, from))  != SQLITE_OK ||
+	   (rc = sqlite3_bind_double(stmt, 2, until)) != SQLITE_OK ||
 	   (rc = sqlite3_bind_int(stmt, 3, type)) != SQLITE_OK)
 	{
 		logg("db_query_int_from_until(%s) - SQL error bind (%i): %s", querystr, rc, sqlite3_errmsg(FTL_db));

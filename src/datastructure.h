@@ -35,7 +35,7 @@ typedef struct {
 	unsigned int timeidx;
 	unsigned long response; // saved in units of 1/10 milliseconds (1 = 0.1ms, 2 = 0.2ms, 2500 = 250.0ms, etc.)
 	unsigned long forwardresponse; // saved in units of 1/10 milliseconds (1 = 0.1ms, 2 = 0.2ms, 2500 = 250.0ms, etc.)
-	time_t timestamp;
+	double timestamp;
 	int64_t db;
 	// Adjacent bit field members in the struct flags may be packed to share
 	// and straddle the individual bytes. It is useful to pack the memory as
@@ -50,8 +50,8 @@ typedef struct {
 	} flags;
 } queriesData;
 
-// ARM uses special padding at the end to enforce alignment
-ASSERT_SIZEOF(queriesData, 72, 56, 64);
+// ARM needs alignment to 8-byte boundary
+ASSERT_SIZEOF(queriesData, 72, 60, 64);
 
 typedef struct {
 	unsigned char magic;
@@ -66,9 +66,9 @@ typedef struct {
 	unsigned long rtuncertainty;
 	size_t ippos;
 	size_t namepos;
-	time_t lastQuery;
+	double lastQuery;
 } upstreamsData;
-ASSERT_SIZEOF(upstreamsData, 56, 36, 36);
+ASSERT_SIZEOF(upstreamsData, 56, 40, 40);
 
 typedef struct {
 	unsigned char magic;
@@ -90,10 +90,12 @@ typedef struct {
 	size_t ippos;
 	size_t namepos;
 	size_t ifacepos;
-	time_t lastQuery;
 	time_t firstSeen;
+	double lastQuery;
 } clientsData;
-ASSERT_SIZEOF(clientsData, 688, 664, 664);
+
+// ARM needs alignment to 8-byte boundary
+ASSERT_SIZEOF(clientsData, 688, 668, 672);
 
 typedef struct {
 	unsigned char magic;

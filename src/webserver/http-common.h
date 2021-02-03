@@ -57,6 +57,8 @@ bool get_uint_var_msg(const char *source, const char *var, unsigned int *num, co
 bool get_uint_var(const char *source, const char *var, unsigned int *num);
 bool get_int_var_msg(const char *source, const char *var, int *num, const char **msg);
 bool get_int_var(const char *source, const char *var, int *num);
+bool get_double_var_msg(const char *source, const char *var, double *num, const char **msg);
+bool get_double_var(const char *source, const char *var, double *num);
 
 // HTTP macros
 #define GET_VAR(variable, destination, source) mg_get_var(source, strlen(source), variable, destination, sizeof(destination))

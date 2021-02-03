@@ -106,7 +106,7 @@ int api_ftl_logs_dns(struct ftl_conn *api)
 	cJSON *log = JSON_NEW_ARRAY();
 	for(unsigned int i = start; i < LOG_SIZE; i++)
 	{
-		if(fifo_log->timestamp[i] == 0)
+		if(fifo_log->timestamp[i] < 1.0)
 		{
 			// Uninitialized buffer entry
 			break;
@@ -126,12 +126,6 @@ int api_ftl_logs_dns(struct ftl_conn *api)
 
 int api_ftl_dbinfo(struct ftl_conn *api)
 {
-	// Verify requesting client is allowed to see this ressource
-	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
-	{
-		send_json_unauthorized(api);
-	}
-
 	cJSON *json = JSON_NEW_OBJ();
 
 	// Add database stat details
@@ -172,7 +166,7 @@ int api_ftl_dbinfo(struct ftl_conn *api)
 		JSON_OBJ_ADD_NULL(user, "name");
 		JSON_OBJ_ADD_NULL(user, "info");
 	}
-	
+
 	cJSON *group = JSON_NEW_OBJ();
 	JSON_OBJ_ADD_NUMBER(group, "gid", st.st_gid); // GID
 	const struct group *gr = getgrgid(st.st_uid);

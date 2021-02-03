@@ -91,6 +91,10 @@ char * read_setupVarsconf(const char * key)
 	errno = 0;
 	while(getline(&linebuffer, &linebuffersize, setupVarsfp) != -1)
 	{
+		// Memory allocation issue
+		if(linebuffersize == 0 || linebuffer == NULL)
+			continue;
+
 		// Strip (possible) newline
 		linebuffer[strcspn(linebuffer, "\n")] = '\0';
 
@@ -116,14 +120,6 @@ char * read_setupVarsconf(const char * key)
 
 	// Freeing keystr, not setting to NULL, since not used outside of this routine
 	free(keystr);
-
-	// Freeing and setting to NULL to prevent a dangling pointer
-	if(linebuffer != NULL)
-	{
-		free(linebuffer);
-		linebuffersize = 0;
-		linebuffer = NULL;
-	}
 
 	return NULL;
 }

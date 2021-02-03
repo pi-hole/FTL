@@ -27,7 +27,9 @@ enum counters_table_props {
 
 void db_init(void);
 int db_get_FTL_property(const enum ftl_table_props ID);
+double db_get_FTL_property_double(const enum ftl_table_props ID);
 bool db_set_FTL_property(const enum ftl_table_props ID, const int value);
+bool db_set_FTL_property_double(const enum ftl_table_props ID, const double value);
 
 /// Execute a formatted SQL query and get the return code
 int dbquery(const char *format, ...);
@@ -37,8 +39,9 @@ bool dbopen(void);
 void dbclose(void);
 void piholeFTLDB_reopen(void);
 int db_query_int(const char*);
-int db_query_int_from_until(const char* querystr, const unsigned int from, const unsigned int until);
-int db_query_int_from_until_type(const char* querystr, const unsigned int from, const unsigned int until, const int type);
+double db_query_double(const char*);
+int db_query_int_from_until(const char* querystr, const double from, const double until);
+int db_query_int_from_until_type(const char* querystr, const double from, const double until, const int type);
 long get_lastID(void);
 void SQLite3LogCallback(void *pArg, int iErrCode, const char *zMsg);
 long int get_max_query_ID(void);

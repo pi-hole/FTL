@@ -98,6 +98,18 @@ void init_FTL_log(void)
 	fclose(logfile);
 }
 
+// Return time(NULL) but with (up to) nanosecond accuracy
+// The resolution of clock depends on the hardware implementation and cannot be
+// changed by a particular process
+double double_time(void)
+{
+	struct timespec tp;
+	// POSIX.1-2008: "Applications should use the clock_gettime() function instead
+	// of the obsolescent gettimeofday() function"
+	clock_gettime(CLOCK_REALTIME, &tp);
+	return tp.tv_sec + 1e-9*tp.tv_nsec;
+}
+
 // The size of 84 bytes has been carefully selected for all possible timestamps
 // to always fit into the available space without buffer overflows
 void get_timestr(char * const timestring, const time_t timein)

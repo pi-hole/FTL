@@ -13,7 +13,10 @@
 #include "../config.h"
 #include "../log.h"
 #include "json_macros.h"
+// UINT_MAX
 #include <limits.h>
+// HUGE_VAL
+#include <math.h>
 
 char pi_hole_extra_headers[PIHOLE_HEADERS_MAXLEN] = { 0 };
 
@@ -196,6 +199,45 @@ bool get_uint_var(const char *source, const char *var, unsigned int *num)
 {
 	const char *msg = NULL;
 	return get_uint_var_msg(source, var, num, &msg);
+}
+
+bool get_double_var_msg(const char *source, const char *var, double *num, const char **msg)
+{
+	char buffer[128] = { 0 };
+	if(GET_VAR(var, buffer, source) < 1)
+	{
+		// Parameter not found
+		*msg = NULL;
+		return false;
+	}
+
+	// Try to get the value
+	char *endptr = NULL;
+	errno = 0;
+	const double val = strtod(buffer, &endptr);
+
+	// Error checking
+	if (errno != 0)
+	{
+		*msg = strerror(errno);
+		return false;
+	}
+
+	if (endptr == buffer)
+	{
+		*msg = "No digits were found";
+		return false;
+	}
+
+	// Otherwise: success
+	*num = val;
+	return true;
+}
+
+bool get_double_var(const char *source, const char *var, double *num)
+{
+	const char *msg = NULL;
+	return get_double_var_msg(source, var, num, &msg);
 }
 
 const char* __attribute__((pure)) startsWith(const char *path, struct ftl_conn *api)

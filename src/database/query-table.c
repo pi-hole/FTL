@@ -95,8 +95,8 @@ void DB_save_queries(void)
 	long int lastID = get_max_query_ID();
 
 	int total = 0, blocked = 0;
-	time_t currenttimestamp = time(NULL);
-	time_t newlasttimestamp = 0;
+	const double currenttimestamp = double_time();
+	double newlasttimestamp = 0;
 	long int queryID;
 	for(queryID = MAX(0, lastdbindex); queryID < counters->queries; queryID++)
 	{
@@ -122,7 +122,7 @@ void DB_save_queries(void)
 		}
 
 		// TIMESTAMP
-		sqlite3_bind_int(stmt, 1, query->timestamp);
+		sqlite3_bind_double(stmt, 1, query->timestamp);
 
 		// TYPE
 		if(query->type != TYPE_OTHER)
@@ -255,7 +255,7 @@ void DB_save_queries(void)
 	if(saved > 0 && !error)
 	{
 		lastdbindex = queryID;
-		db_set_FTL_property(DB_LASTTIMESTAMP, newlasttimestamp);
+		db_set_FTL_property_double(DB_LASTTIMESTAMP, newlasttimestamp);
 		db_update_counters(total, blocked);
 	}
 
@@ -303,8 +303,8 @@ void DB_read_queries(void)
 
 	// Prepare request
 	// Get time stamp 24 hours in the past
-	const time_t now = time(NULL);
-	const time_t mintime = now - config.maxlogage;
+	const double now = double_time();
+	const double mintime = now - config.maxlogage;
 	const char *querystr = "SELECT * FROM queries WHERE timestamp >= ?";
 	// Log FTL_db query string in debug mode
 	if(config.debug & DEBUG_DATABASE)
@@ -331,16 +331,16 @@ void DB_read_queries(void)
 	while((rc = sqlite3_step(stmt)) == SQLITE_ROW)
 	{
 		const sqlite3_int64 dbid = sqlite3_column_int64(stmt, 0);
-		const time_t queryTimeStamp = sqlite3_column_int(stmt, 1);
+		const double queryTimeStamp = sqlite3_column_double(stmt, 1);
 		// 1483228800 = 01/01/2017 @ 12:00am (UTC)
 		if(queryTimeStamp < 1483228800)
 		{
-			logg("FTL_db warn: TIMESTAMP should be larger than 01/01/2017 but is %lli", (long long)queryTimeStamp);
+			logg("FTL_db warn: TIMESTAMP should be larger than 01/01/2017 but is %f", queryTimeStamp);
 			continue;
 		}
 		if(queryTimeStamp > now)
 		{
-			if(config.debug & DEBUG_DATABASE) logg("FTL_db warn: Skipping query logged in the future (%lli)", (long long)queryTimeStamp);
+			if(config.debug & DEBUG_DATABASE) logg("FTL_db warn: Skipping query logged in the future (%f)", queryTimeStamp);
 			continue;
 		}
 
@@ -431,7 +431,7 @@ void DB_read_queries(void)
 			query->type = TYPE_OTHER;
 			query->qtype = type - 100;
 		}
-		
+
 		query->status = status;
 		query->domainID = domainID;
 		query->clientID = clientID;

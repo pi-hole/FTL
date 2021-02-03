@@ -21,16 +21,16 @@
 
 int api_stats_database_overTime_history(struct ftl_conn *api)
 {
-	unsigned int from = 0, until = 0;
+	double from = 0, until = 0;
 	const int interval = 600;
 	if(api->request->query_string != NULL)
 	{
-		get_uint_var(api->request->query_string, "from", &from);
-		get_uint_var(api->request->query_string, "until", &until);
+		get_double_var(api->request->query_string, "from", &from);
+		get_double_var(api->request->query_string, "until", &until);
 	}
 
 	// Check if we received the required information
-	if(until == 0)
+	if(until < 1.0)
 	{
 		return send_json_error(api, 400,
 		                       "bad_request",
@@ -72,7 +72,7 @@ int api_stats_database_overTime_history(struct ftl_conn *api)
 	}
 
 	// Bind from to prepared statement
-	if((rc = sqlite3_bind_int(stmt, 2, from)) != SQLITE_OK)
+	if((rc = sqlite3_bind_double(stmt, 2, from)) != SQLITE_OK)
 	{
 		logg("api_stats_database_overTime_history(): Failed to bind from (error %d) - %s",
 		     rc, sqlite3_errmsg(FTL_db));
@@ -87,7 +87,7 @@ int api_stats_database_overTime_history(struct ftl_conn *api)
 	}
 
 	// Bind until to prepared statement
-	if((rc = sqlite3_bind_int(stmt, 3, until)) != SQLITE_OK)
+	if((rc = sqlite3_bind_double(stmt, 3, until)) != SQLITE_OK)
 	{
 		logg("api_stats_database_overTime_history(): Failed to bind until (error %d) - %s",
 		     rc, sqlite3_errmsg(FTL_db));
@@ -156,11 +156,12 @@ int api_stats_database_overTime_history(struct ftl_conn *api)
 
 int api_stats_database_top_items(bool blocked, bool domains, struct ftl_conn *api)
 {
-	unsigned int from = 0, until = 0, show = 10;
+	unsigned int show = 10;
+	double from = 0.0, until = 0.0;
 	if(api->request->query_string != NULL)
 	{
-		get_uint_var(api->request->query_string, "from", &from);
-		get_uint_var(api->request->query_string, "until", &until);
+		get_double_var(api->request->query_string, "from", &from);
+		get_double_var(api->request->query_string, "until", &until);
 
 		// Get blocked queries not only for .../top_blocked
 		// but also for .../top_domains?blocked=true
@@ -173,7 +174,7 @@ int api_stats_database_top_items(bool blocked, bool domains, struct ftl_conn *ap
 	}
 
 	// Check if we received the required information
-	if(from == 0 || until == 0)
+	if(from < 1.0 || until < 1.0)
 	{
 		return send_json_error(api, 400,
 		                       "bad_request",
@@ -242,7 +243,7 @@ int api_stats_database_top_items(bool blocked, bool domains, struct ftl_conn *ap
 	}
 
 	// Bind from to prepared statement
-	if((rc = sqlite3_bind_int(stmt, 1, from)) != SQLITE_OK)
+	if((rc = sqlite3_bind_double(stmt, 1, from)) != SQLITE_OK)
 	{
 		logg("api_stats_database_overTime_history(): Failed to bind from (error %d) - %s",
 		     rc, sqlite3_errmsg(FTL_db));
@@ -257,7 +258,7 @@ int api_stats_database_top_items(bool blocked, bool domains, struct ftl_conn *ap
 	}
 
 	// Bind until to prepared statement
-	if((rc = sqlite3_bind_int(stmt, 2, until)) != SQLITE_OK)
+	if((rc = sqlite3_bind_double(stmt, 2, until)) != SQLITE_OK)
 	{
 		logg("api_stats_database_overTime_history(): Failed to bind until (error %d) - %s",
 		     rc, sqlite3_errmsg(FTL_db));
@@ -317,15 +318,15 @@ int api_stats_database_top_items(bool blocked, bool domains, struct ftl_conn *ap
 
 int api_stats_database_summary(struct ftl_conn *api)
 {
-	unsigned int from = 0, until = 0;
+	double from = 0, until = 0;
 	if(api->request->query_string != NULL)
 	{
-		get_uint_var(api->request->query_string, "from", &from);
-		get_uint_var(api->request->query_string, "until", &until);
+		get_double_var(api->request->query_string, "from", &from);
+		get_double_var(api->request->query_string, "until", &until);
 	}
 
 	// Check if we received the required information
-	if(from == 0 || until == 0)
+	if(from < 1.0 || until < 1.0)
 	{
 		return send_json_error(api, 400,
 		                       "bad_request",
@@ -382,16 +383,16 @@ int api_stats_database_summary(struct ftl_conn *api)
 
 int api_stats_database_overTime_clients(struct ftl_conn *api)
 {
-	unsigned int from = 0, until = 0;
+	double from = 0, until = 0;
 	const int interval = 600;
 	if(api->request->query_string != NULL)
 	{
-		get_uint_var(api->request->query_string, "from", &from);
-		get_uint_var(api->request->query_string, "until", &until);
+		get_double_var(api->request->query_string, "from", &from);
+		get_double_var(api->request->query_string, "until", &until);
 	}
 
 	// Check if we received the required information
-	if(from == 0 || until == 0)
+	if(from < 1.0 || until < 1.0)
 	{
 		return send_json_error(api, 400,
 		                       "bad_request",
@@ -420,7 +421,7 @@ int api_stats_database_overTime_clients(struct ftl_conn *api)
 	}
 
 	// Bind from to prepared statement
-	if((rc = sqlite3_bind_int(stmt, 1, from)) != SQLITE_OK)
+	if((rc = sqlite3_bind_double(stmt, 1, from)) != SQLITE_OK)
 	{
 		logg("api_stats_database_overTime_clients(): Failed to bind from (error %d) - %s",
 		     rc, sqlite3_errmsg(FTL_db));
@@ -435,7 +436,7 @@ int api_stats_database_overTime_clients(struct ftl_conn *api)
 	}
 
 	// Bind until to prepared statement
-	if((rc = sqlite3_bind_int(stmt, 2, until)) != SQLITE_OK)
+	if((rc = sqlite3_bind_double(stmt, 2, until)) != SQLITE_OK)
 	{
 		logg("api_stats_database_overTime_clients(): Failed to bind until (error %d) - %s",
 		     rc, sqlite3_errmsg(FTL_db));
@@ -592,15 +593,15 @@ int api_stats_database_overTime_clients(struct ftl_conn *api)
 
 int api_stats_database_query_types(struct ftl_conn *api)
 {
-	unsigned int from = 0, until = 0;
+	double from = 0, until = 0;
 	if(api->request->query_string != NULL)
 	{
-		get_uint_var(api->request->query_string, "from", &from);
-		get_uint_var(api->request->query_string, "until", &until);
+		get_double_var(api->request->query_string, "from", &from);
+		get_double_var(api->request->query_string, "until", &until);
 	}
 
 	// Check if we received the required information
-	if(from == 0 || until == 0)
+	if(from < 1.0 || until < 1.0)
 	{
 		return send_json_error(api, 400,
 		                       "bad_request",
@@ -637,15 +638,15 @@ int api_stats_database_query_types(struct ftl_conn *api)
 
 int api_stats_database_upstreams(struct ftl_conn *api)
 {
-	unsigned int from = 0, until = 0;
+	double from = 0, until = 0;
 	if(api->request->query_string != NULL)
 	{
-		get_uint_var(api->request->query_string, "from", &from);
-		get_uint_var(api->request->query_string, "until", &until);
+		get_double_var(api->request->query_string, "from", &from);
+		get_double_var(api->request->query_string, "until", &until);
 	}
 
 	// Check if we received the required information
-	if(from == 0 || until == 0)
+	if(from < 1.0 || until < 1.0)
 	{
 		return send_json_error(api, 400,
 		                       "bad_request",
@@ -690,7 +691,7 @@ int api_stats_database_upstreams(struct ftl_conn *api)
 	}
 
 	// Bind from to prepared statement
-	if((rc = sqlite3_bind_int(stmt, 1, from)) != SQLITE_OK)
+	if((rc = sqlite3_bind_double(stmt, 1, from)) != SQLITE_OK)
 	{
 		logg("api_stats_database_overTime_clients(): Failed to bind from (error %d) - %s",
 		     rc, sqlite3_errmsg(FTL_db));
@@ -705,7 +706,7 @@ int api_stats_database_upstreams(struct ftl_conn *api)
 	}
 
 	// Bind until to prepared statement
-	if((rc = sqlite3_bind_int(stmt, 2, until)) != SQLITE_OK)
+	if((rc = sqlite3_bind_double(stmt, 2, until)) != SQLITE_OK)
 	{
 		logg("api_stats_database_overTime_clients(): Failed to bind until (error %d) - %s",
 		     rc, sqlite3_errmsg(FTL_db));

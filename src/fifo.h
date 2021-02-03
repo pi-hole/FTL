@@ -24,7 +24,7 @@ void add_to_dnsmasq_log_fifo_buffer(const char *payload, const size_t length);
 
 typedef struct {
 	unsigned int next_id;
-	time_t timestamp[LOG_SIZE];
+	double timestamp[LOG_SIZE];
 	char message[LOG_SIZE][MAX_MESSAGE];
 } fifologData;
 

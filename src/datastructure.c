@@ -82,7 +82,6 @@ int findUpstreamID(const char * upstreamString, const in_port_t port, const bool
 			if(count)
 			{
 				upstream->count++;
-				upstream->lastQuery = time(NULL);
 			}
 			return upstreamID;
 		}
@@ -125,7 +124,7 @@ int findUpstreamID(const char * upstreamString, const in_port_t port, const bool
 	upstream->responses = 0u;
 	// This is a new upstream server
 	set_event(RESOLVE_NEW_HOSTNAMES);
-	upstream->lastQuery = time(NULL);
+	upstream->lastQuery = 0.0;
 	// Store port
 	upstream->port = port;
 	// Increase counter by one
@@ -249,7 +248,7 @@ int findClientID(const char *clientIP, const bool count, const bool aliasclient)
 	client->namepos = 0;
 	set_event(RESOLVE_NEW_HOSTNAMES);
 	// No query seen so far
-	client->lastQuery = 0;
+	client->lastQuery = 0.0;
 	client->numQueriesARP = client->count;
 	// Configured groups are yet unknown
 	client->flags.found_group = false;

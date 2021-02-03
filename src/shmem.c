@@ -649,6 +649,9 @@ SharedMemory create_shm(const char *name, const size_t size, bool create_new)
 		return sharedMemory;
 	}
 
+	// Initialize shared memory object to zero
+	memset(shm, 0, size);
+
 	// Close shared memory object file descriptor as it is no longer
 	// needed after having called mmap()
 	close(fd);
