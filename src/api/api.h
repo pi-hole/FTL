@@ -45,7 +45,7 @@ int api_ftl_client(struct ftl_conn *api);
 int api_ftl_logs_dns(struct ftl_conn *api);
 int api_ftl_dbinfo(struct ftl_conn *api);
 int api_ftl_sysinfo(struct ftl_conn *api);
-int get_ftl_obj(struct ftl_conn *api, cJSON *ftl);
+int get_ftl_obj(struct ftl_conn *api, cJSON *ftl, const bool is_locked);
 int get_system_obj(struct ftl_conn *api, cJSON *system);
 
 // Network methods

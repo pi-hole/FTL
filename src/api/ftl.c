@@ -387,12 +387,13 @@ int get_system_obj(struct ftl_conn *api, cJSON *system)
 	return 0;
 }
 
-int get_ftl_obj(struct ftl_conn *api, cJSON *ftl)
+int get_ftl_obj(struct ftl_conn *api, cJSON *ftl, const bool is_locked)
 {
 	cJSON *database = JSON_NEW_OBJ();
 
 	// Source from shared objects within lock
-	lock_shm();
+	if(!is_locked)
+		lock_shm();
 	const int db_gravity = counters->database.gravity;
 	const int db_groups = counters->database.groups;
 	const int db_lists = counters->database.lists;
@@ -414,7 +415,8 @@ int get_ftl_obj(struct ftl_conn *api, cJSON *ftl)
 		if(client->count > 0)
 			activeclients++;
 	}
-	unlock_shm();
+	if(!is_locked)
+		unlock_shm();
 
 	JSON_OBJ_ADD_NUMBER(database, "gravity", db_gravity);
 	JSON_OBJ_ADD_NUMBER(database, "groups", db_groups);
@@ -451,7 +453,7 @@ int api_ftl_sysinfo(struct ftl_conn *api)
 
 	// Get FTL object
 	cJSON *ftl = JSON_NEW_OBJ();
-	ret = get_ftl_obj(api, ftl);
+	ret = get_ftl_obj(api, ftl, false);
 	if(ret != 0)
 		return ret;
 

@@ -27,13 +27,6 @@ components:
                     $ref: '#/components/examples/no_login_required'
                   login_required:
                     $ref: '#/components/examples/login_required'
-
-          '401':
-            description: Unauthorized
-            content:
-              application/json:
-                schema:
-                  $ref: 'common.yaml#/components/errors/unauthorized'
       post:
         summary: Submit response for login
         tags:
@@ -116,6 +109,9 @@ components:
   schemas:
     session:
       type: object
+      required:
+        - challenge
+        - session
       properties:
         challenge:
           type: string
@@ -124,6 +120,10 @@ components:
         session:
           type: object
           description: Session object
+          required:
+            - valid
+            - sid
+            - validity
           properties:
             valid:
               type: boolean

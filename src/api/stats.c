@@ -97,7 +97,7 @@ int api_stats_summary(struct ftl_conn *api)
 	JSON_OBJ_ADD_ITEM(queries, "types", types);
 
 	JSON_OBJ_ADD_NUMBER(queries, "sum", counters->queries);
-	
+
 	cJSON *replies = JSON_NEW_OBJ();
 	JSON_OBJ_ADD_NUMBER(replies, "NODATA", counters->reply_NODATA);
 	JSON_OBJ_ADD_NUMBER(replies, "NXDOMAIN", counters->reply_NXDOMAIN);
@@ -118,7 +118,7 @@ int api_stats_summary(struct ftl_conn *api)
 
 	// Get FTL object
 	cJSON *ftl = JSON_NEW_OBJ();
-	ret = get_ftl_obj(api, ftl);
+	ret = get_ftl_obj(api, ftl, true);
 	if(ret != 0)
 		return ret;
 	JSON_OBJ_ADD_ITEM(json, "ftl", ftl);

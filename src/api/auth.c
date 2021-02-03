@@ -16,6 +16,8 @@
 #include "../config.h"
 // read_setupVarsconf()
 #include "../setupVars.h"
+// (un)lock_shm()
+#include "../shmem.h"
 
 // crypto library
 #include <nettle/sha2.h>
@@ -123,6 +125,19 @@ int check_client_auth(struct ftl_conn *api)
 				sid_source = "payload (JSON)";
 				sid_avail = true;
 			}
+		}
+	}
+
+	// If not, does the client provide a session ID via HEADER?
+	if(!sid_avail)
+	{
+		const char *sid_header = NULL;
+		if((sid_header = mg_get_header(api->conn, "sid")) != NULL)
+		{
+			strncpy(sid, sid_header, SID_SIZE - 1u);
+			sid[SID_SIZE-1] = '\0';
+			sid_source = "header";
+			sid_avail = true;
 		}
 	}
 
@@ -336,7 +351,7 @@ static void generateChallenge(const unsigned int idx, const time_t now)
 	challenges[idx].valid_until = now + API_CHALLENGE_TIMEOUT;
 }
 
-static void generateResponse(const unsigned int idx)
+static void generateResponse(const unsigned int idx, const char *password_hash)
 {
 	uint8_t raw_response[SHA256_DIGEST_SIZE];
 	struct sha256_ctx ctx;
@@ -351,12 +366,9 @@ static void generateResponse(const unsigned int idx)
 	sha256_update(&ctx, 1, (uint8_t*)":");
 
 	// Get and add password hash from setupVars.conf
-	char *password_hash = get_password_hash();
 	sha256_update(&ctx,
-			strlen(password_hash),
-			(uint8_t*)password_hash);
-	free(password_hash);
-	password_hash = NULL;
+	              strlen(password_hash),
+	              (uint8_t*)password_hash);
 
 	sha256_digest(&ctx, SHA256_DIGEST_SIZE, raw_response);
 	sha256_hex(raw_response, challenges[idx].response);
@@ -386,7 +398,9 @@ int api_auth(struct ftl_conn *api)
 	// Check HTTP method
 	const time_t now = time(NULL);
 
+	lock_shm();
 	char *password_hash = get_password_hash();
+	unlock_shm();
 	const bool empty_password = (strlen(password_hash) == 0u);
 
 	int user_id = API_AUTH_UNAUTHORIZED;
@@ -548,7 +562,7 @@ int api_auth(struct ftl_conn *api)
 		generateChallenge(i, now);
 
 		// Compute and store expected response for this challenge (SHA-256)
-		generateResponse(i);
+		generateResponse(i, password_hash);
 
 		// Free allocated memory
 		free(password_hash);
