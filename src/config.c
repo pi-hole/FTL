@@ -461,6 +461,25 @@ void read_FTLconf(void)
 		logg("   REFRESH_HOSTNAMES: Periodically refreshing IPv4 names");
 	}
 
+	// RATE_LIMIT
+	// defaults to: 1000 queries / 60 seconds
+	config.rate_limit.count = 1000;
+	config.rate_limit.interval = 60;
+	buffer = parse_FTLconf(fp, "RATE_LIMIT");
+
+	unsigned int count = 0, interval = 0;
+	if(buffer != NULL && sscanf(buffer, "%u/%u", &count, &interval) == 2)
+	{
+		config.rate_limit.count = count;
+		config.rate_limit.interval = interval;
+	}
+
+	if(config.rate_limit.count > 0)
+		logg("   RATE_LIMIT: Rate-limiting client making more than %u queries in %u second%s",
+		     config.rate_limit.count, config.rate_limit.interval, config.rate_limit.interval == 1 ? "" : "s");
+	else
+		logg("   RATE_LIMIT: Disabled");
+
 	// Read DEBUG_... setting from pihole-FTL.conf
 	read_debuging_settings(fp);
 
@@ -523,7 +542,7 @@ static char *parse_FTLconf(FILE *fp, const char * key)
 
 	// Go to beginning of file
 	fseek(fp, 0L, SEEK_SET);
-	
+
 	if(config.debug & DEBUG_EXTRA)
 		logg("initial: conflinebuffer = %p, keystr = %p, size = %zu", conflinebuffer, keystr, size);
 
