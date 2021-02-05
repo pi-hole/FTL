@@ -24,6 +24,7 @@
 #include "capabilities.h"
 #include "database/gravity-db.h"
 #include "timers.h"
+#include "procps.h"
 
 char * username;
 bool needGC = false;
@@ -59,6 +60,7 @@ int main (int argc, char* argv[])
 	if(!init_shmem(true))
 	{
 		logg("Initialization of shared memory failed.");
+		check_running_FTL();
 		return EXIT_FAILURE;
 	}
 

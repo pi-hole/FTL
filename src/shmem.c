@@ -548,28 +548,14 @@ SharedMemory create_shm(const char *name, const size_t size, bool create_new)
 	};
 
 	// O_RDWR: Open the object for read-write access (we need to be able to modify the locks)
-	int shm_oflags = O_RDWR;
-	if(create_new)
-	{
-		// Try unlinking the shared memory object before creating a new one.
-		// If the object is still existing, e.g., due to a past unclean exit
-		// of FTL, shm_open() would fail with error "File exists"
-		int ret = shm_unlink(name);
-		// Check return code. shm_unlink() returns -1 on error and sets errno
-		// We specifically ignore ENOENT (No such file or directory) as this is not an
-		// error in our use case (we only want the file to be deleted when existing)
-		if(ret != 0 && errno != ENOENT)
-			logg("create_shm(): shm_unlink(\"%s\") failed: %s (%i)", name, strerror(errno), errno);
-
-		// Replace shm_oflags
-		// O_CREAT: Create the shared memory object if it does not exist.
-		// O_EXCL: Return an error if a shared memory object with the given name already exists.
-		// O_TRUNC: If the shared memory object already exists, truncate it to zero bytes.
-		shm_oflags |= O_CREAT | O_EXCL | O_TRUNC;
-	}
+	// When creating a new shared memory object, we add to this
+	//   - O_CREAT: Create the shared memory object if it does not exist.
+	//   - O_EXCL: Return an error if a shared memory object with the given name already exists.
+	const int shm_oflags = create_new ? O_RDWR | O_CREAT | O_EXCL : O_RDWR;
 
 	// Create the shared memory file in read/write mode with 600 permissions
-	int fd = shm_open(sharedMemory.name, shm_oflags, S_IRUSR | S_IWUSR);
+	errno = 0;
+	const int fd = shm_open(sharedMemory.name, shm_oflags, S_IRUSR | S_IWUSR);
 
 	// Check for `shm_open` error
 	if(fd == -1)

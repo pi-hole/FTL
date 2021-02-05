@@ -21,7 +21,7 @@ void format_memory_size(char * const prefix, unsigned long long int bytes,
 void format_time(char buffer[42], unsigned long seconds, double milliseconds);
 const char *get_FTL_version(void) __attribute__ ((malloc));
 void log_FTL_version(bool crashreport);
-void get_timestr(char * const timestring, const time_t timein);
+void get_timestr(char * const timestring, const time_t timein, const bool millis);
 const char *get_ordinal_suffix(unsigned int number) __attribute__ ((const));
 
 // The actual logging routine can take extra options for specialized logging
