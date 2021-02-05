@@ -11,6 +11,13 @@
   [[ ${lines[6]} == "" ]]
 }
 
+@test "Running a second instance is detected and prevented" {
+  run bash -c 'su pihole -s /bin/sh -c "/home/pihole/pihole-FTL -f"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[9]} == *"Initialization of shared memory failed." ]]
+  [[ ${lines[10]} == *"--> pihole-FTL is already running as PID "* ]]
+}
+
 @test "Starting tests without prior history" {
   run bash -c 'grep -c "Total DNS queries: 0" /var/log/pihole-FTL.log'
   printf "%s\n" "${lines[@]}"
@@ -499,8 +506,8 @@
   [[ ${lines[0]} == "0" ]]
 }
 
-@test "No FATAL messages in pihole-FTL.log" {
-  run bash -c 'grep -c "FATAL:" /var/log/pihole-FTL.log'
+@test "No FATAL messages in pihole-FTL.log (besides error due to starting FTL more than once)" {
+  run bash -c 'grep "FATAL:" /var/log/pihole-FTL.log | grep -c -v "FATAL: create_shm(): Failed to create shared memory object \"FTL-lock\": File exists"'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0" ]]
 }
