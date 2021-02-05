@@ -73,6 +73,7 @@ static ShmSettings *shmSettings = NULL;
 
 static int pagesize;
 static unsigned int local_shm_counter = 0;
+static size_t used_shmem = 0u;
 static size_t get_optimal_object_size(const size_t objsize, const size_t minsize);
 
 static int get_dev_shm_usage(char buffer[64])
@@ -98,13 +99,19 @@ static int get_dev_shm_usage(char buffer[64])
 	double formated_size = 0.0;
 	format_memory_size(prefix_size, size, &formated_size);
 
-	// Generate human-readable used size
+	// Generate human-readable "total used" size
 	char prefix_used[2] = { 0 };
 	double formated_used = 0.0;
 	format_memory_size(prefix_used, used, &formated_used);
 
+	// Generate human-readable "used by FTL" size
+	char prefix_FTL[2] = { 0 };
+	double formated_FTL = 0.0;
+	format_memory_size(prefix_FTL, used_shmem, &formated_FTL);
+
 	// Print result into buffer passed to this subroutine
-	snprintf(buffer, 64, SHMEM_PATH": %.1f%sB used, %.1f%sB total", formated_used, prefix_used, formated_size, prefix_size);
+	snprintf(buffer, 64, SHMEM_PATH": %.1f%sB used, %.1f%sB total, FTL uses %.1f%sB",
+	         formated_used, prefix_used, formated_size, prefix_size, formated_FTL, prefix_FTL);
 
 	// Return percentage of used shared memory
 	// Adding 1 avoids FPE if the size turns out to be zero
@@ -591,6 +598,10 @@ SharedMemory create_shm(const char *name, const size_t size, bool create_new)
 		exit(EXIT_FAILURE);
 	}
 
+	// Update how much memory FTL uses
+	// We only add here as this is a new file
+	used_shmem += size;
+
 	// Create shared memory mapping
 	void *shm = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
 
@@ -732,6 +743,10 @@ bool realloc_shm(SharedMemory *sharedMemory, const size_t size1, const size_t si
 		     strerror(errno));
 		exit(EXIT_FAILURE);
 	}
+
+	// Update how much memory FTL uses
+	// We add the difference between updated and previous size
+	used_shmem += (size - sharedMemory->size);
 
 	sharedMemory->ptr = new_ptr;
 	sharedMemory->size = size;
