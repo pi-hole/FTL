@@ -56,7 +56,7 @@ void *GC_thread(void *val)
 			{
 				timer_start(GC_TIMER);
 				char timestring[84] = "";
-				get_timestr(timestring, mintime);
+				get_timestr(timestring, mintime, false);
 				logg("GC starting, mintime: %s (%llu)", timestring, (long long)mintime);
 			}
 

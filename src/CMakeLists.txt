@@ -133,6 +133,8 @@ set(sources
         main.h
         overTime.c
         overTime.h
+        procps.c
+        procps.h
         regex.c
         regex_r.h
         resolve.c
