@@ -522,6 +522,8 @@ void DB_read_queries(void)
 				break;
 
 			case QUERY_FORWARDED: // Forwarded
+			case QUERY_RETRIED: // (fall through)
+			case QUERY_RETRIED_DNSSEC: // (fall through)
 				counters->forwarded++;
 				upstreamsData *upstream = getUpstream(upstreamID, true);
 				if(upstream != NULL)
@@ -539,8 +541,6 @@ void DB_read_queries(void)
 				overTime[timeidx].cached++;
 				break;
 
-			case QUERY_RETRIED: // Retried query
-			case QUERY_RETRIED_DNSSEC: // fall through
 			case QUERY_IN_PROGRESS:
 				// Nothing to be done here
 				break;
