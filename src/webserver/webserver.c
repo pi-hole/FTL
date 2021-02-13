@@ -71,7 +71,7 @@ static int redirect_root_handler(struct mg_connection *conn, void *input)
 	}
 
 	// 308 Permanent Redirect from http://pi.hole -> http://pi.hole/admin
-	if(host != NULL && strncmp(host, "pi.hole", host_len) == 0)
+	if(host != NULL && strncmp(host, httpsettings.webdomain, host_len) == 0)
 	{
 		mg_send_http_redirect(conn, httpsettings.webhome, 308);
 		return 1;

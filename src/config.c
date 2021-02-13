@@ -533,6 +533,9 @@ void read_FTLconf(void)
 		logg("   REFRESH_HOSTNAMES: Periodically refreshing IPv4 names");
 	}
 
+	// WEBDOMAIN
+	getpath(fp, "WEBDOMAIN", "pi.hole", &httpsettings.webdomain);
+
 	// Read DEBUG_... setting from pihole-FTL.conf
 	// This option should be the last one as it causes
 	// some rather verbose output into the log when

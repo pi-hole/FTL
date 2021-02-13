@@ -73,6 +73,7 @@ typedef struct {
 typedef struct httpsettings {
 	char *webroot;
 	char *webhome;
+	char *webdomain;
 	char *log_info;
 	char *log_error;
 	const char *acl;
