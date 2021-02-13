@@ -69,7 +69,7 @@ int findQueryID(const int id)
 	return -1;
 }
 
-int findUpstreamID(const char * upstreamString, const in_port_t port, const bool count)
+int findUpstreamID(const char * upstreamString, const in_port_t port)
 {
 	// Go through already knows upstream servers and see if we used one of those
 	for(int upstreamID=0; upstreamID < counters->upstreams; upstreamID++)
@@ -82,14 +82,7 @@ int findUpstreamID(const char * upstreamString, const in_port_t port, const bool
 			continue;
 
 		if(strcmp(getstr(upstream->ippos), upstreamString) == 0 && upstream->port == port)
-		{
-			if(count)
-			{
-				upstream->count++;
-				upstream->lastQuery = time(NULL);
-			}
 			return upstreamID;
-		}
 	}
 	// This upstream server is not known
 	// Store ID
@@ -110,10 +103,7 @@ int findUpstreamID(const char * upstreamString, const in_port_t port, const bool
 	// Set magic byte
 	upstream->magic = MAGICBYTE;
 	// Initialize its counter
-	if(count)
-		upstream->count = 1;
-	else
-		upstream->count = 0;
+	upstream->count = 0;
 	// Save upstream destination IP address
 	upstream->ippos = addstr(upstreamString);
 	upstream->failed = 0;
