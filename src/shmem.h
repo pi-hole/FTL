@@ -63,6 +63,7 @@ typedef struct {
 
 extern countersStruct *counters;
 
+#ifdef SHMEM_PRIVATE
 /// Create shared memory
 ///
 /// \param name the name of the shared memory
@@ -70,7 +71,7 @@ extern countersStruct *counters;
 /// \param create_new true = delete old file, create new, false = connect to existing object or fail
 /// \return a structure with a pointer to the mounted shared memory. The pointer
 /// will always be valid, because if it failed FTL will have exited.
-SharedMemory create_shm(const char *name, const size_t size, bool create_new);
+static SharedMemory create_shm(const char *name, const size_t size, bool create_new);
 
 /// Reallocate shared memory
 ///
@@ -79,12 +80,13 @@ SharedMemory create_shm(const char *name, const size_t size, bool create_new);
 /// \param size2 the new size (factor 2)
 /// \param resize whether the object should be resized or only remapped
 /// \return if reallocation was successful
-bool realloc_shm(SharedMemory *sharedMemory, const size_t size1, const size_t size2, const bool resize);
+static bool realloc_shm(SharedMemory *sharedMemory, const size_t size1, const size_t size2, const bool resize);
 
 /// Disconnect from shared memory. If there are no other connections to shared memory, it will be deleted.
 ///
 /// \param sharedMemory the shared memory struct
-void delete_shm(SharedMemory *sharedMemory);
+static void delete_shm(SharedMemory *sharedMemory);
+#endif
 
 /// Block until a lock can be obtained
 #define lock_shm() _lock_shm(__FUNCTION__, __LINE__, __FILE__)
@@ -104,7 +106,6 @@ bool init_shmem(bool create_new);
 void destroy_shmem(void);
 size_t addstr(const char *str);
 const char *getstr(const size_t pos);
-void *enlarge_shmem_struct(const char type);
 
 /**
  * Escapes a string by replacing special characters, such as spaces
@@ -131,12 +132,13 @@ void addOverTimeClientSlot(void);
 // Change ownership of shared memory objects
 void chown_all_shmem(struct passwd *ent_pw);
 
+// Get details about shared memory used by FTL
+void log_shmem_details(void);
+
 // Per-client regex buffer storing whether or not a specific regex is enabled for a particular client
 void add_per_client_regex(unsigned int clientID);
 void reset_per_client_regex(const int clientID);
 bool get_per_client_regex(const int clientID, const int regexID);
 void set_per_client_regex(const int clientID, const int regexID, const bool value);
-
-void memory_check(const enum memory_type which);
 
 #endif //SHARED_MEMORY_SERVER_H

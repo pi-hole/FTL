@@ -9,6 +9,7 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
+#define SHMEM_PRIVATE
 #include "shmem.h"
 #include "overTime.h"
 #include "log.h"
@@ -19,6 +20,8 @@
 #include <sys/statvfs.h>
 // get_num_regex()
 #include "regex_r.h"
+// NAME_MAX
+#include <limits.h>
 
 /// The version of shared memory used
 #define SHARED_MEMORY_VERSION 12
@@ -79,6 +82,10 @@ static int pagesize;
 static unsigned int local_shm_counter = 0;
 static size_t used_shmem = 0u;
 static size_t get_optimal_object_size(const size_t objsize, const size_t minsize);
+
+// Private prototypes
+static void *enlarge_shmem_struct(const char type);
+static void shm_ensure_size(void);
 
 static int get_dev_shm_usage(char buffer[64])
 {
@@ -382,6 +389,9 @@ void _lock_shm(const char* func, const int line, const char * file)
 		             local_shm_counter, shmSettings->global_shm_counter);
 		remap_shm();
 	}
+
+	// Ensure we have enough shared memory available for new data
+	shm_ensure_size();
 }
 
 // Obtain log file lock
@@ -578,7 +588,7 @@ void destroy_shmem(void)
 /// \param create_new true = delete old file, create new, false = connect to existing object or fail
 /// \return a structure with a pointer to the mounted shared memory. The pointer
 /// will always be valid, because if it failed FTL will have exited.
-SharedMemory create_shm(const char *name, const size_t size, bool create_new)
+static SharedMemory create_shm(const char *name, const size_t size, bool create_new)
 {
 	char df[64] =  { 0 };
 	const int percentage = get_dev_shm_usage(df);
@@ -648,7 +658,7 @@ SharedMemory create_shm(const char *name, const size_t size, bool create_new)
 	return sharedMemory;
 }
 
-void *enlarge_shmem_struct(const char type)
+static void *enlarge_shmem_struct(const char type)
 {
 	SharedMemory *sharedMemory = NULL;
 	size_t sizeofobj, allocation_step;
@@ -693,7 +703,8 @@ void *enlarge_shmem_struct(const char type)
 	}
 
 	// Reallocate enough space for requested object
-	realloc_shm(sharedMemory, sharedMemory->size/sizeofobj + allocation_step, sizeofobj, true);
+	const size_t current = sharedMemory->size/sizeofobj;
+	realloc_shm(sharedMemory, current + allocation_step, sizeofobj, true);
 
 	// Add allocated memory to corresponding counter
 	*counter += allocation_step;
@@ -701,7 +712,7 @@ void *enlarge_shmem_struct(const char type)
 	return sharedMemory->ptr;
 }
 
-bool realloc_shm(SharedMemory *sharedMemory, const size_t size1, const size_t size2, const bool resize)
+static bool realloc_shm(SharedMemory *sharedMemory, const size_t size1, const size_t size2, const bool resize)
 {
 	// Absolute target size
 	const size_t size = size1 * size2;
@@ -781,7 +792,7 @@ bool realloc_shm(SharedMemory *sharedMemory, const size_t size1, const size_t si
 	return true;
 }
 
-void delete_shm(SharedMemory *sharedMemory)
+static void delete_shm(SharedMemory *sharedMemory)
 {
 	// Unmap shared memory (if mmapped)
 	if(sharedMemory->ptr != NULL)
@@ -814,6 +825,7 @@ static size_t __attribute__((const)) gcd(size_t a, size_t b)
 // in the shared memory object
 static size_t get_optimal_object_size(const size_t objsize, const size_t minsize)
 {
+	// optsize and minsize are in units of objsize
 	const size_t optsize = pagesize / gcd(pagesize, objsize);
 	if(optsize < minsize)
 	{
@@ -857,76 +869,58 @@ static size_t get_optimal_object_size(const size_t objsize, const size_t minsize
 	}
 }
 
-void memory_check(const enum memory_type which)
+// Enlarge shared memory to be able to hold at least one new record
+static void shm_ensure_size(void)
 {
-	switch(which)
+	if(counters->queries >= counters->queries_MAX-1)
 	{
-		case QUERIES:
-			if(counters->queries >= counters->queries_MAX-1)
-			{
-				// Have to reallocate shared memory
-				queries = enlarge_shmem_struct(QUERIES);
-				if(queries == NULL)
-				{
-					logg("FATAL: Memory allocation failed! Exiting");
-					exit(EXIT_FAILURE);
-				}
-			}
-			break;
-		case UPSTREAMS:
-			if(counters->upstreams >= counters->upstreams_MAX-1)
-			{
-				// Have to reallocate shared memory
-				upstreams = enlarge_shmem_struct(UPSTREAMS);
-				if(upstreams == NULL)
-				{
-					logg("FATAL: Memory allocation failed! Exiting");
-					exit(EXIT_FAILURE);
-				}
-			}
-			break;
-		case CLIENTS:
-			if(counters->clients >= counters->clients_MAX-1)
-			{
-				// Have to reallocate shared memory
-				clients = enlarge_shmem_struct(CLIENTS);
-				if(clients == NULL)
-				{
-					logg("FATAL: Memory allocation failed! Exiting");
-					exit(EXIT_FAILURE);
-				}
-			}
-			break;
-		case DOMAINS:
-			if(counters->domains >= counters->domains_MAX-1)
-			{
-				// Have to reallocate shared memory
-				domains = enlarge_shmem_struct(DOMAINS);
-				if(domains == NULL)
-				{
-					logg("FATAL: Memory allocation failed! Exiting");
-					exit(EXIT_FAILURE);
-				}
-			}
-			break;
-		case DNS_CACHE:
-			if(counters->dns_cache_size >= counters->dns_cache_MAX-1)
-			{
-				// Have to reallocate shared memory
-				dns_cache = enlarge_shmem_struct(DNS_CACHE);
-				if(dns_cache == NULL)
-				{
-					logg("FATAL: Memory allocation failed! Exiting");
-					exit(EXIT_FAILURE);
-				}
-			}
-			break;
-		case OVERTIME: // fall through
-		default:
-			/* That cannot happen */
-			logg("Fatal error in memory_check(%i)", which);
+		// Have to reallocate shared memory
+		queries = enlarge_shmem_struct(QUERIES);
+		if(queries == NULL)
+		{
+			logg("FATAL: Memory allocation failed! Exiting");
 			exit(EXIT_FAILURE);
-			break;
+		}
+	}
+	if(counters->upstreams >= counters->upstreams_MAX-1)
+	{
+		// Have to reallocate shared memory
+		upstreams = enlarge_shmem_struct(UPSTREAMS);
+		if(upstreams == NULL)
+		{
+			logg("FATAL: Memory allocation failed! Exiting");
+			exit(EXIT_FAILURE);
+		}
+	}
+	if(counters->clients >= counters->clients_MAX-1)
+	{
+		// Have to reallocate shared memory
+		clients = enlarge_shmem_struct(CLIENTS);
+		if(clients == NULL)
+		{
+			logg("FATAL: Memory allocation failed! Exiting");
+			exit(EXIT_FAILURE);
+		}
+	}
+	if(counters->domains >= counters->domains_MAX-1)
+	{
+		// Have to reallocate shared memory
+		domains = enlarge_shmem_struct(DOMAINS);
+		if(domains == NULL)
+		{
+			logg("FATAL: Memory allocation failed! Exiting");
+			exit(EXIT_FAILURE);
+		}
+	}
+	if(counters->dns_cache_size >= counters->dns_cache_MAX-1)
+	{
+		// Have to reallocate shared memory
+		dns_cache = enlarge_shmem_struct(DNS_CACHE);
+		if(dns_cache == NULL)
+		{
+			logg("FATAL: Memory allocation failed! Exiting");
+			exit(EXIT_FAILURE);
+		}
 	}
 }
 

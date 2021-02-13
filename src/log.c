@@ -226,7 +226,7 @@ void format_memory_size(char * const prefix, const unsigned long long int bytes,
 			break;
 		*formated /= 1e3;
 	}
-	const char* prefixes[8] = { "", "K", "M", "G", "T", "P", "E", "?" };
+	const char* prefixes[8] = { " ", "K", "M", "G", "T", "P", "E", "?" };
 	// Chose matching SI prefix
 	strcpy(prefix, prefixes[i]);
 }

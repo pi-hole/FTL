@@ -83,7 +83,7 @@ void ls_dir(const char* path)
 	char full_path[strlen(path)+NAME_MAX+2];
 
 	logg("------ Listing content of directory %s ------", path);
-	logg("File Mode User:Group  Filesize Filename");
+	logg("File Mode User:Group      Size  Filename");
 
 	struct dirent *dircontent = NULL;
 	// Walk directory file by file
@@ -112,12 +112,12 @@ void ls_dir(const char* path)
 			snprintf(user, sizeof(user), "%d", st.st_uid);
 
 		struct group *grp;
-		char group[256];
+		char usergroup[256];
 		// Get out group name
 		if ((grp = getgrgid(st.st_gid)) != NULL)
-			snprintf(group, sizeof(group), "%s", grp->gr_name);
+			snprintf(usergroup, sizeof(usergroup), "%s:%s", user, grp->gr_name);
 		else
-			snprintf(group, sizeof(group), "%d", st.st_gid);
+			snprintf(usergroup, sizeof(usergroup), "%s:%d", user, st.st_gid);
 
 		char permissions[10];
 		// Get human-readable format of permissions as known from ls
@@ -138,7 +138,7 @@ void ls_dir(const char* path)
 		format_memory_size(prefix, (unsigned long long)st.st_size, &formated);
 
 		// Log output for this file
-		logg("%s %s:%s %.0f%s %s", permissions, user, group, formated, prefix, filename);
+		logg("%s %-15s %3.0f%s  %s", permissions, usergroup, formated, prefix, filename);
 	}
 
 	logg("---------------------------------------------------");
