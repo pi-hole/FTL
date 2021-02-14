@@ -867,8 +867,18 @@ void _FTL_forwarded(const unsigned int flags, const char *name, const struct ser
 
 	// Get ID of upstream destination, create new upstream record
 	// if not found in current data structure
-	const int upstreamID = findUpstreamID(upstreamIP, upstreamPort, true);
+	const int upstreamID = findUpstreamID(upstreamIP, upstreamPort);
 	query->upstreamID = upstreamID;
+
+	upstreamsData *upstream = getUpstream(upstreamID, true);
+	if(upstream != NULL)
+	{
+		upstream->count++;
+		upstream->lastQuery = time(NULL);
+	}
+
+	// Update counter for forwarded queries
+	counters->forwarded++;
 
 	// Get time index for this query
 	const unsigned int timeidx = query->timeidx;
@@ -919,9 +929,6 @@ void _FTL_forwarded(const unsigned int flags, const char *name, const struct ser
 
 	// Update overTime data
 	overTime[timeidx].forwarded++;
-
-	// Update counter for forwarded queries
-	counters->forwarded++;
 
 	// Release allocated memory
 	free(upstreamIP);
@@ -1258,27 +1265,12 @@ static void query_externally_blocked(const int queryID, const enum query_status 
 		return;
 	}
 
-	// Get time index
-	const unsigned int timeidx = query->timeidx;
-
 	// If query is already known to be externally blocked,
 	// then we have nothing to do here
 	if(query->status == QUERY_EXTERNAL_BLOCKED_IP ||
 	   query->status == QUERY_EXTERNAL_BLOCKED_NULL ||
 	   query->status == QUERY_EXTERNAL_BLOCKED_NXRA)
 		return;
-
-	// Correct counters if necessary ...
-	if(query->status == QUERY_FORWARDED)
-	{
-		counters->forwarded--;
-		overTime[timeidx].forwarded--;
-
-		// Get forward pointer
-		upstreamsData* upstream = getUpstream(query->upstreamID, true);
-		if(upstream != NULL)
-			upstream->count--;
-	}
 
 	// Mark query as blocked
 	domainsData* domain = getDomain(query->domainID, true);
@@ -1427,6 +1419,12 @@ static void query_blocked(queriesData* query, domainsData* domain, clientsData* 
 	else if(query->status == QUERY_FORWARDED)
 	{
 		counters->forwarded--;
+		overTime[query->timeidx].forwarded--;
+
+		// Get forward pointer
+		upstreamsData* upstream = getUpstream(query->upstreamID, true);
+		if(upstream != NULL)
+			upstream->count--;
 	}
 	else if(query->status == QUERY_CACHE)
 	{
@@ -1883,7 +1881,7 @@ void FTL_forwarding_retried(const struct server *serv, const int oldID, const in
 	strtolower(upstreamIP);
 
 	// Get upstream ID
-	const int upstreamID = findUpstreamID(upstreamIP, upstreamPort, false);
+	const int upstreamID = findUpstreamID(upstreamIP, upstreamPort);
 
 	// Possible debugging information
 	if(config.debug & DEBUG_QUERIES)
@@ -1901,7 +1899,7 @@ void FTL_forwarding_retried(const struct server *serv, const int oldID, const in
 
 	// Search for corresponding query identified by ID
 	// Retried DNSSEC queries are ignored, we have to flag themselves (newID)
-	// Retried normal queries take over, we have to flat the original query (oldID)
+	// Retried normal queries take over, we have to flag the original query (oldID)
 	const int queryID = findQueryID(dnssec ? newID : oldID);
 	if(queryID >= 0)
 	{

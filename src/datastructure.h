@@ -111,7 +111,7 @@ ASSERT_SIZEOF(DNSCacheData, 16, 16, 16);
 
 void strtolower(char *str);
 int findQueryID(const int id);
-int findUpstreamID(const char * upstream, const in_port_t port, const bool count);
+int findUpstreamID(const char * upstream, const in_port_t port);
 int findDomainID(const char *domain, const bool count);
 int findClientID(const char *client, const bool count, const bool aliasclient);
 int findCacheID(int domainID, int clientID, enum query_types query_type);
