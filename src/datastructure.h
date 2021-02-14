@@ -79,6 +79,7 @@ typedef struct {
 	int blockedcount;
 	int aliasclient_id;
 	unsigned int id;
+	unsigned int rate_limit;
 	unsigned int numQueriesARP;
 	int overTime[OVERTIME_SLOTS];
 	size_t groupspos;
@@ -88,7 +89,7 @@ typedef struct {
 	time_t lastQuery;
 	time_t firstSeen;
 } clientsData;
-ASSERT_SIZEOF(clientsData, 688, 664, 664);
+ASSERT_SIZEOF(clientsData, 696, 668, 668);
 
 typedef struct {
 	unsigned char magic;

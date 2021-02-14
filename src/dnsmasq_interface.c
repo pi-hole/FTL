@@ -190,8 +190,8 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			// as something along the CNAME path hit the whitelist
 			if(!query->flags.whitelisted)
 			{
-				query_blocked(query, domain, client, QUERY_BLACKLIST);
 				force_next_DNS_reply = dns_cache->force_reply;
+				query_blocked(query, domain, client, QUERY_BLACKLIST);
 				return true;
 			}
 			break;
@@ -210,8 +210,8 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			// as sometving along the CNAME path hit the whitelist
 			if(!query->flags.whitelisted)
 			{
-				query_blocked(query, domain, client, QUERY_GRAVITY);
 				force_next_DNS_reply = dns_cache->force_reply;
+				query_blocked(query, domain, client, QUERY_GRAVITY);
 				return true;
 			}
 			break;
@@ -532,19 +532,9 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		return false;
 	}
 
-	// Lock shared memory
-	lock_shm();
-
-	// Ensure we have enough space in the queries struct
-	memory_check(QUERIES);
-	const int queryID = counters->queries;
-
 	// If domain is "pi.hole" we skip this query
 	if(strcasecmp(name, "pi.hole") == 0)
-	{
-		unlock_shm();
 		return false;
-	}
 
 	// Convert domain to lower case
 	char *domainString = strdup(name);
@@ -574,9 +564,49 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	   (strcmp(clientIP, "127.0.0.1") == 0 || strcmp(clientIP, "::1") == 0))
 	{
 		free(domainString);
+		return false;
+	}
+
+	// Lock shared memory
+	lock_shm();
+
+	// Find client IP
+	const int clientID = findClientID(clientIP, true, false);
+
+	// Get client pointer
+	clientsData* client = getClient(clientID, true);
+	if(client == NULL)
+	{
+		// Encountered memory error, skip query
+		// Free allocated memory
+		free(domainString);
+		// Release thread lock
 		unlock_shm();
 		return false;
 	}
+
+	// Check rate-limit for this client
+	if(config.rate_limit.count > 0 &&
+	   ++client->rate_limit > config.rate_limit.count)
+	{
+		if(config.debug & DEBUG_QUERIES)
+		{
+			logg("Rate-limiting %s %s query \"%s\" from %s:%s",
+			     proto == TCP ? "TCP" : "UDP",
+			     types, domainString, next_iface, clientIP);
+		}
+
+		// Block this query
+		force_next_DNS_reply = REFUSED;
+
+		// Do not further process this query, Pi-hole has never seen it
+		unlock_shm();
+		return true;
+	}
+
+	// Ensure we have enough space in the queries struct
+	memory_check(QUERIES);
+	const int queryID = counters->queries;
 
 	// Log new query if in debug mode
 	if(config.debug & DEBUG_QUERIES)
@@ -606,9 +636,6 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 
 	// Go through already knows domains and see if it is one of them
 	const int domainID = findDomainID(domainString, true);
-
-	// Go through already knows clients and see if it is one of them
-	const int clientID = findClientID(clientIP, true, false);
 
 	// Save everything
 	queriesData* query = getQuery(queryID, false);
@@ -661,19 +688,6 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 
 	// Update overTime data
 	overTime[timeidx].total++;
-
-	// Get client pointer
-	clientsData* client = getClient(clientID, true);
-	if(client == NULL)
-	{
-		// Encountered memory error, skip query
-		logg("WARN: No memory available, skipping query analysis");
-		// Free allocated memory
-		free(domainString);
-		// Release thread lock
-		unlock_shm();
-		return false;
-	}
 
 	// Update overTime data structure with the new client
 	change_clientcount(client, 0, 0, timeidx, 1);
@@ -761,11 +775,19 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 void _FTL_get_blocking_metadata(union all_addr **addrp, unsigned int *flags, const char* file, const int line)
 {
 	// Check first if we need to force our reply to something different than the
-	// default/configured blocking mode For instance, we need to force NXDOMAIN
-	// for intercepted _esni.* queries
+	// default/configured blocking mode. For instance, we need to force NXDOMAIN
+	// for intercepted _esni.* queries.
 	if(force_next_DNS_reply == NXDOMAIN)
 	{
 		*flags = F_NXDOMAIN;
+		// Reset DNS reply forcing
+		force_next_DNS_reply = 0u;
+		return;
+	}
+	else if(force_next_DNS_reply == REFUSED)
+	{
+		// Empty flags result in REFUSED
+		*flags = 0;
 		// Reset DNS reply forcing
 		force_next_DNS_reply = 0u;
 		return;
@@ -1660,7 +1682,7 @@ static void save_reply_type(const unsigned int flags, const union all_addr *addr
                             queriesData* query, const struct timeval response)
 {
 	// Iterate through possible values
-	if(flags & F_NEG)
+	if(flags & F_NEG || force_next_DNS_reply == NXDOMAIN)
 	{
 		if(flags & F_NXDOMAIN)
 		{
@@ -1692,15 +1714,15 @@ static void save_reply_type(const unsigned int flags, const union all_addr *addr
 		// TXT query
 		query->reply = REPLY_RRNAME;
 	}
-	else if(flags & F_RCODE && addr != NULL)
+	else if((flags & F_RCODE && addr != NULL) || force_next_DNS_reply == REFUSED)
 	{
-		const unsigned int rcode = addr->log.rcode;
-		if(rcode == REFUSED)
+		if((addr != NULL && addr->log.rcode == REFUSED)
+		   || force_next_DNS_reply == REFUSED )
 		{
 			// REFUSED query
 			query->reply = REPLY_REFUSED;
 		}
-		else if(rcode == SERVFAIL)
+		else if(addr != NULL && addr->log.rcode == SERVFAIL)
 		{
 			// SERVFAIL query
 			query->reply = REPLY_SERVFAIL;

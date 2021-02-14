@@ -431,7 +431,7 @@ void DB_read_queries(void)
 			query->type = TYPE_OTHER;
 			query->qtype = type - 100;
 		}
-		
+
 		query->status = status;
 		query->domainID = domainID;
 		query->clientID = clientID;
