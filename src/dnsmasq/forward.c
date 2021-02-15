@@ -1709,6 +1709,10 @@ void receive_query(struct listener *listen, time_t now)
 	  FTL_get_blocking_metadata(&addrp, &flags);
 	  log_query(flags, daemon->namebuff, addrp, (char*)blockingreason);
 	  n = setup_reply(header, n, addrp, flags, daemon->local_ttl);
+	  // The pseudoheader may contain important information such as EDNS0 version important for
+	  // some DNS resolvers (such as systemd-resolved) to work properly. We should not discard them.
+	  if (have_pseudoheader)
+	    n = add_pseudoheader(header, n, ((unsigned char *) header) + PACKETSZ, daemon->edns_pktsz, 0, NULL, 0, do_bit, 0);
 	  send_from(listen->fd, option_bool(OPT_NOWILD) || option_bool(OPT_CLEVERBIND), (char *)header, n, (union mysockaddr*)&source_addr, &dst_addr, if_index);
 	  return;
 	}
@@ -2100,6 +2104,10 @@ unsigned char *tcp_request(int confd, time_t now,
 	      FTL_get_blocking_metadata(&addrp, &flags);
 	      log_query(flags, daemon->namebuff, addrp, (char*)blockingreason);
 	      m = setup_reply(header, size, addrp, flags, daemon->local_ttl);
+	      // The pseudoheader may contain important information such as EDNS0 version important for
+	      // some DNS resolvers (such as systemd-resolved) to work properly. We should not discard them.
+	      if (have_pseudoheader)
+		m = add_pseudoheader(header, m, ((unsigned char *) header) + 65536, daemon->edns_pktsz, 0, NULL, 0, do_bit, 0);
 	    }
 	  else
 	  {
