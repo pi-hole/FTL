@@ -359,12 +359,13 @@ void DB_read_queries(void)
 			continue;
 		}
 
-		const int status = sqlite3_column_int(stmt, 3);
-		if(status < QUERY_UNKNOWN || status >= QUERY_STATUS_MAX)
+		const int status_int = sqlite3_column_int(stmt, 3);
+		if(status_int < QUERY_UNKNOWN || status_int >= QUERY_STATUS_MAX)
 		{
-			logg("FTL_db warn: STATUS should be within [%i,%i] but is %i", QUERY_UNKNOWN, QUERY_STATUS_MAX-1, status);
+			logg("FTL_db warn: STATUS should be within [%i,%i] but is %i", QUERY_UNKNOWN, QUERY_STATUS_MAX-1, status_int);
 			continue;
 		}
+		const enum query_status status = status_int;
 
 		const char * domainname = (const char *)sqlite3_column_text(stmt, 4);
 		if(domainname == NULL)
@@ -387,12 +388,11 @@ void DB_read_queries(void)
 			continue;
 		}
 
-		const char *upstream = NULL;
+		const char *buffer = NULL;
 		int upstreamID = -1; // Default if not forwarded
-		// Determine upstreamID only when status == 2 (forwarded) as the
-		// field need not to be filled for other query status types
+		// Try to extract the upstream from the "forward" column if non-empty
 		if(sqlite3_column_bytes(stmt, 6) > 0 &&
-		   (upstream = (const char *)sqlite3_column_text(stmt, 6)) != NULL)
+		   (buffer = (const char *)sqlite3_column_text(stmt, 6)) != NULL)
 		{
 			// Get IP address and port of upstream destination
 			char serv_addr[INET6_ADDRSTRLEN] = { 0 };
@@ -400,9 +400,9 @@ void DB_read_queries(void)
 			// We limit the number of bytes written into the serv_addr buffer
 			// to prevent buffer overflows. If there is no port available in
 			// the database, we skip extracting them and use the default port
-			sscanf(upstream, "%"xstr(INET6_ADDRSTRLEN)"[^#]#%u", serv_addr, &serv_port);
+			sscanf(buffer, "%"xstr(INET6_ADDRSTRLEN)"[^#]#%u", serv_addr, &serv_port);
 			serv_addr[INET6_ADDRSTRLEN-1] = '\0';
-			upstreamID = findUpstreamID(serv_addr, (in_port_t)serv_port, true);
+			upstreamID = findUpstreamID(serv_addr, (in_port_t)serv_port);
 		}
 
 		// Obtain IDs only after filtering which queries we want to keep
@@ -431,7 +431,7 @@ void DB_read_queries(void)
 			query->type = TYPE_OTHER;
 			query->qtype = type - 100;
 		}
-		
+
 		query->status = status;
 		query->domainID = domainID;
 		query->clientID = clientID;
@@ -522,7 +522,15 @@ void DB_read_queries(void)
 				break;
 
 			case QUERY_FORWARDED: // Forwarded
+			case QUERY_RETRIED: // (fall through)
+			case QUERY_RETRIED_DNSSEC: // (fall through)
 				counters->forwarded++;
+				upstreamsData *upstream = getUpstream(upstreamID, true);
+				if(upstream != NULL)
+				{
+					upstream->count++;
+					upstream->lastQuery = queryTimeStamp;
+				}
 				// Update overTime data structure
 				overTime[timeidx].forwarded++;
 				break;
@@ -533,11 +541,11 @@ void DB_read_queries(void)
 				overTime[timeidx].cached++;
 				break;
 
-			case QUERY_RETRIED: // Retried query
-			case QUERY_RETRIED_DNSSEC: // fall through
+			case QUERY_IN_PROGRESS:
 				// Nothing to be done here
 				break;
 
+			case QUERY_STATUS_MAX:
 			default:
 				logg("Warning: Found unknown status %i in long term database!", status);
 				break;

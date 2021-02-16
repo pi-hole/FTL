@@ -134,7 +134,7 @@ static int get_hardware_address(const int sock, const char *interface_name, unsi
 	logg_sameline("Hardware address of this interface: ");
 	for (uint8_t i = 0; i < 6; ++i)
 		logg_sameline("%02x%s", mac[i], i < 5 ? ":" : "");
-	logg("");
+	logg(" ");
 #endif
 	return true;
 }
@@ -201,14 +201,8 @@ static bool send_dhcp_discover(const int sock, const uint32_t xid, const char *i
 	discover_packet.options[5] = '\x01'; // DHCP message option length in bytes
 	discover_packet.options[6] = 1;      // DHCP message type code for DHCPDISCOVER
 
-	// Request a lease with validity of 1 second
-	discover_packet.options[7] = 51;     // Lease time type option identifier
-	discover_packet.options[8] = '\x04'; // DHCP message option length in bytes
-	const uint32_t lease_time = htonl(1);
-	memcpy(&discover_packet.options[9], &lease_time, sizeof(lease_time));
-
 	// Place end option at the end of the options
-	discover_packet.options[13] = 255;
+	discover_packet.options[7] = 255;
 
 	// send the DHCPDISCOVER packet to the specified address
 	struct sockaddr_in target;
@@ -452,12 +446,12 @@ static bool get_dhcp_offer(const int sock, const uint32_t xid, const char *iface
 
 		if(!receive_dhcp_packet(&offer_packet, sizeof(offer_packet), iface, sock, start_time, &source))
 			continue;
-#if DEBUG
+#ifdef DEBUG
 		else
 			responses++;
 #endif
 
-#if DEBUG
+#ifdef DEBUG
 		logg(" DHCPOFFER XID: %lu (0x%X)", (unsigned long) ntohl(offer_packet.xid), ntohl(offer_packet.xid));
 #endif
 
@@ -555,19 +549,20 @@ static void *dhcp_discover_iface(void *args)
 	srand(time(NULL));
 	const uint32_t xid = random();
 
-#ifdef PROBE_LOCAL
-	// Probe a local server listining on this interface
-	// send DHCPDISCOVER packet to interface address
-	struct sockaddr_in ifaddr = { 0 };
-	memcpy(&ifaddr, ((struct ifaddrs*)args)->ifa_addr, sizeof(ifaddr));
-	send_dhcp_discover(dhcp_socket, xid, iface, ifaddr.sin_addr.s_addr);
-#endif
-
-#ifdef PROBE_BCAST
-	// Probe distant servers
-	// send DHCPDISCOVER packet to broadcast address
-	send_dhcp_discover(dhcp_socket, xid, iface, mac, INADDR_BROADCAST);
-#endif
+	if(strcmp(iface, "lo") == 0)
+	{
+		// Probe a local server listening on this interface
+		// Send DHCPDISCOVER packet to interface address
+		struct sockaddr_in ifaddr = { 0 };
+		memcpy(&ifaddr, ((struct ifaddrs*)args)->ifa_addr, sizeof(ifaddr));
+		send_dhcp_discover(dhcp_socket, xid, iface, mac, ifaddr.sin_addr.s_addr);
+	}
+	else
+	{
+		// Probe distant servers
+		// Send DHCPDISCOVER packet to broadcast address
+		send_dhcp_discover(dhcp_socket, xid, iface, mac, INADDR_BROADCAST);
+	}
 
 	// wait for a DHCPOFFER packet
 	get_dhcp_offer(dhcp_socket, xid, iface, mac);
@@ -615,13 +610,8 @@ int run_dhcp_discover(void)
 	int tid = 0;
 	while(tmp != NULL && tid < MAXTHREADS)
 	{
-#ifdef PROBE_LOCAL
-		// Create a thread for interfaces of type AF_INET (IPv4 sockets)
-		if(tmp->ifa_addr && tmp->ifa_addr->sa_family == AF_INET)
-#else
 		// Create a thread for interfaces of type AF_PACKET
 		if(tmp->ifa_addr && tmp->ifa_addr->sa_family == AF_PACKET)
-#endif
 		{
 			if(pthread_create(&scanthread[tid], &attr, dhcp_discover_iface, tmp ) != 0)
 			{

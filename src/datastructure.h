@@ -79,6 +79,7 @@ typedef struct {
 	int blockedcount;
 	int aliasclient_id;
 	unsigned int id;
+	unsigned int rate_limit;
 	unsigned int numQueriesARP;
 	int overTime[OVERTIME_SLOTS];
 	size_t groupspos;
@@ -88,7 +89,7 @@ typedef struct {
 	time_t lastQuery;
 	time_t firstSeen;
 } clientsData;
-ASSERT_SIZEOF(clientsData, 688, 664, 664);
+ASSERT_SIZEOF(clientsData, 696, 668, 668);
 
 typedef struct {
 	unsigned char magic;
@@ -111,7 +112,7 @@ ASSERT_SIZEOF(DNSCacheData, 16, 16, 16);
 
 void strtolower(char *str);
 int findQueryID(const int id);
-int findUpstreamID(const char * upstream, const in_port_t port, const bool count);
+int findUpstreamID(const char * upstream, const in_port_t port);
 int findDomainID(const char *domain, const bool count);
 int findClientID(const char *client, const bool count, const bool aliasclient);
 int findCacheID(int domainID, int clientID, enum query_types query_type);

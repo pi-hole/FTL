@@ -23,29 +23,46 @@
 
 bool doGC = false;
 
-time_t lastGCrun = 0;
+static void reset_rate_limiting(void)
+{
+	for(int clientID = 0; clientID < counters->clients; clientID++)
+	{
+		clientsData *client = getClient(clientID, true);
+		if(client != NULL)
+			client->rate_limit = 0;
+	}
+}
+
 void *GC_thread(void *val)
 {
 	// Set thread name
 	prctl(PR_SET_NAME,"housekeeper",0,0,0);
 
-	// Save timestamp as we do not want to store immediately
-	// to the database
-	lastGCrun = time(NULL) - time(NULL)%GCinterval;
+	// Remember when we last ran the actions
+	time_t lastGCrun = time(NULL) - time(NULL)%GCinterval;
+	time_t lastRateLimitCleaner = time(NULL);
 	while(!killed)
 	{
-		if(time(NULL) - GCdelay - lastGCrun >= GCinterval || doGC)
+		const time_t now = time(NULL);
+		if((unsigned int)(now - lastRateLimitCleaner) >= config.rate_limit.interval)
+		{
+			lastRateLimitCleaner = now;
+			lock_shm();
+			reset_rate_limiting();
+			unlock_shm();
+		}
+		if(now - GCdelay - lastGCrun >= GCinterval || doGC)
 		{
 			doGC = false;
 			// Update lastGCrun timer
-			lastGCrun = time(NULL) - GCdelay - (time(NULL) - GCdelay)%GCinterval;
+			lastGCrun = now - GCdelay - (now - GCdelay)%GCinterval;
 
 			// Lock FTL's data structure, since it is likely that it will be changed here
 			// Requests should not be processed/answered when data is about to change
 			lock_shm();
 
 			// Get minimum time stamp to keep
-			time_t mintime = (time(NULL) - GCdelay) - MAXLOGAGE*3600;
+			time_t mintime = (now - GCdelay) - MAXLOGAGE*3600;
 
 			// Align to the start of the next hour. This will also align with
 			// the oldest overTime interval after GC is done.
@@ -56,7 +73,7 @@ void *GC_thread(void *val)
 			{
 				timer_start(GC_TIMER);
 				char timestring[84] = "";
-				get_timestr(timestring, mintime);
+				get_timestr(timestring, mintime, false);
 				logg("GC starting, mintime: %s (%llu)", timestring, (long long)mintime);
 			}
 

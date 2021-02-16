@@ -73,6 +73,7 @@ static ShmSettings *shmSettings = NULL;
 
 static int pagesize;
 static unsigned int local_shm_counter = 0;
+static size_t used_shmem = 0u;
 static size_t get_optimal_object_size(const size_t objsize, const size_t minsize);
 
 static int get_dev_shm_usage(char buffer[64])
@@ -98,13 +99,19 @@ static int get_dev_shm_usage(char buffer[64])
 	double formated_size = 0.0;
 	format_memory_size(prefix_size, size, &formated_size);
 
-	// Generate human-readable used size
+	// Generate human-readable "total used" size
 	char prefix_used[2] = { 0 };
 	double formated_used = 0.0;
 	format_memory_size(prefix_used, used, &formated_used);
 
+	// Generate human-readable "used by FTL" size
+	char prefix_FTL[2] = { 0 };
+	double formated_FTL = 0.0;
+	format_memory_size(prefix_FTL, used_shmem, &formated_FTL);
+
 	// Print result into buffer passed to this subroutine
-	snprintf(buffer, 64, SHMEM_PATH": %.1f%sB used, %.1f%sB total", formated_used, prefix_used, formated_size, prefix_size);
+	snprintf(buffer, 64, SHMEM_PATH": %.1f%sB used, %.1f%sB total, FTL uses %.1f%sB",
+	         formated_used, prefix_used, formated_size, prefix_size, formated_FTL, prefix_FTL);
 
 	// Return percentage of used shared memory
 	// Adding 1 avoids FPE if the size turns out to be zero
@@ -548,28 +555,14 @@ SharedMemory create_shm(const char *name, const size_t size, bool create_new)
 	};
 
 	// O_RDWR: Open the object for read-write access (we need to be able to modify the locks)
-	int shm_oflags = O_RDWR;
-	if(create_new)
-	{
-		// Try unlinking the shared memory object before creating a new one.
-		// If the object is still existing, e.g., due to a past unclean exit
-		// of FTL, shm_open() would fail with error "File exists"
-		int ret = shm_unlink(name);
-		// Check return code. shm_unlink() returns -1 on error and sets errno
-		// We specifically ignore ENOENT (No such file or directory) as this is not an
-		// error in our use case (we only want the file to be deleted when existing)
-		if(ret != 0 && errno != ENOENT)
-			logg("create_shm(): shm_unlink(\"%s\") failed: %s (%i)", name, strerror(errno), errno);
-
-		// Replace shm_oflags
-		// O_CREAT: Create the shared memory object if it does not exist.
-		// O_EXCL: Return an error if a shared memory object with the given name already exists.
-		// O_TRUNC: If the shared memory object already exists, truncate it to zero bytes.
-		shm_oflags |= O_CREAT | O_EXCL | O_TRUNC;
-	}
+	// When creating a new shared memory object, we add to this
+	//   - O_CREAT: Create the shared memory object if it does not exist.
+	//   - O_EXCL: Return an error if a shared memory object with the given name already exists.
+	const int shm_oflags = create_new ? O_RDWR | O_CREAT | O_EXCL : O_RDWR;
 
 	// Create the shared memory file in read/write mode with 600 permissions
-	int fd = shm_open(sharedMemory.name, shm_oflags, S_IRUSR | S_IWUSR);
+	errno = 0;
+	const int fd = shm_open(sharedMemory.name, shm_oflags, S_IRUSR | S_IWUSR);
 
 	// Check for `shm_open` error
 	if(fd == -1)
@@ -590,6 +583,10 @@ SharedMemory create_shm(const char *name, const size_t size, bool create_new)
 		     sharedMemory.name, fd, size, strerror(errno), ret);
 		exit(EXIT_FAILURE);
 	}
+
+	// Update how much memory FTL uses
+	// We only add here as this is a new file
+	used_shmem += size;
 
 	// Create shared memory mapping
 	void *shm = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
@@ -732,6 +729,10 @@ bool realloc_shm(SharedMemory *sharedMemory, const size_t size1, const size_t si
 		     strerror(errno));
 		exit(EXIT_FAILURE);
 	}
+
+	// Update how much memory FTL uses
+	// We add the difference between updated and previous size
+	used_shmem += (size - sharedMemory->size);
 
 	sharedMemory->ptr = new_ptr;
 	sharedMemory->size = size;
