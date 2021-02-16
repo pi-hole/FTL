@@ -525,11 +525,16 @@ void DB_read_queries(void)
 			case QUERY_RETRIED: // (fall through)
 			case QUERY_RETRIED_DNSSEC: // (fall through)
 				counters->forwarded++;
-				upstreamsData *upstream = getUpstream(upstreamID, true);
-				if(upstream != NULL)
+				// Only update upstream if there is one (there
+				// won't be one for retried DNSSEC queries)
+				if(upstreamID > -1)
 				{
-					upstream->count++;
-					upstream->lastQuery = queryTimeStamp;
+					upstreamsData *upstream = getUpstream(upstreamID, true);
+					if(upstream != NULL)
+					{
+						upstream->count++;
+						upstream->lastQuery = queryTimeStamp;
+					}
 				}
 				// Update overTime data structure
 				overTime[timeidx].forwarded++;
