@@ -237,7 +237,7 @@ static void __attribute__((noreturn)) signal_handler(int sig, siginfo_t *si, voi
 	else
 	{
 		// This is the main process
-		logg("FTL terminated!");
+		cleanup(EXIT_FAILURE);
 	}
 
 	// Terminate process indicating failure

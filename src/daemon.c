@@ -14,6 +14,12 @@
 #include "log.h"
 // sleepms()
 #include "timers.h"
+// close_telnet_socket()
+#include "api/socket.h"
+// gravityDB_close()
+#include "database/gravity-db.h"
+// destroy_shmem()
+#include "shmem.h"
 
 bool resolver_ready = false;
 
@@ -99,7 +105,7 @@ void savepid(void)
 	logg("PID of FTL process: %i", (int)pid);
 }
 
-void removepid(void)
+static void removepid(void)
 {
 	FILE *f;
 	if((f = fopen(FTLfiles.pid, "w+")) == NULL)
@@ -108,6 +114,7 @@ void removepid(void)
 		return;
 	}
 	fclose(f);
+	unlink(FTLfiles.pid);
 }
 
 char *getUserName(void)
@@ -157,4 +164,31 @@ pid_t FTL_gettid(void)
 #warning SYS_gettid is not available on this system
 	return -1;
 #endif // SYS_gettid
+}
+
+// Clean up on exit
+void cleanup(const int ret)
+{
+	// Close sockets and delete Unix socket file handle
+	close_telnet_socket();
+	close_unix_socket(true);
+
+	// Empty API port file, port 0 = truncate file
+	saveport(0);
+
+	// Close gravity database connection
+	gravityDB_close();
+
+	// Remove shared memory objects
+	// Important: This invalidated all objects such as
+	//            counters-> ... Do this last when
+	//            terminating in main.c !
+	destroy_shmem();
+
+	//Remove PID file
+	removepid();
+
+	char buffer[42] = { 0 };
+	format_time(buffer, 0, timer_elapsed_msec(EXIT_TIMER));
+	logg("########## FTL terminated after%s (code %i)! ##########", buffer, ret);
 }

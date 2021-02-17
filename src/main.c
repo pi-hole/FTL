@@ -11,7 +11,6 @@
 #include "FTL.h"
 #include "daemon.h"
 #include "log.h"
-#include "api/socket.h"
 #include "setupVars.h"
 #include "args.h"
 #include "config.h"
@@ -20,9 +19,9 @@
 #include "main.h"
 #include "signals.h"
 #include "regex_r.h"
+// init_shmem()
 #include "shmem.h"
 #include "capabilities.h"
-#include "database/gravity-db.h"
 #include "timers.h"
 #include "procps.h"
 
@@ -105,27 +104,7 @@ int main (int argc, char* argv[])
 		logg("Finished final database update");
 	}
 
-	// Close sockets and delete Unix socket file handle
-	close_telnet_socket();
-	close_unix_socket(true);
+	cleanup(exit_code);
 
-	// Empty API port file, port 0 = truncate file
-	saveport(0);
-
-	// Close gravity database connection
-	gravityDB_close();
-
-	// Remove shared memory objects
-	// Important: This invalidated all objects such as
-	//            counters-> ... Do this last when
-	//            terminating in main.c !
-	destroy_shmem();
-
-	//Remove PID file
-	removepid();
-
-	char buffer[42] = { 0 };
-	format_time(buffer, 0, timer_elapsed_msec(EXIT_TIMER));
-	logg("########## FTL terminated after%s! ##########", buffer);
 	return exit_code;
 }
