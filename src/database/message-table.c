@@ -17,6 +17,8 @@
 #include "gravity-db.h"
 // cli_mode
 #include "../args.h"
+// cleanup()
+#include "../daemon.h"
 
 static const char *message_types[MAX_MESSAGE] =
 	{ "REGEX", "SUBNET", "HOSTNAME", "DNSMASQ_CONFIG" };
@@ -271,4 +273,8 @@ void logg_fatal_dnsmasq_message(const char *message)
 	// Log to database (we have to open the database at this point)
 	dbopen();
 	add_message(DNSMASQ_CONFIG_MESSAGE, message, 0);
+
+	// FTL will dies after this point, so we should make sure to clean up
+	// behind ourselves
+	cleanup(EXIT_FAILURE);
 }

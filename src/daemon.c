@@ -169,18 +169,12 @@ pid_t FTL_gettid(void)
 void cleanup(const int ret)
 {
 	// Terminate threads before closing database connections and finishing shared memory
-	if(telnet_listenthreadv4 != 0u)
-		pthread_cancel(telnet_listenthreadv4);
-	if(telnet_listenthreadv6 != 0u)
-		pthread_cancel(telnet_listenthreadv6);
-	if(socket_listenthread != 0u)
-		pthread_cancel(socket_listenthread);
-	if(DBthread != 0u)
-		pthread_cancel(DBthread);
-	if(GCthread != 0u)
-		pthread_cancel(GCthread);
-	if(DNSclientthread != 0u)
-		pthread_cancel(DNSclientthread);
+	pthread_cancel(telnet_listenthreadv4);
+	pthread_cancel(telnet_listenthreadv6);
+	pthread_cancel(socket_listenthread);
+	pthread_cancel(DBthread);
+	pthread_cancel(GCthread);
+	pthread_cancel(DNSclientthread);
 
 	// Close gravity database connection
 	gravityDB_close();
