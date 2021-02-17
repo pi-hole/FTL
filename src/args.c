@@ -188,6 +188,9 @@ void parse_args(int argc, char* argv[])
 			argv_dnsmasq[1] = "-d";
 		}
 
+		// Full start FTL but shut down immediately once everything is up
+		// This ensures we'd catch any dnsmasq config errors,
+		// incorrect file permissions, etc.
 		if(strcmp(argv[i], "test") == 0)
 		{
 			killed = 1;

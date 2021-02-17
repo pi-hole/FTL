@@ -1740,12 +1740,12 @@ static void save_reply_type(const unsigned int flags, const union all_addr *addr
 	                            query->response;
 }
 
-pthread_t telnet_listenthreadv4;
-pthread_t telnet_listenthreadv6;
-pthread_t socket_listenthread;
-pthread_t DBthread;
-pthread_t GCthread;
-pthread_t DNSclientthread;
+pthread_t telnet_listenthreadv4 = 0u;
+pthread_t telnet_listenthreadv6 = 0u;
+pthread_t socket_listenthread = 0u;
+pthread_t DBthread = 0u;
+pthread_t GCthread = 0u;
+pthread_t DNSclientthread = 0u;
 
 void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 {

@@ -98,11 +98,6 @@ int main (int argc, char* argv[])
 
 	logg("Shutting down...");
 
-	// Cancel active threads as we don't need them any more
-	if(ipv4telnet) pthread_cancel(telnet_listenthreadv4);
-	if(ipv6telnet) pthread_cancel(telnet_listenthreadv6);
-	pthread_cancel(socket_listenthread);
-
 	// Save new queries to database (if database is used)
 	if(config.DBexport)
 	{
