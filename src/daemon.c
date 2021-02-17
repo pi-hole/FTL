@@ -108,13 +108,12 @@ void savepid(void)
 static void removepid(void)
 {
 	FILE *f;
-	if((f = fopen(FTLfiles.pid, "w+")) == NULL)
+	if((f = fopen(FTLfiles.pid, "w")) == NULL)
 	{
 		logg("WARNING: Unable to empty PID file");
 		return;
 	}
 	fclose(f);
-	unlink(FTLfiles.pid);
 }
 
 char *getUserName(void)
@@ -169,6 +168,9 @@ pid_t FTL_gettid(void)
 // Clean up on exit
 void cleanup(const int ret)
 {
+	// Close gravity database connection
+	gravityDB_close();
+
 	// Close sockets and delete Unix socket file handle
 	close_telnet_socket();
 	close_unix_socket(true);
@@ -176,17 +178,14 @@ void cleanup(const int ret)
 	// Empty API port file, port 0 = truncate file
 	saveport(0);
 
-	// Close gravity database connection
-	gravityDB_close();
+	//Remove PID file
+	removepid();
 
 	// Remove shared memory objects
 	// Important: This invalidated all objects such as
-	//            counters-> ... Do this last when
-	//            terminating in main.c !
+	//            counters-> ... etc.
+	// This should be the last action when cleaning up
 	destroy_shmem();
-
-	//Remove PID file
-	removepid();
 
 	char buffer[42] = { 0 };
 	format_time(buffer, 0, timer_elapsed_msec(EXIT_TIMER));
