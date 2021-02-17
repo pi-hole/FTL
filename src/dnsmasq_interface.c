@@ -1768,10 +1768,6 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 	pthread_attr_t attr;
 	// Initialize thread attributes object with default attribute values
 	pthread_attr_init(&attr);
-	// When a detached thread terminates, its resources are automatically
-	// released back to the system without the need for another thread to
-	// join with the terminated thread
-	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
 	// Start TELNET IPv4 thread
 	if(pthread_create( &telnet_listenthreadv4, &attr, telnet_listening_thread_IPv4, NULL ) != 0)

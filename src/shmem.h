@@ -89,10 +89,16 @@ void delete_shm(SharedMemory *sharedMemory);
 /// Block until a lock can be obtained
 #define lock_shm() _lock_shm(__FUNCTION__, __LINE__, __FILE__)
 void _lock_shm(const char* func, const int line, const char* file);
+#define lock_log() _lock_log(__FUNCTION__, __LINE__, __FILE__)
+void _lock_log(const char* func, const int line, const char* file);
 
 /// Unlock the lock. Only call this if there is an active lock.
 #define unlock_shm() _unlock_shm(__FUNCTION__, __LINE__, __FILE__)
 void _unlock_shm(const char* func, const int line, const char* file);
+#define unlock_log() _unlock_log(__FUNCTION__, __LINE__, __FILE__)
+void _unlock_log(const char* func, const int line, const char * file);
+
+/// Block until a lock can be obtained
 
 bool init_shmem(bool create_new);
 void destroy_shmem(void);

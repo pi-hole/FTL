@@ -12,7 +12,7 @@
 
 int get_number_of_queries_in_DB(void);
 void delete_old_queries_in_DB(void);
-void DB_save_queries(void);
+bool DB_save_queries(void);
 void DB_read_queries(void);
 
 #endif //DATABASE_QUERY_TABLE_H

@@ -421,8 +421,8 @@ void *telnet_listening_thread_IPv4(void *args)
 	if(!ipv4telnet)
 		return NULL;
 
-	// Listen as long as FTL is not killed
-	while(!killed)
+	// Listen as long as this thread is not canceled
+	while(true)
 	{
 		// Look for new clients that want to connect
 		const int csck = listener(telnetfd4, 4);
@@ -470,8 +470,8 @@ void *telnet_listening_thread_IPv6(void *args)
 	if(!ipv6telnet)
 		return NULL;
 
-	// Listen as long as FTL is not killed
-	while(!killed)
+	// Listen as long as this thread is not canceled
+	while(true)
 	{
 		// Look for new clients that want to connect
 		const int csck = listener(telnetfd6, 6);
@@ -519,8 +519,8 @@ void *socket_listening_thread(void *args)
 		return NULL;
 	}
 
-	// Listen as long as FTL is not killed
-	while(!killed)
+	// Listen as long as this thread is not canceled
+	while(true)
 	{
 		// Look for new clients that want to connect
 		const int csck = listener(socketfd, 0);
@@ -541,7 +541,7 @@ void *socket_listening_thread(void *args)
 			logg("WARNING: Unable to open socket processing thread: %s", strerror(errno));
 		}
 	}
-	return false;
+	return NULL;
 }
 
 bool ipv6_available(void)

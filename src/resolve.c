@@ -584,7 +584,8 @@ void *DNSclient_thread(void *val)
 	// Initial delay until we first try to resolve anything
 	sleepms(2000);
 
-	while(!killed)
+	// Run as long as this thread is not canceled
+	while(true)
 	{
 		// Run whenever necessary to resolve only new clients and
 		// upstream servers

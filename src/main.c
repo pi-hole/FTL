@@ -97,12 +97,15 @@ int main (int argc, char* argv[])
 	main_dnsmasq(argc_dnsmasq, argv_dnsmasq);
 
 	logg("Shutting down...");
+	// Extra grace time is needed as dnsmasq script-helpers may not be
+	// terminating immediately
+	sleepms(250);
 
 	// Save new queries to database (if database is used)
 	if(config.DBexport)
 	{
-		DB_save_queries();
-		logg("Finished final database update");
+		if(DB_save_queries())
+			logg("Finished final database update");
 	}
 
 	cleanup(exit_code);
