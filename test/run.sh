@@ -99,6 +99,10 @@ fi
 
 # Kill pihole-FTL after having completed tests
 kill $(pidof pihole-FTL)
+sleep 2
+
+# Now the daemon has stopped, run e2e tests.
+test/libs/bats/bin/bats "test/e2e_test_suite.bats"
 
 # Restore umask
 umask $OLDUMASK
