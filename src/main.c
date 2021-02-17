@@ -59,6 +59,7 @@ int main (int argc, char* argv[])
 	if(!init_shmem(true))
 	{
 		logg("Initialization of shared memory failed.");
+		// Check if there is already a running FTL process
 		check_running_FTL();
 		return EXIT_FAILURE;
 	}

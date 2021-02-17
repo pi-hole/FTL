@@ -211,7 +211,7 @@ bool strcmp_escaped(const char *a, const char *b)
 		free(aa);
 	if(Nb > 0)
 		free(bb);
-	
+
 	return result;
 }
 
@@ -426,7 +426,6 @@ bool init_shmem(bool create_new)
 			return false;
 		}
 	}
-	
 
 	/****************************** shared strings buffer ******************************/
 	// Try to create shared memory object
@@ -514,7 +513,8 @@ bool init_shmem(bool create_new)
 
 void destroy_shmem(void)
 {
-	pthread_mutex_destroy(&shmLock->lock);
+	if(shmLock != NULL)
+		pthread_mutex_destroy(&shmLock->lock);
 	shmLock = NULL;
 
 	delete_shm(&shm_lock);
@@ -742,15 +742,16 @@ bool realloc_shm(SharedMemory *sharedMemory, const size_t size1, const size_t si
 
 void delete_shm(SharedMemory *sharedMemory)
 {
-	// Unmap shared memory
-	int ret = munmap(sharedMemory->ptr, sharedMemory->size);
-	if(ret != 0)
-		logg("delete_shm(): munmap(%p, %zu) failed: %s", sharedMemory->ptr, sharedMemory->size, strerror(errno));
+	// Unmap shared memory (if mmapped)
+	if(sharedMemory->ptr != NULL)
+	{
+		if(munmap(sharedMemory->ptr, sharedMemory->size) != 0)
+			logg("delete_shm(): munmap(%p, %zu) failed: %s", sharedMemory->ptr, sharedMemory->size, strerror(errno));
+	}
 
-	// Now you can no longer `shm_open` the memory,
-	// and once all others unlink, it will be destroyed.
-	ret = shm_unlink(sharedMemory->name);
-	if(ret != 0)
+	// Now you can no longer `shm_open` the memory, and once all others
+	// unlink, it will be destroyed.
+	if(shm_unlink(sharedMemory->name) != 0)
 		logg("delete_shm(): shm_unlink(%s) failed: %s", sharedMemory->name, strerror(errno));
 }
 
