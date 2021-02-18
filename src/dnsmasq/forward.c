@@ -18,9 +18,6 @@
 #include "../dnsmasq_interface.h"
 
 static struct frec *lookup_frec(unsigned short id, int fd, int family, void *hash);
-static struct frec *lookup_frec_by_sender(unsigned short id,
-					  union mysockaddr *addr,
-					  void *hash);
 static struct frec *lookup_frec_by_query(void *hash, unsigned int flags);
 
 static unsigned short get_id(void);
@@ -288,18 +285,20 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
     fwd_flags |= FREC_DO_QUESTION;
 #endif
   
-  /* Check for retry on existing query from same source */
-  if (!forward && (!(forward = lookup_frec_by_sender(ntohs(header->id), udpaddr, hash))))
+  /* Check for retry on existing query */
+  if (!forward && (forward = lookup_frec_by_query(hash, fwd_flags)))
     {
-      /* Maybe query from new source, but the same query may be in progress
-	 from another source. If so, just add this client to the
-	 list that will get the reply.*/
-	 
-      if (!option_bool(OPT_ADD_MAC) && !option_bool(OPT_MAC_B64) &&
-	  (forward = lookup_frec_by_query(hash, fwd_flags)))
-	{
-	  struct frec_src *new;
+      struct frec_src *src;
 
+      for (src = &forward->frec_src; src; src = src->next)
+	if (src->orig_id == ntohs(header->id) && 
+	    sockaddr_isequal(&src->source, udpaddr))
+	  break;
+
+      /* Existing query, but from new source, just add this 
+	 client to the list that will get the reply.*/
+      if (!src)
+	{
 	  /* Note whine_malloc() zeros memory. */
 	  if (!daemon->free_frec_src &&
 	      daemon->frec_src_count < daemon->ftabsize &&
@@ -313,16 +312,16 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	  if (!daemon->free_frec_src)
 	    return 0;
 	  
-	  new = daemon->free_frec_src;
-	  daemon->free_frec_src = new->next;
-	  new->next = forward->frec_src.next;
-	  forward->frec_src.next = new;
-	  new->orig_id = ntohs(header->id);
-	  new->source = *udpaddr;
-	  new->dest = *dst_addr;
-	  new->log_id = daemon->log_id;
-	  new->iface = dst_iface;
-	  new->fd = udpfd;
+	  src = daemon->free_frec_src;
+	  daemon->free_frec_src = src->next;
+	  src->next = forward->frec_src.next;
+	  forward->frec_src.next = src;
+	  src->orig_id = ntohs(header->id);
+	  src->source = *udpaddr;
+	  src->dest = *dst_addr;
+	  src->log_id = daemon->log_id;
+	  src->iface = dst_iface;
+	  src->fd = udpfd;
 	}
 	
 	// Pi-hole modification
@@ -2565,25 +2564,6 @@ static struct frec *lookup_frec(unsigned short id, int fd, int family, void *has
 	  return f;
       }
       
-  return NULL;
-}
-
-static struct frec *lookup_frec_by_sender(unsigned short id,
-					  union mysockaddr *addr,
-					  void *hash)
-{
-  struct frec *f;
-  struct frec_src *src;
-
-  for (f = daemon->frec_list; f; f = f->next)
-    if (f->sentto &&
-	!(f->flags & (FREC_DNSKEY_QUERY | FREC_DS_QUERY)) &&
-	memcmp(hash, f->hash, HASH_SIZE) == 0)
-      for (src = &f->frec_src; src; src = src->next)
-	if (src->orig_id == id && 
-	    sockaddr_isequal(&src->source, addr))
-	  return f;
-  
   return NULL;
 }
 
