@@ -1,5 +1,6 @@
 <p align="center">
 <a href="https://pi-hole.net"><img src="https://pi-hole.github.io/graphics/Vortex/Vortex_with_text.png" width="80" alt="Pi-hole"></a>
+<br/>
 <b>Network-wide ad blocking via your own Linux hardware</b><br/><br/>
 <a href="https://pi-hole.net"><img src="https://pi-hole.github.io/graphics/FTLDNS.svg" width="550" alt="FTLDNS"></a><br/>
 </p>
