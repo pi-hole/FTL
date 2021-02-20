@@ -355,3 +355,79 @@ const char __attribute__ ((const)) *get_ordinal_suffix(unsigned int number)
 	}
 	// For example: 2nd, 7th, 20th, 23rd, 52nd, 135th, 301st BUT 311th (covered above)
 }
+
+// Converts a buffer of specified lenth to ASCII representation as it was a C
+// string literal. Returns how much bytes from source was processed
+// Inspired by https://stackoverflow.com/a/56123950
+int binbuf_to_escaped_C_literal(const char *src_buf, size_t src_sz,
+                                      char *dst_str, size_t dst_sz)
+{
+	const char *src = src_buf;
+	char *dst = dst_str;
+
+	// Special handling for empty strings
+	if(src_sz == 0)
+	{
+		strncpy(dst_str, "(empty)", dst_sz);
+		dst_str[dst_sz-1] = '\0';
+		return 0;
+	}
+
+	while (src < src_buf + src_sz)
+	{
+		if (isprint(*src))
+		{
+			// The printable characters are:
+			// ! " # $ % & ' ( ) * + , - . / 0 1 2 3 4 5 6 7 8 9 : ;
+			// < = > ? @ A B C D E F G H I J K L M N O P Q R S T U V
+			// W X Y Z [ \ ] ^ _ ` a b c d e f g h i j k l m n o p q
+			// r s t u v w x y z { | } ~
+			*dst++ = *src++;
+		}
+		else if (*src == '\\')
+		{
+			// Backslash isn't included above but isn't harmful
+			*dst++ = '\\';
+			*dst++ = *src++;
+		}
+		else
+		{
+			// Handle other characters more specifically
+			switch(*src)
+			{
+				case '\n':
+					*dst++ = '\\';
+					*dst++ = 'n';
+					break;
+				case '\r':
+					*dst++ = '\\';
+					*dst++ = 'r';
+					break;
+				case '\t':
+					*dst++ = '\\';
+					*dst++ = 't';
+					break;
+				case '\0':
+					*dst++ = '\\';
+					*dst++ = '0';
+					break;
+				default:
+					sprintf(dst, "0x%X", *src);
+					dst += 4;
+			}
+
+			// Advance reading counter by one character
+			src++;
+		}
+
+		// next iteration requires up to 5 chars in dst buffer, for ex.
+		// "0x04" + terminating zero (see below)
+		if (dst > (dst_str + dst_sz - 5))
+			break;
+	}
+
+	// Zero-terminate buffer
+	*dst = '\0';
+
+	return src - src_buf;
+}

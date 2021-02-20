@@ -277,14 +277,12 @@ static void print_dhcp_offer(struct in_addr source, dhcp_packet_data *offer_pack
 			}
 			else if(opttab[i].size & OT_NAME)
 			{
-				char name[optlen+1];
-				memcpy(&name, &offer_packet->options[x], optlen);
-				name[optlen] = '\0';
-
-				if(iscntrl(name[0]))
-					logg("%s: <cntrl sequence> (length %u)", opttab[i].name, optlen);
-				else
-					logg("%s: \"%s\"", opttab[i].name, name);
+				// We may need to escape this, buffer size: 4
+				// chars per control character plus room for
+				// possible "(empty)"
+				char buffer[4*optlen + 9];
+				binbuf_to_escaped_C_literal(&offer_packet->options[x], optlen, buffer, sizeof(buffer));
+				logg("%s: \"%s\"", opttab[i].name, buffer);
 			}
 			else if(opttab[i].size & OT_TIME)
 			{
@@ -365,13 +363,12 @@ static void print_dhcp_offer(struct in_addr source, dhcp_packet_data *offer_pack
 			if(opttype == 252) // WPAD configuration (this is a non-standard extension)
 			{                       // see INTERNET-DRAFT Web Proxy Auto-Discovery Protocol
 			                        // https://tools.ietf.org/html/draft-ietf-wrec-wpad-01
-				char wpad_server[optlen+1];
-				memcpy(&wpad_server, &offer_packet->options[x], optlen);
-				wpad_server[optlen] = '\0';
-				if(iscntrl(wpad_server[0]))
-					logg("wpad-server: <cntrl sequence> (length %u)", optlen);
-				else
-					logg("wpad-server: \"%s\"", wpad_server);
+				// We may need to escape this, buffer size: 4
+				// chars per control character plus room for
+				// possible "(empty)"
+				char buffer[4*optlen + 9];
+				binbuf_to_escaped_C_literal(&offer_packet->options[x], optlen, buffer, sizeof(buffer));
+				logg("wpad-server: \"%s\"", buffer);
 			}
 			else
 			{
@@ -502,13 +499,23 @@ static bool get_dhcp_offer(const int sock, const uint32_t xid, const char *iface
 
 		logg_sameline("  BOOTP server: ");
 		if(offer_packet.sname[0] != 0)
-			logg("%s", offer_packet.sname);
+		{
+			size_t len = strlen(offer_packet.sname);
+			char buffer[4*len + 9];
+			binbuf_to_escaped_C_literal(offer_packet.sname, len, buffer, sizeof(buffer));
+			logg("%s", buffer);
+		}
 		else
 			logg("(empty)");
 
 		logg_sameline("  BOOTP file: ");
 		if(offer_packet.file[0] != 0)
-			logg("%s", offer_packet.file);
+		{
+			size_t len = strlen(offer_packet.file);
+			char buffer[4*len + 9];
+			binbuf_to_escaped_C_literal(offer_packet.file, len, buffer, sizeof(buffer));
+			logg("%s", buffer);
+		}
 		else
 			logg("(empty)");
 
