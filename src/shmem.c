@@ -341,6 +341,9 @@ static void remap_shm(void)
 	realloc_shm(&shm_dns_cache, counters->dns_cache_MAX, sizeof(DNSCacheData), false);
 	dns_cache = (DNSCacheData*)shm_dns_cache.ptr;
 
+	realloc_shm(&shm_per_client_regex, counters->per_client_regex_MAX, sizeof(bool), false);
+	// per-client-regex bools are not exposed by a global pointer
+
 	realloc_shm(&shm_strings, counters->strings_MAX, sizeof(char), false);
 	// strings are not exposed by a global pointer
 
@@ -470,7 +473,8 @@ bool init_shmem(bool create_new)
 	{
 		if(shmSettings->version != SHARED_MEMORY_VERSION)
 		{
-			logg("Shared memory version mismatch!");
+			logg("Shared memory version mismatch, found %d, expected %d!",
+			     shmSettings->version, SHARED_MEMORY_VERSION);
 			return false;
 		}
 	}
@@ -550,11 +554,13 @@ bool init_shmem(bool create_new)
 		counters->dns_cache_MAX = size;
 
 	/****************************** shared per-client regex buffer ******************************/
-	size = get_optimal_object_size(1, 2);
+	size = pagesize; // Allocate one pagesize initially. This may be expanded later on
 	// Try to create shared memory object
 	shm_per_client_regex = create_shm(SHARED_PER_CLIENT_REGEX, size, create_new);
 	if(shm_per_client_regex.ptr == NULL)
 		return false;
+	if(create_new)
+		counters->per_client_regex_MAX = size;
 
 	return true;
 }
@@ -937,11 +943,12 @@ void reset_per_client_regex(const int clientID)
 void add_per_client_regex(unsigned int clientID)
 {
 	const unsigned int num_regex_tot = get_num_regex(REGEX_MAX); // total number
-	const size_t size = counters->clients * num_regex_tot;
+	const size_t size = get_optimal_object_size(1, counters->clients * num_regex_tot);
 	if(size > shm_per_client_regex.size &&
-	   realloc_shm(&shm_per_client_regex, counters->clients, num_regex_tot, true))
+	   realloc_shm(&shm_per_client_regex, 1, size, true))
 	{
 		reset_per_client_regex(clientID);
+		counters->per_client_regex_MAX = size;
 	}
 }
 
