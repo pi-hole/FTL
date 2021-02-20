@@ -60,6 +60,19 @@ static SharedMemory shm_settings = { 0 };
 static SharedMemory shm_dns_cache = { 0 };
 static SharedMemory shm_per_client_regex = { 0 };
 
+static SharedMemory *sharedMemories[] = { &shm_lock,
+                                          &shm_strings,
+                                          &shm_counters,
+                                          &shm_domains,
+                                          &shm_clients,
+                                          &shm_queries,
+                                          &shm_upstreams,
+                                          &shm_overTime,
+                                          &shm_settings,
+                                          &shm_dns_cache,
+                                          &shm_per_client_regex };
+#define NUM_SHMEM (sizeof(sharedMemories)/sizeof(SharedMemory*))
+
 // Variable size array structs
 static queriesData *queries = NULL;
 static clientsData *clients = NULL;
@@ -152,21 +165,6 @@ static bool chown_shmem(SharedMemory *sharedMemory, struct passwd *ent_pw)
 	// needed after having called ftruncate()
 	close(fd);
 	return true;
-}
-
-void chown_all_shmem(struct passwd *ent_pw)
-{
-	chown_shmem(&shm_lock, ent_pw);
-	chown_shmem(&shm_strings, ent_pw);
-	chown_shmem(&shm_counters, ent_pw);
-	chown_shmem(&shm_domains, ent_pw);
-	chown_shmem(&shm_clients, ent_pw);
-	chown_shmem(&shm_queries, ent_pw);
-	chown_shmem(&shm_upstreams, ent_pw);
-	chown_shmem(&shm_overTime, ent_pw);
-	chown_shmem(&shm_settings, ent_pw);
-	chown_shmem(&shm_dns_cache, ent_pw);
-	chown_shmem(&shm_per_client_regex, ent_pw);
 }
 
 // A function that duplicates a string and replaces all characters "s" by "r"
@@ -565,8 +563,17 @@ bool init_shmem(bool create_new)
 	return true;
 }
 
+// CHOWN all shared memory objects to suppplied user/group
+void chown_all_shmem(struct passwd *ent_pw)
+{
+	for(unsigned int i = 0; i < NUM_SHMEM; i++)
+		chown_shmem(sharedMemories[i], ent_pw);
+}
+
+// Destory mutex and, subsequently, delete all shared memory objects
 void destroy_shmem(void)
 {
+	// First, we destroy the mutex
 	if(shmLock != NULL)
 	{
 		pthread_mutex_destroy(&shmLock->shmem.lock);
@@ -574,17 +581,9 @@ void destroy_shmem(void)
 	}
 	shmLock = NULL;
 
-	delete_shm(&shm_lock);
-	delete_shm(&shm_strings);
-	delete_shm(&shm_counters);
-	delete_shm(&shm_domains);
-	delete_shm(&shm_clients);
-	delete_shm(&shm_queries);
-	delete_shm(&shm_upstreams);
-	delete_shm(&shm_overTime);
-	delete_shm(&shm_settings);
-	delete_shm(&shm_dns_cache);
-	delete_shm(&shm_per_client_regex);
+	// Then, we delete the shared memory objects
+	for(unsigned int i = 0; i < NUM_SHMEM; i++)
+		delete_shm(sharedMemories[i]);
 }
 
 /// Create shared memory
