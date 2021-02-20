@@ -10,6 +10,6 @@
 
 #ifndef PROCPS_H
 #define PROCPS_H
-void check_running_FTL(void);
+bool check_running_FTL(void);
 
 #endif // POCPS_H

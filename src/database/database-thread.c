@@ -36,7 +36,8 @@ void *DB_thread(void *val)
 	// to the database
 	time_t lastDBsave = time(NULL) - time(NULL)%config.DBinterval;
 
-	while(!killed)
+	// Run as long as this thread is not canceled
+	while(true)
 	{
 		if(FTL_DB_avail())
 		{

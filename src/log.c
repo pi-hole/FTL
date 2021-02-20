@@ -18,14 +18,13 @@
 #include "main.h"
 // global variable daemonmode
 #include "args.h"
-// global counters variable
+// global counters variable and shared logfile lock
 #include "shmem.h"
 // main_pid()
 #include "signals.h"
 // logg_fatal_dnsmasq_message()
 #include "database/message-table.h"
 
-static pthread_mutex_t lock;
 static FILE *logfile = NULL;
 static bool FTL_log_ready = false;
 static bool print_log = true, print_stdout = true;
@@ -46,14 +45,6 @@ void open_FTL_log(const bool init)
 {
 	if(init)
 	{
-		// Initialize logging mutex
-		if (pthread_mutex_init(&lock, NULL) != 0)
-		{
-			printf("FATAL: Log mutex init failed\n");
-			// Return failure
-			exit(EXIT_FAILURE);
-		}
-
 		// Obtain log file location
 		getLogFilePath();
 	}
@@ -111,7 +102,7 @@ void _FTL_log(const bool newline, const char *format, ...)
 	if(!print_log && !print_stdout)
 		return;
 
-	pthread_mutex_lock(&lock);
+	lock_log();
 
 	get_timestr(timestring, time(NULL), true);
 
@@ -175,7 +166,7 @@ void _FTL_log(const bool newline, const char *format, ...)
 		close_FTL_log();
 	}
 
-	pthread_mutex_unlock(&lock);
+	unlock_log();
 }
 
 // Log helper activity (may be script or lua)

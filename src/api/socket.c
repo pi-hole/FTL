@@ -281,23 +281,24 @@ static int listener(const int sockfd, const char type)
 void close_telnet_socket(void)
 {
 	// Using global variable here
-	if(telnetfd4)
+	if(telnetfd4 != 0)
 		close(telnetfd4);
-	if(telnetfd6)
+	if(telnetfd6 != 0)
 		close(telnetfd6);
 }
 
 void close_unix_socket(bool unlink_file)
 {
+	// Using global variable here
+	if(sock_avail != 0)
+		close(socketfd);
+
+	// The process has to take care of unlinking the socket file description
+	// on exit
 	if(unlink_file)
 	{
-		// The process has to take care of unlinking the socket file description on exit
 		unlink(FTLfiles.socketfile);
 	}
-
-	// Using global variable here
-	if(sock_avail)
-		close(socketfd);
 }
 
 static void *telnet_connection_handler_thread(void *socket_desc)
@@ -420,8 +421,8 @@ void *telnet_listening_thread_IPv4(void *args)
 	if(!ipv4telnet)
 		return NULL;
 
-	// Listen as long as FTL is not killed
-	while(!killed)
+	// Listen as long as this thread is not canceled
+	while(true)
 	{
 		// Look for new clients that want to connect
 		const int csck = listener(telnetfd4, 4);
@@ -469,8 +470,8 @@ void *telnet_listening_thread_IPv6(void *args)
 	if(!ipv6telnet)
 		return NULL;
 
-	// Listen as long as FTL is not killed
-	while(!killed)
+	// Listen as long as this thread is not canceled
+	while(true)
 	{
 		// Look for new clients that want to connect
 		const int csck = listener(telnetfd6, 6);
@@ -518,8 +519,8 @@ void *socket_listening_thread(void *args)
 		return NULL;
 	}
 
-	// Listen as long as FTL is not killed
-	while(!killed)
+	// Listen as long as this thread is not canceled
+	while(true)
 	{
 		// Look for new clients that want to connect
 		const int csck = listener(socketfd, 0);
@@ -540,7 +541,7 @@ void *socket_listening_thread(void *args)
 			logg("WARNING: Unable to open socket processing thread: %s", strerror(errno));
 		}
 	}
-	return false;
+	return NULL;
 }
 
 bool ipv6_available(void)

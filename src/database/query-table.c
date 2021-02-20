@@ -42,8 +42,14 @@ int get_number_of_queries_in_DB(void)
 	return result;
 }
 
-void DB_save_queries(void)
+bool DB_save_queries(void)
 {
+	// The database may be unavailable, e.g. when disabled
+	if(!FTL_DB_avail())
+	{
+		return false;
+	}
+
 	// Start database timer
 	if(config.debug & DEBUG_DATABASE)
 		timer_start(DATABASE_WRITE_TIMER);
@@ -65,7 +71,7 @@ void DB_save_queries(void)
 		}
 
 		logg("%s: Storing queries in long-term database failed: %s", text, sqlite3_errstr(rc));
-		return;
+		return false;
 	}
 
 	rc = sqlite3_prepare_v2(FTL_db, "INSERT INTO queries VALUES (NULL,?,?,?,?,?,?,?)", -1, &stmt, NULL);
@@ -88,7 +94,7 @@ void DB_save_queries(void)
 		logg("%s: Storing queries in long-term database failed: %s\n", text, sqlite3_errstr(rc));
 		logg("%s  Keeping queries in memory for later new attempt", spaces);
 		saving_failed_before = true;
-		return;
+		return false;
 	}
 
 	// Get last ID stored in the database
@@ -230,7 +236,7 @@ void DB_save_queries(void)
 		else
 			dbclose();
 
-		return;
+		return false;
 	}
 
 	// Finish prepared statement
@@ -247,7 +253,7 @@ void DB_save_queries(void)
 		else
 			dbclose();
 
-		return;
+		return false;
 	}
 
 	// Store index for next loop interation round and update last time stamp
@@ -268,6 +274,8 @@ void DB_save_queries(void)
 			saving_failed_before = false;
 		}
 	}
+
+	return true;
 }
 
 void delete_old_queries_in_DB(void)
