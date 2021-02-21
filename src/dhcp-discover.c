@@ -361,14 +361,28 @@ static void print_dhcp_offer(struct in_addr source, dhcp_packet_data *offer_pack
 		if(!found)
 		{
 			if(opttype == 252) // WPAD configuration (this is a non-standard extension)
-			{                       // see INTERNET-DRAFT Web Proxy Auto-Discovery Protocol
-			                        // https://tools.ietf.org/html/draft-ietf-wrec-wpad-01
+			{                  // see INTERNET-DRAFT Web Proxy Auto-Discovery Protocol
+			                   // https://tools.ietf.org/html/draft-ietf-wrec-wpad-01
 				// We may need to escape this, buffer size: 4
 				// chars per control character plus room for
 				// possible "(empty)"
 				char buffer[4*optlen + 9];
 				binbuf_to_escaped_C_literal(&offer_packet->options[x], optlen, buffer, sizeof(buffer));
 				logg("wpad-server: \"%s\"", buffer);
+			}
+			else if(opttype == 158) // DHCPv4 PCP Option (RFC 7291)
+			{                       // https://tools.ietf.org/html/rfc7291#section-4
+				uint16_t list_length = offer_packet->options[x++] / 4; // 4 bytes per list entry
+				// Loop over IPv4 lists
+				for(unsigned int n = 0; n < list_length; n++)
+				{
+					struct in_addr addr_list = { 0 };
+					memcpy(&addr_list.s_addr, &offer_packet->options[x+n*4], sizeof(addr_list.s_addr));
+					if(n > 0)
+						logg_sameline("   ");
+
+					logg("Port Control Protocol (PCP) server: %s", inet_ntoa(addr_list));
+				}
 			}
 			else
 			{
