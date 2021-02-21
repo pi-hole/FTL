@@ -254,7 +254,7 @@ size_t addstr(const char *input)
 	char *str = str_escape(input, &N);
 
 	if(N > 0)
-		logg("INFO: FTL escaped %ui characters in \"%s\"", N, str);
+		logg("INFO: FTL escaped %u characters in \"%s\"", N, str);
 
 	// Debugging output
 	if(config.debug & DEBUG_SHMEM)
