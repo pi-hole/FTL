@@ -372,7 +372,12 @@ static void print_dhcp_offer(struct in_addr source, dhcp_packet_data *offer_pack
 			}
 			else
 			{
-				logg("Unknown option %d with length %d", opttype, optlen);
+				logg_sameline("Unknown option %d:", opttype);
+				// Print bytes
+				for(unsigned i = 0; i < optlen; i++)
+					logg_sameline(" %02X", (unsigned char)offer_packet->options[x+i]);
+				// Add newline when done above
+				logg(" (length %d)", optlen);
 			}
 		}
 
