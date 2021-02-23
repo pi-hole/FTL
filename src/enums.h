@@ -42,7 +42,7 @@ enum query_status {
 	QUERY_BLACKLIST_CNAME,
 	QUERY_RETRIED,
 	QUERY_RETRIED_DNSSEC,
-	QUERY_IN_PROGRESS,
+	QUERY_IN_PROGRESS,  // in-progress existed in dnsmasq v2.83/v2.84 only, these queries are now always retried
 	QUERY_STATUS_MAX
 } __attribute__ ((packed));
 

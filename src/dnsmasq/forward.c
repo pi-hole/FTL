@@ -323,9 +323,6 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	  src->iface = dst_iface;
 	  src->fd = udpfd;
 	}
-	
-	// Pi-hole modification
-	FTL_query_in_progress(daemon->log_id);
     }
 
   /* retry existing query */

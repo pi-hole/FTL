@@ -2201,50 +2201,6 @@ bool FTL_unlink_DHCP_lease(const char *ipaddr)
 	
 }
 
-void FTL_query_in_progress(const int id)
-{
-	// Query (possibly from new source), but the same query may be in
-	// progress from another source.
-
-	// Lock shared memory
-	lock_shm();
-
-	// Search for corresponding query identified by ID
-	const int queryID = findQueryID(id);
-	if(queryID < 0)
-	{
-		// This may happen e.g. if the original query was an unhandled query type
-		unlock_shm();
-		return;
-	}
-
-	// Get query pointer
-	queriesData* query = getQuery(queryID, true);
-	if(query == NULL)
-	{
-		// Memory error, skip this DNSSEC details
-		unlock_shm();
-		return;
-	}
-
-	// Debug logging
-	if(config.debug & DEBUG_QUERIES)
-	{
-		// Get domain pointer
-		const domainsData* domain = getDomain(query->domainID, true);
-		if(domain != NULL)
-		{
-			logg("**** query for %s is already in progress (ID %i)", getstr(domain->domainpos), id);
-		}
-	}
-
-	// Store status
-	query->status = QUERY_IN_PROGRESS;
-
-	// Unlock shared memory
-	unlock_shm();
-}
-
 void FTL_duplicate_reply(const int id, int *firstID)
 {
 	// Reply to duplicated query
