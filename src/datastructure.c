@@ -65,7 +65,7 @@ int findQueryID(const int id)
 	return -1;
 }
 
-int findUpstreamID(const char * upstreamString, const in_port_t port, const bool count)
+int findUpstreamID(const char * upstreamString, const in_port_t port)
 {
 	// Go through already knows upstream servers and see if we used one of those
 	for(int upstreamID=0; upstreamID < counters->upstreams; upstreamID++)
@@ -78,13 +78,7 @@ int findUpstreamID(const char * upstreamString, const in_port_t port, const bool
 			continue;
 
 		if(strcmp(getstr(upstream->ippos), upstreamString) == 0 && upstream->port == port)
-		{
-			if(count)
-			{
-				upstream->count++;
-			}
 			return upstreamID;
-		}
 	}
 	// This upstream server is not known
 	// Store ID
@@ -105,10 +99,7 @@ int findUpstreamID(const char * upstreamString, const in_port_t port, const bool
 	// Set magic byte
 	upstream->magic = MAGICBYTE;
 	// Initialize its counter
-	if(count)
-		upstream->count = 1;
-	else
-		upstream->count = 0;
+	upstream->count = 0;
 	// Save upstream destination IP address
 	upstream->ippos = addstr(upstreamString);
 	upstream->failed = 0;
@@ -591,6 +582,8 @@ const char * __attribute__ ((pure)) get_query_status_str(const queriesData *quer
 			return "RETRIED";
 		case QUERY_RETRIED_DNSSEC:
 			return "RETRIED_DNSSEC";
+		case QUERY_IN_PROGRESS:
+			return "IN_PROGRESS";
 		case QUERY_STATUS_MAX:
 		default:
 			return "STATUS_MAX";

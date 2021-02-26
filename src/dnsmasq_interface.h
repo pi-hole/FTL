@@ -53,6 +53,8 @@ void _FTL_get_blocking_metadata(union all_addr **addrp, unsigned int *flags, con
 bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const char* file, const int line);
 
 unsigned int FTL_extract_question_flags(struct dns_header *header, const size_t qlen);
+void FTL_query_in_progress(const int id);
+void FTL_duplicate_reply(const int id, int *firstID);
 
 void FTL_dnsmasq_reload(void);
 void FTL_fork_and_bind_sockets(struct passwd *ent_pw);

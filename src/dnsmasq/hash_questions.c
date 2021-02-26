@@ -28,28 +28,28 @@
 
 #include "dnsmasq.h"
 
-#if defined(HAVE_DNSSEC) || defined(HAVE_NETTLEHASH)
+#if defined(HAVE_DNSSEC) || defined(HAVE_CRYPTOHASH)
+
+static const struct nettle_hash *hash;
+static void *ctx;
+static unsigned char *digest;
+
+void hash_questions_init(void)
+{
+  if (!(hash = hash_find("sha256")))
+    die(_("Failed to create SHA-256 hash object"), NULL, EC_MISC);
+
+  ctx = safe_malloc(hash->context_size);
+  digest = safe_malloc(hash->digest_size);
+}
+
 unsigned char *hash_questions(struct dns_header *header, size_t plen, char *name)
 {
   int q;
   unsigned char *p = (unsigned char *)(header+1);
-  const struct nettle_hash *hash;
-  void *ctx;
-  unsigned char *digest;
-  
-  if (!(hash = hash_find("sha256")) || !hash_init(hash, &ctx, &digest))
-    {
-      /* don't think this can ever happen. */
-      static unsigned char dummy[HASH_SIZE];
-      static int warned = 0;
 
-      if (!warned)
-	my_syslog(LOG_ERR, _("Failed to create SHA-256 hash object"));
-      warned = 1;
-     
-      return dummy;
-    }
-  
+  hash->init(ctx);
+
   for (q = ntohs(header->qdcount); q != 0; q--) 
     {
       char *cp, c;
@@ -74,7 +74,7 @@ unsigned char *hash_questions(struct dns_header *header, size_t plen, char *name
   return digest;
 }
 
-#else /* HAVE_DNSSEC */
+#else /* HAVE_DNSSEC  || HAVE_CRYPTOHASH */
 
 #define SHA256_BLOCK_SIZE 32            // SHA256 outputs a 32 byte digest
 typedef unsigned char BYTE;             // 8-bit byte
@@ -91,6 +91,9 @@ static void sha256_init(SHA256_CTX *ctx);
 static void sha256_update(SHA256_CTX *ctx, const BYTE data[], size_t len);
 static void sha256_final(SHA256_CTX *ctx, BYTE hash[]);
 
+void hash_questions_init(void)
+{
+}
 
 unsigned char *hash_questions(struct dns_header *header, size_t plen, char *name)
 {

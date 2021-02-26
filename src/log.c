@@ -112,18 +112,27 @@ double double_time(void)
 
 // The size of 84 bytes has been carefully selected for all possible timestamps
 // to always fit into the available space without buffer overflows
-void get_timestr(char * const timestring, const time_t timein)
+void get_timestr(char * const timestring, const time_t timein, const bool millis)
 {
 	struct tm tm;
 	localtime_r(&timein, &tm);
 
-	struct timeval tv;
-	gettimeofday(&tv, NULL);
-	const int millisec = tv.tv_usec/1000;
+	if(millis)
+	{
+		struct timeval tv;
+		gettimeofday(&tv, NULL);
+		const int millisec = tv.tv_usec/1000;
 
-	sprintf(timestring,"%d-%02d-%02d %02d:%02d:%02d.%03i",
-	        tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
-	        tm.tm_hour, tm.tm_min, tm.tm_sec, millisec);
+		sprintf(timestring,"%d-%02d-%02d %02d:%02d:%02d.%03i",
+		        tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
+		        tm.tm_hour, tm.tm_min, tm.tm_sec, millisec);
+	}
+	else
+	{
+		sprintf(timestring,"%d-%02d-%02d %02d:%02d:%02d",
+		        tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
+		        tm.tm_hour, tm.tm_min, tm.tm_sec);
+	}
 }
 
 void _FTL_log(const bool newline, const char *func, const char *file, const int line, const char *format, ...)
@@ -142,7 +151,7 @@ void _FTL_log(const bool newline, const char *func, const char *file, const int 
 	pthread_mutex_lock(&FTL_log_lock);
 
 	// Get human-readable time
-	get_timestr(timestring, time(NULL));
+	get_timestr(timestring, time(NULL), true);
 
 	// Get and log PID of current process to avoid ambiguities when more than one
 	// pihole-FTL instance is logging into the same file
@@ -241,7 +250,7 @@ void __attribute__ ((format (gnu_printf, 2, 3))) logg_web(enum web_code code, co
 	pthread_mutex_lock(&web_log_lock);
 
 	// Get human-readable time
-	get_timestr(timestring, time(NULL));
+	get_timestr(timestring, time(NULL), true);
 
 	// Get and log PID of current process to avoid ambiguities when more than one
 	// pihole-FTL instance is logging into the same file

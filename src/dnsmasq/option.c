@@ -1,4 +1,4 @@
-/* dnsmasq is Copyright (c) 2000-2020 Simon Kelley
+/* dnsmasq is Copyright (c) 2000-2021 Simon Kelley
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -20,7 +20,7 @@
 #include <setjmp.h>
 
 /* Pi-hole modification */
-extern char *get_FTL_version(void);
+#include "../log.h"
 /************************/
 
 static volatile int mem_recover = 0;
@@ -5059,7 +5059,7 @@ void read_opts(int argc, char **argv, char *compile_opts)
   /************************/
 #endif
   /******** Pi-hole modification ********/
-  add_txt("version.FTL", get_FTL_version(), 0 );
+  add_txt("version.FTL", (char*)get_FTL_version(), 0 );
   /**************************************/
 
   while (1) 

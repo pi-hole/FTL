@@ -25,6 +25,7 @@
 #include "timers.h"
 // http_terminate()
 #include "webserver/webserver.h"
+#include "procps.h"
 
 char * username;
 bool needGC = false;
@@ -56,15 +57,16 @@ int main (int argc, char* argv[])
 	// We handle real-time signals later (after dnsmasq has forked)
 	handle_SIGSEGV();
 
-	// Process pihole-FTL.conf
-	read_FTLconf();
-
-	// Initialize shared memory - replace possibly existing files
+	// Initialize shared memory
 	if(!init_shmem(true))
 	{
 		logg("Initialization of shared memory failed.");
+		check_running_FTL();
 		return EXIT_FAILURE;
 	}
+
+	// Process pihole-FTL.conf
+	read_FTLconf();
 
 	// pihole-FTL should really be run as user "pihole" to not mess up with file permissions
 	// print warning otherwise

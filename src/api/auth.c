@@ -194,7 +194,7 @@ int check_client_auth(struct ftl_conn *api)
 		if(config.debug & DEBUG_API)
 		{
 			char timestr[128];
-			get_timestr(timestr, auth_data[user_id].valid_until);
+			get_timestr(timestr, auth_data[user_id].valid_until, false);
 			logg("API: Recognized known user: user_id %i valid_until: %s remote_addr %s",
 				user_id, timestr, auth_data[user_id].remote_addr);
 		}
@@ -516,7 +516,7 @@ int api_auth(struct ftl_conn *api)
 			if(config.debug & DEBUG_API && user_id > API_AUTH_UNAUTHORIZED)
 			{
 				char timestr[128];
-				get_timestr(timestr, auth_data[user_id].valid_until);
+				get_timestr(timestr, auth_data[user_id].valid_until, false);
 				logg("API: Registered new user: user_id %i valid_until: %s remote_addr %s (accepted due to %s)",
 				     user_id, timestr, auth_data[user_id].remote_addr,
 				     response_correct ? "correct response" : "empty password");

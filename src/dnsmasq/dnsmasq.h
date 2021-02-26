@@ -1,4 +1,4 @@
-/* dnsmasq is Copyright (c) 2000-2020 Simon Kelley
+/* dnsmasq is Copyright (c) 2000-2021 Simon Kelley
  
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -14,7 +14,7 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#define COPYRIGHT "Copyright (c) 2000-2020 Simon Kelley"
+#define COPYRIGHT "Copyright (c) 2000-2021 Simon Kelley"
 
 /* We do defines that influence behavior of stdio.h, so complain
    if included too early. */
@@ -157,7 +157,11 @@ extern int capget(cap_user_header_t header, cap_user_data_t data);
 #include <priv.h>
 #endif
 
-#if defined(HAVE_DNSSEC) || defined(HAVE_NETTLEHASH)
+/* Backwards compat with 2.83 */
+#if defined(HAVE_NETTLEHASH)
+#  define HAVE_CRYPTOHASH
+#endif
+#if defined(HAVE_DNSSEC) || defined(HAVE_CRYPTOHASH)
 #  include <nettle/nettle-meta.h>
 #endif
 
@@ -666,6 +670,7 @@ struct frec {
     union mysockaddr source;
     union all_addr dest;
     unsigned int iface, log_id;
+    int fd;
     unsigned short orig_id;
     struct frec_src *next;
   } frec_src;
@@ -673,7 +678,7 @@ struct frec {
   struct randfd *rfd4;
   struct randfd *rfd6;
   unsigned short new_id;
-  int fd, forwardall, flags;
+  int forwardall, flags;
   time_t time;
   unsigned char *hash[HASH_SIZE];
 #ifdef HAVE_DNSSEC 
@@ -1265,6 +1270,7 @@ size_t filter_rrsigs(struct dns_header *header, size_t plen);
 int setup_timestamp(void);
 
 /* hash_questions.c */
+void hash_questions_init(void);
 unsigned char *hash_questions(struct dns_header *header, size_t plen, char *name);
 
 /* crypto.c */

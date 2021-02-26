@@ -53,10 +53,14 @@ typedef struct {
 	int dns_port;
 	unsigned int delay_startup;
 	unsigned int network_expire;
+	struct {
+		unsigned int count;
+		unsigned int interval;
+	} rate_limit;
 	enum debug_flags debug;
 	time_t DBinterval;
 } ConfigStruct;
-ASSERT_SIZEOF(ConfigStruct, 56, 48, 48);
+ASSERT_SIZEOF(ConfigStruct, 64, 56, 56);
 
 typedef struct {
 	const char* conf;
