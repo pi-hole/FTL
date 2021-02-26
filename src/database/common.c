@@ -23,10 +23,11 @@
 #include "sqlite3-ext.h"
 // import_aliasclients()
 #include "aliasclients.h"
+// CREATE_QUERIES_TABLE
+#include "query-table.h"
 
 sqlite3 *FTL_db = NULL;
 bool DBdeleteoldqueries = false;
-long int lastdbindex = 0;
 static bool db_avail = false;
 
 static pthread_mutex_t dblock;
@@ -197,14 +198,13 @@ static bool db_create(void)
 	db_avail = true;
 
 	// Create Queries table in the database
-	SQL_bool("CREATE TABLE queries ( id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL, type INTEGER NOT NULL, status INTEGER NOT NULL, domain TEXT NOT NULL, client TEXT NOT NULL, forward TEXT );");
+	SQL_bool(CREATE_QUERIES_TABLE_V1);
 
 	// Add an index on the timestamps (not a unique index!)
-	SQL_bool("CREATE INDEX idx_queries_timestamps ON queries (timestamp);");
+	SQL_bool(CREATE_QUERIES_TIMESTAMP_INDEX);
 
 	// Create FTL table in the database (holds properties like database version, etc.)
 	SQL_bool("CREATE TABLE ftl ( id INTEGER PRIMARY KEY NOT NULL, value BLOB NOT NULL );");
-
 
 	// Set FTL_db version 1
 	if(dbquery("INSERT INTO ftl (ID,VALUE) VALUES(%i,1);", DB_VERSION) != SQLITE_OK)
@@ -729,51 +729,6 @@ int db_query_int_from_until_type(const char* querystr, const double from, const 
 
 	sqlite3_finalize(stmt);
 
-	return result;
-}
-
-long int get_max_query_ID(void)
-{
-	if(!FTL_DB_avail())
-	{
-		logg("get_max_query_ID() called but database is not available!");
-		return DB_FAILED;
-	}
-
-	const char *sql = "SELECT MAX(ID) FROM queries";
-	if(config.debug & DEBUG_DATABASE)
-	{
-		logg("dbquery: \"%s\"", sql);
-	}
-
-	sqlite3_stmt* stmt = NULL;
-	int rc = sqlite3_prepare_v2(FTL_db, sql, -1, &stmt, NULL);
-	if( rc != SQLITE_OK )
-	{
-		if( rc != SQLITE_BUSY )
-		{
-			logg("Encountered prepare error in get_max_query_ID(): %s", sqlite3_errstr(rc));
-			dbclose();
-		}
-
-		// Return okay if the database is busy
-		return DB_FAILED;
-	}
-
-	rc = sqlite3_step(stmt);
-	if( rc != SQLITE_ROW )
-	{
-		logg("Encountered step error in get_max_query_ID(): %s", sqlite3_errstr(rc));
-		dbclose();
-		return DB_FAILED;
-	}
-
-	sqlite3_int64 result = sqlite3_column_int64(stmt, 0);
-	if(config.debug & DEBUG_DATABASE)
-	{
-		logg("         ---> Result %lli (long long int)", (long long int)result);
-	}
-	sqlite3_finalize(stmt);
 	return result;
 }
 

@@ -213,8 +213,6 @@ void *GC_thread(void *val)
 
 				// Update queries counter
 				counters->queries -= removed;
-				// Update DB index as total number of queries reduced
-				lastdbindex -= removed;
 
 				// ensure remaining memory is zeroed out (marked as "F" in the above example)
 				memset(getQuery(counters->queries, true), 0, (counters->queries_MAX - counters->queries)*sizeof(queriesData));

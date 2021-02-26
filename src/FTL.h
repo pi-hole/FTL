@@ -47,6 +47,9 @@
 #define MAX(x,y) (((x) > (y)) ? (x) : (y))
 // MIN(x,y) is already defined in dnsmasq.h
 
+// Number of elements in an array
+#define ArraySize(X) (sizeof(X)/sizeof(X[0]))
+
 #define SOCKETBUFFERLEN 1024
 
 // How often do we garbage collect (to ensure we only have data fitting to the MAXLOGAGE defined above)? [seconds]

@@ -15,7 +15,6 @@
 #include "args.h"
 #include "config.h"
 #include "database/common.h"
-#include "database/query-table.h"
 #include "main.h"
 #include "signals.h"
 #include "regex_r.h"
@@ -26,6 +25,8 @@
 // http_terminate()
 #include "webserver/webserver.h"
 #include "procps.h"
+// init_memory_database(), import_queries_from_disk()
+#include "database/query-table.h"
 
 char * username;
 bool needGC = false;
@@ -76,9 +77,15 @@ int main (int argc, char* argv[])
 	// Initialize query database (pihole-FTL.db)
 	db_init();
 
+	// Initialize in-memory database
+	init_memory_database();
+
 	// Try to import queries from long-term database if available
 	if(config.DBimport)
+	{
+		import_queries_from_disk();
 		DB_read_queries();
+	}
 
 	log_counter_info();
 	check_setupVarsconf();
@@ -109,7 +116,7 @@ int main (int argc, char* argv[])
 	// Save new queries to database (if database is used)
 	if(config.DBexport)
 	{
-		DB_save_queries();
+		export_queries_to_disk(true);
 		logg("Finished final database update");
 	}
 

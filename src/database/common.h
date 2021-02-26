@@ -44,13 +44,11 @@ int db_query_int_from_until(const char* querystr, const double from, const doubl
 int db_query_int_from_until_type(const char* querystr, const double from, const double until, const int type);
 long get_lastID(void);
 void SQLite3LogCallback(void *pArg, int iErrCode, const char *zMsg);
-long int get_max_query_ID(void);
 bool db_set_counter(const enum counters_table_props ID, const int value);
 bool db_update_counters(const int total, const int blocked);
 const char *get_sqlite3_version(void);
 
 extern sqlite3 *FTL_db;
-extern long int lastdbindex;
 extern bool DBdeleteoldqueries;
 
 // Database macros

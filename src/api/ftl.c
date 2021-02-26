@@ -183,8 +183,8 @@ int api_ftl_dbinfo(struct ftl_conn *api)
 	JSON_OBJ_ADD_ITEM(owner, "group", group);
 	JSON_OBJ_ADD_ITEM(json, "owner", owner);
 
-	// Add number of queries in database
-	const int queries_in_database = get_number_of_queries_in_DB();
+	// Add number of queries in on-disk database
+	const int queries_in_database = get_number_of_queries_in_DB(true);
 	JSON_OBJ_ADD_NUMBER(json, "queries", queries_in_database);
 
 	// Add SQLite library version

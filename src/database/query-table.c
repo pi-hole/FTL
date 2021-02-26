@@ -1,5 +1,5 @@
 /* Pi-hole: A black hole for Internet advertisements
-*  (c) 2019 Pi-hole, LLC (https://pi-hole.net)
+*  (c) 2021 Pi-hole, LLC (https://pi-hole.net)
 *  Network-wide ad blocking via your own hardware.
 *
 *  FTL Engine
@@ -9,338 +9,375 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "../FTL.h"
+#define QUERY_TABLE_PRIVATE
 #include "query-table.h"
-#include "common.h"
-// get[Domain,ClientIP,Forward]String(), etc.
-#include "../datastructure.h"
-// getOverTimeID()
-#include "../overTime.h"
-// get_FTL_db_filesize()
-#include "../files.h"
-// timer_elapsed_msec()
-#include "../timers.h"
-// logg()
+#include "sqlite3.h"
 #include "../log.h"
-// struct config
 #include "../config.h"
-// getstr()
+#include "../enums.h"
+#include "../config.h"
+// counters
 #include "../shmem.h"
+#include "../overTime.h"
+#include "common.h"
+#include "../timers.h"
 
-static bool saving_failed_before = false;
+static sqlite3 *memdb = NULL;
+static double new_last_timestamp = 0;
+static unsigned int new_total = 0, new_blocked = 0;
+static long last_mem_db_idx = 0, last_disk_db_idx = 0;
 
-int get_number_of_queries_in_DB(void)
+// Initialize in-memory database and add queries table
+bool init_memory_database(void)
 {
-	// This routine is used by the API routines.
-	if(!FTL_DB_avail())
+	int rc;
+
+	// Try to open database
+	rc = sqlite3_open_v2(":memory:", &memdb, SQLITE_OPEN_READWRITE, NULL);
+	if( rc != SQLITE_OK )
 	{
-		return DB_FAILED;
+		logg("init_memory_database(): Step error while trying to open in-memory database: %s",
+			 sqlite3_errstr(rc));
+		return false;
 	}
 
+	// Explicitly set busy handler to value defined in FTL.h
+	rc = sqlite3_busy_timeout(memdb, DATABASE_BUSY_TIMEOUT);
+	if( rc != SQLITE_OK )
+	{
+		logg("init_memory_database(): Step error while trying to set busy timeout (%d ms) on in-memory database: %s",
+			 DATABASE_BUSY_TIMEOUT, sqlite3_errstr(rc));
+		sqlite3_close(memdb);
+		return false;
+	}
+
+	// Create queries table in the database
+	rc = sqlite3_exec(memdb, CREATE_QUERIES_TABLE_V7, NULL, NULL, NULL);
+	if( rc != SQLITE_OK ){
+		logg("init_memory_database(\"%s\") failed: %s",
+			 CREATE_QUERIES_TABLE_V7, sqlite3_errstr(rc));
+		sqlite3_close(memdb);
+		return false;
+	}
+
+	// Add indices on all columns of the in-memory database
+	for(unsigned int i = 0; i < ArraySize(index_creation); i++)
+	{
+		rc = sqlite3_exec(memdb, index_creation[i], NULL, NULL, NULL);
+		if( rc != SQLITE_OK ){
+			logg("init_memory_database(\"%s\") failed: %s",
+				 index_creation[i], sqlite3_errstr(rc));
+			sqlite3_close(memdb);
+			return false;
+		}
+	}
+
+	return true;
+}
+
+static bool get_memdb_size(size_t *memsize, unsigned int *queries)
+{
+	int rc;
+	sqlite3_stmt* stmt = NULL;
+	size_t page_count, page_size;
+
+	// PRAGMA page_count
+	rc = sqlite3_prepare_v2(memdb, "PRAGMA page_count", -1, &stmt, NULL);
+	if( rc != SQLITE_OK )
+	{
+		if( rc != SQLITE_BUSY )
+			logg("init_memory_database(PRAGMA page_count): Prepare error: %s",
+				 sqlite3_errstr(rc));
+
+		return false;
+	}
+	rc = sqlite3_step(stmt);
+	if( rc == SQLITE_ROW )
+		page_count = sqlite3_column_int(stmt, 0);
+	else
+	{
+		logg("init_memory_database(PRAGMA page_count): Step error: %s",
+			 sqlite3_errstr(rc));
+		return false;
+	}
+	sqlite3_finalize(stmt);
+
+	// PRAGMA page_size
+	rc = sqlite3_prepare_v2(memdb, "PRAGMA page_size", -1, &stmt, NULL);
+	if( rc != SQLITE_OK )
+	{
+		if( rc != SQLITE_BUSY )
+			logg("init_memory_database(PRAGMA page_size): Prepare error: %s",
+				 sqlite3_errstr(rc));
+
+		return false;
+	}
+	rc = sqlite3_step(stmt);
+	if( rc == SQLITE_ROW )
+		page_size = sqlite3_column_int(stmt, 0);
+	else
+	{
+		logg("init_memory_database(PRAGMA page_size): Step error: %s",
+			 sqlite3_errstr(rc));
+		return false;
+	}
+	sqlite3_finalize(stmt);
+
+	*memsize = page_count * page_size;
+
+	// Get number of queries in the memory table
+	const char *querystr = "SELECT COUNT(timestamp) FROM queries";
+	rc = sqlite3_prepare_v2(memdb, querystr, -1, &stmt, NULL);
+	if( rc != SQLITE_OK )
+	{
+		if( rc != SQLITE_BUSY )
+			logg("init_memory_database (%s): Prepare error: %s",
+				 querystr, sqlite3_errstr(rc));
+
+		return false;
+	}
+	rc = sqlite3_step(stmt);
+	if( rc == SQLITE_ROW )
+		*queries = sqlite3_column_int(stmt, 0);
+	else
+	{
+		logg("init_memory_database (%s): Step error: %s",
+			 querystr, sqlite3_errstr(rc));
+		return false;
+	}
+	sqlite3_finalize(stmt);
+
+	return true;
+}
+
+static bool attach_disk_database(void)
+{
+	int rc;
+	bool okay = false;
+	sqlite3_stmt* stmt = NULL;
+
+	// ATTACH database file on-disk
+	rc = sqlite3_prepare_v2(memdb, "ATTACH :path AS disk", -1, &stmt, NULL);
+	if( rc != SQLITE_OK )
+	{
+		if( rc != SQLITE_BUSY )
+			logg("attach_disk_database(): Prepare error: %s", sqlite3_errstr(rc));
+
+		return false;
+	}
+	// Bind type to prepared statement (if requested)
+	const int path_idx = sqlite3_bind_parameter_index(stmt, ":path");
+	if((rc = sqlite3_bind_text(stmt, path_idx, FTLfiles.FTL_db, -1, SQLITE_STATIC)) != SQLITE_OK)
+	{
+		logg("attach_disk_database(): Failed to bind path: %s",
+			 sqlite3_errstr(rc));
+		sqlite3_finalize(stmt);
+		return false;
+	}
+
+	// Perform step
+	if((rc = sqlite3_step(stmt)) == SQLITE_DONE)
+		okay = true;
+	else
+		logg("attach_disk_database(): Failed to attach database: %s",
+			 sqlite3_errstr(rc));
+
+	// Finalize statement
+	sqlite3_reset(stmt);
+	sqlite3_finalize(stmt);
+
+	return okay;
+}
+
+static bool detach_disk_database(void)
+{
+	int rc;
+
+	// Detach database
+	rc = sqlite3_exec(memdb, "DETACH disk", NULL, NULL, NULL);
+	if( rc != SQLITE_OK ){
+		logg("detach_disk_database() failed: %s",
+			 sqlite3_errstr(rc));
+		sqlite3_close(memdb);
+		return false;
+	}
+
+	size_t memsize = 0;
+	unsigned int queries = 0;
+	if((config.debug & DEBUG_DATABASE) && get_memdb_size(&memsize, &queries))
+	{
+		char prefix[2] = { 0 };
+		double num = 0.0;
+		format_memory_size(prefix, memsize, &num);
+		logg("In-memory database size: %.1f%s (%u queries)",
+		     num, prefix, queries);
+	}
+
+	return true;
+}
+
+// Get number of queries either in the in-memory or in the on-diks database
+// This routine is used by the API routines.
+int get_number_of_queries_in_DB(bool disk)
+{
+	// Attach disk database if required
+	if(disk && !attach_disk_database())
+		return DB_FAILED;
+
 	// Count number of rows using the index timestamp is faster than select(*)
-	int result = db_query_int("SELECT COUNT(timestamp) FROM queries");
+	const char *querystr = disk ? "SELECT COUNT(timestamp) FROM disk.queries" : "SELECT COUNT(timestamp) FROM queries";
+	int result = db_query_int(querystr);
+
+	if(disk && !detach_disk_database())
+		return DB_FAILED;
 
 	return result;
 }
 
-void DB_save_queries(void)
+bool import_queries_from_disk(void)
 {
+	// Get time stamp 24 hours (or what was configured) in the past
+	bool okay = false;
+	const double now = double_time();
+	const double mintime = now - config.maxlogage;
+	const char *querystr = "INSERT INTO queries SELECT * FROM disk.queries WHERE timestamp >= ?";
+
+	// Attach disk database
+	if(!attach_disk_database())
+		return false;
+
+	// Prepare SQLite3 statement
+	sqlite3_stmt* stmt = NULL;
+	int rc = sqlite3_prepare_v2(memdb, querystr, -1, &stmt, NULL);
+	if( rc != SQLITE_OK ){
+		logg("import_queries_from_disk(): SQL error prepare: %s", sqlite3_errstr(rc));
+		return false;
+	}
+
+	// Bind limit
+	if((rc = sqlite3_bind_double(stmt, 1, mintime)) != SQLITE_OK)
+	{
+		logg("import_queries_from_disk(): Failed to bind type mintime: %s", sqlite3_errstr(rc));
+		return false;
+	}
+
+	// Perform step
+	if((rc = sqlite3_step(stmt)) == SQLITE_DONE)
+		okay = true;
+	else
+		logg("import_queries_from_disk(): Failed to import queries: %s",
+			 sqlite3_errstr(rc));
+
+	// Finalize statement
+	sqlite3_reset(stmt);
+	sqlite3_finalize(stmt);
+
+	if(!detach_disk_database())
+		return false;
+	
+	return okay;
+}
+
+bool export_queries_to_disk(bool final)
+{
+	// Get time stamp 24 hours (or what was configured) in the past
+	bool okay = false;
+	const char *querystr = "INSERT INTO disk.queries SELECT * FROM queries WHERE id > ? AND timestamp < ?";
+
 	// Start database timer
 	if(config.debug & DEBUG_DATABASE)
 		timer_start(DATABASE_WRITE_TIMER);
 
-	unsigned int saved = 0;
-	bool error = false;
-	sqlite3_stmt* stmt = NULL;
-
-	int rc = dbquery("BEGIN TRANSACTION IMMEDIATE");
-	if( rc != SQLITE_OK )
-	{
-		const char *text;
-		if( rc == SQLITE_BUSY )
-			text = "WARNING";
-		else
-		{
-			text = "ERROR";
-			dbclose();
-		}
-
-		logg("%s: Storing queries in long-term database failed: %s", text, sqlite3_errstr(rc));
-		return;
-	}
-
-	rc = sqlite3_prepare_v2(FTL_db, "INSERT INTO queries VALUES (NULL,?,?,?,?,?,?,?)", -1, &stmt, NULL);
-	if( rc != SQLITE_OK )
-	{
-		const char *text, *spaces;
-		if( rc == SQLITE_BUSY )
-		{
-			text   = "WARNING";
-			spaces = "       ";
-		}
-		else
-		{
-			text   = "ERROR";
-			spaces = "     ";
-			dbclose();
-		}
-
-		// dbquery() above already logs the reson for why the query failed
-		logg("%s: Storing queries in long-term database failed: %s\n", text, sqlite3_errstr(rc));
-		logg("%s  Keeping queries in memory for later new attempt", spaces);
-		saving_failed_before = true;
-		return;
-	}
-
-	// Get last ID stored in the database
-	long int lastID = get_max_query_ID();
-
-	int total = 0, blocked = 0;
-	const double currenttimestamp = double_time();
-	double newlasttimestamp = 0;
-	long int queryID;
-	for(queryID = MAX(0, lastdbindex); queryID < counters->queries; queryID++)
-	{
-		queriesData* query = getQuery(queryID, true);
-		if(query->db != 0)
-		{
-			// Skip, already saved in database
-			continue;
-		}
-
-		if(!query->flags.complete && query->timestamp > currenttimestamp-2)
-		{
-			// Break if a brand new query (age < 2 seconds) is not yet completed
-			// giving it a chance to be stored next time
-			break;
-		}
-
-		if(query->privacylevel >= PRIVACY_MAXIMUM)
-		{
-			// Skip, we never store nor count queries recorded
-			// while have been in maximum privacy mode in the database
-			continue;
-		}
-
-		// TIMESTAMP
-		sqlite3_bind_double(stmt, 1, query->timestamp);
-
-		// TYPE
-		if(query->type != TYPE_OTHER)
-		{
-			// Store mapped type if query->type is not OTHER
-			sqlite3_bind_int(stmt, 2, query->type);
-		}
-		else
-		{
-			// Store query type + offset if query-> type is OTHER
-			sqlite3_bind_int(stmt, 2, query->qtype + 100);
-		}
-
-		// STATUS
-		sqlite3_bind_int(stmt, 3, query->status);
-
-		// DOMAIN
-		const char *domain = getDomainString(query);
-		sqlite3_bind_text(stmt, 4, domain, -1, SQLITE_STATIC);
-
-		// CLIENT
-		const char *client = getClientIPString(query);
-		sqlite3_bind_text(stmt, 5, client, -1, SQLITE_STATIC);
-
-		// FORWARD
-		if(query->upstreamID > -1)
-		{
-			// Get forward pointer
-			const upstreamsData* upstream = getUpstream(query->upstreamID, true);
-			char *buffer = NULL;
-			if(asprintf(&buffer, "%s#%u", getstr(upstream->ippos), upstream->port) > 0)
-				sqlite3_bind_text(stmt, 6, buffer, -1, SQLITE_TRANSIENT);
-			else
-				sqlite3_bind_null(stmt, 6);
-
-			if(buffer != NULL)
-				free(buffer);
-		}
-		else
-		{
-			sqlite3_bind_null(stmt, 6);
-		}
-
-		// ADDITIONAL_INFO
-		if(query->status == QUERY_GRAVITY_CNAME ||
-		   query->status == QUERY_REGEX_CNAME ||
-		   query->status == QUERY_BLACKLIST_CNAME)
-		{
-			// Restore domain blocked during deep CNAME inspection if applicable
-			const char* cname = getCNAMEDomainString(query);
-			sqlite3_bind_text(stmt, 7, cname, -1, SQLITE_STATIC);
-		}
-		else if(query->status == QUERY_REGEX)
-		{
-			// Restore regex ID if applicable
-			const int cacheID = findCacheID(query->domainID, query->clientID, query->type);
-			DNSCacheData *cache = getDNSCache(cacheID, true);
-			if(cache != NULL)
-				sqlite3_bind_int(stmt, 7, cache->deny_regex_id);
-			else
-				sqlite3_bind_null(stmt, 7);
-		}
-		else
-		{
-			// Nothing to add here
-			sqlite3_bind_null(stmt, 7);
-		}
-
-		// Step and check if successful
-		rc = sqlite3_step(stmt);
-		sqlite3_clear_bindings(stmt);
-		sqlite3_reset(stmt);
-
-		if( rc != SQLITE_DONE )
-		{
-			logg("Encountered error while trying to store queries in long-term database: %s", sqlite3_errstr(rc));
-			error = true;
-			break;
-		}
-
-		saved++;
-		// Mark this query as saved in the database by setting the corresponding ID
-		query->db = ++lastID;
-
-		// Total counter information (delta computation)
-		total++;
-		if(query->flags.blocked)
-			blocked++;
-
-		// Update lasttimestamp variable with timestamp of the latest stored query
-		if(query->timestamp > newlasttimestamp)
-			newlasttimestamp = query->timestamp;
-	}
-
-	if((rc = sqlite3_finalize(stmt)) != SQLITE_OK)
-	{
-		logg("Statement finalization failed when trying to store queries to long-term database: %s",
-		     sqlite3_errstr(rc));
-
-		if( rc == SQLITE_BUSY )
-		{
-			logg("Keeping queries in memory for later new attempt");
-			saving_failed_before = true;
-		}
-		else
-			dbclose();
-
-		return;
-	}
-
-	// Finish prepared statement
-	if((rc = dbquery("END TRANSACTION")) != SQLITE_OK)
-	{
-		// No need to log the error string here, dbquery() did that already above
-		logg("END TRANSACTION failed when trying to store queries to long-term database");
-
-		if( rc == SQLITE_BUSY )
-		{
-			logg("Keeping queries in memory for later new attempt");
-			saving_failed_before = true;
-		}
-		else
-			dbclose();
-
-		return;
-	}
-
-	// Store index for next loop interation round and update last time stamp
-	// in the database only if all queries have been saved successfully
-	if(saved > 0 && !error)
-	{
-		lastdbindex = queryID;
-		db_set_FTL_property_double(DB_LASTTIMESTAMP, newlasttimestamp);
-		db_update_counters(total, blocked);
-	}
-
-	if(config.debug & DEBUG_DATABASE || saving_failed_before)
-	{
-		logg("Notice: Queries stored in long-term database: %u (took %.1f ms, last SQLite ID %li)", saved, timer_elapsed_msec(DATABASE_WRITE_TIMER), lastID);
-		if(saving_failed_before)
-		{
-			logg("        Queries from earlier attempt(s) stored successfully");
-			saving_failed_before = false;
-		}
-	}
-}
-
-void delete_old_queries_in_DB(void)
-{
-	// Open database
-	if(!FTL_DB_avail())
-	{
-		return;
-	}
-
-	int timestamp = time(NULL) - config.maxDBdays * 86400;
-
-	if(dbquery("DELETE FROM queries WHERE timestamp <= %i", timestamp) != SQLITE_OK)
-	{
-		logg("delete_old_queries_in_DB(): Deleting queries due to age of entries failed!");
-		return;
-	}
-
-	// Get how many rows have been affected (deleted)
-	const int affected = sqlite3_changes(FTL_db);
-
-	// Print final message only if there is a difference
-	if((config.debug & DEBUG_DATABASE) || affected)
-		logg("Notice: Database size is %.2f MB, deleted %i rows", 1e-6*get_FTL_db_filesize(), affected);
-}
-
-// Get most recent 24 hours data from long-term database
-void DB_read_queries(void)
-{
-	// Open database
-	if(!dbopen())
-		return;
-
-	// Prepare request
-	// Get time stamp 24 hours in the past
-	const double now = double_time();
-	const double mintime = now - config.maxlogage;
-	const char *querystr = "SELECT * FROM queries WHERE timestamp >= ?";
-	// Log FTL_db query string in debug mode
-	if(config.debug & DEBUG_DATABASE)
-		logg("DB_read_queries(): \"%s\" with ? = %lli", querystr, (long long)mintime);
+	// Attach disk database
+	if(!attach_disk_database())
+		return false;
 
 	// Prepare SQLite3 statement
 	sqlite3_stmt* stmt = NULL;
-	int rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &stmt, NULL);
+	int rc = sqlite3_prepare_v2(memdb, querystr, -1, &stmt, NULL);
+	if( rc != SQLITE_OK ){
+		logg("import_queries_from_disk(): SQL error prepare: %s", sqlite3_errstr(rc));
+		return false;
+	}
+
+	// Bind index
+	if((rc = sqlite3_bind_int64(stmt, 1, last_disk_db_idx)) != SQLITE_OK)
+	{
+		logg("import_queries_from_disk(): Failed to bind type id: %s", sqlite3_errstr(rc));
+		return false;
+	}
+
+	// Bind upper time limit
+	
+	// This prevents queries from the last 30 seconds from being stored
+	// immediately on-disk to give them some time to complete before finally
+	// exported. We do not limit anything when storing during termination.
+	const double time = double_time() - (final ? 0.0 : 30.0);
+	if((rc = sqlite3_bind_int64(stmt, 2, time)) != SQLITE_OK)
+	{
+		logg("import_queries_from_disk(): Failed to bind type time: %s", sqlite3_errstr(rc));
+		return false;
+	}
+
+	// Perform step
+	if((rc = sqlite3_step(stmt)) == SQLITE_DONE)
+		okay = true;
+	else
+		logg("import_queries_from_disk(): Failed to import queries: %s",
+			 sqlite3_errstr(rc));
+
+	// Finalize statement
+	sqlite3_reset(stmt);
+	sqlite3_finalize(stmt);
+
+	if(!detach_disk_database())
+		return false;
+
+	// All in-memory queries were stored to disk, update the IDs
+	unsigned int saved = last_mem_db_idx - last_disk_db_idx;
+	last_disk_db_idx = last_mem_db_idx;
+
+	if(saved > 0)
+	{
+		db_set_FTL_property_double(DB_LASTTIMESTAMP, new_last_timestamp);
+		db_update_counters(new_total, new_blocked);
+	}
+
+	if(config.debug & DEBUG_DATABASE)
+	{
+		logg("Notice: Queries stored in long-term database: %u (took %.1f ms, last SQLite ID %li)",
+		     saved, timer_elapsed_msec(DATABASE_WRITE_TIMER), last_disk_db_idx);
+	}
+	
+	return okay;
+}
+
+// Get most recent 24 hours data from in-memory long-term database
+void DB_read_queries(void)
+{
+	// Prepare request
+	// Get time stamp 24 hours in the past
+	const char *querystr = "SELECT * FROM queries";
+
+	// Prepare SQLite3 statement
+	sqlite3_stmt* stmt = NULL;
+	int rc = sqlite3_prepare_v2(memdb, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK ){
 		logg("DB_read_queries() - SQL error prepare: %s", sqlite3_errstr(rc));
 		dbclose();
 		return;
 	}
 
-	// Bind limit
-	if((rc = sqlite3_bind_int(stmt, 1, mintime)) != SQLITE_OK)
-	{
-		logg("DB_read_queries() - Failed to bind type mintime: %s", sqlite3_errstr(rc));
-		dbclose();
-		return;
-	}
-
 	// Loop through returned database rows
+	sqlite3_int64 dbid = 0;
 	while((rc = sqlite3_step(stmt)) == SQLITE_ROW)
 	{
-		const sqlite3_int64 dbid = sqlite3_column_int64(stmt, 0);
+		dbid = sqlite3_column_int64(stmt, 0);
 		const double queryTimeStamp = sqlite3_column_double(stmt, 1);
 		// 1483228800 = 01/01/2017 @ 12:00am (UTC)
 		if(queryTimeStamp < 1483228800)
 		{
 			logg("FTL_db warn: TIMESTAMP should be larger than 01/01/2017 but is %f", queryTimeStamp);
-			continue;
-		}
-		if(queryTimeStamp > now)
-		{
-			if(config.debug & DEBUG_DATABASE) logg("FTL_db warn: Skipping query logged in the future (%f)", queryTimeStamp);
 			continue;
 		}
 
@@ -555,7 +592,8 @@ void DB_read_queries(void)
 
 	// Update lastdbindex so that the next call to DB_save_queries()
 	// skips the queries that we just imported from the database
-	lastdbindex = counters->queries;
+	last_disk_db_idx = dbid;
+	last_mem_db_idx = dbid;
 
 	if( rc != SQLITE_DONE ){
 		logg("DB_read_queries() - SQL error step: %s", sqlite3_errstr(rc));
@@ -568,4 +606,156 @@ void DB_read_queries(void)
 
 	// Close database here, we have to reopen it later (after forking)
 	dbclose();
+}
+
+bool query_to_database(queriesData* query)
+{
+	int rc;
+	sqlite3_int64 idx = 0;
+	sqlite3_stmt* stmt = NULL;
+
+
+	if(query->privacylevel >= PRIVACY_MAXIMUM)
+	{
+		// Skip, we never store nor count queries recorded
+		// while have been in maximum privacy mode in the database
+		if(config.debug & DEBUG_DATABASE)
+			logg("Storing storing in database due to privacy level");
+		return true;
+	}
+
+	// Start preparing INSERT query
+	rc = sqlite3_prepare_v2(FTL_db, "REPLACE INTO queries VALUES (?,?,?,?,?,?,?,?)", -1, &stmt, NULL);
+	if( rc != SQLITE_OK )
+	{
+		logg("query_to_database() - SQL error step: %s", sqlite3_errstr(rc));
+		return false;
+	}
+
+	// Explicitly set ID to match what is in the on-disk database
+	if(query->db != 0)
+	{
+		// We update an existing query
+		idx = query->db;
+	}
+	else
+	{
+		// We create a new query
+		idx = last_mem_db_idx + 1;
+	}
+	// INDEX
+	sqlite3_bind_int64(stmt, 1, idx);
+
+	// TIMESTAMP
+	sqlite3_bind_double(stmt, 2, query->timestamp);
+
+	// TYPE
+	if(query->type != TYPE_OTHER)
+	{
+		// Store mapped type if query->type is not OTHER
+		sqlite3_bind_int(stmt, 3, query->type);
+	}
+	else
+	{
+		// Store query type + offset if query-> type is OTHER
+		sqlite3_bind_int(stmt, 3, query->qtype + 100);
+	}
+
+	// STATUS
+	sqlite3_bind_int(stmt, 4, query->status);
+
+	// DOMAIN
+	const char *domain = getDomainString(query);
+	sqlite3_bind_text(stmt, 5, domain, -1, SQLITE_STATIC);
+
+	// CLIENT
+	const char *client = getClientIPString(query);
+	sqlite3_bind_text(stmt, 6, client, -1, SQLITE_STATIC);
+
+	// FORWARD
+	if(query->upstreamID > -1)
+	{
+		// Get forward pointer
+		const upstreamsData* upstream = getUpstream(query->upstreamID, true);
+		char *buffer = NULL;
+		if(asprintf(&buffer, "%s#%u", getstr(upstream->ippos), upstream->port) > 0)
+			sqlite3_bind_text(stmt, 7, buffer, -1, SQLITE_TRANSIENT);
+		else
+			sqlite3_bind_null(stmt, 7);
+
+		if(buffer != NULL)
+			free(buffer);
+	}
+	else
+	{
+		sqlite3_bind_null(stmt, 7);
+	}
+
+	// ADDITIONAL_INFO
+	if(query->status == QUERY_GRAVITY_CNAME ||
+		query->status == QUERY_REGEX_CNAME ||
+		query->status == QUERY_BLACKLIST_CNAME)
+	{
+		// Restore domain blocked during deep CNAME inspection if applicable
+		const char *cname = getCNAMEDomainString(query);
+		sqlite3_bind_text(stmt, 8, cname, -1, SQLITE_STATIC);
+	}
+	else if(query->status == QUERY_REGEX)
+	{
+		// Restore regex ID if applicable
+		const int cacheID = findCacheID(query->domainID, query->clientID, query->type);
+		DNSCacheData *cache = getDNSCache(cacheID, true);
+		if(cache != NULL)
+			sqlite3_bind_int(stmt, 8, cache->deny_regex_id);
+		else
+			sqlite3_bind_null(stmt, 8);
+	}
+	else
+	{
+		// Nothing to add here
+		sqlite3_bind_null(stmt, 8);
+	}
+
+	// Step and check if successful
+	rc = sqlite3_step(stmt);
+	sqlite3_clear_bindings(stmt);
+	sqlite3_reset(stmt);
+
+	if( rc != SQLITE_DONE )
+	{
+		logg("Encountered error while trying to store queries in in-memory database: %s",
+		     sqlite3_errstr(rc));
+		sqlite3_finalize(stmt);
+		return false;
+	}
+
+	// Update fields if this is a new query (skip if we are only updating an
+	// existing entry)
+	if(query->db == 0)
+	{
+		// Store database index for this query (in case we need to
+		// update it later on)
+		query->db = ++last_mem_db_idx;
+
+		// Total counter information (delta computation)
+		new_total++;
+		if(query->flags.blocked)
+			new_blocked++;
+
+		// Update lasttimestamp variable with timestamp of the latest stored query
+		if(query->timestamp > new_last_timestamp)
+			new_last_timestamp = query->timestamp;
+	}
+
+	if(config.debug & DEBUG_DATABASE)
+		logg("Stored query in internal database (ID %lli)", idx);
+
+	if((rc = sqlite3_finalize(stmt)) != SQLITE_OK)
+	{
+		logg("Statement finalization failed when trying to store queries to in-memory database: %s",
+		     sqlite3_errstr(rc));
+		return false;
+	}
+
+	return true;
 }

@@ -15,7 +15,7 @@
 #include "../shmem.h"
 // parse_neighbor_cache()
 #include "network-table.h"
-// DB_save_queries()
+// export_queries_to_disk()
 #include "query-table.h"
 #include "../config.h"
 #include "../log.h"
@@ -26,6 +26,32 @@
 #include "aliasclients.h"
 // Eventqueue routines
 #include "../events.h"
+// get_FTL_db_filesize()
+#include "../files.h"
+
+static void delete_old_queries_in_DB(void)
+{
+	// Open database
+	if(!FTL_DB_avail())
+	{
+		return;
+	}
+
+	int timestamp = time(NULL) - config.maxDBdays * 86400;
+
+	if(dbquery("DELETE FROM queries WHERE timestamp <= %i", timestamp) != SQLITE_OK)
+	{
+		logg("delete_old_queries_in_DB(): Deleting queries due to age of entries failed!");
+		return;
+	}
+
+	// Get how many rows have been affected (deleted)
+	const int affected = sqlite3_changes(FTL_db);
+
+	// Print final message only if there is a difference
+	if((config.debug & DEBUG_DATABASE) || affected)
+		logg("Notice: Database size is %.2f MB, deleted %i rows", 1e-6*get_FTL_db_filesize(), affected);
+}
 
 void *DB_thread(void *val)
 {
@@ -49,9 +75,7 @@ void *DB_thread(void *val)
 				// Save data to database (if enabled)
 				if(config.DBexport)
 				{
-					lock_shm();
-					DB_save_queries();
-					unlock_shm();
+					export_queries_to_disk(false);
 
 					// Check if GC should be done on the database
 					if(DBdeleteoldqueries && config.maxDBdays != -1)

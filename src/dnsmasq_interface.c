@@ -42,6 +42,8 @@
 #include <stdatomic.h>
 // Eventqueue routines
 #include "events.h"
+// query_to_database()
+#include "database/query-table.h"
 
 static void print_flags(const unsigned int flags);
 static void save_reply_type(const unsigned int flags, const union all_addr *addr,
@@ -765,6 +767,9 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 
 	bool blockDomain = FTL_check_blocking(queryID, domainID, clientID, blockingreason);
 
+	// Store query in database
+	query_to_database(query);
+
 	// Free allocated memory
 	free(domainString);
 
@@ -960,6 +965,9 @@ void _FTL_forwarded(const unsigned int flags, const char *name, const struct ser
 
 	// Release allocated memory
 	free(upstreamIP);
+
+	// Update query in database
+	query_to_database(query);
 
 	// Unlock shared memory
 	unlock_shm();
@@ -1159,6 +1167,9 @@ void _FTL_reply(const unsigned int flags, const char *name, const union all_addr
 		logg("*************************** unknown REPLY ***************************");
 		print_flags(flags);
 	}
+
+	// Update query in database
+	query_to_database(query);
 
 	unlock_shm();
 }
@@ -1430,12 +1441,16 @@ void _FTL_cache(const unsigned int flags, const char *name, const union all_addr
 
 		// Hereby, this query is now fully determined
 		query->flags.complete = true;
+
+		// Update query in database
+		query_to_database(query);
 	}
 	else
 	{
 		logg("*************************** unknown CACHE reply (2) ***************************");
 		print_flags(flags);
 	}
+
 	unlock_shm();
 }
 
@@ -1482,6 +1497,9 @@ static void query_blocked(queriesData* query, domainsData* domain, clientsData* 
 	// Update status
 	query->status = new_status;
 	query->flags.blocked = true;
+
+	// Update query in database
+	query_to_database(query);
 }
 
 void _FTL_dnssec(const int status, const int id, const char* file, const int line)
@@ -1950,10 +1968,14 @@ void FTL_forwarding_retried(const struct server *serv, const int oldID, const in
 				query->status = QUERY_RETRIED;
 			}
 		}
+
+		// Update query in database
+		query_to_database(query);
 	}
 
 	// Clean up and unlock shared memory
 	free(upstreamIP);
+
 	unlock_shm();
 	return;
 }
@@ -2245,6 +2267,9 @@ void FTL_query_in_progress(const int id)
 	// Store status
 	query->status = QUERY_IN_PROGRESS;
 
+	// Update query in database
+	query_to_database(query);
+
 	// Unlock shared memory
 	unlock_shm();
 }
@@ -2307,6 +2332,9 @@ void FTL_duplicate_reply(const int id, int *firstID)
 	if(source_query->status != QUERY_FORWARDED)
 		duplicated_query->status = source_query->status;
 	duplicated_query->CNAME_domainID = source_query->CNAME_domainID;
+
+	// Update duplicated query in database
+	query_to_database(duplicated_query);
 
 	// Unlock shared memory
 	unlock_shm();
