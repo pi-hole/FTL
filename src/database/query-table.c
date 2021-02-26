@@ -75,7 +75,7 @@ bool init_memory_database(void)
 	return true;
 }
 
-static bool get_memdb_size(size_t *memsize, unsigned int *queries)
+static bool get_memdb_size(size_t *memsize, int *queries)
 {
 	int rc;
 	sqlite3_stmt* stmt = NULL;
@@ -126,28 +126,24 @@ static bool get_memdb_size(size_t *memsize, unsigned int *queries)
 	*memsize = page_count * page_size;
 
 	// Get number of queries in the memory table
-	const char *querystr = "SELECT COUNT(timestamp) FROM queries";
-	rc = sqlite3_prepare_v2(memdb, querystr, -1, &stmt, NULL);
-	if( rc != SQLITE_OK )
-	{
-		if( rc != SQLITE_BUSY )
-			logg("init_memory_database (%s): Prepare error: %s",
-				 querystr, sqlite3_errstr(rc));
-
+	if((*queries = get_number_of_queries_in_DB(false)) == DB_FAILED)
 		return false;
-	}
-	rc = sqlite3_step(stmt);
-	if( rc == SQLITE_ROW )
-		*queries = sqlite3_column_int(stmt, 0);
-	else
-	{
-		logg("init_memory_database (%s): Step error: %s",
-			 querystr, sqlite3_errstr(rc));
-		return false;
-	}
-	sqlite3_finalize(stmt);
 
 	return true;
+}
+
+static void log_in_memory_usage(void)
+{
+	size_t memsize = 0;
+	int queries = 0;
+	if(get_memdb_size(&memsize, &queries))
+	{
+		char prefix[2] = { 0 };
+		double num = 0.0;
+		format_memory_size(prefix, memsize, &num);
+		logg("In-memory database size: %.1f%s (%d queries)",
+		     num, prefix, queries);
+	}
 }
 
 static bool attach_disk_database(void)
@@ -202,17 +198,6 @@ static bool detach_disk_database(void)
 		return false;
 	}
 
-	size_t memsize = 0;
-	unsigned int queries = 0;
-	if((config.debug & DEBUG_DATABASE) && get_memdb_size(&memsize, &queries))
-	{
-		char prefix[2] = { 0 };
-		double num = 0.0;
-		format_memory_size(prefix, memsize, &num);
-		logg("In-memory database size: %.1f%s (%u queries)",
-		     num, prefix, queries);
-	}
-
 	return true;
 }
 
@@ -220,18 +205,40 @@ static bool detach_disk_database(void)
 // This routine is used by the API routines.
 int get_number_of_queries_in_DB(bool disk)
 {
+	int rc = 0, num = 0;
+	sqlite3_stmt *stmt = NULL;
 	// Attach disk database if required
 	if(disk && !attach_disk_database())
 		return DB_FAILED;
 
 	// Count number of rows using the index timestamp is faster than select(*)
 	const char *querystr = disk ? "SELECT COUNT(timestamp) FROM disk.queries" : "SELECT COUNT(timestamp) FROM queries";
-	int result = db_query_int(querystr);
+
+	// PRAGMA page_size
+	rc = sqlite3_prepare_v2(memdb, querystr, -1, &stmt, NULL);
+	if( rc != SQLITE_OK )
+	{
+		if( rc != SQLITE_BUSY )
+			logg("get_number_of_queries_in_DB(): Prepare error: %s",
+				 sqlite3_errstr(rc));
+
+		return false;
+	}
+	rc = sqlite3_step(stmt);
+	if( rc == SQLITE_ROW )
+		num = sqlite3_column_int(stmt, 0);
+	else
+	{
+		logg("get_number_of_queries_in_DB(): Step error: %s",
+			 sqlite3_errstr(rc));
+		return false;
+	}
+	sqlite3_finalize(stmt);
 
 	if(disk && !detach_disk_database())
 		return DB_FAILED;
 
-	return result;
+	return num;
 }
 
 bool import_queries_from_disk(void)
@@ -274,7 +281,7 @@ bool import_queries_from_disk(void)
 
 	if(!detach_disk_database())
 		return false;
-	
+
 	return okay;
 }
 
@@ -308,7 +315,6 @@ bool export_queries_to_disk(bool final)
 	}
 
 	// Bind upper time limit
-	
 	// This prevents queries from the last 30 seconds from being stored
 	// immediately on-disk to give them some time to complete before finally
 	// exported. We do not limit anything when storing during termination.
@@ -348,7 +354,42 @@ bool export_queries_to_disk(bool final)
 		logg("Notice: Queries stored in long-term database: %u (took %.1f ms, last SQLite ID %li)",
 		     saved, timer_elapsed_msec(DATABASE_WRITE_TIMER), last_disk_db_idx);
 	}
-	
+
+	return okay;
+}
+
+bool delete_query_from_db(const sqlite3_int64 id)
+{
+	// Get time stamp 24 hours (or what was configured) in the past
+	bool okay = false;
+	const char *querystr = "DELETE FROM queries WHERE id = ?";
+
+	// Prepare SQLite3 statement
+	sqlite3_stmt* stmt = NULL;
+	int rc = sqlite3_prepare_v2(memdb, querystr, -1, &stmt, NULL);
+	if( rc != SQLITE_OK ){
+		logg("delete_query_from_db(): SQL error prepare: %s", sqlite3_errstr(rc));
+		return false;
+	}
+
+	// Bind index
+	if((rc = sqlite3_bind_int64(stmt, 1, id)) != SQLITE_OK)
+	{
+		logg("delete_query_from_db(): Failed to bind type id: %s", sqlite3_errstr(rc));
+		return false;
+	}
+
+	// Perform step
+	if((rc = sqlite3_step(stmt)) == SQLITE_DONE)
+		okay = true;
+	else
+		logg("delete_query_from_db(): Failed to delete query with ID %lli: %s",
+		     id, sqlite3_errstr(rc));
+
+	// Finalize statement
+	sqlite3_reset(stmt);
+	sqlite3_finalize(stmt);
+
 	return okay;
 }
 
@@ -614,11 +655,10 @@ bool query_to_database(queriesData* query)
 	sqlite3_int64 idx = 0;
 	sqlite3_stmt* stmt = NULL;
 
-
+	// Skip, we never store nor count queries recorded while have been in
+	// maximum privacy mode in the database
 	if(query->privacylevel >= PRIVACY_MAXIMUM)
 	{
-		// Skip, we never store nor count queries recorded
-		// while have been in maximum privacy mode in the database
 		if(config.debug & DEBUG_DATABASE)
 			logg("Storing storing in database due to privacy level");
 		return true;
@@ -633,7 +673,7 @@ bool query_to_database(queriesData* query)
 	}
 
 	// Explicitly set ID to match what is in the on-disk database
-	if(query->db != 0)
+	if(query->db > -1)
 	{
 		// We update an existing query
 		idx = query->db;
@@ -731,7 +771,7 @@ bool query_to_database(queriesData* query)
 
 	// Update fields if this is a new query (skip if we are only updating an
 	// existing entry)
-	if(query->db == 0)
+	if(query->db == -1)
 	{
 		// Store database index for this query (in case we need to
 		// update it later on)
@@ -745,10 +785,18 @@ bool query_to_database(queriesData* query)
 		// Update lasttimestamp variable with timestamp of the latest stored query
 		if(query->timestamp > new_last_timestamp)
 			new_last_timestamp = query->timestamp;
-	}
 
-	if(config.debug & DEBUG_DATABASE)
-		logg("Stored query in internal database (ID %lli)", idx);
+		if(config.debug & DEBUG_DATABASE)
+			log_in_memory_usage();
+
+		if(config.debug & DEBUG_DATABASE)
+			logg("Query added to in-memory database (ID %lli)", idx);
+	}
+	else
+	{
+		if(config.debug & DEBUG_DATABASE)
+			logg("Query updated in in-memory database (ID %lli)", idx);
+	}
 
 	if((rc = sqlite3_finalize(stmt)) != SQLITE_OK)
 	{

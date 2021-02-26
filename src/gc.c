@@ -20,6 +20,8 @@
 #include "signals.h"
 // data getter functions
 #include "datastructure.h"
+// delete_query_from_db()
+#include "database/query-table.h"
 
 bool doGC = false;
 
@@ -199,6 +201,12 @@ void *GC_thread(void *val)
 				// Count removed queries
 				removed++;
 
+				// Remove query from queries table (in-memory),
+				// we can release the lock for this action to
+				// prevent blocking the DNS service too long
+				unlock_shm();
+				delete_query_from_db(query->db);
+				lock_shm();
 			}
 
 			// Only perform memory operations when we actually removed queries

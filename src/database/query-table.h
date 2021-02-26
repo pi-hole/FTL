@@ -34,6 +34,7 @@ bool init_memory_database(void);
 bool import_queries_from_disk(void);
 int get_number_of_queries_in_DB(bool disk);
 bool export_queries_to_disk(bool final);
+bool delete_query_from_db(const sqlite3_int64 id);
 void DB_read_queries(void);
 bool query_to_database(queriesData* query);
 

@@ -96,7 +96,7 @@ typedef struct {
 } clientsData;
 
 // ARM needs alignment to 8-byte boundary
-ASSERT_SIZEOF(clientsData, 696, 668, 668);
+ASSERT_SIZEOF(clientsData, 696, 672, 672);
 
 typedef struct {
 	unsigned char magic;
