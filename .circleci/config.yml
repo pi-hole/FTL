@@ -27,6 +27,14 @@ version: 2
           sftp -b - $SSH_USER@$SSH_HOST <<< "-mkdir html/${DIR}
           put ${BIN_NAME}* html/${DIR}"
     - run:
+        name: "Upload documentation to binary bucket"
+        command: |
+          [ -z "${CIRCLE_PR_USERNAME}" ] || exit 0
+          [[ "${CIRCLE_JOB}" == "x86_64" ]] || exit 0
+          DIR="${CIRCLE_TAG:-${CIRCLE_BRANCH}}"
+          sftp -b - $SSH_USER@$SSH_HOST <<< "-mkdir html/${DIR}/docs
+          put -r src/api/docs/content/* html/${DIR}/docs"
+    - run:
         name: "Verify uploaded binary"
         command: |
           [ -z "${CIRCLE_PR_USERNAME}" ] || exit 0
