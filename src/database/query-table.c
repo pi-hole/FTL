@@ -22,67 +22,114 @@
 #include "common.h"
 #include "../timers.h"
 
-static sqlite3 *memdb = NULL;
+static sqlite3 *memdb = NULL, *newdb = NULL;
 static double new_last_timestamp = 0;
 static unsigned int new_total = 0, new_blocked = 0;
 static long last_mem_db_idx = 0, last_disk_db_idx = 0;
 
-// Initialize in-memory database and add queries table
-bool init_memory_database(void)
+// Initialize in-memory database, add queries table and indices
+static bool init_memory_database(sqlite3 **db, const char *name, const int busy)
 {
 	int rc;
 
-	// Try to open database
-	rc = sqlite3_open_v2(":memory:", &memdb, SQLITE_OPEN_READWRITE, NULL);
+	// Try to open in-memory database
+	rc = sqlite3_open_v2(name, db, SQLITE_OPEN_READWRITE, NULL);
 	if( rc != SQLITE_OK )
 	{
-		logg("init_memory_database(): Step error while trying to open in-memory database: %s",
-			 sqlite3_errstr(rc));
+		logg("init_memory_database(): Step error while trying to open %s database: %s",
+		     name, sqlite3_errstr(rc));
 		return false;
 	}
 
 	// Explicitly set busy handler to value defined in FTL.h
-	rc = sqlite3_busy_timeout(memdb, DATABASE_BUSY_TIMEOUT);
+	rc = sqlite3_busy_timeout(*db, busy);
 	if( rc != SQLITE_OK )
 	{
-		logg("init_memory_database(): Step error while trying to set busy timeout (%d ms) on in-memory database: %s",
-			 DATABASE_BUSY_TIMEOUT, sqlite3_errstr(rc));
-		sqlite3_close(memdb);
+		logg("init_memory_database(): Step error while trying to set busy timeout (%d ms) on %s database: %s",
+			 DATABASE_BUSY_TIMEOUT, name, sqlite3_errstr(rc));
+		sqlite3_close(*db);
 		return false;
 	}
 
 	// Create queries table in the database
-	rc = sqlite3_exec(memdb, CREATE_QUERIES_TABLE_V7, NULL, NULL, NULL);
+	rc = sqlite3_exec(*db, CREATE_QUERIES_TABLE_V7, NULL, NULL, NULL);
 	if( rc != SQLITE_OK ){
-		logg("init_memory_database(\"%s\") failed: %s",
-			 CREATE_QUERIES_TABLE_V7, sqlite3_errstr(rc));
-		sqlite3_close(memdb);
+		logg("init_memory_database(%s: \"%s\") failed: %s",
+		     name, CREATE_QUERIES_TABLE_V7, sqlite3_errstr(rc));
+		sqlite3_close(*db);
 		return false;
 	}
 
 	// Add indices on all columns of the in-memory database
 	for(unsigned int i = 0; i < ArraySize(index_creation); i++)
 	{
-		rc = sqlite3_exec(memdb, index_creation[i], NULL, NULL, NULL);
+		rc = sqlite3_exec(*db, index_creation[i], NULL, NULL, NULL);
 		if( rc != SQLITE_OK ){
-			logg("init_memory_database(\"%s\") failed: %s",
-				 index_creation[i], sqlite3_errstr(rc));
-			sqlite3_close(memdb);
+			logg("init_memory_database(%s: \"%s\") failed: %s",
+			     name, index_creation[i], sqlite3_errstr(rc));
+			sqlite3_close(*db);
 			return false;
 		}
+	}
+
+	// Everything went well
+	return true;
+}
+
+// Initialize in-memory databases
+// The flow of queries is as follows:
+//   1. A new query is always added to the special new.queries table This table
+//      is only used for storing new queries and does never block because of
+//      not allowing (externally triggered) SELECT statements. This ensures we
+//      can always add new queries even when the in-memory queries table is
+//      currently busy (e.g., a complex SELECT statement is running from the API)
+//   2. Every second, we try to copy all queries from new.queries into queries.
+//      When successful, we delete the queries in new.queries afterwards. This
+//      operation may fail if either of the tables is currently busy. This isn't
+//      an issue as the queries are simply preserved and we try again on the next
+//      second. This ensures the in-memory database isn't updated midway when an
+//      API query is running. Furthermore, it ensures that new queries are not
+//      blocked when the database is busy and INSERTions aren't currently possible.
+//   3. At user-configured intervals, the in-memory database is dumped on-disk.
+//      For this, we
+//        3.1. Attach the on-disk database
+//        3.2. INSERT the queries that came in since the last dumping
+//        3.3. Detach the on-disk database
+//   4. At the end of their lifetime (that is after 24 hours), queries are DELETEd
+//      from the in-memory database to make room for new queries in the rolling
+//      window. The queries are not removed from the on-disk database.
+bool init_memory_databases(void)
+{
+	// Initialize in-memory database for all queries
+	if(!init_memory_database(&memdb, "file:memdb?mode=memory", DATABASE_BUSY_TIMEOUT))
+		return false;
+	// Initialize in-memory database for new queries
+	if(!init_memory_database(&newdb, "file:newdb?mode=memory&cache=shared", 0))
+		return false;
+
+	logg("memdb: %p, newdb: %p", memdb, newdb);
+
+	// ATTACH newdb to memdb
+	const char *querystr = "ATTACH 'file:newdb?mode=memory&cache=shared' AS new";
+	int rc = sqlite3_exec(memdb, querystr, NULL, NULL, NULL);
+	if( rc != SQLITE_OK ){
+		logg("init_memory_databases(\"%s\") failed: %s",
+		     querystr, sqlite3_errstr(rc));
+		return false;
 	}
 
 	return true;
 }
 
-static bool get_memdb_size(size_t *memsize, int *queries)
+// Get memory usage and size of in-memory tables
+static bool get_memdb_size(sqlite3 *db, size_t *memsize, int *queries)
 {
 	int rc;
 	sqlite3_stmt* stmt = NULL;
 	size_t page_count, page_size;
 
 	// PRAGMA page_count
-	rc = sqlite3_prepare_v2(memdb, "PRAGMA page_count", -1, &stmt, NULL);
+	rc = sqlite3_prepare_v2(db, "PRAGMA page_count", -1, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
 		if( rc != SQLITE_BUSY )
@@ -103,7 +150,7 @@ static bool get_memdb_size(size_t *memsize, int *queries)
 	sqlite3_finalize(stmt);
 
 	// PRAGMA page_size
-	rc = sqlite3_prepare_v2(memdb, "PRAGMA page_size", -1, &stmt, NULL);
+	rc = sqlite3_prepare_v2(db, "PRAGMA page_size", -1, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
 		if( rc != SQLITE_BUSY )
@@ -126,26 +173,36 @@ static bool get_memdb_size(size_t *memsize, int *queries)
 	*memsize = page_count * page_size;
 
 	// Get number of queries in the memory table
-	if((*queries = get_number_of_queries_in_DB(false)) == DB_FAILED)
+	if((*queries = get_number_of_queries_in_DB(db, false)) == DB_FAILED)
 		return false;
 
 	return true;
 }
 
+// Log the memory usage of in-memory databases
 static void log_in_memory_usage(void)
 {
 	size_t memsize = 0;
 	int queries = 0;
-	if(get_memdb_size(&memsize, &queries))
+	if(get_memdb_size(newdb, &memsize, &queries))
 	{
 		char prefix[2] = { 0 };
 		double num = 0.0;
 		format_memory_size(prefix, memsize, &num);
-		logg("In-memory database size: %.1f%s (%d queries)",
+		logg("new database size: %.1f%s (%d queries)",
+		     num, prefix, queries);
+	}
+	if(get_memdb_size(memdb, &memsize, &queries))
+	{
+		char prefix[2] = { 0 };
+		double num = 0.0;
+		format_memory_size(prefix, memsize, &num);
+		logg("mem database size: %.1f%s (%d queries)",
 		     num, prefix, queries);
 	}
 }
 
+// Attach disk database to in-memory database
 static bool attach_disk_database(void)
 {
 	int rc;
@@ -153,7 +210,7 @@ static bool attach_disk_database(void)
 	sqlite3_stmt* stmt = NULL;
 
 	// ATTACH database file on-disk
-	rc = sqlite3_prepare_v2(memdb, "ATTACH :path AS disk", -1, &stmt, NULL);
+	rc = sqlite3_prepare_v2(memdb, "ATTACH ? AS disk", -1, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
 		if( rc != SQLITE_BUSY )
@@ -161,9 +218,8 @@ static bool attach_disk_database(void)
 
 		return false;
 	}
-	// Bind type to prepared statement (if requested)
-	const int path_idx = sqlite3_bind_parameter_index(stmt, ":path");
-	if((rc = sqlite3_bind_text(stmt, path_idx, FTLfiles.FTL_db, -1, SQLITE_STATIC)) != SQLITE_OK)
+	// Bind path to prepared index
+	if((rc = sqlite3_bind_text(stmt, 1, FTLfiles.FTL_db, -1, SQLITE_STATIC)) != SQLITE_OK)
 	{
 		logg("attach_disk_database(): Failed to bind path: %s",
 			 sqlite3_errstr(rc));
@@ -185,6 +241,7 @@ static bool attach_disk_database(void)
 	return okay;
 }
 
+// Detach disk database to in-memory database
 static bool detach_disk_database(void)
 {
 	int rc;
@@ -201,9 +258,9 @@ static bool detach_disk_database(void)
 	return true;
 }
 
-// Get number of queries either in the in-memory or in the on-diks database
+// Get number of queries either in the temp or in the on-diks database
 // This routine is used by the API routines.
-int get_number_of_queries_in_DB(bool disk)
+int get_number_of_queries_in_DB(sqlite3 *db, bool disk)
 {
 	int rc = 0, num = 0;
 	sqlite3_stmt *stmt = NULL;
@@ -211,16 +268,22 @@ int get_number_of_queries_in_DB(bool disk)
 	if(disk && !attach_disk_database())
 		return DB_FAILED;
 
-	// Count number of rows using the index timestamp is faster than select(*)
-	const char *querystr = disk ? "SELECT COUNT(timestamp) FROM disk.queries" : "SELECT COUNT(timestamp) FROM queries";
+	// Count number of rows
+	const char *querystr = disk ?
+		"SELECT COUNT(*) FROM disk.queries" :
+		"SELECT COUNT(*) FROM queries";
+
+	// The database pointer may be NULL, meaning we want the memdb
+	if(db == NULL)
+		db = memdb;
 
 	// PRAGMA page_size
-	rc = sqlite3_prepare_v2(memdb, querystr, -1, &stmt, NULL);
+	rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
 		if( rc != SQLITE_BUSY )
 			logg("get_number_of_queries_in_DB(): Prepare error: %s",
-				 sqlite3_errstr(rc));
+			     sqlite3_errstr(rc));
 
 		return false;
 	}
@@ -230,7 +293,7 @@ int get_number_of_queries_in_DB(bool disk)
 	else
 	{
 		logg("get_number_of_queries_in_DB(): Step error: %s",
-			 sqlite3_errstr(rc));
+		     sqlite3_errstr(rc));
 		return false;
 	}
 	sqlite3_finalize(stmt);
@@ -241,6 +304,8 @@ int get_number_of_queries_in_DB(bool disk)
 	return num;
 }
 
+// Read queries from the on-disk database into the in-memory database (after
+// restart, etc.)
 bool import_queries_from_disk(void)
 {
 	// Get time stamp 24 hours (or what was configured) in the past
@@ -285,6 +350,8 @@ bool import_queries_from_disk(void)
 	return okay;
 }
 
+// Export in-memory queries to disk - either due to periodic dumping (final =
+// false) or because of a sutdown (final = true)
 bool export_queries_to_disk(bool final)
 {
 	// Get time stamp 24 hours (or what was configured) in the past
@@ -339,7 +406,7 @@ bool export_queries_to_disk(bool final)
 	if(!detach_disk_database())
 		return false;
 
-	// All in-memory queries were stored to disk, update the IDs
+	// All temp queries were stored to disk, update the IDs
 	unsigned int saved = last_mem_db_idx - last_disk_db_idx;
 	last_disk_db_idx = last_mem_db_idx;
 
@@ -358,6 +425,7 @@ bool export_queries_to_disk(bool final)
 	return okay;
 }
 
+// Delete query with given ID from database. Used by garbage collection
 bool delete_query_from_db(const sqlite3_int64 id)
 {
 	// Get time stamp 24 hours (or what was configured) in the past
@@ -393,7 +461,31 @@ bool delete_query_from_db(const sqlite3_int64 id)
 	return okay;
 }
 
-// Get most recent 24 hours data from in-memory long-term database
+// Move queries from newdb.queries into memdb.queries
+// If the database is busy, no moving is happening and queries are retained in
+// here until the next try. This ensures we cannot loose queries.
+bool mv_newdb_memdb(void)
+{
+	const char *querystr[] = { "BEGIN TRANSACTION EXCLUSIVE",
+                                   "REPLACE INTO queries SELECT * FROM new.queries",
+                                   "DELETE FROM new.queries",
+                                   "END TRANSACTION" };
+
+	// Run queries against the database
+	for(unsigned int i = 0; i < ArraySize(querystr); i++)
+	{
+		const int rc = sqlite3_exec(memdb, querystr[i], NULL, NULL, NULL);
+		if( rc != SQLITE_OK ){
+			logg("mv_newdb_memdb(%s) failed: %s",
+			      querystr[i], sqlite3_errstr(rc));
+			return false;
+		}
+	}
+
+	return true;
+}
+
+// Get most recent 24 hours data from temp long-term database
 void DB_read_queries(void)
 {
 	// Prepare request
@@ -664,8 +756,8 @@ bool query_to_database(queriesData* query)
 		return true;
 	}
 
-	// Start preparing INSERT query
-	rc = sqlite3_prepare_v2(FTL_db, "REPLACE INTO queries VALUES (?,?,?,?,?,?,?,?)", -1, &stmt, NULL);
+	// Start preparing query
+	rc = sqlite3_prepare_v2(newdb, "REPLACE INTO queries VALUES (?,?,?,?,?,?,?,?)", -1, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
 		logg("query_to_database() - SQL error step: %s", sqlite3_errstr(rc));

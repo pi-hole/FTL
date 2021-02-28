@@ -201,8 +201,8 @@ void *GC_thread(void *val)
 				// Count removed queries
 				removed++;
 
-				// Remove query from queries table (in-memory),
-				// we can release the lock for this action to
+				// Remove query from queries table (temp), we
+				// can release the lock for this action to
 				// prevent blocking the DNS service too long
 				unlock_shm();
 				delete_query_from_db(query->db);

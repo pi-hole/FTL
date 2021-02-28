@@ -77,8 +77,12 @@ int main (int argc, char* argv[])
 	// Initialize query database (pihole-FTL.db)
 	db_init();
 
-	// Initialize in-memory database
-	init_memory_database();
+	// Initialize in-memory databases
+	if(!init_memory_databases())
+	{
+		logg("FATAL: Cannot initialize in-memory database.");
+		return EXIT_FAILURE;
+	}
 
 	// Try to import queries from long-term database if available
 	if(config.DBimport)

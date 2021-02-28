@@ -60,17 +60,28 @@ void *DB_thread(void *val)
 
 	// Save timestamp as we do not want to store immediately
 	// to the database
-	time_t lastDBsave = time(NULL) - time(NULL)%config.DBinterval;
+	time_t before = time(NULL);
+	time_t lastDBsave = before - before%config.DBinterval;
 
 	while(!killed)
 	{
 		if(FTL_DB_avail())
 		{
 			time_t now = time(NULL);
+
+			// Move queries from non-blocking newdb into the larger memdb
+			// Do this once per second
+			if(now > before)
+			{
+				mv_newdb_memdb();
+				before = now;
+			}
+
+			// Store queries in on-disk database
 			if(now - lastDBsave >= config.DBinterval)
 			{
 				// Update lastDBsave timer
-				lastDBsave = time(NULL) - time(NULL)%config.DBinterval;
+				lastDBsave = now - now%config.DBinterval;
 
 				// Save data to database (if enabled)
 				if(config.DBexport)

@@ -30,11 +30,12 @@ const char *index_creation[] = { CREATE_QUERIES_TIMESTAMP_INDEX,
                                  CREATE_FORWARD_DOMAIN_INDEX };
 #endif
 
-bool init_memory_database(void);
+bool init_memory_databases(void);
 bool import_queries_from_disk(void);
-int get_number_of_queries_in_DB(bool disk);
+int get_number_of_queries_in_DB(sqlite3 *db, bool disk);
 bool export_queries_to_disk(bool final);
 bool delete_query_from_db(const sqlite3_int64 id);
+bool mv_newdb_memdb(void);
 void DB_read_queries(void);
 bool query_to_database(queriesData* query);
 
