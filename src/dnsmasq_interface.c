@@ -1929,7 +1929,7 @@ void FTL_forwarding_retried(const struct server *serv, const int oldID, const in
 		{
 			if(dnssec)
 			{
-				// There is point in retrying the query when
+				// There is no point in retrying the query when
 				// we've already got an answer to this query,
 				// but we're awaiting keys for DNSSEC
 				// validation. We're retrying the DNSSEC query

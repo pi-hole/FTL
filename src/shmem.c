@@ -1036,6 +1036,10 @@ domainsData* _getDomain(int domainID, bool checkMagic, int line, const char * fu
 
 upstreamsData* _getUpstream(int upstreamID, bool checkMagic, int line, const char * function, const char * file)
 {
+	// This does not exist, we return a NULL pointer
+	if(upstreamID == -1)
+		return NULL;
+
 	if(check_range(upstreamID, counters->upstreams_MAX, "upstream", line, function, file) &&
 	   check_magic(upstreamID, checkMagic, upstreams[upstreamID].magic, "upstream", line, function, file))
 		return &upstreams[upstreamID];
