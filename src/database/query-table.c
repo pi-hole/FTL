@@ -482,6 +482,11 @@ bool mv_newdb_memdb(void)
 		}
 	}
 
+	int num;
+	// Debug logging
+	if(config.debug & DEBUG_QUERIES && (num = sqlite3_changes(memdb)) > 0)
+		logg("Moved %d quer%s from newdb into memdb", num, num == 1 ? "y" : "ies");
+
 	return true;
 }
 

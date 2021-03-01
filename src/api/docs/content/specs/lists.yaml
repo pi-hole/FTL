@@ -224,6 +224,26 @@ components:
           type: integer
           readOnly: true
           example: 1611239099
+        date_updated:
+          description: Unix timestamp of last update of list content
+          type: integer
+          readOnly: true
+          example: 1608435667
+        number:
+          description: Number of VALID domains on this list
+          type: integer
+          readOnly: true
+          example: 20566
+        invalid_domains:
+          description: Number of INVALID domains on this list
+          type: integer
+          readOnly: true
+          example: 0
+        status:
+          description: List status
+          type: integer
+          readOnly: true
+          example: 2
   examples:
     lists:
       value:

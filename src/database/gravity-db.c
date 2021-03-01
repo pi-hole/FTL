@@ -1870,7 +1870,8 @@ bool gravityDB_readTable(const enum gravity_list_type listtype, const char *item
 		if(item != NULL && item[0] != '\0')
 			extra = " WHERE address = :item;";
 		sprintf(querystr, "SELECT id,address,enabled,date_added,date_modified,comment,"
-		                         "(SELECT GROUP_CONCAT(group_id) FROM adlist_by_group g WHERE g.adlist_id = a.id) AS group_ids "
+		                         "(SELECT GROUP_CONCAT(group_id) FROM adlist_by_group g WHERE g.adlist_id = a.id) AS group_ids,"
+		                         "date_updated,number,invalid_domains,status "
 		                         "FROM adlist a%s;", extra);
 	}
 	else if(listtype == GRAVITY_CLIENTS)
@@ -1976,10 +1977,10 @@ bool gravityDB_readTableGetRow(tablerow *row, const char **message)
 				row->enabled = sqlite3_column_int(read_stmt, c) != 0;
 
 			else if(strcasecmp(cname, "date_added") == 0)
-				row->date_added = sqlite3_column_int(read_stmt, c);
+				row->date_added = sqlite3_column_int64(read_stmt, c);
 
 			else if(strcasecmp(cname, "date_modified") == 0)
-				row->date_modified = sqlite3_column_int(read_stmt, c);
+				row->date_modified = sqlite3_column_int64(read_stmt, c);
 
 			else if(strcasecmp(cname, "comment") == 0)
 				row->comment = (char*)sqlite3_column_text(read_stmt, c);
@@ -1992,6 +1993,18 @@ bool gravityDB_readTableGetRow(tablerow *row, const char **message)
 
 			else if(strcasecmp(cname, "client") == 0)
 				row->client = (char*)sqlite3_column_text(read_stmt, c);
+
+			else if(strcasecmp(cname, "date_updated") == 0)
+				row->date_updated = sqlite3_column_int64(read_stmt, c);
+
+			else if(strcasecmp(cname, "number") == 0)
+				row->number = sqlite3_column_int(read_stmt, c);
+
+			else if(strcasecmp(cname, "invalid_domains") == 0)
+				row->invalid_domains = sqlite3_column_int(read_stmt, c);
+
+			else if(strcasecmp(cname, "status") == 0)
+				row->status = sqlite3_column_int(read_stmt, c);
 
 			else
 				logg("Internal API error: Encountered unknown column %s", cname);

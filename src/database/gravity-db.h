@@ -21,6 +21,9 @@
 typedef struct {
 	bool enabled;
 	int type_int;
+	int number;
+	int invalid_domains;
+	int status;
 	const char *name;
 	const char *domain;
 	const char *address;
@@ -33,6 +36,7 @@ typedef struct {
 	long id;
 	time_t date_added;
 	time_t date_modified;
+	time_t date_updated;
 } tablerow;
 
 void gravityDB_forked(void);

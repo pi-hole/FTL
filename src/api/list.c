@@ -106,6 +106,15 @@ static int api_list_read(struct ftl_conn *api,
 		JSON_OBJ_ADD_NUMBER(row, "date_added", table.date_added);
 		JSON_OBJ_ADD_NUMBER(row, "date_modified", table.date_modified);
 
+		// Properties added in https://github.com/pi-hole/pi-hole/pull/3951
+		if(listtype == GRAVITY_ADLISTS)
+		{
+			JSON_OBJ_ADD_NUMBER(row, "date_updated", table.date_updated);
+			JSON_OBJ_ADD_NUMBER(row, "number", table.number);
+			JSON_OBJ_ADD_NUMBER(row, "invalid_domains", table.invalid_domains);
+			JSON_OBJ_ADD_NUMBER(row, "status", table.status);
+		}
+
 		JSON_ARRAY_ADD_ITEM(rows, row);
 	}
 	gravityDB_readTableFinalize();
