@@ -233,7 +233,7 @@ static int iface_allowed(struct iface_param *param, int if_index, char *label,
 			 union mysockaddr *addr, struct in_addr netmask, int prefixlen, int iface_flags) 
 {
   struct irec *iface;
-  int mtu = 0, loopback;
+  int loopback;
   struct ifreq ifr;
   int tftp_ok = !!option_bool(OPT_TFTP);
   int dhcp_ok = 1;
@@ -253,9 +253,6 @@ static int iface_allowed(struct iface_param *param, int if_index, char *label,
   
   if (loopback)
     dhcp_ok = 0;
-  
-  if (ioctl(param->fd, SIOCGIFMTU, &ifr) != -1)
-    mtu = ifr.ifr_mtu;
   
   if (!label)
     label = ifr.ifr_name;
@@ -459,6 +456,11 @@ static int iface_allowed(struct iface_param *param, int if_index, char *label,
   /* add to list */
   if ((iface = whine_malloc(sizeof(struct irec))))
     {
+      int mtu = 0;
+
+      if (ioctl(param->fd, SIOCGIFMTU, &ifr) != -1)
+	mtu = ifr.ifr_mtu;
+
       iface->addr = *addr;
       iface->netmask = netmask;
       iface->tftp_ok = tftp_ok;
