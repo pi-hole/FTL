@@ -102,7 +102,7 @@ char *netlink_init(void)
   return NULL;
 }
 
-static ssize_t netlink_recv(void)
+static ssize_t netlink_recv(int flags)
 {
   struct msghdr msg;
   struct sockaddr_nl nladdr;
@@ -118,7 +118,8 @@ static ssize_t netlink_recv(void)
       msg.msg_iovlen = 1;
       msg.msg_flags = 0;
       
-      while ((rc = recvmsg(daemon->netlinkfd, &msg, MSG_PEEK | MSG_TRUNC)) == -1 && errno == EINTR);
+      while ((rc = recvmsg(daemon->netlinkfd, &msg, flags | MSG_PEEK | MSG_TRUNC)) == -1 &&
+	     errno == EINTR);
       
       /* make buffer big enough */
       if (rc != -1 && (msg.msg_flags & MSG_TRUNC))
@@ -135,7 +136,7 @@ static ssize_t netlink_recv(void)
 
       /* read it for real */
       msg.msg_flags = 0;
-      while ((rc = recvmsg(daemon->netlinkfd, &msg, 0)) == -1 && errno == EINTR);
+      while ((rc = recvmsg(daemon->netlinkfd, &msg, flags)) == -1 && errno == EINTR);
       
       /* Make sure this is from the kernel */
       if (rc == -1 || nladdr.nl_pid == 0)
@@ -198,7 +199,7 @@ int iface_enumerate(int family, void *parm, int (*callback)())
     
   while (1)
     {
-      if ((len = netlink_recv()) == -1)
+      if ((len = netlink_recv(0)) == -1)
 	{
 	  if (errno == ENOBUFS)
 	    {
@@ -350,22 +351,14 @@ static void nl_multicast_state(unsigned state)
 {
   ssize_t len;
   struct nlmsghdr *h;
-  int flags;
-
-  if ((flags = fcntl(daemon->netlinkfd, F_GETFL)) == -1 ||
-      fcntl(daemon->netlinkfd, F_SETFL, flags | O_NONBLOCK) == -1) 
-    return;
 
   do {
     /* don't risk blocking reading netlink messages here. */
-    while ((len = netlink_recv()) != -1)
+    while ((len = netlink_recv(MSG_DONTWAIT)) != -1)
   
       for (h = (struct nlmsghdr *)iov.iov_base; NLMSG_OK(h, (size_t)len); h = NLMSG_NEXT(h, len))
 	state = nl_async(h, state);
   } while (errno == ENOBUFS);
-
-  /* restore non-blocking status */
-  fcntl(daemon->netlinkfd, F_SETFL, flags);
 }
 
 void netlink_multicast(void)
