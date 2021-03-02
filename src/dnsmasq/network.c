@@ -639,7 +639,8 @@ int enumerate_interfaces(int reset)
 
   if ((param.fd = socket(PF_INET, SOCK_DGRAM, 0)) == -1)
     return 0;
- 
+
+again:
   /* Mark interfaces for garbage collection */
   for (iface = daemon->interfaces; iface; iface = iface->next) 
     iface->found = 0;
@@ -691,9 +692,14 @@ int enumerate_interfaces(int reset)
   param.spare = spare;
   
   ret = iface_enumerate(AF_INET6, &param, iface_allowed_v6);
-
-  if (ret)
-    ret = iface_enumerate(AF_INET, &param, iface_allowed_v4); 
+  if (ret < 0)
+    goto again;
+  else if (ret)
+    {
+      ret = iface_enumerate(AF_INET, &param, iface_allowed_v4);
+      if (ret < 0)
+	goto again;
+    }
  
   errsave = errno;
   close(param.fd);
