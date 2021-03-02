@@ -251,13 +251,23 @@ int api_history_queries(struct ftl_conn *api)
 	// We start with the most recent query at the beginning (until the cursor is changed)
 	unsigned int cursor = counters->queries;
 	// We send 100 queries (unless the API is asked for a different limit)
-	int show = 100;
+	int length = 100;
+	int start = 0;
+	int draw = 0;
 
 	if(api->request->query_string != NULL)
 	{
 		// Time filtering?
 		get_double_var(api->request->query_string, "from", &from);
 		get_double_var(api->request->query_string, "until", &until);
+
+		// DataTables server-side processing protocol
+		// Draw counter: This is used by DataTables to ensure that the
+		//               Ajax returns from server-side processing
+		//               requests are drawn in sequence by DataTables
+		//               (Ajax requests are asynchronous and thus can
+		//               return out of sequence).
+		get_int_var(api->request->query_string, "draw", &draw);
 
 		// Query type filtering?
 		int num;
@@ -266,7 +276,10 @@ int api_history_queries(struct ftl_conn *api)
 
 		// Does the user request a non-default number of replies?
 		// Note: We do not accept zero query requests here
-		get_int_var(api->request->query_string, "n", &show);
+		get_int_var(api->request->query_string, "length", &length);
+
+		// Does the user request an offset from the cursor?
+		get_int_var(api->request->query_string, "start", &start);
 
 		// Upstream destination filtering?
 		char buffer[256] = { 0 };
@@ -407,8 +420,10 @@ int api_history_queries(struct ftl_conn *api)
 		if(get_uint_var_msg(api->request->query_string, "cursor", &unum, &msg) ||
 		   msg != NULL)
 		{
-			// Do not start at the most recent, but at an older query
-			if(unum < (unsigned int)counters->queries && msg == NULL)
+			// Do not start at the most recent, but at an older
+			// query (so new queries do not show up suddenly in the
+			// log and shift pages)
+			if(unum <= (unsigned int)counters->queries && msg == NULL)
 			{
 				cursor = unum;
 			}
@@ -428,7 +443,7 @@ int api_history_queries(struct ftl_conn *api)
 
 	// Compute limits for the main for-loop
 	// Default: Show the most recent 200 queries
-	unsigned int ibeg = cursor;
+	unsigned int ibeg = cursor - start;
 
 	// Get potentially existing filtering flags
 	char * filter = read_setupVarsconf("API_QUERY_LOG_SHOW");
@@ -449,7 +464,7 @@ int api_history_queries(struct ftl_conn *api)
 
 	cJSON *history = JSON_NEW_ARRAY();
 	int added = 0;
-	unsigned int lastID = 0u;
+//	unsigned int lastID = 0u;
 	for(unsigned int i = ibeg; i > 0u; i--)
 	{
 		const unsigned int queryID = i-1u;
@@ -632,12 +647,12 @@ int api_history_queries(struct ftl_conn *api)
 		}
 		JSON_ARRAY_ADD_ITEM(history, item);
 
-		if(show > -1 && ++added >= show)
+		if(length > -1 && ++added >= length)
 		{
 			break;
 		}
 
-		lastID = queryID;
+//		lastID = queryID;
 	}
 
 	// Free allocated memory
@@ -653,7 +668,12 @@ int api_history_queries(struct ftl_conn *api)
 		// There are more queries available, send cursor pointing
 		// onto the next older query so the API can request it if
 		// needed
-	JSON_OBJ_ADD_NUMBER(json, "cursor", lastID);
+	// JSON_OBJ_ADD_NUMBER(json, "cursor", lastID);
+
+	// DataTables specific properties
+	JSON_OBJ_ADD_NUMBER(json, "recordsTotal", cursor);
+	JSON_OBJ_ADD_NUMBER(json, "recordsFiltered", cursor); // Until we implement server-side filtering
+	JSON_OBJ_ADD_NUMBER(json, "draw", draw);
 
 	JSON_SEND_OBJECT(json);
 }

@@ -52,7 +52,7 @@ typedef struct {
 } queriesData;
 
 // ARM needs alignment to 8-byte boundary
-ASSERT_SIZEOF(queriesData, 80, 60, 64);
+ASSERT_SIZEOF(queriesData, 80, 64, 72);
 
 typedef struct {
 	unsigned char magic;

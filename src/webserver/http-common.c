@@ -164,7 +164,7 @@ bool get_int_var_msg(const char *source, const char *var, int *num, const char *
 	}
 
 	*num = (int)val;
-	return false;
+	return true;
 }
 
 bool get_int_var(const char *source, const char *var, int *num)
@@ -187,12 +187,12 @@ bool get_uint_var_msg(const char *source, const char *var, unsigned int *num, co
 
 	if(val < 0)
 	{
-		*msg = "Specified integer negavtive, this is not allowed";
+		*msg = "Specified integer negative, this is not allowed";
 		return false;
 	}
 
 	*num = (unsigned int)val;
-	return false;
+	return true;
 }
 
 bool get_uint_var(const char *source, const char *var, unsigned int *num)

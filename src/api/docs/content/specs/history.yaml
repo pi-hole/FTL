@@ -77,8 +77,14 @@ components:
             schema:
               type: number
           - in: query
-            name: n
+            name: length
             description: Number of results to return
+            required: false
+            schema:
+              type: integer
+          - in: query
+            name: start
+            description: Offset from first record
             required: false
             schema:
               type: integer
@@ -240,7 +246,7 @@ components:
                     description: Reply type (may be `null`)
                     nullable: true
                   time:
-                    type: integer
+                    type: number
                     description: Time until the response was received (ms, negative if N/A)
               ttl:
                 type: integer
@@ -253,29 +259,40 @@ components:
                 description: IP or name + port of upstream server (may be `null`)
                 nullable: true
           example:
-            - timestamp: 1581907991.539157
+            - time: 1581907991.539157
               type: "A"
               domain: "community.stoplight.io"
-              CNAME_domain: null
+              cname: null
               status: "FORWARDED"
               client: "desktop.lan"
               dnssec: "INSECURE"
-              reply: "IP"
-              response_time: 19
+              reply:
+                type: "IP"
+                time: 19
               regex_idx: -1
               upstream: "localhost#5353"
-            - timestamp: 1581907871.583821
+            - time: 1581907871.583821
               type: "AAAA"
               domain: "api.github.com"
-              CNAME_domain: null
+              cname: null
               status: "FORWARDED"
               client: "localhost"
               dnssec: "UNKNOWN"
-              reply: "IP"
+              reply:
+                type: "IP"
+                time: 12.3
               response_time: 7
               regex_idx: -1
               upstream: "localhost#5353"
-        cursor:
+        recordsTotal:
           type: integer
-          description: Cursor pointing to the head of the next data block (may be `-1` if no more data is available)
+          description: Total number of available queries
           example: 1234
+        recordsFiltered:
+          type: integer
+          description: Number of available queries after filtering
+          example: 1234
+        draw:
+          type: integer
+          description: DataTables-specific integer (echos input value)
+          example: 1
