@@ -233,7 +233,7 @@ static unsigned int search_servers(time_t now, union all_addr **addrpp, unsigned
        if (flags == F_NXDOMAIN || flags == F_NOERR)
        {
 	 log_query(flags | qtype | F_NEG | F_CONFIG | F_FORWARD, qdomain, NULL, NULL);
-	 FTL_reply(flags | qtype | F_NEG | F_CONFIG | F_FORWARD, qdomain, NULL, daemon->log_display_id);
+	 FTL_reply(flags | qtype | F_NEG | F_CONFIG | F_FORWARD, qdomain, NULL, daemon->log_display_id, 0);
        }
        else
 	 {
@@ -241,12 +241,12 @@ static unsigned int search_servers(time_t now, union all_addr **addrpp, unsigned
 	   if (flags & F_IPV4)
 	   {
 	     log_query((flags | F_CONFIG | F_FORWARD) & ~F_IPV6, qdomain, *addrpp, NULL);
-	     FTL_reply((flags | F_CONFIG | F_FORWARD) & ~F_IPV6, qdomain, *addrpp, daemon->log_display_id);
+	     FTL_reply((flags | F_CONFIG | F_FORWARD) & ~F_IPV6, qdomain, *addrpp, daemon->log_display_id, 0);
 	   }
 	   if (flags & F_IPV6)
 	   {
 	     log_query((flags | F_CONFIG | F_FORWARD) & ~F_IPV4, qdomain, *addrpp, NULL);
-	     FTL_reply((flags | F_CONFIG | F_FORWARD) & ~F_IPV4, qdomain, *addrpp, daemon->log_display_id);
+	     FTL_reply((flags | F_CONFIG | F_FORWARD) & ~F_IPV4, qdomain, *addrpp, daemon->log_display_id, 0);
 	   }
 	 }
     }

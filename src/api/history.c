@@ -251,7 +251,7 @@ int api_history_queries(struct ftl_conn *api)
 	// We start with the most recent query at the beginning (until the cursor is changed)
 	unsigned int cursor = counters->queries;
 	// We send 100 queries (unless the API is asked for a different limit)
-	unsigned int show = 100u;
+	int show = 100;
 
 	if(api->request->query_string != NULL)
 	{
@@ -266,7 +266,7 @@ int api_history_queries(struct ftl_conn *api)
 
 		// Does the user request a non-default number of replies?
 		// Note: We do not accept zero query requests here
-		get_uint_var(api->request->query_string, "n", &show);
+		get_int_var(api->request->query_string, "n", &show);
 
 		// Upstream destination filtering?
 		char buffer[256] = { 0 };
@@ -448,7 +448,7 @@ int api_history_queries(struct ftl_conn *api)
 	clearSetupVarsArray();
 
 	cJSON *history = JSON_NEW_ARRAY();
-	unsigned int added = 0u;
+	int added = 0;
 	unsigned int lastID = 0u;
 	for(unsigned int i = ibeg; i > 0u; i--)
 	{
@@ -549,10 +549,10 @@ int api_history_queries(struct ftl_conn *api)
 		else
 			clientIPName = getClientIPString(query);
 
-		unsigned long delay = query->response;
+		double delay = 0.1*query->response;
 		// Check if received (delay should be smaller than 30min)
-		if(delay > 1.8e7)
-			delay = -1;
+		if(delay > 1.8e6 || query->reply == REPLY_UNKNOWN)
+			delay = -1.0;
 
 		// Get domain blocked during deep CNAME inspection, if applicable
 		const char *CNAME_domain = NULL;
@@ -599,23 +599,28 @@ int api_history_queries(struct ftl_conn *api)
 		const char *qreply = get_query_reply_str(query);
 
 		cJSON *item = JSON_NEW_OBJ();
-		JSON_OBJ_ADD_NUMBER(item, "timestamp", query->timestamp);
+		JSON_OBJ_ADD_NUMBER(item, "time", query->timestamp);
 		// We have to copy the string as TYPExxx string won't be static
 		JSON_OBJ_COPY_STR(item, "type", qtype);
 		// Safe to reference the FTL-strings pointer here
 		JSON_OBJ_REF_STR(item, "domain", domain);
 		// Safe to reference the FTL-strings pointer here
-		JSON_OBJ_REF_STR(item, "CNAME_domain", CNAME_domain);
+		JSON_OBJ_REF_STR(item, "cname", CNAME_domain);
 		// Safe to reference the static strings here
 		JSON_OBJ_REF_STR(item, "status", qstatus);
 		// Safe to reference the FTL-strings pointer here
 		JSON_OBJ_REF_STR(item, "client", clientIPName);
 		// Safe to reference the static strings here
 		JSON_OBJ_REF_STR(item, "dnssec", qdnssec);
+
+		cJSON *reply = JSON_NEW_OBJ();
 		// Safe to reference the static strings here
-		JSON_OBJ_REF_STR(item, "reply", qreply);
-		JSON_OBJ_ADD_NUMBER(item, "response_time", delay);
-		JSON_OBJ_ADD_NUMBER(item, "regex_id", regex_id);
+		JSON_OBJ_REF_STR(reply, "type", qreply);
+		JSON_OBJ_ADD_NUMBER(reply, "time", delay);
+		JSON_OBJ_ADD_ITEM(item, "reply", reply);
+
+		JSON_OBJ_ADD_NUMBER(item, "ttl", query->ttl);
+		JSON_OBJ_ADD_NUMBER(item, "regex", regex_id);
 		// We have to copy the string as the ip#port string isn't static
 		if(upstream[0] != '\0')
 		{
@@ -627,7 +632,7 @@ int api_history_queries(struct ftl_conn *api)
 		}
 		JSON_ARRAY_ADD_ITEM(history, item);
 
-		if(++added >= show)
+		if(show > -1 && ++added >= show)
 		{
 			break;
 		}
@@ -640,7 +645,7 @@ int api_history_queries(struct ftl_conn *api)
 		free(clientid_list);
 
 	cJSON *json = JSON_NEW_OBJ();
-	JSON_OBJ_ADD_ITEM(json, "history", history);
+	JSON_OBJ_ADD_ITEM(json, "queries", history);
 
 	// if(lastID < 0)
 		// There are no more queries available, send null cursor

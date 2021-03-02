@@ -564,8 +564,8 @@ const char * __attribute__ ((pure)) get_query_status_str(const queriesData *quer
 			return "CACHE";
 		case QUERY_REGEX:
 			return "REGEX";
-		case QUERY_BLACKLIST:
-			return "BLACKLIST";
+		case QUERY_DENYLIST:
+			return "DENYLIST";
 		case QUERY_EXTERNAL_BLOCKED_IP:
 			return "EXTERNAL_BLOCKED_IP";
 		case QUERY_EXTERNAL_BLOCKED_NULL:
@@ -576,8 +576,8 @@ const char * __attribute__ ((pure)) get_query_status_str(const queriesData *quer
 			return "GRAVITY_CNAME";
 		case QUERY_REGEX_CNAME:
 			return "REGEX_CNAME";
-		case QUERY_BLACKLIST_CNAME:
-			return "BLACKLIST_CNAME";
+		case QUERY_DENYLIST_CNAME:
+			return "DENYLIST_CNAME";
 		case QUERY_RETRIED:
 			return "RETRIED";
 		case QUERY_RETRIED_DNSSEC:

@@ -202,13 +202,13 @@ components:
     queries:
       type: object
       properties:
-        history:
+        queries:
           type: array
           description: Data array
           items:
             type: object
             properties:
-              timestamp:
+              time:
                 type: number
                 description: Timestamp
               type:
@@ -217,7 +217,7 @@ components:
               domain:
                 type: string
                 description: Queried domain
-              CNAME_domain:
+              cname:
                 type: string
                 description: Domain blocked during deep CNAME inspection (may be `null`)
                 nullable: true
@@ -233,13 +233,19 @@ components:
                 description: DNSSEC status (may be `null`)
                 nullable: true
               reply:
-                type: string
-                description: Reply type (may be `null`)
-                nullable: true
-              response_time:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    description: Reply type (may be `null`)
+                    nullable: true
+                  time:
+                    type: integer
+                    description: Time until the response was received (ms, negative if N/A)
+              ttl:
                 type: integer
-                description: Time until the response was sent back to the client (`-1` if N/A)
-              regex_idx:
+                description: Remaining Time-To-Live (0 if N/A)
+              regex:
                 type: integer
                 description: ID of blocking regex (`-1` if N/A)
               upstream:

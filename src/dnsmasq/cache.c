@@ -491,7 +491,7 @@ struct crec *cache_insert(char *name, union all_addr *addr, unsigned short class
     {
       /* Don't log DNSSEC records here, done elsewhere */
       log_query(flags | F_UPSTREAM, name, addr, NULL);
-      FTL_reply(flags, name, addr, daemon->log_display_id);
+      FTL_reply(flags, name, addr, daemon->log_display_id, ttl);
       if (daemon->max_cache_ttl != 0 && daemon->max_cache_ttl < ttl)
 	ttl = daemon->max_cache_ttl;
       if (daemon->min_cache_ttl != 0 && daemon->min_cache_ttl > ttl)

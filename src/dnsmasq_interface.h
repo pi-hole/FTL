@@ -27,11 +27,11 @@ bool _FTL_new_query(const unsigned int flags, const char *name, const char** blo
 #define FTL_forwarded(flags, name, serv, id) _FTL_forwarded(flags, name, serv, id, __FILE__, __LINE__)
 void _FTL_forwarded(const unsigned int flags, const char *name, const struct server *serv, const int id, const char* file, const int line);
 
-#define FTL_reply(flags, name, addr, id) _FTL_reply(flags, name, addr, id, __FILE__, __LINE__)
-void _FTL_reply(const unsigned int flags, const char *name, const union all_addr *addr, const int id, const char* file, const int line);
+#define FTL_reply(flags, name, addr, id, ttl) _FTL_reply(flags, name, addr, id, ttl, __FILE__, __LINE__)
+void _FTL_reply(const unsigned int flags, const char *name, const union all_addr *addr, const int id, const unsigned long ttl, const char* file, const int line);
 
-#define FTL_cache(flags, name, addr, arg, id) _FTL_cache(flags, name, addr, arg, id, __FILE__, __LINE__)
-void _FTL_cache(const unsigned int flags, const char *name, const union all_addr *addr, const char * arg, const int id, const char* file, const int line);
+#define FTL_cache(flags, name, addr, arg, id, ttl) _FTL_cache(flags, name, addr, arg, id, ttl, __FILE__, __LINE__)
+void _FTL_cache(const unsigned int flags, const char *name, const union all_addr *addr, const char * arg, const int id, const unsigned long ttl, const char* file, const int line);
 
 #define FTL_dnssec(status, id) _FTL_dnssec(status, id, __FILE__, __LINE__)
 void _FTL_dnssec(const int status, const int id, const char* file, const int line);

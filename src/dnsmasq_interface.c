@@ -97,7 +97,7 @@ static bool check_domain_blocked(const char *domain, const int clientID,
 	{
 		// We block this domain
 		blockDomain = true;
-		*new_status = QUERY_BLACKLIST;
+		*new_status = QUERY_DENYLIST;
 		*blockingreason = "exactly blacklisted";
 
 		// Mark domain as exactly blacklisted for this client
@@ -194,7 +194,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			if(!query->flags.whitelisted)
 			{
 				force_next_DNS_reply = dns_cache->force_reply;
-				query_blocked(query, domain, client, QUERY_BLACKLIST);
+				query_blocked(query, domain, client, QUERY_DENYLIST);
 				return true;
 			}
 			break;
@@ -435,10 +435,10 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 			// Set status
 			query->status = QUERY_REGEX_CNAME;
 		}
-		else if(query->status == QUERY_BLACKLIST)
+		else if(query->status == QUERY_DENYLIST)
 		{
 			// Only set status
-			query->status = QUERY_BLACKLIST_CNAME;
+			query->status = QUERY_DENYLIST_CNAME;
 		}
 	}
 
@@ -1018,7 +1018,7 @@ void FTL_dnsmasq_reload(void)
 }
 
 void _FTL_reply(const unsigned int flags, const char *name, const union all_addr *addr, const int id,
-                const char* file, const int line)
+                const unsigned long ttl, const char* file, const int line)
 {
 	// Lock shared memory
 	lock_shm();
@@ -1118,6 +1118,7 @@ void _FTL_reply(const unsigned int flags, const char *name, const union all_addr
 		counters->cached++;
 		overTime[timeidx].cached++;
 		query->status = QUERY_CACHE;
+		query->ttl = ttl;
 
 		// Save reply type and update individual reply counters
 		save_reply_type(flags, addr, query, response);
@@ -1325,7 +1326,8 @@ static void query_externally_blocked(const int queryID, const enum query_status 
 }
 
 void _FTL_cache(const unsigned int flags, const char *name, const union all_addr *addr,
-                const char *arg, const int id, const char* file, const int line)
+                const char *arg, const int id, const unsigned long ttl,
+                const char* file, const int line)
 {
 	// Save that this query got answered from cache
 
@@ -1414,6 +1416,7 @@ void _FTL_cache(const unsigned int flags, const char *name, const union all_addr
 		const unsigned int timeidx = query->timeidx;
 
 		query->status = requesttype;
+		query->ttl = ttl;
 
 		// Detect if returned IP indicates that this query was blocked
 		detect_blocked_IP(flags, addr, queryID);

@@ -132,14 +132,14 @@ void *GC_thread(void *val)
 						overTime[timeidx].cached--;
 						break;
 					case QUERY_GRAVITY: // Blocked by Pi-hole's blocking lists (fall through)
-					case QUERY_BLACKLIST: // Exact blocked (fall through)
+					case QUERY_DENYLIST: // Exact blocked (fall through)
 					case QUERY_REGEX: // Regex blocked (fall through)
 					case QUERY_EXTERNAL_BLOCKED_IP: // Blocked by upstream provider (fall through)
 					case QUERY_EXTERNAL_BLOCKED_NXRA: // Blocked by upstream provider (fall through)
 					case QUERY_EXTERNAL_BLOCKED_NULL: // Blocked by upstream provider (fall through)
 					case QUERY_GRAVITY_CNAME: // Gravity domain in CNAME chain (fall through)
-					case QUERY_BLACKLIST_CNAME: // Exactly blacklisted domain in CNAME chain (fall through)
-					case QUERY_REGEX_CNAME: // Regex blacklisted domain in CNAME chain (fall through)
+					case QUERY_DENYLIST_CNAME: // Exactly denied domain in CNAME chain (fall through)
+					case QUERY_REGEX_CNAME: // Regex denied domain in CNAME chain (fall through)
 						counters->blocked--;
 						overTime[timeidx].blocked--;
 						if(domain != NULL)

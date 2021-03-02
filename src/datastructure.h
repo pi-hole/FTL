@@ -36,6 +36,7 @@ typedef struct {
 	unsigned long response; // saved in units of 1/10 milliseconds (1 = 0.1ms, 2 = 0.2ms, 2500 = 250.0ms, etc.)
 	unsigned long forwardresponse; // saved in units of 1/10 milliseconds (1 = 0.1ms, 2 = 0.2ms, 2500 = 250.0ms, etc.)
 	double timestamp;
+	unsigned long ttl;
 	int64_t db;
 	// Adjacent bit field members in the struct flags may be packed to share
 	// and straddle the individual bytes. It is useful to pack the memory as
@@ -51,7 +52,7 @@ typedef struct {
 } queriesData;
 
 // ARM needs alignment to 8-byte boundary
-ASSERT_SIZEOF(queriesData, 72, 60, 64);
+ASSERT_SIZEOF(queriesData, 80, 60, 64);
 
 typedef struct {
 	unsigned char magic;

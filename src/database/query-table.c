@@ -101,7 +101,7 @@ static bool init_memory_database(sqlite3 **db, const char *name, const int busy)
 bool init_memory_databases(void)
 {
 	// Initialize in-memory database for all queries
-	if(!init_memory_database(&memdb, "file:memdb?mode=memory", DATABASE_BUSY_TIMEOUT))
+	if(!init_memory_database(&memdb, "file:memdb?mode=memory&cache=shared", DATABASE_BUSY_TIMEOUT))
 		return false;
 	// Initialize in-memory database for new queries
 	if(!init_memory_database(&newdb, "file:newdb?mode=memory&cache=shared", 0))
@@ -478,7 +478,14 @@ bool mv_newdb_memdb(void)
 		if( rc != SQLITE_OK ){
 			logg("mv_newdb_memdb(%s) failed: %s",
 			      querystr[i], sqlite3_errstr(rc));
-			return false;
+
+			// Try to ROLLLBACK the TRANSACTION
+			const int rc2 = sqlite3_exec(memdb, "ROLLBACK", NULL, NULL, NULL);
+			if( rc2 != SQLITE_OK ){
+				logg("mv_newdb_memdb(ROLLBACK) failed: %s",
+				     sqlite3_errstr(rc2));
+				return false;
+			}
 		}
 	}
 
@@ -645,7 +652,7 @@ void DB_read_queries(void)
 		// Get additional information from the additional_info column if applicable
 		if(status == QUERY_GRAVITY_CNAME ||
 		   status == QUERY_REGEX_CNAME ||
-		   status == QUERY_BLACKLIST_CNAME)
+		   status == QUERY_DENYLIST_CNAME)
 		{
 			// QUERY_*_CNAME: Get domain causing the blocking
 			const char *CNAMEdomain = (const char *)sqlite3_column_text(stmt, 7);
@@ -679,13 +686,13 @@ void DB_read_queries(void)
 
 			case QUERY_GRAVITY: // Blocked by gravity
 			case QUERY_REGEX: // Blocked by regex blacklist
-			case QUERY_BLACKLIST: // Blocked by exact blacklist
+			case QUERY_DENYLIST: // Blocked by exact blacklist
 			case QUERY_EXTERNAL_BLOCKED_IP: // Blocked by external provider
 			case QUERY_EXTERNAL_BLOCKED_NULL: // Blocked by external provider
 			case QUERY_EXTERNAL_BLOCKED_NXRA: // Blocked by external provider
 			case QUERY_GRAVITY_CNAME: // Blocked by gravity (inside CNAME path)
 			case QUERY_REGEX_CNAME: // Blocked by regex blacklist (inside CNAME path)
-			case QUERY_BLACKLIST_CNAME: // Blocked by exact blacklist (inside CNAME path)
+			case QUERY_DENYLIST_CNAME: // Blocked by exact blacklist (inside CNAME path)
 				counters->blocked++;
 				query->flags.blocked = true;
 				// Get domain pointer
@@ -741,9 +748,6 @@ void DB_read_queries(void)
 
 	// Finalize SQLite3 statement
 	sqlite3_finalize(stmt);
-
-	// Close database here, we have to reopen it later (after forking)
-	dbclose();
 }
 
 bool query_to_database(queriesData* query)
@@ -831,7 +835,7 @@ bool query_to_database(queriesData* query)
 	// ADDITIONAL_INFO
 	if(query->status == QUERY_GRAVITY_CNAME ||
 		query->status == QUERY_REGEX_CNAME ||
-		query->status == QUERY_BLACKLIST_CNAME)
+		query->status == QUERY_DENYLIST_CNAME)
 	{
 		// Restore domain blocked during deep CNAME inspection if applicable
 		const char *cname = getCNAMEDomainString(query);
