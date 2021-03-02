@@ -569,6 +569,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 
 	// Lock shared memory
 	lock_shm();
+	const int queryID = counters->queries;
 
 	// Find client IP
 	const int clientID = findClientID(clientIP, true, false);
@@ -603,10 +604,6 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		unlock_shm();
 		return true;
 	}
-
-	// Ensure we have enough space in the queries struct
-	memory_check(QUERIES);
-	const int queryID = counters->queries;
 
 	// Log new query if in debug mode
 	if(config.debug & DEBUG_QUERIES)

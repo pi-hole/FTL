@@ -9,6 +9,7 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
+#define SHMEM_PRIVATE
 #include "shmem.h"
 #include "overTime.h"
 #include "log.h"
@@ -19,6 +20,8 @@
 #include <sys/statvfs.h>
 // get_num_regex()
 #include "regex_r.h"
+// NAME_MAX
+#include <limits.h>
 
 /// The version of shared memory used
 #define SHARED_MEMORY_VERSION 12
@@ -57,6 +60,19 @@ static SharedMemory shm_settings = { 0 };
 static SharedMemory shm_dns_cache = { 0 };
 static SharedMemory shm_per_client_regex = { 0 };
 
+static SharedMemory *sharedMemories[] = { &shm_lock,
+                                          &shm_strings,
+                                          &shm_counters,
+                                          &shm_domains,
+                                          &shm_clients,
+                                          &shm_queries,
+                                          &shm_upstreams,
+                                          &shm_overTime,
+                                          &shm_settings,
+                                          &shm_dns_cache,
+                                          &shm_per_client_regex };
+#define NUM_SHMEM (sizeof(sharedMemories)/sizeof(SharedMemory*))
+
 // Variable size array structs
 static queriesData *queries = NULL;
 static clientsData *clients = NULL;
@@ -79,6 +95,10 @@ static int pagesize;
 static unsigned int local_shm_counter = 0;
 static size_t used_shmem = 0u;
 static size_t get_optimal_object_size(const size_t objsize, const size_t minsize);
+
+// Private prototypes
+static void *enlarge_shmem_struct(const char type);
+static void shm_ensure_size(void);
 
 static int get_dev_shm_usage(char buffer[64])
 {
@@ -145,21 +165,6 @@ static bool chown_shmem(SharedMemory *sharedMemory, struct passwd *ent_pw)
 	// needed after having called ftruncate()
 	close(fd);
 	return true;
-}
-
-void chown_all_shmem(struct passwd *ent_pw)
-{
-	chown_shmem(&shm_lock, ent_pw);
-	chown_shmem(&shm_strings, ent_pw);
-	chown_shmem(&shm_counters, ent_pw);
-	chown_shmem(&shm_domains, ent_pw);
-	chown_shmem(&shm_clients, ent_pw);
-	chown_shmem(&shm_queries, ent_pw);
-	chown_shmem(&shm_upstreams, ent_pw);
-	chown_shmem(&shm_overTime, ent_pw);
-	chown_shmem(&shm_settings, ent_pw);
-	chown_shmem(&shm_dns_cache, ent_pw);
-	chown_shmem(&shm_per_client_regex, ent_pw);
 }
 
 // A function that duplicates a string and replaces all characters "s" by "r"
@@ -249,7 +254,7 @@ size_t addstr(const char *input)
 	char *str = str_escape(input, &N);
 
 	if(N > 0)
-		logg("INFO: FTL escaped %ui characters in \"%s\"", N, str);
+		logg("INFO: FTL escaped %u characters in \"%s\"", N, str);
 
 	// Debugging output
 	if(config.debug & DEBUG_SHMEM)
@@ -334,6 +339,9 @@ static void remap_shm(void)
 	realloc_shm(&shm_dns_cache, counters->dns_cache_MAX, sizeof(DNSCacheData), false);
 	dns_cache = (DNSCacheData*)shm_dns_cache.ptr;
 
+	realloc_shm(&shm_per_client_regex, counters->per_client_regex_MAX, sizeof(bool), false);
+	// per-client-regex bools are not exposed by a global pointer
+
 	realloc_shm(&shm_strings, counters->strings_MAX, sizeof(char), false);
 	// strings are not exposed by a global pointer
 
@@ -382,6 +390,9 @@ void _lock_shm(const char* func, const int line, const char * file)
 		             local_shm_counter, shmSettings->global_shm_counter);
 		remap_shm();
 	}
+
+	// Ensure we have enough shared memory available for new data
+	shm_ensure_size();
 }
 
 // Obtain log file lock
@@ -460,7 +471,8 @@ bool init_shmem(bool create_new)
 	{
 		if(shmSettings->version != SHARED_MEMORY_VERSION)
 		{
-			logg("Shared memory version mismatch!");
+			logg("Shared memory version mismatch, found %d, expected %d!",
+			     shmSettings->version, SHARED_MEMORY_VERSION);
 			return false;
 		}
 	}
@@ -540,17 +552,28 @@ bool init_shmem(bool create_new)
 		counters->dns_cache_MAX = size;
 
 	/****************************** shared per-client regex buffer ******************************/
-	size = get_optimal_object_size(1, 2);
+	size = pagesize; // Allocate one pagesize initially. This may be expanded later on
 	// Try to create shared memory object
 	shm_per_client_regex = create_shm(SHARED_PER_CLIENT_REGEX, size, create_new);
 	if(shm_per_client_regex.ptr == NULL)
 		return false;
+	if(create_new)
+		counters->per_client_regex_MAX = size;
 
 	return true;
 }
 
+// CHOWN all shared memory objects to suppplied user/group
+void chown_all_shmem(struct passwd *ent_pw)
+{
+	for(unsigned int i = 0; i < NUM_SHMEM; i++)
+		chown_shmem(sharedMemories[i], ent_pw);
+}
+
+// Destory mutex and, subsequently, delete all shared memory objects
 void destroy_shmem(void)
 {
+	// First, we destroy the mutex
 	if(shmLock != NULL)
 	{
 		pthread_mutex_destroy(&shmLock->shmem.lock);
@@ -558,17 +581,9 @@ void destroy_shmem(void)
 	}
 	shmLock = NULL;
 
-	delete_shm(&shm_lock);
-	delete_shm(&shm_strings);
-	delete_shm(&shm_counters);
-	delete_shm(&shm_domains);
-	delete_shm(&shm_clients);
-	delete_shm(&shm_queries);
-	delete_shm(&shm_upstreams);
-	delete_shm(&shm_overTime);
-	delete_shm(&shm_settings);
-	delete_shm(&shm_dns_cache);
-	delete_shm(&shm_per_client_regex);
+	// Then, we delete the shared memory objects
+	for(unsigned int i = 0; i < NUM_SHMEM; i++)
+		delete_shm(sharedMemories[i]);
 }
 
 /// Create shared memory
@@ -578,7 +593,7 @@ void destroy_shmem(void)
 /// \param create_new true = delete old file, create new, false = connect to existing object or fail
 /// \return a structure with a pointer to the mounted shared memory. The pointer
 /// will always be valid, because if it failed FTL will have exited.
-SharedMemory create_shm(const char *name, const size_t size, bool create_new)
+static SharedMemory create_shm(const char *name, const size_t size, bool create_new)
 {
 	char df[64] =  { 0 };
 	const int percentage = get_dev_shm_usage(df);
@@ -648,7 +663,7 @@ SharedMemory create_shm(const char *name, const size_t size, bool create_new)
 	return sharedMemory;
 }
 
-void *enlarge_shmem_struct(const char type)
+static void *enlarge_shmem_struct(const char type)
 {
 	SharedMemory *sharedMemory = NULL;
 	size_t sizeofobj, allocation_step;
@@ -693,7 +708,8 @@ void *enlarge_shmem_struct(const char type)
 	}
 
 	// Reallocate enough space for requested object
-	realloc_shm(sharedMemory, sharedMemory->size/sizeofobj + allocation_step, sizeofobj, true);
+	const size_t current = sharedMemory->size/sizeofobj;
+	realloc_shm(sharedMemory, current + allocation_step, sizeofobj, true);
 
 	// Add allocated memory to corresponding counter
 	*counter += allocation_step;
@@ -701,7 +717,7 @@ void *enlarge_shmem_struct(const char type)
 	return sharedMemory->ptr;
 }
 
-bool realloc_shm(SharedMemory *sharedMemory, const size_t size1, const size_t size2, const bool resize)
+static bool realloc_shm(SharedMemory *sharedMemory, const size_t size1, const size_t size2, const bool resize)
 {
 	// Absolute target size
 	const size_t size = size1 * size2;
@@ -781,7 +797,7 @@ bool realloc_shm(SharedMemory *sharedMemory, const size_t size1, const size_t si
 	return true;
 }
 
-void delete_shm(SharedMemory *sharedMemory)
+static void delete_shm(SharedMemory *sharedMemory)
 {
 	// Unmap shared memory (if mmapped)
 	if(sharedMemory->ptr != NULL)
@@ -814,6 +830,7 @@ static size_t __attribute__((const)) gcd(size_t a, size_t b)
 // in the shared memory object
 static size_t get_optimal_object_size(const size_t objsize, const size_t minsize)
 {
+	// optsize and minsize are in units of objsize
 	const size_t optsize = pagesize / gcd(pagesize, objsize);
 	if(optsize < minsize)
 	{
@@ -857,76 +874,58 @@ static size_t get_optimal_object_size(const size_t objsize, const size_t minsize
 	}
 }
 
-void memory_check(const enum memory_type which)
+// Enlarge shared memory to be able to hold at least one new record
+static void shm_ensure_size(void)
 {
-	switch(which)
+	if(counters->queries >= counters->queries_MAX-1)
 	{
-		case QUERIES:
-			if(counters->queries >= counters->queries_MAX-1)
-			{
-				// Have to reallocate shared memory
-				queries = enlarge_shmem_struct(QUERIES);
-				if(queries == NULL)
-				{
-					logg("FATAL: Memory allocation failed! Exiting");
-					exit(EXIT_FAILURE);
-				}
-			}
-			break;
-		case UPSTREAMS:
-			if(counters->upstreams >= counters->upstreams_MAX-1)
-			{
-				// Have to reallocate shared memory
-				upstreams = enlarge_shmem_struct(UPSTREAMS);
-				if(upstreams == NULL)
-				{
-					logg("FATAL: Memory allocation failed! Exiting");
-					exit(EXIT_FAILURE);
-				}
-			}
-			break;
-		case CLIENTS:
-			if(counters->clients >= counters->clients_MAX-1)
-			{
-				// Have to reallocate shared memory
-				clients = enlarge_shmem_struct(CLIENTS);
-				if(clients == NULL)
-				{
-					logg("FATAL: Memory allocation failed! Exiting");
-					exit(EXIT_FAILURE);
-				}
-			}
-			break;
-		case DOMAINS:
-			if(counters->domains >= counters->domains_MAX-1)
-			{
-				// Have to reallocate shared memory
-				domains = enlarge_shmem_struct(DOMAINS);
-				if(domains == NULL)
-				{
-					logg("FATAL: Memory allocation failed! Exiting");
-					exit(EXIT_FAILURE);
-				}
-			}
-			break;
-		case DNS_CACHE:
-			if(counters->dns_cache_size >= counters->dns_cache_MAX-1)
-			{
-				// Have to reallocate shared memory
-				dns_cache = enlarge_shmem_struct(DNS_CACHE);
-				if(dns_cache == NULL)
-				{
-					logg("FATAL: Memory allocation failed! Exiting");
-					exit(EXIT_FAILURE);
-				}
-			}
-			break;
-		case OVERTIME: // fall through
-		default:
-			/* That cannot happen */
-			logg("Fatal error in memory_check(%i)", which);
+		// Have to reallocate shared memory
+		queries = enlarge_shmem_struct(QUERIES);
+		if(queries == NULL)
+		{
+			logg("FATAL: Memory allocation failed! Exiting");
 			exit(EXIT_FAILURE);
-			break;
+		}
+	}
+	if(counters->upstreams >= counters->upstreams_MAX-1)
+	{
+		// Have to reallocate shared memory
+		upstreams = enlarge_shmem_struct(UPSTREAMS);
+		if(upstreams == NULL)
+		{
+			logg("FATAL: Memory allocation failed! Exiting");
+			exit(EXIT_FAILURE);
+		}
+	}
+	if(counters->clients >= counters->clients_MAX-1)
+	{
+		// Have to reallocate shared memory
+		clients = enlarge_shmem_struct(CLIENTS);
+		if(clients == NULL)
+		{
+			logg("FATAL: Memory allocation failed! Exiting");
+			exit(EXIT_FAILURE);
+		}
+	}
+	if(counters->domains >= counters->domains_MAX-1)
+	{
+		// Have to reallocate shared memory
+		domains = enlarge_shmem_struct(DOMAINS);
+		if(domains == NULL)
+		{
+			logg("FATAL: Memory allocation failed! Exiting");
+			exit(EXIT_FAILURE);
+		}
+	}
+	if(counters->dns_cache_size >= counters->dns_cache_MAX-1)
+	{
+		// Have to reallocate shared memory
+		dns_cache = enlarge_shmem_struct(DNS_CACHE);
+		if(dns_cache == NULL)
+		{
+			logg("FATAL: Memory allocation failed! Exiting");
+			exit(EXIT_FAILURE);
+		}
 	}
 }
 
@@ -943,11 +942,12 @@ void reset_per_client_regex(const int clientID)
 void add_per_client_regex(unsigned int clientID)
 {
 	const unsigned int num_regex_tot = get_num_regex(REGEX_MAX); // total number
-	const size_t size = counters->clients * num_regex_tot;
+	const size_t size = get_optimal_object_size(1, counters->clients * num_regex_tot);
 	if(size > shm_per_client_regex.size &&
-	   realloc_shm(&shm_per_client_regex, counters->clients, num_regex_tot, true))
+	   realloc_shm(&shm_per_client_regex, 1, size, true))
 	{
 		reset_per_client_regex(clientID);
+		counters->per_client_regex_MAX = size;
 	}
 }
 

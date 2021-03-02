@@ -396,6 +396,9 @@ void DB_read_queries(void)
 			continue;
 		}
 
+		// Lock shared memory
+		lock_shm();
+
 		const char *buffer = NULL;
 		int upstreamID = -1; // Default if not forwarded
 		// Try to extract the upstream from the "forward" column if non-empty
@@ -417,9 +420,6 @@ void DB_read_queries(void)
 		const int timeidx = getOverTimeID(queryTimeStamp);
 		const int domainID = findDomainID(domainname, true);
 		const int clientID = findClientID(clientIP, true, false);
-
-		// Ensure we have enough space in the queries struct
-		memory_check(QUERIES);
 
 		// Set index for this query
 		const int queryIndex = counters->queries;
@@ -563,6 +563,8 @@ void DB_read_queries(void)
 				logg("Warning: Found unknown status %i in long term database!", status);
 				break;
 		}
+
+		unlock_shm();
 	}
 	logg("Imported %i queries from the long-term database", counters->queries);
 

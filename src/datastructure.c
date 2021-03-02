@@ -89,9 +89,6 @@ int findUpstreamID(const char * upstreamString, const in_port_t port)
 	const int upstreamID = counters->upstreams;
 	logg("New upstream server: %s:%u (%i/%u)", upstreamString, port, upstreamID, counters->upstreams_MAX);
 
-	// Check struct size
-	memory_check(UPSTREAMS);
-
 	// Get upstream pointer
 	upstreamsData* upstream = getUpstream(upstreamID, false);
 	if(upstream == NULL)
@@ -152,9 +149,6 @@ int findDomainID(const char *domainString, const bool count)
 	// Store ID
 	const int domainID = counters->domains;
 
-	// Check struct size
-	memory_check(DOMAINS);
-
 	// Get domain pointer
 	domainsData* domain = getDomain(domainID, false);
 	if(domain == NULL)
@@ -211,9 +205,6 @@ int findClientID(const char *clientIP, const bool count, const bool aliasclient)
 	// If we did not return until here, then this client is definitely new
 	// Store ID
 	const int clientID = counters->clients;
-
-	// Check struct size
-	memory_check(CLIENTS);
 
 	// Get client pointer
 	clientsData* client = getClient(clientID, false);
@@ -331,9 +322,6 @@ int findCacheID(int domainID, int clientID, enum query_types query_type)
 
 	// Get ID of new cache entry
 	const int cacheID = counters->dns_cache_size;
-
-	// Check struct size
-	memory_check(DNS_CACHE);
 
 	// Get client pointer
 	DNSCacheData* dns_cache = getDNSCache(cacheID, false);
