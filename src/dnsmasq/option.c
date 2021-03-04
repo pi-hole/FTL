@@ -172,6 +172,7 @@ struct myoption {
 #define LOPT_SINGLE_PORT   359
 #define LOPT_SCRIPT_TIME   360
 #define LOPT_PXE_VENDOR    361
+#define LOPT_DYNHOST       362
  
 #ifdef HAVE_GETOPT_LONG
 static const struct option opts[] =  
@@ -345,6 +346,7 @@ static const struct myoption opts[] =
     { "dumpfile", 1, 0, LOPT_DUMPFILE },
     { "dumpmask", 1, 0, LOPT_DUMPMASK },
     { "dhcp-ignore-clid", 0, 0,  LOPT_IGNORE_CLID },
+    { "dynamic-host", 1, 0, LOPT_DYNHOST },
     { NULL, 0, 0, 0 }
   };
 
@@ -495,6 +497,7 @@ static struct {
   { LOPT_RA, OPT_RA, NULL, gettext_noop("Send router-advertisements for interfaces doing DHCPv6"), NULL },
   { LOPT_DUID, ARG_ONE, "<enterprise>,<duid>", gettext_noop("Specify DUID_EN-type DHCPv6 server DUID"), NULL },
   { LOPT_HOST_REC, ARG_DUP, "<name>,<address>[,<ttl>]", gettext_noop("Specify host (A/AAAA and PTR) records"), NULL },
+  { LOPT_DYNHOST, ARG_DUP, "<name>,[<IPv4>][,<IPv6>],<interface-name>", gettext_noop("Specify host record in interface subnet"), NULL },
   { LOPT_CAA, ARG_DUP, "<name>,<flags>,<tag>,<value>", gettext_noop("Specify certification authority authorization record"), NULL },  
   { LOPT_RR, ARG_DUP, "<name>,<RR-number>,[<data>]", gettext_noop("Specify arbitrary DNS resource record"), NULL },
   { LOPT_CLVERBIND, OPT_CLEVERBIND, NULL, gettext_noop("Bind to interfaces in use - check for new interfaces"), NULL },
@@ -4079,36 +4082,66 @@ err:
       }
       
     case LOPT_INTNAME:  /* --interface-name */
+    case LOPT_DYNHOST:  /* --dynamic-host */
       {
 	struct interface_name *new, **up;
-	char *domain = NULL;
-
-	comma = split(arg);
+	char *domain = arg;
 	
-	if (!comma || !(domain = canonicalise_opt(arg)))
-	  ret_err(_("bad interface name"));
+	arg = split(arg);
 	
 	new = opt_malloc(sizeof(struct interface_name));
-	new->next = NULL;
-	new->addr = NULL;
+	memset(new, 0, sizeof(struct interface_name));
+	new->flags = IN4 | IN6;
 	
 	/* Add to the end of the list, so that first name
 	   of an interface is used for PTR lookups. */
 	for (up = &daemon->int_names; *up; up = &((*up)->next));
 	*up = new;
-	new->name = domain;
-	new->family = 0;
-	arg = split_chr(comma, '/');
-	if (arg)
+	
+	while ((comma = split(arg)))
 	  {
-	    if (strcmp(arg, "4") == 0)
-	      new->family = AF_INET;
-	    else if (strcmp(arg, "6") == 0)
-	      new->family = AF_INET6;
+	    if (inet_pton(AF_INET, arg, &new->proto4))
+	      new->flags |= INP4;
+	    else if (inet_pton(AF_INET6, arg, &new->proto6))
+	      new->flags |= INP6;
+	    else
+	      break;
+	    
+	    arg = comma;
+	  }
+
+	if ((comma = split_chr(arg, '/')))
+	  {
+	    if (strcmp(comma, "4") == 0)
+	      new->flags &= ~IN6;
+	    else if (strcmp(comma, "6") == 0)
+	      new->flags &= ~IN4;
 	    else
 	      ret_err_free(gen_err, new);
-	  } 
-	new->intr = opt_string_alloc(comma);
+	  }
+
+	new->intr = opt_string_alloc(arg);
+
+	if (option == LOPT_DYNHOST)
+	  {
+	    if (!(new->flags & (INP4 | INP6)))
+	      ret_err(_("missing address in dynamic host"));
+
+	    if (!(new->flags & IN4) || !(new->flags & IN6))
+	      arg = NULL; /* provoke error below */
+
+	    new->flags &= ~(IN4 | IN6);
+	  }
+	else
+	  {
+	    if (new->flags & (INP4 | INP6))
+	      arg = NULL; /* provoke error below */
+	  }
+	
+	if (!domain || !arg || !(new->name = canonicalise_opt(domain)))
+	  ret_err(option == LOPT_DYNHOST ?
+		  _("bad dynamic host") : _("bad interface name"));
+	
 	break;
       }
       

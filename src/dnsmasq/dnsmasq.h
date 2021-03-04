@@ -426,10 +426,17 @@ struct host_record {
   struct host_record *next;
 };
 
+#define IN4  1
+#define IN6  2
+#define INP4 4
+#define INP6 8
+
 struct interface_name {
   char *name; /* domain name */
   char *intr; /* interface name */
-  int family; /* AF_INET, AF_INET6 or zero for both */
+  int flags;
+  struct in_addr proto4;
+  struct in6_addr proto6;
   struct addrlist *addr;
   struct interface_name *next;
 };

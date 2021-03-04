@@ -349,36 +349,109 @@ static int iface_allowed(struct iface_param *param, int if_index, char *label,
       /* Update addresses from interface_names. These are a set independent
 	 of the set we're listening on. */  
       for (int_name = daemon->int_names; int_name; int_name = int_name->next)
-	if (strncmp(label, int_name->intr, IF_NAMESIZE) == 0 && 
-	    (addr->sa.sa_family == int_name->family || int_name->family == 0))
+	if (strncmp(label, int_name->intr, IF_NAMESIZE) == 0)
 	  {
-	    if (param->spare)
+	    struct addrlist *lp;
+
+	    al = NULL;
+	    
+	    if (addr->sa.sa_family == AF_INET && (int_name->flags & (IN4 | INP4)))
 	      {
-		al = param->spare;
-		param->spare = al->next;
+		struct in_addr newaddr = addr->in.sin_addr;
+		
+		if (int_name->flags & INP4)
+		  {
+		    if (netmask.s_addr == 0xffff)
+		      continue;
+
+		    newaddr.s_addr = (addr->in.sin_addr.s_addr & netmask.s_addr) |
+		      (int_name->proto4.s_addr & ~netmask.s_addr);
+		  }
+		
+		/* check for duplicates. */
+		for (lp = int_name->addr; lp; lp = lp->next)
+		  if (lp->flags == 0 && lp->addr.addr4.s_addr == newaddr.s_addr)
+		    break;
+		
+		if (!lp)
+		  {
+		    if (param->spare)
+		      {
+			al = param->spare;
+			param->spare = al->next;
+		      }
+		    else
+		      al = whine_malloc(sizeof(struct addrlist));
+
+		    if (al)
+		      {
+			al->flags = 0;
+			al->addr.addr4 = newaddr;
+		      }
+		  }
 	      }
-	    else
-	      al = whine_malloc(sizeof(struct addrlist));
+
+	    if (addr->sa.sa_family == AF_INET6 && (int_name->flags & (IN6 | INP6)))
+	      {
+		struct in6_addr newaddr = addr->in6.sin6_addr;
+		
+		if (int_name->flags & INP6)
+		  {
+		    int i;
+
+		    /* No sense in doing /128. */
+		    if (prefixlen == 128)
+		      continue;
+		    
+		    for (i = 0; i < 16; i++)
+		      {
+			int bits = ((i+1)*8) - prefixlen;
+		       
+			if (bits >= 8)
+			  newaddr.s6_addr[i] = int_name->proto6.s6_addr[i];
+			else if (bits >= 0)
+			  {
+			    unsigned char mask = 0xff << bits;
+			    newaddr.s6_addr[i] =
+			      (addr->in6.sin6_addr.s6_addr[i] & mask) |
+			      (int_name->proto6.s6_addr[i] & ~mask);
+			  }
+		      }
+		  }
+		
+		/* check for duplicates. */
+		for (lp = int_name->addr; lp; lp = lp->next)
+		  if ((lp->flags & ADDRLIST_IPV6) &&
+		      IN6_ARE_ADDR_EQUAL(&lp->addr.addr6, &newaddr))
+		    break;
+					
+		if (!lp)
+		  {
+		    if (param->spare)
+		      {
+			al = param->spare;
+			param->spare = al->next;
+		      }
+		    else
+		      al = whine_malloc(sizeof(struct addrlist));
+		    
+		    if (al)
+		      {
+			al->flags = ADDRLIST_IPV6;
+			al->addr.addr6 = newaddr;
+
+			/* Privacy addresses and addresses still undergoing DAD and deprecated addresses
+			   don't appear in forward queries, but will in reverse ones. */
+			if (!(iface_flags & IFACE_PERMANENT) || (iface_flags & (IFACE_DEPRECATED | IFACE_TENTATIVE)))
+			  al->flags |= ADDRLIST_REVONLY;
+		      }
+		  }
+	      }
 	    
 	    if (al)
 	      {
 		al->next = int_name->addr;
 		int_name->addr = al;
-		
-		if (addr->sa.sa_family == AF_INET)
-		  {
-		    al->addr.addr4 = addr->in.sin_addr;
-		    al->flags = 0;
-		  }
-		else
-		 {
-		    al->addr.addr6 = addr->in6.sin6_addr;
-		    al->flags = ADDRLIST_IPV6;
-		    /* Privacy addresses and addresses still undergoing DAD and deprecated addresses
-		       don't appear in forward queries, but will in reverse ones. */
-		    if (!(iface_flags & IFACE_PERMANENT) || (iface_flags & (IFACE_DEPRECATED | IFACE_TENTATIVE)))
-		      al->flags |= ADDRLIST_REVONLY;
-		 } 
 	      }
 	  }
     }
