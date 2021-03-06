@@ -258,6 +258,9 @@ components:
                 type: string
                 description: IP or name + port of upstream server (may be `null`)
                 nullable: true
+              dbid:
+                type: integer
+                description: Query ID in the long-term database
           example:
             - time: 1581907991.539157
               type: "A"
@@ -271,6 +274,7 @@ components:
                 time: 19
               regex_idx: -1
               upstream: "localhost#5353"
+              dbid: 112421354
             - time: 1581907871.583821
               type: "AAAA"
               domain: "api.github.com"
@@ -284,6 +288,7 @@ components:
               response_time: 7
               regex_idx: -1
               upstream: "localhost#5353"
+              dbid: 112421355
         recordsTotal:
           type: integer
           description: Total number of available queries

@@ -1077,6 +1077,7 @@ void _FTL_reply(const unsigned int flags, const char *name, const union all_addr
 
 	// Get query pointer
 	queriesData* query = getQuery(i, true);
+	query->ttl = ttl;
 
 	// Check if reply time is still unknown
 	// We only process the first reply in here
@@ -1118,7 +1119,6 @@ void _FTL_reply(const unsigned int flags, const char *name, const union all_addr
 		counters->cached++;
 		overTime[timeidx].cached++;
 		query->status = QUERY_CACHE;
-		query->ttl = ttl;
 
 		// Save reply type and update individual reply counters
 		save_reply_type(flags, addr, query, response);

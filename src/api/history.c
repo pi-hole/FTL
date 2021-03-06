@@ -634,6 +634,7 @@ int api_history_queries(struct ftl_conn *api)
 		JSON_OBJ_ADD_NUMBER(reply, "time", delay);
 		JSON_OBJ_ADD_ITEM(item, "reply", reply);
 
+
 		JSON_OBJ_ADD_NUMBER(item, "ttl", query->ttl);
 		JSON_OBJ_ADD_NUMBER(item, "regex", regex_id);
 		// We have to copy the string as the ip#port string isn't static
@@ -645,6 +646,8 @@ int api_history_queries(struct ftl_conn *api)
 		{
 			JSON_OBJ_ADD_NULL(item, "upstream");
 		}
+		JSON_OBJ_ADD_NUMBER(item, "dbid", query->db);
+
 		JSON_ARRAY_ADD_ITEM(history, item);
 
 		if(length > -1 && ++added >= length)
