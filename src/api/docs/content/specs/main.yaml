@@ -59,8 +59,8 @@ paths:
   /history/clients:
     $ref: 'history.yaml#/components/paths/clients'
 
-  /history/queries:
-    $ref: 'history.yaml#/components/paths/queries'
+  /queries:
+    $ref: 'queries.yaml#/components/paths/queries'
 
   /dns/blocking:
     $ref: 'dns.yaml#/components/paths/blocking'

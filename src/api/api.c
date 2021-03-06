@@ -102,16 +102,23 @@ int api_handler(struct mg_connection *conn, void *ignored)
 		ret = api_history_clients(&api);
 		unlock_shm();
 	}
-	else if(startsWith("/api/history/queries", &api))
-	{
-		lock_shm();
-		ret = api_history_queries(&api);
-		unlock_shm();
-	}
 	else if(startsWith("/api/history", &api))
 	{
 		lock_shm();
 		ret = api_history(&api);
+		unlock_shm();
+	}
+	/******************************** /api/queries **************************/
+	else if(startsWith("/api/queries/suggestions", &api))
+	{
+		lock_shm();
+		ret = api_queries_suggestions(&api);
+		unlock_shm();
+	}
+	else if(startsWith("/api/queries", &api))
+	{
+		lock_shm();
+		ret = api_queries(&api);
 		unlock_shm();
 	}
 	/******************************** /api/stats **************************/

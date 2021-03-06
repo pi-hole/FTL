@@ -30,7 +30,10 @@ int api_stats_recentblocked(struct ftl_conn *api);
 // History methods
 int api_history(struct ftl_conn *api);
 int api_history_clients(struct ftl_conn *api);
-int api_history_queries(struct ftl_conn *api);
+
+// Query methods
+int api_queries(struct ftl_conn *api);
+int api_queries_suggestions(struct ftl_conn *api);
 
 // Statistics methods (database)
 int api_stats_database_overTime_history(struct ftl_conn *api);

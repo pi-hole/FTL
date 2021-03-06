@@ -76,6 +76,11 @@ static bool init_memory_database(sqlite3 **db, const char *name, const int busy)
 	return true;
 }
 
+sqlite3 *__attribute__((pure)) get_memdb(void)
+{
+	return memdb;
+}
+
 // Initialize in-memory databases
 // The flow of queries is as follows:
 //   1. A new query is always added to the special new.queries table This table
