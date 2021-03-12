@@ -269,7 +269,8 @@ struct event_desc {
 #define OPT_IGNORE_CLID    59
 #define OPT_SINGLE_PORT    60
 #define OPT_LEASE_RENEW    61
-#define OPT_LAST           62
+#define OPT_LOG_DEBUG      62
+#define OPT_LAST           63
 
 #define OPTION_BITS (sizeof(unsigned int)*8)
 #define OPTION_SIZE ( (OPT_LAST/OPTION_BITS)+((OPT_LAST%OPTION_BITS)!=0) )
@@ -277,11 +278,13 @@ struct event_desc {
 #define option_val(x) ((1u) << ((x) % OPTION_BITS))
 #define option_bool(x) (option_var(x) & option_val(x))
 
-/* extra flags for my_syslog, we use a couple of facilities since they are known 
-   not to occupy the same bits as priorities, no matter how syslog.h is set up. */
+/* extra flags for my_syslog, we use facilities since they are known 
+   not to occupy the same bits as priorities, no matter how syslog.h is set up. 
+   MS_DEBUG messages are suppressed unless --log-debug is set. */
 #define MS_TFTP   LOG_USER
 #define MS_DHCP   LOG_DAEMON
 #define MS_SCRIPT LOG_MAIL
+#define MS_DEBUG  LOG_NEWS
 
 /* Note that this is used widely as a container for IPv4/IPv6 addresses,
    so for that reason, was well as to avoid wasting memory in almost every

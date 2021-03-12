@@ -173,6 +173,7 @@ struct myoption {
 #define LOPT_SCRIPT_TIME   360
 #define LOPT_PXE_VENDOR    361
 #define LOPT_DYNHOST       362
+#define LOPT_LOG_DEBUG     363
  
 #ifdef HAVE_GETOPT_LONG
 static const struct option opts[] =  
@@ -347,6 +348,7 @@ static const struct myoption opts[] =
     { "dumpmask", 1, 0, LOPT_DUMPMASK },
     { "dhcp-ignore-clid", 0, 0,  LOPT_IGNORE_CLID },
     { "dynamic-host", 1, 0, LOPT_DYNHOST },
+    { "log-debug", 0, 0, LOPT_LOG_DEBUG },
     { NULL, 0, 0, 0 }
   };
 
@@ -519,6 +521,7 @@ static struct {
   { LOPT_QUIET_DHCP, OPT_QUIET_DHCP, NULL, gettext_noop("Do not log routine DHCP."), NULL },
   { LOPT_QUIET_DHCP6, OPT_QUIET_DHCP6, NULL, gettext_noop("Do not log routine DHCPv6."), NULL },
   { LOPT_QUIET_RA, OPT_QUIET_RA, NULL, gettext_noop("Do not log RA."), NULL },
+  { LOPT_LOG_DEBUG, OPT_LOG_DEBUG, NULL, gettext_noop("Log debugging information."), NULL }, 
   { LOPT_LOCAL_SERVICE, OPT_LOCAL_SERVICE, NULL, gettext_noop("Accept queries only from directly-connected networks."), NULL },
   { LOPT_LOOP_DETECT, OPT_LOOP_DETECT, NULL, gettext_noop("Detect and remove DNS forwarding loops."), NULL },
   { LOPT_IGNORE_ADDR, ARG_DUP, "<ipaddr>", gettext_noop("Ignore DNS responses containing ipaddr."), NULL }, 
