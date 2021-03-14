@@ -102,13 +102,17 @@ void get_timestr(char * const timestring, const time_t timein, const bool millis
 	}
 }
 
-void _FTL_log(const bool newline, const char *format, ...)
+void _FTL_log(const bool newline, const bool debug, const char *format, ...)
 {
 	char timestring[84] = "";
 	va_list args;
 
 	// We have been explicitly asked to not print anything to the log
 	if(!print_log && !print_stdout)
+		return;
+
+	// Check if this is something we should print only in debug mode
+	if(debug && !config.debug)
 		return;
 
 	pthread_mutex_lock(&lock);

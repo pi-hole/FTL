@@ -52,10 +52,11 @@ void parse_args(int argc, char* argv[])
 {
 	bool quiet = false;
 	// Regardless of any arguments, we always pass "-k" (nofork) to dnsmasq
-	argc_dnsmasq = 2;
+	argc_dnsmasq = 3;
 	argv_dnsmasq = calloc(argc_dnsmasq, sizeof(char*));
 	argv_dnsmasq[0] = "";
 	argv_dnsmasq[1] = "-k";
+	argv_dnsmasq[2] = "";
 
 	bool consume_for_dnsmasq = false;
 	// If the binary name is "dnsmasq" (e.g., symlink /usr/bin/dnsmasq -> /usr/bin/pihole-FTL),
@@ -145,25 +146,32 @@ void parse_args(int argc, char* argv[])
 		// dnsmasq
 		if(consume_for_dnsmasq)
 		{
-			argc_dnsmasq = argc - i + 2;
 			if(argv_dnsmasq != NULL)
 				free(argv_dnsmasq);
 
+			argc_dnsmasq = argc - i + 3;
 			argv_dnsmasq = calloc(argc_dnsmasq, sizeof(const char*));
 			argv_dnsmasq[0] = "";
 
 			if(dnsmasq_debug)
+			{
 				argv_dnsmasq[1] = "-d";
+				argv_dnsmasq[2] = "--log-debug";
+			}
 			else
+			{
 				argv_dnsmasq[1] = "-k";
+				argv_dnsmasq[2] = "";
+			}
 
 			if(dnsmasq_debug)
 			{
 				printf("dnsmasq options: [0]: %s\n", argv_dnsmasq[0]);
 				printf("dnsmasq options: [1]: %s\n", argv_dnsmasq[1]);
+				printf("dnsmasq options: [2]: %s\n", argv_dnsmasq[2]);
 			}
 
-			int j = 2;
+			int j = 3;
 			while(i < argc)
 			{
 				argv_dnsmasq[j++] = strdup(argv[i++]);

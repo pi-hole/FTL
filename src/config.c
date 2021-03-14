@@ -16,6 +16,8 @@
 #include <unistd.h>
 // saveport()
 #include "api/socket.h"
+// argv_dnsmasq
+#include "args.h"
 
 // INT_MAX
 #include <limits.h>
@@ -827,6 +829,9 @@ void read_debuging_settings(FILE *fp)
 		logg("* DEBUG_HELPER          %s *", (config.debug & DEBUG_HELPER)? "YES":"NO ");
 		logg("* DEBUG_EXTRA           %s *", (config.debug & DEBUG_EXTRA)? "YES":"NO ");
 		logg("*****************************");
+
+		// Enable debug logging in dnsmasq (only effective before starting the resolver)
+		argv_dnsmasq[2] = "--log-debug";
 	}
 
 	// Have to close the config file if we opened it
