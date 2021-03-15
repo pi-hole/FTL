@@ -701,7 +701,8 @@ int enumerate_interfaces(int reset)
 #ifdef HAVE_AUTH
   struct auth_zone *zone;
 #endif
-
+  struct server *serv;
+  
   /* Do this max once per select cycle  - also inhibits netlink socket use
    in TCP child processes. */
 
@@ -719,6 +720,20 @@ int enumerate_interfaces(int reset)
   if ((param.fd = socket(PF_INET, SOCK_DGRAM, 0)) == -1)
     return 0;
 
+  /* iface indexes can change when interfaces are created/destroyed. 
+     We use them in the main forwarding control path, when the path
+     to a server is specified by an interface, so cache them.
+     Update the cache here. */
+  for (serv = daemon->servers; serv; serv = serv->next)
+    if (strlen(serv->interface) != 0)
+      {
+	 struct ifreq ifr;
+
+	 safe_strncpy(ifr.ifr_name, serv->interface, IF_NAMESIZE);
+	 if (ioctl(param.fd, SIOCGIFINDEX, &ifr) != -1) 
+	   serv->ifindex = ifr.ifr_ifindex;
+      }
+    
 again:
   /* Mark interfaces for garbage collection */
   for (iface = daemon->interfaces; iface; iface = iface->next) 
@@ -813,7 +828,7 @@ again:
 
   errno = errsave;
   spare = param.spare;
-    
+  
   return ret;
 }
 
@@ -953,10 +968,10 @@ int tcp_interface(int fd, int af)
   /* use mshdr so that the CMSDG_* macros are available */
   msg.msg_control = daemon->packet;
   msg.msg_controllen = len = daemon->packet_buff_sz;
-  
+
   /* we overwrote the buffer... */
-  daemon->srv_save = NULL;
-  
+  daemon->srv_save = NULL; 
+
   if (af == AF_INET)
     {
       if (setsockopt(fd, IPPROTO_IP, IP_PKTINFO, &opt, sizeof(opt)) != -1 &&
@@ -1299,59 +1314,6 @@ void join_multicast(int dienow)
 }
 #endif
 
-/* return a UDP socket bound to a random port, have to cope with straying into
-   occupied port nos and reserved ones. */
-int random_sock(int family)
-{
-  int fd;
-
-  if ((fd = socket(family, SOCK_DGRAM, 0)) != -1)
-    {
-      union mysockaddr addr;
-      unsigned int ports_avail = ((unsigned short)daemon->max_port - (unsigned short)daemon->min_port) + 1;
-      int tries = ports_avail < 30 ? 3 * ports_avail : 100;
-
-      memset(&addr, 0, sizeof(addr));
-      addr.sa.sa_family = family;
-
-      /* don't loop forever if all ports in use. */
-
-      if (fix_fd(fd))
-	while(tries--)
-	  {
-	    unsigned short port = htons(daemon->min_port + (rand16() % ((unsigned short)ports_avail)));
-	    
-	    if (family == AF_INET) 
-	      {
-		addr.in.sin_addr.s_addr = INADDR_ANY;
-		addr.in.sin_port = port;
-#ifdef HAVE_SOCKADDR_SA_LEN
-		addr.in.sin_len = sizeof(struct sockaddr_in);
-#endif
-	      }
-	    else
-	      {
-		addr.in6.sin6_addr = in6addr_any; 
-		addr.in6.sin6_port = port;
-#ifdef HAVE_SOCKADDR_SA_LEN
-		addr.in6.sin6_len = sizeof(struct sockaddr_in6);
-#endif
-	      }
-	    
-	    if (bind(fd, (struct sockaddr *)&addr, sa_len(&addr)) == 0)
-	      return fd;
-	    
-	    if (errno != EADDRINUSE && errno != EACCES)
-	      break;
-	  }
-
-      close(fd);
-    }
-
-  return -1; 
-}
-  
-
 int local_bind(int fd, union mysockaddr *addr, char *intname, unsigned int ifindex, int is_tcp)
 {
   union mysockaddr addr_copy = *addr;
@@ -1367,10 +1329,9 @@ int local_bind(int fd, union mysockaddr *addr, char *intname, unsigned int ifind
   /* cannot set source _port_ for TCP connections. */
   if (is_tcp)
     port = 0;
-
-  /* Bind a random port within the range given by min-port and max-port */
-  if (port == 0)
+  else if (port == 0)
     {
+      /* Bind a random port within the range given by min-port and max-port */
       tries = ports_avail < 30 ? 3 * ports_avail : 100;
       port = htons(daemon->min_port + (rand16() % ((unsigned short)ports_avail)));
     }
@@ -1425,38 +1386,33 @@ int local_bind(int fd, union mysockaddr *addr, char *intname, unsigned int ifind
   return 1;
 }
 
-static struct serverfd *allocate_sfd(union mysockaddr *addr, char *intname)
+static struct serverfd *allocate_sfd(union mysockaddr *addr, char *intname, unsigned int ifindex)
 {
   struct serverfd *sfd;
-  unsigned int ifindex = 0;
   int errsave;
   int opt = 1;
   
   /* when using random ports, servers which would otherwise use
-     the INADDR_ANY/port0 socket have sfd set to NULL */
-  if (!daemon->osport && intname[0] == 0)
+     the INADDR_ANY/port0 socket have sfd set to NULL, this is 
+     anything without an explictly set source port. */
+  if (!daemon->osport)
     {
       errno = 0;
       
       if (addr->sa.sa_family == AF_INET &&
-	  addr->in.sin_addr.s_addr == INADDR_ANY &&
 	  addr->in.sin_port == htons(0)) 
 	return NULL;
 
       if (addr->sa.sa_family == AF_INET6 &&
-	  memcmp(&addr->in6.sin6_addr, &in6addr_any, sizeof(in6addr_any)) == 0 &&
 	  addr->in6.sin6_port == htons(0)) 
 	return NULL;
     }
 
-  if (intname && strlen(intname) != 0)
-    ifindex = if_nametoindex(intname); /* index == 0 when not binding to an interface */
-      
   /* may have a suitable one already */
   for (sfd = daemon->sfds; sfd; sfd = sfd->next )
-    if (sockaddr_isequal(&sfd->source_addr, addr) &&
-	strcmp(intname, sfd->interface) == 0 &&
-	ifindex == sfd->ifindex) 
+    if (ifindex == sfd->ifindex &&
+	sockaddr_isequal(&sfd->source_addr, addr) &&
+	strcmp(intname, sfd->interface) == 0)
       return sfd;
   
   /* need to make a new one. */
@@ -1507,7 +1463,7 @@ void pre_allocate_sfds(void)
 #ifdef HAVE_SOCKADDR_SA_LEN
       addr.in.sin_len = sizeof(struct sockaddr_in);
 #endif
-      if ((sfd = allocate_sfd(&addr, "")))
+      if ((sfd = allocate_sfd(&addr, "", 0)))
 	sfd->preallocated = 1;
 
       memset(&addr, 0, sizeof(addr));
@@ -1517,13 +1473,13 @@ void pre_allocate_sfds(void)
 #ifdef HAVE_SOCKADDR_SA_LEN
       addr.in6.sin6_len = sizeof(struct sockaddr_in6);
 #endif
-      if ((sfd = allocate_sfd(&addr, "")))
+      if ((sfd = allocate_sfd(&addr, "", 0)))
 	sfd->preallocated = 1;
     }
   
   for (srv = daemon->servers; srv; srv = srv->next)
     if (!(srv->flags & (SERV_LITERAL_ADDRESS | SERV_NO_ADDR | SERV_USE_RESOLV | SERV_NO_REBIND)) &&
-	!allocate_sfd(&srv->source_addr, srv->interface) &&
+	!allocate_sfd(&srv->source_addr, srv->interface, srv->ifindex) &&
 	errno != 0 &&
 	option_bool(OPT_NOWILD))
       {
@@ -1732,7 +1688,7 @@ void check_servers(void)
 	  
 	  /* Do we need a socket set? */
 	  if (!serv->sfd && 
-	      !(serv->sfd = allocate_sfd(&serv->source_addr, serv->interface)) &&
+	      !(serv->sfd = allocate_sfd(&serv->source_addr, serv->interface, serv->ifindex)) &&
 	      errno != 0)
 	    {
 	      my_syslog(LOG_WARNING, 

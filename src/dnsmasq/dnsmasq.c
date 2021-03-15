@@ -1689,6 +1689,7 @@ static int set_dns_listeners(time_t now)
 {
   struct serverfd *serverfdp;
   struct listener *listener;
+  struct randfd_list *rfl;
   int wait = 0, i;
   
 #ifdef HAVE_TFTP
@@ -1709,11 +1710,14 @@ static int set_dns_listeners(time_t now)
   for (serverfdp = daemon->sfds; serverfdp; serverfdp = serverfdp->next)
     poll_listen(serverfdp->fd, POLLIN);
     
-  if (daemon->port != 0 && !daemon->osport)
-    for (i = 0; i < RANDOM_SOCKS; i++)
-      if (daemon->randomsocks[i].refcount != 0)
-	poll_listen(daemon->randomsocks[i].fd, POLLIN);
-	  
+  for (i = 0; i < RANDOM_SOCKS; i++)
+    if (daemon->randomsocks[i].refcount != 0)
+      poll_listen(daemon->randomsocks[i].fd, POLLIN);
+
+  /* Check overflow random sockets too. */
+  for (rfl = daemon->rfl_poll; rfl; rfl = rfl->next)
+    poll_listen(rfl->rfd->fd, POLLIN);
+  
   for (listener = daemon->listeners; listener; listener = listener->next)
     {
       /* only listen for queries if we have resources */
@@ -1750,18 +1754,23 @@ static void check_dns_listeners(time_t now)
 {
   struct serverfd *serverfdp;
   struct listener *listener;
+  struct randfd_list *rfl;
   int i;
   int pipefd[2];
   
   for (serverfdp = daemon->sfds; serverfdp; serverfdp = serverfdp->next)
     if (poll_check(serverfdp->fd, POLLIN))
-      reply_query(serverfdp->fd, serverfdp->source_addr.sa.sa_family, now);
+      reply_query(serverfdp->fd, now);
   
-  if (daemon->port != 0 && !daemon->osport)
-    for (i = 0; i < RANDOM_SOCKS; i++)
-      if (daemon->randomsocks[i].refcount != 0 && 
-	  poll_check(daemon->randomsocks[i].fd, POLLIN))
-	reply_query(daemon->randomsocks[i].fd, daemon->randomsocks[i].family, now);
+  for (i = 0; i < RANDOM_SOCKS; i++)
+    if (daemon->randomsocks[i].refcount != 0 && 
+	poll_check(daemon->randomsocks[i].fd, POLLIN))
+      reply_query(daemon->randomsocks[i].fd, now);
+
+  /* Check overflow random sockets too. */
+  for (rfl = daemon->rfl_poll; rfl; rfl = rfl->next)
+    if (poll_check(rfl->rfd->fd, POLLIN))
+      reply_query(rfl->rfd->fd, now);
 
   /* Races. The child process can die before we read all of the data from the
      pipe, or vice versa. Therefore send tcp_pids to zero when we wait() the 

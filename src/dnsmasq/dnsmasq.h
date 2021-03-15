@@ -551,13 +551,20 @@ struct serverfd {
 };
 
 struct randfd {
+  struct server *serv;
   int fd;
-  unsigned short refcount, family;
+  unsigned short refcount; /* refcount == 0xffff means overflow record. */
 };
-  
+
+struct randfd_list {
+  struct randfd *rfd;
+  struct randfd_list *next;
+};
+
 struct server {
   union mysockaddr addr, source_addr;
   char interface[IF_NAMESIZE+1];
+  unsigned int ifindex; /* corresponding to interface, above */
   struct serverfd *sfd; 
   char *domain; /* set if this server only handles a domain. */ 
   int flags, tcpfd, edns_pktsz;
@@ -681,8 +688,7 @@ struct frec {
     struct frec_src *next;
   } frec_src;
   struct server *sentto; /* NULL means free */
-  struct randfd *rfd4;
-  struct randfd *rfd6;
+  struct randfd_list *rfds;
   unsigned short new_id;
   int forwardall, flags;
   time_t time;
@@ -1122,11 +1128,12 @@ extern struct daemon {
   int forwardcount;
   struct server *srv_save; /* Used for resend on DoD */
   size_t packet_len;       /*      "        "        */
-  struct randfd *rfd_save; /*      "        "        */
+  int    fd_save;          /*      "        "        */
   pid_t tcp_pids[MAX_PROCS];
   int tcp_pipes[MAX_PROCS];
   int pipe_to_parent;
   struct randfd randomsocks[RANDOM_SOCKS];
+  struct randfd_list *rfl_spare, *rfl_poll;
   int v6pktinfo; 
   struct addrlist *interface_addrs; /* list of all addresses/prefix lengths associated with all local interfaces */
   int log_id, log_display_id; /* ids of transactions for logging */
@@ -1301,7 +1308,7 @@ void safe_strncpy(char *dest, const char *src, size_t size);
 void safe_pipe(int *fd, int read_noblock);
 void *whine_malloc(size_t size);
 int sa_len(union mysockaddr *addr);
-int sockaddr_isequal(union mysockaddr *s1, union mysockaddr *s2);
+int sockaddr_isequal(const union mysockaddr *s1, const union mysockaddr *s2);
 int hostname_isequal(const char *a, const char *b);
 int hostname_issubdomain(char *a, char *b);
 time_t dnsmasq_time(void);
@@ -1352,7 +1359,7 @@ char *parse_server(char *arg, union mysockaddr *addr,
 int option_read_dynfile(char *file, int flags);
 
 /* forward.c */
-void reply_query(int fd, int family, time_t now);
+void reply_query(int fd, time_t now);
 void receive_query(struct listener *listen, time_t now);
 unsigned char *tcp_request(int confd, time_t now,
 			   union mysockaddr *local_addr, struct in_addr netmask, int auth_dns);
@@ -1362,13 +1369,12 @@ int send_from(int fd, int nowild, char *packet, size_t len,
 	       union mysockaddr *to, union all_addr *source,
 	       unsigned int iface);
 void resend_query(void);
-struct randfd *allocate_rfd(int family);
-void free_rfd(struct randfd *rfd);
+int allocate_rfd(struct randfd_list **fdlp, struct server *serv);
+void free_rfds(struct randfd_list **fdlp);
 
 /* network.c */
 int indextoname(int fd, int index, char *name);
 int local_bind(int fd, union mysockaddr *addr, char *intname, unsigned int ifindex, int is_tcp);
-int random_sock(int family);
 void pre_allocate_sfds(void);
 int reload_servers(char *fname);
 void mark_servers(int flag);

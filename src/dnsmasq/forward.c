@@ -17,7 +17,7 @@
 #include "dnsmasq.h"
 #include "../dnsmasq_interface.h"
 
-static struct frec *lookup_frec(unsigned short id, int fd, int family, void *hash);
+static struct frec *lookup_frec(unsigned short id, int fd, void *hash);
 static struct frec *lookup_frec_by_query(void *hash, unsigned int flags);
 
 static unsigned short get_id(void);
@@ -354,26 +354,19 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	  if (find_pseudoheader(header, plen, NULL, &pheader, &is_sign, NULL) && !is_sign)
 	    PUTSHORT(SAFE_PKTSZ, pheader);
 	  
-	  if (forward->sentto->addr.sa.sa_family == AF_INET) 
-	    log_query(F_NOEXTRA | F_DNSSEC | F_IPV4, "retry", (union all_addr *)&forward->sentto->addr.in.sin_addr, "dnssec");
-	  else
-	    log_query(F_NOEXTRA | F_DNSSEC | F_IPV6, "retry", (union all_addr *)&forward->sentto->addr.in6.sin6_addr, "dnssec");
-
-	  FTL_forwarding_retried(forward->sentto, forward->frec_src.log_id, daemon->log_id, true);
-  
-	  if (forward->sentto->sfd)
-	    fd = forward->sentto->sfd->fd;
-	  else
+	  if ((fd = allocate_rfd(&forward->rfds, forward->sentto)) != -1)
 	    {
-	      if (forward->sentto->addr.sa.sa_family == AF_INET6)
-		fd = forward->rfd6->fd;
+	      if (forward->sentto->addr.sa.sa_family == AF_INET) 
+		log_query(F_NOEXTRA | F_DNSSEC | F_IPV4, "retry", (union all_addr *)&forward->sentto->addr.in.sin_addr, "dnssec");
 	      else
-		fd = forward->rfd4->fd;
+		log_query(F_NOEXTRA | F_DNSSEC | F_IPV6, "retry", (union all_addr *)&forward->sentto->addr.in6.sin6_addr, "dnssec");
+
+	      FTL_forwarding_retried(forward->sentto, forward->frec_src.log_id, daemon->log_id, true);
+
+	      while (retry_send(sendto(fd, (char *)header, plen, 0,
+				       &forward->sentto->addr.sa,
+				       sa_len(&forward->sentto->addr))));
 	    }
-	  
-	  while (retry_send(sendto(fd, (char *)header, plen, 0,
-				   &forward->sentto->addr.sa,
-				   sa_len(&forward->sentto->addr))));
 	  
 	  return 1;
 	}
@@ -521,48 +514,27 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
       
       while (1)
 	{ 
+	  int fd;
+
 	  /* only send to servers dealing with our domain.
 	     domain may be NULL, in which case server->domain 
 	     must be NULL also. */
 	  
 	  if (type == (start->flags & SERV_TYPE) &&
 	      (type != SERV_HAS_DOMAIN || hostname_isequal(domain, start->domain)) &&
-	      !(start->flags & (SERV_LITERAL_ADDRESS | SERV_LOOP)))
+	      !(start->flags & (SERV_LITERAL_ADDRESS | SERV_LOOP)) &&
+	      ((fd = allocate_rfd(&forward->rfds, start)) != -1))
 	    {
-	      int fd;
-
-	      /* find server socket to use, may need to get random one. */
-	      if (start->sfd)
-		fd = start->sfd->fd;
-	      else 
-		{
-		  if (start->addr.sa.sa_family == AF_INET6)
-		    {
-		      if (!forward->rfd6 &&
-			  !(forward->rfd6 = allocate_rfd(AF_INET6)))
-			break;
-		      daemon->rfd_save = forward->rfd6;
-		      fd = forward->rfd6->fd;
-		    }
-		  else
-		    {
-		      if (!forward->rfd4 &&
-			  !(forward->rfd4 = allocate_rfd(AF_INET)))
-			break;
-		      daemon->rfd_save = forward->rfd4;
-		      fd = forward->rfd4->fd;
-		    }
-
+	      
 #ifdef HAVE_CONNTRACK
-		  /* Copy connection mark of incoming query to outgoing connection. */
-		  if (option_bool(OPT_CONNTRACK))
-		    {
-		      unsigned int mark;
-		      if (get_incoming_mark(&forward->frec_src.source, &forward->frec_src.dest, 0, &mark))
-			setsockopt(fd, SOL_SOCKET, SO_MARK, &mark, sizeof(unsigned int));
-		    }
-#endif
+	      /* Copy connection mark of incoming query to outgoing connection. */
+	      if (option_bool(OPT_CONNTRACK))
+		{
+		  unsigned int mark;
+		  if (get_incoming_mark(&forward->frec_src.source, &forward->frec_src.dest, 0, &mark))
+		    setsockopt(fd, SOL_SOCKET, SO_MARK, &mark, sizeof(unsigned int));
 		}
+#endif
 	      
 #ifdef HAVE_DNSSEC
 	      if (option_bool(OPT_DNSSEC_VALID) && (forward->flags & FREC_ADDED_PHEADER))
@@ -594,6 +566,7 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 		  /* Keep info in case we want to re-send this packet */
 		  daemon->srv_save = start;
 		  daemon->packet_len = plen;
+		  daemon->fd_save = fd;
 		  
 		  if (!gotname)
 		    strcpy(daemon->namebuff, "query");
@@ -618,7 +591,7 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 		    break;
 		  forward->forwardall++;
 		}
-	    } 
+	    }
 	  
 	  if (!(start = start->next))
  	    start = daemon->servers;
@@ -848,7 +821,7 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
 }
 
 /* sets new last_server */
-void reply_query(int fd, int family, time_t now)
+void reply_query(int fd, time_t now)
 {
   /* packet from peer server, extract data for cache, and send to
      original requester */
@@ -863,9 +836,9 @@ void reply_query(int fd, int family, time_t now)
 
   /* packet buffer overwritten */
   daemon->srv_save = NULL;
-  
+
   /* Determine the address of the server replying  so that we can mark that as good */
-  if ((serveraddr.sa.sa_family = family) == AF_INET6)
+  if (serveraddr.sa.sa_family == AF_INET6)
     serveraddr.in6.sin6_flowinfo = 0;
   
   header = (struct dns_header *)daemon->packet;
@@ -888,7 +861,7 @@ void reply_query(int fd, int family, time_t now)
 
   hash = hash_questions(header, n, daemon->namebuff);
   
-  if (!(forward = lookup_frec(ntohs(header->id), fd, family, hash)))
+  if (!(forward = lookup_frec(ntohs(header->id), fd, hash)))
     return;
   
 #ifdef HAVE_DUMPFILE
@@ -942,28 +915,7 @@ void reply_query(int fd, int family, time_t now)
 	      }
 	    
 	  
-	  fd = -1;
-
-	  if (start->sfd)
-	    fd = start->sfd->fd;
-	  else
-	    {
-	      if (start->addr.sa.sa_family == AF_INET6)
-		{
-		  /* may have changed family */
-		  if (forward->rfd6 || (forward->rfd6 = allocate_rfd(AF_INET6)))
-		    fd = forward->rfd6->fd;
-		}
-	      else
-		{
-		  /* may have changed family */
-		  if (forward->rfd4 || (forward->rfd4 = allocate_rfd(AF_INET)))
-		    fd = forward->rfd4->fd;
-		}
-	    }
-
-	  /* Can't get socket. */
-	  if (fd == -1)
+	  if ((fd = allocate_rfd(&forward->rfds, start)) == -1)
 	    return;
 	  
 #ifdef HAVE_DUMPFILE
@@ -1172,8 +1124,7 @@ void reply_query(int fd, int family, time_t now)
 			}
 		      
 		      new->sentto = server;
-		      new->rfd4 = NULL;
-		      new->rfd6 = NULL;
+		      new->rfds = NULL;
 		      new->frec_src.next = NULL;
 		      new->flags &= ~(FREC_DNSKEY_QUERY | FREC_DS_QUERY | FREC_HAS_EXTRADATA);
 		      new->forwardall = 0;
@@ -1212,24 +1163,7 @@ void reply_query(int fd, int family, time_t now)
 		      /* Don't resend this. */
 		      daemon->srv_save = NULL;
 		      
-		      if (server->sfd)
-			fd = server->sfd->fd;
-		      else
-			{
-			  fd = -1;
-			  if (server->addr.sa.sa_family == AF_INET6)
-			    {
-			      if (new->rfd6 || (new->rfd6 = allocate_rfd(AF_INET6)))
-				fd = new->rfd6->fd;
-			    }
-			  else
-			    {
-			      if (new->rfd4 || (new->rfd4 = allocate_rfd(AF_INET)))
-				fd = new->rfd4->fd;
-			    }
-			}
-		      
-		      if (fd != -1)
+		      if ((fd = allocate_rfd(&new->rfds, server)) != -1)
 			{
 #ifdef HAVE_CONNTRACK
 			  /* Copy connection mark of incoming query to outgoing connection. */
@@ -1407,7 +1341,7 @@ void receive_query(struct listener *listen, time_t now)
 
   /* packet buffer overwritten */
   daemon->srv_save = NULL;
-  
+
   dst_addr_4.s_addr = dst_addr.addr4.s_addr = 0;
   netmask.s_addr = 0;
   
@@ -2360,9 +2294,8 @@ static struct frec *allocate_frec(time_t now)
       f->next = daemon->frec_list;
       f->time = now;
       f->sentto = NULL;
-      f->rfd4 = NULL;
+      f->rfds = NULL;
       f->flags = 0;
-      f->rfd6 = NULL;
 #ifdef HAVE_DNSSEC
       f->dependent = NULL;
       f->blocking_query = NULL;
@@ -2374,46 +2307,192 @@ static struct frec *allocate_frec(time_t now)
   return f;
 }
 
-struct randfd *allocate_rfd(int family)
+/* return a UDP socket bound to a random port, have to cope with straying into
+   occupied port nos and reserved ones. */
+static int random_sock(struct server *s)
+{
+  int fd;
+
+  if ((fd = socket(s->source_addr.sa.sa_family, SOCK_DGRAM, 0)) != -1)
+    {
+      if (local_bind(fd, &s->source_addr, s->interface, s->ifindex, 0))
+	return fd;
+
+      if (s->interface[0] == 0)
+	(void)prettyprint_addr(&s->source_addr, daemon->namebuff);
+      else
+	strcpy(daemon->namebuff, s->interface);
+
+      my_syslog(LOG_ERR, _("failed to bind server socket to %s: %s"),
+		daemon->namebuff, strerror(errno));
+      close(fd);
+    }
+  
+  return -1;
+}
+
+/* compare source addresses and interface, serv2 can be null. */
+static int server_isequal(const struct server *serv1,
+			 const struct server *serv2)
+{
+  return (serv2 &&
+    serv2->ifindex == serv1->ifindex &&
+    sockaddr_isequal(&serv2->source_addr, &serv1->source_addr) &&
+    strncmp(serv2->interface, serv1->interface, IF_NAMESIZE) == 0);
+}
+
+/* fdlp points to chain of randomfds already in use by transaction.
+   If there's already a suitable one, return it, else allocate a 
+   new one and add it to the list. 
+
+   Not leaking any resources in the face of allocation failures
+   is rather convoluted here.
+   
+   Note that rfd->serv may be NULL, when a server goes away.
+*/
+int allocate_rfd(struct randfd_list **fdlp, struct server *serv)
 {
   static int finger = 0;
-  int i;
+  int i, j = 0;
+  struct randfd_list *rfl;
+  struct randfd *rfd = NULL;
+  int fd = 0;
+  
+  /* If server has a pre-allocated fd, use that. */
+  if (serv->sfd)
+    return serv->sfd->fd;
+  
+  /* existing suitable random port socket linked to this transaction? */
+  for (rfl = *fdlp; rfl; rfl = rfl->next)
+    if (server_isequal(serv, rfl->rfd->serv))
+      return rfl->rfd->fd;
 
+  /* No. need new link. */
+  if ((rfl = daemon->rfl_spare))
+    daemon->rfl_spare = rfl->next;
+  else if (!(rfl = whine_malloc(sizeof(struct randfd_list))))
+    return -1;
+   
   /* limit the number of sockets we have open to avoid starvation of 
      (eg) TFTP. Once we have a reasonable number, randomness should be OK */
-
   for (i = 0; i < RANDOM_SOCKS; i++)
     if (daemon->randomsocks[i].refcount == 0)
       {
-	if ((daemon->randomsocks[i].fd = random_sock(family)) == -1)
-	  break;
-      
-	daemon->randomsocks[i].refcount = 1;
-	daemon->randomsocks[i].family = family;
-	return &daemon->randomsocks[i];
+	if ((fd = random_sock(serv)) != -1)
+    	  {
+	    rfd = &daemon->randomsocks[i];
+	    rfd->serv = serv;
+	    rfd->fd = fd;
+	    rfd->refcount = 1;
+	  }
+	break;
+      }
+  
+  /* No free ones or cannot get new socket, grab an existing one */
+  if (!rfd)
+    for (j = 0; j < RANDOM_SOCKS; j++)
+      {
+	i = (j + finger) % RANDOM_SOCKS;
+	if (daemon->randomsocks[i].refcount != 0 &&
+	    server_isequal(serv, daemon->randomsocks[i].serv) &&
+	    daemon->randomsocks[i].refcount != 0xfffe)
+	  {
+	    finger = i + 1;
+	    rfd = &daemon->randomsocks[i];
+	    rfd->refcount++;
+	    break;
+	  }
       }
 
-  /* No free ones or cannot get new socket, grab an existing one */
-  for (i = 0; i < RANDOM_SOCKS; i++)
+  if (j == RANDOM_SOCKS)
     {
-      int j = (i+finger) % RANDOM_SOCKS;
-      if (daemon->randomsocks[j].refcount != 0 &&
-	  daemon->randomsocks[j].family == family && 
-	  daemon->randomsocks[j].refcount != 0xffff)
-	{
-	  finger = j;
-	  daemon->randomsocks[j].refcount++;
-	  return &daemon->randomsocks[j];
-	}
-    }
+      struct randfd_list *rfl_poll;
 
-  return NULL; /* doom */
+      /* there are no free slots, and non with the same parameters we can piggy-back on. 
+	 We're going to have to allocate a new temporary record, distinguished by
+	 refcount == 0xffff. This will exist in the frec randfd list, never be shared,
+	 and be freed when no longer in use. It will also be held on 
+	 the daemon->rfl_poll list so the poll system can find it. */
+
+      if ((rfl_poll = daemon->rfl_spare))
+	daemon->rfl_spare = rfl_poll->next;
+      else
+	rfl_poll = whine_malloc(sizeof(struct randfd_list));
+      
+      if (!rfl_poll ||
+	  !(rfd = whine_malloc(sizeof(struct randfd))) ||
+	  (fd = random_sock(serv)) == -1)
+	{
+	  
+	  /* Don't leak anything we may already have */
+	  rfl->next = daemon->rfl_spare;
+	  daemon->rfl_spare = rfl;
+
+	  if (rfl_poll)
+	    {
+	      rfl_poll->next = daemon->rfl_spare;
+	      daemon->rfl_spare = rfl_poll;
+	    }
+	  
+	  if (rfd)
+	    free(rfd);
+	  
+	  return -1; /* doom */
+	}
+
+      /* Note rfd->serv not set here, since it's not reused */
+      rfd->fd = fd;
+      rfd->refcount = 0xffff; /* marker for temp record */
+
+      rfl_poll->rfd = rfd;
+      rfl_poll->next = daemon->rfl_poll;
+      daemon->rfl_poll = rfl_poll;
+    }
+  
+  rfl->rfd = rfd;
+  rfl->next = *fdlp;
+  *fdlp = rfl;
+  
+  return rfl->rfd->fd;
 }
 
-void free_rfd(struct randfd *rfd)
+void free_rfds(struct randfd_list **fdlp)
 {
-  if (rfd && --(rfd->refcount) == 0)
-    close(rfd->fd);
+  struct randfd_list *tmp, *rfl, *poll, *next, **up;
+  
+  for (rfl = *fdlp; rfl; rfl = tmp)
+    {
+      if (rfl->rfd->refcount == 0xffff || --(rfl->rfd->refcount) == 0)
+	close(rfl->rfd->fd);
+
+      /* temporary overflow record */
+      if (rfl->rfd->refcount == 0xffff)
+	{
+	  free(rfl->rfd);
+	  
+	  /* go through the link of all these by steam to delete.
+	     This list is expected to be almost always empty. */
+	  for (poll = daemon->rfl_poll, up = &daemon->rfl_poll; poll; poll = next)
+	    {
+	      next = poll->next;
+	      
+	      if (poll->rfd == rfl->rfd)
+		{
+		  *up = poll->next;
+		  poll->next = daemon->rfl_spare;
+		  daemon->rfl_spare = poll;
+		}
+	      else
+		up = &poll->next;
+	    }
+	}
+
+      tmp = rfl->next;
+      rfl->next = daemon->rfl_spare;
+      daemon->rfl_spare = rfl;
+    }
+
+  *fdlp = NULL;
 }
 
 static void free_frec(struct frec *f)
@@ -2429,12 +2508,9 @@ static void free_frec(struct frec *f)
     }
     
   f->frec_src.next = NULL;    
-  free_rfd(f->rfd4);
-  f->rfd4 = NULL;
+  free_rfds(&f->rfds);
   f->sentto = NULL;
   f->flags = 0;
-  free_rfd(f->rfd6);
-  f->rfd6 = NULL;
 
 #ifdef HAVE_DNSSEC
   if (f->stash)
@@ -2541,26 +2617,39 @@ struct frec *get_new_frec(time_t now, int *wait, struct frec *force)
   return f; /* OK if malloc fails and this is NULL */
 }
 
-static struct frec *lookup_frec(unsigned short id, int fd, int family, void *hash)
+static struct frec *lookup_frec(unsigned short id, int fd, void *hash)
 {
   struct frec *f;
-
+  struct server *s;
+  int type;
+  struct randfd_list *fdl;
+  
   for(f = daemon->frec_list; f; f = f->next)
     if (f->sentto && f->new_id == id && 
 	(memcmp(hash, f->hash, HASH_SIZE) == 0))
       {
 	/* sent from random port */
-	if (family == AF_INET && f->rfd4 && f->rfd4->fd == fd)
+	for (fdl = f->rfds; fdl; fdl = fdl->next)
+	  if (fdl->rfd->fd == fd)
 	  return f;
-
-	if (family == AF_INET6 && f->rfd6 && f->rfd6->fd == fd)
-	  return f;
-
-	/* sent to upstream from bound socket. */
-	if (f->sentto->sfd && f->sentto->sfd->fd == fd)
-	  return f;
+	
+	/* Sent to upstream from socket associated with a server. 
+	   Note we have to iterate over all the possible servers, since they may
+	   have different bound sockets. */
+	type = f->sentto->flags & SERV_TYPE;
+	s = f->sentto;
+	do {
+	  if ((type == (s->flags & SERV_TYPE)) &&
+	      (type != SERV_HAS_DOMAIN ||
+	       (s->domain && hostname_isequal(f->sentto->domain, s->domain))) &&
+	      !(s->flags & (SERV_LITERAL_ADDRESS | SERV_LOOP)) &&
+	      s->sfd && s->sfd->fd == fd)
+	    return f;
+	  
+	  s = s->next ? s->next : daemon->servers;
+	} while (s != f->sentto);
       }
-      
+  
   return NULL;
 }
 
@@ -2590,34 +2679,30 @@ static struct frec *lookup_frec_by_query(void *hash, unsigned int flags)
 void resend_query()
 {
   if (daemon->srv_save)
-    {
-      int fd;
-      
-      if (daemon->srv_save->sfd)
-	fd = daemon->srv_save->sfd->fd;
-      else if (daemon->rfd_save && daemon->rfd_save->refcount != 0)
-	fd = daemon->rfd_save->fd;
-      else
-	return;
-      
-      while(retry_send(sendto(fd, daemon->packet, daemon->packet_len, 0,
-			      &daemon->srv_save->addr.sa, 
-			      sa_len(&daemon->srv_save->addr)))); 
-    }
+    while(retry_send(sendto(daemon->fd_save, daemon->packet, daemon->packet_len, 0,
+			    &daemon->srv_save->addr.sa, 
+			    sa_len(&daemon->srv_save->addr)))); 
 }
 
 /* A server record is going away, remove references to it */
 void server_gone(struct server *server)
 {
   struct frec *f;
+  int i;
   
   for (f = daemon->frec_list; f; f = f->next)
     if (f->sentto && f->sentto == server)
       free_frec(f);
+
+  /* If any random socket refers to this server, NULL the reference.
+     No more references to the socket will be created in the future. */
+  for (i = 0; i < RANDOM_SOCKS; i++)
+    if (daemon->randomsocks[i].refcount != 0 && daemon->randomsocks[i].serv == server)
+      daemon->randomsocks[i].serv = NULL;
   
   if (daemon->last_server == server)
     daemon->last_server = NULL;
-
+  
   if (daemon->srv_save == server)
     daemon->srv_save = NULL;
 }

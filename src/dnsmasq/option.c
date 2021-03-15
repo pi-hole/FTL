@@ -823,7 +823,8 @@ char *parse_server(char *arg, union mysockaddr *addr, union mysockaddr *source_a
     if (interface_opt)
       {
 #if defined(SO_BINDTODEVICE)
-	safe_strncpy(interface, interface_opt, IF_NAMESIZE);
+	safe_strncpy(interface, source, IF_NAMESIZE);
+	source = interface_opt;
 #else
 	return _("interface binding not supported");
 #endif

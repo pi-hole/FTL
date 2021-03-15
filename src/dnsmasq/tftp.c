@@ -94,7 +94,7 @@ void tftp_request(struct listener *listen, time_t now)
 
   if ((len = recvmsg(listen->tftpfd, &msg, 0)) < 2)
     return;
-
+  
   /* Can always get recvd interface for IPv6 */
   if (!check_dest)
     {
@@ -587,7 +587,7 @@ void check_tftp_listeners(time_t now)
 	  daemon->srv_save = NULL;
 	  handle_tftp(now, transfer, recv(transfer->sockfd, daemon->packet, daemon->packet_buff_sz, 0));
 	}
-
+  
   for (transfer = daemon->tftp_trans, up = &daemon->tftp_trans; transfer; transfer = tmp)
     {
       tmp = transfer->next;
@@ -602,7 +602,7 @@ void check_tftp_listeners(time_t now)
 	  	  
 	  /* we overwrote the buffer... */
 	  daemon->srv_save = NULL;
-	 
+
 	  if ((len = get_block(daemon->packet, transfer)) == -1)
 	    {
 	      len = tftp_err_oops(daemon->packet, transfer->file->filename);
