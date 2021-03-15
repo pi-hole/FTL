@@ -294,6 +294,14 @@ static void server_send_log(struct server *server, int fd,
 }
 #endif
 
+static int server_test_type(const struct server *server,
+			    const char *domain, int type, int extratype)
+{
+  return (type == (server->flags & (SERV_TYPE | extratype)) &&
+      (type != SERV_HAS_DOMAIN || hostname_isequal(domain, server->domain)) &&
+      !(server->flags & (SERV_LITERAL_ADDRESS | SERV_LOOP)));
+}
+
 static int forward_query(int udpfd, union mysockaddr *udpaddr,
 			 union all_addr *dst_addr, unsigned int dst_iface,
 			 struct dns_header *header, size_t plen, time_t now, 
@@ -550,9 +558,7 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	     domain may be NULL, in which case server->domain 
 	     must be NULL also. */
 	  
-	  if (type == (start->flags & SERV_TYPE) &&
-	      (type != SERV_HAS_DOMAIN || hostname_isequal(domain, start->domain)) &&
-	      !(start->flags & (SERV_LITERAL_ADDRESS | SERV_LOOP)) &&
+	  if (server_test_type(start, domain, type, 0) &&
 	      ((fd = allocate_rfd(&forward->rfds, start)) != -1))
 	    {
 	      
@@ -1103,9 +1109,7 @@ void reply_query(int fd, time_t now)
 			  
 			  while (1)
 			    {
-			      if (type == (start->flags & (SERV_TYPE | SERV_DO_DNSSEC)) &&
-				  ((type & SERV_TYPE) != SERV_HAS_DOMAIN || hostname_isequal(domain, start->domain)) &&
-				  !(start->flags & (SERV_LITERAL_ADDRESS | SERV_LOOP)))
+			      if (server_test_type(start, domain, type, 0))
 				{
 				  new_server = start;
 				  if (server == start)
@@ -1728,9 +1732,7 @@ static int tcp_key_recurse(time_t now, int status, struct dns_header *header, si
 		}
 	    }
 	  
-	  if (type != (server->flags & (SERV_TYPE | SERV_DO_DNSSEC)) ||
-	      (type == SERV_HAS_DOMAIN && !hostname_isequal(domain, server->domain)) ||
-	      (server->flags & (SERV_LITERAL_ADDRESS | SERV_LOOP)))
+	  if (!server_test_type(server, domain, type, SERV_DO_DNSSEC))
 	    continue;
 
 	retry:
@@ -2071,9 +2073,7 @@ unsigned char *tcp_request(int confd, time_t now,
 			}
 		      
 		      /* server for wrong domain */
-		      if (type != (last_server->flags & SERV_TYPE) ||
-			  (type == SERV_HAS_DOMAIN && !hostname_isequal(domain, last_server->domain)) ||
-			  (last_server->flags & (SERV_LITERAL_ADDRESS | SERV_LOOP)))
+		      if (!server_test_type(last_server, domain, type, 0))
 			continue;
 
 		    retry:
