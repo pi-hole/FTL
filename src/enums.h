@@ -16,7 +16,8 @@ enum memory_type {
 	CLIENTS,
 	DOMAINS,
 	OVERTIME,
-	DNS_CACHE
+	DNS_CACHE,
+	STRINGS
 } __attribute__ ((packed));
 
 enum dnssec_status {

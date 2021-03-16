@@ -44,6 +44,13 @@
 // default: 90%
 #define SHMEM_WARN_LIMIT 90
 
+// Allocation step for FTL-strings bucket. This is somewhat special as we use
+// this as a general-purpose storage which should always be large enough. If,
+// for some reason, more data than this step has to be stored (highly unlikely,
+// close to impossible), the data will be properly truncated and we try again in
+// the next lock round
+#define STRINGS_ALLOC_STEP (10*pagesize)
+
 // Global counters struct
 countersStruct *counters = NULL;
 
@@ -235,6 +242,7 @@ size_t addstr(const char *input)
 
 	// Get string length, add terminating character
 	size_t len = strlen(input) + 1;
+	const size_t avail_mem = shm_strings.size - shmSettings->next_str_pos;
 
 	// If this is an empty string (only the terminating character is present),
 	// use the shared memory string at position zero instead of creating a new
@@ -246,8 +254,13 @@ size_t addstr(const char *input)
 	}
 	else if(len > (size_t)(pagesize-1))
 	{
-		logg("WARN: Shortening too long string (len %zu)", len);
+		logg("WARN: Shortening too long string (len %zu > pagesize %i)", len, pagesize);
 		len = pagesize;
+	}
+	else if(len > (size_t)(avail_mem-1))
+	{
+		logg("WARN: Shortening too long string (len %zu > available memory %zu)", len, avail_mem);
+		len = avail_mem;
 	}
 
 	unsigned int N = 0;
@@ -259,19 +272,6 @@ size_t addstr(const char *input)
 	// Debugging output
 	if(config.debug & DEBUG_SHMEM)
 		logg("Adding \"%s\" (len %zu) to buffer. next_str_pos is %u", str, len, shmSettings->next_str_pos);
-
-	// Reserve additional memory if necessary
-	if(shmSettings->next_str_pos + len > shm_strings.size &&
-	   !realloc_shm(&shm_strings, shm_strings.size + pagesize, sizeof(char), true))
-	{
-		if(N > 0)
-			free(str);
-		return 0;
-	}
-
-	// Store new string buffer size in corresponding counters entry
-	// for re-using when we need to re-map shared memory objects
-	counters->strings_MAX = shm_strings.size;
 
 	// Copy the C string pointed by str into the shared string buffer
 	strncpy(&((char*)shm_strings.ptr)[shmSettings->next_str_pos], str, len);
@@ -479,12 +479,12 @@ bool init_shmem(bool create_new)
 
 	/****************************** shared strings buffer ******************************/
 	// Try to create shared memory object
-	shm_strings = create_shm(SHARED_STRINGS_NAME, pagesize, create_new);
+	shm_strings = create_shm(SHARED_STRINGS_NAME, STRINGS_ALLOC_STEP, create_new);
 	if(shm_strings.ptr == NULL)
 		return false;
 	if(create_new)
 	{
-		counters->strings_MAX = pagesize;
+		counters->strings_MAX = shm_strings.size;
 
 		// Initialize shared string object with an empty string at position zero
 		((char*)shm_strings.ptr)[0] = '\0';
@@ -492,16 +492,17 @@ bool init_shmem(bool create_new)
 	}
 
 	/****************************** shared domains struct ******************************/
+	size_t size = get_optimal_object_size(sizeof(domainsData), 1);
 	// Try to create shared memory object
-	shm_domains = create_shm(SHARED_DOMAINS_NAME, pagesize*sizeof(domainsData), create_new);
+	shm_domains = create_shm(SHARED_DOMAINS_NAME, size*sizeof(domainsData), create_new);
 	if(shm_domains.ptr == NULL)
 		return false;
 	domains = (domainsData*)shm_domains.ptr;
 	if(create_new)
-		counters->domains_MAX = pagesize;
+		counters->domains_MAX = size;
 
 	/****************************** shared clients struct ******************************/
-	size_t size = get_optimal_object_size(sizeof(clientsData), 1);
+	size = get_optimal_object_size(sizeof(clientsData), 1);
 	// Try to create shared memory object
 	shm_clients = create_shm(SHARED_CLIENTS_NAME, size*sizeof(clientsData), create_new);
 	if(shm_clients.ptr == NULL)
@@ -686,7 +687,7 @@ static void *enlarge_shmem_struct(const char type)
 			break;
 		case DOMAINS:
 			sharedMemory = &shm_domains;
-			allocation_step = pagesize;
+			allocation_step = get_optimal_object_size(sizeof(domainsData), 1);
 			sizeofobj = sizeof(domainsData);
 			counter = &counters->domains_MAX;
 			break;
@@ -701,6 +702,12 @@ static void *enlarge_shmem_struct(const char type)
 			allocation_step = get_optimal_object_size(sizeof(DNSCacheData), 1);
 			sizeofobj = sizeof(DNSCacheData);
 			counter = &counters->dns_cache_MAX;
+			break;
+		case STRINGS:
+			sharedMemory = &shm_strings;
+			allocation_step = STRINGS_ALLOC_STEP;
+			sizeofobj = 1;
+			counter = &counters->strings_MAX;
 			break;
 		default:
 			logg("Invalid argument in enlarge_shmem_struct(%i)", type);
@@ -922,6 +929,15 @@ static void shm_ensure_size(void)
 		// Have to reallocate shared memory
 		dns_cache = enlarge_shmem_struct(DNS_CACHE);
 		if(dns_cache == NULL)
+		{
+			logg("FATAL: Memory allocation failed! Exiting");
+			exit(EXIT_FAILURE);
+		}
+	}
+	if(shmSettings->next_str_pos + STRINGS_ALLOC_STEP >= shm_strings.size)
+	{
+		// Have to reallocate shared memory
+		if(enlarge_shmem_struct(STRINGS) == NULL)
 		{
 			logg("FATAL: Memory allocation failed! Exiting");
 			exit(EXIT_FAILURE);
