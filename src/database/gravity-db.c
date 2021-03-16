@@ -55,24 +55,8 @@ static const char* tablename[] = { "vw_gravity", "vw_blacklist", "vw_whitelist",
 // Prototypes from functions in dnsmasq's source
 void rehash(int size);
 
-// Initialize gravity subroutines
-void gravityDB_forked(void)
-{
-	// Pretend that we did not open the database so far so it needs to be
-	// re-opened, also pretend we have not yet prepared the list statements
-	gravityDB_opened = false;
-	gravity_db = NULL;
-	whitelist_stmt = NULL;
-	blacklist_stmt = NULL;
-	gravity_stmt = NULL;
-	gravityDB_open();
-}
-
-void gravityDB_reopen(void)
-{
-	gravityDB_close();
-	gravityDB_open();
-}
+// Other private prototypes
+static inline void gravityDB_finalize_client_statements(clientsData *client);
 
 // Open gravity database
 bool gravityDB_open(void)
@@ -177,6 +161,30 @@ bool gravityDB_open(void)
 	if(config.debug & DEBUG_DATABASE)
 		logg("gravityDB_open(): Successfully opened gravity.db");
 	return true;
+}
+
+bool gravityDB_reopen(void)
+{
+	// We call this routine when reloading the cache and when forking. Even
+	// when the database handle isn't really valid in this fork, we still
+	// want to close it here to avoid leaking memory
+	gravityDB_close();
+
+	// Finalize prepared list statements for all clients
+	// We can do this here as the fork has its own copy-on-write
+	// variables we still need to finalize/free in order to avoid
+	// leaking memory
+	for(int clientID = 0; clientID < counters->clients; clientID++)
+	{
+		clientsData *client = getClient(clientID, true);
+		gravityDB_finalize_client_statements(client);
+	}
+	free_sqlite3_stmt_vec(&whitelist_stmt);
+	free_sqlite3_stmt_vec(&blacklist_stmt);
+	free_sqlite3_stmt_vec(&gravity_stmt);
+
+	// Re-open gravity database
+	return gravityDB_open();
 }
 
 static char* get_client_querystr(const char* table, const char* groups)
@@ -907,12 +915,9 @@ void gravityDB_close(void)
 	}
 
 	// Free allocated memory for vectors of prepared client statements
-	free_sqlite3_stmt_vec(whitelist_stmt);
-	whitelist_stmt = NULL;
-	free_sqlite3_stmt_vec(blacklist_stmt);
-	blacklist_stmt = NULL;
-	free_sqlite3_stmt_vec(gravity_stmt);
-	gravity_stmt = NULL;
+	free_sqlite3_stmt_vec(&whitelist_stmt);
+	free_sqlite3_stmt_vec(&blacklist_stmt);
+	free_sqlite3_stmt_vec(&gravity_stmt);
 
 	// Finalize audit list statement
 	sqlite3_finalize(auditlist_stmt);

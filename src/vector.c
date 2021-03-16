@@ -26,7 +26,6 @@ sqlite3_stmt_vec *new_sqlite3_stmt_vec(unsigned int initial_size)
 	// Set correct subroutine pointers
 	v->set = set_sqlite3_stmt_vec;
 	v->get = get_sqlite3_stmt_vec;
-	v->free = free_sqlite3_stmt_vec;
 	return v;
 }
 
@@ -106,18 +105,19 @@ sqlite3_stmt * __attribute__((pure)) get_sqlite3_stmt_vec(sqlite3_stmt_vec *v, u
 	return item;
 }
 
-void free_sqlite3_stmt_vec(sqlite3_stmt_vec *v)
+void free_sqlite3_stmt_vec(sqlite3_stmt_vec **v)
 {
 	if(config.debug & DEBUG_VECTORS)
-		logg("Freeing sqlite3_stmt* vector %p", v);
+		logg("Freeing sqlite3_stmt* vector %p", *v);
 
 	// This vector was never allocated, invoking free_sqlite3_stmt_vec() on a
 	// NULL pointer should be a harmless no-op.
-	if(v == NULL || v->items == NULL)
+	if(v == NULL || *v == NULL || (*v)->items == NULL)
 		return;
 
 	// Free elements of the vector...
-	free(v->items);
+	free((*v)->items);
 	// ...and then the vector itself
-	free(v);
+	free(*v);
+	*v = NULL;
 }

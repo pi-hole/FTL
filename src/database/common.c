@@ -48,6 +48,8 @@ void dbclose(void)
 	int rc = SQLITE_OK;
 	if( FTL_db != NULL )
 	{
+		if(config.debug & DEBUG_DATABASE)
+			logg("Closing FTL database");
 		if((rc = sqlite3_close(FTL_db)) != SQLITE_OK)
 			logg("Encountered error while trying to close database: %s", sqlite3_errstr(rc));
 
@@ -83,6 +85,8 @@ bool dbopen(void)
 		logg("Locking FTL database: Success");
 
 	// Try to open database
+	if(config.debug & DEBUG_DATABASE)
+		logg("Opening FTL database");
 	int rc = sqlite3_open_v2(FTLfiles.FTL_db, &FTL_db, SQLITE_OPEN_READWRITE, NULL);
 	if( rc != SQLITE_OK )
 	{
@@ -107,10 +111,13 @@ bool dbopen(void)
 }
 
 // (Re-)Open pihole-FTL database connection
-void piholeFTLDB_reopen(void)
+bool piholeFTLDB_reopen(void)
 {
+	// We call this routine when reloading the cache and when forking. Even
+	// when the database handle isn't really valid in this fork, we still
+	// want to close it here to avoid leaking memory
 	dbclose();
-	dbopen();
+	return dbopen();
 }
 
 int dbquery(const char *format, ...)

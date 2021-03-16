@@ -2079,8 +2079,9 @@ void FTL_TCP_worker_terminating(bool finished)
 		return;
 	}
 
-	// Close dedicated database connection of this fork
+	// Close dedicated database connections of this fork
 	gravityDB_close();
+	dbclose();
 }
 
 // Called when a (forked) TCP worker is created
@@ -2145,11 +2146,24 @@ void FTL_TCP_worker_created(const int confd, const char *iface_name)
 
 	// Reopen gravity database handle in this fork as the main process's
 	// handle isn't valid here
-	gravityDB_forked();
+	if(config.debug != 0)
+		logg("Reopening Gravity database for this fork");
+	lock_shm();
+	gravityDB_reopen();
+	unlock_shm();
+
+	// Reopen FTL's database handle in this fork
+	if(config.debug != 0)
+		logg("Reopening FTL database for this fork");
+	piholeFTLDB_reopen();
 
 	// Children inherit file descriptors from their parents
 	// We don't need them in the forks, so we clean them up
+	if(config.debug != 0)
+		logg("Closing Telnet socket for this fork");
 	close_telnet_socket();
+	if(config.debug != 0)
+		logg("Closing Unix socket for this fork");
 	close_unix_socket(false);
 }
 
@@ -2191,7 +2205,6 @@ bool FTL_unlink_DHCP_lease(const char *ipaddr)
 
 	// Return success
 	return true;
-	
 }
 
 void FTL_query_in_progress(const int id)
