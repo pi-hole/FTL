@@ -18,6 +18,8 @@
 #include "api/socket.h"
 // gravityDB_close()
 #include "database/gravity-db.h"
+// dbclose()
+#include "database/common.h"
 // destroy_shmem()
 #include "shmem.h"
 
@@ -183,8 +185,9 @@ void cleanup(const int ret)
 	}
 	logg("All threads joined");
 
-	// Close gravity database connection
+	// Close database connections
 	gravityDB_close();
+	dbclose();
 
 	// Close sockets and delete Unix socket file handle
 	close_telnet_socket();
