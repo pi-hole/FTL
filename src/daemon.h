@@ -10,6 +10,9 @@
 #ifndef DAEMON_H
 #define DAEMON_H
 
+#include "enums.h"
+extern pthread_t threads[THREADS_MAX];
+
 void go_daemon(void);
 void savepid(void);
 char *getUserName(void);

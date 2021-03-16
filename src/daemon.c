@@ -21,6 +21,7 @@
 // destroy_shmem()
 #include "shmem.h"
 
+pthread_t threads[THREADS_MAX] = { 0 };
 bool resolver_ready = false;
 
 void go_daemon(void)
@@ -169,12 +170,18 @@ pid_t FTL_gettid(void)
 void cleanup(const int ret)
 {
 	// Terminate threads before closing database connections and finishing shared memory
-	pthread_cancel(telnet_listenthreadv4);
-	pthread_cancel(telnet_listenthreadv6);
-	pthread_cancel(socket_listenthread);
-	pthread_cancel(DBthread);
-	pthread_cancel(GCthread);
-	pthread_cancel(DNSclientthread);
+	logg("Asking threads to cancel");
+	for(int i = 0; i < THREADS_MAX; i++)
+	{
+		pthread_cancel(threads[i]);
+	}
+	// Try to join threads to ensure cancelation has succeeded
+	logg("Waiting for threads to join");
+	for(int i = 0; i < THREADS_MAX; i++)
+	{
+		pthread_join(threads[i], NULL);
+	}
+	logg("All threads joined");
 
 	// Close gravity database connection
 	gravityDB_close();

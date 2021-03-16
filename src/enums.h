@@ -163,4 +163,15 @@ enum refresh_hostnames {
 	REFRESH_NONE
 } __attribute__ ((packed));
 
+
+enum thread_types {
+	TELNETv4,
+	TELNETv6,
+	SOCKET,
+	DB,
+	GC,
+	DNSclient,
+	THREADS_MAX
+} __attribute__ ((packed));
+
 #endif // ENUMS_H
