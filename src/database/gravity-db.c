@@ -170,19 +170,6 @@ bool gravityDB_reopen(void)
 	// want to close it here to avoid leaking memory
 	gravityDB_close();
 
-	// Finalize prepared list statements for all clients
-	// We can do this here as the fork has its own copy-on-write
-	// variables we still need to finalize/free in order to avoid
-	// leaking memory
-	for(int clientID = 0; clientID < counters->clients; clientID++)
-	{
-		clientsData *client = getClient(clientID, true);
-		gravityDB_finalize_client_statements(client);
-	}
-	free_sqlite3_stmt_vec(&whitelist_stmt);
-	free_sqlite3_stmt_vec(&blacklist_stmt);
-	free_sqlite3_stmt_vec(&gravity_stmt);
-
 	// Re-open gravity database
 	return gravityDB_open();
 }
