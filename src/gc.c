@@ -237,7 +237,7 @@ void *GC_thread(void *val)
 			// ever larger and larger
 			DBdeleteoldqueries = true;
 		}
-		sleepms(100);
+		sleepms(1000);
 	}
 
 	return NULL;
