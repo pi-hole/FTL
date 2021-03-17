@@ -762,7 +762,7 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
     }  
 
   if (daemon->bogus_addr && rcode != NXDOMAIN &&
-      check_for_bogus_wildcard(header, n, daemon->namebuff, daemon->bogus_addr, now))
+      check_for_bogus_wildcard(header, n, daemon->namebuff, now))
     {
       munged = 1;
       SET_RCODE(header, NXDOMAIN);
@@ -902,7 +902,7 @@ void reply_query(int fd, int family, time_t now)
   daemon->log_source_addr = &forward->frec_src.source;
   
   if (daemon->ignore_addr && RCODE(header) == NOERROR &&
-      check_for_ignored_address(header, n, daemon->ignore_addr))
+      check_for_ignored_address(header, n))
     return;
 
   /* Note: if we send extra options in the EDNS0 header, we can't recreate

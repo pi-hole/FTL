@@ -325,7 +325,7 @@ union all_addr {
 
 
 struct bogus_addr {
-  struct in_addr addr;
+  struct in_addr addr, mask;
   struct bogus_addr *next;
 };
 
@@ -1246,8 +1246,8 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		      struct in_addr local_addr, struct in_addr local_netmask, 
 		      time_t now, int ad_reqd, int do_bit, int have_pseudoheader);
 int check_for_bogus_wildcard(struct dns_header *header, size_t qlen, char *name, 
-			     struct bogus_addr *baddr, time_t now);
-int check_for_ignored_address(struct dns_header *header, size_t qlen, struct bogus_addr *baddr);
+			     time_t now);
+int check_for_ignored_address(struct dns_header *header, size_t qlen);
 int check_for_local_domain(char *name, time_t now);
 size_t resize_packet(struct dns_header *header, size_t plen, 
 		  unsigned char *pheader, size_t hlen);

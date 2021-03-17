@@ -2491,8 +2491,14 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
     case LOPT_IGNORE_ADDR: /* --ignore-address */
      {
 	struct in_addr addr;
+	int prefix = 32;
 	unhide_metas(arg);
-	if (arg && (inet_pton(AF_INET, arg, &addr) > 0))
+
+	if (!arg ||
+	    ((comma = split_chr(arg, '/')) && !atoi_check(comma, &prefix)) ||
+	    (inet_pton(AF_INET, arg, &addr) != 1))
+	  ret_err(gen_err); /* error */
+	else
 	  {
 	    struct bogus_addr *baddr = opt_malloc(sizeof(struct bogus_addr));
 	    if (option == 'B')
@@ -2505,12 +2511,11 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 		baddr->next = daemon->ignore_addr;
 		daemon->ignore_addr = baddr;
 	      }
-	    baddr->addr = addr;
+	    baddr->mask.s_addr = htonl(~((1 << (32 - prefix)) - 1));
+	    baddr->addr.s_addr = addr.s_addr & baddr->mask.s_addr;
 	  }
-	else
-	  ret_err(gen_err); /* error */
-	break;	
-      }
+	break;
+     }
       
     case 'a':  /* --listen-address */
     case LOPT_AUTHPEER: /* --auth-peer */
