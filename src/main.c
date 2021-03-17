@@ -50,10 +50,9 @@ int main (int argc, char* argv[])
 	logg("########## FTL started! ##########");
 	log_FTL_version(false);
 
-	// Catch SIGSEGV (generate a crash report)
-	// Other signals are handled by dnsmasq
-	// We handle real-time signals later (after dnsmasq has forked)
-	handle_SIGSEGV();
+	// Catch signals not handled by dnsmasq
+	// We configure real-time signals later (after dnsmasq has forked)
+	handle_signals();
 
 	// Initialize shared memory
 	if(!init_shmem(true))
