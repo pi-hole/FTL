@@ -255,6 +255,24 @@ static unsigned int search_servers(time_t now, union all_addr **addrpp, unsigned
   return  flags;
 }
 
+#ifdef HAVE_CONNTRACK
+static void set_outgoing_mark(struct frec *forward, int fd)
+{
+  /* Copy connection mark of incoming query to outgoing connection. */
+  unsigned int mark;
+  if (get_incoming_mark(&forward->frec_src.source, &forward->frec_src.dest, 0, &mark))
+    setsockopt(fd, SOL_SOCKET, SO_MARK, &mark, sizeof(unsigned int));
+}
+#endif
+
+static void log_query_mysockaddr(unsigned int flags, char *name, union mysockaddr *addr, char *arg)
+{
+  if (addr->sa.sa_family == AF_INET)
+    log_query(flags | F_IPV4, name, (union all_addr *)&addr->in.sin_addr, arg);
+  else
+    log_query(flags | F_IPV6, name, (union all_addr *)&addr->in6.sin6_addr, arg);
+}
+
 static int forward_query(int udpfd, union mysockaddr *udpaddr,
 			 union all_addr *dst_addr, unsigned int dst_iface,
 			 struct dns_header *header, size_t plen, time_t now, 
@@ -356,10 +374,8 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	  
 	  if ((fd = allocate_rfd(&forward->rfds, forward->sentto)) != -1)
 	    {
-	      if (forward->sentto->addr.sa.sa_family == AF_INET) 
-		log_query(F_NOEXTRA | F_DNSSEC | F_IPV4, "retry", (union all_addr *)&forward->sentto->addr.in.sin_addr, "dnssec");
-	      else
-		log_query(F_NOEXTRA | F_DNSSEC | F_IPV6, "retry", (union all_addr *)&forward->sentto->addr.in6.sin6_addr, "dnssec");
+	      log_query_mysockaddr(F_NOEXTRA | F_DNSSEC, "retry",
+				   &forward->sentto->addr, "dnssec");
 	      
 	      while (retry_send(sendto(fd, (char *)header, plen, 0,
 				       &forward->sentto->addr.sa,
@@ -527,11 +543,7 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 #ifdef HAVE_CONNTRACK
 	      /* Copy connection mark of incoming query to outgoing connection. */
 	      if (option_bool(OPT_CONNTRACK))
-		{
-		  unsigned int mark;
-		  if (get_incoming_mark(&forward->frec_src.source, &forward->frec_src.dest, 0, &mark))
-		    setsockopt(fd, SOL_SOCKET, SO_MARK, &mark, sizeof(unsigned int));
-		}
+		set_outgoing_mark(forward, fd);
 #endif
 	      
 #ifdef HAVE_DNSSEC
@@ -568,12 +580,8 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 		  
 		  if (!gotname)
 		    strcpy(daemon->namebuff, "query");
-		  if (start->addr.sa.sa_family == AF_INET)
-		    log_query(F_SERVER | F_IPV4 | F_FORWARD, daemon->namebuff, 
-			      (union all_addr *)&start->addr.in.sin_addr, NULL); 
-		  else
-		    log_query(F_SERVER | F_IPV6 | F_FORWARD, daemon->namebuff, 
-			      (union  all_addr *)&start->addr.in6.sin6_addr, NULL);
+		  log_query_mysockaddr(F_SERVER | F_FORWARD, daemon->namebuff,
+				       &start->addr, NULL);
 		  start->queries++;
 		  forwarded = 1;
 		  forward->sentto = start;
@@ -916,10 +924,7 @@ void reply_query(int fd, time_t now)
 				   &start->addr.sa,
 				   sa_len(&start->addr))));
 	  
-	  if (start->addr.sa.sa_family == AF_INET) 
-	    log_query(F_NOEXTRA | F_DNSSEC | F_IPV4, "retry", (union all_addr *)&start->addr.in.sin_addr, "dnssec");
-	  else
-	    log_query(F_NOEXTRA | F_DNSSEC | F_IPV6, "retry", (union all_addr *)&start->addr.in6.sin6_addr, "dnssec");
+	  log_query_mysockaddr(F_NOEXTRA | F_DNSSEC, "retry", &start->addr, "dnssec");
 	  
 	  return;
 	}
@@ -1136,13 +1141,9 @@ void reply_query(int fd, time_t now)
 		      nn = dnssec_generate_query(header,((unsigned char *) header) + server->edns_pktsz,
 						 daemon->keyname, forward->class, querytype, server->edns_pktsz);
 
-		      if (server->addr.sa.sa_family == AF_INET) 
-			log_query(F_NOEXTRA | F_DNSSEC | F_IPV4, daemon->keyname, (union all_addr *)&(server->addr.in.sin_addr),
-				  querystr("dnssec-query", querytype));
-		      else
-			log_query(F_NOEXTRA | F_DNSSEC | F_IPV6, daemon->keyname, (union all_addr *)&(server->addr.in6.sin6_addr),
-				  querystr("dnssec-query", querytype));
-  
+		      log_query_mysockaddr(F_NOEXTRA | F_DNSSEC, daemon->keyname, &server->addr,
+					   querystr("dnssec-query", querytype));
+
 		      memcpy(new->hash, hash_questions(header, nn, daemon->namebuff), HASH_SIZE);
 		      new->new_id = get_id();
 		      header->id = htons(new->new_id);
@@ -1156,13 +1157,8 @@ void reply_query(int fd, time_t now)
 		      if ((fd = allocate_rfd(&new->rfds, server)) != -1)
 			{
 #ifdef HAVE_CONNTRACK
-			  /* Copy connection mark of incoming query to outgoing connection. */
 			  if (option_bool(OPT_CONNTRACK))
-			    {
-			      unsigned int mark;
-			      if (get_incoming_mark(&orig->frec_src.source, &orig->frec_src.dest, 0, &mark))
-				setsockopt(fd, SOL_SOCKET, SO_MARK, &mark, sizeof(unsigned int));
-			    }
+			    set_outgoing_mark(orig, fd);
 #endif
 			  
 #ifdef HAVE_DUMPFILE
@@ -1551,13 +1547,9 @@ void receive_query(struct listener *listen, time_t now)
       struct auth_zone *zone;
 #endif
       char *types = querystr(auth_dns ? "auth" : "query", type);
-      
-      if (family == AF_INET) 
-	log_query(F_QUERY | F_IPV4 | F_FORWARD, daemon->namebuff, 
-		  (union all_addr *)&source_addr.in.sin_addr, types);
-      else
-	log_query(F_QUERY | F_IPV6 | F_FORWARD, daemon->namebuff, 
-		  (union all_addr *)&source_addr.in6.sin6_addr, types);
+
+      log_query_mysockaddr(F_QUERY | F_FORWARD, daemon->namebuff,
+			   &source_addr, types);
 
 #ifdef HAVE_AUTH
       /* find queries for zones we're authoritative for, and answer them directly */
@@ -1796,14 +1788,9 @@ static int tcp_key_recurse(time_t now, int status, struct dns_header *header, si
 		continue;
 	    }
 
+	  log_query_mysockaddr(F_NOEXTRA | F_DNSSEC, keyname, &server->addr,
+		      querystr("dnssec-query", new_status == STAT_NEED_KEY ? T_DNSKEY : T_DS));
 
-	  if (server->addr.sa.sa_family == AF_INET) 
-	    log_query(F_NOEXTRA | F_DNSSEC | F_IPV4, keyname, (union all_addr *)&(server->addr.in.sin_addr),
-		      querystr("dnssec-query", new_status == STAT_NEED_KEY ? T_DNSKEY : T_DS));
-	  else
-	    log_query(F_NOEXTRA | F_DNSSEC | F_IPV6, keyname, (union all_addr *)&(server->addr.in6.sin6_addr),
-		      querystr("dnssec-query", new_status == STAT_NEED_KEY ? T_DNSKEY : T_DS));
-	  
 	  server->flags |= SERV_GOT_TCP;
 	  
 	  m = (c1 << 8) | c2;
@@ -1952,12 +1939,8 @@ unsigned char *tcp_request(int confd, time_t now,
 #endif
 	  char *types = querystr(auth_dns ? "auth" : "query", qtype);
 	  
-	  if (peer_addr.sa.sa_family == AF_INET) 
-	    log_query(F_QUERY | F_IPV4 | F_FORWARD, daemon->namebuff, 
-		      (union all_addr *)&peer_addr.in.sin_addr, types);
-	  else
-	    log_query(F_QUERY | F_IPV6 | F_FORWARD, daemon->namebuff, 
-		      (union all_addr *)&peer_addr.in6.sin6_addr, types);
+	  log_query_mysockaddr(F_QUERY | F_FORWARD, daemon->namebuff,
+			       &peer_addr, types);
 	  
 #ifdef HAVE_AUTH
 	  /* find queries for zones we're authoritative for, and answer them directly */
@@ -2157,13 +2140,9 @@ unsigned char *tcp_request(int confd, time_t now,
 		      last_server->flags |= SERV_GOT_TCP;
 
 		      m = (c1 << 8) | c2;
-		      
-		      if (last_server->addr.sa.sa_family == AF_INET)
-			log_query(F_SERVER | F_IPV4 | F_FORWARD, daemon->namebuff, 
-				  (union all_addr *)&last_server->addr.in.sin_addr, NULL); 
-		      else
-			log_query(F_SERVER | F_IPV6 | F_FORWARD, daemon->namebuff, 
-				  (union all_addr *)&last_server->addr.in6.sin6_addr, NULL);
+
+		      log_query_mysockaddr(F_SERVER | F_FORWARD, daemon->namebuff,
+					   &last_server->addr, NULL);
 
 #ifdef HAVE_DNSSEC
 		      if (option_bool(OPT_DNSSEC_VALID) && !checking_disabled && (last_server->flags & SERV_DO_DNSSEC))
