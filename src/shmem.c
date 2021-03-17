@@ -360,7 +360,7 @@ static void _lock(ShmLock *lock, const bool is_shmem, const char* func, const in
 	int result = pthread_mutex_lock(&lock->lock);
 
 	if(config.debug & DEBUG_LOCKS && is_shmem)
-		logg("Obtained lock SHM for %s() (%s:%i)", func, file, line);
+		logg("Obtained SHM lock for %s() (%s:%i)", func, file, line);
 
 	// Turn off the waiting for lock signal to notify everyone who was
 	// deferring to FTL that they can jump in the lock queue.
