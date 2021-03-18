@@ -273,6 +273,27 @@ static void log_query_mysockaddr(unsigned int flags, char *name, union mysockadd
     log_query(flags | F_IPV6, name, (union all_addr *)&addr->in6.sin6_addr, arg);
 }
 
+static void server_send(struct server *server, int fd,
+			const void *header, size_t plen, int flags)
+{
+  while (retry_send(sendto(fd, header, plen, flags,
+			   &server->addr.sa,
+			   sa_len(&server->addr))));
+}
+
+#ifdef HAVE_DNSSEC
+static void server_send_log(struct server *server, int fd,
+			const void *header, size_t plen, int dumpflags,
+			unsigned int logflags, char *name, char *arg)
+{
+#ifdef HAVE_DUMPFILE
+	  dump_packet(dumpflags, (void *)header, (size_t)plen, NULL, &server->addr);
+#endif
+	  log_query_mysockaddr(logflags, name, &server->addr, arg);
+	  server_send(server, fd, header, plen, 0);
+}
+#endif
+
 static int forward_query(int udpfd, union mysockaddr *udpaddr,
 			 union all_addr *dst_addr, unsigned int dst_iface,
 			 struct dns_header *header, size_t plen, time_t now, 
@@ -373,15 +394,10 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	    PUTSHORT(SAFE_PKTSZ, pheader);
 	  
 	  if ((fd = allocate_rfd(&forward->rfds, forward->sentto)) != -1)
-	    {
-	      log_query_mysockaddr(F_NOEXTRA | F_DNSSEC, "retry",
-				   &forward->sentto->addr, "dnssec");
-	      
-	      while (retry_send(sendto(fd, (char *)header, plen, 0,
-				       &forward->sentto->addr.sa,
-				       sa_len(&forward->sentto->addr))));
-	    }
-	  
+	    server_send_log(forward->sentto, fd, header, plen,
+			    DUMP_SEC_QUERY,
+			    F_NOEXTRA | F_DNSSEC, "retry", "dnssec");
+
 	  return 1;
 	}
 #endif
@@ -913,19 +929,10 @@ void reply_query(int fd, time_t now)
 	      }
 	    
 	  
-	  if ((fd = allocate_rfd(&forward->rfds, start)) == -1)
-	    return;
-	  
-#ifdef HAVE_DUMPFILE
-	  dump_packet(DUMP_SEC_QUERY, (void *)header, (size_t)plen, NULL, &start->addr);
-#endif
-
-	  while (retry_send(sendto(fd, (char *)header, plen, 0,
-				   &start->addr.sa,
-				   sa_len(&start->addr))));
-	  
-	  log_query_mysockaddr(F_NOEXTRA | F_DNSSEC, "retry", &start->addr, "dnssec");
-	  
+	  if ((fd = allocate_rfd(&forward->rfds, start)) != -1)
+	    server_send_log(start, fd, header, plen,
+			    DUMP_SEC_QUERY,
+			    F_NOEXTRA | F_DNSSEC, "retry", "dnssec");
 	  return;
 	}
 #endif
@@ -1141,9 +1148,6 @@ void reply_query(int fd, time_t now)
 		      nn = dnssec_generate_query(header,((unsigned char *) header) + server->edns_pktsz,
 						 daemon->keyname, forward->class, querytype, server->edns_pktsz);
 
-		      log_query_mysockaddr(F_NOEXTRA | F_DNSSEC, daemon->keyname, &server->addr,
-					   querystr("dnssec-query", querytype));
-
 		      memcpy(new->hash, hash_questions(header, nn, daemon->namebuff), HASH_SIZE);
 		      new->new_id = get_id();
 		      header->id = htons(new->new_id);
@@ -1160,14 +1164,9 @@ void reply_query(int fd, time_t now)
 			  if (option_bool(OPT_CONNTRACK))
 			    set_outgoing_mark(orig, fd);
 #endif
-			  
-#ifdef HAVE_DUMPFILE
-			  dump_packet(DUMP_SEC_QUERY, (void *)header, (size_t)nn, NULL, &server->addr);
-#endif
-			  
-			  while (retry_send(sendto(fd, (char *)header, nn, 0, 
-						   &server->addr.sa, 
-						   sa_len(&server->addr)))); 
+			  server_send_log(server, fd, header, nn, DUMP_SEC_QUERY,
+					  F_NOEXTRA | F_DNSSEC, daemon->keyname,
+					  querystr("dnssec-query", querytype));
 			  server->queries++;
 			}
 		    }		  
@@ -1755,9 +1754,8 @@ static int tcp_key_recurse(time_t now, int status, struct dns_header *header, si
 		}
 	      
 #ifdef MSG_FASTOPEN
-	      while(retry_send(sendto(server->tcpfd, packet, m + sizeof(u16),
-				      MSG_FASTOPEN, &server->addr.sa, sa_len(&server->addr))));
-	      
+	      server_send(server, server->tcpfd, packet, m + sizeof(u16), MSG_FASTOPEN);
+
 	      if (errno == 0)
 		data_sent = 1;
 #endif
@@ -2100,9 +2098,8 @@ unsigned char *tcp_request(int confd, time_t now,
 			    }
 			  
 #ifdef MSG_FASTOPEN
-			    while(retry_send(sendto(last_server->tcpfd, packet, size + sizeof(u16),
-						    MSG_FASTOPEN, &last_server->addr.sa, sa_len(&last_server->addr))));
-			    
+			    server_send(last_server, last_server->tcpfd, packet, m + sizeof(u16), MSG_FASTOPEN);
+
 			    if (errno == 0)
 			      data_sent = 1;
 #endif
@@ -2624,9 +2621,8 @@ static struct frec *lookup_frec_by_query(void *hash, unsigned int flags)
 void resend_query()
 {
   if (daemon->srv_save)
-    while(retry_send(sendto(daemon->fd_save, daemon->packet, daemon->packet_len, 0,
-			    &daemon->srv_save->addr.sa, 
-			    sa_len(&daemon->srv_save->addr)))); 
+    server_send(daemon->srv_save, daemon->fd_save,
+		daemon->packet, daemon->packet_len, 0);
 }
 
 /* A server record is going away, remove references to it */
