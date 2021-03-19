@@ -53,10 +53,7 @@ bool gravityDB_opened = false;
 static const char* tablename[] = { "vw_gravity", "vw_blacklist", "vw_whitelist", "vw_regex_blacklist", "vw_regex_whitelist" , "" };
 
 // Prototypes from functions in dnsmasq's source
-void rehash(int size);
-
-// Other private prototypes
-static inline void gravityDB_finalize_client_statements(clientsData *client);
+extern void rehash(int size);
 
 // Open gravity database
 bool gravityDB_open(void)

@@ -728,11 +728,6 @@ static bool realloc_shm(SharedMemory *sharedMemory, const size_t size1, const si
 {
 	// Absolute target size
 	const size_t size = size1 * size2;
-	// Check if we can skip this routine as nothing is to be done
-	// when an object is not to be resized and its size didn't
-	// change elsewhere
-	if(!resize && size == sharedMemory->size)
-		return true;
 
 	// Log that we are doing something here
 	char df[64] =  { 0 };
@@ -797,6 +792,16 @@ static bool realloc_shm(SharedMemory *sharedMemory, const size_t size1, const si
 	// Update how much memory FTL uses
 	// We add the difference between updated and previous size
 	used_shmem += (size - sharedMemory->size);
+
+	if(config.debug & DEBUG_SHMEM)
+	{
+		if(sharedMemory->ptr == new_ptr)
+			logg("SHMEM pointer not updated: %p (%zu %zu)",
+			     sharedMemory->ptr, sharedMemory->size, size);
+		else
+			logg("SHMEM pointer updated: %p -> %p (%zu %zu)",
+			     sharedMemory->ptr, new_ptr, sharedMemory->size, size);
+	}
 
 	sharedMemory->ptr = new_ptr;
 	sharedMemory->size = size;
