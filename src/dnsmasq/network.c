@@ -725,13 +725,17 @@ int enumerate_interfaces(int reset)
      to a server is specified by an interface, so cache them.
      Update the cache here. */
   for (serv = daemon->servers; serv; serv = serv->next)
-    if (strlen(serv->interface) != 0)
+    if (serv->interface[0] != 0)
       {
-	 struct ifreq ifr;
-
-	 safe_strncpy(ifr.ifr_name, serv->interface, IF_NAMESIZE);
-	 if (ioctl(param.fd, SIOCGIFINDEX, &ifr) != -1) 
-	   serv->ifindex = ifr.ifr_ifindex;
+#ifdef HAVE_LINUX_NETWORK
+	struct ifreq ifr;
+	
+	safe_strncpy(ifr.ifr_name, serv->interface, IF_NAMESIZE);
+	if (ioctl(param.fd, SIOCGIFINDEX, &ifr) != -1) 
+	  serv->ifindex = ifr.ifr_ifindex;
+#else
+	serv->ifindex = if_nametoindex(serv->interface);
+#endif
       }
     
 again:
