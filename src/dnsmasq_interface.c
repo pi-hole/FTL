@@ -960,11 +960,7 @@ void FTL_dnsmasq_reload(void)
 {
 	// This function is called by the dnsmasq code on receive of SIGHUP
 	// *before* clearing the cache and rereading the lists
-
 	logg("Reloading DNS cache");
-
-	// (Re-)open FTL database connection
-	piholeFTLDB_reopen();
 
 	// Request reload the privacy level
 	set_event(RELOAD_PRIVACY_LEVEL);
@@ -2141,14 +2137,7 @@ void FTL_TCP_worker_created(const int confd, const char *iface_name)
 	// handle isn't valid here
 	if(config.debug != 0)
 		logg("Reopening Gravity database for this fork");
-	lock_shm();
-	gravityDB_reopen();
-	unlock_shm();
-
-	// Reopen FTL's database handle in this fork
-	if(config.debug != 0)
-		logg("Reopening FTL database for this fork");
-	piholeFTLDB_reopen();
+	gravityDB_forked();
 
 	// Children inherit file descriptors from their parents
 	// We don't need them in the forks, so we clean them up

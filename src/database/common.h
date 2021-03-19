@@ -35,7 +35,6 @@ int dbquery(const char *format, ...);
 bool FTL_DB_avail(void) __attribute__ ((pure));
 bool dbopen(void);
 void dbclose(void);
-bool piholeFTLDB_reopen(void);
 int db_query_int(const char*);
 long get_lastID(void);
 void SQLite3LogCallback(void *pArg, int iErrCode, const char *zMsg);

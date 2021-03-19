@@ -110,16 +110,6 @@ bool dbopen(void)
 	return true;
 }
 
-// (Re-)Open pihole-FTL database connection
-bool piholeFTLDB_reopen(void)
-{
-	// We call this routine when reloading the cache and when forking. Even
-	// when the database handle isn't really valid in this fork, we still
-	// want to close it here to avoid leaking memory
-	dbclose();
-	return dbopen();
-}
-
 int dbquery(const char *format, ...)
 {
 	va_list args;

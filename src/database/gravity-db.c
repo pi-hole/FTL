@@ -55,6 +55,47 @@ static const char* tablename[] = { "vw_gravity", "vw_blacklist", "vw_whitelist",
 // Prototypes from functions in dnsmasq's source
 extern void rehash(int size);
 
+// Initialize gravity subroutines
+void gravityDB_forked(void)
+{
+	// See "How To Corrupt An SQLite Database File"
+	// (https://www.sqlite.org/howtocorrupt.html):
+	// 2.6. Carrying an open database connection across a fork()
+	//
+	// Do not open an SQLite database connection, then fork(), then try to
+	// use that database connection in the child process. All kinds of
+	// locking problems will result and you can easily end up with a corrupt
+	// database. SQLite is not designed to support that kind of behavior.
+	// Any database connection that is used in a child process must be
+	// opened in the child process, not inherited from the parent.
+	//
+	// Do not even call sqlite3_close() on a database connection from a
+	// child process if the connection was opened in the parent. It is safe
+	// to close the underlying file descriptor, but the sqlite3_close()
+	// interface might invoke cleanup activities that will delete content
+	// out from under the parent, leading to errors and perhaps even
+	// database corruption.
+	//
+	// Hence, we pretend that we did not open the database so far
+	// NOTE: Yes, this will leak memory into the forks, however, there isn't
+	// much we can do about this. The "proper" solution would be to close
+	// the finalize the prepared gravity database statements and close the
+	// database connection *before* forking and re-open and re-prepare them
+	// afterwards (independently once in the parent, once in the fork). It
+	// is clear that this in not what we want to do as this is a slow
+	// process and many TCP queries could lead to a DoS attack.
+	gravityDB_opened = false;
+	gravity_db = NULL;
+
+	// Also pretend we have not yet prepared the list statements
+	whitelist_stmt = NULL;
+	blacklist_stmt = NULL;
+	gravity_stmt = NULL;
+
+	// Open the database
+	gravityDB_open();
+}
+
 // Open gravity database
 bool gravityDB_open(void)
 {
@@ -162,9 +203,7 @@ bool gravityDB_open(void)
 
 bool gravityDB_reopen(void)
 {
-	// We call this routine when reloading the cache and when forking. Even
-	// when the database handle isn't really valid in this fork, we still
-	// want to close it here to avoid leaking memory
+	// We call this routine when reloading the cache.
 	gravityDB_close();
 
 	// Re-open gravity database

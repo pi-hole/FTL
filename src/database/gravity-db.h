@@ -20,6 +20,7 @@ enum gravity_tables { GRAVITY_TABLE, EXACT_BLACKLIST_TABLE, EXACT_WHITELIST_TABL
 
 bool gravityDB_open(void);
 bool gravityDB_reopen(void);
+void gravityDB_forked(void);
 void gravityDB_reload_groups(clientsData* client);
 bool gravityDB_prepare_client_statements(clientsData* client);
 void gravityDB_close(void);
