@@ -151,6 +151,7 @@ int dbquery(const char *format, ...)
 	if( rc != SQLITE_OK ){
 		logg("ERROR: SQL query \"%s\" failed: %s",
 		     query, sqlite3_errstr(rc));
+		sqlite3_free(query);
 		dbclose();
 		return rc;
 	}
