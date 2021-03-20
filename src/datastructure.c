@@ -269,7 +269,7 @@ int findClientID(const char *clientIP, const bool count, const bool aliasclient)
 
 	// Check if this client is managed by a alias-client
 	if(!aliasclient)
-		reset_aliasclient(client);
+		reset_aliasclient(NULL, client);
 
 	return clientID;
 }

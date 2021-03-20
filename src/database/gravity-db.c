@@ -364,7 +364,7 @@ static bool get_client_groupids(clientsData* client)
 			logg("Querying gravity database for MAC address of %s...", ip);
 
 		// Do the lookup
-		hwaddr = getMACfromIP(ip);
+		hwaddr = getMACfromIP(NULL, ip);
 
 		if(hwaddr == NULL && config.debug & DEBUG_CLIENTS)
 		{
@@ -480,7 +480,7 @@ static bool get_client_groupids(clientsData* client)
 			logg("Querying gravity database for host name of %s...", ip);
 
 		// Do the lookup
-		hostname = getNameFromIP(ip);
+		hostname = getNameFromIP(NULL, ip);
 
 		if(hostname == NULL && config.debug & DEBUG_CLIENTS)
 			logg("--> No result.");
@@ -566,7 +566,7 @@ static bool get_client_groupids(clientsData* client)
 			logg("Querying gravity database for interface of %s...", ip);
 
 		// Do the lookup
-		interface = getIfaceFromIP(ip);
+		interface = getIfaceFromIP(NULL, ip);
 
 		if(interface == NULL && config.debug & DEBUG_CLIENTS)
 			logg("--> No result.");

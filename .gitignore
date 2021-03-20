@@ -21,3 +21,4 @@ version*
 # MAC->Vendor database files
 tools/manuf.data
 tools/macvendor.db
+node_modules

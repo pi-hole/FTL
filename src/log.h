@@ -14,7 +14,6 @@
 #include <time.h>
 
 void init_FTL_log(void);
-void open_FTL_log(const bool init);
 void log_counter_info(void);
 void format_memory_size(char * const prefix, unsigned long long int bytes,
                         double * const formated);

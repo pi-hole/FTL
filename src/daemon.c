@@ -203,9 +203,8 @@ void cleanup(const int ret)
 	}
 	logg("All threads joined");
 
-	// Close database connections
+	// Close database connection
 	gravityDB_close();
-	dbclose();
 
 	// Close sockets and delete Unix socket file handle
 	close_telnet_socket();

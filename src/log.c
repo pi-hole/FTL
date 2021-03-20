@@ -25,8 +25,6 @@
 // logg_fatal_dnsmasq_message()
 #include "database/message-table.h"
 
-static FILE *logfile = NULL;
-static bool FTL_log_ready = false;
 static bool print_log = true, print_stdout = true;
 
 void log_ctrl(bool plog, bool pstdout)
@@ -35,23 +33,14 @@ void log_ctrl(bool plog, bool pstdout)
 	print_stdout = pstdout;
 }
 
-static void close_FTL_log(void)
+void init_FTL_log(void)
 {
-	if(logfile != NULL)
-		fclose(logfile);
-}
-
-void open_FTL_log(const bool init)
-{
-	if(init)
-	{
-		// Obtain log file location
-		getLogFilePath();
-	}
+	// Obtain log file location
+	getLogFilePath();
 
 	// Open the log file in append/create mode
-	logfile = fopen(FTLfiles.log, "a+");
-	if((logfile == NULL) && init){
+	FILE *logfile = fopen(FTLfiles.log, "a+");
+	if((logfile == NULL)){
 		syslog(LOG_ERR, "Opening of FTL\'s log file failed!");
 		printf("FATAL: Opening of FTL log (%s) failed!\n",FTLfiles.log);
 		printf("       Make sure it exists and is writeable by user %s\n", username);
@@ -59,13 +48,7 @@ void open_FTL_log(const bool init)
 		exit(EXIT_FAILURE);
 	}
 
-	// Set log as ready (we were able to open it)
-	FTL_log_ready = true;
-
-	if(init)
-	{
-		close_FTL_log();
-	}
+	fclose(logfile);
 }
 
 // The size of 84 bytes has been carefully selected for all possible timestamps
@@ -140,10 +123,10 @@ void _FTL_log(const bool newline, const char *format, ...)
 			printf("\n");
 	}
 
-	if(print_log && FTL_log_ready)
+	if(print_log)
 	{
 		// Open log file
-		open_FTL_log(false);
+		FILE *logfile = fopen(FTLfiles.log, "a+");
 
 		// Write to log file
 		if(logfile != NULL)
@@ -153,15 +136,14 @@ void _FTL_log(const bool newline, const char *format, ...)
 			vfprintf(logfile, format, args);
 			va_end(args);
 			fputc('\n',logfile);
+
+			fclose(logfile);
 		}
 		else if(!daemonmode)
 		{
 			printf("!!! WARNING: Writing to FTL\'s log file failed!\n");
 			syslog(LOG_ERR, "Writing to FTL\'s log file failed!");
 		}
-
-		// Close log file
-		close_FTL_log();
 	}
 }
 

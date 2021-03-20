@@ -323,7 +323,7 @@ static size_t resolveAndAddHostname(size_t ippos, size_t oldnamepos)
 	if(strlen(newname) == 0 && config.names_from_netdb)
 	{
 		free(newname);
-		newname = getNameFromIP(ipaddr);
+		newname = getNameFromIP(NULL, ipaddr);
 	}
 
 	// Only store new newname if it is valid and differs from oldname
