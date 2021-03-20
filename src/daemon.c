@@ -171,6 +171,8 @@ pid_t FTL_gettid(void)
 // Clean up on exit
 void cleanup(const int ret)
 {
+	int s;
+	struct timespec ts;
 	// Terminate threads before closing database connections and finishing shared memory
 	logg("Asking threads to cancel");
 	for(int i = 0; i < THREADS_MAX; i++)
@@ -181,7 +183,23 @@ void cleanup(const int ret)
 	logg("Waiting for threads to join");
 	for(int i = 0; i < THREADS_MAX; i++)
 	{
-		pthread_join(threads[i], NULL);
+		if (clock_gettime(CLOCK_REALTIME, &ts) == -1)
+		{
+			logg("Cannot get clock time, canceling thread instead of joining");
+			pthread_cancel(threads[i]);
+			continue;
+		}
+
+		// Timeout for joining is 2 seconds for each thread
+		ts.tv_sec += 2;
+
+		if((s = pthread_timedjoin_np(threads[i], NULL, &ts)) != 0)
+		{
+			logg("Thread %d (%ld) timed out (%s), canceling it.",
+			     i, (long)threads[i], strerror(s));
+			pthread_cancel(threads[i]);
+			continue;
+		}
 	}
 	logg("All threads joined");
 

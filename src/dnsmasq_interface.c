@@ -1744,9 +1744,6 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 	else
 		savepid();
 
-	// Open database after forking
-	dbopen();
-
 	// Handle real-time signals in this process (and its children)
 	// Helper processes are already split from the main instance
 	// so they will not listen to real-time signals
@@ -2073,7 +2070,6 @@ void FTL_TCP_worker_terminating(bool finished)
 
 	// Close dedicated database connections of this fork
 	gravityDB_close();
-	dbclose();
 }
 
 // Called when a (forked) TCP worker is created
