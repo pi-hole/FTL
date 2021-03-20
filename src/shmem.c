@@ -91,11 +91,7 @@ typedef struct {
 	pthread_mutex_t lock;
 	bool waitingForLock;
 } ShmLock;
-typedef struct {
-	ShmLock shmem;
-	ShmLock logfile;
-} ShmLocks;
-static ShmLocks *shmLock = NULL;
+static ShmLock *shmLock = NULL;
 static ShmSettings *shmSettings = NULL;
 
 static int pagesize;
@@ -349,17 +345,17 @@ static void remap_shm(void)
 	local_shm_counter = shmSettings->global_shm_counter;
 }
 
-static void _lock(ShmLock *lock, const bool is_shmem, const char* func, const int line, const char * file)
+static inline void _lock(ShmLock *lock, const char* func, const int line, const char * file)
 {
 	// Signal that FTL is waiting for the lock
 	lock->waitingForLock = true;
 
-	if(config.debug & DEBUG_LOCKS && is_shmem)
+	if(config.debug & DEBUG_LOCKS)
 		logg("Waiting for SHM lock in %s() (%s:%i)", func, file, line);
 
 	int result = pthread_mutex_lock(&lock->lock);
 
-	if(config.debug & DEBUG_LOCKS && is_shmem)
+	if(config.debug & DEBUG_LOCKS)
 		logg("Obtained SHM lock for %s() (%s:%i)", func, file, line);
 
 	// Turn off the waiting for lock signal to notify everyone who was
@@ -372,14 +368,14 @@ static void _lock(ShmLock *lock, const bool is_shmem, const char* func, const in
 		result = pthread_mutex_consistent(&lock->lock);
 	}
 
-	if(result != 0 && is_shmem)
+	if(result != 0)
 		logg("Failed to obtain SHM lock: %s", strerror(result));
 }
 
 // Obtain SHMEM lock
 void _lock_shm(const char* func, const int line, const char * file)
 {
-	_lock(&shmLock->shmem, true, func, line, file);
+	_lock(shmLock, func, line, file);
 
 	// Check if this process needs to remap the shared memory objects
 	if(shmSettings != NULL &&
@@ -395,39 +391,21 @@ void _lock_shm(const char* func, const int line, const char * file)
 	shm_ensure_size();
 }
 
-// Obtain log file lock
-void _lock_log(const char* func, const int line, const char * file)
-{
-	// Locks may have not been initialized so far
-	if(shmLock == NULL)
-		return;
-	_lock(&shmLock->logfile, false, func, line, file);
-}
-
-static void _unlock(ShmLock *lock, const bool is_shmem, const char* func, const int line, const char * file)
+static inline void _unlock(ShmLock *lock, const char* func, const int line, const char * file)
 {
 	int result = pthread_mutex_unlock(&lock->lock);
 
-	if(config.debug & DEBUG_LOCKS && is_shmem)
+	if(config.debug & DEBUG_LOCKS)
 		logg("Removed lock in %s() (%s:%i)", func, file, line);
 
-	if(result != 0 && is_shmem)
+	if(result != 0)
 		logg("Failed to unlock SHM lock: %s", strerror(result));
 }
 
 // Release SHM lock
 void _unlock_shm(const char* func, const int line, const char * file)
 {
-	_unlock(&shmLock->shmem, true, func, line, file);
-}
-
-// Release log file lock
-void _unlock_log(const char* func, const int line, const char * file)
-{
-	// Locks may have not been initialized so far
-	if(shmLock == NULL)
-		return;
-	_unlock(&shmLock->logfile, false, func, line, file);
+	_unlock(shmLock, func, line, file);
 }
 
 bool init_shmem(bool create_new)
@@ -437,16 +415,14 @@ bool init_shmem(bool create_new)
 
 	/****************************** shared memory lock ******************************/
 	// Try to create shared memory object
-	shm_lock = create_shm(SHARED_LOCK_NAME, sizeof(ShmLocks), create_new);
+	shm_lock = create_shm(SHARED_LOCK_NAME, sizeof(ShmLock), create_new);
 	if(shm_lock.ptr == NULL)
 		return false;
-	shmLock = (ShmLocks*) shm_lock.ptr;
+	shmLock = (ShmLock*) shm_lock.ptr;
 	if(create_new)
 	{
-		shmLock->shmem.lock = create_mutex();
-		shmLock->shmem.waitingForLock = false;
-		shmLock->logfile.lock = create_mutex();
-		shmLock->logfile.waitingForLock = false;
+		shmLock->lock = create_mutex();
+		shmLock->waitingForLock = false;
 	}
 
 	/****************************** shared counters struct ******************************/
@@ -577,8 +553,7 @@ void destroy_shmem(void)
 	// First, we destroy the mutex
 	if(shmLock != NULL)
 	{
-		pthread_mutex_destroy(&shmLock->shmem.lock);
-		pthread_mutex_destroy(&shmLock->logfile.lock);
+		pthread_mutex_destroy(&shmLock->lock);
 	}
 	shmLock = NULL;
 

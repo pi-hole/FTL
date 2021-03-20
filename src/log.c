@@ -18,7 +18,7 @@
 #include "main.h"
 // global variable daemonmode
 #include "args.h"
-// global counters variable and shared logfile lock
+// global counters variable
 #include "shmem.h"
 // main_pid()
 #include "signals.h"
@@ -102,8 +102,6 @@ void _FTL_log(const bool newline, const char *format, ...)
 	if(!print_log && !print_stdout)
 		return;
 
-	lock_log();
-
 	get_timestr(timestring, time(NULL), true);
 
 	// Get and log PID of current process to avoid ambiguities when more than one
@@ -165,8 +163,6 @@ void _FTL_log(const bool newline, const char *format, ...)
 		// Close log file
 		close_FTL_log();
 	}
-
-	unlock_log();
 }
 
 // Log helper activity (may be script or lua)
