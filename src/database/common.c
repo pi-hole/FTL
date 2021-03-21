@@ -34,13 +34,12 @@ void _dbclose(sqlite3 **db, const char *func, const int line, const char *file)
 
 	// Only try to close an existing database connection
 	int rc = SQLITE_OK;
-	if(db != NULL && *db != NULL)
-	{
-		if((rc = sqlite3_close(*db)) != SQLITE_OK)
-			logg("Encountered error while trying to close database: %s", sqlite3_errstr(rc));
+	if(db != NULL && *db != NULL && (rc = sqlite3_close(*db)) != SQLITE_OK)
+		logg("Error while trying to close database: %s",
+		     sqlite3_errstr(rc));
 
-		*db = NULL;
-	}
+	// Always set database pointer to NULL, even when closing failed
+	*db = NULL;
 }
 
 sqlite3* _dbopen(bool create, const char *func, const int line, const char *file)
