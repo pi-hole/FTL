@@ -360,9 +360,7 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 		log_query(F_NOEXTRA | F_DNSSEC | F_IPV4, "retry", (union all_addr *)&forward->sentto->addr.in.sin_addr, "dnssec");
 	      else
 		log_query(F_NOEXTRA | F_DNSSEC | F_IPV6, "retry", (union all_addr *)&forward->sentto->addr.in6.sin6_addr, "dnssec");
-
-	      FTL_forwarding_retried(forward->sentto, forward->frec_src.log_id, daemon->log_id, true);
-
+	      
 	      while (retry_send(sendto(fd, (char *)header, plen, 0,
 				       &forward->sentto->addr.sa,
 				       sa_len(&forward->sentto->addr))));
@@ -571,19 +569,11 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 		  if (!gotname)
 		    strcpy(daemon->namebuff, "query");
 		  if (start->addr.sa.sa_family == AF_INET)
-		  {
 		    log_query(F_SERVER | F_IPV4 | F_FORWARD, daemon->namebuff, 
 			      (union all_addr *)&start->addr.in.sin_addr, NULL); 
-		    FTL_forwarded(F_SERVER | F_IPV4 | F_FORWARD, daemon->namebuff,
-		                  start, daemon->log_display_id);
-		  }
 		  else
-		  {
 		    log_query(F_SERVER | F_IPV6 | F_FORWARD, daemon->namebuff, 
 			      (union  all_addr *)&start->addr.in6.sin6_addr, NULL);
-		    FTL_forwarded(F_SERVER | F_IPV6 | F_FORWARD, daemon->namebuff,
-		                  start, daemon->log_display_id);
-		  }
 		  start->queries++;
 		  forwarded = 1;
 		  forward->sentto = start;
@@ -1563,19 +1553,11 @@ void receive_query(struct listener *listen, time_t now)
       char *types = querystr(auth_dns ? "auth" : "query", type);
       
       if (family == AF_INET) 
-      {
 	log_query(F_QUERY | F_IPV4 | F_FORWARD, daemon->namebuff, 
 		  (union all_addr *)&source_addr.in.sin_addr, types);
-	piholeblocked = FTL_new_query(F_QUERY | F_IPV4 | F_FORWARD, daemon->namebuff, &blockingreason,
-	              (union all_addr *)&source_addr.in.sin_addr, types, type, daemon->log_display_id, &edns, UDP);
-      }
       else
-      {
-	log_query(F_QUERY | F_IPV6 | F_FORWARD, daemon->namebuff,
+	log_query(F_QUERY | F_IPV6 | F_FORWARD, daemon->namebuff, 
 		  (union all_addr *)&source_addr.in6.sin6_addr, types);
-	piholeblocked = FTL_new_query(F_QUERY | F_IPV6 | F_FORWARD, daemon->namebuff, &blockingreason,
-	              (union all_addr *)&source_addr.in6.sin6_addr, types, type, daemon->log_display_id, &edns, UDP);
-      }
 
 #ifdef HAVE_AUTH
       /* find queries for zones we're authoritative for, and answer them directly */
@@ -1971,19 +1953,11 @@ unsigned char *tcp_request(int confd, time_t now,
 	  char *types = querystr(auth_dns ? "auth" : "query", qtype);
 	  
 	  if (peer_addr.sa.sa_family == AF_INET) 
-	  {
 	    log_query(F_QUERY | F_IPV4 | F_FORWARD, daemon->namebuff, 
 		      (union all_addr *)&peer_addr.in.sin_addr, types);
-	    piholeblocked = FTL_new_query(F_QUERY | F_IPV4 | F_FORWARD, daemon->namebuff, &blockingreason,
-	              (union all_addr *)&peer_addr.in.sin_addr, types, qtype, daemon->log_display_id, &edns, TCP);
-	  }
 	  else
-	  {
-	    log_query(F_QUERY | F_IPV6 | F_FORWARD, daemon->namebuff,
+	    log_query(F_QUERY | F_IPV6 | F_FORWARD, daemon->namebuff, 
 		      (union all_addr *)&peer_addr.in6.sin6_addr, types);
-	    piholeblocked = FTL_new_query(F_QUERY | F_IPV6 | F_FORWARD, daemon->namebuff, &blockingreason,
-	              (union all_addr *)&peer_addr.in6.sin6_addr, types, qtype, daemon->log_display_id, &edns, TCP);
-	  }
 	  
 #ifdef HAVE_AUTH
 	  /* find queries for zones we're authoritative for, and answer them directly */
@@ -2185,19 +2159,11 @@ unsigned char *tcp_request(int confd, time_t now,
 		      m = (c1 << 8) | c2;
 		      
 		      if (last_server->addr.sa.sa_family == AF_INET)
-		      {
 			log_query(F_SERVER | F_IPV4 | F_FORWARD, daemon->namebuff, 
 				  (union all_addr *)&last_server->addr.in.sin_addr, NULL); 
-			FTL_forwarded(F_SERVER | F_IPV4 | F_FORWARD, daemon->namebuff,
-			              last_server, daemon->log_display_id);
-		      }
 		      else
-		      {
 			log_query(F_SERVER | F_IPV6 | F_FORWARD, daemon->namebuff, 
 				  (union all_addr *)&last_server->addr.in6.sin6_addr, NULL);
-			FTL_forwarded(F_SERVER | F_IPV6 | F_FORWARD, daemon->namebuff,
-			              last_server, daemon->log_display_id);
-		      }
 
 #ifdef HAVE_DNSSEC
 		      if (option_bool(OPT_DNSSEC_VALID) && !checking_disabled && (last_server->flags & SERV_DO_DNSSEC))
