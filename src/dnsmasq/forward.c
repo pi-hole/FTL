@@ -2098,7 +2098,7 @@ unsigned char *tcp_request(int confd, time_t now,
 			    }
 			  
 #ifdef MSG_FASTOPEN
-			    server_send(last_server, last_server->tcpfd, packet, m + sizeof(u16), MSG_FASTOPEN);
+			    server_send(last_server, last_server->tcpfd, packet, size + sizeof(u16), MSG_FASTOPEN);
 
 			    if (errno == 0)
 			      data_sent = 1;
