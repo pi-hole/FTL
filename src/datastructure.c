@@ -22,8 +22,6 @@
 #include "main.h"
 // reset_aliasclient()
 #include "database/aliasclients.h"
-// piholeFTLDB_reopen()
-#include "database/common.h"
 // config struct
 #include "config.h"
 // set_event(RESOLVE_NEW_HOSTNAMES)
@@ -271,7 +269,7 @@ int findClientID(const char *clientIP, const bool count, const bool aliasclient)
 
 	// Check if this client is managed by a alias-client
 	if(!aliasclient)
-		reset_aliasclient(client);
+		reset_aliasclient(NULL, client);
 
 	return clientID;
 }
@@ -457,9 +455,6 @@ void FTL_reset_per_client_domain_data(void)
 void FTL_reload_all_domainlists(void)
 {
 	lock_shm();
-
-	// (Re-)open FTL database connection
-	piholeFTLDB_reopen();
 
 	// Flush messages stored in the long-term database
 	flush_message_table();

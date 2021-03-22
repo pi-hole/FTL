@@ -28,53 +28,71 @@
 
 static bool saving_failed_before = false;
 
-int get_number_of_queries_in_DB(void)
+int get_number_of_queries_in_DB(sqlite3 *db)
 {
-	// This routine is used by the API routines.
-	if(!FTL_DB_avail())
+	// Open pihole-FTL.db database file if needed
+	bool db_opened = false;
+	if(db == NULL)
 	{
-		return DB_FAILED;
+		if((db = dbopen(false)) == NULL)
+		{
+			logg("get_number_of_queries_in_DB() - Failed to open DB");
+			return -1;
+		}
+
+		// Successful
+		db_opened = true;
 	}
 
 	// Count number of rows using the index timestamp is faster than select(*)
-	int result = db_query_int("SELECT COUNT(timestamp) FROM queries");
+	int result = db_query_int(db, "SELECT COUNT(timestamp) FROM queries");
+
+	if(db_opened)
+		dbclose(&db);
 
 	return result;
 }
 
-bool DB_save_queries(void)
+bool DB_save_queries(sqlite3 *db)
 {
-	// The database may be unavailable, e.g. when disabled
-	if(!FTL_DB_avail())
-	{
-		return false;
-	}
-
 	// Start database timer
 	if(config.debug & DEBUG_DATABASE)
 		timer_start(DATABASE_WRITE_TIMER);
+
+	// Open pihole-FTL.db database file if needed
+	bool db_opened = false;
+	if(db == NULL)
+	{
+		if((db = dbopen(false)) == NULL)
+		{
+			logg("DB_save_queries() - Failed to open DB");
+			return NULL;
+		}
+
+		// Successful
+		db_opened = true;
+	}
 
 	unsigned int saved = 0;
 	bool error = false;
 	sqlite3_stmt* stmt = NULL;
 
-	int rc = dbquery("BEGIN TRANSACTION IMMEDIATE");
+	int rc = dbquery(db, "BEGIN TRANSACTION IMMEDIATE");
 	if( rc != SQLITE_OK )
 	{
 		const char *text;
 		if( rc == SQLITE_BUSY )
 			text = "WARNING";
 		else
-		{
 			text = "ERROR";
-			dbclose();
-		}
 
 		logg("%s: Storing queries in long-term database failed: %s", text, sqlite3_errstr(rc));
+		if(db_opened)
+			dbclose(&db);
 		return false;
 	}
 
-	rc = sqlite3_prepare_v2(FTL_db, "INSERT INTO queries VALUES (NULL,?,?,?,?,?,?,?)", -1, &stmt, NULL);
+	rc = sqlite3_prepare_v2(db, "INSERT INTO queries VALUES (NULL,?,?,?,?,?,?,?)", -1, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
 		const char *text, *spaces;
@@ -87,18 +105,19 @@ bool DB_save_queries(void)
 		{
 			text   = "ERROR";
 			spaces = "     ";
-			dbclose();
 		}
 
 		// dbquery() above already logs the reson for why the query failed
 		logg("%s: Storing queries in long-term database failed: %s\n", text, sqlite3_errstr(rc));
 		logg("%s  Keeping queries in memory for later new attempt", spaces);
 		saving_failed_before = true;
+		if(db_opened)
+			dbclose(&db);
 		return false;
 	}
 
 	// Get last ID stored in the database
-	long int lastID = get_max_query_ID();
+	long int lastID = get_max_query_ID(db);
 
 	int total = 0, blocked = 0;
 	time_t currenttimestamp = time(NULL);
@@ -233,14 +252,15 @@ bool DB_save_queries(void)
 			logg("Keeping queries in memory for later new attempt");
 			saving_failed_before = true;
 		}
-		else
-			dbclose();
+
+		if(db_opened)
+			dbclose(&db);
 
 		return false;
 	}
 
 	// Finish prepared statement
-	if((rc = dbquery("END TRANSACTION")) != SQLITE_OK)
+	if((rc = dbquery(db,"END TRANSACTION")) != SQLITE_OK)
 	{
 		// No need to log the error string here, dbquery() did that already above
 		logg("END TRANSACTION failed when trying to store queries to long-term database");
@@ -250,8 +270,9 @@ bool DB_save_queries(void)
 			logg("Keeping queries in memory for later new attempt");
 			saving_failed_before = true;
 		}
-		else
-			dbclose();
+
+		if(db_opened)
+			dbclose(&db);
 
 		return false;
 	}
@@ -261,13 +282,14 @@ bool DB_save_queries(void)
 	if(saved > 0 && !error)
 	{
 		lastdbindex = queryID;
-		db_set_FTL_property(DB_LASTTIMESTAMP, newlasttimestamp);
-		db_update_counters(total, blocked);
+		db_set_FTL_property(db, DB_LASTTIMESTAMP, newlasttimestamp);
+		db_update_counters(db, total, blocked);
 	}
 
 	if(config.debug & DEBUG_DATABASE || saving_failed_before)
 	{
-		logg("Notice: Queries stored in long-term database: %u (took %.1f ms, last SQLite ID %li)", saved, timer_elapsed_msec(DATABASE_WRITE_TIMER), lastID);
+		logg("Notice: Queries stored in long-term database: %u (took %.1f ms, last SQLite ID %li)",
+		     saved, timer_elapsed_msec(DATABASE_WRITE_TIMER), lastID);
 		if(saving_failed_before)
 		{
 			logg("        Queries from earlier attempt(s) stored successfully");
@@ -275,27 +297,24 @@ bool DB_save_queries(void)
 		}
 	}
 
+	if(db_opened)
+		dbclose(&db);
+
 	return true;
 }
 
-void delete_old_queries_in_DB(void)
+void delete_old_queries_in_DB(sqlite3 *db)
 {
-	// Open database
-	if(!FTL_DB_avail())
-	{
-		return;
-	}
-
 	int timestamp = time(NULL) - config.maxDBdays * 86400;
 
-	if(dbquery("DELETE FROM queries WHERE timestamp <= %i", timestamp) != SQLITE_OK)
+	if(dbquery(db, "DELETE FROM queries WHERE timestamp <= %i", timestamp) != SQLITE_OK)
 	{
 		logg("delete_old_queries_in_DB(): Deleting queries due to age of entries failed!");
 		return;
 	}
 
 	// Get how many rows have been affected (deleted)
-	const int affected = sqlite3_changes(FTL_db);
+	const int affected = sqlite3_changes(db);
 
 	// Print final message only if there is a difference
 	if((config.debug & DEBUG_DATABASE) || affected)
@@ -306,8 +325,12 @@ void delete_old_queries_in_DB(void)
 void DB_read_queries(void)
 {
 	// Open database
-	if(!dbopen())
+	sqlite3 *db;
+	if((db = dbopen(false)) == NULL)
+	{
+		logg("DB_read_queries() - Failed to open DB");
 		return;
+	}
 
 	// Prepare request
 	// Get time stamp 24 hours in the past
@@ -320,10 +343,10 @@ void DB_read_queries(void)
 
 	// Prepare SQLite3 statement
 	sqlite3_stmt* stmt = NULL;
-	int rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &stmt, NULL);
+	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK ){
 		logg("DB_read_queries() - SQL error prepare: %s", sqlite3_errstr(rc));
-		dbclose();
+		dbclose(&db);
 		return;
 	}
 
@@ -331,7 +354,7 @@ void DB_read_queries(void)
 	if((rc = sqlite3_bind_int(stmt, 1, mintime)) != SQLITE_OK)
 	{
 		logg("DB_read_queries() - Failed to bind type mintime: %s", sqlite3_errstr(rc));
-		dbclose();
+		dbclose(&db);
 		return;
 	}
 
@@ -343,12 +366,12 @@ void DB_read_queries(void)
 		// 1483228800 = 01/01/2017 @ 12:00am (UTC)
 		if(queryTimeStamp < 1483228800)
 		{
-			logg("FTL_db warn: TIMESTAMP should be larger than 01/01/2017 but is %lli", (long long)queryTimeStamp);
+			logg("DB warn: TIMESTAMP should be larger than 01/01/2017 but is %lli", (long long)queryTimeStamp);
 			continue;
 		}
 		if(queryTimeStamp > now)
 		{
-			if(config.debug & DEBUG_DATABASE) logg("FTL_db warn: Skipping query logged in the future (%lli)", (long long)queryTimeStamp);
+			if(config.debug & DEBUG_DATABASE) logg("DB warn: Skipping query logged in the future (%lli)", (long long)queryTimeStamp);
 			continue;
 		}
 
@@ -357,7 +380,7 @@ void DB_read_queries(void)
 		const bool offset_type = type > 100 && type < (100 + UINT16_MAX);
 		if(!mapped_type && !offset_type)
 		{
-			logg("FTL_db warn: TYPE should not be %i", type);
+			logg("DB warn: TYPE should not be %i", type);
 			continue;
 		}
 		// Don't import AAAA queries from database if the user set
@@ -370,7 +393,7 @@ void DB_read_queries(void)
 		const int status_int = sqlite3_column_int(stmt, 3);
 		if(status_int < QUERY_UNKNOWN || status_int >= QUERY_STATUS_MAX)
 		{
-			logg("FTL_db warn: STATUS should be within [%i,%i] but is %i", QUERY_UNKNOWN, QUERY_STATUS_MAX-1, status_int);
+			logg("DB warn: STATUS should be within [%i,%i] but is %i", QUERY_UNKNOWN, QUERY_STATUS_MAX-1, status_int);
 			continue;
 		}
 		const enum query_status status = status_int;
@@ -378,14 +401,14 @@ void DB_read_queries(void)
 		const char * domainname = (const char *)sqlite3_column_text(stmt, 4);
 		if(domainname == NULL)
 		{
-			logg("FTL_db warn: DOMAIN should never be NULL, %lli", (long long)queryTimeStamp);
+			logg("DB warn: DOMAIN should never be NULL, %lli", (long long)queryTimeStamp);
 			continue;
 		}
 
 		const char * clientIP = (const char *)sqlite3_column_text(stmt, 5);
 		if(clientIP == NULL)
 		{
-			logg("FTL_db warn: CLIENT should never be NULL, %lli", (long long)queryTimeStamp);
+			logg("DB warn: CLIENT should never be NULL, %lli", (long long)queryTimeStamp);
 			continue;
 		}
 
@@ -574,7 +597,7 @@ void DB_read_queries(void)
 
 	if( rc != SQLITE_DONE ){
 		logg("DB_read_queries() - SQL error step: %s", sqlite3_errstr(rc));
-		dbclose();
+		dbclose(&db);
 		return;
 	}
 
@@ -582,5 +605,5 @@ void DB_read_queries(void)
 	sqlite3_finalize(stmt);
 
 	// Close database here, we have to reopen it later (after forking)
-	dbclose();
+	dbclose(&db);
 }

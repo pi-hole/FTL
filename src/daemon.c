@@ -18,9 +18,12 @@
 #include "api/socket.h"
 // gravityDB_close()
 #include "database/gravity-db.h"
+// dbclose()
+#include "database/common.h"
 // destroy_shmem()
 #include "shmem.h"
 
+pthread_t threads[THREADS_MAX] = { 0 };
 bool resolver_ready = false;
 
 void go_daemon(void)
@@ -168,15 +171,39 @@ pid_t FTL_gettid(void)
 // Clean up on exit
 void cleanup(const int ret)
 {
+	int s;
+	struct timespec ts;
 	// Terminate threads before closing database connections and finishing shared memory
-	pthread_cancel(telnet_listenthreadv4);
-	pthread_cancel(telnet_listenthreadv6);
-	pthread_cancel(socket_listenthread);
-	pthread_cancel(DBthread);
-	pthread_cancel(GCthread);
-	pthread_cancel(DNSclientthread);
+	logg("Asking threads to cancel");
+	for(int i = 0; i < THREADS_MAX; i++)
+	{
+		pthread_cancel(threads[i]);
+	}
+	// Try to join threads to ensure cancelation has succeeded
+	logg("Waiting for threads to join");
+	for(int i = 0; i < THREADS_MAX; i++)
+	{
+		if (clock_gettime(CLOCK_REALTIME, &ts) == -1)
+		{
+			logg("Cannot get clock time, canceling thread instead of joining");
+			pthread_cancel(threads[i]);
+			continue;
+		}
 
-	// Close gravity database connection
+		// Timeout for joining is 2 seconds for each thread
+		ts.tv_sec += 2;
+
+		if((s = pthread_timedjoin_np(threads[i], NULL, &ts)) != 0)
+		{
+			logg("Thread %d (%ld) timed out (%s), canceling it.",
+			     i, (long)threads[i], strerror(s));
+			pthread_cancel(threads[i]);
+			continue;
+		}
+	}
+	logg("All threads joined");
+
+	// Close database connection
 	gravityDB_close();
 
 	// Close sockets and delete Unix socket file handle

@@ -44,6 +44,13 @@
 // default: 90%
 #define SHMEM_WARN_LIMIT 90
 
+// Allocation step for FTL-strings bucket. This is somewhat special as we use
+// this as a general-purpose storage which should always be large enough. If,
+// for some reason, more data than this step has to be stored (highly unlikely,
+// close to impossible), the data will be properly truncated and we try again in
+// the next lock round
+#define STRINGS_ALLOC_STEP (10*pagesize)
+
 // Global counters struct
 countersStruct *counters = NULL;
 
@@ -84,11 +91,7 @@ typedef struct {
 	pthread_mutex_t lock;
 	bool waitingForLock;
 } ShmLock;
-typedef struct {
-	ShmLock shmem;
-	ShmLock logfile;
-} ShmLocks;
-static ShmLocks *shmLock = NULL;
+static ShmLock *shmLock = NULL;
 static ShmSettings *shmSettings = NULL;
 
 static int pagesize;
@@ -235,6 +238,7 @@ size_t addstr(const char *input)
 
 	// Get string length, add terminating character
 	size_t len = strlen(input) + 1;
+	const size_t avail_mem = shm_strings.size - shmSettings->next_str_pos;
 
 	// If this is an empty string (only the terminating character is present),
 	// use the shared memory string at position zero instead of creating a new
@@ -246,8 +250,13 @@ size_t addstr(const char *input)
 	}
 	else if(len > (size_t)(pagesize-1))
 	{
-		logg("WARN: Shortening too long string (len %zu)", len);
+		logg("WARN: Shortening too long string (len %zu > pagesize %i)", len, pagesize);
 		len = pagesize;
+	}
+	else if(len > (size_t)(avail_mem-1))
+	{
+		logg("WARN: Shortening too long string (len %zu > available memory %zu)", len, avail_mem);
+		len = avail_mem;
 	}
 
 	unsigned int N = 0;
@@ -259,19 +268,6 @@ size_t addstr(const char *input)
 	// Debugging output
 	if(config.debug & DEBUG_SHMEM)
 		logg("Adding \"%s\" (len %zu) to buffer. next_str_pos is %u", str, len, shmSettings->next_str_pos);
-
-	// Reserve additional memory if necessary
-	if(shmSettings->next_str_pos + len > shm_strings.size &&
-	   !realloc_shm(&shm_strings, shm_strings.size + pagesize, sizeof(char), true))
-	{
-		if(N > 0)
-			free(str);
-		return 0;
-	}
-
-	// Store new string buffer size in corresponding counters entry
-	// for re-using when we need to re-map shared memory objects
-	counters->strings_MAX = shm_strings.size;
 
 	// Copy the C string pointed by str into the shared string buffer
 	strncpy(&((char*)shm_strings.ptr)[shmSettings->next_str_pos], str, len);
@@ -349,18 +345,18 @@ static void remap_shm(void)
 	local_shm_counter = shmSettings->global_shm_counter;
 }
 
-static void _lock(ShmLock *lock, const bool is_shmem, const char* func, const int line, const char * file)
+static inline void _lock(ShmLock *lock, const char* func, const int line, const char * file)
 {
 	// Signal that FTL is waiting for the lock
 	lock->waitingForLock = true;
 
-	if(config.debug & DEBUG_LOCKS && is_shmem)
+	if(config.debug & DEBUG_LOCKS)
 		logg("Waiting for SHM lock in %s() (%s:%i)", func, file, line);
 
 	int result = pthread_mutex_lock(&lock->lock);
 
-	if(config.debug & DEBUG_LOCKS && is_shmem)
-		logg("Obtained lock SHM for %s() (%s:%i)", func, file, line);
+	if(config.debug & DEBUG_LOCKS)
+		logg("Obtained SHM lock for %s() (%s:%i)", func, file, line);
 
 	// Turn off the waiting for lock signal to notify everyone who was
 	// deferring to FTL that they can jump in the lock queue.
@@ -372,14 +368,14 @@ static void _lock(ShmLock *lock, const bool is_shmem, const char* func, const in
 		result = pthread_mutex_consistent(&lock->lock);
 	}
 
-	if(result != 0 && is_shmem)
+	if(result != 0)
 		logg("Failed to obtain SHM lock: %s", strerror(result));
 }
 
 // Obtain SHMEM lock
 void _lock_shm(const char* func, const int line, const char * file)
 {
-	_lock(&shmLock->shmem, true, func, line, file);
+	_lock(shmLock, func, line, file);
 
 	// Check if this process needs to remap the shared memory objects
 	if(shmSettings != NULL &&
@@ -395,39 +391,21 @@ void _lock_shm(const char* func, const int line, const char * file)
 	shm_ensure_size();
 }
 
-// Obtain log file lock
-void _lock_log(const char* func, const int line, const char * file)
-{
-	// Locks may have not been initialized so far
-	if(shmLock == NULL)
-		return;
-	_lock(&shmLock->logfile, false, func, line, file);
-}
-
-static void _unlock(ShmLock *lock, const bool is_shmem, const char* func, const int line, const char * file)
+static inline void _unlock(ShmLock *lock, const char* func, const int line, const char * file)
 {
 	int result = pthread_mutex_unlock(&lock->lock);
 
-	if(config.debug & DEBUG_LOCKS && is_shmem)
+	if(config.debug & DEBUG_LOCKS)
 		logg("Removed lock in %s() (%s:%i)", func, file, line);
 
-	if(result != 0 && is_shmem)
+	if(result != 0)
 		logg("Failed to unlock SHM lock: %s", strerror(result));
 }
 
 // Release SHM lock
 void _unlock_shm(const char* func, const int line, const char * file)
 {
-	_unlock(&shmLock->shmem, true, func, line, file);
-}
-
-// Release log file lock
-void _unlock_log(const char* func, const int line, const char * file)
-{
-	// Locks may have not been initialized so far
-	if(shmLock == NULL)
-		return;
-	_unlock(&shmLock->logfile, false, func, line, file);
+	_unlock(shmLock, func, line, file);
 }
 
 bool init_shmem(bool create_new)
@@ -437,16 +415,14 @@ bool init_shmem(bool create_new)
 
 	/****************************** shared memory lock ******************************/
 	// Try to create shared memory object
-	shm_lock = create_shm(SHARED_LOCK_NAME, sizeof(ShmLocks), create_new);
+	shm_lock = create_shm(SHARED_LOCK_NAME, sizeof(ShmLock), create_new);
 	if(shm_lock.ptr == NULL)
 		return false;
-	shmLock = (ShmLocks*) shm_lock.ptr;
+	shmLock = (ShmLock*) shm_lock.ptr;
 	if(create_new)
 	{
-		shmLock->shmem.lock = create_mutex();
-		shmLock->shmem.waitingForLock = false;
-		shmLock->logfile.lock = create_mutex();
-		shmLock->logfile.waitingForLock = false;
+		shmLock->lock = create_mutex();
+		shmLock->waitingForLock = false;
 	}
 
 	/****************************** shared counters struct ******************************/
@@ -479,12 +455,12 @@ bool init_shmem(bool create_new)
 
 	/****************************** shared strings buffer ******************************/
 	// Try to create shared memory object
-	shm_strings = create_shm(SHARED_STRINGS_NAME, pagesize, create_new);
+	shm_strings = create_shm(SHARED_STRINGS_NAME, STRINGS_ALLOC_STEP, create_new);
 	if(shm_strings.ptr == NULL)
 		return false;
 	if(create_new)
 	{
-		counters->strings_MAX = pagesize;
+		counters->strings_MAX = shm_strings.size;
 
 		// Initialize shared string object with an empty string at position zero
 		((char*)shm_strings.ptr)[0] = '\0';
@@ -492,16 +468,17 @@ bool init_shmem(bool create_new)
 	}
 
 	/****************************** shared domains struct ******************************/
+	size_t size = get_optimal_object_size(sizeof(domainsData), 1);
 	// Try to create shared memory object
-	shm_domains = create_shm(SHARED_DOMAINS_NAME, pagesize*sizeof(domainsData), create_new);
+	shm_domains = create_shm(SHARED_DOMAINS_NAME, size*sizeof(domainsData), create_new);
 	if(shm_domains.ptr == NULL)
 		return false;
 	domains = (domainsData*)shm_domains.ptr;
 	if(create_new)
-		counters->domains_MAX = pagesize;
+		counters->domains_MAX = size;
 
 	/****************************** shared clients struct ******************************/
-	size_t size = get_optimal_object_size(sizeof(clientsData), 1);
+	size = get_optimal_object_size(sizeof(clientsData), 1);
 	// Try to create shared memory object
 	shm_clients = create_shm(SHARED_CLIENTS_NAME, size*sizeof(clientsData), create_new);
 	if(shm_clients.ptr == NULL)
@@ -576,8 +553,7 @@ void destroy_shmem(void)
 	// First, we destroy the mutex
 	if(shmLock != NULL)
 	{
-		pthread_mutex_destroy(&shmLock->shmem.lock);
-		pthread_mutex_destroy(&shmLock->logfile.lock);
+		pthread_mutex_destroy(&shmLock->lock);
 	}
 	shmLock = NULL;
 
@@ -686,7 +662,7 @@ static void *enlarge_shmem_struct(const char type)
 			break;
 		case DOMAINS:
 			sharedMemory = &shm_domains;
-			allocation_step = pagesize;
+			allocation_step = get_optimal_object_size(sizeof(domainsData), 1);
 			sizeofobj = sizeof(domainsData);
 			counter = &counters->domains_MAX;
 			break;
@@ -701,6 +677,12 @@ static void *enlarge_shmem_struct(const char type)
 			allocation_step = get_optimal_object_size(sizeof(DNSCacheData), 1);
 			sizeofobj = sizeof(DNSCacheData);
 			counter = &counters->dns_cache_MAX;
+			break;
+		case STRINGS:
+			sharedMemory = &shm_strings;
+			allocation_step = STRINGS_ALLOC_STEP;
+			sizeofobj = 1;
+			counter = &counters->strings_MAX;
 			break;
 		default:
 			logg("Invalid argument in enlarge_shmem_struct(%i)", type);
@@ -721,11 +703,6 @@ static bool realloc_shm(SharedMemory *sharedMemory, const size_t size1, const si
 {
 	// Absolute target size
 	const size_t size = size1 * size2;
-	// Check if we can skip this routine as nothing is to be done
-	// when an object is not to be resized and its size didn't
-	// change elsewhere
-	if(!resize && size == sharedMemory->size)
-		return true;
 
 	// Log that we are doing something here
 	char df[64] =  { 0 };
@@ -790,6 +767,16 @@ static bool realloc_shm(SharedMemory *sharedMemory, const size_t size1, const si
 	// Update how much memory FTL uses
 	// We add the difference between updated and previous size
 	used_shmem += (size - sharedMemory->size);
+
+	if(config.debug & DEBUG_SHMEM)
+	{
+		if(sharedMemory->ptr == new_ptr)
+			logg("SHMEM pointer not updated: %p (%zu %zu)",
+			     sharedMemory->ptr, sharedMemory->size, size);
+		else
+			logg("SHMEM pointer updated: %p -> %p (%zu %zu)",
+			     sharedMemory->ptr, new_ptr, sharedMemory->size, size);
+	}
 
 	sharedMemory->ptr = new_ptr;
 	sharedMemory->size = size;
@@ -922,6 +909,15 @@ static void shm_ensure_size(void)
 		// Have to reallocate shared memory
 		dns_cache = enlarge_shmem_struct(DNS_CACHE);
 		if(dns_cache == NULL)
+		{
+			logg("FATAL: Memory allocation failed! Exiting");
+			exit(EXIT_FAILURE);
+		}
+	}
+	if(shmSettings->next_str_pos + STRINGS_ALLOC_STEP >= shm_strings.size)
+	{
+		// Have to reallocate shared memory
+		if(enlarge_shmem_struct(STRINGS) == NULL)
 		{
 			logg("FATAL: Memory allocation failed! Exiting");
 			exit(EXIT_FAILURE);

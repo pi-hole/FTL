@@ -55,21 +55,21 @@ static unsigned char message_blob_types[MAX_MESSAGE][5] =
 		},
 	};
 // Create message table in the database
-bool create_message_table(void)
+bool create_message_table(sqlite3 *db)
 {
 	// The blob fields can hold arbitrary data. Their type is specified through the type.
-	SQL_bool("CREATE TABLE message ( id INTEGER PRIMARY KEY AUTOINCREMENT, "
-	                                "timestamp INTEGER NOT NULL, "
-	                                "type TEXT NOT NULL, "
-	                                "message TEXT NOT NULL, "
-	                                "blob1 BLOB, "
-	                                "blob2 BLOB, "
-	                                "blob3 BLOB, "
-	                                "blob4 BLOB, "
-	                                "blob5 BLOB );");
+	SQL_bool(db, "CREATE TABLE message ( id INTEGER PRIMARY KEY AUTOINCREMENT, "
+	                                    "timestamp INTEGER NOT NULL, "
+	                                    "type TEXT NOT NULL, "
+	                                    "message TEXT NOT NULL, "
+	                                    "blob1 BLOB, "
+	                                    "blob2 BLOB, "
+	                                    "blob3 BLOB, "
+	                                    "blob4 BLOB, "
+	                                    "blob5 BLOB );");
 
 	// Update database version to 6
-	if(!db_set_FTL_property(DB_VERSION, 6))
+	if(!db_set_FTL_property(db, DB_VERSION, 6))
 	{
 		logg("create_message_table(): Failed to update database version!");
 		return false;
@@ -81,17 +81,31 @@ bool create_message_table(void)
 // Flush message table
 bool flush_message_table(void)
 {
+	sqlite3 *db;
+	// Open database connection
+	if((db = dbopen(false)) == NULL)
+	{
+		logg("flush_message_table() - Failed to open DB");
+		return false;
+	}
+
 	// Flush message table
-	SQL_bool("DELETE FROM message;");
+	SQL_bool(db, "DELETE FROM message;");
+
+	// Close database connection
+	dbclose(&db);
 
 	return true;
 }
 
-static bool add_message(enum message_type type, const char *message,
-                        const int count,...)
+static bool add_message(enum message_type type,
+                        const char *message, const int count,...)
 {
-	if(!FTL_DB_avail())
+	sqlite3 *db;
+	// Open database connection
+	if((db = dbopen(false)) == NULL)
 	{
+		logg("flush_message_table() - Failed to open DB");
 		return false;
 	}
 
@@ -100,11 +114,11 @@ static bool add_message(enum message_type type, const char *message,
 	{
 		sqlite3_stmt* stmt = NULL;
 		const char *querystr = "DELETE FROM message WHERE type = ?1 AND message = ?2";
-		int rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &stmt, NULL);
+		int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 		if( rc != SQLITE_OK ){
 			logg("add_message(type=%u, message=%s) - SQL error prepare DELETE: %s",
-				type, message, sqlite3_errstr(rc));
-			dbclose();
+			     type, message, sqlite3_errstr(rc));
+			dbclose(&db);
 			return false;
 		}
 
@@ -112,10 +126,10 @@ static bool add_message(enum message_type type, const char *message,
 		if((rc = sqlite3_bind_text(stmt, 1, message_types[type], -1, SQLITE_STATIC)) != SQLITE_OK)
 		{
 			logg("add_message(type=%u, message=%s) - Failed to bind type DELETE: %s",
-				type, message, sqlite3_errstr(rc));
+			     type, message, sqlite3_errstr(rc));
 			sqlite3_reset(stmt);
 			sqlite3_finalize(stmt);
-			dbclose();
+			dbclose(&db);
 			return false;
 		}
 
@@ -123,10 +137,10 @@ static bool add_message(enum message_type type, const char *message,
 		if((rc = sqlite3_bind_text(stmt, 2, message, -1, SQLITE_STATIC)) != SQLITE_OK)
 		{
 			logg("add_message(type=%u, message=%s) - Failed to bind message DELETE: %s",
-				type, message, sqlite3_errstr(rc));
+			     type, message, sqlite3_errstr(rc));
 			sqlite3_reset(stmt);
 			sqlite3_finalize(stmt);
-			dbclose();
+			dbclose(&db);
 			return false;
 		}
 
@@ -134,8 +148,8 @@ static bool add_message(enum message_type type, const char *message,
 		if((rc = sqlite3_step(stmt)) != SQLITE_OK && rc != SQLITE_DONE)
 		{
 			logg("add_message(type=%u, message=%s) - SQL error step DELETE: %s",
-			type, message, sqlite3_errstr(rc));
-			dbclose();
+			     type, message, sqlite3_errstr(rc));
+			dbclose(&db);
 			return false;
 		}
 		sqlite3_clear_bindings(stmt);
@@ -147,12 +161,12 @@ static bool add_message(enum message_type type, const char *message,
 	sqlite3_stmt* stmt = NULL;
 	const char *querystr = "INSERT INTO message (timestamp,type,message,blob1,blob2,blob3,blob4,blob5) "
 	                       "VALUES ((cast(strftime('%s', 'now') as int)),?,?,?,?,?,?,?);";
-	int rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &stmt, NULL);
+	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
 		logg("add_message(type=%u, message=%s) - SQL error prepare: %s",
 		     type, message, sqlite3_errstr(rc));
-		dbclose();
+		dbclose(&db);
 		return false;
 	}
 
@@ -163,7 +177,7 @@ static bool add_message(enum message_type type, const char *message,
 		     type, message, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
-		dbclose();
+		dbclose(&db);
 		return false;
 	}
 
@@ -174,7 +188,7 @@ static bool add_message(enum message_type type, const char *message,
 		     type, message, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
-		dbclose();
+		dbclose(&db);
 		return false;
 	}
 
@@ -206,7 +220,7 @@ static bool add_message(enum message_type type, const char *message,
 			     type, message, 3 + j, datatype, sqlite3_errstr(rc));
 			sqlite3_reset(stmt);
 			sqlite3_finalize(stmt);
-			dbclose();
+			dbclose(&db);
 			return false;
 		}
 	}
@@ -221,9 +235,12 @@ static bool add_message(enum message_type type, const char *message,
 	if(rc != SQLITE_DONE)
 	{
 		logg("Encountered error while trying to store message in long-term database: %s", sqlite3_errstr(rc));
-		dbclose();
+		dbclose(&db);
 		return false;
 	}
+
+	// Close database connection
+	dbclose(&db);
 
 	return true;
 }
@@ -270,8 +287,7 @@ void logg_fatal_dnsmasq_message(const char *message)
 	// Log to pihole-FTL.log
 	logg("FATAL ERROR in dnsmasq core: %s", message);
 
-	// Log to database (we have to open the database at this point)
-	dbopen();
+	// Log to database
 	add_message(DNSMASQ_CONFIG_MESSAGE, message, 0);
 
 	// FTL will dies after this point, so we should make sure to clean up

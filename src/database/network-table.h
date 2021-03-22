@@ -10,17 +10,19 @@
 #ifndef NETWORKTABLE_H
 #define NETWORKTABLE_H
 
-bool create_network_table(void);
-bool create_network_addresses_table(void);
-bool create_network_addresses_with_names_table(void);
-void parse_neighbor_cache(void);
-void updateMACVendorRecords(void);
-bool unify_hwaddr(void);
+#include "sqlite3.h"
+
+bool create_network_table(sqlite3 *db);
+bool create_network_addresses_table(sqlite3 *db);
+bool create_network_addresses_with_names_table(sqlite3 *db);
+void parse_neighbor_cache(sqlite3 *db);
+void updateMACVendorRecords(sqlite3 *db);
+bool unify_hwaddr(sqlite3 *db);
 char* getDatabaseHostname(const char* ipaddr) __attribute__((malloc));
-char* __attribute__((malloc)) getMACfromIP(const char* ipaddr);
-int getAliasclientIDfromIP(const char *ipaddr);
-char* __attribute__((malloc)) getNameFromIP(const char* ipaddr);
-char* __attribute__((malloc)) getIfaceFromIP(const char* ipaddr);
+char* __attribute__((malloc)) getMACfromIP(sqlite3 *db, const char* ipaddr);
+int getAliasclientIDfromIP(sqlite3 *db, const char *ipaddr);
+char* __attribute__((malloc)) getNameFromIP(sqlite3 *db, const char* ipaddr);
+char* __attribute__((malloc)) getIfaceFromIP(sqlite3 *db, const char* ipaddr);
 void resolveNetworkTableNames(void);
 
 #endif //NETWORKTABLE_H

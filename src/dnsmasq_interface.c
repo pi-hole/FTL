@@ -960,11 +960,7 @@ void FTL_dnsmasq_reload(void)
 {
 	// This function is called by the dnsmasq code on receive of SIGHUP
 	// *before* clearing the cache and rereading the lists
-
 	logg("Reloading DNS cache");
-
-	// (Re-)open FTL database connection
-	piholeFTLDB_reopen();
 
 	// Request reload the privacy level
 	set_event(RELOAD_PRIVACY_LEVEL);
@@ -1737,13 +1733,6 @@ static void save_reply_type(const unsigned int flags, const union all_addr *addr
 	                            query->response;
 }
 
-pthread_t telnet_listenthreadv4;
-pthread_t telnet_listenthreadv6;
-pthread_t socket_listenthread;
-pthread_t DBthread;
-pthread_t GCthread;
-pthread_t DNSclientthread;
-
 void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 {
 	// Going into daemon mode involves storing the
@@ -1767,28 +1756,28 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 	pthread_attr_init(&attr);
 
 	// Start TELNET IPv4 thread
-	if(pthread_create( &telnet_listenthreadv4, &attr, telnet_listening_thread_IPv4, NULL ) != 0)
+	if(pthread_create( &threads[TELNETv4], &attr, telnet_listening_thread_IPv4, NULL ) != 0)
 	{
 		logg("Unable to open IPv4 telnet listening thread. Exiting...");
 		exit(EXIT_FAILURE);
 	}
 
 	// Start TELNET IPv6 thread
-	if(pthread_create( &telnet_listenthreadv6, &attr, telnet_listening_thread_IPv6, NULL ) != 0)
+	if(pthread_create( &threads[TELNETv6], &attr, telnet_listening_thread_IPv6, NULL ) != 0)
 	{
 		logg("Unable to open IPv6 telnet listening thread. Exiting...");
 		exit(EXIT_FAILURE);
 	}
 
 	// Start SOCKET thread
-	if(pthread_create( &socket_listenthread, &attr, socket_listening_thread, NULL ) != 0)
+	if(pthread_create( &threads[SOCKET], &attr, socket_listening_thread, NULL ) != 0)
 	{
 		logg("Unable to open Unix socket listening thread. Exiting...");
 		exit(EXIT_FAILURE);
 	}
 
 	// Start database thread if database is used
-	if(pthread_create( &DBthread, &attr, DB_thread, NULL ) != 0)
+	if(pthread_create( &threads[DB], &attr, DB_thread, NULL ) != 0)
 	{
 		logg("Unable to open database thread. Exiting...");
 		exit(EXIT_FAILURE);
@@ -1796,7 +1785,7 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 
 	// Start thread that will stay in the background until garbage
 	// collection needs to be done
-	if(pthread_create( &GCthread, &attr, GC_thread, NULL ) != 0)
+	if(pthread_create( &threads[GC], &attr, GC_thread, NULL ) != 0)
 	{
 		logg("Unable to open GC thread. Exiting...");
 		exit(EXIT_FAILURE);
@@ -1804,7 +1793,7 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 
 	// Start thread that will stay in the background until host names
 	// needs to be resolved
-	if(pthread_create( &DNSclientthread, &attr, DNSclient_thread, NULL ) != 0)
+	if(pthread_create( &threads[DNSclient], &attr, DNSclient_thread, NULL ) != 0)
 	{
 		logg("Unable to open DNS client thread. Exiting...");
 		exit(EXIT_FAILURE);
@@ -2079,7 +2068,7 @@ void FTL_TCP_worker_terminating(bool finished)
 		return;
 	}
 
-	// Close dedicated database connection of this fork
+	// Close dedicated database connections of this fork
 	gravityDB_close();
 }
 
@@ -2145,11 +2134,17 @@ void FTL_TCP_worker_created(const int confd, const char *iface_name)
 
 	// Reopen gravity database handle in this fork as the main process's
 	// handle isn't valid here
+	if(config.debug != 0)
+		logg("Reopening Gravity database for this fork");
 	gravityDB_forked();
 
 	// Children inherit file descriptors from their parents
 	// We don't need them in the forks, so we clean them up
+	if(config.debug != 0)
+		logg("Closing Telnet socket for this fork");
 	close_telnet_socket();
+	if(config.debug != 0)
+		logg("Closing Unix socket for this fork");
 	close_unix_socket(false);
 }
 
@@ -2191,7 +2186,6 @@ bool FTL_unlink_DHCP_lease(const char *ipaddr)
 
 	// Return success
 	return true;
-	
 }
 
 void FTL_query_in_progress(const int id)

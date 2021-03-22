@@ -45,15 +45,14 @@ int main (int argc, char* argv[])
 	parse_args(argc, argv);
 
 	// Try to open FTL log
-	open_FTL_log(true);
+	init_FTL_log();
 	timer_start(EXIT_TIMER);
 	logg("########## FTL started! ##########");
 	log_FTL_version(false);
 
-	// Catch SIGSEGV (generate a crash report)
-	// Other signals are handled by dnsmasq
-	// We handle real-time signals later (after dnsmasq has forked)
-	handle_SIGSEGV();
+	// Catch signals not handled by dnsmasq
+	// We configure real-time signals later (after dnsmasq has forked)
+	handle_signals();
 
 	// Initialize shared memory
 	if(!init_shmem(true))
@@ -104,7 +103,7 @@ int main (int argc, char* argv[])
 	// Save new queries to database (if database is used)
 	if(config.DBexport)
 	{
-		if(DB_save_queries())
+		if(DB_save_queries(NULL))
 			logg("Finished final database update");
 	}
 

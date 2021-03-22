@@ -10,9 +10,11 @@
 #ifndef DATABASE_QUERY_TABLE_H
 #define DATABASE_QUERY_TABLE_H
 
-int get_number_of_queries_in_DB(void);
-void delete_old_queries_in_DB(void);
-bool DB_save_queries(void);
+#include "sqlite3.h"
+
+int get_number_of_queries_in_DB(sqlite3 *db);
+void delete_old_queries_in_DB(sqlite3 *db);
+bool DB_save_queries(sqlite3 *db);
 void DB_read_queries(void);
 
 #endif //DATABASE_QUERY_TABLE_H

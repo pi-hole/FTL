@@ -20,18 +20,18 @@
 // getAliasclientIDfromIP()
 #include "network-table.h"
 
-bool create_aliasclients_table(void)
+bool create_aliasclients_table(sqlite3 *db)
 {
 	// Create aliasclient table in the database
-	SQL_bool("CREATE TABLE aliasclient (id INTEGER PRIMARY KEY NOT NULL, " \
-	                                   "name TEXT NOT NULL, " \
-	                                   "comment TEXT);");
+	SQL_bool(db, "CREATE TABLE aliasclient (id INTEGER PRIMARY KEY NOT NULL, " \
+	                                       "name TEXT NOT NULL, " \
+	                                       "comment TEXT);");
 
 	// Add aliasclient_id to network table
-	SQL_bool("ALTER TABLE network ADD COLUMN aliasclient_id INTEGER;");
+	SQL_bool(db, "ALTER TABLE network ADD COLUMN aliasclient_id INTEGER;");
 
 	// Update database version to 9
-	if(!db_set_FTL_property(DB_VERSION, 9))
+	if(!db_set_FTL_property(db, DB_VERSION, 9))
 	{
 		logg("create_aliasclients_table(): Failed to update database version!");
 		return false;
@@ -93,12 +93,12 @@ static void recompute_aliasclient(const int aliasclientID)
 }
 
 // Store hostname of device identified by dbID
-bool import_aliasclients(void)
+bool import_aliasclients(sqlite3 *db)
 {
 	sqlite3_stmt *stmt = NULL;
 	const char querystr[] = "SELECT id,name FROM aliasclient";
 
-	int rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &stmt, NULL);
+	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 	if(rc != SQLITE_OK)
 	{
 		logg("import_aliasclients() - SQL error prepare: %s", sqlite3_errstr(rc));
@@ -166,7 +166,7 @@ bool import_aliasclients(void)
 	return true;
 }
 
-static int get_aliasclient_ID(const clientsData *client)
+static int get_aliasclient_ID(sqlite3 *db, const clientsData *client)
 {
 	// Skip alias-clients themselves
 	if(client->flags.aliasclient)
@@ -180,7 +180,7 @@ static int get_aliasclient_ID(const clientsData *client)
 	}
 
 	// Get aliasclient ID from database (DB index)
-	const int aliasclient_DBid = getAliasclientIDfromIP(clientIP);
+	const int aliasclient_DBid = getAliasclientIDfromIP(db, clientIP);
 
 	// Compare DB index for all alias-clients stored in FTL
 	int aliasclientID = 0;
@@ -217,14 +217,31 @@ static int get_aliasclient_ID(const clientsData *client)
 	return -1;
 }
 
-void reset_aliasclient(clientsData *client)
+void reset_aliasclient(sqlite3 *db, clientsData *client)
 {
+	// Open pihole-FTL.db database file if needed
+	bool db_opened = false;
+	if(db == NULL)
+	{
+		if((db = dbopen(false)) == NULL)
+		{
+			logg("reimport_aliasclients() - Failed to open DB");
+			return;
+		}
+
+		// Successful
+		db_opened = true;
+	}
+
 	// Skip alias-clients themselves
 	if(client->flags.aliasclient)
 		return;
 
 	// Find corresponding alias-client (if any)
-	client->aliasclient_id = get_aliasclient_ID(client);
+	client->aliasclient_id = get_aliasclient_ID(db, client);
+
+	if(db_opened)
+		dbclose(&db);
 
 	// Skip if there is no responsible alias-client
 	if(client->aliasclient_id == -1)
@@ -273,15 +290,22 @@ int *get_aliasclient_list(const int aliasclientID)
 // Reimport alias-clients from database
 // Note that this will always only change or add new clients. Alias-clients are
 // removed by nulling them before importing new clients
-void reimport_aliasclients(void)
+void reimport_aliasclients(sqlite3 *db)
 {
 	// Open pihole-FTL.db database file if needed
-	const bool db_already_open = FTL_DB_avail();
-	if(!db_already_open && !dbopen())
+	bool db_opened = false;
+	if(db == NULL)
 	{
-		logg("reimport_aliasclients() - Failed to open DB");
-		return;
+		if((db = dbopen(false)) == NULL)
+		{
+			logg("reimport_aliasclients() - Failed to open DB");
+			return;
+		}
+
+		// Successful
+		db_opened = true;
 	}
+
 	// Loop over all existing alias-clients and set their counters to zero
 	for(int clientID = 0; clientID < counters->clients; clientID++)
 	{
@@ -298,10 +322,7 @@ void reimport_aliasclients(void)
 	}
 
 	// Import aliasclients from database table
-	import_aliasclients();
-
-	if(!db_already_open)
-		dbclose();
+	import_aliasclients(db);
 
 	// Recompute all alias-clients
 	for(int clientID = 0; clientID < counters->clients; clientID++)
@@ -312,6 +333,10 @@ void reimport_aliasclients(void)
 		if(client == NULL || client->flags.aliasclient)
 			continue;
 
-		reset_aliasclient(client);
+		reset_aliasclient(db, client);
 	}
+
+	// Close the database if we opened it here
+	if(db_opened)
+		dbclose(&db);
 }

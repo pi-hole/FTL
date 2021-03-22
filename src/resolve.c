@@ -78,36 +78,44 @@ static bool valid_hostname(char* name, const char* clientip)
 static void print_used_resolvers(const char *message)
 {
 	logg("%s", message);
-	for(unsigned int i = 0u; i < 2*MAXNS; i++)
+	for(int i = 0u; i < 2*MAXNS; i++)
 	{
 		int family;
 		in_port_t port;
 		void *addr = NULL;
+		int j = i;
 		if(i < MAXNS)
 		{
+			// Regular name servers (IPv4)
+
+			// Some of the entries may not be configured
+			if(i > _res.nscount || _res.nsaddr_list[j].sin_family != AF_INET)
+				continue;
+
 			// IPv4 name servers
-			addr = &_res.nsaddr_list[i].sin_addr;
-			port = ntohs(_res.nsaddr_list[i].sin_port);
-			family = AF_INET;
+			addr = &_res.nsaddr_list[j].sin_addr;
+			port = ntohs(_res.nsaddr_list[j].sin_port);
+			family = _res.nsaddr_list[j].sin_family;
 		}
 		else
 		{
-			// Extension name servers (typically IPv6)
-
+			// Extension name servers (IPv6)
+			j = i - MAXNS;
 			// Some of the entries may not be configured
-			if(_res._u._ext.nsaddrs[i - MAXNS] == NULL)
+			if(_res._u._ext.nsaddrs[j] == NULL ||
+			   _res._u._ext.nsaddrs[j]->sin6_family != AF_INET6)
 				continue;
-			addr = &_res._u._ext.nsaddrs[i - MAXNS]->sin6_addr;
-			port = ntohs(_res._u._ext.nsaddrs[i - MAXNS]->sin6_port);
-			family = _res._u._ext.nsaddrs[i - MAXNS]->sin6_family;
+			addr = &_res._u._ext.nsaddrs[j]->sin6_addr;
+			port = ntohs(_res._u._ext.nsaddrs[j]->sin6_port);
+			family = _res._u._ext.nsaddrs[j]->sin6_family;
 		}
 
 		// Convert nameserver information to human-readable form
 		char nsname[INET6_ADDRSTRLEN];
 		inet_ntop(family, addr, nsname, INET6_ADDRSTRLEN);
 
-		logg(" %u: %s:%d (IPv%i)", i, nsname, port,
-		     family == AF_INET ? 4 : 6);
+		logg(" %s %u: %s:%d (IPv%i)", i < MAXNS ? "   " : "EXT",
+		     j, nsname, port, family == AF_INET ? 4 : 6);
 	}
 }
 
@@ -140,7 +148,7 @@ char *resolveHostname(const char *addr)
 	{
 		if(config.debug & DEBUG_RESOLVER)
 			logg("Configured to not resolve host name for %s", addr);
-		
+
 		// Return an empty host name
 		return strdup("");
 	}
@@ -315,7 +323,7 @@ static size_t resolveAndAddHostname(size_t ippos, size_t oldnamepos)
 	if(strlen(newname) == 0 && config.names_from_netdb)
 	{
 		free(newname);
-		newname = getNameFromIP(ipaddr);
+		newname = getNameFromIP(NULL, ipaddr);
 	}
 
 	// Only store new newname if it is valid and differs from oldname

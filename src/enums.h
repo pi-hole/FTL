@@ -16,7 +16,8 @@ enum memory_type {
 	CLIENTS,
 	DOMAINS,
 	OVERTIME,
-	DNS_CACHE
+	DNS_CACHE,
+	STRINGS
 } __attribute__ ((packed));
 
 enum dnssec_status {
@@ -161,6 +162,17 @@ enum refresh_hostnames {
 	REFRESH_IPV4_ONLY,
 	REFRESH_UNKNOWN,
 	REFRESH_NONE
+} __attribute__ ((packed));
+
+
+enum thread_types {
+	TELNETv4,
+	TELNETv6,
+	SOCKET,
+	DB,
+	GC,
+	DNSclient,
+	THREADS_MAX
 } __attribute__ ((packed));
 
 #endif // ENUMS_H

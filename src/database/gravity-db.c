@@ -53,24 +53,46 @@ bool gravityDB_opened = false;
 static const char* tablename[] = { "vw_gravity", "vw_blacklist", "vw_whitelist", "vw_regex_blacklist", "vw_regex_whitelist" , "" };
 
 // Prototypes from functions in dnsmasq's source
-void rehash(int size);
+extern void rehash(int size);
 
 // Initialize gravity subroutines
 void gravityDB_forked(void)
 {
-	// Pretend that we did not open the database so far so it needs to be
-	// re-opened, also pretend we have not yet prepared the list statements
+	// See "How To Corrupt An SQLite Database File"
+	// (https://www.sqlite.org/howtocorrupt.html):
+	// 2.6. Carrying an open database connection across a fork()
+	//
+	// Do not open an SQLite database connection, then fork(), then try to
+	// use that database connection in the child process. All kinds of
+	// locking problems will result and you can easily end up with a corrupt
+	// database. SQLite is not designed to support that kind of behavior.
+	// Any database connection that is used in a child process must be
+	// opened in the child process, not inherited from the parent.
+	//
+	// Do not even call sqlite3_close() on a database connection from a
+	// child process if the connection was opened in the parent. It is safe
+	// to close the underlying file descriptor, but the sqlite3_close()
+	// interface might invoke cleanup activities that will delete content
+	// out from under the parent, leading to errors and perhaps even
+	// database corruption.
+	//
+	// Hence, we pretend that we did not open the database so far
+	// NOTE: Yes, this will leak memory into the forks, however, there isn't
+	// much we can do about this. The "proper" solution would be to close
+	// the finalize the prepared gravity database statements and close the
+	// database connection *before* forking and re-open and re-prepare them
+	// afterwards (independently once in the parent, once in the fork). It
+	// is clear that this in not what we want to do as this is a slow
+	// process and many TCP queries could lead to a DoS attack.
 	gravityDB_opened = false;
 	gravity_db = NULL;
+
+	// Also pretend we have not yet prepared the list statements
 	whitelist_stmt = NULL;
 	blacklist_stmt = NULL;
 	gravity_stmt = NULL;
-	gravityDB_open();
-}
 
-void gravityDB_reopen(void)
-{
-	gravityDB_close();
+	// Open the database
 	gravityDB_open();
 }
 
@@ -177,6 +199,15 @@ bool gravityDB_open(void)
 	if(config.debug & DEBUG_DATABASE)
 		logg("gravityDB_open(): Successfully opened gravity.db");
 	return true;
+}
+
+bool gravityDB_reopen(void)
+{
+	// We call this routine when reloading the cache.
+	gravityDB_close();
+
+	// Re-open gravity database
+	return gravityDB_open();
 }
 
 static char* get_client_querystr(const char* table, const char* groups)
@@ -333,7 +364,7 @@ static bool get_client_groupids(clientsData* client)
 			logg("Querying gravity database for MAC address of %s...", ip);
 
 		// Do the lookup
-		hwaddr = getMACfromIP(ip);
+		hwaddr = getMACfromIP(NULL, ip);
 
 		if(hwaddr == NULL && config.debug & DEBUG_CLIENTS)
 		{
@@ -449,7 +480,7 @@ static bool get_client_groupids(clientsData* client)
 			logg("Querying gravity database for host name of %s...", ip);
 
 		// Do the lookup
-		hostname = getNameFromIP(ip);
+		hostname = getNameFromIP(NULL, ip);
 
 		if(hostname == NULL && config.debug & DEBUG_CLIENTS)
 			logg("--> No result.");
@@ -535,7 +566,7 @@ static bool get_client_groupids(clientsData* client)
 			logg("Querying gravity database for interface of %s...", ip);
 
 		// Do the lookup
-		interface = getIfaceFromIP(ip);
+		interface = getIfaceFromIP(NULL, ip);
 
 		if(interface == NULL && config.debug & DEBUG_CLIENTS)
 			logg("--> No result.");
@@ -907,12 +938,9 @@ void gravityDB_close(void)
 	}
 
 	// Free allocated memory for vectors of prepared client statements
-	free_sqlite3_stmt_vec(whitelist_stmt);
-	whitelist_stmt = NULL;
-	free_sqlite3_stmt_vec(blacklist_stmt);
-	blacklist_stmt = NULL;
-	free_sqlite3_stmt_vec(gravity_stmt);
-	gravity_stmt = NULL;
+	free_sqlite3_stmt_vec(&whitelist_stmt);
+	free_sqlite3_stmt_vec(&blacklist_stmt);
+	free_sqlite3_stmt_vec(&gravity_stmt);
 
 	// Finalize audit list statement
 	sqlite3_finalize(auditlist_stmt);
