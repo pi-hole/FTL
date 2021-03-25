@@ -84,7 +84,7 @@ void FTL_iface(const int ifidx, const struct irec *ifaces)
 
 	// Determine addresses of this interface
 	const struct irec *iface;
-	bool haveIPv4 = false, haveIPv6 = false;
+	bool haveIPv4 = false, haveGUAv6 = false, haveULAv6 = false;
 	for (iface = ifaces; iface != NULL; iface = iface->next)
 	{
 		// If this interface has no name, we skip it
@@ -100,12 +100,27 @@ void FTL_iface(const int ifidx, const struct irec *ifaces)
 		next_iface.name[sizeof(next_iface.name)-1] = '\0';
 
 		const int family = iface->addr.sa.sa_family;
+		bool isULA = false, isGUA = false;
 		// Check if this address is different from 0000:0000:0000:0000:0000:0000:0000:0000
 		if(family == AF_INET6 && memcmp(&next_iface.addr6.addr6, &iface->addr.in6.sin6_addr, sizeof(iface->addr.in6.sin6_addr)) != 0)
 		{
-			haveIPv6 = true;
-			// Store IPv6 address
-			memcpy(&next_iface.addr6.addr6, &iface->addr.in6.sin6_addr, sizeof(iface->addr.in6.sin6_addr));
+		        // Global Unicast Address (2000::/3, RFC 4291)
+			isGUA = (iface->addr.in6.sin6_addr.__in6_u.__u6_addr8[0] & 0x70) == 0x20;
+			// Unique Local Address   (fc00::/7, RFC 4193)
+			isULA = (iface->addr.in6.sin6_addr.__in6_u.__u6_addr8[0] & 0xfe) == 0xfc;
+			// Store IPv6 address only if we don't already have a GUA or ULA address
+			// This makes the preference:
+			//  1. ULA
+			//  2. GUA
+			//  3. Link-local
+			if((!haveGUAv6 && !haveULAv6) || (haveGUAv6 && isULA))
+			{
+				memcpy(&next_iface.addr6.addr6, &iface->addr.in6.sin6_addr, sizeof(iface->addr.in6.sin6_addr));
+				if(isGUA)
+					haveGUAv6 = true;
+				else if(isULA)
+					haveULAv6 = true;
+			}
 		}
 		// Check if this address is different from 0.0.0.0
 		else if(family == AF_INET && memcmp(&next_iface.addr4.addr4, &iface->addr.in.sin_addr, sizeof(iface->addr.in.sin_addr)) != 0)
@@ -123,12 +138,14 @@ void FTL_iface(const int ifidx, const struct irec *ifaces)
 				inet_ntop(AF_INET, &iface->addr.in.sin_addr, buffer, ADDRSTRLEN);
 			else if(family == AF_INET6)
 				inet_ntop(AF_INET6, &iface->addr.in6.sin6_addr, buffer, ADDRSTRLEN);
-			logg("Interface (%d) %s has IPv%i address %s", ifidx, next_iface.name,
-				family == AF_INET ? 4 : 6, buffer);
+			logg("Interface (%d) %s has IPv%i address %s %s", ifidx, next_iface.name,
+				family == AF_INET ? 4 : 6, buffer, isGUA ? "(GUA)" : isULA ? "(ULA)" : "(other)");
 		}
 
-		// Exit loop early if we have everything we need
-		if(haveIPv4 && haveIPv6)
+
+		// Exit loop early if we already have everything we need
+		// (a valid IPv4 address + a valid ULA IPv6 address)
+		if(haveIPv4 && haveULAv6)
 			break;
 	}
 }
