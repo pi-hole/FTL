@@ -42,6 +42,7 @@
 // Eventqueue routines
 #include "events.h"
 
+
 static void print_flags(const unsigned int flags);
 static void save_reply_type(const unsigned int flags, const union all_addr *addr,
                             queriesData* query, const struct timeval response);
@@ -104,10 +105,15 @@ void FTL_iface(const int ifidx, const struct irec *ifaces)
 		// Check if this address is different from 0000:0000:0000:0000:0000:0000:0000:0000
 		if(family == AF_INET6 && memcmp(&next_iface.addr6.addr6, &iface->addr.in6.sin6_addr, sizeof(iface->addr.in6.sin6_addr)) != 0)
 		{
+			// Extract first byte
+			// We do not directly access the underlying union as
+			// MUSL defines it differently than GNU C
+			uint8_t firstbyte;
+			memcpy(&firstbyte, &iface->addr.in6.sin6_addr, 1);
 		        // Global Unicast Address (2000::/3, RFC 4291)
-			isGUA = (iface->addr.in6.sin6_addr.__in6_u.__u6_addr8[0] & 0x70) == 0x20;
+			isGUA = (firstbyte & 0x70) == 0x20;
 			// Unique Local Address   (fc00::/7, RFC 4193)
-			isULA = (iface->addr.in6.sin6_addr.__in6_u.__u6_addr8[0] & 0xfe) == 0xfc;
+			isULA = (firstbyte & 0xfe) == 0xfc;
 			// Store IPv6 address only if we don't already have a GUA or ULA address
 			// This makes the preference:
 			//  1. ULA
