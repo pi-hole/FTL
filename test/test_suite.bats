@@ -1042,3 +1042,17 @@
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "Usage: sqlite3 [OPTIONS] FILENAME [SQL]" ]]
 }
+
+@test "Embedded SQLite3 shell is called for .db file" {
+  run bash -c './pihole-FTL abc.db ".version"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "SQLite 3."* ]]
+}
+
+@test "Embedded LUA engine is called for .lua file" {
+  echo 'print("Hello from LUA")' > abc.lua
+  run bash -c './pihole-FTL abc.lua'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "Hello from LUA" ]]
+  rm abc.lua
+}
