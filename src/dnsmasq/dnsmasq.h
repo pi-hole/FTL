@@ -1132,7 +1132,8 @@ extern struct daemon {
   pid_t tcp_pids[MAX_PROCS];
   int tcp_pipes[MAX_PROCS];
   int pipe_to_parent;
-  struct randfd randomsocks[RANDOM_SOCKS];
+  int numrrand;
+  struct randfd *randomsocks;
   struct randfd_list *rfl_spare, *rfl_poll;
   int v6pktinfo; 
   struct addrlist *interface_addrs; /* list of all addresses/prefix lengths associated with all local interfaces */

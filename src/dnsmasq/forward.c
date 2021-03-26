@@ -2317,7 +2317,7 @@ int allocate_rfd(struct randfd_list **fdlp, struct server *serv)
    
   /* limit the number of sockets we have open to avoid starvation of 
      (eg) TFTP. Once we have a reasonable number, randomness should be OK */
-  for (i = 0; i < RANDOM_SOCKS; i++)
+  for (i = 0; i < daemon->numrrand; i++)
     if (daemon->randomsocks[i].refcount == 0)
       {
 	if ((fd = random_sock(serv)) != -1)
@@ -2332,9 +2332,9 @@ int allocate_rfd(struct randfd_list **fdlp, struct server *serv)
   
   /* No free ones or cannot get new socket, grab an existing one */
   if (!rfd)
-    for (j = 0; j < RANDOM_SOCKS; j++)
+    for (j = 0; j < daemon->numrrand; j++)
       {
-	i = (j + finger) % RANDOM_SOCKS;
+	i = (j + finger) % daemon->numrrand;
 	if (daemon->randomsocks[i].refcount != 0 &&
 	    server_isequal(serv, daemon->randomsocks[i].serv) &&
 	    daemon->randomsocks[i].refcount != 0xfffe)
@@ -2346,7 +2346,7 @@ int allocate_rfd(struct randfd_list **fdlp, struct server *serv)
 	  }
       }
 
-  if (j == RANDOM_SOCKS)
+  if (j == daemon->numrrand)
     {
       struct randfd_list *rfl_poll;
 
@@ -2637,7 +2637,7 @@ void server_gone(struct server *server)
 
   /* If any random socket refers to this server, NULL the reference.
      No more references to the socket will be created in the future. */
-  for (i = 0; i < RANDOM_SOCKS; i++)
+  for (i = 0; i < daemon->numrrand; i++)
     if (daemon->randomsocks[i].refcount != 0 && daemon->randomsocks[i].serv == server)
       daemon->randomsocks[i].serv = NULL;
   

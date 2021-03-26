@@ -401,6 +401,14 @@ int main_dnsmasq (int argc, char **argv)
       cache_init();
       blockdata_init();
       hash_questions_init();
+
+      /* Scale random socket pool by ftabsize, but
+	 limit it based on available fds. */
+      daemon->numrrand = daemon->ftabsize/2;
+      if (daemon->numrrand > max_fd/3)
+	daemon->numrrand = max_fd/3;
+      /* safe_malloc returns zero'd memory */
+      daemon->randomsocks = safe_malloc(daemon->numrrand * sizeof(struct randfd));
     }
 
 #ifdef HAVE_INOTIFY
@@ -991,7 +999,7 @@ int main_dnsmasq (int argc, char **argv)
 	 a single file will be sent to may clients (the file only needs
 	 one fd). */
 
-      max_fd -= 30; /* use other than TFTP */
+      max_fd -= 30 + daemon->numrrand; /* use other than TFTP */
       
       if (max_fd < 0)
 	max_fd = 5;
@@ -1717,7 +1725,7 @@ static int set_dns_listeners(time_t now)
   for (serverfdp = daemon->sfds; serverfdp; serverfdp = serverfdp->next)
     poll_listen(serverfdp->fd, POLLIN);
     
-  for (i = 0; i < RANDOM_SOCKS; i++)
+  for (i = 0; i < daemon->numrrand; i++)
     if (daemon->randomsocks[i].refcount != 0)
       poll_listen(daemon->randomsocks[i].fd, POLLIN);
 
@@ -1769,7 +1777,7 @@ static void check_dns_listeners(time_t now)
     if (poll_check(serverfdp->fd, POLLIN))
       reply_query(serverfdp->fd, now);
   
-  for (i = 0; i < RANDOM_SOCKS; i++)
+  for (i = 0; i < daemon->numrrand; i++)
     if (daemon->randomsocks[i].refcount != 0 && 
 	poll_check(daemon->randomsocks[i].fd, POLLIN))
       reply_query(daemon->randomsocks[i].fd, now);
