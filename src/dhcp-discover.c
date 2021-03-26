@@ -302,7 +302,7 @@ static void print_dhcp_offer(struct in_addr source, dhcp_packet_data *offer_pack
 					logg("%s: Infinite", optname);
 				else
 				{
-					char buffer[32] = { 0 };
+					char buffer[42] = { 0 };
 					format_time(buffer, time, 0.0);
 					logg("%s: %lu (%s)", optname, (unsigned long)time, buffer);
 				}
