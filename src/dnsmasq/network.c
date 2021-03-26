@@ -1322,9 +1322,9 @@ int local_bind(int fd, union mysockaddr *addr, char *intname, unsigned int ifind
 {
   union mysockaddr addr_copy = *addr;
   unsigned short port;
-  int tries = 1, done = 0;
-  unsigned int ports_avail = ((unsigned short)daemon->max_port - (unsigned short)daemon->min_port) + 1;
- 
+  int tries = 1;
+  unsigned short ports_avail = 1;
+
   if (addr_copy.sa.sa_family == AF_INET)
     port = addr_copy.in.sin_port;
   else
@@ -1333,34 +1333,43 @@ int local_bind(int fd, union mysockaddr *addr, char *intname, unsigned int ifind
   /* cannot set source _port_ for TCP connections. */
   if (is_tcp)
     port = 0;
-  else if (port == 0)
+  else if (port == 0 && daemon->max_port != 0)
     {
-      /* Bind a random port within the range given by min-port and max-port */
+      /* Bind a random port within the range given by min-port and max-port if either
+	 or both are set. Otherwise use the OS's random ephemeral port allocation by
+	 leaving port == 0 and tries == 1 */
+      ports_avail = daemon->max_port - daemon->min_port + 1;
       tries = ports_avail < 30 ? 3 * ports_avail : 100;
-      port = htons(daemon->min_port + (rand16() % ((unsigned short)ports_avail)));
+      port = htons(daemon->min_port + (rand16() % ports_avail));
     }
   
-  while (tries--)
+  while (1)
     {
+      /* elide bind() call if it's to port 0, address 0 */
       if (addr_copy.sa.sa_family == AF_INET)
-	addr_copy.in.sin_port = port;
-      else
-	addr_copy.in6.sin6_port = port;
-
-      if (bind(fd, (struct sockaddr *)&addr_copy, sa_len(&addr_copy)) != -1)
 	{
-	  done = 1;
-	  break;
+	  if (port == 0 && addr_copy.in.sin_addr.s_addr == 0)
+	    break;
+	  addr_copy.in.sin_port = port;
+	}
+      else
+	{
+	  if (port == 0 && IN6_IS_ADDR_UNSPECIFIED(&addr_copy.in6.sin6_addr))
+	    break;
+	  addr_copy.in6.sin6_port = port;
 	}
       
-      if (errno != EADDRINUSE && errno != EACCES)
-	return 0;
+      if (bind(fd, (struct sockaddr *)&addr_copy, sa_len(&addr_copy)) != -1)
+	break;
       
-      port = htons(daemon->min_port + (rand16() % ((unsigned short)ports_avail)));
-    }
+       if (errno != EADDRINUSE && errno != EACCES) 
+	 return 0;
 
-  if (!done)
-    return 0;
+      if (--tries == 0)
+	return 0;
+
+      port = htons(daemon->min_port + (rand16() % ports_avail));
+    }
 
   if (!is_tcp && ifindex > 0)
     {

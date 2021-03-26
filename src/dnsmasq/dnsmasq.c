@@ -239,9 +239,16 @@ int main_dnsmasq (int argc, char **argv)
     die(_("Ubus not available: set HAVE_UBUS in src/config.h"), NULL, EC_BADCONF);
 #endif
   
+  /* Handle only one of min_port/max_port being set. */
+  if (daemon->min_port != 0 && daemon->max_port == 0)
+    daemon->max_port = MAX_PORT;
+  
+  if (daemon->max_port != 0 && daemon->min_port == 0)
+    daemon->min_port = MIN_PORT;
+   
   if (daemon->max_port < daemon->min_port)
     die(_("max_port cannot be smaller than min_port"), NULL, EC_BADCONF);
-
+  
   now = dnsmasq_time();
 
   if (daemon->auth_zones)
