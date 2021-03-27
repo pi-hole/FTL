@@ -349,5 +349,10 @@ void handle_realtime_signals(void)
 // Return PID of the main FTL process
 pid_t main_pid(void)
 {
-	return mpid;
+	if(mpid > -1)
+		// Hase already been set
+		return mpid;
+	else
+		// Has not been set so far
+		return getpid();
 }
