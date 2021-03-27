@@ -168,7 +168,10 @@ static bool compile_regex(const char *regexin, const enum regex_type regexid)
 			}
 			else
 			{
-				logg("   Option \"%s\" not known, ignoring it.", part);
+				char hint[40 + strlen(part)];
+				snprintf(hint, sizeof(hint)-1, "Option \"%s\" not known, ignoring it.", part);
+				logg_regex_warning(regextype[regexid], hint,
+				                   regex[index].database_id, regexin);
 			}
 		}
 		free(buf);
