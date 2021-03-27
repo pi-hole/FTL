@@ -1174,8 +1174,8 @@ void getVersion(const int *sock)
 	const char *version = get_FTL_version();
 
 	// Extract first 7 characters of the hash
-	char hash[8];
-	memcpy(hash, commit, 7); hash[7] = 0;
+	char hash[8] = { 0 };
+	memcpy(hash, commit, min((size_t)7, strlen(commit)));
 
 	if(strlen(tag) > 1) {
 		if(istelnet[*sock])
