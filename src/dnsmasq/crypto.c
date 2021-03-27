@@ -124,10 +124,8 @@ const struct nettle_hash *hash_find(char *name)
 
   /* libnettle >= 3.4 provides nettle_lookup_hash() which avoids nasty ABI
      incompatibilities if sizeof(nettle_hashes) changes between library
-     versions. It also #defines nettle_hashes, so use that to tell
-     if we have the new facilities. */
-  
-#ifdef nettle_hashes
+     versions. */
+#if MIN_VERSION(3, 4)
   return nettle_lookup_hash(name);
 #else
   {
@@ -180,7 +178,7 @@ int hash_init(const struct nettle_hash *hash, void **ctxp, unsigned char **diges
   return 1;
 }
 
-#endif
+#endif /* defined(HAVE_DNSSEC) || defined(HAVE_CRYPTOHASH) */
 
 #ifdef HAVE_DNSSEC
   
