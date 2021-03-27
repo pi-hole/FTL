@@ -1109,7 +1109,7 @@ void reply_query(int fd, time_t now)
 			  
 			  while (1)
 			    {
-			      if (server_test_type(start, domain, type, 0))
+			      if (server_test_type(start, domain, type, SERV_DO_DNSSEC))
 				{
 				  new_server = start;
 				  if (server == start)
@@ -2581,10 +2581,7 @@ static struct frec *lookup_frec(unsigned short id, int fd, void *hash)
 	type = f->sentto->flags & SERV_TYPE;
 	s = f->sentto;
 	do {
-	  if ((type == (s->flags & SERV_TYPE)) &&
-	      (type != SERV_HAS_DOMAIN ||
-	       (s->domain && hostname_isequal(f->sentto->domain, s->domain))) &&
-	      !(s->flags & (SERV_LITERAL_ADDRESS | SERV_LOOP)) &&
+	  if (server_test_type(s, f->sentto->domain, type, 0) &&
 	      s->sfd && s->sfd->fd == fd)
 	    return f;
 	  
