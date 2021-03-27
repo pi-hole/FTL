@@ -16,7 +16,7 @@
 // typedef int16_t
 #include <sys/types.h>
 // typedef uni32_t
-#include <idn-int.h>
+#include <stdint.h>
 // assert_sizeof
 #include "static_assert.h"
 
