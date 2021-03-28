@@ -402,9 +402,13 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	    PUTSHORT(SAFE_PKTSZ, pheader);
 	  
 	  if ((fd = allocate_rfd(&forward->rfds, forward->sentto)) != -1)
+	  {
+	    FTL_forwarding_retried(forward->sentto, forward->frec_src.log_id, daemon->log_id, true);
+
 	    server_send_log(forward->sentto, fd, header, plen,
 			    DUMP_SEC_QUERY,
 			    F_NOEXTRA | F_DNSSEC, "retry", "dnssec");
+	  }
 
 	  return 1;
 	}
@@ -604,6 +608,10 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 		    strcpy(daemon->namebuff, "query");
 		  log_query_mysockaddr(F_SERVER | F_FORWARD, daemon->namebuff,
 				       &start->addr, NULL);
+
+		  FTL_forwarded(F_SERVER | F_FORWARD, daemon->namebuff, start,
+				daemon->log_display_id);
+
 		  start->queries++;
 		  forwarded = 1;
 		  forward->sentto = start;
@@ -1554,6 +1562,11 @@ void receive_query(struct listener *listen, time_t now)
       log_query_mysockaddr(F_QUERY | F_FORWARD, daemon->namebuff,
 			   &source_addr, types);
 
+      piholeblocked = FTL_new_query(F_QUERY | F_FORWARD, daemon->namebuff,
+				    &blockingreason, &source_addr,
+				    types, type, daemon->log_display_id, &edns,
+				    UDP);
+
 #ifdef HAVE_AUTH
       /* find queries for zones we're authoritative for, and answer them directly */
       if (!auth_dns && !option_bool(OPT_LOCALISE))
@@ -1941,6 +1954,12 @@ unsigned char *tcp_request(int confd, time_t now,
 	  
 	  log_query_mysockaddr(F_QUERY | F_FORWARD, daemon->namebuff,
 			       &peer_addr, types);
+
+	  piholeblocked = FTL_new_query(F_QUERY | F_IPV4 | F_FORWARD,
+	  				daemon->namebuff, &blockingreason,
+					&peer_addr, types, qtype,
+					daemon->log_display_id, &edns, TCP);
+
 	  
 #ifdef HAVE_AUTH
 	  /* find queries for zones we're authoritative for, and answer them directly */
@@ -2140,6 +2159,9 @@ unsigned char *tcp_request(int confd, time_t now,
 
 		      log_query_mysockaddr(F_SERVER | F_FORWARD, daemon->namebuff,
 					   &last_server->addr, NULL);
+
+		      FTL_forwarded(F_SERVER | F_FORWARD, daemon->namebuff,
+				    last_server, daemon->log_display_id);
 
 #ifdef HAVE_DNSSEC
 		      if (option_bool(OPT_DNSSEC_VALID) && !checking_disabled && (last_server->flags & SERV_DO_DNSSEC))

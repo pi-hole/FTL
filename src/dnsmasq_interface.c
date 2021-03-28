@@ -456,7 +456,7 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 
 
 bool _FTL_new_query(const unsigned int flags, const char *name,
-                    const char **blockingreason, const union all_addr *addr,
+                    const char **blockingreason, union mysockaddr *addr,
                     const char *types, const unsigned short qtype, const int id,
                     const ednsData *edns, const enum protocol proto,
                     const char* file, const int line)
@@ -545,7 +545,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// subnet (ECS) data), however, we do not rewrite the IPs ::1 and
 	// 127.0.0.1 to avoid queries originating from localhost of the
 	// *distant* machine as queries coming from the *local* machine
-	const sa_family_t family = (flags & F_IPV4) ? AF_INET : AF_INET6;
+	const sa_family_t family = addr->sa.sa_family;
 	char clientIP[ADDRSTRLEN+1] = { 0 };
 	if(config.edns0_ecs && edns->client_set)
 	{
@@ -556,7 +556,11 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	else
 	{
 		// Use original requestor
-		inet_ntop(family, addr, clientIP, ADDRSTRLEN);
+		inet_ntop(family,
+		          family == AF_INET ?
+		             (union mysockaddr*)&addr->in.sin_addr :
+				(union mysockaddr*)&addr->in6.sin6_addr,
+		          clientIP, ADDRSTRLEN);
 	}
 
 	// Check if user wants to skip queries coming from localhost
@@ -734,20 +738,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// Try to obtain MAC address from dnsmasq's cache (also asks the kernel)
 	if(client->hwlen < 1)
 	{
-		union mysockaddr hwaddr = {{ 0 }};
-		hwaddr.sa.sa_family = family;
-		if(family == AF_INET)
-		{
-			hwaddr.sa.sa_family = AF_INET;
-			hwaddr.in.sin_addr.s_addr = addr->addr4.s_addr;
-		}
-		else // AF_INET6
-		{
-			hwaddr.sa.sa_family = AF_INET6;
-			memcpy(&hwaddr.in6.sin6_addr, &addr->addr6, sizeof(addr->addr6));
-			hwaddr.in.sin_addr.s_addr = addr->addr4.s_addr;
-		}
-		client->hwlen = find_mac(&hwaddr, client->hwaddr, 1, time(NULL));
+		client->hwlen = find_mac(addr, client->hwaddr, 1, time(NULL));
 		if(config.debug & DEBUG_ARP)
 		{
 			if(client->hwlen == 6)
