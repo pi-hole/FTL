@@ -166,12 +166,6 @@ void process_request(const char *client_message, int *sock)
 		read_regex_from_database();
 		unlock_shm();
 	}
-	else if(command(client_message, ">update-mac-vendor"))
-	{
-		processed = true;
-		logg("Received API request to update vendors in network table");
-		updateMACVendorRecords();
-	}
 	else if(command(client_message, ">delete-lease"))
 	{
 		processed = true;

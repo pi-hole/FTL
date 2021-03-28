@@ -13,12 +13,12 @@
 // type clientsData
 #include "../datastructure.h"
 
-void reset_aliasclient(clientsData *client);
 
-bool create_aliasclients_table(void);
-bool import_aliasclients(void);
-void reimport_aliasclients(void);
+bool create_aliasclients_table(sqlite3 *db);
+bool import_aliasclients(sqlite3 *db);
+void reimport_aliasclients(sqlite3 *db);
 
 int *get_aliasclient_list(const int aliasclientID);
+void reset_aliasclient(sqlite3 *db, clientsData *client);
 
 #endif //ALIASCLIENTS_TABLE_H

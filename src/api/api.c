@@ -1228,9 +1228,10 @@ void getDBstats(const int *sock)
 	format_memory_size(prefix, filesize, &formated);
 
 	if(istelnet[*sock])
-		ssend(*sock,"queries in database: %i\ndatabase filesize: %.2f %sB\nSQLite version: %s\n", get_number_of_queries_in_DB(), formated, prefix, get_sqlite3_version());
+		ssend(*sock, "queries in database: %i\ndatabase filesize: %.2f %sB\nSQLite version: %s\n",
+		             get_number_of_queries_in_DB(NULL), formated, prefix, get_sqlite3_version());
 	else {
-		pack_int32(*sock, get_number_of_queries_in_DB());
+		pack_int32(*sock, get_number_of_queries_in_DB(NULL));
 		pack_int64(*sock, filesize);
 
 		if(!pack_str32(*sock, (char *) get_sqlite3_version()))

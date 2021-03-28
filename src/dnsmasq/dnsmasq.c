@@ -19,6 +19,8 @@
 
 #include "dnsmasq.h"
 #include "../dnsmasq_interface.h"
+// killed
+#include "../signals.h"
 
 struct daemon *daemon;
 
@@ -1041,6 +1043,10 @@ int main_dnsmasq (int argc, char **argv)
   /* Using inotify, have to select a resolv file at startup */
   poll_resolv(1, 0, now);
 #endif
+
+  /*** Pi-hole modification ***/
+  terminate = killed;
+  /****************************/
   
   while (!terminate)
     {

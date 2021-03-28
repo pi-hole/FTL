@@ -14,7 +14,6 @@
 #include <time.h>
 
 void init_FTL_log(void);
-void open_FTL_log(const bool init);
 void log_counter_info(void);
 void format_memory_size(char * const prefix, unsigned long long int bytes,
                         double * const formated);
@@ -33,5 +32,7 @@ void _FTL_log(const bool newline, const bool debug, const char* format, ...) __a
 void FTL_log_dnsmasq_fatal(const char *format, ...) __attribute__ ((format (gnu_printf, 1, 2)));
 void log_ctrl(bool vlog, bool vstdout);
 void FTL_log_helper(const unsigned char n, ...);
+
+int binbuf_to_escaped_C_literal(const char *src_buf, size_t src_sz, char *dst_str, size_t dst_sz);
 
 #endif //LOG_H

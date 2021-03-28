@@ -36,45 +36,50 @@ void *DB_thread(void *val)
 	// to the database
 	time_t lastDBsave = time(NULL) - time(NULL)%config.DBinterval;
 
-	while(!killed)
+	// Run as long as this thread is not canceled
+	while(true)
 	{
-		if(FTL_DB_avail())
+		sqlite3 *db = dbopen(false);
+		if(db == NULL)
 		{
-			time_t now = time(NULL);
-			if(now - lastDBsave >= config.DBinterval)
+			// Sleep 5 seconds and try again
+			sleepms(5000);
+			continue;
+		}
+		time_t now = time(NULL);
+		if(now - lastDBsave >= config.DBinterval)
+		{
+			// Update lastDBsave timer
+			lastDBsave = time(NULL) - time(NULL)%config.DBinterval;
+
+			// Save data to database (if enabled)
+			if(config.DBexport)
 			{
-				// Update lastDBsave timer
-				lastDBsave = time(NULL) - time(NULL)%config.DBinterval;
+				lock_shm();
+				DB_save_queries(db);
+				unlock_shm();
 
-				// Save data to database (if enabled)
-				if(config.DBexport)
+				// Check if GC should be done on the database
+				if(DBdeleteoldqueries && config.maxDBdays != -1)
 				{
-					lock_shm();
-					DB_save_queries();
-					unlock_shm();
-
-					// Check if GC should be done on the database
-					if(DBdeleteoldqueries && config.maxDBdays != -1)
-					{
-						// No thread locks needed
-						delete_old_queries_in_DB();
-						DBdeleteoldqueries = false;
-					}
+					// No thread locks needed
+					delete_old_queries_in_DB(db);
+					DBdeleteoldqueries = false;
 				}
-
-				// Parse neighbor cache (fill network table) if enabled
-				if (config.parse_arp_cache)
-					set_event(PARSE_NEIGHBOR_CACHE);
 			}
 
-			// Update MAC vendor strings once a month (the MAC vendor
-			// database is not updated very often)
-			if(now % 2592000L == 0)
-				updateMACVendorRecords();
-
-			if(get_and_clear_event(PARSE_NEIGHBOR_CACHE))
-				parse_neighbor_cache();
+			// Parse neighbor cache (fill network table) if enabled
+			if (config.parse_arp_cache)
+				set_event(PARSE_NEIGHBOR_CACHE);
 		}
+
+		// Update MAC vendor strings once a month (the MAC vendor
+		// database is not updated very often)
+		if(now % 2592000L == 0)
+			updateMACVendorRecords(db);
+
+		if(get_and_clear_event(PARSE_NEIGHBOR_CACHE))
+			parse_neighbor_cache(db);
 
 		// Process database related event queue elements
 		if(get_and_clear_event(RELOAD_GRAVITY))
@@ -88,12 +93,15 @@ void *DB_thread(void *val)
 		if(get_and_clear_event(REIMPORT_ALIASCLIENTS))
 		{
 			lock_shm();
-			reimport_aliasclients();
+			reimport_aliasclients(db);
 			unlock_shm();
 		}
 
-		// Sleep 0.1 seconds
-		sleepms(100);
+		// Close database connection
+		dbclose(&db);
+
+		// Sleep 1 second
+		sleepms(1000);
 	}
 
 	return NULL;

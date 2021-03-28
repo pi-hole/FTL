@@ -1,11 +1,11 @@
 <p align="center">
-<a href="https://pi-hole.net"><img src="https://pi-hole.github.io/graphics/Vortex/Vortex_with_text.png" width="150" height="255" alt="Pi-hole"></a>
-<br/><br/>
-<b>Network-wide ad blocking via your own Linux hardware</b><br/>
-<a href="https://pi-hole.net"><img src="https://pi-hole.net/wp-content/uploads/2018/03/ftldns-logo.png" alt="FTLDNS"></a><br/>
+<a href="https://pi-hole.net"><img src="https://pi-hole.github.io/graphics/Vortex/Vortex_with_text.png" width="80" alt="Pi-hole"></a>
+<br/>
+<b>Network-wide ad blocking via your own Linux hardware</b><br/><br/>
+<a href="https://pi-hole.net"><img src="https://pi-hole.github.io/graphics/FTLDNS/FTLDNS.png" width="550" alt="FTLDNS"></a><br/>
 </p>
 
-FTLDNS[™](https://pi-hole.net/trademark-rules-and-brand-guidelines/) (`pihole-FTL`) provides an interactive API and also generates statistics for Pi-hole[®](https://pi-hole.net/trademark-rules-and-brand-guidelines/)'s Web interface.
+FTLDNS (`pihole-FTL`) provides an interactive API and also generates statistics for Pi-hole[®](https://pi-hole.net/trademark-rules-and-brand-guidelines/)'s Web interface.
 
 - **Fast**: stats are read directly from memory by coupling our codebase closely with `dnsmasq`
 - **Versatile**: upstream changes to `dnsmasq` can quickly be merged in without much conflict

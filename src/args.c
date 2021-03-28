@@ -64,13 +64,23 @@ void parse_args(int argc, char* argv[])
 	if(strEndsWith(argv[0], "dnsmasq"))
 		consume_for_dnsmasq = true;
 
-	if(strEndsWith(argv[0], "lua"))
+	// If the binary name is "lua"  (e.g., symlink /usr/bin/lua -> /usr/bin/pihole-FTL),
+	// we operate in drop-in mode and consume all arguments for the embedded lua engine
+	// Also, we do this if the first argument is a file with ".lua" ending
+	if(strEndsWith(argv[0], "lua") ||
+	   (argc > 1 && strEndsWith(argv[1], ".lua")))
 		exit(run_lua_interpreter(argc, argv, false));
 
+	// If the binary name is "luac"  (e.g., symlink /usr/bin/luac -> /usr/bin/pihole-FTL),
+	// we operate in drop-in mode and consume all arguments for the embedded luac engine
 	if(strEndsWith(argv[0], "luac"))
 		exit(run_luac(argc, argv));
 
-	if(strEndsWith(argv[0], "sqlite3"))
+	// If the binary name is "sqlite3"  (e.g., symlink /usr/bin/sqlite3 -> /usr/bin/pihole-FTL),
+	// we operate in drop-in mode and consume all arguments for the embedded SQLite3 engine
+	// Also, we do this if the first argument is a file with ".db" ending
+	if(strEndsWith(argv[0], "sqlite3") ||
+	   (argc > 1 && strEndsWith(argv[1], ".db")))
 	{
 		if(argc == 1) // No arguments after this one
 			print_FTL_version();
@@ -196,6 +206,9 @@ void parse_args(int argc, char* argv[])
 			argv_dnsmasq[1] = "-d";
 		}
 
+		// Full start FTL but shut down immediately once everything is up
+		// This ensures we'd catch any dnsmasq config errors,
+		// incorrect file permissions, etc.
 		if(strcmp(argv[i], "test") == 0)
 		{
 			killed = 1;

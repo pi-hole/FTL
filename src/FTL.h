@@ -144,11 +144,4 @@
 #define str(x) # x
 #define xstr(x) str(x)
 
-extern pthread_t telnet_listenthreadv4;
-extern pthread_t telnet_listenthreadv6;
-extern pthread_t socket_listenthread;
-extern pthread_t DBthread;
-extern pthread_t GCthread;
-extern pthread_t DNSclientthread;
-
 #endif // FTL_H

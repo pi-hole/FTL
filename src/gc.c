@@ -41,7 +41,9 @@ void *GC_thread(void *val)
 	// Remember when we last ran the actions
 	time_t lastGCrun = time(NULL) - time(NULL)%GCinterval;
 	time_t lastRateLimitCleaner = time(NULL);
-	while(!killed)
+
+	// Run as long as this thread is not canceled
+	while(true)
 	{
 		const time_t now = time(NULL);
 		if((unsigned int)(now - lastRateLimitCleaner) >= config.rate_limit.interval)
@@ -235,7 +237,7 @@ void *GC_thread(void *val)
 			// ever larger and larger
 			DBdeleteoldqueries = true;
 		}
-		sleepms(100);
+		sleepms(1000);
 	}
 
 	return NULL;

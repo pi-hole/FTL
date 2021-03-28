@@ -14,7 +14,16 @@
 #include "log.h"
 // sleepms()
 #include "timers.h"
+// close_telnet_socket()
+#include "api/socket.h"
+// gravityDB_close()
+#include "database/gravity-db.h"
+// dbclose()
+#include "database/common.h"
+// destroy_shmem()
+#include "shmem.h"
 
+pthread_t threads[THREADS_MAX] = { 0 };
 bool resolver_ready = false;
 
 void go_daemon(void)
@@ -99,10 +108,10 @@ void savepid(void)
 	logg("PID of FTL process: %i", (int)pid);
 }
 
-void removepid(void)
+static void removepid(void)
 {
 	FILE *f;
-	if((f = fopen(FTLfiles.pid, "w+")) == NULL)
+	if((f = fopen(FTLfiles.pid, "w")) == NULL)
 	{
 		logg("WARNING: Unable to empty PID file");
 		return;
@@ -157,4 +166,63 @@ pid_t FTL_gettid(void)
 #warning SYS_gettid is not available on this system
 	return -1;
 #endif // SYS_gettid
+}
+
+// Clean up on exit
+void cleanup(const int ret)
+{
+	int s;
+	struct timespec ts;
+	// Terminate threads before closing database connections and finishing shared memory
+	logg("Asking threads to cancel");
+	for(int i = 0; i < THREADS_MAX; i++)
+	{
+		pthread_cancel(threads[i]);
+	}
+	// Try to join threads to ensure cancelation has succeeded
+	logg("Waiting for threads to join");
+	for(int i = 0; i < THREADS_MAX; i++)
+	{
+		if (clock_gettime(CLOCK_REALTIME, &ts) == -1)
+		{
+			logg("Cannot get clock time, canceling thread instead of joining");
+			pthread_cancel(threads[i]);
+			continue;
+		}
+
+		// Timeout for joining is 2 seconds for each thread
+		ts.tv_sec += 2;
+
+		if((s = pthread_timedjoin_np(threads[i], NULL, &ts)) != 0)
+		{
+			logg("Thread %d (%ld) timed out (%s), canceling it.",
+			     i, (long)threads[i], strerror(s));
+			pthread_cancel(threads[i]);
+			continue;
+		}
+	}
+	logg("All threads joined");
+
+	// Close database connection
+	gravityDB_close();
+
+	// Close sockets and delete Unix socket file handle
+	close_telnet_socket();
+	close_unix_socket(true);
+
+	// Empty API port file, port 0 = truncate file
+	saveport(0);
+
+	//Remove PID file
+	removepid();
+
+	// Remove shared memory objects
+	// Important: This invalidated all objects such as
+	//            counters-> ... etc.
+	// This should be the last action when cleaning up
+	destroy_shmem();
+
+	char buffer[42] = { 0 };
+	format_time(buffer, 0, timer_elapsed_msec(EXIT_TIMER));
+	logg("########## FTL terminated after%s (code %i)! ##########", buffer, ret);
 }

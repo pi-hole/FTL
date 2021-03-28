@@ -25,9 +25,6 @@
 // logg_fatal_dnsmasq_message()
 #include "database/message-table.h"
 
-static pthread_mutex_t lock;
-static FILE *logfile = NULL;
-static bool FTL_log_ready = false;
 static bool print_log = true, print_stdout = true;
 
 void log_ctrl(bool plog, bool pstdout)
@@ -36,31 +33,14 @@ void log_ctrl(bool plog, bool pstdout)
 	print_stdout = pstdout;
 }
 
-static void close_FTL_log(void)
+void init_FTL_log(void)
 {
-	if(logfile != NULL)
-		fclose(logfile);
-}
-
-void open_FTL_log(const bool init)
-{
-	if(init)
-	{
-		// Initialize logging mutex
-		if (pthread_mutex_init(&lock, NULL) != 0)
-		{
-			printf("FATAL: Log mutex init failed\n");
-			// Return failure
-			exit(EXIT_FAILURE);
-		}
-
-		// Obtain log file location
-		getLogFilePath();
-	}
+	// Obtain log file location
+	getLogFilePath();
 
 	// Open the log file in append/create mode
-	logfile = fopen(FTLfiles.log, "a+");
-	if((logfile == NULL) && init){
+	FILE *logfile = fopen(FTLfiles.log, "a+");
+	if((logfile == NULL)){
 		syslog(LOG_ERR, "Opening of FTL\'s log file failed!");
 		printf("FATAL: Opening of FTL log (%s) failed!\n",FTLfiles.log);
 		printf("       Make sure it exists and is writeable by user %s\n", username);
@@ -68,13 +48,7 @@ void open_FTL_log(const bool init)
 		exit(EXIT_FAILURE);
 	}
 
-	// Set log as ready (we were able to open it)
-	FTL_log_ready = true;
-
-	if(init)
-	{
-		close_FTL_log();
-	}
+	fclose(logfile);
 }
 
 // The size of 84 bytes has been carefully selected for all possible timestamps
@@ -115,8 +89,6 @@ void _FTL_log(const bool newline, const bool debug, const char *format, ...)
 	if(debug && !config.debug)
 		return;
 
-	pthread_mutex_lock(&lock);
-
 	get_timestr(timestring, time(NULL), true);
 
 	// Get and log PID of current process to avoid ambiguities when more than one
@@ -155,10 +127,10 @@ void _FTL_log(const bool newline, const bool debug, const char *format, ...)
 			printf("\n");
 	}
 
-	if(print_log && FTL_log_ready)
+	if(print_log)
 	{
 		// Open log file
-		open_FTL_log(false);
+		FILE *logfile = fopen(FTLfiles.log, "a+");
 
 		// Write to log file
 		if(logfile != NULL)
@@ -168,18 +140,15 @@ void _FTL_log(const bool newline, const bool debug, const char *format, ...)
 			vfprintf(logfile, format, args);
 			va_end(args);
 			fputc('\n',logfile);
+
+			fclose(logfile);
 		}
 		else if(!daemonmode)
 		{
 			printf("!!! WARNING: Writing to FTL\'s log file failed!\n");
 			syslog(LOG_ERR, "Writing to FTL\'s log file failed!");
 		}
-
-		// Close log file
-		close_FTL_log();
 	}
-
-	pthread_mutex_unlock(&lock);
 }
 
 // Log helper activity (may be script or lua)
@@ -239,7 +208,7 @@ void format_memory_size(char * const prefix, const unsigned long long int bytes,
 			break;
 		*formated /= 1e3;
 	}
-	const char* prefixes[8] = { "", "K", "M", "G", "T", "P", "E", "?" };
+	const char* prefixes[8] = { " ", "K", "M", "G", "T", "P", "E", "?" };
 	// Chose matching SI prefix
 	strcpy(prefix, prefixes[i]);
 }
@@ -358,4 +327,80 @@ const char __attribute__ ((const)) *get_ordinal_suffix(unsigned int number)
 		return "th";
 	}
 	// For example: 2nd, 7th, 20th, 23rd, 52nd, 135th, 301st BUT 311th (covered above)
+}
+
+// Converts a buffer of specified lenth to ASCII representation as it was a C
+// string literal. Returns how much bytes from source was processed
+// Inspired by https://stackoverflow.com/a/56123950
+int binbuf_to_escaped_C_literal(const char *src_buf, size_t src_sz,
+                                      char *dst_str, size_t dst_sz)
+{
+	const char *src = src_buf;
+	char *dst = dst_str;
+
+	// Special handling for empty strings
+	if(src_sz == 0)
+	{
+		strncpy(dst_str, "(empty)", dst_sz);
+		dst_str[dst_sz-1] = '\0';
+		return 0;
+	}
+
+	while (src < src_buf + src_sz)
+	{
+		if (isprint(*src))
+		{
+			// The printable characters are:
+			// ! " # $ % & ' ( ) * + , - . / 0 1 2 3 4 5 6 7 8 9 : ;
+			// < = > ? @ A B C D E F G H I J K L M N O P Q R S T U V
+			// W X Y Z [ \ ] ^ _ ` a b c d e f g h i j k l m n o p q
+			// r s t u v w x y z { | } ~
+			*dst++ = *src++;
+		}
+		else if (*src == '\\')
+		{
+			// Backslash isn't included above but isn't harmful
+			*dst++ = '\\';
+			*dst++ = *src++;
+		}
+		else
+		{
+			// Handle other characters more specifically
+			switch(*src)
+			{
+				case '\n':
+					*dst++ = '\\';
+					*dst++ = 'n';
+					break;
+				case '\r':
+					*dst++ = '\\';
+					*dst++ = 'r';
+					break;
+				case '\t':
+					*dst++ = '\\';
+					*dst++ = 't';
+					break;
+				case '\0':
+					*dst++ = '\\';
+					*dst++ = '0';
+					break;
+				default:
+					sprintf(dst, "0x%X", *src);
+					dst += 4;
+			}
+
+			// Advance reading counter by one character
+			src++;
+		}
+
+		// next iteration requires up to 5 chars in dst buffer, for ex.
+		// "0x04" + terminating zero (see below)
+		if (dst > (dst_str + dst_sz - 5))
+			break;
+	}
+
+	// Zero-terminate buffer
+	*dst = '\0';
+
+	return src - src_buf;
 }
