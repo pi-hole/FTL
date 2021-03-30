@@ -39,6 +39,7 @@ static void sanitise(char *buf);
 #define ERR_PERM   2
 #define ERR_FULL   3
 #define ERR_ILL    4
+#define ERR_TID    5
 
 void tftp_request(struct listener *listen, time_t now)
 {
@@ -583,11 +584,27 @@ void check_tftp_listeners(time_t now)
     for (transfer = daemon->tftp_trans; transfer; transfer = transfer->next)
       if (poll_check(transfer->sockfd, POLLIN))
 	{
+	  union mysockaddr peer;
+	  socklen_t addr_len = sizeof(union mysockaddr);
+	  ssize_t len;
+	  
 	  /* we overwrote the buffer... */
 	  daemon->srv_save = NULL;
-	  handle_tftp(now, transfer, recv(transfer->sockfd, daemon->packet, daemon->packet_buff_sz, 0));
+
+	  if ((len = recvfrom(transfer->sockfd, daemon->packet, daemon->packet_buff_sz, 0, &peer.sa, &addr_len)) > 0)
+	    {
+	      if (sockaddr_isequal(&peer, &transfer->peer)) 
+		handle_tftp(now, transfer, len);
+	      else
+		{
+		  /* Wrong source address. See rfc1350 para 4. */
+		  prettyprint_addr(&peer, daemon->addrbuff);
+		  len = tftp_err(ERR_TID, daemon->packet, _("ignoring packet from %s (TID mismatch)"), daemon->addrbuff);
+		  sendto(transfer->sockfd, daemon->packet, len, 0, &peer.sa, sa_len(&peer));
+		}
+	    }
 	}
-  
+	  
   for (transfer = daemon->tftp_trans, up = &daemon->tftp_trans; transfer; transfer = tmp)
     {
       tmp = transfer->next;
@@ -736,7 +753,8 @@ static ssize_t tftp_err(int err, char *packet, char *message, char *file)
   char *errstr = strerror(errno);
   
   memset(packet, 0, daemon->packet_buff_sz);
-  sanitise(file);
+  if (file)
+    sanitise(file);
   
   mess->op = htons(OP_ERR);
   mess->err = htons(err);
