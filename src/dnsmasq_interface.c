@@ -83,6 +83,47 @@ void FTL_next_iface(const char *newiface)
 	}
 }
 
+static const char *query_status_str[QUERY_STATUS_MAX] = {
+	"UNKNOWN",
+	"GRAVITY",
+	"FORWARDED",
+	"CACHE",
+	"REGEX",
+	"BLACKLIST",
+	"EXTERNAL_BLOCKED_IP",
+	"EXTERNAL_BLOCKED_NULL",
+	"EXTERNAL_BLOCKED_NXRA",
+	"GRAVITY_CNAME",
+	"REGEX_CNAME",
+	"BLACKLIST_CNAME",
+	"RETRIED",
+	"RETRIED_DNSSEC",
+	"IN_PROGRESS"
+};
+
+static void query_set_status(queriesData *query, const enum query_status new_status)
+{
+	// Debug logging
+	if(config.debug & DEBUG_STATUS)
+	{
+		const char *oldstr = query->status < QUERY_STATUS_MAX ? query_status_str[query->status] : "INVALID";
+		if(query->status == new_status)
+		{
+			logg("Query %i: status unchanged: %s (%d)",
+			     query->id, oldstr, query->status);
+		}
+		else
+		{
+			const char *newstr = new_status < QUERY_STATUS_MAX ? query_status_str[new_status] : "INVALID";
+			logg("Query %i: status changed: %s (%d) -> %s (%d)",
+			     query->id, oldstr, query->status, newstr, new_status);
+		}
+	}
+
+	// Update status
+	query->status = new_status;
+}
+
 static bool check_domain_blocked(const char *domain, const int clientID,
                                  clientsData *client, queriesData *query, DNSCacheData *dns_cache,
                                  const char **blockingreason, unsigned char *new_status)
@@ -411,7 +452,7 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 		// Change blocking reason into CNAME-caused blocking
 		if(query->status == QUERY_GRAVITY)
 		{
-			query->status = QUERY_GRAVITY_CNAME;
+			query_set_status(query, QUERY_GRAVITY_CNAME);
 		}
 		else if(query->status == QUERY_REGEX)
 		{
@@ -430,12 +471,12 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 			}
 
 			// Set status
-			query->status = QUERY_REGEX_CNAME;
+			query_set_status(query, QUERY_REGEX_CNAME);
 		}
 		else if(query->status == QUERY_BLACKLIST)
 		{
 			// Only set status
-			query->status = QUERY_BLACKLIST_CNAME;
+			query_set_status(query, QUERY_BLACKLIST_CNAME);
 		}
 	}
 
@@ -443,9 +484,9 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 	if(config.debug & DEBUG_QUERIES)
 	{
 		if(src == NULL)
-			logg("CNAME %s", dst);
+			logg("Query %d: CNAME %s", id, dst);
 		else
-			logg("CNAME %s ---> %s", src, dst);
+			logg("Query %d: CNAME %s ---> %s", id, src, dst);
 	}
 
 	// Return result
@@ -655,13 +696,13 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	query->timestamp = querytimestamp;
 	query->type = querytype;
 	query->qtype = qtype;
-	query->status = QUERY_UNKNOWN;
+	query->id = id; // Has to be set before calling query_set_status()
+	query_set_status(query, QUERY_UNKNOWN);
 	query->domainID = domainID;
 	query->clientID = clientID;
 	query->timeidx = timeidx;
 	// Initialize database rowID with zero, will be set when the query is stored in the long-term DB
 	query->db = 0;
-	query->id = id;
 	query->flags.complete = false;
 	query->response = converttimeval(request);
 	// Initialize reply type
@@ -935,7 +976,7 @@ void _FTL_forwarded(const unsigned int flags, const char *name, const struct ser
 	// if(query->status == QUERY_CACHE) { ... }
 	// from above as otherwise this check will always
 	// be negative
-	query->status = QUERY_FORWARDED;
+	query_set_status(query, QUERY_FORWARDED);
 
 	// Update overTime data
 	overTime[timeidx].forwarded++;
@@ -1088,7 +1129,7 @@ void _FTL_reply(const unsigned int flags, const char *name, const union all_addr
 		// is our own domain)
 		counters->cached++;
 		overTime[timeidx].cached++;
-		query->status = QUERY_CACHE;
+		query_set_status(query, QUERY_CACHE);
 
 		// Save reply type and update individual reply counters
 		save_reply_type(flags, addr, query, response);
@@ -1149,7 +1190,7 @@ static void detect_blocked_IP(const unsigned short flags, const union all_addr *
 		// Skip replies which originated locally. Otherwise, we would
 		// count gravity.list blocked queries as externally blocked.
 		// Also: Do not mark responses of PTR requests as externally blocked.
-		if(config.debug & DEBUG_EXTBLOCKED)
+		if(config.debug & DEBUG_QUERIES)
 		{
 			const char *cause = (flags & F_HOSTS) ? "origin is HOSTS" : "query is PTR";
 			logg("Skipping detection of external blocking IP for ID %i as %s", queryID, cause);
@@ -1168,7 +1209,7 @@ static void detect_blocked_IP(const unsigned short flags, const union all_addr *
 	// Check for IP block 146.112.61.104 - 146.112.61.110
 	if((flags & F_IPV4) && ipv4Addr >= 0x92703d68 && ipv4Addr <= 0x92703d6e)
 	{
-		if(config.debug & DEBUG_EXTBLOCKED)
+		if(config.debug & DEBUG_QUERIES)
 		{
 			const queriesData* query = getQuery(queryID, true);
 			if(query != NULL)
@@ -1194,7 +1235,7 @@ static void detect_blocked_IP(const unsigned short flags, const union all_addr *
 	        addr->addr6.s6_addr32[2] == 0xffff0000 &&
 	        ipv6Addr >= 0x92703d68 && ipv6Addr <= 0x92703d6e)
 	{
-		if(config.debug & DEBUG_EXTBLOCKED)
+		if(config.debug & DEBUG_QUERIES)
 		{
 			const queriesData* query = getQuery(queryID, true);
 			if(query != NULL)
@@ -1219,7 +1260,7 @@ static void detect_blocked_IP(const unsigned short flags, const union all_addr *
 	// nothing is reachable under these addresses
 	else if(flags & F_IPV4 && ipv4Addr == 0)
 	{
-		if(config.debug & DEBUG_EXTBLOCKED)
+		if(config.debug & DEBUG_QUERIES)
 		{
 			const queriesData* query = getQuery(queryID, true);
 			if(query != NULL)
@@ -1242,7 +1283,7 @@ static void detect_blocked_IP(const unsigned short flags, const union all_addr *
 	        addr->addr6.s6_addr32[2] == 0 &&
 	        addr->addr6.s6_addr32[3] == 0)
 	{
-		if(config.debug & DEBUG_EXTBLOCKED)
+		if(config.debug & DEBUG_QUERIES)
 		{
 			const queriesData* query = getQuery(queryID, true);
 			if(query != NULL)
@@ -1373,7 +1414,8 @@ void _FTL_cache(const unsigned int flags, const char *name, const union all_addr
 		// Get time index
 		const unsigned int timeidx = query->timeidx;
 
-		query->status = requesttype;
+		// Set status of this query
+		query_set_status(query, requesttype);
 
 		// Detect if returned IP indicates that this query was blocked
 		detect_blocked_IP(flags, addr, queryID);
@@ -1451,7 +1493,7 @@ static void query_blocked(queriesData* query, domainsData* domain, clientsData* 
 		change_clientcount(client, 0, 1, -1, 0);
 
 	// Update status
-	query->status = new_status;
+	query_set_status(query, new_status);
 	query->flags.blocked = true;
 }
 
@@ -1850,6 +1892,13 @@ void FTL_forwarding_retried(const struct server *serv, const int oldID, const in
 {
 	// Forwarding to upstream server failed
 
+	if(oldID == newID)
+	{
+		if(config.debug & DEBUG_QUERIES)
+			logg("%d: Ignoring self-retry", oldID);
+		return;
+	}
+
 	// Lock shared memory
 	lock_shm();
 
@@ -1911,13 +1960,13 @@ void FTL_forwarding_retried(const struct server *serv, const int oldID, const in
 				// but we're awaiting keys for DNSSEC
 				// validation. We're retrying the DNSSEC query
 				// instead
-				query->status = QUERY_RETRIED_DNSSEC;
+				query_set_status(query, QUERY_RETRIED_DNSSEC);
 			}
 			else
 			{
 				// Normal query retry due to answer not arriving
 				// soon enough at the requestor
-				query->status = QUERY_RETRIED;
+				query_set_status(query, QUERY_RETRIED);
 			}
 		}
 	}
@@ -2183,7 +2232,7 @@ void FTL_duplicate_reply(const int id, int *firstID)
 {
 	// Reply to duplicated query
 
-	// Check if we can process thes duplicated queries at all
+	// Check if we can process these duplicated queries at all
 	if(*firstID == -2)
 		return;
 
@@ -2235,7 +2284,7 @@ void FTL_duplicate_reply(const int id, int *firstID)
 	// The original query may have been blocked during CNAME inspection,
 	// correct status in this case
 	if(source_query->status != QUERY_FORWARDED)
-		duplicated_query->status = source_query->status;
+		query_set_status(duplicated_query, source_query->status);
 	duplicated_query->CNAME_domainID = source_query->CNAME_domainID;
 
 	// Unlock shared memory

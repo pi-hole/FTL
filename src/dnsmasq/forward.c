@@ -403,7 +403,7 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	  
 	  if ((fd = allocate_rfd(&forward->rfds, forward->sentto)) != -1)
 	  {
-	    FTL_forwarding_retried(forward->sentto, forward->frec_src.log_id, daemon->log_id, true);
+	    FTL_forwarding_retried(forward->sentto, forward->frec_src.log_id, daemon->log_display_id, true);
 
 	    server_send_log(forward->sentto, fd, header, plen,
 			    DUMP_SEC_QUERY,
@@ -431,7 +431,7 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	start = daemon->servers; /* at end of list, recycle */
       header->id = htons(forward->new_id);
 
-      FTL_forwarding_retried(forward->sentto, forward->frec_src.log_id, daemon->log_id, false);
+      FTL_forwarding_retried(forward->sentto, forward->frec_src.log_id, daemon->log_display_id, false);
     }
   else 
     {
