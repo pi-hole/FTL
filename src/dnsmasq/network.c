@@ -1881,8 +1881,3 @@ void newaddress(time_t now)
     lease_find_interfaces(now);
 #endif
 }
-
-
-
-
-

@@ -2005,5 +2005,3 @@ if(debug_dnsmasq_lines != 0)
   else
     my_syslog(LOG_INFO, "%s %s %s %s", source, name, verb, dest);
 }
-
- 

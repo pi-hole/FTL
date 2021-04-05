@@ -1201,8 +1201,4 @@ void lease_add_extradata(struct dhcp_lease *lease, unsigned char *data, unsigned
 }
 #endif
 
-#endif
-	  
-
-      
-
+#endif /* HAVE_DHCP */
