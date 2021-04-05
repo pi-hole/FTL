@@ -319,6 +319,8 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 #endif
   unsigned int gotname = extract_request(header, plen, daemon->namebuff, NULL);
   unsigned char *oph = find_pseudoheader(header, plen, NULL, NULL, NULL, NULL);
+  int old_src = 0;
+  
   (void)do_bit;
   
   if (header->hb4 & HB4_CD)
@@ -333,19 +335,24 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 #endif
   
   /* Check for retry on existing query */
-  if (!forward && (forward = lookup_frec_by_query(hash, fwd_flags)))
+  if (forward)
+    old_src = 1;
+  else if ((forward = lookup_frec_by_query(hash, fwd_flags)))
     {
       struct frec_src *src;
-
+      
       for (src = &forward->frec_src; src; src = src->next)
 	if (src->orig_id == ntohs(header->id) && 
 	    sockaddr_isequal(&src->source, udpaddr))
 	  break;
-
-      /* Existing query, but from new source, just add this 
-	 client to the list that will get the reply.*/
-      if (!src)
+      
+      if (src)
+	old_src = 1;
+      else
 	{
+	  /* Existing query, but from new source, just add this 
+	     client to the list that will get the reply.*/
+	  
 	  /* Note whine_malloc() zeros memory. */
 	  if (!daemon->free_frec_src &&
 	      daemon->frec_src_count < daemon->ftabsize &&
@@ -414,10 +421,10 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	}
 #endif
 
-      /* retry on existing query, send to all available servers  */
+      /* retry on existing query, from original source. Send to all available servers  */
       domain = forward->sentto->domain;
       forward->sentto->failed_queries++;
-      if (!option_bool(OPT_ORDER))
+      if (!option_bool(OPT_ORDER) && old_src)
 	{
 	  forward->forwardall = 1;
 	  daemon->last_server = NULL;
