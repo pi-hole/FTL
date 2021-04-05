@@ -2230,9 +2230,15 @@ bool FTL_unlink_DHCP_lease(const char *ipaddr)
 
 void FTL_duplicate_reply(const int id, int *firstID)
 {
-	// Reply to duplicated query
+	// Reply to duplicated query: We are in the loop that iterates over all
+	// aggregated queries for the same domain. Every query will receive the
+	// reply here so we need to update the original queries to set their status
 
-	// Check if we can process these duplicated queries at all
+	// Don't process self-duplicates
+	if(*firstID == id)
+		return;
+
+	// Skip if the original query was not found in FTL's memory
 	if(*firstID == -2)
 		return;
 
@@ -2259,9 +2265,12 @@ void FTL_duplicate_reply(const int id, int *firstID)
 		return;
 	}
 
-	// Get query pointer of duplicate reply
-	queriesData* duplicated_query = getQuery(queryID, true);
+	// Get (read-only) pointer of the query that contains all relevant
+	// information (all others are mere duplicates and were only added to the
+	// list of duplicates rather than havong been forwarded on their own)
 	const queriesData* source_query = getQuery(*firstID, true);
+	// Get query pointer of duplicated reply
+	queriesData* duplicated_query = getQuery(queryID, true);
 
 	if(duplicated_query == NULL || source_query == NULL)
 	{
@@ -2280,12 +2289,12 @@ void FTL_duplicate_reply(const int id, int *firstID)
 	duplicated_query->reply = source_query->reply;
 	duplicated_query->dnssec = source_query->dnssec;
 	duplicated_query->flags.complete = true;
+	duplicated_query->CNAME_domainID = source_query->CNAME_domainID;
 
 	// The original query may have been blocked during CNAME inspection,
 	// correct status in this case
 	if(source_query->status != QUERY_FORWARDED)
 		query_set_status(duplicated_query, source_query->status);
-	duplicated_query->CNAME_domainID = source_query->CNAME_domainID;
 
 	// Unlock shared memory
 	unlock_shm();
