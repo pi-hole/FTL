@@ -119,6 +119,9 @@ int findCacheID(int domainID, int clientID, enum query_types query_type);
 bool isValidIPv4(const char *addr);
 bool isValidIPv6(const char *addr);
 
+bool is_blocked(const enum query_status status) __attribute__ ((const));
+void query_set_status(queriesData *query, const enum query_status new_status);
+
 void FTL_reload_all_domainlists(void);
 void FTL_reset_per_client_domain_data(void);
 

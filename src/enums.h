@@ -58,7 +58,8 @@ enum reply_type {
 	REPLY_SERVFAIL,
 	REPLY_REFUSED,
 	REPLY_NOTIMP,
-	REPLY_OTHER
+	REPLY_OTHER,
+	QUERY_REPLY_MAX
 	}  __attribute__ ((packed));
 
 enum privacy_level {

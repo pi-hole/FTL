@@ -1295,7 +1295,7 @@ void reply_query(int fd, time_t now)
 		  log_query(F_UPSTREAM, "query", NULL, "duplicate");
 		}
 	      /* Pi-hole modification */
-	      FTL_duplicate_reply(src->log_id, &first_ID);
+	      FTL_multiple_replies(src->log_id, &first_ID);
 	    }
 	}
 

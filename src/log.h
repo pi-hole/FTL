@@ -35,4 +35,8 @@ void FTL_log_helper(const unsigned char n, ...);
 
 int binbuf_to_escaped_C_literal(const char *src_buf, size_t src_sz, char *dst_str, size_t dst_sz);
 
+int forwarded_queries(void)  __attribute__ ((pure));
+int cached_queries(void)  __attribute__ ((pure));
+int blocked_queries(void)  __attribute__ ((pure));
+
 #endif //LOG_H

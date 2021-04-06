@@ -83,47 +83,6 @@ void FTL_next_iface(const char *newiface)
 	}
 }
 
-static const char *query_status_str[QUERY_STATUS_MAX] = {
-	"UNKNOWN",
-	"GRAVITY",
-	"FORWARDED",
-	"CACHE",
-	"REGEX",
-	"BLACKLIST",
-	"EXTERNAL_BLOCKED_IP",
-	"EXTERNAL_BLOCKED_NULL",
-	"EXTERNAL_BLOCKED_NXRA",
-	"GRAVITY_CNAME",
-	"REGEX_CNAME",
-	"BLACKLIST_CNAME",
-	"RETRIED",
-	"RETRIED_DNSSEC",
-	"IN_PROGRESS"
-};
-
-static void query_set_status(queriesData *query, const enum query_status new_status)
-{
-	// Debug logging
-	if(config.debug & DEBUG_STATUS)
-	{
-		const char *oldstr = query->status < QUERY_STATUS_MAX ? query_status_str[query->status] : "INVALID";
-		if(query->status == new_status)
-		{
-			logg("Query %i: status unchanged: %s (%d)",
-			     query->id, oldstr, query->status);
-		}
-		else
-		{
-			const char *newstr = new_status < QUERY_STATUS_MAX ? query_status_str[new_status] : "INVALID";
-			logg("Query %i: status changed: %s (%d) -> %s (%d)",
-			     query->id, oldstr, query->status, newstr, new_status);
-		}
-	}
-
-	// Update status
-	query->status = new_status;
-}
-
 static bool check_domain_blocked(const char *domain, const int clientID,
                                  clientsData *client, queriesData *query, DNSCacheData *dns_cache,
                                  const char **blockingreason, unsigned char *new_status)
@@ -663,7 +622,6 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 
 	// Update overTime
 	const unsigned int timeidx = getOverTimeID(querytimestamp);
-	overTime[timeidx].querytypedata[querytype-1]++;
 
 	// Skip rest of the analysis if this query is not of type A or AAAA
 	// but user wants to see only A and AAAA queries (pre-v4.1 behavior)
@@ -691,6 +649,10 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		unlock_shm();
 		return false;
 	}
+
+	// Count this query as unknown as long as no reply has
+	// been found and analyzed
+	counters->status[QUERY_UNKNOWN]++;
 
 	query->magic = MAGICBYTE;
 	query->timestamp = querytimestamp;
@@ -724,9 +686,6 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 
 	// Increase DNS queries counter
 	counters->queries++;
-	// Count this query as unknown as long as no reply has
-	// been found and analyzed
-	counters->unknown++;
 
 	// Update overTime data
 	overTime[timeidx].total++;
@@ -928,12 +887,6 @@ void _FTL_forwarded(const unsigned int flags, const char *name, const struct ser
 		upstream->lastQuery = time(NULL);
 	}
 
-	// Update counter for forwarded queries
-	counters->forwarded++;
-
-	// Get time index for this query
-	const unsigned int timeidx = query->timeidx;
-
 	if(query->status == QUERY_CACHE)
 	{
 		// Detect if we cached the <CNAME> but need to ask the upstream
@@ -949,12 +902,6 @@ void _FTL_forwarded(const unsigned int flags, const char *name, const struct ser
 		// query is marked as "answered from cache" in FTLDNS. However, for
 		// server.a.com wit the much shorter TTL, we still have to forward
 		// something and ask the upstream server for the final IP address.
-		// This code section acknowledges this by removing one entry from
-		// the cached counters as we will re-brand this query as having been
-		// forwarded in the following.
-		counters->cached--;
-		// Also correct overTime data
-		overTime[timeidx].cached--;
 
 		// Correct reply timer
 		struct timeval response;
@@ -966,8 +913,6 @@ void _FTL_forwarded(const unsigned int flags, const char *name, const struct ser
 	else
 	{
 		// Normal forwarded query (status is set below)
-		// Query is no longer unknown
-		counters->unknown--;
 		// Hereby, this query is now fully determined
 		query->flags.complete = true;
 	}
@@ -977,9 +922,6 @@ void _FTL_forwarded(const unsigned int flags, const char *name, const struct ser
 	// from above as otherwise this check will always
 	// be negative
 	query_set_status(query, QUERY_FORWARDED);
-
-	// Update overTime data
-	overTime[timeidx].forwarded++;
 
 	// Release allocated memory
 	free(upstreamIP);
@@ -1118,17 +1060,10 @@ void _FTL_reply(const unsigned int flags, const char *name, const union all_addr
 	if((flags & F_CONFIG) && isExactMatch && !query->flags.complete)
 	{
 		// Answered from local configuration, might be a wildcard or user-provided
-		// This query is no longer unknown
-		counters->unknown--;
-
-		// Get time index
-		const unsigned int timeidx = query->timeidx;
 
 		// Answered from a custom (user provided) cache file or because
 		// we're the authorative DNS server (e.g. DHCP server and this
 		// is our own domain)
-		counters->cached++;
-		overTime[timeidx].cached++;
 		query_set_status(query, QUERY_CACHE);
 
 		// Save reply type and update individual reply counters
@@ -1408,35 +1343,14 @@ void _FTL_cache(const unsigned int flags, const char *name, const union all_addr
 			return;
 		}
 
-		// This query is no longer unknown
-		counters->unknown--;
-
-		// Get time index
-		const unsigned int timeidx = query->timeidx;
-
-		// Set status of this query
-		query_set_status(query, requesttype);
-
 		// Detect if returned IP indicates that this query was blocked
 		detect_blocked_IP(flags, addr, queryID);
 
 		// Re-read requesttype as detect_blocked_IP() might have changed it
 		requesttype = query->status;
 
-		// Handle counters accordingly
-		switch(requesttype)
-		{
-			case QUERY_CACHE: // cached from one of the lists
-				counters->cached++;
-				overTime[timeidx].cached++;
-				break;
-			case QUERY_EXTERNAL_BLOCKED_IP:
-			case QUERY_EXTERNAL_BLOCKED_NULL:
-			case QUERY_EXTERNAL_BLOCKED_NXRA:
-				// everything has already been done
-				// in query_externally_blocked()
-				break;
-		}
+		// Set status of this query
+		query_set_status(query, requesttype);
 
 		// Save reply type and update individual reply counters
 		save_reply_type(flags, addr, query, response);
@@ -1460,33 +1374,20 @@ static void query_blocked(queriesData* query, domainsData* domain, clientsData* 
 	save_reply_type(blocking_flags, NULL, query, response);
 
 	// Adjust counters if we recorded a non-blocking status
-	if(query->status == QUERY_UNKNOWN)
+	if(query->status == QUERY_FORWARDED)
 	{
-		counters->unknown--;
-	}
-	else if(query->status == QUERY_FORWARDED)
-	{
-		counters->forwarded--;
-		overTime[query->timeidx].forwarded--;
-
 		// Get forward pointer
 		upstreamsData* upstream = getUpstream(query->upstreamID, true);
 		if(upstream != NULL)
 			upstream->count--;
 	}
-	else if(query->status == QUERY_CACHE)
-	{
-		counters->cached--;
-	}
-	else
+	else if(is_blocked(query->status))
 	{
 		// Already a blocked query, no need to change anything
 		return;
 	}
 
 	// Count as blocked query
-	counters->blocked++;
-	overTime[query->timeidx].blocked++;
 	if(domain != NULL)
 		domain->blockedcount++;
 	if(client != NULL)
@@ -1711,35 +1612,21 @@ static void save_reply_type(const unsigned int flags, const union all_addr *addr
 	if(flags & F_NEG || force_next_DNS_reply == NXDOMAIN)
 	{
 		if(flags & F_NXDOMAIN)
-		{
 			// NXDOMAIN
 			query->reply = REPLY_NXDOMAIN;
-			counters->reply_NXDOMAIN++;
-		}
 		else
-		{
 			// NODATA(-IPv6)
 			query->reply = REPLY_NODATA;
-			counters->reply_NODATA++;
-		}
 	}
 	else if(flags & F_CNAME)
-	{
 		// <CNAME>
 		query->reply = REPLY_CNAME;
-		counters->reply_CNAME++;
-	}
 	else if(flags & F_REVERSE)
-	{
 		// reserve lookup
 		query->reply = REPLY_DOMAIN;
-		counters->reply_domain++;
-	}
 	else if(flags & F_RRNAME)
-	{
 		// TXT query
 		query->reply = REPLY_RRNAME;
-	}
 	else if((flags & F_RCODE && addr != NULL) || force_next_DNS_reply == REFUSED)
 	{
 		if((addr != NULL && addr->log.rcode == REFUSED)
@@ -1758,8 +1645,9 @@ static void save_reply_type(const unsigned int flags, const union all_addr *addr
 	{
 		// Valid IP
 		query->reply = REPLY_IP;
-		counters->reply_IP++;
 	}
+
+	counters->reply[query->reply]++;
 
 	// Save response time (relative time)
 	query->response = converttimeval(response) -
@@ -2228,11 +2116,11 @@ bool FTL_unlink_DHCP_lease(const char *ipaddr)
 	return true;
 }
 
-void FTL_duplicate_reply(const int id, int *firstID)
+void FTL_multiple_replies(const int id, int *firstID)
 {
-	// Reply to duplicated query: We are in the loop that iterates over all
-	// aggregated queries for the same domain. Every query will receive the
-	// reply here so we need to update the original queries to set their status
+	// We are in the loop that iterates over all aggregated queries for the same
+	// type + domain. Every query will receive the reply here so we need to
+	// update the original queries to set their status
 
 	// Don't process self-duplicates
 	if(*firstID == id)
@@ -2282,7 +2170,7 @@ void FTL_duplicate_reply(const int id, int *firstID)
 	// Debug logging
 	if(config.debug & DEBUG_QUERIES)
 	{
-		logg("**** query %d is duplicate of %d", queryID, *firstID);
+		logg("**** sending reply %d also to %d", *firstID, queryID);
 	}
 
 	// Copy relevant information over

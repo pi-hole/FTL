@@ -40,12 +40,6 @@ static void initSlot(const unsigned int index, const time_t timestamp)
 	overTime[index].cached = 0;
 	overTime[index].forwarded = 0;
 
-	// Zero all query types
-	for(unsigned int queryType = 0; queryType < TYPE_MAX-1; queryType++)
-	{
-		overTime[index].querytypedata[queryType] = 0;
-	}
-
 	// Zero overTime counter for all known clients
 	for(int clientID = 0; clientID < counters->clients; clientID++)
 	{

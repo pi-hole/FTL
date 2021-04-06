@@ -463,7 +463,7 @@ void DB_read_queries(void)
 			query->qtype = type - 100;
 		}
 
-		query->status = status;
+		// Status is set below
 		query->domainID = domainID;
 		query->clientID = clientID;
 		query->upstreamID = upstreamID;
@@ -485,10 +485,7 @@ void DB_read_queries(void)
 
 		// Handle type counters
 		if(type >= TYPE_A && type < TYPE_MAX)
-		{
 			counters->querytype[type-1]++;
-			overTime[timeidx].querytypedata[type-1]++;
-		}
 
 		// Update overTime data
 		overTime[timeidx].total++;
@@ -527,10 +524,10 @@ void DB_read_queries(void)
 		}
 
 		// Increment status counters
+		query_set_status(query, status);
 		switch(status)
 		{
 			case QUERY_UNKNOWN: // Unknown
-				counters->unknown++;
 				break;
 
 			case QUERY_GRAVITY: // Blocked by gravity
@@ -542,20 +539,16 @@ void DB_read_queries(void)
 			case QUERY_GRAVITY_CNAME: // Blocked by gravity (inside CNAME path)
 			case QUERY_REGEX_CNAME: // Blocked by regex blacklist (inside CNAME path)
 			case QUERY_BLACKLIST_CNAME: // Blocked by exact blacklist (inside CNAME path)
-				counters->blocked++;
 				query->flags.blocked = true;
 				// Get domain pointer
 				domainsData* domain = getDomain(domainID, true);
 				domain->blockedcount++;
 				change_clientcount(client, 0, 1, -1, 0);
-				// Update overTime data structure
-				overTime[timeidx].blocked++;
 				break;
 
 			case QUERY_FORWARDED: // Forwarded
 			case QUERY_RETRIED: // (fall through)
 			case QUERY_RETRIED_DNSSEC: // (fall through)
-				counters->forwarded++;
 				// Only update upstream if there is one (there
 				// won't be one for retried DNSSEC queries)
 				if(upstreamID > -1)
@@ -567,14 +560,10 @@ void DB_read_queries(void)
 						upstream->lastQuery = queryTimeStamp;
 					}
 				}
-				// Update overTime data structure
-				overTime[timeidx].forwarded++;
 				break;
 
 			case QUERY_CACHE: // Cached or local config
-				counters->cached++;
-				// Update overTime data structure
-				overTime[timeidx].cached++;
+				// Nothing to be done here
 				break;
 
 			case QUERY_IN_PROGRESS:

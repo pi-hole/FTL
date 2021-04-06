@@ -35,9 +35,8 @@ typedef struct {
 	int cached;
 	int forwarded;
 	time_t timestamp;
-	int querytypedata[TYPE_MAX-1];
 } overTimeData;
-ASSERT_SIZEOF(overTimeData, 96, 88, 88);
+ASSERT_SIZEOF(overTimeData, 32, 24, 24);
 
 extern overTimeData *overTime;
 
