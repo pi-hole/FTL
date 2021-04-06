@@ -46,14 +46,15 @@ typedef struct {
 	int domains_MAX;
 	int strings_MAX;
 	int gravity;
-	int querytype[TYPE_MAX-1];
-	int reply[QUERY_REPLY_MAX];
 	int dns_cache_size;
 	int dns_cache_MAX;
 	int per_client_regex_MAX;
 	unsigned int regex_change;
+	int querytype[TYPE_MAX-1];
 	int status[QUERY_STATUS_MAX];
+	int reply[QUERY_REPLY_MAX];
 } countersStruct;
+ASSERT_SIZEOF(countersStruct, 224, 224, 224);
 
 extern countersStruct *counters;
 
