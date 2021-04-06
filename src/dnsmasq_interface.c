@@ -46,8 +46,7 @@ static void print_flags(const unsigned int flags);
 static void save_reply_type(const unsigned int flags, const union all_addr *addr,
                             queriesData* query, const struct timeval response);
 static unsigned long converttimeval(const struct timeval time) __attribute__((const));
-static void detect_blocked_IP(const unsigned short flags, const union all_addr *addr, const int queryID);
-static void query_externally_blocked(const int queryID, const unsigned char status);
+static enum query_status detect_blocked_IP(const unsigned short flags, const union all_addr *addr, const queriesData *query, const domainsData *domain);
 static void prepare_blocking_metadata(void);
 static void query_blocked(queriesData* query, domainsData* domain, clientsData* client, const unsigned char new_status);
 
@@ -1084,7 +1083,15 @@ void _FTL_reply(const unsigned int flags, const char *name, const union all_addr
 			save_reply_type(flags, addr, query, response);
 
 			// Detect if returned IP indicates that this query was blocked
-			detect_blocked_IP(flags, addr, i);
+			const enum query_status new_status = detect_blocked_IP(flags, addr, query, domain);
+
+			// Update status of this query if detected as external blocking
+			if(new_status != query->status)
+			{
+				clientsData *client = getClient(query->clientID, true);
+				if(client != NULL)
+					query_blocked(query, domain, client, new_status);
+			}
 		}
 	}
 	else if(flags & F_REVERSE)
@@ -1110,13 +1117,13 @@ void _FTL_reply(const unsigned int flags, const char *name, const union all_addr
 	unlock_shm();
 }
 
-static void detect_blocked_IP(const unsigned short flags, const union all_addr *addr, const int queryID)
+static enum query_status detect_blocked_IP(const unsigned short flags, const union all_addr *addr, const queriesData *query, const domainsData *domain)
 {
 	// Compare returned IP against list of known blocking splash pages
 
 	if (!addr)
 	{
-		return;
+		return query->status;
 	}
 
 	// First, we check if we want to skip this result even before comparing against the known IPs
@@ -1128,11 +1135,11 @@ static void detect_blocked_IP(const unsigned short flags, const union all_addr *
 		if(config.debug & DEBUG_QUERIES)
 		{
 			const char *cause = (flags & F_HOSTS) ? "origin is HOSTS" : "query is PTR";
-			logg("Skipping detection of external blocking IP for ID %i as %s", queryID, cause);
+			logg("Skipping detection of external blocking IP for ID %i as %s", query->id, cause);
 		}
 
 		// Return early, do not compare against known blocking page IP addresses below
-		return;
+		return query->status;
 	}
 
 	// If received one of the following IPs as reply, OpenDNS
@@ -1146,22 +1153,14 @@ static void detect_blocked_IP(const unsigned short flags, const union all_addr *
 	{
 		if(config.debug & DEBUG_QUERIES)
 		{
-			const queriesData* query = getQuery(queryID, true);
-			if(query != NULL)
-			{
-				const domainsData* domain = getDomain(query->domainID, true);
-				if(domain != NULL)
-				{
-					char answer[ADDRSTRLEN]; answer[0] = '\0';
-					inet_ntop(AF_INET, addr, answer, ADDRSTRLEN);
-					logg("Upstream responded with known blocking page (IPv4), ID %i:\n\t\"%s\" -> \"%s\"",
-					     queryID, getstr(domain->domainpos), answer);
-				}
-			}
+			char answer[ADDRSTRLEN]; answer[0] = '\0';
+			inet_ntop(AF_INET, addr, answer, ADDRSTRLEN);
+			logg("Upstream responded with known blocking page (IPv4), ID %i:\n\t\"%s\" -> \"%s\"",
+			     query->id, getstr(domain->domainpos), answer);
 		}
 
 		// Update status
-		query_externally_blocked(queryID, QUERY_EXTERNAL_BLOCKED_IP);
+		return QUERY_EXTERNAL_BLOCKED_IP;
 	}
 	// Check for IP block :ffff:146.112.61.104 - :ffff:146.112.61.110
 	else if(flags & F_IPV6 &&
@@ -1172,22 +1171,14 @@ static void detect_blocked_IP(const unsigned short flags, const union all_addr *
 	{
 		if(config.debug & DEBUG_QUERIES)
 		{
-			const queriesData* query = getQuery(queryID, true);
-			if(query != NULL)
-			{
-				const domainsData* domain = getDomain(query->domainID, true);
-				if(domain != NULL)
-				{
-					char answer[ADDRSTRLEN]; answer[0] = '\0';
-					inet_ntop(AF_INET6, addr, answer, ADDRSTRLEN);
-					logg("Upstream responded with known blocking page (IPv6), ID %i:\n\t\"%s\" -> \"%s\"",
-					     queryID, getstr(domain->domainpos), answer);
-				}
-			}
+			char answer[ADDRSTRLEN]; answer[0] = '\0';
+			inet_ntop(AF_INET6, addr, answer, ADDRSTRLEN);
+			logg("Upstream responded with known blocking page (IPv6), ID %i:\n\t\"%s\" -> \"%s\"",
+			     query->id, getstr(domain->domainpos), answer);
 		}
 
 		// Update status
-		query_externally_blocked(queryID, QUERY_EXTERNAL_BLOCKED_IP);
+		return QUERY_EXTERNAL_BLOCKED_IP;
 	}
 
 	// If upstream replied with 0.0.0.0 or ::,
@@ -1197,20 +1188,12 @@ static void detect_blocked_IP(const unsigned short flags, const union all_addr *
 	{
 		if(config.debug & DEBUG_QUERIES)
 		{
-			const queriesData* query = getQuery(queryID, true);
-			if(query != NULL)
-			{
-				const domainsData* domain = getDomain(query->domainID, true);
-				if(domain != NULL)
-				{
-					logg("Upstream responded with 0.0.0.0, ID %i:\n\t\"%s\" -> \"0.0.0.0\"",
-					     queryID, getstr(domain->domainpos));
-				}
-			}
+			logg("Upstream responded with 0.0.0.0, ID %i:\n\t\"%s\" -> \"0.0.0.0\"",
+			     query->id, getstr(domain->domainpos));
 		}
 
 		// Update status
-		query_externally_blocked(queryID, QUERY_EXTERNAL_BLOCKED_NULL);
+		return QUERY_EXTERNAL_BLOCKED_NULL;
 	}
 	else if(flags & F_IPV6 &&
 	        addr->addr6.s6_addr32[0] == 0 &&
@@ -1220,44 +1203,16 @@ static void detect_blocked_IP(const unsigned short flags, const union all_addr *
 	{
 		if(config.debug & DEBUG_QUERIES)
 		{
-			const queriesData* query = getQuery(queryID, true);
-			if(query != NULL)
-			{
-				const domainsData* domain = getDomain(query->domainID, true);
-				if(domain != NULL)
-				{
-					logg("Upstream responded with ::, ID %i:\n\t\"%s\" -> \"::\"",
-					     queryID, getstr(domain->domainpos));
-				}
-			}
+			logg("Upstream responded with ::, ID %i:\n\t\"%s\" -> \"::\"",
+			     query->id, getstr(domain->domainpos));
 		}
 
 		// Update status
-		query_externally_blocked(queryID, QUERY_EXTERNAL_BLOCKED_NULL);
-	}
-}
-
-static void query_externally_blocked(const int queryID, const enum query_status status)
-{
-	// Get query pointer
-	queriesData* query = getQuery(queryID, true);
-	if(query == NULL)
-	{
-		// Memory error, skip check for this query
-		return;
+		return QUERY_EXTERNAL_BLOCKED_NULL;
 	}
 
-	// If query is already known to be externally blocked,
-	// then we have nothing to do here
-	if(query->status == QUERY_EXTERNAL_BLOCKED_IP ||
-	   query->status == QUERY_EXTERNAL_BLOCKED_NULL ||
-	   query->status == QUERY_EXTERNAL_BLOCKED_NXRA)
-		return;
-
-	// Mark query as blocked
-	domainsData* domain = getDomain(query->domainID, true);
-	clientsData* client = getClient(query->clientID, true);
-	query_blocked(query, domain, client, status);
+	// Nothing happened here
+	return query->status;
 }
 
 void _FTL_cache(const unsigned int flags, const char *name, const union all_addr *addr,
@@ -1305,14 +1260,13 @@ void _FTL_cache(const unsigned int flags, const char *name, const union all_addr
 		// cached answer to previously forwarded request
 
 		// Determine requesttype
-		unsigned char requesttype = 0;
 		if((flags & F_HOSTS) || // local.list, hostname.list, /etc/hosts and others
 		  ((flags & F_NAMEP) && (flags & F_DHCP)) || // DHCP server reply
 		   (flags & F_FORWARD) || // cached answer to previously forwarded request
 		   (flags & F_REVERSE) || // cached answer to reverse request (PTR)
 		   (flags & F_RRNAME)) // cached answer to TXT query
 		{
-			requesttype = QUERY_CACHE;
+			// We can handle this here
 		}
 		else
 		{
@@ -1333,7 +1287,7 @@ void _FTL_cache(const unsigned int flags, const char *name, const union all_addr
 		}
 
 		// Get query pointer
-		queriesData* query = getQuery(queryID, true);
+		queriesData *query = getQuery(queryID, true);
 
 		// Skip this query if already marked as complete
 		// Use short-circuit evaluation to check query if query is NULL
@@ -1344,17 +1298,25 @@ void _FTL_cache(const unsigned int flags, const char *name, const union all_addr
 		}
 
 		// Set status of this query
-		query_set_status(query, requesttype);
+		query_set_status(query, QUERY_CACHE);
+
+		domainsData *domain = getDomain(query->domainID, true);
+		if(domain == NULL)
+		{
+			unlock_shm();
+			return;
+		}
 
 		// Detect if returned IP indicates that this query was blocked
-		detect_blocked_IP(flags, addr, queryID);
+		const enum query_status new_status = detect_blocked_IP(flags, addr, query, domain);
 
-		// Re-read requesttype as detect_blocked_IP() might have changed it
-		requesttype = query->status;
-
-		// Update status of this query (this may be doing nothing if
-		// detect_blocked_IP() didn't change the status)
-		query_set_status(query, requesttype);
+		// Update status of this query if detected as external blocking
+		if(new_status != query->status)
+		{
+			clientsData *client = getClient(query->clientID, true);
+			if(client != NULL)
+				query_blocked(query, domain, client, new_status);
+		}
 
 		// Save reply type and update individual reply counters
 		save_reply_type(flags, addr, query, response);
@@ -1370,7 +1332,7 @@ void _FTL_cache(const unsigned int flags, const char *name, const union all_addr
 	unlock_shm();
 }
 
-static void query_blocked(queriesData* query, domainsData* domain, clientsData* client, const unsigned char new_status)
+static void query_blocked(queriesData* query, domainsData* domain, clientsData* client, const enum query_status new_status)
 {
 	// Get response time
 	struct timeval response;
@@ -1562,12 +1524,18 @@ void _FTL_header_analysis(const unsigned char header4, const unsigned int rcode,
 		return;
 	}
 
+	// Get domain pointer
+	domainsData *domain = getDomain(query->domainID, true);
+	if(domain == NULL)
+	{
+		// Memory error, skip this query
+		unlock_shm();
+		return;
+	}
+
 	// Possible debugging information
 	if(config.debug & DEBUG_QUERIES)
 	{
-		// Get domain pointer
-		const domainsData* domain = getDomain(query->domainID, true);
-
 		// Get domain name
 		const char *domainname;
 		if(domain != NULL)
@@ -1583,7 +1551,9 @@ void _FTL_header_analysis(const unsigned char header4, const unsigned int rcode,
 	gettimeofday(&response, 0);
 
 	// Store query as externally blocked
-	query_externally_blocked(queryID, QUERY_EXTERNAL_BLOCKED_NXRA);
+	clientsData *client = getClient(query->clientID, true);
+	if(client != NULL)
+		query_blocked(query, domain, client, QUERY_EXTERNAL_BLOCKED_NXRA);
 
 	// Store reply type as replied with NXDOMAIN
 	save_reply_type(F_NEG | F_NXDOMAIN, NULL, query, response);
@@ -1650,6 +1620,8 @@ static void save_reply_type(const unsigned int flags, const union all_addr *addr
 		// Valid IP
 		query->reply = REPLY_IP;
 	}
+
+	logg("Set reply to %d", query->reply);
 
 	counters->reply[query->reply]++;
 

@@ -159,6 +159,9 @@ void *GC_thread(void *val)
 				// Set query again to UNKNOWN to reset the counters
 				query_set_status(query, QUERY_UNKNOWN);
 
+				// Finally, remove the last trace of this query
+				counters->status[QUERY_UNKNOWN]--;
+
 				// Count removed queries
 				removed++;
 
