@@ -1343,13 +1343,17 @@ void _FTL_cache(const unsigned int flags, const char *name, const union all_addr
 			return;
 		}
 
+		// Set status of this query
+		query_set_status(query, requesttype);
+
 		// Detect if returned IP indicates that this query was blocked
 		detect_blocked_IP(flags, addr, queryID);
 
 		// Re-read requesttype as detect_blocked_IP() might have changed it
 		requesttype = query->status;
 
-		// Set status of this query
+		// Update status of this query (this may be doing nothing if
+		// detect_blocked_IP() didn't change the status)
 		query_set_status(query, requesttype);
 
 		// Save reply type and update individual reply counters
