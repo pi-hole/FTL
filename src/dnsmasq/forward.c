@@ -362,9 +362,19 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	      daemon->free_frec_src->next = NULL;
 	    }
 	  
-	  /* If we've been spammed with many duplicates, just drop the query. */
+	  /* If we've been spammed with many duplicates, return REFUSED. */
 	  if (!daemon->free_frec_src)
-	    return 0;
+	    {
+	      static time_t last_log = 0;
+
+	      if ((int)difftime(now, last_log) > 5)
+		{
+		  last_log = now;
+		  my_syslog(LOG_WARNING, _("Maximum number of concurrent DNS queries reached (max: %d)"), daemon->ftabsize);
+		}
+	      
+	      goto frec_err;
+	    }
 	  
 	  src = daemon->free_frec_src;
 	  daemon->free_frec_src = src->next;
@@ -650,6 +660,7 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
     }	  
   
   /* could not send on, return empty answer or address if known for whole domain */
+ frec_err:
   if (udpfd != -1)
     {
       plen = setup_reply(header, plen, addrp, flags, daemon->local_ttl);
