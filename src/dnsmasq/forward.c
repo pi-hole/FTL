@@ -391,7 +391,10 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	     it's safe to wait for the reply from the first without
 	     forwarding the second. */
 	  if (difftime(now, forward->time) < 2)
+	  {
+	    FTL_query_in_progress(daemon->log_display_id);
 	    return 0;
+	  }
 	}
     }
 

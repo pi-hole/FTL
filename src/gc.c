@@ -140,7 +140,7 @@ void *GC_thread(void *val)
 						if(client != NULL)
 							change_clientcount(client, 0, -1, -1, 0);
 						break;
-					case QUERY_IN_PROGRESS:
+					case QUERY_IN_PROGRESS: // Don't have to do anything here
 					case QUERY_STATUS_MAX: // fall through
 					default:
 						/* That cannot happen */

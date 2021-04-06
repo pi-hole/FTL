@@ -43,7 +43,7 @@
 #include "events.h"
 
 static void print_flags(const unsigned int flags);
-static void save_reply_type(const unsigned int flags, const union all_addr *addr,
+static void query_set_reply(const unsigned int flags, const union all_addr *addr,
                             queriesData* query, const struct timeval response);
 static unsigned long converttimeval(const struct timeval time) __attribute__((const));
 static enum query_status detect_blocked_IP(const unsigned short flags, const union all_addr *addr, const queriesData *query, const domainsData *domain);
@@ -402,7 +402,7 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 		// Store query response as CNAME type
 		struct timeval response;
 		gettimeofday(&response, 0);
-		save_reply_type(F_CNAME, NULL, query, response);
+		query_set_reply(F_CNAME, NULL, query, response);
 
 		// Store domain that was the reason for blocking the entire chain
 		query->CNAME_domainID = child_domainID;
@@ -1066,7 +1066,7 @@ void _FTL_reply(const unsigned int flags, const char *name, const union all_addr
 		query_set_status(query, QUERY_CACHE);
 
 		// Save reply type and update individual reply counters
-		save_reply_type(flags, addr, query, response);
+		query_set_reply(flags, addr, query, response);
 
 		// Hereby, this query is now fully determined
 		query->flags.complete = true;
@@ -1080,7 +1080,7 @@ void _FTL_reply(const unsigned int flags, const char *name, const union all_addr
 		   query->status != QUERY_EXTERNAL_BLOCKED_NXRA)
 		{
 			// Save reply type and update individual reply counters
-			save_reply_type(flags, addr, query, response);
+			query_set_reply(flags, addr, query, response);
 
 			// Detect if returned IP indicates that this query was blocked
 			const enum query_status new_status = detect_blocked_IP(flags, addr, query, domain);
@@ -1106,7 +1106,7 @@ void _FTL_reply(const unsigned int flags, const char *name, const union all_addr
 		// Hence, isExactMatch is always false
 
 		// Save reply type and update individual reply counters
-		save_reply_type(flags, addr, query, response);
+		query_set_reply(flags, addr, query, response);
 	}
 	else if(isExactMatch && !query->flags.complete)
 	{
@@ -1319,7 +1319,7 @@ void _FTL_cache(const unsigned int flags, const char *name, const union all_addr
 		}
 
 		// Save reply type and update individual reply counters
-		save_reply_type(flags, addr, query, response);
+		query_set_reply(flags, addr, query, response);
 
 		// Hereby, this query is now fully determined
 		query->flags.complete = true;
@@ -1337,7 +1337,7 @@ static void query_blocked(queriesData* query, domainsData* domain, clientsData* 
 	// Get response time
 	struct timeval response;
 	gettimeofday(&response, 0);
-	save_reply_type(blocking_flags, NULL, query, response);
+	query_set_reply(blocking_flags, NULL, query, response);
 
 	// Adjust counters if we recorded a non-blocking status
 	if(query->status == QUERY_FORWARDED)
@@ -1556,7 +1556,7 @@ void _FTL_header_analysis(const unsigned char header4, const unsigned int rcode,
 		query_blocked(query, domain, client, QUERY_EXTERNAL_BLOCKED_NXRA);
 
 	// Store reply type as replied with NXDOMAIN
-	save_reply_type(F_NEG | F_NXDOMAIN, NULL, query, response);
+	query_set_reply(F_NEG | F_NXDOMAIN, NULL, query, response);
 
 	// Unlock shared memory
 	unlock_shm();
@@ -1579,7 +1579,21 @@ void print_flags(const unsigned int flags)
 	free(flagstr);
 }
 
-static void save_reply_type(const unsigned int flags, const union all_addr *addr,
+static const char *reply_status_str[QUERY_REPLY_MAX] = {
+	"UNKNOWN",
+	"NODATA",
+	"NXDOMAIN",
+	"CNAME",
+	"IP",
+	"DOMAIN",
+	"RRNAME",
+	"SERVFAIL",
+	"REFUSED",
+	"NOTIMP",
+	"OTHER"
+};
+
+static void query_set_reply(const unsigned int flags, const union all_addr *addr,
                             queriesData* query, const struct timeval response)
 {
 	// Iterate through possible values
@@ -1621,7 +1635,8 @@ static void save_reply_type(const unsigned int flags, const union all_addr *addr
 		query->reply = REPLY_IP;
 	}
 
-	logg("Set reply to %d", query->reply);
+	if(config.debug & DEBUG_QUERIES)
+		logg("Set reply to %s (%d)", reply_status_str[query->reply], query->reply);
 
 	counters->reply[query->reply]++;
 
@@ -2090,6 +2105,49 @@ bool FTL_unlink_DHCP_lease(const char *ipaddr)
 
 	// Return success
 	return true;
+}
+
+void FTL_query_in_progress(const int id)
+{
+	// Query (possibly from new source), but the same query may be in
+	// progress from another source.
+
+	// Lock shared memory
+	lock_shm();
+
+	// Search for corresponding query identified by ID
+	const int queryID = findQueryID(id);
+	if(queryID < 0)
+	{
+		// This may happen e.g. if the original query was an unhandled query type
+		unlock_shm();
+	}
+
+	// Get query pointer
+	queriesData* query = getQuery(queryID, true);
+	if(query == NULL)
+	{
+		// Memory error, skip this DNSSEC details
+		unlock_shm();
+		return;
+	}
+
+	// Debug logging
+	if(config.debug & DEBUG_QUERIES)
+	{
+		// Get domain pointer
+		const domainsData* domain = getDomain(query->domainID, true);
+		if(domain != NULL)
+		{
+			logg("**** query for %s is already in progress (ID %i)", getstr(domain->domainpos), id);
+		}
+	}
+
+	// Store status
+	query_set_status(query, QUERY_IN_PROGRESS);
+
+	// Unlock shared memory
+	unlock_shm();
 }
 
 void FTL_multiple_replies(const int id, int *firstID)
