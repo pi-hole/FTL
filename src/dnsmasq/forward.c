@@ -376,6 +376,12 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	  src->log_id = daemon->log_id;
 	  src->iface = dst_iface;
 	  src->fd = udpfd;
+
+	  /* closely spaced identical queries cannot be a try and a retry, so
+	     it's safe to wait for the reply from the first without
+	     forwarding the second. */
+	  if (difftime(now, forward->time) < 2)
+	    return 0;
 	}
     }
 
