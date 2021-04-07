@@ -649,15 +649,15 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		return false;
 	}
 
-	// Count this query as unknown as long as no reply has
-	// been found and analyzed
-	counters->status[QUERY_UNKNOWN]++;
-
+	// Fill query object with available data
 	query->magic = MAGICBYTE;
 	query->timestamp = querytimestamp;
 	query->type = querytype;
 	query->qtype = qtype;
 	query->id = id; // Has to be set before calling query_set_status()
+
+	// This query is unknown as long as no reply has been found and analyzed
+	counters->status[QUERY_UNKNOWN]++;
 	query_set_status(query, QUERY_UNKNOWN);
 	query->domainID = domainID;
 	query->clientID = clientID;

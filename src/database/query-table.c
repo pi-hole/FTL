@@ -523,8 +523,13 @@ void DB_read_queries(void)
 				cache->black_regex_idx = sqlite3_column_int(stmt, 7);
 		}
 
-		// Increment status counters
+		// Increment status counters, we first have to add one to the count of
+		// unknown queries because query_set_status() will subtract from there
+		// when setting a different status
+		counters->status[QUERY_UNKNOWN]++;
 		query_set_status(query, status);
+
+		// Do further processing based on the query status we read from the database
 		switch(status)
 		{
 			case QUERY_UNKNOWN: // Unknown
