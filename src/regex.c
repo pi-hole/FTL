@@ -95,7 +95,7 @@ unsigned int __attribute__((pure)) get_num_regex(const enum regex_type regexid)
 #define FTL_REGEX_SEP ";"
 /* Compile regular expressions into data structures that can be used with
    regexec() to match against a string */
-static bool compile_regex(const char *regexin, const enum regex_type regexid)
+static bool compile_regex(const char *regexin, const enum regex_type regexid, const int dbidx)
 {
 	regexData *regex = get_regex_ptr(regexid);
 	int index = num_regex[regexid]++;
@@ -122,7 +122,7 @@ static bool compile_regex(const char *regexin, const enum regex_type regexid)
 				if(regex[index].query_type != 0)
 					logg_regex_warning(regextype[regexid],
 					                   "Overwriting previous querytype setting",
-					                   regex[index].database_id, regexin);
+					                   dbidx, regexin);
 
 				// Test input string against all implemented query types
 				for(enum query_types type = TYPE_A; type < TYPE_MAX; type++)
@@ -145,7 +145,7 @@ static bool compile_regex(const char *regexin, const enum regex_type regexid)
 				// Nothing found
 				if(regex[index].query_type == 0)
 					logg_regex_warning(regextype[regexid], "Unknown querytype",
-					                   regex[index].database_id, regexin);
+					                   dbidx, regexin);
 
 				// Debug output
 				else if(config.debug & DEBUG_REGEX)
@@ -168,7 +168,10 @@ static bool compile_regex(const char *regexin, const enum regex_type regexid)
 			}
 			else
 			{
-				logg("   Option \"%s\" not known, ignoring it.", part);
+				char hint[40 + strlen(part)];
+				snprintf(hint, sizeof(hint)-1, "Option \"%s\" not known, ignoring it.", part);
+				logg_regex_warning(regextype[regexid], hint,
+				                   dbidx, regexin);
 			}
 		}
 		free(buf);
@@ -188,7 +191,7 @@ static bool compile_regex(const char *regexin, const enum regex_type regexid)
 		const size_t length = regerror(errcode, &regex[index].regex, NULL, 0);
 		char *buffer = calloc(length, sizeof(char));
 		(void) regerror (errcode, &regex[index].regex, buffer, length);
-		logg_regex_warning(regextype[regexid], buffer, regex[index].database_id, regexin);
+		logg_regex_warning(regextype[regexid], buffer, dbidx, regexin);
 		free(buffer);
 		regex[index].available = false;
 		return false;
@@ -510,7 +513,7 @@ static void read_regex_table(const enum regex_type regexid)
 			     regextype[regexid], num_regex[regexid], rowid, domain);
 		}
 
-		compile_regex(domain, regexid);
+		compile_regex(domain, regexid, rowid);
 		regex[num_regex[regexid]-1].database_id = rowid;
 
 		// Signal other forks that the regex data has changed and should be updated
@@ -619,7 +622,7 @@ int regex_test(const bool debug_mode, const bool quiet, const char *domainin, co
 		// Compile CLI regex
 		timer_start(REGEX_TIMER);
 		log_ctrl(false, true); // Temporarily re-enable terminal output for error logging
-		if(!compile_regex(regexin, REGEX_CLI))
+		if(!compile_regex(regexin, REGEX_CLI, -1))
 			return EXIT_FAILURE;
 		log_ctrl(false, !quiet); // Re-apply quiet option after compilation
 		logg("    Compiled regex filter in %.3f msec\n", timer_elapsed_msec(REGEX_TIMER));

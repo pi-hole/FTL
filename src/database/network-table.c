@@ -1131,10 +1131,15 @@ void parse_neighbor_cache(sqlite3* db)
 	if(config.network_expire > 0u)
 	{
 		const time_t limit = time(NULL)-24*3600*config.network_expire;
-		dbquery(db, "DELETE FROM network_addresses "
-		                   "WHERE lastSeen < %lu;", (unsigned long)limit);
-		dbquery(db, "UPDATE network_addresses SET name = NULL "
-		                   "WHERE nameUpdated < %lu;", (unsigned long)limit);
+		rc = dbquery(db, "DELETE FROM network_addresses "
+		                        "WHERE lastSeen < %lu;", (unsigned long)limit);
+		if(rc != SQLITE_OK)
+			return;
+
+		rc = dbquery(db, "UPDATE network_addresses SET name = NULL "
+		                        "WHERE nameUpdated < %lu;", (unsigned long)limit);
+		if(rc != SQLITE_OK)
+			return;
 	}
 
 	// Initialize array of status for individual clients used to
@@ -1362,6 +1367,12 @@ void parse_neighbor_cache(sqlite3* db)
 	if(linebuffer != NULL)
 		free(linebuffer);
 
+	if(rc != SQLITE_OK)
+	{
+		logg("Database error in ARP cache processing loop");
+		return;
+	}
+
 	// Loop over all clients known to FTL and ensure we add them all to the
 	// database
 	if(!add_FTL_clients_to_network_table(db, client_status, now, &additional_entries))
@@ -1375,9 +1386,14 @@ void parse_neighbor_cache(sqlite3* db)
 
 	// Ensure mock-devices which are not assigned to any addresses any more
 	// (they have been converted to "real" devices), are removed at this point
-	dbquery(db, "DELETE FROM network WHERE id NOT IN "
-	                                      "(SELECT network_id from network_addresses) "
-	                                  "AND hwaddr LIKE 'ip-%%';");
+	rc = dbquery(db, "DELETE FROM network WHERE id NOT IN "
+	                                           "(SELECT network_id from network_addresses) "
+	                                       "AND hwaddr LIKE 'ip-%%';");
+	if(rc != SQLITE_OK)
+	{
+		logg("Database error in mock-device cleaning statement");
+		return;
+	}
 
 	// Actually update the database
 	if((rc = dbquery(db, "END TRANSACTION")) != SQLITE_OK) {

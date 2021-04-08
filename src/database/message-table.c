@@ -19,6 +19,8 @@
 #include "../args.h"
 // cleanup()
 #include "../daemon.h"
+// main_pid()
+#include "../signals.h"
 
 static const char *message_types[MAX_MESSAGE] =
 	{ "REGEX", "SUBNET", "HOSTNAME", "DNSMASQ_CONFIG" };
@@ -247,6 +249,12 @@ static bool add_message(enum message_type type,
 
 void logg_regex_warning(const char *type, const char *warning, const int dbindex, const char *regex)
 {
+	// Only log regex errors/warnings in the main process to prevent errors
+	// being added multiple times to the database when a TCP worker
+	// (re)compiles a faulty regex
+	if(getpid() != main_pid())
+		return;
+
 	// Log to pihole-FTL.log
 	logg("REGEX WARNING: Invalid regex %s filter \"%s\": %s",
 	     type, regex, warning);
