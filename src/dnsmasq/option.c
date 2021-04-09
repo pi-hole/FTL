@@ -174,6 +174,7 @@ struct myoption {
 #define LOPT_PXE_VENDOR    361
 #define LOPT_DYNHOST       362
 #define LOPT_LOG_DEBUG     363
+#define LOPT_UMBRELLA	   364
  
 #ifdef HAVE_GETOPT_LONG
 static const struct option opts[] =  
@@ -349,6 +350,7 @@ static const struct myoption opts[] =
     { "dhcp-ignore-clid", 0, 0,  LOPT_IGNORE_CLID },
     { "dynamic-host", 1, 0, LOPT_DYNHOST },
     { "log-debug", 0, 0, LOPT_LOG_DEBUG },
+	{ "umbrella", 2, 0, LOPT_UMBRELLA },
     { NULL, 0, 0, 0 }
   };
 
@@ -531,6 +533,7 @@ static struct {
   { LOPT_DUMPFILE, ARG_ONE, "<path>", gettext_noop("Path to debug packet dump file"), NULL },
   { LOPT_DUMPMASK, ARG_ONE, "<hex>", gettext_noop("Mask which packets to dump"), NULL },
   { LOPT_SCRIPT_TIME, OPT_LEASE_RENEW, NULL, gettext_noop("Call dhcp-script when lease expiry changes."), NULL },
+  { LOPT_UMBRELLA, ARG_ONE, "[=<optspec>]", gettext_noop("Send Cisco Umbrella identifiers including remote IP."), NULL },
   { 0, 0, NULL, NULL, NULL }
 }; 
 
@@ -657,7 +660,7 @@ static char *canonicalise_opt(char *s)
   return ret;
 }
 
-static int atoi_check(char *a, int *res)
+static int numeric_check(char *a)
 {
   char *p;
 
@@ -670,7 +673,26 @@ static int atoi_check(char *a, int *res)
      if (*p < '0' || *p > '9')
        return 0;
 
+  return 1;
+}
+
+static int atoi_check(char *a, int *res)
+{
+  if (!numeric_check(a))
+    return 0;
   *res = atoi(a);
+  return 1;
+}
+
+static int strtoul_check(char *a, u32 *res)
+{
+  if (!numeric_check(a))
+    return 0;
+  *res = strtoul(a, NULL, 10);
+  if (errno == ERANGE) {
+    errno = 0;
+    return 0;
+  }
   return 1;
 }
 
@@ -2411,6 +2433,41 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
     case LOPT_CPE_ID: /* --add-dns-client */
       if (arg)
 	daemon->dns_client_id = opt_string_alloc(arg);
+      break;
+
+    case LOPT_UMBRELLA: /* --umbrella */
+      set_option_bool(OPT_UMBRELLA);
+      while (arg) {
+        comma = split(arg);
+        if (strstr(arg, "deviceid:")) {
+          arg += 9;
+          if (strlen(arg) != 16)
+              ret_err(gen_err);
+          for (char *p = arg; *p; p++) {
+            if (!isxdigit((int)*p))
+              ret_err(gen_err);
+          }
+          set_option_bool(OPT_UMBRELLA_DEVID);
+
+          u8 *u = daemon->umbrella_device;
+          char word[3];
+          for (u8 i = 0; i < sizeof(daemon->umbrella_device); i++, arg+=2) {
+            memcpy(word, &(arg[0]), 2);
+            *u++ = strtoul(word, NULL, 16);
+          }
+        }
+        else if (strstr(arg, "orgid:")) {
+          if (!strtoul_check(arg+6, &daemon->umbrella_org)) {
+            ret_err(gen_err);
+          }
+        }
+        else if (strstr(arg, "assetid:")) {
+          if (!strtoul_check(arg+8, &daemon->umbrella_asset)) {
+            ret_err(gen_err);
+          }
+        }
+        arg = comma;
+      }
       break;
 
     case LOPT_ADD_MAC: /* --add-mac */

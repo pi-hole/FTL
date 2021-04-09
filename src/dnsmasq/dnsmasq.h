@@ -270,7 +270,9 @@ struct event_desc {
 #define OPT_SINGLE_PORT    60
 #define OPT_LEASE_RENEW    61
 #define OPT_LOG_DEBUG      62
-#define OPT_LAST           63
+#define OPT_UMBRELLA       63
+#define OPT_UMBRELLA_DEVID 64
+#define OPT_LAST           65
 
 #define OPTION_BITS (sizeof(unsigned int)*8)
 #define OPTION_SIZE ( (OPT_LAST/OPTION_BITS)+((OPT_LAST%OPTION_BITS)!=0) )
@@ -1063,6 +1065,9 @@ extern struct daemon {
   int port, query_port, min_port, max_port;
   unsigned long local_ttl, neg_ttl, max_ttl, min_cache_ttl, max_cache_ttl, auth_ttl, dhcp_ttl, use_dhcp_ttl;
   char *dns_client_id;
+  u32 umbrella_org;
+  u32 umbrella_asset;
+  u8 umbrella_device[8];
   struct hostsfile *addn_hosts;
   struct dhcp_context *dhcp, *dhcp6;
   struct ra_interface *ra_interfaces;
