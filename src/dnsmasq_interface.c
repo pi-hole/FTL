@@ -75,6 +75,12 @@ void FTL_iface(const int ifidx, const struct irec *ifaces)
 	memset(&next_iface.addr4, 0, sizeof(next_iface.addr4));
 	memset(&next_iface.addr6, 0, sizeof(next_iface.addr6));
 
+	// Copy overwrite addresses if configured via REPLY_ADDR4 and/or REPLY_ADDR6 settings
+	if(config.reply_addr.overwrite_v4)
+		memcpy(&next_iface.addr4, &config.reply_addr.v4, sizeof(config.reply_addr.v4));
+	if(config.reply_addr.overwrite_v6)
+		memcpy(&next_iface.addr6, &config.reply_addr.v6, sizeof(config.reply_addr.v6));
+
 	// Use dummy when interface record is not available
 	next_iface.name[0] = '-';
 	next_iface.name[1] = '\0';
@@ -100,7 +106,12 @@ void FTL_iface(const int ifidx, const struct irec *ifaces)
 		strncpy(next_iface.name, iface->name, sizeof(next_iface.name)-1);
 		next_iface.name[sizeof(next_iface.name)-1] = '\0';
 
+		// Check if this family type is overwritten by config settings
 		const int family = iface->addr.sa.sa_family;
+		if((config.reply_addr.overwrite_v4 && family == AF_INET) ||
+		   (config.reply_addr.overwrite_v6 && family == AF_INET6))
+			continue;
+
 		bool isULA = false, isGUA = false;
 		// Check if this address is different from 0000:0000:0000:0000:0000:0000:0000:0000
 		if(family == AF_INET6 && memcmp(&next_iface.addr6.addr6, &iface->addr.in6.sin6_addr, sizeof(iface->addr.in6.sin6_addr)) != 0)

@@ -19,6 +19,8 @@
 #include <idn-int.h>
 // assert_sizeof
 #include "static_assert.h"
+// struct in_addr, in6_addr
+#include <netinet/in.h>
 
 void getLogFilePath(void);
 void read_FTLconf(void);
@@ -59,8 +61,14 @@ typedef struct {
 	} rate_limit;
 	enum debug_flags debug;
 	time_t DBinterval;
+	struct {
+		bool overwrite_v4 :1;
+		bool overwrite_v6 :1;
+		struct in_addr v4;
+		struct in6_addr v6;
+	} reply_addr;
 } ConfigStruct;
-ASSERT_SIZEOF(ConfigStruct, 64, 56, 56);
+ASSERT_SIZEOF(ConfigStruct, 88, 80, 80);
 
 typedef struct {
 	const char* conf;
