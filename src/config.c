@@ -58,7 +58,7 @@ void getLogFilePath(void)
 	    ((fp = fopen(FTLfiles.snapConf, "r")) == NULL) &&
 	    ((fp = fopen("pihole-FTL.conf", "r")) == NULL))
 	{
-		printf("Notice: Found no readable FTL config file");
+		printf("Notice: Found no readable FTL config file\n");
 	}
 
 	// Read LOGFILE value if available
