@@ -19,7 +19,7 @@ extern int socketfd, telnetfd4, telnetfd6;
 extern unsigned char* pihole_privacylevel;
 enum protocol { TCP, UDP };
 
-void FTL_next_iface(const char *newiface);
+void FTL_iface(const int ifidx, const struct irec *ifaces);
 
 #define FTL_new_query(flags, name, blockingreason, addr, types, qtype, id, edns, proto) _FTL_new_query(flags, name, blockingreason, addr, types, qtype, id, edns, proto, __FILE__, __LINE__)
 bool _FTL_new_query(const unsigned int flags, const char *name, const char** blockingreason, const union all_addr *addr, const char *types, const unsigned short qtype, const int id, const ednsData *edns, enum protocol proto, const char* file, const int line);
@@ -58,7 +58,7 @@ void FTL_duplicate_reply(const int id, int *firstID);
 
 void FTL_dnsmasq_reload(void);
 void FTL_fork_and_bind_sockets(struct passwd *ent_pw);
-void FTL_TCP_worker_created(const int confd, const char *iface_name);
+void FTL_TCP_worker_created(const int confd);
 void FTL_TCP_worker_terminating(bool finished);
 
 void set_debug_dnsmasq_lines(char enabled);

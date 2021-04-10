@@ -1789,9 +1789,12 @@ static void check_dns_listeners(time_t now)
   for (listener = daemon->listeners; listener; listener = listener->next)
     {
 
-      /******************** Pi-hole modification *******************/
-      FTL_next_iface(listener->iface ? listener->iface->name : NULL);
-      /*************************************************************/
+      /***************************** Pi-hole modification ****************************/
+      // Get the interface here only if we know the listeners are bound to specific
+      // interfaces (option "bind-interfaces" is used)
+      if(option_bool(OPT_NOWILD))
+	FTL_iface(listener->iface->index, daemon->interfaces);
+      /*******************************************************************************/
 
       if (listener->fd != -1 && poll_check(listener->fd, POLLIN))
 	receive_query(listener, now); 
@@ -1879,8 +1882,6 @@ static void check_dns_listeners(time_t now)
 		}
 	    }
 	  
-	  FTL_next_iface(iface ? iface->name : NULL);
-
 	  if (!client_ok)
 	    {
 	      shutdown(confd, SHUT_RDWR);
@@ -1971,15 +1972,18 @@ static void check_dns_listeners(time_t now)
 	      if ((flags = fcntl(confd, F_GETFL, 0)) != -1)
 		fcntl(confd, F_SETFL, flags & ~O_NONBLOCK);
 	      
-	      /******* Pi-hole modification *******/
-	      FTL_TCP_worker_created(confd, iface != NULL ? iface->name : NULL);
-	      /************************************/
+	      /************ Pi-hole modification ************/
+	      FTL_TCP_worker_created(confd);
+	      // Store interface this fork is handling exclusively
+	      FTL_iface(iface != NULL ? iface->index : -1,
+			daemon->interfaces);
+	      /**********************************************/
 
 	      buff = tcp_request(confd, now, &tcp_addr, netmask, auth_dns);
 	       
-	      /******* Pi-hole modification *******/
+	      /************ Pi-hole modification ************/
 	      FTL_TCP_worker_terminating(true);
-	      /************************************/
+	      /**********************************************/
 
 	      shutdown(confd, SHUT_RDWR);
 	      close(confd);
