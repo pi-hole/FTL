@@ -127,7 +127,7 @@ void _FTL_log(const bool newline, const bool debug, const char *format, ...)
 			printf("\n");
 	}
 
-	if(print_log)
+	if(print_log && FTLfiles.log != NULL)
 	{
 		// Open log file
 		FILE *logfile = fopen(FTLfiles.log, "a+");
@@ -290,15 +290,22 @@ const char __attribute__ ((malloc)) *get_FTL_version(void)
 	// Obtain FTL version if not already determined
 	if(FTLversion == NULL)
 	{
-		if(strlen(GIT_TAG) > 1)
+		if(strlen(GIT_TAG) > 1 && strlen(GIT_VERSION) > 1)
 		{
+			// Copy version string if this is a tagged release
 			FTLversion = strdup(GIT_VERSION);
 		}
-		else
+		else if(strlen(GIT_HASH) > 0)
 		{
+			// Build special version string when there is a hash
 			FTLversion = calloc(13, sizeof(char));
 			// Build version by appending 7 characters of the hash to "vDev-"
 			snprintf(FTLversion, 13, "vDev-%.7s", GIT_HASH);
+		}
+		else
+		{
+			// Fallback for tarball build, etc. without any GIT subsystem
+			FTLversion = strdup("UNKNOWN (not a GIT build)");
 		}
 	}
 

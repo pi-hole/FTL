@@ -42,43 +42,133 @@
 // Eventqueue routines
 #include "events.h"
 
+// Private prototypes
 static void print_flags(const unsigned int flags);
 static void query_set_reply(const unsigned int flags, const union all_addr *addr,
                             queriesData* query, const struct timeval response);
 static unsigned long converttimeval(const struct timeval time) __attribute__((const));
-static enum query_status detect_blocked_IP(const unsigned short flags, const union all_addr *addr, const queriesData *query, const domainsData *domain);
-static void prepare_blocking_metadata(void);
-static void query_blocked(queriesData* query, domainsData* domain, clientsData* client, const unsigned char new_status);
+static enum query_status detect_blocked_IP(const unsigned short flags,
+                                           const union all_addr *addr,
+                                           const queriesData *query,
+                                           const domainsData *domain);
+static void query_blocked(queriesData* query,
+                          domainsData* domain,
+                          clientsData* client,
+                          const unsigned char new_status);
 
-// Static blocking metadata (stored precomputed as time-critical)
-static unsigned int blocking_flags = 0;
-static union all_addr blocking_addrp_v4 = {{ 0 }};
-static union all_addr blocking_addrp_v6 = {{ 0 }};
+// Static blocking metadata
+static union all_addr null_addrp = {{ 0 }};
 static unsigned char force_next_DNS_reply = 0u;
 
 // Adds debug information to the regular pihole.log file
 char debug_dnsmasq_lines = 0;
 
 // Fork-private copy of the interface name the most recent query came from
-static char next_iface[IFNAMSIZ] = "";
+static struct {
+	char name[IFNAMSIZ];
+	union all_addr addr4;
+	union all_addr addr6;
+} next_iface = {"", {{0}}, {{0}}};
 
 unsigned char* pihole_privacylevel = &config.privacylevel;
 const char flagnames[][12] = {"F_IMMORTAL ", "F_NAMEP ", "F_REVERSE ", "F_FORWARD ", "F_DHCP ", "F_NEG ", "F_HOSTS ", "F_IPV4 ", "F_IPV6 ", "F_BIGNAME ", "F_NXDOMAIN ", "F_CNAME ", "F_DNSKEY ", "F_CONFIG ", "F_DS ", "F_DNSSECOK ", "F_UPSTREAM ", "F_RRNAME ", "F_SERVER ", "F_QUERY ", "F_NOERR ", "F_AUTH ", "F_DNSSEC ", "F_KEYTAG ", "F_SECSTAT ", "F_NO_RR ", "F_IPSET ", "F_NOEXTRA ", "F_SERVFAIL", "F_RCODE"};
 
-// Store interface the next query will come from for later usage
-void FTL_next_iface(const char *newiface)
+void FTL_iface(const int ifidx, const struct irec *ifaces)
 {
-	if(newiface != NULL)
+	// Invalidate data we have from the last interface/query
+	// Set addresses to 0.0.0.0 and ::, respectively
+	memset(&next_iface.addr4, 0, sizeof(next_iface.addr4));
+	memset(&next_iface.addr6, 0, sizeof(next_iface.addr6));
+
+	// Copy overwrite addresses if configured via REPLY_ADDR4 and/or REPLY_ADDR6 settings
+	if(config.reply_addr.overwrite_v4)
+		memcpy(&next_iface.addr4, &config.reply_addr.v4, sizeof(config.reply_addr.v4));
+	if(config.reply_addr.overwrite_v6)
+		memcpy(&next_iface.addr6, &config.reply_addr.v6, sizeof(config.reply_addr.v6));
+
+	// Use dummy when interface record is not available
+	next_iface.name[0] = '-';
+	next_iface.name[1] = '\0';
+
+	// Return early when there is no interface available at this point
+	if(ifidx == -1 || ifaces == NULL)
+		return;
+
+	// Determine addresses of this interface
+	const struct irec *iface;
+	bool haveIPv4 = false, haveGUAv6 = false, haveULAv6 = false;
+	for (iface = ifaces; iface != NULL; iface = iface->next)
 	{
-		// Copy interface name if available
-		strncpy(next_iface, newiface, sizeof(next_iface)-1);
-		next_iface[sizeof(next_iface)-1] = '\0';
-	}
-	else
-	{
-		// Use dummy when interface record is not available
-		next_iface[0] = '-';
-		next_iface[1] = '\0';
+		// If this interface has no name, we skip it
+		if(iface->name == NULL)
+			continue;
+
+		// Check if this is the interface we want
+		if(iface->index != ifidx)
+			continue;
+
+		// Copy interface name
+		strncpy(next_iface.name, iface->name, sizeof(next_iface.name)-1);
+		next_iface.name[sizeof(next_iface.name)-1] = '\0';
+
+		// Check if this family type is overwritten by config settings
+		const int family = iface->addr.sa.sa_family;
+		if((config.reply_addr.overwrite_v4 && family == AF_INET) ||
+		   (config.reply_addr.overwrite_v6 && family == AF_INET6))
+			continue;
+
+		bool isULA = false, isGUA = false;
+		// Check if this address is different from 0000:0000:0000:0000:0000:0000:0000:0000
+		if(family == AF_INET6 && memcmp(&next_iface.addr6.addr6, &iface->addr.in6.sin6_addr, sizeof(iface->addr.in6.sin6_addr)) != 0)
+		{
+			// Extract first byte
+			// We do not directly access the underlying union as
+			// MUSL defines it differently than GNU C
+			uint8_t firstbyte;
+			memcpy(&firstbyte, &iface->addr.in6.sin6_addr, 1);
+		        // Global Unicast Address (2000::/3, RFC 4291)
+			isGUA = (firstbyte & 0x70) == 0x20;
+			// Unique Local Address   (fc00::/7, RFC 4193)
+			isULA = (firstbyte & 0xfe) == 0xfc;
+			// Store IPv6 address only if we don't already have a GUA or ULA address
+			// This makes the preference:
+			//  1. ULA
+			//  2. GUA
+			//  3. Link-local
+			if((!haveGUAv6 && !haveULAv6) || (haveGUAv6 && isULA))
+			{
+				memcpy(&next_iface.addr6.addr6, &iface->addr.in6.sin6_addr, sizeof(iface->addr.in6.sin6_addr));
+				if(isGUA)
+					haveGUAv6 = true;
+				else if(isULA)
+					haveULAv6 = true;
+			}
+		}
+		// Check if this address is different from 0.0.0.0
+		else if(family == AF_INET && memcmp(&next_iface.addr4.addr4, &iface->addr.in.sin_addr, sizeof(iface->addr.in.sin_addr)) != 0)
+		{
+			haveIPv4 = true;
+			// Store IPv4 address
+			memcpy(&next_iface.addr4.addr4, &iface->addr.in.sin_addr, sizeof(iface->addr.in.sin_addr));
+		}
+
+		// Debug logging
+		if(config.debug & DEBUG_NETWORKING)
+		{
+			char buffer[ADDRSTRLEN+1] = { 0 };
+			if(family == AF_INET)
+				inet_ntop(AF_INET, &iface->addr.in.sin_addr, buffer, ADDRSTRLEN);
+			else if(family == AF_INET6)
+				inet_ntop(AF_INET6, &iface->addr.in6.sin6_addr, buffer, ADDRSTRLEN);
+			logg("Interface (%d) %s has IPv%i address %s %s", ifidx, next_iface.name,
+				family == AF_INET ? 4 : 6, buffer, isGUA ? "(GUA)" : isULA ? "(ULA)" : "(other)");
+		}
+
+
+		// Exit loop early if we already have everything we need
+		// (a valid IPv4 address + a valid ULA IPv6 address)
+		if(haveIPv4 && haveULAv6)
+			break;
 	}
 }
 
@@ -597,7 +687,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		{
 			logg("Rate-limiting %s %s query \"%s\" from %s:%s",
 			     proto == TCP ? "TCP" : "UDP",
-			     types, domainString, next_iface, clientIP);
+			     types, domainString, next_iface.name, clientIP);
 		}
 
 		// Block this query
@@ -613,7 +703,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	{
 		logg("**** new %s %s query \"%s\" from %s:%s (ID %i, FTL %i, %s:%i)",
 		     proto == TCP ? "TCP" : "UDP",
-		     types, domainString, next_iface, clientIP, id, queryID, file, line);
+		     types, domainString, next_iface.name, clientIP, id, queryID, file, line);
 	}
 
 	// Update counters
@@ -696,13 +786,15 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	client->lastQuery = querytimestamp;
 	client->numQueriesARP++;
 
-	// Preocess interface information of client (if available)
-	if(next_iface != NULL)
+	// Process interface information of client (if available)
+	// Skip interface name length 1 to skip "-". No real interface should
+	// have a name with a length of 1...
+	if(strlen(next_iface.name) > 1)
 	{
 		if(client->ifacepos == 0u)
 		{
 			// Store in the client data if unknown so far
-			client->ifacepos = addstr(next_iface);
+			client->ifacepos = addstr(next_iface.name);
 		}
 		else
 		{
@@ -710,13 +802,13 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 			// if the client moved to another interface
 			// (may require group re-processing)
 			const char *oldiface = getstr(client->ifacepos);
-			if(strcasecmp(oldiface, next_iface) != 0)
+			if(strcasecmp(oldiface, next_iface.name) != 0)
 			{
 				if(config.debug & DEBUG_CLIENTS)
 				{
 					const char *clientName = getstr(client->namepos);
 					logg("Client %s (%s) changed interface: %s -> %s",
-					     clientIP, clientName, oldiface, next_iface);
+					     clientIP, clientName, oldiface, next_iface.name);
 				}
 
 				gravityDB_reload_groups(client);
@@ -782,17 +874,26 @@ void _FTL_get_blocking_metadata(union all_addr **addrp, unsigned int *flags, con
 
 	// Add flags according to current blocking mode
 	// We bit-add here as flags already contains either F_IPV4 or F_IPV6
-	*flags |= blocking_flags;
+	// Set blocking_flags to F_HOSTS so dnsmasq logs blocked queries being answered from a specific source
+	// (it would otherwise assume it knew the blocking status from cache which would prevent us from
+	// printing the blocking source (blacklist, regex, gravity) in dnsmasq's log file, our pihole.log)
+	*flags |= F_HOSTS;
 
 	if(*flags & F_IPV6)
 	{
-		// Pass blocking IPv6 address (will be :: in most cases)
-		*addrp = &blocking_addrp_v6;
+		// Pass blocking IPv6 address
+		if(config.blockingmode == MODE_IP)
+			*addrp = &next_iface.addr6;
+		else
+			*addrp = &null_addrp;
 	}
 	else
 	{
-		// Pass blocking IPv4 address (will be 0.0.0.0 in most cases)
-		*addrp = &blocking_addrp_v4;
+		// Pass blocking IPv4 address
+		if(config.blockingmode == MODE_IP || config.blockingmode == MODE_IP_NODATA_AAAA)
+			*addrp = &next_iface.addr4;
+		else
+			*addrp = &null_addrp;
 	}
 
 	if(config.blockingmode == MODE_NX)
@@ -948,9 +1049,6 @@ void FTL_dnsmasq_reload(void)
 	// Passing NULL to this function means it has to open the config file on
 	// its own behalf (on initial reading, the config file is already opened)
 	get_blocking_mode(NULL);
-	// Update blocking metadata (target IP addresses and DNS header flags)
-	// as the blocking mode might have changed
-	prepare_blocking_metadata();
 
 	// Reread pihole-FTL.conf to see which debugging flags are set
 	read_debuging_settings(NULL);
@@ -1335,6 +1433,7 @@ void _FTL_cache(const unsigned int flags, const char *name, const union all_addr
 static void query_blocked(queriesData* query, domainsData* domain, clientsData* client, const enum query_status new_status)
 {
 	// Get response time
+	int blocking_flags = 0;
 	struct timeval response;
 	gettimeofday(&response, 0);
 	query_set_reply(blocking_flags, NULL, query, response);
@@ -1863,48 +1962,6 @@ static unsigned long __attribute__((const)) converttimeval(const struct timeval 
 	return time.tv_sec*10000 + time.tv_usec/100;
 }
 
-// This subroutine prepares IPv4 and IPv6 addresses for blocking queries depending on the configured blocking mode
-static void prepare_blocking_metadata(void)
-{
-	// Reset all blocking metadata
-	blocking_flags = 0;
-	memset(&blocking_addrp_v4, 0, sizeof(blocking_addrp_v4));
-	memset(&blocking_addrp_v6, 0, sizeof(blocking_addrp_v6));
-
-	// Set blocking_flags to F_HOSTS so dnsmasq logs blocked queries being answered from a specific source
-	// (it would otherwise assume it knew the blocking status from cache which would prevent us from
-	// printing the blocking source (blacklist, regex, gravity) in dnsmasq's log file, our pihole.log)
-	blocking_flags = F_HOSTS;
-
-	// Use the blocking IPv4 address from setupVars.conf only if needed for selected blocking mode
-	char* const IPv4addr = read_setupVarsconf("IPV4_ADDRESS");
-	if((config.blockingmode == MODE_IP || config.blockingmode == MODE_IP_NODATA_AAAA) &&
-	   IPv4addr != NULL && strlen(IPv4addr) > 0)
-	{
-		// Strip off everything at the end of the IP (CIDR might be there)
-		char* a=IPv4addr; for(;*a;a++) if(*a == '/') *a = 0;
-		// Prepare IPv4 address for records
-		if(inet_pton(AF_INET, IPv4addr, &blocking_addrp_v4) != 1)
-			logg("ERROR: Found invalid IPv4 address in setupVars.conf: %s", IPv4addr);
-	}
-	// Free IPv4addr
-	clearSetupVarsArray();
-
-	// Use the blocking IPv6 address from setupVars.conf only if needed for selected blocking mode
-	char* const IPv6addr = read_setupVarsconf("IPV6_ADDRESS");
-	if(config.blockingmode == MODE_IP &&
-	   IPv6addr != NULL && strlen(IPv6addr) > 0)
-	{
-		// Strip off everything at the end of the IP (CIDR might be there)
-		char* a=IPv6addr; for(;*a;a++) if(*a == '/') *a = 0;
-		// Prepare IPv6 address for records
-		if(inet_pton(AF_INET6, IPv6addr, &blocking_addrp_v6) != 1)
-			logg("ERROR: Found invalid IPv6 address in setupVars.conf: %s", IPv4addr);
-	}
-	// Free IPv6addr
-	clearSetupVarsArray();
-}
-
 unsigned int FTL_extract_question_flags(struct dns_header *header, const size_t qlen)
 {
 	// Create working pointer
@@ -1997,7 +2054,7 @@ void FTL_TCP_worker_terminating(bool finished)
 // fork() can lead to all kinds of locking problems as SQLite3 was not
 // intended to work under such circumstances. Doing so may easily lead
 // to ending up with a corrupted database.
-void FTL_TCP_worker_created(const int confd, const char *iface_name)
+void FTL_TCP_worker_created(const int confd)
 {
 	if(dnsmasq_debug)
 	{
@@ -2037,11 +2094,8 @@ void FTL_TCP_worker_created(const int confd, const char *iface_name)
 			inet_ntop(iface_sockaddr.sa.sa_family, &iface_addr, local_ip, ADDRSTRLEN);
 		}
 
-		// Substitute interface name if not available
-		if(iface_name == NULL)
-			iface_name = "N/A (iface is NULL)";
 		// Print log
-		logg("TCP worker forked for client %s on interface %s with IP %s", peer_ip, iface_name, local_ip);
+		logg("TCP worker forked for client %s on interface %s with IP %s", peer_ip, next_iface.name, local_ip);
 	}
 
 	if(main_pid() == getpid())

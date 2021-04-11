@@ -21,6 +21,7 @@ version: 2
         name: "Upload binary to binary bucket"
         command: |
           [ -z "${CIRCLE_PR_USERNAME}" ] || exit 0
+          [ "${CIRCLE_PROJECT_USERNAME}" == "pi-hole" ] || exit 0
           DIR="${CIRCLE_TAG:-${CIRCLE_BRANCH}}"
           mkdir -p ~/.ssh/
           ssh-keyscan -H $SSH_HOST >> ~/.ssh/known_hosts
@@ -30,6 +31,7 @@ version: 2
         name: "Verify uploaded binary"
         command: |
           [ -z "${CIRCLE_PR_USERNAME}" ] || exit 0
+          [ "${CIRCLE_PROJECT_USERNAME}" == "pi-hole" ] || exit 0
           DIR="${CIRCLE_TAG:-${CIRCLE_BRANCH}}"
           mkdir download
           cd download

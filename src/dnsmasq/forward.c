@@ -1559,9 +1559,12 @@ void receive_query(struct listener *listen, time_t now)
 	    dst_addr_4.s_addr = 0;
 	}
 
-    /*********** Pi-hole modification ***********/
-    FTL_next_iface(ifr.ifr_name);
-    /********************************************/
+    /********************* Pi-hole modification ***********************/
+    // This gets the interface in all cases where this is possible here
+    // We get here only if "bind-interfaces" is NOT used or this query
+    // is received over IPv6
+    FTL_iface(if_index, daemon->interfaces);
+    /****************************************************************/
     }
    
   /* log_query gets called indirectly all over the place, so 
@@ -2036,6 +2039,7 @@ unsigned char *tcp_request(int confd, time_t now,
 	  check_log_writer(1); 
 	  
 	  /************ Pi-hole modification ************/
+	  // Interface name is known from before forking
 	  if(piholeblocked)
 	    {
 	      union all_addr *addrp = NULL;
