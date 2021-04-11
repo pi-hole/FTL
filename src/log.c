@@ -123,7 +123,7 @@ void _FTL_log(const bool newline, const char *format, ...)
 			printf("\n");
 	}
 
-	if(print_log)
+	if(print_log && FTLfiles.log != NULL)
 	{
 		// Open log file
 		FILE *logfile = fopen(FTLfiles.log, "a+");

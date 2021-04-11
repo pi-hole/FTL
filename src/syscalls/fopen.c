@@ -12,10 +12,12 @@
 //#include "syscalls.h" is implicitly done in FTL.h
 #include "../log.h"
 
+static uint8_t already_writing = 0;
+
 #undef fopen
 FILE *FTLfopen(const char *pathname, const char *mode, const char *file, const char *func, const int line)
 {
-    FILE *file_ptr = 0;
+	FILE *file_ptr = 0;
 	do
 	{
 		// Reset errno before trying to write
@@ -28,9 +30,13 @@ FILE *FTLfopen(const char *pathname, const char *mode, const char *file, const c
 
 	// Final error checking (may have faild for some other reason then an
 	// EINTR = interrupted system call)
-	if(file_ptr == NULL)
+	// The already_writing coutner prevents a possible infinite loop
+	if(file_ptr == NULL && (already_writing++) == 1)
 		logg("WARN: Could not fopen(\"%s\", \"%s\") in %s() (%s:%i): %s",
-             pathname, mode, func, file, line, strerror(errno));
+		     pathname, mode, func, file, line, strerror(errno));
 
-    return file_ptr;
+	// Decrement warning counter
+	already_writing--;
+
+	return file_ptr;
 }
