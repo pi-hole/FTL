@@ -29,6 +29,7 @@
 
 pthread_t threads[THREADS_MAX] = { 0 };
 pthread_t api_threads[MAX_API_THREADS] = { 0 };
+pid_t api_tids[MAX_API_THREADS] = { 0 };
 bool resolver_ready = false;
 
 void go_daemon(void)

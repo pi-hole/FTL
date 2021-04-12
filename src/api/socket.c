@@ -392,6 +392,10 @@ static void *socket_connection_handler_thread(void *socket_desc)
 	sprintf(threadname, "socket-%i", sock);
 	prctl(PR_SET_NAME, threadname, 0, 0, 0);
 
+	// Ensure this thread can be canceled at any time (not only at
+	// cancellation points)
+	pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
+
 	// Store TID of this thread
 	lock_shm();
 	unsigned int tid;
@@ -400,6 +404,7 @@ static void *socket_connection_handler_thread(void *socket_desc)
 		if(api_threads[tid] == 0)
 		{
 			api_threads[tid] = pthread_self();
+			api_tids[tid] = gettid();
 			break;
 		}
 	}
@@ -445,6 +450,7 @@ static void *socket_connection_handler_thread(void *socket_desc)
 
 	// Release thread from list
 	api_threads[tid] = 0;
+	api_tids[tid] = 0;
 
 	return NULL;
 }
