@@ -26,6 +26,8 @@
 #include "config.h"
 // set_event(RESOLVE_NEW_HOSTNAMES)
 #include "events.h"
+// overTime array
+#include "overTime.h"
 
 const char *querytypes[TYPE_MAX] = {"UNKNOWN", "A", "AAAA", "ANY", "SRV", "SOA", "PTR", "TXT",
                                     "NAPTR", "MX", "DS", "RRSIG", "DNSKEY", "NS", "OTHER", "SVCB",
@@ -474,4 +476,94 @@ void FTL_reload_all_domainlists(void)
 	FTL_reset_per_client_domain_data();
 
 	unlock_shm();
+}
+
+bool __attribute__ ((const)) is_blocked(const enum query_status status)
+{
+	switch (status)
+	{
+		case QUERY_UNKNOWN:
+		case QUERY_FORWARDED:
+		case QUERY_CACHE:
+		case QUERY_RETRIED:
+		case QUERY_RETRIED_DNSSEC:
+		case QUERY_IN_PROGRESS:
+		case QUERY_STATUS_MAX:
+		default:
+			return false;
+
+		case QUERY_GRAVITY:
+		case QUERY_REGEX:
+		case QUERY_BLACKLIST:
+		case QUERY_EXTERNAL_BLOCKED_IP:
+		case QUERY_EXTERNAL_BLOCKED_NULL:
+		case QUERY_EXTERNAL_BLOCKED_NXRA:
+		case QUERY_GRAVITY_CNAME:
+		case QUERY_REGEX_CNAME:
+		case QUERY_BLACKLIST_CNAME:
+			return true;
+	}
+}
+
+static const char *query_status_str[QUERY_STATUS_MAX] = {
+	"UNKNOWN",
+	"GRAVITY",
+	"FORWARDED",
+	"CACHE",
+	"REGEX",
+	"BLACKLIST",
+	"EXTERNAL_BLOCKED_IP",
+	"EXTERNAL_BLOCKED_NULL",
+	"EXTERNAL_BLOCKED_NXRA",
+	"GRAVITY_CNAME",
+	"REGEX_CNAME",
+	"BLACKLIST_CNAME",
+	"RETRIED",
+	"RETRIED_DNSSEC",
+	"IN_PROGRESS"
+};
+
+void query_set_status(queriesData *query, const enum query_status new_status)
+{
+	// Debug logging
+	if(config.debug & DEBUG_STATUS)
+	{
+		const char *oldstr = query->status < QUERY_STATUS_MAX ? query_status_str[query->status] : "INVALID";
+		if(query->status == new_status)
+		{
+			logg("Query %i: status unchanged: %s (%d)",
+			     query->id, oldstr, query->status);
+		}
+		else
+		{
+			const char *newstr = new_status < QUERY_STATUS_MAX ? query_status_str[new_status] : "INVALID";
+			logg("Query %i: status changed: %s (%d) -> %s (%d)",
+			     query->id, oldstr, query->status, newstr, new_status);
+		}
+	}
+
+	// Update counters
+	if(query->status != new_status)
+	{
+		counters->status[query->status]--;
+		counters->status[new_status]++;
+
+		if(is_blocked(query->status))
+			overTime[query->timeidx].blocked--;
+		if(is_blocked(new_status))
+			overTime[query->timeidx].blocked++;
+
+		if(query->status == QUERY_CACHE)
+			overTime[query->timeidx].cached--;
+		if(new_status == QUERY_CACHE)
+			overTime[query->timeidx].cached++;
+
+		if(query->status == QUERY_FORWARDED)
+			overTime[query->timeidx].forwarded--;
+		if(new_status == QUERY_FORWARDED)
+			overTime[query->timeidx].forwarded++;
+	}
+
+	// Update status
+	query->status = new_status;
 }

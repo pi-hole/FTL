@@ -76,13 +76,17 @@ void get_timestr(char * const timestring, const time_t timein, const bool millis
 	}
 }
 
-void _FTL_log(const bool newline, const char *format, ...)
+void _FTL_log(const bool newline, const bool debug, const char *format, ...)
 {
 	char timestring[84] = "";
 	va_list args;
 
 	// We have been explicitly asked to not print anything to the log
 	if(!print_log && !print_stdout)
+		return;
+
+	// Check if this is something we should print only in debug mode
+	if(debug && !config.debug)
 		return;
 
 	get_timestr(timestring, time(NULL), true);
@@ -258,10 +262,10 @@ void FTL_log_dnsmasq_fatal(const char *format, ...)
 void log_counter_info(void)
 {
 	logg(" -> Total DNS queries: %i", counters->queries);
-	logg(" -> Cached DNS queries: %i", counters->cached);
-	logg(" -> Forwarded DNS queries: %i", counters->forwarded);
-	logg(" -> Blocked DNS queries: %i", counters->blocked);
-	logg(" -> Unknown DNS queries: %i", counters->unknown);
+	logg(" -> Cached DNS queries: %i", cached_queries());
+	logg(" -> Forwarded DNS queries: %i", forwarded_queries());
+	logg(" -> Blocked DNS queries: %i", blocked_queries());
+	logg(" -> Unknown DNS queries: %i", counters->status[QUERY_UNKNOWN]);
 	logg(" -> Unique domains: %i", counters->domains);
 	logg(" -> Unique clients: %i", counters->clients);
 	logg(" -> Known forward destinations: %i", counters->upstreams);
@@ -406,4 +410,25 @@ int binbuf_to_escaped_C_literal(const char *src_buf, size_t src_sz,
 	*dst = '\0';
 
 	return src - src_buf;
+}
+
+int __attribute__ ((pure)) forwarded_queries(void)
+{
+	return counters->status[QUERY_FORWARDED] +
+	       counters->status[QUERY_RETRIED] +
+	       counters->status[QUERY_RETRIED_DNSSEC];
+}
+
+int __attribute__ ((pure)) cached_queries(void)
+{
+	return counters->status[QUERY_CACHE];
+}
+
+int __attribute__ ((pure)) blocked_queries(void)
+{
+	int num = 0;
+	for(enum query_status status = 0; status < QUERY_STATUS_MAX; status++)
+		if(is_blocked(status))
+			num += counters->status[status];
+	return num;
 }

@@ -102,13 +102,6 @@ void process_request(const char *client_message, int *sock)
 		getClientID(sock);
 		unlock_shm();
 	}
-	else if(command(client_message, ">QueryTypesoverTime"))
-	{
-		processed = true;
-		lock_shm();
-		getQueryTypesOverTime(sock);
-		unlock_shm();
-	}
 	else if(command(client_message, ">version"))
 	{
 		processed = true;

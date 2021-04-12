@@ -22,7 +22,7 @@ enum protocol { TCP, UDP };
 void FTL_iface(const int ifidx, const struct irec *ifaces);
 
 #define FTL_new_query(flags, name, blockingreason, addr, types, qtype, id, edns, proto) _FTL_new_query(flags, name, blockingreason, addr, types, qtype, id, edns, proto, __FILE__, __LINE__)
-bool _FTL_new_query(const unsigned int flags, const char *name, const char** blockingreason, const union all_addr *addr, const char *types, const unsigned short qtype, const int id, const ednsData *edns, enum protocol proto, const char* file, const int line);
+bool _FTL_new_query(const unsigned int flags, const char *name, const char** blockingreason, union mysockaddr *addr, const char *types, const unsigned short qtype, const int id, const ednsData *edns, enum protocol proto, const char* file, const int line);
 
 #define FTL_forwarded(flags, name, serv, id) _FTL_forwarded(flags, name, serv, id, __FILE__, __LINE__)
 void _FTL_forwarded(const unsigned int flags, const char *name, const struct server *serv, const int id, const char* file, const int line);
@@ -54,7 +54,7 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 
 unsigned int FTL_extract_question_flags(struct dns_header *header, const size_t qlen);
 void FTL_query_in_progress(const int id);
-void FTL_duplicate_reply(const int id, int *firstID);
+void FTL_multiple_replies(const int id, int *firstID);
 
 void FTL_dnsmasq_reload(void);
 void FTL_fork_and_bind_sockets(struct passwd *ent_pw);

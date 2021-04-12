@@ -37,10 +37,6 @@ ASSERT_SIZEOF(ShmSettings, 12, 12, 12);
 
 typedef struct {
 	int queries;
-	int blocked;
-	int forwarded;
-	int cached;
-	int unknown;
 	int upstreams;
 	int clients;
 	int domains;
@@ -50,17 +46,15 @@ typedef struct {
 	int domains_MAX;
 	int strings_MAX;
 	int gravity;
-	int querytype[TYPE_MAX-1];
-	int reply_NODATA;
-	int reply_NXDOMAIN;
-	int reply_CNAME;
-	int reply_IP;
-	int reply_domain;
 	int dns_cache_size;
 	int dns_cache_MAX;
 	int per_client_regex_MAX;
 	unsigned int regex_change;
+	int querytype[TYPE_MAX-1];
+	int status[QUERY_STATUS_MAX];
+	int reply[QUERY_REPLY_MAX];
 } countersStruct;
+ASSERT_SIZEOF(countersStruct, 224, 224, 224);
 
 extern countersStruct *counters;
 

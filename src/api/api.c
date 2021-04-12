@@ -71,7 +71,7 @@ static int __attribute__((pure)) cmpdesc(const void *a, const void *b)
 
 void getStats(const int *sock)
 {
-	const int blocked = counters->blocked;
+	const int blocked = blocked_queries();
 	const int total = counters->queries;
 	float percentage = 0.0f;
 
@@ -103,7 +103,7 @@ void getStats(const int *sock)
 		ssend(*sock, "dns_queries_today %i\nads_blocked_today %i\nads_percentage_today %f\n",
 		      total, blocked, percentage);
 		ssend(*sock, "unique_domains %i\nqueries_forwarded %i\nqueries_cached %i\n",
-		      counters->domains, counters->forwarded, counters->cached);
+		      counters->domains, forwarded_queries(), cached_queries());
 		ssend(*sock, "clients_ever_seen %i\n", counters->clients);
 		ssend(*sock, "unique_clients %i\n", activeclients);
 
@@ -117,7 +117,8 @@ void getStats(const int *sock)
 
 		// Send individual reply type counters
 		ssend(*sock, "reply_NODATA %i\nreply_NXDOMAIN %i\nreply_CNAME %i\nreply_IP %i\n",
-		      counters->reply_NODATA, counters->reply_NXDOMAIN, counters->reply_CNAME, counters->reply_IP);
+		      counters->reply[REPLY_NODATA], counters->reply[REPLY_NXDOMAIN],
+		      counters->reply[REPLY_CNAME], counters->reply[REPLY_IP]);
 		ssend(*sock, "privacy_level %i\n", config.privacylevel);
 	}
 	else
@@ -126,8 +127,8 @@ void getStats(const int *sock)
 		pack_int32(*sock, blocked);
 		pack_float(*sock, percentage);
 		pack_int32(*sock, counters->domains);
-		pack_int32(*sock, counters->forwarded);
-		pack_int32(*sock, counters->cached);
+		pack_int32(*sock, forwarded_queries());
+		pack_int32(*sock, cached_queries());
 		pack_int32(*sock, counters->clients);
 		pack_int32(*sock, activeclients);
 	}
@@ -291,7 +292,7 @@ void getTopDomains(const char *client_message, const int *sock)
 	{
 		// Send the data required to get the percentage each domain has been blocked / queried
 		if(blocked)
-			pack_int32(*sock, counters->blocked);
+			pack_int32(*sock, blocked_queries());
 		else
 			pack_int32(*sock, counters->queries);
 	}
@@ -518,7 +519,7 @@ void getUpstreamDestinations(const char *client_message, const int *sock)
 		qsort(temparray, counters->upstreams, sizeof(int[2]), cmpdesc);
 	}
 
-	totalqueries = counters->forwarded + counters->cached + counters->blocked;
+	totalqueries = forwarded_queries() + cached_queries() + blocked_queries();
 
 	// Loop over available forward destinations
 	for(int i = -2; i < min(counters->upstreams, 8); i++)
@@ -535,7 +536,7 @@ void getUpstreamDestinations(const char *client_message, const int *sock)
 
 			if(totalqueries > 0)
 				// Whats the percentage of locked queries on the total amount of queries?
-				percentage = 1e2f * counters->blocked / totalqueries;
+				percentage = 1e2f * blocked_queries() / totalqueries;
 		}
 		else if(i == -1)
 		{
@@ -545,7 +546,7 @@ void getUpstreamDestinations(const char *client_message, const int *sock)
 
 			if(totalqueries > 0)
 				// Whats the percentage of cached queries on the total amount of queries?
-				percentage = 1e2f * counters->cached / totalqueries;
+				percentage = 1e2f * cached_queries() / totalqueries;
 		}
 		else
 		{
@@ -1117,54 +1118,6 @@ void getClientID(const int *sock)
 		ssend(*sock,"%i\n", *sock);
 	else
 		pack_int32(*sock, *sock);
-}
-
-void getQueryTypesOverTime(const int *sock)
-{
-	int from = -1, until = OVERTIME_SLOTS;
-	const time_t mintime = overTime[0].timestamp;
-
-	for(int slot = 0; slot < OVERTIME_SLOTS; slot++)
-	{
-		if((overTime[slot].total > 0 || overTime[slot].blocked > 0) && overTime[slot].timestamp >= mintime)
-		{
-			from = slot;
-			break;
-		}
-	}
-
-	// End with last non-empty overTime slot
-	for(int slot = 0; slot < OVERTIME_SLOTS; slot++)
-	{
-		if(overTime[slot].timestamp >= time(NULL))
-		{
-			until = slot;
-			break;
-		}
-	}
-
-	// No data?
-	if(from < 0)
-		return;
-
-	for(int slot = from; slot < until; slot++)
-	{
-		float percentageIPv4 = 0.0, percentageIPv6 = 0.0;
-		int sum = overTime[slot].querytypedata[0] + overTime[slot].querytypedata[1];
-
-		if(sum > 0) {
-			percentageIPv4 = (float) (1e2 * overTime[slot].querytypedata[0] / sum);
-			percentageIPv6 = (float) (1e2 * overTime[slot].querytypedata[1] / sum);
-		}
-
-		if(istelnet[*sock])
-			ssend(*sock, "%lli %.2f %.2f\n", (long long)overTime[slot].timestamp, percentageIPv4, percentageIPv6);
-		else {
-			pack_int32(*sock, overTime[slot].timestamp);
-			pack_float(*sock, percentageIPv4);
-			pack_float(*sock, percentageIPv6);
-		}
-	}
 }
 
 void getVersion(const int *sock)
