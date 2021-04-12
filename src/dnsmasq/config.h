@@ -145,6 +145,7 @@ NO_SCRIPT
 NO_LARGEFILE
 NO_AUTH
 NO_DUMPFILE
+NO_LOOP
 NO_INOTIFY
    these are available to explicitly disable compile time options which would 
    otherwise be enabled automatically or which are enabled  by default 
