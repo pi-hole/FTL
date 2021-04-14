@@ -15,7 +15,7 @@
   run bash -c 'su pihole -s /bin/sh -c "/home/pihole/pihole-FTL -f"'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[9]} == *"Initialization of shared memory failed." ]]
-  [[ ${lines[10]} == *"--> pihole-FTL is already running as PID "* ]]
+  [[ ${lines[10]} == *"HINT: pihole-FTL is already running!"* ]]
 }
 
 @test "Starting tests without prior history" {
@@ -1041,4 +1041,18 @@
   run bash -c './pihole-FTL sqlite3 -help'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "Usage: sqlite3 [OPTIONS] FILENAME [SQL]" ]]
+}
+
+@test "Embedded SQLite3 shell is called for .db file" {
+  run bash -c './pihole-FTL abc.db ".version"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "SQLite 3."* ]]
+}
+
+@test "Embedded LUA engine is called for .lua file" {
+  echo 'print("Hello from LUA")' > abc.lua
+  run bash -c './pihole-FTL abc.lua'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "Hello from LUA" ]]
+  rm abc.lua
 }

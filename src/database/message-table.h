@@ -10,7 +10,9 @@
 #ifndef MESSAGETABLE_H
 #define MESSAGETABLE_H
 
-bool create_message_table(void);
+#include "sqlite3.h"
+
+bool create_message_table(sqlite3 *db);
 bool flush_message_table(void);
 void logg_regex_warning(const char *type, const char *warning, const int dbindex, const char *regex);
 void logg_subnet_warning(const char *ip, const int matching_count, const char *matching_ids,

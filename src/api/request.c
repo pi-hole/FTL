@@ -102,13 +102,6 @@ void process_request(const char *client_message, int *sock)
 		getClientID(sock);
 		unlock_shm();
 	}
-	else if(command(client_message, ">QueryTypesoverTime"))
-	{
-		processed = true;
-		lock_shm();
-		getQueryTypesOverTime(sock);
-		unlock_shm();
-	}
 	else if(command(client_message, ">version"))
 	{
 		processed = true;
@@ -165,12 +158,6 @@ void process_request(const char *client_message, int *sock)
 		// Read and compile possible regex filters
 		read_regex_from_database();
 		unlock_shm();
-	}
-	else if(command(client_message, ">update-mac-vendor"))
-	{
-		processed = true;
-		logg("Received API request to update vendors in network table");
-		updateMACVendorRecords();
 	}
 	else if(command(client_message, ">delete-lease"))
 	{

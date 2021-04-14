@@ -11,7 +11,6 @@
 #include "FTL.h"
 #include "daemon.h"
 #include "log.h"
-#include "api/socket.h"
 #include "setupVars.h"
 #include "args.h"
 #include "config.h"
@@ -20,9 +19,9 @@
 #include "main.h"
 #include "signals.h"
 #include "regex_r.h"
+// init_shmem()
 #include "shmem.h"
 #include "capabilities.h"
-#include "database/gravity-db.h"
 #include "timers.h"
 #include "procps.h"
 
@@ -46,20 +45,20 @@ int main (int argc, char* argv[])
 	parse_args(argc, argv);
 
 	// Try to open FTL log
-	open_FTL_log(true);
+	init_FTL_log();
 	timer_start(EXIT_TIMER);
 	logg("########## FTL started! ##########");
 	log_FTL_version(false);
 
-	// Catch SIGSEGV (generate a crash report)
-	// Other signals are handled by dnsmasq
-	// We handle real-time signals later (after dnsmasq has forked)
-	handle_SIGSEGV();
+	// Catch signals not handled by dnsmasq
+	// We configure real-time signals later (after dnsmasq has forked)
+	handle_signals();
 
 	// Initialize shared memory
 	if(!init_shmem(true))
 	{
 		logg("Initialization of shared memory failed.");
+		// Check if there is already a running FTL process
 		check_running_FTL();
 		return EXIT_FAILURE;
 	}
@@ -97,40 +96,18 @@ int main (int argc, char* argv[])
 	main_dnsmasq(argc_dnsmasq, argv_dnsmasq);
 
 	logg("Shutting down...");
-
-	// Cancel active threads as we don't need them any more
-	if(ipv4telnet) pthread_cancel(telnet_listenthreadv4);
-	if(ipv6telnet) pthread_cancel(telnet_listenthreadv6);
-	pthread_cancel(socket_listenthread);
+	// Extra grace time is needed as dnsmasq script-helpers may not be
+	// terminating immediately
+	sleepms(250);
 
 	// Save new queries to database (if database is used)
 	if(config.DBexport)
 	{
-		DB_save_queries();
-		logg("Finished final database update");
+		if(DB_save_queries(NULL))
+			logg("Finished final database update");
 	}
 
-	// Close sockets and delete Unix socket file handle
-	close_telnet_socket();
-	close_unix_socket(true);
+	cleanup(exit_code);
 
-	// Empty API port file, port 0 = truncate file
-	saveport(0);
-
-	// Close gravity database connection
-	gravityDB_close();
-
-	// Remove shared memory objects
-	// Important: This invalidated all objects such as
-	//            counters-> ... Do this last when
-	//            terminating in main.c !
-	destroy_shmem();
-
-	//Remove PID file
-	removepid();
-
-	char buffer[42] = { 0 };
-	format_time(buffer, 0, timer_elapsed_msec(EXIT_TIMER));
-	logg("########## FTL terminated after%s! ##########", buffer);
 	return exit_code;
 }

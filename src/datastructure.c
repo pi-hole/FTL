@@ -22,12 +22,12 @@
 #include "main.h"
 // reset_aliasclient()
 #include "database/aliasclients.h"
-// piholeFTLDB_reopen()
-#include "database/common.h"
 // config struct
 #include "config.h"
 // set_event(RESOLVE_NEW_HOSTNAMES)
 #include "events.h"
+// overTime array
+#include "overTime.h"
 
 const char *querytypes[TYPE_MAX] = {"UNKNOWN", "A", "AAAA", "ANY", "SRV", "SOA", "PTR", "TXT",
                                     "NAPTR", "MX", "DS", "RRSIG", "DNSKEY", "NS", "OTHER", "SVCB",
@@ -89,9 +89,6 @@ int findUpstreamID(const char * upstreamString, const in_port_t port)
 	const int upstreamID = counters->upstreams;
 	logg("New upstream server: %s:%u (%i/%u)", upstreamString, port, upstreamID, counters->upstreams_MAX);
 
-	// Check struct size
-	memory_check(UPSTREAMS);
-
 	// Get upstream pointer
 	upstreamsData* upstream = getUpstream(upstreamID, false);
 	if(upstream == NULL)
@@ -152,9 +149,6 @@ int findDomainID(const char *domainString, const bool count)
 	// Store ID
 	const int domainID = counters->domains;
 
-	// Check struct size
-	memory_check(DOMAINS);
-
 	// Get domain pointer
 	domainsData* domain = getDomain(domainID, false);
 	if(domain == NULL)
@@ -211,9 +205,6 @@ int findClientID(const char *clientIP, const bool count, const bool aliasclient)
 	// If we did not return until here, then this client is definitely new
 	// Store ID
 	const int clientID = counters->clients;
-
-	// Check struct size
-	memory_check(CLIENTS);
 
 	// Get client pointer
 	clientsData* client = getClient(clientID, false);
@@ -280,7 +271,7 @@ int findClientID(const char *clientIP, const bool count, const bool aliasclient)
 
 	// Check if this client is managed by a alias-client
 	if(!aliasclient)
-		reset_aliasclient(client);
+		reset_aliasclient(NULL, client);
 
 	return clientID;
 }
@@ -331,9 +322,6 @@ int findCacheID(int domainID, int clientID, enum query_types query_type)
 
 	// Get ID of new cache entry
 	const int cacheID = counters->dns_cache_size;
-
-	// Check struct size
-	memory_check(DNS_CACHE);
 
 	// Get client pointer
 	DNSCacheData* dns_cache = getDNSCache(cacheID, false);
@@ -470,9 +458,6 @@ void FTL_reload_all_domainlists(void)
 {
 	lock_shm();
 
-	// (Re-)open FTL database connection
-	piholeFTLDB_reopen();
-
 	// Flush messages stored in the long-term database
 	flush_message_table();
 
@@ -491,4 +476,94 @@ void FTL_reload_all_domainlists(void)
 	FTL_reset_per_client_domain_data();
 
 	unlock_shm();
+}
+
+bool __attribute__ ((const)) is_blocked(const enum query_status status)
+{
+	switch (status)
+	{
+		case QUERY_UNKNOWN:
+		case QUERY_FORWARDED:
+		case QUERY_CACHE:
+		case QUERY_RETRIED:
+		case QUERY_RETRIED_DNSSEC:
+		case QUERY_IN_PROGRESS:
+		case QUERY_STATUS_MAX:
+		default:
+			return false;
+
+		case QUERY_GRAVITY:
+		case QUERY_REGEX:
+		case QUERY_BLACKLIST:
+		case QUERY_EXTERNAL_BLOCKED_IP:
+		case QUERY_EXTERNAL_BLOCKED_NULL:
+		case QUERY_EXTERNAL_BLOCKED_NXRA:
+		case QUERY_GRAVITY_CNAME:
+		case QUERY_REGEX_CNAME:
+		case QUERY_BLACKLIST_CNAME:
+			return true;
+	}
+}
+
+static const char *query_status_str[QUERY_STATUS_MAX] = {
+	"UNKNOWN",
+	"GRAVITY",
+	"FORWARDED",
+	"CACHE",
+	"REGEX",
+	"BLACKLIST",
+	"EXTERNAL_BLOCKED_IP",
+	"EXTERNAL_BLOCKED_NULL",
+	"EXTERNAL_BLOCKED_NXRA",
+	"GRAVITY_CNAME",
+	"REGEX_CNAME",
+	"BLACKLIST_CNAME",
+	"RETRIED",
+	"RETRIED_DNSSEC",
+	"IN_PROGRESS"
+};
+
+void query_set_status(queriesData *query, const enum query_status new_status)
+{
+	// Debug logging
+	if(config.debug & DEBUG_STATUS)
+	{
+		const char *oldstr = query->status < QUERY_STATUS_MAX ? query_status_str[query->status] : "INVALID";
+		if(query->status == new_status)
+		{
+			logg("Query %i: status unchanged: %s (%d)",
+			     query->id, oldstr, query->status);
+		}
+		else
+		{
+			const char *newstr = new_status < QUERY_STATUS_MAX ? query_status_str[new_status] : "INVALID";
+			logg("Query %i: status changed: %s (%d) -> %s (%d)",
+			     query->id, oldstr, query->status, newstr, new_status);
+		}
+	}
+
+	// Update counters
+	if(query->status != new_status)
+	{
+		counters->status[query->status]--;
+		counters->status[new_status]++;
+
+		if(is_blocked(query->status))
+			overTime[query->timeidx].blocked--;
+		if(is_blocked(new_status))
+			overTime[query->timeidx].blocked++;
+
+		if(query->status == QUERY_CACHE)
+			overTime[query->timeidx].cached--;
+		if(new_status == QUERY_CACHE)
+			overTime[query->timeidx].cached++;
+
+		if(query->status == QUERY_FORWARDED)
+			overTime[query->timeidx].forwarded--;
+		if(new_status == QUERY_FORWARDED)
+			overTime[query->timeidx].forwarded++;
+	}
+
+	// Update status
+	query->status = new_status;
 }

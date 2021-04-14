@@ -11,6 +11,6 @@
 cmake_minimum_required(VERSION 2.8.12)
 project(PIHOLE_FTL C)
 
-set(DNSMASQ_VERSION pi-hole-2.84)
+set(DNSMASQ_VERSION pi-hole-2.85)
 
 add_subdirectory(src)

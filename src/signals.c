@@ -237,7 +237,7 @@ static void __attribute__((noreturn)) signal_handler(int sig, siginfo_t *si, voi
 	else
 	{
 		// This is the main process
-		logg("FTL terminated!");
+		cleanup(EXIT_FAILURE);
 	}
 
 	// Terminate process indicating failure
@@ -302,62 +302,29 @@ static void SIGRT_handler(int signum, siginfo_t *si, void *unused)
 	errno = _errno;
 }
 
-// Register SIGSEGV handler
-void handle_SIGSEGV(void)
+// Register ordinary signals handler
+void handle_signals(void)
 {
 	struct sigaction old_action;
 
-	// Catch SIGSEGV
-	sigaction (SIGSEGV, NULL, &old_action);
-	if(old_action.sa_handler != SIG_IGN)
+	const int signals[] = { SIGSEGV, SIGBUS, SIGABRT, SIGILL, SIGFPE };
+	for(unsigned int i = 0; i < sizeof(signals)/sizeof(signals[0]); i++)
 	{
-		struct sigaction SEGVaction;
-		memset(&SEGVaction, 0, sizeof(struct sigaction));
-		SEGVaction.sa_flags = SA_SIGINFO;
-		sigemptyset(&SEGVaction.sa_mask);
-		SEGVaction.sa_sigaction = &signal_handler;
-		sigaction(SIGSEGV, &SEGVaction, NULL);
-	}
-
-	// Catch SIGBUS
-	sigaction (SIGBUS, NULL, &old_action);
-	if(old_action.sa_handler != SIG_IGN)
-	{
-		struct sigaction SBUGaction;
-		memset(&SBUGaction, 0, sizeof(struct sigaction));
-		SBUGaction.sa_flags = SA_SIGINFO;
-		sigemptyset(&SBUGaction.sa_mask);
-		SBUGaction.sa_sigaction = &signal_handler;
-		sigaction(SIGBUS, &SBUGaction, NULL);
-	}
-
-	// Catch SIGILL
-	sigaction (SIGILL, NULL, &old_action);
-	if(old_action.sa_handler != SIG_IGN)
-	{
-		struct sigaction SBUGaction;
-		memset(&SBUGaction, 0, sizeof(struct sigaction));
-		SBUGaction.sa_flags = SA_SIGINFO;
-		sigemptyset(&SBUGaction.sa_mask);
-		SBUGaction.sa_sigaction = &signal_handler;
-		sigaction(SIGILL, &SBUGaction, NULL);
-	}
-
-	// Catch SIGFPE
-	sigaction (SIGFPE, NULL, &old_action);
-	if(old_action.sa_handler != SIG_IGN)
-	{
-		struct sigaction SBUGaction;
-		memset(&SBUGaction, 0, sizeof(struct sigaction));
-		SBUGaction.sa_flags = SA_SIGINFO;
-		sigemptyset(&SBUGaction.sa_mask);
-		SBUGaction.sa_sigaction = &signal_handler;
-		sigaction(SIGFPE, &SBUGaction, NULL);
+		// Catch this signal
+		sigaction (signals[i], NULL, &old_action);
+		if(old_action.sa_handler != SIG_IGN)
+		{
+			struct sigaction SIGaction;
+			memset(&SIGaction, 0, sizeof(struct sigaction));
+			SIGaction.sa_flags = SA_SIGINFO;
+			sigemptyset(&SIGaction.sa_mask);
+			SIGaction.sa_sigaction = &signal_handler;
+			sigaction(signals[i], &SIGaction, NULL);
+		}
 	}
 
 	// Log start time of FTL
 	FTLstarttime = time(NULL);
-
 }
 
 // Register real-time signal handler
@@ -382,5 +349,10 @@ void handle_realtime_signals(void)
 // Return PID of the main FTL process
 pid_t main_pid(void)
 {
-	return mpid;
+	if(mpid > -1)
+		// Hase already been set
+		return mpid;
+	else
+		// Has not been set so far
+		return getpid();
 }
