@@ -19,7 +19,10 @@
 #if defined(HAVE_DNSSEC) || defined(HAVE_CRYPTOHASH)
 
 /* Minimal version of nettle */
-#include <nettle/version.h>
+
+/* bignum.h includes version.h and works on
+   earlier releases of nettle which don't have version.h */
+#include <nettle/bignum.h>
 #if !defined(NETTLE_VERSION_MAJOR)
 #  define NETTLE_VERSION_MAJOR 2
 #  define NETTLE_VERSION_MINOR 0
