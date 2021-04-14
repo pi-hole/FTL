@@ -805,10 +805,8 @@ static bool add_FTL_clients_to_network_table(sqlite3 *db, enum arp_status *clien
 			}
 
 			if(config.debug & DEBUG_ARP)
-			{
 				logg("Network table: Creating new FTL device MAC = %s, IP = %s, hostname = \"%s\", vendor = \"%s\", interface = \"%s\"",
-					hwaddr, ipaddr, hostname, macVendor, interface);
-			}
+				     hwaddr, ipaddr, hostname, macVendor, interface);
 
 			// Add new device to database
 			const time_t lastQuery = client->lastQuery;
