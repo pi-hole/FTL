@@ -1071,6 +1071,8 @@ static void dhcp_config_free(struct dhcp_config *config)
       
       if (config->flags & CONFIG_CLID)
         free(config->clid);
+      if (config->flags & CONFIG_NAME)
+	free(config->hostname);
 
 #ifdef HAVE_DHCP6
       if (config->flags & CONFIG_ADDR6)
@@ -5006,30 +5008,8 @@ static void clear_dynamic_conf(void)
       
       if (configs->flags & CONFIG_BANK)
 	{
-	  struct hwaddr_config *mac, *tmp;
-	  struct dhcp_netid_list *list, *tmplist;
-	  
-	  for (mac = configs->hwaddr; mac; mac = tmp)
-	    {
-	      tmp = mac->next;
-	      free(mac);
-	    }
-	  
-	  if (configs->flags & CONFIG_CLID)
-	    free(configs->clid);
-	  
-	  for (list = configs->netid; list; list = tmplist)
-	    {
-	      free(list->list);
-	      tmplist = list->next;
-	      free(list);
-	    }
-	  
-	  if (configs->flags & CONFIG_NAME)
-	    free(configs->hostname);
-	  
-	  *up = configs->next;
-	  free(configs);
+	  *up = cp;
+	  dhcp_config_free(configs);
 	}
       else
 	up = &configs->next;
@@ -5039,7 +5019,6 @@ static void clear_dynamic_conf(void)
 static void clear_dynamic_opt(void)
 {
   struct dhcp_opt *opts, *cp, **up;
-  struct dhcp_netid *id, *next;
 
   for (up = &daemon->dhcp_opts, opts = daemon->dhcp_opts; opts; opts = cp)
     {
@@ -5047,17 +5026,8 @@ static void clear_dynamic_opt(void)
       
       if (opts->flags & DHOPT_BANK)
 	{
-	  if ((opts->flags & DHOPT_VENDOR))
-	    free(opts->u.vendor_class);
-	  free(opts->val);
-	  for (id = opts->netid; id; id = next)
-	    {
-	      next = id->next;
-	      free(id->net);
-	      free(id);
-	    }
-	  *up = opts->next;
-	  free(opts);
+	  *up = cp;
+	  dhcp_opt_free(opts);
 	}
       else
 	up = &opts->next;
