@@ -14,6 +14,7 @@
 
 int get_number_of_queries_in_DB(sqlite3 *db);
 void delete_old_queries_in_DB(sqlite3 *db);
+bool add_additional_info_column(sqlite3 *db);
 bool DB_save_queries(sqlite3 *db);
 void DB_read_queries(void);
 
