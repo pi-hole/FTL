@@ -21,6 +21,8 @@
 #include "daemon.h"
 // Eventqueue routines
 #include "events.h"
+// sleepms()
+#include "timers.h"
 
 #define BINARY_NAME "pihole-FTL"
 
@@ -28,6 +30,9 @@ volatile sig_atomic_t killed = 0;
 static volatile pid_t mpid = -1;
 static time_t FTLstarttime = 0;
 extern volatile int exit_code;
+
+volatile sig_atomic_t thread_cancellable[THREADS_MAX] = { false };
+const char *thread_names[THREADS_MAX] = { "" };
 
 // Return the (null-terminated) name of the calling thread
 // The name is stored in the buffer as well as returned for convenience
@@ -355,4 +360,14 @@ pid_t main_pid(void)
 	else
 		// Has not been set so far
 		return getpid();
+}
+
+void thread_sleepms(const enum thread_types thread, const int milliseconds)
+{
+	if(killed)
+		return;
+
+	thread_cancellable[thread] = true;
+	sleepms(milliseconds);
+	thread_cancellable[thread] = false;
 }

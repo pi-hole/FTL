@@ -454,6 +454,9 @@ void FTL_reset_per_client_domain_data(void)
 	}
 }
 
+// Reloads all domainlists and performs a few extra tasks such as cleaning the
+// message table
+// May only be called from the database thread
 void FTL_reload_all_domainlists(void)
 {
 	lock_shm();
