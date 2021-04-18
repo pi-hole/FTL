@@ -19,6 +19,8 @@
 #include "../config.h"
 // resolveHostname()
 #include "../resolve.h"
+// killed
+#include "../signals.h"
 
 // Private prototypes
 static char *getMACVendor(const char *hwaddr);
@@ -679,6 +681,10 @@ static bool add_FTL_clients_to_network_table(sqlite3 *db, enum arp_status *clien
 	char hwaddr[128];
 	for(int clientID = 0; clientID < counters->clients; clientID++)
 	{
+		// Check thread cancellation
+		if(killed)
+			break;
+
 		// Get client pointer
 		lock_shm();
 		clientsData *client = getClient(clientID, true);
@@ -1160,6 +1166,10 @@ void parse_neighbor_cache(sqlite3* db)
 		if(linebuffer == NULL)
 			continue;
 
+		// Check thread cancellation
+		if(killed)
+			break;
+
 		int num = sscanf(linebuffer, "%99s dev %99s lladdr %99s",
 		                 ip, iface, hwaddr);
 
@@ -1373,15 +1383,27 @@ void parse_neighbor_cache(sqlite3* db)
 		return;
 	}
 
+	// Check thread cancellation
+	if(killed)
+		return;
+
 	// Loop over all clients known to FTL and ensure we add them all to the
 	// database
 	if(!add_FTL_clients_to_network_table(db, client_status, now, &additional_entries))
+		return;
+
+	// Check thread cancellation
+	if(killed)
 		return;
 
 	// Finally, loop over the available interfaces to ensure we list the
 	// IP addresses correctly (local addresses are NOT contained in the
 	// ARP/neighor cache).
 	if(!add_local_interfaces_to_network_table(db, now, &additional_entries))
+		return;
+
+	// Check thread cancellation
+	if(killed)
 		return;
 
 	// Ensure mock-devices which are not assigned to any addresses any more

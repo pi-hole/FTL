@@ -22,6 +22,8 @@
 #include "database/common.h"
 // destroy_shmem()
 #include "shmem.h"
+// killed
+#include "signals.h"
 
 pthread_t threads[THREADS_MAX] = { 0 };
 bool resolver_ready = false;
@@ -174,18 +176,22 @@ void cleanup(const int ret)
 	int s;
 	struct timespec ts;
 	// Terminate threads before closing database connections and finishing shared memory
-	logg("Asking threads to cancel");
-	for(int i = 0; i < THREADS_MAX; i++)
-	{
-		pthread_cancel(threads[i]);
-	}
-	// Try to join threads to ensure cancelation has succeeded
+	killed = true;
+	// Try to join threads to ensure cancellation has succeeded
 	logg("Waiting for threads to join");
 	for(int i = 0; i < THREADS_MAX; i++)
 	{
+		if(thread_cancellable[i])
+		{
+			logg("Thread %s (%d) is idle, terminating it.",
+			     thread_names[i], i);
+			pthread_cancel(threads[i]);
+		}
+
 		if (clock_gettime(CLOCK_REALTIME, &ts) == -1)
 		{
-			logg("Cannot get clock time, canceling thread instead of joining");
+			logg("Thread %s (%d) is busy, cancelling it (cannot set timout).",
+			     thread_names[i], i);
 			pthread_cancel(threads[i]);
 			continue;
 		}
@@ -195,8 +201,8 @@ void cleanup(const int ret)
 
 		if((s = pthread_timedjoin_np(threads[i], NULL, &ts)) != 0)
 		{
-			logg("Thread %d (%ld) timed out (%s), canceling it.",
-			     i, (long)threads[i], strerror(s));
+			logg("Thread %s (%d) is still busy, cancelling it.",
+			     thread_names[i], i);
 			pthread_cancel(threads[i]);
 			continue;
 		}

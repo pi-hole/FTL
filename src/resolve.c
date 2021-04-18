@@ -587,13 +587,14 @@ static void resolveUpstreams(const bool onlynew)
 void *DNSclient_thread(void *val)
 {
 	// Set thread name
-	prctl(PR_SET_NAME, "DNS client", 0, 0, 0);
+	thread_names[DNSclient] = "DNS client";
+	prctl(PR_SET_NAME, thread_names[DNSclient], 0, 0, 0);
 
 	// Initial delay until we first try to resolve anything
-	sleepms(2000);
+	thread_sleepms(DNSclient, 2000);
 
 	// Run as long as this thread is not canceled
-	while(true)
+	while(!killed)
 	{
 		// Run whenever necessary to resolve only new clients and
 		// upstream servers
@@ -607,6 +608,10 @@ void *DNSclient_thread(void *val)
 			// (onlynew=true)
 			resolveUpstreams(true);
 		}
+
+		// Intermediate cancellation-point
+		if(killed)
+			break;
 
 		// Run every hour to update possibly changed client host names
 		if(resolver_ready && (time(NULL) % RERESOLVE_INTERVAL == 0))
@@ -627,14 +632,20 @@ void *DNSclient_thread(void *val)
 			// Try to resolve all client host names
 			// (onlynew=false)
 			resolveClients(false, force_refreshing);
+
+			// Intermediate cancellation-point
+			if(killed)
+				break;
+
 			// Try to resolve all upstream destination host names
 			// (onlynew=false)
 			resolveUpstreams(false);
 		}
 
-		// Idle for 1 sec before checking again the time criteria
-		sleepms(1000);
+		// Idle for 1 sec
+		thread_sleepms(DNSclient, 1000);
 	}
 
+	logg("Terminating resolver thread");
 	return NULL;
 }

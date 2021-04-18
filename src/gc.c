@@ -36,14 +36,15 @@ static void reset_rate_limiting(void)
 void *GC_thread(void *val)
 {
 	// Set thread name
-	prctl(PR_SET_NAME,"housekeeper",0,0,0);
+	thread_names[GC] = "housekeeper";
+	prctl(PR_SET_NAME, thread_names[GC], 0, 0, 0);
 
 	// Remember when we last ran the actions
 	time_t lastGCrun = time(NULL) - time(NULL)%GCinterval;
 	time_t lastRateLimitCleaner = time(NULL);
 
 	// Run as long as this thread is not canceled
-	while(true)
+	while(!killed)
 	{
 		const time_t now = time(NULL);
 		if((unsigned int)(now - lastRateLimitCleaner) >= config.rate_limit.interval)
@@ -53,6 +54,11 @@ void *GC_thread(void *val)
 			reset_rate_limiting();
 			unlock_shm();
 		}
+
+		// Intermediate cancellation-point
+		if(killed)
+			break;
+
 		if(now - GCdelay - lastGCrun >= GCinterval || doGC)
 		{
 			doGC = false;
@@ -164,7 +170,6 @@ void *GC_thread(void *val)
 
 				// Count removed queries
 				removed++;
-
 			}
 
 			// Only perform memory operations when we actually removed queries
@@ -201,8 +206,9 @@ void *GC_thread(void *val)
 			// ever larger and larger
 			DBdeleteoldqueries = true;
 		}
-		sleepms(1000);
+		thread_sleepms(GC, 1000);
 	}
 
+	logg("Terminating GC thread");
 	return NULL;
 }

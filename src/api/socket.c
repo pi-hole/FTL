@@ -313,8 +313,8 @@ static void *telnet_connection_handler_thread(void *socket_desc)
 
 	// Set thread name
 	char threadname[16];
-	sprintf(threadname,"telnet-%i",sock);
-	prctl(PR_SET_NAME,threadname,0,0,0);
+	sprintf(threadname, "telnet-%i", sock);
+	prctl(PR_SET_NAME, threadname, 0, 0, 0);
 	//Receive from client
 	ssize_t n;
 	while((n = recv(sock,client_message,SOCKETBUFFERLEN-1, 0)))
@@ -364,8 +364,8 @@ static void *socket_connection_handler_thread(void *socket_desc)
 
 	// Set thread name
 	char threadname[16];
-	sprintf(threadname,"socket-%i",sock);
-	prctl(PR_SET_NAME,threadname,0,0,0);
+	sprintf(threadname, "socket-%i", sock);
+	prctl(PR_SET_NAME, threadname, 0, 0, 0);
 
 	// Receive from client
 	ssize_t n;
@@ -414,15 +414,18 @@ void *telnet_listening_thread_IPv4(void *args)
 	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
 	// Set thread name
-	prctl(PR_SET_NAME,"telnet-IPv4",0,0,0);
+	thread_names[TELNETv4] = "telnet-IPv4";
+	prctl(PR_SET_NAME, thread_names[TELNETv4], 0, 0, 0);
 
 	// Initialize IPv4 telnet socket
 	ipv4telnet = bind_to_telnet_port_IPv4(&telnetfd4);
 	if(!ipv4telnet)
 		return NULL;
 
+	thread_cancellable[TELNETv4] = true;
+
 	// Listen as long as this thread is not canceled
-	while(true)
+	while(!killed)
 	{
 		// Look for new clients that want to connect
 		const int csck = listener(telnetfd4, 4);
@@ -446,7 +449,9 @@ void *telnet_listening_thread_IPv4(void *args)
 			logg("WARNING: Unable to open telnet processing thread: %s", strerror(errno));
 		}
 	}
-	return false;
+
+	logg("Terminating IPv4 telnet thread");
+	return NULL;
 }
 
 void *telnet_listening_thread_IPv6(void *args)
@@ -460,7 +465,8 @@ void *telnet_listening_thread_IPv6(void *args)
 	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
 	// Set thread name
-	prctl(PR_SET_NAME,"telnet-IPv6",0,0,0);
+	thread_names[TELNETv6] = "telnet-IPv6";
+	prctl(PR_SET_NAME, thread_names[TELNETv6], 0, 0, 0);
 
 	// Initialize IPv6 telnet socket but only if IPv6 interfaces are available
 	if(!ipv6_available())
@@ -470,8 +476,10 @@ void *telnet_listening_thread_IPv6(void *args)
 	if(!ipv6telnet)
 		return NULL;
 
+	thread_cancellable[TELNETv6] = true;
+
 	// Listen as long as this thread is not canceled
-	while(true)
+	while(!killed)
 	{
 		// Look for new clients that want to connect
 		const int csck = listener(telnetfd6, 6);
@@ -495,7 +503,9 @@ void *telnet_listening_thread_IPv6(void *args)
 			logg("WARNING: Unable to open telnet processing thread: %s", strerror(errno));
 		}
 	}
-	return false;
+
+	logg("Terminating IPv6 telnet thread");
+	return NULL;
 }
 
 void *socket_listening_thread(void *args)
@@ -509,7 +519,8 @@ void *socket_listening_thread(void *args)
 	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
 	// Set thread name
-	prctl(PR_SET_NAME,"socket listener",0,0,0);
+	thread_names[SOCKET] = "telnet-socket";
+	prctl(PR_SET_NAME, thread_names[SOCKET], 0, 0, 0);
 
 	// Return early to avoid CPU spinning if Unix socket is not available
 	sock_avail = bind_to_unix_socket(&socketfd);
@@ -519,8 +530,10 @@ void *socket_listening_thread(void *args)
 		return NULL;
 	}
 
+	thread_cancellable[SOCKET] = true;
+
 	// Listen as long as this thread is not canceled
-	while(true)
+	while(!killed)
 	{
 		// Look for new clients that want to connect
 		const int csck = listener(socketfd, 0);
@@ -541,6 +554,8 @@ void *socket_listening_thread(void *args)
 			logg("WARNING: Unable to open socket processing thread: %s", strerror(errno));
 		}
 	}
+
+	logg("Terminating socket thread");
 	return NULL;
 }
 

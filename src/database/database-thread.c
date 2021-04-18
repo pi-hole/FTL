@@ -30,20 +30,21 @@
 void *DB_thread(void *val)
 {
 	// Set thread name
-	prctl(PR_SET_NAME,"database",0,0,0);
+	thread_names[DB] = "database";
+	prctl(PR_SET_NAME, thread_names[DB], 0, 0, 0);
 
 	// Save timestamp as we do not want to store immediately
 	// to the database
 	time_t lastDBsave = time(NULL) - time(NULL)%config.DBinterval;
 
-	// Run as long as this thread is not canceled
-	while(true)
+	// Run until shutdown of the process
+	while(!killed)
 	{
 		sqlite3 *db = dbopen(false);
 		if(db == NULL)
 		{
 			// Sleep 5 seconds and try again
-			sleepms(5000);
+			thread_sleepms(DB, 5000);
 			continue;
 		}
 		time_t now = time(NULL);
@@ -59,6 +60,13 @@ void *DB_thread(void *val)
 				DB_save_queries(db);
 				unlock_shm();
 
+				// Intermediate cancellation-point
+				if(killed)
+				{
+					dbclose(&db);
+					break;
+				}
+
 				// Check if GC should be done on the database
 				if(DBdeleteoldqueries && config.maxDBdays != -1)
 				{
@@ -73,21 +81,56 @@ void *DB_thread(void *val)
 				set_event(PARSE_NEIGHBOR_CACHE);
 		}
 
+		// Intermediate cancellation-point
+		if(killed)
+		{
+			dbclose(&db);
+			break;
+		}
+
 		// Update MAC vendor strings once a month (the MAC vendor
 		// database is not updated very often)
 		if(now % 2592000L == 0)
 			updateMACVendorRecords(db);
 
+		// Intermediate cancellation-point
+		if(killed)
+		{
+			dbclose(&db);
+			break;
+		}
+
 		if(get_and_clear_event(PARSE_NEIGHBOR_CACHE))
 			parse_neighbor_cache(db);
+
+		// Intermediate cancellation-point
+		if(killed)
+		{
+			dbclose(&db);
+			break;
+		}
 
 		// Process database related event queue elements
 		if(get_and_clear_event(RELOAD_GRAVITY))
 			FTL_reload_all_domainlists();
 
+		// Intermediate cancellation-point
+		if(killed)
+		{
+			dbclose(&db);
+			break;
+		}
+
 		// Reload privacy level from pihole-FTL.conf
 		if(get_and_clear_event(RELOAD_PRIVACY_LEVEL))
 			get_privacy_level(NULL);
+
+		// Intermediate cancellation-point
+		if(killed)
+		{
+			dbclose(&db);
+			break;
+		}
 
 		// Import alias-clients
 		if(get_and_clear_event(REIMPORT_ALIASCLIENTS))
@@ -100,9 +143,10 @@ void *DB_thread(void *val)
 		// Close database connection
 		dbclose(&db);
 
-		// Sleep 1 second
-		sleepms(1000);
+		// Sleep 1 sec
+		thread_sleepms(DB, 1000);
 	}
 
+	logg("Terminating database thread");
 	return NULL;
 }
