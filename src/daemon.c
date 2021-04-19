@@ -170,8 +170,7 @@ pid_t FTL_gettid(void)
 #endif // SYS_gettid
 }
 
-// Clean up on exit
-void cleanup(const int ret)
+static void terminate_threads(void)
 {
 	int s;
 	struct timespec ts;
@@ -208,18 +207,28 @@ void cleanup(const int ret)
 		}
 	}
 	logg("All threads joined");
+}
 
-	// Close database connection
-	gravityDB_close();
+// Clean up on exit
+void cleanup(const int ret)
+{
+	// Do proper cleanup only if FTL started successfully
+	if(resolver_ready)
+	{
+		terminate_threads();
 
-	// Close sockets and delete Unix socket file handle
-	close_telnet_socket();
-	close_unix_socket(true);
+		// Close database connection
+		gravityDB_close();
+
+		// Close sockets and delete Unix socket file handle
+		close_telnet_socket();
+		close_unix_socket(true);
+	}
 
 	// Empty API port file, port 0 = truncate file
 	saveport(0);
 
-	//Remove PID file
+	// Remove PID file
 	removepid();
 
 	// Remove shared memory objects
