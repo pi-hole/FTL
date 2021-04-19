@@ -16,7 +16,7 @@ version: 2
         name: "Compute checksum"
         command: |
           mv pihole-FTL "${BIN_NAME}"
-          sha1sum pihole-FTL-* > ${BIN_NAME}.sha1
+          sha256sum pihole-FTL-* > ${BIN_NAME}.sha256
     - run:
         name: "Upload binary to binary bucket"
         command: |
@@ -36,8 +36,8 @@ version: 2
           mkdir download
           cd download
           wget "https://ftl.pi-hole.net/${DIR}/${BIN_NAME}"
-          wget "https://ftl.pi-hole.net/${DIR}/${BIN_NAME}.sha1"
-          sha1sum -c "${BIN_NAME}.sha1"
+          wget "https://ftl.pi-hole.net/${DIR}/${BIN_NAME}.sha256"
+          sha256sum -c "${BIN_NAME}.sha256"
           cd ..
     - run:
         name: "Test"
