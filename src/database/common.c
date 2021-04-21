@@ -23,6 +23,8 @@
 #include "sqlite3-ext.h"
 // import_aliasclients()
 #include "aliasclients.h"
+// add_additional_info_column()
+#include "query-table.h"
 
 bool DBdeleteoldqueries = false;
 long int lastdbindex = 0;
@@ -300,10 +302,9 @@ void db_init(void)
 	// Update to version 7 if lower
 	if(dbversion < 7)
 	{
-		// Update to version 7: Create message table
+		// Update to version 7: Add additional_info column to queries table
 		logg("Updating long-term database to version 7");
-		if(dbquery(db, "ALTER TABLE queries ADD COLUMN additional_info TEXT;") != SQLITE_OK ||
-		   !dbquery(db, "INSERT OR REPLACE INTO ftl (id, value) VALUES ( %u, %i );", DB_VERSION, 7) != SQLITE_OK)
+		if(!add_additional_info_column(db))
 		{
 			logg("Column additional_info not initialized, database not available");
 			dbclose(&db);
