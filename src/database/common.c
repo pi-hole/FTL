@@ -135,7 +135,7 @@ static bool create_counter_table(sqlite3* db)
 	db_set_counter(db, DB_BLOCKEDQUERIES, 0);
 
 	// Time stamp of creation of the counters database
-	db_set_counter(db, DB_FIRSTCOUNTERTIMESTAMP, (unsigned long)time(0));
+	db_set_FTL_property(db, DB_FIRSTCOUNTERTIMESTAMP, (unsigned long)time(0));
 
 	// Update database version to 2
 	db_set_FTL_property(db, DB_VERSION, 2);
