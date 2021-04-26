@@ -78,8 +78,8 @@ enum blocking_mode {
 } __attribute__ ((packed));
 
 enum regex_type {
-	REGEX_BLACKLIST,
-	REGEX_WHITELIST,
+	REGEX_DENY,
+	REGEX_ALLOW,
 	REGEX_CLI,
 	REGEX_MAX
 } __attribute__ ((packed));
@@ -116,9 +116,9 @@ enum blocking_status {
 enum domain_client_status {
 	UNKNOWN_BLOCKED = 0,
 	GRAVITY_BLOCKED,
-	BLACKLIST_BLOCKED,
+	DENYLIST_BLOCKED,
 	REGEX_BLOCKED,
-	WHITELISTED,
+	ALLOWED,
 	NOT_BLOCKED
 } __attribute__ ((packed));
 

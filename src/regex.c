@@ -28,8 +28,8 @@
 
 const char *regextype[REGEX_MAX] = { "deny", "allow", "CLI" };
 
-static regexData *white_regex = NULL;
-static regexData *black_regex = NULL;
+static regexData *allow_regex = NULL;
+static regexData *deny_regex = NULL;
 static regexData   *cli_regex = NULL;
 static unsigned int num_regex[REGEX_MAX] = { 0 };
 unsigned int regex_change = 0;
@@ -39,10 +39,10 @@ static inline regexData *get_regex_ptr(const enum regex_type regexid)
 {
 	switch (regexid)
 	{
-		case REGEX_BLACKLIST:
-			return black_regex;
-		case REGEX_WHITELIST:
-			return white_regex;
+		case REGEX_DENY:
+			return deny_regex;
+		case REGEX_ALLOW:
+			return allow_regex;
 		case REGEX_CLI:
 			return cli_regex;
 		case REGEX_MAX: // Fall through
@@ -56,11 +56,11 @@ static inline void free_regex_ptr(const enum regex_type regexid)
 	regexData **regex;
 	switch (regexid)
 	{
-		case REGEX_BLACKLIST:
-			regex = &black_regex;
+		case REGEX_DENY:
+			regex = &deny_regex;
 			break;
-		case REGEX_WHITELIST:
-			regex = &white_regex;
+		case REGEX_ALLOW:
+			regex = &allow_regex;
 			break;
 		case REGEX_CLI:
 			regex = &cli_regex;
@@ -243,11 +243,11 @@ int match_regex(const char *input, const DNSCacheData* dns_cache, const int clie
 		}
 		// ... and are enabled for this client
 		int regexID = index;
-		if(regexid == REGEX_WHITELIST)
-			regexID += num_regex[REGEX_BLACKLIST];
+		if(regexid == REGEX_ALLOW)
+			regexID += num_regex[REGEX_DENY];
 		else if(regexid == REGEX_CLI)
-			regexID += num_regex[REGEX_BLACKLIST] +
-			           num_regex[REGEX_WHITELIST];
+			regexID += num_regex[REGEX_DENY] +
+			           num_regex[REGEX_ALLOW];
 
 		// Only use regular expressions enabled for this client
 		// We allow clientID = -1 to get all regex (for testing)
@@ -317,17 +317,17 @@ int match_regex(const char *input, const DNSCacheData* dns_cache, const int clie
 				logg("    %s%s%s matches",
 				     cli_bold(), regex[index].string, cli_normal());
 			}
-			else if(regextest && regexid == REGEX_BLACKLIST)
+			else if(regextest && regexid == REGEX_DENY)
 			{
 				// Database-sourced regular expression
-				logg("    %s%s%s matches (regex blacklist, DB ID %i)",
+				logg("    %s%s%s matches (deny regex, DB ID %i)",
 				     cli_bold(), regex[index].string, cli_normal(),
 				     regex[index].database_id);
 			}
-			else if(regextest && regexid == REGEX_WHITELIST)
+			else if(regextest && regexid == REGEX_ALLOW)
 			{
 				// Database-sourced regular expression
-				logg("    %s%s%s matches (regex whitelist, DB ID %i)",
+				logg("    %s%s%s matches (allow regex, DB ID %i)",
 				     cli_bold(), regex[index].string, cli_normal(),
 				     regex[index].database_id);
 			}
@@ -354,8 +354,8 @@ int match_regex(const char *input, const DNSCacheData* dns_cache, const int clie
 static void free_regex(void)
 {
 	// Return early if we don't use any regex filters
-	if(white_regex == NULL &&
-	   black_regex == NULL &&
+	if(allow_regex == NULL &&
+	   deny_regex == NULL &&
 	     cli_regex == NULL)
 	{
 		if(config.debug & DEBUG_DATABASE)
@@ -373,7 +373,7 @@ static void free_regex(void)
 
 	// Free regex datastructure
 	// Loop over regex types
-	for(enum regex_type regexid = REGEX_BLACKLIST; regexid < REGEX_MAX; regexid++)
+	for(enum regex_type regexid = REGEX_DENY; regexid < REGEX_MAX; regexid++)
 	{
 		regexData *regex = get_regex_ptr(regexid);
 
@@ -429,23 +429,23 @@ void reload_per_client_regex(clientsData *client)
 	// Zero-initialize (or wipe previous) regex
 	reset_per_client_regex(client->id);
 
-	// Load regex per-group regex blacklist for this client
-	if(num_regex[REGEX_BLACKLIST] > 0)
-		gravityDB_get_regex_client_groups(client, num_regex[REGEX_BLACKLIST],
-		                                  black_regex, REGEX_BLACKLIST,
+	// Load regex per-group deny regex for this client
+	if(num_regex[REGEX_DENY] > 0)
+		gravityDB_get_regex_client_groups(client, num_regex[REGEX_DENY],
+		                                  deny_regex, REGEX_DENY,
 		                                  "vw_regex_blacklist");
 
-	// Load regex per-group regex whitelist for this client
-	if(num_regex[REGEX_WHITELIST] > 0)
-		gravityDB_get_regex_client_groups(client, num_regex[REGEX_WHITELIST],
-		                                  white_regex, REGEX_WHITELIST,
+	// Load regex per-group allow regex for this client
+	if(num_regex[REGEX_ALLOW] > 0)
+		gravityDB_get_regex_client_groups(client, num_regex[REGEX_ALLOW],
+		                                  allow_regex, REGEX_ALLOW,
 		                                  "vw_regex_whitelist");
 }
 
 static void read_regex_table(const enum regex_type regexid)
 {
 	// Get table ID
-	const enum gravity_tables tableID = (regexid == REGEX_BLACKLIST) ? REGEX_BLACKLIST_TABLE : REGEX_WHITELIST_TABLE;
+	const enum gravity_tables tableID = (regexid == REGEX_DENY) ? REGEX_BLACKLIST_TABLE : REGEX_WHITELIST_TABLE;
 
 	if(config.debug & DEBUG_DATABASE)
 		logg("Reading regex %s from database", regextype[regexid]);
@@ -466,15 +466,15 @@ static void read_regex_table(const enum regex_type regexid)
 
 	// Allocate memory for regex
 	regexData *regex = NULL;
-	if(regexid == REGEX_BLACKLIST)
+	if(regexid == REGEX_DENY)
 	{
-		black_regex = calloc(count, sizeof(regexData));
-		regex = black_regex;
+		deny_regex = calloc(count, sizeof(regexData));
+		regex = deny_regex;
 	}
 	else
 	{
-		white_regex = calloc(count, sizeof(regexData));
-		regex = white_regex;
+		allow_regex = calloc(count, sizeof(regexData));
+		regex = allow_regex;
 	}
 
 	// Connect to regex table
@@ -503,7 +503,7 @@ static void read_regex_table(const enum regex_type regexid)
 		// anything anywhere and hence match all incoming regex_strings. A user
 		// can still achieve this with a filter such as ".*", however empty
 		// filters in the regex table are probably not expected to have such
-		// an effect and would immediately lead to "blocking or whitelisting
+		// an effect and would immediately lead to "blocking or allowing
 		// the entire Internet"
 		if(strlen(regex_string) < 1)
 			continue;
@@ -553,10 +553,10 @@ void read_regex_from_database(void)
 	timer_start(REGEX_TIMER);
 
 	// Read and compile regex blacklist
-	read_regex_table(REGEX_BLACKLIST);
+	read_regex_table(REGEX_DENY);
 
 	// Read and compile regex whitelist
-	read_regex_table(REGEX_WHITELIST);
+	read_regex_table(REGEX_ALLOW);
 
 	// Loop over all clients and ensure we have enough space and load
 	// per-client regex data, not all of the regex read and compiled above
@@ -576,7 +576,7 @@ void read_regex_from_database(void)
 
 	// Print message to FTL's log after reloading regex filters
 	logg("Compiled %i allow and %i deny regex for %i clients in %.1f msec",
-	     num_regex[REGEX_WHITELIST], num_regex[REGEX_BLACKLIST],
+	     num_regex[REGEX_ALLOW], num_regex[REGEX_DENY],
 	     counters->clients, timer_elapsed_msec(REGEX_TIMER));
 }
 
@@ -602,24 +602,23 @@ int regex_test(const bool debug_mode, const bool quiet, const char *domainin, co
 		logg("%s Loading regex filters from database...", cli_info());
 		timer_start(REGEX_TIMER);
 		log_ctrl(false, true); // Temporarily re-enable terminal output for error logging
-		read_regex_table(REGEX_BLACKLIST);
-		read_regex_table(REGEX_WHITELIST);
+		read_regex_table(REGEX_DENY);
+		read_regex_table(REGEX_ALLOW);
 		log_ctrl(false, !quiet); // Re-apply quiet option after compilation
-		logg("    Compiled %i black- and %i whitelist regex filters in %.3f msec\n",
-		     num_regex[REGEX_BLACKLIST],
-		     num_regex[REGEX_WHITELIST],
+		logg("    Compiled %i deny and %i allow regex in %.3f msec\n",
+		     num_regex[REGEX_DENY], num_regex[REGEX_ALLOW],
 		     timer_elapsed_msec(REGEX_TIMER));
 
-		// Check user-provided domain against all loaded regular blacklist expressions
-		logg("%s Checking domain against blacklist...", cli_info());
+		// Check user-provided domain against all loaded regular deny expressions
+		logg("%s Checking domain against deny regex...", cli_info());
 		timer_start(REGEX_TIMER);
-		int matchidx1 = match_regex(domainin, NULL, -1, REGEX_BLACKLIST, true);
+		int matchidx1 = match_regex(domainin, NULL, -1, REGEX_DENY, true);
 		logg("    Time: %.3f msec", timer_elapsed_msec(REGEX_TIMER));
 
-		// Check user-provided domain against all loaded regular whitelist expressions
-		logg("%s Checking domain against whitelist...", cli_info());
+		// Check user-provided domain against all loaded regular allow expressions
+		logg("%s Checking domain against allow regex...", cli_info());
 		timer_start(REGEX_TIMER);
-		int matchidx2 = match_regex(domainin, NULL, -1, REGEX_WHITELIST, true);
+		int matchidx2 = match_regex(domainin, NULL, -1, REGEX_ALLOW, true);
 		logg("    Time: %.3f msec", timer_elapsed_msec(REGEX_TIMER));
 		matchidx = MAX(matchidx1, matchidx2);
 

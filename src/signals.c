@@ -269,10 +269,8 @@ static void SIGRT_handler(int signum, siginfo_t *si, void *unused)
 	{
 		// Reload
 		// - gravity
-		// - exact whitelist
-		// - regex whitelist
-		// - exact blacklist
-		// - exact blacklist
+		// - allowed domains and regex
+		// - denied domains and regex
 		// WITHOUT wiping the DNS cache itself
 		set_event(RELOAD_GRAVITY);
 

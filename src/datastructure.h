@@ -45,7 +45,7 @@ typedef struct {
 	// C99 guarentees that bit-fields will be packed as tightly as possible,
 	// provided they don’t cross storageau unit boundaries (6.7.2.1 #10).
 	struct query_flags {
-		bool whitelisted :1;
+		bool allowed :1;
 		bool complete :1;
 		bool blocked :1;
 	} flags;

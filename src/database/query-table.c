@@ -655,7 +655,7 @@ void DB_read_queries(void)
 		// Initialize flags
 		query->flags.complete = true; // Mark as all information is available
 		query->flags.blocked = false;
-		query->flags.whitelisted = false;
+		query->flags.allowed = false;
 
 		// Set lastQuery timer for network table
 		clientsData* client = getClient(clientID, true);
@@ -663,7 +663,7 @@ void DB_read_queries(void)
 
 		// Handle type counters
 		if(type >= TYPE_A && type < TYPE_MAX)
-			counters->querytype[type-1]++;
+			counters->querytype[type]++;
 
 		// Update overTime data
 		overTime[timeidx].total++;

@@ -162,7 +162,7 @@ void *GC_thread(void *val)
 
 				// Update type counters
 				if(query->type < TYPE_MAX)
-					counters->querytype[query->type-1]--;
+					counters->querytype[query->type]--;
 
 				// Set query again to UNKNOWN to reset the counters
 				query_set_status(query, QUERY_UNKNOWN);

@@ -28,7 +28,7 @@ static const char *message_types[MAX_MESSAGE] =
 static unsigned char message_blob_types[MAX_MESSAGE][5] =
 	{
 		{	// REGEX_MESSAGE: The message column contains the regex warning text
-			SQLITE_TEXT, // regex type ("blacklist", "whitelist")
+			SQLITE_TEXT, // regex type ("deny", "allow")
 			SQLITE_TEXT, // regex text (the erroring regex filter itself)
 			SQLITE_INTEGER, // database index of regex (so the dashboard can show a link)
 			SQLITE_NULL, // not used

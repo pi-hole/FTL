@@ -179,10 +179,10 @@ static bool check_domain_blocked(const char *domain, const int clientID,
                                  clientsData *client, queriesData *query, DNSCacheData *dns_cache,
                                  const char **blockingreason, unsigned char *new_status)
 {
-	// Check domains against exact blacklist
-	// Skipped when the domain is whitelisted
+	// Check domains against exactly denied domains
+	// Skipped when the domain is allowed
 	bool blockDomain = false;
-	if(in_blacklist(domain, client))
+	if(in_denylist(domain, client))
 	{
 		// We block this domain
 		blockDomain = true;
@@ -190,13 +190,13 @@ static bool check_domain_blocked(const char *domain, const int clientID,
 		*blockingreason = "exactly denied";
 
 		// Mark domain as exactly denied for this client
-		dns_cache->blocking_status = BLACKLIST_BLOCKED;
+		dns_cache->blocking_status = DENYLIST_BLOCKED;
 		return true;
 	}
 
 	// Check domains against gravity domains
-	// Skipped when the domain is whitelisted or blocked by exact blacklist
-	if(!query->flags.whitelisted && !blockDomain &&
+	// Skipped when the domain is allowed or blocked by exact blacklist
+	if(!query->flags.allowed && !blockDomain &&
 	   in_gravity(domain, client))
 	{
 		// We block this domain
@@ -210,10 +210,10 @@ static bool check_domain_blocked(const char *domain, const int clientID,
 	}
 
 	// Check domain against blacklist regex filters
-	// Skipped when the domain is whitelisted or blocked by exact blacklist or gravity
+	// Skipped when the domain is allowed or blocked by exact blacklist or gravity
 	int regex_idx = 0;
-	if(!query->flags.whitelisted && !blockDomain &&
-	   (regex_idx = match_regex(domain, dns_cache, client->id, REGEX_BLACKLIST, false)) > -1)
+	if(!query->flags.allowed && !blockDomain &&
+	   (regex_idx = match_regex(domain, dns_cache, client->id, REGEX_DENY, false)) > -1)
 	{
 		// We block this domain
 		blockDomain = true;
@@ -268,8 +268,8 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 
 			break;
 
-		case BLACKLIST_BLOCKED:
-			// Known as exactly blacklistes, we
+		case DENYLIST_BLOCKED:
+			// Known as exactly denied, we
 			// return this result early, skipping
 			// all the lengthy tests below
 			*blockingreason = "exactly denied";
@@ -279,8 +279,8 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			}
 
 			// Do not block if the entire query is to be permitted
-			// as something along the CNAME path hit the whitelist
-			if(!query->flags.whitelisted)
+			// as something along the CNAME path hit is explicitly allowed
+			if(!query->flags.allowed)
 			{
 				force_next_DNS_reply = dns_cache->force_reply;
 				query_blocked(query, domain, client, QUERY_DENYLIST);
@@ -299,8 +299,8 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			}
 
 			// Do not block if the entire query is to be permitted
-			// as sometving along the CNAME path hit the whitelist
-			if(!query->flags.whitelisted)
+			// as something along the CNAME path hit is explicitly allowed
+			if(!query->flags.allowed)
 			{
 				force_next_DNS_reply = dns_cache->force_reply;
 				query_blocked(query, domain, client, QUERY_GRAVITY);
@@ -320,24 +320,24 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			}
 
 			// Do not block if the entire query is to be permitted
-			// as sometving along the CNAME path hit the whitelist
-			if(!query->flags.whitelisted)
+			// as something along the CNAME path hit is explicitly allowed
+			if(!query->flags.allowed)
 			{
 				query_blocked(query, domain, client, QUERY_REGEX);
 				return true;
 			}
 			break;
 
-		case WHITELISTED:
-			// Known as whitelisted, we
+		case ALLOWED:
+			// Known as allowed, we
 			// return this result early, skipping
 			// all the lengthy tests below
 			if(config.debug & DEBUG_QUERIES)
 			{
-				logg("%s is known as not to be blocked (whitelisted)", domainstr);
+				logg("%s is known as not to be blocked (allowed)", domainstr);
 			}
 
-			query->flags.whitelisted = true;
+			query->flags.allowed = true;
 
 			return false;
 			break;
@@ -355,12 +355,12 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			break;
 	}
 
-	// Skip all checks and continue if we hit already at least one whitelist in the chain
-	if(query->flags.whitelisted)
+	// Skip all checks and continue if we hit already at least one allowed domain in the chain
+	if(query->flags.allowed)
 	{
 		if(config.debug & DEBUG_QUERIES)
 		{
-			logg("Query is permitted as at least one whitelist entry matched");
+			logg("Query is permitted as at least one allowlist entry matched");
 		}
 		return false;
 	}
@@ -371,20 +371,20 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 	domainstr = strdup(domainstr);
 	const char *blockedDomain = domainstr;
 
-	// Check whitelist (exact + regex) for match
-	query->flags.whitelisted = in_whitelist(domainstr, dns_cache, client);
+	// Check allowed domains (exact + regex) for match
+	query->flags.allowed = in_allowlist(domainstr, dns_cache, client);
 
 	bool blockDomain = false;
 	unsigned char new_status = QUERY_UNKNOWN;
 
 	// Check blacklist (exact + regex) and gravity for queried domain
-	if(!query->flags.whitelisted)
+	if(!query->flags.allowed)
 	{
 		blockDomain = check_domain_blocked(domainstr, clientID, client, query, dns_cache, blockingreason, &new_status);
 	}
 
 	// Check blacklist (exact + regex) and gravity for _esni.domain if enabled (defaulting to true)
-	if(config.block_esni && !query->flags.whitelisted && !blockDomain && strncasecmp(domainstr, "_esni.", 6u) == 0)
+	if(config.block_esni && !query->flags.allowed && !blockDomain && strncasecmp(domainstr, "_esni.", 6u) == 0)
 	{
 		blockDomain = check_domain_blocked(domainstr + 6u, clientID, client, query, dns_cache, blockingreason, &new_status);
 
@@ -413,8 +413,8 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 		// Explicitly mark as not blocked to skip the entire
 		// gravity/blacklist chain when the same client asks
 		// for the same domain in the future. Explicitly store
-		// domain as whitelisted if this is the case
-		dns_cache->blocking_status = query->flags.whitelisted ? WHITELISTED : NOT_BLOCKED;
+		// domain as allowed if this is the case
+		dns_cache->blocking_status = query->flags.allowed ? ALLOWED : NOT_BLOCKED;
 	}
 
 	free(domainstr);
@@ -767,7 +767,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	query->CNAME_domainID = -1;
 	// This query is not yet known ad forwarded or blocked
 	query->flags.blocked = false;
-	query->flags.whitelisted = false;
+	query->flags.allowed = false;
 
 	// Indicator that this query was not forwarded so far
 	query->upstreamID = -1;

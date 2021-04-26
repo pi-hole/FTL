@@ -959,7 +959,7 @@ void reset_per_client_regex(const int clientID)
 	const unsigned int num_regex_tot = get_num_regex(REGEX_MAX); // total number
 	for(unsigned int i = 0u; i < num_regex_tot; i++)
 	{
-		// Zero-initialize/reset (= false) all regex (white + black)
+		// Zero-initialize/reset (= false) all regex (allow + deny)
 		set_per_client_regex(clientID, i, false);
 	}
 }

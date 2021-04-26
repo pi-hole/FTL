@@ -1239,7 +1239,7 @@ static void gravityDB_client_check_again(clientsData* client)
 	}
 }
 
-bool in_whitelist(const char *domain, const DNSCacheData *dns_cache, clientsData* client)
+bool in_allowlist(const char *domain, const DNSCacheData *dns_cache, clientsData* client)
 {
 	// If list statement is not ready and cannot be initialized (e.g. no
 	// access to the database), we return false to prevent an FTL crash
@@ -1256,7 +1256,7 @@ bool in_whitelist(const char *domain, const DNSCacheData *dns_cache, clientsData
 	// the database), we return false (not in whitelist) to prevent an FTL crash
 	if(stmt == NULL && !gravityDB_prepare_client_statements(client))
 	{
-		logg("ERROR: Gravity database not available, assuming domain is not whitelisted");
+		logg("ERROR: Gravity database not available, assuming domain is not allowed");
 		return false;
 	}
 
@@ -1268,12 +1268,12 @@ bool in_whitelist(const char *domain, const DNSCacheData *dns_cache, clientsData
 
 	// We have to check both the exact whitelist (using a prepared database statement)
 	// as well the compiled regex whitelist filters to check if the current domain is
-	// whitelisted. Due to short-circuit-evaluation in C, the regex evaluations is executed
+	// allowed. Due to short-circuit-evaluation in C, the regex evaluations is executed
 	// only if the exact whitelist lookup does not deliver a positive match. This is an
 	// optimization as the database lookup will most likely hit (a) more domains and (b)
 	// will be faster (given a sufficiently large number of regex whitelisting filters).
-	return domain_in_list(domain, stmt, "whitelist") ||
-	       match_regex(domain, dns_cache, client->id, REGEX_WHITELIST, false) != -1;
+	return domain_in_list(domain, stmt, "allow") ||
+	       match_regex(domain, dns_cache, client->id, REGEX_ALLOW, false) != -1;
 }
 
 bool in_gravity(const char *domain, clientsData* client)
@@ -1306,7 +1306,7 @@ bool in_gravity(const char *domain, clientsData* client)
 	return domain_in_list(domain, stmt, "gravity");
 }
 
-inline bool in_blacklist(const char *domain, clientsData* client)
+inline bool in_denylist(const char *domain, clientsData* client)
 {
 	// If list statement is not ready and cannot be initialized (e.g. no
 	// access to the database), we return false to prevent an FTL crash
@@ -1333,7 +1333,7 @@ inline bool in_blacklist(const char *domain, clientsData* client)
 		stmt = blacklist_stmt->get(blacklist_stmt, client->id);
 	}
 
-	return domain_in_list(domain, stmt, "blacklist");
+	return domain_in_list(domain, stmt, "deny");
 }
 
 bool in_auditlist(const char *domain)
@@ -1386,8 +1386,8 @@ bool gravityDB_get_regex_client_groups(clientsData* client, const unsigned int n
 			if(regex[regexID].database_id == result)
 			{
 				// Regular expressions are stored in one array
-				if(type == REGEX_WHITELIST)
-					regexID += get_num_regex(REGEX_BLACKLIST);
+				if(type == REGEX_ALLOW)
+					regexID += get_num_regex(REGEX_DENY);
 				set_per_client_regex(client->id, regexID, true);
 
 				if(config.debug & DEBUG_REGEX)
