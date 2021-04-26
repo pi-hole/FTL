@@ -193,6 +193,17 @@ void db_init(void)
 	// explicitly check for failures to have happened
 	sqlite3_config(SQLITE_CONFIG_LOG, SQLite3LogCallback, NULL);
 
+	// SQLITE_DBCONFIG_DEFENSIVE
+	// Disbale language features that allow ordinary SQL to deliberately corrupt
+	// the database file. The disabled features include but are not limited to
+	// the following:
+	//
+	// - The PRAGMA writable_schema=ON statement.
+	// - The PRAGMA journal_mode=OFF statement.
+	// - Writes to the sqlite_dbpage virtual table.
+	// - Direct writes to shadow tables.
+	sqlite3_config(SQLITE_DBCONFIG_DEFENSIVE, true);
+
 	// Register Pi-hole provided SQLite3 extensions (see sqlite3-ext.c)
 	sqlite3_auto_extension((void (*)(void))sqlite3_pihole_extensions_init);
 
