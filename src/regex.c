@@ -575,7 +575,7 @@ void read_regex_from_database(void)
 	}
 
 	// Print message to FTL's log after reloading regex filters
-	logg("Compiled %i whitelist and %i blacklist regex filters for %i clients in %.1f msec",
+	logg("Compiled %i allow and %i deny regex for %i clients in %.1f msec",
 	     num_regex[REGEX_WHITELIST], num_regex[REGEX_BLACKLIST],
 	     counters->clients, timer_elapsed_msec(REGEX_TIMER));
 }

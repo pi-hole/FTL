@@ -188,17 +188,17 @@ CREATE TRIGGER tr_client_delete AFTER DELETE ON client
 
 /* ^^^ basic gravity table definition, taken from /advanced/Templates/gravity.db.sql ^^^ */
 /* vvv Test content following vvv */
-INSERT INTO domainlist VALUES(1,0,'whitelisted.test.pi-hole.net',1,1559928803,1559928803,'Migrated from /etc/pihole/whitelist.txt');
+INSERT INTO domainlist VALUES(1,0,'allowlisted.test.pi-hole.net',1,1559928803,1559928803,'Migrated from /etc/pihole/whitelist.txt');
 INSERT INTO domainlist VALUES(2,0,'regex1.test.pi-hole.net',1,1559928803,1559928803,'');
 INSERT INTO domainlist VALUES(3,2,'regex2',1,1559928803,1559928803,'');
 INSERT INTO domainlist VALUES(4,2,'discourse',1,1559928803,1559928803,'');
 
-INSERT INTO domainlist VALUES(5,1,'blacklist-blocked.test.pi-hole.net',1,1559928803,1559928803,'Migrated from /etc/pihole/blacklist.txt');
+INSERT INTO domainlist VALUES(5,1,'denylist-blocked.test.pi-hole.net',1,1559928803,1559928803,'Migrated from /etc/pihole/blacklist.txt');
 INSERT INTO domainlist VALUES(6,3,'regex[0-9].test.pi-hole.net',1,1559928803,1559928803,'Migrated from /etc/pihole/regex.list');
 
 INSERT INTO adlist VALUES(1,'https://hosts-file.net/ad_servers.txt',1,1559928803,1559928803,'Migrated from /etc/pihole/adlists.list');
 
-INSERT INTO gravity VALUES('whitelisted.test.pi-hole.net',1);
+INSERT INTO gravity VALUES('allowlisted.test.pi-hole.net',1);
 INSERT INTO gravity VALUES('gravity-blocked.test.pi-hole.net',1);
 INSERT INTO gravity VALUES('discourse.pi-hole.net',1);
 INSERT INTO info VALUES("gravity_count",3);
