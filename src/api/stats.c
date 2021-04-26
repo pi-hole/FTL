@@ -75,7 +75,9 @@ static int get_query_types_obj(struct ftl_conn *api, cJSON *types)
 
 int api_stats_summary(struct ftl_conn *api)
 {
-	const int blocked = counters->blocked;
+	const int blocked =  get_blocked_count();
+	const int forwarded =  get_forwarded_count();
+	const int cached =  get_cached_count();
 	const int total = counters->queries;
 	float percent_blocked = 0.0f;
 
@@ -84,11 +86,11 @@ int api_stats_summary(struct ftl_conn *api)
 		percent_blocked = 1e2f*blocked/total;
 
 	cJSON *queries = JSON_NEW_OBJ();
-	JSON_OBJ_ADD_NUMBER(queries, "blocked", counters->blocked);
+	JSON_OBJ_ADD_NUMBER(queries, "blocked", blocked);
 	JSON_OBJ_ADD_NUMBER(queries, "percent_blocked", percent_blocked);
 	JSON_OBJ_ADD_NUMBER(queries, "unique_domains", counters->domains);
-	JSON_OBJ_ADD_NUMBER(queries, "forwarded", counters->forwarded);
-	JSON_OBJ_ADD_NUMBER(queries, "cached", counters->cached);
+	JSON_OBJ_ADD_NUMBER(queries, "forwarded", forwarded);
+	JSON_OBJ_ADD_NUMBER(queries, "cached", cached);
 
 	cJSON *types = JSON_NEW_OBJ();
 	int ret = get_query_types_obj(api, types);
@@ -96,14 +98,15 @@ int api_stats_summary(struct ftl_conn *api)
 		return ret;
 	JSON_OBJ_ADD_ITEM(queries, "types", types);
 
-	JSON_OBJ_ADD_NUMBER(queries, "sum", counters->queries);
+	JSON_OBJ_ADD_NUMBER(queries, "sum", total);
 
 	cJSON *replies = JSON_NEW_OBJ();
-	JSON_OBJ_ADD_NUMBER(replies, "NODATA", counters->reply_NODATA);
-	JSON_OBJ_ADD_NUMBER(replies, "NXDOMAIN", counters->reply_NXDOMAIN);
-	JSON_OBJ_ADD_NUMBER(replies, "CNAME", counters->reply_CNAME);
-	JSON_OBJ_ADD_NUMBER(replies, "IP", counters->reply_IP);
-	JSON_OBJ_ADD_NUMBER(replies, "text", counters->reply_domain);
+	queriesData query = { 0 };
+	for(enum reply_type reply = 0; reply < QUERY_REPLY_MAX; reply++)
+	{
+		query.reply = reply;
+		JSON_OBJ_ADD_NUMBER(replies, get_query_reply_str(&query), counters->reply[reply]);
+	}
 	JSON_OBJ_ADD_ITEM(queries, "replies", replies);
 
 	cJSON *json = JSON_NEW_OBJ();
@@ -272,12 +275,12 @@ int api_stats_top_domains(bool blocked, struct ftl_conn *api)
 
 	if(blocked)
 	{
-		JSON_OBJ_ADD_NUMBER(json, "blocked_queries", counters->blocked);
+		const int blocked_queries = get_blocked_count();
+		JSON_OBJ_ADD_NUMBER(json, "blocked_queries", blocked_queries);
 	}
 	else
 	{
-		const int total_queries = counters->forwarded + counters->cached + counters->blocked;
-		JSON_OBJ_ADD_NUMBER(json, "total_queries", total_queries);
+		JSON_OBJ_ADD_NUMBER(json, "total_queries", counters->queries);
 	}
 
 	JSON_SEND_OBJECT(json);
@@ -398,12 +401,12 @@ int api_stats_top_clients(bool blocked, struct ftl_conn *api)
 
 	if(blocked)
 	{
-		JSON_OBJ_ADD_NUMBER(json, "blocked_queries", counters->blocked);
+		const int blocked_queries = get_blocked_count();
+		JSON_OBJ_ADD_NUMBER(json, "blocked_queries", blocked_queries);
 	}
 	else
 	{
-		const int total_queries = counters->forwarded + counters->cached + counters->blocked;
-		JSON_OBJ_ADD_NUMBER(json, "total_queries", total_queries);
+		JSON_OBJ_ADD_NUMBER(json, "total_queries", counters->queries);
 	}
 
 	JSON_SEND_OBJECT(json);
@@ -412,7 +415,8 @@ int api_stats_top_clients(bool blocked, struct ftl_conn *api)
 
 int api_stats_upstreams(struct ftl_conn *api)
 {
-	int temparray[counters->forwarded][2];
+	const int forwarded = get_forwarded_count();
+	int temparray[forwarded][2];
 
 	// Verify requesting client is allowed to see this ressource
 	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
@@ -447,14 +451,14 @@ int api_stats_upstreams(struct ftl_conn *api)
 			// Blocked queries (local lists)
 			ip = "blocklist";
 			name = ip;
-			count = counters->blocked;
+			count = get_blocked_count();
 		}
 		else if(i == -1)
 		{
 			// Local cache
 			ip = "cache";
 			name = ip;
-			count = counters->cached;
+			count = get_cached_count();
 		}
 		else
 		{
@@ -507,9 +511,9 @@ int api_stats_upstreams(struct ftl_conn *api)
 	}
 	cJSON *json = JSON_NEW_OBJ();
 	JSON_OBJ_ADD_ITEM(json, "upstreams", upstreams);
-	JSON_OBJ_ADD_NUMBER(json, "forwarded_queries", counters->forwarded);
-	const int total_queries = counters->forwarded + counters->cached + counters->blocked;
-	JSON_OBJ_ADD_NUMBER(json, "total_queries", total_queries);
+	const int forwarded_queries = get_forwarded_count();
+	JSON_OBJ_ADD_NUMBER(json, "forwarded_queries", forwarded_queries);
+	JSON_OBJ_ADD_NUMBER(json, "total_queries", counters->queries);
 	JSON_SEND_OBJECT(json);
 }
 

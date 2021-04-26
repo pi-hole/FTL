@@ -14,6 +14,8 @@
 #include "api.h"
 // networkrecord
 #include "../database/network-table.h"
+// dbopen()
+#include "../database/common.h"
 
 int api_network(struct ftl_conn *api)
 {
@@ -23,9 +25,18 @@ int api_network(struct ftl_conn *api)
 		return send_json_unauthorized(api);
 	}
 
-	// apiect to database
+
+	// Open pihole-FTL.db database file
+	sqlite3_stmt *device_stmt = NULL, *ip_stmt = NULL;
+	sqlite3 *db = dbopen(false);
+	if(db == NULL)
+	{
+		logg("networkTable_readDevices() - Failed to open DB");
+		return false;
+	}
+
 	const char *sql_msg = NULL;
-	if(!networkTable_readDevices(&sql_msg))
+	if(!networkTable_readDevices(db, &device_stmt, &sql_msg))
 	{
 		// Add SQL message (may be NULL = not available)
 		return send_json_error(api, 500,
@@ -37,7 +48,7 @@ int api_network(struct ftl_conn *api)
 	// Read record for a single device
 	cJSON *json = JSON_NEW_ARRAY();
 	network_record network;
-	while(networkTable_readDevicesGetRecord(&network, &sql_msg))
+	while(networkTable_readDevicesGetRecord(device_stmt, &network, &sql_msg))
 	{
 		cJSON *item = JSON_NEW_OBJ();
 		JSON_OBJ_ADD_NUMBER(item, "id", network.id);
@@ -51,11 +62,11 @@ int api_network(struct ftl_conn *api)
 
 		// Build array of all IP addresses known associated to this client
 		cJSON *ip = JSON_NEW_ARRAY();
-		if(networkTable_readIPs(network.id, &sql_msg))
+		if(networkTable_readIPs(db, &ip_stmt, network.id, &sql_msg))
 		{
 			// Walk known IP addresses
 			network_addresses_record network_address;
-			while(networkTable_readIPsGetRecord(&network_address, &sql_msg))
+			while(networkTable_readIPsGetRecord(ip_stmt, &network_address, &sql_msg))
 				JSON_ARRAY_COPY_STR(ip, network_address.ip);
 
 			// Possible error handling
@@ -69,7 +80,7 @@ int api_network(struct ftl_conn *api)
 			}
 
 			// Finalize sub-query
-			networkTable_readIPsFinalize();
+			networkTable_readIPsFinalize(ip_stmt);
 		}
 
 		// Add array of IP addresses to device
@@ -89,7 +100,9 @@ int api_network(struct ftl_conn *api)
 	}
 
 	// Finalize query
-	networkTable_readDevicesFinalize();
+	networkTable_readDevicesFinalize(device_stmt);
+
+	dbclose(&db);
 
 	// Return data to user
 	JSON_SEND_OBJECT(json);

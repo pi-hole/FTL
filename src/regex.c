@@ -26,7 +26,7 @@
 // cli_stuff()
 #include "args.h"
 
-const char *regextype[REGEX_MAX] = { "blacklist", "whitelist", "CLI" };
+const char *regextype[REGEX_MAX] = { "deny", "allow", "CLI" };
 
 static regexData *white_regex = NULL;
 static regexData *black_regex = NULL;
@@ -96,7 +96,7 @@ unsigned int __attribute__((pure)) get_num_regex(const enum regex_type regexid)
 #define FTL_REGEX_SEP ";"
 /* Compile regular expressions into data structures that can be used with
    regexec() to match against a string */
-bool compile_regex(const char *regexin, regexData *regex, const char **message)
+bool compile_regex(const char *regexin, regexData *regex, char **message)
 {
 	// Extract possible Pi-hole extensions
 	char rgxbuf[strlen(regexin) + 1u];
@@ -119,7 +119,7 @@ bool compile_regex(const char *regexin, regexData *regex, const char **message)
 				// Warn if specified more than one querytype option
 				if(regex->query_type != 0)
 				{
-					*message = "Overwriting previous querytype setting (multiple \"querytype=...\" found)";
+					*message = strdup("Overwriting previous querytype setting (multiple \"querytype=...\" found)");
 					return false;
 				}
 
@@ -147,7 +147,8 @@ bool compile_regex(const char *regexin, regexData *regex, const char **message)
 				// Nothing found
 				if(regex->query_type == 0)
 				{
-					*message = "Unknown querytype";
+					if(asprintf(message, "Unknown querytype \"%s\"", extra) < 1)
+						logg("Memory allocation failed in compile_regex()");
 					return false;
 				}
 
@@ -174,7 +175,9 @@ bool compile_regex(const char *regexin, regexData *regex, const char **message)
 			}
 			else
 			{
-				logg("   Option \"%s\" not known, ignoring it.", part);
+				if(asprintf(message, "Invalid regex option \"%s\"", part) < 1)
+					logg("Memory allocation failed in compile_regex()");
+				return false;
 			}
 		}
 		free(buf);
@@ -192,7 +195,7 @@ bool compile_regex(const char *regexin, regexData *regex, const char **message)
 	{
 		// Get error string and log it
 		(void) regerror (errcode, &regex->regex, regex_msg, sizeof(regex_msg));
-		*message = regex_msg;
+		*message = strdup(regex_msg);
 		regex->available = false;
 		return false;
 	}
@@ -233,9 +236,8 @@ int match_regex(const char *input, const DNSCacheData* dns_cache, const int clie
 		{
 			if(config.debug & DEBUG_REGEX)
 			{
-				logg("Regex %s (%u, DB ID %d) \"%s\" is NOT AVAILABLE",
-				     regextype[regexid], index, regex[index].database_id,
-				     regex[index].string);
+				logg("Regex %s (%u, DB ID %d) is NOT AVAILABLE (compilation error)",
+				     regextype[regexid], index, regex[index].database_id);
 			}
 			continue;
 		}
@@ -484,9 +486,9 @@ static void read_regex_table(const enum regex_type regexid)
 	}
 
 	// Walk database table
-	const char *domain = NULL;
+	const char *regex_string = NULL;
 	int rowid = 0;
-	while((domain = gravityDB_getDomain(&rowid)) != NULL)
+	while((regex_string = gravityDB_getDomain(&rowid)) != NULL)
 	{
 		// Avoid buffer overflow if database table changed
 		// since we counted its entries
@@ -498,30 +500,31 @@ static void read_regex_table(const enum regex_type regexid)
 		}
 
 		// Skip this entry if empty: an empty regex filter would match
-		// anything anywhere and hence match all incoming domains. A user
+		// anything anywhere and hence match all incoming regex_strings. A user
 		// can still achieve this with a filter such as ".*", however empty
 		// filters in the regex table are probably not expected to have such
 		// an effect and would immediately lead to "blocking or whitelisting
 		// the entire Internet"
-		if(strlen(domain) < 1)
+		if(strlen(regex_string) < 1)
 			continue;
 
 		// Compile this regex
 		if(config.debug & DEBUG_REGEX)
 		{
 			logg("Compiling %s regex %i (DB ID %i): %s",
-			     regextype[regexid], num_regex[regexid], rowid, domain);
+			     regextype[regexid], num_regex[regexid], rowid, regex_string);
 		}
 
-		regexData *this_regex = get_regex_ptr(regexid);
 		const int index = num_regex[regexid]++;
-		const char *message = NULL;
-		if(!compile_regex(domain, &this_regex[index], &message) && message != NULL)
+		char *message = NULL;
+		if(!compile_regex(regex_string, &regex[index], &message) && message != NULL)
 		{
 			logg_regex_warning(regextype[regexid], message,
-			                   regex->database_id, domain);
+			                   regex->database_id, regex_string);
+			free(message);
 		}
 
+		// Store database ID
 		regex[num_regex[regexid]-1].database_id = rowid;
 
 		// Signal other forks that the regex data has changed and should be updated
@@ -632,10 +635,11 @@ int regex_test(const bool debug_mode, const bool quiet, const char *domainin, co
 		// Compile CLI regex
 		timer_start(REGEX_TIMER);
 		log_ctrl(false, true); // Temporarily re-enable terminal output for error logging
-		const char *message = NULL;
+		char *message = NULL;
 		if(!compile_regex(regexin, &regex, &message) && message != NULL)
 		{
 			logg_regex_warning("CLI", message, 0, regexin);
+			free(message);
 			return 1;
 		}
 		log_ctrl(false, !quiet); // Re-apply quiet option after compilation

@@ -38,11 +38,14 @@ static void reset_rate_limiting(void)
 void *GC_thread(void *val)
 {
 	// Set thread name
-	prctl(PR_SET_NAME,"housekeeper",0,0,0);
+	thread_names[GC] = "housekeeper";
+	prctl(PR_SET_NAME, thread_names[GC], 0, 0, 0);
 
 	// Remember when we last ran the actions
 	time_t lastGCrun = time(NULL) - time(NULL)%GCinterval;
 	time_t lastRateLimitCleaner = time(NULL);
+
+	// Run as long as this thread is not canceled
 	while(!killed)
 	{
 		const time_t now = time(NULL);
@@ -53,6 +56,11 @@ void *GC_thread(void *val)
 			reset_rate_limiting();
 			unlock_shm();
 		}
+
+		// Intermediate cancellation-point
+		if(killed)
+			break;
+
 		if(now - GCdelay - lastGCrun >= GCinterval || doGC)
 		{
 			doGC = false;
@@ -63,8 +71,8 @@ void *GC_thread(void *val)
 			// Requests should not be processed/answered when data is about to change
 			lock_shm();
 
-			// Get minimum time stamp to keep
-			time_t mintime = (now - GCdelay) - MAXLOGAGE*3600;
+			// Get minimum timestamp to keep (this can be set with MAXLOGAGE)
+			time_t mintime = (now - GCdelay) - config.maxlogage;
 
 			// Align to the start of the next hour. This will also align with
 			// the oldest overTime interval after GC is done.
@@ -110,26 +118,21 @@ void *GC_thread(void *val)
 				{
 					case QUERY_UNKNOWN:
 						// Unknown (?)
-						counters->unknown--;
 						break;
 					case QUERY_FORWARDED: // (fall through)
 					case QUERY_RETRIED: // (fall through)
 					case QUERY_RETRIED_DNSSEC:
 						// Forwarded to an upstream DNS server
 						// Adjust counters
-						counters->forwarded--;
 						if(query->upstreamID > -1)
 						{
 							upstreamsData* upstream = getUpstream(query->upstreamID, true);
 							if(upstream != NULL)
 								upstream->count--;
 						}
-						overTime[timeidx].forwarded--;
 						break;
 					case QUERY_CACHE:
 						// Answered from local cache _or_ local config
-						counters->cached--;
-						overTime[timeidx].cached--;
 						break;
 					case QUERY_GRAVITY: // Blocked by Pi-hole's blocking lists (fall through)
 					case QUERY_DENYLIST: // Exact blocked (fall through)
@@ -140,18 +143,14 @@ void *GC_thread(void *val)
 					case QUERY_GRAVITY_CNAME: // Gravity domain in CNAME chain (fall through)
 					case QUERY_DENYLIST_CNAME: // Exactly denied domain in CNAME chain (fall through)
 					case QUERY_REGEX_CNAME: // Regex denied domain in CNAME chain (fall through)
-						counters->blocked--;
+						//counters->blocked--;
 						overTime[timeidx].blocked--;
 						if(domain != NULL)
 							domain->blockedcount--;
 						if(client != NULL)
 							change_clientcount(client, 0, -1, -1, 0);
 						break;
-					case QUERY_IN_PROGRESS:
-						// Nothing to be done here, this was a duplicated query. It
-						// wasn't forwarded on its own to save some traffic (and
-						// reduce the attack surface for cache spoofing)
-						break;
+					case QUERY_IN_PROGRESS: // Don't have to do anything here
 					case QUERY_STATUS_MAX: // fall through
 					default:
 						/* That cannot happen */
@@ -159,44 +158,17 @@ void *GC_thread(void *val)
 				}
 
 				// Update reply counters
-				switch(query->reply)
-				{
-					case REPLY_NODATA: // NODATA(-IPv6)
-						counters->reply_NODATA--;
-						break;
-
-					case REPLY_NXDOMAIN: // NXDOMAIN
-						counters->reply_NXDOMAIN--;
-						break;
-
-					case REPLY_CNAME: // <CNAME>
-						counters->reply_CNAME--;
-						break;
-
-					case REPLY_IP: // valid IP
-						counters->reply_IP--;
-						break;
-
-					case REPLY_DOMAIN: // reverse lookup
-						counters->reply_domain--;
-						break;
-
-					case REPLY_RRNAME: // fall through
-					case REPLY_SERVFAIL: // fall through
-					case REPLY_REFUSED: // fall through
-					case REPLY_NOTIMP: // fall through
-					case REPLY_OTHER: // fall through
-					case REPLY_UNKNOWN: // fall through
-					default:
-						break;
-				}
+				counters->reply[query->reply]--;
 
 				// Update type counters
 				if(query->type < TYPE_MAX)
-				{
-					counters->querytype[query->type]--;
-					overTime[timeidx].querytypedata[query->type]--;
-				}
+					counters->querytype[query->type-1]--;
+
+				// Set query again to UNKNOWN to reset the counters
+				query_set_status(query, QUERY_UNKNOWN);
+
+				// Finally, remove the last trace of this query
+				counters->status[QUERY_UNKNOWN]--;
 
 				// Count removed queries
 				removed++;
@@ -241,8 +213,9 @@ void *GC_thread(void *val)
 			// ever larger and larger
 			DBdeleteoldqueries = true;
 		}
-		sleepms(100);
+		thread_sleepms(GC, 1000);
 	}
 
+	logg("Terminating GC thread");
 	return NULL;
 }

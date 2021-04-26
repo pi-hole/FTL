@@ -16,6 +16,7 @@
 #define CREATE_QUERIES_TABLE_V1 "CREATE TABLE queries ( id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL, type INTEGER NOT NULL, status INTEGER NOT NULL, domain TEXT NOT NULL, client TEXT NOT NULL, forward TEXT );"
 #define CREATE_QUERIES_TABLE_V7 "CREATE TABLE queries ( id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL, type INTEGER NOT NULL, status INTEGER NOT NULL, domain TEXT NOT NULL, client TEXT NOT NULL, forward TEXT, additional_info TEXT );"
 #define CREATE_QUERIES_TIMESTAMP_INDEX "CREATE INDEX idx_queries_timestamp ON queries (timestamp);"
+#define CREATE_FTL_TABLE "CREATE TABLE ftl ( id INTEGER PRIMARY KEY NOT NULL, value BLOB NOT NULL );"
 #define CREATE_QUERIES_TYPE_INDEX "CREATE INDEX idx_queries_type ON queries (type);"
 #define CREATE_QUERIES_STATUS_INDEX "CREATE INDEX idx_queries_status ON queries (status);"
 #define CREATE_QUERIES_DOMAIN_INDEX "CREATE INDEX idx_queries_domain ON queries (domain);"
@@ -37,6 +38,7 @@ int get_number_of_queries_in_DB(sqlite3 *db, bool disk);
 bool export_queries_to_disk(bool final);
 bool delete_query_from_db(const sqlite3_int64 id);
 bool mv_newdb_memdb(void);
+bool add_additional_info_column(sqlite3 *db);
 void DB_read_queries(void);
 bool query_to_database(queriesData* query);
 

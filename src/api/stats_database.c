@@ -16,7 +16,7 @@
 #include "../datastructure.h"
 // logg()
 #include "log.h"
-// FTL_db
+// db
 #include "../database/common.h"
 
 int api_stats_database_overTime_history(struct ftl_conn *api)
@@ -38,8 +38,13 @@ int api_stats_database_overTime_history(struct ftl_conn *api)
 		                       NULL);
 	}
 
-	// Open the database (this also locks the database)
-	dbopen();
+	// Open the database
+	sqlite3 *db = dbopen(false);
+	if(db == NULL)
+		return send_json_error(api, 500,
+		                       "internal_error",
+		                       "Failed to open long-term database",
+		                       NULL);
 
 	// Build SQL string
 	const char *querystr = "SELECT (timestamp/:interval)*:interval interval,status,COUNT(*) FROM queries "
@@ -49,10 +54,10 @@ int api_stats_database_overTime_history(struct ftl_conn *api)
 
 	// Prepare SQLite statement
 	sqlite3_stmt *stmt;
-	int rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &stmt, NULL);
+	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK ){
 		logg("api_stats_database_overTime_history() - SQL error prepare (%i): %s",
-		     rc, sqlite3_errmsg(FTL_db));
+		     rc, sqlite3_errstr(rc));
 		return false;
 	}
 
@@ -60,10 +65,10 @@ int api_stats_database_overTime_history(struct ftl_conn *api)
 	if((rc = sqlite3_bind_int(stmt, 1, interval)) != SQLITE_OK)
 	{
 		logg("api_stats_database_overTime_history(): Failed to bind interval (error %d) - %s",
-		     rc, sqlite3_errmsg(FTL_db));
+		     rc, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
-		dbclose();
+		dbclose(&db);
 
 		return send_json_error(api, 500,
 		                       "internal_error",
@@ -75,10 +80,10 @@ int api_stats_database_overTime_history(struct ftl_conn *api)
 	if((rc = sqlite3_bind_double(stmt, 2, from)) != SQLITE_OK)
 	{
 		logg("api_stats_database_overTime_history(): Failed to bind from (error %d) - %s",
-		     rc, sqlite3_errmsg(FTL_db));
+		     rc, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
-		dbclose();
+		dbclose(&db);
 
 		return send_json_error(api, 500,
 		                       "internal_error",
@@ -90,10 +95,10 @@ int api_stats_database_overTime_history(struct ftl_conn *api)
 	if((rc = sqlite3_bind_double(stmt, 3, until)) != SQLITE_OK)
 	{
 		logg("api_stats_database_overTime_history(): Failed to bind until (error %d) - %s",
-		     rc, sqlite3_errmsg(FTL_db));
+		     rc, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
-		dbclose();
+		dbclose(&db);
 
 		return send_json_error(api, 500,
 		                       "internal_error",
@@ -149,7 +154,7 @@ int api_stats_database_overTime_history(struct ftl_conn *api)
 
 	// Finalize statement and close (= unlock) database connection
 	sqlite3_finalize(stmt);
-	dbclose();
+	dbclose(&db);
 
 	JSON_SEND_OBJECT(json);
 }
@@ -182,8 +187,13 @@ int api_stats_database_top_items(bool blocked, bool domains, struct ftl_conn *ap
 		                       NULL);
 	}
 
-	// Open the database (this also locks the database)
-	dbopen();
+	// Open the database
+	sqlite3 *db = dbopen(false);
+	if(db == NULL)
+		return send_json_error(api, 500,
+		                       "internal_error",
+		                       "Failed to open long-term database",
+		                       NULL);
 
 	// Build SQL string
 	const char *querystr;
@@ -229,12 +239,12 @@ int api_stats_database_top_items(bool blocked, bool domains, struct ftl_conn *ap
 
 	// Prepare SQLite statement
 	sqlite3_stmt *stmt;
-	int rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &stmt, NULL);
+	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK ){
 		logg("api_stats_database_overTime_history() - SQL error prepare (%i): %s",
-		     rc, sqlite3_errmsg(FTL_db));
+		     rc, sqlite3_errstr(rc));
 
-		dbclose();
+		dbclose(&db);
 
 		return send_json_error(api, 500,
 		                       "internal_error",
@@ -246,10 +256,10 @@ int api_stats_database_top_items(bool blocked, bool domains, struct ftl_conn *ap
 	if((rc = sqlite3_bind_double(stmt, 1, from)) != SQLITE_OK)
 	{
 		logg("api_stats_database_overTime_history(): Failed to bind from (error %d) - %s",
-		     rc, sqlite3_errmsg(FTL_db));
+		     rc, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
-		dbclose();
+		dbclose(&db);
 
 		return send_json_error(api, 500,
 		                       "internal_error",
@@ -261,10 +271,10 @@ int api_stats_database_top_items(bool blocked, bool domains, struct ftl_conn *ap
 	if((rc = sqlite3_bind_double(stmt, 2, until)) != SQLITE_OK)
 	{
 		logg("api_stats_database_overTime_history(): Failed to bind until (error %d) - %s",
-		     rc, sqlite3_errmsg(FTL_db));
+		     rc, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
-		dbclose();
+		dbclose(&db);
 
 		return send_json_error(api, 500,
 		                       "internal_error",
@@ -276,10 +286,10 @@ int api_stats_database_top_items(bool blocked, bool domains, struct ftl_conn *ap
 	if((rc = sqlite3_bind_int(stmt, 3, show)) != SQLITE_OK)
 	{
 		logg("api_stats_database_overTime_history(): Failed to bind show (error %d) - %s",
-		     rc, sqlite3_errmsg(FTL_db));
+		     rc, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
-		dbclose();
+		dbclose(&db);
 
 		return send_json_error(api, 500,
 		                       "internal_error",
@@ -308,7 +318,7 @@ int api_stats_database_top_items(bool blocked, bool domains, struct ftl_conn *ap
 
 	// Finalize statement and close (= unlock) database connection
 	sqlite3_finalize(stmt);
-	dbclose();
+	dbclose(&db);
 
 	cJSON *json = JSON_NEW_OBJ();
 	JSON_OBJ_ADD_ITEM(json, (domains ? "top_domains" : "top_clients"), top_items);
@@ -334,23 +344,28 @@ int api_stats_database_summary(struct ftl_conn *api)
 		                       NULL);
 	}
 
-	// Open the database (this also locks the database)
-	dbopen();
+	// Open the database
+	sqlite3 *db = dbopen(false);
+	if(db == NULL)
+		return send_json_error(api, 500,
+		                       "internal_error",
+		                       "Failed to open long-term database",
+		                       NULL);
 
 	// Perform SQL queries
 	const char *querystr;
 	querystr = "SELECT COUNT(*) FROM queries "
 	           "WHERE timestamp >= :from AND timestamp <= :until";
-	int sum_queries = db_query_int_from_until(querystr, from, until);
+	int sum_queries = db_query_int_from_until(db, querystr, from, until);
 
 	querystr = "SELECT COUNT(*) FROM queries "
 	           "WHERE timestamp >= :from AND timestamp <= :until "
 		   "AND status != 0 AND status != 2 AND status != 3";
-	int blocked_queries = db_query_int_from_until(querystr, from, until);
+	int blocked_queries = db_query_int_from_until(db, querystr, from, until);
 
 	querystr = "SELECT COUNT(DISTINCT client) FROM queries "
 	           "WHERE timestamp >= :from AND timestamp <= :until";
-	int total_clients = db_query_int_from_until(querystr, from, until);
+	int total_clients = db_query_int_from_until(db, querystr, from, until);
 
 	float percent_blocked = 1e2f*blocked_queries/sum_queries;
 
@@ -358,7 +373,7 @@ int api_stats_database_summary(struct ftl_conn *api)
 	{
 
 		// Close (= unlock) database connection
-		dbclose();
+		dbclose(&db);
 
 		return send_json_error(api, 500,
 		                       "internal_error",
@@ -375,7 +390,7 @@ int api_stats_database_summary(struct ftl_conn *api)
 	JSON_OBJ_ADD_NUMBER(json, "total_clients", total_clients);
 
 	// Close (= unlock) database connection
-	dbclose();
+	dbclose(&db);
 
 	// Send JSON object
 	JSON_SEND_OBJECT(json);
@@ -400,8 +415,13 @@ int api_stats_database_overTime_clients(struct ftl_conn *api)
 		                       NULL);
 	}
 
-	// Open the database (this also locks the database)
-	dbopen();
+	// Open the database
+	sqlite3 *db = dbopen(false);
+	if(db == NULL)
+		return send_json_error(api, 500,
+		                       "internal_error",
+		                       "Failed to open long-term database",
+		                       NULL);
 
 	const char *querystr = "SELECT DISTINCT client FROM queries "
 	                       "WHERE timestamp >= :from AND timestamp <= :until "
@@ -409,10 +429,10 @@ int api_stats_database_overTime_clients(struct ftl_conn *api)
 
 	// Prepare SQLite statement
 	sqlite3_stmt *stmt;
-	int rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &stmt, NULL);
+	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK ){
 		logg("api_stats_database_overTime_clients() - SQL error prepare outer (%i): %s",
-		     rc, sqlite3_errmsg(FTL_db));
+		     rc, sqlite3_errstr(rc));
 
 		return send_json_error(api, 500,
 		                       "internal_error",
@@ -424,10 +444,10 @@ int api_stats_database_overTime_clients(struct ftl_conn *api)
 	if((rc = sqlite3_bind_double(stmt, 1, from)) != SQLITE_OK)
 	{
 		logg("api_stats_database_overTime_clients(): Failed to bind from (error %d) - %s",
-		     rc, sqlite3_errmsg(FTL_db));
+		     rc, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
-		dbclose();
+		dbclose(&db);
 
 		return send_json_error(api, 500,
 		                       "internal_error",
@@ -439,10 +459,10 @@ int api_stats_database_overTime_clients(struct ftl_conn *api)
 	if((rc = sqlite3_bind_double(stmt, 2, until)) != SQLITE_OK)
 	{
 		logg("api_stats_database_overTime_clients(): Failed to bind until (error %d) - %s",
-		     rc, sqlite3_errmsg(FTL_db));
+		     rc, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
-		dbclose();
+		dbclose(&db);
 
 		return send_json_error(api, 500,
 		                       "internal_error",
@@ -470,10 +490,10 @@ int api_stats_database_overTime_clients(struct ftl_conn *api)
 	           "GROUP BY interval,client ORDER BY interval DESC, client DESC";
 
 	// Prepare SQLite statement
-	rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &stmt, NULL);
+	rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK ){
 		logg("api_stats_database_overTime_clients() - SQL error prepare (%i): %s",
-		rc, sqlite3_errmsg(FTL_db));
+		rc, sqlite3_errstr(rc));
 
 		return send_json_error(api, 500,
 		                       "internal_error",
@@ -485,10 +505,10 @@ int api_stats_database_overTime_clients(struct ftl_conn *api)
 	if((rc = sqlite3_bind_int(stmt, 1, interval)) != SQLITE_OK)
 	{
 		logg("api_stats_database_overTime_clients(): Failed to bind interval (error %d) - %s",
-		rc, sqlite3_errmsg(FTL_db));
+		rc, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
-		dbclose();
+		dbclose(&db);
 
 		return send_json_error(api, 500,
 		                       "internal_error",
@@ -500,10 +520,10 @@ int api_stats_database_overTime_clients(struct ftl_conn *api)
 	if((rc = sqlite3_bind_int(stmt, 2, from)) != SQLITE_OK)
 	{
 		logg("api_stats_database_overTime_clients(): Failed to bind from (error %d) - %s",
-		rc, sqlite3_errmsg(FTL_db));
+		rc, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
-		dbclose();
+		dbclose(&db);
 
 		return send_json_error(api, 500,
 		                       "internal_error",
@@ -515,10 +535,10 @@ int api_stats_database_overTime_clients(struct ftl_conn *api)
 	if((rc = sqlite3_bind_int(stmt, 3, until)) != SQLITE_OK)
 	{
 		logg("api_stats_database_overTime_clients(): Failed to bind until (error %d) - %s",
-		rc, sqlite3_errmsg(FTL_db));
+		rc, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
-		dbclose();
+		dbclose(&db);
 
 		return send_json_error(api, 500,
 		                       "internal_error",
@@ -583,7 +603,7 @@ int api_stats_database_overTime_clients(struct ftl_conn *api)
 
 	// Finalize statement and close (= unlock) database connection
 	sqlite3_finalize(stmt);
-	dbclose();
+	dbclose(&db);
 
 	cJSON *json = JSON_NEW_OBJ();
 	JSON_OBJ_ADD_ITEM(json, "over_time", over_time);
@@ -609,8 +629,13 @@ int api_stats_database_query_types(struct ftl_conn *api)
 		                       NULL);
 	}
 
-	// Open the database (this also locks the database)
-	dbopen();
+	// Open the database
+	sqlite3 *db = dbopen(false);
+	if(db == NULL)
+		return send_json_error(api, 500,
+		                       "internal_error",
+		                       "Failed to open long-term database",
+		                       NULL);
 
 	// Perform SQL queries
 	cJSON *types = JSON_NEW_ARRAY();
@@ -621,13 +646,13 @@ int api_stats_database_query_types(struct ftl_conn *api)
 		                       "WHERE timestamp >= :from AND timestamp <= :until "
 		                       "AND type = :type";
 		// Add 1 as type is stored one-based in the database for historical reasons
-		int count = db_query_int_from_until_type(querystr, from, until, i+1);
+		int count = db_query_int_from_until_type(db, querystr, from, until, i+1);
 		q.type = i;
 		JSON_OBJ_ADD_NUMBER(types, get_query_type_str(&q, NULL), count);
 	}
 
 	// Close (= unlock) database connection
-	dbclose();
+	dbclose(&db);
 
 	// Send JSON object
 	cJSON *json = JSON_NEW_OBJ();
@@ -654,8 +679,13 @@ int api_stats_database_upstreams(struct ftl_conn *api)
 		                       NULL);
 	}
 
-	// Open the database (this also locks the database)
-	dbopen();
+	// Open the database
+	sqlite3 *db = dbopen(false);
+	if(db == NULL)
+		return send_json_error(api, 500,
+		                       "internal_error",
+		                       "Failed to open long-term database",
+		                       NULL);
 
 	// Perform simple SQL queries
 	unsigned int sum_queries = 0;
@@ -663,13 +693,13 @@ int api_stats_database_upstreams(struct ftl_conn *api)
 	querystr = "SELECT COUNT(*) FROM queries "
 	           "WHERE timestamp >= :from AND timestamp <= :until "
 	           "AND status = 3";
-	int cached_queries = db_query_int_from_until(querystr, from, until);
+	int cached_queries = db_query_int_from_until(db, querystr, from, until);
 	sum_queries += cached_queries;
 
 	querystr = "SELECT COUNT(*) FROM queries "
 	           "WHERE timestamp >= :from AND timestamp <= :until "
 		   "AND status != 0 AND status != 2 AND status != 3";
-	int blocked_queries = db_query_int_from_until(querystr, from, until);
+	int blocked_queries = db_query_int_from_until(db, querystr, from, until);
 	sum_queries += blocked_queries;
 
 	querystr = "SELECT forward,COUNT(*) FROM queries "
@@ -679,10 +709,10 @@ int api_stats_database_upstreams(struct ftl_conn *api)
 
 	// Prepare SQLite statement
 	sqlite3_stmt *stmt;
-	int rc = sqlite3_prepare_v2(FTL_db, querystr, -1, &stmt, NULL);
+	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK ){
 		logg("api_stats_database_overTime_clients() - SQL error prepare (%i): %s",
-		     rc, sqlite3_errmsg(FTL_db));
+		     rc, sqlite3_errstr(rc));
 
 		return send_json_error(api, 500,
 		                       "internal_error",
@@ -694,10 +724,10 @@ int api_stats_database_upstreams(struct ftl_conn *api)
 	if((rc = sqlite3_bind_double(stmt, 1, from)) != SQLITE_OK)
 	{
 		logg("api_stats_database_overTime_clients(): Failed to bind from (error %d) - %s",
-		     rc, sqlite3_errmsg(FTL_db));
+		     rc, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
-		dbclose();
+		dbclose(&db);
 
 		return send_json_error(api, 500,
 		                       "internal_error",
@@ -709,10 +739,10 @@ int api_stats_database_upstreams(struct ftl_conn *api)
 	if((rc = sqlite3_bind_double(stmt, 2, until)) != SQLITE_OK)
 	{
 		logg("api_stats_database_overTime_clients(): Failed to bind until (error %d) - %s",
-		     rc, sqlite3_errmsg(FTL_db));
+		     rc, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
-		dbclose();
+		dbclose(&db);
 
 		return send_json_error(api, 500,
 		                       "internal_error",
@@ -753,7 +783,7 @@ int api_stats_database_upstreams(struct ftl_conn *api)
 	JSON_ARRAY_ADD_ITEM(upstreams, blocked);
 
 	// Close (= unlock) database connection
-	dbclose();
+	dbclose(&db);
 
 	// Send JSON object
 	cJSON *json = JSON_NEW_OBJ();

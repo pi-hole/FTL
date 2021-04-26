@@ -18,9 +18,9 @@
 #include "main.h"
 #include "signals.h"
 #include "regex_r.h"
+// init_shmem()
 #include "shmem.h"
 #include "capabilities.h"
-#include "database/gravity-db.h"
 #include "timers.h"
 // http_terminate()
 #include "webserver/webserver.h"
@@ -53,15 +53,15 @@ int main (int argc, char* argv[])
 	logg("########## FTL started! ##########");
 	log_FTL_version(false);
 
-	// Catch SIGSEGV (generate a crash report)
-	// Other signals are handled by dnsmasq
-	// We handle real-time signals later (after dnsmasq has forked)
-	handle_SIGSEGV();
+	// Catch signals not handled by dnsmasq
+	// We configure real-time signals later (after dnsmasq has forked)
+	handle_signals();
 
 	// Initialize shared memory
 	if(!init_shmem(true))
 	{
 		logg("Initialization of shared memory failed.");
+		// Check if there is already a running FTL process
 		check_running_FTL();
 		return EXIT_FAILURE;
 	}
@@ -116,6 +116,9 @@ int main (int argc, char* argv[])
 	main_dnsmasq(argc_dnsmasq, argv_dnsmasq);
 
 	logg("Shutting down...");
+	// Extra grace time is needed as dnsmasq script-helpers may not be
+	// terminating immediately
+	sleepms(250);
 
 	// Save new queries to database (if database is used)
 	if(config.DBexport)
@@ -124,25 +127,7 @@ int main (int argc, char* argv[])
 		logg("Finished final database update");
 	}
 
-	// Close gravity database connection
-	gravityDB_close();
+	cleanup(exit_code);
 
-	// Remove shared memory objects
-	// Important: This invalidated all objects such as
-	//            counters-> ... Do this last when
-	//            terminating in main.c !
-	destroy_shmem();
-	// Terminate HTTP server
-	http_terminate();
-
-	// Remove shared memory objects
-	destroy_shmem();
-
-	//Remove PID file
-	removepid();
-
-	char buffer[42] = { 0 };
-	format_time(buffer, 0, timer_elapsed_msec(EXIT_TIMER));
-	logg("########## FTL terminated after%s! ##########", buffer);
 	return exit_code;
 }

@@ -44,7 +44,7 @@ static bool get_process_name(const pid_t pid, char name[128])
 static bool get_process_ppid(const pid_t pid, pid_t *ppid)
 {
 	// Try to open status file
-	char filename[sizeof("/proc/%u/task/%u/comm") + sizeof(int)*3 * 2];
+	char filename[sizeof("/proc/%u/task/%u/status") + sizeof(int)*3 * 2];
 	snprintf(filename, sizeof(filename), "/proc/%d/status", pid);
 	FILE *f = fopen(filename, "r");
 	if(f == NULL)
@@ -75,22 +75,25 @@ static bool get_process_creation_time(const pid_t pid, char timestr[84])
 	return true;
 }
 
-void check_running_FTL(void)
+bool check_running_FTL(void)
 {
-	//pid_t pid;
 	DIR *dirPos;
 	struct dirent *entry;
+	const pid_t ourselves = getpid();
+	bool process_running = false;
 
 	// Open /proc
 	errno = 0;
 	if ((dirPos = opendir("/proc")) == NULL)
 	{
-		logg("Dailed to access /proc: %s", strerror(errno));
-		return;
+		logg("Failed to access /proc: %s", strerror(errno));
+		return false;
 	}
 
 	// Loop over entries in /proc
 	// This is much more efficient than iterating over all possible PIDs
+	pid_t last_pid = 0;
+	size_t last_len = 0u;
 	while ((entry = readdir(dirPos)) != NULL)
 	{
 		// We are only interested in subdirectories of /proc
@@ -104,12 +107,16 @@ void check_running_FTL(void)
 		const pid_t pid = strtol(entry->d_name, NULL, 10);
 
 		// Skip our own process
-		if(pid == getpid())
+		if(pid == ourselves)
 			continue;
 
 		// Get process name
 		char name[128] = { 0 };
 		if(!get_process_name(pid, name))
+			continue;
+
+		// Only process this is this is our own process
+		if(strcasecmp(name, PROCESS_NAME) != 0)
 			continue;
 
 		// Get parent process ID (PPID)
@@ -123,11 +130,30 @@ void check_running_FTL(void)
 		char timestr[84] = { 0 };
 		get_process_creation_time(pid, timestr);
 
-		// Log this process if it is a duplicate of us
-		if(strcasecmp(name, PROCESS_NAME) == 0)
-			logg("---> %s is already running as PID %d (started %s, child of PID %i (%s))",
-			     PROCESS_NAME, pid, timestr, ppid, ppid_name);
+		// If this is the first process we log, add a header
+		if(!process_running)
+		{
+			process_running = true;
+			logg("HINT: %s is already running!", PROCESS_NAME);
+		}
+
+		if(last_pid != ppid)
+		{
+			// Independent process, may be child of init/systemd
+			logg("%s (%d) ──> %s (PID %d, started %s)",
+			     ppid_name, ppid, name, pid, timestr);
+			last_pid = pid;
+			last_len = snprintf(NULL, 0, "%s (%d) ──> ", ppid_name, ppid);
+		}
+		else
+		{
+			// Process parented by the one we analyzed before,
+			// highlight their relationship
+			logg("%*s └─> %s (PID %d, started %s)",
+			     (int)last_len, "", name, pid, timestr);
+		}
 	}
 
 	closedir(dirPos);
+	return process_running;
 }

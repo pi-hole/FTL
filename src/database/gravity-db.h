@@ -39,9 +39,9 @@ typedef struct {
 	time_t date_updated;
 } tablerow;
 
-void gravityDB_forked(void);
-void gravityDB_reopen(void);
 bool gravityDB_open(void);
+bool gravityDB_reopen(void);
+void gravityDB_forked(void);
 void gravityDB_reload_groups(clientsData* client);
 bool gravityDB_prepare_client_statements(clientsData* client);
 void gravityDB_close(void);

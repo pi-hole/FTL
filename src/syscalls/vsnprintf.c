@@ -15,13 +15,6 @@
 #undef vsnprintf
 int FTLvsnprintf(const char *file, const char *func, const int line, char *__restrict__ buffer, const size_t maxlen, const char *format, va_list args)
 {
-	// Sanity check
-	if(buffer == NULL)
-	{
-		syscalls_report_error("vsnprintf() called with NULL buffer",
-		                      stdout, 0, format, func, file, line);
-		return 0;
-	}
 	// Print into dynamically allocated memory
 	int _errno, length = 0;
 	do

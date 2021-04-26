@@ -10,17 +10,19 @@
 #ifndef NETWORKTABLE_H
 #define NETWORKTABLE_H
 
-bool create_network_table(void);
-bool create_network_addresses_table(void);
-bool create_network_addresses_with_names_table(void);
-void parse_neighbor_cache(void);
-void updateMACVendorRecords(void);
-bool unify_hwaddr(void);
+#include "sqlite3.h"
+
+bool create_network_table(sqlite3 *db);
+bool create_network_addresses_table(sqlite3 *db);
+bool create_network_addresses_with_names_table(sqlite3 *db);
+void parse_neighbor_cache(sqlite3 *db);
+void updateMACVendorRecords(sqlite3 *db);
+bool unify_hwaddr(sqlite3 *db);
 char* getDatabaseHostname(const char* ipaddr) __attribute__((malloc));
-char* __attribute__((malloc)) getMACfromIP(const char* ipaddr);
-int getAliasclientIDfromIP(const char *ipaddr);
-char* __attribute__((malloc)) getNameFromIP(const char* ipaddr);
-char* __attribute__((malloc)) getIfaceFromIP(const char* ipaddr);
+char* __attribute__((malloc)) getMACfromIP(sqlite3 *db, const char* ipaddr);
+int getAliasclientIDfromIP(sqlite3 *db, const char *ipaddr);
+char* __attribute__((malloc)) getNameFromIP(sqlite3 *db, const char* ipaddr);
+char* __attribute__((malloc)) getIfaceFromIP(sqlite3 *db, const char* ipaddr);
 void resolveNetworkTableNames(void);
 
 typedef struct {
@@ -34,16 +36,16 @@ typedef struct {
 	time_t lastQuery;
 } network_record;
 
-bool networkTable_readDevices(const char **message);
-bool networkTable_readDevicesGetRecord(network_record *network, const char **message);
-void networkTable_readDevicesFinalize(void);
+bool networkTable_readDevices(sqlite3 *db, sqlite3_stmt **read_stmt, const char **message);
+bool networkTable_readDevicesGetRecord(sqlite3_stmt *read_stmt, network_record *network, const char **message);
+void networkTable_readDevicesFinalize(sqlite3_stmt *read_stmt);
 
 typedef struct {
 	const char *ip;
 } network_addresses_record;
 
-bool networkTable_readIPs(const int id, const char **message);
-bool networkTable_readIPsGetRecord(network_addresses_record *network_addresses, const char **message);
-void networkTable_readIPsFinalize(void);
+bool networkTable_readIPs(sqlite3 *db, sqlite3_stmt **read_stmt, const int id, const char **message);
+bool networkTable_readIPsGetRecord(sqlite3_stmt *read_stmt, network_addresses_record *network_addresses, const char **message);
+void networkTable_readIPsFinalize(sqlite3_stmt *read_stmt);
 
 #endif //NETWORKTABLE_H

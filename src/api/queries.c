@@ -199,7 +199,7 @@ int api_queries(struct ftl_conn *api)
 
 				// Iterate through all known forward destinations
 				forwarddestid = -3;
-				for(int i = 0; i < counters->forwarded; i++)
+				for(int i = 0; i < counters->upstreams; i++)
 				{
 					// Get forward pointer
 					const upstreamsData* upstream = getUpstream(i, true);

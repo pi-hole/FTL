@@ -29,7 +29,7 @@ int api_docs(struct ftl_conn *api)
 	for(unsigned int i = 0; i < (sizeof(docs_files)/sizeof(docs_files[0])); i++)
 	{
 		// Check if this is the requested file
-		if(strcmp(docs_files[i].path, api->item) == 0 || 
+		if(strcmp(docs_files[i].path, api->item) == 0 ||
 		   (serve_index && strcmp(docs_files[i].path, "index.html") == 0))
 		{
 			// Send the file

@@ -13,7 +13,7 @@ version~
 # IDE files
 .idea/
 *.sw*
-.vscode/
+/.vscode
 /build/
 
 # MAC->Vendor database files

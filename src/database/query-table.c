@@ -417,8 +417,13 @@ bool export_queries_to_disk(bool final)
 
 	if(saved > 0)
 	{
-		db_set_FTL_property_double(DB_LASTTIMESTAMP, new_last_timestamp);
-		db_update_counters(new_total, new_blocked);
+		sqlite3 *db = dbopen(false);
+		if(db != NULL)
+		{
+			db_set_FTL_property_double(db, DB_LASTTIMESTAMP, new_last_timestamp);
+			db_update_counters(db, new_total, new_blocked);
+			dbclose(&db);
+		}
 	}
 
 	if(config.debug & DEBUG_DATABASE)
@@ -502,7 +507,18 @@ bool mv_newdb_memdb(void)
 	return true;
 }
 
-// Get most recent 24 hours data from temp long-term database
+bool add_additional_info_column(sqlite3 *db)
+{
+	// Add column additinal_info to queries table
+	SQL_bool(db, "ALTER TABLE queries ADD COLUMN additional_info TEXT;");
+
+	// Update the database version to 7
+	SQL_bool(db, "INSERT OR REPLACE INTO ftl (id, value) VALUES ( %u, %i );", DB_VERSION, 7);
+
+	return true;
+}
+
+// Get most recent 24 hours data from long-term database
 void DB_read_queries(void)
 {
 	// Prepare request
@@ -512,14 +528,15 @@ void DB_read_queries(void)
 	// Prepare SQLite3 statement
 	sqlite3_stmt* stmt = NULL;
 	int rc = sqlite3_prepare_v2(memdb, querystr, -1, &stmt, NULL);
-	if( rc != SQLITE_OK ){
+	if( rc != SQLITE_OK )
+	{
 		logg("DB_read_queries() - SQL error prepare: %s", sqlite3_errstr(rc));
-		dbclose();
 		return;
 	}
 
 	// Loop through returned database rows
 	sqlite3_int64 dbid = 0;
+	const double now = double_time();
 	while((rc = sqlite3_step(stmt)) == SQLITE_ROW)
 	{
 		dbid = sqlite3_column_int64(stmt, 0);
@@ -527,7 +544,12 @@ void DB_read_queries(void)
 		// 1483228800 = 01/01/2017 @ 12:00am (UTC)
 		if(queryTimeStamp < 1483228800)
 		{
-			logg("FTL_db warn: TIMESTAMP should be larger than 01/01/2017 but is %f", queryTimeStamp);
+			logg("DB warn: TIMESTAMP should be larger than 01/01/2017 but is %f", queryTimeStamp);
+			continue;
+		}
+		if(queryTimeStamp > now)
+		{
+			if(config.debug & DEBUG_DATABASE) logg("DB warn: Skipping query logged in the future (%lli)", (long long)queryTimeStamp);
 			continue;
 		}
 
@@ -536,7 +558,7 @@ void DB_read_queries(void)
 		const bool offset_type = type > 100 && type < (100 + UINT16_MAX);
 		if(!mapped_type && !offset_type)
 		{
-			logg("FTL_db warn: TYPE should not be %i", type);
+			logg("DB warn: TYPE should not be %i", type);
 			continue;
 		}
 		// Don't import AAAA queries from database if the user set
@@ -549,7 +571,7 @@ void DB_read_queries(void)
 		const int status_int = sqlite3_column_int(stmt, 3);
 		if(status_int < QUERY_UNKNOWN || status_int >= QUERY_STATUS_MAX)
 		{
-			logg("FTL_db warn: STATUS should be within [%i,%i] but is %i", QUERY_UNKNOWN, QUERY_STATUS_MAX-1, status_int);
+			logg("DB warn: STATUS should be within [%i,%i] but is %i", QUERY_UNKNOWN, QUERY_STATUS_MAX-1, status_int);
 			continue;
 		}
 		const enum query_status status = status_int;
@@ -557,14 +579,14 @@ void DB_read_queries(void)
 		const char * domainname = (const char *)sqlite3_column_text(stmt, 4);
 		if(domainname == NULL)
 		{
-			logg("FTL_db warn: DOMAIN should never be NULL, %lli", (long long)queryTimeStamp);
+			logg("DB warn: DOMAIN should never be NULL, %lli", (long long)queryTimeStamp);
 			continue;
 		}
 
 		const char * clientIP = (const char *)sqlite3_column_text(stmt, 5);
 		if(clientIP == NULL)
 		{
-			logg("FTL_db warn: CLIENT should never be NULL, %lli", (long long)queryTimeStamp);
+			logg("DB warn: CLIENT should never be NULL, %lli", (long long)queryTimeStamp);
 			continue;
 		}
 
@@ -574,6 +596,9 @@ void DB_read_queries(void)
 		{
 			continue;
 		}
+
+		// Lock shared memory
+		lock_shm();
 
 		const char *buffer = NULL;
 		int upstreamID = -1; // Default if not forwarded
@@ -597,9 +622,6 @@ void DB_read_queries(void)
 		const int domainID = findDomainID(domainname, true);
 		const int clientID = findClientID(clientIP, true, false);
 
-		// Ensure we have enough space in the queries struct
-		memory_check(QUERIES);
-
 		// Set index for this query
 		const int queryIndex = counters->queries;
 
@@ -619,7 +641,7 @@ void DB_read_queries(void)
 			query->qtype = type - 100;
 		}
 
-		query->status = status;
+		// Status is set below
 		query->domainID = domainID;
 		query->clientID = clientID;
 		query->upstreamID = upstreamID;
@@ -641,10 +663,7 @@ void DB_read_queries(void)
 
 		// Handle type counters
 		if(type >= TYPE_A && type < TYPE_MAX)
-		{
 			counters->querytype[type-1]++;
-			overTime[timeidx].querytypedata[type-1]++;
-		}
 
 		// Update overTime data
 		overTime[timeidx].total++;
@@ -657,7 +676,7 @@ void DB_read_queries(void)
 		// Get additional information from the additional_info column if applicable
 		if(status == QUERY_GRAVITY_CNAME ||
 		   status == QUERY_REGEX_CNAME ||
-		   status == QUERY_DENYLIST_CNAME)
+		   status == QUERY_DENYLIST_CNAME )
 		{
 			// QUERY_*_CNAME: Get domain causing the blocking
 			const char *CNAMEdomain = (const char *)sqlite3_column_text(stmt, 7);
@@ -682,11 +701,16 @@ void DB_read_queries(void)
 				cache->deny_regex_id = sqlite3_column_int(stmt, 7);
 		}
 
-		// Increment status counters
+		// Increment status counters, we first have to add one to the count of
+		// unknown queries because query_set_status() will subtract from there
+		// when setting a different status
+		counters->status[QUERY_UNKNOWN]++;
+		query_set_status(query, status);
+
+		// Do further processing based on the query status we read from the database
 		switch(status)
 		{
 			case QUERY_UNKNOWN: // Unknown
-				counters->unknown++;
 				break;
 
 			case QUERY_GRAVITY: // Blocked by gravity
@@ -698,34 +722,31 @@ void DB_read_queries(void)
 			case QUERY_GRAVITY_CNAME: // Blocked by gravity (inside CNAME path)
 			case QUERY_REGEX_CNAME: // Blocked by regex blacklist (inside CNAME path)
 			case QUERY_DENYLIST_CNAME: // Blocked by exact blacklist (inside CNAME path)
-				counters->blocked++;
 				query->flags.blocked = true;
 				// Get domain pointer
 				domainsData* domain = getDomain(domainID, true);
 				domain->blockedcount++;
 				change_clientcount(client, 0, 1, -1, 0);
-				// Update overTime data structure
-				overTime[timeidx].blocked++;
 				break;
 
 			case QUERY_FORWARDED: // Forwarded
 			case QUERY_RETRIED: // (fall through)
 			case QUERY_RETRIED_DNSSEC: // (fall through)
-				counters->forwarded++;
-				upstreamsData *upstream = getUpstream(upstreamID, true);
-				if(upstream != NULL)
+				// Only update upstream if there is one (there
+				// won't be one for retried DNSSEC queries)
+				if(upstreamID > -1)
 				{
-					upstream->count++;
-					upstream->lastQuery = queryTimeStamp;
+					upstreamsData *upstream = getUpstream(upstreamID, true);
+					if(upstream != NULL)
+					{
+						upstream->count++;
+						upstream->lastQuery = queryTimeStamp;
+					}
 				}
-				// Update overTime data structure
-				overTime[timeidx].forwarded++;
 				break;
 
 			case QUERY_CACHE: // Cached or local config
-				counters->cached++;
-				// Update overTime data structure
-				overTime[timeidx].cached++;
+				// Nothing to be done here
 				break;
 
 			case QUERY_IN_PROGRESS:
@@ -737,7 +758,10 @@ void DB_read_queries(void)
 				logg("Warning: Found unknown status %i in long term database!", status);
 				break;
 		}
+
+		unlock_shm();
 	}
+
 	logg("Imported %i queries from the long-term database", counters->queries);
 
 	// Update lastdbindex so that the next call to DB_save_queries()
@@ -745,9 +769,9 @@ void DB_read_queries(void)
 	last_disk_db_idx = dbid;
 	last_mem_db_idx = dbid;
 
-	if( rc != SQLITE_DONE ){
+	if( rc != SQLITE_DONE )
+	{
 		logg("DB_read_queries() - SQL error step: %s", sqlite3_errstr(rc));
-		dbclose();
 		return;
 	}
 

@@ -4,7 +4,7 @@
   run bash -c 'su pihole -s /bin/sh -c "/home/pihole/pihole-FTL -f"'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[9]} == *"Initialization of shared memory failed." ]]
-  [[ ${lines[10]} == *"--> pihole-FTL is already running as PID "* ]]
+  [[ ${lines[10]} == *"HINT: pihole-FTL is already running!"* ]]
 }
 
 @test "Starting tests without prior history" {
@@ -25,7 +25,7 @@
   [[ ${lines[0]} == *"Compiled 2 whitelist and 1 blacklist regex filters"* ]]
 }
 
-@test "Blacklisted domain is blocked" {
+@test "denied domain is blocked" {
   run bash -c "dig blacklist-blocked.test.pi-hole.net @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0.0.0.0" ]]
@@ -294,6 +294,12 @@
 
 @test "No WARNING messages in pihole-FTL.log (besides known capability issues)" {
   run bash -c 'grep "WARNING" /var/log/pihole-FTL.log | grep -c -v -E "CAP_NET_ADMIN|CAP_NET_RAW|CAP_SYS_NICE"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "0" ]]
+}
+
+@test "No \"database not available\" messages in pihole-FTL.log" {
+  run bash -c 'grep -c "database not available" /var/log/pihole-FTL.log'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0" ]]
 }
@@ -885,4 +891,18 @@
   run bash -c './pihole-FTL sqlite3 -help'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "Usage: sqlite3 [OPTIONS] FILENAME [SQL]" ]]
+}
+
+@test "Embedded SQLite3 shell is called for .db file" {
+  run bash -c './pihole-FTL abc.db ".version"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "SQLite 3."* ]]
+}
+
+@test "Embedded LUA engine is called for .lua file" {
+  echo 'print("Hello from LUA")' > abc.lua
+  run bash -c './pihole-FTL abc.lua'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "Hello from LUA" ]]
+  rm abc.lua
 }

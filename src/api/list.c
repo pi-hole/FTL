@@ -56,7 +56,7 @@ static int api_list_read(struct ftl_conn *api,
 			{
 				// Try to obtain hostname if this is a valid IP address
 				if(isValidIPv4(table.client) || isValidIPv6(table.client))
-					name = getNameFromIP(table.client);
+					name = getNameFromIP(NULL, table.client);
 			}
 
 			JSON_OBJ_COPY_STR(row, "client", table.client);
@@ -264,7 +264,7 @@ static int api_list_write(struct ftl_conn *api,
 		row.enabled = true; // Default value
 
 	bool okay = true;
-	const char *regex_msg = NULL;
+	char *regex_msg = NULL;
 	if(listtype == GRAVITY_DOMAINLIST_ALLOW_REGEX || listtype == GRAVITY_DOMAINLIST_DENY_REGEX)
 	{
 		// Test validity of this regex

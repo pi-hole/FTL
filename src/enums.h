@@ -16,7 +16,8 @@ enum memory_type {
 	CLIENTS,
 	DOMAINS,
 	OVERTIME,
-	DNS_CACHE
+	DNS_CACHE,
+	STRINGS
 } __attribute__ ((packed));
 
 enum dnssec_status {
@@ -57,8 +58,9 @@ enum reply_type {
 	REPLY_SERVFAIL,
 	REPLY_REFUSED,
 	REPLY_NOTIMP,
-	REPLY_OTHER
-	}  __attribute__ ((packed));
+	REPLY_OTHER,
+	QUERY_REPLY_MAX
+}  __attribute__ ((packed));
 
 enum privacy_level {
 	PRIVACY_SHOW_ALL = 0,
@@ -132,7 +134,7 @@ enum debug_flags {
 	DEBUG_REGEX         = (1 << 8),  /* 00000000 00000000 00000001 00000000 */
 	DEBUG_API           = (1 << 9),  /* 00000000 00000000 00000010 00000000 */
 	DEBUG_OVERTIME      = (1 << 10), /* 00000000 00000000 00000100 00000000 */
-	DEBUG_EXTBLOCKED    = (1 << 11), /* 00000000 00000000 00001000 00000000 */
+	DEBUG_STATUS        = (1 << 11), /* 00000000 00000000 00001000 00000000 */
 	DEBUG_CAPS          = (1 << 12), /* 00000000 00000000 00010000 00000000 */
 	DEBUG_DNSMASQ_LINES = (1 << 13), /* 00000000 00000000 00100000 00000000 */
 	DEBUG_VECTORS       = (1 << 14), /* 00000000 00000000 01000000 00000000 */
@@ -212,6 +214,13 @@ enum api_auth_status {
 	API_AUTH_UNAUTHORIZED  = -1,
 	API_AUTH_LOCALHOST  = -2,
 	API_AUTH_EMPTYPASS  = -3,
+} __attribute__ ((packed));
+
+enum thread_types {
+	DB,
+	GC,
+	DNSclient,
+	THREADS_MAX
 } __attribute__ ((packed));
 
 #endif // ENUMS_H

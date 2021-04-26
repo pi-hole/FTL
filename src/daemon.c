@@ -14,7 +14,16 @@
 #include "log.h"
 // sleepms()
 #include "timers.h"
+// gravityDB_close()
+#include "database/gravity-db.h"
+// dbclose()
+#include "database/common.h"
+// destroy_shmem()
+#include "shmem.h"
+// killed
+#include "signals.h"
 
+pthread_t threads[THREADS_MAX] = { 0 };
 bool resolver_ready = false;
 
 void go_daemon(void)
@@ -99,10 +108,10 @@ void savepid(void)
 	logg("PID of FTL process: %i", (int)pid);
 }
 
-void removepid(void)
+static void removepid(void)
 {
 	FILE *f;
-	if((f = fopen(FTLfiles.pid, "w+")) == NULL)
+	if((f = fopen(FTLfiles.pid, "w")) == NULL)
 	{
 		logg("WARNING: Unable to empty PID file");
 		return;
@@ -157,4 +166,69 @@ pid_t FTL_gettid(void)
 #warning SYS_gettid is not available on this system
 	return -1;
 #endif // SYS_gettid
+}
+
+static void terminate_threads(void)
+{
+	int s;
+	struct timespec ts;
+	// Terminate threads before closing database connections and finishing shared memory
+	killed = true;
+	// Try to join threads to ensure cancellation has succeeded
+	logg("Waiting for threads to join");
+	for(int i = 0; i < THREADS_MAX; i++)
+	{
+		if(thread_cancellable[i])
+		{
+			logg("Thread %s (%d) is idle, terminating it.",
+			     thread_names[i], i);
+			pthread_cancel(threads[i]);
+		}
+
+		if (clock_gettime(CLOCK_REALTIME, &ts) == -1)
+		{
+			logg("Thread %s (%d) is busy, cancelling it (cannot set timout).",
+			     thread_names[i], i);
+			pthread_cancel(threads[i]);
+			continue;
+		}
+
+		// Timeout for joining is 2 seconds for each thread
+		ts.tv_sec += 2;
+
+		if((s = pthread_timedjoin_np(threads[i], NULL, &ts)) != 0)
+		{
+			logg("Thread %s (%d) is still busy, cancelling it.",
+			     thread_names[i], i);
+			pthread_cancel(threads[i]);
+			continue;
+		}
+	}
+	logg("All threads joined");
+}
+
+// Clean up on exit
+void cleanup(const int ret)
+{
+	// Do proper cleanup only if FTL started successfully
+	if(resolver_ready)
+	{
+		terminate_threads();
+
+		// Close database connection
+		gravityDB_close();
+	}
+
+	// Remove PID file
+	removepid();
+
+	// Remove shared memory objects
+	// Important: This invalidated all objects such as
+	//            counters-> ... etc.
+	// This should be the last action when cleaning up
+	destroy_shmem();
+
+	char buffer[42] = { 0 };
+	format_time(buffer, 0, timer_elapsed_msec(EXIT_TIMER));
+	logg("########## FTL terminated after%s (code %i)! ##########", buffer, ret);
 }

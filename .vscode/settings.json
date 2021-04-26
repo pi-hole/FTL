@@ -18,6 +18,12 @@
         "files.watcherExclude": {
           "**/.git/objects/**": true,
           "**/.git/subtree-cache/**": true,
+          "cmake/*/**": true,
           "**/node_modules/*/**": true
+        },
+        "files.associations": {
+                "*.tcc": "cpp",
+                "limits.h": "c",
+                "syslimits.h": "c"
         }
 }

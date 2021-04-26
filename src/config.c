@@ -14,7 +14,8 @@
 #include "log.h"
 // nice()
 #include <unistd.h>
-
+// argv_dnsmasq
+#include "args.h"
 // INT_MAX
 #include <limits.h>
 
@@ -56,7 +57,7 @@ void getLogFilePath(void)
 	    ((fp = fopen(FTLfiles.snapConf, "r")) == NULL) &&
 	    ((fp = fopen("pihole-FTL.conf", "r")) == NULL))
 	{
-		printf("Notice: Found no readable FTL config file");
+		printf("Notice: Found no readable FTL config file\n");
 	}
 
 	// Read LOGFILE value if available
@@ -555,6 +556,44 @@ void read_FTLconf(void)
 	else
 		logg("   RATE_LIMIT: Disabled");
 
+	// REPLY_ADDR4
+	// Use a specific IP address instead of automatically detecting the
+	// IPv4 interface address a query arrived on
+	// defaults to: not set
+	config.reply_addr.overwrite_v4 = false;
+	config.reply_addr.v4.s_addr = 0;
+	buffer = parse_FTLconf(fp, "REPLY_ADDR4");
+	if(buffer != NULL && inet_pton(AF_INET, buffer, &config.reply_addr.v4))
+		config.reply_addr.overwrite_v4 = true;
+
+	if(config.reply_addr.overwrite_v4)
+	{
+		char addr[INET_ADDRSTRLEN] = { 0 };
+		inet_ntop(AF_INET, &config.reply_addr.v4, addr, INET_ADDRSTRLEN);
+		logg("   REPLY_ADDR4: Using IPv4 address %s in IP blocking mode", addr);
+	}
+	else
+		logg("   REPLY_ADDR4: Automatic interface-dependent detection of address");
+
+	// REPLY_ADDR6
+	// Use a specific IP address instead of automatically detecting the
+	// IPv6 interface address a query arrived on
+	// defaults to: not set
+	config.reply_addr.overwrite_v6 = false;
+	memset(&config.reply_addr.v6, 0, sizeof(config.reply_addr.v6));
+	buffer = parse_FTLconf(fp, "REPLY_ADDR6");
+	if(buffer != NULL && inet_pton(AF_INET6, buffer, &config.reply_addr.v6))
+		config.reply_addr.overwrite_v6 = true;
+
+	if(config.reply_addr.overwrite_v6)
+	{
+		char addr[INET6_ADDRSTRLEN] = { 0 };
+		inet_ntop(AF_INET6, &config.reply_addr.v6, addr, INET6_ADDRSTRLEN);
+		logg("   REPLY_ADDR6: Using IPv6 address %s in IP blocking mode", addr);
+	}
+	else
+		logg("   REPLY_ADDR6: Automatic interface-dependent detection of address");
+
 	// Read DEBUG_... setting from pihole-FTL.conf
 	// This option should be the last one as it causes
 	// some rather verbose output into the log when
@@ -833,9 +872,11 @@ void read_debuging_settings(FILE *fp)
 	// defaults to: false
 	setDebugOption(fp, "DEBUG_OVERTIME", DEBUG_OVERTIME);
 
-	// DEBUG_EXTBLOCKED
+	// DEBUG_EXTBLOCKED (deprecated, now included in DEBUG_QUERIES)
+
+	// DEBUG_STATUS
 	// defaults to: false
-	setDebugOption(fp, "DEBUG_EXTBLOCKED", DEBUG_EXTBLOCKED);
+	setDebugOption(fp, "DEBUG_STATUS", DEBUG_STATUS);
 
 	// DEBUG_CAPS
 	// defaults to: false
@@ -893,7 +934,7 @@ void read_debuging_settings(FILE *fp)
 		logg("* DEBUG_REGEX           %s *", (config.debug & DEBUG_REGEX)? "YES":"NO ");
 		logg("* DEBUG_API             %s *", (config.debug & DEBUG_API)? "YES":"NO ");
 		logg("* DEBUG_OVERTIME        %s *", (config.debug & DEBUG_OVERTIME)? "YES":"NO ");
-		logg("* DEBUG_EXTBLOCKED      %s *", (config.debug & DEBUG_EXTBLOCKED)? "YES":"NO ");
+		logg("* DEBUG_STATUS          %s *", (config.debug & DEBUG_STATUS)? "YES":"NO ");
 		logg("* DEBUG_CAPS            %s *", (config.debug & DEBUG_CAPS)? "YES":"NO ");
 		logg("* DEBUG_DNSMASQ_LINES   %s *", (config.debug & DEBUG_DNSMASQ_LINES)? "YES":"NO ");
 		logg("* DEBUG_VECTORS         %s *", (config.debug & DEBUG_VECTORS)? "YES":"NO ");
@@ -905,6 +946,9 @@ void read_debuging_settings(FILE *fp)
 		logg("* DEBUG_HELPER          %s *", (config.debug & DEBUG_HELPER)? "YES":"NO ");
 		logg("* DEBUG_EXTRA           %s *", (config.debug & DEBUG_EXTRA)? "YES":"NO ");
 		logg("*****************************");
+
+		// Enable debug logging in dnsmasq (only effective before starting the resolver)
+		argv_dnsmasq[2] = "--log-debug";
 	}
 
 	// Have to close the config file if we opened it

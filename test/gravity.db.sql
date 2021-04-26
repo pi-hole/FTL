@@ -204,7 +204,7 @@ INSERT INTO gravity VALUES('discourse.pi-hole.net',1);
 INSERT INTO info VALUES("gravity_count",3);
 
 INSERT INTO "group" VALUES(1,0,'Test group',1559928803,1559928803,'A disabled test group');
-INSERT INTO domainlist VALUES(7,1,'blacklisted-group-disabled.com',1,1559928803,1559928803,'Entry disabled by a group');
+INSERT INTO domainlist VALUES(7,1,'denied-group-disabled.com',1,1559928803,1559928803,'Entry disabled by a group');
 INSERT INTO domainlist_by_group VALUES(7,1);
 
 INSERT INTO domain_audit VALUES(1,'google.com',1559928803);
