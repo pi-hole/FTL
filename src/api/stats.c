@@ -86,6 +86,7 @@ int api_stats_summary(struct ftl_conn *api)
 		percent_blocked = 1e2f*blocked/total;
 
 	cJSON *queries = JSON_NEW_OBJ();
+	JSON_OBJ_ADD_NUMBER(queries, "total", total);
 	JSON_OBJ_ADD_NUMBER(queries, "blocked", blocked);
 	JSON_OBJ_ADD_NUMBER(queries, "percent_blocked", percent_blocked);
 	JSON_OBJ_ADD_NUMBER(queries, "unique_domains", counters->domains);
@@ -98,7 +99,6 @@ int api_stats_summary(struct ftl_conn *api)
 		return ret;
 	JSON_OBJ_ADD_ITEM(queries, "types", types);
 
-	JSON_OBJ_ADD_NUMBER(queries, "sum", total);
 
 	cJSON *replies = JSON_NEW_OBJ();
 	queriesData query = { 0 };

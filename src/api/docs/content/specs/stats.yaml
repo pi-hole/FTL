@@ -27,6 +27,10 @@ components:
         queries:
           type: object
           properties:
+            total:
+              type: integer
+              description: Total number of queries
+              example: 7497
             blocked:
               type: integer
               description: Number of blocked queries
@@ -115,10 +119,6 @@ components:
                   type: integer
                   description: Queries of remaining types
                   example: 845
-            sum:
-              type: integer
-              description: Total number of queries
-              example: 7497
             replies:
               type: object
               description: Number of individual replies
