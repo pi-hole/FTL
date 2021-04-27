@@ -934,7 +934,8 @@ void gravityDB_close(void)
 	for(int clientID = 0; clientID < counters->clients; clientID++)
 	{
 		clientsData *client = getClient(clientID, true);
-		gravityDB_finalize_client_statements(client);
+		if(client != NULL)
+			gravityDB_finalize_client_statements(client);
 	}
 
 	// Free allocated memory for vectors of prepared client statements

@@ -2045,7 +2045,9 @@ void FTL_TCP_worker_terminating(bool finished)
 	}
 
 	// Close dedicated database connections of this fork
+	lock_shm();
 	gravityDB_close();
+	unlock_shm();
 }
 
 // Called when a (forked) TCP worker is created
