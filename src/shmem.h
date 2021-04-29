@@ -66,8 +66,8 @@ typedef struct {
 		} domains;
 	} database;
 	int querytype[TYPE_MAX-1];
-	int status[QUERY_STATUS_MAX];
-	int reply[QUERY_REPLY_MAX];
+	int status[STATUS_MAX];
+	int reply[REPLY_MAX];
 } countersStruct;
 ASSERT_SIZEOF(countersStruct, 268, 268, 268);
 

@@ -138,12 +138,12 @@ int api_stats_database_overTime_history(struct ftl_conn *api)
 		// Add to blocked count if this is the result for a blocked status
 		switch (status)
 		{
-			case QUERY_GRAVITY:
-			case QUERY_REGEX:
-			case QUERY_DENYLIST:
-			case QUERY_EXTERNAL_BLOCKED_IP:
-			case QUERY_EXTERNAL_BLOCKED_NULL:
-			case QUERY_EXTERNAL_BLOCKED_NXRA:
+			case STATUS_GRAVITY:
+			case STATUS_REGEX:
+			case STATUS_DENYLIST:
+			case STATUS_EXTERNAL_BLOCKED_IP:
+			case STATUS_EXTERNAL_BLOCKED_NULL:
+			case STATUS_EXTERNAL_BLOCKED_NXRA:
 				blocked += count;
 				break;
 

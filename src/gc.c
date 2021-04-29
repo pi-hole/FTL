@@ -116,12 +116,12 @@ void *GC_thread(void *val)
 				// Change other counters according to status of this query
 				switch(query->status)
 				{
-					case QUERY_UNKNOWN:
+					case STATUS_UNKNOWN:
 						// Unknown (?)
 						break;
-					case QUERY_FORWARDED: // (fall through)
-					case QUERY_RETRIED: // (fall through)
-					case QUERY_RETRIED_DNSSEC:
+					case STATUS_FORWARDED: // (fall through)
+					case STATUS_RETRIED: // (fall through)
+					case STATUS_RETRIED_DNSSEC:
 						// Forwarded to an upstream DNS server
 						// Adjust counters
 						if(query->upstreamID > -1)
@@ -131,18 +131,18 @@ void *GC_thread(void *val)
 								upstream->count--;
 						}
 						break;
-					case QUERY_CACHE:
+					case STATUS_CACHE:
 						// Answered from local cache _or_ local config
 						break;
-					case QUERY_GRAVITY: // Blocked by Pi-hole's blocking lists (fall through)
-					case QUERY_DENYLIST: // Exact blocked (fall through)
-					case QUERY_REGEX: // Regex blocked (fall through)
-					case QUERY_EXTERNAL_BLOCKED_IP: // Blocked by upstream provider (fall through)
-					case QUERY_EXTERNAL_BLOCKED_NXRA: // Blocked by upstream provider (fall through)
-					case QUERY_EXTERNAL_BLOCKED_NULL: // Blocked by upstream provider (fall through)
-					case QUERY_GRAVITY_CNAME: // Gravity domain in CNAME chain (fall through)
-					case QUERY_DENYLIST_CNAME: // Exactly denied domain in CNAME chain (fall through)
-					case QUERY_REGEX_CNAME: // Regex denied domain in CNAME chain (fall through)
+					case STATUS_GRAVITY: // Blocked by Pi-hole's blocking lists (fall through)
+					case STATUS_DENYLIST: // Exact blocked (fall through)
+					case STATUS_REGEX: // Regex blocked (fall through)
+					case STATUS_EXTERNAL_BLOCKED_IP: // Blocked by upstream provider (fall through)
+					case STATUS_EXTERNAL_BLOCKED_NXRA: // Blocked by upstream provider (fall through)
+					case STATUS_EXTERNAL_BLOCKED_NULL: // Blocked by upstream provider (fall through)
+					case STATUS_GRAVITY_CNAME: // Gravity domain in CNAME chain (fall through)
+					case STATUS_DENYLIST_CNAME: // Exactly denied domain in CNAME chain (fall through)
+					case STATUS_REGEX_CNAME: // Regex denied domain in CNAME chain (fall through)
 						//counters->blocked--;
 						overTime[timeidx].blocked--;
 						if(domain != NULL)
@@ -150,8 +150,8 @@ void *GC_thread(void *val)
 						if(client != NULL)
 							change_clientcount(client, 0, -1, -1, 0);
 						break;
-					case QUERY_IN_PROGRESS: // Don't have to do anything here
-					case QUERY_STATUS_MAX: // fall through
+					case STATUS_IN_PROGRESS: // Don't have to do anything here
+					case STATUS_MAX: // fall through
 					default:
 						/* That cannot happen */
 						break;
@@ -165,10 +165,10 @@ void *GC_thread(void *val)
 					counters->querytype[query->type]--;
 
 				// Set query again to UNKNOWN to reset the counters
-				query_set_status(query, QUERY_UNKNOWN);
+				query_set_status(query, STATUS_UNKNOWN);
 
 				// Finally, remove the last trace of this query
-				counters->status[QUERY_UNKNOWN]--;
+				counters->status[STATUS_UNKNOWN]--;
 
 				// Count removed queries
 				removed++;

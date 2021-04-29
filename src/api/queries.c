@@ -91,9 +91,62 @@ int api_queries_suggestions(struct ftl_conn *api)
 		return rc;
 	}
 
+	// Get upstreams
+	cJSON *upstreams = JSON_NEW_ARRAY();
+	rc = add_strings_to_array(api, upstreams, "SELECT DISTINCT(forward) FROM queries WHERE forward IS NOT NULL");
+	if(rc != 0)
+	{
+		cJSON_Delete(domains);
+		cJSON_Delete(clients);
+		cJSON_Delete(upstreams);
+		return rc;
+	}
+
+	// Get types
+	cJSON *types = JSON_NEW_ARRAY();
+	queriesData query = { 0 };
+	for(enum query_types t = TYPE_A; t < TYPE_MAX; t++)
+	{
+		query.type = t;
+		const char *string = get_query_type_str(&query, NULL);
+		JSON_ARRAY_REF_STR(types, string);
+	}
+
+	// Get status
+	cJSON *status = JSON_NEW_ARRAY();
+	for(enum query_status s = STATUS_UNKNOWN; s < STATUS_MAX; s++)
+	{
+		query.status = s;
+		const char *string = get_query_status_str(&query);
+		JSON_ARRAY_REF_STR(status, string);
+	}
+
+	// Get reply types
+	cJSON *replies = JSON_NEW_ARRAY();
+	for(enum reply_type r = REPLY_UNKNOWN; r < REPLY_MAX; r++)
+	{
+		query.reply = r;
+		const char *string = get_query_reply_str(&query);
+		JSON_ARRAY_REF_STR(replies, string);
+	}
+
+	// Get dnssec status
+	cJSON *dnssec = JSON_NEW_ARRAY();
+	for(enum dnssec_status d = DNSSEC_UNKNOWN; d < DNSSEC_MAX; d++)
+	{
+		query.dnssec = d;
+		const char *string = get_query_dnssec_str(&query);
+		JSON_ARRAY_REF_STR(dnssec, string);
+	}
+
 	cJSON *json = JSON_NEW_OBJ();
 	JSON_OBJ_ADD_ITEM(json, "domains", domains);
 	JSON_OBJ_ADD_ITEM(json, "clients", clients);
+	JSON_OBJ_ADD_ITEM(json, "upstreams", upstreams);
+	JSON_OBJ_ADD_ITEM(json, "types", types);
+	JSON_OBJ_ADD_ITEM(json, "status", status);
+	JSON_OBJ_ADD_ITEM(json, "replies", replies);
+	JSON_OBJ_ADD_ITEM(json, "dnssec", dnssec);
 
 	JSON_SEND_OBJECT(json);
 }
@@ -105,10 +158,10 @@ int api_queries(struct ftl_conn *api)
 	if(config.privacylevel >= PRIVACY_MAXIMUM)
 	{
 		// Minimum structure is
-		// {"history":[], "cursor": null}
+		// {"queries":[], "cursor": null}
 		cJSON *json = JSON_NEW_OBJ();
-		cJSON *history = JSON_NEW_ARRAY();
-		JSON_OBJ_ADD_ITEM(json, "history", history);
+		cJSON *queries = JSON_NEW_ARRAY();
+		JSON_OBJ_ADD_ITEM(json, "queries", queries);
 		// There are no more queries available, send NULL cursor
 		JSON_OBJ_ADD_NULL(json, "cursor");
 		JSON_SEND_OBJECT(json);
@@ -219,15 +272,6 @@ int api_queries(struct ftl_conn *api)
 						break;
 					}
 				}
-				if(forwarddestid < 0)
-				{
-					// Requested upstream has not been found, we directly
-					// tell the user here as there is no data to be returned
-					return send_json_error(api, 400,
-					                       "bad_request",
-					                       "Requested upstream not found",
-					                       forwarddest);
-				}
 			}
 		}
 
@@ -252,15 +296,6 @@ int api_queries(struct ftl_conn *api)
 					domainid = domainID;
 					break;
 				}
-			}
-			if(domainid < 0)
-			{
-				// Requested domain has not been found, we directly
-				// tell the user here as there is no data to be returned
-				return send_json_error(api, 400,
-				                       "bad_request",
-				                       "Requested domain not found",
-				                       domainname);
 			}
 		}
 
@@ -293,15 +328,6 @@ int api_queries(struct ftl_conn *api)
 
 					break;
 				}
-			}
-			if(clientid < 0)
-			{
-				// Requested client has not been found, we directly
-				// tell the user here as there is no data to be returned
-				return send_json_error(api, 400,
-				                       "bad_request",
-				                       "Requested client not found",
-				                       clientname);
 			}
 		}
 
@@ -352,7 +378,7 @@ int api_queries(struct ftl_conn *api)
 	}
 	clearSetupVarsArray();
 
-	cJSON *history = JSON_NEW_ARRAY();
+	cJSON *queries = JSON_NEW_ARRAY();
 	int added = 0;
 //	unsigned int lastID = 0u;
 	for(unsigned int i = ibeg; i > 0u; i--)
@@ -431,7 +457,7 @@ int api_queries(struct ftl_conn *api)
 			if(forwarddestid == -2 && !query->flags.blocked)
 				continue;
 			// Does the user want to see queries answered from local cache?
-			else if(forwarddestid == -1 && query->status != QUERY_CACHE)
+			else if(forwarddestid == -1 && query->status != STATUS_CACHE)
 				continue;
 			// Does the user want to see queries answered by an upstream server?
 			else if(forwarddestid >= 0 && forwarddestid != query->upstreamID)
@@ -468,7 +494,7 @@ int api_queries(struct ftl_conn *api)
 
 		// Get ID of blocking regex, if applicable
 		int regex_id = -1;
-		if (query->status == QUERY_REGEX || query->status == QUERY_REGEX_CNAME)
+		if (query->status == STATUS_REGEX || query->status == STATUS_REGEX_CNAME)
 		{
 			unsigned int cacheID = findCacheID(query->domainID, query->clientID, query->type);
 			DNSCacheData *dns_cache = getDNSCache(cacheID, true);
@@ -538,7 +564,7 @@ int api_queries(struct ftl_conn *api)
 		}
 		JSON_OBJ_ADD_NUMBER(item, "dbid", query->db);
 
-		JSON_ARRAY_ADD_ITEM(history, item);
+		JSON_ARRAY_ADD_ITEM(queries, item);
 
 		if(length > -1 && ++added >= length)
 		{
@@ -553,7 +579,7 @@ int api_queries(struct ftl_conn *api)
 		free(clientid_list);
 
 	cJSON *json = JSON_NEW_OBJ();
-	JSON_OBJ_ADD_ITEM(json, "queries", history);
+	JSON_OBJ_ADD_ITEM(json, "queries", queries);
 
 	// if(lastID < 0)
 		// There are no more queries available, send null cursor

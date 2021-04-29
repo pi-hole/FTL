@@ -102,7 +102,7 @@ int api_stats_summary(struct ftl_conn *api)
 
 	cJSON *replies = JSON_NEW_OBJ();
 	queriesData query = { 0 };
-	for(enum reply_type reply = 0; reply < QUERY_REPLY_MAX; reply++)
+	for(enum reply_type reply = 0; reply < REPLY_MAX; reply++)
 	{
 		query.reply = reply;
 		JSON_OBJ_ADD_NUMBER(replies, get_query_reply_str(&query), counters->reply[reply]);

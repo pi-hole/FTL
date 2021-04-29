@@ -569,9 +569,9 @@ void DB_read_queries(void)
 		}
 
 		const int status_int = sqlite3_column_int(stmt, 3);
-		if(status_int < QUERY_UNKNOWN || status_int >= QUERY_STATUS_MAX)
+		if(status_int < STATUS_UNKNOWN || status_int >= STATUS_MAX)
 		{
-			logg("DB warn: STATUS should be within [%i,%i] but is %i", QUERY_UNKNOWN, QUERY_STATUS_MAX-1, status_int);
+			logg("DB warn: STATUS should be within [%i,%i] but is %i", STATUS_UNKNOWN, STATUS_MAX-1, status_int);
 			continue;
 		}
 		const enum query_status status = status_int;
@@ -674,9 +674,9 @@ void DB_read_queries(void)
 		counters->queries++;
 
 		// Get additional information from the additional_info column if applicable
-		if(status == QUERY_GRAVITY_CNAME ||
-		   status == QUERY_REGEX_CNAME ||
-		   status == QUERY_DENYLIST_CNAME )
+		if(status == STATUS_GRAVITY_CNAME ||
+		   status == STATUS_REGEX_CNAME ||
+		   status == STATUS_DENYLIST_CNAME )
 		{
 			// QUERY_*_CNAME: Get domain causing the blocking
 			const char *CNAMEdomain = (const char *)sqlite3_column_text(stmt, 7);
@@ -689,9 +689,9 @@ void DB_read_queries(void)
 				query->CNAME_domainID = CNAMEdomainID;
 			}
 		}
-		else if(status == QUERY_REGEX)
+		else if(status == STATUS_REGEX)
 		{
-			// QUERY_REGEX: Set ID regex which was the reson for blocking
+			// STATUS_REGEX: Set ID regex which was the reson for blocking
 			const int cacheID = findCacheID(query->domainID, query->clientID, query->type);
 			DNSCacheData *cache = getDNSCache(cacheID, true);
 			// Only load if
@@ -704,24 +704,24 @@ void DB_read_queries(void)
 		// Increment status counters, we first have to add one to the count of
 		// unknown queries because query_set_status() will subtract from there
 		// when setting a different status
-		counters->status[QUERY_UNKNOWN]++;
+		counters->status[STATUS_UNKNOWN]++;
 		query_set_status(query, status);
 
 		// Do further processing based on the query status we read from the database
 		switch(status)
 		{
-			case QUERY_UNKNOWN: // Unknown
+			case STATUS_UNKNOWN: // Unknown
 				break;
 
-			case QUERY_GRAVITY: // Blocked by gravity
-			case QUERY_REGEX: // Blocked by regex blacklist
-			case QUERY_DENYLIST: // Blocked by exact blacklist
-			case QUERY_EXTERNAL_BLOCKED_IP: // Blocked by external provider
-			case QUERY_EXTERNAL_BLOCKED_NULL: // Blocked by external provider
-			case QUERY_EXTERNAL_BLOCKED_NXRA: // Blocked by external provider
-			case QUERY_GRAVITY_CNAME: // Blocked by gravity (inside CNAME path)
-			case QUERY_REGEX_CNAME: // Blocked by regex blacklist (inside CNAME path)
-			case QUERY_DENYLIST_CNAME: // Blocked by exact blacklist (inside CNAME path)
+			case STATUS_GRAVITY: // Blocked by gravity
+			case STATUS_REGEX: // Blocked by regex blacklist
+			case STATUS_DENYLIST: // Blocked by exact blacklist
+			case STATUS_EXTERNAL_BLOCKED_IP: // Blocked by external provider
+			case STATUS_EXTERNAL_BLOCKED_NULL: // Blocked by external provider
+			case STATUS_EXTERNAL_BLOCKED_NXRA: // Blocked by external provider
+			case STATUS_GRAVITY_CNAME: // Blocked by gravity (inside CNAME path)
+			case STATUS_REGEX_CNAME: // Blocked by regex blacklist (inside CNAME path)
+			case STATUS_DENYLIST_CNAME: // Blocked by exact blacklist (inside CNAME path)
 				query->flags.blocked = true;
 				// Get domain pointer
 				domainsData* domain = getDomain(domainID, true);
@@ -729,9 +729,9 @@ void DB_read_queries(void)
 				change_clientcount(client, 0, 1, -1, 0);
 				break;
 
-			case QUERY_FORWARDED: // Forwarded
-			case QUERY_RETRIED: // (fall through)
-			case QUERY_RETRIED_DNSSEC: // (fall through)
+			case STATUS_FORWARDED: // Forwarded
+			case STATUS_RETRIED: // (fall through)
+			case STATUS_RETRIED_DNSSEC: // (fall through)
 				// Only update upstream if there is one (there
 				// won't be one for retried DNSSEC queries)
 				if(upstreamID > -1)
@@ -745,15 +745,15 @@ void DB_read_queries(void)
 				}
 				break;
 
-			case QUERY_CACHE: // Cached or local config
+			case STATUS_CACHE: // Cached or local config
 				// Nothing to be done here
 				break;
 
-			case QUERY_IN_PROGRESS:
+			case STATUS_IN_PROGRESS:
 				// Nothing to be done here
 				break;
 
-			case QUERY_STATUS_MAX:
+			case STATUS_MAX:
 			default:
 				logg("Warning: Found unknown status %i in long term database!", status);
 				break;
@@ -862,15 +862,15 @@ bool query_to_database(queriesData* query)
 	}
 
 	// ADDITIONAL_INFO
-	if(query->status == QUERY_GRAVITY_CNAME ||
-		query->status == QUERY_REGEX_CNAME ||
-		query->status == QUERY_DENYLIST_CNAME)
+	if(query->status == STATUS_GRAVITY_CNAME ||
+		query->status == STATUS_REGEX_CNAME ||
+		query->status == STATUS_DENYLIST_CNAME)
 	{
 		// Restore domain blocked during deep CNAME inspection if applicable
 		const char *cname = getCNAMEDomainString(query);
 		sqlite3_bind_text(stmt, 8, cname, -1, SQLITE_STATIC);
 	}
-	else if(query->status == QUERY_REGEX)
+	else if(query->status == STATUS_REGEX)
 	{
 		// Restore regex ID if applicable
 		const int cacheID = findCacheID(query->domainID, query->clientID, query->type);

@@ -332,7 +332,7 @@ void log_counter_info(void)
 	logg(" -> Cached DNS queries: %i", get_cached_count());
 	logg(" -> Forwarded DNS queries: %i", get_forwarded_count());
 	logg(" -> Blocked DNS queries: %i", get_blocked_count());
-	logg(" -> Unknown DNS queries: %i", counters->status[QUERY_UNKNOWN]);
+	logg(" -> Unknown DNS queries: %i", counters->status[STATUS_UNKNOWN]);
 	logg(" -> Unique domains: %i", counters->domains);
 	logg(" -> Unique clients: %i", counters->clients);
 	logg(" -> Known forward destinations: %i", counters->upstreams);
