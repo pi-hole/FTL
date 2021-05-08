@@ -2175,6 +2175,7 @@ void FTL_query_in_progress(const int id)
 	{
 		// This may happen e.g. if the original query was an unhandled query type
 		unlock_shm();
+		return;
 	}
 
 	// Get query pointer
