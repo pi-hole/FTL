@@ -1048,7 +1048,8 @@ queriesData* _getQuery(int queryID, bool checkMagic, int line, const char * func
 	// We are not in a locked situation, return a NULL pointer
 	if(!is_our_lock())
 	{
-		logg("ERROR: Tried to obtain query pointer without lock!");
+		logg("ERROR: Tried to obtain query pointer without lock in %s() (%s:%i)!",
+		     function, file, line);
 		return NULL;
 	}
 
@@ -1068,7 +1069,8 @@ clientsData* _getClient(int clientID, bool checkMagic, int line, const char * fu
 	// We are not in a locked situation, return a NULL pointer
 	if(!is_our_lock())
 	{
-		logg("ERROR: Tried to obtain client pointer without lock!");
+		logg("ERROR: Tried to obtain client pointer without lock in %s() (%s:%i)!",
+		     function, file, line);
 		return NULL;
 	}
 
@@ -1089,7 +1091,8 @@ domainsData* _getDomain(int domainID, bool checkMagic, int line, const char * fu
 	// We are not in a locked situation, return a NULL pointer
 	if(!is_our_lock())
 	{
-		logg("ERROR: Tried to obtain domain pointer without lock!");
+		logg("ERROR: Tried to obtain domain pointer without lock in %s() (%s:%i)!",
+		     function, file, line);
 		return NULL;
 	}
 
@@ -1110,7 +1113,8 @@ upstreamsData* _getUpstream(int upstreamID, bool checkMagic, int line, const cha
 	// We are not in a locked situation, return a NULL pointer
 	if(!is_our_lock())
 	{
-		logg("ERROR: Tried to obtain upstream pointer without lock!");
+		logg("ERROR: Tried to obtain upstream pointer without lock in %s() (%s:%i)!",
+		     function, file, line);
 		return NULL;
 	}
 
@@ -1131,7 +1135,8 @@ DNSCacheData* _getDNSCache(int cacheID, bool checkMagic, int line, const char * 
 	// We are not in a locked situation, return a NULL pointer
 	if(!is_our_lock())
 	{
-		logg("ERROR: Tried to obtain cache pointer without lock!");
+		logg("ERROR: Tried to obtain cache pointer without lock in %s() (%s:%i)!",
+		     function, file, line);
 		return NULL;
 	}
 
