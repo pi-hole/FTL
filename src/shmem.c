@@ -22,9 +22,11 @@
 #include "regex_r.h"
 // NAME_MAX
 #include <limits.h>
+// gettid
+#include "daemon.h"
 
 /// The version of shared memory used
-#define SHARED_MEMORY_VERSION 12
+#define SHARED_MEMORY_VERSION 13
 
 /// The name of the shared memory. Use this when connecting to the shared memory.
 #define SHMEM_PATH "/dev/shm"
@@ -89,6 +91,10 @@ static DNSCacheData *dns_cache = NULL;
 
 typedef struct {
 	pthread_mutex_t lock;
+	struct {
+		volatile pid_t pid;
+		volatile pid_t tid;
+	} owner;
 	bool waitingForLock;
 } ShmLock;
 static ShmLock *shmLock = NULL;
@@ -358,6 +364,10 @@ static inline void _lock(ShmLock *lock, const char* func, const int line, const 
 	if(config.debug & DEBUG_LOCKS)
 		logg("Obtained SHM lock for %s() (%s:%i)", func, file, line);
 
+	// Store lock owner
+	lock->owner.pid = getpid();
+	lock->owner.tid = gettid();
+
 	// Turn off the waiting for lock signal to notify everyone who was
 	// deferring to FTL that they can jump in the lock queue.
 	lock->waitingForLock = false;
@@ -393,7 +403,16 @@ void _lock_shm(const char* func, const int line, const char * file)
 
 static inline void _unlock(ShmLock *lock, const char* func, const int line, const char * file)
 {
+	if(!is_our_lock())
+	{
+		logg("ERROR: Tried to unlock but lock is owned by %li/%li",
+		     (long int)lock->owner.pid, (long int)lock->owner.tid);
+	}
+
+	// Unlock mutex
 	int result = pthread_mutex_unlock(&lock->lock);
+	lock->owner.pid = 0;
+	lock->owner.tid = 0;
 
 	if(config.debug & DEBUG_LOCKS)
 		logg("Removed lock in %s() (%s:%i)", func, file, line);
@@ -406,6 +425,15 @@ static inline void _unlock(ShmLock *lock, const char* func, const int line, cons
 void _unlock_shm(const char* func, const int line, const char * file)
 {
 	_unlock(shmLock, func, line, file);
+}
+
+// Return if we locked this mutex (PID and TID match)
+bool is_our_lock(void)
+{
+	if(shmLock->owner.pid == getpid() &&
+	   shmLock->owner.tid == gettid())
+		return true;
+	return false;
 }
 
 bool init_shmem(bool create_new)
@@ -979,33 +1007,52 @@ void set_per_client_regex(const int clientID, const int regexID, const bool valu
 
 static inline bool check_range(int ID, int MAXID, const char* type, int line, const char * function, const char * file)
 {
+	// Check bounds
 	if(ID < 0 || ID > MAXID)
 	{
-		// Check bounds
-		logg("FATAL: Trying to access %s ID %i, but maximum is %i", type, ID, MAXID);
-		logg("       found in %s() (%s:%i)", function, file, line);
+		if(config.debug)
+		{
+			logg("ERROR: Trying to access %s ID %i, but maximum is %i", type, ID, MAXID);
+			logg("       found in %s() (%s:%i)", function, file, line);
+		}
 		return false;
 	}
+
 	// Everything okay
 	return true;
 }
 
 static inline bool check_magic(int ID, bool checkMagic, unsigned char magic, const char* type, int line, const char * function, const char * file)
 {
+	// Check magic only if requested (skipped for new entries which are uninitialized)
 	if(checkMagic && magic != MAGICBYTE)
 	{
-		// Check magic only if requested (skipped for new entries which are uninitialized)
-		logg("FATAL: Trying to access %s ID %i, but magic byte is %x", type, ID, magic);
-		logg("       found in %s() (%s:%i)", function, file, line);
+		if(config.debug)
+		{
+			logg("ERROR: Trying to access %s ID %i, but magic byte is %x", type, ID, magic);
+			logg("       found in %s() (%s:%i)", function, file, line);
+		}
 		return false;
 	}
+
 	// Everything okay
 	return true;
 }
 
 queriesData* _getQuery(int queryID, bool checkMagic, int line, const char * function, const char * file)
 {
-	if(check_range(queryID, counters->queries_MAX, "query", line, function, file) &&
+	// This does not exist, return a NULL pointer
+	if(queryID == -1)
+		return NULL;
+
+	// We are not in a locked situation, return a NULL pointer
+	if(!is_our_lock())
+	{
+		logg("ERROR: Tried to obtain query pointer without lock!");
+		return NULL;
+	}
+
+	if(check_range(queryID, counters->queries_MAX, "query", line, function, file) && is_our_lock() &&
 	   check_magic(queryID, checkMagic, queries[queryID].magic, "query", line, function, file))
 		return &queries[queryID];
 	else
@@ -1014,7 +1061,19 @@ queriesData* _getQuery(int queryID, bool checkMagic, int line, const char * func
 
 clientsData* _getClient(int clientID, bool checkMagic, int line, const char * function, const char * file)
 {
-	if(check_range(clientID, counters->clients_MAX, "client", line, function, file) &&
+	// This does not exist, we return a NULL pointer
+	if(clientID == -1)
+		return NULL;
+
+	// We are not in a locked situation, return a NULL pointer
+	if(!is_our_lock())
+	{
+		logg("ERROR: Tried to obtain client pointer without lock!");
+		return NULL;
+	}
+
+	if(is_our_lock() &&
+	   check_range(clientID, counters->clients_MAX, "client", line, function, file) && is_our_lock() &&
 	   check_magic(clientID, checkMagic, clients[clientID].magic, "client", line, function, file))
 		return &clients[clientID];
 	else
@@ -1023,7 +1082,19 @@ clientsData* _getClient(int clientID, bool checkMagic, int line, const char * fu
 
 domainsData* _getDomain(int domainID, bool checkMagic, int line, const char * function, const char * file)
 {
-	if(check_range(domainID, counters->domains_MAX, "domain", line, function, file) &&
+	// This does not exist, we return a NULL pointer
+	if(domainID == -1)
+		return NULL;
+
+	// We are not in a locked situation, return a NULL pointer
+	if(!is_our_lock())
+	{
+		logg("ERROR: Tried to obtain domain pointer without lock!");
+		return NULL;
+	}
+
+	if(is_our_lock() &&
+	   check_range(domainID, counters->domains_MAX, "domain", line, function, file) &&
 	   check_magic(domainID, checkMagic, domains[domainID].magic, "domain", line, function, file))
 		return &domains[domainID];
 	else
@@ -1036,7 +1107,15 @@ upstreamsData* _getUpstream(int upstreamID, bool checkMagic, int line, const cha
 	if(upstreamID == -1)
 		return NULL;
 
-	if(check_range(upstreamID, counters->upstreams_MAX, "upstream", line, function, file) &&
+	// We are not in a locked situation, return a NULL pointer
+	if(!is_our_lock())
+	{
+		logg("ERROR: Tried to obtain upstream pointer without lock!");
+		return NULL;
+	}
+
+	if(is_our_lock() &&
+	   check_range(upstreamID, counters->upstreams_MAX, "upstream", line, function, file) && is_our_lock() &&
 	   check_magic(upstreamID, checkMagic, upstreams[upstreamID].magic, "upstream", line, function, file))
 		return &upstreams[upstreamID];
 	else
@@ -1045,7 +1124,19 @@ upstreamsData* _getUpstream(int upstreamID, bool checkMagic, int line, const cha
 
 DNSCacheData* _getDNSCache(int cacheID, bool checkMagic, int line, const char * function, const char * file)
 {
-	if(check_range(cacheID, counters->dns_cache_MAX, "dns_cache", line, function, file) &&
+	// This does not exist, we return a NULL pointer
+	if(cacheID == -1)
+		return NULL;
+
+	// We are not in a locked situation, return a NULL pointer
+	if(!is_our_lock())
+	{
+		logg("ERROR: Tried to obtain cache pointer without lock!");
+		return NULL;
+	}
+
+	if(is_our_lock() &&
+	   check_range(cacheID, counters->dns_cache_MAX, "dns_cache", line, function, file) && is_our_lock() &&
 	   check_magic(cacheID, checkMagic, dns_cache[cacheID].magic, "dns_cache", line, function, file))
 		return &dns_cache[cacheID];
 	else

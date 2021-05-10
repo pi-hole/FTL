@@ -355,7 +355,7 @@ void handle_realtime_signals(void)
 pid_t main_pid(void)
 {
 	if(mpid > -1)
-		// Hase already been set
+		// Has already been set
 		return mpid;
 	else
 		// Has not been set so far
