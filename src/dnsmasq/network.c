@@ -1154,9 +1154,9 @@ void create_bound_listeners(int dienow)
 			  iface->name, iface->index, daemon->addrbuff, port);
 	      }
 	    // Pi-hole modification
+	    const int port = prettyprint_addr(&iface->addr, daemon->addrbuff);
 	    logg("listening on %s(#%d): %s port %d",
-		 iface->name, iface->index, daemon->addrbuff,
-		 prettyprint_addr(&iface->addr, daemon->addrbuff));
+		 iface->name, iface->index, daemon->addrbuff, port);
 	  }
       }
 
@@ -1184,8 +1184,8 @@ void create_bound_listeners(int dienow)
 	    my_syslog(LOG_DEBUG|MS_DEBUG, _("listening on %s port %d"), daemon->addrbuff, port);
 	  }
 	// Pi-hole modification
-	logg("listening on %s port %d",
-	     daemon->addrbuff, prettyprint_addr(&iface->addr, daemon->addrbuff));
+        const int port = prettyprint_addr(&if_tmp->addr, daemon->addrbuff);
+	logg("listening on %s port %d", daemon->addrbuff, port);
       }
 }
 
