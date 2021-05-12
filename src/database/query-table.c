@@ -369,6 +369,9 @@ void DB_read_queries(void)
 		return;
 	}
 
+	// Lock shared memory
+	lock_shm();
+
 	// Loop through returned database rows
 	while((rc = sqlite3_step(stmt)) == SQLITE_ROW)
 	{
@@ -430,8 +433,8 @@ void DB_read_queries(void)
 			continue;
 		}
 
-		// Lock shared memory
-		lock_shm();
+		// Ensure we have enough shared memory available for new data
+		shm_ensure_size();
 
 		const char *buffer = NULL;
 		int upstreamID = -1; // Default if not forwarded
@@ -591,9 +594,9 @@ void DB_read_queries(void)
 				logg("Warning: Found unknown status %i in long term database!", status);
 				break;
 		}
-
-		unlock_shm();
 	}
+
+	unlock_shm();
 	logg("Imported %i queries from the long-term database", counters->queries);
 
 	// Update lastdbindex so that the next call to DB_save_queries()

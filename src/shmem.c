@@ -109,7 +109,6 @@ static size_t get_optimal_object_size(const size_t objsize, const size_t minsize
 
 // Private prototypes
 static void *enlarge_shmem_struct(const char type);
-static void shm_ensure_size(void);
 
 static int get_dev_shm_usage(char buffer[64])
 {
@@ -892,7 +891,7 @@ static size_t get_optimal_object_size(const size_t objsize, const size_t minsize
 }
 
 // Enlarge shared memory to be able to hold at least one new record
-static void shm_ensure_size(void)
+void shm_ensure_size(void)
 {
 	if(counters->queries >= counters->queries_MAX-1)
 	{
