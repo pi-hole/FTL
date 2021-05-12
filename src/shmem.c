@@ -92,12 +92,14 @@ static upstreamsData *upstreams = NULL;
 static DNSCacheData *dns_cache = NULL;
 
 typedef struct {
-	pthread_mutex_t lock;
+	struct {
+		pthread_mutex_t outer;
+		pthread_mutex_t inner;
+	} lock;
 	struct {
 		volatile pid_t pid;
 		volatile pid_t tid;
 	} owner;
-	bool waitingForLock;
 } ShmLock;
 static ShmLock *shmLock = NULL;
 static ShmSettings *shmSettings = NULL;
@@ -352,41 +354,28 @@ static void remap_shm(void)
 	local_shm_counter = shmSettings->global_shm_counter;
 }
 
-static inline void _lock(ShmLock *lock, const char* func, const int line, const char * file)
+// Obtain SHMEM lock
+void _lock_shm(const char* func, const int line, const char * file)
 {
-	// Signal that FTL is waiting for the lock
-	lock->waitingForLock = true;
-
 	if(config.debug & DEBUG_LOCKS)
 		logg("Waiting for SHM lock in %s() (%s:%i)", func, file, line);
 
-	int result = pthread_mutex_lock(&lock->lock);
+	int result = pthread_mutex_lock(&shmLock->lock.outer);
 
-	if(config.debug & DEBUG_LOCKS)
-		logg("Obtained SHM lock for %s() (%s:%i)", func, file, line);
+	if(result != 0)
+		logg("Error when obtaining outer SHM lock: %s", strerror(result));
 
 	// Store lock owner
-	lock->owner.pid = getpid();
-	lock->owner.tid = gettid();
-
-	// Turn off the waiting for lock signal to notify everyone who was
-	// deferring to FTL that they can jump in the lock queue.
-	lock->waitingForLock = false;
+	shmLock->owner.pid = getpid();
+	shmLock->owner.tid = gettid();
 
 	if(result == EOWNERDEAD) {
 		// Try to make the lock consistent if the other process died while
 		// holding the lock
-		result = pthread_mutex_consistent(&lock->lock);
+		result = pthread_mutex_consistent(&shmLock->lock.inner);
+		if(result != 0)
+			logg("Failed to make inner SHM lock consistent: %s", strerror(result));
 	}
-
-	if(result != 0)
-		logg("Failed to obtain SHM lock: %s", strerror(result));
-}
-
-// Obtain SHMEM lock
-void _lock_shm(const char* func, const int line, const char * file)
-{
-	_lock(shmLock, func, line, file);
 
 	// Check if this process needs to remap the shared memory objects
 	if(shmSettings != NULL &&
@@ -400,32 +389,47 @@ void _lock_shm(const char* func, const int line, const char * file)
 
 	// Ensure we have enough shared memory available for new data
 	shm_ensure_size();
-}
 
-static inline void _unlock(ShmLock *lock, const char* func, const int line, const char * file)
-{
-	if(!is_our_lock())
-	{
-		logg("ERROR: Tried to unlock but lock is owned by %li/%li",
-		     (long int)lock->owner.pid, (long int)lock->owner.tid);
-	}
-
-	// Unlock mutex
-	int result = pthread_mutex_unlock(&lock->lock);
-	lock->owner.pid = 0;
-	lock->owner.tid = 0;
+	result = pthread_mutex_lock(&shmLock->lock.inner);
 
 	if(config.debug & DEBUG_LOCKS)
-		logg("Removed lock in %s() (%s:%i)", func, file, line);
+		logg("Obtained SHM lock for %s() (%s:%i)", func, file, line);
 
 	if(result != 0)
-		logg("Failed to unlock SHM lock: %s", strerror(result));
+		logg("Error when obtaining inner SHM lock: %s", strerror(result));
+
+	if(result == EOWNERDEAD) {
+		// Try to make the lock consistent if the other process died while
+		// holding the lock
+		result = pthread_mutex_consistent(&shmLock->lock.inner);
+		if(result != 0)
+			logg("Failed to make inner SHM lock consistent: %s", strerror(result));
+	}
 }
 
 // Release SHM lock
 void _unlock_shm(const char* func, const int line, const char * file)
 {
-	_unlock(shmLock, func, line, file);
+	if(!is_our_lock())
+	{
+		logg("ERROR: Tried to unlock but lock is owned by %li/%li",
+		     (long int)shmLock->owner.pid, (long int)shmLock->owner.tid);
+	}
+
+	// Unlock mutex
+	int result = pthread_mutex_unlock(&shmLock->lock.inner);
+	shmLock->owner.pid = 0;
+	shmLock->owner.tid = 0;
+
+	if(config.debug & DEBUG_LOCKS)
+		logg("Removed lock in %s() (%s:%i)", func, file, line);
+
+	if(result != 0)
+		logg("Failed to unlock inner SHM lock: %s", strerror(result));
+
+	result = pthread_mutex_unlock(&shmLock->lock.outer);
+	if(result != 0)
+		logg("Failed to unlock outer SHM lock: %s", strerror(result));
 }
 
 // Return if we locked this mutex (PID and TID match)
@@ -450,8 +454,8 @@ bool init_shmem(bool create_new)
 	shmLock = (ShmLock*) shm_lock.ptr;
 	if(create_new)
 	{
-		shmLock->lock = create_mutex();
-		shmLock->waitingForLock = false;
+		shmLock->lock.outer = create_mutex();
+		shmLock->lock.inner = create_mutex();
 	}
 
 	/****************************** shared counters struct ******************************/
@@ -582,7 +586,8 @@ void destroy_shmem(void)
 	// First, we destroy the mutex
 	if(shmLock != NULL)
 	{
-		pthread_mutex_destroy(&shmLock->lock);
+		pthread_mutex_destroy(&shmLock->lock.inner);
+		pthread_mutex_destroy(&shmLock->lock.outer);
 	}
 	shmLock = NULL;
 
@@ -1055,7 +1060,7 @@ queriesData* _getQuery(int queryID, bool checkMagic, int line, const char * func
 		return NULL;
 	}
 
-	if(check_range(queryID, counters->queries_MAX, "query", line, function, file) && is_our_lock() &&
+	if(check_range(queryID, counters->queries_MAX, "query", line, function, file) &&
 	   check_magic(queryID, checkMagic, queries[queryID].magic, "query", line, function, file))
 		return &queries[queryID];
 	else
@@ -1077,7 +1082,7 @@ clientsData* _getClient(int clientID, bool checkMagic, int line, const char * fu
 		return NULL;
 	}
 
-	if(check_range(clientID, counters->clients_MAX, "client", line, function, file) && is_our_lock() &&
+	if(check_range(clientID, counters->clients_MAX, "client", line, function, file) &&
 	   check_magic(clientID, checkMagic, clients[clientID].magic, "client", line, function, file))
 		return &clients[clientID];
 	else
@@ -1121,7 +1126,7 @@ upstreamsData* _getUpstream(int upstreamID, bool checkMagic, int line, const cha
 		return NULL;
 	}
 
-	if(check_range(upstreamID, counters->upstreams_MAX, "upstream", line, function, file) && is_our_lock() &&
+	if(check_range(upstreamID, counters->upstreams_MAX, "upstream", line, function, file) &&
 	   check_magic(upstreamID, checkMagic, upstreams[upstreamID].magic, "upstream", line, function, file))
 		return &upstreams[upstreamID];
 	else
@@ -1143,7 +1148,7 @@ DNSCacheData* _getDNSCache(int cacheID, bool checkMagic, int line, const char * 
 		return NULL;
 	}
 
-	if(check_range(cacheID, counters->dns_cache_MAX, "dns_cache", line, function, file) && is_our_lock() &&
+	if(check_range(cacheID, counters->dns_cache_MAX, "dns_cache", line, function, file) &&
 	   check_magic(cacheID, checkMagic, dns_cache[cacheID].magic, "dns_cache", line, function, file))
 		return &dns_cache[cacheID];
 	else

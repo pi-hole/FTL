@@ -237,14 +237,20 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 	}
 
 	// Get query, domain and client pointers
-	queriesData* query  = getQuery(queryID,   true);
-	domainsData* domain = getDomain(domainID, true);
-	clientsData* client = getClient(clientID, true);
+	queriesData *query  = getQuery(queryID, true);
+	domainsData *domain = getDomain(domainID, true);
+	clientsData *client = getClient(clientID, true);
+	if(query == NULL || domain == NULL || client == NULL)
+	{
+		logg("Error: No memory available, skipping query analysis");
+		return false;
+	}
+
+	// Get cache pointer
 	unsigned int cacheID = findCacheID(domainID, clientID, query->type);
 	DNSCacheData *dns_cache = getDNSCache(cacheID, true);
-	if(query == NULL || domain == NULL || client == NULL || dns_cache == NULL)
+	if(dns_cache == NULL)
 	{
-		// Encountered memory error, skip query
 		logg("WARN: No memory available, skipping query analysis");
 		return false;
 	}
@@ -362,7 +368,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 		return false;
 	}
 
-	// Make a local copy of the domain string. The  string memory may get
+	// Make a local copy of the domain string. The string memory may get
 	// reorganized in the following. We cannot expect domainstr to remain
 	// valid for all time.
 	domainstr = strdup(domainstr);
@@ -487,6 +493,12 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 	{
 		// Increase blocked count of parent domain
 		domainsData* parent_domain = getDomain(parent_domainID, true);
+		if(parent_domain == NULL)
+		{
+			// Memory error, return
+			unlock_shm();
+			return false;
+		}
 		parent_domain->blockedcount++;
 
 		// Store query response as CNAME type
