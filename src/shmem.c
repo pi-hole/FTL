@@ -24,6 +24,8 @@
 #include <limits.h>
 // gettid
 #include "daemon.h"
+// generate_backtrace()
+#include "signals.h"
 
 /// The version of shared memory used
 #define SHARED_MEMORY_VERSION 13
@@ -1050,6 +1052,7 @@ queriesData* _getQuery(int queryID, bool checkMagic, int line, const char * func
 	{
 		logg("ERROR: Tried to obtain query pointer without lock in %s() (%s:%i)!",
 		     function, file, line);
+		generate_backtrace();
 		return NULL;
 	}
 
@@ -1071,11 +1074,11 @@ clientsData* _getClient(int clientID, bool checkMagic, int line, const char * fu
 	{
 		logg("ERROR: Tried to obtain client pointer without lock in %s() (%s:%i)!",
 		     function, file, line);
+		generate_backtrace();
 		return NULL;
 	}
 
-	if(is_our_lock() &&
-	   check_range(clientID, counters->clients_MAX, "client", line, function, file) && is_our_lock() &&
+	if(check_range(clientID, counters->clients_MAX, "client", line, function, file) && is_our_lock() &&
 	   check_magic(clientID, checkMagic, clients[clientID].magic, "client", line, function, file))
 		return &clients[clientID];
 	else
@@ -1093,11 +1096,11 @@ domainsData* _getDomain(int domainID, bool checkMagic, int line, const char * fu
 	{
 		logg("ERROR: Tried to obtain domain pointer without lock in %s() (%s:%i)!",
 		     function, file, line);
+		generate_backtrace();
 		return NULL;
 	}
 
-	if(is_our_lock() &&
-	   check_range(domainID, counters->domains_MAX, "domain", line, function, file) &&
+	if(check_range(domainID, counters->domains_MAX, "domain", line, function, file) &&
 	   check_magic(domainID, checkMagic, domains[domainID].magic, "domain", line, function, file))
 		return &domains[domainID];
 	else
@@ -1115,11 +1118,11 @@ upstreamsData* _getUpstream(int upstreamID, bool checkMagic, int line, const cha
 	{
 		logg("ERROR: Tried to obtain upstream pointer without lock in %s() (%s:%i)!",
 		     function, file, line);
+		generate_backtrace();
 		return NULL;
 	}
 
-	if(is_our_lock() &&
-	   check_range(upstreamID, counters->upstreams_MAX, "upstream", line, function, file) && is_our_lock() &&
+	if(check_range(upstreamID, counters->upstreams_MAX, "upstream", line, function, file) && is_our_lock() &&
 	   check_magic(upstreamID, checkMagic, upstreams[upstreamID].magic, "upstream", line, function, file))
 		return &upstreams[upstreamID];
 	else
@@ -1137,11 +1140,11 @@ DNSCacheData* _getDNSCache(int cacheID, bool checkMagic, int line, const char * 
 	{
 		logg("ERROR: Tried to obtain cache pointer without lock in %s() (%s:%i)!",
 		     function, file, line);
+		generate_backtrace();
 		return NULL;
 	}
 
-	if(is_our_lock() &&
-	   check_range(cacheID, counters->dns_cache_MAX, "dns_cache", line, function, file) && is_our_lock() &&
+	if(check_range(cacheID, counters->dns_cache_MAX, "dns_cache", line, function, file) && is_our_lock() &&
 	   check_magic(cacheID, checkMagic, dns_cache[cacheID].magic, "dns_cache", line, function, file))
 		return &dns_cache[cacheID];
 	else

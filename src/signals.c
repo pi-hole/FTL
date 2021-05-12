@@ -84,6 +84,47 @@ static void print_addr2line(const char *symbol, const void *address, const int j
 }
 #endif
 
+// Log backtrace
+void generate_backtrace(void)
+{
+// Check GLIBC availability as MUSL does not support live backtrace generation
+#if defined(__GLIBC__)
+	// Try to obtain backtrace. This may not always be helpful, but it is better than nothing
+	void *buffer[255];
+	const int calls = backtrace(buffer, sizeof(buffer)/sizeof(void *));
+	logg("Backtrace:");
+
+	char ** bcktrace = backtrace_symbols(buffer, calls);
+	if(bcktrace == NULL)
+		logg("Unable to obtain backtrace symbols!");
+
+	// Try to compute binary offset from backtrace_symbols result
+	void *offset = NULL;
+	for(int j = 0; j < calls; j++)
+	{
+		void *p1 = NULL, *p2 = NULL;
+		char *pend = NULL;
+		if((pend = strrchr(bcktrace[j], '(')) != NULL &&
+		   strstr(bcktrace[j], BINARY_NAME) != NULL &&
+		   sscanf(pend, "(+%p) [%p]", &p1, &p2) == 2)
+		   offset = (void*)(p2-p1);
+	}
+
+	for(int j = 0; j < calls; j++)
+	{
+		logg("B[%04i]: %s", j,
+		     bcktrace != NULL ? bcktrace[j] : "---");
+
+		if(bcktrace != NULL)
+			print_addr2line(bcktrace[j], buffer[j], j, offset);
+	}
+	if(bcktrace != NULL)
+		free(bcktrace);
+#else
+	logg("!!! INFO: pihole-FTL has not been compiled with glibc/backtrace support, not generating one !!!");
+#endif
+}
+
 static void __attribute__((noreturn)) signal_handler(int sig, siginfo_t *si, void *unused)
 {
 	logg("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
@@ -189,42 +230,8 @@ static void __attribute__((noreturn)) signal_handler(int sig, siginfo_t *si, voi
 		}
 	}
 
-// Check GLIBC availability as MUSL does not support live backtrace generation
-#if defined(__GLIBC__)
-	// Try to obtain backtrace. This may not always be helpful, but it is better than nothing
-	void *buffer[255];
-	const int calls = backtrace(buffer, sizeof(buffer)/sizeof(void *));
-	logg("Backtrace:");
+	generate_backtrace();
 
-	char ** bcktrace = backtrace_symbols(buffer, calls);
-	if(bcktrace == NULL)
-		logg("Unable to obtain backtrace symbols!");
-
-	// Try to compute binary offset from backtrace_symbols result
-	void *offset = NULL;
-	for(int j = 0; j < calls; j++)
-	{
-		void *p1 = NULL, *p2 = NULL;
-		char *pend = NULL;
-		if((pend = strrchr(bcktrace[j], '(')) != NULL &&
-		   strstr(bcktrace[j], BINARY_NAME) != NULL &&
-		   sscanf(pend, "(+%p) [%p]", &p1, &p2) == 2)
-		   offset = (void*)(p2-p1);
-	}
-
-	for(int j = 0; j < calls; j++)
-	{
-		logg("B[%04i]: %s", j,
-		     bcktrace != NULL ? bcktrace[j] : "---");
-
-		if(bcktrace != NULL)
-			print_addr2line(bcktrace[j], buffer[j], j, offset);
-	}
-	if(bcktrace != NULL)
-		free(bcktrace);
-#else
-	logg("!!! INFO: pihole-FTL has not been compiled with glibc/backtrace support, not generating one !!!");
-#endif
 	// Print content of /dev/shm
 	ls_dir("/dev/shm");
 
