@@ -1077,6 +1077,10 @@ static struct listener *create_listeners(union mysockaddr *addr, int do_tftp, in
       l->iface = NULL;
     }
 
+    // Pi-hole modification
+    const int port = prettyprint_addr(addr, daemon->addrbuff);
+    logg("listening on %s port %d", daemon->addrbuff, port);
+
   return l;
 }
 
