@@ -218,7 +218,9 @@ void cleanup(const int ret)
 		terminate_threads();
 
 		// Close database connection
+		lock_shm();
 		gravityDB_close();
+		unlock_shm();
 
 		// Close sockets and delete Unix socket file handle
 		close_telnet_socket();

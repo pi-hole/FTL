@@ -355,7 +355,9 @@ void db_init(void)
 		dbversion = db_get_int(db, DB_VERSION);
 	}
 
+	lock_shm();
 	import_aliasclients(db);
+	unlock_shm();
 
 	// Close database to prevent having it opened all time
 	// We already closed the database when we returned earlier

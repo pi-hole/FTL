@@ -1227,8 +1227,6 @@ void parse_neighbor_cache(sqlite3* db)
 
 		// Get hostname of this client if the client is known
 		char *hostname = NULL;
-		// Get client pointer
-		clientsData *client = NULL;
 		bool client_valid = false;
 		time_t lastQuery = 0;
 		unsigned int numQueries = 0;
@@ -1238,7 +1236,7 @@ void parse_neighbor_cache(sqlite3* db)
 		if(clientID >= 0)
 		{
 			client_status[clientID] = CLIENT_ARP_COMPLETE;
-			client = getClient(clientID, true);
+			clientsData *client = getClient(clientID, true);
 			if(client != NULL)
 			{
 				client_valid = true;
@@ -1275,15 +1273,16 @@ void parse_neighbor_cache(sqlite3* db)
 				// Create new record (INSERT)
 				insert_netDB_device(db, hwaddr, now, lastQuery, numQueries, macVendor);
 
+				lock_shm();
+				clientsData *client = getClient(clientID, true);
 				if(client != NULL)
 				{
 					// Reacquire client pointer (if may have changed when unlocking above)
-					lock_shm();
 					client = getClient(clientID, true);
 					// Reset client ARP counter (we stored the entry in the database)
 					client->numQueriesARP = 0;
-					unlock_shm();
 				}
+				unlock_shm();
 
 				// Obtain ID which was given to this new entry
 				dbID = sqlite3_last_insert_rowid(db);
@@ -1330,23 +1329,21 @@ void parse_neighbor_cache(sqlite3* db)
 			if(rc != SQLITE_OK)
 				break;
 
-			// Reacquire client pointer (if may have changed when unlocking above)
-			client = getClient(clientID, true);
 
 			// Update number of queries if applicable
 			rc = update_netDB_numQueries(db, dbID, numQueries);
 			if(rc != SQLITE_OK)
 				break;
 
+			lock_shm();
+			// Acquire client pointer
+			clientsData *client = getClient(clientID, true);
 			if(client != NULL)
 			{
-				// Reacquire client pointer (if may have changed when unlocking above)
-				lock_shm();
-				client = getClient(clientID, true);
 				// Reset client ARP counter (we stored the entry in the database)
 				client->numQueriesARP = 0;
-				unlock_shm();
 			}
+			unlock_shm();
 
 			// Update hostname if available
 			rc = update_netDB_name(db, ip, hostname);
