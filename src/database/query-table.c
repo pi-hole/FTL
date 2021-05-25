@@ -52,10 +52,10 @@ static bool init_memory_database(sqlite3 **db, const char *name, const int busy)
 	}
 
 	// Create queries table in the database
-	rc = sqlite3_exec(*db, CREATE_QUERIES_TABLE_V7, NULL, NULL, NULL);
+	rc = sqlite3_exec(*db, CREATE_QUERIES_TABLE_V10, NULL, NULL, NULL);
 	if( rc != SQLITE_OK ){
 		logg("init_memory_database(%s: \"%s\") failed: %s",
-		     name, CREATE_QUERIES_TABLE_V7, sqlite3_errstr(rc));
+		     name, CREATE_QUERIES_TABLE_V10, sqlite3_errstr(rc));
 		sqlite3_close(*db);
 		return false;
 	}
@@ -111,8 +111,6 @@ bool init_memory_databases(void)
 	// Initialize in-memory database for new queries
 	if(!init_memory_database(&newdb, "file:newdb?mode=memory&cache=shared", 0))
 		return false;
-
-	logg("memdb: %p, newdb: %p", memdb, newdb);
 
 	// ATTACH newdb to memdb
 	const char *querystr = "ATTACH 'file:newdb?mode=memory&cache=shared' AS new";
@@ -352,6 +350,8 @@ bool import_queries_from_disk(void)
 	if(!detach_disk_database())
 		return false;
 
+	logg("Imported %d queries from the long-term database", sqlite3_changes(memdb));
+
 	return okay;
 }
 
@@ -513,7 +513,23 @@ bool add_additional_info_column(sqlite3 *db)
 	SQL_bool(db, "ALTER TABLE queries ADD COLUMN additional_info TEXT;");
 
 	// Update the database version to 7
-	SQL_bool(db, "INSERT OR REPLACE INTO ftl (id, value) VALUES ( %u, %i );", DB_VERSION, 7);
+	SQL_bool(db, "INSERT OR REPLACE INTO ftl (id, value) VALUES ("str(DB_VERSION)", 7);");
+
+	return true;
+}
+
+bool create_more_queries_columns(sqlite3 *db)
+{
+	// Add additional columns to the queries table
+	SQL_bool(db, "ALTER TABLE queries ADD COLUMN reply INTEGER;");
+	SQL_bool(db, "ALTER TABLE queries ADD COLUMN dnssec INTEGER;");
+	SQL_bool(db, "ALTER TABLE queries ADD COLUMN reply_time NUMBER;");
+	SQL_bool(db, "ALTER TABLE queries ADD COLUMN client_name TEXT;");
+	SQL_bool(db, "ALTER TABLE queries ADD COLUMN ttl INTEGER;");
+	SQL_bool(db, "ALTER TABLE queries ADD COLUMN regex_id INTEGER;");
+
+	// Update the database version to 10
+	SQL_bool(db, "INSERT OR REPLACE INTO ftl (id, value) VALUES ("str(DB_VERSION)", 10);");
 
 	return true;
 }
@@ -597,6 +613,22 @@ void DB_read_queries(void)
 			continue;
 		}
 
+		const int reply_int = sqlite3_column_int(stmt, 8);
+		if(reply_int < REPLY_UNKNOWN || reply_int >= REPLY_MAX)
+		{
+			logg("DB warn: REPLY should be within [%i,%i] but is %i", REPLY_UNKNOWN, REPLY_MAX-1, reply_int);
+			continue;
+		}
+		const enum reply_type reply = reply_int;
+
+		const int dnssec_int = sqlite3_column_int(stmt, 9);
+		if(dnssec_int < DNSSEC_UNKNOWN || dnssec_int >= DNSSEC_MAX)
+		{
+			logg("DB warn: REPLY should be within [%i,%i] but is %i", DNSSEC_UNKNOWN, DNSSEC_MAX-1, dnssec_int);
+			continue;
+		}
+		const enum dnssec_status dnssec = dnssec_int;
+
 		// Lock shared memory
 		lock_shm();
 
@@ -648,9 +680,10 @@ void DB_read_queries(void)
 		query->timeidx = timeidx;
 		query->db = dbid;
 		query->id = 0;
-		query->response = 0;
-		query->dnssec = DNSSEC_UNKNOWN;
-		query->reply = REPLY_UNKNOWN;
+		query->reply = reply;
+		query->dnssec = dnssec;
+		query->response = 0.0; // No need to restore this
+		query->ttl = 0; // No need to restore this
 		query->CNAME_domainID = -1;
 		// Initialize flags
 		query->flags.complete = true; // Mark as all information is available
@@ -695,7 +728,7 @@ void DB_read_queries(void)
 			const int cacheID = findCacheID(query->domainID, query->clientID, query->type);
 			DNSCacheData *cache = getDNSCache(cacheID, true);
 			// Only load if
-			//  a) we have a chace entry
+			//  a) we have a cache entry
 			//  b) the value of additional_info is not NULL (0 bytes storage size)
 			if(cache != NULL && sqlite3_column_bytes(stmt, 7) != 0)
 				cache->deny_regex_id = sqlite3_column_int(stmt, 7);
@@ -704,7 +737,8 @@ void DB_read_queries(void)
 		// Increment status counters, we first have to add one to the count of
 		// unknown queries because query_set_status() will subtract from there
 		// when setting a different status
-		counters->status[STATUS_UNKNOWN]++;
+		if(status != STATUS_UNKNOWN)
+			counters->status[STATUS_UNKNOWN]++;
 		query_set_status(query, status);
 
 		// Do further processing based on the query status we read from the database
@@ -762,13 +796,6 @@ void DB_read_queries(void)
 		unlock_shm();
 	}
 
-	logg("Imported %i queries from the long-term database", counters->queries);
-
-	// Update lastdbindex so that the next call to DB_save_queries()
-	// skips the queries that we just imported from the database
-	last_disk_db_idx = dbid;
-	last_mem_db_idx = dbid;
-
 	if( rc != SQLITE_DONE )
 	{
 		logg("DB_read_queries() - SQL error step: %s", sqlite3_errstr(rc));
@@ -777,6 +804,44 @@ void DB_read_queries(void)
 
 	// Finalize SQLite3 statement
 	sqlite3_finalize(stmt);
+
+	logg("Imported %i queries from the long-term database", counters->queries);
+
+	if(dbid == 0)
+	{
+		// If the Pi-hole was down fore more than 24 hours, we will not import
+		// anything here. Query the database to get the maximum database ID is
+		// important to avoid starting counting from zero
+		querystr = "SELECT MAX(id) FROM disk.queries";
+
+		// Attach disk database
+		if(!attach_disk_database())
+			return;
+
+		// Prepare SQLite3 statement
+		rc = sqlite3_prepare_v2(memdb, querystr, -1, &stmt, NULL);
+
+		// Perform step
+		if((rc = sqlite3_step(stmt)) == SQLITE_ROW)
+			dbid = sqlite3_column_int64(stmt, 0);
+		else
+			logg("DB_read_queries(): Failed to get MAX(id) from queries: %s",
+			     sqlite3_errstr(rc));
+
+		// Finalize statement
+		sqlite3_reset(stmt);
+		sqlite3_finalize(stmt);
+
+		if(!detach_disk_database())
+			return;
+
+		logg("Last long-term idx is %lld", dbid);
+	}
+
+	// Update lastdbindex so that the next call to DB_save_queries()
+	// skips the queries that we just imported from the database
+	last_disk_db_idx = dbid;
+	last_mem_db_idx = dbid;
 }
 
 bool query_to_database(queriesData *query)
@@ -790,12 +855,12 @@ bool query_to_database(queriesData *query)
 	if(query->privacylevel >= PRIVACY_MAXIMUM)
 	{
 		if(config.debug & DEBUG_DATABASE)
-			logg("Storing storing in database due to privacy level");
+			logg("Not storing query in database due to privacy level settings");
 		return true;
 	}
 
 	// Start preparing query
-	rc = sqlite3_prepare_v2(newdb, "REPLACE INTO queries VALUES (?,?,?,?,?,?,?,?)", -1, &stmt, NULL);
+	rc = sqlite3_prepare_v2(newdb, "REPLACE INTO queries VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", -1, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
 		logg("query_to_database() - SQL error step: %s", sqlite3_errstr(rc));
@@ -813,7 +878,7 @@ bool query_to_database(queriesData *query)
 		// We create a new query
 		idx = last_mem_db_idx + 1;
 	}
-	// INDEX
+	// ID
 	sqlite3_bind_int64(stmt, 1, idx);
 
 	// TIMESTAMP
@@ -839,8 +904,8 @@ bool query_to_database(queriesData *query)
 	sqlite3_bind_text(stmt, 5, domain, -1, SQLITE_STATIC);
 
 	// CLIENT
-	const char *client = getClientIPString(query);
-	sqlite3_bind_text(stmt, 6, client, -1, SQLITE_STATIC);
+	const char *clientip = getClientIPString(query);
+	sqlite3_bind_text(stmt, 6, clientip, -1, SQLITE_STATIC);
 
 	// FORWARD
 	if(query->upstreamID > -1)
@@ -872,7 +937,7 @@ bool query_to_database(queriesData *query)
 	}
 	else if(query->status == STATUS_REGEX)
 	{
-		// Restore regex ID if applicable
+		// Restore regex ID if applicable (only kept for legacy reasons)
 		const int cacheID = findCacheID(query->domainID, query->clientID, query->type);
 		DNSCacheData *cache = getDNSCache(cacheID, true);
 		if(cache != NULL)
@@ -884,6 +949,47 @@ bool query_to_database(queriesData *query)
 	{
 		// Nothing to add here
 		sqlite3_bind_null(stmt, 8);
+	}
+
+	// REPLY
+	sqlite3_bind_int(stmt, 9, query->reply);
+
+	// DNSSEC
+	sqlite3_bind_int(stmt, 10, query->dnssec);
+
+	// REPLY_TIME
+	if(query->response > 0.0)
+		// Store difference when applicable
+		sqlite3_bind_double(stmt, 11, query->response - query->timestamp);
+	else
+		// Store NULL otherwise
+		sqlite3_bind_null(stmt, 11);
+
+	// CLIENT_NAME
+	const char *clientname = getClientNameString(query);
+	const size_t clientnamelen = strlen(clientname);
+	if(clientnamelen > 0)
+		sqlite3_bind_text(stmt, 12, clientname, clientnamelen, SQLITE_STATIC);
+	else
+		sqlite3_bind_null(stmt, 12);
+
+	// TTL
+	sqlite3_bind_int(stmt, 13, query->ttl);
+
+	// REGEX_ID
+	if(query->status == STATUS_REGEX)
+	{
+		// Restore regex ID if applicable
+		const int cacheID = findCacheID(query->domainID, query->clientID, query->type);
+		DNSCacheData *cache = getDNSCache(cacheID, true);
+		if(cache != NULL)
+			sqlite3_bind_int(stmt, 14, cache->deny_regex_id);
+		else
+			sqlite3_bind_null(stmt, 14);
+	}
+	else
+	{
+		sqlite3_bind_null(stmt, 14);
 	}
 
 	// Step and check if successful

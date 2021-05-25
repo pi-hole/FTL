@@ -44,6 +44,8 @@ void _FTL_header_analysis(const unsigned char header4, const unsigned int rcode,
 		return;
 	}
 
+	const double now = double_time();
+
 	// Lock shared memory
 	lock_shm();
 
@@ -87,17 +89,13 @@ void _FTL_header_analysis(const unsigned char header4, const unsigned int rcode,
 		logg("**** %s externally blocked (ID %i, FTL %i, %s:%i)", domainname, id, queryID, file, line);
 	}
 
-	// Get response time
-	struct timeval response;
-	gettimeofday(&response, 0);
-
 	// Store query as externally blocked
 	clientsData *client = getClient(query->clientID, true);
 	if(client != NULL)
 		query_blocked(query, domain, client, STATUS_EXTERNAL_BLOCKED_NXRA);
 
 	// Store reply type as replied with NXDOMAIN
-	query_set_reply(F_NEG | F_NXDOMAIN, NULL, query, response);
+	query_set_reply(F_NEG | F_NXDOMAIN, NULL, query, now);
 
 	// Unlock shared memory
 	unlock_shm();

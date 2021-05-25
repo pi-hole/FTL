@@ -13,30 +13,60 @@
 // struct queriesData
 #include "../datastructure.h"
 
-#define CREATE_QUERIES_TABLE_V1 "CREATE TABLE queries ( id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL, type INTEGER NOT NULL, status INTEGER NOT NULL, domain TEXT NOT NULL, client TEXT NOT NULL, forward TEXT );"
-#define CREATE_QUERIES_TABLE_V7 "CREATE TABLE queries ( id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL, type INTEGER NOT NULL, status INTEGER NOT NULL, domain TEXT NOT NULL, client TEXT NOT NULL, forward TEXT, additional_info TEXT );"
-#define CREATE_QUERIES_TABLE_INMEM "CREATE TABLE queries ( id INTEGER PRIMARY KEY AUTOINCREMENT, " \
-                                                          "timestamp INTEGER NOT NULL, " \
-                                                          "type INTEGER NOT NULL, " \
-                                                          "status INTEGER NOT NULL, " \
-                                                          "domain TEXT NOT NULL, " \
-                                                          "client TEXT NOT NULL, " \
-                                                          "forward TEXT, " \
-                                                          "additional_info TEXT );"
-#define CREATE_QUERIES_TIMESTAMP_INDEX "CREATE INDEX idx_queries_timestamp ON queries (timestamp);"
 #define CREATE_FTL_TABLE "CREATE TABLE ftl ( id INTEGER PRIMARY KEY NOT NULL, value BLOB NOT NULL );"
-#define CREATE_QUERIES_TYPE_INDEX "CREATE INDEX idx_queries_type ON queries (type);"
-#define CREATE_QUERIES_STATUS_INDEX "CREATE INDEX idx_queries_status ON queries (status);"
-#define CREATE_QUERIES_DOMAIN_INDEX "CREATE INDEX idx_queries_domain ON queries (domain);"
-#define CREATE_CLIENT_DOMAIN_INDEX "CREATE INDEX idx_queries_client ON queries (client);"
-#define CREATE_FORWARD_DOMAIN_INDEX "CREATE INDEX idx_queries_forward ON queries (forward);"
+
+#define CREATE_QUERIES_TABLE_V1 "CREATE TABLE queries ( id INTEGER PRIMARY KEY AUTOINCREMENT, " \
+                                                       "timestamp INTEGER NOT NULL, " \
+                                                       "type INTEGER NOT NULL, " \
+                                                       "status INTEGER NOT NULL, " \
+                                                       "domain TEXT NOT NULL, " \
+                                                       "client TEXT NOT NULL, " \
+                                                       "forward TEXT );"
+
+#define CREATE_QUERIES_TABLE_V10 "CREATE TABLE queries ( id INTEGER PRIMARY KEY AUTOINCREMENT, " \
+                                                        "timestamp INTEGER NOT NULL, " \
+                                                        "type INTEGER NOT NULL, " \
+                                                        "status INTEGER NOT NULL, " \
+                                                        "domain TEXT NOT NULL, " \
+                                                        "client TEXT NOT NULL, " \
+                                                        "forward TEXT, " \
+                                                        "additional_info TEXT, " \
+                                                        "reply INTEGER, " \
+                                                        "dnssec INTEGER, " \
+                                                        "reply_time NUMBER, " \
+                                                        "client_name TEXT, " \
+                                                        "ttl INTEGER, " \
+                                                        "regex_id INTEGER );"
+
+#define CREATE_QUERIES_ID_INDEX			"CREATE INDEX idx_queries_id ON queries (id);"
+#define CREATE_QUERIES_TIMESTAMP_INDEX		"CREATE INDEX idx_queries_timestamp ON queries (timestamp);"
+#define CREATE_QUERIES_TYPE_INDEX		"CREATE INDEX idx_queries_type ON queries (type);"
+#define CREATE_QUERIES_STATUS_INDEX		"CREATE INDEX idx_queries_status ON queries (status);"
+#define CREATE_QUERIES_DOMAIN_INDEX		"CREATE INDEX idx_queries_domain ON queries (domain);"
+#define CREATE_QUERIES_CLIENT_INDEX		"CREATE INDEX idx_queries_client ON queries (client);"
+#define CREATE_QUERIES_FORWARD_INDEX		"CREATE INDEX idx_queries_forward ON queries (forward);"
+#define CREATE_QUERIES_ADDITIONAL_INFO_INDEX	"CREATE INDEX idx_queries_additional_info ON queries (additional_info);"
+#define CREATE_QUERIES_DNSSEC_INDEX		"CREATE INDEX idx_queries_dnssec ON queries (dnssec);"
+#define CREATE_QUERIES_REPLY_TIME_INDEX		"CREATE INDEX idx_queries_reply_time ON queries (reply_time);"
+#define CREATE_QUERIES_CLIENT_NAME_INDEX	"CREATE INDEX idx_queries_client_name ON queries (client_name);"
+#define CREATE_QUERIES_TTL_INDEX		"CREATE INDEX idx_queries_ttl ON queries (ttl);"
+#define CREATE_QUERIES_REGEX_ID_INDEX		"CREATE INDEX idx_queries_regex_id ON queries (regex_id);"
 #ifdef QUERY_TABLE_PRIVATE
-const char *index_creation[] = { CREATE_QUERIES_TIMESTAMP_INDEX,
-                                 CREATE_QUERIES_TYPE_INDEX,
-                                 CREATE_QUERIES_STATUS_INDEX,
-                                 CREATE_QUERIES_DOMAIN_INDEX,
-                                 CREATE_CLIENT_DOMAIN_INDEX,
-                                 CREATE_FORWARD_DOMAIN_INDEX };
+const char *index_creation[] = {
+	CREATE_QUERIES_ID_INDEX,
+	CREATE_QUERIES_TIMESTAMP_INDEX,
+	CREATE_QUERIES_TYPE_INDEX,
+	CREATE_QUERIES_STATUS_INDEX,
+	CREATE_QUERIES_DOMAIN_INDEX,
+	CREATE_QUERIES_CLIENT_INDEX,
+	CREATE_QUERIES_FORWARD_INDEX,
+	CREATE_QUERIES_ADDITIONAL_INFO_INDEX,
+	CREATE_QUERIES_DNSSEC_INDEX,
+	CREATE_QUERIES_REPLY_TIME_INDEX,
+	CREATE_QUERIES_CLIENT_NAME_INDEX,
+	CREATE_QUERIES_TTL_INDEX,
+	CREATE_QUERIES_REGEX_ID_INDEX
+};
 #endif
 
 bool init_memory_databases(void);
@@ -49,5 +79,6 @@ bool mv_newdb_memdb(void);
 bool add_additional_info_column(sqlite3 *db);
 void DB_read_queries(void);
 bool query_to_database(queriesData *query);
+bool create_more_queries_columns(sqlite3 *db);
 
 #endif //QUERY_TABLE_PRIVATE_H

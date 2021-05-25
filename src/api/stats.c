@@ -59,14 +59,12 @@ static int __attribute__((pure)) cmpdesc(const void *a, const void *b)
 
 static int get_query_types_obj(struct ftl_conn *api, cJSON *types)
 {
-	queriesData q = { 0 };
 	for(unsigned int i = TYPE_A; i < TYPE_MAX; i++)
 	{
 		// We add the collective OTHER type at the end
 		if(i == TYPE_OTHER)
 			continue;
-		q.type = i;
-		JSON_OBJ_ADD_NUMBER(types, get_query_type_str(&q, NULL), counters->querytype[i]);
+		JSON_OBJ_ADD_NUMBER(types, get_query_type_str(i, NULL, NULL), counters->querytype[i]);
 	}
 	JSON_OBJ_ADD_NUMBER(types, "OTHER", counters->querytype[TYPE_OTHER]);
 
@@ -101,12 +99,8 @@ int api_stats_summary(struct ftl_conn *api)
 
 
 	cJSON *replies = JSON_NEW_OBJ();
-	queriesData query = { 0 };
 	for(enum reply_type reply = 0; reply < REPLY_MAX; reply++)
-	{
-		query.reply = reply;
-		JSON_OBJ_ADD_NUMBER(replies, get_query_reply_str(&query), counters->reply[reply]);
-	}
+		JSON_OBJ_ADD_NUMBER(replies, get_query_reply_str(reply), counters->reply[reply]);
 	JSON_OBJ_ADD_ITEM(queries, "replies", replies);
 
 	cJSON *json = JSON_NEW_OBJ();

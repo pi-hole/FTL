@@ -118,7 +118,6 @@ set(sources
         datastructure.h
         dhcp-discover.c
         dhcp-discover.h
-        dnsmasq_interface.c
         dnsmasq_interface.h
         fifo.c
         fifo.h

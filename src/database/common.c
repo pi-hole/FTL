@@ -345,6 +345,21 @@ void db_init(void)
 		dbversion = db_get_int(db, DB_VERSION);
 	}
 
+	// Update to version 10 if lower
+	if(dbversion < 10)
+	{
+		// Update to version 10: Add more fields to queries table
+		logg("Updating long-term database to version 10");
+		if(!create_more_queries_columns(db))
+		{
+			logg("Long-term database not initialized, database not available");
+			dbclose(&db);
+			return;
+		}
+		// Get updated version
+		dbversion = db_get_int(db, DB_VERSION);
+	}
+
 	import_aliasclients(db);
 
 	// Close database to prevent having it opened all time

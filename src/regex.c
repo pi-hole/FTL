@@ -124,12 +124,10 @@ bool compile_regex(const char *regexin, regexData *regex, char **message)
 				}
 
 				// Test input string against all implemented query types
-				queriesData q = { 0 };
-				for(enum query_types qtype = TYPE_A; qtype < TYPE_MAX; qtype++)
+				for(enum query_type qtype = TYPE_A; qtype < TYPE_MAX; qtype++)
 				{
 					// Check for querytype
-					q.type = qtype;
-					const char *qtypestr = get_query_type_str(&q, NULL);
+					const char *qtypestr = get_query_type_str(qtype, NULL, NULL);
 					if(strcasecmp(extra, qtypestr) == 0)
 					{
 						regex->query_type = qtype;
@@ -155,8 +153,7 @@ bool compile_regex(const char *regexin, regexData *regex, char **message)
 				// Debug output
 				else if(config.debug & DEBUG_REGEX)
 				{
-					q.type = regex->query_type;
-					const char *qtypestr = get_query_type_str(&q, NULL);
+					const char *qtypestr = get_query_type_str(regex->query_type, NULL, NULL);
 					logg("   This regex will %s match query type %s",
 					     regex->query_type_inverted ? "NOT" : "ONLY",
 					     qtypestr);

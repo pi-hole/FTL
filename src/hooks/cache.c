@@ -34,6 +34,7 @@ void _FTL_cache(const unsigned int flags, const char *name, const union all_addr
                 const char *file, const int line)
 {
 	// Save that this query got answered from cache
+	const double now = double_time();
 
 	// If domain is "pi.hole", we skip this query
 	// We compare case-insensitive here
@@ -54,10 +55,6 @@ void _FTL_cache(const unsigned int flags, const char *name, const union all_addr
 		logg("**** got cache answer for %s / %s / %s (ID %i, %s:%i)", name, dest, arg, id, file, line);
 		print_flags(flags);
 	}
-
-	// Get response time
-	struct timeval response;
-	gettimeofday(&response, 0);
 
 	// Lock shared memory
 	lock_shm();
@@ -135,7 +132,7 @@ void _FTL_cache(const unsigned int flags, const char *name, const union all_addr
 		}
 
 		// Save reply type and update individual reply counters
-		query_set_reply(flags, addr, query, response);
+		query_set_reply(flags, addr, query, now);
 
 		// Hereby, this query is now fully determined
 		query->flags.complete = true;

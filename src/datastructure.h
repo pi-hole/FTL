@@ -22,7 +22,7 @@
 typedef struct {
 	unsigned char magic;
 	enum query_status status;
-	enum query_types type;
+	enum query_type type;
 	enum privacy_level privacylevel;
 	enum reply_type reply;
 	enum dnssec_status dnssec;
@@ -33,11 +33,10 @@ typedef struct {
 	int id; // the ID is a (signed) int in dnsmasq, so no need for a long int here
 	int CNAME_domainID; // only valid if query has a CNAME blocking status
 	unsigned int timeidx;
-	unsigned long response; // saved in units of 1/10 milliseconds (1 = 0.1ms, 2 = 0.2ms, 2500 = 250.0ms, etc.)
-	unsigned long forwardresponse; // saved in units of 1/10 milliseconds (1 = 0.1ms, 2 = 0.2ms, 2500 = 250.0ms, etc.)
+	double response;
 	double timestamp;
-	unsigned long ttl;
 	int64_t db;
+	unsigned int ttl;
 	// Adjacent bit field members in the struct flags may be packed to share
 	// and straddle the individual bytes. It is useful to pack the memory as
 	// tightly as possible as there may be dozens of thousands of these
@@ -52,7 +51,7 @@ typedef struct {
 } queriesData;
 
 // ARM needs alignment to 8-byte boundary
-ASSERT_SIZEOF(queriesData, 80, 64, 72);
+ASSERT_SIZEOF(queriesData, 64, 64, 64);
 
 typedef struct {
 	unsigned char magic;
@@ -111,7 +110,7 @@ typedef struct {
 	unsigned char magic;
 	enum domain_client_status blocking_status;
 	unsigned char force_reply;
-	enum query_types query_type;
+	enum query_type query_type;
 	int domainID;
 	int clientID;
 	int deny_regex_id;
@@ -123,7 +122,7 @@ int findQueryID(const int id);
 int findUpstreamID(const char * upstream, const in_port_t port);
 int findDomainID(const char *domain, const bool count);
 int findClientID(const char *client, const bool count, const bool aliasclient);
-int findCacheID(int domainID, int clientID, enum query_types query_type);
+int findCacheID(int domainID, int clientID, enum query_type query_type);
 bool isValidIPv4(const char *addr);
 bool isValidIPv6(const char *addr);
 
@@ -142,10 +141,10 @@ const char *getClientIPString(const queriesData* query);
 const char *getClientNameString(const queriesData* query);
 
 void change_clientcount(clientsData *client, int total, int blocked, int overTimeIdx, int overTimeMod);
-const char *get_query_type_str(const queriesData *query, char *buffer);
-const char *get_query_status_str(const queriesData *query) __attribute__ ((pure));
-const char *get_query_dnssec_str(const queriesData *query) __attribute__ ((pure));
-const char *get_query_reply_str(const queriesData *query) __attribute__ ((pure));
+const char *get_query_type_str(const enum query_type type, const queriesData *query, char *buffer);
+const char *get_query_status_str(const enum query_status status) __attribute__ ((const));
+const char *get_query_dnssec_str(const enum dnssec_status dnssec) __attribute__ ((const));
+const char *get_query_reply_str(const enum reply_type query) __attribute__ ((const));
 
 // Pointer getter functions
 #define getQuery(queryID, checkMagic) _getQuery(queryID, checkMagic, __LINE__, __FUNCTION__, __FILE__)

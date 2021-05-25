@@ -60,9 +60,14 @@ void print_flags(const unsigned int flags)
 	if(!(config.debug & DEBUG_FLAGS))
 		return;
 
-	char flagstr[sizeof(flagnames) + 1];
+	// Get static buffer that is large enough to hold all flags at once
+	char flagstr[sizeof(flagnames) + 1] = { 0 };
+
+	// Append all set flags
 	for (unsigned int i = 0; i < (sizeof(flagnames) / sizeof(*flagnames)); i++)
 		if (flags & (1u << i))
 			strcat(flagstr, flagnames[i]);
+
+	// Print result
 	logg("     Flags: %s", flagstr);
 }

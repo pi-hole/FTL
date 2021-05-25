@@ -49,7 +49,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	gettimeofday(&request, 0);
 
 	// Determine query type
-	enum query_types querytype;
+	enum query_type querytype;
 	switch(qtype)
 	{
 		case T_A:
@@ -244,8 +244,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// Initialize database rowID, will be set later
 	query->db = -1;
 	query->flags.complete = false;
-	query->response = converttimeval(request);
-	query->forwardresponse = 0u;
+	query->response = 0.0;
 	// Initialize reply type
 	query->reply = REPLY_UNKNOWN;
 	// Store DNSSEC result for this domain

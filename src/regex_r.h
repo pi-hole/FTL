@@ -31,7 +31,7 @@ typedef struct {
 	bool available;
 	bool inverted;
 	bool query_type_inverted;
-	enum query_types query_type;
+	enum query_type query_type;
 	int database_id;
 	char *string;
 	regex_t regex;

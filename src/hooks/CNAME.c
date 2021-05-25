@@ -33,6 +33,8 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 		return false;
 	}
 
+	const double now = double_time();
+
 	// Lock shared memory
 	lock_shm();
 
@@ -96,9 +98,7 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 		parent_domain->blockedcount++;
 
 		// Store query response as CNAME type
-		struct timeval response;
-		gettimeofday(&response, 0);
-		query_set_reply(F_CNAME, NULL, query, response);
+		query_set_reply(F_CNAME, NULL, query, now);
 
 		// Store domain that was the reason for blocking the entire chain
 		query->CNAME_domainID = child_domainID;

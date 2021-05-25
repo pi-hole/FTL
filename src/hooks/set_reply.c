@@ -34,7 +34,7 @@ static const char *reply_status_str[REPLY_MAX] = {
 };
 
 void query_set_reply(const unsigned int flags, const union all_addr *addr,
-                     queriesData *query, const struct timeval response)
+                     queriesData *query, const double now)
 {
 	// Iterate through possible values
 	if(flags & F_NEG || force_next_DNS_reply == NXDOMAIN)
@@ -83,6 +83,5 @@ void query_set_reply(const unsigned int flags, const union all_addr *addr,
 	counters->reply[query->reply]++;
 
 	// Save response time (relative time)
-	query->response = converttimeval(response) -
-	                            query->response;
+	query->response = now;
 }

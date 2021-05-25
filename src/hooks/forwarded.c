@@ -18,8 +18,6 @@
 #include "../log.h"
 // lock_shm(), addstr(), etc.
 #include "../shmem.h"
-// query_set_reply()
-#include "set_reply.h"
 // converttimeval()
 #include "../timers.h"
 // query_to_database()
@@ -29,6 +27,7 @@ void _FTL_forwarded(const unsigned int flags, const char *name, const struct ser
                     const char *file, const int line)
 {
 	// Save that this query got forwarded to an upstream server
+	const double now = double_time();
 
 	// Lock shared memory
 	lock_shm();
@@ -117,12 +116,9 @@ void _FTL_forwarded(const unsigned int flags, const char *name, const struct ser
 		// server.a.com wit the much shorter TTL, we still have to forward
 		// something and ask the upstream server for the final IP address.
 
-		// Correct reply timer
-		struct timeval response;
-		gettimeofday(&response, 0);
 		// Reset timer, shift slightly into the past to acknowledge the time
 		// FTLDNS needed to look up the CNAME in its cache
-		query->response = converttimeval(response) - query->response;
+		query->response = now;
 	}
 	else
 	{
@@ -136,10 +132,6 @@ void _FTL_forwarded(const unsigned int flags, const char *name, const struct ser
 	// from above as otherwise this check will always
 	// be negative
 	query_set_status(query, STATUS_FORWARDED);
-
-	struct timeval request;
-	gettimeofday(&request, 0);
-	query->forwardresponse = converttimeval(request);
 
 	// Release allocated memory
 	free(upstreamIP);

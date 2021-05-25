@@ -29,9 +29,8 @@ void query_blocked(queriesData* query, domainsData* domain, clientsData* client,
 {
 	// Get response time
 	int blocking_flags = 0;
-	struct timeval response;
-	gettimeofday(&response, 0);
-	query_set_reply(blocking_flags, NULL, query, response);
+	const double now = double_time();
+	query_set_reply(blocking_flags, NULL, query, now);
 
 	// Adjust counters if we recorded a non-blocking status
 	if(query->status == STATUS_FORWARDED)

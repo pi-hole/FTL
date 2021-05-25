@@ -108,10 +108,10 @@ int api_queries_suggestions(struct ftl_conn *api)
 	// Get types
 	cJSON *type = JSON_NEW_ARRAY();
 	queriesData query = { 0 };
-	for(enum query_types t = TYPE_A; t < TYPE_MAX; t++)
+	for(enum query_type t = TYPE_A; t < TYPE_MAX; t++)
 	{
 		query.type = t;
-		const char *string = get_query_type_str(&query, NULL);
+		const char *string = get_query_type_str(t, &query, NULL);
 		JSON_ARRAY_REF_STR(type, string);
 	}
 
@@ -120,7 +120,7 @@ int api_queries_suggestions(struct ftl_conn *api)
 	for(enum query_status s = STATUS_UNKNOWN; s < STATUS_MAX; s++)
 	{
 		query.status = s;
-		const char *string = get_query_status_str(&query);
+		const char *string = get_query_status_str(query.status);
 		JSON_ARRAY_REF_STR(status, string);
 	}
 
@@ -129,7 +129,7 @@ int api_queries_suggestions(struct ftl_conn *api)
 	for(enum reply_type r = REPLY_UNKNOWN; r < REPLY_MAX; r++)
 	{
 		query.reply = r;
-		const char *string = get_query_reply_str(&query);
+		const char *string = get_query_reply_str(query.reply);
 		JSON_ARRAY_REF_STR(reply, string);
 	}
 
@@ -138,7 +138,7 @@ int api_queries_suggestions(struct ftl_conn *api)
 	for(enum dnssec_status d = DNSSEC_UNKNOWN; d < DNSSEC_MAX; d++)
 	{
 		query.dnssec = d;
-		const char *string = get_query_dnssec_str(&query);
+		const char *string = get_query_dnssec_str(query.dnssec);
 		JSON_ARRAY_REF_STR(dnssec, string);
 	}
 
@@ -154,7 +154,7 @@ int api_queries_suggestions(struct ftl_conn *api)
 	JSON_SEND_OBJECT(json);
 }
 
-#define QUERYSTR "SELECT id,timestamp,type,status,domain,client,forward,additional_info FROM queries"
+#define QUERYSTR "SELECT id,timestamp,type,status,domain,client,forward,additional_info,reply,dnssec,reply_time,client_name,ttl,regex_id FROM queries"
 #define QUERYSTRLEN 2048
 static void add_querystr_double(struct ftl_conn *api, char *querystr, const char *sql, const char *uripart)
 {
@@ -340,7 +340,6 @@ int api_queries(struct ftl_conn *api)
 	int added = 0;
 	while((rc = sqlite3_step(read_stmt)) == SQLITE_ROW)
 	{
-		logg("A");
 		cJSON *item = JSON_NEW_OBJ();
 		queriesData query = { 0 };
 		char buffer[20] = { 0 };
@@ -348,12 +347,12 @@ int api_queries(struct ftl_conn *api)
 		JSON_OBJ_ADD_NUMBER(item, "time", sqlite3_column_double(read_stmt, 1));
 		query.type = sqlite3_column_int(read_stmt, 2);
 		query.status = sqlite3_column_int(read_stmt, 3);
-		query.reply = REPLY_UNKNOWN;
-		query.dnssec = DNSSEC_UNKNOWN;
+		query.reply = sqlite3_column_int(read_stmt, 8);
+		query.dnssec = sqlite3_column_int(read_stmt, 9);
 		// We have to copy the string as TYPExxx string won't be static
-		JSON_OBJ_COPY_STR(item, "type", get_query_type_str(&query, buffer));
-		JSON_OBJ_REF_STR(item, "status", get_query_status_str(&query));
-		JSON_OBJ_REF_STR(item, "dnssec", get_query_dnssec_str(&query));
+		JSON_OBJ_COPY_STR(item, "type", get_query_type_str(query.type, &query, buffer));
+		JSON_OBJ_REF_STR(item, "status", get_query_status_str(query.status));
+		JSON_OBJ_REF_STR(item, "dnssec", get_query_dnssec_str(query.dnssec));
 		JSON_OBJ_COPY_STR(item, "domain", sqlite3_column_text(read_stmt, 4));
 		if(sqlite3_column_type(read_stmt, 6) == SQLITE_NULL)
 		{
@@ -365,19 +364,24 @@ int api_queries(struct ftl_conn *api)
 		}
 
 		cJSON *reply = JSON_NEW_OBJ();
-		JSON_OBJ_REF_STR(reply, "type", get_query_reply_str(&query));
-		JSON_OBJ_ADD_NUMBER(reply, "time", 0); // TODO: Needs to be added to the SQL database
+		JSON_OBJ_REF_STR(reply, "type", get_query_reply_str(query.reply));
+		JSON_OBJ_ADD_NUMBER(reply, "time", sqlite3_column_double(read_stmt, 10));
 		JSON_OBJ_ADD_ITEM(item, "reply", reply);
 
 		cJSON *client = JSON_NEW_OBJ();
-		// TODO: Add "client" field (may be NULL) with hostname stored in database
 		JSON_OBJ_COPY_STR(client, "ip", sqlite3_column_text(read_stmt, 5));
-		JSON_OBJ_REF_STR(client, "name", "localhost");
+		if(sqlite3_column_type(read_stmt, 11) == SQLITE_TEXT)
+		{
+			JSON_OBJ_COPY_STR(client, "name", sqlite3_column_text(read_stmt, 11));
+		}
+		else
+		{
+			JSON_OBJ_ADD_NULL(client, "name");
+		}
 		JSON_OBJ_ADD_ITEM(item, "client", client);
 
-
-		JSON_OBJ_ADD_NUMBER(item, "ttl", 0); // TODO: Needs to be added to the SQL database
-		JSON_OBJ_ADD_NUMBER(item, "regex", 0); // TODO: Needs to be added to the SQL database
+		JSON_OBJ_ADD_NUMBER(item, "ttl", sqlite3_column_int(read_stmt, 12));
+		JSON_OBJ_ADD_NUMBER(item, "regex_id", sqlite3_column_int(read_stmt, 13));
 
 		JSON_ARRAY_ADD_ITEM(queries, item);
 
@@ -388,7 +392,6 @@ int api_queries(struct ftl_conn *api)
 
 //		lastID = queryID;
 	}
-		logg("B");
 	cJSON *json = JSON_NEW_OBJ();
 	JSON_OBJ_ADD_ITEM(json, "queries", queries);
 
@@ -405,7 +408,6 @@ int api_queries(struct ftl_conn *api)
 	JSON_OBJ_ADD_NUMBER(json, "recordsFiltered", cursor); // Until we implement server-side filtering
 	JSON_OBJ_ADD_NUMBER(json, "draw", draw);
 
-		logg("C");
 	JSON_SEND_OBJECT(json);
 }
 /*

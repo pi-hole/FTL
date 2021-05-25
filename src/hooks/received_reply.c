@@ -34,6 +34,8 @@
 void _FTL_reply(const unsigned int flags, const char *name, const union all_addr *addr, const int id,
                 const unsigned long ttl, const char* file, const int line)
 {
+	const double now = double_time();
+
 	// Lock shared memory
 	lock_shm();
 
@@ -128,7 +130,7 @@ void _FTL_reply(const unsigned int flags, const char *name, const union all_addr
 		query_set_status(query, STATUS_CACHE);
 
 		// Save reply type and update individual reply counters
-		query_set_reply(flags, addr, query, response);
+		query_set_reply(flags, addr, query, now);
 
 		// Hereby, this query is now fully determined
 		query->flags.complete = true;
@@ -150,7 +152,7 @@ void _FTL_reply(const unsigned int flags, const char *name, const union all_addr
 		   query->status != STATUS_EXTERNAL_BLOCKED_NXRA)
 		{
 			// Save reply type and update individual reply counters
-			query_set_reply(flags, addr, query, response);
+			query_set_reply(flags, addr, query, now);
 
 			// Detect if returned IP indicates that this query was blocked
 			const enum query_status new_status = detect_blocked_IP(flags, addr, query, domain);
@@ -176,7 +178,7 @@ void _FTL_reply(const unsigned int flags, const char *name, const union all_addr
 		// Hence, isExactMatch is always false
 
 		// Save reply type and update individual reply counters
-		query_set_reply(flags, addr, query, response);
+		query_set_reply(flags, addr, query, now);
 	}
 	else if(isExactMatch && !query->flags.complete)
 	{

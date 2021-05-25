@@ -85,7 +85,7 @@ enum regex_type {
 	REGEX_MAX
 } __attribute__ ((packed));
 
-enum query_types {
+enum query_type {
 	TYPE_A = 1,
 	TYPE_AAAA,
 	TYPE_ANY,

@@ -164,11 +164,14 @@ void *GC_thread(void *val)
 				if(query->type < TYPE_MAX)
 					counters->querytype[query->type]--;
 
+				// Subtract UNKNOWN from the counters before
+				// setting the status if different. This ensure
+				// we are not counting them at all.
+				if(query->status != STATUS_UNKNOWN)
+					counters->status[STATUS_UNKNOWN]--;
+
 				// Set query again to UNKNOWN to reset the counters
 				query_set_status(query, STATUS_UNKNOWN);
-
-				// Finally, remove the last trace of this query
-				counters->status[STATUS_UNKNOWN]--;
 
 				// Count removed queries
 				removed++;

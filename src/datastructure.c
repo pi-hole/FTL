@@ -300,7 +300,7 @@ void change_clientcount(clientsData *client, int total, int blocked, int overTim
 		}
 }
 
-int findCacheID(int domainID, int clientID, enum query_types query_type)
+int findCacheID(int domainID, int clientID, enum query_type query_type)
 {
 	// Compare content of client against known client IP addresses
 	for(int cacheID = 0; cacheID < counters->dns_cache_size; cacheID++)
@@ -486,9 +486,9 @@ void FTL_reload_all_domainlists(void)
 	unlock_shm();
 }
 
-const char *get_query_type_str(const queriesData *query, char *buffer)
+const char *get_query_type_str(const enum query_type type, const queriesData *query, char *buffer)
 {
-	switch (query->type)
+	switch (type)
 	{
 		case TYPE_A:
 			return "A";
@@ -517,7 +517,7 @@ const char *get_query_type_str(const queriesData *query, char *buffer)
 		case TYPE_NS:
 			return "NS";
 		case TYPE_OTHER:
-			if(buffer != NULL)
+			if(query != NULL && buffer != NULL)
 			{
 				// Build custom query type string in buffer
 				sprintf(buffer, "TYPE%d", query->qtype);
@@ -538,9 +538,9 @@ const char *get_query_type_str(const queriesData *query, char *buffer)
 	}
 }
 
-const char * __attribute__ ((pure)) get_query_status_str(const queriesData *query)
+const char * __attribute__ ((const)) get_query_status_str(const enum query_status status)
 {
-	switch (query->status)
+	switch (status)
 	{
 		case STATUS_UNKNOWN:
 			return "UNKNOWN";
@@ -574,13 +574,13 @@ const char * __attribute__ ((pure)) get_query_status_str(const queriesData *quer
 			return "IN_PROGRESS";
 		case STATUS_MAX:
 		default:
-			return "STATUS_MAX";
+			return "INVALID";
 	}
 }
 
-const char * __attribute__ ((pure)) get_query_reply_str(const queriesData *query)
+const char * __attribute__ ((const)) get_query_reply_str(const enum reply_type reply)
 {
-	switch (query->reply)
+	switch (reply)
 	{
 		case REPLY_UNKNOWN:
 			return "UNKNOWN";
@@ -610,9 +610,9 @@ const char * __attribute__ ((pure)) get_query_reply_str(const queriesData *query
 	}
 }
 
-const char * __attribute__ ((pure)) get_query_dnssec_str(const queriesData *query)
+const char * __attribute__ ((const)) get_query_dnssec_str(const enum dnssec_status dnssec)
 {
-	switch (query->dnssec)
+	switch (dnssec)
 	{
 		case DNSSEC_UNKNOWN:
 			return "UNKNOWN";
@@ -682,10 +682,9 @@ int __attribute__ ((pure)) get_cached_count(void)
 void query_set_status(queriesData *query, const enum query_status new_status)
 {
 	// Debug logging
-	char buffer[16] = { 0 };
 	if(config.debug & DEBUG_STATUS)
 	{
-		const char *oldstr = query->status < STATUS_MAX ? get_query_type_str(query, buffer) : "INVALID";
+		const char *oldstr = get_query_status_str(query->status);
 		if(query->status == new_status)
 		{
 			logg("Query %i: status unchanged: %s (%d)",
@@ -693,7 +692,7 @@ void query_set_status(queriesData *query, const enum query_status new_status)
 		}
 		else
 		{
-			const char *newstr = new_status < STATUS_MAX ? get_query_type_str(query, buffer) : "INVALID";
+			const char *newstr = get_query_status_str(new_status);
 			logg("Query %i: status changed: %s (%d) -> %s (%d)",
 			     query->id, oldstr, query->status, newstr, new_status);
 		}
