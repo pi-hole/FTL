@@ -64,8 +64,15 @@ void FTL_TCP_worker_terminating(bool finished)
 		return;
 	}
 
+	// First check if we already locked before. This can happen when a fork
+	// is running into a timeout while it is still processing something and
+	// still holding a lock.
+	if(!is_our_lock())
+		lock_shm();
+
 	// Close dedicated database connections of this fork
 	gravityDB_close();
+	unlock_shm();
 }
 
 // Called when a (forked) TCP worker is created

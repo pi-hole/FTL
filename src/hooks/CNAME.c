@@ -95,6 +95,12 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 	{
 		// Increase blocked count of parent domain
 		domainsData* parent_domain = getDomain(parent_domainID, true);
+		if(parent_domain == NULL)
+		{
+			// Memory error, return
+			unlock_shm();
+			return false;
+		}
 		parent_domain->blockedcount++;
 
 		// Store query response as CNAME type

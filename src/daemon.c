@@ -216,7 +216,9 @@ void cleanup(const int ret)
 		terminate_threads();
 
 		// Close database connection
+		lock_shm();
 		gravityDB_close();
+		unlock_shm();
 	}
 
 	// Remove PID file

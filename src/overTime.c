@@ -78,6 +78,7 @@ void initOverTime(void)
 	}
 }
 
+bool warned_about_hwclock = false;
 unsigned int getOverTimeID(time_t timestamp)
 {
 	// Center timestamp in OVERTIME_INTERVAL
@@ -93,13 +94,19 @@ unsigned int getOverTimeID(time_t timestamp)
 	// Check bounds manually
 	if(id < 0)
 	{
-		logg("WARN: getOverTimeID(%llu): %u is negative: %llu", (long long)timestamp, id, (long long)firstTimestamp);
 		// Return first timestamp in case negative timestamp was determined
 		return 0;
 	}
 	else if(id > OVERTIME_SLOTS-1)
 	{
-		logg("WARN: getOverTimeID(%llu): %i is too large: %llu", (long long)timestamp, id, (long long)firstTimestamp);
+		if(!warned_about_hwclock)
+		{
+			const time_t lastTimestamp = overTime[OVERTIME_SLOTS-1].timestamp;
+			logg("WARN: Found database entries in the future (%llu, last: %llu). "
+			     "Your over-time statistics may be incorrect",
+			     (long long)timestamp, (long long)lastTimestamp);
+			warned_about_hwclock = true;
+		}
 		// Return last timestamp in case a too large timestamp was determined
 		return OVERTIME_SLOTS-1;
 	}

@@ -550,6 +550,9 @@ void DB_read_queries(void)
 		return;
 	}
 
+	// Lock shared memory
+	lock_shm();
+
 	// Loop through returned database rows
 	sqlite3_int64 dbid = 0;
 	const double now = double_time();
@@ -631,6 +634,9 @@ void DB_read_queries(void)
 
 		// Lock shared memory
 		lock_shm();
+
+		// Ensure we have enough shared memory available for new data
+		shm_ensure_size();
 
 		const char *buffer = NULL;
 		int upstreamID = -1; // Default if not forwarded
@@ -792,9 +798,9 @@ void DB_read_queries(void)
 				logg("Warning: Found unknown status %i in long term database!", status);
 				break;
 		}
-
-		unlock_shm();
 	}
+
+	unlock_shm();
 
 	if( rc != SQLITE_DONE )
 	{
@@ -807,11 +813,11 @@ void DB_read_queries(void)
 
 	logg("Imported %i queries from the long-term database", counters->queries);
 
+	// If the Pi-hole was down fore more than 24 hours, we will not import
+	// anything here. Query the database to get the maximum database ID is
+	// important to avoid starting counting from zero
 	if(dbid == 0)
 	{
-		// If the Pi-hole was down fore more than 24 hours, we will not import
-		// anything here. Query the database to get the maximum database ID is
-		// important to avoid starting counting from zero
 		querystr = "SELECT MAX(id) FROM disk.queries";
 
 		// Attach disk database
@@ -838,8 +844,8 @@ void DB_read_queries(void)
 		logg("Last long-term idx is %lld", dbid);
 	}
 
-	// Update lastdbindex so that the next call to DB_save_queries()
-	// skips the queries that we just imported from the database
+	// Update indices so that the next call to DB_save_queries() skips the
+	// queries that we just imported from the database
 	last_disk_db_idx = dbid;
 	last_mem_db_idx = dbid;
 }

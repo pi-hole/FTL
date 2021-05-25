@@ -89,15 +89,19 @@ bool _FTL_check_blocking(int queryID, int domainID, int clientID, const char **b
 	}
 
 	// Get query, domain and client pointers
-	queriesData* query  = getQuery(queryID,   true);
-	domainsData* domain = getDomain(domainID, true);
-	clientsData* client = getClient(clientID, true);
+	queriesData *query  = getQuery(queryID,   true);
+	domainsData *domain = getDomain(domainID, true);
+	clientsData *client = getClient(clientID, true);
+	if(query == NULL || domain == NULL || client == NULL || client == NULL)
+	{
+		logg("ERROR: No memory available, skipping query analysis");
+		return false;
+	}
 	unsigned int cacheID = findCacheID(domainID, clientID, query->type);
 	DNSCacheData *dns_cache = getDNSCache(cacheID, true);
-	if(query == NULL || domain == NULL || client == NULL || dns_cache == NULL)
+	if(dns_cache == NULL)
 	{
-		// Encountered memory error, skip query
-		logg("WARN: No memory available, skipping query analysis");
+		logg("ERROR: No memory available, skipping query analysis");
 		return false;
 	}
 
@@ -214,7 +218,7 @@ bool _FTL_check_blocking(int queryID, int domainID, int clientID, const char **b
 		return false;
 	}
 
-	// Make a local copy of the domain string. The  string memory may get
+	// Make a local copy of the domain string. The string memory may get
 	// reorganized in the following. We cannot expect domainstr to remain
 	// valid for all time.
 	domainstr = strdup(domainstr);
