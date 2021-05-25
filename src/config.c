@@ -18,6 +18,8 @@
 #include "args.h"
 // INT_MAX
 #include <limits.h>
+// debug_dnsmasq_lines
+#include "hooks/log.h"
 
 ConfigStruct config;
 FTLFileNamesStruct FTLfiles = {
@@ -884,7 +886,6 @@ void read_debuging_settings(FILE *fp)
 
 	// DEBUG_DNSMASQ_LINES
 	setDebugOption(fp, "DEBUG_DNSMASQ_LINES", DEBUG_DNSMASQ_LINES);
-	extern char debug_dnsmasq_lines;
 	debug_dnsmasq_lines = config.debug & DEBUG_DNSMASQ_LINES ? 1 : 0;
 
 	// DEBUG_VECTORS

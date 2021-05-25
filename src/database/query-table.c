@@ -779,11 +779,11 @@ void DB_read_queries(void)
 	sqlite3_finalize(stmt);
 }
 
-bool query_to_database(queriesData* query)
+bool query_to_database(queriesData *query)
 {
 	int rc;
 	sqlite3_int64 idx = 0;
-	sqlite3_stmt* stmt = NULL;
+	sqlite3_stmt *stmt = NULL;
 
 	// Skip, we never store nor count queries recorded while have been in
 	// maximum privacy mode in the database
@@ -863,8 +863,8 @@ bool query_to_database(queriesData* query)
 
 	// ADDITIONAL_INFO
 	if(query->status == STATUS_GRAVITY_CNAME ||
-		query->status == STATUS_REGEX_CNAME ||
-		query->status == STATUS_DENYLIST_CNAME)
+	   query->status == STATUS_REGEX_CNAME ||
+	   query->status == STATUS_DENYLIST_CNAME )
 	{
 		// Restore domain blocked during deep CNAME inspection if applicable
 		const char *cname = getCNAMEDomainString(query);

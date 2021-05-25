@@ -595,6 +595,7 @@ int api_stats_recentblocked(struct ftl_conn *api)
 		if(found >= show)
 			break;
 	}
+
 	cJSON *json = JSON_NEW_OBJ();
 	JSON_OBJ_ADD_ITEM(json, "blocked", blocked);
 	JSON_SEND_OBJECT(json);

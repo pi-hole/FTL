@@ -23,6 +23,9 @@
 // get_memdb()
 #include "../database/query-table.h"
 
+// dbopen(), dbclose()
+#include "../database/common.h"
+
 static int add_strings_to_array(struct ftl_conn *api, cJSON *array, const char *querystr)
 {
 
@@ -73,43 +76,43 @@ int api_queries_suggestions(struct ftl_conn *api)
 	}
 
 	// Get domains
-	cJSON *domains = JSON_NEW_ARRAY();
-	rc = add_strings_to_array(api, domains, "SELECT DISTINCT(domain) FROM queries");
+	cJSON *domain = JSON_NEW_ARRAY();
+	rc = add_strings_to_array(api, domain, "SELECT DISTINCT(domain) FROM queries");
 	if(rc != 0)
 	{
-		cJSON_Delete(domains);
+		cJSON_Delete(domain);
 		return rc;
 	}
 
 	// Get clients
-	cJSON *clients = JSON_NEW_ARRAY();
-	rc = add_strings_to_array(api, clients, "SELECT DISTINCT(client) FROM queries");
+	cJSON *client = JSON_NEW_ARRAY();
+	rc = add_strings_to_array(api, client, "SELECT DISTINCT(client) FROM queries");
 	if(rc != 0)
 	{
-		cJSON_Delete(domains);
-		cJSON_Delete(clients);
+		cJSON_Delete(domain);
+		cJSON_Delete(client);
 		return rc;
 	}
 
 	// Get upstreams
-	cJSON *upstreams = JSON_NEW_ARRAY();
-	rc = add_strings_to_array(api, upstreams, "SELECT DISTINCT(forward) FROM queries WHERE forward IS NOT NULL");
+	cJSON *upstream = JSON_NEW_ARRAY();
+	rc = add_strings_to_array(api, upstream, "SELECT DISTINCT(forward) FROM queries WHERE forward IS NOT NULL");
 	if(rc != 0)
 	{
-		cJSON_Delete(domains);
-		cJSON_Delete(clients);
-		cJSON_Delete(upstreams);
+		cJSON_Delete(domain);
+		cJSON_Delete(client);
+		cJSON_Delete(upstream);
 		return rc;
 	}
 
 	// Get types
-	cJSON *types = JSON_NEW_ARRAY();
+	cJSON *type = JSON_NEW_ARRAY();
 	queriesData query = { 0 };
 	for(enum query_types t = TYPE_A; t < TYPE_MAX; t++)
 	{
 		query.type = t;
 		const char *string = get_query_type_str(&query, NULL);
-		JSON_ARRAY_REF_STR(types, string);
+		JSON_ARRAY_REF_STR(type, string);
 	}
 
 	// Get status
@@ -122,12 +125,12 @@ int api_queries_suggestions(struct ftl_conn *api)
 	}
 
 	// Get reply types
-	cJSON *replies = JSON_NEW_ARRAY();
+	cJSON *reply = JSON_NEW_ARRAY();
 	for(enum reply_type r = REPLY_UNKNOWN; r < REPLY_MAX; r++)
 	{
 		query.reply = r;
 		const char *string = get_query_reply_str(&query);
-		JSON_ARRAY_REF_STR(replies, string);
+		JSON_ARRAY_REF_STR(reply, string);
 	}
 
 	// Get dnssec status
@@ -140,17 +143,272 @@ int api_queries_suggestions(struct ftl_conn *api)
 	}
 
 	cJSON *json = JSON_NEW_OBJ();
-	JSON_OBJ_ADD_ITEM(json, "domains", domains);
-	JSON_OBJ_ADD_ITEM(json, "clients", clients);
-	JSON_OBJ_ADD_ITEM(json, "upstreams", upstreams);
-	JSON_OBJ_ADD_ITEM(json, "types", types);
+	JSON_OBJ_ADD_ITEM(json, "domain", domain);
+	JSON_OBJ_ADD_ITEM(json, "client", client);
+	JSON_OBJ_ADD_ITEM(json, "upstream", upstream);
+	JSON_OBJ_ADD_ITEM(json, "type", type);
 	JSON_OBJ_ADD_ITEM(json, "status", status);
-	JSON_OBJ_ADD_ITEM(json, "replies", replies);
+	JSON_OBJ_ADD_ITEM(json, "reply", reply);
 	JSON_OBJ_ADD_ITEM(json, "dnssec", dnssec);
 
 	JSON_SEND_OBJECT(json);
 }
 
+#define QUERYSTR "SELECT id,timestamp,type,status,domain,client,forward,additional_info FROM queries"
+#define QUERYSTRLEN 2048
+static void add_querystr_double(struct ftl_conn *api, char *querystr, const char *sql, const char *uripart)
+{
+	double val;
+	if(!get_double_var(api->request->query_string, "from", &val))
+		return;
+
+	const size_t strpos = strlen(querystr);
+	const char *glue = (strpos < sizeof(QUERYSTR)) ? "WHERE" : "AND";
+	snprintf(querystr + strpos, QUERYSTRLEN - strpos, " %s %s%f", glue, sql, val);
+}
+
+static void add_querystr_string(struct ftl_conn *api, char *querystr, const char *sql, const char *val)
+{
+	const size_t strpos = strlen(querystr);
+	const char *glue = (strpos < sizeof(QUERYSTR)) ? "WHERE" : "AND";
+	snprintf(querystr + strpos, QUERYSTRLEN - strpos, " %s %s%s", glue, sql, val);
+}
+
+int api_queries(struct ftl_conn *api)
+{
+	// Exit before processing any data if requested via config setting
+	get_privacy_level(NULL);
+	if(config.privacylevel >= PRIVACY_MAXIMUM)
+	{
+		// Minimum structure is
+		// {"queries":[], "cursor": null}
+		cJSON *json = JSON_NEW_OBJ();
+		cJSON *queries = JSON_NEW_ARRAY();
+		JSON_OBJ_ADD_ITEM(json, "queries", queries);
+		// There are no more queries available, send NULL cursor
+		JSON_OBJ_ADD_NULL(json, "cursor");
+		JSON_SEND_OBJECT(json);
+	}
+
+	// Verify requesting client is allowed to see this ressource
+	if(check_client_auth(api) == API_AUTH_UNAUTHORIZED)
+	{
+		return send_json_unauthorized(api);
+	}
+
+	// Filtering requested?
+	char querystr[QUERYSTRLEN] = { 0 };
+	sprintf(querystr, QUERYSTR);
+	int draw = 0;
+
+	char domainname[512] = { 0 };
+	char clientname[512] = { 0 };
+	char upstreamname[256] = { 0 };
+
+	// We start with the most recent query at the beginning (until the cursor is changed)
+	unsigned int cursor = counters->queries;
+	// We send 100 queries (unless the API is asked for a different limit)
+	int length = 100;
+	int start = 0;
+
+	// Filtering based on GET parameters?
+	if(api->request->query_string != NULL)
+	{
+		char buffer[256] = { 0 };
+
+		// Time filtering?
+		add_querystr_double(api, querystr, "timestamp>=", "from");
+		add_querystr_double(api, querystr, "timestamp<", "until");
+
+		// Domain filtering?
+		if(GET_VAR("domain", buffer, api->request->query_string) > 0)
+		{
+			sscanf(buffer, "%255s", domainname);
+			add_querystr_string(api, querystr, "domain=", ":domain");
+		}
+
+		// Upstream filtering?
+		if(GET_VAR("upstream", buffer, api->request->query_string) > 0)
+		{
+			sscanf(buffer, "%255s", upstreamname);
+			add_querystr_string(api, querystr, "forward=", ":upstream");
+		}
+
+		// Client filtering?
+		if(GET_VAR("client", buffer, api->request->query_string) > 0)
+		{
+			sscanf(buffer, "%255s", clientname);
+			add_querystr_string(api, querystr, "client=", ":client");
+		}
+
+		// DataTables server-side processing protocol
+		// Draw counter: This is used by DataTables to ensure that the
+		//               Ajax returns from server-side processing
+		//               requests are drawn in sequence by DataTables
+		//               (Ajax requests are asynchronous and thus can
+		//               return out of sequence).
+		get_int_var(api->request->query_string, "draw", &draw);
+
+		// Does the user request a non-default number of replies?
+		// Note: We do not accept zero query requests here
+		get_int_var(api->request->query_string, "length", &length);
+
+		// Does the user request an offset from the cursor?
+		get_int_var(api->request->query_string, "start", &start);
+
+		unsigned int unum = 0u;
+		const char *msg = NULL;
+		if(get_uint_var_msg(api->request->query_string, "cursor", &unum, &msg) ||
+		   msg != NULL)
+		{
+			// Do not start at the most recent, but at an older
+			// query (so new queries do not show up suddenly in the
+			// log and shift pages)
+			if(unum <= (unsigned int)counters->queries && msg == NULL)
+			{
+				cursor = unum;
+			}
+			else
+			{
+				if(msg == NULL)
+					msg = "Cursor larger than total number of queries";
+				// Cursors larger than the current known number
+				// of queries are invalid
+				return send_json_error(api, 400,
+				                       "bad_request",
+				                       "Requested cursor is invalid",
+				                       msg);
+			}
+		}
+	}
+
+	// Get connection to in-memory database
+	sqlite3 *db = get_memdb();
+
+	// Prepare SQLite statement
+	sqlite3_stmt *read_stmt = NULL;
+	int rc = sqlite3_prepare_v2(db, querystr, -1, &read_stmt, NULL);
+	if( rc != SQLITE_OK )
+	{
+		return send_json_error(api, 500,
+		                       "internal_error",
+		                       "Internal server error, failed to prepare SQL query",
+		                       sqlite3_errstr(rc));
+		return false;
+	}
+
+	// Bind items to prepared statement (if GET-filtering)
+	if(api->request->query_string != NULL)
+	{
+		int idx;
+		idx = sqlite3_bind_parameter_index(read_stmt, ":domain");
+		if(idx > 0 && (rc = sqlite3_bind_text(read_stmt, idx, domainname, -1, SQLITE_STATIC)) != SQLITE_OK)
+		{
+			sqlite3_reset(read_stmt);
+			sqlite3_finalize(read_stmt);
+			return send_json_error(api, 500,
+			                       "internal_error",
+			                       "Internal server error, failed to bind domain to SQL query",
+			                       sqlite3_errstr(rc));
+		}
+		idx = sqlite3_bind_parameter_index(read_stmt, ":client");
+		if(idx > 0 && (rc = sqlite3_bind_text(read_stmt, idx, clientname, -1, SQLITE_STATIC)) != SQLITE_OK)
+		{
+			sqlite3_reset(read_stmt);
+			sqlite3_finalize(read_stmt);
+			return send_json_error(api, 500,
+			                       "internal_error",
+			                       "Internal server error, failed to bind client to SQL query",
+			                       sqlite3_errstr(rc));
+		}
+		idx = sqlite3_bind_parameter_index(read_stmt, ":upstream");
+		if(idx > 0 && (rc = sqlite3_bind_text(read_stmt, idx, upstreamname, -1, SQLITE_STATIC)) != SQLITE_OK)
+		{
+			sqlite3_reset(read_stmt);
+			sqlite3_finalize(read_stmt);
+			return send_json_error(api, 500,
+			                       "internal_error",
+			                       "Internal server error, failed to bind upstream to SQL query",
+			                       sqlite3_errstr(rc));
+		}
+	}
+
+	if(config.debug & DEBUG_API)
+		logg("SQL: %s, cursor: %u", querystr, cursor);
+
+	cJSON *queries = JSON_NEW_ARRAY();
+	int added = 0;
+	while((rc = sqlite3_step(read_stmt)) == SQLITE_ROW)
+	{
+		logg("A");
+		cJSON *item = JSON_NEW_OBJ();
+		queriesData query = { 0 };
+		char buffer[20] = { 0 };
+		JSON_OBJ_ADD_NUMBER(item, "id", sqlite3_column_int(read_stmt, 0));
+		JSON_OBJ_ADD_NUMBER(item, "time", sqlite3_column_double(read_stmt, 1));
+		query.type = sqlite3_column_int(read_stmt, 2);
+		query.status = sqlite3_column_int(read_stmt, 3);
+		query.reply = REPLY_UNKNOWN;
+		query.dnssec = DNSSEC_UNKNOWN;
+		// We have to copy the string as TYPExxx string won't be static
+		JSON_OBJ_COPY_STR(item, "type", get_query_type_str(&query, buffer));
+		JSON_OBJ_REF_STR(item, "status", get_query_status_str(&query));
+		JSON_OBJ_REF_STR(item, "dnssec", get_query_dnssec_str(&query));
+		JSON_OBJ_COPY_STR(item, "domain", sqlite3_column_text(read_stmt, 4));
+		if(sqlite3_column_type(read_stmt, 6) == SQLITE_NULL)
+		{
+			JSON_OBJ_ADD_NULL(item, "upstream");
+		}
+		else
+		{
+			JSON_OBJ_COPY_STR(item, "upstream", sqlite3_column_text(read_stmt, 6));
+		}
+
+		cJSON *reply = JSON_NEW_OBJ();
+		JSON_OBJ_REF_STR(reply, "type", get_query_reply_str(&query));
+		JSON_OBJ_ADD_NUMBER(reply, "time", 0); // TODO: Needs to be added to the SQL database
+		JSON_OBJ_ADD_ITEM(item, "reply", reply);
+
+		cJSON *client = JSON_NEW_OBJ();
+		// TODO: Add "client" field (may be NULL) with hostname stored in database
+		JSON_OBJ_COPY_STR(client, "ip", sqlite3_column_text(read_stmt, 5));
+		JSON_OBJ_REF_STR(client, "name", "localhost");
+		JSON_OBJ_ADD_ITEM(item, "client", client);
+
+
+		JSON_OBJ_ADD_NUMBER(item, "ttl", 0); // TODO: Needs to be added to the SQL database
+		JSON_OBJ_ADD_NUMBER(item, "regex", 0); // TODO: Needs to be added to the SQL database
+
+		JSON_ARRAY_ADD_ITEM(queries, item);
+
+		if(length > -1 && ++added >= length)
+		{
+			break;
+		}
+
+//		lastID = queryID;
+	}
+		logg("B");
+	cJSON *json = JSON_NEW_OBJ();
+	JSON_OBJ_ADD_ITEM(json, "queries", queries);
+
+	// if(lastID < 0)
+		// There are no more queries available, send null cursor
+	// else:
+		// There are more queries available, send cursor pointing
+		// onto the next older query so the API can request it if
+		// needed
+	// JSON_OBJ_ADD_NUMBER(json, "cursor", lastID);
+
+	// DataTables specific properties
+	JSON_OBJ_ADD_NUMBER(json, "recordsTotal", cursor);
+	JSON_OBJ_ADD_NUMBER(json, "recordsFiltered", cursor); // Until we implement server-side filtering
+	JSON_OBJ_ADD_NUMBER(json, "draw", draw);
+
+		logg("C");
+	JSON_SEND_OBJECT(json);
+}
+/*
 int api_queries(struct ftl_conn *api)
 {
 	// Exit before processing any data if requested via config setting
@@ -596,3 +854,4 @@ int api_queries(struct ftl_conn *api)
 
 	JSON_SEND_OBJECT(json);
 }
+*/

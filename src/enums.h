@@ -224,4 +224,10 @@ enum thread_types {
 	THREADS_MAX
 } __attribute__ ((packed));
 
+
+enum protocol {
+	TCP,
+	UDP
+} __attribute__ ((packed));
+
 #endif // ENUMS_H

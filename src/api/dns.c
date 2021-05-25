@@ -18,6 +18,8 @@
 // set_blockingmode_timer()
 #include "../timers.h"
 #include "../shmem.h"
+// getCacheInformation()
+#include "../hooks/cache_info.h"
 
 static int get_blocking(struct ftl_conn *api)
 {

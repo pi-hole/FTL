@@ -57,8 +57,9 @@
 	cJSON_AddItemToObject(object, key, string_item); \
 }
 
-#define JSON_OBJ_ADD_NUMBER(object, key, number){ \
-	if(cJSON_AddNumberToObject(object, key, (double)(number)) == NULL) \
+#define JSON_OBJ_ADD_NUMBER(object, key, num){ \
+	const double number = num; \
+	if(cJSON_AddNumberToObject(object, key, number) == NULL) \
 	{ \
 		cJSON_Delete(object); \
 		send_http_internal_error(api); \
@@ -79,8 +80,9 @@
 	cJSON_AddItemToObject(object, key, null_item); \
 }
 
-#define JSON_OBJ_ADD_BOOL(object, key, value) {\
-	cJSON *bool_item = cJSON_CreateBool((cJSON_bool)(value)); \
+#define JSON_OBJ_ADD_BOOL(object, key, val) {\
+	const cJSON_bool value = val; \
+	cJSON *bool_item = cJSON_CreateBool(value); \
 	if(bool_item == NULL) \
 	{ \
 		cJSON_Delete(object); \
@@ -91,13 +93,15 @@
 	cJSON_AddItemToObject(object, key, bool_item); \
 }
 
-#define JSON_ARRAY_ADD_NUMBER(object, number){ \
-	cJSON *number_item = cJSON_CreateNumber((double)(number)); \
+#define JSON_ARRAY_ADD_NUMBER(object, num){ \
+	const double number = num; \
+	cJSON *number_item = cJSON_CreateNumber(number); \
 	cJSON_AddItemToArray(object, number_item); \
 }
 
-#define JSON_ARRAY_REPLACE_NUMBER(object, index, number){ \
-	cJSON *number_item = cJSON_CreateNumber((double)(number)); \
+#define JSON_ARRAY_REPLACE_NUMBER(object, index, num){ \
+	const double number = num; \
+	cJSON *number_item = cJSON_CreateNumber(number); \
 	cJSON_ReplaceItemInArray(object, index, number_item); \
 }
 

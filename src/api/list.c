@@ -230,7 +230,7 @@ static int api_list_write(struct ftl_conn *api,
 			case GRAVITY_DOMAINLIST_ALL_REGEX:
 			case GRAVITY_DOMAINLIST_ALLOW_ALL:
 			case GRAVITY_DOMAINLIST_DENY_ALL:
-				return 500;
+				return 400;
 		}
 	}
 	else

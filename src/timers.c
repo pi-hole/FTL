@@ -104,3 +104,10 @@ void *timer(void *val)
 
 	return NULL;
 }
+
+unsigned long __attribute__((const)) converttimeval(const struct timeval time)
+{
+	// Convert time from struct timeval into units
+	// of 10*milliseconds
+	return time.tv_sec*10000 + time.tv_usec/100;
+}

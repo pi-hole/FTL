@@ -174,6 +174,7 @@ add_dependencies(FTL gen_version)
 
 add_executable(pihole-FTL
         $<TARGET_OBJECTS:FTL>
+        $<TARGET_OBJECTS:hooks>
         $<TARGET_OBJECTS:api>
         $<TARGET_OBJECTS:api_docs>
         $<TARGET_OBJECTS:webserver>
@@ -237,6 +238,7 @@ install(TARGETS pihole-FTL
 install(CODE "execute_process(COMMAND ${SETCAP} CAP_NET_BIND_SERVICE,CAP_NET_RAW,CAP_NET_ADMIN,CAP_SYS_NICE+eip \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/bin/pihole-FTL)")
 
 add_subdirectory(api)
+add_subdirectory(hooks)
 add_subdirectory(webserver)
 add_subdirectory(civetweb)
 add_subdirectory(cJSON)
