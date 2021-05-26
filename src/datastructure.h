@@ -68,7 +68,7 @@ typedef struct {
 	double rtuncertainty;
 	double lastQuery;
 } upstreamsData;
-ASSERT_SIZEOF(upstreamsData, 56, 40, 40);
+ASSERT_SIZEOF(upstreamsData, 56, 48, 48);
 
 typedef struct {
 	unsigned char magic;
