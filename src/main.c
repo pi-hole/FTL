@@ -48,7 +48,7 @@ int main (int argc, char* argv[])
 	parse_args(argc, argv);
 
 	// Initialize FTL log
-	init_FTL_log();
+	init_FTL_log(argc > 0 ? argv[0] : NULL);
 	timer_start(EXIT_TIMER);
 	logg("########## FTL started! ##########");
 	log_FTL_version(false);

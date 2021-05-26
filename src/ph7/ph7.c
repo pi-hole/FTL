@@ -127,7 +127,7 @@
  */
 /******************************* Pi-hole modification ******************************/
 enum web_code { HTTP_INFO, PH7_ERROR };
-extern void logg_web(enum web_code code, const char* format, ...) __attribute__ ((format (gnu_printf, 2, 3)));
+extern void logg_web(enum web_code code, const char *format, ...) __attribute__ ((format (gnu_printf, 2, 3)));
 /***********************************************************************************/
  /* $SymiscID: ph7.h v2.1 UNIX|WIN32/64 2012-09-15 09:43 stable <chm@symisc.net> $ */
 #include <stdarg.h> /* needed for the definition of va_list */

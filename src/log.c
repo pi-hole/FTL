@@ -26,6 +26,7 @@
 #include "database/message-table.h"
 
 static bool print_log = true, print_stdout = true;
+static const char *process = "";
 
 void log_ctrl(bool plog, bool pstdout)
 {
@@ -33,23 +34,35 @@ void log_ctrl(bool plog, bool pstdout)
 	print_stdout = pstdout;
 }
 
-void init_FTL_log(void)
+void init_FTL_log(const char *name)
 {
 	// Obtain log file location
 	getLogFilePath();
 
 	// Open the log file in append/create mode
-	FILE *logfile = fopen(FTLfiles.log, "a+");
-	if((logfile == NULL)){
-		syslog(LOG_ERR, "Opening of FTL\'s log file failed!");
-		printf("FATAL: Opening of FTL log (%s) failed!\n",FTLfiles.log);
-		printf("       Make sure it exists and is writeable by user %s\n", username);
-		// Return failure
-		exit(EXIT_FAILURE);
+	if(FTLfiles.log != NULL)
+	{
+		FILE *logfile = NULL;
+		if((logfile = fopen(FTLfiles.log, "a+")) == NULL)
+		{
+			syslog(LOG_ERR, "Opening of FTL\'s log file failed, using syslog instead!");
+			printf("ERR: Opening of FTL log (%s) failed!\n",FTLfiles.log);
+			FTLfiles.log = NULL;
+		}
+
+		// Close log file
+		if(logfile != NULL)
+			fclose(logfile);
 	}
 
-	// Close log file
-	fclose(logfile);
+	// Store process name (if available), strip path if found
+	if(name != NULL)
+	{
+		if(strrchr(name, '/') != NULL)
+			process = strrchr(name, '/')+1;
+		else
+			process = name;
+	}
 }
 
 // Return time(NULL) but with (up to) nanosecond accuracy
@@ -89,7 +102,41 @@ void get_timestr(char * const timestring, const time_t timein, const bool millis
 	}
 }
 
-void _FTL_log(const bool newline, const bool debug, const char *format, ...)
+static const char *priostr(const int priority)
+{
+	switch (priority)
+	{
+		// system is unusable
+		case LOG_EMERG:
+			return "EMERG";
+		// action must be taken immediately
+		case LOG_ALERT:
+			return "ALERT";
+		// critical conditions
+		case LOG_CRIT:
+			return "CRIT";
+		// error conditions
+		case LOG_ERR:
+			return "ERR";
+		// warning conditions
+		case LOG_WARNING:
+			return "WARNING";
+		// normal but significant condition
+		case LOG_NOTICE:
+			return "NOTICE";
+		// informational
+		case LOG_INFO:
+			return "INFO";
+		// debug-level messages
+		case LOG_DEBUG:
+			return "DEBUG";
+		// invalid option
+		default:
+			return "UNKNOWN";
+	}
+}
+
+void _FTL_log(const int priority, const bool newline, const bool debug, const char *format, ...)
 {
 	char timestring[84] = "";
 	va_list args;
@@ -112,6 +159,18 @@ void _FTL_log(const bool newline, const bool debug, const char *format, ...)
 	const int mpid = main_pid(); // Get the process ID of the main FTL process
 	const int tid = gettid(); // Get the thread ID of the callig process
 
+	if(FTLfiles.log == NULL)
+	{
+		// Syslog logging
+		va_start(args, format);
+		vsyslog(priority, format, args);
+		va_end(args);
+
+		return;
+	}
+
+	// else: Log file logging
+
 	// There are four cases we have to differentiate here:
 	if(pid == tid)
 		if(is_fork(mpid, pid))
@@ -133,7 +192,7 @@ void _FTL_log(const bool newline, const bool debug, const char *format, ...)
 	{
 		// Only print time/ID string when not in direct user interaction (CLI mode)
 		if(!cli_mode)
-			printf("[%s %s] ", timestring, idstr);
+			printf("%s [%s] %s: ", timestring, idstr, priostr(priority));
 		va_start(args, format);
 		vprintf(format, args);
 		va_end(args);
@@ -149,7 +208,7 @@ void _FTL_log(const bool newline, const bool debug, const char *format, ...)
 		// Write to log file
 		if(logfile != NULL)
 		{
-			fprintf(logfile, "[%s %s] ", timestring, idstr);
+			fprintf(logfile, "%s [%s] %s: ", timestring, idstr, priostr(priority));
 			va_start(args, format);
 			vfprintf(logfile, format, args);
 			va_end(args);

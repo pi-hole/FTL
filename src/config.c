@@ -67,27 +67,32 @@ void getLogFilePath(void)
 	buffer = parse_FTLconf(fp, "LOGFILE");
 
 	errno = 0;
-	// Use sscanf() to obtain filename from config file parameter only if buffer != NULL
-	if(buffer == NULL || sscanf(buffer, "%127ms", &FTLfiles.log) != 1)
+	// No option set => use default log location
+	if(buffer == NULL)
 	{
 		// Use standard path if no custom path was obtained from the config file
 		FTLfiles.log = strdup("/var/log/pihole-FTL.log");
-	}
 
-	// Test if memory allocation was successful
-	if(FTLfiles.log == NULL)
-	{
-		printf("FATAL: Allocating memory for FTLfiles.log failed (%s, %i). Exiting.",
-		       strerror(errno), errno);
-		exit(EXIT_FAILURE);
+		// Test if memory allocation was successful
+		if(FTLfiles.log == NULL)
+		{
+			printf("FATAL: Allocating memory for FTLfiles.log failed (%s, %i). Exiting.",
+			       strerror(errno), errno);
+			exit(EXIT_FAILURE);
+		}
 	}
-	else if(strlen(FTLfiles.log) == 0)
+	// Use sscanf() to obtain filename from config file parameter only if buffer != NULL
+	else if(sscanf(buffer, "%127ms", &FTLfiles.log) == 1)
 	{
-		printf("Fatal: Log file location cannot be empty");
-		exit(EXIT_FAILURE);
+		// Check if there was a valid option
+		logg("Using log file %s", FTLfiles.log);
 	}
 	else
-		logg("Using log file %s", FTLfiles.log);
+	{
+		// Empty file string
+		FTLfiles.log = NULL;
+		logg("Using syslog facility");
+	}
 }
 
 void read_FTLconf(void)

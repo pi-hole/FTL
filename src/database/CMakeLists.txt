@@ -18,7 +18,7 @@ set(sqlite3_sources
         )
 
 add_library(sqlite3 OBJECT ${sqlite3_sources})
-target_compile_options(sqlite3 PRIVATE -Wno-implicit-fallthrough -Wno-cast-function-type)
+target_compile_options(sqlite3 PRIVATE -Wno-implicit-fallthrough -Wno-cast-function-type -Wno-sign-compare)
 
 set(database_sources
         common.c
