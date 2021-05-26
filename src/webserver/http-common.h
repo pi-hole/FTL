@@ -53,6 +53,7 @@ bool http_get_cookie_str(struct ftl_conn *api, const char *cookieName, char *str
 
 // HTTP parameter routines
 bool get_bool_var(const char *source, const char *var, bool *boolean);
+bool get_ulong_var_msg(const char *source, const char *var, unsigned long *num, const char **msg);
 bool get_uint_var_msg(const char *source, const char *var, unsigned int *num, const char **msg);
 bool get_uint_var(const char *source, const char *var, unsigned int *num);
 bool get_int_var_msg(const char *source, const char *var, int *num, const char **msg);

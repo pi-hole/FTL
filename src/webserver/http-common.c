@@ -145,6 +145,40 @@ static bool get_long_var_msg(const char *source, const char *var, long *num, con
 	return true;
 }
 
+bool get_ulong_var_msg(const char *source, const char *var, unsigned long *num, const char **msg)
+{
+	char buffer[128] = { 0 };
+	if(GET_VAR(var, buffer, source) < 1)
+	{
+		// Parameter not found
+		*msg = NULL;
+		return false;
+	}
+
+	// Try to get the value
+	char *endptr = NULL;
+	errno = 0;
+	const unsigned long val = strtoul(buffer, &endptr, 10);
+
+	// Error checking
+	if ((errno == ERANGE && val == ULONG_MAX) ||
+	    (errno != 0 && val == 0))
+	{
+		*msg = strerror(errno);
+		return false;
+	}
+
+	if (endptr == buffer)
+	{
+		*msg = "No digits were found";
+		return false;
+	}
+
+	// Otherwise: success
+	*num = val;
+	return true;
+}
+
 bool get_int_var_msg(const char *source, const char *var, int *num, const char **msg)
 {
 	long val = 0;

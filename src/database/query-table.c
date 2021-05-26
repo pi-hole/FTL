@@ -25,7 +25,14 @@
 static sqlite3 *memdb = NULL, *newdb = NULL;
 static double new_last_timestamp = 0;
 static unsigned int new_total = 0, new_blocked = 0;
-static long last_mem_db_idx = 0, last_disk_db_idx = 0;
+static unsigned long last_mem_db_idx = 0, last_disk_db_idx = 0;
+static unsigned int mem_db_num = 0;
+
+void memdb_size(unsigned long *last_idx, unsigned long *num)
+{
+	*last_idx = last_mem_db_idx;
+	*num = mem_db_num;
+}
 
 // Initialize in-memory database, add queries table and indices
 static bool init_memory_database(sqlite3 **db, const char *name, const int busy)
@@ -350,7 +357,8 @@ bool import_queries_from_disk(void)
 	if(!detach_disk_database())
 		return false;
 
-	logg("Imported %d queries from the long-term database", sqlite3_changes(memdb));
+	mem_db_num = sqlite3_changes(memdb);
+	logg("Imported %d queries from the long-term database", mem_db_num);
 
 	return okay;
 }
@@ -464,6 +472,7 @@ bool delete_query_from_db(const sqlite3_int64 id)
 		logg("delete_query_from_db(): Failed to delete query with ID %lli: %s",
 		     id, sqlite3_errstr(rc));
 
+	mem_db_num -= sqlite3_changes(memdb);
 	// Finalize statement
 	sqlite3_reset(stmt);
 	sqlite3_finalize(stmt);
@@ -499,10 +508,11 @@ bool mv_newdb_memdb(void)
 		}
 	}
 
-	int num;
+	int num = sqlite3_changes(memdb);
 	// Debug logging
-	if(config.debug & DEBUG_QUERIES && (num = sqlite3_changes(memdb)) > 0)
+	if(config.debug & DEBUG_QUERIES && num > 0)
 		logg("Moved %d quer%s from newdb into memdb", num, num == 1 ? "y" : "ies");
+	mem_db_num += num;
 
 	return true;
 }

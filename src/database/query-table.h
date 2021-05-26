@@ -69,6 +69,7 @@ const char *index_creation[] = {
 };
 #endif
 
+void memdb_size(unsigned long *last_idx, unsigned long *num);
 bool init_memory_databases(void);
 sqlite3 *get_memdb(void) __attribute__((pure));
 bool import_queries_from_disk(void);
