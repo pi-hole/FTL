@@ -82,12 +82,7 @@ void getLogFilePath(void)
 		}
 	}
 	// Use sscanf() to obtain filename from config file parameter only if buffer != NULL
-	else if(sscanf(buffer, "%127ms", &FTLfiles.log) == 1)
-	{
-		// Check if there was a valid option
-		logg("Using log file %s", FTLfiles.log);
-	}
-	else
+	else if(sscanf(buffer, "%127ms", &FTLfiles.log) == 0)
 	{
 		// Empty file string
 		FTLfiles.log = NULL;

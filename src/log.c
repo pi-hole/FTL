@@ -159,18 +159,6 @@ void _FTL_log(const int priority, const bool newline, const bool debug, const ch
 	const int mpid = main_pid(); // Get the process ID of the main FTL process
 	const int tid = gettid(); // Get the thread ID of the callig process
 
-	if(FTLfiles.log == NULL)
-	{
-		// Syslog logging
-		va_start(args, format);
-		vsyslog(priority, format, args);
-		va_end(args);
-
-		return;
-	}
-
-	// else: Log file logging
-
 	// There are four cases we have to differentiate here:
 	if(pid == tid)
 		if(is_fork(mpid, pid))
@@ -200,27 +188,44 @@ void _FTL_log(const int priority, const bool newline, const bool debug, const ch
 			printf("\n");
 	}
 
-	if(print_log && FTLfiles.log != NULL)
+	// Print to log file or syslog
+	if(print_log)
 	{
-		// Open log file
-		FILE *logfile = fopen(FTLfiles.log, "a+");
-
-		// Write to log file
-		if(logfile != NULL)
+		if(FTLfiles.log != NULL)
 		{
-			fprintf(logfile, "%s [%s] %s: ", timestring, idstr, priostr(priority));
-			va_start(args, format);
-			vfprintf(logfile, format, args);
-			va_end(args);
-			fputc('\n',logfile);
+			// Open log file
+			FILE *logfile = fopen(FTLfiles.log, "a+");
 
-			// Close file after writing
-			fclose(logfile);
+			// Write to log file
+			if(logfile != NULL)
+			{
+				// Prepend message with identification string and priority
+				fprintf(logfile, "%s [%s] %s: ", timestring, idstr, priostr(priority));
+
+				// Log message
+				va_start(args, format);
+				vfprintf(logfile, format, args);
+				va_end(args);
+
+				// Append newline character to the end of the file
+				if(newline)
+					fputc('\n', logfile);
+
+				// Close file after writing
+				fclose(logfile);
+			}
+			else if(!daemonmode)
+			{
+				printf("!!! WARNING: Writing to FTL\'s log file failed!\n");
+				syslog(LOG_ERR, "Writing to FTL\'s log file failed!");
+			}
 		}
-		else if(!daemonmode)
+		else
 		{
-			printf("!!! WARNING: Writing to FTL\'s log file failed!\n");
-			syslog(LOG_ERR, "Writing to FTL\'s log file failed!");
+			// Syslog logging
+			va_start(args, format);
+			vsyslog(priority, format, args);
+			va_end(args);
 		}
 	}
 }
