@@ -108,7 +108,6 @@ int dbquery(sqlite3* db, const char *format, ...)
 		logg("ERROR: SQL query \"%s\" failed: %s",
 		     query, sqlite3_errstr(rc));
 		sqlite3_free(query);
-		dbclose(&db);
 		return rc;
 	}
 

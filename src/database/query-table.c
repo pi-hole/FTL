@@ -537,7 +537,7 @@ bool add_additional_info_column(sqlite3 *db)
 	SQL_bool(db, "ALTER TABLE queries ADD COLUMN additional_info TEXT;");
 
 	// Update the database version to 7
-	SQL_bool(db, "INSERT OR REPLACE INTO ftl (id, value) VALUES ("str(DB_VERSION)", 7);");
+	SQL_bool(db, "INSERT OR REPLACE INTO ftl (id, value) VALUES (%u, 7);", DB_VERSION);
 
 	return true;
 }
@@ -553,7 +553,7 @@ bool create_more_queries_columns(sqlite3 *db)
 	SQL_bool(db, "ALTER TABLE queries ADD COLUMN regex_id INTEGER;");
 
 	// Update the database version to 10
-	SQL_bool(db, "INSERT OR REPLACE INTO ftl (id, value) VALUES ("str(DB_VERSION)", 10);");
+	SQL_bool(db, "INSERT OR REPLACE INTO ftl (id, value) VALUES (%u, 10);", DB_VERSION);
 
 	return true;
 }
