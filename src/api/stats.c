@@ -461,7 +461,7 @@ int api_stats_upstreams(struct ftl_conn *api)
 			const int upstreamID = temparray[i][0];
 
 			// Get upstream pointer
-			const upstreamsData* upstream = getUpstream(upstreamID, true);
+			const upstreamsData *upstream = getUpstream(upstreamID, true);
 			if(upstream == NULL)
 				continue;
 
@@ -476,15 +476,14 @@ int api_stats_upstreams(struct ftl_conn *api)
 			// Compute average response time and uncertainty (unit: seconds)
 			if(upstream->responses > 0)
 			{
-				// Wehave to multiply runcertainty by 1e-4 to get seconds
-				responsetime = 1e-4 * upstream->rtime / upstream->responses;
+				// Simple average of the response times
+				responsetime = upstream->rtime / upstream->responses;
 			}
 			if(upstream->responses > 1)
 			{
 				// The actual value will be somewhere in a neighborhood around the mean value.
 				// This neighborhood of values is the uncertainty in the mean.
-				// Wehave to multiply runcertainty by (1e-4)^2 to get seconds
-				uncertainty = sqrt(1e-8 * upstream->rtuncertainty / upstream->responses / (upstream->responses-1));
+				uncertainty = sqrt(upstream->rtuncertainty / upstream->responses / (upstream->responses-1));
 			}
 		}
 

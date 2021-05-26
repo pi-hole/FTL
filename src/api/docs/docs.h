@@ -92,6 +92,10 @@ static const char specs_main_yaml[] = {
 #include "hex/specs/main.yaml"
 };
 
+static const char specs_queries_yaml[] = {
+#include "hex/specs/queries.yaml"
+};
+
 static const char specs_stats_yaml[] = {
 #include "hex/specs/stats.yaml"
 };
@@ -125,6 +129,7 @@ struct {
     {"specs/history.yaml", "text/plain", specs_history_yaml, sizeof(specs_history_yaml)},
     {"specs/lists.yaml", "text/plain", specs_lists_yaml, sizeof(specs_lists_yaml)},
     {"specs/main.yaml", "text/plain", specs_main_yaml, sizeof(specs_main_yaml)},
+    {"specs/queries.yaml", "text/plain", specs_queries_yaml, sizeof(specs_queries_yaml)},
     {"specs/stats.yaml", "text/plain", specs_stats_yaml, sizeof(specs_stats_yaml)},
     {"specs/version.yaml", "text/plain", specs_version_yaml, sizeof(specs_version_yaml)},
 };

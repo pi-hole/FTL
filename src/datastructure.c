@@ -107,8 +107,8 @@ int findUpstreamID(const char * upstreamString, const in_port_t port)
 	upstream->flags.new = true;
 	upstream->namepos = 0; // 0 -> string with length zero
 	// Initialize response time values
-	upstream->rtime = 0u;
-	upstream->rtuncertainty = 0u;
+	upstream->rtime = 0.0;
+	upstream->rtuncertainty = 0.0;
 	upstream->responses = 0u;
 	// This is a new upstream server
 	set_event(RESOLVE_NEW_HOSTNAMES);

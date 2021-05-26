@@ -62,10 +62,10 @@ typedef struct {
 	int count;
 	int failed;
 	unsigned int responses;
-	unsigned long rtime;
-	unsigned long rtuncertainty;
 	size_t ippos;
 	size_t namepos;
+	double rtime;
+	double rtuncertainty;
 	double lastQuery;
 } upstreamsData;
 ASSERT_SIZEOF(upstreamsData, 56, 40, 40);

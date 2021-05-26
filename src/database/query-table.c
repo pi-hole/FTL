@@ -26,12 +26,13 @@ static sqlite3 *memdb = NULL, *newdb = NULL;
 static double new_last_timestamp = 0;
 static unsigned int new_total = 0, new_blocked = 0;
 static unsigned long last_mem_db_idx = 0, last_disk_db_idx = 0;
-static unsigned int mem_db_num = 0;
+static unsigned int mem_db_num = 0, disk_db_num = 0;
 
-void memdb_size(unsigned long *last_idx, unsigned long *num)
+void db_counts(unsigned long *last_idx, unsigned long *mem_num, unsigned long *disk_num)
 {
 	*last_idx = last_mem_db_idx;
-	*num = mem_db_num;
+	*mem_num = mem_db_num;
+	*disk_num = disk_db_num;
 }
 
 // Initialize in-memory database, add queries table and indices
@@ -135,7 +136,7 @@ bool init_memory_databases(void)
 static bool get_memdb_size(sqlite3 *db, size_t *memsize, int *queries)
 {
 	int rc;
-	sqlite3_stmt* stmt = NULL;
+	sqlite3_stmt *stmt = NULL;
 	size_t page_count, page_size;
 
 	// PRAGMA page_count
@@ -183,7 +184,7 @@ static bool get_memdb_size(sqlite3 *db, size_t *memsize, int *queries)
 	*memsize = page_count * page_size;
 
 	// Get number of queries in the memory table
-	if((*queries = get_number_of_queries_in_DB(db, false)) == DB_FAILED)
+	if((*queries = get_number_of_queries_in_DB(db, false, false)) == DB_FAILED)
 		return false;
 
 	return true;
@@ -213,11 +214,11 @@ static void log_in_memory_usage(void)
 }
 
 // Attach disk database to in-memory database
-static bool attach_disk_database(void)
+bool attach_disk_database(const char **message)
 {
 	int rc;
 	bool okay = false;
-	sqlite3_stmt* stmt = NULL;
+	sqlite3_stmt *stmt = NULL;
 
 	// ATTACH database file on-disk
 	rc = sqlite3_prepare_v2(memdb, "ATTACH ? AS disk", -1, &stmt, NULL);
@@ -225,7 +226,8 @@ static bool attach_disk_database(void)
 	{
 		if( rc != SQLITE_BUSY )
 			logg("attach_disk_database(): Prepare error: %s", sqlite3_errstr(rc));
-
+		if(message != NULL)
+			*message = sqlite3_errstr(rc);
 		return false;
 	}
 	// Bind path to prepared index
@@ -233,6 +235,8 @@ static bool attach_disk_database(void)
 	{
 		logg("attach_disk_database(): Failed to bind path: %s",
 			 sqlite3_errstr(rc));
+		if(message != NULL)
+			*message = sqlite3_errstr(rc);
 		sqlite3_finalize(stmt);
 		return false;
 	}
@@ -241,8 +245,12 @@ static bool attach_disk_database(void)
 	if((rc = sqlite3_step(stmt)) == SQLITE_DONE)
 		okay = true;
 	else
+	{
 		logg("attach_disk_database(): Failed to attach database: %s",
 			 sqlite3_errstr(rc));
+		if(message != NULL)
+			*message = sqlite3_errstr(rc);
+	}
 
 	// Finalize statement
 	sqlite3_reset(stmt);
@@ -252,7 +260,7 @@ static bool attach_disk_database(void)
 }
 
 // Detach disk database to in-memory database
-static bool detach_disk_database(void)
+bool detach_disk_database(const char **message)
 {
 	int rc;
 
@@ -261,6 +269,8 @@ static bool detach_disk_database(void)
 	if( rc != SQLITE_OK ){
 		logg("detach_disk_database() failed: %s",
 			 sqlite3_errstr(rc));
+		if(message != NULL)
+			*message = sqlite3_errstr(rc);
 		sqlite3_close(memdb);
 		return false;
 	}
@@ -270,12 +280,12 @@ static bool detach_disk_database(void)
 
 // Get number of queries either in the temp or in the on-diks database
 // This routine is used by the API routines.
-int get_number_of_queries_in_DB(sqlite3 *db, bool disk)
+int get_number_of_queries_in_DB(sqlite3 *db, const bool disk, const bool attached)
 {
 	int rc = 0, num = 0;
 	sqlite3_stmt *stmt = NULL;
 	// Attach disk database if required
-	if(disk && !attach_disk_database())
+	if(disk && !attached && !attach_disk_database(NULL))
 		return DB_FAILED;
 
 	// Count number of rows
@@ -308,7 +318,8 @@ int get_number_of_queries_in_DB(sqlite3 *db, bool disk)
 	}
 	sqlite3_finalize(stmt);
 
-	if(disk && !detach_disk_database())
+	// Detach only if attached herein
+	if(disk && !attached && !detach_disk_database(NULL))
 		return DB_FAILED;
 
 	return num;
@@ -325,11 +336,11 @@ bool import_queries_from_disk(void)
 	const char *querystr = "INSERT INTO queries SELECT * FROM disk.queries WHERE timestamp >= ?";
 
 	// Attach disk database
-	if(!attach_disk_database())
+	if(!attach_disk_database(NULL))
 		return false;
 
 	// Prepare SQLite3 statement
-	sqlite3_stmt* stmt = NULL;
+	sqlite3_stmt *stmt = NULL;
 	int rc = sqlite3_prepare_v2(memdb, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK ){
 		logg("import_queries_from_disk(): SQL error prepare: %s", sqlite3_errstr(rc));
@@ -354,7 +365,10 @@ bool import_queries_from_disk(void)
 	sqlite3_reset(stmt);
 	sqlite3_finalize(stmt);
 
-	if(!detach_disk_database())
+	// Get number of queries on disk before detaching
+	disk_db_num = get_number_of_queries_in_DB(memdb, true, true);
+
+	if(!detach_disk_database(NULL))
 		return false;
 
 	mem_db_num = sqlite3_changes(memdb);
@@ -376,11 +390,11 @@ bool export_queries_to_disk(bool final)
 		timer_start(DATABASE_WRITE_TIMER);
 
 	// Attach disk database
-	if(!attach_disk_database())
+	if(!attach_disk_database(NULL))
 		return false;
 
 	// Prepare SQLite3 statement
-	sqlite3_stmt* stmt = NULL;
+	sqlite3_stmt *stmt = NULL;
 	int rc = sqlite3_prepare_v2(memdb, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK ){
 		logg("import_queries_from_disk(): SQL error prepare: %s", sqlite3_errstr(rc));
@@ -416,7 +430,7 @@ bool export_queries_to_disk(bool final)
 	sqlite3_reset(stmt);
 	sqlite3_finalize(stmt);
 
-	if(!detach_disk_database())
+	if(!detach_disk_database(NULL))
 		return false;
 
 	// All temp queries were stored to disk, update the IDs
@@ -451,7 +465,7 @@ bool delete_query_from_db(const sqlite3_int64 id)
 	const char *querystr = "DELETE FROM queries WHERE id = ?";
 
 	// Prepare SQLite3 statement
-	sqlite3_stmt* stmt = NULL;
+	sqlite3_stmt *stmt = NULL;
 	int rc = sqlite3_prepare_v2(memdb, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK ){
 		logg("delete_query_from_db(): SQL error prepare: %s", sqlite3_errstr(rc));
@@ -552,7 +566,7 @@ void DB_read_queries(void)
 	const char *querystr = "SELECT * FROM queries";
 
 	// Prepare SQLite3 statement
-	sqlite3_stmt* stmt = NULL;
+	sqlite3_stmt *stmt = NULL;
 	int rc = sqlite3_prepare_v2(memdb, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
@@ -605,14 +619,14 @@ void DB_read_queries(void)
 		}
 		const enum query_status status = status_int;
 
-		const char * domainname = (const char *)sqlite3_column_text(stmt, 4);
+		const char *domainname = (const char *)sqlite3_column_text(stmt, 4);
 		if(domainname == NULL)
 		{
 			logg("DB warn: DOMAIN should never be NULL, %lli", (long long)queryTimeStamp);
 			continue;
 		}
 
-		const char * clientIP = (const char *)sqlite3_column_text(stmt, 5);
+		const char *clientIP = (const char *)sqlite3_column_text(stmt, 5);
 		if(clientIP == NULL)
 		{
 			logg("DB warn: CLIENT should never be NULL, %lli", (long long)queryTimeStamp);
@@ -674,7 +688,7 @@ void DB_read_queries(void)
 		const int queryIndex = counters->queries;
 
 		// Store this query in memory
-		queriesData* query = getQuery(queryIndex, false);
+		queriesData *query = getQuery(queryIndex, false);
 		query->magic = MAGICBYTE;
 		query->timestamp = queryTimeStamp;
 		if(type < 100)
@@ -707,7 +721,7 @@ void DB_read_queries(void)
 		query->flags.allowed = false;
 
 		// Set lastQuery timer for network table
-		clientsData* client = getClient(clientID, true);
+		clientsData *client = getClient(clientID, true);
 		client->lastQuery = queryTimeStamp;
 
 		// Handle type counters
@@ -774,7 +788,7 @@ void DB_read_queries(void)
 			case STATUS_DENYLIST_CNAME: // Blocked by exact blacklist (inside CNAME path)
 				query->flags.blocked = true;
 				// Get domain pointer
-				domainsData* domain = getDomain(domainID, true);
+				domainsData *domain = getDomain(domainID, true);
 				domain->blockedcount++;
 				change_clientcount(client, 0, 1, -1, 0);
 				break;
@@ -831,7 +845,7 @@ void DB_read_queries(void)
 		querystr = "SELECT MAX(id) FROM disk.queries";
 
 		// Attach disk database
-		if(!attach_disk_database())
+		if(!attach_disk_database(NULL))
 			return;
 
 		// Prepare SQLite3 statement
@@ -848,7 +862,7 @@ void DB_read_queries(void)
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
 
-		if(!detach_disk_database())
+		if(!detach_disk_database(NULL))
 			return;
 
 		logg("Last long-term idx is %lld", dbid);
@@ -927,7 +941,7 @@ bool query_to_database(queriesData *query)
 	if(query->upstreamID > -1)
 	{
 		// Get forward pointer
-		const upstreamsData* upstream = getUpstream(query->upstreamID, true);
+		const upstreamsData *upstream = getUpstream(query->upstreamID, true);
 		char *buffer = NULL;
 		if(asprintf(&buffer, "%s#%u", getstr(upstream->ippos), upstream->port) > 0)
 			sqlite3_bind_text(stmt, 7, buffer, -1, SQLITE_TRANSIENT);
@@ -975,8 +989,8 @@ bool query_to_database(queriesData *query)
 
 	// REPLY_TIME
 	if(query->response > 0.0)
-		// Store difference when applicable
-		sqlite3_bind_double(stmt, 11, query->response - query->timestamp);
+		// Store difference (in milliseconds) when applicable
+		sqlite3_bind_double(stmt, 11, 1000.0*(query->response - query->timestamp));
 	else
 		// Store NULL otherwise
 		sqlite3_bind_null(stmt, 11);

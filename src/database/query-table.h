@@ -69,11 +69,13 @@ const char *index_creation[] = {
 };
 #endif
 
-void memdb_size(unsigned long *last_idx, unsigned long *num);
+void db_counts(unsigned long *last_idx, unsigned long *mem_num, unsigned long *disk_num);
 bool init_memory_databases(void);
 sqlite3 *get_memdb(void) __attribute__((pure));
 bool import_queries_from_disk(void);
-int get_number_of_queries_in_DB(sqlite3 *db, bool disk);
+bool attach_disk_database(const char **msg);
+bool detach_disk_database(const char **msg);
+int get_number_of_queries_in_DB(sqlite3 *db, const bool disk, const bool attached);
 bool export_queries_to_disk(bool final);
 bool delete_query_from_db(const sqlite3_int64 id);
 bool mv_newdb_memdb(void);

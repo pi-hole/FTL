@@ -53,11 +53,12 @@ components:
             schema:
               type: integer
           - in: query
-            name: upstream
-            description: Filter by specific upstream
+            name: cursor
+            description: |
+              Database ID of the most recent query to be shown
             required: false
             schema:
-              type: string
+              type: integer
           - in: query
             name: domain
             description: Filter by specific domain
@@ -71,12 +72,44 @@ components:
             schema:
               type: string
           - in: query
-            name: cursor
-            description: |
-              Do not start at the most recent, but at an older query.
+            name: upstream
+            description: Filter by specific upstream
             required: false
             schema:
-              type: integer
+              type: string
+          - in: query
+            name: type
+            description: Filter by specific query type (A, AAAA, ...)
+            required: false
+            schema:
+              type: string
+          - in: query
+            name: status
+            description: Filter by specific query status (GRAVITY, FORWARDED, ...)
+            required: false
+            schema:
+              type: string
+          - in: query
+            name: reply
+            description: Filter by specific reply type (NODATA, NXDOMAIN, ...)
+            required: false
+            schema:
+              type: string
+          - in: query
+            name: dnssec
+            description: Filter by specific DNSSEC status (SECURE, INSECURE, ...)
+            required: false
+            schema:
+              type: string
+          - in: query
+            name: disk
+            description: Load queries from on-disk database rather than from in-memory
+            required: false
+            schema:
+              enum:
+                - true
+                - false
+              default: false
         responses:
           '200':
             description: OK
@@ -176,6 +209,10 @@ components:
               regex_idx: -1
               upstream: "localhost#5353"
               dbid: 112421355
+        cursor:
+          type: integer
+          description: Database ID of most recent query to show
+          example: 175881
         recordsTotal:
           type: integer
           description: Total number of available queries

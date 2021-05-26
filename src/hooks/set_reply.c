@@ -82,6 +82,6 @@ void query_set_reply(const unsigned int flags, const union all_addr *addr,
 
 	counters->reply[query->reply]++;
 
-	// Save response time (relative time)
+	// Save response time (absolute time)
 	query->response = now;
 }

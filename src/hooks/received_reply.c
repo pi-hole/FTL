@@ -140,9 +140,9 @@ void _FTL_reply(const unsigned int flags, const char *name, const union all_addr
 		// Save query response time
 		upstreamsData *upstream = getUpstream(query->upstreamID, true);
 		upstream->responses++;
-		unsigned long rtime = converttimeval(response) - query->response;
+		double rtime = now - query->response;
 		upstream->rtime += rtime;
-		unsigned long mean = upstream->rtime / upstream->responses;
+		double mean = upstream->rtime / upstream->responses;
 		upstream->rtuncertainty += (mean - rtime)*(mean - rtime);
 
 		// Only proceed if query is not already known

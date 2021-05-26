@@ -28,6 +28,7 @@ set(sources
         hex/specs/history.yaml
         hex/specs/lists.yaml
         hex/specs/main.yaml
+        hex/specs/queries.yaml
         hex/specs/stats.yaml
         hex/specs/version.yaml
         docs.c
