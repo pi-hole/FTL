@@ -105,8 +105,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// Skip AAAA queries if user doesn't want to have them analyzed
 	if(!config.analyze_AAAA && querytype == TYPE_AAAA)
 	{
-		if(config.debug & DEBUG_QUERIES)
-			logg("Not analyzing AAAA query");
+		log_debug(DEBUG_QUERIES, "Not analyzing AAAA query");
 		return false;
 	}
 
@@ -172,12 +171,9 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	if(config.rate_limit.count > 0 &&
 	   ++client->rate_limit > config.rate_limit.count)
 	{
-		if(config.debug & DEBUG_QUERIES)
-		{
-			logg("Rate-limiting %s %s query \"%s\" from %s:%s",
-			     proto == TCP ? "TCP" : "UDP",
-			     types, domainString, next_iface.name, clientIP);
-		}
+		log_debug(DEBUG_QUERIES, "Rate-limiting %s %s query \"%s\" from %s:%s",
+		          proto == TCP ? "TCP" : "UDP",
+		          types, domainString, next_iface.name, clientIP);
 
 		// Block this query
 		force_next_DNS_reply = REFUSED;
@@ -188,12 +184,9 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	}
 
 	// Log new query if in debug mode
-	if(config.debug & DEBUG_QUERIES)
-	{
-		logg("**** new %s %s query \"%s\" from %s:%s (ID %i, FTL %i, %s:%i)",
-		     proto == TCP ? "TCP" : "UDP",
-		     types, domainString, next_iface.name, clientIP, id, queryID, file, line);
-	}
+	log_debug(DEBUG_QUERIES, "**** new %s %s query \"%s\" from %s:%s (ID %i, FTL %i, %s:%i)",
+	          proto == TCP ? "TCP" : "UDP",
+	          types, domainString, next_iface.name, clientIP, id, queryID, file, line);
 
 	// Update counters
 	counters->querytype[querytype]++;
@@ -206,7 +199,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	if(config.analyze_only_A_AAAA && querytype != TYPE_A && querytype != TYPE_AAAA)
 	{
 		// Don't process this query further here, we already counted it
-		if(config.debug & DEBUG_QUERIES) logg("Notice: Skipping new query: %s (%i)", types, id);
+		log_debug(DEBUG_QUERIES, "Skipping new query: %s (%i)", types, id);
 		free(domainString);
 		unlock_shm();
 		return false;
@@ -220,7 +213,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	if(query == NULL)
 	{
 		// Encountered memory error, skip query
-		logg("WARN: No memory available, skipping query analysis");
+		log_err("No memory available, skipping query analysis");
 		// Free allocated memory
 		free(domainString);
 		// Release thread lock
@@ -296,8 +289,8 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 				if(config.debug & DEBUG_CLIENTS)
 				{
 					const char *clientName = getstr(client->namepos);
-					logg("Client %s (%s) changed interface: %s -> %s",
-					     clientIP, clientName, oldiface, next_iface.name);
+					log_debug(DEBUG_CLIENTS, "Client %s (%s) changed interface: %s -> %s",
+					          clientIP, clientName, oldiface, next_iface.name);
 				}
 
 				gravityDB_reload_groups(client);
@@ -316,17 +309,14 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	if(client->hwlen < 1)
 	{
 		client->hwlen = find_mac(addr, client->hwaddr, 1, time(NULL));
-		if(config.debug & DEBUG_ARP)
-		{
-			if(client->hwlen == 6)
-				logg("find_mac(\"%s\") returned hardware address "
-				     "%02X:%02X:%02X:%02X:%02X:%02X", clientIP,
-				     client->hwaddr[0], client->hwaddr[1], client->hwaddr[2],
-				     client->hwaddr[3], client->hwaddr[4], client->hwaddr[5]);
-			else
-				logg("find_mac(\"%s\") returned %i bytes of data",
-				     clientIP, client->hwlen);
-		}
+		if(client->hwlen == 6)
+			log_debug(DEBUG_ARP, "find_mac(\"%s\") returned hardware address "
+			          "%02X:%02X:%02X:%02X:%02X:%02X", clientIP,
+			          client->hwaddr[0], client->hwaddr[1], client->hwaddr[2],
+			          client->hwaddr[3], client->hwaddr[4], client->hwaddr[5]);
+		else
+			log_debug(DEBUG_ARP, "find_mac(\"%s\") returned %i bytes of data",
+			          clientIP, client->hwlen);
 	}
 
 	bool blockDomain = FTL_check_blocking(queryID, domainID, clientID, blockingreason);
