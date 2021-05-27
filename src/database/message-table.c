@@ -11,7 +11,7 @@
 #include "../FTL.h"
 #include "message-table.h"
 #include "common.h"
-// logg()
+// logging routines
 #include "../log.h"
 // get_group_names()
 #include "gravity-db.h"
@@ -73,7 +73,7 @@ bool create_message_table(sqlite3 *db)
 	// Update database version to 6
 	if(!db_set_FTL_property(db, DB_VERSION, 6))
 	{
-		logg("create_message_table(): Failed to update database version!");
+		log_err("create_message_table(): Failed to update database version!");
 		return false;
 	}
 
@@ -87,7 +87,7 @@ bool flush_message_table(void)
 	// Open database connection
 	if((db = dbopen(false)) == NULL)
 	{
-		logg("flush_message_table() - Failed to open DB");
+		log_err("flush_message_table() - Failed to open DB");
 		return false;
 	}
 
@@ -107,7 +107,7 @@ static bool add_message(enum message_type type,
 	// Open database connection
 	if((db = dbopen(false)) == NULL)
 	{
-		logg("flush_message_table() - Failed to open DB");
+		log_err("flush_message_table() - Failed to open DB");
 		return false;
 	}
 
@@ -118,7 +118,7 @@ static bool add_message(enum message_type type,
 		const char *querystr = "DELETE FROM message WHERE type = ?1 AND message = ?2";
 		int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 		if( rc != SQLITE_OK ){
-			logg("add_message(type=%u, message=%s) - SQL error prepare DELETE: %s",
+			log_err("add_message(type=%u, message=%s) - SQL error prepare DELETE: %s",
 			     type, message, sqlite3_errstr(rc));
 			dbclose(&db);
 			return false;
@@ -127,7 +127,7 @@ static bool add_message(enum message_type type,
 		// Bind type to prepared statement
 		if((rc = sqlite3_bind_text(stmt, 1, message_types[type], -1, SQLITE_STATIC)) != SQLITE_OK)
 		{
-			logg("add_message(type=%u, message=%s) - Failed to bind type DELETE: %s",
+			log_err("add_message(type=%u, message=%s) - Failed to bind type DELETE: %s",
 			     type, message, sqlite3_errstr(rc));
 			sqlite3_reset(stmt);
 			sqlite3_finalize(stmt);
@@ -138,7 +138,7 @@ static bool add_message(enum message_type type,
 		// Bind message to prepared statement
 		if((rc = sqlite3_bind_text(stmt, 2, message, -1, SQLITE_STATIC)) != SQLITE_OK)
 		{
-			logg("add_message(type=%u, message=%s) - Failed to bind message DELETE: %s",
+			log_err("add_message(type=%u, message=%s) - Failed to bind message DELETE: %s",
 			     type, message, sqlite3_errstr(rc));
 			sqlite3_reset(stmt);
 			sqlite3_finalize(stmt);
@@ -149,7 +149,7 @@ static bool add_message(enum message_type type,
 		// Execute and finalize
 		if((rc = sqlite3_step(stmt)) != SQLITE_OK && rc != SQLITE_DONE)
 		{
-			logg("add_message(type=%u, message=%s) - SQL error step DELETE: %s",
+			log_err("add_message(type=%u, message=%s) - SQL error step DELETE: %s",
 			     type, message, sqlite3_errstr(rc));
 			dbclose(&db);
 			return false;
@@ -166,7 +166,7 @@ static bool add_message(enum message_type type,
 	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
-		logg("add_message(type=%u, message=%s) - SQL error prepare: %s",
+		log_err("add_message(type=%u, message=%s) - SQL error prepare: %s",
 		     type, message, sqlite3_errstr(rc));
 		dbclose(&db);
 		return false;
@@ -175,7 +175,7 @@ static bool add_message(enum message_type type,
 	// Bind type to prepared statement
 	if((rc = sqlite3_bind_text(stmt, 1, message_types[type], -1, SQLITE_STATIC)) != SQLITE_OK)
 	{
-		logg("add_message(type=%u, message=%s) - Failed to bind type: %s",
+		log_err("add_message(type=%u, message=%s) - Failed to bind type: %s",
 		     type, message, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
@@ -186,7 +186,7 @@ static bool add_message(enum message_type type,
 	// Bind message to prepared statement
 	if((rc = sqlite3_bind_text(stmt, 2, message, -1, SQLITE_STATIC)) != SQLITE_OK)
 	{
-		logg("add_message(type=%u, message=%s) - Failed to bind message: %s",
+		log_err("add_message(type=%u, message=%s) - Failed to bind message: %s",
 		     type, message, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
@@ -218,7 +218,7 @@ static bool add_message(enum message_type type,
 		// Bind message to prepared statement
 		if(rc != SQLITE_OK)
 		{
-			logg("add_message(type=%u, message=%s) - Failed to bind argument %u (type %u): %s",
+			log_err("add_message(type=%u, message=%s) - Failed to bind argument %u (type %u): %s",
 			     type, message, 3 + j, datatype, sqlite3_errstr(rc));
 			sqlite3_reset(stmt);
 			sqlite3_finalize(stmt);
@@ -236,7 +236,7 @@ static bool add_message(enum message_type type,
 
 	if(rc != SQLITE_DONE)
 	{
-		logg("Encountered error while trying to store message in long-term database: %s", sqlite3_errstr(rc));
+		log_err("Encountered error while trying to store message in long-term database: %s", sqlite3_errstr(rc));
 		dbclose(&db);
 		return false;
 	}
@@ -259,8 +259,8 @@ void logg_regex_warning(const char *type, const char *warning, const int dbindex
 		return;
 
 	// Log to pihole-FTL.log
-	logg("REGEX WARNING: Invalid regex %s filter \"%s\": %s",
-	     type, regex, warning);
+	log_warn("Invalid regex %s filter \"%s\": %s",
+	         type, regex, warning);
 
 	// Log to database only if not in CLI mode
 	if(!cli_mode)
@@ -272,10 +272,10 @@ void logg_subnet_warning(const char *ip, const int matching_count, const char *m
                          const int chosen_match_id)
 {
 	// Log to pihole-FTL.log
-	logg("SUBNET WARNING: Client %s is managed by %i groups (IDs %s), all describing /%i subnets. "
-	     "FTL chose the most recent entry %s (ID %i) for this client.",
-	     ip, matching_count, matching_ids, matching_bits,
-	     chosen_match_text, chosen_match_id);
+	log_warn("Client %s is managed by %i groups (IDs %s), all describing /%i subnets. "
+	         "FTL chose the most recent entry %s (ID %i) for this client.",
+	         ip, matching_count, matching_ids, matching_bits,
+	         chosen_match_text, chosen_match_id);
 
 	// Log to database
 	char *names = get_client_names_from_ids(matching_ids);
@@ -286,8 +286,8 @@ void logg_subnet_warning(const char *ip, const int matching_count, const char *m
 void logg_hostname_warning(const char *ip, const char *name, const unsigned int pos)
 {
 	// Log to pihole-FTL.log
-	logg("HOSTNAME WARNING: Host name of client \"%s\" => \"%s\" contains (at least) one invalid character at position %d",
-	     ip, name, pos);
+	log_warn("Host name of client \"%s\" => \"%s\" contains (at least) one invalid character at position %d",
+	         ip, name, pos);
 
 	// Log to database
 	add_message(HOSTNAME_MESSAGE, ip, 2, name, (const int)pos);
@@ -296,7 +296,7 @@ void logg_hostname_warning(const char *ip, const char *name, const unsigned int 
 void logg_fatal_dnsmasq_message(const char *message)
 {
 	// Log to pihole-FTL.log
-	logg("FATAL ERROR in dnsmasq core: %s", message);
+	log_crit("Error in dnsmasq core: %s", message);
 
 	// Log to database
 	add_message(DNSMASQ_CONFIG_MESSAGE, message, 0);
