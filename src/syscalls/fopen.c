@@ -33,8 +33,8 @@ FILE *FTLfopen(const char *pathname, const char *mode, const char *file, const c
 	// prevents a possible infinite loop. We accept "No such file or
 	// directory" as this is something we'll deal with elsewhere
 	if(file_ptr == NULL && errno != ENOENT && (already_writing++) == 1)
-		logg("WARN: Could not fopen(\"%s\", \"%s\") in %s() (%s:%i): %s",
-		     pathname, mode, func, file, line, strerror(errno));
+		log_warn("Could not fopen(\"%s\", \"%s\") in %s() (%s:%i): %s",
+		         pathname, mode, func, file, line, strerror(errno));
 
 	// Decrement warning counter
 	already_writing--;

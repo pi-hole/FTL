@@ -29,8 +29,8 @@ int FTLpthread_mutex_lock(pthread_mutex_t *__mutex, const char *file, const char
 	// Final errer checking (may have faild for some other reason then an
 	// EINTR = interrupted system call)
 	if(ret != 0)
-		logg("WARN: Could not pthread_mutex_lock() in %s() (%s:%i): %s",
-		     func, file, line, strerror(ret));
+		log_warn("Could not pthread_mutex_lock() in %s() (%s:%i): %s",
+		         func, file, line, strerror(ret));
 
 	return ret;
 }
