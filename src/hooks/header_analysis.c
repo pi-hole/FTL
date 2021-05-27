@@ -86,7 +86,7 @@ void _FTL_header_analysis(const unsigned char header4, const unsigned int rcode,
 		else
 			domainname = "<cannot access domain struct>";
 
-		logg("**** %s externally blocked (ID %i, FTL %i, %s:%i)", domainname, id, queryID, file, line);
+		log_debug(DEBUG_QUERIES, "**** %s externally blocked (ID %i, FTL %i, %s:%i)", domainname, id, queryID, file, line);
 	}
 
 	// Store query as externally blocked
