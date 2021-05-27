@@ -13,7 +13,7 @@
 #include <execinfo.h>
 #endif
 #include "signals.h"
-// logg()
+// logging routines
 #include "log.h"
 // ls_dir()
 #include "files.h"
@@ -77,7 +77,7 @@ static void print_addr2line(const char *symbol, const void *address, const int j
 		snprintf(linebuffer, sizeof(linebuffer), "N/A (%p)", addr);
 	}
 	// Log result
-	logg("L[%04i]: %s", j, linebuffer);
+	log_info("L[%04i]: %s", j, linebuffer);
 
 	// Close pipe
 	pclose(addr2line);
@@ -92,11 +92,11 @@ void generate_backtrace(void)
 	// Try to obtain backtrace. This may not always be helpful, but it is better than nothing
 	void *buffer[255];
 	const int calls = backtrace(buffer, sizeof(buffer)/sizeof(void *));
-	logg("Backtrace:");
+	log_info("Backtrace:");
 
 	char ** bcktrace = backtrace_symbols(buffer, calls);
 	if(bcktrace == NULL)
-		logg("Unable to obtain backtrace symbols!");
+		log_warn("Unable to obtain backtrace symbols!");
 
 	// Try to compute binary offset from backtrace_symbols result
 	void *offset = NULL;
@@ -112,7 +112,7 @@ void generate_backtrace(void)
 
 	for(int j = 0; j < calls; j++)
 	{
-		logg("B[%04i]: %s", j,
+		log_info("B[%04i]: %s", j,
 		     bcktrace != NULL ? bcktrace[j] : "---");
 
 		if(bcktrace != NULL)
@@ -121,55 +121,55 @@ void generate_backtrace(void)
 	if(bcktrace != NULL)
 		free(bcktrace);
 #else
-	logg("!!! INFO: pihole-FTL has not been compiled with glibc/backtrace support, not generating one !!!");
+	log_info("!!! INFO: pihole-FTL has not been compiled with glibc/backtrace support, not generating one !!!");
 #endif
 }
 
 static void __attribute__((noreturn)) signal_handler(int sig, siginfo_t *si, void *unused)
 {
-	logg("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-	logg("---------------------------->  FTL crashed!  <----------------------------");
-	logg("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-	logg("Please report a bug at https://github.com/pi-hole/FTL/issues");
-	logg("and include in your report already the following details:");
+	log_info("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+	log_info("---------------------------->  FTL crashed!  <----------------------------");
+	log_info("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+	log_info("Please report a bug at https://github.com/pi-hole/FTL/issues");
+	log_info("and include in your report already the following details:");
 
 	if(FTLstarttime != 0)
 	{
-		logg("FTL has been running for %lli seconds", (long long)time(NULL) - FTLstarttime);
+		log_info("FTL has been running for %lli seconds", (long long)time(NULL) - FTLstarttime);
 	}
 	log_FTL_version(true);
 	char namebuf[16];
-	logg("Process details: MID: %i", mpid);
-	logg("                 PID: %i", getpid());
-	logg("                 TID: %i", gettid());
-	logg("                 Name: %s", getthread_name(namebuf));
+	log_info("Process details: MID: %i", mpid);
+	log_info("                 PID: %i", getpid());
+	log_info("                 TID: %i", gettid());
+	log_info("                 Name: %s", getthread_name(namebuf));
 
-	logg("Received signal: %s", strsignal(sig));
-	logg("     at address: %p", si->si_addr);
+	log_info("Received signal: %s", strsignal(sig));
+	log_info("     at address: %p", si->si_addr);
 
 	// Segmentation fault - program crashed
 	if(sig == SIGSEGV)
 	{
 		switch (si->si_code)
 		{
-			case SEGV_MAPERR:  logg("     with code:  SEGV_MAPERR (Address not mapped to object)"); break;
-			case SEGV_ACCERR:  logg("     with code:  SEGV_ACCERR (Invalid permissions for mapped object)"); break;
+			case SEGV_MAPERR:  log_info("     with code:  SEGV_MAPERR (Address not mapped to object)"); break;
+			case SEGV_ACCERR:  log_info("     with code:  SEGV_ACCERR (Invalid permissions for mapped object)"); break;
 #ifdef SEGV_BNDERR
-			case SEGV_BNDERR:  logg("     with code:  SEGV_BNDERR (Failed address bound checks)"); break;
+			case SEGV_BNDERR:  log_info("     with code:  SEGV_BNDERR (Failed address bound checks)"); break;
 #endif
 #ifdef SEGV_PKUERR
-			case SEGV_PKUERR:  logg("     with code:  SEGV_PKUERR (Protection key checking failure)"); break;
+			case SEGV_PKUERR:  log_info("     with code:  SEGV_PKUERR (Protection key checking failure)"); break;
 #endif
 #ifdef SEGV_ACCADI
-			case SEGV_ACCADI:  logg("     with code:  SEGV_ACCADI (ADI not enabled for mapped object)"); break;
+			case SEGV_ACCADI:  log_info("     with code:  SEGV_ACCADI (ADI not enabled for mapped object)"); break;
 #endif
 #ifdef SEGV_ADIDERR
-			case SEGV_ADIDERR: logg("     with code:  SEGV_ADIDERR (Disrupting MCD error)"); break;
+			case SEGV_ADIDERR: log_info("     with code:  SEGV_ADIDERR (Disrupting MCD error)"); break;
 #endif
 #ifdef SEGV_ADIPERR
-			case SEGV_ADIPERR: logg("     with code:  SEGV_ADIPERR (Precise MCD exception)"); break;
+			case SEGV_ADIPERR: log_info("     with code:  SEGV_ADIPERR (Precise MCD exception)"); break;
 #endif
-			default:           logg("     with code:  Unknown (%i)", si->si_code); break;
+			default:           log_info("     with code:  Unknown (%i)", si->si_code); break;
 		}
 	}
 
@@ -178,12 +178,12 @@ static void __attribute__((noreturn)) signal_handler(int sig, siginfo_t *si, voi
 	{
 		switch (si->si_code)
 		{
-			case BUS_ADRALN:    logg("     with code:  BUS_ADRALN (Invalid address alignment)"); break;
-			case BUS_ADRERR:    logg("     with code:  BUS_ADRERR (Non-existant physical address)"); break;
-			case BUS_OBJERR:    logg("     with code:  BUS_OBJERR (Object specific hardware error)"); break;
-			case BUS_MCEERR_AR: logg("     with code:  BUS_MCEERR_AR (Hardware memory error: action required)"); break;
-			case BUS_MCEERR_AO: logg("     with code:  BUS_MCEERR_AO (Hardware memory error: action optional)"); break;
-			default:            logg("     with code:  Unknown (%i)", si->si_code); break;
+			case BUS_ADRALN:    log_info("     with code:  BUS_ADRALN (Invalid address alignment)"); break;
+			case BUS_ADRERR:    log_info("     with code:  BUS_ADRERR (Non-existant physical address)"); break;
+			case BUS_OBJERR:    log_info("     with code:  BUS_OBJERR (Object specific hardware error)"); break;
+			case BUS_MCEERR_AR: log_info("     with code:  BUS_MCEERR_AR (Hardware memory error: action required)"); break;
+			case BUS_MCEERR_AO: log_info("     with code:  BUS_MCEERR_AO (Hardware memory error: action optional)"); break;
+			default:            log_info("     with code:  Unknown (%i)", si->si_code); break;
 		}
 	}
 
@@ -192,18 +192,18 @@ static void __attribute__((noreturn)) signal_handler(int sig, siginfo_t *si, voi
 	{
 		switch (si->si_code)
 		{
-			case ILL_ILLOPC:   logg("     with code:  ILL_ILLOPC (Illegal opcode)"); break;
-			case ILL_ILLOPN:   logg("     with code:  ILL_ILLOPN (Illegal operand)"); break;
-			case ILL_ILLADR:   logg("     with code:  ILL_ILLADR (Illegal addressing mode)"); break;
-			case ILL_ILLTRP:   logg("     with code:  ILL_ILLTRP (Illegal trap)"); break;
-			case ILL_PRVOPC:   logg("     with code:  ILL_PRVOPC (Privileged opcode)"); break;
-			case ILL_PRVREG:   logg("     with code:  ILL_PRVREG (Privileged register)"); break;
-			case ILL_COPROC:   logg("     with code:  ILL_COPROC (Coprocessor error)"); break;
-			case ILL_BADSTK:   logg("     with code:  ILL_BADSTK (Internal stack error)"); break;
+			case ILL_ILLOPC:   log_info("     with code:  ILL_ILLOPC (Illegal opcode)"); break;
+			case ILL_ILLOPN:   log_info("     with code:  ILL_ILLOPN (Illegal operand)"); break;
+			case ILL_ILLADR:   log_info("     with code:  ILL_ILLADR (Illegal addressing mode)"); break;
+			case ILL_ILLTRP:   log_info("     with code:  ILL_ILLTRP (Illegal trap)"); break;
+			case ILL_PRVOPC:   log_info("     with code:  ILL_PRVOPC (Privileged opcode)"); break;
+			case ILL_PRVREG:   log_info("     with code:  ILL_PRVREG (Privileged register)"); break;
+			case ILL_COPROC:   log_info("     with code:  ILL_COPROC (Coprocessor error)"); break;
+			case ILL_BADSTK:   log_info("     with code:  ILL_BADSTK (Internal stack error)"); break;
 #ifdef ILL_BADIADDR
-			case ILL_BADIADDR: logg("     with code:  ILL_BADIADDR (Unimplemented instruction address)"); break;
+			case ILL_BADIADDR: log_info("     with code:  ILL_BADIADDR (Unimplemented instruction address)"); break;
 #endif
-			default:           logg("     with code:  Unknown (%i)", si->si_code); break;
+			default:           log_info("     with code:  Unknown (%i)", si->si_code); break;
 		}
 	}
 
@@ -212,21 +212,21 @@ static void __attribute__((noreturn)) signal_handler(int sig, siginfo_t *si, voi
 	{
 		switch (si->si_code)
 		{
-			case FPE_INTDIV:   logg("     with code:  FPE_INTDIV (Integer divide by zero)"); break;
-			case FPE_INTOVF:   logg("     with code:  FPE_INTOVF (Integer overflow)"); break;
-			case FPE_FLTDIV:   logg("     with code:  FPE_FLTDIV (Floating point divide by zero)"); break;
-			case FPE_FLTOVF:   logg("     with code:  FPE_FLTOVF (Floating point overflow)"); break;
-			case FPE_FLTUND:   logg("     with code:  FPE_FLTUND (Floating point underflow)"); break;
-			case FPE_FLTRES:   logg("     with code:  FPE_FLTRES (Floating point inexact result)"); break;
-			case FPE_FLTINV:   logg("     with code:  FPE_FLTINV (Floating point invalid operation)"); break;
-			case FPE_FLTSUB:   logg("     with code:  FPE_FLTSUB (Subscript out of range)"); break;
+			case FPE_INTDIV:   log_info("     with code:  FPE_INTDIV (Integer divide by zero)"); break;
+			case FPE_INTOVF:   log_info("     with code:  FPE_INTOVF (Integer overflow)"); break;
+			case FPE_FLTDIV:   log_info("     with code:  FPE_FLTDIV (Floating point divide by zero)"); break;
+			case FPE_FLTOVF:   log_info("     with code:  FPE_FLTOVF (Floating point overflow)"); break;
+			case FPE_FLTUND:   log_info("     with code:  FPE_FLTUND (Floating point underflow)"); break;
+			case FPE_FLTRES:   log_info("     with code:  FPE_FLTRES (Floating point inexact result)"); break;
+			case FPE_FLTINV:   log_info("     with code:  FPE_FLTINV (Floating point invalid operation)"); break;
+			case FPE_FLTSUB:   log_info("     with code:  FPE_FLTSUB (Subscript out of range)"); break;
 #ifdef FPE_FLTUNK
-			case FPE_FLTUNK:   logg("     with code:  FPE_FLTUNK (Undiagnosed floating-point exception)"); break;
+			case FPE_FLTUNK:   log_info("     with code:  FPE_FLTUNK (Undiagnosed floating-point exception)"); break;
 #endif
 #ifdef FPE_CONDTRAP
-			case FPE_CONDTRAP: logg("     with code:  FPE_CONDTRAP (Trap on condition)"); break;
+			case FPE_CONDTRAP: log_info("     with code:  FPE_CONDTRAP (Trap on condition)"); break;
 #endif
-			default:           logg("     with code:  Unknown (%i)", si->si_code); break;
+			default:           log_info("     with code:  Unknown (%i)", si->si_code); break;
 		}
 	}
 
@@ -235,16 +235,16 @@ static void __attribute__((noreturn)) signal_handler(int sig, siginfo_t *si, voi
 	// Print content of /dev/shm
 	ls_dir("/dev/shm");
 
-	logg("Please also include some lines from above the !!!!!!!!! header.");
-	logg("Thank you for helping us to improve our FTL engine!");
+	log_info("Please also include some lines from above the !!!!!!!!! header.");
+	log_info("Thank you for helping us to improve our FTL engine!");
 
 	// Terminate main process if crash happened in a TCP worker
 	if(mpid != getpid())
 	{
 		// This is a forked process
-		logg("Asking parent pihole-FTL (PID %i) to shut down", (int)mpid);
+		log_info("Asking parent pihole-FTL (PID %i) to shut down", (int)mpid);
 		kill(mpid, SIGRTMIN+2);
-		logg("FTL fork terminated!");
+		log_info("FTL fork terminated!");
 	}
 	else
 	{
@@ -270,7 +270,7 @@ static void SIGRT_handler(int signum, siginfo_t *si, void *unused)
 	}
 
 	int rtsig = signum - SIGRTMIN;
-	logg("Received: %s (%d -> %d)", strsignal(signum), signum, rtsig);
+	log_info("Received: %s (%d -> %d)", strsignal(signum), signum, rtsig);
 
 	if(rtsig == 0)
 	{
