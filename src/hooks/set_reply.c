@@ -75,10 +75,9 @@ void query_set_reply(const unsigned int flags, const union all_addr *addr,
 		query->reply = REPLY_IP;
 	}
 
-	if(config.debug & DEBUG_QUERIES)
-		logg("Set reply to %s (%d)",
-		     reply_status_str[query->reply],
-		     query->reply);
+	log_debug(DEBUG_QUERIES, "Set reply to %s (%d)",
+	          reply_status_str[query->reply],
+	          query->reply);
 
 	counters->reply[query->reply]++;
 
