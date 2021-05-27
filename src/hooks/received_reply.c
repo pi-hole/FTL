@@ -71,11 +71,8 @@ void _FTL_reply(const unsigned int flags, const char *name, const union all_addr
 	}
 
 	// Possible debugging output
-	if(config.debug & DEBUG_QUERIES)
-	{
-		logg("**** got reply %s is %s (ID %i, %s:%i)", name, answer, id, file, line);
-		print_flags(flags, false);
-	}
+	log_debug(DEBUG_QUERIES, "**** got reply %s is %s (ID %i, %s:%i)", name, answer, id, file, line);
+	print_flags(flags, false);
 
 	// Get response time
 	struct timeval response;
@@ -86,7 +83,7 @@ void _FTL_reply(const unsigned int flags, const char *name, const union all_addr
 	if(i < 0)
 	{
 		// This may happen e.g. if the original query was "pi.hole"
-		if(config.debug & DEBUG_QUERIES) logg("FTL_reply(): Query %i has not been found", id);
+		log_debug(DEBUG_QUERIES, "FTL_reply(): Query %i has not been found", id);
 		unlock_shm();
 		return;
 	}
@@ -182,7 +179,7 @@ void _FTL_reply(const unsigned int flags, const char *name, const union all_addr
 	}
 	else if(isExactMatch && !query->flags.complete)
 	{
-		logg("Unknown REPLY");
+		log_err("Unknown REPLY");
 		print_flags(flags, true);
 	}
 
