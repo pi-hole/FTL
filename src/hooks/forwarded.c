@@ -56,9 +56,8 @@ void _FTL_forwarded(const unsigned int flags, const char *name, const struct ser
 	strtolower(upstreamIP);
 
 	// Debug logging
-	if(config.debug & DEBUG_QUERIES)
-		logg("**** forwarded %s to %s#%u (ID %i, %s:%i)",
-		     name, upstreamIP, upstreamPort, id, file, line);
+	log_debug(DEBUG_QUERIES, "**** forwarded %s to %s#%u (ID %i, %s:%i)",
+	          name, upstreamIP, upstreamPort, id, file, line);
 
 	// Save status and upstreamID in corresponding query identified by dnsmasq's ID
 	const int queryID = findQueryID(id);
