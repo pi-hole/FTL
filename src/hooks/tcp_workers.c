@@ -46,7 +46,7 @@ void FTL_TCP_worker_terminating(bool finished)
 
 	if(atomic_flag_test_and_set(&worker_already_terminating))
 	{
-		logg("TCP worker already terminating!");
+		log_debug(DEBUG_ANY, "TCP worker already terminating!");
 		return;
 	}
 
@@ -54,7 +54,7 @@ void FTL_TCP_worker_terminating(bool finished)
 	if(config.debug != 0)
 	{
 		const char *reason = finished ? "client disconnected" : "timeout";
-		logg("TCP worker terminating (%s)", reason);
+		log_debug(DEBUG_ANY, "TCP worker terminating (%s)", reason);
 	}
 
 	if(main_pid() == getpid())
@@ -122,8 +122,8 @@ void FTL_TCP_worker_created(const int confd)
 		}
 
 		// Print log
-		logg("TCP worker forked for client %s on interface %s with IP %s",
-		     peer_ip, next_iface.name, local_ip);
+		log_debug(DEBUG_ANY, "TCP worker forked for client %s on interface %s with IP %s",
+		          peer_ip, next_iface.name, local_ip);
 	}
 
 	if(main_pid() == getpid())
@@ -135,7 +135,6 @@ void FTL_TCP_worker_created(const int confd)
 
 	// Reopen gravity database handle in this fork as the main process's
 	// handle isn't valid here
-	if(config.debug != 0)
-		logg("Reopening Gravity database for this fork");
+	log_debug(DEBUG_ANY, "Reopening Gravity database for this fork");
 	gravityDB_forked();
 }
