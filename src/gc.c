@@ -84,7 +84,7 @@ void *GC_thread(void *val)
 				timer_start(GC_TIMER);
 				char timestring[84] = "";
 				get_timestr(timestring, mintime, false);
-				logg("GC starting, mintime: %s (%llu)", timestring, (long long)mintime);
+				log_info("GC starting, mintime: %s (%llu)", timestring, (long long)mintime);
 			}
 
 			// Process all queries
@@ -205,7 +205,7 @@ void *GC_thread(void *val)
 			moveOverTimeMemory(mintime);
 
 			if(config.debug & DEBUG_GC)
-				logg("Notice: GC removed %i queries (took %.2f ms)", removed, timer_elapsed_msec(GC_TIMER));
+				log_debug("GC removed %i queries (took %.2f ms)", removed, timer_elapsed_msec(GC_TIMER));
 
 			// Release thread lock
 			unlock_shm();
@@ -219,6 +219,6 @@ void *GC_thread(void *val)
 		thread_sleepms(GC, 1000);
 	}
 
-	logg("Terminating GC thread");
+	log_info("Terminating GC thread");
 	return NULL;
 }
