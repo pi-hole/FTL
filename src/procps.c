@@ -134,7 +134,7 @@ bool check_running_FTL(void)
 		if(!process_running)
 		{
 			process_running = true;
-			log_err("HINT: %s is already running!", PROCESS_NAME);
+			log_info("%s is already running!", PROCESS_NAME);
 		}
 
 		if(last_pid != ppid)

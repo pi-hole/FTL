@@ -896,13 +896,13 @@
 }
 
 @test "No ERROR messages in pihole-FTL.log (besides known index.html error)" {
-  run bash -c 'grep "ERR: " /var/log/pihole-FTL.log | grep -c -v -E "index\.html"'
+  run bash -c 'grep "ERR: " /var/log/pihole-FTL.log | grep -c -v -E "(index\.html)|(create_shm(): Failed to create shared memory object \"FTL-lock\": File exists)"'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0" ]]
 }
 
 @test "No CRIT messages in pihole-FTL.log (besides error due to testing to start FTL more than once)" {
-  run bash -c 'grep "CRIT: " /var/log/pihole-FTL.log | grep -c -v "CRIT: create_shm(): Failed to create shared memory object \"FTL-lock\": File exists"'
+  run bash -c 'grep "CRIT: " /var/log/pihole-FTL.log | grep -c -v "Initialization of shared memory failed."'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0" ]]
 }
