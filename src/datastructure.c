@@ -83,13 +83,13 @@ int findUpstreamID(const char * upstreamString, const in_port_t port)
 	// This upstream server is not known
 	// Store ID
 	const int upstreamID = counters->upstreams;
-	logg("New upstream server: %s:%u (%i/%u)", upstreamString, port, upstreamID, counters->upstreams_MAX);
+	log_debug("New upstream server: %s:%u (%i/%u)", upstreamString, port, upstreamID, counters->upstreams_MAX);
 
 	// Get upstream pointer
 	upstreamsData* upstream = getUpstream(upstreamID, false);
 	if(upstream == NULL)
 	{
-		logg("ERROR: Encountered serious memory error in findupstreamID()");
+		log_err("Encountered serious memory error in findupstreamID()");
 		return -1;
 	}
 
@@ -153,7 +153,7 @@ int findDomainID(const char *domainString, const bool count)
 	domainsData* domain = getDomain(domainID, false);
 	if(domain == NULL)
 	{
-		logg("ERROR: Encountered serious memory error in findDomainID()");
+		log_err("Encountered serious memory error in findDomainID()");
 		return -1;
 	}
 
@@ -210,7 +210,7 @@ int findClientID(const char *clientIP, const bool count, const bool aliasclient)
 	clientsData* client = getClient(clientID, false);
 	if(client == NULL)
 	{
-		logg("ERROR: Encountered serious memory error in findClientID()");
+		log_err("Encountered serious memory error in findClientID()");
 		return -1;
 	}
 
@@ -286,8 +286,8 @@ void change_clientcount(clientsData *client, int total, int blocked, int overTim
 		// Also add counts to the conencted alias-client (if any)
 		if(client->flags.aliasclient)
 		{
-			logg("WARN: Should not add to alias-client directly (client \"%s\" (%s))!",
-			     getstr(client->namepos), getstr(client->ippos));
+			log_warn("Should not add to alias-client directly (client \"%s\" (%s))!",
+			         getstr(client->namepos), getstr(client->ippos));
 			return;
 		}
 		if(client->aliasclient_id > -1)
@@ -328,7 +328,7 @@ int findCacheID(int domainID, int clientID, enum query_type query_type)
 
 	if(dns_cache == NULL)
 	{
-		logg("ERROR: Encountered serious memory error in findCacheID()");
+		log_err("Encountered serious memory error in findCacheID()");
 		return -1;
 	}
 
@@ -441,7 +441,7 @@ const char *getClientNameString(const queriesData* query)
 void FTL_reset_per_client_domain_data(void)
 {
 	if(config.debug & DEBUG_DATABASE)
-		logg("Resetting per-client DNS cache, size is %i", counters->dns_cache_size);
+		log_debug("Resetting per-client DNS cache, size is %i", counters->dns_cache_size);
 
 	for(int cacheID = 0; cacheID < counters->dns_cache_size; cacheID++)
 	{
@@ -687,14 +687,14 @@ void query_set_status(queriesData *query, const enum query_status new_status)
 		const char *oldstr = get_query_status_str(query->status);
 		if(query->status == new_status)
 		{
-			logg("Query %i: status unchanged: %s (%d)",
-			     query->id, oldstr, query->status);
+			log_debug("Query %i: status unchanged: %s (%d)",
+			          query->id, oldstr, query->status);
 		}
 		else
 		{
 			const char *newstr = get_query_status_str(new_status);
-			logg("Query %i: status changed: %s (%d) -> %s (%d)",
-			     query->id, oldstr, query->status, newstr, new_status);
+			log_debug("Query %i: status changed: %s (%d) -> %s (%d)",
+			          query->id, oldstr, query->status, newstr, new_status);
 		}
 	}
 
