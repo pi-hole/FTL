@@ -525,7 +525,7 @@ bool mv_newdb_memdb(void)
 	int num = sqlite3_changes(memdb);
 	// Debug logging
 	if(num > 0)
-		log_debug(DEBUG_QUERIES, "Moved %d quer%s from newdb into memdb", num, num == 1 ? "y" : "ies");
+		log_debug(DEBUG_DATABASE, "Moved %d quer%s from newdb into memdb", num, num == 1 ? "y" : "ies");
 	mem_db_num += num;
 
 	return true;
