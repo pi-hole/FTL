@@ -32,7 +32,7 @@ long int lastdbindex = 0;
 
 void _dbclose(sqlite3 **db, const char *func, const int line, const char *file)
 {
-		log_debug(DEBUG_DATABASE, "Closing FTL database in %s() (%s:%i)", func, file, line);
+	log_debug(DEBUG_DATABASE, "Closing FTL database in %s() (%s:%i)", func, file, line);
 
 	// Only try to close an existing database connection
 	int rc = SQLITE_OK;
@@ -101,7 +101,7 @@ log_debug(DEBUG_DATABASE, "dbquery: \"%s\"", query);
 
 	int rc = sqlite3_exec(db, query, NULL, NULL, NULL);
 	if( rc != SQLITE_OK ){
-		log_err("ERROR: SQL query \"%s\" failed: %s",
+		log_err("SQL query \"%s\" failed: %s",
 		     query, sqlite3_errstr(rc));
 		sqlite3_free(query);
 		return rc;
@@ -236,7 +236,7 @@ void db_init(void)
 		log_info("Updating long-term database to version 2");
 		if (!create_counter_table(db))
 		{
-			log_warn("Counter table not initialized, database not available");
+			log_err("Counter table not initialized, database not available");
 			dbclose(&db);
 			return;
 		}
@@ -251,7 +251,7 @@ void db_init(void)
 		log_info("Updating long-term database to version 3");
 		if (!create_network_table(db))
 		{
-			log_warn("Network table not initialized, database not available");
+			log_err("Network table not initialized, database not available");
 			dbclose(&db);
 			return;
 		}
@@ -266,7 +266,7 @@ void db_init(void)
 		log_info("Updating long-term database to version 4");
 		if(!unify_hwaddr(db))
 		{
-			log_warn("Unable to unify clients in network table, database not available");
+			log_err("Unable to unify clients in network table, database not available");
 			dbclose(&db);
 			return;
 		}
@@ -281,7 +281,7 @@ void db_init(void)
 		log_info("Updating long-term database to version 5");
 		if(!create_network_addresses_table(db))
 		{
-			log_warn("Network-addresses table not initialized, database not available");
+			log_err("Network-addresses table not initialized, database not available");
 			dbclose(&db);
 			return;
 		}
@@ -296,7 +296,7 @@ void db_init(void)
 		log_info("Updating long-term database to version 6");
 		if(!create_message_table(db))
 		{
-			log_warn("Message table not initialized, database not available");
+			log_err("Message table not initialized, database not available");
 			dbclose(&db);
 			return;
 		}
@@ -311,7 +311,7 @@ void db_init(void)
 		log_info("Updating long-term database to version 7");
 		if(!add_additional_info_column(db))
 		{
-			log_warn("Column additional_info not initialized, database not available");
+			log_err("Column additional_info not initialized, database not available");
 			dbclose(&db);
 			return;
 		}
@@ -326,7 +326,7 @@ void db_init(void)
 		log_info("Updating long-term database to version 8");
 		if(!create_network_addresses_with_names_table(db))
 		{
-			log_warn("Network addresses table not initialized, database not available");
+			log_err("Network addresses table not initialized, database not available");
 			dbclose(&db);
 			return;
 		}
@@ -341,7 +341,7 @@ void db_init(void)
 		log_info("Updating long-term database to version 9");
 		if(!create_aliasclients_table(db))
 		{
-			log_warn("Aliasclients table not initialized, database not available");
+			log_err("Aliasclients table not initialized, database not available");
 			dbclose(&db);
 			return;
 		}
@@ -356,7 +356,7 @@ void db_init(void)
 		log_info("Updating long-term database to version 10");
 		if(!create_more_queries_columns(db))
 		{
-			log_warn("Long-term database not initialized, database not available");
+			log_err("Long-term database not initialized, database not available");
 			dbclose(&db);
 			return;
 		}
@@ -392,7 +392,7 @@ int db_get_int(sqlite3* db, const enum ftl_table_props ID)
 
 	if(querystr == NULL || ret < 0)
 	{
-		log_warn("Memory allocation failed in db_get_int db, with ID = %u (%i)", ID, ret);
+		log_err("Memory allocation failed in db_get_int db, with ID = %u (%i)", ID, ret);
 		return DB_FAILED;
 	}
 
@@ -410,7 +410,7 @@ double db_get_FTL_property_double(sqlite3 *db, const enum ftl_table_props ID)
 
 	if(querystr == NULL || ret < 0)
 	{
-		log_warn("Memory allocation failed in db_get_FTL_property with ID = %u (%i)", ID, ret);
+		log_err("Memory allocation failed in db_get_FTL_property with ID = %u (%i)", ID, ret);
 		return DB_FAILED;
 	}
 
@@ -462,7 +462,7 @@ bool db_update_counters(sqlite3 *db, const int total, const int blocked)
 
 int db_query_int(sqlite3 *db, const char* querystr)
 {
-log_debug(DEBUG_DATABASE,"dbquery: \"%s\"", querystr);
+	log_debug(DEBUG_DATABASE, "dbquery: \"%s\"", querystr);
 
 
 	sqlite3_stmt* stmt;
@@ -481,13 +481,13 @@ log_debug(DEBUG_DATABASE,"dbquery: \"%s\"", querystr);
 	if( rc == SQLITE_ROW )
 	{
 		result = sqlite3_column_int(stmt, 0);
-		log_debug(DEBUG_DATABASE,"         ---> Result %i (int)", result);
+		log_debug(DEBUG_DATABASE, "         ---> Result %i (int)", result);
 	}
 	else if( rc == SQLITE_DONE )
 	{
 		// No rows available
 		result = DB_NODATA;
-		log_debug(DEBUG_DATABASE,"         ---> No data");
+		log_debug(DEBUG_DATABASE, "         ---> No data");
 	}
 	else
 	{
@@ -502,8 +502,7 @@ log_debug(DEBUG_DATABASE,"dbquery: \"%s\"", querystr);
 
 double db_query_double(sqlite3 *db, const char* querystr)
 {
-	log_debug(DEBUG_DATABASE,"dbquery: \"%s\"", querystr);
-	}
+	log_debug(DEBUG_DATABASE, "dbquery: \"%s\"", querystr);
 
 	sqlite3_stmt* stmt = NULL;
 	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
@@ -517,20 +516,20 @@ double db_query_double(sqlite3 *db, const char* querystr)
 	}
 
 	rc = sqlite3_step(stmt);
-	double result;
+	double result;warn
 
 	if( rc == SQLITE_ROW )
 	{
 		result = sqlite3_column_double(stmt, 0);
 
-		log_debug(DEBUG_DATABASE,"         ---> Result %f (double)", result);
+		log_debug(DEBUG_DATABASE, "         ---> Result %f (double)", result);
 	}
 	else if( rc == SQLITE_DONE )
 	{
 		// No rows available
 		result = DB_NODATA;
 
-		log_debug(DEBUG_DATABASE,"         ---> No data");
+		log_debug(DEBUG_DATABASE, "         ---> No data");
 		}
 	}
 	else
