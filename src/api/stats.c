@@ -16,7 +16,7 @@
 #include "../datastructure.h"
 // read_setupVarsconf()
 #include "../setupVars.h"
-// logg()
+// logging routines
 #include "../log.h"
 // config struct
 #include "../config.h"
@@ -138,9 +138,8 @@ int api_stats_top_domains(bool blocked, struct ftl_conn *api)
 	get_privacy_level(NULL);
 	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS)
 	{
-		if(config.debug & DEBUG_API)
-			logg("Not returning top domains: Privacy level is set to %i",
-			     config.privacylevel);
+		log_debug(DEBUG_API, "Not returning top domains: Privacy level is set to %i",
+		          config.privacylevel);
 
 		// Minimum structure is
 		// {"top_domains":[]}
@@ -228,8 +227,7 @@ int api_stats_top_domains(bool blocked, struct ftl_conn *api)
 		// Skip this domain if already audited
 		if(audit && in_auditlist(getstr(domain->domainpos)) > 0)
 		{
-			if(config.debug & DEBUG_API)
-				logg("API: %s has been audited.", getstr(domain->domainpos));
+			log_debug(DEBUG_API, "API: %s has been audited.", getstr(domain->domainpos));
 			continue;
 		}
 
@@ -295,9 +293,8 @@ int api_stats_top_clients(bool blocked, struct ftl_conn *api)
 	get_privacy_level(NULL);
 	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS_CLIENTS)
 	{
-		if(config.debug & DEBUG_API)
-			logg("Not returning top clients: Privacy level is set to %i",
-			     config.privacylevel);
+		log_debug(DEBUG_API, "Not returning top clients: Privacy level is set to %i",
+		          config.privacylevel);
 
 		// Minimum structure is
 		// {"top_clients":[]}
