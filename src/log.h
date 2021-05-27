@@ -30,16 +30,15 @@ const char *get_ordinal_suffix(unsigned int number) __attribute__ ((const));
 
 // The actual logging routine can take extra options for specialized logging
 // The more general interfaces can be defined here as appropriate shortcuts
-#define log_crit(format, ...) _FTL_log(LOG_CRIT, true, false, format, ## __VA_ARGS__)
-#define log_err(format, ...) _FTL_log(LOG_ERR, true, false, format, ## __VA_ARGS__)
-#define log_warn(format, ...) _FTL_log(LOG_WARNING, true, false, format, ## __VA_ARGS__)
-#define log_notice(format, ...) _FTL_log(LOG_NOICE, true, false, format, ## __VA_ARGS__)
-#define log_info(format, ...) _FTL_log(LOG_INFO, true, false, format, ## __VA_ARGS__)
-#define log_debug(format, ...) _FTL_log(LOG_DEBUG, true, false, format, ## __VA_ARGS__)
-#define logg(format, ...) _FTL_log(LOG_INFO, true, false, format, ## __VA_ARGS__)
-#define logg_debug(format, ...) _FTL_log(LOG_INFO, true, true, format, ## __VA_ARGS__)
-#define logg_sameline(format, ...) _FTL_log(LOG_INFO, false, false, format, ## __VA_ARGS__)
-void _FTL_log(const int priority, const bool newline, const bool debug, const char *format, ...) __attribute__ ((format (gnu_printf, 4, 5)));
+#define log_crit(format, ...) _FTL_log(LOG_CRIT, true, format, ## __VA_ARGS__)
+#define log_err(format, ...) _FTL_log(LOG_ERR, true, format, ## __VA_ARGS__)
+#define log_warn(format, ...) _FTL_log(LOG_WARNING, true, format, ## __VA_ARGS__)
+#define log_notice(format, ...) _FTL_log(LOG_NOTICE, true, format, ## __VA_ARGS__)
+#define log_info(format, ...) _FTL_log(LOG_INFO, true, format, ## __VA_ARGS__)
+#define log_debug(format, ...) _FTL_log(LOG_DEBUG, true, format, ## __VA_ARGS__)
+#define logg(format, ...) _FTL_log(LOG_INFO, true, format, ## __VA_ARGS__)
+#define logg_sameline(format, ...) _FTL_log(LOG_INFO, false, format, ## __VA_ARGS__)
+void _FTL_log(const int priority, const bool newline, const char *format, ...) __attribute__ ((format (gnu_printf, 3, 4)));
 void FTL_log_dnsmasq_fatal(const char *format, ...) __attribute__ ((format (gnu_printf, 1, 2)));
 void log_ctrl(bool vlog, bool vstdout);
 void FTL_log_helper(const unsigned char n, ...);

@@ -136,7 +136,7 @@ static const char *priostr(const int priority)
 	}
 }
 
-void _FTL_log(const int priority, const bool newline, const bool debug, const char *format, ...)
+void _FTL_log(const int priority, const bool newline, const char *format, ...)
 {
 	char timestring[84] = "";
 	va_list args;
@@ -146,7 +146,7 @@ void _FTL_log(const int priority, const bool newline, const bool debug, const ch
 		return;
 
 	// Check if this is something we should print only in debug mode
-	if(debug && !config.debug)
+	if(priority == LOG_DEBUG && !config.debug)
 		return;
 
 	// Get human-readable time
