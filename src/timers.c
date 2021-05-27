@@ -22,7 +22,7 @@ void timer_start(const enum timers i)
 {
 	if(i >= NUMTIMERS)
 	{
-		logg("Code error: Timer %i not defined in timer_start().", i);
+		log_crit("Timer %i not defined in timer_start().", i);
 		exit(EXIT_FAILURE);
 	}
 	clock_gettime(CLOCK_REALTIME, &t0[i]);
@@ -48,7 +48,7 @@ double timer_elapsed_msec(const enum timers i)
 {
 	if(i >= NUMTIMERS)
 	{
-		logg("Code error: Timer %i not defined in timer_elapsed_msec().", i);
+		log_crit("Timer %i not defined in timer_elapsed_msec().", i);
 		exit(EXIT_FAILURE);
 	}
 	struct timespec t1, td;
