@@ -15,7 +15,7 @@
 #include "config.h"
 // sleepms()
 #include "timers.h"
-// logg()
+// logging routines
 #include "log.h"
 // global variable killed
 #include "signals.h"
@@ -45,8 +45,8 @@ static bool valid_hostname(char* name, const char* clientip)
 	// Truncate if too long (MAXHOSTNAMELEN defaults to 64, see asm-generic/param.h)
 	if(strlen(name) > MAXHOSTNAMELEN)
 	{
-		logg("WARNING: Hostname of client %s too long, truncating to %d chars!",
-		     clientip, MAXHOSTNAMELEN);
+		log_warn("Hostname of client %s too long, truncating to %d chars!",
+		         clientip, MAXHOSTNAMELEN);
 		// We can modify the string in-place as the target is
 		// shorter than the source
 		name[MAXHOSTNAMELEN] = '\0';
@@ -77,7 +77,11 @@ static bool valid_hostname(char* name, const char* clientip)
 
 static void print_used_resolvers(const char *message)
 {
-	logg("%s", message);
+	// Print details only when debugging
+	if(!(config.debug & DEBUG_RESOLVER))
+		return;
+
+	log_debug(DEBUG_RESOLVER, "%s", message);
 	for(int i = 0u; i < 2*MAXNS; i++)
 	{
 		int family;
@@ -114,8 +118,8 @@ static void print_used_resolvers(const char *message)
 		char nsname[INET6_ADDRSTRLEN];
 		inet_ntop(family, addr, nsname, INET6_ADDRSTRLEN);
 
-		logg(" %s %u: %s:%d (IPv%i)", i < MAXNS ? "   " : "EXT",
-		     j, nsname, port, family == AF_INET ? 4 : 6);
+		log_debug(DEBUG_RESOLVER, " %s %u: %s:%d (IPv%i)", i < MAXNS ? "   " : "EXT",
+		          j, nsname, port, family == AF_INET ? 4 : 6);
 	}
 }
 
@@ -146,23 +150,20 @@ char *resolveHostname(const char *addr)
 	// Check if we want to resolve host names
 	if(!resolve_this_name(addr))
 	{
-		if(config.debug & DEBUG_RESOLVER)
-			logg("Configured to not resolve host name for %s", addr);
+		log_debug(DEBUG_RESOLVER, "Configured to not resolve host name for %s", addr);
 
 		// Return an empty host name
 		return strdup("");
 	}
 
-	if(config.debug & DEBUG_RESOLVER)
-		logg("Trying to resolve %s", addr);
+	log_debug(DEBUG_RESOLVER, "Trying to resolve %s", addr);
 
 	// Check if this is a hidden client
 	// if so, return "hidden" as hostname
 	if(strcmp(addr, "0.0.0.0") == 0)
 	{
 		hostname = strdup("hidden");
-		if(config.debug & DEBUG_RESOLVER)
-			logg("---> \"%s\" (privacy settings)", hostname);
+		log_debug(DEBUG_RESOLVER, "---> \"%s\" (privacy settings)", hostname);
 		return hostname;
 	}
 
@@ -197,8 +198,7 @@ char *resolveHostname(const char *addr)
 	// Set resolver port (have to convert from host to network byte order)
 	_res.nsaddr_list[0].sin_port = htons(config.dns_port);
 
-	if(config.debug & DEBUG_RESOLVER)
-		print_used_resolvers("Setting nameservers to:");
+	print_used_resolvers("Setting nameservers to:");
 
 	// Step 3: Try to resolve addresses
 	if(IPv6) // Resolve IPv6 address
@@ -230,8 +230,7 @@ char *resolveHostname(const char *addr)
 			hostname = strdup("[invalid host name]");
 		}
 
-		if(config.debug & DEBUG_RESOLVER)
-			logg(" ---> \"%s\" (found internally)", hostname);
+		log_debug(DEBUG_RESOLVER, " ---> \"%s\" (found internally)", hostname);
 	}
 
 	// Step 5: Restore resolvers (without forced FTL)
@@ -240,8 +239,7 @@ char *resolveHostname(const char *addr)
 		_res.nsaddr_list[i].sin_addr = ns_addr_bck[i];
 		_res.nsaddr_list[i].sin_port = ns_port_bck[i];
 	}
-	if(config.debug & DEBUG_RESOLVER)
-		print_used_resolvers("Setting nameservers back to default:");
+	print_used_resolvers("Setting nameservers back to default:");
 
 	// Step 6: If no host name was found before, try again with system-configured
 	// resolvers (necessary for docker and friends)
@@ -276,16 +274,14 @@ char *resolveHostname(const char *addr)
 				hostname = strdup("[invalid host name]");
 			}
 
-			if(config.debug & DEBUG_RESOLVER)
-				logg(" ---> \"%s\" (found externally)", hostname);
+			log_debug(DEBUG_RESOLVER, " ---> \"%s\" (found externally)", hostname);
 		}
 		else
 		{
 			// No hostname found (empty PTR)
 			hostname = strdup("");
 
-			if(config.debug & DEBUG_RESOLVER)
-				logg(" ---> \"%s\" (%s)", hostname, he != NULL ? he->h_name : "N/A");
+			log_debug(DEBUG_RESOLVER, " ---> \"%s\" (%s)", hostname, he != NULL ? he->h_name : "N/A");
 		}
 	}
 
@@ -307,8 +303,7 @@ static size_t resolveAndAddHostname(size_t ippos, size_t oldnamepos)
 	// and getNameFromIP() can be skipped as they will all return empty names (= no records)
 	if(!resolve_this_name(ipaddr))
 	{
-		if(config.debug & DEBUG_RESOLVER)
-			logg(" ---> \"\" (configured to not resolve host name)");
+		log_debug(DEBUG_RESOLVER, " ---> \"\" (configured to not resolve host name)");
 
 		// Return fixed position of empty string
 		return 0;
@@ -341,10 +336,10 @@ static size_t resolveAndAddHostname(size_t ippos, size_t oldnamepos)
 		unlock_shm();
 		return newnamepos;
 	}
-	else if(config.debug & DEBUG_SHMEM)
+	else
 	{
 		// Debugging output
-		logg("Not adding \"%s\" to buffer (unchanged)", oldname);
+		log_debug(DEBUG_SHMEM, "Not adding \"%s\" to buffer (unchanged)", oldname);
 	}
 
 	if(newname != NULL)
@@ -374,7 +369,7 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 		clientsData* client = getClient(clientID, true);
 		if(client == NULL)
 		{
-			logg("ERROR: Unable to get client pointer (1) with ID %i, skipping...", clientID);
+			log_warn("Unable to get client pointer (1) with ID %i in resolveClients(), skipping...", clientID);
 			skipped++;
 			unlock_shm();
 			continue;
@@ -395,11 +390,9 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 		// Limit for a "recently active" client is two hours ago
 		if(!force_refreshing && !onlynew && client->lastQuery < now - 2*60*60)
 		{
-			if(config.debug & DEBUG_RESOLVER)
-			{
-				logg("Skipping client %s (%s) because it was inactive for %i seconds",
-				     getstr(ippos), getstr(oldnamepos), (int)(now - client->lastQuery));
-			}
+			log_debug(DEBUG_RESOLVER, "Skipping client %s (%s) because it was inactive for %i seconds",
+			          getstr(ippos), getstr(oldnamepos), (int)(now - client->lastQuery));
+
 			unlock_shm();
 			continue;
 		}
@@ -410,11 +403,9 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 		// If not, we will try to re-resolve all known clients
 		if(!force_refreshing && onlynew && !newflag)
 		{
-			if(config.debug & DEBUG_RESOLVER)
-			{
-				logg("Skipping client %s (%s) because it is not new",
-				     getstr(ippos), getstr(oldnamepos));
-			}
+			log_debug(DEBUG_RESOLVER, "Skipping client %s (%s) because it is not new",
+			          getstr(ippos), getstr(oldnamepos));
+
 			skipped++;
 			continue;
 		}
@@ -444,17 +435,13 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 					reason = "Only refreshing IPv4 names";
 				else if(config.refresh_hostnames == REFRESH_UNKNOWN)
 					reason = "Looking only for unknown hostnames";
-				
-				logg("Skipping client %s (%s) because it should not be refreshed: %s",
-				     getstr(ippos), getstr(oldnamepos), reason);
-			}
-			skipped++;
-			if(config.debug & DEBUG_RESOLVER)
-			{
+
 				lock_shm();
-				logg("Client %s -> \"%s\" already known", getstr(ippos), getstr(oldnamepos));
+				log_debug(DEBUG_RESOLVER, "Skipping client %s (%s) because it should not be refreshed: %s",
+				     getstr(ippos), getstr(oldnamepos), reason);
 				unlock_shm();
 			}
+			skipped++;
 			continue;
 		}
 
@@ -469,7 +456,7 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 		client = getClient(clientID, true);
 		if(client == NULL)
 		{
-			logg("ERROR: Unable to get client pointer (2) with ID %i, skipping...", clientID);
+			log_warn("Unable to get client pointer (2) with ID %i in resolveClients(), skipping...", clientID);
 			skipped++;
 			unlock_shm();
 			continue;
@@ -480,17 +467,13 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 		// Mark entry as not new
 		client->flags.new = false;
 
-		if(config.debug & DEBUG_RESOLVER)
-			logg("Client %s -> \"%s\" is new", getstr(ippos), getstr(newnamepos));
+		log_debug(DEBUG_RESOLVER, "Client %s -> \"%s\" is new", getstr(ippos), getstr(newnamepos));
 
 		unlock_shm();
 	}
 
-	if(config.debug & DEBUG_RESOLVER)
-	{
-		logg("%i / %i client host names resolved",
-		     clientscount-skipped, clientscount);
-	}
+	log_debug(DEBUG_RESOLVER, "%i / %i client host names resolved",
+	          clientscount-skipped, clientscount);
 }
 
 // Resolve upstream destination host names
@@ -511,7 +494,7 @@ static void resolveUpstreams(const bool onlynew)
 		upstreamsData* upstream = getUpstream(upstreamID, true);
 		if(upstream == NULL)
 		{
-			logg("ERROR: Unable to get upstream pointer with ID %i, skipping...", upstreamID);
+			log_warn("Unable to get upstream pointer with ID %i in resolveUpstreams(), skipping...", upstreamID);
 			skipped++;
 			unlock_shm();
 			continue;
@@ -525,11 +508,9 @@ static void resolveUpstreams(const bool onlynew)
 		// Limit for a "recently active" upstream server is two hours ago
 		if(upstream->lastQuery < now - 2*60*60)
 		{
-			if(config.debug & DEBUG_RESOLVER)
-			{
-				logg("Skipping upstream %s (%s) because it was inactive for %i seconds",
-				     getstr(ippos), getstr(oldnamepos), (int)(now - upstream->lastQuery));
-			}
+			log_debug(DEBUG_RESOLVER, "Skipping upstream %s (%s) because it was inactive for %i seconds",
+			          getstr(ippos), getstr(oldnamepos), (int)(now - upstream->lastQuery));
+
 			unlock_shm();
 			continue;
 		}
@@ -543,7 +524,7 @@ static void resolveUpstreams(const bool onlynew)
 			if(config.debug & DEBUG_RESOLVER)
 			{
 				lock_shm();
-				logg("Upstream %s -> \"%s\" already known", getstr(ippos), getstr(oldnamepos));
+				log_debug(DEBUG_RESOLVER, "Upstream %s -> \"%s\" already known", getstr(ippos), getstr(oldnamepos));
 				unlock_shm();
 			}
 			continue;
@@ -560,7 +541,7 @@ static void resolveUpstreams(const bool onlynew)
 		upstream = getUpstream(upstreamID, true);
 		if(upstream == NULL)
 		{
-			logg("ERROR: Unable to get upstream pointer with ID %i, skipping...", upstreamID);
+			log_warn("Unable to get upstream pointer (2) with ID %i in resolveUpstreams(), skipping...", upstreamID);
 			skipped++;
 			unlock_shm();
 			continue;
@@ -571,17 +552,13 @@ static void resolveUpstreams(const bool onlynew)
 		// Mark entry as not new
 		upstream->flags.new = false;
 
-		if(config.debug & DEBUG_RESOLVER)
-			logg("Upstream %s -> \"%s\" is new", getstr(ippos), getstr(newnamepos));
+		log_debug(DEBUG_RESOLVER, "Upstream %s -> \"%s\" is new", getstr(ippos), getstr(newnamepos));
 
 		unlock_shm();
 	}
 
-	if(config.debug & DEBUG_RESOLVER)
-	{
-		logg("%i / %i upstream server host names resolved",
-		     upstreams-skipped, upstreams);
-	}
+	log_debug(DEBUG_RESOLVER, "%i / %i upstream server host names resolved",
+	          upstreams-skipped, upstreams);
 }
 
 void *DNSclient_thread(void *val)
@@ -646,6 +623,6 @@ void *DNSclient_thread(void *val)
 		thread_sleepms(DNSclient, 1000);
 	}
 
-	logg("Terminating resolver thread");
+	log_info("Terminating resolver thread");
 	return NULL;
 }
