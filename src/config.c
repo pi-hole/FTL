@@ -669,15 +669,15 @@ static char *parse_FTLconf(FILE *fp, const char * key)
 	fseek(fp, 0L, SEEK_SET);
 
 	if(config.debug & DEBUG_EXTRA)
-		log_debug("initial: conflinebuffer = %p, keystr = %p, size = %zu", conflinebuffer, keystr, size);
+		log_debug(DEBUG_EXTRA, "initial: conflinebuffer = %p, keystr = %p, size = %zu", conflinebuffer, keystr, size);
 
 	errno = 0;
 	while(getline(&conflinebuffer, &size, fp) != -1)
 	{
 		if(config.debug & DEBUG_EXTRA)
 		{
-			log_debug("conflinebuffer = %p, keystr = %p, size = %zu", conflinebuffer, keystr, size);
-			log_debug("  while reading line \"%s\" looking for \"%s\"", conflinebuffer, keystr);
+			log_debug(DEBUG_EXTRA, "conflinebuffer = %p, keystr = %p, size = %zu", conflinebuffer, keystr, size);
+			log_debug(DEBUG_EXTRA, "  while reading line \"%s\" looking for \"%s\"", conflinebuffer, keystr);
 		}
 		// Check if memory allocation failed
 		if(conflinebuffer == NULL)
@@ -800,7 +800,7 @@ void get_blocking_mode(FILE *fp)
 }
 
 // Routine for setting the debug flags in the config struct
-static void setDebugOption(FILE* fp, const char* option, enum debug_flags bitmask)
+static void setDebugOption(FILE* fp, const char* option, enum debug_flag bitmask)
 {
 	const char* buffer = parse_FTLconf(fp, option);
 
@@ -836,124 +836,20 @@ void read_debuging_settings(FILE *fp)
 	// ~0 is a shortcut for "all bits set"
 	setDebugOption(fp, "DEBUG_ALL", ~(int16_t)0);
 
-	// DEBUG_DATABASE
-	// defaults to: false
-	setDebugOption(fp, "DEBUG_DATABASE", DEBUG_DATABASE);
 
-	// DEBUG_NETWORKING
-	// defaults to: false
-	setDebugOption(fp, "DEBUG_NETWORKING", DEBUG_NETWORKING);
-
-	// DEBUG_LOCKS
-	// defaults to: false
-	setDebugOption(fp, "DEBUG_LOCKS", DEBUG_LOCKS);
-
-	// DEBUG_QUERIES
-	// defaults to: false
-	setDebugOption(fp, "DEBUG_QUERIES", DEBUG_QUERIES);
-
-	// DEBUG_FLAGS
-	// defaults to: false
-	setDebugOption(fp, "DEBUG_FLAGS", DEBUG_FLAGS);
-
-	// DEBUG_SHMEM
-	// defaults to: false
-	setDebugOption(fp, "DEBUG_SHMEM", DEBUG_SHMEM);
-
-	// DEBUG_GC
-	// defaults to: false
-	setDebugOption(fp, "DEBUG_GC", DEBUG_GC);
-
-	// DEBUG_ARP
-	// defaults to: false
-	setDebugOption(fp, "DEBUG_ARP", DEBUG_ARP);
-
-	// DEBUG_REGEX or REGEX_DEBUGMODE (legacy config option)
-	// defaults to: false
-	setDebugOption(fp, "REGEX_DEBUGMODE", DEBUG_REGEX);
-	setDebugOption(fp, "DEBUG_REGEX", DEBUG_REGEX);
-
-	// DEBUG_API
-	// defaults to: false
-	setDebugOption(fp, "DEBUG_API", DEBUG_API);
-
-	// DEBUG_OVERTIME
-	// defaults to: false
-	setDebugOption(fp, "DEBUG_OVERTIME", DEBUG_OVERTIME);
-
-	// DEBUG_EXTBLOCKED (deprecated, now included in DEBUG_QUERIES)
-
-	// DEBUG_STATUS
-	// defaults to: false
-	setDebugOption(fp, "DEBUG_STATUS", DEBUG_STATUS);
-
-	// DEBUG_CAPS
-	// defaults to: false
-	setDebugOption(fp, "DEBUG_CAPS", DEBUG_CAPS);
-
-	// DEBUG_DNSMASQ_LINES
-	setDebugOption(fp, "DEBUG_DNSMASQ_LINES", DEBUG_DNSMASQ_LINES);
+	for(enum debug_flag flag = DEBUG_DATABASE; flag < DEBUG_EXTRA; flag <<= 1)
+	{
+		// DEBUG_DATABASE
+		setDebugOption(fp, debugstr(flag), flag);
+	}
 	debug_dnsmasq_lines = config.debug & DEBUG_DNSMASQ_LINES ? 1 : 0;
 
-	// DEBUG_VECTORS
-	// defaults to: false
-	setDebugOption(fp, "DEBUG_VECTORS", DEBUG_VECTORS);
-
-	// DEBUG_RESOLVER
-	// defaults to: false
-	setDebugOption(fp, "DEBUG_RESOLVER", DEBUG_RESOLVER);
-
-	// DEBUG_EDNS0
-	// defaults to: false
-	setDebugOption(fp, "DEBUG_EDNS0", DEBUG_EDNS0);
-
-	// DEBUG_CLIENTS
-	// defaults to: false
-	setDebugOption(fp, "DEBUG_CLIENTS", DEBUG_CLIENTS);
-
-	// DEBUG_ALIASCLIENTS
-	// defaults to: false
-	setDebugOption(fp, "DEBUG_ALIASCLIENTS", DEBUG_ALIASCLIENTS);
-
-	// DEBUG_EVENTS
-	// defaults to: false
-	setDebugOption(fp, "DEBUG_EVENTS", DEBUG_EVENTS);
-
-	// DEBUG_HELPER
-	// defaults to: false
-	setDebugOption(fp, "DEBUG_HELPER", DEBUG_HELPER);
-
-	// DEBUG_EXTRA
-	// defaults to: false
-	setDebugOption(fp, "DEBUG_EXTRA", DEBUG_EXTRA);
-
-	if(config.debug)
+	if(config.debug != 0)
 	{
-		log_debug("*****************************");
-		log_debug("* Debugging enabled         *");
-		log_debug("* DEBUG_DATABASE        %s *", (config.debug & DEBUG_DATABASE)? "YES":"NO ");
-		log_debug("* DEBUG_NETWORKING      %s *", (config.debug & DEBUG_NETWORKING)? "YES":"NO ");
-		log_debug("* DEBUG_LOCKS           %s *", (config.debug & DEBUG_LOCKS)? "YES":"NO ");
-		log_debug("* DEBUG_QUERIES         %s *", (config.debug & DEBUG_QUERIES)? "YES":"NO ");
-		log_debug("* DEBUG_FLAGS           %s *", (config.debug & DEBUG_FLAGS)? "YES":"NO ");
-		log_debug("* DEBUG_SHMEM           %s *", (config.debug & DEBUG_SHMEM)? "YES":"NO ");
-		log_debug("* DEBUG_GC              %s *", (config.debug & DEBUG_GC)? "YES":"NO ");
-		log_debug("* DEBUG_ARP             %s *", (config.debug & DEBUG_ARP)? "YES":"NO ");
-		log_debug("* DEBUG_REGEX           %s *", (config.debug & DEBUG_REGEX)? "YES":"NO ");
-		log_debug("* DEBUG_API             %s *", (config.debug & DEBUG_API)? "YES":"NO ");
-		log_debug("* DEBUG_OVERTIME        %s *", (config.debug & DEBUG_OVERTIME)? "YES":"NO ");
-		log_debug("* DEBUG_STATUS          %s *", (config.debug & DEBUG_STATUS)? "YES":"NO ");
-		log_debug("* DEBUG_CAPS            %s *", (config.debug & DEBUG_CAPS)? "YES":"NO ");
-		log_debug("* DEBUG_DNSMASQ_LINES   %s *", (config.debug & DEBUG_DNSMASQ_LINES)? "YES":"NO ");
-		log_debug("* DEBUG_VECTORS         %s *", (config.debug & DEBUG_VECTORS)? "YES":"NO ");
-		log_debug("* DEBUG_RESOLVER        %s *", (config.debug & DEBUG_RESOLVER)? "YES":"NO ");
-		log_debug("* DEBUG_EDNS0           %s *", (config.debug & DEBUG_EDNS0)? "YES":"NO ");
-		log_debug("* DEBUG_CLIENTS         %s *", (config.debug & DEBUG_CLIENTS)? "YES":"NO ");
-		log_debug("* DEBUG_ALIASCLIENTS    %s *", (config.debug & DEBUG_ALIASCLIENTS)? "YES":"NO ");
-		log_debug("* DEBUG_EVENTS          %s *", (config.debug & DEBUG_EVENTS)? "YES":"NO ");
-		log_debug("* DEBUG_HELPER          %s *", (config.debug & DEBUG_HELPER)? "YES":"NO ");
-		log_debug("* DEBUG_EXTRA           %s *", (config.debug & DEBUG_EXTRA)? "YES":"NO ");
-		log_debug("*****************************");
+		log_debug(0, "Debugging enabled:");
+
+		for(enum debug_flag flag = DEBUG_DATABASE; flag < DEBUG_EXTRA; flag <<= 1)
+			log_debug(0, "    %s = %s", debugstr(flag), (config.debug & flag)? "YES":"NO ");
 
 		// Enable debug logging in dnsmasq (only effective before starting the resolver)
 		argv_dnsmasq[2] = "--log-debug";
@@ -970,7 +866,6 @@ void read_debuging_settings(FILE *fp)
 		release_config_memory();
 	}
 }
-
 
 static void set_nice(const char *buffer, const int fallback)
 {

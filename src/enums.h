@@ -123,7 +123,7 @@ enum domain_client_status {
 	NOT_BLOCKED
 } __attribute__ ((packed));
 
-enum debug_flags {
+enum debug_flag {
 	DEBUG_DATABASE      = (1 << 0),  /* 00000000 00000000 00000000 00000001 */
 	DEBUG_NETWORKING    = (1 << 1),  /* 00000000 00000000 00000000 00000010 */
 	DEBUG_LOCKS         = (1 << 2),  /* 00000000 00000000 00000000 00000100 */
@@ -146,6 +146,7 @@ enum debug_flags {
 	DEBUG_EVENTS        = (1 << 19), /* 00000000 00001000 00000000 00000000 */
 	DEBUG_HELPER        = (1 << 20), /* 00000000 00010000 00000000 00000000 */
 	DEBUG_EXTRA         = (1 << 21), /* 00000000 00100000 00000000 00000000 */
+	// DEBUG_EXTRA has always to be the last option
 } __attribute__ ((packed));
 
 enum events {

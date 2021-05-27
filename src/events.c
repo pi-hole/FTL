@@ -39,7 +39,7 @@ void _set_event(const enum events event, int line, const char *function, const c
 	// Possible debug logging
 	if(config.debug & DEBUG_EVENTS)
 	{
-		log_debug("Event %s -> %s    called from %s() (%s:%i)",
+		log_debug(DEBUG_EVENTS, "Event %s -> %s    called from %s() (%s:%i)",
 		          eventtext(event),
 		          is_set ? "was ALREADY SET" : "now SET",
 		          function, file, line);
@@ -70,7 +70,7 @@ bool _get_and_clear_event(const enum events event, int line, const char *functio
 	// Possible debug logging only for SET status, to avoid log file flooding with NOT SET messages
 	if(is_set && config.debug & DEBUG_EVENTS)
 	{
-		log_debug("Event %s -> was SET, now CLEARED    called from %s() (%s:%i)",
+		log_debug(DEBUG_EVENTS, "Event %s -> was SET, now CLEARED    called from %s() (%s:%i)",
 		          eventtext(event), function, file, line);
 	}
 

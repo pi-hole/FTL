@@ -102,7 +102,7 @@ void get_timestr(char * const timestring, const time_t timein, const bool millis
 	}
 }
 
-static const char *priostr(const int priority)
+static const char *priostr(const int priority, const enum debug_flag flag)
 {
 	switch (priority)
 	{
@@ -129,14 +129,67 @@ static const char *priostr(const int priority)
 			return "INFO";
 		// debug-level messages
 		case LOG_DEBUG:
-			return "DEBUG";
+			return debugstr(flag);
 		// invalid option
 		default:
 			return "UNKNOWN";
 	}
 }
 
-void _FTL_log(const int priority, const bool newline, const char *format, ...)
+const char * __attribute__ ((const)) debugstr(const enum debug_flag flag)
+{
+	switch (flag)
+	{
+		case DEBUG_DATABASE:
+			return "DEBUG_DATABASE";
+		case DEBUG_NETWORKING:
+			return "DEBUG_NETWORKING";
+		case DEBUG_LOCKS:
+			return "DEBUG_LOCKS";
+		case DEBUG_QUERIES:
+			return "DEBUG_QUERIES";
+		case DEBUG_FLAGS:
+			return "DEBUG_FLAGS";
+		case DEBUG_SHMEM:
+			return "DEBUG_SHMEM";
+		case DEBUG_GC:
+			return "DEBUG_GC";
+		case DEBUG_ARP:
+			return "DEBUG_ARP";
+		case DEBUG_REGEX:
+			return "DEBUG_REGEX";
+		case DEBUG_API:
+			return "DEBUG_API";
+		case DEBUG_OVERTIME:
+			return "DEBUG_OVERTIME";
+		case DEBUG_STATUS:
+			return "DEBUG_STATUS";
+		case DEBUG_CAPS:
+			return "DEBUG_CAPS";
+		case DEBUG_DNSMASQ_LINES:
+			return "DEBUG_DNSMASQ_LINES";
+		case DEBUG_VECTORS:
+			return "DEBUG_VECTORS";
+		case DEBUG_RESOLVER:
+			return "DEBUG_RESOLVER";
+		case DEBUG_EDNS0:
+			return "DEBUG_EDNS0";
+		case DEBUG_CLIENTS:
+			return "DEBUG_CLIENTS";
+		case DEBUG_ALIASCLIENTS:
+			return "DEBUG_ALIASCLIENTS";
+		case DEBUG_EVENTS:
+			return "DEBUG_EVENTS";
+		case DEBUG_HELPER:
+			return "DEBUG_HELPER";
+		case DEBUG_EXTRA:
+			return "DEBUG_EXTRA";
+		default:
+			return "DEBUG_ANY";
+	}
+}
+
+void __attribute__ ((format (gnu_printf, 3, 4))) _FTL_log(const int priority, const enum debug_flag flag, const char *format, ...)
 {
 	char timestring[84] = "";
 	va_list args;
@@ -146,7 +199,7 @@ void _FTL_log(const int priority, const bool newline, const char *format, ...)
 		return;
 
 	// Check if this is something we should print only in debug mode
-	if(priority == LOG_DEBUG && !config.debug)
+	if(priority == LOG_DEBUG && (config.debug == 0 || (flag != 0 && !(config.debug & flag))))
 		return;
 
 	// Get human-readable time
@@ -180,12 +233,11 @@ void _FTL_log(const int priority, const bool newline, const char *format, ...)
 	{
 		// Only print time/ID string when not in direct user interaction (CLI mode)
 		if(!cli_mode)
-			printf("%s [%s] %s: ", timestring, idstr, priostr(priority));
+			printf("%s [%s] %s: ", timestring, idstr, priostr(priority, flag));
 		va_start(args, format);
 		vprintf(format, args);
 		va_end(args);
-		if(newline)
-			printf("\n");
+		printf("\n");
 	}
 
 	// Print to log file or syslog
@@ -200,7 +252,7 @@ void _FTL_log(const int priority, const bool newline, const char *format, ...)
 			if(logfile != NULL)
 			{
 				// Prepend message with identification string and priority
-				fprintf(logfile, "%s [%s] %s: ", timestring, idstr, priostr(priority));
+				fprintf(logfile, "%s [%s] %s: ", timestring, idstr, priostr(priority, flag));
 
 				// Log message
 				va_start(args, format);
@@ -208,8 +260,7 @@ void _FTL_log(const int priority, const bool newline, const char *format, ...)
 				va_end(args);
 
 				// Append newline character to the end of the file
-				if(newline)
-					fputc('\n', logfile);
+				fputc('\n', logfile);
 
 				// Close file after writing
 				fclose(logfile);

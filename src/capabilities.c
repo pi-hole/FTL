@@ -54,8 +54,8 @@ bool check_capabilities(void)
 
 	if(config.debug & DEBUG_CAPS)
 	{
-		log_debug("***************************************");
-		log_debug("* Linux capability debugging enabled  *");
+		log_debug(DEBUG_CAPS, "***************************************");
+		log_debug(DEBUG_CAPS, "* Linux capability debugging enabled  *");
 		for(unsigned int i = 0u; i < numCaps; i++)
 		{
 			const unsigned int capid = capabilityIDs[i];
@@ -65,13 +65,13 @@ bool check_capabilities(void)
 			if(!cap_valid(capid))
 				break;
 
-			log_debug("* %-24s (%02u) = %s%s%s *",
-			           capabilityNames[capid], capid,
-			           ((data->permitted   & (1 << capid)) ? "P":"-"),
-			           ((data->inheritable & (1 << capid)) ? "I":"-"),
-			           ((data->effective   & (1 << capid)) ? "E":"-"));
+			log_debug(DEBUG_CAPS, "* %-24s (%02u) = %s%s%s *",
+			          capabilityNames[capid], capid,
+			          ((data->permitted   & (1 << capid)) ? "P":"-"),
+			          ((data->inheritable & (1 << capid)) ? "I":"-"),
+			          ((data->effective   & (1 << capid)) ? "E":"-"));
 		}
-		log_debug("***************************************");
+		log_debug(DEBUG_CAPS, "***************************************");
 	}
 
 	bool capabilities_okay = true;

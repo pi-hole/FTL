@@ -59,7 +59,7 @@ typedef struct {
 		unsigned int count;
 		unsigned int interval;
 	} rate_limit;
-	enum debug_flags debug;
+	enum debug_flag debug;
 	time_t DBinterval;
 	struct {
 		bool overwrite_v4 :1;

@@ -83,7 +83,7 @@ int findUpstreamID(const char * upstreamString, const in_port_t port)
 	// This upstream server is not known
 	// Store ID
 	const int upstreamID = counters->upstreams;
-	log_debug("New upstream server: %s:%u (%i/%u)", upstreamString, port, upstreamID, counters->upstreams_MAX);
+	log_debug(0, "New upstream server: %s:%u (%i/%u)", upstreamString, port, upstreamID, counters->upstreams_MAX);
 
 	// Get upstream pointer
 	upstreamsData* upstream = getUpstream(upstreamID, false);
@@ -440,8 +440,7 @@ const char *getClientNameString(const queriesData* query)
 
 void FTL_reset_per_client_domain_data(void)
 {
-	if(config.debug & DEBUG_DATABASE)
-		log_debug("Resetting per-client DNS cache, size is %i", counters->dns_cache_size);
+	log_debug(DEBUG_DATABASE, "Resetting per-client DNS cache, size is %i", counters->dns_cache_size);
 
 	for(int cacheID = 0; cacheID < counters->dns_cache_size; cacheID++)
 	{
@@ -687,13 +686,13 @@ void query_set_status(queriesData *query, const enum query_status new_status)
 		const char *oldstr = get_query_status_str(query->status);
 		if(query->status == new_status)
 		{
-			log_debug("Query %i: status unchanged: %s (%d)",
+			log_debug(DEBUG_STATUS, "Query %i: status unchanged: %s (%d)",
 			          query->id, oldstr, query->status);
 		}
 		else
 		{
 			const char *newstr = get_query_status_str(new_status);
-			log_debug("Query %i: status changed: %s (%d) -> %s (%d)",
+			log_debug(DEBUG_STATUS, "Query %i: status changed: %s (%d) -> %s (%d)",
 			          query->id, oldstr, query->status, newstr, new_status);
 		}
 	}

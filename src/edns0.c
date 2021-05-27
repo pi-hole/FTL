@@ -54,7 +54,7 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 	// Debug logging
 	if(config.debug & DEBUG_EDNS0)
 		for(unsigned int i = 0; i < plen; i++)
-			log_debug("EDNS(0) pheader[%i] = 0x%02x", i, pheader[i]);
+			log_debug(DEBUG_EDNS0, "EDNS(0) pheader[%i] = 0x%02x", i, pheader[i]);
 
         // Working pointer
 	unsigned char *p = pheader;
@@ -85,8 +85,7 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 //        | CLASS      | u_int16_t    | requestor's UDP payload size |
 	unsigned short class;
 	GETSHORT(class, p);
-	if(config.debug & DEBUG_EDNS0)
-		log_debug("EDNS(0) requestor's UDP payload size: %u bytes", class);
+	log_debug(DEBUG_EDNS0, "EDNS(0) requestor's UDP payload size: %u bytes", class);
 //        +------------+--------------+------------------------------+
 //        | TTL        | u_int32_t    | extended RCODE and flags     |
 	unsigned long ttl;
@@ -168,9 +167,8 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 		}
 
 		// Debug logging
-		if(config.debug & DEBUG_EDNS0)
-			log_debug("EDNS(0) code %u, optlen %u (bytes %zu - %zu of %u)",
-			     code, optlen, offset, offset + optlen, rdlen);
+		log_debug(DEBUG_EDNS0, "EDNS(0) code %u, optlen %u (bytes %zu - %zu of %u)",
+		          code, optlen, offset, offset + optlen, rdlen);
 
 		if (code == EDNS0_ECS && config.edns0_ecs)
 		{
@@ -226,16 +224,14 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 			if((family == 1 && (ntohl(addr.addr4.s_addr) & 0xFF000000) == 0x7F000000) ||
 			   (family == 2 && IN6_IS_ADDR_LOOPBACK(&addr.addr6)))
 			{
-				if(config.debug & DEBUG_EDNS0)
-					log_debug("EDNS(0) CLIENT SUBNET: Skipped %s/%u (IPv%u loopback address)",
-					     ipaddr, source_netmask, family == 1 ? 4 : 6);
+				log_debug(DEBUG_EDNS0, "EDNS(0) CLIENT SUBNET: Skipped %s/%u (IPv%u loopback address)",
+				          ipaddr, source_netmask, family == 1 ? 4 : 6);
 			}
 			else
 			{
 				edns->client_set = true;
-				if(config.debug & DEBUG_EDNS0)
-					log_debug("EDNS(0) CLIENT SUBNET: %s/%u - OK (IPv%u)",
-					     ipaddr, source_netmask, family == 1 ? 4 : 6);
+				log_debug(DEBUG_EDNS0, "EDNS(0) CLIENT SUBNET: %s/%u - OK (IPv%u)",
+				          ipaddr, source_netmask, family == 1 ? 4 : 6);
 			}
 		}
 		else if(code == EDNS0_COOKIE && optlen == 8)
@@ -249,7 +245,7 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 				char *pp = pretty_client_cookie;
 				for(unsigned int j = 0; j < 8; j++)
 					pp += sprintf(pp, "%02X", client_cookie[j]);
-				log_debug("EDNS(0) COOKIE (client-only): %s",
+				log_debug(DEBUG_EDNS0, "EDNS(0) COOKIE (client-only): %s",
 				     pretty_client_cookie);
 			}
 
@@ -275,7 +271,7 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 				pp = pretty_server_cookie;
 				for(unsigned int j = 0; j < server_cookie_len; j++)
 					pp += sprintf(pp, "%02X", server_cookie[j]);
-				log_debug("EDNS(0) COOKIE (client + server): %s (client), %s (server, %u bytes)",
+				log_debug(DEBUG_EDNS0, "EDNS(0) COOKIE (client + server): %s (client), %s (server, %u bytes)",
 				     pretty_client_cookie, pretty_server_cookie, server_cookie_len);
 			}
 
@@ -288,8 +284,7 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 			memcpy(edns->mac_byte, p, sizeof(edns->mac_byte));
 			print_mac(edns->mac_text, (unsigned char*)edns->mac_byte, sizeof(edns->mac_byte));
 			edns->mac_set = true;
-			if(config.debug & DEBUG_EDNS0)
-				log_debug("EDNS(0) MAC address (BYTE format): %s", edns->mac_text);
+			log_debug(DEBUG_EDNS0, "EDNS(0) MAC address (BYTE format): %s", edns->mac_text);
 
 			// Advance working pointer
 			p += 6;
@@ -308,12 +303,11 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 			          &edns->mac_byte[5]) == 6)
 			{
 				edns->mac_set = true;
-				if(config.debug & DEBUG_EDNS0)
-					log_debug("EDNS(0) MAC address (TEXT format): %s", edns->mac_text);
+				log_debug(DEBUG_EDNS0, "EDNS(0) MAC address (TEXT format): %s", edns->mac_text);
 			}
-			else if(config.debug & DEBUG_EDNS0)
+			else
 			{
-				log_debug("         Received MAC address has invalid format!");
+				log_debug(DEBUG_EDNS0, "         Received MAC address has invalid format!");
 			}
 
 			// Advance working pointer
@@ -322,8 +316,7 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 		else if(code == EDNS0_MAC_ADDR_BASE64 && optlen == 8)
 		{
 			// EDNS(0) MAC address (BASE format)
-			if(config.debug & DEBUG_EDNS0)
-				log_debug("EDNS(0) MAC address (BASE64 format): NOT IMPLEMENTED");
+			log_debug(DEBUG_EDNS0, "EDNS(0) MAC address (BASE64 format): NOT IMPLEMENTED");
 
 			// Advance working pointer
 			p += 8;
@@ -341,7 +334,7 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 				for(unsigned int j = 0; j < optlen; j++)
 					pp += sprintf(pp, "0x%02X ", payload[j]);
 				pretty_payload[optlen*5 - 1] = '\0'; // Truncate away the trailing whitespace
-				log_debug("EDNS(0) CPE-ID (payload size %u): \"%s\" (%s)",
+				log_debug(DEBUG_EDNS0, "EDNS(0) CPE-ID (payload size %u): \"%s\" (%s)",
 				     optlen, payload, pretty_payload);
 			}
 
@@ -350,8 +343,7 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 		}
 		else
 		{
-			if(config.debug & DEBUG_EDNS0)
-				log_debug("EDNS(0):n option %u with length %u", code, optlen);
+			log_debug(DEBUG_EDNS0, "EDNS(0):n option %u with length %u", code, optlen);
 			// Not implemented, skip this record
 
 			// Advance working pointer

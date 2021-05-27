@@ -204,8 +204,7 @@ void *GC_thread(void *val)
 			// Determine if overTime memory needs to get moved
 			moveOverTimeMemory(mintime);
 
-			if(config.debug & DEBUG_GC)
-				log_debug("GC removed %i queries (took %.2f ms)", removed, timer_elapsed_msec(GC_TIMER));
+			log_debug(DEBUG_GC, "GC removed %i queries (took %.2f ms)", removed, timer_elapsed_msec(GC_TIMER));
 
 			// Release thread lock
 			unlock_shm();
