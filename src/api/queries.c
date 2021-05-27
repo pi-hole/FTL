@@ -519,11 +519,8 @@ int api_queries(struct ftl_conn *api)
 	}
 
 	// Debug logging
-	if(config.debug & DEBUG_API)
-	{
-		logg("SQL: %s", querystr);
-		logg("  with cursor: %lu, start: %u, length: %d", cursor, start, length);
-	}
+	log_debug(DEBUG_API, "SQL: %s", querystr);
+	log_debug(DEBUG_API, "  with cursor: %lu, start: %u, length: %d", cursor, start, length);
 
 	cJSON *queries = JSON_NEW_ARRAY();
 	unsigned int added = 0, records = 0;
