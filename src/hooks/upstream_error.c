@@ -81,12 +81,13 @@ void _FTL_upstream_error(const unsigned int rcode, const int id, const char* fil
 		else
 			domainname = "<cannot access domain struct>";
 
-		logg("**** got error report for %s: %s (ID %i, %s:%i)", domainname, rcodestr, id, file, line);
+		log_debug(DEBUG_QUERIES, "**** got error report for %s: %s (ID %i, %s:%i)", domainname, rcodestr, id, file, line);
 
-		if(query->reply == REPLY_OTHER)
-		{
-			logg("Unknown rcode = %i", rcode);
-		}
+	}
+
+	if(query->reply == REPLY_OTHER)
+	{
+		log_info("Found unknown rcode = %i", rcode);
 	}
 
 	// Unlock shared memory
