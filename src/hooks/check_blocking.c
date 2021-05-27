@@ -94,14 +94,14 @@ bool _FTL_check_blocking(int queryID, int domainID, int clientID, const char **b
 	clientsData *client = getClient(clientID, true);
 	if(query == NULL || domain == NULL || client == NULL || client == NULL)
 	{
-		logg("ERROR: No memory available, skipping query analysis");
+		log_err("ERROR: No memory available, skipping query analysis");
 		return false;
 	}
 	unsigned int cacheID = findCacheID(domainID, clientID, query->type);
 	DNSCacheData *dns_cache = getDNSCache(cacheID, true);
 	if(dns_cache == NULL)
 	{
-		logg("ERROR: No memory available, skipping query analysis");
+		log_err("ERROR: No memory available, skipping query analysis");
 		return false;
 	}
 
@@ -114,10 +114,7 @@ bool _FTL_check_blocking(int queryID, int domainID, int clientID, const char **b
 		case UNKNOWN_BLOCKED:
 			// New domain/client combination.
 			// We have to go through all the tests below
-			if(config.debug & DEBUG_QUERIES)
-			{
-				logg("%s is not known", domainstr);
-			}
+			log_debug(DEBUG_QUERIES, "%s is not known", domainstr);
 
 			break;
 
@@ -126,10 +123,7 @@ bool _FTL_check_blocking(int queryID, int domainID, int clientID, const char **b
 			// return this result early, skipping
 			// all the lengthy tests below
 			*blockingreason = "exactly denied";
-			if(config.debug & DEBUG_QUERIES)
-			{
-				logg("%s is known as %s", domainstr, *blockingreason);
-			}
+			log_debug(DEBUG_QUERIES, "%s is known as %s", domainstr, *blockingreason);
 
 			// Do not block if the entire query is to be permitted
 			// as something along the CNAME path hit is explicitly allowed
@@ -146,10 +140,7 @@ bool _FTL_check_blocking(int queryID, int domainID, int clientID, const char **b
 			// return this result early, skipping
 			// all the lengthy tests below
 			*blockingreason = "gravity blocked";
-			if(config.debug & DEBUG_QUERIES)
-			{
-				logg("%s is known as %s", domainstr, *blockingreason);
-			}
+			log_debug(DEBUG_QUERIES, "%s is known as %s", domainstr, *blockingreason);
 
 			// Do not block if the entire query is to be permitted
 			// as something along the CNAME path hit is explicitly allowed
@@ -166,16 +157,13 @@ bool _FTL_check_blocking(int queryID, int domainID, int clientID, const char **b
 			// return this result early, skipping
 			// all the lengthy tests below
 			*blockingreason = "regex denied";
-			if(config.debug & DEBUG_QUERIES)
-			{
-				logg("%s is known as %s", domainstr, *blockingreason);
-				force_next_DNS_reply = dns_cache->force_reply;
-			}
+			log_debug(DEBUG_QUERIES, "%s is known as %s", domainstr, *blockingreason);
 
 			// Do not block if the entire query is to be permitted
 			// as something along the CNAME path hit is explicitly allowed
 			if(!query->flags.allowed)
 			{
+				force_next_DNS_reply = dns_cache->force_reply;
 				query_blocked(query, domain, client, STATUS_REGEX);
 				return true;
 			}
@@ -185,10 +173,7 @@ bool _FTL_check_blocking(int queryID, int domainID, int clientID, const char **b
 			// Known as allowed, we
 			// return this result early, skipping
 			// all the lengthy tests below
-			if(config.debug & DEBUG_QUERIES)
-			{
-				logg("%s is known as not to be blocked (allowed)", domainstr);
-			}
+			log_debug(DEBUG_QUERIES, "%s is known as not to be blocked (allowed)", domainstr);
 
 			query->flags.allowed = true;
 
@@ -199,10 +184,7 @@ bool _FTL_check_blocking(int queryID, int domainID, int clientID, const char **b
 			// Known as not blocked, we
 			// return this result early, skipping
 			// all the lengthy tests below
-			if(config.debug & DEBUG_QUERIES)
-			{
-				logg("%s is known as not to be blocked", domainstr);
-			}
+			log_debug(DEBUG_QUERIES, "%s is known as not to be blocked", domainstr);
 
 			return false;
 			break;
@@ -211,10 +193,8 @@ bool _FTL_check_blocking(int queryID, int domainID, int clientID, const char **b
 	// Skip all checks and continue if we hit already at least one allowed domain in the chain
 	if(query->flags.allowed)
 	{
-		if(config.debug & DEBUG_QUERIES)
-		{
-			logg("Query is permitted as at least one allowlist entry matched");
-		}
+		log_debug(DEBUG_QUERIES, "Query is permitted as at least one allowlist entry matched");
+
 		return false;
 	}
 
@@ -258,8 +238,7 @@ bool _FTL_check_blocking(int queryID, int domainID, int clientID, const char **b
 		query_blocked(query, domain, client, new_status);
 
 		// Debug output
-		if(config.debug & DEBUG_QUERIES)
-			logg("Blocking %s as %s is %s", domainstr, blockedDomain, *blockingreason);
+		log_debug(DEBUG_QUERIES, "Blocking %s as %s is %s", domainstr, blockedDomain, *blockingreason);
 	}
 	else
 	{
