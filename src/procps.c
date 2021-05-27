@@ -86,7 +86,7 @@ bool check_running_FTL(void)
 	errno = 0;
 	if ((dirPos = opendir("/proc")) == NULL)
 	{
-		logg("Failed to access /proc: %s", strerror(errno));
+		log_warn("Failed to access /proc: %s", strerror(errno));
 		return false;
 	}
 
@@ -134,14 +134,14 @@ bool check_running_FTL(void)
 		if(!process_running)
 		{
 			process_running = true;
-			logg("HINT: %s is already running!", PROCESS_NAME);
+			log_err("HINT: %s is already running!", PROCESS_NAME);
 		}
 
 		if(last_pid != ppid)
 		{
 			// Independent process, may be child of init/systemd
-			logg("%s (%d) ──> %s (PID %d, started %s)",
-			     ppid_name, ppid, name, pid, timestr);
+			log_info("%s (%d) ──> %s (PID %d, started %s)",
+			         ppid_name, ppid, name, pid, timestr);
 			last_pid = pid;
 			last_len = snprintf(NULL, 0, "%s (%d) ──> ", ppid_name, ppid);
 		}
@@ -149,8 +149,8 @@ bool check_running_FTL(void)
 		{
 			// Process parented by the one we analyzed before,
 			// highlight their relationship
-			logg("%*s └─> %s (PID %d, started %s)",
-			     (int)last_len, "", name, pid, timestr);
+			log_info("%*s └─> %s (PID %d, started %s)",
+			         (int)last_len, "", name, pid, timestr);
 		}
 	}
 
