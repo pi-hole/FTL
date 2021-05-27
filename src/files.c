@@ -30,14 +30,16 @@ bool chmod_file(const char *filename, const mode_t mode)
 {
 	if(chmod(filename, mode) < 0)
 	{
-		logg("WARNING: chmod(%s, %d): chmod() failed: %s (%d)", filename, mode, strerror(errno), errno);
+		log_warn("chmod(%s, %d): chmod() failed: %s",
+		         filename, mode, strerror(errno));
 		return false;
 	}
 
 	struct stat st;
 	if(stat(filename, &st) < 0)
 	{
-		logg("WARNING: chmod(%s, %d): stat() failed: %s (%d)", filename, mode, strerror(errno), errno);
+		log_warn("chmod(%s, %d): stat() failed: %s",
+		         filename, mode, strerror(errno));
 		return false;
 	}
 
@@ -45,7 +47,8 @@ bool chmod_file(const char *filename, const mode_t mode)
 	// 0x1FF = 0b111_111_111 corresponding to the three-digit octal mode number
 	if((st.st_mode & 0x1FF) != mode)
 	{
-		logg("WARNING: chmod(%s, %d): Verification failed, %d != %d", filename, mode, st.st_mode, mode);
+		log_warn("chmod(%s, %d): Verification failed, %d != %d",
+		         filename, mode, st.st_mode, mode);
 		return false;
 	}
 
@@ -93,15 +96,15 @@ void ls_dir(const char* path)
 	DIR* dirp = opendir(path);
 	if(dirp == NULL)
 	{
-		logg("opendir(\"%s\") failed with %s (%d)", path, strerror(errno), errno);
+		log_warn("opendir(\"%s\") failed with %s", path, strerror(errno));
 		return;
 	}
 
 	// Stack space for full path (directory + "/" + filename + terminating \0)
 	char full_path[strlen(path)+NAME_MAX+2];
 
-	logg("------ Listing content of directory %s ------", path);
-	logg("File Mode User:Group      Size  Filename");
+	log_info("------ Listing content of directory %s ------", path);
+	log_info("File Mode User:Group      Size  Filename");
 
 	struct dirent *dircontent = NULL;
 	// Walk directory file by file
@@ -117,7 +120,7 @@ void ls_dir(const char* path)
 		// Use stat to get file size, permissions, and ownership
 		if(stat(full_path, &st) < 0)
 		{
-			logg("%s failed with %s (%d)", filename, strerror(errno), errno);
+			log_warn("stat(\"%s\") failed with %s", filename, strerror(errno));
 			continue;
 		}
 
@@ -145,10 +148,10 @@ void ls_dir(const char* path)
 		format_memory_size(prefix, (unsigned long long)st.st_size, &formated);
 
 		// Log output for this file
-		logg("%s %-15s %3.0f%s  %s", permissions, usergroup, formated, prefix, filename);
+		log_info("%s %-15s %3.0f%s  %s", permissions, usergroup, formated, prefix, filename);
 	}
 
-	logg("---------------------------------------------------");
+	log_info("---------------------------------------------------");
 
 	// Close directory stream
 	closedir(dirp);
