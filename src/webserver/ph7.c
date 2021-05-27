@@ -188,7 +188,7 @@ void init_ph7(void)
 	// This should never happen, check nonetheless
 	if(!ph7_lib_is_threadsafe())
 	{
-		logg("FATAL: Recompile FTL with PH7 set to multi-thread mode!");
+		log_crit("Recompile FTL with PH7 set to multi-thread mode!");
 		exit(EXIT_FAILURE);
 	}
 

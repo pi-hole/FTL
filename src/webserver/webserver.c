@@ -36,7 +36,7 @@ static int redirect_root_handler(struct mg_connection *conn, void *input)
 			if (!pos)
 			{
 				// Malformed hostname starts with '[', but no ']' found
-				logg("ERROR: Host name format error '[' without ']'");
+				log_err("Host name format error: Found '[' without ']'");
 				return 0;
 			}
 			/* terminate after ']' */
@@ -61,13 +61,13 @@ static int redirect_root_handler(struct mg_connection *conn, void *input)
 	// API debug logging
 	if(config.debug & DEBUG_API)
 	{
-		logg("Host header: \"%s\", extracted host: \"%.*s\"", host, (int)host_len, host);
+		log_debug(DEBUG_API, "Host header: \"%s\", extracted host: \"%.*s\"", host, (int)host_len, host);
 
 		// Get requested URI
 		const struct mg_request_info *request = mg_get_request_info(conn);
 		const char *uri = request->local_uri;
 
-		logg("URI: %s", uri);
+		log_debug(DEBUG_API, "URI: %s", uri);
 	}
 
 	// 308 Permanent Redirect from http://pi.hole -> http://pi.hole/admin
@@ -159,9 +159,9 @@ void http_init(void)
 	/* Start the server */
 	if((ctx = mg_start(&callbacks, NULL, options)) == NULL)
 	{
-		logg("ERROR: Start of webserver failed!. Web interface will not be available!");
-		logg("       Check webroot %s and listening ports %s",
-		     httpsettings.webroot, httpsettings.port);
+		log_err("Start of webserver failed!. Web interface will not be available!");
+		log_err("       Check webroot %s and listening ports %s",
+		        httpsettings.webroot, httpsettings.port);
 		return;
 	}
 

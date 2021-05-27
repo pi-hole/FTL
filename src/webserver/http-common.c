@@ -354,7 +354,7 @@ void read_and_parse_payload(struct ftl_conn *api)
 	else // POST, PUT
 	{
 		int data_len = mg_read(api->conn, api->payload.raw, MAX_PAYLOAD_BYTES - 1);
-		logg("Received payload with size: %d", data_len);
+		log_debug(DEBUG_API, "Received payload with size: %d", data_len);
 		if ((data_len < 1) || (data_len >= MAX_PAYLOAD_BYTES))
 			return;
 
