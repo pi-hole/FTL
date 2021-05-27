@@ -58,9 +58,9 @@ extern bool DBdeleteoldqueries;
 	int ret;\
 	if((ret = dbquery(db, __VA_ARGS__)) != SQLITE_OK) {\
 		if(ret == SQLITE_BUSY)\
-			logg("WARNING: Database busy in %s()!", __FUNCTION__);\
+			log_warn("WARNING: Database busy in %s()!", __FUNCTION__);\
 		else\
-			logg("ERROR: %s() failed!", __FUNCTION__);\
+			log_err("ERROR: %s() failed!", __FUNCTION__);\
 		return false;\
 	}\
 }
@@ -69,9 +69,9 @@ extern bool DBdeleteoldqueries;
 	int ret;\
 	if((ret = dbquery(db, __VA_ARGS__)) != SQLITE_OK) {\
 		if(ret == SQLITE_BUSY)\
-			logg("WARNING: Database busy in %s()!", __FUNCTION__);\
+			log_warn("WARNING: Database busy in %s()!", __FUNCTION__);\
 		else\
-			logg("ERROR: %s() failed!", __FUNCTION__);\
+			log_err("ERROR: %s() failed!", __FUNCTION__);\
 		return;\
 	}\
 }
