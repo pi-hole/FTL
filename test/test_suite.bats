@@ -455,70 +455,70 @@
 @test "Regex Test 24: Useful hint for invalid regular expression \"f{x}\": Invalid contents of {}" {
   run bash -c './pihole-FTL regex-test "fbcdn.net" "f{x}"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "WARN: Invalid regex CLI filter \"f{x}\": Invalid contents of {}" ]]
+  [[ ${lines[1]} == "Invalid regex CLI filter \"f{x}\": Invalid contents of {}" ]]
   [[ $status == 1 ]]
 }
 
 @test "Regex Test 25: Useful hint for invalid regular expression \"a**\": Invalid use of repetition operators" {
   run bash -c './pihole-FTL regex-test "fbcdn.net" "a**"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "WARN: Invalid regex CLI filter \"a**\": Invalid use of repetition operators" ]]
+  [[ ${lines[1]} == "Invalid regex CLI filter \"a**\": Invalid use of repetition operators" ]]
   [[ $status == 1 ]]
 }
 
 @test "Regex Test 26: Useful hint for invalid regular expression \"x\\\": Trailing backslash" {
   run bash -c './pihole-FTL regex-test "fbcdn.net" "x\\"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "WARN: Invalid regex CLI filter \"x\\\": Trailing backslash" ]]
+  [[ ${lines[1]} == "Invalid regex CLI filter \"x\\\": Trailing backslash" ]]
   [[ $status == 1 ]]
 }
 
 @test "Regex Test 27: Useful hint for invalid regular expression \"[\": Missing ']'" {
   run bash -c './pihole-FTL regex-test "fbcdn.net" "["'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "WARN: Invalid regex CLI filter \"[\": Missing ']'" ]]
+  [[ ${lines[1]} == "Invalid regex CLI filter \"[\": Missing ']'" ]]
   [[ $status == 1 ]]
 }
 
 @test "Regex Test 28: Useful hint for invalid regular expression \"(\": Missing ')'" {
   run bash -c './pihole-FTL regex-test "fbcdn.net" "("'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "WARN: Invalid regex CLI filter \"(\": Missing ')'" ]]
+  [[ ${lines[1]} == "Invalid regex CLI filter \"(\": Missing ')'" ]]
   [[ $status == 1 ]]
 }
 
 @test "Regex Test 29: Useful hint for invalid regular expression \"{1\": Missing '}'" {
   run bash -c './pihole-FTL regex-test "fbcdn.net" "{1"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "WARN: Invalid regex CLI filter \"{1\": Missing '}'" ]]
+  [[ ${lines[1]} == "Invalid regex CLI filter \"{1\": Missing '}'" ]]
   [[ $status == 1 ]]
 }
 
 @test "Regex Test 30: Useful hint for invalid regular expression \"[[.foo.]]\": Unknown collating element" {
   run bash -c './pihole-FTL regex-test "fbcdn.net" "[[.foo.]]"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "WARN: Invalid regex CLI filter \"[[.foo.]]\": Unknown collating element" ]]
+  [[ ${lines[1]} == "Invalid regex CLI filter \"[[.foo.]]\": Unknown collating element" ]]
   [[ $status == 1 ]]
 }
 
 @test "Regex Test 31: Useful hint for invalid regular expression \"[[:foobar:]]\": Unknown character class name" {
   run bash -c './pihole-FTL regex-test "fbcdn.net" "[[:foobar:]]"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "WARN: Invalid regex CLI filter \"[[:foobar:]]\": Unknown character class name" ]]
+  [[ ${lines[1]} == "Invalid regex CLI filter \"[[:foobar:]]\": Unknown character class name" ]]
   [[ $status == 1 ]]
 }
 
 @test "Regex Test 32: Useful hint for invalid regular expression \"(a)\\2\": Invalid back reference" {
   run bash -c './pihole-FTL regex-test "fbcdn.net" "(a)\\2"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "WARN: Invalid regex CLI filter \"(a)\\2\": Invalid back reference" ]]
+  [[ ${lines[1]} == "Invalid regex CLI filter \"(a)\\2\": Invalid back reference" ]]
   [[ $status == 1 ]]
 }
 
 @test "Regex Test 33: Useful hint for invalid regular expression \"[g-1]\": Invalid character range" {
   run bash -c './pihole-FTL regex-test "fbcdn.net" "[g-1]"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "WARN: Invalid regex CLI filter \"[g-1]\": Invalid character range" ]]
+  [[ ${lines[1]} == "Invalid regex CLI filter \"[g-1]\": Invalid character range" ]]
   [[ $status == 1 ]]
 }
 
@@ -531,7 +531,7 @@
 @test "Regex Test 35: Quiet mode: Invalid regex = Return code 1, with error message" {
   run bash -c './pihole-FTL -q regex-test "fbcdn.net" "g{x}"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "WARN: Invalid regex CLI filter \"g{x}\": Invalid contents of {}" ]]
+  [[ ${lines[0]} == "Invalid regex CLI filter \"g{x}\": Invalid contents of {}" ]]
   [[ $status == 1 ]]
 }
 
