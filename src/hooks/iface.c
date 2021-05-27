@@ -103,8 +103,8 @@ void FTL_iface(const int ifidx, const struct irec *ifaces)
 				inet_ntop(AF_INET, &iface->addr.in.sin_addr, buffer, ADDRSTRLEN);
 			else if(family == AF_INET6)
 				inet_ntop(AF_INET6, &iface->addr.in6.sin6_addr, buffer, ADDRSTRLEN);
-			logg("Interface (%d) %s has IPv%i address %s %s", ifidx, next_iface.name,
-				family == AF_INET ? 4 : 6, buffer, isGUA ? "(GUA)" : isULA ? "(ULA)" : "(other)");
+			log_debug(DEBUG_NETWORKING, "Interface (%d) %s has IPv%i address %s %s", ifidx, next_iface.name,
+			          family == AF_INET ? 4 : 6, buffer, isGUA ? "(GUA)" : isULA ? "(ULA)" : "(other)");
 		}
 
 
