@@ -292,26 +292,8 @@
   [[ ${lines[3]} == "Available arguments:" ]]
 }
 
-@test "No WARNING messages in pihole-FTL.log (besides known capability issues)" {
-  run bash -c 'grep "WARNING" /var/log/pihole-FTL.log | grep -c -v -E "CAP_NET_ADMIN|CAP_NET_RAW|CAP_SYS_NICE"'
-  printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "0" ]]
-}
-
 @test "No \"database not available\" messages in pihole-FTL.log" {
   run bash -c 'grep -c "database not available" /var/log/pihole-FTL.log'
-  printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "0" ]]
-}
-
-@test "No ERROR messages in pihole-FTL.log (besides known index.html error)" {
-  run bash -c 'grep "ERROR:" /var/log/pihole-FTL.log | grep -c -v -E "index\.html"'
-  printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "0" ]]
-}
-
-@test "No FATAL messages in pihole-FTL.log (besides error due to starting FTL more than once)" {
-  run bash -c 'grep "FATAL:" /var/log/pihole-FTL.log | grep -c -v "FATAL: create_shm(): Failed to create shared memory object \"FTL-lock\": File exists"'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0" ]]
 }
@@ -905,4 +887,22 @@
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "Hello from LUA" ]]
   rm abc.lua
+}
+
+@test "No WARNING messages in pihole-FTL.log (besides known capability issues)" {
+  run bash -c 'grep "WARNING: " /var/log/pihole-FTL.log | grep -c -v -E "CAP_NET_ADMIN|CAP_NET_RAW|CAP_SYS_NICE"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "0" ]]
+}
+
+@test "No ERROR messages in pihole-FTL.log (besides known index.html error)" {
+  run bash -c 'grep "ERR: " /var/log/pihole-FTL.log | grep -c -v -E "index\.html"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "0" ]]
+}
+
+@test "No CRIT messages in pihole-FTL.log (besides error due to testing to start FTL more than once)" {
+  run bash -c 'grep "CRIT: " /var/log/pihole-FTL.log | grep -c -v "CRIT: create_shm(): Failed to create shared memory object \"FTL-lock\": File exists"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "0" ]]
 }
