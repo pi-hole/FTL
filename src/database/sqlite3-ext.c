@@ -21,7 +21,7 @@
 #include <string.h>
 // free()
 #include <stdlib.h>
-// logg()
+// logging routines
 #include "../log.h"
 // struct config
 #include "../config.h"
@@ -68,8 +68,8 @@ static void subnet_match_impl(sqlite3_context *context, int argc, sqlite3_value 
 	if (sqlite3_value_type(argv[0]) != SQLITE_TEXT ||
 	    sqlite3_value_type(argv[1]) != SQLITE_TEXT)
 	{
-		logg("SQL: Invoked subnet_match() with non-text arguments: %d, %d",
-		     sqlite3_value_type(argv[0]), sqlite3_value_type(argv[1]));
+		log_err("SQL: Invoked subnet_match() with non-text arguments: %d, %d",
+		        sqlite3_value_type(argv[0]), sqlite3_value_type(argv[1]));
 		sqlite3_result_int(context, 0);
 		return;
 	}
@@ -134,7 +134,7 @@ static void subnet_match_impl(sqlite3_context *context, int argc, sqlite3_value 
 	{
 		//sqlite3_result_error(context, "Passed a malformed IP address (FTL)", -1);
 		// Return non-fatal "NO MATCH" if address is invalid
-		logg("Malformed FTL IP address: %s", addrFTL);
+		log_err("Malformed FTL IP address: %s", addrFTL);
 		sqlite3_result_int(context, 0);
 		return;
 	}
@@ -167,9 +167,9 @@ static void subnet_match_impl(sqlite3_context *context, int argc, sqlite3_value 
 	{
 		char subnet[INET6_ADDRSTRLEN];
 		inet_ntop(isIPv6_FTL ? AF_INET6 : AF_INET, &bitmask, subnet, sizeof(subnet));
-		logg("SQL: Comparing %s vs. %s (subnet %s) - %s",
-		     addrFTL, addrDBcidr, subnet,
-			 match == 1 ? "!! MATCH !!" : "NO MATCH");
+		log_debug(DEBUG_DATABASE, "SQL: Comparing %s vs. %s (subnet %s) - %s",
+		          addrFTL, addrDBcidr, subnet,
+		          match == 1 ? "!! MATCH !!" : "NO MATCH");
 	}
 
 	// Return if we found a match between the two addresses
@@ -192,8 +192,8 @@ int sqlite3_pihole_extensions_init(sqlite3 *db, const char **pzErrMsg, const str
 
 	if(rc != SQLITE_OK)
 	{
-		logg("Error while initializing the SQLite3 extension subnet_match: %s",
-		     sqlite3_errstr(rc));
+		log_err("Error while initializing the SQLite3 extension subnet_match: %s",
+		        sqlite3_errstr(rc));
 	}
 
 	return rc;
