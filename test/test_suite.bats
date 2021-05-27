@@ -4,7 +4,7 @@
   run bash -c 'su pihole -s /bin/sh -c "/home/pihole/pihole-FTL -f"'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[8]} == *"Initialization of shared memory failed." ]]
-  [[ ${lines[9]} == *"HINT: pihole-FTL is already running!"* ]]
+  [[ ${lines[9]} == *"pihole-FTL is already running!" ]]
 }
 
 @test "Starting tests without prior history" {
