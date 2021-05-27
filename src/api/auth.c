@@ -149,8 +149,7 @@ int check_client_auth(struct ftl_conn *api)
 
 	if(!sid_avail)
 	{
-		if(config.debug & DEBUG_API)
-			logg("API Authentification: FAIL (no SID provided)");
+		log_debug(DEBUG_API, "API Authentification: FAIL (no SID provided)");
 
 		return API_AUTH_UNAUTHORIZED;
 	}
@@ -158,8 +157,7 @@ int check_client_auth(struct ftl_conn *api)
 	// else: Analyze SID
 	int user_id = API_AUTH_UNAUTHORIZED;
 	const time_t now = time(NULL);
-	if(config.debug & DEBUG_API)
-		logg("API: Read sid=\"%s\" from %s", sid, sid_source);
+	log_debug(DEBUG_API, "Read sid=\"%s\" from %s", sid, sid_source);
 
 	for(unsigned int i = 0; i < API_MAX_CLIENTS; i++)
 	{
@@ -195,12 +193,12 @@ int check_client_auth(struct ftl_conn *api)
 		{
 			char timestr[128];
 			get_timestr(timestr, auth_data[user_id].valid_until, false);
-			logg("API: Recognized known user: user_id %i valid_until: %s remote_addr %s",
+			log_debug(DEBUG_API, "Recognized known user: user_id %i valid_until: %s remote_addr %s",
 				user_id, timestr, auth_data[user_id].remote_addr);
 		}
 	}
-	else if(config.debug & DEBUG_API)
-		logg("API Authentification: FAIL (SID invalid/expired)");
+	else
+		log_debug(DEBUG_API, "API Authentification: FAIL (SID invalid/expired)");
 
 	return user_id;
 }
@@ -277,8 +275,7 @@ static int send_api_auth_status(struct ftl_conn *api, const int user_id, const t
 {
 	if(user_id == API_AUTH_LOCALHOST)
 	{
-		if(config.debug & DEBUG_API)
-			logg("API Auth status: OK (localhost does not need auth)");
+		log_debug(DEBUG_API, "API Auth status: OK (localhost does not need auth)");
 
 		cJSON *json = JSON_NEW_OBJ();
 		JSON_OBJ_ADD_NULL(json, "challenge");
@@ -288,8 +285,7 @@ static int send_api_auth_status(struct ftl_conn *api, const int user_id, const t
 
 	if(user_id == API_AUTH_EMPTYPASS)
 	{
-		if(config.debug & DEBUG_API)
-			logg("API Auth status: OK (empty password)");
+		log_debug(DEBUG_API, "API Auth status: OK (empty password)");
 
 		cJSON *json = JSON_NEW_OBJ();
 		JSON_OBJ_ADD_NULL(json, "challenge");
@@ -299,8 +295,7 @@ static int send_api_auth_status(struct ftl_conn *api, const int user_id, const t
 
 	if(user_id > API_AUTH_UNAUTHORIZED && (api->method == HTTP_GET || api->method == HTTP_POST))
 	{
-		if(config.debug & DEBUG_API)
-			logg("API Auth status: OK");
+		log_debug(DEBUG_API, "API Auth status: OK");
 
 		// Ten minutes validity
 		if(snprintf(pi_hole_extra_headers, sizeof(pi_hole_extra_headers),
@@ -317,8 +312,7 @@ static int send_api_auth_status(struct ftl_conn *api, const int user_id, const t
 	}
 	else if(user_id > API_AUTH_UNAUTHORIZED && api->method == HTTP_DELETE)
 	{
-		if(config.debug & DEBUG_API)
-			logg("API Auth status: Logout, asking to delete cookie");
+		log_debug(DEBUG_API, "API Auth status: Logout, asking to delete cookie");
 
 		// Revoke client authentication. This slot can be used by a new client afterwards.
 		delete_session(user_id);
@@ -331,8 +325,7 @@ static int send_api_auth_status(struct ftl_conn *api, const int user_id, const t
 	}
 	else
 	{
-		if(config.debug & DEBUG_API)
-			logg("API Auth status: Invalid, asking to delete cookie");
+		log_debug(DEBUG_API, "API Auth status: Invalid, asking to delete cookie");
 
 		strncpy(pi_hole_extra_headers, FTL_DELETE_COOKIE, sizeof(pi_hole_extra_headers));
 		cJSON *json = JSON_NEW_OBJ();
@@ -428,8 +421,7 @@ int api_auth(struct ftl_conn *api)
 		if(api->payload.json == NULL)
 		{
 			const char *message = "No valid JSON payload found";
-			if(config.debug & DEBUG_API)
-				logg("API auth error: %s", message);
+			log_debug(DEBUG_API, "API auth error: %s", message);
 			return send_json_error(api, 400,
 			                       "bad_request",
 			                       message,
@@ -441,8 +433,7 @@ int api_auth(struct ftl_conn *api)
 		if((json_response = cJSON_GetObjectItemCaseSensitive(api->payload.json, "response")) == NULL)
 		{
 			const char *message = "No response found in JSON payload";
-			if(config.debug & DEBUG_API)
-				logg("API auth error: %s", message);
+			log_debug(DEBUG_API, "API auth error: %s", message);
 			return send_json_error(api, 400,
 			                       "bad_request",
 			                       message,
@@ -453,8 +444,7 @@ int api_auth(struct ftl_conn *api)
 		if(strlen(json_response->valuestring) != CHALLENGE_SIZE)
 		{
 			const char *message = "Invalid response length";
-			if(config.debug & DEBUG_API)
-				logg("API auth error: %s", message);
+			log_debug(DEBUG_API, "API auth error: %s", message);
 			return send_json_error(api, 400,
 			                       "bad_request",
 			                       message,
@@ -470,8 +460,7 @@ int api_auth(struct ftl_conn *api)
 	// Logout attempt
 	if(api->method == HTTP_DELETE)
 	{
-		if(config.debug & DEBUG_API)
-			logg("API Auth: User with ID %i wants to log out", user_id);
+		log_debug(DEBUG_API, "API Auth: User with ID %i wants to log out", user_id);
 		return send_api_auth_status(api, user_id, now);
 	}
 
@@ -490,11 +479,8 @@ int api_auth(struct ftl_conn *api)
 				if(auth_data[i].used &&
 				   auth_data[i].valid_until < now)
 				{
-					if(config.debug & DEBUG_API)
-					{
-						logg("API: Session of client %u (%s) expired, freeing...",
-						     i, auth_data[i].remote_addr);
-					}
+					log_debug(DEBUG_API, "API: Session of client %u (%s) expired, freeing...",
+					          i, auth_data[i].remote_addr);
 					delete_session(i);
 				}
 
@@ -517,18 +503,18 @@ int api_auth(struct ftl_conn *api)
 			{
 				char timestr[128];
 				get_timestr(timestr, auth_data[user_id].valid_until, false);
-				logg("API: Registered new user: user_id %i valid_until: %s remote_addr %s (accepted due to %s)",
-				     user_id, timestr, auth_data[user_id].remote_addr,
-				     response_correct ? "correct response" : "empty password");
+				log_debug(DEBUG_API, "API: Registered new user: user_id %i valid_until: %s remote_addr %s (accepted due to %s)",
+				          user_id, timestr, auth_data[user_id].remote_addr,
+				          response_correct ? "correct response" : "empty password");
 			}
 			if(user_id == API_AUTH_UNAUTHORIZED)
 			{
-				logg("WARNING: No free API seats available, not authenticating client");
+				log_warn("No free API seats available, not authenticating client");
 			}
 		}
-		else if(config.debug & DEBUG_API)
+		else
 		{
-			logg("API: Response incorrect. Response=%s, setupVars=%s", response, password_hash);
+			log_debug(DEBUG_API, "API: Response incorrect. Response=%s, setupVars=%s", response, password_hash);
 		}
 
 		// Free allocated memory
@@ -574,10 +560,7 @@ int api_auth(struct ftl_conn *api)
 		free(password_hash);
 		password_hash = NULL;
 
-		if(config.debug & DEBUG_API)
-		{
-			logg("API: Sending challenge=%s", challenges[i].challenge);
-		}
+		log_debug(DEBUG_API, "API: Sending challenge=%s", challenges[i].challenge);
 
 		// Return to user
 		cJSON *json = JSON_NEW_OBJ();

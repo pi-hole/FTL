@@ -30,11 +30,10 @@ int api_handler(struct mg_connection *conn, void *ignored)
 	};
 	read_and_parse_payload(&api);
 
-	if(config.debug & DEBUG_API)
-		logg("Requested API URI: %s %s ? %s",
-		     api.request->request_method,
-		     api.request->local_uri,
-		     api.request->query_string);
+	log_debug(DEBUG_API, "Requested API URI: %s %s ? %s",
+	          api.request->request_method,
+	          api.request->local_uri,
+	          api.request->query_string);
 
 	int ret = 0;
 	/******************************** /api/dns ********************************/
