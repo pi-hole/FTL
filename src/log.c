@@ -358,17 +358,17 @@ void FTL_log_helper(const unsigned char n, ...)
 	switch (n)
 	{
 		case 1:
-			logg("Script: Starting helper for action \"%s\"", arg[0]);
+			log_debug(DEBUG_HELPER, "Script: Starting helper for action \"%s\"", arg[0]);
 			break;
 		case 2:
-			logg("Script: FAILED to execute \"%s\": %s", arg[0], arg[1]);
+			log_debug(DEBUG_HELPER, "Script: FAILED to execute \"%s\": %s", arg[0], arg[1]);
 			break;
 		case 5:
-			logg("Script: Executing \"%s\" with arguments: \"%s %s %s %s\"",
+			log_debug(DEBUG_HELPER, "Script: Executing \"%s\" with arguments: \"%s %s %s %s\"",
 			     arg[0], arg[1], arg[2], arg[3], arg[4]);
 			break;
 		default:
-			logg("ERROR: Unsupported number of arguments passed to FTL_log_helper(): %u", n);
+			log_debug(DEBUG_HELPER, "ERROR: Unsupported number of arguments passed to FTL_log_helper(): %u", n);
 			break;
 	}
 
@@ -443,27 +443,27 @@ void FTL_log_dnsmasq_fatal(const char *format, ...)
 
 void log_counter_info(void)
 {
-	logg(" -> Total DNS queries: %i", counters->queries);
-	logg(" -> Cached DNS queries: %i", get_cached_count());
-	logg(" -> Forwarded DNS queries: %i", get_forwarded_count());
-	logg(" -> Blocked DNS queries: %i", get_blocked_count());
-	logg(" -> Unknown DNS queries: %i", counters->status[STATUS_UNKNOWN]);
-	logg(" -> Unique domains: %i", counters->domains);
-	logg(" -> Unique clients: %i", counters->clients);
-	logg(" -> Known forward destinations: %i", counters->upstreams);
+	log_info(" -> Total DNS queries: %i", counters->queries);
+	log_info(" -> Cached DNS queries: %i", get_cached_count());
+	log_info(" -> Forwarded DNS queries: %i", get_forwarded_count());
+	log_info(" -> Blocked DNS queries: %i", get_blocked_count());
+	log_info(" -> Unknown DNS queries: %i", counters->status[STATUS_UNKNOWN]);
+	log_info(" -> Unique domains: %i", counters->domains);
+	log_info(" -> Unique clients: %i", counters->clients);
+	log_info(" -> Known forward destinations: %i", counters->upstreams);
 }
 
 void log_FTL_version(const bool crashreport)
 {
-	logg("FTL branch: %s", GIT_BRANCH);
-	logg("FTL version: %s", get_FTL_version());
-	logg("FTL commit: %s", GIT_HASH);
-	logg("FTL date: %s", GIT_DATE);
+	log_info("FTL branch: %s", GIT_BRANCH);
+	log_info("FTL version: %s", get_FTL_version());
+	log_info("FTL commit: %s", GIT_HASH);
+	log_info("FTL date: %s", GIT_DATE);
 	if(crashreport)
-		logg("FTL user: started as %s, ended as %s", username, getUserName());
+		log_info("FTL user: started as %s, ended as %s", username, getUserName());
 	else
-		logg("FTL user: %s", username);
-	logg("Compiled for %s using %s", FTL_ARCH, FTL_CC);
+		log_info("FTL user: %s", username);
+	log_info("Compiled for %s using %s", FTL_ARCH, FTL_CC);
 }
 
 static char *FTLversion = NULL;
