@@ -73,10 +73,7 @@ void FTL_multiple_replies(const int id, int *firstID)
 	}
 
 	// Debug logging
-	if(config.debug & DEBUG_QUERIES)
-	{
-		logg("**** sending reply %d also to %d", *firstID, queryID);
-	}
+	log_debug(DEBUG_QUERIES, "**** sending reply %d also to %d", *firstID, queryID);
 
 	// Copy relevant information over
 	duplicated_query->reply = source_query->reply;
