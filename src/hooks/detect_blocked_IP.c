@@ -14,7 +14,7 @@
 #include "../datastructure.h"
 // struct config
 #include "../config.h"
-// logg()
+// logging routines
 #include "../log.h"
 // lock_shm(), addstr(), etc.
 #include "../shmem.h"
@@ -34,11 +34,8 @@ enum query_status detect_blocked_IP(const unsigned short flags, const union all_
 		// Skip replies which originated locally. Otherwise, we would
 		// count gravity.list blocked queries as externally blocked.
 		// Also: Do not mark responses of PTR requests as externally blocked.
-		if(config.debug & DEBUG_QUERIES)
-		{
-			const char *cause = (flags & F_HOSTS) ? "origin is HOSTS" : "query is PTR";
-			logg("Skipping detection of external blocking IP for ID %i as %s", query->id, cause);
-		}
+		const char *cause = (flags & F_HOSTS) ? "origin is HOSTS" : "query is PTR";
+		log_debug(DEBUG_QUERIES, "Skipping detection of external blocking IP for ID %i as %s", query->id, cause);
 
 		// Return early, do not compare against known blocking page IP addresses below
 		return query->status;
@@ -57,8 +54,8 @@ enum query_status detect_blocked_IP(const unsigned short flags, const union all_
 		{
 			char answer[ADDRSTRLEN]; answer[0] = '\0';
 			inet_ntop(AF_INET, addr, answer, ADDRSTRLEN);
-			logg("Upstream responded with known blocking page (IPv4), ID %i:\n\t\"%s\" -> \"%s\"",
-			     query->id, getstr(domain->domainpos), answer);
+			log_debug(DEBUG_QUERIES, "Upstream responded with known blocking page (IPv4), ID %i:\n\t\"%s\" -> \"%s\"",
+			          query->id, getstr(domain->domainpos), answer);
 		}
 
 		// Update status
@@ -75,8 +72,8 @@ enum query_status detect_blocked_IP(const unsigned short flags, const union all_
 		{
 			char answer[ADDRSTRLEN]; answer[0] = '\0';
 			inet_ntop(AF_INET6, addr, answer, ADDRSTRLEN);
-			logg("Upstream responded with known blocking page (IPv6), ID %i:\n\t\"%s\" -> \"%s\"",
-			     query->id, getstr(domain->domainpos), answer);
+			log_debug(DEBUG_QUERIES, "Upstream responded with known blocking page (IPv6), ID %i:\n\t\"%s\" -> \"%s\"",
+			          query->id, getstr(domain->domainpos), answer);
 		}
 
 		// Update status
@@ -88,11 +85,8 @@ enum query_status detect_blocked_IP(const unsigned short flags, const union all_
 	// nothing is reachable under these addresses
 	else if(flags & F_IPV4 && ipv4Addr == 0)
 	{
-		if(config.debug & DEBUG_QUERIES)
-		{
-			logg("Upstream responded with 0.0.0.0, ID %i:\n\t\"%s\" -> \"0.0.0.0\"",
-			     query->id, getstr(domain->domainpos));
-		}
+		log_debug(DEBUG_QUERIES, "Upstream responded with 0.0.0.0, ID %i:\n\t\"%s\" -> \"0.0.0.0\"",
+		          query->id, getstr(domain->domainpos));
 
 		// Update status
 		return STATUS_EXTERNAL_BLOCKED_NULL;
@@ -103,11 +97,8 @@ enum query_status detect_blocked_IP(const unsigned short flags, const union all_
 	        addr->addr6.s6_addr32[2] == 0 &&
 	        addr->addr6.s6_addr32[3] == 0)
 	{
-		if(config.debug & DEBUG_QUERIES)
-		{
-			logg("Upstream responded with ::, ID %i:\n\t\"%s\" -> \"::\"",
-			     query->id, getstr(domain->domainpos));
-		}
+		log_debug(DEBUG_QUERIES, "Upstream responded with ::, ID %i:\n\t\"%s\" -> \"::\"",
+		          query->id, getstr(domain->domainpos));
 
 		// Update status
 		return STATUS_EXTERNAL_BLOCKED_NULL;
