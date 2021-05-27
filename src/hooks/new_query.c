@@ -22,7 +22,7 @@
 #include "../timers.h"
 // struct config
 #include "../config.h"
-// logg()
+// logging routines
 #include "../log.h"
 // query_to_database()
 #include "../database/query-table.h"

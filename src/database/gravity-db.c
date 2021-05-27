@@ -13,7 +13,7 @@
 #include "gravity-db.h"
 // struct config
 #include "../config.h"
-// logg()
+// logging routines
 #include "../log.h"
 // match_regex()
 #include "../regex_r.h"

@@ -14,7 +14,7 @@
 #include "../datastructure.h"
 // struct config
 #include "../config.h"
-// logg()
+// logging routines
 #include "../log.h"
 // lock_shm(), addstr(), etc.
 #include "../shmem.h"
@@ -57,7 +57,7 @@ unsigned int FTL_extract_question_flags(struct dns_header *header, const size_t 
 		if(config.debug & DEBUG_QUERIES)
 		{
 			char *qtype_str = querystr(NULL, qtype);
-			logg("CNAME header: Question was <IN> %s %s", qtype_str, name);
+			log_debug(DEBUG_QUERIES, "CNAME header: Question was <IN> %s %s", qtype_str, name);
 		}
 
 		return flags;
@@ -65,8 +65,7 @@ unsigned int FTL_extract_question_flags(struct dns_header *header, const size_t 
 
 	// Fall back to IPv4 (type A) when for the unlikely event that we cannot
 	// find any questions in this header
-	if(config.debug & DEBUG_QUERIES)
-		logg("CNAME header: No valid IN question found in header");
+	log_debug(DEBUG_QUERIES, "CNAME header: No valid IN question found in header");
 
 	return F_IPV4;
 }

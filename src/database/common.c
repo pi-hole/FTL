@@ -15,7 +15,7 @@
 #include "../shmem.h"
 // struct config
 #include "../config.h"
-// logg()
+// logging routines
 #include "../log.h"
 #include "../timers.h"
 // file_exists()

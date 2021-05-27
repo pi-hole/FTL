@@ -9,7 +9,7 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "../cJSON/cJSON.h"
-// logg()
+// logging routines
 #include "../log.h"
 
 #define JSON_NEW_OBJ() cJSON_CreateObject();

@@ -14,7 +14,7 @@
 #include "../datastructure.h"
 // struct config
 #include "../config.h"
-// logg()
+// logging routines
 #include "../log.h"
 // lock_shm(), addstr(), etc.
 #include "../shmem.h"
