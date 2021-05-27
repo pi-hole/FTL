@@ -27,8 +27,7 @@ void FTL_forwarding_retried(const struct server *serv, const int oldID, const in
 
 	if(oldID == newID)
 	{
-		if(config.debug & DEBUG_QUERIES)
-			logg("%d: Ignoring self-retry", oldID);
+		log_debug(DEBUG_QUERIES, "%d: Ignoring self-retry", oldID);
 		return;
 	}
 
@@ -61,11 +60,8 @@ void FTL_forwarding_retried(const struct server *serv, const int oldID, const in
 	const int upstreamID = findUpstreamID(upstreamIP, upstreamPort);
 
 	// Possible debugging information
-	if(config.debug & DEBUG_QUERIES)
-	{
-		logg("**** RETRIED query %i as %i to %s (ID %i)",
-		     oldID, newID, dest, upstreamID);
-	}
+	log_debug(DEBUG_QUERIES, "**** RETRIED query %i as %i to %s (ID %i)",
+	          oldID, newID, dest, upstreamID);
 
 	// Get upstream pointer
 	upstreamsData* upstream = getUpstream(upstreamID, true);
