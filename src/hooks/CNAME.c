@@ -16,7 +16,7 @@
 #include "../datastructure.h"
 // struct config
 #include "../config.h"
-// logg()
+// logging routines
 #include "../log.h"
 // lock_shm(), etc.
 #include "../shmem.h"
@@ -141,13 +141,10 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 	}
 
 	// Debug logging for deep CNAME inspection (if enabled)
-	if(config.debug & DEBUG_QUERIES)
-	{
-		if(src == NULL)
-			logg("Query %d: CNAME %s", id, dst);
-		else
-			logg("Query %d: CNAME %s ---> %s", id, src, dst);
-	}
+	if(src == NULL)
+		log_debug(DEBUG_QUERIES, "Query %d: CNAME %s", id, dst);
+	else
+		log_debug(DEBUG_QUERIES, "Query %d: CNAME %s ---> %s", id, src, dst);
 
 	// Return result
 	free(child_domain);
