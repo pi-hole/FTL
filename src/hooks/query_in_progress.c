@@ -54,8 +54,8 @@ void FTL_query_in_progress(const int id)
 		const domainsData* domain = getDomain(query->domainID, true);
 		if(domain != NULL)
 		{
-			logg("**** query for %s is already in progress (ID %i)",
-			     getstr(domain->domainpos), id);
+			log_debug(DEBUG_QUERIES, "**** query for %s is already in progress (ID %i)",
+			          getstr(domain->domainpos), id);
 		}
 	}
 
