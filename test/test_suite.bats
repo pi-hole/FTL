@@ -896,7 +896,7 @@
 }
 
 @test "No ERROR messages in pihole-FTL.log (besides known index.html error)" {
-  run bash -c 'grep "ERR: " /var/log/pihole-FTL.log | grep -c -v -E "(index\.html)|(create_shm(): Failed to create shared memory object \"FTL-lock\": File exists)"'
+  run bash -c 'grep "ERR: " /var/log/pihole-FTL.log | grep -c -v -E "(index\.html)|(Failed to create shared memory object)"'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0" ]]
 }

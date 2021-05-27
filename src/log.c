@@ -167,7 +167,7 @@ const char * __attribute__ ((const)) debugstr(const enum debug_flag flag)
 		case DEBUG_CAPS:
 			return "DEBUG_CAPS";
 		case DEBUG_DNSMASQ_LINES:
-			return "DEBUG_DNSMASQ_LINES";
+			return "DEBUG_DNSMASQ_LINES"; // This is a pseudo debug flag
 		case DEBUG_VECTORS:
 			return "DEBUG_VECTORS";
 		case DEBUG_RESOLVER:
