@@ -21,13 +21,11 @@ void check_setupVarsconf(void)
 	FILE *setupVarsfp;
 	if((setupVarsfp = fopen(FTLfiles.setupVars, "r")) == NULL)
 	{
-		logg("WARN: Opening of setupVars.conf failed!");
-		logg("      Make sure it exists and is readable");
-		logg("      Message: %s", strerror(errno));
+		log_warn("Opening of setupVars.conf failed: %s Make sure it exists and is readable",
+		         strerror(errno));
 	}
 	else
 	{
-		logg("Successfully accessed setupVars.conf");
 		fclose(setupVarsfp);
 	}
 }
@@ -69,12 +67,12 @@ void trim_whitespace(char *string)
 char * linebuffer = NULL;
 size_t linebuffersize = 0;
 
-char * read_setupVarsconf(const char * key)
+char * read_setupVarsconf(const char *key)
 {
 	FILE *setupVarsfp;
 	if((setupVarsfp = fopen(FTLfiles.setupVars, "r")) == NULL)
 	{
-		logg("WARN: Reading setupVars.conf failed: %s", strerror(errno));
+		log_warn("Reading setupVars.conf failed: %s", strerror(errno));
 		return NULL;
 	}
 
@@ -82,7 +80,7 @@ char * read_setupVarsconf(const char * key)
 	char * keystr = calloc(strlen(key)+2, sizeof(char));
 	if(keystr == NULL)
 	{
-		logg("WARN: read_setupVarsconf failed: could not allocate memory for keystr");
+		log_warn("read_setupVarsconf(%s) failed: Could not allocate memory for keystr", key);
 		fclose(setupVarsfp);
 		return NULL;
 	}
@@ -113,7 +111,7 @@ char * read_setupVarsconf(const char * key)
 	}
 
 	if(errno == ENOMEM)
-		logg("WARN: read_setupVarsconf failed: could not allocate memory for getline");
+		log_warn("read_setupVarsconf(%s) failed: could not allocate memory for getline", key);
 
 	// Key not found -> return NULL
 	fclose(setupVarsfp);
@@ -249,7 +247,7 @@ void check_blocking_status(void)
 		message = "disabled";
 	}
 
-	logg("Blocking status is %s", message);
+	log_info("Blocking status is %s", message);
 }
 
 bool __attribute__((pure)) get_blockingstatus(void)
