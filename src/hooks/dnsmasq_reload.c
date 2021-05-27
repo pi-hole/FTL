@@ -15,7 +15,7 @@
 #include "../datastructure.h"
 // struct config
 #include "../config.h"
-// logg()
+// logging routines
 #include "../log.h"
 // lock_shm(), etc.
 #include "../shmem.h"
@@ -30,7 +30,7 @@ void FTL_dnsmasq_reload(void)
 {
 	// This function is called by the dnsmasq code on receive of SIGHUP
 	// *before* clearing the cache and rereading the lists
-	logg("Reloading DNS cache");
+	log_info("Reloading DNS cache");
 	lock_shm();
 
 	// Request reload the privacy level
