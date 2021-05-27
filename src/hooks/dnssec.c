@@ -14,7 +14,7 @@
 #include "../datastructure.h"
 // struct config
 #include "../config.h"
-// logg()
+// logging routines
 #include "../log.h"
 // lock_shm(), addstr(), etc.
 #include "../shmem.h"
@@ -51,7 +51,8 @@ void _FTL_dnssec(const int status, const int id, const char* file, const int lin
 		const domainsData* domain = getDomain(query->domainID, true);
 		if(domain != NULL)
 		{
-			logg("**** got DNSSEC details for %s: %i (ID %i, %s:%i)", getstr(domain->domainpos), status, id, file, line);
+			log_debug(DEBUG_QUERIES, "**** got DNSSEC details for %s: %i (ID %i, %s:%i)",
+			          getstr(domain->domainpos), status, id, file, line);
 		}
 	}
 
