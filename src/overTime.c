@@ -27,10 +27,8 @@ overTimeData *overTime = NULL;
 static void initSlot(const unsigned int index, const time_t timestamp)
 {
 	// Possible debug printing
-	if(config.debug & DEBUG_OVERTIME)
-	{
-		logg("initSlot(%u, %llu): Zeroing overTime slot", index, (long long)timestamp);
-	}
+	log_debug(DEBUG_OVERTIME, "initSlot(%u, %llu): Zeroing overTime slot",
+	          index, (long long)timestamp);
 
 	// Initialize overTime entry
 	overTime[index].magic = MAGICBYTE;
@@ -62,11 +60,10 @@ void initOverTime(void)
 	// If the current time is 09:35, the last interval is 09:50 - 10:00 (centered at 09:55)
 	time_t timestamp = now - now % 3600 + 3600 - (OVERTIME_INTERVAL / 2);
 
-	if(config.debug & DEBUG_OVERTIME)
-		logg("initOverTime(): Initializing %i slots from %llu to %llu",
-		     OVERTIME_SLOTS,
-		     (long long)timestamp-OVERTIME_SLOTS*OVERTIME_INTERVAL,
-		     (long long)timestamp);
+	log_debug(DEBUG_OVERTIME, "initOverTime(): Initializing %i slots from %llu to %llu",
+	          OVERTIME_SLOTS,
+	          (long long)timestamp-OVERTIME_SLOTS*OVERTIME_INTERVAL,
+	          (long long)timestamp);
 
 	// Iterate over overTime
 	for(int i = OVERTIME_SLOTS-1; i >= 0 ; i--)
@@ -102,20 +99,17 @@ unsigned int getOverTimeID(time_t timestamp)
 		if(!warned_about_hwclock)
 		{
 			const time_t lastTimestamp = overTime[OVERTIME_SLOTS-1].timestamp;
-			logg("WARN: Found database entries in the future (%llu, last: %llu). "
-			     "Your over-time statistics may be incorrect",
-			     (long long)timestamp, (long long)lastTimestamp);
+			log_warn("Found database entries in the future (%llu, last: %llu). "
+			         "Your over-time statistics may be incorrect",
+			         (long long)timestamp, (long long)lastTimestamp);
 			warned_about_hwclock = true;
 		}
 		// Return last timestamp in case a too large timestamp was determined
 		return OVERTIME_SLOTS-1;
 	}
 
-	if(config.debug & DEBUG_OVERTIME)
-	{
-		// Debug output
-		logg("getOverTimeID(%llu): %i", (long long)timestamp, id);
-	}
+	// Debug output
+	log_debug(DEBUG_OVERTIME, "getOverTimeID(%llu): %i", (long long)timestamp, id);
 
 	return (unsigned int) id;
 }
@@ -138,22 +132,16 @@ void moveOverTimeMemory(const time_t mintime)
 	// The number of slots which will be moved (not garbage collected)
 	const unsigned int remainingSlots = OVERTIME_SLOTS - moveOverTime;
 
-	if(config.debug & DEBUG_OVERTIME)
-	{
-		logg("moveOverTimeMemory(): IS: %llu, SHOULD: %llu, MOVING: %u",
-		     (long long)oldestOverTimeIS, (long long)oldestOverTimeSHOULD, moveOverTime);
-	}
+	log_debug(DEBUG_OVERTIME, "moveOverTimeMemory(): IS: %llu, SHOULD: %llu, MOVING: %u",
+	          (long long)oldestOverTimeIS, (long long)oldestOverTimeSHOULD, moveOverTime);
 
 	// Check if the move over amount is valid. This prevents errors if the
 	// function is called before GC is necessary.
 	if(moveOverTime > 0 && moveOverTime < OVERTIME_SLOTS)
 	{
 		// Move overTime memory
-		if(config.debug & DEBUG_OVERTIME)
-		{
-			logg("moveOverTimeMemory(): Moving overTime %u - %u to 0 - %u",
-			     moveOverTime, moveOverTime+remainingSlots, remainingSlots);
-		}
+		log_debug(DEBUG_OVERTIME, "moveOverTimeMemory(): Moving overTime %u - %u to 0 - %u",
+		     moveOverTime, moveOverTime+remainingSlots, remainingSlots);
 
 		// Move overTime memory forward to update data structure
 		memmove(&overTime[0],
@@ -173,7 +161,7 @@ void moveOverTimeMemory(const time_t mintime)
 			{
 				// This should never happen, but we print a warning if it still happens
 				// We don't do anything in this case
-				logg("WARN: moveOverTimeMemory(): overTime time index correction failed (%i: %u / %u)",
+				log_warn("overTime time index correction failed (%i: %u / %u)",
 				     queryID, query->timeidx, moveOverTime);
 			}
 			else
