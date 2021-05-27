@@ -14,7 +14,7 @@
 #include "../datastructure.h"
 // struct config
 #include "../config.h"
-// logg()
+// logging routines
 #include "../log.h"
 // lock_shm(), addstr(), etc.
 #include "../shmem.h"
@@ -49,11 +49,10 @@ void _FTL_cache(const unsigned int flags, const char *name, const union all_addr
 		// Obtain destination IP address if available for this query type
 		char dest[ADDRSTRLEN]; dest[0] = '\0';
 		if(addr)
-		{
 			inet_ntop((flags & F_IPV4) ? AF_INET : AF_INET6, addr, dest, ADDRSTRLEN);
-		}
-		logg("**** got cache answer for %s / %s / %s (ID %i, %s:%i)", name, dest, arg, id, file, line);
-		print_flags(flags);
+
+		log_debug(DEBUG_QUERIES, "**** got cache answer for %s / %s / %s (ID %i, %s:%i)", name, dest, arg, id, file, line);
+		print_flags(flags, false);
 	}
 
 	// Lock shared memory
@@ -70,23 +69,6 @@ void _FTL_cache(const unsigned int flags, const char *name, const union all_addr
 		// DHCP server reply
 		// or
 		// cached answer to previously forwarded request
-
-		// Determine requesttype
-		if((flags & F_HOSTS) || // local.list, hostname.list, /etc/hosts and others
-		  ((flags & F_NAMEP) && (flags & F_DHCP)) || // DHCP server reply
-		   (flags & F_FORWARD) || // cached answer to previously forwarded request
-		   (flags & F_REVERSE) || // cached answer to reverse request (PTR)
-		   (flags & F_RRNAME)) // cached answer to TXT query
-		{
-			// We can handle this here
-		}
-		else
-		{
-			logg("*************************** unknown CACHE reply (1) ***************************");
-			print_flags(flags);
-			unlock_shm();
-			return;
-		}
 
 		// Search query in FTL's query data
 		const int queryID = findQueryID(id);
@@ -142,8 +124,8 @@ void _FTL_cache(const unsigned int flags, const char *name, const union all_addr
 	}
 	else
 	{
-		logg("*************************** unknown CACHE reply (2) ***************************");
-		print_flags(flags);
+		log_err("Unknown CACHE reply");
+		print_flags(flags, true);
 	}
 
 	unlock_shm();

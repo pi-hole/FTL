@@ -51,10 +51,18 @@ const char flagnames[][12] = {
 	"F_SERVFAIL",
 	"F_RCODE"};
 
-void print_flags(const unsigned int flags)
+void print_flags(const unsigned int flags, const bool force)
 {
 	// Debug function, listing resolver flags in clear text
 	// e.g. "Flags: F_FORWARD F_NEG F_IPV6"
+
+	// Force debug option temporarily if requested and not enabled
+	bool forced = false;
+	if(force && !(config.debug & DEBUG_FLAGS))
+	{
+		config.debug |= DEBUG_FLAGS;
+		forced = true;
+	}
 
 	// Only print flags if corresponding debugging flag is set
 	if(!(config.debug & DEBUG_FLAGS))
@@ -69,5 +77,9 @@ void print_flags(const unsigned int flags)
 			strcat(flagstr, flagnames[i]);
 
 	// Print result
-	logg("     Flags: %s", flagstr);
+	log_debug(DEBUG_FLAGS, "     Flags: %s", flagstr);
+
+	// Undo possible forcing
+	if(forced)
+		config.debug &= ~DEBUG_FLAGS;
 }

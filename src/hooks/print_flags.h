@@ -19,6 +19,6 @@
   #endif
 #endif
 
-void print_flags(const unsigned int flags);
+void print_flags(const unsigned int flags, const bool force);
 
 #endif // FTL_PRINT_FLAGS_H

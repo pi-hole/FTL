@@ -74,7 +74,7 @@ void _FTL_reply(const unsigned int flags, const char *name, const union all_addr
 	if(config.debug & DEBUG_QUERIES)
 	{
 		logg("**** got reply %s is %s (ID %i, %s:%i)", name, answer, id, file, line);
-		print_flags(flags);
+		print_flags(flags, false);
 	}
 
 	// Get response time
@@ -182,8 +182,8 @@ void _FTL_reply(const unsigned int flags, const char *name, const union all_addr
 	}
 	else if(isExactMatch && !query->flags.complete)
 	{
-		logg("*************************** unknown REPLY ***************************");
-		print_flags(flags);
+		logg("Unknown REPLY");
+		print_flags(flags, true);
 	}
 
 	// Update query in database
