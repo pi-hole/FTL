@@ -16,8 +16,7 @@
 
 sqlite3_stmt_vec *new_sqlite3_stmt_vec(unsigned int initial_size)
 {
-	if(config.debug & DEBUG_VECTORS)
-		logg("Initializing new sqlite3_stmt* vector with size %u", initial_size);
+	log_debug(DEBUG_VECTORS, "Initializing new sqlite3_stmt* vector with size %u", initial_size);
 
 	sqlite3_stmt_vec *v = calloc(1, sizeof(sqlite3_stmt_vec));
 	v->capacity = initial_size;
@@ -31,8 +30,7 @@ sqlite3_stmt_vec *new_sqlite3_stmt_vec(unsigned int initial_size)
 
 static void resize_sqlite3_stmt_vec(sqlite3_stmt_vec *v, unsigned int capacity)
 {
-	if(config.debug & DEBUG_VECTORS)
-		logg("Resizing sqlite3_stmt* vector %p from %u to %u", v, v->capacity, capacity);
+	log_debug(DEBUG_VECTORS, "Resizing sqlite3_stmt* vector %p from %u to %u", v, v->capacity, capacity);
 
 	// If ptr is NULL, the call to realloc(ptr, size) is equivalent to
 	// malloc(size) so we can use it also for initializing a vector for the
@@ -40,8 +38,8 @@ static void resize_sqlite3_stmt_vec(sqlite3_stmt_vec *v, unsigned int capacity)
 	sqlite3_stmt **items = realloc(v->items, sizeof(sqlite3_stmt *) * capacity);
 	if(!items)
 	{
-		logg("ERROR: Memory allocation failed in resize_sqlite3_stmt_vec(%p, %u)",
-		       v, capacity);
+		log_err("Memory allocation failed in resize_sqlite3_stmt_vec(%p, %u)",
+		        v, capacity);
 		return;
 	}
 
@@ -58,13 +56,12 @@ static void resize_sqlite3_stmt_vec(sqlite3_stmt_vec *v, unsigned int capacity)
 
 void set_sqlite3_stmt_vec(sqlite3_stmt_vec *v, unsigned int index, sqlite3_stmt *item)
 {
-	if(config.debug & DEBUG_VECTORS)
-		logg("Setting sqlite3_stmt** %p[%u] <-- %p", v, index, item);
+	log_debug(DEBUG_VECTORS, "Setting sqlite3_stmt** %p[%u] <-- %p", v, index, item);
 
 	if(v == NULL)
 	{
-		logg("ERROR: Passed NULL vector to set_sqlite3_stmt_vec(%p, %u, %p)",
-		       v, index, item);
+		log_err("Passed NULL vector to set_sqlite3_stmt_vec(%p, %u, %p)",
+		        v, index, item);
 		return;
 	}
 
@@ -87,8 +84,8 @@ sqlite3_stmt * __attribute__((pure)) get_sqlite3_stmt_vec(sqlite3_stmt_vec *v, u
 {
 	if(v == NULL)
 	{
-		logg("ERROR: Passed NULL vector to get_sqlite3_stmt_vec(%p, %u)",
-		       v, index);
+		log_err("Passed NULL vector to get_sqlite3_stmt_vec(%p, %u)",
+		        v, index);
 		return 0;
 	}
 
@@ -99,16 +96,14 @@ sqlite3_stmt * __attribute__((pure)) get_sqlite3_stmt_vec(sqlite3_stmt_vec *v, u
 	}
 
 	sqlite3_stmt* item = v->items[index];
-	if(config.debug & DEBUG_VECTORS)
-		logg("Getting sqlite3_stmt** %p[%u] --> %p", v, index, item);
+	log_debug(DEBUG_VECTORS, "Getting sqlite3_stmt** %p[%u] --> %p", v, index, item);
 
 	return item;
 }
 
 void free_sqlite3_stmt_vec(sqlite3_stmt_vec **v)
 {
-	if(config.debug & DEBUG_VECTORS)
-		logg("Freeing sqlite3_stmt* vector %p", *v);
+	log_debug(DEBUG_VECTORS, "Freeing sqlite3_stmt* vector %p", *v);
 
 	// This vector was never allocated, invoking free_sqlite3_stmt_vec() on a
 	// NULL pointer should be a harmless no-op.
