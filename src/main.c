@@ -50,7 +50,7 @@ int main (int argc, char* argv[])
 	// Initialize FTL log
 	init_FTL_log(argc > 0 ? argv[0] : NULL);
 	timer_start(EXIT_TIMER);
-	logg("########## FTL started! ##########");
+	log_info("########## FTL started! ##########");
 	log_FTL_version(false);
 
 	// Catch signals not handled by dnsmasq
@@ -60,7 +60,7 @@ int main (int argc, char* argv[])
 	// Initialize shared memory
 	if(!init_shmem(true))
 	{
-		logg("Initialization of shared memory failed.");
+		log_crit("Initialization of shared memory failed.");
 		// Check if there is already a running FTL process
 		check_running_FTL();
 		return EXIT_FAILURE;
@@ -72,7 +72,7 @@ int main (int argc, char* argv[])
 	// pihole-FTL should really be run as user "pihole" to not mess up with file permissions
 	// print warning otherwise
 	if(strcmp(username, "pihole") != 0)
-		logg("WARNING: Starting pihole-FTL as user %s is not recommended", username);
+		log_warn("Starting pihole-FTL as user %s is not recommended", username);
 
 	// Initialize query database (pihole-FTL.db)
 	db_init();
@@ -80,7 +80,7 @@ int main (int argc, char* argv[])
 	// Initialize in-memory databases
 	if(!init_memory_databases())
 	{
-		logg("FATAL: Cannot initialize in-memory database.");
+		log_crit("FATAL: Cannot initialize in-memory database.");
 		return EXIT_FAILURE;
 	}
 
@@ -107,7 +107,7 @@ int main (int argc, char* argv[])
 	if(config.debug != 0)
 	{
 		for(int i = 0; i < argc_dnsmasq; i++)
-			logg("DEBUG: argv[%i] = \"%s\"", i, argv_dnsmasq[i]);
+			log_debug(DEBUG_ANY, "argv[%i] = \"%s\"", i, argv_dnsmasq[i]);
 	}
 	// Check initial blocking status
 	check_blocking_status();
@@ -115,7 +115,7 @@ int main (int argc, char* argv[])
 	// Start the resolver
 	main_dnsmasq(argc_dnsmasq, argv_dnsmasq);
 
-	logg("Shutting down...");
+	log_info("Shutting down...");
 	// Extra grace time is needed as dnsmasq script-helpers may not be
 	// terminating immediately
 	sleepms(250);
@@ -124,7 +124,7 @@ int main (int argc, char* argv[])
 	if(config.DBexport)
 	{
 		export_queries_to_disk(true);
-		logg("Finished final database update");
+		log_info("Finished final database update");
 	}
 
 	cleanup(exit_code);

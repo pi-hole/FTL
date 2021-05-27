@@ -83,7 +83,7 @@ int findUpstreamID(const char * upstreamString, const in_port_t port)
 	// This upstream server is not known
 	// Store ID
 	const int upstreamID = counters->upstreams;
-	log_debug(0, "New upstream server: %s:%u (%i/%u)", upstreamString, port, upstreamID, counters->upstreams_MAX);
+	log_debug(DEBUG_ANY, "New upstream server: %s:%u (%i/%u)", upstreamString, port, upstreamID, counters->upstreams_MAX);
 
 	// Get upstream pointer
 	upstreamsData* upstream = getUpstream(upstreamID, false);

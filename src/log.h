@@ -16,6 +16,8 @@
 #include "enums.h"
 #include <sys/syslog.h>
 
+#define DEBUG_ANY 0
+
 void init_FTL_log(const char *name);
 void log_counter_info(void);
 void format_memory_size(char * const prefix, unsigned long long int bytes,

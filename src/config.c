@@ -846,10 +846,10 @@ void read_debuging_settings(FILE *fp)
 
 	if(config.debug != 0)
 	{
-		log_debug(0, "Debugging enabled:");
+		log_debug(DEBUG_ANY, "Debugging enabled:");
 
 		for(enum debug_flag flag = DEBUG_DATABASE; flag < DEBUG_EXTRA; flag <<= 1)
-			log_debug(0, "    %s = %s", debugstr(flag), (config.debug & flag)? "YES":"NO ");
+			log_debug(DEBUG_ANY, "    %s = %s", debugstr(flag), (config.debug & flag)? "YES":"NO ");
 
 		// Enable debug logging in dnsmasq (only effective before starting the resolver)
 		argv_dnsmasq[2] = "--log-debug";
