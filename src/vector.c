@@ -11,7 +11,7 @@
 #include "vector.h"
 // struct config
 #include "config.h"
-// logg()
+// logging routines
 #include "log.h"
 
 sqlite3_stmt_vec *new_sqlite3_stmt_vec(unsigned int initial_size)

@@ -31,7 +31,7 @@ int api_network(struct ftl_conn *api)
 	sqlite3 *db = dbopen(false);
 	if(db == NULL)
 	{
-		logg("networkTable_readDevices() - Failed to open DB");
+		log_warn("Failed to open database in networkTable_readDevices()");
 		return false;
 	}
 
