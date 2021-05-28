@@ -39,7 +39,6 @@ const char *get_ordinal_suffix(unsigned int number) __attribute__ ((const));
 #define log_notice(format, ...) _FTL_log(LOG_NOTICE, 0, format, ## __VA_ARGS__)
 #define log_info(format, ...) _FTL_log(LOG_INFO, 0, format, ## __VA_ARGS__)
 #define log_debug(flag, format, ...) _FTL_log(LOG_DEBUG, flag, format, ## __VA_ARGS__)
-#define logg(format, ...) _FTL_log(LOG_INFO, 0, format, ## __VA_ARGS__)
 void _FTL_log(const int priority, const enum debug_flag flag, const char *format, ...) __attribute__ ((format (gnu_printf, 3, 4)));
 void FTL_log_dnsmasq_fatal(const char *format, ...) __attribute__ ((format (gnu_printf, 1, 2)));
 void log_ctrl(bool vlog, bool vstdout);

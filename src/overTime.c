@@ -141,7 +141,7 @@ void moveOverTimeMemory(const time_t mintime)
 	{
 		// Move overTime memory
 		log_debug(DEBUG_OVERTIME, "moveOverTimeMemory(): Moving overTime %u - %u to 0 - %u",
-		     moveOverTime, moveOverTime+remainingSlots, remainingSlots);
+		          moveOverTime, moveOverTime+remainingSlots, remainingSlots);
 
 		// Move overTime memory forward to update data structure
 		memmove(&overTime[0],

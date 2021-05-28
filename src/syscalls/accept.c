@@ -30,7 +30,7 @@ int FTLaccept(int sockfd, struct sockaddr *addr, socklen_t *addrlen, const char 
 	// EINTR = interrupted system call)
 	if(ret < 0)
 		log_warn("Could not accept() in %s() (%s:%i): %s",
-		        func, file, line, strerror(errno));
+		         func, file, line, strerror(errno));
 
     return ret;
 }
