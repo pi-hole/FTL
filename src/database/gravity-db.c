@@ -186,9 +186,7 @@ bool gravityDB_open(void)
 	log_debug(DEBUG_DATABASE, "gravityDB_open(): Setting busy timeout to zero");
 	rc = sqlite3_busy_timeout(gravity_db, 0);
 	if(rc != SQLITE_OK)
-	{
 		log_err("gravityDB_open() - Cannot set busy handler: %s", sqlite3_errstr(rc));
-	}
 
 	log_debug(DEBUG_DATABASE, "gravityDB_open(): Successfully opened gravity.db");
 	return true;
@@ -270,7 +268,7 @@ static bool get_client_groupids(clientsData* client)
 	if(rc != SQLITE_OK)
 	{
 		log_err("get_client_groupids(\"%s\") - SQL error prepare: %s",
-		     ip, sqlite3_errstr(rc));
+		        ip, sqlite3_errstr(rc));
 		return false;
 	}
 
@@ -278,7 +276,7 @@ static bool get_client_groupids(clientsData* client)
 	if((rc = sqlite3_bind_text(table_stmt, 1, ip, -1, SQLITE_STATIC)) != SQLITE_OK)
 	{
 		log_err("get_client_groupids(\"%s\"): Failed to bind ip: %s",
-		     ip, sqlite3_errstr(rc));
+		        ip, sqlite3_errstr(rc));
 		sqlite3_reset(table_stmt);
 		sqlite3_finalize(table_stmt);
 		return NULL;
@@ -310,7 +308,7 @@ static bool get_client_groupids(clientsData* client)
 	{
 		// Error
 		log_err("get_client_groupids(\"%s\") - SQL error step: %s",
-		     ip, sqlite3_errstr(rc));
+		        ip, sqlite3_errstr(rc));
 		gravityDB_finalizeTable();
 		return false;
 	}
@@ -412,7 +410,7 @@ static bool get_client_groupids(clientsData* client)
 		if(rc != SQLITE_OK)
 		{
 			log_err("get_client_groupids(%s) - SQL error prepare: %s",
-				querystr, sqlite3_errstr(rc));
+			        querystr, sqlite3_errstr(rc));
 			return false;
 		}
 
@@ -420,7 +418,7 @@ static bool get_client_groupids(clientsData* client)
 		if((rc = sqlite3_bind_text(table_stmt, 1, hwaddr, -1, SQLITE_STATIC)) != SQLITE_OK)
 		{
 			log_err("get_client_groupids(\"%s\", \"%s\"): Failed to bind hwaddr: %s",
-				ip, hwaddr, sqlite3_errstr(rc));
+			        ip, hwaddr, sqlite3_errstr(rc));
 			sqlite3_reset(table_stmt);
 			sqlite3_finalize(table_stmt);
 			return false;
@@ -444,7 +442,7 @@ static bool get_client_groupids(clientsData* client)
 		{
 			// Error
 			log_err("get_client_groupids(\"%s\", \"%s\") - SQL error step: %s",
-				ip, hwaddr, sqlite3_errstr(rc));
+			        ip, hwaddr, sqlite3_errstr(rc));
 			gravityDB_finalizeTable();
 			return false;
 		}
@@ -492,7 +490,7 @@ static bool get_client_groupids(clientsData* client)
 		if(rc != SQLITE_OK)
 		{
 			log_err("get_client_groupids(%s) - SQL error prepare: %s",
-				querystr, sqlite3_errstr(rc));
+			        querystr, sqlite3_errstr(rc));
 			return false;
 		}
 
@@ -500,7 +498,7 @@ static bool get_client_groupids(clientsData* client)
 		if((rc = sqlite3_bind_text(table_stmt, 1, hostname, -1, SQLITE_STATIC)) != SQLITE_OK)
 		{
 			log_err("get_client_groupids(\"%s\", \"%s\"): Failed to bind hostname: %s",
-				ip, hostname, sqlite3_errstr(rc));
+			        ip, hostname, sqlite3_errstr(rc));
 			sqlite3_reset(table_stmt);
 			sqlite3_finalize(table_stmt);
 			return false;
@@ -524,7 +522,7 @@ static bool get_client_groupids(clientsData* client)
 		{
 			// Error
 			log_err("get_client_groupids(\"%s\", \"%s\") - SQL error step: %s",
-				ip, hostname, sqlite3_errstr(rc));
+			        ip, hostname, sqlite3_errstr(rc));
 			gravityDB_finalizeTable();
 			return false;
 		}
@@ -573,7 +571,7 @@ static bool get_client_groupids(clientsData* client)
 		if(rc != SQLITE_OK)
 		{
 			log_err("get_client_groupids(%s) - SQL error prepare: %s",
-				querystr, sqlite3_errstr(rc));
+			        querystr, sqlite3_errstr(rc));
 			return false;
 		}
 
@@ -581,7 +579,7 @@ static bool get_client_groupids(clientsData* client)
 		if((rc = sqlite3_bind_text(table_stmt, 1, interface, -1, SQLITE_STATIC)) != SQLITE_OK)
 		{
 			log_err("get_client_groupids(\"%s\", \"%s\"): Failed to bind interface: %s",
-				ip, interface, sqlite3_errstr(rc));
+			        ip, interface, sqlite3_errstr(rc));
 			sqlite3_reset(table_stmt);
 			sqlite3_finalize(table_stmt);
 			return false;
@@ -605,7 +603,7 @@ static bool get_client_groupids(clientsData* client)
 		{
 			// Error
 			log_err("get_client_groupids(\"%s\", \"%s\") - SQL error step: %s",
-				ip, interface, sqlite3_errstr(rc));
+			        ip, interface, sqlite3_errstr(rc));
 			gravityDB_finalizeTable();
 			return false;
 		}
@@ -620,7 +618,7 @@ static bool get_client_groupids(clientsData* client)
 	if(chosen_match_id < 0)
 	{
 		log_debug(DEBUG_CLIENTS, "Gravity database: Client %s not found. Using default group.\n",
-			     show_client_string(hwaddr, hostname, ip));
+		          show_client_string(hwaddr, hostname, ip));
 
 		client->groupspos = addstr("0");
 		client->flags.found_group = true;
@@ -661,7 +659,7 @@ static bool get_client_groupids(clientsData* client)
 	if(rc != SQLITE_OK)
 	{
 		log_err("get_client_groupids(\"%s\", \"%s\", %d) - SQL error prepare: %s",
-		     ip, hwaddr, chosen_match_id, sqlite3_errstr(rc));
+		        ip, hwaddr, chosen_match_id, sqlite3_errstr(rc));
 		sqlite3_finalize(table_stmt);
 		return false;
 	}
@@ -670,7 +668,7 @@ static bool get_client_groupids(clientsData* client)
 	if((rc = sqlite3_bind_int(table_stmt, 1, chosen_match_id)) != SQLITE_OK)
 	{
 		log_err("get_client_groupids(\"%s\", \"%s\", %d): Failed to bind chosen_match_id: %s",
-			ip, hwaddr, chosen_match_id, sqlite3_errstr(rc));
+		        ip, hwaddr, chosen_match_id, sqlite3_errstr(rc));
 		sqlite3_reset(table_stmt);
 		sqlite3_finalize(table_stmt);
 		return false;
@@ -698,22 +696,26 @@ static bool get_client_groupids(clientsData* client)
 	else
 	{
 		log_err("get_client_groupids(\"%s\", \"%s\", %d) - SQL error step: %s",
-		     ip, hwaddr, chosen_match_id, sqlite3_errstr(rc));
+		        ip, hwaddr, chosen_match_id, sqlite3_errstr(rc));
 		gravityDB_finalizeTable();
 		return false;
 	}
 	// Finalize statement
 	gravityDB_finalizeTable();
 
-	if(interface != NULL)
+	// Debug logging
+	if(config.debug & DEBUG_CLIENTS)
 	{
-		log_debug(DEBUG_CLIENTS, "Gravity database: Client %s found (identified by interface %s). Using groups (%s)\n",
-		     show_client_string(hwaddr, hostname, ip), interface, getstr(client->groupspos));
-	}
-	else
-	{
-		log_debug(DEBUG_CLIENTS, "Gravity database: Client %s found. Using groups (%s)\n",
-		     show_client_string(hwaddr, hostname, ip), getstr(client->groupspos));
+		if(interface != NULL)
+		{
+			log_debug(DEBUG_CLIENTS, "Gravity database: Client %s found (identified by interface %s). Using groups (%s)\n",
+			          show_client_string(hwaddr, hostname, ip), interface, getstr(client->groupspos));
+		}
+		else
+		{
+			log_debug(DEBUG_CLIENTS, "Gravity database: Client %s found. Using groups (%s)\n",
+			          show_client_string(hwaddr, hostname, ip), getstr(client->groupspos));
+		}
 	}
 
 	// Free possibly allocated memory
@@ -754,7 +756,7 @@ char* __attribute__ ((malloc)) get_client_names_from_ids(const char *group_ids)
 	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &table_stmt, NULL);
 	if(rc != SQLITE_OK){
 		log_err("get_client_groupids(%s) - SQL error prepare: %s",
-		     querystr, sqlite3_errstr(rc));
+		        querystr, sqlite3_errstr(rc));
 		sqlite3_finalize(table_stmt);
 		free(querystr);
 		return strdup("N/A");
@@ -779,7 +781,7 @@ char* __attribute__ ((malloc)) get_client_names_from_ids(const char *group_ids)
 	else
 	{
 		log_err("group_names(%s) - SQL error step: %s",
-		     querystr, sqlite3_errstr(rc));
+		        querystr, sqlite3_errstr(rc));
 		gravityDB_finalizeTable();
 		free(querystr);
 		return strdup("N/A");
@@ -1066,7 +1068,7 @@ int gravityDB_count(const enum gravity_tables list)
 	}
 
 	log_debug(DEBUG_DATABASE, "Querying count of distinct domains in gravity database table %s: %s",
-		     tablename[list], querystr);
+	          tablename[list], querystr);
 
 	// Prepare query
 	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &table_stmt, NULL);
@@ -1081,10 +1083,10 @@ int gravityDB_count(const enum gravity_tables list)
 	rc = sqlite3_step(table_stmt);
 	if(rc != SQLITE_ROW){
 		log_err("gravityDB_count(%s) - SQL error step %s", querystr, sqlite3_errstr(rc));
+
 		if(list == GRAVITY_TABLE)
-		{
 			log_warn("Count of gravity domains not available. Please run pihole -g");
-		}
+
 		gravityDB_finalizeTable();
 		gravityDB_close();
 		return DB_FAILED;
@@ -1097,7 +1099,7 @@ int gravityDB_count(const enum gravity_tables list)
 	gravityDB_finalizeTable();
 
 	log_debug(DEBUG_DATABASE, "gravityDB_count(%d): %i entries in %s",
-		     list, result, tablename[list]);
+	          list, result, tablename[list]);
 
 	// Return result
 	return result;
@@ -1109,7 +1111,7 @@ static bool domain_in_list(const char *domain, sqlite3_stmt* stmt, const char* l
 	if(!gravityDB_opened && !gravityDB_open())
 	{
 		log_err("domain_in_list(\"%s\", %p, %s): Gravity database not available",
-		     domain, stmt, listname);
+		        domain, stmt, listname);
 		return false;
 	}
 
@@ -1124,7 +1126,7 @@ static bool domain_in_list(const char *domain, sqlite3_stmt* stmt, const char* l
 	if((rc = sqlite3_bind_text(stmt, 1, domain, -1, SQLITE_STATIC)) != SQLITE_OK)
 	{
 		log_err("domain_in_list(\"%s\", %p, %s): Failed to bind domain: %s",
-		     domain, stmt, listname, sqlite3_errstr(rc));
+		        domain, stmt, listname, sqlite3_errstr(rc));
 		return false;
 	}
 
@@ -1134,7 +1136,7 @@ static bool domain_in_list(const char *domain, sqlite3_stmt* stmt, const char* l
 	{
 		// Database is busy
 		log_warn("domain_in_list(\"%s\", %p, %s): Database is busy, assuming domain is NOT on list",
-		     domain, stmt, listname);
+		         domain, stmt, listname);
 		sqlite3_reset(stmt);
 		sqlite3_clear_bindings(stmt);
 		return false;
@@ -1144,7 +1146,7 @@ static bool domain_in_list(const char *domain, sqlite3_stmt* stmt, const char* l
 		// Any return code that is neither SQLITE_BUSY not SQLITE_ROW
 		// is a real error we should log
 		log_err("domain_in_list(\"%s\", %p, %s): Failed to perform step: %s",
-		     domain, stmt, listname, sqlite3_errstr(rc));
+		        domain, stmt, listname, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_clear_bindings(stmt);
 		return false;
@@ -1191,7 +1193,7 @@ static void gravityDB_client_check_again(clientsData* client)
 	{
 		const char *ord = get_ordinal_suffix(check_count);
 		log_debug(DEBUG_CLIENTS, "Reloading client groups after %u seconds (%u%s check)",
-			     (unsigned int)diff, check_count, ord);
+		          (unsigned int)diff, check_count, ord);
 		client->reread_groups++;
 		gravityDB_reload_groups(client);
 	}
@@ -1455,7 +1457,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 	{
 		*message = sqlite3_errmsg(gravity_db);
 		log_err("gravityDB_addToTable(%d, %s) - SQL error prepare (%i): %s",
-		     row->type_int, row->domain, rc, *message);
+		        row->type_int, row->domain, rc, *message);
 		return false;
 	}
 
@@ -1465,7 +1467,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 	{
 		*message = sqlite3_errmsg(gravity_db);
 		log_err("gravityDB_addToTable(%d, %s): Failed to bind item (error %d) - %s",
-		     row->type_int, row->item, rc, *message);
+		        row->type_int, row->item, rc, *message);
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
 		return false;
@@ -1477,7 +1479,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 	{
 		*message = sqlite3_errmsg(gravity_db);
 		log_err("gravityDB_addToTable(%d, %s): Failed to bind type (error %d) - %s",
-		     row->type_int, row->domain, rc, *message);
+		        row->type_int, row->domain, rc, *message);
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
 		return false;
@@ -1498,7 +1500,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 			// Error, one is not meaningful without the other
 			*message = "Field type missing from request";
 			log_err("gravityDB_addToTable(%d, %s): type missing",
-			     row->type_int, row->domain);
+			        row->type_int, row->domain);
 			sqlite3_reset(stmt);
 			sqlite3_finalize(stmt);
 			return false;
@@ -1531,7 +1533,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 			{
 				*message = "Cannot interpret type/kind";
 				log_err("gravityDB_addToTable(%d, %s): Failed to identify type=\"%s\", kind=\"%s\"",
-				     row->type_int, row->domain, row->type, row->kind);
+				        row->type_int, row->domain, row->type, row->kind);
 				sqlite3_reset(stmt);
 				sqlite3_finalize(stmt);
 				return false;
@@ -1543,7 +1545,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 		{
 			*message = sqlite3_errmsg(gravity_db);
 			log_err("gravityDB_addToTable(%d, %s): Failed to bind oldtype (error %d) - %s",
-			     row->type_int, row->domain, rc, *message);
+			        row->type_int, row->domain, rc, *message);
 			sqlite3_reset(stmt);
 			sqlite3_finalize(stmt);
 			return false;
@@ -1556,7 +1558,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 	{
 		*message = sqlite3_errmsg(gravity_db);
 		log_err("gravityDB_addToTable(%d, %s): Failed to bind enabled (error %d) - %s",
-		     row->type_int, row->domain, rc, *message);
+		        row->type_int, row->domain, rc, *message);
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
 		return false;
@@ -1568,7 +1570,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 	{
 		*message = sqlite3_errmsg(gravity_db);
 		log_err("gravityDB_addToTable(%d, %s): Failed to bind comment (error %d) - %s",
-		     row->type_int, row->domain, rc, *message);
+		        row->type_int, row->domain, rc, *message);
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
 		return false;
@@ -1591,17 +1593,20 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 	sqlite3_finalize(stmt);
 
 	// Debug output
-	log_debug(DEBUG_API, "SQL: %s", querystr);
-	if(item_idx > 0)
-		log_debug(DEBUG_API, "     :item = \"%s\"", row->item);
-	if(type_idx > 0)
-		log_debug(DEBUG_API, "     :type = \"%i\"", row->type_int);
-	if(oldtype_idx > 0)
-		log_debug(DEBUG_API, "     :oldtype = \"%i\"", oldtype);
-	if(comment_idx > 0)
-		log_debug(DEBUG_API, "     :comment = \"%s\"", row->comment);
-	if(enabled_idx > 0)
-		log_debug(DEBUG_API, "     :enabled = \"%s\"", row->enabled ? "true" : "false");
+	if(config.debug & DEBUG_API)
+	{
+		log_debug(DEBUG_API, "SQL: %s", querystr);
+		if(item_idx > 0)
+			log_debug(DEBUG_API, "     :item = \"%s\"", row->item);
+		if(type_idx > 0)
+			log_debug(DEBUG_API, "     :type = \"%i\"", row->type_int);
+		if(oldtype_idx > 0)
+			log_debug(DEBUG_API, "     :oldtype = \"%i\"", oldtype);
+		if(comment_idx > 0)
+			log_debug(DEBUG_API, "     :comment = \"%s\"", row->comment);
+		if(enabled_idx > 0)
+			log_debug(DEBUG_API, "     :enabled = \"%s\"", row->enabled ? "true" : "false");
+	}
 
 	return okay;
 }
@@ -1667,7 +1672,7 @@ bool gravityDB_delFromTable(const enum gravity_list_type listtype, const char* a
 	{
 		*message = sqlite3_errmsg(gravity_db);
 		log_err("gravityDB_delFromTable(%d, %s) - SQL error prepare (%i): %s",
-		     type, argument, rc, *message);
+		        type, argument, rc, *message);
 		return false;
 	}
 
@@ -1677,7 +1682,7 @@ bool gravityDB_delFromTable(const enum gravity_list_type listtype, const char* a
 	{
 		*message = sqlite3_errmsg(gravity_db);
 		log_err("gravityDB_delFromTable(%d, %s): Failed to bind argument (error %d) - %s",
-		     type, argument, rc, *message);
+		        type, argument, rc, *message);
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
 		return false;
@@ -1689,18 +1694,21 @@ bool gravityDB_delFromTable(const enum gravity_list_type listtype, const char* a
 	{
 		*message = sqlite3_errmsg(gravity_db);
 		log_err("gravityDB_delFromTable(%d, %s): Failed to bind type (error %d) - %s",
-		     type, argument, rc, *message);
+		        type, argument, rc, *message);
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
 		return false;
 	}
 
 	// Debug output
-	log_debug(DEBUG_API, "SQL: %s", querystr);
-	if(arg_idx > 0)
-		log_debug(DEBUG_API, "     :argument = \"%s\"", argument);
-	if(type_idx > 0)
-		log_debug(DEBUG_API, "     :type = \"%i\"", type);
+	if(config.debug & DEBUG_API)
+	{
+		log_debug(DEBUG_API, "SQL: %s", querystr);
+		if(arg_idx > 0)
+			log_debug(DEBUG_API, "     :argument = \"%s\"", argument);
+		if(type_idx > 0)
+			log_debug(DEBUG_API, "     :type = \"%i\"", type);
+	}
 
 	// Perform step
 	bool okay = false;
@@ -1755,11 +1763,14 @@ bool gravityDB_delFromTable(const enum gravity_list_type listtype, const char* a
 		}
 
 		// Debug output
-		log_debug(DEBUG_API, "SQL: %s", querystr2);
-		if(arg_idx > 0)
-			log_debug(DEBUG_API, "     :argument = \"%s\"", argument);
-		if(type_idx > 0)
-			log_debug(DEBUG_API, "     :type = \"%i\"", type);
+		if(config.debug & DEBUG_API)
+		{
+			log_debug(DEBUG_API, "SQL: %s", querystr2);
+			if(arg_idx > 0)
+				log_debug(DEBUG_API, "     :argument = \"%s\"", argument);
+			if(type_idx > 0)
+				log_debug(DEBUG_API, "     :type = \"%i\"", type);
+		}
 
 		// Perform step
 		okay = false;
@@ -1870,7 +1881,7 @@ bool gravityDB_readTable(const enum gravity_list_type listtype, const char *item
 	if( rc != SQLITE_OK ){
 		*message = sqlite3_errmsg(gravity_db);
 		log_err("gravityDB_readTable(%d => (%s)) - SQL error prepare (%i): %s",
-		     listtype, type, rc, *message);
+		        listtype, type, rc, *message);
 		return false;
 	}
 
@@ -1880,15 +1891,18 @@ bool gravityDB_readTable(const enum gravity_list_type listtype, const char *item
 	{
 		*message = sqlite3_errmsg(gravity_db);
 		log_err("gravityDB_readTable(%d => (%s), %s): Failed to bind item (error %d) - %s",
-			listtype, type, item, rc, *message);
+		        listtype, type, item, rc, *message);
 		sqlite3_reset(read_stmt);
 		sqlite3_finalize(read_stmt);
 		return false;
 	}
 
 	// Debug output
-	log_debug(DEBUG_API, "SQL: %s", querystr);
-	log_debug(DEBUG_API, "     :item = \"%s\"", item);
+	if(config.debug & DEBUG_API)
+	{
+		log_debug(DEBUG_API, "SQL: %s", querystr);
+		log_debug(DEBUG_API, "     :item = \"%s\"", item);
+	}
 
 	return true;
 }
@@ -1990,7 +2004,7 @@ bool gravityDB_readTableGetRow(tablerow *row, const char **message)
 	{
 		*message = sqlite3_errmsg(gravity_db);
 		log_err("gravityDB_readTableGetRow() - SQL error step (%i): %s",
-		     rc, *message);
+		        rc, *message);
 		return false;
 	}
 
@@ -2044,7 +2058,7 @@ bool gravityDB_edit_groups(const enum gravity_list_type listtype, cJSON *groups,
 	{
 		*message = sqlite3_errmsg(gravity_db);
 		log_err("gravityDB_edit_groups(%d) - SQL error prepare SELECT (%i): %s",
-		     listtype, rc, *message);
+		        listtype, rc, *message);
 		return false;
 	}
 
@@ -2054,7 +2068,7 @@ bool gravityDB_edit_groups(const enum gravity_list_type listtype, cJSON *groups,
 	{
 		*message = sqlite3_errmsg(gravity_db);
 		log_err("gravityDB_edit_groups(%d): Failed to bind item SELECT (error %d) - %s",
-		     listtype, rc, *message);
+		        listtype, rc, *message);
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
 		return false;
@@ -2066,7 +2080,7 @@ bool gravityDB_edit_groups(const enum gravity_list_type listtype, cJSON *groups,
 	{
 		*message = sqlite3_errmsg(gravity_db);
 		log_err("gravityDB_edit_groups(%d): Failed to bind type SELECT (error %d) - %s",
-		     listtype, rc, *message);
+		        listtype, rc, *message);
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
 		return false;
@@ -2087,9 +2101,12 @@ bool gravityDB_edit_groups(const enum gravity_list_type listtype, cJSON *groups,
 	}
 
 	// Debug output
-	log_debug(DEBUG_API, "SQL: %s", get_querystr);
-	log_debug(DEBUG_API, "     :item = \"%s\"", row->item);
-	log_debug(DEBUG_API, "     :type = \"%d\"", row->type_int);
+	if(config.debug & DEBUG_API)
+	{
+		log_debug(DEBUG_API, "SQL: %s", get_querystr);
+		log_debug(DEBUG_API, "     :item = \"%s\"", row->item);
+		log_debug(DEBUG_API, "     :type = \"%d\"", row->type_int);
+	}
 
 	// Finalize statement
 	sqlite3_reset(stmt);
@@ -2105,7 +2122,7 @@ bool gravityDB_edit_groups(const enum gravity_list_type listtype, cJSON *groups,
 	{
 		*message = sqlite3_errmsg(gravity_db);
 		log_err("gravityDB_edit_groups(%d) - SQL error prepare DELETE (%i): %s",
-		     listtype, rc, *message);
+		        listtype, rc, *message);
 		return false;
 	}
 
@@ -2115,7 +2132,7 @@ bool gravityDB_edit_groups(const enum gravity_list_type listtype, cJSON *groups,
 	{
 		*message = sqlite3_errmsg(gravity_db);
 		log_err("gravityDB_edit_groups(%d): Failed to bind id DELETE (error %d) - %s",
-		     listtype, rc, *message);
+		        listtype, rc, *message);
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
 		return false;
@@ -2133,8 +2150,11 @@ bool gravityDB_edit_groups(const enum gravity_list_type listtype, cJSON *groups,
 	}
 
 	// Debug output
-	log_debug(DEBUG_API, "SQL: %s", del_querystr);
-	log_debug(DEBUG_API, "     :id = \"%d\"", id);
+	if(config.debug & DEBUG_API)
+	{
+		log_debug(DEBUG_API, "SQL: %s", del_querystr);
+		log_debug(DEBUG_API, "     :id = \"%d\"", id);
+	}
 
 	// Finalize statement
 	sqlite3_reset(stmt);
@@ -2150,7 +2170,7 @@ bool gravityDB_edit_groups(const enum gravity_list_type listtype, cJSON *groups,
 	{
 		*message = sqlite3_errmsg(gravity_db);
 		log_err("gravityDB_edit_groups(%d) - SQL error prepare INSERT (%i): %s",
-		     listtype, rc, *message);
+		        listtype, rc, *message);
 		return false;
 	}
 
@@ -2160,7 +2180,7 @@ bool gravityDB_edit_groups(const enum gravity_list_type listtype, cJSON *groups,
 	{
 		*message = sqlite3_errmsg(gravity_db);
 		log_err("gravityDB_edit_groups(%d): Failed to bind id INSERT (error %d) - %s",
-		     listtype, rc, *message);
+		        listtype, rc, *message);
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
 		return false;
@@ -2168,7 +2188,7 @@ bool gravityDB_edit_groups(const enum gravity_list_type listtype, cJSON *groups,
 
 	// Loop over all loops in array
 	const int groupcount = cJSON_GetArraySize(groups);
-	log_info("groupscount = %d", groupcount);
+	log_debug(DEBUG_API, "groupscount = %d", groupcount);
 	for(int i = 0; i < groupcount; i++)
 	{
 		cJSON *group = cJSON_GetArrayItem(groups, i);
@@ -2193,17 +2213,19 @@ bool gravityDB_edit_groups(const enum gravity_list_type listtype, cJSON *groups,
 			*message = sqlite3_errmsg(gravity_db);
 			break;
 		}
-		log_info("INSERT: %i -> (%i,%i)", rc, id, group->valueint);
 
 		// Debug output
-		log_debug(DEBUG_API, "SQL: %s", add_querystr);
-		log_debug(DEBUG_API, "     :id = \"%d\"", id);
-		log_debug(DEBUG_API, "     :gid = \"%d\"", group->valueint);
+		if(config.debug & DEBUG_API)
+		{
+			log_debug(DEBUG_API, "INSERT: %i -> (%i,%i)", rc, id, group->valueint);
+			log_debug(DEBUG_API, "SQL: %s", add_querystr);
+			log_debug(DEBUG_API, "     :id = \"%d\"", id);
+			log_debug(DEBUG_API, "     :gid = \"%d\"", group->valueint);
+		}
 
 		// Reset before next iteration, this will not clear the id binding
 		sqlite3_reset(stmt);
 	}
-
 
 	// Finalize statement
 	sqlite3_finalize(stmt);

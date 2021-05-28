@@ -112,7 +112,6 @@ log_debug(DEBUG_DATABASE, "dbquery: \"%s\"", query);
 
 	log_debug(DEBUG_DATABASE,"         ---> OK");
 
-
 	// Return success
 	return SQLITE_OK;
 }
@@ -516,7 +515,7 @@ double db_query_double(sqlite3 *db, const char* querystr)
 	}
 
 	rc = sqlite3_step(stmt);
-	double result;warn
+	double result;
 
 	if( rc == SQLITE_ROW )
 	{
@@ -530,7 +529,6 @@ double db_query_double(sqlite3 *db, const char* querystr)
 		result = DB_NODATA;
 
 		log_debug(DEBUG_DATABASE, "         ---> No data");
-		}
 	}
 	else
 	{
