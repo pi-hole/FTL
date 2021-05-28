@@ -658,9 +658,6 @@ void DB_read_queries(void)
 		}
 		const enum dnssec_status dnssec = dnssec_int;
 
-		// Lock shared memory
-		lock_shm();
-
 		// Ensure we have enough shared memory available for new data
 		shm_ensure_size();
 
