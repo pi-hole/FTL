@@ -119,7 +119,7 @@ static bool add_message(enum message_type type,
 		int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 		if( rc != SQLITE_OK ){
 			log_err("add_message(type=%u, message=%s) - SQL error prepare DELETE: %s",
-			     type, message, sqlite3_errstr(rc));
+			        type, message, sqlite3_errstr(rc));
 			dbclose(&db);
 			return false;
 		}
@@ -128,7 +128,7 @@ static bool add_message(enum message_type type,
 		if((rc = sqlite3_bind_text(stmt, 1, message_types[type], -1, SQLITE_STATIC)) != SQLITE_OK)
 		{
 			log_err("add_message(type=%u, message=%s) - Failed to bind type DELETE: %s",
-			     type, message, sqlite3_errstr(rc));
+			        type, message, sqlite3_errstr(rc));
 			sqlite3_reset(stmt);
 			sqlite3_finalize(stmt);
 			dbclose(&db);
@@ -139,7 +139,7 @@ static bool add_message(enum message_type type,
 		if((rc = sqlite3_bind_text(stmt, 2, message, -1, SQLITE_STATIC)) != SQLITE_OK)
 		{
 			log_err("add_message(type=%u, message=%s) - Failed to bind message DELETE: %s",
-			     type, message, sqlite3_errstr(rc));
+			        type, message, sqlite3_errstr(rc));
 			sqlite3_reset(stmt);
 			sqlite3_finalize(stmt);
 			dbclose(&db);
@@ -150,7 +150,7 @@ static bool add_message(enum message_type type,
 		if((rc = sqlite3_step(stmt)) != SQLITE_OK && rc != SQLITE_DONE)
 		{
 			log_err("add_message(type=%u, message=%s) - SQL error step DELETE: %s",
-			     type, message, sqlite3_errstr(rc));
+			        type, message, sqlite3_errstr(rc));
 			dbclose(&db);
 			return false;
 		}
@@ -167,7 +167,7 @@ static bool add_message(enum message_type type,
 	if( rc != SQLITE_OK )
 	{
 		log_err("add_message(type=%u, message=%s) - SQL error prepare: %s",
-		     type, message, sqlite3_errstr(rc));
+		        type, message, sqlite3_errstr(rc));
 		dbclose(&db);
 		return false;
 	}
@@ -176,7 +176,7 @@ static bool add_message(enum message_type type,
 	if((rc = sqlite3_bind_text(stmt, 1, message_types[type], -1, SQLITE_STATIC)) != SQLITE_OK)
 	{
 		log_err("add_message(type=%u, message=%s) - Failed to bind type: %s",
-		     type, message, sqlite3_errstr(rc));
+		        type, message, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
 		dbclose(&db);
@@ -187,7 +187,7 @@ static bool add_message(enum message_type type,
 	if((rc = sqlite3_bind_text(stmt, 2, message, -1, SQLITE_STATIC)) != SQLITE_OK)
 	{
 		log_err("add_message(type=%u, message=%s) - Failed to bind message: %s",
-		     type, message, sqlite3_errstr(rc));
+		        type, message, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_finalize(stmt);
 		dbclose(&db);
@@ -219,7 +219,7 @@ static bool add_message(enum message_type type,
 		if(rc != SQLITE_OK)
 		{
 			log_err("add_message(type=%u, message=%s) - Failed to bind argument %u (type %u): %s",
-			     type, message, 3 + j, datatype, sqlite3_errstr(rc));
+			        type, message, 3 + j, datatype, sqlite3_errstr(rc));
 			sqlite3_reset(stmt);
 			sqlite3_finalize(stmt);
 			dbclose(&db);

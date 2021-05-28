@@ -1348,7 +1348,8 @@ bool gravityDB_get_regex_client_groups(clientsData* client, const unsigned int n
 					regexID += get_num_regex(REGEX_DENY);
 				set_per_client_regex(client->id, regexID, true);
 
-				log_debug(DEBUG_REGEX, "Regex %s: Enabling regex with DB ID %i for client %s", regextype[type], result, getstr(client->ippos));
+				log_debug(DEBUG_REGEX, "Regex %s: Enabling regex with DB ID %i for client %s",
+				          regextype[type], result, getstr(client->ippos));
 
 				break;
 			}
@@ -1510,7 +1511,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 			// Error, one is not meaningful without the other
 			*message = "Field oldkind missing from request";
 			log_err("gravityDB_addToTable(%d, %s): Oldkind missing",
-			     row->type_int, row->domain);
+			        row->type_int, row->domain);
 			sqlite3_reset(stmt);
 			sqlite3_finalize(stmt);
 			return false;

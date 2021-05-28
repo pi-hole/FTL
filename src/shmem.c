@@ -405,7 +405,7 @@ void _lock_shm(const char* func, const int line, const char * file)
 	   local_shm_counter != shmSettings->global_shm_counter)
 	{
 		log_debug(DEBUG_SHMEM, "Remapping shared memory for current process %u %u",
-		             local_shm_counter, shmSettings->global_shm_counter);
+		          local_shm_counter, shmSettings->global_shm_counter);
 		remap_shm();
 	}
 
@@ -434,7 +434,7 @@ void _unlock_shm(const char* func, const int line, const char * file)
 	if(!is_our_lock())
 	{
 		log_err("Tried to unlock but lock is owned by %li/%li",
-		     (long int)shmLock->owner.pid, (long int)shmLock->owner.tid);
+		        (long int)shmLock->owner.pid, (long int)shmLock->owner.tid);
 	}
 
 	// Unlock mutex

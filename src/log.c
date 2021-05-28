@@ -365,7 +365,7 @@ void FTL_log_helper(const unsigned char n, ...)
 			break;
 		case 5:
 			log_debug(DEBUG_HELPER, "Script: Executing \"%s\" with arguments: \"%s %s %s %s\"",
-			     arg[0], arg[1], arg[2], arg[3], arg[4]);
+			          arg[0], arg[1], arg[2], arg[3], arg[4]);
 			break;
 		default:
 			log_debug(DEBUG_HELPER, "ERROR: Unsupported number of arguments passed to FTL_log_helper(): %u", n);

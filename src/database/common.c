@@ -38,7 +38,7 @@ void _dbclose(sqlite3 **db, const char *func, const int line, const char *file)
 	int rc = SQLITE_OK;
 	if(db != NULL && *db != NULL && (rc = sqlite3_close(*db)) != SQLITE_OK)
 		log_err("Error while trying to close database: %s",
-		     sqlite3_errstr(rc));
+		        sqlite3_errstr(rc));
 
 	// Always set database pointer to NULL, even when closing failed
 	*db = NULL;
@@ -66,7 +66,7 @@ sqlite3* _dbopen(bool create, const char *func, const int line, const char *file
 	if( rc != SQLITE_OK )
 	{
 		log_err("Error while trying to set busy timeout (%d ms) on database: %s",
-		     DATABASE_BUSY_TIMEOUT, sqlite3_errstr(rc));
+		        DATABASE_BUSY_TIMEOUT, sqlite3_errstr(rc));
 		dbclose(&db);
 		return NULL;
 	}
@@ -102,7 +102,7 @@ log_debug(DEBUG_DATABASE, "dbquery: \"%s\"", query);
 	int rc = sqlite3_exec(db, query, NULL, NULL, NULL);
 	if( rc != SQLITE_OK ){
 		log_err("SQL query \"%s\" failed: %s",
-		     query, sqlite3_errstr(rc));
+		        query, sqlite3_errstr(rc));
 		sqlite3_free(query);
 		return rc;
 	}
@@ -463,14 +463,13 @@ int db_query_int(sqlite3 *db, const char* querystr)
 {
 	log_debug(DEBUG_DATABASE, "dbquery: \"%s\"", querystr);
 
-
 	sqlite3_stmt* stmt;
 	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
 		if( rc != SQLITE_BUSY )
 			log_err("Encountered prepare error in db_query_int(\"%s\"): %s",
-			     querystr, sqlite3_errstr(rc));
+			        querystr, sqlite3_errstr(rc));
 		return DB_FAILED;
 	}
 
@@ -491,7 +490,7 @@ int db_query_int(sqlite3 *db, const char* querystr)
 	else
 	{
 		log_err("Encountered step error in db_query_int(\"%s\"): %s",
-		     querystr, sqlite3_errstr(rc));
+		        querystr, sqlite3_errstr(rc));
 		return DB_FAILED;
 	}
 
@@ -509,7 +508,7 @@ double db_query_double(sqlite3 *db, const char* querystr)
 	{
 		if( rc != SQLITE_BUSY )
 			log_err("Encountered prepare error in db_query_double(\"%s\"): %s",
-			     querystr, sqlite3_errstr(rc));
+			        querystr, sqlite3_errstr(rc));
 
 		return DB_FAILED;
 	}
@@ -520,20 +519,18 @@ double db_query_double(sqlite3 *db, const char* querystr)
 	if( rc == SQLITE_ROW )
 	{
 		result = sqlite3_column_double(stmt, 0);
-
 		log_debug(DEBUG_DATABASE, "         ---> Result %f (double)", result);
 	}
 	else if( rc == SQLITE_DONE )
 	{
 		// No rows available
 		result = DB_NODATA;
-
 		log_debug(DEBUG_DATABASE, "         ---> No data");
 	}
 	else
 	{
 		log_err("Encountered step error in db_query_double(\"%s\"): %s",
-		     querystr, sqlite3_errstr(rc));
+		        querystr, sqlite3_errstr(rc));
 		return DB_FAILED;
 	}
 
@@ -547,7 +544,7 @@ int db_query_int_from_until(sqlite3 *db, const char* querystr, const double from
 	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK ){
 		log_err("db_query_int_from_until(%s) - SQL error prepare (%i): %s",
-		     querystr, rc, sqlite3_errstr(rc));
+		        querystr, rc, sqlite3_errstr(rc));
 		return DB_FAILED;
 	}
 
@@ -556,7 +553,7 @@ int db_query_int_from_until(sqlite3 *db, const char* querystr, const double from
 	   (rc = sqlite3_bind_double(stmt, 2, until)) != SQLITE_OK)
 	{
 		log_err("db_query_int_from_until(%s) - SQL error bind (%i): %s",
-		     querystr, rc, sqlite3_errstr(rc));
+		        querystr, rc, sqlite3_errstr(rc));
 	}
 
 	rc = sqlite3_step(stmt);
@@ -574,7 +571,7 @@ int db_query_int_from_until(sqlite3 *db, const char* querystr, const double from
 	else
 	{
 		log_err("db_query_int_from_until(%s) - SQL error step (%i): %s",
-		     querystr, rc, sqlite3_errstr(rc));
+		        querystr, rc, sqlite3_errstr(rc));
 		return DB_FAILED;
 	}
 
@@ -589,7 +586,7 @@ int db_query_int_from_until_type(sqlite3 *db, const char* querystr, const double
 	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK ){
 		log_err("db_query_int_from_until(%s) - SQL error prepare (%i): %s",
-		     querystr, rc, sqlite3_errstr(rc));
+		        querystr, rc, sqlite3_errstr(rc));
 		return DB_FAILED;
 	}
 
@@ -599,7 +596,7 @@ int db_query_int_from_until_type(sqlite3 *db, const char* querystr, const double
 	   (rc = sqlite3_bind_int(stmt, 3, type)) != SQLITE_OK)
 	{
 		log_err("db_query_int_from_until(%s) - SQL error bind (%i): %s",
-		     querystr, rc, sqlite3_errstr(rc));
+		        querystr, rc, sqlite3_errstr(rc));
 	}
 
 	rc = sqlite3_step(stmt);
@@ -617,7 +614,7 @@ int db_query_int_from_until_type(sqlite3 *db, const char* querystr, const double
 	else
 	{
 		log_err("db_query_int_from_until(%s) - SQL error step (%i): %s",
-		     querystr, rc, sqlite3_errstr(rc));
+		        querystr, rc, sqlite3_errstr(rc));
 		return DB_FAILED;
 	}
 
