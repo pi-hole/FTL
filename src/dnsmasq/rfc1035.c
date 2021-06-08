@@ -894,6 +894,8 @@ unsigned int extract_request(struct dns_header *header, size_t qlen, char *name,
   if (typep)
     *typep = 0;
 
+  *name = 0; /* return empty name if no query found. */
+  
   if (ntohs(header->qdcount) != 1 || OPCODE(header) != QUERY)
     return 0; /* must be exactly one query. */
   
@@ -926,14 +928,8 @@ unsigned int extract_request(struct dns_header *header, size_t qlen, char *name,
   return F_QUERY;
 }
 
-size_t setup_reply(struct dns_header *header, size_t qlen,
-		   union all_addr *addrp, unsigned int flags, unsigned long ttl)
+void setup_reply(struct dns_header *header, unsigned int flags)
 {
-  unsigned char *p;
-  
-  if (!(p = skip_questions(header, qlen)))
-    return 0;
-  
   /* clear authoritative and truncated flags, set QR flag */
   header->hb3 = (header->hb3 & ~(HB3_AA | HB3_TC )) | HB3_QR;
   /* clear AD flag, set RA flag */
@@ -946,30 +942,10 @@ size_t setup_reply(struct dns_header *header, size_t qlen,
     SET_RCODE(header, NOERROR); /* empty domain */
   else if (flags == F_NXDOMAIN)
     SET_RCODE(header, NXDOMAIN);
-  else if (flags == F_SERVFAIL)
-    {
-      union all_addr a;
-      a.log.rcode = SERVFAIL;
-      log_query(F_CONFIG | F_RCODE, "error", &a, NULL);
-      SET_RCODE(header, SERVFAIL);
-    }
   else if (flags & ( F_IPV4 | F_IPV6))
     {
-      if (flags & F_IPV4)
-	{ /* we know the address */
-	  SET_RCODE(header, NOERROR);
-	  header->ancount = htons(1);
-	  header->hb3 |= HB3_AA;
-	  add_resource_record(header, NULL, NULL, sizeof(struct dns_header), &p, ttl, NULL, T_A, C_IN, "4", addrp);
-	}
-      
-      if (flags & F_IPV6)
-	{
-	  SET_RCODE(header, NOERROR);
-	  header->ancount = htons(ntohs(header->ancount) + 1);
-	  header->hb3 |= HB3_AA;
-	  add_resource_record(header, NULL, NULL, sizeof(struct dns_header), &p, ttl, NULL, T_AAAA, C_IN, "6", addrp);
-	}
+      SET_RCODE(header, NOERROR);
+      header->hb3 |= HB3_AA;
     }
   else /* nowhere to forward to */
     {
@@ -978,8 +954,6 @@ size_t setup_reply(struct dns_header *header, size_t qlen,
       log_query(F_CONFIG | F_RCODE, "error", &a, NULL);
       SET_RCODE(header, REFUSED);
     }
-  
-  return p - (unsigned char *)header;
 }
 
 /* check if name matches local names ie from /etc/hosts or DHCP or local mx names. */
@@ -1553,43 +1527,17 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 			      anscount++;
 		    }
 		}
-	      else if (option_bool(OPT_BOGUSPRIV) && (
-		       (is_arpa == F_IPV6 && private_net6(&addr.addr6)) ||
-		       (is_arpa == F_IPV4 && private_net(addr.addr4, 1))))
+	      else if (option_bool(OPT_BOGUSPRIV) &&
+		       ((is_arpa == F_IPV6 && private_net6(&addr.addr6)) || (is_arpa == F_IPV4 && private_net(addr.addr4, 1))) &&
+		       !lookup_domain(name, F_DOMAINSRV, NULL, NULL))
 		{
-		  struct server *serv;
-		  unsigned int namelen = strlen(name);
-		  char *nameend = name + namelen;
-
-		  /* see if have rev-server set */
-		  for (serv = daemon->servers; serv; serv = serv->next)
-		    {
-		      unsigned int domainlen;
-		      char *matchstart;
-
-		      if ((serv->flags & (SERV_HAS_DOMAIN | SERV_NO_ADDR)) != SERV_HAS_DOMAIN)
-		        continue;
-
-		      domainlen = strlen(serv->domain);
-		      if (domainlen == 0 || domainlen > namelen)
-		        continue;
-
-		      matchstart = nameend - domainlen;
-		      if (hostname_isequal(matchstart, serv->domain) &&
-		          (namelen == domainlen || *(matchstart-1) == '.' ))
-			break;
-		    }
-
 		  /* if no configured server, not in cache, enabled and private IPV4 address, return NXDOMAIN */
-		  if (!serv)
-		    {
-		      ans = 1;
-		      sec_data = 0;
-		      nxdomain = 1;
-		      if (!dryrun)
-			log_query(F_CONFIG | F_REVERSE | is_arpa | F_NEG | F_NXDOMAIN,
-				  name, &addr, NULL);
-		    }
+		  ans = 1;
+		  sec_data = 0;
+		  nxdomain = 1;
+		  if (!dryrun)
+		    log_query(F_CONFIG | F_REVERSE | is_arpa | F_NEG | F_NXDOMAIN,
+			      name, &addr, NULL);
 		}
 	    }
 

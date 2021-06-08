@@ -33,7 +33,7 @@ int indextoname(int fd, int index, char *name)
 
   safe_strncpy(name, ifr.ifr_name, IF_NAMESIZE);
 
-  return 1;
+ return 1;
 }
 
 
@@ -1491,8 +1491,7 @@ void pre_allocate_sfds(void)
     }
   
   for (srv = daemon->servers; srv; srv = srv->next)
-    if (!(srv->flags & (SERV_LITERAL_ADDRESS | SERV_NO_ADDR | SERV_USE_RESOLV | SERV_NO_REBIND)) &&
-	!allocate_sfd(&srv->source_addr, srv->interface, srv->ifindex) &&
+    if (!allocate_sfd(&srv->source_addr, srv->interface, srv->ifindex) &&
 	errno != 0 &&
 	option_bool(OPT_NOWILD))
       {
@@ -1521,6 +1520,10 @@ void mark_servers(int flag)
       serv->flags &= ~SERV_LOOP;
 #endif
     }
+
+  for (serv = daemon->local_domains; serv; serv = serv->next)
+    if (serv->flags & flag)
+      serv->flags |= SERV_MARK;
 }
 
 void cleanup_servers(void)
@@ -1535,14 +1538,27 @@ void cleanup_servers(void)
        {
          server_gone(serv);
          *up = serv->next;
-         if (serv->domain)
-	   free(serv->domain);
+	 free(serv->domain);
 	 free(serv);
        }
       else 
        up = &serv->next;
     }
+  
+ for (serv = daemon->local_domains, up = &daemon->local_domains; serv; serv = tmp) 
+   {
+     tmp = serv->next;
+      if (serv->flags & SERV_MARK)
+       {
+	 *up = serv->next;
+	 free(serv->domain);
+	 free(serv);
+       }
+      else 
+	up = &serv->next;
+   }
 
+ 
 #ifdef HAVE_LOOP
   /* Now we have a new set of servers, test for loops. */
   loop_send_probes();
@@ -1555,76 +1571,80 @@ void add_update_server(int flags,
 		       const char *interface,
 		       const char *domain)
 {
-  struct server *serv, *next = NULL;
-  char *domain_str = NULL;
+  struct server *serv;
+  char *domain_str;
+
+  if (!domain)
+    domain = "";
+
+  /* If the server is USE_RESOLV or LITERAL_ADDRES, it lives on the local_domains chain.
+     NOTE that we can get local=/domain/ here, but NOT address=/domain/1.2.3.4 */
+#define SERV_IS_LOCAL (SERV_USE_RESOLV | SERV_LITERAL_ADDRESS)
   
   /* See if there is a suitable candidate, and unmark */
-  for (serv = daemon->servers; serv; serv = serv->next)
-    if (serv->flags & SERV_MARK)
-      {
-	if (domain)
-	  {
-	    if (!(serv->flags & SERV_HAS_DOMAIN) || !hostname_isequal(domain, serv->domain))
-	      continue;
-	  }
-	else
-	  {
-	    if (serv->flags & SERV_HAS_DOMAIN)
-	      continue;
-	  }
-	
-        break;
-      }
-
+  for (serv = (flags & SERV_IS_LOCAL) ? daemon->local_domains : daemon->servers; serv; serv = serv->next)
+    if ((serv->flags & SERV_MARK) && hostname_isequal(domain, serv->domain))
+	break;
+  
   if (serv)
-    {
-      domain_str = serv->domain;
-      next = serv->next;
-    }
+    domain_str = serv->domain;
   else if ((serv = whine_malloc(sizeof (struct server))))
     {
       /* Not found, create a new one. */
-      if (domain && !(domain_str = whine_malloc(strlen(domain)+1)))
+      if (!(domain_str = whine_malloc(strlen(domain)+1)))
 	{
 	  free(serv);
           serv = NULL;
         }
       else
-        {
-	  struct server *s;
-	  /* Add to the end of the chain, for order */
-	  if (!daemon->servers)
-	    daemon->servers = serv;
+	{
+	  strcpy(domain_str, domain);
+	  
+	  if (flags & SERV_IS_LOCAL)
+	    {
+	      serv->next = daemon->local_domains;
+	      daemon->local_domains = serv;
+	    }
 	  else
 	    {
-	      for (s = daemon->servers; s->next; s = s->next);
-	      s->next = serv;
+	      struct server *s;
+	      /* Add to the end of the chain, for order */
+	      if (!daemon->servers)
+		daemon->servers = serv;
+	      else
+		{
+		  for (s = daemon->servers; s->next; s = s->next);
+		  s->next = serv;
+		}
+
+	      serv->next = NULL;
 	    }
-	  if (domain)
-	    strcpy(domain_str, domain);
 	}
     }
   
   if (serv)
     {
-      memset(serv, 0, sizeof(struct server));
+      if (!(flags & SERV_IS_LOCAL))
+	memset(serv, 0, sizeof(struct server));
+
       serv->flags = flags;
       serv->domain = domain_str;
-      serv->next = next;
-      serv->queries = serv->failed_queries = 0;
-#ifdef HAVE_LOOP
-      serv->uid = rand32();
-#endif      
 
-      if (domain)
-	serv->flags |= SERV_HAS_DOMAIN;
-      
-      if (interface)
-	safe_strncpy(serv->interface, interface, sizeof(serv->interface));
-      if (addr)
-	serv->addr = *addr;
-      if (source_addr)
-	serv->source_addr = *source_addr;
+
+      if (!(flags & SERV_IS_LOCAL))
+	{
+	  serv->queries = serv->failed_queries = 0;
+#ifdef HAVE_LOOP
+	  serv->uid = rand32();
+#endif      
+	  
+	  if (interface)
+	    safe_strncpy(serv->interface, interface, sizeof(serv->interface));
+	  if (addr)
+	    serv->addr = *addr;
+	  if (source_addr)
+	    serv->source_addr = *source_addr;
+	}
     }
 }
 
@@ -1635,7 +1655,7 @@ void check_servers(void)
   struct serverfd *sfd, *tmp, **up;
   int port = 0, count;
   int locals = 0;
-
+  
   /* interface may be new since startup */
   if (!option_bool(OPT_NOWILD))
     enumerate_interfaces(0);
@@ -1646,114 +1666,117 @@ void check_servers(void)
 
   for (count = 0, serv = daemon->servers; serv; serv = serv->next)
     {
-      if (!(serv->flags & (SERV_LITERAL_ADDRESS | SERV_NO_ADDR | SERV_USE_RESOLV | SERV_NO_REBIND)))
-	{
-	  /* Init edns_pktsz for newly created server records. */
-	  if (serv->edns_pktsz == 0)
-	    serv->edns_pktsz = daemon->edns_pktsz;
-	  
+      /* Init edns_pktsz for newly created server records. */
+      if (serv->edns_pktsz == 0)
+	serv->edns_pktsz = daemon->edns_pktsz;
+      
 #ifdef HAVE_DNSSEC
-	  if (option_bool(OPT_DNSSEC_VALID))
-	    { 
-	      if (!(serv->flags & SERV_FOR_NODOTS))
-		serv->flags |= SERV_DO_DNSSEC;
+      if (option_bool(OPT_DNSSEC_VALID))
+	{ 
+	  if (!(serv->flags & SERV_FOR_NODOTS))
+	    serv->flags |= SERV_DO_DNSSEC;
+	  
+	  /* Disable DNSSEC validation when using server=/domain/.... servers
+	     unless there's a configured trust anchor. */
+	  if (strlen(serv->domain) != 0)
+	    {
+	      struct ds_config *ds;
+	      char *domain = serv->domain;
 	      
-	      /* Disable DNSSEC validation when using server=/domain/.... servers
-		 unless there's a configured trust anchor. */
-	      if (serv->flags & SERV_HAS_DOMAIN)
-		{
-		  struct ds_config *ds;
-		  char *domain = serv->domain;
-		  
-		  /* .example.com is valid */
-		  while (*domain == '.')
-		    domain++;
-		  
-		  for (ds = daemon->ds; ds; ds = ds->next)
-		    if (ds->name[0] != 0 && hostname_isequal(domain, ds->name))
-		      break;
-		  
-		  if (!ds)
-		    serv->flags &= ~SERV_DO_DNSSEC;
-		}
+	      /* .example.com is valid */
+	      while (*domain == '.')
+		domain++;
+	      
+	      for (ds = daemon->ds; ds; ds = ds->next)
+		if (ds->name[0] != 0 && hostname_isequal(domain, ds->name))
+		  break;
+	      
+	      if (!ds)
+		serv->flags &= ~SERV_DO_DNSSEC;
 	    }
+	}
 #endif
-
-	  port = prettyprint_addr(&serv->addr, daemon->namebuff);
-	  
-	  /* 0.0.0.0 is nothing, the stack treats it like 127.0.0.1 */
-	  if (serv->addr.sa.sa_family == AF_INET &&
-	      serv->addr.in.sin_addr.s_addr == 0)
-	    {
-	      serv->flags |= SERV_MARK;
-	      continue;
-	    }
-
-	  for (iface = daemon->interfaces; iface; iface = iface->next)
-	    if (sockaddr_isequal(&serv->addr, &iface->addr))
-	      break;
-	  if (iface)
-	    {
-	      my_syslog(LOG_WARNING, _("ignoring nameserver %s - local interface"), daemon->namebuff);
-	      serv->flags |= SERV_MARK;
-	      continue;
-	    }
-	  
-	  /* Do we need a socket set? */
-	  if (!serv->sfd && 
-	      !(serv->sfd = allocate_sfd(&serv->source_addr, serv->interface, serv->ifindex)) &&
-	      errno != 0)
-	    {
-	      my_syslog(LOG_WARNING, 
-			_("ignoring nameserver %s - cannot make/bind socket: %s"),
-			daemon->namebuff, strerror(errno));
-	      serv->flags |= SERV_MARK;
-	      continue;
-	    }
-	  
-	  if (serv->sfd)
-	    serv->sfd->used = 1;
+      
+      port = prettyprint_addr(&serv->addr, daemon->namebuff);
+      
+      /* 0.0.0.0 is nothing, the stack treats it like 127.0.0.1 */
+      if (serv->addr.sa.sa_family == AF_INET &&
+	  serv->addr.in.sin_addr.s_addr == 0)
+	{
+	  serv->flags |= SERV_MARK;
+	  continue;
 	}
       
-      if (!(serv->flags & SERV_NO_REBIND) && !(serv->flags & SERV_LITERAL_ADDRESS))
+      for (iface = daemon->interfaces; iface; iface = iface->next)
+	if (sockaddr_isequal(&serv->addr, &iface->addr))
+	  break;
+      if (iface)
 	{
-	  if (++count > SERVERS_LOGGED)
-	    continue;
-	  
-	  if (serv->flags & (SERV_HAS_DOMAIN | SERV_FOR_NODOTS | SERV_USE_RESOLV))
-	    {
-	      char *s1, *s2, *s3 = "";
-#ifdef HAVE_DNSSEC
-	      if (option_bool(OPT_DNSSEC_VALID) && !(serv->flags & SERV_DO_DNSSEC))
-		s3 = _("(no DNSSEC)");
-#endif
-	      if (!(serv->flags & SERV_HAS_DOMAIN))
-		s1 = _("unqualified"), s2 = _("names");
-	      else if (strlen(serv->domain) == 0)
-		s1 = _("default"), s2 = "";
-	      else
-		s1 = _("domain"), s2 = serv->domain;
-	      
-	      if (serv->flags & SERV_NO_ADDR)
-		{
-		  count--;
-		  if (++locals <= LOCALS_LOGGED)
-			my_syslog(LOG_INFO, _("using only locally-known addresses for %s %s"), s1, s2);
-	        }
-	      else if (serv->flags & SERV_USE_RESOLV)
-		my_syslog(LOG_INFO, _("using standard nameservers for %s %s"), s1, s2);
-	      else 
-		my_syslog(LOG_INFO, _("using nameserver %s#%d for %s %s %s"), daemon->namebuff, port, s1, s2, s3);
-	    }
-#ifdef HAVE_LOOP
-	  else if (serv->flags & SERV_LOOP)
-	    my_syslog(LOG_INFO, _("NOT using nameserver %s#%d - query loop detected"), daemon->namebuff, port); 
-#endif
-	  else if (serv->interface[0] != 0)
-	    my_syslog(LOG_INFO, _("using nameserver %s#%d(via %s)"), daemon->namebuff, port, serv->interface); 
-	  else
-	    my_syslog(LOG_INFO, _("using nameserver %s#%d"), daemon->namebuff, port); 
+	  my_syslog(LOG_WARNING, _("ignoring nameserver %s - local interface"), daemon->namebuff);
+	  serv->flags |= SERV_MARK;
+	  continue;
 	}
+      
+      /* Do we need a socket set? */
+      if (!serv->sfd && 
+	  !(serv->sfd = allocate_sfd(&serv->source_addr, serv->interface, serv->ifindex)) &&
+	  errno != 0)
+	{
+	  my_syslog(LOG_WARNING, 
+		    _("ignoring nameserver %s - cannot make/bind socket: %s"),
+		    daemon->namebuff, strerror(errno));
+	  serv->flags |= SERV_MARK;
+	  continue;
+	}
+      
+      if (serv->sfd)
+	serv->sfd->used = 1;
+      
+      if (++count > SERVERS_LOGGED)
+	continue;
+      
+      if (strlen(serv->domain) != 0 || (serv->flags & SERV_FOR_NODOTS))
+	{
+	  char *s1, *s2, *s3 = "";
+
+#ifdef HAVE_DNSSEC
+	  if (option_bool(OPT_DNSSEC_VALID) && !(serv->flags & SERV_DO_DNSSEC))
+	    s3 = _("(no DNSSEC)");
+#endif
+	  if (serv->flags & SERV_FOR_NODOTS)
+	    s1 = _("unqualified"), s2 = _("names");
+	  else if (strlen(serv->domain) == 0)
+	    s1 = _("default"), s2 = "";
+	  else
+	    s1 = _("domain"), s2 = serv->domain;
+	  
+	  my_syslog(LOG_INFO, _("using nameserver %s#%d for %s %s %s"), daemon->namebuff, port, s1, s2, s3);
+	}
+#ifdef HAVE_LOOP
+      else if (serv->flags & SERV_LOOP)
+	my_syslog(LOG_INFO, _("NOT using nameserver %s#%d - query loop detected"), daemon->namebuff, port); 
+#endif
+      else if (serv->interface[0] != 0)
+	my_syslog(LOG_INFO, _("using nameserver %s#%d(via %s)"), daemon->namebuff, port, serv->interface); 
+      else
+	my_syslog(LOG_INFO, _("using nameserver %s#%d"), daemon->namebuff, port); 
+
+    }
+  
+  for (count = 0, serv = daemon->local_domains; serv; serv = serv->next)
+    {
+       if (++count > SERVERS_LOGGED)
+	 continue;
+       
+       if ((serv->flags & SERV_LITERAL_ADDRESS) &&
+	   !(serv->flags & (SERV_6ADDR | SERV_4ADDR | SERV_ALL_ZEROS)))
+	 {
+	   count--;
+	   if (++locals <= LOCALS_LOGGED)
+	     my_syslog(LOG_INFO, _("using only locally-known addresses for %s"), serv->domain);
+	 }
+       else if (serv->flags & SERV_USE_RESOLV)
+	 my_syslog(LOG_INFO, _("using standard nameservers for %s"), serv->domain);
     }
   
   if (locals > LOCALS_LOGGED)
@@ -1776,6 +1799,7 @@ void check_servers(void)
     }
   
   cleanup_servers();
+  build_server_array();
 }
 
 /* Return zero if no servers found, in that case we keep polling.

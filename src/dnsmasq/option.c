@@ -648,6 +648,9 @@ static char *canonicalise_opt(char *s)
   if (!s)
     return 0;
 
+  if (strlen(s) == 0)
+    return "";
+
   unhide_metas(s);
   if (!(ret = canonicalise(s, &nomem)) && nomem)
     {
@@ -820,14 +823,14 @@ char *parse_server(char *arg, union mysockaddr *addr, union mysockaddr *source_a
   char *interface_opt = NULL;
   int scope_index = 0;
   char *scope_id;
-  
-  if (!arg || strlen(arg) == 0)
+
+  if (strcmp(arg, "#") == 0)
     {
-      *flags |= SERV_NO_ADDR;
-      *interface = 0;
+      if (flags)
+	*flags |= SERV_USE_RESOLV;
       return NULL;
     }
-
+  
   if ((source = split_chr(arg, '@')) && /* is there a source. */
       (portno = split_chr(source, '#')) &&
       !atoi_check16(portno, &source_port))
@@ -925,7 +928,7 @@ char *parse_server(char *arg, union mysockaddr *addr, union mysockaddr *source_a
 static struct server *add_rev4(struct in_addr addr, int msize)
 {
   struct server *serv = opt_malloc(sizeof(struct server));
-  in_addr_t  a = ntohl(addr.s_addr);
+  in_addr_t a = ntohl(addr.s_addr);
   char *p;
 
   memset(serv, 0, sizeof(struct server));
@@ -953,10 +956,6 @@ static struct server *add_rev4(struct in_addr addr, int msize)
 
   p += sprintf(p, "in-addr.arpa");
   
-  serv->flags = SERV_HAS_DOMAIN;
-  serv->next = daemon->servers;
-  daemon->servers = serv;
-
   return serv;
 
 }
@@ -976,10 +975,6 @@ static struct server *add_rev6(struct in6_addr *addr, int msize)
       p += sprintf(p, "%.1x.", (i>>2) & 1 ? dig & 15 : dig >> 4);
     }
   p += sprintf(p, "ip6.arpa");
-  
-  serv->flags = SERV_HAS_DOMAIN;
-  serv->next = daemon->servers;
-  daemon->servers = serv;
   
   return serv;
 }
@@ -1668,16 +1663,6 @@ void reset_option_bool(unsigned int opt)
   option_var(opt) &= ~(option_val(opt));
 }
 
-static void server_list_free(struct server *list)
-{
-  while (list)
-    {
-      struct server *tmp = list;
-      list = list->next;
-      free(tmp);
-    }
-}
-
 static int one_opt(int option, char *arg, char *errstr, char *gen_err, int command_line, int servers_only)
 {      
   int i;
@@ -2313,15 +2298,17 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 				  if (!serv)
 				    ret_err_free(_("bad prefix"), new);
 
-				  serv->flags |= SERV_NO_ADDR;
-
+				  serv->flags |= SERV_LITERAL_ADDRESS;
+				  serv->next = daemon->local_domains;
+				  daemon->local_domains = serv;
+				  
 				  /* local=/<domain>/ */
 				  serv = opt_malloc(sizeof(struct server));
 				  memset(serv, 0, sizeof(struct server));
 				  serv->domain = d;
-				  serv->flags = SERV_HAS_DOMAIN | SERV_NO_ADDR;
-				  serv->next = daemon->servers;
-				  daemon->servers = serv;
+				  serv->flags = SERV_LITERAL_ADDRESS;
+				  serv->next = daemon->local_domains;
+				  daemon->local_domains = serv;
 				}
 			    }
 			}
@@ -2356,15 +2343,17 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 				  /* generate the equivalent of
 				     local=/xxx.yyy.zzz.ip6.arpa/ */
 				  struct server *serv = add_rev6(&new->start6, msize);
-				  serv->flags |= SERV_NO_ADDR;
+				  serv->flags |= SERV_LITERAL_ADDRESS;
+				   serv->next = daemon->local_domains;
+				  daemon->local_domains = serv;
 				  
 				  /* local=/<domain>/ */
 				  serv = opt_malloc(sizeof(struct server));
 				  memset(serv, 0, sizeof(struct server));
 				  serv->domain = d;
-				  serv->flags = SERV_HAS_DOMAIN | SERV_NO_ADDR;
-				  serv->next = daemon->servers;
-				  daemon->servers = serv;
+				  serv->flags = SERV_LITERAL_ADDRESS;
+				  serv->next = daemon->local_domains;
+				  daemon->local_domains = serv;
 				}
 			    }
 			}
@@ -2619,98 +2608,166 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
       } while (arg);
       break;
       
+    case LOPT_NO_REBIND: /*  --rebind-domain-ok */
+      {
+	struct server *new;
+
+	unhide_metas(arg);
+
+	if (*arg == '/')
+	  arg++;
+	
+	do {
+	  comma = split_chr(arg, '/');
+	  new = opt_malloc(sizeof(struct serv_local));
+	  new->domain = opt_string_alloc(arg);
+	  new->flags = strlen(arg);
+	  new->next = daemon->no_rebind;
+	  daemon->no_rebind = new;
+	  arg = comma;
+	} while (arg && *arg);
+
+	break;
+      }
+      
     case 'S':            /*  --server */
     case LOPT_LOCAL:     /*  --local */
     case 'A':            /*  --address */
-    case LOPT_NO_REBIND: /*  --rebind-domain-ok */
       {
-	struct server *serv, *newlist = NULL;
-	
+	struct server *new;
+	size_t size;
+	char *lastdomain = NULL, *domain = "";
+	char *alloc_domain;
+	int flags = 0;
+	char *err;
+	struct in_addr addr4;
+	struct in6_addr addr6;
+
 	unhide_metas(arg);
 	
-	if (arg && (*arg == '/' || option == LOPT_NO_REBIND))
+	/* split the domain args, if any and skip to the end of them. */
+	if (arg && *arg == '/')
 	  {
-	    int rebind = !(*arg == '/');
-	    char *end = NULL;
-	    if (!rebind)
-	      arg++;
-	    while (rebind || (end = split_chr(arg, '/')))
+	    char *last;
+
+	    arg++;
+	    domain = lastdomain = arg;
+
+	    while ((last = split_chr(arg, '/')))
 	      {
-		char *domain = NULL;
-		/* elide leading dots - they are implied in the search algorithm */
-		while (*arg == '.') arg++;
-		/* # matches everything and becomes a zero length domain string */
-		if (strcmp(arg, "#") == 0)
-		  domain = "";
-		else if (strlen (arg) != 0 && !(domain = canonicalise_opt(arg)))
-		  ret_err(gen_err);
-		serv = opt_malloc(sizeof(struct server));
-		memset(serv, 0, sizeof(struct server));
-		serv->next = newlist;
-		newlist = serv;
-		serv->domain = domain;
-		serv->flags = domain ? SERV_HAS_DOMAIN : SERV_FOR_NODOTS;
-		arg = end;
-		if (rebind)
-		  break;
+		lastdomain = arg;
+		arg = last;
 	      }
-	    if (!newlist)
-	      ret_err(gen_err);
-	  }
-	else
-	  {
-	    newlist = opt_malloc(sizeof(struct server));
-	    memset(newlist, 0, sizeof(struct server));
-#ifdef HAVE_LOOP
-	    newlist->uid = rand32();
-#endif
 	  }
 	
 	if (servers_only && option == 'S')
-	  newlist->flags |= SERV_FROM_FILE;
-	
-	if (option == 'A')
-	  {
-	    newlist->flags |= SERV_LITERAL_ADDRESS;
-	    if (!(newlist->flags & SERV_TYPE))
-	      {
-	        server_list_free(newlist);
-	        ret_err(gen_err);
-	      }
-	  }
-	else if (option == LOPT_NO_REBIND)
-	  newlist->flags |= SERV_NO_REBIND;
+	  flags |= SERV_FROM_FILE;
 	
 	if (!arg || !*arg)
+	  flags = SERV_LITERAL_ADDRESS;
+	else if (option == 'A')
 	  {
-	    if (!(newlist->flags & SERV_NO_REBIND))
-	      newlist->flags |= SERV_NO_ADDR; /* no server */
+	    /* # as literal address means return zero address for 4 and 6 */
+	    if (strcmp(arg, "#") == 0)
+	      flags |= SERV_ALL_ZEROS | SERV_LITERAL_ADDRESS;
+	    else if (inet_pton(AF_INET, arg, &addr4) > 0)
+	      flags |= SERV_4ADDR | SERV_LITERAL_ADDRESS;
+	    else if (inet_pton(AF_INET6, arg, &addr6) > 0)
+	      flags |= SERV_6ADDR | SERV_LITERAL_ADDRESS;
+	    else
+	      ret_err(_("Bad address in --address"));
 	  }
 
-	else if (strcmp(arg, "#") == 0)
-	  newlist->flags |= SERV_USE_RESOLV; /* treat in ordinary way */
+	if (!(alloc_domain = canonicalise_opt(domain)))
+	  ret_err(gen_err);
+	 
+
+	if (flags & SERV_LITERAL_ADDRESS)
+	  {
+	    if (flags & SERV_6ADDR)
+	      {
+		size = sizeof(struct serv_addr6);
+		new = opt_malloc(sizeof(struct serv_addr6));
+		((struct serv_addr6*)new)->addr = addr6;
+	      }
+	    else if (flags & SERV_4ADDR)
+	      {
+		size = sizeof(struct serv_addr4);
+		new = opt_malloc(sizeof(struct serv_addr4));
+		((struct serv_addr4*)new)->addr = addr4;
+	      }
+	    else
+	      {
+		size = sizeof(struct serv_local);
+		new = opt_malloc(sizeof(struct serv_local));
+	      }
+
+	    new->next = daemon->local_domains;
+	    daemon->local_domains = new;
+	  }		       
 	else
 	  {
-	    char *err = parse_server(arg, &newlist->addr, &newlist->source_addr, newlist->interface, &newlist->flags);
-	    if (err)
+	    size = sizeof(struct server);
+	    new = opt_malloc(sizeof(struct server));
+
+#ifdef HAVE_LOOP
+	    new->uid = rand32();
+#endif
+	    if ((err = parse_server(arg, &new->addr, &new->source_addr, new->interface, &flags)))
 	      {
-	        server_list_free(newlist);
-	        ret_err(err);
+		free(new);
+		ret_err(err);
+	      }
+	    
+	    /* Since domains that use standard servers don't have the 
+	       network stuff, it's easier to treat them as local. */
+	    if (flags & SERV_USE_RESOLV)
+	      {
+		new->next = daemon->local_domains;
+		daemon->local_domains = new;
+	      }
+	    else
+	      {
+		new->next = daemon->servers;
+		daemon->servers = new;
 	      }
 	  }
 	
-	serv = newlist;
-	while (serv->next)
-	  {
-	    serv->next->flags |= serv->flags & ~(SERV_HAS_DOMAIN | SERV_FOR_NODOTS);
-	    serv->next->addr = serv->addr;
-	    serv->next->source_addr = serv->source_addr;
-	    strcpy(serv->next->interface, serv->interface);
-	    serv = serv->next;
-	  }
-	serv->next = daemon->servers;
-	daemon->servers = newlist;
-	break;
+	new->domain = alloc_domain;
+	
+	/* server=//1.2.3.4 is special. */
+	if (strlen(domain) == 0 && lastdomain)
+	  flags |= SERV_FOR_NODOTS;
+	
+	new->flags = flags;
+
+	/* If we have more than one domain, copy and iterate */
+	if (lastdomain)
+	   while (domain != lastdomain)
+	     {
+	       struct server *last = new;
+	       
+	       domain += strlen(domain) + 1;
+	       
+	       if (!(alloc_domain = canonicalise_opt(domain)))
+		 ret_err(gen_err);
+	       
+	       new = opt_malloc(size);
+	       memcpy(new, last, size);
+	       new->domain = alloc_domain;
+	       if (flags & (SERV_USE_RESOLV | SERV_LITERAL_ADDRESS))
+		 {
+		   new->next = daemon->local_domains;
+		   daemon->local_domains = new;
+		 }
+	       else
+		 {
+		   new->next = daemon->servers;
+		   daemon->servers = new;
+		 }
+	     }
+	       
+     	break;
       }
 
     case LOPT_REV_SERV: /* --rev-server */
@@ -2735,9 +2792,15 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	    serv = add_rev4(addr4, size);
 	    if (!serv)
 	      ret_err(_("bad prefix"));
+	    serv->next = daemon->servers;
+	    daemon->servers = serv;
 	  }
 	else if (inet_pton(AF_INET6, arg, &addr6))
-	  serv = add_rev6(&addr6, size);
+	  {
+	    serv = add_rev6(&addr6, size);
+	    serv->next = daemon->servers;
+	    daemon->servers = serv;
+	  }
 	else
 	  ret_err(gen_err);
  

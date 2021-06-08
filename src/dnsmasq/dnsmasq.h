@@ -501,7 +501,7 @@ struct crec {
 #define F_NO_RR     (1u<<25)
 #define F_IPSET     (1u<<26)
 #define F_NOEXTRA   (1u<<27)
-#define F_SERVFAIL  (1u<<28) /* currently unused. */
+#define F_DOMAINSRV (1u<<28)
 #define F_RCODE     (1u<<29)
 #define F_SRV       (1u<<30)
 
@@ -526,19 +526,20 @@ union mysockaddr {
 #define IFACE_PERMANENT   4
 
 
-#define SERV_FROM_RESOLV       1  /* 1 for servers from resolv, 0 for command line. */
-#define SERV_NO_ADDR           2  /* no server, this domain is local only */
-#define SERV_LITERAL_ADDRESS   4  /* addr is the answer, not the server */ 
-#define SERV_HAS_DOMAIN        8  /* server for one domain only */
+/* The actual values here matter, since we sort on them to get records in the order
+   IPv6 addr, IPv4 addr, all zero return, no-data return, send upstream. */
+#define SERV_LITERAL_ADDRESS   1  /* addr is the answer, or NoDATA is the answer, depending on the next three flags */
+#define SERV_ALL_ZEROS         2  /* return all zeros for A and AAAA */
+#define SERV_4ADDR             4  /* addr is IPv4 */
+#define SERV_6ADDR             8  /* addr is IPv6 */
 #define SERV_HAS_SOURCE       16  /* source address defined */
 #define SERV_FOR_NODOTS       32  /* server for names with no domain part only */
 #define SERV_WARNED_RECURSIVE 64  /* avoid warning spam */
 #define SERV_FROM_DBUS       128  /* 1 if source is DBus */
 #define SERV_MARK            256  /* for mark-and-delete */
-#define SERV_TYPE    (SERV_HAS_DOMAIN | SERV_FOR_NODOTS)
 #define SERV_COUNTED         512  /* workspace for log code */
 #define SERV_USE_RESOLV     1024  /* forward this domain in the normal way */
-#define SERV_NO_REBIND      2048  /* inhibit dns-rebind protection */
+#define SERV_FROM_RESOLV    2048  /* 1 for servers from resolv, 0 for command line. */
 #define SERV_FROM_FILE      4096  /* read from --servers-file */
 #define SERV_LOOP           8192  /* server causes forwarding loop */
 #define SERV_DO_DNSSEC     16384  /* Validate DNSSEC when using this server */
@@ -563,19 +564,46 @@ struct randfd_list {
   struct randfd_list *next;
 };
 
+
 struct server {
+  int flags;
+  char *domain;
+  struct server *next;
+  int serial, arrayposn;
+  int last_server;
   union mysockaddr addr, source_addr;
   char interface[IF_NAMESIZE+1];
   unsigned int ifindex; /* corresponding to interface, above */
   struct serverfd *sfd; 
-  char *domain; /* set if this server only handles a domain. */ 
-  int flags, tcpfd, edns_pktsz;
+  int tcpfd, edns_pktsz;
   time_t pktsz_reduced;
   unsigned int queries, failed_queries;
+  time_t forwardtime;
+  int forwardcount;
 #ifdef HAVE_LOOP
   u32 uid;
 #endif
-  struct server *next; 
+};
+
+/* First three fields must match struct server in next three definitions.. */
+struct serv_addr4 {
+  int flags;
+  char *domain;
+  struct server *next;
+  struct in_addr addr;
+};
+
+struct serv_addr6 {
+  int flags;
+  char *domain;
+  struct server *next;
+  struct in6_addr addr;
+};
+
+struct serv_local {
+  int flags;
+  char *domain;
+  struct server *next;
 };
 
 struct ipsets {
@@ -664,6 +692,7 @@ struct hostsfile {
 #define STAT_SECURE_WILDCARD    7
 #define STAT_OK                 8
 #define STAT_ABANDONED          9
+#define STAT_INPROGRESS         10
 
 #define FREC_NOREBIND           1
 #define FREC_CHECKING_DISABLED  2
@@ -1056,7 +1085,8 @@ extern struct daemon {
   char *lease_change_command;
   struct iname *if_names, *if_addrs, *if_except, *dhcp_except, *auth_peers, *tftp_interfaces;
   struct bogus_addr *bogus_addr, *ignore_addr;
-  struct server *servers;
+  struct server *servers, *local_domains, **serverarray, *no_rebind;
+  int serverarraysz;
   struct ipsets *ipsets;
   int log_fac; /* log facility */
   char *log_file; /* optional log file */
@@ -1128,9 +1158,6 @@ extern struct daemon {
   struct serverfd *sfds;
   struct irec *interfaces;
   struct listener *listeners;
-  struct server *last_server;
-  time_t forwardtime;
-  int forwardcount;
   struct server *srv_save; /* Used for resend on DoD */
   size_t packet_len;       /*      "        "        */
   int    fd_save;          /*      "        "        */
@@ -1249,9 +1276,7 @@ unsigned char *skip_questions(struct dns_header *header, size_t plen);
 unsigned char *skip_section(unsigned char *ansp, int count, struct dns_header *header, size_t plen);
 unsigned int extract_request(struct dns_header *header, size_t qlen, 
 			       char *name, unsigned short *typep);
-size_t setup_reply(struct dns_header *header, size_t  qlen,
-		   union all_addr *addrp, unsigned int flags,
-		   unsigned long ttl);
+void setup_reply(struct dns_header *header, unsigned int flags);
 int extract_addresses(struct dns_header *header, size_t qlen, char *name,
 		      time_t now, char **ipsets, int is_sign, int check_rebind,
 		      int no_cache_dnssec, int secure, int *doctored);
@@ -1711,3 +1736,13 @@ int do_arp_script_run(void);
 void dump_init(void);
 void dump_packet(int mask, void *packet, size_t len, union mysockaddr *src, union mysockaddr *dst);
 #endif
+
+/* domain-match.c */
+void build_server_array(void);
+int lookup_domain(char *qdomain, int flags, int *lowout, int *highout);
+int filter_servers(int seed, int flags, int *lowout, int *highout);
+int is_local_answer(time_t now, int first, char *name);
+#ifdef HAVE_DNSSEC
+int dnssec_server(struct server *server, char *keyname, int *firstp, int *lastp);
+#endif
+ 

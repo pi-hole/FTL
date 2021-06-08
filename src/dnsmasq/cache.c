@@ -1613,16 +1613,13 @@ int cache_make_stat(struct txt_record *t)
 	serv->flags &= ~SERV_COUNTED;
       
       for (serv = daemon->servers; serv; serv = serv->next)
-	if (!(serv->flags & 
-	      (SERV_NO_ADDR | SERV_LITERAL_ADDRESS | SERV_COUNTED | SERV_USE_RESOLV | SERV_NO_REBIND)))
+	if (!(serv->flags & SERV_COUNTED))
 	  {
 	    char *new, *lenp;
 	    int port, newlen, bytes_avail, bytes_needed;
 	    unsigned int queries = 0, failed_queries = 0;
 	    for (serv1 = serv; serv1; serv1 = serv1->next)
-	      if (!(serv1->flags & 
-		    (SERV_NO_ADDR | SERV_LITERAL_ADDRESS | SERV_COUNTED | SERV_USE_RESOLV | SERV_NO_REBIND)) && 
-		  sockaddr_isequal(&serv->addr, &serv1->addr))
+	      if (!(serv1->flags & SERV_COUNTED) && sockaddr_isequal(&serv->addr, &serv1->addr))
 		{
 		  serv1->flags |= SERV_COUNTED;
 		  queries += serv1->queries;
@@ -1697,15 +1694,12 @@ void dump_cache(time_t now)
     serv->flags &= ~SERV_COUNTED;
   
   for (serv = daemon->servers; serv; serv = serv->next)
-    if (!(serv->flags & 
-	  (SERV_NO_ADDR | SERV_LITERAL_ADDRESS | SERV_COUNTED | SERV_USE_RESOLV | SERV_NO_REBIND)))
+    if (!(serv->flags & SERV_COUNTED))
       {
 	int port;
 	unsigned int queries = 0, failed_queries = 0;
 	for (serv1 = serv; serv1; serv1 = serv1->next)
-	  if (!(serv1->flags & 
-		(SERV_NO_ADDR | SERV_LITERAL_ADDRESS | SERV_COUNTED | SERV_USE_RESOLV | SERV_NO_REBIND)) && 
-	      sockaddr_isequal(&serv->addr, &serv1->addr))
+	  if (!(serv1->flags & SERV_COUNTED) && sockaddr_isequal(&serv->addr, &serv1->addr))
 	    {
 	      serv1->flags |= SERV_COUNTED;
 	      queries += serv1->queries;
@@ -1894,14 +1888,14 @@ void _log_query(unsigned int flags, char *name, union all_addr *addr, char *arg,
 	{
 	  unsigned int rcode = addr->log.rcode;
 
-	   if (rcode == SERVFAIL)
-	     dest = "SERVFAIL";
-	   else if (rcode == REFUSED)
-	     dest = "REFUSED";
-	   else if (rcode == NOTIMP)
-	     dest = "not implemented";
-	   else
-	     sprintf(daemon->addrbuff, "%u", rcode);
+	  if (rcode == SERVFAIL)
+	    dest = "SERVFAIL";
+	  else if (rcode == REFUSED)
+	    dest = "REFUSED";
+	  else if (rcode == NOTIMP)
+	    dest = "not implemented";
+	  else
+	    sprintf(daemon->addrbuff, "%u", rcode);
 	}
       else
 	inet_ntop(flags & F_IPV4 ? AF_INET : AF_INET6,

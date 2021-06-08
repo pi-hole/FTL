@@ -377,7 +377,7 @@ static DBusMessage* dbus_read_servers_ex(DBusMessage *message, int strings)
       /* 0.0.0.0 for server address == NULL, for Dbus */
       if (addr.in.sin_family == AF_INET &&
           addr.in.sin_addr.s_addr == 0)
-        flags |= SERV_NO_ADDR;
+        flags |= SERV_LITERAL_ADDRESS;
       
       if (strings)
 	{
