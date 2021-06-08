@@ -1559,7 +1559,7 @@ void emit_dbus_signal(int action, struct dhcp_lease *lease, char *hostname);
 
 /* ubus.c */
 #ifdef HAVE_UBUS
-void ubus_init(void);
+char *ubus_init(void);
 void set_ubus_listeners(void);
 void check_ubus_listeners(void);
 void ubus_event_bcast(const char *type, const char *mac, const char *ip, const char *name, const char *interface);

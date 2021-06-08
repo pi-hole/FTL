@@ -76,42 +76,27 @@ static void ubus_disconnect_cb(struct ubus_context *ubus)
     }
 }
 
-void ubus_init()
+char *ubus_init()
 {
   struct ubus_context *ubus = NULL;
   int ret = 0;
 
-  ubus = ubus_connect(NULL);
-  if (!ubus)
-    {
-      if (!error_logged)
-        {
-          my_syslog(LOG_ERR, _("Cannot initialize UBus: connection failed"));
-          error_logged = 1;
-        }
-
-      ubus_destroy(ubus);
-      return;
-    }
-
+  if (!(ubus = ubus_connect(NULL)))
+    return NULL;
+  
   ubus_object.name = daemon->ubus_name;
   ret = ubus_add_object(ubus, &ubus_object);
   if (ret)
     {
-      if (!error_logged)
-        {
-          my_syslog(LOG_ERR, _("Cannot add object to UBus: %s"), ubus_strerror(ret));
-          error_logged = 1;
-        }
       ubus_destroy(ubus);
-      return;
-    }
-
+      return ubus_strerror(ret);
+    }    
+  
   ubus->connection_lost = ubus_disconnect_cb;
   daemon->ubus = ubus;
   error_logged = 0;
 
-  my_syslog(LOG_INFO, _("Connected to system UBus"));
+  return NULL;
 }
 
 void set_ubus_listeners()

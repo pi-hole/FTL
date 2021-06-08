@@ -446,8 +446,10 @@ int main_dnsmasq (int argc, char **argv)
   if (option_bool(OPT_UBUS))
 #ifdef HAVE_UBUS
     {
+      char *err;
       daemon->ubus = NULL;
-      ubus_init();
+      if ((err = ubus_init()))
+	die(_("UBus error: %s"), err, EC_MISC);
     }
 #else
   die(_("UBus not available: set HAVE_UBUS in src/dnsmasq/config.h"), NULL, EC_BADCONF);
@@ -1205,20 +1207,20 @@ int main_dnsmasq (int argc, char **argv)
 	  if (daemon->dbus)
 	    my_syslog(LOG_INFO, _("connected to system DBus"));
 	}
-      check_dbus_listeners();
+     check_dbus_listeners();
 #endif
 
 #ifdef HAVE_UBUS
-      if (option_bool(OPT_UBUS))
+      /* if we didn't create a UBus connection, retry now. */
+     if (option_bool(OPT_UBUS) && !daemon->ubus)
         {
-          /* if we didn't create a UBus connection, retry now. */
-          if (!daemon->ubus)
-            {
-              ubus_init();
-            }
-
-          check_ubus_listeners();
-        }
+	  char *err;
+	  if ((err = ubus_init()))
+	    my_syslog(LOG_WARNING, _("UBus error: %s"), err);
+	  if (daemon->ubus)
+	    my_syslog(LOG_INFO, _("connected to system UBus"));
+	}
+     check_ubus_listeners();
 #endif
 
       check_dns_listeners(now);
