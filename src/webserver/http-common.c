@@ -48,7 +48,7 @@ const char* json_formatter(const cJSON *object)
 int send_http(struct ftl_conn *api, const char *mime_type,
               const char *msg)
 {
-	mg_send_http_ok(api->conn, mime_type, NULL, strlen(msg));
+	mg_send_http_ok(api->conn, mime_type, strlen(msg));
 	return mg_write(api->conn, msg, strlen(msg));
 }
 
@@ -276,22 +276,24 @@ bool get_double_var(const char *source, const char *var, double *num)
 
 const char* __attribute__((pure)) startsWith(const char *path, struct ftl_conn *api)
 {
-	if(strncmp(path, api->request->local_uri, strlen(path)) == 0)
-		if(api->request->local_uri[strlen(path)] == '/')
+	// We use local_uri_raw here to get the unescaped URI, see
+	// https://github.com/civetweb/civetweb/pull/975
+	if(strncmp(path, api->request->local_uri_raw, strlen(path)) == 0)
+		if(api->request->local_uri_raw[strlen(path)] == '/')
 		{
 			// Path match with argument after ".../"
 			if(api->action_path != NULL)
 				free(api->action_path);
-			api->action_path = strdup(api->request->local_uri);
+			api->action_path = strdup(api->request->local_uri_raw);
 			api->action_path[strlen(path)] = '\0';
-			return api->request->local_uri + strlen(path) + 1u;
+			return api->request->local_uri_raw + strlen(path) + 1u;
 		}
-		else if(strlen(path) == strlen(api->request->local_uri))
+		else if(strlen(path) == strlen(api->request->local_uri_raw))
 		{
 			// Path match directly, no argument
 			if(api->action_path != NULL)
 				free(api->action_path);
-			api->action_path = strdup(api->request->local_uri);
+			api->action_path = strdup(api->request->local_uri_raw);
 			return "";
 		}
 		else

@@ -44,7 +44,7 @@ int ph7_handler(struct mg_connection *conn, void *cbdata)
 
 	/* Handler may access the request info using mg_get_request_info */
 	const struct mg_request_info *req_info = mg_get_request_info(conn);
-	const char *local_uri = req_info->local_uri + 1u;
+	const char *local_uri = req_info->local_uri_raw + 1u;
 
 	// Build full path of PHP script on our machine
 	const size_t webroot_len = strlen(httpsettings.webroot);

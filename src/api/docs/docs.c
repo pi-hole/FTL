@@ -33,7 +33,7 @@ int api_docs(struct ftl_conn *api)
 		   (serve_index && strcmp(docs_files[i].path, "index.html") == 0))
 		{
 			// Send the file
-			mg_send_http_ok(api->conn, docs_files[i].mime_type, NULL, docs_files[i].content_size);
+			mg_send_http_ok(api->conn, docs_files[i].mime_type, docs_files[i].content_size);
 			return mg_write(api->conn, docs_files[i].content, docs_files[i].content_size);
 		}
 	}

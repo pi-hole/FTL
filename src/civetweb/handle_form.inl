@@ -1,4 +1,4 @@
-/* Copyright (c) 2016-2020 the Civetweb developers
+/* Copyright (c) 2016-2021 the Civetweb developers
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -683,7 +683,7 @@ mg_handle_form_request(struct mg_connection *conn,
 
 			if (part_no == 0) {
 				int d = 0;
-				while ((buf[d] != '-') && (d < buf_fill)) {
+				while ((d < buf_fill) && (buf[d] != '-')) {
 					d++;
 				}
 				if ((d > 0) && (buf[d] == '-')) {
@@ -962,9 +962,7 @@ mg_handle_form_request(struct mg_connection *conn,
 					mg_free(boundary);
 					return -1;
 				}
-				if (r == 0) {
-					all_data_read = (buf_fill == 0);
-				}
+				/* r==0 already handled, all_data_read is false here */
 
 				buf_fill += r;
 				buf[buf_fill] = 0;
@@ -979,7 +977,7 @@ mg_handle_form_request(struct mg_connection *conn,
 				}
 			}
 
-			towrite = (size_t)(next - hend);
+			towrite = (next ? (size_t)(next - hend) : 0);
 
 			if (field_storage == MG_FORM_FIELD_STORAGE_GET) {
 				/* Call callback */
@@ -1043,9 +1041,13 @@ mg_handle_form_request(struct mg_connection *conn,
 			}
 
 			/* Remove from the buffer */
-			used = next - buf + 2;
-			memmove(buf, buf + (size_t)used, sizeof(buf) - (size_t)used);
-			buf_fill -= (int)used;
+			if (next) {
+				used = next - buf + 2;
+				memmove(buf, buf + (size_t)used, sizeof(buf) - (size_t)used);
+				buf_fill -= (int)used;
+			} else {
+				buf_fill = 0;
+			}
 		}
 
 		/* All parts handled */

@@ -32,7 +32,7 @@ int api_handler(struct mg_connection *conn, void *ignored)
 
 	log_debug(DEBUG_API, "Requested API URI: %s %s ? %s",
 	          api.request->request_method,
-	          api.request->local_uri,
+	          api.request->local_uri_raw,
 	          api.request->query_string);
 
 	int ret = 0;
@@ -239,7 +239,7 @@ int api_handler(struct mg_connection *conn, void *ignored)
 		ret = send_json_error(&api, 404,
 		                      "not_found",
 		                      "Not found",
-		                      api.request->local_uri);
+		                      api.request->local_uri_raw);
 	}
 
 	// Free JSON-parsed payload memory (if allocated)

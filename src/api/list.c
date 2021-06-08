@@ -419,7 +419,7 @@ int api_list(struct ftl_conn *api)
 			return send_json_error(api, 400,
 			                       "bad_request",
 			                       "Invalid request: Specified endpoint not available",
-			                       api->request->local_uri);
+			                       api->request->local_uri_raw);
 	}
 
 	if(api->method == HTTP_GET)

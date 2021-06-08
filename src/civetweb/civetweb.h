@@ -1,4 +1,4 @@
-/* Copyright (c) 2013-2020 the Civetweb developers
+/* Copyright (c) 2013-2021 the Civetweb developers
  * Copyright (c) 2004-2013 Sergey Lyubka
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -23,9 +23,9 @@
 #ifndef CIVETWEB_HEADER_INCLUDED
 #define CIVETWEB_HEADER_INCLUDED
 
-#define CIVETWEB_VERSION "1.13"
+#define CIVETWEB_VERSION "1.14"
 #define CIVETWEB_VERSION_MAJOR (1)
-#define CIVETWEB_VERSION_MINOR (13)
+#define CIVETWEB_VERSION_MINOR (14)
 #define CIVETWEB_VERSION_PATCH (0)
 
 #ifndef CIVETWEB_API
@@ -98,8 +98,13 @@ enum {
 	/* Will only work, if USE_ZLIB is set. */
 	MG_FEATURES_COMPRESSION = 0x200u,
 
-	/* Collect server status information. */
-	/* Will only work, if USE_SERVER_STATS is set. */
+	/* HTTP/2 support enabled. */
+	MG_FEATURES_HTTP2 = 0x400u,
+
+	/* Support unix domain sockets. */
+	MG_FEATURES_X_DOMAIN_SOCKET = 0x800u,
+
+	/* Bit mask for all feature defines. */
 	MG_FEATURES_ALL = 0xFFFFu
 };
 
@@ -146,9 +151,13 @@ struct mg_request_info {
 	const char *request_method;  /* "GET", "POST", etc */
 	const char *request_uri;     /* URL-decoded URI (absolute or relative,
 	                              * as in the request) */
-	const char *local_uri;       /* URL-decoded URI (relative). Can be NULL
+	const char *local_uri_raw;   /* URL-decoded URI (relative). Can be NULL
 	                              * if the request_uri does not address a
 	                              * resource at the server host. */
+	const char *local_uri;       /* Same as local_uri_raw, however, cleaned
+	                              * so a path like
+	                              *   allowed_dir/../forbidden_file
+	                              * is not possible. */
 #if defined(MG_LEGACY_INTERFACE) /* 2017-02-04, deprecated 2014-09-14 */
 	const char *uri;             /* Deprecated: use local_uri instead */
 #endif
@@ -161,8 +170,11 @@ struct mg_request_info {
 
 	long long content_length; /* Length (in bytes) of the request body,
 	                             can be -1 if no length was given. */
-	int remote_port;          /* Client's port */
-	int is_ssl;               /* 1 if SSL-ed, 0 if not */
+	int remote_port;          /* Port at client side */
+	int server_port;          /* Port at server side (one of the listening
+	                             ports) */
+	int is_ssl;               /* 1 if HTTPS or WS is used (SSL/TLS used),
+	                             0 if not */
 	void *user_data;          /* User data pointer passed to mg_start() */
 	void *conn_data;          /* Connection-specific user data */
 
@@ -319,13 +331,19 @@ struct mg_callbacks {
 	   application-maintained list of clients.
 	   Using this callback for websocket connections is deprecated: Use
 	   mg_set_websocket_handler instead.
-
-	   Connection specific data:
-	   If memory has been allocated for the connection specific user data
-	   (mg_request_info->conn_data, mg_get_user_connection_data),
-	   this is the last chance to free it.
 	*/
 	void (*connection_close)(const struct mg_connection *);
+
+	/* Called after civetweb has closed a connection.  The per-context mutex is
+	   locked when this is invoked.
+
+	Connection specific data:
+	If memory has been allocated for the connection specific user data
+	(mg_request_info->conn_data, mg_get_user_connection_data),
+	this is the last chance to free it.
+ */
+	void (*connection_closed)(const struct mg_connection *);
+
 
 	/* init_lua is called when civetweb is about to serve Lua server page.
 	   exit_lua is called when the Lua processing is complete.
@@ -560,7 +578,7 @@ typedef void (*mg_websocket_close_handler)(const struct mg_connection *,
  */
 struct mg_websocket_subprotocols {
 	int nb_subprotocols;
-	char **subprotocols;
+	const char **subprotocols;
 };
 
 /* mg_set_websocket_handler
@@ -644,7 +662,14 @@ CIVETWEB_API void *mg_get_thread_pointer(const struct mg_connection *conn);
 
 
 /* Set user data for the current connection. */
-/* Note: This function is deprecated. Use the init_connection callback
+/* Note: CivetWeb callbacks use "struct mg_connection *conn" as input
+   when mg_read/mg_write callbacks are allowed in the callback,
+   while "const struct mg_connection *conn" is used as input in case
+   calling mg_read/mg_write is not allowed.
+   Setting the user connection data will modify the connection
+   object represented by mg_connection *, but it will not read from
+   or write to the connection. */
+/* Note: An alternative is to use the init_connection callback
    instead to initialize the user connection data pointer. It is
    reccomended to supply a pointer to some user defined data structure
    as conn_data initializer in init_connection. In case it is required
@@ -652,7 +677,7 @@ CIVETWEB_API void *mg_get_thread_pointer(const struct mg_connection *conn);
    data pointer in the user defined data structure and modify that
    pointer. In either case, after the init_connection callback, only
    calls to mg_get_user_connection_data should be required. */
-CIVETWEB_API void mg_set_user_connection_data(struct mg_connection *conn,
+CIVETWEB_API void mg_set_user_connection_data(const struct mg_connection *conn,
                                               void *data);
 
 
@@ -956,8 +981,6 @@ extern char pi_hole_extra_headers[PIHOLE_HEADERS_MAXLEN];
  * Parameters:
  *   conn: Current connection handle.
  *   mime_type: Set Content-Type for the following content.
- *   additional_header: Pi-hole addition for sending custom additional
- *                      information (like settingcookies)
  *   content_length: Size of the following content, if content_length >= 0.
  *                   Will set transfer-encoding to chunked, if set to -1.
  * Return:
@@ -965,7 +988,6 @@ extern char pi_hole_extra_headers[PIHOLE_HEADERS_MAXLEN];
  */
 CIVETWEB_API int mg_send_http_ok(struct mg_connection *conn,
                                  const char *mime_type,
-                                 const char *additional_headers,
                                  long long content_length);
 
 
@@ -1435,6 +1457,19 @@ mg_connect_websocket_client(const char *host,
                             mg_websocket_close_handler close_func,
                             void *user_data);
 
+CIVETWEB_API struct mg_connection *
+mg_connect_websocket_client_extensions(const char *host,
+                                       int port,
+                                       int use_ssl,
+                                       char *error_buffer,
+                                       size_t error_buffer_size,
+                                       const char *path,
+                                       const char *origin,
+                                       const char *extensions,
+                                       mg_websocket_data_handler data_func,
+                                       mg_websocket_close_handler close_func,
+                                       void *user_data);
+
 
 /* Connect to a TCP server as a client (can be used to connect to a HTTP server)
    Parameters:
@@ -1481,6 +1516,17 @@ CIVETWEB_API struct mg_connection *mg_connect_websocket_client_secure(
     mg_websocket_close_handler close_func,
     void *user_data);
 
+CIVETWEB_API struct mg_connection *
+mg_connect_websocket_client_secure_extensions(
+    const struct mg_client_options *client_options,
+    char *error_buffer,
+    size_t error_buffer_size,
+    const char *path,
+    const char *origin,
+    const char *extensions,
+    mg_websocket_data_handler data_func,
+    mg_websocket_close_handler close_func,
+    void *user_data);
 
 #if defined(MG_LEGACY_INTERFACE) /* 2019-11-02 */
 enum { TIMEOUT_INFINITE = -1 };
@@ -1642,6 +1688,14 @@ CIVETWEB_API int mg_get_system_info(char *buffer, int buflen);
 */
 CIVETWEB_API int
 mg_get_context_info(const struct mg_context *ctx, char *buffer, int buflen);
+
+
+/* Disable HTTP keep-alive on a per-connection basis.
+   Reference: https://github.com/civetweb/civetweb/issues/727
+   Parameters:
+     conn: Current connection handle.
+*/
+CIVETWEB_API void mg_disable_connection_keep_alive(struct mg_connection *conn);
 
 
 #if defined(MG_EXPERIMENTAL_INTERFACES)

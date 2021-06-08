@@ -65,7 +65,7 @@ static int redirect_root_handler(struct mg_connection *conn, void *input)
 
 		// Get requested URI
 		const struct mg_request_info *request = mg_get_request_info(conn);
-		const char *uri = request->local_uri;
+		const char *uri = request->local_uri_raw;
 
 		log_debug(DEBUG_API, "URI: %s", uri);
 	}

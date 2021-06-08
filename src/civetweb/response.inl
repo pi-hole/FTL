@@ -8,7 +8,7 @@
  */
 
 #if defined(NO_RESPONSE_BUFFERING) && defined(USE_HTTP2)
-#error "HTTP2 currently works only if NO_RESPONSE_BUFFERING is not set"
+#error "HTTP2 works only if NO_RESPONSE_BUFFERING is not set"
 #endif
 
 
@@ -40,13 +40,22 @@ free_buffered_response_header_list(struct mg_connection *conn)
 static void
 send_http1_response_status_line(struct mg_connection *conn)
 {
+	const char *status_txt;
+	const char *http_version = conn->request_info.http_version;
+	int status_code = conn->status_code;
+
+	if ((status_code < 100) || (status_code > 999)) {
+		/* Set invalid status code to "500 Internal Server Error" */
+		status_code = 500;
+	}
+	if (!http_version) {
+		http_version = "1.0";
+	}
+
 	/* mg_get_response_code_text will never return NULL */
-	const char *txt = mg_get_response_code_text(conn, conn->status_code);
-	mg_printf(conn,
-	          "HTTP/%s %i %s\r\n",
-	          conn->request_info.http_version,
-	          conn->status_code,
-	          txt);
+	status_txt = mg_get_response_code_text(conn, conn->status_code);
+
+	mg_printf(conn, "HTTP/%s %i %s\r\n", http_version, status_code, status_txt);
 }
 
 
@@ -142,7 +151,8 @@ mg_response_header_add(struct mg_connection *conn,
 	conn->response_info.http_headers[hidx].name =
 	    mg_strdup_ctx(header, conn->phys_ctx);
 	if (value_len >= 0) {
-		char *hbuf = mg_malloc_ctx((unsigned)value_len + 1, conn->phys_ctx);
+		char *hbuf =
+		    (char *)mg_malloc_ctx((unsigned)value_len + 1, conn->phys_ctx);
 		if (hbuf) {
 			memcpy(hbuf, value, (unsigned)value_len);
 			hbuf[value_len] = 0;
@@ -231,7 +241,7 @@ mg_response_header_add_lines(struct mg_connection *conn,
 }
 
 
-#if defined USE_HTTP2
+#if defined(USE_HTTP2)
 static int http2_send_response_headers(struct mg_connection *conn);
 #endif
 
@@ -272,14 +282,12 @@ mg_response_header_send(struct mg_connection *conn)
 	conn->request_state = 2;
 
 #if !defined(NO_RESPONSE_BUFFERING)
+#if defined(USE_HTTP2)
 	if (conn->protocol_type == PROTOCOL_TYPE_HTTP2) {
-#if defined USE_HTTP2
 		int ret = http2_send_response_headers(conn);
 		return ret ? 0 : 0; /* todo */
-#else
-		return -2;
-#endif
 	}
+#endif
 
 	/* Send */
 	send_http1_response_status_line(conn);
