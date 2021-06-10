@@ -141,7 +141,7 @@
   privacyLevel = 0
 
   # Set niceness of pihole-FTL (can be disabled by setting to -999)
-  nice = -10
+  nice = -999 ### CHANGED, default = -10
 
   # Artificially delay FTL's startup (0 to 300 seconds)
   delayStartup = 0

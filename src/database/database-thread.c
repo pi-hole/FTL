@@ -85,7 +85,7 @@ void *DB_thread(void *val)
 		}
 
 		// Store queries in on-disk database
-		if(now - lastDBsave >= config.DBinterval)
+		if(now - lastDBsave >= (time_t)config.DBinterval)
 		{
 			// Update lastDBsave timer
 			lastDBsave = now - now%config.DBinterval;
