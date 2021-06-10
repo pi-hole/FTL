@@ -12,7 +12,7 @@
 #include "regex_r.h"
 #include "timers.h"
 #include "log.h"
-#include "config.h"
+#include "config/config.h"
 // data getter functions
 #include "datastructure.h"
 #include "database/gravity-db.h"
@@ -21,8 +21,8 @@
 #include "database/message-table.h"
 // init_shmem()
 #include "shmem.h"
-// read_FTL_config()
-#include "config.h"
+// readFTLconf()
+#include "config/config.h"
 // cli_stuff()
 #include "args.h"
 
@@ -559,8 +559,8 @@ int regex_test(const bool debug_mode, const bool quiet, const char *domainin, co
 	counters = calloc(1, sizeof(countersStruct));
 	// Disable terminal output during config config file parsing
 	log_ctrl(false, false);
-	// Process pihole-FTL.conf to get gravity.db
-	read_FTLconf();
+	// Process pihole-FTL.conf to get gravity.db path
+	readFTLconf();
 
 	// Disable all debugging output if not explicitly in debug mode (CLI argument "d")
 	if(!debug_mode)

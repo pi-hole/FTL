@@ -13,7 +13,7 @@
 // struct queriesData, etc.
 #include "../datastructure.h"
 // struct config
-#include "../config.h"
+#include "../config/config.h"
 // logging routines
 #include "../log.h"
 // lock_shm(), addstr(), etc.
@@ -86,12 +86,12 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 		{
 			log_info("FTL is going to drop from root to user %s (UID %d)",
 			         ent_pw->pw_name, (int)ent_pw->pw_uid);
-			if(chown(FTLfiles.log, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
+			if(chown(config.files.log, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
 				log_warn("Setting ownership (%i:%i) of %s failed: %s (%i)",
-				ent_pw->pw_uid, ent_pw->pw_gid, FTLfiles.log, strerror(errno), errno);
-			if(chown(FTLfiles.FTL_db, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
+				ent_pw->pw_uid, ent_pw->pw_gid, config.files.log, strerror(errno), errno);
+			if(chown(config.files.database, ent_pw->pw_uid, ent_pw->pw_gid) == -1)
 				log_warn("Setting ownership (%i:%i) of %s failed: %s (%i)",
-				ent_pw->pw_uid, ent_pw->pw_gid, FTLfiles.FTL_db, strerror(errno), errno);
+				ent_pw->pw_uid, ent_pw->pw_gid, config.files.database, strerror(errno), errno);
 			chown_all_shmem(ent_pw);
 		}
 		else

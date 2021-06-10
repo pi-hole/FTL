@@ -10,7 +10,7 @@
 
 #define FTL_PRIVATE
 #include "iface.h"
-#include "../config.h"
+#include "../config/config.h"
 #include "../log.h"
 
 // Fork-private copy of the interface name the most recent query came from

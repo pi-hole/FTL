@@ -10,7 +10,7 @@
 
 #include "FTL.h"
 #include "daemon.h"
-#include "config.h"
+#include "config/config.h"
 #include "log.h"
 // sleepms()
 #include "timers.h"
@@ -95,7 +95,7 @@ void savepid(void)
 {
 	FILE *f;
 	const pid_t pid = getpid();
-	if((f = fopen(FTLfiles.pid, "w+")) == NULL)
+	if((f = fopen(config.files.pid, "w+")) == NULL)
 	{
 		log_warn("Unable to write PID to file.");
 	}
@@ -110,7 +110,7 @@ void savepid(void)
 static void removepid(void)
 {
 	FILE *f;
-	if((f = fopen(FTLfiles.pid, "w")) == NULL)
+	if((f = fopen(config.files.pid, "w")) == NULL)
 	{
 		log_warn("Unable to empty PID file");
 		return;

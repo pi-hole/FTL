@@ -10,7 +10,7 @@
 
 #include "../FTL.h"
 #include "http-common.h"
-#include "../config.h"
+#include "../config/config.h"
 #include "../log.h"
 #include "json_macros.h"
 // UINT_MAX
@@ -25,7 +25,7 @@ char pi_hole_extra_headers[PIHOLE_HEADERS_MAXLEN] = { 0 };
 // tyoically contain a JSON explorer
 const char* json_formatter(const cJSON *object)
 {
-	if(httpsettings.prettyJSON)
+	if(config.http.prettyJSON)
 	{
 		/* Examplary output:
 		{

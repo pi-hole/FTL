@@ -17,7 +17,7 @@
 // overTime data
 #include "../overTime.h"
 // config struct
-#include "../config.h"
+#include "../config/config.h"
 // read_setupVarsconf()
 #include "../setupVars.h"
 // get_aliasclient_list()
@@ -100,7 +100,6 @@ int api_history_clients(struct ftl_conn *api)
 	}
 
 	// Exit before processing any data if requested via config setting
-	get_privacy_level(NULL);
 	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS_CLIENTS || sendit < 0)
 	{
 		// Minimum structure is

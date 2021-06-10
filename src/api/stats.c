@@ -19,7 +19,7 @@
 // logging routines
 #include "../log.h"
 // config struct
-#include "../config.h"
+#include "../config/config.h"
 // in_auditlist()
 #include "../database/gravity-db.h"
 // overTime data
@@ -135,7 +135,6 @@ int api_stats_top_domains(bool blocked, struct ftl_conn *api)
 	}
 
 	// Exit before processing any data if requested via config setting
-	get_privacy_level(NULL);
 	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS)
 	{
 		log_debug(DEBUG_API, "Not returning top domains: Privacy level is set to %i",
@@ -290,7 +289,6 @@ int api_stats_top_clients(bool blocked, struct ftl_conn *api)
 	}
 
 	// Exit before processing any data if requested via config setting
-	get_privacy_level(NULL);
 	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS_CLIENTS)
 	{
 		log_debug(DEBUG_API, "Not returning top clients: Privacy level is set to %i",
@@ -538,7 +536,6 @@ int api_stats_recentblocked(struct ftl_conn *api)
 	}
 
 	// Exit before processing any data if requested via config setting
-	get_privacy_level(NULL);
 	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS)
 	{
 		// Minimum structure is

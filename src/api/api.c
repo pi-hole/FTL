@@ -14,7 +14,7 @@
 #include "../webserver/http-common.h"
 #include "../webserver/json_macros.h"
 #include "api.h"
-#include "../config.h"
+#include "../config/config.h"
 #include "../shmem.h"
 
 int api_handler(struct mg_connection *conn, void *ignored)

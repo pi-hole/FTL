@@ -15,10 +15,10 @@
 #include "../log.h"
 // timer_elapsed_msec()
 #include "../timers.h"
-#include "../config.h"
+#include "../config/config.h"
 #include "../datastructure.h"
 // struct config
-#include "../config.h"
+#include "../config/config.h"
 // resolveHostname()
 #include "../resolve.h"
 // killed
@@ -1104,7 +1104,7 @@ void parse_neighbor_cache(sqlite3* db)
 	}
 
 	// Remove all but the most recent IP addresses not seen for more than a certain time
-	if(config.network_expire > 0u)
+	if(config.network_expire > 0)
 	{
 		const time_t limit = time(NULL)-24*3600*config.network_expire;
 		rc = dbquery(db, "DELETE FROM network_addresses "
@@ -1470,10 +1470,10 @@ static char *getMACVendor(const char *hwaddr)
 			return strdup("virtual interface");
 
 	struct stat st;
-	if(stat(FTLfiles.macvendor_db, &st) != 0)
+	if(stat(config.files.macvendor, &st) != 0)
 	{
 		// File does not exist
-		log_debug(DEBUG_ARP, "getMACVenor(\"%s\"): %s does not exist", hwaddr, FTLfiles.macvendor_db);
+		log_debug(DEBUG_ARP, "getMACVenor(\"%s\"): %s does not exist", hwaddr, config.files.macvendor);
 		return strdup("");
 	}
 	else if(strlen(hwaddr) != 17 || strstr(hwaddr, "ip-") != NULL)
@@ -1484,7 +1484,7 @@ static char *getMACVendor(const char *hwaddr)
 	}
 
 	sqlite3 *macvendor_db = NULL;
-	int rc = sqlite3_open_v2(FTLfiles.macvendor_db, &macvendor_db, SQLITE_OPEN_READONLY, NULL);
+	int rc = sqlite3_open_v2(config.files.macvendor, &macvendor_db, SQLITE_OPEN_READONLY, NULL);
 	if( rc != SQLITE_OK ){
 		log_err("getMACVendor(\"%s\") - SQL error: %s", hwaddr, sqlite3_errstr(rc));
 		sqlite3_close(macvendor_db);
@@ -1545,10 +1545,10 @@ static char *getMACVendor(const char *hwaddr)
 void updateMACVendorRecords(sqlite3 *db)
 {
 	struct stat st;
-	if(stat(FTLfiles.macvendor_db, &st) != 0)
+	if(stat(config.files.macvendor, &st) != 0)
 	{
 		// File does not exist
-		log_debug(DEBUG_ARP, "updateMACVendorRecords(): \"%s\" does not exist", FTLfiles.macvendor_db);
+		log_debug(DEBUG_ARP, "updateMACVendorRecords(): \"%s\" does not exist", config.files.macvendor);
 		return;
 	}
 

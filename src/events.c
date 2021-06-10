@@ -15,7 +15,7 @@
 // atomic_flag_test_and_set()
 #include <stdatomic.h>
 // struct config
-#include "config.h"
+#include "config/config.h"
 // logging
 #include "log.h"
 

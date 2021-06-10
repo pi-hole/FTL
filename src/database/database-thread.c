@@ -17,7 +17,7 @@
 #include "network-table.h"
 // export_queries_to_disk()
 #include "query-table.h"
-#include "../config.h"
+#include "../config/config.h"
 #include "../log.h"
 #include "../timers.h"
 // global variable killed
@@ -42,7 +42,7 @@ static bool delete_old_queries_in_DB(sqlite3 *db)
 	// Print final message only if there is a difference
 	if((config.debug & DEBUG_DATABASE) || affected)
 		log_info("Size of %s is %.2f MB, deleted %i rows",
-		         FTLfiles.FTL_db, 1e-6*get_FTL_db_filesize(), affected);
+		         config.files.database, 1e-6*get_FTL_db_filesize(), affected);
 
 	return true;
 }
@@ -143,9 +143,9 @@ void *DB_thread(void *val)
 		if(killed)
 			break;
 
-		// Reload privacy level from pihole-FTL.conf
+		// Reload privacy level from pihole-FTL config
 		if(get_and_clear_event(RELOAD_PRIVACY_LEVEL))
-			get_privacy_level(NULL);
+			getPrivacyLevel();
 
 		// Intermediate cancellation-point
 		if(killed)

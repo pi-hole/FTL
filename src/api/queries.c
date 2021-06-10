@@ -15,7 +15,7 @@
 #include "../shmem.h"
 #include "../datastructure.h"
 // config struct
-#include "../config.h"
+#include "../config/config.h"
 // read_setupVarsconf()
 #include "../setupVars.h"
 // get_aliasclient_list()
@@ -186,7 +186,6 @@ static void querystr_finish(char *querystr)
 int api_queries(struct ftl_conn *api)
 {
 	// Exit before processing any data if requested via config setting
-	get_privacy_level(NULL);
 	if(config.privacylevel >= PRIVACY_MAXIMUM)
 	{
 		// Minimum structure is

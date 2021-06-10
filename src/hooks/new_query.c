@@ -21,7 +21,7 @@
 // converttimeval()
 #include "../timers.h"
 // struct config
-#include "../config.h"
+#include "../config/config.h"
 // logging routines
 #include "../log.h"
 // query_to_database()

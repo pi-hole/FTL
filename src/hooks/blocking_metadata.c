@@ -11,7 +11,7 @@
 #define FTL_PRIVATE
 #include "blocking_metadata.h"
 #include "iface.h"
-#include "../config.h"
+#include "../config/config.h"
 #include "../log.h"
 
 // Static blocking metadata

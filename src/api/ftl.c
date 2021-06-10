@@ -29,7 +29,7 @@
 // getgrgid()
 #include <grp.h>
 // config struct
-#include "../config.h"
+#include "../config/config.h"
 
 int api_ftl_client(struct ftl_conn *api)
 {

@@ -23,7 +23,7 @@
 // reset_aliasclient()
 #include "database/aliasclients.h"
 // config struct
-#include "config.h"
+#include "config/config.h"
 // set_event(RESOLVE_NEW_HOSTNAMES)
 #include "events.h"
 // overTime array
@@ -624,6 +624,43 @@ const char * __attribute__ ((const)) get_query_dnssec_str(const enum dnssec_stat
 		case DNSSEC_ABANDONED:
 			return "ABANDONED";
 		case DNSSEC_MAX:
+		default:
+			return "N/A";
+	}
+}
+
+const char * __attribute__ ((const)) get_refresh_hostnames_str(const enum refresh_hostnames refresh)
+{
+	switch (refresh)
+	{
+		case REFRESH_ALL:
+			return "ALL";
+		case REFRESH_IPV4_ONLY:
+			return "IPV4_ONLY";
+		case REFRESH_UNKNOWN:
+			return "UNKNOWN";
+		case REFRESH_NONE:
+			return "NONE";
+		default:
+			return "N/A";
+	}
+}
+
+const char * __attribute__ ((const)) get_blocking_mode_str(const enum blocking_mode mode)
+{
+	switch (mode)
+	{
+		case MODE_IP:
+			return "IP";
+		case MODE_NX:
+			return "NX";
+		case MODE_NULL:
+			return "NULL";
+		case MODE_IP_NODATA_AAAA:
+			return "IP_NODATA_AAAA";
+		case MODE_NODATA:
+			return "NODATA";
+		case MODE_MAX:
 		default:
 			return "N/A";
 	}

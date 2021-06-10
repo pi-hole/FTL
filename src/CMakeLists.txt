@@ -111,8 +111,6 @@ set(sources
         args.h
         capabilities.c
         capabilities.h
-        config.c
-        config.h
         daemon.c
         daemon.h
         datastructure.c
@@ -188,6 +186,8 @@ add_executable(pihole-FTL
         $<TARGET_OBJECTS:lua>
         $<TARGET_OBJECTS:tre-regex>
         $<TARGET_OBJECTS:syscalls>
+        $<TARGET_OBJECTS:tomlc99>
+        $<TARGET_OBJECTS:config>
         )
 if(STATIC STREQUAL "true")
     set_target_properties(pihole-FTL PROPERTIES LINK_SEARCH_START_STATIC ON)
@@ -248,3 +248,4 @@ add_subdirectory(dnsmasq)
 add_subdirectory(lua)
 add_subdirectory(tre-regex)
 add_subdirectory(syscalls)
+add_subdirectory(config)

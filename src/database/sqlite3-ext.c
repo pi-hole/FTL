@@ -24,7 +24,7 @@
 // logging routines
 #include "../log.h"
 // struct config
-#include "../config.h"
+#include "../config/config.h"
 
 // isMAC()
 #include "network-table.h"

@@ -12,8 +12,8 @@
 #include "../api/api.h"
 // send_http()
 #include "http-common.h"
-// struct httpsettings
-#include "../config.h"
+// struct config.http
+#include "../config/config.h"
 #include "../log.h"
 #include "webserver.h"
 // ph7_handler
@@ -71,9 +71,9 @@ static int redirect_root_handler(struct mg_connection *conn, void *input)
 	}
 
 	// 308 Permanent Redirect from http://pi.hole -> http://pi.hole/admin
-	if(host != NULL && strncmp(host, httpsettings.webdomain, host_len) == 0)
+	if(host != NULL && strncmp(host, config.http.domain, host_len) == 0)
 	{
-		mg_send_http_redirect(conn, httpsettings.webhome, 308);
+		mg_send_http_redirect(conn, config.http.paths.webhome, 308);
 		return 1;
 	}
 
@@ -98,7 +98,7 @@ static int log_http_access(const struct mg_connection *conn, const char *message
 
 void http_init(void)
 {
-	logg_web(HTTP_INFO, "Initializing HTTP server on port %s", httpsettings.port);
+	logg_web(HTTP_INFO, "Initializing HTTP server on port %s", config.http.port);
 
 	/* Initialize the library */
 	unsigned int features = MG_FEATURES_FILES |
@@ -134,18 +134,18 @@ void http_init(void)
 	//   send no referrer information.
 	// The latter four headers are set as expected by https://securityheaders.io
 	const char *options[] = {
-		"document_root", httpsettings.webroot,
-		"listening_ports", httpsettings.port,
+		"document_root", config.http.paths.webroot,
+		"listening_ports", config.http.port,
 		"decode_url", "yes",
 		"enable_directory_listing", "no",
 		"num_threads", "16",
-		"access_control_list", httpsettings.acl,
+		"access_control_list", config.http.acl,
 		"additional_header", "Content-Security-Policy: default-src 'self' 'unsafe-inline';\r\n"
 		                     "X-Frame-Options: SAMEORIGIN\r\n"
 		                     "X-Xss-Protection: 1; mode=block\r\n"
 		                     "X-Content-Type-Options: nosniff\r\n"
 		                     "Referrer-Policy: same-origin",
-//		"cgi_interpreter", httpsettings.php_location,
+//		"cgi_interpreter", config.http.php_location,
 //		"cgi_pattern", "**.php$", // ** allows the files to by anywhere inside the web root
 		"index_files", "index.html,index.htm,index.php",
 		NULL
@@ -161,7 +161,7 @@ void http_init(void)
 	{
 		log_err("Start of webserver failed!. Web interface will not be available!");
 		log_err("       Check webroot %s and listening ports %s",
-		        httpsettings.webroot, httpsettings.port);
+		        config.http.paths.webroot, config.http.port);
 		return;
 	}
 

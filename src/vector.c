@@ -10,7 +10,7 @@
 
 #include "vector.h"
 // struct config
-#include "config.h"
+#include "config/config.h"
 // logging routines
 #include "log.h"
 

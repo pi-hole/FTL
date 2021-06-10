@@ -12,7 +12,7 @@
 #include "gc.h"
 #include "shmem.h"
 #include "timers.h"
-#include "config.h"
+#include "config/config.h"
 #include "overTime.h"
 #include "database/common.h"
 #include "log.h"

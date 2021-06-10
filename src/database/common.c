@@ -14,7 +14,7 @@
 #include "message-table.h"
 #include "../shmem.h"
 // struct config
-#include "../config.h"
+#include "../config/config.h"
 // logging routines
 #include "../log.h"
 #include "../timers.h"
@@ -54,7 +54,7 @@ sqlite3* _dbopen(bool create, const char *func, const int line, const char *file
 		flags |= SQLITE_OPEN_CREATE;
 
 	sqlite3 *db = NULL;
-	int rc = sqlite3_open_v2(FTLfiles.FTL_db, &db, flags, NULL);
+	int rc = sqlite3_open_v2(config.files.database, &db, flags, NULL);
 	if( rc != SQLITE_OK )
 	{
 		log_err("Error while trying to open database: %s", sqlite3_errstr(rc));
@@ -165,7 +165,7 @@ static bool db_create(void)
 	// Explicitly set permissions to 0644
 	// 644 =            u+w       u+r       g+r       o+r
 	const mode_t mode = S_IWUSR | S_IRUSR | S_IRGRP | S_IROTH;
-	chmod_file(FTLfiles.FTL_db, mode);
+	chmod_file(config.files.database, mode);
 
 	return true;
 }
@@ -201,7 +201,7 @@ void db_init(void)
 	sqlite3_auto_extension((void (*)(void))sqlite3_pihole_extensions_init);
 
 	// Check if database exists, if not create empty database
-	if(!file_exists(FTLfiles.FTL_db))
+	if(!file_exists(config.files.database))
 	{
 		log_warn("No database file found, creating new (empty) database");
 		if (!db_create())

@@ -906,3 +906,9 @@
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0" ]]
 }
+
+@test "No config errors in pihole-FTL.toml" {
+  run bash -c 'grep "DEBUG_CONFIG: " /var/log/pihole-FTL.log | grep -c "DOES NOT EXIST"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "0" ]]
+}

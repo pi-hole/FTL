@@ -13,7 +13,7 @@
 #include "shmem.h"
 #include "overTime.h"
 #include "log.h"
-#include "config.h"
+#include "config/config.h"
 // data getter functions
 #include "datastructure.h"
 // fifologData

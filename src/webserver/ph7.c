@@ -17,8 +17,8 @@
 #include "../ph7/ph7.h"
 #include "../civetweb/civetweb.h"
 #include "ph7.h"
-// struct httpsettings
-#include "../config.h"
+// struct config.http
+#include "../config/config.h"
 // mmap
 #include <sys/mman.h>
 // stat
@@ -47,7 +47,7 @@ int ph7_handler(struct mg_connection *conn, void *cbdata)
 	const char *local_uri = req_info->local_uri_raw + 1u;
 
 	// Build full path of PHP script on our machine
-	const size_t webroot_len = strlen(httpsettings.webroot);
+	const size_t webroot_len = strlen(config.http.paths.webroot);
 	const size_t local_uri_len = strlen(local_uri); // +1 to skip the initial '/'
 	size_t buffer_len = webroot_len + local_uri_len + 2;
 
@@ -60,7 +60,7 @@ int ph7_handler(struct mg_connection *conn, void *cbdata)
 	}
 
 	char full_path[buffer_len];
-	memcpy(full_path, httpsettings.webroot, webroot_len);
+	memcpy(full_path, config.http.paths.webroot, webroot_len);
 	full_path[webroot_len] = '/';
 	memcpy(full_path + webroot_len + 1u, local_uri, local_uri_len);
 	full_path[webroot_len + local_uri_len + 1u] = '\0';
@@ -101,7 +101,7 @@ int ph7_handler(struct mg_connection *conn, void *cbdata)
 
 			mg_printf(conn, "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n"
 			          "PHP compilation error, check %s for further details.",
-			          FTLfiles.log);
+			          config.files.log);
 
 			/* Extract error log */
 			const char *zErrLog = NULL;
@@ -198,11 +198,11 @@ void init_ph7(void)
 
 	// Prepare include paths
 	// /var/www/html/admin (may be different due to user configuration)
-	const size_t webroot_len = strlen(httpsettings.webroot);
-	const size_t webhome_len = strlen(httpsettings.webhome);
+	const size_t webroot_len = strlen(config.http.paths.webroot);
+	const size_t webhome_len = strlen(config.http.paths.webhome);
 	webroot_with_home = calloc(webroot_len + webhome_len + 1u, sizeof(char));
-	strcpy(webroot_with_home, httpsettings.webroot);
-	strcpy(webroot_with_home + webroot_len, httpsettings.webhome);
+	strcpy(webroot_with_home, config.http.paths.webroot);
+	strcpy(webroot_with_home + webroot_len, config.http.paths.webhome);
 	webroot_with_home[webroot_len + webhome_len] = '\0';
 
 	// /var/www/html/admin/scripts/pi-hole/php (may be different due to user configuration)

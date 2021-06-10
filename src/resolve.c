@@ -12,7 +12,7 @@
 #include "resolve.h"
 #include "shmem.h"
 // struct config
-#include "config.h"
+#include "config/config.h"
 // sleepms()
 #include "timers.h"
 // logging routines

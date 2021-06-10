@@ -12,7 +12,7 @@
 #include "sqlite3.h"
 #include "gravity-db.h"
 // struct config
-#include "../config.h"
+#include "../config/config.h"
 // logging routines
 #include "../log.h"
 // match_regex()
@@ -100,10 +100,10 @@ void gravityDB_forked(void)
 bool gravityDB_open(void)
 {
 	struct stat st;
-	if(stat(FTLfiles.gravity_db, &st) != 0)
+	if(stat(config.files.gravity, &st) != 0)
 	{
 		// File does not exist
-		log_warn("gravityDB_open(): %s does not exist", FTLfiles.gravity_db);
+		log_warn("gravityDB_open(): %s does not exist", config.files.gravity);
 		return false;
 	}
 
@@ -113,8 +113,8 @@ bool gravityDB_open(void)
 		return true;
 	}
 
-	log_debug(DEBUG_DATABASE, "gravityDB_open(): Trying to open %s in read-only mode", FTLfiles.gravity_db);
-	int rc = sqlite3_open_v2(FTLfiles.gravity_db, &gravity_db, SQLITE_OPEN_READWRITE, NULL);
+	log_debug(DEBUG_DATABASE, "gravityDB_open(): Trying to open %s in read-only mode", config.files.gravity);
+	int rc = sqlite3_open_v2(config.files.gravity, &gravity_db, SQLITE_OPEN_READWRITE, NULL);
 	if( rc != SQLITE_OK )
 	{
 		log_err("gravityDB_open() - SQL error: %s", sqlite3_errstr(rc));

@@ -1,0 +1,218 @@
+# This file is managed by pihole-FTL
+#
+# Do not edit the file while FTL is
+# running or your changes may be overwritten
+#
+# Last update: 2021-06-10 11:36:29
+
+[dns]
+  # How should FTL reply to blocked queries?
+  # Possible values are: [ "NULL", "IP-NODATA-AAAA", "IP", "NXDOMAIN" ]
+  blockingmode = "NULL"
+
+  # Should FTL walk CNAME paths?
+  CNAMEdeepInspect = true
+
+  # Should _esni. subdomains be blocked by default?
+  blockESNI = true
+
+  # Should FTL analyze possible ECS information to obtain client IPs hidden behind NATs?
+  EDNS0ECS = true
+
+  # Should FTL hide queries made by localhost?
+  ignoreLocalhost = false
+
+  [dns.ipBlocking]
+    # Use a specific IPv4 address in IP blocking mode
+    # Possible values are: <valid IPv4 address> or empty string ("")
+    IPv4 = ""
+
+    # Use a specific IPv6 address in IP blocking mode
+    # Possible values are: <valid IPv6 address> or empty string ("")
+    IPv6 = ""
+
+  [dns.rateLimit]
+    # How many queries are permitted...
+    count = 0 ### CHANGED, default = 1000
+
+    # ..in the set interval before rate-limiting?
+    interval = 0 ### CHANGED, default = 60
+
+[resolver]
+  # Should FTL try to resolve IPv4 addresses to hostnames?
+  resolveIPv4 = false ### CHANGED, default = true
+
+  # Should FTL try to resolve IPv6 addresses to hostnames?
+  resolveIPv6 = false ### CHANGED, default = true
+
+  # Try to obtain client names from the network table
+  networkNames = false ### CHANGED, default = true
+
+  # How (and if) hourly PTR lookups should be made
+  # Possible values are: [ "IPV4_ONLY", "ALL", "UNKNOWN", "NONE" ]
+  refresh = "IPV4_ONLY"
+
+[database]
+  # Should FTL load information from the database on startup to be aware of the most recent history?
+  DBimport = true
+
+  # How much history should be imported from the database [seconds]? (max 24*60*60 = 86400)
+  maxHistory = 86400
+
+  # How long should queries be stored in the database [days]?
+  maxDBdays = 365
+
+  # How often do we store queries in FTL's database [seconds]?
+  DBinterval = 60
+
+  [database.network]
+    # Should FTL anaylze the local ARP cache?
+    parseARP = false ### CHANGED, default = true
+
+    # How long should IP addresses be kept in the network_addresses table [days]?
+    expire = 365
+
+[http]
+  # Does local clients need to authenticate to access the API?
+  localAPIauth = true
+
+  # Should FTL insert extra spaces to prettify the API output?
+  prettyJSON = false
+
+  # How long should a session be considered valid after login [seconds]?
+  sessionTimeout = 300
+
+  # On which domain is the web interface served?
+  # Possible values are: <valid domain>
+  domain = "pi.hole"
+
+  # Webserver access control list.
+  # Possible values are: <valid ACL>
+  acl = "+0.0.0.0/0"
+
+  # Ports to be used by the webserver
+  # Possible values are: list of <[ip_address:]port>
+  port = "8080,[::]:8080"
+
+  [http.paths]
+    # Server root on the host
+    # Possible values are: <valid path>
+    webroot = "/var/www/html"
+
+    # From which sub-directory is the web interface served from?
+    # Possible values are: <valid subpath>, both slashes are needed!
+    webhome = "/admin/"
+
+[files]
+  # The location of FTL's log file
+  # Possible values are: <any writable file>
+  log = "/var/log/pihole-FTL.log"
+
+  # The location of FTL's PID file
+  # Possible values are: <any writable file>
+  pid = "/run/pihole-FTL.pid"
+
+  # The location of FTL's long-term database
+  # Possible values are: <any FTL database>
+  database = "/etc/pihole/pihole-FTL.db"
+
+  # The location of Pi-hole's gravity database
+  # Possible values are: <any gravity database>
+  gravity = "/etc/pihole/gravity.db"
+
+  # The database containing MAC -> Vendor information for the network table
+  # Possible values are: <any macvendor database>
+  macvendor = "/etc/pihole/macvendor.db"
+
+  # The config file of Pi-hole
+  # Possible values are: <any setupVars file>
+  setupVars = "/etc/pihole/setupVars.conf"
+
+  # The log file used by the webserver
+  # Possible values are: <any writable database>
+  HTTPinfo = "/var/log/pihole/HTTP_info.log"
+
+  # The log file used by the dynamic interpreter PH7
+  # Possible values are: <any writable file>
+  PH7error = "/var/log/pihole/PH7.log"
+
+[misc]
+  # Privacy level
+  privacyLevel = 0
+
+  # Set niceness of pihole-FTL (can be disabled by setting to -999)
+  nice = -10
+
+  # Artificially delay FTL's startup (0 to 300 seconds)
+  delayStartup = 0
+
+[debug]
+  # Temporarily enable all debug flags
+  all = true ### CHANGED, default = false
+
+  # Enable extra logging of database actions
+  database = false
+
+  # Enable extra logging of detected interfaces
+  networking = false
+
+  # Enable extra logging of shared memory lock actions
+  locks = false
+
+  # Print extensive query information
+  queries = false
+
+  # Print flags of queries received by the DNS hooks
+  flags = false
+
+  # Print information about shared memory buffers
+  shmem = false
+
+  # Print information about garbage collection
+  gc = false
+
+  # Print information about ARP table processing
+  arp = false
+
+  # Enable extra logging of regex matching details
+  regex = false
+
+  # Enable extra logging of API activities
+  api = false
+
+  # Print information about overTime memory operations
+  overtime = false
+
+  # Enable extra logging of query status changes
+  status = false
+
+  # Print information about capabilities granted to the pihole-FTL process
+  caps = false
+
+  # Enable extra logging in dnsmasq's log routine
+  dnsmasq_lines = false
+
+  # Print vector operation details
+  vectors = false
+
+  # Extensive information about hostname resolution like which DNS servers are used
+  resolver = false
+
+  # Print EDNS(0) debugging information
+  edns0 = false
+
+  # Enable extra client detail logging
+  clients = false
+
+  # Print aliasclient details
+  aliasclients = false
+
+  # Log information about processed internal events
+  events = false
+
+  # Enable logging of script helper activity
+  helper = false
+
+  # Print config parsing details
+  config = false
+

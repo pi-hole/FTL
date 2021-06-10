@@ -145,6 +145,8 @@ const char *get_query_type_str(const enum query_type type, const queriesData *qu
 const char *get_query_status_str(const enum query_status status) __attribute__ ((const));
 const char *get_query_dnssec_str(const enum dnssec_status dnssec) __attribute__ ((const));
 const char *get_query_reply_str(const enum reply_type query) __attribute__ ((const));
+const char *get_refresh_hostnames_str(const enum refresh_hostnames refresh) __attribute__ ((const));
+const char *get_blocking_mode_str(const enum blocking_mode mode) __attribute__ ((const));
 
 // Pointer getter functions
 #define getQuery(queryID, checkMagic) _getQuery(queryID, checkMagic, __LINE__, __FUNCTION__, __FILE__)

@@ -11,7 +11,7 @@
 #include "FTL.h"
 #include "overTime.h"
 #include "shmem.h"
-#include "config.h"
+#include "config/config.h"
 #include "log.h"
 // data getter functions
 #include "datastructure.h"

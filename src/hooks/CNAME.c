@@ -15,7 +15,7 @@
 // struct queriesData, etc.
 #include "../datastructure.h"
 // struct config
-#include "../config.h"
+#include "../config/config.h"
 // logging routines
 #include "../log.h"
 // lock_shm(), etc.
@@ -28,7 +28,7 @@
 bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const char* file, const int line)
 {
 	// Does the user want to skip deep CNAME inspection?
-	if(!config.cname_inspection)
+	if(!config.cname_deep_inspection)
 	{
 		return false;
 	}

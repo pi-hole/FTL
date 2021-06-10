@@ -13,9 +13,9 @@
 #include "query-table.h"
 #include "sqlite3.h"
 #include "../log.h"
-#include "../config.h"
+#include "../config/config.h"
 #include "../enums.h"
-#include "../config.h"
+#include "../config/config.h"
 // counters
 #include "../shmem.h"
 #include "../overTime.h"
@@ -234,7 +234,7 @@ bool attach_disk_database(const char **message)
 		return false;
 	}
 	// Bind path to prepared index
-	if((rc = sqlite3_bind_text(stmt, 1, FTLfiles.FTL_db, -1, SQLITE_STATIC)) != SQLITE_OK)
+	if((rc = sqlite3_bind_text(stmt, 1, config.files.database, -1, SQLITE_STATIC)) != SQLITE_OK)
 	{
 		log_err("attach_disk_database(): Failed to bind path: %s",
 		        sqlite3_errstr(rc));

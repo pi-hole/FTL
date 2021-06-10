@@ -13,7 +13,7 @@
 // struct queriesData, etc.
 #include "../datastructure.h"
 // struct config
-#include "../config.h"
+#include "../config/config.h"
 // logging routines
 #include "../log.h"
 // lock_shm(), addstr(), etc.

@@ -10,7 +10,7 @@
 
 #define FTL_PRIVATE
 #include "check_blocking.h"
-#include "../config.h"
+#include "../config/config.h"
 #include "../log.h"
 #include "../datastructure.h"
 // force_next_DNS_reply

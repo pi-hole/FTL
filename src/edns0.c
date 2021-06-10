@@ -14,7 +14,7 @@
 #include "FTL.h"
 #include "log.h"
 #include "edns0.h"
-#include "config.h"
+#include "config/config.h"
 #include "datastructure.h"
 #include "shmem.h"
 

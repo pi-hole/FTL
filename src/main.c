@@ -13,7 +13,7 @@
 #include "log.h"
 #include "setupVars.h"
 #include "args.h"
-#include "config.h"
+#include "config/config.h"
 #include "database/common.h"
 #include "main.h"
 #include "signals.h"
@@ -28,13 +28,13 @@
 // init_memory_database(), import_queries_from_disk()
 #include "database/query-table.h"
 
-char * username;
+char *username;
 bool needGC = false;
 bool needDBGC = false;
 bool startup = true;
 volatile int exit_code = EXIT_SUCCESS;
 
-int main (int argc, char* argv[])
+int main (int argc, char *argv[])
 {
 	// Get user pihole-FTL is running as
 	// We store this in a global variable
@@ -66,8 +66,8 @@ int main (int argc, char* argv[])
 		return EXIT_FAILURE;
 	}
 
-	// Process pihole-FTL.conf
-	read_FTLconf();
+	// Process FTL config file
+	readFTLconf();
 
 	// pihole-FTL should really be run as user "pihole" to not mess up with file permissions
 	// print warning otherwise

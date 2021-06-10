@@ -14,7 +14,7 @@
 // struct queriesData, etc.
 #include "../datastructure.h"
 // struct config
-#include "../config.h"
+#include "../config/config.h"
 // logging routines
 #include "../log.h"
 // lock_shm(), etc.
@@ -41,10 +41,10 @@ void FTL_dnsmasq_reload(void)
 	// cache and reread all blocking lists
 	// Passing NULL to this function means it has to open the config file on
 	// its own behalf (on initial reading, the config file is already opened)
-	get_blocking_mode(NULL);
+	getBlockingMode();
 
 	// Reread pihole-FTL.conf to see which debugging flags are set
-	read_debuging_settings(NULL);
+	readDebugSettings();
 
 	// Gravity database updates
 	// - (Re-)open gravity database connection

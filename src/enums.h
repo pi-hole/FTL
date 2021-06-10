@@ -75,7 +75,8 @@ enum blocking_mode {
 	MODE_NX,
 	MODE_NULL,
 	MODE_IP_NODATA_AAAA,
-	MODE_NODATA
+	MODE_NODATA,
+	MODE_MAX
 } __attribute__ ((packed));
 
 enum regex_type {
@@ -124,28 +125,29 @@ enum domain_client_status {
 } __attribute__ ((packed));
 
 enum debug_flag {
-	DEBUG_DATABASE      = (1 << 0),  /* 00000000 00000000 00000000 00000001 */
-	DEBUG_NETWORKING    = (1 << 1),  /* 00000000 00000000 00000000 00000010 */
-	DEBUG_LOCKS         = (1 << 2),  /* 00000000 00000000 00000000 00000100 */
-	DEBUG_QUERIES       = (1 << 3),  /* 00000000 00000000 00000000 00001000 */
-	DEBUG_FLAGS         = (1 << 4),  /* 00000000 00000000 00000000 00010000 */
-	DEBUG_SHMEM         = (1 << 5),  /* 00000000 00000000 00000000 00100000 */
-	DEBUG_GC            = (1 << 6),  /* 00000000 00000000 00000000 01000000 */
-	DEBUG_ARP           = (1 << 7),  /* 00000000 00000000 00000000 10000000 */
-	DEBUG_REGEX         = (1 << 8),  /* 00000000 00000000 00000001 00000000 */
-	DEBUG_API           = (1 << 9),  /* 00000000 00000000 00000010 00000000 */
-	DEBUG_OVERTIME      = (1 << 10), /* 00000000 00000000 00000100 00000000 */
-	DEBUG_STATUS        = (1 << 11), /* 00000000 00000000 00001000 00000000 */
-	DEBUG_CAPS          = (1 << 12), /* 00000000 00000000 00010000 00000000 */
-	DEBUG_DNSMASQ_LINES = (1 << 13), /* 00000000 00000000 00100000 00000000 */
-	DEBUG_VECTORS       = (1 << 14), /* 00000000 00000000 01000000 00000000 */
-	DEBUG_RESOLVER      = (1 << 15), /* 00000000 00000000 10000000 00000000 */
-	DEBUG_EDNS0         = (1 << 16), /* 00000000 00000001 00000000 00000000 */
-	DEBUG_CLIENTS       = (1 << 17), /* 00000000 00000010 00000000 00000000 */
-	DEBUG_ALIASCLIENTS  = (1 << 18), /* 00000000 00000100 00000000 00000000 */
-	DEBUG_EVENTS        = (1 << 19), /* 00000000 00001000 00000000 00000000 */
-	DEBUG_HELPER        = (1 << 20), /* 00000000 00010000 00000000 00000000 */
-	DEBUG_EXTRA         = (1 << 21), /* 00000000 00100000 00000000 00000000 */
+	DEBUG_DATABASE      = (1 << 0),
+	DEBUG_NETWORKING    = (1 << 1),
+	DEBUG_LOCKS         = (1 << 2),
+	DEBUG_QUERIES       = (1 << 3),
+	DEBUG_FLAGS         = (1 << 4),
+	DEBUG_SHMEM         = (1 << 5),
+	DEBUG_GC            = (1 << 6),
+	DEBUG_ARP           = (1 << 7),
+	DEBUG_REGEX         = (1 << 8),
+	DEBUG_API           = (1 << 9),
+	DEBUG_OVERTIME      = (1 << 10),
+	DEBUG_STATUS        = (1 << 11),
+	DEBUG_CAPS          = (1 << 12),
+	DEBUG_DNSMASQ_LINES = (1 << 13),
+	DEBUG_VECTORS       = (1 << 14),
+	DEBUG_RESOLVER      = (1 << 15),
+	DEBUG_EDNS0         = (1 << 16),
+	DEBUG_CLIENTS       = (1 << 17),
+	DEBUG_ALIASCLIENTS  = (1 << 18),
+	DEBUG_EVENTS        = (1 << 19),
+	DEBUG_HELPER        = (1 << 20),
+	DEBUG_CONFIG        = (1 << 21),
+	DEBUG_EXTRA         = (1 << 22),
 	// DEBUG_EXTRA has always to be the last option
 } __attribute__ ((packed));
 

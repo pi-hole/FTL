@@ -10,7 +10,7 @@
 
 #include "FTL.h"
 #include "files.h"
-#include "config.h"
+#include "config/config.h"
 #include "setupVars.h"
 #include "log.h"
 
@@ -63,7 +63,7 @@ bool file_exists(const char *filename)
 
 bool get_database_stat(struct stat *st)
 {
-	return stat(FTLfiles.FTL_db, st) != 0;
+	return stat(config.files.database, st) != 0;
 }
 
 unsigned long long get_FTL_db_filesize(void)

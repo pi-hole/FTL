@@ -47,8 +47,8 @@ chown pihole:pihole /etc/pihole/pihole-FTL.db
 # Prepare setupVars.conf
 echo "BLOCKING_ENABLED=true" > /etc/pihole/setupVars.conf
 
-# Prepare pihole-FTL.conf
-echo -e "DEBUG_ALL=true\nRESOLVE_IPV4=no\nRESOLVE_IPV6=no" > /etc/pihole/pihole-FTL.conf
+# Prepare pihole-FTL.toml
+cp test/pihole-FTL.toml /etc/pihole/pihole-FTL.toml
 
 # Prepare dnsmasq.conf
 echo -e "log-queries\nlog-facility=/var/log/pihole.log" > /etc/dnsmasq.conf

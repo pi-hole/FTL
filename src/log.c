@@ -12,7 +12,7 @@
 #include "version.h"
 // is_fork()
 #include "daemon.h"
-#include "config.h"
+#include "config/config.h"
 #include "log.h"
 // global variable username
 #include "main.h"
@@ -40,14 +40,14 @@ void init_FTL_log(const char *name)
 	getLogFilePath();
 
 	// Open the log file in append/create mode
-	if(FTLfiles.log != NULL)
+	if(config.files.log != NULL)
 	{
 		FILE *logfile = NULL;
-		if((logfile = fopen(FTLfiles.log, "a+")) == NULL)
+		if((logfile = fopen(config.files.log, "a+")) == NULL)
 		{
 			syslog(LOG_ERR, "Opening of FTL\'s log file failed, using syslog instead!");
-			printf("ERR: Opening of FTL log (%s) failed!\n",FTLfiles.log);
-			FTLfiles.log = NULL;
+			printf("ERR: Opening of FTL log (%s) failed!\n",config.files.log);
+			config.files.log = NULL;
 		}
 
 		// Close log file
@@ -104,6 +104,7 @@ void get_timestr(char * const timestring, const time_t timein, const bool millis
 
 static const char *priostr(const int priority, const enum debug_flag flag)
 {
+	const char *name, *desc;
 	switch (priority)
 	{
 		// system is unusable
@@ -129,63 +130,114 @@ static const char *priostr(const int priority, const enum debug_flag flag)
 			return "INFO";
 		// debug-level messages
 		case LOG_DEBUG:
-			return debugstr(flag);
+			debugstr(flag, &name, &desc);
+			return name;
 		// invalid option
 		default:
 			return "UNKNOWN";
 	}
 }
 
-const char * __attribute__ ((const)) debugstr(const enum debug_flag flag)
+void debugstr(const enum debug_flag flag, const char **name, const char **desc)
 {
 	switch (flag)
 	{
 		case DEBUG_DATABASE:
-			return "DEBUG_DATABASE";
+			*name = "DEBUG_DATABASE";
+			*desc = "Enable extra logging of database actions";
+			return;
 		case DEBUG_NETWORKING:
-			return "DEBUG_NETWORKING";
+			*name = "DEBUG_NETWORKING";
+			*desc = "Enable extra logging of detected interfaces";
+			return;
 		case DEBUG_LOCKS:
-			return "DEBUG_LOCKS";
+			*name = "DEBUG_LOCKS";
+			*desc = "Enable extra logging of shared memory lock actions";
+			return;
 		case DEBUG_QUERIES:
-			return "DEBUG_QUERIES";
+			*name = "DEBUG_QUERIES";
+			*desc = "Print extensive query information";
+			return;
 		case DEBUG_FLAGS:
-			return "DEBUG_FLAGS";
+			*name = "DEBUG_FLAGS";
+			*desc = "Print flags of queries received by the DNS hooks";
+			return;
 		case DEBUG_SHMEM:
-			return "DEBUG_SHMEM";
+			*name = "DEBUG_SHMEM";
+			*desc = "Print information about shared memory buffers";
+			return;
 		case DEBUG_GC:
-			return "DEBUG_GC";
+			*name = "DEBUG_GC";
+			*desc = "Print information about garbage collection";
+			return;
 		case DEBUG_ARP:
-			return "DEBUG_ARP";
+			*name = "DEBUG_ARP";
+			*desc = "Print information about ARP table processing";
+			return;
 		case DEBUG_REGEX:
-			return "DEBUG_REGEX";
+			*name = "DEBUG_REGEX";
+			*desc = "Enable extra logging of regex matching details";
+			return;
 		case DEBUG_API:
-			return "DEBUG_API";
+			*name = "DEBUG_API";
+			*desc = "Enable extra logging of API activities";
+			return;
 		case DEBUG_OVERTIME:
-			return "DEBUG_OVERTIME";
+			*name = "DEBUG_OVERTIME";
+			*desc = "Print information about overTime memory operations";
+			return;
 		case DEBUG_STATUS:
-			return "DEBUG_STATUS";
+			*name = "DEBUG_STATUS";
+			*desc = "Enable extra logging of query status changes";
+			return;
 		case DEBUG_CAPS:
-			return "DEBUG_CAPS";
+			*name = "DEBUG_CAPS";
+			*desc = "Print information about capabilities granted to the pihole-FTL process";
+			return;
 		case DEBUG_DNSMASQ_LINES:
-			return "DEBUG_DNSMASQ_LINES"; // This is a pseudo debug flag
+			*name = "DEBUG_DNSMASQ_LINES"; // This is a pseudo debug flag
+			*desc = "Enable extra logging in dnsmasq's log routine";
+			return;
 		case DEBUG_VECTORS:
-			return "DEBUG_VECTORS";
+			*name = "DEBUG_VECTORS";
+			*desc = "Print vector operation details";
+			return;
 		case DEBUG_RESOLVER:
-			return "DEBUG_RESOLVER";
+			*name = "DEBUG_RESOLVER";
+			*desc = "Extensive information about hostname resolution like which DNS servers are used";
+			return;
 		case DEBUG_EDNS0:
-			return "DEBUG_EDNS0";
+			*name = "DEBUG_EDNS0";
+			*desc = "Print EDNS(0) debugging information";
+			return;
 		case DEBUG_CLIENTS:
-			return "DEBUG_CLIENTS";
+			*name = "DEBUG_CLIENTS";
+			*desc = "Enable extra client detail logging";
+			return;
 		case DEBUG_ALIASCLIENTS:
-			return "DEBUG_ALIASCLIENTS";
+			*name = "DEBUG_ALIASCLIENTS";
+			*desc = "Print aliasclient details";
+			return;
 		case DEBUG_EVENTS:
-			return "DEBUG_EVENTS";
+			*name = "DEBUG_EVENTS";
+			*desc = "Log information about processed internal events";
+			return;
 		case DEBUG_HELPER:
-			return "DEBUG_HELPER";
+			*name = "DEBUG_HELPER";
+			*desc = "Enable logging of script helper activity";
+			return;
 		case DEBUG_EXTRA:
-			return "DEBUG_EXTRA";
+			*name = "DEBUG_EXTRA";
+			*desc = "Special debug flag that may be used for debugging specific issues";
+			return;
+		case DEBUG_CONFIG:
+			*name = "DEBUG_CONFIG";
+			*desc = "Print config parsing details";
+			return;
 		default:
-			return "DEBUG_ANY";
+			*name = "DEBUG_ANY";
+			*desc = "N/A";
+			return;
 	}
 }
 
@@ -243,10 +295,10 @@ void __attribute__ ((format (gnu_printf, 3, 4))) _FTL_log(const int priority, co
 	// Print to log file or syslog
 	if(print_log)
 	{
-		if(FTLfiles.log != NULL)
+		if(config.files.log != NULL)
 		{
 			// Open log file
-			FILE *logfile = fopen(FTLfiles.log, "a+");
+			FILE *logfile = fopen(config.files.log, "a+");
 
 			// Write to log file
 			if(logfile != NULL)
@@ -288,13 +340,13 @@ static FILE *open_web_log(const enum web_code code)
 	switch (code)
 	{
 	case HTTP_INFO:
-		file = httpsettings.log_info;
+		file = config.files.http_info;
 		break;
 	case PH7_ERROR:
-		file = httpsettings.log_error;
+		file = config.files.ph7_error;
 		break;
 	default:
-		file = httpsettings.log_error;
+		file = config.files.ph7_error;
 		break;
 	}
 
@@ -378,8 +430,8 @@ void FTL_log_helper(const unsigned char n, ...)
 			free(arg[i]);
 }
 
-void format_memory_size(char * const prefix, const unsigned long long int bytes,
-                        double * const formated)
+void format_memory_size(char* const prefix, const unsigned long long int bytes,
+                        double* const formated)
 {
 	unsigned int i;
 	*formated = bytes;
@@ -390,7 +442,7 @@ void format_memory_size(char * const prefix, const unsigned long long int bytes,
 			break;
 		*formated /= 1e3;
 	}
-	const char* prefixes[8] = { " ", "K", "M", "G", "T", "P", "E", "?" };
+	const char *prefixes[8] = { " ", "K", "M", "G", "T", "P", "E", "?" };
 	// Chose matching SI prefix
 	strcpy(prefix, prefixes[i]);
 }

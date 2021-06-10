@@ -14,7 +14,7 @@
 // global counters variable
 #include "../shmem.h"
 // global config variable
-#include "../config.h"
+#include "../config/config.h"
 // logging routines
 #include "../log.h"
 // getAliasclientIDfromIP()

@@ -15,8 +15,8 @@
 #include "dhcp-discover.h"
 // format_time()
 #include "log.h"
-// read_FTLconf()
-#include "config.h"
+// readFTLconf()
+#include "config/config.h"
 // cli_bold(), etc.
 #include "args.h"
 
@@ -605,7 +605,7 @@ int run_dhcp_discover(void)
 	// Disable terminal output during config config file parsing
 	log_ctrl(false, false);
 	// Process pihole-FTL.conf to get gravity.db
-	read_FTLconf();
+	readFTLconf();
 	// Only print to terminal, disable log file
 	log_ctrl(false, true);
 

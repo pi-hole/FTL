@@ -27,7 +27,7 @@ const char *get_FTL_version(void) __attribute__ ((malloc));
 void log_FTL_version(bool crashreport);
 double double_time(void);
 void get_timestr(char * const timestring, const time_t timein, const bool millis);
-const char *debugstr(const enum debug_flag flag) __attribute__ ((const));
+void debugstr(const enum debug_flag flag, const char **name, const char **desc);
 void logg_web(enum web_code code, const char *format, ...) __attribute__ ((format (gnu_printf, 2, 3)));
 const char *get_ordinal_suffix(unsigned int number) __attribute__ ((const));
 

@@ -10,7 +10,7 @@
 
 #define FTL_PRIVATE
 #include "print_flags.h"
-#include "../config.h"
+#include "../config/config.h"
 #include "../log.h"
 // force_next_DNS_reply
 #include "blocking_metadata.h"

@@ -10,7 +10,7 @@
 
 #include "FTL.h"
 #include "log.h"
-#include "config.h"
+#include "config/config.h"
 #include "setupVars.h"
 
 int setupVarsElements = 0;
@@ -19,7 +19,7 @@ char ** setupVarsArray = NULL;
 void check_setupVarsconf(void)
 {
 	FILE *setupVarsfp;
-	if((setupVarsfp = fopen(FTLfiles.setupVars, "r")) == NULL)
+	if((setupVarsfp = fopen(config.files.setupVars, "r")) == NULL)
 	{
 		log_warn("Opening of setupVars.conf failed: %s Make sure it exists and is readable",
 		         strerror(errno));
@@ -70,7 +70,7 @@ size_t linebuffersize = 0;
 char * read_setupVarsconf(const char *key)
 {
 	FILE *setupVarsfp;
-	if((setupVarsfp = fopen(FTLfiles.setupVars, "r")) == NULL)
+	if((setupVarsfp = fopen(config.files.setupVars, "r")) == NULL)
 	{
 		log_warn("Reading setupVars.conf failed: %s", strerror(errno));
 		return NULL;
