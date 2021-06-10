@@ -36,8 +36,8 @@ void setDefaults(void)
 	defaults.DBimport = true;
 	defaults.parse_arp_cache = true;
 	defaults.cname_deep_inspection = true;
-	defaults.block_esni = true;
-	defaults.names_from_netdb = true;
+	defaults.blockESNI = true;
+	defaults.networkNames = true;
 	defaults.edns0_ecs = true;
 
 	// enums
@@ -52,7 +52,7 @@ void setDefaults(void)
 	defaults.network_expire = defaults.maxDBdays;
 
 	// unsigned integer
-	defaults.maxlogage = MAXLOGAGE*3600;
+	defaults.maxHistory = MAXLOGAGE*3600;
 	defaults.delay_startup = 0;
 	defaults.DBinterval = 60;
 
@@ -67,9 +67,9 @@ void setDefaults(void)
 	memset(&defaults.reply_addr.v6, 0, sizeof(config.reply_addr.v6));
 
 	// struct http
-	defaults.http.api_auth_for_localhost = true;
+	defaults.http.localAPIauth = true;
 	defaults.http.prettyJSON = false;
-	defaults.http.session_timeout = 300;
+	defaults.http.sessionTimeout = 300;
 	defaults.http.domain = (char*)"pi.hole";
 	defaults.http.acl = (char*)"+0.0.0.0/0";
 	defaults.http.port = (char*)"8080,[::]:8080";

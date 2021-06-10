@@ -72,7 +72,7 @@ void *GC_thread(void *val)
 			lock_shm();
 
 			// Get minimum timestamp to keep (this can be set with MAXLOGAGE)
-			time_t mintime = (now - GCdelay) - config.maxlogage;
+			time_t mintime = (now - GCdelay) - config.maxHistory;
 
 			// Align to the start of the next hour. This will also align with
 			// the oldest overTime interval after GC is done.

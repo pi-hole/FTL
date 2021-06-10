@@ -182,7 +182,7 @@ const char *readFTLlegacy(void)
 	if(buffer != NULL && sscanf(buffer, "%f", &fvalue))
 	{
 		if(fvalue >= 0.0f && fvalue <= 1.0f*MAXLOGAGE)
-			config.maxlogage = (int)(fvalue * 3600);
+			config.maxHistory = (int)(fvalue * 3600);
 	}
 
 	// PRIVACYLEVEL
@@ -256,7 +256,7 @@ const char *readFTLlegacy(void)
 	// BLOCK_ESNI
 	// defaults to: true
 	buffer = parseFTLconf(fp, "BLOCK_ESNI");
-	parseBool(buffer, &config.block_esni);
+	parseBool(buffer, &config.blockESNI);
 
 	// WEBROOT
 	getPath(fp, "WEBROOT", &config.http.paths.webroot);
@@ -302,7 +302,7 @@ const char *readFTLlegacy(void)
 	// API_AUTH_FOR_LOCALHOST
 	// defaults to: true
 	buffer = parseFTLconf(fp, "API_AUTH_FOR_LOCALHOST");
-	parseBool(buffer, &config.http.api_auth_for_localhost);
+	parseBool(buffer, &config.http.localAPIauth);
 
 	// API_SESSION_TIMEOUT
 	// How long should a session be considered valid after login?
@@ -311,7 +311,7 @@ const char *readFTLlegacy(void)
 
 	value = 0;
 	if(buffer != NULL && sscanf(buffer, "%i", &value) && value > 0)
-		config.http.session_timeout = value;
+		config.http.sessionTimeout = value;
 
 	// API_PRETTY_JSON
 	// defaults to: false
@@ -359,7 +359,7 @@ const char *readFTLlegacy(void)
 	// device. This behavior can be disabled using NAMES_FROM_NETDB=false
 	// defaults to: true
 	buffer = parseFTLconf(fp, "NAMES_FROM_NETDB");
-	parseBool(buffer, &config.names_from_netdb);
+	parseBool(buffer, &config.networkNames);
 
 	// EDNS0_ECS
 	// Should we overwrite the query source when client information is

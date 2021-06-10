@@ -217,7 +217,7 @@ bool _FTL_check_blocking(int queryID, int domainID, int clientID, const char **b
 	}
 
 	// Check blacklist (exact + regex) and gravity for _esni.domain if enabled (defaulting to true)
-	if(config.block_esni && !query->flags.allowed && !blockDomain && strncasecmp(domainstr, "_esni.", 6u) == 0)
+	if(config.blockESNI && !query->flags.allowed && !blockDomain && strncasecmp(domainstr, "_esni.", 6u) == 0)
 	{
 		blockDomain = check_domain_blocked(domainstr + 6u, clientID, client, query, dns_cache, blockingreason, &new_status);
 

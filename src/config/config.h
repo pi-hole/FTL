@@ -48,8 +48,8 @@ typedef struct {
 	bool DBexport; // set in database/common.c
 	bool parse_arp_cache;
 	bool cname_deep_inspection;
-	bool block_esni;
-	bool names_from_netdb;
+	bool blockESNI;
+	bool networkNames;
 	bool edns0_ecs;
 	enum privacy_level privacylevel;
 	enum blocking_mode blockingmode;
@@ -58,9 +58,9 @@ typedef struct {
 	int nice;
 	int maxDBdays;
 	int network_expire;
-	unsigned int maxlogage;
+	unsigned int maxHistory;
 	unsigned int delay_startup;
-	unsigned int DBinterval;// +
+	unsigned int DBinterval;
 	unsigned int dns_port; // set in fork_and_bind.c
 	struct {
 		unsigned int count;
@@ -73,9 +73,9 @@ typedef struct {
 		struct in6_addr v6;
 	} reply_addr;
 	struct {
-		bool api_auth_for_localhost;
+		bool localAPIauth;
 		bool prettyJSON;
-		unsigned int session_timeout;
+		unsigned int sessionTimeout;
 		char *domain;
 		char *acl;
 		char *port;

@@ -48,7 +48,7 @@ bool writeFTLtoml(void)
 	const char *defblockingmode = get_blocking_mode_str(defaults.blockingmode);
 	catTOMLstring(fp, 1, "blockingmode", "How should FTL reply to blocked queries?", "[ \"NULL\", \"IP-NODATA-AAAA\", \"IP\", \"NXDOMAIN\" ]", blockingmode, defblockingmode);
 	catTOMLbool(fp, 1, "CNAMEdeepInspect", "Should FTL walk CNAME paths?", config.cname_deep_inspection, defaults.cname_deep_inspection);
-	catTOMLbool(fp, 1, "blockESNI", "Should _esni. subdomains be blocked by default?", config.block_esni, defaults.block_esni);
+	catTOMLbool(fp, 1, "blockESNI", "Should _esni. subdomains be blocked by default?", config.blockESNI, defaults.blockESNI);
 	catTOMLbool(fp, 1, "EDNS0ECS", "Should FTL analyze possible ECS information to obtain client IPs hidden behind NATs?", config.edns0_ecs, defaults.edns0_ecs);
 	catTOMLbool(fp, 1, "ignoreLocalhost", "Should FTL hide queries made by localhost?", config.ignore_localhost, defaults.ignore_localhost);
 
@@ -80,7 +80,7 @@ bool writeFTLtoml(void)
 	catTOMLbool(fp, 1, "resolveIPv6", "Should FTL try to resolve IPv6 addresses to hostnames?", config.resolveIPv6, defaults.resolveIPv6);
 	const char *refresh = get_refresh_hostnames_str(config.refresh_hostnames);
 	const char *refresh_default = get_refresh_hostnames_str(defaults.refresh_hostnames);
-	catTOMLbool(fp, 1, "networkNames", "Try to obtain client names from the network table", config.names_from_netdb, defaults.names_from_netdb);
+	catTOMLbool(fp, 1, "networkNames", "Try to obtain client names from the network table", config.networkNames, defaults.networkNames);
 	catTOMLstring(fp, 1, "refresh", "How (and if) hourly PTR lookups should be made", "[ \"IPV4_ONLY\", \"ALL\", \"UNKNOWN\", \"NONE\" ]", refresh, refresh_default);
 
 
@@ -88,7 +88,7 @@ bool writeFTLtoml(void)
 	// [database] section
 	catTOMLsection(fp, 0, "database");
 	catTOMLbool(fp, 1, "DBimport", "Should FTL load information from the database on startup to be aware of the most recent history?", config.DBimport, defaults.DBimport);
-	catTOMLuint(fp, 1, "maxHistory", "How much history should be imported from the database [seconds]? (max 24*60*60 = 86400)", config.maxlogage, defaults.maxlogage);
+	catTOMLuint(fp, 1, "maxHistory", "How much history should be imported from the database [seconds]? (max 24*60*60 = 86400)", config.maxHistory, defaults.maxHistory);
 	catTOMLint(fp, 1, "maxDBdays", "How long should queries be stored in the database [days]?", config.maxDBdays, defaults.maxDBdays);
 	catTOMLint(fp, 1, "DBinterval", "How often do we store queries in FTL's database [seconds]?", config.DBinterval, defaults.DBinterval);
 
@@ -103,9 +103,9 @@ bool writeFTLtoml(void)
 
 	// [http] section
 	catTOMLsection(fp, 0, "http");
-	catTOMLbool(fp, 1, "localAPIauth", "Does local clients need to authenticate to access the API?", config.http.api_auth_for_localhost, defaults.http.api_auth_for_localhost);
+	catTOMLbool(fp, 1, "localAPIauth", "Does local clients need to authenticate to access the API?", config.http.localAPIauth, defaults.http.localAPIauth);
 	catTOMLbool(fp, 1, "prettyJSON", "Should FTL insert extra spaces to prettify the API output?", config.http.prettyJSON, defaults.http.prettyJSON);
-	catTOMLuint(fp, 1, "sessionTimeout", "How long should a session be considered valid after login [seconds]?", config.http.session_timeout, defaults.http.session_timeout);
+	catTOMLuint(fp, 1, "sessionTimeout", "How long should a session be considered valid after login [seconds]?", config.http.sessionTimeout, defaults.http.sessionTimeout);
 	catTOMLstring(fp, 1, "domain", "On which domain is the web interface served?", "<valid domain>", config.http.domain, defaults.http.domain);
 //	Webserver access control list
 //	Allows restrictions to be put on the list of IP addresses which have access to our web server.

@@ -335,7 +335,7 @@ bool import_queries_from_disk(void)
 	// Get time stamp 24 hours (or what was configured) in the past
 	bool okay = false;
 	const double now = double_time();
-	const double mintime = now - config.maxlogage;
+	const double mintime = now - config.maxHistory;
 	const char *querystr = "INSERT INTO queries SELECT * FROM disk.queries WHERE timestamp >= ?";
 
 	// Attach disk database

@@ -315,7 +315,7 @@ static size_t resolveAndAddHostname(size_t ippos, size_t oldnamepos)
 
 	// If no hostname was found, try to obtain hostname from the network table
 	// This may be disabled due to a user setting
-	if(strlen(newname) == 0 && config.names_from_netdb)
+	if(strlen(newname) == 0 && config.networkNames)
 	{
 		free(newname);
 		newname = getNameFromIP(NULL, ipaddr);
