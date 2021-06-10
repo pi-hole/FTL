@@ -158,57 +158,6 @@ static int domain_no_rebind(char *domain)
   return 0;
 }
 
-size_t make_local_answer(int flags, int gotname, size_t size, struct dns_header *header, char *name, int first, int last)
-{
-  int trunc = 0;
-  unsigned char *p;
-  int start;
-  union all_addr addr;
-  
-  if (flags & (F_NXDOMAIN | F_NOERR))
-    log_query(flags | gotname | F_NEG | F_CONFIG | F_FORWARD, name, NULL, NULL);
-	  
-  setup_reply(header, flags);
-	  
-  if (!(p = skip_questions(header, size)))
-    return 0;
-	  
-  if (flags & gotname & F_IPV4)
-    for (start = first; start != last; start++)
-      {
-	struct serv_addr4 *srv = (struct serv_addr4 *)daemon->serverarray[start];
-
-	if (srv->flags & SERV_ALL_ZEROS)
-	  memset(&addr, 0, sizeof(addr));
-	else
-	  addr.addr4 = srv->addr;
-	
-	header->ancount = htons(ntohs(header->ancount) + 1);
-	add_resource_record(header, ((char *)header) + 65536, &trunc, sizeof(struct dns_header), &p, daemon->local_ttl, NULL, T_A, C_IN, "4", &addr);
-	log_query((flags | F_CONFIG | F_FORWARD) & ~F_IPV6, name, (union all_addr *)&addr, NULL);
-      }
-  
-  if (flags & gotname & F_IPV6)
-    for (start = first; start != last; start++)
-      {
-	struct serv_addr6 *srv = (struct serv_addr6 *)daemon->serverarray[start];
-
-	if (srv->flags & SERV_ALL_ZEROS)
-	  memset(&addr, 0, sizeof(addr));
-	else
-	  addr.addr6 = srv->addr;
-	
-	header->ancount = htons(ntohs(header->ancount) + 1);
-	add_resource_record(header, ((char *)header) + 65536, &trunc, sizeof(struct dns_header), &p, daemon->local_ttl, NULL, T_AAAA, C_IN, "6", &addr);
-	log_query((flags | F_CONFIG | F_FORWARD) & ~F_IPV4, name, (union all_addr *)&addr, NULL);
-      }
-
-  if (trunc)
-    header->hb3 |= HB3_TC;
-
-  return p - (unsigned char *)header;
-}
-
 static int forward_query(int udpfd, union mysockaddr *udpaddr,
 			 union all_addr *dst_addr, unsigned int dst_iface,
 			 struct dns_header *header, size_t plen,  char *limit, time_t now, 
