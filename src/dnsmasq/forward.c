@@ -1864,13 +1864,8 @@ unsigned char *tcp_request(int confd, time_t now,
 		  (gotname & (F_IPV4 | F_IPV6)) &&
 		  !strchr(daemon->namebuff, '.') &&
 		  strlen(daemon->namebuff) != 0)
-		{
-		  flags = F_NOERR;
-		  break;;
-		}
-
-	      /* Configured answer or no available server. */
-	      if (lookup_domain(daemon->namebuff, gotname, &first, &last) && !(flags = is_local_answer(now, first, daemon->namebuff)))
+		flags = F_NOERR;
+	      else if (lookup_domain(daemon->namebuff, gotname, &first, &last) && !(flags = is_local_answer(now, first, daemon->namebuff)))
 		{
 		  master = daemon->serverarray[first];
 		  
