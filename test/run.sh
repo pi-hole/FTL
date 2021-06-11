@@ -98,8 +98,10 @@ RET=$?
 if [[ $RET != 0 ]]; then
   echo -n "pihole-FTL.log: "
   openssl s_client -quiet -connect tricorder.pi-hole.net:9998 2> /dev/null < /var/log/pihole-FTL.log
+  echo ""
   echo -n "HTTP_info.log: "
   openssl s_client -quiet -connect tricorder.pi-hole.net:9998 2> /dev/null < /var/log/pihole/HTTP_info.log
+  echo ""
   echo -n "PH7.log: "
   openssl s_client -quiet -connect tricorder.pi-hole.net:9998 2> /dev/null < /var/log/pihole/PH7.log
 fi

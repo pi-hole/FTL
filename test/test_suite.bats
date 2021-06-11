@@ -890,25 +890,33 @@
 }
 
 @test "No WARNING messages in pihole-FTL.log (besides known capability issues)" {
-  run bash -c 'grep "WARNING: " /var/log/pihole-FTL.log | grep -c -v -E "CAP_NET_ADMIN|CAP_NET_RAW|CAP_SYS_NICE"'
+  run bash -c 'grep "WARNING: " /var/log/pihole-FTL.log'
   printf "%s\n" "${lines[@]}"
+  run bash -c 'grep "WARNING: " /var/log/pihole-FTL.log | grep -c -v -E "CAP_NET_ADMIN|CAP_NET_RAW|CAP_SYS_NICE"'
+  printf "count: %s\n" "${lines[@]}"
   [[ ${lines[0]} == "0" ]]
 }
 
 @test "No ERROR messages in pihole-FTL.log (besides known index.html error)" {
-  run bash -c 'grep "ERR: " /var/log/pihole-FTL.log | grep -c -v -E "(index\.html)|(Failed to create shared memory object)"'
+  run bash -c 'grep "ERR: " /var/log/pihole-FTL.log'
   printf "%s\n" "${lines[@]}"
+  run bash -c 'grep "ERR: " /var/log/pihole-FTL.log | grep -c -v -E "(index\.html)|(Failed to create shared memory object)"'
+  printf "count: %s\n" "${lines[@]}"
   [[ ${lines[0]} == "0" ]]
 }
 
 @test "No CRIT messages in pihole-FTL.log (besides error due to testing to start FTL more than once)" {
-  run bash -c 'grep "CRIT: " /var/log/pihole-FTL.log | grep -c -v "Initialization of shared memory failed."'
+  run bash -c 'grep "CRIT: " /var/log/pihole-FTL.log'
   printf "%s\n" "${lines[@]}"
+  run bash -c 'grep "CRIT: " /var/log/pihole-FTL.log | grep -c -v "Initialization of shared memory failed."'
+  printf "count: %s\n" "${lines[@]}"
   [[ ${lines[0]} == "0" ]]
 }
 
 @test "No config errors in pihole-FTL.toml" {
-  run bash -c 'grep "DEBUG_CONFIG: " /var/log/pihole-FTL.log | grep -c "DOES NOT EXIST"'
+  run bash -c 'grep "DEBUG_CONFIG: " /var/log/pihole-FTL.log'
   printf "%s\n" "${lines[@]}"
+  run bash -c 'grep "DEBUG_CONFIG: " /var/log/pihole-FTL.log | grep -c "DOES NOT EXIST"'
+  printf "count: %s\n" "${lines[@]}"
   [[ ${lines[0]} == "0" ]]
 }
