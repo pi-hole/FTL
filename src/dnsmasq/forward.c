@@ -15,7 +15,6 @@
 */
 
 #include "dnsmasq.h"
-#include "../dnsmasq_interface.h"
 
 static struct frec *lookup_frec(unsigned short id, int fd, void *hash);
 static struct frec *lookup_frec_by_query(void *hash, unsigned int flags);
@@ -229,23 +228,14 @@ static unsigned int search_servers(time_t now, union all_addr **addrpp, unsigned
   if (flags)
     {
        if (flags == F_NXDOMAIN || flags == F_NOERR)
-       {
 	 log_query(flags | qtype | F_NEG | F_CONFIG | F_FORWARD, qdomain, NULL, NULL);
-	 FTL_reply(flags | qtype | F_NEG | F_CONFIG | F_FORWARD, qdomain, NULL, daemon->log_display_id);
-       }
        else
 	 {
 	   /* handle F_IPV4 and F_IPV6 set on ANY query to 0.0.0.0/:: domain. */
 	   if (flags & F_IPV4)
-	   {
 	     log_query((flags | F_CONFIG | F_FORWARD) & ~F_IPV6, qdomain, *addrpp, NULL);
-	     FTL_reply((flags | F_CONFIG | F_FORWARD) & ~F_IPV6, qdomain, *addrpp, daemon->log_display_id);
-	   }
 	   if (flags & F_IPV6)
-	   {
 	     log_query((flags | F_CONFIG | F_FORWARD) & ~F_IPV4, qdomain, *addrpp, NULL);
-	     FTL_reply((flags | F_CONFIG | F_FORWARD) & ~F_IPV4, qdomain, *addrpp, daemon->log_display_id);
-	   }
 	 }
     }
   else if ((*type) & SERV_USE_RESOLV)
@@ -385,10 +375,7 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	     it's safe to wait for the reply from the first without
 	     forwarding the second. */
 	  if (difftime(now, forward->time) < 2)
-	  {
-	    FTL_query_in_progress(daemon->log_display_id);
 	    return 0;
-	  }
 	}
     }
 
@@ -422,13 +409,9 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	    PUTSHORT(SAFE_PKTSZ, pheader);
 	  
 	  if ((fd = allocate_rfd(&forward->rfds, forward->sentto)) != -1)
-	  {
-	    FTL_forwarding_retried(forward->sentto, forward->frec_src.log_id, daemon->log_display_id, true);
-
 	    server_send_log(forward->sentto, fd, header, plen,
 			    DUMP_SEC_QUERY,
 			    F_NOEXTRA | F_DNSSEC, "retry", "dnssec");
-	  }
 
 	  return 1;
 	}
@@ -450,8 +433,6 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
       if (!(start = forward->sentto->next))
 	start = daemon->servers; /* at end of list, recycle */
       header->id = htons(forward->new_id);
-
-      FTL_forwarding_retried(forward->sentto, forward->frec_src.log_id, daemon->log_display_id, false);
     }
   else 
     {
@@ -628,10 +609,6 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 		    strcpy(daemon->namebuff, "query");
 		  log_query_mysockaddr(F_SERVER | F_FORWARD, daemon->namebuff,
 				       &start->addr, NULL);
-
-		  FTL_forwarded(F_SERVER | F_FORWARD, daemon->namebuff, start,
-				daemon->log_display_id);
-
 		  start->queries++;
 		  forwarded = 1;
 		  forward->sentto = start;
@@ -754,8 +731,6 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
 	}
     }
   
-  FTL_header_analysis(header->hb4, rcode, daemon->log_display_id);
-
   /* RFC 4035 sect 4.6 para 3 */
   if (!is_sign && !option_bool(OPT_DNSSEC_PROXY))
      header->hb4 &= ~HB4_AD;
@@ -767,7 +742,6 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
     {
       union all_addr a;
       a.log.rcode = rcode;
-      FTL_upstream_error(rcode, daemon->log_display_id);
       log_query(F_UPSTREAM | F_RCODE, "error", &a, NULL);
       
       return resize_packet(header, n, pheader, plen);
@@ -807,25 +781,12 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
 	  SET_RCODE(header, NOERROR);
 	  cache_secure = 0;
 	}
-      /******************************** Pi-hole modification ********************************/
-      int ret = extract_addresses(header, n, daemon->namebuff, now, sets, is_sign, check_rebind, no_cache, cache_secure, &doctored);
-      if (ret == 2)
-	{
-	  cache_secure = 0;
-	  union all_addr *addrp = NULL;
-	  // Extract IPv4/IPv6 information from the original question in the DNS
-	  // header
-	  unsigned int flags = FTL_extract_question_flags(header, n);
-	  FTL_get_blocking_metadata(&addrp, &flags);
-	  n = setup_reply(header, n, addrp, flags, daemon->local_ttl);
-	}
-      else if(ret)
+      if (extract_addresses(header, n, daemon->namebuff, now, sets, is_sign, check_rebind, no_cache, cache_secure, &doctored))
 	{
 	  my_syslog(LOG_WARNING, _("possible DNS-rebind attack detected: %s"), daemon->namebuff);
 	  munged = 1;
 	  cache_secure = 0;
 	}
-      /**************************************************************************************/
 
       if (doctored)
 	cache_secure = 0;
@@ -1241,7 +1202,6 @@ void reply_query(int fd, time_t now)
 		domain = daemon->namebuff;
 	      
 	      log_query(F_SECSTAT, domain, NULL, result);
-	      FTL_dnssec(status, daemon->log_display_id);
 	    }
 	  
 	  if (status == STAT_SECURE)
@@ -1288,9 +1248,6 @@ void reply_query(int fd, time_t now)
 	    }
 #endif
 
-	  // Pi-hole modification
-	  int first_ID = -1;
-
 	  for (src = &forward->frec_src; src; src = src->next)
 	    {
 	      header->id = htons(src->orig_id);
@@ -1308,8 +1265,6 @@ void reply_query(int fd, time_t now)
 		  daemon->log_source_addr = &src->source;
 		  log_query(F_UPSTREAM, "query", NULL, "duplicate");
 		}
-	      /* Pi-hole modification */
-	      FTL_multiple_replies(src->log_id, &first_ID);
 	    }
 	}
 
@@ -1351,11 +1306,6 @@ void receive_query(struct listener *listen, time_t now)
   int family = listen->addr.sa.sa_family;
    /* Can always get recvd interface for IPv6 */
   int check_dst = !option_bool(OPT_NOWILD) || family == AF_INET6;
-
-  /************ Pi-hole modification ************/
-  bool piholeblocked = false;
-  const char* blockingreason = NULL;
-  /**********************************************/
 
   /* packet buffer overwritten */
   daemon->srv_save = NULL;
@@ -1552,13 +1502,6 @@ void receive_query(struct listener *listen, time_t now)
 	  else
 	    dst_addr_4.s_addr = 0;
 	}
-
-    /********************* Pi-hole modification ***********************/
-    // This gets the interface in all cases where this is possible here
-    // We get here only if "bind-interfaces" is NOT used or this query
-    // is received over IPv6
-    FTL_iface(if_index, daemon->interfaces);
-    /****************************************************************/
     }
    
   /* log_query gets called indirectly all over the place, so 
@@ -1569,13 +1512,7 @@ void receive_query(struct listener *listen, time_t now)
 #ifdef HAVE_DUMPFILE
   dump_packet(DUMP_QUERY, daemon->packet, (size_t)n, &source_addr, NULL);
 #endif
-
-  //********************** Pi-hole modification **********************//
-  ednsData edns = { 0 };
-  if (find_pseudoheader(header, (size_t)n, NULL, &pheader, NULL, NULL))
-    FTL_parse_pseudoheaders(header, n, &source_addr, &edns);
-  //******************************************************************//
-
+	  
   if (extract_request(header, (size_t)n, daemon->namebuff, &type))
     {
 #ifdef HAVE_AUTH
@@ -1585,11 +1522,6 @@ void receive_query(struct listener *listen, time_t now)
 
       log_query_mysockaddr(F_QUERY | F_FORWARD, daemon->namebuff,
 			   &source_addr, types);
-
-      piholeblocked = FTL_new_query(F_QUERY | F_FORWARD, daemon->namebuff,
-				    &blockingreason, &source_addr,
-				    types, type, daemon->log_display_id, &edns,
-				    UDP);
 
 #ifdef HAVE_AUTH
       /* find queries for zones we're authoritative for, and answer them directly */
@@ -1650,24 +1582,6 @@ void receive_query(struct listener *listen, time_t now)
        /* RFC 6840 5.7 */
       if (header->hb4 & HB4_AD)
 	ad_reqd = 1;
-
-      /************ Pi-hole modification ************/
-      if(piholeblocked)
-	{
-	  union all_addr *addrp = NULL;
-	  // DNS resource record type for AAAA is 28 (decimal) following RFC 3596, section 2.1
-	  unsigned int flags = (type == 28u) ? F_IPV6 : F_IPV4;
-	  FTL_get_blocking_metadata(&addrp, &flags);
-	  log_query(flags, daemon->namebuff, addrp, (char*)blockingreason);
-	  n = setup_reply(header, n, addrp, flags, daemon->local_ttl);
-	  // The pseudoheader may contain important information such as EDNS0 version important for
-	  // some DNS resolvers (such as systemd-resolved) to work properly. We should not discard them.
-	  if (have_pseudoheader)
-	    n = add_pseudoheader(header, n, ((unsigned char *) header) + PACKETSZ, daemon->edns_pktsz, 0, NULL, 0, do_bit, 0);
-	  send_from(listen->fd, option_bool(OPT_NOWILD) || option_bool(OPT_CLEVERBIND), (char *)header, n, (union mysockaddr*)&source_addr, &dst_addr, if_index);
-	  return;
-	}
-      /**********************************************/
 
       m = answer_request(header, ((char *) header) + udp_size, (size_t)n, 
 			 dst_addr_4, netmask, now, ad_reqd, do_bit, have_pseudoheader);
@@ -1883,11 +1797,6 @@ unsigned char *tcp_request(int confd, time_t now,
   (void)mark;
   (void)have_mark;
 
-  /************ Pi-hole modification ************/
-  bool piholeblocked = false;
-  const char* blockingreason = NULL;
-  /**********************************************/
-
   if (getpeername(confd, (struct sockaddr *)&peer_addr, &peer_len) == -1)
     return packet;
 
@@ -1962,12 +1871,6 @@ unsigned char *tcp_request(int confd, time_t now,
       /* save state of "cd" flag in query */
       if ((checking_disabled = header->hb4 & HB4_CD))
 	no_cache_dnssec = 1;
-
-      //********************** Pi-hole modification **********************//
-      ednsData edns = { 0 };
-      if (find_pseudoheader(header, (size_t)size, NULL, &pheader, NULL, NULL))
-        FTL_parse_pseudoheaders(header, size, &peer_addr, &edns);
-      //******************************************************************//
        
       if ((gotname = extract_request(header, (unsigned int)size, daemon->namebuff, &qtype)))
 	{
@@ -1978,11 +1881,6 @@ unsigned char *tcp_request(int confd, time_t now,
 	  
 	  log_query_mysockaddr(F_QUERY | F_FORWARD, daemon->namebuff,
 			       &peer_addr, types);
-
-	  piholeblocked = FTL_new_query(F_QUERY | F_IPV4 | F_FORWARD,
-	  				daemon->namebuff, &blockingreason,
-					&peer_addr, types, qtype,
-					daemon->log_display_id, &edns, TCP);
 
 	  
 #ifdef HAVE_AUTH
@@ -2028,32 +1926,13 @@ unsigned char *tcp_request(int confd, time_t now,
 	   /* RFC 6840 5.7 */
 	   if (header->hb4 & HB4_AD)
 	     ad_reqd = 1;
-	  
-	  /* Do this by steam now we're not in the select() loop */
-	  check_log_writer(1); 
-	  
-	  /************ Pi-hole modification ************/
-	  // Interface name is known from before forking
-	  if(piholeblocked)
-	    {
-	      union all_addr *addrp = NULL;
-	      // DNS resource record type for AAAA is 28 (decimal) following RFC 3596, section 2.1
-	      unsigned int flags = (qtype == 28u) ? F_IPV6 : F_IPV4;
-	      FTL_get_blocking_metadata(&addrp, &flags);
-	      log_query(flags, daemon->namebuff, addrp, (char*)blockingreason);
-	      m = setup_reply(header, size, addrp, flags, daemon->local_ttl);
-	      // The pseudoheader may contain important information such as EDNS0 version important for
-	      // some DNS resolvers (such as systemd-resolved) to work properly. We should not discard them.
-	      if (have_pseudoheader)
-		m = add_pseudoheader(header, m, ((unsigned char *) header) + 65536, daemon->edns_pktsz, 0, NULL, 0, do_bit, 0);
-	    }
-	  else
-	  {
-	  /**********************************************/
 	   
 	   /* m > 0 if answered from cache */
 	   m = answer_request(header, ((char *) header) + 65536, (size_t)size, 
 			      dst_addr_4, netmask, now, ad_reqd, do_bit, have_pseudoheader);
+	  
+	  /* Do this by steam now we're not in the select() loop */
+	  check_log_writer(1); 
 	  
 	  if (m == 0)
 	    {
@@ -2185,9 +2064,6 @@ unsigned char *tcp_request(int confd, time_t now,
 		      log_query_mysockaddr(F_SERVER | F_FORWARD, daemon->namebuff,
 					   &last_server->addr, NULL);
 
-		      FTL_forwarded(F_SERVER | F_FORWARD, daemon->namebuff,
-				    last_server, daemon->log_display_id);
-
 #ifdef HAVE_DNSSEC
 		      if (option_bool(OPT_DNSSEC_VALID) && !checking_disabled && (last_server->flags & SERV_DO_DNSSEC))
 			{
@@ -2208,7 +2084,6 @@ unsigned char *tcp_request(int confd, time_t now,
 			    domain = daemon->namebuff;
 
 			  log_query(F_SECSTAT, domain, NULL, result);
-			  FTL_dnssec(status, daemon->log_display_id);
 			  
 			  if (status == STAT_BOGUS)
 			    {
@@ -2260,9 +2135,6 @@ unsigned char *tcp_request(int confd, time_t now,
 		    m = add_pseudoheader(header, m, ((unsigned char *) header) + 65536, daemon->edns_pktsz, 0, NULL, 0, do_bit, 0);
 		}
 	    }
-	  /************ Pi-hole modification ************/
-	  }
-	  /**********************************************/
 	}
 	  
       check_log_writer(1);
