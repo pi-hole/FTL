@@ -13,8 +13,8 @@
 #include "config.h"
 #include "setupVars.h"
 #include "log.h"
-// nice()
-#include <unistd.h>
+// getprio(), setprio()
+#include <sys/resource.h>
 // argv_dnsmasq
 #include "args.h"
 // INT_MAX
@@ -376,22 +376,35 @@ bool readFTLtoml(void)
 		if(nicey.ok)
 		{
 			// -999 = disabled
-			const int nice_target = nicey.u.i;
-			if((config.nice = nice(nice_target)) == -1 && errno == EPERM)
+			const int priority = nicey.u.i;
+			const int which = PRIO_PROCESS;
+			const id_t pid = getpid();
+			config.nice = getpriority(which, pid);
+
+			if(priority == -999 || config.nice == priority)
 			{
-				// ERROR EPERM: The calling process attempted to increase its priority
-				// by supplying a negative value but has insufficient privileges.
-				// On Linux, the RLIMIT_NICE resource limit can be used to define a limit to
-				// which an unprivileged process's nice value can be raised. We are not
-				// affected by this limit when pihole-FTL is running with CAP_SYS_NICE
-				log_warn("   Cannot change niceness to %d (permission denied)",
-				         nice_target);
+				// Do not set nice value
+				log_debug(DEBUG_CONFIG, "Not changing process priority.");
+				log_debug(DEBUG_CONFIG, "  Asked for %d, is %d", priority, config.nice);
 			}
-			if(config.nice != nice_target)
+			else
 			{
-				log_info("   misc.nice: Set process niceness to %d (asked for %d)",
-				         config.nice, nice_target);
+				const int ret = setpriority(which, pid, priority);
+				if(ret == -1)
+					// ERROR EPERM: The calling process attempted to increase its priority
+					// by supplying a negative value but has insufficient privileges.
+					// On Linux, the RLIMIT_NICE resource limit can be used to define a limit to
+					// which an unprivileged process's nice value can be raised. We are not
+					// affected by this limit when pihole-FTL is running with CAP_SYS_NICE
+					log_warn("Cannot set process priority to %d: %s",
+					         priority, strerror(errno));
+
+				config.nice = getpriority(which, pid);
 			}
+
+			if(config.nice != priority)
+				log_info("Set process niceness to %d (instead of %d)",
+				         config.nice, priority);
 		}
 		else
 			log_debug(DEBUG_CONFIG, "misc.nice DOES NOT EXIST");
