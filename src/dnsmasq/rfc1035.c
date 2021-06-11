@@ -15,6 +15,7 @@
 */
 
 #include "dnsmasq.h"
+#include "../dnsmasq_interface.h"
 
 int extract_name(struct dns_header *header, size_t plen, unsigned char **pp, 
 		 char *name, int isExtract, int extrabytes)
@@ -529,6 +530,7 @@ static int find_soa(struct dns_header *header, size_t qlen, char *name, int *doc
    either because of lack of memory, or lack of SOA records.  These are treated by the cache code as 
    expired and cleaned out that way. 
    Return 1 if we reject an address because it look like part of dns-rebinding attack. */
+// Pi-hole: Return 2 if we reject a part of a CNAME chain
 int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t now, 
 		      char **ipsets, int is_sign, int check_rebind, int no_cache_dnssec,
 		      int secure, int *doctored)
@@ -731,6 +733,15 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 			attl = daemon->rr_status[j];
 		    }
 #endif		  
+		  // ****************************** Pi-hole modification ******************************
+		  if(FTL_CNAME(name, cpp, daemon->log_display_id))
+		    {
+		      // This query is to be blocked as we found a blocked
+		      // domain while walking the CNAME path. Log to pihole.log here
+		      log_query(F_UPSTREAM, name, NULL, "blocked during CNAME inspection");
+		      return 2;
+		    }
+		  // **********************************************************************************
 		  if (aqtype == T_CNAME)
 		    {
 		      if (!cname_count--)
@@ -1647,7 +1658,9 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 			    if (crecp->flags & F_NXDOMAIN)
 			      nxdomain = 1;
 			    if (!dryrun)
-			      log_query(crecp->flags, name, NULL, NULL);
+			      // Pi-hole modification: Added record_source(crecp->uid) such that the subroutines know
+			      //                       where the reply came from (e.g. gravity.list)
+			      log_query(crecp->flags, name, NULL, record_source(crecp->uid));
 			  }
 			else 
 			  {
@@ -1666,6 +1679,15 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 			      {
 				log_query(crecp->flags & ~F_REVERSE, name, &crecp->addr,
 					  record_source(crecp->uid));
+				// ****************************** Pi-hole modification ******************************
+				if(FTL_CNAME(name, crecp, daemon->log_display_id))
+				  {
+				    // This query is to be blocked as we found a blocked domain while walking the CNAME path.
+				    // Log to pihole.log: "cached domainabc.com is blocked during CNAME inspection"
+				    log_query(F_UPSTREAM, name, NULL, "blocked during CNAME inspection");
+				    break;
+				  }
+				// **********************************************************************************
 				
 				if (add_resource_record(header, limit, &trunc, nameoffset, &ansp, 
 							crec_ttl(crecp, now), NULL, type, C_IN, 

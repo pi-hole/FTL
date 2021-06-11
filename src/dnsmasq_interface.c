@@ -41,6 +41,9 @@
 #include <stdatomic.h>
 // Eventqueue routines
 #include "events.h"
+#include <netinet/in.h>
+// offsetof()
+#include <stddef.h>
 
 // Private prototypes
 static void print_flags(const unsigned int flags);
@@ -55,8 +58,14 @@ static void query_blocked(queriesData* query,
                           domainsData* domain,
                           clientsData* client,
                           const unsigned char new_status);
+static void FTL_forwarded(const unsigned int flags, const char *name, const union all_addr *addr, const int id, const char* file, const int line);
+static void FTL_reply(const unsigned int flags, const char *name, const union all_addr *addr, const int id, const char* file, const int line);
+static void FTL_cache(const unsigned int flags, const char *name, const union all_addr *addr, const int id, const char* file, const int line);
+static void FTL_upstream_error(const unsigned int rcode, const int id, const char* file, const int line);
+static void FTL_dnssec(const char *result, const int id, const char* file, const int line);
 
 // Static blocking metadata
+static const char *blockingreason = NULL;
 static union all_addr null_addrp = {{ 0 }};
 static unsigned char force_next_DNS_reply = 0u;
 
@@ -72,6 +81,171 @@ static struct {
 
 unsigned char* pihole_privacylevel = &config.privacylevel;
 const char flagnames[][12] = {"F_IMMORTAL ", "F_NAMEP ", "F_REVERSE ", "F_FORWARD ", "F_DHCP ", "F_NEG ", "F_HOSTS ", "F_IPV4 ", "F_IPV6 ", "F_BIGNAME ", "F_NXDOMAIN ", "F_CNAME ", "F_DNSKEY ", "F_CONFIG ", "F_DS ", "F_DNSSECOK ", "F_UPSTREAM ", "F_RRNAME ", "F_SERVER ", "F_QUERY ", "F_NOERR ", "F_AUTH ", "F_DNSSEC ", "F_KEYTAG ", "F_SECSTAT ", "F_NO_RR ", "F_IPSET ", "F_NOEXTRA ", "F_SERVFAIL", "F_RCODE"};
+
+void FTL_hook(unsigned int flags, char *name, union all_addr *addr, char *arg, int id, const char* file, const int line)
+{
+	print_flags(flags);
+	// Extract filename from path
+	const char *path = strstr(file, "src/");
+	const char *ffile = path != NULL ? path : file;
+
+	if(strcmp(ffile, "src/dnsmasq/rfc1035.c") == 0)
+	{
+		if(name && strcmp(name, "error") == 0)
+			FTL_reply(flags, name, addr, id, ffile, line); // F_CONFIG | F_RCODE
+		else
+			FTL_cache(flags, name, addr, id, ffile, line); // all possible things
+	}
+	else if (strcmp(ffile, "src/dnsmasq/cache.c") == 0)
+	{
+		FTL_reply(flags, name, addr, id, ffile, line); // flags [from cache_insert(flags)] | F_UPSTREAM
+	}
+	else if (strcmp(ffile, "src/dnsmasq/domain-match.c") == 0)
+	{
+		FTL_reply(flags, name, addr, id, ffile, line); // call from make_local_answer()
+	}
+	else if (strcmp(ffile, "src/dnsmasq_interface.c") == 0)
+	{
+		FTL_reply(flags, name, addr, id, ffile, line); // ([IPV4|IPV6] | F_CONFIG | F_FORWARD)
+	}
+	else if(strcmp(ffile, "src/dnsmasq/forward.c") == 0)
+	{
+		// Note: The order matters here!
+		if((flags & F_QUERY) && (flags & F_FORWARD))
+			; // New query, handled by FTL_new_query via separate call
+		else if(flags & (F_SERVER | F_FORWARD))
+			// forwarded upstream
+			FTL_forwarded(flags, name, addr, id, ffile, line);
+		else if(flags == F_SECSTAT)
+			// DNSSEC validation result
+			FTL_dnssec(arg, id, ffile, line);
+		else if(flags == (F_UPSTREAM | F_RCODE) && name && strcasecmp(name, "error") == 0)
+			// upstream sent somethign different than NOERROR or NXDOMAIN
+			FTL_upstream_error(addr->log.rcode, id, ffile, line);
+		else if(flags & (F_NOEXTRA | F_DNSSEC))
+			; // Ignored
+		else
+			FTL_reply(flags, name, addr, id, ffile, line);
+	}
+	else if (strcmp(ffile, "src/dnsmasq/dnssec.c") == 0)
+	{
+		; // We ignore these
+	}
+	else if(config.debug)
+		logg("Unhandled hook at %s:%d", ffile, line);
+}
+
+// This is inspired by make_local_answer()
+size_t _FTL_make_answer(struct dns_header *header, const size_t qlen, const char *file, const int line)
+{
+	// Exit early if there are no questions in this query
+	if(ntohs(header->qdcount) == 0)
+		return 0;
+
+	// Get question name
+	char name[MAXDNAME] = { 0 };
+	unsigned char *p = (unsigned char *)(header+1);
+	if (!extract_name(header, qlen, &p, name, 1, 4))
+		return 0;
+
+	// Get question type
+	int qtype;
+	GETSHORT(qtype, p);
+
+	// Add flags according to current blocking mode
+	// We bit-add here as flags already contains either F_IPV4 or F_IPV6
+	// Set blocking_flags to F_HOSTS so dnsmasq logs blocked queries being answered from a specific source
+	// (it would otherwise assume it knew the blocking status from cache which would prevent us from
+	// printing the blocking source (blacklist, regex, gravity) in dnsmasq's log file, our pihole.log)
+	int flags = F_HOSTS;
+
+	// Set flag based on what we will reply with
+	if(qtype == T_A)
+		flags = F_IPV4; // A type
+	else if(qtype == T_AAAA)
+		flags = F_IPV6; // AAAA type
+	else if(qtype == T_ANY)
+		flags = F_IPV4 | F_IPV6; // ANY type
+	else
+		flags = F_NOERR; // empty record
+
+	// Prepare answer records
+	// Check first if we need to force our reply to something different than the
+	// default/configured blocking mode. For instance, we need to force NXDOMAIN
+	// for intercepted _esni.* queries.
+	if(force_next_DNS_reply == NXDOMAIN)
+	{
+		flags = F_NXDOMAIN;
+		// Reset DNS reply forcing
+		force_next_DNS_reply = 0u;
+	}
+	else if(force_next_DNS_reply == REFUSED)
+	{
+		// Empty flags result in REFUSED
+		flags = 0;
+		// Reset DNS reply forcing
+		force_next_DNS_reply = 0u;
+	}
+
+	if(config.blockingmode == MODE_NX)
+	{
+		// If we block in NXDOMAIN mode, we add the NEGATIVE response
+		// and the NXDOMAIN flags
+		flags = F_NXDOMAIN;
+	}
+	else if(config.blockingmode == MODE_NODATA ||
+	       (config.blockingmode == MODE_IP_NODATA_AAAA && (flags & F_IPV6)))
+	{
+		// If we block in NODATA mode or NODATA for AAAA queries, we apply
+		// the NOERROR response flag. This ensures we're sending an empty response
+		flags = F_NOERR;
+	}
+
+	// Prepare reply
+	setup_reply(header, flags);
+	if (!(p = skip_questions(header, qlen)))
+		return 0;
+
+	// Add resource records
+	int trunc = 0;
+	// Add A answer record if requested
+	if(flags & F_IPV4)
+	{
+		union all_addr *addr;
+		if(config.blockingmode == MODE_IP || config.blockingmode == MODE_IP_NODATA_AAAA)
+			addr = &next_iface.addr4;
+		else
+			addr = &null_addrp;
+
+		// Add answer record
+		header->ancount = htons(ntohs(header->ancount) + 1);
+		add_resource_record(header, ((char *)header) + 65536, &trunc, sizeof(struct dns_header),
+		                    &p, daemon->local_ttl, NULL, T_A, C_IN, (char*)"4", &addr->addr4);
+		log_query((flags | F_CONFIG | F_FORWARD) & ~F_IPV6, name, addr, (char*)blockingreason);
+	}
+
+	// Add AAAA answer record if requested
+	if(flags & F_IPV6)
+	{
+		union all_addr *addr;
+		if(config.blockingmode == MODE_IP)
+			addr = &next_iface.addr6;
+		else
+			addr = &null_addrp;
+
+		// Add answer record
+		header->ancount = htons(ntohs(header->ancount) + 1);
+		add_resource_record(header, ((char *)header) + 65536, &trunc, sizeof(struct dns_header),
+		                    &p, daemon->local_ttl, NULL, T_AAAA, C_IN, (char*)"6", &addr->addr6);
+		log_query((flags | F_CONFIG | F_FORWARD) & ~F_IPV4, name, addr, (char*)blockingreason);
+	}
+
+	// Indicate if truncated (should retry)
+	if (trunc)
+		header->hb3 |= HB3_TC;
+
+	return p - (unsigned char *)header;
+}
 
 void FTL_iface(const int ifidx, const struct irec *ifaces)
 {
@@ -172,9 +346,10 @@ void FTL_iface(const int ifidx, const struct irec *ifaces)
 	}
 }
 
+#define FTL_check_blocking(queryID, domainID, clientID) _FTL_check_blocking(queryID, domainID, clientID, __FILE__, __LINE__)
 static bool check_domain_blocked(const char *domain, const int clientID,
                                  clientsData *client, queriesData *query, DNSCacheData *dns_cache,
-                                 const char **blockingreason, unsigned char *new_status)
+                                 unsigned char *new_status)
 {
 	// Check domains against exact blacklist
 	// Skipped when the domain is whitelisted
@@ -184,7 +359,7 @@ static bool check_domain_blocked(const char *domain, const int clientID,
 		// We block this domain
 		blockDomain = true;
 		*new_status = QUERY_BLACKLIST;
-		*blockingreason = "exactly blacklisted";
+		blockingreason = "exactly blacklisted";
 
 		// Mark domain as exactly blacklisted for this client
 		dns_cache->blocking_status = BLACKLIST_BLOCKED;
@@ -199,7 +374,7 @@ static bool check_domain_blocked(const char *domain, const int clientID,
 		// We block this domain
 		blockDomain = true;
 		*new_status = QUERY_GRAVITY;
-		*blockingreason = "gravity blocked";
+		blockingreason = "gravity blocked";
 
 		// Mark domain as gravity blocked for this client
 		dns_cache->blocking_status = GRAVITY_BLOCKED;
@@ -215,7 +390,7 @@ static bool check_domain_blocked(const char *domain, const int clientID,
 		// We block this domain
 		blockDomain = true;
 		*new_status = QUERY_REGEX;
-		*blockingreason = "regex blacklisted";
+		blockingreason = "regex blacklisted";
 
 		// Mark domain as regex matched for this client
 		dns_cache->blocking_status = REGEX_BLOCKED;
@@ -227,8 +402,7 @@ static bool check_domain_blocked(const char *domain, const int clientID,
 	return false;
 }
 
-static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const char **blockingreason,
-                                const char* file, const int line)
+static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const char* file, const int line)
 {
 	// Only check blocking conditions when global blocking is enabled
 	if(blockingstatus == BLOCKING_DISABLED)
@@ -269,10 +443,10 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			// Known as exactly blacklistes, we
 			// return this result early, skipping
 			// all the lengthy tests below
-			*blockingreason = "exactly blacklisted";
+			blockingreason = "exactly blacklisted";
 			if(config.debug & DEBUG_QUERIES)
 			{
-				logg("%s is known as %s", domainstr, *blockingreason);
+				logg("%s is known as %s", domainstr, blockingreason);
 			}
 
 			// Do not block if the entire query is to be permitted
@@ -289,10 +463,10 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			// Known as gravity blocked, we
 			// return this result early, skipping
 			// all the lengthy tests below
-			*blockingreason = "gravity blocked";
+			blockingreason = "gravity blocked";
 			if(config.debug & DEBUG_QUERIES)
 			{
-				logg("%s is known as %s", domainstr, *blockingreason);
+				logg("%s is known as %s", domainstr, blockingreason);
 			}
 
 			// Do not block if the entire query is to be permitted
@@ -309,10 +483,10 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			// Known as regex blacklisted, we
 			// return this result early, skipping
 			// all the lengthy tests below
-			*blockingreason = "regex blacklisted";
+			blockingreason = "regex blacklisted";
 			if(config.debug & DEBUG_QUERIES)
 			{
-				logg("%s is known as %s", domainstr, *blockingreason);
+				logg("%s is known as %s", domainstr, blockingreason);
 				force_next_DNS_reply = dns_cache->force_reply;
 			}
 
@@ -377,13 +551,13 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 	// Check blacklist (exact + regex) and gravity for queried domain
 	if(!query->flags.whitelisted)
 	{
-		blockDomain = check_domain_blocked(domainstr, clientID, client, query, dns_cache, blockingreason, &new_status);
+		blockDomain = check_domain_blocked(domainstr, clientID, client, query, dns_cache, &new_status);
 	}
 
 	// Check blacklist (exact + regex) and gravity for _esni.domain if enabled (defaulting to true)
 	if(config.block_esni && !query->flags.whitelisted && !blockDomain && strncasecmp(domainstr, "_esni.", 6u) == 0)
 	{
-		blockDomain = check_domain_blocked(domainstr + 6u, clientID, client, query, dns_cache, blockingreason, &new_status);
+		blockDomain = check_domain_blocked(domainstr + 6u, clientID, client, query, dns_cache, &new_status);
 
 		if(blockDomain)
 		{
@@ -403,7 +577,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 
 		// Debug output
 		if(config.debug & DEBUG_QUERIES)
-			logg("Blocking %s as %s is %s", domainstr, blockedDomain, *blockingreason);
+			logg("Blocking %s as %s is %s", domainstr, blockedDomain, blockingreason);
 	}
 	else
 	{
@@ -477,8 +651,7 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 	const int clientID = query->clientID;
 
 	// Check per-client blocking for the child domain
-	const char *blockingreason = NULL;
-	const bool block = FTL_check_blocking(queryID, child_domainID, clientID, &blockingreason);
+	const bool block = FTL_check_blocking(queryID, child_domainID, clientID);
 
 	// If we find during a CNAME inspection that we want to block the entire chain,
 	// the originally queried domain itself was not counted as blocked. We have to
@@ -545,8 +718,8 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 
 
 bool _FTL_new_query(const unsigned int flags, const char *name,
-                    const char **blockingreason, union mysockaddr *addr,
-                    const char *types, const unsigned short qtype, const int id,
+                    union mysockaddr *addr, const char *types,
+                    const unsigned short qtype, const int id,
                     const ednsData *edns, const enum protocol proto,
                     const char* file, const int line)
 {
@@ -840,7 +1013,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		}
 	}
 
-	bool blockDomain = FTL_check_blocking(queryID, domainID, clientID, blockingreason);
+	bool blockDomain = FTL_check_blocking(queryID, domainID, clientID);
 
 	// Free allocated memory
 	free(domainString);
@@ -851,68 +1024,8 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	return blockDomain;
 }
 
-void _FTL_get_blocking_metadata(union all_addr **addrp, unsigned int *flags, const char* file, const int line)
-{
-	// Check first if we need to force our reply to something different than the
-	// default/configured blocking mode. For instance, we need to force NXDOMAIN
-	// for intercepted _esni.* queries.
-	if(force_next_DNS_reply == NXDOMAIN)
-	{
-		*flags = F_NXDOMAIN;
-		// Reset DNS reply forcing
-		force_next_DNS_reply = 0u;
-		return;
-	}
-	else if(force_next_DNS_reply == REFUSED)
-	{
-		// Empty flags result in REFUSED
-		*flags = 0;
-		// Reset DNS reply forcing
-		force_next_DNS_reply = 0u;
-		return;
-	}
-
-	// Add flags according to current blocking mode
-	// We bit-add here as flags already contains either F_IPV4 or F_IPV6
-	// Set blocking_flags to F_HOSTS so dnsmasq logs blocked queries being answered from a specific source
-	// (it would otherwise assume it knew the blocking status from cache which would prevent us from
-	// printing the blocking source (blacklist, regex, gravity) in dnsmasq's log file, our pihole.log)
-	*flags |= F_HOSTS;
-
-	if(*flags & F_IPV6)
-	{
-		// Pass blocking IPv6 address
-		if(config.blockingmode == MODE_IP)
-			*addrp = &next_iface.addr6;
-		else
-			*addrp = &null_addrp;
-	}
-	else
-	{
-		// Pass blocking IPv4 address
-		if(config.blockingmode == MODE_IP || config.blockingmode == MODE_IP_NODATA_AAAA)
-			*addrp = &next_iface.addr4;
-		else
-			*addrp = &null_addrp;
-	}
-
-	if(config.blockingmode == MODE_NX)
-	{
-		// If we block in NXDOMAIN mode, we add the NEGATIVE response
-		// and the NXDOMAIN flags
-		*flags = F_NXDOMAIN;
-	}
-	else if(config.blockingmode == MODE_NODATA ||
-	       (config.blockingmode == MODE_IP_NODATA_AAAA && (*flags & F_IPV6)))
-	{
-		// If we block in NODATA mode or NODATA for AAAA queries, we apply
-		// the NOERROR response flag. This ensures we're sending an empty response
-		*flags = F_NOERR;
-	}
-}
-
-void _FTL_forwarded(const unsigned int flags, const char *name, const struct server *serv, const int id,
-                    const char* file, const int line)
+static void FTL_forwarded(const unsigned int flags, const char *name, const union all_addr *addr,
+                          const int id, const char* file, const int line)
 {
 	// Save that this query got forwarded to an upstream server
 
@@ -924,17 +1037,25 @@ void _FTL_forwarded(const unsigned int flags, const char *name, const struct ser
 	char dest[ADDRSTRLEN];
 	// If addr == NULL, we will only duplicate an empty string instead of uninitialized memory
 	dest[0] = '\0';
-	if(serv != NULL)
+	if(addr != NULL)
 	{
-		if(serv->addr.sa.sa_family == AF_INET)
+		if(flags & F_IPV4)
 		{
-			inet_ntop(AF_INET, &serv->addr.in.sin_addr, dest, ADDRSTRLEN);
-			upstreamPort = ntohs(serv->addr.in.sin_port);
+			inet_ntop(AF_INET, addr, dest, ADDRSTRLEN);
+			// Reverse-engineer port from underlying sockaddr_in structure
+			const in_port_t *port = (in_port_t*)((void*)addr
+			                                     - offsetof(struct sockaddr_in, sin_addr)
+			                                     + offsetof(struct sockaddr_in, sin_port));
+			upstreamPort = ntohs(*port);
 		}
 		else
 		{
-			inet_ntop(AF_INET6, &serv->addr.in6.sin6_addr, dest, ADDRSTRLEN);
-			upstreamPort = ntohs(serv->addr.in6.sin6_port);
+			inet_ntop(AF_INET6, addr, dest, ADDRSTRLEN);
+			// Reverse-engineer port from underlying sockaddr_in6 structure
+			const in_port_t *port = (in_port_t*)((void*)addr
+			                                     - offsetof(struct sockaddr_in6, sin6_addr)
+			                                     + offsetof(struct sockaddr_in6, sin6_port));
+			upstreamPort = ntohs(*port);
 		}
 	}
 
@@ -1068,8 +1189,8 @@ void FTL_dnsmasq_reload(void)
 	resolver_ready = true;
 }
 
-void _FTL_reply(const unsigned int flags, const char *name, const union all_addr *addr, const int id,
-                const char* file, const int line)
+static void FTL_reply(const unsigned int flags, const char *name, const union all_addr *addr,
+                      const int id, const char* file, const int line)
 {
 	// Lock shared memory
 	lock_shm();
@@ -1313,8 +1434,8 @@ static enum query_status detect_blocked_IP(const unsigned short flags, const uni
 	return query->status;
 }
 
-void _FTL_cache(const unsigned int flags, const char *name, const union all_addr *addr,
-                const char *arg, const int id, const char* file, const int line)
+static void FTL_cache(const unsigned int flags, const char *name, const union all_addr *addr,
+                      const int id, const char* file, const int line)
 {
 	// Save that this query got answered from cache
 
@@ -1334,7 +1455,7 @@ void _FTL_cache(const unsigned int flags, const char *name, const union all_addr
 		{
 			inet_ntop((flags & F_IPV4) ? AF_INET : AF_INET6, addr, dest, ADDRSTRLEN);
 		}
-		logg("**** got cache answer for %s / %s / %s (ID %i, %s:%i)", name, dest, arg, id, file, line);
+		logg("**** got cache answer for %s / %s (ID %i, %s:%i)", name, dest, id, file, line);
 		print_flags(flags);
 	}
 
@@ -1463,7 +1584,7 @@ static void query_blocked(queriesData* query, domainsData* domain, clientsData* 
 	query->flags.blocked = true;
 }
 
-void _FTL_dnssec(const int status, const int id, const char* file, const int line)
+static void FTL_dnssec(const char *arg, const int id, const char* file, const int line)
 {
 	// Process DNSSEC result for a domain
 
@@ -1495,23 +1616,27 @@ void _FTL_dnssec(const int status, const int id, const char* file, const int lin
 		const domainsData* domain = getDomain(query->domainID, true);
 		if(domain != NULL)
 		{
-			logg("**** got DNSSEC details for %s: %i (ID %i, %s:%i)", getstr(domain->domainpos), status, id, file, line);
+			logg("**** got DNSSEC details for %s: %s (ID %i, %s:%i)", getstr(domain->domainpos), arg, id, file, line);
 		}
 	}
 
 	// Iterate through possible values
-	if(status == STAT_SECURE)
+	if(strcmp(arg, "SECURE") == 0)
 		query->dnssec = DNSSEC_SECURE;
-	else if(status == STAT_INSECURE)
+	else if(strcmp(arg, "INSECURE") == 0)
 		query->dnssec = DNSSEC_INSECURE;
-	else
+	else if(strcmp(arg, "BOGUS") == 0)
 		query->dnssec = DNSSEC_BOGUS;
+	else if(strcmp(arg, "ABANDONED") == 0)
+		query->dnssec = DNSSEC_ABANDONED;
+	else
+		logg("***** Encountered DNSSEC status \"%s\" is unknown, ignoring", arg);
 
 	// Unlock shared memory
 	unlock_shm();
 }
 
-void _FTL_upstream_error(const unsigned int rcode, const int id, const char* file, const int line)
+static void FTL_upstream_error(const unsigned int rcode, const int id, const char* file, const int line)
 {
 	// Process upstream errors
 	// Queries with error are those where the RCODE

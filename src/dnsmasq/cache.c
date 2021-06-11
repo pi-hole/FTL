@@ -491,7 +491,6 @@ struct crec *cache_insert(char *name, union all_addr *addr, unsigned short class
     {
       /* Don't log DNSSEC records here, done elsewhere */
       log_query(flags | F_UPSTREAM, name, addr, NULL);
-      FTL_reply(flags, name, addr, daemon->log_display_id);
       if (daemon->max_cache_ttl != 0 && daemon->max_cache_ttl < ttl)
 	ttl = daemon->max_cache_ttl;
       if (daemon->min_cache_ttl != 0 && daemon->min_cache_ttl > ttl)
@@ -1874,6 +1873,9 @@ void _log_query(unsigned int flags, char *name, union all_addr *addr, char *arg,
 {
   char *source, *dest = daemon->addrbuff;
   char *verb = "is";
+
+  // Pi-hole modification
+  FTL_hook(flags, name, addr, arg, daemon->log_display_id, file, line);
   
   if (!option_bool(OPT_LOG))
     return;

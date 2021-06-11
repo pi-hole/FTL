@@ -15,6 +15,7 @@
 */
 
 #include "dnsmasq.h"
+#include "../dnsmasq_interface.h"
 
 static struct frec *lookup_frec(unsigned short id, int fd, void *hash, int *firstp, int *lastp);
 static struct frec *lookup_frec_by_query(void *hash, unsigned int flags);
@@ -238,7 +239,10 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	     it's safe to wait for the reply from the first without
 	     forwarding the second. */
 	  if (difftime(now, forward->time) < 2)
+	  {
+	    FTL_query_in_progress(daemon->log_display_id);
 	    return 0;
+	  }
 	}
     }
 
@@ -333,6 +337,8 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 
 	  if (find_pseudoheader(header, plen, NULL, &pheader, &is_sign, NULL) && !is_sign)
 	    PUTSHORT(SAFE_PKTSZ, pheader);
+
+	  FTL_forwarding_retried(forward->sentto, forward->frec_src.log_id, daemon->log_display_id, true);
 	  
 	  /* Find suitable servers: should never fail. */
 	  if (!filter_servers(forward->sentto->arrayposn, F_DNSSECOK, &first, &last))
@@ -346,6 +352,8 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	{
 	  /* retry on existing query, from original source. Send to all available servers  */
 	  forward->sentto->failed_queries++;
+
+	  FTL_forwarding_retried(forward->sentto, forward->frec_src.log_id, daemon->log_display_id, false);
 	  
 	  if (!filter_servers(forward->sentto->arrayposn, F_SERVER, &first, &last))
 	    goto reply;
@@ -611,6 +619,8 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
 	}
     }
   
+  FTL_header_analysis(header->hb4, rcode, daemon->log_display_id);
+  
   /* RFC 4035 sect 4.6 para 3 */
   if (!is_sign && !option_bool(OPT_DNSSEC_PROXY))
      header->hb4 &= ~HB4_AD;
@@ -663,7 +673,16 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
 	  SET_RCODE(header, NOERROR);
 	  cache_secure = 0;
 	}
-      if (extract_addresses(header, n, daemon->namebuff, now, sets, is_sign, check_rebind, no_cache, cache_secure, &doctored))
+      /******************************** Pi-hole modification ********************************/
+      int ret = extract_addresses(header, n, daemon->namebuff, now, sets, is_sign, check_rebind, no_cache, cache_secure, &doctored);
+      if (ret == 2)
+	{
+	  cache_secure = 0;
+	  // Generate DNS packet for reply
+	  n = FTL_make_answer(header, n);
+	}
+      else if(ret)
+      /**************************************************************************************/
 	{
 	  my_syslog(LOG_WARNING, _("possible DNS-rebind attack detected: %s"), daemon->namebuff);
 	  munged = 1;
@@ -1107,6 +1126,8 @@ void reply_query(int fd, time_t now)
 #ifdef HAVE_DUMPFILE
 	  dump_packet(DUMP_REPLY, daemon->packet, (size_t)nn, NULL, &src->source);
 #endif
+	  /* Pi-hole modification */
+	  int first_ID = -1;
 	  
 	  send_from(src->fd, option_bool(OPT_NOWILD) || option_bool (OPT_CLEVERBIND), daemon->packet, nn, 
 		    &src->source, &src->dest, src->iface);
@@ -1117,6 +1138,8 @@ void reply_query(int fd, time_t now)
 	      daemon->log_source_addr = &src->source;
 	      log_query(F_UPSTREAM, "query", NULL, "duplicate");
 	    }
+	  /* Pi-hole modification */
+	  FTL_multiple_replies(src->log_id, &first_ID);
 	}
     }
 
@@ -1157,6 +1180,10 @@ void receive_query(struct listener *listen, time_t now)
   int family = listen->addr.sa.sa_family;
    /* Can always get recvd interface for IPv6 */
   int check_dst = !option_bool(OPT_NOWILD) || family == AF_INET6;
+
+  /************ Pi-hole modification ************/
+  bool piholeblocked = false;
+  /**********************************************/
 
   /* packet buffer overwritten */
   daemon->srv_save = NULL;
@@ -1353,7 +1380,15 @@ void receive_query(struct listener *listen, time_t now)
 	  else
 	    dst_addr_4.s_addr = 0;
 	}
+
+      /********************* Pi-hole modification ***********************/
+      // This gets the interface in all cases where this is possible here
+      // We get here only if "bind-interfaces" is NOT used or this query
+      // is received over IPv6
+      FTL_iface(if_index, daemon->interfaces);
+      /****************************************************************/
     }
+
    
   /* log_query gets called indirectly all over the place, so 
      pass these in global variables - sorry. */
@@ -1363,6 +1398,11 @@ void receive_query(struct listener *listen, time_t now)
 #ifdef HAVE_DUMPFILE
   dump_packet(DUMP_QUERY, daemon->packet, (size_t)n, &source_addr, NULL);
 #endif
+  //********************** Pi-hole modification **********************//
+  ednsData edns = { 0 };
+  if (find_pseudoheader(header, (size_t)n, NULL, &pheader, NULL, NULL))
+    FTL_parse_pseudoheaders(header, n, &source_addr, &edns);
+  //******************************************************************//
 	  
   if (extract_request(header, (size_t)n, daemon->namebuff, &type))
     {
@@ -1373,6 +1413,9 @@ void receive_query(struct listener *listen, time_t now)
 
       log_query_mysockaddr(F_QUERY | F_FORWARD, daemon->namebuff,
 			   &source_addr, types);
+      piholeblocked = FTL_new_query(F_QUERY | F_FORWARD, daemon->namebuff,
+				    &source_addr, types, type,
+				    daemon->log_display_id, &edns, UDP);
 
 #ifdef HAVE_AUTH
       /* find queries for zones we're authoritative for, and answer them directly */
@@ -1433,6 +1476,21 @@ void receive_query(struct listener *listen, time_t now)
        /* RFC 6840 5.7 */
       if (header->hb4 & HB4_AD)
 	ad_reqd = 1;
+
+      /************ Pi-hole modification ************/
+      if(piholeblocked)
+	{
+	  // Generate DNS packet for reply
+	  n = FTL_make_answer(header, n);
+	  // The pseudoheader may contain important information such as EDNS0 version important for
+	  // some DNS resolvers (such as systemd-resolved) to work properly. We should not discard them.
+	  if (have_pseudoheader)
+	    n = add_pseudoheader(header, n, ((unsigned char *) header) + PACKETSZ, daemon->edns_pktsz, 0, NULL, 0, do_bit, 0);
+	  send_from(listen->fd, option_bool(OPT_NOWILD) || option_bool(OPT_CLEVERBIND), (char *)header, (size_t)n, &source_addr, &dst_addr, if_index);
+	  daemon->metrics[METRIC_DNS_LOCAL_ANSWERED]++;
+	  return;
+	}
+      /**********************************************/
 
       m = answer_request(header, ((char *) header) + udp_size, (size_t)n, 
 			 dst_addr_4, netmask, now, ad_reqd, do_bit, have_pseudoheader);
@@ -1664,6 +1722,10 @@ unsigned char *tcp_request(int confd, time_t now,
   int first, last;
   unsigned int flags = 0;
   
+  /************ Pi-hole modification ************/
+  bool piholeblocked = false;
+  /**********************************************/
+
   if (getpeername(confd, (struct sockaddr *)&peer_addr, &peer_len) == -1)
     return packet;
 
@@ -1738,6 +1800,12 @@ unsigned char *tcp_request(int confd, time_t now,
       /* save state of "cd" flag in query */
       if ((checking_disabled = header->hb4 & HB4_CD))
 	no_cache_dnssec = 1;
+
+      //********************** Pi-hole modification **********************//
+      ednsData edns = { 0 };
+      if (find_pseudoheader(header, (size_t)size, NULL, &pheader, NULL, NULL))
+        FTL_parse_pseudoheaders(header, size, &peer_addr, &edns);
+      //******************************************************************//
        
       if ((gotname = extract_request(header, (unsigned int)size, daemon->namebuff, &qtype)))
 	{
@@ -1748,6 +1816,10 @@ unsigned char *tcp_request(int confd, time_t now,
 	  
 	  log_query_mysockaddr(F_QUERY | F_FORWARD, daemon->namebuff,
 			       &peer_addr, types);
+
+	  piholeblocked = FTL_new_query(F_QUERY | F_FORWARD,
+					daemon->namebuff, &peer_addr, types, qtype,
+					daemon->log_display_id, &edns, TCP);
 
 	  
 #ifdef HAVE_AUTH
@@ -1795,6 +1867,21 @@ unsigned char *tcp_request(int confd, time_t now,
 	   /* RFC 6840 5.7 */
 	   if (header->hb4 & HB4_AD)
 	     ad_reqd = 1;
+
+	  /************ Pi-hole modification ************/
+	  // Interface name is known from before forking
+	  if(piholeblocked)
+	    {
+	      // Generate DNS packet for reply
+	      m = FTL_make_answer(header, m);
+	      // The pseudoheader may contain important information such as EDNS0 version important for
+	      // some DNS resolvers (such as systemd-resolved) to work properly. We should not discard them.
+	      if (have_pseudoheader)
+		m = add_pseudoheader(header, m, ((unsigned char *) header) + 65536, daemon->edns_pktsz, 0, NULL, 0, do_bit, 0);
+	    }
+	  else
+	  {
+	  /**********************************************/
 	   
 	   /* m > 0 if answered from cache */
 	   m = answer_request(header, ((char *) header) + 65536, (size_t)size, 
@@ -1899,6 +1986,9 @@ unsigned char *tcp_request(int confd, time_t now,
 				    ad_reqd, do_bit, added_pheader, check_subnet, &peer_addr); 
 		}
 	    }
+	  /************ Pi-hole modification ************/
+	  }
+	  /**********************************************/
 	}
       
       /* In case of local answer or no connections made. */
