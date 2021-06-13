@@ -195,6 +195,11 @@ int lookup_domain(char *qdomain, int flags, int *lowout, int *highout)
   return 1;
 }
 
+/* Return first server in group of equivalent servers; this is the "master" record. */
+int server_samegroup(struct server *a, struct server *b)
+{
+  return order_servers(a, b) == 0;
+}
 
 int filter_servers(int seed, int flags, int *lowout, int *highout)
 {

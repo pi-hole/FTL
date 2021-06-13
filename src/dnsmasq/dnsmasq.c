@@ -28,7 +28,7 @@ static volatile pid_t pid = 0;
 static volatile int pipewrite;
 static char terminate = 0;
 
-static int set_dns_listeners(time_t now);
+static void set_dns_listeners(void);
 static void check_dns_listeners(time_t now);
 static void sig_handler(int sig);
 static void async_event(int pipe, time_t now);
@@ -1052,16 +1052,10 @@ int main_dnsmasq (int argc, char **argv)
   
   while (!terminate)
     {
-      int t, timeout = -1;
+      int timeout = -1;
       
       poll_reset();
       
-      /* if we are out of resources, find how long we have to wait
-	 for some to come free, we'll loop around then and restart
-	 listening for queries */
-      if ((t = set_dns_listeners(now)) != 0)
-	timeout = t * 1000;
-
       /* Whilst polling for the dbus, or doing a tftp transfer, wake every quarter second */
       if (daemon->tftp_trans ||
 	  (option_bool(OPT_DBUS) && !daemon->dbus))
@@ -1070,6 +1064,8 @@ int main_dnsmasq (int argc, char **argv)
       /* Wake every second whilst waiting for DAD to complete */
       else if (is_dad_listeners())
 	timeout = 1000;
+
+      set_dns_listeners();
 
 #ifdef HAVE_DBUS
       set_dbus_listeners();
@@ -1708,12 +1704,12 @@ void clear_cache_and_reload(time_t now)
 #endif
 }
 
-static int set_dns_listeners(time_t now)
+static void set_dns_listeners(void)
 {
   struct serverfd *serverfdp;
   struct listener *listener;
   struct randfd_list *rfl;
-  int wait = 0, i;
+  int i;
   
 #ifdef HAVE_TFTP
   int  tftp = 0;
@@ -1725,10 +1721,6 @@ static int set_dns_listeners(time_t now)
 	poll_listen(transfer->sockfd, POLLIN);
       }
 #endif
-  
-  /* will we be able to get memory? */
-  if (daemon->port != 0)
-    get_new_frec(now, &wait, NULL);
   
   for (serverfdp = daemon->sfds; serverfdp; serverfdp = serverfdp->next)
     poll_listen(serverfdp->fd, POLLIN);
@@ -1748,10 +1740,9 @@ static int set_dns_listeners(time_t now)
 
   for (listener = daemon->listeners; listener; listener = listener->next)
     {
-      /* only listen for queries if we have resources */
-      if (listener->fd != -1 && wait == 0)
+      if (listener->fd != -1)
 	poll_listen(listener->fd, POLLIN);
-	
+      
       /* Only listen for TCP connections when a process slot
 	 is available. Death of a child goes through the select loop, so
 	 we don't need to explicitly arrange to wake up here,
@@ -1764,15 +1755,12 @@ static int set_dns_listeners(time_t now)
       if (tftp <= daemon->tftp_max && listener->tftpfd != -1)
 	poll_listen(listener->tftpfd, POLLIN);
 #endif
-
     }
   
   if (!option_bool(OPT_DEBUG))
     for (i = 0; i < MAX_PROCS; i++)
       if (daemon->tcp_pipes[i] != -1)
 	poll_listen(daemon->tcp_pipes[i], POLLIN);
-  
-  return wait;
 }
 
 static void check_dns_listeners(time_t now)
@@ -2142,7 +2130,7 @@ int delay_dhcp(time_t start, int sec, int fd, uint32_t addr, unsigned short id)
       poll_reset();
       if (fd != -1)
         poll_listen(fd, POLLIN);
-      set_dns_listeners(now);
+      set_dns_listeners();
       set_log_writer();
       
 #ifdef HAVE_DHCP6

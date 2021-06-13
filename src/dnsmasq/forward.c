@@ -17,12 +17,13 @@
 #include "dnsmasq.h"
 #include "../dnsmasq_interface.h"
 
+static struct frec *get_new_frec(time_t now, struct server *serv, struct frec *force);
 static struct frec *lookup_frec(unsigned short id, int fd, void *hash, int *firstp, int *lastp);
 static struct frec *lookup_frec_by_query(void *hash, unsigned int flags);
 
 static unsigned short get_id(void);
 static void free_frec(struct frec *f);
-static void query_full(time_t now);
+static void query_full(time_t now, char *domain);
 
 /* Send a UDP packet with its source address set as "source" 
    unless nowild is true, when we just send it with the kernel default */
@@ -220,7 +221,7 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	  /* If we've been spammed with many duplicates, return REFUSED. */
 	  if (!daemon->free_frec_src)
 	    {
-	      query_full(now);
+	      query_full(now, NULL);
 	      goto reply;
 	    }
 	  
@@ -246,7 +247,7 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	}
     }
 
-  /* retry existing query */
+  /* new query */
   if (!forward)
     {
       /* new query */
@@ -273,7 +274,7 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
       
       master = daemon->serverarray[first];
       
-      if (!(forward = get_new_frec(now, NULL, NULL)))
+      if (!(forward = get_new_frec(now, master, NULL)))
 	goto reply;
       /* table full - flags == 0, return REFUSED */
       
@@ -798,8 +799,9 @@ static int dnssec_validate(struct frec **forwardp, struct dns_header *header,
 	  /* Make sure we don't expire and free the orig frec during the
 	     allocation of a new one. */
 	  if (--orig->work_counter == 0 ||
-	      !(new = get_new_frec(now, NULL, orig)) ||
-	      (serverind = dnssec_server(server, daemon->keyname, NULL, NULL)) == -1)
+	      (serverind = dnssec_server(server, daemon->keyname, NULL, NULL)) == -1 ||
+	      !(server = daemon->serverarray[serverind]) ||
+	      !(new = get_new_frec(now, server, orig)))
 	    {
 	      status = STAT_ABANDONED;
 	      if (new)
@@ -810,8 +812,6 @@ static int dnssec_validate(struct frec **forwardp, struct dns_header *header,
 	      int querytype, fd;
 	      struct frec *next = new->next;
 	      size_t nn;
-	      
-	      server = daemon->serverarray[serverind];
 	      
 	      *new = *forward; /* copy everything, then overwrite */
 	      new->next = next;
@@ -2012,29 +2012,6 @@ unsigned char *tcp_request(int confd, time_t now,
   return packet;
 }
 
-
-static struct frec *allocate_frec(time_t now)
-{
-  struct frec *f;
-  
-  if ((f = (struct frec *)whine_malloc(sizeof(struct frec))))
-    {
-      f->next = daemon->frec_list;
-      f->time = now;
-      f->sentto = NULL;
-      f->rfds = NULL;
-      f->flags = 0;
-#ifdef HAVE_DNSSEC
-      f->dependent = NULL;
-      f->blocking_query = NULL;
-      f->stash = NULL;
-#endif
-      daemon->frec_list = f;
-    }
-
-  return f;
-}
-
 /* return a UDP socket bound to a random port, have to cope with straying into
    occupied port nos and reserved ones. */
 static int random_sock(struct server *s)
@@ -2257,96 +2234,81 @@ static void free_frec(struct frec *f)
 
 
 
-/* if wait==NULL return a free or older than TIMEOUT record.
-   else return *wait zero if one available, or *wait is delay to
-   when the oldest in-use record will expire. Impose an absolute
+/* Impose an absolute
    limit of 4*TIMEOUT before we wipe things (for random sockets).
    If force is non-NULL, always return a result, even if we have
    to allocate above the limit, and never free the record pointed
    to by the force argument. */
-struct frec *get_new_frec(time_t now, int *wait, struct frec *force)
+static struct frec *get_new_frec(time_t now, struct server *master, struct frec *force)
 {
   struct frec *f, *oldest, *target;
   int count;
   
-  if (wait)
-    *wait = 0;
-
-  for (f = daemon->frec_list, oldest = NULL, target =  NULL, count = 0; f; f = f->next, count++)
-    if (!f->sentto)
-      target = f;
-    else 
-      {
-#ifdef HAVE_DNSSEC
-	    /* Don't free DNSSEC sub-queries here, as we may end up with
-	       dangling references to them. They'll go when their "real" query 
-	       is freed. */
-	    if (!f->dependent && f != force)
-#endif
-	      {
-		if (difftime(now, f->time) >= 4*TIMEOUT)
-		  {
-		    free_frec(f);
-		    target = f;
-		  }
-	     
-	    
-		if (!oldest || difftime(f->time, oldest->time) <= 0)
-		  oldest = f;
-	      }
-      }
-
-  if (target)
+  /* look for free records, garbage collect old records and count number in use by our server-group. */
+  for (f = daemon->frec_list, oldest = NULL, target =  NULL, count = 0; f; f = f->next)
     {
-      target->time = now;
-      return target;
-    }
-  
-  /* can't find empty one, use oldest if there is one
-     and it's older than timeout */
-  if (!force && oldest && ((int)difftime(now, oldest->time)) >= TIMEOUT)
-    { 
-      /* keep stuff for twice timeout if we can by allocating a new
-	 record instead */
-      if (difftime(now, oldest->time) < 2*TIMEOUT && 
-	  count <= daemon->ftabsize &&
-	  (f = allocate_frec(now)))
-	return f;
-
-      if (!wait)
+      if (!f->sentto)
+	target = f;
+      else
 	{
-	  free_frec(oldest);
-	  oldest->time = now;
+#ifdef HAVE_DNSSEC
+	  /* Don't free DNSSEC sub-queries here, as we may end up with
+	     dangling references to them. They'll go when their "real" query 
+	     is freed. */
+	  if (!f->dependent && f != force)
+#endif
+	    {
+	      if (difftime(now, f->time) >= 4*TIMEOUT)
+		{
+		  free_frec(f);
+		  target = f;
+		}
+	      
+	      if (!oldest || difftime(f->time, oldest->time) <= 0)
+		oldest = f;
+	    }
 	}
-      return oldest;
+      
+      if (f->sentto && ((int)difftime(now, f->time)) < TIMEOUT && server_samegroup(f->sentto, master))
+	count++;
     }
-  
-  /* none available, calculate time 'till oldest record expires */
-  if (!force && count > daemon->ftabsize)
+
+  if (!force && count >= daemon->ftabsize)
     {
-      if (oldest && wait)
-	*wait = oldest->time + (time_t)TIMEOUT - now;
-      
-      query_full(now);
-      
+      query_full(now, master->domain);
       return NULL;
     }
   
-  if (!(f = allocate_frec(now)) && wait)
-    /* wait one second on malloc failure */
-    *wait = 1;
+  if (!target && oldest && ((int)difftime(now, oldest->time)) >= TIMEOUT)
+    { 
+      /* can't find empty one, use oldest if there is one and it's older than timeout */
+      free_frec(oldest);
+      target = oldest;
+    }
+  
+  if (!target && (target = (struct frec *)whine_malloc(sizeof(struct frec))))
+    {
+      target->next = daemon->frec_list;
+      daemon->frec_list = target;
+    }
 
-  return f; /* OK if malloc fails and this is NULL */
+  if (target)
+    target->time = now;
+
+  return target;
 }
 
-static void query_full(time_t now)
+static void query_full(time_t now, char *domain)
 {
   static time_t last_log = 0;
   
   if ((int)difftime(now, last_log) > 5)
     {
       last_log = now;
-      my_syslog(LOG_WARNING, _("Maximum number of concurrent DNS queries reached (max: %d)"), daemon->ftabsize);
+      if (!domain || strlen(domain) == 0)
+	my_syslog(LOG_WARNING, _("Maximum number of concurrent DNS queries reached (max: %d)"), daemon->ftabsize);
+      else
+	my_syslog(LOG_WARNING, _("Maximum number of concurrent DNS queries to %s reached (max: %d)"), domain, daemon->ftabsize);
     }
 }
 

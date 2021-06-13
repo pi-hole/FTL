@@ -1395,7 +1395,6 @@ void receive_query(struct listener *listen, time_t now);
 unsigned char *tcp_request(int confd, time_t now,
 			   union mysockaddr *local_addr, struct in_addr netmask, int auth_dns);
 void server_gone(struct server *server);
-struct frec *get_new_frec(time_t now, int *wait, struct frec *force);
 int send_from(int fd, int nowild, char *packet, size_t len, 
 	       union mysockaddr *to, union all_addr *source,
 	       unsigned int iface);
@@ -1744,6 +1743,7 @@ int filter_servers(int seed, int flags, int *lowout, int *highout);
 int is_local_answer(time_t now, int first, char *name);
 size_t make_local_answer(int flags, int gotname, size_t size, struct dns_header *header,
 			 char *name, int first, int last);
+int server_samegroup(struct server *a, struct server *b);
 #ifdef HAVE_DNSSEC
 int dnssec_server(struct server *server, char *keyname, int *firstp, int *lastp);
 #endif
