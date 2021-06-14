@@ -692,7 +692,6 @@ struct hostsfile {
 #define STAT_SECURE_WILDCARD    7
 #define STAT_OK                 8
 #define STAT_ABANDONED          9
-#define STAT_INPROGRESS         10
 
 #define FREC_NOREBIND           1
 #define FREC_CHECKING_DISABLED  2
@@ -729,6 +728,7 @@ struct frec {
   struct blockdata *stash; /* Saved reply, whilst we validate */
   size_t stash_len;
   struct frec *dependent; /* Query awaiting internally-generated DNSKEY or DS query */
+  struct frec *next_dependent; /* list of above. */
   struct frec *blocking_query; /* Query which is blocking us. */
 #endif
   struct frec *next;
