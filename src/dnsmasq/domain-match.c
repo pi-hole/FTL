@@ -62,7 +62,7 @@ void build_server_array(void)
   /* servers need the location in the array to find all the whole
      set of equivalent servers from a pointer to a single one. */
   for (count = 0; count < daemon->serverarraysz; count++)
-    if (!(daemon->serverarray[count]->flags & SERV_LITERAL_ADDRESS))
+    if (!(daemon->serverarray[count]->flags & (SERV_LITERAL_ADDRESS | SERV_USE_RESOLV)))
       daemon->serverarray[count]->arrayposn = count;
 }
 
