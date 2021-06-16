@@ -1978,11 +1978,13 @@ if(debug_dnsmasq_lines != 0)
 {
   if (option_bool(OPT_EXTRALOG))
     {
-      int port = prettyprint_addr(daemon->log_source_addr, daemon->addrbuff2);
       if (flags & F_NOEXTRA)
-	my_syslog(LOG_INFO, "* %s/%u %s %s %s %s (%s:%d)", daemon->addrbuff2, port, source, name, verb, dest, file, line);
+	my_syslog(LOG_INFO, "%u %s %s %s %s (%s:%d)", daemon->log_display_id, source, name, verb, dest, file, line);
       else
-	my_syslog(LOG_INFO, "%u %s/%u %s %s %s %s (%s:%d)", daemon->log_display_id, daemon->addrbuff2, port, source, name, verb, dest, file, line);
+	{
+	   int port = prettyprint_addr(daemon->log_source_addr, daemon->addrbuff2);
+	   my_syslog(LOG_INFO, "%u %s/%u %s %s %s %s (%s:%d)", daemon->log_display_id, daemon->addrbuff2, port, source, name, verb, dest, file, line);
+	}
     }
   else
     my_syslog(LOG_INFO, "%s %s %s %s (%s:%d)", source, name, verb, dest, file, line);

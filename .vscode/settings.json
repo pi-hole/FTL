@@ -25,6 +25,7 @@
         "files.associations": {
                 "config.h": "c",
                 "stdint.h": "c",
-                "stdint-gcc.h": "c"
+                "stdint-gcc.h": "c",
+                "dnsmasq.h": "c"
         }
 }

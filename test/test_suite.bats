@@ -495,18 +495,24 @@
 }
 
 @test "No WARNING messages in pihole-FTL.log (besides known capability issues)" {
+  run bash -c 'grep "WARNING" /var/log/pihole-FTL.log'
+  printf "%s\n" "${lines[@]}"
   run bash -c 'grep "WARNING" /var/log/pihole-FTL.log | grep -c -v -E "CAP_NET_ADMIN|CAP_NET_RAW|CAP_SYS_NICE"'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0" ]]
 }
 
 @test "No ERROR messages in pihole-FTL.log" {
+  run bash -c 'grep "ERROR" /var/log/pihole-FTL.log'
+  printf "%s\n" "${lines[@]}"
   run bash -c 'grep -c "ERROR" /var/log/pihole-FTL.log'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0" ]]
 }
 
 @test "No FATAL messages in pihole-FTL.log (besides error due to starting FTL more than once)" {
+  run bash -c 'grep "FATAL" /var/log/pihole-FTL.log'
+  printf "%s\n" "${lines[@]}"
   run bash -c 'grep "FATAL:" /var/log/pihole-FTL.log | grep -c -v "FATAL: create_shm(): Failed to create shared memory object \"FTL-lock\": File exists"'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0" ]]
