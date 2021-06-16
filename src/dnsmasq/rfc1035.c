@@ -895,6 +895,80 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
   return 0;
 }
 
+#if defined(HAVE_CONNTRACK) && defined(HAVE_UBUS)
+void report_addresses(struct dns_header *header, size_t len, u32 mark)
+{
+  unsigned char *p, *endrr;
+  int i;
+  unsigned long attl;
+  struct allowlist *allowlists;
+  char **pattern_pos;
+  
+  if (RCODE(header) != NOERROR)
+    return;
+  
+  for (allowlists = daemon->allowlists; allowlists; allowlists = allowlists->next)
+    if (allowlists->mark == (mark & daemon->allowlist_mask & allowlists->mask))
+      for (pattern_pos = allowlists->patterns; *pattern_pos; pattern_pos++)
+	if (!strcmp(*pattern_pos, "*"))
+	  return;
+  
+  if (!(p = skip_questions(header, len)))
+    return;
+  for (i = ntohs(header->ancount); i != 0; i--)
+    {
+      int aqtype, aqclass, ardlen;
+      
+      if (!extract_name(header, len, &p, daemon->namebuff, 1, 10))
+	return;
+      
+      if (!CHECK_LEN(header, p, len, 10))
+	return;
+      GETSHORT(aqtype, p);
+      GETSHORT(aqclass, p);
+      GETLONG(attl, p);
+      GETSHORT(ardlen, p);
+      
+      if (!CHECK_LEN(header, p, len, ardlen))
+	return;
+      endrr = p+ardlen;
+      
+      if (aqclass == C_IN)
+	{
+	  if (aqtype == T_CNAME)
+	    {
+	      char namebuff[MAXDNAME];
+	      if (!extract_name(header, len, &p, namebuff, 1, 0))
+		return;
+	      ubus_event_bcast_connmark_allowlist_resolved(mark, daemon->namebuff, namebuff, attl);
+	    }
+	  if (aqtype == T_A)
+	    {
+	      struct in_addr addr;
+	      char ip[INET_ADDRSTRLEN];
+	      if (ardlen != INADDRSZ)
+		return;
+	      memcpy(&addr, p, ardlen);
+	      if (inet_ntop(AF_INET, &addr, ip, sizeof ip))
+		ubus_event_bcast_connmark_allowlist_resolved(mark, daemon->namebuff, ip, attl);
+	    }
+	  else if (aqtype == T_AAAA)
+	    {
+	      struct in6_addr addr;
+	      char ip[INET6_ADDRSTRLEN];
+	      if (ardlen != IN6ADDRSZ)
+		return;
+	      memcpy(&addr, p, ardlen);
+	      if (inet_ntop(AF_INET6, &addr, ip, sizeof ip))
+		ubus_event_bcast_connmark_allowlist_resolved(mark, daemon->namebuff, ip, attl);
+	    }
+	}
+      
+      p = endrr;
+    }
+}
+#endif
+
 /* If the packet holds exactly one query
    return F_IPV4 or F_IPV6  and leave the name from the query in name */
 unsigned int extract_request(struct dns_header *header, size_t qlen, char *name, unsigned short *typep)
@@ -907,7 +981,8 @@ unsigned int extract_request(struct dns_header *header, size_t qlen, char *name,
 
   *name = 0; /* return empty name if no query found. */
   
-  if (ntohs(header->qdcount) != 1 || OPCODE(header) != QUERY)
+  if (ntohs(header->qdcount) != 1 || OPCODE(header) != QUERY ||
+      ntohs(header->ancount) != 0 || ntohs(header->nscount) != 0)
     return 0; /* must be exactly one query. */
   
   if (!extract_name(header, qlen, &p, name, 1, 4))

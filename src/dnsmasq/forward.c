@@ -543,6 +543,16 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
       if (oph)
 	plen = add_pseudoheader(header, plen, (unsigned char *)limit, daemon->edns_pktsz, 0, NULL, 0, do_bit, 0);
       
+#if defined(HAVE_CONNTRACK) && defined(HAVE_UBUS)
+      if (option_bool(OPT_CMARK_ALST_EN))
+	{
+	  unsigned int mark;
+	  int have_mark = get_incoming_mark(udpaddr, dst_addr, /* istcp: */ 0, &mark);
+	  if (have_mark && ((u32)mark & daemon->allowlist_mask))
+	    report_addresses(header, plen, mark);
+	}
+#endif
+      
       send_from(udpfd, option_bool(OPT_NOWILD) || option_bool(OPT_CLEVERBIND), (char *)header, plen, udpaddr, dst_addr, dst_iface);
     }
 	  
@@ -1173,6 +1183,16 @@ static void return_reply(time_t now, struct frec *forward, struct dns_header *he
 #ifdef HAVE_DUMPFILE
 	  dump_packet(DUMP_REPLY, daemon->packet, (size_t)nn, NULL, &src->source);
 #endif
+#if defined(HAVE_CONNTRACK) && defined(HAVE_UBUS)
+	  if (option_bool(OPT_CMARK_ALST_EN))
+	    {
+	      unsigned int mark;
+	      int have_mark = get_incoming_mark(&src->source, &src->dest, /* istcp: */ 0, &mark);
+	      if (have_mark && ((u32)mark & daemon->allowlist_mask))
+		report_addresses(header, nn, mark);
+	    }
+#endif
+	  
 	  /* Pi-hole modification */
 	  int first_ID = -1;
 	  
@@ -1194,6 +1214,47 @@ static void return_reply(time_t now, struct frec *forward, struct dns_header *he
 }
 
 
+#ifdef HAVE_CONNTRACK
+static int is_query_allowed_for_mark(u32 mark, const char *name)
+{
+  int is_allowable_name, did_validate_name = 0;
+  struct allowlist *allowlists;
+  char **patterns_pos;
+  
+  for (allowlists = daemon->allowlists; allowlists; allowlists = allowlists->next)
+    if (allowlists->mark == (mark & daemon->allowlist_mask & allowlists->mask))
+      for (patterns_pos = allowlists->patterns; *patterns_pos; patterns_pos++)
+	{
+	  if (!strcmp(*patterns_pos, "*"))
+	    return 1;
+	  if (!did_validate_name)
+	    {
+	      is_allowable_name = name ? is_valid_dns_name(name) : 0;
+	      did_validate_name = 1;
+	    }
+	  if (is_allowable_name && is_dns_name_matching_pattern(name, *patterns_pos))
+	    return 1;
+	}
+  return 0;
+}
+
+static size_t answer_disallowed(struct dns_header *header, size_t qlen, u32 mark, const char *name)
+{
+  unsigned char *p;
+  
+#ifdef HAVE_UBUS
+  if (name)
+    ubus_event_bcast_connmark_allowlist_refused(mark, name);
+#endif
+  
+  setup_reply(header, /* flags: */ 0);
+  
+  if (!(p = skip_questions(header, qlen)))
+    return 0;
+  return p - (unsigned char *)header;
+}
+#endif
+
 void receive_query(struct listener *listen, time_t now)
 {
   struct dns_header *header = (struct dns_header *)daemon->packet;
@@ -1205,6 +1266,11 @@ void receive_query(struct listener *listen, time_t now)
   size_t m;
   ssize_t n;
   int if_index = 0, auth_dns = 0, do_bit = 0, have_pseudoheader = 0;
+#ifdef HAVE_CONNTRACK
+  unsigned int mark = 0;
+  int have_mark = 0;
+  int is_single_query = 0, allowed = 1;
+#endif
 #ifdef HAVE_AUTH
   int local_auth = 0;
 #endif
@@ -1445,6 +1511,11 @@ void receive_query(struct listener *listen, time_t now)
 #ifdef HAVE_DUMPFILE
   dump_packet(DUMP_QUERY, daemon->packet, (size_t)n, &source_addr, NULL);
 #endif
+  
+#ifdef HAVE_CONNTRACK
+  if (option_bool(OPT_CMARK_ALST_EN))
+    have_mark = get_incoming_mark(&source_addr, &dst_addr, /* istcp: */ 0, &mark);
+#endif
   //********************** Pi-hole modification **********************//
   ednsData edns = { 0 };
   if (find_pseudoheader(header, (size_t)n, NULL, &pheader, NULL, NULL))
@@ -1462,6 +1533,10 @@ void receive_query(struct listener *listen, time_t now)
 			   &source_addr, types);
       piholeblocked = FTL_new_query(F_QUERY | F_FORWARD , daemon->namebuff,
 				    &source_addr, types, type, daemon->log_display_id, &edns, UDP);
+      
+#ifdef HAVE_CONNTRACK
+      is_single_query = 1;
+#endif
 
 #ifdef HAVE_AUTH
       /* find queries for zones we're authoritative for, and answer them directly */
@@ -1503,20 +1578,47 @@ void receive_query(struct listener *listen, time_t now)
 	udp_size = PACKETSZ; /* Sanity check - can't reduce below default. RFC 6891 6.2.3 */
     }
 
+#ifdef HAVE_CONNTRACK
 #ifdef HAVE_AUTH
-  if (auth_dns)
+  if (!auth_dns || local_auth)
+#endif
+    if (option_bool(OPT_CMARK_ALST_EN) && have_mark && ((u32)mark & daemon->allowlist_mask))
+      allowed = is_query_allowed_for_mark((u32)mark, is_single_query ? daemon->namebuff : NULL);
+#endif
+  
+  if (0);
+#ifdef HAVE_CONNTRACK
+  else if (!allowed)
+    {
+      m = answer_disallowed(header, (size_t)n, (u32)mark, is_single_query ? daemon->namebuff : NULL);
+      
+      if (m >= 1)
+	{
+	  send_from(listen->fd, option_bool(OPT_NOWILD) || option_bool(OPT_CLEVERBIND),
+		    (char *)header, m, &source_addr, &dst_addr, if_index);
+	  daemon->metrics[METRIC_DNS_LOCAL_ANSWERED]++;
+	}
+    }
+#endif
+#ifdef HAVE_AUTH
+  else if (auth_dns)
     {
       m = answer_auth(header, ((char *) header) + udp_size, (size_t)n, now, &source_addr, 
 		      local_auth, do_bit, have_pseudoheader);
       if (m >= 1)
 	{
+#if defined(HAVE_CONNTRACK) && defined(HAVE_UBUS)
+	  if (local_auth)
+	    if (option_bool(OPT_CMARK_ALST_EN) && have_mark && ((u32)mark & daemon->allowlist_mask))
+	      report_addresses(header, m, mark);
+#endif
 	  send_from(listen->fd, option_bool(OPT_NOWILD) || option_bool(OPT_CLEVERBIND),
 		    (char *)header, m, &source_addr, &dst_addr, if_index);
 	  daemon->metrics[METRIC_DNS_AUTH_ANSWERED]++;
 	}
     }
-  else
 #endif
+  else
     {
       int ad_reqd = do_bit;
        /* RFC 6840 5.7 */
@@ -1543,6 +1645,10 @@ void receive_query(struct listener *listen, time_t now)
       
       if (m >= 1)
 	{
+#if defined(HAVE_CONNTRACK) && defined(HAVE_UBUS)
+	  if (option_bool(OPT_CMARK_ALST_EN) && have_mark && ((u32)mark & daemon->allowlist_mask))
+	    report_addresses(header, m, mark);
+#endif
 	  send_from(listen->fd, option_bool(OPT_NOWILD) || option_bool(OPT_CLEVERBIND),
 		    (char *)header, m, &source_addr, &dst_addr, if_index);
 	  daemon->metrics[METRIC_DNS_LOCAL_ANSWERED]++;
@@ -1749,6 +1855,9 @@ unsigned char *tcp_request(int confd, time_t now,
 {
   size_t size = 0;
   int norebind;
+#ifdef HAVE_CONNTRACK
+  int is_single_query = 0, allowed = 1;
+#endif
 #ifdef HAVE_AUTH
   int local_auth = 0;
 #endif
@@ -1784,7 +1893,7 @@ unsigned char *tcp_request(int confd, time_t now,
 
 #ifdef HAVE_CONNTRACK
   /* Get connection mark of incoming query to set on outgoing connections. */
-  if (option_bool(OPT_CONNTRACK))
+  if (option_bool(OPT_CONNTRACK) || option_bool(OPT_CMARK_ALST_EN))
     {
       union all_addr local;
 		      
@@ -1874,6 +1983,10 @@ unsigned char *tcp_request(int confd, time_t now,
 				    &peer_addr, types, qtype, daemon->log_display_id, &edns, TCP);
 
 	  
+#ifdef HAVE_CONNTRACK
+	  is_single_query = 1;
+#endif
+	  
 #ifdef HAVE_AUTH
 	  /* find queries for zones we're authoritative for, and answer them directly */
 	  if (!auth_dns && !option_bool(OPT_LOCALISE))
@@ -1907,13 +2020,26 @@ unsigned char *tcp_request(int confd, time_t now,
 	  if (flags & 0x8000)
 	    do_bit = 1; /* do bit */ 
 	}
-
+      
+#ifdef HAVE_CONNTRACK
 #ifdef HAVE_AUTH
-      if (auth_dns)
+      if (!auth_dns || local_auth)
+#endif
+	if (option_bool(OPT_CMARK_ALST_EN) && have_mark && ((u32)mark & daemon->allowlist_mask))
+	  allowed = is_query_allowed_for_mark((u32)mark, is_single_query ? daemon->namebuff : NULL);
+#endif
+
+      if (0);
+#ifdef HAVE_CONNTRACK
+      else if (!allowed)
+	m = answer_disallowed(header, size, (u32)mark, is_single_query ? daemon->namebuff : NULL);
+#endif
+#ifdef HAVE_AUTH
+      else if (auth_dns)
 	m = answer_auth(header, ((char *) header) + 65536, (size_t)size, now, &peer_addr, 
 			local_auth, do_bit, have_pseudoheader);
-      else
 #endif
+      else
 	{
 	   int ad_reqd = do_bit;
 	   /* RFC 6840 5.7 */
@@ -2057,6 +2183,13 @@ unsigned char *tcp_request(int confd, time_t now,
       
       *length = htons(m);
       
+#if defined(HAVE_CONNTRACK) && defined(HAVE_UBUS)
+#ifdef HAVE_AUTH
+      if (!auth_dns || local_auth)
+#endif
+	if (option_bool(OPT_CMARK_ALST_EN) && have_mark && ((u32)mark & daemon->allowlist_mask))
+	  report_addresses(header, m, mark);
+#endif
       if (!read_write(confd, packet, m + sizeof(u16), 0))
 	break;
     }

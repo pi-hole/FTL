@@ -175,6 +175,8 @@ struct myoption {
 #define LOPT_DYNHOST       362
 #define LOPT_LOG_DEBUG     363
 #define LOPT_UMBRELLA	   364
+#define LOPT_CMARK_ALST_EN 365
+#define LOPT_CMARK_ALST    366
  
 #ifdef HAVE_GETOPT_LONG
 static const struct option opts[] =  
@@ -328,6 +330,8 @@ static const struct myoption opts[] =
     { "auth-sec-servers", 1, 0, LOPT_AUTHSFS },
     { "auth-peer", 1, 0, LOPT_AUTHPEER }, 
     { "ipset", 1, 0, LOPT_IPSET },
+    { "connmark-allowlist-enable", 2, 0, LOPT_CMARK_ALST_EN },
+    { "connmark-allowlist", 1, 0, LOPT_CMARK_ALST },
     { "synth-domain", 1, 0, LOPT_SYNTH },
     { "dnssec", 0, 0, LOPT_SEC_VALID },
     { "trust-anchor", 1, 0, LOPT_TRUST_ANCHOR },
@@ -512,6 +516,8 @@ static struct {
   { LOPT_AUTHSFS, ARG_DUP, "<NS>[,<NS>...]", gettext_noop("Secondary authoritative nameservers for forward domains"), NULL },
   { LOPT_AUTHPEER, ARG_DUP, "<ipaddr>[,<ipaddr>...]", gettext_noop("Peers which are allowed to do zone transfer"), NULL },
   { LOPT_IPSET, ARG_DUP, "/<domain>[/<domain>...]/<ipset>...", gettext_noop("Specify ipsets to which matching domains should be added"), NULL },
+  { LOPT_CMARK_ALST_EN, ARG_ONE, "[=<mask>]", gettext_noop("Enable filtering of DNS queries with connection-track marks."), NULL },
+  { LOPT_CMARK_ALST, ARG_DUP, "<connmark>[/<mask>][,<pattern>[/<pattern>...]]", gettext_noop("Set allowed DNS patterns for a connection-track mark."), NULL },
   { LOPT_SYNTH, ARG_DUP, "<domain>,<range>,[<prefix>]", gettext_noop("Specify a domain and address range for synthesised names"), NULL },
   { LOPT_SEC_VALID, OPT_DNSSEC_VALID, NULL, gettext_noop("Activate DNSSEC validation"), NULL },
   { LOPT_TRUST_ANCHOR, ARG_DUP, "<domain>,[<class>],...", gettext_noop("Specify trust anchor key digest."), NULL },
@@ -689,13 +695,16 @@ static int atoi_check(char *a, int *res)
 
 static int strtoul_check(char *a, u32 *res)
 {
+  unsigned long x;
+  
   if (!numeric_check(a))
     return 0;
-  *res = strtoul(a, NULL, 10);
-  if (errno == ERANGE) {
+  x = strtoul(a, NULL, 10);
+  if (errno || x > UINT32_MAX) {
     errno = 0;
     return 0;
   }
+  *res = (u32)x;
   return 1;
 }
 
@@ -2881,6 +2890,135 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	 daemon->ipsets = ipsets_head.next;
 	 
 	 break;
+      }
+#endif
+      
+    case LOPT_CMARK_ALST_EN: /* --connmark-allowlist-enable */
+#ifndef HAVE_CONNTRACK
+      ret_err(_("recompile with HAVE_CONNTRACK defined to enable connmark-allowlist directives"));
+      break;
+#else
+      {
+	u32 mask = UINT32_MAX;
+	
+	if (arg)
+	  if (!strtoul_check(arg, &mask) || mask < 1)
+	    ret_err(gen_err);
+	
+	set_option_bool(OPT_CMARK_ALST_EN);
+	daemon->allowlist_mask = mask;
+	break;
+      }
+#endif
+      
+    case LOPT_CMARK_ALST: /* --connmark-allowlist */
+#ifndef HAVE_CONNTRACK
+	ret_err(_("recompile with HAVE_CONNTRACK defined to enable connmark-allowlist directives"));
+	break;
+#else
+      {
+	struct allowlist *allowlists;
+	char **patterns, **patterns_pos;
+	u32 mark, mask = UINT32_MAX;
+	size_t num_patterns = 0;
+	
+	char *c, *m = NULL;
+	char *separator;
+	unhide_metas(arg);
+	if (!arg)
+	  ret_err(gen_err);
+	c = arg;
+	if (*c < '0' || *c > '9')
+	  ret_err(gen_err);
+	while (*c && *c != ',')
+	  {
+	    if (*c == '/')
+	      {
+		if (m)
+		  ret_err(gen_err);
+	        *c = '\0';
+		m = ++c;
+	      }
+	    if (*c < '0' || *c > '9')
+	      ret_err(gen_err);
+	    c++;
+	  }
+	separator = c;
+	if (!*separator)
+	  break;
+	while (c && *c)
+	  {
+	    char *end = strchr(++c, '/');
+	    if (end)
+	      *end = '\0';
+	    if (strcmp(c, "*") && !is_valid_dns_name_pattern(c))
+	      ret_err(gen_err);
+	    if (end)
+	      *end = '/';
+	    if (num_patterns >= UINT16_MAX - 1)
+	      ret_err(gen_err);
+	    num_patterns++;
+	    c = end;
+	  }
+	
+	*separator = '\0';
+	if (!strtoul_check(arg, &mark) || mark < 1 || mark > UINT32_MAX)
+	  ret_err(gen_err);
+	if (m)
+	  if (!strtoul_check(m, &mask) || mask < 1 || mask > UINT32_MAX || (mark & ~mask))
+	    ret_err(gen_err);
+	if (num_patterns)
+	  *separator = ',';
+	for (allowlists = daemon->allowlists; allowlists; allowlists = allowlists->next)
+	  if (allowlists->mark == mark && allowlists->mask == mask)
+	    ret_err(gen_err);
+	
+	patterns = opt_malloc((num_patterns + 1) * sizeof(char *));
+	if (!patterns)
+	  goto fail_cmark_allowlist;
+	patterns_pos = patterns;
+	c = separator;
+	while (c && *c)
+	{
+	  char *end = strchr(++c, '/');
+	  if (end)
+	    *end = '\0';
+	  if (!(*patterns_pos++ = opt_string_alloc(c)))
+	    goto fail_cmark_allowlist;
+	  if (end)
+	    *end = '/';
+	  c = end;
+	}
+	*patterns_pos++ = NULL;
+	
+	allowlists = opt_malloc(sizeof(struct allowlist));
+	if (!allowlists)
+	  goto fail_cmark_allowlist;
+	memset(allowlists, 0, sizeof(struct allowlist));
+	allowlists->mark = mark;
+	allowlists->mask = mask;
+	allowlists->patterns = patterns;
+	allowlists->next = daemon->allowlists;
+	daemon->allowlists = allowlists;
+	break;
+	
+      fail_cmark_allowlist:
+	if (patterns)
+	  {
+	    for (patterns_pos = patterns; *patterns_pos; patterns_pos++)
+	      {
+		free(*patterns_pos);
+		*patterns_pos = NULL;
+	      }
+	    free(patterns);
+	    patterns = NULL;
+	  }
+	if (allowlists)
+	  {
+	    free(allowlists);
+	    allowlists = NULL;
+	  }
+	ret_err(gen_err);
       }
 #endif
       

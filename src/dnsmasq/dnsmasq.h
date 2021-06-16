@@ -272,7 +272,8 @@ struct event_desc {
 #define OPT_LOG_DEBUG      62
 #define OPT_UMBRELLA       63
 #define OPT_UMBRELLA_DEVID 64
-#define OPT_LAST           65
+#define OPT_CMARK_ALST_EN  65
+#define OPT_LAST           66
 
 #define OPTION_BITS (sizeof(unsigned int)*8)
 #define OPTION_SIZE ( (OPT_LAST/OPTION_BITS)+((OPT_LAST%OPTION_BITS)!=0) )
@@ -610,6 +611,12 @@ struct ipsets {
   char **sets;
   char *domain;
   struct ipsets *next;
+};
+
+struct allowlist {
+  u32 mark, mask;
+  char **patterns;
+  struct allowlist *next;
 };
 
 struct irec {
@@ -1088,6 +1095,8 @@ extern struct daemon {
   struct server *servers, *local_domains, **serverarray, *no_rebind;
   int serverarraysz;
   struct ipsets *ipsets;
+  u32 allowlist_mask;
+  struct allowlist *allowlists;
   int log_fac; /* log facility */
   char *log_file; /* optional log file */
   int max_logs;  /* queue limit */
@@ -1280,6 +1289,9 @@ void setup_reply(struct dns_header *header, unsigned int flags);
 int extract_addresses(struct dns_header *header, size_t qlen, char *name,
 		      time_t now, char **ipsets, int is_sign, int check_rebind,
 		      int no_cache_dnssec, int secure, int *doctored);
+#if defined(HAVE_CONNTRACK) && defined(HAVE_UBUS)
+void report_addresses(struct dns_header *header, size_t len, u32 mark);
+#endif
 size_t answer_request(struct dns_header *header, char *limit, size_t qlen,  
 		      struct in_addr local_addr, struct in_addr local_netmask, 
 		      time_t now, int ad_reqd, int do_bit, int have_pseudoheader);
@@ -1562,12 +1574,23 @@ char *ubus_init(void);
 void set_ubus_listeners(void);
 void check_ubus_listeners(void);
 void ubus_event_bcast(const char *type, const char *mac, const char *ip, const char *name, const char *interface);
+#  ifdef HAVE_CONNTRACK
+void ubus_event_bcast_connmark_allowlist_refused(u32 mark, const char *name);
+void ubus_event_bcast_connmark_allowlist_resolved(u32 mark, const char *pattern, const char *ip, u32 ttl);
+#  endif
 #endif
 
 /* ipset.c */
 #ifdef HAVE_IPSET
 void ipset_init(void);
 int add_to_ipset(const char *setname, const union all_addr *ipaddr, int flags, int remove);
+#endif
+
+/* pattern.c */
+#ifdef HAVE_CONNTRACK
+int is_valid_dns_name(const char *value);
+int is_valid_dns_name_pattern(const char *value);
+int is_dns_name_matching_pattern(const char *name, const char *pattern);
 #endif
 
 /* helper.c */
