@@ -344,7 +344,9 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	   
 	  blockdata_retrieve(forward->stash, forward->stash_len, (void *)header);
 	  plen = forward->stash_len;
-
+	  /* get query for logging. */
+	  extract_request(header, plen, daemon->namebuff, NULL);
+	  
 	  if (find_pseudoheader(header, plen, NULL, &pheader, &is_sign, NULL) && !is_sign)
 	    PUTSHORT(SAFE_PKTSZ, pheader);
 
