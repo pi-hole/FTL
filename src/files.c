@@ -146,3 +146,8 @@ void ls_dir(const char* path)
 	// Close directory stream
 	closedir(dirp);
 }
+
+const char * __attribute__ ((pure)) short_path(const char *full_path)
+{
+	return strstr(full_path, "src/");
+}

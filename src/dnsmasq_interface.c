@@ -47,8 +47,10 @@
 
 // Private prototypes
 static void print_flags(const unsigned int flags);
-static void query_set_reply(const unsigned int flags, const union all_addr *addr,
-                            queriesData* query, const struct timeval response);
+#define query_set_reply(flags, addr, query, response) _query_set_reply(flags, addr, query, response, __FILE__, __LINE__)
+static void _query_set_reply(const unsigned int flags, const union all_addr *addr,
+                             queriesData* query, const struct timeval response,
+                             const char *file, const int line);
 static unsigned long converttimeval(const struct timeval time) __attribute__((const));
 static enum query_status detect_blocked_IP(const unsigned short flags,
                                            const union all_addr *addr,
@@ -86,7 +88,7 @@ void FTL_hook(unsigned int flags, char *name, union all_addr *addr, char *arg, i
 {
 	print_flags(flags);
 	// Extract filename from path
-	const char *path = strstr(file, "src/");
+	const char *path = short_path(file);
 	const char *ffile = path != NULL ? path : file;
 
 	if(strcmp(ffile, "src/dnsmasq/rfc1035.c") == 0)
@@ -149,15 +151,8 @@ size_t _FTL_make_answer(struct dns_header *header, const size_t qlen, const char
 		return 0;
 
 	// Get question type
-	int qtype;
+	int qtype, flags;
 	GETSHORT(qtype, p);
-
-	// Add flags according to current blocking mode
-	// We bit-add here as flags already contains either F_IPV4 or F_IPV6
-	// Set blocking_flags to F_HOSTS so dnsmasq logs blocked queries being answered from a specific source
-	// (it would otherwise assume it knew the blocking status from cache which would prevent us from
-	// printing the blocking source (blacklist, regex, gravity) in dnsmasq's log file, our pihole.log)
-	int flags = F_HOSTS;
 
 	// Set flag based on what we will reply with
 	if(qtype == T_A)
@@ -178,6 +173,10 @@ size_t _FTL_make_answer(struct dns_header *header, const size_t qlen, const char
 		flags = F_NXDOMAIN;
 		// Reset DNS reply forcing
 		force_next_DNS_reply = 0u;
+
+		// Debug logging
+		if(config.debug & DEBUG_FLAGS)
+			logg("Forced DNS reply to NXDOMAIN");
 	}
 	else if(force_next_DNS_reply == REFUSED)
 	{
@@ -185,6 +184,10 @@ size_t _FTL_make_answer(struct dns_header *header, const size_t qlen, const char
 		flags = 0;
 		// Reset DNS reply forcing
 		force_next_DNS_reply = 0u;
+
+		// Debug logging
+		if(config.debug & DEBUG_FLAGS)
+			logg("Forced DNS reply to REFUSED");
 	}
 
 	if(config.blockingmode == MODE_NX)
@@ -202,11 +205,23 @@ size_t _FTL_make_answer(struct dns_header *header, const size_t qlen, const char
 	}
 
 	// Prepare reply
+	if(config.debug & DEBUG_FLAGS)
+	{
+		logg("Preparing FTL reply");
+		print_flags(flags);
+	}
 	setup_reply(header, flags);
+
+	// Add flags according to current blocking mode
+	// Set blocking_flags to F_HOSTS so dnsmasq logs blocked queries being answered from a specific source
+	// (it would otherwise assume it knew the blocking status from cache which would prevent us from
+	// printing the blocking source (blacklist, regex, gravity) in dnsmasq's log file, our pihole.log)
+	flags |= F_HOSTS;
+
+	// Skip questions so we can start adding answers (if applicable)
 	if (!(p = skip_questions(header, qlen)))
 		return 0;
 
-	// Add resource records
 	int trunc = 0;
 	// Add A answer record if requested
 	if(flags & F_IPV4)
@@ -240,7 +255,7 @@ size_t _FTL_make_answer(struct dns_header *header, const size_t qlen, const char
 		log_query((flags | F_CONFIG | F_FORWARD) & ~F_IPV4, name, addr, (char*)blockingreason);
 	}
 
-	// Indicate if truncated (should retry)
+	// Indicate if truncated (client should retry over TCP)
 	if (trunc)
 		header->hb3 |= HB3_TC;
 
@@ -1817,8 +1832,9 @@ static const char *reply_status_str[QUERY_REPLY_MAX] = {
 	"OTHER"
 };
 
-static void query_set_reply(const unsigned int flags, const union all_addr *addr,
-                            queriesData* query, const struct timeval response)
+static void _query_set_reply(const unsigned int flags, const union all_addr *addr,
+                             queriesData* query, const struct timeval response,
+                             const char *file, const int line)
 {
 	// Iterate through possible values
 	if(flags & F_NEG || force_next_DNS_reply == NXDOMAIN)
@@ -1860,7 +1876,8 @@ static void query_set_reply(const unsigned int flags, const union all_addr *addr
 	}
 
 	if(config.debug & DEBUG_QUERIES)
-		logg("Set reply to %s (%d)", reply_status_str[query->reply], query->reply);
+		logg("Set reply to %s (%d) in %s:%d", reply_status_str[query->reply], query->reply,
+		     short_path(file), line);
 
 	counters->reply[query->reply]++;
 

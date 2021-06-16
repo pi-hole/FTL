@@ -28,6 +28,8 @@
 #include "events.h"
 // overTime array
 #include "overTime.h"
+// short_path()
+#include "files.h"
 
 const char *querytypes[TYPE_MAX] = {"UNKNOWN", "A", "AAAA", "ANY", "SRV", "SOA", "PTR", "TXT",
                                     "NAPTR", "MX", "DS", "RRSIG", "DNSKEY", "NS", "OTHER", "SVCB",
@@ -523,7 +525,7 @@ static const char *query_status_str[QUERY_STATUS_MAX] = {
 	"IN_PROGRESS"
 };
 
-void query_set_status(queriesData *query, const enum query_status new_status)
+void _query_set_status(queriesData *query, const enum query_status new_status, const char *file, const int line)
 {
 	// Debug logging
 	if(config.debug & DEBUG_STATUS)
@@ -531,14 +533,14 @@ void query_set_status(queriesData *query, const enum query_status new_status)
 		const char *oldstr = query->status < QUERY_STATUS_MAX ? query_status_str[query->status] : "INVALID";
 		if(query->status == new_status)
 		{
-			logg("Query %i: status unchanged: %s (%d)",
-			     query->id, oldstr, query->status);
+			logg("Query %i: status unchanged: %s (%d) in %s:%i",
+			     query->id, oldstr, query->status, short_path(file), line);
 		}
 		else
 		{
 			const char *newstr = new_status < QUERY_STATUS_MAX ? query_status_str[new_status] : "INVALID";
-			logg("Query %i: status changed: %s (%d) -> %s (%d)",
-			     query->id, oldstr, query->status, newstr, new_status);
+			logg("Query %i: status changed: %s (%d) -> %s (%d) in %s:%i",
+			     query->id, oldstr, query->status, newstr, new_status, short_path(file), line);
 		}
 	}
 
