@@ -239,7 +239,7 @@ size_t _FTL_make_answer(struct dns_header *header, const size_t qlen, const char
 		header->ancount = htons(ntohs(header->ancount) + 1);
 		add_resource_record(header, ((char *)header) + 65536, &trunc, sizeof(struct dns_header),
 		                    &p, daemon->local_ttl, NULL, T_A, C_IN, (char*)"4", &addr->addr4);
-		log_query((flags | F_CONFIG | F_FORWARD) & ~F_IPV6, name, addr, (char*)blockingreason);
+		log_query(flags & ~F_IPV6, name, addr, (char*)blockingreason);
 	}
 
 	// Add AAAA answer record if requested
@@ -255,7 +255,7 @@ size_t _FTL_make_answer(struct dns_header *header, const size_t qlen, const char
 		header->ancount = htons(ntohs(header->ancount) + 1);
 		add_resource_record(header, ((char *)header) + 65536, &trunc, sizeof(struct dns_header),
 		                    &p, daemon->local_ttl, NULL, T_AAAA, C_IN, (char*)"6", &addr->addr6);
-		log_query((flags | F_CONFIG | F_FORWARD) & ~F_IPV4, name, addr, (char*)blockingreason);
+		log_query(flags & ~F_IPV4, name, addr, (char*)blockingreason);
 	}
 
 	// Indicate if truncated (client should retry over TCP)
