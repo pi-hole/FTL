@@ -86,55 +86,58 @@ const char flagnames[][12] = {"F_IMMORTAL ", "F_NAMEP ", "F_REVERSE ", "F_FORWAR
 
 void FTL_hook(unsigned int flags, char *name, union all_addr *addr, char *arg, int id, const char* file, const int line)
 {
-	print_flags(flags);
+	if(config.debug & DEBUG_FLAGS)
+	{
+		logg("Processing FTL hook...");
+		print_flags(flags);
+	}
 	// Extract filename from path
 	const char *path = short_path(file);
-	const char *ffile = path != NULL ? path : file;
 
-	if(strcmp(ffile, "src/dnsmasq/rfc1035.c") == 0)
+	if(strcmp(path, "src/dnsmasq/rfc1035.c") == 0)
 	{
 		if(name && strcmp(name, "error") == 0)
-			FTL_reply(flags, name, addr, id, ffile, line); // F_CONFIG | F_RCODE
+			FTL_reply(flags, name, addr, id, path, line); // F_CONFIG | F_RCODE
 		else
-			FTL_cache(flags, name, addr, id, ffile, line); // all possible things
+			FTL_cache(flags, name, addr, id, path, line); // all possible things
 	}
-	else if (strcmp(ffile, "src/dnsmasq/cache.c") == 0)
+	else if (strcmp(path, "src/dnsmasq/cache.c") == 0)
 	{
-		FTL_reply(flags, name, addr, id, ffile, line); // flags [from cache_insert(flags)] | F_UPSTREAM
+		FTL_reply(flags, name, addr, id, path, line); // flags [from cache_insert(flags)] | F_UPSTREAM
 	}
-	else if (strcmp(ffile, "src/dnsmasq/domain-match.c") == 0)
+	else if (strcmp(path, "src/dnsmasq/domain-match.c") == 0)
 	{
-		FTL_reply(flags, name, addr, id, ffile, line); // call from make_local_answer()
+		FTL_reply(flags, name, addr, id, path, line); // call from make_local_answer()
 	}
-	else if (strcmp(ffile, "src/dnsmasq_interface.c") == 0)
+	else if (strcmp(path, "src/dnsmasq_interface.c") == 0)
 	{
-		FTL_reply(flags, name, addr, id, ffile, line); // ([IPV4|IPV6] | F_CONFIG | F_FORWARD)
+		FTL_reply(flags, name, addr, id, path, line); // ([IPV4|IPV6] | F_CONFIG | F_FORWARD)
 	}
-	else if(strcmp(ffile, "src/dnsmasq/forward.c") == 0)
+	else if(strcmp(path, "src/dnsmasq/forward.c") == 0)
 	{
 		// Note: The order matters here!
 		if((flags & F_QUERY) && (flags & F_FORWARD))
 			; // New query, handled by FTL_new_query via separate call
 		else if(flags & (F_SERVER | F_FORWARD))
 			// forwarded upstream
-			FTL_forwarded(flags, name, addr, id, ffile, line);
+			FTL_forwarded(flags, name, addr, id, path, line);
 		else if(flags == F_SECSTAT)
 			// DNSSEC validation result
-			FTL_dnssec(arg, id, ffile, line);
+			FTL_dnssec(arg, id, path, line);
 		else if(flags == (F_UPSTREAM | F_RCODE) && name && strcasecmp(name, "error") == 0)
 			// upstream sent somethign different than NOERROR or NXDOMAIN
-			FTL_upstream_error(addr->log.rcode, id, ffile, line);
+			FTL_upstream_error(addr->log.rcode, id, path, line);
 		else if(flags & (F_NOEXTRA | F_DNSSEC))
 			; // Ignored
 		else
-			FTL_reply(flags, name, addr, id, ffile, line);
+			FTL_reply(flags, name, addr, id, path, line);
 	}
-	else if (strcmp(ffile, "src/dnsmasq/dnssec.c") == 0)
+	else if (strcmp(path, "src/dnsmasq/dnssec.c") == 0)
 	{
 		; // We ignore these
 	}
 	else if(config.debug)
-		logg("Unhandled hook at %s:%d", ffile, line);
+		logg("Unhandled hook at %s:%d", path, line);
 }
 
 // This is inspired by make_local_answer()

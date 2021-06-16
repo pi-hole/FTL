@@ -1921,7 +1921,7 @@ unsigned char *tcp_request(int confd, time_t now,
 	  if(piholeblocked)
 	    {
 	      // Generate DNS packet for reply
-	      m = FTL_make_answer(header, m);
+	      m = FTL_make_answer(header, size);
 	      // The pseudoheader may contain important information such as EDNS0 version important for
 	      // some DNS resolvers (such as systemd-resolved) to work properly. We should not discard them.
 	      if (have_pseudoheader)

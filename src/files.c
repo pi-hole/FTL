@@ -149,5 +149,6 @@ void ls_dir(const char* path)
 
 const char * __attribute__ ((pure)) short_path(const char *full_path)
 {
-	return strstr(full_path, "src/");
+	const char *shorter = strstr(full_path, "src/");
+	return shorter != NULL ? shorter : full_path;
 }
