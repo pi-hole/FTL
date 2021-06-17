@@ -75,6 +75,8 @@ void build_server_array(void)
    A flag of F_DNSSECOK returns a DNSSEC capable server only and
    also disables NODOTS servers from consideration.
    A flag of F_DOMAINSRV returns a domain-specific server only.
+   A flag of F_CONFIG returns anything that generates a local
+   reply of IPv4 or IPV6.
    return 0 if nothing found, 1 otherwise.
 */
 int lookup_domain(char *qdomain, int flags, int *lowout, int *highout)
@@ -84,8 +86,6 @@ int lookup_domain(char *qdomain, int flags, int *lowout, int *highout)
   int try, high, low = 0;
   int nlow = 0, nhigh = 0;
   char *cp;
-
-  int compares = 0;
 
   /* may be no configured servers. */
   if (daemon->serverarraysz == 0)
@@ -120,8 +120,6 @@ int lookup_domain(char *qdomain, int flags, int *lowout, int *highout)
       while (1) 
 	{
 	  try = (low + high)/2;
-
-	  compares++;
 
 	  if ((rc = order(qdomain, leading_dot, qlen, daemon->serverarray[try])) == 0)
 	    break;
@@ -186,8 +184,6 @@ int lookup_domain(char *qdomain, int flags, int *lowout, int *highout)
       qdomain += crop_query;
     }
 
-  printf("compares: %d\n", compares);
-  
   /* domain has no dots, and we have at least one server configured to handle such,
      These servers always sort to the very end of the array. 
      A configured server eg server=/lan/ will take precdence. */
@@ -240,47 +236,56 @@ int filter_servers(int seed, int flags, int *lowout, int *highout)
      
      See which of those match our query in that priority order and narrow (low, high) */
 
-  for (i = nlow; i < nhigh && (daemon->serverarray[i]->flags & SERV_6ADDR); i++);
-
-  if (i != nlow && (flags & F_IPV6))
+#define SERV_LOCAL_ADDRESS (SERV_6ADDR | SERV_4ADDR | SERV_ALL_ZEROS)
+  
+  for (i = nlow; (flags & F_CONFIG) && i < nhigh && (daemon->serverarray[i]->flags & SERV_LOCAL_ADDRESS); i++);
+  
+  if (i != nlow)
     nhigh = i;
   else
     {
-       nlow = i;
-
-       for (i = nlow; i < nhigh && (daemon->serverarray[i]->flags & SERV_4ADDR); i++);
+      for (i = nlow; i < nhigh && (daemon->serverarray[i]->flags & SERV_6ADDR); i++);
       
-      if (i != nlow && (flags & F_IPV4))
+      if (i != nlow && (flags & F_IPV6))
 	nhigh = i;
       else
 	{
 	  nlow = i;
 	  
-	  for (i = nlow; i < nhigh && (daemon->serverarray[i]->flags & SERV_ALL_ZEROS); i++);
+	  for (i = nlow; i < nhigh && (daemon->serverarray[i]->flags & SERV_4ADDR); i++);
 	  
-	  if (i != nlow && (flags & (F_IPV4 | F_IPV6)))
+	  if (i != nlow && (flags & F_IPV4))
 	    nhigh = i;
 	  else
 	    {
 	      nlow = i;
 	      
-	      for (i = nlow; i < nhigh && (daemon->serverarray[i]->flags & SERV_LITERAL_ADDRESS); i++);
+	      for (i = nlow; i < nhigh && (daemon->serverarray[i]->flags & SERV_ALL_ZEROS); i++);
 	      
-	      /* --local=/domain/, only return if we don't need a server. */
-	      if (i != nlow && !(flags & (F_DNSSECOK | F_DOMAINSRV | F_SERVER)))
+	      if (i != nlow && (flags & (F_IPV4 | F_IPV6)))
 		nhigh = i;
 	      else
 		{
 		  nlow = i;
-		  /* If we want a server that can do DNSSEC, and this one can't, 
-		     return nothing. */
-		  if ((flags & F_DNSSECOK) && !(daemon->serverarray[nlow]->flags & SERV_DO_DNSSEC))
-		    nlow = nhigh;
+		  
+		  for (i = nlow; i < nhigh && (daemon->serverarray[i]->flags & SERV_LITERAL_ADDRESS); i++);
+		  
+		  /* --local=/domain/, only return if we don't need a server. */
+		  if (i != nlow && !(flags & (F_DNSSECOK | F_DOMAINSRV | F_SERVER)))
+		    nhigh = i;
+		  else
+		    {
+		      nlow = i;
+		      /* If we want a server that can do DNSSEC, and this one can't, 
+			 return nothing. */
+		      if ((flags & F_DNSSECOK) && !(daemon->serverarray[nlow]->flags & SERV_DO_DNSSEC))
+			nlow = nhigh;
+		    }
 		}
 	    }
 	}
     }
-
+  
   *lowout = nlow;
   *highout = nhigh;
   
@@ -291,7 +296,7 @@ int is_local_answer(time_t now, int first, char *name)
 {
   int flags = 0;
   int rc = 0;
-    
+  
   if ((flags = daemon->serverarray[first]->flags) & SERV_LITERAL_ADDRESS)
     {
       if (flags & SERV_4ADDR)
@@ -301,7 +306,19 @@ int is_local_answer(time_t now, int first, char *name)
       else if (flags & SERV_ALL_ZEROS)
 	rc = F_IPV4 | F_IPV6;
       else
-	rc = check_for_local_domain(name, now) ? F_NOERR : F_NXDOMAIN;
+	{
+	  /* argument first is the first struct server which matches the query type;
+	     now roll back to the server which is just the same domain, to check if that 
+	     provides an answer of a different type. */
+
+	  for (;first > 0 && order_servers(daemon->serverarray[first-1], daemon->serverarray[first]) == 0; first--);
+	  
+	  if ((daemon->serverarray[first]->flags & SERV_LOCAL_ADDRESS) ||
+	      check_for_local_domain(name, now))
+	    rc = F_NOERR;
+	  else
+	    rc = F_NXDOMAIN;
+	}
     }
 
   return rc;

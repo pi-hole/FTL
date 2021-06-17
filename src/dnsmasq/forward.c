@@ -673,16 +673,19 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
       int doctored = 0;
       
       if (rcode == NXDOMAIN && 
-	  extract_request(header, n, daemon->namebuff, NULL) &&
-	  check_for_local_domain(daemon->namebuff, now))
+	  extract_request(header, n, daemon->namebuff, NULL))
 	{
-	  /* if we forwarded a query for a locally known name (because it was for 
-	     an unknown type) and the answer is NXDOMAIN, convert that to NODATA,
-	     since we know that the domain exists, even if upstream doesn't */
-	  munged = 1;
-	  header->hb3 |= HB3_AA;
-	  SET_RCODE(header, NOERROR);
-	  cache_secure = 0;
+	  if (check_for_local_domain(daemon->namebuff, now) ||
+	      lookup_domain(daemon->namebuff, F_CONFIG, NULL, NULL))
+	    {
+	      /* if we forwarded a query for a locally known name (because it was for 
+		 an unknown type) and the answer is NXDOMAIN, convert that to NODATA,
+		 since we know that the domain exists, even if upstream doesn't */
+	      munged = 1;
+	      header->hb3 |= HB3_AA;
+	      SET_RCODE(header, NOERROR);
+	      cache_secure = 0;
+	    }
 	}
       /******************************** Pi-hole modification ********************************/
       int ret = extract_addresses(header, n, daemon->namebuff, now, sets, is_sign, check_rebind, no_cache, cache_secure, &doctored);
