@@ -79,17 +79,17 @@ void build_server_array(void)
 */
 int lookup_domain(char *qdomain, int flags, int *lowout, int *highout)
 {
-  int rc, nodots, leading_dot = 1;
-  ssize_t qlen, maxlen;
+  int rc, crop_query, nodots, leading_dot = 1;
+  ssize_t qlen;
   int try, high, low = 0;
   int nlow = 0, nhigh = 0;
   char *cp;
 
+  int compares = 0;
+
   /* may be no configured servers. */
   if (daemon->serverarraysz == 0)
     return 0;
-  
-  maxlen = strlen(daemon->serverarray[0]->domain);
   
   /* find query length and presence of '.' */
   for (cp = qdomain, nodots = 1, qlen = 0; *cp; qlen++, cp++)
@@ -101,13 +101,8 @@ int lookup_domain(char *qdomain, int flags, int *lowout, int *highout)
   if (qlen == 0 || flags & F_DNSSECOK)
     nodots = 0;
 
-  /* No point trying to match more than the largest server domain */
-  if (qlen > maxlen)
-    {
-      qdomain += qlen - maxlen;
-      qlen = maxlen;
-      leading_dot = 0;
-    }
+  /* account for leading dot */
+  qlen++;
   
   /* Search shorter and shorter RHS substrings for a match */
   while (qlen >= 0)
@@ -115,18 +110,23 @@ int lookup_domain(char *qdomain, int flags, int *lowout, int *highout)
       /* Note that when we chop off a character, all the possible matches
 	 MUST be at a larger index than the nearest failing match with one more
 	 character, since the array is sorted longest to smallest. Hence 
-	 we don't reset low here. */
+	 we don't reset low to zero here, we can go further below and crop the 
+	 search string to the size of the largest remaining server
+	 when this match fails. */
       high = daemon->serverarraysz;
+      crop_query = 1;
       
       /* binary search */
-      do 
+      while (1) 
 	{
 	  try = (low + high)/2;
-	  
+
+	  compares++;
+
 	  if ((rc = order(qdomain, leading_dot, qlen, daemon->serverarray[try])) == 0)
 	    break;
 	  
-	  if (rc <  0)
+	  if (rc < 0)
 	    {
 	      if (high == try)
 		break;
@@ -138,19 +138,14 @@ int lookup_domain(char *qdomain, int flags, int *lowout, int *highout)
 		break;
 	      low = try;
 	    }
-	}
-      while (low != high);
+	};
       
       if (rc == 0)
 	{
 	  /* We've matched a setting which says to use servers without a domain.
-	     Continue the search with empty query (the last character gets stripped
-	     by the loop. */
+	     Continue the search with empty query */
 	  if (daemon->serverarray[try]->flags & SERV_USE_RESOLV)
-	    {
-	      qdomain += qlen - 1;
-	      qlen = 1;
-	    }
+	    crop_query = qlen;
 	  else
 	    {
 	      /* We have a match, but it may only be (say) an IPv6 address, and
@@ -160,27 +155,50 @@ int lookup_domain(char *qdomain, int flags, int *lowout, int *highout)
 		break;
 	    }
 	}
-
-      if (leading_dot)
-	leading_dot = 0;
       else
 	{
-	  qlen--;
-	  qdomain++;
+	  /* try now points to the last domain that sorts before the query, so 
+	     we know that a substring of the query shorter than it is required to match, so
+	     find the largest domain that's shorter than try. Note that just going to
+	     try+1 is not optimal, consider searching bbb in (aaa,ccc,bb). try will point
+	     to aaa, since ccc sorts after bbb, but the first domain that has a chance to 
+	     match is dd. So find the length of the first domain later than try which is
+	     is shorter than it. */
+	  ssize_t len, old = daemon->serverarray[try]->domain_len;
+	  while (++try != daemon->serverarraysz)
+	    {
+	      if (old != (len = daemon->serverarray[try]->domain_len))
+	      {
+		/* crop_query must be at least one always. */
+		if (qlen != len)
+		  crop_query = qlen - len;
+		break;
+	      }
+	    }
 	}
+      
+      qlen -= crop_query;
+      if (leading_dot)
+	{
+	  leading_dot = 0;
+	  crop_query--;
+	}
+      qdomain += crop_query;
     }
+
+  printf("compares: %d\n", compares);
   
   /* domain has no dots, and we have at least one server configured to handle such,
      These servers always sort to the very end of the array. 
      A configured server eg server=/lan/ will take precdence. */
   if (nodots &&
       (daemon->serverarray[daemon->serverarraysz-1]->flags & SERV_FOR_NODOTS) &&
-      (nlow == nhigh || strlen(daemon->serverarray[nlow]->domain) == 0))
+      (nlow == nhigh || daemon->serverarray[nlow]->domain_len == 0))
     filter_servers(daemon->serverarraysz-1, flags, &nlow, &nhigh);
   
   /* F_DOMAINSRV returns only domain-specific servers, so if we got to a 
      general server, return empty set. */
-  if (nlow != nhigh && (flags & F_DOMAINSRV) && strlen(daemon->serverarray[nlow]->domain) == 0)
+  if (nlow != nhigh && (flags & F_DOMAINSRV) && daemon->serverarray[nlow]->domain_len == 0)
     nlow = nhigh;
   
   if (lowout)
@@ -382,10 +400,7 @@ static int order(char *qdomain, int leading_dot, size_t qlen, struct server *ser
   if (serv->flags & SERV_FOR_NODOTS)
     return -1;
 
-  if (leading_dot)
-    qlen++;
-  
-  dlen = strlen(serv->domain);
+  dlen = serv->domain_len;
   
   if (qlen < dlen)
     return 1;
@@ -401,14 +416,13 @@ static int order(char *qdomain, int leading_dot, size_t qlen, struct server *ser
 
 static int order_servers(struct server *s1, struct server *s2)
 {
-   size_t dlen = strlen(s1->domain);
+  /* need full comparison of dotless servers in 
+     order_qsort() and filter_servers() */
 
-   /* need full comparison of dotless servers in 
-      order_qsort() and filter_servers() */
-   if (s1->flags & SERV_FOR_NODOTS)
+  if (s1->flags & SERV_FOR_NODOTS)
      return (s2->flags & SERV_FOR_NODOTS) ? 0 : 1;
    
-   return order(s1->domain, 0, dlen, s2);
+   return order(s1->domain, 0, s1->domain_len, s2);
 }
   
 static int order_qsort(const void *a, const void *b)

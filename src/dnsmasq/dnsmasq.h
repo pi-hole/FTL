@@ -566,7 +566,7 @@ struct randfd_list {
 
 
 struct server {
-  int flags;
+  u16 flags, domain_len;
   char *domain;
   struct server *next;
   int serial, arrayposn;
@@ -585,23 +585,23 @@ struct server {
 #endif
 };
 
-/* First three fields must match struct server in next three definitions.. */
+/* First four fields must match struct server in next three definitions.. */
 struct serv_addr4 {
-  int flags;
+  u16 flags, domain_len;
   char *domain;
   struct server *next;
   struct in_addr addr;
 };
 
 struct serv_addr6 {
-  int flags;
+  u16 flags, domain_len;
   char *domain;
   struct server *next;
   struct in6_addr addr;
 };
 
 struct serv_local {
-  int flags;
+  u16 flags, domain_len;
   char *domain;
   struct server *next;
 };
@@ -1386,7 +1386,7 @@ void set_option_bool(unsigned int opt);
 void reset_option_bool(unsigned int opt);
 struct hostsfile *expand_filelist(struct hostsfile *list);
 char *parse_server(char *arg, union mysockaddr *addr, 
-		   union mysockaddr *source_addr, char *interface, int *flags);
+		   union mysockaddr *source_addr, char *interface, u16 *flags);
 int option_read_dynfile(char *file, int flags);
 
 /* forward.c */

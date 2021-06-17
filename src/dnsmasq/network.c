@@ -1629,7 +1629,7 @@ void add_update_server(int flags,
 
       serv->flags = flags;
       serv->domain = domain_str;
-
+      serv->domain_len = strlen(domain_str);
 
       if (!(flags & SERV_IS_LOCAL))
 	{

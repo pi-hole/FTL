@@ -154,9 +154,8 @@ static int domain_no_rebind(char *domain)
   struct server *serv;
   int dlen = (int)strlen(domain);
   
-  /* flags is misused to hold length of domain. */
   for (serv = daemon->no_rebind; serv; serv = serv->next)
-    if (dlen >= serv->flags && strcmp(serv->domain, &domain[dlen - serv->flags]) == 0)
+    if (dlen >= serv->domain_len && strcmp(serv->domain, &domain[dlen - serv->flags]) == 0)
       return 1;
 
   return 0;

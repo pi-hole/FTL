@@ -816,7 +816,7 @@ static char *parse_mysockaddr(char *arg, union mysockaddr *addr)
   return NULL;
 }
 
-char *parse_server(char *arg, union mysockaddr *addr, union mysockaddr *source_addr, char *interface, int *flags)
+char *parse_server(char *arg, union mysockaddr *addr, union mysockaddr *source_addr, char *interface, u16 *flags)
 {
   int source_port = 0, serv_port = NAMESERVER_PORT;
   char *portno, *source;
@@ -2621,7 +2621,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	  comma = split_chr(arg, '/');
 	  new = opt_malloc(sizeof(struct serv_local));
 	  new->domain = opt_string_alloc(arg);
-	  new->flags = strlen(arg);
+	  new->domain_len = strlen(arg);
 	  new->next = daemon->no_rebind;
 	  daemon->no_rebind = new;
 	  arg = comma;
@@ -2638,7 +2638,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	size_t size;
 	char *lastdomain = NULL, *domain = "";
 	char *alloc_domain;
-	int flags = 0;
+	u16 flags = 0;
 	char *err;
 	struct in_addr addr4;
 	struct in6_addr addr6;
@@ -2734,6 +2734,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	  }
 	
 	new->domain = alloc_domain;
+	new->domain_len = strlen(alloc_domain);
 	
 	/* server=//1.2.3.4 is special. */
 	if (strlen(domain) == 0 && lastdomain)
@@ -2755,6 +2756,8 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	       new = opt_malloc(size);
 	       memcpy(new, last, size);
 	       new->domain = alloc_domain;
+	       new->domain_len = strlen(alloc_domain);
+
 	       if (flags & (SERV_USE_RESOLV | SERV_LITERAL_ADDRESS))
 		 {
 		   new->next = daemon->local_domains;
