@@ -62,7 +62,6 @@ static void query_blocked(queriesData* query,
                           const unsigned char new_status);
 static void FTL_forwarded(const unsigned int flags, const char *name, const union all_addr *addr, const int id, const char* file, const int line);
 static void FTL_reply(const unsigned int flags, const char *name, const union all_addr *addr, const int id, const char* file, const int line);
-static void FTL_cache(const unsigned int flags, const char *name, const union all_addr *addr, const int id, const char* file, const int line);
 static void FTL_upstream_error(const unsigned int rcode, const int id, const char* file, const int line);
 static void FTL_dnssec(const char *result, const int id, const char* file, const int line);
 
@@ -86,58 +85,33 @@ const char flagnames[][12] = {"F_IMMORTAL ", "F_NAMEP ", "F_REVERSE ", "F_FORWAR
 
 void FTL_hook(unsigned int flags, char *name, union all_addr *addr, char *arg, int id, const char* file, const int line)
 {
-	if(config.debug & DEBUG_FLAGS)
-	{
-		logg("Processing FTL hook...");
-		print_flags(flags);
-	}
 	// Extract filename from path
 	const char *path = short_path(file);
+	if(config.debug & DEBUG_FLAGS)
+	{
+		logg("Processing FTL hook from %s:%d...", path, line);
+		print_flags(flags);
+	}
 
-	if(strcmp(path, "src/dnsmasq/rfc1035.c") == 0)
-	{
-		if(name && strcmp(name, "error") == 0)
-			FTL_reply(flags, name, addr, id, path, line); // F_CONFIG | F_RCODE
-		else
-			FTL_cache(flags, name, addr, id, path, line); // all possible things
-	}
-	else if (strcmp(path, "src/dnsmasq/cache.c") == 0)
-	{
-		FTL_reply(flags, name, addr, id, path, line); // flags [from cache_insert(flags)] | F_UPSTREAM
-	}
-	else if (strcmp(path, "src/dnsmasq/domain-match.c") == 0)
-	{
-		FTL_reply(flags, name, addr, id, path, line); // call from make_local_answer()
-	}
-	else if (strcmp(path, "src/dnsmasq_interface.c") == 0)
-	{
-		FTL_reply(flags, name, addr, id, path, line); // ([IPV4|IPV6] | F_CONFIG | F_FORWARD)
-	}
-	else if(strcmp(path, "src/dnsmasq/forward.c") == 0)
-	{
-		// Note: The order matters here!
-		if((flags & F_QUERY) && (flags & F_FORWARD))
-			; // New query, handled by FTL_new_query via separate call
-		else if(flags & (F_SERVER | F_FORWARD))
-			// forwarded upstream
-			FTL_forwarded(flags, name, addr, id, path, line);
-		else if(flags == F_SECSTAT)
-			// DNSSEC validation result
-			FTL_dnssec(arg, id, path, line);
-		else if(flags == (F_UPSTREAM | F_RCODE) && name && strcasecmp(name, "error") == 0)
-			// upstream sent somethign different than NOERROR or NXDOMAIN
-			FTL_upstream_error(addr->log.rcode, id, path, line);
-		else if(flags & (F_NOEXTRA | F_DNSSEC))
-			; // Ignored
-		else
-			FTL_reply(flags, name, addr, id, path, line);
-	}
-	else if (strcmp(path, "src/dnsmasq/dnssec.c") == 0)
-	{
-		; // We ignore these
-	}
-	else if(config.debug)
-		logg("Unhandled hook at %s:%d", path, line);
+	// Note: The order matters here!
+	if((flags & F_QUERY) && (flags & F_FORWARD))
+		; // New query, handled by FTL_new_query via separate call
+	else if(flags & F_FORWARD && flags & F_SERVER)
+		// forwarded upstream
+		FTL_forwarded(flags, name, addr, id, path, line);
+	else if(flags == F_SECSTAT)
+		// DNSSEC validation result
+		FTL_dnssec(arg, id, path, line);
+	else if(flags == (F_UPSTREAM | F_RCODE) && name && strcasecmp(name, "error") == 0)
+		// upstream sent something different than NOERROR or NXDOMAIN
+		FTL_upstream_error(addr->log.rcode, id, path, line);
+	else if(flags & F_NOEXTRA && flags & F_DNSSEC)
+		; // Ignored, this is a new DNSSEC query (dnssec-query[DS])
+	else if (flags & F_KEYTAG)
+		; // Ignored, this is a reply to a DNSSEC query (reply <TLD> is DS keytag 1234, algo 8, digest 2)
+	else
+		FTL_reply(flags, name, addr, id, path, line);
+
 }
 
 // This is inspired by make_local_answer()
@@ -839,7 +813,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		inet_ntop(family,
 		          family == AF_INET ?
 		             (union mysockaddr*)&addr->in.sin_addr :
-				(union mysockaddr*)&addr->in6.sin6_addr,
+		             (union mysockaddr*)&addr->in6.sin6_addr,
 		          clientIP, ADDRSTRLEN);
 	}
 
@@ -1210,44 +1184,68 @@ void FTL_dnsmasq_reload(void)
 static void FTL_reply(const unsigned int flags, const char *name, const union all_addr *addr,
                       const int id, const char* file, const int line)
 {
+	// If domain is "pi.hole", we skip this query
+	// We compare case-insensitive here
+	if(strcasecmp(name, "pi.hole") == 0)
+	{
+		return;
+	}
+
 	// Lock shared memory
 	lock_shm();
 
-	// Determine returned result if available
-	char dest[ADDRSTRLEN]; dest[0] = '\0';
-	if(addr)
+	// Check if this reply came from our local cache
+	bool cached = false;
+	if(!(flags & F_UPSTREAM))
 	{
-		inet_ntop((flags & F_IPV4) ? AF_INET : AF_INET6, addr, dest, ADDRSTRLEN);
-	}
-
-	// Extract answer (used e.g. for detecting if a local config is a user-defined
-	// wildcard blocking entry in form "server=/tobeblocked.com/")
-	const char *answer = dest;
-	if(flags & F_CNAME)
-		answer = "(CNAME)";
-	else if((flags & F_NEG) && (flags & F_NXDOMAIN))
-		answer = "(NXDOMAIN)";
-	else if(flags & F_NEG)
-		answer = "(NODATA)";
-	else if(flags & F_RCODE && addr != NULL)
-	{
-		unsigned int rcode = addr->log.rcode;
-		if(rcode == REFUSED)
+		cached = true;
+		if((flags & F_HOSTS) || // local.list, hostname.list, /etc/hosts and others
+		   ((flags & F_NAMEP) && (flags & F_DHCP)) || // DHCP server reply
+		   (flags & F_FORWARD) || // cached answer to previously forwarded request
+		   (flags & F_REVERSE) || // cached answer to reverse request (PTR)
+		   (flags & F_RRNAME)) // cached answer to TXT query
 		{
-			// This happens, e.g., in a "nowhere to forward to" situation
-			answer = "REFUSED (nowhere to forward to)";
+			; // Okay
 		}
-		else if(rcode == SERVFAIL)
-		{
-			// This happens on upstream destionation errors
-			answer = "SERVFAIL";
-		}
+		else if(config.debug & DEBUG_FLAGS)
+			logg("Unknown cache query");
 	}
 
 	// Possible debugging output
 	if(config.debug & DEBUG_QUERIES)
 	{
-		logg("**** got reply %s is %s (ID %i, %s:%i)", name, answer, id, file, line);
+		// Determine returned result if available
+		char dest[ADDRSTRLEN]; dest[0] = '\0';
+		if(addr)
+		{
+			inet_ntop((flags & F_IPV4) ? AF_INET : AF_INET6, addr, dest, ADDRSTRLEN);
+		}
+
+		// Extract answer (used e.g. for detecting if a local config is a user-defined
+		// wildcard blocking entry in form "server=/tobeblocked.com/")
+		const char *answer = dest;
+		if(flags & F_CNAME)
+			answer = "(CNAME)";
+		else if((flags & F_NEG) && (flags & F_NXDOMAIN))
+			answer = "(NXDOMAIN)";
+		else if(flags & F_NEG)
+			answer = "(NODATA)";
+		else if(flags & F_RCODE && addr != NULL)
+		{
+			unsigned int rcode = addr->log.rcode;
+			if(rcode == REFUSED)
+			{
+				// This happens, e.g., in a "nowhere to forward to" situation
+				answer = "REFUSED (nowhere to forward to)";
+			}
+			else if(rcode == SERVFAIL)
+			{
+				// This happens on upstream destionation errors
+				answer = "SERVFAIL";
+			}
+		}
+
+		logg("**** got %s reply: %s is %s (ID %i, %s:%i)", cached ? "cache" : "upstream", name, answer, id, file, line);
 		print_flags(flags);
 	}
 
@@ -1290,6 +1288,34 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 		return;
 	}
 
+	// This is a reply served from cache
+	if(cached)
+	{
+		// Set status of this query
+		query_set_status(query, QUERY_CACHE);
+
+		// Detect if returned IP indicates that this query was blocked
+		const enum query_status new_status = detect_blocked_IP(flags, addr, query, domain);
+
+		// Update status of this query if detected as external blocking
+		if(new_status != query->status)
+		{
+			clientsData *client = getClient(query->clientID, true);
+			if(client != NULL)
+				query_blocked(query, domain, client, new_status);
+		}
+
+		// Save reply type and update individual reply counters
+		query_set_reply(flags, addr, query, response);
+
+		// Hereby, this query is now fully determined
+		query->flags.complete = true;
+
+		unlock_shm();
+		return;
+	}
+
+	// else: This is a reply from upstream
 	// Check if this domain matches exactly
 	const bool isExactMatch = strcmp_escaped(name, getstr(domain->domainpos));
 
@@ -1452,123 +1478,6 @@ static enum query_status detect_blocked_IP(const unsigned short flags, const uni
 	return query->status;
 }
 
-static void FTL_cache(const unsigned int flags, const char *name, const union all_addr *addr,
-                      const int id, const char* file, const int line)
-{
-	// Save that this query got answered from cache
-
-	// If domain is "pi.hole", we skip this query
-	// We compare case-insensitive here
-	if(strcasecmp(name, "pi.hole") == 0)
-	{
-		return;
-	}
-
-	// Debug logging
-	if(config.debug & DEBUG_QUERIES)
-	{
-		// Obtain destination IP address if available for this query type
-		char dest[ADDRSTRLEN]; dest[0] = '\0';
-		if(addr)
-		{
-			inet_ntop((flags & F_IPV4) ? AF_INET : AF_INET6, addr, dest, ADDRSTRLEN);
-		}
-		logg("**** got cache answer for %s / %s (ID %i, %s:%i)", name, dest, id, file, line);
-		print_flags(flags);
-	}
-
-	// Get response time
-	struct timeval response;
-	gettimeofday(&response, 0);
-
-	// Lock shared memory
-	lock_shm();
-
-	if(((flags & F_HOSTS) && (flags & F_IMMORTAL)) ||
-	   ((flags & F_NAMEP) && (flags & F_DHCP)) ||
-	   (flags & F_FORWARD) ||
-	   (flags & F_REVERSE) ||
-	   (flags & F_RRNAME))
-	{
-		// Local list: /etc/hosts, /etc/pihole/local.list, etc.
-		// or
-		// DHCP server reply
-		// or
-		// cached answer to previously forwarded request
-
-		// Determine requesttype
-		if((flags & F_HOSTS) || // local.list, hostname.list, /etc/hosts and others
-		  ((flags & F_NAMEP) && (flags & F_DHCP)) || // DHCP server reply
-		   (flags & F_FORWARD) || // cached answer to previously forwarded request
-		   (flags & F_REVERSE) || // cached answer to reverse request (PTR)
-		   (flags & F_RRNAME)) // cached answer to TXT query
-		{
-			// We can handle this here
-		}
-		else
-		{
-			logg("*************************** unknown CACHE reply (1) ***************************");
-			print_flags(flags);
-			unlock_shm();
-			return;
-		}
-
-		// Search query in FTL's query data
-		const int queryID = findQueryID(id);
-		if(queryID < 0)
-		{
-			// This may happen e.g. if the original query was a PTR query or "pi.hole"
-			// as we ignore them altogether
-			unlock_shm();
-			return;
-		}
-
-		// Get query pointer
-		queriesData *query = getQuery(queryID, true);
-
-		// Skip this query if already marked as complete
-		// Use short-circuit evaluation to check query if query is NULL
-		if(query == NULL || query->flags.complete)
-		{
-			unlock_shm();
-			return;
-		}
-
-		// Set status of this query
-		query_set_status(query, QUERY_CACHE);
-
-		domainsData *domain = getDomain(query->domainID, true);
-		if(domain == NULL)
-		{
-			unlock_shm();
-			return;
-		}
-
-		// Detect if returned IP indicates that this query was blocked
-		const enum query_status new_status = detect_blocked_IP(flags, addr, query, domain);
-
-		// Update status of this query if detected as external blocking
-		if(new_status != query->status)
-		{
-			clientsData *client = getClient(query->clientID, true);
-			if(client != NULL)
-				query_blocked(query, domain, client, new_status);
-		}
-
-		// Save reply type and update individual reply counters
-		query_set_reply(flags, addr, query, response);
-
-		// Hereby, this query is now fully determined
-		query->flags.complete = true;
-	}
-	else
-	{
-		logg("*************************** unknown CACHE reply (2) ***************************");
-		print_flags(flags);
-	}
-	unlock_shm();
-}
-
 static void query_blocked(queriesData* query, domainsData* domain, clientsData* client, const enum query_status new_status)
 {
 	// Get response time
@@ -1633,9 +1542,7 @@ static void FTL_dnssec(const char *arg, const int id, const char* file, const in
 		// Get domain pointer
 		const domainsData* domain = getDomain(query->domainID, true);
 		if(domain != NULL)
-		{
-			logg("**** got DNSSEC details for %s: %s (ID %i, %s:%i)", getstr(domain->domainpos), arg, id, file, line);
-		}
+			logg("**** DNSSEC %s is %s (ID %i, %s:%i)", getstr(domain->domainpos), arg, id, file, line);
 	}
 
 	// Iterate through possible values
@@ -1648,7 +1555,7 @@ static void FTL_dnssec(const char *arg, const int id, const char* file, const in
 	else if(strcmp(arg, "ABANDONED") == 0)
 		query->dnssec = DNSSEC_ABANDONED;
 	else
-		logg("***** Encountered DNSSEC status \"%s\" is unknown, ignoring", arg);
+		logg("***** DNSSEC status \"%s\" is unknown, ignoring", arg);
 
 	// Unlock shared memory
 	unlock_shm();
