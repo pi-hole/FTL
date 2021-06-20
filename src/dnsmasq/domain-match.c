@@ -133,7 +133,32 @@ int lookup_domain(char *qdomain, int flags, int *lowout, int *highout)
 	  else
 	    {
 	      if (low == try)
-		break;
+		{
+		  /* try now points to the last domain that sorts before the query, so 
+		     we know that a substring of the query shorter than it is required to match, so
+		     find the largest domain that's shorter than try. Note that just going to
+		     try+1 is not optimal, consider searching bbb in (aaa,ccc,bb). try will point
+		     to aaa, since ccc sorts after bbb, but the first domain that has a chance to 
+		     match is bb. So find the length of the first domain later than try which is
+		     is shorter than it. 
+		     There's a nasty edge case when qdomain sorts before _any_ of the 
+		     server domains, where try _doesn't point_ to the last domain that sorts
+		     before the query, since no such domain exists. In that case, the loop 
+		     exits via the rc < 0 && high == try path above and this code is
+		     not executed. */
+		  ssize_t len, old = daemon->serverarray[try]->domain_len;
+		  while (++try != daemon->serverarraysz)
+		    {
+		      if (old != (len = daemon->serverarray[try]->domain_len))
+			{
+			  /* crop_query must be at least one always. */
+			  if (qlen != len)
+			    crop_query = qlen - len;
+			  break;
+			}
+		    }
+		  break;
+		}
 	      low = try;
 	    }
 	};
@@ -151,27 +176,6 @@ int lookup_domain(char *qdomain, int flags, int *lowout, int *highout)
 		 to continue generalising */
 	      if (filter_servers(try, flags, &nlow, &nhigh))
 		break;
-	    }
-	}
-      else
-	{
-	  /* try now points to the last domain that sorts before the query, so 
-	     we know that a substring of the query shorter than it is required to match, so
-	     find the largest domain that's shorter than try. Note that just going to
-	     try+1 is not optimal, consider searching bbb in (aaa,ccc,bb). try will point
-	     to aaa, since ccc sorts after bbb, but the first domain that has a chance to 
-	     match is dd. So find the length of the first domain later than try which is
-	     is shorter than it. */
-	  ssize_t len, old = daemon->serverarray[try]->domain_len;
-	  while (++try != daemon->serverarraysz)
-	    {
-	      if (old != (len = daemon->serverarray[try]->domain_len))
-	      {
-		/* crop_query must be at least one always. */
-		if (qlen != len)
-		  crop_query = qlen - len;
-		break;
-	      }
 	    }
 	}
       
