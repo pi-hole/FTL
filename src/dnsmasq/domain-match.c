@@ -127,7 +127,12 @@ int lookup_domain(char *qdomain, int flags, int *lowout, int *highout)
 	  if (rc < 0)
 	    {
 	      if (high == try)
-		break;
+		{
+		  /* qdomain is longer or same length as longest domain, and try == 0 
+		     crop the query to the longest domain. */
+		  crop_query = qlen - daemon->serverarray[try]->domain_len;
+		  break;
+		}
 	      high = try;
 	    }
 	  else
@@ -151,9 +156,7 @@ int lookup_domain(char *qdomain, int flags, int *lowout, int *highout)
 		    {
 		      if (old != (len = daemon->serverarray[try]->domain_len))
 			{
-			  /* crop_query must be at least one always. */
-			  if (qlen != len)
-			    crop_query = qlen - len;
+			  crop_query = qlen - len;
 			  break;
 			}
 		    }
@@ -179,6 +182,10 @@ int lookup_domain(char *qdomain, int flags, int *lowout, int *highout)
 	    }
 	}
       
+      /* crop_query must be at least one always. */
+      if (crop_query == 0)
+	crop_query = 1;
+
       qlen -= crop_query;
       if (leading_dot)
 	{
