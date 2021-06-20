@@ -17,7 +17,7 @@
 
 extern int socketfd, telnetfd4, telnetfd6;
 extern unsigned char* pihole_privacylevel;
-enum protocol { TCP, UDP };
+enum protocol { TCP, UDP, INTERNAL };
 
 void FTL_hook(unsigned int flags, char *name, union all_addr *addr, char *arg, int id, const char* file, const int line);
 

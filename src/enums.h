@@ -59,6 +59,7 @@ enum reply_type {
 	REPLY_REFUSED,
 	REPLY_NOTIMP,
 	REPLY_OTHER,
+	REPLY_DNSKEY,
 	QUERY_REPLY_MAX
 	}  __attribute__ ((packed));
 

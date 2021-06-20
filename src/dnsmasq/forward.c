@@ -120,12 +120,14 @@ static void set_outgoing_mark(struct frec *forward, int fd)
 }
 #endif
 
-static void log_query_mysockaddr(unsigned int flags, char *name, union mysockaddr *addr, char *arg)
+// Pi-hole modified
+#define log_query_mysockaddr(flags, name, addr, arg) _log_query_mysockaddr(flags, name, addr, arg, __LINE__)
+static void _log_query_mysockaddr(unsigned int flags, char *name, union mysockaddr *addr, char *arg, const int line)
 {
   if (addr->sa.sa_family == AF_INET)
-    log_query(flags | F_IPV4, name, (union all_addr *)&addr->in.sin_addr, arg);
+    _log_query(flags | F_IPV4, name, (union all_addr *)&addr->in.sin_addr, arg, __FILE__, line);
   else
-    log_query(flags | F_IPV6, name, (union all_addr *)&addr->in6.sin6_addr, arg);
+    _log_query(flags | F_IPV6, name, (union all_addr *)&addr->in6.sin6_addr, arg, __FILE__, line);
 }
 
 static void server_send(struct server *server, int fd,
@@ -137,14 +139,16 @@ static void server_send(struct server *server, int fd,
 }
 
 #ifdef HAVE_DNSSEC
-static void server_send_log(struct server *server, int fd,
+// Pi-hole modified
+#define server_send_log(server, fd, header, plen, dumpflags, logflags, name, arg) _server_send_log(server, fd, header, plen, dumpflags, logflags, name, arg, __LINE__)
+static void _server_send_log(struct server *server, int fd,
 			const void *header, size_t plen, int dumpflags,
-			unsigned int logflags, char *name, char *arg)
+			unsigned int logflags, char *name, char *arg, const int line)
 {
 #ifdef HAVE_DUMPFILE
 	  dump_packet(dumpflags, (void *)header, (size_t)plen, NULL, &server->addr);
 #endif
-	  log_query_mysockaddr(logflags, name, &server->addr, arg);
+	  _log_query_mysockaddr(logflags, name, &server->addr, arg, line);
 	  server_send(server, fd, header, plen, 0);
 }
 #endif
@@ -1456,9 +1460,8 @@ void receive_query(struct listener *listen, time_t now)
 
       log_query_mysockaddr(F_QUERY | F_FORWARD, daemon->namebuff,
 			   &source_addr, types);
-      piholeblocked = FTL_new_query(F_QUERY | F_FORWARD, daemon->namebuff,
-				    &source_addr, types, type,
-				    daemon->log_display_id, &edns, UDP);
+      piholeblocked = FTL_new_query(F_QUERY | F_FORWARD , daemon->namebuff,
+				    &source_addr, types, type, daemon->log_display_id, &edns, UDP);
 
 #ifdef HAVE_AUTH
       /* find queries for zones we're authoritative for, and answer them directly */
@@ -1867,9 +1870,8 @@ unsigned char *tcp_request(int confd, time_t now,
 	  log_query_mysockaddr(F_QUERY | F_FORWARD, daemon->namebuff,
 			       &peer_addr, types);
 
-	  piholeblocked = FTL_new_query(F_QUERY | F_FORWARD,
-					daemon->namebuff, &peer_addr, types, qtype,
-					daemon->log_display_id, &edns, TCP);
+      piholeblocked = FTL_new_query(F_QUERY | F_FORWARD, daemon->namebuff,
+				    &peer_addr, types, qtype, daemon->log_display_id, &edns, TCP);
 
 	  
 #ifdef HAVE_AUTH
