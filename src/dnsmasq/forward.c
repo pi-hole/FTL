@@ -159,7 +159,7 @@ static int domain_no_rebind(char *domain)
   int dlen = (int)strlen(domain);
   
   for (serv = daemon->no_rebind; serv; serv = serv->next)
-    if (dlen >= serv->domain_len && strcmp(serv->domain, &domain[dlen - serv->flags]) == 0)
+    if (dlen >= serv->domain_len && strcmp(serv->domain, &domain[dlen - serv->domain_len]) == 0)
       return 1;
 
   return 0;
