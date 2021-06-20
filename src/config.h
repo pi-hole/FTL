@@ -46,6 +46,7 @@ typedef struct {
 	bool block_esni;
 	bool names_from_netdb;
 	bool edns0_ecs;
+	bool show_dnssec;
 	enum privacy_level privacylevel;
 	enum blocking_mode blockingmode;
 	enum refresh_hostnames refresh_hostnames;
@@ -68,7 +69,7 @@ typedef struct {
 		struct in6_addr v6;
 	} reply_addr;
 } ConfigStruct;
-ASSERT_SIZEOF(ConfigStruct, 88, 80, 80);
+ASSERT_SIZEOF(ConfigStruct, 88, 84, 84);
 
 typedef struct {
 	const char* conf;

@@ -520,6 +520,17 @@ void read_FTLconf(void)
 	else
 		logg("   REPLY_ADDR6: Automatic interface-dependent detection of address");
 
+	// SHOW_DNSSEC
+	// Should FTL analyze and include automatically generated DNSSEC queries in the Query Log?
+	// defaults to: true
+	buffer = parse_FTLconf(fp, "SHOW_DNSSEC");
+	config.show_dnssec = read_bool(buffer, true);
+
+	if(config.show_dnssec)
+		logg("   SHOW_DNSSEC: Enabled, showing automatically generated DNSSEC queries");
+	else
+		logg("   SHOW_DNSSEC: Disabled");
+
 	// Read DEBUG_... setting from pihole-FTL.conf
 	read_debuging_settings(fp);
 

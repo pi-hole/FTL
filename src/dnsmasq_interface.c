@@ -101,9 +101,12 @@ void FTL_hook(unsigned int flags, char *name, union all_addr *addr, char *arg, i
 	else if(flags & F_NOEXTRA && flags & F_DNSSEC)
 	{
 		// This is a new DNSSEC query (dnssec-query[DS])
+		if(!config.show_dnssec)
+			return;
+
 		const int qtype = strcmp(arg, "dnssec-query[DS]") == 0 ? T_DS : T_DNSKEY;
 		const ednsData edns = { 0 };
-		union mysockaddr saddr = { 0 };
+		union mysockaddr saddr = {{ 0 }};
 		if(flags & F_IPV4)
 		{
 			saddr.in.sin_addr = addr->addr4;
@@ -115,7 +118,7 @@ void FTL_hook(unsigned int flags, char *name, union all_addr *addr, char *arg, i
 			saddr.sa.sa_family = AF_INET;
 		}
 		_FTL_new_query(flags, name, &saddr, arg, qtype, id, &edns, INTERNAL, file, line);
-		FTL_forwarded(flags, name, addr, id, file, line);
+		FTL_forwarded(flags, name, addr, id, path, line);
 	}
 	else if(flags & F_AUTH)
 		; // Ignored
@@ -888,7 +891,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		logg("**** new %sIPv%d %s query \"%s\" from %s:%s (ID %i, FTL %i, %s:%i)",
 		     proto == TCP ? "TCP " : proto == UDP ? "UDP " : "",
 		     family == AF_INET ? 4 : 6, types, domainString, interface,
-		     clientIP, id, queryID, file, line);
+		     clientIP, id, queryID, short_path(file), line);
 	}
 
 	// Update counters
@@ -1835,7 +1838,7 @@ static void _query_set_reply(const unsigned int flags, const union all_addr *add
 
 	if(config.debug & DEBUG_QUERIES)
 		logg("Set reply to %s (%d) in %s:%d", reply_status_str[query->reply], query->reply,
-		     short_path(file), line);
+		     file, line);
 
 	counters->reply[query->reply]++;
 
