@@ -117,7 +117,7 @@ void FTL_hook(unsigned int flags, char *name, union all_addr *addr, char *arg, i
 			memcpy(&saddr.in6.sin6_addr, &addr->addr6, sizeof(addr->addr6));
 			saddr.sa.sa_family = AF_INET;
 		}
-		_FTL_new_query(flags, name, &saddr, arg, qtype, id, &edns, INTERNAL, file, line);
+		_FTL_new_query(flags, name, NULL, arg, qtype, id, &edns, INTERNAL, file, line);
 		FTL_forwarded(flags, name, addr, id, path, line);
 	}
 	else if(flags & F_AUTH)
@@ -816,15 +816,16 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// subnet (ECS) data), however, we do not rewrite the IPs ::1 and
 	// 127.0.0.1 to avoid queries originating from localhost of the
 	// *distant* machine as queries coming from the *local* machine
-	const sa_family_t family = addr->sa.sa_family;
+	const sa_family_t family = addr ? addr->sa.sa_family : AF_INET;
+	bool internal_query = false;
 	char clientIP[ADDRSTRLEN+1] = { 0 };
-	if(config.edns0_ecs && edns != NULL && edns->client_set)
+	if(config.edns0_ecs && edns && edns->client_set)
 	{
 		// Use ECS provided client
 		strncpy(clientIP, edns->client, ADDRSTRLEN);
 		clientIP[ADDRSTRLEN] = '\0';
 	}
-	else
+	else if(addr)
 	{
 		// Use original requestor
 		inet_ntop(family,
@@ -832,6 +833,13 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		             (union alladdr*)&addr->in.sin_addr :
 		             (union alladdr*)&addr->in6.sin6_addr,
 		          clientIP, ADDRSTRLEN);
+	}
+	else
+	{
+		// No client address available, this is an automatically generated (e.g.
+		// DNSSEC) query
+		internal_query = true;
+		strcpy(clientIP, "::");
 	}
 
 	// Check if user wants to skip queries coming from localhost
@@ -863,11 +871,10 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 
 	// Interface name is only available for regular queries, not for
 	// automatically generated DNSSEC queries
-	const bool has_iface = proto != INTERNAL;
-	const char *interface = has_iface ? next_iface.name : "-";
+	const char *interface = internal_query ? "-" : next_iface.name;
 
 	// Check rate-limit for this client
-	if(config.rate_limit.count > 0 &&
+	if(!internal_query && config.rate_limit.count > 0 &&
 	   ++client->rate_limit > config.rate_limit.count)
 	{
 		if(config.debug & DEBUG_QUERIES)
@@ -891,7 +898,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		logg("**** new %sIPv%d %s query \"%s\" from %s:%s (ID %i, FTL %i, %s:%i)",
 		     proto == TCP ? "TCP " : proto == UDP ? "UDP " : "",
 		     family == AF_INET ? 4 : 6, types, domainString, interface,
-		     clientIP, id, queryID, short_path(file), line);
+		     internal_query ? "<internal>" : clientIP, id, queryID, short_path(file), line);
 	}
 
 	// Update counters
@@ -977,7 +984,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// Process interface information of client (if available)
 	// Skip interface name length 1 to skip "-". No real interface should
 	// have a name with a length of 1...
-	if(has_iface && strlen(interface) > 1)
+	if(!internal_query && strlen(interface) > 1)
 	{
 		if(client->ifacepos == 0u)
 		{
@@ -1031,7 +1038,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	bool blockDomain = false;
 	// Check if this should be blocked only for active queries
 	// (skipped for internally generated ones, e.g., DNSSEC)
-	if(proto != INTERNAL)
+	if(!internal_query)
 		blockDomain = FTL_check_blocking(queryID, domainID, clientID);
 
 	// Free allocated memory
