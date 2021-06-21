@@ -537,7 +537,7 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
  reply:
   if (udpfd != -1)
     {
-      if (!(plen = make_local_answer(flags, gotname, plen, header, daemon->namebuff, first, last)))
+      if (!(plen = make_local_answer(flags, gotname, plen, header, daemon->namebuff, limit, first, last)))
 	return 0;
       
       if (oph)
@@ -2172,7 +2172,8 @@ unsigned char *tcp_request(int confd, time_t now,
       /* In case of local answer or no connections made. */
       if (m == 0)
 	{
-	  if (!(m = make_local_answer(flags, gotname, size, header, daemon->namebuff, first, last)))
+	  if (!(m = make_local_answer(flags, gotname, size, header, daemon->namebuff,
+				      ((char *) header) + 65536, first, last)))
 	    break;
 	  
 	  if (have_pseudoheader)

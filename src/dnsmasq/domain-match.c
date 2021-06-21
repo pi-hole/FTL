@@ -335,7 +335,7 @@ int is_local_answer(time_t now, int first, char *name)
   return rc;
 }
 
-size_t make_local_answer(int flags, int gotname, size_t size, struct dns_header *header, char *name, int first, int last)
+size_t make_local_answer(int flags, int gotname, size_t size, struct dns_header *header, char *name, char *limit, int first, int last)
 {
   int trunc = 0;
   unsigned char *p;
@@ -361,7 +361,7 @@ size_t make_local_answer(int flags, int gotname, size_t size, struct dns_header 
 	  addr.addr4 = srv->addr;
 	
 	header->ancount = htons(ntohs(header->ancount) + 1);
-	add_resource_record(header, ((char *)header) + 65536, &trunc, sizeof(struct dns_header), &p, daemon->local_ttl, NULL, T_A, C_IN, "4", &addr);
+	add_resource_record(header, limit, &trunc, sizeof(struct dns_header), &p, daemon->local_ttl, NULL, T_A, C_IN, "4", &addr);
 	log_query((flags | F_CONFIG | F_FORWARD) & ~F_IPV6, name, (union all_addr *)&addr, NULL);
       }
   
@@ -376,7 +376,7 @@ size_t make_local_answer(int flags, int gotname, size_t size, struct dns_header 
 	  addr.addr6 = srv->addr;
 	
 	header->ancount = htons(ntohs(header->ancount) + 1);
-	add_resource_record(header, ((char *)header) + 65536, &trunc, sizeof(struct dns_header), &p, daemon->local_ttl, NULL, T_AAAA, C_IN, "6", &addr);
+	add_resource_record(header, limit, &trunc, sizeof(struct dns_header), &p, daemon->local_ttl, NULL, T_AAAA, C_IN, "6", &addr);
 	log_query((flags | F_CONFIG | F_FORWARD) & ~F_IPV4, name, (union all_addr *)&addr, NULL);
       }
 
