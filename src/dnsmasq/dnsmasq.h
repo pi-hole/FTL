@@ -688,17 +688,18 @@ struct hostsfile {
 #define DUMP_BOGUS     0x0040
 #define DUMP_SEC_BOGUS 0x0080
 
-
 /* DNSSEC status values. */
-#define STAT_SECURE             1
-#define STAT_INSECURE           2
-#define STAT_BOGUS              3
-#define STAT_NEED_DS            4
-#define STAT_NEED_KEY           5
-#define STAT_TRUNCATED          6
-#define STAT_SECURE_WILDCARD    7
-#define STAT_OK                 8
-#define STAT_ABANDONED          9
+#define STAT_SECURE             0x10000
+#define STAT_INSECURE           0x20000
+#define STAT_BOGUS              0x30000
+#define STAT_NEED_DS            0x40000
+#define STAT_NEED_KEY           0x50000
+#define STAT_TRUNCATED          0x60000
+#define STAT_SECURE_WILDCARD    0x70000
+#define STAT_OK                 0x80000
+#define STAT_ABANDONED          0x90000
+
+#define STAT_ISEQUAL(a, b)  (((a) & 0xffff0000) == (b))
 
 #define FREC_NOREBIND           1
 #define FREC_CHECKING_DISABLED  2

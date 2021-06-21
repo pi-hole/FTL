@@ -847,8 +847,9 @@ int dnssec_validate_by_ds(time_t now, struct dns_header *header, size_t plen, ch
 		  memcmp(ds_digest, digest, recp1->addr.ds.keylen) == 0 &&
 		  explore_rrset(header, plen, class, T_DNSKEY, name, keyname, &sigcnt, &rrcnt) &&
 		  sigcnt != 0 && rrcnt != 0 &&
-		  validate_rrset(now, header, plen, class, T_DNSKEY, sigcnt, rrcnt, name, keyname, 
-				 NULL, key, rdlen - 4, algo, keytag, &sig_ttl) == STAT_SECURE)
+		  STAT_ISEQUAL(validate_rrset(now, header, plen, class, T_DNSKEY, sigcnt, rrcnt, name, keyname, 
+					      NULL, key, rdlen - 4, algo, keytag, &sig_ttl),
+			       STAT_SECURE))
 		{
 		  valid = 1;
 		  break;
@@ -971,7 +972,7 @@ int dnssec_validate_ds(time_t now, struct dns_header *header, size_t plen, char 
   else
     rc = dnssec_validate_reply(now, header, plen, name, keyname, NULL, 0, &neganswer, &nons, &neg_ttl);
   
-  if (rc == STAT_INSECURE)
+  if (STAT_ISEQUAL(rc, STAT_INSECURE))
     {
       my_syslog(LOG_WARNING, _("Insecure DS reply received for %s, check domain configuration and upstream DNS server DNSSEC support"), name);
       rc = STAT_BOGUS;
@@ -984,13 +985,13 @@ int dnssec_validate_ds(time_t now, struct dns_header *header, size_t plen, char 
   /* If the key needed to validate the DS is on the same domain as the DS, we'll
      loop getting nowhere. Stop that now. This can happen of the DS answer comes
      from the DS's zone, and not the parent zone. */
-  if (rc == STAT_BOGUS || (rc == STAT_NEED_KEY && hostname_isequal(name, keyname)))
+  if (STAT_ISEQUAL(rc, STAT_BOGUS) || (STAT_ISEQUAL(rc, STAT_NEED_KEY) && hostname_isequal(name, keyname)))
     {
       log_query(F_NOEXTRA | F_UPSTREAM, name, NULL, "BOGUS DS");
       return STAT_BOGUS;
     }
   
-  if (rc != STAT_SECURE)
+  if (!STAT_ISEQUAL(rc, STAT_SECURE))
     return rc;
    
   if (!neganswer)
@@ -1959,15 +1960,15 @@ int dnssec_validate_reply(time_t now, struct dns_header *header, size_t plen, ch
 		  if (check_unsigned && i < ntohs(header->ancount))
 		    {
 		      rc = zone_status(name, class1, keyname, now);
-		      if (rc == STAT_SECURE)
+		      if (STAT_ISEQUAL(rc, STAT_SECURE))
 			rc = STAT_BOGUS;
 		      if (class)
 			*class = class1; /* Class for NEED_DS or NEED_KEY */
 		    }
-		  else 
+		      else 
 		    rc = STAT_INSECURE; 
 		  
-		  if (rc != STAT_INSECURE)
+		  if (!STAT_ISEQUAL(rc, STAT_INSECURE))
 		    return rc;
 		}
 	    }
@@ -1978,7 +1979,7 @@ int dnssec_validate_reply(time_t now, struct dns_header *header, size_t plen, ch
 	      strcpy(daemon->workspacename, keyname);
 	      rc = zone_status(daemon->workspacename, class1, keyname, now);
 	      
-	      if (rc == STAT_BOGUS || rc == STAT_NEED_KEY || rc == STAT_NEED_DS)
+	      if (STAT_ISEQUAL(rc, STAT_BOGUS) || STAT_ISEQUAL(rc, STAT_NEED_KEY) || STAT_ISEQUAL(rc, STAT_NEED_DS))
 		{
 		  if (class)
 		    *class = class1; /* Class for NEED_DS or NEED_KEY */
@@ -1986,13 +1987,13 @@ int dnssec_validate_reply(time_t now, struct dns_header *header, size_t plen, ch
 		}
 	      
 	      /* Zone is insecure, don't need to validate RRset */
-	      if (rc == STAT_SECURE)
+	      if (STAT_ISEQUAL(rc, STAT_SECURE))
 		{
 		  unsigned long sig_ttl;
 		  rc = validate_rrset(now, header, plen, class1, type1, sigcnt,
 				      rrcnt, name, keyname, &wildname, NULL, 0, 0, 0, &sig_ttl);
 		  
-		  if (rc == STAT_BOGUS || rc == STAT_NEED_KEY || rc == STAT_NEED_DS)
+		  if (STAT_ISEQUAL(rc, STAT_BOGUS) || STAT_ISEQUAL(rc, STAT_NEED_KEY) || STAT_ISEQUAL(rc, STAT_NEED_DS))
 		    {
 		      if (class)
 			*class = class1; /* Class for DS or DNSKEY */
@@ -2025,7 +2026,7 @@ int dnssec_validate_reply(time_t now, struct dns_header *header, size_t plen, ch
 		     Note that we may not yet have validated the NSEC/NSEC3 RRsets. 
 		     That's not a problem since if the RRsets later fail
 		     we'll return BOGUS then. */
-		  if (rc == STAT_SECURE_WILDCARD &&
+		  if (STAT_ISEQUAL(rc, STAT_SECURE_WILDCARD) &&
 		      !prove_non_existence(header, plen, keyname, name, type1, class1, wildname, NULL, NULL))
 		    return STAT_BOGUS;
 
@@ -2034,12 +2035,12 @@ int dnssec_validate_reply(time_t now, struct dns_header *header, size_t plen, ch
 	    }
 	}
 
-      if (rc == STAT_INSECURE)
+      if (STAT_ISEQUAL(rc, STAT_INSECURE))
 	secure = STAT_INSECURE;
     }
 
   /* OK, all the RRsets validate, now see if we have a missing answer or CNAME target. */
-  if (secure == STAT_SECURE)
+  if (STAT_ISEQUAL(secure, STAT_SECURE))
     for (j = 0; j <targetidx; j++)
       if ((p2 = targets[j]))
 	{
@@ -2059,7 +2060,7 @@ int dnssec_validate_reply(time_t now, struct dns_header *header, size_t plen, ch
 	      if (qtype == T_DS)
 		return STAT_BOGUS;
 	      
-	      if ((rc = zone_status(name, qclass, keyname, now)) != STAT_SECURE)
+	      if (STAT_ISEQUAL((rc = zone_status(name, qclass, keyname, now)), STAT_SECURE))
 		{
 		  if (class)
 		    *class = qclass; /* Class for NEED_DS or NEED_KEY */

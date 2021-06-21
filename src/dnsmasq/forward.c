@@ -568,7 +568,7 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
   int munged = 0, is_sign;
   unsigned int rcode = RCODE(header);
   size_t plen; 
-  
+    
   (void)ad_reqd;
   (void)do_bit;
   (void)bogusanswer;
@@ -616,11 +616,10 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
 	    }
 	  else
 	    {
-	      unsigned short udpsz;
-
 	      /* If upstream is advertising a larger UDP packet size
 		 than we allow, trim it so that we don't get overlarge
 		 requests for the client. We can't do this for signed packets. */
+	      unsigned short udpsz;
 	      GETSHORT(udpsz, sizep);
 	      if (udpsz > daemon->edns_pktsz)
 		{
@@ -745,7 +744,6 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
 
   /* do this after extract_addresses. Ensure NODATA reply and remove
      nameserver info. */
-  
   if (munged)
     {
       header->ancount = htons(0);
@@ -785,7 +783,7 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
   /* As soon as anything returns BOGUS, we stop and unwind, to do otherwise
      would invite infinite loops, since the answers to DNSKEY and DS queries
      will not be cached, so they'll be repeated. */
-  if (status != STAT_BOGUS && status != STAT_TRUNCATED && status != STAT_ABANDONED)
+  if (!STAT_ISEQUAL(status, STAT_BOGUS) && !STAT_ISEQUAL(status, STAT_TRUNCATED) && !STAT_ISEQUAL(status, STAT_ABANDONED))
     {
       if (forward->flags & FREC_DNSKEY_QUERY)
 	status = dnssec_validate_by_ds(now, header, plen, daemon->namebuff, daemon->keyname, forward->class);
@@ -796,7 +794,7 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
 				       !option_bool(OPT_DNSSEC_IGN_NS) && (forward->sentto->flags & SERV_DO_DNSSEC),
 				       NULL, NULL, NULL);
 #ifdef HAVE_DUMPFILE
-      if (status == STAT_BOGUS)
+      if (STAT_ISEQUAL(status, STAT_BOGUS))
 	dump_packet((forward->flags & (FREC_DNSKEY_QUERY | FREC_DS_QUERY)) ? DUMP_SEC_BOGUS : DUMP_BOGUS,
 		    header, (size_t)plen, &forward->sentto->addr, NULL);
 #endif
@@ -804,7 +802,7 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
   
   /* Can't validate, as we're missing key data. Put this
      answer aside, whilst we get that. */     
-  if (status == STAT_NEED_DS || status == STAT_NEED_KEY)
+  if (STAT_ISEQUAL(status, STAT_NEED_DS) || STAT_ISEQUAL(status, STAT_NEED_KEY))
     {
       struct frec *new = NULL;
       int serverind;
@@ -823,9 +821,9 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
 	  /* validate routines leave name of required record in daemon->keyname */
 	  nn = dnssec_generate_query(header, ((unsigned char *) header) + server->edns_pktsz,
 				     daemon->keyname, forward->class,
-				     status == STAT_NEED_KEY ? T_DNSKEY : T_DS, server->edns_pktsz);
+				     STAT_ISEQUAL(status, STAT_NEED_KEY) ? T_DNSKEY : T_DS, server->edns_pktsz);
 	  
-	  flags = (status == STAT_NEED_KEY) ? FREC_DNSKEY_QUERY : FREC_DS_QUERY;
+	  flags = STAT_ISEQUAL(status, STAT_NEED_KEY) ? FREC_DNSKEY_QUERY : FREC_DS_QUERY;
 	  hash = hash_questions(header, nn, daemon->namebuff);
 
 	  if ((new = lookup_frec_by_query(hash, flags, FREC_DNSKEY_QUERY | FREC_DS_QUERY)))
@@ -895,7 +893,7 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
 #endif
 		  server_send_log(server, fd, header, nn, DUMP_SEC_QUERY,
 				  F_NOEXTRA | F_DNSSEC, daemon->keyname,
-				  querystr("dnssec-query", status == STAT_NEED_KEY ? T_DNSKEY : T_DS));
+				  querystr("dnssec-query", STAT_ISEQUAL(status, STAT_NEED_KEY) ? T_DNSKEY : T_DS));
 		  server->queries++;
 		}
 	      
@@ -1108,33 +1106,33 @@ static void return_reply(time_t now, struct frec *forward, struct dns_header *he
     no_cache_dnssec = 1;
 
 #ifdef HAVE_DNSSEC
-  if (status != STAT_OK)
+  if (!STAT_ISEQUAL(status, STAT_OK))
     {
       no_cache_dnssec = 0;
       
-      if (status == STAT_TRUNCATED)
+      if (STAT_ISEQUAL(status, STAT_TRUNCATED))
 	header->hb3 |= HB3_TC;
       else
 	{
 	  char *result, *domain = "result";
 	  
-	  if (status == STAT_ABANDONED)
+	  if (STAT_ISEQUAL(status, STAT_ABANDONED))
 	    {
 	      result = "ABANDONED";
 	      status = STAT_BOGUS;
 	    }
 	  else
-	    result = (status == STAT_SECURE ? "SECURE" : (status == STAT_INSECURE ? "INSECURE" : "BOGUS"));
+	    result = (STAT_ISEQUAL(status, STAT_SECURE) ? "SECURE" : (STAT_ISEQUAL(status, STAT_INSECURE) ? "INSECURE" : "BOGUS"));
 	  
-	  if (status == STAT_BOGUS && extract_request(header, n, daemon->namebuff, NULL))
+	  if (STAT_ISEQUAL(status, STAT_BOGUS) && extract_request(header, n, daemon->namebuff, NULL))
 	    domain = daemon->namebuff;
 	  
 	  log_query(F_SECSTAT, domain, NULL, result);
 	}
       
-      if (status == STAT_SECURE)
+      if (STAT_ISEQUAL(status, STAT_SECURE))
 	cache_secure = 1;
-      else if (status == STAT_BOGUS)
+      else if (STAT_ISEQUAL(status, STAT_BOGUS))
 	{
 	  no_cache_dnssec = 1;
 	  bogusanswer = 1;
@@ -1794,16 +1792,16 @@ static int tcp_key_recurse(time_t now, int status, struct dns_header *header, si
       /* limit the amount of work we do, to avoid cycling forever on loops in the DNS */
       if (--(*keycount) == 0)
 	new_status = STAT_ABANDONED;
-      else if (status == STAT_NEED_KEY)
+      else if (STAT_ISEQUAL(status, STAT_NEED_KEY))
 	new_status = dnssec_validate_by_ds(now, header, n, name, keyname, class);
-      else if (status == STAT_NEED_DS)
+      else if (STAT_ISEQUAL(status, STAT_NEED_DS))
 	new_status = dnssec_validate_ds(now, header, n, name, keyname, class);
       else 
 	new_status = dnssec_validate_reply(now, header, n, name, keyname, &class,
 					   !option_bool(OPT_DNSSEC_IGN_NS) && (server->flags & SERV_DO_DNSSEC),
 					   NULL, NULL, NULL);
       
-      if (new_status != STAT_NEED_DS && new_status != STAT_NEED_KEY)
+      if (!STAT_ISEQUAL(new_status, STAT_NEED_DS) && !STAT_ISEQUAL(new_status, STAT_NEED_KEY))
 	break;
 
       /* Can't validate because we need a key/DS whose name now in keyname.
@@ -1821,7 +1819,7 @@ static int tcp_key_recurse(time_t now, int status, struct dns_header *header, si
 	}
 
       m = dnssec_generate_query(new_header, ((unsigned char *) new_header) + 65536, keyname, class, 
-				new_status == STAT_NEED_KEY ? T_DNSKEY : T_DS, server->edns_pktsz);
+				STAT_ISEQUAL(new_status, STAT_NEED_KEY) ? T_DNSKEY : T_DS, server->edns_pktsz);
       
       if ((start = dnssec_server(server, daemon->keyname, &first, &last)) == -1 ||
 	  (m = tcp_talk(first, last, start, packet, m, have_mark, mark, &server)) == 0)
@@ -1834,13 +1832,13 @@ static int tcp_key_recurse(time_t now, int status, struct dns_header *header, si
       daemon->log_display_id = ++daemon->log_id;
       
       log_query_mysockaddr(F_NOEXTRA | F_DNSSEC, keyname, &server->addr,
-			   querystr("dnssec-query", new_status == STAT_NEED_KEY ? T_DNSKEY : T_DS));
+			   querystr("dnssec-query", STAT_ISEQUAL(new_status, STAT_NEED_KEY) ? T_DNSKEY : T_DS));
             
       new_status = tcp_key_recurse(now, new_status, new_header, m, class, name, keyname, server, have_mark, mark, keycount);
 
       daemon->log_display_id = log_save;
       
-      if (new_status != STAT_OK)
+      if (!STAT_ISEQUAL(new_status, STAT_OK))
 	break;
     }
     
@@ -2136,26 +2134,26 @@ unsigned char *tcp_request(int confd, time_t now,
 						   serv, have_mark, mark, &keycount);
 		      char *result, *domain = "result";
 		      
-		      if (status == STAT_ABANDONED)
+		      if (STAT_ISEQUAL(status, STAT_ABANDONED))
 			{
 			  result = "ABANDONED";
 			  status = STAT_BOGUS;
 			}
 		      else
-			result = (status == STAT_SECURE ? "SECURE" : (status == STAT_INSECURE ? "INSECURE" : "BOGUS"));
+			result = (STAT_ISEQUAL(status, STAT_SECURE) ? "SECURE" : (STAT_ISEQUAL(status, STAT_INSECURE) ? "INSECURE" : "BOGUS"));
 		      
-		      if (status == STAT_BOGUS && extract_request(header, m, daemon->namebuff, NULL))
+		      if (STAT_ISEQUAL(status, STAT_BOGUS) && extract_request(header, m, daemon->namebuff, NULL))
 			domain = daemon->namebuff;
 		      
 		      log_query(F_SECSTAT, domain, NULL, result);
 		      
-		      if (status == STAT_BOGUS)
+		      if (STAT_ISEQUAL(status, STAT_BOGUS))
 			{
 			  no_cache_dnssec = 1;
 			  bogusanswer = 1;
 			}
 		      
-		      if (status == STAT_SECURE)
+		      if (STAT_ISEQUAL(status, STAT_SECURE))
 			cache_secure = 1;
 		    }
 #endif
