@@ -1592,6 +1592,9 @@ void receive_query(struct listener *listen, time_t now)
     {
       m = answer_disallowed(header, (size_t)n, (u32)mark, is_single_query ? daemon->namebuff : NULL);
       
+      if (have_pseudoheader && m != 0)
+	m = add_pseudoheader(header,  m,  ((unsigned char *) header) + udp_size, daemon->edns_pktsz, 0, NULL, 0, do_bit, 0);
+      
       if (m >= 1)
 	{
 	  send_from(listen->fd, option_bool(OPT_NOWILD) || option_bool(OPT_CLEVERBIND),
@@ -2032,7 +2035,12 @@ unsigned char *tcp_request(int confd, time_t now,
       if (0);
 #ifdef HAVE_CONNTRACK
       else if (!allowed)
-	m = answer_disallowed(header, size, (u32)mark, is_single_query ? daemon->namebuff : NULL);
+	{
+	  m = answer_disallowed(header, size, (u32)mark, is_single_query ? daemon->namebuff : NULL);
+	  
+	  if (have_pseudoheader && m != 0)
+	    m = add_pseudoheader(header,  m, ((unsigned char *) header) + 65536, daemon->edns_pktsz, 0, NULL, 0, do_bit, 0);
+	}
 #endif
 #ifdef HAVE_AUTH
       else if (auth_dns)
