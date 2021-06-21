@@ -139,6 +139,13 @@ int main_dnsmasq (int argc, char **argv)
     }
 #endif
 
+#if defined(HAVE_CONNTRACK) && defined(HAVE_UBUS)
+  /* CONNTRACK UBUS code uses this buffer, so if not allocated above,
+     we need to allocate it here. */
+  if (option_bool(OPT_CMARK_ALST_EN) && !daemon->workspacename)
+    daemon->workspacename = safe_malloc(MAXDNAME);
+#endif
+  
 #ifdef HAVE_DHCP
   if (!daemon->lease_file)
     {
