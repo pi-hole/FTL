@@ -117,7 +117,7 @@ char *ubus_init()
   if (ret)
     {
       ubus_destroy(ubus);
-      return ubus_strerror(ret);
+      return (char *)ubus_strerror(ret);
     }    
   
   ubus->connection_lost = ubus_disconnect_cb;
