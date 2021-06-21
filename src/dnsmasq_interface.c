@@ -1281,7 +1281,6 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 		}
 
 		logg("**** got %s reply: %s is %s (ID %i, %s:%i)", cached ? "cache" : "upstream", name, answer, id, file, line);
-		print_flags(flags);
 	}
 
 	// Get response time
@@ -1421,7 +1420,6 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 	else if(isExactMatch && !query->flags.complete)
 	{
 		logg("*************************** unknown REPLY ***************************");
-		print_flags(flags);
 	}
 
 	unlock_shm();
