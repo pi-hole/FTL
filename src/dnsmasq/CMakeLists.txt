@@ -36,6 +36,7 @@ set(sources
         network.c
         option.c
         outpacket.c
+        pattern.c
         poll.c
         radv-protocol.h
         radv.c
