@@ -1794,7 +1794,7 @@ static const char *reply_status_str[QUERY_REPLY_MAX+1] = {
 	"REFUSED",
 	"NOTIMP",
 	"OTHER",
-	"DNSKEY",
+	"DNSSEC",
 	"MAX"
 };
 
@@ -1836,7 +1836,7 @@ static void _query_set_reply(const unsigned int flags, const union all_addr *add
 		}
 	}
 	else if(flags & F_KEYTAG)
-		query->reply = REPLY_DNSKEY;
+		query->reply = REPLY_DNSSEC;
 	else
 	{
 		// Valid IP
