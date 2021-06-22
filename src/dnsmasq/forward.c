@@ -706,8 +706,9 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
       if (ret == 2)
 	{
 	  cache_secure = 0;
-	  // Generate DNS packet for reply
-	  n = FTL_make_answer(header, n);
+	  // Generate DNS packet for reply, a possibly existing pseudo header
+	  // will be restored later inside resize_packet()
+	  n = FTL_make_answer(header, ((char *) header) + 65536, n);
 	}
       else if(ret)
       /**************************************************************************************/
@@ -1632,12 +1633,14 @@ void receive_query(struct listener *listen, time_t now)
       if(piholeblocked)
 	{
 	  // Generate DNS packet for reply
-	  n = FTL_make_answer(header, n);
+	  n = FTL_make_answer(header, ((char *) header) + udp_size, n);
 	  // The pseudoheader may contain important information such as EDNS0 version important for
 	  // some DNS resolvers (such as systemd-resolved) to work properly. We should not discard them.
 	  if (have_pseudoheader)
-	    n = add_pseudoheader(header, n, ((unsigned char *) header) + PACKETSZ, daemon->edns_pktsz, 0, NULL, 0, do_bit, 0);
-	  send_from(listen->fd, option_bool(OPT_NOWILD) || option_bool(OPT_CLEVERBIND), (char *)header, (size_t)n, &source_addr, &dst_addr, if_index);
+	    n = add_pseudoheader(header, n, ((unsigned char *) header) + udp_size,
+				 daemon->edns_pktsz, 0, NULL, 0, do_bit, 0);
+	  send_from(listen->fd, option_bool(OPT_NOWILD) || option_bool(OPT_CLEVERBIND),
+		    (char *)header, (size_t)n, &source_addr, &dst_addr, if_index);
 	  daemon->metrics[METRIC_DNS_LOCAL_ANSWERED]++;
 	  return;
 	}
@@ -1982,8 +1985,8 @@ unsigned char *tcp_request(int confd, time_t now,
 	  log_query_mysockaddr(F_QUERY | F_FORWARD, daemon->namebuff,
 			       &peer_addr, types);
 
-      piholeblocked = FTL_new_query(F_QUERY | F_FORWARD, daemon->namebuff,
-				    &peer_addr, types, qtype, daemon->log_display_id, &edns, TCP);
+	  piholeblocked = FTL_new_query(F_QUERY | F_FORWARD, daemon->namebuff,
+					&peer_addr, types, qtype, daemon->log_display_id, &edns, TCP);
 
 	  
 #ifdef HAVE_CONNTRACK
@@ -2059,11 +2062,12 @@ unsigned char *tcp_request(int confd, time_t now,
 	  if(piholeblocked)
 	    {
 	      // Generate DNS packet for reply
-	      m = FTL_make_answer(header, size);
+	      m = FTL_make_answer(header, ((char *) header) + 65536, size);
 	      // The pseudoheader may contain important information such as EDNS0 version important for
 	      // some DNS resolvers (such as systemd-resolved) to work properly. We should not discard them.
 	      if (have_pseudoheader)
-		m = add_pseudoheader(header, m, ((unsigned char *) header) + 65536, daemon->edns_pktsz, 0, NULL, 0, do_bit, 0);
+		m = add_pseudoheader(header, m, ((unsigned char *) header) + 65536,
+		                     daemon->edns_pktsz, 0, NULL, 0, do_bit, 0);
 	    }
 	  else
 	  {

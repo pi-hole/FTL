@@ -129,7 +129,7 @@ void FTL_hook(unsigned int flags, char *name, union all_addr *addr, char *arg, i
 }
 
 // This is inspired by make_local_answer()
-size_t _FTL_make_answer(struct dns_header *header, const size_t qlen, const char *file, const int line)
+size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len, const char *file, const int line)
 {
 	// Exit early if there are no questions in this query
 	if(ntohs(header->qdcount) == 0)
@@ -138,7 +138,7 @@ size_t _FTL_make_answer(struct dns_header *header, const size_t qlen, const char
 	// Get question name
 	char name[MAXDNAME] = { 0 };
 	unsigned char *p = (unsigned char *)(header+1);
-	if (!extract_name(header, qlen, &p, name, 1, 4))
+	if (!extract_name(header, len, &p, name, 1, 4))
 		return 0;
 
 	// Get question type
@@ -210,7 +210,7 @@ size_t _FTL_make_answer(struct dns_header *header, const size_t qlen, const char
 	flags |= F_HOSTS;
 
 	// Skip questions so we can start adding answers (if applicable)
-	if (!(p = skip_questions(header, qlen)))
+	if (!(p = skip_questions(header, len)))
 		return 0;
 
 	int trunc = 0;
@@ -225,8 +225,9 @@ size_t _FTL_make_answer(struct dns_header *header, const size_t qlen, const char
 
 		// Add answer record
 		header->ancount = htons(ntohs(header->ancount) + 1);
-		add_resource_record(header, ((char *)header) + 65536, &trunc, sizeof(struct dns_header),
-		                    &p, daemon->local_ttl, NULL, T_A, C_IN, (char*)"4", &addr->addr4);
+		add_resource_record(header, limit, &trunc, sizeof(struct dns_header),
+		                    &p, daemon->local_ttl, NULL, T_A, C_IN,
+		                    (char*)"4", &addr->addr4);
 		log_query(flags & ~F_IPV6, name, addr, (char*)blockingreason);
 	}
 
@@ -241,8 +242,9 @@ size_t _FTL_make_answer(struct dns_header *header, const size_t qlen, const char
 
 		// Add answer record
 		header->ancount = htons(ntohs(header->ancount) + 1);
-		add_resource_record(header, ((char *)header) + 65536, &trunc, sizeof(struct dns_header),
-		                    &p, daemon->local_ttl, NULL, T_AAAA, C_IN, (char*)"6", &addr->addr6);
+		add_resource_record(header, limit, &trunc, sizeof(struct dns_header),
+		                    &p, daemon->local_ttl, NULL, T_AAAA, C_IN,
+		                    (char*)"6", &addr->addr6);
 		log_query(flags & ~F_IPV4, name, addr, (char*)blockingreason);
 	}
 
