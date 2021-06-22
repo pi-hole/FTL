@@ -19,6 +19,8 @@
 #include "../config.h"
 // resolveHostname()
 #include "../resolve.h"
+// killed
+#include "../signals.h"
 
 // Private prototypes
 static char *getMACVendor(const char *hwaddr);
@@ -679,6 +681,10 @@ static bool add_FTL_clients_to_network_table(sqlite3 *db, enum arp_status *clien
 	char hwaddr[128];
 	for(int clientID = 0; clientID < counters->clients; clientID++)
 	{
+		// Check thread cancellation
+		if(killed)
+			break;
+
 		// Get client pointer
 		lock_shm();
 		clientsData *client = getClient(clientID, true);
@@ -1158,6 +1164,10 @@ void parse_neighbor_cache(sqlite3* db)
 		if(linebuffer == NULL)
 			continue;
 
+		// Check thread cancellation
+		if(killed)
+			break;
+
 		int num = sscanf(linebuffer, "%99s dev %99s lladdr %99s",
 		                 ip, iface, hwaddr);
 
@@ -1215,8 +1225,6 @@ void parse_neighbor_cache(sqlite3* db)
 
 		// Get hostname of this client if the client is known
 		char *hostname = NULL;
-		// Get client pointer
-		clientsData *client = NULL;
 		bool client_valid = false;
 		time_t lastQuery = 0;
 		unsigned int numQueries = 0;
@@ -1226,7 +1234,7 @@ void parse_neighbor_cache(sqlite3* db)
 		if(clientID >= 0)
 		{
 			client_status[clientID] = CLIENT_ARP_COMPLETE;
-			client = getClient(clientID, true);
+			clientsData *client = getClient(clientID, true);
 			if(client != NULL)
 			{
 				client_valid = true;
@@ -1263,15 +1271,16 @@ void parse_neighbor_cache(sqlite3* db)
 				// Create new record (INSERT)
 				insert_netDB_device(db, hwaddr, now, lastQuery, numQueries, macVendor);
 
+				lock_shm();
+				clientsData *client = getClient(clientID, true);
 				if(client != NULL)
 				{
 					// Reacquire client pointer (if may have changed when unlocking above)
-					lock_shm();
 					client = getClient(clientID, true);
 					// Reset client ARP counter (we stored the entry in the database)
 					client->numQueriesARP = 0;
-					unlock_shm();
 				}
+				unlock_shm();
 
 				// Obtain ID which was given to this new entry
 				dbID = sqlite3_last_insert_rowid(db);
@@ -1318,23 +1327,21 @@ void parse_neighbor_cache(sqlite3* db)
 			if(rc != SQLITE_OK)
 				break;
 
-			// Reacquire client pointer (if may have changed when unlocking above)
-			client = getClient(clientID, true);
 
 			// Update number of queries if applicable
 			rc = update_netDB_numQueries(db, dbID, numQueries);
 			if(rc != SQLITE_OK)
 				break;
 
+			lock_shm();
+			// Acquire client pointer
+			clientsData *client = getClient(clientID, true);
 			if(client != NULL)
 			{
-				// Reacquire client pointer (if may have changed when unlocking above)
-				lock_shm();
-				client = getClient(clientID, true);
 				// Reset client ARP counter (we stored the entry in the database)
 				client->numQueriesARP = 0;
-				unlock_shm();
 			}
+			unlock_shm();
 
 			// Update hostname if available
 			rc = update_netDB_name(db, ip, hostname);
@@ -1371,15 +1378,27 @@ void parse_neighbor_cache(sqlite3* db)
 		return;
 	}
 
+	// Check thread cancellation
+	if(killed)
+		return;
+
 	// Loop over all clients known to FTL and ensure we add them all to the
 	// database
 	if(!add_FTL_clients_to_network_table(db, client_status, now, &additional_entries))
+		return;
+
+	// Check thread cancellation
+	if(killed)
 		return;
 
 	// Finally, loop over the available interfaces to ensure we list the
 	// IP addresses correctly (local addresses are NOT contained in the
 	// ARP/neighor cache).
 	if(!add_local_interfaces_to_network_table(db, now, &additional_entries))
+		return;
+
+	// Check thread cancellation
+	if(killed)
 		return;
 
 	// Ensure mock-devices which are not assigned to any addresses any more

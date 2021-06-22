@@ -236,10 +236,16 @@ void read_FTLconf(void)
 	buffer = parse_FTLconf(fp, "MAXLOGAGE");
 
 	fvalue = 0;
+	const char *hint = "";
 	if(buffer != NULL && sscanf(buffer, "%f", &fvalue))
+	{
 		if(fvalue >= 0.0f && fvalue <= 1.0f*MAXLOGAGE)
 			config.maxlogage = (int)(fvalue * 3600);
-	logg("   MAXLOGAGE: Importing up to %.1f hours of log data", (float)config.maxlogage/3600.0f);
+		else if(fvalue > 1.0f*MAXLOGAGE)
+			hint = " (value has been clipped to " str(MAXLOGAGE) " hours)";
+	}
+	logg("   MAXLOGAGE: Importing up to %.1f hours of log data%s",
+	     (float)config.maxlogage/3600.0f, hint);
 
 	// PRIVACYLEVEL
 	// Specify if we want to anonymize the DNS queries somehow, available options are:

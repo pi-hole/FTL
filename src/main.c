@@ -103,8 +103,10 @@ int main (int argc, char* argv[])
 	// Save new queries to database (if database is used)
 	if(config.DBexport)
 	{
+		lock_shm();
 		if(DB_save_queries(NULL))
 			logg("Finished final database update");
+		unlock_shm();
 	}
 
 	cleanup(exit_code);

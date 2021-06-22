@@ -22,6 +22,8 @@
 #include "database/common.h"
 // destroy_shmem()
 #include "shmem.h"
+// killed
+#include "signals.h"
 
 pthread_t threads[THREADS_MAX] = { 0 };
 bool resolver_ready = false;
@@ -168,24 +170,27 @@ pid_t FTL_gettid(void)
 #endif // SYS_gettid
 }
 
-// Clean up on exit
-void cleanup(const int ret)
+static void terminate_threads(void)
 {
 	int s;
 	struct timespec ts;
 	// Terminate threads before closing database connections and finishing shared memory
-	logg("Asking threads to cancel");
-	for(int i = 0; i < THREADS_MAX; i++)
-	{
-		pthread_cancel(threads[i]);
-	}
-	// Try to join threads to ensure cancelation has succeeded
+	killed = true;
+	// Try to join threads to ensure cancellation has succeeded
 	logg("Waiting for threads to join");
 	for(int i = 0; i < THREADS_MAX; i++)
 	{
+		if(thread_cancellable[i])
+		{
+			logg("Thread %s (%d) is idle, terminating it.",
+			     thread_names[i], i);
+			pthread_cancel(threads[i]);
+		}
+
 		if (clock_gettime(CLOCK_REALTIME, &ts) == -1)
 		{
-			logg("Cannot get clock time, canceling thread instead of joining");
+			logg("Thread %s (%d) is busy, cancelling it (cannot set timout).",
+			     thread_names[i], i);
 			pthread_cancel(threads[i]);
 			continue;
 		}
@@ -195,25 +200,37 @@ void cleanup(const int ret)
 
 		if((s = pthread_timedjoin_np(threads[i], NULL, &ts)) != 0)
 		{
-			logg("Thread %d (%ld) timed out (%s), canceling it.",
-			     i, (long)threads[i], strerror(s));
+			logg("Thread %s (%d) is still busy, cancelling it.",
+			     thread_names[i], i);
 			pthread_cancel(threads[i]);
 			continue;
 		}
 	}
 	logg("All threads joined");
+}
 
-	// Close database connection
-	gravityDB_close();
+// Clean up on exit
+void cleanup(const int ret)
+{
+	// Do proper cleanup only if FTL started successfully
+	if(resolver_ready)
+	{
+		terminate_threads();
 
-	// Close sockets and delete Unix socket file handle
-	close_telnet_socket();
-	close_unix_socket(true);
+		// Close database connection
+		lock_shm();
+		gravityDB_close();
+		unlock_shm();
+
+		// Close sockets and delete Unix socket file handle
+		close_telnet_socket();
+		close_unix_socket(true);
+	}
 
 	// Empty API port file, port 0 = truncate file
 	saveport(0);
 
-	//Remove PID file
+	// Remove PID file
 	removepid();
 
 	// Remove shared memory objects

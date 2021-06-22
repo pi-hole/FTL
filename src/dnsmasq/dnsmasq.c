@@ -1809,7 +1809,12 @@ static void check_dns_listeners(time_t now)
       // Get the interface here only if we know the listeners are bound to specific
       // interfaces (option "bind-interfaces" is used)
       if(option_bool(OPT_NOWILD))
-	FTL_iface(listener->iface->index, daemon->interfaces);
+      {
+	if(listener != NULL && listener->iface != NULL)
+	  FTL_iface(listener->iface->index, daemon->interfaces);
+	else
+	  FTL_iface(-1, NULL);
+      }
       /*******************************************************************************/
 
       if (listener->fd != -1 && poll_check(listener->fd, POLLIN))

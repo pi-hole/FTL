@@ -502,6 +502,12 @@
   [[ ${lines[0]} == "0" ]]
 }
 
+@test "No \"database not available\" messages in pihole-FTL.log" {
+  run bash -c 'grep -c "database not available" /var/log/pihole-FTL.log'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "0" ]]
+}
+
 @test "No ERROR messages in pihole-FTL.log" {
   run bash -c 'grep "ERROR" /var/log/pihole-FTL.log'
   printf "%s\n" "${lines[@]}"

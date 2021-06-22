@@ -131,6 +131,13 @@ bool import_aliasclients(sqlite3 *db)
 		const int clientID = findClientID(aliasclient_str, false, true);
 
 		clientsData *client = getClient(clientID, true);
+		if(client == NULL)
+		{
+			free(aliasclient_str);
+			continue;
+		}
+
+		// Set client flags
 		client->flags.new = false;
 
 		// Reset counter

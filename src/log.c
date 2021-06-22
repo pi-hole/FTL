@@ -290,10 +290,14 @@ const char __attribute__ ((malloc)) *get_FTL_version(void)
 	// Obtain FTL version if not already determined
 	if(FTLversion == NULL)
 	{
-		if(strlen(GIT_TAG) > 1 && strlen(GIT_VERSION) > 1)
+		if(strlen(GIT_TAG) > 1 )
 		{
-			// Copy version string if this is a tagged release
-			FTLversion = strdup(GIT_VERSION);
+			if (strlen(GIT_VERSION) > 1)
+			{
+				// Copy version string if this is a tagged release
+				FTLversion = strdup(GIT_VERSION);
+			}
+
 		}
 		else if(strlen(GIT_HASH) > 0)
 		{

@@ -23,6 +23,8 @@
 #include "sqlite3-ext.h"
 // import_aliasclients()
 #include "aliasclients.h"
+// add_additional_info_column()
+#include "query-table.h"
 
 bool DBdeleteoldqueries = false;
 long int lastdbindex = 0;
@@ -133,7 +135,7 @@ static bool create_counter_table(sqlite3* db)
 	db_set_counter(db, DB_BLOCKEDQUERIES, 0);
 
 	// Time stamp of creation of the counters database
-	db_set_counter(db, DB_FIRSTCOUNTERTIMESTAMP, (unsigned long)time(0));
+	db_set_FTL_property(db, DB_FIRSTCOUNTERTIMESTAMP, (unsigned long)time(0));
 
 	// Update database version to 2
 	db_set_FTL_property(db, DB_VERSION, 2);
@@ -190,6 +192,17 @@ void db_init(void)
 	// We use this to possibly catch even more errors in places we do not
 	// explicitly check for failures to have happened
 	sqlite3_config(SQLITE_CONFIG_LOG, SQLite3LogCallback, NULL);
+
+	// SQLITE_DBCONFIG_DEFENSIVE
+	// Disbale language features that allow ordinary SQL to deliberately corrupt
+	// the database file. The disabled features include but are not limited to
+	// the following:
+	//
+	// - The PRAGMA writable_schema=ON statement.
+	// - The PRAGMA journal_mode=OFF statement.
+	// - Writes to the sqlite_dbpage virtual table.
+	// - Direct writes to shadow tables.
+	sqlite3_config(SQLITE_DBCONFIG_DEFENSIVE, true);
 
 	// Register Pi-hole provided SQLite3 extensions (see sqlite3-ext.c)
 	sqlite3_auto_extension((void (*)(void))sqlite3_pihole_extensions_init);
@@ -300,10 +313,9 @@ void db_init(void)
 	// Update to version 7 if lower
 	if(dbversion < 7)
 	{
-		// Update to version 7: Create message table
+		// Update to version 7: Add additional_info column to queries table
 		logg("Updating long-term database to version 7");
-		if(dbquery(db, "ALTER TABLE queries ADD COLUMN additional_info TEXT;") != SQLITE_OK ||
-		   !dbquery(db, "INSERT OR REPLACE INTO ftl (id, value) VALUES ( %u, %i );", DB_VERSION, 7) != SQLITE_OK)
+		if(!add_additional_info_column(db))
 		{
 			logg("Column additional_info not initialized, database not available");
 			dbclose(&db);
@@ -343,7 +355,9 @@ void db_init(void)
 		dbversion = db_get_int(db, DB_VERSION);
 	}
 
+	lock_shm();
 	import_aliasclients(db);
+	unlock_shm();
 
 	// Close database to prevent having it opened all time
 	// We already closed the database when we returned earlier
