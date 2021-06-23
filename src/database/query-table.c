@@ -321,6 +321,17 @@ void delete_old_queries_in_DB(sqlite3 *db)
 		logg("Notice: Database size is %.2f MB, deleted %i rows", 1e-6*get_FTL_db_filesize(), affected);
 }
 
+bool add_additional_info_column(sqlite3 *db)
+{
+	// Add column additinal_info to queries table
+	SQL_bool(db, "ALTER TABLE queries ADD COLUMN additional_info TEXT;");
+
+	// Update the database version to 7
+	SQL_bool(db, "INSERT OR REPLACE INTO ftl (id, value) VALUES ( %u, %i );", DB_VERSION, 7);
+
+	return true;
+}
+
 // Get most recent 24 hours data from long-term database
 void DB_read_queries(void)
 {
@@ -357,6 +368,9 @@ void DB_read_queries(void)
 		dbclose(&db);
 		return;
 	}
+
+	// Lock shared memory
+	lock_shm();
 
 	// Loop through returned database rows
 	while((rc = sqlite3_step(stmt)) == SQLITE_ROW)
@@ -419,8 +433,8 @@ void DB_read_queries(void)
 			continue;
 		}
 
-		// Lock shared memory
-		lock_shm();
+		// Ensure we have enough shared memory available for new data
+		shm_ensure_size();
 
 		const char *buffer = NULL;
 		int upstreamID = -1; // Default if not forwarded
@@ -580,9 +594,9 @@ void DB_read_queries(void)
 				logg("Warning: Found unknown status %i in long term database!", status);
 				break;
 		}
-
-		unlock_shm();
 	}
+
+	unlock_shm();
 	logg("Imported %i queries from the long-term database", counters->queries);
 
 	// Update lastdbindex so that the next call to DB_save_queries()
