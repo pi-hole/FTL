@@ -411,7 +411,7 @@ static void *socket_connection_handler_thread(void *socket_desc)
 	unlock_shm();
 	if(tid == MAX_API_THREADS)
 	{
-		logg("Not able to spawn new API thread, limit reached.");
+		logg("Not able to spawn new API thread, limit of " str(MAX_API_THREADS) " threads reached.");
 		return false;
 	}
 
