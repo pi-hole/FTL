@@ -102,7 +102,7 @@ ASSERT_SIZEOF(domainsData, 24, 16, 16);
 typedef struct {
 	unsigned char magic;
 	enum domain_client_status blocking_status;
-	unsigned char force_reply;
+	enum reply_type force_reply;
 	enum query_types query_type;
 	int domainID;
 	int clientID;

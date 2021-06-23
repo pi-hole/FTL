@@ -47,7 +47,7 @@ int main (int argc, char* argv[])
 	// Try to open FTL log
 	init_FTL_log();
 	timer_start(EXIT_TIMER);
-	logg("########## FTL started! ##########");
+	logg("########## FTL started on %s! ##########", hostname());
 	log_FTL_version(false);
 
 	// Catch signals not handled by dnsmasq

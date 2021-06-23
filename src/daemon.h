@@ -16,6 +16,7 @@ extern pthread_t threads[THREADS_MAX];
 void go_daemon(void);
 void savepid(void);
 char *getUserName(void);
+const char *hostname(void);
 void delay_startup(void);
 bool is_fork(const pid_t mpid, const pid_t pid) __attribute__ ((const));
 void cleanup(const int ret);
