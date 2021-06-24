@@ -12,7 +12,7 @@
 
 int main_dnsmasq(int argc, const char ** argv);
 
-extern char * username;
+extern char *username;
 extern bool startup;
 
 #endif //MAIN_H

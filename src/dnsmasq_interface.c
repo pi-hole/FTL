@@ -50,6 +50,8 @@ static void print_flags(const unsigned int flags);
 #define query_set_reply(flags, addr, query, response) _query_set_reply(flags, addr, query, response, __FILE__, __LINE__)
 static void _query_set_reply(const unsigned int flags, const union all_addr *addr, queriesData* query, const struct timeval response,
                              const char *file, const int line);
+#define FTL_check_blocking(queryID, domainID, clientID) _FTL_check_blocking(queryID, domainID, clientID, __FILE__, __LINE__)
+static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const char* file, const int line);
 static unsigned long converttimeval(const struct timeval time) __attribute__((const));
 static enum query_status detect_blocked_IP(const unsigned short flags, const union all_addr *addr, const queriesData *query, const domainsData *domain);
 static void query_blocked(queriesData* query, domainsData* domain, clientsData* client, const unsigned char new_status);
@@ -61,7 +63,7 @@ static void FTL_dnssec(const char *result, const int id, const char* file, const
 // Static blocking metadata
 static const char *blockingreason = NULL;
 static union all_addr null_addrp = {{ 0 }};
-static unsigned char force_next_DNS_reply = 0u;
+static enum reply_type force_next_DNS_reply = REPLY_UNKNOWN;
 
 // Adds debug information to the regular pihole.log file
 char debug_dnsmasq_lines = 0;
@@ -218,7 +220,9 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 	if(flags & F_IPV4)
 	{
 		union all_addr *addr;
-		if(config.blockingmode == MODE_IP || config.blockingmode == MODE_IP_NODATA_AAAA)
+		if(config.blockingmode == MODE_IP ||
+		   config.blockingmode == MODE_IP_NODATA_AAAA ||
+		   force_next_DNS_reply == REPLY_IP)
 			addr = &next_iface.addr4;
 		else
 			addr = &null_addrp;
@@ -235,7 +239,8 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 	if(flags & F_IPV6)
 	{
 		union all_addr *addr;
-		if(config.blockingmode == MODE_IP)
+		if(config.blockingmode == MODE_IP ||
+		   force_next_DNS_reply == REPLY_IP)
 			addr = &next_iface.addr6;
 		else
 			addr = &null_addrp;
@@ -255,6 +260,345 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 	return p - (unsigned char *)header;
 }
 
+bool _FTL_new_query(const unsigned int flags, const char *name,
+                    union mysockaddr *addr, const char *types,
+                    const unsigned short qtype, const int id,
+                    const ednsData *edns, const enum protocol proto,
+                    const char* file, const int line)
+{
+	// Create new query in data structure
+
+	// Get timestamp
+	const time_t querytimestamp = time(NULL);
+
+	// Save request time
+	struct timeval request;
+	gettimeofday(&request, 0);
+
+	// Determine query type
+	enum query_types querytype;
+	switch(qtype)
+	{
+		case T_A:
+			querytype = TYPE_A;
+			break;
+		case T_AAAA:
+			querytype = TYPE_AAAA;
+			break;
+		case T_ANY:
+			querytype = TYPE_ANY;
+			break;
+		case T_SRV:
+			querytype = TYPE_SRV;
+			break;
+		case T_SOA:
+			querytype = TYPE_SOA;
+			break;
+		case T_PTR:
+			querytype = TYPE_PTR;
+			break;
+		case T_TXT:
+			querytype = TYPE_TXT;
+			break;
+		case T_NAPTR:
+			querytype = TYPE_NAPTR;
+			break;
+		case T_MX:
+			querytype = TYPE_MX;
+			break;
+		case T_DS:
+			querytype = TYPE_DS;
+			break;
+		case T_RRSIG:
+			querytype = TYPE_RRSIG;
+			break;
+		case T_DNSKEY:
+			querytype = TYPE_DNSKEY;
+			break;
+		case T_NS:
+			querytype = TYPE_NS;
+			break;
+		case 64: // Scn. 2 of https://datatracker.ietf.org/doc/draft-ietf-dnsop-svcb-https/
+			querytype = TYPE_SVCB;
+			break;
+		case 65: // Scn. 2 of https://datatracker.ietf.org/doc/draft-ietf-dnsop-svcb-https/
+			querytype = TYPE_HTTPS;
+			break;
+		default:
+			querytype = TYPE_OTHER;
+			break;
+	}
+
+	// If domain is "pi.hole" or the local hostname we skip analyzing this query
+	// and, instead, immediately reply with the IP address - these queries are not further analyzed
+	if(strcasecmp(name, "pi.hole") == 0 || strcasecmp(name, hostname()) == 0)
+	{
+		if(querytype == TYPE_A || querytype == TYPE_AAAA || querytype == TYPE_ANY)
+		{
+			// "Block" this query by sending the interface IP address
+			force_next_DNS_reply = REPLY_IP;
+			if(config.debug & DEBUG_QUERIES)
+				logg("Replying to %s with interface-local IP address", name);
+			return true;
+		}
+		else
+		{
+			// Don't block this query
+			return false;
+		}
+	}
+
+	// Skip AAAA queries if user doesn't want to have them analyzed
+	if(!config.analyze_AAAA && querytype == TYPE_AAAA)
+	{
+		if(config.debug & DEBUG_QUERIES)
+			logg("Not analyzing AAAA query");
+		return false;
+	}
+
+	// Convert domain to lower case
+	char *domainString = strdup(name);
+	strtolower(domainString);
+
+	// Get client IP address
+	// The requestor's IP address can be rewritten using EDNS(0) client
+	// subnet (ECS) data), however, we do not rewrite the IPs ::1 and
+	// 127.0.0.1 to avoid queries originating from localhost of the
+	// *distant* machine as queries coming from the *local* machine
+	const sa_family_t family = addr ? addr->sa.sa_family : AF_INET;
+	bool internal_query = false;
+	char clientIP[ADDRSTRLEN+1] = { 0 };
+	if(config.edns0_ecs && edns && edns->client_set)
+	{
+		// Use ECS provided client
+		strncpy(clientIP, edns->client, ADDRSTRLEN);
+		clientIP[ADDRSTRLEN] = '\0';
+	}
+	else if(addr)
+	{
+		// Use original requestor
+		inet_ntop(family,
+		          family == AF_INET ?
+		             (union alladdr*)&addr->in.sin_addr :
+		             (union alladdr*)&addr->in6.sin6_addr,
+		          clientIP, ADDRSTRLEN);
+	}
+	else
+	{
+		// No client address available, this is an automatically generated (e.g.
+		// DNSSEC) query
+		internal_query = true;
+		strcpy(clientIP, "::");
+	}
+
+	// Check if user wants to skip queries coming from localhost
+	if(config.ignore_localhost &&
+	   (strcmp(clientIP, "127.0.0.1") == 0 || strcmp(clientIP, "::1") == 0))
+	{
+		free(domainString);
+		return false;
+	}
+
+	// Lock shared memory
+	lock_shm();
+	const int queryID = counters->queries;
+
+	// Find client IP
+	const int clientID = findClientID(clientIP, true, false);
+
+	// Get client pointer
+	clientsData* client = getClient(clientID, true);
+	if(client == NULL)
+	{
+		// Encountered memory error, skip query
+		// Free allocated memory
+		free(domainString);
+		// Release thread lock
+		unlock_shm();
+		return false;
+	}
+
+	// Interface name is only available for regular queries, not for
+	// automatically generated DNSSEC queries
+	const char *interface = internal_query ? "-" : next_iface.name;
+
+	// Check rate-limit for this client
+	if(!internal_query && config.rate_limit.count > 0 &&
+	   ++client->rate_limit > config.rate_limit.count)
+	{
+		if(config.debug & DEBUG_QUERIES)
+		{
+			logg("Rate-limiting %sIPv%d %s query \"%s\" from %s:%s",
+			     proto == TCP ? "TCP " : proto == UDP ? "UDP " : "",
+			     family == AF_INET ? 4 : 6, types, domainString, interface, clientIP);
+		}
+
+		// Block this query
+		force_next_DNS_reply = REPLY_REFUSED;
+
+		// Do not further process this query, Pi-hole has never seen it
+		unlock_shm();
+		return true;
+	}
+
+	// Log new query if in debug mode
+	if(config.debug & DEBUG_QUERIES)
+	{
+		logg("**** new %sIPv%d %s query \"%s\" from %s:%s (ID %i, FTL %i, %s:%i)",
+		     proto == TCP ? "TCP " : proto == UDP ? "UDP " : "",
+		     family == AF_INET ? 4 : 6, types, domainString, interface,
+		     internal_query ? "<internal>" : clientIP, id, queryID, short_path(file), line);
+	}
+
+	// Update counters
+	counters->querytype[querytype-1]++;
+
+	// Update overTime
+	const unsigned int timeidx = getOverTimeID(querytimestamp);
+
+	// Skip rest of the analysis if this query is not of type A or AAAA
+	// but user wants to see only A and AAAA queries (pre-v4.1 behavior)
+	if(config.analyze_only_A_AAAA && querytype != TYPE_A && querytype != TYPE_AAAA)
+	{
+		// Don't process this query further here, we already counted it
+		if(config.debug & DEBUG_QUERIES) logg("Notice: Skipping new query: %s (%i)", types, id);
+		free(domainString);
+		unlock_shm();
+		return false;
+	}
+
+	// Go through already knows domains and see if it is one of them
+	const int domainID = findDomainID(domainString, true);
+
+	// Save everything
+	queriesData* query = getQuery(queryID, false);
+	if(query == NULL)
+	{
+		// Encountered memory error, skip query
+		logg("WARN: No memory available, skipping query analysis");
+		// Free allocated memory
+		free(domainString);
+		// Release thread lock
+		unlock_shm();
+		return false;
+	}
+
+	// Fill query object with available data
+	query->magic = MAGICBYTE;
+	query->timestamp = querytimestamp;
+	query->type = querytype;
+	query->qtype = qtype;
+	query->id = id; // Has to be set before calling query_set_status()
+
+	// This query is unknown as long as no reply has been found and analyzed
+	counters->status[QUERY_UNKNOWN]++;
+	query_set_status(query, QUERY_UNKNOWN);
+	query->domainID = domainID;
+	query->clientID = clientID;
+	query->timeidx = timeidx;
+	// Initialize database rowID with zero, will be set when the query is stored in the long-term DB
+	query->db = 0;
+	query->flags.complete = false;
+	query->response = converttimeval(request);
+	// Initialize reply type
+	query->reply = REPLY_UNKNOWN;
+	// Store DNSSEC result for this domain
+	query->dnssec = DNSSEC_UNSPECIFIED;
+	query->CNAME_domainID = -1;
+	// This query is not yet known ad forwarded or blocked
+	query->flags.blocked = false;
+	query->flags.whitelisted = false;
+
+	// Indicator that this query was not forwarded so far
+	query->upstreamID = -1;
+
+	// Check and apply possible privacy level rules
+	// The currently set privacy level (at the time the query is
+	// generated) is stored in the queries structure
+	query->privacylevel = config.privacylevel;
+
+	// Increase DNS queries counter
+	counters->queries++;
+
+	// Update overTime data
+	overTime[timeidx].total++;
+
+	// Update overTime data structure with the new client
+	change_clientcount(client, 0, 0, timeidx, 1);
+
+	// Set lastQuery timer and add one query for network table
+	client->lastQuery = querytimestamp;
+	client->numQueriesARP++;
+
+	// Process interface information of client (if available)
+	// Skip interface name length 1 to skip "-". No real interface should
+	// have a name with a length of 1...
+	if(!internal_query && strlen(interface) > 1)
+	{
+		if(client->ifacepos == 0u)
+		{
+			// Store in the client data if unknown so far
+			client->ifacepos = addstr(interface);
+		}
+		else
+		{
+			// Check if this is still the same interface or
+			// if the client moved to another interface
+			// (may require group re-processing)
+			const char *oldiface = getstr(client->ifacepos);
+			if(strcasecmp(oldiface, interface) != 0)
+			{
+				if(config.debug & DEBUG_CLIENTS)
+				{
+					const char *clientName = getstr(client->namepos);
+					logg("Client %s (%s) changed interface: %s -> %s",
+					     clientIP, clientName, oldiface, interface);
+				}
+
+				gravityDB_reload_groups(client);
+			}
+		}
+	}
+
+	// Set client MAC address from EDNS(0) information (if available)
+	if(config.edns0_ecs && edns->mac_set)
+	{
+		memcpy(client->hwaddr, edns->mac_byte, 6);
+		client->hwlen = 6;
+	}
+
+	// Try to obtain MAC address from dnsmasq's cache (also asks the kernel)
+	if(client->hwlen < 1)
+	{
+		client->hwlen = find_mac(addr, client->hwaddr, 1, time(NULL));
+		if(config.debug & DEBUG_ARP)
+		{
+			if(client->hwlen == 6)
+				logg("find_mac(\"%s\") returned hardware address "
+				     "%02X:%02X:%02X:%02X:%02X:%02X", clientIP,
+				     client->hwaddr[0], client->hwaddr[1], client->hwaddr[2],
+				     client->hwaddr[3], client->hwaddr[4], client->hwaddr[5]);
+			else
+				logg("find_mac(\"%s\") returned %i bytes of data",
+				     clientIP, client->hwlen);
+		}
+	}
+
+	bool blockDomain = false;
+	// Check if this should be blocked only for active queries
+	// (skipped for internally generated ones, e.g., DNSSEC)
+	if(!internal_query)
+		blockDomain = FTL_check_blocking(queryID, domainID, clientID);
+
+	// Free allocated memory
+	free(domainString);
+
+	// Release thread lock
+	unlock_shm();
+
+	return blockDomain;
+}
+
 void FTL_iface(const int ifidx, const struct irec *ifaces)
 {
 	// Invalidate data we have from the last interface/query
@@ -264,9 +608,27 @@ void FTL_iface(const int ifidx, const struct irec *ifaces)
 
 	// Copy overwrite addresses if configured via REPLY_ADDR4 and/or REPLY_ADDR6 settings
 	if(config.reply_addr.overwrite_v4)
+	{
 		memcpy(&next_iface.addr4, &config.reply_addr.v4, sizeof(config.reply_addr.v4));
+
+		if(config.debug & DEBUG_NETWORKING)
+		{
+			char buffer[ADDRSTRLEN+1] = { 0 };
+			inet_ntop(AF_INET, &next_iface.addr4, buffer, ADDRSTRLEN);
+			logg("Interface (%d) %s OVERWRITES IPv4 address %s", ifidx, next_iface.name, buffer);
+		}
+	}
 	if(config.reply_addr.overwrite_v6)
+	{
 		memcpy(&next_iface.addr6, &config.reply_addr.v6, sizeof(config.reply_addr.v6));
+
+		if(config.debug & DEBUG_NETWORKING)
+		{
+			char buffer[ADDRSTRLEN+1] = { 0 };
+			inet_ntop(AF_INET6, &next_iface.addr6, buffer, ADDRSTRLEN);
+			logg("Interface (%d) %s OVERWRITES IPv6 address %s", ifidx, next_iface.name, buffer);
+		}
+	}
 
 	// Use dummy when interface record is not available
 	next_iface.name[0] = '-';
@@ -357,7 +719,6 @@ void FTL_iface(const int ifidx, const struct irec *ifaces)
 	}
 }
 
-#define FTL_check_blocking(queryID, domainID, clientID) _FTL_check_blocking(queryID, domainID, clientID, __FILE__, __LINE__)
 static bool check_domain_blocked(const char *domain, const int clientID,
                                  clientsData *client, queriesData *query, DNSCacheData *dns_cache,
                                  unsigned char *new_status)
@@ -581,8 +942,8 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			// Truncate "_esni." from queried domain if the parenting domain was the reason for blocking this query
 			blockedDomain = domainstr + 6u;
 			// Force next DNS reply to be NXDOMAIN for _esni.* queries
-			force_next_DNS_reply = NXDOMAIN;
-			dns_cache->force_reply = NXDOMAIN;
+			force_next_DNS_reply = REPLY_NXDOMAIN;
+			dns_cache->force_reply = REPLY_NXDOMAIN;
 		}
 	}
 
@@ -737,331 +1098,6 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 	free(child_domain);
 	unlock_shm();
 	return block;
-}
-
-
-bool _FTL_new_query(const unsigned int flags, const char *name,
-                    union mysockaddr *addr, const char *types,
-                    const unsigned short qtype, const int id,
-                    const ednsData *edns, const enum protocol proto,
-                    const char* file, const int line)
-{
-	// Create new query in data structure
-
-	// Get timestamp
-	const time_t querytimestamp = time(NULL);
-
-	// Save request time
-	struct timeval request;
-	gettimeofday(&request, 0);
-
-	// If domain is "pi.hole" we skip this query
-	if(strcasecmp(name, "pi.hole") == 0)
-		return false;
-
-	// Determine query type
-	enum query_types querytype;
-	switch(qtype)
-	{
-		case T_A:
-			querytype = TYPE_A;
-			break;
-		case T_AAAA:
-			querytype = TYPE_AAAA;
-			break;
-		case T_ANY:
-			querytype = TYPE_ANY;
-			break;
-		case T_SRV:
-			querytype = TYPE_SRV;
-			break;
-		case T_SOA:
-			querytype = TYPE_SOA;
-			break;
-		case T_PTR:
-			querytype = TYPE_PTR;
-			break;
-		case T_TXT:
-			querytype = TYPE_TXT;
-			break;
-		case T_NAPTR:
-			querytype = TYPE_NAPTR;
-			break;
-		case T_MX:
-			querytype = TYPE_MX;
-			break;
-		case T_DS:
-			querytype = TYPE_DS;
-			break;
-		case T_RRSIG:
-			querytype = TYPE_RRSIG;
-			break;
-		case T_DNSKEY:
-			querytype = TYPE_DNSKEY;
-			break;
-		case T_NS:
-			querytype = TYPE_NS;
-			break;
-		case 64: // Scn. 2 of https://datatracker.ietf.org/doc/draft-ietf-dnsop-svcb-https/
-			querytype = TYPE_SVCB;
-			break;
-		case 65: // Scn. 2 of https://datatracker.ietf.org/doc/draft-ietf-dnsop-svcb-https/
-			querytype = TYPE_HTTPS;
-			break;
-		default:
-			querytype = TYPE_OTHER;
-			break;
-	}
-
-	// Skip AAAA queries if user doesn't want to have them analyzed
-	if(!config.analyze_AAAA && querytype == TYPE_AAAA)
-	{
-		if(config.debug & DEBUG_QUERIES)
-			logg("Not analyzing AAAA query");
-		return false;
-	}
-
-	// Convert domain to lower case
-	char *domainString = strdup(name);
-	strtolower(domainString);
-
-	// Get client IP address
-	// The requestor's IP address can be rewritten using EDNS(0) client
-	// subnet (ECS) data), however, we do not rewrite the IPs ::1 and
-	// 127.0.0.1 to avoid queries originating from localhost of the
-	// *distant* machine as queries coming from the *local* machine
-	const sa_family_t family = addr ? addr->sa.sa_family : AF_INET;
-	bool internal_query = false;
-	char clientIP[ADDRSTRLEN+1] = { 0 };
-	if(config.edns0_ecs && edns && edns->client_set)
-	{
-		// Use ECS provided client
-		strncpy(clientIP, edns->client, ADDRSTRLEN);
-		clientIP[ADDRSTRLEN] = '\0';
-	}
-	else if(addr)
-	{
-		// Use original requestor
-		inet_ntop(family,
-		          family == AF_INET ?
-		             (union alladdr*)&addr->in.sin_addr :
-		             (union alladdr*)&addr->in6.sin6_addr,
-		          clientIP, ADDRSTRLEN);
-	}
-	else
-	{
-		// No client address available, this is an automatically generated (e.g.
-		// DNSSEC) query
-		internal_query = true;
-		strcpy(clientIP, "::");
-	}
-
-	// Check if user wants to skip queries coming from localhost
-	if(config.ignore_localhost &&
-	   (strcmp(clientIP, "127.0.0.1") == 0 || strcmp(clientIP, "::1") == 0))
-	{
-		free(domainString);
-		return false;
-	}
-
-	// Lock shared memory
-	lock_shm();
-	const int queryID = counters->queries;
-
-	// Find client IP
-	const int clientID = findClientID(clientIP, true, false);
-
-	// Get client pointer
-	clientsData* client = getClient(clientID, true);
-	if(client == NULL)
-	{
-		// Encountered memory error, skip query
-		// Free allocated memory
-		free(domainString);
-		// Release thread lock
-		unlock_shm();
-		return false;
-	}
-
-	// Interface name is only available for regular queries, not for
-	// automatically generated DNSSEC queries
-	const char *interface = internal_query ? "-" : next_iface.name;
-
-	// Check rate-limit for this client
-	if(!internal_query && config.rate_limit.count > 0 &&
-	   ++client->rate_limit > config.rate_limit.count)
-	{
-		if(config.debug & DEBUG_QUERIES)
-		{
-			logg("Rate-limiting %sIPv%d %s query \"%s\" from %s:%s",
-			     proto == TCP ? "TCP " : proto == UDP ? "UDP " : "",
-			     family == AF_INET ? 4 : 6, types, domainString, interface, clientIP);
-		}
-
-		// Block this query
-		force_next_DNS_reply = REFUSED;
-
-		// Do not further process this query, Pi-hole has never seen it
-		unlock_shm();
-		return true;
-	}
-
-	// Log new query if in debug mode
-	if(config.debug & DEBUG_QUERIES)
-	{
-		logg("**** new %sIPv%d %s query \"%s\" from %s:%s (ID %i, FTL %i, %s:%i)",
-		     proto == TCP ? "TCP " : proto == UDP ? "UDP " : "",
-		     family == AF_INET ? 4 : 6, types, domainString, interface,
-		     internal_query ? "<internal>" : clientIP, id, queryID, short_path(file), line);
-	}
-
-	// Update counters
-	counters->querytype[querytype-1]++;
-
-	// Update overTime
-	const unsigned int timeidx = getOverTimeID(querytimestamp);
-
-	// Skip rest of the analysis if this query is not of type A or AAAA
-	// but user wants to see only A and AAAA queries (pre-v4.1 behavior)
-	if(config.analyze_only_A_AAAA && querytype != TYPE_A && querytype != TYPE_AAAA)
-	{
-		// Don't process this query further here, we already counted it
-		if(config.debug & DEBUG_QUERIES) logg("Notice: Skipping new query: %s (%i)", types, id);
-		free(domainString);
-		unlock_shm();
-		return false;
-	}
-
-	// Go through already knows domains and see if it is one of them
-	const int domainID = findDomainID(domainString, true);
-
-	// Save everything
-	queriesData* query = getQuery(queryID, false);
-	if(query == NULL)
-	{
-		// Encountered memory error, skip query
-		logg("WARN: No memory available, skipping query analysis");
-		// Free allocated memory
-		free(domainString);
-		// Release thread lock
-		unlock_shm();
-		return false;
-	}
-
-	// Fill query object with available data
-	query->magic = MAGICBYTE;
-	query->timestamp = querytimestamp;
-	query->type = querytype;
-	query->qtype = qtype;
-	query->id = id; // Has to be set before calling query_set_status()
-
-	// This query is unknown as long as no reply has been found and analyzed
-	counters->status[QUERY_UNKNOWN]++;
-	query_set_status(query, QUERY_UNKNOWN);
-	query->domainID = domainID;
-	query->clientID = clientID;
-	query->timeidx = timeidx;
-	// Initialize database rowID with zero, will be set when the query is stored in the long-term DB
-	query->db = 0;
-	query->flags.complete = false;
-	query->response = converttimeval(request);
-	// Initialize reply type
-	query->reply = REPLY_UNKNOWN;
-	// Store DNSSEC result for this domain
-	query->dnssec = DNSSEC_UNSPECIFIED;
-	query->CNAME_domainID = -1;
-	// This query is not yet known ad forwarded or blocked
-	query->flags.blocked = false;
-	query->flags.whitelisted = false;
-
-	// Indicator that this query was not forwarded so far
-	query->upstreamID = -1;
-
-	// Check and apply possible privacy level rules
-	// The currently set privacy level (at the time the query is
-	// generated) is stored in the queries structure
-	query->privacylevel = config.privacylevel;
-
-	// Increase DNS queries counter
-	counters->queries++;
-
-	// Update overTime data
-	overTime[timeidx].total++;
-
-	// Update overTime data structure with the new client
-	change_clientcount(client, 0, 0, timeidx, 1);
-
-	// Set lastQuery timer and add one query for network table
-	client->lastQuery = querytimestamp;
-	client->numQueriesARP++;
-
-	// Process interface information of client (if available)
-	// Skip interface name length 1 to skip "-". No real interface should
-	// have a name with a length of 1...
-	if(!internal_query && strlen(interface) > 1)
-	{
-		if(client->ifacepos == 0u)
-		{
-			// Store in the client data if unknown so far
-			client->ifacepos = addstr(interface);
-		}
-		else
-		{
-			// Check if this is still the same interface or
-			// if the client moved to another interface
-			// (may require group re-processing)
-			const char *oldiface = getstr(client->ifacepos);
-			if(strcasecmp(oldiface, interface) != 0)
-			{
-				if(config.debug & DEBUG_CLIENTS)
-				{
-					const char *clientName = getstr(client->namepos);
-					logg("Client %s (%s) changed interface: %s -> %s",
-					     clientIP, clientName, oldiface, interface);
-				}
-
-				gravityDB_reload_groups(client);
-			}
-		}
-	}
-
-	// Set client MAC address from EDNS(0) information (if available)
-	if(config.edns0_ecs && edns->mac_set)
-	{
-		memcpy(client->hwaddr, edns->mac_byte, 6);
-		client->hwlen = 6;
-	}
-
-	// Try to obtain MAC address from dnsmasq's cache (also asks the kernel)
-	if(client->hwlen < 1)
-	{
-		client->hwlen = find_mac(addr, client->hwaddr, 1, time(NULL));
-		if(config.debug & DEBUG_ARP)
-		{
-			if(client->hwlen == 6)
-				logg("find_mac(\"%s\") returned hardware address "
-				     "%02X:%02X:%02X:%02X:%02X:%02X", clientIP,
-				     client->hwaddr[0], client->hwaddr[1], client->hwaddr[2],
-				     client->hwaddr[3], client->hwaddr[4], client->hwaddr[5]);
-			else
-				logg("find_mac(\"%s\") returned %i bytes of data",
-				     clientIP, client->hwlen);
-		}
-	}
-
-	bool blockDomain = false;
-	// Check if this should be blocked only for active queries
-	// (skipped for internally generated ones, e.g., DNSSEC)
-	if(!internal_query)
-		blockDomain = FTL_check_blocking(queryID, domainID, clientID);
-
-	// Free allocated memory
-	free(domainString);
-
-	// Release thread lock
-	unlock_shm();
-
-	return blockDomain;
 }
 
 static void FTL_forwarded(const unsigned int flags, const char *name, const union all_addr *addr,
@@ -1243,6 +1279,16 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 	// Lock shared memory
 	lock_shm();
 
+	// Save status in corresponding query identified by dnsmasq's ID
+	const int queryID = findQueryID(id);
+	if(queryID < 0)
+	{
+		// This may happen e.g. if the original query was "pi.hole"
+		if(config.debug & DEBUG_QUERIES) logg("FTL_reply(): Query %i has not been found", id);
+		unlock_shm();
+		return;
+	}
+
 	// Check if this reply came from our local cache
 	bool cached = false;
 	if(!(flags & F_UPSTREAM))
@@ -1308,18 +1354,8 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 	struct timeval response;
 	gettimeofday(&response, 0);
 
-	// Save status in corresponding query identified by dnsmasq's ID
-	const int i = findQueryID(id);
-	if(i < 0)
-	{
-		// This may happen e.g. if the original query was "pi.hole"
-		if(config.debug & DEBUG_QUERIES) logg("FTL_reply(): Query %i has not been found", id);
-		unlock_shm();
-		return;
-	}
-
 	// Get query pointer
-	queriesData* query = getQuery(i, true);
+	queriesData* query = getQuery(queryID, true);
 
 	// Check if reply time is still unknown
 	// We only process the first reply in here
@@ -1815,7 +1851,7 @@ static void _query_set_reply(const unsigned int flags, const union all_addr *add
                              const char *file, const int line)
 {
 	// Iterate through possible values
-	if(flags & F_NEG || force_next_DNS_reply == NXDOMAIN)
+	if(flags & F_NEG || force_next_DNS_reply == REPLY_NXDOMAIN)
 	{
 		if(flags & F_NXDOMAIN)
 			// NXDOMAIN
@@ -1833,10 +1869,10 @@ static void _query_set_reply(const unsigned int flags, const union all_addr *add
 	else if(flags & F_RRNAME)
 		// TXT query
 		query->reply = REPLY_RRNAME;
-	else if((flags & F_RCODE && addr != NULL) || force_next_DNS_reply == REFUSED)
+	else if((flags & F_RCODE && addr != NULL) || force_next_DNS_reply == REPLY_REFUSED)
 	{
 		if((addr != NULL && addr->log.rcode == REFUSED)
-		   || force_next_DNS_reply == REFUSED )
+		   || force_next_DNS_reply == REPLY_REFUSED )
 		{
 			// REFUSED query
 			query->reply = REPLY_REFUSED;
