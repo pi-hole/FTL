@@ -16,7 +16,7 @@
 
 #include "dnsmasq.h"
 
-static int order(char *qdomain, int leading_dot, size_t qlen, struct server *serv);
+static int order(char *qdomain, size_t qlen, struct server *serv);
 static int order_qsort(const void *a, const void *b);
 static int order_servers(struct server *s, struct server *s2);
 
@@ -81,7 +81,7 @@ void build_server_array(void)
 */
 int lookup_domain(char *qdomain, int flags, int *lowout, int *highout)
 {
-  int rc, crop_query, nodots, leading_dot = 1;
+  int rc, crop_query, nodots;
   ssize_t qlen;
   int try, high, low = 0;
   int nlow = 0, nhigh = 0;
@@ -101,13 +101,10 @@ int lookup_domain(char *qdomain, int flags, int *lowout, int *highout)
   if (qlen == 0 || flags & F_DNSSECOK)
     nodots = 0;
 
-  /* account for leading dot */
-  qlen++;
-  
   /* Search shorter and shorter RHS substrings for a match */
   while (qlen >= 0)
     {
-      /* Note that when we chop off a character, all the possible matches
+      /* Note that when we chop off a label, all the possible matches
 	 MUST be at a larger index than the nearest failing match with one more
 	 character, since the array is sorted longest to smallest. Hence 
 	 we don't reset low to zero here, we can go further below and crop the 
@@ -121,7 +118,7 @@ int lookup_domain(char *qdomain, int flags, int *lowout, int *highout)
 	{
 	  try = (low + high)/2;
 
-	  if ((rc = order(qdomain, leading_dot, qlen, daemon->serverarray[try])) == 0)
+	  if ((rc = order(qdomain, qlen, daemon->serverarray[try])) == 0)
 	    break;
 	  
 	  if (rc < 0)
@@ -186,13 +183,12 @@ int lookup_domain(char *qdomain, int flags, int *lowout, int *highout)
       if (crop_query == 0)
 	crop_query = 1;
 
+      /* strip chars off the query based on the largest possible remaining match,
+	 then continue to the start of the next label. */
       qlen -= crop_query;
-      if (leading_dot)
-	{
-	  leading_dot = 0;
-	  crop_query--;
-	}
       qdomain += crop_query;
+      while (qlen > 0 &&  (*(qdomain-1) != '.'))
+	qlen--, qdomain++;
     }
 
   /* domain has no dots, and we have at least one server configured to handle such,
@@ -418,11 +414,10 @@ int dnssec_server(struct server *server, char *keyname, int *firstp, int *lastp)
 #endif
 
 /* order by size, then by dictionary order */
-static int order(char *qdomain, int leading_dot, size_t qlen, struct server *serv)
+static int order(char *qdomain, size_t qlen, struct server *serv)
 {
   size_t dlen = 0;
-  int rc;
-  
+    
   /* servers for dotless names always sort last 
      searched for name is never dotless. */
   if (serv->flags & SERV_FOR_NODOTS)
@@ -436,10 +431,7 @@ static int order(char *qdomain, int leading_dot, size_t qlen, struct server *ser
   if (qlen > dlen)
     return -1;
 
-  if (leading_dot && (rc = '.' - serv->domain[0]) != 0)
-    return rc;
-     
-  return strcmp(qdomain, leading_dot ? &serv->domain[1] : serv->domain);
+  return strcmp(qdomain, serv->domain);
 }
 
 static int order_servers(struct server *s1, struct server *s2)
@@ -450,7 +442,7 @@ static int order_servers(struct server *s1, struct server *s2)
   if (s1->flags & SERV_FOR_NODOTS)
      return (s2->flags & SERV_FOR_NODOTS) ? 0 : 1;
    
-   return order(s1->domain, 0, s1->domain_len, s2);
+   return order(s1->domain, s1->domain_len, s2);
 }
   
 static int order_qsort(const void *a, const void *b)
