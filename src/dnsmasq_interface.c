@@ -1179,10 +1179,14 @@ static void FTL_forwarded(const unsigned int flags, const char *name, const unio
 	upstreamsData *upstream = getUpstream(upstreamID, true);
 	if(upstream != NULL)
 	{
-		// Update overTime
-		upstream->overTime[query->timeidx]++;
-		// Update total count
-		upstream->count++;
+		// Only count upstream when there has been no reply so far
+		if(query->reply == REPLY_UNKNOWN)
+		{
+			// Update overTime
+			upstream->overTime[query->timeidx]++;
+			// Update total count
+			upstream->count++;
+		}
 		// Update lastQuery timestamp
 		upstream->lastQuery = time(NULL);
 	}
@@ -1386,10 +1390,10 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 			logg("**** got %s reply: %s is %s (ID %i, %s:%i)", cached ? "cache" : "upstream", name, answer, id, file, line);
 		else
 		{
-			// Log server which replied to our request
 			char ip[ADDRSTRLEN+1] = { 0 };
 			in_port_t port = 0;
 			mysockaddr_extract_ip_port(&last_server, ip, &port);
+			// Log server which replied to our request
 			logg("**** got %s reply from %s#%d: %s is %s (ID %i, %s:%i)",
 			     cached ? "cache" : "upstream", ip, port, name, answer, id, file, line);
 		}
@@ -1402,15 +1406,43 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 	// Get query pointer
 	queriesData* query = getQuery(queryID, true);
 
-	// Check if reply time is still unknown
-	// We only process the first reply in here
-	// Use short-circuit evaluation to check if query is NULL
+	// We only process the first reply further in here
+	// Check if reply type is still UNKNOWN
 	if(query == NULL || query->reply != REPLY_UNKNOWN)
 	{
 		// Nothing to be done here
 		unlock_shm();
 		return;
 	}
+
+	// If this is an upstream response and the answering upstream is known
+	// (may not be the case for internally generated DNSSEC queries), we
+	// have to check if the first answering upstream server is also the
+	// first one we sent the query to. If not, we need to change the
+	// upstream server associated with this query to get accurate statistics
+	if(!cached && last_server.sa.sa_family != 0)
+	{
+		char ip[ADDRSTRLEN+1] = { 0 };
+		in_port_t port = 0;
+		mysockaddr_extract_ip_port(&last_server, ip, &port);
+		int upstreamID = findUpstreamID(ip, port);
+		if(upstreamID != query->upstreamID)
+		{
+			if(config.debug & DEBUG_QUERIES)
+			{
+				upstreamsData *upstream = getUpstream(query->upstreamID, true);
+				if(upstream)
+				{
+					const char *oldaddr = getstr(upstream->ippos);
+					const in_port_t oldport = upstream->port;
+					logg("Query ID %d: Associated upstream changed from %s#%d to %s#%d (replied earlier)",
+					     id, oldaddr, oldport, ip, port);
+				}
+			}
+			query->upstreamID = upstreamID;
+		}
+	}
+
 
 	// Determine if this reply is an exact match for the queried domain
 	const int domainID = query->domainID;
