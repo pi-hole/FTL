@@ -59,6 +59,7 @@ static void FTL_forwarded(const unsigned int flags, const char *name, const unio
 static void FTL_reply(const unsigned int flags, const char *name, const union all_addr *addr, const char* arg, const int id, const char* file, const int line);
 static void FTL_upstream_error(const unsigned int rcode, const int id, const char* file, const int line);
 static void FTL_dnssec(const char *result, const int id, const char* file, const int line);
+static void get_mysockaddr_ip_port(union mysockaddr *server, char ip[ADDRSTRLEN+1], in_port_t *port);
 
 // Static blocking metadata
 static const char *blockingreason = NULL;
@@ -74,6 +75,9 @@ static struct {
 	union all_addr addr4;
 	union all_addr addr6;
 } next_iface = {"", {{0}}, {{0}}};
+
+// Fork-private copy of the server data the most recent reply came from
+static union mysockaddr last_server = {{ 0 }};
 
 unsigned char* pihole_privacylevel = &config.privacylevel;
 const char flagnames[][12] = {"F_IMMORTAL ", "F_NAMEP ", "F_REVERSE ", "F_FORWARD ", "F_DHCP ", "F_NEG ", "F_HOSTS ", "F_IPV4 ", "F_IPV6 ", "F_BIGNAME ", "F_NXDOMAIN ", "F_CNAME ", "F_DNSKEY ", "F_CONFIG ", "F_DS ", "F_DNSSECOK ", "F_UPSTREAM ", "F_RRNAME ", "F_SERVER ", "F_QUERY ", "F_NOERR ", "F_AUTH ", "F_DNSSEC ", "F_KEYTAG ", "F_SECSTAT ", "F_NO_RR ", "F_IPSET ", "F_NOEXTRA ", "F_SERVFAIL", "F_RCODE"};
@@ -377,11 +381,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	else if(addr)
 	{
 		// Use original requestor
-		inet_ntop(family,
-		          family == AF_INET ?
-		             (union alladdr*)&addr->in.sin_addr :
-		             (union alladdr*)&addr->in6.sin6_addr,
-		          clientIP, ADDRSTRLEN);
+		get_mysockaddr_ip_port(addr, clientIP, NULL);
 	}
 	else
 	{
@@ -1265,6 +1265,24 @@ void FTL_dnsmasq_reload(void)
 	resolver_ready = true;
 }
 
+static void get_mysockaddr_ip_port(union mysockaddr *server, char ip[ADDRSTRLEN+1], in_port_t *port)
+{
+	// Extract IP address
+	inet_ntop(server->sa.sa_family,
+	          server->sa.sa_family == AF_INET ?
+	            (union alladdr*)&server->in.sin_addr :
+	            (union alladdr*)&server->in6.sin6_addr,
+	          ip, ADDRSTRLEN);
+
+	// Extract port (only if requested)
+	if(port != NULL)
+	{
+		*port = ntohs(server->sa.sa_family == AF_INET ?
+		                server->in.sin_port :
+		                server->in6.sin6_port);
+	}
+}
+
 static void FTL_reply(const unsigned int flags, const char *name, const union all_addr *addr,
                       const char *arg, const int id, const char* file, const int line)
 {
@@ -1347,7 +1365,18 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 				answer = arg; // e.g. "reply <TLD> is no DS"
 		}
 
-		logg("**** got %s reply: %s is %s (ID %i, %s:%i)", cached ? "cache" : "upstream", name, answer, id, file, line);
+		if(cached || last_server.sa.sa_family == 0)
+			// Log cache or upstream reply from unknown source
+			logg("**** got %s reply: %s is %s (ID %i, %s:%i)", cached ? "cache" : "upstream", name, answer, id, file, line);
+		else
+		{
+			// Log server who replied to our request
+			char ip[ADDRSTRLEN+1] = { 0 };
+			in_port_t port = 0;
+			get_mysockaddr_ip_port(&last_server, ip, &port);
+			logg("**** got %s reply from %s#%d: %s is %s (ID %i, %s:%i)",
+			     cached ? "cache" : "upstream", ip, port, name, answer, id, file, line);
+		}
 	}
 
 	// Get response time
@@ -1737,23 +1766,8 @@ static void FTL_upstream_error(const unsigned int rcode, const int id, const cha
 	unlock_shm();
 }
 
-void _FTL_header_analysis(const unsigned char header4, const unsigned int rcode, const int id, const char* file, const int line)
+static void FTL_mark_externally_blocked(const int id, const char* file, const int line)
 {
-	// Analyze DNS header bits
-
-	// Check if RA bit is unset in DNS header and rcode is NXDOMAIN
-	// If the response code (rcode) is NXDOMAIN, we may be seeing a response from
-	// an externally blocked query. As they are not always accompany a necessary
-	// SOA record, they are not getting added to our cache and, therefore,
-	// FTL_reply() is never getting called from within the cache routines.
-	// Hence, we have to store the necessary information about the NXDOMAIN
-	// reply already here.
-	if((header4 & 0x80) || rcode != NXDOMAIN)
-	{
-		// RA bit is set or rcode is not NXDOMAIN
-		return;
-	}
-
 	// Lock shared memory
 	lock_shm();
 
@@ -1811,6 +1825,37 @@ void _FTL_header_analysis(const unsigned char header4, const unsigned int rcode,
 
 	// Unlock shared memory
 	unlock_shm();
+}
+
+void _FTL_header_analysis(const unsigned char header4, const unsigned int rcode, const struct server *server,
+                          const int id, const char* file, const int line)
+{
+	// Analyze DNS header bits
+
+	// Check if RA bit is unset in DNS header and rcode is NXDOMAIN
+	// If the response code (rcode) is NXDOMAIN, we may be seeing a response from
+	// an externally blocked query. As they are not always accompany a necessary
+	// SOA record, they are not getting added to our cache and, therefore,
+	// FTL_reply() is never getting called from within the cache routines.
+	// Hence, we have to store the necessary information about the NXDOMAIN
+	// reply already here.
+	if(!(header4 & 0x80) && rcode == NXDOMAIN)
+		// RA bit is not set and rcode is NXDOMAIN
+		FTL_mark_externally_blocked(id, file, line);
+
+	// Store server which sent this reply
+	if(server)
+	{
+		memcpy(&last_server, &server->addr, sizeof(last_server));
+		if(config.debug & DEBUG_EXTRA)
+			logg("Got forward address: YES");
+	}
+	else
+	{
+		memset(&last_server, 0, sizeof(last_server));
+		if(config.debug & DEBUG_EXTRA)
+			logg("Got forward address: NO");
+	}
 }
 
 void print_flags(const unsigned int flags)

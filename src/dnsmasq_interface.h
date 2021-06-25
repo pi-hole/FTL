@@ -26,8 +26,8 @@ void FTL_iface(const int ifidx, const struct irec *ifaces);
 #define FTL_new_query(flags, name, addr, types, qtype, id, edns, proto) _FTL_new_query(flags, name, addr, types, qtype, id, edns, proto, __FILE__, __LINE__)
 bool _FTL_new_query(const unsigned int flags, const char *name, union mysockaddr *addr, const char *types, const unsigned short qtype, const int id, const ednsData *edns, enum protocol proto, const char* file, const int line);
 
-#define FTL_header_analysis(header4, rcode, id) _FTL_header_analysis(header4, rcode, id, __FILE__, __LINE__)
-void _FTL_header_analysis(const unsigned char header4, const unsigned int rcode, const int id, const char* file, const int line);
+#define FTL_header_analysis(header4, rcode, server, id) _FTL_header_analysis(header4, rcode, server, id, __FILE__, __LINE__)
+void _FTL_header_analysis(const unsigned char header4, const unsigned int rcode, const struct server *server, const int id, const char* file, const int line);
 
 void FTL_forwarding_retried(const struct server *server, const int oldID, const int newID, const bool dnssec);
 
