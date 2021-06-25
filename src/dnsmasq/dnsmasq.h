@@ -323,6 +323,7 @@ union all_addr {
   /* for log_query */
   struct {
     unsigned short keytag, algo, digest, rcode;
+    int ede;
   } log;
 };
 
@@ -698,6 +699,16 @@ struct hostsfile {
 #define STAT_SECURE_WILDCARD    0x70000
 #define STAT_OK                 0x80000
 #define STAT_ABANDONED          0x90000
+
+#define DNSSEC_FAIL_NYV         0x0001 /* key not yet valid */
+#define DNSSEC_FAIL_EXP         0x0002 /* key expired */
+#define DNSSEC_FAIL_INDET       0x0004 /* indetermined */
+#define DNSSEC_FAIL_NOKEYSUP    0x0008 /* no supported key algo. */
+#define DNSSEC_FAIL_NOSIG       0x0010 /* No RRsigs */
+#define DNSSEC_FAIL_NOZONE      0x0020 /* No Zone bit set */
+#define DNSSEC_FAIL_NONSEC      0x0040 /* No NSEC */
+#define DNSSEC_FAIL_NODSSUP     0x0080 /* no supported DS algo. */
+#define DNSSEC_FAIL_NOKEY       0x0100 /* no DNSKEY */
 
 #define STAT_ISEQUAL(a, b)  (((a) & 0xffff0000) == (b))
 
@@ -1286,7 +1297,7 @@ unsigned char *skip_questions(struct dns_header *header, size_t plen);
 unsigned char *skip_section(unsigned char *ansp, int count, struct dns_header *header, size_t plen);
 unsigned int extract_request(struct dns_header *header, size_t qlen, 
 			       char *name, unsigned short *typep);
-void setup_reply(struct dns_header *header, unsigned int flags);
+void setup_reply(struct dns_header *header, unsigned int flags, int ede);
 int extract_addresses(struct dns_header *header, size_t qlen, char *name,
 		      time_t now, char **ipsets, int is_sign, int check_rebind,
 		      int no_cache_dnssec, int secure, int *doctored);
@@ -1317,6 +1328,7 @@ int in_zone(struct auth_zone *zone, char *name, char **cut);
 #endif
 
 /* dnssec.c */
+#ifdef HAVE_DNSSEC
 size_t dnssec_generate_query(struct dns_header *header, unsigned char *end, char *name, int class, int type, int edns_pktsz);
 int dnssec_validate_by_ds(time_t now, struct dns_header *header, size_t plen, char *name, char *keyname, int class);
 int dnssec_validate_ds(time_t now, struct dns_header *header, size_t plen, char *name, char *keyname, int class);
@@ -1325,6 +1337,8 @@ int dnssec_validate_reply(time_t now, struct dns_header *header, size_t plen, ch
 int dnskey_keytag(int alg, int flags, unsigned char *key, int keylen);
 size_t filter_rrsigs(struct dns_header *header, size_t plen);
 int setup_timestamp(void);
+int errflags_to_ede(int status);
+#endif
 
 /* hash_questions.c */
 void hash_questions_init(void);
@@ -1759,7 +1773,7 @@ int lookup_domain(char *qdomain, int flags, int *lowout, int *highout);
 int filter_servers(int seed, int flags, int *lowout, int *highout);
 int is_local_answer(time_t now, int first, char *name);
 size_t make_local_answer(int flags, int gotname, size_t size, struct dns_header *header,
-			 char *name, char *limit, int first, int last);
+			 char *name, char *limit, int first, int last, int ede);
 int server_samegroup(struct server *a, struct server *b);
 #ifdef HAVE_DNSSEC
 int dnssec_server(struct server *server, char *keyname, int *firstp, int *lastp);

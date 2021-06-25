@@ -96,7 +96,7 @@
 #define EDE_SIG_EXP         7  /* Signature Expired */
 #define EDE_SIG_NYV         8  /* Signature Not Yet Valid  */
 #define EDE_NO_DNSKEY       9  /* DNSKEY missing */
-#define EDE_NO_RRISG       10  /* RRSIGs missing */
+#define EDE_NO_RRSIG       10  /* RRSIGs missing */
 #define EDE_NO_ZONEKEY     11  /* No Zone Key Bit Set */
 #define EDE_NO_NSEC        12  /* NSEC Missing  */
 #define EDE_CACHED_ERR     13  /* Cached Error */

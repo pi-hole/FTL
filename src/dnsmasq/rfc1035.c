@@ -1016,7 +1016,7 @@ unsigned int extract_request(struct dns_header *header, size_t qlen, char *name,
   return F_QUERY;
 }
 
-void setup_reply(struct dns_header *header, unsigned int flags)
+void setup_reply(struct dns_header *header, unsigned int flags, int ede)
 {
   /* clear authoritative and truncated flags, set QR flag */
   header->hb3 = (header->hb3 & ~(HB3_AA | HB3_TC )) | HB3_QR;
@@ -1039,6 +1039,7 @@ void setup_reply(struct dns_header *header, unsigned int flags)
     {
       union all_addr a;
       a.log.rcode = REFUSED;
+      a.log.ede = ede;
       log_query(F_CONFIG | F_RCODE, "error", &a, NULL);
       SET_RCODE(header, REFUSED);
     }

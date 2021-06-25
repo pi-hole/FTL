@@ -340,7 +340,7 @@ int is_local_answer(time_t now, int first, char *name)
   return rc;
 }
 
-size_t make_local_answer(int flags, int gotname, size_t size, struct dns_header *header, char *name, char *limit, int first, int last)
+size_t make_local_answer(int flags, int gotname, size_t size, struct dns_header *header, char *name, char *limit, int first, int last, int ede)
 {
   int trunc = 0;
   unsigned char *p;
@@ -350,7 +350,7 @@ size_t make_local_answer(int flags, int gotname, size_t size, struct dns_header 
   if (flags & (F_NXDOMAIN | F_NOERR))
     log_query(flags | gotname | F_NEG | F_CONFIG | F_FORWARD, name, NULL, NULL);
 	  
-  setup_reply(header, flags);
+  setup_reply(header, flags, ede);
 	  
   if (!(p = skip_questions(header, size)))
     return 0;

@@ -1868,10 +1868,44 @@ char *querystr(char *desc, unsigned short type)
   return buff ? buff : "";
 }
 
+static char *edestr(int ede)
+{
+  switch (ede)
+    {
+    case EDE_OTHER:                       return "other";
+    case EDE_USUPDNSKEY:                  return "unsupported DNSKEY algorithm";
+    case EDE_USUPDS:                      return "unsupported DS digest";
+    case EDE_STALE:                       return "stale answer";
+    case EDE_FORGED:                      return "forged";
+    case EDE_DNSSEC_IND:                  return "DNSSEC indeterminate";
+    case EDE_DNSSEC_BOGUS:                return "DNSSEC bogus";
+    case EDE_SIG_EXP:                     return "DNSSEC signature expired";
+    case EDE_SIG_NYV:                     return "DNSSEC sig not yet valid";
+    case EDE_NO_DNSKEY:                   return "DNSKEY missing";
+    case EDE_NO_RRSIG:                    return "RRSIG missing";
+    case EDE_NO_ZONEKEY:                  return "no zone key bit set";
+    case EDE_NO_NSEC:                     return "NSEC(3) missing";
+    case EDE_CACHED_ERR:                  return "cached error";
+    case EDE_NOT_READY:                   return "not ready";
+    case EDE_BLOCKED:                     return "blocked";
+    case EDE_CENSORED:                    return "censored";
+    case EDE_FILTERED:                    return "filtered";
+    case EDE_PROHIBITED:                  return "prohibited";
+    case EDE_STALE_NXD:                   return "stale NXDOMAIN";
+    case EDE_NOT_AUTH:                    return "not authoritative";
+    case EDE_NOT_SUP:                     return "not supported";
+    case EDE_NO_AUTH:                     return "no reachable authority";
+    case EDE_NETERR:                      return "network error";
+    case EDE_INVALID_DATA:                return "invalid data";
+    default:                              return "unknown";
+    }
+}
+
 void log_query(unsigned int flags, char *name, union all_addr *addr, char *arg)
 {
   char *source, *dest = daemon->addrbuff;
   char *verb = "is";
+  char *extra = "";
   
   if (!option_bool(OPT_LOG))
     return;
@@ -1894,6 +1928,12 @@ void log_query(unsigned int flags, char *name, union all_addr *addr, char *arg)
 	    dest = "not implemented";
 	  else
 	    sprintf(daemon->addrbuff, "%u", rcode);
+
+	  if (addr->log.ede != -1)
+	    {
+	      extra = daemon->addrbuff;
+	      sprintf(extra, " (EDE:%s)", edestr(addr->log.ede));
+	    }
 	}
       else
 	inet_ntop(flags & F_IPV4 ? AF_INET : AF_INET6,
@@ -1939,7 +1979,15 @@ void log_query(unsigned int flags, char *name, union all_addr *addr, char *arg)
   else if (flags & F_UPSTREAM)
     source = "reply";
   else if (flags & F_SECSTAT)
-    source = "validation";
+    {
+      if (addr && addr->log.ede != -1)
+	{
+	  extra = daemon->addrbuff;
+	  sprintf(extra, " (EDE:%s)", edestr(addr->log.ede));
+	}
+      source = "validation";
+      dest = arg;
+    }
   else if (flags & F_AUTH)
     source = "auth";
   else if (flags & F_SERVER)
@@ -1972,11 +2020,11 @@ void log_query(unsigned int flags, char *name, union all_addr *addr, char *arg)
   if (option_bool(OPT_EXTRALOG))
     {
       if (flags & F_NOEXTRA)
-	my_syslog(LOG_INFO, "%u %s %s %s %s", daemon->log_display_id, source, name, verb, dest);
+	my_syslog(LOG_INFO, "%u %s %s %s %s%s", daemon->log_display_id, source, name, verb, dest, extra);
       else
 	{
 	   int port = prettyprint_addr(daemon->log_source_addr, daemon->addrbuff2);
-	   my_syslog(LOG_INFO, "%u %s/%u %s %s %s %s", daemon->log_display_id, daemon->addrbuff2, port, source, name, verb, dest);
+	   my_syslog(LOG_INFO, "%u %s/%u %s %s %s %s%s", daemon->log_display_id, daemon->addrbuff2, port, source, name, verb, dest, extra);
 	}
     }
   else
