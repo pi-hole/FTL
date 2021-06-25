@@ -71,6 +71,12 @@ int main (int argc, char* argv[])
 	if(strcmp(username, "pihole") != 0)
 		logg("WARNING: Starting pihole-FTL as user %s is not recommended", username);
 
+	// Delay startup (if requested)
+	// Do this before reading the database to make this option not only
+	// useful for interfaces that aren't ready but also for fake-hwclocks
+	// which aren't ready at this point
+	delay_startup();
+
 	// Initialize query database (pihole-FTL.db)
 	db_init();
 
@@ -85,8 +91,7 @@ int main (int argc, char* argv[])
 	// immediately before starting the resolver.
 	check_capabilities();
 
-	// Start the resolver, delay startup if requested
-	delay_startup();
+	// Start the resolver
 	startup = false;
 	if(config.debug != 0)
 	{

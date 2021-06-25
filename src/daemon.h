@@ -12,6 +12,9 @@
 
 #include "enums.h"
 extern pthread_t threads[THREADS_MAX];
+#define MAX_API_THREADS 40
+extern pthread_t api_threads[MAX_API_THREADS];
+extern pid_t api_tids[MAX_API_THREADS];
 
 void go_daemon(void);
 void savepid(void);
