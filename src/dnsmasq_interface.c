@@ -59,7 +59,7 @@ static void FTL_forwarded(const unsigned int flags, const char *name, const unio
 static void FTL_reply(const unsigned int flags, const char *name, const union all_addr *addr, const char* arg, const int id, const char* file, const int line);
 static void FTL_upstream_error(const unsigned int rcode, const int id, const char* file, const int line);
 static void FTL_dnssec(const char *result, const int id, const char* file, const int line);
-static void get_mysockaddr_ip_port(union mysockaddr *server, char ip[ADDRSTRLEN+1], in_port_t *port);
+static void mysockaddr_extract_ip_port(union mysockaddr *server, char ip[ADDRSTRLEN+1], in_port_t *port);
 
 // Static blocking metadata
 static const char *blockingreason = NULL;
@@ -370,6 +370,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// 127.0.0.1 to avoid queries originating from localhost of the
 	// *distant* machine as queries coming from the *local* machine
 	const sa_family_t family = addr ? addr->sa.sa_family : AF_INET;
+	in_port_t clientPort = daemon->port;
 	bool internal_query = false;
 	char clientIP[ADDRSTRLEN+1] = { 0 };
 	if(config.edns0_ecs && edns && edns->client_set)
@@ -381,7 +382,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	else if(addr)
 	{
 		// Use original requestor
-		get_mysockaddr_ip_port(addr, clientIP, NULL);
+		mysockaddr_extract_ip_port(addr, clientIP, &clientPort);
 	}
 	else
 	{
@@ -428,9 +429,10 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	{
 		if(config.debug & DEBUG_QUERIES)
 		{
-			logg("Rate-limiting %sIPv%d %s query \"%s\" from %s:%s",
+			logg("Rate-limiting %sIPv%d %s query \"%s\" from %s:%s#%d",
 			     proto == TCP ? "TCP " : proto == UDP ? "UDP " : "",
-			     family == AF_INET ? 4 : 6, types, domainString, interface, clientIP);
+			     family == AF_INET ? 4 : 6, types, domainString, interface,
+			     clientIP, clientPort);
 		}
 
 		// Block this query
@@ -444,10 +446,11 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// Log new query if in debug mode
 	if(config.debug & DEBUG_QUERIES)
 	{
-		logg("**** new %sIPv%d %s query \"%s\" from %s:%s (ID %i, FTL %i, %s:%i)",
+		logg("**** new %sIPv%d %s query \"%s\" from %s:%s#%d (ID %i, FTL %i, %s:%i)",
 		     proto == TCP ? "TCP " : proto == UDP ? "UDP " : "",
 		     family == AF_INET ? 4 : 6, types, domainString, interface,
-		     internal_query ? "<internal>" : clientIP, id, queryID, short_path(file), line);
+		     internal_query ? "<internal>" : clientIP, clientPort,
+		     id, queryID, short_path(file), line);
 	}
 
 	// Update counters
@@ -1139,6 +1142,10 @@ static void FTL_forwarded(const unsigned int flags, const char *name, const unio
 	char *upstreamIP = strdup(dest);
 	strtolower(upstreamIP);
 
+	// Substitute "." if we are querying the root domain (e.g. DNSKEY)
+	if(!name || strlen(name) == 0)
+		name = ".";
+
 	// Debug logging
 	if(config.debug & DEBUG_QUERIES)
 		logg("**** forwarded %s to %s#%u (ID %i, %s:%i)",
@@ -1157,15 +1164,7 @@ static void FTL_forwarded(const unsigned int flags, const char *name, const unio
 
 	// Get query pointer
 	queriesData* query = getQuery(queryID, true);
-
-	// Proceed only if
-	// - current query has not been marked as replied to so far
-	//   (it could be that answers from multiple forward
-	//    destinations are coming in for the same query)
-	// - the query was formally known as cached but had to be forwarded
-	//   (this is a special case further described below)
-	// Use short-circuit evaluation to check if query is NULL
-	if(query == NULL || (query->flags.complete && query->status != QUERY_CACHE))
+	if(query == NULL)
 	{
 		free(upstreamIP);
 		unlock_shm();
@@ -1180,8 +1179,25 @@ static void FTL_forwarded(const unsigned int flags, const char *name, const unio
 	upstreamsData *upstream = getUpstream(upstreamID, true);
 	if(upstream != NULL)
 	{
+		// Update overTime
+		upstream->overTime[query->timeidx]++;
+		// Update total count
 		upstream->count++;
+		// Update lastQuery timestamp
 		upstream->lastQuery = time(NULL);
+	}
+
+	// Proceed only if
+	// - current query has not been marked as replied to so far
+	//   (it could be that answers from multiple forward
+	//    destinations are coming in for the same query)
+	// - the query was formally known as cached but had to be forwarded
+	//   (this is a special case further described below)
+	if(query->flags.complete && query->status != QUERY_CACHE)
+	{
+		free(upstreamIP);
+		unlock_shm();
+		return;
 	}
 
 	if(query->status == QUERY_CACHE)
@@ -1265,7 +1281,7 @@ void FTL_dnsmasq_reload(void)
 	resolver_ready = true;
 }
 
-static void get_mysockaddr_ip_port(union mysockaddr *server, char ip[ADDRSTRLEN+1], in_port_t *port)
+static void mysockaddr_extract_ip_port(union mysockaddr *server, char ip[ADDRSTRLEN+1], in_port_t *port)
 {
 	// Extract IP address
 	inet_ntop(server->sa.sa_family,
@@ -1370,10 +1386,10 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 			logg("**** got %s reply: %s is %s (ID %i, %s:%i)", cached ? "cache" : "upstream", name, answer, id, file, line);
 		else
 		{
-			// Log server who replied to our request
+			// Log server which replied to our request
 			char ip[ADDRSTRLEN+1] = { 0 };
 			in_port_t port = 0;
-			get_mysockaddr_ip_port(&last_server, ip, &port);
+			mysockaddr_extract_ip_port(&last_server, ip, &port);
 			logg("**** got %s reply from %s#%d: %s is %s (ID %i, %s:%i)",
 			     cached ? "cache" : "upstream", ip, port, name, answer, id, file, line);
 		}

@@ -126,7 +126,10 @@ void *GC_thread(void *val)
 						{
 							upstreamsData* upstream = getUpstream(query->upstreamID, true);
 							if(upstream != NULL)
+							{
+								upstream->overTime[timeidx]--;
 								upstream->count--;
+							}
 						}
 						break;
 					case QUERY_CACHE:

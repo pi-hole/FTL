@@ -575,6 +575,7 @@ void DB_read_queries(void)
 					upstreamsData *upstream = getUpstream(upstreamID, true);
 					if(upstream != NULL)
 					{
+						upstream->overTime[timeidx]++;
 						upstream->count++;
 						upstream->lastQuery = queryTimeStamp;
 					}

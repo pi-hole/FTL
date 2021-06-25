@@ -56,14 +56,15 @@ ASSERT_SIZEOF(queriesData, 64, 52, 56);
 typedef struct {
 	unsigned char magic;
 	bool new;
+	in_addr_t port;
 	int count;
 	int failed;
-	in_addr_t port;
+	int overTime[OVERTIME_SLOTS];
 	size_t ippos;
 	size_t namepos;
 	time_t lastQuery;
 } upstreamsData;
-ASSERT_SIZEOF(upstreamsData, 40, 28, 28);
+ASSERT_SIZEOF(upstreamsData, 640, 628, 628);
 
 typedef struct {
 	unsigned char magic;
