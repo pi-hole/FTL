@@ -20,14 +20,20 @@ static int order(char *qdomain, size_t qlen, struct server *serv);
 static int order_qsort(const void *a, const void *b);
 static int order_servers(struct server *s, struct server *s2);
 
+/* If the server is USE_RESOLV or LITERAL_ADDRES, it lives on the local_domains chain. */
+#define SERV_IS_LOCAL (SERV_USE_RESOLV | SERV_LITERAL_ADDRESS)
+
 void build_server_array(void)
 {
   struct server *serv;
   int count = 0;
   
   for (serv = daemon->servers; serv; serv = serv->next)
-    count++;
-
+#ifdef HAVE_LOOP
+    if (!(serv->flags & SERV_LOOP))
+#endif
+      count++;
+  
   for (serv = daemon->local_domains; serv; serv = serv->next)
     count++;
   
@@ -48,21 +54,24 @@ void build_server_array(void)
   count = 0;
   
   for (serv = daemon->servers; serv; serv = serv->next, count++)
-    {
-      daemon->serverarray[count] = serv;
-      serv->serial = count;
-      serv->last_server = -1;
-    }
-
+#ifdef HAVE_LOOP
+    if (!(serv->flags & SERV_LOOP))
+#endif
+      {
+	daemon->serverarray[count] = serv;
+	serv->serial = count;
+	serv->last_server = -1;
+      }
+  
   for (serv = daemon->local_domains; serv; serv = serv->next, count++)
     daemon->serverarray[count] = serv;
   
   qsort(daemon->serverarray, daemon->serverarraysz, sizeof(struct server *), order_qsort);
-
+  
   /* servers need the location in the array to find all the whole
      set of equivalent servers from a pointer to a single one. */
   for (count = 0; count < daemon->serverarraysz; count++)
-    if (!(daemon->serverarray[count]->flags & (SERV_LITERAL_ADDRESS | SERV_USE_RESOLV)))
+    if (!(daemon->serverarray[count]->flags & SERV_IS_LOCAL))
       daemon->serverarray[count]->arrayposn = count;
 }
 
@@ -467,3 +476,148 @@ static int order_qsort(const void *a, const void *b)
 
   return rc;
 }
+
+void mark_servers(int flag)
+{
+  struct server *serv;
+
+  /* mark everything with argument flag */
+  for (serv = daemon->servers; serv; serv = serv->next)
+    if (serv->flags & flag)
+      serv->flags |= SERV_MARK;
+
+  for (serv = daemon->local_domains; serv; serv = serv->next)
+    if (serv->flags & flag)
+      serv->flags |= SERV_MARK;
+}
+
+void cleanup_servers(void)
+{
+  struct server *serv, *tmp, **up;
+
+  /* unlink and free anything still marked. */
+  for (serv = daemon->servers, up = &daemon->servers; serv; serv = tmp) 
+    {
+      tmp = serv->next;
+      if (serv->flags & SERV_MARK)
+       {
+         server_gone(serv);
+         *up = serv->next;
+	 free(serv->domain);
+	 free(serv);
+       }
+      else 
+       up = &serv->next;
+    }
+  
+ for (serv = daemon->local_domains, up = &daemon->local_domains; serv; serv = tmp) 
+   {
+     tmp = serv->next;
+      if (serv->flags & SERV_MARK)
+       {
+	 *up = serv->next;
+	 free(serv->domain);
+	 free(serv);
+       }
+      else 
+	up = &serv->next;
+   }
+}
+
+int add_update_server(int flags,
+		      union mysockaddr *addr,
+		      union mysockaddr *source_addr,
+		      const char *interface,
+		      const char *domain,
+		      union all_addr *local_addr)
+{
+  struct server *serv;
+  char *alloc_domain;
+  
+  if (!domain || strlen(domain) == 0)
+    alloc_domain = whine_malloc(1);
+  else if (!(alloc_domain = canonicalise((char *)domain, NULL)))
+    return 0;
+  
+  /* See if there is a suitable candidate, and unmark */
+  for (serv = (flags & SERV_IS_LOCAL) ? daemon->local_domains : daemon->servers; serv; serv = serv->next)
+    if ((serv->flags & SERV_MARK) &&
+	hostname_isequal(alloc_domain, serv->domain) &&
+	((serv->flags & (SERV_6ADDR | SERV_4ADDR)) == (flags & (SERV_6ADDR | SERV_4ADDR))))
+      break;
+  
+  if (serv)
+    {
+      free(alloc_domain);
+      alloc_domain = serv->domain;
+    }
+  else
+    {
+      size_t size;
+
+      if (flags & SERV_LITERAL_ADDRESS)
+	{
+	  if (flags & SERV_6ADDR)
+	    size = sizeof(struct serv_addr6);
+	  else if (flags & SERV_4ADDR)
+	    size = sizeof(struct serv_addr4);
+	  else
+	    size = sizeof(struct serv_local);
+	}
+      else
+	size = sizeof(struct server);
+      
+      if (!(serv = whine_malloc(size)))
+	return 0;
+      
+      if (flags & SERV_IS_LOCAL)
+	{
+	  serv->next = daemon->local_domains;
+	  daemon->local_domains = serv;
+	}
+      else
+	{
+	  struct server *s;
+	  /* Add to the end of the chain, for order */
+	  if (!daemon->servers)
+	    daemon->servers = serv;
+	  else
+	    {
+	      for (s = daemon->servers; s->next; s = s->next);
+	      s->next = serv;
+	    }
+	  
+	  serv->next = NULL;
+	}
+    }
+  
+  if (!(flags & SERV_IS_LOCAL))
+    memset(serv, 0, sizeof(struct server));
+  
+  serv->flags = flags;
+  serv->domain = alloc_domain;
+  serv->domain_len = strlen(alloc_domain);
+  
+  if (flags & SERV_4ADDR)
+    ((struct serv_addr4*)serv)->addr = local_addr->addr4;
+
+  if (flags & SERV_6ADDR)
+    ((struct serv_addr6*)serv)->addr = local_addr->addr6;
+  
+  if (!(flags & SERV_IS_LOCAL))
+    {
+#ifdef HAVE_LOOP
+      serv->uid = rand32();
+#endif      
+      
+      if (interface)
+	safe_strncpy(serv->interface, interface, sizeof(serv->interface));
+      if (addr)
+	serv->addr = *addr;
+      if (source_addr)
+	serv->source_addr = *source_addr;
+    }
+
+  return 1;
+}
+

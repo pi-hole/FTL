@@ -31,11 +31,13 @@ void loop_send_probes()
       identifiable, via the uid. If we see that query back again, then the server is looping, and we should not use it. */
    for (serv = daemon->servers; serv; serv = serv->next)
      if (strlen(serv->domain) == 0 &&
-	 !(serv->flags & (SERV_FOR_NODOTS | SERV_LOOP)))
+	 !(serv->flags & (SERV_FOR_NODOTS)))
        {
 	 ssize_t len = loop_make_probe(serv->uid);
 	 int fd;
 	 
+	 serv->flags &= ~SERV_LOOP;
+
 	 if ((fd = allocate_rfd(&rfds, serv)) == -1)
 	   continue;
 	 
@@ -101,7 +103,7 @@ int detect_loop(char *query, int type)
 	uid == serv->uid)
       {
 	serv->flags |= SERV_LOOP;
-	check_servers(); /* log new state */
+	check_servers(1); /* log new state - don't send more probes. */
 	return 1;
       }
   

@@ -833,6 +833,8 @@ char *parse_server(char *arg, union mysockaddr *addr, union mysockaddr *source_a
   int scope_index = 0;
   char *scope_id;
 
+  *interface = 0;
+
   if (strcmp(arg, "#") == 0)
     {
       if (flags)
@@ -2643,14 +2645,12 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
     case LOPT_LOCAL:     /*  --local */
     case 'A':            /*  --address */
       {
-	struct server *new;
-	size_t size;
 	char *lastdomain = NULL, *domain = "";
-	char *alloc_domain;
 	u16 flags = 0;
 	char *err;
-	struct in_addr addr4;
-	struct in6_addr addr6;
+	union all_addr addr;
+	union mysockaddr serv_addr, source_addr;
+	char interface[IF_NAMESIZE+1];
 
 	unhide_metas(arg);
 	
@@ -2672,116 +2672,45 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	      }
 	  }
 	
-	if (servers_only && option == 'S')
-	  flags |= SERV_FROM_FILE;
-	
 	if (!arg || !*arg)
 	  flags = SERV_LITERAL_ADDRESS;
 	else if (option == 'A')
 	  {
 	    /* # as literal address means return zero address for 4 and 6 */
 	    if (strcmp(arg, "#") == 0)
-	      flags |= SERV_ALL_ZEROS | SERV_LITERAL_ADDRESS;
-	    else if (inet_pton(AF_INET, arg, &addr4) > 0)
-	      flags |= SERV_4ADDR | SERV_LITERAL_ADDRESS;
-	    else if (inet_pton(AF_INET6, arg, &addr6) > 0)
-	      flags |= SERV_6ADDR | SERV_LITERAL_ADDRESS;
+	      flags = SERV_ALL_ZEROS | SERV_LITERAL_ADDRESS;
+	    else if (inet_pton(AF_INET, arg, &addr.addr4) > 0)
+	      flags = SERV_4ADDR | SERV_LITERAL_ADDRESS;
+	    else if (inet_pton(AF_INET6, arg, &addr.addr6) > 0)
+	      flags = SERV_6ADDR | SERV_LITERAL_ADDRESS;
 	    else
 	      ret_err(_("Bad address in --address"));
 	  }
-
-	if (!(alloc_domain = canonicalise_opt(domain)))
-	  ret_err(gen_err);
-	 
-
-	if (flags & SERV_LITERAL_ADDRESS)
-	  {
-	    if (flags & SERV_6ADDR)
-	      {
-		size = sizeof(struct serv_addr6);
-		new = opt_malloc(sizeof(struct serv_addr6));
-		((struct serv_addr6*)new)->addr = addr6;
-	      }
-	    else if (flags & SERV_4ADDR)
-	      {
-		size = sizeof(struct serv_addr4);
-		new = opt_malloc(sizeof(struct serv_addr4));
-		((struct serv_addr4*)new)->addr = addr4;
-	      }
-	    else
-	      {
-		size = sizeof(struct serv_local);
-		new = opt_malloc(sizeof(struct serv_local));
-	      }
-
-	    new->next = daemon->local_domains;
-	    daemon->local_domains = new;
-	  }		       
 	else
 	  {
-	    size = sizeof(struct server);
-	    new = opt_malloc(sizeof(struct server));
+	    if ((err = parse_server(arg, &serv_addr, &source_addr, interface, &flags)))
+	      ret_err(err);
 
-#ifdef HAVE_LOOP
-	    new->uid = rand32();
-#endif
-	    if ((err = parse_server(arg, &new->addr, &new->source_addr, new->interface, &flags)))
-	      {
-		free(new);
-		ret_err(err);
-	      }
+	    /* server=//1.2.3.4 is special. */
+	    if (strlen(domain) == 0 && lastdomain)
+	      flags |= SERV_FOR_NODOTS;
+
+	  }
+
+	if (servers_only && option == 'S')
+	  flags |= SERV_FROM_FILE;
+	
+	while (1)
+	  {
+	    if (!add_update_server(flags, &serv_addr, &source_addr, interface, domain, &addr))
+	      ret_err(gen_err);
 	    
-	    /* Since domains that use standard servers don't have the 
-	       network stuff, it's easier to treat them as local. */
-	    if (flags & SERV_USE_RESOLV)
-	      {
-		new->next = daemon->local_domains;
-		daemon->local_domains = new;
-	      }
-	    else
-	      {
-		new->next = daemon->servers;
-		daemon->servers = new;
-	      }
+	    if (!lastdomain || domain == lastdomain)
+	      break;
+	    
+	    domain += strlen(domain) + 1;
 	  }
 	
-	new->domain = alloc_domain;
-	new->domain_len = strlen(alloc_domain);
-	
-	/* server=//1.2.3.4 is special. */
-	if (strlen(domain) == 0 && lastdomain)
-	  flags |= SERV_FOR_NODOTS;
-	
-	new->flags = flags;
-
-	/* If we have more than one domain, copy and iterate */
-	if (lastdomain)
-	   while (domain != lastdomain)
-	     {
-	       struct server *last = new;
-	       
-	       domain += strlen(domain) + 1;
-	       
-	       if (!(alloc_domain = canonicalise_opt(domain)))
-		 ret_err(gen_err);
-	       
-	       new = opt_malloc(size);
-	       memcpy(new, last, size);
-	       new->domain = alloc_domain;
-	       new->domain_len = strlen(alloc_domain);
-
-	       if (flags & (SERV_USE_RESOLV | SERV_LITERAL_ADDRESS))
-		 {
-		   new->next = daemon->local_domains;
-		   daemon->local_domains = new;
-		 }
-	       else
-		 {
-		   new->next = daemon->servers;
-		   daemon->servers = new;
-		 }
-	     }
-	       
      	break;
       }
 
@@ -4743,8 +4672,7 @@ err:
 	      }
 	    else
 	      {
-		int nomem;
-		char *canon = canonicalise(arg, &nomem);
+		char *canon = canonicalise_opt(arg);
 		struct name_list *nl;
 		if (!canon)
                   {
@@ -5197,9 +5125,9 @@ void read_servers_file(void)
     }
   
   mark_servers(SERV_FROM_FILE);
-  cleanup_servers();
-  
   read_file(daemon->servers_file, f, LOPT_REV_SERV);
+  cleanup_servers();
+  check_servers(0);
 }
  
 

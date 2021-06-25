@@ -1420,14 +1420,7 @@ int indextoname(int fd, int index, char *name);
 int local_bind(int fd, union mysockaddr *addr, char *intname, unsigned int ifindex, int is_tcp);
 void pre_allocate_sfds(void);
 int reload_servers(char *fname);
-void mark_servers(int flag);
-void cleanup_servers(void);
-void add_update_server(int flags,
-		       union mysockaddr *addr,
-		       union mysockaddr *source_addr,
-		       const char *interface,
-		       const char *domain);
-void check_servers(void);
+void check_servers(int no_loop_call);
 int enumerate_interfaces(int reset);
 void create_wildcard_listeners(void);
 void create_bound_listeners(int dienow);
@@ -1771,4 +1764,11 @@ int server_samegroup(struct server *a, struct server *b);
 #ifdef HAVE_DNSSEC
 int dnssec_server(struct server *server, char *keyname, int *firstp, int *lastp);
 #endif
- 
+void mark_servers(int flag);
+void cleanup_servers(void);
+int add_update_server(int flags,
+		      union mysockaddr *addr,
+		      union mysockaddr *source_addr,
+		      const char *interface,
+		      const char *domain,
+		      union all_addr *local_addr); 

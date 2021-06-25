@@ -1510,149 +1510,7 @@ void pre_allocate_sfds(void)
       }  
 }
 
-void mark_servers(int flag)
-{
-  struct server *serv;
-
-  /* mark everything with argument flag */
-  for (serv = daemon->servers; serv; serv = serv->next)
-    {
-      if (serv->flags & flag)
-	serv->flags |= SERV_MARK;
-#ifdef HAVE_LOOP
-      /* Give looped servers another chance */
-      serv->flags &= ~SERV_LOOP;
-#endif
-    }
-
-  for (serv = daemon->local_domains; serv; serv = serv->next)
-    if (serv->flags & flag)
-      serv->flags |= SERV_MARK;
-}
-
-void cleanup_servers(void)
-{
-  struct server *serv, *tmp, **up;
-
-  /* unlink and free anything still marked. */
-  for (serv = daemon->servers, up = &daemon->servers; serv; serv = tmp) 
-    {
-      tmp = serv->next;
-      if (serv->flags & SERV_MARK)
-       {
-         server_gone(serv);
-         *up = serv->next;
-	 free(serv->domain);
-	 free(serv);
-       }
-      else 
-       up = &serv->next;
-    }
-  
- for (serv = daemon->local_domains, up = &daemon->local_domains; serv; serv = tmp) 
-   {
-     tmp = serv->next;
-      if (serv->flags & SERV_MARK)
-       {
-	 *up = serv->next;
-	 free(serv->domain);
-	 free(serv);
-       }
-      else 
-	up = &serv->next;
-   }
-
- 
-#ifdef HAVE_LOOP
-  /* Now we have a new set of servers, test for loops. */
-  loop_send_probes();
-#endif
-}
-
-void add_update_server(int flags,
-		       union mysockaddr *addr,
-		       union mysockaddr *source_addr,
-		       const char *interface,
-		       const char *domain)
-{
-  struct server *serv;
-  char *domain_str;
-
-  if (!domain)
-    domain = "";
-
-  /* If the server is USE_RESOLV or LITERAL_ADDRES, it lives on the local_domains chain.
-     NOTE that we can get local=/domain/ here, but NOT address=/domain/1.2.3.4 */
-#define SERV_IS_LOCAL (SERV_USE_RESOLV | SERV_LITERAL_ADDRESS)
-  
-  /* See if there is a suitable candidate, and unmark */
-  for (serv = (flags & SERV_IS_LOCAL) ? daemon->local_domains : daemon->servers; serv; serv = serv->next)
-    if ((serv->flags & SERV_MARK) && hostname_isequal(domain, serv->domain))
-	break;
-  
-  if (serv)
-    domain_str = serv->domain;
-  else if ((serv = whine_malloc(sizeof (struct server))))
-    {
-      /* Not found, create a new one. */
-      if (!(domain_str = whine_malloc(strlen(domain)+1)))
-	{
-	  free(serv);
-          serv = NULL;
-        }
-      else
-	{
-	  strcpy(domain_str, domain);
-	  
-	  if (flags & SERV_IS_LOCAL)
-	    {
-	      serv->next = daemon->local_domains;
-	      daemon->local_domains = serv;
-	    }
-	  else
-	    {
-	      struct server *s;
-	      /* Add to the end of the chain, for order */
-	      if (!daemon->servers)
-		daemon->servers = serv;
-	      else
-		{
-		  for (s = daemon->servers; s->next; s = s->next);
-		  s->next = serv;
-		}
-
-	      serv->next = NULL;
-	    }
-	}
-    }
-  
-  if (serv)
-    {
-      if (!(flags & SERV_IS_LOCAL))
-	memset(serv, 0, sizeof(struct server));
-
-      serv->flags = flags;
-      serv->domain = domain_str;
-      serv->domain_len = strlen(domain_str);
-
-      if (!(flags & SERV_IS_LOCAL))
-	{
-	  serv->queries = serv->failed_queries = 0;
-#ifdef HAVE_LOOP
-	  serv->uid = rand32();
-#endif      
-	  
-	  if (interface)
-	    safe_strncpy(serv->interface, interface, sizeof(serv->interface));
-	  if (addr)
-	    serv->addr = *addr;
-	  if (source_addr)
-	    serv->source_addr = *source_addr;
-	}
-    }
-}
-
-void check_servers(void)
+void check_servers(int no_loop_check)
 {
   struct irec *iface;
   struct server *serv;
@@ -1660,7 +1518,12 @@ void check_servers(void)
   int port = 0, count;
   int locals = 0;
   
-  /* interface may be new since startup */
+#ifdef HAVE_LOOP
+  if (!no_loop_check)
+    loop_send_probes();
+#endif
+  
+ /* interface may be new since startup */
   if (!option_bool(OPT_NOWILD))
     enumerate_interfaces(0);
 
@@ -1802,8 +1665,8 @@ void check_servers(void)
 	up = &sfd->next;
     }
   
-  cleanup_servers();
-  build_server_array();
+  cleanup_servers(); /* remove servers we just deleted. */
+  build_server_array(); 
 }
 
 /* Return zero if no servers found, in that case we keep polling.
@@ -1876,7 +1739,7 @@ int reload_servers(char *fname)
 	    continue;
 	}
 
-      add_update_server(SERV_FROM_RESOLV, &addr, &source_addr, NULL, NULL);
+      add_update_server(SERV_FROM_RESOLV, &addr, &source_addr, NULL, NULL, NULL);
       gotone = 1;
     }
   
