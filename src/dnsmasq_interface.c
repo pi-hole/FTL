@@ -169,40 +169,49 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 	// Check first if we need to force our reply to something different than the
 	// default/configured blocking mode. For instance, we need to force NXDOMAIN
 	// for intercepted _esni.* queries.
-	if(force_next_DNS_reply == NXDOMAIN)
+	if(force_next_DNS_reply == REPLY_NXDOMAIN)
 	{
 		flags = F_NXDOMAIN;
 		// Reset DNS reply forcing
-		force_next_DNS_reply = 0u;
+		force_next_DNS_reply = REPLY_UNKNOWN;
 
 		// Debug logging
 		if(config.debug & DEBUG_FLAGS)
 			logg("Forced DNS reply to NXDOMAIN");
 	}
-	else if(force_next_DNS_reply == REFUSED)
+	else if(force_next_DNS_reply == REPLY_REFUSED)
 	{
 		// Empty flags result in REFUSED
 		flags = 0;
 		// Reset DNS reply forcing
-		force_next_DNS_reply = 0u;
+		force_next_DNS_reply = REPLY_UNKNOWN;
 
 		// Debug logging
 		if(config.debug & DEBUG_FLAGS)
 			logg("Forced DNS reply to REFUSED");
 	}
-
-	if(config.blockingmode == MODE_NX)
+	else if(force_next_DNS_reply != REPLY_IP)
 	{
-		// If we block in NXDOMAIN mode, we add the NEGATIVE response
-		// and the NXDOMAIN flags
-		flags = F_NXDOMAIN;
-	}
-	else if(config.blockingmode == MODE_NODATA ||
-	       (config.blockingmode == MODE_IP_NODATA_AAAA && (flags & F_IPV6)))
-	{
-		// If we block in NODATA mode or NODATA for AAAA queries, we apply
-		// the NOERROR response flag. This ensures we're sending an empty response
-		flags = F_NOERR;
+		// Overwrite flags only if not intentionally replying with an IP
+		// address, for instance pi.hole or the local hostname
+		if(config.blockingmode == MODE_NX)
+		{
+			// If we block in NXDOMAIN mode, we add the NEGATIVE response
+			// and the NXDOMAIN flags
+			flags = F_NXDOMAIN;
+			if(config.debug & DEBUG_FLAGS)
+				logg("Configured blocking mode is NXDOMAIN");
+		}
+		else if(config.blockingmode == MODE_NODATA ||
+				(config.blockingmode == MODE_IP_NODATA_AAAA && (flags & F_IPV6)))
+		{
+			// If we block in NODATA mode or NODATA for AAAA queries, we apply
+			// the NOERROR response flag. This ensures we're sending an empty response
+			flags = F_NOERR;
+			if(config.debug & DEBUG_FLAGS)
+				logg("Configured blocking mode is NODATA%s",
+				     config.blockingmode == MODE_IP_NODATA_AAAA ? "-IPv6" : "");
+		}
 	}
 
 	// Prepare reply
@@ -280,6 +289,9 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 	// Indicate if truncated (client should retry over TCP)
 	if (trunc)
 		header->hb3 |= HB3_TC;
+
+	// Reset DNS reply forcing
+	force_next_DNS_reply = REPLY_UNKNOWN;
 
 	return p - (unsigned char *)header;
 }
