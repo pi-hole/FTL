@@ -166,6 +166,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		flags = F_NOERR; // empty record
 
 	// Prepare answer records
+	bool forced_ip = false;
 	// Check first if we need to force our reply to something different than the
 	// default/configured blocking mode. For instance, we need to force NXDOMAIN
 	// for intercepted _esni.* queries.
@@ -190,10 +191,22 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		if(config.debug & DEBUG_FLAGS)
 			logg("Forced DNS reply to REFUSED");
 	}
-	else if(force_next_DNS_reply != REPLY_IP)
+	else if(force_next_DNS_reply == REPLY_IP)
 	{
-		// Overwrite flags only if not intentionally replying with an IP
-		// address, for instance pi.hole or the local hostname
+		// We do not need to change the flags here,
+		// they are already properly set (F_IPV4 and/or F_IPV6)
+		forced_ip = true;
+
+		// Reset DNS reply forcing
+		force_next_DNS_reply = REPLY_UNKNOWN;
+
+		// Debug logging
+		if(config.debug & DEBUG_FLAGS)
+			logg("Forced DNS reply to IP");
+	}
+	else
+	{
+		// Overwrite flags only if not replying with a forced reply
 		if(config.blockingmode == MODE_NX)
 		{
 			// If we block in NXDOMAIN mode, we add the NEGATIVE response
@@ -239,7 +252,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		union all_addr *addr;
 		if(config.blockingmode == MODE_IP ||
 		   config.blockingmode == MODE_IP_NODATA_AAAA ||
-		   force_next_DNS_reply == REPLY_IP)
+		   forced_ip)
 			addr = &next_iface.addr4;
 		else
 			addr = &null_addrp;
@@ -265,7 +278,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 	{
 		union all_addr *addr;
 		if(config.blockingmode == MODE_IP ||
-		   force_next_DNS_reply == REPLY_IP)
+		   forced_ip)
 			addr = &next_iface.addr6;
 		else
 			addr = &null_addrp;
@@ -289,9 +302,6 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 	// Indicate if truncated (client should retry over TCP)
 	if (trunc)
 		header->hb3 |= HB3_TC;
-
-	// Reset DNS reply forcing
-	force_next_DNS_reply = REPLY_UNKNOWN;
 
 	return p - (unsigned char *)header;
 }
