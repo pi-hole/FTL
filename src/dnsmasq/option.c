@@ -939,8 +939,7 @@ char *parse_server(char *arg, union mysockaddr *addr, union mysockaddr *source_a
 static int domain_rev4(char *domain, struct in_addr addr, int msize)
 {
   in_addr_t a = ntohl(addr.s_addr);
-  char *p;
-
+ 
   *domain = 0;
   
   switch (msize)

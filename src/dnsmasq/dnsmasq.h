@@ -1105,7 +1105,7 @@ extern struct daemon {
   struct iname *if_names, *if_addrs, *if_except, *dhcp_except, *auth_peers, *tftp_interfaces;
   struct bogus_addr *bogus_addr, *ignore_addr;
   struct server *servers, *local_domains, **serverarray, *no_rebind;
-  int serverarraysz;
+  int serverarraysz, serverarrayhwm;
   struct ipsets *ipsets;
   u32 allowlist_mask;
   struct allowlist *allowlists;

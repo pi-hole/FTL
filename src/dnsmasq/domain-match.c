@@ -36,10 +36,14 @@ void build_server_array(void)
   
   for (serv = daemon->local_domains; serv; serv = serv->next)
     count++;
-  
-  if (count > daemon->serverarraysz)
+
+  daemon->serverarraysz = count;
+
+  if (count > daemon->serverarrayhwm)
     {
       struct server **new;
+
+      count += 10; /* A few extra without re-allocating. */
 
       if ((new = whine_malloc(count * sizeof(struct server *))))
 	{
@@ -47,7 +51,7 @@ void build_server_array(void)
 	    free(daemon->serverarray);
 	  
 	  daemon->serverarray = new;
-	  daemon->serverarraysz = count;
+	  daemon->serverarrayhwm = count;
 	}
     }
 
