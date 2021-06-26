@@ -60,6 +60,8 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 static void FTL_upstream_error(const unsigned int rcode, const int id, const char* file, const int line);
 static void FTL_dnssec(const char *result, const int id, const char* file, const int line);
 static void mysockaddr_extract_ip_port(union mysockaddr *server, char ip[ADDRSTRLEN+1], in_port_t *port);
+static void alladdr_extract_ip(union all_addr *addr, const sa_family_t family, char ip[ADDRSTRLEN+1]);
+static const char *dns_name(char *name);
 
 // Static blocking metadata
 static const char *blockingreason = NULL;
@@ -93,7 +95,9 @@ void FTL_hook(unsigned int flags, char *name, union all_addr *addr, char *arg, i
 	}
 
 	// Note: The order matters here!
-	if((flags & F_QUERY) && (flags & F_FORWARD))
+	if(strcmp(path, "src/dnsmasq_interface.c") == 0)
+		; // Ignored - loopback from FTL_make_answer() below
+	else if((flags & F_QUERY) && (flags & F_FORWARD))
 		; // New query, handled by FTL_new_query via separate call
 	else if(flags & F_FORWARD && flags & F_SERVER)
 		// forwarded upstream
@@ -204,7 +208,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 	// Prepare reply
 	if(config.debug & DEBUG_FLAGS)
 	{
-		logg("Preparing FTL reply");
+		logg("Preparing reply for \"%s\"", dns_name(name));
 		print_flags(flags);
 	}
 	setup_reply(header, flags);
@@ -231,7 +235,15 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		else
 			addr = &null_addrp;
 
-		// Add answer record
+		// Debug logging
+		if(config.debug & DEBUG_QUERIES)
+		{
+			char ip[ADDRSTRLEN+1] = { 0 };
+			alladdr_extract_ip(addr, AF_INET, ip);
+			logg("  Adding RR: \"%s A %s\"", dns_name(name), ip);
+		}
+
+		// Add A resource record
 		header->ancount = htons(ntohs(header->ancount) + 1);
 		add_resource_record(header, limit, &trunc, sizeof(struct dns_header),
 		                    &p, daemon->local_ttl, NULL, T_A, C_IN,
@@ -249,7 +261,15 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		else
 			addr = &null_addrp;
 
-		// Add answer record
+		// Debug logging
+		if(config.debug & DEBUG_QUERIES)
+		{
+			char ip[ADDRSTRLEN+1] = { 0 };
+			alladdr_extract_ip(addr, AF_INET6, ip);
+			logg("  Adding RR: \"%s AAAA %s\"", dns_name(name), ip);
+		}
+
+		// Add AAAA resource record
 		header->ancount = htons(ntohs(header->ancount) + 1);
 		add_resource_record(header, limit, &trunc, sizeof(struct dns_header),
 		                    &p, daemon->local_ttl, NULL, T_AAAA, C_IN,
@@ -1286,13 +1306,33 @@ void FTL_dnsmasq_reload(void)
 	resolver_ready = true;
 }
 
+static const char *dns_name(char *name)
+{
+	// This should not happen, we still handle it
+	if(name == NULL)
+		return "(NULL)";
+
+	// Substitute empty domain with the root domain "."
+	if(strlen(name) == 0)
+		return ".";
+
+	// Else: Everthing is okay
+	return name;
+}
+
+static void alladdr_extract_ip(union all_addr *addr, const sa_family_t family, char ip[ADDRSTRLEN+1])
+{
+	// Extract IP address
+	inet_ntop(family, addr, ip, ADDRSTRLEN);
+}
+
 static void mysockaddr_extract_ip_port(union mysockaddr *server, char ip[ADDRSTRLEN+1], in_port_t *port)
 {
 	// Extract IP address
 	inet_ntop(server->sa.sa_family,
 	          server->sa.sa_family == AF_INET ?
-	            (union alladdr*)&server->in.sin_addr :
-	            (union alladdr*)&server->in6.sin6_addr,
+	            (void*)&server->in.sin_addr :
+	            (void*)&server->in6.sin6_addr,
 	          ip, ADDRSTRLEN);
 
 	// Extract port (only if requested)
