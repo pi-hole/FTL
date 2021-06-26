@@ -365,17 +365,20 @@ void _lock_shm(const char* func, const int line, const char * file)
 	if(result != 0)
 		logg("Error when obtaining outer SHM lock: %s", strerror(result));
 
-	// Store lock owner
-	shmLock->owner.pid = getpid();
-	shmLock->owner.tid = gettid();
-
 	if(result == EOWNERDEAD) {
 		// Try to make the lock consistent if the other process died while
 		// holding the lock
-		result = pthread_mutex_consistent(&shmLock->lock.inner);
+		if(config.debug & DEBUG_LOCKS)
+			logg("Owner of outer SHM lock died, making lock consistent");
+
+		result = pthread_mutex_consistent(&shmLock->lock.outer);
 		if(result != 0)
-			logg("Failed to make inner SHM lock consistent: %s", strerror(result));
+			logg("Failed to make outer SHM lock consistent: %s", strerror(result));
 	}
+
+	// Store lock owner after lock has been acquired and was made consistent (if required)
+	shmLock->owner.pid = getpid();
+	shmLock->owner.tid = gettid();
 
 	// Check if this process needs to remap the shared memory objects
 	if(shmSettings != NULL &&
@@ -401,6 +404,9 @@ void _lock_shm(const char* func, const int line, const char * file)
 	if(result == EOWNERDEAD) {
 		// Try to make the lock consistent if the other process died while
 		// holding the lock
+		if(config.debug & DEBUG_LOCKS)
+			logg("Owner of inner SHM lock died, making lock consistent");
+
 		result = pthread_mutex_consistent(&shmLock->lock.inner);
 		if(result != 0)
 			logg("Failed to make inner SHM lock consistent: %s", strerror(result));
