@@ -936,58 +936,53 @@ char *parse_server(char *arg, union mysockaddr *addr, union mysockaddr *source_a
   return NULL;
 }
 
-static struct server *add_rev4(struct in_addr addr, int msize)
+static int domain_rev4(char *domain, struct in_addr addr, int msize)
 {
-  struct server *serv = opt_malloc(sizeof(struct server));
   in_addr_t a = ntohl(addr.s_addr);
   char *p;
 
-  memset(serv, 0, sizeof(struct server));
-  p = serv->domain = opt_malloc(29); /* strlen("xxx.yyy.zzz.ttt.in-addr.arpa")+1 */
-
+  *domain = 0;
+  
   switch (msize)
     {
     case 32:
-      p += sprintf(p, "%u.", a & 0xff);
+      domain += sprintf(domain, "%u.", a & 0xff);
       /* fall through */
     case 24:
-      p += sprintf(p, "%d.", (a >> 8) & 0xff);
+      domain += sprintf(domain, "%d.", (a >> 8) & 0xff);
       /* fall through */
     case 16:
-      p += sprintf(p, "%d.", (a >> 16) & 0xff);
+      domain += sprintf(domain, "%d.", (a >> 16) & 0xff);
       /* fall through */
     case 8:
-      p += sprintf(p, "%d.", (a >> 24) & 0xff);
+      domain += sprintf(domain, "%d.", (a >> 24) & 0xff);
       break;
     default:
-      free(serv->domain);
-      free(serv);
-      return NULL;
+      return 0;
     }
-
-  p += sprintf(p, "in-addr.arpa");
   
-  return serv;
-
+  domain += sprintf(domain, "in-addr.arpa");
+  
+  return 1;
 }
 
-static struct server *add_rev6(struct in6_addr *addr, int msize)
+static int domain_rev6(char *domain, struct in6_addr *addr, int msize)
 {
-  struct server *serv = opt_malloc(sizeof(struct server));
-  char *p;
   int i;
-				  
-  memset(serv, 0, sizeof(struct server));
-  p = serv->domain = opt_malloc(73); /* strlen("32*<n.>ip6.arpa")+1 */
+
+  if (msize%4)
+    return 0;
   
+  *domain = 0;
+
   for (i = msize-1; i >= 0; i -= 4)
     { 
       int dig = ((unsigned char *)addr)[i>>3];
-      p += sprintf(p, "%.1x.", (i>>2) & 1 ? dig & 15 : dig >> 4);
+      domain += sprintf(domain, "%.1x.", (i>>2) & 1 ? dig & 15 : dig >> 4);
     }
-  p += sprintf(p, "ip6.arpa");
+  domain += sprintf(domain, "ip6.arpa");
   
-  return serv;
+  return 1;
 }
 
 #ifdef HAVE_DHCP
@@ -2262,7 +2257,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	set_option_bool(OPT_RESOLV_DOMAIN);
       else
 	{
-	  char *d;
+	  char *d, *d_raw = arg;
 	  comma = split(arg);
 	  if (!(d = canonicalise_opt(arg)))
 	    ret_err(gen_err);
@@ -2303,23 +2298,15 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 				ret_err_free(gen_err, new);
 			      else
 				{
-				   /* generate the equivalent of
-				      local=/xxx.yyy.zzz.in-addr.arpa/ */
-				  struct server *serv = add_rev4(new->start, msize);
-				  if (!serv)
-				    ret_err_free(_("bad prefix"), new);
-
-				  serv->flags |= SERV_LITERAL_ADDRESS;
-				  serv->next = daemon->local_domains;
-				  daemon->local_domains = serv;
+				  char domain[29]; /* strlen("xxx.yyy.zzz.ttt.in-addr.arpa")+1 */
+				  /* local=/xxx.yyy.zzz.in-addr.arpa/ */
+				  /* domain_rev4 can't fail here, msize checked above. */
+				  domain_rev4(domain, new->start, msize);
+				  add_update_server(SERV_LITERAL_ADDRESS, NULL, NULL, NULL, domain, NULL);
 				  
 				  /* local=/<domain>/ */
-				  serv = opt_malloc(sizeof(struct server));
-				  memset(serv, 0, sizeof(struct server));
-				  serv->domain = d;
-				  serv->flags = SERV_LITERAL_ADDRESS;
-				  serv->next = daemon->local_domains;
-				  daemon->local_domains = serv;
+				  /* d_raw can't failed to canonicalise here, checked above. */
+				  add_update_server(SERV_LITERAL_ADDRESS, NULL, NULL, NULL, d_raw, NULL);
 				}
 			    }
 			}
@@ -2351,20 +2338,15 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 				ret_err_free(gen_err, new);
 			      else 
 				{
+				  char domain[73]; /* strlen("32*<n.>ip6.arpa")+1 */
 				  /* generate the equivalent of
 				     local=/xxx.yyy.zzz.ip6.arpa/ */
-				  struct server *serv = add_rev6(&new->start6, msize);
-				  serv->flags |= SERV_LITERAL_ADDRESS;
-				   serv->next = daemon->local_domains;
-				  daemon->local_domains = serv;
-				  
+				  domain_rev6(domain, &new->start6, msize);
+				  add_update_server(SERV_LITERAL_ADDRESS, NULL, NULL, NULL, domain, NULL);
+
 				  /* local=/<domain>/ */
-				  serv = opt_malloc(sizeof(struct server));
-				  memset(serv, 0, sizeof(struct server));
-				  serv->domain = d;
-				  serv->flags = SERV_LITERAL_ADDRESS;
-				  serv->next = daemon->local_domains;
-				  daemon->local_domains = serv;
+				  /* d_raw can't failed to canonicalise here, checked above. */
+				  add_update_server(SERV_LITERAL_ADDRESS, NULL, NULL, NULL, d_raw, NULL);
 				}
 			    }
 			}
@@ -2718,10 +2700,13 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
       {
 	char *string;
 	int size;
-	struct server *serv;
+	u16 flags = 0;
+	char domain[73]; /* strlen("32*<n.>ip6.arpa")+1 */
 	struct in_addr addr4;
 	struct in6_addr addr6;
- 
+ 	union mysockaddr serv_addr, source_addr;
+	char interface[IF_NAMESIZE+1];
+	
 	unhide_metas(arg);
 	if (!arg)
 	  ret_err(gen_err);
@@ -2733,28 +2718,27 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	
 	if (inet_pton(AF_INET, arg, &addr4))
 	  {
-	    serv = add_rev4(addr4, size);
-	    if (!serv)
-	      ret_err(_("bad prefix"));
-	    serv->next = daemon->servers;
-	    daemon->servers = serv;
+	    if (!domain_rev4(domain, addr4, size))
+	      ret_err(_("bad IPv4 prefix"));
 	  }
 	else if (inet_pton(AF_INET6, arg, &addr6))
 	  {
-	    serv = add_rev6(&addr6, size);
-	    serv->next = daemon->servers;
-	    daemon->servers = serv;
+	    if (!domain_rev6(domain, &addr6, size))
+	      ret_err(_("bad IPv6 prefix"));
 	  }
 	else
 	  ret_err(gen_err);
- 
-	string = parse_server(comma, &serv->addr, &serv->source_addr, serv->interface, &serv->flags);
 	
-	if (string)
+	if (!comma)
+	  flags |= SERV_LITERAL_ADDRESS;
+	else if ((string = parse_server(comma, &serv_addr, &source_addr, interface, &flags)))
 	  ret_err(string);
 	
 	if (servers_only)
-	  serv->flags |= SERV_FROM_FILE;
+	  flags |= SERV_FROM_FILE;
+
+	if (!add_update_server(flags, &serv_addr, &source_addr, interface, domain, NULL))
+	  ret_err(gen_err);
 	
 	break;
       }
