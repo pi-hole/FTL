@@ -341,6 +341,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		{
 			// "Block" this query by sending the interface IP address
 			force_next_DNS_reply = REPLY_IP;
+			blockingreason = "internal";
 			if(config.debug & DEBUG_QUERIES)
 				logg("Replying to %s with interface-local IP address", name);
 			return true;
