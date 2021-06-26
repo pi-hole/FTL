@@ -531,7 +531,7 @@ int add_update_server(int flags,
 		      const char *domain,
 		      union all_addr *local_addr)
 {
-  struct server *serv;
+  struct server *serv = NULL;
   char *alloc_domain;
   
   if (!domain || strlen(domain) == 0)
@@ -539,12 +539,14 @@ int add_update_server(int flags,
   else if (!(alloc_domain = canonicalise((char *)domain, NULL)))
     return 0;
   
-  /* See if there is a suitable candidate, and unmark */
-  for (serv = (flags & SERV_IS_LOCAL) ? daemon->local_domains : daemon->servers; serv; serv = serv->next)
-    if ((serv->flags & SERV_MARK) &&
-	hostname_isequal(alloc_domain, serv->domain) &&
-	((serv->flags & (SERV_6ADDR | SERV_4ADDR)) == (flags & (SERV_6ADDR | SERV_4ADDR))))
-      break;
+  /* See if there is a suitable candidate, and unmark
+     only do this for forwarding servers, not 
+     address or local, to avoid delays on large numbers. */
+  if (flags & SERV_IS_LOCAL)
+    for (serv = daemon->servers; serv; serv = serv->next)
+      if ((serv->flags & SERV_MARK) &&
+	  hostname_isequal(alloc_domain, serv->domain))
+	break;
   
   if (serv)
     {
