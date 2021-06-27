@@ -434,8 +434,6 @@ int main_dnsmasq (int argc, char **argv)
 #ifdef HAVE_DBUS
     {
       char *err;
-      daemon->dbus = NULL;
-      daemon->watches = NULL;
       if ((err = dbus_init()))
 	die(_("DBus error: %s"), err, EC_MISC);
     }
@@ -447,7 +445,6 @@ int main_dnsmasq (int argc, char **argv)
 #ifdef HAVE_UBUS
     {
       char *err;
-      daemon->ubus = NULL;
       if ((err = ubus_init()))
 	die(_("UBus error: %s"), err, EC_MISC);
     }
@@ -1068,14 +1065,15 @@ int main_dnsmasq (int argc, char **argv)
       set_dns_listeners();
 
 #ifdef HAVE_DBUS
-      set_dbus_listeners();
+      if (option_bool(OPT_DBUS))
+	set_dbus_listeners();
 #endif
-
+      
 #ifdef HAVE_UBUS
       if (option_bool(OPT_UBUS))
         set_ubus_listeners();
 #endif
-	  
+      
 #ifdef HAVE_DHCP
       if (daemon->dhcp || daemon->relay4)
 	{
@@ -1195,28 +1193,44 @@ int main_dnsmasq (int argc, char **argv)
       
 #ifdef HAVE_DBUS
       /* if we didn't create a DBus connection, retry now. */ 
-     if (option_bool(OPT_DBUS) && !daemon->dbus)
+      if (option_bool(OPT_DBUS))
 	{
-	  char *err;
-	  if ((err = dbus_init()))
-	    my_syslog(LOG_WARNING, _("DBus error: %s"), err);
-	  if (daemon->dbus)
-	    my_syslog(LOG_INFO, _("connected to system DBus"));
+	  if (!daemon->dbus)
+	    {
+	      char *err  = dbus_init();
+
+	      if (daemon->dbus)
+		my_syslog(LOG_INFO, _("connected to system DBus"));
+	      else if (err)
+		{
+		  my_syslog(LOG_ERR, _("DBus error: %s"), err);
+		  reset_option_bool(OPT_DBUS); /* fatal error, stop trying. */
+		}
+	    }
+	  
+	  check_dbus_listeners();
 	}
-     check_dbus_listeners();
 #endif
 
 #ifdef HAVE_UBUS
       /* if we didn't create a UBus connection, retry now. */
-     if (option_bool(OPT_UBUS) && !daemon->ubus)
-        {
-	  char *err;
-	  if ((err = ubus_init()))
-	    my_syslog(LOG_WARNING, _("UBus error: %s"), err);
-	  if (daemon->ubus)
-	    my_syslog(LOG_INFO, _("connected to system UBus"));
+      if (option_bool(OPT_UBUS))
+	{
+	  if (!daemon->ubus)
+	    {
+	      char *err = ubus_init();
+
+	      if (daemon->ubus)
+		my_syslog(LOG_INFO, _("connected to system UBus"));
+	      else if (err)
+		{
+		  my_syslog(LOG_ERR, _("UBus error: %s"), err);
+		  reset_option_bool(OPT_UBUS); /* fatal error, stop trying. */
+		}
+	    }
+	  
+	  check_ubus_listeners();
 	}
-     check_ubus_listeners();
 #endif
 
       check_dns_listeners(now);
