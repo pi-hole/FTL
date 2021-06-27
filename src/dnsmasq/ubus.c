@@ -104,6 +104,8 @@ static void ubus_disconnect_cb(struct ubus_context *ubus)
     }
 }
 
+/* Note that this cannot log, it either returns a fatal error, or NULL.
+   If daemon->ubus is left as NULL, it will be called again for another try. */
 char *ubus_init()
 {
   struct ubus_context *ubus = NULL;
@@ -117,9 +119,9 @@ char *ubus_init()
   if (ret)
     {
       ubus_destroy(ubus);
-      return (char *)ubus_strerror(ret);
-    }    
-  
+      return NULL;
+    }
+      
   ubus->connection_lost = ubus_disconnect_cb;
   daemon->ubus = ubus;
   error_logged = 0;
