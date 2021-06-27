@@ -1868,7 +1868,8 @@ char *querystr(char *desc, unsigned short type)
   return buff ? buff : "";
 }
 
-static char *edestr(int ede)
+/**** Pi-hole modified: removed static and added prototype to dnsmasq.h ****/
+char *edestr(int ede)
 {
   switch (ede)
     {
@@ -1901,11 +1902,14 @@ static char *edestr(int ede)
     }
 }
 
-void log_query(unsigned int flags, char *name, union all_addr *addr, char *arg)
+/**** P-hole modified: Added file and line and serve log_query via macro defined in dnsmasq.h ****/
+void _log_query(unsigned int flags, char *name, union all_addr *addr, char *arg, const char *file, const int line)
 {
   char *source, *dest = daemon->addrbuff;
   char *verb = "is";
   char *extra = "";
+
+  FTL_hook(flags, name, addr, arg, daemon->log_id, file, line);
   
   if (!option_bool(OPT_LOG))
     return;

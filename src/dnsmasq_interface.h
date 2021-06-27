@@ -31,8 +31,8 @@ void _FTL_header_analysis(const unsigned char header4, const unsigned int rcode,
 
 void FTL_forwarding_retried(const struct server *server, const int oldID, const int newID, const bool dnssec);
 
-#define FTL_make_answer(header, limit, len) _FTL_make_answer(header, limit, len, __FILE__, __LINE__)
-size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len, const char* file, const int line);
+#define FTL_make_answer(header, limit, len, ede) _FTL_make_answer(header, limit, len, ede, __FILE__, __LINE__)
+size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len, int *ede, const char* file, const int line);
 
 #define FTL_CNAME(domain, cpp, id) _FTL_CNAME(domain, cpp, id, __FILE__, __LINE__)
 bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const char* file, const int line);

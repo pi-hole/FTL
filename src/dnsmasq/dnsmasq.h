@@ -1786,3 +1786,6 @@ int add_update_server(int flags,
 		      const char *interface,
 		      const char *domain,
 		      union all_addr *local_addr); 
+
+// Pi-hole modification
+char *edestr(int ede);

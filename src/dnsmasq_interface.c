@@ -57,8 +57,8 @@ static enum query_status detect_blocked_IP(const unsigned short flags, const uni
 static void query_blocked(queriesData* query, domainsData* domain, clientsData* client, const unsigned char new_status);
 static void FTL_forwarded(const unsigned int flags, const char *name, const union all_addr *addr, const int id, const char* file, const int line);
 static void FTL_reply(const unsigned int flags, const char *name, const union all_addr *addr, const char* arg, const int id, const char* file, const int line);
-static void FTL_upstream_error(const unsigned int rcode, const int id, const char* file, const int line);
-static void FTL_dnssec(const char *result, const int id, const char* file, const int line);
+static void FTL_upstream_error(const union all_addr *addr, const int id, const char* file, const int line);
+static void FTL_dnssec(const char *result, const union all_addr *addr, const int id, const char* file, const int line);
 static void mysockaddr_extract_ip_port(union mysockaddr *server, char ip[ADDRSTRLEN+1], in_port_t *port);
 static void alladdr_extract_ip(union all_addr *addr, const sa_family_t family, char ip[ADDRSTRLEN+1]);
 static const char *dns_name(char *name);
@@ -101,10 +101,10 @@ void FTL_hook(unsigned int flags, char *name, union all_addr *addr, char *arg, i
 		FTL_forwarded(flags, name, addr, id, path, line);
 	else if(flags == F_SECSTAT)
 		// DNSSEC validation result
-		FTL_dnssec(arg, id, path, line);
+		FTL_dnssec(arg, addr, id, path, line);
 	else if(flags == (F_UPSTREAM | F_RCODE) && name && strcasecmp(name, "error") == 0)
 		// upstream sent something different than NOERROR or NXDOMAIN
-		FTL_upstream_error(addr->log.rcode, id, path, line);
+		FTL_upstream_error(addr, id, path, line);
 	else if(flags & F_NOEXTRA && flags & F_DNSSEC)
 	{
 		// This is a new DNSSEC query (dnssec-query[DS])
@@ -136,7 +136,7 @@ void FTL_hook(unsigned int flags, char *name, union all_addr *addr, char *arg, i
 }
 
 // This is inspired by make_local_answer()
-size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len, const char *file, const int line)
+size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len, int *ede, const char *file, const int line)
 {
 	// Exit early if there are no questions in this query
 	if(ntohs(header->qdcount) == 0)
@@ -147,6 +147,15 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 	unsigned char *p = (unsigned char *)(header+1);
 	if (!extract_name(header, len, &p, name, 1, 4))
 		return 0;
+
+	// Debug logging
+	if(config.debug & DEBUG_FLAGS)
+	{
+		if(*ede != -1)
+			logg("Preparing reply for \"%s\", EDE: %s (%d)", dns_name(name), edestr(*ede), *ede);
+		else
+			logg("Preparing reply for \"%s\", EDE: N/A", dns_name(name));
+	}
 
 	// Get question type
 	int qtype, flags;
@@ -187,6 +196,9 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		// Debug logging
 		if(config.debug & DEBUG_FLAGS)
 			logg("Forced DNS reply to REFUSED");
+
+		// Set EDE code to blocked
+		*ede = EDE_BLOCKED;
 	}
 	else if(force_next_DNS_reply == REPLY_IP)
 	{
@@ -224,13 +236,12 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		}
 	}
 
-	// Prepare reply
+	// Debug logging
 	if(config.debug & DEBUG_FLAGS)
-	{
-		logg("Preparing reply for \"%s\"", dns_name(name));
 		print_flags(flags);
-	}
-	setup_reply(header, flags);
+
+	// Setup reply header
+	setup_reply(header, flags, *ede);
 
 	// Add flags according to current blocking mode
 	// Set blocking_flags to F_HOSTS so dnsmasq logs blocked queries being answered from a specific source
@@ -1188,8 +1199,10 @@ static void FTL_forwarded(const unsigned int flags, const char *name, const unio
 
 	// Debug logging
 	if(config.debug & DEBUG_QUERIES)
+	{
 		logg("**** forwarded %s to %s#%u (ID %i, %s:%i)",
 		     name, upstreamIP, upstreamPort, id, file, line);
+	}
 
 	// Save status and upstreamID in corresponding query identified by dnsmasq's ID
 	const int queryID = findQueryID(id);
@@ -1410,9 +1423,7 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 		// Determine returned result if available
 		char dest[ADDRSTRLEN]; dest[0] = '\0';
 		if(addr)
-		{
 			inet_ntop((flags & F_IPV4) ? AF_INET : AF_INET6, addr, dest, ADDRSTRLEN);
-		}
 
 		// Extract answer (used e.g. for detecting if a local config is a user-defined
 		// wildcard blocking entry in form "server=/tobeblocked.com/")
@@ -1457,6 +1468,9 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 			logg("**** got %s reply from %s#%d: %s is %s (ID %i, %s:%i)",
 			     cached ? "cache" : "upstream", ip, port, name, answer, id, file, line);
 		}
+
+		if(addr && flags & (F_RCODE | F_SECSTAT) && addr->log.ede != -1)
+			logg("     EDE: %s (%d)", edestr(addr->log.ede), addr->log.ede);
 	}
 
 	// Get response time
@@ -1750,7 +1764,7 @@ static void query_blocked(queriesData* query, domainsData* domain, clientsData* 
 	query->flags.blocked = true;
 }
 
-static void FTL_dnssec(const char *arg, const int id, const char* file, const int line)
+static void FTL_dnssec(const char *arg, const union all_addr *addr, const int id, const char* file, const int line)
 {
 	// Process DNSSEC result for a domain
 
@@ -1782,6 +1796,8 @@ static void FTL_dnssec(const char *arg, const int id, const char* file, const in
 		const domainsData* domain = getDomain(query->domainID, true);
 		if(domain != NULL)
 			logg("**** DNSSEC %s is %s (ID %i, %s:%i)", getstr(domain->domainpos), arg, id, file, line);
+		if(addr && addr->log.ede != -1) // This function is only called if (flags & F_SECSTAT)
+			logg("     EDE: %s (%d)", edestr(addr->log.ede), addr->log.ede);
 	}
 
 	// Iterate through possible values
@@ -1800,11 +1816,15 @@ static void FTL_dnssec(const char *arg, const int id, const char* file, const in
 	unlock_shm();
 }
 
-static void FTL_upstream_error(const unsigned int rcode, const int id, const char* file, const int line)
+static void FTL_upstream_error(const union all_addr *addr, const int id, const char* file, const int line)
 {
 	// Process upstream errors
 	// Queries with error are those where the RCODE
 	// in the DNS header is neither NOERROR nor NXDOMAIN.
+
+	// Return early if there is nothing we can analyze here (shouldn't happen)
+	if(!addr)
+		return;
 
 	// Lock shared memory
 	lock_shm();
@@ -1829,7 +1849,7 @@ static void FTL_upstream_error(const unsigned int rcode, const int id, const cha
 
 	// Translate dnsmasq's rcode into something we can use
 	const char *rcodestr = NULL;
-	switch(rcode)
+	switch(addr->log.rcode)
 	{
 		case SERVFAIL:
 			rcodestr = "SERVFAIL";
@@ -1866,8 +1886,11 @@ static void FTL_upstream_error(const unsigned int rcode, const int id, const cha
 
 		if(query->reply == REPLY_OTHER)
 		{
-			logg("Unknown rcode = %i", rcode);
+			logg("     Unknown rcode = %i", addr->log.rcode);
 		}
+
+		if(addr->log.ede != -1) // This function is only called if (flags & F_RCODE)
+			logg("     EDE: %s (%d)", edestr(addr->log.ede), addr->log.ede);
 	}
 
 	// Unlock shared memory
