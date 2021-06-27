@@ -222,7 +222,6 @@ static void dbus_read_servers(DBusMessage *message)
    
   /* unlink and free anything still marked. */
   cleanup_servers();
-  check_servers(0);
 }
 
 #ifdef HAVE_LOOP
@@ -277,7 +276,7 @@ static DBusMessage* dbus_read_servers_ex(DBusMessage *message, int strings)
     {
       const char *str = NULL;
       union  mysockaddr addr, source_addr;
-      int flags = 0;
+      u16 flags = 0;
       char interface[IF_NAMESIZE];
       char *str_addr, *str_domain = NULL;
 
@@ -413,8 +412,7 @@ static DBusMessage* dbus_read_servers_ex(DBusMessage *message, int strings)
     }
 
   cleanup_servers();
-  check_servers(0);
-  
+    
   if (dup)
     free(dup);
 
@@ -713,7 +711,7 @@ DBusHandlerResult message_handler(DBusConnection *connection,
   if (new_servers)
     {
       my_syslog(LOG_INFO, _("setting upstream servers from DBus"));
-      check_servers();
+      check_servers(0);
       if (option_bool(OPT_RELOAD))
 	clear_cache = 1;
     }
