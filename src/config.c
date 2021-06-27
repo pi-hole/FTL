@@ -822,11 +822,6 @@ void read_debuging_settings(FILE *fp)
 	// defaults to: false
 	setDebugOption(fp, "DEBUG_CAPS", DEBUG_CAPS);
 
-	// DEBUG_DNSMASQ_LINES
-	setDebugOption(fp, "DEBUG_DNSMASQ_LINES", DEBUG_DNSMASQ_LINES);
-	extern char debug_dnsmasq_lines;
-	debug_dnsmasq_lines = config.debug & DEBUG_DNSMASQ_LINES ? 1 : 0;
-
 	// DEBUG_VECTORS
 	// defaults to: false
 	setDebugOption(fp, "DEBUG_VECTORS", DEBUG_VECTORS);
@@ -876,7 +871,6 @@ void read_debuging_settings(FILE *fp)
 		logg("* DEBUG_OVERTIME        %s *", (config.debug & DEBUG_OVERTIME)? "YES":"NO ");
 		logg("* DEBUG_STATUS          %s *", (config.debug & DEBUG_STATUS)? "YES":"NO ");
 		logg("* DEBUG_CAPS            %s *", (config.debug & DEBUG_CAPS)? "YES":"NO ");
-		logg("* DEBUG_DNSMASQ_LINES   %s *", (config.debug & DEBUG_DNSMASQ_LINES)? "YES":"NO ");
 		logg("* DEBUG_VECTORS         %s *", (config.debug & DEBUG_VECTORS)? "YES":"NO ");
 		logg("* DEBUG_RESOLVER        %s *", (config.debug & DEBUG_RESOLVER)? "YES":"NO ");
 		logg("* DEBUG_EDNS0           %s *", (config.debug & DEBUG_EDNS0)? "YES":"NO ");

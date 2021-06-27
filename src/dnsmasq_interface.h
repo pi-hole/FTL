@@ -46,9 +46,6 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw);
 void FTL_TCP_worker_created(const int confd);
 void FTL_TCP_worker_terminating(bool finished);
 
-void set_debug_dnsmasq_lines(char enabled);
-extern char debug_dnsmasq_lines;
-
 bool FTL_unlink_DHCP_lease(const char *ipaddr);
 
 #endif // DNSMASQ_INTERFACE_H

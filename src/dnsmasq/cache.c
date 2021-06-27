@@ -1868,14 +1868,10 @@ char *querystr(char *desc, unsigned short type)
   return buff ? buff : "";
 }
 
-// Modified by Pi-hole
-void _log_query(unsigned int flags, char *name, union all_addr *addr, char *arg, const char* file, const int line)
+void log_query(unsigned int flags, char *name, union all_addr *addr, char *arg)
 {
   char *source, *dest = daemon->addrbuff;
   char *verb = "is";
-
-  // Pi-hole modification
-  FTL_hook(flags, name, addr, arg, daemon->log_display_id, file, line);
   
   if (!option_bool(OPT_LOG))
     return;
@@ -1973,25 +1969,6 @@ void _log_query(unsigned int flags, char *name, union all_addr *addr, char *arg,
   
   if (strlen(name) == 0)
     name = ".";
-/************************************************************** Pi-hole modification  **************************************************************/
-if(debug_dnsmasq_lines != 0)
-{
-  if (option_bool(OPT_EXTRALOG))
-    {
-      if (flags & F_NOEXTRA)
-	my_syslog(LOG_INFO, "%u %s %s %s %s (%s:%d)", daemon->log_display_id, source, name, verb, dest, file, line);
-      else
-	{
-	   int port = prettyprint_addr(daemon->log_source_addr, daemon->addrbuff2);
-	   my_syslog(LOG_INFO, "%u %s/%u %s %s %s %s (%s:%d)", daemon->log_display_id, daemon->addrbuff2, port, source, name, verb, dest, file, line);
-	}
-    }
-  else
-    my_syslog(LOG_INFO, "%s %s %s %s (%s:%d)", source, name, verb, dest, file, line);
-
-  return;
-}
-/***************************************************************************************************************************************************/
   if (option_bool(OPT_EXTRALOG))
     {
       if (flags & F_NOEXTRA)

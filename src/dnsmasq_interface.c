@@ -68,9 +68,6 @@ static const char *blockingreason = NULL;
 static union all_addr null_addrp = {{ 0 }};
 static enum reply_type force_next_DNS_reply = REPLY_UNKNOWN;
 
-// Adds debug information to the regular pihole.log file
-char debug_dnsmasq_lines = 0;
-
 // Fork-private copy of the interface name the most recent query came from
 static struct {
 	char name[IFNAMSIZ];
