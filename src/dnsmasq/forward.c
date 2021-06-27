@@ -1267,6 +1267,8 @@ static int is_query_allowed_for_mark(u32 mark, const char *name)
 static size_t answer_disallowed(struct dns_header *header, size_t qlen, u32 mark, const char *name)
 {
   unsigned char *p;
+  (void)name;
+  (void)mark;
   
 #ifdef HAVE_UBUS
   if (name)
