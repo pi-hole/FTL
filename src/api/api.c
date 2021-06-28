@@ -1021,7 +1021,7 @@ void getAllQueries(const char *client_message, const int *sock)
 
 		if(istelnet[*sock])
 		{
-			ssend(*sock,"%lli %s %s %s %i %i %i %lu %s %i %s",
+			ssend(*sock,"%lli %s %s %s %i %i %i %lu %s %i %s#%u \"%s\"",
 				(long long)query->timestamp,
 				qtype,
 				domain,
@@ -1032,12 +1032,12 @@ void getAllQueries(const char *client_message, const int *sock)
 				delay,
 				CNAME_domain,
 				regex_idx,
-				upstream_name);
-			if(upstream_port != 0)
-				ssend(*sock, "#%u", upstream_port);
+				upstream_name,
+				upstream_port,
+				query->ede != NULL ? query->ede : "");
 
 			if(config.debug & DEBUG_API)
-				ssend(*sock, " %i", queryID);
+				ssend(*sock, " \"%i\"", queryID);
 			ssend(*sock, "\n");
 		}
 		else

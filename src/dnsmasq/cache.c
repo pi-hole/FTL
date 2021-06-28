@@ -1869,7 +1869,7 @@ char *querystr(char *desc, unsigned short type)
 }
 
 /**** Pi-hole modified: removed static and added prototype to dnsmasq.h ****/
-char *edestr(int ede)
+const char *edestr(int ede)
 {
   switch (ede)
     {
@@ -1909,7 +1909,7 @@ void _log_query(unsigned int flags, char *name, union all_addr *addr, char *arg,
   char *verb = "is";
   char *extra = "";
 
-  FTL_hook(flags, name, addr, arg, daemon->log_id, file, line);
+  FTL_hook(flags, name, addr, arg, daemon->log_display_id, file, line);
   
   if (!option_bool(OPT_LOG))
     return;

@@ -571,6 +571,9 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// generated) is stored in the queries structure
 	query->privacylevel = config.privacylevel;
 
+	// Query extended DNS error
+	query->ede = NULL;
+
 	// Increase DNS queries counter
 	counters->queries++;
 
@@ -1468,9 +1471,6 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 			logg("**** got %s reply from %s#%d: %s is %s (ID %i, %s:%i)",
 			     cached ? "cache" : "upstream", ip, port, name, answer, id, file, line);
 		}
-
-		if(addr && flags & (F_RCODE | F_SECSTAT) && addr->log.ede != -1)
-			logg("     EDE: %s (%d)", edestr(addr->log.ede), addr->log.ede);
 	}
 
 	// Get response time
@@ -1487,6 +1487,13 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 		// Nothing to be done here
 		unlock_shm();
 		return;
+	}
+
+	if(addr && flags & (F_RCODE | F_SECSTAT) && addr->log.ede != -1)
+	{
+		query->ede = edestr(addr->log.ede);
+		if(config.debug & DEBUG_QUERIES)
+			logg("     EDE: %s (%d)", edestr(addr->log.ede), addr->log.ede);
 	}
 
 	// If this is an upstream response and the answering upstream is known
@@ -1799,6 +1806,10 @@ static void FTL_dnssec(const char *arg, const union all_addr *addr, const int id
 		if(addr && addr->log.ede != -1) // This function is only called if (flags & F_SECSTAT)
 			logg("     EDE: %s (%d)", edestr(addr->log.ede), addr->log.ede);
 	}
+
+	// Store EDE
+	if(addr && addr->log.ede != -1)
+		query->ede = edestr(addr->log.ede);
 
 	// Iterate through possible values
 	if(strcmp(arg, "SECURE") == 0)
