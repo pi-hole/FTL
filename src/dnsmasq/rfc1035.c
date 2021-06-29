@@ -993,9 +993,11 @@ unsigned int extract_request(struct dns_header *header, size_t qlen, char *name,
 
   *name = 0; /* return empty name if no query found. */
   
-  if (ntohs(header->qdcount) != 1 || OPCODE(header) != QUERY ||
-      ntohs(header->ancount) != 0 || ntohs(header->nscount) != 0)
+  if (ntohs(header->qdcount) != 1 || OPCODE(header) != QUERY)
     return 0; /* must be exactly one query. */
+  
+  if (!(header->hb3 & HB3_QR) && (ntohs(header->ancount) != 0 || ntohs(header->nscount) != 0))
+    return 0; /* non-standard query. */
   
   if (!extract_name(header, qlen, &p, name, 1, 4))
     return 0; /* bad packet */
