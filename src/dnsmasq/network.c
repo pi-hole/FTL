@@ -1604,7 +1604,7 @@ void check_servers(int no_loop_check)
       
       if (strlen(serv->domain) != 0 || (serv->flags & SERV_FOR_NODOTS))
 	{
-	  char *s1, *s2, *s3 = "";
+	  char *s1, *s2, *s3 = "", *s4 = "";
 
 #ifdef HAVE_DNSSEC
 	  if (option_bool(OPT_DNSSEC_VALID) && !(serv->flags & SERV_DO_DNSSEC))
@@ -1615,9 +1615,9 @@ void check_servers(int no_loop_check)
 	  else if (strlen(serv->domain) == 0)
 	    s1 = _("default"), s2 = "";
 	  else
-	    s1 = _("domain"), s2 = serv->domain;
+	    s1 = _("domain"), s2 = serv->domain, s4 = (serv->flags & SERV_WILDCARD) ? "*" : "";
 	  
-	  my_syslog(LOG_INFO, _("using nameserver %s#%d for %s %s %s"), daemon->namebuff, port, s1, s2, s3);
+	  my_syslog(LOG_INFO, _("using nameserver %s#%d for %s %s%s %s"), daemon->namebuff, port, s1, s4, s2, s3);
 	}
 #ifdef HAVE_LOOP
       else if (serv->flags & SERV_LOOP)

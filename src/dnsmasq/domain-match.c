@@ -32,11 +32,19 @@ void build_server_array(void)
 #ifdef HAVE_LOOP
     if (!(serv->flags & SERV_LOOP))
 #endif
-      count++;
+      {
+	count++;
+	if (serv->flags & SERV_WILDCARD)
+	  daemon->server_has_wildcard = 1;
+      }
   
   for (serv = daemon->local_domains; serv; serv = serv->next)
-    count++;
-
+    {
+      count++;
+      if (serv->flags & SERV_WILDCARD)
+	daemon->server_has_wildcard = 1;
+    }
+  
   daemon->serverarraysz = count;
 
   if (count > daemon->serverarrayhwm)
@@ -92,13 +100,13 @@ void build_server_array(void)
    reply of IPv4 or IPV6.
    return 0 if nothing found, 1 otherwise.
 */
-int lookup_domain(char *qdomain, int flags, int *lowout, int *highout)
+int lookup_domain(char *domain, int flags, int *lowout, int *highout)
 {
   int rc, crop_query, nodots;
   ssize_t qlen;
   int try, high, low = 0;
   int nlow = 0, nhigh = 0;
-  char *cp;
+  char *cp, *qdomain = domain;
 
   /* may be no configured servers. */
   if (daemon->serverarraysz == 0)
@@ -178,16 +186,36 @@ int lookup_domain(char *qdomain, int flags, int *lowout, int *highout)
       
       if (rc == 0)
 	{
-	  /* We've matched a setting which says to use servers without a domain.
-	     Continue the search with empty query */
-	  if (daemon->serverarray[try]->flags & SERV_USE_RESOLV)
-	    crop_query = qlen;
-	  else
+	  int found = 1;
+
+	  if (daemon->server_has_wildcard)
 	    {
-	      /* We have a match, but it may only be (say) an IPv6 address, and
-		 if the query wasn't for an AAAA record, it's no good, and we need
-		 to continue generalising */
-	      if (filter_servers(try, flags, &nlow, &nhigh))
+	      /* if we have example.com and *example.com we need to check against *example.com, 
+		 but the binary search may have found either. Use the fact that example.com is sorted before *example.com
+		 We favour example.com in the case that both match (ie www.example.com) */
+	      while (try != 0 && order(qdomain, qlen, daemon->serverarray[try-1]) == 0)
+		try--;
+	      
+	      if (!(qdomain == domain || *qdomain == 0 || *(qdomain-1) == '.'))
+		{
+		  while (try < daemon->serverarraysz-1 && order(qdomain, qlen, daemon->serverarray[try+1]) == 0)
+		    try++;
+		  
+		  if (!(daemon->serverarray[try]->flags & SERV_WILDCARD))
+		     found = 0;
+		}
+	    }
+	  
+	  if (found)
+	    {
+	      /* We've matched a setting which says to use servers without a domain.
+		 Continue the search with empty query */
+	      if (daemon->serverarray[try]->flags & SERV_USE_RESOLV)
+		crop_query = qlen;
+	      else if (filter_servers(try, flags, &nlow, &nhigh))
+		/* We have a match, but it may only be (say) an IPv6 address, and
+		   if the query wasn't for an AAAA record, it's no good, and we need
+		   to continue generalising */
 		break;
 	    }
 	}
@@ -197,11 +225,13 @@ int lookup_domain(char *qdomain, int flags, int *lowout, int *highout)
 	crop_query = 1;
 
       /* strip chars off the query based on the largest possible remaining match,
-	 then continue to the start of the next label. */
+	 then continue to the start of the next label unless we have a wildcard
+	 domain somewhere, in which case we have to go one at a time. */
       qlen -= crop_query;
       qdomain += crop_query;
-      while (qlen > 0 &&  (*(qdomain-1) != '.'))
-	qlen--, qdomain++;
+      if (!daemon->server_has_wildcard)
+	while (qlen > 0 &&  (*(qdomain-1) != '.'))
+	  qlen--, qdomain++;
     }
 
   /* domain has no dots, and we have at least one server configured to handle such,
@@ -449,13 +479,22 @@ static int order(char *qdomain, size_t qlen, struct server *serv)
 
 static int order_servers(struct server *s1, struct server *s2)
 {
+  int rc;
+
   /* need full comparison of dotless servers in 
      order_qsort() and filter_servers() */
 
   if (s1->flags & SERV_FOR_NODOTS)
      return (s2->flags & SERV_FOR_NODOTS) ? 0 : 1;
    
-   return order(s1->domain, s1->domain_len, s2);
+  if ((rc = order(s1->domain, s1->domain_len, s2)) != 0)
+    return rc;
+
+  /* For identical domains, sort wildcard ones first */
+  if (s1->flags & SERV_WILDCARD)
+    return (s2->flags & SERV_WILDCARD) ? 0 : 1;
+
+  return (s2->flags & SERV_WILDCARD) ? -1 : 0;
 }
   
 static int order_qsort(const void *a, const void *b)
@@ -540,8 +579,16 @@ int add_update_server(int flags,
   
   if (!domain || strlen(domain) == 0)
     alloc_domain = whine_malloc(1);
-  else if (!(alloc_domain = canonicalise((char *)domain, NULL)))
-    return 0;
+  else
+    {
+      if (*domain == '*')
+	{
+	  domain++;
+	  flags |= SERV_WILDCARD;
+	}
+      if (!(alloc_domain = canonicalise((char *)domain, NULL)))
+	return 0;
+    }
   
   /* See if there is a suitable candidate, and unmark
      only do this for forwarding servers, not 

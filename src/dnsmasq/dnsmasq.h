@@ -539,7 +539,7 @@ union mysockaddr {
 #define SERV_WARNED_RECURSIVE 64  /* avoid warning spam */
 #define SERV_FROM_DBUS       128  /* 1 if source is DBus */
 #define SERV_MARK            256  /* for mark-and-delete and log code */
-/* #define SERV_COUNTED         512  /* workspace for log code */ 
+#define SERV_WILDCARD        512  /* domain has leading '*' */ 
 #define SERV_USE_RESOLV     1024  /* forward this domain in the normal way */
 #define SERV_FROM_RESOLV    2048  /* 1 for servers from resolv, 0 for command line. */
 #define SERV_FROM_FILE      4096  /* read from --servers-file */
@@ -1105,6 +1105,7 @@ extern struct daemon {
   struct iname *if_names, *if_addrs, *if_except, *dhcp_except, *auth_peers, *tftp_interfaces;
   struct bogus_addr *bogus_addr, *ignore_addr;
   struct server *servers, *local_domains, **serverarray, *no_rebind;
+  int server_has_wildcard;
   int serverarraysz, serverarrayhwm;
   struct ipsets *ipsets;
   u32 allowlist_mask;
