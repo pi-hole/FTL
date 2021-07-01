@@ -1649,10 +1649,6 @@ int cache_make_stat(struct txt_record *t)
       t->txt = (unsigned char *)buff;
       t->len = p - buff;
 
-      /* clear our workspace, these bits are assumed zero elsewhere. */
-      for (serv = daemon->servers; serv; serv = serv->next)
-	serv->flags &= ~SERV_MARK;
-
       return 1;
     }
   
@@ -1712,10 +1708,6 @@ void dump_cache(time_t now)
 	port = prettyprint_addr(&serv->addr, daemon->addrbuff);
 	my_syslog(LOG_INFO, _("server %s#%d: queries sent %u, retried or failed %u"), daemon->addrbuff, port, queries, failed_queries);
       }
-
-  /* other code assumes these are left as zeros. */
-  for (serv = daemon->servers; serv; serv = serv->next)
-    serv->flags &= ~SERV_MARK;
 
   if (option_bool(OPT_DEBUG) || option_bool(OPT_LOG))
     {

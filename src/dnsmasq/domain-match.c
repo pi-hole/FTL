@@ -529,10 +529,14 @@ void mark_servers(int flag)
   for (serv = daemon->servers; serv; serv = serv->next)
     if (serv->flags & flag)
       serv->flags |= SERV_MARK;
+    else
+      serv->flags &= ~SERV_MARK;
 
   for (serv = daemon->local_domains; serv; serv = serv->next)
     if (serv->flags & flag)
       serv->flags |= SERV_MARK;
+    else
+      serv->flags &= ~SERV_MARK;
 }
 
 void cleanup_servers(void)

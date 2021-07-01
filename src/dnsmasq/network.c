@@ -1522,6 +1522,9 @@ void check_servers(int no_loop_check)
   if (!no_loop_check)
     loop_send_probes();
 #endif
+
+  /* clear all marks. */
+  mark_servers(0);
   
  /* interface may be new since startup */
   if (!option_bool(OPT_NOWILD))
