@@ -1609,18 +1609,18 @@ int cache_make_stat(struct txt_record *t)
     case TXT_STAT_SERVERS:
       /* sum counts from different records for same server */
       for (serv = daemon->servers; serv; serv = serv->next)
-	serv->flags &= ~SERV_COUNTED;
+	serv->flags &= ~SERV_MARK;
       
       for (serv = daemon->servers; serv; serv = serv->next)
-	if (!(serv->flags & SERV_COUNTED))
+	if (!(serv->flags & SERV_MARK))
 	  {
 	    char *new, *lenp;
 	    int port, newlen, bytes_avail, bytes_needed;
 	    unsigned int queries = 0, failed_queries = 0;
 	    for (serv1 = serv; serv1; serv1 = serv1->next)
-	      if (!(serv1->flags & SERV_COUNTED) && sockaddr_isequal(&serv->addr, &serv1->addr))
+	      if (!(serv1->flags & SERV_MARK) && sockaddr_isequal(&serv->addr, &serv1->addr))
 		{
-		  serv1->flags |= SERV_COUNTED;
+		  serv1->flags |= SERV_MARK;
 		  queries += serv1->queries;
 		  failed_queries += serv1->failed_queries;
 		}
@@ -1648,6 +1648,11 @@ int cache_make_stat(struct txt_record *t)
 	  }
       t->txt = (unsigned char *)buff;
       t->len = p - buff;
+
+      /* clear our workspace, these bits are assumed zero elsewhere. */
+      for (serv = daemon->servers; serv; serv = serv->next)
+	serv->flags &= ~SERV_MARK;
+
       return 1;
     }
   
@@ -1690,24 +1695,28 @@ void dump_cache(time_t now)
 
   /* sum counts from different records for same server */
   for (serv = daemon->servers; serv; serv = serv->next)
-    serv->flags &= ~SERV_COUNTED;
+    serv->flags &= ~SERV_MARK;
   
   for (serv = daemon->servers; serv; serv = serv->next)
-    if (!(serv->flags & SERV_COUNTED))
+    if (!(serv->flags & SERV_MARK))
       {
 	int port;
 	unsigned int queries = 0, failed_queries = 0;
 	for (serv1 = serv; serv1; serv1 = serv1->next)
-	  if (!(serv1->flags & SERV_COUNTED) && sockaddr_isequal(&serv->addr, &serv1->addr))
+	  if (!(serv1->flags & SERV_MARK) && sockaddr_isequal(&serv->addr, &serv1->addr))
 	    {
-	      serv1->flags |= SERV_COUNTED;
+	      serv1->flags |= SERV_MARK;
 	      queries += serv1->queries;
 	      failed_queries += serv1->failed_queries;
 	    }
 	port = prettyprint_addr(&serv->addr, daemon->addrbuff);
 	my_syslog(LOG_INFO, _("server %s#%d: queries sent %u, retried or failed %u"), daemon->addrbuff, port, queries, failed_queries);
       }
-  
+
+  /* other code assumes these are left as zeros. */
+  for (serv = daemon->servers; serv; serv = serv->next)
+    serv->flags &= ~SERV_MARK;
+
   if (option_bool(OPT_DEBUG) || option_bool(OPT_LOG))
     {
       struct crec *cache ;

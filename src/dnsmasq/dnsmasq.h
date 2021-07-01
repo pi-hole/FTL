@@ -538,8 +538,8 @@ union mysockaddr {
 #define SERV_FOR_NODOTS       32  /* server for names with no domain part only */
 #define SERV_WARNED_RECURSIVE 64  /* avoid warning spam */
 #define SERV_FROM_DBUS       128  /* 1 if source is DBus */
-#define SERV_MARK            256  /* for mark-and-delete */
-#define SERV_COUNTED         512  /* workspace for log code */
+#define SERV_MARK            256  /* for mark-and-delete and log code */
+/* #define SERV_COUNTED         512  /* workspace for log code */ 
 #define SERV_USE_RESOLV     1024  /* forward this domain in the normal way */
 #define SERV_FROM_RESOLV    2048  /* 1 for servers from resolv, 0 for command line. */
 #define SERV_FROM_FILE      4096  /* read from --servers-file */
