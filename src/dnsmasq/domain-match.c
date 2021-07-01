@@ -65,7 +65,7 @@ void build_server_array(void)
 
   count = 0;
   
-  for (serv = daemon->servers; serv; serv = serv->next, count++)
+  for (serv = daemon->servers; serv; serv = serv->next)
 #ifdef HAVE_LOOP
     if (!(serv->flags & SERV_LOOP))
 #endif
@@ -73,6 +73,7 @@ void build_server_array(void)
 	daemon->serverarray[count] = serv;
 	serv->serial = count;
 	serv->last_server = -1;
+	count++;
       }
   
   for (serv = daemon->local_domains; serv; serv = serv->next, count++)
