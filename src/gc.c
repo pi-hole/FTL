@@ -99,7 +99,7 @@ void *GC_thread(void *val)
 
 				// Adjust client counter (total and overTime)
 				clientsData* client = getClient(query->clientID, true);
-				const int timeidx = query->timeidx;
+				const int timeidx = getOverTimeID(query->timestamp);
 				overTime[timeidx].total--;
 				if(client != NULL)
 					change_clientcount(client, -1, 0, timeidx, -1);

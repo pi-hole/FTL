@@ -38,6 +38,8 @@
 #include "../regex_r.h"
 // get_aliasclient_list()
 #include "../database/aliasclients.h"
+// get_edestr()
+#include "api_helper.h"
 
 #define min(a,b) ({ __typeof__ (a) _a = (a); __typeof__ (b) _b = (b); _a < _b ? _a : _b; })
 
@@ -1034,7 +1036,7 @@ void getAllQueries(const char *client_message, const int *sock)
 				regex_idx,
 				upstream_name,
 				upstream_port,
-				query->ede != NULL ? query->ede : "");
+				get_edestr(query->ede));
 
 			if(config.debug & DEBUG_API)
 				ssend(*sock, " \"%i\"", queryID);

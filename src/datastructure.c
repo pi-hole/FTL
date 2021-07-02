@@ -553,20 +553,21 @@ void _query_set_status(queriesData *query, const enum query_status new_status, c
 		counters->status[query->status]--;
 		counters->status[new_status]++;
 
+		const int timeidx = getOverTimeID(query->timestamp);
 		if(is_blocked(query->status))
-			overTime[query->timeidx].blocked--;
+			overTime[timeidx].blocked--;
 		if(is_blocked(new_status))
-			overTime[query->timeidx].blocked++;
+			overTime[timeidx].blocked++;
 
 		if(query->status == QUERY_CACHE)
-			overTime[query->timeidx].cached--;
+			overTime[timeidx].cached--;
 		if(new_status == QUERY_CACHE)
-			overTime[query->timeidx].cached++;
+			overTime[timeidx].cached++;
 
 		if(query->status == QUERY_FORWARDED)
-			overTime[query->timeidx].forwarded--;
+			overTime[timeidx].forwarded--;
 		if(new_status == QUERY_FORWARDED)
-			overTime[query->timeidx].forwarded++;
+			overTime[timeidx].forwarded++;
 	}
 
 	// Update status

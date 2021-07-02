@@ -483,7 +483,6 @@ void DB_read_queries(void)
 		query->domainID = domainID;
 		query->clientID = clientID;
 		query->upstreamID = upstreamID;
-		query->timeidx = timeidx;
 		query->id = 0;
 		query->response = 0;
 		query->dnssec = DNSSEC_UNSPECIFIED;

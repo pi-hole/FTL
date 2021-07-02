@@ -44,6 +44,8 @@
 #include <netinet/in.h>
 // offsetof()
 #include <stddef.h>
+// get_edestr()
+#include "api/api_helper.h"
 
 // Private prototypes
 static void print_flags(const unsigned int flags);
@@ -549,7 +551,6 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	query_set_status(query, QUERY_UNKNOWN);
 	query->domainID = domainID;
 	query->clientID = clientID;
-	query->timeidx = timeidx;
 	// Initialize database field, will be set when the query is stored in the long-term DB
 	query->flags.database = false;
 	query->flags.complete = false;
@@ -572,7 +573,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	query->privacylevel = config.privacylevel;
 
 	// Query extended DNS error
-	query->ede = NULL;
+	query->ede = -1;
 
 	// Increase DNS queries counter
 	counters->queries++;
@@ -1239,7 +1240,8 @@ static void FTL_forwarded(const unsigned int flags, const char *name, const unio
 		if(query->reply == REPLY_UNKNOWN)
 		{
 			// Update overTime
-			upstream->overTime[query->timeidx]++;
+			const int timeidx = getOverTimeID(query->timestamp);
+			upstream->overTime[timeidx]++;
 			// Update total count
 			upstream->count++;
 		}
@@ -1491,7 +1493,7 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 
 	if(addr && flags & (F_RCODE | F_SECSTAT) && addr->log.ede != -1)
 	{
-		query->ede = edestr(addr->log.ede);
+		query->ede = addr->log.ede;
 		if(config.debug & DEBUG_QUERIES)
 			logg("     EDE: %s (%d)", edestr(addr->log.ede), addr->log.ede);
 	}
@@ -1809,7 +1811,7 @@ static void FTL_dnssec(const char *arg, const union all_addr *addr, const int id
 
 	// Store EDE
 	if(addr && addr->log.ede != -1)
-		query->ede = edestr(addr->log.ede);
+		query->ede = addr->log.ede;
 
 	// Iterate through possible values
 	if(strcmp(arg, "SECURE") == 0)
@@ -2626,4 +2628,9 @@ void FTL_multiple_replies(const int id, int *firstID)
 
 	// Unlock shared memory
 	unlock_shm();
+}
+
+const char *get_edestr(const int ede)
+{
+	return edestr(ede);
 }

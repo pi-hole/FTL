@@ -33,10 +33,9 @@ typedef struct {
 	int upstreamID;
 	int id; // the ID is a (signed) int in dnsmasq, so no need for a long int here
 	int CNAME_domainID; // only valid if query has a CNAME blocking status
-	unsigned int timeidx;
+	int ede;
 	unsigned long response; // saved in units of 1/10 milliseconds (1 = 0.1ms, 2 = 0.2ms, 2500 = 250.0ms, etc.)
 	time_t timestamp;
-	const char *ede;
 	// Adjacent bit field members in the struct flags may be packed to share
 	// and straddle the individual bytes. It is useful to pack the memory as
 	// tightly as possible as there may be dozens of thousands of these
@@ -52,7 +51,7 @@ typedef struct {
 } queriesData;
 
 // ARM needs extra padding at the end
-ASSERT_SIZEOF(queriesData, 64, 48, 48);
+ASSERT_SIZEOF(queriesData, 56, 44, 44);
 
 typedef struct {
 	unsigned char magic;
