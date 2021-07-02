@@ -28,7 +28,7 @@
 #include "signals.h"
 
 /// The version of shared memory used
-#define SHARED_MEMORY_VERSION 13
+#define SHARED_MEMORY_VERSION 14
 
 /// The name of the shared memory. Use this when connecting to the shared memory.
 #define SHMEM_PATH "/dev/shm"

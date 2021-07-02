@@ -37,7 +37,6 @@ typedef struct {
 	unsigned long response; // saved in units of 1/10 milliseconds (1 = 0.1ms, 2 = 0.2ms, 2500 = 250.0ms, etc.)
 	time_t timestamp;
 	const char *ede;
-	int64_t db;
 	// Adjacent bit field members in the struct flags may be packed to share
 	// and straddle the individual bytes. It is useful to pack the memory as
 	// tightly as possible as there may be dozens of thousands of these
@@ -48,11 +47,12 @@ typedef struct {
 		bool whitelisted :1;
 		bool complete :1;
 		bool blocked :1;
+		bool database :1;
 	} flags;
 } queriesData;
 
 // ARM needs extra padding at the end
-ASSERT_SIZEOF(queriesData, 72, 56, 64);
+ASSERT_SIZEOF(queriesData, 64, 48, 48);
 
 typedef struct {
 	unsigned char magic;

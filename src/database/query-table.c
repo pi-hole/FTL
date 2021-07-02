@@ -126,7 +126,7 @@ bool DB_save_queries(sqlite3 *db)
 	for(queryID = MAX(0, lastdbindex); queryID < counters->queries; queryID++)
 	{
 		queriesData* query = getQuery(queryID, true);
-		if(query->db != 0)
+		if(query->flags.database)
 		{
 			// Skip, already saved in database
 			continue;
@@ -228,9 +228,12 @@ bool DB_save_queries(sqlite3 *db)
 			break;
 		}
 
+		// Increment counters
 		saved++;
-		// Mark this query as saved in the database by setting the corresponding ID
-		query->db = ++lastID;
+		lastID++;
+
+		// Mark this query as saved in the database
+		query->flags.database = true;
 
 		// Total counter information (delta computation)
 		total++;
@@ -375,7 +378,6 @@ void DB_read_queries(void)
 	// Loop through returned database rows
 	while((rc = sqlite3_step(stmt)) == SQLITE_ROW)
 	{
-		const sqlite3_int64 dbid = sqlite3_column_int64(stmt, 0);
 		const time_t queryTimeStamp = sqlite3_column_int(stmt, 1);
 		// 1483228800 = 01/01/2017 @ 12:00am (UTC)
 		if(queryTimeStamp < 1483228800)
@@ -482,7 +484,6 @@ void DB_read_queries(void)
 		query->clientID = clientID;
 		query->upstreamID = upstreamID;
 		query->timeidx = timeidx;
-		query->db = dbid;
 		query->id = 0;
 		query->response = 0;
 		query->dnssec = DNSSEC_UNSPECIFIED;
@@ -492,6 +493,7 @@ void DB_read_queries(void)
 		query->flags.complete = true; // Mark as all information is available
 		query->flags.blocked = false;
 		query->flags.whitelisted = false;
+		query->flags.database = true;
 
 		// Set lastQuery timer for network table
 		clientsData* client = getClient(clientID, true);

@@ -550,8 +550,8 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	query->domainID = domainID;
 	query->clientID = clientID;
 	query->timeidx = timeidx;
-	// Initialize database rowID with zero, will be set when the query is stored in the long-term DB
-	query->db = 0;
+	// Initialize database field, will be set when the query is stored in the long-term DB
+	query->flags.database = false;
 	query->flags.complete = false;
 	query->response = converttimeval(request);
 	// Initialize reply type
