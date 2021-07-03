@@ -1036,7 +1036,7 @@ void getAllQueries(const char *client_message, const int *sock)
 				regex_idx,
 				upstream_name,
 				upstream_port,
-				get_edestr(query->ede));
+				query->ede == -1 ? "" : get_edestr(query->ede));
 
 			if(config.debug & DEBUG_API)
 				ssend(*sock, " \"%i\"", queryID);
