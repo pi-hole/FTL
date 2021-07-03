@@ -2640,11 +2640,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	  {
 	    char *last;
 
-	    arg++;
-	    /* elide leading dots - they are implied in the search algorithm */
-	    while (*arg == '.') arg++;
-
-	    domain = lastdomain = arg;
+	    domain = lastdomain = ++arg;
 	    
 	    while ((last = split_chr(arg, '/')))
 	      {

@@ -582,18 +582,23 @@ int add_update_server(int flags,
   struct server *serv = NULL;
   char *alloc_domain;
   
-  if (!domain || strlen(domain) == 0)
-    alloc_domain = whine_malloc(1);
-  else
+  if (!domain)
+    domain = "";
+
+  /* .domain == domain, for historical reasons. */
+  if (*domain == '.')
+    while (*domain == '.') domain++;
+  else if (*domain == '*')
     {
-      if (*domain == '*')
-	{
-	  domain++;
-	  flags |= SERV_WILDCARD;
-	}
-      if (!(alloc_domain = canonicalise((char *)domain, NULL)))
-	return 0;
+      domain++;
+      if (domain != 0)
+	flags |= SERV_WILDCARD;
     }
+  
+  if (*domain == 0)
+    alloc_domain = whine_malloc(1);
+  else if (!(alloc_domain = canonicalise((char *)domain, NULL)))
+    return 0;
   
   /* See if there is a suitable candidate, and unmark
      only do this for forwarding servers, not 
