@@ -495,6 +495,8 @@
 }
 
 @test "No WARNING messages in pihole-FTL.log (besides known capability issues)" {
+  run bash -c 'grep "WARNING" /var/log/pihole-FTL.log'
+  printf "%s\n" "${lines[@]}"
   run bash -c 'grep "WARNING" /var/log/pihole-FTL.log | grep -c -v -E "CAP_NET_ADMIN|CAP_NET_RAW|CAP_SYS_NICE"'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0" ]]
@@ -507,12 +509,16 @@
 }
 
 @test "No ERROR messages in pihole-FTL.log" {
+  run bash -c 'grep "ERROR" /var/log/pihole-FTL.log'
+  printf "%s\n" "${lines[@]}"
   run bash -c 'grep -c "ERROR" /var/log/pihole-FTL.log'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0" ]]
 }
 
 @test "No FATAL messages in pihole-FTL.log (besides error due to starting FTL more than once)" {
+  run bash -c 'grep "FATAL" /var/log/pihole-FTL.log'
+  printf "%s\n" "${lines[@]}"
   run bash -c 'grep "FATAL:" /var/log/pihole-FTL.log | grep -c -v "FATAL: create_shm(): Failed to create shared memory object \"FTL-lock\": File exists"'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0" ]]
@@ -971,7 +977,7 @@
   # Extract relevant log lines
   run bash -c "sed -n \"${before},${after}p\" /var/log/pihole-FTL.log"
   printf "%s\n" "${lines[@]}"
-  [[ "${lines[@]}" == *"**** new UDP query[A] query \"localhost\" from lo:192.168.47.97 "* ]]
+  [[ "${lines[@]}" == *"**** new UDP IPv4 query[A] query \"localhost\" from lo:192.168.47.97#53 "* ]]
 }
 
 @test "EDNS(0) ECS can overwrite client address (IPv6)" {
@@ -990,7 +996,7 @@
   # Extract relevant log lines
   run bash -c "sed -n \"${before},${after}p\" /var/log/pihole-FTL.log"
   printf "%s\n" "${lines[@]}"
-  [[ "${lines[@]}" == *"**** new UDP query[A] query \"localhost\" from lo:fe80::b167:af1e:968b:dead "* ]]
+  [[ "${lines[@]}" == *"**** new UDP IPv4 query[A] query \"localhost\" from lo:fe80::b167:af1e:968b:dead#53 "* ]]
 }
 
 @test "alias-client is imported and used for configured client" {

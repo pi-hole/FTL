@@ -33,10 +33,9 @@ typedef struct {
 	int upstreamID;
 	int id; // the ID is a (signed) int in dnsmasq, so no need for a long int here
 	int CNAME_domainID; // only valid if query has a CNAME blocking status
-	unsigned int timeidx;
+	int ede;
 	unsigned long response; // saved in units of 1/10 milliseconds (1 = 0.1ms, 2 = 0.2ms, 2500 = 250.0ms, etc.)
 	time_t timestamp;
-	int64_t db;
 	// Adjacent bit field members in the struct flags may be packed to share
 	// and straddle the individual bytes. It is useful to pack the memory as
 	// tightly as possible as there may be dozens of thousands of these
@@ -47,23 +46,25 @@ typedef struct {
 		bool whitelisted :1;
 		bool complete :1;
 		bool blocked :1;
+		bool database :1;
 	} flags;
 } queriesData;
 
 // ARM needs extra padding at the end
-ASSERT_SIZEOF(queriesData, 64, 52, 56);
+ASSERT_SIZEOF(queriesData, 56, 44, 44);
 
 typedef struct {
 	unsigned char magic;
 	bool new;
+	in_addr_t port;
 	int count;
 	int failed;
-	in_addr_t port;
+	int overTime[OVERTIME_SLOTS];
 	size_t ippos;
 	size_t namepos;
 	time_t lastQuery;
 } upstreamsData;
-ASSERT_SIZEOF(upstreamsData, 40, 28, 28);
+ASSERT_SIZEOF(upstreamsData, 640, 628, 628);
 
 typedef struct {
 	unsigned char magic;
@@ -120,7 +121,8 @@ bool isValidIPv4(const char *addr);
 bool isValidIPv6(const char *addr);
 
 bool is_blocked(const enum query_status status) __attribute__ ((const));
-void query_set_status(queriesData *query, const enum query_status new_status);
+#define query_set_status(query, new_status) _query_set_status(query, new_status, __FILE__, __LINE__)
+void _query_set_status(queriesData *query, const enum query_status new_status, const char *file, const int line);
 
 void FTL_reload_all_domainlists(void);
 void FTL_reset_per_client_domain_data(void);

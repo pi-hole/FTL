@@ -13,6 +13,7 @@ version*
 .idea/
 *.sw*
 .vscode/
+/.vscode/
 /build/
 
 # MAC->Vendor database files

@@ -18,10 +18,11 @@ set(sources
         dnsmasq.h
         dnssec.c
         domain.c
+        domain-match.c
         dump.c
         edns0.c
         forward.c
-        hash_questions.c
+        hash-questions.c
         helper.c
         inotify.c
         ip6addr.h
@@ -35,6 +36,7 @@ set(sources
         network.c
         option.c
         outpacket.c
+        pattern.c
         poll.c
         radv-protocol.h
         radv.c

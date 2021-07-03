@@ -143,16 +143,6 @@ char *resolveHostname(const char *addr)
 	struct hostent *he = NULL;
 	char *hostname = NULL;
 
-	// Check if we want to resolve host names
-	if(!resolve_this_name(addr))
-	{
-		if(config.debug & DEBUG_RESOLVER)
-			logg("Configured to not resolve host name for %s", addr);
-
-		// Return an empty host name
-		return strdup("");
-	}
-
 	if(config.debug & DEBUG_RESOLVER)
 		logg("Trying to resolve %s", addr);
 
@@ -164,6 +154,26 @@ char *resolveHostname(const char *addr)
 		if(config.debug & DEBUG_RESOLVER)
 			logg("---> \"%s\" (privacy settings)", hostname);
 		return hostname;
+	}
+
+	// Check if this is the internal client
+	// if so, return "hidden" as hostname
+	if(strcmp(addr, "::") == 0)
+	{
+		hostname = strdup("pi.hole");
+		if(config.debug & DEBUG_RESOLVER)
+			logg("---> \"%s\" (special)", hostname);
+		return hostname;
+	}
+
+	// Check if we want to resolve host names
+	if(!resolve_this_name(addr))
+	{
+		if(config.debug & DEBUG_RESOLVER)
+			logg("Configured to not resolve host name for %s", addr);
+
+		// Return an empty host name
+		return strdup("");
 	}
 
 	// Test if we want to resolve an IPv6 address
