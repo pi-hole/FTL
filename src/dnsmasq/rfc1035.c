@@ -365,7 +365,7 @@ int private_net(struct in_addr addr, int ban_localhost)
 
   return
     (((ip_addr & 0xFF000000) == 0x7F000000) && ban_localhost)  /* 127.0.0.0/8    (loopback) */ ||
-    ((ip_addr & 0xFF000000) == 0x00000000)  /* RFC 5735 section 3. "here" network */ ||
+    (((ip_addr & 0xFF000000) == 0x00000000) && ban_localhost) /* RFC 5735 section 3. "here" network */ ||
     ((ip_addr & 0xFF000000) == 0x0A000000)  /* 10.0.0.0/8     (private)  */ ||
     ((ip_addr & 0xFFF00000) == 0xAC100000)  /* 172.16.0.0/12  (private)  */ ||
     ((ip_addr & 0xFFFF0000) == 0xC0A80000)  /* 192.168.0.0/16 (private)  */ ||
@@ -376,12 +376,21 @@ int private_net(struct in_addr addr, int ban_localhost)
     ((ip_addr & 0xFFFFFFFF) == 0xFFFFFFFF)  /* 255.255.255.255/32 (broadcast)*/ ;
 }
 
-static int private_net6(struct in6_addr *a)
+static int private_net6(struct in6_addr *a, int ban_localhost)
 {
-  return 
-    IN6_IS_ADDR_UNSPECIFIED(a) || /* RFC 6303 4.3 */
-    IN6_IS_ADDR_LOOPBACK(a) ||    /* RFC 6303 4.3 */
+  /* Block IPv4-mapped IPv6 addresses in private IPv4 address space */
+  if (IN6_IS_ADDR_V4MAPPED(a))
+    {
+      struct in_addr v4;
+      v4.s_addr = ((const uint32_t *) (a))[3];
+      return private_net(v4, ban_localhost);
+    }
+
+  return
+    (IN6_IS_ADDR_UNSPECIFIED(a) && ban_localhost) || /* RFC 6303 4.3 */
+    (IN6_IS_ADDR_LOOPBACK(a) && ban_localhost) ||    /* RFC 6303 4.3 */
     IN6_IS_ADDR_LINKLOCAL(a) ||   /* RFC 6303 4.5 */
+    IN6_IS_ADDR_SITELOCAL(a) ||
     ((unsigned char *)a)[0] == 0xfd ||   /* RFC 6303 4.4 */
     ((u32 *)a)[0] == htonl(0x20010db8); /* RFC 6303 4.6 */
 }
@@ -806,28 +815,9 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 				  private_net(addr.addr4, !option_bool(OPT_LOCAL_REBIND)))
 				return 1;
 
-			      /* Block IPv4-mapped IPv6 addresses in private IPv4 address space */
-			      if (flags & F_IPV6)
-				{
-				  if (IN6_IS_ADDR_V4MAPPED(&addr.addr6))
-				    {
-				      struct in_addr v4;
-				      v4.s_addr = ((const uint32_t *) (&addr.addr6))[3];
-				      if (private_net(v4, !option_bool(OPT_LOCAL_REBIND)))
-					return 1;
-				    }
-
-				  /* Check for link-local (LL) and site-local (ULA) IPv6 addresses */
-				  if (IN6_IS_ADDR_LINKLOCAL(&addr.addr6) ||
-				      IN6_IS_ADDR_SITELOCAL(&addr.addr6))
-				    return 1;
-
-				  /* Check for the IPv6 loopback address (::1) when
-				     option rebind-localhost-ok is NOT set */
-				  if (!option_bool(OPT_LOCAL_REBIND) &&
-				      IN6_IS_ADDR_LOOPBACK(&addr.addr6))
-				    return 1;
-				}
+			      if ((flags & F_IPV6) &&
+				  private_net6(&addr.addr6, !option_bool(OPT_LOCAL_REBIND)))
+				return 1;
 			    }
 
 #ifdef HAVE_IPSET
@@ -1631,7 +1621,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		    }
 		}
 	      else if (option_bool(OPT_BOGUSPRIV) &&
-		       ((is_arpa == F_IPV6 && private_net6(&addr.addr6)) || (is_arpa == F_IPV4 && private_net(addr.addr4, 1))) &&
+		       ((is_arpa == F_IPV6 && private_net6(&addr.addr6, 1)) || (is_arpa == F_IPV4 && private_net(addr.addr4, 1))) &&
 		       !lookup_domain(name, F_DOMAINSRV, NULL, NULL))
 		{
 		  /* if no configured server, not in cache, enabled and private IPV4 address, return NXDOMAIN */
