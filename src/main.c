@@ -24,6 +24,8 @@
 #include "capabilities.h"
 #include "timers.h"
 #include "procps.h"
+// init_overtime()
+#include "overTime.h"
 
 char * username;
 bool needGC = false;
@@ -76,6 +78,9 @@ int main (int argc, char* argv[])
 	// useful for interfaces that aren't ready but also for fake-hwclocks
 	// which aren't ready at this point
 	delay_startup();
+
+	// Initialize overTime datastructure
+	initOverTime();
 
 	// Initialize query database (pihole-FTL.db)
 	db_init();

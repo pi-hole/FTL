@@ -553,8 +553,8 @@ bool init_shmem(bool create_new)
 		return false;
 	if(create_new)
 	{
+		// set global pointer in overTime.c
 		overTime = (overTimeData*)shm_overTime.ptr;
-		initOverTime();
 	}
 
 	/****************************** shared DNS cache struct ******************************/
