@@ -757,12 +757,6 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
     }
 #endif
 
-  if (pheader && ede != -1)
-    {
-      u16 swap = htons((u16)ede);
-      n = add_pseudoheader(header, n, limit, daemon->edns_pktsz, EDNS0_OPTION_EDE, (unsigned char *)&swap, 2, do_bit, 1);
-    }
-    
   /* do this after extract_addresses. Ensure NODATA reply and remove
      nameserver info. */
   if (munged)
@@ -776,7 +770,15 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
   /* the bogus-nxdomain stuff, doctor and NXDOMAIN->NODATA munging can all elide
      sections of the packet. Find the new length here and put back pseudoheader
      if it was removed. */
-  return resize_packet(header, n, pheader, plen);
+  n = resize_packet(header, n, pheader, plen);
+
+  if (pheader && ede != -1)
+    {
+      u16 swap = htons((u16)ede);
+      n = add_pseudoheader(header, n, limit, daemon->edns_pktsz, EDNS0_OPTION_EDE, (unsigned char *)&swap, 2, do_bit, 1);
+    }
+  
+  return n;
 }
 
 #ifdef HAVE_DNSSEC
