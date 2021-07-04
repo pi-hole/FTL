@@ -1657,7 +1657,7 @@ void receive_query(struct listener *listen, time_t now)
   else
     {
       int ad_reqd = do_bit;
-       /* RFC 6840 5.7 */
+      /* RFC 6840 5.7 */
       if (header->hb4 & HB4_AD)
 	ad_reqd = 1;
 
@@ -1686,12 +1686,15 @@ void receive_query(struct listener *listen, time_t now)
 	  return;
 	}
       /**********************************************/
-
+      
       m = answer_request(header, ((char *) header) + udp_size, (size_t)n, 
 			 dst_addr_4, netmask, now, ad_reqd, do_bit, have_pseudoheader);
       
       if (m >= 1)
 	{
+#ifdef HAVE_DUMPFILE
+	  dump_packet(DUMP_REPLY, daemon->packet, m, NULL, &source_addr);
+#endif
 #if defined(HAVE_CONNTRACK) && defined(HAVE_UBUS)
 	  if (option_bool(OPT_CMARK_ALST_EN) && have_mark && ((u32)mark & daemon->allowlist_mask))
 	    report_addresses(header, m, mark);
