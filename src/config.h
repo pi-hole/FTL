@@ -47,6 +47,9 @@ typedef struct {
 	bool names_from_netdb;
 	bool edns0_ecs;
 	bool show_dnssec;
+	struct {
+		bool mozilla_canary :1;
+	} special_domains;
 	enum privacy_level privacylevel;
 	enum blocking_mode blockingmode;
 	enum refresh_hostnames refresh_hostnames;

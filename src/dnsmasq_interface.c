@@ -832,6 +832,30 @@ static bool check_domain_blocked(const char *domain, const int clientID,
 	return false;
 }
 
+// Special domain checking
+static bool special_domain(const queriesData *query, const char *domain)
+{
+	// Mozilla canary domain
+	// Network administrators may configure their networks as follows to signal
+	// that their local DNS resolver implemented special features that make the
+	// network unsuitable for DoH:
+	// DNS queries for the A and AAAA records for the domain
+	// “use-application-dns.net” must respond with either: a response code other
+	// than NOERROR, such as NXDOMAIN (non-existent domain) or SERVFAIL; or
+	// respond with NOERROR, but return no A or AAAA records.
+	// https://support.mozilla.org/en-US/kb/configuring-networks-disable-dns-over-https
+	if(config.special_domains.mozilla_canary &&
+	   strcasecmp(domain, "use-application-dns.net") == 0 &&
+	   (query->type == TYPE_A || query->type == TYPE_AAAA))
+	{
+		blockingreason = "Mozilla canary domain";
+		force_next_DNS_reply = REPLY_NXDOMAIN;
+		return true;
+	}
+
+	return false;
+}
+
 static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const char* file, const int line)
 {
 	// Only check blocking conditions when global blocking is enabled
@@ -949,6 +973,21 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			return false;
 			break;
 
+		case SPECIAL_DOMAIN:
+			// Known as a special domain, we
+			// return this result early, skipping
+			// all the lengthy tests below
+			blockingreason = "special domain";
+			if(config.debug & DEBUG_QUERIES)
+			{
+				logg("%s is known as special domain", domainstr);;
+			}
+
+			force_next_DNS_reply = dns_cache->force_reply;
+			query_blocked(query, domain, client, QUERY_CACHE);
+			return true;
+			break;
+
 		case NOT_BLOCKED:
 			// Known as not blocked, we
 			// return this result early, skipping
@@ -960,6 +999,23 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 
 			return false;
 			break;
+	}
+
+	// Not in FTL's cache. Check if this is a special domain
+	if(special_domain(query, domainstr))
+	{
+		// Set DNS cache properties
+		dns_cache->blocking_status = SPECIAL_DOMAIN;
+		dns_cache->force_reply = force_next_DNS_reply;
+
+		// Adjust counters
+		query_blocked(query, domain, client, QUERY_CACHE);
+
+		// Debug output
+		if(config.debug & DEBUG_QUERIES)
+			logg("Special domain: %s is %s", domainstr, blockingreason);
+
+		return true;
 	}
 
 	// Skip all checks and continue if we hit already at least one whitelist in the chain
@@ -1743,10 +1799,11 @@ static enum query_status detect_blocked_IP(const unsigned short flags, const uni
 static void query_blocked(queriesData* query, domainsData* domain, clientsData* client, const enum query_status new_status)
 {
 	// Get response time
-	int blocking_flags = 0;
 	struct timeval response;
 	gettimeofday(&response, 0);
-	query_set_reply(blocking_flags, NULL, query, response);
+
+	// Set query reply
+	query_set_reply(0, NULL, query, response);
 
 	// Adjust counters if we recorded a non-blocking status
 	if(query->status == QUERY_FORWARDED)
@@ -1762,15 +1819,19 @@ static void query_blocked(queriesData* query, domainsData* domain, clientsData* 
 		return;
 	}
 
-	// Count as blocked query
-	if(domain != NULL)
-		domain->blockedcount++;
-	if(client != NULL)
-		change_clientcount(client, 0, 1, -1, 0);
+	if(is_blocked(new_status))
+	{
+		// Count as blocked query
+		if(domain != NULL)
+			domain->blockedcount++;
+		if(client != NULL)
+			change_clientcount(client, 0, 1, -1, 0);
+
+		query->flags.blocked = true;
+	}
 
 	// Update status
 	query_set_status(query, new_status);
-	query->flags.blocked = true;
 }
 
 static void FTL_dnssec(const char *arg, const union all_addr *addr, const int id, const char* file, const int line)
@@ -2042,7 +2103,7 @@ static void _query_set_reply(const unsigned int flags, const union all_addr *add
 	// Iterate through possible values
 	if(flags & F_NEG || force_next_DNS_reply == REPLY_NXDOMAIN)
 	{
-		if(flags & F_NXDOMAIN)
+		if(flags & F_NXDOMAIN || force_next_DNS_reply == REPLY_NXDOMAIN)
 			// NXDOMAIN
 			query->reply = REPLY_NXDOMAIN;
 		else

@@ -120,6 +120,7 @@ enum domain_client_status {
 	BLACKLIST_BLOCKED,
 	REGEX_BLOCKED,
 	WHITELISTED,
+	SPECIAL_DOMAIN,
 	NOT_BLOCKED
 } __attribute__ ((packed));
 
