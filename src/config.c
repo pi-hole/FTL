@@ -537,6 +537,17 @@ void read_FTLconf(void)
 	else
 		logg("   SHOW_DNSSEC: Disabled");
 
+	// MOZILLA_CANARY
+	// Should FTL handle use-application-dns.net specifically and always return NXDOMAIN?
+	// defaults to: true
+	buffer = parse_FTLconf(fp, "MOZILLA_CANARY");
+	config.special_domains.mozilla_canary = read_bool(buffer, true);
+
+	if(config.special_domains.mozilla_canary)
+		logg("   MOZILLA_CANARY: Enabled");
+	else
+		logg("   MOZILLA_CANARY: Disabled");
+
 	// Read DEBUG_... setting from pihole-FTL.conf
 	read_debuging_settings(fp);
 
