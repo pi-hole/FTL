@@ -1090,7 +1090,6 @@ static int check_bad_address(struct dns_header *header, size_t qlen, struct bogu
   int i, qtype, qclass, rdlen;
   unsigned long ttl;
   struct bogus_addr *baddrp;
-  struct in_addr addr;
   
   /* skip over questions */
   if (!(p = skip_questions(header, qlen)))
@@ -1112,17 +1111,33 @@ static int check_bad_address(struct dns_header *header, size_t qlen, struct bogu
       if (ttlp)
 	*ttlp = ttl;
       
-      if (qclass == C_IN && qtype == T_A)
+      if (qclass == C_IN)
 	{
-	  if (!CHECK_LEN(header, p, qlen, INADDRSZ))
-	    return 0;
-	  
-	  for (baddrp = baddr; baddrp; baddrp = baddrp->next)
+	  if (qtype == T_A)
 	    {
-	      memcpy(&addr, p, INADDRSZ);
+	      struct in_addr addr;
 	      
-	      if ((addr.s_addr & baddrp->mask.s_addr) == baddrp->addr.s_addr)
-		return 1;
+	      if (!CHECK_LEN(header, p, qlen, INADDRSZ))
+		return 0;
+
+	      memcpy(&addr, p, INADDRSZ);
+
+	      for (baddrp = baddr; baddrp; baddrp = baddrp->next)
+		if (!baddrp->is6 && is_same_net_prefix(addr, baddrp->addr.addr4, baddrp->prefix))
+		  return 1;
+	    }
+	  else if (qtype == T_AAAA)
+	    {
+	      struct in6_addr addr;
+	      
+	      if (!CHECK_LEN(header, p, qlen, IN6ADDRSZ))
+		return 0;
+
+	      memcpy(&addr, p, IN6ADDRSZ);
+
+	      for (baddrp = baddr; baddrp; baddrp = baddrp->next)
+		if (baddrp->is6 && is_same_net6(&addr, &baddrp->addr.addr6, baddrp->prefix))
+		  return 1;
 	    }
 	}
       

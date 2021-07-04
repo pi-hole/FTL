@@ -329,7 +329,8 @@ union all_addr {
 
 
 struct bogus_addr {
-  struct in_addr addr, mask;
+  int is6, prefix;
+  union all_addr addr;
   struct bogus_addr *next;
 };
 
@@ -1373,6 +1374,7 @@ int hostname_issubdomain(char *a, char *b);
 time_t dnsmasq_time(void);
 int netmask_length(struct in_addr mask);
 int is_same_net(struct in_addr a, struct in_addr b, struct in_addr mask);
+int is_same_net_prefix(struct in_addr a, struct in_addr b, int prefix);
 int is_same_net6(struct in6_addr *a, struct in6_addr *b, int prefixlen);
 u64 addr6part(struct in6_addr *addr);
 void setaddr6part(struct in6_addr *addr, u64 host);

@@ -2531,30 +2531,47 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
     case 'B':  /* --bogus-nxdomain */
     case LOPT_IGNORE_ADDR: /* --ignore-address */
      {
-	struct in_addr addr;
-	int prefix = 32;
+	union all_addr addr;
+	int prefix, is6 = 0;
+	struct bogus_addr *baddr;
+	
 	unhide_metas(arg);
 
 	if (!arg ||
-	    ((comma = split_chr(arg, '/')) && !atoi_check(comma, &prefix)) ||
-	    (inet_pton(AF_INET, arg, &addr) != 1))
-	  ret_err(gen_err); /* error */
+	    ((comma = split_chr(arg, '/')) && !atoi_check(comma, &prefix)))
+	  ret_err(gen_err);
+
+	if (inet_pton(AF_INET6, arg, &addr.addr6) == 1)
+	  is6 = 1;
+	else if (inet_pton(AF_INET, arg, &addr.addr4) != 1)
+	  ret_err(gen_err);
+
+	if (!comma)
+	  {
+	    if (is6)
+	      prefix = 128;
+	    else
+	      prefix = 32;
+	  }
+
+	if (prefix > 128 || (!is6 && prefix > 32))
+	  ret_err(gen_err);
+	
+	baddr = opt_malloc(sizeof(struct bogus_addr));
+	if (option == 'B')
+	  {
+	    baddr->next = daemon->bogus_addr;
+	    daemon->bogus_addr = baddr;
+	  }
 	else
 	  {
-	    struct bogus_addr *baddr = opt_malloc(sizeof(struct bogus_addr));
-	    if (option == 'B')
-	      {
-		baddr->next = daemon->bogus_addr;
-		daemon->bogus_addr = baddr;
-	      }
-	    else
-	      {
-		baddr->next = daemon->ignore_addr;
-		daemon->ignore_addr = baddr;
-	      }
-	    baddr->mask.s_addr = htonl(~((1 << (32 - prefix)) - 1));
-	    baddr->addr.s_addr = addr.s_addr & baddr->mask.s_addr;
+	    baddr->next = daemon->ignore_addr;
+	    daemon->ignore_addr = baddr;
 	  }
+
+	baddr->prefix = prefix;
+	baddr->is6 = is6;
+	baddr->addr = addr;
 	break;
      }
       
