@@ -289,10 +289,17 @@ int filter_servers(int seed, int flags, int *lowout, int *highout)
 
 #define SERV_LOCAL_ADDRESS (SERV_6ADDR | SERV_4ADDR | SERV_ALL_ZEROS)
   
-  for (i = nlow; (flags & F_CONFIG) && i < nhigh && (daemon->serverarray[i]->flags & SERV_LOCAL_ADDRESS); i++);
-  
-  if (i != nlow)
-    nhigh = i;
+  if (flags & F_CONFIG)
+    {
+      /* We're just lookin for any matches that return an RR. */
+      for (i = nlow; i < nhigh; i++)
+	if (daemon->serverarray[i]->flags & SERV_LOCAL_ADDRESS)
+	  break;
+      
+      /* failed, return failure. */
+      if (i == nhigh)
+	nhigh = nlow;
+    }
   else
     {
       for (i = nlow; i < nhigh && (daemon->serverarray[i]->flags & SERV_6ADDR); i++);
