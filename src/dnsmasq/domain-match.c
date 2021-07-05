@@ -598,7 +598,7 @@ int add_update_server(int flags,
   else if (*domain == '*')
     {
       domain++;
-      if (domain != 0)
+      if (*domain != 0)
 	flags |= SERV_WILDCARD;
     }
   
