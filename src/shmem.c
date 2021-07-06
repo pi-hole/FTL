@@ -416,7 +416,7 @@ void _lock_shm(const char* func, const int line, const char * file)
 // Release SHM lock
 void _unlock_shm(const char* func, const int line, const char * file)
 {
-	if(!is_our_lock())
+	if(config.debug & DEBUG_LOCKS && !is_our_lock())
 	{
 		logg("ERROR: Tried to unlock but lock is owned by %li/%li",
 		     (long int)shmLock->owner.pid, (long int)shmLock->owner.tid);
@@ -1058,7 +1058,7 @@ queriesData* _getQuery(int queryID, bool checkMagic, int line, const char * func
 		return NULL;
 
 	// We are not in a locked situation, return a NULL pointer
-	if(!is_our_lock())
+	if(config.debug & DEBUG_LOCKS && !is_our_lock())
 	{
 		logg("ERROR: Tried to obtain query pointer without lock in %s() (%s:%i)!",
 		     function, file, line);
@@ -1080,7 +1080,7 @@ clientsData* _getClient(int clientID, bool checkMagic, int line, const char * fu
 		return NULL;
 
 	// We are not in a locked situation, return a NULL pointer
-	if(!is_our_lock())
+	if(config.debug & DEBUG_LOCKS && !is_our_lock())
 	{
 		logg("ERROR: Tried to obtain client pointer without lock in %s() (%s:%i)!",
 		     function, file, line);
@@ -1102,7 +1102,7 @@ domainsData* _getDomain(int domainID, bool checkMagic, int line, const char * fu
 		return NULL;
 
 	// We are not in a locked situation, return a NULL pointer
-	if(!is_our_lock())
+	if(config.debug & DEBUG_LOCKS && !is_our_lock())
 	{
 		logg("ERROR: Tried to obtain domain pointer without lock in %s() (%s:%i)!",
 		     function, file, line);
@@ -1124,7 +1124,7 @@ upstreamsData* _getUpstream(int upstreamID, bool checkMagic, int line, const cha
 		return NULL;
 
 	// We are not in a locked situation, return a NULL pointer
-	if(!is_our_lock())
+	if(config.debug & DEBUG_LOCKS && !is_our_lock())
 	{
 		logg("ERROR: Tried to obtain upstream pointer without lock in %s() (%s:%i)!",
 		     function, file, line);
@@ -1146,7 +1146,7 @@ DNSCacheData* _getDNSCache(int cacheID, bool checkMagic, int line, const char * 
 		return NULL;
 
 	// We are not in a locked situation, return a NULL pointer
-	if(!is_our_lock())
+	if(config.debug & DEBUG_LOCKS && !is_our_lock())
 	{
 		logg("ERROR: Tried to obtain cache pointer without lock in %s() (%s:%i)!",
 		     function, file, line);
