@@ -661,7 +661,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	return blockDomain;
 }
 
-void FTL_iface(const int ifidx, const struct irec *ifaces)
+void FTL_iface(const int ifidx)
 {
 	// Invalidate data we have from the last interface/query
 	// Set addresses to 0.0.0.0 and ::, respectively
@@ -697,13 +697,13 @@ void FTL_iface(const int ifidx, const struct irec *ifaces)
 	next_iface.name[1] = '\0';
 
 	// Return early when there is no interface available at this point
-	if(ifidx == -1 || ifaces == NULL)
+	if(ifidx == -1)
 		return;
 
 	// Determine addresses of this interface
 	const struct irec *iface;
 	bool haveIPv4 = false, haveGUAv6 = false, haveULAv6 = false;
-	for (iface = ifaces; iface != NULL; iface = iface->next)
+	for (iface = daemon->interfaces; iface != NULL; iface = iface->next)
 	{
 		// If this interface has no name, we skip it
 		if(iface->name == NULL)

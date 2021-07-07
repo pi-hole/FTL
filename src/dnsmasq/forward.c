@@ -1528,7 +1528,7 @@ void receive_query(struct listener *listen, time_t now)
       // This gets the interface in all cases where this is possible here
       // We get here only if "bind-interfaces" is NOT used or this query
       // is received over IPv6
-      FTL_iface(if_index, daemon->interfaces);
+      FTL_iface(if_index);
       /****************************************************************/
     }
 
