@@ -409,7 +409,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 
 	// Check if this is a PTR request for a local interface.
 	// If so, we inject a "pi.hole" reply here
-	if(querytype == TYPE_PTR)
+	if(querytype == TYPE_PTR && config.pihole_ptr)
 		check_pihole_PTR((char*)name);
 
 	// Skip AAAA queries if user doesn't want to have them analyzed
@@ -2289,26 +2289,29 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 	// Obtain DNS port from dnsmasq daemon
 	config.dns_port = daemon->port;
 
-	// Obtain PTR record used for Pi-hole PTR injection
-	// Interate to the last entry ...
-	struct ptr_record *ptr;
-	for(ptr = daemon->ptr; ptr && ptr->next; ptr = ptr->next);
-	// ... and add a PTR record for us which we will modify as we see fit
-	pihole_ptr = calloc(1, sizeof(struct ptr_record));
-	pihole_ptr->name = strdup("x.x.x.x.in-addr.arpa");
-	pihole_ptr->ptr = (char*)"pi.hole";
-	pihole_ptr->next = NULL;
-	// Add our PTR record to the end of the linked list
-	if(ptr != NULL)
+	// Obtain PTR record used for Pi-hole PTR injection (if enabled)
+	if(config.pihole_ptr)
 	{
-		// Add least one ptr-record already exists
-		ptr->next = pihole_ptr;
-		printf("Adding to end\n");
-	}
-	else
-	{
-		// This is the only record
-		daemon->ptr = pihole_ptr;
+		// Add PTR record for pi.hole, the address will be injected later
+		pihole_ptr = calloc(1, sizeof(struct ptr_record));
+		pihole_ptr->name = strdup("x.x.x.x.in-addr.arpa");
+		pihole_ptr->ptr = (char*)"pi.hole";
+		pihole_ptr->next = NULL;
+		// Add our PTR record to the end of the linked list
+		if(daemon->ptr != NULL)
+		{
+			// Interate to the last PTR entry in dnsmasq's structure
+			struct ptr_record *ptr;
+			for(ptr = daemon->ptr; ptr && ptr->next; ptr = ptr->next);
+
+			// Add our record after the last existing ptr-record
+			ptr->next = pihole_ptr;
+		}
+		else
+		{
+			// Ours is the only record for daemon->ptr
+			daemon->ptr = pihole_ptr;
+		}
 	}
 }
 

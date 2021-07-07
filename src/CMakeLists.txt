@@ -233,6 +233,3 @@ add_subdirectory(dnsmasq)
 add_subdirectory(lua)
 add_subdirectory(tre-regex)
 add_subdirectory(syscalls)
-
-# Ensure target FTL is re-built when target dnsmasq changes
-target_link_libraries(FTL dnsmasq)

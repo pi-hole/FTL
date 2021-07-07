@@ -548,6 +548,12 @@ void read_FTLconf(void)
 	else
 		logg("   MOZILLA_CANARY: Disabled");
 
+	// PIHOLE_PTR
+	// Should FTL return "pi.hole" as name for PTR requests to local IP addresses?
+	// defaults to: true
+	buffer = parse_FTLconf(fp, "PIHOLE_PTR");
+	config.pihole_ptr = read_bool(buffer, true);
+
 	// Read DEBUG_... setting from pihole-FTL.conf
 	read_debuging_settings(fp);
 

@@ -33,20 +33,21 @@ void read_debuging_settings(FILE *fp);
 // architectures (such as ARM) and savng a few bit of RAM but bloating up the
 // rest of the application each time these fields are accessed is bad.
 typedef struct {
-	bool socket_listenlocal;
-	bool analyze_AAAA;
-	bool resolveIPv6;
-	bool resolveIPv4;
-	bool ignore_localhost;
-	bool analyze_only_A_AAAA;
-	bool DBimport;
-	bool DBexport;
-	bool parse_arp_cache;
-	bool cname_inspection;
-	bool block_esni;
-	bool names_from_netdb;
-	bool edns0_ecs;
-	bool show_dnssec;
+	bool socket_listenlocal :1;
+	bool analyze_AAAA :1;
+	bool resolveIPv6 :1;
+	bool resolveIPv4 :1;
+	bool ignore_localhost :1;
+	bool analyze_only_A_AAAA :1;
+	bool DBimport :1;
+	bool DBexport :1;
+	bool parse_arp_cache :1;
+	bool cname_inspection :1;
+	bool block_esni :1;
+	bool names_from_netdb :1;
+	bool edns0_ecs :1;
+	bool show_dnssec :1;
+	bool pihole_ptr :1;
 	struct {
 		bool mozilla_canary :1;
 	} special_domains;
@@ -72,7 +73,7 @@ typedef struct {
 		struct in6_addr v6;
 	} reply_addr;
 } ConfigStruct;
-ASSERT_SIZEOF(ConfigStruct, 88, 84, 84);
+ASSERT_SIZEOF(ConfigStruct, 80, 72, 72);
 
 typedef struct {
 	const char* conf;
