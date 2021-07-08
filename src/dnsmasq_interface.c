@@ -47,6 +47,10 @@
 // get_edestr()
 #include "api/api_helper.h"
 
+#if !defined(HAVE_DNSSEC)
+#error "Check cmake/compiler, required defines are missing"
+#endif
+
 // Private prototypes
 static void print_flags(const unsigned int flags);
 #define query_set_reply(flags, addr, query, response) _query_set_reply(flags, addr, query, response, __FILE__, __LINE__)
