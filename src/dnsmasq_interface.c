@@ -794,6 +794,11 @@ static void check_pihole_PTR(char *domain)
 	if(flags == 0 || pihole_ptr == NULL)
 		return;
 
+	// We do not want to reply with "pi.hole" to loopback PTRs
+	if((flags == F_IPV4 && addr.addr4.s_addr == htonl(INADDR_LOOPBACK)) ||
+	   (flags == F_IPV6 && IN6_IS_ADDR_LOOPBACK(&addr.addr6)))
+		return;
+
 	// If we reached this point, addr contains the address the client requested
 	// a name for. We compare this address against all addresses of the local
 	// interfaces to see if we should reply with "pi.hole"
