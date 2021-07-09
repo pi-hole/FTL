@@ -1255,6 +1255,8 @@ void next_uid(struct crec *crecp);
 /********************************************* Pi-hole modification ***********************************************/
 #define log_query(flags,name,addr,arg) _log_query(flags, name, addr, arg, __FILE__, __LINE__)
 void _log_query(unsigned int flags, char *name, union all_addr *addr, char *arg, const char* file, const int line);
+struct crec *cache_insert_no_log(char *name, union all_addr *addr, unsigned short class,
+			         time_t now,  unsigned long ttl, unsigned int flags);
 /******************************************************************************************************************/
 char *record_source(unsigned int index);
 char *querystr(char *desc, unsigned short type);

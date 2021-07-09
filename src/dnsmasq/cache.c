@@ -500,6 +500,18 @@ struct crec *cache_insert(char *name, union all_addr *addr, unsigned short class
   return really_insert(name, addr, class, now, ttl, flags);
 }
 
+/******************************** Pi-hole modification ********************************/
+struct crec *cache_insert_no_log(char *name, union all_addr *addr, unsigned short class,
+			         time_t now,  unsigned long ttl, unsigned int flags)
+{
+  if (daemon->max_cache_ttl != 0 && daemon->max_cache_ttl < ttl)
+    ttl = daemon->max_cache_ttl;
+  if (daemon->min_cache_ttl != 0 && daemon->min_cache_ttl > ttl)
+    ttl = daemon->min_cache_ttl;
+
+  return really_insert(name, addr, class, now, ttl, flags);
+}
+/**************************************************************************************/
 
 static struct crec *really_insert(char *name, union all_addr *addr, unsigned short class,
 				  time_t now,  unsigned long ttl, unsigned int flags)

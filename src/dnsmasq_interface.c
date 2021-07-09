@@ -64,13 +64,11 @@ static void FTL_dnssec(const char *result, const union all_addr *addr, const int
 static void mysockaddr_extract_ip_port(union mysockaddr *server, char ip[ADDRSTRLEN+1], in_port_t *port);
 static void alladdr_extract_ip(union all_addr *addr, const sa_family_t family, char ip[ADDRSTRLEN+1]);
 static const char *dns_name(char *name);
-static void check_pihole_PTR(char *domain);
 
 // Static blocking metadata
 static const char *blockingreason = NULL;
 static union all_addr null_addrp = {{ 0 }};
 static enum reply_type force_next_DNS_reply = REPLY_UNKNOWN;
-static struct ptr_record *pihole_ptr = NULL;
 
 // Fork-private copy of the interface name the most recent query came from
 static struct {
@@ -406,11 +404,6 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 			return false;
 		}
 	}
-
-	// Check if this is a PTR request for a local interface.
-	// If so, we inject a "pi.hole" reply here
-	if(querytype == TYPE_PTR && config.pihole_ptr)
-		check_pihole_PTR((char*)name);
 
 	// Skip AAAA queries if user doesn't want to have them analyzed
 	if(!config.analyze_AAAA && querytype == TYPE_AAAA)
@@ -780,39 +773,6 @@ void FTL_iface(const int ifidx)
 		// (a valid IPv4 address + a valid ULA IPv6 address)
 		if(haveIPv4 && haveULAv6)
 			break;
-	}
-}
-
-static void check_pihole_PTR(char *domain)
-{
-	// Convert PTR request into numeric form
-	union all_addr addr = {{ 0 }};
-	const int flags = in_arpa_name_2_addr(domain, &addr);
-
-	// Check if this is a valid in-addr.arpa (IPv4) or ip6.[int|arpa] (IPv6)
-	// specifier. If not, nothing is to be done here and we return early
-	if(flags == 0 || pihole_ptr == NULL)
-		return;
-
-	// We do not want to reply with "pi.hole" to loopback PTRs
-	if((flags == F_IPV4 && addr.addr4.s_addr == htonl(INADDR_LOOPBACK)) ||
-	   (flags == F_IPV6 && IN6_IS_ADDR_LOOPBACK(&addr.addr6)))
-		return;
-
-	// If we reached this point, addr contains the address the client requested
-	// a name for. We compare this address against all addresses of the local
-	// interfaces to see if we should reply with "pi.hole"
-	for (struct irec *iface = daemon->interfaces; iface != NULL; iface = iface->next)
-	{
-		const sa_family_t family = iface->addr.sa.sa_family;
-		if((family == AF_INET && flags == F_IPV4 && iface->addr.in.sin_addr.s_addr == addr.addr4.s_addr) ||
-		   (family == AF_INET6 && flags == F_IPV6 && IN6_ARE_ADDR_EQUAL(&iface->addr.in6.sin6_addr, &addr.addr6)))
-		{
-			// The last PTR record in daemon->ptr is reserved for Pi-hole
-			free(pihole_ptr->name);
-			pihole_ptr->name = strdup(domain);
-			return;
-		}
 	}
 }
 
@@ -2191,6 +2151,61 @@ static void _query_set_reply(const unsigned int flags, const union all_addr *add
 	                            query->response;
 }
 
+static struct name_list *host_namelist = NULL;
+static bool FTL_add_cache_entries(void)
+{
+	// Prepare namelist to be used for host records
+	if(!host_namelist)
+		host_namelist = calloc(2, sizeof(struct name_list));
+	if(!host_namelist)
+		return false;
+
+	// Add pi.hole and the local machine's hostname
+	host_namelist[0].name = (char*)"pi.hole";
+	host_namelist[0].next = &host_namelist[1];
+	host_namelist[1].name = (char*)hostname();
+	host_namelist[1].next = NULL;
+
+	for (struct irec *iface = daemon->interfaces; iface != NULL; iface = iface->next)
+	{
+		// Skip loopback addresses
+		const sa_family_t family = iface->addr.sa.sa_family;
+		if((family == AF_INET && iface->addr.in.sin_addr.s_addr == htonl(INADDR_LOOPBACK)) ||
+		   (family == AF_INET6 && IN6_IS_ADDR_LOOPBACK(&iface->addr.in6.sin6_addr)))
+		   continue;
+
+		// Add host-record for this interface
+		struct host_record *new = calloc(1, sizeof(struct host_record));
+		if(!new)
+			return false;
+
+		// Set properties
+		new->flags = family == AF_INET ? HR_4 : HR_6;
+		new->ttl = daemon->local_ttl;
+		new->names = &host_namelist[0];
+
+		// Add address
+		if(family == AF_INET)
+			new->addr.s_addr = iface->addr.in.sin_addr.s_addr;
+		else
+			memcpy(&new->addr6, &iface->addr.in6.sin6_addr, sizeof(new->addr6));
+
+		// Insert our records at the end of the host record linked list
+		if (!daemon->host_records_tail)
+			daemon->host_records = new;
+		else
+			daemon->host_records_tail->next = new;
+		new->next = NULL;
+		daemon->host_records_tail = new;
+	}
+
+	// We have to reload the cache to get our new records imported
+	cache_reload();
+
+	return true;
+}
+
+
 void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 {
 	// Going into daemon mode involves storing the
@@ -2294,30 +2309,7 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 	// Obtain DNS port from dnsmasq daemon
 	config.dns_port = daemon->port;
 
-	// Obtain PTR record used for Pi-hole PTR injection (if enabled)
-	if(config.pihole_ptr)
-	{
-		// Add PTR record for pi.hole, the address will be injected later
-		pihole_ptr = calloc(1, sizeof(struct ptr_record));
-		pihole_ptr->name = strdup("x.x.x.x.in-addr.arpa");
-		pihole_ptr->ptr = (char*)"pi.hole";
-		pihole_ptr->next = NULL;
-		// Add our PTR record to the end of the linked list
-		if(daemon->ptr != NULL)
-		{
-			// Interate to the last PTR entry in dnsmasq's structure
-			struct ptr_record *ptr;
-			for(ptr = daemon->ptr; ptr && ptr->next; ptr = ptr->next);
-
-			// Add our record after the last existing ptr-record
-			ptr->next = pihole_ptr;
-		}
-		else
-		{
-			// Ours is the only record for daemon->ptr
-			daemon->ptr = pihole_ptr;
-		}
-	}
+	FTL_add_cache_entries();
 }
 
 // int cache_inserted, cache_live_freed are defined in dnsmasq/cache.c
