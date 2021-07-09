@@ -177,6 +177,7 @@ struct myoption {
 #define LOPT_UMBRELLA	   364
 #define LOPT_CMARK_ALST_EN 365
 #define LOPT_CMARK_ALST    366
+#define LOPT_QUIET_TFTP    367
  
 #ifdef HAVE_GETOPT_LONG
 static const struct option opts[] =  
@@ -355,6 +356,7 @@ static const struct myoption opts[] =
     { "dynamic-host", 1, 0, LOPT_DYNHOST },
     { "log-debug", 0, 0, LOPT_LOG_DEBUG },
 	{ "umbrella", 2, 0, LOPT_UMBRELLA },
+    { "quiet-tftp", 0, 0, LOPT_QUIET_TFTP },
     { NULL, 0, 0, 0 }
   };
 
@@ -540,6 +542,7 @@ static struct {
   { LOPT_DUMPMASK, ARG_ONE, "<hex>", gettext_noop("Mask which packets to dump"), NULL },
   { LOPT_SCRIPT_TIME, OPT_LEASE_RENEW, NULL, gettext_noop("Call dhcp-script when lease expiry changes."), NULL },
   { LOPT_UMBRELLA, ARG_ONE, "[=<optspec>]", gettext_noop("Send Cisco Umbrella identifiers including remote IP."), NULL },
+  { LOPT_QUIET_TFTP, OPT_QUIET_TFTP, NULL, gettext_noop("Do not log routine TFTP."), NULL },
   { 0, 0, NULL, NULL, NULL }
 }; 
 
