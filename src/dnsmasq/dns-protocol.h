@@ -85,7 +85,8 @@
 #define EDNS0_OPTION_NOMCPEID       65074 /* Nominum temporary assignment */
 #define EDNS0_OPTION_UMBRELLA       20292 /* Cisco Umbrella temporary assignment */
 
-/* RFC-8914 extended errors */
+/* RFC-8914 extended errors, negative values are our definitions */
+#define EDE_UNSET          -1  /* No extended DNS error available */
 #define EDE_OTHER           0  /* Other */
 #define EDE_USUPDNSKEY      1  /* Unsupported DNSKEY algo */
 #define EDE_USUPDS          2  /* Unsupported DS Digest */

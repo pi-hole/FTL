@@ -155,7 +155,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 	// Debug logging
 	if(config.debug & DEBUG_FLAGS)
 	{
-		if(*ede != -1)
+		if(*ede != EDE_UNSET)
 			logg("Preparing reply for \"%s\", EDE: %s (%d)", dns_name(name), edestr(*ede), *ede);
 		else
 			logg("Preparing reply for \"%s\", EDE: N/A", dns_name(name));
@@ -580,7 +580,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	query->privacylevel = config.privacylevel;
 
 	// Query extended DNS error
-	query->ede = -1;
+	query->ede = EDE_UNSET;
 
 	// Increase DNS queries counter
 	counters->queries++;
@@ -1586,7 +1586,7 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 		return;
 	}
 
-	if(addr && flags & (F_RCODE | F_SECSTAT) && addr->log.ede != -1)
+	if(addr && flags & (F_RCODE | F_SECSTAT) && addr->log.ede != EDE_UNSET)
 	{
 		query->ede = addr->log.ede;
 		if(config.debug & DEBUG_QUERIES)
@@ -1905,12 +1905,12 @@ static void FTL_dnssec(const char *arg, const union all_addr *addr, const int id
 		const domainsData* domain = getDomain(query->domainID, true);
 		if(domain != NULL)
 			logg("**** DNSSEC %s is %s (ID %i, %s:%i)", getstr(domain->domainpos), arg, id, file, line);
-		if(addr && addr->log.ede != -1) // This function is only called if (flags & F_SECSTAT)
+		if(addr && addr->log.ede != EDE_UNSET) // This function is only called if (flags & F_SECSTAT)
 			logg("     EDE: %s (%d)", edestr(addr->log.ede), addr->log.ede);
 	}
 
 	// Store EDE
-	if(addr && addr->log.ede != -1)
+	if(addr && addr->log.ede != EDE_UNSET)
 		query->ede = addr->log.ede;
 
 	// Iterate through possible values
@@ -2002,7 +2002,7 @@ static void FTL_upstream_error(const union all_addr *addr, const int id, const c
 			logg("     Unknown rcode = %i", addr->log.rcode);
 		}
 
-		if(addr->log.ede != -1) // This function is only called if (flags & F_RCODE)
+		if(addr->log.ede != EDE_UNSET) // This function is only called if (flags & F_RCODE)
 			logg("     EDE: %s (%d)", edestr(addr->log.ede), addr->log.ede);
 	}
 

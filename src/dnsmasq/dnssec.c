@@ -744,7 +744,8 @@ static int validate_rrset(time_t now, struct dns_header *header, size_t plen, in
 	}
     }
 
-  return STAT_BOGUS | failflags;
+  /* If we reach this point, no verifying key was found */
+  return STAT_BOGUS | failflags | DNSSEC_FAIL_NOKEY;
 }
  
 
@@ -2193,6 +2194,6 @@ int errflags_to_ede(int status)
   else if (status & DNSSEC_FAIL_NOSIG)
     return EDE_NO_RRSIG;
   else
-    return -1;
+    return EDE_UNSET;
 }
 #endif /* HAVE_DNSSEC */

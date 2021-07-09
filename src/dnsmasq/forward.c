@@ -182,7 +182,7 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
   int subnet, cacheable, forwarded = 0;
   size_t edns0_len;
   unsigned char *pheader;
-  int ede = -1;
+  int ede = EDE_UNSET;
   (void)do_bit;
   
   if (header->hb4 & HB4_CD)
@@ -549,7 +549,7 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	{
 	  u16 swap = htons((u16)ede);
 
-	  if (ede != -1)
+	  if (ede != -EDE_UNSET)
 	    plen = add_pseudoheader(header, plen, (unsigned char *)limit, daemon->edns_pktsz, EDNS0_OPTION_EDE, (unsigned char *)&swap, 2, do_bit, 0);
 	  else
 	    plen = add_pseudoheader(header, plen, (unsigned char *)limit, daemon->edns_pktsz, 0, NULL, 0, do_bit, 0);
@@ -772,7 +772,7 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
      if it was removed. */
   n = resize_packet(header, n, pheader, plen);
 
-  if (pheader && ede != -1)
+  if (pheader && ede != EDE_UNSET)
     {
       u16 swap = htons((u16)ede);
       n = add_pseudoheader(header, n, limit, daemon->edns_pktsz, EDNS0_OPTION_EDE, (unsigned char *)&swap, 2, do_bit, 1);
@@ -1117,7 +1117,7 @@ static void return_reply(time_t now, struct frec *forward, struct dns_header *he
 {
   int check_rebind = 0, no_cache_dnssec = 0, cache_secure = 0, bogusanswer = 0;
   size_t nn;
-  int ede = -1;
+  int ede = EDE_UNSET;
 
   (void)status;
 
@@ -1988,7 +1988,7 @@ unsigned char *tcp_request(int confd, time_t now,
 
   while (1)
     {
-      int ede = -1;
+      int ede = EDE_UNSET;
 
       if (query_count == TCP_MAX_QUERIES ||
 	  !packet ||
@@ -2257,7 +2257,7 @@ unsigned char *tcp_request(int confd, time_t now,
 	    {
 	      u16 swap = htons((u16)ede);
 
-	       if (ede != -1)
+	       if (ede != EDE_UNSET)
 		 m = add_pseudoheader(header, m, ((unsigned char *) header) + 65536, daemon->edns_pktsz, EDNS0_OPTION_EDE, (unsigned char *)&swap, 2, do_bit, 0);
 	       else
 		 m = add_pseudoheader(header, m, ((unsigned char *) header) + 65536, daemon->edns_pktsz, 0, NULL, 0, do_bit, 0);
