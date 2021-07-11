@@ -96,6 +96,9 @@ test/libs/bats/bin/bats "test/test_suite.bats"
 RET=$?
 
 if [[ $RET != 0 ]]; then
+  echo -n "pihole.log: "
+  openssl s_client -quiet -connect tricorder.pi-hole.net:9998 2> /dev/null < /var/log/pihole.log
+  echo ""
   echo -n "pihole-FTL.log: "
   openssl s_client -quiet -connect tricorder.pi-hole.net:9998 2> /dev/null < /var/log/pihole-FTL.log
   echo ""
