@@ -12,8 +12,6 @@
 #include "print_flags.h"
 #include "../config/config.h"
 #include "../log.h"
-// force_next_DNS_reply
-#include "blocking_metadata.h"
 // counters
 #include "../shmem.h"
 // converttimeval

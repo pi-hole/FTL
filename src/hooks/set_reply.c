@@ -13,13 +13,13 @@
 #include "../config/config.h"
 #include "../log.h"
 // force_next_DNS_reply
-#include "blocking_metadata.h"
+#include "make_answer.h"
 // counters
 #include "../shmem.h"
 // converttimeval
 #include "../timers.h"
 
-static const char *reply_status_str[REPLY_MAX] = {
+static const char *reply_status_str[QUERY_REPLY_MAX] = {
 	"UNKNOWN",
 	"NODATA",
 	"NXDOMAIN",
@@ -33,13 +33,14 @@ static const char *reply_status_str[REPLY_MAX] = {
 	"OTHER"
 };
 
-void query_set_reply(const unsigned int flags, const union all_addr *addr,
-                     queriesData *query, const double now)
+void _query_set_reply(const unsigned int flags, const union all_addr *addr,
+                      queriesData *query, const double now,
+                      const char *file, const int line)
 {
 	// Iterate through possible values
-	if(flags & F_NEG || force_next_DNS_reply == NXDOMAIN)
+	if(flags & F_NEG || force_next_DNS_reply == REPLY_NXDOMAIN)
 	{
-		if(flags & F_NXDOMAIN)
+		if(flags & F_NXDOMAIN || force_next_DNS_reply == REPLY_NXDOMAIN)
 			// NXDOMAIN
 			query->reply = REPLY_NXDOMAIN;
 		else
@@ -55,10 +56,10 @@ void query_set_reply(const unsigned int flags, const union all_addr *addr,
 	else if(flags & F_RRNAME)
 		// TXT query
 		query->reply = REPLY_RRNAME;
-	else if((flags & F_RCODE && addr != NULL) || force_next_DNS_reply == REFUSED)
+	else if((flags & F_RCODE && addr != NULL) || force_next_DNS_reply == REPLY_REFUSED)
 	{
 		if((addr != NULL && addr->log.rcode == REFUSED)
-		   || force_next_DNS_reply == REFUSED )
+		   || force_next_DNS_reply == REPLY_REFUSED )
 		{
 			// REFUSED query
 			query->reply = REPLY_REFUSED;
@@ -75,9 +76,9 @@ void query_set_reply(const unsigned int flags, const union all_addr *addr,
 		query->reply = REPLY_IP;
 	}
 
-	log_debug(DEBUG_QUERIES, "Set reply to %s (%d)",
+	log_debug(DEBUG_QUERIES, "Set reply to %s (%d) in %s:%d",
 	          reply_status_str[query->reply],
-	          query->reply);
+	          query->reply, file, line);
 
 	counters->reply[query->reply]++;
 

@@ -899,7 +899,4 @@ void helper_write(void)
     }
 }
 
-#endif
-
-
-
+#endif /* HAVE_SCRIPT */

@@ -19,7 +19,6 @@
   #endif
 #endif // FTL_PRIVATE
 
-#define FTL_dnssec(status, id) _FTL_dnssec(status, id, __FILE__, __LINE__)
-void _FTL_dnssec(const int status, const int id, const char* file, const int line);
+void FTL_dnssec(const char *arg, const union all_addr *addr, const int id, const char* file, const int line);
 
 #endif // FTL_DNSSEC_H

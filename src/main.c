@@ -27,6 +27,8 @@
 #include "procps.h"
 // init_memory_database(), import_queries_from_disk()
 #include "database/query-table.h"
+// init_overtime()
+#include "overTime.h"
 
 char *username;
 bool needGC = false;
@@ -50,7 +52,7 @@ int main (int argc, char *argv[])
 	// Initialize FTL log
 	init_FTL_log(argc > 0 ? argv[0] : NULL);
 	timer_start(EXIT_TIMER);
-	log_info("########## FTL started! ##########");
+	log_info("########## FTL started on %s! ##########", hostname());
 	log_FTL_version(false);
 
 	// Catch signals not handled by dnsmasq
@@ -73,6 +75,15 @@ int main (int argc, char *argv[])
 	// print warning otherwise
 	if(strcmp(username, "pihole") != 0)
 		log_warn("Starting pihole-FTL as user %s is not recommended", username);
+
+	// Delay startup (if requested)
+	// Do this before reading the database to make this option not only
+	// useful for interfaces that aren't ready but also for fake-hwclocks
+	// which aren't ready at this point
+	delay_startup();
+
+	// Initialize overTime datastructure
+	initOverTime();
 
 	// Initialize query database (pihole-FTL.db)
 	db_init();
@@ -101,8 +112,6 @@ int main (int argc, char *argv[])
 	// Initialize pseudo-random number generator
 	srand(time(NULL));
 
-	// Start the resolver, delay startup if requested
-	delay_startup();
 	startup = false;
 	if(config.debug != 0)
 	{

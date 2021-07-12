@@ -20,6 +20,5 @@
 #endif // FTL_PRIVATE
 
 void FTL_dnsmasq_log(const char *payload, const int length);
-extern unsigned char debug_dnsmasq_lines;
 
 #endif // FTL_LOG_H

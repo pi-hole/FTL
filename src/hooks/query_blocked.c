@@ -10,16 +10,7 @@
 
 #define FTL_PRIVATE
 #include "query_blocked.h"
-#include "../config/config.h"
 #include "../log.h"
-// force_next_DNS_reply
-#include "blocking_metadata.h"
-// in_allowlist
-#include "../database/gravity-db.h"
-// getstr
-#include "../shmem.h"
-// get_blockingstatus
-#include "../setupVars.h"
 // query_set_reply()
 #include "set_reply.h"
 // query_to_database()
@@ -33,7 +24,7 @@ void query_blocked(queriesData* query, domainsData* domain, clientsData* client,
 	query_set_reply(blocking_flags, NULL, query, now);
 
 	// Adjust counters if we recorded a non-blocking status
-	if(query->status == STATUS_FORWARDED)
+	if(query->status == QUERY_FORWARDED)
 	{
 		// Get forward pointer
 		upstreamsData* upstream = getUpstream(query->upstreamID, true);
@@ -46,15 +37,19 @@ void query_blocked(queriesData* query, domainsData* domain, clientsData* client,
 		return;
 	}
 
-	// Count as blocked query
-	if(domain != NULL)
-		domain->blockedcount++;
-	if(client != NULL)
-		change_clientcount(client, 0, 1, -1, 0);
+	if(is_blocked(new_status))
+	{
+		// Count as blocked query
+		if(domain != NULL)
+			domain->blockedcount++;
+		if(client != NULL)
+			change_clientcount(client, 0, 1, -1, 0);
+
+		query->flags.blocked = true;
+	}
 
 	// Update status
 	query_set_status(query, new_status);
-	query->flags.blocked = true;
 
 	// Update query in database
 	query_to_database(query);

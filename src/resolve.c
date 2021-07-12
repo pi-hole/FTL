@@ -167,6 +167,24 @@ char *resolveHostname(const char *addr)
 		return hostname;
 	}
 
+	// Check if this is the internal client
+	// if so, return "hidden" as hostname
+	if(strcmp(addr, "::") == 0)
+	{
+		hostname = strdup("pi.hole");
+		log_debug(DEBUG_RESOLVER, "---> \"%s\" (special)", hostname);
+		return hostname;
+	}
+
+	// Check if we want to resolve host names
+	if(!resolve_this_name(addr))
+	{
+		log_debug(DEBUG_RESOLVER, "Configured to not resolve host name for %s", addr);
+
+		// Return an empty host name
+		return strdup("");
+	}
+
 	// Test if we want to resolve an IPv6 address
 	bool IPv6 = false;
 	if(strstr(addr,":") != NULL)

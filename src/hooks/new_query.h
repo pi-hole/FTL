@@ -25,7 +25,7 @@
 // enum protocol
 #include "../enums.h"
 
-#define FTL_new_query(flags, name, blockingreason, addr, types, qtype, id, edns, proto) _FTL_new_query(flags, name, blockingreason, addr, types, qtype, id, edns, proto, __FILE__, __LINE__)
-bool _FTL_new_query(const unsigned int flags, const char *name, const char** blockingreason, union mysockaddr *addr, const char *types, const unsigned short qtype, const int id, const ednsData *edns, enum protocol proto, const char* file, const int line);
+#define FTL_new_query(flags, name, addr, types, qtype, id, edns, proto) _FTL_new_query(flags, name, addr, types, qtype, id, edns, proto, __FILE__, __LINE__)
+bool _FTL_new_query(const unsigned int flags, const char *name, union mysockaddr *addr, const char *types, const unsigned short qtype, const int id, const ednsData *edns, enum protocol proto, const char* file, const int line);
 
 #endif // FTL_NEW_QUERY_H

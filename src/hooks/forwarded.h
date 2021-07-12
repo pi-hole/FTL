@@ -19,7 +19,7 @@
   #endif
 #endif // FTL_PRIVATE
 
-#define FTL_forwarded(flags, name, serv, id) _FTL_forwarded(flags, name, serv, id, __FILE__, __LINE__)
-void _FTL_forwarded(const unsigned int flags, const char *name, const struct server *serv, const int id, const char *file, const int line);
+void FTL_forwarded(const unsigned int flags, const char *name, const union all_addr *addr,
+                   const int id, const char* file, const int line);
 
 #endif // FTL_FORWARDED_H

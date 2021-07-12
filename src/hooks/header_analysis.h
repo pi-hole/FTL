@@ -19,7 +19,10 @@
   #endif
 #endif // FTL_PRIVATE
 
-#define FTL_header_analysis(header4, rcode, id) _FTL_header_analysis(header4, rcode, id, __FILE__, __LINE__)
-void _FTL_header_analysis(const unsigned char header4, const unsigned int rcode, const int id, const char *file, const int line);
+extern union mysockaddr last_server;
+
+#define FTL_header_analysis(header4, rcode, server, id) _FTL_header_analysis(header4, rcode, server, id, __FILE__, __LINE__)
+void _FTL_header_analysis(const unsigned char header4, const unsigned int rcode, const struct server *server,
+                          const int id, const char* file, const int line);
 
 #endif // FTL_HEADER_ANALYSIS_H

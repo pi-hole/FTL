@@ -34,7 +34,7 @@
 #include "signals.h"
 
 /// The version of shared memory used
-#define SHARED_MEMORY_VERSION 13
+#define SHARED_MEMORY_VERSION 14
 
 /// The name of the shared memory. Use this when connecting to the shared memory.
 #define SHMEM_PATH "/dev/shm"
@@ -388,17 +388,19 @@ void _lock_shm(const char* func, const int line, const char * file)
 	if(result != 0)
 		log_err("Error when obtaining outer SHM lock: %s", strerror(result));
 
-	// Store lock owner
-	shmLock->owner.pid = getpid();
-	shmLock->owner.tid = gettid();
-
 	if(result == EOWNERDEAD) {
 		// Try to make the lock consistent if the other process died while
 		// holding the lock
-		result = pthread_mutex_consistent(&shmLock->lock.inner);
+		log_debug(DEBUG_LOCKS, "Owner of outer SHM lock died, making lock consistent");
+
+		result = pthread_mutex_consistent(&shmLock->lock.outer);
 		if(result != 0)
-			log_err("Failed to make inner SHM lock consistent: %s", strerror(result));
+			log_err("Failed to make outer SHM lock consistent: %s", strerror(result));
 	}
+
+	// Store lock owner after lock has been acquired and was made consistent (if required)
+	shmLock->owner.pid = getpid();
+	shmLock->owner.tid = gettid();
 
 	// Check if this process needs to remap the shared memory objects
 	if(shmSettings != NULL &&
@@ -422,6 +424,8 @@ void _lock_shm(const char* func, const int line, const char * file)
 	if(result == EOWNERDEAD) {
 		// Try to make the lock consistent if the other process died while
 		// holding the lock
+		log_debug(DEBUG_LOCKS, "Owner of inner SHM lock died, making lock consistent");
+
 		result = pthread_mutex_consistent(&shmLock->lock.inner);
 		if(result != 0)
 			log_err("Failed to make inner SHM lock consistent: %s", strerror(result));
@@ -431,7 +435,7 @@ void _lock_shm(const char* func, const int line, const char * file)
 // Release SHM lock
 void _unlock_shm(const char* func, const int line, const char * file)
 {
-	if(!is_our_lock())
+	if(config.debug & DEBUG_LOCKS && !is_our_lock())
 	{
 		log_err("Tried to unlock but lock is owned by %li/%li",
 		        (long int)shmLock->owner.pid, (long int)shmLock->owner.tid);
@@ -567,8 +571,8 @@ bool init_shmem(bool create_new)
 		return false;
 	if(create_new)
 	{
+		// set global pointer in overTime.c
 		overTime = (overTimeData*)shm_overTime.ptr;
-		initOverTime();
 	}
 
 	/****************************** shared DNS cache struct ******************************/
@@ -1073,7 +1077,7 @@ queriesData* _getQuery(int queryID, bool checkMagic, int line, const char * func
 		return NULL;
 
 	// We are not in a locked situation, return a NULL pointer
-	if(!is_our_lock())
+	if(config.debug & DEBUG_LOCKS && !is_our_lock())
 	{
 		log_err("Tried to obtain query pointer without lock in %s() (%s:%i)!",
 		        function, file, line);
@@ -1095,7 +1099,7 @@ clientsData* _getClient(int clientID, bool checkMagic, int line, const char * fu
 		return NULL;
 
 	// We are not in a locked situation, return a NULL pointer
-	if(!is_our_lock())
+	if(config.debug & DEBUG_LOCKS && !is_our_lock())
 	{
 		log_err("Tried to obtain client pointer without lock in %s() (%s:%i)!",
 		        function, file, line);
@@ -1117,7 +1121,7 @@ domainsData* _getDomain(int domainID, bool checkMagic, int line, const char * fu
 		return NULL;
 
 	// We are not in a locked situation, return a NULL pointer
-	if(!is_our_lock())
+	if(config.debug & DEBUG_LOCKS && !is_our_lock())
 	{
 		log_err("Tried to obtain domain pointer without lock in %s() (%s:%i)!",
 		        function, file, line);
@@ -1139,7 +1143,7 @@ upstreamsData* _getUpstream(int upstreamID, bool checkMagic, int line, const cha
 		return NULL;
 
 	// We are not in a locked situation, return a NULL pointer
-	if(!is_our_lock())
+	if(config.debug & DEBUG_LOCKS && !is_our_lock())
 	{
 		log_err("Tried to obtain upstream pointer without lock in %s() (%s:%i)!",
 		        function, file, line);
@@ -1161,7 +1165,7 @@ DNSCacheData* _getDNSCache(int cacheID, bool checkMagic, int line, const char * 
 		return NULL;
 
 	// We are not in a locked situation, return a NULL pointer
-	if(!is_our_lock())
+	if(config.debug & DEBUG_LOCKS && !is_our_lock())
 	{
 		log_err("Tried to obtain cache pointer without lock in %s() (%s:%i)!",
 		        function, file, line);

@@ -14,8 +14,7 @@
 #include "toml_writer.h"
 #include "setupVars.h"
 #include "log.h"
-// debug_dnsmasq_lines
-#include "hooks/log.h"
+#include "../log.h"
 // readFTLlegacy()
 #include "legacy_reader.h"
 // file_exists()
@@ -39,6 +38,9 @@ void setDefaults(void)
 	defaults.blockESNI = true;
 	defaults.networkNames = true;
 	defaults.edns0_ecs = true;
+	defaults.show_dnssec = true;
+	defaults.special_domains.mozilla_canary = true;
+	defaults.pihole_ptr = true;
 
 	// enums
 	defaults.privacylevel = PRIVACY_SHOW_ALL;

@@ -60,7 +60,7 @@ void FTL_query_in_progress(const int id)
 	}
 
 	// Store status
-	query_set_status(query, STATUS_IN_PROGRESS);
+	query_set_status(query, QUERY_IN_PROGRESS);
 
 	// Update query in database
 	query_to_database(query);

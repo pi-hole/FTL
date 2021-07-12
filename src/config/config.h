@@ -51,6 +51,11 @@ typedef struct {
 	bool blockESNI;
 	bool networkNames;
 	bool edns0_ecs;
+	bool show_dnssec;
+	bool pihole_ptr;
+	struct {
+		bool mozilla_canary;
+	} special_domains;
 	enum privacy_level privacylevel;
 	enum blocking_mode blockingmode;
 	enum refresh_hostnames refresh_hostnames;
@@ -95,7 +100,7 @@ typedef struct {
 		char *ph7_error;
 	} files;
 } ConfigStruct;
-ASSERT_SIZEOF(ConfigStruct, 192, 140, 140);
+ASSERT_SIZEOF(ConfigStruct, 200, 144, 144);
 
 extern ConfigStruct config;
 extern ConfigStruct defaults;

@@ -19,11 +19,15 @@
 // lock_shm(), addstr(), etc.
 #include "../shmem.h"
 
-void _FTL_upstream_error(const unsigned int rcode, const int id, const char* file, const int line)
+void FTL_upstream_error(const union all_addr *addr, const int id, const char* file, const int line)
 {
 	// Process upstream errors
 	// Queries with error are those where the RCODE
 	// in the DNS header is neither NOERROR nor NXDOMAIN.
+
+	// Return early if there is nothing we can analyze here (shouldn't happen)
+	if(!addr)
+		return;
 
 	// Lock shared memory
 	lock_shm();
@@ -48,7 +52,7 @@ void _FTL_upstream_error(const unsigned int rcode, const int id, const char* fil
 
 	// Translate dnsmasq's rcode into something we can use
 	const char *rcodestr = NULL;
-	switch(rcode)
+	switch(addr->log.rcode)
 	{
 		case SERVFAIL:
 			rcodestr = "SERVFAIL";
@@ -83,12 +87,12 @@ void _FTL_upstream_error(const unsigned int rcode, const int id, const char* fil
 
 		log_debug(DEBUG_QUERIES, "**** got error report for %s: %s (ID %i, %s:%i)", domainname, rcodestr, id, file, line);
 
+		if(addr->log.ede != EDE_UNSET) // This function is only called if (flags & F_RCODE)
+			log_debug(DEBUG_QUERIES, "     EDE: %s (%d)", edestr(addr->log.ede), addr->log.ede);
 	}
 
 	if(query->reply == REPLY_OTHER)
-	{
-		log_info("Found unknown rcode = %i", rcode);
-	}
+		log_info("Found unknown rcode = %i", addr->log.rcode);
 
 	// Unlock shared memory
 	unlock_shm();

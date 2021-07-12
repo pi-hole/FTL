@@ -28,6 +28,8 @@
 #include "events.h"
 // overTime array
 #include "overTime.h"
+// short_path()
+#include "files.h"
 
 // converts upper to lower case, and leaves other characters unchanged
 void strtolower(char *str)
@@ -541,37 +543,37 @@ const char * __attribute__ ((const)) get_query_status_str(const enum query_statu
 {
 	switch (status)
 	{
-		case STATUS_UNKNOWN:
+		case QUERY_UNKNOWN:
 			return "UNKNOWN";
-		case STATUS_GRAVITY:
+		case QUERY_GRAVITY:
 			return "GRAVITY";
-		case STATUS_FORWARDED:
+		case QUERY_FORWARDED:
 			return "FORWARDED";
-		case STATUS_CACHE:
+		case QUERY_CACHE:
 			return "CACHE";
-		case STATUS_REGEX:
+		case QUERY_REGEX:
 			return "REGEX";
-		case STATUS_DENYLIST:
+		case QUERY_DENYLIST:
 			return "DENYLIST";
-		case STATUS_EXTERNAL_BLOCKED_IP:
+		case QUERY_EXTERNAL_BLOCKED_IP:
 			return "EXTERNAL_BLOCKED_IP";
-		case STATUS_EXTERNAL_BLOCKED_NULL:
+		case QUERY_EXTERNAL_BLOCKED_NULL:
 			return "EXTERNAL_BLOCKED_NULL";
-		case STATUS_EXTERNAL_BLOCKED_NXRA:
+		case QUERY_EXTERNAL_BLOCKED_NXRA:
 			return "EXTERNAL_BLOCKED_NXRA";
-		case STATUS_GRAVITY_CNAME:
+		case QUERY_GRAVITY_CNAME:
 			return "GRAVITY_CNAME";
-		case STATUS_REGEX_CNAME:
+		case QUERY_REGEX_CNAME:
 			return "REGEX_CNAME";
-		case STATUS_DENYLIST_CNAME:
+		case QUERY_DENYLIST_CNAME:
 			return "DENYLIST_CNAME";
-		case STATUS_RETRIED:
+		case QUERY_RETRIED:
 			return "RETRIED";
-		case STATUS_RETRIED_DNSSEC:
+		case QUERY_RETRIED_DNSSEC:
 			return "RETRIED_DNSSEC";
-		case STATUS_IN_PROGRESS:
+		case QUERY_IN_PROGRESS:
 			return "IN_PROGRESS";
-		case STATUS_MAX:
+		case QUERY_STATUS_MAX:
 		default:
 			return "INVALID";
 	}
@@ -603,7 +605,9 @@ const char * __attribute__ ((const)) get_query_reply_str(const enum reply_type r
 			return "NOTIMP";
 		case REPLY_OTHER:
 			return "OTHER";
-		case REPLY_MAX:
+		case REPLY_DNSSEC:
+			return "DNSSEC";
+		case QUERY_REPLY_MAX:
 		default:
 			return "N/A";
 	}
@@ -670,25 +674,25 @@ bool __attribute__ ((const)) is_blocked(const enum query_status status)
 {
 	switch (status)
 	{
-		case STATUS_UNKNOWN:
-		case STATUS_FORWARDED:
-		case STATUS_CACHE:
-		case STATUS_RETRIED:
-		case STATUS_RETRIED_DNSSEC:
-		case STATUS_IN_PROGRESS:
-		case STATUS_MAX:
+		case QUERY_UNKNOWN:
+		case QUERY_FORWARDED:
+		case QUERY_CACHE:
+		case QUERY_RETRIED:
+		case QUERY_RETRIED_DNSSEC:
+		case QUERY_IN_PROGRESS:
+		case QUERY_STATUS_MAX:
 		default:
 			return false;
 
-		case STATUS_GRAVITY:
-		case STATUS_REGEX:
-		case STATUS_DENYLIST:
-		case STATUS_EXTERNAL_BLOCKED_IP:
-		case STATUS_EXTERNAL_BLOCKED_NULL:
-		case STATUS_EXTERNAL_BLOCKED_NXRA:
-		case STATUS_GRAVITY_CNAME:
-		case STATUS_REGEX_CNAME:
-		case STATUS_DENYLIST_CNAME:
+		case QUERY_GRAVITY:
+		case QUERY_REGEX:
+		case QUERY_DENYLIST:
+		case QUERY_EXTERNAL_BLOCKED_IP:
+		case QUERY_EXTERNAL_BLOCKED_NULL:
+		case QUERY_EXTERNAL_BLOCKED_NXRA:
+		case QUERY_GRAVITY_CNAME:
+		case QUERY_REGEX_CNAME:
+		case QUERY_DENYLIST_CNAME:
 			return true;
 	}
 }
@@ -696,7 +700,7 @@ bool __attribute__ ((const)) is_blocked(const enum query_status status)
 int __attribute__ ((pure)) get_blocked_count(void)
 {
 	int blocked = 0;
-	for(enum query_status status = 0; status < STATUS_MAX; status++)
+	for(enum query_status status = 0; status < QUERY_STATUS_MAX; status++)
 		if(is_blocked(status))
 			blocked += counters->status[status];
 
@@ -705,17 +709,17 @@ int __attribute__ ((pure)) get_blocked_count(void)
 
 int __attribute__ ((pure)) get_forwarded_count(void)
 {
-	return counters->status[STATUS_FORWARDED] +
-	       counters->status[STATUS_RETRIED] +
-	       counters->status[STATUS_RETRIED_DNSSEC];
+	return counters->status[QUERY_FORWARDED] +
+	       counters->status[QUERY_RETRIED] +
+	       counters->status[QUERY_RETRIED_DNSSEC];
 }
 
 int __attribute__ ((pure)) get_cached_count(void)
 {
-	return counters->status[STATUS_CACHE];
+	return counters->status[QUERY_CACHE];
 }
 
-void query_set_status(queriesData *query, const enum query_status new_status)
+void _query_set_status(queriesData *query, const enum query_status new_status, const char *file, const int line)
 {
 	// Debug logging
 	if(config.debug & DEBUG_STATUS)
@@ -723,14 +727,14 @@ void query_set_status(queriesData *query, const enum query_status new_status)
 		const char *oldstr = get_query_status_str(query->status);
 		if(query->status == new_status)
 		{
-			log_debug(DEBUG_STATUS, "Query %i: status unchanged: %s (%d)",
-			          query->id, oldstr, query->status);
+			log_debug(DEBUG_STATUS, "Query %i: status unchanged: %s (%d) in %s:%i",
+			          query->id, oldstr, query->status, short_path(file), line);
 		}
 		else
 		{
 			const char *newstr = get_query_status_str(new_status);
-			log_debug(DEBUG_STATUS, "Query %i: status changed: %s (%d) -> %s (%d)",
-			          query->id, oldstr, query->status, newstr, new_status);
+			log_debug(DEBUG_STATUS, "Query %i: status changed: %s (%d) -> %s (%d) in %s:%i",
+			          query->id, oldstr, query->status, newstr, new_status, short_path(file), line);
 		}
 	}
 
@@ -740,20 +744,21 @@ void query_set_status(queriesData *query, const enum query_status new_status)
 		counters->status[query->status]--;
 		counters->status[new_status]++;
 
+		const int timeidx = getOverTimeID(query->timestamp);
 		if(is_blocked(query->status))
-			overTime[query->timeidx].blocked--;
+			overTime[timeidx].blocked--;
 		if(is_blocked(new_status))
-			overTime[query->timeidx].blocked++;
+			overTime[timeidx].blocked++;
 
-		if(query->status == STATUS_CACHE)
-			overTime[query->timeidx].cached--;
-		if(new_status == STATUS_CACHE)
-			overTime[query->timeidx].cached++;
+		if(query->status == QUERY_CACHE)
+			overTime[timeidx].cached--;
+		if(new_status == QUERY_CACHE)
+			overTime[timeidx].cached++;
 
-		if(query->status == STATUS_FORWARDED)
-			overTime[query->timeidx].forwarded--;
-		if(new_status == STATUS_FORWARDED)
-			overTime[query->timeidx].forwarded++;
+		if(query->status == QUERY_FORWARDED)
+			overTime[timeidx].forwarded--;
+		if(new_status == QUERY_FORWARDED)
+			overTime[timeidx].forwarded++;
 	}
 
 	// Update status

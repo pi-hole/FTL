@@ -9,6 +9,7 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
+#include "legacy_reader.h"
 #include "config.h"
 #include "setupVars.h"
 #include "log.h"
@@ -18,9 +19,6 @@
 #include "args.h"
 // INT_MAX
 #include <limits.h>
-// debug_dnsmasq_lines
-#include "hooks/log.h"
-#include "legacy_reader.h"
 
 // Private global variables
 static char *conflinebuffer = NULL;
@@ -423,6 +421,24 @@ const char *readFTLlegacy(void)
 		inet_ntop(AF_INET6, &config.reply_addr.v6, addr, INET6_ADDRSTRLEN);
 	}
 
+	// SHOW_DNSSEC
+	// Should FTL analyze and include automatically generated DNSSEC queries in the Query Log?
+	// defaults to: true
+	buffer = parseFTLconf(fp, "SHOW_DNSSEC");
+	parseBool(buffer, &config.show_dnssec);
+
+	// MOZILLA_CANARY
+	// Should FTL handle use-application-dns.net specifically and always return NXDOMAIN?
+	// defaults to: true
+	buffer = parseFTLconf(fp, "MOZILLA_CANARY");
+	parseBool(buffer, &config.special_domains.mozilla_canary);
+
+	// PIHOLE_PTR
+	// Should FTL return "pi.hole" as name for PTR requests to local IP addresses?
+	// defaults to: true
+	buffer = parseFTLconf(fp, "PIHOLE_PTR");
+	parseBool(buffer, &config.pihole_ptr);
+
 	// Read DEBUG_... setting from pihole-FTL.conf
 	// This option should be the last one as it causes
 	// some rather verbose output into the log when
@@ -658,7 +674,6 @@ static void readDebugingSettingsLegacy(FILE *fp)
 		debugstr(flag, &name, &desc);
 		setDebugOption(fp, name, flag);
 	}
-	debug_dnsmasq_lines = config.debug & DEBUG_DNSMASQ_LINES ? 1 : 0;
 
 	if(config.debug != 0)
 	{

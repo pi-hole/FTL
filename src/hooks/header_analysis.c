@@ -27,7 +27,13 @@
 // query_set_reply()
 #include "set_reply.h"
 
-void _FTL_header_analysis(const unsigned char header4, const unsigned int rcode, const int id, const char *file, const int line)
+static void FTL_mark_externally_blocked(const int id, const char* file, const int line);
+
+// Fork-private copy of the server data the most recent reply came from
+union mysockaddr last_server = {{ 0 }};
+
+void _FTL_header_analysis(const unsigned char header4, const unsigned int rcode, const struct server *server,
+                          const int id, const char* file, const int line)
 {
 	// Analyze DNS header bits
 
@@ -38,12 +44,25 @@ void _FTL_header_analysis(const unsigned char header4, const unsigned int rcode,
 	// FTL_reply() is never getting called from within the cache routines.
 	// Hence, we have to store the necessary information about the NXDOMAIN
 	// reply already here.
-	if((header4 & 0x80) || rcode != NXDOMAIN)
-	{
-		// RA bit is set or rcode is not NXDOMAIN
-		return;
-	}
+	if(!(header4 & 0x80) && rcode == NXDOMAIN)
+		// RA bit is not set and rcode is NXDOMAIN
+		FTL_mark_externally_blocked(id, file, line);
 
+	// Store server which sent this reply
+	if(server)
+	{
+		memcpy(&last_server, &server->addr, sizeof(last_server));
+		log_debug(DEBUG_EXTRA, "Got forward address: YES");
+	}
+	else
+	{
+		memset(&last_server, 0, sizeof(last_server));
+		log_debug(DEBUG_EXTRA, "Got forward address: NO");
+	}
+}
+
+static void FTL_mark_externally_blocked(const int id, const char* file, const int line)
+{
 	const double now = double_time();
 
 	// Lock shared memory
@@ -92,7 +111,7 @@ void _FTL_header_analysis(const unsigned char header4, const unsigned int rcode,
 	// Store query as externally blocked
 	clientsData *client = getClient(query->clientID, true);
 	if(client != NULL)
-		query_blocked(query, domain, client, STATUS_EXTERNAL_BLOCKED_NXRA);
+		query_blocked(query, domain, client, QUERY_EXTERNAL_BLOCKED_NXRA);
 
 	// Store reply type as replied with NXDOMAIN
 	query_set_reply(F_NEG | F_NXDOMAIN, NULL, query, now);

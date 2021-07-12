@@ -20,10 +20,14 @@
 #include "database/common.h"
 // destroy_shmem()
 #include "shmem.h"
+// uname()
+#include <sys/utsname.h>
 // killed
 #include "signals.h"
 
 pthread_t threads[THREADS_MAX] = { 0 };
+pthread_t api_threads[MAX_API_THREADS] = { 0 };
+pid_t api_tids[MAX_API_THREADS] = { 0 };
 bool resolver_ready = false;
 
 void go_daemon(void)
@@ -138,6 +142,30 @@ char *getUserName(void)
 	return name;
 }
 
+// "man 7 hostname" says:
+//
+//     Each element of the hostname must be from 1 to 63 characters long and the
+//     entire hostname, including the dots, can be at most 253 characters long.
+//
+//     Valid characters for hostnames are ASCII(7) letters from a to z, the
+//     digits from 0 to 9, and the hyphen (-). A hostname may not start with a
+//     hyphen.
+#define HOSTNAMESIZE 256
+static char nodename[HOSTNAMESIZE] = { 0 };
+const char *hostname(void)
+{
+	// Ask kernel for node name if not known
+	// This is equivalent to "uname -n"
+	if(nodename[0] == '\0')
+	{
+		struct utsname buf;
+		if(uname(&buf) == 0)
+			strncpy(nodename, buf.nodename, HOSTNAMESIZE);
+		nodename[HOSTNAMESIZE-1] = '\0';
+	}
+	return nodename;
+}
+
 void delay_startup(void)
 {
 	// Exit early if not sleeping
@@ -213,6 +241,19 @@ void cleanup(const int ret)
 	if(resolver_ready)
 	{
 		terminate_threads();
+
+		// Cancel and join possibly still running API worker threads
+		for(unsigned int tid = 0; tid < MAX_API_THREADS; tid++)
+		{
+			// Skip if this is an unused slot
+			if(api_threads[tid] == 0)
+				continue;
+
+			// Otherwise, cancel and join the thread
+			log_notice("Joining API worker thread %d", tid);
+			pthread_cancel(api_threads[tid]);
+			pthread_join(api_threads[tid], NULL);
+		}
 
 		// Close database connection
 		lock_shm();

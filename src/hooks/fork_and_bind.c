@@ -30,6 +30,8 @@
 #include "../signals.h"
 // http_init()
 #include "../webserver/webserver.h"
+// init_pihole_PTR()
+#include "pihole_PTR.h"
 
 void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 {
@@ -115,4 +117,7 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 
 	// Initialize FTL HTTP server
 	http_init();
+
+	// Initialize Pi-hole PTR pointer
+	init_pihole_PTR();
 }

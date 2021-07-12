@@ -19,7 +19,6 @@
   #endif
 #endif // FTL_PRIVATE
 
-#define FTL_upstream_error(rcode, id) _FTL_upstream_error(rcode, id, __FILE__, __LINE__)
-void _FTL_upstream_error(const unsigned int rcode, const int id, const char* file, const int line);
+void FTL_upstream_error(const union all_addr *addr, const int id, const char* file, const int line);
 
 #endif // FTL_UPSTREAM_ERROR_H

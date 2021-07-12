@@ -22,9 +22,11 @@
 #include "../timers.h"
 // query_to_database()
 #include "../database/query-table.h"
+// getOverTimeID()
+#include "../overTime.h"
 
-void _FTL_forwarded(const unsigned int flags, const char *name, const struct server *serv, const int id,
-                    const char *file, const int line)
+void FTL_forwarded(const unsigned int flags, const char *name, const union all_addr *addr,
+                   const int id, const char* file, const int line)
 {
 	// Save that this query got forwarded to an upstream server
 	const double now = double_time();
@@ -37,23 +39,35 @@ void _FTL_forwarded(const unsigned int flags, const char *name, const struct ser
 	char dest[ADDRSTRLEN];
 	// If addr == NULL, we will only duplicate an empty string instead of uninitialized memory
 	dest[0] = '\0';
-	if(serv != NULL)
+	if(addr != NULL)
 	{
-		if(serv->addr.sa.sa_family == AF_INET)
+		if(flags & F_IPV4)
 		{
-			inet_ntop(AF_INET, &serv->addr.in.sin_addr, dest, ADDRSTRLEN);
-			upstreamPort = ntohs(serv->addr.in.sin_port);
+			inet_ntop(AF_INET, addr, dest, ADDRSTRLEN);
+			// Reverse-engineer port from underlying sockaddr_in structure
+			const in_port_t *port = (in_port_t*)((void*)addr
+			                                     - offsetof(struct sockaddr_in, sin_addr)
+			                                     + offsetof(struct sockaddr_in, sin_port));
+			upstreamPort = ntohs(*port);
 		}
 		else
 		{
-			inet_ntop(AF_INET6, &serv->addr.in6.sin6_addr, dest, ADDRSTRLEN);
-			upstreamPort = ntohs(serv->addr.in6.sin6_port);
+			inet_ntop(AF_INET6, addr, dest, ADDRSTRLEN);
+			// Reverse-engineer port from underlying sockaddr_in6 structure
+			const in_port_t *port = (in_port_t*)((void*)addr
+			                                     - offsetof(struct sockaddr_in6, sin6_addr)
+			                                     + offsetof(struct sockaddr_in6, sin6_port));
+			upstreamPort = ntohs(*port);
 		}
 	}
 
 	// Convert upstreamIP to lower case
 	char *upstreamIP = strdup(dest);
 	strtolower(upstreamIP);
+
+	// Substitute "." if we are querying the root domain (e.g. DNSKEY)
+	if(!name || strlen(name) == 0)
+		name = ".";
 
 	// Debug logging
 	log_debug(DEBUG_QUERIES, "**** forwarded %s to %s#%u (ID %i, %s:%i)",
@@ -72,15 +86,7 @@ void _FTL_forwarded(const unsigned int flags, const char *name, const struct ser
 
 	// Get query pointer
 	queriesData* query = getQuery(queryID, true);
-
-	// Proceed only if
-	// - current query has not been marked as replied to so far
-	//   (it could be that answers from multiple forward
-	//    destinations are coming in for the same query)
-	// - the query was formally known as cached but had to be forwarded
-	//   (this is a special case further described below)
-	// Use short-circuit evaluation to check if query is NULL
-	if(query == NULL || (query->flags.complete && query->status != STATUS_CACHE))
+	if(query == NULL)
 	{
 		free(upstreamIP);
 		unlock_shm();
@@ -95,11 +101,33 @@ void _FTL_forwarded(const unsigned int flags, const char *name, const struct ser
 	upstreamsData *upstream = getUpstream(upstreamID, true);
 	if(upstream != NULL)
 	{
-		upstream->count++;
+		// Only count upstream when there has been no reply so far
+		if(query->reply == REPLY_UNKNOWN)
+		{
+			// Update overTime
+			const int timeidx = getOverTimeID(query->timestamp);
+			upstream->overTime[timeidx]++;
+			// Update total count
+			upstream->count++;
+		}
+		// Update lastQuery timestamp
 		upstream->lastQuery = double_time();
 	}
 
-	if(query->status == STATUS_CACHE)
+	// Proceed only if
+	// - current query has not been marked as replied to so far
+	//   (it could be that answers from multiple forward
+	//    destinations are coming in for the same query)
+	// - the query was formally known as cached but had to be forwarded
+	//   (this is a special case further described below)
+	if(query->flags.complete && query->status != QUERY_CACHE)
+	{
+		free(upstreamIP);
+		unlock_shm();
+		return;
+	}
+
+	if(query->status == QUERY_CACHE)
 	{
 		// Detect if we cached the <CNAME> but need to ask the upstream
 		// servers for the actual IPs now, we remove this query from the
@@ -127,16 +155,13 @@ void _FTL_forwarded(const unsigned int flags, const char *name, const struct ser
 	}
 
 	// Set query status to forwarded only after the
-	// if(query->status == STATUS_CACHE) { ... }
+	// if(query->status == QUERY_CACHE) { ... }
 	// from above as otherwise this check will always
 	// be negative
-	query_set_status(query, STATUS_FORWARDED);
+	query_set_status(query, QUERY_FORWARDED);
 
 	// Release allocated memory
 	free(upstreamIP);
-
-	// Update query in database
-	query_to_database(query);
 
 	// Unlock shared memory
 	unlock_shm();

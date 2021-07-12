@@ -101,7 +101,7 @@ void *GC_thread(void *val)
 
 				// Adjust client counter (total and overTime)
 				clientsData* client = getClient(query->clientID, true);
-				const int timeidx = query->timeidx;
+				const int timeidx = getOverTimeID(query->timestamp);
 				overTime[timeidx].total--;
 				if(client != NULL)
 					change_clientcount(client, -1, 0, timeidx, -1);
@@ -116,33 +116,36 @@ void *GC_thread(void *val)
 				// Change other counters according to status of this query
 				switch(query->status)
 				{
-					case STATUS_UNKNOWN:
+					case QUERY_UNKNOWN:
 						// Unknown (?)
 						break;
-					case STATUS_FORWARDED: // (fall through)
-					case STATUS_RETRIED: // (fall through)
-					case STATUS_RETRIED_DNSSEC:
+					case QUERY_FORWARDED: // (fall through)
+					case QUERY_RETRIED: // (fall through)
+					case QUERY_RETRIED_DNSSEC:
 						// Forwarded to an upstream DNS server
 						// Adjust counters
 						if(query->upstreamID > -1)
 						{
 							upstreamsData* upstream = getUpstream(query->upstreamID, true);
 							if(upstream != NULL)
+							{
+								upstream->overTime[timeidx]--;
 								upstream->count--;
+							}
 						}
 						break;
-					case STATUS_CACHE:
+					case QUERY_CACHE:
 						// Answered from local cache _or_ local config
 						break;
-					case STATUS_GRAVITY: // Blocked by Pi-hole's blocking lists (fall through)
-					case STATUS_DENYLIST: // Exact blocked (fall through)
-					case STATUS_REGEX: // Regex blocked (fall through)
-					case STATUS_EXTERNAL_BLOCKED_IP: // Blocked by upstream provider (fall through)
-					case STATUS_EXTERNAL_BLOCKED_NXRA: // Blocked by upstream provider (fall through)
-					case STATUS_EXTERNAL_BLOCKED_NULL: // Blocked by upstream provider (fall through)
-					case STATUS_GRAVITY_CNAME: // Gravity domain in CNAME chain (fall through)
-					case STATUS_DENYLIST_CNAME: // Exactly denied domain in CNAME chain (fall through)
-					case STATUS_REGEX_CNAME: // Regex denied domain in CNAME chain (fall through)
+					case QUERY_GRAVITY: // Blocked by Pi-hole's blocking lists (fall through)
+					case QUERY_DENYLIST: // Exact blocked (fall through)
+					case QUERY_REGEX: // Regex blocked (fall through)
+					case QUERY_EXTERNAL_BLOCKED_IP: // Blocked by upstream provider (fall through)
+					case QUERY_EXTERNAL_BLOCKED_NXRA: // Blocked by upstream provider (fall through)
+					case QUERY_EXTERNAL_BLOCKED_NULL: // Blocked by upstream provider (fall through)
+					case QUERY_GRAVITY_CNAME: // Gravity domain in CNAME chain (fall through)
+					case QUERY_DENYLIST_CNAME: // Exactly denied domain in CNAME chain (fall through)
+					case QUERY_REGEX_CNAME: // Regex denied domain in CNAME chain (fall through)
 						//counters->blocked--;
 						overTime[timeidx].blocked--;
 						if(domain != NULL)
@@ -150,8 +153,8 @@ void *GC_thread(void *val)
 						if(client != NULL)
 							change_clientcount(client, 0, -1, -1, 0);
 						break;
-					case STATUS_IN_PROGRESS: // Don't have to do anything here
-					case STATUS_MAX: // fall through
+					case QUERY_IN_PROGRESS: // Don't have to do anything here
+					case QUERY_STATUS_MAX: // fall through
 					default:
 						/* That cannot happen */
 						break;
@@ -167,11 +170,11 @@ void *GC_thread(void *val)
 				// Subtract UNKNOWN from the counters before
 				// setting the status if different. This ensure
 				// we are not counting them at all.
-				if(query->status != STATUS_UNKNOWN)
-					counters->status[STATUS_UNKNOWN]--;
+				if(query->status != QUERY_UNKNOWN)
+					counters->status[QUERY_UNKNOWN]--;
 
 				// Set query again to UNKNOWN to reset the counters
-				query_set_status(query, STATUS_UNKNOWN);
+				query_set_status(query, QUERY_UNKNOWN);
 
 				// Count removed queries
 				removed++;

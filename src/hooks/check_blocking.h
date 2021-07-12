@@ -21,7 +21,7 @@
 
 #include <stdbool.h>
 
-#define FTL_check_blocking(queryID, domainID, clientID, blockingreason) _FTL_check_blocking(queryID, domainID, clientID, blockingreason, __FILE__, __LINE__)
-bool _FTL_check_blocking(int queryID, int domainID, int clientID, const char **blockingreason, const char* file, const int line);
+#define FTL_check_blocking(queryID, domainID, clientID) _FTL_check_blocking(queryID, domainID, clientID, __FILE__, __LINE__)
+bool _FTL_check_blocking(int queryID, int domainID, int clientID, const char* file, const int line);
 
 #endif // FTL_CHECK_BLOCKING_H

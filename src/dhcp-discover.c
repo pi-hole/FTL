@@ -64,7 +64,7 @@ extern const struct opttab_t {
 } opttab[];
 
 // creates a socket for DHCP communication
-static int create_dhcp_socket(const char *interface_name)
+static int create_dhcp_socket(const char *iname)
 {
 	struct sockaddr_in dhcp_socket;
 	struct ifreq interface;
@@ -80,7 +80,7 @@ static int create_dhcp_socket(const char *interface_name)
 	const int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if(sock < 0)
 	{
-		printf("Error: Could not create socket!\n");
+		printf("Error: Could not create socket for interface %s!!\n", iname);
 		return -1;
 	}
 
@@ -91,28 +91,30 @@ static int create_dhcp_socket(const char *interface_name)
 	flag=1;
 	if(setsockopt(sock,SOL_SOCKET, SO_REUSEADDR, (char *)&flag, sizeof(flag))<0)
 	{
-		printf("Error: Could not set reuse address option on DHCP socket!\n");
+		printf("Error: Could not set reuse address option on DHCP socket (%s)!\n", iname);
 		return -1;
 	}
 
 	// set the broadcast option - we need this to listen to DHCP broadcast messages
 	if(setsockopt(sock, SOL_SOCKET,SO_BROADCAST, (char *)&flag, sizeof flag) < 0)
 	{
-		printf("Error: Could not set broadcast option on DHCP socket!\n");
+		printf("Error: Could not set broadcast option on DHCP socket (%s)!\n", iname);
 		return -1;
 	}
 
 	// bind socket to interface
-	strncpy(interface.ifr_ifrn.ifrn_name, interface_name, IFNAMSIZ-1);
+	strncpy(interface.ifr_ifrn.ifrn_name, iname, IFNAMSIZ-1);
 	if(setsockopt(sock,SOL_SOCKET, SO_BINDTODEVICE, (char *)&interface, sizeof(interface)) < 0)
 	{
-		printf("Error: Could not bind socket to interface %s (%s)\n       ---> Check your privileges (run with sudo)!\n", interface_name, strerror(errno));
+		printf("Error: Could not bind socket to interface %s (%s)\n       ---> Check your privileges (run with sudo)!\n",
+		       iname, strerror(errno));
 		return -1;
 	}
 
 	// bind the socket
 	if(bind(sock, (struct sockaddr *)&dhcp_socket, sizeof(dhcp_socket)) < 0){
-		printf("Error: Could not bind to DHCP socket (port %d, %s\n       ---> Check your privileges (run with sudo)!\n", DHCP_CLIENT_PORT, strerror(errno));
+		printf("Error: Could not bind to DHCP socket (interface %s, port %d, %s)\n       ---> Check your privileges (run with sudo)!\n",
+		       iname, DHCP_CLIENT_PORT, strerror(errno));
 		return -1;
 	}
 
@@ -120,15 +122,16 @@ static int create_dhcp_socket(const char *interface_name)
 }
 
 // determines hardware address on client machine
-static int get_hardware_address(const int sock, const char *interface_name, unsigned char *mac)
+static int get_hardware_address(const int sock, const char *iname, unsigned char *mac)
 {
 	struct ifreq ifr;
-	strncpy((char *)&ifr.ifr_name, interface_name, sizeof(ifr.ifr_name)-1);
+	strncpy((char *)&ifr.ifr_name, iname, sizeof(ifr.ifr_name)-1);
 
 	// try and grab hardware address of requested interface
 	int ret = 0;
 	if((ret = ioctl(sock, SIOCGIFHWADDR, &ifr)) < 0){
-		printf(" Error: Could not get hardware address of interface '%s' (socket %d, error: %s)\n", interface_name, sock, strerror(errno));
+		printf(" Error: Could not get hardware address of interface '%s' (socket %d, error: %s)",
+		       iname, sock, strerror(errno));
 		return false;
 	}
 	memcpy(&mac[0], &ifr.ifr_hwaddr.sa_data, 6);
@@ -437,7 +440,7 @@ static bool receive_dhcp_packet(void *buffer, int buffer_size, const char *iface
 #endif
 	// Return on error
 	if(recv_result == -1){
-		printf(" recvfrom() failed, error: %s\n", strerror(errno));
+		printf(" recvfrom() failed on %s, error: %s\n", iface, strerror(errno));
 		return false;
 	}
 

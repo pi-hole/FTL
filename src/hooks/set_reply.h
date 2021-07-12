@@ -19,7 +19,11 @@
   #endif
 
   #include "../datastructure.h"
-  void query_set_reply(const unsigned int flags, const union all_addr *addr, queriesData *query, const double now);
 #endif // FTL_PRIVATE
+
+#define query_set_reply(flags, addr, query, now) _query_set_reply(flags, addr, query, now, __FILE__, __LINE__)
+void _query_set_reply(const unsigned int flags, const union all_addr *addr,
+                      queriesData *query, const double now,
+                      const char *file, const int line);
 
 #endif // FTL_SET_REPLY_H

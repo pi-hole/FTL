@@ -19,7 +19,7 @@
 // lock_shm(), addstr(), etc.
 #include "../shmem.h"
 
-void _FTL_dnssec(const int status, const int id, const char* file, const int line)
+void FTL_dnssec(const char *arg, const union all_addr *addr, const int id, const char* file, const int line)
 {
 	// Process DNSSEC result for a domain
 
@@ -50,19 +50,26 @@ void _FTL_dnssec(const int status, const int id, const char* file, const int lin
 		// Get domain pointer
 		const domainsData* domain = getDomain(query->domainID, true);
 		if(domain != NULL)
-		{
-			log_debug(DEBUG_QUERIES, "**** got DNSSEC details for %s: %i (ID %i, %s:%i)",
-			          getstr(domain->domainpos), status, id, file, line);
-		}
+			log_debug(DEBUG_QUERIES, "**** DNSSEC %s is %s (ID %i, %s:%i)", getstr(domain->domainpos), arg, id, file, line);
+		if(addr && addr->log.ede != EDE_UNSET) // This function is only called if (flags & F_SECSTAT)
+			log_debug(DEBUG_QUERIES, "     EDE: %s (%d)", edestr(addr->log.ede), addr->log.ede);
 	}
 
+	// Store EDE
+	if(addr && addr->log.ede != EDE_UNSET)
+		query->ede = addr->log.ede;
+
 	// Iterate through possible values
-	if(status == STAT_SECURE)
+	if(strcmp(arg, "SECURE") == 0)
 		query->dnssec = DNSSEC_SECURE;
-	else if(status == STAT_INSECURE)
+	else if(strcmp(arg, "INSECURE") == 0)
 		query->dnssec = DNSSEC_INSECURE;
-	else
+	else if(strcmp(arg, "BOGUS") == 0)
 		query->dnssec = DNSSEC_BOGUS;
+	else if(strcmp(arg, "ABANDONED") == 0)
+		query->dnssec = DNSSEC_ABANDONED;
+	else
+		log_warn("Ignored unkonwn DNSSEC status \"%s\"", arg);
 
 	// Unlock shared memory
 	unlock_shm();

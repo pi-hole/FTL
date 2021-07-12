@@ -117,7 +117,7 @@ int api_queries_suggestions(struct ftl_conn *api)
 
 	// Get status
 	cJSON *status = JSON_NEW_ARRAY();
-	for(enum query_status s = STATUS_UNKNOWN; s < STATUS_MAX; s++)
+	for(enum query_status s = QUERY_UNKNOWN; s <QUERY_STATUS_MAX; s++)
 	{
 		query.status = s;
 		const char *string = get_query_status_str(query.status);
@@ -126,7 +126,7 @@ int api_queries_suggestions(struct ftl_conn *api)
 
 	// Get reply types
 	cJSON *reply = JSON_NEW_ARRAY();
-	for(enum reply_type r = REPLY_UNKNOWN; r < REPLY_MAX; r++)
+	for(enum reply_type r = REPLY_UNKNOWN; r <QUERY_REPLY_MAX; r++)
 	{
 		query.reply = r;
 		const char *string = get_query_reply_str(query.reply);
@@ -429,12 +429,12 @@ int api_queries(struct ftl_conn *api)
 		if(idx > 0)
 		{
 			enum query_status status;
-			for(status = STATUS_UNKNOWN; status < STATUS_MAX; status++)
+			for(status = QUERY_UNKNOWN; status <QUERY_STATUS_MAX; status++)
 			{
 				if(strcasecmp(statusname, get_query_status_str(status)) == 0)
 					break;
 			}
-			if(status < STATUS_MAX)
+			if(status <QUERY_STATUS_MAX)
 			{
 				rc = sqlite3_bind_int(read_stmt, idx, status);
 				if(rc != SQLITE_OK)
@@ -459,12 +459,12 @@ int api_queries(struct ftl_conn *api)
 		if(idx > 0)
 		{
 			enum reply_type reply;
-			for(reply = REPLY_UNKNOWN; reply < REPLY_MAX; reply++)
+			for(reply = REPLY_UNKNOWN; reply <QUERY_REPLY_MAX; reply++)
 			{
 				if(strcasecmp(replyname, get_query_reply_str(reply)) == 0)
 					break;
 			}
-			if(reply < REPLY_MAX)
+			if(reply <QUERY_REPLY_MAX)
 			{
 				rc = sqlite3_bind_int(read_stmt, idx, reply);
 				if(rc != SQLITE_OK)

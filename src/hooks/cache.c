@@ -92,7 +92,7 @@ void _FTL_cache(const unsigned int flags, const char *name, const union all_addr
 		}
 
 		// Set status of this query
-		query_set_status(query, STATUS_CACHE);
+		query_set_status(query, QUERY_CACHE);
 		query->ttl = ttl;
 
 		domainsData *domain = getDomain(query->domainID, true);

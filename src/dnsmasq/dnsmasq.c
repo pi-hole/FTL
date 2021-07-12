@@ -28,7 +28,7 @@ static volatile pid_t pid = 0;
 static volatile int pipewrite;
 static char terminate = 0;
 
-static int set_dns_listeners(time_t now);
+static void set_dns_listeners(void);
 static void check_dns_listeners(time_t now);
 static void sig_handler(int sig);
 static void async_event(int pipe, time_t now);
@@ -139,6 +139,13 @@ int main_dnsmasq (int argc, char **argv)
     }
 #endif
 
+#if defined(HAVE_CONNTRACK) && defined(HAVE_UBUS)
+  /* CONNTRACK UBUS code uses this buffer, so if not allocated above,
+     we need to allocate it here. */
+  if (option_bool(OPT_CMARK_ALST_EN) && !daemon->workspacename)
+    daemon->workspacename = safe_malloc(MAXDNAME);
+#endif
+  
 #ifdef HAVE_DHCP
   if (!daemon->lease_file)
     {
@@ -434,8 +441,6 @@ int main_dnsmasq (int argc, char **argv)
 #ifdef HAVE_DBUS
     {
       char *err;
-      daemon->dbus = NULL;
-      daemon->watches = NULL;
       if ((err = dbus_init()))
 	die(_("DBus error: %s"), err, EC_MISC);
     }
@@ -446,8 +451,9 @@ int main_dnsmasq (int argc, char **argv)
   if (option_bool(OPT_UBUS))
 #ifdef HAVE_UBUS
     {
-      daemon->ubus = NULL;
-      ubus_init();
+      char *err;
+      if ((err = ubus_init()))
+	die(_("UBus error: %s"), err, EC_MISC);
     }
 #else
   die(_("UBus not available: set HAVE_UBUS in src/dnsmasq/config.h"), NULL, EC_BADCONF);
@@ -1031,7 +1037,7 @@ int main_dnsmasq (int argc, char **argv)
     close(err_pipe[1]);
   
   if (daemon->port != 0)
-    check_servers();
+    check_servers(0);
   
   pid = getpid();
 
@@ -1050,16 +1056,10 @@ int main_dnsmasq (int argc, char **argv)
   
   while (!terminate)
     {
-      int t, timeout = -1;
+      int timeout = -1;
       
       poll_reset();
       
-      /* if we are out of resources, find how long we have to wait
-	 for some to come free, we'll loop around then and restart
-	 listening for queries */
-      if ((t = set_dns_listeners(now)) != 0)
-	timeout = t * 1000;
-
       /* Whilst polling for the dbus, or doing a tftp transfer, wake every quarter second */
       if (daemon->tftp_trans ||
 	  (option_bool(OPT_DBUS) && !daemon->dbus))
@@ -1069,15 +1069,18 @@ int main_dnsmasq (int argc, char **argv)
       else if (is_dad_listeners())
 	timeout = 1000;
 
-#ifdef HAVE_DBUS
-      set_dbus_listeners();
-#endif
+      set_dns_listeners();
 
+#ifdef HAVE_DBUS
+      if (option_bool(OPT_DBUS))
+	set_dbus_listeners();
+#endif
+      
 #ifdef HAVE_UBUS
       if (option_bool(OPT_UBUS))
         set_ubus_listeners();
 #endif
-	  
+      
 #ifdef HAVE_DHCP
       if (daemon->dhcp || daemon->relay4)
 	{
@@ -1197,28 +1200,44 @@ int main_dnsmasq (int argc, char **argv)
       
 #ifdef HAVE_DBUS
       /* if we didn't create a DBus connection, retry now. */ 
-     if (option_bool(OPT_DBUS) && !daemon->dbus)
+      if (option_bool(OPT_DBUS))
 	{
-	  char *err;
-	  if ((err = dbus_init()))
-	    my_syslog(LOG_WARNING, _("DBus error: %s"), err);
-	  if (daemon->dbus)
-	    my_syslog(LOG_INFO, _("connected to system DBus"));
+	  if (!daemon->dbus)
+	    {
+	      char *err  = dbus_init();
+
+	      if (daemon->dbus)
+		my_syslog(LOG_INFO, _("connected to system DBus"));
+	      else if (err)
+		{
+		  my_syslog(LOG_ERR, _("DBus error: %s"), err);
+		  reset_option_bool(OPT_DBUS); /* fatal error, stop trying. */
+		}
+	    }
+	  
+	  check_dbus_listeners();
 	}
-      check_dbus_listeners();
 #endif
 
 #ifdef HAVE_UBUS
+      /* if we didn't create a UBus connection, retry now. */
       if (option_bool(OPT_UBUS))
-        {
-          /* if we didn't create a UBus connection, retry now. */
-          if (!daemon->ubus)
-            {
-              ubus_init();
-            }
+	{
+	  if (!daemon->ubus)
+	    {
+	      char *err = ubus_init();
 
-          check_ubus_listeners();
-        }
+	      if (daemon->ubus)
+		my_syslog(LOG_INFO, _("connected to system UBus"));
+	      else if (err)
+		{
+		  my_syslog(LOG_ERR, _("UBus error: %s"), err);
+		  reset_option_bool(OPT_UBUS); /* fatal error, stop trying. */
+		}
+	    }
+	  
+	  check_ubus_listeners();
+	}
 #endif
 
       check_dns_listeners(now);
@@ -1458,7 +1477,7 @@ static void async_event(int pipe, time_t now)
 	      }
 
 	    if (check)
-	      check_servers();
+	      check_servers(0);
 	  }
 
 #ifdef HAVE_DHCP
@@ -1661,7 +1680,7 @@ static void poll_resolv(int force, int do_reload, time_t now)
 	{
 	  my_syslog(LOG_INFO, _("reading %s"), latest->name);
 	  warned = 0;
-	  check_servers();
+	  check_servers(0);
 	  if (option_bool(OPT_RELOAD) && do_reload)
 	    clear_cache_and_reload(now);
 	}
@@ -1706,12 +1725,12 @@ void clear_cache_and_reload(time_t now)
 #endif
 }
 
-static int set_dns_listeners(time_t now)
+static void set_dns_listeners(void)
 {
   struct serverfd *serverfdp;
   struct listener *listener;
   struct randfd_list *rfl;
-  int wait = 0, i;
+  int i;
   
 #ifdef HAVE_TFTP
   int  tftp = 0;
@@ -1724,10 +1743,6 @@ static int set_dns_listeners(time_t now)
       }
 #endif
   
-  /* will we be able to get memory? */
-  if (daemon->port != 0)
-    get_new_frec(now, &wait, NULL);
-  
   for (serverfdp = daemon->sfds; serverfdp; serverfdp = serverfdp->next)
     poll_listen(serverfdp->fd, POLLIN);
     
@@ -1739,36 +1754,34 @@ static int set_dns_listeners(time_t now)
   for (rfl = daemon->rfl_poll; rfl; rfl = rfl->next)
     poll_listen(rfl->rfd->fd, POLLIN);
   
+  /* check to see if we have free tcp process slots. */
+  for (i = MAX_PROCS - 1; i >= 0; i--)
+    if (daemon->tcp_pids[i] == 0 && daemon->tcp_pipes[i] == -1)
+      break;
+
   for (listener = daemon->listeners; listener; listener = listener->next)
     {
-      /* only listen for queries if we have resources */
-      if (listener->fd != -1 && wait == 0)
+      if (listener->fd != -1)
 	poll_listen(listener->fd, POLLIN);
-	
-      /* death of a child goes through the select loop, so
-	 we don't need to explicitly arrange to wake up here */
-      if  (listener->tcpfd != -1)
-	for (i = 0; i < MAX_PROCS; i++)
-	  if (daemon->tcp_pids[i] == 0 && daemon->tcp_pipes[i] == -1)
-	    {
-	      poll_listen(listener->tcpfd, POLLIN);
-	      break;
-	    }
-
+      
+      /* Only listen for TCP connections when a process slot
+	 is available. Death of a child goes through the select loop, so
+	 we don't need to explicitly arrange to wake up here,
+	 we'll be called again when a slot becomes available. */
+      if  (listener->tcpfd != -1 && i >= 0)
+	poll_listen(listener->tcpfd, POLLIN);
+      
 #ifdef HAVE_TFTP
       /* tftp == 0 in single-port mode. */
       if (tftp <= daemon->tftp_max && listener->tftpfd != -1)
 	poll_listen(listener->tftpfd, POLLIN);
 #endif
-
     }
   
   if (!option_bool(OPT_DEBUG))
     for (i = 0; i < MAX_PROCS; i++)
       if (daemon->tcp_pipes[i] != -1)
 	poll_listen(daemon->tcp_pipes[i], POLLIN);
-  
-  return wait;
 }
 
 static void check_dns_listeners(time_t now)
@@ -1819,9 +1832,9 @@ static void check_dns_listeners(time_t now)
       if(option_bool(OPT_NOWILD))
       {
 	if(listener != NULL && listener->iface != NULL)
-	  FTL_iface(listener->iface->index, daemon->interfaces);
+	  FTL_iface(listener->iface->index);
 	else
-	  FTL_iface(-1, NULL);
+	  FTL_iface(-1);
       }
       /*******************************************************************************/
 
@@ -1833,7 +1846,16 @@ static void check_dns_listeners(time_t now)
 	tftp_request(listener, now);
 #endif
 
-      if (listener->tcpfd != -1 && poll_check(listener->tcpfd, POLLIN))
+      /* check to see if we have a free tcp process slot.
+	 Note that we can't assume that because we had
+	 at least one a poll() time, that we still do.
+	 There may be more waiting connections after
+	 poll() returns then free process slots. */
+      for (i = MAX_PROCS - 1; i >= 0; i--)
+	if (daemon->tcp_pids[i] == 0 && daemon->tcp_pipes[i] == -1)
+	  break;
+
+      if (listener->tcpfd != -1 && i >= 0 && poll_check(listener->tcpfd, POLLIN))
 	{
 	  int confd, client_ok = 1;
 	  struct irec *iface = NULL;
@@ -1923,7 +1945,6 @@ static void check_dns_listeners(time_t now)
 		close(pipefd[0]);
 	      else
 		{
-		  int i;
 #ifdef HAVE_LINUX_NETWORK
 		  /* The child process inherits the netlink socket, 
 		     which it never uses, but when the parent (us) 
@@ -1943,13 +1964,9 @@ static void check_dns_listeners(time_t now)
 		  read_write(pipefd[0], &a, 1, 1);
 #endif
 
-		  for (i = 0; i < MAX_PROCS; i++)
-		    if (daemon->tcp_pids[i] == 0 && daemon->tcp_pipes[i] == -1)
-		      {
-			daemon->tcp_pids[i] = p;
-			daemon->tcp_pipes[i] = pipefd[0];
-			break;
-		      }
+		  /* i holds index of free slot */
+		  daemon->tcp_pids[i] = p;
+		  daemon->tcp_pipes[i] = pipefd[0];
 		}
 	      close(confd);
 
@@ -2004,8 +2021,7 @@ static void check_dns_listeners(time_t now)
 	      /************ Pi-hole modification ************/
 	      FTL_TCP_worker_created(confd);
 	      // Store interface this fork is handling exclusively
-	      FTL_iface(iface != NULL ? iface->index : -1,
-			daemon->interfaces);
+	      FTL_iface(iface != NULL ? iface->index : -1);
 	      /**********************************************/
 
 	      buff = tcp_request(confd, now, &tcp_addr, netmask, auth_dns);
@@ -2139,7 +2155,7 @@ int delay_dhcp(time_t start, int sec, int fd, uint32_t addr, unsigned short id)
       poll_reset();
       if (fd != -1)
         poll_listen(fd, POLLIN);
-      set_dns_listeners(now);
+      set_dns_listeners();
       set_log_writer();
       
 #ifdef HAVE_DHCP6

@@ -136,20 +136,8 @@ int api_stats_database_overTime_history(struct ftl_conn *api)
 		total += count;
 
 		// Add to blocked count if this is the result for a blocked status
-		switch (status)
-		{
-			case STATUS_GRAVITY:
-			case STATUS_REGEX:
-			case STATUS_DENYLIST:
-			case STATUS_EXTERNAL_BLOCKED_IP:
-			case STATUS_EXTERNAL_BLOCKED_NULL:
-			case STATUS_EXTERNAL_BLOCKED_NXRA:
-				blocked += count;
-				break;
-
-			default:
-				break;
-		}
+		if(is_blocked(status))
+			blocked += count;
 	}
 
 	// Finalize statement and close (= unlock) database connection

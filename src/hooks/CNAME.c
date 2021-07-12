@@ -10,8 +10,6 @@
 
 #define FTL_PRIVATE
 #include "CNAME.h"
-// force_next_DNS_reply
-#include "iface.h"
 // struct queriesData, etc.
 #include "../datastructure.h"
 // struct config
@@ -85,8 +83,7 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 	const int clientID = query->clientID;
 
 	// Check per-client blocking for the child domain
-	const char *blockingreason = NULL;
-	const bool block = FTL_check_blocking(queryID, child_domainID, clientID, &blockingreason);
+	const bool block = FTL_check_blocking(queryID, child_domainID, clientID);
 
 	// If we find during a CNAME inspection that we want to block the entire chain,
 	// the originally queried domain itself was not counted as blocked. We have to
@@ -110,11 +107,11 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 		query->CNAME_domainID = child_domainID;
 
 		// Change blocking reason into CNAME-caused blocking
-		if(query->status == STATUS_GRAVITY)
+		if(query->status == QUERY_GRAVITY)
 		{
-			query_set_status(query, STATUS_GRAVITY_CNAME);
+			query_set_status(query, QUERY_GRAVITY_CNAME);
 		}
-		else if(query->status == STATUS_REGEX)
+		else if(query->status == QUERY_REGEX)
 		{
 			// Get parent and child DNS cache entries
 			const int parent_cacheID = findCacheID(parent_domainID, clientID, query->type);
@@ -131,12 +128,12 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 			}
 
 			// Set status
-			query_set_status(query, STATUS_REGEX_CNAME);
+			query_set_status(query, QUERY_REGEX_CNAME);
 		}
-		else if(query->status == STATUS_DENYLIST)
+		else if(query->status == QUERY_DENYLIST)
 		{
 			// Only set status
-			query_set_status(query, STATUS_DENYLIST_CNAME);
+			query_set_status(query, QUERY_DENYLIST_CNAME);
 		}
 	}
 

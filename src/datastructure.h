@@ -32,11 +32,11 @@ typedef struct {
 	int upstreamID;
 	int id; // the ID is a (signed) int in dnsmasq, so no need for a long int here
 	int CNAME_domainID; // only valid if query has a CNAME blocking status
-	unsigned int timeidx;
+	int ede;
+	unsigned int ttl;
 	double response;
 	double timestamp;
 	int64_t db;
-	unsigned int ttl;
 	// Adjacent bit field members in the struct flags may be packed to share
 	// and straddle the individual bytes. It is useful to pack the memory as
 	// tightly as possible as there may be dozens of thousands of these
@@ -47,11 +47,12 @@ typedef struct {
 		bool allowed :1;
 		bool complete :1;
 		bool blocked :1;
+		bool database :1;
 	} flags;
 } queriesData;
 
 // ARM needs alignment to 8-byte boundary
-ASSERT_SIZEOF(queriesData, 64, 64, 64);
+//ASSERT_SIZEOF(queriesData, 64, 64, 64);
 
 typedef struct {
 	unsigned char magic;
@@ -62,13 +63,14 @@ typedef struct {
 	int count;
 	int failed;
 	unsigned int responses;
+	int overTime[OVERTIME_SLOTS];
 	size_t ippos;
 	size_t namepos;
 	double rtime;
 	double rtuncertainty;
 	double lastQuery;
 } upstreamsData;
-ASSERT_SIZEOF(upstreamsData, 56, 48, 48);
+//ASSERT_SIZEOF(upstreamsData, 640, 628, 628);
 
 typedef struct {
 	unsigned char magic;
@@ -76,9 +78,9 @@ typedef struct {
 	char hwlen;
 	unsigned char hwaddr[16]; // See DHCP_CHADDR_MAX in dnsmasq/dhcp-protocol.h
 	struct client_flags {
-		bool new:1;
-		bool found_group:1;
-		bool aliasclient:1;
+		bool new :1;
+		bool found_group: 1;
+		bool aliasclient :1;
 	} flags;
 	int count;
 	int blockedcount;
@@ -96,7 +98,7 @@ typedef struct {
 } clientsData;
 
 // ARM needs alignment to 8-byte boundary
-ASSERT_SIZEOF(clientsData, 696, 672, 672);
+//ASSERT_SIZEOF(clientsData, 696, 672, 672);
 
 typedef struct {
 	unsigned char magic;
@@ -109,7 +111,7 @@ ASSERT_SIZEOF(domainsData, 24, 16, 16);
 typedef struct {
 	unsigned char magic;
 	enum domain_client_status blocking_status;
-	unsigned char force_reply;
+	enum reply_type force_reply;
 	enum query_type query_type;
 	int domainID;
 	int clientID;
@@ -131,6 +133,8 @@ int get_blocked_count(void) __attribute__ ((pure));
 int get_forwarded_count(void) __attribute__ ((pure));
 int get_cached_count(void) __attribute__ ((pure));
 void query_set_status(queriesData *query, const enum query_status new_status);
+#define query_set_status(query, new_status) _query_set_status(query, new_status, __FILE__, __LINE__)
+void _query_set_status(queriesData *query, const enum query_status new_status, const char *file, const int line);
 
 void FTL_reload_all_domainlists(void);
 void FTL_reset_per_client_domain_data(void);

@@ -28,14 +28,22 @@
 #include "../database/query-table.h"
 // struct nxtiface next_iface
 #include "iface.h"
-// force_next_DNS_reply
-#include "blocking_metadata.h"
 // FTL_check_blocking
 #include "check_blocking.h"
+// force_next_DNS_reply
+#include "make_answer.h"
+// hostname()
+#include "../daemon.h"
+// mysockaddr_extract_ip_port()
+#include "mysockaddr_extract_ip_port.h"
+// pihole_PTR()
+#include "pihole_PTR.h"
+// short_path()
+#include "../files.h"
 
 bool _FTL_new_query(const unsigned int flags, const char *name,
-                    const char **blockingreason, union mysockaddr *addr,
-                    const char *types, const unsigned short qtype, const int id,
+                    union mysockaddr *addr, const char *types,
+                    const unsigned short qtype, const int id,
                     const ednsData *edns, const enum protocol proto,
                     const char* file, const int line)
 {
@@ -102,16 +110,36 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 			break;
 	}
 
+	// If domain is "pi.hole" or the local hostname we skip analyzing this query
+	// and, instead, immediately reply with the IP address - these queries are not further analyzed
+	if(strcasecmp(name, "pi.hole") == 0 || strcasecmp(name, hostname()) == 0)
+	{
+		if(querytype == TYPE_A || querytype == TYPE_AAAA || querytype == TYPE_ANY)
+		{
+			// "Block" this query by sending the interface IP address
+			force_next_DNS_reply = REPLY_IP;
+			blockingreason = "internal";
+			log_debug(DEBUG_QUERIES, "Replying to %s with interface-local IP address", name);
+			return true;
+		}
+		else
+		{
+			// Don't block this query
+			return false;
+		}
+	}
+
+	// Check if this is a PTR request for a local interface.
+	// If so, we inject a "pi.hole" reply here
+	if(querytype == TYPE_PTR && config.pihole_ptr)
+		pihole_PTR((char*)name);
+
 	// Skip AAAA queries if user doesn't want to have them analyzed
 	if(!config.analyze_AAAA && querytype == TYPE_AAAA)
 	{
 		log_debug(DEBUG_QUERIES, "Not analyzing AAAA query");
 		return false;
 	}
-
-	// If domain is "pi.hole" we skip this query
-	if(strcasecmp(name, "pi.hole") == 0)
-		return false;
 
 	// Convert domain to lower case
 	char *domainString = strdup(name);
@@ -122,22 +150,27 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// subnet (ECS) data), however, we do not rewrite the IPs ::1 and
 	// 127.0.0.1 to avoid queries originating from localhost of the
 	// *distant* machine as queries coming from the *local* machine
-	const sa_family_t family = addr->sa.sa_family;
+	const sa_family_t family = addr ? addr->sa.sa_family : AF_INET;
+	in_port_t clientPort = daemon->port;
+	bool internal_query = false;
 	char clientIP[ADDRSTRLEN+1] = { 0 };
-	if(config.edns0_ecs && edns->client_set)
+	if(config.edns0_ecs && edns && edns->client_set)
 	{
 		// Use ECS provided client
 		strncpy(clientIP, edns->client, ADDRSTRLEN);
 		clientIP[ADDRSTRLEN] = '\0';
 	}
-	else
+	else if(addr)
 	{
 		// Use original requestor
-		inet_ntop(family,
-		          family == AF_INET ?
-		             (union mysockaddr*)&addr->in.sin_addr :
-		             (union mysockaddr*)&addr->in6.sin6_addr,
-		          clientIP, ADDRSTRLEN);
+		mysockaddr_extract_ip_port(addr, clientIP, &clientPort);
+	}
+	else
+	{
+		// No client address available, this is an automatically generated (e.g.
+		// DNSSEC) query
+		internal_query = true;
+		strcpy(clientIP, "::");
 	}
 
 	// Check if user wants to skip queries coming from localhost
@@ -167,16 +200,21 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		return false;
 	}
 
+	// Interface name is only available for regular queries, not for
+	// automatically generated DNSSEC queries
+	const char *interface = internal_query ? "-" : next_iface.name;
+
 	// Check rate-limit for this client
-	if(config.rate_limit.count > 0 &&
+	if(!internal_query && config.rate_limit.count > 0 &&
 	   ++client->rate_limit > config.rate_limit.count)
 	{
-		log_debug(DEBUG_QUERIES, "Rate-limiting %s %s query \"%s\" from %s:%s",
-		          proto == TCP ? "TCP" : "UDP",
-		          types, domainString, next_iface.name, clientIP);
+		log_debug(DEBUG_QUERIES, "Rate-limiting %sIPv%d %s query \"%s\" from %s:%s#%d",
+		          proto == TCP ? "TCP " : proto == UDP ? "UDP " : "",
+		          family == AF_INET ? 4 : 6, types, domainString, interface,
+		          clientIP, clientPort);
 
 		// Block this query
-		force_next_DNS_reply = REFUSED;
+		force_next_DNS_reply = REPLY_REFUSED;
 
 		// Do not further process this query, Pi-hole has never seen it
 		unlock_shm();
@@ -184,12 +222,17 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	}
 
 	// Log new query if in debug mode
-	log_debug(DEBUG_QUERIES, "**** new %s %s query \"%s\" from %s:%s (ID %i, FTL %i, %s:%i)",
-	          proto == TCP ? "TCP" : "UDP",
-	          types, domainString, next_iface.name, clientIP, id, queryID, file, line);
+	if(config.debug & DEBUG_QUERIES)
+	{
+		log_debug(DEBUG_QUERIES, "**** new %sIPv%d %s query \"%s\" from %s:%s#%d (ID %i, FTL %i, %s:%i)",
+		          proto == TCP ? "TCP " : proto == UDP ? "UDP " : "",
+		          family == AF_INET ? 4 : 6, types, domainString, interface,
+		          internal_query ? "<internal>" : clientIP, clientPort,
+		          id, queryID, short_path(file), line);
+	}
 
 	// Update counters
-	counters->querytype[querytype]++;
+	counters->querytype[querytype-1]++;
 
 	// Update overTime
 	const unsigned int timeidx = getOverTimeID(querytimestamp);
@@ -199,7 +242,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	if(config.analyze_only_A_AAAA && querytype != TYPE_A && querytype != TYPE_AAAA)
 	{
 		// Don't process this query further here, we already counted it
-		log_debug(DEBUG_QUERIES, "Skipping new query: %s (%i)", types, id);
+		log_debug(DEBUG_QUERIES, "Notice: Skipping new query: %s (%i)", types, id);
 		free(domainString);
 		unlock_shm();
 		return false;
@@ -229,15 +272,14 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	query->id = id; // Has to be set before calling query_set_status()
 
 	// This query is unknown as long as no reply has been found and analyzed
-	counters->status[STATUS_UNKNOWN]++;
-	query_set_status(query, STATUS_UNKNOWN);
+	counters->status[QUERY_UNKNOWN]++;
+	query_set_status(query, QUERY_UNKNOWN);
 	query->domainID = domainID;
 	query->clientID = clientID;
-	query->timeidx = timeidx;
-	// Initialize database rowID, will be set later
-	query->db = -1;
+	// Initialize database field, will be set when the query is stored in the long-term DB
+	query->flags.database = false;
 	query->flags.complete = false;
-	query->response = 0.0;
+	query->response = converttimeval(request);
 	// Initialize reply type
 	query->reply = REPLY_UNKNOWN;
 	// Store DNSSEC result for this domain
@@ -255,6 +297,9 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// generated) is stored in the queries structure
 	query->privacylevel = config.privacylevel;
 
+	// Query extended DNS error
+	query->ede = EDE_UNSET;
+
 	// Increase DNS queries counter
 	counters->queries++;
 
@@ -271,12 +316,12 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// Process interface information of client (if available)
 	// Skip interface name length 1 to skip "-". No real interface should
 	// have a name with a length of 1...
-	if(strlen(next_iface.name) > 1)
+	if(!internal_query && strlen(interface) > 1)
 	{
 		if(client->ifacepos == 0u)
 		{
 			// Store in the client data if unknown so far
-			client->ifacepos = addstr(next_iface.name);
+			client->ifacepos = addstr(interface);
 		}
 		else
 		{
@@ -284,13 +329,13 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 			// if the client moved to another interface
 			// (may require group re-processing)
 			const char *oldiface = getstr(client->ifacepos);
-			if(strcasecmp(oldiface, next_iface.name) != 0)
+			if(strcasecmp(oldiface, interface) != 0)
 			{
 				if(config.debug & DEBUG_CLIENTS)
 				{
 					const char *clientName = getstr(client->namepos);
 					log_debug(DEBUG_CLIENTS, "Client %s (%s) changed interface: %s -> %s",
-					          clientIP, clientName, oldiface, next_iface.name);
+					          clientIP, clientName, oldiface, interface);
 				}
 
 				gravityDB_reload_groups(client);
@@ -309,20 +354,24 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	if(client->hwlen < 1)
 	{
 		client->hwlen = find_mac(addr, client->hwaddr, 1, time(NULL));
-		if(client->hwlen == 6)
-			log_debug(DEBUG_ARP, "find_mac(\"%s\") returned hardware address "
-			          "%02X:%02X:%02X:%02X:%02X:%02X", clientIP,
-			          client->hwaddr[0], client->hwaddr[1], client->hwaddr[2],
-			          client->hwaddr[3], client->hwaddr[4], client->hwaddr[5]);
-		else
-			log_debug(DEBUG_ARP, "find_mac(\"%s\") returned %i bytes of data",
-			          clientIP, client->hwlen);
+		if(config.debug & DEBUG_ARP)
+		{
+			if(client->hwlen == 6)
+				log_debug(DEBUG_ARP, "find_mac(\"%s\") returned hardware address "
+				          "%02X:%02X:%02X:%02X:%02X:%02X", clientIP,
+				          client->hwaddr[0], client->hwaddr[1], client->hwaddr[2],
+				          client->hwaddr[3], client->hwaddr[4], client->hwaddr[5]);
+			else
+				log_debug(DEBUG_ARP, "find_mac(\"%s\") returned %i bytes of data",
+				          clientIP, client->hwlen);
+		}
 	}
 
-	bool blockDomain = FTL_check_blocking(queryID, domainID, clientID, blockingreason);
-
-	// Store query in database
-	query_to_database(query);
+	bool blockDomain = false;
+	// Check if this should be blocked only for active queries
+	// (skipped for internally generated ones, e.g., DNSSEC)
+	if(!internal_query)
+		blockDomain = FTL_check_blocking(queryID, domainID, clientID);
 
 	// Free allocated memory
 	free(domainString);

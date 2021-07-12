@@ -30,7 +30,8 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR})
 # SQLITE_TEMP_STORE=2: Store temporary tables in memory for reduced IO and higher performance (can be overwritten by the user at runtime).
 # SQLITE_DEFAULT_CACHE_SIZE=-8000: Set SQLite3's cache to 8MB (instead of 2MB which is the default)
 # SQLITE_USE_URI=1: The advantage of using a URI filename is that query parameters on the URI can be used to control details of the newly created database connection.
-set(SQLITE_DEFINES "-DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_DEFAULT_MEMSTATUS=0 -DSQLITE_OMIT_DEPRECATED -DSQLITE_OMIT_PROGRESS_CALLBACK -DSQLITE_DEFAULT_FOREIGN_KEYS=1 -DSQLITE_DQS=0 -DSQLITE_ENABLE_DBPAGE_VTAB -DSQLITE_TEMP_STORE=2 -DSQLITE_DEFAULT_CACHE_SIZE=-8000 -DSQLITE_USE_URI=1")
+# SQLITE_OMIT_DESERIALIZE: This option causes the the sqlite3_serialize() and sqlite3_deserialize() interfaces to be omitted from the build (was the default before 3.36.0)
+set(SQLITE_DEFINES "-DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_DEFAULT_MEMSTATUS=0 -DSQLITE_OMIT_DEPRECATED -DSQLITE_OMIT_PROGRESS_CALLBACK -DSQLITE_DEFAULT_FOREIGN_KEYS=1 -DSQLITE_DQS=0 -DSQLITE_ENABLE_DBPAGE_VTAB -DSQLITE_TEMP_STORE=2 -DSQLITE_DEFAULT_CACHE_SIZE=-8000 -DSQLITE_USE_URI=1 -DSQLITE_OMIT_DESERIALIZE")
 
 # Code hardening and debugging improvements
 # -fstack-protector-strong: The program will be resistant to having its stack overflowed

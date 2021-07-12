@@ -83,7 +83,7 @@ void FTL_multiple_replies(const int id, int *firstID)
 
 	// The original query may have been blocked during CNAME inspection,
 	// correct status in this case
-	if(source_query->status != STATUS_FORWARDED)
+	if(source_query->status != QUERY_FORWARDED)
 		query_set_status(duplicated_query, source_query->status);
 
 	// Update duplicated query in database

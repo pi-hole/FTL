@@ -19,7 +19,7 @@
   #endif
 #endif // FTL_PRIVATE
 
-#define FTL_reply(flags, name, addr, id, ttl) _FTL_reply(flags, name, addr, id, ttl, __FILE__, __LINE__)
-void _FTL_reply(const unsigned int flags, const char *name, const union all_addr *addr, const int id, const unsigned long ttl, const char* file, const int line);
+void FTL_reply(const unsigned int flags, const char *name, const union all_addr *addr,
+               const char *arg, const int id, const char* file, const int line);
 
 #endif // FTL_RECEIVED_REPLY_H

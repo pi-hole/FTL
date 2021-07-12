@@ -7,8 +7,8 @@
 *
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
-#ifndef FTL_BLOCKING_METADATA_H
-#define FTL_BLOCKING_METADATA_H
+#ifndef FTL_TCP_WORKERS_H
+#define FTL_TCP_WORKERS_H
 
 #ifdef FTL_PRIVATE
   #if !defined(FTLDNS)
@@ -19,9 +19,8 @@
   #endif
 #endif // FTL_PRIVATE
 
-#define FTL_get_blocking_metadata(addrp, flags) _FTL_get_blocking_metadata(addrp, flags, __FILE__, __LINE__)
-void _FTL_get_blocking_metadata(union all_addr **addrp, unsigned int *flags, const char *file, const int line);
+#include "../datastructure.h"
 
-extern unsigned char force_next_DNS_reply;
+bool special_domain(const queriesData *query, const char *domain);
 
-#endif // FTL_BLOCKING_METADATA_H
+#endif // FTL_TCP_WORKERS_H

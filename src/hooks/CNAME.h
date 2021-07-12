@@ -19,6 +19,8 @@
   #endif
 #endif // FTL_PRIVATE
 
+#include <stdbool.h>
+
 #define FTL_CNAME(domain, cpp, id) _FTL_CNAME(domain, cpp, id, __FILE__, __LINE__)
 bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const char* file, const int line);
 

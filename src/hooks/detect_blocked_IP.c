@@ -59,7 +59,7 @@ enum query_status detect_blocked_IP(const unsigned short flags, const union all_
 		}
 
 		// Update status
-		return STATUS_EXTERNAL_BLOCKED_IP;
+		return QUERY_EXTERNAL_BLOCKED_IP;
 	}
 	// Check for IP block :ffff:146.112.61.104 - :ffff:146.112.61.110
 	else if(flags & F_IPV6 &&
@@ -77,7 +77,7 @@ enum query_status detect_blocked_IP(const unsigned short flags, const union all_
 		}
 
 		// Update status
-		return STATUS_EXTERNAL_BLOCKED_IP;
+		return QUERY_EXTERNAL_BLOCKED_IP;
 	}
 
 	// If upstream replied with 0.0.0.0 or ::,
@@ -89,7 +89,7 @@ enum query_status detect_blocked_IP(const unsigned short flags, const union all_
 		          query->id, getstr(domain->domainpos));
 
 		// Update status
-		return STATUS_EXTERNAL_BLOCKED_NULL;
+		return QUERY_EXTERNAL_BLOCKED_NULL;
 	}
 	else if(flags & F_IPV6 &&
 	        addr->addr6.s6_addr32[0] == 0 &&
@@ -101,7 +101,7 @@ enum query_status detect_blocked_IP(const unsigned short flags, const union all_
 		          query->id, getstr(domain->domainpos));
 
 		// Update status
-		return STATUS_EXTERNAL_BLOCKED_NULL;
+		return QUERY_EXTERNAL_BLOCKED_NULL;
 	}
 
 	// Nothing happened here

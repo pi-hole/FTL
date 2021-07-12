@@ -22,7 +22,7 @@
 // IFNAMSIZ
 #include <net/if.h>
 
-void FTL_iface(const int ifidx, const struct irec *ifaces);
+void FTL_iface(const int ifidx);
 
 struct nxtiface {
 	char name[IFNAMSIZ];

@@ -44,7 +44,7 @@
 void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockaddr *peer, ednsData *edns)
 {
 	int is_sign;
-	size_t plen; 
+	size_t plen;
 	unsigned char *pheader, *sizep;
 
 	// Extract additional record A.K.A. pseudoheader

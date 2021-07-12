@@ -19,8 +19,6 @@
 #include "args.h"
 // INT_MAX
 #include <limits.h>
-// debug_dnsmasq_lines
-#include "hooks/log.h"
 
 #include "tomlc99/toml.h"
 #include "../datastructure.h"
@@ -587,9 +585,6 @@ bool readDebugSettings(void)
 				config.debug &= ~flag; // CLR bit
 		}
 	}
-
-	// External variable
-	debug_dnsmasq_lines = config.debug & DEBUG_DNSMASQ_LINES ? 1 : 0;
 
 	reportDebugConfig();
 

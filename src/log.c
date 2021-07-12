@@ -194,10 +194,6 @@ void debugstr(const enum debug_flag flag, const char **name, const char **desc)
 			*name = "DEBUG_CAPS";
 			*desc = "Print information about capabilities granted to the pihole-FTL process";
 			return;
-		case DEBUG_DNSMASQ_LINES:
-			*name = "DEBUG_DNSMASQ_LINES"; // This is a pseudo debug flag
-			*desc = "Enable extra logging in dnsmasq's log routine";
-			return;
 		case DEBUG_VECTORS:
 			*name = "DEBUG_VECTORS";
 			*desc = "Print vector operation details";
@@ -233,6 +229,10 @@ void debugstr(const enum debug_flag flag, const char **name, const char **desc)
 		case DEBUG_CONFIG:
 			*name = "DEBUG_CONFIG";
 			*desc = "Print config parsing details";
+			return;
+		case DEBUG_RESERVED:
+			*name = "DEBUG_RESERVED";
+			*desc = "Reserved debug flag";
 			return;
 		default:
 			*name = "DEBUG_ANY";
@@ -499,7 +499,7 @@ void log_counter_info(void)
 	log_info(" -> Cached DNS queries: %i", get_cached_count());
 	log_info(" -> Forwarded DNS queries: %i", get_forwarded_count());
 	log_info(" -> Blocked DNS queries: %i", get_blocked_count());
-	log_info(" -> Unknown DNS queries: %i", counters->status[STATUS_UNKNOWN]);
+	log_info(" -> Unknown DNS queries: %i", counters->status[QUERY_UNKNOWN]);
 	log_info(" -> Unique domains: %i", counters->domains);
 	log_info(" -> Unique clients: %i", counters->clients);
 	log_info(" -> Known forward destinations: %i", counters->upstreams);
