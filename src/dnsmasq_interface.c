@@ -986,13 +986,13 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			if(config.debug & DEBUG_QUERIES)
 			{
 				logg("%s is known as %s", domainstr, blockingreason);
-				force_next_DNS_reply = dns_cache->force_reply;
 			}
 
 			// Do not block if the entire query is to be permitted
 			// as sometving along the CNAME path hit the whitelist
 			if(!query->flags.whitelisted)
 			{
+				force_next_DNS_reply = dns_cache->force_reply;
 				query_blocked(query, domain, client, QUERY_REGEX);
 				return true;
 			}
