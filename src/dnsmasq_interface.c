@@ -1405,6 +1405,7 @@ void FTL_dnsmasq_reload(void)
 	// This function is called by the dnsmasq code on receive of SIGHUP
 	// *before* clearing the cache and rereading the lists
 	logg("Reloading DNS cache");
+	lock_shm();
 
 	// Request reload the privacy level
 	set_event(RELOAD_PRIVACY_LEVEL);
@@ -1433,6 +1434,8 @@ void FTL_dnsmasq_reload(void)
 	// Print current set of capabilities if requested via debug flag
 	if(config.debug & DEBUG_CAPS)
 		check_capabilities();
+
+	unlock_shm();
 
 	// Set resolver as ready
 	resolver_ready = true;
