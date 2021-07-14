@@ -31,7 +31,7 @@
 
 // Static blocking metadata
 static union all_addr null_addrp = {{ 0 }};
-unsigned char force_next_DNS_reply = 0u;
+enum reply_type force_next_DNS_reply = REPLY_UNKNOWN;
 const char *blockingreason = NULL;
 
 // This is inspired by make_local_answer()

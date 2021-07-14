@@ -303,7 +303,7 @@ fail:
       free(allowlists);
       allowlists = NULL;
     }
-  return UBUS_QUERY_UNKNOWN_ERROR;
+  return UBUS_STATUS_UNKNOWN_ERROR;
 }
 #endif
 

@@ -106,7 +106,7 @@ typedef struct {
 	int blockedcount;
 	size_t domainpos;
 } domainsData;
-ASSERT_SIZEOF(domainsData, 24, 16, 16);
+//ASSERT_SIZEOF(domainsData, 24, 16, 16);
 
 typedef struct {
 	unsigned char magic;
@@ -117,7 +117,7 @@ typedef struct {
 	int clientID;
 	int deny_regex_id;
 } DNSCacheData;
-ASSERT_SIZEOF(DNSCacheData, 16, 16, 16);
+//ASSERT_SIZEOF(DNSCacheData, 16, 16, 16);
 
 void strtolower(char *str);
 int findQueryID(const int id);

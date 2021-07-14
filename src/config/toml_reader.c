@@ -58,7 +58,7 @@ bool readFTLtoml(void)
 
 		toml_datum_t block_esni = toml_bool_in(dns, "blockESNI");
 		if(block_esni.ok)
-			config.blockESNI = cname_deep_inspect.u.b;
+			config.blockESNI = block_esni.u.b;
 		else
 			log_debug(DEBUG_CONFIG, "dns.blockESNI DOES NOT EXIST");
 
