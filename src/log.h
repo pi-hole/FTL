@@ -12,31 +12,38 @@
 
 #include <stdbool.h>
 #include <time.h>
+// enums
+#include "enums.h"
+#include <sys/syslog.h>
 
-void init_FTL_log(void);
+#define DEBUG_ANY 0
+
+void init_FTL_log(const char *name);
 void log_counter_info(void);
 void format_memory_size(char * const prefix, unsigned long long int bytes,
                         double * const formated);
 void format_time(char buffer[42], unsigned long seconds, double milliseconds);
 const char *get_FTL_version(void) __attribute__ ((malloc));
 void log_FTL_version(bool crashreport);
+double double_time(void);
 void get_timestr(char * const timestring, const time_t timein, const bool millis);
+void debugstr(const enum debug_flag flag, const char **name, const char **desc);
+void logg_web(enum web_code code, const char *format, ...) __attribute__ ((format (gnu_printf, 2, 3)));
 const char *get_ordinal_suffix(unsigned int number) __attribute__ ((const));
 
 // The actual logging routine can take extra options for specialized logging
 // The more general interfaces can be defined here as appropriate shortcuts
-#define logg(format, ...) _FTL_log(true, false, format, ## __VA_ARGS__)
-#define logg_debug(format, ...) _FTL_log(true, true, format, ## __VA_ARGS__)
-#define logg_sameline(format, ...) _FTL_log(false, false, format, ## __VA_ARGS__)
-void _FTL_log(const bool newline, const bool debug, const char* format, ...) __attribute__ ((format (gnu_printf, 3, 4)));
+#define log_crit(format, ...) _FTL_log(LOG_CRIT, 0, format, ## __VA_ARGS__)
+#define log_err(format, ...) _FTL_log(LOG_ERR, 0, format, ## __VA_ARGS__)
+#define log_warn(format, ...) _FTL_log(LOG_WARNING, 0, format, ## __VA_ARGS__)
+#define log_notice(format, ...) _FTL_log(LOG_NOTICE, 0, format, ## __VA_ARGS__)
+#define log_info(format, ...) _FTL_log(LOG_INFO, 0, format, ## __VA_ARGS__)
+#define log_debug(flag, format, ...) _FTL_log(LOG_DEBUG, flag, format, ## __VA_ARGS__)
+void _FTL_log(const int priority, const enum debug_flag flag, const char *format, ...) __attribute__ ((format (gnu_printf, 3, 4)));
 void FTL_log_dnsmasq_fatal(const char *format, ...) __attribute__ ((format (gnu_printf, 1, 2)));
 void log_ctrl(bool vlog, bool vstdout);
 void FTL_log_helper(const unsigned char n, ...);
 
 int binbuf_to_escaped_C_literal(const char *src_buf, size_t src_sz, char *dst_str, size_t dst_sz);
-
-int forwarded_queries(void)  __attribute__ ((pure));
-int cached_queries(void)  __attribute__ ((pure));
-int blocked_queries(void)  __attribute__ ((pure));
 
 #endif //LOG_H

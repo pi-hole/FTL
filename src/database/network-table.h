@@ -25,4 +25,27 @@ char* __attribute__((malloc)) getNameFromIP(sqlite3 *db, const char* ipaddr);
 char* __attribute__((malloc)) getIfaceFromIP(sqlite3 *db, const char* ipaddr);
 void resolveNetworkTableNames(void);
 
+typedef struct {
+	unsigned int id;
+	const char *hwaddr;
+	const char *iface;
+	const char *name;
+	const char *macVendor;
+	unsigned long numQueries;
+	time_t firstSeen;
+	time_t lastQuery;
+} network_record;
+
+bool networkTable_readDevices(sqlite3 *db, sqlite3_stmt **read_stmt, const char **message);
+bool networkTable_readDevicesGetRecord(sqlite3_stmt *read_stmt, network_record *network, const char **message);
+void networkTable_readDevicesFinalize(sqlite3_stmt *read_stmt);
+
+typedef struct {
+	const char *ip;
+} network_addresses_record;
+
+bool networkTable_readIPs(sqlite3 *db, sqlite3_stmt **read_stmt, const int id, const char **message);
+bool networkTable_readIPsGetRecord(sqlite3_stmt *read_stmt, network_addresses_record *network_addresses, const char **message);
+void networkTable_readIPsFinalize(sqlite3_stmt *read_stmt);
+
 #endif //NETWORKTABLE_H

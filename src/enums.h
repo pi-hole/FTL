@@ -10,6 +10,12 @@
 #ifndef ENUMS_H
 #define ENUMS_H
 
+enum protocol {
+	TCP,
+	UDP,
+	INTERNAL
+} __attribute__ ((packed));
+
 enum memory_type {
 	QUERIES,
 	UPSTREAMS,
@@ -21,11 +27,12 @@ enum memory_type {
 } __attribute__ ((packed));
 
 enum dnssec_status {
-	DNSSEC_UNSPECIFIED,
+	DNSSEC_UNKNOWN,
 	DNSSEC_SECURE,
 	DNSSEC_INSECURE,
 	DNSSEC_BOGUS,
-	DNSSEC_ABANDONED
+	DNSSEC_ABANDONED,
+	DNSSEC_MAX
 } __attribute__ ((packed));
 
 enum query_status {
@@ -34,13 +41,13 @@ enum query_status {
 	QUERY_FORWARDED,
 	QUERY_CACHE,
 	QUERY_REGEX,
-	QUERY_BLACKLIST,
+	QUERY_DENYLIST,
 	QUERY_EXTERNAL_BLOCKED_IP,
 	QUERY_EXTERNAL_BLOCKED_NULL,
 	QUERY_EXTERNAL_BLOCKED_NXRA,
 	QUERY_GRAVITY_CNAME,
 	QUERY_REGEX_CNAME,
-	QUERY_BLACKLIST_CNAME,
+	QUERY_DENYLIST_CNAME,
 	QUERY_RETRIED,
 	QUERY_RETRIED_DNSSEC,
 	QUERY_IN_PROGRESS,
@@ -59,8 +66,9 @@ enum reply_type {
 	REPLY_REFUSED,
 	REPLY_NOTIMP,
 	REPLY_OTHER,
+	REPLY_DNSSEC,
 	QUERY_REPLY_MAX
-	}  __attribute__ ((packed));
+}  __attribute__ ((packed));
 
 enum privacy_level {
 	PRIVACY_SHOW_ALL = 0,
@@ -74,17 +82,18 @@ enum blocking_mode {
 	MODE_NX,
 	MODE_NULL,
 	MODE_IP_NODATA_AAAA,
-	MODE_NODATA
+	MODE_NODATA,
+	MODE_MAX
 } __attribute__ ((packed));
 
 enum regex_type {
-	REGEX_BLACKLIST,
-	REGEX_WHITELIST,
+	REGEX_DENY,
+	REGEX_ALLOW,
 	REGEX_CLI,
 	REGEX_MAX
 } __attribute__ ((packed));
 
-enum query_types {
+enum query_type {
 	TYPE_A = 1,
 	TYPE_AAAA,
 	TYPE_ANY,
@@ -116,13 +125,14 @@ enum blocking_status {
 enum domain_client_status {
 	UNKNOWN_BLOCKED = 0,
 	GRAVITY_BLOCKED,
-	BLACKLIST_BLOCKED,
+	DENYLIST_BLOCKED,
 	REGEX_BLOCKED,
-	WHITELISTED,
+	ALLOWED,
+	SPECIAL_DOMAIN,
 	NOT_BLOCKED
 } __attribute__ ((packed));
 
-enum debug_flags {
+enum debug_flag {
 	DEBUG_DATABASE      = (1 << 0),  /* 00000000 00000000 00000000 00000001 */
 	DEBUG_NETWORKING    = (1 << 1),  /* 00000000 00000000 00000000 00000010 */
 	DEBUG_LOCKS         = (1 << 2),  /* 00000000 00000000 00000000 00000100 */
@@ -136,7 +146,7 @@ enum debug_flags {
 	DEBUG_OVERTIME      = (1 << 10), /* 00000000 00000000 00000100 00000000 */
 	DEBUG_STATUS        = (1 << 11), /* 00000000 00000000 00001000 00000000 */
 	DEBUG_CAPS          = (1 << 12), /* 00000000 00000000 00010000 00000000 */
-	DEBUG_DNSMASQ_LINES = (1 << 13), /* 00000000 00000000 00100000 00000000 */
+	DEBUG_RESERVED      = (1 << 13), /* 00000000 00000000 00100000 00000000 */
 	DEBUG_VECTORS       = (1 << 14), /* 00000000 00000000 01000000 00000000 */
 	DEBUG_RESOLVER      = (1 << 15), /* 00000000 00000000 10000000 00000000 */
 	DEBUG_EDNS0         = (1 << 16), /* 00000000 00000001 00000000 00000000 */
@@ -144,7 +154,9 @@ enum debug_flags {
 	DEBUG_ALIASCLIENTS  = (1 << 18), /* 00000000 00000100 00000000 00000000 */
 	DEBUG_EVENTS        = (1 << 19), /* 00000000 00001000 00000000 00000000 */
 	DEBUG_HELPER        = (1 << 20), /* 00000000 00010000 00000000 00000000 */
-	DEBUG_EXTRA         = (1 << 21), /* 00000000 00100000 00000000 00000000 */
+	DEBUG_CONFIG        = (1 << 21), /* 00000000 00100000 00000000 00000000 */
+	DEBUG_EXTRA         = (1 << 22), /* 00000000 01000000 00000000 00000000 */
+	// DEBUG_EXTRA has always to be the last option
 } __attribute__ ((packed));
 
 enum events {
@@ -158,6 +170,51 @@ enum events {
 	EVENTS_MAX
 } __attribute__ ((packed));
 
+
+enum gravity_list_type {
+	GRAVITY_DOMAINLIST_ALLOW_EXACT,
+	GRAVITY_DOMAINLIST_ALLOW_REGEX,
+	GRAVITY_DOMAINLIST_ALLOW_ALL,
+	GRAVITY_DOMAINLIST_DENY_EXACT,
+	GRAVITY_DOMAINLIST_DENY_REGEX,
+	GRAVITY_DOMAINLIST_DENY_ALL,
+	GRAVITY_DOMAINLIST_ALL_EXACT,
+	GRAVITY_DOMAINLIST_ALL_REGEX,
+	GRAVITY_DOMAINLIST_ALL_ALL,
+	GRAVITY_GROUPS,
+	GRAVITY_ADLISTS,
+	GRAVITY_CLIENTS
+} __attribute__ ((packed));
+
+enum gravity_tables {
+	GRAVITY_TABLE,
+	EXACT_BLACKLIST_TABLE,
+	EXACT_WHITELIST_TABLE,
+	REGEX_BLACKLIST_TABLE,
+	REGEX_WHITELIST_TABLE,
+	CLIENTS_TABLE,
+	GROUPS_TABLE,
+	ADLISTS_TABLE,
+	DENIED_DOMAINS_TABLE,
+	ALLOWED_DOMAINS_TABLE,
+	UNKNOWN_TABLE
+} __attribute__ ((packed));
+
+enum timers {
+	DATABASE_WRITE_TIMER,
+	EXIT_TIMER,
+	GC_TIMER,
+	LISTS_TIMER,
+	REGEX_TIMER,
+	ARP_TIMER,
+	LAST_TIMER
+} __attribute__ ((packed));
+
+enum web_code {
+	HTTP_INFO,
+	PH7_ERROR
+} __attribute__ ((packed));
+
 enum refresh_hostnames {
 	REFRESH_ALL,
 	REFRESH_IPV4_ONLY,
@@ -165,11 +222,13 @@ enum refresh_hostnames {
 	REFRESH_NONE
 } __attribute__ ((packed));
 
+enum api_auth_status {
+	API_AUTH_UNAUTHORIZED  = -1,
+	API_AUTH_LOCALHOST  = -2,
+	API_AUTH_EMPTYPASS  = -3,
+} __attribute__ ((packed));
 
 enum thread_types {
-	TELNETv4,
-	TELNETv6,
-	SOCKET,
 	DB,
 	GC,
 	DNSclient,

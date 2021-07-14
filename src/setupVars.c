@@ -10,7 +10,7 @@
 
 #include "FTL.h"
 #include "log.h"
-#include "config.h"
+#include "config/config.h"
 #include "setupVars.h"
 
 int setupVarsElements = 0;
@@ -19,15 +19,13 @@ char ** setupVarsArray = NULL;
 void check_setupVarsconf(void)
 {
 	FILE *setupVarsfp;
-	if((setupVarsfp = fopen(FTLfiles.setupVars, "r")) == NULL)
+	if((setupVarsfp = fopen(config.files.setupVars, "r")) == NULL)
 	{
-		logg("WARN: Opening of setupVars.conf failed!");
-		logg("      Make sure it exists and is readable");
-		logg("      Message: %s", strerror(errno));
+		log_warn("Opening of setupVars.conf failed: %s Make sure it exists and is readable",
+		         strerror(errno));
 	}
 	else
 	{
-		logg("Successfully accessed setupVars.conf");
 		fclose(setupVarsfp);
 	}
 }
@@ -69,12 +67,12 @@ void trim_whitespace(char *string)
 char * linebuffer = NULL;
 size_t linebuffersize = 0;
 
-char * read_setupVarsconf(const char * key)
+char * read_setupVarsconf(const char *key)
 {
 	FILE *setupVarsfp;
-	if((setupVarsfp = fopen(FTLfiles.setupVars, "r")) == NULL)
+	if((setupVarsfp = fopen(config.files.setupVars, "r")) == NULL)
 	{
-		logg("WARN: Reading setupVars.conf failed: %s", strerror(errno));
+		log_warn("Reading setupVars.conf failed: %s", strerror(errno));
 		return NULL;
 	}
 
@@ -82,7 +80,7 @@ char * read_setupVarsconf(const char * key)
 	char * keystr = calloc(strlen(key)+2, sizeof(char));
 	if(keystr == NULL)
 	{
-		logg("WARN: read_setupVarsconf failed: could not allocate memory for keystr");
+		log_warn("read_setupVarsconf(%s) failed: Could not allocate memory for keystr", key);
 		fclose(setupVarsfp);
 		return NULL;
 	}
@@ -91,6 +89,10 @@ char * read_setupVarsconf(const char * key)
 	errno = 0;
 	while(getline(&linebuffer, &linebuffersize, setupVarsfp) != -1)
 	{
+		// Memory allocation issue
+		if(linebuffersize == 0 || linebuffer == NULL)
+			continue;
+
 		// Strip (possible) newline
 		linebuffer[strcspn(linebuffer, "\n")] = '\0';
 
@@ -109,21 +111,13 @@ char * read_setupVarsconf(const char * key)
 	}
 
 	if(errno == ENOMEM)
-		logg("WARN: read_setupVarsconf failed: could not allocate memory for getline");
+		log_warn("read_setupVarsconf(%s) failed: could not allocate memory for getline", key);
 
 	// Key not found -> return NULL
 	fclose(setupVarsfp);
 
 	// Freeing keystr, not setting to NULL, since not used outside of this routine
 	free(keystr);
-
-	// Freeing and setting to NULL to prevent a dangling pointer
-	if(linebuffer != NULL)
-	{
-		free(linebuffer);
-		linebuffersize = 0;
-		linebuffer = NULL;
-	}
 
 	return NULL;
 }
@@ -253,5 +247,37 @@ void check_blocking_status(void)
 		message = "disabled";
 	}
 
-	logg("Blocking status is %s", message);
+	log_info("Blocking status is %s", message);
+}
+
+bool __attribute__((pure)) get_blockingstatus(void)
+{
+	return blockingstatus;
+}
+
+void set_blockingstatus(bool enabled)
+{
+	blockingstatus = enabled;
+	raise(SIGHUP);
+}
+
+// Source password hash from setupVars.conf
+__attribute__((malloc)) char *get_password_hash(void)
+{
+	// Try to obtain password from setupVars.conf
+	const char* password = read_setupVarsconf("WEBPASSWORD");
+
+	// If the value was not set (or we couldn't open the file for reading),
+	// we hand an empty string back to the caller
+	if(password == NULL || (password != NULL && strlen(password) == 0u))
+	{
+		password = "";
+	}
+
+	char *hash = strdup(password);
+
+	// Free memory, harmless to call if read_setupVarsconf() didn't return a result
+	clearSetupVarsArray();
+
+	return hash;
 }

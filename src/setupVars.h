@@ -19,7 +19,8 @@ bool getSetupVarsBool(const char * input) __attribute__((pure));
 char* find_equals(const char* s) __attribute__((pure));
 void trim_whitespace(char *string);
 void check_blocking_status(void);
-
-extern unsigned char blockingstatus;
+bool get_blockingstatus(void) __attribute__((pure));
+void set_blockingstatus(bool enabled);
+char *get_password_hash(void) __attribute__((malloc));
 
 #endif //SETUPVARS_H

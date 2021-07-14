@@ -39,8 +39,6 @@
 #include <syslog.h>
 // tolower()
 #include <ctype.h>
-// Unix socket
-#include <sys/un.h>
 // Interfaces
 #include <ifaddrs.h>
 #include <net/if.h>
@@ -48,6 +46,9 @@
 // Define MIN and MAX macros, use them only when x and y are of the same type
 #define MAX(x,y) (((x) > (y)) ? (x) : (y))
 // MIN(x,y) is already defined in dnsmasq.h
+
+// Number of elements in an array
+#define ArraySize(X) (sizeof(X)/sizeof(X[0]))
 
 #define SOCKETBUFFERLEN 1024
 
@@ -99,6 +100,19 @@
 // Default: 1000 (one second)
 #define DATABASE_BUSY_TIMEOUT 1000
 
+// After how much time does a valid API session expire? [seconds]
+// Default: 300 (five minutes)
+#define API_SESSION_EXPIRE 300
+
+// How many authenticated API clients are allowed simultaneously? [.]
+#define API_MAX_CLIENTS 16
+
+// How many challenges are valid simultaneously? [.]
+#define API_MAX_CHALLENGES 8
+
+// How long are challenges considered valid? [seconds]
+#define API_CHALLENGE_TIMEOUT 10
+
 // After how many seconds do we check again if a client can be identified by other means?
 // (e.g., interface, MAC address, hostname)
 // Default: 60 (after one minutee)
@@ -143,5 +157,11 @@
 // Preprocessor help functions
 #define str(x) # x
 #define xstr(x) str(x)
+
+// Intentionally ignore result of function declared warn_unused_result
+#define igr(x) {__typeof__(x) __attribute__((unused)) d=(x);}
+
+#define max(a,b) ({ __typeof__ (a) _a = (a); __typeof__ (b) _b = (b); _a > _b ? _a : _b; })
+#define min(a,b) ({ __typeof__ (a) _a = (a); __typeof__ (b) _b = (b); _a < _b ? _a : _b; })
 
 #endif // FTL_H

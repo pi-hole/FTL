@@ -10,7 +10,7 @@
 
 #include "FTL.h"
 #include "files.h"
-#include "config.h"
+#include "config/config.h"
 #include "setupVars.h"
 #include "log.h"
 
@@ -30,14 +30,16 @@ bool chmod_file(const char *filename, const mode_t mode)
 {
 	if(chmod(filename, mode) < 0)
 	{
-		logg("WARNING: chmod(%s, %d): chmod() failed: %s (%d)", filename, mode, strerror(errno), errno);
+		log_warn("chmod(%s, %d): chmod() failed: %s",
+		         filename, mode, strerror(errno));
 		return false;
 	}
 
 	struct stat st;
 	if(stat(filename, &st) < 0)
 	{
-		logg("WARNING: chmod(%s, %d): stat() failed: %s (%d)", filename, mode, strerror(errno), errno);
+		log_warn("chmod(%s, %d): stat() failed: %s",
+		         filename, mode, strerror(errno));
 		return false;
 	}
 
@@ -45,7 +47,8 @@ bool chmod_file(const char *filename, const mode_t mode)
 	// 0x1FF = 0b111_111_111 corresponding to the three-digit octal mode number
 	if((st.st_mode & 0x1FF) != mode)
 	{
-		logg("WARNING: chmod(%s, %d): Verification failed, %d != %d", filename, mode, st.st_mode, mode);
+		log_warn("chmod(%s, %d): Verification failed, %d != %d",
+		         filename, mode, st.st_mode, mode);
 		return false;
 	}
 
@@ -58,15 +61,33 @@ bool file_exists(const char *filename)
 	return stat(filename, &st) == 0;
 }
 
+bool get_database_stat(struct stat *st)
+{
+	return stat(config.files.database, st) != 0;
+}
+
 unsigned long long get_FTL_db_filesize(void)
 {
 	struct stat st;
-	if(stat(FTLfiles.FTL_db, &st) != 0)
-	{
-		// stat() failed (maybe the DB file does not exist?)
-		return 0;
-	}
-	return st.st_size;
+	if(get_database_stat(&st))
+		return st.st_size;
+	return 0llu;
+}
+
+void get_permission_string(char permissions[10], struct stat *st)
+{
+	// Get human-readable format of permissions as known from ls
+	snprintf(permissions, 10u,
+	         "%s%s%s%s%s%s%s%s%s",
+	         st->st_mode & S_IRUSR ? "r":"-",
+	         st->st_mode & S_IWUSR ? "w":"-",
+	         st->st_mode & S_IXUSR ? "x":"-",
+	         st->st_mode & S_IRGRP ? "r":"-",
+	         st->st_mode & S_IWGRP ? "w":"-",
+	         st->st_mode & S_IXGRP ? "x":"-",
+	         st->st_mode & S_IROTH ? "r":"-",
+	         st->st_mode & S_IWOTH ? "w":"-",
+	         st->st_mode & S_IXOTH ? "x":"-");
 }
 
 void ls_dir(const char* path)
@@ -75,15 +96,15 @@ void ls_dir(const char* path)
 	DIR* dirp = opendir(path);
 	if(dirp == NULL)
 	{
-		logg("opendir(\"%s\") failed with %s (%d)", path, strerror(errno), errno);
+		log_warn("opendir(\"%s\") failed with %s", path, strerror(errno));
 		return;
 	}
 
 	// Stack space for full path (directory + "/" + filename + terminating \0)
 	char full_path[strlen(path)+NAME_MAX+2];
 
-	logg("------ Listing content of directory %s ------", path);
-	logg("File Mode User:Group      Size  Filename");
+	log_info("------ Listing content of directory %s ------", path);
+	log_info("File Mode User:Group      Size  Filename");
 
 	struct dirent *dircontent = NULL;
 	// Walk directory file by file
@@ -99,7 +120,7 @@ void ls_dir(const char* path)
 		// Use stat to get file size, permissions, and ownership
 		if(stat(full_path, &st) < 0)
 		{
-			logg("%s failed with %s (%d)", filename, strerror(errno), errno);
+			log_warn("stat(\"%s\") failed with %s", filename, strerror(errno));
 			continue;
 		}
 
@@ -120,29 +141,24 @@ void ls_dir(const char* path)
 			snprintf(usergroup, sizeof(usergroup), "%s:%d", user, st.st_gid);
 
 		char permissions[10];
-		// Get human-readable format of permissions as known from ls
-		snprintf(permissions, sizeof(permissions),
-		         "%s%s%s%s%s%s%s%s%s",
-		         st.st_mode & S_IRUSR ? "r":"-",
-		         st.st_mode & S_IWUSR ? "w":"-",
-		         st.st_mode & S_IXUSR ? "x":"-",
-		         st.st_mode & S_IRGRP ? "r":"-",
-		         st.st_mode & S_IWGRP ? "w":"-",
-		         st.st_mode & S_IXGRP ? "x":"-",
-		         st.st_mode & S_IROTH ? "r":"-",
-		         st.st_mode & S_IWOTH ? "w":"-",
-		         st.st_mode & S_IXOTH ? "x":"-");
+		get_permission_string(permissions, &st);
 
 		char prefix[2] = " ";
 		double formated = 0.0;
 		format_memory_size(prefix, (unsigned long long)st.st_size, &formated);
 
 		// Log output for this file
-		logg("%s %-15s %3.0f%s  %s", permissions, usergroup, formated, prefix, filename);
+		log_info("%s %-15s %3.0f%s  %s", permissions, usergroup, formated, prefix, filename);
 	}
 
-	logg("---------------------------------------------------");
+	log_info("---------------------------------------------------");
 
 	// Close directory stream
 	closedir(dirp);
+}
+
+const char * __attribute__ ((pure)) short_path(const char *full_path)
+{
+	const char *shorter = strstr(full_path, "src/");
+	return shorter != NULL ? shorter : full_path;
 }

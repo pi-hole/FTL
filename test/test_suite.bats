@@ -1,21 +1,10 @@
 #!./test/libs/bats/bin/bats
 
-@test "Version, Tag, Branch, Hash, Date is reported" {
-  run bash -c 'echo ">version >quit" | nc -v 127.0.0.1 4711'
-  printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "version "* ]]
-  [[ ${lines[2]} == "tag "* ]]
-  [[ ${lines[3]} == "branch "* ]]
-  [[ ${lines[4]} == "hash "* ]]
-  [[ ${lines[5]} == "date "* ]]
-  [[ ${lines[6]} == "" ]]
-}
-
 @test "Running a second instance is detected and prevented" {
   run bash -c 'su pihole -s /bin/sh -c "/home/pihole/pihole-FTL -f"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[9]} == *"Initialization of shared memory failed." ]]
-  [[ ${lines[10]} == *"HINT: pihole-FTL is already running!"* ]]
+  [[ ${lines[8]} == *"Initialization of shared memory failed." ]]
+  [[ ${lines[9]} == *"pihole-FTL is already running!" ]]
 }
 
 @test "Starting tests without prior history" {
@@ -30,14 +19,14 @@
   [[ ${lines[0]} == "1" ]]
 }
 
-@test "Number of compiled regex filters as expected" {
-  run bash -c 'grep "Compiled [0-9]* whitelist" /var/log/pihole-FTL.log'
+@test "Number of compiled regex as expected" {
+  run bash -c 'grep "Compiled [0-9]* allow" /var/log/pihole-FTL.log'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == *"Compiled 2 whitelist and 1 blacklist regex filters"* ]]
+  [[ ${lines[0]} == *"Compiled 2 allow and 1 deny regex"* ]]
 }
 
-@test "Blacklisted domain is blocked" {
-  run bash -c "dig blacklist-blocked.test.pi-hole.net @127.0.0.1 +short"
+@test "denied domain is blocked" {
+  run bash -c "dig denylist-blocked.test.pi-hole.net @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0.0.0.0" ]]
   [[ ${lines[1]} == "" ]]
@@ -57,50 +46,50 @@
   [[ ${lines[1]} == "" ]]
 }
 
-@test "Gravity domain + whitelist exact match is not blocked" {
-  run bash -c "dig whitelisted.test.pi-hole.net @127.0.0.1 +short"
+@test "Gravity domain + allowlist exact match is not blocked" {
+  run bash -c "dig allowlisted.test.pi-hole.net @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} != "0.0.0.0" ]]
 }
 
-@test "Gravity domain + whitelist regex match is not blocked" {
+@test "Gravity domain + allowlist regex match is not blocked" {
   run bash -c "dig discourse.pi-hole.net @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} != "0.0.0.0" ]]
 }
 
-@test "Regex blacklist match is blocked" {
+@test "Regex denylist match is blocked" {
   run bash -c "dig regex5.test.pi-hole.net @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0.0.0.0" ]]
   [[ ${lines[1]} == "" ]]
 }
 
-@test "Regex blacklist mismatch is not blocked" {
+@test "Regex denylist mismatch is not blocked" {
   run bash -c "dig regexA.test.pi-hole.net @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} != "0.0.0.0" ]]
 }
 
-@test "Regex blacklist match + whitelist exact match is not blocked" {
+@test "Regex denylist match + allowlist exact match is not blocked" {
   run bash -c "dig regex1.test.pi-hole.net @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} != "0.0.0.0" ]]
 }
 
-@test "Regex blacklist match + whitelist regex match is not blocked" {
+@test "Regex denylist match + allowlist regex match is not blocked" {
   run bash -c "dig regex2.test.pi-hole.net @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} != "0.0.0.0" ]]
 }
 
-@test "Client 2: Gravity match matching unassociated whitelist is blocked" {
-  run bash -c "dig whitelisted.test.pi-hole.net -b 127.0.0.2 @127.0.0.1 +short"
+@test "Client 2: Gravity match matching unassociated allowlist is blocked" {
+  run bash -c "dig allowlisted.test.pi-hole.net -b 127.0.0.2 @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0.0.0.0" ]]
 }
 
-@test "Client 2: Regex blacklist match matching unassociated whitelist is blocked" {
+@test "Client 2: Regex denylist match matching unassociated allowlist is blocked" {
   run bash -c "dig regex1.test.pi-hole.net -b 127.0.0.2 @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0.0.0.0" ]]
@@ -118,19 +107,19 @@
   [[ ${lines[0]} != "0.0.0.0" ]]
 }
 
-@test "Client 2: Unassociated blacklist match is not blocked" {
-  run bash -c "dig blacklist-blocked.test.pi-hole.net -b 127.0.0.2 @127.0.0.1 +short"
+@test "Client 2: Unassociated denylist match is not blocked" {
+  run bash -c "dig denylist-blocked.test.pi-hole.net -b 127.0.0.2 @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} != "0.0.0.0" ]]
 }
 
-@test "Client 3: Exact blacklist domain is not blocked" {
-  run bash -c "dig blacklist-blocked.test.pi-hole.net -b 127.0.0.3 @127.0.0.1 +short"
+@test "Client 3: Exact denylist domain is not blocked" {
+  run bash -c "dig denylist-blocked.test.pi-hole.net -b 127.0.0.3 @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} != "0.0.0.0" ]]
 }
 
-@test "Client 3: Regex blacklist domain is not blocked" {
+@test "Client 3: Regex denylist domain is not blocked" {
   run bash -c "dig regex1.test.pi-hole.net -b 127.0.0.3 @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} != "0.0.0.0" ]]
@@ -151,10 +140,10 @@
   run bash -c "grep -c \"Gravity database: Client aa:bb:cc:dd:ee:ff found. Using groups (4)\" /var/log/pihole-FTL.log"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} != "0" ]]
-  run bash -c "grep -c 'Regex blacklist: Querying groups for client 127.0.0.4: \"SELECT id from vw_regex_blacklist WHERE group_id IN (4);\"' /var/log/pihole-FTL.log"
+  run bash -c "grep -c 'Regex deny: Querying groups for client 127.0.0.4: \"SELECT id from vw_regex_blacklist WHERE group_id IN (4);\"' /var/log/pihole-FTL.log"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
-  run bash -c "grep -c 'Regex whitelist: Querying groups for client 127.0.0.4: \"SELECT id from vw_regex_whitelist WHERE group_id IN (4);\"' /var/log/pihole-FTL.log"
+  run bash -c "grep -c 'Regex allow: Querying groups for client 127.0.0.4: \"SELECT id from vw_regex_whitelist WHERE group_id IN (4);\"' /var/log/pihole-FTL.log"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
   run bash -c "grep -c 'get_client_querystr: SELECT EXISTS(SELECT domain from vw_whitelist WHERE domain = ? AND group_id IN (4));' /var/log/pihole-FTL.log"
@@ -166,10 +155,10 @@
   run bash -c "grep -c 'get_client_querystr: SELECT EXISTS(SELECT domain from vw_gravity WHERE domain = ? AND group_id IN (4));' /var/log/pihole-FTL.log"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} != "0" ]]
-  run bash -c "grep -c 'Regex whitelist ([[:digit:]]*, DB ID [[:digit:]]*) .* NOT ENABLED for client 127.0.0.4' /var/log/pihole-FTL.log"
+  run bash -c "grep -c 'Regex allow ([[:digit:]]*, DB ID [[:digit:]]*) .* NOT ENABLED for client 127.0.0.4' /var/log/pihole-FTL.log"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "2" ]]
-  run bash -c "grep -c 'Regex blacklist ([[:digit:]]*, DB ID [[:digit:]]*) .* NOT ENABLED for client 127.0.0.4' /var/log/pihole-FTL.log"
+  run bash -c "grep -c 'Regex deny ([[:digit:]]*, DB ID [[:digit:]]*) .* NOT ENABLED for client 127.0.0.4' /var/log/pihole-FTL.log"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
 }
@@ -183,10 +172,10 @@
   run bash -c "grep -c \"Gravity database: Client aa:bb:cc:dd:ee:ff found. Using groups (4)\" /var/log/pihole-FTL.log"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} != "0" ]]
-  run bash -c "grep -c 'Regex blacklist: Querying groups for client 127.0.0.5: \"SELECT id from vw_regex_blacklist WHERE group_id IN (4);\"' /var/log/pihole-FTL.log"
+  run bash -c "grep -c 'Regex deny: Querying groups for client 127.0.0.5: \"SELECT id from vw_regex_blacklist WHERE group_id IN (4);\"' /var/log/pihole-FTL.log"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
-  run bash -c "grep -c 'Regex whitelist: Querying groups for client 127.0.0.5: \"SELECT id from vw_regex_whitelist WHERE group_id IN (4);\"' /var/log/pihole-FTL.log"
+  run bash -c "grep -c 'Regex allow: Querying groups for client 127.0.0.5: \"SELECT id from vw_regex_whitelist WHERE group_id IN (4);\"' /var/log/pihole-FTL.log"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
   run bash -c "grep -c 'get_client_querystr: SELECT EXISTS(SELECT domain from vw_whitelist WHERE domain = ? AND group_id IN (4));' /var/log/pihole-FTL.log"
@@ -198,10 +187,10 @@
   run bash -c "grep -c 'get_client_querystr: SELECT EXISTS(SELECT domain from vw_gravity WHERE domain = ? AND group_id IN (4));' /var/log/pihole-FTL.log"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} != "0" ]]
-  run bash -c "grep -c 'Regex whitelist ([[:digit:]]*, DB ID [[:digit:]]*) .* NOT ENABLED for client 127.0.0.5' /var/log/pihole-FTL.log"
+  run bash -c "grep -c 'Regex allow ([[:digit:]]*, DB ID [[:digit:]]*) .* NOT ENABLED for client 127.0.0.5' /var/log/pihole-FTL.log"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "2" ]]
-  run bash -c "grep -c 'Regex blacklist ([[:digit:]]*, DB ID [[:digit:]]*) .* NOT ENABLED for client 127.0.0.5' /var/log/pihole-FTL.log"
+  run bash -c "grep -c 'Regex deny ([[:digit:]]*, DB ID [[:digit:]]*) .* NOT ENABLED for client 127.0.0.5' /var/log/pihole-FTL.log"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
 }
@@ -221,10 +210,10 @@
   run bash -c "grep -c \"Gravity database: Client 00:11:22:33:44:55 found (identified by interface enp0s123). Using groups (5)\" /var/log/pihole-FTL.log"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
-  run bash -c "grep -c 'Regex blacklist: Querying groups for client 127.0.0.6: \"SELECT id from vw_regex_blacklist WHERE group_id IN (5);\"' /var/log/pihole-FTL.log"
+  run bash -c "grep -c 'Regex deny: Querying groups for client 127.0.0.6: \"SELECT id from vw_regex_blacklist WHERE group_id IN (5);\"' /var/log/pihole-FTL.log"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
-  run bash -c "grep -c 'Regex whitelist: Querying groups for client 127.0.0.6: \"SELECT id from vw_regex_whitelist WHERE group_id IN (5);\"' /var/log/pihole-FTL.log"
+  run bash -c "grep -c 'Regex allow: Querying groups for client 127.0.0.6: \"SELECT id from vw_regex_whitelist WHERE group_id IN (5);\"' /var/log/pihole-FTL.log"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
   run bash -c "grep -c 'get_client_querystr: SELECT EXISTS(SELECT domain from vw_whitelist WHERE domain = ? AND group_id IN (5));' /var/log/pihole-FTL.log"
@@ -236,10 +225,10 @@
   run bash -c "grep -c 'get_client_querystr: SELECT EXISTS(SELECT domain from vw_gravity WHERE domain = ? AND group_id IN (5));' /var/log/pihole-FTL.log"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
-  run bash -c "grep -c 'Regex whitelist ([[:digit:]]*, DB ID [[:digit:]]*) .* NOT ENABLED for client 127.0.0.6' /var/log/pihole-FTL.log"
+  run bash -c "grep -c 'Regex allow ([[:digit:]]*, DB ID [[:digit:]]*) .* NOT ENABLED for client 127.0.0.6' /var/log/pihole-FTL.log"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "2" ]]
-  run bash -c "grep -c 'Regex blacklist ([[:digit:]]*, DB ID [[:digit:]]*) .* NOT ENABLED for client 127.0.0.6' /var/log/pihole-FTL.log"
+  run bash -c "grep -c 'Regex deny ([[:digit:]]*, DB ID [[:digit:]]*) .* NOT ENABLED for client 127.0.0.6' /var/log/pihole-FTL.log"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
 }
@@ -263,209 +252,18 @@
   [[ ${lines[1]} == "" ]]
 }
 
-@test "Statistics as expected" {
-  run bash -c 'echo ">stats >quit" | nc -v 127.0.0.1 4711'
-  printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "domains_being_blocked 3" ]]
-  [[ ${lines[2]} == "dns_queries_today 25" ]]
-  [[ ${lines[3]} == "ads_blocked_today 6" ]]
-  [[ ${lines[4]} == "ads_percentage_today 24.000000" ]]
-  [[ ${lines[5]} == "unique_domains 12" ]]
-  [[ ${lines[6]} == "queries_forwarded 9" ]]
-  [[ ${lines[7]} == "queries_cached 10" ]]
-  # Clients ever seen is commented out as CircleCI may have
-  # more devices in its ARP cache so testing against a fixed
-  # number of clients may not work in all cases
-  #[[ ${lines[8]} == "clients_ever_seen 3" ]]
-  #[[ ${lines[9]} == "unique_clients 3" ]]
-  [[ ${lines[10]} == "dns_queries_all_types 25" ]]
-  [[ ${lines[11]} == "reply_NODATA 0" ]]
-  [[ ${lines[12]} == "reply_NXDOMAIN 0" ]]
-  [[ ${lines[13]} == "reply_CNAME 0" ]]
-  [[ ${lines[14]} == "reply_IP 20" ]]
-  [[ ${lines[15]} == "privacy_level 0" ]]
-  [[ ${lines[16]} == "status enabled" ]]
-  [[ ${lines[17]} == "" ]]
-}
-
-# Here and below: It is not meaningful to assume a particular order
-# here as the values are sorted before output. It is unpredictable in
-# which order they may come out. While this has always been the same
-# when compiling for glibc, the new musl build reveals that another
-# library may have a different interpretation here.
-
-@test "Top Clients" {
-  run bash -c 'echo ">top-clients >quit" | nc -v 127.0.0.1 4711'
-  printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "0 15 127.0.0.1 "* ]]
-  [[ ${lines[2]} == "1 4 127.0.0.3 "* ]]
-  [[ ${lines[3]} == "2 3 127.0.0.2 "* ]]
-  [[ ${lines[4]} == "3 1 aliasclient-0 some-aliasclient" ]]
-  [[ ${lines[5]} == "4 1 127.0.0.4 "* ]]
-  [[ ${lines[6]} == "5 1 127.0.0.5 "* ]]
-  [[ ${lines[7]} == "" ]]
-}
-
-@test "Top Domains" {
-  run bash -c 'echo ">top-domains (20) >quit" | nc -v 127.0.0.1 4711'
-  printf "%s\n" "${lines[@]}"
-  [[ "${lines[@]}" == *" 4 version.bind"* ]]
-  [[ "${lines[@]}" == *" 4 regex1.test.pi-hole.net"* ]]
-  [[ "${lines[@]}" == *" 2 google.com"* ]]
-  [[ "${lines[@]}" == *" 2 blacklist-blocked.test.pi-hole.net"* ]]
-  [[ "${lines[@]}" == *" 2 discourse.pi-hole.net"* ]]
-  [[ "${lines[@]}" == *" 1 version.ftl"* ]]
-  [[ "${lines[@]}" == *" 1 whitelisted.test.pi-hole.net"* ]]
-  [[ "${lines[@]}" == *" 1 regexa.test.pi-hole.net"* ]]
-  [[ "${lines[@]}" == *" 1 regex2.test.pi-hole.net"* ]]
-  [[ "${lines[@]}" == *" 1 ftl.pi-hole.net"* ]]
-  [[ "${lines[11]}" == "" ]]
-}
-
-@test "Top Ads" {
-  run bash -c 'echo ">top-ads (20) >quit" | nc -v 127.0.0.1 4711'
-  printf "%s\n" "${lines[@]}"
-  [[ "${lines[@]}" == *" 2 gravity-blocked.test.pi-hole.net"* ]]
-  [[ "${lines[@]}" == *" 1 blacklist-blocked.test.pi-hole.net"* ]]
-  [[ "${lines[@]}" == *" 1 whitelisted.test.pi-hole.net"* ]]
-  [[ "${lines[@]}" == *" 1 regex5.test.pi-hole.net"* ]]
-  [[ "${lines[@]}" == *" 1 regex1.test.pi-hole.net"* ]]
-  [[ ${lines[6]} == "" ]]
-}
-
-@test "Domain auditing, approved domains are not shown" {
-  run bash -c 'echo ">top-domains for audit >quit" | nc -v 127.0.0.1 4711'
-  printf "%s\n" "${lines[@]}"
-  [[ ${lines[@]} != *"google.com"* ]]
-}
-
-@test "Upstream Destinations reported correctly" {
-  run bash -c 'echo ">forward-dest >quit" | nc -v 127.0.0.1 4711'
-  printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "-2 24.00 blocklist blocklist" ]]
-  [[ ${lines[2]} == "-1 40.00 cache cache" ]]
-  [[ ${lines[3]} == "0 36.00 "* ]]
-  [[ ${lines[4]} == "" ]]
-}
-
-@test "Query Types reported correctly" {
-  run bash -c 'echo ">querytypes >quit" | nc -v 127.0.0.1 4711'
-  printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "A (IPv4): 76.00" ]]
-  [[ ${lines[2]} == "AAAA (IPv6): 4.00" ]]
-  [[ ${lines[3]} == "ANY: 0.00" ]]
-  [[ ${lines[4]} == "SRV: 0.00" ]]
-  [[ ${lines[5]} == "SOA: 0.00" ]]
-  [[ ${lines[6]} == "PTR: 0.00" ]]
-  [[ ${lines[7]} == "TXT: 20.00" ]]
-  [[ ${lines[8]} == "NAPTR: 0.00" ]]
-  [[ ${lines[9]} == "MX: 0.00" ]]
-  [[ ${lines[10]} == "DS: 0.00" ]]
-  [[ ${lines[11]} == "RRSIG: 0.00" ]]
-  [[ ${lines[12]} == "DNSKEY: 0.00" ]]
-  [[ ${lines[13]} == "NS: 0.00" ]]
-  [[ ${lines[14]} == "OTHER: 0.00" ]]
-  [[ ${lines[15]} == "SVCB: 0.00" ]]
-  [[ ${lines[16]} == "HTTPS: 0.00" ]]
-  [[ ${lines[17]} == "" ]]
-}
-
-# Here and below: Acknowledge that there might be a host name after
-# the IP address of the client (..."*"...)
-
-@test "Get all queries shows expected content" {
-  run bash -c 'echo ">getallqueries >quit" | nc -v 127.0.0.1 4711'
-  printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == *"TXT version.ftl 127.0.0.1 3 0 6"* ]]
-  [[ ${lines[2]} == *"TXT version.bind 127.0.0.1 3 0 6"* ]]
-  [[ ${lines[3]} == *"A blacklist-blocked.test.pi-hole.net 127.0.0.1 5 0 4"* ]]
-  [[ ${lines[4]} == *"A gravity-blocked.test.pi-hole.net 127.0.0.1 1 0 4"* ]]
-  [[ ${lines[5]} == *"A gravity-blocked.test.pi-hole.net 127.0.0.1 1 0 4"* ]]
-  [[ ${lines[6]} == *"A whitelisted.test.pi-hole.net 127.0.0.1 2 0 4"* ]]
-  [[ ${lines[7]} == *"A discourse.pi-hole.net 127.0.0.1 2 0 4"* ]]
-  [[ ${lines[8]} == *"A regex5.test.pi-hole.net 127.0.0.1 4 0 4"* ]]
-  [[ ${lines[9]} == *"A regexa.test.pi-hole.net 127.0.0.1 2 0 4"* ]]
-  [[ ${lines[10]} == *"A regex1.test.pi-hole.net 127.0.0.1 2 0 4"* ]]
-  [[ ${lines[11]} == *"A regex2.test.pi-hole.net 127.0.0.1 2 0 4"* ]]
-  [[ ${lines[12]} == *"A whitelisted.test.pi-hole.net 127.0.0.2 1 0 4"* ]]
-  [[ ${lines[13]} == *"A regex1.test.pi-hole.net 127.0.0.2 4 0 4"* ]]
-  [[ ${lines[14]} == *"A regex1.test.pi-hole.net 127.0.0.1 3 0 4"* ]]
-  [[ ${lines[15]} == *"A regex1.test.pi-hole.net 127.0.0.3 3 0 4"* ]]
-  [[ ${lines[16]} == *"A blacklist-blocked.test.pi-hole.net 127.0.0.2 2 0 4"* ]]
-  [[ ${lines[17]} == *"A blacklist-blocked.test.pi-hole.net 127.0.0.3 3 0 4"* ]]
-  [[ ${lines[18]} == *"A regex1.test.pi-hole.net 127.0.0.3 3 0 4"* ]]
-  [[ ${lines[19]} == *"A discourse.pi-hole.net 127.0.0.3 3 0 4"* ]]
-  [[ ${lines[20]} == *"TXT version.bind 127.0.0.4 3 0 6"* ]]
-  [[ ${lines[21]} == *"TXT version.bind 127.0.0.5 3 0 6"* ]]
-  [[ ${lines[22]} == *"TXT version.bind 127.0.0.6 3 0 6"* ]]
-  [[ ${lines[23]} == *"A google.com 127.0.0.1 2 0 4"* ]]
-  [[ ${lines[24]} == *"AAAA google.com 127.0.0.1 2 0 4"* ]]
-  [[ ${lines[25]} == *"A ftl.pi-hole.net 127.0.0.1 2 0 4"* ]]
-  [[ ${lines[26]} == "" ]]
-}
-
-@test "Get all queries (domain filtered) shows expected content" {
-  run bash -c 'echo ">getallqueries-domain regexa.test.pi-hole.net >quit" | nc -v 127.0.0.1 4711'
-  printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == *"A regexa.test.pi-hole.net "?*" 2 0 4"* ]]
-  [[ ${lines[2]} == "" ]]
-}
-
-@test "Get all queries (domain + number filtered) shows expected content" {
-  run bash -c 'echo ">getallqueries-domain regexa.test.pi-hole.net (20) >quit" | nc -v 127.0.0.1 4711'
-  printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == *"A regexa.test.pi-hole.net "?*" 2 0 4"* ]]
-  [[ ${lines[2]} == "" ]]
-}
-
-@test "Get all queries (client filtered) shows expected content" {
-  run bash -c 'echo ">getallqueries-client 127.0.0.1 >quit" | nc -v 127.0.0.1 4711'
-  printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == *"TXT version.ftl 127.0.0.1 3 0 6"* ]]
-  [[ ${lines[2]} == *"TXT version.bind 127.0.0.1 3 0 6"* ]]
-  [[ ${lines[3]} == *"A blacklist-blocked.test.pi-hole.net 127.0.0.1 5 0 4"* ]]
-  [[ ${lines[4]} == *"A gravity-blocked.test.pi-hole.net 127.0.0.1 1 0 4"* ]]
-  [[ ${lines[5]} == *"A gravity-blocked.test.pi-hole.net 127.0.0.1 1 0 4"* ]]
-  [[ ${lines[6]} == *"A whitelisted.test.pi-hole.net 127.0.0.1 2 0 4"* ]]
-  [[ ${lines[7]} == *"A discourse.pi-hole.net 127.0.0.1 2 0 4"* ]]
-  [[ ${lines[8]} == *"A regex5.test.pi-hole.net 127.0.0.1 4 0 4"* ]]
-  [[ ${lines[9]} == *"A regexa.test.pi-hole.net 127.0.0.1 2 0 4"* ]]
-  [[ ${lines[10]} == *"A regex1.test.pi-hole.net 127.0.0.1 2 0 4"* ]]
-  [[ ${lines[11]} == *"A regex2.test.pi-hole.net 127.0.0.1 2 0 4"* ]]
-  [[ ${lines[12]} == *"A regex1.test.pi-hole.net 127.0.0.1 3 0 4"* ]]
-  [[ ${lines[13]} == *"A google.com 127.0.0.1 2 0 4"* ]]
-  [[ ${lines[14]} == *"AAAA google.com 127.0.0.1 2 0 4"* ]]
-  [[ ${lines[15]} == *"A ftl.pi-hole.net 127.0.0.1 2 0 4"* ]]
-  [[ ${lines[16]} == "" ]]
-}
-
-@test "Get all queries (client + number filtered) shows expected content" {
-  run bash -c 'echo ">getallqueries-client 127.0.0.1 (2) >quit" | nc -v 127.0.0.1 4711'
-  printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == *"AAAA google.com 127.0.0.1 2 0 4"* ]]
-  [[ ${lines[2]} == *"A ftl.pi-hole.net 127.0.0.1 2 0 4"* ]]
-  [[ ${lines[3]} == "" ]]
-}
-
-@test "Recent blocked shows expected content" {
-  run bash -c 'echo ">recentBlocked >quit" | nc -v 127.0.0.1 4711'
-  printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "regex1.test.pi-hole.net" ]]
-  [[ ${lines[2]} == "" ]]
-}
-
-@test "pihole-FTL.db schema is as expected" {
+@test "pihole-FTL.db schema as expected" {
   run bash -c 'sqlite3 /etc/pihole/pihole-FTL.db .dump'
   printf "%s\n" "${lines[@]}"
-  [[ "${lines[@]}" == *"CREATE TABLE queries (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL, type INTEGER NOT NULL, status INTEGER NOT NULL, domain TEXT NOT NULL, client TEXT NOT NULL, forward TEXT, additional_info TEXT);"* ]]
+  [[ "${lines[@]}" == *"CREATE TABLE queries (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL, type INTEGER NOT NULL, status INTEGER NOT NULL, domain TEXT NOT NULL, client TEXT NOT NULL, forward TEXT, additional_info TEXT, reply INTEGER, dnssec INTEGER, reply_time INTEGER, client_name TEXT, ttl INTEGER, regex_id INTEGER);"* ]]
   [[ "${lines[@]}" == *"CREATE TABLE ftl (id INTEGER PRIMARY KEY NOT NULL, value BLOB NOT NULL);"* ]]
   [[ "${lines[@]}" == *"CREATE TABLE counters (id INTEGER PRIMARY KEY NOT NULL, value INTEGER NOT NULL);"* ]]
   [[ "${lines[@]}" == *"CREATE TABLE IF NOT EXISTS \"network\" (id INTEGER PRIMARY KEY NOT NULL, hwaddr TEXT UNIQUE NOT NULL, interface TEXT NOT NULL, firstSeen INTEGER NOT NULL, lastQuery INTEGER NOT NULL, numQueries INTEGER NOT NULL, macVendor TEXT, aliasclient_id INTEGER);"* ]]
   [[ "${lines[@]}" == *"CREATE TABLE IF NOT EXISTS \"network_addresses\" (network_id INTEGER NOT NULL, ip TEXT UNIQUE NOT NULL, lastSeen INTEGER NOT NULL DEFAULT (cast(strftime('%s', 'now') as int)), name TEXT, nameUpdated INTEGER, FOREIGN KEY(network_id) REFERENCES network(id));"* ]]
   [[ "${lines[@]}" == *"CREATE INDEX idx_queries_timestamps ON queries (timestamp);"* ]]
   [[ "${lines[@]}" == *"CREATE TABLE aliasclient (id INTEGER PRIMARY KEY NOT NULL, name TEXT NOT NULL, comment TEXT);"* ]]
-  # Depending on the version of sqlite3, ftl can be enquoted or not...
-  [[ "${lines[@]}" == *"INSERT INTO"?*"ftl"?*"VALUES(0,9);"* ]]
+  # Depending on the version of sqlite3, ftl may be enquoted or not...
+  [[ "${lines[@]}" == *"INSERT INTO"?*"ftl"?*"VALUES(0,10);"* ]]
 }
 
 @test "Ownership, permissions and type of pihole-FTL.db correct" {
@@ -494,42 +292,24 @@
   [[ ${lines[3]} == "Available arguments:" ]]
 }
 
-@test "No WARNING messages in pihole-FTL.log (besides known capability issues)" {
-  run bash -c 'grep "WARNING" /var/log/pihole-FTL.log | grep -c -v -E "CAP_NET_ADMIN|CAP_NET_RAW|CAP_SYS_NICE"'
-  printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "0" ]]
-}
-
 @test "No \"database not available\" messages in pihole-FTL.log" {
   run bash -c 'grep -c "database not available" /var/log/pihole-FTL.log'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0" ]]
 }
 
-@test "No ERROR messages in pihole-FTL.log" {
-  run bash -c 'grep -c "ERROR" /var/log/pihole-FTL.log'
-  printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "0" ]]
-}
-
-@test "No FATAL messages in pihole-FTL.log (besides error due to starting FTL more than once)" {
-  run bash -c 'grep "FATAL:" /var/log/pihole-FTL.log | grep -c -v "FATAL: create_shm(): Failed to create shared memory object \"FTL-lock\": File exists"'
-  printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "0" ]]
-}
-
 # Regex tests
-@test "Compiled blacklist regex as expected" {
-  run bash -c 'grep -c "Compiling blacklist regex 0 (DB ID 6): regex\[0-9\].test.pi-hole.net" /var/log/pihole-FTL.log'
+@test "Compiled deny regex as expected" {
+  run bash -c 'grep -c "Compiling deny regex 0 (DB ID 6): regex\[0-9\].test.pi-hole.net" /var/log/pihole-FTL.log'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
 }
 
-@test "Compiled whitelist regex as expected" {
-  run bash -c 'grep -c "Compiling whitelist regex 0 (DB ID 3): regex2" /var/log/pihole-FTL.log'
+@test "Compiled allow regex as expected" {
+  run bash -c 'grep -c "Compiling allow regex 0 (DB ID 3): regex2" /var/log/pihole-FTL.log'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
-  run bash -c 'grep -c "Compiling whitelist regex 1 (DB ID 4): discourse" /var/log/pihole-FTL.log'
+  run bash -c 'grep -c "Compiling allow regex 1 (DB ID 4): discourse" /var/log/pihole-FTL.log'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
 }
@@ -675,70 +455,70 @@
 @test "Regex Test 24: Useful hint for invalid regular expression \"f{x}\": Invalid contents of {}" {
   run bash -c './pihole-FTL regex-test "fbcdn.net" "f{x}"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "REGEX WARNING: Invalid regex CLI filter \"f{x}\": Invalid contents of {}" ]]
+  [[ ${lines[1]} == "Invalid regex CLI filter \"f{x}\": Invalid contents of {}" ]]
   [[ $status == 1 ]]
 }
 
 @test "Regex Test 25: Useful hint for invalid regular expression \"a**\": Invalid use of repetition operators" {
   run bash -c './pihole-FTL regex-test "fbcdn.net" "a**"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "REGEX WARNING: Invalid regex CLI filter \"a**\": Invalid use of repetition operators" ]]
+  [[ ${lines[1]} == "Invalid regex CLI filter \"a**\": Invalid use of repetition operators" ]]
   [[ $status == 1 ]]
 }
 
 @test "Regex Test 26: Useful hint for invalid regular expression \"x\\\": Trailing backslash" {
   run bash -c './pihole-FTL regex-test "fbcdn.net" "x\\"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "REGEX WARNING: Invalid regex CLI filter \"x\\\": Trailing backslash" ]]
+  [[ ${lines[1]} == "Invalid regex CLI filter \"x\\\": Trailing backslash" ]]
   [[ $status == 1 ]]
 }
 
 @test "Regex Test 27: Useful hint for invalid regular expression \"[\": Missing ']'" {
   run bash -c './pihole-FTL regex-test "fbcdn.net" "["'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "REGEX WARNING: Invalid regex CLI filter \"[\": Missing ']'" ]]
+  [[ ${lines[1]} == "Invalid regex CLI filter \"[\": Missing ']'" ]]
   [[ $status == 1 ]]
 }
 
 @test "Regex Test 28: Useful hint for invalid regular expression \"(\": Missing ')'" {
   run bash -c './pihole-FTL regex-test "fbcdn.net" "("'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "REGEX WARNING: Invalid regex CLI filter \"(\": Missing ')'" ]]
+  [[ ${lines[1]} == "Invalid regex CLI filter \"(\": Missing ')'" ]]
   [[ $status == 1 ]]
 }
 
 @test "Regex Test 29: Useful hint for invalid regular expression \"{1\": Missing '}'" {
   run bash -c './pihole-FTL regex-test "fbcdn.net" "{1"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "REGEX WARNING: Invalid regex CLI filter \"{1\": Missing '}'" ]]
+  [[ ${lines[1]} == "Invalid regex CLI filter \"{1\": Missing '}'" ]]
   [[ $status == 1 ]]
 }
 
 @test "Regex Test 30: Useful hint for invalid regular expression \"[[.foo.]]\": Unknown collating element" {
   run bash -c './pihole-FTL regex-test "fbcdn.net" "[[.foo.]]"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "REGEX WARNING: Invalid regex CLI filter \"[[.foo.]]\": Unknown collating element" ]]
+  [[ ${lines[1]} == "Invalid regex CLI filter \"[[.foo.]]\": Unknown collating element" ]]
   [[ $status == 1 ]]
 }
 
 @test "Regex Test 31: Useful hint for invalid regular expression \"[[:foobar:]]\": Unknown character class name" {
   run bash -c './pihole-FTL regex-test "fbcdn.net" "[[:foobar:]]"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "REGEX WARNING: Invalid regex CLI filter \"[[:foobar:]]\": Unknown character class name" ]]
+  [[ ${lines[1]} == "Invalid regex CLI filter \"[[:foobar:]]\": Unknown character class name" ]]
   [[ $status == 1 ]]
 }
 
 @test "Regex Test 32: Useful hint for invalid regular expression \"(a)\\2\": Invalid back reference" {
   run bash -c './pihole-FTL regex-test "fbcdn.net" "(a)\\2"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "REGEX WARNING: Invalid regex CLI filter \"(a)\\2\": Invalid back reference" ]]
+  [[ ${lines[1]} == "Invalid regex CLI filter \"(a)\\2\": Invalid back reference" ]]
   [[ $status == 1 ]]
 }
 
 @test "Regex Test 33: Useful hint for invalid regular expression \"[g-1]\": Invalid character range" {
   run bash -c './pihole-FTL regex-test "fbcdn.net" "[g-1]"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "REGEX WARNING: Invalid regex CLI filter \"[g-1]\": Invalid character range" ]]
+  [[ ${lines[1]} == "Invalid regex CLI filter \"[g-1]\": Invalid character range" ]]
   [[ $status == 1 ]]
 }
 
@@ -751,7 +531,7 @@
 @test "Regex Test 35: Quiet mode: Invalid regex = Return code 1, with error message" {
   run bash -c './pihole-FTL -q regex-test "fbcdn.net" "g{x}"'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "REGEX WARNING: Invalid regex CLI filter \"g{x}\": Invalid contents of {}" ]]
+  [[ ${lines[0]} == "Invalid regex CLI filter \"g{x}\": Invalid contents of {}" ]]
   [[ $status == 1 ]]
 }
 
@@ -819,8 +599,8 @@
 @test "Regex Test 40: Option \";querytype\" sanity checks" {
   run bash -c './pihole-FTL regex-test "f" g\;querytype=!A\;querytype=A'
   printf "%s\n" "${lines[@]}"
-  [[ $status == 2 ]]
-  [[ ${lines[1]} == *"Overwriting previous querytype setting" ]]
+  [[ $status == 1 ]]
+  [[ ${lines[1]} == *"Overwriting previous querytype setting (multiple \"querytype=...\" found)" ]]
 }
 
 # x86_64-musl is built on busybox which has a slightly different
@@ -900,10 +680,56 @@
   [[ ${lines[0]} == "2" ]]
 }
 
-@test "Port file exists and contains expected API port" {
-  run bash -c 'cat /run/pihole-FTL.port'
+@test "HTTP server responds with JSON error 404 to unknown API path" {
+  run bash -c 'curl -s 127.0.0.1:8080/api/undefined'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "4711" ]]
+  [[ ${lines[0]} == "{\"error\":{\"key\":\"not_found\",\"message\":\"Not found\",\"hint\":\"/api/undefined\"}}" ]]
+}
+
+@test "HTTP server responds with normal error 404 to path outside /admin" {
+  run bash -c 'curl -s 127.0.0.1:8080/undefined'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "Error 404: Not Found" ]]
+}
+
+@test "API authorization (without password): No login required" {
+  run bash -c 'curl -s 127.0.0.1:8080/api/auth'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == '{"challenge":null,"session":{"valid":true,"sid":null,"validity":-1}}' ]]
+}
+
+@test "API authorization (with password): FTL challenges us" {
+  # Password: ABC
+  echo "WEBPASSWORD=183c1b634da0078fcf5b0af84bdcbb3e817708c3f22b329be84165f4bad1ae48" >> /etc/pihole/setupVars.conf
+  run bash -c 'curl -s 127.0.0.1:8080/api/auth | jq ".challenge | length"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "64" ]]
+}
+
+@test "API authorization (with password): Incorrect response is rejected" {
+  run bash -c 'curl -s -X POST 127.0.0.1:8080/api/auth -d "{\"response\":\"0123456789012345678901234567890123456789012345678901234567890123\"}" | jq .session.valid'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "false" ]]
+}
+
+@test "API authorization (with password): Correct password is accepted" {
+  computeResponse() {
+      local pwhash challenge response
+      pwhash="${1}"
+      challenge="${2}"
+      response=$(echo -n "${challenge}:${pwhash}" | sha256sum | sed 's/\s.*$//')
+      echo "${response}"
+  }
+  pwhash="183c1b634da0078fcf5b0af84bdcbb3e817708c3f22b329be84165f4bad1ae48"
+  challenge="$(curl -s -X GET 127.0.0.1:8080/api/auth | jq --raw-output .challenge)"
+  printf "Challenge: %s\n" "${challenge}"
+  response="$(computeResponse "$pwhash" "$challenge")"
+  printf "Response: %s\n" "${response}"
+  session="$(curl -s -X POST 127.0.0.1:8080/api/auth -d "{\"response\":\"$response\"}")"
+  printf "Session: %s\n" "${session}"
+  run jq .session.valid <<< "${session}"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "true" ]]
 }
 
 @test "LUA: Interpreter returns FTL version" {
@@ -971,7 +797,7 @@
   # Extract relevant log lines
   run bash -c "sed -n \"${before},${after}p\" /var/log/pihole-FTL.log"
   printf "%s\n" "${lines[@]}"
-  [[ "${lines[@]}" == *"**** new UDP query[A] query \"localhost\" from lo:192.168.47.97 "* ]]
+  [[ "${lines[@]}" == *"**** new UDP IPv4 query[A] query \"localhost\" from lo:192.168.47.97#53 "* ]]
 }
 
 @test "EDNS(0) ECS can overwrite client address (IPv6)" {
@@ -990,7 +816,7 @@
   # Extract relevant log lines
   run bash -c "sed -n \"${before},${after}p\" /var/log/pihole-FTL.log"
   printf "%s\n" "${lines[@]}"
-  [[ "${lines[@]}" == *"**** new UDP query[A] query \"localhost\" from lo:fe80::b167:af1e:968b:dead "* ]]
+  [[ "${lines[@]}" == *"**** new UDP IPv4 query[A] query \"localhost\" from lo:fe80::b167:af1e:968b:dead#53 "* ]]
 }
 
 @test "alias-client is imported and used for configured client" {
@@ -1061,4 +887,36 @@
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "Hello from LUA" ]]
   rm abc.lua
+}
+
+@test "No WARNING messages in pihole-FTL.log (besides known capability issues)" {
+  run bash -c 'grep "WARNING: " /var/log/pihole-FTL.log'
+  printf "%s\n" "${lines[@]}"
+  run bash -c 'grep "WARNING: " /var/log/pihole-FTL.log | grep -c -v -E "CAP_NET_ADMIN|CAP_NET_RAW|CAP_SYS_NICE"'
+  printf "count: %s\n" "${lines[@]}"
+  [[ ${lines[0]} == "0" ]]
+}
+
+@test "No ERROR messages in pihole-FTL.log (besides known index.html error)" {
+  run bash -c 'grep "ERR: " /var/log/pihole-FTL.log'
+  printf "%s\n" "${lines[@]}"
+  run bash -c 'grep "ERR: " /var/log/pihole-FTL.log | grep -c -v -E "(index\.html)|(Failed to create shared memory object)"'
+  printf "count: %s\n" "${lines[@]}"
+  [[ ${lines[0]} == "0" ]]
+}
+
+@test "No CRIT messages in pihole-FTL.log (besides error due to testing to start FTL more than once)" {
+  run bash -c 'grep "CRIT: " /var/log/pihole-FTL.log'
+  printf "%s\n" "${lines[@]}"
+  run bash -c 'grep "CRIT: " /var/log/pihole-FTL.log | grep -c -v "Initialization of shared memory failed."'
+  printf "count: %s\n" "${lines[@]}"
+  [[ ${lines[0]} == "0" ]]
+}
+
+@test "No config errors in pihole-FTL.toml" {
+  run bash -c 'grep "DEBUG_CONFIG: " /var/log/pihole-FTL.log'
+  printf "%s\n" "${lines[@]}"
+  run bash -c 'grep "DEBUG_CONFIG: " /var/log/pihole-FTL.log | grep -c "DOES NOT EXIST"'
+  printf "count: %s\n" "${lines[@]}"
+  [[ ${lines[0]} == "0" ]]
 }

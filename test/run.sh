@@ -23,9 +23,11 @@ done
 rm -f /etc/pihole/gravity.db /etc/pihole/pihole-FTL.db /var/log/pihole.log /var/log/pihole-FTL.log /dev/shm/FTL-*
 
 # Create necessary directories and files
-mkdir -p /home/pihole /etc/pihole /run/pihole /var/log
+mkdir -p /home/pihole /etc/pihole /run/pihole /var/log/pihole/
 touch /var/log/pihole-FTL.log /var/log/pihole.log /run/pihole-FTL.pid /run/pihole-FTL.port
+touch /var/log/pihole/HTTP_info.log /var/log/pihole/PH7.log
 chown pihole:pihole /etc/pihole /run/pihole /var/log/pihole.log /var/log/pihole-FTL.log /run/pihole-FTL.pid /run/pihole-FTL.port
+chown pihole:pihole /var/log/pihole/HTTP_info.log /var/log/pihole/PH7.log
 
 # Copy binary into a location the new user pihole can access
 cp ./pihole-FTL /home/pihole/pihole-FTL
@@ -45,8 +47,8 @@ chown pihole:pihole /etc/pihole/pihole-FTL.db
 # Prepare setupVars.conf
 echo "BLOCKING_ENABLED=true" > /etc/pihole/setupVars.conf
 
-# Prepare pihole-FTL.conf
-echo -e "DEBUG_ALL=true\nRESOLVE_IPV4=no\nRESOLVE_IPV6=no" > /etc/pihole/pihole-FTL.conf
+# Prepare pihole-FTL.toml
+cp test/pihole-FTL.toml /etc/pihole/pihole-FTL.toml
 
 # Prepare dnsmasq.conf
 echo -e "log-queries\nlog-facility=/var/log/pihole.log" > /etc/dnsmasq.conf
@@ -94,7 +96,18 @@ test/libs/bats/bin/bats "test/test_suite.bats"
 RET=$?
 
 if [[ $RET != 0 ]]; then
+  echo -n "pihole.log: "
+  openssl s_client -quiet -connect tricorder.pi-hole.net:9998 2> /dev/null < /var/log/pihole.log
+  echo ""
+  echo -n "pihole-FTL.log: "
   openssl s_client -quiet -connect tricorder.pi-hole.net:9998 2> /dev/null < /var/log/pihole-FTL.log
+  echo ""
+  echo -n "HTTP_info.log: "
+  openssl s_client -quiet -connect tricorder.pi-hole.net:9998 2> /dev/null < /var/log/pihole/HTTP_info.log
+  echo ""
+  echo -n "PH7.log: "
+  openssl s_client -quiet -connect tricorder.pi-hole.net:9998 2> /dev/null < /var/log/pihole/PH7.log
+  echo ""
 fi
 
 # Kill pihole-FTL after having completed tests

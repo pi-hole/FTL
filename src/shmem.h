@@ -45,16 +45,39 @@ typedef struct {
 	int clients_MAX;
 	int domains_MAX;
 	int strings_MAX;
+	int reply_NODATA;
+	int reply_NXDOMAIN;
+	int reply_CNAME;
+	int reply_IP;
+	int reply_domain;
 	int gravity;
 	int dns_cache_size;
 	int dns_cache_MAX;
 	int per_client_regex_MAX;
 	unsigned int regex_change;
+	struct {
+		int gravity;
+		int clients;
+		int groups;
+		int lists;
+		struct {
+			int allowed;
+			int denied;
+		} domains;
+	} database;
 	int querytype[TYPE_MAX-1];
 	int status[QUERY_STATUS_MAX];
 	int reply[QUERY_REPLY_MAX];
 } countersStruct;
-ASSERT_SIZEOF(countersStruct, 224, 224, 224);
+ASSERT_SIZEOF(countersStruct, 272, 272, 272);
+
+typedef struct {
+	const char *func;
+	pid_t pid;
+	int tid;
+} lockInfoStruct;
+
+#define INIT_LOCK_INFO {"", -1, -1}
 
 extern countersStruct *counters;
 

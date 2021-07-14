@@ -29,11 +29,12 @@ FILE *FTLfopen(const char *pathname, const char *mode, const char *file, const c
 	while(file_ptr == NULL && errno == EINTR);
 
 	// Final error checking (may have faild for some other reason then an
-	// EINTR = interrupted system call)
-	// The already_writing coutner prevents a possible infinite loop
-	if(file_ptr == NULL && (already_writing++) == 1)
-		logg("WARN: Could not fopen(\"%s\", \"%s\") in %s() (%s:%i): %s",
-		     pathname, mode, func, file, line, strerror(errno));
+	// EINTR = interrupted system call). The already_writing coutner
+	// prevents a possible infinite loop. We accept "No such file or
+	// directory" as this is something we'll deal with elsewhere
+	if(file_ptr == NULL && errno != ENOENT && (already_writing++) == 1)
+		log_warn("Could not fopen(\"%s\", \"%s\") in %s() (%s:%i): %s",
+		         pathname, mode, func, file, line, strerror(errno));
 
 	// Decrement warning counter
 	already_writing--;

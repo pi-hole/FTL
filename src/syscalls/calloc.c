@@ -32,8 +32,8 @@ void* __attribute__((malloc)) __attribute__((alloc_size(1,2))) FTLcalloc(const s
 
 	// Handle other errors than EINTR
 	if(ptr == NULL)
-		logg("FATAL: Memory allocation (%zu x %zu) failed in %s() (%s:%i)",
-		     nmemb, size, func, file, line);
+		log_err("Memory allocation (%zu x %zu) failed in %s() (%s:%i)",
+		        nmemb, size, func, file, line);
 
 	return ptr;
 }

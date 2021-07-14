@@ -27,8 +27,10 @@ enum counters_table_props {
 
 void db_init(void);
 int db_get_int(sqlite3* db, const enum ftl_table_props ID);
-bool db_set_FTL_property(sqlite3 *db, const enum ftl_table_props ID, const long value);
-bool db_set_counter(sqlite3 *db, const enum counters_table_props ID, const long value);
+int db_get_FTL_property(sqlite3* db, const enum ftl_table_props ID);
+double db_get_FTL_property_double(sqlite3* db, const enum ftl_table_props ID);
+bool db_set_FTL_property(sqlite3* db, const enum ftl_table_props ID, const int value);
+bool db_set_FTL_property_double(sqlite3* db, const enum ftl_table_props ID, const double value);
 
 /// Execute a formatted SQL query and get the return code
 int dbquery(sqlite3* db, const char *format, ...) __attribute__ ((format (gnu_printf, 2, 3)));;
@@ -38,13 +40,17 @@ sqlite3 *_dbopen(bool create, const char *func, const int line, const char *file
 #define dbclose(db) _dbclose(db, __FUNCTION__, __LINE__, __FILE__)
 void _dbclose(sqlite3 **db, const char *func, const int line, const char *file);
 
+void piholeFTLDB_reopen(void);
 int db_query_int(sqlite3 *db, const char *querystr);
+double db_query_double(sqlite3 *db, const char *querystr);
+int db_query_int_from_until(sqlite3 *db, const char* querystr, const double from, const double until);
+int db_query_int_from_until_type(sqlite3 *db, const char* querystr, const double from, const double until, const int type);
+
 void SQLite3LogCallback(void *pArg, int iErrCode, const char *zMsg);
-long int get_max_query_ID(sqlite3 *db);
+bool db_set_counter(sqlite3 *db, const enum counters_table_props ID, const int value);
 bool db_update_counters(sqlite3 *db, const int total, const int blocked);
 const char *get_sqlite3_version(void);
 
-extern long int lastdbindex;
 extern bool DBdeleteoldqueries;
 
 // Database macros
@@ -52,9 +58,9 @@ extern bool DBdeleteoldqueries;
 	int ret;\
 	if((ret = dbquery(db, __VA_ARGS__)) != SQLITE_OK) {\
 		if(ret == SQLITE_BUSY)\
-			logg("WARNING: Database busy in %s()!", __FUNCTION__);\
+			log_warn("Database busy in %s()!", __FUNCTION__);\
 		else\
-			logg("ERROR: %s() failed!", __FUNCTION__);\
+			log_err("%s() failed!", __FUNCTION__);\
 		return false;\
 	}\
 }
@@ -63,9 +69,9 @@ extern bool DBdeleteoldqueries;
 	int ret;\
 	if((ret = dbquery(db, __VA_ARGS__)) != SQLITE_OK) {\
 		if(ret == SQLITE_BUSY)\
-			logg("WARNING: Database busy in %s()!", __FUNCTION__);\
+			log_warn("Database busy in %s()!", __FUNCTION__);\
 		else\
-			logg("ERROR: %s() failed!", __FUNCTION__);\
+			log_err("%s() failed!", __FUNCTION__);\
 		return;\
 	}\
 }

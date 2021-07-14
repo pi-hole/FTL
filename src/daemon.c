@@ -10,12 +10,10 @@
 
 #include "FTL.h"
 #include "daemon.h"
-#include "config.h"
+#include "config/config.h"
 #include "log.h"
 // sleepms()
 #include "timers.h"
-// close_telnet_socket()
-#include "api/socket.h"
 // gravityDB_close()
 #include "database/gravity-db.h"
 // dbclose()
@@ -40,7 +38,7 @@ void go_daemon(void)
 	// Indication of fork() failure
 	if (process_id < 0)
 	{
-		logg("fork failed!\n");
+		log_crit("fork failed!");
 		// Return failure in exit status
 		exit(EXIT_FAILURE);
 	}
@@ -49,20 +47,20 @@ void go_daemon(void)
 	if (process_id > 0)
 	{
 		printf("FTL started!\n");
-		// return success in exit status
+		// Return success in exit status
 		exit(EXIT_SUCCESS);
 	}
 
 	//unmask the file mode
 	umask(0);
 
-	//set new session
+	// Set new session to ensure we have no controlling terminal
 	// creates a session and sets the process group ID
 	const pid_t sid = setsid();
 	if(sid < 0)
 	{
 		// Return failure
-		logg("setsid failed!\n");
+		log_crit("setsid failed: %s", strerror(errno));
 		exit(EXIT_FAILURE);
 	}
 
@@ -80,7 +78,7 @@ void go_daemon(void)
 	// Indication of fork() failure
 	if (process_id < 0)
 	{
-		logg("fork failed!\n");
+		log_crit("fork failed: %s", strerror(errno));
 		// Return failure in exit status
 		exit(EXIT_FAILURE);
 	}
@@ -101,25 +99,24 @@ void savepid(void)
 {
 	FILE *f;
 	const pid_t pid = getpid();
-	if((f = fopen(FTLfiles.pid, "w+")) == NULL)
+	if((f = fopen(config.files.pid, "w+")) == NULL)
 	{
-		logg("WARNING: Unable to write PID to file.");
-		logg("         Continuing anyway...");
+		log_warn("Unable to write PID to file.");
 	}
 	else
 	{
 		fprintf(f, "%i", (int)pid);
 		fclose(f);
 	}
-	logg("PID of FTL process: %i", (int)pid);
+	log_info("PID of FTL process: %i", (int)pid);
 }
 
 static void removepid(void)
 {
 	FILE *f;
-	if((f = fopen(FTLfiles.pid, "w")) == NULL)
+	if((f = fopen(config.files.pid, "w")) == NULL)
 	{
-		logg("WARNING: Unable to empty PID file");
+		log_warn("Unable to empty PID file");
 		return;
 	}
 	fclose(f);
@@ -176,10 +173,10 @@ void delay_startup(void)
 		return;
 
 	// Sleep if requested by DELAY_STARTUP
-	logg("Sleeping for %d seconds as requested by configuration ...",
+	log_info("Sleeping for %d seconds as requested by configuration ...",
 	     config.delay_startup);
 	sleep(config.delay_startup);
-	logg("Done sleeping, continuing startup of resolver...\n");
+	log_info("Done sleeping, continuing startup of resolver...\n");
 }
 
 // Is this a fork?
@@ -205,19 +202,19 @@ static void terminate_threads(void)
 	// Terminate threads before closing database connections and finishing shared memory
 	killed = true;
 	// Try to join threads to ensure cancellation has succeeded
-	logg("Waiting for threads to join");
+	log_info("Waiting for threads to join");
 	for(int i = 0; i < THREADS_MAX; i++)
 	{
 		if(thread_cancellable[i])
 		{
-			logg("Thread %s (%d) is idle, terminating it.",
+			log_info("Thread %s (%d) is idle, terminating it.",
 			     thread_names[i], i);
 			pthread_cancel(threads[i]);
 		}
 
 		if (clock_gettime(CLOCK_REALTIME, &ts) == -1)
 		{
-			logg("Thread %s (%d) is busy, cancelling it (cannot set timout).",
+			log_info("Thread %s (%d) is busy, cancelling it (cannot set timout).",
 			     thread_names[i], i);
 			pthread_cancel(threads[i]);
 			continue;
@@ -228,13 +225,13 @@ static void terminate_threads(void)
 
 		if((s = pthread_timedjoin_np(threads[i], NULL, &ts)) != 0)
 		{
-			logg("Thread %s (%d) is still busy, cancelling it.",
+			log_info("Thread %s (%d) is still busy, cancelling it.",
 			     thread_names[i], i);
 			pthread_cancel(threads[i]);
 			continue;
 		}
 	}
-	logg("All threads joined");
+	log_info("All threads joined");
 }
 
 // Clean up on exit
@@ -253,7 +250,7 @@ void cleanup(const int ret)
 				continue;
 
 			// Otherwise, cancel and join the thread
-			logg("Joining API worker thread %d", tid);
+			log_notice("Joining API worker thread %d", tid);
 			pthread_cancel(api_threads[tid]);
 			pthread_join(api_threads[tid], NULL);
 		}
@@ -262,14 +259,7 @@ void cleanup(const int ret)
 		lock_shm();
 		gravityDB_close();
 		unlock_shm();
-
-		// Close sockets and delete Unix socket file handle
-		close_telnet_socket();
-		close_unix_socket(true);
 	}
-
-	// Empty API port file, port 0 = truncate file
-	saveport(0);
 
 	// Remove PID file
 	removepid();
@@ -282,5 +272,5 @@ void cleanup(const int ret)
 
 	char buffer[42] = { 0 };
 	format_time(buffer, 0, timer_elapsed_msec(EXIT_TIMER));
-	logg("########## FTL terminated after%s (code %i)! ##########", buffer, ret);
+	log_info("########## FTL terminated after%s (code %i)! ##########", buffer, ret);
 }

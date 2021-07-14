@@ -14,8 +14,8 @@
 #include "message-table.h"
 #include "../shmem.h"
 // struct config
-#include "../config.h"
-// logg()
+#include "../config/config.h"
+// logging routines
 #include "../log.h"
 #include "../timers.h"
 // file_exists()
@@ -23,6 +23,7 @@
 #include "sqlite3-ext.h"
 // import_aliasclients()
 #include "aliasclients.h"
+// CREATE_QUERIES_TABLE
 // add_additional_info_column()
 #include "query-table.h"
 
@@ -31,14 +32,13 @@ long int lastdbindex = 0;
 
 void _dbclose(sqlite3 **db, const char *func, const int line, const char *file)
 {
-	if(config.debug & DEBUG_DATABASE)
-		logg("Closing FTL database in %s() (%s:%i)", func, file, line);
+	log_debug(DEBUG_DATABASE, "Closing FTL database in %s() (%s:%i)", func, file, line);
 
 	// Only try to close an existing database connection
 	int rc = SQLITE_OK;
 	if(db != NULL && *db != NULL && (rc = sqlite3_close(*db)) != SQLITE_OK)
-		logg("Error while trying to close database: %s",
-		     sqlite3_errstr(rc));
+		log_err("Error while trying to close database: %s",
+		        sqlite3_errstr(rc));
 
 	// Always set database pointer to NULL, even when closing failed
 	*db = NULL;
@@ -47,18 +47,17 @@ void _dbclose(sqlite3 **db, const char *func, const int line, const char *file)
 sqlite3* _dbopen(bool create, const char *func, const int line, const char *file)
 {
 	// Try to open database
-	if(config.debug & DEBUG_DATABASE)
-		logg("Opening FTL database in %s() (%s:%i)", func, file, line);
+	log_debug(DEBUG_DATABASE, "Opening FTL database in %s() (%s:%i)", func, file, line);
 
 	int flags = SQLITE_OPEN_READWRITE;
 	if(create)
 		flags |= SQLITE_OPEN_CREATE;
 
 	sqlite3 *db = NULL;
-	int rc = sqlite3_open_v2(FTLfiles.FTL_db, &db, flags, NULL);
+	int rc = sqlite3_open_v2(config.files.database, &db, flags, NULL);
 	if( rc != SQLITE_OK )
 	{
-		logg("Error while trying to open database: %s", sqlite3_errstr(rc));
+		log_err("Error while trying to open database: %s", sqlite3_errstr(rc));
 		return NULL;
 	}
 
@@ -66,8 +65,8 @@ sqlite3* _dbopen(bool create, const char *func, const int line, const char *file
 	rc = sqlite3_busy_timeout(db, DATABASE_BUSY_TIMEOUT);
 	if( rc != SQLITE_OK )
 	{
-		logg("Error while trying to set busy timeout (%d ms) on database: %s",
-		     DATABASE_BUSY_TIMEOUT, sqlite3_errstr(rc));
+		log_err("Error while trying to set busy timeout (%d ms) on database: %s",
+		        DATABASE_BUSY_TIMEOUT, sqlite3_errstr(rc));
 		dbclose(&db);
 		return NULL;
 	}
@@ -84,7 +83,7 @@ int dbquery(sqlite3* db, const char *format, ...)
 
 	if(query == NULL)
 	{
-		logg("Memory allocation failed in dbquery()");
+		log_err("Memory allocation failed in dbquery()");
 		return SQLITE_ERROR;
 	}
 
@@ -92,32 +91,26 @@ int dbquery(sqlite3* db, const char *format, ...)
 	// although the database connection is not available
 	if(db == NULL)
 	{
-		logg("dbquery(\"%s\") called but database is not available!", query);
+		log_err("dbquery(\"%s\") called but database is not available!", query);
 		sqlite3_free(query);
 		return SQLITE_ERROR;
 	}
 
-	if(config.debug & DEBUG_DATABASE)
-	{
-		logg("dbquery: \"%s\"", query);
-	}
+log_debug(DEBUG_DATABASE, "dbquery: \"%s\"", query);
+
 
 	int rc = sqlite3_exec(db, query, NULL, NULL, NULL);
 	if( rc != SQLITE_OK ){
-		logg("ERROR: SQL query \"%s\" failed: %s",
-		     query, sqlite3_errstr(rc));
+		log_err("SQL query \"%s\" failed: %s",
+		        query, sqlite3_errstr(rc));
 		sqlite3_free(query);
-		dbclose(&db);
 		return rc;
 	}
 
 	// Free allocated memory for query string
 	sqlite3_free(query);
 
-	if(config.debug & DEBUG_DATABASE)
-	{
-		logg("         ---> OK");
-	}
+	log_debug(DEBUG_DATABASE,"         ---> OK");
 
 	// Return success
 	return SQLITE_OK;
@@ -150,13 +143,13 @@ static bool db_create(void)
 		return false;
 
 	// Create Queries table in the database
-	SQL_bool(db, "CREATE TABLE queries ( id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL, type INTEGER NOT NULL, status INTEGER NOT NULL, domain TEXT NOT NULL, client TEXT NOT NULL, forward TEXT );");
+	SQL_bool(db, CREATE_QUERIES_TABLE_V1);
 
 	// Add an index on the timestamps (not a unique index!)
-	SQL_bool(db, "CREATE INDEX idx_queries_timestamps ON queries (timestamp);");
+	SQL_bool(db, CREATE_QUERIES_TIMESTAMP_INDEX);
 
 	// Create FTL table in the database (holds properties like database version, etc.)
-	SQL_bool(db, "CREATE TABLE ftl ( id INTEGER PRIMARY KEY NOT NULL, value BLOB NOT NULL );");
+	SQL_bool(db, CREATE_FTL_TABLE);
 
 	// Set FTL_db version 1
 	if(!db_set_FTL_property(db, DB_VERSION, 1))
@@ -172,7 +165,7 @@ static bool db_create(void)
 	// Explicitly set permissions to 0644
 	// 644 =            u+w       u+r       g+r       o+r
 	const mode_t mode = S_IWUSR | S_IRUSR | S_IRGRP | S_IROTH;
-	chmod_file(FTLfiles.FTL_db, mode);
+	chmod_file(config.files.database, mode);
 
 	return true;
 }
@@ -182,7 +175,7 @@ void SQLite3LogCallback(void *pArg, int iErrCode, const char *zMsg)
 	// Note: pArg is NULL and not used
 	// See https://sqlite.org/rescode.html#extrc for details
 	// concerning the return codes returned here
-	logg("SQLite3 message: %s (%d)", zMsg, iErrCode);
+	log_err("SQLite3 message: %s (%d)", zMsg, iErrCode);
 }
 
 void db_init(void)
@@ -208,12 +201,12 @@ void db_init(void)
 	sqlite3_auto_extension((void (*)(void))sqlite3_pihole_extensions_init);
 
 	// Check if database exists, if not create empty database
-	if(!file_exists(FTLfiles.FTL_db))
+	if(!file_exists(config.files.database))
 	{
-		logg("No database file found, creating new (empty) database");
+		log_warn("No database file found, creating new (empty) database");
 		if (!db_create())
 		{
-			logg("Creation of database failed, database is not available");
+			log_err("Creation of database failed, database is not available");
 			return;
 		}
 	}
@@ -225,13 +218,13 @@ void db_init(void)
 	int dbversion = db_get_int(db, DB_VERSION);
 	if(dbversion < 1)
 	{
-		logg("Database not available, please ensure the database is unlocked when starting pihole-FTL !");
+		log_warn("Database not available, please ensure the database is unlocked when starting pihole-FTL !");
 		dbclose(&db);
 		return;
 	}
 	else
 	{
-		logg("Database version is %i", dbversion);
+		log_info("Database version is %i", dbversion);
 	}
 
 
@@ -239,10 +232,10 @@ void db_init(void)
 	if(dbversion < 2)
 	{
 		// Update to version 2: Create counters table
-		logg("Updating long-term database to version 2");
+		log_info("Updating long-term database to version 2");
 		if (!create_counter_table(db))
 		{
-			logg("Counter table not initialized, database not available");
+			log_err("Counter table not initialized, database not available");
 			dbclose(&db);
 			return;
 		}
@@ -254,10 +247,10 @@ void db_init(void)
 	if(dbversion < 3)
 	{
 		// Update to version 3: Create network table
-		logg("Updating long-term database to version 3");
+		log_info("Updating long-term database to version 3");
 		if (!create_network_table(db))
 		{
-			logg("Network table not initialized, database not available");
+			log_err("Network table not initialized, database not available");
 			dbclose(&db);
 			return;
 		}
@@ -269,10 +262,10 @@ void db_init(void)
 	if(dbversion < 4)
 	{
 		// Update to version 4: Unify clients in network table
-		logg("Updating long-term database to version 4");
+		log_info("Updating long-term database to version 4");
 		if(!unify_hwaddr(db))
 		{
-			logg("Unable to unify clients in network table, database not available");
+			log_err("Unable to unify clients in network table, database not available");
 			dbclose(&db);
 			return;
 		}
@@ -284,10 +277,10 @@ void db_init(void)
 	if(dbversion < 5)
 	{
 		// Update to version 5: Create network-addresses table
-		logg("Updating long-term database to version 5");
+		log_info("Updating long-term database to version 5");
 		if(!create_network_addresses_table(db))
 		{
-			logg("Network-addresses table not initialized, database not available");
+			log_err("Network-addresses table not initialized, database not available");
 			dbclose(&db);
 			return;
 		}
@@ -299,10 +292,10 @@ void db_init(void)
 	if(dbversion < 6)
 	{
 		// Update to version 6: Create message table
-		logg("Updating long-term database to version 6");
+		log_info("Updating long-term database to version 6");
 		if(!create_message_table(db))
 		{
-			logg("Message table not initialized, database not available");
+			log_err("Message table not initialized, database not available");
 			dbclose(&db);
 			return;
 		}
@@ -314,10 +307,10 @@ void db_init(void)
 	if(dbversion < 7)
 	{
 		// Update to version 7: Add additional_info column to queries table
-		logg("Updating long-term database to version 7");
+		log_info("Updating long-term database to version 7");
 		if(!add_additional_info_column(db))
 		{
-			logg("Column additional_info not initialized, database not available");
+			log_err("Column additional_info not initialized, database not available");
 			dbclose(&db);
 			return;
 		}
@@ -329,10 +322,10 @@ void db_init(void)
 	if(dbversion < 8)
 	{
 		// Update to version 8: Add name field to network_addresses table
-		logg("Updating long-term database to version 8");
+		log_info("Updating long-term database to version 8");
 		if(!create_network_addresses_with_names_table(db))
 		{
-			logg("Network addresses table not initialized, database not available");
+			log_err("Network addresses table not initialized, database not available");
 			dbclose(&db);
 			return;
 		}
@@ -344,10 +337,25 @@ void db_init(void)
 	if(dbversion < 9)
 	{
 		// Update to version 9: Add aliasclients table
-		logg("Updating long-term database to version 9");
+		log_info("Updating long-term database to version 9");
 		if(!create_aliasclients_table(db))
 		{
-			logg("Aliasclients table not initialized, database not available");
+			log_err("Aliasclients table not initialized, database not available");
+			dbclose(&db);
+			return;
+		}
+		// Get updated version
+		dbversion = db_get_int(db, DB_VERSION);
+	}
+
+	// Update to version 10 if lower
+	if(dbversion < 10)
+	{
+		// Update to version 10: Add more fields to queries table
+		log_info("Updating long-term database to version 10");
+		if(!create_more_queries_columns(db))
+		{
+			log_err("Long-term database not initialized, database not available");
 			dbclose(&db);
 			return;
 		}
@@ -368,11 +376,11 @@ void db_init(void)
 	config.DBexport = true;
 	if(config.maxDBdays == 0)
 	{
-		logg("Not using the database for storing queries");
+		log_info("Not using the database for storing queries");
 		config.DBexport = false;
 	}
 
-	logg("Database successfully initialized");
+	log_info("Database successfully initialized");
 }
 
 int db_get_int(sqlite3* db, const enum ftl_table_props ID)
@@ -383,7 +391,7 @@ int db_get_int(sqlite3* db, const enum ftl_table_props ID)
 
 	if(querystr == NULL || ret < 0)
 	{
-		logg("Memory allocation failed in db_get_int db, with ID = %u (%i)", ID, ret);
+		log_err("Memory allocation failed in db_get_int db, with ID = %u (%i)", ID, ret);
 		return DB_FAILED;
 	}
 
@@ -393,52 +401,75 @@ int db_get_int(sqlite3* db, const enum ftl_table_props ID)
 	return value;
 }
 
-bool db_set_FTL_property(sqlite3 *db, const enum ftl_table_props ID, const long value)
+double db_get_FTL_property_double(sqlite3 *db, const enum ftl_table_props ID)
 {
-	return dbquery(db, "INSERT OR REPLACE INTO ftl (id, value) VALUES ( %u, %ld );", ID, value) == SQLITE_OK;
-}
+	// Prepare SQL statement
+	char* querystr = NULL;
+	int ret = asprintf(&querystr, "SELECT VALUE FROM ftl WHERE id = %u;", ID);
 
-bool db_set_counter(sqlite3 *db, const enum counters_table_props ID, const long value)
-{
-	if(dbquery(db, "INSERT OR REPLACE INTO counters (id, value) VALUES ( %u, %ld );", ID, value) != SQLITE_OK)
+	if(querystr == NULL || ret < 0)
 	{
-		dbclose(&db);
-		return false;
+		log_err("Memory allocation failed in db_get_FTL_property with ID = %u (%i)", ID, ret);
+		return DB_FAILED;
 	}
 
+	double value = db_query_double(db, querystr);
+	free(querystr);
+
+	return value;
+}
+
+bool db_set_FTL_property(sqlite3 *db, const enum ftl_table_props ID, const int value)
+{
+	// return dbquery(db, "INSERT OR REPLACE INTO ftl (id, value) VALUES ( %u, %ld );", ID, value) == SQLITE_OK;
+	SQL_bool(db, "INSERT OR REPLACE INTO ftl (id, value) VALUES ( %u, %d );", ID, value);
+	return true;
+}
+
+bool db_set_FTL_property_double(sqlite3 *db, const enum ftl_table_props ID, const double value)
+{
+	// return dbquery("INSERT OR REPLACE INTO ftl (id, value) VALUES ( %u, %f );", ID, value) == SQLITE_OK;
+	SQL_bool(db, "INSERT OR REPLACE INTO ftl (id, value) VALUES ( %u, %f );", ID, value);
+	return true;
+}
+
+bool db_set_counter(sqlite3 *db, const enum counters_table_props ID, const int value)
+{
+	// return dbquery(db, "INSERT OR REPLACE INTO counters (id, value) VALUES ( %u, %ld );", ID, value) == SQLITE_OK;
+	SQL_bool(db, "INSERT OR REPLACE INTO counters (id, value) VALUES ( %u, %d );", ID, value);
 	return true;
 }
 
 bool db_update_counters(sqlite3 *db, const int total, const int blocked)
 {
-	if(dbquery(db, "UPDATE counters SET value = value + %i WHERE id = %i;", total, DB_TOTALQUERIES) != SQLITE_OK)
-	{
-		dbclose(&db);
-		return false;
-	}
+	SQL_bool(db, "UPDATE counters SET value = value + %i WHERE id = %i;", total, DB_TOTALQUERIES);
+//	if(dbquery(db, "UPDATE counters SET value = value + %i WHERE id = %i;", total, DB_TOTALQUERIES) != SQLITE_OK)
+//	{
+//		dbclose(&db);
+//		return false;
+//	}
 
-	if(dbquery(db, "UPDATE counters SET value = value + %i WHERE id = %i;", blocked, DB_BLOCKEDQUERIES) != SQLITE_OK)
-	{
-		dbclose(&db);
-		return false;
-	}
+	SQL_bool(db, "UPDATE counters SET value = value + %i WHERE id = %i;", total, DB_TOTALQUERIES);
+//	if(dbquery(db, "UPDATE counters SET value = value + %i WHERE id = %i;", blocked, DB_BLOCKEDQUERIES) != SQLITE_OK)
+//	{
+//		dbclose(&db);
+//		return false;
+//	}
 
 	return true;
 }
 
 int db_query_int(sqlite3 *db, const char* querystr)
 {
-	if(config.debug & DEBUG_DATABASE)
-	{
-		logg("dbquery: \"%s\"", querystr);
-	}
+	log_debug(DEBUG_DATABASE, "dbquery: \"%s\"", querystr);
 
 	sqlite3_stmt* stmt;
 	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
 		if( rc != SQLITE_BUSY )
-			logg("Encountered prepare error in db_query_int(\"%s\"): %s", querystr, sqlite3_errstr(rc));
+			log_err("Encountered prepare error in db_query_int(\"%s\"): %s",
+			        querystr, sqlite3_errstr(rc));
 		return DB_FAILED;
 	}
 
@@ -448,19 +479,18 @@ int db_query_int(sqlite3 *db, const char* querystr)
 	if( rc == SQLITE_ROW )
 	{
 		result = sqlite3_column_int(stmt, 0);
-		if(config.debug & DEBUG_DATABASE)
-			logg("         ---> Result %i (int)", result);
+		log_debug(DEBUG_DATABASE, "         ---> Result %i (int)", result);
 	}
 	else if( rc == SQLITE_DONE )
 	{
 		// No rows available
 		result = DB_NODATA;
-		if(config.debug & DEBUG_DATABASE)
-			logg("         ---> No data");
+		log_debug(DEBUG_DATABASE, "         ---> No data");
 	}
 	else
 	{
-		logg("Encountered step error in db_query_int(\"%s\"): %s", querystr, sqlite3_errstr(rc));
+		log_err("Encountered step error in db_query_int(\"%s\"): %s",
+		        querystr, sqlite3_errstr(rc));
 		return DB_FAILED;
 	}
 
@@ -468,42 +498,128 @@ int db_query_int(sqlite3 *db, const char* querystr)
 	return result;
 }
 
-long int get_max_query_ID(sqlite3 *db)
+double db_query_double(sqlite3 *db, const char* querystr)
 {
-	const char *sql = "SELECT MAX(ID) FROM queries";
-	if(config.debug & DEBUG_DATABASE)
-	{
-		logg("dbquery: \"%s\"", sql);
-	}
+	log_debug(DEBUG_DATABASE, "dbquery: \"%s\"", querystr);
 
 	sqlite3_stmt* stmt = NULL;
-	int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
 		if( rc != SQLITE_BUSY )
-		{
-			logg("Encountered prepare error in get_max_query_ID(): %s", sqlite3_errstr(rc));
-			dbclose(&db);
-		}
+			log_err("Encountered prepare error in db_query_double(\"%s\"): %s",
+			        querystr, sqlite3_errstr(rc));
 
-		// Return okay if the database is busy
 		return DB_FAILED;
 	}
 
 	rc = sqlite3_step(stmt);
-	if( rc != SQLITE_ROW )
+	double result;
+
+	if( rc == SQLITE_ROW )
 	{
-		logg("Encountered step error in get_max_query_ID(): %s", sqlite3_errstr(rc));
-		dbclose(&db);
+		result = sqlite3_column_double(stmt, 0);
+		log_debug(DEBUG_DATABASE, "         ---> Result %f (double)", result);
+	}
+	else if( rc == SQLITE_DONE )
+	{
+		// No rows available
+		result = DB_NODATA;
+		log_debug(DEBUG_DATABASE, "         ---> No data");
+	}
+	else
+	{
+		log_err("Encountered step error in db_query_double(\"%s\"): %s",
+		        querystr, sqlite3_errstr(rc));
 		return DB_FAILED;
 	}
 
-	sqlite3_int64 result = sqlite3_column_int64(stmt, 0);
-	if(config.debug & DEBUG_DATABASE)
-	{
-		logg("         ---> Result %lli (long long int)", (long long int)result);
-	}
 	sqlite3_finalize(stmt);
+	return result;
+}
+
+int db_query_int_from_until(sqlite3 *db, const char* querystr, const double from, const double until)
+{
+	sqlite3_stmt* stmt;
+	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
+	if( rc != SQLITE_OK ){
+		log_err("db_query_int_from_until(%s) - SQL error prepare (%i): %s",
+		        querystr, rc, sqlite3_errstr(rc));
+		return DB_FAILED;
+	}
+
+	// Bind from and until to prepared statement
+	if((rc = sqlite3_bind_double(stmt, 1, from))  != SQLITE_OK ||
+	   (rc = sqlite3_bind_double(stmt, 2, until)) != SQLITE_OK)
+	{
+		log_err("db_query_int_from_until(%s) - SQL error bind (%i): %s",
+		        querystr, rc, sqlite3_errstr(rc));
+	}
+
+	rc = sqlite3_step(stmt);
+	int result;
+
+	if( rc == SQLITE_ROW )
+	{
+		result = sqlite3_column_int(stmt, 0);
+	}
+	else if( rc == SQLITE_DONE )
+	{
+		// No rows available
+		result = DB_NODATA;
+	}
+	else
+	{
+		log_err("db_query_int_from_until(%s) - SQL error step (%i): %s",
+		        querystr, rc, sqlite3_errstr(rc));
+		return DB_FAILED;
+	}
+
+	sqlite3_finalize(stmt);
+
+	return result;
+}
+
+int db_query_int_from_until_type(sqlite3 *db, const char* querystr, const double from, const double until, const int type)
+{
+	sqlite3_stmt* stmt;
+	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
+	if( rc != SQLITE_OK ){
+		log_err("db_query_int_from_until(%s) - SQL error prepare (%i): %s",
+		        querystr, rc, sqlite3_errstr(rc));
+		return DB_FAILED;
+	}
+
+	// Bind from and until to prepared statement
+	if((rc = sqlite3_bind_double(stmt, 1, from))  != SQLITE_OK ||
+	   (rc = sqlite3_bind_double(stmt, 2, until)) != SQLITE_OK ||
+	   (rc = sqlite3_bind_int(stmt, 3, type)) != SQLITE_OK)
+	{
+		log_err("db_query_int_from_until(%s) - SQL error bind (%i): %s",
+		        querystr, rc, sqlite3_errstr(rc));
+	}
+
+	rc = sqlite3_step(stmt);
+	int result;
+
+	if( rc == SQLITE_ROW )
+	{
+		result = sqlite3_column_int(stmt, 0);
+	}
+	else if( rc == SQLITE_DONE )
+	{
+		// No rows available
+		result = DB_NODATA;
+	}
+	else
+	{
+		log_err("db_query_int_from_until(%s) - SQL error step (%i): %s",
+		        querystr, rc, sqlite3_errstr(rc));
+		return DB_FAILED;
+	}
+
+	sqlite3_finalize(stmt);
+
 	return result;
 }
 

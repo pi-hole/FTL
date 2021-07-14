@@ -1,0 +1,220 @@
+openapi: 3.0.2
+components:
+  paths:
+    auth:
+      get:
+        summary: Request challenge for login
+        tags:
+          - Authentication
+        operationId: "get_auth"
+        description: |
+          Request challenge for digest-access challenge-response authentication.
+
+          The API may chose to reply with a valid session if no authentation is needed for this server.
+
+          Note that challenges are only valid for a very short time, use them to immediately compute a response. There is no need to get a challenge before users have finished entering their passwords.
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/session'
+                examples:
+                  login_okay:
+                    $ref: '#/components/examples/login_okay'
+                  no_login_required:
+                    $ref: '#/components/examples/no_login_required'
+                  login_required:
+                    $ref: '#/components/examples/login_required'
+      post:
+        summary: Submit response for login
+        tags:
+          - Authentication
+        operationId: "add_auth"
+        description: |
+          Submit computed response
+        requestBody:
+          description: Callback payload
+          content:
+            'application/json':
+              schema:
+                $ref: '#/components/schemas/response'
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/session'
+                examples:
+                  login_okay:
+                    $ref: '#/components/examples/login_okay'
+                  no_login_required:
+                    $ref: '#/components/examples/no_login_required'
+          '400':
+            description: Bad Request
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/errors/bad_request'
+                examples:
+                  no_payload:
+                    $ref: '#/components/examples/errors/no_payload'
+                  no_response:
+                    $ref: '#/components/examples/errors/no_response'
+                  response_inval:
+                    $ref: '#/components/examples/errors/response_inval'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/errors/unauthorized'
+      delete:
+        summary: Delete session
+        tags:
+          - Authentication
+        operationId: "delete_groups"
+        description: |
+          A logout attempt without a valid session will result in a `401 Unauthorized` error.
+
+          A session that was not created due to a login cannot be deleted (e.g., empty API password).
+        responses:
+          '200':
+            description: OK (session not deletable)
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/session'
+                examples:
+                  no_login_required:
+                    $ref: '#/components/examples/no_login_required'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/errors/unauthorized'
+          '410':
+            description: Gone
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/session'
+                examples:
+                  login_failed:
+                    $ref: '#/components/examples/login_failed'
+
+  schemas:
+    session:
+      type: object
+      required:
+        - challenge
+        - session
+      properties:
+        challenge:
+          type: string
+          description: Challenge to be used for computing response
+          nullable: true
+        session:
+          type: object
+          description: Session object
+          required:
+            - valid
+            - sid
+            - validity
+          properties:
+            valid:
+              type: boolean
+              description: Valid session indicator (client is authenticated)
+            sid:
+              type: string
+              description: Session ID (may be `null`)
+              nullable: true
+            validity:
+              type: integer
+              description: Remaining lifetime of this session unless refreshed (seconds)
+    response:
+      type: object
+      description: Response to be sent to the API
+      properties:
+        response:
+          type: string
+          description: Response to previous challenge
+          example: abcdef
+
+  errors:
+    bad_request:
+      type: object
+      description: Bad request
+      properties:
+        error:
+          type: object
+          properties:
+            key:
+              type: string
+              description: "Machine-readable error type"
+            message:
+              type: string
+              description: "Human-readable error message"
+            hint:
+              type: string
+              description: "Additional data (if available)"
+              nullable: true
+
+  examples:
+    login_okay:
+      summary: Login successful
+      value:
+        challenge: null
+        session:
+          valid: true
+          sid: null
+          validity: 300
+    no_login_required:
+      summary: No login required for this client
+      value:
+        challenge: null
+        session:
+          valid: true
+          sid: null
+          validity: -1
+    login_required:
+      summary: Login required
+      value:
+        challenge: "a2926b025bcc8618c632f81cd6cf7c37ee051c08aab74b565fd5126350fcd056"
+        session:
+          valid: false
+          sid: null
+          validity: -1
+    login_failed:
+      summary: Login failed
+      value:
+        challenge: null
+        session:
+          valid: false
+          sid: null
+          validity: -1
+    errors:
+      no_payload:
+        summary: Bad request (no valid JSON payload)
+        value:
+          error:
+            key: "bad_request"
+            message: "No valid JSON payload found"
+            hint: null
+      no_response:
+        summary: Bad request (no response)
+        value:
+          error:
+            key: "bad_request"
+            message: "No response found in JSON payload"
+            hint: null
+      response_inval:
+        summary: Bad request (invalid response)
+        value:
+          error:
+            key: "bad_request"
+            message: "Invalid response length"
+            hint: null

@@ -13,9 +13,8 @@
 #include "log.h"
 #include "setupVars.h"
 #include "args.h"
-#include "config.h"
+#include "config/config.h"
 #include "database/common.h"
-#include "database/query-table.h"
 #include "main.h"
 #include "signals.h"
 #include "regex_r.h"
@@ -23,15 +22,21 @@
 #include "shmem.h"
 #include "capabilities.h"
 #include "timers.h"
+// http_terminate()
+#include "webserver/webserver.h"
 #include "procps.h"
+// init_memory_database(), import_queries_from_disk()
+#include "database/query-table.h"
+// init_overtime()
+#include "overTime.h"
 
-char * username;
+char *username;
 bool needGC = false;
 bool needDBGC = false;
 bool startup = true;
 volatile int exit_code = EXIT_SUCCESS;
 
-int main (int argc, char* argv[])
+int main (int argc, char *argv[])
 {
 	// Get user pihole-FTL is running as
 	// We store this in a global variable
@@ -44,10 +49,10 @@ int main (int argc, char* argv[])
 	// to have arg{c,v}_dnsmasq initialized
 	parse_args(argc, argv);
 
-	// Try to open FTL log
-	init_FTL_log();
+	// Initialize FTL log
+	init_FTL_log(argc > 0 ? argv[0] : NULL);
 	timer_start(EXIT_TIMER);
-	logg("########## FTL started on %s! ##########", hostname());
+	log_info("########## FTL started on %s! ##########", hostname());
 	log_FTL_version(false);
 
 	// Catch signals not handled by dnsmasq
@@ -57,19 +62,19 @@ int main (int argc, char* argv[])
 	// Initialize shared memory
 	if(!init_shmem(true))
 	{
-		logg("Initialization of shared memory failed.");
+		log_crit("Initialization of shared memory failed.");
 		// Check if there is already a running FTL process
 		check_running_FTL();
 		return EXIT_FAILURE;
 	}
 
-	// Process pihole-FTL.conf
-	read_FTLconf();
+	// Process FTL config file
+	readFTLconf();
 
 	// pihole-FTL should really be run as user "pihole" to not mess up with file permissions
 	// print warning otherwise
 	if(strcmp(username, "pihole") != 0)
-		logg("WARNING: Starting pihole-FTL as user %s is not recommended", username);
+		log_warn("Starting pihole-FTL as user %s is not recommended", username);
 
 	// Delay startup (if requested)
 	// Do this before reading the database to make this option not only
@@ -77,12 +82,25 @@ int main (int argc, char* argv[])
 	// which aren't ready at this point
 	delay_startup();
 
+	// Initialize overTime datastructure
+	initOverTime();
+
 	// Initialize query database (pihole-FTL.db)
 	db_init();
 
+	// Initialize in-memory databases
+	if(!init_memory_databases())
+	{
+		log_crit("FATAL: Cannot initialize in-memory database.");
+		return EXIT_FAILURE;
+	}
+
 	// Try to import queries from long-term database if available
 	if(config.DBimport)
+	{
+		import_queries_from_disk();
 		DB_read_queries();
+	}
 
 	log_counter_info();
 	check_setupVarsconf();
@@ -91,16 +109,22 @@ int main (int argc, char* argv[])
 	// immediately before starting the resolver.
 	check_capabilities();
 
-	// Start the resolver
+	// Initialize pseudo-random number generator
+	srand(time(NULL));
+
 	startup = false;
 	if(config.debug != 0)
 	{
 		for(int i = 0; i < argc_dnsmasq; i++)
-			logg("DEBUG: argv[%i] = \"%s\"", i, argv_dnsmasq[i]);
+			log_debug(DEBUG_ANY, "argv[%i] = \"%s\"", i, argv_dnsmasq[i]);
 	}
+	// Check initial blocking status
+	check_blocking_status();
+
+	// Start the resolver
 	main_dnsmasq(argc_dnsmasq, argv_dnsmasq);
 
-	logg("Shutting down...");
+	log_info("Shutting down...");
 	// Extra grace time is needed as dnsmasq script-helpers may not be
 	// terminating immediately
 	sleepms(250);
@@ -108,10 +132,8 @@ int main (int argc, char* argv[])
 	// Save new queries to database (if database is used)
 	if(config.DBexport)
 	{
-		lock_shm();
-		if(DB_save_queries(NULL))
-			logg("Finished final database update");
-		unlock_shm();
+		export_queries_to_disk(true);
+		log_info("Finished final database update");
 	}
 
 	cleanup(exit_code);

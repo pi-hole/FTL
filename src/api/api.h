@@ -3,47 +3,76 @@
 *  Network-wide ad blocking via your own hardware.
 *
 *  FTL Engine
-*  API commands and MessagePack helpers
+*  API route prototypes
 *
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
-#ifndef API_H
-#define API_H
+#ifndef ROUTES_H
+#define ROUTES_H
+
+// struct mg_connection
+#include "../civetweb/civetweb.h"
+// type cJSON
+#include "../cJSON/cJSON.h"
+#include "../webserver/http-common.h"
+
+// API router
+int api_handler(struct mg_connection *conn, void *ignored);
 
 // Statistic methods
-void getStats(const int *sock);
-void getOverTime(const int *sock);
-void getTopDomains(const char *client_message, const int *sock);
-void getTopClients(const char *client_message, const int *sock);
-void getUpstreamDestinations(const char *client_message, const int *sock);
-void getQueryTypes(const int *sock);
-void getAllQueries(const char *client_message, const int *sock);
-void getRecentBlocked(const char *client_message, const int *sock);
-void getClientsOverTime(const int *sock);
-void getClientNames(const int *sock);
+int api_stats_summary(struct ftl_conn *api);
+int api_stats_query_types(struct ftl_conn *api);
+int api_stats_upstreams(struct ftl_conn *api);
+int api_stats_top_domains(bool blocked, struct ftl_conn *api);
+int api_stats_top_clients(bool blocked, struct ftl_conn *api);
+int api_stats_recentblocked(struct ftl_conn *api);
+
+// History methods
+int api_history(struct ftl_conn *api);
+int api_history_clients(struct ftl_conn *api);
+
+// Query methods
+int api_queries(struct ftl_conn *api);
+int api_queries_suggestions(struct ftl_conn *api);
+
+// Statistics methods (database)
+int api_stats_database_overTime_history(struct ftl_conn *api);
+int api_stats_database_top_items(bool blocked, bool domains, struct ftl_conn *api);
+int api_stats_database_summary(struct ftl_conn *api);
+int api_stats_database_overTime_clients(struct ftl_conn *api);
+int api_stats_database_query_types(struct ftl_conn *api);
+int api_stats_database_upstreams(struct ftl_conn *api);
 
 // FTL methods
-void getClientID(const int *sock);
-void getVersion(const int *sock);
-void getDBstats(const int *sock);
-void getUnknownQueries(const int *sock);
+int api_ftl_client(struct ftl_conn *api);
+int api_ftl_logs_dns(struct ftl_conn *api);
+int api_ftl_dbinfo(struct ftl_conn *api);
+int api_ftl_sysinfo(struct ftl_conn *api);
+int get_ftl_obj(struct ftl_conn *api, cJSON *ftl, const bool is_locked);
+int get_system_obj(struct ftl_conn *api, cJSON *system);
 
-// DNS resolver methods (dnsmasq_interface.c)
-void getCacheInformation(const int *sock);
+// Network methods
+int api_network(struct ftl_conn *api);
 
-// MessagePack serialization helpers
-void pack_eom(const int sock);
-void pack_bool(const int sock, const bool value);
-void pack_uint8(const int sock, const uint8_t value);
-void pack_uint64(const int sock, const uint64_t value);
-void pack_int32(const int sock, const int32_t value);
-void pack_int64(const int sock, const int64_t value);
-void pack_float(const int sock, const float value);
-bool pack_fixstr(const int sock, const char *string);
-bool pack_str32(const int sock, const char *string);
-void pack_map16_start(const int sock, const uint16_t length);
+// DNS methods
+int api_dns_blocking(struct ftl_conn *api);
+int api_dns_cache(struct ftl_conn *api);
 
-// DHCP lease management
-void delete_lease(const char *client_message, const int *sock);
+// List methods
+int api_list(struct ftl_conn *api);
+int api_group(struct ftl_conn *api);
 
-#endif // API_H
+// Version method
+int api_version(struct ftl_conn *api);
+
+// Auth method
+int check_client_auth(struct ftl_conn *api);
+int api_auth(struct ftl_conn *api);
+
+// Settings methods
+int api_settings_web(struct ftl_conn *api);
+
+// Documentation methods
+int api_docs(struct ftl_conn *api);
+
+#endif // ROUTES_H

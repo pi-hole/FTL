@@ -27,8 +27,11 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR})
 # SQLITE_DEFAULT_FOREIGN_KEYS=1: This macro determines whether enforcement of foreign key constraints is enabled or disabled by default for new database connections.
 # SQLITE_DQS=0: This setting disables the double-quoted string literal misfeature.
 # SQLITE_ENABLE_DBPAGE_VTAB: Enables the SQLITE_DBPAGE virtual table. Warning: writing to the SQLITE_DBPAGE virtual table can very easily cause unrecoverably database corruption.
+# SQLITE_TEMP_STORE=2: Store temporary tables in memory for reduced IO and higher performance (can be overwritten by the user at runtime).
+# SQLITE_DEFAULT_CACHE_SIZE=-8000: Set SQLite3's cache to 8MB (instead of 2MB which is the default)
+# SQLITE_USE_URI=1: The advantage of using a URI filename is that query parameters on the URI can be used to control details of the newly created database connection.
 # SQLITE_OMIT_DESERIALIZE: This option causes the the sqlite3_serialize() and sqlite3_deserialize() interfaces to be omitted from the build (was the default before 3.36.0)
-set(SQLITE_DEFINES "-DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_DEFAULT_MEMSTATUS=0 -DSQLITE_OMIT_DEPRECATED -DSQLITE_OMIT_PROGRESS_CALLBACK -DSQLITE_DEFAULT_FOREIGN_KEYS=1 -DSQLITE_DQS=0 -DSQLITE_ENABLE_DBPAGE_VTAB -DSQLITE_OMIT_DESERIALIZE")
+set(SQLITE_DEFINES "-DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_DEFAULT_MEMSTATUS=0 -DSQLITE_OMIT_DEPRECATED -DSQLITE_OMIT_PROGRESS_CALLBACK -DSQLITE_DEFAULT_FOREIGN_KEYS=1 -DSQLITE_DQS=0 -DSQLITE_ENABLE_DBPAGE_VTAB -DSQLITE_TEMP_STORE=2 -DSQLITE_DEFAULT_CACHE_SIZE=-8000 -DSQLITE_USE_URI=1 -DSQLITE_OMIT_DESERIALIZE")
 
 # Code hardening and debugging improvements
 # -fstack-protector-strong: The program will be resistant to having its stack overflowed
@@ -109,16 +112,15 @@ set(sources
         args.h
         capabilities.c
         capabilities.h
-        config.c
-        config.h
         daemon.c
         daemon.h
         datastructure.c
         datastructure.h
         dhcp-discover.c
         dhcp-discover.h
-        dnsmasq_interface.c
         dnsmasq_interface.h
+        fifo.c
+        fifo.h
         edns0.c
         edns0.h
         enums.h
@@ -171,13 +173,22 @@ add_dependencies(FTL gen_version)
 
 add_executable(pihole-FTL
         $<TARGET_OBJECTS:FTL>
+        $<TARGET_OBJECTS:hooks>
         $<TARGET_OBJECTS:api>
+        $<TARGET_OBJECTS:api_docs>
+        $<TARGET_OBJECTS:webserver>
+        $<TARGET_OBJECTS:ph7_ext>
+        $<TARGET_OBJECTS:civetweb>
+        $<TARGET_OBJECTS:cJSON>
+        $<TARGET_OBJECTS:ph7>
         $<TARGET_OBJECTS:database>
         $<TARGET_OBJECTS:dnsmasq>
         $<TARGET_OBJECTS:sqlite3>
         $<TARGET_OBJECTS:lua>
         $<TARGET_OBJECTS:tre-regex>
         $<TARGET_OBJECTS:syscalls>
+        $<TARGET_OBJECTS:tomlc99>
+        $<TARGET_OBJECTS:config>
         )
 if(STATIC STREQUAL "true")
     set_target_properties(pihole-FTL PROPERTIES LINK_SEARCH_START_STATIC ON)
@@ -228,8 +239,14 @@ install(TARGETS pihole-FTL
 install(CODE "execute_process(COMMAND ${SETCAP} CAP_NET_BIND_SERVICE,CAP_NET_RAW,CAP_NET_ADMIN,CAP_SYS_NICE+eip \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/bin/pihole-FTL)")
 
 add_subdirectory(api)
+add_subdirectory(hooks)
+add_subdirectory(webserver)
+add_subdirectory(civetweb)
+add_subdirectory(cJSON)
+add_subdirectory(ph7)
 add_subdirectory(database)
 add_subdirectory(dnsmasq)
 add_subdirectory(lua)
 add_subdirectory(tre-regex)
 add_subdirectory(syscalls)
+add_subdirectory(config)

@@ -14,7 +14,7 @@
 #undef __USE_XOPEN
 #include "FTL.h"
 #include "capabilities.h"
-#include "config.h"
+#include "config/config.h"
 #include "log.h"
 
 static const unsigned int capabilityIDs[]   = { CAP_CHOWN ,  CAP_DAC_OVERRIDE ,  CAP_DAC_READ_SEARCH ,  CAP_FOWNER ,  CAP_FSETID ,  CAP_KILL ,  CAP_SETGID ,  CAP_SETUID ,  CAP_SETPCAP ,  CAP_LINUX_IMMUTABLE ,  CAP_NET_BIND_SERVICE ,  CAP_NET_BROADCAST ,  CAP_NET_ADMIN ,  CAP_NET_RAW ,  CAP_IPC_LOCK ,  CAP_IPC_OWNER ,  CAP_SYS_MODULE ,  CAP_SYS_RAWIO ,  CAP_SYS_CHROOT ,  CAP_SYS_PTRACE ,  CAP_SYS_PACCT ,  CAP_SYS_ADMIN ,  CAP_SYS_BOOT ,  CAP_SYS_NICE ,  CAP_SYS_RESOURCE ,  CAP_SYS_TIME ,  CAP_SYS_TTY_CONFIG ,  CAP_MKNOD ,  CAP_LEASE ,  CAP_AUDIT_WRITE ,  CAP_AUDIT_CONTROL ,  CAP_SETFCAP ,  CAP_MAC_OVERRIDE ,  CAP_MAC_ADMIN ,  CAP_SYSLOG ,  CAP_WAKE_ALARM ,  CAP_BLOCK_SUSPEND ,  CAP_AUDIT_READ };
@@ -54,8 +54,8 @@ bool check_capabilities(void)
 
 	if(config.debug & DEBUG_CAPS)
 	{
-		logg("***************************************");
-		logg("* Linux capability debugging enabled  *");
+		log_debug(DEBUG_CAPS, "***************************************");
+		log_debug(DEBUG_CAPS, "* Linux capability debugging enabled  *");
 		for(unsigned int i = 0u; i < numCaps; i++)
 		{
 			const unsigned int capid = capabilityIDs[i];
@@ -65,46 +65,38 @@ bool check_capabilities(void)
 			if(!cap_valid(capid))
 				break;
 
-			logg("* %-24s (%02u) = %s%s%s *",
-			     capabilityNames[capid], capid,
-			     ((data->permitted   & (1 << capid)) ? "P":"-"),
-			     ((data->inheritable & (1 << capid)) ? "I":"-"),
-			     ((data->effective   & (1 << capid)) ? "E":"-"));
+			log_debug(DEBUG_CAPS, "* %-24s (%02u) = %s%s%s *",
+			          capabilityNames[capid], capid,
+			          ((data->permitted   & (1 << capid)) ? "P":"-"),
+			          ((data->inheritable & (1 << capid)) ? "I":"-"),
+			          ((data->effective   & (1 << capid)) ? "E":"-"));
 		}
-		logg("***************************************");
+		log_debug(DEBUG_CAPS, "***************************************");
 	}
 
 	bool capabilities_okay = true;
 	if (!(data->permitted & (1 << CAP_NET_ADMIN)))
 	{
 		// Needed for ARP-injection (used when we're the DHCP server)
-		logg("*************************************************************************");
-		logg("* WARNING: Required Linux capability CAP_NET_ADMIN not available        *");
-		logg("*************************************************************************");
+		log_warn("Required Linux capability CAP_NET_ADMIN not available");
 		capabilities_okay = false;
 	}
 	if (!(data->permitted & (1 << CAP_NET_RAW)))
 	{
 		// Needed for raw socket access (necessary for ICMP)
-		logg("*************************************************************************");
-		logg("* WARNING: Required Linux capability CAP_NET_RAW not available          *");
-		logg("*************************************************************************");
+		log_warn("Required Linux capability CAP_NET_RAW not available");
 		capabilities_okay = false;
 	}
 	if (!(data->permitted & (1 << CAP_NET_BIND_SERVICE)))
 	{
 		// Necessary for dynamic port binding
-		logg("*************************************************************************");
-		logg("* WARNING: Required Linux capability CAP_NET_BIND_SERVICE not available *");
-		logg("*************************************************************************");
+		log_warn("Required Linux capability CAP_NET_BIND_SERVICE not available");
 		capabilities_okay = false;
 	}
 	if (!(data->permitted & (1 << CAP_SYS_NICE)))
 	{
-		// Necessary for dynamic port binding
-		logg("*************************************************************************");
-		logg("* WARNING: Required Linux capability CAP_SYS_NICE not available         *");
-		logg("*************************************************************************");
+		// Necessary for setting the niceness of FTL
+		log_warn("Required Linux capability CAP_SYS_NICE not available");
 		capabilities_okay = false;
 	}
 

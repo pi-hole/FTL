@@ -15,15 +15,14 @@
 
 // enum privacy_level
 #include "enums.h"
+
 // assert_sizeof
 #include "static_assert.h"
-
-extern const char *querytypes[TYPE_MAX];
 
 typedef struct {
 	unsigned char magic;
 	enum query_status status;
-	enum query_types type;
+	enum query_type type;
 	enum privacy_level privacylevel;
 	enum reply_type reply;
 	enum dnssec_status dnssec;
@@ -33,9 +32,10 @@ typedef struct {
 	int upstreamID;
 	int id; // the ID is a (signed) int in dnsmasq, so no need for a long int here
 	int CNAME_domainID; // only valid if query has a CNAME blocking status
-	unsigned int timeidx;
-	unsigned long response; // saved in units of 1/10 milliseconds (1 = 0.1ms, 2 = 0.2ms, 2500 = 250.0ms, etc.)
-	time_t timestamp;
+	int ede;
+	unsigned int ttl;
+	double response;
+	double timestamp;
 	int64_t db;
 	// Adjacent bit field members in the struct flags may be packed to share
 	// and straddle the individual bytes. It is useful to pack the memory as
@@ -44,26 +44,33 @@ typedef struct {
 	// C99 guarentees that bit-fields will be packed as tightly as possible,
 	// provided they don’t cross storageau unit boundaries (6.7.2.1 #10).
 	struct query_flags {
-		bool whitelisted :1;
+		bool allowed :1;
 		bool complete :1;
 		bool blocked :1;
+		bool database :1;
 	} flags;
 } queriesData;
 
-// ARM needs extra padding at the end
-ASSERT_SIZEOF(queriesData, 64, 52, 56);
+// ARM needs alignment to 8-byte boundary
+//ASSERT_SIZEOF(queriesData, 64, 64, 64);
 
 typedef struct {
 	unsigned char magic;
-	bool new;
+	struct upstream_flags {
+		bool new:1;
+	} flags;
+	in_port_t port;
 	int count;
 	int failed;
-	in_addr_t port;
+	unsigned int responses;
+	int overTime[OVERTIME_SLOTS];
 	size_t ippos;
 	size_t namepos;
-	time_t lastQuery;
+	double rtime;
+	double rtuncertainty;
+	double lastQuery;
 } upstreamsData;
-ASSERT_SIZEOF(upstreamsData, 40, 28, 28);
+//ASSERT_SIZEOF(upstreamsData, 640, 628, 628);
 
 typedef struct {
 	unsigned char magic;
@@ -71,9 +78,9 @@ typedef struct {
 	char hwlen;
 	unsigned char hwaddr[16]; // See DHCP_CHADDR_MAX in dnsmasq/dhcp-protocol.h
 	struct client_flags {
-		bool new:1;
-		bool found_group:1;
-		bool aliasclient:1;
+		bool new :1;
+		bool found_group: 1;
+		bool aliasclient :1;
 	} flags;
 	int count;
 	int blockedcount;
@@ -86,10 +93,12 @@ typedef struct {
 	size_t ippos;
 	size_t namepos;
 	size_t ifacepos;
-	time_t lastQuery;
 	time_t firstSeen;
+	double lastQuery;
 } clientsData;
-ASSERT_SIZEOF(clientsData, 696, 668, 668);
+
+// ARM needs alignment to 8-byte boundary
+//ASSERT_SIZEOF(clientsData, 696, 672, 672);
 
 typedef struct {
 	unsigned char magic;
@@ -97,30 +106,35 @@ typedef struct {
 	int blockedcount;
 	size_t domainpos;
 } domainsData;
-ASSERT_SIZEOF(domainsData, 24, 16, 16);
+//ASSERT_SIZEOF(domainsData, 24, 16, 16);
 
 typedef struct {
 	unsigned char magic;
 	enum domain_client_status blocking_status;
 	enum reply_type force_reply;
-	enum query_types query_type;
+	enum query_type query_type;
 	int domainID;
 	int clientID;
-	int black_regex_idx;
+	int deny_regex_id;
 } DNSCacheData;
-ASSERT_SIZEOF(DNSCacheData, 16, 16, 16);
+//ASSERT_SIZEOF(DNSCacheData, 16, 16, 16);
 
 void strtolower(char *str);
 int findQueryID(const int id);
 int findUpstreamID(const char * upstream, const in_port_t port);
 int findDomainID(const char *domain, const bool count);
 int findClientID(const char *client, const bool count, const bool aliasclient);
-int findCacheID(int domainID, int clientID, enum query_types query_type);
+int findCacheID(int domainID, int clientID, enum query_type query_type);
 bool isValidIPv4(const char *addr);
 bool isValidIPv6(const char *addr);
 
 bool is_blocked(const enum query_status status) __attribute__ ((const));
+int get_blocked_count(void) __attribute__ ((pure));
+int get_forwarded_count(void) __attribute__ ((pure));
+int get_cached_count(void) __attribute__ ((pure));
 void query_set_status(queriesData *query, const enum query_status new_status);
+#define query_set_status(query, new_status) _query_set_status(query, new_status, __FILE__, __LINE__)
+void _query_set_status(queriesData *query, const enum query_status new_status, const char *file, const int line);
 
 void FTL_reload_all_domainlists(void);
 void FTL_reset_per_client_domain_data(void);
@@ -131,6 +145,12 @@ const char *getClientIPString(const queriesData* query);
 const char *getClientNameString(const queriesData* query);
 
 void change_clientcount(clientsData *client, int total, int blocked, int overTimeIdx, int overTimeMod);
+const char *get_query_type_str(const enum query_type type, const queriesData *query, char *buffer);
+const char *get_query_status_str(const enum query_status status) __attribute__ ((const));
+const char *get_query_dnssec_str(const enum dnssec_status dnssec) __attribute__ ((const));
+const char *get_query_reply_str(const enum reply_type query) __attribute__ ((const));
+const char *get_refresh_hostnames_str(const enum refresh_hostnames refresh) __attribute__ ((const));
+const char *get_blocking_mode_str(const enum blocking_mode mode) __attribute__ ((const));
 
 // Pointer getter functions
 #define getQuery(queryID, checkMagic) _getQuery(queryID, checkMagic, __LINE__, __FUNCTION__, __FILE__)

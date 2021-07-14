@@ -12,7 +12,7 @@
 #include "gc.h"
 #include "shmem.h"
 #include "timers.h"
-#include "config.h"
+#include "config/config.h"
 #include "overTime.h"
 #include "database/common.h"
 #include "log.h"
@@ -20,6 +20,8 @@
 #include "signals.h"
 // data getter functions
 #include "datastructure.h"
+// delete_query_from_db()
+#include "database/query-table.h"
 
 bool doGC = false;
 
@@ -70,7 +72,7 @@ void *GC_thread(void *val)
 			lock_shm();
 
 			// Get minimum timestamp to keep (this can be set with MAXLOGAGE)
-			time_t mintime = (now - GCdelay) - config.maxlogage;
+			time_t mintime = (now - GCdelay) - config.maxHistory;
 
 			// Align to the start of the next hour. This will also align with
 			// the oldest overTime interval after GC is done.
@@ -82,7 +84,7 @@ void *GC_thread(void *val)
 				timer_start(GC_TIMER);
 				char timestring[84] = "";
 				get_timestr(timestring, mintime, false);
-				logg("GC starting, mintime: %s (%llu)", timestring, (long long)mintime);
+				log_info("GC starting, mintime: %s (%llu)", timestring, (long long)mintime);
 			}
 
 			// Process all queries
@@ -99,7 +101,7 @@ void *GC_thread(void *val)
 
 				// Adjust client counter (total and overTime)
 				clientsData* client = getClient(query->clientID, true);
-				const int timeidx = query->timeidx;
+				const int timeidx = getOverTimeID(query->timestamp);
 				overTime[timeidx].total--;
 				if(client != NULL)
 					change_clientcount(client, -1, 0, timeidx, -1);
@@ -126,21 +128,26 @@ void *GC_thread(void *val)
 						{
 							upstreamsData* upstream = getUpstream(query->upstreamID, true);
 							if(upstream != NULL)
+							{
+								upstream->overTime[timeidx]--;
 								upstream->count--;
+							}
 						}
 						break;
 					case QUERY_CACHE:
 						// Answered from local cache _or_ local config
 						break;
 					case QUERY_GRAVITY: // Blocked by Pi-hole's blocking lists (fall through)
-					case QUERY_BLACKLIST: // Exact blocked (fall through)
+					case QUERY_DENYLIST: // Exact blocked (fall through)
 					case QUERY_REGEX: // Regex blocked (fall through)
 					case QUERY_EXTERNAL_BLOCKED_IP: // Blocked by upstream provider (fall through)
 					case QUERY_EXTERNAL_BLOCKED_NXRA: // Blocked by upstream provider (fall through)
 					case QUERY_EXTERNAL_BLOCKED_NULL: // Blocked by upstream provider (fall through)
 					case QUERY_GRAVITY_CNAME: // Gravity domain in CNAME chain (fall through)
-					case QUERY_BLACKLIST_CNAME: // Exactly blacklisted domain in CNAME chain (fall through)
-					case QUERY_REGEX_CNAME: // Regex blacklisted domain in CNAME chain (fall through)
+					case QUERY_DENYLIST_CNAME: // Exactly denied domain in CNAME chain (fall through)
+					case QUERY_REGEX_CNAME: // Regex denied domain in CNAME chain (fall through)
+						//counters->blocked--;
+						overTime[timeidx].blocked--;
 						if(domain != NULL)
 							domain->blockedcount--;
 						if(client != NULL)
@@ -157,19 +164,27 @@ void *GC_thread(void *val)
 				counters->reply[query->reply]--;
 
 				// Update type counters
-				if(query->type >= TYPE_A && query->type < TYPE_MAX)
-				{
-					counters->querytype[query->type-1]--;
-				}
+				if(query->type < TYPE_MAX)
+					counters->querytype[query->type]--;
+
+				// Subtract UNKNOWN from the counters before
+				// setting the status if different. This ensure
+				// we are not counting them at all.
+				if(query->status != QUERY_UNKNOWN)
+					counters->status[QUERY_UNKNOWN]--;
 
 				// Set query again to UNKNOWN to reset the counters
 				query_set_status(query, QUERY_UNKNOWN);
 
-				// Finally, remove the last trace of this query
-				counters->status[QUERY_UNKNOWN]--;
-
 				// Count removed queries
 				removed++;
+
+				// Remove query from queries table (temp), we
+				// can release the lock for this action to
+				// prevent blocking the DNS service too long
+				unlock_shm();
+				delete_query_from_db(query->db);
+				lock_shm();
 			}
 
 			// Only perform memory operations when we actually removed queries
@@ -184,8 +199,6 @@ void *GC_thread(void *val)
 
 				// Update queries counter
 				counters->queries -= removed;
-				// Update DB index as total number of queries reduced
-				lastdbindex -= removed;
 
 				// ensure remaining memory is zeroed out (marked as "F" in the above example)
 				memset(getQuery(counters->queries, true), 0, (counters->queries_MAX - counters->queries)*sizeof(queriesData));
@@ -194,8 +207,7 @@ void *GC_thread(void *val)
 			// Determine if overTime memory needs to get moved
 			moveOverTimeMemory(mintime);
 
-			if(config.debug & DEBUG_GC)
-				logg("Notice: GC removed %i queries (took %.2f ms)", removed, timer_elapsed_msec(GC_TIMER));
+			log_debug(DEBUG_GC, "GC removed %i queries (took %.2f ms)", removed, timer_elapsed_msec(GC_TIMER));
 
 			// Release thread lock
 			unlock_shm();
@@ -209,6 +221,6 @@ void *GC_thread(void *val)
 		thread_sleepms(GC, 1000);
 	}
 
-	logg("Terminating GC thread");
+	log_info("Terminating GC thread");
 	return NULL;
 }

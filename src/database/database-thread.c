@@ -15,9 +15,9 @@
 #include "../shmem.h"
 // parse_neighbor_cache()
 #include "network-table.h"
-// DB_save_queries()
+// export_queries_to_disk()
 #include "query-table.h"
-#include "../config.h"
+#include "../config/config.h"
 #include "../log.h"
 #include "../timers.h"
 // global variable killed
@@ -26,6 +26,26 @@
 #include "aliasclients.h"
 // Eventqueue routines
 #include "../events.h"
+// get_FTL_db_filesize()
+#include "../files.h"
+
+#define TIME_T "%li"
+
+static bool delete_old_queries_in_DB(sqlite3 *db)
+{
+	const time_t timestamp = time(NULL) - config.maxDBdays * 86400;
+	SQL_bool(db, "DELETE FROM queries WHERE timestamp <= "TIME_T, timestamp);
+
+	// Get how many rows have been affected (deleted)
+	const int affected = sqlite3_changes(db);
+
+	// Print final message only if there is a difference
+	if((config.debug & DEBUG_DATABASE) || affected)
+		log_info("Size of %s is %.2f MB, deleted %i rows",
+		         config.files.database, 1e-6*get_FTL_db_filesize(), affected);
+
+	return true;
+}
 
 void *DB_thread(void *val)
 {
@@ -35,37 +55,51 @@ void *DB_thread(void *val)
 
 	// Save timestamp as we do not want to store immediately
 	// to the database
-	time_t lastDBsave = time(NULL) - time(NULL)%config.DBinterval;
+	time_t before = time(NULL);
+	time_t lastDBsave = before - before%config.DBinterval;
 
 	// Run until shutdown of the process
 	while(!killed)
 	{
+		const time_t now = time(NULL);
+
+		// Move queries from non-blocking newdb into the larger memdb
+		// Do this once per second
+		if(now > before)
+		{
+			mv_newdb_memdb();
+			before = now;
+		}
+
+		// Intermediate cancellation-point
+		if(killed)
+			break;
+
+		// Open database connection
 		sqlite3 *db = dbopen(false);
 		if(db == NULL)
 		{
-			// Sleep 5 seconds and try again
+			// Try again after 5 sec
 			thread_sleepms(DB, 5000);
 			continue;
 		}
-		time_t now = time(NULL);
-		if(now - lastDBsave >= config.DBinterval)
+
+		// Store queries in on-disk database
+		if(now - lastDBsave >= (time_t)config.DBinterval)
 		{
 			// Update lastDBsave timer
-			lastDBsave = time(NULL) - time(NULL)%config.DBinterval;
+			lastDBsave = now - now%config.DBinterval;
 
 			// Save data to database (if enabled)
 			if(config.DBexport)
 			{
 				lock_shm();
-				DB_save_queries(db);
+				export_queries_to_disk(false);
 				unlock_shm();
 
 				// Intermediate cancellation-point
 				if(killed)
-				{
-					dbclose(&db);
 					break;
-				}
 
 				// Check if GC should be done on the database
 				if(DBdeleteoldqueries && config.maxDBdays != -1)
@@ -83,10 +117,7 @@ void *DB_thread(void *val)
 
 		// Intermediate cancellation-point
 		if(killed)
-		{
-			dbclose(&db);
 			break;
-		}
 
 		// Update MAC vendor strings once a month (the MAC vendor
 		// database is not updated very often)
@@ -95,20 +126,14 @@ void *DB_thread(void *val)
 
 		// Intermediate cancellation-point
 		if(killed)
-		{
-			dbclose(&db);
 			break;
-		}
 
 		if(get_and_clear_event(PARSE_NEIGHBOR_CACHE))
 			parse_neighbor_cache(db);
 
 		// Intermediate cancellation-point
 		if(killed)
-		{
-			dbclose(&db);
 			break;
-		}
 
 		// Process database related event queue elements
 		if(get_and_clear_event(RELOAD_GRAVITY))
@@ -116,21 +141,15 @@ void *DB_thread(void *val)
 
 		// Intermediate cancellation-point
 		if(killed)
-		{
-			dbclose(&db);
 			break;
-		}
 
-		// Reload privacy level from pihole-FTL.conf
+		// Reload privacy level from pihole-FTL config
 		if(get_and_clear_event(RELOAD_PRIVACY_LEVEL))
-			get_privacy_level(NULL);
+			getPrivacyLevel();
 
 		// Intermediate cancellation-point
 		if(killed)
-		{
-			dbclose(&db);
 			break;
-		}
 
 		// Import alias-clients
 		if(get_and_clear_event(REIMPORT_ALIASCLIENTS))
@@ -140,13 +159,12 @@ void *DB_thread(void *val)
 			unlock_shm();
 		}
 
-		// Close database connection
 		dbclose(&db);
 
 		// Sleep 1 sec
 		thread_sleepms(DB, 1000);
 	}
 
-	logg("Terminating database thread");
+	log_info("Terminating database thread");
 	return NULL;
 }

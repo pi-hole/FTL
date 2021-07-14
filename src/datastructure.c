@@ -23,15 +23,13 @@
 // reset_aliasclient()
 #include "database/aliasclients.h"
 // config struct
-#include "config.h"
+#include "config/config.h"
 // set_event(RESOLVE_NEW_HOSTNAMES)
 #include "events.h"
 // overTime array
 #include "overTime.h"
-
-const char *querytypes[TYPE_MAX] = {"UNKNOWN", "A", "AAAA", "ANY", "SRV", "SOA", "PTR", "TXT",
-                                    "NAPTR", "MX", "DS", "RRSIG", "DNSKEY", "NS", "OTHER", "SVCB",
-                                    "HTTPS"};
+// short_path()
+#include "files.h"
 
 // converts upper to lower case, and leaves other characters unchanged
 void strtolower(char *str)
@@ -87,13 +85,13 @@ int findUpstreamID(const char * upstreamString, const in_port_t port)
 	// This upstream server is not known
 	// Store ID
 	const int upstreamID = counters->upstreams;
-	logg("New upstream server: %s:%u (%i/%u)", upstreamString, port, upstreamID, counters->upstreams_MAX);
+	log_debug(DEBUG_ANY, "New upstream server: %s:%u (%i/%u)", upstreamString, port, upstreamID, counters->upstreams_MAX);
 
 	// Get upstream pointer
 	upstreamsData* upstream = getUpstream(upstreamID, false);
 	if(upstream == NULL)
 	{
-		logg("ERROR: Encountered serious memory error in findupstreamID()");
+		log_err("Encountered serious memory error in findupstreamID()");
 		return -1;
 	}
 
@@ -108,11 +106,15 @@ int findUpstreamID(const char * upstreamString, const in_port_t port)
 	// Due to the nature of us being the resolver,
 	// the actual resolving of the host name has
 	// to be done separately to be non-blocking
-	upstream->new = true;
+	upstream->flags.new = true;
 	upstream->namepos = 0; // 0 -> string with length zero
-	set_event(RESOLVE_NEW_HOSTNAMES);
+	// Initialize response time values
+	upstream->rtime = 0.0;
+	upstream->rtuncertainty = 0.0;
+	upstream->responses = 0u;
 	// This is a new upstream server
-	upstream->lastQuery = time(NULL);
+	set_event(RESOLVE_NEW_HOSTNAMES);
+	upstream->lastQuery = 0.0;
 	// Store port
 	upstream->port = port;
 	// Increase counter by one
@@ -153,7 +155,7 @@ int findDomainID(const char *domainString, const bool count)
 	domainsData* domain = getDomain(domainID, false);
 	if(domain == NULL)
 	{
-		logg("ERROR: Encountered serious memory error in findDomainID()");
+		log_err("Encountered serious memory error in findDomainID()");
 		return -1;
 	}
 
@@ -210,7 +212,7 @@ int findClientID(const char *clientIP, const bool count, const bool aliasclient)
 	clientsData* client = getClient(clientID, false);
 	if(client == NULL)
 	{
-		logg("ERROR: Encountered serious memory error in findClientID()");
+		log_err("Encountered serious memory error in findClientID()");
 		return -1;
 	}
 
@@ -230,7 +232,7 @@ int findClientID(const char *clientIP, const bool count, const bool aliasclient)
 	client->namepos = 0;
 	set_event(RESOLVE_NEW_HOSTNAMES);
 	// No query seen so far
-	client->lastQuery = 0;
+	client->lastQuery = 0.0;
 	client->numQueriesARP = client->count;
 	// Configured groups are yet unknown
 	client->flags.found_group = false;
@@ -286,8 +288,8 @@ void change_clientcount(clientsData *client, int total, int blocked, int overTim
 		// Also add counts to the conencted alias-client (if any)
 		if(client->flags.aliasclient)
 		{
-			logg("WARN: Should not add to alias-client directly (client \"%s\" (%s))!",
-			     getstr(client->namepos), getstr(client->ippos));
+			log_warn("Should not add to alias-client directly (client \"%s\" (%s))!",
+			         getstr(client->namepos), getstr(client->ippos));
 			return;
 		}
 		if(client->aliasclient_id > -1)
@@ -300,7 +302,7 @@ void change_clientcount(clientsData *client, int total, int blocked, int overTim
 		}
 }
 
-int findCacheID(int domainID, int clientID, enum query_types query_type)
+int findCacheID(int domainID, int clientID, enum query_type query_type)
 {
 	// Compare content of client against known client IP addresses
 	for(int cacheID = 0; cacheID < counters->dns_cache_size; cacheID++)
@@ -328,7 +330,7 @@ int findCacheID(int domainID, int clientID, enum query_types query_type)
 
 	if(dns_cache == NULL)
 	{
-		logg("ERROR: Encountered serious memory error in findCacheID()");
+		log_err("Encountered serious memory error in findCacheID()");
 		return -1;
 	}
 
@@ -440,8 +442,7 @@ const char *getClientNameString(const queriesData* query)
 
 void FTL_reset_per_client_domain_data(void)
 {
-	if(config.debug & DEBUG_DATABASE)
-		logg("Resetting per-client DNS cache, size is %i", counters->dns_cache_size);
+	log_debug(DEBUG_DATABASE, "Resetting per-client DNS cache, size is %i", counters->dns_cache_size);
 
 	for(int cacheID = 0; cacheID < counters->dns_cache_size; cacheID++)
 	{
@@ -467,8 +468,13 @@ void FTL_reload_all_domainlists(void)
 	// (Re-)open gravity database connection
 	gravityDB_reopen();
 
-	// Reset number of blocked domains
-	counters->gravity = gravityDB_count(GRAVITY_TABLE);
+	// Get size of gravity, number of domains, groups, clients, and lists
+	counters->database.gravity = gravityDB_count(GRAVITY_TABLE);
+	counters->database.groups = gravityDB_count(GROUPS_TABLE);
+	counters->database.clients = gravityDB_count(CLIENTS_TABLE);
+	counters->database.lists = gravityDB_count(ADLISTS_TABLE);
+	counters->database.domains.allowed = gravityDB_count(DENIED_DOMAINS_TABLE);
+	counters->database.domains.denied = gravityDB_count(ALLOWED_DOMAINS_TABLE);
 
 	// Read and compile possible regex filters
 	// only after having called gravityDB_open()
@@ -479,6 +485,189 @@ void FTL_reload_all_domainlists(void)
 	FTL_reset_per_client_domain_data();
 
 	unlock_shm();
+}
+
+const char *get_query_type_str(const enum query_type type, const queriesData *query, char *buffer)
+{
+	switch (type)
+	{
+		case TYPE_A:
+			return "A";
+		case TYPE_AAAA:
+			return "AAAA";
+		case TYPE_ANY:
+			return "ANY";
+		case TYPE_SRV:
+			return "SRV";
+		case TYPE_SOA:
+			return "SOA";
+		case TYPE_PTR:
+			return "PTR";
+		case TYPE_TXT:
+			return "TXT";
+		case TYPE_NAPTR:
+			return "NAPTR";
+		case TYPE_MX:
+			return "MX";
+		case TYPE_DS:
+			return "DS";
+		case TYPE_RRSIG:
+			return "RRSIG";
+		case TYPE_DNSKEY:
+			return "DNSKEY";
+		case TYPE_NS:
+			return "NS";
+		case TYPE_OTHER:
+			if(query != NULL && buffer != NULL)
+			{
+				// Build custom query type string in buffer
+				sprintf(buffer, "TYPE%d", query->qtype);
+				return buffer;
+			}
+			else
+			{
+				// Used, e.g., for regex type matching
+				return "OTHER";
+			}
+		case TYPE_SVCB:
+			return "SVCB";
+		case TYPE_HTTPS:
+			return "HTTPS";
+		case TYPE_MAX:
+		default:
+			return "N/A";
+	}
+}
+
+const char * __attribute__ ((const)) get_query_status_str(const enum query_status status)
+{
+	switch (status)
+	{
+		case QUERY_UNKNOWN:
+			return "UNKNOWN";
+		case QUERY_GRAVITY:
+			return "GRAVITY";
+		case QUERY_FORWARDED:
+			return "FORWARDED";
+		case QUERY_CACHE:
+			return "CACHE";
+		case QUERY_REGEX:
+			return "REGEX";
+		case QUERY_DENYLIST:
+			return "DENYLIST";
+		case QUERY_EXTERNAL_BLOCKED_IP:
+			return "EXTERNAL_BLOCKED_IP";
+		case QUERY_EXTERNAL_BLOCKED_NULL:
+			return "EXTERNAL_BLOCKED_NULL";
+		case QUERY_EXTERNAL_BLOCKED_NXRA:
+			return "EXTERNAL_BLOCKED_NXRA";
+		case QUERY_GRAVITY_CNAME:
+			return "GRAVITY_CNAME";
+		case QUERY_REGEX_CNAME:
+			return "REGEX_CNAME";
+		case QUERY_DENYLIST_CNAME:
+			return "DENYLIST_CNAME";
+		case QUERY_RETRIED:
+			return "RETRIED";
+		case QUERY_RETRIED_DNSSEC:
+			return "RETRIED_DNSSEC";
+		case QUERY_IN_PROGRESS:
+			return "IN_PROGRESS";
+		case QUERY_STATUS_MAX:
+		default:
+			return "INVALID";
+	}
+}
+
+const char * __attribute__ ((const)) get_query_reply_str(const enum reply_type reply)
+{
+	switch (reply)
+	{
+		case REPLY_UNKNOWN:
+			return "UNKNOWN";
+		case REPLY_NODATA:
+			return "NODATA";
+		case REPLY_NXDOMAIN:
+			return "NXDOMAIN";
+		case REPLY_CNAME:
+			return "CNAME";
+		case REPLY_IP:
+			return "IP";
+		case REPLY_DOMAIN:
+			return "DOMAIN";
+		case REPLY_RRNAME:
+			return "RRNAME";
+		case REPLY_SERVFAIL:
+			return "SERVFAIL";
+		case REPLY_REFUSED:
+			return "REFUSED";
+		case REPLY_NOTIMP:
+			return "NOTIMP";
+		case REPLY_OTHER:
+			return "OTHER";
+		case REPLY_DNSSEC:
+			return "DNSSEC";
+		case QUERY_REPLY_MAX:
+		default:
+			return "N/A";
+	}
+}
+
+const char * __attribute__ ((const)) get_query_dnssec_str(const enum dnssec_status dnssec)
+{
+	switch (dnssec)
+	{
+		case DNSSEC_UNKNOWN:
+			return "UNKNOWN";
+		case DNSSEC_SECURE:
+			return "SECURE";
+		case DNSSEC_INSECURE:
+			return "INSECURE";
+		case DNSSEC_BOGUS:
+			return "BOGUS";
+		case DNSSEC_ABANDONED:
+			return "ABANDONED";
+		case DNSSEC_MAX:
+		default:
+			return "N/A";
+	}
+}
+
+const char * __attribute__ ((const)) get_refresh_hostnames_str(const enum refresh_hostnames refresh)
+{
+	switch (refresh)
+	{
+		case REFRESH_ALL:
+			return "ALL";
+		case REFRESH_IPV4_ONLY:
+			return "IPV4_ONLY";
+		case REFRESH_UNKNOWN:
+			return "UNKNOWN";
+		case REFRESH_NONE:
+			return "NONE";
+		default:
+			return "N/A";
+	}
+}
+
+const char * __attribute__ ((const)) get_blocking_mode_str(const enum blocking_mode mode)
+{
+	switch (mode)
+	{
+		case MODE_IP:
+			return "IP";
+		case MODE_NX:
+			return "NX";
+		case MODE_NULL:
+			return "NULL";
+		case MODE_IP_NODATA_AAAA:
+			return "IP_NODATA_AAAA";
+		case MODE_NODATA:
+			return "NODATA";
+		case MODE_MAX:
+		default:
+			return "N/A";
+	}
 }
 
 bool __attribute__ ((const)) is_blocked(const enum query_status status)
@@ -497,51 +686,55 @@ bool __attribute__ ((const)) is_blocked(const enum query_status status)
 
 		case QUERY_GRAVITY:
 		case QUERY_REGEX:
-		case QUERY_BLACKLIST:
+		case QUERY_DENYLIST:
 		case QUERY_EXTERNAL_BLOCKED_IP:
 		case QUERY_EXTERNAL_BLOCKED_NULL:
 		case QUERY_EXTERNAL_BLOCKED_NXRA:
 		case QUERY_GRAVITY_CNAME:
 		case QUERY_REGEX_CNAME:
-		case QUERY_BLACKLIST_CNAME:
+		case QUERY_DENYLIST_CNAME:
 			return true;
 	}
 }
 
-static const char *query_status_str[QUERY_STATUS_MAX] = {
-	"UNKNOWN",
-	"GRAVITY",
-	"FORWARDED",
-	"CACHE",
-	"REGEX",
-	"BLACKLIST",
-	"EXTERNAL_BLOCKED_IP",
-	"EXTERNAL_BLOCKED_NULL",
-	"EXTERNAL_BLOCKED_NXRA",
-	"GRAVITY_CNAME",
-	"REGEX_CNAME",
-	"BLACKLIST_CNAME",
-	"RETRIED",
-	"RETRIED_DNSSEC",
-	"IN_PROGRESS"
-};
+int __attribute__ ((pure)) get_blocked_count(void)
+{
+	int blocked = 0;
+	for(enum query_status status = 0; status < QUERY_STATUS_MAX; status++)
+		if(is_blocked(status))
+			blocked += counters->status[status];
 
-void query_set_status(queriesData *query, const enum query_status new_status)
+	return blocked;
+}
+
+int __attribute__ ((pure)) get_forwarded_count(void)
+{
+	return counters->status[QUERY_FORWARDED] +
+	       counters->status[QUERY_RETRIED] +
+	       counters->status[QUERY_RETRIED_DNSSEC];
+}
+
+int __attribute__ ((pure)) get_cached_count(void)
+{
+	return counters->status[QUERY_CACHE];
+}
+
+void _query_set_status(queriesData *query, const enum query_status new_status, const char *file, const int line)
 {
 	// Debug logging
 	if(config.debug & DEBUG_STATUS)
 	{
-		const char *oldstr = query->status < QUERY_STATUS_MAX ? query_status_str[query->status] : "INVALID";
+		const char *oldstr = get_query_status_str(query->status);
 		if(query->status == new_status)
 		{
-			logg("Query %i: status unchanged: %s (%d)",
-			     query->id, oldstr, query->status);
+			log_debug(DEBUG_STATUS, "Query %i: status unchanged: %s (%d) in %s:%i",
+			          query->id, oldstr, query->status, short_path(file), line);
 		}
 		else
 		{
-			const char *newstr = new_status < QUERY_STATUS_MAX ? query_status_str[new_status] : "INVALID";
-			logg("Query %i: status changed: %s (%d) -> %s (%d)",
-			     query->id, oldstr, query->status, newstr, new_status);
+			const char *newstr = get_query_status_str(new_status);
+			log_debug(DEBUG_STATUS, "Query %i: status changed: %s (%d) -> %s (%d) in %s:%i",
+			          query->id, oldstr, query->status, newstr, new_status, short_path(file), line);
 		}
 	}
 
@@ -551,20 +744,21 @@ void query_set_status(queriesData *query, const enum query_status new_status)
 		counters->status[query->status]--;
 		counters->status[new_status]++;
 
+		const int timeidx = getOverTimeID(query->timestamp);
 		if(is_blocked(query->status))
-			overTime[query->timeidx].blocked--;
+			overTime[timeidx].blocked--;
 		if(is_blocked(new_status))
-			overTime[query->timeidx].blocked++;
+			overTime[timeidx].blocked++;
 
 		if(query->status == QUERY_CACHE)
-			overTime[query->timeidx].cached--;
+			overTime[timeidx].cached--;
 		if(new_status == QUERY_CACHE)
-			overTime[query->timeidx].cached++;
+			overTime[timeidx].cached++;
 
 		if(query->status == QUERY_FORWARDED)
-			overTime[query->timeidx].forwarded--;
+			overTime[timeidx].forwarded--;
 		if(new_status == QUERY_FORWARDED)
-			overTime[query->timeidx].forwarded++;
+			overTime[timeidx].forwarded++;
 	}
 
 	// Update status
