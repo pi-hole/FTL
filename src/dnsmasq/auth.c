@@ -253,6 +253,17 @@ size_t answer_auth(struct dns_header *header, char *limit, size_t qlen, time_t n
 		    
 	    } while ((crecp = cache_find_by_addr(crecp, &addr, now, flag)));
 
+	  if (!found && is_rev_synth(flag, &addr, name) && (local_query || in_zone(zone, name, NULL)))
+	    {
+	      log_query(F_CONFIG | F_REVERSE | flag, name, &addr, NULL); 
+	      found = 1;
+	      
+	      if (add_resource_record(header, limit, &trunc, nameoffset, &ansp, 
+				      daemon->auth_ttl, NULL,
+				      T_PTR, C_IN, "d", name))
+		anscount++;
+	    }
+
 	  if (found)
 	    nxdomain = 0;
 	  else
@@ -400,6 +411,17 @@ size_t answer_auth(struct dns_header *header, char *limit, size_t qlen, time_t n
 		       anscount++;
 		   }
 	     }
+
+       if (!found && is_name_synthetic(flag, name, &addr) )
+	 {
+	   found = 1;
+	   nxdomain = 0;
+	   
+	   log_query(F_FORWARD | F_CONFIG | flag, name, &addr, NULL);
+	   if (add_resource_record(header, limit, &trunc, nameoffset, &ansp, 
+				   daemon->auth_ttl, NULL, qtype, C_IN, qtype == T_A ? "4" : "6", &addr))
+	     anscount++;
+	 }
        
       if (!cut)
 	{
