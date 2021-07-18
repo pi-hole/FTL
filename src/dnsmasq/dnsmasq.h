@@ -969,10 +969,10 @@ struct dhcp_bridge {
 };
 
 struct cond_domain {
-  char *domain, *prefix;
+  char *domain, *prefix; /* prefix is text-prefix on domain name */
   struct in_addr start, end;
   struct in6_addr start6, end6;
-  int is6, indexed;
+  int is6, indexed, prefixlen;
   struct cond_domain *next;
 }; 
 

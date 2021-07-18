@@ -2272,6 +2272,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 		  
 		  new->prefix = NULL;
 		  new->indexed = 0;
+		  new->prefixlen = 0;
 		  
 		  unhide_metas(comma);
 		  if ((netpart = split_chr(comma, '/')))
@@ -2317,16 +2318,17 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 			  u64 mask = (1LLU << (128 - msize)) - 1LLU;
 			  u64 addrpart = addr6part(&new->start6);
 			  new->is6 = 1;
+			  new->prefixlen = msize;
 			  
 			  /* prefix==64 overflows the mask calculation above */
-			  if (msize == 64)
+			  if (msize <= 64)
 			    mask = (u64)-1LL;
 			  
 			  new->end6 = new->start6;
 			  setaddr6part(&new->start6, addrpart & ~mask);
 			  setaddr6part(&new->end6, addrpart | mask);
 			  
-			  if (msize < 64)
+			  if (msize < 64 && option  == 's')
 			    ret_err_free(gen_err, new);
 			  else if (arg)
 			    {
@@ -2397,15 +2399,17 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 		  else
 		    {
 		      char *star;
-		      new->next = daemon->synth_domains;
-		      daemon->synth_domains = new;
 		      if (new->prefix &&
 			  (star = strrchr(new->prefix, '*'))
 			  && *(star+1) == 0)
 			{
 			  *star = 0;
 			  new->indexed = 1;
+			  if (new->is6 && new->prefixlen < 64)
+			    ret_err_free(_("prefix too small"), new);
 			}
+		      new->next = daemon->synth_domains;
+		      daemon->synth_domains = new;
 		    }
 		}
 	      else if (option == 's')
