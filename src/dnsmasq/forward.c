@@ -549,7 +549,7 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 	{
 	  u16 swap = htons((u16)ede);
 
-	  if (ede != -EDE_UNSET)
+	  if (ede != EDE_UNSET)
 	    plen = add_pseudoheader(header, plen, (unsigned char *)limit, daemon->edns_pktsz, EDNS0_OPTION_EDE, (unsigned char *)&swap, 2, do_bit, 0);
 	  else
 	    plen = add_pseudoheader(header, plen, (unsigned char *)limit, daemon->edns_pktsz, 0, NULL, 0, do_bit, 0);
