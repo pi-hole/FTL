@@ -173,6 +173,10 @@ extern int capget(cap_user_header_t header, cap_user_data_t data);
 
 #define ADDRSTRLEN INET6_ADDRSTRLEN
 
+#ifndef UINT32_MAX
+#define UINT32_MAX 0xffffffff 
+#endif
+
 /* Async event queue */
 struct event_desc {
   int event, data, msg_sz;
