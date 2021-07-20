@@ -4187,13 +4187,13 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	comma = split(arg);
 	new->interface = opt_string_alloc(split(comma));
 	new->iface_index = 0;
-	if (inet_pton(AF_INET, arg, &new->local) && inet_pton(AF_INET, comma, &new->server))
+	if (comma && inet_pton(AF_INET, arg, &new->local) && inet_pton(AF_INET, comma, &new->server))
 	  {
 	    new->next = daemon->relay4;
 	    daemon->relay4 = new;
 	  }
 #ifdef HAVE_DHCP6
-	else if (inet_pton(AF_INET6, arg, &new->local) && inet_pton(AF_INET6, comma, &new->server))
+	else if (comma && inet_pton(AF_INET6, arg, &new->local) && inet_pton(AF_INET6, comma, &new->server))
 	  {
 	    new->next = daemon->relay6;
 	    daemon->relay6 = new;
