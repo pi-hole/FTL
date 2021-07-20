@@ -1192,11 +1192,15 @@ static int parse_dhcp_opt(char *errstr, char *arg, int flags)
 	{
 	  new->u.vendor_class = (unsigned char *)opt_string_alloc(arg+7);
 	  new->flags |= DHOPT_VENDOR;
+	  if ((new->flags & DHOPT_ENCAPSULATE) || flags == DHOPT_MATCH)
+	    goto_err(_("inappropriate vendor:"));
 	}
       else if (strstr(arg, "encap:") == arg)
 	{
 	  new->u.encap = atoi(arg+6);
 	  new->flags |= DHOPT_ENCAPSULATE;
+	  if ((new->flags & DHOPT_VENDOR) || flags == DHOPT_MATCH)
+	    goto_err(_("inappropriate encap:"));
 	}
       else if (strstr(arg, "vi-encap:") == arg)
 	{
