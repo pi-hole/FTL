@@ -2235,7 +2235,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	  arg = comma;
 	  comma = split(arg);
 	  daemon->hostmaster = opt_string_alloc(arg);
-	  for (cp = daemon->hostmaster; *cp; cp++)
+	  for (cp = daemon->hostmaster; cp && *cp; cp++)
 	    if (*cp == '@')
 	      *cp = '.';
 
