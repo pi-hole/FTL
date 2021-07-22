@@ -173,6 +173,16 @@ void check_ubus_listeners()
     }
 }
 
+#define CHECK(stmt) \
+  do { \
+    int e = (stmt); \
+    if (e) \
+      { \
+	my_syslog(LOG_ERR, _("UBus command failed: %d (%s)"), e, #stmt); \
+	return (UBUS_STATUS_UNKNOWN_ERROR); \
+      } \
+  } while (0)
+
 static int ubus_handle_metrics(struct ubus_context *ctx, struct ubus_object *obj,
 			       struct ubus_request_data *req, const char *method,
 			       struct blob_attr *msg)
@@ -183,12 +193,13 @@ static int ubus_handle_metrics(struct ubus_context *ctx, struct ubus_object *obj
   (void)method;
   (void)msg;
 
-  blob_buf_init(&b, BLOBMSG_TYPE_TABLE);
+  CHECK(blob_buf_init(&b, BLOBMSG_TYPE_TABLE));
 
   for (i=0; i < __METRIC_MAX; i++)
-    blobmsg_add_u32(&b, get_metric_name(i), daemon->metrics[i]);
+    CHECK(blobmsg_add_u32(&b, get_metric_name(i), daemon->metrics[i]));
   
-  return ubus_send_reply(ctx, req, b.head);
+  CHECK(ubus_send_reply(ctx, req, b.head));
+  return UBUS_STATUS_OK;
 }
 
 #ifdef HAVE_CONNTRACK
@@ -307,66 +318,71 @@ fail:
 }
 #endif
 
+#undef CHECK
+
+#define CHECK(stmt) \
+  do { \
+    int e = (stmt); \
+    if (e) \
+      { \
+	my_syslog(LOG_ERR, _("UBus command failed: %d (%s)"), e, #stmt); \
+	return; \
+      } \
+  } while (0)
+
 void ubus_event_bcast(const char *type, const char *mac, const char *ip, const char *name, const char *interface)
 {
   struct ubus_context *ubus = (struct ubus_context *)daemon->ubus;
-  int ret;
 
   if (!ubus || !notify)
     return;
 
-  blob_buf_init(&b, BLOBMSG_TYPE_TABLE);
+  CHECK(blob_buf_init(&b, BLOBMSG_TYPE_TABLE));
   if (mac)
-    blobmsg_add_string(&b, "mac", mac);
+    CHECK(blobmsg_add_string(&b, "mac", mac));
   if (ip)
-    blobmsg_add_string(&b, "ip", ip);
+    CHECK(blobmsg_add_string(&b, "ip", ip));
   if (name)
-    blobmsg_add_string(&b, "name", name);
+    CHECK(blobmsg_add_string(&b, "name", name));
   if (interface)
-    blobmsg_add_string(&b, "interface", interface);
+    CHECK(blobmsg_add_string(&b, "interface", interface));
   
-  ret = ubus_notify(ubus, &ubus_object, type, b.head, -1);
-  if (ret)
-    my_syslog(LOG_ERR, _("Failed to send UBus event: %s"), ubus_strerror(ret));
+  CHECK(ubus_notify(ubus, &ubus_object, type, b.head, -1));
 }
 
 #ifdef HAVE_CONNTRACK
 void ubus_event_bcast_connmark_allowlist_refused(u32 mark, const char *name)
 {
   struct ubus_context *ubus = (struct ubus_context *)daemon->ubus;
-  int ret;
 
   if (!ubus || !notify)
     return;
 
-  blob_buf_init(&b, 0);
-  blobmsg_add_u32(&b, "mark", mark);
-  blobmsg_add_string(&b, "name", name);
+  CHECK(blob_buf_init(&b, 0));
+  CHECK(blobmsg_add_u32(&b, "mark", mark));
+  CHECK(blobmsg_add_string(&b, "name", name));
   
-  ret = ubus_notify(ubus, &ubus_object, "connmark-allowlist.refused", b.head, -1);
-  if (ret)
-    my_syslog(LOG_ERR, _("Failed to send UBus event: %s"), ubus_strerror(ret));
+  CHECK(ubus_notify(ubus, &ubus_object, "connmark-allowlist.refused", b.head, -1));
 }
 
 void ubus_event_bcast_connmark_allowlist_resolved(u32 mark, const char *name, const char *value, u32 ttl)
 {
   struct ubus_context *ubus = (struct ubus_context *)daemon->ubus;
-  int ret;
 
   if (!ubus || !notify)
     return;
 
-  blob_buf_init(&b, 0);
-  blobmsg_add_u32(&b, "mark", mark);
-  blobmsg_add_string(&b, "name", name);
-  blobmsg_add_string(&b, "value", value);
-  blobmsg_add_u32(&b, "ttl", ttl);
+  CHECK(blob_buf_init(&b, 0));
+  CHECK(blobmsg_add_u32(&b, "mark", mark));
+  CHECK(blobmsg_add_string(&b, "name", name));
+  CHECK(blobmsg_add_string(&b, "value", value));
+  CHECK(blobmsg_add_u32(&b, "ttl", ttl));
   
-  ret = ubus_notify(ubus, &ubus_object, "connmark-allowlist.resolved", b.head, /* timeout: */ 1000);
-  if (ret)
-    my_syslog(LOG_ERR, _("Failed to send UBus event: %s"), ubus_strerror(ret));
+  // Set timeout to allow UBus subscriber to configure firewall rules before returning.
+  CHECK(ubus_notify(ubus, &ubus_object, "connmark-allowlist.resolved", b.head, /* timeout: */ 1000));
 }
 #endif
 
+#undef CHECK
 
 #endif /* HAVE_UBUS */
