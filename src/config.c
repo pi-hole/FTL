@@ -554,6 +554,22 @@ void read_FTLconf(void)
 	buffer = parse_FTLconf(fp, "PIHOLE_PTR");
 	config.pihole_ptr = read_bool(buffer, true);
 
+	if(config.pihole_ptr)
+		logg("   PIHOLE_PTR: Enabled");
+	else
+		logg("   PIHOLE_PTR: Disabled");
+
+	// ADDR2LINE
+	// Should FTL try to call addr2line when generating backtraces?
+	// defaults to: true
+	buffer = parse_FTLconf(fp, "ADDR2LINE");
+	config.addr2line = read_bool(buffer, true);
+
+	if(config.addr2line)
+		logg("   ADDR2LINE: Enabled");
+	else
+		logg("   ADDR2LINE: Disabled");
+
 	// Read DEBUG_... setting from pihole-FTL.conf
 	read_debuging_settings(fp);
 

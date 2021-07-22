@@ -48,6 +48,7 @@ typedef struct {
 	bool edns0_ecs :1;
 	bool show_dnssec :1;
 	bool pihole_ptr :1;
+	bool addr2line :1;
 	struct {
 		bool mozilla_canary :1;
 	} special_domains;
