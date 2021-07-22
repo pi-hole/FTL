@@ -66,8 +66,8 @@ static int is_string_matching_glob_pattern(
 	    pattern_character -= 'a' - 'A';
 	  if (pattern_character == '*')
 	    {
-	      // zero-or-more-character wildcard
-	      // Try to match at value_index, otherwise restart at value_index + 1 next.
+	      /* zero-or-more-character wildcard */
+	      /* Try to match at value_index, otherwise restart at value_index + 1 next. */
 	      next_pattern_index = pattern_index;
 	      pattern_index++;
 	      if (value_index < num_value_bytes)
@@ -78,7 +78,7 @@ static int is_string_matching_glob_pattern(
 	    }
 	  else
 	    {
-	      // ordinary character
+	      /* ordinary character */
 	      if (value_index < num_value_bytes)
 	        {
 		  char value_character = value[value_index];
@@ -249,7 +249,7 @@ int is_valid_dns_name_pattern(const char *value)
   for (const char *c = value;; c++)
     {
       if (*c &&
-	  *c != '*' && // Wildcard.
+	  *c != '*' && /* Wildcard. */
 	  *c != '-' && *c != '.' &&
 	  (*c < '0' || *c > '9') &&
 	  (*c < 'A' || *c > 'Z') &&

@@ -84,7 +84,7 @@ static void ubus_destroy(struct ubus_context *ubus)
   ubus_free(ubus);
   daemon->ubus = NULL;
   
-  // Forces re-initialization when we're reusing the same definitions later on.
+  /* Forces re-initialization when we're reusing the same definitions later on. */
   ubus_object.id = 0;
   ubus_object_type.id = 0;
 }
@@ -376,7 +376,7 @@ void ubus_event_bcast_connmark_allowlist_resolved(u32 mark, const char *name, co
   CHECK(blobmsg_add_string(&b, "value", value));
   CHECK(blobmsg_add_u32(&b, "ttl", ttl));
   
-  // Set timeout to allow UBus subscriber to configure firewall rules before returning.
+  /* Set timeout to allow UBus subscriber to configure firewall rules before returning. */
   CHECK(ubus_notify(ubus, &ubus_object, "connmark-allowlist.resolved", b.head, /* timeout: */ 1000));
 }
 #endif
