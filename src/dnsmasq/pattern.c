@@ -20,13 +20,13 @@
 
 #define LOG(...) \
   do { \
-    my_syslog(LOG_WARNING, __VA_ARGS__); \
+    my_syslog(LOG_DEBUG, __VA_ARGS__); \
   } while (0)
 
 #define ASSERT(condition) \
   do { \
     if (!(condition)) \
-      LOG("[pattern.c:%d] Assertion failure: %s", __LINE__, #condition); \
+      my_syslog(LOG_ERR, _("[pattern.c:%d] Assertion failure: %s"), __LINE__, #condition); \
   } while (0)
 
 /**
@@ -139,7 +139,7 @@ int is_valid_dns_name(const char *value)
 	  (*c < 'A' || *c > 'Z') &&
 	  (*c < 'a' || *c > 'z'))
 	{
-	  LOG("Invalid DNS name: Invalid character %c.", *c);
+	  LOG(_("Invalid DNS name: Invalid character %c."), *c);
 	  return 0;
 	}
       if (*c)
@@ -148,12 +148,12 @@ int is_valid_dns_name(const char *value)
 	{
 	  if (!*c || *c == '.')
 	    {
-	      LOG("Invalid DNS name: Empty label.");
+	      LOG(_("Invalid DNS name: Empty label."));
 	      return 0;
 	    }
 	  if (*c == '-')
 	    {
-	      LOG("Invalid DNS name: Label starts with hyphen.");
+	      LOG(_("Invalid DNS name: Label starts with hyphen."));
 	      return 0;
 	    }
 	  label = c;
@@ -167,13 +167,13 @@ int is_valid_dns_name(const char *value)
 	{
 	  if (c[-1] == '-')
 	    {
-	      LOG("Invalid DNS name: Label ends with hyphen.");
+	      LOG(_("Invalid DNS name: Label ends with hyphen."));
 	      return 0;
 	    }
 	  size_t num_label_bytes = (size_t) (c - label);
 	  if (num_label_bytes > 63)
 	    {
-	      LOG("Invalid DNS name: Label is too long (%zu).", num_label_bytes);
+	      LOG(_("Invalid DNS name: Label is too long (%zu)."), num_label_bytes);
 	      return 0;
 	    }
 	  num_labels++;
@@ -181,12 +181,12 @@ int is_valid_dns_name(const char *value)
 	    {
 	      if (num_labels < 2)
 		{
-		  LOG("Invalid DNS name: Not enough labels (%zu).", num_labels);
+		  LOG(_("Invalid DNS name: Not enough labels (%zu)."), num_labels);
 		  return 0;
 		}
 	      if (is_label_numeric)
 		{
-		  LOG("Invalid DNS name: Final label is fully numeric.");
+		  LOG(_("Invalid DNS name: Final label is fully numeric."));
 		  return 0;
 		}
 	      if (num_label_bytes == 5 &&
@@ -196,12 +196,12 @@ int is_valid_dns_name(const char *value)
 		  (label[3] == 'a' || label[3] == 'A') &&
 		  (label[4] == 'l' || label[4] == 'L'))
 		{
-		  LOG("Invalid DNS name: \"local\" pseudo-TLD.");
+		  LOG(_("Invalid DNS name: \"local\" pseudo-TLD."));
 		  return 0;
 		}
 	      if (num_bytes < 1 || num_bytes > 253)
 		{
-		  LOG("DNS name has invalid length (%zu).", num_bytes);
+		  LOG(_("DNS name has invalid length (%zu)."), num_bytes);
 		  return 0;
 		}
 	      return 1;
@@ -255,7 +255,7 @@ int is_valid_dns_name_pattern(const char *value)
 	  (*c < 'A' || *c > 'Z') &&
 	  (*c < 'a' || *c > 'z'))
 	{
-	  LOG("Invalid DNS name pattern: Invalid character %c.", *c);
+	  LOG(_("Invalid DNS name pattern: Invalid character %c."), *c);
 	  return 0;
 	}
       if (*c && *c != '*')
@@ -264,12 +264,12 @@ int is_valid_dns_name_pattern(const char *value)
 	{
 	  if (!*c || *c == '.')
 	    {
-	      LOG("Invalid DNS name pattern: Empty label.");
+	      LOG(_("Invalid DNS name pattern: Empty label."));
 	      return 0;
 	    }
 	  if (*c == '-')
 	    {
-	      LOG("Invalid DNS name pattern: Label starts with hyphen.");
+	      LOG(_("Invalid DNS name pattern: Label starts with hyphen."));
 	      return 0;
 	    }
 	  label = c;
@@ -282,7 +282,7 @@ int is_valid_dns_name_pattern(const char *value)
 	    {
 	      if (num_wildcards >= 2)
 		{
-		  LOG("Invalid DNS name pattern: Wildcard character used more than twice per label.");
+		  LOG(_("Invalid DNS name pattern: Wildcard character used more than twice per label."));
 		  return 0;
 		}
 	      num_wildcards++;
@@ -292,13 +292,13 @@ int is_valid_dns_name_pattern(const char *value)
 	{
 	  if (c[-1] == '-')
 	    {
-	      LOG("Invalid DNS name pattern: Label ends with hyphen.");
+	      LOG(_("Invalid DNS name pattern: Label ends with hyphen."));
 	      return 0;
 	    }
 	  size_t num_label_bytes = (size_t) (c - label) - num_wildcards;
 	  if (num_label_bytes > 63)
 	    {
-	      LOG("Invalid DNS name pattern: Label is too long (%zu).", num_label_bytes);
+	      LOG(_("Invalid DNS name pattern: Label is too long (%zu)."), num_label_bytes);
 	      return 0;
 	    }
 	  num_labels++;
@@ -306,17 +306,17 @@ int is_valid_dns_name_pattern(const char *value)
 	    {
 	      if (num_labels < 2)
 		{
-		  LOG("Invalid DNS name pattern: Not enough labels (%zu).", num_labels);
+		  LOG(_("Invalid DNS name pattern: Not enough labels (%zu)."), num_labels);
 		  return 0;
 		}
 	      if (num_wildcards != 0 || previous_label_has_wildcard)
 		{
-		  LOG("Invalid DNS name pattern: Wildcard within final two labels.");
+		  LOG(_("Invalid DNS name pattern: Wildcard within final two labels."));
 		  return 0;
 		}
 	      if (is_label_numeric)
 		{
-		  LOG("Invalid DNS name pattern: Final label is fully numeric.");
+		  LOG(_("Invalid DNS name pattern: Final label is fully numeric."));
 		  return 0;
 		}
 	      if (num_label_bytes == 5 &&
@@ -326,12 +326,12 @@ int is_valid_dns_name_pattern(const char *value)
 		  (label[3] == 'a' || label[3] == 'A') &&
 		  (label[4] == 'l' || label[4] == 'L'))
 		{
-		  LOG("Invalid DNS name pattern: \"local\" pseudo-TLD.");
+		  LOG(_("Invalid DNS name pattern: \"local\" pseudo-TLD."));
 		  return 0;
 		}
 	      if (num_bytes < 1 || num_bytes > 253)
 		{
-		  LOG("DNS name pattern has invalid length after removing wildcards (%zu).", num_bytes);
+		  LOG(_("DNS name pattern has invalid length after removing wildcards (%zu)."), num_bytes);
 		  return 0;
 		}
 	      return 1;
