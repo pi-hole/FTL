@@ -91,7 +91,7 @@ void initOverTime(void)
 }
 
 bool warned_about_hwclock = false;
-unsigned int getOverTimeID(time_t timestamp)
+unsigned int _getOverTimeID(time_t timestamp, const char *file, const int line)
 {
 	// Center timestamp in OVERTIME_INTERVAL
 	timestamp -= timestamp % OVERTIME_INTERVAL;
@@ -109,14 +109,30 @@ unsigned int getOverTimeID(time_t timestamp)
 		// Return first timestamp in case negative timestamp was determined
 		return 0;
 	}
-	else if(id > OVERTIME_SLOTS-1)
+	else if(id == OVERTIME_SLOTS)
 	{
+		// Possible race-collision (moving of the timeslots is just about to
+		// happen), silently add to the last bin because this is the correct
+		// thing to do
+		return OVERTIME_SLOTS-1;
+	}
+	else if(id > OVERTIME_SLOTS)
+	{
+		// This is definitely wrong. We warn about this (but only once)
 		if(!warned_about_hwclock)
 		{
+			char timestampStr[84] = "";
+			get_timestr(timestampStr, timestamp, false);
+
 			const time_t lastTimestamp = overTime[OVERTIME_SLOTS-1].timestamp;
-			logg("WARN: Found database entries in the future (%llu, last: %llu). "
-			     "Your over-time statistics may be incorrect",
-			     (long long)timestamp, (long long)lastTimestamp);
+			char lastTimestampStr[84] = "";
+			get_timestr(lastTimestampStr, lastTimestamp, false);
+
+			logg("WARN: Found database entries in the future (%s (%llu), last timestamp for importing: %s (%llu)). "
+			     "Your over-time statistics may be incorrect (found in %s:%d)",
+			     timestampStr, (long long)timestamp,
+			     lastTimestampStr, (long long)lastTimestamp,
+			     short_path(file), line);
 			warned_about_hwclock = true;
 		}
 		// Return last timestamp in case a too large timestamp was determined
