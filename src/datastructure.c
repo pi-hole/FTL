@@ -365,7 +365,7 @@ bool isValidIPv6(const char *addr)
 const char *getDomainString(const queriesData* query)
 {
 	// Check if the returned pointer is valid before trying to access it
-	if(query == NULL)
+	if(query == NULL || query->domainID < 0)
 		return "";
 
 	if(query->privacylevel < PRIVACY_HIDE_DOMAINS)
@@ -385,7 +385,7 @@ const char *getDomainString(const queriesData* query)
 const char *getCNAMEDomainString(const queriesData* query)
 {
 	// Check if the returned pointer is valid before trying to access it
-	if(query == NULL)
+	if(query == NULL || query->CNAME_domainID < 0)
 		return "";
 
 	if(query->privacylevel < PRIVACY_HIDE_DOMAINS)
@@ -405,7 +405,7 @@ const char *getCNAMEDomainString(const queriesData* query)
 const char *getClientIPString(const queriesData* query)
 {
 	// Check if the returned pointer is valid before trying to access it
-	if(query == NULL)
+	if(query == NULL || query->clientID < 0)
 		return "";
 
 	if(query->privacylevel < PRIVACY_HIDE_DOMAINS_CLIENTS)
@@ -425,7 +425,7 @@ const char *getClientIPString(const queriesData* query)
 const char *getClientNameString(const queriesData* query)
 {
 	// Check if the returned pointer is valid before trying to access it
-	if(query == NULL)
+	if(query == NULL || query->clientID < 0)
 		return "";
 
 	if(query->privacylevel < PRIVACY_HIDE_DOMAINS_CLIENTS)
