@@ -1257,6 +1257,20 @@ void next_uid(struct crec *crecp);
 /********************************************* Pi-hole modification ***********************************************/
 #define log_query(flags,name,addr,arg) _log_query(flags, name, addr, arg, __FILE__, __LINE__)
 void _log_query(unsigned int flags, char *name, union all_addr *addr, char *arg, const char* file, const int line);
+struct cache_info {
+  struct valid {
+    int ipv4;
+    int ipv6;
+    int cname;
+    int srv;
+    int ds;
+    int dnskey;
+    int other;
+  } valid;
+  int expired;
+  int immortal;
+};
+void get_dnsmasq_cache_info(struct cache_info *ci);
 /******************************************************************************************************************/
 char *record_source(unsigned int index);
 char *querystr(char *desc, unsigned short type);
