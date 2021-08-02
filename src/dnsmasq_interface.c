@@ -487,16 +487,21 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	if(!internal_query && config.rate_limit.count > 0 &&
 	   ++client->rate_limit > config.rate_limit.count)
 	{
-		if(config.debug & DEBUG_QUERIES)
+		// Log the first rate-limited query for this client in this interval
+		// We do not log the blocked domain for privacy reasons
+		if(client->rate_limit == config.rate_limit.count+1)
 		{
-			logg("Rate-limiting %sIPv%d %s query \"%s\" from %s:%s#%d",
+			logg("Rate-limiting %sIPv%d %s query from %s:%s#%d",
 			     proto == TCP ? "TCP " : proto == UDP ? "UDP " : "",
-			     family == AF_INET ? 4 : 6, types, domainString, interface,
+			     family == AF_INET ? 4 : 6, types, interface,
 			     clientIP, clientPort);
 		}
 
 		// Block this query
 		force_next_DNS_reply = REPLY_REFUSED;
+
+		// Free allocated memory
+		free(domainString);
 
 		// Do not further process this query, Pi-hole has never seen it
 		unlock_shm();
