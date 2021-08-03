@@ -11,5 +11,6 @@
 #define GC_H
 
 void *GC_thread(void *val);
+time_t get_rate_limit_turnaround(void);
 
 #endif //GC_H

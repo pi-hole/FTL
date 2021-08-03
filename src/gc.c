@@ -33,6 +33,12 @@ static void reset_rate_limiting(void)
 	}
 }
 
+static time_t lastRateLimitCleaner = 0;
+time_t get_rate_limit_turnaround(void)
+{
+	return time(NULL) - lastRateLimitCleaner + config.rate_limit.interval;
+}
+
 void *GC_thread(void *val)
 {
 	// Set thread name
@@ -41,7 +47,7 @@ void *GC_thread(void *val)
 
 	// Remember when we last ran the actions
 	time_t lastGCrun = time(NULL) - time(NULL)%GCinterval;
-	time_t lastRateLimitCleaner = time(NULL);
+	lastRateLimitCleaner = time(NULL);
 
 	// Run as long as this thread is not canceled
 	while(!killed)

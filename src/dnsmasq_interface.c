@@ -491,10 +491,9 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		// We do not log the blocked domain for privacy reasons
 		if(client->rate_limit == config.rate_limit.count+1)
 		{
-			logg("Rate-limiting %sIPv%d %s query from %s:%s#%d",
-			     proto == TCP ? "TCP " : proto == UDP ? "UDP " : "",
-			     family == AF_INET ? 4 : 6, types, interface,
-			     clientIP, clientPort);
+			const time_t turnaround = get_rate_limit_turnaround();
+			logg("Rate-limiting %s for %ld second%s",
+			     clientIP, turnaround, turnaround == 1 ? "" : "s");
 		}
 
 		// Block this query
