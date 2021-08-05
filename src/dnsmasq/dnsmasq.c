@@ -216,8 +216,13 @@ int main_dnsmasq (int argc, char **argv)
 #endif
 
 #ifdef HAVE_CONNTRACK
-  if (option_bool(OPT_CONNTRACK) && (daemon->query_port != 0 || daemon->osport))
-    die (_("cannot use --conntrack AND --query-port"), NULL, EC_BADCONF); 
+  if (option_bool(OPT_CONNTRACK))
+    {
+      if (daemon->query_port != 0 || daemon->osport)
+	die (_("cannot use --conntrack AND --query-port"), NULL, EC_BADCONF);
+
+      need_cap_net_admin = 1;
+    }
 #else
   if (option_bool(OPT_CONNTRACK))
     die(_("conntrack support not available: set HAVE_CONNTRACK in src/config.h"), NULL, EC_BADCONF);
