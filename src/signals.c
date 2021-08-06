@@ -289,6 +289,9 @@ static void SIGRT_handler(int signum, siginfo_t *si, void *unused)
 
 		// Reload the privacy level in case the user changed it
 		set_event(RELOAD_PRIVACY_LEVEL);
+
+		// Reload blocking mode
+		set_event(RELOAD_BLOCKINGMODE);
 	}
 	else if(rtsig == 2)
 	{
