@@ -46,6 +46,8 @@
 #include <stddef.h>
 // get_edestr()
 #include "api/api_helper.h"
+// logg_rate_limit_message()
+#include "database/message-table.h"
 
 // Private prototypes
 static void print_flags(const unsigned int flags);
@@ -490,11 +492,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		// Log the first rate-limited query for this client in this interval
 		// We do not log the blocked domain for privacy reasons
 		if(client->rate_limit == config.rate_limit.count+1)
-		{
-			const time_t turnaround = get_rate_limit_turnaround();
-			logg("Rate-limiting %s for %ld second%s",
-			     clientIP, turnaround, turnaround == 1 ? "" : "s");
-		}
+			logg_rate_limit_message(clientIP);
 
 		// Block this query
 		force_next_DNS_reply = REPLY_REFUSED;

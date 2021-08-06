@@ -21,9 +21,13 @@
 #include "../daemon.h"
 // main_pid()
 #include "../signals.h"
+// struct config
+#include "../config.h"
+// get_rate_limit_turnaround()
+#include "../gc.h"
 
 static const char *message_types[MAX_MESSAGE] =
-	{ "REGEX", "SUBNET", "HOSTNAME", "DNSMASQ_CONFIG" };
+	{ "REGEX", "SUBNET", "HOSTNAME", "DNSMASQ_CONFIG", "RATE_LIMIT" };
 
 static unsigned char message_blob_types[MAX_MESSAGE][5] =
 	{
@@ -51,6 +55,13 @@ static unsigned char message_blob_types[MAX_MESSAGE][5] =
 		{	// DNSMASQ_CONFIG_MESSAGE: The message column contains the full message itself
 			SQLITE_NULL, // Not used
 			SQLITE_NULL, // Not used
+			SQLITE_NULL, // Not used
+			SQLITE_NULL, // Not used
+			SQLITE_NULL  // Not used
+		},
+		{	// RATE_LIMIT: The message column contains the IP address of the client in question
+			SQLITE_INTEGER, // Configured maximum number of queries
+			SQLITE_INTEGER, // Configured rate-limiting interval [seconds]
 			SQLITE_NULL, // Not used
 			SQLITE_NULL, // Not used
 			SQLITE_NULL  // Not used
@@ -107,12 +118,12 @@ static bool add_message(enum message_type type,
 	// Open database connection
 	if((db = dbopen(false)) == NULL)
 	{
-		logg("flush_message_table() - Failed to open DB");
+		logg("add_message() - Failed to open DB");
 		return false;
 	}
 
-	// Ensure there are no duplicates when adding host name messages
-	if(type == HOSTNAME_MESSAGE)
+	// Ensure there are no duplicates when adding host name or rate-limiting messages
+	if(type == HOSTNAME_MESSAGE || type == RATE_LIMIT_MESSAGE)
 	{
 		sqlite3_stmt* stmt = NULL;
 		const char *querystr = "DELETE FROM message WHERE type = ?1 AND message = ?2";
@@ -301,4 +312,16 @@ void logg_fatal_dnsmasq_message(const char *message)
 	// FTL will dies after this point, so we should make sure to clean up
 	// behind ourselves
 	cleanup(EXIT_FAILURE);
+}
+
+void logg_rate_limit_message(const char *clientIP)
+{
+	const time_t turnaround = get_rate_limit_turnaround();
+
+	// Log to pihole-FTL.log
+	logg("Rate-limiting %s for %ld second%s",
+	     clientIP, turnaround, turnaround == 1 ? "" : "s");
+
+	// Log to database
+	add_message(RATE_LIMIT_MESSAGE, clientIP, 2, config.rate_limit.count, config.rate_limit.interval);
 }
