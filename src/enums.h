@@ -179,4 +179,13 @@ enum thread_types {
 	THREADS_MAX
 } __attribute__ ((packed));
 
+enum message_type {
+	REGEX_MESSAGE,
+	SUBNET_MESSAGE,
+	HOSTNAME_MESSAGE,
+	DNSMASQ_CONFIG_MESSAGE,
+	RATE_LIMIT_MESSAGE,
+	MAX_MESSAGE
+} __attribute__ ((packed));
+
 #endif // ENUMS_H
