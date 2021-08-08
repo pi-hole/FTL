@@ -493,6 +493,7 @@ void DB_read_queries(void)
 		query->flags.blocked = false;
 		query->flags.whitelisted = false;
 		query->flags.database = true;
+		query->ede = -1; // EDE_UNSET == -1
 
 		// Set lastQuery timer for network table
 		clientsData* client = getClient(clientID, true);
