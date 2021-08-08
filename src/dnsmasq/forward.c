@@ -263,29 +263,25 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
   /* new query */
   if (!forward)
     {
-      /* new query */
-      
+      if (lookup_domain(daemon->namebuff, gotname, &first, &last))
+	flags = is_local_answer(now, first, daemon->namebuff);
+      else
+	{
+	  /* no available server. */
+	  ede = EDE_NOT_READY;
+	  flags = 0;
+	}
+       
       /* don't forward A or AAAA queries for simple names, except the empty name */
-      if (option_bool(OPT_NODOTS_LOCAL) &&
+      if (!flags &&
+	  option_bool(OPT_NODOTS_LOCAL) &&
 	  (gotname & (F_IPV4 | F_IPV6)) &&
 	  !strchr(daemon->namebuff, '.') &&
 	  strlen(daemon->namebuff) != 0)
-	{
-	  flags = F_NOERR;
-	  goto reply;
-	}
-      
-      flags = 0;
-
-      /* no available server. */
-      if (!lookup_domain(daemon->namebuff, gotname, &first, &last))
-	{
-	  ede = EDE_NOT_READY;
-	  goto reply;
-	}
+	flags = check_for_local_domain(daemon->namebuff, now) ? F_NOERR : F_NXDOMAIN;
       
       /* Configured answer. */
-      if ((flags = is_local_answer(now, first, daemon->namebuff)))
+      if (flags || ede == EDE_NOT_READY)
 	goto reply;
       
       master = daemon->serverarray[first];
@@ -2142,16 +2138,25 @@ unsigned char *tcp_request(int confd, time_t now,
 	    {
 	      struct server *master;
 	      int start;
+
+	      if (lookup_domain(daemon->namebuff, gotname, &first, &last))
+		flags = is_local_answer(now, first, daemon->namebuff);
+	      else
+		{
+		  /* No configured servers */
+		  ede = EDE_NOT_READY;
+		  flags = 0;
+		}
 	      
 	      /* don't forward A or AAAA queries for simple names, except the empty name */
-	      if (option_bool(OPT_NODOTS_LOCAL) &&
+	      if (!flags &&
+		  option_bool(OPT_NODOTS_LOCAL) &&
 		  (gotname & (F_IPV4 | F_IPV6)) &&
 		  !strchr(daemon->namebuff, '.') &&
 		  strlen(daemon->namebuff) != 0)
-		flags = F_NOERR;
-	      else if (!lookup_domain(daemon->namebuff, gotname, &first, &last))
-		ede = EDE_NOT_READY;  /* No configured servers */
-	      else if (!(flags = is_local_answer(now, first, daemon->namebuff)))
+		flags = check_for_local_domain(daemon->namebuff, now) ? F_NOERR : F_NXDOMAIN;
+		
+	      if (!flags && ede != EDE_NOT_READY)
 		{
 		  master = daemon->serverarray[first];
 		  
@@ -2198,10 +2203,10 @@ unsigned char *tcp_request(int confd, time_t now,
 		      int status = tcp_key_recurse(now, STAT_OK, header, m, 0, daemon->namebuff, daemon->keyname, 
 						   serv, have_mark, mark, &keycount);
 		      char *result, *domain = "result";
-
+		      
 		      union all_addr a;
 		      a.log.ede = ede = errflags_to_ede(status);
-
+		      
 		      if (STAT_ISEQUAL(status, STAT_ABANDONED))
 			{
 			  result = "ABANDONED";
@@ -2245,7 +2250,7 @@ unsigned char *tcp_request(int confd, time_t now,
 	  }
 	  /**********************************************/
 	}
-      
+	
       /* In case of local answer or no connections made. */
       if (m == 0)
 	{
