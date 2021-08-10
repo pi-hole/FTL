@@ -53,7 +53,7 @@ int get_number_of_queries_in_DB(sqlite3 *db)
 	return result;
 }
 
-bool DB_save_queries(sqlite3 *db)
+int DB_save_queries(sqlite3 *db)
 {
 	// Start database timer
 	if(config.debug & DEBUG_DATABASE)
@@ -66,14 +66,14 @@ bool DB_save_queries(sqlite3 *db)
 		if((db = dbopen(false)) == NULL)
 		{
 			logg("DB_save_queries() - Failed to open DB");
-			return NULL;
+			return -1;
 		}
 
 		// Successful
 		db_opened = true;
 	}
 
-	unsigned int saved = 0;
+	int saved = 0;
 	bool error = false;
 	sqlite3_stmt* stmt = NULL;
 
@@ -89,7 +89,7 @@ bool DB_save_queries(sqlite3 *db)
 		logg("%s: Storing queries in long-term database failed: %s", text, sqlite3_errstr(rc));
 		if(db_opened)
 			dbclose(&db);
-		return false;
+		return -1;
 	}
 
 	rc = sqlite3_prepare_v2(db, "INSERT INTO queries VALUES (NULL,?,?,?,?,?,?,?)", -1, &stmt, NULL);
@@ -113,7 +113,7 @@ bool DB_save_queries(sqlite3 *db)
 		saving_failed_before = true;
 		if(db_opened)
 			dbclose(&db);
-		return false;
+		return -1;
 	}
 
 	// Get last ID stored in the database
@@ -259,7 +259,7 @@ bool DB_save_queries(sqlite3 *db)
 		if(db_opened)
 			dbclose(&db);
 
-		return false;
+		return -1;
 	}
 
 	// Finish prepared statement
@@ -277,7 +277,7 @@ bool DB_save_queries(sqlite3 *db)
 		if(db_opened)
 			dbclose(&db);
 
-		return false;
+		return -1;
 	}
 
 	// Store index for next loop interation round and update last time stamp
@@ -303,7 +303,7 @@ bool DB_save_queries(sqlite3 *db)
 	if(db_opened)
 		dbclose(&db);
 
-	return true;
+	return saved;
 }
 
 void delete_old_queries_in_DB(sqlite3 *db)

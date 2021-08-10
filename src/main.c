@@ -114,8 +114,9 @@ int main (int argc, char* argv[])
 	if(config.DBexport)
 	{
 		lock_shm();
-		if(DB_save_queries(NULL))
-			logg("Finished final database update");
+		int saved;
+		if((saved = DB_save_queries(NULL)) > -1)
+			logg("Finished final database update (stored %d queries)", saved);
 		unlock_shm();
 	}
 
