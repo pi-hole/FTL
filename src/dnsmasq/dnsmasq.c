@@ -113,7 +113,6 @@ int main_dnsmasq (int argc, char **argv)
   daemon->packet_buff_sz = daemon->edns_pktsz + MAXDNAME + RRFIXEDSZ;
   daemon->packet = safe_malloc(daemon->packet_buff_sz);
   
-  daemon->addrbuff = safe_malloc(ADDRSTRLEN);
   if (option_bool(OPT_EXTRALOG))
     daemon->addrbuff2 = safe_malloc(ADDRSTRLEN);
   

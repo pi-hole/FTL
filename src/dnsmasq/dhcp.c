@@ -468,8 +468,11 @@ void dhcp_packet(time_t now, int pxe_fd)
 
   /* This can fail when, eg, iptables DROPS destination 255.255.255.255 */
   if (errno != 0)
-    my_syslog(MS_DHCP | LOG_WARNING, _("Error sending DHCP packet to %s: %s"),
-	      inet_ntoa(dest.sin_addr), strerror(errno));
+    {
+      inet_ntop(AF_INET, &dest.sin_addr, daemon->addrbuff, ADDRSTRLEN);
+      my_syslog(MS_DHCP | LOG_WARNING, _("Error sending DHCP packet to %s: %s"),
+		daemon->addrbuff, strerror(errno));
+    }
 }
 
 /* check against secondary interface addresses */
@@ -521,10 +524,11 @@ static void guess_range_netmask(struct in_addr addr, struct in_addr netmask)
 	    !(is_same_net(addr, context->start, netmask) &&
 	      is_same_net(addr, context->end, netmask)))
 	  {
-	    strcpy(daemon->dhcp_buff, inet_ntoa(context->start));
-	    strcpy(daemon->dhcp_buff2, inet_ntoa(context->end));
+	    inet_ntop(AF_INET, &context->start, daemon->dhcp_buff, sizeof(DHCP_BUFF_SZ));
+	    inet_ntop(AF_INET, &context->end, daemon->dhcp_buff2, sizeof(DHCP_BUFF_SZ));
+	    inet_ntop(AF_INET, &netmask, daemon->addrbuff, ADDRSTRLEN);
 	    my_syslog(MS_DHCP | LOG_WARNING, _("DHCP range %s -- %s is not consistent with netmask %s"),
-		      daemon->dhcp_buff, daemon->dhcp_buff2, inet_ntoa(netmask));
+		      daemon->dhcp_buff, daemon->dhcp_buff2, daemon->addrbuff);
 	  }	
 	context->netmask = netmask;
       }
@@ -1097,7 +1101,8 @@ static int  relay_upstream4(struct dhcp_relay *relay, struct dhcp_packet *mess, 
       if (option_bool(OPT_LOG_OPTS))
 	{
 	  inet_ntop(AF_INET, &relay->local, daemon->addrbuff, ADDRSTRLEN);
-	  my_syslog(MS_DHCP | LOG_INFO, _("DHCP relay %s -> %s"), daemon->addrbuff, inet_ntoa(relay->server.addr4));
+	  inet_ntop(AF_INET, &relay->server.addr4, daemon->dhcp_buff2, DHCP_BUFF_SZ);
+	  my_syslog(MS_DHCP | LOG_INFO, _("DHCP relay %s -> %s"), daemon->addrbuff, daemon->dhcp_buff2);
 	}
       
       /* Save this for replies */
