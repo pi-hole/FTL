@@ -922,7 +922,7 @@ void dhcp_read_ethers(void)
       
       if (!*cp)
 	{
-	  if ((addr.s_addr = inet_addr(ip)) == (in_addr_t)-1)
+	  if (inet_pton(AF_INET, ip, &addr.s_addr) < 1)
 	    {
 	      my_syslog(MS_DHCP | LOG_ERR, _("bad address at %s line %d"), ETHERSFILE, lineno); 
 	      continue;
