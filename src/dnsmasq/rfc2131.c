@@ -1698,9 +1698,9 @@ static void log_packet(char *type, void *addr, unsigned char *ext_mac,
   if (!err && !option_bool(OPT_LOG_OPTS) && option_bool(OPT_QUIET_DHCP))
     return;
   
-  daemon->dhcp_buff2[0] = 0;
+  daemon->addrbuff[0] = 0;
   if (addr)
-    inet_ntop(AF_INET, addr, daemon->dhcp_buff2, DHCP_BUFF_SZ - 1);
+    inet_ntop(AF_INET, addr, daemon->addrbuff, ADDRSTRLEN);
   
   print_mac(daemon->namebuff, ext_mac, mac_len);
   
@@ -1709,7 +1709,7 @@ static void log_packet(char *type, void *addr, unsigned char *ext_mac,
 	      ntohl(xid), 
 	      type,
 	      interface, 
-	      daemon->dhcp_buff2,
+	      daemon->addrbuff,
 	      addr ? " " : "",
 	      daemon->namebuff,
 	      string ? string : "",
@@ -1718,7 +1718,7 @@ static void log_packet(char *type, void *addr, unsigned char *ext_mac,
     my_syslog(MS_DHCP | LOG_INFO, "%s(%s) %s%s%s %s%s",
 	      type,
 	      interface, 
-	      daemon->dhcp_buff2,
+	      daemon->addrbuff,
 	      addr ? " " : "",
 	      daemon->namebuff,
 	      string ? string : "",
@@ -1726,9 +1726,9 @@ static void log_packet(char *type, void *addr, unsigned char *ext_mac,
   
 #ifdef HAVE_UBUS
   if (!strcmp(type, "DHCPACK"))
-    ubus_event_bcast("dhcp.ack", daemon->namebuff, addr ? daemon->dhcp_buff2 : NULL, string, interface);
+    ubus_event_bcast("dhcp.ack", daemon->namebuff, addr ? daemon->addrbuff : NULL, string, interface);
   else if (!strcmp(type, "DHCPRELEASE"))
-    ubus_event_bcast("dhcp.release", daemon->namebuff, addr ? daemon->dhcp_buff2 : NULL, string, interface);
+    ubus_event_bcast("dhcp.release", daemon->namebuff, addr ? daemon->addrbuff : NULL, string, interface);
 #endif
 }
 
