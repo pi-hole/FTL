@@ -524,8 +524,8 @@ static void guess_range_netmask(struct in_addr addr, struct in_addr netmask)
 	    !(is_same_net(addr, context->start, netmask) &&
 	      is_same_net(addr, context->end, netmask)))
 	  {
-	    inet_ntop(AF_INET, &context->start, daemon->dhcp_buff, sizeof(DHCP_BUFF_SZ));
-	    inet_ntop(AF_INET, &context->end, daemon->dhcp_buff2, sizeof(DHCP_BUFF_SZ));
+	    inet_ntop(AF_INET, &context->start, daemon->dhcp_buff, DHCP_BUFF_SZ);
+	    inet_ntop(AF_INET, &context->end, daemon->dhcp_buff2, DHCP_BUFF_SZ);
 	    inet_ntop(AF_INET, &netmask, daemon->addrbuff, ADDRSTRLEN);
 	    my_syslog(MS_DHCP | LOG_WARNING, _("DHCP range %s -- %s is not consistent with netmask %s"),
 		      daemon->dhcp_buff, daemon->dhcp_buff2, daemon->addrbuff);
