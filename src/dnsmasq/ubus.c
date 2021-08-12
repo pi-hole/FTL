@@ -81,12 +81,12 @@ static void ubus_subscribe_cb(struct ubus_context *ctx, struct ubus_object *obj)
 
 static void ubus_destroy(struct ubus_context *ubus)
 {
-  ubus_free(ubus);
-  daemon->ubus = NULL;
-  
   // Forces re-initialization when we're reusing the same definitions later on.
   ubus_object.id = 0;
   ubus_object_type.id = 0;
+
+  ubus_free(ubus);
+  daemon->ubus = NULL;
 }
 
 static void ubus_disconnect_cb(struct ubus_context *ubus)
