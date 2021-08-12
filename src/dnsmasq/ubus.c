@@ -21,6 +21,7 @@
 #include <libubus.h>
 
 static struct blob_buf b;
+static int notify;
 static int error_logged = 0;
 
 static int ubus_handle_metrics(struct ubus_context *ctx, struct ubus_object *obj,
@@ -77,6 +78,7 @@ static void ubus_subscribe_cb(struct ubus_context *ctx, struct ubus_object *obj)
   (void)ctx;
 
   my_syslog(LOG_DEBUG, _("UBus subscription callback: %s subscriber(s)"), obj->has_subscribers ? "1" : "0");
+  notify = obj->has_subscribers;
 }
 
 static void ubus_destroy(struct ubus_context *ubus)
@@ -310,7 +312,7 @@ void ubus_event_bcast(const char *type, const char *mac, const char *ip, const c
   struct ubus_context *ubus = (struct ubus_context *)daemon->ubus;
   int ret;
 
-  if (!ubus || !ubus_object.has_subscribers)
+  if (!ubus || !notify)
     return;
 
   blob_buf_init(&b, BLOBMSG_TYPE_TABLE);
@@ -334,7 +336,7 @@ void ubus_event_bcast_connmark_allowlist_refused(u32 mark, const char *name)
   struct ubus_context *ubus = (struct ubus_context *)daemon->ubus;
   int ret;
 
-  if (!ubus || !ubus_object.has_subscribers)
+  if (!ubus || !notify)
     return;
 
   blob_buf_init(&b, 0);
@@ -351,7 +353,7 @@ void ubus_event_bcast_connmark_allowlist_resolved(u32 mark, const char *name, co
   struct ubus_context *ubus = (struct ubus_context *)daemon->ubus;
   int ret;
 
-  if (!ubus || !ubus_object.has_subscribers)
+  if (!ubus || !notify)
     return;
 
   blob_buf_init(&b, 0);
