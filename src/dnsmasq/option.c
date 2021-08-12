@@ -5031,15 +5031,33 @@ static int one_file(char *file, int hard_opt)
   return 1;
 }
 
+static int file_filter(const struct dirent *ent)
+{
+  size_t lenfile = strlen(ent->d_name);
+
+  /* ignore emacs backups and dotfiles */
+
+  if (lenfile == 0 || 
+      ent->d_name[lenfile - 1] == '~' ||
+      (ent->d_name[0] == '#' && ent->d_name[lenfile - 1] == '#') ||
+      ent->d_name[0] == '.')
+    return 0;
+
+  return 1;
+}
 /* expand any name which is a directory */
 struct hostsfile *expand_filelist(struct hostsfile *list)
 {
   unsigned int i;
-  struct hostsfile *ah;
+  int entcnt, n;
+  struct hostsfile *ah, *last, *next, **up;
+  struct dirent **namelist;
 
   /* find largest used index */
   for (i = SRC_AH, ah = list; ah; ah = ah->next)
     {
+      last = ah;
+      
       if (i <= ah->index)
 	i = ah->index + 1;
 
@@ -5055,46 +5073,48 @@ struct hostsfile *expand_filelist(struct hostsfile *list)
 	struct stat buf;
 	if (stat(ah->fname, &buf) != -1 && S_ISDIR(buf.st_mode))
 	  {
-	    DIR *dir_stream;
 	    struct dirent *ent;
 	    
 	    /* don't read this as a file */
 	    ah->flags |= AH_INACTIVE;
 	    
-	    if (!(dir_stream = opendir(ah->fname)))
+	    entcnt = scandir(ah->fname, &namelist, file_filter, alphasort);
+	    if (entcnt < 0)
 	      my_syslog(LOG_ERR, _("cannot access directory %s: %s"), 
 			ah->fname, strerror(errno));
 	    else
 	      {
-		while ((ent = readdir(dir_stream)))
+		for (n = 0; n < entcnt; n++)
 		  {
+		    ent = namelist[n];
 		    size_t lendir = strlen(ah->fname);
 		    size_t lenfile = strlen(ent->d_name);
 		    struct hostsfile *ah1;
 		    char *path;
-		    
-		    /* ignore emacs backups and dotfiles */
-		    if (lenfile == 0 || 
-			ent->d_name[lenfile - 1] == '~' ||
-			(ent->d_name[0] == '#' && ent->d_name[lenfile - 1] == '#') ||
-			ent->d_name[0] == '.')
-		      continue;
 		    
 		    /* see if we have an existing record.
 		       dir is ah->fname 
 		       file is ent->d_name
 		       path to match is ah1->fname */
 		    
-		    for (ah1 = list; ah1; ah1 = ah1->next)
+		    for (up = &list, ah1 = list; ah1; ah1 = next)
 		      {
+			next = ah1->next;
+
 			if (lendir < strlen(ah1->fname) &&
 			    strstr(ah1->fname, ah->fname) == ah1->fname &&
 			    ah1->fname[lendir] == '/' &&
 			    strcmp(ah1->fname + lendir + 1, ent->d_name) == 0)
 			  {
 			    ah1->flags &= ~AH_INACTIVE;
+			    /* If found, remove from list to re-insert at the end.
+			       Unless it's already at the end. */
+			    if (last != ah1)
+			      *up = next;
 			    break;
 			  }
+
+			up = &ah1->next;
 		      }
 		    
 		    /* make new record */
@@ -5115,17 +5135,21 @@ struct hostsfile *expand_filelist(struct hostsfile *list)
 			ah1->fname = path;
 			ah1->index = i++;
 			ah1->flags = AH_DIR;
-			ah1->next = list;
-			list = ah1;
 		      }
+
+		    /* Edge case, may be the last in the list anyway */
+		    if (last != ah1)
+		      last->next = ah1;
+		    ah1->next = NULL;
+		    last = ah1;
 		    
 		    /* inactivate record if not regular file */
 		    if ((ah1->flags & AH_DIR) && stat(ah1->fname, &buf) != -1 && !S_ISREG(buf.st_mode))
 		      ah1->flags |= AH_INACTIVE; 
 		    
 		  }
-		closedir(dir_stream);
 	      }
+	    free(namelist);
 	  }
       }
   
