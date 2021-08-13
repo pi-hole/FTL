@@ -140,7 +140,6 @@ bool __attribute__((pure)) resolve_this_name(const char *ipaddr)
 char *resolveHostname(const char *addr)
 {
 	// Get host name
-	struct hostent *he = NULL;
 	char *hostname = NULL;
 
 	if(config.debug & DEBUG_RESOLVER)
@@ -210,30 +209,32 @@ char *resolveHostname(const char *addr)
 	if(config.debug & DEBUG_RESOLVER)
 		print_used_resolvers("Setting nameservers to:");
 
-	// Step 3: Try to resolve addresses
-	if(IPv6) // Resolve IPv6 address
+	// Step 3: Try to resolve address
+	struct sockaddr_storage ss = { 0 };
+	if(IPv6)
 	{
-		struct in6_addr ipaddr;
-		inet_pton(AF_INET6, addr, &ipaddr);
-		// Known to leak some tiny amounts of memory under certain conditions
-		he = gethostbyaddr(&ipaddr, sizeof ipaddr, AF_INET6);
+		// Prepare binary form of IPv6 address
+		ss.ss_family = AF_INET6;
+		inet_pton(ss.ss_family, addr, &(((struct sockaddr_in6 *)&ss)->sin6_addr));
 	}
-	else // Resolve IPv4 address
+	else
 	{
-		struct in_addr ipaddr;
-		inet_pton(AF_INET, addr, &ipaddr);
-		// Known to leak some tiny amounts of memory under certain conditions
-		he = gethostbyaddr(&ipaddr, sizeof ipaddr, AF_INET);
+		// Prepare binary form of IPv4 address
+		ss.ss_family = AF_INET;
+		inet_pton(ss.ss_family, addr, &(((struct sockaddr_in *)&ss)->sin_addr));
 	}
 
-	// Step 4: Check if gethostbyaddr() returned a host name
-	// First check for he not being NULL before trying to dereference it
-	if(he != NULL)
+	// Try to resolve address
+	char host[NI_MAXHOST] = { 0 };
+	int ret = getnameinfo((struct sockaddr*)&ss, sizeof(ss), host, sizeof(host), NULL, 0, NI_NAMEREQD);
+
+	// Step 4: Check if getnameinfo() returned a host name
+	if(ret == 0)
 	{
-		if(valid_hostname(he->h_name, addr))
+		if(valid_hostname(host, addr))
 		{
 			// Return hostname copied to new memory location
-			hostname = strdup(he->h_name);
+			hostname = strdup(host);
 		}
 		else
 		{
@@ -242,6 +243,10 @@ char *resolveHostname(const char *addr)
 
 		if(config.debug & DEBUG_RESOLVER)
 			logg(" ---> \"%s\" (found internally)", hostname);
+	}
+	else if(config.debug & DEBUG_RESOLVER)
+	{
+		logg(" ---> \"\" (not found internally: %s", gai_strerror(ret));
 	}
 
 	// Step 5: Restore resolvers (without forced FTL)
@@ -257,29 +262,17 @@ char *resolveHostname(const char *addr)
 	// resolvers (necessary for docker and friends)
 	if(hostname == NULL)
 	{
-		if(IPv6) // Resolve IPv6 address
-		{
-			struct in6_addr ipaddr;
-			inet_pton(AF_INET6, addr, &ipaddr);
-			// Known to leak some tiny amounts of memory under certain conditions
-			he = gethostbyaddr(&ipaddr, sizeof ipaddr, AF_INET6);
-		}
-		else // Resolve IPv4 address
-		{
-			struct in_addr ipaddr;
-			inet_pton(AF_INET, addr, &ipaddr);
-			// Known to leak some tiny amounts of memory under certain conditions
-			he = gethostbyaddr(&ipaddr, sizeof ipaddr, AF_INET);
-		}
+		// Try to resolve address
+		ret = getnameinfo((struct sockaddr*)&ss, sizeof(ss), host, sizeof(host), NULL, 0, NI_NAMEREQD);
 
 		// Step 6.1: Check if gethostbyaddr() returned a host name this time
 		// First check for he not being NULL before trying to dereference it
-		if(he != NULL)
+		if(ret == 0)
 		{
-			if(valid_hostname(he->h_name, addr))
+			if(valid_hostname(host, addr))
 			{
 				// Return hostname copied to new memory location
-				hostname = strdup(he->h_name);
+				hostname = strdup(host);
 			}
 			else
 			{
@@ -295,7 +288,9 @@ char *resolveHostname(const char *addr)
 			hostname = strdup("");
 
 			if(config.debug & DEBUG_RESOLVER)
-				logg(" ---> \"%s\" (%s)", hostname, he != NULL ? he->h_name : "N/A");
+			{
+				logg(" ---> \"\" (not found externally: %s)", gai_strerror(ret));
+			}
 		}
 	}
 
@@ -454,7 +449,7 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 					reason = "Only refreshing IPv4 names";
 				else if(config.refresh_hostnames == REFRESH_UNKNOWN)
 					reason = "Looking only for unknown hostnames";
-				
+
 				logg("Skipping client %s (%s) because it should not be refreshed: %s",
 				     getstr(ippos), getstr(oldnamepos), reason);
 			}
