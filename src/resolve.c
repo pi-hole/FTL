@@ -265,7 +265,7 @@ char *resolveHostname(const char *addr)
 		// Try to resolve address
 		ret = getnameinfo((struct sockaddr*)&ss, sizeof(ss), host, sizeof(host), NULL, 0, NI_NAMEREQD);
 
-		// Step 6.1: Check if gethostbyaddr() returned a host name this time
+		// Step 6.1: Check if getnameinfo() returned a host name this time
 		// First check for he not being NULL before trying to dereference it
 		if(ret == 0)
 		{
@@ -329,6 +329,8 @@ static size_t resolveAndAddHostname(size_t ippos, size_t oldnamepos)
 	{
 		free(newname);
 		newname = getNameFromIP(NULL, ipaddr);
+		if(newname != NULL && config.debug & DEBUG_RESOLVER)
+			logg(" ---> \"%s\" (provided by database)", newname);
 	}
 
 	// Only store new newname if it is valid and differs from oldname
