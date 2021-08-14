@@ -180,6 +180,62 @@ char *resolveHostname(const char *addr)
 	if(strstr(addr,":") != NULL)
 		IPv6 = true;
 
+	// Step 1: Convert address into binary form
+	struct sockaddr_storage ss = { 0 };
+	char *addrp = NULL;
+	if(IPv6)
+	{
+		// Get binary form of IPv6 address
+		ss.ss_family = AF_INET6;
+		inet_pton(ss.ss_family, addr, &(((struct sockaddr_in6 *)&ss)->sin6_addr));
+		addrp = (char*)&(((struct sockaddr_in6 *)&ss)->sin6_addr);
+	}
+	else
+	{
+		// Get binary form of IPv4 address
+		ss.ss_family = AF_INET;
+		inet_pton(ss.ss_family, addr, &(((struct sockaddr_in *)&ss)->sin_addr));
+		addrp = (char*)&(((struct sockaddr_in *)&ss)->sin_addr);
+	}
+
+	// Step 2: Read HOSTS file entries
+	bool found = false;
+	struct hostent *he = NULL;
+	// sethostent() opens/rewinds the prefix.ETC.HOSTS file
+	sethostent(1);
+	while(!found && (he = gethostent()) != NULL)
+	{
+		// Skip any non-IPv6 and non-IPv4 entries
+		if((IPv6 && he->h_addrtype != AF_INET6) || he->h_addrtype != AF_INET)
+			continue;
+
+		// Loop over addresses for this HOSTS record
+		// h_addr_list is a NULL-terminated array of network addresses for the
+		// host
+		for (char **p = he->h_addr_list; *p; p++)
+		{
+			if(memcmp(*p, addrp, he->h_length) == 0)
+			{
+				hostname = strdup(he->h_name);
+				found = true;
+				break;
+			}
+		}
+	}
+
+	// endhostent() closes the prefix.ETC.HOSTS file
+	endhostent();
+
+	if(hostname != NULL)
+	{
+		// Return early when we found the entry in the HOSTS file
+		// No need to generate any PTR queries in this case
+		if(config.debug & DEBUG_RESOLVER)
+			logg(" ---> \"%s\" (found in HOSTS)", hostname);
+
+		return hostname;
+	}
+
 	// Initialize resolver subroutines if trying to resolve for the first time
 	// res_init() reads resolv.conf to get the default domain name and name server
 	// address(es). If no server is given, the local host is tried. If no domain
@@ -190,7 +246,7 @@ char *resolveHostname(const char *addr)
 		res_initialized = true;
 	}
 
-	// Step 1: Backup configured name servers and invalidate them
+	// Step 3: Backup configured name servers and invalidate them
 	struct in_addr ns_addr_bck[MAXNS];
 	in_port_t ns_port_bck[MAXNS];
 	for(unsigned int i = 0u; i < MAXNS; i++)
@@ -199,7 +255,7 @@ char *resolveHostname(const char *addr)
 		ns_port_bck[i] = _res.nsaddr_list[i].sin_port;
 		_res.nsaddr_list[i].sin_addr.s_addr = 0; // 0.0.0.0
 	}
-	// Step 2: Set 127.0.0.1 (FTL) as the only resolver
+	// Step 4: Set 127.0.0.1 (FTL) as the only resolver
 	const char *FTLip = "127.0.0.1";
 	// Set resolver address
 	inet_pton(AF_INET, FTLip, &_res.nsaddr_list[0].sin_addr);
@@ -209,26 +265,11 @@ char *resolveHostname(const char *addr)
 	if(config.debug & DEBUG_RESOLVER)
 		print_used_resolvers("Setting nameservers to:");
 
-	// Step 3: Try to resolve address
-	struct sockaddr_storage ss = { 0 };
-	if(IPv6)
-	{
-		// Prepare binary form of IPv6 address
-		ss.ss_family = AF_INET6;
-		inet_pton(ss.ss_family, addr, &(((struct sockaddr_in6 *)&ss)->sin6_addr));
-	}
-	else
-	{
-		// Prepare binary form of IPv4 address
-		ss.ss_family = AF_INET;
-		inet_pton(ss.ss_family, addr, &(((struct sockaddr_in *)&ss)->sin_addr));
-	}
-
-	// Try to resolve address
+	// Step 5: Try to resolve address
 	char host[NI_MAXHOST] = { 0 };
 	int ret = getnameinfo((struct sockaddr*)&ss, sizeof(ss), host, sizeof(host), NULL, 0, NI_NAMEREQD);
 
-	// Step 4: Check if getnameinfo() returned a host name
+	// Step 6: Check if getnameinfo() returned a host name
 	if(ret == 0)
 	{
 		if(valid_hostname(host, addr))
@@ -249,7 +290,7 @@ char *resolveHostname(const char *addr)
 		logg(" ---> \"\" (not found internally: %s", gai_strerror(ret));
 	}
 
-	// Step 5: Restore resolvers (without forced FTL)
+	// Step 7: Restore resolvers (without forced FTL)
 	for(unsigned int i = 0u; i < MAXNS; i++)
 	{
 		_res.nsaddr_list[i].sin_addr = ns_addr_bck[i];
@@ -258,7 +299,7 @@ char *resolveHostname(const char *addr)
 	if(config.debug & DEBUG_RESOLVER)
 		print_used_resolvers("Setting nameservers back to default:");
 
-	// Step 6: If no host name was found before, try again with system-configured
+	// Step 8: If no host name was found before, try again with system-configured
 	// resolvers (necessary for docker and friends)
 	if(hostname == NULL)
 	{
