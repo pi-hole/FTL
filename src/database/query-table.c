@@ -560,6 +560,7 @@ void DB_read_queries(void)
 			case QUERY_GRAVITY_CNAME: // Blocked by gravity (inside CNAME path)
 			case QUERY_REGEX_CNAME: // Blocked by regex blacklist (inside CNAME path)
 			case QUERY_BLACKLIST_CNAME: // Blocked by exact blacklist (inside CNAME path)
+			case QUERY_DBBUSY: // Blocked because gravity database was busy
 				query->flags.blocked = true;
 				// Get domain pointer
 				domainsData* domain = getDomain(domainID, true);

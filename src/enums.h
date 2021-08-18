@@ -44,6 +44,7 @@ enum query_status {
 	QUERY_RETRIED,
 	QUERY_RETRIED_DNSSEC,
 	QUERY_IN_PROGRESS,
+	QUERY_DBBUSY,
 	QUERY_STATUS_MAX
 } __attribute__ ((packed));
 
@@ -60,6 +61,7 @@ enum reply_type {
 	REPLY_NOTIMP,
 	REPLY_OTHER,
 	REPLY_DNSSEC,
+	REPLY_NONE,
 	QUERY_REPLY_MAX
 	}  __attribute__ ((packed));
 
@@ -168,6 +170,18 @@ enum refresh_hostnames {
 	REFRESH_NONE
 } __attribute__ ((packed));
 
+enum db_result {
+	NOT_FOUND,
+	FOUND,
+	LIST_NOT_AVAILABLE
+} __attribute__ ((packed));
+
+enum busy_reply {
+	BUSY_BLOCK,
+	BUSY_ALLOW,
+	BUSY_REFUSE,
+	BUSY_DROP
+} __attribute__ ((packed));
 
 enum thread_types {
 	TELNETv4,

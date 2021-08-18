@@ -1129,14 +1129,13 @@ int gravityDB_count(const enum gravity_tables list)
 	return result;
 }
 
-static bool domain_in_list(const char *domain, sqlite3_stmt* stmt, const char* listname)
+static enum db_result domain_in_list(const char *domain, sqlite3_stmt *stmt, const char *listname)
 {
 	// Do not try to bind text to statement when database is not available
 	if(!gravityDB_opened && !gravityDB_open())
 	{
-		logg("domain_in_list(\"%s\", %p, %s): Gravity database not available",
-		     domain, stmt, listname);
-		return false;
+		logg("Gravity database not available (%s)", listname);
+		return LIST_NOT_AVAILABLE;
 	}
 
 	int rc;
@@ -1151,7 +1150,7 @@ static bool domain_in_list(const char *domain, sqlite3_stmt* stmt, const char* l
 	{
 		logg("domain_in_list(\"%s\", %p, %s): Failed to bind domain: %s",
 		     domain, stmt, listname, sqlite3_errstr(rc));
-		return false;
+		return LIST_NOT_AVAILABLE;
 	}
 
 	// Perform step
@@ -1159,11 +1158,10 @@ static bool domain_in_list(const char *domain, sqlite3_stmt* stmt, const char* l
 	if(rc == SQLITE_BUSY)
 	{
 		// Database is busy
-		logg("domain_in_list(\"%s\", %p, %s): Database is busy, assuming domain is NOT on list",
-		     domain, stmt, listname);
+		logg("Gravity database is busy (%s)", listname);
 		sqlite3_reset(stmt);
 		sqlite3_clear_bindings(stmt);
-		return false;
+		return LIST_NOT_AVAILABLE;
 	}
 	else if(rc != SQLITE_ROW)
 	{
@@ -1173,7 +1171,7 @@ static bool domain_in_list(const char *domain, sqlite3_stmt* stmt, const char* l
 		     domain, stmt, listname, sqlite3_errstr(rc));
 		sqlite3_reset(stmt);
 		sqlite3_clear_bindings(stmt);
-		return false;
+		return LIST_NOT_AVAILABLE;
 	}
 
 	// Get result of query "SELECT EXISTS(...)"
@@ -1195,7 +1193,7 @@ static bool domain_in_list(const char *domain, sqlite3_stmt* stmt, const char* l
 
 	// Return if domain was found in current table
 	// SELECT EXISTS(...) either returns 0 (false) or 1 (true).
-	return (result == 1);
+	return (result == 1) ? FOUND : NOT_FOUND;
 }
 
 void gravityDB_reload_groups(clientsData* client)
@@ -1225,7 +1223,7 @@ static void gravityDB_client_check_again(clientsData* client)
 	}
 }
 
-bool in_whitelist(const char *domain, const DNSCacheData *dns_cache, clientsData* client)
+enum db_result in_whitelist(const char *domain, const DNSCacheData *dns_cache, clientsData* client)
 {
 	// If list statement is not ready and cannot be initialized (e.g. no
 	// access to the database), we return false to prevent an FTL crash
@@ -1242,27 +1240,31 @@ bool in_whitelist(const char *domain, const DNSCacheData *dns_cache, clientsData
 	// the database), we return false (not in whitelist) to prevent an FTL crash
 	if(stmt == NULL && !gravityDB_prepare_client_statements(client))
 	{
-		logg("ERROR: Gravity database not available, assuming domain is not whitelisted");
-		return false;
+		logg("ERROR: Gravity database not available");
+		return LIST_NOT_AVAILABLE;
 	}
 
 	// Update statement if has just been initialized
 	if(stmt == NULL)
-	{
 		stmt = whitelist_stmt->get(whitelist_stmt, client->id);
-	}
 
 	// We have to check both the exact whitelist (using a prepared database statement)
 	// as well the compiled regex whitelist filters to check if the current domain is
-	// whitelisted. Due to short-circuit-evaluation in C, the regex evaluations is executed
-	// only if the exact whitelist lookup does not deliver a positive match. This is an
-	// optimization as the database lookup will most likely hit (a) more domains and (b)
-	// will be faster (given a sufficiently large number of regex whitelisting filters).
-	return domain_in_list(domain, stmt, "whitelist") ||
-	       match_regex(domain, dns_cache, client->id, REGEX_WHITELIST, false) != -1;
+	// whitelisted.
+	enum db_result on_whitelist = domain_in_list(domain, stmt, "whitelist");
+
+	// For performance reasons, the regex evaluations is executed only if the
+	// exact whitelist lookup does not deliver a positive match. This is an
+	// optimization as the database lookup will most likely hit (a) more domains
+	// and (b) will be faster (given a sufficiently large number of regex
+	// whitelisting filters).
+	if(on_whitelist == NOT_FOUND)
+		on_whitelist = match_regex(domain, dns_cache, client->id, REGEX_WHITELIST, false) != -1;
+
+	return on_whitelist;
 }
 
-bool in_gravity(const char *domain, clientsData* client)
+enum db_result in_gravity(const char *domain, clientsData *client)
 {
 	// If list statement is not ready and cannot be initialized (e.g. no
 	// access to the database), we return false to prevent an FTL crash
@@ -1279,20 +1281,18 @@ bool in_gravity(const char *domain, clientsData* client)
 	// the database), we return false (not in gravity list) to prevent an FTL crash
 	if(stmt == NULL && !gravityDB_prepare_client_statements(client))
 	{
-		logg("ERROR: Gravity database not available, assuming domain is not gravity blocked");
-		return false;
+		logg("ERROR: Gravity database not available");
+		return LIST_NOT_AVAILABLE;
 	}
 
 	// Update statement if has just been initialized
 	if(stmt == NULL)
-	{
 		stmt = gravity_stmt->get(gravity_stmt, client->id);
-	}
 
 	return domain_in_list(domain, stmt, "gravity");
 }
 
-inline bool in_blacklist(const char *domain, clientsData* client)
+enum db_result in_blacklist(const char *domain, clientsData *client)
 {
 	// If list statement is not ready and cannot be initialized (e.g. no
 	// access to the database), we return false to prevent an FTL crash
@@ -1309,15 +1309,13 @@ inline bool in_blacklist(const char *domain, clientsData* client)
 	// the database), we return false (not in blacklist) to prevent an FTL crash
 	if(stmt == NULL && !gravityDB_prepare_client_statements(client))
 	{
-		logg("ERROR: Gravity database not available, assuming domain is not blacklisted");
-		return false;
+		logg("ERROR: Gravity database not available");
+		return LIST_NOT_AVAILABLE;
 	}
 
 	// Update statement if has just been initialized
 	if(stmt == NULL)
-	{
 		stmt = blacklist_stmt->get(blacklist_stmt, client->id);
-	}
 
 	return domain_in_list(domain, stmt, "blacklist");
 }
@@ -1330,7 +1328,7 @@ bool in_auditlist(const char *domain)
 		return false;
 
 	// We check the domain_audit table for the given domain
-	return domain_in_list(domain, auditlist_stmt, "auditlist");
+	return domain_in_list(domain, auditlist_stmt, "auditlist") == FOUND;
 }
 
 bool gravityDB_get_regex_client_groups(clientsData* client, const unsigned int numregex, const regexData *regex,
