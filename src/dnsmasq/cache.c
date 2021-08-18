@@ -484,7 +484,7 @@ static struct crec *cache_scan_free(char *name, union all_addr *addr, unsigned s
 	  else if (!(crecp->flags & (F_HOSTS | F_DHCP | F_CONFIG)) &&
 		   (flags & crecp->flags & F_REVERSE) && 
 		   (flags & crecp->flags & (F_IPV4 | F_IPV6)) &&
-		   memcmp(&crecp->addr, addr, addrlen) == 0)
+		   addr && memcmp(&crecp->addr, addr, addrlen) == 0)
 	    {
 	      *up = crecp->hash_next;
 	      cache_unlink(crecp);
@@ -2079,7 +2079,7 @@ void _log_query(unsigned int flags, char *name, union all_addr *addr, char *arg,
   else
     source = "cached";
   
-  if (strlen(name) == 0)
+  if (name && !name[0])
     name = ".";
   if (option_bool(OPT_EXTRALOG))
     {
