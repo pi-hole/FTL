@@ -1228,7 +1228,7 @@ enum db_result in_whitelist(const char *domain, const DNSCacheData *dns_cache, c
 	// If list statement is not ready and cannot be initialized (e.g. no
 	// access to the database), we return false to prevent an FTL crash
 	if(whitelist_stmt == NULL)
-		return false;
+		return LIST_NOT_AVAILABLE;
 
 	// Check if this client needs a rechecking of group membership
 	gravityDB_client_check_again(client);
@@ -1269,7 +1269,7 @@ enum db_result in_gravity(const char *domain, clientsData *client)
 	// If list statement is not ready and cannot be initialized (e.g. no
 	// access to the database), we return false to prevent an FTL crash
 	if(gravity_stmt == NULL)
-		return false;
+		return LIST_NOT_AVAILABLE;
 
 	// Check if this client needs a rechecking of group membership
 	gravityDB_client_check_again(client);
@@ -1297,7 +1297,7 @@ enum db_result in_blacklist(const char *domain, clientsData *client)
 	// If list statement is not ready and cannot be initialized (e.g. no
 	// access to the database), we return false to prevent an FTL crash
 	if(blacklist_stmt == NULL)
-		return false;
+		return LIST_NOT_AVAILABLE;
 
 	// Check if this client needs a rechecking of group membership
 	gravityDB_client_check_again(client);
