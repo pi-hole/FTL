@@ -204,9 +204,10 @@ void moveOverTimeMemory(const time_t mintime)
 		clientsData *client = getClient(clientID, true);
 		if(!client)
 			continue;
+
 		memmove(&(client->overTime[0]),
-			&(client->overTime[moveOverTime]),
-			remainingSlots*sizeof(int));
+		        &(client->overTime[moveOverTime]),
+		        remainingSlots*sizeof(*client->overTime));
 	}
 
 	// Process upstream data
@@ -217,13 +218,10 @@ void moveOverTimeMemory(const time_t mintime)
 			continue;
 
 		// Update upstream counters with overTime data we are going to move
-		// This is necessary because we can store inly one upstream with each query
-		// and garbage collection can only subtract this one when cleaning
 		unsigned int sum = 0;
 		for(unsigned int idx = 0; idx < moveOverTime; idx++)
-		{
 			sum += upstream->overTime[idx];
-		}
+
 		upstream->count -= sum;
 		if(config.debug & DEBUG_GC)
 			logg("Subtracted %d from total count of upstream %s:%d, new total is %d",
@@ -231,8 +229,8 @@ void moveOverTimeMemory(const time_t mintime)
 
 		// Move upstream-specific overTime memory
 		memmove(&(upstream->overTime[0]),
-			&(upstream->overTime[moveOverTime]),
-			remainingSlots*sizeof(int));
+		        &(upstream->overTime[moveOverTime]),
+		        remainingSlots*sizeof(*upstream->overTime));
 	}
 
 	// Iterate over new overTime region and initialize it

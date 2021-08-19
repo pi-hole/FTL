@@ -1858,7 +1858,11 @@ static void query_blocked(queriesData* query, domainsData* domain, clientsData* 
 		// Get forward pointer
 		upstreamsData* upstream = getUpstream(query->upstreamID, true);
 		if(upstream != NULL)
+		{
 			upstream->count--;
+			const int timeidx = getOverTimeID(query->timestamp);
+			upstream->overTime[timeidx]--;
+		}
 	}
 	else if(is_blocked(query->status))
 	{
@@ -2388,8 +2392,8 @@ void FTL_forwarding_retried(const struct server *serv, const int oldID, const in
 	// Possible debugging information
 	if(config.debug & DEBUG_QUERIES)
 	{
-		logg("**** RETRIED query %i as %i to %s (ID %i)",
-		     oldID, newID, dest, upstreamID);
+		logg("**** RETRIED query %i as %i to %s#%d",
+		     oldID, newID, upstreamIP, upstreamPort);
 	}
 
 	// Get upstream pointer
