@@ -829,6 +829,19 @@ static void check_pihole_PTR(char *domain)
 	}
 }
 
+inline static void set_dnscache_blockingstatus(DNSCacheData * dns_cache, clientsData *client,
+                                               enum domain_client_status new_status, const char *domain)
+{
+	// Memorize blocking status DNS cache for the domain/client combination
+	dns_cache->blocking_status = new_status;
+
+	if(config.debug & DEBUG_QUERIES)
+	{
+		const char *clientip = client ? getstr(client->ippos) : "N/A";
+		logg("DNS cache: %s/%s is %s", clientip, domain, blockingreason);
+	}
+}
+
 static bool check_domain_blocked(const char *domain, const int clientID,
                                  clientsData *client, queriesData *query, DNSCacheData *dns_cache,
                                  enum query_status *new_status, bool *db_okay)
@@ -846,7 +859,7 @@ static bool check_domain_blocked(const char *domain, const int clientID,
 		blockingreason = "exactly blacklisted";
 
 		// Mark domain as exactly blacklisted for this client
-		dns_cache->blocking_status = BLACKLIST_BLOCKED;
+		set_dnscache_blockingstatus(dns_cache, client, BLACKLIST_BLOCKED, domain);
 
 		// We block this domain
 		return true;
@@ -861,7 +874,10 @@ static bool check_domain_blocked(const char *domain, const int clientID,
 		blockingreason = "gravity blocked";
 
 		// Mark domain as gravity blocked for this client
-		dns_cache->blocking_status = GRAVITY_BLOCKED;
+		set_dnscache_blockingstatus(dns_cache, client, GRAVITY_BLOCKED, domain);
+
+		if(config.debug & DEBUG_QUERIES)
+			logg("Allowing query as gravity database is not available");
 
 		// We block this domain
 		return FOUND;
@@ -875,6 +891,9 @@ static bool check_domain_blocked(const char *domain, const int clientID,
 		// Handle reply to this query as configured
 		if(config.reply_when_busy == BUSY_ALLOW)
 		{
+			if(config.debug & DEBUG_QUERIES)
+				logg("Allowing query as gravity database is not available");
+
 			// Permit this query
 			// As we set db_okay to false, this allowing here does not enter the
 			// DNS cache so this domain will be rechecked on the next query
@@ -912,7 +931,7 @@ static bool check_domain_blocked(const char *domain, const int clientID,
 		blockingreason = "regex blacklisted";
 
 		// Mark domain as regex matched for this client
-		dns_cache->blocking_status = REGEX_BLOCKED;
+		set_dnscache_blockingstatus(dns_cache, client, REGEX_BLOCKED, domain);
 		dns_cache->black_regex_idx = regex_idx;
 
 		// We block this domain
@@ -1176,6 +1195,12 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 		// chain when the same client asks for the same domain in the future.
 		// Store domain as whitelisted if this is the case
 		dns_cache->blocking_status = query->flags.whitelisted ? WHITELISTED : NOT_BLOCKED;
+
+		// Debug output
+		if(config.debug & DEBUG_QUERIES)
+			// client is guaranteed to be non-NULL above
+			logg("DNS cache: %s/%s is %s", getstr(client->ippos), domainstr,
+			     query->flags.whitelisted ? "whitelisted" : "not blocked");
 	}
 
 	free(domainstr);
