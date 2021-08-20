@@ -2704,11 +2704,6 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	  {
 	    if ((err = parse_server(arg, &serv_addr, &source_addr, interface, &flags)))
 	      ret_err(err);
-
-	    /* server=//1.2.3.4 is special. */
-	    if (strlen(domain) == 0 && lastdomain)
-	      flags |= SERV_FOR_NODOTS;
-
 	  }
 
 	if (servers_only && option == 'S')
@@ -2716,6 +2711,12 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	
 	while (1)
 	  {
+	    /* server=//1.2.3.4 is special. */
+	    if (strlen(domain) == 0 && lastdomain)
+	      flags |= SERV_FOR_NODOTS;
+	    else
+	      flags &= ~SERV_FOR_NODOTS;
+
 	    if (!add_update_server(flags, &serv_addr, &source_addr, interface, domain, &addr))
 	      ret_err(gen_err);
 	    
