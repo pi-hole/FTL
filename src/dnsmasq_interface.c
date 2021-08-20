@@ -2392,8 +2392,9 @@ void FTL_forwarding_retried(const struct server *serv, const int oldID, const in
 	// Possible debugging information
 	if(config.debug & DEBUG_QUERIES)
 	{
-		logg("**** RETRIED query %i as %i to %s#%d",
-		     oldID, newID, upstreamIP, upstreamPort);
+		logg("**** RETRIED%s query %i as %i to %s#%d",
+		     dnssec ? " DNSSEC" : "", oldID, newID,
+		     upstreamIP, upstreamPort);
 	}
 
 	// Get upstream pointer
