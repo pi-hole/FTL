@@ -85,7 +85,7 @@ static struct {
 static union mysockaddr last_server = {{ 0 }};
 
 unsigned char* pihole_privacylevel = &config.privacylevel;
-const char flagnames[][12] = {"F_IMMORTAL ", "F_NAMEP ", "F_REVERSE ", "F_FORWARD ", "F_DHCP ", "F_NEG ", "F_HOSTS ", "F_IPV4 ", "F_IPV6 ", "F_BIGNAME ", "F_NXDOMAIN ", "F_CNAME ", "F_DNSKEY ", "F_CONFIG ", "F_DS ", "F_DNSSECOK ", "F_UPSTREAM ", "F_RRNAME ", "F_SERVER ", "F_QUERY ", "F_NOERR ", "F_AUTH ", "F_DNSSEC ", "F_KEYTAG ", "F_SECSTAT ", "F_NO_RR ", "F_IPSET ", "F_NOEXTRA ", "F_SERVFAIL", "F_RCODE"};
+const char *flagnames[] = {"F_IMMORTAL ", "F_NAMEP ", "F_REVERSE ", "F_FORWARD ", "F_DHCP ", "F_NEG ", "F_HOSTS ", "F_IPV4 ", "F_IPV6 ", "F_BIGNAME ", "F_NXDOMAIN ", "F_CNAME ", "F_DNSKEY ", "F_CONFIG ", "F_DS ", "F_DNSSECOK ", "F_UPSTREAM ", "F_RRNAME ", "F_SERVER ", "F_QUERY ", "F_NOERR ", "F_AUTH ", "F_DNSSEC ", "F_KEYTAG ", "F_SECSTAT ", "F_NO_RR ", "F_IPSET ", "F_NOEXTRA ", "F_SERVFAIL", "F_RCODE"};
 
 void FTL_hook(unsigned int flags, char *name, union all_addr *addr, char *arg, int id, const char* file, const int line)
 {
@@ -1339,15 +1339,11 @@ static void FTL_forwarded(const unsigned int flags, const char *name, const unio
 	upstreamsData *upstream = getUpstream(upstreamID, true);
 	if(upstream != NULL)
 	{
-		// Only count upstream when there has been no reply so far
-		if(query->reply == REPLY_UNKNOWN)
-		{
-			// Update overTime
-			const int timeidx = getOverTimeID(query->timestamp);
-			upstream->overTime[timeidx]++;
-			// Update total count
-			upstream->count++;
-		}
+		// Update overTime counts
+		const int timeidx = getOverTimeID(query->timestamp);
+		upstream->overTime[timeidx]++;
+		// Update total count
+		upstream->count++;
 		// Update lastQuery timestamp
 		upstream->lastQuery = time(NULL);
 	}
