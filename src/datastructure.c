@@ -101,8 +101,6 @@ int findUpstreamID(const char * upstreamString, const in_port_t port)
 
 	// Set magic byte
 	upstream->magic = MAGICBYTE;
-	// Initialize its counter
-	upstream->count = 0;
 	// Save upstream destination IP address
 	upstream->ippos = addstr(upstreamString);
 	upstream->failed = 0;

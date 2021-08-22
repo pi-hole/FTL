@@ -57,14 +57,13 @@ typedef struct {
 	unsigned char magic;
 	bool new;
 	in_addr_t port;
-	int count;
 	int failed;
 	int overTime[OVERTIME_SLOTS];
 	size_t ippos;
 	size_t namepos;
 	time_t lastQuery;
 } upstreamsData;
-ASSERT_SIZEOF(upstreamsData, 640, 628, 628);
+ASSERT_SIZEOF(upstreamsData, 640, 624, 624);
 
 typedef struct {
 	unsigned char magic;

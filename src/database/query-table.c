@@ -578,7 +578,6 @@ void DB_read_queries(void)
 					if(upstream != NULL)
 					{
 						upstream->overTime[timeidx]++;
-						upstream->count++;
 						upstream->lastQuery = queryTimeStamp;
 					}
 				}

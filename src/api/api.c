@@ -495,24 +495,25 @@ void getTopClients(const char *client_message, const int *sock)
 void getUpstreamDestinations(const char *client_message, const int *sock)
 {
 	bool sort = true;
-	int temparray[counters->upstreams][2], totalqueries = 0;
+	int temparray[counters->upstreams][2], totalqueries = 0, totalcount = 0;
 
 	if(command(client_message, "unsorted"))
 		sort = false;
 
 	for(int upstreamID = 0; upstreamID < counters->upstreams; upstreamID++)
 	{
-		// If we want to print a sorted output, we fill the temporary array with
-		// the values we will use for sorting afterwards
-		if(sort) {
-			// Get forward pointer
-			const upstreamsData* forward = getUpstream(upstreamID, true);
-			if(forward == NULL)
-				continue;
+		// Get upstream pointer
+		const upstreamsData* upstream = getUpstream(upstreamID, true);
+		if(upstream == NULL)
+			continue;
 
-			temparray[upstreamID][0] = upstreamID;
-			temparray[upstreamID][1] = forward->count;
-		}
+		temparray[upstreamID][0] = upstreamID;
+
+		int count = 0;
+		for(unsigned i = 0; i < (sizeof(upstream->overTime)/sizeof(*upstream->overTime)); i++)
+			count += upstream->overTime[i];
+		temparray[upstreamID][1] = count;
+		totalcount += count;
 	}
 
 	if(sort)
@@ -521,13 +522,13 @@ void getUpstreamDestinations(const char *client_message, const int *sock)
 		qsort(temparray, counters->upstreams, sizeof(int[2]), cmpdesc);
 	}
 
-	totalqueries = forwarded_queries() + cached_queries() + blocked_queries();
+	totalqueries = totalcount + cached_queries() + blocked_queries();
 
 	// Loop over available forward destinations
 	for(int i = -2; i < min(counters->upstreams, 8); i++)
 	{
 		float percentage = 0.0f;
-		const char* ip, *name;
+		const char *ip, *name;
 		in_port_t upstream_port = 0;
 
 		if(i == -2)
@@ -553,12 +554,8 @@ void getUpstreamDestinations(const char *client_message, const int *sock)
 		else
 		{
 			// Regular upstream destination
-			// Get sorted indices
-			int upstreamID;
-			if(sort)
-				upstreamID = temparray[i][0];
-			else
-				upstreamID = i;
+			const int upstreamID = temparray[i][0];
+			const int count = temparray[i][1];
 
 			// Get upstream pointer
 			const upstreamsData* upstream = getUpstream(upstreamID, true);
@@ -575,7 +572,7 @@ void getUpstreamDestinations(const char *client_message, const int *sock)
 
 			// Get percentage
 			if(totalqueries > 0)
-				percentage = 1e2f * upstream->count / totalqueries;
+				percentage = 1e2f * count / totalqueries;
 		}
 
 		// Send data:

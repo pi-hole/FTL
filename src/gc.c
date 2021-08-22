@@ -127,16 +127,7 @@ void *GC_thread(void *val)
 					case QUERY_RETRIED: // (fall through)
 					case QUERY_RETRIED_DNSSEC:
 						// Forwarded to an upstream DNS server
-						// Adjust counters
-						if(query->upstreamID > -1)
-						{
-							upstreamsData* upstream = getUpstream(query->upstreamID, true);
-							if(upstream != NULL)
-							{
-								upstream->overTime[timeidx]--;
-								upstream->count--;
-							}
-						}
+						// Adjusting counters is done below in moveOverTimeMemory()
 						break;
 					case QUERY_CACHE:
 						// Answered from local cache _or_ local config

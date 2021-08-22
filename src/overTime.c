@@ -217,16 +217,6 @@ void moveOverTimeMemory(const time_t mintime)
 		if(!upstream)
 			continue;
 
-		// Update upstream counters with overTime data we are going to move
-		unsigned int sum = 0;
-		for(unsigned int idx = 0; idx < moveOverTime; idx++)
-			sum += upstream->overTime[idx];
-
-		upstream->count -= sum;
-		if(config.debug & DEBUG_GC)
-			logg("Subtracted %d from total count of upstream %s:%d, new total is %d",
-			     sum, getstr(upstream->ippos), upstream->port, upstream->count);
-
 		// Move upstream-specific overTime memory
 		memmove(&(upstream->overTime[0]),
 		        &(upstream->overTime[moveOverTime]),
