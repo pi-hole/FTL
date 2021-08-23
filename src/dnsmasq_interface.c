@@ -722,17 +722,30 @@ void FTL_iface(const int ifidx)
 	{
 		// If this interface has no name, we skip it
 		if(iface->name == NULL)
+		{
+			if(config.debug & DEBUG_NETWORKING)
+				logg("Interface %d has no name", iface->index);
 			continue;
+		}
 
 		// Check if this is the interface we want
 		if(iface->index != ifidx)
+		{
+			if(config.debug & DEBUG_NETWORKING)
+				logg("Interface %s is not the interface we are looking for (%d != %d)",
+				     iface->name, iface->index, ifidx);
 			continue;
+		}
 
 		// Check if this family type is overwritten by config settings
 		const sa_family_t family = iface->addr.sa.sa_family;
 		if((config.reply_addr.overwrite_v4 && family == AF_INET) ||
 		   (config.reply_addr.overwrite_v6 && family == AF_INET6))
+		{
+			if(config.debug & DEBUG_NETWORKING)
+				logg("Configuration overwrites IPv%d address", family == AF_INET ? 4 : 6);
 			continue;
+		}
 
 		// Copy interface name
 		strncpy(next_iface.name, iface->name, sizeof(next_iface.name)-1);
@@ -785,14 +798,18 @@ void FTL_iface(const int ifidx)
 				inet_ntop(AF_INET6, &iface->addr.in6.sin6_addr, buffer, ADDRSTRLEN);
 
 			const char *type = family == AF_INET6 ? isGUA ? " (GUA)" : isULA ? " (ULA)" : isLL ? " (LL)" : " (other)" : "";
-			logg("Interface (%d) %s has IPv%i address %s%s", ifidx, next_iface.name,
+			logg("Interface %s (%d) has IPv%i address %s%s", next_iface.name, ifidx,
 				family == AF_INET ? 4 : 6, buffer, type);
 		}
 
 		// Exit loop early if we already have everything we need
 		// (a valid IPv4 address + a valid ULA IPv6 address)
 		if(haveIPv4 && haveULAv6)
+		{
+			if(config.debug & DEBUG_NETWORKING)
+				logg("We have everything we need, exiting interface analysis early");
 			break;
+		}
 	}
 }
 
