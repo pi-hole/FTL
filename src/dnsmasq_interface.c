@@ -693,7 +693,7 @@ void FTL_iface(const int ifidx)
 		{
 			char buffer[ADDRSTRLEN+1] = { 0 };
 			inet_ntop(AF_INET, &next_iface.addr4, buffer, ADDRSTRLEN);
-			logg("Interface (%d) %s OVERWRITES IPv4 address %s", ifidx, next_iface.name, buffer);
+			logg("Configuration overwrites IPv4 address: %s", buffer);
 		}
 	}
 	if(config.reply_addr.overwrite_v6)
@@ -704,7 +704,7 @@ void FTL_iface(const int ifidx)
 		{
 			char buffer[ADDRSTRLEN+1] = { 0 };
 			inet_ntop(AF_INET6, &next_iface.addr6, buffer, ADDRSTRLEN);
-			logg("Interface (%d) %s OVERWRITES IPv6 address %s", ifidx, next_iface.name, buffer);
+			logg("Configuration overwrites IPv6 address: %s", buffer);
 		}
 	}
 
@@ -737,19 +737,16 @@ void FTL_iface(const int ifidx)
 			continue;
 		}
 
-		// Check if this family type is overwritten by config settings
-		const sa_family_t family = iface->addr.sa.sa_family;
-		if((config.reply_addr.overwrite_v4 && family == AF_INET) ||
-		   (config.reply_addr.overwrite_v6 && family == AF_INET6))
-		{
-			if(config.debug & DEBUG_NETWORKING)
-				logg("Configuration overwrites IPv%d address", family == AF_INET ? 4 : 6);
-			continue;
-		}
-
 		// Copy interface name
 		strncpy(next_iface.name, iface->name, sizeof(next_iface.name)-1);
 		next_iface.name[sizeof(next_iface.name)-1] = '\0';
+
+		// Check if this family type is overwritten by config settings
+		// We logged this above
+		const sa_family_t family = iface->addr.sa.sa_family;
+		if((config.reply_addr.overwrite_v4 && family == AF_INET) ||
+		   (config.reply_addr.overwrite_v6 && family == AF_INET6))
+			continue;
 
 		bool isULA = false, isGUA = false, isLL = false;
 		// Check if this address is different from 0000:0000:0000:0000:0000:0000:0000:0000
