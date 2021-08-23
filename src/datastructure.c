@@ -504,6 +504,7 @@ bool __attribute__ ((const)) is_blocked(const enum query_status status)
 		case QUERY_GRAVITY_CNAME:
 		case QUERY_REGEX_CNAME:
 		case QUERY_BLACKLIST_CNAME:
+		case QUERY_DBBUSY:
 			return true;
 	}
 }
@@ -523,7 +524,8 @@ static const char *query_status_str[QUERY_STATUS_MAX] = {
 	"BLACKLIST_CNAME",
 	"RETRIED",
 	"RETRIED_DNSSEC",
-	"IN_PROGRESS"
+	"IN_PROGRESS",
+	"DBBUSY"
 };
 
 void _query_set_status(queriesData *query, const enum query_status new_status, const char *file, const int line)

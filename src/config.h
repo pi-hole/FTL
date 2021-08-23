@@ -55,6 +55,7 @@ typedef struct {
 	enum privacy_level privacylevel;
 	enum blocking_mode blockingmode;
 	enum refresh_hostnames refresh_hostnames;
+	enum busy_reply reply_when_busy;
 	int maxDBdays;
 	int port;
 	int maxlogage;

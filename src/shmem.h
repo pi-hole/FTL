@@ -54,7 +54,7 @@ typedef struct {
 	int status[QUERY_STATUS_MAX];
 	int reply[QUERY_REPLY_MAX];
 } countersStruct;
-ASSERT_SIZEOF(countersStruct, 228, 228, 228);
+ASSERT_SIZEOF(countersStruct, 236, 236, 236);
 
 extern countersStruct *counters;
 

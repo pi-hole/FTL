@@ -139,8 +139,9 @@ void *GC_thread(void *val)
 					case QUERY_EXTERNAL_BLOCKED_NXRA: // Blocked by upstream provider (fall through)
 					case QUERY_EXTERNAL_BLOCKED_NULL: // Blocked by upstream provider (fall through)
 					case QUERY_GRAVITY_CNAME: // Gravity domain in CNAME chain (fall through)
-					case QUERY_BLACKLIST_CNAME: // Exactly blacklisted domain in CNAME chain (fall through)
 					case QUERY_REGEX_CNAME: // Regex blacklisted domain in CNAME chain (fall through)
+					case QUERY_BLACKLIST_CNAME: // Exactly blacklisted domain in CNAME chain (fall through)
+					case QUERY_DBBUSY: // Blocked because gravity database was busy
 						if(domain != NULL)
 							domain->blockedcount--;
 						if(client != NULL)

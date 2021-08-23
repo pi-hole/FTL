@@ -570,6 +570,32 @@ void read_FTLconf(void)
 	else
 		logg("   ADDR2LINE: Disabled");
 
+	// REPLY_WHEN_BUSY
+	// How should FTL handle queries when the gravity database is not available?
+	// defaults to: BLOCK
+	buffer = parse_FTLconf(fp, "REPLY_WHEN_BUSY");
+
+	if(buffer != NULL && strcasecmp(buffer, "DROP") == 0)
+	{
+		config.reply_when_busy = BUSY_DROP;
+		logg("   REPLY_WHEN_BUSY: Drop queries when the database is busy");
+	}
+	else if(buffer != NULL && strcasecmp(buffer, "REFUSE") == 0)
+	{
+		config.reply_when_busy = BUSY_REFUSE;
+		logg("   REPLY_WHEN_BUSY: Refuse queries when the database is busy");
+	}
+	else if(buffer != NULL && strcasecmp(buffer, "BLOCK") == 0)
+	{
+		config.reply_when_busy = BUSY_BLOCK;
+		logg("   REPLY_WHEN_BUSY: Block queries when the database is busy");
+	}
+	else
+	{
+		config.reply_when_busy = BUSY_ALLOW;
+		logg("   REPLY_WHEN_BUSY: Permit queries when the database is busy");
+	}
+
 	// Read DEBUG_... setting from pihole-FTL.conf
 	read_debuging_settings(fp);
 

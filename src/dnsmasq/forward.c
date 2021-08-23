@@ -1661,21 +1661,25 @@ void receive_query(struct listener *listen, time_t now)
       if(piholeblocked)
 	{
 	  // Generate DNS packet for reply
-          int ede = -1;
+	  int ede = EDE_UNSET;
 	  n = FTL_make_answer(header, ((char *) header) + udp_size, n, &ede);
 	  // The pseudoheader may contain important information such as EDNS0 version important for
 	  // some DNS resolvers (such as systemd-resolved) to work properly. We should not discard them.
 
+	  // Check if this query is to be dropped. If so, return immediately without sending anything
+	  if(n == 0)
+	    return;
+
 	  if (have_pseudoheader)
-          {
+	  {
 	    u16 swap = htons(ede);
-            if (ede != -1) // Add EDNS0 option EDE if applicable
+	    if (ede != EDE_UNSET) // Add EDNS0 option EDE if applicable
 	      n = add_pseudoheader(header, n, ((unsigned char *) header) + udp_size,
 				   daemon->edns_pktsz, EDNS0_OPTION_EDE, (unsigned char *)&swap, 2, do_bit, 0);
-            else
+	    else
 	      n = add_pseudoheader(header, n, ((unsigned char *) header) + udp_size,
 				   daemon->edns_pktsz, 0, NULL, 0, do_bit, 0);
-          }
+	  }
 	  send_from(listen->fd, option_bool(OPT_NOWILD) || option_bool(OPT_CLEVERBIND),
 		    (char *)header, (size_t)n, &source_addr, &dst_addr, if_index);
 	  daemon->metrics[METRIC_DNS_LOCAL_ANSWERED]++;
@@ -2105,24 +2109,23 @@ unsigned char *tcp_request(int confd, time_t now,
 	  /************ Pi-hole modification ************/
 	  // Interface name is known from before forking
 	  if(piholeblocked)
+	  {
+	    int ede = EDE_UNSET;
+	    // Generate DNS packet for reply
+	    m = FTL_make_answer(header, ((char *) header) + 65536, size, &ede);
+	    // The pseudoheader may contain important information such as EDNS0 version important for
+	    // some DNS resolvers (such as systemd-resolved) to work properly. We should not discard them.
+	    if (have_pseudoheader && m > 0)
 	    {
-              int ede = -1;
-	      // Generate DNS packet for reply
-	      m = FTL_make_answer(header, ((char *) header) + 65536, size, &ede);
-	      // The pseudoheader may contain important information such as EDNS0 version important for
-	      // some DNS resolvers (such as systemd-resolved) to work properly. We should not discard them.
-	      if (have_pseudoheader)
-	      {
-		u16 swap = htons(ede);
-		if (ede != -1) // Add EDNS0 option EDE if applicable
-		  m = add_pseudoheader(header, m, ((unsigned char *) header) + 65536,
-				       daemon->edns_pktsz, EDNS0_OPTION_EDE, (unsigned char *)&swap, 2, do_bit, 0);
-		else
-		  m = add_pseudoheader(header, m, ((unsigned char *) header) + 65536,
-				       daemon->edns_pktsz, 0, NULL, 0, do_bit, 0);
-	      }
-
+	      u16 swap = htons(ede);
+	      if (ede != -1) // Add EDNS0 option EDE if applicable
+		m = add_pseudoheader(header, m, ((unsigned char *) header) + 65536,
+				     daemon->edns_pktsz, EDNS0_OPTION_EDE, (unsigned char *)&swap, 2, do_bit, 0);
+	      else
+		m = add_pseudoheader(header, m, ((unsigned char *) header) + 65536,
+				     daemon->edns_pktsz, 0, NULL, 0, do_bit, 0);
 	    }
+	  }
 	  else
 	  {
 	  /**********************************************/
@@ -2252,7 +2255,7 @@ unsigned char *tcp_request(int confd, time_t now,
 	}
 	
       /* In case of local answer or no connections made. */
-      if (m == 0)
+      if (m == 0 && !piholeblocked) // Pi-hole modified to ensure we don't provide local answers when dropping the reply
 	{
 	  if (!(m = make_local_answer(flags, gotname, size, header, daemon->namebuff,
 				      ((char *) header) + 65536, first, last, ede)))
