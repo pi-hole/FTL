@@ -70,6 +70,7 @@ static void check_pihole_PTR(char *domain);
 
 // Static blocking metadata
 static const char *blockingreason = NULL;
+static int blockingflags = 0;
 static union all_addr null_addrp = {{ 0 }};
 static enum reply_type force_next_DNS_reply = REPLY_UNKNOWN;
 static struct ptr_record *pihole_ptr = NULL;
@@ -164,18 +165,18 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 	}
 
 	// Get question type
-	int qtype, flags;
+	int qtype;
 	GETSHORT(qtype, p);
 
-	// Set flag based on what we will reply with
+	// Set blockingflags based on what we will reply with
 	if(qtype == T_A)
-		flags = F_IPV4; // A type
+		blockingflags = F_IPV4; // A type
 	else if(qtype == T_AAAA)
-		flags = F_IPV6; // AAAA type
+		blockingflags = F_IPV6; // AAAA type
 	else if(qtype == T_ANY)
-		flags = F_IPV4 | F_IPV6; // ANY type
+		blockingflags = F_IPV4 | F_IPV6; // ANY type
 	else
-		flags = F_NOERR; // empty record
+		blockingflags = F_NOERR; // empty record
 
 	// Prepare answer records
 	bool forced_ip = false;
@@ -184,7 +185,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 	// for intercepted _esni.* queries.
 	if(force_next_DNS_reply == REPLY_NXDOMAIN)
 	{
-		flags = F_NXDOMAIN;
+		blockingflags = F_NXDOMAIN;
 		// Reset DNS reply forcing
 		force_next_DNS_reply = REPLY_UNKNOWN;
 
@@ -195,7 +196,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 	else if(force_next_DNS_reply == REPLY_REFUSED)
 	{
 		// Empty flags result in REFUSED
-		flags = 0;
+		blockingflags = 0;
 		// Reset DNS reply forcing
 		force_next_DNS_reply = REPLY_UNKNOWN;
 
@@ -237,16 +238,16 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		{
 			// If we block in NXDOMAIN mode, we add the NEGATIVE response
 			// and the NXDOMAIN flags
-			flags = F_NXDOMAIN;
+			blockingflags =  F_NEG | F_NXDOMAIN;
 			if(config.debug & DEBUG_FLAGS)
 				logg("Configured blocking mode is NXDOMAIN");
 		}
 		else if(config.blockingmode == MODE_NODATA ||
-				(config.blockingmode == MODE_IP_NODATA_AAAA && (flags & F_IPV6)))
+				(config.blockingmode == MODE_IP_NODATA_AAAA && (blockingflags & F_IPV6)))
 		{
 			// If we block in NODATA mode or NODATA for AAAA queries, we apply
 			// the NOERROR response flag. This ensures we're sending an empty response
-			flags = F_NOERR;
+			blockingflags = F_NOERR;
 			if(config.debug & DEBUG_FLAGS)
 				logg("Configured blocking mode is NODATA%s",
 				     config.blockingmode == MODE_IP_NODATA_AAAA ? "-IPv6" : "");
@@ -255,16 +256,16 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 
 	// Debug logging
 	if(config.debug & DEBUG_FLAGS)
-		print_flags(flags);
+		print_flags(blockingflags);
 
 	// Setup reply header
-	setup_reply(header, flags, *ede);
+	setup_reply(header, blockingflags, *ede);
 
 	// Add flags according to current blocking mode
 	// Set blocking_flags to F_HOSTS so dnsmasq logs blocked queries being answered from a specific source
 	// (it would otherwise assume it knew the blocking status from cache which would prevent us from
 	// printing the blocking source (blacklist, regex, gravity) in dnsmasq's log file, our pihole.log)
-	flags |= F_HOSTS;
+	blockingflags |= F_HOSTS;
 
 	// Skip questions so we can start adding answers (if applicable)
 	if (!(p = skip_questions(header, len)))
@@ -272,7 +273,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 
 	int trunc = 0;
 	// Add A answer record if requested
-	if(flags & F_IPV4)
+	if(blockingflags & F_IPV4)
 	{
 		union all_addr *addr;
 		if(config.blockingmode == MODE_IP ||
@@ -295,11 +296,11 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		add_resource_record(header, limit, &trunc, sizeof(struct dns_header),
 		                    &p, daemon->local_ttl, NULL, T_A, C_IN,
 		                    (char*)"4", &addr->addr4);
-		log_query(flags & ~F_IPV6, name, addr, (char*)blockingreason);
+		log_query(blockingflags & ~F_IPV6, name, addr, (char*)blockingreason);
 	}
 
 	// Add AAAA answer record if requested
-	if(flags & F_IPV6)
+	if(blockingflags & F_IPV6)
 	{
 		union all_addr *addr;
 		if(config.blockingmode == MODE_IP ||
@@ -321,7 +322,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		add_resource_record(header, limit, &trunc, sizeof(struct dns_header),
 		                    &p, daemon->local_ttl, NULL, T_AAAA, C_IN,
 		                    (char*)"6", &addr->addr6);
-		log_query(flags & ~F_IPV4, name, addr, (char*)blockingreason);
+		log_query(blockingflags & ~F_IPV4, name, addr, (char*)blockingreason);
 	}
 
 	// Indicate if truncated (client should retry over TCP)
@@ -889,9 +890,6 @@ static bool check_domain_blocked(const char *domain, const int clientID,
 
 		// Mark domain as gravity blocked for this client
 		set_dnscache_blockingstatus(dns_cache, client, GRAVITY_BLOCKED, domain);
-
-		if(config.debug & DEBUG_QUERIES)
-			logg("Allowing query as gravity database is not available");
 
 		// We block this domain
 		return FOUND;
@@ -1573,7 +1571,7 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 {
 	// If domain is "pi.hole", we skip this query
 	// We compare case-insensitive here
-	// Hint: name can be NULL, e.g. for NODATA replies
+	// Hint: name can be NULL, e.g. for NODATA/NXDOMAIN replies
 	if(name != NULL && strcasecmp(name, "pi.hole") == 0)
 	{
 		return;
@@ -1606,20 +1604,25 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 			; // Okay
 		}
 		else if(config.debug & DEBUG_FLAGS)
-			logg("Unknown cache query");
+			logg("***** Unknown cache query");
 	}
 
 	// Possible debugging output
 	if(config.debug & DEBUG_QUERIES)
 	{
-		// Determine returned result if available
+		// Human-readable answer may be provided by arg
+		// (e.g. for non-cached queries such as SOA)
+		const char *answer = arg;
+		// Determine returned address (if applicable)
 		char dest[ADDRSTRLEN]; dest[0] = '\0';
 		if(addr)
+		{
 			inet_ntop((flags & F_IPV4) ? AF_INET : AF_INET6, addr, dest, ADDRSTRLEN);
+			answer = dest; // Overwrite answer with human-readable IP address
+		}
 
 		// Extract answer (used e.g. for detecting if a local config is a user-defined
 		// wildcard blocking entry in form "server=/tobeblocked.com/")
-		const char *answer = dest;
 		if(flags & F_CNAME)
 			answer = "(CNAME)";
 		else if((flags & F_NEG) && (flags & F_NXDOMAIN))
@@ -1713,7 +1716,6 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 		}
 	}
 
-
 	// Determine if this reply is an exact match for the queried domain
 	const int domainID = query->domainID;
 
@@ -1772,17 +1774,29 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 		// Hereby, this query is now fully determined
 		query->flags.complete = true;
 	}
-	else if((flags & F_FORWARD) && isExactMatch)
+	else if((flags & (F_FORWARD | F_UPSTREAM)) && isExactMatch)
 	{
 		// Only proceed if query is not already known
 		// to have been blocked by Quad9
-		if(query->status != QUERY_EXTERNAL_BLOCKED_IP &&
-		   query->status != QUERY_EXTERNAL_BLOCKED_NULL &&
-		   query->status != QUERY_EXTERNAL_BLOCKED_NXRA)
+		if(query->status == QUERY_EXTERNAL_BLOCKED_IP ||
+		   query->status == QUERY_EXTERNAL_BLOCKED_NULL ||
+		   query->status == QUERY_EXTERNAL_BLOCKED_NXRA)
 		{
-			// Save reply type and update individual reply counters
+			unlock_shm();
+			return;
+		}
+
+		// Save reply type and update individual reply counters
+		// If is a negative reply to a DNSSEC query (reply <TLD> is no DS), we
+		// overwrite flags to store NODATA for this query
+		if(flags & F_NOEXTRA && !(flags & F_KEYTAG))
+			query_set_reply(F_NEG, addr, query, response);
+		else
 			query_set_reply(flags, addr, query, response);
 
+		// Further checks if this is an IP address
+		if(addr)
+		{
 			// Detect if returned IP indicates that this query was blocked
 			const enum query_status new_status = detect_blocked_IP(flags, addr, query, domain);
 
@@ -1809,21 +1823,13 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 		// Save reply type and update individual reply counters
 		query_set_reply(flags, addr, query, response);
 	}
-	else if(flags & F_NOEXTRA)
-	{
-		// This can be, for instance, a reply of type
-		// "reply <TLD> is no DS"
-
-		// If is a *positive* reply to a DNSSEC query (reply <TLD> is DS keytag 1234, algo 8, digest 2),
-		// we overwrite flags to stort NODATA for this query
-		if(!(flags & F_KEYTAG))
-			query_set_reply(F_NEG, addr, query, response);
-		else
-			query_set_reply(flags, addr, query, response);
-	}
 	else if(isExactMatch && !query->flags.complete)
 	{
 		logg("*************************** unknown REPLY ***************************");
+	}
+	else if(config.debug & DEBUG_FLAGS)
+	{
+		logg("***** Unknown upstream REPLY");
 	}
 
 	unlock_shm();
@@ -1934,7 +1940,7 @@ static void query_blocked(queriesData* query, domainsData* domain, clientsData* 
 	gettimeofday(&response, 0);
 
 	// Set query reply
-	query_set_reply(0, NULL, query, response);
+	query_set_reply(blockingflags, NULL, query, response);
 
 	// Adjust counters if we recorded a non-blocking status
 	if(query->status == QUERY_FORWARDED)
@@ -2228,11 +2234,12 @@ static const char *reply_status_str[QUERY_REPLY_MAX+1] = {
 	"OTHER",
 	"DNSSEC",
 	"NONE",
+	"BLOB",
 	"MAX"
 };
 
 static void _query_set_reply(const unsigned int flags, const union all_addr *addr,
-                             queriesData* query, const struct timeval response,
+                             queriesData *query, const struct timeval response,
                              const char *file, const int line)
 {
 	// Iterate through possible values
@@ -2274,10 +2281,15 @@ static void _query_set_reply(const unsigned int flags, const union all_addr *add
 	{
 		query->reply = REPLY_NONE;
 	}
+	else if(flags & (F_IPV4 | F_IPV6))
+	{
+		// IP address
+		query->reply = REPLY_IP;
+	}
 	else
 	{
-		// Valid IP
-		query->reply = REPLY_IP;
+		// Other binary, possibly proprietry, data
+		query->reply = REPLY_BLOB;
 	}
 
 	if(config.debug & DEBUG_QUERIES)

@@ -62,6 +62,7 @@ enum reply_type {
 	REPLY_OTHER,
 	REPLY_DNSSEC,
 	REPLY_NONE,
+	REPLY_BLOB,
 	QUERY_REPLY_MAX
 	}  __attribute__ ((packed));
 
