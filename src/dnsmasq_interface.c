@@ -70,7 +70,6 @@ static void check_pihole_PTR(char *domain);
 
 // Static blocking metadata
 static const char *blockingreason = NULL;
-static int blockingflags = 0;
 static union all_addr null_addrp = {{ 0 }};
 static enum reply_type force_next_DNS_reply = REPLY_UNKNOWN;
 static struct ptr_record *pihole_ptr = NULL;
@@ -99,9 +98,7 @@ void FTL_hook(unsigned int flags, char *name, union all_addr *addr, char *arg, i
 	}
 
 	// Note: The order matters here!
-	if(strcmp(path, "src/dnsmasq_interface.c") == 0)
-		; // Ignored - loopback from FTL_make_answer() below
-	else if((flags & F_QUERY) && (flags & F_FORWARD))
+	if((flags & F_QUERY) && (flags & F_FORWARD))
 		; // New query, handled by FTL_new_query via separate call
 	else if(flags & F_FORWARD && flags & F_SERVER)
 		// forwarded upstream
@@ -165,18 +162,18 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 	}
 
 	// Get question type
-	int qtype;
+	int qtype, flags = 0;
 	GETSHORT(qtype, p);
 
-	// Set blockingflags based on what we will reply with
+	// Set flags based on what we will reply with
 	if(qtype == T_A)
-		blockingflags = F_IPV4; // A type
+		flags = F_IPV4; // A type
 	else if(qtype == T_AAAA)
-		blockingflags = F_IPV6; // AAAA type
+		flags = F_IPV6; // AAAA type
 	else if(qtype == T_ANY)
-		blockingflags = F_IPV4 | F_IPV6; // ANY type
+		flags = F_IPV4 | F_IPV6; // ANY type
 	else
-		blockingflags = F_NOERR; // empty record
+		flags = F_NOERR; // empty record
 
 	// Prepare answer records
 	bool forced_ip = false;
@@ -185,7 +182,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 	// for intercepted _esni.* queries.
 	if(force_next_DNS_reply == REPLY_NXDOMAIN)
 	{
-		blockingflags = F_NXDOMAIN;
+		flags = F_NXDOMAIN;
 		// Reset DNS reply forcing
 		force_next_DNS_reply = REPLY_UNKNOWN;
 
@@ -196,7 +193,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 	else if(force_next_DNS_reply == REPLY_REFUSED)
 	{
 		// Empty flags result in REFUSED
-		blockingflags = 0;
+		flags = 0;
 		// Reset DNS reply forcing
 		force_next_DNS_reply = REPLY_UNKNOWN;
 
@@ -238,16 +235,16 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		{
 			// If we block in NXDOMAIN mode, we add the NEGATIVE response
 			// and the NXDOMAIN flags
-			blockingflags =  F_NEG | F_NXDOMAIN;
+			flags =  F_NEG | F_NXDOMAIN;
 			if(config.debug & DEBUG_FLAGS)
 				logg("Configured blocking mode is NXDOMAIN");
 		}
 		else if(config.blockingmode == MODE_NODATA ||
-				(config.blockingmode == MODE_IP_NODATA_AAAA && (blockingflags & F_IPV6)))
+				(config.blockingmode == MODE_IP_NODATA_AAAA && (flags & F_IPV6)))
 		{
 			// If we block in NODATA mode or NODATA for AAAA queries, we apply
 			// the NOERROR response flag. This ensures we're sending an empty response
-			blockingflags = F_NOERR;
+			flags = F_NOERR;
 			if(config.debug & DEBUG_FLAGS)
 				logg("Configured blocking mode is NODATA%s",
 				     config.blockingmode == MODE_IP_NODATA_AAAA ? "-IPv6" : "");
@@ -256,16 +253,16 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 
 	// Debug logging
 	if(config.debug & DEBUG_FLAGS)
-		print_flags(blockingflags);
+		print_flags(flags);
 
 	// Setup reply header
-	setup_reply(header, blockingflags, *ede);
+	setup_reply(header, flags, *ede);
 
 	// Add flags according to current blocking mode
 	// Set blocking_flags to F_HOSTS so dnsmasq logs blocked queries being answered from a specific source
 	// (it would otherwise assume it knew the blocking status from cache which would prevent us from
 	// printing the blocking source (blacklist, regex, gravity) in dnsmasq's log file, our pihole.log)
-	blockingflags |= F_HOSTS;
+	flags |= F_HOSTS;
 
 	// Skip questions so we can start adding answers (if applicable)
 	if (!(p = skip_questions(header, len)))
@@ -273,7 +270,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 
 	int trunc = 0;
 	// Add A answer record if requested
-	if(blockingflags & F_IPV4)
+	if(flags & F_IPV4)
 	{
 		union all_addr *addr;
 		if(config.blockingmode == MODE_IP ||
@@ -296,11 +293,11 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		add_resource_record(header, limit, &trunc, sizeof(struct dns_header),
 		                    &p, daemon->local_ttl, NULL, T_A, C_IN,
 		                    (char*)"4", &addr->addr4);
-		log_query(blockingflags & ~F_IPV6, name, addr, (char*)blockingreason);
+		log_query(flags & ~F_IPV6, name, addr, (char*)blockingreason);
 	}
 
 	// Add AAAA answer record if requested
-	if(blockingflags & F_IPV6)
+	if(flags & F_IPV6)
 	{
 		union all_addr *addr;
 		if(config.blockingmode == MODE_IP ||
@@ -322,7 +319,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		add_resource_record(header, limit, &trunc, sizeof(struct dns_header),
 		                    &p, daemon->local_ttl, NULL, T_AAAA, C_IN,
 		                    (char*)"6", &addr->addr6);
-		log_query(blockingflags & ~F_IPV4, name, addr, (char*)blockingreason);
+		log_query(flags & ~F_IPV4, name, addr, (char*)blockingreason);
 	}
 
 	// Indicate if truncated (client should retry over TCP)
@@ -1728,11 +1725,13 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 		return;
 	}
 
-	// This is a reply served from cache
+	// This is either a reply served from cache or a blocked query (which appear
+	// to be from cache because of flags containing F_HOSTS)
 	if(cached)
 	{
-		// Set status of this query
-		query_set_status(query, QUERY_CACHE);
+		// Set status of this query only if this is not a blocked query
+		if(!is_blocked(query->status))
+			query_set_status(query, QUERY_CACHE);
 
 		// Detect if returned IP indicates that this query was blocked
 		const enum query_status new_status = detect_blocked_IP(flags, addr, query, domain);
@@ -1938,9 +1937,6 @@ static void query_blocked(queriesData* query, domainsData* domain, clientsData* 
 	// Get response time
 	struct timeval response;
 	gettimeofday(&response, 0);
-
-	// Set query reply
-	query_set_reply(blockingflags, NULL, query, response);
 
 	// Adjust counters if we recorded a non-blocking status
 	if(query->status == QUERY_FORWARDED)
