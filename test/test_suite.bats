@@ -263,26 +263,35 @@
   [[ ${lines[1]} == "" ]]
 }
 
+@test "DNS reply analysis test (using netmeister.org records)" {
+  run bash -c "bash test/dig.sh | tee dig.log"
+  printf "%s\n" "${lines[@]}"
+  # Count number of non-empty lines in the test results file
+  run bash -c "grep -vc ^$ dig.log"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "23" ]]
+}
+
 @test "Statistics as expected" {
   run bash -c 'echo ">stats >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[1]} == "domains_being_blocked 3" ]]
-  [[ ${lines[2]} == "dns_queries_today 25" ]]
+  [[ ${lines[2]} == "dns_queries_today 43" ]]
   [[ ${lines[3]} == "ads_blocked_today 6" ]]
-  [[ ${lines[4]} == "ads_percentage_today 24.000000" ]]
-  [[ ${lines[5]} == "unique_domains 12" ]]
-  [[ ${lines[6]} == "queries_forwarded 9" ]]
+  #[[ ${lines[4]} == "ads_percentage_today 13.953488" ]]
+  [[ ${lines[5]} == "unique_domains 30" ]]
+  [[ ${lines[6]} == "queries_forwarded 27" ]]
   [[ ${lines[7]} == "queries_cached 10" ]]
   # Clients ever seen is commented out as CircleCI may have
   # more devices in its ARP cache so testing against a fixed
   # number of clients may not work in all cases
   #[[ ${lines[8]} == "clients_ever_seen 3" ]]
   #[[ ${lines[9]} == "unique_clients 3" ]]
-  [[ ${lines[10]} == "dns_queries_all_types 25" ]]
+  [[ ${lines[10]} == "dns_queries_all_types 43" ]]
   [[ ${lines[11]} == "reply_NODATA 0" ]]
   [[ ${lines[12]} == "reply_NXDOMAIN 0" ]]
-  [[ ${lines[13]} == "reply_CNAME 0" ]]
-  [[ ${lines[14]} == "reply_IP 20" ]]
+  [[ ${lines[13]} == "reply_CNAME 1" ]]
+  [[ ${lines[14]} == "reply_IP 22" ]]
   [[ ${lines[15]} == "privacy_level 0" ]]
   [[ ${lines[16]} == "status enabled" ]]
   [[ ${lines[17]} == "" ]]
@@ -297,7 +306,7 @@
 @test "Top Clients" {
   run bash -c 'echo ">top-clients >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "0 15 127.0.0.1 "* ]]
+  [[ ${lines[1]} == "0 33 127.0.0.1 "* ]]
   [[ ${lines[2]} == "1 4 127.0.0.3 "* ]]
   [[ ${lines[3]} == "2 3 127.0.0.2 "* ]]
   [[ ${lines[4]} == "3 1 aliasclient-0 some-aliasclient" ]]
@@ -319,7 +328,6 @@
   [[ "${lines[@]}" == *" 1 regexa.test.pi-hole.net"* ]]
   [[ "${lines[@]}" == *" 1 regex2.test.pi-hole.net"* ]]
   [[ "${lines[@]}" == *" 1 ftl.pi-hole.net"* ]]
-  [[ "${lines[11]}" == "" ]]
 }
 
 @test "Top Ads" {
@@ -342,31 +350,31 @@
 @test "Upstream Destinations reported correctly" {
   run bash -c 'echo ">forward-dest >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "-2 24.00 blocklist blocklist" ]]
-  [[ ${lines[2]} == "-1 40.00 cache cache" ]]
-  [[ ${lines[3]} == "0 36.00 "* ]]
+  [[ ${lines[1]} == "-2 13.95 blocklist blocklist" ]]
+  [[ ${lines[2]} == "-1 23.26 cache cache" ]]
+  [[ ${lines[3]} == "0 62.79 "* ]]
   [[ ${lines[4]} == "" ]]
 }
 
 @test "Query Types reported correctly" {
   run bash -c 'echo ">querytypes >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "A (IPv4): 76.00" ]]
-  [[ ${lines[2]} == "AAAA (IPv6): 4.00" ]]
-  [[ ${lines[3]} == "ANY: 0.00" ]]
-  [[ ${lines[4]} == "SRV: 0.00" ]]
-  [[ ${lines[5]} == "SOA: 0.00" ]]
-  [[ ${lines[6]} == "PTR: 0.00" ]]
-  [[ ${lines[7]} == "TXT: 20.00" ]]
-  [[ ${lines[8]} == "NAPTR: 0.00" ]]
-  [[ ${lines[9]} == "MX: 0.00" ]]
-  [[ ${lines[10]} == "DS: 0.00" ]]
-  [[ ${lines[11]} == "RRSIG: 0.00" ]]
-  [[ ${lines[12]} == "DNSKEY: 0.00" ]]
-  [[ ${lines[13]} == "NS: 0.00" ]]
-  [[ ${lines[14]} == "OTHER: 0.00" ]]
-  [[ ${lines[15]} == "SVCB: 0.00" ]]
-  [[ ${lines[16]} == "HTTPS: 0.00" ]]
+  [[ ${lines[1]} == "A (IPv4): 46.51" ]]
+  [[ ${lines[2]} == "AAAA (IPv6): 4.65" ]]
+  [[ ${lines[3]} == "ANY: 2.33" ]]
+  [[ ${lines[4]} == "SRV: 2.33" ]]
+  [[ ${lines[5]} == "SOA: 2.33" ]]
+  [[ ${lines[6]} == "PTR: 6.98" ]]
+  [[ ${lines[7]} == "TXT: 13.95" ]]
+  [[ ${lines[8]} == "NAPTR: 2.33" ]]
+  [[ ${lines[9]} == "MX: 2.33" ]]
+  [[ ${lines[10]} == "DS: 2.33" ]]
+  [[ ${lines[11]} == "RRSIG: 2.33" ]]
+  [[ ${lines[12]} == "DNSKEY: 2.33" ]]
+  [[ ${lines[13]} == "NS: 2.33" ]]
+  [[ ${lines[14]} == "OTHER: 2.33" ]]
+  [[ ${lines[15]} == "SVCB: 2.33" ]]
+  [[ ${lines[16]} == "HTTPS: 2.33" ]]
   [[ ${lines[17]} == "" ]]
 }
 
@@ -401,18 +409,29 @@
   [[ ${lines[23]} == *"A google.com 127.0.0.1 2 0 4"* ]]
   [[ ${lines[24]} == *"AAAA google.com 127.0.0.1 2 0 4"* ]]
   [[ ${lines[25]} == *"A ftl.pi-hole.net 127.0.0.1 2 0 4"* ]]
-  [[ ${lines[26]} == "" ]]
+  [[ ${lines[26]} == *"A a.dns.netmeister.org 127.0.0.1 2 0 4"* ]]
+  [[ ${lines[27]} == *"AAAA aaaa.dns.netmeister.org 127.0.0.1 2 0 4"* ]]
+  [[ ${lines[28]} == *"ANY any.dns.netmeister.org 127.0.0.1 2 0 0"* ]]
+  [[ ${lines[29]} == *"TYPE5 cname.dns.netmeister.org 127.0.0.1 2 0 3"* ]]
+  [[ ${lines[30]} == *"SRV srv.dns.netmeister.org 127.0.0.1 2 0 13"* ]]
+  [[ ${lines[31]} == *"SOA soa.dns.netmeister.org 127.0.0.1 2 0 13"* ]]
+  [[ ${lines[32]} == *"PTR 99.7.84.166.in-addr.arpa 127.0.0.1 2 0 5"* ]]
+  [[ ${lines[33]} == *"PTR 0.0.9.3.2.7.e.f.f.f.3.6.6.7.2.e.4.8.0.0.0.3.0.0.0.7.4.0.1.0.0.2.ip6.arpa 127.0.0.1 2 0 5"* ]]
+  [[ ${lines[34]} == *"PTR ptr.dns.netmeister.org 127.0.0.1 2 0 13"* ]]
+  [[ ${lines[35]} == *"TXT txt.dns.netmeister.org 127.0.0.1 2 0 13"* ]]
+  [[ ${lines[36]} == *"NAPTR naptr.dns.netmeister.org 127.0.0.1 2 0 13"* ]]
+  [[ ${lines[37]} == *"MX mx.dns.netmeister.org 127.0.0.1 2 0 13"* ]]
+  [[ ${lines[38]} == *"DS ds.dns.netmeister.org 127.0.0.1 2 0 13"* ]]
+  [[ ${lines[39]} == *"RRSIG rrsig.dns.netmeister.org 127.0.0.1 2 0 13"* ]]
+  [[ ${lines[40]} == *"DNSKEY dnskey.dns.netmeister.org 127.0.0.1 2 0 13"* ]]
+  [[ ${lines[41]} == *"NS ns.dns.netmeister.org 127.0.0.1 2 0 13"* ]]
+  [[ ${lines[42]} == *"SVCB svcb.dns.netmeister.org 127.0.0.1 2 0 13"* ]]
+  [[ ${lines[43]} == *"HTTPS https.dns.netmeister.org 127.0.0.1 2 0 13"* ]]
+  [[ ${lines[44]} == "" ]]
 }
 
 @test "Get all queries (domain filtered) shows expected content" {
   run bash -c 'echo ">getallqueries-domain regexa.test.pi-hole.net >quit" | nc -v 127.0.0.1 4711'
-  printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == *"A regexa.test.pi-hole.net "?*" 2 0 4"* ]]
-  [[ ${lines[2]} == "" ]]
-}
-
-@test "Get all queries (domain + number filtered) shows expected content" {
-  run bash -c 'echo ">getallqueries-domain regexa.test.pi-hole.net (20) >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[1]} == *"A regexa.test.pi-hole.net "?*" 2 0 4"* ]]
   [[ ${lines[2]} == "" ]]
@@ -436,15 +455,25 @@
   [[ ${lines[13]} == *"A google.com 127.0.0.1 2 0 4"* ]]
   [[ ${lines[14]} == *"AAAA google.com 127.0.0.1 2 0 4"* ]]
   [[ ${lines[15]} == *"A ftl.pi-hole.net 127.0.0.1 2 0 4"* ]]
-  [[ ${lines[16]} == "" ]]
-}
-
-@test "Get all queries (client + number filtered) shows expected content" {
-  run bash -c 'echo ">getallqueries-client 127.0.0.1 (2) >quit" | nc -v 127.0.0.1 4711'
-  printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == *"AAAA google.com 127.0.0.1 2 0 4"* ]]
-  [[ ${lines[2]} == *"A ftl.pi-hole.net 127.0.0.1 2 0 4"* ]]
-  [[ ${lines[3]} == "" ]]
+  [[ ${lines[16]} == *"A a.dns.netmeister.org 127.0.0.1 2 0 4"* ]]
+  [[ ${lines[17]} == *"AAAA aaaa.dns.netmeister.org 127.0.0.1 2 0 4"* ]]
+  [[ ${lines[18]} == *"ANY any.dns.netmeister.org 127.0.0.1 2 0 0"* ]]
+  [[ ${lines[19]} == *"TYPE5 cname.dns.netmeister.org 127.0.0.1 2 0 3"* ]]
+  [[ ${lines[20]} == *"SRV srv.dns.netmeister.org 127.0.0.1 2 0 13"* ]]
+  [[ ${lines[21]} == *"SOA soa.dns.netmeister.org 127.0.0.1 2 0 13"* ]]
+  [[ ${lines[22]} == *"PTR 99.7.84.166.in-addr.arpa 127.0.0.1 2 0 5"* ]]
+  [[ ${lines[23]} == *"PTR 0.0.9.3.2.7.e.f.f.f.3.6.6.7.2.e.4.8.0.0.0.3.0.0.0.7.4.0.1.0.0.2.ip6.arpa 127.0.0.1 2 0 5"* ]]
+  [[ ${lines[24]} == *"PTR ptr.dns.netmeister.org 127.0.0.1 2 0 0"* ]]
+  [[ ${lines[25]} == *"TXT txt.dns.netmeister.org 127.0.0.1 2 0 13"* ]]
+  [[ ${lines[26]} == *"NAPTR naptr.dns.netmeister.org 127.0.0.1 2 0 13"* ]]
+  [[ ${lines[27]} == *"MX mx.dns.netmeister.org 127.0.0.1 2 0 13"* ]]
+  [[ ${lines[28]} == *"DS ds.dns.netmeister.org 127.0.0.1 2 0 13"* ]]
+  [[ ${lines[29]} == *"RRSIG rrsig.dns.netmeister.org 127.0.0.1 2 0 13"* ]]
+  [[ ${lines[30]} == *"DNSKEY dnskey.dns.netmeister.org 127.0.0.1 2 0 13"* ]]
+  [[ ${lines[31]} == *"NS ns.dns.netmeister.org 127.0.0.1 2 0 13"* ]]
+  [[ ${lines[32]} == *"SVCB svcb.dns.netmeister.org 127.0.0.1 2 0 13"* ]]
+  [[ ${lines[33]} == *"HTTPS https.dns.netmeister.org 127.0.0.1 2 0 13"* ]]
+  [[ ${lines[34]} == "" ]]
 }
 
 @test "Recent blocked shows expected content" {

@@ -93,12 +93,19 @@ dig TXT CHAOS version.bind @127.0.0.1 +short
 test/libs/bats/bin/bats "test/test_suite.bats"
 RET=$?
 
+curl_to_tricorder() {
+  curl --silent --upload-file "${1}" https://tricorder.pi-hole.net
+}
+
 if [[ $RET != 0 ]]; then
   echo -n "pihole.log: "
-  openssl s_client -quiet -connect tricorder.pi-hole.net:9998 2> /dev/null < /var/log/pihole.log
+  curl_to_tricorder /var/log/pihole.log
   echo ""
   echo -n "pihole-FTL.log: "
-  openssl s_client -quiet -connect tricorder.pi-hole.net:9998 2> /dev/null < /var/log/pihole-FTL.log
+  curl_to_tricorder /var/log/pihole-FTL.log
+  echo ""
+  echo -n "dig.log: "
+  curl_to_tricorder ./dig.log
   echo ""
 fi
 
