@@ -322,6 +322,10 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		log_query(flags & ~F_IPV4, name, addr, (char*)blockingreason);
 	}
 
+	// Log empty replies (NODATA/NXDOMAIN/REFUSED)
+	if(!(flags & (F_IPV4 | F_IPV6)))
+		log_query(flags, name, NULL, (char*)blockingreason);
+
 	// Indicate if truncated (client should retry over TCP)
 	if (trunc)
 		header->hb3 |= HB3_TC;
@@ -2239,7 +2243,8 @@ static void _query_set_reply(const unsigned int flags, const union all_addr *add
                              const char *file, const int line)
 {
 	// Iterate through possible values
-	if(flags & F_NEG || force_next_DNS_reply == REPLY_NXDOMAIN)
+	if(flags & F_NEG || force_next_DNS_reply == REPLY_NXDOMAIN ||
+	   (flags & F_NOERR && !(flags & (F_IPV4 | F_IPV6)))) // <-- FTL_make_answer() when no A or AAAA is added
 	{
 		if(flags & F_NXDOMAIN || force_next_DNS_reply == REPLY_NXDOMAIN)
 			// NXDOMAIN
