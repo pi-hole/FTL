@@ -463,7 +463,7 @@
   [[ ${lines[21]} == *"SOA soa.dns.netmeister.org 127.0.0.1 2 0 13"* ]]
   [[ ${lines[22]} == *"PTR 99.7.84.166.in-addr.arpa 127.0.0.1 2 0 5"* ]]
   [[ ${lines[23]} == *"PTR 0.0.9.3.2.7.e.f.f.f.3.6.6.7.2.e.4.8.0.0.0.3.0.0.0.7.4.0.1.0.0.2.ip6.arpa 127.0.0.1 2 0 5"* ]]
-  [[ ${lines[24]} == *"PTR ptr.dns.netmeister.org 127.0.0.1 2 0 0"* ]]
+  [[ ${lines[24]} == *"PTR ptr.dns.netmeister.org 127.0.0.1 2 0 13"* ]]
   [[ ${lines[25]} == *"TXT txt.dns.netmeister.org 127.0.0.1 2 0 13"* ]]
   [[ ${lines[26]} == *"NAPTR naptr.dns.netmeister.org 127.0.0.1 2 0 13"* ]]
   [[ ${lines[27]} == *"MX mx.dns.netmeister.org 127.0.0.1 2 0 13"* ]]
