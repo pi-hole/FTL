@@ -269,7 +269,7 @@
   # Count number of non-empty lines in the test results file
   run bash -c "grep -vc ^$ dig.log"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "23" ]]
+  [[ ${lines[0]} == "41" ]]
 }
 
 @test "Statistics as expected" {
