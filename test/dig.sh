@@ -21,5 +21,8 @@ do
     else
         j="$i"
     fi
+    echo "dig ${j} ${i}.dns.netmeister.org"
     dig +noall +answer +retry=0 +timeout=30 "@${pihole}" ${j} "${i}.dns.netmeister.org"
+    echo ""
 done
+echo ""

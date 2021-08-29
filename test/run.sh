@@ -49,7 +49,8 @@ echo "BLOCKING_ENABLED=true" > /etc/pihole/setupVars.conf
 echo -e "DEBUG_ALL=true\nRESOLVE_IPV4=no\nRESOLVE_IPV6=no" > /etc/pihole/pihole-FTL.conf
 
 # Prepare dnsmasq.conf
-echo -e "log-queries\nlog-facility=/var/log/pihole.log" > /etc/dnsmasq.conf
+# We hard-code 8.8.8.8 as resolver instead of using the system resolver
+echo -e "log-queries\nlog-facility=/var/log/pihole.log\nserver=8.8.8.8\nno-resolv" > /etc/dnsmasq.conf
 
 # Set restrictive umask
 OLDUMASK=$(umask)
