@@ -489,8 +489,6 @@ struct crec *cache_insert(char *name, union all_addr *addr, unsigned short class
   else
 #endif
     {
-      /* Don't log DNSSEC records here, done elsewhere */
-      log_query(flags | F_UPSTREAM, name, addr, NULL);
       if (daemon->max_cache_ttl != 0 && daemon->max_cache_ttl < ttl)
 	ttl = daemon->max_cache_ttl;
       if (daemon->min_cache_ttl != 0 && daemon->min_cache_ttl > ttl)
@@ -1906,7 +1904,7 @@ const char *edestr(int ede)
 /**** P-hole modified: Added file and line and serve log_query via macro defined in dnsmasq.h ****/
 void _log_query(unsigned int flags, char *name, union all_addr *addr, char *arg, const char *file, const int line)
 {
-  char *source, *dest = daemon->addrbuff;
+  char *source, *dest = arg;
   char *verb = "is";
   char *extra = "";
 
@@ -1914,11 +1912,18 @@ void _log_query(unsigned int flags, char *name, union all_addr *addr, char *arg,
   
   if (!option_bool(OPT_LOG))
     return;
+  
+#ifdef HAVE_DNSSEC
+  if ((flags & F_DNSSECOK) && option_bool(OPT_EXTRALOG))
+    extra = " (DNSSEC signed)";
+#endif
 
   name = sanitise(name);
 
   if (addr)
     {
+      dest = daemon->addrbuff;
+
       if (flags & F_KEYTAG)
 	sprintf(daemon->addrbuff, arg, addr->log.keytag, addr->log.algo, addr->log.digest);
       else if (flags & F_RCODE)
@@ -1940,13 +1945,12 @@ void _log_query(unsigned int flags, char *name, union all_addr *addr, char *arg,
 	      sprintf(extra, " (EDE: %s)", edestr(addr->log.ede));
 	    }
 	}
-      else
+      else if (flags & (F_IPV4 | F_IPV6))
 	inet_ntop(flags & F_IPV4 ? AF_INET : AF_INET6,
 		  addr, daemon->addrbuff, ADDRSTRLEN);
-      
+      else
+	dest = arg;
     }
-  else
-    dest = arg;
 
   if (flags & F_REVERSE)
     {
