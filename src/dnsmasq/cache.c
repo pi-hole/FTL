@@ -1860,7 +1860,7 @@ char *querystr(char *desc, unsigned short type)
 	  if (types)
 	    sprintf(buff, "<%s>", types);
 	  else
-	    sprintf(buff, "type=%d", type);
+	    sprintf(buff, "<type=%d>", type);
 	}
     }
   
