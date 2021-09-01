@@ -1789,13 +1789,34 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 			return;
 		}
 
+		// DNSSEC query handling
+		unsigned int reply_flags = flags;
+		if(flags & F_NOEXTRA && (query->type == TYPE_DNSKEY || query->type == TYPE_DS))
+		{
+			if(flags & F_KEYTAG)
+			{
+				// We were able to validate this query, mark it
+				// as SECURE (reply <domain> is {DNSKEY,DS}
+				// keytag <X>, algo <Y>, digest <Z>)
+				query->dnssec = DNSSEC_SECURE;
+			}
+			else if(strstr(arg, "BOGUS") != NULL)
+			{
+				// BOGUS DS
+				query->dnssec = DNSSEC_BOGUS;
+			}
+			else
+			{
+				// If is a negative reply to a DNSSEC query
+				// (reply <domain> is no DS), we overwrite flags
+				// to store NODATA for this query
+				reply_flags = F_NEG;
+				query->dnssec = DNSSEC_INSECURE;
+			}
+		}
+
 		// Save reply type and update individual reply counters
-		// If is a negative reply to a DNSSEC query (reply <TLD> is no DS), we
-		// overwrite flags to store NODATA for this query
-		if(flags & F_NOEXTRA && !(flags & F_KEYTAG))
-			query_set_reply(F_NEG, addr, query, response);
-		else
-			query_set_reply(flags, addr, query, response);
+		query_set_reply(reply_flags, addr, query, response);
 
 		// Further checks if this is an IP address
 		if(addr)
