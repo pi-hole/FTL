@@ -1751,6 +1751,13 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 		// Save reply type and update individual reply counters
 		query_set_reply(flags, addr, query, response);
 
+		// We know from cache that this domain is either SECURE or
+		// INSECURE, bogus queries are not cached
+		if(flags & F_DNSSECOK)
+			query->dnssec = DNSSEC_SECURE;
+		else
+			query->dnssec = DNSSEC_INSECURE;
+
 		// Hereby, this query is now fully determined
 		query->flags.complete = true;
 
