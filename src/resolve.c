@@ -206,7 +206,8 @@ char *resolveHostname(const char *addr)
 	while(!found && (he = gethostent()) != NULL)
 	{
 		// Skip any non-IPv6 and non-IPv4 entries
-		if((IPv6 && he->h_addrtype != AF_INET6) || he->h_addrtype != AF_INET)
+		if((IPv6 && he->h_addrtype != AF_INET6) || // not an IPv6 record
+		   (!IPv6 && he->h_addrtype != AF_INET))   // not an IPv4 record
 			continue;
 
 		// Loop over addresses for this HOSTS record
@@ -246,65 +247,75 @@ char *resolveHostname(const char *addr)
 		res_initialized = true;
 	}
 
-	// Step 3: Backup configured name servers and invalidate them
-	struct in_addr ns_addr_bck[MAXNS];
-	in_port_t ns_port_bck[MAXNS];
-	for(unsigned int i = 0u; i < MAXNS; i++)
+	struct in_addr FTLaddr = { 0 };
+	inet_pton(AF_INET, "127.0.0.1", &FTLaddr);
+	in_port_t FTLport = htons(config.dns_port);
+
+	// Set FTL as system resolver only if not already the primary resolver
+	if(_res.nsaddr_list[0].sin_addr.s_addr != FTLaddr.s_addr || _res.nsaddr_list[0].sin_port != FTLport)
 	{
-		ns_addr_bck[i] = _res.nsaddr_list[i].sin_addr;
-		ns_port_bck[i] = _res.nsaddr_list[i].sin_port;
-		_res.nsaddr_list[i].sin_addr.s_addr = 0; // 0.0.0.0
-	}
-	// Step 4: Set 127.0.0.1 (FTL) as the only resolver
-	const char *FTLip = "127.0.0.1";
-	// Set resolver address
-	inet_pton(AF_INET, FTLip, &_res.nsaddr_list[0].sin_addr);
-	// Set resolver port (have to convert from host to network byte order)
-	_res.nsaddr_list[0].sin_port = htons(config.dns_port);
-
-	if(config.debug & DEBUG_RESOLVER)
-		print_used_resolvers("Setting nameservers to:");
-
-	// Step 5: Try to resolve address
-	char host[NI_MAXHOST] = { 0 };
-	int ret = getnameinfo((struct sockaddr*)&ss, sizeof(ss), host, sizeof(host), NULL, 0, NI_NAMEREQD);
-
-	// Step 6: Check if getnameinfo() returned a host name
-	if(ret == 0)
-	{
-		if(valid_hostname(host, addr))
+		// Step 3: Backup configured name servers and invalidate them
+		struct in_addr ns_addr_bck[MAXNS];
+		in_port_t ns_port_bck[MAXNS];
+		for(unsigned int i = 0u; i < MAXNS; i++)
 		{
-			// Return hostname copied to new memory location
-			hostname = strdup(host);
+			ns_addr_bck[i] = _res.nsaddr_list[i].sin_addr;
+			ns_port_bck[i] = _res.nsaddr_list[i].sin_port;
+			_res.nsaddr_list[i].sin_addr.s_addr = 0; // 0.0.0.0
 		}
-		else
-		{
-			hostname = strdup("[invalid host name]");
-		}
+
+		// Step 4: Set FTL at 127.0.0.1 as the only resolver
+		_res.nsaddr_list[0].sin_addr.s_addr = FTLaddr.s_addr;
+		// Set resolver port
+		_res.nsaddr_list[0].sin_port = FTLport;
 
 		if(config.debug & DEBUG_RESOLVER)
-			logg(" ---> \"%s\" (found internally)", hostname);
+			print_used_resolvers("Setting nameservers to:");
+
+		// Step 5: Try to resolve address
+		char host[NI_MAXHOST] = { 0 };
+		int ret = getnameinfo((struct sockaddr*)&ss, sizeof(ss), host, sizeof(host), NULL, 0, NI_NAMEREQD);
+
+		// Step 6: Check if getnameinfo() returned a host name
+		if(ret == 0)
+		{
+			if(valid_hostname(host, addr))
+			{
+				// Return hostname copied to new memory location
+				hostname = strdup(host);
+			}
+			else
+			{
+				hostname = strdup("[invalid host name]");
+			}
+
+			if(config.debug & DEBUG_RESOLVER)
+				logg(" ---> \"%s\" (found internally)", hostname);
+		}
+		else if(config.debug & DEBUG_RESOLVER)
+		{
+			logg(" ---> \"\" (not found internally: %s", gai_strerror(ret));
+		}
+
+		// Step 7: Restore resolvers (without forced FTL)
+		for(unsigned int i = 0u; i < MAXNS; i++)
+		{
+			_res.nsaddr_list[i].sin_addr = ns_addr_bck[i];
+			_res.nsaddr_list[i].sin_port = ns_port_bck[i];
+		}
+		if(config.debug & DEBUG_RESOLVER)
+			print_used_resolvers("Setting nameservers back to default:");
 	}
 	else if(config.debug & DEBUG_RESOLVER)
-	{
-		logg(" ---> \"\" (not found internally: %s", gai_strerror(ret));
-	}
-
-	// Step 7: Restore resolvers (without forced FTL)
-	for(unsigned int i = 0u; i < MAXNS; i++)
-	{
-		_res.nsaddr_list[i].sin_addr = ns_addr_bck[i];
-		_res.nsaddr_list[i].sin_port = ns_port_bck[i];
-	}
-	if(config.debug & DEBUG_RESOLVER)
-		print_used_resolvers("Setting nameservers back to default:");
+		print_used_resolvers("FTL already primary nameserver:");
 
 	// Step 8: If no host name was found before, try again with system-configured
 	// resolvers (necessary for docker and friends)
 	if(hostname == NULL)
 	{
 		// Try to resolve address
-		ret = getnameinfo((struct sockaddr*)&ss, sizeof(ss), host, sizeof(host), NULL, 0, NI_NAMEREQD);
+		char host[NI_MAXHOST] = { 0 };
+		int ret = getnameinfo((struct sockaddr*)&ss, sizeof(ss), host, sizeof(host), NULL, 0, NI_NAMEREQD);
 
 		// Step 6.1: Check if getnameinfo() returned a host name this time
 		// First check for he not being NULL before trying to dereference it
