@@ -881,6 +881,10 @@ void read_debuging_settings(FILE *fp)
 	// defaults to: false
 	setDebugOption(fp, "DEBUG_CAPS", DEBUG_CAPS);
 
+	// DEBUG_DNSSEC
+	// defaults to: false
+	setDebugOption(fp, "DEBUG_DNSSEC", DEBUG_DNSSEC);
+
 	// DEBUG_VECTORS
 	// defaults to: false
 	setDebugOption(fp, "DEBUG_VECTORS", DEBUG_VECTORS);

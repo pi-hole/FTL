@@ -67,6 +67,8 @@ static void mysockaddr_extract_ip_port(union mysockaddr *server, char ip[ADDRSTR
 static void alladdr_extract_ip(union all_addr *addr, const sa_family_t family, char ip[ADDRSTRLEN+1]);
 static const char *dns_name(char *name);
 static void check_pihole_PTR(char *domain);
+#define query_set_dnssec(query, dnssec) _query_set_dnssec(query, dnssec, __FILE__, __LINE__)
+static void _query_set_dnssec(queriesData *query, const enum dnssec_status dnssec, const char *file, const int line);
 
 // Static blocking metadata
 static const char *blockingreason = NULL;
@@ -581,6 +583,10 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	query->reply = REPLY_UNKNOWN;
 	// Store DNSSEC result for this domain
 	query->dnssec = DNSSEC_UNSPECIFIED;
+	// Every domain is insecure in the beginning. It can get secure or bogus
+	// only if validation reveals this. If DNSSEC validation is not used, the
+	// original status (DNSSEC_UNSPECIFIED) is not changed.
+	query_set_dnssec(query, DNSSEC_INSECURE);
 	query->CNAME_domainID = -1;
 	// This query is not yet known ad forwarded or blocked
 	query->flags.blocked = false;
@@ -1754,9 +1760,9 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 		// We know from cache that this domain is either SECURE or
 		// INSECURE, bogus queries are not cached
 		if(flags & F_DNSSECOK)
-			query->dnssec = DNSSEC_SECURE;
+			query_set_dnssec(query, DNSSEC_SECURE);
 		else
-			query->dnssec = DNSSEC_INSECURE;
+			query_set_dnssec(query, DNSSEC_INSECURE);
 
 		// Hereby, this query is now fully determined
 		query->flags.complete = true;
@@ -1805,12 +1811,12 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 				// We were able to validate this query, mark it
 				// as SECURE (reply <domain> is {DNSKEY,DS}
 				// keytag <X>, algo <Y>, digest <Z>)
-				query->dnssec = DNSSEC_SECURE;
+				query_set_dnssec(query, DNSSEC_SECURE);
 			}
 			else if(strstr(arg, "BOGUS") != NULL)
 			{
 				// BOGUS DS
-				query->dnssec = DNSSEC_BOGUS;
+				query_set_dnssec(query, DNSSEC_BOGUS);
 			}
 			else
 			{
@@ -1818,7 +1824,6 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 				// (reply <domain> is no DS), we overwrite flags
 				// to store NODATA for this query
 				reply_flags = F_NEG;
-				query->dnssec = DNSSEC_INSECURE;
 			}
 		}
 
@@ -2044,15 +2049,15 @@ static void FTL_dnssec(const char *arg, const union all_addr *addr, const int id
 
 	// Iterate through possible values
 	if(strcmp(arg, "SECURE") == 0)
-		query->dnssec = DNSSEC_SECURE;
+		query_set_dnssec(query, DNSSEC_SECURE);
 	else if(strcmp(arg, "INSECURE") == 0)
-		query->dnssec = DNSSEC_INSECURE;
+		query_set_dnssec(query, DNSSEC_INSECURE);
 	else if(strcmp(arg, "BOGUS") == 0)
-		query->dnssec = DNSSEC_BOGUS;
+		query_set_dnssec(query, DNSSEC_BOGUS);
 	else if(strcmp(arg, "ABANDONED") == 0)
-		query->dnssec = DNSSEC_ABANDONED;
+		query_set_dnssec(query, DNSSEC_ABANDONED);
 	else
-		logg("***** Ignored unkonwn DNSSEC status \"%s\"", arg);
+		logg("***** Ignored unknown DNSSEC status \"%s\"", arg);
 
 	// Unlock shared memory
 	unlock_shm();
@@ -2322,8 +2327,11 @@ static void _query_set_reply(const unsigned int flags, const union all_addr *add
 	}
 
 	if(config.debug & DEBUG_QUERIES)
+	{
+		const char *path = short_path(file);
 		logg("Set reply to %s (%d) in %s:%d", reply_status_str[query->reply], query->reply,
-		     file, line);
+		     path, line);
+	}
 
 	counters->reply[query->reply]++;
 
@@ -2900,4 +2908,40 @@ void FTL_multiple_replies(const int id, int *firstID)
 const char *get_edestr(const int ede)
 {
 	return edestr(ede);
+}
+
+static void _query_set_dnssec(queriesData *query, const enum dnssec_status dnssec, const char *file, const int line)
+{
+	// Return early if DNSSEC validation is disabled
+	if(!option_bool(OPT_DNSSEC_VALID))
+		return;
+
+	if(config.debug & DEBUG_DNSSEC)
+	{
+		const char *status = "unknown";
+		switch(dnssec)
+		{
+			case DNSSEC_UNSPECIFIED:
+				status = "unspecified";
+				break;
+			case DNSSEC_SECURE:
+				status = "SECURE";
+				break;
+			case DNSSEC_INSECURE:
+				status = "INSECURE";
+				break;
+			case DNSSEC_BOGUS:
+				status = "BOGUS";
+				break;
+			case DNSSEC_ABANDONED:
+				status = "ABANDONED";
+				break;
+		}
+
+		const char *path = short_path(file);
+		logg("Setting DNSSEC status to %s in %s:%d", status, path, line);
+	}
+
+	// Set DNSSEC status
+	query->dnssec = dnssec;
 }
