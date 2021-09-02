@@ -83,7 +83,7 @@ sleep 2
 echo -n "FTL version (DNS): "
 dig TXT CHAOS version.FTL @127.0.0.1 +short
 echo "FTL verbose version (CLI): "
-pihole-FTL -vv
+/home/pihole/pihole-FTL -vv
 echo -n "Contained dnsmasq version (DNS): "
 dig TXT CHAOS version.bind @127.0.0.1 +short
 
