@@ -352,8 +352,8 @@
   printf "%s\n" "${lines[@]}"
   [[ ${lines[1]} == "-2 13.95 blocklist blocklist" ]]
   [[ ${lines[2]} == "-1 23.26 cache cache" ]]
-  [[ ${lines[3]} == "0 62.79 "* ]]
-  [[ ${lines[4]} == "" ]]
+  [[ ${lines[3]} == "0 37.21 84.200.69.80#53 84.200.69.80#53 " ]]
+  [[ ${lines[4]} == "1 25.58 8.8.8.8#53 8.8.8.8#53" ]]
 }
 
 @test "Query Types reported correctly" {

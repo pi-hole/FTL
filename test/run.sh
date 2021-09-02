@@ -46,12 +46,10 @@ chown pihole:pihole /etc/pihole/pihole-FTL.db
 echo "BLOCKING_ENABLED=true" > /etc/pihole/setupVars.conf
 
 # Prepare pihole-FTL.conf
-echo -e "DEBUG_ALL=true\nRESOLVE_IPV4=no\nRESOLVE_IPV6=no" > /etc/pihole/pihole-FTL.conf
+cp test/pihole-FTL.conf /etc/pihole/pihole-FTL.conf
 
 # Prepare dnsmasq.conf
-# We hard-code OpenDNS as resolver (8.8.8.8 doesn't resolve HTTPS/SVCB,
-# 1.1.1.1 doesn't implement ANY, 9.9.9.9 doesn't implement RRSIG)
-echo -e "log-queries=extra\nlog-facility=/var/log/pihole.log\nserver=84.200.69.80\nno-resolv" > /etc/dnsmasq.conf
+cp test/dnsmasq.conf /etc/dnsmasq.conf
 
 # Set restrictive umask
 OLDUMASK=$(umask)
@@ -78,18 +76,16 @@ fi
 mkdir -p test/libs
 git clone --depth=1 --quiet https://github.com/bats-core/bats-core test/libs/bats > /dev/null
 
-# Block until FTL is ready, retry once per second for 45 seconds
+# Give FTL some time for startup preparations
 sleep 2
 
 # Print versions of pihole-FTL
-echo -n "FTL version: "
+echo -n "FTL version (DNS): "
 dig TXT CHAOS version.FTL @127.0.0.1 +short
-echo -n "Contained dnsmasq version: "
+echo "FTL verbose version (CLI): "
+pihole-FTL -vv
+echo -n "Contained dnsmasq version (DNS): "
 dig TXT CHAOS version.bind @127.0.0.1 +short
-
-# Print content of pihole.log and pihole-FTL.log
-#cat /var/log/pihole.log
-#cat /var/log/pihole-FTL.log
 
 # Run tests
 test/libs/bats/bin/bats "test/test_suite.bats"
