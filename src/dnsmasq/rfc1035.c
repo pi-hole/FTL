@@ -631,7 +631,7 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 	      if (aqclass == C_IN && res != 2 && (aqtype == T_CNAME || aqtype == T_PTR))
 		{
 #ifdef HAVE_DNSSEC
-		  if (option_bool(OPT_DNSSEC_VALID) && daemon->rr_status[j] != 0)
+		  if (option_bool(OPT_DNSSEC_VALID) && !no_cache_dnssec && daemon->rr_status[j] != 0)
 		    {
 		      /* validated RR anywhere in CNAME chain, don't cache. */
 		      if (cname_short || aqtype == T_CNAME)
@@ -758,7 +758,7 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 	    }
 	  
 #ifdef HAVE_DNSSEC
-	  if (option_bool(OPT_DNSSEC_VALID) && daemon->rr_status[j] != 0)
+	  if (option_bool(OPT_DNSSEC_VALID) && !no_cache_dnssec && daemon->rr_status[j] != 0)
 	    {
 	      secflag = F_DNSSECOK;
 	      
