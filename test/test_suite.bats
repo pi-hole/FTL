@@ -761,7 +761,7 @@
   run bash -c 'sqlite3 /etc/pihole/gravity.db "INSERT INTO domainlist (type,domain) VALUES (3,\"^localhost$;querytype=A\");"'
   printf "sqlite3 INSERT: %s\n" "${lines[@]}"
   [[ $status == 0 ]]
-  run bash -c 'kill -RTMIN $(pidof -s pihole-FTL); sleep 1'
+  run bash -c 'kill -RTMIN $(cat /var/run/pihole-FTL.pid); sleep 1'
   printf "reload: %s\n" "${lines[@]}"
   [[ $status == 0 ]]
   run sleep 2
@@ -774,7 +774,7 @@
   run bash -c 'sqlite3 /etc/pihole/gravity.db "DELETE FROM domainlist WHERE domain = \"^localhost$;querytype=A\";"'
   printf "sqlite3 DELETE: %s\n" "${lines[@]}"
   [[ $status == 0 ]]
-  run bash -c 'kill -RTMIN $(pidof -s pihole-FTL)'
+  run bash -c 'kill -RTMIN $(cat /var/run/pihole-FTL.pid)'
   printf "reload: %s\n" "${lines[@]}"
   [[ $status == 0 ]]
   run sleep 2
@@ -784,7 +784,7 @@
   run bash -c 'sqlite3 /etc/pihole/gravity.db "INSERT INTO domainlist (type,domain) VALUES (3,\"^localhost$;querytype=!A\");"'
   printf "sqlite3 INSERT: %s\n" "${lines[@]}"
   [[ $status == 0 ]]
-  run bash -c 'kill -RTMIN $(pidof -s pihole-FTL); sleep 1'
+  run bash -c 'kill -RTMIN $(cat /var/run/pihole-FTL.pid); sleep 1'
   printf "reload: %s\n" "${lines[@]}"
   [[ $status == 0 ]]
   run sleep 2
@@ -797,7 +797,7 @@
   run bash -c 'sqlite3 /etc/pihole/gravity.db "DELETE FROM domainlist WHERE domain = \"^localhost$;querytype=!A\";"'
   printf "sqlite3 DELETE: %s\n" "${lines[@]}"
   [[ $status == 0 ]]
-  run bash -c 'kill -RTMIN $(pidof -s pihole-FTL)'
+  run bash -c 'kill -RTMIN $(cat /var/run/pihole-FTL.pid)'
   printf "reload: %s\n" "${lines[@]}"
   [[ $status == 0 ]]
   run sleep 2
