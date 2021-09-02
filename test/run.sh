@@ -51,7 +51,7 @@ echo -e "DEBUG_ALL=true\nRESOLVE_IPV4=no\nRESOLVE_IPV6=no" > /etc/pihole/pihole-
 # Prepare dnsmasq.conf
 # We hard-code OpenDNS as resolver (8.8.8.8 doesn't resolve HTTPS/SVCB,
 # 1.1.1.1 doesn't implement ANY, 9.9.9.9 doesn't implement RRSIG)
-echo -e "log-queries\nlog-facility=/var/log/pihole.log\nserver=84.200.69.80\nno-resolv" > /etc/dnsmasq.conf
+echo -e "log-queries=extra\nlog-facility=/var/log/pihole.log\nserver=84.200.69.80\nno-resolv" > /etc/dnsmasq.conf
 
 # Set restrictive umask
 OLDUMASK=$(umask)
