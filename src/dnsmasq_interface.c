@@ -2398,9 +2398,10 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 		exit(EXIT_FAILURE);
 	}
 
-	// Start thread that will stay in the background until host names
-	// needs to be resolved
-	if(pthread_create( &threads[DNSclient], &attr, DNSclient_thread, NULL ) != 0)
+	// Start thread that will stay in the background until host names needs to
+	// be resolved. If configuration does not ask for never resolving hostnames
+	// (e.g. on CI builds), the thread is never started)
+	if(resolve_names() && pthread_create( &threads[DNSclient], &attr, DNSclient_thread, NULL ) != 0)
 	{
 		logg("Unable to open DNS client thread. Exiting...");
 		exit(EXIT_FAILURE);
