@@ -724,7 +724,8 @@ static int validate_rrset(time_t now, struct dns_header *header, size_t plen, in
       
       /* namebuff used for workspace above, restore to leave unchanged on exit */
       p = (unsigned char*)(rrset[0]);
-      extract_name(header, plen, &p, name, 1, 0);
+      if (!extract_name(header, plen, &p, name, 1, 0))
+	return STAT_BOGUS;
 
       if (key)
 	{
@@ -1017,7 +1018,9 @@ int dnssec_validate_ds(time_t now, struct dns_header *header, size_t plen, char 
     }
   
   p = (unsigned char *)(header+1);
-  extract_name(header, plen, &p, name, 1, 4);
+  if (!extract_name(header, plen, &p, name, 1, 4))
+      return STAT_BOGUS;
+
   p += 4; /* qtype, qclass */
   
   /* If the key needed to validate the DS is on the same domain as the DS, we'll
