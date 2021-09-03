@@ -802,7 +802,7 @@ static void do_usage(void)
 	     
       if (usage[i].arg)
 	{
-	  strcpy(buff, usage[i].arg);
+	  safe_strncpy(buff, usage[i].arg, sizeof(buff));
 	  for (j = 0; tab[j].handle; j++)
 	    if (tab[j].handle == *(usage[i].arg))
 	      sprintf(buff, "%d", tab[j].val);
@@ -963,7 +963,7 @@ static int domain_rev4(char *domain, struct in_addr addr, int msize)
       return 0;
     }
   
-  domain += sprintf(domain, "in-addr.arpa");
+  sprintf(domain, "in-addr.arpa");
   
   return 1;
 }
@@ -982,7 +982,7 @@ static int domain_rev6(char *domain, struct in6_addr *addr, int msize)
       int dig = ((unsigned char *)addr)[i>>3];
       domain += sprintf(domain, "%.1x.", (i>>2) & 1 ? dig & 15 : dig >> 4);
     }
-  domain += sprintf(domain, "ip6.arpa");
+  sprintf(domain, "ip6.arpa");
   
   return 1;
 }
@@ -1833,6 +1833,8 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 		new->next = li;
 		*up = new;
 	      }
+	    else
+	      free(path);
 
 	  }
 
@@ -1999,7 +2001,11 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	
 	if (!(name = canonicalise_opt(arg)) || 
 	    (comma && !(target = canonicalise_opt(comma))))
-	  ret_err(_("bad MX name"));
+	  {
+	    free(name);
+	    free(target);
+	    ret_err(_("bad MX name"));
+	  }
 	
 	new = opt_malloc(sizeof(struct mx_srv_record));
 	new->next = daemon->mxnames;
@@ -3620,6 +3626,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 		      inet_ntop(AF_INET, &in, daemon->addrbuff, ADDRSTRLEN);
 		      sprintf(errstr, _("duplicate dhcp-host IP address %s"),
 			      daemon->addrbuff);
+		      dhcp_config_free(new);
 		      return 0;
 		    }	      
 	      }
@@ -3783,16 +3790,16 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 
     case LOPT_NAME_MATCH: /* --dhcp-name-match */
       {
-	struct dhcp_match_name *new = opt_malloc(sizeof(struct dhcp_match_name));
-	struct dhcp_netid *id = opt_malloc(sizeof(struct dhcp_netid));
+	struct dhcp_match_name *new;
 	ssize_t len;
 	
 	if (!(comma = split(arg)) || (len = strlen(comma)) == 0)
 	  ret_err(gen_err);
 
+	new = opt_malloc(sizeof(struct dhcp_match_name));
 	new->wildcard = 0;
-	new->netid = id;
-	id->net = opt_string_alloc(set_prefix(arg));
+	new->netid = opt_malloc(sizeof(struct dhcp_netid));
+	new->netid->net = opt_string_alloc(set_prefix(arg));
 
 	if (comma[len-1] == '*')
 	  {
@@ -3996,6 +4003,8 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	       }
 	   }
 	 
+	 dhcp_netid_free(new->netid);
+	 free(new);
 	 ret_err(gen_err);
        }
 	 
@@ -4371,7 +4380,7 @@ err:
     case LOPT_CNAME: /* --cname */
       {
 	struct cname *new;
-	char *alias, *target, *last, *pen;
+	char *alias, *target=NULL, *last, *pen;
 	int ttl = -1;
 
 	for (last = pen = NULL, comma = arg; comma; comma = split(comma))
@@ -4386,13 +4395,13 @@ err:
 	if (pen != arg && atoi_check(last, &ttl))
 	  last = pen;
 	  	
-    	target = canonicalise_opt(last);
-
 	while (arg != last)
 	  {
 	    int arglen = strlen(arg);
 	    alias = canonicalise_opt(arg);
 
+	    if (!target)
+	      target = canonicalise_opt(last);
 	    if (!alias || !target)
 	      {
 		free(target);
@@ -4695,7 +4704,7 @@ err:
 		struct name_list *nl;
 		if (!canon)
                   {
-		    struct name_list *tmp = new->names, *next;
+		    struct name_list *tmp, *next;
 		    for (tmp = new->names; tmp; tmp = next)
 		      {
 			next = tmp->next;
