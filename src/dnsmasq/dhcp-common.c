@@ -653,6 +653,8 @@ const struct opttab_t {
   { "client-arch", 93, 2 | OT_DEC },
   { "client-interface-id", 94, 0 },
   { "client-machine-id", 97, 0 },
+  { "posix-timezone", 100, OT_NAME }, /* RFC 4833, Sec. 2 */
+  { "tzdb-timezone", 101, OT_NAME }, /* RFC 4833, Sec. 2 */
   { "subnet-select", 118, OT_INTERNAL },
   { "domain-search", 119, OT_RFC1035_NAME },
   { "sip-server", 120, 0 },
