@@ -262,6 +262,15 @@ int DB_save_queries(sqlite3 *db)
 		return -1;
 	}
 
+	// Store index for next loop interation round and update last time stamp
+	// in the database only if all queries have been saved successfully
+	if(saved > 0 && !error)
+	{
+		lastdbindex = queryID;
+		db_set_FTL_property(db, DB_LASTTIMESTAMP, newlasttimestamp);
+		db_update_counters(db, total, blocked);
+	}
+
 	// Finish prepared statement
 	if((rc = dbquery(db,"END TRANSACTION")) != SQLITE_OK)
 	{
@@ -278,15 +287,6 @@ int DB_save_queries(sqlite3 *db)
 			dbclose(&db);
 
 		return -1;
-	}
-
-	// Store index for next loop interation round and update last time stamp
-	// in the database only if all queries have been saved successfully
-	if(saved > 0 && !error)
-	{
-		lastdbindex = queryID;
-		db_set_FTL_property(db, DB_LASTTIMESTAMP, newlasttimestamp);
-		db_update_counters(db, total, blocked);
 	}
 
 	if(config.debug & DEBUG_DATABASE || saving_failed_before)
