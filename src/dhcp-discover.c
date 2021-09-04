@@ -53,6 +53,9 @@
 // Probe DHCP servers responding to the broadcast address
 #define PROBE_BCAST
 
+// Should we generate test data for DHCP option 249?
+//#define TEST_OPT_249
+
 // Global lock used by all threads
 static pthread_mutex_t lock;
 
@@ -230,11 +233,28 @@ static bool send_dhcp_discover(const int sock, const uint32_t xid, const char *i
 	return bytes > 0;
 }
 
+#ifdef TEST_OPT_249
+static void gen_249_test_data(dhcp_packet_data *offer_packet)
+{
+	// Test data for DHCP option 249 (length 14)
+	// See https://discourse.pi-hole.net/t/pi-hole-unbound-via-wireguard-stops-working-over-night/49149
+	char test_data[] = { 249, 14, 0x20, 0xAC, 0x1F, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0xAC, 0x1F, 0x01, 0x01};
+	// The first 4 bytes are DHCP magic cookie
+	memcpy(&offer_packet->options[4], test_data, sizeof(test_data));
+	offer_packet->options[sizeof(test_data)+4] = 0;
+}
+#endif
+
 // adds a DHCP OFFER to list in memory
 static void print_dhcp_offer(struct in_addr source, dhcp_packet_data *offer_packet)
 {
 	if(offer_packet == NULL)
 		return;
+
+	// Generate option test data
+#ifdef TEST_OPT_249
+	gen_249_test_data(offer_packet);
+#endif
 
 	// process all DHCP options present in the packet
 	// We start from 4 as the first 32 bit are the DHCP magic coockie (verified before)
@@ -384,6 +404,49 @@ static void print_dhcp_offer(struct in_addr source, dhcp_packet_data *offer_pack
 						logg_sameline("   ");
 
 					logg("Port Control Protocol (PCP) server: %s", inet_ntoa(addr_list));
+				}
+			}
+			else if((opttype == 121 || opttype == 249) && optlen > 4)
+			{
+				// RFC 3442 / Microsoft Classless Static Route Option
+				// see
+				// - https://docs.microsoft.com/en-us/openspecs/windows_protocols/ms-dhcpe/f9c19c79-1c7f-4746-b555-0c0fc523f3f9
+				// - https://datatracker.ietf.org/doc/html/rfc3442 (page 3)
+				logg("%s Classless Static Route:", opttype == 121 ? "RFC 3442" : "Microsoft");
+				// Loop over contained routes
+				unsigned int n = 0;
+				for(unsigned int i = 1; n < optlen; i++)
+				{
+					// Extract destionation descriptor
+					unsigned char cidr = offer_packet->options[x+n++];
+					unsigned char addr[4] = { 0 };
+					if(cidr > 0)
+						addr[0] = offer_packet->options[x+n++];
+					if(cidr > 8)
+						addr[1] = offer_packet->options[x+n++];
+					if(cidr > 16)
+						addr[2] = offer_packet->options[x+n++];
+					if(cidr > 24)
+						addr[3] = offer_packet->options[x+n++];
+
+					// Extract router address
+					unsigned char router[4] = { 0 };
+					for(int j = 0; j < 4; j++)
+						router[j] = offer_packet->options[x+n++];
+
+					if(cidr == 0)
+					{
+						// default route (0.0.0.0/0)
+						logg("     %d: default via %d.%d.%d.%d", i,
+						     router[0], router[1], router[2], router[3]);
+					}
+					else
+					{
+						// specific route
+						logg("     %d: %d.%d.%d.%d/%d via %d.%d.%d.%d", i,
+						     addr[0], addr[1], addr[2], addr[3], cidr,
+						     router[0], router[1], router[2], router[3]);
+					}
 				}
 			}
 			else
