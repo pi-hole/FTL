@@ -99,6 +99,18 @@ bool check_capabilities(void)
 		logg("WARNING: Required Linux capability CAP_SYS_NICE not available");
 		capabilities_okay = false;
 	}
+	if (!(data->permitted & (1 << CAP_IPC_LOCK)))
+	{
+		// Necessary for mmap() to work correctly
+		logg("WARNING: Required Linux capability CAP_IPC_LOCK not available");
+		capabilities_okay = false;
+	}
+	if (!(data->permitted & (1 << CAP_CHOWN)))
+	{
+		// Necessary for chown() to work correctly
+		logg("WARNING: Required Linux capability CAP_CHOWN not available");
+		capabilities_okay = false;
+	}
 
 	// Free allocated memory
 	free(hdr);
