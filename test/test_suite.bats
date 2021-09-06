@@ -549,7 +549,7 @@
 @test "No WARNING messages in pihole-FTL.log (besides known capability issues)" {
   run bash -c 'grep "WARNING" /var/log/pihole-FTL.log'
   printf "%s\n" "${lines[@]}"
-  run bash -c 'grep "WARNING" /var/log/pihole-FTL.log | grep -c -v -E "CAP_NET_ADMIN|CAP_NET_RAW|CAP_SYS_NICE"'
+  run bash -c 'grep "WARNING" /var/log/pihole-FTL.log | grep -c -v -E "CAP_NET_ADMIN|CAP_NET_RAW|CAP_SYS_NICE|CAP_IPC_LOCK|CAP_CHOWN"'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0" ]]
 }
