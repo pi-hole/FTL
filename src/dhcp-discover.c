@@ -499,6 +499,7 @@ static bool receive_dhcp_packet(void *buffer, int buffer_size, const char *iface
 	// Return on error
 	if(recv_result == -1){
 		logg(" recvfrom() failed on %s, error: %s", iface, strerror(errno));
+		pthread_mutex_unlock(&lock);
 		return false;
 	}
 
@@ -541,6 +542,8 @@ static bool get_dhcp_offer(const int sock, const uint32_t xid, const char *iface
 		{
 			logg("  DHCPOFFER XID (%lu) does not match our DHCPDISCOVER XID (%lu) - ignoring packet (not for us)\n",
 			     (unsigned long) ntohl(offer_packet.xid), (unsigned long) xid);
+
+			pthread_mutex_unlock(&lock);
 			continue;
 		}
 
