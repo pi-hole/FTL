@@ -234,6 +234,7 @@ static bool add_message(enum message_type type,
 			sqlite3_reset(stmt);
 			sqlite3_finalize(stmt);
 			dbclose(&db);
+			va_end(ap);
 			return false;
 		}
 	}

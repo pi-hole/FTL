@@ -334,7 +334,7 @@ static void *telnet_connection_handler_thread(void *socket_desc)
 	if(tid == MAX_API_THREADS)
 	{
 		logg("Not able to spawn new API thread, limit of " str(MAX_API_THREADS) " threads reached.");
-		return false;
+		return NULL;
 	}
 
 	// Receive from client
@@ -412,7 +412,7 @@ static void *socket_connection_handler_thread(void *socket_desc)
 	if(tid == MAX_API_THREADS)
 	{
 		logg("Not able to spawn new API thread, limit of " str(MAX_API_THREADS) " threads reached.");
-		return false;
+		return NULL;
 	}
 
 	// Receive from client

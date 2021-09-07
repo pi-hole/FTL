@@ -752,19 +752,16 @@ static bool add_FTL_clients_to_network_table(sqlite3 *db, enum arp_status *clien
 			// Variant 2: Try to find a device using the same IP address within the last 24 hours
 			// Only try this when there is no EDNS(0) MAC address available
 			//
-			if(dbID < 0)
-			{
-				unlock_shm();
-				dbID = find_device_by_recent_ip(db, ipaddr);
-				lock_shm();
+			unlock_shm();
+			dbID = find_device_by_recent_ip(db, ipaddr);
+			lock_shm();
 
-				// Reacquire client pointer (if may have changed when unlocking above)
-				client = getClient(clientID, true);
+			// Reacquire client pointer (if may have changed when unlocking above)
+			client = getClient(clientID, true);
 
-				if(config.debug & DEBUG_ARP && dbID >= 0)
-					logg("Network table: Client with IP %s has no MAC info but was recently be seen for network ID %i",
-					     ipaddr, dbID);
-			}
+			if(config.debug & DEBUG_ARP && dbID >= 0)
+				logg("Network table: Client with IP %s has no MAC info but was recently be seen for network ID %i",
+				     ipaddr, dbID);
 
 			//
 			// Variant 3: Try to find a device with mock IP address

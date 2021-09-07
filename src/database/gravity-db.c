@@ -776,7 +776,7 @@ char* __attribute__ ((malloc)) get_client_names_from_ids(const char *group_ids)
 	                       "WHERE id IN (%s);", group_ids) < 1)
 	{
 		logg("group_names(%s) - asprintf() error", group_ids);
-		return false;
+		return NULL;
 	}
 
 	if(config.debug & DEBUG_DATABASE)
