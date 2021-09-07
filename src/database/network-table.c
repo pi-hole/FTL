@@ -910,11 +910,10 @@ static bool add_local_interfaces_to_network_table(sqlite3 *db, time_t now, unsig
 {
 	// Try to access the kernel's Internet protocol address management
 	FILE *ip_pipe = NULL;
-	const char ip_command[] = "ip address show";
-	if((ip_pipe = popen(ip_command, "r")) == NULL)
+	const char cmd[] = "ip address show";
+	if((ip_pipe = popen(cmd, "r")) == NULL)
 	{
-		logg("WARN: Command \"%s\" failed!", ip_command);
-		logg("      Message: %s", strerror(errno));
+		logg("WARN: Command \"%s\" failed: %s", cmd, strerror(errno));
 		return false;
 	}
 
@@ -1094,11 +1093,10 @@ void parse_neighbor_cache(sqlite3* db)
 {
 	// Try to access the kernel's neighbor cache
 	FILE *arpfp = NULL;
-	const char neigh_command[] = "ip neigh show";
-	if((arpfp = popen(neigh_command, "r")) == NULL)
+	const char cmd[] = "ip neigh show";
+	if((arpfp = popen(cmd, "r")) == NULL)
 	{
-		logg("WARN: Command \"%s\" failed!", neigh_command);
-		logg("      Message: %s", strerror(errno));
+		logg("WARN: Command \"%s\" failed: %s", cmd, strerror(errno));
 		return;
 	}
 
