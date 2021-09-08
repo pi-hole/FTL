@@ -115,7 +115,8 @@ u64 rand64(void)
   return (u64)out[outleft+1] + (((u64)out[outleft]) << 32);
 }
 
-/* returns 2 if names is OK but contains one or more underscores */
+/* returns 1 if name is OK and ascii printable
+ * returns 2 if name should be processed by IDN */
 static int check_name(char *in)
 {
   /* remove trailing . 
@@ -123,6 +124,7 @@ static int check_name(char *in)
   size_t dotgap = 0, l = strlen(in);
   char c;
   int nowhite = 0;
+  int r = 1;
   int hasuscore = 0;
   
   if (l == 0 || l > MAXDNAME) return 0;
@@ -142,22 +144,30 @@ static int check_name(char *in)
       else if (isascii((unsigned char)c) && iscntrl((unsigned char)c)) 
 	/* iscntrl only gives expected results for ascii */
 	return 0;
-#if !defined(HAVE_IDN) && !defined(HAVE_LIBIDN2)
       else if (!isascii((unsigned char)c))
+#if !defined(HAVE_IDN) && !defined(HAVE_LIBIDN2)
 	return 0;
+#else
+	r = 2;
 #endif
       else if (c != ' ')
 	{
 	  nowhite = 1;
+#if defined(HAVE_LIBIDN2) && (!defined(IDN2_VERSION_NUMBER) || IDN2_VERSION_NUMBER < 0x02000003)
+  /* older libidn2 strips underscores, so don't do IDN processing
+     if the name has an underscore */
 	  if (c == '_')
 	    hasuscore = 1;
+#else
+	  (void)hasuscore;
+#endif
 	}
     }
 
   if (!nowhite)
     return 0;
 
-  return hasuscore ? 2 : 1;
+  return (hasuscore) ? 1 : r;
 }
 
 /* Hostnames have a more limited valid charset than domain names
@@ -204,12 +214,8 @@ char *canonicalise(char *in, int *nomem)
   if (!(rc = check_name(in)))
     return NULL;
   
-#if defined(HAVE_LIBIDN2) && (!defined(IDN2_VERSION_NUMBER) || IDN2_VERSION_NUMBER < 0x02000003)
-  /* older libidn2 strips underscores, so don't do IDN processing
-     if the name has an underscore (check_name() returned 2) */
-  if (rc != 2)
-#endif
 #if defined(HAVE_IDN) || defined(HAVE_LIBIDN2)
+  if (rc == 2)
     {
 #  ifdef HAVE_LIBIDN2
       rc = idn2_to_ascii_lz(in, &ret, IDN2_NONTRANSITIONAL);
@@ -234,12 +240,14 @@ char *canonicalise(char *in, int *nomem)
       
       return ret;
     }
+#else
+  (void)rc;
 #endif
   
   if ((ret = whine_malloc(strlen(in)+1)))
     strcpy(ret, in);
   else if (nomem)
-    *nomem = 1;    
+    *nomem = 1;
 
   return ret;
 }
