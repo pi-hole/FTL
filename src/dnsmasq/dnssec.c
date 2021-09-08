@@ -1893,7 +1893,7 @@ int dnssec_validate_reply(time_t now, struct dns_header *header, size_t plen, ch
   
    /* Find all the targets we're looking for answers to.
      The zeroth array element is for the query, subsequent ones
-     for CNAME targets, unless the query is for a CNAME. */
+     for CNAME targets, unless the query is for a CNAME or ANY. */
 
   if (!expand_workspace(&targets, &target_sz, 0))
     return STAT_BOGUS;
@@ -1912,7 +1912,7 @@ int dnssec_validate_reply(time_t now, struct dns_header *header, size_t plen, ch
   if (qtype == T_RRSIG)
     return STAT_INSECURE;
   
-  if (qtype != T_CNAME)
+  if (qtype != T_CNAME && qtype != T_ANY)
     for (j = ntohs(header->ancount); j != 0; j--) 
       {
 	if (!(p1 = skip_name(p1, header, plen, 10)))
