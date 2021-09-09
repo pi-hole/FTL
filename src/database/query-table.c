@@ -30,6 +30,10 @@ static bool saving_failed_before = false;
 
 int get_number_of_queries_in_DB(sqlite3 *db)
 {
+	// Return early if database is known to be broken
+	if(FTLDBerror())
+		return DB_FAILED;
+
 	// Open pihole-FTL.db database file if needed
 	bool db_opened = false;
 	if(db == NULL)
@@ -37,7 +41,7 @@ int get_number_of_queries_in_DB(sqlite3 *db)
 		if((db = dbopen(false)) == NULL)
 		{
 			logg("get_number_of_queries_in_DB() - Failed to open DB");
-			return -1;
+			return DB_FAILED;
 		}
 
 		// Successful
@@ -55,6 +59,10 @@ int get_number_of_queries_in_DB(sqlite3 *db)
 
 int DB_save_queries(sqlite3 *db)
 {
+	// Return early if database is known to be broken
+	if(FTLDBerror())
+		return DB_FAILED;
+
 	// Start database timer
 	if(config.debug & DEBUG_DATABASE)
 		timer_start(DATABASE_WRITE_TIMER);
@@ -66,7 +74,7 @@ int DB_save_queries(sqlite3 *db)
 		if((db = dbopen(false)) == NULL)
 		{
 			logg("DB_save_queries() - Failed to open DB");
-			return -1;
+			return DB_FAILED;
 		}
 
 		// Successful
@@ -87,9 +95,10 @@ int DB_save_queries(sqlite3 *db)
 			text = "ERROR";
 
 		logg("%s: Storing queries in long-term database failed: %s", text, sqlite3_errstr(rc));
+		checkFTLDBrc(rc);
 		if(db_opened)
 			dbclose(&db);
-		return -1;
+		return DB_FAILED;
 	}
 
 	rc = sqlite3_prepare_v2(db, "INSERT INTO queries VALUES (NULL,?,?,?,?,?,?,?)", -1, &stmt, NULL);
@@ -109,11 +118,12 @@ int DB_save_queries(sqlite3 *db)
 
 		// dbquery() above already logs the reson for why the query failed
 		logg("%s: Storing queries in long-term database failed: %s\n", text, sqlite3_errstr(rc));
-		logg("%s  Keeping queries in memory for later new attempt", spaces);
+		if(!checkFTLDBrc(rc))
+			logg("%s  Keeping queries in memory for later new attempt", spaces);
 		saving_failed_before = true;
 		if(db_opened)
 			dbclose(&db);
-		return -1;
+		return DB_FAILED;
 	}
 
 	// Get last ID stored in the database
@@ -250,7 +260,7 @@ int DB_save_queries(sqlite3 *db)
 		logg("Statement finalization failed when trying to store queries to long-term database: %s",
 		     sqlite3_errstr(rc));
 
-		if( rc == SQLITE_BUSY )
+		if(!checkFTLDBrc(rc) && rc == SQLITE_BUSY)
 		{
 			logg("Keeping queries in memory for later new attempt");
 			saving_failed_before = true;
@@ -259,7 +269,7 @@ int DB_save_queries(sqlite3 *db)
 		if(db_opened)
 			dbclose(&db);
 
-		return -1;
+		return DB_FAILED;
 	}
 
 	// Store index for next loop interation round and update last time stamp
@@ -277,7 +287,7 @@ int DB_save_queries(sqlite3 *db)
 		// No need to log the error string here, dbquery() did that already above
 		logg("END TRANSACTION failed when trying to store queries to long-term database");
 
-		if( rc == SQLITE_BUSY )
+		if(!checkFTLDBrc(rc) && rc == SQLITE_BUSY)
 		{
 			logg("Keeping queries in memory for later new attempt");
 			saving_failed_before = true;
@@ -286,7 +296,7 @@ int DB_save_queries(sqlite3 *db)
 		if(db_opened)
 			dbclose(&db);
 
-		return -1;
+		return DB_FAILED;
 	}
 
 	if(config.debug & DEBUG_DATABASE || saving_failed_before)
@@ -308,6 +318,10 @@ int DB_save_queries(sqlite3 *db)
 
 void delete_old_queries_in_DB(sqlite3 *db)
 {
+	// Return early if database is known to be broken
+	if(FTLDBerror())
+		return;
+
 	int timestamp = time(NULL) - config.maxDBdays * 86400;
 
 	if(dbquery(db, "DELETE FROM queries WHERE timestamp <= %i", timestamp) != SQLITE_OK)
@@ -338,6 +352,10 @@ bool add_additional_info_column(sqlite3 *db)
 // Get most recent 24 hours data from long-term database
 void DB_read_queries(void)
 {
+	// Return early if database is known to be broken
+	if(FTLDBerror())
+		return;
+
 	// Open database
 	sqlite3 *db;
 	if((db = dbopen(false)) == NULL)
@@ -360,6 +378,7 @@ void DB_read_queries(void)
 	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK ){
 		logg("DB_read_queries() - SQL error prepare: %s", sqlite3_errstr(rc));
+		checkFTLDBrc(rc);
 		dbclose(&db);
 		return;
 	}
@@ -368,6 +387,7 @@ void DB_read_queries(void)
 	if((rc = sqlite3_bind_int(stmt, 1, mintime)) != SQLITE_OK)
 	{
 		logg("DB_read_queries() - Failed to bind type mintime: %s", sqlite3_errstr(rc));
+		checkFTLDBrc(rc);
 		dbclose(&db);
 		return;
 	}
@@ -608,6 +628,7 @@ void DB_read_queries(void)
 
 	if( rc != SQLITE_DONE ){
 		logg("DB_read_queries() - SQL error step: %s", sqlite3_errstr(rc));
+		checkFTLDBrc(rc);
 		dbclose(&db);
 		return;
 	}

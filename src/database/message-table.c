@@ -94,6 +94,10 @@ bool create_message_table(sqlite3 *db)
 // Flush message table
 bool flush_message_table(void)
 {
+	// Return early if database is known to be broken
+	if(FTLDBerror())
+		return false;
+
 	sqlite3 *db;
 	// Open database connection
 	if((db = dbopen(false)) == NULL)
@@ -114,6 +118,10 @@ bool flush_message_table(void)
 static bool add_message(enum message_type type,
                         const char *message, const int count,...)
 {
+	// Return early if database is known to be broken
+	if(FTLDBerror())
+		return false;
+
 	sqlite3 *db;
 	// Open database connection
 	if((db = dbopen(false)) == NULL)
@@ -233,6 +241,7 @@ static bool add_message(enum message_type type,
 			     type, message, 3 + j, datatype, sqlite3_errstr(rc));
 			sqlite3_reset(stmt);
 			sqlite3_finalize(stmt);
+			checkFTLDBrc(rc);
 			dbclose(&db);
 			va_end(ap);
 			return false;
@@ -242,16 +251,18 @@ static bool add_message(enum message_type type,
 
 	// Step and check if successful
 	rc = sqlite3_step(stmt);
-	sqlite3_clear_bindings(stmt);
-	sqlite3_reset(stmt);
-	sqlite3_finalize(stmt);
 
 	if(rc != SQLITE_DONE)
 	{
 		logg("Encountered error while trying to store message in long-term database: %s", sqlite3_errstr(rc));
+		checkFTLDBrc(rc);
 		dbclose(&db);
 		return false;
 	}
+
+	sqlite3_clear_bindings(stmt);
+	sqlite3_reset(stmt);
+	sqlite3_finalize(stmt);
 
 	// Close database connection
 	dbclose(&db);

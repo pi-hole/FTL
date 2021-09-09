@@ -41,7 +41,9 @@ void *DB_thread(void *val)
 	// to the database
 	time_t lastDBsave = time(NULL) - time(NULL)%config.DBinterval;
 
-	// Run until shutdown of the process
+	// This thread runs until shutdown of the process. We keep this thread
+	// running when pihole-FTL.db is corrupted because reloading of privacy
+	// level, and the gravity database (initially and after gravity)
 	while(!killed)
 	{
 		sqlite3 *db = NULL;
