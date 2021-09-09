@@ -28,10 +28,13 @@ extern const char *regextype[];
 #include "static_assert.h"
 
 typedef struct {
-	bool available;
-	bool inverted;
-	bool query_type_inverted;
-	enum query_types query_type;
+	bool available :1;
+	struct {
+		bool inverted :1;
+		bool query_type_inverted :1;
+		enum query_types query_type;
+		enum reply_type reply;
+	} ext;
 	int database_id;
 	char *string;
 	regex_t regex;
@@ -39,7 +42,7 @@ typedef struct {
 ASSERT_SIZEOF(regexData, 32, 20, 20);
 
 unsigned int get_num_regex(const enum regex_type regexid) __attribute__((pure));
-int match_regex(const char *input, const DNSCacheData* dns_cache, const int clientID,
+int match_regex(const char *input, DNSCacheData* dns_cache, const int clientID,
                 const enum regex_type regexid, const bool regextest);
 void allocate_regex_client_enabled(clientsData *client, const int clientID);
 void reload_per_client_regex(clientsData *client);

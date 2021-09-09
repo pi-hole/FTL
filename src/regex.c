@@ -119,7 +119,7 @@ static bool compile_regex(const char *regexin, const enum regex_type regexid, co
 			if(sscanf(part, "querytype=%16s", extra))
 			{
 				// Warn if specified more than one querytype option
-				if(regex[index].query_type != 0)
+				if(regex[index].ext.query_type != 0)
 					logg_regex_warning(regextype[regexid],
 					                   "Overwriting previous querytype setting",
 					                   dbidx, regexin);
@@ -130,41 +130,91 @@ static bool compile_regex(const char *regexin, const enum regex_type regexid, co
 					// Check for querytype
 					if(strcasecmp(extra, querytypes[type]) == 0)
 					{
-						regex[index].query_type = type;
-						regex[index].query_type_inverted = false;
+						regex[index].ext.query_type = type;
+						regex[index].ext.query_type_inverted = false;
 						break;
 					}
 					// Check for INVERTED querytype
 					else if(extra[0] == '!' && strcasecmp(extra + 1u, querytypes[type]) == 0)
 					{
-						regex[index].query_type = type;
-						regex[index].query_type_inverted = true;
+						regex[index].ext.query_type = type;
+						regex[index].ext.query_type_inverted = true;
 						break;
 					}
 				}
 				// Nothing found
-				if(regex[index].query_type == 0)
-					logg_regex_warning(regextype[regexid], "Unknown querytype",
-					                   dbidx, regexin);
+				if(regex[index].ext.query_type == 0)
+				{
+					char msg[64] = { 0 };
+					snprintf(msg, sizeof(msg), "Unknown querytype \"%s\"", extra);
+					logg_regex_warning(regextype[regexid], msg, dbidx, regexin);
+				}
 
 				// Debug output
 				else if(config.debug & DEBUG_REGEX)
 				{
 					logg("   This regex will %s match query type %s",
-					     regex[index].query_type_inverted ? "NOT" : "ONLY",
-					     querytypes[regex[index].query_type]);
+					     regex[index].ext.query_type_inverted ? "NOT" : "ONLY",
+					     querytypes[regex[index].ext.query_type]);
 				}
 			}
 			// option: ";invert"
 			else if(strcasecmp(part, "invert") == 0)
 			{
-				regex[index].inverted = true;
+				regex[index].ext.inverted = true;
 
 				// Debug output
 				if(config.debug & DEBUG_REGEX)
 				{
 					logg("   This regex will match in inverted mode.");
 				}
+			}
+			// options ";reply=NXDOMAIN", etc.
+			else if(sscanf(part, "reply=%16s", extra))
+			{
+				// Warn if specified more than one repl option
+				if(regex[index].ext.reply != 0)
+					logg_regex_warning(regextype[regexid],
+					                   "Overwriting previous replytype setting",
+					                   dbidx, regexin);
+
+				// Test input string against all implemented reply types
+				const char *type = "";
+				if(strcasecmp(extra, "NODATA") == 0)
+				{
+					type = "NODATA";
+					regex[index].ext.reply = REPLY_NODATA;
+				}
+				else if(strcasecmp(extra, "NXDOMAIN") == 0)
+				{
+					type = "NXDOMAIN";
+					regex[index].ext.reply = REPLY_NXDOMAIN;
+				}
+				else if(strcasecmp(extra, "REFUSED") == 0)
+				{
+					type = "REFUSED";
+					regex[index].ext.reply = REPLY_REFUSED;
+				}
+				else if(strcasecmp(extra, "IP") == 0)
+				{
+					type = "IP";
+					regex[index].ext.reply = REPLY_IP;
+				}
+				else if(strcasecmp(extra, "NONE") == 0)
+				{
+					type = "NONE";
+					regex[index].ext.reply = REPLY_NONE;
+				}
+				else
+				{
+					char msg[64] = { 0 };
+					snprintf(msg, sizeof(msg)-1, "Unknown reply \"%s\"", extra);
+					logg_regex_warning(regextype[regexid], msg, dbidx, regexin);
+				}
+
+				// Debug output
+				if(config.debug & DEBUG_REGEX && regex[index].ext.reply != REPLY_UNKNOWN)
+					logg("   This regex will result in a custom reply: %s", type);
 			}
 			else
 			{
@@ -204,7 +254,7 @@ static bool compile_regex(const char *regexin, const enum regex_type regexid, co
 	return true;
 }
 
-int match_regex(const char *input, const DNSCacheData* dns_cache, const int clientID,
+int match_regex(const char *input, DNSCacheData* dns_cache, const int clientID,
                 const enum regex_type regexid, const bool regextest)
 {
 	int match_idx = -1;
@@ -273,28 +323,31 @@ int match_regex(const char *input, const DNSCacheData* dns_cache, const int clie
 		int retval = regexec(&regex[index].regex, input, 0, NULL, 0);
 #endif
 		// regexec() returns REG_OK for a successful match or REG_NOMATCH for failure.
-		if ((retval == REG_OK && !regex[index].inverted) ||
-		    (retval == REG_NOMATCH && regex[index].inverted))
+		if ((retval == REG_OK && !regex[index].ext.inverted) ||
+		    (retval == REG_NOMATCH && regex[index].ext.inverted))
 		{
 			// Check possible additional regex settings
 			if(dns_cache != NULL)
 			{
 				// Check query type filtering
-				if(regex[index].query_type != 0)
+				if(regex[index].ext.query_type != 0)
 				{
-					if((!regex[index].query_type_inverted && regex[index].query_type != dns_cache->query_type) ||
-					    (regex[index].query_type_inverted && regex[index].query_type == dns_cache->query_type))
+					if((!regex[index].ext.query_type_inverted && regex[index].ext.query_type != dns_cache->query_type) ||
+					    (regex[index].ext.query_type_inverted && regex[index].ext.query_type == dns_cache->query_type))
 					{
 						if(config.debug & DEBUG_REGEX)
 						{
 							logg("Regex %s (%u, DB ID %i) NO match: \"%s\" vs. \"%s\""
 								" (skipped because of query type %smatch)",
 							regextype[regexid], index, regex[index].database_id,
-							input, regex[index].string, regex[index].query_type_inverted ? "inversion " : "mis");
+							input, regex[index].string, regex[index].ext.query_type_inverted ? "inversion " : "mis");
 						}
 						continue;
 					}
 				}
+				// Set special reply type if configured for this regex
+				if(regex[index].ext.reply != REPLY_UNKNOWN)
+					dns_cache->force_reply = regex[index].ext.reply;
 			}
 
 			// Match, return true

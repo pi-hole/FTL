@@ -133,6 +133,8 @@ const char *getClientNameString(const queriesData* query);
 
 void change_clientcount(clientsData *client, int total, int blocked, int overTimeIdx, int overTimeMod);
 
+const char *get_query_reply_str(const enum reply_type query) __attribute__ ((const));
+
 // Pointer getter functions
 #define getQuery(queryID, checkMagic) _getQuery(queryID, checkMagic, __LINE__, __FUNCTION__, __FILE__)
 queriesData* _getQuery(int queryID, bool checkMagic, int line, const char * function, const char * file);
