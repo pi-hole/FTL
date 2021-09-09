@@ -881,6 +881,72 @@
   [[ ${lines[1]} == *"Overwriting previous querytype setting" ]]
 }
 
+@test "Regex Test 41: Option \"^localhost$;reply=NXDOMAIN\" working as expected" {
+  run bash -c 'sqlite3 /etc/pihole/gravity.db "INSERT INTO domainlist (type,domain) VALUES (3,\"^localhost$;reply=NXDOMAIN\");"'
+  printf "sqlite3 INSERT: %s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+  run bash -c 'kill -RTMIN $(cat /var/run/pihole-FTL.pid); sleep 1'
+  printf "reload: %s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+  run sleep 2
+  run bash -c 'dig A localhost @127.0.0.1'
+  printf "dig: %s\n" "${lines[@]}"
+  [[ ${lines[3]} == *"status: NXDOMAIN"* ]]
+  run bash -c 'sqlite3 /etc/pihole/gravity.db "DELETE FROM domainlist WHERE domain = \"^localhost$;reply=NXDOMAIN\";"'
+  printf "sqlite3 DELETE: %s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+  run bash -c 'kill -RTMIN $(cat /var/run/pihole-FTL.pid)'
+  printf "reload: %s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+  run sleep 2
+}
+
+@test "Regex Test 42: Option \"^localhost$;reply=NODATA\" working as expected" {
+  run bash -c 'sqlite3 /etc/pihole/gravity.db "INSERT INTO domainlist (type,domain) VALUES (3,\"^localhost$;reply=NODATA\");"'
+  printf "sqlite3 INSERT: %s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+  run bash -c 'kill -RTMIN $(cat /var/run/pihole-FTL.pid); sleep 1'
+  printf "reload: %s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+  run sleep 2
+  run bash -c 'dig A localhost @127.0.0.1 +short'
+  printf "dig (short): %s\n" "${lines[@]}"
+  [[ ${lines[0]} == "" ]]
+  run bash -c 'dig A localhost @127.0.0.1'
+  printf "dig (full): %s\n" "${lines[@]}"
+  [[ ${lines[3]} == *"status: NOERROR"* ]]
+  run bash -c 'sqlite3 /etc/pihole/gravity.db "DELETE FROM domainlist WHERE domain = \"^localhost$;reply=NODATA\";"'
+  printf "sqlite3 DELETE: %s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+  run bash -c 'kill -RTMIN $(cat /var/run/pihole-FTL.pid)'
+  printf "reload: %s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+  run sleep 2
+}
+
+@test "Regex Test 43: Option \"^localhost$;reply=REFUSED\" working as expected" {
+  run bash -c 'sqlite3 /etc/pihole/gravity.db "INSERT INTO domainlist (type,domain) VALUES (3,\"^localhost$;reply=REFUSED\");"'
+  printf "sqlite3 INSERT: %s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+  run bash -c 'kill -RTMIN $(cat /var/run/pihole-FTL.pid); sleep 1'
+  printf "reload: %s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+  run sleep 2
+  run bash -c 'dig A localhost @127.0.0.1 +short'
+  printf "dig (short): %s\n" "${lines[@]}"
+  [[ ${lines[0]} == "" ]]
+  run bash -c 'dig A localhost @127.0.0.1'
+  printf "dig (full): %s\n" "${lines[@]}"
+  [[ ${lines[3]} == *"status: REFUSED"* ]]
+  run bash -c 'sqlite3 /etc/pihole/gravity.db "DELETE FROM domainlist WHERE domain = \"^localhost$;reply=REFUSED\";"'
+  printf "sqlite3 DELETE: %s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+  run bash -c 'kill -RTMIN $(cat /var/run/pihole-FTL.pid)'
+  printf "reload: %s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+  run sleep 2
+}
+
 # x86_64-musl is built on busybox which has a slightly different
 # variant of ls displaying three, instead of one, spaces between the
 # user and group names.
