@@ -393,7 +393,7 @@ size_t make_local_answer(int flags, int gotname, size_t size, struct dns_header 
   union all_addr addr;
   
   if (flags & (F_NXDOMAIN | F_NOERR))
-    log_query(flags | gotname | F_NEG | F_CONFIG | F_FORWARD, name, NULL, NULL);
+    log_query(flags | gotname | F_NEG | F_CONFIG | F_FORWARD, name, NULL, NULL, 0);
 	  
   setup_reply(header, flags, ede);
 	  
@@ -412,7 +412,7 @@ size_t make_local_answer(int flags, int gotname, size_t size, struct dns_header 
 	
 	header->ancount = htons(ntohs(header->ancount) + 1);
 	add_resource_record(header, limit, &trunc, sizeof(struct dns_header), &p, daemon->local_ttl, NULL, T_A, C_IN, "4", &addr);
-	log_query((flags | F_CONFIG | F_FORWARD) & ~F_IPV6, name, (union all_addr *)&addr, NULL);
+	log_query((flags | F_CONFIG | F_FORWARD) & ~F_IPV6, name, (union all_addr *)&addr, NULL, 0);
       }
   
   if (flags & gotname & F_IPV6)
@@ -427,7 +427,7 @@ size_t make_local_answer(int flags, int gotname, size_t size, struct dns_header 
 	
 	header->ancount = htons(ntohs(header->ancount) + 1);
 	add_resource_record(header, limit, &trunc, sizeof(struct dns_header), &p, daemon->local_ttl, NULL, T_AAAA, C_IN, "6", &addr);
-	log_query((flags | F_CONFIG | F_FORWARD) & ~F_IPV4, name, (union all_addr *)&addr, NULL);
+	log_query((flags | F_CONFIG | F_FORWARD) & ~F_IPV4, name, (union all_addr *)&addr, NULL, 0);
       }
 
   if (trunc)

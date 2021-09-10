@@ -527,7 +527,7 @@ static int print_txt(struct dns_header *header, const size_t qlen, char *name,
 	}
 
       *p3 = 0;
-      log_query(secflag | F_FORWARD | F_UPSTREAM, name, NULL, (char*)p1);
+      log_query(secflag | F_FORWARD | F_UPSTREAM, name, NULL, (char*)p1, 0);
       /* restore */
       memmove(p1 + 1, p1, i);
       *p1 = len;
@@ -654,7 +654,7 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 		  // **********************************************************************************
 
 		  if (aqtype == T_CNAME)
-		    log_query(secflag | F_CNAME | F_FORWARD | F_UPSTREAM, name, NULL, NULL);
+		    log_query(secflag | F_CNAME | F_FORWARD | F_UPSTREAM, name, NULL, NULL, 0);
 		  
 		  if (!extract_name(header, qlen, &p1, name, 1, 0))
 		    return 0;
@@ -672,10 +672,10 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 		  found = 1; 
 		  
 		  if (!name_encoding)
-		    log_query(secflag | F_FORWARD | F_UPSTREAM, name, NULL, querystr(NULL, aqtype));
+		    log_query(secflag | F_FORWARD | F_UPSTREAM, name, NULL, NULL, aqtype);
 		  else
 		    {
-		      log_query(name_encoding | secflag | F_REVERSE | F_UPSTREAM, name, &addr, NULL);
+		      log_query(name_encoding | secflag | F_REVERSE | F_UPSTREAM, name, &addr, NULL, 0);
 		      if (insert)
 			cache_insert(name, &addr, C_IN, now, cttl, name_encoding | secflag | F_REVERSE);
 		    }
@@ -702,7 +702,7 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 	      cache_insert(NULL, &addr, C_IN, now, ttl, flags);
 	    }
 	  
-	  log_query(flags | F_UPSTREAM, name, &addr, NULL);
+	  log_query(flags | F_UPSTREAM, name, &addr, NULL, 0);
 	}
     }
   else
@@ -773,7 +773,7 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 	      if (!cname_count--)
 		return 0; /* looped CNAMES */
 	      
-	      log_query(secflag | F_CNAME | F_FORWARD | F_UPSTREAM, name, NULL, NULL);
+	      log_query(secflag | F_CNAME | F_FORWARD | F_UPSTREAM, name, NULL, NULL, 0);
 	      
 	      if (insert)
 		{
@@ -808,7 +808,7 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 #ifdef HAVE_DNSSEC
 	      if (!option_bool(OPT_DNSSEC_VALID) || aqtype != T_RRSIG)
 #endif
-		log_query(secflag | F_FORWARD | F_UPSTREAM, name, NULL, querystr(NULL, aqtype));
+		log_query(secflag | F_FORWARD | F_UPSTREAM, name, NULL, NULL, aqtype);
 	    }
 	  else if (!(flags & F_NXDOMAIN))
 	    {
@@ -858,7 +858,7 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 		      ipsets_cur = ipsets;
 		      while (*ipsets_cur)
 			{
-			  log_query((flags & (F_IPV4 | F_IPV6)) | F_IPSET, name, &addr, *ipsets_cur);
+			  log_query((flags & (F_IPV4 | F_IPV6)) | F_IPSET, name, &addr, *ipsets_cur, 0);
 			  add_to_ipset(*ipsets_cur++, &addr, flags, 0);
 			}
 		    }
@@ -883,7 +883,7 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 		    return 0;
 		}
 	      else
-		log_query(flags | F_FORWARD | secflag | F_UPSTREAM, name, &addr, querystr(NULL, aqtype));
+		log_query(flags | F_FORWARD | secflag | F_UPSTREAM, name, &addr, NULL, aqtype);
 	    }
 	  
 	  p1 = endrr;
@@ -902,7 +902,7 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 		insert = 1;
 	    }
 	  
-	  log_query(F_UPSTREAM | F_FORWARD | F_NEG | flags | (secure ? F_DNSSECOK : 0), name, NULL, NULL);
+	  log_query(F_UPSTREAM | F_FORWARD | F_NEG | flags | (secure ? F_DNSSECOK : 0), name, NULL, NULL, 0);
 	  
 	  if (!searched_soa)
 	    {
@@ -1100,7 +1100,7 @@ void setup_reply(struct dns_header *header, unsigned int flags, int ede)
       union all_addr a;
       a.log.rcode = REFUSED;
       a.log.ede = ede;
-      log_query(F_CONFIG | F_RCODE, "error", &a, NULL);
+      log_query(F_CONFIG | F_RCODE, "error", &a, NULL, 0);
       SET_RCODE(header, REFUSED);
     }
 }
@@ -1470,7 +1470,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		if (qtype == T_CNAME)
 		  {
 		   if (!dryrun)
-		     log_query(crecp->flags, name, NULL, record_source(crecp->uid));
+		     log_query(crecp->flags, name, NULL, record_source(crecp->uid), 0);
 		    auth = 0;
 		    nxdomain = 1;
 		    ans = 1;
@@ -1492,7 +1492,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		
 		if (!dryrun)
 		  {
-		    log_query(crecp->flags, name, NULL, record_source(crecp->uid));
+		    log_query(crecp->flags, name, NULL, record_source(crecp->uid), 0);
 		    if (add_resource_record(header, limit, &trunc, nameoffset, &ansp, 
 					    crec_ttl(crecp, now), &nameoffset,
 					    T_CNAME, C_IN, "d", cname_target))
@@ -1532,7 +1532,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 #endif
 		      if (ok)
 			{
-			  log_query(F_CONFIG | F_RRNAME, name, NULL, "<TXT>");
+			  log_query(F_CONFIG | F_RRNAME, name, NULL, "<TXT>", 0);
 			  if (add_resource_record(header, limit, &trunc, nameoffset, &ansp, 
 						  ttl, NULL,
 						  T_TXT, t->class, "t", t->len, t->txt))
@@ -1554,7 +1554,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		  if (!dryrun)
 		    {
 		       addr.log.rcode = NOTIMP;
-		       log_query(F_CONFIG | F_RCODE, name, &addr, NULL);
+		       log_query(F_CONFIG | F_RCODE, name, &addr, NULL, 0);
 		    }
 		  ans = 1, sec_data = 0;
 		}
@@ -1572,7 +1572,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		sec_data = 0;
 		if (!dryrun)
 		  {
-		    log_query(F_CONFIG | F_RRNAME, name, NULL, querystr(NULL, t->class));
+		    log_query(F_CONFIG | F_RRNAME, name, NULL, NULL, t->class);
 		    if (add_resource_record(header, limit, &trunc, nameoffset, &ansp, 
 					    daemon->local_ttl, NULL,
 					    t->class, C_IN, "t", t->len, t->txt))
@@ -1628,7 +1628,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		  ans = 1;
 		  if (!dryrun)
 		    {
-		      log_query(is_arpa | F_REVERSE | F_CONFIG, intr->name, &addr, NULL);
+		      log_query(is_arpa | F_REVERSE | F_CONFIG, intr->name, &addr, NULL, 0);
 		      if (add_resource_record(header, limit, &trunc, nameoffset, &ansp, 
 					      daemon->local_ttl, NULL,
 					      T_PTR, C_IN, "d", intr->name))
@@ -1641,7 +1641,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		  sec_data = 0;
 		  if (!dryrun)
 		    {
-		      log_query(F_CONFIG | F_RRNAME, name, NULL, "<PTR>");
+		      log_query(F_CONFIG | F_RRNAME, name, NULL, "<PTR>", 0);
 		      for (ptr = daemon->ptr; ptr; ptr = ptr->next)
 			if (hostname_isequal(name, ptr->name) &&
 			    add_resource_record(header, limit, &trunc, nameoffset, &ansp, 
@@ -1676,7 +1676,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 			      if (crecp->flags & F_NXDOMAIN)
 				nxdomain = 1;
 			      if (!dryrun)
-				log_query(crecp->flags & ~F_FORWARD, name, &addr, NULL);
+				log_query(crecp->flags & ~F_FORWARD, name, &addr, NULL, 0);
 			    }
 			  else
 			    {
@@ -1685,7 +1685,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 			      if (!dryrun)
 				{
 				  log_query(crecp->flags & ~F_FORWARD, cache_get_name(crecp), &addr, 
-					    record_source(crecp->uid));
+					    record_source(crecp->uid), 0);
 
 				  if (add_resource_record(header, limit, &trunc, nameoffset, &ansp, 
 							  crec_ttl(crecp, now), NULL,
@@ -1702,7 +1702,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		  sec_data = 0;
 		  if (!dryrun)
 		    {
-		      log_query(F_CONFIG | F_REVERSE | is_arpa, name, &addr, NULL); 
+		      log_query(F_CONFIG | F_REVERSE | is_arpa, name, &addr, NULL, 0);
 		      
 		      if (add_resource_record(header, limit, &trunc, nameoffset, &ansp, 
 					      daemon->local_ttl, NULL,
@@ -1720,7 +1720,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		  nxdomain = 1;
 		  if (!dryrun)
 		    log_query(F_CONFIG | F_REVERSE | is_arpa | F_NEG | F_NXDOMAIN,
-			      name, &addr, NULL);
+			      name, &addr, NULL, 0);
 		}
 	    }
 
@@ -1775,7 +1775,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 			      if (!dryrun)
 				{
 				  gotit = 1;
-				  log_query(F_FORWARD | F_CONFIG | flag, name, &addrlist->addr, NULL);
+				  log_query(F_FORWARD | F_CONFIG | flag, name, &addrlist->addr, NULL, 0);
 				  if (add_resource_record(header, limit, &trunc, nameoffset, &ansp, 
 							  daemon->local_ttl, NULL, type, C_IN, 
 							  type == T_A ? "4" : "6", &addrlist->addr))
@@ -1785,7 +1785,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		      }
 		  
 		  if (!dryrun && !gotit)
-		    log_query(F_FORWARD | F_CONFIG | flag | F_NEG, name, NULL, NULL);
+		    log_query(F_FORWARD | F_CONFIG | flag | F_NEG, name, NULL, NULL, 0);
 		     
 		  continue;
 		}
@@ -1832,7 +1832,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 			    if (!dryrun)
 			      // Pi-hole modification: Added record_source(crecp->uid) such that the subroutines know
 			      //                       where the reply came from (e.g. gravity.list)
-			      log_query(crecp->flags, name, NULL, record_source(crecp->uid));
+			      log_query(crecp->flags, name, NULL, record_source(crecp->uid), 0);
 			  }
 			else 
 			  {
@@ -1850,7 +1850,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 			    if (!dryrun)
 			      {
 				log_query(crecp->flags & ~F_REVERSE, name, &crecp->addr,
-					  record_source(crecp->uid));
+					  record_source(crecp->uid), 0);
 				// ****************************** Pi-hole modification ******************************
 				if(FTL_CNAME(name, crecp, daemon->log_display_id))
 				  {
@@ -1874,7 +1874,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		  ans = 1, sec_data = 0;
 		  if (!dryrun)
 		    {
-		      log_query(F_FORWARD | F_CONFIG | flag, name, &addr, NULL);
+		      log_query(F_FORWARD | F_CONFIG | flag, name, &addr, NULL, 0);
 		      if (add_resource_record(header, limit, &trunc, nameoffset, &ansp, 
 					      daemon->local_ttl, NULL, type, C_IN, type == T_A ? "4" : "6", &addr))
 			anscount++;
@@ -1893,7 +1893,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		    if (!dryrun)
 		      {
 			int offset;
-			log_query(F_CONFIG | F_RRNAME, name, NULL, "<MX>");
+			log_query(F_CONFIG | F_RRNAME, name, NULL, "<MX>", 0);
 			if (add_resource_record(header, limit, &trunc, nameoffset, &ansp, daemon->local_ttl,
 						&offset, T_MX, C_IN, "sd", rec->weight, rec->target))
 			  {
@@ -1911,7 +1911,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		  sec_data = 0;
 		  if (!dryrun)
 		    {
-		      log_query(F_CONFIG | F_RRNAME, name, NULL, "<MX>");
+		      log_query(F_CONFIG | F_RRNAME, name, NULL, "<MX>", 0);
 		      if (add_resource_record(header, limit, &trunc, nameoffset, &ansp, daemon->local_ttl, NULL, 
 					      T_MX, C_IN, "sd", 1, 
 					      option_bool(OPT_SELFMX) ? name : daemon->mxtarget))
@@ -1933,7 +1933,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		    if (!dryrun)
 		      {
 			int offset;
-			log_query(F_CONFIG | F_RRNAME, name, NULL, "<SRV>");
+			log_query(F_CONFIG | F_RRNAME, name, NULL, "<SRV>", 0);
 			if (add_resource_record(header, limit, &trunc, nameoffset, &ansp, daemon->local_ttl, 
 						&offset, T_SRV, C_IN, "sssd", 
 						rec->priority, rec->weight, rec->srvport, rec->target))
@@ -1984,14 +1984,12 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 			    if (crecp->flags & F_NXDOMAIN)
 			      nxdomain = 1;
 			    if (!dryrun)
-			    {
-			      log_query(crecp->flags, name, NULL, NULL);
-			    }
+			      log_query(crecp->flags, name, NULL, NULL, 0);
 			  }
 			else if (!dryrun)
 			  {
 			    char *target = blockdata_retrieve(crecp->addr.srv.target, crecp->addr.srv.targetlen, NULL);
-			    log_query(crecp->flags, name, NULL, 0);
+			    log_query(crecp->flags, name, NULL, NULL, 0);
 			    
 			    if (add_resource_record(header, limit, &trunc, nameoffset, &ansp, 
 						    crec_ttl(crecp, now), NULL, T_SRV, C_IN, "sssd",
@@ -2007,7 +2005,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		  ans = 1;
 		  sec_data = 0;
 		  if (!dryrun)
-		    log_query(F_CONFIG | F_NEG, name, NULL, NULL);
+		    log_query(F_CONFIG | F_NEG, name, NULL, NULL, 0);
 		}
 	    }
 
@@ -2021,7 +2019,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		    sec_data = 0;
 		    if (!dryrun)
 		      {
-			log_query(F_CONFIG | F_RRNAME, name, NULL, "<NAPTR>");
+			log_query(F_CONFIG | F_RRNAME, name, NULL, "<NAPTR>", 0);
 			if (add_resource_record(header, limit, &trunc, nameoffset, &ansp, daemon->local_ttl, 
 						NULL, T_NAPTR, C_IN, "sszzzd", 
 						na->order, na->pref, na->flags, na->services, na->regexp, na->replace))
@@ -2038,7 +2036,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 	      ans = 1;
 	      sec_data = 0;
 	      if (!dryrun)
-		log_query(F_CONFIG | F_NEG, name, &addr, NULL);
+		log_query(F_CONFIG | F_NEG, name, &addr, NULL, 0);
 	    }
 	}
 

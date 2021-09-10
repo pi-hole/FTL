@@ -210,7 +210,7 @@ size_t answer_auth(struct dns_header *header, char *limit, size_t qlen, time_t n
 	      if (local_query || in_zone(zone, intr->name, NULL))
 		{	
 		  found = 1;
-		  log_query(flag | F_REVERSE | F_CONFIG, intr->name, &addr, NULL);
+		  log_query(flag | F_REVERSE | F_CONFIG, intr->name, &addr, NULL, 0);
 		  if (add_resource_record(header, limit, &trunc, nameoffset, &ansp, 
 					  daemon->auth_ttl, NULL,
 					  T_PTR, C_IN, "d", intr->name))
@@ -234,7 +234,7 @@ size_t answer_auth(struct dns_header *header, char *limit, size_t qlen, time_t n
 		      strcat(name, ".");
 		      strcat(name, zone->domain);
 		    }
-		  log_query(flag | F_DHCP | F_REVERSE, name, &addr, record_source(crecp->uid));
+		  log_query(flag | F_DHCP | F_REVERSE, name, &addr, record_source(crecp->uid), 0);
 		  found = 1;
 		  if (add_resource_record(header, limit, &trunc, nameoffset, &ansp, 
 					  daemon->auth_ttl, NULL,
@@ -243,7 +243,7 @@ size_t answer_auth(struct dns_header *header, char *limit, size_t qlen, time_t n
 		}
 	      else if (crecp->flags & (F_DHCP | F_HOSTS) && (local_query || in_zone(zone, name, NULL)))
 		{
-		  log_query(crecp->flags & ~F_FORWARD, name, &addr, record_source(crecp->uid));
+		  log_query(crecp->flags & ~F_FORWARD, name, &addr, record_source(crecp->uid), 0);
 		  found = 1;
 		  if (add_resource_record(header, limit, &trunc, nameoffset, &ansp, 
 					  daemon->auth_ttl, NULL,
@@ -257,7 +257,7 @@ size_t answer_auth(struct dns_header *header, char *limit, size_t qlen, time_t n
 
 	  if (!found && is_rev_synth(flag, &addr, name) && (local_query || in_zone(zone, name, NULL)))
 	    {
-	      log_query(F_CONFIG | F_REVERSE | flag, name, &addr, NULL); 
+	      log_query(F_CONFIG | F_REVERSE | flag, name, &addr, NULL, 0);
 	      found = 1;
 	      
 	      if (add_resource_record(header, limit, &trunc, nameoffset, &ansp, 
@@ -269,7 +269,7 @@ size_t answer_auth(struct dns_header *header, char *limit, size_t qlen, time_t n
 	  if (found)
 	    nxdomain = 0;
 	  else
-	    log_query(flag | F_NEG | F_NXDOMAIN | F_REVERSE | (auth ? F_AUTH : 0), NULL, &addr, NULL);
+	    log_query(flag | F_NEG | F_NXDOMAIN | F_REVERSE | (auth ? F_AUTH : 0), NULL, &addr, NULL, 0);
 
 	  continue;
 	}
@@ -300,7 +300,7 @@ size_t answer_auth(struct dns_header *header, char *limit, size_t qlen, time_t n
 	    if (rc == 2 && qtype == T_MX)
 	      {
 		found = 1;
-		log_query(F_CONFIG | F_RRNAME, name, NULL, "<MX>"); 
+		log_query(F_CONFIG | F_RRNAME, name, NULL, "<MX>", 0);
 		if (add_resource_record(header, limit, &trunc, nameoffset, &ansp, daemon->auth_ttl,
 					NULL, T_MX, C_IN, "sd", rec->weight, rec->target))
 		  anscount++;
@@ -315,7 +315,7 @@ size_t answer_auth(struct dns_header *header, char *limit, size_t qlen, time_t n
 	    if (rc == 2 && qtype == T_SRV)
 	      {
 		found = 1;
-		log_query(F_CONFIG | F_RRNAME, name, NULL, "<SRV>"); 
+		log_query(F_CONFIG | F_RRNAME, name, NULL, "<SRV>", 0);
 		if (add_resource_record(header, limit, &trunc, nameoffset, &ansp, daemon->auth_ttl,
 					NULL, T_SRV, C_IN, "sssd", 
 					rec->priority, rec->weight, rec->srvport, rec->target))
@@ -349,7 +349,7 @@ size_t answer_auth(struct dns_header *header, char *limit, size_t qlen, time_t n
 	    if (rc == 2 && txt->class == qtype)
 	      {
 		found = 1;
-		log_query(F_CONFIG | F_RRNAME, name, NULL, querystr(NULL, txt->class)); 
+		log_query(F_CONFIG | F_RRNAME, name, NULL, NULL, txt->class);
 		if (add_resource_record(header, limit, &trunc, nameoffset, &ansp, daemon->auth_ttl,
 					NULL, txt->class, C_IN, "t", txt->len, txt->txt))
 		  anscount++;
@@ -363,7 +363,7 @@ size_t answer_auth(struct dns_header *header, char *limit, size_t qlen, time_t n
 	    if (rc == 2 && qtype == T_TXT)
 	      {
 		found = 1;
-		log_query(F_CONFIG | F_RRNAME, name, NULL, "<TXT>"); 
+		log_query(F_CONFIG | F_RRNAME, name, NULL, "<TXT>", 0);
 		if (add_resource_record(header, limit, &trunc, nameoffset, &ansp, daemon->auth_ttl,
 					NULL, T_TXT, C_IN, "t", txt->len, txt->txt))
 		  anscount++;
@@ -377,7 +377,7 @@ size_t answer_auth(struct dns_header *header, char *limit, size_t qlen, time_t n
 	     if (rc == 2 && qtype == T_NAPTR)
 	       {
 		 found = 1;
-		 log_query(F_CONFIG | F_RRNAME, name, NULL, "<NAPTR>");
+		 log_query(F_CONFIG | F_RRNAME, name, NULL, "<NAPTR>", 0);
 		 if (add_resource_record(header, limit, &trunc, nameoffset, &ansp, daemon->auth_ttl, 
 					 NULL, T_NAPTR, C_IN, "sszzzd", 
 					 na->order, na->pref, na->flags, na->services, na->regexp, na->replace))
@@ -407,7 +407,7 @@ size_t answer_auth(struct dns_header *header, char *limit, size_t qlen, time_t n
 		       continue;
 
 		     found = 1;
-		     log_query(F_FORWARD | F_CONFIG | flag, name, &addrlist->addr, NULL);
+		     log_query(F_FORWARD | F_CONFIG | flag, name, &addrlist->addr, NULL, 0);
 		     if (add_resource_record(header, limit, &trunc, nameoffset, &ansp, 
 					     daemon->auth_ttl, NULL, qtype, C_IN, 
 					     qtype == T_A ? "4" : "6", &addrlist->addr))
@@ -420,7 +420,7 @@ size_t answer_auth(struct dns_header *header, char *limit, size_t qlen, time_t n
 	   found = 1;
 	   nxdomain = 0;
 	   
-	   log_query(F_FORWARD | F_CONFIG | flag, name, &addr, NULL);
+	   log_query(F_FORWARD | F_CONFIG | flag, name, &addr, NULL, 0);
 	   if (add_resource_record(header, limit, &trunc, nameoffset, &ansp, 
 				   daemon->auth_ttl, NULL, qtype, C_IN, qtype == T_A ? "4" : "6", &addr))
 	     anscount++;
@@ -434,7 +434,7 @@ size_t answer_auth(struct dns_header *header, char *limit, size_t qlen, time_t n
 	    {
 	      auth = soa = 1; /* inhibits auth section */
 	      found = 1;
-	      log_query(F_RRNAME | F_AUTH, zone->domain, NULL, "<SOA>");
+	      log_query(F_RRNAME | F_AUTH, zone->domain, NULL, "<SOA>", 0);
 	    }
       	  else if (qtype == T_AXFR)
 	    {
@@ -471,14 +471,14 @@ size_t answer_auth(struct dns_header *header, char *limit, size_t qlen, time_t n
 	      axfr = 1;
 	      found = 1;
 	      axfroffset = nameoffset;
-	      log_query(F_RRNAME | F_AUTH, zone->domain, NULL, "<AXFR>");
+	      log_query(F_RRNAME | F_AUTH, zone->domain, NULL, "<AXFR>", 0);
 	    }
       	  else if (qtype == T_NS)
 	    {
 	      auth = 1;
 	      ns = 1; /* inhibits auth section */
 	      found = 1;
-	      log_query(F_RRNAME | F_AUTH, zone->domain, NULL, "<NS>"); 
+	      log_query(F_RRNAME | F_AUTH, zone->domain, NULL, "<NS>", 0);
 	    }
 	}
       
@@ -496,7 +496,7 @@ size_t answer_auth(struct dns_header *header, char *limit, size_t qlen, time_t n
 			(local_query || filter_zone(zone, flag, &(crecp->addr))))
 		      {
 			*cut = '.'; /* restore domain part */
-			log_query(crecp->flags, name, &crecp->addr, record_source(crecp->uid));
+			log_query(crecp->flags, name, &crecp->addr, record_source(crecp->uid), 0);
 			*cut  = 0; /* remove domain part */
 			found = 1;
 			if (add_resource_record(header, limit, &trunc, nameoffset, &ansp, 
@@ -518,7 +518,7 @@ size_t answer_auth(struct dns_header *header, char *limit, size_t qlen, time_t n
 		 nxdomain = 0;
 		 if ((crecp->flags & flag) && (local_query || filter_zone(zone, flag, &(crecp->addr))))
 		   {
-		     log_query(crecp->flags, name, &crecp->addr, record_source(crecp->uid));
+		     log_query(crecp->flags, name, &crecp->addr, record_source(crecp->uid), 0);
 		     found = 1;
 		     if (add_resource_record(header, limit, &trunc, nameoffset, &ansp, 
 					     daemon->auth_ttl, NULL, qtype, C_IN, 
@@ -566,7 +566,7 @@ size_t answer_auth(struct dns_header *header, char *limit, size_t qlen, time_t n
 	  
 	  if (candidate)
 	    {
-	      log_query(F_CONFIG | F_CNAME, name, NULL, NULL);
+	      log_query(F_CONFIG | F_CNAME, name, NULL, NULL, 0);
 	      strcpy(name, candidate->target);
 	      if (!strchr(name, '.'))
 		{
@@ -584,7 +584,7 @@ size_t answer_auth(struct dns_header *header, char *limit, size_t qlen, time_t n
 	  else if (cache_find_non_terminal(name, now))
 	    nxdomain = 0;
 
-	  log_query(flag | F_NEG | (nxdomain ? F_NXDOMAIN : 0) | F_FORWARD | F_AUTH, name, NULL, NULL);
+	  log_query(flag | F_NEG | (nxdomain ? F_NXDOMAIN : 0) | F_FORWARD | F_AUTH, name, NULL, NULL, 0);
 	}
       
     }
@@ -892,7 +892,7 @@ size_t answer_auth(struct dns_header *header, char *limit, size_t qlen, time_t n
       header->nscount = htons(0);
       addr.log.rcode = REFUSED;
       addr.log.ede = EDE_NOT_AUTH;
-      log_query(F_UPSTREAM | F_RCODE, "error", &addr, NULL);
+      log_query(F_UPSTREAM | F_RCODE, "error", &addr, NULL, 0);
       return resize_packet(header,  ansp - (unsigned char *)header, NULL, 0);
     }
   

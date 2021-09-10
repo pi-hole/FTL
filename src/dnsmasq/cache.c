@@ -31,50 +31,100 @@ static struct crec *really_insert(char *name, union all_addr *addr, unsigned sho
 				  time_t now,  unsigned long ttl, unsigned int flags);
 
 /* type->string mapping: this is also used by the name-hash function as a mixing table. */
+/* taken from https://www.iana.org/assignments/dns-parameters/dns-parameters.xhtml */
 static const struct {
   unsigned int type;
   const char * const name;
 } typestr[] = {
-  { 1,   "A" },
-  { 2,   "NS" },
-  { 5,   "CNAME" },
-  { 6,   "SOA" },
-  { 10,  "NULL" },
-  { 11,  "WKS" },
-  { 12,  "PTR" },
-  { 13,  "HINFO" },	
-  { 15,  "MX" },
-  { 16,  "TXT" },
-  { 22,  "NSAP" },
-  { 23,  "NSAP_PTR" },
-  { 24,  "SIG" },
-  { 25,  "KEY" },
-  { 28,  "AAAA" },
-  { 29,  "LOC" },
-  { 33,  "SRV" },
-  { 35,  "NAPTR" },
-  { 36,  "KX" },
-  { 37,  "CERT" },
-  { 38,  "A6" },
-  { 39,  "DNAME" },
-  { 41,  "OPT" },
-  { 43,  "DS" },
-  { 46,  "RRSIG" },
-  { 47,  "NSEC" },
-  { 48,  "DNSKEY" },
-  { 50,  "NSEC3" },
-  { 51,  "NSEC3PARAM" },
-  { 52,  "TLSA" },
-  { 53,  "SMIMEA" },
-  { 55,  "HIP" },
-  { 249, "TKEY" },
-  { 250, "TSIG" },
-  { 251, "IXFR" },
-  { 252, "AXFR" },
-  { 253, "MAILB" },
-  { 254, "MAILA" },
-  { 255, "ANY" },
-  { 257, "CAA" }
+  { 1,   "A" }, /* a host address [RFC1035] */
+  { 2,   "NS" }, /* an authoritative name server [RFC1035] */
+  { 3,   "MD" }, /* a mail destination (OBSOLETE - use MX) [RFC1035] */
+  { 4,   "MF" }, /* a mail forwarder (OBSOLETE - use MX) [RFC1035] */
+  { 5,   "CNAME" }, /* the canonical name for an alias [RFC1035] */
+  { 6,   "SOA" }, /* marks the start of a zone of authority [RFC1035] */
+  { 7,   "MB" }, /* a mailbox domain name (EXPERIMENTAL) [RFC1035] */
+  { 8,   "MG" }, /* a mail group member (EXPERIMENTAL) [RFC1035] */
+  { 9,   "MR" }, /* a mail rename domain name (EXPERIMENTAL) [RFC1035] */
+  { 10,  "NULL" }, /* a null RR (EXPERIMENTAL) [RFC1035] */
+  { 11,  "WKS" }, /* a well known service description [RFC1035] */
+  { 12,  "PTR" }, /* a domain name pointer [RFC1035] */
+  { 13,  "HINFO" }, /* host information [RFC1035] */
+  { 14,  "MINFO" }, /* mailbox or mail list information [RFC1035] */
+  { 15,  "MX" }, /* mail exchange [RFC1035] */
+  { 16,  "TXT" }, /* text strings [RFC1035] */
+  { 17,  "RP" }, /* for Responsible Person [RFC1183] */
+  { 18,  "AFSDB" }, /* for AFS Data Base location [RFC1183][RFC5864] */
+  { 19,  "X25" }, /* for X.25 PSDN address [RFC1183] */
+  { 20,  "ISDN" }, /* for ISDN address [RFC1183] */
+  { 21,  "RT" }, /* for Route Through [RFC1183] */
+  { 22,  "NSAP" }, /* for NSAP address, NSAP style A record [RFC1706] */
+  { 23,  "NSAP_PTR" }, /* for domain name pointer, NSAP style [RFC1348][RFC1637][RFC1706] */
+  { 24,  "SIG" }, /* for security signature [RFC2535][RFC2536][RFC2537][RFC2931][RFC3008][RFC3110][RFC3755][RFC4034] */
+  { 25,  "KEY" }, /* for security key [RFC2535][RFC2536][RFC2537][RFC2539][RFC3008][RFC3110][RFC3755][RFC4034] */
+  { 26,  "PX" }, /* X.400 mail mapping information [RFC2163] */
+  { 27,  "GPOS" }, /* Geographical Position [RFC1712] */
+  { 28,  "AAAA" }, /* IP6 Address [RFC3596] */
+  { 29,  "LOC" }, /* Location Information [RFC1876] */
+  { 30,  "NXT" }, /* Next Domain (OBSOLETE) [RFC2535][RFC3755] */
+  { 31,  "EID" }, /* Endpoint Identifier [Michael_Patton][http://ana-3.lcs.mit.edu/~jnc/nimrod/dns.txt] 1995-06*/
+  { 32,  "NIMLOC" }, /* Nimrod Locator [1][Michael_Patton][http://ana-3.lcs.mit.edu/~jnc/nimrod/dns.txt] 1995-06*/
+  { 33,  "SRV" }, /* Server Selection [1][RFC2782] */
+  { 34,  "ATMA" }, /* ATM Address [ ATM Forum Technical Committee, "ATM Name System, V2.0", Doc ID: AF-DANS-0152.000, July 2000. Available from and held in escrow by IANA.] */
+  { 35,  "NAPTR" }, /* Naming Authority Pointer [RFC2168][RFC2915][RFC3403] */
+  { 36,  "KX" }, /* Key Exchanger [RFC2230] */
+  { 37,  "CERT" }, /* CERT [RFC4398] */
+  { 38,  "A6" }, /* A6 (OBSOLETE - use AAAA) [RFC2874][RFC3226][RFC6563] */
+  { 39,  "DNAME" }, /* DNAME [RFC6672] */
+  { 40,  "SINK" }, /* SINK [Donald_E_Eastlake][http://tools.ietf.org/html/draft-eastlake-kitchen-sink] 1997-11*/
+  { 41,  "OPT" }, /* OPT [RFC3225][RFC6891] */
+  { 42,  "APL" }, /* APL [RFC3123] */
+  { 43,  "DS" }, /* Delegation Signer [RFC3658][RFC4034] */
+  { 44,  "SSHFP" }, /* SSH Key Fingerprint [RFC4255] */
+  { 45,  "IPSECKEY" }, /* IPSECKEY [RFC4025] */
+  { 46,  "RRSIG" }, /* RRSIG [RFC3755][RFC4034] */
+  { 47,  "NSEC" }, /* NSEC [RFC3755][RFC4034][RFC9077] */
+  { 48,  "DNSKEY" }, /* DNSKEY [RFC3755][RFC4034] */
+  { 49,  "DHCID" }, /* DHCID [RFC4701] */
+  { 50,  "NSEC3" }, /* NSEC3 [RFC5155][RFC9077] */
+  { 51,  "NSEC3PARAM" }, /* NSEC3PARAM [RFC5155] */
+  { 52,  "TLSA" }, /* TLSA [RFC6698] */
+  { 53,  "SMIMEA" }, /* S/MIME cert association [RFC8162] SMIMEA/smimea-completed-template 2015-12-01*/
+  { 55,  "HIP" }, /* Host Identity Protocol [RFC8005] */
+  { 56,  "NINFO" }, /* NINFO [Jim_Reid] NINFO/ninfo-completed-template 2008-01-21*/
+  { 57,  "RKEY" }, /* RKEY [Jim_Reid] RKEY/rkey-completed-template 2008-01-21*/
+  { 58,  "TALINK" }, /* Trust Anchor LINK [Wouter_Wijngaards] TALINK/talink-completed-template 2010-02-17*/
+  { 59,  "CDS" }, /* Child DS [RFC7344] CDS/cds-completed-template 2011-06-06*/
+  { 60,  "CDNSKEY" }, /* DNSKEY(s) the Child wants reflected in DS [RFC7344] 2014-06-16*/
+  { 61,  "OPENPGPKEY" }, /* OpenPGP Key [RFC7929] OPENPGPKEY/openpgpkey-completed-template 2014-08-12*/
+  { 62,  "CSYNC" }, /* Child-To-Parent Synchronization [RFC7477] 2015-01-27*/
+  { 63,  "ZONEMD" }, /* Message Digest Over Zone Data [RFC8976] ZONEMD/zonemd-completed-template 2018-12-12*/
+  { 64,  "SVCB" }, /* Service Binding [draft-ietf-dnsop-svcb-https-00] SVCB/svcb-completed-template 2020-06-30*/
+  { 65,  "HTTPS" }, /* HTTPS Binding [draft-ietf-dnsop-svcb-https-00] HTTPS/https-completed-template 2020-06-30*/
+  { 99,  "SPF" }, /* [RFC7208] */
+  { 100, "UINFO" }, /* [IANA-Reserved] */
+  { 101, "UID" }, /* [IANA-Reserved] */
+  { 102, "GID" }, /* [IANA-Reserved] */
+  { 103, "UNSPEC" }, /* [IANA-Reserved] */
+  { 104, "NID" }, /* [RFC6742] ILNP/nid-completed-template */
+  { 105, "L32" }, /* [RFC6742] ILNP/l32-completed-template */
+  { 106, "L64" }, /* [RFC6742] ILNP/l64-completed-template */
+  { 107, "LP" }, /* [RFC6742] ILNP/lp-completed-template */
+  { 108, "EUI48" }, /* an EUI-48 address [RFC7043] EUI48/eui48-completed-template 2013-03-27*/
+  { 109, "EUI64" }, /* an EUI-64 address [RFC7043] EUI64/eui64-completed-template 2013-03-27*/
+  { 249, "TKEY" }, /* Transaction Key [RFC2930] */
+  { 250, "TSIG" }, /* Transaction Signature [RFC8945] */
+  { 251, "IXFR" }, /* incremental transfer [RFC1995] */
+  { 252, "AXFR" }, /* transfer of an entire zone [RFC1035][RFC5936] */
+  { 253, "MAILB" }, /* mailbox-related RRs (MB, MG or MR) [RFC1035] */
+  { 254, "MAILA" }, /* mail agent RRs (OBSOLETE - see MX) [RFC1035] */
+  { 255, "ANY" }, /* A request for some or all records the server has available [RFC1035][RFC6895][RFC8482] */
+  { 256, "URI" }, /* URI [RFC7553] URI/uri-completed-template 2011-02-22*/
+  { 257, "CAA" }, /* Certification Authority Restriction [RFC8659] CAA/caa-completed-template 2011-04-07*/
+  { 258, "AVC" }, /* Application Visibility and Control [Wolfgang_Riedel] AVC/avc-completed-template 2016-02-26*/
+  { 259, "DOA" }, /* Digital Object Architecture [draft-durand-doa-over-dns] DOA/doa-completed-template 2017-08-30*/
+  { 260, "AMTRELAY" }, /* Automatic Multicast Tunneling Relay [RFC8777] AMTRELAY/amtrelay-completed-template 2019-02-06*/
+  { 32768,  "TA" }, /* DNSSEC Trust Authorities [Sam_Weiler][http://cameo.library.cmu.edu/][ Deploying DNSSEC Without a Signed Root. Technical Report 1999-19, Information Networking Institute, Carnegie Mellon University, April 2004.] 2005-12-13*/
+  { 32769,  "DLV" }, /* DNSSEC Lookaside Validation (OBSOLETE) [RFC8749][RFC4431] */
 };
 
 static void cache_free(struct crec *crecp);
@@ -1812,7 +1862,7 @@ char *record_source(unsigned int index)
   return "<unknown>";
 }
 
-char *querystr(char *desc, unsigned short type)
+static char *querystr(char *desc, unsigned short type)
 {
   unsigned int i;
   int len = 10; /* strlen("type=xxxxx") */
@@ -1902,7 +1952,7 @@ const char *edestr(int ede)
 }
 
 /**** P-hole modified: Added file and line and serve log_query via macro defined in dnsmasq.h ****/
-void _log_query(unsigned int flags, char *name, union all_addr *addr, char *arg, const char *file, const int line)
+void _log_query(unsigned int flags, char *name, union all_addr *addr, char *arg, unsigned short type, const char *file, const int line)
 {
   char *source, *dest = arg;
   char *verb = "is";
@@ -1912,7 +1962,11 @@ void _log_query(unsigned int flags, char *name, union all_addr *addr, char *arg,
   
   if (!option_bool(OPT_LOG))
     return;
-  
+
+  /* build query type string if requested */
+  if(type > 0)
+    arg = querystr(arg, type);
+
 #ifdef HAVE_DNSSEC
   if ((flags & F_DNSSECOK) && option_bool(OPT_EXTRALOG))
     extra = " (DNSSEC signed)";
