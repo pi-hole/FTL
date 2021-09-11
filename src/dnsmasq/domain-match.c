@@ -411,7 +411,8 @@ size_t make_local_answer(int flags, int gotname, size_t size, struct dns_header 
 	  addr.addr4 = srv->addr;
 	
 	header->ancount = htons(ntohs(header->ancount) + 1);
-	add_resource_record(header, limit, &trunc, sizeof(struct dns_header), &p, daemon->local_ttl, NULL, T_A, C_IN, "4", &addr);
+	if (!add_resource_record(header, limit, &trunc, sizeof(struct dns_header), &p, daemon->local_ttl, NULL, T_A, C_IN, "4", &addr))
+	  return 0;
 	log_query((flags | F_CONFIG | F_FORWARD) & ~F_IPV6, name, (union all_addr *)&addr, NULL, 0);
       }
   
@@ -609,7 +610,10 @@ int add_update_server(int flags,
   
   if (*domain == 0)
     alloc_domain = whine_malloc(1);
-  else if (!(alloc_domain = canonicalise((char *)domain, NULL)))
+  else
+    alloc_domain = canonicalise((char *)domain, NULL);
+
+  if (!alloc_domain)
     return 0;
   
   /* See if there is a suitable candidate, and unmark
@@ -643,7 +647,10 @@ int add_update_server(int flags,
 	size = sizeof(struct server);
       
       if (!(serv = whine_malloc(size)))
-	return 0;
+	{
+	  free(alloc_domain);
+	  return 0;
+	}
       
       if (flags & SERV_IS_LOCAL)
 	{
