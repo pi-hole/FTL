@@ -436,3 +436,9 @@ int __attribute__ ((pure)) blocked_queries(void)
 			num += counters->status[status];
 	return num;
 }
+
+const char * __attribute__ ((pure)) short_path(const char *full_path)
+{
+	const char *shorter = strstr(full_path, "src/");
+	return shorter != NULL ? shorter : full_path;
+}

@@ -12,10 +12,14 @@
 
 #include "enums.h"
 extern pthread_t threads[THREADS_MAX];
+#define MAX_API_THREADS 40
+extern pthread_t api_threads[MAX_API_THREADS];
+extern pid_t api_tids[MAX_API_THREADS];
 
 void go_daemon(void);
 void savepid(void);
 char *getUserName(void);
+const char *hostname(void);
 void delay_startup(void);
 bool is_fork(const pid_t mpid, const pid_t pid) __attribute__ ((const));
 void cleanup(const int ret);

@@ -54,7 +54,7 @@ typedef struct {
 	int status[QUERY_STATUS_MAX];
 	int reply[QUERY_REPLY_MAX];
 } countersStruct;
-ASSERT_SIZEOF(countersStruct, 224, 224, 224);
+ASSERT_SIZEOF(countersStruct, 240, 240, 240);
 
 extern countersStruct *counters;
 
@@ -88,6 +88,14 @@ static void delete_shm(SharedMemory *sharedMemory);
 void _lock_shm(const char* func, const int line, const char* file);
 #define lock_log() _lock_log(__FUNCTION__, __LINE__, __FILE__)
 void _lock_log(const char* func, const int line, const char* file);
+
+// Return if the current mutex locked the SHM lock
+bool is_our_lock(void);
+
+// This ensures we have enough space available for more objects
+// The function should only be called from within _lock() and when reading
+// content from the database
+void shm_ensure_size(void);
 
 /// Unlock the lock. Only call this if there is an active lock.
 #define unlock_shm() _unlock_shm(__FUNCTION__, __LINE__, __FILE__)

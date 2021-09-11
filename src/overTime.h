@@ -18,7 +18,9 @@
 #include "static_assert.h"
 
 void initOverTime(void);
-unsigned int getOverTimeID(const time_t timestamp);
+
+#define getOverTimeID(timestamp) _getOverTimeID(timestamp, __FILE__, __LINE__)
+unsigned int _getOverTimeID(const time_t timestamp, const char *file, const int line);
 
 /**
  * Move the overTime slots so the oldest interval starts with mintime. The time

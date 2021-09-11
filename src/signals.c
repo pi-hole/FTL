@@ -23,6 +23,8 @@
 #include "events.h"
 // sleepms()
 #include "timers.h"
+// struct config
+#include "config.h"
 
 #define BINARY_NAME "pihole-FTL"
 
@@ -63,8 +65,9 @@ static void print_addr2line(const char *symbol, const void *address, const int j
 	char addr2line_cmd[256];
 	snprintf(addr2line_cmd, sizeof(addr2line_cmd), "addr2line %p -e %.*s", addr, p, symbol);
 	FILE *addr2line = NULL;
-	char linebuffer[256];
-	if((addr2line = popen(addr2line_cmd, "r")) != NULL &&
+	char linebuffer[512];
+	if(config.addr2line &&
+	   (addr2line = popen(addr2line_cmd, "r")) != NULL &&
 	   fgets(linebuffer, sizeof(linebuffer), addr2line) != NULL)
 	{
 		char *pos;
@@ -74,15 +77,57 @@ static void print_addr2line(const char *symbol, const void *address, const int j
 	}
 	else
 	{
-		snprintf(linebuffer, sizeof(linebuffer), "N/A (%p)", addr);
+		snprintf(linebuffer, sizeof(linebuffer), "N/A (%p -> %s)", addr, addr2line_cmd);
 	}
 	// Log result
 	logg("L[%04i]: %s", j, linebuffer);
 
 	// Close pipe
-	pclose(addr2line);
+	if(addr2line != NULL)
+		pclose(addr2line);
 }
 #endif
+
+// Log backtrace
+void generate_backtrace(void)
+{
+// Check GLIBC availability as MUSL does not support live backtrace generation
+#if defined(__GLIBC__)
+	// Try to obtain backtrace. This may not always be helpful, but it is better than nothing
+	void *buffer[255];
+	const int calls = backtrace(buffer, sizeof(buffer)/sizeof(void *));
+	logg("Backtrace:");
+
+	char ** bcktrace = backtrace_symbols(buffer, calls);
+	if(bcktrace == NULL)
+		logg("Unable to obtain backtrace symbols!");
+
+	// Try to compute binary offset from backtrace_symbols result
+	void *offset = NULL;
+	for(int j = 0; j < calls; j++)
+	{
+		void *p1 = NULL, *p2 = NULL;
+		char *pend = NULL;
+		if((pend = strrchr(bcktrace[j], '(')) != NULL &&
+		   strstr(bcktrace[j], BINARY_NAME) != NULL &&
+		   sscanf(pend, "(+%p) [%p]", &p1, &p2) == 2)
+		   offset = (void*)(p2-p1);
+	}
+
+	for(int j = 0; j < calls; j++)
+	{
+		logg("B[%04i]: %s", j,
+		     bcktrace != NULL ? bcktrace[j] : "---");
+
+		if(bcktrace != NULL)
+			print_addr2line(bcktrace[j], buffer[j], j, offset);
+	}
+	if(bcktrace != NULL)
+		free(bcktrace);
+#else
+	logg("!!! INFO: pihole-FTL has not been compiled with glibc/backtrace support, not generating one !!!");
+#endif
+}
 
 static void __attribute__((noreturn)) signal_handler(int sig, siginfo_t *si, void *unused)
 {
@@ -189,42 +234,8 @@ static void __attribute__((noreturn)) signal_handler(int sig, siginfo_t *si, voi
 		}
 	}
 
-// Check GLIBC availability as MUSL does not support live backtrace generation
-#if defined(__GLIBC__)
-	// Try to obtain backtrace. This may not always be helpful, but it is better than nothing
-	void *buffer[255];
-	const int calls = backtrace(buffer, sizeof(buffer)/sizeof(void *));
-	logg("Backtrace:");
+	generate_backtrace();
 
-	char ** bcktrace = backtrace_symbols(buffer, calls);
-	if(bcktrace == NULL)
-		logg("Unable to obtain backtrace symbols!");
-
-	// Try to compute binary offset from backtrace_symbols result
-	void *offset = NULL;
-	for(int j = 0; j < calls; j++)
-	{
-		void *p1 = NULL, *p2 = NULL;
-		char *pend = NULL;
-		if((pend = strrchr(bcktrace[j], '(')) != NULL &&
-		   strstr(bcktrace[j], BINARY_NAME) != NULL &&
-		   sscanf(pend, "(+%p) [%p]", &p1, &p2) == 2)
-		   offset = (void*)(p2-p1);
-	}
-
-	for(int j = 0; j < calls; j++)
-	{
-		logg("B[%04i]: %s", j,
-		     bcktrace != NULL ? bcktrace[j] : "---");
-
-		if(bcktrace != NULL)
-			print_addr2line(bcktrace[j], buffer[j], j, offset);
-	}
-	if(bcktrace != NULL)
-		free(bcktrace);
-#else
-	logg("!!! INFO: pihole-FTL has not been compiled with glibc/backtrace support, not generating one !!!");
-#endif
 	// Print content of /dev/shm
 	ls_dir("/dev/shm");
 
@@ -278,6 +289,9 @@ static void SIGRT_handler(int signum, siginfo_t *si, void *unused)
 
 		// Reload the privacy level in case the user changed it
 		set_event(RELOAD_PRIVACY_LEVEL);
+
+		// Reload blocking mode
+		set_event(RELOAD_BLOCKINGMODE);
 	}
 	else if(rtsig == 2)
 	{
@@ -355,7 +369,7 @@ void handle_realtime_signals(void)
 pid_t main_pid(void)
 {
 	if(mpid > -1)
-		// Hase already been set
+		// Has already been set
 		return mpid;
 	else
 		// Has not been set so far

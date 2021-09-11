@@ -28,6 +28,8 @@
 #include "events.h"
 // overTime array
 #include "overTime.h"
+// short_path()
+#include "files.h"
 
 const char *querytypes[TYPE_MAX] = {"UNKNOWN", "A", "AAAA", "ANY", "SRV", "SOA", "PTR", "TXT",
                                     "NAPTR", "MX", "DS", "RRSIG", "DNSKEY", "NS", "OTHER", "SVCB",
@@ -99,8 +101,6 @@ int findUpstreamID(const char * upstreamString, const in_port_t port)
 
 	// Set magic byte
 	upstream->magic = MAGICBYTE;
-	// Initialize its counter
-	upstream->count = 0;
 	// Save upstream destination IP address
 	upstream->ippos = addstr(upstreamString);
 	upstream->failed = 0;
@@ -363,7 +363,7 @@ bool isValidIPv6(const char *addr)
 const char *getDomainString(const queriesData* query)
 {
 	// Check if the returned pointer is valid before trying to access it
-	if(query == NULL)
+	if(query == NULL || query->domainID < 0)
 		return "";
 
 	if(query->privacylevel < PRIVACY_HIDE_DOMAINS)
@@ -383,7 +383,7 @@ const char *getDomainString(const queriesData* query)
 const char *getCNAMEDomainString(const queriesData* query)
 {
 	// Check if the returned pointer is valid before trying to access it
-	if(query == NULL)
+	if(query == NULL || query->CNAME_domainID < 0)
 		return "";
 
 	if(query->privacylevel < PRIVACY_HIDE_DOMAINS)
@@ -403,7 +403,7 @@ const char *getCNAMEDomainString(const queriesData* query)
 const char *getClientIPString(const queriesData* query)
 {
 	// Check if the returned pointer is valid before trying to access it
-	if(query == NULL)
+	if(query == NULL || query->clientID < 0)
 		return "";
 
 	if(query->privacylevel < PRIVACY_HIDE_DOMAINS_CLIENTS)
@@ -423,7 +423,7 @@ const char *getClientIPString(const queriesData* query)
 const char *getClientNameString(const queriesData* query)
 {
 	// Check if the returned pointer is valid before trying to access it
-	if(query == NULL)
+	if(query == NULL || query->clientID < 0)
 		return "";
 
 	if(query->privacylevel < PRIVACY_HIDE_DOMAINS_CLIENTS)
@@ -504,6 +504,7 @@ bool __attribute__ ((const)) is_blocked(const enum query_status status)
 		case QUERY_GRAVITY_CNAME:
 		case QUERY_REGEX_CNAME:
 		case QUERY_BLACKLIST_CNAME:
+		case QUERY_DBBUSY:
 			return true;
 	}
 }
@@ -523,10 +524,11 @@ static const char *query_status_str[QUERY_STATUS_MAX] = {
 	"BLACKLIST_CNAME",
 	"RETRIED",
 	"RETRIED_DNSSEC",
-	"IN_PROGRESS"
+	"IN_PROGRESS",
+	"DBBUSY"
 };
 
-void query_set_status(queriesData *query, const enum query_status new_status)
+void _query_set_status(queriesData *query, const enum query_status new_status, const char *file, const int line)
 {
 	// Debug logging
 	if(config.debug & DEBUG_STATUS)
@@ -534,14 +536,14 @@ void query_set_status(queriesData *query, const enum query_status new_status)
 		const char *oldstr = query->status < QUERY_STATUS_MAX ? query_status_str[query->status] : "INVALID";
 		if(query->status == new_status)
 		{
-			logg("Query %i: status unchanged: %s (%d)",
-			     query->id, oldstr, query->status);
+			logg("Query %i: status unchanged: %s (%d) in %s:%i",
+			     query->id, oldstr, query->status, short_path(file), line);
 		}
 		else
 		{
 			const char *newstr = new_status < QUERY_STATUS_MAX ? query_status_str[new_status] : "INVALID";
-			logg("Query %i: status changed: %s (%d) -> %s (%d)",
-			     query->id, oldstr, query->status, newstr, new_status);
+			logg("Query %i: status changed: %s (%d) -> %s (%d) in %s:%i",
+			     query->id, oldstr, query->status, newstr, new_status, short_path(file), line);
 		}
 	}
 
@@ -551,20 +553,21 @@ void query_set_status(queriesData *query, const enum query_status new_status)
 		counters->status[query->status]--;
 		counters->status[new_status]++;
 
+		const int timeidx = getOverTimeID(query->timestamp);
 		if(is_blocked(query->status))
-			overTime[query->timeidx].blocked--;
+			overTime[timeidx].blocked--;
 		if(is_blocked(new_status))
-			overTime[query->timeidx].blocked++;
+			overTime[timeidx].blocked++;
 
 		if(query->status == QUERY_CACHE)
-			overTime[query->timeidx].cached--;
+			overTime[timeidx].cached--;
 		if(new_status == QUERY_CACHE)
-			overTime[query->timeidx].cached++;
+			overTime[timeidx].cached++;
 
 		if(query->status == QUERY_FORWARDED)
-			overTime[query->timeidx].forwarded--;
+			overTime[timeidx].forwarded--;
 		if(new_status == QUERY_FORWARDED)
-			overTime[query->timeidx].forwarded++;
+			overTime[timeidx].forwarded++;
 	}
 
 	// Update status

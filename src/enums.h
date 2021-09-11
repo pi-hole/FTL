@@ -44,6 +44,7 @@ enum query_status {
 	QUERY_RETRIED,
 	QUERY_RETRIED_DNSSEC,
 	QUERY_IN_PROGRESS,
+	QUERY_DBBUSY,
 	QUERY_STATUS_MAX
 } __attribute__ ((packed));
 
@@ -59,6 +60,9 @@ enum reply_type {
 	REPLY_REFUSED,
 	REPLY_NOTIMP,
 	REPLY_OTHER,
+	REPLY_DNSSEC,
+	REPLY_NONE,
+	REPLY_BLOB,
 	QUERY_REPLY_MAX
 	}  __attribute__ ((packed));
 
@@ -119,6 +123,7 @@ enum domain_client_status {
 	BLACKLIST_BLOCKED,
 	REGEX_BLOCKED,
 	WHITELISTED,
+	SPECIAL_DOMAIN,
 	NOT_BLOCKED
 } __attribute__ ((packed));
 
@@ -136,7 +141,7 @@ enum debug_flags {
 	DEBUG_OVERTIME      = (1 << 10), /* 00000000 00000000 00000100 00000000 */
 	DEBUG_STATUS        = (1 << 11), /* 00000000 00000000 00001000 00000000 */
 	DEBUG_CAPS          = (1 << 12), /* 00000000 00000000 00010000 00000000 */
-	DEBUG_DNSMASQ_LINES = (1 << 13), /* 00000000 00000000 00100000 00000000 */
+	DEBUG_DNSSEC        = (1 << 13), /* 00000000 00000000 00100000 00000000 */
 	DEBUG_VECTORS       = (1 << 14), /* 00000000 00000000 01000000 00000000 */
 	DEBUG_RESOLVER      = (1 << 15), /* 00000000 00000000 10000000 00000000 */
 	DEBUG_EDNS0         = (1 << 16), /* 00000000 00000001 00000000 00000000 */
@@ -155,6 +160,7 @@ enum events {
 	RERESOLVE_HOSTNAMES_FORCE,
 	REIMPORT_ALIASCLIENTS,
 	PARSE_NEIGHBOR_CACHE,
+	RELOAD_BLOCKINGMODE,
 	EVENTS_MAX
 } __attribute__ ((packed));
 
@@ -165,6 +171,18 @@ enum refresh_hostnames {
 	REFRESH_NONE
 } __attribute__ ((packed));
 
+enum db_result {
+	NOT_FOUND,
+	FOUND,
+	LIST_NOT_AVAILABLE
+} __attribute__ ((packed));
+
+enum busy_reply {
+	BUSY_BLOCK,
+	BUSY_ALLOW,
+	BUSY_REFUSE,
+	BUSY_DROP
+} __attribute__ ((packed));
 
 enum thread_types {
 	TELNETv4,
@@ -174,6 +192,15 @@ enum thread_types {
 	GC,
 	DNSclient,
 	THREADS_MAX
+} __attribute__ ((packed));
+
+enum message_type {
+	REGEX_MESSAGE,
+	SUBNET_MESSAGE,
+	HOSTNAME_MESSAGE,
+	DNSMASQ_CONFIG_MESSAGE,
+	RATE_LIMIT_MESSAGE,
+	MAX_MESSAGE
 } __attribute__ ((packed));
 
 #endif // ENUMS_H

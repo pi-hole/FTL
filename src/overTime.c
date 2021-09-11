@@ -51,6 +51,18 @@ static void initSlot(const unsigned int index, const time_t timestamp)
 			client->overTime[index] = 0;
 		}
 	}
+
+	// Zero overTime counter for all known upstream destinations
+	for(int upstreamID = 0; upstreamID < counters->upstreams; upstreamID++)
+	{
+		// Get client pointer
+		upstreamsData* upstream = getUpstream(upstreamID, true);
+		if(upstream != NULL)
+		{
+			// Set overTime data to zero
+			upstream->overTime[index] = 0;
+		}
+	}
 }
 
 void initOverTime(void)
@@ -78,7 +90,8 @@ void initOverTime(void)
 	}
 }
 
-unsigned int getOverTimeID(time_t timestamp)
+bool warned_about_hwclock = false;
+unsigned int _getOverTimeID(time_t timestamp, const char *file, const int line)
 {
 	// Center timestamp in OVERTIME_INTERVAL
 	timestamp -= timestamp % OVERTIME_INTERVAL;
@@ -93,13 +106,35 @@ unsigned int getOverTimeID(time_t timestamp)
 	// Check bounds manually
 	if(id < 0)
 	{
-		logg("WARN: getOverTimeID(%llu): %u is negative: %llu", (long long)timestamp, id, (long long)firstTimestamp);
 		// Return first timestamp in case negative timestamp was determined
 		return 0;
 	}
-	else if(id > OVERTIME_SLOTS-1)
+	else if(id == OVERTIME_SLOTS)
 	{
-		logg("WARN: getOverTimeID(%llu): %i is too large: %llu", (long long)timestamp, id, (long long)firstTimestamp);
+		// Possible race-collision (moving of the timeslots is just about to
+		// happen), silently add to the last bin because this is the correct
+		// thing to do
+		return OVERTIME_SLOTS-1;
+	}
+	else if(id > OVERTIME_SLOTS)
+	{
+		// This is definitely wrong. We warn about this (but only once)
+		if(!warned_about_hwclock)
+		{
+			char timestampStr[84] = "";
+			get_timestr(timestampStr, timestamp, false);
+
+			const time_t lastTimestamp = overTime[OVERTIME_SLOTS-1].timestamp;
+			char lastTimestampStr[84] = "";
+			get_timestr(lastTimestampStr, lastTimestamp, false);
+
+			logg("WARN: Found database entries in the future (%s (%llu), last timestamp for importing: %s (%llu)). "
+			     "Your over-time statistics may be incorrect (found in %s:%d)",
+			     timestampStr, (long long)timestamp,
+			     lastTimestampStr, (long long)lastTimestamp,
+			     short_path(file), line);
+			warned_about_hwclock = true;
+		}
 		// Return last timestamp in case a too large timestamp was determined
 		return OVERTIME_SLOTS-1;
 	}
@@ -139,56 +174,60 @@ void moveOverTimeMemory(const time_t mintime)
 
 	// Check if the move over amount is valid. This prevents errors if the
 	// function is called before GC is necessary.
-	if(moveOverTime > 0 && moveOverTime < OVERTIME_SLOTS)
+	if(!(moveOverTime > 0 && moveOverTime < OVERTIME_SLOTS))
+		return;
+
+	// Move overTime memory
+	if(config.debug & DEBUG_OVERTIME)
 	{
-		// Move overTime memory
-		if(config.debug & DEBUG_OVERTIME)
-		{
-			logg("moveOverTimeMemory(): Moving overTime %u - %u to 0 - %u",
-			     moveOverTime, moveOverTime+remainingSlots, remainingSlots);
-		}
+		logg("moveOverTimeMemory(): Moving overTime %u - %u to 0 - %u",
+			moveOverTime, moveOverTime+remainingSlots, remainingSlots);
+	}
 
-		// Move overTime memory forward to update data structure
-		memmove(&overTime[0],
-		        &overTime[moveOverTime],
-		        remainingSlots*sizeof(*overTime));
+	// Move overTime memory forward to update data structure
+	memmove(&overTime[0],
+		&overTime[moveOverTime],
+		remainingSlots*sizeof(*overTime));
 
-		// Correct time indices of queries. This is necessary because we just moved the slot this index points to
-		for(int queryID = 0; queryID < counters->queries; queryID++)
-		{
-			// Get query pointer
-			queriesData* query = getQuery(queryID, true);
-			if(query == NULL)
-				continue;
+	// Correct time indices of queries. This is necessary because we just moved the slot this index points to
+	for(int queryID = 0; queryID < counters->queries; queryID++)
+	{
+		// Get query pointer
+		queriesData* query = getQuery(queryID, true);
+		if(query == NULL)
+			continue;
+	}
 
-			// Check if the index would become negative if we adjusted it
-			if(((int)query->timeidx - (int)moveOverTime) < 0)
-			{
-				// This should never happen, but we print a warning if it still happens
-				// We don't do anything in this case
-				logg("WARN: moveOverTimeMemory(): overTime time index correction failed (%i: %u / %u)",
-				     queryID, query->timeidx, moveOverTime);
-			}
-			else
-			{
-				query->timeidx -= moveOverTime;
-			}
-		}
+	// Move client-specific overTime memory
+	for(int clientID = 0; clientID < counters->clients; clientID++)
+	{
+		clientsData *client = getClient(clientID, true);
+		if(!client)
+			continue;
 
-		// Move client-specific overTime memory
-		for(int clientID = 0; clientID < counters->clients; clientID++)
-		{
-			memmove(&(getClient(clientID, true)->overTime[0]),
-			        &(getClient(clientID, true)->overTime[moveOverTime]),
-			        remainingSlots*sizeof(int));
-		}
+		memmove(&(client->overTime[0]),
+		        &(client->overTime[moveOverTime]),
+		        remainingSlots*sizeof(*client->overTime));
+	}
 
-		// Iterate over new overTime region and initialize it
-		for(unsigned int timeidx = remainingSlots; timeidx < OVERTIME_SLOTS ; timeidx++)
-		{
-			// This slot is OVERTIME_INTERVAL seconds after the previous slot
-			const time_t timestamp = overTime[timeidx-1].timestamp + OVERTIME_INTERVAL;
-			initSlot(timeidx, timestamp);
-		}
+	// Process upstream data
+	for(int upstreamID = 0; upstreamID < counters->upstreams; upstreamID++)
+	{
+		upstreamsData *upstream = getUpstream(upstreamID, true);
+		if(!upstream)
+			continue;
+
+		// Move upstream-specific overTime memory
+		memmove(&(upstream->overTime[0]),
+		        &(upstream->overTime[moveOverTime]),
+		        remainingSlots*sizeof(*upstream->overTime));
+	}
+
+	// Iterate over new overTime region and initialize it
+	for(unsigned int timeidx = remainingSlots; timeidx < OVERTIME_SLOTS ; timeidx++)
+	{
+		// This slot is OVERTIME_INTERVAL seconds after the previous slot
+		const time_t timestamp = overTime[timeidx-1].timestamp + OVERTIME_INTERVAL;
+		initSlot(timeidx, timestamp);
 	}
 }

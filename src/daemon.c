@@ -22,10 +22,14 @@
 #include "database/common.h"
 // destroy_shmem()
 #include "shmem.h"
+// uname()
+#include <sys/utsname.h>
 // killed
 #include "signals.h"
 
 pthread_t threads[THREADS_MAX] = { 0 };
+pthread_t api_threads[MAX_API_THREADS] = { 0 };
+pid_t api_tids[MAX_API_THREADS] = { 0 };
 bool resolver_ready = false;
 
 void go_daemon(void)
@@ -141,6 +145,30 @@ char *getUserName(void)
 	return name;
 }
 
+// "man 7 hostname" says:
+//
+//     Each element of the hostname must be from 1 to 63 characters long and the
+//     entire hostname, including the dots, can be at most 253 characters long.
+//
+//     Valid characters for hostnames are ASCII(7) letters from a to z, the
+//     digits from 0 to 9, and the hyphen (-). A hostname may not start with a
+//     hyphen.
+#define HOSTNAMESIZE 256
+static char nodename[HOSTNAMESIZE] = { 0 };
+const char *hostname(void)
+{
+	// Ask kernel for node name if not known
+	// This is equivalent to "uname -n"
+	if(nodename[0] == '\0')
+	{
+		struct utsname buf;
+		if(uname(&buf) == 0)
+			strncpy(nodename, buf.nodename, HOSTNAMESIZE);
+		nodename[HOSTNAMESIZE-1] = '\0';
+	}
+	return nodename;
+}
+
 void delay_startup(void)
 {
 	// Exit early if not sleeping
@@ -172,7 +200,6 @@ pid_t FTL_gettid(void)
 
 static void terminate_threads(void)
 {
-	int s;
 	struct timespec ts;
 	// Terminate threads before closing database connections and finishing shared memory
 	killed = true;
@@ -198,7 +225,8 @@ static void terminate_threads(void)
 		// Timeout for joining is 2 seconds for each thread
 		ts.tv_sec += 2;
 
-		if((s = pthread_timedjoin_np(threads[i], NULL, &ts)) != 0)
+		const int s = pthread_timedjoin_np(threads[i], NULL, &ts);
+		if(s != 0)
 		{
 			logg("Thread %s (%d) is still busy, cancelling it.",
 			     thread_names[i], i);
@@ -217,8 +245,23 @@ void cleanup(const int ret)
 	{
 		terminate_threads();
 
+		// Cancel and join possibly still running API worker threads
+		for(unsigned int tid = 0; tid < MAX_API_THREADS; tid++)
+		{
+			// Skip if this is an unused slot
+			if(api_threads[tid] == 0)
+				continue;
+
+			// Otherwise, cancel and join the thread
+			logg("Joining API worker thread %d", tid);
+			pthread_cancel(api_threads[tid]);
+			pthread_join(api_threads[tid], NULL);
+		}
+
 		// Close database connection
+		lock_shm();
 		gravityDB_close();
+		unlock_shm();
 
 		// Close sockets and delete Unix socket file handle
 		close_telnet_socket();

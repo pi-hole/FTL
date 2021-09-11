@@ -24,6 +24,8 @@
 #include "capabilities.h"
 #include "timers.h"
 #include "procps.h"
+// init_overtime()
+#include "overTime.h"
 
 char * username;
 bool needGC = false;
@@ -47,7 +49,7 @@ int main (int argc, char* argv[])
 	// Try to open FTL log
 	init_FTL_log();
 	timer_start(EXIT_TIMER);
-	logg("########## FTL started! ##########");
+	logg("########## FTL started on %s! ##########", hostname());
 	log_FTL_version(false);
 
 	// Catch signals not handled by dnsmasq
@@ -71,6 +73,15 @@ int main (int argc, char* argv[])
 	if(strcmp(username, "pihole") != 0)
 		logg("WARNING: Starting pihole-FTL as user %s is not recommended", username);
 
+	// Delay startup (if requested)
+	// Do this before reading the database to make this option not only
+	// useful for interfaces that aren't ready but also for fake-hwclocks
+	// which aren't ready at this point
+	delay_startup();
+
+	// Initialize overTime datastructure
+	initOverTime();
+
 	// Initialize query database (pihole-FTL.db)
 	db_init();
 
@@ -85,8 +96,7 @@ int main (int argc, char* argv[])
 	// immediately before starting the resolver.
 	check_capabilities();
 
-	// Start the resolver, delay startup if requested
-	delay_startup();
+	// Start the resolver
 	startup = false;
 	if(config.debug != 0)
 	{
@@ -103,8 +113,11 @@ int main (int argc, char* argv[])
 	// Save new queries to database (if database is used)
 	if(config.DBexport)
 	{
-		if(DB_save_queries(NULL))
-			logg("Finished final database update");
+		lock_shm();
+		int saved;
+		if((saved = DB_save_queries(NULL)) > -1)
+			logg("Finished final database update (stored %d queries)", saved);
+		unlock_shm();
 	}
 
 	cleanup(exit_code);

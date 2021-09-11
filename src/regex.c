@@ -77,6 +77,46 @@ static inline void free_regex_ptr(const enum regex_type regexid)
 	}
 }
 
+static __attribute__ ((pure)) regexData *get_regex_ptr_from_id(unsigned int regexID)
+{
+	unsigned int maxi;
+	enum regex_type regex_type;
+	if(regexID < num_regex[REGEX_BLACKLIST])
+	{
+		// Regex blacklist
+		regex_type = REGEX_BLACKLIST;
+		maxi = num_regex[REGEX_BLACKLIST];
+	}
+	else
+	{
+		// Subtract regex blacklist
+		regexID -= num_regex[REGEX_BLACKLIST];
+
+		// Check for regex whitelist
+		if(regexID < num_regex[REGEX_WHITELIST])
+		{
+			// Regex whitelist
+			regex_type = REGEX_WHITELIST;
+			maxi = num_regex[REGEX_WHITELIST];
+		}
+		else
+		{
+			// Subtract regex whitelist
+			regexID -= num_regex[REGEX_WHITELIST];
+
+			// CLI regex
+			regex_type = REGEX_CLI;
+			maxi = num_regex[REGEX_CLI];
+		}
+	}
+
+	regexData *regex = get_regex_ptr(regex_type);
+	if(regex != NULL && regexID < maxi)
+		return &(regex[regexID]);
+
+	return NULL;
+}
+
 unsigned int __attribute__((pure)) get_num_regex(const enum regex_type regexid)
 {
 	// count number of all available reges
@@ -119,7 +159,7 @@ static bool compile_regex(const char *regexin, const enum regex_type regexid, co
 			if(sscanf(part, "querytype=%16s", extra))
 			{
 				// Warn if specified more than one querytype option
-				if(regex[index].query_type != 0)
+				if(regex[index].ext.query_type != 0)
 					logg_regex_warning(regextype[regexid],
 					                   "Overwriting previous querytype setting",
 					                   dbidx, regexin);
@@ -130,41 +170,99 @@ static bool compile_regex(const char *regexin, const enum regex_type regexid, co
 					// Check for querytype
 					if(strcasecmp(extra, querytypes[type]) == 0)
 					{
-						regex[index].query_type = type;
-						regex[index].query_type_inverted = false;
+						regex[index].ext.query_type = type;
+						regex[index].ext.query_type_inverted = false;
 						break;
 					}
 					// Check for INVERTED querytype
 					else if(extra[0] == '!' && strcasecmp(extra + 1u, querytypes[type]) == 0)
 					{
-						regex[index].query_type = type;
-						regex[index].query_type_inverted = true;
+						regex[index].ext.query_type = type;
+						regex[index].ext.query_type_inverted = true;
 						break;
 					}
 				}
 				// Nothing found
-				if(regex[index].query_type == 0)
-					logg_regex_warning(regextype[regexid], "Unknown querytype",
-					                   dbidx, regexin);
+				if(regex[index].ext.query_type == 0)
+				{
+					char msg[64] = { 0 };
+					snprintf(msg, sizeof(msg), "Unknown querytype \"%s\"", extra);
+					logg_regex_warning(regextype[regexid], msg, dbidx, regexin);
+				}
 
 				// Debug output
 				else if(config.debug & DEBUG_REGEX)
 				{
 					logg("   This regex will %s match query type %s",
-					     regex[index].query_type_inverted ? "NOT" : "ONLY",
-					     querytypes[regex[index].query_type]);
+					     regex[index].ext.query_type_inverted ? "NOT" : "ONLY",
+					     querytypes[regex[index].ext.query_type]);
 				}
 			}
 			// option: ";invert"
 			else if(strcasecmp(part, "invert") == 0)
 			{
-				regex[index].inverted = true;
+				regex[index].ext.inverted = true;
 
 				// Debug output
 				if(config.debug & DEBUG_REGEX)
 				{
 					logg("   This regex will match in inverted mode.");
 				}
+			}
+			// options ";reply=NXDOMAIN", etc.
+			else if(sscanf(part, "reply=%16s", extra))
+			{
+				// Test input string against all implemented reply types
+				const char *type = "";
+				if(strcasecmp(extra, "NODATA") == 0)
+				{
+					type = "NODATA";
+					regex[index].ext.reply = REPLY_NODATA;
+				}
+				else if(strcasecmp(extra, "NXDOMAIN") == 0)
+				{
+					type = "NXDOMAIN";
+					regex[index].ext.reply = REPLY_NXDOMAIN;
+				}
+				else if(strcasecmp(extra, "REFUSED") == 0)
+				{
+					type = "REFUSED";
+					regex[index].ext.reply = REPLY_REFUSED;
+				}
+				else if(strcasecmp(extra, "IP") == 0)
+				{
+					type = "IP";
+					regex[index].ext.reply = REPLY_IP;
+				}
+				else if(inet_pton(AF_INET, extra, &regex[index].ext.addr4) == 1)
+				{
+					// Custom IPv4 target
+					type = extra;
+					regex[index].ext.reply = REPLY_IP;
+					regex[index].ext.custom_ip4 = true;
+				}
+				else if(inet_pton(AF_INET6, extra, &regex[index].ext.addr6) == 1)
+				{
+					// Custom IPv6 target
+					type = extra;
+					regex[index].ext.reply = REPLY_IP;
+					regex[index].ext.custom_ip6 = true;
+				}
+				else if(strcasecmp(extra, "NONE") == 0)
+				{
+					type = "NONE";
+					regex[index].ext.reply = REPLY_NONE;
+				}
+				else
+				{
+					char msg[64] = { 0 };
+					snprintf(msg, sizeof(msg)-1, "Unknown reply type \"%s\"", extra);
+					logg_regex_warning(regextype[regexid], msg, dbidx, regexin);
+				}
+
+				// Debug output
+				if(config.debug & DEBUG_REGEX && regex[index].ext.reply != REPLY_UNKNOWN)
+					logg("   This regex will result in a custom reply: %s", type);
 			}
 			else
 			{
@@ -204,7 +302,7 @@ static bool compile_regex(const char *regexin, const enum regex_type regexid, co
 	return true;
 }
 
-int match_regex(const char *input, const DNSCacheData* dns_cache, const int clientID,
+int match_regex(const char *input, DNSCacheData* dns_cache, const int clientID,
                 const enum regex_type regexid, const bool regextest)
 {
 	int match_idx = -1;
@@ -273,28 +371,31 @@ int match_regex(const char *input, const DNSCacheData* dns_cache, const int clie
 		int retval = regexec(&regex[index].regex, input, 0, NULL, 0);
 #endif
 		// regexec() returns REG_OK for a successful match or REG_NOMATCH for failure.
-		if ((retval == REG_OK && !regex[index].inverted) ||
-		    (retval == REG_NOMATCH && regex[index].inverted))
+		if ((retval == REG_OK && !regex[index].ext.inverted) ||
+		    (retval == REG_NOMATCH && regex[index].ext.inverted))
 		{
 			// Check possible additional regex settings
 			if(dns_cache != NULL)
 			{
 				// Check query type filtering
-				if(regex[index].query_type != 0)
+				if(regex[index].ext.query_type != 0)
 				{
-					if((!regex[index].query_type_inverted && regex[index].query_type != dns_cache->query_type) ||
-					    (regex[index].query_type_inverted && regex[index].query_type == dns_cache->query_type))
+					if((!regex[index].ext.query_type_inverted && regex[index].ext.query_type != dns_cache->query_type) ||
+					    (regex[index].ext.query_type_inverted && regex[index].ext.query_type == dns_cache->query_type))
 					{
 						if(config.debug & DEBUG_REGEX)
 						{
 							logg("Regex %s (%u, DB ID %i) NO match: \"%s\" vs. \"%s\""
 								" (skipped because of query type %smatch)",
 							regextype[regexid], index, regex[index].database_id,
-							input, regex[index].string, regex[index].query_type_inverted ? "inversion " : "mis");
+							input, regex[index].string, regex[index].ext.query_type_inverted ? "inversion " : "mis");
 						}
 						continue;
 					}
 				}
+				// Set special reply type if configured for this regex
+				if(regex[index].ext.reply != REPLY_UNKNOWN)
+					dns_cache->force_reply = regex[index].ext.reply;
 			}
 
 			// Match, return true
@@ -345,7 +446,7 @@ int match_regex(const char *input, const DNSCacheData* dns_cache, const int clie
 		}
 	}
 
-	// No match, no error, return false
+	// Return match_idx (-1 if there was no match)
 	return match_idx;
 }
 
@@ -638,4 +739,65 @@ int regex_test(const bool debug_mode, const bool quiet, const char *domainin, co
 
 	// Return status 0 = MATCH, 1 = ERROR, 2 = NO MATCH
 	return matchidx > -1 ? EXIT_SUCCESS : 2;
+}
+
+// Get internal ID of regex with this database ID
+static int __attribute__ ((pure)) regex_id_from_database_id(const int dbID)
+{
+	// Get number of defined regular expressions
+	unsigned int sum_regex = 0;
+	for(unsigned int i = 0; i < REGEX_MAX; i++)
+		sum_regex += num_regex[i];
+
+	// Find internal ID of regular expression with this database ID
+	for(unsigned int i = 0; i < sum_regex; i++)
+	{
+		regexData *regex = get_regex_ptr_from_id(i);
+		if(regex == NULL)
+			continue;
+		if(regex->database_id == dbID)
+			return i;
+	}
+
+	return -1;
+}
+
+// Return redirection addresses for a given blacklist regex (if specified)
+bool regex_get_redirect(const int dbID, struct in_addr *addr4, struct in6_addr *addr6)
+{
+	// Check dbID for validity, return early if negative
+	if(dbID < 0)
+		return false;
+
+	// Get internal regex ID from database regex ID
+	const int regexID = regex_id_from_database_id(dbID);
+
+	if(config.debug & DEBUG_REGEX)
+		logg("Regex: %d (database) -> %d (internal)", dbID, regexID);
+
+	// Check internal regex ID for validity, return early if negative
+	if(regexID < 0)
+		return false;
+
+	// Get regex from regexID
+	regexData *regex = get_regex_ptr_from_id(regexID);
+	if(regex == NULL)
+		return false;
+
+	bool custom_addr = false;
+	// Check for IPv4 redirect
+	if(regex->ext.custom_ip4 && addr4 != NULL)
+	{
+		memcpy(addr4, &(regex->ext.addr4), sizeof(*addr4));
+		custom_addr = true;
+	}
+
+	// Check for IPv6 redirect
+	if(regex->ext.custom_ip6 && addr6 != NULL)
+	{
+		memcpy(addr6, &(regex->ext.addr6), sizeof(*addr6));
+		custom_addr = true;
+	}
+
+	return custom_addr;
 }

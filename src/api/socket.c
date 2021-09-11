@@ -16,6 +16,9 @@
 #include "../config.h"
 // global variable killed
 #include "../signals.h"
+// API thread storage
+#include "../daemon.h"
+#include "../shmem.h"
 
 // The backlog argument defines the maximum length
 // to which the queue of pending connections for
@@ -312,10 +315,29 @@ static void *telnet_connection_handler_thread(void *socket_desc)
 	char client_message[SOCKETBUFFERLEN] = "";
 
 	// Set thread name
-	char threadname[16];
+	char threadname[16] = { 0 };
 	sprintf(threadname, "telnet-%i", sock);
 	prctl(PR_SET_NAME, threadname, 0, 0, 0);
-	//Receive from client
+
+	// Store TID of this thread
+	lock_shm();
+	unsigned int tid;
+	for(tid = 0; tid < MAX_API_THREADS; tid++)
+	{
+		if(api_threads[tid] == 0)
+		{
+			api_threads[tid] = pthread_self();
+			break;
+		}
+	}
+	unlock_shm();
+	if(tid == MAX_API_THREADS)
+	{
+		logg("Not able to spawn new API thread, limit of " str(MAX_API_THREADS) " threads reached.");
+		return NULL;
+	}
+
+	// Receive from client
 	ssize_t n;
 	while((n = recv(sock,client_message,SOCKETBUFFERLEN-1, 0)))
 	{
@@ -343,12 +365,15 @@ static void *telnet_connection_handler_thread(void *socket_desc)
 		}
 	}
 
-	//Free the socket pointer
+	// Free the socket pointer
 	if(sock != 0)
 		close(sock);
 	free(socket_desc);
 
-	return false;
+	// Release thread from list
+	api_threads[tid] = 0;
+
+	return NULL;
 }
 
 
@@ -366,6 +391,29 @@ static void *socket_connection_handler_thread(void *socket_desc)
 	char threadname[16];
 	sprintf(threadname, "socket-%i", sock);
 	prctl(PR_SET_NAME, threadname, 0, 0, 0);
+
+	// Ensure this thread can be canceled at any time (not only at
+	// cancellation points)
+	pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
+
+	// Store TID of this thread
+	lock_shm();
+	unsigned int tid;
+	for(tid = 0; tid < MAX_API_THREADS; tid++)
+	{
+		if(api_threads[tid] == 0)
+		{
+			api_threads[tid] = pthread_self();
+			api_tids[tid] = gettid();
+			break;
+		}
+	}
+	unlock_shm();
+	if(tid == MAX_API_THREADS)
+	{
+		logg("Not able to spawn new API thread, limit of " str(MAX_API_THREADS) " threads reached.");
+		return NULL;
+	}
 
 	// Receive from client
 	ssize_t n;
@@ -395,12 +443,16 @@ static void *socket_connection_handler_thread(void *socket_desc)
 		}
 	}
 
-	//Free the socket pointer
+	// Free the socket pointer
 	if(sock != 0)
 		close(sock);
 	free(socket_desc);
 
-	return false;
+	// Release thread from list
+	api_threads[tid] = 0;
+	api_tids[tid] = 0;
+
+	return NULL;
 }
 
 void *telnet_listening_thread_IPv4(void *args)

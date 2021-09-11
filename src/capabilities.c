@@ -78,33 +78,37 @@ bool check_capabilities(void)
 	if (!(data->permitted & (1 << CAP_NET_ADMIN)))
 	{
 		// Needed for ARP-injection (used when we're the DHCP server)
-		logg("*************************************************************************");
-		logg("* WARNING: Required Linux capability CAP_NET_ADMIN not available        *");
-		logg("*************************************************************************");
+		logg("WARNING: Required Linux capability CAP_NET_ADMIN not available");
 		capabilities_okay = false;
 	}
 	if (!(data->permitted & (1 << CAP_NET_RAW)))
 	{
 		// Needed for raw socket access (necessary for ICMP)
-		logg("*************************************************************************");
-		logg("* WARNING: Required Linux capability CAP_NET_RAW not available          *");
-		logg("*************************************************************************");
+		logg("WARNING: Required Linux capability CAP_NET_RAW not available");
 		capabilities_okay = false;
 	}
 	if (!(data->permitted & (1 << CAP_NET_BIND_SERVICE)))
 	{
 		// Necessary for dynamic port binding
-		logg("*************************************************************************");
-		logg("* WARNING: Required Linux capability CAP_NET_BIND_SERVICE not available *");
-		logg("*************************************************************************");
+		logg("WARNING: Required Linux capability CAP_NET_BIND_SERVICE not available");
 		capabilities_okay = false;
 	}
 	if (!(data->permitted & (1 << CAP_SYS_NICE)))
 	{
 		// Necessary for dynamic port binding
-		logg("*************************************************************************");
-		logg("* WARNING: Required Linux capability CAP_SYS_NICE not available         *");
-		logg("*************************************************************************");
+		logg("WARNING: Required Linux capability CAP_SYS_NICE not available");
+		capabilities_okay = false;
+	}
+	if (!(data->permitted & (1 << CAP_IPC_LOCK)))
+	{
+		// Necessary for mmap() to work correctly
+		logg("WARNING: Required Linux capability CAP_IPC_LOCK not available");
+		capabilities_okay = false;
+	}
+	if (!(data->permitted & (1 << CAP_CHOWN)))
+	{
+		// Necessary for chown() to work correctly
+		logg("WARNING: Required Linux capability CAP_CHOWN not available");
 		capabilities_okay = false;
 	}
 
