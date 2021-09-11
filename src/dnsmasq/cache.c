@@ -1598,7 +1598,8 @@ static void make_non_terminals(struct crec *source)
       if (crecp)
 	{
 	  crecp->flags = (source->flags | F_NAMEP) & ~(F_IPV4 | F_IPV6 | F_CNAME | F_SRV | F_DNSKEY | F_DS | F_REVERSE);
-	  crecp->ttd = source->ttd;
+	  if (!(crecp->flags & F_IMMORTAL))
+	    crecp->ttd = source->ttd;
 	  crecp->name.namep = name;
 	  
 	  cache_hash(crecp);
