@@ -50,6 +50,7 @@
 #include "database/message-table.h"
 
 // Private prototypes
+static const char *reply_status_str[QUERY_REPLY_MAX+1];
 static void print_flags(const unsigned int flags);
 #define query_set_reply(flags, addr, query, response) _query_set_reply(flags, addr, query, response, __FILE__, __LINE__)
 static void _query_set_reply(const unsigned int flags, const union all_addr *addr, queriesData* query, const struct timeval response,
@@ -74,9 +75,10 @@ static void _query_set_dnssec(queriesData *query, const enum dnssec_status dnsse
 static const char *blockingreason = NULL;
 static union all_addr null_addrp = {{ 0 }};
 static enum reply_type force_next_DNS_reply = REPLY_UNKNOWN;
+static int last_regex_idx = -1;
 static struct ptr_record *pihole_ptr = NULL;
 
-// Fork-private copy of the interface name the most recent query came from
+// Fork-private copy of the interface data the most recent query came from
 static struct {
 	char name[IFNAMSIZ];
 	union all_addr addr4;
@@ -192,6 +194,16 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		if(config.debug & DEBUG_FLAGS)
 			logg("Forced DNS reply to NXDOMAIN");
 	}
+	else if(force_next_DNS_reply == REPLY_NODATA)
+	{
+		flags = F_NOERR;
+		// Reset DNS reply forcing
+		force_next_DNS_reply = REPLY_UNKNOWN;
+
+		// Debug logging
+		if(config.debug & DEBUG_FLAGS)
+			logg("Forced DNS reply to NODATA");
+	}
 	else if(force_next_DNS_reply == REPLY_REFUSED)
 	{
 		// Empty flags result in REFUSED
@@ -237,7 +249,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		{
 			// If we block in NXDOMAIN mode, we add the NEGATIVE response
 			// and the NXDOMAIN flags
-			flags =  F_NEG | F_NXDOMAIN;
+			flags = F_NXDOMAIN;
 			if(config.debug & DEBUG_FLAGS)
 				logg("Configured blocking mode is NXDOMAIN");
 		}
@@ -251,6 +263,20 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 				logg("Configured blocking mode is NODATA%s",
 				     config.blockingmode == MODE_IP_NODATA_AAAA ? "-IPv6" : "");
 		}
+	}
+
+	// Check for regex redirecting
+	bool redirecting = false;
+	union all_addr redirect_addr4 = {{ 0 }}, redirect_addr6 = {{ 0 }};
+	if(last_regex_idx > -1)
+	{
+		redirecting = regex_get_redirect(last_regex_idx, &redirect_addr4.addr4, &redirect_addr6.addr6);
+		// Reset regex redirection forcing
+		last_regex_idx = -1;
+
+		// Debug logging
+		if(config.debug & DEBUG_FLAGS)
+			logg("Regex match is %sredirected", redirecting ? "" : "NOT ");
 	}
 
 	// Debug logging
@@ -274,13 +300,15 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 	// Add A answer record if requested
 	if(flags & F_IPV4)
 	{
-		union all_addr *addr;
-		if(config.blockingmode == MODE_IP ||
-		   config.blockingmode == MODE_IP_NODATA_AAAA ||
-		   forced_ip)
+		union all_addr *addr = &null_addrp;
+
+		// Overwrite with IP address if requested
+		if(redirecting)
+			addr = &redirect_addr4;
+		else if(config.blockingmode == MODE_IP ||
+		        config.blockingmode == MODE_IP_NODATA_AAAA ||
+		        forced_ip)
 			addr = &next_iface.addr4;
-		else
-			addr = &null_addrp;
 
 		// Debug logging
 		if(config.debug & DEBUG_QUERIES)
@@ -301,12 +329,14 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 	// Add AAAA answer record if requested
 	if(flags & F_IPV6)
 	{
-		union all_addr *addr;
-		if(config.blockingmode == MODE_IP ||
-		   forced_ip)
+		union all_addr *addr = &null_addrp;
+
+		// Overwrite with IP address if requested
+		if(redirecting)
+			addr = &redirect_addr6;
+		else if(config.blockingmode == MODE_IP ||
+		        forced_ip)
 			addr = &next_iface.addr6;
-		else
-			addr = &null_addrp;
 
 		// Debug logging
 		if(config.debug & DEBUG_QUERIES)
@@ -953,6 +983,13 @@ static bool check_domain_blocked(const char *domain, const int clientID,
 		set_dnscache_blockingstatus(dns_cache, client, REGEX_BLOCKED, domain);
 		dns_cache->black_regex_idx = regex_idx;
 
+		// Regex may be overwriting reply type for this domain
+		if(dns_cache->force_reply != REPLY_UNKNOWN)
+			force_next_DNS_reply = dns_cache->force_reply;
+
+		// Store ID of this regex (fork-private)
+		last_regex_idx = regex_idx;
+
 		// We block this domain
 		return true;
 	}
@@ -1089,6 +1126,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			if(!query->flags.whitelisted)
 			{
 				force_next_DNS_reply = dns_cache->force_reply;
+				last_regex_idx = dns_cache->black_regex_idx;
 				query_blocked(query, domain, client, QUERY_REGEX);
 				return true;
 			}
@@ -1207,6 +1245,9 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 		// Debug output
 		if(config.debug & DEBUG_QUERIES)
 			logg("Blocking %s as %s is %s", domainstr, blockedDomain, blockingreason);
+
+		if(force_next_DNS_reply != 0)
+			logg("Forcing next reply to %s", reply_status_str[force_next_DNS_reply]);
 	}
 	else if(db_okay)
 	{
@@ -2276,8 +2317,10 @@ static void _query_set_reply(const unsigned int flags, const union all_addr *add
                              const char *file, const int line)
 {
 	// Iterate through possible values
-	if(flags & F_NEG || force_next_DNS_reply == REPLY_NXDOMAIN ||
-	   (flags & F_NOERR && !(flags & (F_IPV4 | F_IPV6)))) // <-- FTL_make_answer() when no A or AAAA is added
+	if(flags & F_NEG ||
+	   (flags & F_NOERR && !(flags & (F_IPV4 | F_IPV6))) || // <-- FTL_make_answer() when no A or AAAA is added
+	   force_next_DNS_reply == REPLY_NXDOMAIN ||
+	   force_next_DNS_reply == REPLY_NODATA)
 	{
 		if(flags & F_NXDOMAIN || force_next_DNS_reply == REPLY_NXDOMAIN)
 			// NXDOMAIN
