@@ -550,7 +550,7 @@ void prettyprint_time(char *buf, unsigned int t)
       if ((x = (t/60)%60))
 	p += sprintf(&buf[p], "%um", x);
       if ((x = t%60))
-	p += sprintf(&buf[p], "%us", x);
+	sprintf(&buf[p], "%us", x);
     }
 }
 
@@ -596,7 +596,7 @@ int parse_hex(char *in, unsigned char *out, int maxlen,
 		  int j, bytes = (1 + (r - in))/2;
 		  for (j = 0; j < bytes; j++)
 		    { 
-		      char sav = sav;
+		      char sav;
 		      if (j < bytes - 1)
 			{
 			  sav = in[(j+1)*2];
