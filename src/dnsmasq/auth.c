@@ -417,7 +417,6 @@ size_t answer_auth(struct dns_header *header, char *limit, size_t qlen, time_t n
 
        if (!found && is_name_synthetic(flag, name, &addr) )
 	 {
-	   found = 1;
 	   nxdomain = 0;
 	   
 	   log_query(F_FORWARD | F_CONFIG | flag, name, &addr, NULL, 0);
@@ -433,7 +432,6 @@ size_t answer_auth(struct dns_header *header, char *limit, size_t qlen, time_t n
 	  if (qtype == T_SOA)
 	    {
 	      auth = soa = 1; /* inhibits auth section */
-	      found = 1;
 	      log_query(F_RRNAME | F_AUTH, zone->domain, NULL, "<SOA>", 0);
 	    }
       	  else if (qtype == T_AXFR)
@@ -469,7 +467,6 @@ size_t answer_auth(struct dns_header *header, char *limit, size_t qlen, time_t n
 	      soa = 1; /* inhibits auth section */
 	      ns = 1; /* ensure we include NS records! */
 	      axfr = 1;
-	      found = 1;
 	      axfroffset = nameoffset;
 	      log_query(F_RRNAME | F_AUTH, zone->domain, NULL, "<AXFR>", 0);
 	    }
@@ -477,7 +474,6 @@ size_t answer_auth(struct dns_header *header, char *limit, size_t qlen, time_t n
 	    {
 	      auth = 1;
 	      ns = 1; /* inhibits auth section */
-	      found = 1;
 	      log_query(F_RRNAME | F_AUTH, zone->domain, NULL, "<NS>", 0);
 	    }
 	}
@@ -498,7 +494,6 @@ size_t answer_auth(struct dns_header *header, char *limit, size_t qlen, time_t n
 			*cut = '.'; /* restore domain part */
 			log_query(crecp->flags, name, &crecp->addr, record_source(crecp->uid), 0);
 			*cut  = 0; /* remove domain part */
-			found = 1;
 			if (add_resource_record(header, limit, &trunc, nameoffset, &ansp, 
 						daemon->auth_ttl, NULL, qtype, C_IN, 
 						qtype == T_A ? "4" : "6", &crecp->addr))
@@ -519,7 +514,6 @@ size_t answer_auth(struct dns_header *header, char *limit, size_t qlen, time_t n
 		 if ((crecp->flags & flag) && (local_query || filter_zone(zone, flag, &(crecp->addr))))
 		   {
 		     log_query(crecp->flags, name, &crecp->addr, record_source(crecp->uid), 0);
-		     found = 1;
 		     if (add_resource_record(header, limit, &trunc, nameoffset, &ansp, 
 					     daemon->auth_ttl, NULL, qtype, C_IN, 
 					     qtype == T_A ? "4" : "6", &crecp->addr))
@@ -614,7 +608,7 @@ size_t answer_auth(struct dns_header *header, char *limit, size_t qlen, time_t n
 	      if (subnet->prefixlen >= 16 )
 		p += sprintf(p, "%u.", a & 0xff);
 	      a = a >> 8;
-	      p += sprintf(p, "%u.in-addr.arpa", a & 0xff);
+	      sprintf(p, "%u.in-addr.arpa", a & 0xff);
 	      
 	    }
 	  else
@@ -627,7 +621,7 @@ size_t answer_auth(struct dns_header *header, char *limit, size_t qlen, time_t n
 		  int dig = ((unsigned char *)&subnet->addr.addr6)[i>>3];
 		  p += sprintf(p, "%.1x.", (i>>2) & 1 ? dig & 15 : dig >> 4);
 		}
-	      p += sprintf(p, "ip6.arpa");
+	      sprintf(p, "ip6.arpa");
 	      
 	    }
 	}
