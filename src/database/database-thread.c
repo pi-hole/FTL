@@ -27,6 +27,10 @@
 // Eventqueue routines
 #include "../events.h"
 
+#define DBOPEN_OR_AGAIN() { db = dbopen(false); if(db == NULL) { thread_sleepms(DB, 5000); continue; } }
+#define BREAK_IF_KILLED() { if(killed) break; }
+#define DBCLOSE_OR_BREAK() { dbclose(&db); BREAK_IF_KILLED(); }
+
 void *DB_thread(void *val)
 {
 	// Set thread name
@@ -37,16 +41,12 @@ void *DB_thread(void *val)
 	// to the database
 	time_t lastDBsave = time(NULL) - time(NULL)%config.DBinterval;
 
-	// Run until shutdown of the process
+	// This thread runs until shutdown of the process. We keep this thread
+	// running when pihole-FTL.db is corrupted because reloading of privacy
+	// level, and the gravity database (initially and after gravity)
 	while(!killed)
 	{
-		sqlite3 *db = dbopen(false);
-		if(db == NULL)
-		{
-			// Sleep 5 seconds and try again
-			thread_sleepms(DB, 5000);
-			continue;
-		}
+		sqlite3 *db = NULL;
 		time_t now = time(NULL);
 		if(now - lastDBsave >= config.DBinterval)
 		{
@@ -56,16 +56,10 @@ void *DB_thread(void *val)
 			// Save data to database (if enabled)
 			if(config.DBexport)
 			{
+				DBOPEN_OR_AGAIN();
 				lock_shm();
 				DB_save_queries(db);
 				unlock_shm();
-
-				// Intermediate cancellation-point
-				if(killed)
-				{
-					dbclose(&db);
-					break;
-				}
 
 				// Check if GC should be done on the database
 				if(DBdeleteoldqueries && config.maxDBdays != -1)
@@ -74,6 +68,8 @@ void *DB_thread(void *val)
 					delete_old_queries_in_DB(db);
 					DBdeleteoldqueries = false;
 				}
+
+				DBCLOSE_OR_BREAK();
 			}
 
 			// Parse neighbor cache (fill network table) if enabled
@@ -81,67 +77,44 @@ void *DB_thread(void *val)
 				set_event(PARSE_NEIGHBOR_CACHE);
 		}
 
-		// Intermediate cancellation-point
-		if(killed)
-		{
-			dbclose(&db);
-			break;
-		}
-
 		// Update MAC vendor strings once a month (the MAC vendor
 		// database is not updated very often)
 		if(now % 2592000L == 0)
-			updateMACVendorRecords(db);
-
-		// Intermediate cancellation-point
-		if(killed)
 		{
-			dbclose(&db);
-			break;
+			DBOPEN_OR_AGAIN();
+			updateMACVendorRecords(db);
+			DBCLOSE_OR_BREAK();
 		}
 
+		// Parse ARP cache if requested
 		if(get_and_clear_event(PARSE_NEIGHBOR_CACHE))
-			parse_neighbor_cache(db);
-
-		// Intermediate cancellation-point
-		if(killed)
 		{
-			dbclose(&db);
-			break;
+			DBOPEN_OR_AGAIN();
+			parse_neighbor_cache(db);
+			DBCLOSE_OR_BREAK();
+		}
+
+		// Import alias-clients
+		if(get_and_clear_event(REIMPORT_ALIASCLIENTS))
+		{
+			DBOPEN_OR_AGAIN();
+			lock_shm();
+			reimport_aliasclients(db);
+			unlock_shm();
+			DBCLOSE_OR_BREAK();
 		}
 
 		// Process database related event queue elements
 		if(get_and_clear_event(RELOAD_GRAVITY))
 			FTL_reload_all_domainlists();
 
-		// Intermediate cancellation-point
-		if(killed)
-		{
-			dbclose(&db);
-			break;
-		}
+		BREAK_IF_KILLED();
 
 		// Reload privacy level from pihole-FTL.conf
 		if(get_and_clear_event(RELOAD_PRIVACY_LEVEL))
 			get_privacy_level(NULL);
 
-		// Intermediate cancellation-point
-		if(killed)
-		{
-			dbclose(&db);
-			break;
-		}
-
-		// Import alias-clients
-		if(get_and_clear_event(REIMPORT_ALIASCLIENTS))
-		{
-			lock_shm();
-			reimport_aliasclients(db);
-			unlock_shm();
-		}
-
-		// Close database connection
-		dbclose(&db);
+		BREAK_IF_KILLED();
 
 		// Sleep 1 sec
 		thread_sleepms(DB, 1000);

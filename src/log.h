@@ -39,4 +39,6 @@ int forwarded_queries(void)  __attribute__ ((pure));
 int cached_queries(void)  __attribute__ ((pure));
 int blocked_queries(void)  __attribute__ ((pure));
 
+const char *short_path(const char *full_path) __attribute__ ((pure));
+
 #endif //LOG_H

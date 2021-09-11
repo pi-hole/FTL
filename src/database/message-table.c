@@ -21,9 +21,13 @@
 #include "../daemon.h"
 // main_pid()
 #include "../signals.h"
+// struct config
+#include "../config.h"
+// get_rate_limit_turnaround()
+#include "../gc.h"
 
 static const char *message_types[MAX_MESSAGE] =
-	{ "REGEX", "SUBNET", "HOSTNAME", "DNSMASQ_CONFIG" };
+	{ "REGEX", "SUBNET", "HOSTNAME", "DNSMASQ_CONFIG", "RATE_LIMIT" };
 
 static unsigned char message_blob_types[MAX_MESSAGE][5] =
 	{
@@ -51,6 +55,13 @@ static unsigned char message_blob_types[MAX_MESSAGE][5] =
 		{	// DNSMASQ_CONFIG_MESSAGE: The message column contains the full message itself
 			SQLITE_NULL, // Not used
 			SQLITE_NULL, // Not used
+			SQLITE_NULL, // Not used
+			SQLITE_NULL, // Not used
+			SQLITE_NULL  // Not used
+		},
+		{	// RATE_LIMIT: The message column contains the IP address of the client in question
+			SQLITE_INTEGER, // Configured maximum number of queries
+			SQLITE_INTEGER, // Configured rate-limiting interval [seconds]
 			SQLITE_NULL, // Not used
 			SQLITE_NULL, // Not used
 			SQLITE_NULL  // Not used
@@ -83,6 +94,10 @@ bool create_message_table(sqlite3 *db)
 // Flush message table
 bool flush_message_table(void)
 {
+	// Return early if database is known to be broken
+	if(FTLDBerror())
+		return false;
+
 	sqlite3 *db;
 	// Open database connection
 	if((db = dbopen(false)) == NULL)
@@ -103,16 +118,20 @@ bool flush_message_table(void)
 static bool add_message(enum message_type type,
                         const char *message, const int count,...)
 {
+	// Return early if database is known to be broken
+	if(FTLDBerror())
+		return false;
+
 	sqlite3 *db;
 	// Open database connection
 	if((db = dbopen(false)) == NULL)
 	{
-		logg("flush_message_table() - Failed to open DB");
+		logg("add_message() - Failed to open DB");
 		return false;
 	}
 
-	// Ensure there are no duplicates when adding host name messages
-	if(type == HOSTNAME_MESSAGE)
+	// Ensure there are no duplicates when adding host name or rate-limiting messages
+	if(type == HOSTNAME_MESSAGE || type == RATE_LIMIT_MESSAGE)
 	{
 		sqlite3_stmt* stmt = NULL;
 		const char *querystr = "DELETE FROM message WHERE type = ?1 AND message = ?2";
@@ -222,7 +241,9 @@ static bool add_message(enum message_type type,
 			     type, message, 3 + j, datatype, sqlite3_errstr(rc));
 			sqlite3_reset(stmt);
 			sqlite3_finalize(stmt);
+			checkFTLDBrc(rc);
 			dbclose(&db);
+			va_end(ap);
 			return false;
 		}
 	}
@@ -230,16 +251,18 @@ static bool add_message(enum message_type type,
 
 	// Step and check if successful
 	rc = sqlite3_step(stmt);
-	sqlite3_clear_bindings(stmt);
-	sqlite3_reset(stmt);
-	sqlite3_finalize(stmt);
 
 	if(rc != SQLITE_DONE)
 	{
 		logg("Encountered error while trying to store message in long-term database: %s", sqlite3_errstr(rc));
+		checkFTLDBrc(rc);
 		dbclose(&db);
 		return false;
 	}
+
+	sqlite3_clear_bindings(stmt);
+	sqlite3_reset(stmt);
+	sqlite3_finalize(stmt);
 
 	// Close database connection
 	dbclose(&db);
@@ -301,4 +324,16 @@ void logg_fatal_dnsmasq_message(const char *message)
 	// FTL will dies after this point, so we should make sure to clean up
 	// behind ourselves
 	cleanup(EXIT_FAILURE);
+}
+
+void logg_rate_limit_message(const char *clientIP)
+{
+	const time_t turnaround = get_rate_limit_turnaround();
+
+	// Log to pihole-FTL.log
+	logg("Rate-limiting %s for %ld second%s",
+	     clientIP, turnaround, turnaround == 1 ? "" : "s");
+
+	// Log to database
+	add_message(RATE_LIMIT_MESSAGE, clientIP, 2, config.rate_limit.count, config.rate_limit.interval);
 }

@@ -526,6 +526,76 @@ void read_FTLconf(void)
 	else
 		logg("   REPLY_ADDR6: Automatic interface-dependent detection of address");
 
+	// SHOW_DNSSEC
+	// Should FTL analyze and include automatically generated DNSSEC queries in the Query Log?
+	// defaults to: true
+	buffer = parse_FTLconf(fp, "SHOW_DNSSEC");
+	config.show_dnssec = read_bool(buffer, true);
+
+	if(config.show_dnssec)
+		logg("   SHOW_DNSSEC: Enabled, showing automatically generated DNSSEC queries");
+	else
+		logg("   SHOW_DNSSEC: Disabled");
+
+	// MOZILLA_CANARY
+	// Should FTL handle use-application-dns.net specifically and always return NXDOMAIN?
+	// defaults to: true
+	buffer = parse_FTLconf(fp, "MOZILLA_CANARY");
+	config.special_domains.mozilla_canary = read_bool(buffer, true);
+
+	if(config.special_domains.mozilla_canary)
+		logg("   MOZILLA_CANARY: Enabled");
+	else
+		logg("   MOZILLA_CANARY: Disabled");
+
+	// PIHOLE_PTR
+	// Should FTL return "pi.hole" as name for PTR requests to local IP addresses?
+	// defaults to: true
+	buffer = parse_FTLconf(fp, "PIHOLE_PTR");
+	config.pihole_ptr = read_bool(buffer, true);
+
+	if(config.pihole_ptr)
+		logg("   PIHOLE_PTR: Enabled");
+	else
+		logg("   PIHOLE_PTR: Disabled");
+
+	// ADDR2LINE
+	// Should FTL try to call addr2line when generating backtraces?
+	// defaults to: true
+	buffer = parse_FTLconf(fp, "ADDR2LINE");
+	config.addr2line = read_bool(buffer, true);
+
+	if(config.addr2line)
+		logg("   ADDR2LINE: Enabled");
+	else
+		logg("   ADDR2LINE: Disabled");
+
+	// REPLY_WHEN_BUSY
+	// How should FTL handle queries when the gravity database is not available?
+	// defaults to: BLOCK
+	buffer = parse_FTLconf(fp, "REPLY_WHEN_BUSY");
+
+	if(buffer != NULL && strcasecmp(buffer, "DROP") == 0)
+	{
+		config.reply_when_busy = BUSY_DROP;
+		logg("   REPLY_WHEN_BUSY: Drop queries when the database is busy");
+	}
+	else if(buffer != NULL && strcasecmp(buffer, "REFUSE") == 0)
+	{
+		config.reply_when_busy = BUSY_REFUSE;
+		logg("   REPLY_WHEN_BUSY: Refuse queries when the database is busy");
+	}
+	else if(buffer != NULL && strcasecmp(buffer, "BLOCK") == 0)
+	{
+		config.reply_when_busy = BUSY_BLOCK;
+		logg("   REPLY_WHEN_BUSY: Block queries when the database is busy");
+	}
+	else
+	{
+		config.reply_when_busy = BUSY_ALLOW;
+		logg("   REPLY_WHEN_BUSY: Permit queries when the database is busy");
+	}
+
 	// Read DEBUG_... setting from pihole-FTL.conf
 	read_debuging_settings(fp);
 
@@ -811,10 +881,9 @@ void read_debuging_settings(FILE *fp)
 	// defaults to: false
 	setDebugOption(fp, "DEBUG_CAPS", DEBUG_CAPS);
 
-	// DEBUG_DNSMASQ_LINES
-	setDebugOption(fp, "DEBUG_DNSMASQ_LINES", DEBUG_DNSMASQ_LINES);
-	extern char debug_dnsmasq_lines;
-	debug_dnsmasq_lines = config.debug & DEBUG_DNSMASQ_LINES ? 1 : 0;
+	// DEBUG_DNSSEC
+	// defaults to: false
+	setDebugOption(fp, "DEBUG_DNSSEC", DEBUG_DNSSEC);
 
 	// DEBUG_VECTORS
 	// defaults to: false
@@ -865,7 +934,6 @@ void read_debuging_settings(FILE *fp)
 		logg("* DEBUG_OVERTIME        %s *", (config.debug & DEBUG_OVERTIME)? "YES":"NO ");
 		logg("* DEBUG_STATUS          %s *", (config.debug & DEBUG_STATUS)? "YES":"NO ");
 		logg("* DEBUG_CAPS            %s *", (config.debug & DEBUG_CAPS)? "YES":"NO ");
-		logg("* DEBUG_DNSMASQ_LINES   %s *", (config.debug & DEBUG_DNSMASQ_LINES)? "YES":"NO ");
 		logg("* DEBUG_VECTORS         %s *", (config.debug & DEBUG_VECTORS)? "YES":"NO ");
 		logg("* DEBUG_RESOLVER        %s *", (config.debug & DEBUG_RESOLVER)? "YES":"NO ");
 		logg("* DEBUG_EDNS0           %s *", (config.debug & DEBUG_EDNS0)? "YES":"NO ");

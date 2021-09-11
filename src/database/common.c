@@ -27,18 +27,50 @@
 #include "query-table.h"
 
 bool DBdeleteoldqueries = false;
+static bool DBerror = false;
 long int lastdbindex = 0;
+
+bool __attribute__ ((pure)) FTLDBerror(void)
+{
+	return DBerror;
+}
+
+bool checkFTLDBrc(const int rc)
+{
+	// Check if the database file is malformed
+	if(rc == SQLITE_CORRUPT)
+	{
+		logg("WARN: Database %s is damaged and cannot be used.", FTLfiles.FTL_db);
+		DBerror = true;
+	}
+	// Check if the database file is read-only
+	if(rc == SQLITE_READONLY)
+	{
+		logg("WARN: Database %s is read-only and cannot be used.", FTLfiles.FTL_db);
+		DBerror = true;
+	}
+
+	return DBerror;
+}
 
 void _dbclose(sqlite3 **db, const char *func, const int line, const char *file)
 {
+	// Silently return if the database is known to be broken. It may not be
+	// possible to close the connection properly.
+	if(FTLDBerror())
+		return;
+
 	if(config.debug & DEBUG_DATABASE)
 		logg("Closing FTL database in %s() (%s:%i)", func, file, line);
 
 	// Only try to close an existing database connection
 	int rc = SQLITE_OK;
 	if(db != NULL && *db != NULL && (rc = sqlite3_close(*db)) != SQLITE_OK)
+	{
 		logg("Error while trying to close database: %s",
 		     sqlite3_errstr(rc));
+		checkFTLDBrc(rc);
+	}
 
 	// Always set database pointer to NULL, even when closing failed
 	*db = NULL;
@@ -46,6 +78,10 @@ void _dbclose(sqlite3 **db, const char *func, const int line, const char *file)
 
 sqlite3* _dbopen(bool create, const char *func, const int line, const char *file)
 {
+	// Silently return NULL if the database is known to be broken
+	if(FTLDBerror())
+		return NULL;
+
 	// Try to open database
 	if(config.debug & DEBUG_DATABASE)
 		logg("Opening FTL database in %s() (%s:%i)", func, file, line);
@@ -59,6 +95,7 @@ sqlite3* _dbopen(bool create, const char *func, const int line, const char *file
 	if( rc != SQLITE_OK )
 	{
 		logg("Error while trying to open database: %s", sqlite3_errstr(rc));
+		checkFTLDBrc(rc);
 		return NULL;
 	}
 
@@ -69,6 +106,7 @@ sqlite3* _dbopen(bool create, const char *func, const int line, const char *file
 		logg("Error while trying to set busy timeout (%d ms) on database: %s",
 		     DATABASE_BUSY_TIMEOUT, sqlite3_errstr(rc));
 		dbclose(&db);
+		checkFTLDBrc(rc);
 		return NULL;
 	}
 
@@ -77,6 +115,10 @@ sqlite3* _dbopen(bool create, const char *func, const int line, const char *file
 
 int dbquery(sqlite3* db, const char *format, ...)
 {
+	// Return early if the database is known to be broken
+	if(FTLDBerror())
+		return SQLITE_ERROR;
+
 	va_list args;
 	va_start(args, format);
 	char *query = sqlite3_vmprintf(format, args);
@@ -108,6 +150,7 @@ int dbquery(sqlite3* db, const char *format, ...)
 		     query, sqlite3_errstr(rc));
 		sqlite3_free(query);
 		dbclose(&db);
+		checkFTLDBrc(rc);
 		return rc;
 	}
 
@@ -221,9 +264,15 @@ void db_init(void)
 	// Open database
 	sqlite3 *db = dbopen(false);
 
+	// Return if database access failed
+	if(!db)
+		return;
+
 	// Test FTL_db version and see if we need to upgrade the database file
 	int dbversion = db_get_int(db, DB_VERSION);
-	if(dbversion < 1)
+	// Warn if there is an error, however, do not warn on database file
+	// corruption. This has already been logged before
+	if(dbversion < 1 && !FTLDBerror())
 	{
 		logg("Database not available, please ensure the database is unlocked when starting pihole-FTL !");
 		dbclose(&db);
@@ -400,8 +449,10 @@ bool db_set_FTL_property(sqlite3 *db, const enum ftl_table_props ID, const long 
 
 bool db_set_counter(sqlite3 *db, const enum counters_table_props ID, const long value)
 {
-	if(dbquery(db, "INSERT OR REPLACE INTO counters (id, value) VALUES ( %u, %ld );", ID, value) != SQLITE_OK)
+	const int rc = dbquery(db, "INSERT OR REPLACE INTO counters (id, value) VALUES ( %u, %ld );", ID, value);
+	if(rc != SQLITE_OK)
 	{
+		checkFTLDBrc(rc);
 		dbclose(&db);
 		return false;
 	}
@@ -411,14 +462,18 @@ bool db_set_counter(sqlite3 *db, const enum counters_table_props ID, const long 
 
 bool db_update_counters(sqlite3 *db, const int total, const int blocked)
 {
-	if(dbquery(db, "UPDATE counters SET value = value + %i WHERE id = %i;", total, DB_TOTALQUERIES) != SQLITE_OK)
+	int rc = dbquery(db, "UPDATE counters SET value = value + %i WHERE id = %i;", total, DB_TOTALQUERIES);
+	if(rc != SQLITE_OK)
 	{
+		checkFTLDBrc(rc);
 		dbclose(&db);
 		return false;
 	}
 
-	if(dbquery(db, "UPDATE counters SET value = value + %i WHERE id = %i;", blocked, DB_BLOCKEDQUERIES) != SQLITE_OK)
+	rc = dbquery(db, "UPDATE counters SET value = value + %i WHERE id = %i;", blocked, DB_BLOCKEDQUERIES);
+	if(rc != SQLITE_OK)
 	{
+		checkFTLDBrc(rc);
 		dbclose(&db);
 		return false;
 	}
@@ -428,6 +483,10 @@ bool db_update_counters(sqlite3 *db, const int total, const int blocked)
 
 int db_query_int(sqlite3 *db, const char* querystr)
 {
+	// Return early if the database is known to be broken
+	if(FTLDBerror())
+		return DB_FAILED;
+
 	if(config.debug & DEBUG_DATABASE)
 	{
 		logg("dbquery: \"%s\"", querystr);
@@ -439,6 +498,7 @@ int db_query_int(sqlite3 *db, const char* querystr)
 	{
 		if( rc != SQLITE_BUSY )
 			logg("Encountered prepare error in db_query_int(\"%s\"): %s", querystr, sqlite3_errstr(rc));
+		checkFTLDBrc(rc);
 		return DB_FAILED;
 	}
 
@@ -461,6 +521,7 @@ int db_query_int(sqlite3 *db, const char* querystr)
 	else
 	{
 		logg("Encountered step error in db_query_int(\"%s\"): %s", querystr, sqlite3_errstr(rc));
+		checkFTLDBrc(rc);
 		return DB_FAILED;
 	}
 
@@ -470,11 +531,13 @@ int db_query_int(sqlite3 *db, const char* querystr)
 
 long int get_max_query_ID(sqlite3 *db)
 {
+	// Return early if the database is known to be broken
+	if(FTLDBerror())
+		return DB_FAILED;
+
 	const char *sql = "SELECT MAX(ID) FROM queries";
 	if(config.debug & DEBUG_DATABASE)
-	{
 		logg("dbquery: \"%s\"", sql);
-	}
 
 	sqlite3_stmt* stmt = NULL;
 	int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
@@ -483,6 +546,7 @@ long int get_max_query_ID(sqlite3 *db)
 		if( rc != SQLITE_BUSY )
 		{
 			logg("Encountered prepare error in get_max_query_ID(): %s", sqlite3_errstr(rc));
+			checkFTLDBrc(rc);
 			dbclose(&db);
 		}
 
@@ -494,6 +558,7 @@ long int get_max_query_ID(sqlite3 *db)
 	if( rc != SQLITE_ROW )
 	{
 		logg("Encountered step error in get_max_query_ID(): %s", sqlite3_errstr(rc));
+		checkFTLDBrc(rc);
 		dbclose(&db);
 		return DB_FAILED;
 	}
@@ -503,7 +568,8 @@ long int get_max_query_ID(sqlite3 *db)
 	{
 		logg("         ---> Result %lli (long long int)", (long long int)result);
 	}
-	sqlite3_finalize(stmt);
+	rc = sqlite3_finalize(stmt);
+	checkFTLDBrc(rc);
 	return result;
 }
 

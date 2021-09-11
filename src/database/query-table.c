@@ -30,6 +30,10 @@ static bool saving_failed_before = false;
 
 int get_number_of_queries_in_DB(sqlite3 *db)
 {
+	// Return early if database is known to be broken
+	if(FTLDBerror())
+		return DB_FAILED;
+
 	// Open pihole-FTL.db database file if needed
 	bool db_opened = false;
 	if(db == NULL)
@@ -37,7 +41,7 @@ int get_number_of_queries_in_DB(sqlite3 *db)
 		if((db = dbopen(false)) == NULL)
 		{
 			logg("get_number_of_queries_in_DB() - Failed to open DB");
-			return -1;
+			return DB_FAILED;
 		}
 
 		// Successful
@@ -53,8 +57,12 @@ int get_number_of_queries_in_DB(sqlite3 *db)
 	return result;
 }
 
-bool DB_save_queries(sqlite3 *db)
+int DB_save_queries(sqlite3 *db)
 {
+	// Return early if database is known to be broken
+	if(FTLDBerror())
+		return DB_FAILED;
+
 	// Start database timer
 	if(config.debug & DEBUG_DATABASE)
 		timer_start(DATABASE_WRITE_TIMER);
@@ -66,14 +74,14 @@ bool DB_save_queries(sqlite3 *db)
 		if((db = dbopen(false)) == NULL)
 		{
 			logg("DB_save_queries() - Failed to open DB");
-			return NULL;
+			return DB_FAILED;
 		}
 
 		// Successful
 		db_opened = true;
 	}
 
-	unsigned int saved = 0;
+	int saved = 0;
 	bool error = false;
 	sqlite3_stmt* stmt = NULL;
 
@@ -87,9 +95,10 @@ bool DB_save_queries(sqlite3 *db)
 			text = "ERROR";
 
 		logg("%s: Storing queries in long-term database failed: %s", text, sqlite3_errstr(rc));
+		checkFTLDBrc(rc);
 		if(db_opened)
 			dbclose(&db);
-		return false;
+		return DB_FAILED;
 	}
 
 	rc = sqlite3_prepare_v2(db, "INSERT INTO queries VALUES (NULL,?,?,?,?,?,?,?)", -1, &stmt, NULL);
@@ -109,11 +118,12 @@ bool DB_save_queries(sqlite3 *db)
 
 		// dbquery() above already logs the reson for why the query failed
 		logg("%s: Storing queries in long-term database failed: %s\n", text, sqlite3_errstr(rc));
-		logg("%s  Keeping queries in memory for later new attempt", spaces);
+		if(!checkFTLDBrc(rc))
+			logg("%s  Keeping queries in memory for later new attempt", spaces);
 		saving_failed_before = true;
 		if(db_opened)
 			dbclose(&db);
-		return false;
+		return DB_FAILED;
 	}
 
 	// Get last ID stored in the database
@@ -126,7 +136,7 @@ bool DB_save_queries(sqlite3 *db)
 	for(queryID = MAX(0, lastdbindex); queryID < counters->queries; queryID++)
 	{
 		queriesData* query = getQuery(queryID, true);
-		if(query->db != 0)
+		if(query->flags.database)
 		{
 			// Skip, already saved in database
 			continue;
@@ -228,9 +238,12 @@ bool DB_save_queries(sqlite3 *db)
 			break;
 		}
 
+		// Increment counters
 		saved++;
-		// Mark this query as saved in the database by setting the corresponding ID
-		query->db = ++lastID;
+		lastID++;
+
+		// Mark this query as saved in the database
+		query->flags.database = true;
 
 		// Total counter information (delta computation)
 		total++;
@@ -247,7 +260,7 @@ bool DB_save_queries(sqlite3 *db)
 		logg("Statement finalization failed when trying to store queries to long-term database: %s",
 		     sqlite3_errstr(rc));
 
-		if( rc == SQLITE_BUSY )
+		if(!checkFTLDBrc(rc) && rc == SQLITE_BUSY)
 		{
 			logg("Keeping queries in memory for later new attempt");
 			saving_failed_before = true;
@@ -256,25 +269,7 @@ bool DB_save_queries(sqlite3 *db)
 		if(db_opened)
 			dbclose(&db);
 
-		return false;
-	}
-
-	// Finish prepared statement
-	if((rc = dbquery(db,"END TRANSACTION")) != SQLITE_OK)
-	{
-		// No need to log the error string here, dbquery() did that already above
-		logg("END TRANSACTION failed when trying to store queries to long-term database");
-
-		if( rc == SQLITE_BUSY )
-		{
-			logg("Keeping queries in memory for later new attempt");
-			saving_failed_before = true;
-		}
-
-		if(db_opened)
-			dbclose(&db);
-
-		return false;
+		return DB_FAILED;
 	}
 
 	// Store index for next loop interation round and update last time stamp
@@ -284,6 +279,24 @@ bool DB_save_queries(sqlite3 *db)
 		lastdbindex = queryID;
 		db_set_FTL_property(db, DB_LASTTIMESTAMP, newlasttimestamp);
 		db_update_counters(db, total, blocked);
+	}
+
+	// Finish prepared statement
+	if((rc = dbquery(db,"END TRANSACTION")) != SQLITE_OK)
+	{
+		// No need to log the error string here, dbquery() did that already above
+		logg("END TRANSACTION failed when trying to store queries to long-term database");
+
+		if(!checkFTLDBrc(rc) && rc == SQLITE_BUSY)
+		{
+			logg("Keeping queries in memory for later new attempt");
+			saving_failed_before = true;
+		}
+
+		if(db_opened)
+			dbclose(&db);
+
+		return DB_FAILED;
 	}
 
 	if(config.debug & DEBUG_DATABASE || saving_failed_before)
@@ -300,11 +313,15 @@ bool DB_save_queries(sqlite3 *db)
 	if(db_opened)
 		dbclose(&db);
 
-	return true;
+	return saved;
 }
 
 void delete_old_queries_in_DB(sqlite3 *db)
 {
+	// Return early if database is known to be broken
+	if(FTLDBerror())
+		return;
+
 	int timestamp = time(NULL) - config.maxDBdays * 86400;
 
 	if(dbquery(db, "DELETE FROM queries WHERE timestamp <= %i", timestamp) != SQLITE_OK)
@@ -335,6 +352,10 @@ bool add_additional_info_column(sqlite3 *db)
 // Get most recent 24 hours data from long-term database
 void DB_read_queries(void)
 {
+	// Return early if database is known to be broken
+	if(FTLDBerror())
+		return;
+
 	// Open database
 	sqlite3 *db;
 	if((db = dbopen(false)) == NULL)
@@ -357,6 +378,7 @@ void DB_read_queries(void)
 	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK ){
 		logg("DB_read_queries() - SQL error prepare: %s", sqlite3_errstr(rc));
+		checkFTLDBrc(rc);
 		dbclose(&db);
 		return;
 	}
@@ -365,6 +387,7 @@ void DB_read_queries(void)
 	if((rc = sqlite3_bind_int(stmt, 1, mintime)) != SQLITE_OK)
 	{
 		logg("DB_read_queries() - Failed to bind type mintime: %s", sqlite3_errstr(rc));
+		checkFTLDBrc(rc);
 		dbclose(&db);
 		return;
 	}
@@ -375,7 +398,6 @@ void DB_read_queries(void)
 	// Loop through returned database rows
 	while((rc = sqlite3_step(stmt)) == SQLITE_ROW)
 	{
-		const sqlite3_int64 dbid = sqlite3_column_int64(stmt, 0);
 		const time_t queryTimeStamp = sqlite3_column_int(stmt, 1);
 		// 1483228800 = 01/01/2017 @ 12:00am (UTC)
 		if(queryTimeStamp < 1483228800)
@@ -481,8 +503,6 @@ void DB_read_queries(void)
 		query->domainID = domainID;
 		query->clientID = clientID;
 		query->upstreamID = upstreamID;
-		query->timeidx = timeidx;
-		query->db = dbid;
 		query->id = 0;
 		query->response = 0;
 		query->dnssec = DNSSEC_UNSPECIFIED;
@@ -492,6 +512,8 @@ void DB_read_queries(void)
 		query->flags.complete = true; // Mark as all information is available
 		query->flags.blocked = false;
 		query->flags.whitelisted = false;
+		query->flags.database = true;
+		query->ede = -1; // EDE_UNSET == -1
 
 		// Set lastQuery timer for network table
 		clientsData* client = getClient(clientID, true);
@@ -558,6 +580,7 @@ void DB_read_queries(void)
 			case QUERY_GRAVITY_CNAME: // Blocked by gravity (inside CNAME path)
 			case QUERY_REGEX_CNAME: // Blocked by regex blacklist (inside CNAME path)
 			case QUERY_BLACKLIST_CNAME: // Blocked by exact blacklist (inside CNAME path)
+			case QUERY_DBBUSY: // Blocked because gravity database was busy
 				query->flags.blocked = true;
 				// Get domain pointer
 				domainsData* domain = getDomain(domainID, true);
@@ -575,7 +598,7 @@ void DB_read_queries(void)
 					upstreamsData *upstream = getUpstream(upstreamID, true);
 					if(upstream != NULL)
 					{
-						upstream->count++;
+						upstream->overTime[timeidx]++;
 						upstream->lastQuery = queryTimeStamp;
 					}
 				}
@@ -605,6 +628,7 @@ void DB_read_queries(void)
 
 	if( rc != SQLITE_DONE ){
 		logg("DB_read_queries() - SQL error step: %s", sqlite3_errstr(rc));
+		checkFTLDBrc(rc);
 		dbclose(&db);
 		return;
 	}

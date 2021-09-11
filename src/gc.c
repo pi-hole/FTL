@@ -33,6 +33,12 @@ static void reset_rate_limiting(void)
 	}
 }
 
+static time_t lastRateLimitCleaner = 0;
+time_t get_rate_limit_turnaround(void)
+{
+	return time(NULL) - lastRateLimitCleaner + config.rate_limit.interval;
+}
+
 void *GC_thread(void *val)
 {
 	// Set thread name
@@ -41,7 +47,7 @@ void *GC_thread(void *val)
 
 	// Remember when we last ran the actions
 	time_t lastGCrun = time(NULL) - time(NULL)%GCinterval;
-	time_t lastRateLimitCleaner = time(NULL);
+	lastRateLimitCleaner = time(NULL);
 
 	// Run as long as this thread is not canceled
 	while(!killed)
@@ -99,7 +105,7 @@ void *GC_thread(void *val)
 
 				// Adjust client counter (total and overTime)
 				clientsData* client = getClient(query->clientID, true);
-				const int timeidx = query->timeidx;
+				const int timeidx = getOverTimeID(query->timestamp);
 				overTime[timeidx].total--;
 				if(client != NULL)
 					change_clientcount(client, -1, 0, timeidx, -1);
@@ -121,13 +127,7 @@ void *GC_thread(void *val)
 					case QUERY_RETRIED: // (fall through)
 					case QUERY_RETRIED_DNSSEC:
 						// Forwarded to an upstream DNS server
-						// Adjust counters
-						if(query->upstreamID > -1)
-						{
-							upstreamsData* upstream = getUpstream(query->upstreamID, true);
-							if(upstream != NULL)
-								upstream->count--;
-						}
+						// Adjusting counters is done below in moveOverTimeMemory()
 						break;
 					case QUERY_CACHE:
 						// Answered from local cache _or_ local config
@@ -139,8 +139,9 @@ void *GC_thread(void *val)
 					case QUERY_EXTERNAL_BLOCKED_NXRA: // Blocked by upstream provider (fall through)
 					case QUERY_EXTERNAL_BLOCKED_NULL: // Blocked by upstream provider (fall through)
 					case QUERY_GRAVITY_CNAME: // Gravity domain in CNAME chain (fall through)
-					case QUERY_BLACKLIST_CNAME: // Exactly blacklisted domain in CNAME chain (fall through)
 					case QUERY_REGEX_CNAME: // Regex blacklisted domain in CNAME chain (fall through)
+					case QUERY_BLACKLIST_CNAME: // Exactly blacklisted domain in CNAME chain (fall through)
+					case QUERY_DBBUSY: // Blocked because gravity database was busy
 						if(domain != NULL)
 							domain->blockedcount--;
 						if(client != NULL)

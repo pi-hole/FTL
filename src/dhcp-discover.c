@@ -53,6 +53,9 @@
 // Probe DHCP servers responding to the broadcast address
 #define PROBE_BCAST
 
+// Should we generate test data for DHCP option 249?
+//#define TEST_OPT_249
+
 // Global lock used by all threads
 static pthread_mutex_t lock;
 
@@ -62,7 +65,7 @@ extern const struct opttab_t {
 } opttab[];
 
 // creates a socket for DHCP communication
-static int create_dhcp_socket(const char *interface_name)
+static int create_dhcp_socket(const char *iname)
 {
 	struct sockaddr_in dhcp_socket;
 	struct ifreq interface;
@@ -78,7 +81,7 @@ static int create_dhcp_socket(const char *interface_name)
 	const int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if(sock < 0)
 	{
-		logg("Error: Could not create socket!");
+		logg("Error: Could not create socket for interface %s!", iname);
 		return -1;
 	}
 
@@ -89,28 +92,30 @@ static int create_dhcp_socket(const char *interface_name)
 	flag=1;
 	if(setsockopt(sock,SOL_SOCKET, SO_REUSEADDR, (char *)&flag, sizeof(flag))<0)
 	{
-		logg("Error: Could not set reuse address option on DHCP socket!");
+		logg("Error: Could not set reuse address option on DHCP socket (%s)!", iname);
 		return -1;
 	}
 
 	// set the broadcast option - we need this to listen to DHCP broadcast messages
 	if(setsockopt(sock, SOL_SOCKET,SO_BROADCAST, (char *)&flag, sizeof flag) < 0)
 	{
-		logg("Error: Could not set broadcast option on DHCP socket!");
+		logg("Error: Could not set broadcast option on DHCP socket (%s)!", iname);
 		return -1;
 	}
 
 	// bind socket to interface
-	strncpy(interface.ifr_ifrn.ifrn_name, interface_name, IFNAMSIZ-1);
+	strncpy(interface.ifr_ifrn.ifrn_name, iname, IFNAMSIZ-1);
 	if(setsockopt(sock,SOL_SOCKET, SO_BINDTODEVICE, (char *)&interface, sizeof(interface)) < 0)
 	{
-		logg("Error: Could not bind socket to interface %s (%s)\n       ---> Check your privileges (run with sudo)!\n", interface_name, strerror(errno));
+		logg("Error: Could not bind socket to interface %s (%s)\n       ---> Check your privileges (run with sudo)!\n",
+		     iname, strerror(errno));
 		return -1;
 	}
 
 	// bind the socket
 	if(bind(sock, (struct sockaddr *)&dhcp_socket, sizeof(dhcp_socket)) < 0){
-		logg("Error: Could not bind to DHCP socket (port %d, %s\n       ---> Check your privileges (run with sudo)!\n", DHCP_CLIENT_PORT, strerror(errno));
+		logg("Error: Could not bind to DHCP socket (interface %s, port %d, %s)\n       ---> Check your privileges (run with sudo)!\n",
+		     iname, DHCP_CLIENT_PORT, strerror(errno));
 		return -1;
 	}
 
@@ -118,15 +123,15 @@ static int create_dhcp_socket(const char *interface_name)
 }
 
 // determines hardware address on client machine
-static int get_hardware_address(const int sock, const char *interface_name, unsigned char *mac)
+static int get_hardware_address(const int sock, const char *iname, unsigned char *mac)
 {
 	struct ifreq ifr;
-	strncpy((char *)&ifr.ifr_name, interface_name, sizeof(ifr.ifr_name)-1);
+	strncpy((char *)&ifr.ifr_name, iname, sizeof(ifr.ifr_name)-1);
 
 	// try and grab hardware address of requested interface
 	int ret = 0;
 	if((ret = ioctl(sock, SIOCGIFHWADDR, &ifr)) < 0){
-		logg(" Error: Could not get hardware address of interface '%s' (socket %d, error: %s)", interface_name, sock, strerror(errno));
+		logg(" Error: Could not get hardware address of interface '%s' (socket %d, error: %s)", iname, sock, strerror(errno));
 		return false;
 	}
 	memcpy(&mac[0], &ifr.ifr_hwaddr.sa_data, 6);
@@ -228,11 +233,28 @@ static bool send_dhcp_discover(const int sock, const uint32_t xid, const char *i
 	return bytes > 0;
 }
 
+#ifdef TEST_OPT_249
+static void gen_249_test_data(dhcp_packet_data *offer_packet)
+{
+	// Test data for DHCP option 249 (length 14)
+	// See https://discourse.pi-hole.net/t/pi-hole-unbound-via-wireguard-stops-working-over-night/49149
+	char test_data[] = { 249, 14, 0x20, 0xAC, 0x1F, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0xAC, 0x1F, 0x01, 0x01};
+	// The first 4 bytes are DHCP magic cookie
+	memcpy(&offer_packet->options[4], test_data, sizeof(test_data));
+	offer_packet->options[sizeof(test_data)+4] = 0;
+}
+#endif
+
 // adds a DHCP OFFER to list in memory
 static void print_dhcp_offer(struct in_addr source, dhcp_packet_data *offer_packet)
 {
 	if(offer_packet == NULL)
 		return;
+
+	// Generate option test data
+#ifdef TEST_OPT_249
+	gen_249_test_data(offer_packet);
+#endif
 
 	// process all DHCP options present in the packet
 	// We start from 4 as the first 32 bit are the DHCP magic coockie (verified before)
@@ -384,6 +406,49 @@ static void print_dhcp_offer(struct in_addr source, dhcp_packet_data *offer_pack
 					logg("Port Control Protocol (PCP) server: %s", inet_ntoa(addr_list));
 				}
 			}
+			else if((opttype == 121 || opttype == 249) && optlen > 4)
+			{
+				// RFC 3442 / Microsoft Classless Static Route Option
+				// see
+				// - https://docs.microsoft.com/en-us/openspecs/windows_protocols/ms-dhcpe/f9c19c79-1c7f-4746-b555-0c0fc523f3f9
+				// - https://datatracker.ietf.org/doc/html/rfc3442 (page 3)
+				logg("%s Classless Static Route:", opttype == 121 ? "RFC 3442" : "Microsoft");
+				// Loop over contained routes
+				unsigned int n = 0;
+				for(unsigned int i = 1; n < optlen; i++)
+				{
+					// Extract destionation descriptor
+					unsigned char cidr = offer_packet->options[x+n++];
+					unsigned char addr[4] = { 0 };
+					if(cidr > 0)
+						addr[0] = offer_packet->options[x+n++];
+					if(cidr > 8)
+						addr[1] = offer_packet->options[x+n++];
+					if(cidr > 16)
+						addr[2] = offer_packet->options[x+n++];
+					if(cidr > 24)
+						addr[3] = offer_packet->options[x+n++];
+
+					// Extract router address
+					unsigned char router[4] = { 0 };
+					for(int j = 0; j < 4; j++)
+						router[j] = offer_packet->options[x+n++];
+
+					if(cidr == 0)
+					{
+						// default route (0.0.0.0/0)
+						logg("     %d: default via %d.%d.%d.%d", i,
+						     router[0], router[1], router[2], router[3]);
+					}
+					else
+					{
+						// specific route
+						logg("     %d: %d.%d.%d.%d/%d via %d.%d.%d.%d", i,
+						     addr[0], addr[1], addr[2], addr[3], cidr,
+						     router[0], router[1], router[2], router[3]);
+					}
+				}
+			}
 			else
 			{
 				logg_sameline("Unknown option %d:", opttype);
@@ -433,7 +498,8 @@ static bool receive_dhcp_packet(void *buffer, int buffer_size, const char *iface
 #endif
 	// Return on error
 	if(recv_result == -1){
-		logg(" recvfrom() failed, error: %s", strerror(errno));
+		logg(" recvfrom() failed on %s, error: %s", iface, strerror(errno));
+		pthread_mutex_unlock(&lock);
 		return false;
 	}
 
@@ -476,6 +542,8 @@ static bool get_dhcp_offer(const int sock, const uint32_t xid, const char *iface
 		{
 			logg("  DHCPOFFER XID (%lu) does not match our DHCPDISCOVER XID (%lu) - ignoring packet (not for us)\n",
 			     (unsigned long) ntohl(offer_packet.xid), (unsigned long) xid);
+
+			pthread_mutex_unlock(&lock);
 			continue;
 		}
 

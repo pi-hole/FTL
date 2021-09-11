@@ -24,6 +24,8 @@
 #include "capabilities.h"
 #include "timers.h"
 #include "procps.h"
+// init_overtime()
+#include "overTime.h"
 
 char * username;
 bool needGC = false;
@@ -77,6 +79,9 @@ int main (int argc, char* argv[])
 	// which aren't ready at this point
 	delay_startup();
 
+	// Initialize overTime datastructure
+	initOverTime();
+
 	// Initialize query database (pihole-FTL.db)
 	db_init();
 
@@ -109,8 +114,9 @@ int main (int argc, char* argv[])
 	if(config.DBexport)
 	{
 		lock_shm();
-		if(DB_save_queries(NULL))
-			logg("Finished final database update");
+		int saved;
+		if((saved = DB_save_queries(NULL)) > -1)
+			logg("Finished final database update (stored %d queries)", saved);
 		unlock_shm();
 	}
 
