@@ -947,6 +947,75 @@
   run sleep 2
 }
 
+@test "Regex Test 44: Option \"^localhost$;reply=1.2.3.4\" working as expected" {
+  run bash -c 'sqlite3 /etc/pihole/gravity.db "INSERT INTO domainlist (type,domain) VALUES (3,\"^localhost$;reply=1.2.3.4\");"'
+  printf "sqlite3 INSERT: %s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+  run bash -c 'kill -RTMIN $(cat /var/run/pihole-FTL.pid); sleep 1'
+  printf "reload: %s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+  run sleep 2
+  run bash -c 'dig A localhost @127.0.0.1 +short'
+  printf "dig A: %s\n" "${lines[@]}"
+  [[ ${lines[0]} == "1.2.3.4" ]]
+  run bash -c 'dig AAAA localhost @127.0.0.1 +short'
+  printf "dig AAAA: %s\n" "${lines[@]}"
+  [[ ${lines[0]} == "::" ]]
+  run bash -c 'sqlite3 /etc/pihole/gravity.db "DELETE FROM domainlist WHERE domain = \"^localhost$;reply=1.2.3.4\";"'
+  printf "sqlite3 DELETE: %s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+  run bash -c 'kill -RTMIN $(cat /var/run/pihole-FTL.pid)'
+  printf "reload: %s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+  run sleep 2
+}
+
+@test "Regex Test 45: Option \"^localhost$;reply=fe80::1234\" working as expected" {
+  run bash -c 'sqlite3 /etc/pihole/gravity.db "INSERT INTO domainlist (type,domain) VALUES (3,\"^localhost$;reply=fe80::1234\");"'
+  printf "sqlite3 INSERT: %s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+  run bash -c 'kill -RTMIN $(cat /var/run/pihole-FTL.pid); sleep 1'
+  printf "reload: %s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+  run sleep 2
+  run bash -c 'dig A localhost @127.0.0.1 +short'
+  printf "dig A: %s\n" "${lines[@]}"
+  [[ ${lines[0]} == "0.0.0.0" ]]
+  run bash -c 'dig AAAA localhost @127.0.0.1 +short'
+  printf "dig AAAA: %s\n" "${lines[@]}"
+  [[ ${lines[0]} == "fe80::1234" ]]
+  run bash -c 'sqlite3 /etc/pihole/gravity.db "DELETE FROM domainlist WHERE domain = \"^localhost$;reply=fe80::1234\";"'
+  printf "sqlite3 DELETE: %s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+  run bash -c 'kill -RTMIN $(cat /var/run/pihole-FTL.pid)'
+  printf "reload: %s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+  run sleep 2
+}
+
+@test "Regex Test 46: Option \"^localhost$;reply=1.2.3.4;reply=fe80::1234\" working as expected" {
+  run bash -c 'sqlite3 /etc/pihole/gravity.db "INSERT INTO domainlist (type,domain) VALUES (3,\"^localhost$;reply=1.2.3.4;reply=fe80::1234\");"'
+  printf "sqlite3 INSERT: %s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+  run bash -c 'kill -RTMIN $(cat /var/run/pihole-FTL.pid); sleep 1'
+  printf "reload: %s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+  run sleep 2
+  run bash -c 'dig A localhost @127.0.0.1 +short'
+  printf "dig A: %s\n" "${lines[@]}"
+  [[ ${lines[0]} == "1.2.3.4" ]]
+  run bash -c 'dig AAAA localhost @127.0.0.1 +short'
+  printf "dig AAAA: %s\n" "${lines[@]}"
+  [[ ${lines[0]} == "fe80::1234" ]]
+  run bash -c 'sqlite3 /etc/pihole/gravity.db "DELETE FROM domainlist WHERE domain = \"^localhost$;reply=1.2.3.4;reply=fe80::1234\";"'
+  printf "sqlite3 DELETE: %s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+  run bash -c 'kill -RTMIN $(cat /var/run/pihole-FTL.pid)'
+  printf "reload: %s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+  run sleep 2
+}
+
 # x86_64-musl is built on busybox which has a slightly different
 # variant of ls displaying three, instead of one, spaces between the
 # user and group names.
