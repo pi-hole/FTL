@@ -1862,7 +1862,8 @@ char *record_source(unsigned int index)
   return "<unknown>";
 }
 
-static char *querystr(char *desc, unsigned short type)
+// Pi-hole modified
+char *querystr(char *desc, unsigned short type)
 {
   unsigned int i;
   int len = 10; /* strlen("type=xxxxx") */
@@ -1958,7 +1959,7 @@ void _log_query(unsigned int flags, char *name, union all_addr *addr, char *arg,
   char *verb = "is";
   char *extra = "";
 
-  FTL_hook(flags, name, addr, arg, daemon->log_display_id, file, line);
+  FTL_hook(flags, name, addr, arg, daemon->log_display_id, type, file, line);
   
   if (!option_bool(OPT_LOG))
     return;

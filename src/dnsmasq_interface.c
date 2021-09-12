@@ -91,7 +91,7 @@ static union mysockaddr last_server = {{ 0 }};
 unsigned char* pihole_privacylevel = &config.privacylevel;
 const char *flagnames[] = {"F_IMMORTAL ", "F_NAMEP ", "F_REVERSE ", "F_FORWARD ", "F_DHCP ", "F_NEG ", "F_HOSTS ", "F_IPV4 ", "F_IPV6 ", "F_BIGNAME ", "F_NXDOMAIN ", "F_CNAME ", "F_DNSKEY ", "F_CONFIG ", "F_DS ", "F_DNSSECOK ", "F_UPSTREAM ", "F_RRNAME ", "F_SERVER ", "F_QUERY ", "F_NOERR ", "F_AUTH ", "F_DNSSEC ", "F_KEYTAG ", "F_SECSTAT ", "F_NO_RR ", "F_IPSET ", "F_NOEXTRA ", "F_SERVFAIL", "F_RCODE"};
 
-void FTL_hook(unsigned int flags, char *name, union all_addr *addr, char *arg, int id, const char* file, const int line)
+void FTL_hook(unsigned int flags, char *name, union all_addr *addr, char *arg, int id, unsigned short type, const char* file, const int line)
 {
 	// Extract filename from path
 	const char *path = short_path(file);
@@ -119,7 +119,6 @@ void FTL_hook(unsigned int flags, char *name, union all_addr *addr, char *arg, i
 		if(!config.show_dnssec)
 			return;
 
-		const int qtype = strcmp(arg, "dnssec-query[DS]") == 0 ? T_DS : T_DNSKEY;
 		const ednsData edns = { 0 };
 		union mysockaddr saddr = {{ 0 }};
 		if(flags & F_IPV4)
@@ -132,7 +131,7 @@ void FTL_hook(unsigned int flags, char *name, union all_addr *addr, char *arg, i
 			memcpy(&saddr.in6.sin6_addr, &addr->addr6, sizeof(addr->addr6));
 			saddr.sa.sa_family = AF_INET;
 		}
-		_FTL_new_query(flags, name, NULL, arg, qtype, id, &edns, INTERNAL, file, line);
+		_FTL_new_query(flags, name, NULL, arg, type, id, &edns, INTERNAL, file, line);
 		FTL_forwarded(flags, name, addr, id, path, line);
 	}
 	else if(flags & F_AUTH)
@@ -323,7 +322,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		add_resource_record(header, limit, &trunc, sizeof(struct dns_header),
 		                    &p, daemon->local_ttl, NULL, T_A, C_IN,
 		                    (char*)"4", &addr->addr4);
-		log_query(flags & ~F_IPV6, name, addr, (char*)blockingreason);
+		log_query(flags & ~F_IPV6, name, addr, (char*)blockingreason, 0);
 	}
 
 	// Add AAAA answer record if requested
@@ -351,12 +350,12 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		add_resource_record(header, limit, &trunc, sizeof(struct dns_header),
 		                    &p, daemon->local_ttl, NULL, T_AAAA, C_IN,
 		                    (char*)"6", &addr->addr6);
-		log_query(flags & ~F_IPV4, name, addr, (char*)blockingreason);
+		log_query(flags & ~F_IPV4, name, addr, (char*)blockingreason, 0);
 	}
 
 	// Log empty replies (NODATA/NXDOMAIN/REFUSED)
 	if(!(flags & (F_IPV4 | F_IPV6)))
-		log_query(flags, name, NULL, (char*)blockingreason);
+		log_query(flags, name, NULL, (char*)blockingreason, 0);
 
 	// Indicate if truncated (client should retry over TCP)
 	if (trunc)
@@ -366,7 +365,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 }
 
 bool _FTL_new_query(const unsigned int flags, const char *name,
-                    union mysockaddr *addr, const char *types,
+                    union mysockaddr *addr, char *arg,
                     const unsigned short qtype, const int id,
                     const ednsData *edns, const enum protocol proto,
                     const char* file, const int line)
@@ -553,6 +552,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// Log new query if in debug mode
 	if(config.debug & DEBUG_QUERIES)
 	{
+		const char *types = querystr(arg, qtype);
 		logg("**** new %sIPv%d %s query \"%s\" from %s:%s#%d (ID %i, FTL %i, %s:%i)",
 		     proto == TCP ? "TCP " : proto == UDP ? "UDP " : "",
 		     family == AF_INET ? 4 : 6, types, domainString, interface,
@@ -571,7 +571,11 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	if(config.analyze_only_A_AAAA && querytype != TYPE_A && querytype != TYPE_AAAA)
 	{
 		// Don't process this query further here, we already counted it
-		if(config.debug & DEBUG_QUERIES) logg("Notice: Skipping new query: %s (%i)", types, id);
+		if(config.debug & DEBUG_QUERIES)
+		{
+			const char *types = querystr(arg, qtype);
+			logg("Notice: Skipping new query: %s (%i)", types, id);
+		}
 		free(domainString);
 		unlock_shm();
 		return false;
@@ -1699,9 +1703,15 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 				answer = arg; // e.g. "reply <TLD> is no DS"
 		}
 
+		// Substitute "." if we are querying the root domain (e.g. DNSKEY)
+		const char *dispname = name;
+		if(!name || strlen(name) == 0)
+			dispname = ".";
+
 		if(cached || last_server.sa.sa_family == 0)
 			// Log cache or upstream reply from unknown source
-			logg("**** got %s reply: %s is %s (ID %i, %s:%i)", cached ? "cache" : "upstream", name, answer, id, file, line);
+			logg("**** got %s reply: %s is %s (ID %i, %s:%i)",
+			     cached ? "cache" : "upstream", dispname, answer, id, file, line);
 		else
 		{
 			char ip[ADDRSTRLEN+1] = { 0 };
@@ -1709,7 +1719,7 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 			mysockaddr_extract_ip_port(&last_server, ip, &port);
 			// Log server which replied to our request
 			logg("**** got %s reply from %s#%d: %s is %s (ID %i, %s:%i)",
-			     cached ? "cache" : "upstream", ip, port, name, answer, id, file, line);
+			     cached ? "cache" : "upstream", ip, port, dispname, answer, id, file, line);
 		}
 	}
 

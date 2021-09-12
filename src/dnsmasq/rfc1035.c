@@ -648,7 +648,7 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 		    {
 		      // This query is to be blocked as we found a blocked
 		      // domain while walking the CNAME path. Log to pihole.log here
-		      log_query(F_UPSTREAM, name, NULL, "blocked during CNAME inspection");
+		      log_query(F_UPSTREAM, name, NULL, "blocked during CNAME inspection", 0);
 		      return 2;
 		    }
 		  // **********************************************************************************
@@ -1856,7 +1856,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 				  {
 				    // This query is to be blocked as we found a blocked domain while walking the CNAME path.
 				    // Log to pihole.log: "cached domainabc.com is blocked during CNAME inspection"
-				    log_query(F_UPSTREAM, name, NULL, "blocked during CNAME inspection");
+				    log_query(F_UPSTREAM, name, NULL, "blocked during CNAME inspection", 0);
 				    break;
 				  }
 				// **********************************************************************************

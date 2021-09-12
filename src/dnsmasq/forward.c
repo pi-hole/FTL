@@ -1557,7 +1557,7 @@ void receive_query(struct listener *listen, time_t now)
       log_query_mysockaddr(F_QUERY | F_FORWARD, daemon->namebuff,
 			   &source_addr, auth_dns ? "auth" : "query", type);
       piholeblocked = FTL_new_query(F_QUERY | F_FORWARD , daemon->namebuff,
-				    &source_addr, types, type, daemon->log_display_id, &edns, UDP);
+				    &source_addr, auth_dns ? "auth" : "query", type, daemon->log_display_id, &edns, UDP);
       
 #ifdef HAVE_CONNTRACK
       is_single_query = 1;
@@ -2030,7 +2030,7 @@ unsigned char *tcp_request(int confd, time_t now,
 			       &peer_addr, auth_dns ? "auth" : "query", qtype);
 
 	  piholeblocked = FTL_new_query(F_QUERY | F_FORWARD, daemon->namebuff,
-					&peer_addr, types, qtype, daemon->log_display_id, &edns, TCP);
+					&peer_addr, auth_dns ? "auth" : "query", qtype, daemon->log_display_id, &edns, TCP);
 
 	  
 #ifdef HAVE_CONNTRACK
