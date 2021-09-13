@@ -525,7 +525,7 @@
   printf "%s\n" "${lines[@]}"
   # Depending on the shell (x86_64-musl is built on busybox) there can be one or multiple spaces between user and group
   [[ ${lines[0]} == *"pihole"?*"pihole"* ]]
-  [[ ${lines[0]} == "-rw-r--r--"* ]]
+  [[ ${lines[0]} == "-rw-rw-r--"* ]]
   run bash -c 'file /etc/pihole/pihole-FTL.db'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "/etc/pihole/pihole-FTL.db: SQLite 3.x database"* ]]
@@ -1024,7 +1024,7 @@
   run bash -c 'ls -l /etc/pihole/pihole-FTL.db'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == *"pihole pihole"* || ${lines[0]} == *"pihole   pihole"* ]]
-  [[ ${lines[0]} == "-rw-r--r--"* ]]
+  [[ ${lines[0]} == "-rw-rw-r--"* ]]
 }
 
 # "ldd" prints library dependencies and the used interpreter for a given program
