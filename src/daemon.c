@@ -127,7 +127,7 @@ static void removepid(void)
 
 char *getUserName(void)
 {
-	char * name;
+	char *name;
 	// the getpwuid() function shall search the user database for an entry with a matching uid
 	// the geteuid() function shall return the effective user ID of the calling process - this is used as the search criteria for the getpwuid() function
 	const uid_t euid = geteuid();
