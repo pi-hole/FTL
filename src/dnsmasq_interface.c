@@ -456,7 +456,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 
 	// Check if this is a PTR request for a local interface.
 	// If so, we inject a "pi.hole" reply here
-	if(querytype == TYPE_PTR && config.pihole_ptr)
+	if(querytype == TYPE_PTR && config.pihole_ptr != PTR_NONE)
 		check_pihole_PTR((char*)name);
 
 	// Skip AAAA queries if user doesn't want to have them analyzed
@@ -850,13 +850,17 @@ void FTL_iface(const int ifidx)
 
 static void check_pihole_PTR(char *domain)
 {
+	// Return early if Pi-hole PTR is not available
+	if(pihole_ptr == NULL)
+		return;
+
 	// Convert PTR request into numeric form
 	union all_addr addr = {{ 0 }};
 	const int flags = in_arpa_name_2_addr(domain, &addr);
 
 	// Check if this is a valid in-addr.arpa (IPv4) or ip6.[int|arpa] (IPv6)
 	// specifier. If not, nothing is to be done here and we return early
-	if(flags == 0 || pihole_ptr == NULL)
+	if(flags == 0)
 		return;
 
 	// We do not want to reply with "pi.hole" to loopback PTRs
@@ -2488,12 +2492,12 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 	config.dns_port = daemon->port;
 
 	// Obtain PTR record used for Pi-hole PTR injection (if enabled)
-	if(config.pihole_ptr)
+	if(config.pihole_ptr != PTR_NONE)
 	{
 		// Add PTR record for pi.hole, the address will be injected later
 		pihole_ptr = calloc(1, sizeof(struct ptr_record));
 		pihole_ptr->name = strdup("x.x.x.x.in-addr.arpa");
-		pihole_ptr->ptr = (char*)"pi.hole";
+		pihole_ptr->ptr = config.pihole_ptr == PTR_PIHOLE ? (char*)"pi.hole" : (char*)hostname();
 		pihole_ptr->next = NULL;
 		// Add our PTR record to the end of the linked list
 		if(daemon->ptr != NULL)

@@ -47,7 +47,6 @@ typedef struct {
 	bool names_from_netdb :1;
 	bool edns0_ecs :1;
 	bool show_dnssec :1;
-	bool pihole_ptr :1;
 	bool addr2line :1;
 	struct {
 		bool mozilla_canary :1;
@@ -56,6 +55,7 @@ typedef struct {
 	enum blocking_mode blockingmode;
 	enum refresh_hostnames refresh_hostnames;
 	enum busy_reply reply_when_busy;
+	enum ptr_type pihole_ptr;
 	int maxDBdays;
 	int port;
 	int maxlogage;

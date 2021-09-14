@@ -552,12 +552,22 @@ void read_FTLconf(void)
 	// Should FTL return "pi.hole" as name for PTR requests to local IP addresses?
 	// defaults to: true
 	buffer = parse_FTLconf(fp, "PIHOLE_PTR");
-	config.pihole_ptr = read_bool(buffer, true);
 
-	if(config.pihole_ptr)
-		logg("   PIHOLE_PTR: Enabled");
+	if(buffer != NULL && strcasecmp(buffer, "false") == 0)
+	{
+		config.pihole_ptr = PTR_NONE;
+		logg("   PIHOLE_PTR: PTR generation disabled");
+	}
+	else if(buffer != NULL && strcasecmp(buffer, "hostname") == 0)
+	{
+		config.pihole_ptr = PTR_HOSTNAME;
+		logg("   PIHOLE_PTR: PTR generation enabled (hostname)");
+	}
 	else
-		logg("   PIHOLE_PTR: Disabled");
+	{
+		config.pihole_ptr = PTR_PIHOLE;
+		logg("   PIHOLE_PTR: PTR generation enabled (pi.hole)");
+	}
 
 	// ADDR2LINE
 	// Should FTL try to call addr2line when generating backtraces?
