@@ -550,23 +550,24 @@ void read_FTLconf(void)
 
 	// PIHOLE_PTR
 	// Should FTL return "pi.hole" as name for PTR requests to local IP addresses?
-	// defaults to: true
+	// defaults to: PI.HOLE
 	buffer = parse_FTLconf(fp, "PIHOLE_PTR");
 
-	if(buffer != NULL && strcasecmp(buffer, "false") == 0)
+	if(buffer != NULL && (strcasecmp(buffer, "false") == 0 ||
+	                      strcasecmp(buffer, "false") == 0))
 	{
 		config.pihole_ptr = PTR_NONE;
-		logg("   PIHOLE_PTR: PTR generation disabled");
+		logg("   PIHOLE_PTR: internal PTR generation disabled");
 	}
 	else if(buffer != NULL && strcasecmp(buffer, "hostname") == 0)
 	{
 		config.pihole_ptr = PTR_HOSTNAME;
-		logg("   PIHOLE_PTR: PTR generation enabled (hostname)");
+		logg("   PIHOLE_PTR: internal PTR generation enabled (hostname)");
 	}
 	else
 	{
 		config.pihole_ptr = PTR_PIHOLE;
-		logg("   PIHOLE_PTR: PTR generation enabled (pi.hole)");
+		logg("   PIHOLE_PTR: internal PTR generation enabled (pi.hole)");
 	}
 
 	// ADDR2LINE
