@@ -203,7 +203,10 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
      Similarly FREC_NO_CACHE is never set in flags, so a query which is
      contigent on a particular source address EDNS0 option will never be matched. */
   if (forward)
+  {
+          
     old_src = 1;
+  }
   else if ((forward = lookup_frec_by_query(hash, fwd_flags,
 					   FREC_CHECKING_DISABLED | FREC_AD_QUESTION | FREC_DO_QUESTION |
 					   FREC_HAS_PHEADER | FREC_DNSKEY_QUERY | FREC_DS_QUERY | FREC_NO_CACHE)))
