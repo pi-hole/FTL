@@ -539,23 +539,23 @@ union mysockaddr {
 
 
 /* The actual values here matter, since we sort on them to get records in the order
-   IPv6 addr, IPv4 addr, all zero return, no-data return, send upstream. */
-#define SERV_LITERAL_ADDRESS   1  /* addr is the answer, or NoDATA is the answer, depending on the next three flags */
-#define SERV_ALL_ZEROS         2  /* return all zeros for A and AAAA */
-#define SERV_4ADDR             4  /* addr is IPv4 */
-#define SERV_6ADDR             8  /* addr is IPv6 */
-#define SERV_HAS_SOURCE       16  /* source address defined */
-#define SERV_FOR_NODOTS       32  /* server for names with no domain part only */
-#define SERV_WARNED_RECURSIVE 64  /* avoid warning spam */
-#define SERV_FROM_DBUS       128  /* 1 if source is DBus */
-#define SERV_MARK            256  /* for mark-and-delete and log code */
-#define SERV_WILDCARD        512  /* domain has leading '*' */ 
-#define SERV_USE_RESOLV     1024  /* forward this domain in the normal way */
-#define SERV_FROM_RESOLV    2048  /* 1 for servers from resolv, 0 for command line. */
-#define SERV_FROM_FILE      4096  /* read from --servers-file */
-#define SERV_LOOP           8192  /* server causes forwarding loop */
-#define SERV_DO_DNSSEC     16384  /* Validate DNSSEC when using this server */
-#define SERV_GOT_TCP       32768  /* Got some data from the TCP connection */
+   IPv6 addr, IPv4 addr, all zero return, resolvconf servers, upstream server, no-data return  */
+#define SERV_LITERAL_ADDRESS    1  /* addr is the answer, or NoDATA is the answer, depending on the next four flags */
+#define SERV_USE_RESOLV         2  /* forward this domain in the normal way */
+#define SERV_ALL_ZEROS          4  /* return all zeros for A and AAAA */
+#define SERV_4ADDR              8  /* addr is IPv4 */
+#define SERV_6ADDR             16  /* addr is IPv6 */
+#define SERV_HAS_SOURCE        32  /* source address defined */
+#define SERV_FOR_NODOTS        64  /* server for names with no domain part only */
+#define SERV_WARNED_RECURSIVE 128  /* avoid warning spam */
+#define SERV_FROM_DBUS        256  /* 1 if source is DBus */
+#define SERV_MARK             512  /* for mark-and-delete and log code */
+#define SERV_WILDCARD        1024  /* domain has leading '*' */ 
+#define SERV_FROM_RESOLV     2048  /* 1 for servers from resolv, 0 for command line. */
+#define SERV_FROM_FILE       4096  /* read from --servers-file */
+#define SERV_LOOP            8192  /* server causes forwarding loop */
+#define SERV_DO_DNSSEC      16384  /* Validate DNSSEC when using this server */
+#define SERV_GOT_TCP        32768  /* Got some data from the TCP connection */
 
 struct serverfd {
   int fd;

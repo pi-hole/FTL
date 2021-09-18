@@ -207,16 +207,16 @@ int lookup_domain(char *domain, int flags, int *lowout, int *highout)
 		}
 	    }
 	  
-	  if (found)
+	  if (found && filter_servers(try, flags, &nlow, &nhigh))
+	    /* We have a match, but it may only be (say) an IPv6 address, and
+	       if the query wasn't for an AAAA record, it's no good, and we need
+	       to continue generalising */
 	    {
 	      /* We've matched a setting which says to use servers without a domain.
 		 Continue the search with empty query */
-	      if (daemon->serverarray[try]->flags & SERV_USE_RESOLV)
+	      if (daemon->serverarray[nlow]->flags & SERV_USE_RESOLV)
 		crop_query = qlen;
-	      else if (filter_servers(try, flags, &nlow, &nhigh))
-		/* We have a match, but it may only be (say) an IPv6 address, and
-		   if the query wasn't for an AAAA record, it's no good, and we need
-		   to continue generalising */
+	      else
 		break;
 	    }
 	}
@@ -273,7 +273,7 @@ int filter_servers(int seed, int flags, int *lowout, int *highout)
     nlow--;
   
   while (nhigh < daemon->serverarraysz-1 && order_servers(daemon->serverarray[nhigh], daemon->serverarray[nhigh+1]) == 0)
-	nhigh++;
+    nhigh++;
   
   nhigh++;
   
@@ -293,10 +293,10 @@ int filter_servers(int seed, int flags, int *lowout, int *highout)
   else
     {
       /* Now the servers are on order between low and high, in the order
-	 IPv6 addr, IPv4 addr, return zero for both, send upstream, no-data return.
+	 IPv6 addr, IPv4 addr, return zero for both, resolvconf servers, send upstream, no-data return.
 	 
 	 See which of those match our query in that priority order and narrow (low, high) */
-
+      
       for (i = nlow; i < nhigh && (daemon->serverarray[i]->flags & SERV_6ADDR); i++);
       
       if (i != nlow && (flags & F_IPV6))
@@ -321,32 +321,40 @@ int filter_servers(int seed, int flags, int *lowout, int *highout)
 		{
 		  nlow = i;
 		  
-		  /* now look for a server */
-		  for (i = nlow; i < nhigh && !(daemon->serverarray[i]->flags & SERV_LITERAL_ADDRESS); i++);
-
+		  /* Short to resolv.conf servers */
+		  for (i = nlow; i < nhigh && (daemon->serverarray[i]->flags & SERV_USE_RESOLV); i++);
+		  
 		  if (i != nlow)
-		    {
-		      /* If we want a server that can do DNSSEC, and this one can't, 
-			 return nothing, similarly if were looking only for a server
-			 for a particular domain. */
-		      if ((flags & F_DNSSECOK) && !(daemon->serverarray[nlow]->flags & SERV_DO_DNSSEC))
-			nlow = nhigh;
-		      else if ((flags & F_DOMAINSRV) && daemon->serverarray[nlow]->domain_len == 0)
-			nlow = nhigh;
-		      else
-			nhigh = i;
-		    }
+		    nhigh = i;
 		  else
 		    {
-		      /* --local=/domain/, only return if we don't need a server. */
-		      if (flags & (F_DNSSECOK | F_DOMAINSRV | F_SERVER))
-			nhigh = i;
+		      /* now look for a server */
+		      for (i = nlow; i < nhigh && !(daemon->serverarray[i]->flags & SERV_LITERAL_ADDRESS); i++);
+		      
+		      if (i != nlow)
+			{
+			  /* If we want a server that can do DNSSEC, and this one can't, 
+			     return nothing, similarly if were looking only for a server
+			     for a particular domain. */
+			  if ((flags & F_DNSSECOK) && !(daemon->serverarray[nlow]->flags & SERV_DO_DNSSEC))
+			    nlow = nhigh;
+			  else if ((flags & F_DOMAINSRV) && daemon->serverarray[nlow]->domain_len == 0)
+			    nlow = nhigh;
+			  else
+			    nhigh = i;
+			}
+		      else
+			{
+			  /* --local=/domain/, only return if we don't need a server. */
+			  if (flags & (F_DNSSECOK | F_DOMAINSRV | F_SERVER))
+			    nhigh = i;
+			}
 		    }
 		}
 	    }
 	}
     }
-  
+
   *lowout = nlow;
   *highout = nhigh;
   
@@ -521,10 +529,10 @@ static int order_qsort(const void *a, const void *b)
   /* Sort all literal NODATA and local IPV4 or IPV6 responses together,
      in a very specific order. We flip the SERV_LITERAL_ADDRESS bit
      so the order is IPv6 literal, IPv4 literal, all-zero literal, 
-     upstream server, NXDOMAIN literal. */
+     unqualified servers, upstream server, NXDOMAIN literal. */
   if (rc == 0)
-    rc = ((s2->flags & (SERV_LITERAL_ADDRESS | SERV_4ADDR | SERV_6ADDR | SERV_ALL_ZEROS)) ^ SERV_LITERAL_ADDRESS) -
-      ((s1->flags & (SERV_LITERAL_ADDRESS | SERV_4ADDR | SERV_6ADDR | SERV_ALL_ZEROS)) ^ SERV_LITERAL_ADDRESS);
+    rc = ((s2->flags & (SERV_LITERAL_ADDRESS | SERV_4ADDR | SERV_6ADDR | SERV_USE_RESOLV | SERV_ALL_ZEROS)) ^ SERV_LITERAL_ADDRESS) -
+      ((s1->flags & (SERV_LITERAL_ADDRESS | SERV_4ADDR | SERV_6ADDR | SERV_USE_RESOLV | SERV_ALL_ZEROS)) ^ SERV_LITERAL_ADDRESS);
 
   /* Finally, order by appearance in /etc/resolv.conf etc, for --strict-order */
   if (rc == 0)
@@ -634,7 +642,7 @@ int add_update_server(int flags,
     {
       size_t size;
 
-      if (flags & SERV_LITERAL_ADDRESS)
+      if (flags & SERV_IS_LOCAL)
 	{
 	  if (flags & SERV_6ADDR)
 	    size = sizeof(struct serv_addr6);
@@ -656,10 +664,19 @@ int add_update_server(int flags,
 	{
 	  serv->next = daemon->local_domains;
 	  daemon->local_domains = serv;
+
+	  if (flags & SERV_4ADDR)
+	    ((struct serv_addr4*)serv)->addr = local_addr->addr4;
+	  
+	  if (flags & SERV_6ADDR)
+	    ((struct serv_addr6*)serv)->addr = local_addr->addr6;
 	}
       else
 	{
 	  struct server *s;
+
+	  memset(serv, 0, sizeof(struct server));
+	  
 	  /* Add to the end of the chain, for order */
 	  if (!daemon->servers)
 	    daemon->servers = serv;
@@ -669,37 +686,23 @@ int add_update_server(int flags,
 	      s->next = serv;
 	    }
 	  
-	  serv->next = NULL;
+#ifdef HAVE_LOOP
+	  serv->uid = rand32();
+#endif      
+	  
+	  if (interface)
+	    safe_strncpy(serv->interface, interface, sizeof(serv->interface));
+	  if (addr)
+	    serv->addr = *addr;
+	  if (source_addr)
+	    serv->source_addr = *source_addr;
 	}
     }
-  
-  if (!(flags & SERV_IS_LOCAL))
-    memset(serv, 0, sizeof(struct server));
   
   serv->flags = flags;
   serv->domain = alloc_domain;
   serv->domain_len = strlen(alloc_domain);
   
-  if (flags & SERV_4ADDR)
-    ((struct serv_addr4*)serv)->addr = local_addr->addr4;
-
-  if (flags & SERV_6ADDR)
-    ((struct serv_addr6*)serv)->addr = local_addr->addr6;
-  
-  if (!(flags & SERV_IS_LOCAL))
-    {
-#ifdef HAVE_LOOP
-      serv->uid = rand32();
-#endif      
-      
-      if (interface)
-	safe_strncpy(serv->interface, interface, sizeof(serv->interface));
-      if (addr)
-	serv->addr = *addr;
-      if (source_addr)
-	serv->source_addr = *source_addr;
-    }
-
   return 1;
 }
 
