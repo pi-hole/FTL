@@ -365,6 +365,32 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 	return p - (unsigned char *)header;
 }
 
+static bool is_pihole_domain(const char *domain)
+{
+	static char *pihole_suffix = NULL;
+	if(!pihole_suffix && daemon->domain_suffix)
+	{
+		// Build "pi.hole.<local suffix>" domain
+		pihole_suffix = calloc(strlen(daemon->domain_suffix) + 9, sizeof(char));
+		strcpy(pihole_suffix, "pi.hole.");
+		strcat(pihole_suffix, daemon->domain_suffix);
+		if(config.debug & DEBUG_QUERIES)
+			logg("Domain suffix is \"%s\"", daemon->domain_suffix);
+	}
+	static char *hostname_suffix = NULL;
+	if(!hostname_suffix && daemon->domain_suffix)
+	{
+		// Build "<hostname>.<local suffix>" domain
+		hostname_suffix = calloc(strlen(hostname()) + strlen(daemon->domain_suffix) + 2, sizeof(char));
+		strcpy(hostname_suffix, hostname());
+		strcat(hostname_suffix, ".");
+		strcat(hostname_suffix, daemon->domain_suffix);
+	}
+	return strcasecmp(domain, "pi.hole") == 0 || strcasecmp(domain, hostname()) == 0 ||
+	       (pihole_suffix && strcasecmp(domain, pihole_suffix) == 0) ||
+	       (hostname_suffix && strcasecmp(domain, hostname_suffix) == 0);
+}
+
 bool _FTL_new_query(const unsigned int flags, const char *name,
                     union mysockaddr *addr, const char *types,
                     const unsigned short qtype, const int id,
@@ -436,7 +462,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 
 	// If domain is "pi.hole" or the local hostname we skip analyzing this query
 	// and, instead, immediately reply with the IP address - these queries are not further analyzed
-	if(strcasecmp(name, "pi.hole") == 0 || strcasecmp(name, hostname()) == 0)
+	if(is_pihole_domain(name))
 	{
 		if(querytype == TYPE_A || querytype == TYPE_AAAA || querytype == TYPE_ANY)
 		{
