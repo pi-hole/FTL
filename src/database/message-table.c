@@ -331,7 +331,7 @@ void logg_rate_limit_message(const char *clientIP)
 	const time_t turnaround = get_rate_limit_turnaround();
 
 	// Log to pihole-FTL.log
-	logg("Rate-limiting %s for %ld second%s",
+	logg("Rate-limiting %s for at least %ld second%s",
 	     clientIP, turnaround, turnaround == 1 ? "" : "s");
 
 	// Log to database

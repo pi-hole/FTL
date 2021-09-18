@@ -23,17 +23,21 @@
 
 bool doGC = false;
 
+// Subtract rate-limitation count from individual client counters
+// As long as client->rate_limit is still larger than the allowed
+// maximum count, the rate-limitation will just continue
 static void reset_rate_limiting(void)
 {
 	for(int clientID = 0; clientID < counters->clients; clientID++)
 	{
 		clientsData *client = getClient(clientID, true);
 		if(client != NULL)
-			client->rate_limit = 0;
+			client->rate_limit = MAX((long)client->rate_limit-config.rate_limit.count, 0);
 	}
 }
 
 static time_t lastRateLimitCleaner = 0;
+// Returns how many more seconds until the current rate-limiting interval is over
 time_t get_rate_limit_turnaround(void)
 {
 	return time(NULL) - lastRateLimitCleaner + config.rate_limit.interval;
