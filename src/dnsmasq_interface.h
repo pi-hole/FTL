@@ -21,7 +21,8 @@ enum protocol { TCP, UDP, INTERNAL };
 
 void FTL_hook(unsigned int flags, char *name, union all_addr *addr, char *arg, int id, const char* file, const int line);
 
-void FTL_iface(const int ifidx);
+#define FTL_iface(iface) _FTL_iface(iface, __FILE__, __LINE__)
+void _FTL_iface(struct irec *iface, const char* file, const int line);
 
 #define FTL_new_query(flags, name, addr, types, qtype, id, edns, proto) _FTL_new_query(flags, name, addr, types, qtype, id, edns, proto, __FILE__, __LINE__)
 bool _FTL_new_query(const unsigned int flags, const char *name, union mysockaddr *addr, const char *types, const unsigned short qtype, const int id, const ednsData *edns, enum protocol proto, const char* file, const int line);

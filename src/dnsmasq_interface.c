@@ -715,12 +715,16 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	return blockDomain;
 }
 
-void FTL_iface(const int ifidx)
+void _FTL_iface(struct irec *recviface, const char *file, const int line)
 {
 	// Invalidate data we have from the last interface/query
 	// Set addresses to 0.0.0.0 and ::, respectively
 	memset(&next_iface.addr4, 0, sizeof(next_iface.addr4));
 	memset(&next_iface.addr6, 0, sizeof(next_iface.addr6));
+
+	// Debug logging
+	if(config.debug & DEBUG_NETWORKING)
+		logg("Interfaces: Called from %s:%d", short_path(file), line);
 
 	// Copy overwrite addresses if configured via REPLY_ADDR4 and/or REPLY_ADDR6 settings
 	if(config.reply_addr.overwrite_v4)
@@ -751,10 +755,11 @@ void FTL_iface(const int ifidx)
 	next_iface.name[1] = '\0';
 
 	// Return early when there is no interface available at this point
-	if(ifidx == -1)
+	if(!recviface)
 		return;
 
-	// Determine addresses of this interface
+	// Determine addresses of this interface, we have to loop over all interfaces as
+	// recviface will always only contain *either* IPv4 or IPv6 information
 	bool haveIPv4 = false, haveGUAv6 = false, haveULAv6 = false;
 	for (struct irec *iface = daemon->interfaces; iface != NULL; iface = iface->next)
 	{
@@ -762,18 +767,20 @@ void FTL_iface(const int ifidx)
 		if(iface->name == NULL)
 		{
 			if(config.debug & DEBUG_NETWORKING)
-				logg("Interface %d has no name", iface->index);
+				logg("Interface with ID %d has no name", iface->index);
 			continue;
 		}
 
 		// Check if this is the interface we want
-		if(iface->index != ifidx)
+		if(iface->index != recviface->index || iface->label != recviface->label)
 		{
 			if(config.debug & DEBUG_NETWORKING)
-				logg("Interface %s is not the interface we are looking for (%d != %d)",
-				     iface->name, iface->index, ifidx);
+				logg("Interface %s is not the exact interface we are looking for (%d,%d != %d,%d)",
+				     iface->name, iface->index, iface->label, recviface->index, recviface->label);
 			continue;
 		}
+
+		// *** If we reach this point, we know this interface is the one we are looking for ***//
 
 		// Copy interface name
 		strncpy(next_iface.name, iface->name, sizeof(next_iface.name)-1);
@@ -833,8 +840,8 @@ void FTL_iface(const int ifidx)
 				inet_ntop(AF_INET6, &iface->addr.in6.sin6_addr, buffer, ADDRSTRLEN);
 
 			const char *type = family == AF_INET6 ? isGUA ? " (GUA)" : isULA ? " (ULA)" : isLL ? " (LL)" : " (other)" : "";
-			logg("Interface %s (%d) has IPv%i address %s%s", next_iface.name, ifidx,
-				family == AF_INET ? 4 : 6, buffer, type);
+			logg("Interface %s (%d) has IPv%i address %s%s", next_iface.name, iface->index,
+			     family == AF_INET ? 4 : 6, buffer, type);
 		}
 
 		// Exit loop early if we already have everything we need
