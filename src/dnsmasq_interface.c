@@ -80,10 +80,12 @@ static struct ptr_record *pihole_ptr = NULL;
 
 // Fork-private copy of the interface data the most recent query came from
 static struct {
+	bool haveIPv4;
+	bool haveIPv6;
 	char name[IFNAMSIZ];
 	union all_addr addr4;
 	union all_addr addr6;
-} next_iface = {"", {{0}}, {{0}}};
+} next_iface = {false, false, "", {{0}}, {{0}}};
 
 // Fork-private copy of the server data the most recent reply came from
 static union mysockaddr last_server = {{ 0 }};
@@ -441,10 +443,23 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		if(querytype == TYPE_A || querytype == TYPE_AAAA || querytype == TYPE_ANY)
 		{
 			// "Block" this query by sending the interface IP address
-			force_next_DNS_reply = REPLY_IP;
+			// Send NODATA when the current interface doesn't have
+			// the requested IP address, for instance AAAA on an
+			// virtual interface that has only an IPv4 address
+			if((querytype == TYPE_A && !next_iface.haveIPv4) ||
+			   (querytype == TYPE_AAAA && !next_iface.haveIPv6))
+				force_next_DNS_reply = REPLY_NODATA;
+			else
+				force_next_DNS_reply = REPLY_IP;
+
 			blockingreason = "internal";
 			if(config.debug & DEBUG_QUERIES)
-				logg("Replying to %s with interface-local IP address", name);
+			{
+				logg("Replying to %s with %s", name,
+				     force_next_DNS_reply == REPLY_IP ?
+				       "interface-local IP address" :
+				       "NODATA due to missing iface address");
+			}
 			return true;
 		}
 		else
@@ -721,6 +736,7 @@ void _FTL_iface(struct irec *recviface, const char *file, const int line)
 	// Set addresses to 0.0.0.0 and ::, respectively
 	memset(&next_iface.addr4, 0, sizeof(next_iface.addr4));
 	memset(&next_iface.addr6, 0, sizeof(next_iface.addr6));
+	next_iface.haveIPv4 = next_iface.haveIPv6 = false;
 
 	// Debug logging
 	if(config.debug & DEBUG_NETWORKING)
@@ -760,7 +776,7 @@ void _FTL_iface(struct irec *recviface, const char *file, const int line)
 
 	// Determine addresses of this interface, we have to loop over all interfaces as
 	// recviface will always only contain *either* IPv4 or IPv6 information
-	bool haveIPv4 = false, haveGUAv6 = false, haveULAv6 = false;
+	bool haveGUAv6 = false, haveULAv6 = false;
 	for (struct irec *iface = daemon->interfaces; iface != NULL; iface = iface->next)
 	{
 		// If this interface has no name, we skip it
@@ -815,6 +831,8 @@ void _FTL_iface(struct irec *recviface, const char *file, const int line)
 			//  3. Link-local
 			if((!haveGUAv6 && !haveULAv6) || (haveGUAv6 && isULA))
 			{
+				next_iface.haveIPv6 = true;
+				// Store IPv6 address
 				memcpy(&next_iface.addr6.addr6, &iface->addr.in6.sin6_addr, sizeof(iface->addr.in6.sin6_addr));
 				if(isGUA)
 					haveGUAv6 = true;
@@ -825,7 +843,7 @@ void _FTL_iface(struct irec *recviface, const char *file, const int line)
 		// Check if this address is different from 0.0.0.0
 		else if(family == AF_INET && memcmp(&next_iface.addr4.addr4, &iface->addr.in.sin_addr, sizeof(iface->addr.in.sin_addr)) != 0)
 		{
-			haveIPv4 = true;
+			next_iface.haveIPv4 = true;
 			// Store IPv4 address
 			memcpy(&next_iface.addr4.addr4, &iface->addr.in.sin_addr, sizeof(iface->addr.in.sin_addr));
 		}
@@ -840,16 +858,17 @@ void _FTL_iface(struct irec *recviface, const char *file, const int line)
 				inet_ntop(AF_INET6, &iface->addr.in6.sin6_addr, buffer, ADDRSTRLEN);
 
 			const char *type = family == AF_INET6 ? isGUA ? " (GUA)" : isULA ? " (ULA)" : isLL ? " (LL)" : " (other)" : "";
-			logg("Interface %s (%d) has IPv%i address %s%s", next_iface.name, iface->index,
+			logg("Interface %s (%d,%d) has IPv%i address %s%s",
+			     next_iface.name, iface->index, iface->label,
 			     family == AF_INET ? 4 : 6, buffer, type);
 		}
 
 		// Exit loop early if we already have everything we need
 		// (a valid IPv4 address + a valid ULA IPv6 address)
-		if(haveIPv4 && haveULAv6)
+		if(next_iface.haveIPv4 && haveULAv6)
 		{
 			if(config.debug & DEBUG_NETWORKING)
-				logg("We have everything we need, exiting interface analysis early");
+				logg("We have everything we need, exiting interface analysis");
 			break;
 		}
 	}
