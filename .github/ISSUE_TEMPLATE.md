@@ -3,7 +3,7 @@
 
 - [] I have read and understood the [contributors guide](https://github.com/pi-hole/pi-hole/blob/master/CONTRIBUTING.md).
 - [] The issue I am reporting can be *replicated*
-- [] The issue I am reporting isn't a duplicate 
+- [] The issue I am reporting isn't a duplicate
 
 **How familiar are you with the codebase?:**
 
