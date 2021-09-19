@@ -939,52 +939,132 @@ char *parse_server(char *arg, union mysockaddr *addr, union mysockaddr *source_a
   return NULL;
 }
 
-static int domain_rev4(char *domain, struct in_addr addr, int msize)
+static char *domain_rev4(int from_file, char *server, struct in_addr *addr4, int size)
 {
-  in_addr_t a = ntohl(addr.s_addr);
- 
-  *domain = 0;
+  int i, j;
+  char *string;
+  int msize;
+  u16 flags = 0;
+  char domain[29]; /* strlen("xxx.yyy.zzz.ttt.in-addr.arpa")+1 */
+  union mysockaddr serv_addr, source_addr;
+  char interface[IF_NAMESIZE+1];
+  int count = 1, rem, addrbytes, addrbits;
   
-  switch (msize)
-    {
-    case 32:
-      domain += sprintf(domain, "%u.", a & 0xff);
-      /* fall through */
-    case 24:
-      domain += sprintf(domain, "%d.", (a >> 8) & 0xff);
-      /* fall through */
-    case 16:
-      domain += sprintf(domain, "%d.", (a >> 16) & 0xff);
-      /* fall through */
-    case 8:
-      domain += sprintf(domain, "%d.", (a >> 24) & 0xff);
+  if (!server)
+    flags = SERV_LITERAL_ADDRESS;
+  else if ((string = parse_server(server, &serv_addr, &source_addr, interface, &flags)))
+    return string;
+
+  if (from_file)
+    flags |= SERV_FROM_FILE;
+
+  rem = size & 0x7;
+  addrbytes = (32 - size) >> 3;
+  addrbits = (32 - size) & 7;
+  
+  if (size > 32 | size < 1)
+    return _("bad IPv4 prefix length");
+  
+  for (i = 0; i < addrbytes; i++)
+    if (((u8 *)addr4)[3-i] != 0)
       break;
-    default:
-      return 0;
+  
+  if (i != addrbytes || (((u8 *)addr4)[3-addrbytes] & ((1 << addrbits) - 1)) != 0)
+    return _("address part not zero");
+  
+  size = size & ~0x7;
+  
+  if (rem != 0)
+    count = 1 << (8 - rem);
+  
+  for (i = 0; i < count; i++)
+    {
+      *domain = 0;
+      string = domain;
+      msize = size/8;
+  
+      for (j = (rem == 0) ? msize-1 : msize; j >= 0; j--)
+	{ 
+	  int dig = ((unsigned char *)addr4)[j];
+      
+	  if (j == msize)
+	    dig += i;
+      
+	  string += sprintf(string, "%d.", dig);
+	}
+
+      sprintf(string, "in-addr.arpa");
+
+      if (!add_update_server(flags, &serv_addr, &source_addr, interface, domain, NULL))
+	return  _("error");
     }
-  
-  sprintf(domain, "in-addr.arpa");
-  
-  return 1;
+
+  return NULL;
 }
 
-static int domain_rev6(char *domain, struct in6_addr *addr, int msize)
+static char *domain_rev6(int from_file, char *server, struct in6_addr *addr6, int size)
 {
-  int i;
+  int i, j;
+  char *string;
+  int msize;
+  u16 flags = 0;
+  char domain[73]; /* strlen("32*<n.>ip6.arpa")+1 */
+  union mysockaddr serv_addr, source_addr;
+  char interface[IF_NAMESIZE+1];
+  int count = 1, rem, addrbytes, addrbits;
 
-  if (msize > 128 || msize%4)
-    return 0;
+  if (!server)
+    flags = SERV_LITERAL_ADDRESS;
+  else if ((string = parse_server(server, &serv_addr, &source_addr, interface, &flags)))
+    return string;
+
+  if (from_file)
+    flags |= SERV_FROM_FILE;
   
-  *domain = 0;
+  rem = size & 0x3;
+  addrbytes = (128 - size) >> 3;
+  addrbits = (128 - size) & 7;
+  
+  if (size > 128 || size < 1)
+    return _("bad IPv6 prefix length");
 
-  for (i = msize-1; i >= 0; i -= 4)
-    { 
-      int dig = ((unsigned char *)addr)[i>>3];
-      domain += sprintf(domain, "%.1x.", (i>>2) & 1 ? dig & 15 : dig >> 4);
+  for (i = 0; i < addrbytes; i++)
+    if (addr6->s6_addr[15-i] != 0)
+      break;
+  
+  if (i != addrbytes || (addr6->s6_addr[15-addrbytes] & ((1 << addrbits) - 1)) != 0)
+    return _("address part not zero");
+  
+  size = size & ~0x3;
+  
+  if (rem != 0)
+    count = 1 << (4 - rem);
+      
+  for (i = 0; i < count; i++)
+    {
+      *domain = 0;
+      string = domain;
+      msize = size/4;
+  
+      for (j = (rem == 0) ? msize-1 : msize; j >= 0; j--)
+	{ 
+	  int dig = ((unsigned char *)addr6)[j>>1];
+	  
+	  dig = j & 1 ? dig & 15 : dig >> 4;
+	  
+	  if (j == msize)
+	    dig += i;
+	  
+	  string += sprintf(string, "%.1x.", dig);
+	}
+      
+      sprintf(string, "ip6.arpa");
+
+      if (!add_update_server(flags, &serv_addr, &source_addr, interface, domain, NULL))
+	return  _("error");
     }
-  sprintf(domain, "ip6.arpa");
-  
-  return 1;
+
+  return NULL;
 }
 
 #ifdef HAVE_DHCP
@@ -2312,17 +2392,13 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 				      strlen(new->prefix) > MAXLABEL - INET_ADDRSTRLEN)
 				    ret_err_free(_("bad prefix"), new);
 				}
-			      else if (strcmp(arg, "local") != 0 ||
-				       (msize != 8 && msize != 16 && msize != 24))
+			      else if (strcmp(arg, "local") != 0)
 				ret_err_free(gen_err, new);
 			      else
 				{
-				  char domain[29]; /* strlen("xxx.yyy.zzz.ttt.in-addr.arpa")+1 */
 				  /* local=/xxx.yyy.zzz.in-addr.arpa/ */
-				  /* domain_rev4 can't fail here, msize checked above. */
-				  domain_rev4(domain, new->start, msize);
-				  add_update_server(SERV_LITERAL_ADDRESS, NULL, NULL, NULL, domain, NULL);
-				  
+				  domain_rev4(0, NULL, &new->start, msize);
+				 				  
 				  /* local=/<domain>/ */
 				  /* d_raw can't failed to canonicalise here, checked above. */
 				  add_update_server(SERV_LITERAL_ADDRESS, NULL, NULL, NULL, d_raw, NULL);
@@ -2357,16 +2433,14 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 				      strlen(new->prefix) > MAXLABEL - INET6_ADDRSTRLEN)
 				    ret_err_free(_("bad prefix"), new);
 				}	
-			      else if (strcmp(arg, "local") != 0 || ((msize & 4) != 0))
+			      else if (strcmp(arg, "local") != 0)
 				ret_err_free(gen_err, new);
 			      else 
 				{
-				  char domain[73]; /* strlen("32*<n.>ip6.arpa")+1 */
 				  /* generate the equivalent of
 				     local=/xxx.yyy.zzz.ip6.arpa/ */
-				  domain_rev6(domain, &new->start6, msize);
-				  add_update_server(SERV_LITERAL_ADDRESS, NULL, NULL, NULL, domain, NULL);
-
+				  domain_rev6(0, NULL, &new->start6, msize);
+				  
 				  /* local=/<domain>/ */
 				  /* d_raw can't failed to canonicalise here, checked above. */
 				  add_update_server(SERV_LITERAL_ADDRESS, NULL, NULL, NULL, d_raw, NULL);
@@ -2739,44 +2813,35 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
       {
 	char *string;
 	int size;
-	u16 flags = 0;
-	char domain[73]; /* strlen("32*<n.>ip6.arpa")+1 */
 	struct in_addr addr4;
 	struct in6_addr addr6;
- 	union mysockaddr serv_addr, source_addr;
-	char interface[IF_NAMESIZE+1];
-	
+ 	
 	unhide_metas(arg);
 	if (!arg)
 	  ret_err(gen_err);
 	
 	comma=split(arg);
-
-	if (!(string = split_chr(arg, '/')) || !atoi_check(string, &size))
-	  ret_err(gen_err);
 	
+	if (!(string = split_chr(arg, '/')) || !atoi_check(string, &size))
+	  size = -1;
+
 	if (inet_pton(AF_INET, arg, &addr4))
 	  {
-	    if (!domain_rev4(domain, addr4, size))
-	      ret_err(_("bad IPv4 prefix"));
+	   if (size == -1)
+	     size = 32;
+
+	   if ((string = domain_rev4(servers_only, comma, &addr4, size)))
+	      ret_err(string);
 	  }
 	else if (inet_pton(AF_INET6, arg, &addr6))
 	  {
-	    if (!domain_rev6(domain, &addr6, size))
-	      ret_err(_("bad IPv6 prefix"));
+	     if (size == -1)
+	       size = 128;
+
+	     if ((string = domain_rev6(servers_only, comma, &addr6, size)))
+	      ret_err(string);
 	  }
 	else
-	  ret_err(gen_err);
-	
-	if (!comma)
-	  flags |= SERV_LITERAL_ADDRESS;
-	else if ((string = parse_server(comma, &serv_addr, &source_addr, interface, &flags)))
-	  ret_err(string);
-	
-	if (servers_only)
-	  flags |= SERV_FROM_FILE;
-
-	if (!add_update_server(flags, &serv_addr, &source_addr, interface, domain, NULL))
 	  ret_err(gen_err);
 	
 	break;
