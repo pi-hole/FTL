@@ -576,7 +576,10 @@ void cleanup_servers(void)
 	 free(serv);
        }
       else 
-       up = &serv->next;
+	{
+	  up = &serv->next;
+	  daemon->servers_tail = serv;
+	}
     }
   
  for (serv = daemon->local_domains, up = &daemon->local_domains; serv; serv = tmp) 
@@ -673,18 +676,14 @@ int add_update_server(int flags,
 	}
       else
 	{
-	  struct server *s;
-
 	  memset(serv, 0, sizeof(struct server));
 	  
 	  /* Add to the end of the chain, for order */
-	  if (!daemon->servers)
-	    daemon->servers = serv;
+	  if (daemon->servers_tail)
+	    daemon->servers_tail->next = serv;
 	  else
-	    {
-	      for (s = daemon->servers; s->next; s = s->next);
-	      s->next = serv;
-	    }
+	    daemon->servers = serv;
+	  daemon->servers_tail = serv;
 	  
 #ifdef HAVE_LOOP
 	  serv->uid = rand32();

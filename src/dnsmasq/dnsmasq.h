@@ -1114,7 +1114,7 @@ extern struct daemon {
   char *lease_change_command;
   struct iname *if_names, *if_addrs, *if_except, *dhcp_except, *auth_peers, *tftp_interfaces;
   struct bogus_addr *bogus_addr, *ignore_addr;
-  struct server *servers, *local_domains, **serverarray, *no_rebind;
+  struct server *servers, *servers_tail, *local_domains, **serverarray, *no_rebind;
   int server_has_wildcard;
   int serverarraysz, serverarrayhwm;
   struct ipsets *ipsets;
