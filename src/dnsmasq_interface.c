@@ -577,7 +577,6 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	{
 		// Log the first rate-limited query for this client in this interval
 		// We do not log the blocked domain for privacy reasons
-		logg("XABC: %d / %d", client->rate_limit, config.rate_limit.count+1);
 		if(client->rate_limit == config.rate_limit.count+1)
 			logg_rate_limit_message(clientIP, client->rate_limit);
 

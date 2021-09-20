@@ -39,16 +39,14 @@ static void reset_rate_limiting(void)
 		// Check if we want to continue rate limiting
 		if(client->rate_limit > config.rate_limit.count)
 		{
-			if(config.debug & DEBUG_QUERIES)
-				logg("Still rate-limiting %s as it made additional %d queries", getstr(client->ippos), client->rate_limit);
+			logg("Still rate-limiting %s as it made additional %d queries", getstr(client->ippos), client->rate_limit);
 			// If so, just reset the counter for the next interval
 			client->rate_limit = 0;
 		}
 		// or if rate-limiting ends for this client now
 		else
 		{
-			if(config.debug & DEBUG_QUERIES)
-				logg("Ending rate-limitation of %s", getstr(client->ippos));
+			logg("Ending rate-limitation of %s", getstr(client->ippos));
 			// Reset counter
 			client->rate_limit = 0;
 			// and unblock
