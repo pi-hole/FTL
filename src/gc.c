@@ -33,18 +33,27 @@ static void reset_rate_limiting(void)
 	for(int clientID = 0; clientID < counters->clients; clientID++)
 	{
 		clientsData *client = getClient(clientID, true);
-		if(!client)
+		if(!client || !client->flags.rate_limited)
 			continue;
 
-		// Check if we are subtracting counts (rate-limiting continues)
+		// Check if we want to continue rate limiting
 		if(client->rate_limit > config.rate_limit.count)
 		{
-			client->rate_limit -= config.rate_limit.count;
-			logg_rate_limit_message(getstr(client->ippos), client->rate_limit);
-		}
-		// or if rate-limiting ends for this client
-		else
+			if(config.debug & DEBUG_QUERIES)
+				logg("Still rate-limiting %s as it made additional %d queries", getstr(client->ippos), client->rate_limit);
+			// If so, just reset the counter for the next interval
 			client->rate_limit = 0;
+		}
+		// or if rate-limiting ends for this client now
+		else
+		{
+			if(config.debug & DEBUG_QUERIES)
+				logg("Ending rate-limitation of %s", getstr(client->ippos));
+			// Reset counter
+			client->rate_limit = 0;
+			// and unblock
+			client->flags.rate_limited = false;
+		}
 	}
 }
 

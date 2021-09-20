@@ -360,10 +360,10 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 	{
 		if(flags == 0)
 		{
-			logg("REFUSED");
 			// REFUSED
 			union all_addr addr = { 0 };
 			addr.log.rcode = REFUSED;
+			addr.log.ede = EDE_BLOCKED;
 			log_query(F_RCODE | F_HOSTS, name, &addr, (char*)blockingreason);
 		}
 		else
@@ -573,12 +573,16 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 
 	// Check rate-limit for this client
 	if(!internal_query && config.rate_limit.count > 0 &&
-	   ++client->rate_limit > config.rate_limit.count)
+	   (++client->rate_limit > config.rate_limit.count  || client->flags.rate_limited))
 	{
 		// Log the first rate-limited query for this client in this interval
 		// We do not log the blocked domain for privacy reasons
+		logg("XABC: %d / %d", client->rate_limit, config.rate_limit.count+1);
 		if(client->rate_limit == config.rate_limit.count+1)
 			logg_rate_limit_message(clientIP, client->rate_limit);
+
+		// Memorize this client needs rate-limiting
+		client->flags.rate_limited = true;
 
 		// Block this query
 		force_next_DNS_reply = REPLY_REFUSED;

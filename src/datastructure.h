@@ -74,6 +74,7 @@ typedef struct {
 		bool new:1;
 		bool found_group:1;
 		bool aliasclient:1;
+		bool rate_limited:1;
 	} flags;
 	int count;
 	int blockedcount;
