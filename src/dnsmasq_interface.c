@@ -361,7 +361,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		if(flags == 0)
 		{
 			// REFUSED
-			union all_addr addr = { 0 };
+			union all_addr addr = {{ 0 }};
 			addr.log.rcode = REFUSED;
 			addr.log.ede = EDE_BLOCKED;
 			log_query(F_RCODE | F_HOSTS, name, &addr, (char*)blockingreason);
