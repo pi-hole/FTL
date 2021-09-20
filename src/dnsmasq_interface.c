@@ -290,7 +290,8 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 	// Set blocking_flags to F_HOSTS so dnsmasq logs blocked queries being answered from a specific source
 	// (it would otherwise assume it knew the blocking status from cache which would prevent us from
 	// printing the blocking source (blacklist, regex, gravity) in dnsmasq's log file, our pihole.log)
-	flags |= F_HOSTS;
+	if(flags != 0)
+		flags |= F_HOSTS;
 
 	// Skip questions so we can start adding answers (if applicable)
 	if (!(p = skip_questions(header, len)))
@@ -354,9 +355,23 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		log_query(flags & ~F_IPV4, name, addr, (char*)blockingreason);
 	}
 
-	// Log empty replies (NODATA/NXDOMAIN/REFUSED)
+	// Log empty replies
 	if(!(flags & (F_IPV4 | F_IPV6)))
-		log_query(flags, name, NULL, (char*)blockingreason);
+	{
+		if(flags == 0)
+		{
+			logg("REFUSED");
+			// REFUSED
+			union all_addr addr = { 0 };
+			addr.log.rcode = REFUSED;
+			log_query(F_RCODE | F_HOSTS, name, &addr, (char*)blockingreason);
+		}
+		else
+		{
+			// NODATA/NXDOMAIN
+			log_query(flags, name, NULL, (char*)blockingreason);
+		}
+	}
 
 	// Indicate if truncated (client should retry over TCP)
 	if (trunc)
@@ -567,6 +582,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 
 		// Block this query
 		force_next_DNS_reply = REPLY_REFUSED;
+		blockingreason = "Rate-limiting";
 
 		// Free allocated memory
 		free(domainString);
