@@ -962,7 +962,7 @@ static char *domain_rev4(int from_file, char *server, struct in_addr *addr4, int
   addrbytes = (32 - size) >> 3;
   addrbits = (32 - size) & 7;
   
-  if (size > 32 | size < 1)
+  if (size > 32 || size < 1)
     return _("bad IPv4 prefix length");
   
   for (i = 0; i < addrbytes; i++)
