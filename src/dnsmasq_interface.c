@@ -575,10 +575,16 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	if(!internal_query && config.rate_limit.count > 0 &&
 	   (++client->rate_limit > config.rate_limit.count  || client->flags.rate_limited))
 	{
-		// Log the first rate-limited query for this client in this interval
-		// We do not log the blocked domain for privacy reasons
 		if(!client->flags.rate_limited)
+		{
+			// Log the first rate-limited query for this client in
+			// this interval. We do not log the blocked domain for
+			// privacy reasons
 			logg_rate_limit_message(clientIP, client->rate_limit);
+			// Reset rate-limiting counter so we can count what
+			// comes within the adjacent interval
+			client->rate_limit = 0;
+		}
 
 		// Memorize this client needs rate-limiting
 		client->flags.rate_limited = true;
