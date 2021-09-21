@@ -621,6 +621,18 @@ void read_FTLconf(void)
 	else
 		logg("   BLOCK_TTL: %u seconds", config.block_ttl);
 
+	// BLOCK_ICLOUD_PR
+	// Should FTL handle the iCloud privacy relay domains specifically and
+	// always return NXDOMAIN??
+	// defaults to: true
+	buffer = parse_FTLconf(fp, "BLOCK_ICLOUD_PR");
+	config.special_domains.icloud_private_relay = read_bool(buffer, true);
+
+	if(config.special_domains.icloud_private_relay)
+		logg("   BLOCK_ICLOUD_PR: Enabled");
+	else
+		logg("   BLOCK_ICLOUD_PR: Disabled");
+
 	// Read DEBUG_... setting from pihole-FTL.conf
 	read_debuging_settings(fp);
 
