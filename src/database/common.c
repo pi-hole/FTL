@@ -256,10 +256,10 @@ void db_init(void)
 		}
 	}
 
-		// Explicitly set permissions to 0664
-		// 664 =            u+w       u+r       g+w       g+r       o+r
-		const mode_t mode = S_IWUSR | S_IRUSR | S_IWGRP | S_IRGRP | S_IROTH;
-		chmod_file(FTLfiles.FTL_db, mode);
+	// Explicitly set permissions to 0664
+	// 664 =            u+w       u+r       g+w       g+r       o+r
+	const mode_t mode = S_IWUSR | S_IRUSR | S_IWGRP | S_IRGRP | S_IROTH;
+	chmod_file(FTLfiles.FTL_db, mode);
 
 	// Open database
 	sqlite3 *db = dbopen(false);
