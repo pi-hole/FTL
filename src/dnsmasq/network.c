@@ -1642,7 +1642,8 @@ void check_servers(int no_loop_check)
 	 continue;
        
        if ((serv->flags & SERV_LITERAL_ADDRESS) &&
-	   !(serv->flags & (SERV_6ADDR | SERV_4ADDR | SERV_ALL_ZEROS)))
+	   !(serv->flags & (SERV_6ADDR | SERV_4ADDR | SERV_ALL_ZEROS)) &&
+	   strlen(serv->domain))
 	 {
 	   count--;
 	   if (++locals <= LOCALS_LOGGED)

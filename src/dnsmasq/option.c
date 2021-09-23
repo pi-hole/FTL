@@ -2768,7 +2768,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	
 	if (!arg || !*arg)
 	  flags = SERV_LITERAL_ADDRESS;
-	else if (option == 'A')
+	else if (option != 'S')
 	  {
 	    /* # as literal address means return zero address for 4 and 6 */
 	    if (strcmp(arg, "#") == 0)
@@ -2792,11 +2792,18 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	while (1)
 	  {
 	    /* server=//1.2.3.4 is special. */
-	    if (strlen(domain) == 0 && lastdomain)
-	      flags |= SERV_FOR_NODOTS;
-	    else
-	      flags &= ~SERV_FOR_NODOTS;
+	    if (lastdomain)
+	      {
+		if (strlen(domain) == 0)
+		  flags |= SERV_FOR_NODOTS;
+		else
+		  flags &= ~SERV_FOR_NODOTS;
 
+		/* address=/#/ matches the same as without domain */
+		if (option != 'S' && domain[0] == '#' && domain[1] == 0)
+		  domain[0] = 0;
+	      }
+	    
 	    if (!add_update_server(flags, &serv_addr, &source_addr, interface, domain, &addr))
 	      ret_err(gen_err);
 	    
