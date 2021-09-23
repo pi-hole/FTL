@@ -148,10 +148,17 @@ void set_dynamic_inotify(int flag, int total_size, struct crec **rhash, int revh
       if (!(ah->flags & flag))
 	continue;
  
-      if (stat(ah->fname, &buf) == -1 || !(S_ISDIR(buf.st_mode)))
+      if (stat(ah->fname, &buf) == -1)
 	{
 	  my_syslog(LOG_ERR, _("bad dynamic directory %s: %s"), 
-		    ah->fname, (S_ISDIR(buf.st_mode)) ? strerror(errno) : _("not a directory"));
+		    ah->fname, strerror(errno));
+	  continue;
+	}
+
+      if (!(S_ISDIR(buf.st_mode)))
+	{
+	  my_syslog(LOG_ERR, _("bad dynamic directory %s: %s"), 
+		    ah->fname, _("not a directory"));
 	  continue;
 	}
       
