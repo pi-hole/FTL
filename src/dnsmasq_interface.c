@@ -183,7 +183,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 	bool forced_ip = false;
 	// Check first if we need to force our reply to something different than the
 	// default/configured blocking mode. For instance, we need to force NXDOMAIN
-	// for intercepted _esni.* queries.
+	// for intercepted _esni.* queries or the Mozilla canary domain.
 	if(force_next_DNS_reply == REPLY_NXDOMAIN)
 	{
 		flags = F_NXDOMAIN;
@@ -247,8 +247,8 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		// Overwrite flags only if not replying with a forced reply
 		if(config.blockingmode == MODE_NX)
 		{
-			// If we block in NXDOMAIN mode, we add the NEGATIVE response
-			// and the NXDOMAIN flags
+			// If we block in NXDOMAIN mode, we set flags to NXDOMAIN
+			// (NEG will be added after setup_reply() below)
 			flags = F_NXDOMAIN;
 			if(config.debug & DEBUG_FLAGS)
 				logg("Configured blocking mode is NXDOMAIN");
@@ -285,6 +285,13 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 
 	// Setup reply header
 	setup_reply(header, flags, *ede);
+
+	// Add NEG flag when replying with NXDOMAIN. This is necessary to get proper logging in pihole.log
+	// At the same time, we cannot add NEG before calling setup_reply() as it would, otherwise, result
+	// in an incorrect "nowhere to forward to" log entry (because setup_reply() checks for equality of
+	// flags instead of doing a bitmask comparison).
+	if(flags == F_NXDOMAIN)
+		flags |= F_NEG;
 
 	// Add flags according to current blocking mode
 	// Set blocking_flags to F_HOSTS so dnsmasq logs blocked queries being answered from a specific source
@@ -1247,7 +1254,9 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 
 	// Check blacklist (exact + regex) and gravity for _esni.domain if enabled
 	// (defaulting to true)
-	if(config.block_esni && !query->flags.whitelisted && blockDomain == NOT_FOUND && strncasecmp(domainstr, "_esni.", 6u) == 0)
+	if(config.block_esni &&
+	   !query->flags.whitelisted && blockDomain == NOT_FOUND &&
+	    strlen(domainstr) > 6 && strncasecmp(domainstr, "_esni.", 6u) == 0)
 	{
 		blockDomain = check_domain_blocked(domainstr + 6u, clientID, client, query, dns_cache, &new_status, &db_okay);
 
