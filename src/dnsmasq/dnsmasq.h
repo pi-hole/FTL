@@ -618,6 +618,11 @@ struct serv_local {
   struct server *next;
 };
 
+struct rebind_domain {
+  char *domain;
+  struct rebind_domain *next;
+};
+
 struct ipsets {
   char **sets;
   char *domain;
@@ -1114,7 +1119,8 @@ extern struct daemon {
   char *lease_change_command;
   struct iname *if_names, *if_addrs, *if_except, *dhcp_except, *auth_peers, *tftp_interfaces;
   struct bogus_addr *bogus_addr, *ignore_addr;
-  struct server *servers, *servers_tail, *local_domains, **serverarray, *no_rebind;
+  struct server *servers, *servers_tail, *local_domains, **serverarray;
+  struct rebind_domain *no_rebind;
   int server_has_wildcard;
   int serverarraysz, serverarrayhwm;
   struct ipsets *ipsets;

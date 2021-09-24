@@ -156,11 +156,11 @@ static void _server_send_log(struct server *server, int fd,
 
 static int domain_no_rebind(char *domain)
 {
-  struct server *serv;
-  int dlen = (int)strlen(domain);
+  struct rebind_domain *rbd;
+  size_t tlen, dlen = strlen(domain);
   
-  for (serv = daemon->no_rebind; serv; serv = serv->next)
-    if (dlen >= serv->domain_len && strcmp(serv->domain, &domain[dlen - serv->domain_len]) == 0)
+  for (rbd = daemon->no_rebind; rbd; rbd = rbd->next)
+    if (dlen >= (tlen = strlen(rbd->domain)) && strcmp(rbd->domain, &domain[dlen - tlen]) == 0)
       return 1;
 
   return 0;
