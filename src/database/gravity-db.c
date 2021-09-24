@@ -427,6 +427,7 @@ static bool get_client_groupids(clientsData* client)
 		{
 			logg("get_client_groupids(%s) - SQL error prepare: %s",
 				querystr, sqlite3_errstr(rc));
+			free(hwaddr); // hwaddr != NULL -> memory has been allocated
 			return false;
 		}
 
@@ -437,6 +438,7 @@ static bool get_client_groupids(clientsData* client)
 				ip, hwaddr, sqlite3_errstr(rc));
 			sqlite3_reset(table_stmt);
 			sqlite3_finalize(table_stmt);
+			free(hwaddr); // hwaddr != NULL -> memory has been allocated
 			return false;
 		}
 
@@ -462,6 +464,7 @@ static bool get_client_groupids(clientsData* client)
 			logg("get_client_groupids(\"%s\", \"%s\") - SQL error step: %s",
 				ip, hwaddr, sqlite3_errstr(rc));
 			gravityDB_finalizeTable();
+			free(hwaddr); // hwaddr != NULL -> memory has been allocated
 			return false;
 		}
 
@@ -512,6 +515,8 @@ static bool get_client_groupids(clientsData* client)
 		{
 			logg("get_client_groupids(%s) - SQL error prepare: %s",
 				querystr, sqlite3_errstr(rc));
+			if(hwaddr) free(hwaddr);
+			free(hostname); // hostname != NULL -> memory has been allocated
 			return false;
 		}
 
@@ -522,6 +527,8 @@ static bool get_client_groupids(clientsData* client)
 				ip, hostname, sqlite3_errstr(rc));
 			sqlite3_reset(table_stmt);
 			sqlite3_finalize(table_stmt);
+			if(hwaddr) free(hwaddr);
+			free(hostname); // hostname != NULL -> memory has been allocated
 			return false;
 		}
 
@@ -547,6 +554,8 @@ static bool get_client_groupids(clientsData* client)
 			logg("get_client_groupids(\"%s\", \"%s\") - SQL error step: %s",
 				ip, hostname, sqlite3_errstr(rc));
 			gravityDB_finalizeTable();
+			if(hwaddr) free(hwaddr);
+			free(hostname); // hostname != NULL -> memory has been allocated
 			return false;
 		}
 
@@ -598,6 +607,9 @@ static bool get_client_groupids(clientsData* client)
 		{
 			logg("get_client_groupids(%s) - SQL error prepare: %s",
 				querystr, sqlite3_errstr(rc));
+			if(hwaddr) free(hwaddr);
+			if(hostname) free(hostname);
+			free(interface); // interface != NULL -> memory has been allocated
 			return false;
 		}
 
@@ -608,6 +620,9 @@ static bool get_client_groupids(clientsData* client)
 				ip, interface, sqlite3_errstr(rc));
 			sqlite3_reset(table_stmt);
 			sqlite3_finalize(table_stmt);
+			if(hwaddr) free(hwaddr);
+			if(hostname) free(hostname);
+			free(interface); // interface != NULL -> memory has been allocated
 			return false;
 		}
 
@@ -633,6 +648,9 @@ static bool get_client_groupids(clientsData* client)
 			logg("get_client_groupids(\"%s\", \"%s\") - SQL error step: %s",
 				ip, interface, sqlite3_errstr(rc));
 			gravityDB_finalizeTable();
+			if(hwaddr) free(hwaddr);
+			if(hostname) free(hostname);
+			free(interface); // interface != NULL -> memory has been allocated
 			return false;
 		}
 

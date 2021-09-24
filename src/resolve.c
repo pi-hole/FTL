@@ -187,14 +187,22 @@ char *resolveHostname(const char *addr)
 	{
 		// Get binary form of IPv6 address
 		ss.ss_family = AF_INET6;
-		inet_pton(ss.ss_family, addr, &(((struct sockaddr_in6 *)&ss)->sin6_addr));
+		if(!inet_pton(ss.ss_family, addr, &(((struct sockaddr_in6 *)&ss)->sin6_addr)))
+		{
+			logg("WARN: Invalid IPv6 address when trying to resolve hostname: %s", addr);
+			return strdup("");
+		}
 		addrp = (char*)&(((struct sockaddr_in6 *)&ss)->sin6_addr);
 	}
 	else
 	{
 		// Get binary form of IPv4 address
 		ss.ss_family = AF_INET;
-		inet_pton(ss.ss_family, addr, &(((struct sockaddr_in *)&ss)->sin_addr));
+		if(!inet_pton(ss.ss_family, addr, &(((struct sockaddr_in *)&ss)->sin_addr)))
+		{
+			logg("WARN: Invalid IPv4 address when trying to resolve hostname: %s", addr);
+			return strdup("");
+		}
 		addrp = (char*)&(((struct sockaddr_in *)&ss)->sin_addr);
 	}
 
@@ -247,8 +255,7 @@ char *resolveHostname(const char *addr)
 		res_initialized = true;
 	}
 
-	struct in_addr FTLaddr = { 0 };
-	inet_pton(AF_INET, "127.0.0.1", &FTLaddr);
+	struct in_addr FTLaddr = { INADDR_LOOPBACK };
 	in_port_t FTLport = htons(config.dns_port);
 
 	// Set FTL as system resolver only if not already the primary resolver
@@ -356,8 +363,8 @@ static size_t resolveAndAddHostname(size_t ippos, size_t oldnamepos)
 	// Get IP and host name strings. They are cloned in case shared memory is
 	// resized before the next lock
 	lock_shm();
-	char* ipaddr = strdup(getstr(ippos));
-	char* oldname = strdup(getstr(oldnamepos));
+	char *ipaddr = strdup(getstr(ippos));
+	char *oldname = strdup(getstr(oldnamepos));
 	unlock_shm();
 
 	// Test if we want to resolve host names, otherwise all calls to resolveHostname()
@@ -367,13 +374,17 @@ static size_t resolveAndAddHostname(size_t ippos, size_t oldnamepos)
 		if(config.debug & DEBUG_RESOLVER)
 			logg(" ---> \"\" (configured to not resolve host name)");
 
+		// Free allocated memory
+		free(ipaddr);
+		free(oldname);
+
 		// Return fixed position of empty string
 		return 0;
 	}
 
 	// Important: Don't hold a lock while resolving as the main thread
 	// (dnsmasq) needs to be operable during the call to resolveHostname()
-	char* newname = resolveHostname(ipaddr);
+	char *newname = resolveHostname(ipaddr);
 
 	// If no hostname was found, try to obtain hostname from the network table
 	// This may be disabled due to a user setting

@@ -327,10 +327,10 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 
 		// Add A resource record
 		header->ancount = htons(ntohs(header->ancount) + 1);
-		add_resource_record(header, limit, &trunc, sizeof(struct dns_header),
-		                    &p, daemon->local_ttl, NULL, T_A, C_IN,
-		                    (char*)"4", &addr->addr4);
-		log_query(flags & ~F_IPV6, name, addr, (char*)blockingreason);
+		if(add_resource_record(header, limit, &trunc, sizeof(struct dns_header),
+		                       &p, daemon->local_ttl, NULL, T_A, C_IN,
+		                       (char*)"4", &addr->addr4))
+			log_query(flags & ~F_IPV6, name, addr, (char*)blockingreason);
 	}
 
 	// Add AAAA answer record if requested
@@ -355,10 +355,10 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 
 		// Add AAAA resource record
 		header->ancount = htons(ntohs(header->ancount) + 1);
-		add_resource_record(header, limit, &trunc, sizeof(struct dns_header),
-		                    &p, daemon->local_ttl, NULL, T_AAAA, C_IN,
-		                    (char*)"6", &addr->addr6);
-		log_query(flags & ~F_IPV4, name, addr, (char*)blockingreason);
+		if(add_resource_record(header, limit, &trunc, sizeof(struct dns_header),
+		                       &p, daemon->local_ttl, NULL, T_AAAA, C_IN,
+		                       (char*)"6", &addr->addr6))
+			log_query(flags & ~F_IPV4, name, addr, (char*)blockingreason);
 	}
 
 	// Log empty replies (NODATA/NXDOMAIN/REFUSED)
@@ -710,7 +710,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	}
 
 	// Set client MAC address from EDNS(0) information (if available)
-	if(config.edns0_ecs && edns->mac_set)
+	if(config.edns0_ecs && edns && edns->mac_set)
 	{
 		memcpy(client->hwaddr, edns->mac_byte, 6);
 		client->hwlen = 6;
@@ -1377,6 +1377,7 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 		if(parent_domain == NULL)
 		{
 			// Memory error, return
+			free(child_domain);
 			unlock_shm();
 			return false;
 		}
@@ -2259,13 +2260,8 @@ static void FTL_mark_externally_blocked(const int id, const char* file, const in
 	// Possible debugging information
 	if(config.debug & DEBUG_QUERIES)
 	{
-		// Get domain name
-		const char *domainname;
-		if(domain != NULL)
-			domainname = getstr(domain->domainpos);
-		else
-			domainname = "<cannot access domain struct>";
-
+		// Get domain name (domain cannot be NULL here)
+		const char *domainname = getstr(domain->domainpos);
 		logg("**** %s externally blocked (ID %i, FTL %i, %s:%i)", domainname, id, queryID, file, line);
 	}
 

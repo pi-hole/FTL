@@ -308,7 +308,7 @@ int match_regex(const char *input, DNSCacheData* dns_cache, const int clientID,
 	int match_idx = -1;
 	regexData *regex = get_regex_ptr(regexid);
 #ifdef USE_TRE_REGEX
-	regmatch_t match = { 0 }; // This also disables any sub-matching
+	regmatch_t match[1] = {{ 0 }}; // This also disables any sub-matching
 #endif
 
 	// Check if we need to recompile regex because they were changed in
@@ -366,7 +366,7 @@ int match_regex(const char *input, DNSCacheData* dns_cache, const int clientID,
 		if(config.debug & DEBUG_REGEX)
 			logg("Executing: index = %d, preg = %p, str = \"%s\", pmatch = %p", index, &regex[index].regex, input, &match);
 #ifdef USE_TRE_REGEX
-		int retval = tre_regexec(&regex[index].regex, input, 0, &match, 0);
+		int retval = tre_regexec(&regex[index].regex, input, 0, match, 0);
 #else
 		int retval = regexec(&regex[index].regex, input, 0, NULL, 0);
 #endif

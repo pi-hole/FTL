@@ -133,7 +133,7 @@ void ls_dir(const char* path)
 		         st.st_mode & S_IWOTH ? "w":"-",
 		         st.st_mode & S_IXOTH ? "x":"-");
 
-		char prefix[2] = " ";
+		char prefix[2] = { 0 };
 		double formated = 0.0;
 		format_memory_size(prefix, (unsigned long long)st.st_size, &formated);
 

@@ -136,6 +136,12 @@ int DB_save_queries(sqlite3 *db)
 	for(queryID = MAX(0, lastdbindex); queryID < counters->queries; queryID++)
 	{
 		queriesData* query = getQuery(queryID, true);
+		if(!query)
+		{
+			// Memory error
+			continue;
+		}
+
 		if(query->flags.database)
 		{
 			// Skip, already saved in database
@@ -187,14 +193,16 @@ int DB_save_queries(sqlite3 *db)
 		{
 			// Get forward pointer
 			const upstreamsData* upstream = getUpstream(query->upstreamID, true);
-			char *buffer = NULL;
-			if(asprintf(&buffer, "%s#%u", getstr(upstream->ippos), upstream->port) > 0)
-				sqlite3_bind_text(stmt, 6, buffer, -1, SQLITE_TRANSIENT);
-			else
-				sqlite3_bind_null(stmt, 6);
+			if(upstream)
+			{
+				char *buffer = NULL;
+				if(asprintf(&buffer, "%s#%u", getstr(upstream->ippos), upstream->port) > 0)
+					sqlite3_bind_text(stmt, 6, buffer, -1, SQLITE_TRANSIENT);
+				else
+					sqlite3_bind_null(stmt, 6);
 
-			if(buffer != NULL)
-				free(buffer);
+				if(buffer) free(buffer);
+			}
 		}
 		else
 		{
@@ -427,7 +435,7 @@ void DB_read_queries(void)
 		}
 
 		const int status_int = sqlite3_column_int(stmt, 3);
-		if(status_int < QUERY_UNKNOWN || status_int >= QUERY_STATUS_MAX)
+		if(status_int < QUERY_UNKNOWN || status_int > QUERY_STATUS_MAX)
 		{
 			logg("DB warn: STATUS should be within [%i,%i] but is %i", QUERY_UNKNOWN, QUERY_STATUS_MAX-1, status_int);
 			continue;
