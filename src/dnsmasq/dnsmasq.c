@@ -1830,18 +1830,6 @@ static void check_dns_listeners(time_t now)
   for (listener = daemon->listeners; listener; listener = listener->next)
     {
 
-      /***************************** Pi-hole modification ****************************/
-      // Get the interface here only if we know the listeners are bound to specific
-      // interfaces (option "bind-interfaces" is used)
-      if(option_bool(OPT_NOWILD))
-      {
-	if(listener != NULL && listener->iface != NULL)
-	  FTL_iface(listener->iface->index);
-	else
-	  FTL_iface(-1);
-      }
-      /*******************************************************************************/
-
       if (listener->fd != -1 && poll_check(listener->fd, POLLIN))
 	receive_query(listener, now); 
       
@@ -2025,7 +2013,7 @@ static void check_dns_listeners(time_t now)
 	      /************ Pi-hole modification ************/
 	      FTL_TCP_worker_created(confd);
 	      // Store interface this fork is handling exclusively
-	      FTL_iface(iface != NULL ? iface->index : -1);
+	      FTL_iface(iface);
 	      /**********************************************/
 
 	      buff = tcp_request(confd, now, &tcp_addr, netmask, auth_dns);
