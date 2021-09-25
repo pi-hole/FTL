@@ -607,6 +607,20 @@ void read_FTLconf(void)
 		logg("   REPLY_WHEN_BUSY: Permit queries when the database is busy");
 	}
 
+	// BLOCK_TTL
+	// defaults to: 2 seconds
+	config.block_ttl = 2;
+	buffer = parse_FTLconf(fp, "BLOCK_TTL");
+
+	unsigned int uval = 0;
+	if(buffer != NULL && sscanf(buffer, "%u", &uval))
+		config.block_ttl = uval;
+
+	if(config.block_ttl == 1)
+		logg("   BLOCK_TTL: 1 second");
+	else
+		logg("   BLOCK_TTL: %u seconds", config.block_ttl);
+
 	// Read DEBUG_... setting from pihole-FTL.conf
 	read_debuging_settings(fp);
 

@@ -77,6 +77,7 @@ static union all_addr null_addrp = {{ 0 }};
 static enum reply_type force_next_DNS_reply = REPLY_UNKNOWN;
 static int last_regex_idx = -1;
 static struct ptr_record *pihole_ptr = NULL;
+#define HOSTNAME "Pi-hole hostname"
 
 // Fork-private copy of the interface data the most recent query came from
 static struct {
@@ -305,6 +306,9 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 	if (!(p = skip_questions(header, len)))
 		return 0;
 
+	// Are we replying to pi.hole / <hostname> / pi.hole.<local> / <hostname>.<local> ?
+	const bool hostname = strcmp(blockingreason, HOSTNAME) == 0;
+
 	int trunc = 0;
 	// Add A answer record if requested
 	if(flags & F_IPV4)
@@ -330,8 +334,8 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		// Add A resource record
 		header->ancount = htons(ntohs(header->ancount) + 1);
 		if(add_resource_record(header, limit, &trunc, sizeof(struct dns_header),
-		                       &p, daemon->local_ttl, NULL, T_A, C_IN,
-		                       (char*)"4", &addr->addr4))
+		                       &p, hostname ? daemon->local_ttl : config.block_ttl,
+		                       NULL, T_A, C_IN, (char*)"4", &addr->addr4))
 			log_query(flags & ~F_IPV6, name, addr, (char*)blockingreason);
 	}
 
@@ -358,8 +362,8 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		// Add AAAA resource record
 		header->ancount = htons(ntohs(header->ancount) + 1);
 		if(add_resource_record(header, limit, &trunc, sizeof(struct dns_header),
-		                       &p, daemon->local_ttl, NULL, T_AAAA, C_IN,
-		                       (char*)"6", &addr->addr6))
+		                       &p, hostname ? daemon->local_ttl : config.block_ttl,
+		                       NULL, T_AAAA, C_IN, (char*)"6", &addr->addr6))
 			log_query(flags & ~F_IPV4, name, addr, (char*)blockingreason);
 	}
 
@@ -485,7 +489,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 			else
 				force_next_DNS_reply = REPLY_IP;
 
-			blockingreason = "internal";
+			blockingreason = HOSTNAME;
 			if(config.debug & DEBUG_QUERIES)
 			{
 				logg("Replying to %s with %s", name,
