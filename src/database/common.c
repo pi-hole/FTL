@@ -228,11 +228,6 @@ static bool db_create(void)
 	// Close database handle
 	dbclose(&db);
 
-	// Explicitly set permissions to 0644
-	// 644 =            u+w       u+r       g+r       o+r
-	const mode_t mode = S_IWUSR | S_IRUSR | S_IRGRP | S_IROTH;
-	chmod_file(FTLfiles.FTL_db, mode);
-
 	return true;
 }
 
@@ -276,6 +271,11 @@ void db_init(void)
 			return;
 		}
 	}
+
+	// Explicitly set permissions to 0664
+	// 664 =            u+w       u+r       g+w       g+r       o+r
+	const mode_t mode = S_IWUSR | S_IRUSR | S_IWGRP | S_IRGRP | S_IROTH;
+	chmod_file(FTLfiles.FTL_db, mode);
 
 	// Open database
 	sqlite3 *db = dbopen(false);
