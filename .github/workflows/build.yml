@@ -8,8 +8,6 @@ on:
     branches:
      - '*'
   pull_request:
-    branches:
-     - '*'
 
 jobs:
   build:
@@ -36,12 +34,19 @@ jobs:
          - arch: x86_32
            bin_name: pihole-FTL-linux-x86_32
 
-    container: pihole/ftl-build:v1.8-${{ matrix.arch }}
+    container: pihole/ftl-build:v1.10-${{ matrix.arch }}
 
     runs-on: ubuntu-latest
     continue-on-error: true
 
     steps:
+      -
+        name: Update git (until we update base image)
+        if: ${{ matrix.arch != 'x86_64-musl' }}
+        run: |
+          echo "deb http://deb.debian.org/debian stretch-backports main contrib non-free" >> /etc/apt/sources.list;
+          apt-get update
+          apt-get -t stretch-backports install git -y
       -
         name: Checkout code
         uses: actions/checkout@v2
@@ -62,14 +67,13 @@ jobs:
         run: |
           mv pihole-FTL "${{ matrix.bin_name }}"
           sha1sum pihole-FTL-* > ${{ matrix.bin_name }}.sha1
-    # NOTE: Steps "Upload binary to binary bucket" and "Verify uploaded binary"
-    # are intentionally left out.
-      # -
-      #   name: "Upload Binary"
-      #   if: github.event_name != 'pull_request'
       -
         name: "Test"
         run: |
             export CIRCLE_JOB="${{ matrix.arch }}"
             mv "${{ matrix.bin_name }}" pihole-FTL
             test/run.sh
+      -
+        name: "Upload"
+        run: |
+          echo ${{ github.repository_owner }}
