@@ -196,7 +196,7 @@ void FTL_log_helper(const unsigned char n, ...)
 			free(arg[i]);
 }
 
-void format_memory_size(char * const prefix, const unsigned long long int bytes,
+void format_memory_size(char prefix[2], const unsigned long long int bytes,
                         double * const formated)
 {
 	unsigned int i;
@@ -208,9 +208,10 @@ void format_memory_size(char * const prefix, const unsigned long long int bytes,
 			break;
 		*formated /= 1e3;
 	}
-	const char* prefixes[8] = { " ", "K", "M", "G", "T", "P", "E", "?" };
+	const char prefixes[8] = { ' ', 'K', 'M', 'G', 'T', 'P', 'E', '?' };
 	// Chose matching SI prefix
-	strcpy(prefix, prefixes[i]);
+	prefix[0] = prefixes[i];
+	prefix[1] = '\0';
 }
 
 // Human-readable time
@@ -278,7 +279,11 @@ void log_FTL_version(const bool crashreport)
 	logg("FTL commit: %s", GIT_HASH);
 	logg("FTL date: %s", GIT_DATE);
 	if(crashreport)
-		logg("FTL user: started as %s, ended as %s", username, getUserName());
+	{
+		char *username_now = getUserName();
+		logg("FTL user: started as %s, ended as %s", username, username_now);
+		free(username_now);
+	}
 	else
 		logg("FTL user: %s", username);
 	logg("Compiled for %s using %s", FTL_ARCH, FTL_CC);

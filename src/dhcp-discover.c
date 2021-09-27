@@ -69,9 +69,10 @@ static int create_dhcp_socket(const char *iname)
 {
 	struct sockaddr_in dhcp_socket;
 	struct ifreq interface;
-	int flag=1;
+	int flag = 1;
 
 	// Set up the address we're going to bind to (we will listen on any address).
+	memset(&interface, 0, sizeof(interface));
 	memset(&dhcp_socket, 0, sizeof(dhcp_socket));
 	dhcp_socket.sin_family = AF_INET;
 	dhcp_socket.sin_port = htons(DHCP_CLIENT_PORT);
@@ -89,10 +90,10 @@ static int create_dhcp_socket(const char *iname)
 	logg("DHCP socket: %d", sock);
 #endif
 	// set the reuse address flag so we don't get errors when restarting
-	flag=1;
 	if(setsockopt(sock,SOL_SOCKET, SO_REUSEADDR, (char *)&flag, sizeof(flag))<0)
 	{
 		logg("Error: Could not set reuse address option on DHCP socket (%s)!", iname);
+		close(sock);
 		return -1;
 	}
 
@@ -100,6 +101,7 @@ static int create_dhcp_socket(const char *iname)
 	if(setsockopt(sock, SOL_SOCKET,SO_BROADCAST, (char *)&flag, sizeof flag) < 0)
 	{
 		logg("Error: Could not set broadcast option on DHCP socket (%s)!", iname);
+		close(sock);
 		return -1;
 	}
 
@@ -109,13 +111,16 @@ static int create_dhcp_socket(const char *iname)
 	{
 		logg("Error: Could not bind socket to interface %s (%s)\n       ---> Check your privileges (run with sudo)!\n",
 		     iname, strerror(errno));
+		close(sock);
 		return -1;
 	}
 
 	// bind the socket
-	if(bind(sock, (struct sockaddr *)&dhcp_socket, sizeof(dhcp_socket)) < 0){
+	if(bind(sock, (struct sockaddr *)&dhcp_socket, sizeof(dhcp_socket)) < 0)
+	{
 		logg("Error: Could not bind to DHCP socket (interface %s, port %d, %s)\n       ---> Check your privileges (run with sudo)!\n",
 		     iname, DHCP_CLIENT_PORT, strerror(errno));
+		close(sock);
 		return -1;
 	}
 
@@ -258,11 +263,18 @@ static void print_dhcp_offer(struct in_addr source, dhcp_packet_data *offer_pack
 
 	// process all DHCP options present in the packet
 	// We start from 4 as the first 32 bit are the DHCP magic coockie (verified before)
-	for(unsigned long int x = 4; x < MAX_DHCP_OPTIONS_LENGTH;)
+	for(unsigned int x = 4; x < MAX_DHCP_OPTIONS_LENGTH;)
 	{
 		// End of options
 		if(offer_packet->options[x] == 0)
 			break;
+
+		// Sanity check
+		if(x >= MAX_DHCP_OPTIONS_LENGTH-2)
+		{
+			logg(" OVERFLOWING DHCP OPTION (invalid size)");
+			break;
+		}
 
 		// get option type
 		const uint8_t opttype = offer_packet->options[x++];
@@ -271,6 +283,13 @@ static void print_dhcp_offer(struct in_addr source, dhcp_packet_data *offer_pack
 		const uint8_t optlen = offer_packet->options[x++];
 
 		logg_sameline("   ");
+
+		// Sanity check
+		if(x + optlen > MAX_DHCP_OPTIONS_LENGTH)
+		{
+			logg(" OVERFLOWING DHCP OPTION (invalid size)");
+			break;
+		}
 
 		// Interpret option data, see RFC 1497 and RFC 2132, Section 3 for further details
 		// A nice summary can be found in https://tools.ietf.org/html/rfc2132#section-3
@@ -399,7 +418,9 @@ static void print_dhcp_offer(struct in_addr source, dhcp_packet_data *offer_pack
 				for(unsigned int n = 0; n < list_length; n++)
 				{
 					struct in_addr addr_list = { 0 };
-					memcpy(&addr_list.s_addr, &offer_packet->options[x+n*4], sizeof(addr_list.s_addr));
+					if(optlen < (n+1)*sizeof(addr_list.s_addr))
+						break;
+					memcpy(&addr_list.s_addr, &offer_packet->options[x+n*sizeof(addr_list.s_addr)], sizeof(addr_list.s_addr));
 					if(n > 0)
 						logg_sameline("   ");
 
@@ -491,7 +512,6 @@ static bool receive_dhcp_packet(void *buffer, int buffer_size, const char *iface
 	address_size = sizeof(struct sockaddr_in);
 	recv_result = recvfrom(sock, (char *)buffer, buffer_size, 0, (struct sockaddr *)address, &address_size);
 
-	pthread_mutex_lock(&lock);
 	logg("* Received %d bytes from %s:%s", recv_result, iface, inet_ntoa(address->sin_addr));
 #ifdef DEBUG
 	logg("  after waiting for %f seconds", difftime(time(NULL), start_time));
@@ -499,7 +519,6 @@ static bool receive_dhcp_packet(void *buffer, int buffer_size, const char *iface
 	// Return on error
 	if(recv_result == -1){
 		logg(" recvfrom() failed on %s, error: %s", iface, strerror(errno));
-		pthread_mutex_unlock(&lock);
 		return false;
 	}
 
@@ -532,6 +551,9 @@ static bool get_dhcp_offer(const int sock, const uint32_t xid, const char *iface
 		else
 			responses++;
 #endif
+
+		if(pthread_mutex_lock(&lock) != 0)
+			return false;
 
 #ifdef DEBUG
 		logg(" DHCPOFFER XID: %lu (0x%X)", (unsigned long) ntohl(offer_packet.xid), ntohl(offer_packet.xid));

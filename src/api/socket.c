@@ -77,7 +77,8 @@ static bool bind_to_telnet_port_IPv4(int *socketdescriptor)
 	// new instance will fail if there were connections open to the previous
 	// instance when you killed it. Those connections will hold the TCP port in
 	// the TIME_WAIT state for 30-120 seconds, so you fall into case 1 above.
-	setsockopt(*socketdescriptor, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int));
+	if(setsockopt(*socketdescriptor, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int)) != 0)
+		logg("WARN: allowing re-binding (IPv6) failed: %s", strerror(errno));
 
 	struct sockaddr_in serv_addr4;
 	// set all values in the buffer to zero
@@ -123,7 +124,8 @@ static bool bind_to_telnet_port_IPv6(int *socketdescriptor)
 	// stricted  to  sending  and receiving IPv6 packets only.  In this
 	// case, an IPv4 and an IPv6 application can bind to a single  port
 	// at the same time.
-	setsockopt(*socketdescriptor, IPPROTO_IPV6, IPV6_V6ONLY, &(int){ 1 }, sizeof(int));
+	if(setsockopt(*socketdescriptor, IPPROTO_IPV6, IPV6_V6ONLY, &(int){ 1 }, sizeof(int)) != 0)
+		logg("WARN: setting socket to IPv6-only failed: %s", strerror(errno));
 
 	// Set SO_REUSEADDR to allow re-binding to the port that has been used
 	// previously by FTL. A common pattern is that you change FTL's
@@ -132,7 +134,8 @@ static bool bind_to_telnet_port_IPv6(int *socketdescriptor)
 	// new instance will fail if there were connections open to the previous
 	// instance when you killed it. Those connections will hold the TCP port in
 	// the TIME_WAIT state for 30-120 seconds, so you fall into case 1 above.
-	setsockopt(*socketdescriptor, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int));
+	if(setsockopt(*socketdescriptor, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int)) != 0)
+		logg("WARN: allowing re-binding (IPv6) failed: %s", strerror(errno));
 
 	struct sockaddr_in6 serv_addr;
 	// set all values in the buffer to zero
@@ -341,8 +344,10 @@ static void *telnet_connection_handler_thread(void *socket_desc)
 	ssize_t n;
 	while((n = recv(sock,client_message,SOCKETBUFFERLEN-1, 0)))
 	{
-		if (n > 0)
+		if (n > 0 && n < SOCKETBUFFERLEN)
 		{
+			// Null-terminate client string
+			client_message[n] = '\0';
 			char *message = strdup(client_message);
 			if(message == NULL) break;
 
@@ -419,8 +424,10 @@ static void *socket_connection_handler_thread(void *socket_desc)
 	ssize_t n;
 	while((n = recv(sock,client_message,SOCKETBUFFERLEN-1, 0)))
 	{
-		if (n > 0)
+		if (n > 0 && n < SOCKETBUFFERLEN)
 		{
+			// Null-terminate client string
+			client_message[n] = '\0';
 			char *message = strdup(client_message);
 			if(message == NULL) break;
 
