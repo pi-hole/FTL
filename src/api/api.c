@@ -902,7 +902,6 @@ void getAllQueries(const char *client_message, const int *sock)
 		{
 			// Check the dnsmasq RR types table for a matching record
 			qtype = querystr((char*)"", query->qtype);
-			logg("Typestr: %s", qtype);
 
 			// If not known (querystr() returned "type=1234"), we replace this
 			if(!qtype || strstr(qtype, "type=") != NULL)

@@ -66,7 +66,6 @@ static void FTL_upstream_error(const union all_addr *addr, const int id, const c
 static void FTL_dnssec(const char *result, const union all_addr *addr, const int id, const char* file, const int line);
 static void mysockaddr_extract_ip_port(union mysockaddr *server, char ip[ADDRSTRLEN+1], in_port_t *port);
 static void alladdr_extract_ip(union all_addr *addr, const sa_family_t family, char ip[ADDRSTRLEN+1]);
-static const char *dns_name(char *name);
 static void check_pihole_PTR(char *domain);
 #define query_set_dnssec(query, dnssec) _query_set_dnssec(query, dnssec, __FILE__, __LINE__)
 static void _query_set_dnssec(queriesData *query, const enum dnssec_status dnssec, const char *file, const int line);
@@ -103,6 +102,14 @@ void FTL_hook(unsigned int flags, char *name, union all_addr *addr, char *arg, i
 		logg("Processing FTL hook from %s:%d...", path, line);
 		print_flags(flags);
 	}
+
+	// Special domain name handling
+	// 1. Substitute "(NULL)" if no name is available (should not happen)
+	// 2. Substitute "." if we are querying the root domain (e.g. DNSKEY)
+	if(!name)
+		name = (char*)"(NULL)";
+	else if(!name[0])
+		name = (char*)".";
 
 	// Note: The order matters here!
 	if((flags & F_QUERY) && (flags & F_FORWARD))
@@ -162,9 +169,9 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 	if(config.debug & DEBUG_FLAGS)
 	{
 		if(*ede != EDE_UNSET)
-			logg("Preparing reply for \"%s\", EDE: %s (%d)", dns_name(name), edestr(*ede), *ede);
+			logg("Preparing reply for \"%s\", EDE: %s (%d)", name, edestr(*ede), *ede);
 		else
-			logg("Preparing reply for \"%s\", EDE: N/A", dns_name(name));
+			logg("Preparing reply for \"%s\", EDE: N/A", name);
 	}
 
 	// Get question type
@@ -327,7 +334,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		{
 			char ip[ADDRSTRLEN+1] = { 0 };
 			alladdr_extract_ip(addr, AF_INET, ip);
-			logg("  Adding RR: \"%s A %s\"", dns_name(name), ip);
+			logg("  Adding RR: \"%s A %s\"", name, ip);
 		}
 
 		// Add A resource record
@@ -355,7 +362,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		{
 			char ip[ADDRSTRLEN+1] = { 0 };
 			alladdr_extract_ip(addr, AF_INET6, ip);
-			logg("  Adding RR: \"%s AAAA %s\"", dns_name(name), ip);
+			logg("  Adding RR: \"%s AAAA %s\"", name, ip);
 		}
 
 		// Add AAAA resource record
@@ -1510,10 +1517,6 @@ static void FTL_forwarded(const unsigned int flags, const char *name, const unio
 	char *upstreamIP = strdup(dest);
 	strtolower(upstreamIP);
 
-	// Substitute "." if we are querying the root domain (e.g. DNSKEY)
-	if(!name || strlen(name) == 0)
-		name = ".";
-
 	// Debug logging
 	if(config.debug & DEBUG_QUERIES)
 	{
@@ -1648,20 +1651,6 @@ void FTL_dnsmasq_reload(void)
 
 	// Set resolver as ready
 	resolver_ready = true;
-}
-
-static const char *dns_name(char *name)
-{
-	// This should not happen, we still handle it
-	if(name == NULL)
-		return "(NULL)";
-
-	// Substitute empty domain with the root domain "."
-	if(strlen(name) == 0)
-		return ".";
-
-	// Else: Everthing is okay
-	return name;
 }
 
 static void alladdr_extract_ip(union all_addr *addr, const sa_family_t family, char ip[ADDRSTRLEN+1])
