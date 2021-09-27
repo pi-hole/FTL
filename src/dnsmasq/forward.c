@@ -571,12 +571,33 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
   return 0;
 }
 
+static struct ipsets *domain_find_sets(struct ipsets *setlist, const char *domain) {
+  /* Similar algorithm to search_servers. */
+  struct ipsets *ipset_pos, *ret = NULL;
+  unsigned int namelen = strlen(domain);
+  unsigned int matchlen = 0;
+  for (ipset_pos = setlist; ipset_pos; ipset_pos = ipset_pos->next) 
+    {
+      unsigned int domainlen = strlen(ipset_pos->domain);
+      const char *matchstart = domain + namelen - domainlen;
+      if (namelen >= domainlen && hostname_isequal(matchstart, ipset_pos->domain) &&
+          (domainlen == 0 || namelen == domainlen || *(matchstart - 1) == '.' ) &&
+          domainlen >= matchlen) 
+        {
+          matchlen = domainlen;
+          ret = ipset_pos;
+        }
+    }
+
+  return ret;
+}
+
 static size_t process_reply(struct dns_header *header, time_t now, struct server *server, size_t n, int check_rebind, 
 			    int no_cache, int cache_secure, int bogusanswer, int ad_reqd, int do_bit, int added_pheader, 
 			    int check_subnet, union mysockaddr *query_source, unsigned char *limit, int ede)
 {
   unsigned char *pheader, *sizep;
-  char **sets = 0;
+  struct ipsets *ipsets = NULL, *nftsets = NULL;
   int munged = 0, is_sign;
   unsigned int rcode = RCODE(header);
   size_t plen; 
@@ -587,24 +608,12 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
 
 #ifdef HAVE_IPSET
   if (daemon->ipsets && extract_request(header, n, daemon->namebuff, NULL))
-    {
-      /* Similar algorithm to search_servers. */
-      struct ipsets *ipset_pos;
-      unsigned int namelen = strlen(daemon->namebuff);
-      unsigned int matchlen = 0;
-      for (ipset_pos = daemon->ipsets; ipset_pos; ipset_pos = ipset_pos->next) 
-	{
-	  unsigned int domainlen = strlen(ipset_pos->domain);
-	  char *matchstart = daemon->namebuff + namelen - domainlen;
-	  if (namelen >= domainlen && hostname_isequal(matchstart, ipset_pos->domain) &&
-	      (domainlen == 0 || namelen == domainlen || *(matchstart - 1) == '.' ) &&
-	      domainlen >= matchlen) 
-	    {
-	      matchlen = domainlen;
-	      sets = ipset_pos->sets;
-	    }
-	}
-    }
+    ipsets = domain_find_sets(daemon->ipsets, daemon->namebuff);
+#endif
+
+#ifdef HAVE_NFTSET
+  if (daemon->nftsets && extract_request(header, n, daemon->namebuff, NULL))
+    nftsets = domain_find_sets(daemon->nftsets, daemon->namebuff);
 #endif
 
   if ((pheader = find_pseudoheader(header, n, &plen, &sizep, &is_sign, NULL)))
@@ -715,7 +724,7 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
 	    }
 	}
       /******************************** Pi-hole modification ********************************/
-      int ret = extract_addresses(header, n, daemon->namebuff, now, sets, is_sign, check_rebind, no_cache, cache_secure, &doctored);
+      int ret = extract_addresses(header, n, daemon->namebuff, now, ipsets, nftsets, is_sign, check_rebind, no_cache, cache_secure, &doctored);
       if (ret == 2)
 	{
 	  cache_secure = 0;

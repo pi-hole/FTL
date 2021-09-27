@@ -542,8 +542,8 @@ static int print_txt(struct dns_header *header, const size_t qlen, char *name,
    Return 1 if we reject an address because it look like part of dns-rebinding attack. */
 // Pi-hole: Return 2 if we reject a part of a CNAME chain
 int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t now, 
-		      char **ipsets, int is_sign, int check_rebind, int no_cache_dnssec,
-		      int secure, int *doctored)
+		      struct ipsets *ipsets, struct ipsets *nftsets, int is_sign, int check_rebind,
+		      int no_cache_dnssec, int secure, int *doctored)
 {
   unsigned char *p, *p1, *endrr, *namep;
   int j, qtype, qclass, aqtype, aqclass, ardlen, res, searched_soa = 0;
@@ -553,6 +553,11 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
   char **ipsets_cur;
 #else
   (void)ipsets; /* unused */
+#endif
+#ifdef HAVE_NFTSET
+  char **nftsets_cur;
+#else
+  (void)nftsets; /* unused */
 #endif
   int found = 0, cname_count = CNAME_CHAIN;
   struct crec *cpp = NULL;
@@ -854,14 +859,15 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 		  
 #ifdef HAVE_IPSET
 		  if (ipsets && (flags & (F_IPV4 | F_IPV6)))
-		    {
-		      ipsets_cur = ipsets;
-		      while (*ipsets_cur)
-			{
-			  log_query((flags & (F_IPV4 | F_IPV6)) | F_IPSET, name, &addr, *ipsets_cur, 0);
-			  add_to_ipset(*ipsets_cur++, &addr, flags, 0);
-			}
-		    }
+		    for (ipsets_cur = ipsets->sets; *ipsets_cur; ipsets_cur++)
+		      if (add_to_ipset(*ipsets_cur, &addr, flags, 0) == 0)
+			log_query((flags & (F_IPV4 | F_IPV6)) | F_IPSET, ipsets->domain, &addr, *ipsets_cur, 1);
+#endif
+#ifdef HAVE_NFTSET
+		  if (nftsets && (flags & (F_IPV4 | F_IPV6)))
+		    for (nftsets_cur = nftsets->sets; *nftsets_cur; nftsets_cur++)
+		      if (add_to_nftset(*nftsets_cur, &addr, flags, 0) == 0)
+			log_query((flags & (F_IPV4 | F_IPV6)) | F_IPSET, nftsets->domain, &addr, *nftsets_cur, 0);
 #endif
 		}
 	      

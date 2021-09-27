@@ -1123,7 +1123,7 @@ extern struct daemon {
   struct rebind_domain *no_rebind;
   int server_has_wildcard;
   int serverarraysz, serverarrayhwm;
-  struct ipsets *ipsets;
+  struct ipsets *ipsets, *nftsets;
   u32 allowlist_mask;
   struct allowlist *allowlists;
   int log_fac; /* log facility */
@@ -1315,8 +1315,8 @@ unsigned int extract_request(struct dns_header *header, size_t qlen,
 			       char *name, unsigned short *typep);
 void setup_reply(struct dns_header *header, unsigned int flags, int ede);
 int extract_addresses(struct dns_header *header, size_t qlen, char *name,
-		      time_t now, char **ipsets, int is_sign, int check_rebind,
-		      int no_cache_dnssec, int secure, int *doctored);
+		      time_t now, struct ipsets *ipsets, struct ipsets *nftsets, int is_sign,
+                      int check_rebind, int no_cache_dnssec, int secure, int *doctored);
 #if defined(HAVE_CONNTRACK) && defined(HAVE_UBUS)
 void report_addresses(struct dns_header *header, size_t len, u32 mark);
 #endif
@@ -1609,6 +1609,12 @@ void ubus_event_bcast_connmark_allowlist_resolved(u32 mark, const char *pattern,
 #ifdef HAVE_IPSET
 void ipset_init(void);
 int add_to_ipset(const char *setname, const union all_addr *ipaddr, int flags, int remove);
+#endif
+
+/* nftset.c */
+#ifdef HAVE_NFTSET
+void nftset_init(void);
+int add_to_nftset(const char *setpath, const union all_addr *ipaddr, int flags, int remove);
 #endif
 
 /* pattern.c */

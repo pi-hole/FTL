@@ -178,6 +178,7 @@ struct myoption {
 #define LOPT_CMARK_ALST_EN 365
 #define LOPT_CMARK_ALST    366
 #define LOPT_QUIET_TFTP    367
+#define LOPT_NFTSET        368
  
 #ifdef HAVE_GETOPT_LONG
 static const struct option opts[] =  
@@ -331,6 +332,7 @@ static const struct myoption opts[] =
     { "auth-sec-servers", 1, 0, LOPT_AUTHSFS },
     { "auth-peer", 1, 0, LOPT_AUTHPEER }, 
     { "ipset", 1, 0, LOPT_IPSET },
+    { "nftset", 1, 0, LOPT_NFTSET },
     { "connmark-allowlist-enable", 2, 0, LOPT_CMARK_ALST_EN },
     { "connmark-allowlist", 1, 0, LOPT_CMARK_ALST },
     { "synth-domain", 1, 0, LOPT_SYNTH },
@@ -518,6 +520,7 @@ static struct {
   { LOPT_AUTHSFS, ARG_DUP, "<NS>[,<NS>...]", gettext_noop("Secondary authoritative nameservers for forward domains"), NULL },
   { LOPT_AUTHPEER, ARG_DUP, "<ipaddr>[,<ipaddr>...]", gettext_noop("Peers which are allowed to do zone transfer"), NULL },
   { LOPT_IPSET, ARG_DUP, "/<domain>[/<domain>...]/<ipset>...", gettext_noop("Specify ipsets to which matching domains should be added"), NULL },
+  { LOPT_NFTSET, ARG_DUP, "/<domain>[/<domain>...]/<nftset>...", gettext_noop("Specify nftables sets to which matching domains should be added"), NULL },
   { LOPT_CMARK_ALST_EN, ARG_ONE, "[=<mask>]", gettext_noop("Enable filtering of DNS queries with connection-track marks."), NULL },
   { LOPT_CMARK_ALST, ARG_DUP, "<connmark>[/<mask>][,<pattern>[/<pattern>...]]", gettext_noop("Set allowed DNS patterns for a connection-track mark."), NULL },
   { LOPT_SYNTH, ARG_DUP, "<domain>,<range>,[<prefix>]", gettext_noop("Specify a domain and address range for synthesised names"), NULL },
@@ -2854,13 +2857,27 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
       }
 
     case LOPT_IPSET: /* --ipset */
+    case LOPT_NFTSET: /* --nftset */
 #ifndef HAVE_IPSET
-      ret_err(_("recompile with HAVE_IPSET defined to enable ipset directives"));
-      break;
-#else
+      if (option == LOPT_IPSET)
+        {
+          ret_err(_("recompile with HAVE_IPSET defined to enable ipset directives"));
+          break;
+        }
+#endif
+#ifndef HAVE_NFTSET
+      if (option == LOPT_NFTSET)
+        {
+          ret_err(_("recompile with HAVE_NFTSET defined to enable nftset directives"));
+          break;
+        }
+#endif
+
       {
 	 struct ipsets ipsets_head;
 	 struct ipsets *ipsets = &ipsets_head;
+         struct ipsets **daemon_sets =
+           (option == LOPT_IPSET) ? &daemon->ipsets : &daemon->nftsets;
 	 int size;
 	 char *end;
 	 char **sets, **sets_pos;
@@ -2905,19 +2922,24 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	 sets = sets_pos = opt_malloc(sizeof(char *) * size);
 	 
 	 do {
+	   char *p;
 	   end = split(arg);
-	   *sets_pos++ = opt_string_alloc(arg);
+	   *sets_pos = opt_string_alloc(arg);
+	   /* Use '#' to delimit table and set */
+	   if (option == LOPT_NFTSET)
+	     while ((p = strchr(*sets_pos, '#')))
+	       *p = ' ';
+	   sets_pos++;
 	   arg = end;
 	 } while (end);
 	 *sets_pos = 0;
 	 for (ipsets = &ipsets_head; ipsets->next; ipsets = ipsets->next)
 	   ipsets->next->sets = sets;
-	 ipsets->next = daemon->ipsets;
-	 daemon->ipsets = ipsets_head.next;
+	 ipsets->next = *daemon_sets;
+	 *daemon_sets = ipsets_head.next;
 	 
 	 break;
       }
-#endif
       
     case LOPT_CMARK_ALST_EN: /* --connmark-allowlist-enable */
 #ifndef HAVE_CONNTRACK

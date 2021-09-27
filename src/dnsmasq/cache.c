@@ -2072,7 +2072,7 @@ void _log_query(unsigned int flags, char *name, union all_addr *addr, char *arg,
     }
   else if (flags & F_IPSET)
     {
-      source = "ipset add";
+      source = type ? "ipset add" : "nftset add";
       dest = name;
       name = arg;
       verb = daemon->addrbuff;

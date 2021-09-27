@@ -117,6 +117,10 @@ HAVE_IPSET
     define this to include the ability to selectively add resolved ip addresses
     to given ipsets.
 
+HAVE_NFTSET
+    define this to include the ability to selectively add resolved ip addresses
+    to given nftables sets.
+
 HAVE_AUTH
    define this to include the facility to act as an authoritative DNS
    server for one or more zones.
@@ -194,7 +198,7 @@ RESOLVFILE
 /* #define HAVE_CONNTRACK */
 /* #define HAVE_CRYPTOHASH */
 /* #define HAVE_DNSSEC */
-
+/* #define HAVE_NFTSET */
 
 /* Default locations for important system files. */
 
@@ -422,6 +426,10 @@ static char *compile_opts =
 "no-"
 #endif
 "ipset "
+#ifndef HAVE_NFTSET
+"no-"
+#endif
+"nftset "
 #ifndef HAVE_AUTH
 "no-"
 #endif
