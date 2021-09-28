@@ -430,13 +430,12 @@ int hostname_issubdomain(char *a, char *b)
 time_t dnsmasq_time(void)
 {
 #ifdef HAVE_BROKEN_RTC
-  struct tms dummy;
-  static long tps = 0;
+  struct timespec ts;
 
-  if (tps == 0)
-    tps = sysconf(_SC_CLK_TCK);
+  if (clock_gettime(CLOCK_MONOTONIC, &ts) < 0)
+    die(_("cannot read monotonic clock: %s"), NULL, EC_MISC);
 
-  return (time_t)(times(&dummy)/tps);
+  return ts.tv_sec;
 #else
   return time(NULL);
 #endif
