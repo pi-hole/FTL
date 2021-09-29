@@ -1722,6 +1722,38 @@ static char *sanitise(char *name)
   return name;
 }
 
+/***************** Pi-hole modification *****************/
+void get_dnsmasq_cache_info(struct cache_info *ci)
+{
+  memset(ci, 0, sizeof(struct cache_info));
+  const time_t now = time(NULL);
+  for (int i=0; i < hash_size; i++)
+    for (struct crec *cache = hash_table[i]; cache; cache = cache->hash_next)
+      if(cache->flags & F_IMMORTAL)
+	ci->immortal++;
+      else if(cache->ttd >= now)
+      {
+	if (cache->flags & F_IPV4)
+	  ci->valid.ipv4++;
+	else if (cache->flags & F_IPV6)
+	  ci->valid.ipv6++;
+	else if (cache->flags & F_CNAME)
+	  ci->valid.cname++;
+	else if (cache->flags & F_SRV)
+	  ci->valid.srv++;
+#ifdef HAVE_DNSSEC
+	else if (cache->flags & F_DS)
+	  ci->valid.ds++;
+	else if (cache->flags & F_DNSKEY)
+	  ci->valid.dnskey++;
+#endif
+	else
+	  ci->valid.other++;
+      }
+      else
+	ci->expired++;
+}
+/********************************************************/
 
 void dump_cache(time_t now)
 {

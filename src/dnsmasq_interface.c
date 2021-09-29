@@ -1097,6 +1097,30 @@ static bool special_domain(const queriesData *query, const char *domain)
 		return true;
 	}
 
+	// Apple iCloud Private Relay
+	// Some enterprise or school networks might be required to audit all
+	// network traffic by policy, and your network can block access to
+	// Private Relay in these cases. The user will be alerted that they need
+	// to either disable Private Relay for your network or choose another
+	// network.
+	// The fastest and most reliable way to alert users is to return a
+	// negative answer from your network’s DNS resolver, preventing DNS
+	// resolution for the following hostnames used by Private Relay traffic.
+	// Avoid causing DNS resolution timeouts or silently dropping IP packets
+	// sent to the Private Relay server, as this can lead to delays on
+	// client devices.
+	// > mask.icloud.com
+	// > mask-h2.icloud.com
+	// https://developer.apple.com/support/prepare-your-network-for-icloud-private-relay
+	if(config.special_domains.icloud_private_relay &&
+	   (strcasecmp(domain, "mask.icloud.com") == 0 ||
+	    strcasecmp(domain, "mask-h2.icloud.com") == 0))
+	{
+		blockingreason = "Apple iCloud Private Relay domain";
+		force_next_DNS_reply = REPLY_NXDOMAIN;
+		return true;
+	}
+
 	return false;
 }
 
@@ -2580,11 +2604,22 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 // int cache_inserted, cache_live_freed are defined in dnsmasq/cache.c
 void getCacheInformation(const int *sock)
 {
-	ssend(*sock,"cache-size: %i\ncache-live-freed: %i\ncache-inserted: %i\n",
+	struct cache_info ci;
+	get_dnsmasq_cache_info(&ci);
+	ssend(*sock,"cache-size: %i\ncache-live-freed: %i\ncache-inserted: %i\nipv4: %i\nipv6: %i\nsrv: %i\ncname: %i\nds: %i\ndnskey: %i\nother: %i\nexpired: %i\nimmortal: %i\n",
 	            daemon->cachesize,
 	            daemon->metrics[METRIC_DNS_CACHE_LIVE_FREED],
-	            daemon->metrics[METRIC_DNS_CACHE_INSERTED]);
-	// cache-size is obvious
+	            daemon->metrics[METRIC_DNS_CACHE_INSERTED],
+	            ci.valid.ipv4,
+	            ci.valid.ipv6,
+	            ci.valid.srv,
+	            ci.valid.cname,
+	            ci.valid.ds,
+	            ci.valid.dnskey,
+	            ci.valid.other,
+	            ci.expired,
+	            ci.immortal);
+	// <cache-size> is obvious
 	// It means the resolver handled <cache-inserted> names lookups that
 	// needed to be sent to upstream servers and that <cache-live-freed>
 	// was thrown out of the cache before reaching the end of its
@@ -2593,6 +2628,9 @@ void getCacheInformation(const int *sock)
 	// cached. If the cache is full with entries which haven't reached
 	// the end of their time-to-live, then the entry which hasn't been
 	// looked up for the longest time is evicted.
+	// <valid> are cache entries with positive remaining TTL
+	// <expired> cache entries (to be removed when space is needed)
+	// <immortal> cache records never expire (e.g. from /etc/hosts)
 }
 
 void FTL_forwarding_retried(const struct server *serv, const int oldID, const int newID, const bool dnssec)
