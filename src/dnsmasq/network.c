@@ -546,9 +546,9 @@ static int iface_allowed(struct iface_param *param, int if_index, char *label,
       iface->done = iface->multicast_done = iface->warned = 0;
       iface->index = if_index;
       iface->label = is_label;
-      if ((iface->name = whine_malloc(strlen(ifr.ifr_name)+1)))
+      if ((iface->name = whine_malloc(strlen(label)+1)))
 	{
-	  strcpy(iface->name, ifr.ifr_name);
+	  strcpy(iface->name, label);
 	  iface->next = daemon->interfaces;
 	  daemon->interfaces = iface;
 	  return 1;

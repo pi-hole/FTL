@@ -203,7 +203,10 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
      Similarly FREC_NO_CACHE is never set in flags, so a query which is
      contigent on a particular source address EDNS0 option will never be matched. */
   if (forward)
+  {
+          
     old_src = 1;
+  }
   else if ((forward = lookup_frec_by_query(hash, fwd_flags,
 					   FREC_CHECKING_DISABLED | FREC_AD_QUESTION | FREC_DO_QUESTION |
 					   FREC_HAS_PHEADER | FREC_DNSKEY_QUERY | FREC_DS_QUERY | FREC_NO_CACHE)))
@@ -1524,7 +1527,17 @@ void receive_query(struct listener *listen, time_t now)
       // This gets the interface in all cases where this is possible here
       // We get here only if "bind-interfaces" is NOT used or this query
       // is received over IPv6
-      FTL_iface(if_index);
+      struct irec *iface;
+	for (iface = daemon->interfaces; iface; iface = iface->next)
+	  {
+	    if (iface->addr.sa.sa_family == AF_INET &&
+	        iface->addr.in.sin_addr.s_addr == dst_addr.addr4.s_addr)
+	    break;
+	    if (iface->addr.sa.sa_family == AF_INET6 &&
+	        IN6_ARE_ADDR_EQUAL(&iface->addr.in6.sin6_addr, &dst_addr.addr6))
+	    break;
+	  }
+      FTL_iface(iface);
       /****************************************************************/
     }
 

@@ -203,4 +203,10 @@ enum message_type {
 	MAX_MESSAGE
 } __attribute__ ((packed));
 
+enum ptr_type {
+	PTR_PIHOLE,
+	PTR_HOSTNAME,
+	PTR_NONE
+} __attribute__ ((packed));
+
 #endif // ENUMS_H

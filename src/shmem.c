@@ -187,7 +187,7 @@ static char *__attribute__ ((malloc)) str_replace(const char *input,
 {
 	// Duplicate string
 	char *copy = strdup(input);
-	if(copy == NULL)
+	if(!copy)
 		return NULL;
 
 	// Woring pointer
@@ -202,36 +202,45 @@ static char *__attribute__ ((malloc)) str_replace(const char *input,
 	return copy;
 }
 
-char *str_escape(const char *input, unsigned int *N)
+char *__attribute__ ((malloc)) str_escape(const char *input, unsigned int *N)
 {
 	// If no escaping is done, this routine returns the original pointer
 	// and N stays 0
 	*N = 0;
-	char *out = (char *)input;
 	if(strchr(input, ' ') != NULL)
 	{
 		// Replace any spaces by ~ if we find them in the domain name
 		// This is necessary as our telnet API uses space delimiters
-		out = str_replace(out, ' ', '~', N);
+		return str_replace(input, ' ', '~', N);
 	}
-	return out;
+
+	return strdup(input);
 }
 
 bool strcmp_escaped(const char *a, const char *b)
 {
+	unsigned int Na, Nb;
+
+	// Input check
 	if(a == NULL || b == NULL)
 		return false;
 
-	unsigned int Na, Nb;
+	// Escape both inputs
 	char *aa = str_escape(a, &Na);
 	char *bb = str_escape(b, &Nb);
 
+	// Check for memory errors
+	if(!aa || !bb)
+	{
+		if(aa) free(aa);
+		if(bb) free(bb);
+		return false;
+	}
+
 	const char result = strcasecmp(aa, bb) == 0;
 
-	if(Na > 0)
-		free(aa);
-	if(Nb > 0)
-		free(bb);
+	free(aa);
+	free(bb);
 
 	return result;
 }
@@ -280,8 +289,7 @@ size_t addstr(const char *input)
 
 	// Copy the C string pointed by str into the shared string buffer
 	strncpy(&((char*)shm_strings.ptr)[shmSettings->next_str_pos], str, len);
-	if(N > 0)
-		free(str);
+	free(str);
 
 	// Increment string length counter
 	shmSettings->next_str_pos += len;

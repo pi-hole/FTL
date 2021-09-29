@@ -263,6 +263,15 @@
   [[ ${lines[1]} == "" ]]
 }
 
+@test "Mozilla canary domain is blocked with NXDOMAIN" {
+  run bash -c "dig A use-application-dns.net @127.0.0.1"
+  printf "dig: %s\n" "${lines[@]}"
+  [[ ${lines[3]} == *"status: NXDOMAIN"* ]]
+  run bash -c 'grep -c "Mozilla canary domain use-application-dns.net is NXDOMAIN" /var/log/pihole.log'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "1" ]]
+}
+
 @test "DNS reply analysis test (using netmeister.org records)" {
   run bash -c "bash test/dig.sh | tee dig.log"
   printf "%s\n" "${lines[@]}"
@@ -272,20 +281,20 @@
   run bash -c 'echo ">stats >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[1]} == "domains_being_blocked 3" ]]
-  [[ ${lines[2]} == "dns_queries_today 77" ]]
+  [[ ${lines[2]} == "dns_queries_today 78" ]]
   [[ ${lines[3]} == "ads_blocked_today 6" ]]
   #[[ ${lines[4]} == "ads_percentage_today 7.792208" ]]
-  [[ ${lines[5]} == "unique_domains 50" ]]
+  [[ ${lines[5]} == "unique_domains 51" ]]
   [[ ${lines[6]} == "queries_forwarded 61" ]]
-  [[ ${lines[7]} == "queries_cached 10" ]]
+  [[ ${lines[7]} == "queries_cached 11" ]]
   # Clients ever seen is commented out as CircleCI may have
   # more devices in its ARP cache so testing against a fixed
   # number of clients may not work in all cases
   #[[ ${lines[8]} == "clients_ever_seen 8" ]]
   #[[ ${lines[9]} == "unique_clients 8" ]]
-  [[ ${lines[10]} == "dns_queries_all_types 77" ]]
+  [[ ${lines[10]} == "dns_queries_all_types 78" ]]
   [[ ${lines[11]} == "reply_NODATA 9" ]]
-  [[ ${lines[12]} == "reply_NXDOMAIN 0" ]]
+  [[ ${lines[12]} == "reply_NXDOMAIN 1" ]]
   [[ ${lines[13]} == "reply_CNAME 1" ]]
   [[ ${lines[14]} == "reply_IP 22" ]]
   [[ ${lines[15]} == "privacy_level 0" ]]
@@ -302,8 +311,8 @@
 @test "Top Clients" {
   run bash -c 'echo ">top-clients >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "0 34 :: "* ]]
-  [[ ${lines[2]} == "1 33 127.0.0.1 "* ]]
+  [[ "${lines[@]}" == *"34 :: "* ]]
+  [[ "${lines[@]}" == *"34 127.0.0.1 "* ]]
   [[ ${lines[3]} == "2 4 127.0.0.3 "* ]]
   [[ ${lines[4]} == "3 3 127.0.0.2 "* ]]
   [[ "${lines[@]}" == *"1 aliasclient-0 some-aliasclient"* ]]
@@ -378,31 +387,31 @@
 @test "Upstream Destinations reported correctly" {
   run bash -c 'echo ">forward-dest >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "-2 7.79 blocklist blocklist" ]]
-  [[ ${lines[2]} == "-1 12.99 cache cache" ]]
-  [[ ${lines[3]} == "0 61.04 8.8.8.8#53 8.8.8.8#53" ]]
-  [[ ${lines[4]} == "1 18.18 84.200.69.80#53 84.200.69.80#53" ]]
+  [[ ${lines[1]} == "-2 7.69 blocklist blocklist" ]]
+  [[ ${lines[2]} == "-1 14.10 cache cache" ]]
+  [[ ${lines[3]} == "0 60.26 8.8.8.8#53 8.8.8.8#53" ]]
+  [[ ${lines[4]} == "1 17.95 84.200.69.80#53 84.200.69.80#53" ]]
 }
 
 @test "Query Types reported correctly" {
   run bash -c 'echo ">querytypes >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "A (IPv4): 25.97" ]]
-  [[ ${lines[2]} == "AAAA (IPv6): 2.60" ]]
-  [[ ${lines[3]} == "ANY: 1.30" ]]
-  [[ ${lines[4]} == "SRV: 1.30" ]]
-  [[ ${lines[5]} == "SOA: 1.30" ]]
-  [[ ${lines[6]} == "PTR: 3.90" ]]
-  [[ ${lines[7]} == "TXT: 7.79" ]]
-  [[ ${lines[8]} == "NAPTR: 1.30" ]]
-  [[ ${lines[9]} == "MX: 1.30" ]]
-  [[ ${lines[10]} == "DS: 28.57" ]]
-  [[ ${lines[11]} == "RRSIG: 1.30" ]]
-  [[ ${lines[12]} == "DNSKEY: 18.18" ]]
-  [[ ${lines[13]} == "NS: 1.30" ]]
-  [[ ${lines[14]} == "OTHER: 1.30" ]]
-  [[ ${lines[15]} == "SVCB: 1.30" ]]
-  [[ ${lines[16]} == "HTTPS: 1.30" ]]
+  [[ ${lines[1]} == "A (IPv4): 26.92" ]]
+  [[ ${lines[2]} == "AAAA (IPv6): 2.56" ]]
+  [[ ${lines[3]} == "ANY: 1.28" ]]
+  [[ ${lines[4]} == "SRV: 1.28" ]]
+  [[ ${lines[5]} == "SOA: 1.28" ]]
+  [[ ${lines[6]} == "PTR: 3.85" ]]
+  [[ ${lines[7]} == "TXT: 7.69" ]]
+  [[ ${lines[8]} == "NAPTR: 1.28" ]]
+  [[ ${lines[9]} == "MX: 1.28" ]]
+  [[ ${lines[10]} == "DS: 28.21" ]]
+  [[ ${lines[11]} == "RRSIG: 1.28" ]]
+  [[ ${lines[12]} == "DNSKEY: 17.95" ]]
+  [[ ${lines[13]} == "NS: 1.28" ]]
+  [[ ${lines[14]} == "OTHER: 1.28" ]]
+  [[ ${lines[15]} == "SVCB: 1.28" ]]
+  [[ ${lines[16]} == "HTTPS: 1.28" ]]
   [[ ${lines[17]} == "" ]]
 }
 
@@ -445,51 +454,52 @@
   [[ ${lines[31]} == *"DNSKEY com :: 2 1 11 "* ]]
   [[ ${lines[32]} == *"AAAA google.com 127.0.0.1 2 2 4 "* ]]
   [[ ${lines[33]} == *"A ftl.pi-hole.net 127.0.0.1 2 1 4 "* ]]
-  [[ ${lines[34]} == *"A a.dns.netmeister.org 127.0.0.1 2 2 4 "* ]]
-  [[ ${lines[35]} == *"AAAA aaaa.dns.netmeister.org 127.0.0.1 2 2 4 "* ]]
-  [[ ${lines[36]} == *"ANY any.dns.netmeister.org 127.0.0.1 2 2 13 "* ]]
-  [[ ${lines[37]} == *"TYPE5 cname.dns.netmeister.org 127.0.0.1 2 2 3 "* ]]
-  [[ ${lines[38]} == *"SRV srv.dns.netmeister.org 127.0.0.1 2 2 13 "* ]]
-  [[ ${lines[39]} == *"SOA soa.dns.netmeister.org 127.0.0.1 2 2 13 "* ]]
-  [[ ${lines[40]} == *"PTR 99.7.84.166.in-addr.arpa 127.0.0.1 2 2 5 "* ]]
-  [[ ${lines[41]} == *"DS arpa :: 2 1 11 "* ]]
-  [[ ${lines[42]} == *"DS in-addr.arpa :: 2 1 11 "* ]]
-  [[ ${lines[43]} == *"DNSKEY arpa :: 2 1 11 "* ]]
-  [[ ${lines[44]} == *"DS 166.in-addr.arpa :: 2 1 11 "* ]]
-  [[ ${lines[45]} == *"DNSKEY in-addr.arpa :: 2 1 11 "* ]]
-  [[ ${lines[46]} == *"DS 84.166.in-addr.arpa :: 2 2 1 "* ]]
-  [[ ${lines[47]} == *"DNSKEY 166.in-addr.arpa :: 2 1 11 "* ]]
-  [[ ${lines[48]} == *"PTR 0.0.9.3.2.7.e.f.f.f.3.6.6.7.2.e.4.8.0.0.0.3.0.0.0.7.4.0.1.0.0.2.ip6.arpa 127.0.0.1 2 2 5 "* ]]
-  [[ ${lines[49]} == *"DS ip6.arpa :: 2 1 11 "* ]]
-  [[ ${lines[50]} == *"DS 2.ip6.arpa :: 2 2 1 "* ]]
-  [[ ${lines[51]} == *"DNSKEY ip6.arpa :: 2 1 11 "* ]]
-  [[ ${lines[52]} == *"DS 0.2.ip6.arpa :: 2 2 1 "* ]]
-  [[ ${lines[53]} == *"DS 0.0.2.ip6.arpa :: 2 2 1 "* ]]
-  [[ ${lines[54]} == *"DS 1.0.0.2.ip6.arpa :: 2 2 1 "* ]]
-  [[ ${lines[55]} == *"DS 0.1.0.0.2.ip6.arpa :: 2 2 1 "* ]]
-  [[ ${lines[56]} == *"DS 4.0.1.0.0.2.ip6.arpa :: 2 1 11 "* ]]
-  [[ ${lines[57]} == *"DS 7.4.0.1.0.0.2.ip6.arpa :: 2 2 1 "* ]]
-  [[ ${lines[58]} == *"DNSKEY 4.0.1.0.0.2.ip6.arpa :: 2 1 11 "* ]]
-  [[ ${lines[59]} == *"DS 0.7.4.0.1.0.0.2.ip6.arpa :: 2 2 1 "* ]]
-  [[ ${lines[60]} == *"PTR ptr.dns.netmeister.org 127.0.0.1 2 2 13 "* ]]
-  [[ ${lines[61]} == *"TXT txt.dns.netmeister.org 127.0.0.1 2 2 13 "* ]]
-  [[ ${lines[62]} == *"NAPTR naptr.dns.netmeister.org 127.0.0.1 2 2 13 "* ]]
-  [[ ${lines[63]} == *"MX mx.dns.netmeister.org 127.0.0.1 2 2 13 "* ]]
-  [[ ${lines[64]} == *"DS ds.dns.netmeister.org 127.0.0.1 2 1 13 "* ]]
-  [[ ${lines[65]} == *"DS org :: 2 1 11 "* ]]
-  [[ ${lines[66]} == *"DS netmeister.org :: 2 1 11 "* ]]
-  [[ ${lines[67]} == *"DNSKEY org :: 2 1 11 "* ]]
-  [[ ${lines[68]} == *"DS dns.netmeister.org :: 2 1 11 "* ]]
-  [[ ${lines[69]} == *"DNSKEY netmeister.org :: 2 1 11 "* ]]
-  [[ ${lines[70]} == *"DNSKEY dns.netmeister.org :: 2 1 11 "* ]]
-  [[ ${lines[71]} == *"RRSIG rrsig.dns.netmeister.org 127.0.0.1 2 2 13 "* ]]
-  [[ ${lines[72]} == *"DNSKEY dnskey.dns.netmeister.org 127.0.0.1 2 1 13 "* ]]
-  [[ ${lines[73]} == *"DS dnskey.dns.netmeister.org :: 2 1 11 "* ]]
-  [[ ${lines[74]} == *"DNSKEY dnskey.dns.netmeister.org :: 2 1 11 "* ]]
-  [[ ${lines[75]} == *"NS ns.dns.netmeister.org 127.0.0.1 2 2 13 "* ]]
-  [[ ${lines[76]} == *"SVCB svcb.dns.netmeister.org 127.0.0.1 2 2 13 "* ]]
-  [[ ${lines[77]} == *"HTTPS https.dns.netmeister.org 127.0.0.1 2 2 13 "* ]]
-  [[ ${lines[78]} == "" ]]
+  [[ ${lines[34]} == *"A use-application-dns.net 127.0.0.1 3 2 2 "* ]]
+  [[ ${lines[35]} == *"A a.dns.netmeister.org 127.0.0.1 2 2 4 "* ]]
+  [[ ${lines[36]} == *"AAAA aaaa.dns.netmeister.org 127.0.0.1 2 2 4 "* ]]
+  [[ ${lines[37]} == *"ANY any.dns.netmeister.org 127.0.0.1 2 2 13 "* ]]
+  [[ ${lines[38]} == *"TYPE5 cname.dns.netmeister.org 127.0.0.1 2 2 3 "* ]]
+  [[ ${lines[39]} == *"SRV srv.dns.netmeister.org 127.0.0.1 2 2 13 "* ]]
+  [[ ${lines[40]} == *"SOA soa.dns.netmeister.org 127.0.0.1 2 2 13 "* ]]
+  [[ ${lines[41]} == *"PTR 99.7.84.166.in-addr.arpa 127.0.0.1 2 2 5 "* ]]
+  [[ ${lines[42]} == *"DS arpa :: 2 1 11 "* ]]
+  [[ ${lines[43]} == *"DS in-addr.arpa :: 2 1 11 "* ]]
+  [[ ${lines[44]} == *"DNSKEY arpa :: 2 1 11 "* ]]
+  [[ ${lines[45]} == *"DS 166.in-addr.arpa :: 2 1 11 "* ]]
+  [[ ${lines[46]} == *"DNSKEY in-addr.arpa :: 2 1 11 "* ]]
+  [[ ${lines[47]} == *"DS 84.166.in-addr.arpa :: 2 2 1 "* ]]
+  [[ ${lines[48]} == *"DNSKEY 166.in-addr.arpa :: 2 1 11 "* ]]
+  [[ ${lines[49]} == *"PTR 0.0.9.3.2.7.e.f.f.f.3.6.6.7.2.e.4.8.0.0.0.3.0.0.0.7.4.0.1.0.0.2.ip6.arpa 127.0.0.1 2 2 5 "* ]]
+  [[ ${lines[50]} == *"DS ip6.arpa :: 2 1 11 "* ]]
+  [[ ${lines[51]} == *"DS 2.ip6.arpa :: 2 2 1 "* ]]
+  [[ ${lines[52]} == *"DNSKEY ip6.arpa :: 2 1 11 "* ]]
+  [[ ${lines[53]} == *"DS 0.2.ip6.arpa :: 2 2 1 "* ]]
+  [[ ${lines[54]} == *"DS 0.0.2.ip6.arpa :: 2 2 1 "* ]]
+  [[ ${lines[55]} == *"DS 1.0.0.2.ip6.arpa :: 2 2 1 "* ]]
+  [[ ${lines[56]} == *"DS 0.1.0.0.2.ip6.arpa :: 2 2 1 "* ]]
+  [[ ${lines[57]} == *"DS 4.0.1.0.0.2.ip6.arpa :: 2 1 11 "* ]]
+  [[ ${lines[58]} == *"DS 7.4.0.1.0.0.2.ip6.arpa :: 2 2 1 "* ]]
+  [[ ${lines[59]} == *"DNSKEY 4.0.1.0.0.2.ip6.arpa :: 2 1 11 "* ]]
+  [[ ${lines[60]} == *"DS 0.7.4.0.1.0.0.2.ip6.arpa :: 2 2 1 "* ]]
+  [[ ${lines[61]} == *"PTR ptr.dns.netmeister.org 127.0.0.1 2 2 13 "* ]]
+  [[ ${lines[62]} == *"TXT txt.dns.netmeister.org 127.0.0.1 2 2 13 "* ]]
+  [[ ${lines[63]} == *"NAPTR naptr.dns.netmeister.org 127.0.0.1 2 2 13 "* ]]
+  [[ ${lines[64]} == *"MX mx.dns.netmeister.org 127.0.0.1 2 2 13 "* ]]
+  [[ ${lines[65]} == *"DS ds.dns.netmeister.org 127.0.0.1 2 1 13 "* ]]
+  [[ ${lines[66]} == *"DS org :: 2 1 11 "* ]]
+  [[ ${lines[67]} == *"DS netmeister.org :: 2 1 11 "* ]]
+  [[ ${lines[68]} == *"DNSKEY org :: 2 1 11 "* ]]
+  [[ ${lines[69]} == *"DS dns.netmeister.org :: 2 1 11 "* ]]
+  [[ ${lines[70]} == *"DNSKEY netmeister.org :: 2 1 11 "* ]]
+  [[ ${lines[71]} == *"DNSKEY dns.netmeister.org :: 2 1 11 "* ]]
+  [[ ${lines[72]} == *"RRSIG rrsig.dns.netmeister.org 127.0.0.1 2 2 13 "* ]]
+  [[ ${lines[73]} == *"DNSKEY dnskey.dns.netmeister.org 127.0.0.1 2 1 13 "* ]]
+  [[ ${lines[74]} == *"DS dnskey.dns.netmeister.org :: 2 1 11 "* ]]
+  [[ ${lines[75]} == *"DNSKEY dnskey.dns.netmeister.org :: 2 1 11 "* ]]
+  [[ ${lines[76]} == *"NS ns.dns.netmeister.org 127.0.0.1 2 2 13 "* ]]
+  [[ ${lines[77]} == *"SVCB svcb.dns.netmeister.org 127.0.0.1 2 2 13 "* ]]
+  [[ ${lines[78]} == *"HTTPS https.dns.netmeister.org 127.0.0.1 2 2 13 "* ]]
+  [[ ${lines[79]} == "" ]]
 }
 
 @test "Get all queries (domain filtered) shows expected content" {
@@ -525,7 +535,7 @@
   printf "%s\n" "${lines[@]}"
   # Depending on the shell (x86_64-musl is built on busybox) there can be one or multiple spaces between user and group
   [[ ${lines[0]} == *"pihole"?*"pihole"* ]]
-  [[ ${lines[0]} == "-rw-r--r--"* ]]
+  [[ ${lines[0]} == "-rw-rw-r--"* ]]
   run bash -c 'file /etc/pihole/pihole-FTL.db'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "/etc/pihole/pihole-FTL.db: SQLite 3.x database"* ]]
@@ -1024,7 +1034,7 @@
   run bash -c 'ls -l /etc/pihole/pihole-FTL.db'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == *"pihole pihole"* || ${lines[0]} == *"pihole   pihole"* ]]
-  [[ ${lines[0]} == "-rw-r--r--"* ]]
+  [[ ${lines[0]} == "-rw-rw-r--"* ]]
 }
 
 # "ldd" prints library dependencies and the used interpreter for a given program

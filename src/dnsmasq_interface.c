@@ -77,13 +77,16 @@ static union all_addr null_addrp = {{ 0 }};
 static enum reply_type force_next_DNS_reply = REPLY_UNKNOWN;
 static int last_regex_idx = -1;
 static struct ptr_record *pihole_ptr = NULL;
+#define HOSTNAME "Pi-hole hostname"
 
 // Fork-private copy of the interface data the most recent query came from
 static struct {
+	bool haveIPv4;
+	bool haveIPv6;
 	char name[IFNAMSIZ];
 	union all_addr addr4;
 	union all_addr addr6;
-} next_iface = {"", {{0}}, {{0}}};
+} next_iface = {false, false, "", {{0}}, {{0}}};
 
 // Fork-private copy of the server data the most recent reply came from
 static union mysockaddr last_server = {{ 0 }};
@@ -183,7 +186,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 	bool forced_ip = false;
 	// Check first if we need to force our reply to something different than the
 	// default/configured blocking mode. For instance, we need to force NXDOMAIN
-	// for intercepted _esni.* queries.
+	// for intercepted _esni.* queries or the Mozilla canary domain.
 	if(force_next_DNS_reply == REPLY_NXDOMAIN)
 	{
 		flags = F_NXDOMAIN;
@@ -247,8 +250,8 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		// Overwrite flags only if not replying with a forced reply
 		if(config.blockingmode == MODE_NX)
 		{
-			// If we block in NXDOMAIN mode, we add the NEGATIVE response
-			// and the NXDOMAIN flags
+			// If we block in NXDOMAIN mode, we set flags to NXDOMAIN
+			// (NEG will be added after setup_reply() below)
 			flags = F_NXDOMAIN;
 			if(config.debug & DEBUG_FLAGS)
 				logg("Configured blocking mode is NXDOMAIN");
@@ -286,6 +289,13 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 	// Setup reply header
 	setup_reply(header, flags, *ede);
 
+	// Add NEG flag when replying with NXDOMAIN. This is necessary to get proper logging in pihole.log
+	// At the same time, we cannot add NEG before calling setup_reply() as it would, otherwise, result
+	// in an incorrect "nowhere to forward to" log entry (because setup_reply() checks for equality of
+	// flags instead of doing a bitmask comparison).
+	if(flags == F_NXDOMAIN)
+		flags |= F_NEG;
+
 	// Add flags according to current blocking mode
 	// Set blocking_flags to F_HOSTS so dnsmasq logs blocked queries being answered from a specific source
 	// (it would otherwise assume it knew the blocking status from cache which would prevent us from
@@ -295,6 +305,9 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 	// Skip questions so we can start adding answers (if applicable)
 	if (!(p = skip_questions(header, len)))
 		return 0;
+
+	// Are we replying to pi.hole / <hostname> / pi.hole.<local> / <hostname>.<local> ?
+	const bool hostname = strcmp(blockingreason, HOSTNAME) == 0;
 
 	int trunc = 0;
 	// Add A answer record if requested
@@ -320,10 +333,10 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 
 		// Add A resource record
 		header->ancount = htons(ntohs(header->ancount) + 1);
-		add_resource_record(header, limit, &trunc, sizeof(struct dns_header),
-		                    &p, daemon->local_ttl, NULL, T_A, C_IN,
-		                    (char*)"4", &addr->addr4);
-		log_query(flags & ~F_IPV6, name, addr, (char*)blockingreason);
+		if(add_resource_record(header, limit, &trunc, sizeof(struct dns_header),
+		                       &p, hostname ? daemon->local_ttl : config.block_ttl,
+		                       NULL, T_A, C_IN, (char*)"4", &addr->addr4))
+			log_query(flags & ~F_IPV6, name, addr, (char*)blockingreason);
 	}
 
 	// Add AAAA answer record if requested
@@ -348,10 +361,10 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 
 		// Add AAAA resource record
 		header->ancount = htons(ntohs(header->ancount) + 1);
-		add_resource_record(header, limit, &trunc, sizeof(struct dns_header),
-		                    &p, daemon->local_ttl, NULL, T_AAAA, C_IN,
-		                    (char*)"6", &addr->addr6);
-		log_query(flags & ~F_IPV4, name, addr, (char*)blockingreason);
+		if(add_resource_record(header, limit, &trunc, sizeof(struct dns_header),
+		                       &p, hostname ? daemon->local_ttl : config.block_ttl,
+		                       NULL, T_AAAA, C_IN, (char*)"6", &addr->addr6))
+			log_query(flags & ~F_IPV4, name, addr, (char*)blockingreason);
 	}
 
 	// Log empty replies (NODATA/NXDOMAIN/REFUSED)
@@ -363,6 +376,32 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		header->hb3 |= HB3_TC;
 
 	return p - (unsigned char *)header;
+}
+
+static bool is_pihole_domain(const char *domain)
+{
+	static char *pihole_suffix = NULL;
+	if(!pihole_suffix && daemon->domain_suffix)
+	{
+		// Build "pi.hole.<local suffix>" domain
+		pihole_suffix = calloc(strlen(daemon->domain_suffix) + 9, sizeof(char));
+		strcpy(pihole_suffix, "pi.hole.");
+		strcat(pihole_suffix, daemon->domain_suffix);
+		if(config.debug & DEBUG_QUERIES)
+			logg("Domain suffix is \"%s\"", daemon->domain_suffix);
+	}
+	static char *hostname_suffix = NULL;
+	if(!hostname_suffix && daemon->domain_suffix)
+	{
+		// Build "<hostname>.<local suffix>" domain
+		hostname_suffix = calloc(strlen(hostname()) + strlen(daemon->domain_suffix) + 2, sizeof(char));
+		strcpy(hostname_suffix, hostname());
+		strcat(hostname_suffix, ".");
+		strcat(hostname_suffix, daemon->domain_suffix);
+	}
+	return strcasecmp(domain, "pi.hole") == 0 || strcasecmp(domain, hostname()) == 0 ||
+	       (pihole_suffix && strcasecmp(domain, pihole_suffix) == 0) ||
+	       (hostname_suffix && strcasecmp(domain, hostname_suffix) == 0);
 }
 
 bool _FTL_new_query(const unsigned int flags, const char *name,
@@ -436,15 +475,28 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 
 	// If domain is "pi.hole" or the local hostname we skip analyzing this query
 	// and, instead, immediately reply with the IP address - these queries are not further analyzed
-	if(strcasecmp(name, "pi.hole") == 0 || strcasecmp(name, hostname()) == 0)
+	if(is_pihole_domain(name))
 	{
 		if(querytype == TYPE_A || querytype == TYPE_AAAA || querytype == TYPE_ANY)
 		{
 			// "Block" this query by sending the interface IP address
-			force_next_DNS_reply = REPLY_IP;
-			blockingreason = "internal";
+			// Send NODATA when the current interface doesn't have
+			// the requested IP address, for instance AAAA on an
+			// virtual interface that has only an IPv4 address
+			if((querytype == TYPE_A && !next_iface.haveIPv4) ||
+			   (querytype == TYPE_AAAA && !next_iface.haveIPv6))
+				force_next_DNS_reply = REPLY_NODATA;
+			else
+				force_next_DNS_reply = REPLY_IP;
+
+			blockingreason = HOSTNAME;
 			if(config.debug & DEBUG_QUERIES)
-				logg("Replying to %s with interface-local IP address", name);
+			{
+				logg("Replying to %s with %s", name,
+				     force_next_DNS_reply == REPLY_IP ?
+				       "interface-local IP address" :
+				       "NODATA due to missing iface address");
+			}
 			return true;
 		}
 		else
@@ -456,7 +508,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 
 	// Check if this is a PTR request for a local interface.
 	// If so, we inject a "pi.hole" reply here
-	if(querytype == TYPE_PTR && config.pihole_ptr)
+	if(querytype == TYPE_PTR && config.pihole_ptr != PTR_NONE)
 		check_pihole_PTR((char*)name);
 
 	// Skip AAAA queries if user doesn't want to have them analyzed
@@ -677,7 +729,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	}
 
 	// Set client MAC address from EDNS(0) information (if available)
-	if(config.edns0_ecs && edns->mac_set)
+	if(config.edns0_ecs && edns && edns->mac_set)
 	{
 		memcpy(client->hwaddr, edns->mac_byte, 6);
 		client->hwlen = 6;
@@ -715,12 +767,17 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	return blockDomain;
 }
 
-void FTL_iface(const int ifidx)
+void _FTL_iface(struct irec *recviface, const char *file, const int line)
 {
 	// Invalidate data we have from the last interface/query
 	// Set addresses to 0.0.0.0 and ::, respectively
 	memset(&next_iface.addr4, 0, sizeof(next_iface.addr4));
 	memset(&next_iface.addr6, 0, sizeof(next_iface.addr6));
+	next_iface.haveIPv4 = next_iface.haveIPv6 = false;
+
+	// Debug logging
+	if(config.debug & DEBUG_NETWORKING)
+		logg("Interfaces: Called from %s:%d", short_path(file), line);
 
 	// Copy overwrite addresses if configured via REPLY_ADDR4 and/or REPLY_ADDR6 settings
 	if(config.reply_addr.overwrite_v4)
@@ -751,29 +808,32 @@ void FTL_iface(const int ifidx)
 	next_iface.name[1] = '\0';
 
 	// Return early when there is no interface available at this point
-	if(ifidx == -1)
+	if(!recviface)
 		return;
 
-	// Determine addresses of this interface
-	bool haveIPv4 = false, haveGUAv6 = false, haveULAv6 = false;
+	// Determine addresses of this interface, we have to loop over all interfaces as
+	// recviface will always only contain *either* IPv4 or IPv6 information
+	bool haveGUAv6 = false, haveULAv6 = false;
 	for (struct irec *iface = daemon->interfaces; iface != NULL; iface = iface->next)
 	{
 		// If this interface has no name, we skip it
 		if(iface->name == NULL)
 		{
 			if(config.debug & DEBUG_NETWORKING)
-				logg("Interface %d has no name", iface->index);
+				logg("Interface with ID %d has no name", iface->index);
 			continue;
 		}
 
 		// Check if this is the interface we want
-		if(iface->index != ifidx)
+		if(iface->index != recviface->index || iface->label != recviface->label)
 		{
 			if(config.debug & DEBUG_NETWORKING)
-				logg("Interface %s is not the interface we are looking for (%d != %d)",
-				     iface->name, iface->index, ifidx);
+				logg("Interface %s is not the exact interface we are looking for (%d,%d != %d,%d)",
+				     iface->name, iface->index, iface->label, recviface->index, recviface->label);
 			continue;
 		}
+
+		// *** If we reach this point, we know this interface is the one we are looking for ***//
 
 		// Copy interface name
 		strncpy(next_iface.name, iface->name, sizeof(next_iface.name)-1);
@@ -808,6 +868,8 @@ void FTL_iface(const int ifidx)
 			//  3. Link-local
 			if((!haveGUAv6 && !haveULAv6) || (haveGUAv6 && isULA))
 			{
+				next_iface.haveIPv6 = true;
+				// Store IPv6 address
 				memcpy(&next_iface.addr6.addr6, &iface->addr.in6.sin6_addr, sizeof(iface->addr.in6.sin6_addr));
 				if(isGUA)
 					haveGUAv6 = true;
@@ -818,7 +880,7 @@ void FTL_iface(const int ifidx)
 		// Check if this address is different from 0.0.0.0
 		else if(family == AF_INET && memcmp(&next_iface.addr4.addr4, &iface->addr.in.sin_addr, sizeof(iface->addr.in.sin_addr)) != 0)
 		{
-			haveIPv4 = true;
+			next_iface.haveIPv4 = true;
 			// Store IPv4 address
 			memcpy(&next_iface.addr4.addr4, &iface->addr.in.sin_addr, sizeof(iface->addr.in.sin_addr));
 		}
@@ -833,16 +895,17 @@ void FTL_iface(const int ifidx)
 				inet_ntop(AF_INET6, &iface->addr.in6.sin6_addr, buffer, ADDRSTRLEN);
 
 			const char *type = family == AF_INET6 ? isGUA ? " (GUA)" : isULA ? " (ULA)" : isLL ? " (LL)" : " (other)" : "";
-			logg("Interface %s (%d) has IPv%i address %s%s", next_iface.name, ifidx,
-				family == AF_INET ? 4 : 6, buffer, type);
+			logg("Interface %s (%d,%d) has IPv%i address %s%s",
+			     next_iface.name, iface->index, iface->label,
+			     family == AF_INET ? 4 : 6, buffer, type);
 		}
 
 		// Exit loop early if we already have everything we need
 		// (a valid IPv4 address + a valid ULA IPv6 address)
-		if(haveIPv4 && haveULAv6)
+		if(next_iface.haveIPv4 && haveULAv6)
 		{
 			if(config.debug & DEBUG_NETWORKING)
-				logg("We have everything we need, exiting interface analysis early");
+				logg("We have everything we need, exiting interface analysis");
 			break;
 		}
 	}
@@ -850,13 +913,17 @@ void FTL_iface(const int ifidx)
 
 static void check_pihole_PTR(char *domain)
 {
+	// Return early if Pi-hole PTR is not available
+	if(pihole_ptr == NULL)
+		return;
+
 	// Convert PTR request into numeric form
 	union all_addr addr = {{ 0 }};
 	const int flags = in_arpa_name_2_addr(domain, &addr);
 
 	// Check if this is a valid in-addr.arpa (IPv4) or ip6.[int|arpa] (IPv6)
 	// specifier. If not, nothing is to be done here and we return early
-	if(flags == 0 || pihole_ptr == NULL)
+	if(flags == 0)
 		return;
 
 	// We do not want to reply with "pi.hole" to loopback PTRs
@@ -1015,6 +1082,30 @@ static bool special_domain(const queriesData *query, const char *domain)
 	   (query->type == TYPE_A || query->type == TYPE_AAAA))
 	{
 		blockingreason = "Mozilla canary domain";
+		force_next_DNS_reply = REPLY_NXDOMAIN;
+		return true;
+	}
+
+	// Apple iCloud Private Relay
+	// Some enterprise or school networks might be required to audit all
+	// network traffic by policy, and your network can block access to
+	// Private Relay in these cases. The user will be alerted that they need
+	// to either disable Private Relay for your network or choose another
+	// network.
+	// The fastest and most reliable way to alert users is to return a
+	// negative answer from your network’s DNS resolver, preventing DNS
+	// resolution for the following hostnames used by Private Relay traffic.
+	// Avoid causing DNS resolution timeouts or silently dropping IP packets
+	// sent to the Private Relay server, as this can lead to delays on
+	// client devices.
+	// > mask.icloud.com
+	// > mask-h2.icloud.com
+	// https://developer.apple.com/support/prepare-your-network-for-icloud-private-relay
+	if(config.special_domains.icloud_private_relay &&
+	   (strcasecmp(domain, "mask.icloud.com") == 0 ||
+	    strcasecmp(domain, "mask-h2.icloud.com") == 0))
+	{
+		blockingreason = "Apple iCloud Private Relay domain";
 		force_next_DNS_reply = REPLY_NXDOMAIN;
 		return true;
 	}
@@ -1217,7 +1308,9 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 
 	// Check blacklist (exact + regex) and gravity for _esni.domain if enabled
 	// (defaulting to true)
-	if(config.block_esni && !query->flags.whitelisted && blockDomain == NOT_FOUND && strncasecmp(domainstr, "_esni.", 6u) == 0)
+	if(config.block_esni &&
+	   !query->flags.whitelisted && blockDomain == NOT_FOUND &&
+	    strlen(domainstr) > 6 && strncasecmp(domainstr, "_esni.", 6u) == 0)
 	{
 		blockDomain = check_domain_blocked(domainstr + 6u, clientID, client, query, dns_cache, &new_status, &db_okay);
 
@@ -1338,6 +1431,7 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 		if(parent_domain == NULL)
 		{
 			// Memory error, return
+			free(child_domain);
 			unlock_shm();
 			return false;
 		}
@@ -2220,13 +2314,8 @@ static void FTL_mark_externally_blocked(const int id, const char* file, const in
 	// Possible debugging information
 	if(config.debug & DEBUG_QUERIES)
 	{
-		// Get domain name
-		const char *domainname;
-		if(domain != NULL)
-			domainname = getstr(domain->domainpos);
-		else
-			domainname = "<cannot access domain struct>";
-
+		// Get domain name (domain cannot be NULL here)
+		const char *domainname = getstr(domain->domainpos);
 		logg("**** %s externally blocked (ID %i, FTL %i, %s:%i)", domainname, id, queryID, file, line);
 	}
 
@@ -2488,12 +2577,12 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 	config.dns_port = daemon->port;
 
 	// Obtain PTR record used for Pi-hole PTR injection (if enabled)
-	if(config.pihole_ptr)
+	if(config.pihole_ptr != PTR_NONE)
 	{
 		// Add PTR record for pi.hole, the address will be injected later
 		pihole_ptr = calloc(1, sizeof(struct ptr_record));
 		pihole_ptr->name = strdup("x.x.x.x.in-addr.arpa");
-		pihole_ptr->ptr = (char*)"pi.hole";
+		pihole_ptr->ptr = config.pihole_ptr == PTR_PIHOLE ? (char*)"pi.hole" : (char*)hostname();
 		pihole_ptr->next = NULL;
 		// Add our PTR record to the end of the linked list
 		if(daemon->ptr != NULL)
@@ -2516,11 +2605,22 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 // int cache_inserted, cache_live_freed are defined in dnsmasq/cache.c
 void getCacheInformation(const int *sock)
 {
-	ssend(*sock,"cache-size: %i\ncache-live-freed: %i\ncache-inserted: %i\n",
+	struct cache_info ci;
+	get_dnsmasq_cache_info(&ci);
+	ssend(*sock,"cache-size: %i\ncache-live-freed: %i\ncache-inserted: %i\nipv4: %i\nipv6: %i\nsrv: %i\ncname: %i\nds: %i\ndnskey: %i\nother: %i\nexpired: %i\nimmortal: %i\n",
 	            daemon->cachesize,
 	            daemon->metrics[METRIC_DNS_CACHE_LIVE_FREED],
-	            daemon->metrics[METRIC_DNS_CACHE_INSERTED]);
-	// cache-size is obvious
+	            daemon->metrics[METRIC_DNS_CACHE_INSERTED],
+	            ci.valid.ipv4,
+	            ci.valid.ipv6,
+	            ci.valid.srv,
+	            ci.valid.cname,
+	            ci.valid.ds,
+	            ci.valid.dnskey,
+	            ci.valid.other,
+	            ci.expired,
+	            ci.immortal);
+	// <cache-size> is obvious
 	// It means the resolver handled <cache-inserted> names lookups that
 	// needed to be sent to upstream servers and that <cache-live-freed>
 	// was thrown out of the cache before reaching the end of its
@@ -2529,6 +2629,9 @@ void getCacheInformation(const int *sock)
 	// cached. If the cache is full with entries which haven't reached
 	// the end of their time-to-live, then the entry which hasn't been
 	// looked up for the longest time is evicted.
+	// <valid> are cache entries with positive remaining TTL
+	// <expired> cache entries (to be removed when space is needed)
+	// <immortal> cache records never expire (e.g. from /etc/hosts)
 }
 
 void FTL_forwarding_retried(const struct server *serv, const int oldID, const int newID, const bool dnssec)

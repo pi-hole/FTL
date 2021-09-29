@@ -73,7 +73,7 @@ void _dbclose(sqlite3 **db, const char *func, const int line, const char *file)
 	}
 
 	// Always set database pointer to NULL, even when closing failed
-	*db = NULL;
+	if(db) *db = NULL;
 }
 
 sqlite3* _dbopen(bool create, const char *func, const int line, const char *file)
@@ -172,16 +172,32 @@ static bool create_counter_table(sqlite3* db)
 	SQL_bool(db, "CREATE TABLE counters ( id INTEGER PRIMARY KEY NOT NULL, value INTEGER NOT NULL );");
 
 	// ID 0 = total queries
-	db_set_counter(db, DB_TOTALQUERIES, 0);
+	if(!db_set_counter(db, DB_TOTALQUERIES, 0))
+	{
+		logg("create_counter_table(): Failed to set total queries counter to zero!");
+		return false;
+	}
 
 	// ID 1 = total blocked queries
-	db_set_counter(db, DB_BLOCKEDQUERIES, 0);
+	if(!db_set_counter(db, DB_BLOCKEDQUERIES, 0))
+	{
+		logg("create_counter_table(): Failed to set blocked queries counter to zero!");
+		return false;
+	}
 
 	// Time stamp of creation of the counters database
-	db_set_FTL_property(db, DB_FIRSTCOUNTERTIMESTAMP, (unsigned long)time(0));
+	if(!db_set_FTL_property(db, DB_FIRSTCOUNTERTIMESTAMP, (unsigned long)time(0)))
+	{
+		logg("create_counter_table(): Failed to update first counter timestamp!");
+		return false;
+	}
 
 	// Update database version to 2
-	db_set_FTL_property(db, DB_VERSION, 2);
+	if(!db_set_FTL_property(db, DB_VERSION, 2))
+	{
+		logg("create_counter_table(): Failed to update database version!");
+		return false;
+	}
 
 	return true;
 }
@@ -211,11 +227,6 @@ static bool db_create(void)
 
 	// Close database handle
 	dbclose(&db);
-
-	// Explicitly set permissions to 0644
-	// 644 =            u+w       u+r       g+r       o+r
-	const mode_t mode = S_IWUSR | S_IRUSR | S_IRGRP | S_IROTH;
-	chmod_file(FTLfiles.FTL_db, mode);
 
 	return true;
 }
@@ -260,6 +271,11 @@ void db_init(void)
 			return;
 		}
 	}
+
+	// Explicitly set permissions to 0664
+	// 664 =            u+w       u+r       g+w       g+r       o+r
+	const mode_t mode = S_IWUSR | S_IRUSR | S_IWGRP | S_IRGRP | S_IROTH;
+	chmod_file(FTLfiles.FTL_db, mode);
 
 	// Open database
 	sqlite3 *db = dbopen(false);
