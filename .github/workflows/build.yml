@@ -85,15 +85,14 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           args: '${{ matrix.bin_name }}*'
-      # Keep this commented out for now until we're ready for GHA to take over (remember to add secrets)
-      # -
-      #   name: Transfer Builds to Pi-hole server for pihole checkout
-      #   if: ${{ github.event_name != 'pull_request' }}
-      #   uses: appleboy/scp-action@master
-      #   with:
-      #     host: ${{ secrets.SSH_HOST }}
-      #     username: ${{ secrets.SSH_USER }}
-      #     port: ${{ secrets.SSH_PORT }}
-      #     key: ${{ secrets.SSH_KEY }}
-      #     source: "${{ matrix.bin_name }}*"
-      #     target: "${{ steps.branch_name.outputs.OUTPUT_DIR }}"
+      -
+        name: Transfer Builds to Pi-hole server for pihole checkout
+        if: ${{ github.event_name != 'pull_request' }}
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          port: ${{ secrets.SSH_PORT }}
+          key: ${{ secrets.SSH_KEY }}
+          source: "${{ matrix.bin_name }}*"
+          target: "${{ steps.branch_name.outputs.OUTPUT_DIR }}"
