@@ -539,23 +539,23 @@ union mysockaddr {
 
 
 /* The actual values here matter, since we sort on them to get records in the order
-   IPv6 addr, IPv4 addr, all zero return, no-data return, send upstream. */
-#define SERV_LITERAL_ADDRESS   1  /* addr is the answer, or NoDATA is the answer, depending on the next three flags */
-#define SERV_ALL_ZEROS         2  /* return all zeros for A and AAAA */
-#define SERV_4ADDR             4  /* addr is IPv4 */
-#define SERV_6ADDR             8  /* addr is IPv6 */
-#define SERV_HAS_SOURCE       16  /* source address defined */
-#define SERV_FOR_NODOTS       32  /* server for names with no domain part only */
-#define SERV_WARNED_RECURSIVE 64  /* avoid warning spam */
-#define SERV_FROM_DBUS       128  /* 1 if source is DBus */
-#define SERV_MARK            256  /* for mark-and-delete and log code */
-#define SERV_WILDCARD        512  /* domain has leading '*' */ 
-#define SERV_USE_RESOLV     1024  /* forward this domain in the normal way */
-#define SERV_FROM_RESOLV    2048  /* 1 for servers from resolv, 0 for command line. */
-#define SERV_FROM_FILE      4096  /* read from --servers-file */
-#define SERV_LOOP           8192  /* server causes forwarding loop */
-#define SERV_DO_DNSSEC     16384  /* Validate DNSSEC when using this server */
-#define SERV_GOT_TCP       32768  /* Got some data from the TCP connection */
+   IPv6 addr, IPv4 addr, all zero return, resolvconf servers, upstream server, no-data return  */
+#define SERV_LITERAL_ADDRESS    1  /* addr is the answer, or NoDATA is the answer, depending on the next four flags */
+#define SERV_USE_RESOLV         2  /* forward this domain in the normal way */
+#define SERV_ALL_ZEROS          4  /* return all zeros for A and AAAA */
+#define SERV_4ADDR              8  /* addr is IPv4 */
+#define SERV_6ADDR             16  /* addr is IPv6 */
+#define SERV_HAS_SOURCE        32  /* source address defined */
+#define SERV_FOR_NODOTS        64  /* server for names with no domain part only */
+#define SERV_WARNED_RECURSIVE 128  /* avoid warning spam */
+#define SERV_FROM_DBUS        256  /* 1 if source is DBus */
+#define SERV_MARK             512  /* for mark-and-delete and log code */
+#define SERV_WILDCARD        1024  /* domain has leading '*' */ 
+#define SERV_FROM_RESOLV     2048  /* 1 for servers from resolv, 0 for command line. */
+#define SERV_FROM_FILE       4096  /* read from --servers-file */
+#define SERV_LOOP            8192  /* server causes forwarding loop */
+#define SERV_DO_DNSSEC      16384  /* Validate DNSSEC when using this server */
+#define SERV_GOT_TCP        32768  /* Got some data from the TCP connection */
 
 struct serverfd {
   int fd;
@@ -616,6 +616,11 @@ struct serv_local {
   u16 flags, domain_len;
   char *domain;
   struct server *next;
+};
+
+struct rebind_domain {
+  char *domain;
+  struct rebind_domain *next;
 };
 
 struct ipsets {
@@ -1114,10 +1119,11 @@ extern struct daemon {
   char *lease_change_command;
   struct iname *if_names, *if_addrs, *if_except, *dhcp_except, *auth_peers, *tftp_interfaces;
   struct bogus_addr *bogus_addr, *ignore_addr;
-  struct server *servers, *local_domains, **serverarray, *no_rebind;
+  struct server *servers, *servers_tail, *local_domains, **serverarray;
+  struct rebind_domain *no_rebind;
   int server_has_wildcard;
   int serverarraysz, serverarrayhwm;
-  struct ipsets *ipsets;
+  struct ipsets *ipsets, *nftsets;
   u32 allowlist_mask;
   struct allowlist *allowlists;
   int log_fac; /* log facility */
@@ -1255,8 +1261,8 @@ extern struct daemon {
 void cache_init(void);
 void next_uid(struct crec *crecp);
 /********************************************* Pi-hole modification ***********************************************/
-#define log_query(flags,name,addr,arg) _log_query(flags, name, addr, arg, __FILE__, __LINE__)
-void _log_query(unsigned int flags, char *name, union all_addr *addr, char *arg, const char* file, const int line);
+#define log_query(flags,name,addr,arg,type) _log_query(flags, name, addr, arg, type, __FILE__, __LINE__)
+void _log_query(unsigned int flags, char *name, union all_addr *addr, char *arg, unsigned short type, const char* file, const int line); 
 struct cache_info {
   struct valid {
     int ipv4;
@@ -1273,7 +1279,6 @@ struct cache_info {
 void get_dnsmasq_cache_info(struct cache_info *ci);
 /******************************************************************************************************************/
 char *record_source(unsigned int index);
-char *querystr(char *desc, unsigned short type);
 int cache_find_non_terminal(char *name, time_t now);
 struct crec *cache_find_by_addr(struct crec *crecp,
 				union all_addr *addr, time_t now, 
@@ -1324,8 +1329,8 @@ unsigned int extract_request(struct dns_header *header, size_t qlen,
 			       char *name, unsigned short *typep);
 void setup_reply(struct dns_header *header, unsigned int flags, int ede);
 int extract_addresses(struct dns_header *header, size_t qlen, char *name,
-		      time_t now, char **ipsets, int is_sign, int check_rebind,
-		      int no_cache_dnssec, int secure, int *doctored);
+		      time_t now, struct ipsets *ipsets, struct ipsets *nftsets, int is_sign,
+                      int check_rebind, int no_cache_dnssec, int secure, int *doctored);
 #if defined(HAVE_CONNTRACK) && defined(HAVE_UBUS)
 void report_addresses(struct dns_header *header, size_t len, u32 mark);
 #endif
@@ -1618,6 +1623,12 @@ void ubus_event_bcast_connmark_allowlist_resolved(u32 mark, const char *pattern,
 #ifdef HAVE_IPSET
 void ipset_init(void);
 int add_to_ipset(const char *setname, const union all_addr *ipaddr, int flags, int remove);
+#endif
+
+/* nftset.c */
+#ifdef HAVE_NFTSET
+void nftset_init(void);
+int add_to_nftset(const char *setpath, const union all_addr *ipaddr, int flags, int remove);
 #endif
 
 /* pattern.c */

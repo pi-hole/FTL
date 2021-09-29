@@ -66,7 +66,6 @@ static void FTL_upstream_error(const union all_addr *addr, const int id, const c
 static void FTL_dnssec(const char *result, const union all_addr *addr, const int id, const char* file, const int line);
 static void mysockaddr_extract_ip_port(union mysockaddr *server, char ip[ADDRSTRLEN+1], in_port_t *port);
 static void alladdr_extract_ip(union all_addr *addr, const sa_family_t family, char ip[ADDRSTRLEN+1]);
-static const char *dns_name(char *name);
 static void check_pihole_PTR(char *domain);
 #define query_set_dnssec(query, dnssec) _query_set_dnssec(query, dnssec, __FILE__, __LINE__)
 static void _query_set_dnssec(queriesData *query, const enum dnssec_status dnssec, const char *file, const int line);
@@ -94,7 +93,7 @@ static union mysockaddr last_server = {{ 0 }};
 unsigned char* pihole_privacylevel = &config.privacylevel;
 const char *flagnames[] = {"F_IMMORTAL ", "F_NAMEP ", "F_REVERSE ", "F_FORWARD ", "F_DHCP ", "F_NEG ", "F_HOSTS ", "F_IPV4 ", "F_IPV6 ", "F_BIGNAME ", "F_NXDOMAIN ", "F_CNAME ", "F_DNSKEY ", "F_CONFIG ", "F_DS ", "F_DNSSECOK ", "F_UPSTREAM ", "F_RRNAME ", "F_SERVER ", "F_QUERY ", "F_NOERR ", "F_AUTH ", "F_DNSSEC ", "F_KEYTAG ", "F_SECSTAT ", "F_NO_RR ", "F_IPSET ", "F_NOEXTRA ", "F_SERVFAIL", "F_RCODE"};
 
-void FTL_hook(unsigned int flags, char *name, union all_addr *addr, char *arg, int id, const char* file, const int line)
+void FTL_hook(unsigned int flags, char *name, union all_addr *addr, char *arg, int id, unsigned short type, const char* file, const int line)
 {
 	// Extract filename from path
 	const char *path = short_path(file);
@@ -103,6 +102,14 @@ void FTL_hook(unsigned int flags, char *name, union all_addr *addr, char *arg, i
 		logg("Processing FTL hook from %s:%d...", path, line);
 		print_flags(flags);
 	}
+
+	// Special domain name handling
+	// 1. Substitute "(NULL)" if no name is available (should not happen)
+	// 2. Substitute "." if we are querying the root domain (e.g. DNSKEY)
+	if(!name)
+		name = (char*)"(NULL)";
+	else if(!name[0])
+		name = (char*)".";
 
 	// Note: The order matters here!
 	if((flags & F_QUERY) && (flags & F_FORWARD))
@@ -122,7 +129,6 @@ void FTL_hook(unsigned int flags, char *name, union all_addr *addr, char *arg, i
 		if(!config.show_dnssec)
 			return;
 
-		const int qtype = strcmp(arg, "dnssec-query[DS]") == 0 ? T_DS : T_DNSKEY;
 		const ednsData edns = { 0 };
 		union mysockaddr saddr = {{ 0 }};
 		if(flags & F_IPV4)
@@ -135,7 +141,7 @@ void FTL_hook(unsigned int flags, char *name, union all_addr *addr, char *arg, i
 			memcpy(&saddr.in6.sin6_addr, &addr->addr6, sizeof(addr->addr6));
 			saddr.sa.sa_family = AF_INET;
 		}
-		_FTL_new_query(flags, name, NULL, arg, qtype, id, &edns, INTERNAL, file, line);
+		_FTL_new_query(flags, name, NULL, arg, type, id, &edns, INTERNAL, file, line);
 		FTL_forwarded(flags, name, addr, id, path, line);
 	}
 	else if(flags & F_AUTH)
@@ -163,9 +169,9 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 	if(config.debug & DEBUG_FLAGS)
 	{
 		if(*ede != EDE_UNSET)
-			logg("Preparing reply for \"%s\", EDE: %s (%d)", dns_name(name), edestr(*ede), *ede);
+			logg("Preparing reply for \"%s\", EDE: %s (%d)", name, edestr(*ede), *ede);
 		else
-			logg("Preparing reply for \"%s\", EDE: N/A", dns_name(name));
+			logg("Preparing reply for \"%s\", EDE: N/A", name);
 	}
 
 	// Get question type
@@ -328,7 +334,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		{
 			char ip[ADDRSTRLEN+1] = { 0 };
 			alladdr_extract_ip(addr, AF_INET, ip);
-			logg("  Adding RR: \"%s A %s\"", dns_name(name), ip);
+			logg("  Adding RR: \"%s A %s\"", name, ip);
 		}
 
 		// Add A resource record
@@ -336,7 +342,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		if(add_resource_record(header, limit, &trunc, sizeof(struct dns_header),
 		                       &p, hostname ? daemon->local_ttl : config.block_ttl,
 		                       NULL, T_A, C_IN, (char*)"4", &addr->addr4))
-			log_query(flags & ~F_IPV6, name, addr, (char*)blockingreason);
+			log_query(flags & ~F_IPV6, name, addr, (char*)blockingreason, 0);
 	}
 
 	// Add AAAA answer record if requested
@@ -356,7 +362,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		{
 			char ip[ADDRSTRLEN+1] = { 0 };
 			alladdr_extract_ip(addr, AF_INET6, ip);
-			logg("  Adding RR: \"%s AAAA %s\"", dns_name(name), ip);
+			logg("  Adding RR: \"%s AAAA %s\"", name, ip);
 		}
 
 		// Add AAAA resource record
@@ -364,12 +370,12 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		if(add_resource_record(header, limit, &trunc, sizeof(struct dns_header),
 		                       &p, hostname ? daemon->local_ttl : config.block_ttl,
 		                       NULL, T_AAAA, C_IN, (char*)"6", &addr->addr6))
-			log_query(flags & ~F_IPV4, name, addr, (char*)blockingreason);
+			log_query(flags & ~F_IPV4, name, addr, (char*)blockingreason, 0);
 	}
 
 	// Log empty replies (NODATA/NXDOMAIN/REFUSED)
 	if(!(flags & (F_IPV4 | F_IPV6)))
-		log_query(flags, name, NULL, (char*)blockingreason);
+		log_query(flags, name, NULL, (char*)blockingreason, 0);
 
 	// Indicate if truncated (client should retry over TCP)
 	if (trunc)
@@ -405,7 +411,7 @@ static bool is_pihole_domain(const char *domain)
 }
 
 bool _FTL_new_query(const unsigned int flags, const char *name,
-                    union mysockaddr *addr, const char *types,
+                    union mysockaddr *addr, char *arg,
                     const unsigned short qtype, const int id,
                     const ednsData *edns, const enum protocol proto,
                     const char* file, const int line)
@@ -605,6 +611,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// Log new query if in debug mode
 	if(config.debug & DEBUG_QUERIES)
 	{
+		const char *types = querystr(arg, qtype);
 		logg("**** new %sIPv%d %s query \"%s\" from %s:%s#%d (ID %i, FTL %i, %s:%i)",
 		     proto == TCP ? "TCP " : proto == UDP ? "UDP " : "",
 		     family == AF_INET ? 4 : 6, types, domainString, interface,
@@ -623,7 +630,11 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	if(config.analyze_only_A_AAAA && querytype != TYPE_A && querytype != TYPE_AAAA)
 	{
 		// Don't process this query further here, we already counted it
-		if(config.debug & DEBUG_QUERIES) logg("Notice: Skipping new query: %s (%i)", types, id);
+		if(config.debug & DEBUG_QUERIES)
+		{
+			const char *types = querystr(arg, qtype);
+			logg("Notice: Skipping new query: %s (%i)", types, id);
+		}
 		free(domainString);
 		unlock_shm();
 		return false;
@@ -1530,10 +1541,6 @@ static void FTL_forwarded(const unsigned int flags, const char *name, const unio
 	char *upstreamIP = strdup(dest);
 	strtolower(upstreamIP);
 
-	// Substitute "." if we are querying the root domain (e.g. DNSKEY)
-	if(!name || strlen(name) == 0)
-		name = ".";
-
 	// Debug logging
 	if(config.debug & DEBUG_QUERIES)
 	{
@@ -1670,20 +1677,6 @@ void FTL_dnsmasq_reload(void)
 	resolver_ready = true;
 }
 
-static const char *dns_name(char *name)
-{
-	// This should not happen, we still handle it
-	if(name == NULL)
-		return "(NULL)";
-
-	// Substitute empty domain with the root domain "."
-	if(strlen(name) == 0)
-		return ".";
-
-	// Else: Everthing is okay
-	return name;
-}
-
 static void alladdr_extract_ip(union all_addr *addr, const sa_family_t family, char ip[ADDRSTRLEN+1])
 {
 	// Extract IP address
@@ -1793,9 +1786,15 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 				answer = arg; // e.g. "reply <TLD> is no DS"
 		}
 
+		// Substitute "." if we are querying the root domain (e.g. DNSKEY)
+		const char *dispname = name;
+		if(!name || strlen(name) == 0)
+			dispname = ".";
+
 		if(cached || last_server.sa.sa_family == 0)
 			// Log cache or upstream reply from unknown source
-			logg("**** got %s reply: %s is %s (ID %i, %s:%i)", cached ? "cache" : "upstream", name, answer, id, file, line);
+			logg("**** got %s reply: %s is %s (ID %i, %s:%i)",
+			     cached ? "cache" : "upstream", dispname, answer, id, file, line);
 		else
 		{
 			char ip[ADDRSTRLEN+1] = { 0 };
@@ -1803,7 +1802,7 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 			mysockaddr_extract_ip_port(&last_server, ip, &port);
 			// Log server which replied to our request
 			logg("**** got %s reply from %s#%d: %s is %s (ID %i, %s:%i)",
-			     cached ? "cache" : "upstream", ip, port, name, answer, id, file, line);
+			     cached ? "cache" : "upstream", ip, port, dispname, answer, id, file, line);
 		}
 	}
 

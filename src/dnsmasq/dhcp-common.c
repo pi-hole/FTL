@@ -88,7 +88,7 @@ int match_netid_wild(struct dhcp_netid *check, struct dhcp_netid *pool)
   for (; check; check = check->next)
     {
       const int check_len = strlen(check->net);
-      const int is_wc = (check->net[check_len - 1] == '*');
+      const int is_wc = (check_len > 0 && check->net[check_len - 1] == '*');
       
       /* '#' for not is for backwards compat. */
       if (check->net[0] != '!' && check->net[0] != '#')

@@ -553,7 +553,7 @@ void read_FTLconf(void)
 	// defaults to: PI.HOLE
 	buffer = parse_FTLconf(fp, "PIHOLE_PTR");
 
-	if(buffer != NULL && (strcasecmp(buffer, "false") == 0 ||
+	if(buffer != NULL && (strcasecmp(buffer, "none") == 0 ||
 	                      strcasecmp(buffer, "false") == 0))
 	{
 		config.pihole_ptr = PTR_NONE;

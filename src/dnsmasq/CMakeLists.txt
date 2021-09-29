@@ -34,6 +34,7 @@ set(sources
         metrics.h
         netlink.c
         network.c
+        nftset.c
         option.c
         outpacket.c
         pattern.c
