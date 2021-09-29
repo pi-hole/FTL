@@ -1086,6 +1086,30 @@ static bool special_domain(const queriesData *query, const char *domain)
 		return true;
 	}
 
+	// Apple iCloud Private Relay
+	// Some enterprise or school networks might be required to audit all
+	// network traffic by policy, and your network can block access to
+	// Private Relay in these cases. The user will be alerted that they need
+	// to either disable Private Relay for your network or choose another
+	// network.
+	// The fastest and most reliable way to alert users is to return a
+	// negative answer from your network’s DNS resolver, preventing DNS
+	// resolution for the following hostnames used by Private Relay traffic.
+	// Avoid causing DNS resolution timeouts or silently dropping IP packets
+	// sent to the Private Relay server, as this can lead to delays on
+	// client devices.
+	// > mask.icloud.com
+	// > mask-h2.icloud.com
+	// https://developer.apple.com/support/prepare-your-network-for-icloud-private-relay
+	if(config.special_domains.icloud_private_relay &&
+	   (strcasecmp(domain, "mask.icloud.com") == 0 ||
+	    strcasecmp(domain, "mask-h2.icloud.com") == 0))
+	{
+		blockingreason = "Apple iCloud Private Relay domain";
+		force_next_DNS_reply = REPLY_NXDOMAIN;
+		return true;
+	}
+
 	return false;
 }
 

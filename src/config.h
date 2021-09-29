@@ -50,6 +50,7 @@ typedef struct {
 	bool addr2line :1;
 	struct {
 		bool mozilla_canary :1;
+		bool icloud_private_relay :1;
 	} special_domains;
 	enum privacy_level privacylevel;
 	enum blocking_mode blockingmode;
