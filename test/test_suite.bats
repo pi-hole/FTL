@@ -458,7 +458,7 @@
   [[ ${lines[35]} == *"A a.dns.netmeister.org 127.0.0.1 2 2 4 "* ]]
   [[ ${lines[36]} == *"AAAA aaaa.dns.netmeister.org 127.0.0.1 2 2 4 "* ]]
   [[ ${lines[37]} == *"ANY any.dns.netmeister.org 127.0.0.1 2 2 13 "* ]]
-  [[ ${lines[38]} == *"TYPE5 cname.dns.netmeister.org 127.0.0.1 2 2 3 "* ]]
+  [[ ${lines[38]} == *"[CNAME] cname.dns.netmeister.org 127.0.0.1 2 2 3 "* ]]
   [[ ${lines[39]} == *"SRV srv.dns.netmeister.org 127.0.0.1 2 2 13 "* ]]
   [[ ${lines[40]} == *"SOA soa.dns.netmeister.org 127.0.0.1 2 2 13 "* ]]
   [[ ${lines[41]} == *"PTR 99.7.84.166.in-addr.arpa 127.0.0.1 2 2 5 "* ]]
