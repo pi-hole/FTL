@@ -78,14 +78,6 @@ jobs:
           mv pihole-FTL "${{ matrix.bin_name }}"
           sha1sum pihole-FTL-* > ${{ matrix.bin_name }}.sha1
       -
-        name: Attach binaries to release
-        if: ${{ github.event_name == 'release' }}
-        uses: skx/github-action-publish-binaries@master
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          args: '${{ matrix.bin_name }}*'
-      -
         name: Transfer Builds to Pi-hole server for pihole checkout
         if: ${{ github.event_name != 'pull_request' }}
         uses: appleboy/scp-action@master
@@ -96,3 +88,11 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           source: "${{ matrix.bin_name }}*"
           target: "${{ steps.branch_name.outputs.OUTPUT_DIR }}"
+      -
+        name: Attach binaries to release
+        if: ${{ github.event_name == 'release' }}
+        uses: skx/github-action-publish-binaries@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: '${{ matrix.bin_name }}*'
