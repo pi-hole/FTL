@@ -1602,6 +1602,9 @@ void check_servers(int no_loop_check)
       if (serv->sfd)
 	serv->sfd->used = 1;
       
+      if (count == SERVERS_LOGGED)
+	my_syslog(LOG_INFO, _("more servers are defined but not logged"));
+      
       if (++count > SERVERS_LOGGED)
 	continue;
       
@@ -1639,7 +1642,8 @@ void check_servers(int no_loop_check)
 	 continue;
        
        if ((serv->flags & SERV_LITERAL_ADDRESS) &&
-	   !(serv->flags & (SERV_6ADDR | SERV_4ADDR | SERV_ALL_ZEROS)))
+	   !(serv->flags & (SERV_6ADDR | SERV_4ADDR | SERV_ALL_ZEROS)) &&
+	   strlen(serv->domain))
 	 {
 	   count--;
 	   if (++locals <= LOCALS_LOGGED)

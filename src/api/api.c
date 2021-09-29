@@ -41,6 +41,9 @@
 // get_edestr()
 #include "api_helper.h"
 
+// defined in src/dnsmasq/cache.c
+extern char *querystr(char *desc, unsigned short type);
+
 #define min(a,b) ({ __typeof__ (a) _a = (a); __typeof__ (b) _b = (b); _a < _b ? _a : _b; })
 
 /* qsort comparision function (count field), sort ASC */
@@ -897,10 +900,17 @@ void getAllQueries(const char *client_message, const int *sock)
 		char othertype[12] = { 0 }; // Maximum is "TYPE65535" = 10 bytes
 		if(query->type == TYPE_OTHER)
 		{
-			// Format custom type into buffer
-			sprintf(othertype, "TYPE%u", query->qtype);
-			// Replace qtype pointer
-			qtype = othertype;
+			// Check the dnsmasq RR types table for a matching record
+			qtype = querystr((char*)"", query->qtype);
+
+			// If not known (querystr() returned "type=1234"), we replace this
+			if(!qtype || strstr(qtype, "type=") != NULL)
+			{
+				// Format custom type into buffer
+				sprintf(othertype, "TYPE%u", query->qtype);
+				// Replace qtype pointer
+				qtype = othertype;
+			}
 		}
 
 		// Hide UNKNOWN queries when not requesting both query status types
