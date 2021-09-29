@@ -2605,11 +2605,22 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 // int cache_inserted, cache_live_freed are defined in dnsmasq/cache.c
 void getCacheInformation(const int *sock)
 {
-	ssend(*sock,"cache-size: %i\ncache-live-freed: %i\ncache-inserted: %i\n",
+	struct cache_info ci;
+	get_dnsmasq_cache_info(&ci);
+	ssend(*sock,"cache-size: %i\ncache-live-freed: %i\ncache-inserted: %i\nipv4: %i\nipv6: %i\nsrv: %i\ncname: %i\nds: %i\ndnskey: %i\nother: %i\nexpired: %i\nimmortal: %i\n",
 	            daemon->cachesize,
 	            daemon->metrics[METRIC_DNS_CACHE_LIVE_FREED],
-	            daemon->metrics[METRIC_DNS_CACHE_INSERTED]);
-	// cache-size is obvious
+	            daemon->metrics[METRIC_DNS_CACHE_INSERTED],
+	            ci.valid.ipv4,
+	            ci.valid.ipv6,
+	            ci.valid.srv,
+	            ci.valid.cname,
+	            ci.valid.ds,
+	            ci.valid.dnskey,
+	            ci.valid.other,
+	            ci.expired,
+	            ci.immortal);
+	// <cache-size> is obvious
 	// It means the resolver handled <cache-inserted> names lookups that
 	// needed to be sent to upstream servers and that <cache-live-freed>
 	// was thrown out of the cache before reaching the end of its
@@ -2618,6 +2629,9 @@ void getCacheInformation(const int *sock)
 	// cached. If the cache is full with entries which haven't reached
 	// the end of their time-to-live, then the entry which hasn't been
 	// looked up for the longest time is evicted.
+	// <valid> are cache entries with positive remaining TTL
+	// <expired> cache entries (to be removed when space is needed)
+	// <immortal> cache records never expire (e.g. from /etc/hosts)
 }
 
 void FTL_forwarding_retried(const struct server *serv, const int oldID, const int newID, const bool dnssec)
