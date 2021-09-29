@@ -428,7 +428,7 @@
   [[ ${lines[5]} == *"A gravity-blocked.test.pi-hole.net 127.0.0.1 1 2 4"* ]]
   [[ ${lines[6]} == *"A whitelisted.test.pi-hole.net 127.0.0.1 2 1 4 "* ]]
   [[ ${lines[7]} == *"DS net :: 2 1 11 "* ]]
-  [[ ${lines[8]} == *"DNSKEY  :: 2 1 11 "* ]]
+  [[ ${lines[8]} == *"DNSKEY . :: 2 1 11 "* ]]
   [[ ${lines[9]} == *"DS pi-hole.net :: 2 1 11 "* ]]
   [[ ${lines[10]} == *"DNSKEY net :: 2 1 11 "* ]]
   [[ ${lines[11]} == *"DNSKEY pi-hole.net :: 2 1 11 "* ]]
