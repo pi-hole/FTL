@@ -233,8 +233,6 @@ char *canonicalise(char *in, int *nomem)
     {
 #  ifdef HAVE_LIBIDN2
       rc = idn2_to_ascii_lz(in, &ret, IDN2_NONTRANSITIONAL);
-      if (rc == IDN2_DISALLOWED)
-	rc = idn2_to_ascii_lz(in, &ret, IDN2_TRANSITIONAL);
 #  else
       rc = idna_to_ascii_lz(in, &ret, 0);
 #  endif
