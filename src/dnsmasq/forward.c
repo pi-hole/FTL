@@ -178,7 +178,7 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
   unsigned int gotname = extract_request(header, plen, daemon->namebuff, NULL);
   void *hash = hash_questions(header, plen, daemon->namebuff);
   unsigned char *oph = find_pseudoheader(header, plen, NULL, NULL, NULL, NULL);
-  int old_src = 0;
+  int old_src = 0, old_reply = 0;
   int first, last, start = 0;
   int subnet, cacheable, forwarded = 0;
   size_t edns0_len;
@@ -204,10 +204,10 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
      Similarly FREC_NO_CACHE is never set in flags, so a query which is
      contigent on a particular source address EDNS0 option will never be matched. */
   if (forward)
-  {
-          
-    old_src = 1;
-  }
+    {
+      old_src = 1;
+      old_reply = 1;
+    }
   else if ((forward = lookup_frec_by_query(hash, fwd_flags,
 					   FREC_CHECKING_DISABLED | FREC_AD_QUESTION | FREC_DO_QUESTION |
 					   FREC_HAS_PHEADER | FREC_DNSKEY_QUERY | FREC_DS_QUERY | FREC_NO_CACHE)))
@@ -391,9 +391,18 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 		  /* In strict order mode, there must be a server later in the list
 		     left to send to, otherwise without the forwardall mechanism,
 		     code further on will cycle around the list forwever if they
-		     all return REFUSED. If at the last, give up. */
+		     all return REFUSED. If at the last, give up.
+		     Note that we can get here EITHER because a client retried,
+		     or an upstream server returned REFUSED. The above only
+		     applied in the later case. For client retries,
+		     keep tyring the last server.. */
 		  if (++start == last)
-		    goto reply;
+		    {
+		      if (old_reply)
+			goto reply;
+		      else
+			start--;
+		    }
 		}
 	    }	  
 	}
