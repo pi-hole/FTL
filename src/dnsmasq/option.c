@@ -967,13 +967,9 @@ static char *domain_rev4(int from_file, char *server, struct in_addr *addr4, int
   
   if (size > 32 || size < 1)
     return _("bad IPv4 prefix length");
-  
-  for (i = 0; i < addrbytes; i++)
-    if (((u8 *)addr4)[3-i] != 0)
-      break;
-  
-  if (i != addrbytes || (((u8 *)addr4)[3-addrbytes] & ((1 << addrbits) - 1)) != 0)
-    return _("address part not zero");
+
+  /* Zero out last address bits according to CIDR mask */
+  ((u8 *)addr4)[3-addrbytes] &= ~((1 << addrbits)-1);
   
   size = size & ~0x7;
   
@@ -1030,13 +1026,9 @@ static char *domain_rev6(int from_file, char *server, struct in6_addr *addr6, in
   
   if (size > 128 || size < 1)
     return _("bad IPv6 prefix length");
-
-  for (i = 0; i < addrbytes; i++)
-    if (addr6->s6_addr[15-i] != 0)
-      break;
   
-  if (i != addrbytes || (addr6->s6_addr[15-addrbytes] & ((1 << addrbits) - 1)) != 0)
-    return _("address part not zero");
+  /* Zero out last address bits according to CIDR mask */
+  addr6->s6_addr[15-addrbytes] &= ~((1 << addrbits) - 1);
   
   size = size & ~0x3;
   
