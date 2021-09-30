@@ -17,6 +17,9 @@
 /* Declare static char *compiler_opts  in config.h */
 #define DNSMASQ_COMPILE_OPTS
 
+#if defined(HAVE_IDN) || defined(HAVE_LIBIDN2) || defined(LOCALEDIR)
+#include <locale.h>
+#endif
 #include "dnsmasq.h"
 #include "../dnsmasq_interface.h"
 // killed
@@ -73,8 +76,10 @@ int main_dnsmasq (int argc, char **argv)
   int tftp_prefix_missing = 0;
 #endif
 
-#ifdef LOCALEDIR
+#if defined(HAVE_IDN) || defined(HAVE_LIBIDN2) || defined(LOCALEDIR)
   setlocale(LC_ALL, "");
+#endif
+#ifdef LOCALEDIR
   bindtextdomain("dnsmasq", LOCALEDIR); 
   textdomain("dnsmasq");
 #endif
