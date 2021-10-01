@@ -1182,9 +1182,12 @@ extern struct daemon {
   char *packet; /* packet buffer */
   int packet_buff_sz; /* size of above */
   char *namebuff; /* MAXDNAME size buffer */
+#if (defined(HAVE_CONNTRACK) && defined(HAVE_UBUS)) || defined(HAVE_DNSSEC)
+  /* CONNTRACK UBUS code uses this buffer, as well as DNSSEC code. */
+  char *workspacename;
+#endif
 #ifdef HAVE_DNSSEC
   char *keyname; /* MAXDNAME size buffer */
-  char *workspacename; /* ditto */
   unsigned long *rr_status; /* ceiling in TTL from DNSSEC or zero for insecure */
   int rr_status_sz;
   int dnssec_no_time_check;

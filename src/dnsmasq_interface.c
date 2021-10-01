@@ -794,6 +794,7 @@ void _FTL_iface(struct irec *recviface, const char *file, const int line)
 	if(config.reply_addr.overwrite_v4)
 	{
 		memcpy(&next_iface.addr4, &config.reply_addr.v4, sizeof(config.reply_addr.v4));
+		next_iface.haveIPv4 = true;
 
 		if(config.debug & DEBUG_NETWORKING)
 		{
@@ -805,6 +806,7 @@ void _FTL_iface(struct irec *recviface, const char *file, const int line)
 	if(config.reply_addr.overwrite_v6)
 	{
 		memcpy(&next_iface.addr6, &config.reply_addr.v6, sizeof(config.reply_addr.v6));
+		next_iface.haveIPv6 = true;
 
 		if(config.debug & DEBUG_NETWORKING)
 		{
@@ -831,7 +833,7 @@ void _FTL_iface(struct irec *recviface, const char *file, const int line)
 		if(iface->name == NULL)
 		{
 			if(config.debug & DEBUG_NETWORKING)
-				logg("Interface with ID %d has no name", iface->index);
+				logg("Skipping interface (%d,%d): no name", iface->index, iface->label);
 			continue;
 		}
 
@@ -839,7 +841,7 @@ void _FTL_iface(struct irec *recviface, const char *file, const int line)
 		if(iface->index != recviface->index || iface->label != recviface->label)
 		{
 			if(config.debug & DEBUG_NETWORKING)
-				logg("Interface %s is not the exact interface we are looking for (%d,%d != %d,%d)",
+				logg("Skipping interface %s (%d,%d): We are looking for (%d,%d)",
 				     iface->name, iface->index, iface->label, recviface->index, recviface->label);
 			continue;
 		}
@@ -855,7 +857,12 @@ void _FTL_iface(struct irec *recviface, const char *file, const int line)
 		const sa_family_t family = iface->addr.sa.sa_family;
 		if((config.reply_addr.overwrite_v4 && family == AF_INET) ||
 		   (config.reply_addr.overwrite_v6 && family == AF_INET6))
+		   {
+			if(config.debug & DEBUG_NETWORKING)
+				logg("Skipping interface %s: Address type is overwritten by REPLY_ADDR%d",
+				     iface->name, family == AF_INET ? 4 : 6);
 			continue;
+		   }
 
 		bool isULA = false, isGUA = false, isLL = false;
 		// Check if this address is different from 0000:0000:0000:0000:0000:0000:0000:0000
