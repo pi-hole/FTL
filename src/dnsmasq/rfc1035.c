@@ -778,6 +778,15 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 	      if (!cname_count--)
 		return 0; /* looped CNAMES */
 	      
+	      // ****************************** Pi-hole modification ******************************
+	      if(FTL_CNAME(name, cpp, daemon->log_display_id))
+	        {
+	          // This query is to be blocked as we found a blocked
+	          // domain while walking the CNAME path. Log to pihole.log here
+	          log_query(F_UPSTREAM, name, NULL, "blocked during CNAME inspection", 0);
+	          return 2;
+	        }
+	      // **********************************************************************************
 	      log_query(secflag | F_CNAME | F_FORWARD | F_UPSTREAM, name, NULL, NULL, 0);
 	      
 	      if (insert)
