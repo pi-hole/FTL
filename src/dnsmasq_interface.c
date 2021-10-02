@@ -71,7 +71,7 @@ static void check_pihole_PTR(char *domain);
 static void _query_set_dnssec(queriesData *query, const enum dnssec_status dnssec, const char *file, const int line);
 
 // Static blocking metadata
-static const char *blockingreason = NULL;
+static const char *blockingreason = "";
 static union all_addr null_addrp = {{ 0 }};
 static enum reply_type force_next_DNS_reply = REPLY_UNKNOWN;
 static int last_regex_idx = -1;
