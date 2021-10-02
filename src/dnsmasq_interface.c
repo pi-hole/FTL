@@ -778,7 +778,8 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	return blockDomain;
 }
 
-void _FTL_iface(struct irec *recviface, const char *file, const int line)
+void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_family_t addrfamily,
+                const char *file, const int line)
 {
 	// Invalidate data we have from the last interface/query
 	// Set addresses to 0.0.0.0 and ::, respectively
@@ -820,20 +821,79 @@ void _FTL_iface(struct irec *recviface, const char *file, const int line)
 	next_iface.name[0] = '-';
 	next_iface.name[1] = '\0';
 
+	// Check if we need to identify the receving interface by its address
+	if(!recviface && addr && (addrfamily == AF_INET || addrfamily == AF_INET6))
+	{
+		if(config.debug & DEBUG_NETWORKING)
+		{
+			char addrstr[INET6_ADDRSTRLEN] = { 0 };
+			if(addrfamily == AF_INET)
+				inet_ntop(AF_INET, &addr->addr4, addrstr, INET6_ADDRSTRLEN);
+			else // if(addrfamily == AF_INET6)
+				inet_ntop(AF_INET6, &addr->addr6, addrstr, INET6_ADDRSTRLEN);
+			logg("Identifying interface (looking for %s):", addrstr);
+		}
+
+		// Loop over interfaces and try to find match
+		for (recviface = daemon->interfaces; recviface; recviface = recviface->next)
+		{
+			char addrstr[INET6_ADDRSTRLEN] = { 0 };
+			if(recviface->addr.sa.sa_family == AF_INET)
+			{
+				inet_ntop(AF_INET, &recviface->addr.in.sin_addr, addrstr, INET6_ADDRSTRLEN);
+				if(config.debug & DEBUG_NETWORKING)
+				{
+					logg("  - IPv4 interface %s (%d,%d) is %s",
+					     recviface->name, recviface->index, recviface->label, addrstr);
+				}
+				if(recviface->addr.in.sin_addr.s_addr == addr->addr4.s_addr)
+				{
+					if(config.debug & DEBUG_NETWORKING)
+						logg("    ^^^ MATCH ^^^");
+					break;
+				}
+			}
+			else if(recviface->addr.sa.sa_family == AF_INET6)
+			{
+				inet_ntop(AF_INET6, &recviface->addr.in6.sin6_addr, addrstr, INET6_ADDRSTRLEN);
+				if(config.debug & DEBUG_NETWORKING)
+				{
+					logg("  - IPv6 interface %s (%d,%d) is %s",
+					     recviface->name, recviface->index, recviface->label, addrstr);
+				}
+				if(IN6_ARE_ADDR_EQUAL(&recviface->addr.in6.sin6_addr, &addr->addr6))
+				{
+					if(config.debug & DEBUG_NETWORKING)
+						logg("    ^^^ MATCH ^^^");
+					break;
+				}
+			}
+		}
+	}
+
 	// Return early when there is no interface available at this point
+	// This means we didn't get one passed + we didn't find one above
 	if(!recviface)
+	{
+		if(config.debug & DEBUG_NETWORKING)
+			logg("No receiving interface available at this point");
 		return;
+	}
 
 	// Determine addresses of this interface, we have to loop over all interfaces as
 	// recviface will always only contain *either* IPv4 or IPv6 information
 	bool haveGUAv6 = false, haveULAv6 = false;
+	if(config.debug & DEBUG_NETWORKING)
+		logg("Analyzing interfaces:");
 	for (struct irec *iface = daemon->interfaces; iface != NULL; iface = iface->next)
 	{
+		const sa_family_t family = iface->addr.sa.sa_family;
 		// If this interface has no name, we skip it
 		if(iface->name == NULL)
 		{
 			if(config.debug & DEBUG_NETWORKING)
-				logg("Skipping interface (%d,%d): no name", iface->index, iface->label);
+				logg("  - SKIP IPv%d interface (%d,%d): no name",
+				     family == AF_INET ? 4 : 6, iface->index, iface->label);
 			continue;
 		}
 
@@ -841,8 +901,9 @@ void _FTL_iface(struct irec *recviface, const char *file, const int line)
 		if(iface->index != recviface->index || iface->label != recviface->label)
 		{
 			if(config.debug & DEBUG_NETWORKING)
-				logg("Skipping interface %s (%d,%d): We are looking for (%d,%d)",
-				     iface->name, iface->index, iface->label, recviface->index, recviface->label);
+				logg("  - SKIP IPv%d interface %s: (%d,%d) != (%d,%d)",
+				     family == AF_INET ? 4 : 6, iface->name, iface->index, iface->label,
+				     recviface->index, recviface->label);
 			continue;
 		}
 
@@ -854,13 +915,12 @@ void _FTL_iface(struct irec *recviface, const char *file, const int line)
 
 		// Check if this family type is overwritten by config settings
 		// We logged this above
-		const sa_family_t family = iface->addr.sa.sa_family;
 		if((config.reply_addr.overwrite_v4 && family == AF_INET) ||
 		   (config.reply_addr.overwrite_v6 && family == AF_INET6))
 		   {
 			if(config.debug & DEBUG_NETWORKING)
-				logg("Skipping interface %s: Address type is overwritten by REPLY_ADDR%d",
-				     iface->name, family == AF_INET ? 4 : 6);
+				logg("  - SKIP IPv%d interface %s: REPLY_ADDR%d used",
+				     family == AF_INET ? 4 : 6, iface->name, family == AF_INET ? 4 : 6);
 			continue;
 		   }
 
@@ -913,9 +973,9 @@ void _FTL_iface(struct irec *recviface, const char *file, const int line)
 				inet_ntop(AF_INET6, &iface->addr.in6.sin6_addr, buffer, ADDRSTRLEN);
 
 			const char *type = family == AF_INET6 ? isGUA ? " (GUA)" : isULA ? " (ULA)" : isLL ? " (LL)" : " (other)" : "";
-			logg("Interface %s (%d,%d) has IPv%i address %s%s",
-			     next_iface.name, iface->index, iface->label,
-			     family == AF_INET ? 4 : 6, buffer, type);
+			logg("  -  OK  IPv%d interface %s (%d,%d) is %s%s",
+			     family == AF_INET ? 4 : 6, next_iface.name,
+			     iface->index, iface->label, buffer, type);
 		}
 
 		// Exit loop early if we already have everything we need
@@ -923,7 +983,7 @@ void _FTL_iface(struct irec *recviface, const char *file, const int line)
 		if(next_iface.haveIPv4 && haveULAv6)
 		{
 			if(config.debug & DEBUG_NETWORKING)
-				logg("We have everything we need, exiting interface analysis");
+				logg("Exiting interface analysis early (have IPv4 + ULAv6)");
 			break;
 		}
 	}

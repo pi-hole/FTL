@@ -2026,7 +2026,7 @@ static void check_dns_listeners(time_t now)
 	      /************ Pi-hole modification ************/
 	      FTL_TCP_worker_created(confd);
 	      // Store interface this fork is handling exclusively
-	      FTL_iface(iface);
+	      FTL_iface(iface, NULL, 0);
 	      /**********************************************/
 
 	      buff = tcp_request(confd, now, &tcp_addr, netmask, auth_dns);
