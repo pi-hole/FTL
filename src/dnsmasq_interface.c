@@ -822,7 +822,9 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 	next_iface.name[1] = '\0';
 
 	// Check if we need to identify the receving interface by its address
-	if(!recviface && addr && (addrfamily == AF_INET || addrfamily == AF_INET6))
+	if(!recviface && addr &&
+	   ((addrfamily == AF_INET && addr->addr4.s_addr != 0) ||
+	    (addrfamily == AF_INET6 && addr->addr6.s6_addr[0] != 0)))
 	{
 		if(config.debug & DEBUG_NETWORKING)
 		{
@@ -835,39 +837,46 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 		}
 
 		// Loop over interfaces and try to find match
-		for (recviface = daemon->interfaces; recviface; recviface = recviface->next)
+		for (struct irec *iface = daemon->interfaces; iface; iface = iface->next)
 		{
 			char addrstr[INET6_ADDRSTRLEN] = { 0 };
-			if(recviface->addr.sa.sa_family == AF_INET)
+			if(iface->addr.sa.sa_family == AF_INET)
 			{
-				inet_ntop(AF_INET, &recviface->addr.in.sin_addr, addrstr, INET6_ADDRSTRLEN);
+				inet_ntop(AF_INET, &iface->addr.in.sin_addr, addrstr, INET6_ADDRSTRLEN);
 				if(config.debug & DEBUG_NETWORKING)
 				{
 					logg("  - IPv4 interface %s (%d,%d) is %s",
-					     recviface->name, recviface->index, recviface->label, addrstr);
+					     iface->name, iface->index, iface->label, addrstr);
 				}
-				if(recviface->addr.in.sin_addr.s_addr == addr->addr4.s_addr)
+				if(iface->addr.in.sin_addr.s_addr == addr->addr4.s_addr)
 				{
-					if(config.debug & DEBUG_NETWORKING)
-						logg("    ^^^ MATCH ^^^");
+					// Set receiving interface
+					recviface = iface;
 					break;
 				}
 			}
-			else if(recviface->addr.sa.sa_family == AF_INET6)
+			else if(iface->addr.sa.sa_family == AF_INET6)
 			{
-				inet_ntop(AF_INET6, &recviface->addr.in6.sin6_addr, addrstr, INET6_ADDRSTRLEN);
+				inet_ntop(AF_INET6, &iface->addr.in6.sin6_addr, addrstr, INET6_ADDRSTRLEN);
 				if(config.debug & DEBUG_NETWORKING)
 				{
 					logg("  - IPv6 interface %s (%d,%d) is %s",
-					     recviface->name, recviface->index, recviface->label, addrstr);
+					     iface->name, iface->index, iface->label, addrstr);
 				}
-				if(IN6_ARE_ADDR_EQUAL(&recviface->addr.in6.sin6_addr, &addr->addr6))
+				if(IN6_ARE_ADDR_EQUAL(&iface->addr.in6.sin6_addr, &addr->addr6))
 				{
-					if(config.debug & DEBUG_NETWORKING)
-						logg("    ^^^ MATCH ^^^");
+					// Set receiving interface
+					recviface = iface;
 					break;
 				}
 			}
+		}
+		if(config.debug & DEBUG_NETWORKING)
+		{
+			if(recviface)
+				logg("    ^^^ MATCH ^^^");
+			else
+				logg("    --> NO MATCH <--");
 		}
 	}
 
