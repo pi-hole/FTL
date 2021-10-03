@@ -622,6 +622,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		client->flags.rate_limited = true;
 
 		// Block this query
+		blockingreason = "rate-limiting";
 		force_next_DNS_reply = REPLY_REFUSED;
 		blockingreason = "Rate-limiting";
 
