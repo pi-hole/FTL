@@ -20,23 +20,51 @@
 #include "signals.h"
 // data getter functions
 #include "datastructure.h"
+// logg_rate_limit_message()
+#include "database/message-table.h"
 
 bool doGC = false;
 
+// Subtract rate-limitation count from individual client counters
+// As long as client->rate_limit is still larger than the allowed
+// maximum count, the rate-limitation will just continue
 static void reset_rate_limiting(void)
 {
 	for(int clientID = 0; clientID < counters->clients; clientID++)
 	{
 		clientsData *client = getClient(clientID, true);
-		if(client != NULL)
-			client->rate_limit = 0;
+		if(!client)
+			continue;
+
+		// Check if we are currently rate-limiting this client
+		if(client->flags.rate_limited)
+		{
+			const char *clientIP = getstr(client->ippos);
+
+			// Check if we want to continue rate limiting
+			if(client->rate_limit > config.rate_limit.count)
+			{
+				logg("Still rate-limiting %s as it made additional %d queries", clientIP, client->rate_limit);
+			}
+			// or if rate-limiting ends for this client now
+			else
+			{
+				logg("Ending rate-limitation of %s", clientIP);
+				client->flags.rate_limited = false;
+			}
+		}
+
+		// Reset counter
+		client->rate_limit = 0;
 	}
 }
 
 static time_t lastRateLimitCleaner = 0;
-time_t get_rate_limit_turnaround(void)
+// Returns how many more seconds until the current rate-limiting interval is over
+time_t get_rate_limit_turnaround(const unsigned int rate_limit_count)
 {
-	return time(NULL) - lastRateLimitCleaner + config.rate_limit.interval;
+	const unsigned int how_often = rate_limit_count/config.rate_limit.count;
+	return (time_t)config.rate_limit.interval*how_often - (time(NULL) - lastRateLimitCleaner);
 }
 
 void *GC_thread(void *val)

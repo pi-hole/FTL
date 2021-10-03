@@ -306,7 +306,8 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 	// Set blocking_flags to F_HOSTS so dnsmasq logs blocked queries being answered from a specific source
 	// (it would otherwise assume it knew the blocking status from cache which would prevent us from
 	// printing the blocking source (blacklist, regex, gravity) in dnsmasq's log file, our pihole.log)
-	flags |= F_HOSTS;
+	if(flags != 0)
+		flags |= F_HOSTS;
 
 	// Skip questions so we can start adding answers (if applicable)
 	if (!(p = skip_questions(header, len)))
@@ -373,9 +374,23 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 			log_query(flags & ~F_IPV4, name, addr, (char*)blockingreason, 0);
 	}
 
-	// Log empty replies (NODATA/NXDOMAIN/REFUSED)
+	// Log empty replies
 	if(!(flags & (F_IPV4 | F_IPV6)))
-		log_query(flags, name, NULL, (char*)blockingreason, 0);
+	{
+		if(flags == 0)
+		{
+			// REFUSED
+			union all_addr addr = {{ 0 }};
+			addr.log.rcode = REFUSED;
+			addr.log.ede = EDE_BLOCKED;
+			log_query(F_RCODE | F_HOSTS, name, &addr, (char*)blockingreason, 0);
+		}
+		else
+		{
+			// NODATA/NXDOMAIN
+			log_query(flags, name, NULL, (char*)blockingreason, 0);
+		}
+	}
 
 	// Indicate if truncated (client should retry over TCP)
 	if (trunc)
@@ -590,15 +605,25 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 
 	// Check rate-limit for this client
 	if(!internal_query && config.rate_limit.count > 0 &&
-	   ++client->rate_limit > config.rate_limit.count)
+	   (++client->rate_limit > config.rate_limit.count  || client->flags.rate_limited))
 	{
-		// Log the first rate-limited query for this client in this interval
-		// We do not log the blocked domain for privacy reasons
-		if(client->rate_limit == config.rate_limit.count+1)
-			logg_rate_limit_message(clientIP);
+		if(!client->flags.rate_limited)
+		{
+			// Log the first rate-limited query for this client in
+			// this interval. We do not log the blocked domain for
+			// privacy reasons
+			logg_rate_limit_message(clientIP, client->rate_limit);
+			// Reset rate-limiting counter so we can count what
+			// comes within the adjacent interval
+			client->rate_limit = 0;
+		}
+
+		// Memorize this client needs rate-limiting
+		client->flags.rate_limited = true;
 
 		// Block this query
 		force_next_DNS_reply = REPLY_REFUSED;
+		blockingreason = "Rate-limiting";
 
 		// Free allocated memory
 		free(domainString);

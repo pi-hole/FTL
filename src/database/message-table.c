@@ -326,12 +326,12 @@ void logg_fatal_dnsmasq_message(const char *message)
 	cleanup(EXIT_FAILURE);
 }
 
-void logg_rate_limit_message(const char *clientIP)
+void logg_rate_limit_message(const char *clientIP, const unsigned int rate_limit_count)
 {
-	const time_t turnaround = get_rate_limit_turnaround();
+	const time_t turnaround = get_rate_limit_turnaround(rate_limit_count);
 
 	// Log to pihole-FTL.log
-	logg("Rate-limiting %s for %ld second%s",
+	logg("Rate-limiting %s for at least %ld second%s",
 	     clientIP, turnaround, turnaround == 1 ? "" : "s");
 
 	// Log to database
