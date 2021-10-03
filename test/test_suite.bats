@@ -277,14 +277,28 @@
   printf "%s\n" "${lines[@]}"
 }
 
+@test "CNAME inspection: Shallow CNAME is blocked" {
+  run bash -c "dig A cname-1.test.pi-hole.net @127.0.0.1 +short"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "0.0.0.0" ]]
+  [[ ${lines[1]} == "" ]]
+}
+
+@test "CNAME inspection: Deep CNAME is blocked" {
+  run bash -c "dig A cname-4.test.pi-hole.net @127.0.0.1 +short"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "0.0.0.0" ]]
+  [[ ${lines[1]} == "" ]]
+}
+
 @test "Statistics as expected" {
   run bash -c 'echo ">stats >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[1]} == "domains_being_blocked 3" ]]
-  [[ ${lines[2]} == "dns_queries_today 78" ]]
-  [[ ${lines[3]} == "ads_blocked_today 6" ]]
+  [[ ${lines[2]} == "dns_queries_today 80" ]]
+  [[ ${lines[3]} == "ads_blocked_today 8" ]]
   #[[ ${lines[4]} == "ads_percentage_today 7.792208" ]]
-  [[ ${lines[5]} == "unique_domains 51" ]]
+  [[ ${lines[5]} == "unique_domains 55" ]]
   [[ ${lines[6]} == "queries_forwarded 61" ]]
   [[ ${lines[7]} == "queries_cached 11" ]]
   # Clients ever seen is commented out as CircleCI may have
@@ -292,10 +306,10 @@
   # number of clients may not work in all cases
   #[[ ${lines[8]} == "clients_ever_seen 8" ]]
   #[[ ${lines[9]} == "unique_clients 8" ]]
-  [[ ${lines[10]} == "dns_queries_all_types 78" ]]
+  [[ ${lines[10]} == "dns_queries_all_types 80" ]]
   [[ ${lines[11]} == "reply_NODATA 9" ]]
   [[ ${lines[12]} == "reply_NXDOMAIN 1" ]]
-  [[ ${lines[13]} == "reply_CNAME 1" ]]
+  [[ ${lines[13]} == "reply_CNAME 5" ]]
   [[ ${lines[14]} == "reply_IP 22" ]]
   [[ ${lines[15]} == "privacy_level 0" ]]
   [[ ${lines[16]} == "status enabled" ]]
@@ -311,8 +325,8 @@
 @test "Top Clients" {
   run bash -c 'echo ">top-clients >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ "${lines[@]}" == *"34 :: "* ]]
-  [[ "${lines[@]}" == *"34 127.0.0.1 "* ]]
+  [[ ${lines[1]} == "0 36 127.0.0.1 "* ]]
+  [[ ${lines[2]} == "1 34 :: "* ]]
   [[ ${lines[3]} == "2 4 127.0.0.3 "* ]]
   [[ ${lines[4]} == "3 3 127.0.0.2 "* ]]
   [[ "${lines[@]}" == *"1 aliasclient-0 some-aliasclient"* ]]
@@ -370,12 +384,14 @@
 @test "Top Ads" {
   run bash -c 'echo ">top-ads (20) >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ "${lines[@]}" == *" 2 gravity-blocked.test.pi-hole.net"* ]]
+  [[ "${lines[@]}" == *" 4 gravity-blocked.test.pi-hole.net"* ]]
   [[ "${lines[@]}" == *" 1 blacklist-blocked.test.pi-hole.net"* ]]
   [[ "${lines[@]}" == *" 1 whitelisted.test.pi-hole.net"* ]]
   [[ "${lines[@]}" == *" 1 regex5.test.pi-hole.net"* ]]
   [[ "${lines[@]}" == *" 1 regex1.test.pi-hole.net"* ]]
-  [[ ${lines[6]} == "" ]]
+  [[ "${lines[@]}" == *" 1 cname-1.test.pi-hole.net"* ]]
+  [[ "${lines[@]}" == *" 1 cname-4.test.pi-hole.net"* ]]
+  [[ ${lines[8]} == "" ]]
 }
 
 @test "Domain auditing, approved domains are not shown" {
@@ -387,31 +403,31 @@
 @test "Upstream Destinations reported correctly" {
   run bash -c 'echo ">forward-dest >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "-2 7.69 blocklist blocklist" ]]
-  [[ ${lines[2]} == "-1 14.10 cache cache" ]]
-  [[ ${lines[3]} == "0 60.26 8.8.8.8#53 8.8.8.8#53" ]]
-  [[ ${lines[4]} == "1 17.95 84.200.69.80#53 84.200.69.80#53" ]]
+  [[ ${lines[1]} == "-2 10.00 blocklist blocklist" ]]
+  [[ ${lines[2]} == "-1 13.75 cache cache" ]]
+  [[ ${lines[3]} == "0 58.75 8.8.8.8#53 8.8.8.8#53" ]]
+  [[ ${lines[4]} == "1 17.50 84.200.69.80#53 84.200.69.80#53" ]]
 }
 
 @test "Query Types reported correctly" {
   run bash -c 'echo ">querytypes >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "A (IPv4): 26.92" ]]
-  [[ ${lines[2]} == "AAAA (IPv6): 2.56" ]]
-  [[ ${lines[3]} == "ANY: 1.28" ]]
-  [[ ${lines[4]} == "SRV: 1.28" ]]
-  [[ ${lines[5]} == "SOA: 1.28" ]]
-  [[ ${lines[6]} == "PTR: 3.85" ]]
-  [[ ${lines[7]} == "TXT: 7.69" ]]
-  [[ ${lines[8]} == "NAPTR: 1.28" ]]
-  [[ ${lines[9]} == "MX: 1.28" ]]
-  [[ ${lines[10]} == "DS: 28.21" ]]
-  [[ ${lines[11]} == "RRSIG: 1.28" ]]
-  [[ ${lines[12]} == "DNSKEY: 17.95" ]]
-  [[ ${lines[13]} == "NS: 1.28" ]]
-  [[ ${lines[14]} == "OTHER: 1.28" ]]
-  [[ ${lines[15]} == "SVCB: 1.28" ]]
-  [[ ${lines[16]} == "HTTPS: 1.28" ]]
+  [[ ${lines[1]}  == "A (IPv4): 28.75" ]]
+  [[ ${lines[2]}  == "AAAA (IPv6): 2.50" ]]
+  [[ ${lines[3]}  == "ANY: 1.25" ]]
+  [[ ${lines[4]}  == "SRV: 1.25" ]]
+  [[ ${lines[5]}  == "SOA: 1.25" ]]
+  [[ ${lines[6]}  == "PTR: 3.75" ]]
+  [[ ${lines[7]}  == "TXT: 7.50" ]]
+  [[ ${lines[8]}  == "NAPTR: 1.25" ]]
+  [[ ${lines[9]}  == "MX: 1.25" ]]
+  [[ ${lines[10]} == "DS: 27.50" ]]
+  [[ ${lines[11]} == "RRSIG: 1.25" ]]
+  [[ ${lines[12]} == "DNSKEY: 17.50" ]]
+  [[ ${lines[13]} == "NS: 1.25" ]]
+  [[ ${lines[14]} == "OTHER: 1.25" ]]
+  [[ ${lines[15]} == "SVCB: 1.25" ]]
+  [[ ${lines[16]} == "HTTPS: 1.25" ]]
   [[ ${lines[17]} == "" ]]
 }
 
@@ -499,7 +515,9 @@
   [[ ${lines[76]} == *"NS ns.dns.netmeister.org 127.0.0.1 2 2 13 "* ]]
   [[ ${lines[77]} == *"SVCB svcb.dns.netmeister.org 127.0.0.1 2 2 13 "* ]]
   [[ ${lines[78]} == *"HTTPS https.dns.netmeister.org 127.0.0.1 2 2 13 "* ]]
-  [[ ${lines[79]} == "" ]]
+  [[ ${lines[79]} == *"A cname-1.test.pi-hole.net 127.0.0.1 9 1 3 "*" gravity-blocked.test.pi-hole.net "* ]]
+  [[ ${lines[80]} == *"A cname-4.test.pi-hole.net 127.0.0.1 9 1 3 "*" gravity-blocked.test.pi-hole.net "* ]]
+  [[ ${lines[81]} == "" ]]
 }
 
 @test "Get all queries (domain filtered) shows expected content" {
@@ -512,7 +530,7 @@
 @test "Recent blocked shows expected content" {
   run bash -c 'echo ">recentBlocked >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "regex1.test.pi-hole.net" ]]
+  [[ ${lines[1]} == "cname-4.test.pi-hole.net" ]]
   [[ ${lines[2]} == "" ]]
 }
 
