@@ -50,6 +50,7 @@ typedef struct {
 	bool addr2line :1;
 	struct {
 		bool mozilla_canary :1;
+		bool icloud_private_relay :1;
 	} special_domains;
 	enum privacy_level privacylevel;
 	enum blocking_mode blockingmode;
@@ -62,6 +63,7 @@ typedef struct {
 	int dns_port;
 	unsigned int delay_startup;
 	unsigned int network_expire;
+	unsigned int block_ttl;
 	struct {
 		unsigned int count;
 		unsigned int interval;
@@ -75,7 +77,7 @@ typedef struct {
 		struct in6_addr v6;
 	} reply_addr;
 } ConfigStruct;
-ASSERT_SIZEOF(ConfigStruct, 80, 72, 72);
+ASSERT_SIZEOF(ConfigStruct, 80, 76, 76);
 
 typedef struct {
 	const char* conf;

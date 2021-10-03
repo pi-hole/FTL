@@ -121,13 +121,13 @@ static void set_outgoing_mark(struct frec *forward, int fd)
 #endif
 
 // Pi-hole modified
-#define log_query_mysockaddr(flags, name, addr, arg) _log_query_mysockaddr(flags, name, addr, arg, __LINE__)
-static void _log_query_mysockaddr(unsigned int flags, char *name, union mysockaddr *addr, char *arg, const int line)
+#define log_query_mysockaddr(flags, name, addr, arg, type) _log_query_mysockaddr(flags, name, addr, arg, type, __LINE__)
+static void _log_query_mysockaddr(unsigned int flags, char *name, union mysockaddr *addr, char *arg, unsigned short type, const int line)
 {
   if (addr->sa.sa_family == AF_INET)
-    _log_query(flags | F_IPV4, name, (union all_addr *)&addr->in.sin_addr, arg, __FILE__, line);
+    _log_query(flags | F_IPV4, name, (union all_addr *)&addr->in.sin_addr, arg, type, __FILE__, line);
   else
-    _log_query(flags | F_IPV6, name, (union all_addr *)&addr->in6.sin6_addr, arg, __FILE__, line);
+    _log_query(flags | F_IPV6, name, (union all_addr *)&addr->in6.sin6_addr, arg, type, __FILE__, line);
 }
 
 static void server_send(struct server *server, int fd,
@@ -140,26 +140,27 @@ static void server_send(struct server *server, int fd,
 
 #ifdef HAVE_DNSSEC
 // Pi-hole modified
-#define server_send_log(server, fd, header, plen, dumpflags, logflags, name, arg) _server_send_log(server, fd, header, plen, dumpflags, logflags, name, arg, __LINE__)
+#define server_send_log(server, fd, header, plen, dumpflags, logflags, name, arg, type) _server_send_log(server, fd, header, plen, dumpflags, logflags, name, arg, type, __LINE__)
 static void _server_send_log(struct server *server, int fd,
 			const void *header, size_t plen, int dumpflags,
-			unsigned int logflags, char *name, char *arg, const int line)
+			unsigned int logflags, char *name, char *arg,
+			unsigned short type, const int line)
 {
 #ifdef HAVE_DUMPFILE
 	  dump_packet(dumpflags, (void *)header, (size_t)plen, NULL, &server->addr);
 #endif
-	  _log_query_mysockaddr(logflags, name, &server->addr, arg, line);
+	  _log_query_mysockaddr(logflags, name, &server->addr, arg, type, line);
 	  server_send(server, fd, header, plen, 0);
 }
 #endif
 
 static int domain_no_rebind(char *domain)
 {
-  struct server *serv;
-  int dlen = (int)strlen(domain);
+  struct rebind_domain *rbd;
+  size_t tlen, dlen = strlen(domain);
   
-  for (serv = daemon->no_rebind; serv; serv = serv->next)
-    if (dlen >= serv->domain_len && strcmp(serv->domain, &domain[dlen - serv->domain_len]) == 0)
+  for (rbd = daemon->no_rebind; rbd; rbd = rbd->next)
+    if (dlen >= (tlen = strlen(rbd->domain)) && strcmp(rbd->domain, &domain[dlen - tlen]) == 0)
       return 1;
 
   return 0;
@@ -177,7 +178,7 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
   unsigned int gotname = extract_request(header, plen, daemon->namebuff, NULL);
   void *hash = hash_questions(header, plen, daemon->namebuff);
   unsigned char *oph = find_pseudoheader(header, plen, NULL, NULL, NULL, NULL);
-  int old_src = 0;
+  int old_src = 0, old_reply = 0;
   int first, last, start = 0;
   int subnet, cacheable, forwarded = 0;
   size_t edns0_len;
@@ -203,10 +204,10 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
      Similarly FREC_NO_CACHE is never set in flags, so a query which is
      contigent on a particular source address EDNS0 option will never be matched. */
   if (forward)
-  {
-          
-    old_src = 1;
-  }
+    {
+      old_src = 1;
+      old_reply = 1;
+    }
   else if ((forward = lookup_frec_by_query(hash, fwd_flags,
 					   FREC_CHECKING_DISABLED | FREC_AD_QUESTION | FREC_DO_QUESTION |
 					   FREC_HAS_PHEADER | FREC_DNSKEY_QUERY | FREC_DS_QUERY | FREC_NO_CACHE)))
@@ -390,9 +391,18 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 		  /* In strict order mode, there must be a server later in the list
 		     left to send to, otherwise without the forwardall mechanism,
 		     code further on will cycle around the list forwever if they
-		     all return REFUSED. If at the last, give up. */
+		     all return REFUSED. If at the last, give up.
+		     Note that we can get here EITHER because a client retried,
+		     or an upstream server returned REFUSED. The above only
+		     applied in the later case. For client retries,
+		     keep tyring the last server.. */
 		  if (++start == last)
-		    goto reply;
+		    {
+		      if (old_reply)
+			goto reply;
+		      else
+			start--;
+		    }
 		}
 	    }	  
 	}
@@ -509,12 +519,12 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
 		  if (!gotname)
 		    strcpy(daemon->namebuff, "query");
 		  log_query_mysockaddr(F_SERVER | F_FORWARD, daemon->namebuff,
-				       &srv->addr, NULL);
+				       &srv->addr, NULL, 0);
 		}
 #ifdef HAVE_DNSSEC
 	      else
 		log_query_mysockaddr(F_NOEXTRA | F_DNSSEC, daemon->namebuff, &srv->addr,
-				     querystr("dnssec-retry", (forward->flags & FREC_DNSKEY_QUERY) ? T_DNSKEY : T_DS));
+				     "dnssec-retry", (forward->flags & FREC_DNSKEY_QUERY) ? T_DNSKEY : T_DS);
 #endif
 
 	      srv->queries++;
@@ -570,12 +580,33 @@ static int forward_query(int udpfd, union mysockaddr *udpaddr,
   return 0;
 }
 
+static struct ipsets *domain_find_sets(struct ipsets *setlist, const char *domain) {
+  /* Similar algorithm to search_servers. */
+  struct ipsets *ipset_pos, *ret = NULL;
+  unsigned int namelen = strlen(domain);
+  unsigned int matchlen = 0;
+  for (ipset_pos = setlist; ipset_pos; ipset_pos = ipset_pos->next) 
+    {
+      unsigned int domainlen = strlen(ipset_pos->domain);
+      const char *matchstart = domain + namelen - domainlen;
+      if (namelen >= domainlen && hostname_isequal(matchstart, ipset_pos->domain) &&
+          (domainlen == 0 || namelen == domainlen || *(matchstart - 1) == '.' ) &&
+          domainlen >= matchlen) 
+        {
+          matchlen = domainlen;
+          ret = ipset_pos;
+        }
+    }
+
+  return ret;
+}
+
 static size_t process_reply(struct dns_header *header, time_t now, struct server *server, size_t n, int check_rebind, 
 			    int no_cache, int cache_secure, int bogusanswer, int ad_reqd, int do_bit, int added_pheader, 
 			    int check_subnet, union mysockaddr *query_source, unsigned char *limit, int ede)
 {
   unsigned char *pheader, *sizep;
-  char **sets = 0;
+  struct ipsets *ipsets = NULL, *nftsets = NULL;
   int munged = 0, is_sign;
   unsigned int rcode = RCODE(header);
   size_t plen; 
@@ -586,24 +617,12 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
 
 #ifdef HAVE_IPSET
   if (daemon->ipsets && extract_request(header, n, daemon->namebuff, NULL))
-    {
-      /* Similar algorithm to search_servers. */
-      struct ipsets *ipset_pos;
-      unsigned int namelen = strlen(daemon->namebuff);
-      unsigned int matchlen = 0;
-      for (ipset_pos = daemon->ipsets; ipset_pos; ipset_pos = ipset_pos->next) 
-	{
-	  unsigned int domainlen = strlen(ipset_pos->domain);
-	  char *matchstart = daemon->namebuff + namelen - domainlen;
-	  if (namelen >= domainlen && hostname_isequal(matchstart, ipset_pos->domain) &&
-	      (domainlen == 0 || namelen == domainlen || *(matchstart - 1) == '.' ) &&
-	      domainlen >= matchlen) 
-	    {
-	      matchlen = domainlen;
-	      sets = ipset_pos->sets;
-	    }
-	}
-    }
+    ipsets = domain_find_sets(daemon->ipsets, daemon->namebuff);
+#endif
+
+#ifdef HAVE_NFTSET
+  if (daemon->nftsets && extract_request(header, n, daemon->namebuff, NULL))
+    nftsets = domain_find_sets(daemon->nftsets, daemon->namebuff);
 #endif
 
   if ((pheader = find_pseudoheader(header, n, &plen, &sizep, &is_sign, NULL)))
@@ -670,7 +689,7 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
       union all_addr a;
       a.log.rcode = rcode;
       a.log.ede = ede;
-      log_query(F_UPSTREAM | F_RCODE, "error", &a, NULL);
+      log_query(F_UPSTREAM | F_RCODE, "error", &a, NULL, 0);
       
       return resize_packet(header, n, pheader, plen);
     }
@@ -714,7 +733,7 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
 	    }
 	}
       /******************************** Pi-hole modification ********************************/
-      int ret = extract_addresses(header, n, daemon->namebuff, now, sets, is_sign, check_rebind, no_cache, cache_secure, &doctored);
+      int ret = extract_addresses(header, n, daemon->namebuff, now, ipsets, nftsets, is_sign, check_rebind, no_cache, cache_secure, &doctored);
       if (ret == 2)
 	{
 	  cache_secure = 0;
@@ -915,7 +934,7 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
 #endif
 		  server_send_log(server, fd, header, nn, DUMP_SEC_QUERY,
 				  F_NOEXTRA | F_DNSSEC, daemon->keyname,
-				  querystr("dnssec-query", STAT_ISEQUAL(status, STAT_NEED_KEY) ? T_DNSKEY : T_DS));
+				  "dnssec-query", STAT_ISEQUAL(status, STAT_NEED_KEY) ? T_DNSKEY : T_DS);
 		  server->queries++;
 		}
 	      
@@ -1162,7 +1181,7 @@ static void return_reply(time_t now, struct frec *forward, struct dns_header *he
 		domain = daemon->namebuff;
 	    }
 	  
-	  log_query(F_SECSTAT, domain, &a, result);
+	  log_query(F_SECSTAT, domain, &a, result, 0);
 	}
     }
 #endif
@@ -1230,7 +1249,7 @@ static void return_reply(time_t now, struct frec *forward, struct dns_header *he
 	    {
 	      daemon->log_display_id = src->log_id;
 	      daemon->log_source_addr = &src->source;
-	      log_query(F_UPSTREAM, "query", NULL, "duplicate");
+	      log_query(F_UPSTREAM, "query", NULL, "duplicate", 0);
 	    }
 	  /* Pi-hole modification */
 	  FTL_multiple_replies(src->log_id, &first_ID);
@@ -1527,7 +1546,17 @@ void receive_query(struct listener *listen, time_t now)
       // This gets the interface in all cases where this is possible here
       // We get here only if "bind-interfaces" is NOT used or this query
       // is received over IPv6
-      FTL_iface(if_index);
+      struct irec *iface;
+	for (iface = daemon->interfaces; iface; iface = iface->next)
+	  {
+	    if (iface->addr.sa.sa_family == AF_INET &&
+	        iface->addr.in.sin_addr.s_addr == dst_addr.addr4.s_addr)
+	    break;
+	    if (iface->addr.sa.sa_family == AF_INET6 &&
+	        IN6_ARE_ADDR_EQUAL(&iface->addr.in6.sin6_addr, &dst_addr.addr6))
+	    break;
+	  }
+      FTL_iface(iface);
       /****************************************************************/
     }
 
@@ -1556,12 +1585,10 @@ void receive_query(struct listener *listen, time_t now)
 #ifdef HAVE_AUTH
       struct auth_zone *zone;
 #endif
-      char *types = querystr(auth_dns ? "auth" : "query", type);
-
       log_query_mysockaddr(F_QUERY | F_FORWARD, daemon->namebuff,
-			   &source_addr, types);
+			   &source_addr, auth_dns ? "auth" : "query", type);
       piholeblocked = FTL_new_query(F_QUERY | F_FORWARD , daemon->namebuff,
-				    &source_addr, types, type, daemon->log_display_id, &edns, UDP);
+				    &source_addr, auth_dns ? "auth" : "query", type, daemon->log_display_id, &edns, UDP);
       
 #ifdef HAVE_CONNTRACK
       is_single_query = 1;
@@ -1881,7 +1908,7 @@ static int tcp_key_recurse(time_t now, int status, struct dns_header *header, si
       daemon->log_display_id = ++daemon->log_id;
       
       log_query_mysockaddr(F_NOEXTRA | F_DNSSEC, keyname, &server->addr,
-			   querystr("dnssec-query", STAT_ISEQUAL(new_status, STAT_NEED_KEY) ? T_DNSKEY : T_DS));
+			   "dnssec-query", STAT_ISEQUAL(new_status, STAT_NEED_KEY) ? T_DNSKEY : T_DS);
             
       new_status = tcp_key_recurse(now, new_status, new_header, m, class, name, keyname, server, have_mark, mark, keycount);
 
@@ -2029,13 +2056,12 @@ unsigned char *tcp_request(int confd, time_t now,
 #ifdef HAVE_AUTH
 	  struct auth_zone *zone;
 #endif
-	  char *types = querystr(auth_dns ? "auth" : "query", qtype);
-	  
+
 	  log_query_mysockaddr(F_QUERY | F_FORWARD, daemon->namebuff,
-			       &peer_addr, types);
+			       &peer_addr, auth_dns ? "auth" : "query", qtype);
 
 	  piholeblocked = FTL_new_query(F_QUERY | F_FORWARD, daemon->namebuff,
-					&peer_addr, types, qtype, daemon->log_display_id, &edns, TCP);
+					&peer_addr, auth_dns ? "auth" : "query", qtype, daemon->log_display_id, &edns, TCP);
 
 	  
 #ifdef HAVE_CONNTRACK
@@ -2200,7 +2226,7 @@ unsigned char *tcp_request(int confd, time_t now,
 		  /* get query name again for logging - may have been overwritten */
 		  if (!(gotname = extract_request(header, (unsigned int)size, daemon->namebuff, &qtype)))
 		    strcpy(daemon->namebuff, "query");
-		  log_query_mysockaddr(F_SERVER | F_FORWARD, daemon->namebuff, &serv->addr, NULL);
+		  log_query_mysockaddr(F_SERVER | F_FORWARD, daemon->namebuff, &serv->addr, NULL, 0);
 		  
 #ifdef HAVE_DNSSEC
 		  if (option_bool(OPT_DNSSEC_VALID) && !checking_disabled && (master->flags & SERV_DO_DNSSEC))
@@ -2232,7 +2258,7 @@ unsigned char *tcp_request(int confd, time_t now,
 			    domain = daemon->namebuff;
 			}
 		      
-		      log_query(F_SECSTAT, domain, &a, result);
+		      log_query(F_SECSTAT, domain, &a, result, 0);
 		    }
 #endif
 		  
@@ -2390,7 +2416,7 @@ int allocate_rfd(struct randfd_list **fdlp, struct server *serv)
 	  }
       }
 
-  if (j == daemon->numrrand)
+  if (!rfd) /* should be when j == daemon->numrrand */
     {
       struct randfd_list *rfl_poll;
 

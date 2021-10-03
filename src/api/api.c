@@ -41,6 +41,9 @@
 // get_edestr()
 #include "api_helper.h"
 
+// defined in src/dnsmasq/cache.c
+extern char *querystr(char *desc, unsigned short type);
+
 #define min(a,b) ({ __typeof__ (a) _a = (a); __typeof__ (b) _b = (b); _a < _b ? _a : _b; })
 
 /* qsort comparision function (count field), sort ASC */
@@ -711,7 +714,9 @@ void getAllQueries(const char *client_message, const int *sock)
 	if(command(client_message, ">getallqueries-forward")) {
 		// Get forward destination name we want to see only (limit length to 255 chars)
 		forwarddest = calloc(256, sizeof(char));
-		if(forwarddest == NULL) return;
+		if(forwarddest == NULL)
+			return;
+
 		sscanf(client_message, ">getallqueries-forward %255s", forwarddest);
 		filterforwarddest = true;
 
@@ -763,7 +768,12 @@ void getAllQueries(const char *client_message, const int *sock)
 	if(command(client_message, ">getallqueries-domain")) {
 		// Get domain name we want to see only (limit length to 255 chars)
 		domainname = calloc(256, sizeof(char));
-		if(domainname == NULL) return;
+		if(domainname == NULL)
+		{
+			if(forwarddest) free(forwarddest);
+			return;
+		}
+
 		sscanf(client_message, ">getallqueries-domain %255s", domainname);
 		filterdomainname = true;
 		// Iterate through all known domains
@@ -786,6 +796,7 @@ void getAllQueries(const char *client_message, const int *sock)
 			// Requested domain has not been found, we directly
 			// exit here as there is no data to be returned
 			free(domainname);
+			if(forwarddest) free(forwarddest);
 			return;
 		}
 	}
@@ -794,7 +805,13 @@ void getAllQueries(const char *client_message, const int *sock)
 	if(command(client_message, ">getallqueries-client")) {
 		// Get client name we want to see only (limit length to 255 chars)
 		clientname = calloc(256, sizeof(char));
-		if(clientname == NULL) return;
+		if(clientname == NULL)
+		{
+			if(forwarddest) free(forwarddest);
+			if(domainname) free(domainname);
+			return;
+		}
+
 		if(command(client_message, ">getallqueries-client-blocked"))
 		{
 			showpermitted = false;
@@ -834,6 +851,8 @@ void getAllQueries(const char *client_message, const int *sock)
 			// Requested client has not been found, we directly
 			// exit here as there is no data to be returned
 			free(clientname);
+			if(forwarddest) free(forwarddest);
+			if(domainname) free(domainname);
 			return;
 		}
 
@@ -881,10 +900,17 @@ void getAllQueries(const char *client_message, const int *sock)
 		char othertype[12] = { 0 }; // Maximum is "TYPE65535" = 10 bytes
 		if(query->type == TYPE_OTHER)
 		{
-			// Format custom type into buffer
-			sprintf(othertype, "TYPE%u", query->qtype);
-			// Replace qtype pointer
-			qtype = othertype;
+			// Check the dnsmasq RR types table for a matching record
+			qtype = querystr((char*)"", query->qtype);
+
+			// If not known (querystr() returned "type=1234"), we replace this
+			if(!qtype || strstr(qtype, "type=") != NULL)
+			{
+				// Format custom type into buffer
+				sprintf(othertype, "TYPE%u", query->qtype);
+				// Replace qtype pointer
+				qtype = othertype;
+			}
 		}
 
 		// Hide UNKNOWN queries when not requesting both query status types
@@ -1045,11 +1071,11 @@ void getAllQueries(const char *client_message, const int *sock)
 
 			// Use a fixstr because the length of qtype is always 4 (max is 31 for fixstr)
 			if(!pack_fixstr(*sock, qtype))
-				return;
+				break;
 
 			// Use str32 for domain and client because we have no idea how long they will be (max is 4294967295 for str32)
 			if(!pack_str32(*sock, domain) || !pack_str32(*sock, clientIPName))
-				return;
+				break;
 
 			pack_uint8(*sock, query->status);
 			pack_uint8(*sock, query->dnssec);
@@ -1174,8 +1200,7 @@ void getDBstats(const int *sock)
 	// Get file details
 	unsigned long long int filesize = get_FTL_db_filesize();
 
-	char *prefix = calloc(2, sizeof(char));
-	if(prefix == NULL) return;
+	char prefix[2] = { 0 };
 	double formated = 0.0;
 	format_memory_size(prefix, filesize, &formated);
 

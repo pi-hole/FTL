@@ -153,7 +153,7 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 		return;
 
 	size_t offset; // The header is 11 bytes before the beginning of OPTION-DATA
-	while ((offset = (p - pheader - 11u)) < rdlen)
+	while ((offset = (p - pheader - 11u)) < rdlen && rdlen < UINT16_MAX)
 	{
 		unsigned short code, optlen;
 		GETSHORT(code, p);
@@ -209,7 +209,7 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 
 			// Advance working pointer (we already walked 4 bytes above)
 			p += optlen - 4;
-			
+
 			char ipaddr[ADDRSTRLEN] = { 0 };
 			inet_ntop(family == 1 ? AF_INET : AF_INET6, &addr.addr4.s_addr, ipaddr, sizeof(ipaddr));
 
@@ -329,9 +329,9 @@ void FTL_parse_pseudoheaders(struct dns_header *header, size_t n, union mysockad
 			// Advance working pointer
 			p += 8;
 		}
-		else if(code == EDNS0_CPE_ID)
+		else if(code == EDNS0_CPE_ID && optlen < 256)
 		{
-			// EDNS(0) CPE-ID
+			// EDNS(0) CPE-ID, 256 byte arbitrary limit
 			unsigned char payload[optlen + 1u]; // variable length
 			memcpy(payload, p, optlen);
 			payload[optlen] = '\0';

@@ -553,7 +553,7 @@ void read_FTLconf(void)
 	// defaults to: PI.HOLE
 	buffer = parse_FTLconf(fp, "PIHOLE_PTR");
 
-	if(buffer != NULL && (strcasecmp(buffer, "false") == 0 ||
+	if(buffer != NULL && (strcasecmp(buffer, "none") == 0 ||
 	                      strcasecmp(buffer, "false") == 0))
 	{
 		config.pihole_ptr = PTR_NONE;
@@ -606,6 +606,32 @@ void read_FTLconf(void)
 		config.reply_when_busy = BUSY_ALLOW;
 		logg("   REPLY_WHEN_BUSY: Permit queries when the database is busy");
 	}
+
+	// BLOCK_TTL
+	// defaults to: 2 seconds
+	config.block_ttl = 2;
+	buffer = parse_FTLconf(fp, "BLOCK_TTL");
+
+	unsigned int uval = 0;
+	if(buffer != NULL && sscanf(buffer, "%u", &uval))
+		config.block_ttl = uval;
+
+	if(config.block_ttl == 1)
+		logg("   BLOCK_TTL: 1 second");
+	else
+		logg("   BLOCK_TTL: %u seconds", config.block_ttl);
+
+	// BLOCK_ICLOUD_PR
+	// Should FTL handle the iCloud privacy relay domains specifically and
+	// always return NXDOMAIN??
+	// defaults to: true
+	buffer = parse_FTLconf(fp, "BLOCK_ICLOUD_PR");
+	config.special_domains.icloud_private_relay = read_bool(buffer, true);
+
+	if(config.special_domains.icloud_private_relay)
+		logg("   BLOCK_ICLOUD_PR: Enabled");
+	else
+		logg("   BLOCK_ICLOUD_PR: Disabled");
 
 	// Read DEBUG_... setting from pihole-FTL.conf
 	read_debuging_settings(fp);

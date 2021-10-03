@@ -19,12 +19,13 @@ extern int socketfd, telnetfd4, telnetfd6;
 extern unsigned char* pihole_privacylevel;
 enum protocol { TCP, UDP, INTERNAL };
 
-void FTL_hook(unsigned int flags, char *name, union all_addr *addr, char *arg, int id, const char* file, const int line);
+void FTL_hook(unsigned int flags, char *name, union all_addr *addr, char *arg, int id, unsigned short type, const char* file, const int line);
 
-void FTL_iface(const int ifidx);
+#define FTL_iface(iface) _FTL_iface(iface, __FILE__, __LINE__)
+void _FTL_iface(struct irec *iface, const char* file, const int line);
 
-#define FTL_new_query(flags, name, addr, types, qtype, id, edns, proto) _FTL_new_query(flags, name, addr, types, qtype, id, edns, proto, __FILE__, __LINE__)
-bool _FTL_new_query(const unsigned int flags, const char *name, union mysockaddr *addr, const char *types, const unsigned short qtype, const int id, const ednsData *edns, enum protocol proto, const char* file, const int line);
+#define FTL_new_query(flags, name, addr, arg, qtype, id, edns, proto) _FTL_new_query(flags, name, addr, arg, qtype, id, edns, proto, __FILE__, __LINE__)
+bool _FTL_new_query(const unsigned int flags, const char *name, union mysockaddr *addr, char *arg, const unsigned short qtype, const int id, const ednsData *edns, enum protocol proto, const char* file, const int line);
 
 #define FTL_header_analysis(header4, rcode, server, id) _FTL_header_analysis(header4, rcode, server, id, __FILE__, __LINE__)
 void _FTL_header_analysis(const unsigned char header4, const unsigned int rcode, const struct server *server, const int id, const char* file, const int line);
@@ -47,5 +48,8 @@ void FTL_TCP_worker_created(const int confd);
 void FTL_TCP_worker_terminating(bool finished);
 
 bool FTL_unlink_DHCP_lease(const char *ipaddr);
+
+// defined in src/dnsmasq/cache.c
+extern char *querystr(char *desc, unsigned short type);
 
 #endif // DNSMASQ_INTERFACE_H

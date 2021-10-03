@@ -292,7 +292,7 @@ void get_client_mac(struct in6_addr *client, int iface, unsigned char *mac, unsi
       if ((maclen = find_mac(&addr, mac, 0, now)) != 0)
 	break;
 	  
-      sendto(daemon->icmp6fd, &neigh, sizeof(neigh), 0, &addr.sa, sizeof(addr));
+      while(retry_send(sendto(daemon->icmp6fd, &neigh, sizeof(neigh), 0, &addr.sa, sizeof(addr))));
       
       ts.tv_sec = 0;
       ts.tv_nsec = 100000000; /* 100ms */

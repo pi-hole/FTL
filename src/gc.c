@@ -209,7 +209,10 @@ void *GC_thread(void *val)
 				// Example: (I = now invalid, X = still valid queries, F = free space)
 				//   Before: IIIIIIXXXXFF
 				//   After:  XXXXFFFFFFFF
-				memmove(getQuery(0, true), getQuery(removed, true), (counters->queries - removed)*sizeof(queriesData));
+				queriesData *dest = getQuery(0, true);
+				queriesData *src = getQuery(removed, true);
+				if(dest && src)
+					memmove(dest, src, (counters->queries - removed)*sizeof(queriesData));
 
 				// Update queries counter
 				counters->queries -= removed;
@@ -217,7 +220,9 @@ void *GC_thread(void *val)
 				lastdbindex -= removed;
 
 				// ensure remaining memory is zeroed out (marked as "F" in the above example)
-				memset(getQuery(counters->queries, true), 0, (counters->queries_MAX - counters->queries)*sizeof(queriesData));
+				queriesData *tail = getQuery(counters->queries, true);
+				if(tail)
+					memset(tail, 0, (counters->queries_MAX - counters->queries)*sizeof(queriesData));
 			}
 
 			// Determine if overTime memory needs to get moved

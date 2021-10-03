@@ -371,6 +371,10 @@ const char *getDomainString(const queriesData* query)
 		// Get domain pointer
 		const domainsData* domain = getDomain(query->domainID, true);
 
+		// Check if the returned pointer is valid before trying to access it
+		if(domain == NULL)
+			return "";
+
 		// Return string
 		return getstr(domain->domainpos);
 	}
@@ -390,6 +394,10 @@ const char *getCNAMEDomainString(const queriesData* query)
 	{
 		// Get domain pointer
 		const domainsData* domain = getDomain(query->CNAME_domainID, true);
+
+		// Check if the returned pointer is valid before trying to access it
+		if(domain == NULL)
+			return "";
 
 		// Return string
 		return getstr(domain->domainpos);
@@ -411,6 +419,10 @@ const char *getClientIPString(const queriesData* query)
 		// Get client pointer
 		const clientsData* client = getClient(query->clientID, false);
 
+		// Check if the returned pointer is valid before trying to access it
+		if(client == NULL)
+			return "";
+
 		// Return string
 		return getstr(client->ippos);
 	}
@@ -430,6 +442,10 @@ const char *getClientNameString(const queriesData* query)
 	{
 		// Get client pointer
 		const clientsData* client = getClient(query->clientID, true);
+
+		// Check if the returned pointer is valid before trying to access it
+		if(client == NULL)
+			return "";
 
 		// Return string
 		return getstr(client->namepos);
@@ -546,6 +562,10 @@ void _query_set_status(queriesData *query, const enum query_status new_status, c
 			     query->id, oldstr, query->status, newstr, new_status, short_path(file), line);
 		}
 	}
+
+	// Sanity check
+	if(new_status >= QUERY_STATUS_MAX)
+		return;
 
 	// Update counters
 	if(query->status != new_status)
