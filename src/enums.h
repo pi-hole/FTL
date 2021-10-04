@@ -206,6 +206,7 @@ enum message_type {
 enum ptr_type {
 	PTR_PIHOLE,
 	PTR_HOSTNAME,
+	PTR_HOSTNAMEFQDN,
 	PTR_NONE
 } __attribute__ ((packed));
 
