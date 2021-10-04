@@ -1283,3 +1283,9 @@
   [[ ${lines[0]} == "Hello from LUA" ]]
   rm abc.lua
 }
+
+@test "Pi-hole PTR generation check" {
+  run bash -c "bash test/hostnames.sh | tee dig.log"
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[@]}" != *"ERROR"* ]]
+}
