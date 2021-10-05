@@ -226,7 +226,7 @@ static const struct myoption opts[] =
     { "domain-suffix", 1, 0, 's' },
     { "interface", 1, 0, 'i' },
     { "listen-address", 1, 0, 'a' },
-    { "local-service", 0, 0, LOPT_LOCAL_SERVICE },
+    { "local-service", 2, 0, LOPT_LOCAL_SERVICE },
     { "bogus-priv", 0, 0, 'b' },
     { "bogus-nxdomain", 1, 0, 'B' },
     { "ignore-address", 1, 0, LOPT_IGNORE_ADDR },
@@ -577,7 +577,7 @@ static struct {
   { LOPT_QUIET_DHCP6, OPT_QUIET_DHCP6, NULL, gettext_noop("Do not log routine DHCPv6."), NULL },
   { LOPT_QUIET_RA, OPT_QUIET_RA, NULL, gettext_noop("Do not log RA."), NULL },
   { LOPT_LOG_DEBUG, OPT_LOG_DEBUG, NULL, gettext_noop("Log debugging information."), NULL }, 
-  { LOPT_LOCAL_SERVICE, OPT_LOCAL_SERVICE, NULL, gettext_noop("Accept queries only from directly-connected networks."), NULL },
+  { LOPT_LOCAL_SERVICE, ARG_ONE, NULL, gettext_noop("Accept queries only from directly-connected networks."), NULL },
   { LOPT_LOOP_DETECT, OPT_LOOP_DETECT, NULL, gettext_noop("Detect and remove DNS forwarding loops."), NULL },
   { LOPT_IGNORE_ADDR, ARG_DUP, "<ipaddr>", gettext_noop("Ignore DNS responses containing ipaddr."), NULL }, 
   { LOPT_DHCPTTL, ARG_ONE, "<ttl>", gettext_noop("Set TTL in DNS responses with DHCP-derived addresses."), NULL }, 
@@ -1415,6 +1415,16 @@ static void dhcp_opt_free(struct dhcp_opt *opt)
   free(opt);
 }
 
+static void if_names_add(const char *ifname)
+{
+  struct iname *new = opt_malloc(sizeof(struct iname));
+  new->next = daemon->if_names;
+  daemon->if_names = new;
+  /* new->name may be NULL if someone does
+     "interface=" to disable all interfaces except loop. */
+  new->name = opt_string_alloc(ifname);
+  new->flags = 0;
+}
 
 /* This is too insanely large to keep in-line in the switch */
 static int parse_dhcp_opt(char *errstr, char *arg, int flags)
@@ -2839,14 +2849,8 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
       
     case 'i':  /* --interface */
       do {
-	struct iname *new = opt_malloc(sizeof(struct iname));
-	comma = split(arg);
-	new->next = daemon->if_names;
-	daemon->if_names = new;
-	/* new->name may be NULL if someone does
-	   "interface=" to disable all interfaces except loop. */
-	new->name = opt_string_alloc(arg);
-	new->flags = 0;
+        comma = split(arg);
+	if_names_add(arg);
 	arg = comma;
       } while (arg);
       break;
@@ -3412,6 +3416,15 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	ret_err(gen_err);
       else if (daemon->max_logs > 100)
 	daemon->max_logs = 100;
+      break;
+
+    case LOPT_LOCAL_SERVICE:  /* --local-service */
+      if (!arg || !strcmp(arg, "net"))
+	set_option_bool(OPT_LOCAL_SERVICE);
+      else if (!strcmp(arg, "host"))
+	set_option_bool(OPT_LOCALHOST_SERVICE);
+      else
+	ret_err(gen_err);
       break;  
 
     case 'P': /* --edns-packet-max */
@@ -6164,7 +6177,16 @@ void read_opts(int argc, char **argv, char *compile_opts)
   /* If there's access-control config, then ignore --local-service, it's intended
      as a system default to keep otherwise unconfigured installations safe. */
   if (daemon->if_names || daemon->if_except || daemon->if_addrs || daemon->authserver)
-    reset_option_bool(OPT_LOCAL_SERVICE); 
+    {
+      reset_option_bool(OPT_LOCAL_SERVICE);
+      reset_option_bool(OPT_LOCALHOST_SERVICE);
+    }
+  else if (option_bool(OPT_LOCALHOST_SERVICE) && !option_bool(OPT_LOCAL_SERVICE))
+    {
+      /* listen only on localhost, emulate --interface=lo --bind-interfaces */
+      if_names_add(NULL);
+      set_option_bool(OPT_NOWILD);
+    }
 
   if (testmode)
     {

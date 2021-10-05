@@ -876,6 +876,8 @@ int main_dnsmasq (int argc, char **argv)
 
       if (option_bool(OPT_LOCAL_SERVICE))
 	my_syslog(LOG_INFO, _("DNS service limited to local subnets"));
+      else if (option_bool(OPT_LOCALHOST_SERVICE))
+	my_syslog(LOG_INFO, _("DNS service limited to localhost"));
     }
   
   my_syslog(LOG_INFO, _("compile time options: %s"), compile_opts);
