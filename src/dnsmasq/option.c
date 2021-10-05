@@ -2762,7 +2762,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	
 	if (!arg || !*arg)
 	  flags = SERV_LITERAL_ADDRESS;
-	else if (option != 'S')
+	else if (option == 'A')
 	  {
 	    /* # as literal address means return zero address for 4 and 6 */
 	    if (strcmp(arg, "#") == 0)
@@ -2794,7 +2794,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 		  flags &= ~SERV_FOR_NODOTS;
 
 		/* address=/#/ matches the same as without domain */
-		if (option != 'S' && domain[0] == '#' && domain[1] == 0)
+		if (option == 'A' && domain[0] == '#' && domain[1] == 0)
 		  domain[0] = 0;
 	      }
 	    
