@@ -192,10 +192,10 @@ set(THREADS_PREFER_PTHREAD_FLAG TRUE)
 find_package(Threads REQUIRED)
 
 # for DNSSEC we need the nettle (+ hogweed) crypto and the gmp math libraries
-find_library(LIBHOGWEED libhogweed${CMAKE_STATIC_LIBRARY_SUFFIX})
-find_library(LIBGMP libgmp${CMAKE_STATIC_LIBRARY_SUFFIX})
-find_library(LIBNETTLE libnettle${CMAKE_STATIC_LIBRARY_SUFFIX})
-find_library(LIBIDN libidn${CMAKE_STATIC_LIBRARY_SUFFIX})
+find_library(LIBHOGWEED NAMES libhogweed${CMAKE_STATIC_LIBRARY_SUFFIX} hogweed)
+find_library(LIBGMP NAMES libgmp${CMAKE_STATIC_LIBRARY_SUFFIX} gmp)
+find_library(LIBNETTLE NAMES libnettle${CMAKE_STATIC_LIBRARY_SUFFIX} nettle)
+find_library(LIBIDN NAMES libidn${CMAKE_STATIC_LIBRARY_SUFFIX} idn)
 
 target_link_libraries(pihole-FTL rt Threads::Threads ${LIBHOGWEED} ${LIBGMP} ${LIBNETTLE} ${LIBIDN})
 
@@ -204,9 +204,9 @@ if(LUA_DL STREQUAL "true")
     target_link_libraries(pihole-FTL ${LIBDL})
 endif()
 
-find_library(LIBREADLINE libreadline${CMAKE_STATIC_LIBRARY_SUFFIX})
-find_library(LIBHISTORY libhistory${CMAKE_STATIC_LIBRARY_SUFFIX})
-find_library(LIBTERMCAP libtermcap${CMAKE_STATIC_LIBRARY_SUFFIX})
+find_library(LIBREADLINE NAMES libreadline${CMAKE_STATIC_LIBRARY_SUFFIX} readline)
+find_library(LIBHISTORY NAMES libhistory${CMAKE_STATIC_LIBRARY_SUFFIX} history)
+find_library(LIBTERMCAP NAMES libtermcap${CMAKE_STATIC_LIBRARY_SUFFIX} termcap)
 if(LIBREADLINE AND LIBHISTORY AND LIBTERMCAP)
     message(STATUS "Building FTL with readline support: YES")
     target_compile_definitions(FTL PRIVATE LUA_USE_READLINE)
