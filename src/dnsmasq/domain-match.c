@@ -630,7 +630,7 @@ int add_update_server(int flags,
   /* See if there is a suitable candidate, and unmark
      only do this for forwarding servers, not 
      address or local, to avoid delays on large numbers. */
-  if (flags & SERV_IS_LOCAL)
+  if (!(flags & SERV_IS_LOCAL))
     for (serv = daemon->servers; serv; serv = serv->next)
       if ((serv->flags & SERV_MARK) &&
 	  hostname_isequal(alloc_domain, serv->domain))
