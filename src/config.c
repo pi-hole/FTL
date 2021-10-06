@@ -564,6 +564,11 @@ void read_FTLconf(void)
 		config.pihole_ptr = PTR_HOSTNAME;
 		logg("   PIHOLE_PTR: internal PTR generation enabled (hostname)");
 	}
+	else if(buffer != NULL && strcasecmp(buffer, "hostnamefqdn") == 0)
+	{
+		config.pihole_ptr = PTR_HOSTNAMEFQDN;
+		logg("   PIHOLE_PTR: internal PTR generation enabled (fully-qualified hostname)");
+	}
 	else
 	{
 		config.pihole_ptr = PTR_PIHOLE;

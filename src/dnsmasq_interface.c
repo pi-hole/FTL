@@ -2676,13 +2676,49 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 	// Obtain DNS port from dnsmasq daemon
 	config.dns_port = daemon->port;
 
+	char *ptrname = NULL;
+	// Determine name that should be replied to with on Pi-hole PTRs
+	switch (config.pihole_ptr)
+	{
+		default:
+		case PTR_NONE:
+		case PTR_PIHOLE:
+			ptrname = (char*)"pi.hole";
+			break;
+
+		case PTR_HOSTNAME:
+			ptrname = (char*)hostname();
+			break;
+
+		case PTR_HOSTNAMEFQDN:
+		{
+			char *suffix = daemon->domain_suffix;
+			if(!suffix)
+				suffix = (char*)"fqdn";
+			ptrname = calloc(strlen(hostname()) + strlen(suffix) + 2, sizeof(char));
+			if(ptrname)
+			{
+				// Build "<hostname>.<local suffix>" domain
+				strcpy(ptrname, hostname());
+				strcat(ptrname, ".");
+				strcat(ptrname, suffix);
+			}
+			else
+			{
+				// Fallback to "<hostname>" on memory error
+				ptrname = (char*)hostname();
+			}
+		}
+			break;
+	}
+
 	// Obtain PTR record used for Pi-hole PTR injection (if enabled)
 	if(config.pihole_ptr != PTR_NONE)
 	{
 		// Add PTR record for pi.hole, the address will be injected later
 		pihole_ptr = calloc(1, sizeof(struct ptr_record));
 		pihole_ptr->name = strdup("x.x.x.x.in-addr.arpa");
-		pihole_ptr->ptr = config.pihole_ptr == PTR_PIHOLE ? (char*)"pi.hole" : (char*)hostname();
+		pihole_ptr->ptr = ptrname;
 		pihole_ptr->next = NULL;
 		// Add our PTR record to the end of the linked list
 		if(daemon->ptr != NULL)
