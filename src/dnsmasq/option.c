@@ -2231,8 +2231,10 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	comma = split(arg);
 		
 	new = opt_malloc(sizeof(struct auth_zone));
-	new->domain = opt_string_alloc(arg);
-	new->subnet = NULL;
+	new->domain = canonicalise_opt(arg);
+	if (!new->domain)
+	  ret_err_free(_("invalid auth-zone"), new);
+ 	new->subnet = NULL;
 	new->exclude = NULL;
 	new->interface_names = NULL;
 	new->next = daemon->auth_zones;
