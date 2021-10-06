@@ -1541,25 +1541,11 @@ void receive_query(struct listener *listen, time_t now)
 	  else
 	    dst_addr_4.s_addr = 0;
 	}
-
-      /********************* Pi-hole modification ***********************/
-      // This gets the interface in all cases where this is possible here
-      // We get here only if "bind-interfaces" is NOT used or this query
-      // is received over IPv6
-      struct irec *iface;
-	for (iface = daemon->interfaces; iface; iface = iface->next)
-	  {
-	    if (iface->addr.sa.sa_family == AF_INET &&
-	        iface->addr.in.sin_addr.s_addr == dst_addr.addr4.s_addr)
-	    break;
-	    if (iface->addr.sa.sa_family == AF_INET6 &&
-	        IN6_ARE_ADDR_EQUAL(&iface->addr.in6.sin6_addr, &dst_addr.addr6))
-	    break;
-	  }
-      FTL_iface(iface);
-      /****************************************************************/
     }
-
+    /********************* Pi-hole modification ***********************/
+    // This gets the interface in all cases where this is possible here
+    FTL_iface(listen->iface, &dst_addr, family);
+    /****************************************************************/
    
   /* log_query gets called indirectly all over the place, so 
      pass these in global variables - sorry. */
