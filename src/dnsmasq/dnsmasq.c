@@ -1721,6 +1721,11 @@ static void poll_resolv(int force, int do_reload, time_t now)
 	}
       else 
 	{
+	  /* If we're delaying things, we don't call check_servers(), but 
+	     reload_servers() may have deleted some servers, rendering the server_array
+	     invalid, so just rebuild that here. Once reload_servers() succeeds,
+	     we call check_servers() above, which calls build_server_array itself. */
+	  build_server_array();
 	  latest->mtime = 0;
 	  if (!warned)
 	    {
