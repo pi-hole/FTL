@@ -395,7 +395,7 @@ int is_local_answer(time_t now, int first, char *name)
 
 size_t make_local_answer(int flags, int gotname, size_t size, struct dns_header *header, char *name, char *limit, int first, int last, int ede)
 {
-  int trunc = 0;
+  int trunc = 0, anscount = 0;
   unsigned char *p;
   int start;
   union all_addr addr;
@@ -419,7 +419,7 @@ size_t make_local_answer(int flags, int gotname, size_t size, struct dns_header 
 	  addr.addr4 = srv->addr;
 	
 	if (add_resource_record(header, limit, &trunc, sizeof(struct dns_header), &p, daemon->local_ttl, NULL, T_A, C_IN, "4", &addr))
-	  header->ancount = htons(ntohs(header->ancount) + 1);
+	  anscount++;
 	log_query((flags | F_CONFIG | F_FORWARD) & ~F_IPV6, name, (union all_addr *)&addr, NULL, 0);
       }
   
@@ -434,13 +434,14 @@ size_t make_local_answer(int flags, int gotname, size_t size, struct dns_header 
 	  addr.addr6 = srv->addr;
 	
 	if (add_resource_record(header, limit, &trunc, sizeof(struct dns_header), &p, daemon->local_ttl, NULL, T_AAAA, C_IN, "6", &addr))
-	  header->ancount = htons(ntohs(header->ancount) + 1);
+	  anscount++;
 	log_query((flags | F_CONFIG | F_FORWARD) & ~F_IPV4, name, (union all_addr *)&addr, NULL, 0);
       }
 
   if (trunc)
     header->hb3 |= HB3_TC;
-
+  header->ancount = htons(anscount);
+  
   return p - (unsigned char *)header;
 }
 
