@@ -639,7 +639,7 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
 	  if (added_pheader)
 	    {
 	      /* client didn't send EDNS0, we added one, strip it off before returning answer. */
-	      n = rrfilter(header, n, 0);
+	      n = rrfilter(header, n, RRFILTER_EDNS0);
 	      pheader = NULL;
 	    }
 	  else
@@ -730,6 +730,17 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
 	      cache_secure = 0;
 	    }
 	}
+
+      /* Before extract_addresses() */
+      if (rcode == NOERROR)
+	{
+	  if (option_bool(OPT_FILTER_A))
+	    n = rrfilter(header, n, RRFILTER_A);
+
+	  if (option_bool(OPT_FILTER_AAAA))
+	    n = rrfilter(header, n, RRFILTER_AAAA);
+	}
+
       /******************************** Pi-hole modification ********************************/
       int ret = extract_addresses(header, n, daemon->namebuff, now, ipsets, nftsets, is_sign, check_rebind, no_cache, cache_secure, &doctored);
       if (ret == 2)
@@ -769,7 +780,7 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
       
       /* If the requestor didn't set the DO bit, don't return DNSSEC info. */
       if (!do_bit)
-	n = rrfilter(header, n, 1);
+	n = rrfilter(header, n, RRFILTER_DNSSEC);
     }
 #endif
 
@@ -793,7 +804,7 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
       u16 swap = htons((u16)ede);
       n = add_pseudoheader(header, n, limit, daemon->edns_pktsz, EDNS0_OPTION_EDE, (unsigned char *)&swap, 2, do_bit, 1);
     }
-  
+
   return n;
 }
 
