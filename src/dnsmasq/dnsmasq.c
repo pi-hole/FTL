@@ -17,10 +17,12 @@
 /* Declare static char *compiler_opts  in config.h */
 #define DNSMASQ_COMPILE_OPTS
 
+/* dnsmasq.h has to be included first as it sources config.h */
+#include "dnsmasq.h"
+
 #if defined(HAVE_IDN) || defined(HAVE_LIBIDN2) || defined(LOCALEDIR)
 #include <locale.h>
 #endif
-#include "dnsmasq.h"
 #include "../dnsmasq_interface.h"
 // killed
 #include "../signals.h"
