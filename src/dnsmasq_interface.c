@@ -2693,8 +2693,11 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 		case PTR_HOSTNAMEFQDN:
 		{
 			char *suffix = daemon->domain_suffix;
+			// If local suffix is not available, we substitute "no_fqdn_available"
+			// see the comment about PIHOLE_PTR=HOSTNAMEFQDN in the Pi-hole docs
+			// for further details on why this was chosen
 			if(!suffix)
-				suffix = (char*)"fqdn";
+				suffix = (char*)"no_fqdn_available";
 			ptrname = calloc(strlen(hostname()) + strlen(suffix) + 2, sizeof(char));
 			if(ptrname)
 			{
