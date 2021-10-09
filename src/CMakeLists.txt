@@ -90,10 +90,9 @@ separate_arguments(EXTRAWARN)
 if(STATIC STREQUAL "true")
     SET(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
     SET(BUILD_SHARED_LIBS OFF)
-else()
-    # -pie -fPIE: (Dynamic) position independent executable
-    set(HARDENING_FLAGS "${HARDENING_FLAGS} -pie -fPIE")
 endif()
+# -pie -fPIE: (Dynamic) position independent executable
+set(HARDENING_FLAGS "${HARDENING_FLAGS} -pie -fPIE")
 
 # -FILE_OFFSET_BITS=64: used by stat(). Avoids problems with files > 2 GB on 32bit machines
 # We define HAVE_POLL_H as this is needed for the musl builds to succeed
@@ -182,7 +181,7 @@ add_executable(pihole-FTL
 if(STATIC STREQUAL "true")
     set_target_properties(pihole-FTL PROPERTIES LINK_SEARCH_START_STATIC ON)
     set_target_properties(pihole-FTL PROPERTIES LINK_SEARCH_END_STATIC ON)
-    target_link_libraries(pihole-FTL -static-libgcc -static -static-pie)
+    target_link_libraries(pihole-FTL -static-libgcc -static -pie)
 else()
     find_library(LIBMATH m)
     target_link_libraries(pihole-FTL ${LIBMATH})
