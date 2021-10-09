@@ -33,7 +33,7 @@ jobs:
          - arch: x86_32
            bin_name: pihole-FTL-linux-x86_32
 
-    container: pihole/ftl-build:v1.10-${{ matrix.arch }}
+    container: ghcr.io/pi-hole/ftl-build:v1.12-${{ matrix.arch }}
 
     runs-on: ubuntu-latest
     continue-on-error: true
