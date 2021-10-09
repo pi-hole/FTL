@@ -84,7 +84,7 @@ elif [[ "${CIRCLE_JOB}" == "x86_64-musl" ]]; then
   check_machine "ELF64" "Advanced Micro Devices X86-64"
   check_static # Binary should not rely on any dynamic interpreter
   check_libs "" # No dependency on any shared library is intended
-  check_file "ELF 64-bit LSB shared object, x86-64, version 1 (SYSV), statically linked, with debug_info, not stripped"
+  check_file "ELF 64-bit LSB executable, x86-64, version 1 (SYSV), statically linked, with debug_info, not stripped"
 
 elif [[ "${CIRCLE_JOB}" == "x86_32" ]]; then
 
