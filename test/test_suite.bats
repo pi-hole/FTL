@@ -37,109 +37,109 @@
 }
 
 @test "Blacklisted domain is blocked" {
-  run bash -c "dig blacklist-blocked.test.pi-hole.net @127.0.0.1 +short"
+  run bash -c "dig blacklisted.ftl @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0.0.0.0" ]]
   [[ ${lines[1]} == "" ]]
 }
 
 @test "Gravity domain is blocked" {
-  run bash -c "dig gravity-blocked.test.pi-hole.net @127.0.0.1 +short"
+  run bash -c "dig gravity.ftl @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0.0.0.0" ]]
   [[ ${lines[1]} == "" ]]
 }
 
 @test "Gravity domain is blocked (TCP)" {
-  run bash -c "dig gravity-blocked.test.pi-hole.net @127.0.0.1 +tcp +short"
+  run bash -c "dig gravity.ftl @127.0.0.1 +tcp +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0.0.0.0" ]]
   [[ ${lines[1]} == "" ]]
 }
 
 @test "Gravity domain + whitelist exact match is not blocked" {
-  run bash -c "dig whitelisted.test.pi-hole.net @127.0.0.1 +short"
+  run bash -c "dig whitelisted.ftl @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} != "0.0.0.0" ]]
+  [[ ${lines[0]} == "192.168.1.4" ]]
 }
 
 @test "Gravity domain + whitelist regex match is not blocked" {
-  run bash -c "dig discourse.pi-hole.net @127.0.0.1 +short"
+  run bash -c "dig gravity-whitelisted.ftl @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} != "0.0.0.0" ]]
+  [[ ${lines[0]} == "192.168.1.5" ]]
 }
 
 @test "Regex blacklist match is blocked" {
-  run bash -c "dig regex5.test.pi-hole.net @127.0.0.1 +short"
+  run bash -c "dig regex5.ftl @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0.0.0.0" ]]
   [[ ${lines[1]} == "" ]]
 }
 
 @test "Regex blacklist mismatch is not blocked" {
-  run bash -c "dig regexA.test.pi-hole.net @127.0.0.1 +short"
+  run bash -c "dig regexA.ftl @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} != "0.0.0.0" ]]
+  [[ ${lines[0]} == "192.168.2.4" ]]
 }
 
 @test "Regex blacklist match + whitelist exact match is not blocked" {
-  run bash -c "dig regex1.test.pi-hole.net @127.0.0.1 +short"
+  run bash -c "dig regex1.ftl @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} != "0.0.0.0" ]]
+  [[ ${lines[0]} == "192.168.2.1" ]]
 }
 
 @test "Regex blacklist match + whitelist regex match is not blocked" {
-  run bash -c "dig regex2.test.pi-hole.net @127.0.0.1 +short"
+  run bash -c "dig regex2.ftl @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} != "0.0.0.0" ]]
+  [[ ${lines[0]} == "192.168.2.2" ]]
 }
 
 @test "Client 2: Gravity match matching unassociated whitelist is blocked" {
-  run bash -c "dig whitelisted.test.pi-hole.net -b 127.0.0.2 @127.0.0.1 +short"
+  run bash -c "dig whitelisted.ftl -b 127.0.0.2 @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0.0.0.0" ]]
 }
 
 @test "Client 2: Regex blacklist match matching unassociated whitelist is blocked" {
-  run bash -c "dig regex1.test.pi-hole.net -b 127.0.0.2 @127.0.0.1 +short"
+  run bash -c "dig regex1.ftl -b 127.0.0.2 @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0.0.0.0" ]]
 }
 
 @test "Same domain is not blocked for client 1 ..." {
-  run bash -c "dig regex1.test.pi-hole.net @127.0.0.1 +short"
+  run bash -c "dig regex1.ftl @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} != "0.0.0.0" ]]
+  [[ ${lines[0]} == "192.168.2.1" ]]
 }
 
 @test "... or client 3" {
-  run bash -c "dig regex1.test.pi-hole.net -b 127.0.0.3  @127.0.0.1 +short"
+  run bash -c "dig regex1.ftl -b 127.0.0.3  @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} != "0.0.0.0" ]]
+  [[ ${lines[0]} == "192.168.2.1" ]]
 }
 
 @test "Client 2: Unassociated blacklist match is not blocked" {
-  run bash -c "dig blacklist-blocked.test.pi-hole.net -b 127.0.0.2 @127.0.0.1 +short"
+  run bash -c "dig blacklisted.ftl -b 127.0.0.2 @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} != "0.0.0.0" ]]
+  [[ ${lines[0]} == "192.168.1.3" ]]
 }
 
 @test "Client 3: Exact blacklist domain is not blocked" {
-  run bash -c "dig blacklist-blocked.test.pi-hole.net -b 127.0.0.3 @127.0.0.1 +short"
+  run bash -c "dig blacklisted.ftl -b 127.0.0.3 @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} != "0.0.0.0" ]]
+  [[ ${lines[0]} == "192.168.1.3" ]]
 }
 
 @test "Client 3: Regex blacklist domain is not blocked" {
-  run bash -c "dig regex1.test.pi-hole.net -b 127.0.0.3 @127.0.0.1 +short"
+  run bash -c "dig regex1.ftl -b 127.0.0.3 @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} != "0.0.0.0" ]]
+  [[ ${lines[0]} == "192.168.2.1" ]]
 }
 
 @test "Client 3: Gravity domain is not blocked" {
-  run bash -c "dig discourse.pi-hole.net -b 127.0.0.3 @127.0.0.1 +short"
+  run bash -c "dig a.ftl -b 127.0.0.3 @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} != "0.0.0.0" ]]
+  [[ ${lines[0]} == "192.168.1.1" ]]
 }
 
 @test "Client 4: Client is recognized by MAC address" {
@@ -244,23 +244,16 @@
   [[ ${lines[0]} == "1" ]]
 }
 
-@test "Google.com (A) is not blocked" {
-  run bash -c "dig A google.com @127.0.0.1 +short"
+@test "Normal query (A) is not blocked" {
+  run bash -c "dig A a.ftl @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} != "0.0.0.0" ]]
+  [[ ${lines[0]} == "192.168.1.1" ]]
 }
 
-@test "Google.com (AAAA) is not blocked (TCP query)" {
-  run bash -c "dig AAAA google.com @127.0.0.1 +short +tcp"
+@test "Normal query (AAAA) is not blocked (TCP query)" {
+  run bash -c "dig AAAA aaaa.ftl @127.0.0.1 +short +tcp"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} != "::" ]]
-}
-
-@test "Known host is resolved as expected" {
-  run bash -c "dig ftl.pi-hole.net @127.0.0.1 +short"
-  printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "139.59.170.52" ]]
-  [[ ${lines[1]} == "" ]]
+  [[ ${lines[0]} == "fe80::1c01" ]]
 }
 
 @test "Mozilla canary domain is blocked with NXDOMAIN" {
@@ -272,20 +265,20 @@
   [[ ${lines[0]} == "1" ]]
 }
 
-@test "DNS reply analysis test (using netmeister.org records)" {
+@test "Local DNS reply test" {
   run bash -c "bash test/dig.sh | tee dig.log"
   printf "%s\n" "${lines[@]}"
 }
 
 @test "CNAME inspection: Shallow CNAME is blocked" {
-  run bash -c "dig A cname-1.test.pi-hole.net @127.0.0.1 +short"
+  run bash -c "dig A cname-1.ftl @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0.0.0.0" ]]
   [[ ${lines[1]} == "" ]]
 }
 
 @test "CNAME inspection: Deep CNAME is blocked" {
-  run bash -c "dig A cname-4.test.pi-hole.net @127.0.0.1 +short"
+  run bash -c "dig A cname-4.ftl @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0.0.0.0" ]]
   [[ ${lines[1]} == "" ]]
@@ -338,13 +331,13 @@
   run bash -c 'echo ">top-domains (60) >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
   [[ "${lines[@]}" == *" 4 version.bind"* ]]
-  [[ "${lines[@]}" == *" 4 regex1.test.pi-hole.net"* ]]
+  [[ "${lines[@]}" == *" 4 regex1.ftl"* ]]
   [[ "${lines[@]}" == *" 3 google.com"* ]]
   [[ "${lines[@]}" == *" 3 dnskey.dns.netmeister.org"* ]]
-  [[ "${lines[@]}" == *" 2 blacklist-blocked.test.pi-hole.net"* ]]
+  [[ "${lines[@]}" == *" 2 blacklisted.ftl"* ]]
   [[ "${lines[@]}" == *" 2 net"* ]]
   [[ "${lines[@]}" == *" 2 pi-hole.net"* ]]
-  [[ "${lines[@]}" == *" 2 discourse.pi-hole.net"* ]]
+  [[ "${lines[@]}" == *" 2 a.ftl"* ]]
   [[ "${lines[@]}" == *" 2 com"* ]]
   [[ "${lines[@]}" == *" 2 arpa"* ]]
   [[ "${lines[@]}" == *" 2 in-addr.arpa"* ]]
@@ -355,7 +348,7 @@
   [[ "${lines[@]}" == *" 2 netmeister.org"* ]]
   [[ "${lines[@]}" == *" 2 dns.netmeister.org"* ]]
   [[ "${lines[@]}" == *" 1 version.ftl"* ]]
-  [[ "${lines[@]}" == *" 1 whitelisted.test.pi-hole.net"* ]]
+  [[ "${lines[@]}" == *" 1 whitelisted.ftl"* ]]
   [[ "${lines[@]}" == *" 1 a.dns.netmeister.org"* ]]
   [[ "${lines[@]}" == *" 1 any.dns.netmeister.org"* ]]
   [[ "${lines[@]}" == *" 1 ftl.pi-hole.net"* ]]
@@ -364,8 +357,8 @@
   [[ "${lines[@]}" == *" 1 99.7.84.166.in-addr.arpa"* ]]
   [[ "${lines[@]}" == *" 1 aaaa.dns.netmeister.org"* ]]
   [[ "${lines[@]}" == *" 1 cname.dns.netmeister.org"* ]]
-  [[ "${lines[@]}" == *" 1 regex2.test.pi-hole.net"* ]]
-  [[ "${lines[@]}" == *" 1 regexa.test.pi-hole.net"* ]]
+  [[ "${lines[@]}" == *" 1 regex2.ftl"* ]]
+  [[ "${lines[@]}" == *" 1 regexa.ftl"* ]]
   [[ "${lines[@]}" == *" 1 "* ]]
   [[ "${lines[@]}" == *" 1 84.166.in-addr.arpa"* ]]
   [[ "${lines[@]}" == *" 1 0.0.9.3.2.7.e.f.f.f.3.6.6.7.2.e.4.8.0.0.0.3.0.0.0.7.4.0.1.0.0.2.ip6.arpa"* ]]
@@ -384,13 +377,13 @@
 @test "Top Ads" {
   run bash -c 'echo ">top-ads (20) >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ "${lines[@]}" == *" 4 gravity-blocked.test.pi-hole.net"* ]]
-  [[ "${lines[@]}" == *" 1 blacklist-blocked.test.pi-hole.net"* ]]
-  [[ "${lines[@]}" == *" 1 whitelisted.test.pi-hole.net"* ]]
-  [[ "${lines[@]}" == *" 1 regex5.test.pi-hole.net"* ]]
-  [[ "${lines[@]}" == *" 1 regex1.test.pi-hole.net"* ]]
-  [[ "${lines[@]}" == *" 1 cname-1.test.pi-hole.net"* ]]
-  [[ "${lines[@]}" == *" 1 cname-4.test.pi-hole.net"* ]]
+  [[ "${lines[@]}" == *" 4 gravity.ftl"* ]]
+  [[ "${lines[@]}" == *" 1 blacklisted.ftl"* ]]
+  [[ "${lines[@]}" == *" 1 whitelisted.ftl"* ]]
+  [[ "${lines[@]}" == *" 1 regex5.ftl"* ]]
+  [[ "${lines[@]}" == *" 1 regex1.ftl"* ]]
+  [[ "${lines[@]}" == *" 1 cname-1.ftl"* ]]
+  [[ "${lines[@]}" == *" 1 cname-4.ftl"* ]]
   [[ ${lines[8]} == "" ]]
 }
 
@@ -439,28 +432,28 @@
   printf "%s\n" "${lines[@]}"
   [[ ${lines[1]} == *"TXT version.ftl 127.0.0.1 3 2 6 "* ]]
   [[ ${lines[2]} == *"TXT version.bind 127.0.0.1 3 2 6 "* ]]
-  [[ ${lines[3]} == *"A blacklist-blocked.test.pi-hole.net 127.0.0.1 5 2 4 "* ]]
-  [[ ${lines[4]} == *"A gravity-blocked.test.pi-hole.net 127.0.0.1 1 2 4 "* ]]
-  [[ ${lines[5]} == *"A gravity-blocked.test.pi-hole.net 127.0.0.1 1 2 4"* ]]
-  [[ ${lines[6]} == *"A whitelisted.test.pi-hole.net 127.0.0.1 2 1 4 "* ]]
+  [[ ${lines[3]} == *"A blacklisted.ftl 127.0.0.1 5 2 4 "* ]]
+  [[ ${lines[4]} == *"A gravity.ftl 127.0.0.1 1 2 4 "* ]]
+  [[ ${lines[5]} == *"A gravity.ftl 127.0.0.1 1 2 4"* ]]
+  [[ ${lines[6]} == *"A whitelisted.ftl 127.0.0.1 2 1 4 "* ]]
   [[ ${lines[7]} == *"DS net :: 2 1 11 "* ]]
   [[ ${lines[8]} == *"DNSKEY . :: 2 1 11 "* ]]
   [[ ${lines[9]} == *"DS pi-hole.net :: 2 1 11 "* ]]
   [[ ${lines[10]} == *"DNSKEY net :: 2 1 11 "* ]]
   [[ ${lines[11]} == *"DNSKEY pi-hole.net :: 2 1 11 "* ]]
-  [[ ${lines[12]} == *"A discourse.pi-hole.net 127.0.0.1 2 1 4 "* ]]
-  [[ ${lines[13]} == *"A regex5.test.pi-hole.net 127.0.0.1 4 2 4 "* ]]
-  [[ ${lines[14]} == *"A regexa.test.pi-hole.net 127.0.0.1 2 1 4 "* ]]
-  [[ ${lines[15]} == *"A regex1.test.pi-hole.net 127.0.0.1 2 1 4 "* ]]
-  [[ ${lines[16]} == *"A regex2.test.pi-hole.net 127.0.0.1 2 1 4 "* ]]
-  [[ ${lines[17]} == *"A whitelisted.test.pi-hole.net 127.0.0.2 1 2 4 "* ]]
-  [[ ${lines[18]} == *"A regex1.test.pi-hole.net 127.0.0.2 4 2 4 "* ]]
-  [[ ${lines[19]} == *"A regex1.test.pi-hole.net 127.0.0.1 3 1 4"* ]]
-  [[ ${lines[20]} == *"A regex1.test.pi-hole.net 127.0.0.3 3 1 4 "* ]]
-  [[ ${lines[21]} == *"A blacklist-blocked.test.pi-hole.net 127.0.0.2 2 1 4 "* ]]
-  [[ ${lines[22]} == *"A blacklist-blocked.test.pi-hole.net 127.0.0.3 3 1 4 "* ]]
-  [[ ${lines[23]} == *"A regex1.test.pi-hole.net 127.0.0.3 3 1 4 "* ]]
-  [[ ${lines[24]} == *"A discourse.pi-hole.net 127.0.0.3 3 1 4 "* ]]
+  [[ ${lines[12]} == *"A a.ftl 127.0.0.1 2 1 4 "* ]]
+  [[ ${lines[13]} == *"A regex5.ftl 127.0.0.1 4 2 4 "* ]]
+  [[ ${lines[14]} == *"A regexa.ftl 127.0.0.1 2 1 4 "* ]]
+  [[ ${lines[15]} == *"A regex1.ftl 127.0.0.1 2 1 4 "* ]]
+  [[ ${lines[16]} == *"A regex2.ftl 127.0.0.1 2 1 4 "* ]]
+  [[ ${lines[17]} == *"A whitelisted.ftl 127.0.0.2 1 2 4 "* ]]
+  [[ ${lines[18]} == *"A regex1.ftl 127.0.0.2 4 2 4 "* ]]
+  [[ ${lines[19]} == *"A regex1.ftl 127.0.0.1 3 1 4"* ]]
+  [[ ${lines[20]} == *"A regex1.ftl 127.0.0.3 3 1 4 "* ]]
+  [[ ${lines[21]} == *"A blacklisted.ftl 127.0.0.2 2 1 4 "* ]]
+  [[ ${lines[22]} == *"A blacklisted.ftl 127.0.0.3 3 1 4 "* ]]
+  [[ ${lines[23]} == *"A regex1.ftl 127.0.0.3 3 1 4 "* ]]
+  [[ ${lines[24]} == *"A a.ftl 127.0.0.3 3 1 4 "* ]]
   [[ ${lines[25]} == *"TXT version.bind 127.0.0.4 3 2 6 "* ]]
   [[ ${lines[26]} == *"TXT version.bind 127.0.0.5 3 2 6 "* ]]
   [[ ${lines[27]} == *"TXT version.bind 127.0.0.6 3 2 6 "* ]]
@@ -515,22 +508,22 @@
   [[ ${lines[76]} == *"NS ns.dns.netmeister.org 127.0.0.1 2 2 13 "* ]]
   [[ ${lines[77]} == *"SVCB svcb.dns.netmeister.org 127.0.0.1 2 2 13 "* ]]
   [[ ${lines[78]} == *"HTTPS https.dns.netmeister.org 127.0.0.1 2 2 13 "* ]]
-  [[ ${lines[79]} == *"A cname-1.test.pi-hole.net 127.0.0.1 9 1 3 "*" gravity-blocked.test.pi-hole.net "* ]]
-  [[ ${lines[80]} == *"A cname-4.test.pi-hole.net 127.0.0.1 9 1 3 "*" gravity-blocked.test.pi-hole.net "* ]]
+  [[ ${lines[79]} == *"A cname-1.ftl 127.0.0.1 9 1 3 "*" gravity.ftl "* ]]
+  [[ ${lines[80]} == *"A cname-4.ftl 127.0.0.1 9 1 3 "*" gravity.ftl "* ]]
   [[ ${lines[81]} == "" ]]
 }
 
 @test "Get all queries (domain filtered) shows expected content" {
-  run bash -c 'echo ">getallqueries-domain regexa.test.pi-hole.net >quit" | nc -v 127.0.0.1 4711'
+  run bash -c 'echo ">getallqueries-domain regexa.ftl >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == *"A regexa.test.pi-hole.net "?*" 2 1 4"* ]]
+  [[ ${lines[1]} == *"A regexa.ftl "?*" 2 1 4"* ]]
   [[ ${lines[2]} == "" ]]
 }
 
 @test "Recent blocked shows expected content" {
   run bash -c 'echo ">recentBlocked >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "cname-4.test.pi-hole.net" ]]
+  [[ ${lines[1]} == "cname-4.ftl" ]]
   [[ ${lines[2]} == "" ]]
 }
 
@@ -606,7 +599,7 @@
 
 # Regex tests
 @test "Compiled blacklist regex as expected" {
-  run bash -c 'grep -c "Compiling blacklist regex 0 (DB ID 6): regex\[0-9\].test.pi-hole.net" /var/log/pihole-FTL.log'
+  run bash -c 'grep -c "Compiling blacklist regex 0 (DB ID 6): regex\[0-9\].ftl" /var/log/pihole-FTL.log'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
 }
@@ -620,8 +613,8 @@
   [[ ${lines[0]} == "1" ]]
 }
 
-@test "Regex Test 1: \"regex7.test.pi-hole.net\" vs. [database regex]: MATCH" {
-  run bash -c './pihole-FTL regex-test "regex7.test.pi-hole.net"'
+@test "Regex Test 1: \"regex7.ftl\" vs. [database regex]: MATCH" {
+  run bash -c './pihole-FTL regex-test "regex7.ftl"'
   printf "%s\n" "${lines[@]}"
   [[ $status == 0 ]]
 }
@@ -1116,7 +1109,7 @@
 }
 
 @test "Blocking status is correctly logged in pihole.log" {
-  run bash -c 'grep -c "gravity blocked gravity-blocked.test.pi-hole.net is 0.0.0.0" /var/log/pihole.log'
+  run bash -c 'grep -c "gravity blocked gravity.ftl is 0.0.0.0" /var/log/pihole.log'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "2" ]]
 }
@@ -1285,7 +1278,7 @@
 }
 
 @test "Pi-hole PTR generation check" {
-  run bash -c "bash test/hostnames.sh | tee dig.log"
+  run bash -c "bash test/hostnames.sh | tee ptr.log"
   printf "%s\n" "${lines[@]}"
   [[ "${lines[@]}" != *"ERROR"* ]]
 }
