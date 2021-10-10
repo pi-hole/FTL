@@ -24,7 +24,9 @@ rm -f /etc/pihole/gravity.db /etc/pihole/pihole-FTL.db /var/log/pihole.log /var/
 
 # Create necessary directories and files
 mkdir -p /home/pihole /etc/pihole /run/pihole /var/log
-touch /var/log/pihole-FTL.log /var/log/pihole.log /run/pihole-FTL.pid /run/pihole-FTL.port
+echo "" > /var/log/pihole-FTL.log
+echo "" > /var/log/pihole.log
+touch /run/pihole-FTL.pid /run/pihole-FTL.port dig.log ptr.log
 chown pihole:pihole /etc/pihole /run/pihole /var/log/pihole.log /var/log/pihole-FTL.log /run/pihole-FTL.pid /run/pihole-FTL.port
 
 # Copy binary into a location the new user pihole can access
@@ -50,6 +52,9 @@ cp test/pihole-FTL.conf /etc/pihole/pihole-FTL.conf
 
 # Prepare dnsmasq.conf
 cp test/dnsmasq.conf /etc/dnsmasq.conf
+
+# Prepare local powerDNS resolver
+bash test/pdns/setup.sh
 
 # Set restrictive umask
 OLDUMASK=$(umask)
@@ -104,6 +109,9 @@ if [[ $RET != 0 ]]; then
   echo ""
   echo -n "dig.log: "
   curl_to_tricorder ./dig.log
+  echo ""
+  echo -n "ptr.log: "
+  curl_to_tricorder ./ptr.log
   echo ""
 fi
 

@@ -188,24 +188,37 @@ CREATE TRIGGER tr_client_delete AFTER DELETE ON client
 
 /* ^^^ basic gravity table definition, taken from /advanced/Templates/gravity.db.sql ^^^ */
 /* vvv Test content following vvv */
-INSERT INTO domainlist VALUES(1,0,'whitelisted.test.pi-hole.net',1,1559928803,1559928803,'Migrated from /etc/pihole/whitelist.txt');
-INSERT INTO domainlist VALUES(2,0,'regex1.test.pi-hole.net',1,1559928803,1559928803,'');
+INSERT INTO domainlist VALUES(1,0,'whitelisted.ftl',1,1559928803,1559928803,'Migrated from /etc/pihole/whitelist.txt');
+INSERT INTO domainlist VALUES(2,0,'regex1.ftl',1,1559928803,1559928803,'');
 INSERT INTO domainlist VALUES(3,2,'regex2',1,1559928803,1559928803,'');
-INSERT INTO domainlist VALUES(4,2,'discourse',1,1559928803,1559928803,'');
+INSERT INTO domainlist VALUES(4,2,'^gravity-whitelisted',1,1559928803,1559928803,'');
 
-INSERT INTO domainlist VALUES(5,1,'blacklist-blocked.test.pi-hole.net',1,1559928803,1559928803,'Migrated from /etc/pihole/blacklist.txt');
-INSERT INTO domainlist VALUES(6,3,'regex[0-9].test.pi-hole.net',1,1559928803,1559928803,'Migrated from /etc/pihole/regex.list');
+/* Regular regex */
+INSERT INTO domainlist VALUES(5,1,'blacklisted.ftl',1,1559928803,1559928803,'Migrated from /etc/pihole/blacklist.txt');
+INSERT INTO domainlist VALUES(6,3,'regex[0-9].ftl',1,1559928803,1559928803,'Migrated from /etc/pihole/regex.list');
+
+/* Regex option testing */
+INSERT INTO domainlist VALUES(7,3,'^regex-NXDOMAIN$;reply=NXDOMAIN',1,1559928803,1559928803,'');
+INSERT INTO domainlist VALUES(8,3,'^regex-NODATA$;reply=NODATA',1,1559928803,1559928803,'');
+INSERT INTO domainlist VALUES(9,3,'^regex-REFUSED$;reply=REFUSED',1,1559928803,1559928803,'');
+INSERT INTO domainlist VALUES(10,3,'^regex-REPLYv4$;reply=1.2.3.4',1,1559928803,1559928803,'');
+INSERT INTO domainlist VALUES(11,3,'^regex-REPLYv6$;reply=fe80::1234',1,1559928803,1559928803,'');
+INSERT INTO domainlist VALUES(12,3,'^regex-REPLYv46$;reply=1.2.3.4;reply=fe80::1234',1,1559928803,1559928803,'');
+INSERT INTO domainlist VALUES(13,3,'^regex-A$;querytype=A',1,1559928803,1559928803,'');
+INSERT INTO domainlist VALUES(14,3,'^regex-notA$;querytype=!A',1,1559928803,1559928803,'');
+
+/* Other special domains */
+INSERT INTO domainlist VALUES(15,1,'blacklisted-group-disabled.com',1,1559928803,1559928803,'Entry disabled by a group');
 
 INSERT INTO adlist VALUES(1,'https://hosts-file.net/ad_servers.txt',1,1559928803,1559928803,'Migrated from /etc/pihole/adlists.list');
 
-INSERT INTO gravity VALUES('whitelisted.test.pi-hole.net',1);
-INSERT INTO gravity VALUES('gravity-blocked.test.pi-hole.net',1);
-INSERT INTO gravity VALUES('discourse.pi-hole.net',1);
+INSERT INTO gravity VALUES('whitelisted.ftl',1);
+INSERT INTO gravity VALUES('gravity.ftl',1);
+INSERT INTO gravity VALUES('gravity-whitelisted.ftl',1);
 INSERT INTO info VALUES("gravity_count",3);
 
 INSERT INTO "group" VALUES(1,0,'Test group',1559928803,1559928803,'A disabled test group');
-INSERT INTO domainlist VALUES(7,1,'blacklisted-group-disabled.com',1,1559928803,1559928803,'Entry disabled by a group');
-INSERT INTO domainlist_by_group VALUES(7,1);
+INSERT INTO domainlist_by_group VALUES(15,1);
 
 INSERT INTO domain_audit VALUES(1,'google.com',1559928803);
 
