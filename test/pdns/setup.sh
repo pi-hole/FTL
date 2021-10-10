@@ -2,14 +2,38 @@
 
 echo "************ Installing PowerDNS configuration ************"
 
+# Delete possibly existing zone database
+mkdir -p /var/lib/powerdns/
+rm /var/lib/powerdns/pdns.sqlite3 2> /dev/null
+
 # Install config files
-cp test/pdns/pdns.conf /etc/powerdns/pdns.conf
-cp test/pdns/recursor.conf /etc/powerdns/recursor.conf
+if [ -d /etc/powerdns ]; then
+  # Debian
+  cp test/pdns/pdns.conf /etc/powerdns/pdns.conf
+  cp test/pdns/recursor.conf /etc/powerdns/recursor.conf
+elif [ -d /etc/pdns ]; then
+  # Alpine
+  cp test/pdns/pdns.conf /etc/pdns/pdns.conf
+  cp test/pdns/recursor.conf /etc/pdns/recursor.conf
+
+  # TODO: Remove this once the containers are updated
+  apk add --no-cache pdns-doc
+else
+  echo "Error: Unable to determine powerDNS config directory"
+  exit 1
+fi
 
 # Create zone database
-rm /var/lib/powerdns/pdns.sqlite3 2> /dev/null
-sqlite3 /var/lib/powerdns/pdns.sqlite3 < /usr/share/doc/pdns-backend-sqlite3/schema.sqlite3.sql
-
+if [ -f /usr/share/doc/pdns-backend-sqlite3/schema.sqlite3.sql ]; then
+  # Debian
+  sqlite3 /var/lib/powerdns/pdns.sqlite3 < /usr/share/doc/pdns-backend-sqlite3/schema.sqlite3.sql
+elif [ -f /usr/share/doc/pdns/schema.sqlite3.sql ]; then
+  # Alpine
+  sqlite3 /var/lib/powerdns/pdns.sqlite3 < /usr/share/doc/pdns/schema.sqlite3.sql
+else
+  echo "Error: powerDNS SQL schema not found"
+  exit 1
+fi
 # Create zone ftl
 pdnsutil create-zone ftl ns1.ftl
 
@@ -53,20 +77,24 @@ pdnsutil add-record ftl. ptr PTR ptr.ftl.
 # Other testing records
 pdnsutil add-record ftl. srv SRV "0 1 80 a.ftl"
 pdnsutil add-record ftl. txt TXT "\"Some example text\""
+# We want this to output $1 without expansion
+# shellcheck disable=SC2016
 pdnsutil add-record ftl. naptr NAPTR '10 10 "u" "smtp+E2U" "!.*([^\.]+[^\.]+)$!mailto:postmaster@$1!i" .'
 pdnsutil add-record ftl. naptr NAPTR '20 10 "s" "http+N2L+N2C+N2R" "" ftl.'
 pdnsutil add-record ftl. mx MX "50 ns1.ftl."
 
-# SVCB
-# below data means: SVCB 1 port="80"
-# comment above applies
-pdnsutil add-record ftl. svcb TYPE64 "\# 13 31202e20706f72743d22383022"
+# SVCB + HTTPS
+if ! pdnsutil add-record ftl. svcb SVCB '1 port="80"'; then
+  # see RFC3597: Handling of Unknown DNS Resource Record (RR) Types
+  # and https://ypcs.fi/howto/2020/09/30/announce-https-via-dns/
+  pdnsutil add-record ftl. svcb TYPE64 "\# 13 31202e20706f72743d22383022"
+fi
 
 # HTTPS
-# below data means: HTTPS 1 . alpn="h3,h2"
-# see RFC3597: Handling of Unknown DNS Resource Record (RR) Types
-# and https://ypcs.fi/howto/2020/09/30/announce-https-via-dns/
-pdnsutil add-record ftl. https TYPE65 "\# 16 31202e20616c706e3d2268332c683222"
+if ! pdnsutil add-record ftl. https HTTPS '1 . alpn="h3,h2"'; then
+  # comment above applies
+  pdnsutil add-record ftl. https TYPE65 "\# 16 31202e20616c706e3d2268332c683222"
+fi
 
 # Create reverse lookup zone
 pdnsutil create-zone arpa ns1.ftl
@@ -87,5 +115,14 @@ pdnsutil check-zone arpa
 echo "********* Done installing PowerDNS configuration **********"
 
 # Start services
-service pdns restart
-service pdns-recursor restart
+if command -v service; then
+  # Debian
+  service pdns restart
+  service pdns-recursor restart
+else
+  # Alpine
+  pdns_server --daemon
+  # Have to create the socketdir or the recursor will fails to start
+  mkdir -p /var/run/pdns-recursor
+  pdns_recursor --daemon
+fi
