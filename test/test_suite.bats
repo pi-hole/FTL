@@ -284,6 +284,18 @@
   [[ ${lines[1]} == "" ]]
 }
 
+@test "DNSSEC: SECURE domain is resolved" {
+  run bash -c "dig A sigok.verteiltesysteme.net @127.0.0.1"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[@]} == *"status: NOERROR"* ]]
+}
+
+@test "DNSSEC: BOGUS domain is rejected" {
+  run bash -c "dig A sigfail.verteiltesysteme.net @127.0.0.1"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[@]} == *"status: SERVFAIL"* ]]
+}
+
 @test "Statistics as expected" {
   run bash -c 'echo ">stats >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
