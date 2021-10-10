@@ -15,9 +15,6 @@ elif [ -d /etc/pdns ]; then
   # Alpine
   cp test/pdns/pdns.conf /etc/pdns/pdns.conf
   cp test/pdns/recursor.conf /etc/pdns/recursor.conf
-
-  # TODO: Remove this once the containers are updated
-  apk add --no-cache pdns-doc
 else
   echo "Error: Unable to determine powerDNS config directory"
   exit 1
@@ -119,16 +116,9 @@ pdnsutil check-zone arpa
 echo "********* Done installing PowerDNS configuration **********"
 
 # Start services
-if command -v service; then
-  # Debian
-  service pdns restart
-  service pdns-recursor restart
-else
-  # Alpine
-  killall pdns_server
-  pdns_server --daemon
-  # Have to create the socketdir or the recursor will fails to start
-  mkdir -p /var/run/pdns-recursor
-  killall pdns_recursor
-  pdns_recursor --daemon
-fi
+killall pdns_server
+pdns_server --daemon
+# Have to create the socketdir or the recursor will fails to start
+mkdir -p /var/run/pdns-recursor
+killall pdns_recursor
+pdns_recursor --daemon

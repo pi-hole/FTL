@@ -64,13 +64,6 @@ umask 0022
 mkdir -p /opt/pihole/libs
 wget -O /opt/pihole/libs/inspect.lua https://ftl.pi-hole.net/libraries/inspect.lua
 
-# Terminate running FTL instance (if any)
-if pidof pihole-FTL &> /dev/null; then
-  echo "Terminating running pihole-FTL instance"
-  killall pihole-FTL
-  sleep 2
-fi
-
 # Start FTL
 if ! su pihole -s /bin/sh -c /home/pihole/pihole-FTL; then
   echo "pihole-FTL failed to start"
