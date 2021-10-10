@@ -393,9 +393,11 @@
 @test "Upstream Destinations reported correctly" {
   run bash -c 'echo ">forward-dest >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "-2 16.33 blocklist blocklist" ]]
-  [[ ${lines[2]} == "-1 26.53 cache cache" ]]
-  [[ ${lines[3]} == "0 57.14 127.0.0.1#5555 127.0.0.1#5555" ]]
+  [[ ${lines[1]} == "-2 17.02 blocklist blocklist" ]]
+  [[ ${lines[2]} == "-1 27.66 cache cache" ]]
+  [[ ${lines[3]} == "0 51.06 127.0.0.1#5555 127.0.0.1#5555" ]]
+  [[ ${lines[4]} == "1 4.26 127.0.0.1#5554 127.0.0.1#5554" ]]
+  [[ ${lines[5]} == "" ]]
 }
 
 @test "Query Types reported correctly" {
@@ -461,8 +463,8 @@
   [[ ${lines[34]} == *" NAPTR naptr.ftl 127.0.0.1 2 2 13 "*" N/A -1 127.0.0.1#5555 \"\" \"33\""* ]]
   [[ ${lines[35]} == *" MX mx.ftl 127.0.0.1 2 2 13 "*" N/A -1 127.0.0.1#5555 \"\" \"34\""* ]]
   [[ ${lines[36]} == *" NS ns.ftl 127.0.0.1 2 2 2 "*" N/A -1 127.0.0.1#5555 \"\" \"35\""* ]]
-  [[ ${lines[37]} == *" SVCB svcb.ftl 127.0.0.1 2 2 7 "*" N/A -1 127.0.0.1#5555 \"\" \"36\""* ]]
-  [[ ${lines[38]} == *" HTTPS https.ftl 127.0.0.1 2 2 7 "*" N/A -1 127.0.0.1#5555 \"\" \"37\""* ]]
+  [[ ${lines[37]} == *" SVCB svcb.ftl 127.0.0.1 2 2 13 "*" N/A -1 127.0.0.1#5554 \"\" \"36\""* ]]
+  [[ ${lines[38]} == *" HTTPS https.ftl 127.0.0.1 2 2 13 "*" N/A -1 127.0.0.1#5554 \"\" \"37\""* ]]
   [[ ${lines[39]} == *" A cname-1.ftl 127.0.0.1 9 2 3 "*" gravity.ftl -1 127.0.0.1#5555 \"\" \"38\""* ]]
   [[ ${lines[40]} == *" A cname-4.ftl 127.0.0.1 9 2 3 "*" gravity.ftl -1 127.0.0.1#5555 \"\" \"39\""* ]]
   [[ ${lines[41]} == *" A sigok.verteiltesysteme.net 127.0.0.1 2 1 4 "*" N/A -1 127.0.0.1#5555 \"\" \"40\""* ]]

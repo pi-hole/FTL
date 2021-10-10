@@ -1475,9 +1475,17 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 
 bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const char* file, const int line)
 {
+	if(config.debug & DEBUG_QUERIES)
+	{
+		const char *src = cpp != NULL ? cpp->flags & F_BIGNAME ? cpp->name.bname->name : cpp->name.sname : NULL;
+		logg("FTL_CNAME called with: src = %s, dst = %s, id = %d", src, domain, id);
+	}
+
 	// Does the user want to skip deep CNAME inspection?
 	if(!config.cname_inspection)
 	{
+		if(config.debug & DEBUG_QUERIES)
+			logg("Skipping analysis as cname inspection is disabled");
 		return false;
 	}
 
@@ -1495,6 +1503,8 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 		// This may happen e.g. if the original query was a PTR query
 		// or "pi.hole" and we ignored them altogether
 		unlock_shm();
+		if(config.debug & DEBUG_QUERIES)
+			logg("Skipping analysis as parent query is not found");
 		return false;
 	}
 
@@ -1505,6 +1515,8 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 	{
 		// Nothing to be done here
 		unlock_shm();
+		if(config.debug & DEBUG_QUERIES)
+			logg("Skipping analysis as parent query is not valid");
 		return false;
 	}
 
