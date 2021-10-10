@@ -699,6 +699,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	query->flags.database = false;
 	query->flags.complete = false;
 	query->response = converttimeval(request);
+	query->flags.response_calculated = false;
 	// Initialize reply type
 	query->reply = REPLY_UNKNOWN;
 	// Store DNSSEC result for this domain
@@ -1727,12 +1728,19 @@ static void FTL_forwarded(const unsigned int flags, const char *name, const unio
 		// server.a.com wit the much shorter TTL, we still have to forward
 		// something and ask the upstream server for the final IP address.
 
-		// Correct reply timer
-		struct timeval response;
-		gettimeofday(&response, 0);
-		// Reset timer, shift slightly into the past to acknowledge the time
-		// FTLDNS needed to look up the CNAME in its cache
-		query->response = converttimeval(response) - query->response;
+		// Correct reply timer if a response time has already been calculated
+		if(query->flags.response_calculated)
+		{
+			struct timeval response;
+			gettimeofday(&response, 0);
+			// Reset timer to measure how long it takes until an answer arrives
+			// If a response time has already been calculated, we
+			// can go back in time to measure both the initial cache
+			// lookup and the (now starting) time it takes for the
+			// upstream to respond
+			query->response = converttimeval(response) - query->response;
+			query->flags.response_calculated = false;
+		}
 	}
 	else
 	{
@@ -1816,6 +1824,18 @@ static void mysockaddr_extract_ip_port(union mysockaddr *server, char ip[ADDRSTR
 	}
 }
 
+// Compute cache/upstream response time
+static inline void set_response_time(queriesData *query, const struct timeval response)
+{
+	// Do this only if this is the first time we set a reply
+	if(query->flags.response_calculated)
+		return;
+
+	// Convert absolute timestamp to relative timestamp
+	query->response = converttimeval(response) - query->response;
+	query->flags.response_calculated = true;
+}
+
 static void FTL_reply(const unsigned int flags, const char *name, const union all_addr *addr,
                       const char *arg, const int id, const char* file, const int line)
 {
@@ -1826,6 +1846,12 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 	{
 		return;
 	}
+
+	// Get response time before lock because we want to measure upstream not
+	// the lock. The latter may artificially add some extra nanoseconds when
+	// the Pi-hole is currently busy
+	struct timeval response;
+	gettimeofday(&response, 0);
 
 	// Lock shared memory
 	lock_shm();
@@ -1921,16 +1947,22 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 		}
 	}
 
-	// Get response time
-	struct timeval response;
-	gettimeofday(&response, 0);
-
-	// Get query pointer
+	// Get and check query pointer
 	queriesData* query = getQuery(queryID, true);
+	if(query == NULL)
+	{
+		// Nothing to be done here
+		unlock_shm();
+		return;
+	}
+
+	// Save response time
+	// Skipped internally if already computed
+	set_response_time(query, response);
 
 	// We only process the first reply further in here
 	// Check if reply type is still UNKNOWN
-	if(query == NULL || query->reply != REPLY_UNKNOWN)
+	if(query->reply != REPLY_UNKNOWN)
 	{
 		// Nothing to be done here
 		unlock_shm();
@@ -2581,9 +2613,9 @@ static void _query_set_reply(const unsigned int flags, const union all_addr *add
 
 	counters->reply[query->reply]++;
 
-	// Save response time (relative time)
-	query->response = converttimeval(response) -
-	                            query->response;
+	// Save response time
+	// Skipped internally if already computed
+	set_response_time(query, response);
 }
 
 void FTL_fork_and_bind_sockets(struct passwd *ent_pw)

@@ -513,6 +513,7 @@ void DB_read_queries(void)
 		query->upstreamID = upstreamID;
 		query->id = 0;
 		query->response = 0;
+		query->flags.response_calculated = false;
 		query->dnssec = DNSSEC_UNSPECIFIED;
 		query->reply = REPLY_UNKNOWN;
 		query->CNAME_domainID = -1;

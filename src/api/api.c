@@ -1002,10 +1002,7 @@ void getAllQueries(const char *client_message, const int *sock)
 		else
 			clientIPName = getClientIPString(query);
 
-		unsigned long delay = query->response;
-		// Check if received (delay should be smaller than 30min)
-		if(delay > 1.8e7)
-			delay = 0;
+		const unsigned long delay = query->flags.response_calculated ? query->response : 0UL;
 
 		// Get domain blocked during deep CNAME inspection, if applicable
 		const char *CNAME_domain = "N/A";
