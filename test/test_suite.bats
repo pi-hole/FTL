@@ -33,7 +33,7 @@
 @test "Number of compiled regex filters as expected" {
   run bash -c 'grep "Compiled [0-9]* whitelist" /var/log/pihole-FTL.log'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == *"Compiled 2 whitelist and 1 blacklist regex filters"* ]]
+  [[ ${lines[0]} == *"Compiled 2 whitelist and 9 blacklist regex filters"* ]]
 }
 
 @test "Blacklisted domain is blocked" {
@@ -171,7 +171,7 @@
   [[ ${lines[0]} == "2" ]]
   run bash -c "grep -c 'Regex blacklist ([[:digit:]]*, DB ID [[:digit:]]*) .* NOT ENABLED for client 127.0.0.4' /var/log/pihole-FTL.log"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "1" ]]
+  [[ ${lines[0]} == "9" ]]
 }
 
 @test "Client 5: Client is recognized by MAC address" {
@@ -203,7 +203,7 @@
   [[ ${lines[0]} == "2" ]]
   run bash -c "grep -c 'Regex blacklist ([[:digit:]]*, DB ID [[:digit:]]*) .* NOT ENABLED for client 127.0.0.5' /var/log/pihole-FTL.log"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "1" ]]
+  [[ ${lines[0]} == "9" ]]
 }
 
 @test "Client 6: Client is recognized by interface name" {
@@ -241,7 +241,7 @@
   [[ ${lines[0]} == "2" ]]
   run bash -c "grep -c 'Regex blacklist ([[:digit:]]*, DB ID [[:digit:]]*) .* NOT ENABLED for client 127.0.0.6' /var/log/pihole-FTL.log"
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "1" ]]
+  [[ ${lines[0]} == "9" ]]
 }
 
 @test "Normal query (A) is not blocked" {
@@ -802,50 +802,22 @@
   [[ $status == 2 ]]
 }
 
-@test "Regex Test 37: Option \"^localhost$;querytype=A\" working as expected (ONLY matching A queries)" {
-  run bash -c 'sqlite3 /etc/pihole/gravity.db "INSERT INTO domainlist (type,domain) VALUES (3,\"^localhost$;querytype=A\");"'
-  printf "sqlite3 INSERT: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run bash -c 'kill -RTMIN $(cat /var/run/pihole-FTL.pid); sleep 1'
-  printf "reload: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run sleep 2
-  run bash -c 'dig A localhost @127.0.0.1 +short'
+@test "Regex Test 37: Option \";querytype=A\" working as expected (ONLY matching A queries)" {
+  run bash -c 'dig A regex-A @127.0.0.1 +short'
   printf "dig A: %s\n" "${lines[@]}"
   [[ ${lines[0]} == "0.0.0.0" ]]
-  run bash -c 'dig AAAA localhost @127.0.0.1 +short'
+  run bash -c 'dig AAAA regex-A @127.0.0.1 +short'
   printf "dig AAAA: %s\n" "${lines[@]}"
   [[ ${lines[0]} != "::" ]]
-  run bash -c 'sqlite3 /etc/pihole/gravity.db "DELETE FROM domainlist WHERE domain = \"^localhost$;querytype=A\";"'
-  printf "sqlite3 DELETE: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run bash -c 'kill -RTMIN $(cat /var/run/pihole-FTL.pid)'
-  printf "reload: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run sleep 2
 }
 
-@test "Regex Test 38: Option \"^localhost$;querytype=!A\" working as expected (NOT matching A queries)" {
-  run bash -c 'sqlite3 /etc/pihole/gravity.db "INSERT INTO domainlist (type,domain) VALUES (3,\"^localhost$;querytype=!A\");"'
-  printf "sqlite3 INSERT: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run bash -c 'kill -RTMIN $(cat /var/run/pihole-FTL.pid); sleep 1'
-  printf "reload: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run sleep 2
-  run bash -c 'dig A localhost @127.0.0.1 +short'
+@test "Regex Test 38: Option \";querytype=!A\" working as expected (NOT matching A queries)" {
+  run bash -c 'dig A regex-notA @127.0.0.1 +short'
   printf "dig A: %s\n" "${lines[@]}"
   [[ ${lines[0]} != "0.0.0.0" ]]
-  run bash -c 'dig AAAA localhost @127.0.0.1 +short'
+  run bash -c 'dig AAAA regex-notA @127.0.0.1 +short'
   printf "dig AAAA: %s\n" "${lines[@]}"
   [[ ${lines[0]} == "::" ]]
-  run bash -c 'sqlite3 /etc/pihole/gravity.db "DELETE FROM domainlist WHERE domain = \"^localhost$;querytype=!A\";"'
-  printf "sqlite3 DELETE: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run bash -c 'kill -RTMIN $(cat /var/run/pihole-FTL.pid)'
-  printf "reload: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run sleep 2
 }
 
 @test "Regex Test 39: Option \";invert\" working as expected (match is inverted)" {
@@ -864,139 +836,49 @@
   [[ ${lines[1]} == *"Overwriting previous querytype setting" ]]
 }
 
-@test "Regex Test 41: Option \"^localhost$;reply=NXDOMAIN\" working as expected" {
-  run bash -c 'sqlite3 /etc/pihole/gravity.db "INSERT INTO domainlist (type,domain) VALUES (3,\"^localhost$;reply=NXDOMAIN\");"'
-  printf "sqlite3 INSERT: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run bash -c 'kill -RTMIN $(cat /var/run/pihole-FTL.pid); sleep 1'
-  printf "reload: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run sleep 2
-  run bash -c 'dig A localhost @127.0.0.1'
+@test "Regex Test 41: Option \"^;reply=NXDOMAIN\" working as expected" {
+  run bash -c 'dig A regex-NXDOMAIN @127.0.0.1'
   printf "dig: %s\n" "${lines[@]}"
   [[ ${lines[3]} == *"status: NXDOMAIN"* ]]
-  run bash -c 'sqlite3 /etc/pihole/gravity.db "DELETE FROM domainlist WHERE domain = \"^localhost$;reply=NXDOMAIN\";"'
-  printf "sqlite3 DELETE: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run bash -c 'kill -RTMIN $(cat /var/run/pihole-FTL.pid)'
-  printf "reload: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run sleep 2
 }
 
-@test "Regex Test 42: Option \"^localhost$;reply=NODATA\" working as expected" {
-  run bash -c 'sqlite3 /etc/pihole/gravity.db "INSERT INTO domainlist (type,domain) VALUES (3,\"^localhost$;reply=NODATA\");"'
-  printf "sqlite3 INSERT: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run bash -c 'kill -RTMIN $(cat /var/run/pihole-FTL.pid); sleep 1'
-  printf "reload: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run sleep 2
-  run bash -c 'dig A localhost @127.0.0.1 +short'
-  printf "dig (short): %s\n" "${lines[@]}"
-  [[ ${lines[0]} == "" ]]
-  run bash -c 'dig A localhost @127.0.0.1'
+@test "Regex Test 42: Option \"^;reply=NODATA\" working as expected" {
+  run bash -c 'dig A regex-NODATA @127.0.0.1'
   printf "dig (full): %s\n" "${lines[@]}"
   [[ ${lines[3]} == *"status: NOERROR"* ]]
-  run bash -c 'sqlite3 /etc/pihole/gravity.db "DELETE FROM domainlist WHERE domain = \"^localhost$;reply=NODATA\";"'
-  printf "sqlite3 DELETE: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run bash -c 'kill -RTMIN $(cat /var/run/pihole-FTL.pid)'
-  printf "reload: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run sleep 2
 }
 
-@test "Regex Test 43: Option \"^localhost$;reply=REFUSED\" working as expected" {
-  run bash -c 'sqlite3 /etc/pihole/gravity.db "INSERT INTO domainlist (type,domain) VALUES (3,\"^localhost$;reply=REFUSED\");"'
-  printf "sqlite3 INSERT: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run bash -c 'kill -RTMIN $(cat /var/run/pihole-FTL.pid); sleep 1'
-  printf "reload: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run sleep 2
-  run bash -c 'dig A localhost @127.0.0.1 +short'
-  printf "dig (short): %s\n" "${lines[@]}"
-  [[ ${lines[0]} == "" ]]
-  run bash -c 'dig A localhost @127.0.0.1'
+@test "Regex Test 43: Option \";reply=REFUSED\" working as expected" {
+  run bash -c 'dig A regex-REFUSED @127.0.0.1'
   printf "dig (full): %s\n" "${lines[@]}"
   [[ ${lines[3]} == *"status: REFUSED"* ]]
-  run bash -c 'sqlite3 /etc/pihole/gravity.db "DELETE FROM domainlist WHERE domain = \"^localhost$;reply=REFUSED\";"'
-  printf "sqlite3 DELETE: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run bash -c 'kill -RTMIN $(cat /var/run/pihole-FTL.pid)'
-  printf "reload: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run sleep 2
 }
 
-@test "Regex Test 44: Option \"^localhost$;reply=1.2.3.4\" working as expected" {
-  run bash -c 'sqlite3 /etc/pihole/gravity.db "INSERT INTO domainlist (type,domain) VALUES (3,\"^localhost$;reply=1.2.3.4\");"'
-  printf "sqlite3 INSERT: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run bash -c 'kill -RTMIN $(cat /var/run/pihole-FTL.pid); sleep 1'
-  printf "reload: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run sleep 2
-  run bash -c 'dig A localhost @127.0.0.1 +short'
+@test "Regex Test 44: Option \";reply=1.2.3.4\" working as expected" {
+  run bash -c 'dig A regex-REPLYv4 @127.0.0.1 +short'
   printf "dig A: %s\n" "${lines[@]}"
   [[ ${lines[0]} == "1.2.3.4" ]]
-  run bash -c 'dig AAAA localhost @127.0.0.1 +short'
+  run bash -c 'dig AAAA regex-REPLYv4 @127.0.0.1 +short'
   printf "dig AAAA: %s\n" "${lines[@]}"
   [[ ${lines[0]} == "::" ]]
-  run bash -c 'sqlite3 /etc/pihole/gravity.db "DELETE FROM domainlist WHERE domain = \"^localhost$;reply=1.2.3.4\";"'
-  printf "sqlite3 DELETE: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run bash -c 'kill -RTMIN $(cat /var/run/pihole-FTL.pid)'
-  printf "reload: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run sleep 2
 }
 
-@test "Regex Test 45: Option \"^localhost$;reply=fe80::1234\" working as expected" {
-  run bash -c 'sqlite3 /etc/pihole/gravity.db "INSERT INTO domainlist (type,domain) VALUES (3,\"^localhost$;reply=fe80::1234\");"'
-  printf "sqlite3 INSERT: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run bash -c 'kill -RTMIN $(cat /var/run/pihole-FTL.pid); sleep 1'
-  printf "reload: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run sleep 2
-  run bash -c 'dig A localhost @127.0.0.1 +short'
+@test "Regex Test 45: Option \";reply=fe80::1234\" working as expected" {
+  run bash -c 'dig A regex-REPLYv6 @127.0.0.1 +short'
   printf "dig A: %s\n" "${lines[@]}"
   [[ ${lines[0]} == "0.0.0.0" ]]
-  run bash -c 'dig AAAA localhost @127.0.0.1 +short'
+  run bash -c 'dig AAAA regex-REPLYv6 @127.0.0.1 +short'
   printf "dig AAAA: %s\n" "${lines[@]}"
   [[ ${lines[0]} == "fe80::1234" ]]
-  run bash -c 'sqlite3 /etc/pihole/gravity.db "DELETE FROM domainlist WHERE domain = \"^localhost$;reply=fe80::1234\";"'
-  printf "sqlite3 DELETE: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run bash -c 'kill -RTMIN $(cat /var/run/pihole-FTL.pid)'
-  printf "reload: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run sleep 2
 }
 
-@test "Regex Test 46: Option \"^localhost$;reply=1.2.3.4;reply=fe80::1234\" working as expected" {
-  run bash -c 'sqlite3 /etc/pihole/gravity.db "INSERT INTO domainlist (type,domain) VALUES (3,\"^localhost$;reply=1.2.3.4;reply=fe80::1234\");"'
-  printf "sqlite3 INSERT: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run bash -c 'kill -RTMIN $(cat /var/run/pihole-FTL.pid); sleep 1'
-  printf "reload: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run sleep 2
-  run bash -c 'dig A localhost @127.0.0.1 +short'
+@test "Regex Test 46: Option \";reply=1.2.3.4;reply=fe80::1234\" working as expected" {
+  run bash -c 'dig A regex-REPLYv46 @127.0.0.1 +short'
   printf "dig A: %s\n" "${lines[@]}"
   [[ ${lines[0]} == "1.2.3.4" ]]
-  run bash -c 'dig AAAA localhost @127.0.0.1 +short'
+  run bash -c 'dig AAAA regex-REPLYv46 @127.0.0.1 +short'
   printf "dig AAAA: %s\n" "${lines[@]}"
   [[ ${lines[0]} == "fe80::1234" ]]
-  run bash -c 'sqlite3 /etc/pihole/gravity.db "DELETE FROM domainlist WHERE domain = \"^localhost$;reply=1.2.3.4;reply=fe80::1234\";"'
-  printf "sqlite3 DELETE: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run bash -c 'kill -RTMIN $(cat /var/run/pihole-FTL.pid)'
-  printf "reload: %s\n" "${lines[@]}"
-  [[ $status == 0 ]]
-  run sleep 2
 }
 
 # x86_64-musl is built on busybox which has a slightly different
