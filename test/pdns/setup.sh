@@ -36,6 +36,7 @@ else
 fi
 # Create zone ftl
 pdnsutil create-zone ftl ns1.ftl
+pdnsutil add-record ftl. . SOA "ns1.ftl. hostmaster.ftl. 1 10800 3600 604800 3600"
 
 # Create A records
 pdnsutil add-record ftl. a A 192.168.1.1
@@ -52,12 +53,14 @@ pdnsutil add-record ftl. regex-REPLYv6 A 192.168.2.6
 pdnsutil add-record ftl. regex-REPLYv46 A 192.168.2.7
 pdnsutil add-record ftl. regex-A A 192.168.2.8
 pdnsutil add-record ftl. regex-notA A 192.168.2.9
+pdnsutil add-record ftl. any A 192.168.3.1
 
 # Create AAAA records
 pdnsutil add-record ftl. aaaa AAAA fe80::1c01
 pdnsutil add-record ftl. regex-REPLYv4 AAAA fe80::2c01
 pdnsutil add-record ftl. regex-REPLYv6 AAAA fe80::2c02
 pdnsutil add-record ftl. regex-REPLYv46 AAAA fe80::2c03
+pdnsutil add-record ftl. any AAAA fe80::3c01
 
 # Create CNAME records
 pdnsutil add-record ftl. cname-1 CNAME gravity.ftl
@@ -67,6 +70,7 @@ pdnsutil add-record ftl. cname-4 CNAME cname-3.ftl
 pdnsutil add-record ftl. cname-5 CNAME cname-4.ftl
 pdnsutil add-record ftl. cname-6 CNAME cname-5.ftl
 pdnsutil add-record ftl. cname-7 CNAME cname-6.ftl
+pdnsutil add-record ftl. cname-ok CNAME a.ftl
 
 # Create CNAME for SOA test domain
 pdnsutil add-record ftl. soa CNAME ftl
@@ -87,13 +91,13 @@ pdnsutil add-record ftl. mx MX "50 ns1.ftl."
 if ! pdnsutil add-record ftl. svcb SVCB '1 port="80"'; then
   # see RFC3597: Handling of Unknown DNS Resource Record (RR) Types
   # and https://ypcs.fi/howto/2020/09/30/announce-https-via-dns/
-  pdnsutil add-record ftl. svcb TYPE64 "\# 13 31202e20706f72743d22383022"
+  pdnsutil add-record ftl. svcb TYPE64 "\# 13 000109706F72743D2238302200"
 fi
 
 # HTTPS
 if ! pdnsutil add-record ftl. https HTTPS '1 . alpn="h3,h2"'; then
   # comment above applies
-  pdnsutil add-record ftl. https TYPE65 "\# 16 31202e20616c706e3d2268332c683222"
+  pdnsutil add-record ftl. https TYPE65 "\# 15 000100000100080322683303683222"
 fi
 
 # Create reverse lookup zone
@@ -121,8 +125,10 @@ if command -v service; then
   service pdns-recursor restart
 else
   # Alpine
+  killall pdns_server
   pdns_server --daemon
   # Have to create the socketdir or the recursor will fails to start
   mkdir -p /var/run/pdns-recursor
+  killall pdns_recursor
   pdns_recursor --daemon
 fi

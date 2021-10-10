@@ -265,9 +265,95 @@
   [[ ${lines[0]} == "1" ]]
 }
 
-@test "Local DNS reply test" {
-  run bash -c "bash test/dig.sh | tee dig.log"
+@test "Local DNS test: A a.ftl" {
+  run bash -c "dig A a.ftl @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "192.168.1.1" ]]
+  [[ ${lines[1]} == "" ]]
+}
+
+@test "Local DNS test: AAAA aaaa.ftl" {
+  run bash -c "dig AAAA aaaa.ftl @127.0.0.1 +short"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "fe80::1c01" ]]
+  [[ ${lines[1]} == "" ]]
+}
+
+@test "Local DNS test: ANY any.ftl" {
+  run bash -c "dig ANY any.ftl @127.0.0.1 +short"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[@]} == *"192.168.3.1"* ]]
+  [[ ${lines[@]} == *"fe80::3c01"* ]]
+}
+
+@test "Local DNS test: CNAME cname-ok.ftl" {
+  run bash -c "dig CNAME cname-ok.ftl @127.0.0.1 +short"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "a.ftl." ]]
+  [[ ${lines[1]} == "" ]]
+}
+
+@test "Local DNS test: SRV srv.ftl" {
+  run bash -c "dig SRV srv.ftl @127.0.0.1 +short"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "0 1 80 a.ftl." ]]
+  [[ ${lines[1]} == "" ]]
+}
+
+@test "Local DNS test: SOA ftl" {
+  run bash -c "dig SOA ftl @127.0.0.1 +short"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "ns1.ftl. hostmaster.ftl. 1 10800 3600 604800 3600" ]]
+  [[ ${lines[1]} == "" ]]
+}
+
+@test "Local DNS test: PTR ptr.ftl" {
+  run bash -c "dig PTR ptr.ftl @127.0.0.1 +short"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "ptr.ftl." ]]
+  [[ ${lines[1]} == "" ]]
+}
+
+@test "Local DNS test: TXT txt.ftl" {
+  run bash -c "dig TXT txt.ftl @127.0.0.1 +short"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "\"Some example text\"" ]]
+  [[ ${lines[1]} == "" ]]
+}
+
+@test "Local DNS test: NAPTR naptr.ftl" {
+  run bash -c "dig NAPTR naptr.ftl @127.0.0.1 +short"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[@]} == *'10 10 "u" "smtp+E2U" "!.*([^.]+[^.]+)$!mailto:postmaster@$1!i" .'* ]]
+  [[ ${lines[@]} == *'20 10 "s" "http+N2L+N2C+N2R" "" ftl.'* ]]
+}
+
+@test "Local DNS test: MX mx.ftl" {
+  run bash -c "dig MX mx.ftl @127.0.0.1 +short"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "50 ns1.ftl." ]]
+  [[ ${lines[1]} == "" ]]
+}
+
+@test "Local DNS test: NS ftl" {
+  run bash -c "dig NS ftl @127.0.0.1 +short"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "ns1.ftl." ]]
+  [[ ${lines[1]} == "" ]]
+}
+
+@test "Local DNS test: SVCB svcb.ftl" {
+  run bash -c "dig TYPE64 svcb.ftl @127.0.0.1 +short"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == '\# 13 000109706F72743D2238302200' ]]
+  [[ ${lines[1]} == "" ]]
+}
+
+@test "Local DNS test: HTTPS https.ftl" {
+  run bash -c "dig TYPE65 https.ftl @127.0.0.1 +short"
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == '\# 15 000100000100080322683303683222' ]]
+  [[ ${lines[1]} == "" ]]
 }
 
 @test "CNAME inspection: Shallow CNAME is blocked" {
@@ -278,7 +364,7 @@
 }
 
 @test "CNAME inspection: Deep CNAME is blocked" {
-  run bash -c "dig A cname-4.ftl @127.0.0.1 +short"
+  run bash -c "dig A cname-7.ftl @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "0.0.0.0" ]]
   [[ ${lines[1]} == "" ]]
@@ -303,7 +389,7 @@
   [[ ${lines[2]} == "dns_queries_today 47" ]]
   [[ ${lines[3]} == "ads_blocked_today 8" ]]
   #[[ ${lines[4]} == "ads_percentage_today 7.792208" ]]
-  [[ ${lines[5]} == "unique_domains 34" ]]
+  [[ ${lines[5]} == "unique_domains 35" ]]
   [[ ${lines[6]} == "queries_forwarded 26" ]]
   [[ ${lines[7]} == "queries_cached 13" ]]
   # Clients ever seen is commented out as CircleCI may have
@@ -313,7 +399,7 @@
   #[[ ${lines[9]} == "unique_clients 8" ]]
   [[ ${lines[10]} == "dns_queries_all_types 47" ]]
   [[ ${lines[11]} == "reply_NODATA 0" ]]
-  [[ ${lines[12]} == "reply_NXDOMAIN 4" ]]
+  [[ ${lines[12]} == "reply_NXDOMAIN 1" ]]
   [[ ${lines[13]} == "reply_CNAME 5" ]]
   [[ ${lines[14]} == "reply_IP 23" ]]
   [[ ${lines[15]} == "privacy_level 0" ]]
@@ -349,6 +435,7 @@
   [[ "${lines[@]}" == *" 2 aaaa.ftl"* ]]
   [[ "${lines[@]}" == *" 2 net"* ]]
   [[ "${lines[@]}" == *" 2 verteiltesysteme.net"* ]]
+  [[ "${lines[@]}" == *" 2 ftl"* ]]
   [[ "${lines[@]}" == *" 1 version.ftl"* ]]
   [[ "${lines[@]}" == *" 1 whitelisted.ftl"* ]]
   [[ "${lines[@]}" == *" 1 gravity-whitelisted.ftl"* ]]
@@ -356,18 +443,17 @@
   [[ "${lines[@]}" == *" 1 regex2.ftl"* ]]
   [[ "${lines[@]}" == *" 1 use-application-dns.net"* ]]
   [[ "${lines[@]}" == *" 1 any.ftl"* ]]
-  [[ "${lines[@]}" == *" 1 cname.ftl"* ]]
+  [[ "${lines[@]}" == *" 1 cname-ok.ftl"* ]]
   [[ "${lines[@]}" == *" 1 srv.ftl"* ]]
-  [[ "${lines[@]}" == *" 1 soa.ftl"* ]]
+  [[ "${lines[@]}" == *" 1 any.ftl"* ]]
   [[ "${lines[@]}" == *" 1 ptr.ftl"* ]]
   [[ "${lines[@]}" == *" 1 txt.ftl"* ]]
   [[ "${lines[@]}" == *" 1 naptr.ftl"* ]]
   [[ "${lines[@]}" == *" 1 mx.ftl"* ]]
-  [[ "${lines[@]}" == *" 1 ns.ftl"* ]]
   [[ "${lines[@]}" == *" 1 svcb.ftl"* ]]
   [[ "${lines[@]}" == *" 1 https.ftl"* ]]
-  [[ "${lines[@]}" == *" 1 sigok.verteiltesysteme.net"* ]]
   [[ "${lines[@]}" == *" 1 ."* ]]
+  [[ "${lines[@]}" == *" 1 sigok.verteiltesysteme.net"* ]]
   [[ "${lines[@]}" == *" 1 sigfail.verteiltesysteme.net"* ]]
 }
 
@@ -380,7 +466,7 @@
   [[ "${lines[@]}" == *" 1 regex5.ftl"* ]]
   [[ "${lines[@]}" == *" 1 regex1.ftl"* ]]
   [[ "${lines[@]}" == *" 1 cname-1.ftl"* ]]
-  [[ "${lines[@]}" == *" 1 cname-4.ftl"* ]]
+  [[ "${lines[@]}" == *" 1 cname-7.ftl"* ]]
   [[ ${lines[8]} == "" ]]
 }
 
@@ -454,19 +540,19 @@
   [[ ${lines[25]} == *" A use-application-dns.net 127.0.0.1 3 2 2 "*" N/A -1 N/A#0 \"\" \"24\""* ]]
   [[ ${lines[26]} == *" A a.ftl 127.0.0.1 3 2 4 "*" N/A -1 N/A#0 \"\" \"25\""* ]]
   [[ ${lines[27]} == *" AAAA aaaa.ftl 127.0.0.1 3 2 4 "*" N/A -1 N/A#0 \"\" \"26\""* ]]
-  [[ ${lines[28]} == *" ANY any.ftl 127.0.0.1 2 2 2 "*" N/A -1 127.0.0.1#5555 \"\" \"27\""* ]]
-  [[ ${lines[29]} == *" [CNAME] cname.ftl 127.0.0.1 2 2 2 "*" N/A -1 127.0.0.1#5555 \"\" \"28\""* ]]
+  [[ ${lines[28]} == *" ANY any.ftl 127.0.0.1 2 2 13 "*" N/A -1 127.0.0.1#5555 \"\" \"27\""* ]]
+  [[ ${lines[29]} == *" [CNAME] cname-ok.ftl 127.0.0.1 2 2 3 "*" N/A -1 127.0.0.1#5555 \"\" \"28\""* ]]
   [[ ${lines[30]} == *" SRV srv.ftl 127.0.0.1 2 2 13 "*" N/A -1 127.0.0.1#5555 \"\" \"29\""* ]]
-  [[ ${lines[31]} == *" SOA soa.ftl 127.0.0.1 2 2 3 "*" N/A -1 127.0.0.1#5555 \"\" \"30\""* ]]
+  [[ ${lines[31]} == *" SOA ftl 127.0.0.1 2 2 13 "*" N/A -1 127.0.0.1#5555 \"\" \"30\""* ]]
   [[ ${lines[32]} == *" PTR ptr.ftl 127.0.0.1 2 2 13 "*" N/A -1 127.0.0.1#5555 \"\" \"31\""* ]]
   [[ ${lines[33]} == *" TXT txt.ftl 127.0.0.1 2 2 13 "*" N/A -1 127.0.0.1#5555 \"\" \"32\""* ]]
   [[ ${lines[34]} == *" NAPTR naptr.ftl 127.0.0.1 2 2 13 "*" N/A -1 127.0.0.1#5555 \"\" \"33\""* ]]
   [[ ${lines[35]} == *" MX mx.ftl 127.0.0.1 2 2 13 "*" N/A -1 127.0.0.1#5555 \"\" \"34\""* ]]
-  [[ ${lines[36]} == *" NS ns.ftl 127.0.0.1 2 2 2 "*" N/A -1 127.0.0.1#5555 \"\" \"35\""* ]]
+  [[ ${lines[36]} == *" NS ftl 127.0.0.1 2 2 13 "*" N/A -1 127.0.0.1#5555 \"\" \"35\""* ]]
   [[ ${lines[37]} == *" SVCB svcb.ftl 127.0.0.1 2 2 13 "*" N/A -1 127.0.0.1#5554 \"\" \"36\""* ]]
   [[ ${lines[38]} == *" HTTPS https.ftl 127.0.0.1 2 2 13 "*" N/A -1 127.0.0.1#5554 \"\" \"37\""* ]]
   [[ ${lines[39]} == *" A cname-1.ftl 127.0.0.1 9 2 3 "*" gravity.ftl -1 127.0.0.1#5555 \"\" \"38\""* ]]
-  [[ ${lines[40]} == *" A cname-4.ftl 127.0.0.1 9 2 3 "*" gravity.ftl -1 127.0.0.1#5555 \"\" \"39\""* ]]
+  [[ ${lines[40]} == *" A cname-7.ftl 127.0.0.1 9 2 3 "*" gravity.ftl -1 127.0.0.1#5555 \"\" \"39\""* ]]
   [[ ${lines[41]} == *" A sigok.verteiltesysteme.net 127.0.0.1 2 1 4 "*" N/A -1 127.0.0.1#5555 \"\" \"40\""* ]]
   [[ ${lines[42]} == *" DS net :: 2 1 11 "*" N/A -1 127.0.0.1#5555 \"\" \"41\""* ]]
   [[ ${lines[43]} == *" DNSKEY . :: 2 1 11 "*" N/A -1 127.0.0.1#5555 \"\" \"42\""* ]]
@@ -487,7 +573,7 @@
 @test "Recent blocked shows expected content" {
   run bash -c 'echo ">recentBlocked >quit" | nc -v 127.0.0.1 4711'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[1]} == "cname-4.ftl" ]]
+  [[ ${lines[1]} == "cname-7.ftl" ]]
   [[ ${lines[2]} == "" ]]
 }
 
