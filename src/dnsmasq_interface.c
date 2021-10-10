@@ -71,7 +71,7 @@ static void check_pihole_PTR(char *domain);
 static void _query_set_dnssec(queriesData *query, const enum dnssec_status dnssec, const char *file, const int line);
 
 // Static blocking metadata
-static const char *blockingreason = NULL;
+static const char *blockingreason = "";
 static union all_addr null_addrp = {{ 0 }};
 static enum reply_type force_next_DNS_reply = REPLY_UNKNOWN;
 static int last_regex_idx = -1;
@@ -295,11 +295,12 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 	// Setup reply header
 	setup_reply(header, flags, *ede);
 
-	// Add NEG flag when replying with NXDOMAIN. This is necessary to get proper logging in pihole.log
-	// At the same time, we cannot add NEG before calling setup_reply() as it would, otherwise, result
-	// in an incorrect "nowhere to forward to" log entry (because setup_reply() checks for equality of
-	// flags instead of doing a bitmask comparison).
-	if(flags == F_NXDOMAIN)
+	// Add NEG flag when replying with NXDOMAIN or NODATA. This is necessary
+	// to get proper logging in pihole.log At the same time, we cannot add
+	// NEG before calling setup_reply() as it would, otherwise, result in an
+	// incorrect "nowhere to forward to" log entry (because setup_reply()
+	// checks for equality of flags instead of doing a bitmask comparison).
+	if(flags == F_NXDOMAIN || flags == F_NOERR)
 		flags |= F_NEG;
 
 	// Add flags according to current blocking mode
@@ -388,6 +389,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		else
 		{
 			// NODATA/NXDOMAIN
+			// gravity blocked abc.com is NODATA/NXDOMAIN
 			log_query(flags, name, NULL, (char*)blockingreason, 0);
 		}
 	}
