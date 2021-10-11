@@ -25,7 +25,7 @@ jobs:
           GIT_BRANCH=$([ -n "${GIT_TAG}" ] && echo "master" || echo "${GITHUB_REF#refs/*/}")
           echo ::set-output name=GIT_BRANCH::${GIT_BRANCH}
           echo ::set-output name=GIT_TAG::${GIT_TAG}
-          echo ::set-output name=OUTPUT_DIR::binaries/${GIT_TAG:-${GIT_BRANCH}}
+          echo ::set-output name=OUTPUT_DIR::${GIT_TAG:-${GIT_BRANCH}}
 
   build-and-test-x86-32-64:
     needs: define-shared-vars
