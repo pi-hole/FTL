@@ -43,7 +43,7 @@ jobs:
             bin_name: pihole-FTL-musl-linux-x86_64
           - arch: x86_32
             bin_name: pihole-FTL-linux-x86_32
-    container: ghcr.io/pi-hole/ftl-build:v1.14-${{ matrix.arch }}
+    container: ghcr.io/pi-hole/ftl-build:v1.15-${{ matrix.arch }}
     steps:
       -
         name: Checkout code
@@ -96,7 +96,7 @@ jobs:
            bin_name: pihole-FTL-armv8-linux-gnueabihf
          - arch: aarch64
            bin_name: pihole-FTL-aarch64-linux-gnu
-    container: ghcr.io/pi-hole/ftl-build:v1.14-${{ matrix.arch }}
+    container: ghcr.io/pi-hole/ftl-build:v1.15-${{ matrix.arch }}
     continue-on-error: true
     steps:
       -
