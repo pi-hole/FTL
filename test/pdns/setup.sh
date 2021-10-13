@@ -10,15 +10,22 @@ rm /var/lib/powerdns/pdns.sqlite3 2> /dev/null
 if [ -d /etc/powerdns ]; then
   # Debian
   cp test/pdns/pdns.conf /etc/powerdns/pdns.conf
-  cp test/pdns/recursor.conf /etc/powerdns/recursor.conf
+  RECURSOR_CONF=/etc/powerdns/recursor.conf
 elif [ -d /etc/pdns ]; then
-  # Alpine
   cp test/pdns/pdns.conf /etc/pdns/pdns.conf
-  cp test/pdns/recursor.conf /etc/pdns/recursor.conf
+  if [ -d /etc/pdns-recursor ]; then
+    # Fedora
+    RECURSOR_CONF=/etc/pdns-recursor/recursor.conf
+  else
+    # Alpine
+    RECURSOR_CONF=/etc/pdns/recursor.conf
+  fi
 else
   echo "Error: Unable to determine powerDNS config directory"
   exit 1
 fi
+
+cp test/pdns/recursor.conf $RECURSOR_CONF
 
 # Create zone database
 if [ -f /usr/share/doc/pdns-backend-sqlite3/schema.sqlite3.sql ]; then
