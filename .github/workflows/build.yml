@@ -1,4 +1,4 @@
-name: Build and test
+name: Build, Test, Deploy
 
 on:
   push:
@@ -9,31 +9,15 @@ on:
     types: [published]
 
 jobs:
-  define-shared-vars:
-    if: ${{ github.event_name == 'push' || github.event_name == 'release' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) }}
-    runs-on: ubuntu-latest
+  build:
+    if: |
+      github.event_name == 'push'
+      || github.event_name == 'release'
+      || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)
     outputs:
       GIT_TAG: ${{ steps.variables.outputs.GIT_TAG }}
       GIT_BRANCH: ${{ steps.variables.outputs.GIT_BRANCH }}
       OUTPUT_DIR: ${{ steps.variables.outputs.OUTPUT_DIR }}
-    steps:
-      -
-        name: Set variables needed in all jobs
-        id: variables
-        run: |
-          GIT_TAG=${{ github.event.release.tag_name }}
-          # If GIT_TAG is set then GIT BRANCH should be "master", else set it from GITHUB_REF
-          GIT_BRANCH=$([ -n "${GIT_TAG}" ] && echo "master" || echo "${GITHUB_REF#refs/*/}")
-          echo ::set-output name=GIT_BRANCH::${GIT_BRANCH}
-          echo ::set-output name=GIT_TAG::${GIT_TAG}
-          echo ::set-output name=OUTPUT_DIR::${GIT_TAG:-${GIT_BRANCH}}
-
-  build-and-test-x86-32-64:
-    if: ${{ github.event_name == 'push' || github.event_name == 'release' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) }}
-    needs: define-shared-vars
-    env:
-      GIT_TAG: ${{ needs.define-shared-vars.outputs.GIT_TAG }}
-      GIT_BRANCH: ${{ needs.define-shared-vars.outputs.GIT_BRANCH }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -45,22 +29,45 @@ jobs:
             bin_name: pihole-FTL-musl-linux-x86_64
           - arch: x86_32
             bin_name: pihole-FTL-linux-x86_32
+          - arch: armv4t
+            bin_name: pihole-FTL-armv4-linux-gnueabi
+          - arch: armv5te
+            bin_name: pihole-FTL-armv5-linux-gnueabi
+          - arch: armv6hf
+            bin_name:  pihole-FTL-armv6-linux-gnueabihf
+          - arch: armv7hf
+            bin_name: pihole-FTL-armv7-linux-gnueabihf
+          - arch: armv8a
+            bin_name: pihole-FTL-armv8-linux-gnueabihf
+          - arch: aarch64
+            bin_name: pihole-FTL-aarch64-linux-gnu
     container: ghcr.io/pi-hole/ftl-build:v1.15-${{ matrix.arch }}
     steps:
       -
         name: Checkout code
         uses: actions/checkout@v2
       -
+        name: Calculate required variables
+        id: variables
+        run: |
+          GIT_TAG=${{ github.event.release.tag_name }}
+          # If GIT_TAG is set then GIT BRANCH should be "master", else set it from GITHUB_REF
+          GIT_BRANCH=$([ -n "${GIT_TAG}" ] && echo "master" || echo "${GITHUB_REF#refs/*/}")
+          echo ::set-output name=GIT_BRANCH::${GIT_BRANCH}
+          echo ::set-output name=GIT_TAG::${GIT_TAG}
+          echo ::set-output name=OUTPUT_DIR::${GIT_TAG:-${GIT_BRANCH}}
+      -
         name: "Build"
         run: |
-          bash .circleci/build-CI.sh "-DSTATIC=${STATIC}" "${GIT_BRANCH}" "${GIT_TAG}" "${{ matrix.arch }}"
+          bash .circleci/build-CI.sh "-DSTATIC=${STATIC}" "${{ steps.variables.outputs.GIT_BRANCH }}" "${{ steps.variables.outputs.GIT_TAG }}" "${{ matrix.arch }}"
       -
         name: "Binary checks"
         run: |
           export CIRCLE_JOB="${{ matrix.arch }}"
           bash test/arch_test.sh
       -
-        name: "Tests"
+        name: "Test x86_32/64 binaries"
+        if: matrix.arch == 'x86_64' || matrix.arch == 'x86_64-musl' || matrix.arch == 'x86_32'
         run: |
             export CIRCLE_JOB="${{ matrix.arch }}"
             test/run.sh
@@ -71,65 +78,15 @@ jobs:
           sha1sum pihole-FTL-* > ${{ matrix.bin_name }}.sha1
       -
         name: Upload artifacts to job for later processing
-        if: ${{ github.event_name != 'pull_request' }}
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v2
         with:
           name: tmp-binary-storage
           path: '${{ matrix.bin_name }}*'
 
-  build-arm-aarch64:
-    if: ${{ github.event_name == 'push' || github.event_name == 'release' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) }}
-    needs: [ build-and-test-x86-32-64, define-shared-vars]
-    env:
-      GIT_TAG: ${{ needs.define-shared-vars.outputs.GIT_TAG }}
-      GIT_BRANCH: ${{ needs.define-shared-vars.outputs.GIT_BRANCH }}
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-         - arch: armv4t
-           bin_name: pihole-FTL-armv4-linux-gnueabi
-         - arch: armv5te
-           bin_name: pihole-FTL-armv5-linux-gnueabi
-         - arch: armv6hf
-           bin_name:  pihole-FTL-armv6-linux-gnueabihf
-         - arch: armv7hf
-           bin_name: pihole-FTL-armv7-linux-gnueabihf
-         - arch: armv8a
-           bin_name: pihole-FTL-armv8-linux-gnueabihf
-         - arch: aarch64
-           bin_name: pihole-FTL-aarch64-linux-gnu
-    container: ghcr.io/pi-hole/ftl-build:v1.15-${{ matrix.arch }}
-    continue-on-error: true
-    steps:
-      -
-        name: Checkout code
-        uses: actions/checkout@v2
-      -
-        name: "Build"
-        run: |
-          bash .circleci/build-CI.sh "-DSTATIC=${STATIC}" "${GIT_BRANCH}" "${GIT_TAG}" "${{ matrix.arch }}"
-      -
-        name: "Binary checks"
-        run: |
-          export CIRCLE_JOB="${{ matrix.arch }}"
-          bash test/arch_test.sh
-      -
-        name: "Generate checksum file"
-        run: |
-          mv pihole-FTL "${{ matrix.bin_name }}"
-          sha1sum pihole-FTL-* > ${{ matrix.bin_name }}.sha1
-      -
-        name: Upload artifacts to job for later processing
-        if: ${{ github.event_name != 'pull_request' }}
-        uses: actions/upload-artifact@v2
-        with:
-          name: tmp-binary-storage
-          path: '${{ matrix.bin_name }}*'
-
-  deploy-binaries:
-    if: ${{ github.event_name != 'pull_request' }}
-    needs: [build-arm-aarch64, define-shared-vars]
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: build
     runs-on: ubuntu-latest
     steps:
       - name: Get Binaries built in previous jobs
@@ -148,11 +105,11 @@ jobs:
       -
         name: Transfer Builds to Pi-hole server for pihole checkout
         run: |
-          sftp -b - ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} <<< "-mkdir ${{ needs.define-shared-vars.outputs.OUTPUT_DIR }}
-          put * ${{ needs.define-shared-vars.outputs.OUTPUT_DIR }}"
+          sftp -b - ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} <<< "-mkdir ${{ needs.build.outputs.OUTPUT_DIR }}
+          put * ${{ needs.build.outputs.OUTPUT_DIR }}"
       -
         name: Attach binaries to release
-        if: ${{ github.event_name == 'release' }}
+        if: github.event_name == 'release'
         uses: softprops/action-gh-release@v1
         with:
           files: |
