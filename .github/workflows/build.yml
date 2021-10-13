@@ -10,6 +10,7 @@ on:
 
 jobs:
   define-shared-vars:
+    if: ${{ github.event_name == 'push' || github.event_name == 'release' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) }}
     runs-on: ubuntu-latest
     outputs:
       GIT_TAG: ${{ steps.variables.outputs.GIT_TAG }}
@@ -28,6 +29,7 @@ jobs:
           echo ::set-output name=OUTPUT_DIR::${GIT_TAG:-${GIT_BRANCH}}
 
   build-and-test-x86-32-64:
+    if: ${{ github.event_name == 'push' || github.event_name == 'release' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) }}
     needs: define-shared-vars
     env:
       GIT_TAG: ${{ needs.define-shared-vars.outputs.GIT_TAG }}
@@ -76,6 +78,7 @@ jobs:
           path: '${{ matrix.bin_name }}*'
 
   build-arm-aarch64:
+    if: ${{ github.event_name == 'push' || github.event_name == 'release' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) }}
     needs: [ build-and-test-x86-32-64, define-shared-vars]
     env:
       GIT_TAG: ${{ needs.define-shared-vars.outputs.GIT_TAG }}
