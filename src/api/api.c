@@ -1002,7 +1002,7 @@ void getAllQueries(const char *client_message, const int *sock)
 		else
 			clientIPName = getClientIPString(query);
 
-		const unsigned long delay = query->flags.response_calculated ? query->response : 0UL;
+		unsigned long delay = query->flags.response_calculated ? query->response : 0UL;
 
 		// Get domain blocked during deep CNAME inspection, if applicable
 		const char *CNAME_domain = "N/A";
@@ -1041,13 +1041,20 @@ void getAllQueries(const char *client_message, const int *sock)
 			}
 		}
 
-
 		// Get reply type
 		// If this is a partially cached CNAME (parts needed to be
 		// forwarded) but we never receive replies, we have to set the
 		// reply back to unknown instead of handing out "CNAME"
 		// See https://discourse.pi-hole.net/t/garbage-response-times-for-many-almost-half-at-times-cname-answers/50291/17
-		const enum reply_type reply = query->flags.response_calculated ? query->reply : REPLY_UNKNOWN;
+		enum reply_type reply = query->flags.response_calculated ? query->reply : REPLY_UNKNOWN;
+
+		// Overwrite reply and reply time if they don't make sense for this query
+		// See same Discourse discussion as immediately above
+		if(query->status == QUERY_RETRIED || query->status == QUERY_IN_PROGRESS)
+		{
+			reply = REPLY_UNKNOWN;
+			delay = 0UL;
+		}
 
 		if(istelnet[*sock])
 		{
