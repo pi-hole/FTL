@@ -1041,6 +1041,14 @@ void getAllQueries(const char *client_message, const int *sock)
 			}
 		}
 
+
+		// Get reply type
+		// If this is a partially cached CNAME (parts needed to be
+		// forwarded) but we never receive replies, we have to set the
+		// reply back to unknown instead of handing out "CNAME"
+		// See https://discourse.pi-hole.net/t/garbage-response-times-for-many-almost-half-at-times-cname-answers/50291/17
+		const enum reply_type reply = query->flags.response_calculated ? query->reply : REPLY_UNKNOWN;
+
 		if(istelnet[*sock])
 		{
 			ssend(*sock,"%lli %s %s %s %i %i %i %lu %s %i %s#%u \"%s\"",
@@ -1050,7 +1058,7 @@ void getAllQueries(const char *client_message, const int *sock)
 				clientIPName,
 				query->status,
 				query->dnssec,
-				query->reply,
+				reply,
 				delay,
 				CNAME_domain,
 				regex_idx,
