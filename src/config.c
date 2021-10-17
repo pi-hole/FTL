@@ -45,7 +45,6 @@ static size_t size = 0;
 
 // Private prototypes
 static char *parse_FTLconf(FILE *fp, const char * key);
-static void release_config_memory(void);
 static void getpath(FILE* fp, const char *option, const char *defaultloc, char **pointer);
 static void set_nice(const char *buffer, int fallback);
 static bool read_bool(const char *option, const bool fallback);
@@ -643,9 +642,6 @@ void read_FTLconf(void)
 
 	logg("Finished config file parsing");
 
-	// Release memory
-	release_config_memory();
-
 	if(fp != NULL)
 		fclose(fp);
 }
@@ -727,7 +723,6 @@ static char *parse_FTLconf(FILE *fp, const char * key)
 		// otherwise: key found
 		free(keystr);
 		// Note: value is still a pointer into the conflinebuffer
-		//       its memory will get released in release_config_memory()
 		char *value = find_equals(conflinebuffer) + 1;
 		// Trim whitespace at beginning and end, this function
 		// modifies the string inplace
@@ -742,16 +737,6 @@ static char *parse_FTLconf(FILE *fp, const char * key)
 	free(keystr);
 
 	return NULL;
-}
-
-void release_config_memory(void)
-{
-	if(conflinebuffer != NULL)
-	{
-		free(conflinebuffer);
-		conflinebuffer = NULL;
-		size = 0;
-	}
 }
 
 void get_privacy_level(FILE *fp)
@@ -780,9 +765,6 @@ void get_privacy_level(FILE *fp)
 			config.privacylevel = value;
 		}
 	}
-
-	// Release memory
-	release_config_memory();
 
 	// Have to close the config file if we opened it
 	if(opened)
@@ -822,9 +804,6 @@ void get_blocking_mode(FILE *fp)
 		else
 			logg("Ignoring unknown blocking mode, fallback is NULL blocking");
 	}
-
-	// Release memory
-	release_config_memory();
 
 	// Have to close the config file if we opened it
 	if(opened)
@@ -992,14 +971,7 @@ void read_debuging_settings(FILE *fp)
 
 	// Have to close the config file if we opened it
 	if(opened)
-	{
 		fclose(fp);
-
-		// Release memory only when we opened the file
-		// Otherwise, it may still be needed outside of
-		// this function (initial config parsing)
-		release_config_memory();
-	}
 }
 
 
